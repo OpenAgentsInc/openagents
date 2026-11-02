@@ -1,0 +1,55 @@
+// End-to-end checks of the Coax command, exit codes and retained receipts.
+// --binary names an already-built compare-frames tool; no compiler is rebuilt.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/crypto/sha256-kernel.coax";
+
+ct_case :: (binary:string,dir:string,format:string,cpu:[]u8,gpu:[]u8,expected:int,nonfinite:int,colour:int)->bool {
+  cpu_name:[4096]u8;gpu_name:[4096]u8;receipt_name:[4096]u8;
+  cp:=fs_join(dir,"cpu.bin",cpu_name[..]);gp:=fs_join(dir,"gpu.bin",gpu_name[..]);rp:=fs_join(dir,"receipt.json",receipt_name[..]);
+  removed:=fs_remove(rp);
+  if !fs_write(cp,cast(string)cpu) || !fs_write(gp,cast(string)gpu) {return false;}
+  argv:=[13]string.[binary,"--cpu",cp,"--gpu",gp,"--gpu-format",format,"--width","1","--height","1","--receipt",rp];
+  stdout:[131072]u8;stderr:[4096]u8;r:=proc_run(argv[..],10000,stdout[..],stderr[..]);
+  if r.started!=0 || r.status!=expected || r.cut || r.timed_out {return false;}
+  if expected==2 {return !fs_exists(rp);}
+  raw:[262144]u8;n:=fs_read(rp,raw[..]);if n<1 {return false;}
+  nodes:[512]JvNode;doc:[1]Jv;if !jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]) {return false;}
+  d:=doc[0];text:[1024]u8;
+  schema_n:=jv_str(d,jv_get(d,0,"schema"),text[..]);
+  if schema_n<0 || cast(string)text[0..<schema_n]!="aethyr.render.image-comparison.v1" {return false;}
+  if jv_int(d,jv_path(d,0,"comparison.nonfinite_failures"),-1)!=nonfinite || jv_int(d,jv_path(d,0,"comparison.colour_failures"),-1)!=colour {return false;}
+  if jv_int(d,jv_path(d,0,"comparison.channels"),-1)!=4 || jv_int(d,jv_path(d,0,"comparison.masked_pixels"),-1)!=0 {return false;}
+  hash:[64]u8;if !S_hex(S_hash(cast(string)cpu),hash[..]) {return false;}
+  if jv_str(d,jv_path(d,0,"inputs.cpu.sha256"),text[..])!=64 || cast(string)text[0..<64]!=cast(string)hash[..] {return false;}
+  if !S_hex(S_hash(cast(string)gpu),hash[..]) {return false;}
+  if jv_str(d,jv_path(d,0,"inputs.gpu.sha256"),text[..])!=64 || cast(string)text[0..<64]!=cast(string)hash[..] {return false;}
+  return true;
+}
+ct_checks :: (binary:string,dir:string)->bool {
+  cpu:=[16]u8.[0,0,128,63,0,0,0,63,0,0,128,62,0,0,64,63];
+  if !ct_case(binary,dir,"rgba32f",cpu[..],cpu[..],0,0,0) {return false;}
+  half:=[8]u8.[0,60,0,56,0,52,0,58];
+  if !ct_case(binary,dir,"rgba16f",cpu[..],half[..],0,0,0) {return false;}
+  rgba:=[4]u8.[255,128,64,191];bgra:=[4]u8.[64,128,255,191];
+  if !ct_case(binary,dir,"rgba8",cpu[..],rgba[..],0,0,0) || !ct_case(binary,dir,"bgra8",cpu[..],bgra[..],0,0,0) {return false;}
+  if !ct_case(binary,dir,"bgra8",cpu[..],rgba[..],1,0,2) {return false;}
+  rgba[3]=0;if !ct_case(binary,dir,"rgba8",cpu[..],rgba[..],1,0,1) {return false;}
+  gpu:=cpu;gpu[8]=1;gpu[9]=0;gpu[10]=128;gpu[11]=127;
+  if !ct_case(binary,dir,"rgba32f",cpu[..],gpu[..],1,1,0) {return false;}
+  if !ct_case(binary,dir,"rgba32f",cpu[0..<15],cpu[..],2,0,0) {return false;}
+  if !ct_case(binary,dir,"rgba16f",cpu[..],half[0..<7],2,0,0) {return false;}
+  if !ct_case(binary,dir,"unknown",cpu[..],cpu[..],2,0,0) {return false;}
+  return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}binary:=args_value(a[..],"--binary","");
+  if binary=="" {tool_errln("comparison checks: --binary is required");return 2;}
+  temp:[4096]u8;dir:=fs_temp("aethyr-compare-cli-",temp[..]);if dir=="" {return 1;}
+  okay:=ct_checks(binary,dir);removed:=fs_remove(dir);
+  if !okay || !removed {tool_errln("comparison checks: native CLI observations failed");return 1;}
+  print("comparison CLI: 10 cases pass; all formats, nonfinite/alpha/order losses, whole lengths, SHA256 receipts and exit codes\n");return 0;
+}

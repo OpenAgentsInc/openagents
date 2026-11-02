@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independently authored byte patterns and rounded-binary32 bilinear/mip interpolation expectations).
 """Independent authored byte patterns and rounded-f32 filter expectations.
 
 Verification tooling only. The production shader never reads these expected

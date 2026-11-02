@@ -1,0 +1,102 @@
+// Shared muted/headless CDP transport and a loopback origin for GPU diagnostics.
+// Caller Coax programs supply fixtures, resource mappings and verdicts.
+#load "../../coax/lib/net/cdp.coax";
+gp_self :: (out:[]u8)->string {
+  n:=cxargs_len(0);if n<1 || n>out.count {return "";}
+  for i:0..<n {out[i]=cast,trunc(u8)cxargs_byte(0,i);}return cast(string)out[0..<n];
+}
+gp_evaluate :: (c:[]Cdp,expression:string)->int {
+  params:[CDP_REQ]u8;o:[1]Jo;jo_start(o[..],params[..]);
+  jo_obj(o[..]);jo_key(o[..],"expression");jo_str(o[..],expression);
+  jo_key(o[..],"awaitPromise");jo_bool(o[..],true);jo_key(o[..],"returnByValue");jo_bool(o[..],true);jo_end(o[..]);
+  if o[0].bad {return -1;}
+  result:=cdp_call(c,"Runtime.evaluate",jo_text(o[..]),30000);
+  return jv_path(c[0].doc[0],result,"result.value");
+}
+wp_send :: (h:int,text:string)->bool {
+  for byte:text {if cxsock_write(h,cast(int)byte)!=0 {return false;}}
+  return cxsock_flush(h,1000)==0;
+}
+wp_resource :: (d:Jv,path:string,out:[]u8)->string {
+  rows:=jv_get(d,0,"resources");
+  for i:0..<jv_len(d,rows) {
+    row:=jv_at(d,rows,i);if jv_raw(d,jv_get(d,row,"url"))==path {
+      n:=jv_str(d,jv_get(d,row,"file"),out);return ifx n>0 then cast(string)out[0..<n] else "";
+    }
+  }
+  return "";
+}
+wp_serve :: (port_file:string,manifest:string)->int {
+  resources:[65536]u8;rn:=ifx manifest=="" then 0 else fs_read(manifest,resources[..]);nodes:[2048]JvNode;doc:[1]Jv;
+  if manifest!="" && (rn<1 || !jv_parse(doc[..],cast(string)resources[0..<rn],nodes[..])) {return 1;}
+  listener:=cxsock_listen(0);if listener<0 {return 1;}
+  text:[32]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_int(o[..],cxsock_port(listener));
+  if !fs_write(port_file,jo_text(o[..])) {closed:=cxsock_close(listener);return 1;}
+  deadline:=proc_now_ms()+120000;
+  while proc_now_ms()<deadline {
+    h:=cxsock_accept(listener,1000);if h<0 {continue;}
+    n:=cxsock_read(h,1000);request:[8192]u8;
+    if n>0 && n<=request.count {
+      for i:0..<n {request[i]=cast,trunc(u8)cxsock_byte(h,i);}
+      end:=4;while end<n && request[end]!=' ' {end+=1;}
+      file_name:[4096]u8;file:="";
+      if n>4 && cast(string)request[0..<4]=="GET " && manifest!="" {file=wp_resource(doc[0],cast(string)request[4..<end],file_name[..]);}
+      if file=="" {
+        sent:=wp_send(h,"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<!doctype html><title>Coax WebGPU probe</title>");
+      } else {
+        size:=fs_size(file);length:[32]u8;lo:[1]Jo;jo_start(lo[..],length[..]);jo_int(lo[..],size);
+        okay:=size>=0 && wp_send(h,"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: ") && wp_send(h,jo_text(lo[..])) && wp_send(h,"\r\nConnection: close\r\n\r\n");
+        data:[65536]u8;at:=0;
+        while okay && at<size {
+          count:=ifx size-at<data.count then size-at else data.count;
+          okay=fs_read_at(file,at,data[0..<count])==count && wp_send(h,cast(string)data[0..<count]);at+=count;
+        }
+      }
+    }
+    closed:=cxsock_close(h);
+  }
+  closed:=cxsock_close(listener);return 0;
+}
+gp_serve :: (port_file:string)->int {return wp_serve(port_file,"");}
+wp_start_origin :: (port_file:string,manifest:string)->int {
+  self:[4096]u8;binary:=gp_self(self[..]);h:=proc_new();if h<0 {return -1;}
+  okay:=binary!="" && proc_arg(h,binary) && proc_arg(h,"--serve") && proc_arg(h,port_file);
+  if manifest!="" {okay=okay && proc_arg(h,"--resources") && proc_arg(h,manifest);}
+  if !okay || !proc_quiet(h) || proc_start(h)!=0 {released:=proc_release(h);return -1;}return h;
+}
+gp_start_origin :: (port_file:string)->int {return wp_start_origin(port_file,"");}
+wp_open :: (c:[]Cdp,url:string,effects:string,browser:[]u8)->int {
+  if !cdp_launch(c,1,1,"aethyr-coax-probe-") {tool_errln(cdp_error(c));return -1;}
+  version:=cdp_call(c,"Browser.getVersion","{}",30000);bo:[1]Jo;jo_start(bo[..],browser);
+  if version<0 {return -1;}jv_write(c[0].doc[0],version,bo[..]);if bo[0].bad {return -1;}
+  enabled:=cdp_call(c,"Page.enable","{}",30000);params:[4096]u8;o:[1]Jo;jo_start(o[..],params[..]);
+  jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);
+  navigated:=cdp_call(c,"Page.navigate",jo_text(o[..]),30000);if enabled<0 || navigated<0 {return -1;}
+  ready:=-1;
+  for attempt:0..<50 {
+    ready=gp_evaluate(c,"document.readyState");if ready<0 {return -1;}
+    if jv_raw(c[0].doc[0],ready)=="complete" {break;}proc_sleep(20);
+  }
+  if ready<0 || jv_raw(c[0].doc[0],ready)!="complete" {tool_errln("WebGPU probe: page did not finish loading");return -1;}
+  ready=gp_evaluate(c,effects);
+  if ready<0 || jv_raw(c[0].doc[0],ready)!="ready" {tool_errln("WebGPU probe: effects adapter did not load");return -1;}
+  return bo[0].n;
+}
+wp_run :: (c:[]Cdp,start:string,poll:string,request:string)->int {
+  expression:[CDP_REQ]u8;at:=0;
+  if start.count+request.count+2>expression.count {return -1;}
+  for byte:start {expression[at]=byte;at+=1;}expression[at]='(';at+=1;
+  for byte:request {expression[at]=byte;at+=1;}expression[at]=')';at+=1;
+  started:=gp_evaluate(c,cast(string)expression[0..<at]);
+  if started<0 || jv_raw(c[0].doc[0],started)!="started" {tool_errln(cdp_error(c));return -1;}
+  deadline:=proc_now_ms()+30000;
+  while proc_now_ms()<deadline {
+    result:=gp_evaluate(c,poll);if result<0 {return -1;}d:=c[0].doc[0];
+    if jv_kind(d,jv_get(d,result,"done"))==JV_TRUE {
+      if jv_kind(d,jv_get(d,result,"error"))!=JV_NULL {tool_errln(jv_raw(d,jv_get(d,result,"error")));return -1;}
+      return jv_get(d,result,"value");
+    }
+    proc_sleep(20);
+  }
+  tool_errln("WebGPU probe: effects did not complete within bounded poll window");return -1;
+}

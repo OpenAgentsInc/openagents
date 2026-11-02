@@ -1,0 +1,87 @@
+// The Grid's declared Wasm scalar/arena profile. SDK instantiation and grow
+// effects stay in the browser; parsing, capacities and acceptance stay here.
+#import "Basic";
+#authority;
+#load "grid-memory-checks.coax";
+GmCursor :: struct { at: int; bad: bool; }
+GmDescription :: struct { valid: bool; header_valid: bool; minimum: int = -1; maximum: int = -1; stack: int = -1; }
+GmArena :: struct { valid: bool; base: int; state_bytes: int; need: int; pages: int; allocation: int; }
+gm_byte :: (bytes: [] u8, c: [] GmCursor) -> int {
+  if c[0].bad || c[0].at >= bytes.count { c[0].bad = true; return 0; }
+  value := cast(int) bytes[c[0].at]; c[0].at += 1; return value;
+}
+gm_uleb :: (bytes: [] u8, c: [] GmCursor) -> int {
+  value := 0;
+  for index: 0..<5 {
+    byte := gm_byte(bytes,c); if c[0].bad { return 0; }
+    value += (byte & 127) << (index * 7);
+    if (byte & 128) == 0 { if value > 4294967295 { c[0].bad = true; } return value; }
+  }
+  c[0].bad = true; return 0;
+}
+gm_sleb :: (bytes: [] u8, c: [] GmCursor) -> int {
+  value := 0;
+  for index: 0..<5 {
+    byte := gm_byte(bytes,c); if c[0].bad { return 0; }
+    shift := (index + 1) * 7; value += (byte & 127) << (index * 7);
+    if (byte & 128) == 0 {
+      if (byte & 64) != 0 { value -= 1 << shift; }
+      if value < -2147483648 || value > 2147483647 { c[0].bad = true; } return value;
+    }
+  }
+  c[0].bad = true; return 0;
+}
+gm_skip_name :: (bytes: [] u8, c: [] GmCursor) {
+  count := gm_uleb(bytes,c);
+  if count > bytes.count - c[0].at { c[0].bad = true; return; }
+  c[0].at += count;
+}
+gm_describe :: (bytes: [] u8) -> GmDescription {
+  d: GmDescription; magic := [8] u8.[0,97,115,109,1,0,0,0];
+  if bytes.count < 8 { return d; }
+  for i: 0..<8 { if bytes[i] != magic[i] { return d; } }
+  d.header_valid = true;
+  c: [1] GmCursor; c[0].at = 8;
+  while c[0].at < bytes.count {
+    kind := gm_byte(bytes,c[..]); length := gm_uleb(bytes,c[..]);
+    if c[0].bad || length > bytes.count - c[0].at { return d; }
+    section := bytes[c[0].at..<c[0].at + length]; c[0].at += length; s: [1] GmCursor;
+    if kind == 2 {
+      count := gm_uleb(section,s[..]);
+      for i: 0..<count {
+        gm_skip_name(section,s[..]); gm_skip_name(section,s[..]); item := gm_byte(section,s[..]);
+        if item == 0 { type_index := gm_uleb(section,s[..]); }
+        else if item == 2 {
+          if d.minimum != -1 { return d; }
+          flags := gm_uleb(section,s[..]); if flags != 1 { return d; }
+          d.minimum = gm_uleb(section,s[..]); d.maximum = gm_uleb(section,s[..]);
+        } else { return d; }
+        if s[0].bad { return d; }
+      }
+      if s[0].at != section.count { return d; }
+    }
+    if kind == 6 {
+      count := gm_uleb(section,s[..]);
+      if count < 1 || gm_byte(section,s[..]) != 127 || gm_byte(section,s[..]) != 1 || gm_byte(section,s[..]) != 65 { return d; }
+      d.stack = gm_sleb(section,s[..]); if gm_byte(section,s[..]) != 11 || s[0].bad { return d; }
+    }
+  }
+  d.valid = d.minimum >= 0 && d.maximum >= d.minimum && d.stack >= 0; return d;
+}
+gm_arena :: (heap: int, state: int, vertices: int, stride: int, uniforms: int, minimum: int, maximum: int) -> GmArena {
+  a: GmArena;
+  if heap < 0 || heap > 67108864 || state < 0 || state > 67108864 || vertices != 400000 || stride != 12 || uniforms != 112 || minimum < 0 || minimum > maximum || maximum != 1024 { return a; }
+  initial := gm_max(minimum,128);
+  base := gm_max(heap,initial * 65536);
+  a.base = ((base + 65535) / 65536) * 65536;
+  a.state_bytes = (gm_max(state,1024) + 15) / 16 * 16;
+  a.need = a.base + a.state_bytes + vertices * stride * 4 + uniforms * 4 + 64;
+  a.pages = (a.need + 65535) / 65536; a.allocation = a.pages * 65536;
+  a.valid = a.pages <= maximum; return a;
+}
+// All callers bound the nonnegative inputs below2^27. Their exact difference,
+// sum and integer maximum are representable in binary64.
+gm_max :: (a: int, b: int) -> int { return (a + b + cast(int) abs(cast(f64) (a - b))) / 2; }
+gm_source_matches :: (observed_size: int, observed_hash: string, expected_size: int, expected_hash: string) -> bool {
+  return expected_size > 0 && expected_hash.count == 64 && observed_size == expected_size && observed_hash == expected_hash;
+}

@@ -1,0 +1,13 @@
+bun test v1.4.0 (34cbb9a40)
+
+coax/web/realms.test.ts:
+(pass) manifest realms preserve reviewed shared and legacy renderer adoption [9032.82ms]
+(pass) refuses a painterly realm whose WGSL has no style block [8.47ms]
+(pass) an anime realm, or an anime zone, needs the style block in its WGSL [4.41ms]
+(pass) refuses a painterly realm with a lowpoly pack, and a pack of another style [6.28ms]
+
+ 4 pass
+ 19 filtered out
+ 0 fail
+ 56 expect() calls
+Ran 4 tests across 1 file. [9.12s]

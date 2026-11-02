@@ -12,8 +12,8 @@ render_frame_limits_ok :: (rf_l: RenderFrameLimits) -> bool {
     && rf_l.max_vertex_stride >= 0 && rf_l.max_vertex_stride <= 64 && rf_l.index_work >= 0 && rf_l.index_work <= 16777216;
 }
 render_count_word_ok :: (rf_count: int) -> bool { return rf_count >= 0 && rf_count <= 4294967295; }
-render_span_fits :: (rf_first: u64, rf_count: u64, rf_begin: u64, rf_end: u64) -> bool {
-  return rf_first >= rf_begin && rf_first <= rf_end && rf_count <= rf_end - rf_first;
+render_span_fits :: (rf_first: u64, rf_count: u64, rf_lower: u64, rf_end: u64) -> bool {
+  return rf_first >= rf_lower && rf_first <= rf_end && rf_count <= rf_end - rf_first;
 }
 render_vertex_span_fits :: (rf_d: RenderDrawDomain, rf_first: u64, rf_count: u64) -> bool {
   return render_span_fits(rf_first, rf_count, rf_d.vertex_begin, rf_d.vertices)
@@ -178,7 +178,7 @@ rf_pass :: (f:RfFrame,resources:[]RfResource,target:RfHandle,bindings:[]RfBindin
         for j:0..<i {if bindings[j].group==b.group && bindings[j].binding==b.binding {return no;}}
         r:=resources[b.resource.slot];
         if r.kind!=RF_UNIFORM && r.kind!=RF_STORAGE {return no;}
-        if b.offset<0 || b.words<1 || r.words<0 {return no;}
+        if b.offset<0 || b.words<1 || b.words>r.words {return no;}
         if !render_span_fits(cast(u64)b.offset,cast(u64)b.words,0,cast(u64)r.words) {return no;}
         if b.words>f.limit.words-words {return no;}words+=b.words;
     }

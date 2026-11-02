@@ -1,0 +1,55 @@
+// Independent little-endian control bytes and transport/refusal expectations.
+#test "SPIR-V controls preserve every byte except the declared magic or composite type word" {
+  words:=[9]u32.[0x07230203,0x00010300,0,9,0,0x00040050,2,3,4];
+  source:[36]u8;for word,i:words {for byte:0..<4 {source[i*4+byte]=cast,trunc(u8)(word>>(byte*8));}}
+  out:[40]u8;for k:0..<out.count {out[k]=0xa5;}
+  #assert spv_control(source[..],0,out[..])==36;
+  for k:0..<source.count {#assert out[k]==(ifx k<4 then 0 else source[k]);}
+  #assert out[36]==0xa5 && spv_control(source[..],1,out[0..<36])==36;
+  for k:0..<source.count {#assert out[k]==(ifx k>=24 && k<28 then 0 else source[k]);}
+  #assert out[36]==0xa5 && spv_word(source[..],0)==0x07230203 && spv_word(source[..],8)==4;
+  #assert spv_word(source[..],-1)==0 && spv_word(source[..],9)==0;
+  // A no-operand instruction and two different-sized composites ensure only
+  // the first actual composite's type changes, rather than the first header.
+  multi:=[13]u32.[0x07230203,0x00010300,0,9,0,0x00010000,0x00030050,2,3,0x00040050,5,6,7];
+  raw:[52]u8;changed:[52]u8;for word,i:multi {for byte:0..<4 {raw[i*4+byte]=cast,trunc(u8)(word>>(byte*8));}}
+  #assert spv_control(raw[..],1,changed[..])==52;
+  for k:0..<raw.count {#assert changed[k]==(ifx k>=28 && k<32 then 0 else raw[k]);}
+}
+#test "SPIR-V control generation refuses incomplete instructions before changing caller bytes" {
+  b:[36]u8;b[0]=3;b[1]=2;b[2]=0x23;b[3]=7;b[20]=80;b[22]=4;
+  out:[36]u8;for k:0..<out.count {out[k]=0xa5;}
+  #assert spv_control(b[0..<19],0,out[..])== -1 && spv_control(b[0..<35],0,out[..])== -1;
+  #assert spv_control(b[..],-1,out[..])== -1 && spv_control(b[..],2,out[..])== -1 && spv_control(b[..],0,out[0..<35])== -1;
+  b[0]=0;#assert spv_control(b[..],0,out[..])== -1;b[0]=3;
+  b[22]=0;#assert spv_control(b[..],0,out[..])== -1;b[22]=5;#assert spv_control(b[..],0,out[..])== -1;
+  b[22]=2;#assert spv_control(b[0..<28],1,out[..])== -1;
+  b[20]=0;#assert spv_control(b[0..<28],1,out[..])== -1;
+  #assert spv_control(b[0..<20],0,out[..])==20 && spv_control(b[0..<20],1,out[..])== -1;
+  for k:20..<out.count {#assert out[k]==0xa5;}
+}
+#test "SPIR-V validator acceptance distinguishes actual diagnostics from transport failure" {
+  #assert spv_observation(0,0,"") && spv_observation(0,0,"warning");
+  #assert !spv_observation(0,1,"invalid") && !spv_observation(0,-1,"");
+  #assert spv_observation(1,1,"x") && spv_observation(1,123,"error");
+  #assert !spv_observation(1,0,"error") && !spv_observation(1,1,"") && !spv_observation(1,124,"timeout") && !spv_observation(1,255,"ssh");
+  #assert !spv_observation(-1,1,"error") && !spv_observation(2,1,"error") && !spv_observation(1,-1,"error");
+}
+#test "SPIR-V remote effect arguments and package hash names are literal bounded data" {
+  #assert spv_name("program-0.spv") && !spv_name("") && !spv_name(".") && !spv_name("..") && !spv_name("../x") && !spv_name("a b") && !spv_name("-x") && !spv_name("x;id");
+  #assert spv_host("coderos-4080") && spv_host("node.example") && spv_host("a") && spv_host(".a") && !spv_host("-a") && !spv_host("") && !spv_host("-oProxyCommand=x") && !spv_host("a/b") && !spv_host("a b");
+  #assert spv_path("/nix/store/abc-spirv-tools/bin/spirv-val") && spv_path("/x") && spv_path("/x0") && !spv_path("/-a") && !spv_path("/a/-b") && !spv_path("relative") && !spv_path("/tmp/a b") && !spv_path("/tmp/../x") && !spv_path("/tmp//x") && !spv_path("/") && !spv_path("/x/");
+  #assert spv_remote("/tmp/aethyr-spirv-Ab12cD34eF") && !spv_remote("/tmp/aethyr-spirv-") && !spv_remote("/tmp/other-Ab12cD34eF") && !spv_remote("/tmp/aethyr-spirv-Ab12cD34e/") && !spv_remote("/tmp/aethyr-spirv-Ab12cD34eFextra");
+  #assert spv_digest("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !spv_digest("") && !spv_digest("0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef") && !spv_digest("0123456789abcdeg0123456789abcdef0123456789abcdef0123456789abcdef");
+}
+#test "every byte's literal remote alphabet and lowercase hex membership match explicit strings" {
+  alphabet:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  hex:="0123456789abcdef";
+  for value:0..<256 {
+    c:=cast(u8)value;member:=false;for a:alphabet {if c==a {member=true;}}
+    #assert spv_alpha(c)==member;
+    name:=[3]u8.['x',c,'x'];#assert spv_name(cast(string)name[..])==(member || c=='-' || c=='_' || c=='.');
+    digest:[64]u8;for k:0..<64 {digest[k]='0';}digest[31]=c;hm:=false;for h:hex {if c==h {hm=true;}}
+    #assert spv_digest(cast(string)digest[..])==hm;
+  }
+}

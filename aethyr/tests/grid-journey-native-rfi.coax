@@ -1,0 +1,200 @@
+// Join actual native-produced Grid bytes to the same frozen browser scene's
+// resources/package. Coax checks identities/counts, every numeric word and
+// discrete stroke modes before publishing frame.config.
+//   coax/web/tool.sh aethyr/tests/grid-journey-native-rfi.coax BROWSER_CAPTURE NATIVE_DUMP OUTDIR
+// Numeric profile is the existing realm-run comparison: abs1e-6 or rel1e-6;
+// every value must be finite. Modes, flags, identities and counts stay exact.
+#import "Basic";
+#load "grid-journey-capture.coax";
+
+GridNativeNumbers :: struct {words:int;different:int;failures:int;first_bad:int=-1;max_absolute:f64;max_normalized:f64;}
+GridNativeFile :: struct {name:[256]u8;n:int;bytes:int;hash:[64]u8;}
+GridNativeInventory :: struct {files:[64]GridNativeFile;n:int;}
+#test "native producer comparison keeps finite arithmetic separate from exact mode and flag words" {
+  one:=f32_bits(1.0f32);next:=one+1;
+  #assert gjn_close(one,next,false) && !gjn_close(one,next,true);
+  #assert !gjn_close(one,f32_bits(1.001f32),false);
+  #assert !gjn_close(0x7fc00000,0x7fc00000,false) && !gjn_close(0x7f800000,0x7f800000,false);
+  #assert gjn_close(0,0x80000000,false) && !gjn_close(0,0x80000000,true);
+  #assert gjn_exact(0,0) && gjn_exact(0,1) && gjn_exact(0,4) && gjn_exact(0,5) && gjn_exact(0,7) && !gjn_exact(0,2);
+  #assert gjn_exact(1,11) && gjn_exact(1,23) && !gjn_exact(1,12);
+  #assert gjn_integer_token("0") && gjn_integer_token("19200000") && !gjn_integer_token("../x") && !gjn_integer_token("-1") && !gjn_integer_token("");
+}
+gjn_integer_token :: (text:string)->bool {
+  if text.count==0 {return false;}
+  for c:text {if c<'0' || c>'9' {return false;}}return true;
+}
+gjn_equal_file_as :: (s:[]GridNativeInventory,a_dir:string,b_dir:string,name:string,target:string)->bool {
+  if !gc_name(name) || s[0].n>=64 {return false;}
+  a:[20971520]u8;b:[20971520]u8;path:[4096]u8;
+  an:=fs_read(fs_join(a_dir,name,path[..]),a[..]);bn:=fs_read(fs_join(b_dir,target,path[..]),b[..]);
+  row:GridNativeFile;other:[64]u8;
+  if an<0 || an!=bn || !S_hex(S_hash(cast(string)a[0..<an]),row.hash[..]) ||
+    !S_hex(S_hash(cast(string)b[0..<bn]),other[..]) || cast(string)row.hash[..]!=cast(string)other[..] {return false;}
+  row.n=name.count;row.bytes=an;for k:0..<name.count {row.name[k]=name[k];}
+  s[0].files[s[0].n]=row;s[0].n+=1;return true;
+}
+gjn_equal_file :: (s:[]GridNativeInventory,a_dir:string,b_dir:string,name:string)->bool {return gjn_equal_file_as(s,a_dir,b_dir,name,name);}
+gjn_known_token :: (s:[]GridNativeInventory,capture:Jv,token:string)->bool {
+  if gjn_integer_token(token) || token=="textures" || token=="media_text" || token=="media_images" {return true;}
+  for k:0..<s[0].n {row:=s[0].files[k];if token==cast(string)row.name[0..<row.n] {return true;}}
+  for key:[2]string.["buffers","textures"] {
+    list:=jv_get(capture,0,key);
+    for k:0..<jv_len(capture,list) {
+      row:=jv_at(capture,list,k);
+      if token==jv_raw(capture,jv_get(capture,row,"name")) || token==jv_raw(capture,jv_get(capture,row,"format")) {return true;}
+    }
+  }
+  return false;
+}
+gjn_inventory :: (c:Jv,p:Jv,browser_dir:string,native_dir:string,outdir:string)->bool {
+  s:[1]GridNativeInventory;
+  if !gjn_equal_file_as(s[..],browser_dir,outdir,"frame.config","frame.pending") {return false;}
+  for name:[7]string.["render.json","u.bin","hud.bin","draws.bin","indices.bin","media.txt","buffer-0.bin"] {
+    if !gjn_equal_file(s[..],browser_dir,outdir,name) {return false;}
+  }
+  modules:=jv_get(p,0,"modules");entries:=jv_get(p,0,"entries");textures:=jv_get(c,0,"textures");
+  for k:0..<jv_len(p,modules) {m:=jv_at(p,modules,k);if !gjn_equal_file(s[..],browser_dir,outdir,jv_raw(p,jv_get(p,m,"wgsl_file"))) {return false;}}
+  for k:0..<jv_len(p,entries) {
+    e:=jv_at(p,entries,k);
+    if !gjn_equal_file(s[..],browser_dir,outdir,jv_raw(p,jv_get(p,e,"tree_file"))) ||
+      !gjn_equal_file(s[..],browser_dir,outdir,jv_raw(p,jv_get(p,e,"spirv_file"))) {return false;}
+  }
+  for k:0..<jv_len(c,textures) {t:=jv_at(c,textures,k);if !gjn_equal_file(s[..],browser_dir,outdir,jv_raw(c,jv_get(c,t,"file"))) {return false;}}
+  // The exact descriptor may contain only accounted file names, logical names,
+  // formats, grammar keywords and integer fields. No referenced file is omitted.
+  config:[262144]u8;path:[4096]u8;count:=fs_read(fs_join(outdir,"frame.pending",path[..]),config[..]);
+  if count<0 {return false;}
+  at:=0;
+  while at<count {
+    while at<count && config[at]<=32 {at+=1;}
+    end:=at;while end<count && config[end]>32 {end+=1;}
+    if end>at && !gjn_known_token(s[..],c,cast(string)config[at..<end]) {return false;}
+    at=end;
+  }
+  // Read both complete inventories again over the equality check. Separately
+  // bind the four producer files to the actual native dump, not only the browser.
+  again:[1]GridNativeInventory;
+  for k:0..<s[0].n {
+    row:=s[0].files[k];
+    name:=cast(string)row.name[0..<row.n];target:=ifx name=="frame.config" then "frame.pending" else name;
+    if !gjn_equal_file_as(again[..],browser_dir,outdir,name,target) ||
+      cast(string)again[0].files[k].hash[..]!=cast(string)row.hash[..] {return false;}
+  }
+  producer:[1]GridNativeInventory;
+  for name:[4]string.["u.bin","hud.bin","draws.bin","indices.bin"] {if !gjn_equal_file(producer[..],native_dir,outdir,name) {return false;}}
+  text:[32768]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],"aethyr.grid.complete-rfi-equality.v1");jo_key(o[..],"status");jo_str(o[..],"passed_exact_bytes");
+  jo_key(o[..],"all_config_tokens_accounted");jo_bool(o[..],true);jo_key(o[..],"artifact_changes");jo_bool(o[..],false);
+  jo_key(o[..],"producer_files_equal_to_native_dump");jo_int(o[..],producer[0].n);jo_key(o[..],"files");jo_arr(o[..]);
+  for k:0..<s[0].n {
+    row:=s[0].files[k];jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],cast(string)row.name[0..<row.n]);
+    jo_key(o[..],"bytes");jo_int(o[..],row.bytes);jo_key(o[..],"sha256");jo_str(o[..],cast(string)row.hash[..]);jo_end(o[..]);
+  }
+  jo_end(o[..]);jo_key(o[..],"reuse_basis");jo_str(o[..],"Every byte consumed by the RFI/package/shader/resource readers equals the already numerically qualified browser-capture input; no new CPU/GPU execution inferred.");jo_end(o[..]);
+  return !o[0].bad && gc_file(outdir,"complete-input-equality.json",jo_text(o[..]));
+}
+gjn_finite :: (bits:u32)->bool {return (bits&0x7f800000)!=0x7f800000;}
+gjn_close :: (a:u32,b:u32,exact:bool)->bool {
+  if !gjn_finite(a) || !gjn_finite(b) {return false;}
+  if exact {return a==b;}
+  av:=cast(f64)f32_from_bits(a);bv:=cast(f64)f32_from_bits(b);diff:=abs(av-bv);
+  magnitude:=ifx abs(av)>abs(bv) then abs(av) else abs(bv);
+  return diff<=0.000001 || diff<=magnitude*0.000001;
+}
+gjn_exact :: (kind:int,word:int)->bool {
+  if kind==1 {return word%12==11;}
+  return word==0 || word==1 || word==4 || word==5 || word==7;
+}
+gjn_word :: (bytes:[]u8,at:int)->u32 {
+  return cast(u32)bytes[at] | (cast(u32)bytes[at+1]<<8) | (cast(u32)bytes[at+2]<<16) | (cast(u32)bytes[at+3]<<24);
+}
+gjn_numbers :: (browser_dir:string,native_dir:string,name:string,kind:int)->GridNativeNumbers {
+  a:[20971520]u8;b:[20971520]u8;path:[4096]u8;r:GridNativeNumbers;
+  an:=fs_read(fs_join(browser_dir,name,path[..]),a[..]);bn:=fs_read(fs_join(native_dir,name,path[..]),b[..]);
+  if an<0 || bn!=an || an%4!=0 {r.failures=1;return r;}
+  r.words=an/4;
+  for k:0..<r.words {
+    av:=gjn_word(a[..],k*4);bv:=gjn_word(b[..],k*4);
+    if av!=bv {r.different+=1;}
+    if !gjn_close(av,bv,gjn_exact(kind,k)) {r.failures+=1;if r.first_bad<0 {r.first_bad=k;}}
+    if gjn_finite(av) && gjn_finite(bv) {
+      af:=cast(f64)f32_from_bits(av);bf:=cast(f64)f32_from_bits(bv);delta:=abs(af-bf);
+      mag:=ifx abs(af)>abs(bf) then abs(af) else abs(bf);denom:=ifx mag>1 then mag else 1.0;
+      if delta>r.max_absolute {r.max_absolute=delta;}if delta/denom>r.max_normalized {r.max_normalized=delta/denom;}
+    }
+  }
+  return r;
+}
+gjn_copy :: (from:string,into:string,name:string,expected:string)->bool {
+  if !gc_name(name) {return false;}
+  bytes:[20971520]u8;path:[4096]u8;n:=fs_read(fs_join(from,name,path[..]),bytes[..]);
+  if n<0 {return false;}
+  return ifx expected.count>0 then gc_hashed(into,name,cast(string)bytes[0..<n],expected) else gc_file(into,name,cast(string)bytes[0..<n]);
+}
+gjn_stats :: (o:[]Jo,label:string,r:GridNativeNumbers) {
+  jo_key(o,label);jo_obj(o);jo_key(o,"words");jo_int(o,r.words);jo_key(o,"different_words");jo_int(o,r.different);
+  jo_key(o,"failures");jo_int(o,r.failures);jo_key(o,"first_bad_word");jo_int(o,r.first_bad);
+  jo_key(o,"max_absolute_error_nanounits");jo_int(o,cast(int)(r.max_absolute*1000000000.0+0.5));
+  jo_key(o,"max_normalized_error_trillionths");jo_int(o,cast(int)(r.max_normalized*1000000000000.0+0.5));jo_end(o);
+}
+gjn_run :: (browser_dir:string,native_dir:string,outdir:string)->bool {
+  cb:[262144]u8;nb:[262144]u8;pb:[262144]u8;path:[4096]u8;
+  cn:=fs_read(fs_join(browser_dir,"capture.json",path[..]),cb[..]);nn:=fs_read(fs_join(native_dir,"producer.json",path[..]),nb[..]);
+  pn:=fs_read(fs_join(browser_dir,"render.json",path[..]),pb[..]);
+  c:[1]Jv;n:[1]Jv;p:[1]Jv;cd:[16384]JvNode;nd:[4096]JvNode;pd:[16384]JvNode;
+  if cn<0 || nn<0 || pn<0 || !jv_parse(c[..],cast(string)cb[0..<cn],cd[..]) ||
+    !jv_parse(n[..],cast(string)nb[0..<nn],nd[..]) || !jv_parse(p[..],cast(string)pb[0..<pn],pd[..]) || !gc_package_same(c[0],0,p[0]) {return false;}
+  // Exact identities, extents, capacities and discrete record counts precede
+  // every numeric comparison and any RFI publication.
+  if gc_int(p[0],0,"profile_index")!=1 || gc_int(n[0],0,"profile_index")!=1 ||
+    jv_raw(p[0],jv_get(p[0],0,"app"))!="newland" || jv_raw(n[0],jv_get(n[0],0,"app"))!="newland" ||
+    gc_int(n[0],0,"width")!=320 || gc_int(n[0],0,"height")!=180 || gc_int(c[0],0,"width")!=320 || gc_int(c[0],0,"height")!=180 ||
+    gc_int(n[0],0,"capacity")!=400000 || gc_int(n[0],0,"stride")!=12 || gc_int(c[0],0,"vertex_stride")!=12 || gc_int(n[0],0,"uniform_floats")!=112 ||
+    gc_int(n[0],0,"hud_vertices")!=gc_int(c[0],0,"admitted_hud") || gc_int(n[0],0,"draws")!=0 || gc_int(c[0],0,"admitted_draws")!=0 ||
+    gc_int(n[0],0,"index_bytes")!=0 || gc_int(n[0],0,"steps")!=gc_int(c[0],0,"resize_after.probe[0]") ||
+    gc_int(n[0],0,"state_digest")!=gc_int(c[0],0,"resize_after.probe[2]") || gc_int(n[0],0,"session")!=gc_int(c[0],0,"resize_after.probe[1]") {return false;}
+  if !fs_mkdir(outdir) || !gc_file(outdir,"browser-producer.json",cast(string)cb[0..<cn]) || !gc_file(outdir,"native-producer.json",cast(string)nb[0..<nn]) {return false;}
+  u:=gjn_numbers(browser_dir,native_dir,"u.bin",0);hud:=gjn_numbers(browser_dir,native_dir,"hud.bin",1);
+  report:[8192]u8;o:[1]Jo;jo_start(o[..],report[..]);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],"aethyr.grid.producer-input-comparison.v1");jo_key(o[..],"status");jo_str(o[..],ifx u.failures==0 && hud.failures==0 then "passed" else "failed");
+  jo_key(o[..],"numeric_profile");jo_str(o[..],"Finite f32; abs1e-6 or rel1e-6, fixed before observation; header counts/flags and every stroke mode bit-exact");
+  gjn_stats(o[..],"uniforms",u);gjn_stats(o[..],"hud",hud);jo_end(o[..]);
+  if o[0].bad || !gc_file(outdir,"producer-comparison.json",jo_text(o[..])) || u.failures>0 || hud.failures>0 {return false;}
+  for name:[4]string.["u.bin","hud.bin","draws.bin","indices.bin"] {if !gjn_copy(native_dir,outdir,name,"") {return false;}}
+  // Physical resources are deliberately the exact same captured inputs, not
+  // a claim about the native platform's font rasterizer or network acquisition.
+  if !gc_file(outdir,"render.json",cast(string)pb[0..<pn]) || !gjn_copy(browser_dir,outdir,"media.txt","") {return false;}
+  modules:=jv_get(p[0],0,"modules");entries:=jv_get(p[0],0,"entries");
+  for k:0..<jv_len(p[0],modules) {
+    m:=jv_at(p[0],modules,k);if !gc_product(outdir,browser_dir,jv_raw(p[0],jv_get(p[0],m,"wgsl_file")),jv_raw(p[0],jv_get(p[0],m,"wgsl_sha256"))) {return false;}
+  }
+  for k:0..<jv_len(p[0],entries) {
+    e:=jv_at(p[0],entries,k);
+    if !gc_product(outdir,browser_dir,jv_raw(p[0],jv_get(p[0],e,"tree_file")),jv_raw(p[0],jv_get(p[0],e,"tree_sha256"))) ||
+      !gc_product(outdir,browser_dir,jv_raw(p[0],jv_get(p[0],e,"spirv_file")),jv_raw(p[0],jv_get(p[0],e,"spirv_sha256"))) {return false;}
+  }
+  buffers:=jv_get(c[0],0,"buffers");
+  if jv_len(c[0],buffers)!=1 {return false;}
+  b:=jv_at(c[0],buffers,0);
+  if jv_raw(c[0],jv_get(c[0],b,"name"))!="u.bin" || gc_int(c[0],b,"logical_payload")!=448 {return false;}
+  // Same physical uniform allocation, now populated from native-produced bytes.
+  native_u:[448]u8;un:=fs_read(fs_join(native_dir,"u.bin",path[..]),native_u[..]);
+  if un!=448 || !gc_file(outdir,jv_raw(c[0],jv_get(c[0],b,"file")),cast(string)native_u[..]) {return false;}
+  textures:=jv_get(c[0],0,"textures");if jv_len(c[0],textures)!=1 {return false;}
+  for k:0..<jv_len(c[0],textures) {
+    t:=jv_at(c[0],textures,k);if !gjn_copy(browser_dir,outdir,jv_raw(c[0],jv_get(c[0],t,"file")),jv_raw(c[0],jv_get(c[0],t,"sha256"))) {return false;}
+  }
+  // Counts/roles are exact above. The existing Coax-written descriptor is now
+  // published last with native payloads in every producer-owned sibling.
+  config:[262144]u8;config_bytes:=fs_read(fs_join(browser_dir,"frame.config",path[..]),config[..]);
+  from:[4096]u8;into:[4096]u8;
+  return config_bytes>=0 && gc_file(outdir,"frame.pending",cast(string)config[0..<config_bytes]) &&
+    gjn_inventory(c[0],p[0],browser_dir,native_dir,outdir) &&
+    fs_rename(fs_join(outdir,"frame.pending",from[..]),fs_join(outdir,"frame.config",into[..]));
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: grid-journey-native-rfi BROWSER_CAPTURE NATIVE_DUMP OUTDIR");return 2;}
+  ok:=gjn_run(args_at(a[..],0),args_at(a[..],1),args_at(a[..],2));
+  print("% native producer to frozen Grid RFI\n",ifx ok then "pass" else "FAIL");return ifx ok then 0 else 1;
+}

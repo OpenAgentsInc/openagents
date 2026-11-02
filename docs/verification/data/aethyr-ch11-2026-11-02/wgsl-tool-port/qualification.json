@@ -1,0 +1,22 @@
+{
+  "schema": "aethyr.render.wgsl-tool-retention.v1",
+  "date": "2026-11-02",
+  "status": "passed_complete_archive_readback",
+  "archive": "artifacts-and-reference.tar.gz",
+  "sha256": "55d45528985e8a1747ef498a67356003ed44d0ab10b9c3aa5b5fb0e873dc4e9b",
+  "bytes": 426590,
+  "members": "archive-members.txt",
+  "contents": "Original TS and new Coax/reason1 sources; full qualifier Coax/native source closure tar; exact executed Coax image; frozen legacy result; all20actual WGSLpayloads and owner mappings; actual per-module native compiler facts and malformed control; before/after compiler/source/image/hash records; default gate refusal; every check/mutation log and exact commands.",
+  "browser_receipt": "browser-receipt.json",
+  "historical_package_archive": "../../aethyr-ch11-2026-11-01/catalog-packages-308/packages.tar.gz",
+  "historical_package_archive_sha256": "4e6c563b8561571b645fd1829bbc8597807f1ae86f99a8f880fedb8aea021a34",
+  "readback": {
+    "extract_argv": ["tar", "-xzf", "docs/verification/data/aethyr-ch11-2026-11-02/wgsl-tool-port/artifacts-and-reference.tar.gz", "-C", "/tmp/aethyr-wgsl-port-readback-20261102"],
+    "extract_exit": 0,
+    "compare_argv": ["diff", "-qr", "/tmp/aethyr-wgsl-port-20261102", "/tmp/aethyr-wgsl-port-readback-20261102/aethyr-wgsl-port-20261102"],
+    "compare_exit": 0,
+    "compare_output_bytes": 0,
+    "scope": "Every directory member and file byte, including empty command outputs; no archived script executed"
+  },
+  "qualification": "../../../aethyr-wgsl-tool-port-2026-11-02.json"
+}

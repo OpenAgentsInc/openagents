@@ -1,0 +1,400 @@
+{
+  "schema": "aethyr.webgpu.probe-port.v1",
+  "date": "2026-11-02",
+  "status": "pass_explicit_older_qualified_compiler",
+  "scope": "Six existing diagnostic fixture profiles migrate to one Coax CDP runner and browser-only WebGPU effect adapter. This is tool/observation parity, not a new renderer qualification or universal precision rule.",
+  "sources": {
+    "aethyr/tests/webgpu-probe.coax": "0b17e8cbe7f3d62daddb49a03121c42e758445aec4e196939938c29e986c5592",
+    "aethyr/tests/webgpu-probe-policy.coax": "9af3900ee90402695dbfd164a14d86ab6bb50a22f8472c5811d417b7528882f2",
+    "aethyr/tests/webgpu-probe-checks.coax": "97933229066c78841fd94a03a378d460c142bc7b670cf91cd61e48c5138b55ae",
+    "aethyr/tests/webgpu-probe-effects.js": "45332079ba221fcb1fdfb85c530be1bd0c2255a412c468c8478b8220ca7ba8e9",
+    "aethyr/tests/WEBGPU_PROBES.md": "81c167967308ece9652adaab4dc336f3848cf025c430e2652e5a29725435a1d1"
+  },
+  "transitive_coax_and_measured_effect_sources": {
+    "aethyr/tests/WEBGPU_PROBES.md": {
+      "sha256": "81c167967308ece9652adaab4dc336f3848cf025c430e2652e5a29725435a1d1",
+      "bytes": 2104
+    },
+    "aethyr/tests/check_depth_guard_webgpu.ts": {
+      "sha256": "2ed5ab42a992e08794deff597e594ba5dc8d15c9024d49a20d115a0c14eec807",
+      "bytes": 5456
+    },
+    "aethyr/tests/check_depth_left_webgpu.ts": {
+      "sha256": "360c99e46aea2aedbb237037377b70f2be1ee96c25fe0b72967866b35d11f829",
+      "bytes": 5457
+    },
+    "aethyr/tests/check_depth_plane_webgpu.ts": {
+      "sha256": "3d102ab2fc3e639f6144c2f78cd57eb1ac565e713f8daaae2572902067afd851",
+      "bytes": 5412
+    },
+    "aethyr/tests/check_filter_precision_webgpu.ts": {
+      "sha256": "e6e8dcea78dc437813e0a50c6f95976429112f53c46a32b1862b8d04dc8cb6e8",
+      "bytes": 6037
+    },
+    "aethyr/tests/check_raster_guard_webgpu.ts": {
+      "sha256": "7ce14dc9fd8ab0fff505aebc5dde397d1e24c3fa27ebd6cf96b3ab60a1185f27",
+      "bytes": 5282
+    },
+    "aethyr/tests/check_raster_webgpu.ts": {
+      "sha256": "3775222ab072f5fc0d2de04c2d98ac42f7ebfd170ef4ba18c96188db181b62d3",
+      "bytes": 5267
+    },
+    "aethyr/tests/render-depth-guard-envelope-probe.coax": {
+      "sha256": "7d1f903a4f77b6cf3121b996b18e47a6b094a57404001963735121395b1b9672",
+      "bytes": 770
+    },
+    "aethyr/tests/render-depth-left-envelope-probe.coax": {
+      "sha256": "9a9456bde605e7e231d0909bb47ca970e8218f2c906d6873e35a351c934ac77e",
+      "bytes": 970
+    },
+    "aethyr/tests/render-depth-plane-probe.bindings": {
+      "sha256": "e2b05d751b0aea184e3777e10db947b828b6f038872d242530e1a0270a135a43",
+      "bytes": 16
+    },
+    "aethyr/tests/render-depth-plane-probe.coax": {
+      "sha256": "3d4c38c84a2a798c4847e506c2fc72ebcd1eaf2dd17d920ef6e593ef1ce7de7d",
+      "bytes": 1943
+    },
+    "aethyr/tests/render-filter-precision-probe.bindings": {
+      "sha256": "86b203e28ef41da70cc18e6b2c7dba9c49503b6887f813a3aacb43f1d39c0785",
+      "bytes": 52
+    },
+    "aethyr/tests/render-filter-precision-probe.coax": {
+      "sha256": "9038e2e41e47a4a07241630ae0e60a00b51c699e7003baa93763adcc1c0006bd",
+      "bytes": 917
+    },
+    "aethyr/tests/render-raster-guard-probe.coax": {
+      "sha256": "37a07c6990ef827a43ee80d2d89750dcca917a6ccadb472271add47334764e79",
+      "bytes": 1404
+    },
+    "aethyr/tests/render-raster-probe.coax": {
+      "sha256": "220186f07f5e19a98ad62af2afcfd32f7ee19f69f46fa6d00183619d051a509e",
+      "bytes": 1395
+    },
+    "aethyr/tests/webgpu-probe-checks.coax": {
+      "sha256": "97933229066c78841fd94a03a378d460c142bc7b670cf91cd61e48c5138b55ae",
+      "bytes": 7387
+    },
+    "aethyr/tests/webgpu-probe-effects.js": {
+      "sha256": "45332079ba221fcb1fdfb85c530be1bd0c2255a412c468c8478b8220ca7ba8e9",
+      "bytes": 4446
+    },
+    "aethyr/tests/webgpu-probe-policy.coax": {
+      "sha256": "9af3900ee90402695dbfd164a14d86ab6bb50a22f8472c5811d417b7528882f2",
+      "bytes": 5358
+    },
+    "aethyr/tests/webgpu-probe.coax": {
+      "sha256": "0b17e8cbe7f3d62daddb49a03121c42e758445aec4e196939938c29e986c5592",
+      "bytes": 9594
+    },
+    "coax/lib/crypto/rand_foreign.coax": {
+      "sha256": "6b2db8a5e6da423300a52d40ba7558a99a085cb92a2ce9c29a47a4f2565cd221",
+      "bytes": 252
+    },
+    "coax/lib/crypto/sha1.coax": {
+      "sha256": "b668ce0c73e20fdf3f2ba26460ac0c92eaa75cfd5f86d0372186d106f294aa3d",
+      "bytes": 5289
+    },
+    "coax/lib/crypto/sha256-kernel.coax": {
+      "sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+      "bytes": 16502
+    },
+    "coax/lib/json/json.coax": {
+      "sha256": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1",
+      "bytes": 49805
+    },
+    "coax/lib/net/cdp.coax": {
+      "sha256": "cee3be8340f377b6f3c99f193a7e6e5cca0c4076718dec0245d966221fae47b6",
+      "bytes": 27740
+    },
+    "coax/lib/net/relay_conn_rules.coax": {
+      "sha256": "924b71b6f3201ac0a88aed3f4d4c3318ea1e3a3987be68344cd8c9c2ef4b7659",
+      "bytes": 10258
+    },
+    "coax/lib/net/socket_foreign.coax": {
+      "sha256": "c3f903c63605595d6f2cbc09d703e6ce536cdf9e3b85401e3ac3f0ccdf624384",
+      "bytes": 778
+    },
+    "coax/lib/net/ws.coax": {
+      "sha256": "63516fa8fc61e7e04c13db36af37f85f5651a86731db3b5c6ff264f990e13e1f",
+      "bytes": 38893
+    },
+    "coax/lib/nostr/fixtures/coax_relay.coax": {
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+      "bytes": 365603
+    },
+    "coax/lib/nostr/fixtures/json_suite.coax": {
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "bytes": 41864
+    },
+    "coax/lib/nostr/json-f64.coax": {
+      "sha256": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c",
+      "bytes": 2744
+    },
+    "coax/lib/nostr/json.coax": {
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+      "bytes": 37156
+    },
+    "coax/lib/sys/args.coax": {
+      "sha256": "9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3",
+      "bytes": 8011
+    },
+    "coax/lib/sys/fs.coax": {
+      "sha256": "241f27df91bdf73bbe7256046ffb91789dbefa14706ddd0b00edd81b89c5d35b",
+      "bytes": 7959
+    },
+    "coax/lib/sys/proc.coax": {
+      "sha256": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b",
+      "bytes": 8862
+    },
+    "coax/lib/sys/tool.coax": {
+      "sha256": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70",
+      "bytes": 1306
+    },
+    "coax/lib/text/base64.coax": {
+      "sha256": "6ff3171d8b01b7ac9fc05c0229c2328b57defb0535cc4f7f0edbd77e99ae86d9",
+      "bytes": 4118
+    },
+    "coax/platform/process-native.c": {
+      "sha256": "3c2e5ac2febb9e4ab2042363e0a15adfe0432eaee0e840056ccdd3827275528f",
+      "bytes": 28627
+    },
+    "coax/platform/socket-native.c": {
+      "sha256": "2cc8a7b3c75eebed225fbba8016c06f9009f8c0b8781ee33b3ed45677c98940b",
+      "bytes": 10548
+    },
+    "coax/platform/store-file-native.c": {
+      "sha256": "09bb2edc659c914c2edc9341c104f51c4df24565bc960c8d1572722575a326d5",
+      "bytes": 12676
+    },
+    "coax/platform/tool-native.c": {
+      "sha256": "c8db7d6e4e7f0c6e3c91a37c7e4c8931637d5deb051e62c4e437cc86476dcb03",
+      "bytes": 4277
+    }
+  },
+  "compiler": {
+    "path": "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "qualified_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "matches_checkout_sources": false,
+    "executable_sha256": "c2084e129014d13d7e74080727dbc0c23171d4a2131f42647c0021d02fefcf0c"
+  },
+  "coax": {
+    "total_checks_debug": 100,
+    "total_checks_release": 100,
+    "authored_groups": 5,
+    "root_mutants": 252,
+    "killed": 252,
+    "survivors": 0,
+    "waivers_added": 0,
+    "responsibility": "Authored cases/uniforms, sample positions, descriptors, metadata identity, finite/alpha/count/shape checks, source fingerprints, bounded completion and verdicts."
+  },
+  "browser_effects": {
+    "source": "aethyr/tests/webgpu-probe-effects.js",
+    "firm_reason": 1,
+    "responsibility": "Actual browser WebGPU creation/upload/submission/readback, compilation/error messages and asynchronous completion observations only. Every fixture/descriptor comes from Coax.",
+    "no_numeric_or_verdict_policy_in_js": true
+  },
+  "parity": {
+    "profiles": [
+      {
+        "mode": "raster",
+        "argv": [
+          "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/build/tools/webgpu-probe-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+          "raster",
+          "/tmp/aethyr-ch11-raster-probe.wgsl",
+          "/tmp/aethyr-webgpu-port-20261102/raster/new-final.json"
+        ],
+        "exit_status": 0,
+        "seconds": 0.0007772089447826147,
+        "reused_unchanged_final_capture": true,
+        "observations": 6,
+        "channels": 24,
+        "all_original_values_equal": true,
+        "all_raw_u32_words_equal": true,
+        "receipt_sha256": "dde9ea96351d8fe54560d83f113b67f652ed254856093d7d56fb78fea98d5c0f"
+      },
+      {
+        "mode": "raster-guard",
+        "argv": [
+          "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/build/tools/webgpu-probe-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+          "raster-guard",
+          "/tmp/aethyr-ch11-raster-guard-probe.wgsl",
+          "/tmp/aethyr-webgpu-port-20261102/raster-guard/new-final.json"
+        ],
+        "exit_status": 0,
+        "seconds": 0.0005961250280961394,
+        "reused_unchanged_final_capture": true,
+        "observations": 6,
+        "channels": 24,
+        "all_original_values_equal": true,
+        "all_raw_u32_words_equal": true,
+        "receipt_sha256": "4d5dddd3b4f3f54c39d819768cd826600087e0626d4df26335e114cccfb961f3"
+      },
+      {
+        "mode": "depth-plane",
+        "argv": [
+          "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/build/tools/webgpu-probe-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+          "depth-plane",
+          "/tmp/aethyr-depth-plane-probe.wgsl",
+          "/tmp/aethyr-webgpu-port-20261102/depth-plane/new-final.json"
+        ],
+        "exit_status": 0,
+        "seconds": 0.0007993750041350722,
+        "reused_unchanged_final_capture": true,
+        "observations": 12,
+        "channels": 48,
+        "all_original_values_equal": true,
+        "all_raw_u32_words_equal": true,
+        "receipt_sha256": "109187273aaf273ffae4f3545d025b5fded53a2f5dbcd7954231404451392e9f"
+      },
+      {
+        "mode": "depth-left",
+        "argv": [
+          "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/build/tools/webgpu-probe-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+          "depth-left",
+          "/tmp/aethyr-depth-left-probe.wgsl",
+          "/tmp/aethyr-webgpu-port-20261102/depth-left/new-final.json"
+        ],
+        "exit_status": 0,
+        "seconds": 0.0008715000003576279,
+        "reused_unchanged_final_capture": true,
+        "observations": 30,
+        "channels": 120,
+        "all_original_values_equal": true,
+        "all_raw_u32_words_equal": true,
+        "receipt_sha256": "38a40bf521d577295af79706c160402449313c607158ded4375c6e67bc5d17f9"
+      },
+      {
+        "mode": "depth-guard",
+        "argv": [
+          "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/build/tools/webgpu-probe-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+          "depth-guard",
+          "/tmp/aethyr-depth-guard-probe.wgsl",
+          "/tmp/aethyr-webgpu-port-20261102/depth-guard/new-final.json"
+        ],
+        "exit_status": 0,
+        "seconds": 0.0007823330815881491,
+        "reused_unchanged_final_capture": true,
+        "observations": 30,
+        "channels": 120,
+        "all_original_values_equal": true,
+        "all_raw_u32_words_equal": true,
+        "receipt_sha256": "0d7c36443b33bdd0b0d3c82f83690cea7030b18bed76dd9c4b3e2e9c8943b4b4"
+      },
+      {
+        "mode": "filter-precision",
+        "argv": [
+          "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/build/tools/webgpu-probe-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+          "filter-precision",
+          "/tmp/aethyr-filter-precision-probe.wgsl",
+          "/tmp/aethyr-webgpu-port-20261102/filter-precision/new-final.json"
+        ],
+        "exit_status": 0,
+        "seconds": 0.0006542090559378266,
+        "reused_unchanged_final_capture": true,
+        "observations": 14,
+        "channels": 56,
+        "all_original_values_equal": true,
+        "all_raw_u32_words_equal": true,
+        "receipt_sha256": "f8c60505a92d25bc8967a57b6388f6489e42530193a80e74106a36ed2939b477"
+      }
+    ],
+    "observations": 98,
+    "raw_u32_channels": 392,
+    "exact_original_numeric_results": true,
+    "exact_original_device_format_extent_messages_errors": true,
+    "exact_raw_word_parity": true,
+    "raw_reference": "Frozen legacy executors with only Uint32Array observation of the same mapped readback added; original observations remain equal.",
+    "independent_decode": "Python struct independently decodes every raw u32 quartet and matches all reported finite floats/alpha1; no mask/tolerance used.",
+    "source_changes": []
+  },
+  "negative_controls": {
+    "schema": "aethyr.webgpu.probe-port-controls.v1",
+    "status": "pass",
+    "observations": [
+      {
+        "name": "new-alpha",
+        "argv": [
+          "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/build/tools/webgpu-probe-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+          "raster",
+          "/tmp/aethyr-webgpu-port-20261102/negative-controls/alpha-zero.wgsl",
+          "/tmp/aethyr-webgpu-port-20261102/negative-controls/new-alpha.json"
+        ],
+        "exit_status": 1,
+        "seconds": 1.642676957999356
+      },
+      {
+        "name": "old-alpha",
+        "argv": [
+          "bun",
+          "aethyr/tests/check_raster_webgpu.ts",
+          "/tmp/aethyr-webgpu-port-20261102/negative-controls/alpha-zero.wgsl",
+          "/tmp/aethyr-webgpu-port-20261102/negative-controls/old-alpha.json"
+        ],
+        "exit_status": 1,
+        "seconds": 1.34618612495251
+      },
+      {
+        "name": "unknown-mode",
+        "argv": [
+          "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/build/tools/webgpu-probe-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+          "unknown",
+          "/tmp/aethyr-webgpu-port-20261102/negative-controls/alpha-zero.wgsl",
+          "/tmp/aethyr-webgpu-port-20261102/negative-controls/bad-mode.json"
+        ],
+        "exit_status": 2,
+        "seconds": 0.021647750050760806
+      },
+      {
+        "name": "missing-input",
+        "argv": [
+          "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/build/tools/webgpu-probe-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+          "raster",
+          "/tmp/aethyr-webgpu-port-20261102/negative-controls/missing.wgsl",
+          "/tmp/aethyr-webgpu-port-20261102/negative-controls/bad-input.json"
+        ],
+        "exit_status": 2,
+        "seconds": 0.013784457929432392
+      }
+    ],
+    "alpha_control": "Both old and new actual GPU commands retain the six matching alpha-zero observations and fail with exit1; no tolerance/mask change.",
+    "invalid_inputs": "Unknown mode and missing shader refuse with exit2 before Chrome startup."
+  },
+  "lifecycle": {
+    "browser": "headless/muted private Chrome profile via existing Coax CDP",
+    "origin": "Owned temporary loopback HTTP origin in the same Coax executable",
+    "completion_poll_ms": 30000,
+    "cdp_call_timeout_ms": 30000,
+    "all_owned_groups_reaped": true,
+    "failed_run_owned_temp_directories_removed": true
+  },
+  "history": [
+    "Earlier authority coverage/shape controls and the reserved identifier compiler refusal are retained.",
+    "Direct awaitPromise transport had a delayed success then a blocked depth-left evaluation; only its owned Chrome/origin groups were terminated and the native wait stack was retained.",
+    "Explicit completed-page readiness and bounded asynchronous polling resolved that stall; final profiles complete in about1.55\u20133.21seconds.",
+    "One raw-parity qualifier ran before a dependent new receipt existed. Successful legacy raw captures were retained and reused; final parity waits for complete receipts."
+  ],
+  "publication": {
+    "entry": "coax/web/tool.sh aethyr/tests/webgpu-probe.coax MODE PROBE.wgsl RESULT.json",
+    "removed_legacy_drivers": [
+      "aethyr/tests/check_raster_webgpu.ts",
+      "aethyr/tests/check_raster_guard_webgpu.ts",
+      "aethyr/tests/check_depth_plane_webgpu.ts",
+      "aethyr/tests/check_depth_left_webgpu.ts",
+      "aethyr/tests/check_depth_guard_webgpu.ts",
+      "aethyr/tests/check_filter_precision_webgpu.ts"
+    ],
+    "old_driver_bytes_retained": true,
+    "maintained_callers": "Only the six legacy usage strings referenced their own driver names; no maintained caller required updating. Historical command strings stay historical."
+  },
+  "evidence": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/webgpu-probe-port/artifacts.tar.gz",
+    "sha256": "5c0466c2fd45a362e1e5bc759d342c96214d313ac0fb3b8d41b58336b1b4603c",
+    "bytes": 306619,
+    "payloads": 176,
+    "retention": "docs/verification/data/aethyr-ch11-2026-11-02/webgpu-probe-port/retention.json",
+    "readback_verified": true
+  },
+  "remaining": "Other browser/test tooling migrations and current chapter11 renderer acceptance remain separately open."
+}

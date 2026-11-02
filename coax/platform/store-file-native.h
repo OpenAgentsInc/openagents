@@ -44,6 +44,7 @@ int64_t cxstore_truncate(int64_t n);
 #define CXFS_PATH_MAX (4096)
 int64_t cxfs_path_push(int64_t byte);
 int64_t cxfs_read(void);
+int64_t cxfs_read_at(int64_t offset, int64_t count);
 int64_t cxfs_byte(int64_t i);
 int64_t cxfs_put(int64_t byte);
 int64_t cxfs_write(int64_t mode);   /* 0 replace, 1 append; 2, 3 the same, synced to storage */
@@ -63,6 +64,7 @@ int64_t cxfs_list(void);
 int64_t cxfs_entry_len(int64_t i);
 int64_t cxfs_entry_byte(int64_t i, int64_t j);
 int64_t cxfs_cwd(void);
+int64_t cxfs_realpath(void);
 #ifdef __cplusplus
 }
 #endif

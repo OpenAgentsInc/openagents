@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent analytic sRGB and Python IEEE binary16/binary32 decoding oracle for native texel output).
 """Independent analytic/IEEE byte oracle for normal-C texture decoding."""
 from __future__ import annotations
 import argparse

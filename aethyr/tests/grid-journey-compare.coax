@@ -1,0 +1,90 @@
+// Independent transport check for the actual browser and native-face journey.
+//   coax/web/tool.sh aethyr/tests/grid-journey-compare.coax BROWSER.jsonl NATIVE.jsonl REPLAY.json OUT.json
+// Compares every probe, every interpolated f32 pose word and every step mark.
+#import "Basic";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/json/json.coax";
+
+GJC_MISSING :: -999999;
+GridJourneyLine :: struct { ok: bool; from: int; to: int; next: int; }
+#test "the frame comparator detects changed physics, signed zero, missing fields and incomplete poses" {
+  bnodes:[256]JvNode;nnodes:[256]JvNode;bd:[1]Jv;nd:[1]Jv;
+  b:="{\"probe\":[0,0,0,0,0,0,0,0,0,0],\"pose\":[0,0,0,0,0,0,0,0,0,0]}";
+  good:="{\"probe\":[0,0,0,0,0,0,0,0,0,0],\"pose_bits\":[0,0,0,0,0,0,0,0,0,0]}";
+  changed:="{\"probe\":[0,0,0,0,0,1,0,0,0,0],\"pose_bits\":[0,0,0,0,0,0,0,0,0,0]}";
+  signed:="{\"probe\":[0,0,0,0,0,0,0,0,0,0],\"pose_bits\":[2147483648,0,0,0,0,0,0,0,0,0]}";
+  #assert jv_parse(bd[..],b,bnodes[..]) && jv_parse(nd[..],good,nnodes[..]) && gjc_frame(bd[0],nd[0]);
+  #assert jv_parse(nd[..],changed,nnodes[..]) && !gjc_frame(bd[0],nd[0]);
+  #assert jv_parse(nd[..],signed,nnodes[..]) && !gjc_frame(bd[0],nd[0]);
+  #assert jv_parse(nd[..],"{}",nnodes[..]) && !gjc_frame(bd[0],nd[0]);
+  #assert gjc_float_bits("-0")==2147483648 && gjc_float_bits("1")==1065353216 && gjc_float_bits("null")==-1;
+  l:=gjc_line("a\nbb\n",2);#assert l.ok && l.from==2 && l.to==4 && l.next==5;
+  #assert !gjc_line("a\n",2).ok;
+}
+gjc_float_bits :: (text: string) -> int {
+  n:=args_number(text);
+  if !n.ok || n.value!=n.value || abs(n.value)>100000 {return -1;}
+  return cast(int) f32_bits(cast(f32)n.value);
+}
+gjc_frame :: (browser: Jv, native: Jv) -> bool {
+  bp:=jv_get(browser,0,"probe");np:=jv_get(native,0,"probe");
+  bf:=jv_get(browser,0,"pose");nf:=jv_get(native,0,"pose_bits");
+  if jv_len(browser,bp)!=10 || jv_len(native,np)!=10 || jv_len(browser,bf)!=10 || jv_len(native,nf)!=10 {return false;}
+  for k:0..<10 {
+    b:=jv_int(browser,jv_at(browser,bp,k),GJC_MISSING);
+    n:=jv_int(native,jv_at(native,np,k),GJC_MISSING);
+    if b==GJC_MISSING || n==GJC_MISSING || b!=n {return false;}
+    bits:=gjc_float_bits(jv_raw(browser,jv_at(browser,bf,k)));
+    if bits<0 || bits!=jv_int(native,jv_at(native,nf,k),GJC_MISSING) {return false;}
+  }
+  return true;
+}
+gjc_line :: (text: string, cursor: int) -> GridJourneyLine {
+  if cursor<0 || cursor>=text.count {return GridJourneyLine.{};}
+  end:=cursor;while end<text.count && text[end]!='\n' {end+=1;}
+  return GridJourneyLine.{ok=end>cursor,from=cursor,to=end,next=ifx end<text.count then end+1 else end};
+}
+gjc_summary :: (browser: Jv, native: Jv) -> bool {
+  bm:=jv_get(browser,0,"marks");nm:=jv_get(native,0,"marks");count:=jv_len(browser,bm);
+  if count<1 || count>2048 || jv_len(native,nm)!=count ||
+    jv_int(browser,jv_get(browser,0,"replayed"),-1)!=1 || jv_int(native,jv_get(native,0,"replayed"),-1)!=1 ||
+    jv_int(native,jv_get(native,0,"steps"),-1)!=count ||
+    jv_int(native,jv_get(native,0,"session"),-1)!=jv_int(browser,jv_path(browser,0,"before.probe[1]"),-2) ||
+    jv_int(native,jv_get(native,0,"state_digest"),-1)!=jv_int(browser,jv_path(browser,0,"before.probe[2]"),-2) {return false;}
+  for k:0..<count {
+    b:=jv_int(browser,jv_at(browser,bm,k),-1);n:=jv_int(native,jv_at(native,nm,k),-1);
+    if b<0 || b!=n {return false;}
+  }
+  return true;
+}
+tool_main :: () -> int #export_c {
+  a:[1]Args;
+  if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: grid-journey-compare BROWSER.jsonl NATIVE.jsonl REPLAY.json OUT.json");return 2;}
+  bbytes:[1048576]u8;nbytes:[1048576]u8;rbytes:[1048576]u8;
+  bn:=fs_read(args_at(a[..],0),bbytes[..]);nn:=fs_read(args_at(a[..],1),nbytes[..]);rn:=fs_read(args_at(a[..],2),rbytes[..]);
+  if bn<0 || nn<0 || rn<0 {return 2;}
+  bt:=cast(string)bbytes[0..<bn];nt:=cast(string)nbytes[0..<nn];rt:=cast(string)rbytes[0..<rn];
+  bnodes:[8192]JvNode;nnodes:[8192]JvNode;bd:[1]Jv;nd:[1]Jv;
+  bc:=0;nc:=0;frames:=0;first_bad:=-1;
+  for frame:1..<241 {
+    b:=gjc_line(bt,bc);n:=gjc_line(nt,nc);
+    if !b.ok || !n.ok || !jv_parse(bd[..],bt[b.from..<b.to],bnodes[..]) || !jv_parse(nd[..],nt[n.from..<n.to],nnodes[..]) ||
+      jv_int(nd[0],jv_get(nd[0],0,"frame"),-1)!=frame || !gjc_frame(bd[0],nd[0]) {first_bad=frame;break;}
+    frames+=1;bc=b.next;nc=n.next;
+  }
+  n:=gjc_line(nt,nc);
+  summary:=frames==240 && !gjc_line(bt,bc).ok && n.ok && !gjc_line(nt,n.next).ok &&
+    jv_parse(bd[..],rt,bnodes[..]) && jv_parse(nd[..],nt[n.from..<n.to],nnodes[..]) && gjc_summary(bd[0],nd[0]);
+  marks:=ifx summary then jv_len(bd[0],jv_get(bd[0],0,"marks")) else 0;
+  out:[4096]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],"aethyr.grid.actual-face-parity.v1");
+  jo_key(o[..],"status");jo_str(o[..],ifx summary then "passed" else "failed");
+  jo_key(o[..],"frames");jo_int(o[..],frames);jo_key(o[..],"first_bad_frame");jo_int(o[..],first_bad);
+  jo_key(o[..],"integer_fields_compared");jo_int(o[..],frames*10);jo_key(o[..],"exact_pose_words_compared");jo_int(o[..],frames*10);
+  jo_key(o[..],"step_marks_compared");jo_int(o[..],marks);
+  jo_key(o[..],"scope");jo_str(o[..],"Actual producer face physics/input/interpolated-pose/replay parity. Native GPU execution and image comparison are separate qualifications.");jo_end(o[..]);
+  saved:=!o[0].bad && fs_write(args_at(a[..],3),jo_text(o[..]));
+  print("% actual Grid face parity: % frames, % marks, first bad frame %\n",ifx summary then "pass" else "FAIL",frames,marks,first_bad);
+  return ifx summary && saved then 0 else 1;
+}

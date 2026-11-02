@@ -1,0 +1,44 @@
+{
+  "schema": "aethyr.grid.visual-migration.v1",
+  "date": "2026-11-02",
+  "status": "passed_reviewed_migration",
+  "scope": "Actual stock headless/muted Chrome golden at1280x800, with a fresh merged512-row producer and explicitly retained shader-package epoch. This static golden does not qualify walking or establish new CPU/native numerical parity.",
+  "base": "http://127.0.0.1:8817",
+  "path": "/realms/the-grid",
+  "source_epoch": {
+    "producer": "/tmp/aethyr-grid-journey-main-20261102/newland.wasm",
+    "producer_sha256": "2af335c88be062782ada00ba59fd4327178262cf070d67c355efb5ece9ca89cf",
+    "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "matching_main_compiler_claimed": false,
+    "retained_package_sha256": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf",
+    "host_sha256": "16f6e19417213f2fb44aea57264232b4b82e35676fac7c67f2819e549d47b8e6",
+    "renderer_sha256": "c524e3f88b955c0721807e9b996c30c00d94c378682ca68fca64679b514b97d6",
+    "html_sha256": "52349221bacf10296865effa83a93d7e8942d6d95fc316e8442cdde205549d03",
+    "before_after_drift": []
+  },
+  "images": {
+    "before.png": "276cdfe76b725693a62d0c8806f4ae06bc336f462ab5557c1329cc8dee9e7296",
+    "current.png": "3fbcfeb3b48de05669abcbb1c5ba9601010a8e5a45db48a475052e7d83be0437",
+    "adopted.png": "9833705a22ba34fe480cecf06ee4a9ac10d16eb277dabc13c0117c7ee6cae82e"
+  },
+  "causal_controls": "docs/verification/data/aethyr-ch11-2026-11-01/grid-visual-controls/qualification.json",
+  "review": {
+    "reviewers": ["/root", "/root/aethyr_issue_assessment"],
+    "independent_record": "independent-review-aethyr-issue-assessment.json",
+    "decision": "Adopt the explicit portable-noise and owned-Sans visual change. Camera, floor intersections, figures, trees, panels, text and HUD remain; central haze/grid illumination and small specks redistribute as the retained shader controls explain.",
+    "review_before_update": true,
+    "old_raw_restoration": "Previously qualified controls: current shader in old executor exactly matches shared output; restoring old noise plus old Sans sampling restores original raw output. Noise-only restoration does not."
+  },
+  "stock_checks": {
+    "command": ["bun", "coax/web/goldens.ts", "http://127.0.0.1:8817", "--only", "the-grid"],
+    "before": {"exit": 1, "changed_blocks": 1137, "allowed_blocks": 6, "moving_blocks": 192, "report": "before-report.json", "log": "before.log"},
+    "update": {"exit": 0, "reviewed_png_updated": true, "report": "update-report.json", "log": "update.log"},
+    "after": {"exit": 0, "changed_blocks": 0, "allowed_blocks": 6, "moving_blocks": 191, "report": "final-report.json", "log": "final.log"},
+    "startup": "pass",
+    "errors": 0,
+    "lit_percent": 6.6,
+    "required_lit_percent": 1.0,
+    "analytics_events": 4,
+    "tolerances_changed": false
+  }
+}

@@ -1,0 +1,73 @@
+// Diagnostic acceptance only; no observation changes a renderer profile.
+#module "aethyr.test.primitive.webgpu";
+#authority;
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/json-f64.coax";
+#load "primitive-webgpu-checks.coax";
+PPResult :: struct {ok:bool;discrepancies:int;max_error:f64;wrong:[6]int;}
+PPLane :: struct {ok:bool;value:f64;}
+pp_mode :: (name:string)->int {
+  names:=[4]string.["filter-format","ring8","sans-filter","sampling"];
+  for i:0..<4 {if name==names[i] {return i;}}return -1;
+}
+pp_count :: (mode:int)->int {if mode<0 || mode>=4 {return 0;}counts:=[4]int.[40,728,40,6];return counts[mode];}
+pp_width :: (mode:int)->int {return ifx mode==1 then 8 else ifx mode==3 then 2 else 64;}
+pp_read_lane :: (d:Jv,values:int,words:int,k:int)->PPLane {
+  value:=jv_at(d,values,k);word:=jv_at(d,words,k);
+  if jv_kind(d,value)!=JV_NUMBER || jv_kind(d,word)!=JV_NUMBER {return PPLane.{};}
+  bits:=jv_int(d,word,-1);if bits<0 || bits>=4294967296 || ((cast(u32)bits>>23)&255)==255 {return PPLane.{};}
+  number:=json_f64(jv_raw(d,value));
+  exact:=cast(f64)f32_from_bits(cast(u32)bits);
+  return PPLane.{ok=number.ok && number.value-number.value==0 && cast(f32)number.value==cast(f32)exact,value=exact};
+}
+pp_lane :: (d:Jv,values:int,words:int,k:int)->bool {return pp_read_lane(d,values,words,k).ok;}
+pp_dimension :: (d:Jv,node:int,expected:int)->bool {
+  text:[32]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_int(o[..],expected);
+  return jv_kind(d,node)==JV_NUMBER && jv_raw(d,node)==jo_text(o[..]);
+}
+pp_max :: (a:f64,b:f64)->f64 {
+  mask:=(f64_bits(a-b)>>63)*18446744073709551615;
+  return f64_from_bits(f64_bits(a)^((f64_bits(a)^f64_bits(b))&mask));
+}
+pp_numeric_match :: (mode:int,actual:f64,expected:f64)->bool {
+  if mode==0 {return true;}if mode==1 {return cast(f32)actual==cast(f32)expected;}
+  if mode==2 {return abs(actual-expected)<=0.000001;}
+  if mode==3 {return abs(actual-expected)<=0.00001;}return false;
+}
+pp_sampling_expected :: (row:int,k:int)->f64 {
+  a:=[4]f64.[0.25,0.4375,0.25,1];b:=[4]f64.[0.125,0.25,0.5,0.75];c:=[4]f64.[0.75,0.5,0.125,1];
+  return ifx row==0 then a[k] else ifx row==2 then c[k] else b[k];
+}
+pp_evaluate :: (d:Jv,root:int,fixture:Jv,mode:int)->PPResult {
+  r:PPResult;count:=pp_count(mode);if count==0 {return r;}
+  if jv_raw(d,jv_get(d,root,"format"))!="rgba32float" || !pp_dimension(d,jv_get(d,root,"width"),pp_width(mode)) || !pp_dimension(d,jv_get(d,root,"height"),pp_width(mode)) {return r;}
+  messages:=jv_get(d,root,"messages");errors:=jv_get(d,root,"errors");results:=jv_get(d,root,"results");
+  if jv_kind(d,messages)!=JV_ARRAY || jv_len(d,messages)!=0 || jv_kind(d,errors)!=JV_ARRAY || jv_len(d,errors)!=0 || jv_kind(d,results)!=JV_ARRAY || jv_len(d,results)!=count {return r;}
+  lanes:=ifx mode==3 then 16 else 4;
+  item:=jv_at(d,results,0);case_array:=jv_get(fixture,0,ifx mode==1 then "cases" else "expected");expected_row:=jv_at(fixture,case_array,0);
+  for row:0..<count {
+    values:=jv_get(d,item,"values");words:=jv_get(d,item,"words");
+    if jv_kind(d,values)!=JV_ARRAY || jv_len(d,values)!=lanes || jv_kind(d,words)!=JV_ARRAY || jv_len(d,words)!=lanes {return r;}
+    for k:0..<lanes {
+      lane:=pp_read_lane(d,values,words,k);if !lane.ok {return r;}
+      actual:=lane.value;expected:=0.0f64;
+      if mode==1 || mode==2 {
+        array:=ifx mode==1 then jv_get(fixture,expected_row,"expected") else expected_row;
+        token:=jv_at(fixture,array,k);number:=json_f64(jv_raw(fixture,token));
+        if jv_kind(fixture,token)!=JV_NUMBER || !number.ok || number.value-number.value!=0 {return r;}
+        // Both retained primitive fixtures encode CPU f32 reference lanes.
+        // Restore that exact word before f64 error arithmetic; the JSON scalar
+        // helper is approximate in f64 but rounds these f32 lanes unchanged.
+        expected=cast(f64)cast(f32)number.value;
+      }
+      if mode==3 {expected=pp_sampling_expected(row,k%4);}
+      if mode==2 {r.max_error=pp_max(r.max_error,abs(actual-expected));}
+      if !pp_numeric_match(mode,actual,expected) {
+        if mode==3 {r.wrong[row]+=1;}else {r.discrepancies+=1;}
+      }
+    }
+    item=d.nodes[item].next;if mode==1 || mode==2 {if !jv_ok(fixture,expected_row) {return r;}expected_row=fixture.nodes[expected_row].next;}
+  }
+  if mode==3 {for row:0..<6 {if r.wrong[row]!=(ifx row<4 then 0 else 16) {return r;}}}
+  r.ok=r.discrepancies==0;return r;
+}

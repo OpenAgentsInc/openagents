@@ -1,0 +1,53 @@
+// Port parity, stale-compiler ordering, and actual header-loss controls.
+//   coax/web/tool.sh aethyr/render/tests/check-catalog-tooling.coax OUT CATALOG_BINARY MOCK_COMPILER QUALIFIED_NATIVE_DIR [REFERENCE_ROOT]
+#import "Basic";
+#load "qualification-files.coax";
+ct_copy :: (from:string,to:string)->bool {bytes:[1048576]u8;n:=fs_read(from,bytes[..]);return n>=0 && fs_mkdir(fs_dir(to)) && fs_write(to,cast(string)bytes[0..<n]);}
+ct_change :: (text:string,needle:string,replacement:string,out:[]u8)->string {
+  at:=rtq_find(text,needle,0);if at<0 {return "";}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],text[0..<at]);jo_put(o[..],replacement);jo_put(o[..],text[at+needle.count..<text.count]);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+ct_run :: (argv:[]string,success:bool,work:string,label:string,out:[]u8)->bool {
+  err:[65536]u8;env:[]string;r:=rtq_run_raw(argv,env,180000,out,err[..]);
+  if !rtq_record_run(work,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {return false;}
+  ok:=r.started==0 && !r.timed_out && !r.cut && r.status==(ifx success then 0 else 1);if !ok {tool_err("port control failed: ");tool_errln(label);tool_err(cast(string)err[0..<r.err_n]);}return ok;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 {tool_errln("usage: check-catalog-tooling OUT CATALOG_BINARY MOCK_COMPILER QUALIFIED_NATIVE_DIR [REFERENCE_ROOT]");return 2;}
+  out:=args_at(a[..],0);catalog:=args_at(a[..],1);mock:=args_at(a[..],2);qualified:=args_at(a[..],3);root:=args_at(a[..],4);if root.count==0 {root=".";}if !fs_mkdir(out) {return 1;}
+  catalog_hash:[64]u8;mock_hash:[64]u8;if !rtq_hash_file(catalog,catalog_hash[..]) || !rtq_hash_file(mock,mock_hash[..]) {return 1;}
+  receipt_path:[4096]u8;receipt_bytes:[2097152]u8;receipt_nodes:[32768]JvNode;receipt_doc:[1]Jv;
+  if !rtq_json_file(fs_join(qualified,"qualification.json",receipt_path[..]),receipt_bytes[..],receipt_nodes[..],receipt_doc[..]) {return 1;}
+  for key:[13]string.["schema","status","reference_commit","compiler","compiler_version","compiler_sha256","compiler_recorded_source_digest","compiler_current_source_digest","compiler_current_sources_match","source_sha256","header_fields_checked","modes","elapsed_seconds"] {if jv_get(receipt_doc[0],0,key)== -1 {tool_errln("existing receipt field was lost");return 1;}}
+  image_value:=jv_get(receipt_doc[0],0,"qualifier_executable_sha256");image_text:[64]u8;image_n:=jv_str(receipt_doc[0],image_value,image_text[..]);if image_n!=64 || cast(string)image_text[..]!=cast(string)catalog_hash[..] {tool_errln("native receipt belongs to a different qualifier image");return 1;}
+  receipt_modes:=jv_get(receipt_doc[0],0,"modes");if jv_len(receipt_doc[0],receipt_modes)!=3 {return 1;}
+  for i:0..<3 {
+    row:=jv_at(receipt_doc[0],receipt_modes,i);for key:[9]string.["mode","profiles","unique_logical_bindings","unique_pipelines","unique_binding_uses","producer_faults_detected","generated_c_sha256","generated_header_sha256","executable_sha256"] {if jv_get(receipt_doc[0],row,key)== -1 {return 1;}}
+    transcript:[4096]u8;tn:=jv_str(receipt_doc[0],jv_get(receipt_doc[0],row,"transcript"),transcript[..]);hash:[64]u8;if tn<1 || !rtq_hash_file(cast(string)transcript[0..<tn],hash[..]) {return 1;}
+    given:[64]u8;gn:=jv_str(receipt_doc[0],jv_get(receipt_doc[0],row,"transcript_sha256"),given[..]);if gn!=64 || cast(string)given[..]!=cast(string)hash[..] {return 1;}
+  }
+  paths:[10][4096]u8;ref:=fs_join(out,"reference",paths[0][..]);old:=fs_join(ref,"check_catalog.py",paths[1][..]);source:[4096]u8;
+  if !ct_copy(fs_join(root,"aethyr/render/tests/check_catalog.py",source[..]),old) || !ct_copy(fs_join(root,"aethyr/render/tests/test_catalog_tooling.py",source[..]),fs_join(ref,"test_catalog_tooling.py",paths[2][..])) {return 1;}
+  snapshot:=fs_join(root,"aethyr/render/tests/catalog-6445ee0050.json",paths[3][..]);
+  script:="import sys,json;sys.path.insert(0,sys.argv[1]);from check_catalog import expected_inventory;print(json.dumps(expected_inventory(json.loads(open(sys.argv[2]).read()))))";
+  argv:=[5]string.["python3","-c",script,ref,snapshot];stdout:[1048576]u8;if !ct_run(argv[..],true,out,"reference-expected",stdout[..]) {return 1;}
+  expected_path:=fs_join(qualified,"expected.json",paths[4][..]);expected:[1048576]u8;nodes:[32768]JvNode;doc:[1]Jv;reference_nodes:[32768]JvNode;reference:[1]Jv;
+  // Raw stdout is also retained by the command record; parse its complete bytes.
+  ref_output:=fs_join(out,"reference-expected.stdout",paths[5][..]);if !rtq_json_file(ref_output,stdout[..],reference_nodes[..],reference[..]) || !rtq_json_file(expected_path,expected[..],nodes[..],doc[..]) || !rtq_equal(reference[0],0,doc[0],0) {tool_errln("frozen expected inventory parity failed");return 1;}
+  header:=fs_join(qualified,"checked/catalog.h",paths[6][..]);original:[1048576]u8;hn:=fs_read(header,original[..]);if hn<0 {return 1;}
+  header_args:=[3]string.[catalog,"--check-header",header];if !ct_run(header_args[..],true,out,"valid-header-coax",stdout[..]) {return 1;}
+  ref_header:="import sys;sys.path.insert(0,sys.argv[1]);from check_catalog import header_inventory;header_inventory(open(sys.argv[2]).read())";
+  py_header:=[5]string.["python3","-c",ref_header,ref,header];if !ct_run(py_header[..],true,out,"valid-header-reference",stdout[..]) {return 1;}
+  changed:[1048576]u8;bad_header:=fs_join(out,"poisoned.h",paths[7][..]);
+  for i:0..<2 {
+    text:=ifx i==0 then ct_change(cast(string)original[0..<hn],"int64_t stages;","int64_t stages; int unrecorded;",changed[..]) else ct_change(cast(string)original[0..<hn],"coax_string assets;","",changed[..]);if text.count==0 || !fs_write(bad_header,text) {return 1;}
+    header_args[2]=bad_header;py_header[4]=bad_header;label:[128]u8;o:[1]Jo;jo_start(o[..],label[..]);jo_put(o[..],"header-control-");jo_int(o[..],i);jo_put(o[..],"-coax");if !ct_run(header_args[..],false,out,jo_text(o[..]),stdout[..]) {return 1;}
+    jo_start(o[..],label[..]);jo_put(o[..],"header-control-");jo_int(o[..],i);jo_put(o[..],"-reference");if !ct_run(py_header[..],false,out,jo_text(o[..]),stdout[..]) {return 1;}
+  }
+  stale_work:=fs_join(out,"stale-work",paths[8][..]);stale_record:=fs_join(out,"stale-receipt.json",paths[9][..]);digest:[4096]u8;record:=fs_join(out,"controlled-source-digest",digest[..]);if !fs_write(record,"old\n") {return 1;}
+  check:=[9]string.[catalog,"--work-dir",stale_work,"--receipt",stale_record,"--coax",mock,"--compiler-source-digest",record];if !ct_run(check[..],false,out,"stale-compiler",stdout[..]) || fs_exists(stale_record) {return 1;}
+  list:[1]FsList;if fs_list(stale_work,list[..])!=6 {tool_errln("stale compiler reached a later command");return 1;}
+  for i:0..<list[0].n {name:=fs_entry(list[..],i);if rtq_find(name,"compiler-version.",0)!=0 && rtq_find(name,"compiler-current-source.",0)!=0 {tool_errln("unexpected stale compiler command record");return 1;}}
+  hash:[64]u8;if !rtq_hash_file(catalog,hash[..]) || cast(string)hash[..]!=cast(string)catalog_hash[..] || !rtq_hash_file(mock,hash[..]) || cast(string)hash[..]!=cast(string)mock_hash[..] {tool_errln("qualification tool image changed during parity");return 1;}
+  record_bytes:[4096]u8;o:[1]Jo;jo_start(o[..],record_bytes[..]);jo_obj(o[..]);jo_key(o[..],catalog);jo_str(o[..],cast(string)catalog_hash[..]);jo_key(o[..],mock);jo_str(o[..],cast(string)mock_hash[..]);jo_key(o[..],"before_after");jo_str(o[..],"equal");jo_end(o[..]);path:[4096]u8;if !fs_write(fs_join(out,"qualified-images.json",path[..]),jo_text(o[..])) {return 1;}
+  print("catalog tool parity: all frozen expected JSON fields; actual native header; extra/missing ABI field controls; stale compiler stopped after version/source identity with no receipt or emission\n");return 0;
+}

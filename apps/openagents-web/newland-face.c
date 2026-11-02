@@ -65,6 +65,15 @@ static void walk_start(uint32_t state) {
   last_feet = gridwalk_feet(gw());
   placed = 1;
 }
+/* Read-only scalar transport for a headless journey through this actual face.
+   Coax defines the fields; replay uses a separate destination, never the live walk. */
+EXPORT("coaxial_grid_probe") int64_t grid_probe(int64_t field) {return gridwalk_probe(gw(),field);}
+EXPORT("coaxial_grid_pose") float grid_pose(int64_t field) {return gridwalk_pose(gw(),field);}
+EXPORT("coaxial_grid_mark") int64_t grid_mark(int64_t step) {return gridwalk_mark(gw(),step);}
+EXPORT("coaxial_grid_replay") uint32_t grid_replay(void) {
+  static coax_t_GridWalk again;
+  return gridwalk_replay(gw(),(coax_v_t_GridWalk){&again,1}) ? 1u : 0u;
+}
 // Where you are, to the room about five times a second, once the browser has a player key (minting
 // one when it has none); the answer is everyone else, who walk the page (newland-walkers.coax).
 static void room_out(void) {
@@ -251,7 +260,7 @@ EXPORT("coaxial_land_network_free") uint32_t network_free(uint32_t state) {retur
 EXPORT("coaxial_land_network_scroll") float network_scroll(uint32_t state) {return state_at(state)->network_scroll;}
 EXPORT("coaxial_land_pylon_control") float pylon_control(uint32_t state,uint32_t which,uint32_t axis) {
   coax_t_LandState *s=state_at(state);coax_t_Box b={0};
-  if(which==0)b=s->network_box;else if(which==1)b=s->network_join;else if(which==2)b=s->network_guide;else if(which==3)b=s->close_box;
+  if(which==0)b=s->network_box;else if(which==1)b=s->network_join;else if(which==2)b=s->network_guide;else if(which==3)b=s->close_box;else if(which==4)b=s->walk_box;
   if(axis==0)return b.x0;if(axis==1)return b.y0;if(axis==2)return b.x1;if(axis==3)return b.y1;return 0;
 }
 

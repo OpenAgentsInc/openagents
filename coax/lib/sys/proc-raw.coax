@@ -1,0 +1,32 @@
+// Raw stdout for Coax tools: proc_run's process/deadline contract, preserving
+// NUL bytes and final newlines rather than joining text lines. stderr is the
+// bounded tail returned by proc_stderr, as in proc_run.
+#load "proc.coax";
+cxproc_read_bytes :: (handle: int, timeout_ms: int, out: [] u8) -> int #foreign;
+proc_run_bytes :: (argv: [] string, env: [] string, timeout_ms: int, out: [] u8, err: [] u8) -> ProcRun {
+  r: ProcRun; h := proc_new();
+  if h < 0 { r.started = PROC_ERROR; return r; }
+  ok := argv.count > 0;
+  for a: argv { ok = ok && proc_arg(h, a); }
+  for e: env { ok = ok && proc_env(h, e); }
+  if !ok { done := proc_release(h); r.started = PROC_ERROR; return r; }
+  r.started = proc_start(h);
+  if r.started != 0 { done := proc_release(h); return r; }
+  closed := proc_close_stdin(h);
+  deadline := proc_deadline(timeout_ms, proc_now_ms()); scratch: [65536] u8;
+  while true {
+    left := proc_left(deadline, proc_now_ms());
+    if left == 0 { r.timed_out = true; break; }
+    n := 0;
+    if r.out_n < out.count { n = cxproc_read_bytes(h, left, out[r.out_n..<out.count]); }
+    else { n = cxproc_read_bytes(h, left, scratch[..]); if n > 0 { r.cut = true; } }
+    if n == PROC_EOF { break; }
+    if n == PROC_ERROR { r.cut = true; break; }
+    if n > 0 && r.out_n < out.count { r.out_n += n; }
+  }
+  if r.timed_out { k := proc_kill(h, PROC_SIGKILL); }
+  r.status = proc_wait(h, ifx r.timed_out then 2000 else proc_left(deadline, proc_now_ms()));
+  if r.status == PROC_RUNNING { r.timed_out = true; k := proc_kill(h, PROC_SIGKILL); r.status = proc_wait(h, 2000); }
+  r.err_n = proc_stderr(h, err).count; done := proc_release(h);
+  return r;
+}

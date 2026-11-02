@@ -18,7 +18,12 @@ here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"
 [[ $# -ge 1 ]] || { echo "usage: coax/web/tool.sh NAME|FILE.coax [ARGS...]" >&2; exit 2; }
 src="$here/$1.coax"; [[ "$1" == *.coax ]] && src="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 shift
-name="$(basename "$src" .coax)"; bin="$here/build/tools/$name"; p="$repo/coax/platform"
+name="$(basename "$src" .coax)"; p="$repo/coax/platform"
+# An explicitly selected, qualified compiler stays separate from the
+# checkout's default compiler. Its bytes also separate cached tool images.
+coax="${COAX:-$repo/coax/bin/coax}"
+compiler_hash="$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
+bin="$here/build/tools/$name-$compiler_hash"
 # Imports may live beside the entry file, beside web tools or in Verse,
 # Psionic, apps, protocol and OS sources. Conservatively watch those Coax trees as well as the entry/native
 # inputs when no source list was recorded; a cached executable must not silently retain an older #load.
@@ -28,7 +33,7 @@ name="$(basename "$src" .coax)"; bin="$here/build/tools/$name"; p="$repo/coax/pl
 sources="$bin.sources"
 why=""
 if [[ ! -x "$bin" ]]; then why="first build"
-elif changed="$(find "$repo/coax/bin/coax" "$p" -newer "$bin" -print -quit)"; [[ -n "$changed" ]]; then why="$changed changed"
+elif changed="$(find "$coax" "$p" "$here/tool.sh" "$repo/coax/lib/crypto/entropy.coax" -newer "$bin" -print -quit)"; [[ -n "$changed" ]]; then why="$changed changed"
 elif [[ -s "$sources" ]]; then
   while IFS= read -r f; do
     if [[ ! -e "$f" || "$f" -nt "$bin" ]]; then why="$f changed"; break; fi
@@ -50,9 +55,9 @@ if [[ -n "$why" ]]; then
   fi
   steps=(); n="$(sed -n 's|^// tool.sh: run-steps \([0-9][0-9]*\)$|\1|p' "$src" | head -n 1)"; [[ -z "$n" ]] || steps=(--run-steps "$n")
   work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
-  "$repo/coax/bin/coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"
-  "$repo/coax/bin/coax" deps "$src" ${steps[@]+"${steps[@]}"} > "$work/deps.json" 2> /dev/null & deps_pid=$!
-  "$repo/coax/bin/coax" c "$src" --library ${steps[@]+"${steps[@]}"} > "$work/$name.c"
+  "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"
+  "$coax" deps "$src" ${steps[@]+"${steps[@]}"} > "$work/deps.json" 2> /dev/null & deps_pid=$!
+  "$coax" c "$src" --library ${steps[@]+"${steps[@]}"} > "$work/$name.c"
   mkdir -p "$(dirname "$bin")"
   "${cc[@]}" -std=c11 -O2 -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "$p/tool-native.c" "$p/process-native.c" \
     "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm

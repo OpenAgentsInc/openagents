@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent integer prefix-set union and acknowledgement oracle for native upload retry receipts).
 """Check the native upload retry receipt against integer prefix-set unions."""
 import argparse
 import hashlib

@@ -1,0 +1,43 @@
+// Native observations of the generic file effects used by renderer tools.
+// No browser, GPU or realm work; each run owns and removes its temporary tree.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+
+ff_checks :: (dir:string)->bool {
+  name:[4096]u8;link_name:[4096]u8;canonical:[4096]u8;other:[4096]u8;
+  file:=fs_join(dir,"source.bin",name[..]);link:=fs_join(dir,"alias",link_name[..]);
+  if !fs_write(file,"abcdefgh") {return false;}
+  out:=[6]u8.[165,165,165,165,165,165];
+  if fs_read_at(file,-1,out[1..<5])!=-1 {return false;}
+  for c:out {if c!=165 {return false;}}
+  if fs_read_at(file,0,out[1..<5])!=4 || cast(string)out[1..<5]!="abcd" {return false;}
+  if fs_read_at(file,3,out[1..<5])!=4 || cast(string)out[1..<5]!="defg" {return false;}
+  if fs_read_at(file,6,out[1..<5])!=2 || cast(string)out[1..<5]!="ghfg" {return false;}
+  if fs_read_at(file,8,out[1..<5])!=0 || fs_read_at(file,9223372036854775807,out[1..<5])!=0 {return false;}
+  if fs_read_at(file,2,out[1..<1])!=0 || out[0]!=165 || out[5]!=165 {return false;}
+  missing:[4096]u8;absent:=fs_join(dir,"missing",missing[..]);
+  if fs_read_at(absent,0,out[1..<5])!=-1 || out[0]!=165 || out[5]!=165 {return false;}
+  full:=fs_realpath(file,canonical[..]);if full.count<1 {return false;}
+  short:=[1]u8.[165];
+  if fs_realpath(file,short[..])!="" || short[0]!=165 {return false;}
+  if fs_realpath(absent,short[..])!="" || short[0]!=165 {return false;}
+  zero:=[3]u8.['a',0,'b'];
+  if fs_realpath(cast(string)zero[..],short[..])!="" || fs_read_at(cast(string)zero[..],0,out[..])!=-1 {return false;}
+  argv:=[4]string.["ln","-s",file,link];stdout:[1024]u8;stderr:[1024]u8;
+  linked:=proc_run(argv[..],5000,stdout[..],stderr[..]);
+  if linked.started!=0 || linked.status!=0 || linked.cut || fs_realpath(link,other[..])!=full {return false;}
+  // A canonical path is stable through a spelling containing a dot segment.
+  dotted:[4096]u8;alias:=fs_join(dir,"./source.bin",dotted[..]);
+  if fs_realpath(alias,other[..])!=full {return false;}
+  return true;
+}
+tool_main :: ()->int #export_c {
+  temp:[4096]u8;dir:=fs_temp("aethyr-file-effects-",temp[..]);
+  if dir=="" {tool_errln("file effects: temporary directory failed");return 1;}
+  okay:=ff_checks(dir);removed:=fs_remove(dir);
+  if !okay || !removed {tool_errln("file effects: native observations failed");return 1;}
+  print("file effects: ranges, EOF, short reads, guards, invalid paths, canonical aliases and symlink resolution pass\n");
+  return 0;
+}

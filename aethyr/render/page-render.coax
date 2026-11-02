@@ -1,0 +1,18 @@
+// The page generator transports this Coax-owned adoption decision verbatim.
+//   coax/web/tool.sh aethyr/render/page-render.coax SLUG APP
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "adoption.coax";
+tool_main :: () -> int #export_c {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 2 { return 2; }
+  route := render_adoption(args_at(args[..], 0), args_at(args[..], 1));
+  if route.shared {
+    p := render_catalog(route.profile);
+    print(" data-render=\"/build/render/%/render.json\" data-render-profile=\"%\"", p.slug, route.profile);
+    return 0;
+  }
+  if route.tracked_legacy { return 0; }
+  tool_errln("realm has no reviewed shared or legacy renderer adoption");
+  return 2;
+}

@@ -1,0 +1,9 @@
+// Copy a checked package and all products byte for byte to assets/ and site/.
+//   coax/web/tool.sh render-stage APP /build/render/PROFILE/render.json STAGE
+#import "Basic";
+#load "../../aethyr/render/staging-files.coax";
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {tool_errln("usage: render-stage APP PACKAGE_URL STAGE");return 2;}
+  out:[256]u8;url:=rsp_stage(args_at(args[..],0),args_at(args[..],1),args_at(args[..],2),out[..]);
+  if url.count==0 {return 1;}print("%\n",url);return 0;
+}

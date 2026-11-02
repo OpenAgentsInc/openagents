@@ -1,0 +1,9 @@
+lane the-grid (7.1 s)
+  ok    the-grid: at http://127.0.0.1:8817/realms/the-grid
+  ok    the-grid: the engine started
+  ok    the-grid: no errors
+  ok    the-grid: draws (6.6% lit, at least 1.0%)
+  ok    the-grid: matches its golden (0 blocks changed, 6 allowed, 191 moving)
+  time  the-grid: 7.1 s
+  ok    analytics contract: every the-grid event sent (4 events, 0.0 s)
+goldens http://127.0.0.1:8817: passed in 7.8 s (1 tabs)

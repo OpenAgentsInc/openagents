@@ -1,0 +1,25 @@
+{
+  "schema": "aethyr.grid.visual-review.v1",
+  "reviewer": "/root/aethyr_issue_assessment",
+  "date": "2026-11-02",
+  "read_only": true,
+  "image_sha256": {
+    "/tmp/aethyr-grid-visual-migration-20261102/before.png": "276cdfe76b725693a62d0c8806f4ae06bc336f462ab5557c1329cc8dee9e7296",
+    "/tmp/aethyr-grid-visual-migration-20261102/current.png": "3fbcfeb3b48de05669abcbb1c5ba9601010a8e5a45db48a475052e7d83be0437",
+    "/tmp/aethyr-ch11-grid-4m-visible-review/review.png": "0356f5db53e86330a20339ee64208503903fb2a89e24b8bf7dd11f4dfca98a9f",
+    "docs/verification/data/aethyr-ch11-2026-11-01/grid-visual-controls/qualification.json": "e81a5372e03a13edc6d09d95ead14d2f604e56702d65eee3090a961c955a7b1a"
+  },
+  "decision": "Supports the explicit portable-noise/owned-Sans visual migration for the supplied static scene; no unexpected visible loss observed. This is not a tolerance waiver, numerical pass, motion check or full-chapter qualification.",
+  "observations": [
+    "Same camera framing, foreground figure/flag position and shape, floor-line intersections and horizon.",
+    "Tree/graph structures, row markers, distant figures and platform edges remain in the same positions. No missing foreground figure, tree or HUD panel is visible.",
+    "Title, HOME/REALMS buttons, status/project labels, footer controls and connection label retain their text, layout and clipping. Existing crowded labels remain crowded in both images.",
+    "The central haze/illumination field and small star/speck distribution change visibly; these match the earlier paired review and the documented portable-noise and owned-Sans filtering migration.",
+    "The prior controls report current shader in old executor byte-identical to shared output, and old noise plus old Sans sampling restoring old raw bytes. Noise restoration alone did not restore the baseline."
+  ],
+  "limitations": [
+    "The stock1137blocks/6allowed mismatch remains an actual failed old-baseline comparison until an explicitly reviewed baseline migration is recorded.",
+    "No claim that every differing channel was visually checked; the review is of the supplied full images and retained causal-control record.",
+    "No PNG was edited by this reviewer."
+  ]
+}

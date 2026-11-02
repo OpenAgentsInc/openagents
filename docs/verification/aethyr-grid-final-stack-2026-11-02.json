@@ -1,0 +1,95 @@
+{
+  "schema": "aethyr.grid.final-stack-qualification.v2",
+  "date": "2026-11-02",
+  "status": "qualified-for-the-exact-final-Grid-artifact",
+  "scope": "Fresh independent mathematical audit of the actual final optimized Grid Wasm, including the newly reachable journey/replay exports. No Coax product emission, product rebuild, browser journey, raster or model gate was repeated.",
+  "artifact": {
+    "original_path": "/tmp/aethyr-grid-journey-main-20261102/newland.wasm",
+    "sha256": "2af335c88be062782ada00ba59fd4327178262cf070d67c355efb5ece9ca89cf",
+    "defined_functions": 506,
+    "function_exports": 174,
+    "direct_actual_disassembly_sha256": "42312fedfe30ad0da38a285b684373c7163fe0c6eb522e3bf9e299db65dcf1bf",
+    "callgraph_receipt_sha256": "df6af7aab057d6249d1cfd8461142999228b1665b8ce8578afe7f2bda38d3cd1"
+  },
+  "result": {
+    "all_defined_and_exported_function_bound_bytes": 1953936,
+    "largest_export": "coaxial_frame",
+    "replay_bound_bytes": 6048,
+    "stack_reservation_bytes": 4194304,
+    "stack_margin_bytes": 2240368,
+    "SP_write_sites": 880,
+    "indirect_call_sites": 9,
+    "non_null_immutable_table_targets": [502, 504, 505, 506],
+    "zero_linear_allocation_recursive_components": [[500], [511]],
+    "positive_allocation_recursive_components": 0,
+    "reachable_instruction_states": 358059,
+    "dataflow_steps": 1907766,
+    "unknown_SP_behavior": 0,
+    "dynamic_SP_writes": 0,
+    "table_mutations_imports_exports": 0
+  },
+  "arena": {
+    "initial_module_minimum_pages": 697,
+    "maximum_pages": 1024,
+    "maximum_bytes": 67108864,
+    "heap_base": 45629776,
+    "arena_base": 45678592,
+    "state_bytes": 667760,
+    "state_capacity_bytes": 667760,
+    "max_vertices": 400000,
+    "vertex_floats": 12,
+    "uniform_floats": 112,
+    "required_end_bytes": 65546864,
+    "required_pages": 1001,
+    "rounded_allocation_bytes": 65601536,
+    "remaining_pages": 23,
+    "rounded_margin_bytes": 1507328,
+    "derivation": "Unbounded integer evaluation of the current host arena formula using actual binary constant getters, internal immutable heap-base global and imported-memory limits. This complements the root's independently retained real browser journey/startup observations."
+  },
+  "method": [
+    "Read the actual optimized module directly. Parse scalar types, imports, internal globals, defined function/code bodies, fixed table elements and exports. No names-only diagnostic relink is used.",
+    "Verify every LLVM-decoded instruction byte span is equal to and completely covers its original body. LLVM remains the explicit instruction-decoder trust boundary.",
+    "Follow structured branches and loops with an affine entry-relative SP abstraction, tracking SP-derived local aliases and alternative states. Every reachable SP write stays inside the sum of all constant decrement sites; every normal return restores entry SP. Unbalanced loops cannot converge inside the finite budget and refuse.",
+    "Conservatively sum every decrement site in each function, including mutually exclusive, sequential and uncommitted leaf red-zone sites. Add the largest child bound; every indirect call includes every non-null immutable-table target. Reject positive-allocation recursive SCCs, unknown effects or dynamic SP writes.",
+    "Inspect nine fresh C-only Clang .su diagnostic compilations of the already admitted C/H and matching native faces. All 991 rows are static; no dynamic C stack allocation is admitted. Maximum individual C diagnostic frame is 2100240 bytes. These pre-Binaryen source diagnostics complement the independently analyzed final optimized bodies and are not substituted for their frame sizes."
+  ],
+  "commands": {
+    "actual_decoder": "/opt/homebrew/opt/llvm/bin/llvm-objdump -d /tmp/aethyr-grid-journey-main-20261102/newland.wasm > /tmp/aethyr-grid-journey-final.disasm",
+    "oracle": "python3 aethyr/tests/wasm_stack_oracle.py --wasm /tmp/aethyr-grid-journey-main-20261102/newland.wasm --disasm /tmp/aethyr-grid-journey-final.disasm --usage /tmp/aethyr-grid-final-stack-20261102/objects/*.su --grid --receipt /tmp/aethyr-grid-final-stack-20261102/callgraph-final.json",
+    "controls": "COAX=/tmp/aethyr-authority-budget-qualified-1fac/coax coax/web/tool.sh aethyr/tests/wasm-stack-checks.coax --out /tmp/aethyr-grid-final-stack-20261102/controls",
+    "C_diagnostics_common": "/opt/homebrew/opt/llvm/bin/clang --target=wasm32-wasip1 --sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot -resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes -std=c11 -O2 -fstack-usage -MD -MF OBJECT.d -c SOURCE -o OBJECT.o",
+    "generated_C_extra_flags": "-ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable",
+    "generated_C_inputs": ["admitted/newland.c", "admitted/landing-browser.c", "admitted/landing-fold.c", "admitted/Gridwalk.c"],
+    "face_extra_flags": "-I/tmp/aethyr-grid-journey-main-20261102/admitted -I/SOURCE_PARENT (render-face only needs the admitted include directory)",
+    "face_inputs": ["apps/openagents-web/newland-face.c", "coax/web/project/landing-reader-face.c", "coax/web/project/landing-fold-face.c", "coax/web/project/landing-cache-face.c", "coax/web/render-face.c"],
+    "exit_statuses": "Actual decoder, final oracle, Coax control runner and all nine C diagnostic compiles exited0. Seven negative oracle subprocesses exited1 as required. No command exceeded15minutes; no product relink occurred."
+  },
+  "controls": {
+    "declared_before_oracle_implementation": "aethyr/tests/wasm-stack-controls.json",
+    "Coax_orchestration": "aethyr/tests/wasm-stack-checks.coax",
+    "pass_bound_16_bytes": ["balanced-static-frame", "balanced-loop"],
+    "refuse": ["loop-stack-growth", "dynamic-stack-write", "return-without-restoration", "positive-stack-recursion", "unknown-stack-read", "mutable-imported-table", "disassembly-byte-mismatch"],
+    "retained": "Each raw Wasm, direct disassembly, successful receipt or exact refusal stderr is retained in the archive."
+  },
+  "identities": {
+    "oracle_sha256": "e5218cab9f507033a44ba78f9c61c93646dc94ce97d67c12f6186c68c253c4da",
+    "Coax_control_driver_sha256": "f2c1ba78d4f9d0051954c901f6b5c6e7d4adc0bb1e14dad1b470f0d5bd3197e9",
+    "control_specification_sha256": "2c31e2b14ed2d3e75d99291911695e37f6a626a26087daa405d1b4207034c508",
+    "LLVM_objdump_sha256": "1b4b790e952d146a44f98258f945d491e00a35a63ce21f2ba6976d8afc2db439",
+    "Clang_sha256": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a",
+    "qualified_older_control_compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "qualified_older_compiler_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "compiler_matching_current_main": false,
+    "matching_actual_Grid_face_sha256": "91df196e439b1b3fe2889ccb1dd6207d8177b0d4c177e4373db9ae93bdd88ab4",
+    "reviewed_host_source_sha256": "b34e979c34c4a3064955635d821cae65c328e41589f0f2c92c332cad46ffba5b",
+    "reviewed_HTTP_host_source_sha256": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630"
+  },
+  "limits": [
+    "This is a normal-entry linear-memory ABI stack bound, not a bound on the Wasm engine's separate execution stack, a proof of arbitrary pointer safety or authorization to resume an instance after an arbitrary trap left SP unrestored.",
+    "Host imports must not synchronously reenter positive-stack functions. Source review found storage-capacity reentry; the exact binary's coaxial_inbox_cap is separately verified as a constant1048576 getter with zero stack/calls. HTTP callbacks are deferred through promises and socket callbacks through events/timers.",
+    "The current frame trap path clears engine; the socket callback's catch alone does not establish safe generic trap recovery. No broader trap-resumption claim is made.",
+    "Imported memory must not be concurrently mutated. Internal fixed table is neither imported/exported nor mutated. Unsupported scalar effects, dynamic SP behavior or dynamic C stack allocation refuse.",
+    "The earlier170-export/1956816-byte and subsequent source epochs do not qualify this artifact. Only the exact actual Wasm hash above is covered."
+  ],
+  "retention": "docs/verification/data/aethyr-ch11-2026-11-02/grid-final-stack/retention.json"
+}

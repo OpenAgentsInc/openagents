@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (pins the independent Fraction area/barycentric/depth oracle with separately expanded rational answers and quantization tie cases; it runs no Coax product logic).
 import unittest
 from fractions import Fraction as F
 from analyze_depth_plane import prediction,f32

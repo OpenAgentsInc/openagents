@@ -1,0 +1,25 @@
+{
+  "schema": "aethyr.primitive-webgpu-retention.v1",
+  "archive": "artifacts.tar.gz",
+  "sha256": "a1272ea247049c78831c9b04cbca8c3429d6bdc78f5237a59913d6f58844499b",
+  "bytes": 1860922,
+  "regular_payload_files_including_manifest": 262,
+  "manifest": "sha256.txt (inside archive)",
+  "manifest_sha256": "b387d07a42d0ae1a8d84b33c82445c1469d208ba265b77f0caced60331e04aa5",
+  "manifest_hash_checked_payloads": 261,
+  "readback": "A fresh extraction passed every261manifest byte/hash check, then diff -qr against the full262-file source payload tree exited0. readback.log retains every checked path.",
+  "contents": [
+    "qualification.json: complete scope, exact source/compiler identities, counts/rules and known limits",
+    "raw/original/: all four deleted legacy TypeScript executors byte-for-byte",
+    "raw/legacy/: separate frozen reference copies with only reason3 provenance and readback-only word observations, plus their exact source/chrome dependency inputs",
+    "raw/*-old-raw.json and *-new-*.json: complete matching814authored jobs and3328raw Uint32 channels, original case data, metadata, numeric verdicts, shader messages/errors and source fingerprints",
+    "raw/*-browser-parity-final.json plus their legacy/current IEEE754 receipts: final strict Coax comparisons of every original observation, browser/device metadata,23resource hash joins and exact binary64 statistics",
+    "raw/loss-controls-final-image/: altered word, one-ulp Float32 numeric transport, binary64 statistic, device description, resource hash and invalid native preflight controls, with exact stderr/exit observations",
+    "raw/policy-mutation-third.log:188/188rootmutants killed, zero survivors/waivers; raw/policy-release.log:103/103checks passed; earlier failures/partial mutation runs retained",
+    "raw/session-raster-new.json and session-raster-browser-parity-final.json plus inputs/new-final.json:24raw-word shared-session extraction control against the earlier qualified simple raster fixture",
+    "inputs/: exact four-family WGSL and case fixtures, both Sans resource blobs and the earlier raster transport reference",
+    "sources/: final maintained Coax/JS/independent IEEE oracle/README sources, compiler-reported Coax dependency closure and native host-effect sources",
+    "executables/: exact qualified-older-compiler native GPU, parity and loss-control executables"
+  ],
+  "historical_source_boundary": "Embedded tool/host sources are immutable historical snapshots inside this hash-bound archive, not additional maintained executors. The independent IEEE754 oracle remains maintained with its specific reason2 header."
+}

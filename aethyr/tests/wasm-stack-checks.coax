@@ -1,0 +1,92 @@
+// Own-code qualification driver for the independent Wasm stack oracle.
+// Hand-authored scalar modules exercise restoration and fail-closed boundaries.
+// --out retains the fixtures/receipts; no compiler or product is rebuilt.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+WSOp :: struct {at:int;count:int;name:string;arg:string;}
+WSFixture :: struct {body:[1024]u8;n:int;ops:[128]WSOp;count:int;}
+WSBytes :: struct {data:[8192]u8;n:int;}
+ws_text :: (b:[]WSBytes,s:string) {for c:s {b[0].data[b[0].n]=c;b[0].n+=1;}}
+ws_hex_value :: (c:u8)->int {
+  if c>='0' && c<='9' {return cast(int)(c-'0');}
+  if c>='a' && c<='f' {return cast(int)(c-'a')+10;}
+  return -1;
+}
+#test "stack fixture byte decoder and address writer" {
+  #assert ws_hex_value('0')==0 && ws_hex_value('9')==9 && ws_hex_value('a')==10 && ws_hex_value('f')==15 && ws_hex_value('z')==-1;
+  b:[1]WSBytes;ws_number(b[..],0x19da,8);#assert cast(string)b[0].data[0..<b[0].n]=="000019da";
+  ws_text(b[..],"!");#assert b[0].data[8]=='!';
+}
+ws_number :: (b:[]WSBytes,value:int,width:int) {
+  digits:="0123456789abcdef";
+  for i:0..<width {shift:=(width-1-i)*4;ws_text(b,digits[(value>>shift)&15..<((value>>shift)&15)+1]);}
+}
+ws_raw_hex :: (b:[]WSBytes,hex:string) {
+  for i:0..<hex.count/2 {b[0].data[b[0].n]=cast(u8)(ws_hex_value(hex[i*2])*16+ws_hex_value(hex[i*2+1]));b[0].n+=1;}
+}
+ws_op :: (f:[]WSFixture,hex:string,name:string,arg:string) {
+  op:WSOp;op.at=f[0].n;op.count=hex.count/2;op.name=name;op.arg=arg;
+  for i:0..<op.count {f[0].body[f[0].n]=cast(u8)(ws_hex_value(hex[i*2])*16+ws_hex_value(hex[i*2+1]));f[0].n+=1;}
+  f[0].ops[f[0].count]=op;f[0].count+=1;
+}
+ws_allocate :: (f:[]WSFixture) {
+  ws_op(f,"2300","global.get","0");ws_op(f,"4110","i32.const","16");ws_op(f,"6b","i32.sub","");
+  ws_op(f,"2201","local.tee","1");ws_op(f,"2400","global.set","0");
+}
+ws_restore :: (f:[]WSFixture) {
+  ws_op(f,"2001","local.get","1");ws_op(f,"4110","i32.const","16");ws_op(f,"6a","i32.add","");ws_op(f,"2400","global.set","0");
+}
+ws_fixture :: (f:[]WSFixture,kind:int) {
+  // One i32 local after the i32 argument. The local vector belongs to the body.
+  f[0].body[0]=1;f[0].body[1]=1;f[0].body[2]=127;f[0].n=3;
+  if kind==1 {ws_op(f,"0240","block","");ws_op(f,"0340","loop","");ws_allocate(f);ws_restore(f);ws_op(f,"2000","local.get","0");ws_op(f,"0d01","br_if","1");ws_op(f,"0c00","br","0");ws_op(f,"0b","end","");ws_op(f,"0b","end","");}
+  else if kind==2 {ws_op(f,"0340","loop","");ws_allocate(f);ws_op(f,"0c00","br","0");ws_op(f,"0b","end","");}
+  else if kind==3 {ws_op(f,"2000","local.get","0");ws_op(f,"2400","global.set","0");}
+  else if kind==4 {ws_allocate(f);ws_op(f,"0f","return","");}
+  else if kind==5 {ws_allocate(f);ws_op(f,"2000","local.get","0");ws_op(f,"1000","call","0");ws_restore(f);}
+  else if kind==6 {ws_op(f,"2300","global.get","0");ws_op(f,"1a","drop","");}
+  else {ws_allocate(f);ws_restore(f);}
+  ws_op(f,"0b","end","");
+}
+ws_case :: (python:string,objdump:string,oracle:string,dir:string,kind:int,name:string,expected:int)->bool {
+  f:[1]WSFixture;ws_fixture(f[..],kind);binary:[1]WSBytes;
+  ws_raw_hex(binary[..],"0061736d0100000001050160017f00");
+  if kind==7 {ws_raw_hex(binary[..],"020c0103656e7601740170010101");}
+  ws_raw_hex(binary[..],"03020100050501014080080609017f0141808080020b0707010372756e0000");
+  prefix:=binary[0].n;binary[0].data[prefix]=10;binary[0].data[prefix+1]=cast(u8)(f[0].n+2);binary[0].data[prefix+2]=1;binary[0].data[prefix+3]=cast(u8)f[0].n;binary[0].n+=4;
+  for i:0..<f[0].n {binary[0].data[binary[0].n]=f[0].body[i];binary[0].n+=1;}
+  wasm_name:[4096]u8;disasm_name:[4096]u8;receipt_name:[4096]u8;path:[4096]u8;
+  base:=fs_join(dir,name,path[..]);wasm:=fs_join(base,"input.wasm",wasm_name[..]);disasm:=fs_join(base,"input.disasm",disasm_name[..]);receipt:=fs_join(base,"receipt.json",receipt_name[..]);
+  if !fs_mkdir(base) || !fs_write(wasm,cast(string)binary[0].data[0..<binary[0].n]) {return false;}
+  // Decode the genuine bytes with the same external decoder as the product
+  // audit. The sole transport-corruption control changes one printed byte.
+  decode:=[3]string.[objdump,"-d",wasm];stdout:[131072]u8;stderr:[4096]u8;
+  decoded:=proc_run(decode[..],10000,stdout[..],stderr[..]);
+  if decoded.started!=0 || decoded.status!=0 || decoded.cut || decoded.timed_out {tool_errln(cast(string)stderr[0..<decoded.err_n]);return false;}
+  if kind==8 {
+    changed:=false;
+    for i:0..<decoded.out_n-4 {if stdout[i]==':' && stdout[i+1]==' ' && stdout[i+2]=='2' && stdout[i+3]=='3' {stdout[i+3]='2';changed=true;break;}}
+    if !changed {return false;}
+  }
+  if !fs_write(disasm,cast(string)stdout[0..<decoded.out_n]) {return false;}
+  argv:=[8]string.[python,oracle,"--wasm",wasm,"--disasm",disasm,"--receipt",receipt];
+  result:=proc_run(argv[..],10000,stdout[..],stderr[..]);
+  if result.started!=0 || result.status!=expected || result.cut || result.timed_out {tool_errln(name);tool_errln(cast(string)stderr[0..<result.err_n]);return false;}
+  if expected==0 {
+    raw:[65536]u8;n:=fs_read(receipt,raw[..]);nodes:[4096]JvNode;doc:[1]Jv;
+    if n<1 || !jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]) || jv_int(doc[0],jv_get(doc[0],0,"all_defined_function_bound_bytes"),-1)!=16 {return false;}
+  } else if fs_exists(receipt) || result.err_n<1 {return false;}
+  log_name:[4096]u8;log_path:=fs_join(base,"oracle.stderr",log_name[..]);if !fs_write(log_path,cast(string)stderr[0..<result.err_n]) {return false;}
+  print("stack oracle control %: expected exit %\n",name,expected);return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  out:=args_value(a[..],"--out","");python:=args_value(a[..],"--python","python3");objdump:=args_value(a[..],"--objdump","/opt/homebrew/opt/llvm/bin/llvm-objdump");oracle:=args_value(a[..],"--oracle","aethyr/tests/wasm_stack_oracle.py");
+  if out=="" || !fs_mkdir(out) {tool_errln("stack controls: --out must name a new/empty retained directory");return 2;}
+  names:=[9]string.["balanced-static-frame","balanced-loop","loop-stack-growth","dynamic-stack-write","return-without-restoration","positive-stack-recursion","unknown-stack-read","mutable-imported-table","disassembly-byte-mismatch"];
+  for i:0..<names.count {if !ws_case(python,objdump,oracle,out,i,names[i],ifx i<2 then 0 else 1) {return 1;}}
+  print("stack oracle: two admissible mathematical fixtures and seven refusal controls pass\n");return 0;
+}

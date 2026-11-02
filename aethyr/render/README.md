@@ -1,13 +1,14 @@
 # Aethyr renderer
 
-Chapter 11 is being implemented and qualified. Its book status stays a draft
+Chapter 11 is partly implemented and is being qualified. Its status stays partial
 until the actual producers, CPU reference and both GPU hosts pass their
 declared checks. The running record is
 [aethyr-book-implementation-2026-11-01.json](../../docs/verification/aethyr-book-implementation-2026-11-01.json).
 
 The current shared catalog contains sixteen historical manifest profiles, the
 direct Garden and the retained Galaxy fixture. Latest main also adds Anime Lab;
-its private adapter is not yet part of this shared catalog or its qualification. Galaxy remains absent from the shipping realm list.
+its private adapter is not yet part of this shared catalog or its qualification.
+Galaxy remains absent from the shipping realm list.
 Its development route is `/render-fixtures/galaxy/`.
 
 | Source | Responsibility |
@@ -48,8 +49,12 @@ the manifest atomically after all products succeed.
 
 The app build writes packages to `apps/openagents-web/build/render/<profile>/`.
 Realm pages name them with `data-render` and the compiled catalog index in
-`data-render-profile`. The generator reads `build.coax --profile-table`; a
-fork keeps its base renderer identity when its realm/save-slot slug changes.
+`data-render-profile`. The generator transports `page-render.coax`'s Coax-owned
+adoption decision; `build.coax --profile-table` still exposes the compiled
+catalog identities. Anime Lab is explicitly tracked as using its existing
+renderer until shared adoption is qualified. Unknown or mismatched page/app
+identities refuse rather than receiving a fallback profile. A fork keeps its
+base renderer identity when its realm/save-slot slug changes.
 Release staging copies a complete
 package under a directory named by the manifest hash, retaining every sibling
 filename and byte. The comment-stripping step refuses any transform that would
@@ -104,6 +109,11 @@ The original [qualification](../fixtures/render/qualification.json) retains the
 pre-integration source/compiler identities, 120 killed policy mutants, native
 observations and failed check-first attempts. It is historical evidence for that
 exact component; changed-source integration has its own focused checks.
+
+The [merged API qualification](../../docs/verification/aethyr-frame-reconciliation-2026-11-02.json)
+records both test groups, the combined root mutation gate, the two independent
+native oracles and the explicit older compiler identity. It qualifies these
+admission profiles, not a complete GPU or playable-realm route.
 
 | Public value/procedure | Contract |
 | --- | --- |

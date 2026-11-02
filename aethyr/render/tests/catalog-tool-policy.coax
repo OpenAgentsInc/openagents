@@ -1,0 +1,93 @@
+// Expected native catalog receipts derive only from the frozen declarations.
+// No product catalog implementation is loaded here.
+#load "tooling-policy.coax";
+#authority;
+RTC_PASSES :: [13]string.["background","shadow","caster","grass","surface","scene","water_transmit","water_emit","particle_over","particle","bloom","post","hud"];
+RTC_KINDS :: [7]string.["uniform","storage","image2d","image_array","depth","sampler","comparison"];
+RtcConsumers :: struct {ok:bool;count:int;shared:int;legacy:int;bytes:int;}
+#load "catalog-tool-checks.coax";
+rtc_kind :: (name:string)->int {for value,i:RTC_KINDS {if value==name {return i;}}return -1;}
+rtc_literal :: (d:Jv,node:int,value:string)->bool {
+  bytes:[16384]u8;n:=jv_str(d,node,bytes[..]);if n!=value.count {return false;}return cast(string)bytes[0..<n]==value;
+}
+rtc_profile_count :: (n:int)->bool {return n>=0 && n<=18;}
+rtc_range :: (first:int,count:int,limit:int)->bool {return first>=0 && first<=limit && count>=0 && count<=limit-first;}
+rtc_decode_size :: (n:int,capacity:int)->bool {return n>=0 && n<=capacity;}
+rtc_pass :: (snapshot:Jv,profile:int,name:string)->int {
+  found:=-1;passes:=jv_get(snapshot,0,"passes");
+  for prefix:[2]string.["","particle_"] {
+    first_key:=ifx prefix=="" then "pass_first" else "particle_pass_first";count_key:=ifx prefix=="" then "pass_count" else "particle_pass_count";
+    first:=jv_int(snapshot,jv_get(snapshot,profile,first_key),-1);count:=jv_int(snapshot,jv_get(snapshot,profile,count_key),-1);
+    if !rtc_range(first,count,jv_len(snapshot,passes)) {return -3;}
+    for i:first..<first+count {row:=jv_at(snapshot,passes,i);if rtc_literal(snapshot,jv_get(snapshot,row,"pass_id"),name) {if found!=-1 {return -2;}found=i;}}
+  }return found;
+}
+rtc_expected :: (snapshot:Jv,out:[]u8)->string {
+  profiles:=jv_get(snapshot,0,"profiles");bindings:=jv_get(snapshot,0,"bindings");passes:=jv_get(snapshot,0,"passes");
+  if jv_kind(snapshot,profiles)!=JV_ARRAY || !rtc_profile_count(jv_len(snapshot,profiles)) {return "";}
+  o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);
+  for i:0..<jv_len(snapshot,profiles) {
+    p:=jv_at(snapshot,profiles,i);jo_obj(o[..]);child:=snapshot.nodes[p].first;
+    while child!=-1 {key:=jv_key(snapshot,child);if key!="module" && key!="feature_bits" {jo_key(o[..],key);jv_write(snapshot,child,o[..]);}child=snapshot.nodes[child].next;}
+    jo_key(o[..],"valid");jo_bool(o[..],true);jo_key(o[..],"app");jv_write(snapshot,jv_get(snapshot,p,"module"),o[..]);
+    jo_key(o[..],"bindings");jo_arr(o[..]);
+    for set:0..<2 {
+      first_key:=ifx set==0 then "binding_first" else "particle_binding_first";count_key:=ifx set==0 then "binding_count" else "particle_binding_count";
+      first:=jv_int(snapshot,jv_get(snapshot,p,first_key),-1);count:=jv_int(snapshot,jv_get(snapshot,p,count_key),-1);if !rtc_range(first,count,jv_len(snapshot,bindings)) {return "";}jo_arr(o[..]);
+      for k:first..<first+count {
+        row:=jv_at(snapshot,bindings,k);jo_obj(o[..]);field:=snapshot.nodes[row].first;
+        while field!=-1 {
+          key:=jv_key(snapshot,field);jo_key(o[..],key);
+          if key=="kind" {text:[64]u8;n:=jv_str(snapshot,field,text[..]);if !rtc_decode_size(n,text.count) {return "";}kind:=rtc_kind(cast(string)text[0..<n]);if kind<0 {return "";}jo_int(o[..],kind);}else {jv_write(snapshot,field,o[..]);}
+          field=snapshot.nodes[field].next;
+        }jo_end(o[..]);
+      }jo_end(o[..]);
+    }jo_end(o[..]);jo_key(o[..],"pipelines");jo_arr(o[..]);
+    for name:RTC_PASSES {
+      index:=rtc_pass(snapshot,p,name);if index< -1 {return "";}jo_obj(o[..]);
+      if index== -1 {
+        jo_key(o[..],"valid");jo_bool(o[..],false);
+        for key:[5]string.["source","vertex","fragment","wgsl_vertex","wgsl_fragment"] {jo_key(o[..],key);jo_str(o[..],"");}
+        jo_key(o[..],"binding_set");jo_int(o[..],0);jo_key(o[..],"uses");jo_arr(o[..]);jo_end(o[..]);
+      }else {
+        row:=jv_at(snapshot,passes,index);
+        for key:[6]string.["source","vertex","fragment","wgsl_vertex","wgsl_fragment","binding_set"] {jo_key(o[..],key);jv_write(snapshot,jv_get(snapshot,row,key),o[..]);}
+        jo_key(o[..],"valid");jo_bool(o[..],true);jo_key(o[..],"uses");jv_write(snapshot,jv_get(snapshot,row,"uses"),o[..]);
+      }jo_end(o[..]);
+    }jo_end(o[..]);jo_end(o[..]);
+  }jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+rtc_assets :: (manifest:Jv,realm:int,out:[]u8)->int {
+  assets:=jv_get(manifest,realm,"assets");o:[1]Jo;jo_start(o[..],out);
+  if assets!=-1 {
+    if jv_kind(manifest,assets)!=JV_ARRAY {return -1;}
+    for i:0..<jv_len(manifest,assets) {
+      bytes:[4096]u8;n:=jv_str(manifest,jv_at(manifest,assets,i),bytes[..]);if n<0 {return -1;}
+      if i>0 {jo_put(o[..],"\n");}jo_put(o[..],cast(string)bytes[0..<n]);
+    }
+  }return ifx o[0].bad then -1 else o[0].n;
+}
+rtc_consumers :: (snapshot:Jv,manifest:Jv,out:[]u8)->RtcConsumers {
+  r:RtcConsumers;profiles:=jv_get(snapshot,0,"profiles");worlds:=jv_get(manifest,0,"worlds");
+  if !rtc_profile_count(jv_len(snapshot,profiles)) || jv_kind(manifest,worlds)!=JV_ARRAY {return r;}
+  seen:[18]bool;o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);
+  for i:0..<jv_len(manifest,worlds) {
+    realm:=jv_get(manifest,jv_at(manifest,worlds,i),"realm");if realm== -1 {continue;}if jv_kind(manifest,realm)!=JV_OBJECT {return r;}
+    slug:=jv_get(manifest,realm,"slug");app:=jv_get(manifest,realm,"module");
+    for k:0..<i {previous:=jv_get(manifest,jv_at(manifest,worlds,k),"realm");if rtq_equal(manifest,slug,manifest,jv_get(manifest,previous,"slug")) {return r;}}
+    match:=-1;
+    for k:0..<jv_len(snapshot,profiles) {p:=jv_at(snapshot,profiles,k);if rtq_equal(manifest,slug,snapshot,jv_get(snapshot,p,"slug")) {match=k;}}
+    if match!=-1 {
+      p:=jv_at(snapshot,profiles,match);if !rtq_equal(manifest,app,snapshot,jv_get(snapshot,p,"module")) {return r;}
+      page:=jv_get(manifest,realm,"page");value:=ifx page== -1 then 0 else jv_int(manifest,page,-1);if value!=jv_int(snapshot,jv_get(snapshot,p,"page"),-1) {return r;}
+      assets:[16384]u8;count:=rtc_assets(manifest,realm,assets[..]);if count<0 {return r;}
+      if !rtc_literal(snapshot,jv_get(snapshot,p,"assets"),cast(string)assets[0..<count]) {return r;}
+      seen[match]=true;r.shared+=1;
+    }else {
+      if !rtc_literal(manifest,slug,"anime-lab") || !rtc_literal(manifest,app,"animelab") {return r;}r.legacy+=1;
+    }
+    jo_obj(o[..]);jo_key(o[..],"slug");jv_write(manifest,slug,o[..]);jo_key(o[..],"app");jv_write(manifest,app,o[..]);jo_key(o[..],"profile");jo_int(o[..],match);jo_key(o[..],"route");jo_str(o[..],ifx match== -1 then "tracked legacy" else "shared");jo_key(o[..],"declaration");jv_write(manifest,realm,o[..]);jo_end(o[..]);r.count+=1;
+  }
+  for i:0..<jv_len(snapshot,profiles) {p:=jv_at(snapshot,profiles,i);if jv_kind(snapshot,jv_get(snapshot,p,"listed"))==JV_TRUE && !seen[i] {return r;}}
+  jo_end(o[..]);r.ok=!o[0].bad;r.bytes=o[0].n;return r;
+}

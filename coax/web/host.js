@@ -191,7 +191,9 @@ const root = (script && script.dataset.root) || "";
 const canvas = document.getElementById("coaxial");
 const dev = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 const probe = dev && new URLSearchParams(location.search).has("probe"); // tests: read the frame back
-let probeArmed = !new URLSearchParams(location.search).has("probe-manual");
+// Explicit local observation can retain normal animation and simulation.
+const captureRequested = probe || (dev && globalThis.coaxialRenderCapture === true);
+let probeArmed = probe && !new URLSearchParams(location.search).has("probe-manual");
 // ?probe&at=SECONDS: run the app's clock that far in 0.1 s steps before the
 // probed frame, so a headless browser can see a moment of the animation.
 const probeAt = probe ? Number(new URLSearchParams(location.search).get("at")) || 0 : 0;
@@ -722,10 +724,10 @@ async function startGpu() {
   loading.step("shaders");
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();
-  context.configure({ device, format, alphaMode: "opaque", usage: GPUTextureUsage.RENDER_ATTACHMENT | (probe ? GPUTextureUsage.COPY_SRC : 0) });
+  context.configure({ device, format, alphaMode: "opaque", usage: GPUTextureUsage.RENDER_ATTACHMENT | (captureRequested ? GPUTextureUsage.COPY_SRC : 0) });
   // A headless numerical measurement can substitute an offscreen target.
   // The same renderer admits its format and executes the same graph/shaders.
-  const measuredFormat = probe && globalThis.coaxialRenderCaptureFormat;
+  const measuredFormat = captureRequested && globalThis.coaxialRenderCaptureFormat;
   let measuredTexture;
   const renderContext = measuredFormat ? { getCurrentTexture() {
     if (!measuredTexture || measuredTexture.width !== canvas.width || measuredTexture.height !== canvas.height) {
@@ -857,7 +859,7 @@ async function loadShadersOnce() {
   if (renderUrl) {
     const previous = gpu.renderer;
     const candidate = new RenderHost({ device, context: gpu.context, format, memory, exports: engine.exports, arena,
-      url: renderUrl, profile: Number(script.dataset.renderProfile), coarse: matchMedia("(pointer: coarse)").matches, capture: probe,
+      url: renderUrl, profile: Number(script.dataset.renderProfile), coarse: matchMedia("(pointer: coarse)").matches, capture: captureRequested,
       onMedia: (rows) => send(MEDIA_KIND, rows.filter((m) => m.ready || m.failed).map((m) => `${m.url} ${m.failed ? 0 : m.width} ${m.failed ? 0 : m.height}`).join("\n")) });
     await candidate.initialize(previous);
     for (const asset of candidate.assetRows) asset.renderOwner = candidate;
@@ -1516,9 +1518,9 @@ function draw(now) {
   } catch (e) { say(`${app} trapped: ${e.message}`, true); loading.fail(`ENGINE STOPPED: ${e.message}`); engine = null; return; }
   if (gpu.renderer) {
     try {
-      const submitted = gpu.renderer.frame(n, w, h, probe && probeArmed && ++frames >= 1 && !gpu.probed ? (encoder, texture) => readBack(encoder, texture) : null);
+      const submitted = gpu.renderer.frame(n, w, h, (probe || dev) && probeArmed && ++frames >= 1 && !gpu.probed ? (encoder, texture) => readBack(encoder, texture) : null);
       if (submitted && gpu.renderer.readiness === gpu.renderer.ids.readiness.ready) globalThis.coaxial.sceneReady = true;
-      if (probe) globalThis.coaxial.renderStatus = { submitted, readiness: gpu.renderer.readiness, refusal: gpu.renderer.lastRefusal, error: gpu.renderer.error?.message, captureArmed: probeArmed, observed: !!gpu.renderer.observation, probed: gpu.probed };
+      if (probe || dev) globalThis.coaxial.renderStatus = { submitted, readiness: gpu.renderer.readiness, refusal: gpu.renderer.lastRefusal, error: gpu.renderer.error?.message, captureArmed: probeArmed, observed: !!gpu.renderer.observation, probed: gpu.probed };
       if (gpu.snap) { const take = gpu.snap;gpu.snap = null;take(); }
       document.documentElement.classList.add("gpu");
       if (loading.on) loading.frame(globalThis.coaxial.sceneReady);
@@ -1712,10 +1714,17 @@ function send(kind, text = "") {
   after(false);
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
-  captureFrame: () => { if (probe) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
+  captureFrame: () => { if (probe || dev) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
   guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0 };
 // Headless verification observes effects without exposing renderer policy.
 if (dev) {
+  // Read-only transport from the real Grid face for headless journeys.
+  // The exported Coax procedures define every observed field.
+  globalThis.coaxial.gridProbe = (field) => Number(engine?.exports.coaxial_grid_probe?.(BigInt(field)) ?? -1n);
+  globalThis.coaxial.gridPose = (field) => engine?.exports.coaxial_grid_pose?.(BigInt(field)) ?? NaN;
+  globalThis.coaxial.gridMark = (step) => Number(engine?.exports.coaxial_grid_mark?.(BigInt(step)) ?? -1n);
+  globalThis.coaxial.gridReplay = () => engine?.exports.coaxial_grid_replay?.() ?? 0;
+  globalThis.coaxial.gridEntry = (axis) => engine?.exports.coaxial_land_pylon_control?.(arena.state, 4, axis) ?? 0;
   globalThis.coaxial.reloadRenderer = async () => { try { return await loadShaders(); } catch { return false; } };
   globalThis.coaxial.renderResources = () => gpu?.renderer ? [gpu.renderer.vertexBuffer, gpu.renderer.uniformBuffer,
     ...[...gpu.renderer.resourceRecords.values()].map((r) => r.gpu), gpu.renderer.indexRecord?.gpu, gpu.renderer.sansTexture, gpu.renderer.layerTexture] : [];

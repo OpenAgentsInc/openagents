@@ -1,0 +1,61 @@
+#test "staging confines package URLs and sibling filenames" {
+  #assert rsp_url("/build/render/the-grid/render.json") && rsp_url("/build/render/0-/render.json") && !rsp_url("xbuild/render/the-grid/render.json") && !rsp_url("/build/render/the-grid/render.jsox");
+  for s: [9]string.["", "/build/render//render.json", "/build/render/../render.json", "/build/render/A/render.json", "/build/render/a_b/render.json", "/elsewhere/a/render.json", "https://example/a", "/build/render/a/render.json?x", "/build/render/a/render.json/"] { #assert !rsp_url(s); }
+  #assert rsp_sibling("m.wgsl", ".wgsl") && rsp_sibling("A_9-.wgsl", ".wgsl") && rsp_sibling("-_.spv", ".spv");
+  #assert rsp_sibling("a", "") && rsp_sibling("s", "s") && !rsp_sibling("", "");
+  for s: [7]string.["", ".wgsl", "../m.wgsl", "/m.wgsl", "a/b.wgsl", "m.wgsl?x", "m.tree"] { #assert !rsp_sibling(s, ".wgsl"); }
+  long: [129]u8; for i: 0..<129 {long[i]='a';} long[123]='.';long[124]='w';long[125]='g';long[126]='s';long[127]='l';
+  #assert rsp_sibling(cast(string)long[0..<128],".wgsl") && !rsp_sibling(cast(string)long[..],".wgsl");
+}
+#test "staging lexical predicates cover every byte and length boundary" {
+  for i:0..<256 {
+    c:=cast(u8)i;
+    #assert rsp_lower(c)==(i>=97 && i<=122) && rsp_digit(c)==(i>=48 && i<=57);
+    name:=[3]u8.['a',c,'x'];
+    #assert rsp_sibling(cast(string)name[..],"x")==((i>=97 && i<=122)||(i>=65 && i<=90)||(i>=48 && i<=57)||i==45||i==95||i==46);
+  }
+  for n:-1..<131 {for ext:0..<4 {#assert rsp_length(n,ext)==(n>=1 && n<=128 && n>=ext);}}
+  long:[129]u8;for i:0..<129 {long[i]='a';}#assert !rsp_sibling(cast(string)long[..],"");
+  #assert !rsp_identity("a:") && !rsp_identity("a{") && rsp_identity("z9");
+}
+#test "staging identity and table boundaries are explicit" {
+  #assert rsp_identity("a") && rsp_identity("the-grid9") && !rsp_identity("") && !rsp_identity("0a") && !rsp_identity("A") && !rsp_identity("a_b") && !rsp_identity("a/b");
+  for m: -1..<5 {for e: -1..<16 {#assert rsp_counts(m,e)==(m>=1 && m<=3 && e>=1 && e<=14);}}
+  #assert rsp_hash("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !rsp_hash("") && !rsp_hash("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg") && !rsp_hash("A123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+}
+RSP_TEST_PACKAGE :: "{\"schema\":\"aethyr.render.package.v1\",\"app\":\"fixture\",\"slug\":\"fixture\",\"profile_index\":7,\"modules\":[{\"wgsl_file\":\"m.wgsl\",\"wgsl_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}],\"entries\":[{\"spirv_file\":\"p.spv\",\"spirv_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\",\"tree_file\":\"p.tree\",\"tree_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}]}";
+#test "staging parses each product class without rewriting manifest bytes" {
+  p:=rsp_parse(RSP_TEST_PACKAGE);#assert p.ok && p.count==3;
+  #assert rsp_product_name(p.rows[0..<1])=="m.wgsl" && rsp_product_name(p.rows[1..<2])=="p.spv" && rsp_product_name(p.rows[2..<3])=="p.tree";
+  #assert rsp_product_hash(p.rows[2..<3])=="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  #assert rsp_product_hash(p.rows[1..<2])=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  for s:[7]string.["", "{}", "[]", "{\"schema\":\"future\",\"modules\":[{}],\"entries\":[{}]}", "{\"schema\":\"aethyr.render.package.v1\",\"modules\":[],\"entries\":[{}]}", "{\"schema\":\"aethyr.render.package.v1\",\"modules\":[{}],\"entries\":[]}", "{\"schema\":\"aethyr.render.package.v1\",\"modules\":[{}],\"entries\":[{}]}"] {#assert !rsp_parse(s).ok;}
+  id:=rsp_read_identity(RSP_TEST_PACKAGE,"fixture","fixture");#assert id.ok && id.profile==7;
+  #assert !rsp_read_identity(RSP_TEST_PACKAGE,"other","fixture").ok && !rsp_read_identity(RSP_TEST_PACKAGE,"fixture","other").ok;
+  #assert !rsp_read_identity(RSP_TEST_PACKAGE,"fixturx","fixture").ok && !rsp_read_identity(RSP_TEST_PACKAGE,"fixture","fixturx").ok;
+  #assert !rsp_read_identity(RSP_TEST_PACKAGE,"1","fixture").ok && !rsp_read_identity(RSP_TEST_PACKAGE,"fixture","1").ok;
+  #assert !rsp_read_identity("{\"app\":\"0\",\"slug\":\"b\",\"profile_index\":0}","0","b").ok && !rsp_read_identity("{\"app\":\"a\",\"slug\":\"0\",\"profile_index\":0}","a","0").ok;
+  #assert !rsp_read_identity("{\"app\":\"a\",\"profile_index\":0}","a","b").ok && !rsp_read_identity("{\"slug\":\"b\",\"profile_index\":0}","a","b").ok;
+  #assert rsp_read_identity("{\"app\":\"a\",\"slug\":\"b\",\"profile_index\":0}","a","b").ok;
+  for s:[6]string.["", "{}", "{\"app\":\"a\",\"slug\":\"b\"}", "{\"app\":\"a\",\"slug\":\"b\",\"profile_index\":true}", "{\"app\":\"a\",\"slug\":\"b\",\"profile_index\":-1}", "{\"app\":\"a\",\"slug\":\"b\",\"profile_index\":1.5}"] {#assert !rsp_read_identity(s,"a","b").ok;}
+  nodes:[16]JvNode;d:[1]Jv;#assert jv_parse(d[..],"{\"a\":[],\"b\":[1],\"c\":{\"x\":1}}",nodes[..]);
+  #assert rsp_array_length(d[0],jv_get(d[0],0,"a"))==0 && rsp_array_length(d[0],jv_get(d[0],0,"b"))==1 && rsp_array_length(d[0],jv_get(d[0],0,"c"))==-1 && rsp_array_length(d[0],-1)==-1;
+}
+// Build independent malformed observations without editing the parser's code.
+rsp_test_manifest :: (hash:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);
+  jo_put(o[..],"{\"schema\":\"aethyr.render.package.v1\",\"modules\":[{\"wgsl_file\":\"m.wgsl\",\"wgsl_sha256\":");jo_quoted(o[..],hash);
+  jo_put(o[..],"}],\"entries\":[{\"spirv_file\":\"p.spv\",\"spirv_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"tree_file\":\"p.tree\",\"tree_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}]}");return jo_text(o[..]);
+}
+#test "staging malformed hashes refuse even at exact length" {
+  out:[2048]u8;
+  #assert !rsp_parse(rsp_test_manifest("g3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",out[..])).ok;
+  #assert !rsp_parse(rsp_test_manifest("",out[..])).ok;
+}
+#test "staging header is literal compatible C and refuses short output" {
+  out:[2048]u8;hash:="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  header:=rsp_header(RspIdentity.{ok=true,profile=7},"fixture","fixture",hash,out[..]);
+  #assert header=="// Generated from the Coax-built render.json; do not edit.\n#ifndef AETHYR_RENDER_IDENTITY_H\n#define AETHYR_RENDER_IDENTITY_H\n#include <stdint.h>\n#define AETHYR_RENDER_TYPED 1\n#define AETHYR_RENDER_PROFILE_ID INT64_C(7)\n#define AETHYR_RENDER_PROFILE AETHYR_RENDER_PROFILE_ID\n#define AETHYR_RENDER_APP \"fixture\"\n#define AETHYR_RENDER_SLUG \"fixture\"\n#define AETHYR_RENDER_PACKAGE_FILE \"render/render.json\"\n#define AETHYR_RENDER_PACKAGE AETHYR_RENDER_PACKAGE_FILE\n#define AETHYR_RENDER_PACKAGE_SHA256 \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n#endif\n";
+  #assert rsp_header(RspIdentity.{},"fixture","fixture",hash,out[..])=="" && rsp_header(RspIdentity.{ok=true,profile=7},"fixture","fixture",hash,out[0..<10])=="";
+}

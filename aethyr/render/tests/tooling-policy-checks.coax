@@ -1,0 +1,35 @@
+#test "tool receipts compare every typed field independent of member order" {
+  a:[128]JvNode;b:[128]JvNode;x:[1]Jv;y:[1]Jv;
+  #assert jv_parse(x[..],"{\"n\":7,\"a\":[true,null,\"a\\nb\"],\"b\":{}}",a[..]) && jv_parse(y[..],"{\"b\":{},\"a\":[true,null,\"a\\u000ab\"],\"n\":7}",b[..]);
+  #assert rtq_equal(x[0],0,y[0],0);
+  for bad:[8]string.["{}", "{\"n\":8,\"a\":[true,null,\"a\\nb\"],\"b\":{}}", "{\"n\":7,\"a\":[false,null,\"a\\nb\"],\"b\":{}}", "{\"n\":7,\"a\":[true,null,\"a\\nc\"],\"b\":{}}", "{\"n\":7,\"a\":[true,null],\"b\":{}}", "{\"n\":7,\"a\":[true,null,\"a\\nb\"],\"b\":{},\"extra\":0}", "{\"n\":7,\"a\":[true,null,\"a\\nb\"],\"b\":0}", "{\"n\":7,\"n\":7,\"b\":{}}"] {#assert jv_parse(y[..],bad,b[..]) && !rtq_equal(x[0],0,y[0],0);}
+  #assert !rtq_equal(x[0],-1,x[0],-1);
+  #assert jv_parse(x[..],"\"\"",a[..]) && jv_parse(y[..],"\"\"",b[..]) && rtq_equal(x[0],0,y[0],0);
+  #assert jv_parse(x[..],"\"a\"",a[..]) && jv_parse(y[..],"\"aa\"",b[..]) && !rtq_equal(x[0],0,y[0],0);
+  #assert jv_parse(x[..],"{\"a\":1,\"a\":2}",a[..]) && rtq_member(x[0],0,"a")== -1;
+  long:[16390]u8;long[0]='"';for i:1..<16386 {long[i]='a';}long[16386]='"';
+  #assert jv_parse(x[..],cast(string)long[0..<16387],a[..]) && !rtq_equal(x[0],0,x[0],0);
+}
+#test "tool text searches include exact boundaries and refuse impossible starts" {
+  #assert rtq_find("abcabc","abc",0)==0 && rtq_find("abcabc","abc",1)==3 && rtq_find("abcabc","c",5)==5;
+  #assert rtq_find("abc","x",0)==-1 && rtq_find("abc","abcd",0)==-1 && rtq_find("abc","a",-1)==-1 && rtq_find("abc","a",4)==-1;
+  #assert rtq_find("abc","",0)==0 && rtq_find("abc","",3)==3 && rtq_find("abc","",4)==-1;
+}
+#test "tool ABI inventory rejects extra missing or reordered fields" {
+  header:="typedef int elsewhere; struct coax_t_Thing { int first; coax_string second; uint64_t third; };";
+  #assert rtq_fields(header,"Thing","first second third");
+  #assert !rtq_fields(header,"Other","first second third") && !rtq_fields(header,"Thing","first second") && !rtq_fields(header,"Thing","first second third fourth") && !rtq_fields(header,"Thing","second first third");
+  #assert !rtq_fields("struct coax_t_Thing { int first; int second; int third; int extra; };","Thing","first second third");
+  #assert rtq_fields("struct coax_t_Thing {\n  int64_t a0;\n\tcoax_array_word_3 xyz_9;\n};","Thing","a0 xyz_9");
+  #assert !rtq_fields("struct coax_t_Thing { int first;","Thing","first");
+  #assert !rtq_fields("struct coax_t_Thing {","Thing","") && !rtq_fields("Thing { int first; }","Thing","first");
+  #assert rtq_fields("struct coax_t_Thing { int a; };","Thing","a") && rtq_fields("struct coax_t_Thing { };","Thing","");
+  #assert !rtq_body("int a","a") && !rtq_body("int a; { int b;", "a b") && !rtq_body("int a; } int b;", "a b") && !rtq_body(";","");
+  long:[513]u8;for i:0..<513 {long[i]='X';}#assert !rtq_fields("struct coax_t_ { int x; }",cast(string)long[..],"x");
+}
+#test "tool lexical helpers retain empty and one-byte boundaries" {
+  for i:0..<256 {c:=cast(u8)i;#assert rtq_space(c)==(i<=32) && rtq_identifier(c)==((i>=97 && i<=122)||(i>=65 && i<=90)||(i>=48 && i<=57)||i==95);}
+  #assert rtq_tail("")=="" && rtq_tail(" ")=="" && rtq_tail("ab ")=="ab" && rtq_tail("A")=="A";
+  #assert rtq_tail("a ")=="a" && rtq_fields("struct coax_t_Thing {int a;B;}","Thing","a B");
+  #assert rtq_word(" a  ",1)=="" && rtq_word(" a b ",1)=="b" && rtq_word(" a ",-1)=="";
+}

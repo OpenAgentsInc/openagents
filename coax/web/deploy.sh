@@ -35,11 +35,12 @@ bun build "$here/host.js" --target browser --format esm --outfile "$stage/host.j
 # shaders and host script are named by their content (cached for good); the
 # page names them (data-wasm, data-wgsl) and is checked on every visit.
 python3 - "$app" "$stage/host.js" "$stage" "$here" <<'PY'
-import hashlib, json, os, re, shutil, sys
+import hashlib, json, os, re, shutil, subprocess, sys
 app, host, stage, tools = sys.argv[1:]
 from pathlib import Path
 sys.path.insert(0, tools)
-from render_stage import stage_package
+def stage_package(app, url, stage):
+    return subprocess.check_output([os.path.join(tools, "tool.sh"), "render-stage", str(app), url, str(stage)], text=True).strip()
 assets, site = os.path.join(stage, "assets"), os.path.join(stage, "site")
 def put(src, rel):
     h = hashlib.sha256(open(src, "rb").read()).hexdigest()[:12]

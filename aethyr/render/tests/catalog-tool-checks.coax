@@ -1,0 +1,57 @@
+RTC_TEST_SNAPSHOT :: "{\"profiles\":[{\"module\":\"app\",\"feature_bits\":17,\"slug\":\"tiny\",\"listed\":true,\"page\":0,\"assets\":\"\",\"binding_first\":0,\"binding_count\":1,\"particle_binding_first\":1,\"particle_binding_count\":1,\"pass_first\":0,\"pass_count\":1,\"particle_pass_first\":1,\"particle_pass_count\":1}],\"bindings\":[{\"name\":\"u\",\"kind\":\"uniform\",\"group\":0,\"binding\":0,\"stride\":16,\"uniform_vec4s\":1},{\"name\":\"tex\",\"kind\":\"image2d\",\"group\":0,\"binding\":2,\"stride\":0,\"uniform_vec4s\":0}],\"passes\":[{\"pass_id\":\"background\",\"source\":\"s.coax\",\"vertex\":\"v\",\"fragment\":\"f\",\"wgsl_vertex\":\"vs\",\"wgsl_fragment\":\"fs\",\"binding_set\":0,\"uses\":[]},{\"pass_id\":\"particle\",\"source\":\"p.coax\",\"vertex\":\"pv\",\"fragment\":\"pf\",\"wgsl_vertex\":\"vs\",\"wgsl_fragment\":\"fs\",\"binding_set\":1,\"uses\":[{\"resource\":0,\"slot\":2,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2}]}]}";
+#test "catalog tool transforms frozen fields and every pass independently" {
+  nodes:[512]JvNode;doc:[1]Jv;#assert jv_parse(doc[..],RTC_TEST_SNAPSHOT,nodes[..]);d:=doc[0];
+  for name,i:RTC_KINDS {#assert rtc_kind(name)==i;}#assert rtc_kind("unknown")== -1;
+  profile:=jv_at(d,jv_get(d,0,"profiles"),0);#assert rtc_pass(d,profile,"background")==0 && rtc_pass(d,profile,"particle")==1 && rtc_pass(d,profile,"hud")== -1;
+  out:[16384]u8;expected:=rtc_expected(d,out[..]);got_nodes:[512]JvNode;got_doc:[1]Jv;#assert jv_parse(got_doc[..],expected,got_nodes[..]);g:=got_doc[0];row:=jv_at(g,0,0);
+  #assert jv_len(g,0)==1 && jv_get(g,row,"module")== -1 && jv_get(g,row,"feature_bits")== -1 && jv_kind(g,jv_get(g,row,"valid"))==JV_TRUE && jv_raw(g,jv_get(g,row,"app"))=="app";
+  bindings:=jv_get(g,row,"bindings");#assert jv_len(g,bindings)==2 && jv_int(g,jv_get(g,jv_at(g,jv_at(g,bindings,0),0),"kind"),-1)==0 && jv_int(g,jv_get(g,jv_at(g,jv_at(g,bindings,1),0),"kind"),-1)==2;
+  pipelines:=jv_get(g,row,"pipelines");#assert jv_len(g,pipelines)==13;
+  for i:0..<13 {p:=jv_at(g,pipelines,i);#assert (jv_kind(g,jv_get(g,p,"valid"))==JV_TRUE)==(i==0 || i==9);}
+  p:=jv_at(g,pipelines,9);#assert jv_raw(g,jv_get(g,p,"source"))=="p.coax" && jv_int(g,jv_get(g,p,"binding_set"),-1)==1 && jv_len(g,jv_get(g,p,"uses"))==1;
+  empty:=jv_at(g,pipelines,1);#assert jv_int(g,jv_get(g,empty,"binding_set"),-1)==0;
+  for key:[4]string.["slug","page","assets","listed"] {#assert rtq_equal(d,jv_get(d,profile,key),g,jv_get(g,row,key));}
+  #assert rtc_expected(d,out[0..<8])=="";
+}
+#test "catalog consumer inventory keeps a tracked legacy realm explicit" {
+  nodes:[512]JvNode;doc:[1]Jv;#assert jv_parse(doc[..],RTC_TEST_SNAPSHOT,nodes[..]);
+  manifest:[256]JvNode;live:[1]Jv;out:[8192]u8;
+  #assert jv_parse(live[..],"{\"worlds\":[{\"realm\":{\"slug\":\"tiny\",\"module\":\"app\"}},{\"realm\":{\"slug\":\"anime-lab\",\"module\":\"animelab\"}}]}",manifest[..]);
+  result:=rtc_consumers(doc[0],live[0],out[..]);#assert result.ok && result.count==2 && result.shared==1 && result.legacy==1;
+  expected:="[{\"slug\":\"tiny\",\"app\":\"app\",\"profile\":0,\"route\":\"shared\",\"declaration\":{\"slug\":\"tiny\",\"module\":\"app\"}},{\"slug\":\"anime-lab\",\"app\":\"animelab\",\"profile\":-1,\"route\":\"tracked legacy\",\"declaration\":{\"slug\":\"anime-lab\",\"module\":\"animelab\"}}]";
+  want_nodes:[128]JvNode;want:[1]Jv;got_nodes:[128]JvNode;got:[1]Jv;#assert jv_parse(want[..],expected,want_nodes[..]);
+  #assert result.bytes==expected.count && jv_parse(got[..],cast(string)out[0..<result.bytes],got_nodes[..]) && rtq_equal(want[0],0,got[0],0);
+  for bad:[4]string.["{\"worlds\":[]}", "{\"worlds\":[{\"realm\":{\"slug\":\"tiny\",\"module\":\"wrong\"}}]}", "{\"worlds\":[{\"realm\":{\"slug\":\"future\",\"module\":\"animelab\"}}]}", "{\"worlds\":[{\"realm\":{\"slug\":\"tiny\",\"module\":\"app\"}},{\"realm\":{\"slug\":\"tiny\",\"module\":\"app\"}}]}"] {#assert jv_parse(live[..],bad,manifest[..]) && !rtc_consumers(doc[0],live[0],out[..]).ok;}
+}
+rtc_test_edit :: (text:string,needle:string,replacement:string,out:[]u8)->string {
+  at:=rtq_find(text,needle,0);#assert at>=0;o:[1]Jo;jo_start(o[..],out);jo_put(o[..],text[0..<at]);jo_put(o[..],replacement);jo_put(o[..],text[at+needle.count..<text.count]);return jo_text(o[..]);
+}
+#test "catalog source ranges and decoding bounds refuse malformed observations" {
+  for n:-1..<21 {#assert rtc_profile_count(n)==(n>=0 && n<=18);}
+  for first:-1..<5 {for count:-1..<5 {for limit:0..<4 {#assert rtc_range(first,count,limit)==(first>=0 && count>=0 && first+count<=limit);}}}
+  for n:-1..<67 {#assert rtc_decode_size(n,64)==(n>=0 && n<=64);}
+  nodes:[512]JvNode;doc:[1]Jv;data:[8192]u8;out:[16384]u8;
+  for field:[4]string.["\"pass_first\":0,","\"pass_count\":1,","\"binding_first\":0,","\"binding_count\":1,"] {
+    #assert jv_parse(doc[..],rtc_test_edit(RTC_TEST_SNAPSHOT,field,"",data[..]),nodes[..]) && rtc_expected(doc[0],out[..])=="";
+    if field=="\"pass_count\":1," {p:=jv_at(doc[0],jv_get(doc[0],0,"profiles"),0);#assert rtc_pass(doc[0],p,"background")== -3;}
+  }
+  #assert jv_parse(doc[..],"{\"profiles\":{}}",nodes[..]) && rtc_expected(doc[0],out[..])=="";
+  #assert jv_parse(doc[..],rtc_test_edit(RTC_TEST_SNAPSHOT,"\"particle_binding_count\":1","\"particle_binding_count\":0",data[..]),nodes[..]);
+  expected:=rtc_expected(doc[0],out[..]);e_nodes:[512]JvNode;e_doc:[1]Jv;#assert jv_parse(e_doc[..],expected,e_nodes[..]);e:=e_doc[0];b:=jv_get(e,jv_at(e,0,0),"bindings");#assert jv_len(e,jv_at(e,b,0))==1 && jv_len(e,jv_at(e,b,1))==0;
+  #assert jv_parse(doc[..],rtc_test_edit(RTC_TEST_SNAPSHOT,"\"particle_pass_first\":1","\"particle_pass_first\":0",data[..]),nodes[..]);p:=jv_at(doc[0],jv_get(doc[0],0,"profiles"),0);#assert rtc_pass(doc[0],p,"background")== -2 && rtc_expected(doc[0],out[..])=="";
+}
+#test "catalog asset-list transport preserves empty members and all separators" {
+  nodes:[64]JvNode;doc:[1]Jv;out:[32]u8;
+  #assert jv_parse(doc[..],"{\"assets\":[\"a\",\"b\"]}",nodes[..]);#assert rtc_assets(doc[0],0,out[..])==3 && cast(string)out[0..<3]=="a\nb";
+  #assert rtc_assets(doc[0],0,out[0..<1])== -1;
+  #assert jv_parse(doc[..],"{\"assets\":[\"\"]}",nodes[..]) && rtc_assets(doc[0],0,out[..])==0;
+  #assert jv_parse(doc[..],"{\"assets\":[1]}",nodes[..]) && rtc_assets(doc[0],0,out[..])== -1;
+  #assert jv_parse(doc[..],"{\"assets\":{}}",nodes[..]) && rtc_assets(doc[0],0,out[..])== -1;
+}
+#test "catalog consumers reject unknown fallback aliases and invalid pages" {
+  nodes:[512]JvNode;doc:[1]Jv;#assert jv_parse(doc[..],RTC_TEST_SNAPSHOT,nodes[..]);manifest:[256]JvNode;live:[1]Jv;out:[8192]u8;
+  for bad:[4]string.["{\"worlds\":[{\"realm\":{\"slug\":\"tiny\",\"module\":\"app\"}},{\"realm\":{\"slug\":\"future\",\"module\":\"animelab\"}}]}", "{\"worlds\":[{\"realm\":{\"slug\":\"tiny\",\"module\":\"app\"}},{\"realm\":{\"slug\":\"anime-lab\",\"module\":\"wrong\"}}]}", "{\"worlds\":[{\"realm\":{\"slug\":\"tiny\",\"module\":\"app\",\"page\":null}}]}", "{\"worlds\":[{\"realm\":{\"slug\":\"tiny\",\"module\":\"app\",\"assets\":[\"wrong\"]}}]}"] {#assert jv_parse(live[..],bad,manifest[..]) && !rtc_consumers(doc[0],live[0],out[..]).ok;}
+  #assert jv_parse(live[..],"{\"worlds\":[{}, {\"realm\":{\"slug\":\"tiny\",\"module\":\"app\"}}]}",manifest[..]) && rtc_consumers(doc[0],live[0],out[..]).ok && !rtc_consumers(doc[0],live[0],out[0..<1]).ok;
+  changed:[8192]u8;#assert jv_parse(doc[..],rtc_test_edit(RTC_TEST_SNAPSHOT,"\"page\":0,","",changed[..]),nodes[..]) && !rtc_consumers(doc[0],live[0],out[..]).ok;
+  #assert jv_parse(doc[..],"{\"profiles\":[]}",nodes[..]) && jv_parse(live[..],"{\"worlds\":{}}",manifest[..]) && !rtc_consumers(doc[0],live[0],out[..]).ok;
+}

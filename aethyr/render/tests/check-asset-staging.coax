@@ -1,0 +1,73 @@
+// Actual native asset CLI parity against the retained old implementation.
+// The optional ROOT is the checkout that still has render_assets.py.
+//   coax/web/tool.sh aethyr/render/tests/check-asset-staging.coax OUT ASSET_BINARY [ROOT] [ACTUAL_TABLE PACKAGE WEB_ROOT]
+#import "Basic";
+#load "../staging-files.coax";
+#load "../../../coax/lib/sys/proc.coax";
+
+as_copy :: (from:string,to:string)->bool {
+  bytes:[1048576]u8;n:=fs_read(from,bytes[..]);return n>=0 && fs_mkdir(fs_dir(to)) && fs_write(to,cast(string)bytes[0..<n]);
+}
+as_run :: (argv:[]string,success:bool,label:string,out:string)->bool {
+  stdout:[65536]u8;stderr:[65536]u8;start:=proc_now_ms();r:=proc_run(argv,180000,stdout[..],stderr[..]);
+  record:[16384]u8;w:[1]Jo;jo_start(w[..],record[..]);jo_obj(w[..]);jo_key(w[..],"argv");jo_arr(w[..]);for a:argv {jo_str(w[..],a);}jo_end(w[..]);jo_key(w[..],"started");jo_int(w[..],r.started);jo_key(w[..],"exit");jo_int(w[..],r.status);jo_key(w[..],"timed_out");jo_bool(w[..],r.timed_out);jo_key(w[..],"cut");jo_bool(w[..],r.cut);jo_key(w[..],"elapsed_ms");jo_int(w[..],proc_now_ms()-start);jo_end(w[..]);
+  path:[FS_PATH_MAX]u8;name:[256]u8;o:[1]Jo;jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],".json");if !fs_write(fs_join(out,jo_text(o[..]),path[..]),jo_text(w[..])) {return false;}
+  jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],".stderr");if !fs_write(fs_join(out,jo_text(o[..]),path[..]),cast(string)stderr[0..<r.err_n]) {return false;}
+  ok:=r.started==0 && !r.timed_out && !r.cut && r.status==(ifx success then 0 else 1);if !ok {tool_err("FAIL ");tool_errln(label);tool_err(cast(string)stderr[0..<r.err_n]);}return ok;
+}
+as_same :: (a:string,b:string)->bool {
+  x:[16777216]u8;y:[16777216]u8;n:=fs_read(a,x[..]);m:=fs_read(b,y[..]);if n<0 || n!=m || cast(string)x[0..<n]!=cast(string)y[0..<m] {tool_err("asset byte mismatch: ");tool_err(a);tool_err(" / ");tool_errln(b);return false;}return true;
+}
+as_table :: (path:string,url:string,flags:string)->bool {
+  bytes:[8192]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_put(o[..],"{\"schema\":\"aethyr.render.assets.v1\",\"profile_index\":7,\"app\":\"fixture\",\"slug\":\"fixture\",\"rows\":[");
+  for i:0..<4 {if i>0 {jo_put(o[..],",");}jo_put(o[..],"{\"row\":");jo_int(o[..],i);jo_put(o[..],",\"pack_part\":");jo_int(o[..],i+1);jo_put(o[..],",\"initial\":");jo_put(o[..],flags);jo_put(o[..],",\"gpu_required\":true,\"urls\":[");jo_quoted(o[..],url);jo_put(o[..],"]}");}
+  jo_put(o[..],",{\"initial\":false,\"gpu_required\":false,\"urls\":[\"https://not-a-local-stream\"]}]}");return !o[0].bad && fs_write(path,jo_text(o[..]));
+}
+as_actual :: (table:string,package:string,web:string,image:string,reference:string,out:string)->bool {
+  paths:[6][FS_PATH_MAX]u8;old:=fs_join(out,"actual-python",paths[0][..]);fresh:=fs_join(out,"actual-coax",paths[1][..]);
+  before:[16777216]u8;count:=fs_read(image,before[..]);hash:[64]u8;if count<0 || !S_hex(S_hash(cast(string)before[0..<count]),hash[..]) {return false;}
+  old_args:=[10]string.["python3",reference,"--table",table,"--package",package,"--web-root",web,"--output",old];new_args:=[9]string.[image,"--table",table,"--package",package,"--web-root",web,"--output",fresh];
+  if !as_run(old_args[..],true,"actual-python",out) || !as_run(new_args[..],true,"actual-coax",out) {return false;}
+  a:[FS_PATH_MAX]u8;b:[FS_PATH_MAX]u8;
+  for file:[3]string.["assets.json","staging.json","realms/everglade/assets/everglade.pack"] {if !as_same(fs_join(old,file,a[..]),fs_join(fresh,file,b[..])) {return false;}}
+  if !as_same(table,fs_join(fresh,"assets.json",a[..])) || !as_same(fs_join(web,"realms/everglade/assets/everglade.pack",a[..]),fs_join(fresh,"realms/everglade/assets/everglade.pack",b[..])) {return false;}
+  raw:[65536]u8;n:=fs_read(fs_join(fresh,"staging.json",a[..]),raw[..]);doc:[1]Jv;nodes:[128]JvNode;if n<0 || !jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]) {return false;}
+  if jv_len(doc[0],jv_get(doc[0],0,"files"))!=1 {tool_errln("expanded pack table did not copy exactly one container");return false;}
+  if !as_copy(table,fs_join(out,"actual-table.json",a[..])) || !as_copy(package,fs_join(out,"actual-package.json",a[..])) {return false;}
+  after:=fs_read(image,before[..]);after_hash:[64]u8;if after<0 || !S_hex(S_hash(cast(string)before[0..<after]),after_hash[..]) || cast(string)after_hash[..]!=cast(string)hash[..] {return false;}
+  receipt:[2048]u8;o:[1]Jo;jo_start(o[..],receipt[..]);jo_obj(o[..]);jo_key(o[..],"image_sha256");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"image_fence");jo_str(o[..],"equal");jo_key(o[..],"copied_containers");jo_int(o[..],1);jo_key(o[..],"status");jo_str(o[..],"actual typed table, original table bytes, complete container and receipt match");jo_end(o[..]);
+  if !fs_write(fs_join(out,"actual-qualification.json",a[..]),jo_text(o[..])) {return false;}print("asset staging actual Everglade: original typed table, full container and receipt match; four delivery rows copy one container\n");return true;
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])<2 {tool_errln("usage: check-asset-staging OUT ASSET_BINARY [ROOT]");return 2;}
+  out:=args_at(args[..],0);image:=args_at(args[..],1);root:=args_at(args[..],2);if root.count==0 {root=".";}
+  if !fs_mkdir(out) {return 1;}paths:[12][FS_PATH_MAX]u8;
+  image_bytes:[16777216]u8;image_count:=fs_read(image,image_bytes[..]);image_hash:[64]u8;if image_count<0 || !S_hex(S_hash(cast(string)image_bytes[0..<image_count]),image_hash[..]) {return 1;}
+  ref:=fs_join(out,"reference/render_assets.py",paths[0][..]);src:=fs_join(root,"verse/native/render_assets.py",paths[1][..]);if !as_copy(src,ref) {return 1;}
+  if args_count(args[..])>3 {return ifx as_actual(args_at(args[..],3),args_at(args[..],4),args_at(args[..],5),image,ref,out) then 0 else 1;}
+  web:=fs_join(out,"web",paths[2][..]);table:=fs_join(out,"table.json",paths[3][..]);package:=fs_join(out,"package.json",paths[4][..]);old:=fs_join(out,"python",paths[5][..]);fresh:=fs_join(out,"coax",paths[6][..]);
+  if !fs_mkdir(web) || !fs_mkdir(old) || !fs_mkdir(fresh) {return 1;}
+  local:[FS_PATH_MAX]u8;if !fs_write(fs_join(web,"world.pack",local[..]),"container\0bytes") || !fs_write(package,"{\"profile_index\":7,\"app\":\"fixture\",\"slug\":\"fixture\"}") || !as_table(table,"/world.pack","true") {return 1;}
+  for directory:[2]string.[old,fresh] {if !fs_write(fs_join(directory,"textures.config",local[..]),"measured mips") {return 1;}}
+  old_args:=[10]string.["python3",ref,"--table",table,"--package",package,"--web-root",web,"--output",old];new_args:=[9]string.[image,"--table",table,"--package",package,"--web-root",web,"--output",fresh];
+  if !as_run(old_args[..],true,"valid-python",out) || !as_run(new_args[..],true,"valid-coax",out) {return 1;}
+  a:[FS_PATH_MAX]u8;b:[FS_PATH_MAX]u8;for file:[4]string.["world.pack","assets.json","staging.json","textures.config"] {if !as_same(fs_join(old,file,a[..]),fs_join(fresh,file,b[..])) {return 1;}}
+  if !as_same(table,fs_join(fresh,"assets.json",a[..])) || !as_same(fs_join(web,"world.pack",a[..]),fs_join(fresh,"world.pack",b[..])) {return 1;}
+  urls:=[6]string.["/../outside","//outside","/a/./b","/a?b","/missing","/escape"];
+  outside:=fs_join(out,"outside",paths[7][..]);escape:=fs_join(web,"escape",paths[8][..]);if !fs_write(outside,"outside root") {return 1;}link:=[4]string.["ln","-s",outside,escape];if !as_run(link[..],true,"make-escape",out) {return 1;}
+  for i:0..<6 {
+    if !as_table(table,urls[i],"true") {return 1;}
+    label:[128]u8;o:[1]Jo;jo_start(o[..],label[..]);jo_put(o[..],"refuse-");jo_int(o[..],i);jo_put(o[..],"-python");if !as_run(old_args[..],false,jo_text(o[..]),out) {return 1;}
+    jo_start(o[..],label[..]);jo_put(o[..],"refuse-");jo_int(o[..],i);jo_put(o[..],"-coax");if !as_run(new_args[..],false,jo_text(o[..]),out) {return 1;}
+    for file:[4]string.["world.pack","assets.json","staging.json","textures.config"] {if !as_same(fs_join(old,file,a[..]),fs_join(fresh,file,b[..])) {return 1;}}
+  }
+  if !as_table(table,"/world.pack","1") || !as_run(old_args[..],false,"flags-python",out) || !as_run(new_args[..],false,"flags-coax",out) {return 1;}
+  if !as_table(table,"/world.pack","true") || !fs_write(package,"{\"profile_index\":8,\"app\":\"fixture\",\"slug\":\"fixture\"}") || !as_run(old_args[..],false,"identity-python",out) || !as_run(new_args[..],false,"identity-coax",out) {return 1;}
+  if !fs_write(package,"{\"profile_index\":7,\"app\":\"fixture\",\"slug\":\"fixture\"}") {return 1;}
+  inside:=fs_join(web,"stay",paths[9][..]);target:=fs_join(web,"world.pack",paths[10][..]);link[2]=target;link[3]=inside;
+  if !as_run(link[..],true,"make-inside",out) || !as_table(table,"/stay","true") || !as_run(old_args[..],true,"inside-python",out) || !as_run(new_args[..],true,"inside-coax",out) {return 1;}
+  for file:[3]string.["stay","assets.json","staging.json"] {if !as_same(fs_join(old,file,a[..]),fs_join(fresh,file,b[..])) {return 1;}}
+  after:=fs_read(image,image_bytes[..]);after_hash:[64]u8;if after<0 || !S_hex(S_hash(cast(string)image_bytes[0..<after]),after_hash[..]) || cast(string)after_hash[..]!=cast(string)image_hash[..] {tool_errln("asset CLI image changed during parity run");return 1;}
+  receipt:[1024]u8;o:[1]Jo;jo_start(o[..],receipt[..]);jo_obj(o[..]);jo_key(o[..],"image");jo_str(o[..],image);jo_key(o[..],"sha256");jo_str(o[..],cast(string)image_hash[..]);jo_key(o[..],"before_after");jo_str(o[..],"equal");jo_end(o[..]);if !fs_write(fs_join(out,"qualified-image.json",a[..]),jo_text(o[..])) {return 1;}
+  print("asset staging: byte-identical container, original table and receipt; deduplicated pack rows; lazy/unrelated observations preserved; path, symlink escape, flags and identity refusals preserve publication; in-root symlink admitted\n");return 0;
+}

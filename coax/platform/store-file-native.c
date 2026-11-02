@@ -167,6 +167,31 @@ int64_t cxfs_read(void) {
 }
 int64_t cxfs_byte(int64_t i) { return i >= 0 && i < fs_data_n ? fs_data[i] : -1; }
 
+/* One caller-selected range. The platform reports short reads and EOF;
+   chunking, expected lengths, comparison and content identity stay in Coax. */
+int64_t cxfs_read_at(int64_t offset, int64_t count) {
+  const char *p = take_path();
+  free(fs_data); fs_data = NULL; fs_data_n = 0;
+  if (!p || offset < 0 || count < 0) return -1;
+  int f = open(p, O_RDONLY | O_CLOEXEC);
+  if (f < 0) return -1;
+  struct stat st;
+  if (fstat(f, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size < 0) { close(f); return -1; }
+  int64_t available = offset >= st.st_size ? 0 : st.st_size - offset;
+  int64_t wanted = count < available ? count : available;
+  fs_data = malloc(wanted > 0 ? (size_t)wanted : 1);
+  if (!fs_data) { close(f); return -1; }
+  int64_t got = 0;
+  while (got < wanted) {
+    ssize_t r = pread(f, fs_data + got, (size_t)(wanted - got), (off_t)(offset + got));
+    if (r < 0 && errno == EINTR) continue;
+    if (r < 0) { close(f); free(fs_data); fs_data = NULL; return -1; }
+    if (r == 0) break;
+    got += r;
+  }
+  close(f); fs_data_n = got; return got;
+}
+
 int64_t cxfs_put(int64_t byte) {
   if (byte < 0 || byte > 255) return -1;
   if (fs_out_n == fs_out_cap) {
@@ -345,4 +370,15 @@ int64_t cxfs_entry_byte(int64_t i, int64_t j) {
 int64_t cxfs_cwd(void) {
   if (!getcwd(fs_name, sizeof fs_name)) { fs_name[0] = 0; return -1; }
   return (int64_t)strlen(fs_name);
+}
+
+int64_t cxfs_realpath(void) {
+  const char *p = take_path();
+  if (!p) return -1;
+  char *resolved = realpath(p, NULL);
+  if (!resolved) return -1;
+  size_t n = strlen(resolved);
+  if (n > CXFS_PATH_MAX) { free(resolved); return -1; }
+  memcpy(fs_name, resolved, n + 1);
+  free(resolved); return (int64_t)n;
 }

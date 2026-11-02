@@ -1,0 +1,58 @@
+{
+  "schema": "aethyr.package.qualification.tool-port.v1",
+  "date": "2026-11-02",
+  "status": "port qualified; native observations use an explicitly identified older qualified compiler",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_matches_current_sources": false,
+  "native_receipt": "native-receipt.json",
+  "native_receipt_sha256": "58b22af9230e6f43ea309d6bb3b8de4d810b157eb58e8918bf2ffe4e53b7dea5",
+  "qualifier_executable_sha256": "b28f260e97bb7b09acfc403c28c65ce2b408377eba880a86dad602176726fe58",
+  "source_sha256": {
+    "aethyr/render/tests/check-package.coax": "7b2142cbcdcab457ef926f64afe2945389463b237829910db203de04e43b160a",
+    "aethyr/render/tests/native-qualification.coax": "fba13943f3ac468308a3687da49735172cbbaaa97678c1cbbd723649372b4e71",
+    "aethyr/render/tests/package-tool-policy.coax": "30bc711f79849f54eeb1d1219b1f6dd92d91213bdbe9a3d594bc1b2bf6c59bc0",
+    "aethyr/render/tests/package-tool-checks.coax": "a31382126c76d7b9afc2b4699d98f7804725791e0000ab04b48e7b0bd2c67e42",
+    "aethyr/render/tests/check-package-tooling.coax": "2032ad30e8726d9669a88f30f1bf9b3859f3b84eba979c595cee14a15118e7fa"
+  },
+  "checks_first": "The authored complete-record, slot, malformed-manifest and compiler-gate checks failed against stubs before implementation; the original failure is retained.",
+  "authority": {
+    "file": "aethyr/render/tests/package-tool-policy.coax",
+    "scope": "root-only; dependency checks retained",
+    "mutants": 290,
+    "killed": 290,
+    "survived": 0,
+    "equivalent_waivers_added": 0,
+    "earlier_failures": "First baseline failure, two survivor-bearing iterations and an invalid maximum-integer expectation are retained; the final source removed uncovered unused-variable sites and independently checks the strict/exploratory compiler gate."
+  },
+  "native": {
+    "profiles": 18,
+    "modes": ["debug", "release", "sanitized"],
+    "observations_per_mode": 130,
+    "producer_loss_controls_per_mode": ["profile", "module_count", "entry_count", "resource", "attribute", "borrow"],
+    "negative_manifest_controls_per_mode": 14,
+    "corrupt_product_controls_per_mode": ["module_bytes", "spirv_bytes", "tree_bytes"],
+    "elapsed_seconds": 29.642,
+    "result": "Every complete parsed receipt, every entry's actual fetched products and guarded short-view refusal agree with the independently transformed JSON; every producer loss disagrees with the complete receipt.",
+    "fences": "Selected compiler, qualifier executable, product and qualifier Coax closures, linked native effect sources, immutable declaration snapshot and supplied package manifests/products match before/after.",
+    "receipt_continuity": "Existing package.native.v1 root/mode fields and mode.json transcript files retained; compiler/source/executable provenance added; all three transcript hashes read back."
+  },
+  "same_input_parity": {
+    "reference": "Original unchanged check_package.py functions are invoked only as an archived reference; Coax owns all orchestration and verdicts.",
+    "expected": "All fields of plain and fetched-product expected receipts match original Python transformation for each of the 18 exact manifests.",
+    "negative_bytes": "All 14 negative manifests match Python's exact raw JSON bytes, including default separators, truncation and duplicate root key; names and parse/admit status projections match.",
+    "abi": "Original Python and Coax accept the actual six-record native header and reject added RenderPackageEntry and missing tree_file fields.",
+    "default_stale_compiler": "Controlled compiler records only version and source-digest; exactly those six command files exist, with no dependency scan, emission or receipt.",
+    "image_fence": "Native receipt identifies the same qualifier image used for parity; qualifier and mock compiler hashes match before/after."
+  },
+  "retired_reference_input": {
+    "path": "aethyr/render/tests/check_package.py",
+    "sha256": "2a897523e8c39c8e5e6fe94e63a40f5fe2f390e06da1ee5347357ab1be2bfaea",
+    "retention": "Original bytes archived and read back with matching SHA-256 before deletion; no runnable current Python copy retained."
+  },
+  "archive": {
+    "path": "artifacts-and-reference.tar.gz",
+    "bytes": 3264532,
+    "sha256": "4d0e4362aa81e76ee2d1a7cf63aa32e6626da448bcad1345015e00acf8ebb5a1"
+  },
+  "limits": "Explicit --explore-stale-compiler records status exploratory and compiler_current_sources_match=false. Default mismatch refuses before emission. This does not satisfy final current-source/compiler or release gates and makes no shader arithmetic, full SPIRV validity or GPU image claim."
+}

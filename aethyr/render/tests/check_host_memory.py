@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent unbounded-integer alignment, allocation-end and page-count oracle for native staging receipts).
 """Normal-C staging ABI against independent unbounded-integer endpoints."""
 import hashlib
 import json

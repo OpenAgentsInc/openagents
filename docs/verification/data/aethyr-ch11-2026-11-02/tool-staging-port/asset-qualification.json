@@ -1,0 +1,69 @@
+{
+  "schema": "aethyr.render.asset-staging.port.v1",
+  "status": "qualified; native caller switched and old Python tool/tests deleted",
+  "date": "2026-11-02",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_matches_latest_main": false,
+  "source_sha256": {
+    "aethyr/render/asset-staging-policy.coax": "048f42cad05548dbe6f943f802cacd4d971a0931a028ef0ba2422a9e2e64401e",
+    "aethyr/render/tests/asset-staging-checks.coax": "e96b410872cdba407039a65f0b9f15c46c9aac90454e559e1a8ca0c2e32d0420",
+    "verse/native/render-assets.coax": "4a1179ea9f6c2377cce3336ac0cb70b1f9cdbb9b14004f2f5a8321f85c0b86d7",
+    "first_synthetic_parity_driver_historical": "dffe199870ad38820a69b15041adaf12527718f9727e5620a9a25c3e6ee00088",
+    "aethyr/render/tests/check-asset-staging.coax": "1a83ea91a8e2ffa7ce010bef616005f630ccf5d8acc73908b3d07e76786cb5ca",
+    "coax/lib/sys/fs.coax": "241f27df91bdf73bbe7256046ffb91789dbefa14706ddd0b00edd81b89c5d35b",
+    "coax/platform/store-file-native.c": "09bb2edc659c914c2edc9341c104f51c4df24565bc960c8d1572722575a326d5",
+    "coax/platform/store-file-native.h": "d941594ef14d8dff1015d6d10b0b7f9c943cd2ce9d5b6853de273936edbbf3b2"
+  },
+  "checks_first": "Canonical URL/root and table/dedup groups failed against authored stubs before implementation; raw assertion failures retained.",
+  "mutation": {
+    "command": "/tmp/aethyr-authority-budget-qualified-1fac/coax mutate aethyr/render/asset-staging-policy.coax --library --root-only --jobs 4",
+    "mutants": 133,
+    "killed": 133,
+    "survived": 0,
+    "equivalent_waivers_added": 0,
+    "prior_runs_retained": "134/115/19 then 133/132/1; sharper boundary, empty-list, identity and first-container dedup checks; no equivalent marks"
+  },
+  "qualified_cli_sha256": "536caa781042792e42303e918aac5101ed74a158ceefe1182189e57f67ee74b6",
+  "before_after_image_fences": "equal in synthetic and actual-payload observations",
+  "synthetic_parity": {
+    "current_driver_sha256": "1a83ea91a8e2ffa7ce010bef616005f630ccf5d8acc73908b3d07e76786cb5ca",
+    "dispatch_follow_up": "After adding the optional actual-table dispatch branch, the changed harness's default synthetic route was exercised again against the retained reference. Both final modes now bind the same tracked driver bytes, also retained in the archive; unchanged pure policy mutation was reused.",
+    "reference": "pre-port render_assets.py",
+    "exact_bytes": "complete binary container, untouched original table, pretty staging.json receipt and unrelated textures.config",
+    "deduplication": "four delivery rows produce exactly one physical-container copy",
+    "lazy_inputs": "the non-local lazy URL is never read",
+    "refusals": "parent traversal, double slash, dot segment, query URL, missing file, physical symlink escape, non-boolean flags and wrong profile all refuse in both implementations; prior table, receipt and observations remain equal",
+    "physical_alias": "an in-root symlink is accepted with byte-identical output"
+  },
+  "actual_payload_parity": {
+    "table_command": "COAX=/tmp/aethyr-authority-budget-qualified-1fac/coax coax/web/tool.sh aethyr/render/build.coax --asset-table everglade",
+    "builder_image_sha256": "a0753707f592eab9a6dd6d80e1db73757c1db92e66a79abea230e8d98ce63ec5",
+    "asset_profile_source_sha256": "7b86793b25e78deab91386d3ddebe383501e7bd2111f9e521b8dc0a3636b63a7",
+    "table_bytes": 1094,
+    "table_sha256": "584d1e14c7fa015538c1dcd50616dffe407166d3d0bc946ffeaabfdbea6384b3",
+    "container": "apps/openagents-web/realms/everglade/assets/everglade.pack",
+    "container_bytes": 9039012,
+    "container_sha256": "5595e2a3839bb38bd2cd839c688bb9a13a64ed23958fda84907e03c0dc90f8d8",
+    "result": "current typed asset table, complete actual container and staging receipt are byte-identical to the old tool; four delivery rows copy one container",
+    "package_scope": "The retained earlier Everglade package supplies the same profile/app/slug identity; this check does not qualify a new GPU package or rendered frame."
+  },
+  "reference_retention": {
+    "original_render_assets_py_sha256": "7bf2700ad58448aa20e32de13bd5ba3fac82fce0c5420031c3ced7ff5ecbef7d",
+    "readback": "reference member extracted from the compressed archive and SHA-256 matched before deleting the current Python tool"
+  },
+  "bounds": {
+    "table_and_package_bytes": 262144,
+    "rows": 48,
+    "distinct_urls": 128,
+    "retained_bytes": 268435456,
+    "receipt_bytes": 1048576,
+    "publication": "all source bytes and identities precede destination writes; individual files and assets.json use sibling-and-rename; no global compiler or engine budget changed"
+  },
+  "archive": {
+    "path": "asset-parity-and-reference.tar.gz",
+    "bytes": 8275066,
+    "sha256": "e7c7186b40aef6393fd87a12247464e38f8a29def03b4c891670c5a4191d49da",
+    "symlink_fixtures": "The two live test symlinks in each synthetic trial are excluded from the archive; their creation commands, targets, exits, refusal/acceptance records and compared output bytes remain retained."
+  },
+  "limits": "This is asset-copy qualification. It does not decode assets, establish runtime readiness, acquire HTTP/video media, qualify GPU rendering or claim production release readiness."
+}

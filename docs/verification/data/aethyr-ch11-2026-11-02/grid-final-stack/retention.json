@@ -1,0 +1,23 @@
+{
+  "schema": "aethyr.grid.final-stack-retention.v1",
+  "archive": "artifacts.tar.gz",
+  "sha256": "a80fdf7a589443bc07917ab5dcae2a2bae57abd24caf19dcaf8b9bf809613b51",
+  "bytes": 3801168,
+  "regular_payload_files_including_manifest": 82,
+  "manifest": "sha256.txt (inside archive)",
+  "manifest_sha256": "174224d025093bc17410280d02578be6c518ac01dec96b57a49f64def4549cea",
+  "manifest_hash_checked_payloads": 81,
+  "readback": "A fresh extraction passed shasum -a256 -c sha256.txt for all81listed files, then diff -qr against the exact source payload tree exited0. readback.log retains every checked path.",
+  "contents": [
+    "proof/newland.wasm: exact actual optimized Grid artifact SHA2af335c88be062782ada00ba59fd4327178262cf070d67c355efb5ece9ca89cf",
+    "proof/aethyr-grid-journey-final.disasm: direct LLVM decoding of those exact bytes",
+    "proof/callgraph-final.json: all506function rows,174export bounds, SP dataflow counts, table and arena calculations",
+    "admitted/: exact already admitted four C units and five headers; no Coax emission was rerun",
+    "objects/: nine C-only diagnostic objects, .su rows and -MD dependency lists; no product link occurred",
+    "controls/: nine hand-authored Wasm fixtures, their direct disassemblies, exact oracle refusals and two16-byte successful receipts",
+    "sources/: maintained oracle, Coax harness, first-declared control specification, matching Grid face, four other faces, reviewed browser/HTTP host source, exact older-compiler control executable, README and qualification record"
+  ],
+  "standalone_callgraph": "callgraph.json",
+  "standalone_callgraph_sha256": "df6af7aab057d6249d1cfd8461142999228b1665b8ce8578afe7f2bda38d3cd1",
+  "artifact_binding": "These records cover only the exact retained final optimized Wasm. The mathematical oracle is independently maintained; the other embedded tool/host sources are immutable snapshots, not another maintained implementation."
+}

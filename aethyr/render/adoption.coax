@@ -1,0 +1,35 @@
+// Catalogue admission and actual consumer adoption are different facts.
+// A newly published realm keeps its explicit existing renderer until its
+// shared profile is implemented and qualified. Unknown identities refuse.
+#load "catalog.coax";
+#authority;
+RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1; }
+
+#test "shared adoption binds each catalog slug to its actual producer" {
+  for i: 0..<RENDER_CATALOG_COUNT {
+    p := render_catalog(i); route := render_adoption(p.slug, p.app);
+    #assert route.shared && !route.tracked_legacy && route.profile == i;
+    #assert !render_adoption(p.slug, "not-the-producer").shared;
+  }
+}
+#test "Anime Lab remains an explicitly tracked legacy consumer" {
+  route := render_adoption("anime-lab", "animelab");
+  #assert !route.shared && route.tracked_legacy && route.profile == -1;
+  #assert !render_adoption("anime-lab", "newland").tracked_legacy;
+  #assert !render_adoption("the-grid", "animelab").tracked_legacy;
+}
+#test "unknown page identities cannot gain a fallback renderer" {
+  for slug: [5] string.["", "future-realm", "anime-la", "anime-lab/", "../anime-lab"] {
+    route := render_adoption(slug, "animelab");
+    #assert !route.shared && !route.tracked_legacy && route.profile == -1;
+  }
+}
+render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
+  index := render_catalog_find(slug);
+  if index >= 0 {
+    p := render_catalog(index);
+    if p.app == app { return RenderAdoption.{shared = true, profile = index}; }
+  }
+  if slug == "anime-lab" && app == "animelab" { return RenderAdoption.{tracked_legacy = true}; }
+  return RenderAdoption.{};
+}

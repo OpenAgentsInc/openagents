@@ -1,0 +1,1 @@
+{"schema":"aethyr.grid.actual-face-parity.v1","status":"passed","frames":240,"first_bad_frame":-1,"integer_fields_compared":2400,"exact_pose_words_compared":2400,"step_marks_compared":254,"scope":"Actual producer face physics/input/interpolated-pose/replay parity. Native GPU execution and image comparison are separate qualifications."}

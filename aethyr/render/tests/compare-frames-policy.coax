@@ -1,0 +1,96 @@
+// Complete raw-image comparison policy. Finite values, every RGBA channel,
+// unchanged 0.002 relative/floor rule and no exclusion mask.
+#module "aethyr.render.tool.compare.frames";
+#authority;
+#load "compare-frames-checks.coax";
+CFStatus :: enum u8 {ok;different;bad_extent;bad_format;bad_length;bad_sequence;}
+CFSample :: struct {x:int;y:int;channel:int;cpu:f64;gpu:f64;absolute_error:f64;bound:f64;nonfinite:bool;}
+CFResult :: struct {
+ status:CFStatus;pixels:int;channels:int;processed:int;colour_failures:int;nonfinite_failures:int;
+ max_absolute_error:f64;max_normalized_error:f64;sample_count:int;samples:[16]CFSample;
+}
+cf_format :: (format:string)->int {
+ if format=="rgba32f" {return 0;}if format=="rgba16f" {return 1;}
+ if format=="rgba8" {return 2;}if format=="bgra8" {return 3;}return -1;
+}
+cf_stride :: (format:int)->int {return ifx format==0 then 16 else ifx format==1 then 8 else 4;}
+cf_half :: (bits:u32)->f64 {
+ sign:=(cast(u64)bits&32768)<<48;exponent:=(bits>>10)&31;mantissa:=bits&1023;
+ if exponent==31 {return cf_nonfinite(mantissa!=0,(bits>>15)==1);}
+ if exponent==0 {
+  value:=cast(f64)mantissa*0.000000059604644775390625;
+  return f64_from_bits(f64_bits(value)|sign);
+ }
+ return f64_from_bits(sign|((cast(u64)exponent+1008)<<52)|(cast(u64)mantissa<<42));
+}
+cf_nonfinite :: (nan:bool,negative:bool)->f64 {
+ if nan {return 0.0/0.0;}return ifx negative then -1.0/0.0 else 1.0/0.0;
+}
+cf_finite :: (value:f64)->bool {return value-value==0;}
+cf_u32 :: (bytes:[]u8,at:int)->u32 {
+ return cast(u32)bytes[at]|(cast(u32)bytes[at+1]<<8)|(cast(u32)bytes[at+2]<<16)|(cast(u32)bytes[at+3]<<24);
+}
+cf_value :: (bytes:[]u8,format:int,pixel:int,channel:int)->f64 {
+ if format==0 {
+  word:=cf_u32(bytes,pixel*16+channel*4);
+  if (word&0x7f800000)==0x7f800000 {return cf_nonfinite((word&0x7fffff)!=0,(word>>31)==1);}
+  return cast(f64)f32_from_bits(word);
+ }
+ if format==1 {at:=pixel*8+channel*2;return cf_half(cast(u32)bytes[at]|(cast(u32)bytes[at+1]<<8));}
+ lane:=channel;
+ if format==3 && (channel==0 || channel==2) {lane=2-channel;}
+ return cast(f64)bytes[pixel*4+lane]/255;
+}
+cf_begin :: (width:int,height:int,format:int,cpu_bytes:int,gpu_bytes:int)->CFResult {
+ if width<1 || height<1 || width>16384 || height>16384 {return CFResult.{status=CFStatus.bad_extent};}
+ if format<0 || format>3 {return CFResult.{status=CFStatus.bad_format};}
+ pixels:=width*height;
+ if cpu_bytes!=pixels*16 || gpu_bytes!=pixels*cf_stride(format) {return CFResult.{status=CFStatus.bad_length};}
+ return CFResult.{pixels=pixels,channels=pixels*4};
+}
+// State comes unchanged from begin/the prior returned chunk. Chunks are
+// complete pixels, in order, and at most 4096 pixels per bounded operation.
+cf_accumulate :: (prior:CFResult,cpu:[]u8,gpu:[]u8,format:int,width:int,first:int)->CFResult {
+ r:=prior;
+ if format<0 || format>3 {r.status=CFStatus.bad_format;return r;}
+ if cpu.count%16!=0 || gpu.count!=(cpu.count/16)*cf_stride(format) {r.status=CFStatus.bad_length;return r;}
+ n:=cpu.count/16;
+ if width<1 || first!=r.processed || n>r.pixels-first || n>4096 {
+  r.status=CFStatus.bad_sequence;return r;
+ }
+ for pixel:0..<n {
+  for channel:0..<4 {
+   expected:=cf_value(cpu,0,pixel,channel);actual:=cf_value(gpu,format,pixel,channel);
+   sample:=CFSample.{x=(first+pixel)%width,y=(first+pixel)/width,channel=channel,cpu=expected,gpu=actual};
+   failed:=false;
+   if !cf_finite(expected) || !cf_finite(actual) {
+    r.nonfinite_failures+=1;sample.nonfinite=true;failed=true;
+   }else {
+    difference:=abs(actual-expected);scale:=cf_max(abs(expected),1);
+    r.max_absolute_error=cf_max(r.max_absolute_error,difference);
+    normalized:=difference/scale;r.max_normalized_error=cf_max(r.max_normalized_error,normalized);
+    sample.absolute_error=difference;sample.bound=0.002*scale;
+    if difference>sample.bound {r.colour_failures+=1;failed=true;}
+   }
+   if failed {
+    r.status=CFStatus.different;
+    if r.sample_count<16 {r.samples[r.sample_count]=sample;r.sample_count+=1;}
+   }
+  }
+ }
+ r.processed+=n;return r;
+}
+// Both operands are finite nonnegative error magnitudes. The sign of their
+// difference selects one unchanged binary64 word, including exact ties.
+cf_max :: (a:f64,b:f64)->f64 {
+ mask:=(f64_bits(a-b)>>63)*18446744073709551615;
+ return f64_from_bits(f64_bits(a)^((f64_bits(a)^f64_bits(b))&mask));
+}
+cf_done :: (result:CFResult)->CFResult {
+ r:=result;if r.processed!=r.pixels {r.status=CFStatus.bad_sequence;}return r;
+}
+cf_compare :: (cpu:[]u8,gpu:[]u8,format:int,width:int,height:int)->CFResult {
+ r:=cf_begin(width,height,format,cpu.count,gpu.count);
+ if r.status!=CFStatus.ok {return r;}
+ return cf_done(cf_accumulate(r,cpu,gpu,format,width,0));
+}

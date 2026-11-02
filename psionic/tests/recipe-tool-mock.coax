@@ -1,0 +1,31 @@
+// Controlled compiler effects for the recipe tool's CLI and byte checks.
+// It reads the existing fixtures; it performs no model evaluation.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  mode_buf: [256] u8; mode := proc_getenv("RECIPE_TOOL_MODE", mode_buf[..]);
+  log_buf: [4096] u8; calls_path := proc_getenv("RECIPE_TOOL_LOG", log_buf[..]);
+  if calls_path == "" { return 2; }
+  line_buf: [4096] u8; line: [1] Jo; jo_start(line[..], line_buf[..]);
+  for i: 0..<args_count(a[..]) {
+    if i > 0 { jo_put(line[..], " "); }
+    jo_put(line[..], args_at(a[..], i));
+  }
+  jo_put(line[..], "\n"); if !fs_append(calls_path, jo_text(line[..])) { return 2; }
+  command := args_at(a[..], 0);
+  if command == "test" { return ifx mode == "test-fails" then 23 else 0; }
+  if command == "mutate" { return ifx mode == "mutation-fails" then 29 else 0; }
+  if command != "run" { return 2; }
+  path := args_at(a[..], 1); fixture := "";
+  if path == "psionic/examples/deepseek-recipe.coax" { fixture = "psionic/fixtures/deepseek-recipe/deepseek-recipe.out"; }
+  if path == "psionic/examples/deepseek-recipe-refuse.coax" { fixture = "psionic/fixtures/deepseek-recipe/deepseek-recipe-refuse.out"; }
+  if fixture == "" { return 2; }
+  out: [65536] u8; n := fs_read(fixture, out[..]); if n <= 0 { return 2; }
+  if mode == "newline-missing" { n -= 1; }
+  if mode == "nul-first" { out[0] = 0; }
+  print("%", cast(string) out[0..<n]); return 0;
+}

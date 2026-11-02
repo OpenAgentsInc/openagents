@@ -9,7 +9,22 @@
     "design_draft": 70
   },
   "current_chapter": 11,
-  "status": "stopped_at_user_request",
+  "status": "active_chapter_11_reconciliation_and_grid_route",
+  "resumed_2026_11_02": {
+    "latest_main_integrated": "8ed49c9b6a7f23c25b4f516993073441082b30b1",
+    "integration_checkpoint": "dbbfe6bf70360b6500a62a9a60213a6ce7ee725c",
+    "frame_api_qualification": "docs/verification/aethyr-frame-reconciliation-2026-11-02.json",
+    "tooling_plan": "docs/verification/aethyr-render-tooling-plan-2026-11-02.json",
+    "historical_tool_sources": "docs/verification/data/aethyr-ch11-2026-11-01/historical-tool-sources.md",
+    "grid_visual_migration": "docs/verification/data/aethyr-ch11-2026-11-02/grid-visual-migration/qualification.json",
+    "remaining": [
+      "Complete maintained tool ports and the enforced tools-check gate.",
+      "Qualify actual nongolden Start, walk, jump, shared rendering, resource refusal/recovery and replay on matching native/browser inputs.",
+      "Complete Everglade full-size changed-source runtime, resolve strict Dead Gears precision failure and explicitly track Anime Lab adoption.",
+      "Use explicit older qualified compiler provenance while #12638 is externally owned; perform final current-toolchain/release qualification after repair."
+    ],
+    "chapter_11_complete": false
+  },
   "deliveries": [
     {
       "chapter": 2,

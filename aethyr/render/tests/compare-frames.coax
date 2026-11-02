@@ -1,0 +1,134 @@
+// Complete all-channel raw-image comparison. Run from the repository root:
+// coax/web/tool.sh aethyr/render/tests/compare-frames.coax --cpu FILE --gpu FILE
+//   --gpu-format rgba16f --width W --height H --receipt FILE
+#import "Basic";
+#load "compare-frames-policy.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+CF_SOURCE :: "aethyr/render/tests/compare-frames.coax";
+CF_POLICY_SOURCE :: "aethyr/render/tests/compare-frames-policy.coax";
+CF_CHECK_SOURCE :: "aethyr/render/tests/compare-frames-checks.coax";
+CF_RULE :: "abs(gpu-cpu) <= 0.002 * max(1, abs(cpu)); both values finite";
+
+#test "comparison JSON keeps exact finite numbers signed zero and nonfinite labels" {
+  out:[4096]u8;o:[1]Jo;jo_start(o[..],out[..]);cf_json_number(o[..],1.5);
+  #assert jo_text(o[..])=="15000000000000000000000000000000000000000000000000000e-52";
+  jo_start(o[..],out[..]);cf_json_number(o[..],f64_from_bits(0x8000000000000000));#assert jo_text(o[..])=="-0.0";
+  jo_start(o[..],out[..]);cf_json_number(o[..],0.0/0.0);#assert jo_text(o[..])=="\"nan\"";
+  jo_start(o[..],out[..]);cf_json_number(o[..],1.0/0.0);#assert jo_text(o[..])=="\"+inf\"";
+  jo_start(o[..],out[..]);cf_json_number(o[..],-1.0/0.0);#assert jo_text(o[..])=="\"-inf\"";
+}
+// Emit the exact decimal value of one finite binary64 word. Decimal digits
+// are formed with integer multiply-by-2/5, so JSON parsing loses no bits.
+cf_json_number :: (o:[]Jo,value:f64) {
+  if !cf_finite(value) {
+    jo_str(o,ifx value!=value then "nan" else ifx value>0 then "+inf" else "-inf");return;
+  }
+  word:=f64_bits(value);negative:=(word>>63)==1;
+  if value==0 {jo_raw(o,ifx negative then "-0.0" else "0");return;}
+  exponent:=cast(int)((word>>52)&2047);mantissa:=word&0xfffffffffffff;
+  power:=ifx exponent==0 then -1074 else exponent-1075;
+  if exponent!=0 {mantissa|=0x10000000000000;}
+  digits:[1100]u8;n:=0;
+  while mantissa>0 {digits[n]=cast(u8)(mantissa%10);n+=1;mantissa/=10;}
+  factor:=ifx power<0 then 5 else 2;cycles:=ifx power<0 then -power else power;
+  for cycle:0..<cycles {
+    carry:=0;
+    for j:0..<n {v:=cast(int)digits[j]*factor+carry;digits[j]=cast(u8)(v%10);carry=v/10;}
+    if carry>0 {digits[n]=cast(u8)carry;n+=1;}
+  }
+  jo_value(o);if negative {jo_byte(o,'-');}
+  for j:0..<n {jo_byte(o,cast(u8)('0'+cast(int)digits[n-1-j]));}
+  if power<0 {
+    jo_put(o,"e-");decimal:[20]u8;count:=0;p:=-power;
+    while p>0 {decimal[count]=cast(u8)(p%10);count+=1;p/=10;}
+    for j:0..<count {jo_byte(o,cast(u8)('0'+cast(int)decimal[count-1-j]));}
+  }
+}
+cf_comparison_json :: (o:[]Jo,r:CFResult) {
+  jo_obj(o);jo_key(o,"status");jo_str(o,ifx r.status==CFStatus.ok then "pass" else "fail");
+  jo_key(o,"pixels");jo_int(o,r.pixels);jo_key(o,"channels");jo_int(o,r.channels);
+  jo_key(o,"colour_failures");jo_int(o,r.colour_failures);jo_key(o,"nonfinite_failures");jo_int(o,r.nonfinite_failures);
+  jo_key(o,"max_absolute_error");cf_json_number(o,r.max_absolute_error);
+  jo_key(o,"max_normalized_error");cf_json_number(o,r.max_normalized_error);
+  jo_key(o,"samples");jo_arr(o);
+  for i:0..<r.sample_count {
+    s:=r.samples[i];jo_obj(o);jo_key(o,"x");jo_int(o,s.x);jo_key(o,"y");jo_int(o,s.y);
+    channels:="rgba";jo_key(o,"channel");jo_str(o,channels[s.channel..<s.channel+1]);
+    jo_key(o,"cpu");cf_json_number(o,s.cpu);jo_key(o,"gpu");cf_json_number(o,s.gpu);
+    if !s.nonfinite {jo_key(o,"absolute_error");cf_json_number(o,s.absolute_error);jo_key(o,"bound");cf_json_number(o,s.bound);}
+    jo_key(o,"reason");jo_str(o,ifx s.nonfinite then "nonfinite" else "colour");jo_end(o);
+  }
+  jo_end(o);jo_key(o,"masked_pixels");jo_int(o,0);jo_key(o,"rule");jo_str(o,CF_RULE);jo_end(o);
+}
+cf_final_hash :: (state:[]u8,out:[]u8)->bool {
+  bytes:[32]u8;if sha256_final_checked(state,bytes[..],false)!=SHA_OK {return false;}
+  d:S_Digest;for k:0..<8 {d.words[k]=cb_load_be32(bytes[..],k*4).value;}
+  return S_hex(d,out);
+}
+cf_file_hash :: (path:string,out:[]u8,deadline:int)->bool {
+  length:=fs_size(path);if length<0 {return false;}state:[112]u8;
+  if sha256_init(state[..])!=SHA_OK {return false;}
+  data:[65536]u8;at:=0;
+  while at<length {
+    if proc_now_ms()>deadline {return false;}
+    count:=ifx length-at<data.count then length-at else data.count;
+    if fs_read_at(path,at,data[0..<count])!=count {return false;}
+    if sha256_update_checked(state[..],data[0..<count],false)!=SHA_OK {return false;}at+=count;
+  }
+  return fs_size(path)==length && cf_final_hash(state[..],out);
+}
+cf_input_json :: (o:[]Jo,path:string,format:string,bytes:int,hash:string) {
+  jo_obj(o);jo_key(o,"path");jo_str(o,path);jo_key(o,"format");jo_str(o,format);
+  jo_key(o,"bytes");jo_int(o,bytes);jo_key(o,"sha256");jo_str(o,hash);jo_end(o);
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) {tool_errln("comparison: arguments exceed the bound");return 2;}
+  width:=args_whole(args_value(args[..],"--width",""));height:=args_whole(args_value(args[..],"--height",""));
+  format_text:=args_value(args[..],"--gpu-format","");format:=cf_format(format_text);
+  cpu_name:[4096]u8;gpu_name:[4096]u8;
+  cpu_path:=fs_realpath(args_value(args[..],"--cpu",""),cpu_name[..]);gpu_path:=fs_realpath(args_value(args[..],"--gpu",""),gpu_name[..]);
+  receipt_path:=args_value(args[..],"--receipt","");
+  if cpu_path=="" || gpu_path=="" || receipt_path=="" {tool_errln("comparison: --cpu, --gpu and --receipt are required");return 2;}
+  cpu_bytes:=fs_size(cpu_path);gpu_bytes:=fs_size(gpu_path);r:=cf_begin(width,height,format,cpu_bytes,gpu_bytes);
+  if r.status!=CFStatus.ok {tool_errln("comparison: extent, format or complete payload length refused");return 2;}
+  deadline:=proc_now_ms()+830000;
+  source_hash:[64]u8;policy_hash:[64]u8;checks_hash:[64]u8;
+  if !cf_file_hash(CF_SOURCE,source_hash[..],deadline) || !cf_file_hash(CF_POLICY_SOURCE,policy_hash[..],deadline) || !cf_file_hash(CF_CHECK_SOURCE,checks_hash[..],deadline) {
+    tool_errln("comparison: run from the repository root");return 2;
+  }
+  cpu_state:[112]u8;gpu_state:[112]u8;
+  if sha256_init(cpu_state[..])!=SHA_OK || sha256_init(gpu_state[..])!=SHA_OK {return 2;}
+  cpu:[65536]u8;gpu:[65536]u8;
+  while r.processed<r.pixels {
+    if proc_now_ms()>deadline {tool_errln("comparison: bounded command deadline reached");return 2;}
+    count:=ifx r.pixels-r.processed<4096 then r.pixels-r.processed else 4096;
+    cn:=count*16;gn:=count*cf_stride(format);
+    if fs_read_at(cpu_path,r.processed*16,cpu[0..<cn])!=cn || fs_read_at(gpu_path,r.processed*cf_stride(format),gpu[0..<gn])!=gn {
+      tool_errln("comparison: input changed or a complete chunk could not be read");return 2;
+    }
+    if sha256_update_checked(cpu_state[..],cpu[0..<cn],false)!=SHA_OK || sha256_update_checked(gpu_state[..],gpu[0..<gn],false)!=SHA_OK {return 2;}
+    r=cf_accumulate(r,cpu[0..<cn],gpu[0..<gn],format,width,r.processed);
+  }
+  r=cf_done(r);cpu_hash:[64]u8;gpu_hash:[64]u8;again:[64]u8;
+  if !cf_final_hash(cpu_state[..],cpu_hash[..]) || !cf_final_hash(gpu_state[..],gpu_hash[..]) {return 2;}
+  if !cf_file_hash(cpu_path,again[..],deadline) || cast(string)again[..]!=cast(string)cpu_hash[..] {tool_errln("comparison: CPU bytes changed");return 2;}
+  if !cf_file_hash(gpu_path,again[..],deadline) || cast(string)again[..]!=cast(string)gpu_hash[..] {tool_errln("comparison: GPU bytes changed");return 2;}
+  if !cf_file_hash(CF_SOURCE,again[..],deadline) || cast(string)again[..]!=cast(string)source_hash[..]
+    || !cf_file_hash(CF_POLICY_SOURCE,again[..],deadline) || cast(string)again[..]!=cast(string)policy_hash[..]
+    || !cf_file_hash(CF_CHECK_SOURCE,again[..],deadline) || cast(string)again[..]!=cast(string)checks_hash[..] {tool_errln("comparison: source changed");return 2;}
+  comparison:[131072]u8;co:[1]Jo;jo_start(co[..],comparison[..]);cf_comparison_json(co[..],r);
+  output:[262144]u8;o:[1]Jo;jo_start(o[..],output[..]);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.image-comparison.v1");jo_key(o[..],"status");jo_str(o[..],ifx r.status==CFStatus.ok then "pass" else "fail");
+  jo_key(o[..],"width");jo_int(o[..],width);jo_key(o[..],"height");jo_int(o[..],height);
+  jo_key(o[..],"source_sha256");jo_str(o[..],cast(string)source_hash[..]);jo_key(o[..],"policy_sha256");jo_str(o[..],cast(string)policy_hash[..]);
+  jo_key(o[..],"comparison");jo_raw(o[..],jo_text(co[..]));jo_key(o[..],"inputs");jo_obj(o[..]);
+  jo_key(o[..],"cpu");cf_input_json(o[..],cpu_path,"rgba32f",cpu_bytes,cast(string)cpu_hash[..]);
+  jo_key(o[..],"gpu");cf_input_json(o[..],gpu_path,format_text,gpu_bytes,cast(string)gpu_hash[..]);jo_end(o[..]);
+  jo_key(o[..],"scope");jo_str(o[..],"Complete supplied readback/CPU image comparison, including alpha and all nonfinite values, without a mask. The enclosing host gate must establish matching frame and resource provenance.");jo_end(o[..]);
+  if o[0].bad || co[0].bad || !fs_write(receipt_path,jo_text(o[..])) {tool_errln("comparison: receipt could not be written");return 2;}
+  print("%\n",jo_text(co[..]));return ifx r.status==CFStatus.ok then 0 else 1;
+}

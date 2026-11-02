@@ -1,0 +1,146 @@
+// Coax writes one declared320x180 final-state capture and its raw RFI transport.
+// Browser glue only reads GPU/producer bytes; it does not assemble this record.
+#load "../../coax/lib/net/cdp.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+
+GridCaptureText :: struct { bytes:[262144]u8; n:int; bad:bool; }
+#test "capture filenames and numeric fields cannot escape the frozen transport" {
+  #assert gc_name("pipeline-0-abc.tree") && gc_name("render.json") && !gc_name("../secret") && !gc_name("a b") && !gc_name("");
+  t:[1]GridCaptureText;gc_put(t[..],"a ");gc_num(t[..],42);gc_put(t[..],"\n");
+  #assert gc_text(t[..])=="a 42\n" && !t[0].bad;
+  gc_num(t[..],-1);#assert t[0].bad;
+}
+#test "a captured package must equal the frozen package supplied to the other backends" {
+  cn:[64]JvNode;pn:[64]JvNode;c:[1]Jv;p:[1]Jv;
+  #assert jv_parse(c[..],"{\"package\":{\"profile_index\":1}}",cn[..]) && jv_parse(p[..],"{\"profile_index\":1}",pn[..]) && gc_package_same(c[0],0,p[0]);
+  #assert jv_parse(p[..],"{\"profile_index\":2}",pn[..]) && !gc_package_same(c[0],0,p[0]);
+  #assert jv_parse(c[..],"{}",cn[..]) && !gc_package_same(c[0],0,p[0]);
+}
+gc_package_same :: (capture:Jv,root:int,package:Jv)->bool {
+  node:=jv_get(capture,root,"package");
+  return jv_kind(capture,node)==JV_OBJECT && jv_kind(package,0)==JV_OBJECT && jv_raw(capture,node)==jv_raw(package,0);
+}
+gc_name :: (s:string)->bool {
+  if s.count<1 || s.count>255 || s[0]=='.' {return false;}
+  for c:s {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='-' || c=='_' || c=='.') {return false;}}
+  return true;
+}
+gc_put :: (t:[]GridCaptureText,s:string) {
+  if t[0].n+s.count>t[0].bytes.count {t[0].bad=true;return;}
+  for k:0..<s.count {t[0].bytes[t[0].n+k]=s[k];}t[0].n+=s.count;
+}
+gc_num :: (t:[]GridCaptureText,n:int) {
+  if n<0 {t[0].bad=true;return;}
+  d:[24]u8;at:=ws_digits(d[..],0,n);
+  if at<0 {t[0].bad=true;return;}gc_put(t,cast(string)d[0..<at]);
+}
+gc_text :: (t:[]GridCaptureText)->string {return cast(string)t[0].bytes[0..<t[0].n];}
+gc_int :: (d:Jv,node:int,key:string)->int {return jv_int(d,jv_path(d,node,key),-1);}
+gc_word :: (t:[]GridCaptureText,d:Jv,node:int,key:string) {gc_num(t,gc_int(d,node,key));gc_put(t," ");}
+gc_file :: (dir:string,name:string,bytes:string)->bool {p:[4096]u8;return fs_write(fs_join(dir,name,p[..]),bytes);}
+gc_hashed :: (dir:string,name:string,bytes:string,expected:string)->bool {
+  h:[64]u8;return S_hex(S_hash(bytes),h[..]) && cast(string)h[..]==expected && gc_file(dir,name,bytes);
+}
+gc_binary :: (c:[]Cdp,dir:string,name:string,kind:int,index:int,expected:string)->bool {
+  expression:[128]u8;o:[1]Jo;jo_start(o[..],expression[..]);jo_put(o[..],"gridJourneyCaptureBytes(");
+  jo_int(o[..],kind);jo_put(o[..],",");jo_int(o[..],index);jo_put(o[..],")");
+  at:=cdp_evaluate(c,jo_text(o[..]));if at<0 {return false;}
+  bytes:[20971520]u8;
+  n:=b64_decode(jv_raw(c[0].doc[0],at),bytes[..]);
+  if n<0 {return false;}
+  return ifx expected.count>0 then gc_hashed(dir,name,cast(string)bytes[0..<n],expected) else gc_file(dir,name,cast(string)bytes[0..<n]);
+}
+gc_product :: (dir:string,source_dir:string,name:string,expected:string)->bool {
+  if !gc_name(name) || expected.count!=64 {return false;}
+  path:[4096]u8;bytes:[4194304]u8;
+  n:=fs_read(fs_join(source_dir,name,path[..]),bytes[..]);
+  return n>=0 && gc_hashed(dir,name,cast(string)bytes[0..<n],expected);
+}
+gc_capture :: (c:[]Cdp,dir:string,package_dir:string)->bool {
+  // Resize is a distinct host observation after the playable960x540 route.
+  if cdp_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":320,\"height\":180,\"deviceScaleFactor\":1,\"mobile\":false}",30000)<0 {return false;}
+  at:=cdp_evaluate(c,"globalThis.gridJourneyBeforeResize=gridJourneyRead()");
+  if at<0 {return false;}
+  extent:=false;
+  for attempt:0..<4 {
+    at=cdp_evaluate(c,"(async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));await coaxialClipStep(1,Infinity);return gridJourneyRead()})()");
+    if at<0 {return false;}
+    if !gc_file(dir,"resize.json",jv_raw(c[0].doc[0],at)) {return false;}
+    d:=c[0].doc[0];
+    if gc_int(d,at,"viewport.width")==320 && gc_int(d,at,"viewport.height")==180 {extent=true;break;}
+  }
+  if !extent {return false;}
+  at=cdp_evaluate(c,"(async()=>{coaxial.captureFrame();await coaxialClipStep(1,Infinity);return gridJourneyRead()})()");
+  if at<0 {return false;}
+  until:=proc_now_ms()+120000;ready:=false;
+  while proc_now_ms()<until {
+    at=cdp_evaluate(c,"!!globalThis.coaxial?.renderCapture?.frame_validation?.ok");
+    if at>=0 && jv_raw(c[0].doc[0],at)=="true" {ready=true;break;}
+    proc_sleep(25);
+  }
+  if !ready {return false;}
+  at=cdp_evaluate(c,"gridJourneyCaptureInfo()");if at<0 {return false;}
+  // Keep metadata in separate storage: later CDP byte replies replace c.doc.
+  text:[262144]u8;raw:=jv_raw(c[0].doc[0],at);
+  if raw.count>text.count {return false;}
+  for k:0..<raw.count {text[k]=raw[k];}n:=raw.count;
+  nodes:[16384]JvNode;doc:[1]Jv;
+  if !jv_parse(doc[..],cast(string)text[0..<n],nodes[..]) {return false;}
+  d:=doc[0];
+  if !gc_file(dir,"capture.json",cast(string)text[0..<n]) {return false;}
+  if gc_int(d,0,"width")!=320 || gc_int(d,0,"height")!=180 || jv_raw(d,jv_path(d,0,"format"))!="rgba16float" ||
+    jv_raw(d,jv_path(d,0,"frame_validation.ok"))!="true" || jv_len(d,jv_get(d,0,"media_images"))!=0 {return false;}
+  if !gc_binary(c,dir,"gpu.bin",0,0,jv_raw(d,jv_get(d,0,"sha256"))) ||
+    !gc_binary(c,dir,"u.bin",1,0,"") || !gc_binary(c,dir,"hud.bin",2,0,"") ||
+    !gc_binary(c,dir,"draws.bin",3,0,"") || !gc_binary(c,dir,"indices.bin",4,0,"") || !gc_file(dir,"media.txt","") {return false;}
+  // The frozen package is copied byte for byte, with every declared product's
+  // SHA checked. No shader is compiled or rewritten by this capture tool.
+  ppath:[4096]u8;package_bytes:[262144]u8;
+  pn:=fs_read(fs_join(package_dir,"render.json",ppath[..]),package_bytes[..]);
+  pnodes:[16384]JvNode;pd:[1]Jv;
+  if pn<0 || !jv_parse(pd[..],cast(string)package_bytes[0..<pn],pnodes[..]) ||
+    gc_int(pd[0],0,"profile_index")!=1 || !gc_package_same(d,0,pd[0]) || !gc_file(dir,"render.json",cast(string)package_bytes[0..<pn]) {return false;}
+  entries:=jv_get(pd[0],0,"entries");modules:=jv_get(pd[0],0,"modules");
+  for k:0..<jv_len(pd[0],modules) {
+    e:=jv_at(pd[0],modules,k);
+    if !gc_product(dir,package_dir,jv_raw(pd[0],jv_get(pd[0],e,"wgsl_file")),jv_raw(pd[0],jv_get(pd[0],e,"wgsl_sha256"))) {return false;}
+  }
+  for k:0..<jv_len(pd[0],entries) {
+    e:=jv_at(pd[0],entries,k);
+    if !gc_product(dir,package_dir,jv_raw(pd[0],jv_get(pd[0],e,"tree_file")),jv_raw(pd[0],jv_get(pd[0],e,"tree_sha256"))) ||
+      !gc_product(dir,package_dir,jv_raw(pd[0],jv_get(pd[0],e,"spirv_file")),jv_raw(pd[0],jv_get(pd[0],e,"spirv_sha256"))) {return false;}
+  }
+  t:[1]GridCaptureText;gc_put(t[..],"1 ");
+  fields:=[11]string.["width","height","admitted_hud","vertex_stride","admitted_draws","counts.water","counts.grass","counts.particles","counts.surface","counts.caster_vertices","counts.caster_instances"];
+  for field:fields {gc_word(t[..],d,0,field);}
+  coarse:=jv_raw(d,jv_get(d,0,"coarse"));if coarse!="true" && coarse!="false" {return false;}
+  gc_put(t[..],ifx coarse=="true" then "1\n" else "0\n");
+  gc_put(t[..],"u.bin\nhud.bin\ndraws.bin\nindices.bin\nrender.json\n");
+  gc_num(t[..],jv_len(pd[0],entries));gc_put(t[..],"\n");
+  for k:0..<jv_len(pd[0],entries) {
+    e:=jv_at(pd[0],entries,k);gc_word(t[..],pd[0],e,"entry_index");gc_put(t[..],jv_raw(pd[0],jv_get(pd[0],e,"tree_file")));gc_put(t[..],"\n");
+  }
+  buffers:=jv_get(d,0,"buffers");gc_num(t[..],jv_len(d,buffers));gc_put(t[..],"\n");
+  for k:0..<jv_len(d,buffers) {
+    b:=jv_at(d,buffers,k);name:=jv_raw(d,jv_get(d,b,"file"));
+    if !gc_name(name) || !gc_binary(c,dir,name,5,k,"") {return false;}
+    gc_put(t[..],jv_raw(d,jv_get(d,b,"name")));gc_put(t[..]," ");gc_put(t[..],name);gc_put(t[..]," ");
+    keys:=[6]string.["source_capacity","logical_payload","initialized_highwater","upload_bytes","gpu_bytes","zero_initialized"];
+    for key:keys {gc_word(t[..],d,b,key);}gc_put(t[..],"\n");
+  }
+  textures:=jv_get(d,0,"textures");
+  if jv_len(d,textures)<1 {return false;}
+  gc_put(t[..],"textures ");gc_num(t[..],jv_len(d,textures));gc_put(t[..],"\n");
+  for k:0..<jv_len(d,textures) {
+    texture:=jv_at(d,textures,k);name:=jv_raw(d,jv_get(d,texture,"file"));levels:=jv_get(d,texture,"levels");
+    if !gc_name(name) || !gc_binary(c,dir,name,6,k,jv_raw(d,jv_get(d,texture,"sha256"))) {return false;}
+    gc_put(t[..],jv_raw(d,jv_get(d,texture,"name")));gc_put(t[..]," ");gc_put(t[..],jv_raw(d,jv_get(d,texture,"format")));gc_put(t[..]," ");
+    gc_word(t[..],d,texture,"layers");gc_num(t[..],jv_len(d,levels));gc_put(t[..]," ");gc_put(t[..],name);gc_put(t[..],"\n");
+    for j:0..<jv_len(d,levels) {
+      level:=jv_at(d,levels,j);keys:=[5]string.["width","height","offset","row_bytes","layer_bytes"];
+      for key:keys {gc_word(t[..],d,level,key);}gc_put(t[..],"\n");
+    }
+  }
+  gc_put(t[..],"media_text media.txt\nmedia_images 0\n");
+  return !t[0].bad && gc_file(dir,"frame.config",gc_text(t[..]));
+}

@@ -1,0 +1,165 @@
+// Pack immutable historical tool-source receipts without changing a byte.
+// Build/run from the repository root:
+//   COAX=/qualified/coax coax/web/tool.sh aethyr/render/tools/evidence-sources.coax pack OUT.tar.gz [--retire]
+//   ... verify OUT.tar.gz [--restore EMPTY_DIRECTORY]
+// OUT.tar.gz.sources.tsv binds each original path, byte count and SHA256.
+// OUT.tar.gz.sha256 binds the archive. Verification extracts into an owned
+// temporary directory and checks every byte before any source is retired.
+// tar performs compression/filesystem effects; Coax owns selection and checks.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/crypto/sha256-kernel.coax";
+#load "evidence-source-policy.coax";
+ES_BYTES :: 33554432;
+ES_PATHS :: 262144;
+ES_COUNT :: 512;
+EsRow :: struct { path: string; bytes: int; digest: [64] u8; }
+
+#test "decimal receipts have no sign or ignored suffix" {
+  #assert es_number("0") == 0 && es_number("123") == 123;
+  #assert es_number("") == -1 && es_number("-1") == -1 && es_number("1x") == -1;
+  #assert es_number("33554432") == ES_BYTES && es_number("33554433") == -1;
+}
+es_number :: (s: string) -> int {
+  if s.count == 0 { return -1; }
+  n := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) c - '0'; if n > ES_BYTES { return -1; } }
+  return n;
+}
+es_decimal :: (n: int, out: [] u8) -> string {
+  scratch: [24] u8; k := 0; v := n;
+  while true { scratch[k] = cast(u8) ('0' + v % 10); k += 1; v /= 10; if v == 0 { break; } }
+  for i: 0..<k { out[i] = scratch[k - 1 - i]; }
+  return cast(string) out[0..<k];
+}
+es_cat :: (a: string, b: string, out: [] u8) -> string {
+  if a.count + b.count > out.count { return ""; }
+  for i: 0..<a.count { out[i] = a[i]; }
+  for i: 0..<b.count { out[a.count + i] = b[i]; }
+  return cast(string) out[0..<a.count + b.count];
+}
+es_run :: (argv: [] string) -> bool {
+  out: [ES_PATHS] u8; err: [65536] u8;
+  r := proc_run(argv, 60000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut {
+    tool_errln(cast(string) err[0..<r.err_n]); return false;
+  }
+  return true;
+}
+es_hash_file :: (path: string, out: [] u8, data: [] u8) -> int {
+  n := fs_read(path, data); if n < 0 { return -1; }
+  if !S_hex(S_hash(cast(string) data[0..<n]), out) { return -1; }
+  return n;
+}
+es_rows :: (text: string, rows: [] EsRow) -> int {
+  at := 0; n := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    tab := at; while tab < end && text[tab] != '\t' { tab += 1; }
+    tab2 := tab + 1; while tab2 < end && text[tab2] != '\t' { tab2 += 1; }
+    if n >= rows.count || tab >= end || tab2 >= end { return -1; }
+    path := text[at..<tab]; size := es_number(text[tab + 1..<tab2]); digest := text[tab2 + 1..<end];
+    if !es_source_path(path) || size < 0 || !es_digest_ok(digest) { return -1; }
+    for i: 0..<n { if rows[i].path == path { return -1; } }
+    rows[n].path = path; rows[n].bytes = size;
+    for i: 0..<64 { rows[n].digest[i] = digest[i]; }
+    n += 1; at = end + 1;
+  }
+  return n;
+}
+es_verify :: (archive: string, rows: [] EsRow, data: [] u8, restore: string) -> bool {
+  // Inspect before extraction: exact permitted members, all regular files.
+  // A hash-bound archive is still refused if it contains links or extra paths.
+  names: [ES_PATHS] u8; details: [ES_PATHS] u8; err: [4096] u8;
+  list_args := [3] string.["tar", "-tzf", archive];
+  ls := proc_run(list_args[..], 60000, names[..], err[..]);
+  verbose_args := [3] string.["tar", "-tvzf", archive];
+  vs := proc_run(verbose_args[..], 60000, details[..], err[..]);
+  if ls.started != 0 || ls.status != 0 || ls.cut || vs.started != 0 || vs.status != 0 || vs.cut { return false; }
+  at := 0;
+  for row: rows {
+    end := at; while end < ls.out_n && names[end] != '\n' { end += 1; }
+    if cast(string) names[at..<end] != row.path { return false; }
+    at = end;
+    if at < ls.out_n { at += 1; }
+  }
+  if at != ls.out_n { return false; }
+  at = 0; regular := 0;
+  while at < vs.out_n {
+    if details[at] != '-' { return false; }
+    while at < vs.out_n && details[at] != '\n' { at += 1; }
+    at += 1; regular += 1;
+  }
+  if regular != rows.count { return false; }
+  temp_buf: [4096] u8; temp := fs_temp("aethyr-source-readback-", temp_buf[..]);
+  if temp == "" { return false; }
+  args := [5] string.["tar", "-xzf", archive, "-C", temp];
+  if !es_run(args[..]) { removed := fs_remove(temp); return false; }
+  path_buf: [8192] u8; actual: [64] u8; ok := true;
+  for i: 0..<rows.count {
+    row := rows[i]; expected := row.digest;
+    path := fs_join(temp, row.path, path_buf[..]); n := es_hash_file(path, actual[..], data);
+    if !es_same(row.bytes, n, cast(string) expected[..], cast(string) actual[..]) { print("readback differs: %\n", row.path); ok = false; }
+  }
+  if ok && restore != "" {
+    if fs_exists(restore) { tool_errln("restore destination must not exist"); ok = false; }
+    else { ok = fs_rename(temp, restore); if ok { print("restored historical source paths under %\n", restore); return true; } }
+  }
+  removed := fs_remove(temp);
+  return ok && removed;
+}
+tool_main :: () -> int #export_c {
+  args: [1] Args; if !args_load(args[..]) || args_count(args[..]) < 2 { tool_errln("usage: evidence-sources pack|verify ARCHIVE.tar.gz [--retire|--restore NEW_DIR]"); return 2; }
+  mode := args_at(args[..], 0); archive := args_at(args[..], 1);
+  index_buf: [8192] u8; hash_buf: [8192] u8;
+  index := es_cat(archive, ".sources.tsv", index_buf[..]); hash_path := es_cat(archive, ".sha256", hash_buf[..]);
+  if index == "" || hash_path == "" { return 2; }
+  data: [ES_BYTES] u8; listing: [ES_PATHS] u8; receipts: [ES_PATHS] u8; rows: [ES_COUNT] EsRow;
+  count := 0; receipt_n := 0; digest: [64] u8;
+  if mode == "pack" {
+    if fs_exists(archive) || fs_exists(index) || fs_exists(hash_path) { tool_errln("refuse to replace an existing historical archive"); return 2; }
+    argv := [4] string.["git", "ls-files", "--", ES_ROOT]; err: [4096] u8;
+    r := proc_run(argv[..], 60000, listing[..], err[..]);
+    if r.started != 0 || r.status != 0 || r.cut { return 1; }
+    at := 0;
+    while at < r.out_n {
+      end := at; while end < r.out_n && listing[end] != '\n' { end += 1; }
+      path := cast(string) listing[at..<end]; at = end + 1;
+      if !es_source_path(path) { continue; }
+      if count >= rows.count { return 1; }
+      n := es_hash_file(path, rows[count].digest[..], data[..]); if n < 0 { return 1; }
+      rows[count].path = path; rows[count].bytes = n; count += 1;
+      decimal: [24] u8; size := es_decimal(n, decimal[..]);
+      pieces := [6] string.[path, "\t", size, "\t", cast(string) rows[count - 1].digest[..], "\n"];
+      for piece: pieces { if receipt_n + piece.count > receipts.count { return 1; } for c: piece { receipts[receipt_n] = c; receipt_n += 1; } }
+    }
+    if count == 0 { tool_errln("no historical tool sources selected"); return 1; }
+    list_buf: [4096] u8; list_dir := fs_temp("aethyr-source-list-", list_buf[..]); path_buf: [8192] u8;
+    list_path := fs_join(list_dir, "paths", path_buf[..]);
+    if list_dir == "" || !fs_write(list_path, "") { return 1; }
+    for row: rows[0..<count] { if !fs_append(list_path, row.path) || !fs_append(list_path, "\n") { return 1; } }
+    tar := [6] string.["tar", "-czf", archive, "-T", list_path, ""];
+    made := es_run(tar[0..<5]); removed := fs_remove(list_dir);
+    if !made || !removed || !es_verify(archive, rows[0..<count], data[..], "") { return 1; }
+    if es_hash_file(archive, digest[..], data[..]) < 0 { return 1; }
+    if !fs_write(index, cast(string) receipts[0..<receipt_n]) || !fs_write(hash_path, cast(string) digest[..]) { return 1; }
+    if args_has(args[..], "--retire") {
+      // Recheck the live copies after archival verification, before deletion.
+      for i: 0..<count {
+        row := rows[i]; expected := row.digest;
+        actual: [64] u8; n := es_hash_file(row.path, actual[..], data[..]);
+        if !es_same(row.bytes, n, cast(string) expected[..], cast(string) actual[..]) { return 1; }
+      }
+      for row: rows[0..<count] { if !fs_remove(row.path) { return 1; } }
+    }
+  } else if mode == "verify" {
+    rn := fs_read(index, receipts[..]); hn := fs_read(hash_path, digest[..]); actual: [64] u8;
+    if rn < 0 || hn != 64 || es_hash_file(archive, actual[..], data[..]) < 0 || cast(string) digest[..] != cast(string) actual[..] { return 1; }
+    count = es_rows(cast(string) receipts[0..<rn], rows[..]);
+    if count <= 0 || !es_verify(archive, rows[0..<count], data[..], args_value(args[..], "--restore", "")) { return 1; }
+  } else { return 2; }
+  print("historical tool sources: % complete byte/hash readbacks; archive SHA256 %\n", count, cast(string) digest[..]);
+  return 0;
+}

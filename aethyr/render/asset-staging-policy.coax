@@ -1,0 +1,51 @@
+// Admission for native copies of the existing typed asset table.
+#load "staging-policy.coax";
+#authority;
+RAS_URLS :: 128;
+RasPlan :: struct {ok:bool;count:int;urls:[RAS_URLS][4096]u8;lengths:[RAS_URLS]int;profile:int;slug:[4096]u8;slug_count:int;}
+#load "tests/asset-staging-checks.coax";
+ras_url :: (s:string)->bool {
+  if s.count<2 || s[0]!='/' {return false;}
+  begin:=1;
+  for c,i:s {
+    if c=='\\' || c=='?' || c=='#' || c==0 {return false;}
+    if c=='/' && i>0 {if !ras_segment(s[begin..<i]) {return false;}begin=i+1;}
+  }
+  return ras_segment(s[begin..<s.count]);
+}
+ras_segment :: (s:string)->bool {return s.count>0 && s!="." && s!="..";}
+// Both arguments are the platform's canonical existing paths.
+ras_inside :: (root:string,path:string)->bool {
+  if root=="/" {return path.count>1 && path[0]=='/';}
+  return path.count>root.count && path[0..<root.count]==root && path[root.count]=='/';
+}
+ras_flags :: (initial:int,required:int)->int {
+  if (initial!=JV_TRUE && initial!=JV_FALSE) || (required!=JV_TRUE && required!=JV_FALSE) {return -1;}
+  return ifx initial==JV_TRUE || required==JV_TRUE then 1 else 0;
+}
+ras_parse :: (table:string,package:string)->RasPlan {
+  p:RasPlan;doc:[1]Jv;nodes:[8192]JvNode;
+  if !jv_parse(doc[..],table,nodes[..]) {return p;}d:=doc[0];
+  schema:[64]u8;n:=jv_str(d,jv_get(d,0,"schema"),schema[..]);expected:="aethyr.render.assets.v1";
+  if n!=expected.count {return p;}if cast(string)schema[0..<n]!=expected {return p;}
+  app:[4096]u8;app_count:=jv_str(d,jv_get(d,0,"app"),app[..]);p.slug_count=jv_str(d,jv_get(d,0,"slug"),p.slug[..]);
+  if !ras_string_size(app_count) || !ras_string_size(p.slug_count) {return p;}
+  id:=rsp_read_identity(package,cast(string)app[0..<app_count],cast(string)p.slug[0..<p.slug_count]);
+  p.profile=jv_int(d,jv_get(d,0,"profile_index"),-1);if !id.ok || p.profile!=id.profile {return p;}
+  rows:=jv_get(d,0,"rows");row_count:=rsp_array_length(d,rows);if !ras_row_count(row_count) {return p;}
+  for i:0..<row_count {
+    row:=jv_at(d,rows,i);flags:=ras_flags(jv_kind(d,jv_get(d,row,"initial")),jv_kind(d,jv_get(d,row,"gpu_required")));
+    if flags<0 {return p;}if flags==0 {continue;}
+    urls:=jv_get(d,row,"urls");count:=rsp_array_length(d,urls);if count<0 {return p;}
+    for k:0..<count {
+      bytes:[4096]u8;size:=jv_str(d,jv_at(d,urls,k),bytes[..]);if !ras_string_size(size) {return p;}
+      url:=cast(string)bytes[0..<size];if !ras_url(url) {return p;}
+      seen:=false;for old:0..<p.count {if cast(string)p.urls[old][0..<p.lengths[old]]==url {seen=true;}}
+      if seen {continue;}if p.count==RAS_URLS {return p;}
+      p.urls[p.count]=bytes;p.lengths[p.count]=size;p.count+=1;
+    }
+  }
+  p.ok=true;return p;
+}
+ras_string_size :: (n:int)->bool {return n>=0 && n<=4096;}
+ras_row_count :: (n:int)->bool {return n>=0 && n<=48;}

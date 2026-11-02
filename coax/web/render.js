@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser WebGPU resource and submission effects for admitted Coax render plans).
 // Effects adapter for admitted Coax package/frame/binding plans. Numeric
 // selectors below are renderer transport ABI1; no realm table lives here.
 const number = (x) => Number(x);
@@ -500,8 +501,10 @@ export class RenderHost {
           : source === this.ids.source.pass_source ? this.target(this.op(operationIndex, 7))
           : source === this.ids.source.layers ? this.layerTexture
           : source === this.ids.source.media_image ? media?.object.texture : null;
+        // Absence is a zero-layer physical observation. Coax owns its
+        // refusal, so a missing allocation preserves a retryable frame.
+        if (x.coaxial_render_texture_shape(set, resource, texture?.depthOrArrayLayers ?? 0, texture?.format === "depth32float" ? 1 : 0, media?.line ?? -1) !== 1) throw new RenderRefusal("Coax refused actual texture shape");
         if (!texture) throw Error("admitted image has no platform allocation");
-        if (x.coaxial_render_texture_shape(set, resource, texture.depthOrArrayLayers, texture.format === "depth32float" ? 1 : 0, media?.line ?? -1) !== 1) throw new RenderRefusal("Coax refused actual texture shape");
         physical = texture.createView({ dimension: request.viewDimension });
       }
       entries[group].push({ binding, resource: physical });

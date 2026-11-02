@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent real-number interpolation and explicitly named quantization models for recorded GPU observations).
 """Fit declared numerical candidates to independent GPU filter observations.
 
 This is diagnostic tooling. It neither changes a renderer profile nor grants a

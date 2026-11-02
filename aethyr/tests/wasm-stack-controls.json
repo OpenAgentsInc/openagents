@@ -1,0 +1,14 @@
+{
+  "schema": "aethyr.wasm-stack-controls.v1",
+  "required_controls": [
+    {"name":"balanced-static-frame","expect":"pass","bound":16},
+    {"name":"balanced-loop","expect":"pass","bound":16},
+    {"name":"loop-stack-growth","expect":"refuse"},
+    {"name":"dynamic-stack-write","expect":"refuse"},
+    {"name":"return-without-restoration","expect":"refuse"},
+    {"name":"positive-stack-recursion","expect":"refuse"},
+    {"name":"unknown-stack-read","expect":"refuse"},
+    {"name":"mutable-imported-table","expect":"refuse"},
+    {"name":"disassembly-byte-mismatch","expect":"refuse"}
+  ]
+}

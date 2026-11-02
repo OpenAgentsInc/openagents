@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent barycentric depth-plane reconstruction from observed binary32 clip vertices).
 """Original-plane reconstruction from observed generated-Coax clip outputs."""
 import argparse,json,math,struct,hashlib
 from pathlib import Path

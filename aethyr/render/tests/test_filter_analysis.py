@@ -1,3 +1,4 @@
+# Firm reason: 2 (pins the independent real-number filter/quantization oracle's endpoints, tie rounding, axis ordering and mip expressions; it runs no Coax product logic).
 import unittest
 from analyze_filter_precision import decode,mix,predict,snap
 

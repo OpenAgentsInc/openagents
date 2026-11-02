@@ -1,0 +1,58 @@
+// The retained Python reference transforms the same immutable JSON inputs;
+// Coax owns process orchestration, exact control bytes and every verdict.
+//   coax/web/tool.sh aethyr/render/tests/check-package-tooling.coax OUT PACKAGE_BINARY MOCK_COMPILER QUALIFIED_NATIVE_DIR [REFERENCE_ROOT]
+#import "Basic";
+#load "qualification-files.coax";
+#load "package-tool-policy.coax";
+pt_copy :: (from:string,to:string)->bool {bytes:[1048576]u8;n:=fs_read(from,bytes[..]);return n>=0 && fs_mkdir(fs_dir(to)) && fs_write(to,cast(string)bytes[0..<n]);}
+pt_change :: (text:string,needle:string,replacement:string,out:[]u8)->string {
+  at:=rtq_find(text,needle,0);if at<0 {return "";}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],text[0..<at]);jo_put(o[..],replacement);jo_put(o[..],text[at+needle.count..<text.count]);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+pt_run :: (argv:[]string,success:bool,work:string,label:string,out:[]u8)->bool {
+  err:[65536]u8;env:[]string;r:=rtq_run_raw(argv,env,180000,out,err[..]);
+  if !rtq_record_run(work,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {return false;}
+  ok:=r.started==0 && !r.timed_out && !r.cut && r.status==(ifx success then 0 else 1);if !ok {tool_err("package port control failed: ");tool_errln(label);tool_err(cast(string)err[0..<r.err_n]);}return ok;
+}
+pt_json_equal :: (a:string,b:string)->bool {bytes:[1048576]u8;other:[1048576]u8;nodes:[32768]JvNode;other_nodes:[32768]JvNode;doc:[1]Jv;other_doc:[1]Jv;return rtq_json_file(a,bytes[..],nodes[..],doc[..]) && rtq_json_file(b,other[..],other_nodes[..],other_doc[..]) && rtq_equal(doc[0],0,other_doc[0],0);}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 {tool_errln("usage: check-package-tooling OUT PACKAGE_BINARY MOCK_COMPILER QUALIFIED_NATIVE_DIR [REFERENCE_ROOT]");return 2;}
+  out:=args_at(a[..],0);package:=args_at(a[..],1);mock:=args_at(a[..],2);qualified:=args_at(a[..],3);root:=args_at(a[..],4);if root.count==0 {root=".";}if !fs_mkdir(out) {return 1;}
+  image:[64]u8;mock_hash:[64]u8;if !rtq_hash_file(package,image[..]) || !rtq_hash_file(mock,mock_hash[..]) {return 1;}
+  paths:[12][4096]u8;receipt_bytes:[2097152]u8;receipt_nodes:[32768]JvNode;receipt:[1]Jv;
+  if !rtq_json_file(fs_join(qualified,"qualification.json",paths[0][..]),receipt_bytes[..],receipt_nodes[..],receipt[..]) {return 1;}
+  for key:[13]string.["schema","status","compiler","compiler_version","compiler_sha256","compiler_source_digest","compiler_recorded_source_digest","compiler_current_source_digest","compiler_current_sources_match","source_sha256","header_fields_checked","modes","elapsed_seconds"] {if jv_get(receipt[0],0,key)== -1 {tool_errln("existing package receipt field was lost");return 1;}}
+  text:[128]u8;n:=jv_str(receipt[0],jv_get(receipt[0],0,"qualifier_executable_sha256"),text[..]);if n!=64 || cast(string)text[0..<n]!=cast(string)image[..] {tool_errln("package receipt belongs to a different qualifier image");return 1;}
+  modes:=jv_get(receipt[0],0,"modes");if jv_len(receipt[0],modes)!=3 {return 1;}
+  for i:0..<3 {
+    row:=jv_at(receipt[0],modes,i);for key:[8]string.["mode","observations","producer_loss_controls","negative_controls","transcript_sha256","generated_c_sha256","header_sha256","executable_sha256"] {if jv_get(receipt[0],row,key)== -1 {return 1;}}
+    name:[128]u8;nn:=jv_str(receipt[0],jv_get(receipt[0],row,"mode"),name[..]);if nn<1 {return 1;}file:[256]u8;w:[1]Jo;jo_start(w[..],file[..]);jo_put(w[..],cast(string)name[0..<nn]);jo_put(w[..],".json");hash:[64]u8;if !rtq_hash_file(fs_join(qualified,jo_text(w[..]),paths[1][..]),hash[..]) {return 1;}given:[64]u8;gn:=jv_str(receipt[0],jv_get(receipt[0],row,"transcript_sha256"),given[..]);if gn!=64 || cast(string)given[..]!=cast(string)hash[..] {return 1;}
+  }
+  ref:=fs_join(out,"reference",paths[2][..]);if !pt_copy(fs_join(root,"aethyr/render/tests/check_package.py",paths[3][..]),fs_join(ref,"check_package.py",paths[4][..])) {return 1;}
+  stdout:[1048576]u8;profiles:=jv_get(receipt[0],0,"profiles");first_manifest:[4096]u8;first_count:=0;
+  for i:0..<jv_len(receipt[0],profiles) {
+    slug:[128]u8;sn:=jv_str(receipt[0],jv_at(receipt[0],profiles,i),slug[..]);if sn<1 {return 1;}name:=cast(string)slug[0..<sn];inputs:=fs_join(fs_join(qualified,"inputs",paths[5][..]),name,paths[6][..]);manifest:=fs_join(inputs,"render.json",paths[7][..]);if i==0 {for k:0..<manifest.count {first_manifest[k]=manifest[k];}first_count=manifest.count;}
+    for payload:0..<2 {
+      script:="import sys,json;sys.path.insert(0,sys.argv[1]);from check_package import expected;print(json.dumps(expected(json.load(open(sys.argv[2])),payload=sys.argv[3]=='1')))";
+      argv:=[6]string.["python3","-c",script,ref,manifest,ifx payload==0 then "0" else "1"];label:[256]u8;o:[1]Jo;jo_start(o[..],label[..]);jo_put(o[..],name);jo_put(o[..],ifx payload==0 then "-plain" else "-payload");if !pt_run(argv[..],true,out,jo_text(o[..]),stdout[..]) {return 1;}
+      file:[256]u8;w:[1]Jo;jo_start(w[..],file[..]);jo_put(w[..],name);if payload!=0 {jo_put(w[..],"-payload-0");}jo_put(w[..],".stdout");observed:=fs_join(fs_join(qualified,"debug",paths[8][..]),jo_text(w[..]),paths[9][..]);jo_start(w[..],file[..]);jo_put(w[..],jo_text(o[..]));jo_put(w[..],".stdout");reference:=fs_join(out,jo_text(w[..]),paths[10][..]);if !pt_json_equal(reference,observed) {tool_errln("retained expected package function differs");return 1;}
+    }
+  }
+  manifest:=cast(string)first_manifest[0..<first_count];
+  for name,i:RPT_NEGATIVES {
+    index:[32]u8;iw:[1]Jo;jo_start(iw[..],index[..]);jo_int(iw[..],i);script:="import sys,json;sys.path.insert(0,sys.argv[1]);from check_package import negative_manifests;sys.stdout.buffer.write(negative_manifests(json.load(open(sys.argv[2])))[int(sys.argv[3])][1])";
+    argv:=[6]string.["python3","-c",script,ref,manifest,jo_text(iw[..])];label:[256]u8;o:[1]Jo;jo_start(o[..],label[..]);jo_put(o[..],"negative-");jo_put(o[..],name);if !pt_run(argv[..],true,out,jo_text(o[..]),stdout[..]) {return 1;}
+    file:[256]u8;w:[1]Jo;jo_start(w[..],file[..]);jo_put(w[..],jo_text(o[..]));jo_put(w[..],".json");actual:[1048576]u8;an:=fs_read(fs_join(qualified,jo_text(w[..]),paths[1][..]),actual[..]);jo_start(w[..],file[..]);jo_put(w[..],jo_text(o[..]));jo_put(w[..],".stdout");rn:=fs_read(fs_join(out,jo_text(w[..]),paths[3][..]),stdout[..]);if an<0 || rn!=an || cast(string)actual[0..<an]!=cast(string)stdout[0..<rn] {tool_err("exact negative manifest bytes differ: ");tool_errln(name);return 1;}
+  }
+  statuses:="import sys,json;sys.path.insert(0,sys.argv[1]);from check_package import negative_manifests;print(json.dumps([[n,p,a] for n,b,p,a in negative_manifests(json.load(open(sys.argv[2])))]))";status_args:=[5]string.["python3","-c",statuses,ref,manifest];if !pt_run(status_args[..],true,out,"negative-statuses",stdout[..]) {return 1;}status_bytes:[1048576]u8;status_nodes:[32768]JvNode;status_doc:[1]Jv;if !rtq_json_file(fs_join(out,"negative-statuses.stdout",paths[1][..]),status_bytes[..],status_nodes[..],status_doc[..]) || jv_len(status_doc[0],0)!=14 {return 1;}
+  for name,i:RPT_NEGATIVES {row:=jv_at(status_doc[0],0,i);given:[128]u8;gn:=jv_str(status_doc[0],jv_at(status_doc[0],row,0),given[..]);if gn<0 || cast(string)given[0..<gn]!=name || jv_int(status_doc[0],jv_at(status_doc[0],row,1),-1)!=rpt_negative_parse(i) || jv_int(status_doc[0],jv_at(status_doc[0],row,2),-1)!=rpt_negative_admit(i) {return 1;}}
+  header:=fs_join(qualified,"checked/package-native.h",paths[6][..]);original:[1048576]u8;hn:=fs_read(header,original[..]);if hn<0 {return 1;}check:=[3]string.[package,"--check-header",header];if !pt_run(check[..],true,out,"valid-header-coax",stdout[..]) {return 1;}
+  ref_header:="import sys;sys.path.insert(0,sys.argv[1]);from check_package import header_inventory;header_inventory(open(sys.argv[2]).read())";py_header:=[5]string.["python3","-c",ref_header,ref,header];if !pt_run(py_header[..],true,out,"valid-header-reference",stdout[..]) {return 1;}
+  changed:[1048576]u8;bad:=fs_join(out,"poisoned.h",paths[7][..]);for i:0..<2 {
+    raw:=ifx i==0 then pt_change(cast(string)original[0..<hn],"coax_t_RenderBuildReflection reflection;","coax_t_RenderBuildReflection reflection; int unrecorded;",changed[..]) else pt_change(cast(string)original[0..<hn],"coax_string tree_file;","",changed[..]);if raw.count==0 || !fs_write(bad,raw) {return 1;}check[2]=bad;py_header[4]=bad;label:[128]u8;o:[1]Jo;jo_start(o[..],label[..]);jo_put(o[..],"header-control-");jo_int(o[..],i);jo_put(o[..],"-coax");if !pt_run(check[..],false,out,jo_text(o[..]),stdout[..]) {return 1;}jo_start(o[..],label[..]);jo_put(o[..],"header-control-");jo_int(o[..],i);jo_put(o[..],"-reference");if !pt_run(py_header[..],false,out,jo_text(o[..]),stdout[..]) {return 1;}
+  }
+  stale:=fs_join(out,"stale-work",paths[8][..]);stale_receipt:=fs_join(out,"stale-receipt.json",paths[9][..]);digest:=fs_join(out,"controlled-source-digest",paths[10][..]);if !fs_write(digest,"old\n") {return 1;}
+  stale_args:=[11]string.[package,"--packages","unused-packages","--work-dir",stale,"--receipt",stale_receipt,"--coax",mock,"--compiler-source-digest",digest];if !pt_run(stale_args[..],false,out,"stale-compiler",stdout[..]) || fs_exists(stale_receipt) {return 1;}list:[1]FsList;if fs_list(stale,list[..])!=6 {tool_errln("stale package compiler reached a later command");return 1;}for i:0..<list[0].n {name:=fs_entry(list[..],i);if rtq_find(name,"compiler-version.",0)!=0 && rtq_find(name,"compiler-current-source.",0)!=0 {return 1;}}
+  hash:[64]u8;if !rtq_hash_file(package,hash[..]) || cast(string)hash[..]!=cast(string)image[..] || !rtq_hash_file(mock,hash[..]) || cast(string)hash[..]!=cast(string)mock_hash[..] {return 1;}
+  record:[4096]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"qualifier_executable_sha256");jo_str(o[..],cast(string)image[..]);jo_key(o[..],"mock_compiler_sha256");jo_str(o[..],cast(string)mock_hash[..]);jo_key(o[..],"before_after");jo_str(o[..],"equal");jo_key(o[..],"profiles");jo_int(o[..],jv_len(receipt[0],profiles));jo_key(o[..],"negative_control_bytes");jo_int(o[..],14);jo_end(o[..]);if !fs_write(fs_join(out,"qualified-images.json",paths[11][..]),jo_text(o[..])) {return 1;}
+  print("package tool parity: every retained expected field across % profiles;14 exact negative manifests and statuses; actual header and extra/missing field controls; default stale compiler refused before dependencies/emission\n",jv_len(receipt[0],profiles));return 0;
+}

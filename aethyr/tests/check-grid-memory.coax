@@ -1,0 +1,99 @@
+// Real Wasm instantiation, scalar getters and arena memory.grow; no producer
+// frame, GPU image or normal-stack audit claim.
+// coax/web/tool.sh aethyr/tests/check-grid-memory.coax FILE.wasm RECEIPT.json
+#load "grid-memory-policy.coax";
+#load "webgpu-session.coax";
+#load "../render/tests/qualification-files.coax";
+GM_DRIVER :: "aethyr/tests/check-grid-memory.coax";
+GM_EFFECTS :: "aethyr/tests/grid-memory-effects.js";
+gm_path_input :: (inputs: [] RtqInputs, path: string) -> bool {
+  absolute: [4096] u8; name := fs_realpath(path,absolute[..]);
+  return name != "" && rtq_input_add(inputs,name);
+}
+gm_run_browser :: (c: [] Cdp, file: string, output: string, url: string, d: GmDescription, inputs: [] RtqInputs, expected_size: int, expected_hash: string) -> int {
+  glue: [65536] u8; n := fs_read(GM_EFFECTS,glue[..]); if n < 1 { return 2; }
+  browser: [65536] u8; bn := wp_open(c,url,cast(string)glue[0..<n],browser[..]); if bn < 1 { return 1; }
+  request: [4096] u8; ro: [1] Jo; jo_start(ro[..],request[..]); jo_obj(ro[..]);
+  jo_key(ro[..],"operation"); jo_str(ro[..],"instantiate"); jo_key(ro[..],"url"); jo_str(ro[..],"/memory.wasm");
+  jo_key(ro[..],"initial"); jo_int(ro[..],gm_max(d.minimum,128)); jo_key(ro[..],"maximum"); jo_int(ro[..],d.maximum); jo_end(ro[..]);
+  at := wp_run(c,"gridMemoryStart","gridMemoryPoll()",jo_text(ro[..])); if at < 0 { return 1; }
+  facts := c[0].doc[0];
+  if !gm_source_matches(jv_int(facts,jv_get(facts,at,"wasm_bytes"),-1),jv_raw(facts,jv_get(facts,at,"wasm_sha256")),expected_size,expected_hash) {
+    tool_errln("browser Wasm bytes differ from the locally parsed buffer");return 1;
+  }
+  heap := jv_int(facts,jv_get(facts,at,"heap_base"),-1);
+  state := jv_int(facts,jv_get(facts,at,"state_size"),-1);
+  vertices := jv_int(facts,jv_get(facts,at,"max_vertices"),-1);
+  stride := jv_int(facts,jv_get(facts,at,"vertex_floats"),-1);
+  uniforms := jv_int(facts,jv_get(facts,at,"uniform_floats"),-1);
+  memory_bytes := jv_int(facts,jv_get(facts,at,"memory_bytes"),-1);
+  effects := jv_get(facts,at,"effects"); effects_ok := jv_kind(facts,effects) == JV_ARRAY && jv_len(facts,effects) == 0;
+  snapshot: [65536] u8; so: [1] Jo; jo_start(so[..],snapshot[..]); jv_write(facts,at,so[..]);
+  a := gm_arena(heap,state,vertices,stride,uniforms,d.minimum,d.maximum);
+  if so[0].bad || !a.valid || !effects_ok || memory_bytes != gm_max(d.minimum,128)*65536 { tool_errln("Grid scalar capacities/effects refused"); return 1; }
+  jo_start(ro[..],request[..]); jo_obj(ro[..]); jo_key(ro[..],"operation"); jo_str(ro[..],"grow");
+  jo_key(ro[..],"grow_pages"); jo_int(ro[..],gm_max(0,a.pages-memory_bytes/65536)); jo_end(ro[..]);
+  grown := wp_run(c,"gridMemoryStart","gridMemoryPoll()",jo_text(ro[..])); if grown < 0 { return 1; }
+  growth := c[0].doc[0]; final_bytes := jv_int(growth,jv_get(growth,grown,"final_memory_bytes"),-1);
+  growth_error := jv_get(growth,grown,"growth_error");
+  passed := d.stack == 4194304 && jv_kind(growth,growth_error) == JV_NULL && final_bytes == a.allocation &&
+    jv_int(growth,jv_get(growth,grown,"before_memory_bytes"),-1) == memory_bytes;
+  unchanged := rtq_inputs_match(inputs); passed = passed && unchanged;
+  record: [262144] u8; o: [1] Jo; jo_start(o[..],record[..]); jo_obj(o[..]);
+  jo_key(o[..],"schema"); jo_str(o[..],"aethyr.grid.memory-link-check.v1");
+  jo_key(o[..],"status"); jo_str(o[..],ifx passed then "passed" else "failed");
+  jo_key(o[..],"scope"); jo_str(o[..],"Real Wasm instantiation, scalar getters and arena memory.grow; no producer frame or GPU image claim.");
+  jo_key(o[..],"wasm"); jo_str(o[..],file); hash: [64] u8;
+  jo_key(o[..],"wasm_sha256"); jo_str(o[..],expected_hash);
+  if !rtq_hash_file(GM_DRIVER,hash[..]) { return 1; } jo_key(o[..],"driver_sha256"); jo_str(o[..],cast(string)hash[..]);
+  jo_key(o[..],"minimum_pages"); jo_int(o[..],d.minimum); jo_key(o[..],"maximum_pages"); jo_int(o[..],d.maximum);
+  jo_key(o[..],"stack_pointer_initial"); jo_int(o[..],d.stack); jo_key(o[..],"heap_base"); jo_int(o[..],heap);
+  jo_key(o[..],"state_size"); jo_int(o[..],state); jo_key(o[..],"max_vertices"); jo_int(o[..],vertices);
+  jo_key(o[..],"vertex_floats"); jo_int(o[..],stride); jo_key(o[..],"uniform_floats"); jo_int(o[..],uniforms);
+  jo_key(o[..],"arena_base"); jo_int(o[..],a.base); jo_key(o[..],"arena_need"); jo_int(o[..],a.need);
+  jo_key(o[..],"arena_pages"); jo_int(o[..],a.pages); jo_key(o[..],"final_memory_bytes"); jo_int(o[..],final_bytes);
+  jo_key(o[..],"growth_error"); jv_write(growth,growth_error,o[..]);
+  jo_key(o[..],"effects"); jo_arr(o[..]); jo_end(o[..]); jo_key(o[..],"failures"); jo_arr(o[..]);
+  if d.stack != 4194304 { jo_str(o[..],"Grid stack reservation is not 4 MiB"); }
+  if jv_kind(growth,growth_error) != JV_NULL { jo_str(o[..],"startup arena memory.grow refused"); }
+  if !unchanged { jo_str(o[..],"source fence changed"); } jo_end(o[..]);
+  jo_key(o[..],"browser"); jo_raw(o[..],cast(string)browser[0..<bn]);
+  jo_key(o[..],"scalar_observation"); jo_raw(o[..],jo_text(so[..]));
+  jo_key(o[..],"source_inputs"); rtq_inputs_json(o[..],inputs,".");
+  jo_key(o[..],"source_changes"); jo_arr(o[..]); if !unchanged {jo_str(o[..],"source fence changed");} jo_end(o[..]); jo_end(o[..]);
+  if o[0].bad || !fs_write(output,jo_text(o[..])) { return 1; }
+  print("%\n",jo_text(o[..])); return ifx passed then 0 else 1;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  if args_has(a[..],"--serve") { return wp_serve(args_value(a[..],"--serve",""),args_value(a[..],"--resources","")); }
+  if args_count(a[..]) != 2 { tool_errln("usage: check-grid-memory FILE.wasm RECEIPT.json"); return 2; }
+  file_buf: [4096] u8; file := fs_realpath(args_at(a[..],0),file_buf[..]); output := args_at(a[..],1);
+  directory := fs_dir(output); if file == "" || !fs_mkdir(directory) { return 2; }
+  bytes: [67108864] u8; size := fs_size(file); if size < 8 || size > bytes.count || fs_read_at(file,0,bytes[0..<size]) != size { return 2; }
+  d := gm_describe(bytes[0..<size]); if !d.valid || d.maximum != 1024 { tool_errln("Grid bounded Wasm descriptor refused"); return 1; }
+  expected_hash: [64] u8; if !S_hex(S_hash(cast(string)bytes[0..<size]),expected_hash[..]) {return 2;}
+  inputs: [1] RtqInputs; compiler_buf: [4096] u8; compiler := proc_getenv("COAX",compiler_buf[..]); if compiler == "" { compiler = "coax/bin/coax"; }
+  deadline := proc_now_ms()+180000;
+  if !gm_path_input(inputs[..],file) || !gm_path_input(inputs[..],GM_EFFECTS) || !gm_path_input(inputs[..],compiler) ||
+    !rtq_deps(inputs[..],compiler,GM_DRIVER,deadline,directory,"memory-tool-deps") { return 2; }
+  for path: [4] string.["coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/socket-native.c","coax/platform/tool-native.c"] { if !gm_path_input(inputs[..],path) { return 2; } }
+  image: [4096] u8; image_name := gp_self(image[..]); if !gm_path_input(inputs[..],image_name) { return 2; }
+  manifest: [8192] u8; mo: [1] Jo; jo_start(mo[..],manifest[..]); jo_obj(mo[..]); jo_key(mo[..],"resources"); jo_arr(mo[..]); jo_obj(mo[..]);
+  jo_key(mo[..],"url"); jo_str(mo[..],"/memory.wasm"); jo_key(mo[..],"file"); jo_str(mo[..],file); jo_end(mo[..]); jo_end(mo[..]); jo_end(mo[..]);
+  manifest_buf: [4096] u8; manifest_file := fs_join(directory,"memory-resources.json",manifest_buf[..]);
+  if mo[0].bad || !fs_write(manifest_file,jo_text(mo[..])) || !gm_path_input(inputs[..],manifest_file) { return 2; }
+  temp: [4096] u8; dir := fs_temp("aethyr-grid-memory-",temp[..]); if dir == "" { return 1; }
+  port_buf: [4096] u8; port_file := fs_join(dir,"port",port_buf[..]); server := wp_start_origin(port_file,manifest_file); result := 1;
+  if server >= 0 {
+    text: [32] u8; count := -1;
+    for attempt: 0..<100 {count=fs_read(port_file,text[..]);if count>0 {break;}proc_sleep(50);}
+    if count>0 && args_whole(cast(string)text[0..<count])>0 {
+      url_buf: [128] u8; url := cdp_cat2("http://127.0.0.1:",cast(string)text[0..<count],url_buf[..]);
+      target_buf: [128] u8; target := cdp_cat2(url,"/",target_buf[..]); c: [1] Cdp;
+      result=gm_run_browser(c[..],file,output,target,d,inputs[..],size,cast(string)expected_hash[..]); cdp_close(c[..]);
+    }
+    killed:=proc_kill(server,PROC_SIGKILL);waited:=proc_wait(server,5000);released:=proc_release(server);
+  }
+  removed:=fs_remove(dir);return ifx removed then result else 1;
+}

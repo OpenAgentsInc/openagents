@@ -1,0 +1,53 @@
+// SPIR-V validation control bytes and literal remote transport arguments.
+#import "Basic";
+#authority;
+#load "spirv-tool-checks.coax";
+spv_word :: (bytes:[]u8,word:int)->u32 {
+  if word<0 || word>=bytes.count/4 {return 0;}
+  at:=word*4;return cast(u32)bytes[at] | (cast(u32)bytes[at+1]<<8) | (cast(u32)bytes[at+2]<<16) | (cast(u32)bytes[at+3]<<24);
+}
+spv_control :: (source:[]u8,kind:int,out:[]u8)->int {
+  if kind<0 || kind>1 || source.count<20 || source.count%4!=0 || out.count<source.count || spv_word(source,0)!=0x07230203 {return -1;}
+  words:=source.count/4;at:=5;target:=-1;
+  while at<words {
+    head:=spv_word(source,at);count:=cast(int)(head>>16);opcode:=head&65535;
+    if count<1 || count>words-at {return -1;}
+    if opcode==80 && target== -1 {if count<3 {return -1;}target=at+1;}
+    at+=count;
+  }
+  if kind==1 && target== -1 {return -1;}
+  for c,i:source {out[i]=c;}
+  begin:=ifx kind==0 then 0 else target*4;
+  for i:0..<4 {out[begin+i]=0;}
+  return source.count;
+}
+spv_observation :: (kind:int,status:int,stderr:string)->bool {
+  if kind==0 {return status==0;}
+  return kind==1 && status>0 && status<124 && stderr.count>0;
+}
+spv_alpha :: (c:u8)->bool {return (c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9');}
+spv_name :: (name:string)->bool {
+  if name.count==0 || name=="." || name==".." || name[0]=='-' {return false;}
+  for c:name {if !spv_alpha(c) && c!='-' && c!='_' && c!='.' {return false;}}return true;
+}
+spv_host :: (host:string)->bool {
+  if host.count==0 || host[0]=='-' {return false;}
+  for c:host {if !spv_alpha(c) && c!='-' && c!='.' {return false;}}return true;
+}
+spv_path :: (path:string)->bool {
+  if path.count<2 || path[0]!='/' {return false;}
+  at:=1;end:=at;while end<path.count {
+    if path[end]=='/' {if !spv_name(path[at..<end]) {return false;}at=end+1;}
+    end+=1;
+  }
+  return spv_name(path[at..<end]);
+}
+spv_remote :: (path:string)->bool {
+  prefix:="/tmp/aethyr-spirv-";
+  if path.count!=prefix.count+10 || path[0..<prefix.count]!=prefix {return false;}
+  for c:path[prefix.count..<path.count] {if !spv_alpha(c) {return false;}}return true;
+}
+spv_digest :: (text:string)->bool {
+  if text.count!=64 {return false;}
+  for c:text {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
+}

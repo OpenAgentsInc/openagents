@@ -1,0 +1,127 @@
+// Exercise the actual Coax CLIs against the retained pre-port implementation.
+// The reference is run only for parity; every fixture, comparison and verdict
+// is Coax. Run before deleting the old tools, or pass their retained root.
+//   coax/web/tool.sh aethyr/render/tests/check-staging-tools.coax OUT STAGE_BINARY IDENTITY_BINARY [REFERENCE_ROOT] [ACTUAL_PACKAGE]
+#import "Basic";
+#load "../staging-files.coax";
+#load "../../../coax/lib/sys/proc.coax";
+
+st_check_run :: (argv:[]string,success:bool,label:string,out:string)->bool {
+  stdout:[65536]u8;stderr:[65536]u8;start:=proc_now_ms();r:=proc_run(argv,180000,stdout[..],stderr[..]);
+  path:[FS_PATH_MAX]u8;name:[256]u8;o:[1]Jo;
+  jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],".stdout");if !fs_write(fs_join(out,jo_text(o[..]),path[..]),cast(string)stdout[0..<r.out_n]) {return false;}
+  jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],".stderr");if !fs_write(fs_join(out,jo_text(o[..]),path[..]),cast(string)stderr[0..<r.err_n]) {return false;}
+  record:[16384]u8;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"argv");jo_arr(o[..]);for a:argv {jo_str(o[..],a);}jo_end(o[..]);
+  jo_key(o[..],"started");jo_int(o[..],r.started);jo_key(o[..],"exit");jo_int(o[..],r.status);jo_key(o[..],"timed_out");jo_bool(o[..],r.timed_out);jo_key(o[..],"cut");jo_bool(o[..],r.cut);jo_key(o[..],"elapsed_ms");jo_int(o[..],proc_now_ms()-start);jo_end(o[..]);
+  name_o:[1]Jo;jo_start(name_o[..],name[..]);jo_put(name_o[..],label);jo_put(name_o[..],".json");if o[0].bad || !fs_write(fs_join(out,jo_text(name_o[..]),path[..]),jo_text(o[..])) {return false;}
+  ok:=r.started==0 && !r.timed_out && !r.cut && r.status==(ifx success then 0 else 1);
+  if !ok {tool_err("FAIL ");tool_errln(label);tool_err(cast(string)stderr[0..<r.err_n]);}return ok;
+}
+st_check_same :: (a:string,b:string)->bool {
+  x:[RSP_PRODUCT_BYTES]u8;y:[RSP_PRODUCT_BYTES]u8;an:=fs_read(a,x[..]);bn:=fs_read(b,y[..]);
+  if an<0 || an!=bn || cast(string)x[0..<an]!=cast(string)y[0..<bn] {tool_err("FAIL file parity: ");tool_err(a);tool_err(" / ");tool_errln(b);return false;}return true;
+}
+st_check_copy :: (from:string,to:string)->bool {
+  bytes:[RSP_PRODUCT_BYTES]u8;n:=fs_read(from,bytes[..]);return n>=0 && fs_mkdir(fs_dir(to)) && fs_write(to,cast(string)bytes[0..<n]);
+}
+st_check_fixture :: (directory:string)->bool {
+  if !fs_mkdir(directory) {return false;}
+  path:[FS_PATH_MAX]u8;
+  names:=[3]string.["m.wgsl","p.spv","p.tree"];data:=[3]string.["fn foo() {}\n","binary byte transport\0","2 6 0 1 2 3 4 5\n"];
+  for i:0..<3 {if !fs_write(fs_join(directory,names[i],path[..]),data[i]) {return false;}}
+  bytes:[4096]u8;o:[1]Jo;jo_start(o[..],bytes[..]);hash:[64]u8;
+  jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.package.v1");jo_key(o[..],"app");jo_str(o[..],"fixture");jo_key(o[..],"slug");jo_str(o[..],"fixture");jo_key(o[..],"profile_index");jo_int(o[..],7);
+  jo_key(o[..],"modules");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"wgsl_file");jo_str(o[..],names[0]);jo_key(o[..],"wgsl_sha256");ok:=S_hex(S_hash(data[0]),hash[..]);jo_str(o[..],cast(string)hash[..]);jo_end(o[..]);jo_end(o[..]);
+  jo_key(o[..],"entries");jo_arr(o[..]);jo_obj(o[..]);
+  for i:1..<3 {jo_key(o[..],ifx i==1 then "spirv_file" else "tree_file");jo_str(o[..],names[i]);jo_key(o[..],ifx i==1 then "spirv_sha256" else "tree_sha256");ok=ok && S_hex(S_hash(data[i]),hash[..]);jo_str(o[..],cast(string)hash[..]);}
+  jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return ok && !o[0].bad && fs_write(fs_join(directory,"render.json",path[..]),jo_text(o[..]));
+}
+st_check_stage_pair :: (stage_binary:string,ref:string,app:string,url:string,old:string,fresh:string,success:bool,label:string,out:string)->bool {
+  script:="from pathlib import Path;import sys;sys.path.insert(0,sys.argv[1]);from render_stage import stage_package;print(stage_package(Path(sys.argv[2]),sys.argv[3],Path(sys.argv[4])))";
+  old_args:=[8]string.["python3","-c",script,ref,app,url,old,""];
+  new_args:=[4]string.[stage_binary,app,url,fresh];
+  n1:[256]u8;n2:[256]u8;o:[1]Jo;jo_start(o[..],n1[..]);jo_put(o[..],label);jo_put(o[..],"-python");jo_start(o[..],n2[..]);jo_put(o[..],label);jo_put(o[..],"-coax");
+  return st_check_run(old_args[0..<7],success,cast(string)n1[0..<label.count+7],out) && st_check_run(new_args[..],success,cast(string)n2[0..<label.count+5],out);
+}
+st_check_trees :: (old:string,fresh:string,relative:string)->bool {
+  dir1:[FS_PATH_MAX]u8;dir2:[FS_PATH_MAX]u8;p1:[FS_PATH_MAX]u8;p2:[FS_PATH_MAX]u8;
+  for tree:[2]string.["assets","site"] {
+    old_tree:=fs_join(old,tree,dir1[..]);new_tree:=fs_join(fresh,tree,dir2[..]);old_dir:=fs_join(old_tree,relative,p1[..]);new_dir:=fs_join(new_tree,relative,p2[..]);
+    a:[FS_PATH_MAX]u8;b:[FS_PATH_MAX]u8;
+    for file:[4]string.["render.json","m.wgsl","p.spv","p.tree"] {if !st_check_same(fs_join(old_dir,file,a[..]),fs_join(new_dir,file,b[..])) {return false;}}
+  }return true;
+}
+st_check_actual :: (source:string,stage_binary:string,identity_binary:string,ref:string,ref_native:string,out:string)->bool {
+  files:[1]RspFiles;if !rsp_load(source,files[..]) {return false;}
+  paths:[9][FS_PATH_MAX]u8;
+  app:=fs_join(out,"actual-app",paths[0][..]);fixture:=fs_join(app,"build/render/actual",paths[1][..]);old:=fs_join(out,"actual-python",paths[2][..]);fresh:=fs_join(out,"actual-coax",paths[3][..]);
+  if !rsp_publish_files(fixture,files[..]) || !st_check_stage_pair(stage_binary,ref,app,"/build/render/actual/render.json",old,fresh,true,"actual-stage",out) {return false;}
+  rel:[128]u8;o:[1]Jo;jo_start(o[..],rel[..]);jo_put(o[..],"build/render/");jo_put(o[..],cast(string)files[0].hash[..]);
+  for tree:[2]string.["assets","site"] {
+    a:[FS_PATH_MAX]u8;b:[FS_PATH_MAX]u8;c:[FS_PATH_MAX]u8;d:[FS_PATH_MAX]u8;e:[FS_PATH_MAX]u8;f:[FS_PATH_MAX]u8;
+    old_dir:=fs_join(fs_join(old,tree,a[..]),jo_text(o[..]),b[..]);new_dir:=fs_join(fs_join(fresh,tree,c[..]),jo_text(o[..]),d[..]);
+    if !st_check_same(fs_join(old_dir,"render.json",e[..]),fs_join(new_dir,"render.json",f[..])) {return false;}
+    for i:0..<files[0].plan.count {
+      name:=rsp_product_name(files[0].plan.rows[i..<i+1]);if !st_check_same(fs_join(old_dir,name,e[..]),fs_join(new_dir,name,f[..])) {return false;}
+    }
+  }
+  doc:[1]Jv;nodes:[16384]JvNode;if !jv_parse(doc[..],cast(string)files[0].manifest[0..<files[0].manifest_count],nodes[..]) {return false;}
+  app_value:[4096]u8;slug:[4096]u8;an:=jv_str(doc[0],jv_get(doc[0],0,"app"),app_value[..]);sn:=jv_str(doc[0],jv_get(doc[0],0,"slug"),slug[..]);if an<0 || sn<0 {return false;}
+  old_header:=fs_join(out,"actual-python.h",paths[4][..]);new_header:=fs_join(out,"actual-coax.h",paths[5][..]);
+  old_args:=[10]string.["python3",ref_native,"--package",source,"--app",cast(string)app_value[0..<an],"--profile",cast(string)slug[0..<sn],"--output",old_header];
+  new_args:=[9]string.[identity_binary,"--package",source,"--app",cast(string)app_value[0..<an],"--profile",cast(string)slug[0..<sn],"--output",new_header];
+  if !st_check_run(old_args[..],true,"actual-identity-python",out) || !st_check_run(new_args[..],true,"actual-identity-coax",out) || !st_check_same(old_header,new_header) {return false;}
+  record:[4096]u8;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"source_manifest");jo_str(o[..],source);jo_key(o[..],"manifest_sha256");jo_str(o[..],cast(string)files[0].hash[..]);jo_key(o[..],"products");jo_int(o[..],files[0].plan.count);jo_key(o[..],"status");jo_str(o[..],"all product and header bytes match");jo_end(o[..]);
+  return fs_write(fs_join(out,"actual-package.json",paths[6][..]),jo_text(o[..]));
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])<3 {tool_errln("usage: check-staging-tools OUT STAGE_BINARY IDENTITY_BINARY [REFERENCE_ROOT]");return 2;}
+  out:=args_at(args[..],0);stage_binary:=args_at(args[..],1);identity_binary:=args_at(args[..],2);reference:=args_at(args[..],3);if reference.count==0 {reference=".";}
+  if !fs_mkdir(out) {return 1;}
+  image_hashes:[2][64]u8;image_bytes:[16777216]u8;
+  for i:0..<2 {image:=ifx i==0 then stage_binary else identity_binary;n:=fs_read(image,image_bytes[..]);if n<0 || !S_hex(S_hash(cast(string)image_bytes[0..<n]),image_hashes[i][..]) {return 1;}}
+  paths:[12][FS_PATH_MAX]u8;
+  app:=fs_join(out,"app",paths[0][..]);source:=fs_join(app,"build/render/fixture",paths[1][..]);manifest:=fs_join(source,"render.json",paths[2][..]);old:=fs_join(out,"old",paths[3][..]);fresh:=fs_join(out,"coax",paths[4][..]);
+  ref:=fs_join(out,"reference/coax/web",paths[5][..]);ref_stage:=fs_join(ref,"render_stage.py",paths[6][..]);ref_native:=fs_join(out,"reference/verse/native/render_package.py",paths[7][..]);origin:[FS_PATH_MAX]u8;
+  if !st_check_copy(fs_join(reference,"coax/web/render_stage.py",origin[..]),ref_stage) || !st_check_copy(fs_join(reference,"verse/native/render_package.py",origin[..]),ref_native) || !st_check_fixture(source) {tool_errln("could not retain reference or make fixture");return 1;}
+  if !st_check_stage_pair(stage_binary,ref,app,"/build/render/fixture/render.json",old,fresh,true,"valid-stage",out) {return 1;}
+  raw:[RSP_MANIFEST]u8;n:=fs_read(manifest,raw[..]);if n<0 {return 1;}hash:[64]u8;if !S_hex(S_hash(cast(string)raw[0..<n]),hash[..]) {return 1;}
+  rel:[128]u8;o:[1]Jo;jo_start(o[..],rel[..]);jo_put(o[..],"build/render/");jo_put(o[..],cast(string)hash[..]);
+  rel_count:=o[0].n;if !st_check_trees(old,fresh,cast(string)rel[0..<rel_count]) {return 1;}
+  old_header:=fs_join(out,"old-identity.h",paths[8][..]);new_header:=fs_join(out,"coax-identity.h",paths[9][..]);
+  old_args:=[10]string.["python3",ref_native,"--package",manifest,"--app","fixture","--profile","fixture","--output",old_header];
+  new_args:=[9]string.[identity_binary,"--package",manifest,"--app","fixture","--profile","fixture","--output",new_header];
+  if !st_check_run(old_args[..],true,"valid-identity-python",out) || !st_check_run(new_args[..],true,"valid-identity-coax",out) || !st_check_same(old_header,new_header) {return 1;}
+  // A bad source of each class must refuse before touching the last publication.
+  product_path:[FS_PATH_MAX]u8;backup:[4096]u8;
+  for i:0..<3 {
+    name:=[3]string.["m.wgsl","p.spv","p.tree"];path:=fs_join(source,name[i],product_path[..]);count:=fs_read(path,backup[..]);if count<0 || !fs_write(path,"wrong bytes") {return 1;}
+    label:[64]u8;jo_start(o[..],label[..]);jo_put(o[..],"corrupt-");jo_int(o[..],i);
+    if !st_check_stage_pair(stage_binary,ref,app,"/build/render/fixture/render.json",old,fresh,false,jo_text(o[..]),out) {return 1;}
+    a:[96]u8;b:[96]u8;w:[1]Jo;jo_start(w[..],a[..]);jo_put(w[..],jo_text(o[..]));jo_put(w[..],"-identity-python");an:=w[0].n;jo_start(w[..],b[..]);jo_put(w[..],jo_text(o[..]));jo_put(w[..],"-identity-coax");bn:=w[0].n;
+    if !st_check_run(old_args[..],false,cast(string)a[0..<an],out) || !st_check_run(new_args[..],false,cast(string)b[0..<bn],out) || !st_check_same(old_header,new_header) || !st_check_trees(old,fresh,cast(string)rel[0..<rel_count]) {return 1;}
+    if !fs_write(path,cast(string)backup[0..<count]) {return 1;}
+  }
+  urls:=[3]string.["/build/render/../render.json","/elsewhere/render.json","https://example.com/render.json"];
+  for i:0..<3 {
+    label:[64]u8;jo_start(o[..],label[..]);jo_put(o[..],"unsafe-url-");jo_int(o[..],i);
+    if !st_check_stage_pair(stage_binary,ref,app,urls[i],old,fresh,false,jo_text(o[..]),out) {return 1;}
+  }
+  old_args[5]="wrong";new_args[4]="wrong";
+  if !st_check_run(old_args[..],false,"wrong-identity-python",out) || !st_check_run(new_args[..],false,"wrong-identity-coax",out) || !st_check_same(old_header,new_header) {return 1;}
+  // Compile the generated header and consume every public macro through C.
+  probe:=fs_join(out,"identity-probe.c",paths[10][..]);binary:=fs_join(out,"identity-probe",paths[11][..]);
+  if !fs_write(probe,"#include \"coax-identity.h\"\n#include <inttypes.h>\n#include <stdio.h>\nint main(void){printf(\"%\"PRId64\"\\n%s\\n%s\\n%s\\n%s\\n\",AETHYR_RENDER_PROFILE,AETHYR_RENDER_APP,AETHYR_RENDER_SLUG,AETHYR_RENDER_PACKAGE,AETHYR_RENDER_PACKAGE_SHA256);}\n") {return 1;}
+  cc:=[6]string.[ifx tool_os()==TOOL_MAC then "clang" else "cc","-std=c11",probe,"-o",binary,""];
+  if !st_check_run(cc[0..<5],true,"compile-identity",out) {return 1;}run:=[1]string.[binary];if !st_check_run(run[..],true,"run-identity",out) {return 1;}
+  // proc_run preserves lines separated by newlines and omits the final terminator.
+  stdout_path:[FS_PATH_MAX]u8;actual:[1024]u8;actual_n:=fs_read(fs_join(out,"run-identity.stdout",stdout_path[..]),actual[..]);expected:[1024]u8;jo_start(o[..],expected[..]);jo_put(o[..],"7\nfixture\nfixture\nrender/render.json\n");jo_put(o[..],cast(string)hash[..]);if actual_n!=o[0].n || cast(string)actual[0..<actual_n]!=jo_text(o[..]) {tool_errln("native identity stdout differs");return 1;}
+  actual_package:=args_at(args[..],4);if actual_package.count>0 && !st_check_actual(actual_package,stage_binary,identity_binary,ref,ref_native,out) {return 1;}
+  hashes:[4096]u8;jo_start(o[..],hashes[..]);jo_obj(o[..]);
+  for i:0..<2 {
+    image:=ifx i==0 then stage_binary else identity_binary;count:=fs_read(image,image_bytes[..]);now:[64]u8;
+    if count<0 || !S_hex(S_hash(cast(string)image_bytes[0..<count]),now[..]) || cast(string)now[..]!=cast(string)image_hashes[i][..] {tool_errln("CLI image changed during parity run");return 1;}
+    jo_key(o[..],image);jo_str(o[..],cast(string)now[..]);
+  }jo_end(o[..]);if !fs_write(fs_join(out,"qualified-images.json",stdout_path[..]),jo_text(o[..])) {return 1;}
+  print("staging tools: exact manifest/3-product copies in both trees, native header parity, 3 corrupt-product classes, unsafe URLs and wrong identity refused; generated C header compiled and ran\n");return 0;
+}

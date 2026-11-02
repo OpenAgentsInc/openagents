@@ -1,0 +1,32 @@
+{
+  "schema": "aethyr.grid.route.archive-readback.v1",
+  "date": "2026-11-02",
+  "status": "passed",
+  "scope": "Complete owned directory inventories and every regular file, empty files included. Existing tar and diff utilities perform effects and byte comparison; no archived script is executed.",
+  "route": {
+    "archive": "artifacts.tar.gz",
+    "sha256": "f6cbf7d38486af6160fd54b450bd0400947b828100377ce04100ebef8a9a367f",
+    "bytes": 8277463,
+    "extract_argv": ["tar", "-xzf", "docs/verification/data/aethyr-ch11-2026-11-02/grid-playable-route/artifacts.tar.gz", "-C", "/tmp/aethyr-grid-route-readback-20261102"],
+    "extract_exit": 0,
+    "compare_argv": ["diff", "-qr", "/tmp/aethyr-grid-journey-main-20261102", "/tmp/aethyr-grid-route-readback-20261102"],
+    "compare_exit": 0,
+    "compare_stdout": ""
+  },
+  "native_producer": {
+    "archive": "native-producer.tar.gz",
+    "sha256": "bfa2731dcf5a08590ef2addce02ba6e6e111d4d5c8ab0ca68a5ed8df4882f80f",
+    "bytes": 12589476,
+    "extract_argv": ["tar", "-xzf", "docs/verification/data/aethyr-ch11-2026-11-02/grid-playable-route/native-producer.tar.gz", "-C", "/tmp/aethyr-grid-native-producer-readback-20261102"],
+    "extract_exit": 0,
+    "compare_argv": ["diff", "-qr", "/tmp/aethyr-grid-native-producer-20261102", "/tmp/aethyr-grid-native-producer-readback-20261102/aethyr-grid-native-producer-20261102"],
+    "compare_exit": 0,
+    "compare_stdout": ""
+  },
+  "path_setup_diagnostic": {
+    "cause": "The first route diff incorrectly expected a top-level source-directory member; the archive was intentionally packed with paths relative to that source.",
+    "diagnostic_exit": 2,
+    "repair": "Compare against the actual extracted root, without changing source or archive bytes.",
+    "corrected_result": "route.compare_exit"
+  }
+}

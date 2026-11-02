@@ -1,0 +1,82 @@
+// Six bounded WebGPU diagnostics over one Coax CDP runner.
+// coax/web/tool.sh aethyr/tests/webgpu-probe.coax MODE PROBE.wgsl RESULT.json
+// MODE: raster, raster-guard, depth-plane, depth-left, depth-guard, filter-precision
+#import "Basic";
+#load "webgpu-probe-policy.coax";
+#load "webgpu-session.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+GP_RUNNER :: "aethyr/tests/webgpu-probe.coax";
+GP_EFFECTS :: "aethyr/tests/webgpu-probe-effects.js";
+GPInput :: struct {path:[4096]u8;length:int;hash:[64]u8;}
+gp_input_path :: (inputs:[]GPInput,i:int)->string {return cast(string)inputs[i].path[0..<inputs[i].length];}
+gp_hash :: (path:string,out:[]u8)->bool {
+  data:[1048576]u8;n:=fs_read(path,data[..]);
+  return n>=0 && S_hex(S_hash(cast(string)data[0..<n]),out);
+}
+gp_input :: (inputs:[]GPInput,i:int,path:string)->bool {
+  full:=fs_realpath(path,inputs[i].path[..]);inputs[i].length=full.count;
+  return full.count>0 && gp_hash(full,inputs[i].hash[..]);
+}
+gp_request :: (o:[]Jo,mode:int,code:string) {
+  c:=gp_config(mode);jo_obj(o);jo_key(o,"code");jo_str(o,code);
+  jo_key(o,"vertex");jo_str(o,c.vertex);jo_key(o,"fragment");jo_str(o,c.fragment);
+  jo_key(o,"format");jo_str(o,"rgba32float");jo_key(o,"width");jo_int(o,64);jo_key(o,"height");jo_int(o,64);
+  jo_key(o,"uniform_bytes");jo_int(o,16);jo_key(o,"readback_bytes");jo_int(o,256);jo_key(o,"vertices");jo_int(o,3);
+  jo_key(o,"topology");jo_str(o,"triangle-list");jo_key(o,"clear");jo_raw(o,"{\"r\":0,\"g\":0,\"b\":0,\"a\":0}");
+  jo_key(o,"layout");jo_arr(o);jo_obj(o);jo_key(o,"binding");jo_int(o,0);jo_key(o,"visibility");jo_int(o,ifx mode==5 then 2 else 1);
+  jo_key(o,"buffer");jo_raw(o,"{\"type\":\"uniform\",\"minBindingSize\":16}");jo_end(o);
+  if mode==5 {
+    jo_raw(o,"{\"binding\":1,\"visibility\":2,\"texture\":{\"sampleType\":\"float\"}}");
+    jo_raw(o,"{\"binding\":2,\"visibility\":2,\"sampler\":{\"type\":\"filtering\"}}");
+  }
+  jo_end(o);
+  if mode==5 {
+    jo_key(o,"image");jo_raw(o,"{\"size\":[2,1],\"format\":\"rgba8unorm\",\"bytes\":[0,0,0,255,255,255,255,255],\"bytes_per_row\":8,\"sampler\":{\"magFilter\":\"linear\",\"minFilter\":\"linear\",\"mipmapFilter\":\"linear\",\"addressModeU\":\"clamp-to-edge\",\"addressModeV\":\"clamp-to-edge\"}}");
+  }
+  jo_key(o,"cases");gp_cases(o,mode);jo_end(o);
+}
+gp_capture :: (c:[]Cdp,mode:int,wgsl:string,output:string,url:string,inputs:[]GPInput)->int {
+  code:[262144]u8;cn:=fs_read(wgsl,code[..]);effects:[65536]u8;en:=fs_read(GP_EFFECTS,effects[..]);
+  if cn<1 || en<1 {tool_errln("WebGPU probe: shader/effects source missing or too large");return 2;}
+  browser:[65536]u8;bn:=wp_open(c,url,cast(string)effects[0..<en],browser[..]);if bn<1 {return 1;}
+  request:[524288]u8;ro:[1]Jo;jo_start(ro[..],request[..]);gp_request(ro[..],mode,cast(string)code[0..<cn]);
+  if ro[0].bad {return 2;}
+  value:=wp_run(c,"aethyrWebGPUProbeStart","aethyrWebGPUProbePoll()",jo_text(ro[..]));
+  if value<0 {
+    saved:=fs_write(output,cast(string)c[0].msg[0..<c[0].msg_n]);
+    tool_errln("WebGPU probe: effects did not complete within the bounded poll window");return 1;
+  }
+  d:=c[0].doc[0];admitted:=gp_admit(d,value,mode);receipt:[262144]u8;oo:[1]Jo;jo_start(oo[..],receipt[..]);jo_obj(oo[..]);
+  keys:=[8]string.["format","width","height","device","messages","errors","results","raw_words"];
+  for key:keys {jo_key(oo[..],key);jv_write(d,jv_get(d,value,key),oo[..]);}
+  jo_key(oo[..],"browser");jo_raw(oo[..],cast(string)browser[0..<bn]);jo_key(oo[..],"inputs");jo_obj(oo[..]);
+  for i:0..<inputs.count {jo_key(oo[..],gp_input_path(inputs,i));jo_str(oo[..],cast(string)inputs[i].hash[..]);}jo_end(oo[..]);
+  jo_key(oo[..],"source_changes");jo_arr(oo[..]);changed:=false;again:[64]u8;
+  for i:0..<inputs.count {if !gp_hash(gp_input_path(inputs,i),again[..]) || cast(string)again[..]!=cast(string)inputs[i].hash[..] {changed=true;jo_str(oo[..],gp_input_path(inputs,i));}}
+  jo_end(oo[..]);jo_end(oo[..]);
+  if oo[0].bad || !fs_write(output,jo_text(oo[..])) {tool_errln("WebGPU probe: result could not be retained");return 1;}
+  if !admitted || changed {tool_errln("WebGPU probe: shader/readback/source checks failed");return 1;}
+  print("WebGPU probe: % authored observations retained; all finite, alpha1, no shader messages/errors or source drift\n",gp_config(mode).count);return 0;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  if args_has(a[..],"--serve") {return gp_serve(args_value(a[..],"--serve",""));}
+  mode:=gp_mode(args_at(a[..],0));config:=gp_config(mode);wgsl:=args_at(a[..],1);output:=args_at(a[..],2);
+  if !config.valid || wgsl=="" || output=="" || args_count(a[..])!=3 {tool_errln("usage: webgpu-probe MODE PROBE.wgsl RESULT.json");return 2;}
+  sources:=[15]string.[wgsl,GP_RUNNER,"aethyr/tests/webgpu-probe-policy.coax","aethyr/tests/webgpu-probe-checks.coax",GP_EFFECTS,config.source,"aethyr/tests/webgpu-session.coax",
+    "coax/lib/net/cdp.coax","coax/lib/sys/fs.coax","coax/lib/sys/proc.coax","coax/platform/store-file-native.c","coax/platform/socket-native.c","coax/platform/process-native.c","coax/platform/tool-native.c",config.bindings];
+  inputs:[15]GPInput;n:=0;
+  for path:sources {if path=="" {continue;}if !gp_input(inputs[..],n,path) {tool_errln("WebGPU probe: fingerprint input missing or too large");return 2;}n+=1;}
+  temp:[4096]u8;dir:=fs_temp("aethyr-probe-origin-",temp[..]);if dir=="" {return 1;}
+  port_name:[4096]u8;port_file:=fs_join(dir,"port",port_name[..]);server:=gp_start_origin(port_file);status:=1;
+  if server>=0 {
+    port_text:[32]u8;pn:=-1;
+    for attempt:0..<100 {pn=fs_read(port_file,port_text[..]);if pn>0 {break;}proc_sleep(50);}
+    if pn>0 && args_whole(cast(string)port_text[0..<pn])>0 {
+      url_buffer:[128]u8;url:=cdp_cat2("http://127.0.0.1:",cast(string)port_text[0..<pn],url_buffer[..]);url_slash:[128]u8;target:=cdp_cat2(url,"/",url_slash[..]);
+      c:[1]Cdp;status=gp_capture(c[..],mode,wgsl,output,target,inputs[0..<n]);cdp_close(c[..]);
+    }
+    killed:=proc_kill(server,PROC_SIGKILL);waited:=proc_wait(server,5000);released:=proc_release(server);
+  }
+  removed:=fs_remove(dir);return ifx removed then status else 1;
+}

@@ -1,0 +1,1 @@
+{"schema":"aethyr.render.wire-port-parity.v1","status":"passed","exact_native_input_files":4,"native_modes":3,"command_exit_observations":36,"planted_faults_caught":15,"signal_encoding":"Python-6 and Coax134 both denote the observed SIGABRT; raw receipts retained","old_checks_reused_without_execution":true}

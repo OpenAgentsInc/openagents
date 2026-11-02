@@ -1,0 +1,58 @@
+// Maya's recipe check orchestration in Coax. The shell entry only changes
+// working directory and delegates here. No model, weights or GPU job runs.
+//   COAX=/qualified/coax coax/web/tool.sh psionic/tests/check-deepseek-recipe.coax [--mutate] [--jobs N]
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc-raw.coax";
+#load "../../coax/lib/json/json.coax";
+recipe_run :: (argv: [] string, deadline: int, output: [] u8) -> ProcRun {
+  err: [1048576] u8; env: [] string; left := proc_left(deadline, proc_now_ms());
+  if left == 0 { expired: ProcRun; expired.timed_out = true; return expired; }
+  r := proc_run_bytes(argv, env, left, output, err[..]);
+  tool_err(cast(string) err[0..<r.err_n]);
+  return r;
+}
+recipe_status :: (r: ProcRun) -> int {
+  if r.timed_out { return 124; }
+  if r.started != 0 || r.cut || r.status < 0 || r.status > 255 { return 1; }
+  return r.status;
+}
+tool_main :: () -> int #export_c {
+  args: [1] Args; if !args_load(args[..]) { return 2; }
+  compiler_buf: [4096] u8; compiler := proc_getenv("COAX", compiler_buf[..]); if compiler == "" { compiler = "coax/bin/coax"; }
+  jobs_buf: [256] u8; jobs := proc_getenv("COAX_MUTATE_JOBS", jobs_buf[..]); if jobs == "" { jobs = "8"; }
+  mutate := false; i := 0;
+  while i < args_count(args[..]) {
+    word := args_at(args[..], i);
+    if word == "--mutate" { mutate = true; i += 1; }
+    else if word == "--jobs" && i + 1 < args_count(args[..]) { jobs = args_at(args[..], i + 1); i += 2; }
+    else { tool_errln("usage: check_deepseek_recipe.sh [--mutate] [--jobs N]"); return 2; }
+  }
+  deadline := proc_now_ms() + 810000; output: [4194304] u8; expected: [65536] u8;
+  for mode: 0..<2 {
+    check := [4] string.[compiler, "test", "psionic/lib/deepseek/recipe.coax", "--release"];
+    r := recipe_run(check[0..<3 + mode], deadline, output[..]); if recipe_status(r) != 0 { return recipe_status(r); } n := r.out_n;
+    print("%", cast(string) output[0..<n]);
+    for example: [2] string.["deepseek-recipe", "deepseek-recipe-refuse"] {
+      source_buf: [256] u8; o: [1] Jo;
+      // Jo's raw byte builder also joins literal path components.
+      jo_start(o[..], source_buf[..]); jo_put(o[..], "psionic/examples/"); jo_put(o[..], example); jo_put(o[..], ".coax");
+      run := [4] string.[compiler, "run", jo_text(o[..]), "--release"];
+      r = recipe_run(run[0..<3 + mode], deadline, output[..]); if recipe_status(r) != 0 { return recipe_status(r); } n = r.out_n;
+      fixture_buf: [256] u8; fo: [1] Jo; jo_start(fo[..], fixture_buf[..]); jo_put(fo[..], "psionic/fixtures/deepseek-recipe/"); jo_put(fo[..], example); jo_put(fo[..], ".out");
+      m := fs_read(jo_text(fo[..]), expected[..]);
+      if m != n || cast(string) expected[0..<m] != cast(string) output[0..<n] {
+        temp_buf:[4096]u8;failed:=fs_temp("coax-deepseek-recipe-",temp_buf[..]);path_buf:[4096]u8;
+        if failed!="" {saved:=fs_write(fs_join(failed,"actual.out",path_buf[..]),cast(string)output[0..<n]);}
+        tool_err("recipe transcript differs; actual output retained at ");tool_errln(failed);return 1;
+      }
+    }
+  }
+  if mutate {
+    command := [7] string.[compiler, "mutate", "psionic/lib/deepseek/recipe.coax", "--root-only", "--jobs", jobs, ""];
+    r := recipe_run(command[0..<6], deadline, output[..]); if recipe_status(r) != 0 { return recipe_status(r); }
+    print("%", cast(string) output[0..<r.out_n]);
+  }
+  print("Maya's recipe: plan checks and both transcripts pass\n"); return 0;
+}

@@ -56,6 +56,7 @@ ground query instead of loading Aethyr's.
 | Hecate's Cemetery | Shared walking/camera and paid-step fetch in the actual villa face. | Flight/boat handover, special controls and the remaining floor-relative adapters. |
 | Fairy Forest | Shared walking/camera and counted frame time. | Flight in `fairy-face.c` and its recorded-session integration. |
 | Space games | Orbit League's 120 Hz steps use `aethyr/loop.coax`; both games have existing simulation/network checks. | Belt's lockstep schedule, space-camera/world-frame adapters and shared session/profile integration. |
+| Anime Lab | The new Coax stage and generated shaders are present on main. | Shared renderer adoption and a complete engine-subsystem inventory remain open; its existing renderer is explicitly tracked in `aethyr/render/adoption.coax`. |
 
 Clock migration already moved these paths onto `aethyr/loop.coax`
 ([chapter 1](ch001-a-frame-has-a-fixed-step.md), "What it replaced"): Dead
@@ -81,8 +82,11 @@ Do not count that future consolidation as another shader-source port.
 Its first [CPU metadata component](../render/README.md) is now used by
 `verse_grid_view` through `verse/grid-render.coax`, before the native matrix
 output is written. The browser Grid frame, GPU resource owners and pass
-submission remain private adapters. This narrow adoption does not complete
-the playable route or `ec-migrate`.
+submission have a larger shared implementation under qualification in
+chapter 11. The earlier native matrix result alone does not qualify those
+hosts or complete the playable route or `ec-migrate`. Anime Lab is newer than
+the retained sixteen-realm shader inventory; its explicit legacy route must
+not be counted as shared renderer adoption.
 
 Shared modules already in use: [verse/player.coax](../../verse/player.coax),
 [camera.coax](../../verse/camera.coax),

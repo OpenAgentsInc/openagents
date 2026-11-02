@@ -1,0 +1,299 @@
+{
+  "schema": "aethyr.frame.reconciliation.v1",
+  "date": "2026-11-02",
+  "status": "comparisons_pass_with_explicit_older_qualified_compiler",
+  "chapter_11_status": "partly_implemented",
+  "base_main": "8ed49c9b6a",
+  "integration_head": "dbbfe6bf70360b6500a62a9a60213a6ce7ee725c",
+  "scope": "Preserved published Rf CPU metadata/native Grid projection API, unified interval predicate and existing Render whole-frame admission. No GPU/playable-route qualification or current-main compiler publication is claimed.",
+  "sources": {
+    "aethyr/render/README.md": {
+      "sha256": "1e8fe56e125e8f41b28763145a54c227b56a93a2b167944f4a0ac8f34f6bead9",
+      "bytes": 15030
+    },
+    "aethyr/render/frame.coax": {
+      "sha256": "4958237fe4a394a2e0f2188834ded591bbc4de7ea8daf220b23deb0d78394d84",
+      "bytes": 11565
+    },
+    "aethyr/render/tests/check_frame.py": {
+      "sha256": "8c9ce876187d5ad6638f42a282b161fd618f11f34a62b42ef83ac30924649115",
+      "bytes": 12455
+    },
+    "aethyr/render/tests/frame-native.c": {
+      "sha256": "1eb787385aaef2de2aab2329126ffebc94a922c533b6dc2ca8e376b0f4afd9c6",
+      "bytes": 2860
+    },
+    "aethyr/render/tests/frame-native.coax": {
+      "sha256": "3c2a016747109f8b387307928edf1e36f36e4e549b2b2d2d8d5437b5b0aa8272",
+      "bytes": 579
+    },
+    "aethyr/render/types.coax": {
+      "sha256": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+      "bytes": 2433
+    },
+    "aethyr/tests/check_render_native.py": {
+      "sha256": "727342b2b1b48c0ae711857e512c3ab62df8472fe2b1b644c1982aeb75df933a",
+      "bytes": 4488
+    },
+    "aethyr/tests/render-frame-checks.coax": {
+      "sha256": "5aa72921bc73388f87a6b7a5f54f93c6649614ea4392a9ef85a6e8e878f78ef7",
+      "bytes": 27733
+    },
+    "aethyr/tests/render-native.c": {
+      "sha256": "6d3370114cdb4ba5cc280261e1ed8658ebc225c5f5513230cf3ef61feabedf56",
+      "bytes": 4868
+    },
+    "aethyr/tests/render-native.coax": {
+      "sha256": "8ea4b5bbef6e400cabb3b4a3766551da980aeb1494b8b79a31282a6fd298095d",
+      "bytes": 491
+    },
+    "coax/lib/quantity.coax": {
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "bytes": 585
+    },
+    "verse/grid-render.coax": {
+      "sha256": "aee57aa6365ec60e756bc2f61c1b4aa656cf09a3966bd1dbbdd6721cd4ce5ae6",
+      "bytes": 1214
+    },
+    "verse/grid.coax": {
+      "sha256": "d59ca6a8db7aa21f55abd6b68d07be7f0fa7549da5451bda21c7878b8961c3c9",
+      "bytes": 27954
+    },
+    "verse/sticks.coax": {
+      "sha256": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
+      "bytes": 20876
+    }
+  },
+  "compiler": {
+    "path": "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "version": "coax0 0.47.0",
+    "qualified_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "checkout_source_digest_observed": "56bb77a6c4c10e367259adc1d434d7b0b1680c61d4d41fb42c88474a58d7ae5c",
+    "checkout_sources_match": false,
+    "render_native_driver_original_status": "exploratory",
+    "limitation": "The explicit 1fac compiler is an older qualified artifact, not a matching-main build. The driver retains its exploratory label; successful native numerical observations are reported separately."
+  },
+  "contracts": {
+    "published_records_preserved": [
+      "RfHandle",
+      "RfResource",
+      "RfBinding",
+      "RfDraw",
+      "RfGeometry",
+      "RfLimits",
+      "RfFrame",
+      "RfResult"
+    ],
+    "canonical_interval_predicate": "render_span_fits",
+    "metadata_empty_draw": "declared ranges remain checked, even at count or instances zero",
+    "whole_frame_empty_draw": "zero count or instances skips GPU draw/domain reads",
+    "indexed_metadata": "asset owner admits index values separately",
+    "indexed_whole_frame": "actual index payload and derived domains are checked",
+    "counter_publication": "Rf refusal preserves returned frame; Render whole-frame refusal reports zero admitted draws"
+  },
+  "coax": {
+    "checks_per_mode": 24,
+    "modes": [
+      "debug",
+      "release"
+    ],
+    "root_mutants": 360,
+    "killed": 360,
+    "survivors": 0,
+    "waivers_added": 0,
+    "commands": [
+      {
+        "name": "debug-v3",
+        "args": [
+          "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+          "test",
+          "aethyr/render/frame.coax",
+          "--library"
+        ],
+        "exit_status": 0,
+        "seconds": 0.01146287505980581,
+        "frame_sha256": "4958237fe4a394a2e0f2188834ded591bbc4de7ea8daf220b23deb0d78394d84"
+      },
+      {
+        "name": "release-v3",
+        "args": [
+          "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+          "test",
+          "aethyr/render/frame.coax",
+          "--library",
+          "--release"
+        ],
+        "exit_status": 0,
+        "seconds": 0.011574333067983389,
+        "frame_sha256": "4958237fe4a394a2e0f2188834ded591bbc4de7ea8daf220b23deb0d78394d84"
+      },
+      {
+        "name": "mutation-v3",
+        "args": [
+          "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+          "mutate",
+          "aethyr/render/frame.coax",
+          "--library",
+          "--root-only",
+          "--jobs",
+          "4"
+        ],
+        "exit_status": 0,
+        "seconds": 0.02178083301987499,
+        "frame_sha256": "4958237fe4a394a2e0f2188834ded591bbc4de7ea8daf220b23deb0d78394d84"
+      }
+    ]
+  },
+  "rf_native": {
+    "modes": [
+      "debug/O0",
+      "release/O2",
+      "ASan+UBSan/O1"
+    ],
+    "all_passed": true,
+    "binding_cases_per_mode": 307800,
+    "draw_cases_per_mode": 2592,
+    "generation_lifetime_cases_per_mode": 180,
+    "actual_grid_viewport_extent_cases_per_mode": 108,
+    "abi_bytes": 16,
+    "named_field_refusal_and_cleanup": true,
+    "guard_words_unchanged": true,
+    "host_effects": 0,
+    "sources_fenced": true
+  },
+  "render_native": {
+    "modes": [
+      {
+        "mode": "debug",
+        "cases": 1891,
+        "producer_faults_detected": [
+          "status",
+          "slot",
+          "work",
+          "publication",
+          "preflight",
+          "decode"
+        ],
+        "transcript_sha256": "c9b73ea3403d8d2e04fd293d10c6cb3593f16694aa8d662702c71dba71f52b39",
+        "generated_c_sha256": "a28e42e64c7d248284ceaed8921afd43331075eb17659e93d2e2dbbbd9e09637",
+        "generated_header_sha256": "fb6fe4ccb273ee3cfd70183ec1d6883ea8eb6f47707752d2d6ed18dc058d36d4",
+        "executable_sha256": "996677f45c4565bc408491d3448152739ede65828565f48173614b2c0d4acdad"
+      },
+      {
+        "mode": "release",
+        "cases": 1891,
+        "producer_faults_detected": [
+          "status",
+          "slot",
+          "work",
+          "publication",
+          "preflight",
+          "decode"
+        ],
+        "transcript_sha256": "c9b73ea3403d8d2e04fd293d10c6cb3593f16694aa8d662702c71dba71f52b39",
+        "generated_c_sha256": "7b02ec22cdfe4cbd488f9c04de1f0293adb3f51278a632b54e551815e3d0e8ac",
+        "generated_header_sha256": "fb6fe4ccb273ee3cfd70183ec1d6883ea8eb6f47707752d2d6ed18dc058d36d4",
+        "executable_sha256": "b3831383d6e0e3db8c1f9b19461d8f2946d5022658ba4c6f9ccc11238cc6f613"
+      },
+      {
+        "mode": "sanitized",
+        "cases": 1891,
+        "producer_faults_detected": [
+          "status",
+          "slot",
+          "work",
+          "publication",
+          "preflight",
+          "decode"
+        ],
+        "transcript_sha256": "c9b73ea3403d8d2e04fd293d10c6cb3593f16694aa8d662702c71dba71f52b39",
+        "generated_c_sha256": "a28e42e64c7d248284ceaed8921afd43331075eb17659e93d2e2dbbbd9e09637",
+        "generated_header_sha256": "fb6fe4ccb273ee3cfd70183ec1d6883ea8eb6f47707752d2d6ed18dc058d36d4",
+        "executable_sha256": "96755d50568050c3c1b4b274cbe2934d19fa2bbaf2425afd69ff20e1800c4b0e"
+      }
+    ],
+    "cases_per_mode": 1891,
+    "comparisons": "all equal to independent unbounded-integer mathematical endpoint oracle",
+    "source_fences_clean": true,
+    "transcript_sha256": "c9b73ea3403d8d2e04fd293d10c6cb3593f16694aa8d662702c71dba71f52b39"
+  },
+  "worked_examples": [
+    {
+      "args": [
+        "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+        "run",
+        "aethyr/render/admit-frame.coax"
+      ],
+      "exit_status": 0,
+      "seconds": 0.32079404103569686,
+      "expected": "aethyr/fixtures/render-admission.out",
+      "stdout_matches": true
+    },
+    {
+      "args": [
+        "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+        "run",
+        "aethyr/render/admit-frame.coax",
+        "--release"
+      ],
+      "exit_status": 0,
+      "seconds": 0.3214787499746308,
+      "expected": "aethyr/fixtures/render-admission.out",
+      "stdout_matches": true
+    },
+    {
+      "args": [
+        "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+        "run",
+        "aethyr/examples/admit-a-frame.coax"
+      ],
+      "exit_status": 0,
+      "seconds": 0.4208621670259163,
+      "expected": "aethyr/fixtures/admit-a-frame.out",
+      "stdout_matches": true
+    },
+    {
+      "args": [
+        "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+        "run",
+        "aethyr/examples/admit-a-frame.coax",
+        "--release"
+      ],
+      "exit_status": 0,
+      "seconds": 0.4588013340253383,
+      "expected": "aethyr/fixtures/admit-a-frame.out",
+      "stdout_matches": true
+    }
+  ],
+  "retained_history": [
+    {
+      "epoch": "v1",
+      "result": "name collision E0304/E0305 between span parameter rf_begin and published procedure; renamed local bound rf_lower"
+    },
+    {
+      "epoch": "v2",
+      "result": "24 checks pass per mode; 361 mutants, 359 killed, 2 survived. Negative resource-capacity guard had redundant zero boundary. Restored original positive extent-vs-capacity ordering guard before canonical span; no equivalence waiver."
+    },
+    {
+      "epoch": "v2 native",
+      "result": "native Rf debug/release/sanitized passed on v2 source; retained separately, final v3 rerun justified by guard change"
+    }
+  ],
+  "driver_change": "check_frame.py accepts optional --coax without changing oracle equations; reason2 documents its independent mathematical oracle. Default remains checkout compiler. Mismatch guard and --explore-stale-compiler behavior preserved.",
+  "evidence": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/frame-reconciliation/artifacts.tar.gz",
+    "archive_sha256": "a0c034829d58f11c13071d692993ad8748f4cf445a6f8235e6828cf8a40bf51d",
+    "archive_bytes": 761454,
+    "payload_count": 176,
+    "retention": "docs/verification/data/aethyr-ch11-2026-11-02/frame-reconciliation/retention.json",
+    "archive_readback_verified": true
+  },
+  "remaining": [
+    "Complete playable Grid browser/native route and current source epoch acceptance",
+    "Remaining realm profiles including Anime Lab",
+    "Everglade changed-source full-size runtime",
+    "Dead Gears strict precision failure",
+    "Matching-main compiler publication"
+  ]
+}

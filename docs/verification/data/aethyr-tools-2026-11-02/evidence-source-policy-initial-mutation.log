@@ -1,0 +1,56 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/render/tools/evidence-source-policy.coax:31:63: mutant survived: '>=' became '>'
+  es_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
+                                                                ^
+aethyr/render/tools/evidence-source-policy.coax:33:14: mutant survived: '<=' became '<'
+    if p.count <= ES_ROOT.count || p[0..<ES_ROOT.count] != ES_ROOT { return false; }
+               ^
+aethyr/render/tools/evidence-source-policy.coax:39:10: mutant survived: the assignment was removed
+        at = i + 1;
+           ^
+aethyr/render/tools/evidence-source-policy.coax:39:14: mutant survived: '+' became '-'
+        at = i + 1;
+               ^
+aethyr/render/tools/evidence-source-policy.coax:39:16: mutant survived: 1 became 2
+        at = i + 1;
+                 ^
+aethyr/render/tools/evidence-source-policy.coax:42:27: mutant survived: '<=' became '<'
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                            ^
+aethyr/render/tools/evidence-source-policy.coax:42:30: mutant survived: 122 became 123
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                               ^
+aethyr/render/tools/evidence-source-policy.coax:42:41: mutant survived: '>=' became '>'
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                                          ^
+aethyr/render/tools/evidence-source-policy.coax:42:44: mutant survived: 65 became 66
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                                             ^
+aethyr/render/tools/evidence-source-policy.coax:42:53: mutant survived: '<=' became '<'
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                                                      ^
+aethyr/render/tools/evidence-source-policy.coax:42:56: mutant survived: 90 became 91
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                                                         ^
+aethyr/render/tools/evidence-source-policy.coax:42:67: mutant survived: '>=' became '>'
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                                                                    ^
+aethyr/render/tools/evidence-source-policy.coax:42:70: mutant survived: 48 became 49
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                                                                       ^
+aethyr/render/tools/evidence-source-policy.coax:42:79: mutant survived: '<=' became '<'
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                                                                                ^
+aethyr/render/tools/evidence-source-policy.coax:42:82: mutant survived: 57 became 58
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                                                                                   ^
+aethyr/render/tools/evidence-source-policy.coax:42:95: mutant survived: 45 became 46
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                                                                                                ^
+aethyr/render/tools/evidence-source-policy.coax:42:107: mutant survived: 95 became 96
+        if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+                                                                                                            ^
+aethyr/render/tools/evidence-source-policy.coax:49:37: mutant survived: 57 became 58
+    for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+                                      ^
+85 mutants, 67 killed, 18 survived

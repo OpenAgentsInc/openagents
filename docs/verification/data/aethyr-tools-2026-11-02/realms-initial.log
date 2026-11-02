@@ -1,0 +1,72 @@
+bun test v1.4.0 (34cbb9a40)
+
+coax/web/realms.test.ts:
+(pass) the tagged table passes, and every realm has a style and a clock [3.38ms]
+killed 1 dangling process
+315 | <canvas id="coaxial" aria-hidden="true"></canvas>
+316 | ${loaderMarkup(r.title, `/realms/${r.slug}/index.md`)}
+317 | <main>
+318 | <h1>${t}</h1><p><a href="/realms/${r.slug}/index.md">${t}</a></p>
+319 | </main>
+320 | <script type="module" src="/coaxial/host.js" data-app="${r.module}"${renderAttributes(r.slug, r.module)}${slot}${assets}></script>
+                                                                           ^
+error: Command failed: /Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/tool.sh aethyr/render/page-render.coax orbit-league orbitleague
+      at execFileSync (node:child_process:298:14)
+      at page (/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/realms.ts:320:70)
+      at <anonymous> (/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/realms.test.ts:40:12)
+(fail) manifest realms preserve reviewed shared and legacy renderer adoption [5001.94ms]
+  ^ this test timed out after 5000ms.
+realm has no reviewed shared or legacy renderer adoption
+realm has no reviewed shared or legacy renderer adoption
+(pass) an unknown or mismatched realm cannot acquire a fallback renderer [280.41ms]
+(pass) direct Garden and retained Galaxy bind the compiled base renderer profile [0.40ms]
+(pass) Everglade is painterly, Hecate's Cemetery and Fairy Forest flat; the rest lowpoly [0.89ms]
+(pass) refuses a realm without a style [0.63ms]
+(pass) refuses an unknown style [0.23ms]
+(pass) refuses a zone with an unknown style [0.26ms]
+(pass) refuses a zone id twice [0.29ms]
+(pass) takes zones with and without their own style [0.37ms]
+(pass) refuses a missing or bad clock [1.41ms]
+79 |   writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+80 |   writeFileSync(join(site, "waterlab.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+81 |   writeFileSync(join(site, "orbitleague.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+82 |   expect(check(() => {}, { site, styleBlock: true })).toThrow(/everglade.wgsl has no style block/)
+83 |   writeFileSync(join(site, "everglade.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+84 |   expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
+                                                               ^
+error: expect(received).not.toThrow()
+
+Error name: "Error"
+Error message: "realms.json: anime-lab is drawn anime but animelab.wgsl has no style block (coax/web/wgsl-block.coax verse/style.coax ... --into it)"
+
+      at <anonymous> (/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/realms.test.ts:84:59)
+(fail) refuses a painterly realm whose WGSL has no style block [1.80ms]
+(pass) takes an anime realm with or without a variant, and anime zones with their own [1.80ms]
+(pass) refuses an unknown variant, and a variant on anything not drawn anime [1.43ms]
+135 |   writeFileSync(join(site, `${fixture}.wgsl`), "// no block\n")
+136 |   expect(check((r) => { r.style = "anime" }, { site, styleBlock: true, packs }, "fixture")).toThrow(new RegExp(`${fixture}.wgsl has no style block`))
+137 |   expect(check((r) => { r.zones = [{ id: "lab", style: "anime" }] }, { site, styleBlock: true, packs }, "fixture")).toThrow(/has no style block/)
+138 |   // (a change to the fixture is the drop realm's and the built realm's too)
+139 |   for (const m of [fixture, "droprealm", "myrealm"]) writeFileSync(join(site, `${m}.wgsl`), block)
+140 |   expect(check((r) => { r.style = "anime"; r.variant = "action" }, { site, styleBlock: true, packs }, "fixture")).not.toThrow()
+                                                                                                                            ^
+error: expect(received).not.toThrow()
+
+Error name: "Error"
+Error message: "realms.json: anime-lab is drawn anime but animelab.wgsl has no style block (coax/web/wgsl-block.coax verse/style.coax ... --into it)"
+
+      at <anonymous> (/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/realms.test.ts:140:119)
+(fail) an anime realm, or an anime zone, needs the style block in its WGSL [2.22ms]
+(pass) an anime page carries data-variant (pastoral when none) and its zones' variants; other pages none [772.81ms]
+(pass) the page carries data-style, data-clock and data-zones [143.52ms]
+(pass) refuses a painterly realm with a lowpoly pack, and a pack of another style [3.35ms]
+(pass) Everglade and Hold the Stair play by the SRD 5e ruleset and their pages say so; no other realm has one [292.01ms]
+(pass) refuses an unknown ruleset [0.68ms]
+(pass) a listed realm needs when it opened and its one line; an unlisted one doesn't [2.48ms]
+(pass) /realms lists the listed realms: its rows, its text and its links [0.92ms]
+(pass) only a realm with a tip page asks who made it (data-maker): the rest log no 404 [977.39ms]
+
+ 20 pass
+ 3 fail
+ 171 expect() calls
+Ran 23 tests across 1 file. [7.62s]

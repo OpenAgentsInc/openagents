@@ -1,0 +1,52 @@
+{
+  "schema": "aethyr.tooling.recipe-process-port.v1",
+  "date": "2026-11-02",
+  "status": "tool_port_qualified_strict_current_compiler_transcript_pending",
+  "change": "Recipe orchestration moves to Coax. The existing shell entry only changes working directory and execs the Coax tool. The shared raw process effect preserves NUL bytes and final newlines, with bounded output and child deadlines.",
+  "driver": "psionic/tests/check-deepseek-recipe.coax",
+  "driver_sha256": "5dccbf31be67f7da31c1eb35c0d5f138b7d8d6c1b11e99272923cad10fb9ee41",
+  "driver_image_sha256": "db2dcce8ecc02af917c1de93b675983bf8b3ffac8b12ffc2ce8e37d1c8bfa544",
+  "original_shell_sha256": "6471300ad364fed9a63aa89f9e2bd3cc968a9befcbb2ed87c1cca5d277300098",
+  "thin_shell_sha256": "25ccc308666f2813ee856bbb6318aef1117d820d05bba7491306e21a45b01797",
+  "raw_process_sha256": "1f36d3cbaca60d6e594e7858b768b6941ea9d70a72620dcab3ae8f0f2677f922",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_matches_current_main": false,
+  "raw_process_checks": {
+    "driver": "coax/lib/sys/proc-raw-check.coax",
+    "driver_sha256": "141115d617d0fafd121f31e75816dfb712fbd87c7b85d69ec2021cac331e6777",
+    "result": "passed: exact NUL/255/final-newline bytes, bounded truncation, empty output, missing executable refusal, and actual 50ms owned-child timeout",
+    "observation": "The completed tool call printed 'raw process: bytes, final newline, capacity, empty output, spawn refusal and timeout pass'. That call's output was not separately redirected to a file; no raw log file is claimed. The unchanged process checks were not repeated."
+  },
+  "same_input_controls": {
+    "scope": "Actual original shell and actual Coax executable use the same controlled Coax compiler child and committed transcript fixtures. No model or authority checks run inside the controlled child.",
+    "mock": "psionic/tests/recipe-tool-mock.coax",
+    "mock_image_sha256": "392b6d61de5536ce375390ec5e6fb263657f60ee5e36171ee052f537b811bcee",
+    "checker": "psionic/tests/recipe-tool-checks.coax",
+    "final_controls": "final-controls/ and aethyr-recipe-tool-final-controls-20261102.log in artifacts.tar.gz",
+    "legacy_controls": "legacy-controls/ controls0-7, legacy-last/ control8, with corresponding raw logs in artifacts.tar.gz",
+    "passed_cases": 9,
+    "cases": ["debug/release exact transcripts", "optional mutation with default jobs8", "explicit jobs2", "unknown flag", "missing jobs argument", "missing final newline", "embedded NUL", "test child exit23", "mutation child exit29"],
+    "commands": "All compiler argv and ordering match the original shell, including debug/release flags and optional root-only mutation.",
+    "refinement": "A missing --jobs argument returns the documented usage status2 rather than Bash's unbound-variable status1. Invalid transcript diagnostics now retain the actual bytes instead of deleting the temporary output.",
+    "red_and_fix": "Initial controlled comparison caught accidental normalization of child exit23/29 to1. Final Coax controls preserve both original child statuses. Raw failed comparison is retained; no passing score was inferred from it.",
+    "repeat_scope": "Only controlled wrapper checks were repeated after changing the status propagation code. No unchanged real recipe check group or real transcript run was repeated."
+  },
+  "real_recipe_observation": {
+    "result": "79 debug checks passed, then the first strict transcript refused under the explicitly older compiler. A separate direct run of the same example reproduced the mismatch without the wrapper.",
+    "expected_sha256": "bac93c8b6babc6255791742c90cd21e18ab9c8f5f89e3b10bc80e2c1032b00d5",
+    "actual_sha256": "f12b2b1040b60bb01b623217aad37770ee1001391f19503055fb963f8b54e3b5",
+    "expected_bytes": 3068,
+    "actual_bytes": 3066,
+    "difference": "Q8_0 KL: expected0.00022960896719454973/high0.00028397003336496973; actual0.0002296089671945501/high0.0002839700333649702. Other lines and decisions match. No expected output or tolerance was changed.",
+    "epoch": "The retained real invocation precedes the final error-status propagation/retention refinements. It is a recorded old-compiler failure, not a final-source recipe release pass.",
+    "remaining": "Run the strict actual recipe gate with the matching-current qualified compiler after compiler release qualification; do not normalize the floating output to pass."
+  },
+  "retention": {
+    "archive": "artifacts.tar.gz",
+    "bytes": 66706,
+    "sha256": "e3642ecbcfa2a0f3f79541d4ac2394b39e960b4b3a9e22943158bc4eb1023c76",
+    "readback": "Extracted into a new owned directory; eight complete directory comparisons and eleven exact file comparisons passed, including empty outputs. Archive contains initial/final source snapshots, original shell, actual final executable images, all controlled command logs and real expected/actual failed transcripts."
+  },
+  "model_weights_or_gpu_jobs": false,
+  "full_release_gate_passed": false
+}

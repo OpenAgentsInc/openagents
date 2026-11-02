@@ -1,6 +1,26 @@
 // The checks' side of verse/gridwalk.coax: a new session on a phone's view, frames of keys,
 // and a session with every kind of input. Only the checks call it.
 
+#test "the page's read-only Grid observations name the actual recorded session and drawn pose" {
+  empty: [1] GridWalk;
+  #assert gridwalk_probe(empty[0..<0], 0) == -1 && gridwalk_pose(empty[0..<0], 0) == 0;
+  g: [1] GridWalk; gw_new(g[..]); gw_play(g[..], 30);
+  before := g[0];
+  expected := [10] int.[gridwalk_steps(g[..]), gridwalk_session(g[..]), gridwalk_digest(g[..]),
+    g[0].records, g[0].profile, g[0].you.jumps.taken, replay_flag(g[0].you.on_ground),
+    cast(int) g[0].you.collision_refusals, cast(int) cast(u8) g[0].you.query_status,
+    cast(int) cast(u8) g[0].you.camera_query_status];
+  for k: 0..<10 { #assert gridwalk_probe(g[..], k) == expected[k]; }
+  feet := gridwalk_feet(g[..]); eye := gridwalk_eye(g[..]); at := gridwalk_at(g[..]);
+  pose := [10] f32.[feet.x,feet.y,feet.z,eye.x,eye.y,eye.z,at.x,at.y,at.z,gridwalk_face(g[..])];
+  for k: 0..<10 { #assert f32_bits(gridwalk_pose(g[..], k)) == f32_bits(pose[k]); }
+  #assert gridwalk_probe(g[..], -1) == -1 && gridwalk_probe(g[..], 10) == -1;
+  #assert gridwalk_pose(g[..], -1) == 0 && gridwalk_pose(g[..], 10) == 0;
+  #assert gridwalk_digest(g[..]) == gw_digest(before.you,before.input,before.profile);
+  #assert g[0].records == before.records && g[0].now == before.now;
+  for k: 0..<REPLAY_COUNTERS { #assert g[0].n[k] == before.n[k]; }
+}
+
 // A 1000 x 2000 pixel phone at 2 pixels a point, as verse/sticks.coax's checks.
 gw_new :: (g: [] GridWalk) {
   g[0] = GridWalk.{};

@@ -1,0 +1,9 @@
+// The native header names the exact complete package authenticated in Coax.
+//   coax/web/tool.sh verse/native/render-package.coax --package FILE --app APP --profile PROFILE --output HEADER
+#load "../../aethyr/render/staging-files.coax";
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) {return 2;}
+  source:=args_value(args[..],"--package","");app:=args_value(args[..],"--app","");profile:=args_value(args[..],"--profile","");output:=args_value(args[..],"--output","");
+  if source.count==0 || app.count==0 || profile.count==0 || output.count==0 {tool_errln("usage: render-package --package FILE --app APP --profile PROFILE --output HEADER");return 2;}
+  return ifx rsp_write_identity(source,app,profile,output) then 0 else 1;
+}

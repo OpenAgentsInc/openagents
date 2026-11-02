@@ -1,0 +1,9 @@
+lane the-grid (7.0 s)
+  ok    the-grid: at http://127.0.0.1:8817/realms/the-grid
+  ok    the-grid: the engine started
+  ok    the-grid: no errors
+  ok    the-grid: draws (6.6% lit, at least 1.0%)
+  FAIL  the-grid: matches its golden (1137 blocks changed, 6 allowed, 192 moving, x 288-960, y 128-720; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-zBKbQc/the-grid.png)
+  time  the-grid: 7.0 s
+  ok    analytics contract: every the-grid event sent (4 events, 0.0 s)
+goldens http://127.0.0.1:8817: 1 failed in 7.7 s (1 tabs)

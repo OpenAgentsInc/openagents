@@ -1,0 +1,217 @@
+// Coax fixtures, source fences, receipts and verdicts for primitive WebGPU probes.
+// primitive-webgpu MODE PROBE.wgsl RESULT.json CASES.json
+// primitive-webgpu sampling NORMAL.wgsl RESULT.json FAULT.wgsl ARRAY-FAULT.wgsl
+#import "Basic";
+#load "primitive-webgpu-policy.coax";
+#load "webgpu-session.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+PP_SOURCE :: "aethyr/tests/primitive-webgpu.coax";
+PP_EFFECTS :: "aethyr/tests/primitive-webgpu-effects.js";
+PPInput :: struct {path:[4096]u8;n:int;hash:[64]u8;}
+PPFence :: struct {inputs:[48]PPInput;count:int;}
+PPShaders :: struct {bytes:[3][262144]u8;n:[3]int;}
+pp_path :: (f:[]PPFence,i:int)->string {return cast(string)f[0].inputs[i].path[0..<f[0].inputs[i].n];}
+pp_hash :: (path:string,out:[]u8)->bool {
+  length:=fs_size(path);if length<0 || length>134217728 {return false;}state:[112]u8;data:[65536]u8;
+  if sha256_init(state[..])!=SHA_OK {return false;}at:=0;deadline:=proc_now_ms()+30000;
+  while at<length {
+    if proc_now_ms()>deadline {return false;}
+    count:=ifx length-at<data.count then length-at else data.count;
+    if fs_read_at(path,at,data[0..<count])!=count || sha256_update_checked(state[..],data[0..<count],false)!=SHA_OK {return false;}at+=count;
+  }
+  raw:[32]u8;if fs_size(path)!=length || sha256_final_checked(state[..],raw[..],false)!=SHA_OK {return false;}
+  digest:S_Digest;for k:0..<8 {digest.words[k]=cb_load_be32(raw[..],k*4).value;}return S_hex(digest,out);
+}
+pp_add :: (f:[]PPFence,path:string)->int {
+  i:=f[0].count;if i>=48 {return -1;}
+  full:=fs_realpath(path,f[0].inputs[i].path[..]);if full=="" {return -1;}
+  for k:0..<i {if full==pp_path(f,k) {return k;}}
+  f[0].inputs[i].n=full.count;if !pp_hash(full,f[0].inputs[i].hash[..]) {return -1;}f[0].count+=1;return i;
+}
+pp_arr :: (o:[]Jo,a:int,b:int,c:int) {jo_arr(o);jo_int(o,a);jo_int(o,b);if c>=0 {jo_int(o,c);}jo_end(o);}
+pp_descriptor :: (o:[]Jo,w:int,h:int,depth:int,format:string,levels:int) {
+  jo_obj(o);jo_key(o,"size");pp_arr(o,w,h,depth);jo_key(o,"format");jo_str(o,format);jo_key(o,"usage");jo_int(o,6);jo_key(o,"mipLevelCount");jo_int(o,levels);jo_end(o);
+}
+pp_layout :: (o:[]Jo,mode:int) {
+  if mode==3 {jo_str(o,"auto");return;}
+  jo_arr(o);jo_arr(o);jo_obj(o);jo_key(o,"binding");jo_int(o,0);jo_key(o,"visibility");jo_int(o,ifx mode==1 then 3 else 2);
+  jo_key(o,"buffer");jo_raw(o,"{\"type\":\"uniform\",\"minBindingSize\":16}");jo_end(o);
+  if mode!=1 {jo_raw(o,"{\"binding\":1,\"visibility\":2,\"texture\":{\"sampleType\":\"float\"}}");jo_raw(o,"{\"binding\":2,\"visibility\":2,\"sampler\":{\"type\":\"filtering\"}}");}
+  jo_end(o);jo_end(o);
+}
+pp_entry :: (o:[]Jo,binding:int,kind:string,id:int,size:int,array:bool) {
+  jo_obj(o);jo_key(o,"binding");jo_int(o,binding);jo_key(o,"kind");jo_str(o,kind);jo_key(o,"id");jo_int(o,id);
+  if kind=="buffer" {jo_key(o,"offset");jo_int(o,0);jo_key(o,"size");jo_int(o,size);}
+  if kind=="texture" {jo_key(o,"view");if array {jo_raw(o,"{\"dimension\":\"2d-array\"}");}else {jo_obj(o);jo_end(o);}}
+  jo_end(o);
+}
+pp_sampling_halves :: (o:[]Jo,array:bool) {
+  halves:=[32]int.[0,0,13312,15360,0,12288,13312,15360,0,13312,13312,15360,15360,13824,13312,15360,15360,14336,13312,15360,0,14592,13312,15360,0,14848,13312,15360,0,15104,13312,15360];
+  jo_arr(o);for value:halves {jo_int(o,value);}
+  if array {for pixel:0..<8 {jo_int(o,14848);jo_int(o,14336);jo_int(o,12288);jo_int(o,15360);}}
+  jo_end(o);
+}
+pp_images :: (o:[]Jo,mode:int,d:Jv) {
+  jo_arr(o);
+  if mode==3 {
+    for image:0..<2 {
+      jo_obj(o);jo_key(o,"descriptor");pp_descriptor(o,8,1,ifx image==1 then 2 else -1,"rgba16float",1);
+      jo_key(o,"upload");jo_obj(o);jo_key(o,"type");jo_str(o,"u16");jo_key(o,"values");pp_sampling_halves(o,image==1);jo_end(o);
+      jo_key(o,"levels");jo_arr(o);jo_obj(o);jo_key(o,"level");jo_int(o,0);jo_key(o,"layout");jo_raw(o,"{\"bytesPerRow\":64,\"rowsPerImage\":1}");jo_key(o,"size");pp_arr(o,8,1,ifx image==1 then 2 else -1);jo_end(o);jo_end(o);jo_end(o);
+    }
+  } else if mode!=1 {
+    textures:=jv_get(d,0,"textures");
+    for image:0..<2 {
+      texture:=jv_at(d,textures,image);levels:=jv_get(d,texture,"levels");jo_obj(o);jo_key(o,"descriptor");
+      pp_descriptor(o,jv_int(d,jv_get(d,ifx mode==0 then 0 else texture,"width"),0),jv_int(d,jv_get(d,ifx mode==0 then 0 else texture,"height"),0),-1,jv_raw(d,jv_get(d,texture,"format")),jv_len(d,levels));
+      jo_key(o,"upload");jo_obj(o);
+      if mode==0 {jo_key(o,"type");jo_str(o,"u8");jo_key(o,"values");jv_write(d,jv_get(d,texture,"bytes"),o);}
+      else {jo_key(o,"url");jo_str(o,ifx image==0 then "/r/0" else "/r/1");}
+      jo_end(o);jo_key(o,"levels");jo_arr(o);
+      for level:0..<jv_len(d,levels) {
+        m:=jv_at(d,levels,level);jo_obj(o);jo_key(o,"level");jo_int(o,level);jo_key(o,"layout");jo_obj(o);
+        jo_key(o,"offset");jv_write(d,jv_get(d,m,"offset"),o);jo_key(o,"bytesPerRow");jv_write(d,jv_get(d,m,"row_bytes"),o);jo_end(o);
+        jo_key(o,"size");pp_arr(o,jv_int(d,jv_get(d,m,"width"),0),jv_int(d,jv_get(d,m,"height"),0),-1);jo_end(o);
+      }
+      jo_end(o);jo_end(o);
+    }
+  }
+  jo_end(o);
+}
+pp_request :: (o:[]Jo,mode:int,d:Jv,shaders:[]PPShaders) {
+  jo_obj(o);jo_key(o,"format");jo_str(o,"rgba32float");jo_key(o,"width");jo_int(o,pp_width(mode));jo_key(o,"height");jo_int(o,pp_width(mode));
+  jo_key(o,"vertices");jo_int(o,3);jo_key(o,"topology");jo_str(o,"triangle-list");jo_key(o,"target_usage");jo_int(o,17);jo_key(o,"readback_usage");jo_int(o,9);
+  jo_key(o,"readback_bytes");jo_int(o,ifx mode==3 then 512 else 256);jo_key(o,"readback_row_bytes");jo_int(o,256);jo_key(o,"readback_width");jo_int(o,ifx mode==3 then 2 else 1);jo_key(o,"readback_height");jo_int(o,ifx mode==3 then 2 else 1);
+  jo_key(o,"clear");jo_obj(o);keys:=[4]string.["r","g","b","a"];
+  for k:0..<4 {jo_key(o,keys[k]);if mode==2 {jv_write(d,jv_at(d,jv_get(d,0,"clear"),k),o);}else if mode==3 {values:=[4]string.["0.125","0.25","0.5","0.75"];jo_raw(o,values[k]);}else {jo_int(o,ifx mode==1 then -2 else 0);}}jo_end(o);
+  jo_key(o,"buffers");jo_arr(o);if mode!=3 {jo_raw(o,"{\"descriptor\":{\"size\":16,\"usage\":72}}");}jo_end(o);
+  jo_key(o,"images");pp_images(o,mode,d);jo_key(o,"samplers");jo_arr(o);
+  if mode==0 || mode==2 {jo_raw(o,"{\"magFilter\":\"linear\",\"minFilter\":\"linear\",\"mipmapFilter\":\"linear\",\"addressModeU\":\"clamp-to-edge\",\"addressModeV\":\"clamp-to-edge\"}");}
+  if mode==3 {jo_raw(o,"{\"addressModeU\":\"repeat\",\"addressModeV\":\"repeat\",\"minFilter\":\"linear\",\"magFilter\":\"linear\",\"mipmapFilter\":\"linear\",\"maxAnisotropy\":1}");}jo_end(o);
+  jo_key(o,"programs");jo_arr(o);
+  for i:0..<(ifx mode==3 then 6 else 1) {
+    module_index:=ifx i<4 then 0 else i-3;jo_obj(o);jo_key(o,"code");jo_str(o,cast(string)shaders[0].bytes[module_index][0..<shaders[0].n[module_index]]);
+    jo_key(o,"vertex");jo_str(o,ifx mode==0 then "render_filter_format_vs" else ifx mode==1 then "render_ring8_probe_vs" else ifx mode==2 then "render_sans_probe_vs" else "render_sampling_vs");
+    jo_key(o,"fragment");entries:=[6]string.["render_sampling_fs","render_sampling_invalid_fs","render_sampling_array_fs","render_sampling_invalid_array_fs","render_sampling_invalid_fs","render_sampling_invalid_array_fs"];
+    jo_str(o,ifx mode==0 then "render_filter_format_fs" else ifx mode==1 then "render_ring8_probe_fs" else ifx mode==2 then "render_sans_probe_fs" else entries[i]);
+    jo_key(o,"layouts");pp_layout(o,mode);jo_end(o);
+  }jo_end(o);
+  jo_key(o,"groups");jo_arr(o);
+  for i:0..<(ifx mode==3 then 6 else ifx mode==1 then 1 else 2) {
+    jo_obj(o);jo_key(o,"program");jo_int(o,ifx mode==3 then i else 0);jo_key(o,"index");jo_int(o,0);jo_key(o,"entries");jo_arr(o);
+    if mode!=3 {pp_entry(o,0,"buffer",0,16,false);}
+    if mode!=1 {array:=mode==3 && (i==2 || i==3 || i==5);pp_entry(o,ifx mode==3 then 0 else 1,"texture",ifx mode==3 then (ifx array then 1 else 0) else i,0,array);pp_entry(o,ifx mode==3 then 1 else 2,"sampler",0,0,false);}
+    jo_end(o);jo_end(o);
+  }jo_end(o);
+  jo_key(o,"cases");jo_arr(o);cases:=jv_get(d,0,"cases");row:=jv_at(d,cases,0);
+  for i:0..<pp_count(mode) {
+    if (mode==0 || mode==2) && i==20 {row=jv_at(d,cases,0);}
+    jo_obj(o);jo_key(o,"program");jo_int(o,ifx mode==3 then i else 0);jo_key(o,"writes");jo_arr(o);
+    if mode!=3 {
+      jo_obj(o);jo_key(o,"buffer");jo_int(o,0);jo_key(o,"offset");jo_int(o,0);jo_key(o,"values");
+      if mode==1 {jv_write(d,jv_get(d,row,"uniform"),o);}else {jo_arr(o);jv_write(d,jv_get(d,row,"x"),o);jv_write(d,jv_get(d,row,"y"),o);jv_write(d,jv_get(d,row,"lod"),o);jo_int(o,0);jo_end(o);}jo_end(o);
+    }jo_end(o);jo_key(o,"groups");jo_arr(o);jo_obj(o);jo_key(o,"index");jo_int(o,0);jo_key(o,"id");jo_int(o,ifx mode==3 then i else ifx mode==1 then 0 else i/20);jo_end(o);jo_end(o);
+    jo_key(o,"origin");if mode==3 {pp_arr(o,0,0,0);}else {p:=jv_get(d,0,"pixel");pp_arr(o,jv_int(d,jv_at(d,p,0),-1),jv_int(d,jv_at(d,p,1),-1),0);}jo_end(o);
+    if mode!=3 {row=d.nodes[row].next;}
+  }jo_end(o);jo_end(o);
+}
+pp_json_number :: (o:[]Jo,value:f64) {
+  word:=f64_bits(value);negative:=(word>>63)==1;if value==0 {jo_raw(o,ifx negative then "-0.0" else "0");return;}
+  exponent:=cast(int)((word>>52)&2047);mantissa:=word&0xfffffffffffff;power:=ifx exponent==0 then -1074 else exponent-1075;
+  if exponent!=0 {mantissa|=0x10000000000000;}digits:[1100]u8;n:=0;
+  while mantissa>0 {digits[n]=cast(u8)(mantissa%10);n+=1;mantissa/=10;}
+  factor:=ifx power<0 then 5 else 2;cycles:=ifx power<0 then -power else power;
+  for cycle:0..<cycles {carry:=0;for j:0..<n {v:=cast(int)digits[j]*factor+carry;digits[j]=cast(u8)(v%10);carry=v/10;}if carry>0 {digits[n]=cast(u8)carry;n+=1;}}
+  jo_value(o);if negative {jo_byte(o,'-');}for j:0..<n {jo_byte(o,cast(u8)('0'+cast(int)digits[n-1-j]));}
+  if power<0 {jo_put(o,"e-");decimal:[20]u8;count:=0;p:=-power;while p>0 {decimal[count]=cast(u8)(p%10);count+=1;p/=10;}for j:0..<count {jo_byte(o,cast(u8)('0'+cast(int)decimal[count-1-j]));}}
+}
+pp_results :: (o:[]Jo,d:Jv,root:int,fixture:Jv,mode:int,r:PPResult) {
+  actuals:=jv_get(d,root,"results");current:=jv_at(d,actuals,0);cases:=jv_get(fixture,0,"cases");authored:=jv_at(fixture,cases,0);
+  jo_arr(o);for i:0..<jv_len(d,actuals) {
+    if (mode==0 || mode==2) && i==20 {authored=jv_at(fixture,cases,0);}
+    jo_obj(o);
+    if mode==0 || mode==2 {
+      texture:=jv_at(fixture,jv_get(fixture,0,"textures"),i/20);jo_key(o,"format");jv_write(fixture,jv_get(fixture,texture,"format"),o);
+      fields:=[3]string.["x","y","lod"];for field:fields {jo_key(o,field);jv_write(fixture,jv_get(fixture,authored,field),o);}jo_key(o,"pixel");jv_write(fixture,jv_get(fixture,0,"pixel"),o);
+    }else if mode==1 {jo_key(o,"index");jo_int(o,i);jo_key(o,"words");jv_write(d,jv_get(d,current,"words"),o);}
+    else {entries:=[6]string.["render_sampling_fs","render_sampling_invalid_fs","render_sampling_array_fs","render_sampling_invalid_array_fs","render_sampling_invalid_fs","render_sampling_invalid_array_fs"];jo_key(o,"entry");jo_str(o,entries[i]);jo_key(o,"wrong");jo_int(o,r.wrong[i]);}
+    jo_key(o,ifx mode==3 then "actual" else "rgba");jv_write(d,jv_get(d,current,"values"),o);jo_end(o);
+    current=d.nodes[current].next;if mode!=3 {authored=fixture.nodes[authored].next;}
+  }jo_end(o);
+}
+pp_discrepancies :: (o:[]Jo,d:Jv,root:int,fixture:Jv,mode:int) {
+  rows:=jv_get(d,root,"results");current:=jv_at(d,rows,0);
+  expected_rows:=jv_get(fixture,0,ifx mode==1 then "cases" else "expected");expected_row:=jv_at(fixture,expected_rows,0);
+  jo_arr(o);
+  for i:0..<jv_len(d,rows) {
+    expected_array:=ifx mode==1 then jv_get(fixture,expected_row,"expected") else expected_row;
+    for k:0..<4 {
+      words:=jv_get(d,current,"words");word:=jv_int(d,jv_at(d,words,k),0);actual:=cast(f64)f32_from_bits(cast(u32)word);
+      number:=json_f64(jv_raw(fixture,jv_at(fixture,expected_array,k)));expected:=cast(f64)cast(f32)number.value;
+      if !pp_numeric_match(mode,actual,expected) {
+        jo_obj(o);jo_key(o,"case");jo_int(o,i);jo_key(o,"channel");jo_int(o,k);
+        jo_key(o,"actual");jv_write(d,jv_at(d,jv_get(d,current,"values"),k),o);jo_key(o,"expected");pp_json_number(o,expected);
+        if mode==1 {jo_key(o,"word");jo_int(o,word);}jo_end(o);
+      }
+    }
+    current=d.nodes[current].next;if jv_ok(fixture,expected_row) {expected_row=fixture.nodes[expected_row].next;}
+  }jo_end(o);
+}
+pp_capture :: (c:[]Cdp,url:string,mode:int,fixture:Jv,shaders:[]PPShaders,fence:[]PPFence,output:string,cases_path:string)->int {
+  effects:[65536]u8;en:=fs_read(PP_EFFECTS,effects[..]);if en<1 {return 2;}browser:[65536]u8;bn:=wp_open(c,url,cast(string)effects[0..<en],browser[..]);if bn<1 {return 1;}
+  request:[1048576]u8;o:[1]Jo;jo_start(o[..],request[..]);pp_request(o[..],mode,fixture,shaders);if o[0].bad {return 2;}
+  value:=wp_run(c,"aethyrPrimitiveStart","aethyrPrimitivePoll()",jo_text(o[..]));if value<0 {return 1;}
+  d:=c[0].doc[0];r:=pp_evaluate(d,value,fixture,mode);receipt:[1048576]u8;ro:[1]Jo;jo_start(ro[..],receipt[..]);jo_obj(ro[..]);
+  metadata:=[6]string.["format","width","height","device","messages","errors"];for key:metadata {jo_key(ro[..],key);jv_write(d,jv_get(d,value,key),ro[..]);}
+  jo_key(ro[..],"results");pp_results(ro[..],d,value,fixture,mode,r);jo_key(ro[..],"raw_words");jo_arr(ro[..]);rows:=jv_get(d,value,"results");current:=jv_at(d,rows,0);
+  for i:0..<jv_len(d,rows) {jv_write(d,jv_get(d,current,"words"),ro[..]);current=d.nodes[current].next;}jo_end(ro[..]);
+  if mode==1 || mode==2 {jo_key(ro[..],"discrepancies");pp_discrepancies(ro[..],d,value,fixture,mode);}
+  if mode==1 {jo_key(ro[..],"comparison");jv_write(fixture,jv_get(fixture,0,"comparison"),ro[..]);hash:[64]u8;if !pp_hash(cases_path,hash[..]) {return 2;}jo_key(ro[..],"cases_sha256");jo_str(ro[..],cast(string)hash[..]);}
+  if mode==2 {jo_key(ro[..],"max_error");pp_json_number(ro[..],r.max_error);}
+  jo_key(ro[..],"browser");jo_raw(ro[..],cast(string)browser[0..<bn]);jo_key(ro[..],ifx mode==3 then "source_inputs" else "inputs");jo_obj(ro[..]);
+  for i:0..<fence[0].count {jo_key(ro[..],pp_path(fence,i));jo_str(ro[..],cast(string)fence[0].inputs[i].hash[..]);}jo_end(ro[..]);
+  jo_key(ro[..],"source_changes");jo_arr(ro[..]);changed:=false;again:[64]u8;
+  for i:0..<fence[0].count {if !pp_hash(pp_path(fence,i),again[..]) || cast(string)again[..]!=cast(string)fence[0].inputs[i].hash[..] {changed=true;jo_str(ro[..],pp_path(fence,i));}}jo_end(ro[..]);jo_end(ro[..]);
+  if ro[0].bad || !fs_write(output,jo_text(ro[..])) {return 1;}
+  if !r.ok || changed {tool_errln("primitive probe: shader/readback/source qualification failed");return 1;}
+  print("primitive WebGPU: % complete observations retained with exact raw words\n",pp_count(mode));return 0;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  if args_has(a[..],"--serve") {return wp_serve(args_value(a[..],"--serve",""),args_value(a[..],"--resources",""));}
+  mode:=pp_mode(args_at(a[..],0));source:=args_at(a[..],1);output:=args_at(a[..],2);cases_path:=args_at(a[..],3);
+  if mode<0 || source=="" || output=="" || cases_path=="" || args_count(a[..])!=(ifx mode==3 then 5 else 4) {tool_errln("usage: primitive-webgpu MODE WGSL OUT CASES; sampling NORMAL OUT FAULT ARRAY-FAULT");return 2;}
+  shaders:[1]PPShaders;shader_paths:=[3]string.[source,ifx mode==3 then cases_path else "",ifx mode==3 then args_at(a[..],4) else ""];
+  fence:[1]PPFence;
+  for i:0..<(ifx mode==3 then 3 else 1) {shaders[0].n[i]=fs_read(shader_paths[i],shaders[0].bytes[i][..]);if shaders[0].n[i]<1 || pp_add(fence[..],shader_paths[i])<0 {return 2;}}
+  raw:[262144]u8;nodes:[32768]JvNode;doc:[1]Jv;
+  if mode!=3 {
+    n:=fs_read(cases_path,raw[..]);if n<1 || !jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]) || pp_add(fence[..],cases_path)<0 {return 2;}
+    d:=doc[0];cases:=jv_get(d,0,"cases");
+    if jv_kind(d,cases)!=JV_ARRAY || jv_len(d,cases)!=(ifx mode==1 then 728 else 20) {return 2;}
+    if mode==1 {
+      if jv_raw(d,jv_get(d,0,"schema"))!="aethyr.render.ring8-primitive-cases.v1" || jv_int(d,jv_get(d,0,"total_cases"),0)!=728 || jv_int(d,jv_get(d,0,"width"),0)!=8 || jv_int(d,jv_get(d,0,"height"),0)!=8 || jv_raw(d,jv_at(d,jv_get(d,0,"pixel"),0))!="1" || jv_raw(d,jv_at(d,jv_get(d,0,"pixel"),1))!="1" {return 2;}
+    }else if jv_raw(d,jv_get(d,0,"schema"))!="1" || jv_len(d,jv_get(d,0,"textures"))!=2 {return 2;}
+  }
+  common:=[14]string.[PP_SOURCE,PP_EFFECTS,"aethyr/tests/primitive-webgpu-policy.coax","aethyr/tests/primitive-webgpu-checks.coax","aethyr/tests/webgpu-session.coax","coax/lib/net/cdp.coax","coax/lib/sys/fs.coax","coax/lib/sys/proc.coax","coax/lib/crypto/sha256.coax","coax/lib/crypto/sha256-kernel.coax","coax/platform/store-file-native.c","coax/platform/socket-native.c","coax/platform/process-native.c","coax/platform/tool-native.c"];
+  for path:common {if pp_add(fence[..],path)<0 {return 2;}}
+  if mode==0 {if pp_add(fence[..],"aethyr/tests/render-filter-format-probe.coax")<0 || pp_add(fence[..],"aethyr/tests/render-filter-format-probe.bindings")<0 {return 2;}}
+  if mode==1 {extra:=[4]string.["aethyr/tests/render-ring8-probe.coax","aethyr/render/ring8.coax","apps/openagents-web/gpu/deadgears.coax","verse/gpu/wgsl.coax"];for path:extra {if pp_add(fence[..],path)<0 {return 2;}}}
+  if mode==2 {extra:=[6]string.["aethyr/tests/render-sans-filter-probe.coax","aethyr/tests/render-sans-filter-probe.bindings","aethyr/render/sans-filter.coax","aethyr/render/sans-filter-core.coax","aethyr/render/sans-profile.coax","verse/gpu/shader.coax"];for path:extra {if pp_add(fence[..],path)<0 {return 2;}}}
+  temp:[4096]u8;dir:=fs_temp("aethyr-primitive-origin-",temp[..]);if dir=="" {return 1;}
+  manifest:[65536]u8;mo:[1]Jo;jo_start(mo[..],manifest[..]);jo_obj(mo[..]);jo_key(mo[..],"resources");jo_arr(mo[..]);
+  if mode==2 {
+    for i:0..<2 {texture:=jv_at(doc[0],jv_get(doc[0],0,"textures"),i);path:[4096]u8;n:=jv_str(doc[0],jv_get(doc[0],texture,"file"),path[..]);if n<1 {removed:=fs_remove(dir);return 2;}
+      index:=pp_add(fence[..],cast(string)path[0..<n]);if index<0 || cast(string)fence[0].inputs[index].hash[..]!=jv_raw(doc[0],jv_get(doc[0],texture,"sha256")) {removed:=fs_remove(dir);tool_errln("primitive probe: texture source changed");return 2;}
+      jo_obj(mo[..]);jo_key(mo[..],"url");jo_str(mo[..],ifx i==0 then "/r/0" else "/r/1");jo_key(mo[..],"file");jo_str(mo[..],pp_path(fence[..],index));jo_end(mo[..]);
+    }
+  }jo_end(mo[..]);jo_end(mo[..]);
+  manifest_name:[4096]u8;mf:=fs_join(dir,"resources.json",manifest_name[..]);port_name:[4096]u8;pf:=fs_join(dir,"port",port_name[..]);
+  status:=1;if !mo[0].bad && fs_write(mf,jo_text(mo[..])) {
+    server:=wp_start_origin(pf,mf);if server>=0 {
+      port:[32]u8;pn:=-1;for attempt:0..<100 {pn=fs_read(pf,port[..]);if pn>0 {break;}proc_sleep(50);}
+      if pn>0 {url:[128]u8;base:=cdp_cat2("http://127.0.0.1:",cast(string)port[0..<pn],url[..]);target:[128]u8;u:=cdp_cat2(base,"/",target[..]);c:[1]Cdp;status=pp_capture(c[..],u,mode,doc[0],shaders[..],fence[..],output,cases_path);cdp_close(c[..]);}
+      killed:=proc_kill(server,PROC_SIGKILL);waited:=proc_wait(server,5000);released:=proc_release(server);
+    }
+  }removed:=fs_remove(dir);return ifx removed then status else 1;
+}

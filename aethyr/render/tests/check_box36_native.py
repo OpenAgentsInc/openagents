@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent eight-corner cube, affine/cofactor normals and outward triangle oracle for generated native output).
 """Independent closed-cube geometry oracle for normal checked-C output."""
 from pathlib import Path
 import argparse,hashlib,json,math,os,struct,subprocess,time

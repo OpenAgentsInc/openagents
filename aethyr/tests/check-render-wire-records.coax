@@ -1,0 +1,48 @@
+// Compare the Coax wire harness with the retained old runner's observations.
+// The old passing native checks are reused only for these exact C/header/
+// facade/fixture bytes, not rerun or upgraded to current producer evidence.
+//   coax/web/tool.sh aethyr/tests/check-render-wire-records.coax OLD.json NEW.json RESULT.json
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+wire_suffix :: (text: string, suffix: string) -> bool {return text.count>=suffix.count && text[text.count-suffix.count..<text.count]==suffix;}
+wire_input :: (d: Jv, suffix: string) -> string {
+  inputs:=jv_get(d,0,"inputs");if jv_kind(d,inputs)!=JV_OBJECT {return "";}
+  found:string;count:=0;
+  for i:0..<d.nodes[inputs].count {
+    n:=jv_at(d,inputs,i);key:=d.text[d.nodes[n].key_from..<d.nodes[n].key_to];
+    if wire_suffix(key,suffix) {found=jv_raw(d,n);count+=1;}
+  }
+  return ifx count==1 then found else "";
+}
+tool_main :: () -> int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {return 2;}
+  old_bytes:[65536]u8;new_bytes:[65536]u8;
+  old_n:=fs_read(args_at(args[..],0),old_bytes[..]);new_n:=fs_read(args_at(args[..],1),new_bytes[..]);
+  if old_n<1 || new_n<1 {return 1;}
+  old_nodes:[4096]JvNode;new_nodes:[4096]JvNode;old:[1]Jv;current:[1]Jv;
+  if !jv_parse(old[..],cast(string)old_bytes[0..<old_n],old_nodes[..]) || !jv_parse(current[..],cast(string)new_bytes[0..<new_n],new_nodes[..]) {return 1;}
+  if jv_raw(old[0],jv_get(old[0],0,"status"))!="passed" || jv_raw(current[0],jv_get(current[0],0,"status"))!="passed" {return 1;}
+  for suffix:[4]string.["/Render.c","/Render.h","/coax/web/render-face.c","/aethyr/tests/render-host-wire.c"] {
+    // The new runner intentionally records caller paths as supplied.
+    relative:=suffix[1..<suffix.count];
+    a:=wire_input(old[0],suffix);b:=wire_input(current[0],relative);
+    if a.count!=64 || a!=b {tool_errln("wire reference input differs");return 1;}
+  }
+  oc:=jv_get(old[0],0,"commands");nc:=jv_get(current[0],0,"commands");
+  if jv_kind(old[0],oc)!=JV_ARRAY || jv_kind(current[0],nc)!=JV_ARRAY || old[0].nodes[oc].count!=36 || current[0].nodes[nc].count!=36 {return 1;}
+  for i:0..<36 {
+    a:=jv_at(old[0],oc,i);b:=jv_at(current[0],nc,i);
+    // Both sequences have a baseline compile/run and five compile/fault pairs
+    // in each of debug, O2 and ASan/UBSan. Python exposes SIGABRT as-6;
+    // proc_wait exposes the same signal as128+6. Keep both raw observations.
+    fault:=i%12>=3 && i%2==1;
+    old_expected:=ifx fault then -6 else 0;new_expected:=ifx fault then 134 else 0;
+    if jv_int(old[0],jv_get(old[0],a,"exit_code"),-999)!=old_expected || jv_int(current[0],jv_get(current[0],b,"exit_code"),-999)!=new_expected {return 1;}
+    if jv_int(current[0],jv_get(current[0],b,"started"),-1)!=0 || jv_kind(current[0],jv_get(current[0],b,"timed_out"))!=JV_FALSE || jv_kind(current[0],jv_get(current[0],b,"cut"))!=JV_FALSE {return 1;}
+  }
+  if !fs_write(args_at(args[..],2),"{\"schema\":\"aethyr.render.wire-port-parity.v1\",\"status\":\"passed\",\"exact_native_input_files\":4,\"native_modes\":3,\"command_exit_observations\":36,\"planted_faults_caught\":15,\"signal_encoding\":\"Python-6 and Coax134 both denote the observed SIGABRT; raw receipts retained\",\"old_checks_reused_without_execution\":true}\n") {return 1;}
+  print("wire port:4 exact inputs,36 matching native outcomes,15 controls caught\n");return 0;
+}

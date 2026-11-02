@@ -1,0 +1,184 @@
+// Validate concrete package programs with the existing remote native SDK.
+// Coax owns enumeration, deduplication, controls, transfers, verdicts and JSON.
+// SSH/SCP and spirv-val perform only their named platform effects; no remote
+// Python, shell loops or generated executable script is sent.
+//   coax/web/tool.sh aethyr/render/tests/check-spirv-modules.coax --packages DIR --work-dir NEW_DIR --receipt FILE [--host coderos-4080] [--coax FILE] [--explore-stale-compiler] [--reference OLD_RECEIPT]
+#load "qualification-files.coax";
+#load "spirv-tool-policy.coax";
+SPV_MAX :: 128;
+SPV_BYTES :: 16777216;
+SPV_VALIDATOR :: "/nix/store/vzkr4vhj77fif6g5j5c5cprmfwfzg50k-spirv-tools-1.4.341.0/bin/spirv-val";
+SPV_VALIDATOR_SHA :: "9da466349d444d870111c4240a290d8b5b6f18ae48f982a6a34206792aecffcc";
+SpvProgram :: struct {hash:[64]u8;}
+SpvOwner :: struct {program:int;slug:[128]u8;n:int;entry:int;}
+SpvPrograms :: struct {programs:[SPV_MAX]SpvProgram;n:int;owners:[256]SpvOwner;declared:int;controls:[2][64]u8;}
+spv_text :: (d:Jv,node:int,want:string)->bool {
+  bytes:[4096]u8;n:=jv_str(d,node,bytes[..]);return n==want.count && n>=0 && cast(string)bytes[0..<n]==want;
+}
+spv_filename :: (s:[]SpvPrograms,index:int,out:[]u8)->string {
+  if index==s[0].n {return "bad-magic.spv";}if index==s[0].n+1 {return "bad-result-type.spv";}
+  if index<0 || index>=s[0].n {return "";}
+  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],cast(string)s[0].programs[index].hash[..]);jo_put(o[..],".spv");return ifx o[0].bad then "" else jo_text(o[..]);
+}
+spv_hash_at :: (s:[]SpvPrograms,index:int)->string {
+  if index<0 || index>s[0].n+1 {return "";}
+  return ifx index<s[0].n then cast(string)s[0].programs[index].hash[..] else cast(string)s[0].controls[index-s[0].n][..];
+}
+spv_row :: (s:[]SpvPrograms,index:int,o:[]Jo) {
+  name:[256]u8;jo_key(o,"file");jo_str(o,spv_filename(s,index,name[..]));jo_key(o,"sha256");jo_str(o,spv_hash_at(s,index));
+  jo_key(o,"kind");jo_str(o,ifx index<s[0].n then "program" else "control");
+  if index<s[0].n {
+    jo_key(o,"owners");jo_arr(o);for k:0..<s[0].declared {owner:=s[0].owners[k];if owner.program==index {jo_obj(o);jo_key(o,"profile");jo_str(o,cast(string)owner.slug[0..<owner.n]);jo_key(o,"entry_index");jo_int(o,owner.entry);jo_end(o);}}jo_end(o);
+  }
+}
+spv_rows :: (s:[]SpvPrograms,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);for k:0..<s[0].n+2 {jo_obj(o[..]);spv_row(s,k,o[..]);jo_end(o[..]);}jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+spv_reference_input :: (reference:Jv,suffix:string,digest:string)->bool {
+  if reference.nodes.count==0 {return true;}
+  map:=jv_get(reference,0,"source_inputs");if jv_kind(reference,map)!=JV_OBJECT {return false;}
+  found:=false;child:=reference.nodes[map].first;
+  while child!=-1 {
+    path:=jv_key(reference,child);
+    if path.count>suffix.count && path[path.count-suffix.count-1]=='/' && path[path.count-suffix.count..<path.count]==suffix {
+      if found || !spv_text(reference,child,digest) {return false;}found=true;
+    }child=reference.nodes[child].next;
+  }return found;
+}
+spv_collect :: (s:[]SpvPrograms,snapshot:Jv,packages:string,payload:string,inputs:[]RtqInputs,reference:Jv)->bool {
+  profiles:=jv_get(snapshot,0,"profiles");if jv_kind(snapshot,profiles)!=JV_ARRAY || jv_len(snapshot,profiles)<1 {return false;}
+  for p:0..<jv_len(snapshot,profiles) {
+    profile:=jv_at(snapshot,profiles,p);slug_buf:[128]u8;slug_n:=jv_str(snapshot,jv_get(snapshot,profile,"slug"),slug_buf[..]);
+    if slug_n<1 {return false;}slug:=cast(string)slug_buf[0..<slug_n];if !spv_name(slug) {return false;}
+    paths:[4][4096]u8;directory:=fs_join(packages,slug,paths[0][..]);manifest:=fs_join(directory,"render.json",paths[1][..]);
+    bytes:[1048576]u8;nodes:[32768]JvNode;d:[1]Jv;
+    if !rtq_input_add(inputs,manifest) || !rtq_json_file(manifest,bytes[..],nodes[..],d[..]) ||
+      !spv_text(d[0],jv_get(d[0],0,"schema"),"aethyr.render.package.v1") || !spv_text(d[0],jv_get(d[0],0,"slug"),slug) {return false;}
+    hash:[64]u8;suffix:=fs_join(slug,"render.json",paths[2][..]);
+    if !rtq_hash_file(manifest,hash[..]) || !spv_reference_input(reference,suffix,cast(string)hash[..]) {return false;}
+    entries:=jv_get(d[0],0,"entries");if jv_kind(d[0],entries)!=JV_ARRAY || jv_len(d[0],entries)==0 {return false;}
+    for e:0..<jv_len(d[0],entries) {
+      row:=jv_at(d[0],entries,e);name:[256]u8;digest:[64]u8;
+      n:=jv_str(d[0],jv_get(d[0],row,"spirv_file"),name[..]);hn:=jv_str(d[0],jv_get(d[0],row,"spirv_sha256"),digest[..]);
+      if n<1 || !spv_name(cast(string)name[0..<n]) || hn!=64 || !spv_digest(cast(string)digest[..]) || s[0].declared>=256 {return false;}
+      path:=fs_join(directory,cast(string)name[0..<n],paths[1][..]);data:[SPV_BYTES]u8;size:=fs_size(path);
+      if size<0 || size>data.count || fs_read_at(path,0,data[0..<size])!=size || !rtq_input_add(inputs,path) || !S_hex(S_hash(cast(string)data[0..<size]),hash[..]) || cast(string)hash[..]!=cast(string)digest[..] {return false;}
+      suffix=fs_join(slug,cast(string)name[0..<n],paths[2][..]);if !spv_reference_input(reference,suffix,cast(string)hash[..]) {return false;}
+      program:=-1;for k:0..<s[0].n {if cast(string)s[0].programs[k].hash[..]==cast(string)digest[..] {program=k;}}
+      if program== -1 {
+        if s[0].n==SPV_MAX {return false;}program=s[0].n;s[0].programs[program].hash=digest;s[0].n+=1;
+        target_name:[256]u8;target:=fs_join(payload,spv_filename(s,program,target_name[..]),paths[3][..]);if !fs_write(target,cast(string)data[0..<size]) {return false;}
+      }
+      owner:SpvOwner;owner.program=program;owner.n=slug_n;owner.slug=slug_buf;owner.entry=jv_int(d[0],jv_get(d[0],row,"entry_index"),-1);
+      if owner.entry<0 {return false;}s[0].owners[s[0].declared]=owner;s[0].declared+=1;
+    }
+  }
+  if s[0].n<1 {return false;}
+  source:[SPV_BYTES]u8;changed:[SPV_BYTES]u8;path:[4096]u8;name:[256]u8;
+  source_n:=fs_read(fs_join(payload,spv_filename(s,0,name[..]),path[..]),source[..]);if source_n<0 {return false;}
+  for kind:0..<2 {
+    n:=spv_control(source[0..<source_n],kind,changed[..]);
+    if n!=source_n || !S_hex(S_hash(cast(string)changed[0..<n]),s[0].controls[kind][..]) ||
+      !fs_write(fs_join(payload,spv_filename(s,s[0].n+kind,name[..]),path[..]),cast(string)changed[0..<n]) {return false;}
+  }return true;
+}
+spv_ssh :: (host:string,remote_args:[]string,deadline:int,directory:string,label:string,out:[]u8,err:[]u8)->ProcRun {
+  argv:[32]string;count:=0;for a:[10]string.["ssh","-o","BatchMode=yes","-o","ConnectTimeout=15","-o","ServerAliveInterval=15","-o","ServerAliveCountMax=2",host] {argv[count]=a;count+=1;}
+  for a:remote_args {if count==argv.count {return ProcRun.{started=PROC_ERROR};}argv[count]=a;count+=1;}
+  env:[]string;r:=rtq_run(argv[0..<count],env,deadline,out,err);
+  if !rtq_record_run(directory,label,argv[0..<count],r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {r.cut=true;}return r;
+}
+spv_transfer :: (s:[]SpvPrograms,host:string,remote:string,local:string,upload:bool,deadline:int,directory:string,label:string)->bool {
+  argv:[SPV_MAX+16]string;paths:[SPV_MAX+3][4096]u8;count:=0;
+  for a:[9]string.["scp","-q","-o","BatchMode=yes","-o","ConnectTimeout=15","-o","ServerAliveInterval=15","-oServerAliveCountMax=2"] {argv[count]=a;count+=1;}
+  for k:0..<s[0].n+2 {
+    name:[256]u8;file:=spv_filename(s,k,name[..]);o:[1]Jo;jo_start(o[..],paths[k][..]);
+    if upload {jo_put(o[..],local);}else {jo_put(o[..],host);jo_put(o[..],":");jo_put(o[..],remote);}
+    jo_put(o[..],"/");jo_put(o[..],file);if o[0].bad {return false;}argv[count]=jo_text(o[..]);count+=1;
+  }
+  o:[1]Jo;jo_start(o[..],paths[s[0].n+2][..]);if upload {jo_put(o[..],host);jo_put(o[..],":");jo_put(o[..],remote);jo_put(o[..],"/");}else {jo_put(o[..],local);}
+  if o[0].bad {return false;}argv[count]=jo_text(o[..]);count+=1;
+  env:[]string;out:[65536]u8;err:[65536]u8;r:=rtq_command(argv[0..<count],env,deadline,directory,label,out[..],err[..]);return rtq_ok(r);
+}
+spv_readback :: (s:[]SpvPrograms,directory:string)->bool {
+  listing:[1]FsList;if fs_list(directory,listing[..])!=s[0].n+2 {return false;}
+  for k:0..<s[0].n+2 {path:[4096]u8;name:[256]u8;hash:[64]u8;if !rtq_hash_file(fs_join(directory,spv_filename(s,k,name[..]),path[..]),hash[..]) || cast(string)hash[..]!=spv_hash_at(s,k) {return false;}}
+  return true;
+}
+spv_remote_result :: (s:[]SpvPrograms,host:string,remote:string,validator:string,expected_hash:string,payload:string,work:string,deadline:int,out:[]u8)->bool {
+  stdout:[1048576]u8;stderr:[65536]u8;
+  version:[8192]u8;vn:=0;hash:[64]u8;resolved:[4096]u8;resolved_n:=0;
+  path_args:=[3]string.["readlink","-f",validator];r:=spv_ssh(host,path_args[..],deadline,work,"validator-path",stdout[..],stderr[..]);if !rtq_ok(r) {return false;}
+  resolved_text:=rtq_trim(cast(string)stdout[0..<r.out_n]);if !spv_path(resolved_text) || resolved_text.count>resolved.count {return false;}resolved_n=resolved_text.count;for k:0..<resolved_n {resolved[k]=resolved_text[k];}
+  hash_args:=[2]string.["sha256sum",validator];r=spv_ssh(host,hash_args[..],deadline,work,"validator-hash-before",stdout[..],stderr[..]);
+  if !rtq_ok(r) || rtq_word(cast(string)stdout[0..<r.out_n],0)!=expected_hash {return false;}for k:0..<64 {hash[k]=expected_hash[k];}
+  version_args:=[4]string.["timeout","10",validator,"--version"];r=spv_ssh(host,version_args[..],deadline,work,"validator-version",stdout[..],stderr[..]);
+  if !rtq_ok(r) || r.out_n<1 || r.out_n>version.count {return false;}vn=r.out_n;for k:0..<vn {version[k]=stdout[k];}
+  if !spv_transfer(s,host,remote,payload,true,deadline,work,"upload") {return false;}
+  paths:[2][4096]u8;before:=fs_join(work,"remote-readback-before",paths[0][..]);after:=fs_join(work,"remote-readback-after",paths[1][..]);
+  if !fs_mkdir(before) || !spv_transfer(s,host,remote,before,false,deadline,work,"download-before") || !spv_readback(s,before) {return false;}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"status");jo_str(o[..],"pass");jo_key(o[..],"validator");jo_str(o[..],validator);
+  jo_key(o[..],"validator_resolved");jo_str(o[..],cast(string)resolved[0..<resolved_n]);jo_key(o[..],"validator_sha256");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"version");jo_str(o[..],cast(string)version[0..<vn]);jo_key(o[..],"observations");jo_arr(o[..]);
+  ok:=true;
+  for k:0..<s[0].n+2 {
+    file:[4096]u8;name:[256]u8;path:=fs_join(remote,spv_filename(s,k,name[..]),file[..]);
+    argv:=[6]string.["timeout","30",validator,"--target-env","vulkan1.1",path];label:[128]u8;w:[1]Jo;jo_start(w[..],label[..]);jo_put(w[..],"validate-");jo_int(w[..],k);
+    r=spv_ssh(host,argv[..],deadline,work,jo_text(w[..]),stdout[..],stderr[..]);
+    transport:=r.started==0 && !r.timed_out && !r.cut;accepted:=transport && spv_observation(ifx k<s[0].n then 0 else 1,r.status,cast(string)stderr[0..<r.err_n]);ok=ok && accepted;
+    jo_obj(o[..]);spv_row(s,k,o[..]);jo_key(o[..],"exit_status");jo_int(o[..],r.status);jo_key(o[..],"stdout");jo_str(o[..],cast(string)stdout[0..<r.out_n]);jo_key(o[..],"stderr");jo_str(o[..],cast(string)stderr[0..<r.err_n]);jo_end(o[..]);
+  }jo_end(o[..]);jo_end(o[..]);
+  if o[0].bad || !ok || !fs_mkdir(after) || !spv_transfer(s,host,remote,after,false,deadline,work,"download-after") || !spv_readback(s,after) {return false;}
+  r=spv_ssh(host,hash_args[..],deadline,work,"validator-hash-after",stdout[..],stderr[..]);
+  return rtq_ok(r) && rtq_word(cast(string)stdout[0..<r.out_n],0)==expected_hash;
+}
+spv_reference_result :: (reference:Jv,result:Jv,s:[]SpvPrograms)->bool {
+  if reference.nodes.count==0 {return true;}
+  if jv_int(reference,jv_get(reference,0,"declared_programs"),-1)!=s[0].declared || jv_int(reference,jv_get(reference,0,"unique_programs"),-1)!=s[0].n {return false;}
+  expected:=jv_get(reference,0,"result");for key:[5]string.["status","validator","validator_sha256","version","observations"] {if !rtq_equal(reference,jv_get(reference,expected,key),result,jv_get(result,0,key)) {return false;}}
+  return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  work_arg:=args_value(a[..],"--work-dir","");packages_arg:=args_value(a[..],"--packages","");receipt:=args_value(a[..],"--receipt","");host:=args_value(a[..],"--host","coderos-4080");
+  validator:=args_value(a[..],"--validator",SPV_VALIDATOR);validator_hash:=args_value(a[..],"--validator-sha256",SPV_VALIDATOR_SHA);
+  if work_arg.count==0 || packages_arg.count==0 || receipt.count==0 || !spv_host(host) || !spv_path(validator) || !spv_digest(validator_hash) || !fs_mkdir(work_arg) || fs_exists(receipt) {tool_errln("usage: check-spirv-modules --packages DIR --work-dir NEW_DIR --receipt NEW_FILE [--host HOST] [--explore-stale-compiler]");return 2;}
+  work_buf:[4096]u8;package_buf:[4096]u8;root_buf:[4096]u8;work:=fs_realpath(work_arg,work_buf[..]);packages:=fs_realpath(packages_arg,package_buf[..]);root:=fs_cwd(root_buf[..]);if !spv_path(work) || !spv_path(packages) {return 2;}
+  paths:[8][4096]u8;payload:=fs_join(work,"payload",paths[0][..]);if fs_exists(payload) || !fs_mkdir(payload) {tool_errln("refuse to replace existing SPIR-V inputs");return 2;}
+  compiler_buf:[4096]u8;env_coax:=proc_getenv("COAX",compiler_buf[..]);if env_coax.count==0 {env_coax="coax/bin/coax";}compiler:=args_value(a[..],"--coax",env_coax);
+  digest_path:=args_value(a[..],"--compiler-source-digest",fs_join(fs_dir(compiler),"source-digest",paths[1][..]));
+  start:=proc_now_ms();deadline:=proc_deadline(RTQ_DEADLINE_MS,start);stdout:[RTQ_FILE]u8;stderr:[65536]u8;env:[]string;
+  compiler_hash:[64]u8;if !rtq_hash_file(compiler,compiler_hash[..]) {return 1;}
+  version_args:=[2]string.[compiler,"version"];r:=rtq_command(version_args[..],env,deadline,work,"compiler-version",stdout[..],stderr[..]);if !rtq_ok(r) {return 1;}
+  version:[4096]u8;vw:[1]Jo;jo_start(vw[..],version[..]);jo_put(vw[..],rtq_trim(cast(string)stdout[0..<r.out_n]));version_n:=vw[0].n;
+  current_args:=[3]string.[compiler,"source-digest",root];r=rtq_command(current_args[..],env,deadline,work,"compiler-current-source-before",stdout[..],stderr[..]);if !rtq_ok(r) {return 1;}
+  current:[4096]u8;cw:[1]Jo;jo_start(cw[..],current[..]);jo_put(cw[..],rtq_trim(cast(string)stdout[0..<r.out_n]));current_n:=cw[0].n;
+  recorded:[4096]u8;recorded_n:=fs_read(digest_path,recorded[..]);if recorded_n<0 {return 1;}recorded_text:=rtq_trim(cast(string)recorded[0..<recorded_n]);stale:=recorded_text!=cast(string)current[0..<current_n];
+  if stale && !args_has(a[..],"--explore-stale-compiler") {tool_errln("compiler recorded/current source digests differ; rebuild before final qualification");return 1;}
+  inputs:[1]RtqInputs;if !rtq_deps(inputs[..],compiler,"aethyr/render/tests/check-spirv-modules.coax",deadline,work,"qualifier-dependencies") || !rtq_input_add(inputs[..],compiler) || !rtq_input_add(inputs[..],digest_path) || !rtq_input_add(inputs[..],"coax/web/tool.sh") {return 1;}
+  for name:[6]string.["tool-native","process-native","store-file-native","socket-native","entropy-native","entropy-foreign"] {for ext:[2]string.[".c",".h"] {p:[4096]u8;w:[1]Jo;jo_start(w[..],p[..]);jo_put(w[..],"coax/platform/");jo_put(w[..],name);jo_put(w[..],ext);if !rtq_input_add(inputs[..],jo_text(w[..])) {return 1;}}}
+  self:[4096]u8;self_n:=cxproc_self_path(self[..]);if self_n<1 || self_n>self.count || !rtq_input_add(inputs[..],cast(string)self[0..<self_n]) {return 1;}
+  snapshot_path:=args_value(a[..],"--snapshot","aethyr/render/tests/catalog-6445ee0050.json");snapshot_bytes:[1048576]u8;snapshot_nodes:[32768]JvNode;snapshot:[1]Jv;
+  if !rtq_input_add(inputs[..],snapshot_path) || !rtq_json_file(snapshot_path,snapshot_bytes[..],snapshot_nodes[..],snapshot[..]) {return 1;}
+  reference_path:=args_value(a[..],"--reference","");reference_bytes:[1048576]u8;reference_nodes:[32768]JvNode;reference:[1]Jv;
+  if reference_path.count>0 && (!rtq_input_add(inputs[..],reference_path) || !rtq_json_file(reference_path,reference_bytes[..],reference_nodes[..],reference[..])) {return 1;}
+  s:[1]SpvPrograms;if !spv_collect(s[..],snapshot[0],packages,payload,inputs[..],reference[0]) {tool_errln("package manifest/product hash admission or reference identity failed");return 1;}
+  rows:[1048576]u8;rows_text:=spv_rows(s[..],rows[..]);if rows_text.count==0 || !fs_write(fs_join(work,"inputs.json",paths[2][..]),rows_text) {return 1;}
+  if !rtq_input_add(inputs[..],fs_join(work,"inputs.json",paths[2][..])) {return 1;}
+  for k:0..<s[0].n+2 {name:[256]u8;if !rtq_input_add(inputs[..],fs_join(payload,spv_filename(s[..],k,name[..]),paths[2][..])) {return 1;}}
+  remote_out:[4096]u8;mk_args:=[3]string.["mktemp","-d","/tmp/aethyr-spirv-XXXXXXXXXX"];r=spv_ssh(host,mk_args[..],deadline,work,"remote-mkdir",remote_out[..],stderr[..]);if !rtq_ok(r) {return 1;}
+  remote:=rtq_trim(cast(string)remote_out[0..<r.out_n]);if !spv_remote(remote) {tool_errln("refuse unexpected remote temporary directory");return 1;}
+  result_bytes:[2097152]u8;passed:=spv_remote_result(s[..],host,remote,validator,validator_hash,payload,work,deadline,result_bytes[..]);
+  cleanup:=[4]string.["rm","-rf","--",remote];cleanup_run:=spv_ssh(host,cleanup[..],proc_deadline(30000,proc_now_ms()),work,"remote-cleanup",stdout[..],stderr[..]);
+  if !passed || !rtq_ok(cleanup_run) {tool_errln("native SPIR-V observations, readback or cleanup failed; raw commands retained");return 1;}
+  result_nodes:[65536]JvNode;result:[1]Jv;result_n:=0;while result_n<result_bytes.count && result_bytes[result_n]!=0 {result_n+=1;}
+  if !jv_parse(result[..],cast(string)result_bytes[0..<result_n],result_nodes[..]) || !spv_reference_result(reference[0],result[0],s[..]) || !fs_write(fs_join(work,"result.json",paths[3][..]),cast(string)result_bytes[0..<result_n]) {tool_errln("native validator reference parity differs");return 1;}
+  r=rtq_command(current_args[..],env,deadline,work,"compiler-current-source-after",stdout[..],stderr[..]);
+  if !rtq_ok(r) || rtq_trim(cast(string)stdout[0..<r.out_n])!=cast(string)current[0..<current_n] || !rtq_inputs_match(inputs[..]) {return 1;}
+  record:[2097152]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.spirv-validation.v1");jo_key(o[..],"status");jo_str(o[..],ifx stale then "exploratory" else "pass");jo_key(o[..],"host");jo_str(o[..],host);
+  jo_key(o[..],"declared_programs");jo_int(o[..],s[0].declared);jo_key(o[..],"unique_programs");jo_int(o[..],s[0].n);jo_key(o[..],"compiler_version");jo_str(o[..],cast(string)version[0..<version_n]);jo_key(o[..],"compiler_sha256");jo_str(o[..],cast(string)compiler_hash[..]);jo_key(o[..],"compiler_recorded_source_digest");jo_str(o[..],recorded_text);jo_key(o[..],"compiler_current_source_digest");jo_str(o[..],cast(string)current[0..<current_n]);jo_key(o[..],"compiler_current_sources_match");jo_bool(o[..],!stale);
+  jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],root);jo_key(o[..],"source_changes");jo_arr(o[..]);jo_end(o[..]);jo_key(o[..],"result");jv_write(result[0],0,o[..]);
+  jo_key(o[..],"remote_script_sent");jo_bool(o[..],false);jo_key(o[..],"remote_program_bytes_verified_before_and_after");jo_bool(o[..],true);jo_key(o[..],"remote_validator_hash_unchanged");jo_bool(o[..],true);jo_key(o[..],"remote_owned_directory_removed");jo_bool(o[..],true);jo_key(o[..],"same_input_reference");jo_str(o[..],reference_path);jo_key(o[..],"same_input_reference_equal");jo_bool(o[..],reference_path.count>0);jo_key(o[..],"elapsed_ms");jo_int(o[..],proc_now_ms()-start);
+  jo_key(o[..],"scope");jo_str(o[..],"Exact supplied package programs validated for Vulkan1.1 by the pinned installed validator with bad-magic and type-zero refusal controls. No pipeline creation, GPU execution, image, current package build provenance or matching-main compiler claim when exploratory.");jo_end(o[..]);
+  if o[0].bad || !fs_mkdir(fs_dir(receipt)) || !fs_write(receipt,jo_text(o[..])) {return 1;}
+  print("SPIR-V: % declared, % unique, 2 controls; %\n",s[0].declared,s[0].n,ifx stale then "explicit exploratory compiler" else "matching-source qualification");return 0;
+}

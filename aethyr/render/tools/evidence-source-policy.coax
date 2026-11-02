@@ -1,0 +1,70 @@
+// Historical source receipts are data, never maintained tools. Only this
+// chapter's archived source paths may be retired after verified readback.
+#authority;
+ES_ROOT :: "docs/verification/data/aethyr-ch11-2026-11-01/";
+
+#test "historical source paths stay inside the named record" {
+  #assert es_ends(".py", ".py") && !es_ends("py", ".py");
+  #assert es_prefix(ES_ROOT, ES_ROOT) && !es_prefix("", ES_ROOT);
+  #assert es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/a/probe.py");
+  #assert es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/run.sh");
+  #assert es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/x.ts");
+  #assert es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/x.js");
+  #assert es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/x.cjs");
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/x.coax");
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/../x.py");
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/./x.py");
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01//x.py");
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/x.py/");
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/-x.py");
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/x\ny.py");
+  #assert !es_source_path("aethyr/tests/probe.py") && !es_source_path(ES_ROOT);
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/x py");
+  #assert es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/AZaz09_-/b/x.py");
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/a/./x.py");
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/a/../x.py");
+  #assert !es_source_path("docs/verification/data/aethyr-ch11-2026-11-01/a/-b/x.py");
+}
+#forall "source path bytes equal the explicit portable filename alphabet" value: 0..<256 {
+  alphabet := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.";
+  expected := false;
+  for c: alphabet { if cast(int) c == value { expected = true; } }
+  #assert es_path_byte(cast(u8) value) == expected;
+}
+#test "receipts bind whole digest and exact nonnegative length" {
+  digest := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert es_digest_ok(digest) && !es_digest_ok("") && !es_digest_ok(digest[0..<63]);
+  #assert !es_digest_ok("g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !es_digest_ok("A123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !es_digest_ok(":123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert es_same(0, 0, digest, digest) && es_same(7, 7, digest, digest);
+  #assert !es_same(-1, -1, digest, digest) && !es_same(7, 8, digest, digest);
+  #assert !es_same(7, 7, digest, "") && !es_same(7, 7, "", "");
+}
+es_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
+es_prefix :: (s: string, prefix: string) -> bool { return s.count >= prefix.count && s[0..<prefix.count] == prefix; }
+es_path_byte :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
+}
+es_source_path :: (p: string) -> bool #export_c {
+  if !es_prefix(p, ES_ROOT) { return false; }
+  if !(es_ends(p, ".ts") || es_ends(p, ".py") || es_ends(p, ".js") || es_ends(p, ".sh") || es_ends(p, ".cjs")) { return false; }
+  at := ES_ROOT.count;
+  for i: ES_ROOT.count..<p.count + 1 {
+    if i == p.count || p[i] == '/' {
+      if i == at || p[at..<i] == "." || p[at..<i] == ".." || p[at] == '-' { return false; }
+      at = i + 1;
+    } else {
+      if !es_path_byte(p[i]) { return false; }
+    }
+  }
+  return true;
+}
+es_digest_ok :: (s: string) -> bool {
+  if s.count != 64 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+es_same :: (before_n: int, after_n: int, before_hash: string, after_hash: string) -> bool #export_c {
+  return before_n >= 0 && before_n == after_n && es_digest_ok(before_hash) && before_hash == after_hash;
+}

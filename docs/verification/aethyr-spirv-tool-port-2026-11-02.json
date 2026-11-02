@@ -1,0 +1,83 @@
+{
+  "schema": "aethyr.render.spirv-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "passed_same_input_port_parity_explicit_exploratory_compiler",
+  "change": "Replace check_spirv_modules.py with check-spirv-modules.coax. Coax owns package enumeration, product admission, deduplication/owners, malformed control bytes, bounded native effects, complete observations, source fences and verdicts. No remote Python or generated shell script is sent.",
+  "driver": "aethyr/render/tests/check-spirv-modules.coax",
+  "policy": "aethyr/render/tests/spirv-tool-policy.coax",
+  "checks": "aethyr/render/tests/spirv-tool-checks.coax",
+  "compiler": {
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "recorded_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "matching_current_main": false,
+    "default_source_gate": "Refuses selected compiler when recorded/current source digests differ, before remote effects or a receipt. Actual refusal retained.",
+    "named_exploratory_option": "--explore-stale-compiler",
+    "actual_receipt_status": "exploratory",
+    "exploratory_scope": "Own-code port parity against fixed supplied package bytes; no matching-main toolchain or current package emission claim"
+  },
+  "preserved_admission": [
+    "Enumerate every profile in catalog-6445ee0050.json in its declared order",
+    "Require package schema and matching slug; every product is a safe basename with its declared lowercase SHA256",
+    "Deduplicate by actual SPIR-V SHA256 while retaining every profile/entry owner and order",
+    "Generate bad magic and the first OpCompositeConstruct result-type-zero control in Coax from the actual first program",
+    "Check every native observation's file/hash/kind/owners/exit/stdout/stderr against the complete retained same-input result"
+  ],
+  "native_validator": {
+    "host": "coderos-4080",
+    "path": "/nix/store/vzkr4vhj77fif6g5j5c5cprmfwfzg50k-spirv-tools-1.4.341.0/bin/spirv-val",
+    "sha256": "9da466349d444d870111c4240a290d8b5b6f18ae48f982a6a34206792aecffcc",
+    "version": "SPIRV-Tools v2026.1 unknown hash, 1980-01-01T00:00:00+00:00",
+    "full_version": "native-receipt.json/result/version",
+    "target_environment": "vulkan1.1",
+    "remote_script_sent": false,
+    "individual_SDK_timeout_seconds": 30,
+    "overall_command_deadline_seconds": 810,
+    "cleanup_deadline_seconds": 30,
+    "transport": "Literal checked SSH/SCP arguments; existing installed SDK invoked directly with timeout, no remote loops or JSON logic",
+    "uploaded_and_read_back_files": 60,
+    "program_bytes_verified_before_and_after": true,
+    "validator_hash_unchanged": true,
+    "remote_owned_directory_removed": true
+  },
+  "same_input_parity": {
+    "baseline": "data/aethyr-ch11-2026-11-01/catalog-packages-308/aethyr-ch11-spirv-catalog-final.json",
+    "package_archive_sha256": "4e6c563b8561571b645fd1829bbc8597807f1ae86f99a8f880fedb8aea021a34",
+    "old_python_sha256": "275322631b47a9283123b40b1f32f7d91da94a0e9c6531d141b2f2b72699e63c",
+    "declared_programs": 77,
+    "unique_programs": 58,
+    "programs_accepted": 58,
+    "controls_refused": 2,
+    "complete_owner_mapping_equal": true,
+    "all_manifest_and_SPIRV_product_hashes_equal_to_baseline": true,
+    "all_observations_equal": true,
+    "validator_path_hash_and_full_version_equal": true,
+    "source_changes": [],
+    "elapsed_ms": 78910,
+    "old_passing_python_not_rerun": true,
+    "bad_magic": {"sha256": "b2f73ba76b6188c8f1f72a74b0eb730d8550a995e1513bbbf31df7866f9c636e", "exit": 1, "stderr": "error: line 0: Invalid SPIR-V magic number.\n"},
+    "bad_result_type": {"sha256": "93aade3402323504d10dabd84da9037b73868dc9a4cb35d8f661a402d7bec85e", "exit": 1, "stderr": "error: line 97: Error: Type Id is 0\n"}
+  },
+  "policy_qualification": {
+    "checks": 5,
+    "mutants_killed": 218,
+    "mutants_total": 218,
+    "survivors": 0,
+    "equivalence_waivers": 0,
+    "independent_controls": "Exact little-endian fixture bytes, first-composite selection with two composites and a no-operand instruction, short/misaligned/truncated instruction refusal before output changes, every-byte ASCII/hex membership, source path bounds and separation of validator refusal from SSH/timeouts",
+    "retained_reds": "Missing-procedure red and intermediate surviving mutants retained. Boundary checks and an observable bounded path scan closed survivors without waivers."
+  },
+  "source_identities": {
+    "driver_sha256": "03d286c4f060a9a7c88bd41726dcbc14bdce82900c5aadb0a2db82a9d53145b8",
+    "policy_sha256": "c46aa27e69978ead703042e1d8162e7fe483978ec4d9345760059af70db48488",
+    "checks_sha256": "94a82aa0db6bca5622bdacbb18b2a9e9ec3e0f6d66c897459036faba18f1c9f0",
+    "executed_driver_sha256": "79a7bd20777929ddee980c70e4b443cdc8fed7425d97f1a6460f9d20d737f5ae",
+    "native_receipt_sha256": "768058f7589d040bfaff5ecbef37a7dacda84317fabc060dbc56d44f3ee48b7f",
+    "runtime_fence": "Selected compiler/image/digest, full Coax dependency closure, native adapters, tool wrapper, snapshot, baseline, every package manifest/product and generated payload. Before/after compiler-source digest and file hashes unchanged."
+  },
+  "retention": "data/aethyr-ch11-2026-11-02/spirv-tool-port/qualification.json",
+  "limits": [
+    "Supplied historical package bytes are pinned independently of build provenance; no current package compiler emission is inferred.",
+    "This checks native SPIR-V validity only; pipeline creation, GPU execution, image qualification and release readiness remain separate.",
+    "The selected compiler is explicitly historical. Default source matching remains enforced, and the successful observation is named exploratory."
+  ]
+}

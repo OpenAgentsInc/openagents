@@ -1,0 +1,80 @@
+#test "browser-source digest and extent belong to the exact locally parsed buffer" {
+  expected: [64] u8; for i:0..<64 {expected[i]='a';}
+  text := cast(string)expected[..]; #assert gm_source_matches(984630,text,984630,text);
+  #assert gm_source_matches(1,text,1,text);
+  #assert !gm_source_matches(984629,text,984630,text) && !gm_source_matches(984631,text,984630,text);
+  #assert !gm_source_matches(0,text,0,text) && !gm_source_matches(-1,text,-1,text);
+  #assert !gm_source_matches(1,text[0..<63],1,text[0..<63]);
+  for i:0..<64 {changed:=expected;changed[i]='b';#assert !gm_source_matches(984630,cast(string)changed[..],984630,text);}
+}
+#test "Grid descriptor reads bounded memory and its actual mutable stack initializer" {
+  bytes := [39] u8.[0,97,115,109,1,0,0,0,2,18,1,3,101,110,118,6,109,101,109,111,114,121,2,1,185,5,128,8,6,9,1,127,1,65,128,128,128,2,11];
+  d := gm_describe(bytes[..]); #assert d.valid && d.minimum == 697 && d.maximum == 1024 && d.stack == 4194304;
+  for n: 0..<bytes.count { #assert !gm_describe(bytes[0..<n]).valid; }
+  for at: [10] int.[0,1,2,3,4,5,6,7,23,38] { changed := bytes; changed[at] = 255; #assert !gm_describe(changed[..]).valid; }
+  no_memory := bytes; no_memory[22] = 3; #assert !gm_describe(no_memory[..]).valid;
+  no_stack := bytes; no_stack[31] = 126; #assert !gm_describe(no_stack[..]).valid;
+  immutable := bytes; immutable[32] = 0; #assert !gm_describe(immutable[..]).valid;
+  not_const := bytes; not_const[33] = 66; #assert !gm_describe(not_const[..]).valid;
+  header := gm_describe(bytes[0..<8]); #assert header.header_valid && !header.valid;
+  zero_min := bytes; zero_min[24] = 128; zero_min[25] = 0; #assert gm_describe(zero_min[..]).valid && gm_describe(zero_min[..]).minimum == 0;
+  equal := bytes; equal[24] = 128; equal[25] = 8; #assert gm_describe(equal[..]).valid;
+  reversed := bytes; reversed[24] = 129; reversed[25] = 8; #assert !gm_describe(reversed[..]).valid;
+  zero_stack := bytes; zero_stack[37] = 0; #assert gm_describe(zero_stack[..]).valid && gm_describe(zero_stack[..]).stack == 0;
+  negative_stack := bytes; negative_stack[34] = 255; negative_stack[35] = 255; negative_stack[36] = 255; negative_stack[37] = 127; #assert !gm_describe(negative_stack[..]).valid;
+  no_import: [19] u8; for i:0..<8 {no_import[i]=bytes[i];} for i:28..<39 {no_import[i-20]=bytes[i];} #assert !gm_describe(no_import[..]).valid;
+  functions: [47] u8; for i:0..<11 {functions[i]=bytes[i];} functions[9]=26; functions[10]=2;
+  row := [8] u8.[3,101,110,118,1,102,0,0]; for i:0..<8 {functions[11+i]=row[i];} for i:11..<39 {functions[i+8]=bytes[i];}
+  #assert gm_describe(functions[..]).valid;
+}
+#test "bounded LEB observations retain unsigned and signed endpoints and refuse truncation" {
+  zero := [1] u8.[0]; c: [1] GmCursor; #assert gm_uleb(zero[..], c[..]) == 0 && c[0].at == 1 && !c[0].bad;
+  maximum := [5] u8.[255,255,255,255,15]; c[0] = GmCursor.{}; #assert gm_uleb(maximum[..], c[..]) == 4294967295 && !c[0].bad;
+  wide := [5] u8.[128,128,128,128,16]; c[0] = GmCursor.{}; n := gm_uleb(wide[..], c[..]); #assert c[0].bad;
+  endless := [5] u8.[128,128,128,128,128]; c[0] = GmCursor.{}; n = gm_uleb(endless[..], c[..]); #assert c[0].bad;
+  negative := [1] u8.[127]; c[0] = GmCursor.{}; #assert gm_sleb(negative[..], c[..]) == -1 && !c[0].bad;
+  minimum := [5] u8.[128,128,128,128,120]; c[0] = GmCursor.{}; #assert gm_sleb(minimum[..], c[..]) == -2147483648 && !c[0].bad;
+  positive := [5] u8.[255,255,255,255,7]; c[0] = GmCursor.{}; #assert gm_sleb(positive[..], c[..]) == 2147483647 && !c[0].bad;
+  for size: 0..<5 { c[0] = GmCursor.{}; n = gm_uleb(maximum[0..<size], c[..]); #assert c[0].bad; }
+  c[0] = GmCursor.{}; n = gm_sleb(wide[..], c[..]); #assert c[0].bad;
+  c[0] = GmCursor.{}; n = gm_sleb(endless[..], c[..]); #assert c[0].bad;
+  short: [] u8; c[0] = GmCursor.{}; #assert gm_byte(short[..],c[..]) == 0 && c[0].bad;
+  c[0] = GmCursor.{}; #assert gm_uleb(short[..],c[..]) == 0 && c[0].bad;
+  c[0] = GmCursor.{}; #assert gm_sleb(short[..],c[..]) == 0 && c[0].bad;
+  sixth := [6] u8.[128,128,128,128,128,0]; c[0] = GmCursor.{}; #assert gm_uleb(sixth[..],c[..]) == 0 && c[0].bad && c[0].at == 5;
+  c[0] = GmCursor.{}; #assert gm_sleb(sixth[..],c[..]) == 0 && c[0].bad && c[0].at == 5;
+  too_positive := [5] u8.[128,128,128,128,8]; c[0] = GmCursor.{}; n = gm_sleb(too_positive[..],c[..]); #assert c[0].bad;
+  name := [4] u8.[3,97,98,99]; c[0] = GmCursor.{}; gm_skip_name(name[..],c[..]); #assert !c[0].bad && c[0].at == 4;
+  c[0] = GmCursor.{}; gm_skip_name(name[0..<3],c[..]); #assert c[0].bad && c[0].at == 1;
+  c[0] = GmCursor.{}; gm_skip_name(short[..],c[..]); #assert c[0].bad && c[0].at == 0;
+}
+#test "arena endpoints are the independent host formula with exact page and alignment boundaries" {
+  a := gm_arena(45629776,667760,400000,12,112,697,1024);
+  #assert a.valid && a.base == 45678592 && a.state_bytes == 667760 && a.need == 65546864 && a.pages == 1001 && a.allocation == 65601536;
+  small := gm_arena(0,0,400000,12,112,0,1024);
+  #assert small.valid && small.base == 8388608 && small.state_bytes == 1024 && small.need == 27590144 && small.pages == 421;
+  page := gm_arena(8388609,1025,400000,12,112,0,1024);
+  #assert page.valid && page.base == 8454144 && page.state_bytes == 1040 && page.need == 27655696 && page.pages == 422;
+  #assert !gm_arena(-1,0,400000,12,112,697,1024).valid;
+  #assert !gm_arena(0,-1,400000,12,112,697,1024).valid;
+  #assert !gm_arena(0,0,399999,12,112,697,1024).valid;
+  #assert !gm_arena(0,0,400000,11,112,697,1024).valid;
+  #assert !gm_arena(0,0,400000,12,111,697,1024).valid;
+  #assert !gm_arena(0,0,400000,12,112,-1,1024).valid;
+  #assert !gm_arena(0,0,400000,12,112,1025,1024).valid;
+  #assert !gm_arena(0,0,400000,12,112,697,1023).valid;
+  #assert !gm_arena(67108865,0,400000,12,112,697,1024).valid;
+  #assert !gm_arena(0,67108865,400000,12,112,697,1024).valid;
+  #assert !gm_arena(50000000,0,400000,12,112,697,1024).valid;
+  limit_heap := gm_arena(67108864,0,400000,12,112,0,1024); #assert !limit_heap.valid && limit_heap.base == 67108864;
+  limit_state := gm_arena(0,67108864,400000,12,112,0,1024); #assert !limit_state.valid && limit_state.state_bytes == 67108864;
+  beyond_heap := gm_arena(67108865,0,400000,12,112,0,1024); #assert !beyond_heap.valid && beyond_heap.base == 0;
+  beyond_state := gm_arena(0,67108865,400000,12,112,0,1024); #assert !beyond_state.valid && beyond_state.state_bytes == 0;
+  full_min := gm_arena(0,0,400000,12,112,1024,1024); #assert !full_min.valid && full_min.base == 67108864;
+  above_min := gm_arena(0,0,400000,12,112,1025,1024); #assert !above_min.valid && above_min.base == 0;
+  exact_page := gm_arena(0,1536,400000,12,112,0,1024); #assert exact_page.valid && exact_page.need == 27590656 && exact_page.pages == 421;
+  next_page := gm_arena(0,1552,400000,12,112,0,1024); #assert next_page.valid && next_page.pages == 422;
+  exact_max := gm_arena(0,39519744,400000,12,112,0,1024); #assert exact_max.valid && exact_max.need == 67108864 && exact_max.pages == 1024;
+  next_max := gm_arena(0,39519745,400000,12,112,0,1024); #assert !next_max.valid && next_max.pages == 1025;
+  #assert gm_max(0,0) == 0 && gm_max(128,128) == 128 && gm_max(127,128) == 128 && gm_max(128,127) == 128;
+}

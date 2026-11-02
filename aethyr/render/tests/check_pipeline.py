@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independently authored affine pixel, derivative, depth and MRT equations for the normal-C shader/raster pipeline).
 """Actual normal-C checked-tree/raster pipeline against authored pixel math.
 
 This is a synthetic conformance corpus, not a realm screenshot qualification.

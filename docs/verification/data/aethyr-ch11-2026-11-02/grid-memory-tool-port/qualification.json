@@ -1,0 +1,65 @@
+{
+  "schema": "aethyr.grid.memory-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "passed_same_artifact_observer_parity",
+  "driver": "aethyr/tests/check-grid-memory.coax",
+  "driver_sha256": "cf45387ba3e9ec7937515550f1c1ceb11ffaf59aa189274c4c35c6380379e696",
+  "executed_image_sha256": "4ecc107b5bcc91a3bd6ad932ec0077a114e9928b99b80d0d41853a6b468e1eef",
+  "old_driver_sha256": "93ff149aad46619760405639c15d6f9c034305bac984a903901524635f24ba61",
+  "policy": "aethyr/tests/grid-memory-policy.coax",
+  "policy_sha256": "7b875e6ea74862c60a677cd47d3a26aa06dbc7ca39308e31adaf0bf769cfed32",
+  "effects": "aethyr/tests/grid-memory-effects.js",
+  "effects_sha256": "adcb756084731943b3c4120d77153600f6ea4ef9e14cf3ae6b106eacbeeb3bec",
+  "change": "Coax parses the bounded Wasm descriptor, computes arena endpoints, selects effects and decides acceptance. JavaScript only invokes the browser WebAssembly SDK, reads scalar exports and performs the requested memory.grow. The old Bun observer is retired only after matching accepted measurements and actual refusal controls.",
+  "scope": "Instantiation, scalar ABI and startup arena allocation on the supplied immutable artifact. No producer frame, new product emission, normal-stack proof, image parity or matching-main compiler claim.",
+  "artifact": {
+    "wasm_sha256": "2af335c88be062782ada00ba59fd4327178262cf070d67c355efb5ece9ca89cf",
+    "retained_in": "../grid-playable-route/artifacts.tar.gz",
+    "minimum_pages": 697,
+    "maximum_pages": 1024,
+    "stack_pointer_initial": 4194304,
+    "heap_base": 45629776,
+    "state_size": 667760,
+    "max_vertices": 400000,
+    "vertex_floats": 12,
+    "uniform_floats": 112,
+    "arena_base": 45678592,
+    "arena_need": 65546864,
+    "arena_pages": 1001,
+    "actual_final_memory_bytes": 65601536
+  },
+  "parity": {
+    "checker": "aethyr/tests/grid-memory-tool-checks.coax",
+    "matching_fields": 19,
+    "accepted_observers": "Original Bun1.4.0 SDK and actual muted headless Chrome156.0.8078.80 WebAssembly SDK both pass. Schema/status/scope, Wasm digest, every descriptor/scalar/arena field, growth error, effects and failures match exactly. Driver hash, browser-specific provenance and canonical /private/tmp path labeling are deliberately separate.",
+    "controls": ["invalid Wasm magic", "actual first stack initializer4194304 to4194303, same signed-LEB width", "actual maximum1024 to1000pages: early descriptor refusal, not a new browser growth-error observation", "truncated actual module"],
+    "control_result": "All four original/new invocations refuse with exit1, no timeout or truncated output. The executable stack-boundary control also retains identical full comparison fields/failure text. The other malformed/budget inputs refuse before a complete receipt, as the old observer did.",
+    "source_fences": "Every new positive and executable negative receipt records unchanged before/after Wasm, driver, dependency, selected compiler, native effects, resource map and actual executable image hashes. The browser returns SDK SHA256 and length of the exact ArrayBuffer compiled; Coax requires these to equal the first locally parsed buffer and emits that captured digest. These are the enumerated observer inputs, not a new whole-repository product-build fence.",
+    "independent_review": "Read-only review found a gap in separately hashing a fresh file read rather than the fetched browser buffer. That gap was fixed before retirement. Final positive and executable stack-control observations include the explicit browser-buffer identity join and still match all19legacy fields; the three unchanged early parser/budget refusals retain their prior execution evidence. No further arithmetic/LEB/lifecycle issue was found for this profile.",
+    "controls_first_attempt": "A control harness initially selected an absent Bun path and refused at spawn. That failed command record is retained. The final harness uses the inherited PATH and preserves SDK result files separately from command receipts."
+  },
+  "policy_checks": {
+    "authored_groups": 4,
+    "debug": "Passing baseline in the final mutation invocation",
+    "release": "4/4 pass with complete authority execution coverage",
+    "root_mutants": 266,
+    "killed": 266,
+    "survivors": 0,
+    "waivers": 0,
+    "coverage": "Unsigned/signed LEB endpoints/truncation/width, complete descriptor framing and import/stack cases, independent host arena alignment/page/capacity boundaries and canonical refusal diagnostics.",
+    "initial_mutation": "225/264 killed,39survived. Added independent boundary observations and removed redundant guards/equal-value conditional maximum branches; no equivalence labels or gate weakening. The fetched-buffer join added8sites; its initial one-byte extent-boundary survivor was killed by the missing valid one-byte check. All first failures and the final266/266report are retained."
+  },
+  "compiler": {
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "matches_current_main": false,
+    "scope": "Explicit qualified older compiler for the observer tool. The supplied producer was already retained; no product build or shader compilation is repeated."
+  },
+  "retention": {
+    "archive": "source-joined-artifacts.tar.gz",
+    "bytes": 2343229,
+    "sha256": "9aaf078747aa7c79259d1af77d74e6104bab7c9783056485b7804e1a44aabf58",
+    "prior_epoch_archive": {"file":"artifacts.tar.gz","bytes":1865296,"sha256":"7293ca8c9d25b70bebef85b21acb6f397a62e7a4ed080793c9d7775f7fe19056","scope":"Before the review's browser-buffer identity join; preserved historical observations, not the final source-bound observer claim"},
+    "readback": "Complete extracted payload directory compared byte-for-byte with its original inventory, including empty files. Contains original/new sources, actual executable, accepted measurements, all four full controlled Wasm inputs and command/results, policy reports and retained first failures."
+  },
+  "chapter11_complete": false
+}

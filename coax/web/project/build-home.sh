@@ -14,9 +14,9 @@ elif [[ "$render" == 1 ]]; then run_steps=(--run-steps 128000);fi
 source "$repo/coax/web/toolchain.sh"
 out="$1"; mkdir -p "$(dirname "$out")"
 # This shared homepage/Grid module needs its 400k-vertex arena inside 64 MiB.
-# Retained C stack-usage and all exported Wasm call chains bound the stack below
-# 2.11 MiB, including the 512-row capacity growth. Reserve 4 MiB with that margin;
-# see docs/verification/data/aethyr-ch11-2026-11-01/grid-memory-stack/.
+# The retained 174-export Wasm audit bounds normal-entry linear stack at
+# 1,953,936 bytes, including replay. Reserve 4 MiB with that measured margin;
+# see docs/verification/aethyr-grid-final-stack-2026-11-02.json for scope.
 grid_stack_bytes=4194304
 work="$(mktemp -d)";trap 'rm -rf "$work"' EXIT
 objects=(); units=()

@@ -42,8 +42,11 @@ are build artifacts. This chapter brings their frame admission, resource
 views, pass ordering and CPU reference into shared engine modules; it does
 not repeat that source migration.
 
-The catalog covers all 16 manifest rows, the direct Garden page, and the
-retained Galaxy fixture. A profile records its identity, page, assets,
+The catalog covers the earlier 16 manifest rows, the direct Garden page, and
+the retained Galaxy fixture. The newer Anime Lab keeps its existing renderer
+and is explicitly tracked as unadopted by
+[adoption.coax](../render/adoption.coax); it has no shared renderer profile yet.
+Unknown page identities are refused. A profile records its identity, page, assets,
 uniform extent, vertex stride, features and shader entry pairs. Retaining
 Galaxy as a fixture does not put it back in the shipping manifest. Waterlab
 has 3,937 uniform vec4s, or 62,992 bytes; Everglade has 21 logical bindings

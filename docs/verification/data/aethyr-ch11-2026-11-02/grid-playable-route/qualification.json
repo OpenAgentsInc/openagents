@@ -1,0 +1,128 @@
+{
+  "schema": "aethyr.grid.playable-route.v1",
+  "date": "2026-11-02",
+  "status": "passed_declared_headless_route_with_explicit_historical_executor_reuse",
+  "scope": "Actual homepage entry, movement/jumps/camera, shared renderer submission, missing-resource refusal and same-object recovery, source-preserving replay, native actual-face session, native final-frame producer/RFI join, and exact-input composition with retained WebGPU/Vulkan/CPU raster proof. Numerical pixels are qualified at the separately measured 320x180 final resize, not the full 960x540 route.",
+  "toolchain": {
+    "producer_and_tool_compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "producer_and_tool_compiler_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "compiler_matching_current_main": false,
+    "ordinary_producer_wasm_sha256": "2af335c88be062782ada00ba59fd4327178262cf070d67c355efb5ece9ca89cf",
+    "ordinary_producer_wasm_bytes": 984630,
+    "shader_package_sha256": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf",
+    "shader_package_compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+    "host_capture_source_sha256": "b34e979c34c4a3064955635d821cae65c328e41589f0f2c92c332cad46ffba5b",
+    "renderer_capture_source_sha256": "c524e3f88b955c0721807e9b996c30c00d94c378682ca68fca64679b514b97d6",
+    "source_fence_limit": "The browser tool saved executed driver/glue/capture snapshots and exact producer/package bytes. Host/render snapshots were retained after execution. No before/after whole-repository source fence was measured, so none is claimed."
+  },
+  "browser": {
+    "record": "capture-3 in artifacts.tar.gz",
+    "driver": "aethyr/tests/grid-journey.coax",
+    "sequence": "aethyr/tests/grid-journey-sequence.coax",
+    "glue": "aethyr/tests/grid-journey-browser.js",
+    "effects": "Muted headless Chrome, WebGPU, explicit CDP device metrics before navigation; no visible browser or audio",
+    "actual_entry": "Measured homepage WALK AROUND control clicked; actual navigation to /realms/the-grid?from=home",
+    "fixed_clock_ms": 1793577600000,
+    "network": "External/API traffic frozen pending and external WebSocket construction refused by explicit test glue. Real production network readiness is outside this record.",
+    "golden": false,
+    "probe_url": false,
+    "reduced_motion": false,
+    "normal_animation": true,
+    "route_viewport": {"inner_width": 960, "inner_height": 540, "canvas_width": 960, "canvas_height": 540, "device_scale_factor": 1},
+    "frames": 240,
+    "key_edges": 14,
+    "steps": 254,
+    "execution_profile": 2,
+    "jumps_taken": 2,
+    "landed": true,
+    "peak_feet_metres": 1.11328125,
+    "rising_drawn_frames": 38,
+    "shared_submission": true,
+    "route_final_session_digest": 2762450271,
+    "route_final_state_digest": 2281724275,
+    "replay": {"returned": 1, "step_marks": 254, "source_steps_session_state_unchanged": true},
+    "resource_refusal": {"resource": "actual RenderHost Sans texture", "phase": "resources", "write_buffer_calls": 0, "gpu_submits": 0},
+    "resource_recovery": {"same_restored_texture_object": true, "submitted": true, "gpu_validation_ok": true, "exceptions": 0, "console_errors": 0},
+    "final_resize": {"width": 320, "height": 180, "elapsed_time": 0, "separately_recorded": true, "format": "rgba16f", "session_digest_after_four_zero_time_frames": 823811167, "state_digest": 2281724275},
+    "raw_gpu_sha256": "c5520f750dde14fbb394d8cf95b239ddbc61dbc8c9b35c9b8579a85acad5ac2c",
+    "capture_readback": {"record": "capture-3-readback16.json", "files": 16, "artifact_changes": false, "captured_package_equals_copied_package": true},
+    "capture_guard_epoch": "The package-equality guard was added after capture3. Its focused check and independent 16-file readback qualify the retained package identity separately; capture3's executed capture helper is retained unchanged."
+  },
+  "native_session": {
+    "host": "coderos-4080",
+    "architecture": "x86_64",
+    "C_compiler": "gcc (GCC) 15.2.0",
+    "production_source": "The exact admitted generated C/H from the ordinary browser producer; no duplicate production emission",
+    "actual_C_face": true,
+    "Coax_owns_input_schedule_and_verdict": true,
+    "viewport": {"width": 960, "height": 540},
+    "profiles": ["O0 debug", "O2", "O2 ASan+UBSan"],
+    "each": {"frames": 240, "exact_integer_fields": 2400, "exact_interpolated_pose_words": 2400, "exact_step_marks": 254, "replay_return": 1},
+    "sanitizer_stderr_bytes": 0,
+    "sanitizer_environment": {"ASAN_OPTIONS": "detect_leaks=0", "UBSAN_OPTIONS": "halt_on_error=1"},
+    "negative_controls": {"drop_jump_first_bad_frame": 20, "freeze_first_bad_frame": 2, "wrong_pose_first_bad_frame": 1, "skip_replay": "completion refused"}
+  },
+  "native_producer_RFI_join": {
+    "archive": "native-producer.tar.gz",
+    "driver": "aethyr/tests/grid-journey-native.coax",
+    "bridge": "aethyr/tests/grid-journey-native.c",
+    "assembler": "aethyr/tests/grid-journey-native-rfi.coax",
+    "profiles": ["O2", "O2 ASan+UBSan"],
+    "session_receipts": ["producer-session-parity.json", "producer-sanitized-session-parity.json"],
+    "actual_dump": ["u.bin", "hud.bin", "draws.bin", "indices.bin"],
+    "zero_time_frames_after_route": 4,
+    "width": 320, "height": 180, "uniform_floats": 112, "HUD_vertices": 33414, "vertex_stride": 12, "draw_records": 0, "index_bytes": 0,
+    "identities_counts_resources_exact": true,
+    "numeric_profile": "Every f32 finite; abs1e-6 or rel1e-6 fixed before observing, with discrete mode/header flags exact. Actual 112 uniform words and 400968 HUD words all bit-identical, so allowance unused.",
+    "numeric_receipt": "producer-comparison.json",
+    "complete_equality_receipt": "complete-input-equality.json",
+    "each_complete_inventory": {"files": 14, "all_config_tokens_accounted": true, "producer_files_bound_to_native_dump": 4, "equal_exact_bytes_to_capture3": true, "artifact_changes": false},
+    "publication": "New owned output directories; publish frame.config by rename only after all complete byte/hash equality checks",
+    "shared_resources_scope": "The same physically read-back Sans five mips, package and shaders are explicit shared scene inputs. Native network acquisition and platform font rasterization are not inferred.",
+    "raster_reuse_basis": "Every renderer-consumed RFI/config/package/shader/resource byte equals the already-rendered capture3. Reuse its retained Vulkan and CPU results on exact-input identity; do not repeat unchanged passing raster commands."
+  },
+  "raster_qualification": {
+    "record": "../grid-moving-pixels/qualification.json",
+    "width": 320, "height": 180, "format": "rgba16f",
+    "each_comparison": {"RGBA_channels": 230400, "colour_failures": 0, "nonfinite_failures": 0, "masked_pixels": 0, "max_normalized_error": 0.0009643201542912247},
+    "native_validation_errors": 0, "native_validation_warnings": 0,
+    "historical_native_executor_sha256": "84c7222db102809b5a79e6cc67574291f724b6a0df17894e3bcbda539dd1ee6f",
+    "historical_CPU_executor_sha256": "aefdc677697aeb41c3630b766123d3366efc86ab9e6a470d4430e8ab500b957f",
+    "current_source_executor_emission": false
+  },
+  "core_checks": {
+    "GridWalk_checks": {"passed": 328, "total": 328},
+    "GridWalk_root_mutants": {"killed": 256, "total": 256, "survivors": 0, "equivalence_waivers": 0},
+    "logs": "checks in artifacts.tar.gz; native dump shape and finite/exact inventory focused checks in native-producer.tar.gz",
+    "no_unchanged_passing_gate_repeated_for_confirmation": true
+  },
+  "related_qualification": {
+    "final_actual_Wasm_stack": "../../../aethyr-grid-final-stack-2026-11-02.json",
+    "stack_bound_bytes": 1953936,
+    "stack_reservation_bytes": 4194304,
+    "stock_visual_migration": "../grid-visual-migration/qualification.json"
+  },
+  "retained_failures": [
+    {"record": "browser-1 to browser-3", "cause": "Missing Page.enable, readiness race, then top-level await in Runtime.evaluate; harness repaired before the accepted run"},
+    {"record": "browser-4", "cause": "Actual missing-Sans plain Error killed the renderer; retained before transport-only observation repair"},
+    {"record": "browser-5", "cause": "Coax refusal correct; harness expected a quoted JSON raw string"},
+    {"record": "browser-6", "scope": "Passing route/replay and physics/pose-only native comparison. Actual browser viewport 960x397 differed from native 960x540; no matched-viewport raster claim"},
+    {"record": "capture-1 and capture-2", "cause": "Actual extent remained 960x397; guard refused. Explicit CDP metrics and two RAF resize preparation repaired this before capture3"}
+  ],
+  "archives": [
+    {"file": "artifacts.tar.gz", "sha256": "f6cbf7d38486af6160fd54b450bd0400947b828100377ce04100ebef8a9a367f", "bytes": 8277463, "members": "archive-members.txt", "scope": "Browser failures and accepted capture3; production Wasm/C/H; exact executed tools/source snapshots; native debug/optimized/sanitized session and negative controls; raw captures and checks"},
+    {"file": "native-producer.tar.gz", "sha256": "bfa2731dcf5a08590ef2addce02ba6e6e111d4d5c8ab0ca68a5ed8df4882f80f", "bytes": 12589476, "members": "native-producer-members.txt", "scope": "Native final-frame raw dump, new Coax assembler source/image, exact complete RFI equality, optimized and sanitized execution, emitted C/H and raw logs"}
+  ],
+  "archive_readback": {
+    "utility": "Existing tar extraction and diff -qr over both complete owned source/readback subtrees; empty files included; no archived scripts executed",
+    "route": {"extract_exit": 0, "diff_exit": 0, "diff_output_bytes": 0},
+    "native_producer": {"extract_exit": 0, "diff_exit": 0, "diff_output_bytes": 0}
+  },
+  "remaining_limits": [
+    "Interactive vk-realm 240-frame/window lifecycle remains unqualified; this is a headless actual-producer and typed-RFI renderer composition.",
+    "Only the separately observed 320x180 final state has numerical raster qualification; normal 960x540 route frames have actual submissions and pose/input/replay evidence.",
+    "External/live network, touch interaction, accessibility, owner sign-off and every-realm rollout are outside this record.",
+    "Historical compiler, shader package, native GPU and CPU executor provenance remains explicit; this is not final matching-main toolchain acceptance.",
+    "No entire-chapter or book-completion claim."
+  ]
+}

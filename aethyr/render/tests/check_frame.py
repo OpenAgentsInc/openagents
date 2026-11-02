@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent unbounded-integer endpoint oracle, compared with the generated native Coax ABI).
 """Independent mathematical range oracle through the actual normal-C ABI.
 
 Python integers do not wrap. A span is admitted by mathematical endpoints,
@@ -159,9 +160,10 @@ def encode(values):
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--work-dir',required=True,type=Path);p.add_argument('--receipt',required=True,type=Path)
+ p.add_argument('--coax',type=Path,default=ROOT/'coax/bin/coax')
  p.add_argument('--modes',nargs='+',choices=['debug','release','sanitized'],default=['debug','release','sanitized'])
  p.add_argument('--explore-stale-compiler',action='store_true');a=p.parse_args()
- start=time.monotonic();work=a.work_dir.resolve();work.mkdir(parents=True,exist_ok=True);compiler=ROOT/'coax/bin/coax'
+ start=time.monotonic();work=a.work_dir.resolve();work.mkdir(parents=True,exist_ok=True);compiler=a.coax.resolve(strict=True)
  def run(argv,input=None,env=None):
   left=830-(time.monotonic()-start)
   if left<=0:raise TimeoutError('bounded frame qualification deadline')

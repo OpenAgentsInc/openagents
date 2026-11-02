@@ -1,0 +1,14 @@
+// Exact process transport controls used before changing qualification callers.
+#import "Basic";
+#load "qualification-files.coax";
+tool_main :: ()->int #export_c {
+  no_env:[]string;out:[64]u8;err:[64]u8;
+  argv:=[2]string.["printf","a\\n\\000b\\n\\n"];r:=rtq_run_raw(argv[..],no_env,5000,out[..],err[..]);want:=[6]u8.['a',10,0,'b',10,10];
+  if !rtq_ok(r) || r.out_n!=6 || cast(string)out[0..<6]!=cast(string)want[..] {tool_errln("raw process bytes changed");return 1;}
+  r=rtq_run_raw(argv[..],no_env,5000,out[0..<6],err[..]);if !rtq_ok(r) || r.out_n!=6 {return 1;}
+  r=rtq_run_raw(argv[..],no_env,5000,out[0..<5],err[..]);if !r.cut || r.out_n!=5 || r.status!=0 {return 1;}
+  missing:=[1]string.["/definitely-not-a-program"];r=rtq_run_raw(missing[..],no_env,5000,out[..],err[..]);if r.started==0 {return 1;}
+  bad:=[3]string.["sh","-c","exit 7"];r=rtq_run_raw(bad[..],no_env,5000,out[..],err[..]);if r.started!=0 || r.status!=7 {return 1;}
+  slow:=[2]string.["sleep","0.1"];r=rtq_run_raw(slow[..],no_env,1,out[..],err[..]);if !r.timed_out || r.started!=0 {return 1;}
+  print("qualification effects: raw NUL/newline bytes, exact output bound, overflow refusal, missing child, nonzero exit and deadline pass\n");return 0;
+}

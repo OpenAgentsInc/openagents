@@ -1,0 +1,20 @@
+{
+  "schema": "aethyr.render.spirv-tool-retention.v1",
+  "date": "2026-11-02",
+  "status": "passed_complete_archive_readback",
+  "archive": "artifacts-and-reference.tar.gz",
+  "sha256": "390cce8cf4ff9f2085fe5af3654b022d8aa19558c2bf65a0ac365803978223bd",
+  "bytes": 5070822,
+  "members": "archive-members.txt",
+  "contents": "Frozen original packages and baseline; exact old Python and new Coax source; complete current qualifier source/native closure tar; executed Coax image; default source-gate refusal; source fences; all60payloads and both complete remote readbacks; every SSH/SCP/validator argv/raw stdout/stderr/result; controls and all mutation/check logs.",
+  "native_receipt": "native-receipt.json",
+  "readback": {
+    "extract_argv": ["tar", "-xzf", "docs/verification/data/aethyr-ch11-2026-11-02/spirv-tool-port/artifacts-and-reference.tar.gz", "-C", "/tmp/aethyr-spirv-port-readback-20261102"],
+    "extract_exit": 0,
+    "compare_argv": ["diff", "-qr", "/tmp/aethyr-spirv-port-20261102", "/tmp/aethyr-spirv-port-readback-20261102/aethyr-spirv-port-20261102"],
+    "compare_exit": 0,
+    "compare_output_bytes": 0,
+    "scope": "Entire directory inventory and all file bytes, including empty command outputs; no archived script executed"
+  },
+  "qualification": "../../../aethyr-spirv-tool-port-2026-11-02.json"
+}

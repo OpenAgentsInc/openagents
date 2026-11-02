@@ -238,6 +238,27 @@ gridwalk_steps :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 the
 gridwalk_session :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 then 0 else replay_digest(gw_session(g)); }
 // book:end gridwalk-replay
 
+// Read-only observations of the actual session kept by a page's face. These do not
+// start a second controller, advance a clock, accept input or replay into the source.
+// Integer fields: steps, session digest, current state digest, records, profile,
+// jumps, grounded, collision refusals, ground-query status and camera-query status.
+gridwalk_probe :: (g: [] GridWalk, field: int) -> int #export_c {
+  if g.count < 1 || field < 0 || field >= 10 { return -1; }
+  p := g[0].you;
+  values := [10] int.[gridwalk_steps(g),gridwalk_session(g),gridwalk_digest(g),
+    g[0].records,g[0].profile,p.jumps.taken,replay_flag(p.on_ground),
+    cast(int) p.collision_refusals,cast(int) cast(u8) p.query_status,
+    cast(int) cast(u8) p.camera_query_status];
+  return values[field];
+}
+// The interpolated world-space feet, eye, target and facing, in that order.
+gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c {
+  if g.count < 1 || field < 0 || field >= 10 { return 0; }
+  feet := gridwalk_feet(g); eye := gridwalk_eye(g); at := gridwalk_at(g);
+  values := [10] f32.[feet.x,feet.y,feet.z,eye.x,eye.y,eye.z,at.x,at.y,at.z,gridwalk_face(g)];
+  return values[field];
+}
+
 // ---- Checks ----
 
 #test "the Grid applies its declared collision passes to real trapped contacts" {

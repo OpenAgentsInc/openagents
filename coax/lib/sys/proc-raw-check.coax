@@ -1,0 +1,24 @@
+// Native process observations: raw NUL/255/final-newline, bounded output,
+// missing program and an actual owned-process timeout. No shell is spawned.
+#import "Basic";
+#load "tool.coax";
+#load "proc-raw.coax";
+tool_main :: () -> int #export_c {
+  out: [64] u8; err: [64] u8; env: [] string;
+  bytes := [2] string.["/usr/bin/printf", "\\000\\377\\n"];
+  r := proc_run_bytes(bytes[..], env, 1000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut || r.timed_out || r.out_n != 3 || out[0] != 0 || out[1] != 255 || out[2] != 10 { return 1; }
+  r = proc_run_bytes(bytes[..], env, 1000, out[0..<2], err[..]);
+  if r.started != 0 || r.status != 0 || !r.cut || r.timed_out || r.out_n != 2 || out[0] != 0 || out[1] != 255 { return 1; }
+  empty := [2] string.["/usr/bin/printf", ""];
+  r = proc_run_bytes(empty[..], env, 1000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut || r.timed_out || r.out_n != 0 { return 1; }
+  missing := [1] string.["/this-path-does-not-exist/aethyr-qualification"];
+  r = proc_run_bytes(missing[..], env, 1000, out[..], err[..]);
+  if r.started == 0 { return 1; }
+  sleep := [2] string.["/bin/sleep", "1"];
+  r = proc_run_bytes(sleep[..], env, 50, out[..], err[..]);
+  if r.started != 0 || !r.timed_out || r.status == 0 { return 1; }
+  print("raw process: bytes, final newline, capacity, empty output, spawn refusal and timeout pass\n");
+  return 0;
+}

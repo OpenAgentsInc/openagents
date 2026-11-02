@@ -38,6 +38,18 @@ export function renderProfile(slug: string): number {
   if (index === undefined) throw new Error(`no compiled renderer profile for ${slug}`)
   return index
 }
+// Page adoption is decided in Coax, including explicitly tracked legacy
+// consumers. Unknown identities fail rather than receiving a default profile.
+const renderAttributeRows = new Map<string, string>()
+export function renderAttributes(slug: string, module: string): string {
+  const key = JSON.stringify([slug, module])
+  const cached = renderAttributeRows.get(key)
+  if (cached !== undefined) return cached
+  const root = join(import.meta.dir, "../..")
+  const row = execFileSync(join(root, "coax/web/tool.sh"), ["aethyr/render/page-render.coax", slug, module], { cwd: root, encoding: "utf8" })
+  renderAttributeRows.set(key, row)
+  return row
+}
 const KINDS = { locked: 0, open: 1, soon: 2 } as const
 // golden: what the release walk (goldens.ts) asks of the realm's page: the least share of
 // its pixels lit, how long it settles before its shot, how many 8 px blocks may differ.
@@ -311,7 +323,7 @@ ${loaderMarkup(r.title, `/realms/${r.slug}/index.md`)}
 <main>
 <h1>${t}</h1><p><a href="/realms/${r.slug}/index.md">${t}</a></p>
 </main>
-<script type="module" src="/coaxial/host.js" data-app="${r.module}" data-render="/build/render/${r.slug}/render.json" data-render-profile="${renderProfile(r.slug)}"${slot}${assets}></script>
+<script type="module" src="/coaxial/host.js" data-app="${r.module}"${renderAttributes(r.slug, r.module)}${slot}${assets}></script>
 </body>
 </html>
 `

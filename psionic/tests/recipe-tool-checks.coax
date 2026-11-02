@@ -1,0 +1,48 @@
+// Real subprocess controls for the recipe wrapper, using a controlled compiler
+// instead of repeating any already-passing model or authority check.
+// recipe-tool-checks WRAPPER_IMAGE MOCK_IMAGE OUTPUT_DIRECTORY [legacy|failures|last]
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc-raw.coax";
+#load "../../coax/lib/json/json.coax";
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || (args_count(a[..]) != 3 && args_count(a[..]) != 4) { return 2; }
+  legacy := args_count(a[..]) == 4 && args_at(a[..], 3) == "legacy";
+  start := 0; if args_count(a[..]) == 4 && args_at(a[..], 3) == "failures" { start = 7; }
+  if args_count(a[..]) == 4 && args_at(a[..], 3) == "last" { start = 8; }
+  wrapper := args_at(a[..], 0); mock := args_at(a[..], 1); directory := args_at(a[..], 2);
+  if !fs_mkdir(directory) { return 2; }
+  log_buf: [4096] u8; calls_path := fs_join(directory, "calls.log", log_buf[..]);
+  coax_buf: [4096] u8; co: [1] Jo; jo_start(co[..], coax_buf[..]); jo_put(co[..], "COAX="); jo_put(co[..], mock);
+  log_env_buf: [4096] u8; le: [1] Jo; jo_start(le[..], log_env_buf[..]); jo_put(le[..], "RECIPE_TOOL_LOG="); jo_put(le[..], calls_path);
+  expected := "test psionic/lib/deepseek/recipe.coax\nrun psionic/examples/deepseek-recipe.coax\nrun psionic/examples/deepseek-recipe-refuse.coax\ntest psionic/lib/deepseek/recipe.coax --release\nrun psionic/examples/deepseek-recipe.coax --release\nrun psionic/examples/deepseek-recipe-refuse.coax --release\n";
+  first := "test psionic/lib/deepseek/recipe.coax\n";
+  two := "test psionic/lib/deepseek/recipe.coax\nrun psionic/examples/deepseek-recipe.coax\n";
+  modes := [9] string.["success", "success", "success", "success", "success", "newline-missing", "nul-first", "test-fails", "mutation-fails"];
+  for index: start..<modes.count {
+    if !fs_write(calls_path, "") { return 1; }
+    mode_buf: [256] u8; mo: [1] Jo; jo_start(mo[..], mode_buf[..]); jo_put(mo[..], "RECIPE_TOOL_MODE="); jo_put(mo[..], modes[index]);
+    env := [4] string.[jo_text(co[..]), jo_text(le[..]), jo_text(mo[..]), "COAX_MUTATE_JOBS="];
+    command := [4] string.[wrapper, "", "", ""]; argc := 1; status := 0; want := expected;
+    want_buf: [4096] u8; wo: [1] Jo; jo_start(wo[..], want_buf[..]);
+    if index == 1 || index == 8 { command[1] = "--mutate"; argc = 2; jo_put(wo[..], expected); jo_put(wo[..], "mutate psionic/lib/deepseek/recipe.coax --root-only --jobs 8\n"); want = jo_text(wo[..]); }
+    if index == 2 { command[1] = "--mutate"; command[2] = "--jobs"; command[3] = "2"; argc = 4; jo_put(wo[..], expected); jo_put(wo[..], "mutate psionic/lib/deepseek/recipe.coax --root-only --jobs 2\n"); want = jo_text(wo[..]); }
+    if index == 3 { command[1] = "--unknown"; argc = 2; status = 2; want = ""; }
+    if index == 4 { command[1] = "--jobs"; argc = 2; status = ifx legacy then 1 else 2; want = ""; }
+    if index == 5 || index == 6 { status = 1; want = two; }
+    if index == 7 { status = 23; want = first; }
+    if index == 8 { status = 29; }
+    out: [65536] u8; err: [65536] u8;
+    r := proc_run_bytes(command[0..<argc], env[..], 30000, out[..], err[..]);
+    actual: [4096] u8; n := fs_read(calls_path, actual[..]);
+    case_buf: [4096] u8; ca: [1] Jo; jo_start(ca[..], case_buf[..]); jo_put(ca[..], directory); jo_put(ca[..], "/control-"); jo_int(ca[..], index); jo_put(ca[..], ".calls");
+    if n < 0 || !fs_write(jo_text(ca[..]), cast(string) actual[0..<n]) { return 1; }
+    path_buf: [4096] u8; stdout_buf: [128] u8; so: [1] Jo; jo_start(so[..], stdout_buf[..]); jo_put(so[..], "control-"); jo_int(so[..], index); jo_put(so[..], ".stdout");
+    if !fs_write(fs_join(directory, jo_text(so[..]), path_buf[..]), cast(string) out[0..<r.out_n]) { return 1; }
+    print("control %: started %, status %, timeout %, cut %, calls match %\n", index, r.started, r.status, r.timed_out, r.cut, n == want.count && cast(string) actual[0..<n] == want);
+    if r.started != 0 || r.status != status || r.cut || r.timed_out || n != want.count || cast(string) actual[0..<n] != want { return 1; }
+    if index == 5 || index == 6 { tool_err(cast(string) err[0..<r.err_n]); }
+  }
+  print("recipe tool: modes, jobs, strict final newline/NUL, usage and process failures pass\n"); return 0;
+}

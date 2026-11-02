@@ -1,0 +1,45 @@
+// Native qualification orchestration shared by package/build tools. Coax owns
+// command selection, identity observations, modes and exact retained outputs.
+#load "qualification-files.coax";
+RtnCompiler :: struct {ok:bool;matching:bool;hash:[64]u8;version:[4096]u8;version_count:int;current:[4096]u8;current_count:int;recorded:[4096]u8;recorded_count:int;}
+rtn_text :: (out:[]u8,text:string)->int {if text.count>out.count {return -1;}for i:0..<text.count {out[i]=text[i];}return text.count;}
+rtn_compiler :: (compiler:string,digest:string,root:string,work:string,deadline:int)->RtnCompiler {
+  p:RtnCompiler;if !rtq_hash_file(compiler,p.hash[..]) {return p;}
+  stdout:[65536]u8;stderr:[65536]u8;env:[]string;version:=[2]string.[compiler,"version"];r:=rtq_command(version[..],env,deadline,work,"compiler-version",stdout[..],stderr[..]);if !rtq_ok(r) {return p;}
+  p.version_count=rtn_text(p.version[..],rtq_trim(cast(string)stdout[0..<r.out_n]));if p.version_count<0 {return p;}
+  current:=[3]string.[compiler,"source-digest",root];r=rtq_command(current[..],env,deadline,work,"compiler-current-source",stdout[..],stderr[..]);if !rtq_ok(r) {return p;}
+  p.current_count=rtn_text(p.current[..],rtq_trim(cast(string)stdout[0..<r.out_n]));if p.current_count<0 {return p;}
+  record:[4096]u8;n:=fs_read(digest,record[..]);if n<0 {return p;}p.recorded_count=rtn_text(p.recorded[..],rtq_trim(cast(string)record[0..<n]));if p.recorded_count<0 {return p;}
+  p.matching=cast(string)p.current[0..<p.current_count]==cast(string)p.recorded[0..<p.recorded_count];p.ok=true;return p;
+}
+rtn_compiler_json :: (o:[]Jo,compiler:string,p:[]RtnCompiler) {
+  jo_key(o,"compiler");jo_str(o,compiler);jo_key(o,"compiler_version");jo_str(o,cast(string)p[0].version[0..<p[0].version_count]);jo_key(o,"compiler_sha256");jo_str(o,cast(string)p[0].hash[..]);
+  jo_key(o,"compiler_source_digest");jo_str(o,cast(string)p[0].recorded[0..<p[0].recorded_count]);jo_key(o,"compiler_recorded_source_digest");jo_str(o,cast(string)p[0].recorded[0..<p[0].recorded_count]);jo_key(o,"compiler_current_source_digest");jo_str(o,cast(string)p[0].current[0..<p[0].current_count]);jo_key(o,"compiler_current_sources_match");jo_bool(o,p[0].matching);
+}
+rtn_modes :: (a:[]Args,out:[]string)->int {
+  at:=args_find(a,"--modes");if at== -1 {out[0]="debug";out[1]="release";out[2]="sanitized";return 3;}
+  n:=0;for i:at+1..<args_count(a) {value:=args_at(a,i);if value.count>=2 && value[0..<2]=="--" {break;}if n==3 || (value!="debug" && value!="release" && value!="sanitized") {return -1;}for k:0..<n {if out[k]==value {return -1;}}out[n]=value;n+=1;}return ifx n==0 then -1 else n;
+}
+rtn_emit :: (compiler:string,fixture:string,source:string,header:string,release:bool,work:string,deadline:int)->bool {
+  argv:=[7]string.[compiler,"c",fixture,"--library","--header",header,"--release"];count:=ifx release then 7 else 6;
+  stdout:[RTQ_FILE]u8;stderr:[65536]u8;env:[]string;r:=rtq_command(argv[0..<count],env,deadline,work,"emission",stdout[..],stderr[..]);return rtq_ok(r) && fs_write(source,cast(string)stdout[0..<r.out_n]);
+}
+rtn_link :: (source:string,header_dir:string,driver:string,executable:string,mode:string,work:string,deadline:int)->bool {
+  args:[18]string;n:=0;for value:[4]string.["clang","-std=c11","-Wall","-Wextra"] {args[n]=value;n+=1;}
+  args[n]=ifx mode=="release" then "-O2" else "-O0";n+=1;if mode!="release" {args[n]="-g";n+=1;}
+  if mode=="sanitized" {args[n]="-fsanitize=address,undefined";n+=1;args[n]="-fno-omit-frame-pointer";n+=1;}
+  for value:[7]string.["-I",header_dir,source,driver,"-lm","-o",executable] {args[n]=value;n+=1;}
+  stdout:[65536]u8;stderr:[65536]u8;env:[]string;r:=rtq_command(args[0..<n],env,deadline,work,"native-link",stdout[..],stderr[..]);return rtq_ok(r);
+}
+rtn_tool_sources :: (inputs:[]RtqInputs,compiler:string,entry:string,work:string,deadline:int)->bool {
+  if !rtq_deps(inputs,compiler,entry,deadline,work,"qualifier-dependencies") || !rtq_deps(inputs,compiler,"coax/lib/crypto/entropy.coax",deadline,work,"qualifier-entropy-dependencies") {return false;}
+  for name:[6]string.["tool-native","process-native","store-file-native","socket-native","entropy-native","entropy-foreign"] {for ext:[2]string.[".c",".h"] {
+    path:[4096]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],"coax/platform/");jo_put(o[..],name);jo_put(o[..],ext);if !rtq_input_add(inputs,jo_text(o[..])) {return false;}
+  }}return rtq_input_add(inputs,"coax/web/tool.sh");
+}
+rtn_schema_json :: (o:[]Jo,names:[]string,fields:[]string) {
+  jo_obj(o);for name,i:names {jo_key(o,name);jo_arr(o);k:=0;while true {word:=rtq_word(fields[i],k);if word.count==0 {break;}jo_str(o,word);k+=1;}jo_end(o);}jo_end(o);
+}
+rtn_elapsed :: (o:[]Jo,elapsed:int) {
+  seconds:[64]u8;w:[1]Jo;jo_start(w[..],seconds[..]);jo_int(w[..],elapsed/1000);jo_put(w[..],".");fraction:=[3]u8.[cast(u8)('0'+(elapsed%1000)/100),cast(u8)('0'+(elapsed%100)/10),cast(u8)('0'+elapsed%10)];jo_put(w[..],cast(string)fraction[..]);jo_key(o,"elapsed_seconds");jo_raw(o,jo_text(w[..]));jo_key(o,"elapsed_ms");jo_int(o,elapsed);
+}

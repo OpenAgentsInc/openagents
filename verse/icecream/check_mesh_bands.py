@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 3 (runs a separately repaired aethyr-demo C++ mesh reference against Coax output; never imports Coax mesh arithmetic).
 """Checked Coax meshes against an explicitly repaired independent C++ oracle.
 
 The external source tree is read only. A private copy partitions wall/trim

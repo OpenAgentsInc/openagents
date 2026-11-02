@@ -1,0 +1,9 @@
+// A controlled compiler identity for the qualification driver's refusal check.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  command:=args_at(a[..],0);if command=="version" {print("coax controlled compiler identity\n");return 0;}
+  if command=="source-digest" {print("changed\n");return 0;}
+  tool_errln("stale compiler reached an emission or native command");return 31;
+}

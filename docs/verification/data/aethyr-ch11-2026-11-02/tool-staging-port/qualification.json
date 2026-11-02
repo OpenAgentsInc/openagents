@@ -1,0 +1,79 @@
+{
+  "schema": "aethyr.render.staging-tools.port.v1",
+  "status": "qualified-stage-and-native-identity-port; assets follow-on qualified separately in asset-qualification.json",
+  "date": "2026-11-02",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_matches_latest_main": false,
+  "scope": "Coax copies an already-built package's original manifest, WGSL, SPIRV and checked trees. Runtime catalog/shader compatibility and product rendering remain separate gates.",
+  "source_sha256": {
+    "aethyr/render/staging-policy.coax": "914c30899c1d0dbd1e41eacd76c062c25fa90a0a72a5358ea97738d4b5b0dd0d",
+    "aethyr/render/tests/staging-policy-checks.coax": "ac3c054819b42edf77b32b1a953106ecd08d5dd401c870d899859349a8875197",
+    "aethyr/render/staging-files.coax": "999abb71ce48dc638f6436c7570f51df36e48365ecf1cf825f73012ebe012921",
+    "coax/web/render-stage.coax": "069ee6a907510423a97978101d0c2c9557fd564a5d1437f5e54c1b541a92f2ab",
+    "verse/native/render-package.coax": "8eaa992861ee287faf581b2a0d7080ccb499b7265ba615833adaf598a3aea5cf",
+    "aethyr/render/tests/check-staging-tools.coax": "d1e25f513a188f5c77bef1ba0691673a1ed1011c0f454ca8032b67643f613bca"
+  },
+  "checks_first": {
+    "command": "/tmp/aethyr-authority-budget-qualified-1fac/coax test aethyr/render/staging-policy.coax --library --only staging",
+    "stub_result": "all four initially authored groups failed",
+    "initial_invocation_correction": "The first invocation omitted --library and refused for missing main; the corrected invocation produced the actual assertion failures retained in the archive."
+  },
+  "mutation": {
+    "command": "/tmp/aethyr-authority-budget-qualified-1fac/coax mutate aethyr/render/staging-policy.coax --library --root-only --jobs 4",
+    "mutants": 177,
+    "killed": 177,
+    "survived": 0,
+    "equivalent_waivers_added": 0,
+    "previous_runs_retained": "184/154/30 then 177/171/6; sharper checks and removal of redundant guards, no equivalent marks"
+  },
+  "qualified_cli_images": {
+    "render-stage": "85e5e4622450e737dc3d8f44b487d00c2bc71c5370a608a03dbc39283756ed82",
+    "render-package": "3d83d2f1741bedbcc5ac59c3c7384cc1e7afdf293ca2b36788a543562a9eb5db",
+    "before_after_image_fences": "equal"
+  },
+  "current_filesystem_epoch": {
+    "reason": "The separately owned canonical-path/bounded-read filesystem effects changed the linked tool images after the first qualification. The two changed images were rebuilt and their complete CLI parity gate rerun; unchanged pure policy mutation was reused.",
+    "coax/lib/sys/fs.coax": "241f27df91bdf73bbe7256046ffb91789dbefa14706ddd0b00edd81b89c5d35b",
+    "coax/platform/store-file-native.c": "09bb2edc659c914c2edc9341c104f51c4df24565bc960c8d1572722575a326d5",
+    "coax/platform/store-file-native.h": "d941594ef14d8dff1015d6d10b0b7f9c943cd2ce9d5b6853de273936edbbf3b2",
+    "archive": "current-filesystem-parity.tar.gz",
+    "archive_bytes": 164596,
+    "archive_sha256": "5050c9debad79345ab151a0955e9cfa40309f18b7a59d5236ca89c7648b9a89d"
+  },
+  "historical_cli_images_in_original_archive": {
+    "render-stage": "849d3abe507c03d0e2a717cb00e83b74040f4be2ac989dff8af61647fe21d27a",
+    "render-package": "70628dce9ad4d7e12a02667d5a9366c7088d4068e8f5f8a86a8e3520e0663677"
+  },
+  "reference_inputs": {
+    "coax/web/render_stage.py": "284bf5f4cce34596adddcb0aa053eba4602be300ec57f0f342931d4ce45f3866",
+    "verse/native/render_package.py": "e5800716509915a768fbd4fcd29ef6b206422fef99e06518bf296afb62f71cf7",
+    "retention": "Original bytes copied before deletion, compressed in parity-and-reference.tar.gz; both source members read back and SHA-256 matched. No current runnable Python reference copy is committed."
+  },
+  "parity": {
+    "fixture": "original manifest and all three binary/text products byte-identical in both assets and site trees; native header byte-identical",
+    "actual_package": {
+      "source": "/tmp/aethyr-ch11-packages-owned-sans/the-grid/render.json",
+      "manifest_sha256": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf",
+      "products": 5,
+      "result": "all manifest/product copies and generated native header bytes match the reference"
+    },
+    "refusals": "Each of three corrupt product classes, three unsafe URLs and wrong native identity refused in both implementations; prior header and copied package bytes preserved.",
+    "native_contract": "Generated C header compiled and ran; all five printed macro observations match independently authored expected values.",
+    "harness_correction": "v2/v3 preserved: the harness expected a final stdout terminator which proc_run intentionally omits. The v4 expectation follows the documented line transport; no output value, package byte, admission or tolerance changed."
+  },
+  "bounds": {
+    "manifest_bytes": 262144,
+    "products": 31,
+    "bytes_per_product": 2097152,
+    "description": "Explicit tool bounds follow the existing renderer package capacities. Oversized files refuse before publication; no global product or compiler budget changed."
+  },
+  "caller_switches": [
+    "coax/web/deploy.sh invokes render-stage through tool.sh",
+    "verse/native/build.sh invokes render-package.coax through tool.sh",
+    "golden-pages routing follows render-stage.coax"
+  ],
+  "archive": {
+    "path": "parity-and-reference.tar.gz",
+    "sha256": "56d565c98c9844e7ce323e881dfbca4d7de55f68e500aaeded0e100a33ae7dcd"
+  }
+}

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent unbounded-integer interval and referenced-index audit of actual producer records and admitted domains; not an independent derivation of all geometry domains).
 """Actual retained-producer bytes through normal-C Coax geometry admission.
 
 The independent Python audit checks the wire's addressed intervals/indices and

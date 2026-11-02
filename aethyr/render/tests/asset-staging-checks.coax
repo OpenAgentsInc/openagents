@@ -1,0 +1,41 @@
+#test "asset staging keeps canonical local URLs and physical root boundaries" {
+  #assert ras_url("/a") && ras_url("/a/b.bin") && ras_url("/a..b") && ras_url("/a b");
+  for s:[10]string.["","/","a","//a","/a//b","/a/./b","/../a","/a?b","/a#b","/a\\b"] {#assert !ras_url(s);}
+  #assert ras_inside("/web","/web/a") && ras_inside("/","/a") && !ras_inside("/web","/web") && !ras_inside("/web","/website/a") && !ras_inside("/web","/outside/a") && !ras_inside("/","relative") && !ras_inside("/","/");
+  nul:=[3]u8.['/','a',0];one:=[3]u8.['/','a',1];#assert !ras_url(cast(string)nul[..]) && ras_url(cast(string)one[..]);
+  for n:-1..<4098 {#assert ras_string_size(n)==(n>=0 && n<=4096) && ras_row_count(n)==(n>=0 && n<=48);}
+}
+#test "asset flags refuse non-booleans and copy either admitted reason" {
+  for a:0..<9 {for b:0..<9 {
+    good:=(a==JV_TRUE || a==JV_FALSE)&&(b==JV_TRUE || b==JV_FALSE);
+    expected:=ifx !good then -1 else ifx a==JV_TRUE || b==JV_TRUE then 1 else 0;
+    #assert ras_flags(a,b)==expected;
+  }}
+}
+RAS_TEST_ID :: "{\"profile_index\":7,\"app\":\"fixture\",\"slug\":\"fixture\"}";
+RAS_TEST_TABLE :: "{\"schema\":\"aethyr.render.assets.v1\",\"profile_index\":7,\"app\":\"fixture\",\"slug\":\"fixture\",\"rows\":[{\"initial\":true,\"gpu_required\":false,\"urls\":[\"/single.bin\"]},{\"initial\":true,\"gpu_required\":true,\"urls\":[\"/world.pack\",\"/index.bin\",\"/world.pack\",\"/single.bin\"]},{\"initial\":false,\"gpu_required\":false,\"urls\":[\"/not-local-stream\"]}]}";
+#test "asset staging deduplicates physical containers without editing the table" {
+  p:=ras_parse(RAS_TEST_TABLE,RAS_TEST_ID);#assert p.ok && p.count==3 && p.profile==7 && cast(string)p.slug[0..<p.slug_count]=="fixture";
+  #assert cast(string)p.urls[0][0..<p.lengths[0]]=="/single.bin" && cast(string)p.urls[1][0..<p.lengths[1]]=="/world.pack" && cast(string)p.urls[2][0..<p.lengths[2]]=="/index.bin";
+  for bad:[4]string.["", "{}", "{\"profile_index\":8,\"app\":\"fixture\",\"slug\":\"fixture\"}", "{\"profile_index\":7,\"app\":\"other\",\"slug\":\"fixture\"}"] {#assert !ras_parse(RAS_TEST_TABLE,bad).ok;}
+  #assert !ras_parse("{}",RAS_TEST_ID).ok;
+}
+ras_test_doc :: (rows:string,profile:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"{\"schema\":\"aethyr.render.assets.v1\",\"app\":\"a\",\"slug\":\"b\",\"profile_index\":");jo_put(o[..],profile);jo_put(o[..],",\"rows\":");jo_put(o[..],rows);jo_put(o[..],"}");return jo_text(o[..]);
+}
+#test "asset staging admits empty lists and refuses malformed table identities" {
+  id:="{\"app\":\"a\",\"slug\":\"b\",\"profile_index\":0}";out:[8192]u8;
+  #assert ras_parse(ras_test_doc("[]","0",out[..]),id).ok;
+  #assert ras_parse(ras_test_doc("[{\"initial\":true,\"gpu_required\":false,\"urls\":[]}]","0",out[..]),id).ok;
+  for rows:[5]string.["{}", "[{}]", "[{\"initial\":true,\"gpu_required\":false}]", "[{\"initial\":true,\"gpu_required\":false,\"urls\":[1]}]", "[{\"initial\":true,\"gpu_required\":false,\"urls\":[\"/\"]}]"] {#assert !ras_parse(ras_test_doc(rows,"0",out[..]),id).ok;}
+  #assert !ras_parse(ras_test_doc("[]","null",out[..]),id).ok;
+  for s:[3]string.["{\"schema\":\"aethyr.render.assets.v1\",\"slug\":\"b\",\"profile_index\":0,\"rows\":[]}", "{\"schema\":\"aethyr.render.assets.v1\",\"app\":\"a\",\"profile_index\":0,\"rows\":[]}", "{\"schema\":\"aethyr.render.assets.v1\",\"app\":\"a\",\"slug\":\"b\",\"rows\":[]}"] {#assert !ras_parse(s,id).ok;}
+}
+#test "asset staging URL capacity refuses rather than truncating" {
+  id:="{\"app\":\"a\",\"slug\":\"b\",\"profile_index\":0}";
+  for count:[2]int.[128,129] {
+    list:[8192]u8;o:[1]Jo;jo_start(o[..],list[..]);jo_put(o[..],"[{\"initial\":true,\"gpu_required\":false,\"urls\":[");
+    for i:0..<count {if i>0 {jo_put(o[..],",");}jo_put(o[..],"\"/x");jo_int(o[..],i);jo_put(o[..],"\"");}
+    jo_put(o[..],"]}]");doc:[16384]u8;p:=ras_parse(ras_test_doc(jo_text(o[..]),"0",doc[..]),id);#assert p.ok==(count==128);if p.ok {#assert p.count==count;}
+  }
+}

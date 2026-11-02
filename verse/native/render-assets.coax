@@ -1,0 +1,59 @@
+// Stage the initial/GPU-required local observations selected by Coax.
+// Coax owns identity, URL/root admission, deduplication, hashes and publication.
+//   coax/web/tool.sh verse/native/render-assets.coax --table FILE --package FILE --web-root DIR --output DIR
+#load "../../aethyr/render/staging-files.coax";
+#load "../../aethyr/render/asset-staging-policy.coax";
+RAS_RETAINED :: 268435456;
+RasFiles :: struct {plan:RasPlan;data:[RAS_RETAINED]u8;used:int;starts:[RAS_URLS]int;sizes:[RAS_URLS]int;hashes:[RAS_URLS][64]u8;}
+RAS_SCOPE :: "Copies of Coax-declared initial or GPU-required local files. Pack rows retain their separate delivery IDs while the container is copied once. No asset parsing, runtime readiness, image decoding or GPU qualification.";
+
+ras_receipt :: (files:[]RasFiles,table_hash:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);
+  jo_put(o[..],"{\n  \"schema\": \"aethyr.render.asset-staging.v1\",\n  \"status\": \"staged\",\n  \"profile_index\": ");jo_int(o[..],files[0].plan.profile);
+  jo_put(o[..],",\n  \"slug\": ");jo_quoted(o[..],cast(string)files[0].plan.slug[0..<files[0].plan.slug_count]);jo_put(o[..],",\n  \"table_sha256\": ");jo_quoted(o[..],table_hash);
+  jo_put(o[..],",\n  \"files\": [");
+  for i:0..<files[0].plan.count {
+    url:=cast(string)files[0].plan.urls[i][0..<files[0].plan.lengths[i]];
+    if i>0 {jo_put(o[..],",");}jo_put(o[..],"\n    {\n      \"url\": ");jo_quoted(o[..],url);jo_put(o[..],",\n      \"file\": ");jo_quoted(o[..],url[1..<url.count]);
+    jo_put(o[..],",\n      \"bytes\": ");jo_int(o[..],files[0].sizes[i]);jo_put(o[..],",\n      \"sha256\": ");jo_quoted(o[..],cast(string)files[0].hashes[i][..]);jo_put(o[..],"\n    }");
+  }
+  if files[0].plan.count>0 {jo_put(o[..],"\n  ");}jo_put(o[..],"],\n  \"scope\": ");jo_quoted(o[..],RAS_SCOPE);jo_put(o[..],"\n}\n");
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+ras_atomic :: (target:string,data:string)->bool {
+  pending:[FS_PATH_MAX]u8;o:[1]Jo;jo_start(o[..],pending[..]);jo_put(o[..],target);jo_put(o[..],".pending");
+  return !o[0].bad && fs_mkdir(fs_dir(target)) && fs_write(jo_text(o[..]),data) && fs_rename(jo_text(o[..]),target);
+}
+ras_stage :: (table_path:string,package_path:string,web_root:string,output:string)->bool {
+  table:[RSP_MANIFEST]u8;package:[RSP_MANIFEST]u8;tn:=fs_read(table_path,table[..]);pn:=fs_read(package_path,package[..]);
+  if tn<0 || pn<0 {tool_errln("render assets: missing or oversized table/package");return false;}
+  files:[1]RasFiles;files[0].plan=ras_parse(cast(string)table[0..<tn],cast(string)package[0..<pn]);
+  if !files[0].plan.ok {tool_errln("render assets: table, flags, URLs or identity refused");return false;}
+  root_bytes:[FS_PATH_MAX]u8;root:=fs_realpath(web_root,root_bytes[..]);if root.count==0 {tool_errln("render assets: no physical root");return false;}
+  path:[FS_PATH_MAX]u8;physical:[FS_PATH_MAX]u8;
+  for i:0..<files[0].plan.count {
+    url:=cast(string)files[0].plan.urls[i][0..<files[0].plan.lengths[i]];source:=fs_join(root,url[1..<url.count],path[..]);canonical:=fs_realpath(source,physical[..]);
+    if !ras_inside(root,canonical) {tool_errln("render assets: source missing or escapes physical root");return false;}
+    size:=fs_size(canonical);at:=files[0].used;
+    if size<0 || size>RAS_RETAINED-at {tool_errln("render assets: source missing or retained byte bound exceeded");return false;}
+    count:=fs_read_at(canonical,0,files[0].data[at..<at+size]);
+    if count!=size || !S_hex(S_hash(cast(string)files[0].data[at..<at+size]),files[0].hashes[i][..]) {tool_errln("render assets: source changed or unreadable");return false;}
+    files[0].starts[i]=at;files[0].sizes[i]=size;files[0].used+=size;
+  }
+  after:[RSP_MANIFEST]u8;again:=fs_read(table_path,after[..]);if again!=tn || cast(string)after[0..<again]!=cast(string)table[0..<tn] {tool_errln("render assets: table changed before publication");return false;}
+  table_hash:[64]u8;if !S_hex(S_hash(cast(string)table[0..<tn]),table_hash[..]) {return false;}
+  receipt:[1048576]u8;text:=ras_receipt(files[..],cast(string)table_hash[..],receipt[..]);if text.count==0 {return false;}
+  // All source/identity observations above precede the first destination write.
+  for i:0..<files[0].plan.count {
+    url:=cast(string)files[0].plan.urls[i][0..<files[0].plan.lengths[i]];at:=files[0].starts[i];size:=files[0].sizes[i];
+    if !ras_atomic(fs_join(output,url[1..<url.count],path[..]),cast(string)files[0].data[at..<at+size]) {return false;}
+  }
+  if !ras_atomic(fs_join(output,"assets.json",path[..]),cast(string)table[0..<tn]) {return false;}
+  return fs_write(fs_join(output,"staging.json",path[..]),text);
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) {return 2;}
+  table:=args_value(args[..],"--table","");package:=args_value(args[..],"--package","");web:=args_value(args[..],"--web-root","");out:=args_value(args[..],"--output","");
+  if table.count==0 || package.count==0 || web.count==0 || out.count==0 {tool_errln("usage: render-assets --table FILE --package FILE --web-root DIR --output DIR");return 2;}
+  return ifx ras_stage(table,package,web,out) then 0 else 1;
+}

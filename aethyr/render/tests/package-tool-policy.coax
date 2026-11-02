@@ -1,0 +1,76 @@
+// Independent JSON/byte transport expectations; no product package parser is
+// loaded to obtain an expected answer.
+#load "tooling-policy.coax";
+#authority;
+RPT_NEGATIVES :: [14]string.["duplicate-root-key","truncated-json","unknown-schema","fractional-profile","unsafe-product-path","uppercase-hash","null-fragment","negative-stride","wrong-slug","wrong-entry-name","wrong-resource-slot","wrong-target-count","generic-derivative","generic-discard"];
+#load "package-tool-checks.coax";
+rpt_slot :: (d:Jv,array:int,key:string,index:int)->int {
+  found:=-1;for i:0..<jv_len(d,array) {row:=jv_at(d,array,i);if jv_int(d,jv_get(d,row,key),-1)==index {found=row;}}return found;
+}
+rpt_copy_fields :: (d:Jv,row:int,o:[]Jo) {child:=d.nodes[row].first;while child!=-1 {jo_key(o,jv_key(d,child));jv_write(d,child,o);child=d.nodes[child].next;}}
+rpt_expected :: (d:Jv,parse:int,admit:int,payload:bool,bad_product:int,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"parse");jo_int(o[..],parse);jo_key(o[..],"admit");jo_int(o[..],admit);jo_key(o[..],"entry_view_count");jo_int(o[..],ifx parse==0 then 14 else 0);jo_key(o[..],"guards");jo_bool(o[..],true);jo_key(o[..],"borrowed_strings");jo_bool(o[..],true);
+  if parse==0 {
+    for key:[3]string.["profile_index","slug","app"] {jo_key(o[..],key);jv_write(d,jv_get(d,0,key),o[..]);}
+    modules:=jv_get(d,0,"modules");entries:=jv_get(d,0,"entries");jo_key(o[..],"module_count");jo_int(o[..],jv_len(d,modules));jo_key(o[..],"entry_count");jo_int(o[..],jv_len(d,entries));
+    jo_key(o[..],"modules");jo_arr(o[..]);for i:0..<3 {row:=rpt_slot(d,modules,"binding_set",i);jo_obj(o[..]);if row!=-1 {rpt_copy_fields(d,row,o[..]);}jo_key(o[..],"present");jo_bool(o[..],row!=-1);jo_end(o[..]);}jo_end(o[..]);
+    jo_key(o[..],"entries");jo_arr(o[..]);for i:0..<14 {
+      row:=rpt_slot(d,entries,"entry_index",i);jo_obj(o[..]);
+      if row== -1 {jo_key(o[..],"entry_index");jo_int(o[..],i);jo_key(o[..],"present");jo_bool(o[..],false);}else {
+        rpt_copy_fields(d,row,o[..]);jo_key(o[..],"present");jo_bool(o[..],true);jo_key(o[..],"reflection_ok");jo_bool(o[..],true);jo_key(o[..],"use_count");jo_int(o[..],jv_len(d,jv_get(d,row,"uses")));jo_key(o[..],"attribute_count");jo_int(o[..],jv_len(d,jv_get(d,row,"attributes")));
+      }jo_end(o[..]);
+    }jo_end(o[..]);
+  }
+  if payload {for key,i:[3]string.["module_bytes","spirv_bytes","tree_bytes"] {jo_key(o[..],key);jo_int(o[..],ifx i==bad_product then 5 else 0);}}
+  jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// Python's retained concrete ASCII package fixtures use its default separators.
+// The mutation target is a checked JSON node, never a source-text substring.
+rpt_dump :: (d:Jv,node:int,target:int,value:string,o:[]Jo) {
+  if node==target {jo_put(o,value);return;}
+  kind:=jv_kind(d,node);
+  if kind==JV_STRING {jo_requote(o,jv_raw(d,node));return;}
+  if kind!=JV_ARRAY && kind!=JV_OBJECT {jo_put(o,jv_raw(d,node));return;}
+  jo_put(o,ifx kind==JV_OBJECT then "{" else "[");child:=d.nodes[node].first;first:=true;
+  while child!=-1 {
+    if !first {jo_put(o,", ");}first=false;if kind==JV_OBJECT {jo_requote(o,jv_key(d,child));jo_put(o,": ");}
+    rpt_dump(d,child,target,value,o);child=d.nodes[child].next;
+  }jo_put(o,ifx kind==JV_OBJECT then "}" else "]");
+}
+rpt_negative :: (d:Jv,which:int,out:[]u8)->string {
+  if !rpt_control_index(which) {return "";}
+  o:[1]Jo;jo_start(o[..],out);
+  if which<2 {
+    base:[524288]u8;w:[1]Jo;jo_start(w[..],base[..]);rpt_dump(d,0,-1,"",w[..]);if w[0].bad {return "";}text:=jo_text(w[..]);
+    if which==0 {jo_put(o[..],"{\"profile_index\":0,");jo_put(o[..],text[1..<text.count]);}else {jo_put(o[..],text[0..<text.count-2]);}
+  }else {
+    target:=rpt_target(d,which);if target== -1 {return "";}value:="";number:[64]u8;
+    if which==2 {value="\"aethyr.render.package.v0\"";}
+    if which==3 {value="1.5";}
+    if which==4 {value="\"../outside.wgsl\"";}
+    if which==5 {value="\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"";}
+    if which==6 {value="null";}
+    if which==7 {value="-1";}
+    if which==8 {value="\"other-realm\"";}
+    if which==9 {value="\"other_vertex\"";}
+    if which==10 || which==11 {value=rpt_increment(d,target,number[..]);}
+    if which==12 || which==13 {value="1";}
+    if value.count==0 {return "";}rpt_dump(d,0,target,value,o[..]);
+  }
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+rpt_control_index :: (which:int)->bool {return which>=0 && which<14;}
+rpt_target :: (d:Jv,which:int)->int {
+  module:=jv_at(d,jv_get(d,0,"modules"),0);entry:=jv_at(d,jv_get(d,0,"entries"),0);use:=jv_at(d,jv_get(d,entry,"uses"),0);
+  if which==2 {return jv_get(d,0,"schema");}if which==3 {return jv_get(d,0,"profile_index");}if which==4 {return jv_get(d,module,"wgsl_file");}
+  if which==5 {return jv_get(d,entry,"tree_sha256");}if which==6 {return jv_get(d,entry,"fragment");}if which==7 {return jv_get(d,entry,"vertex_stride");}
+  if which==8 {return jv_get(d,0,"slug");}if which==9 {return jv_get(d,entry,"vertex");}if which==10 {return jv_get(d,use,"slot");}
+  if which==11 {return jv_get(d,entry,"fragment_targets");}if which==12 {return jv_get(d,entry,"derivatives");}if which==13 {return jv_get(d,entry,"control");}return -1;
+}
+rpt_increment :: (d:Jv,node:int,out:[]u8)->string {
+  value:=jv_int(d,node,-1);if value<0 || value==9007199254740992 {return "";}
+  o:[1]Jo;jo_start(o[..],out);jo_int(o[..],value+1);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+rpt_negative_parse :: (which:int)->int {if which<0 || which>=14 {return -1;}return ifx which<8 then 1 else 0;}
+rpt_negative_admit :: (which:int)->int {if which<0 || which>=14 {return -1;}return ifx which<8 then 1 else ifx which<12 then 3 else 4;}
+rpt_compiler_gate :: (matching:bool,explore:bool)->bool {return matching || explore;}

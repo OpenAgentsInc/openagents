@@ -1,0 +1,75 @@
+{
+  "schema": "aethyr.primitive-webgpu-port.v1",
+  "date": "2026-11-02",
+  "status": "qualified-four-driver-switch",
+  "scope": "Coax-owned fixtures, resource/source fences, observations, expected rules and orchestration for four primitive WebGPU tools. Exact same-input parity was retained before deleting their maintained TypeScript drivers. No production shader, profile, tolerance, Grid producer or Grid raster/journey gate changed or reran.",
+  "modes": [
+    {"mode":"filter-format","old":"aethyr/tests/check_filter_format_webgpu.ts","jobs":40,"raw_u32_channels":160,"matching_resource_hashes":4,"rule":"All finite, same authored rgba8/rgba16 texture bytes, mip uploads, uniform inputs and metadata."},
+    {"mode":"ring8","old":"aethyr/tests/check_ring8_webgpu.ts","jobs":728,"raw_u32_channels":2912,"matching_resource_hashes":6,"rule":"Exact numeric f32 reference equality; signed zeros compare numerically; every observed raw word remains retained."},
+    {"mode":"sans-filter","old":"aethyr/tests/check_sans_filter_webgpu.ts","jobs":40,"raw_u32_channels":160,"matching_resource_hashes":10,"rule":"Existing abs(actual-expected)<=0.000001, unchanged CPU-f32 references and exact texture files."},
+    {"mode":"sampling","old":"aethyr/tests/check_render_sampling_webgpu.ts","jobs":6,"raw_u32_channels":96,"matching_resource_hashes":3,"rule":"Existing abs(actual-expected)<=0.00001. Four normal jobs have zero wrong lanes; the two planted controls each have16wrong lanes."}
+  ],
+  "totals": {"authored_jobs":814,"sampled_pixels":832,"exact_raw_u32_channels":3328,"resource_input_hash_joins":23},
+  "implementation": {
+    "entry": "COAX=/qualified/coax coax/web/tool.sh aethyr/tests/primitive-webgpu.coax MODE PROBE.wgsl OUT.json CASES.json",
+    "sampling_entry": "COAX=/qualified/coax coax/web/tool.sh aethyr/tests/primitive-webgpu.coax sampling NORMAL.wgsl OUT.json FAULT.wgsl ARRAY-FAULT.wgsl",
+    "policy": "aethyr/tests/primitive-webgpu-policy.coax",
+    "shared_transport": "aethyr/tests/webgpu-session.coax",
+    "effects": "aethyr/tests/primitive-webgpu-effects.js",
+    "browser_effect_boundary": "The reason1 JS executes only inside muted headless Chrome. It creates request-supplied buffers, images, samplers, layouts/pipelines/groups, performs uploads/draws and returns Float32 values plus raw Uint32 words. It contains no fixture table, expected result, finite rule, tolerance or verdict.",
+    "resource_effect_boundary": "Coax owns a private loopback HTTP origin, a fixed manifest mapping request URLs to exact canonical resource files, chunked reads and all source hashes. The browser only fetches their supplied URLs. The5,499,648-byte Sans resource crosses this path unchanged.",
+    "lifetime": "Each CDP call is bounded30s; asynchronous completion is polled for at most30s. The child origin, Chrome process and private profiles are killed/reaped/removed before return. No visible window or sound.",
+    "callers": "Only the four old drivers' own usage strings referenced their maintained paths. The README now supplies the replacement entries; historical command strings stay historical."
+  },
+  "qualification": {
+    "authority": {"root_mutants":188,"killed":188,"survivors":0,"log":"raw/policy-mutation-third.log","equivalence_waivers":0},
+    "checks": {"debug":"The final mutation baseline passed all checks.","release_total":103,"release_passed":103,"authored_groups":8,"log":"raw/policy-release.log"},
+    "Coax_parity": "aethyr/tests/primitive-webgpu-parity.coax compares original observation/case fields, exact u32 words, all format/extent/device/browser metadata, complete discrepancies, comparison strings, max_error, shader messages/errors and every shared fixture/production/resource hash.",
+    "independent_numeric_oracle": "aethyr/tests/raw_float_oracle.py uses Python's standard JSON/struct codecs solely for independent IEEE754 math. It verifies every reported Float32 equals its raw u32 word and returns exact binary64 metadata words. It never chooses case counts, tolerances or driver verdicts; Coax invokes it and compares its mathematical outputs.",
+    "Sans_reference_profile": "All160authored CPU reference numbers were independently checked to equal their own f32 encode/decode. Coax restores that exact f32 reference before f64 error arithmetic. No claim is made for correctly rounding arbitrary binary64 JSON references.",
+    "Sans_max_error": {"legacy_and_current":5.960464477539063e-08,"exact_binary64_word":"3e70000000000000","tolerance_change":false},
+    "same_epoch_current_receipts": ["raw/filter-format-new-final.json","raw/ring8-new-final.json","raw/sans-filter-new-first.json","raw/sampling-new-final.json"],
+    "final_parity_receipts": ["raw/filter-format-browser-parity-final.json","raw/ring8-browser-parity-final.json","raw/sans-filter-browser-parity-final.json","raw/sampling-browser-parity-final.json"],
+    "legacy_changes": "Frozen originals are retained byte-for-byte under raw/original. Separate reference copies under raw/legacy add only a reason3 historical-reference header and Uint32 readback observations where absent. Authored fixture values, GPU operations and old verdicts are unchanged. Ring already returned raw words.",
+    "loss_controls": {"runner":"aethyr/tests/primitive-webgpu-loss-checks.coax","directory":"raw/loss-controls-final-image","refuse_exit1":["one raw word changed","reported Float32 numeric token changed by one binary64 ulp while raw word is unchanged","reported max_error changes its exact binary64 word","device description changed","resource input hash changed"],"refuse_exit2_before_Chrome":["declared Sans texture hash changed","unknown mode"],"receipts_written_on_refusal":false},
+    "shared_transport_regression": {"mode":"session-raster","jobs":6,"raw_u32_channels":24,"matching_resource_hashes":12,"receipt":"raw/session-raster-browser-parity-final.json","basis":"One fresh capture through the extracted shared session matches the already retained six-case raster observation. The authored shader/fixture/policy and prior252/252policy mutation proof are unchanged. No other earlier simple-probe gate or Grid gate reran."},
+    "history": [
+      "Initial library test invocation omitted --library; corrected without a product change. One reserved local identifier in the CLI was renamed before its first successful capture.",
+      "The first Cartesian check exhausted its20Mstep budget. Linear sibling iteration removed quadratic jv_at scans; all24authored cases were retained and their measured72.4M aggregate is bounded by100M.",
+      "First root mutation184/172/12 and second188/187/1 results are retained. Targeted shape/reference/per-case sampling controls and explicit validated-lane values removed gaps; exact f64 max-selection checks killed the final low-bit mutant. No equivalent waiver.",
+      "An approximate json_f64 comparison falsely distinguished two decimal spellings of the same Sans max_error. The separately invoked IEEE754 oracle resolves exact words; no tolerance or observation was changed. That failed parity result remains retained."
+    ]
+  },
+  "source_sha256": {
+    "aethyr/tests/primitive-webgpu.coax":"8e29594dcb0e29432f8bfe30a058b296b7c1a69976990af8a6b444df2eb1e6b1",
+    "aethyr/tests/primitive-webgpu-policy.coax":"8436b67b086ff62375eff744eb050c7013145fb936934e73966cc556a693978f",
+    "aethyr/tests/primitive-webgpu-checks.coax":"6f3da96f771a7bc809ba68d963286d1340011eb1ec8658e156000e1b532a02f8",
+    "aethyr/tests/primitive-webgpu-effects.js":"685b34a8295468db843cd58fa170ee2a699daff4fc807ecccf19ec2076cdb49f",
+    "aethyr/tests/primitive-webgpu-parity.coax":"d06339139c90d736e9f7eab8570d926e2143e1296f2c6d00a5049b87c5259f46",
+    "aethyr/tests/primitive-webgpu-loss-checks.coax":"f058353744de9403717ef9fd0e38346d736a0034ff64bc614265ec75aa85ae94",
+    "aethyr/tests/raw_float_oracle.py":"6d5625d79aa18050b7b8655a36d415be7c8d5e952a3f0535e989a5dc988e8186",
+    "aethyr/tests/webgpu-session.coax":"5da3261090d22be0d246410b1a9ddd9ae4ec78dc076c9a787fcb551a4a38fcac",
+    "aethyr/tests/webgpu-probe.coax":"fcfc0229f9bb8f9f5d79dc7fb62849eb563def729cb673305ebbbd49b2716ae6"
+  },
+  "original_driver_sha256": {
+    "check_filter_format_webgpu.ts":"968237364e80826cda4ee1a1a1ecf54b1ad6386f8d05ebcfc5328f3608db1f05",
+    "check_ring8_webgpu.ts":"be6def278c6d91ed58680826c38c3a7805f2defc8c386571db648d1ded6cee2c",
+    "check_sans_filter_webgpu.ts":"d057be1a185cb5f7311fea4b02c945b4d5c75a63698a2703f39f29529465b91c",
+    "check_render_sampling_webgpu.ts":"02a944236ad9f0d4a35b7b13f20c46b66645900dd1257cb1328e9bf0f7587045"
+  },
+  "compiler": {
+    "explicit_path":"/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "sha256":"1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "qualified_older_source_digest":"b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "matching_current_main":false,
+    "native_GPU_driver_sha256":"ffd99390381680cce6b9ce7f5c56bc496d9d294193566a7f65ce50cf4753c9c3",
+    "final_parity_driver_sha256":"27d4f9f02e45a82529c5a51a920774a1522d45a314272a057d674a251028912a",
+    "final_loss_driver_sha256":"339262ed398a9153caeeaf4286d0c4b50bf60fc1a40d5e864f398ba60c96ac59"
+  },
+  "limits": [
+    "This proves the four same-input diagnostic switches and shared-session extraction, not a new backend profile, application image tolerance, general JSON binary64 codec or complete tooling migration.",
+    "Clip-output and Dead Gears VS TypeScript diagnostics remain maintained pending their separate port; no optional slice was started.",
+    "The actual compiler is an explicitly qualified older image, not represented as matching current main."
+  ],
+  "retention":"docs/verification/data/aethyr-ch11-2026-11-02/primitive-webgpu-port/retention.json"
+}

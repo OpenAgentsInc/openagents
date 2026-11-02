@@ -11,6 +11,7 @@
 
 cxfs_path_push :: (byte: int) -> int #foreign;
 cxfs_read :: () -> int #foreign;
+cxfs_read_at :: (offset: int, count: int) -> int #foreign;
 cxfs_byte :: (i: int) -> int #foreign;
 cxfs_put :: (byte: int) -> int #foreign;
 cxfs_write :: (mode: int) -> int #foreign;
@@ -24,6 +25,7 @@ cxfs_list :: () -> int #foreign;
 cxfs_entry_len :: (i: int) -> int #foreign;
 cxfs_entry_byte :: (i: int, j: int) -> int #foreign;
 cxfs_cwd :: () -> int #foreign;
+cxfs_realpath :: () -> int #foreign;
 cxfs_hold :: () -> int #foreign;
 cxfs_rename :: () -> int #foreign;
 cxfs_mtime_ns :: () -> int #foreign;
@@ -84,6 +86,15 @@ fs_read :: (path: string, out: [] u8) -> int {
   for i: 0..<n { out[i] = cast,trunc(u8) cxfs_byte(i); }
   return n;
 }
+// One requested file range. A short read remains observable; no suffix is
+// silently padded. The caller chooses each bounded chunk and checks its count.
+fs_read_at :: (path: string, offset: int, out: [] u8) -> int {
+  if offset < 0 || !fs_push(path) { return -1; }
+  n := cxfs_read_at(offset, out.count);
+  if n < 0 || n > out.count { return -1; }
+  for i: 0..<n { out[i] = cast,trunc(u8) cxfs_byte(i); }
+  return n;
+}
 fs_put_all :: (data: string) -> bool {
   for c: data { if cxfs_put(cast(int) c) != 0 { return false; } }
   return true;
@@ -128,6 +139,13 @@ fs_temp :: (prefix: string, out: [] u8) -> string {
 }
 // The working directory, or "".
 fs_cwd :: (out: [] u8) -> string { return fs_name(cxfs_cwd(), out); }
+// Canonical existing path with symlinks resolved. Empty on an invalid path,
+// failed effect or short destination, without writing any destination bytes.
+// Consumers decide which canonical roots their operation may access.
+fs_realpath :: (path: string, out: [] u8) -> string {
+  if !fs_push(path) { return ""; }
+  return fs_name(cxfs_realpath(), out);
+}
 fs_name :: (n: int, out: [] u8) -> string {
   if n < 1 || n > out.count { return ""; }
   for i: 0..<n { out[i] = cast,trunc(u8) cxfs_name_byte(i); }

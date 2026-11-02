@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 3 (runs the retained legacy JavaScript Number, literal-space parser and Float32Array reference against the native Coax media ABI).
 """Qualify the shared media ABI against the retained JavaScript arithmetic.
 
 The oracle uses JavaScript Number, the legacy literal-space row decoder and

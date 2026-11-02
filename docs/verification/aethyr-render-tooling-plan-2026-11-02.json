@@ -1,0 +1,278 @@
+{
+  "schema": "aethyr.render.tooling.compliance.plan.v1",
+  "date": "2026-11-02",
+  "rule": "coax/tools-in-coax.md",
+  "baseline_gate": "/tmp/aethyr-tools-compliance-initial-20261102.log",
+  "scope": "Maintained aethyr/render/tests Python tools only. Historical proof sources and browser drivers belong to the root; native package/staging tools are another agent's scope.",
+  "status": "in_progress",
+  "tools": [
+    {
+      "path": "aethyr/render/tests/analyze_depth_plane.py",
+      "original_sha256": "4c443814966f50dd2d5afd42fb7a94bd0694344e036707c1b1c9a655025b8b82",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "exact rational barycentric plane/depth and perspective interpolation, independent of the Coax rasterizer",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/analyze_filter_precision.py",
+      "original_sha256": "0d6686ba457c41a9d494cd275282977dfe5a075189d96b5eb243fad821ca152e",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "independent real-number interpolation and explicitly named quantization models for recorded GPU observations",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/analyze_fragment_planes.py",
+      "original_sha256": "fbcd89d7ebf43c713140d851231d6b26a49a13da4634c68396e907b9d9155bd1",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "independent barycentric depth-plane reconstruction from observed binary32 clip vertices",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/check_box36_native.py",
+      "original_sha256": "b1bfdc178c013de55d1d5906289b1a4930e57233ab796e82dd8c4a5621352f47",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "independent eight-corner cube, affine/cofactor normals and outward triangle oracle for generated native output",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/check_build.py",
+      "original_sha256": "46a3239d74957f9d7dd67c546d603d7ea5e9b5deffa10aa50c54a3e7316e386b",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/check_catalog.py",
+      "original_sha256": "52375f82c1969828ea77ecde7bcc1a718ed657352212d9e67595de6b41cf8a72",
+      "action": "ported_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Retired after complete expected-inventory/header parity, actual debug/release/sanitizer qualification, seven native loss controls per mode and a real stale-compiler ordering check. Evidence: data/aethyr-ch11-2026-11-02/catalog-tool-port/qualification.json. Current consumers are inventoried independently, including Anime Lab's explicit legacy route."
+    },
+    {
+      "path": "aethyr/render/tests/check_filter_native.py",
+      "original_sha256": "7455aef60dfff8c642b52ea9e8818dc0470feab1544ab1b5fd7c117406131c96",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Compares retained GPU observations; does not independently recompute the filter and is not an independent-oracle exception.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/check_frame.py",
+      "original_sha256": "8c9ce876187d5ad6638f42a282b161fd618f11f34a62b42ef83ac30924649115",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "independent unbounded-integer endpoint oracle, compared with the generated native Coax ABI",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/check_geometry.py",
+      "original_sha256": "fe6210af3999e0e2e8edb262fe821c08492c013466d326225e8d500b993522eb",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "independent unbounded-integer interval and referenced-index audit of actual producer records and admitted domains; not an independent derivation of all geometry domains",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/check_host_memory.py",
+      "original_sha256": "c48cb2b0c22eb52e8986c34c669111c3a69333d6046a5602a8943d410fc5b6a5",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "independent unbounded-integer alignment, allocation-end and page-count oracle for native staging receipts",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/check_host_uploads.py",
+      "original_sha256": "cfb84643a18ed0c75475dbe89a6398d0ae5b80b49e0a1a1ac2c149c81026f0d0",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "independent integer prefix-set union and acknowledgement oracle for native upload retry receipts",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/check_media_commands.py",
+      "original_sha256": "e3e101a21b7504de02dfb9f69cacb44ef8bbb3e74698f5aa086a6fd4b97bc90b",
+      "action": "retain_reference_runner",
+      "reason": 3,
+      "scope": "runs the retained legacy JavaScript Number, literal-space parser and Float32Array reference against the native Coax media ABI",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/check_package.py",
+      "original_sha256": "2a897523e8c39c8e5e6fe94e63a40f5fe2f390e06da1ee5347357ab1be2bfaea",
+      "action": "ported_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Retired after 18-profile complete expected-value parity, 14 exact negative JSON byte comparisons, all six ABI inventories and actual stale-compiler ordering controls. Debug/release/ASanUBSan each passed 130 observations, six producer losses and 17 negative/byte controls. Package policy killed 290/290 root mutants. Evidence: data/aethyr-ch11-2026-11-02/package-tool-port/qualification.json. The explicitly selected older compiler remains exploratory and does not qualify current sources or release."
+    },
+    {
+      "path": "aethyr/render/tests/check_pipeline.py",
+      "original_sha256": "9732e9e0e0aa20116a6eab3ac9ba097bbaabf0000756bb2ca4daa35ba918cbf9",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "independently authored affine pixel, derivative, depth and MRT equations for the normal-C shader/raster pipeline",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/check_reference_frame.py",
+      "original_sha256": "0afd820dd9069fbe0e1b94c6b34086b719eb61c83de8fe4b8c558f29aed6509a",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/check_spirv_modules.py",
+      "original_sha256": "275322631b47a9283123b40b1f32f7d91da94a0e9c6531d141b2f2b72699e63c",
+      "action": "ported_to_coax",
+      "reason": null,
+      "replacement": "aethyr/render/tests/check-spirv-modules.coax",
+      "scope": "Coax admits package bytes, deduplicates exact programs, owns controls/verdicts/source fences and invokes the independently pinned native spirv-val SDK through bounded SSH/SCP effects.",
+      "qualification": "docs/verification/aethyr-spirv-tool-port-2026-11-02.json",
+      "note": "Old Python deleted after 77 declarations/58 unique programs and both controls match every retained owner/diagnostic. Default stale source gate refuses; successful old-compiler parity is explicitly exploratory."
+    },
+    {
+      "path": "aethyr/render/tests/check_texture_codec.py",
+      "original_sha256": "89dd67bb12eaf9d623fdbcb479508467446998951455ca4e41a649e7212c095d",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "independent analytic sRGB and Python IEEE binary16/binary32 decoding oracle for native texel output",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/compare_frames.py",
+      "original_sha256": "30961fe5c589cfd45818d28122ff39de4ac8288e4339255b13907e0d738c7f55",
+      "action": "ported_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Port qualified in aethyr-comparator-port-2026-11-02.json; old bytes retained in its archive, new native CLI and numerical observations match before deletion."
+    },
+    {
+      "path": "aethyr/render/tests/make_sans_filter_fixture.py",
+      "original_sha256": "e9d50b13e87b9da779fe01f07597345d1ecbfb38cd8a904f73d7e29df81d15fc",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "independently authored byte patterns and rounded-binary32 bilinear/mip interpolation expectations",
+      "note": "Header documents existing independent equations/reference; unchanged passing product gates are not rerun merely for this comment."
+    },
+    {
+      "path": "aethyr/render/tests/profile_reference_frame.py",
+      "original_sha256": "ec901bfc674078f371101db3557c4bcd0599e26ea5aae88bf0cbb92b9a00ec33",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/test_build_tooling.py",
+      "original_sha256": "a919aaab27db8db78537296d50193c39fbf0ae5f28a81504c5c310c580f7a23c",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/test_catalog_tooling.py",
+      "original_sha256": "edad937a248460f08de583595695269f468812b1fd02d0b1c211ba5b79bcac05",
+      "action": "ported_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Retired with check_catalog.py after Coax CLI controls caught added/omitted ABI fields and refused an actual controlled stale compiler before any emission. Original reference bytes are archived and hash-readback verified."
+    },
+    {
+      "path": "aethyr/render/tests/test_compare_frames.py",
+      "original_sha256": "ec84d0d2b98eb7ff6319575d9cab6a0a2de37ec1216775638a1e49a6071c2e2e",
+      "action": "ported_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Port qualified in aethyr-comparator-port-2026-11-02.json; old bytes retained in its archive, new native CLI and numerical observations match before deletion."
+    },
+    {
+      "path": "aethyr/render/tests/test_depth_plane_analysis.py",
+      "original_sha256": "488a6007bddc6e342712f8ca56dff9433bd4e18b1cfe9a6416b6f8f1a73d78f3",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "Part of the independent Fraction barycentric/depth oracle: separately expanded rational answers, quantization bins/ties and reconstruction of the original clip coordinates; no Coax product or own-code orchestration.",
+      "note": "Reassessment of the actual file distinguishes mathematical oracle assertions from generic test orchestration. A precise reason-2 header was added; all equations and fixtures remain unchanged and were not rerun merely for the comment."
+    },
+    {
+      "path": "aethyr/render/tests/test_filter_analysis.py",
+      "original_sha256": "57bcc918ab19016a2af98d09e436cabc03377a65e13620be8f9a4300885a4f5c",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "Part of the independent real-number filter/quantization oracle: pinned endpoint/tie answers, independently authored RGBA/axis checks and nonbinary mip expressions; no Coax product or own-code orchestration.",
+      "note": "Reassessment of the actual file distinguishes mathematical oracle assertions from generic test orchestration. A precise reason-2 header was added; all equations and fixtures remain unchanged and were not rerun merely for the comment."
+    },
+    {
+      "path": "aethyr/render/tests/test_frame_input.py",
+      "original_sha256": "da88ad42150bbe06a89db1e34b11beb10b0f39d033b410dc0d51766eb250ffe9",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/test_frame_tooling.py",
+      "original_sha256": "80e0d05f959e73171c700b0aa75ddfea228456e7a3d723797d2700ac45098a60",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/test_geometry_tooling.py",
+      "original_sha256": "f06b6856286b93899398c37ce0594a1d65b0d12ea375613f962c33bc43f163a4",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/test_pipeline_tool.py",
+      "original_sha256": "8331beb2f7d2c0e0f803339e85b1da45c20409355c872e0463200a80e5e80c40",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/test_pipeline_tooling.py",
+      "original_sha256": "75579fb85f4978573822519c26979dc9cf99737c087cf88be25f2e007497aa57",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/test_reference_frame_tool.py",
+      "original_sha256": "c65f53d52969a5d254db88a5c6798dd2accd1ce520375c07303b66ddd17aaf3e",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/test_reference_profiler.py",
+      "original_sha256": "e20813f9076987ad2adb475ee9b858afe5be0eb7f082880acb9e6a387bd4e8c4",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    },
+    {
+      "path": "aethyr/render/tests/test_sans_filter_fixture.py",
+      "original_sha256": "38c1a1f481b3ef5236f677fba5f3bda6d551890a0512aaf0b817394e36e84ee9",
+      "action": "port_to_coax",
+      "reason": null,
+      "scope": "Unit harness for independent math oracle; move orchestration into Coax, rather than label a Python test harness as an independent product oracle.",
+      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+    }
+  ],
+  "first_port": "compare_frames.py and test_compare_frames.py -> Coax policy, CLI and checks; preserve the finite all-channel no-mask contract, input hashes and receipt schema.",
+  "completed_port": "compare-frames policy/CLI/checks;22parity cases,233/233zero; generic file range/realpath effects qualify in three native profiles."
+}

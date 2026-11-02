@@ -1,0 +1,59 @@
+RPT_TEST_PACKAGE :: "{\"schema\":\"aethyr.render.package.v1\",\"profile_index\":7,\"slug\":\"fixture\",\"app\":\"fixture\",\"modules\":[{\"binding_set\":0,\"wgsl_file\":\"m.wgsl\",\"wgsl_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}],\"entries\":[{\"entry_index\":0,\"binding_set\":0,\"vertex\":\"v\",\"fragment\":\"f\",\"wgsl_vertex\":\"vs\",\"wgsl_fragment\":\"fs\",\"spirv_file\":\"p.spv\",\"spirv_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\",\"tree_file\":\"p.tree\",\"tree_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"native_int64\":true,\"reflection_schema\":2,\"tree_version\":3,\"derivatives\":0,\"control\":0,\"uses\":[{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":16,\"stages\":3}],\"vertex_stride\":0,\"attributes\":[],\"fragment_targets\":1,\"fragment_depth\":false}]}";
+#test "package tool expects complete guarded borrowed record transport" {
+  nodes:[512]JvNode;doc:[1]Jv;#assert jv_parse(doc[..],RPT_TEST_PACKAGE,nodes[..]);out:[16384]u8;expected:=rpt_expected(doc[0],0,0,false,-1,out[..]);got_nodes:[512]JvNode;got:[1]Jv;#assert jv_parse(got[..],expected,got_nodes[..]);d:=got[0];
+  #assert jv_int(d,jv_get(d,0,"parse"),-1)==0 && jv_int(d,jv_get(d,0,"admit"),-1)==0 && jv_int(d,jv_get(d,0,"entry_view_count"),-1)==14;
+  #assert jv_kind(d,jv_get(d,0,"guards"))==JV_TRUE && jv_kind(d,jv_get(d,0,"borrowed_strings"))==JV_TRUE;
+  m:=jv_get(d,0,"modules");e:=jv_get(d,0,"entries");#assert jv_len(d,m)==3 && jv_len(d,e)==14 && jv_kind(d,jv_get(d,jv_at(d,m,0),"present"))==JV_TRUE && jv_kind(d,jv_get(d,jv_at(d,m,1),"present"))==JV_FALSE;
+  first:=jv_at(d,e,0);#assert jv_kind(d,jv_get(d,first,"present"))==JV_TRUE && jv_kind(d,jv_get(d,first,"reflection_ok"))==JV_TRUE && jv_int(d,jv_get(d,first,"use_count"),-1)==1 && jv_int(d,jv_get(d,first,"attribute_count"),-1)==0;
+  for key:[3]string.["profile_index","slug","app"] {#assert rtq_equal(doc[0],jv_get(doc[0],0,key),d,jv_get(d,0,key));}
+  #assert jv_int(d,jv_get(d,0,"module_count"),-1)==1 && jv_int(d,jv_get(d,0,"entry_count"),-1)==1;
+  source_module:=jv_at(doc[0],jv_get(doc[0],0,"modules"),0);child:=doc[0].nodes[source_module].first;
+  while child!=-1 {#assert rtq_equal(doc[0],child,d,jv_get(d,jv_at(d,m,0),jv_key(doc[0],child)));child=doc[0].nodes[child].next;}
+  source_entry:=jv_at(doc[0],jv_get(doc[0],0,"entries"),0);child=doc[0].nodes[source_entry].first;
+  while child!=-1 {#assert rtq_equal(doc[0],child,d,jv_get(d,first,jv_key(doc[0],child)));child=doc[0].nodes[child].next;}
+  last:=jv_at(d,e,13);#assert jv_int(d,jv_get(d,last,"entry_index"),-1)==13 && jv_kind(d,jv_get(d,last,"present"))==JV_FALSE;
+  #assert rpt_expected(doc[0],0,0,false,-1,out[0..<8])=="";
+}
+#test "package tool keeps parse refusal and product hash refusal distinct" {
+  nodes:[512]JvNode;doc:[1]Jv;#assert jv_parse(doc[..],RPT_TEST_PACKAGE,nodes[..]);out:[16384]u8;got_nodes:[512]JvNode;got:[1]Jv;
+  for parse:[2]int.[1,2] {expected:=rpt_expected(doc[0],parse,parse,false,-1,out[..]);#assert jv_parse(got[..],expected,got_nodes[..]) && jv_len(got[0],0)==5 && jv_int(got[0],jv_get(got[0],0,"entry_view_count"),-1)==0 && jv_int(got[0],jv_get(got[0],0,"parse"),-1)==parse;}
+  for bad:-1..<3 {expected:=rpt_expected(doc[0],0,3,true,bad,out[..]);#assert jv_parse(got[..],expected,got_nodes[..]);for key,i:[3]string.["module_bytes","spirv_bytes","tree_bytes"] {#assert jv_int(got[0],jv_get(got[0],0,key),-1)==(ifx bad==i then 5 else 0);}#assert jv_int(got[0],jv_get(got[0],0,"admit"),-1)==3;}
+}
+#test "package tool preserves every named negative transport control" {
+  nodes:[512]JvNode;doc:[1]Jv;#assert jv_parse(doc[..],RPT_TEST_PACKAGE,nodes[..]);out:[16384]u8;
+  for i:0..<14 {
+    text:=rpt_negative(doc[0],i,out[..]);#assert text.count>0 && text!=RPT_TEST_PACKAGE;#assert rpt_negative_parse(i)==(ifx i<8 then 1 else 0) && rpt_negative_admit(i)==(ifx i<8 then 1 else ifx i<12 then 3 else 4);
+    got_nodes:[512]JvNode;got:[1]Jv;ok:=jv_parse(got[..],text,got_nodes[..]);if i==1 {
+      #assert !ok;plain:[16384]u8;w:[1]Jo;jo_start(w[..],plain[..]);rpt_dump(doc[0],0,-1,"",w[..]);#assert text.count==w[0].n-2 && text==cast(string)plain[0..<w[0].n-2];
+    }else {
+      #assert ok;g:=got[0];entry:=jv_at(g,jv_get(g,0,"entries"),0);module:=jv_at(g,jv_get(g,0,"modules"),0);use:=jv_at(g,jv_get(g,entry,"uses"),0);
+      if i==0 {#assert jv_len(g,0)==jv_len(doc[0],0)+1 && jv_int(g,jv_get(g,0,"profile_index"),-1)==0;}
+      if i==2 {#assert jv_raw(g,jv_get(g,0,"schema"))=="aethyr.render.package.v0";}
+      if i==3 {#assert jv_raw(g,jv_get(g,0,"profile_index"))=="1.5";}
+      if i==4 {#assert jv_raw(g,jv_get(g,module,"wgsl_file"))=="../outside.wgsl";}
+      if i==5 {#assert jv_raw(g,jv_get(g,entry,"tree_sha256"))=="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";}
+      if i==6 {#assert jv_kind(g,jv_get(g,entry,"fragment"))==JV_NULL;}
+      if i==7 {#assert jv_int(g,jv_get(g,entry,"vertex_stride"),9)== -1;}
+      if i==8 {#assert jv_raw(g,jv_get(g,0,"slug"))=="other-realm";}
+      if i==9 {#assert jv_raw(g,jv_get(g,entry,"vertex"))=="other_vertex";}
+      if i==10 {#assert jv_int(g,jv_get(g,use,"slot"),-1)==1;}
+      if i==11 {#assert jv_int(g,jv_get(g,entry,"fragment_targets"),-1)==2;}
+      if i==12 {#assert jv_int(g,jv_get(g,entry,"derivatives"),-1)==1;}
+      if i==13 {#assert jv_int(g,jv_get(g,entry,"control"),-1)==1;}
+    }
+  }
+  #assert rpt_negative(doc[0],-1,out[..])=="" && rpt_negative(doc[0],14,out[..])=="" && rpt_negative_parse(-1)== -1 && rpt_negative_parse(14)== -1 && rpt_negative_admit(-1)== -1 && rpt_negative_admit(14)== -1;
+}
+#test "package tooling slot identities and mutation targets are explicit" {
+  nodes:[64]JvNode;doc:[1]Jv;out:[128]u8;
+  #assert jv_parse(doc[..],"[{}]",nodes[..]) && rpt_slot(doc[0],0,"entry_index",0)== -1;
+  #assert jv_parse(doc[..],"[{\"entry_index\":0},{\"entry_index\":0}]",nodes[..]) && rpt_slot(doc[0],0,"entry_index",0)==jv_at(doc[0],0,1);
+  for i:-1..<16 {#assert rpt_control_index(i)==(i>=0 && i<14);}
+  #assert jv_parse(doc[..],"{}",nodes[..]) && rpt_target(doc[0],0)== -1 && rpt_target(doc[0],14)== -1 && rpt_negative(doc[0],2,out[..])=="";
+  #assert jv_parse(doc[..],"[0,-1,null,9007199254740991,9007199254740992]",nodes[..]);
+  #assert rpt_increment(doc[0],jv_at(doc[0],0,0),out[..])=="1" && rpt_increment(doc[0],jv_at(doc[0],0,1),out[..])=="" && rpt_increment(doc[0],jv_at(doc[0],0,2),out[..])=="";
+  #assert rpt_increment(doc[0],jv_at(doc[0],0,3),out[..])=="9007199254740992" && rpt_increment(doc[0],jv_at(doc[0],0,4),out[..])=="" && rpt_increment(doc[0],jv_at(doc[0],0,0),out[0..<0])=="";
+}
+#test "package qualification keeps current-source refusal the default" {
+  #assert rpt_compiler_gate(true,false) && rpt_compiler_gate(true,true) && rpt_compiler_gate(false,true) && !rpt_compiler_gate(false,false);
+}

@@ -1,0 +1,100 @@
+{
+  "schema": "aethyr.render.wgsl-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "passed_complete_same_input_port_parity_explicit_exploratory_compiler",
+  "change": "Replace check_wgsl_modules.ts with check-wgsl-modules.coax and a small reason1 browser effects adapter. Coax owns package admission, every owner mapping, deduplication, one-at-a-time scheduling, warning/error verdicts, malformed control, receipts and source fences.",
+  "driver": "aethyr/render/tests/check-wgsl-modules.coax",
+  "policy": "aethyr/render/tests/wgsl-tool-policy.coax",
+  "checks": "aethyr/render/tests/wgsl-tool-checks.coax",
+  "effects": "aethyr/render/tests/wgsl-module-effects.js",
+  "shared_browser_session": {
+    "path": "aethyr/tests/webgpu-session.coax",
+    "sha256": "5da3261090d22be0d246410b1a9ddd9ae4ec78dc076c9a787fcb551a4a38fcac",
+    "APIs": ["gp_serve", "gp_start_origin", "wp_open", "wp_run"],
+    "owned_by_another_port": true,
+    "shared_file_edited": false
+  },
+  "compiler_and_image": {
+    "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "compiler_recorded_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "compiler_current_source_digest": "56bb77a6c4c10e367259adc1d434d7b0b1680c61d4d41fb42c88474a58d7ae5c",
+    "matching_current_sources": false,
+    "executed_tool_sha256": "c271e9ee20160ce4deb9857c256e190062bedc2d9704ce75206881678125a259",
+    "default_gate": "Actual recorded/current source mismatch refused before browser/origin effects and before writing a receipt",
+    "explicit_option": "--explore-stale-compiler",
+    "actual_successful_receipt_status": "exploratory",
+    "source_fence": "Selected compiler/image/digest, full Coax dependency closure, native adapters, tool wrapper, reason1 effects, selected Chrome launcher, frozen catalog/baseline, every actual package manifest and WGSL product, copied payloads and module-owner mapping. Compiler source digest and all file hashes unchanged across execution."
+  },
+  "same_input_parity": {
+    "baseline": "data/aethyr-ch11-2026-11-01/catalog-packages-308/aethyr-ch11-wgsl-catalog-final.json",
+    "package_archive": "data/aethyr-ch11-2026-11-01/catalog-packages-308/packages.tar.gz",
+    "package_archive_sha256": "4e6c563b8561571b645fd1829bbc8597807f1ae86f99a8f880fedb8aea021a34",
+    "old_tool_sha256": "73862945f52b825c3037a0bda84941d2cb3f8fbb09dab6be9f289a65235613ce",
+    "profiles": 18,
+    "declared_modules": 24,
+    "unique_modules": 20,
+    "errors": 0,
+    "warnings": 2,
+    "all_manifest_and_WGSL_hashes_equal": true,
+    "complete_owner_mappings_equal": true,
+    "all_compilation_messages_line_column_and_validation_scopes_equal": true,
+    "browser_and_device_fields_equal": true,
+    "uncaptured": [],
+    "malformed_control_equal": true,
+    "source_changes": [],
+    "elapsed_ms": 6637,
+    "old_passing_TS_not_rerun": true,
+    "shader_build_or_Grid_gate_repeated": false
+  },
+  "retained_warnings": [
+    {"profile": "everglade", "binding_set": 0, "message": "code is unreachable", "line": 2070, "column": 11},
+    {"profile": "orbit-league", "binding_set": 0, "message": "code is unreachable", "line": 2449, "column": 3}
+  ],
+  "malformed_control": {
+    "source": "not a WGSL program",
+    "compilation_errors": 1,
+    "validation_error": "Error while parsing WGSL: :1:1 error: unexpected token\nnot a WGSL program\n^^^\n\n\n - While calling [Device].CreateShaderModule([ShaderModuleDescriptor]).\n",
+    "both_compilation_and_scope_refusal_required": true
+  },
+  "browser_effects": {
+    "mode": "Muted headless Chrome, private temporary profile and loopback origin; WebGPU via ANGLE Metal",
+    "browser": "Chrome/156.0.8078.80",
+    "browser_revision": "@fb096c0011f9d50f0a264a9376420cdea9c421e3",
+    "device": {"vendor": "apple", "architecture": "metal-3", "device": "", "description": ""},
+    "chrome_launcher_sha256": "3f0acaf1e585195596d73ffa1824baa72c3c3ac115b5cfc43d789030a3f23d93",
+    "one_device": true,
+    "actual_source_transport_hash": "Browser WebCrypto SHA256 of the actual UTF8 source string equals Coax's product hash for all20programs and the control",
+    "browser_owns_only": "Adapter/device effects; createShaderModule; getCompilationInfo; push/pop native error scopes; factual serialization; device destruction",
+    "Coax_owns_schedule_and_verdict": true,
+    "overall_deadline_ms": 750000,
+    "per_operation_poll_ms": 30000,
+    "browser_and_origin_closed": true,
+    "origin_wait_status_after_requested_SIGKILL": 137,
+    "no_visible_browser_or_audio": true
+  },
+  "policy_qualification": {
+    "checks_passed": 82,
+    "new_authored_checks": 4,
+    "loaded_JSON_and_tooling_checks": 78,
+    "root_mutants_killed": 120,
+    "root_mutants_total": 120,
+    "survivors": 0,
+    "equivalence_waivers": 0,
+    "scope": "Warnings/info stay visible and nonfatal; compiler errors and validation errors refuse programs; a control needs both independent native refusals; malformed/missing/duplicate diagnostic fields, unknown types, fractional/negative positions, missing observations, uncaptured errors and source drift refuse; literal path/hash boundaries cover all256bytes",
+    "red_retention": "Missing-procedure red and initial7survivors retained. Added boundary/negative cases and removed a redundant nonnegative-length guard; no mutant waived."
+  },
+  "source_identities": {
+    "driver_sha256": "eced75a9c312fd674f12fdfb613afd3f75abc37e75914b5f185914c0e087a905",
+    "policy_sha256": "83afc499932bb63d1a398a77c2bfe2ca8bca64fd88c8df07eacd73439e5b70b3",
+    "checks_sha256": "144866fd2a0a6b43349960dff303934bf04cc31d0e6ba4d433928674cd1487af",
+    "effects_sha256": "3de3ce3e4bb6624c5490711886ffb1c88df25955e207188a42c15d7f7bc6ef2a",
+    "browser_receipt_sha256": "7987cb8f330f69d647f4bd45607910c02a0ea17a6753304feaef2c15c8b6b983"
+  },
+  "retention": "data/aethyr-ch11-2026-11-02/wgsl-tool-port/qualification.json",
+  "limits": [
+    "Supplied historical package bytes are admitted independently of their build provenance; no new shader or current package compiler emission occurred.",
+    "This qualifies native WGSL compilation and error scopes, not pipeline creation, draw execution, numerical images or release readiness.",
+    "The successful tool execution uses an explicitly historical compiler. Default current-source matching remains enforced; no matching-main toolchain claim.",
+    "Browser identity binds the launcher file and actual Browser.getVersion/device observations; it is not a complete Chrome.framework closure hash."
+  ]
+}

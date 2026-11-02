@@ -1,0 +1,60 @@
+{
+  "schema": "aethyr.grid.moving-pixels.v1",
+  "date": "2026-11-02",
+  "status": "passed_scoped_historical_executors_current_recorded_input",
+  "scope": "Actual nongolden normal-motion Grid after240 input frames, then an explicitly measured zero-time resize to320x180. Same recorded uniforms,HUD,bindings,physical Sans mips and shader package on WebGPU,Vulkan and the bounded CPU reference. This is not960x540 pixel qualification, current-source executor emission, or full chapter completion.",
+  "capture_directory": "/tmp/aethyr-grid-journey-main-20261102/capture-3",
+  "input": {
+    "frame_config_sha256": "1f2b74f52b232475f82aa1792eac4226377f08e3452e55132a00f8883fbb36f5",
+    "uniform_sha256": "df8ad5c23558d7700a3d9f6885351ebceafeb4af818e78c89fae581c01fe9baa",
+    "hud_sha256": "2a2376481f9a64fcb6f7d574fbdd6e8dd8b53085792c04d452b43fcba798bab3",
+    "sans_physical_mips_sha256": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6",
+    "package_sha256": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf",
+    "format": "rgba16f",
+    "width": 320,
+    "height": 180,
+    "hud_vertices": 33414,
+    "scene_draw_records": 0,
+    "gpu_draw_commands": 2,
+    "remote_readback": "remote-input-readback.sha256",
+    "input_drift": []
+  },
+  "executors": {
+    "native_gpu": {
+      "sha256": "84c7222db102809b5a79e6cc67574291f724b6a0df17894e3bcbda539dd1ee6f",
+      "reuse": "Previously qualified historical native-frame artifact; no new compile or current-source claim",
+      "host": "coderos-4080",
+      "device": "NVIDIA GeForce RTX4080",
+      "record": "frame.json",
+      "validation_errors": 0,
+      "validation_warnings": 0,
+      "subpixel_bits": 8,
+      "rgba_sha256": "9e1920842bc752982697e592a8bbbb7436a645244f127120eeedd6c7ed51ca4c"
+    },
+    "cpu": {
+      "sha256": "aefdc677697aeb41c3630b766123d3366efc86ab9e6a470d4430e8ab500b957f",
+      "reuse": "Historical RF633/308 executable at /tmp/aethyr-ch11-reference-grid-owned-sans-native-308/reference-frame; no reemission or matching-main compiler claim",
+      "filter_profile": "analytic",
+      "screen_format": "rgba16f",
+      "work_profile": "complex-world",
+      "shader_ceiling": 3000000000,
+      "pixel_ceiling": 100000000,
+      "webgpu_profile": {"rounding": "nearest-positive", "subpixel_bits": 8, "xy_clipping": "viewport", "guard_pixels": 0, "shader_steps": 1552180373, "record": "cpu-webgpu-frame.json", "rgba_sha256": "7a49d5ee3879cc9699413603c2e4caad14116c5fb83580f41200295824032071"},
+      "native_profile": {"rounding": "nearest-even", "subpixel_bits": 8, "xy_clipping": "guard-band", "guard_pixels": 65536, "shader_steps": 1544495639, "record": "cpu-native-frame.json", "rgba_sha256": "cebf68b5f0375e1e404f3739d0f8b98452b46190581d90400b0040aaa6b98774"}
+    }
+  },
+  "comparisons": {
+    "tool": "aethyr/render/tests/compare-frames.coax",
+    "webgpu": "webgpu-comparison.json",
+    "native": "native-comparison.json",
+    "each": {"pixels": 57600, "rgba_channels": 230400, "colour_failures": 0, "nonfinite_failures": 0, "masked_pixels": 0, "max_normalized_error": 0.0009643201542912247},
+    "tolerance": "abs(gpu-cpu) <=0.002*max(1,abs(cpu)); both finite",
+    "tolerance_changed": false
+  },
+  "failures_retained": [{"log": "native.log", "exit": 126, "cause": "Transferred historical native artifact lacked executable mode; no renderer ran", "repair": "chmod+x on the same remote bytes", "retry_log": "native-after-mode-fix.log"}],
+  "limits": {"cpu_command_seconds": 810, "remote_command_seconds": 600, "local_ssh_seconds": 660},
+  "remote_owned_directory_removed": true,
+  "artifact_archive": "artifacts.tar.gz",
+  "artifact_sha256": "6fabf26be3b29fd81f616845a26093b80c3074138762ce4c26c44f12195fb121",
+  "readback": "Every archived file compared byte-for-byte with its source after extraction; no scripts executed from the archive"
+}

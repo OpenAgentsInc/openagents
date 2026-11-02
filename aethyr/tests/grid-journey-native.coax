@@ -1,0 +1,102 @@
+// The same input schedule through the actual native Grid C face. C supplies
+// its existing realm host and scalar transport; Coax owns this program.
+// The output is compared with the actual browser journey, not a second model.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "grid-journey-sequence.coax";
+gj_native_open :: () -> int #foreign;
+gj_native_frame :: (dt: f32) -> int #foreign;
+gj_native_key :: (key: int, down: int) #foreign;
+gj_native_probe :: (field: int) -> int #foreign;
+gj_native_pose :: (field: int) -> f32 #foreign;
+gj_native_mark :: (step: int) -> int #foreign;
+gj_native_replay :: () -> int #foreign;
+gj_native_viewport :: (width:f32,height:f32) #foreign;
+gj_native_info :: (field:int)->int #foreign;
+gj_native_bytes :: (kind:int)->int #foreign;
+gj_native_byte :: (kind:int,offset:int)->int #foreign;
+gj_native_close :: () #foreign;
+
+#test "the native Grid dump refuses clipped, malformed or differently shaped producer frames" {
+  #assert grid_native_shape(1,400000,12,112,0,0) && grid_native_shape(400000,400000,12,112,0,0);
+  #assert !grid_native_shape(0,400000,12,112,0,0) && !grid_native_shape(400001,400000,12,112,0,0);
+  #assert !grid_native_shape(1,399999,12,112,0,0) && !grid_native_shape(1,400000,16,112,0,0);
+  #assert !grid_native_shape(1,400000,12,111,0,0) && !grid_native_shape(1,400000,12,112,1,0) && !grid_native_shape(1,400000,12,112,0,1);
+}
+grid_native_shape :: (vertices:int,capacity:int,stride:int,uniforms:int,draws:int,indices:int)->bool {
+  return vertices>0 && vertices<=capacity && capacity==400000 && stride==12 && uniforms==112 && draws==0 && indices==0;
+}
+grid_native_dump :: (dir:string)->bool {
+  // Match the two zero-time resource-control frames before the separately
+  // observed final resize. These advance no physics or animation time.
+  v:=gj_native_frame(0);v=gj_native_frame(0);
+  gj_native_viewport(320,180);v=gj_native_frame(0);v=gj_native_frame(0);
+  if !grid_native_shape(gj_native_info(3),gj_native_info(0),gj_native_info(1),gj_native_info(2),gj_native_info(4),gj_native_info(5)) || !fs_mkdir(dir) {return false;}
+  bytes:[20971520]u8;path:[4096]u8;
+  names:=[4]string.["u.bin","hud.bin","draws.bin","indices.bin"];
+  for kind:0..<4 {
+    n:=gj_native_bytes(kind);
+    if n<0 || n>bytes.count {return false;}
+    for k:0..<n {b:=gj_native_byte(kind,k);if b<0 || b>255 {return false;}bytes[k]=cast(u8)b;}
+    if !fs_write(fs_join(dir,names[kind],path[..]),cast(string)bytes[0..<n]) {return false;}
+  }
+  text:[4096]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],"aethyr.grid.native-producer.v1");
+  jo_key(o[..],"profile_index");jo_int(o[..],1);jo_key(o[..],"app");jo_str(o[..],"newland");
+  jo_key(o[..],"width");jo_int(o[..],320);jo_key(o[..],"height");jo_int(o[..],180);
+  jo_key(o[..],"capacity");jo_int(o[..],gj_native_info(0));jo_key(o[..],"stride");jo_int(o[..],gj_native_info(1));
+  jo_key(o[..],"uniform_floats");jo_int(o[..],gj_native_info(2));jo_key(o[..],"hud_vertices");jo_int(o[..],gj_native_info(3));
+  jo_key(o[..],"draws");jo_int(o[..],gj_native_info(4));jo_key(o[..],"index_bytes");jo_int(o[..],gj_native_info(5));
+  jo_key(o[..],"steps");jo_int(o[..],gj_native_probe(0));jo_key(o[..],"session");jo_int(o[..],gj_native_probe(1));jo_key(o[..],"state_digest");jo_int(o[..],gj_native_probe(2));
+  jo_key(o[..],"zero_time_frames_after_route");jo_int(o[..],4);jo_end(o[..]);
+  return !o[0].bad && fs_write(fs_join(dir,"producer.json",path[..]),jo_text(o[..]));
+}
+
+#test "the browser's initial draw and first positive timestamp both have zero elapsed time" {
+  #assert grid_journey_dt(1)==0 && grid_journey_dt(2)==f32(1.0/60.0) && grid_journey_dt(GJ_FRAMES)==f32(1.0/60.0);
+}
+#test "a named input loss control drops only jump edges before they reach the actual face" {
+  for k:0..<GJ_KEYS {
+    e:=grid_journey_key(k);
+    #assert grid_journey_keep(e,false);
+    #assert grid_journey_keep(e,true)==(e.key!=32);
+  }
+}
+grid_journey_keep :: (e: GridJourneyKey, drop_jump: bool) -> bool {return !drop_jump || e.key!=32;}
+grid_journey_dt :: (frame: int) -> f32 {
+  // host.js draw's last==0 branch: an explicit initial clipStep at t=0, then
+  // the first t=1/60 frame also starts its clock. Later frames pay one period.
+  return ifx frame==1 then 0.0f32 else 1.0f32/60.0f32;
+}
+tool_main :: () -> int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  drop_jump:=args_has(a[..],"--drop-jump");freeze:=args_has(a[..],"--freeze");
+  wrong_pose:=args_has(a[..],"--wrong-pose");skip_replay:=args_has(a[..],"--skip-replay");
+  if gj_native_open()!=0 {return 1;}
+  v:=gj_native_frame(0);
+  for frame:1..<GJ_FRAMES+1 {
+    for k:0..<GJ_KEYS {
+      e:=grid_journey_key(k);
+      if e.frame==frame && grid_journey_keep(e,drop_jump) {gj_native_key(e.key,ifx e.down then 1 else 0);}
+    }
+    vertices:=gj_native_frame(ifx freeze then 0.0f32 else grid_journey_dt(frame));
+    if vertices<=0 {gj_native_close();return 1;}
+    print("{\"frame\":%,\"probe\":[",frame);
+    for k:0..<10 {if k>0 {print(",");}print("%",gj_native_probe(k));}
+    print("],\"pose_bits\":[");
+    for k:0..<10 {if k>0 {print(",");}print("%",f32_bits(gj_native_pose(ifx wrong_pose then (k+1)%10 else k)));}
+    print("]}\n");
+  }
+  before:=gj_native_probe(2);session:=gj_native_probe(1);steps:=gj_native_probe(0);
+  replayed:=ifx skip_replay then 0 else gj_native_replay();
+  print("{\"replayed\":%,\"steps\":%,\"session\":%,\"state_digest\":%,\"marks\":[",replayed,steps,session,before);
+  for k:0..<steps {if k>0 {print(",");}print("%",gj_native_mark(k));}
+  print("]}\n");
+  same:=gj_native_probe(2)==before && gj_native_probe(1)==session && gj_native_probe(0)==steps;
+  dump:=args_value(a[..],"--dump","");
+  dumped:=dump.count==0 || grid_native_dump(dump);
+  gj_native_close();
+  return ifx replayed==1 && same && dumped then 0 else 1;
+}

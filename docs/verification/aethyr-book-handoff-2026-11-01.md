@@ -1,5 +1,10 @@
 # Aethyr book handoff
 
+Historical stopping point: the user explicitly resumed this work on
+2026-11-02. The [implementation record](aethyr-book-implementation-2026-11-01.json)
+tracks the active reconciliation, tooling and playable Grid work. The status
+and outstanding work below describe the earlier stop and remain evidence of it.
+
 The user requested a stopping point after the agents finished their current
 issues. Work is stopped at chapter 11. Do not resume automatically. The entire
 book is **not complete**; chapter 12 has not been started.

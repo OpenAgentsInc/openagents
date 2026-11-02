@@ -1,0 +1,85 @@
+// Shared effects for native render qualification. Commands retain raw stdout
+// (including NUL and final newlines), exact argv, stderr and bounded deadlines.
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/crypto/sha256-kernel.coax";
+#load "tooling-policy.coax";
+cxproc_read_bytes :: (handle:int,timeout_ms:int,out:[]u8)->int #foreign;
+cxproc_self_path :: (out:[]u8)->int #foreign;
+RTQ_DEADLINE_MS :: 810000;
+RTQ_FILE :: 67108864;
+RtqInput :: struct {path:[4096]u8;count:int;hash:[64]u8;}
+RtqInputs :: struct {count:int;rows:[512]RtqInput;}
+
+rtq_run_raw :: (argv:[]string,env:[]string,timeout:int,out:[]u8,err:[]u8)->ProcRun {
+  r:ProcRun;h:=proc_new();if h<0 {r.started=PROC_ERROR;return r;}
+  ok:=argv.count>0;for a:argv {ok=ok && proc_arg(h,a);}for e:env {ok=ok && proc_env(h,e);}
+  if !ok {done:=proc_release(h);r.started=PROC_ERROR;return r;}
+  r.started=proc_start(h);if r.started!=0 {done:=proc_release(h);return r;}closed:=proc_close_stdin(h);
+  deadline:=proc_deadline(timeout,proc_now_ms());scratch:[65536]u8;
+  while true {
+    left:=proc_left(deadline,proc_now_ms());if left==0 {r.timed_out=true;break;}
+    n:=0;
+    if r.out_n<out.count {n=cxproc_read_bytes(h,left,out[r.out_n..<out.count]);}else {n=cxproc_read_bytes(h,left,scratch[..]);if n>0 {r.cut=true;}}
+    if n==PROC_EOF {break;}if n==PROC_ERROR {r.cut=true;break;}
+    if n>0 && r.out_n<out.count {r.out_n+=n;}
+  }
+  if r.timed_out {k:=proc_kill(h,PROC_SIGKILL);}
+  r.status=proc_wait(h,ifx r.timed_out then 2000 else proc_left(deadline,proc_now_ms()));
+  if r.status==PROC_RUNNING {r.timed_out=true;k:=proc_kill(h,PROC_SIGKILL);r.status=proc_wait(h,2000);}
+  r.err_n=proc_stderr(h,err).count;done:=proc_release(h);return r;
+}
+rtq_run :: (argv:[]string,env:[]string,deadline:int,out:[]u8,err:[]u8)->ProcRun {
+  left:=proc_left(deadline,proc_now_ms());if left==0 {return ProcRun.{started=PROC_ERROR,timed_out=true};}
+  return rtq_run_raw(argv,env,left,out,err);
+}
+rtq_ok :: (r:ProcRun)->bool {return r.started==0 && r.status==0 && !r.timed_out && !r.cut;}
+rtq_hash_file :: (path:string,hash:[]u8)->bool {
+  bytes:[RTQ_FILE]u8;n:=fs_size(path);if n<0 || n>RTQ_FILE {return false;}
+  got:=fs_read_at(path,0,bytes[0..<n]);return got==n && S_hex(S_hash(cast(string)bytes[0..<n]),hash);
+}
+rtq_trim :: (s:string)->string {
+  begin:=0;end:=s.count;while begin<end && rtq_space(s[begin]) {begin+=1;}while end>begin && rtq_space(s[end-1]) {end-=1;}return s[begin..<end];
+}
+rtq_json_file :: (path:string,bytes:[]u8,nodes:[]JvNode,doc:[]Jv)->bool {
+  size:=fs_size(path);if size<0 || size>bytes.count {return false;}n:=fs_read_at(path,0,bytes[0..<size]);return n==size && jv_parse(doc,cast(string)bytes[0..<n],nodes);
+}
+rtq_input_add :: (inputs:[]RtqInputs,path:string)->bool {
+  for i:0..<inputs[0].count {if cast(string)inputs[0].rows[i].path[0..<inputs[0].rows[i].count]==path {return true;}}
+  if inputs[0].count==512 || path.count>4096 {return false;}
+  row:RtqInput;row.count=path.count;for i:0..<path.count {row.path[i]=path[i];}if !rtq_hash_file(path,row.hash[..]) {return false;}
+  inputs[0].rows[inputs[0].count]=row;inputs[0].count+=1;return true;
+}
+rtq_inputs_match :: (inputs:[]RtqInputs)->bool {
+  hash:[64]u8;for i:0..<inputs[0].count {
+    row:=inputs[0].rows[i];path:=cast(string)row.path[0..<row.count];if !rtq_hash_file(path,hash[..]) || cast(string)hash[..]!=cast(string)row.hash[..] {tool_err("qualification source changed: ");tool_errln(path);return false;}
+  }return true;
+}
+rtq_inputs_json :: (o:[]Jo,inputs:[]RtqInputs,root:string) {
+  jo_obj(o);for i:0..<inputs[0].count {
+    row:=inputs[0].rows[i];path:=cast(string)row.path[0..<row.count];label:=path;
+    if path.count>root.count && path[0..<root.count]==root && path[root.count]=='/' {label=path[root.count+1..<path.count];}
+    jo_key(o,label);jo_str(o,cast(string)row.hash[..]);
+  }jo_end(o);
+}
+rtq_deps :: (inputs:[]RtqInputs,compiler:string,source:string,deadline:int,directory:string,label:string)->bool {
+  stdout:[1048576]u8;stderr:[65536]u8;argv:=[4]string.[compiler,"deps",source,"--library"];env:[]string;r:=rtq_run(argv[..],env,deadline,stdout[..],stderr[..]);
+  if !rtq_record_run(directory,label,argv[..],r,cast(string)stdout[0..<r.out_n],cast(string)stderr[0..<r.err_n]) {return false;}
+  if !rtq_ok(r) {tool_err(cast(string)stderr[0..<r.err_n]);return false;}
+  nodes:[8192]JvNode;doc:[1]Jv;if !jv_parse(doc[..],cast(string)stdout[0..<r.out_n],nodes[..]) {return false;}
+  for key:[2]string.["sources","descriptors"] {
+    list:=jv_get(doc[0],0,key);if jv_kind(doc[0],list)!=JV_ARRAY {return false;}
+    for i:0..<jv_len(doc[0],list) {path:[4096]u8;n:=jv_str(doc[0],jv_at(doc[0],list,i),path[..]);if n<1 || !rtq_input_add(inputs,cast(string)path[0..<n]) {return false;}}
+  }return true;
+}
+rtq_command :: (argv:[]string,env:[]string,deadline:int,directory:string,label:string,out:[]u8,err:[]u8)->ProcRun {
+  r:=rtq_run(argv,env,deadline,out,err);if !rtq_record_run(directory,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {r.cut=true;}
+  if !rtq_ok(r) {tool_err("command failed: ");tool_errln(label);tool_err(cast(string)err[0..<r.err_n]);}return r;
+}
+rtq_record_run :: (directory:string,label:string,argv:[]string,r:ProcRun,stdout:string,stderr:string)->bool {
+  path:[4096]u8;name:[512]u8;o:[1]Jo;jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],".stdout");if !fs_write(fs_join(directory,jo_text(o[..]),path[..]),stdout) {return false;}
+  jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],".stderr");if !fs_write(fs_join(directory,jo_text(o[..]),path[..]),stderr) {return false;}
+  record:[65536]u8;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"argv");jo_arr(o[..]);for a:argv {jo_str(o[..],a);}jo_end(o[..]);jo_key(o[..],"started");jo_int(o[..],r.started);jo_key(o[..],"exit");jo_int(o[..],r.status);jo_key(o[..],"timed_out");jo_bool(o[..],r.timed_out);jo_key(o[..],"cut");jo_bool(o[..],r.cut);jo_end(o[..]);
+  name_o:[1]Jo;jo_start(name_o[..],name[..]);jo_put(name_o[..],label);jo_put(name_o[..],".json");return !o[0].bad && fs_write(fs_join(directory,jo_text(name_o[..]),path[..]),jo_text(o[..]));
+}

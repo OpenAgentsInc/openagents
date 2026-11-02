@@ -1,0 +1,74 @@
+{
+  "schema": "aethyr.render.resumption.v1",
+  "date": "2026-11-02",
+  "status": "active_not_complete",
+  "chapter": 11,
+  "chapter_status": "partly_implemented",
+  "base_main": "8ed49c9b6a7f23c25b4f516993073441082b30b1",
+  "rebased_checkpoint": "dbbfe6bf70360b6500a62a9a60213a6ce7ee725c",
+  "preserved": [
+    "Published Rf API, native Grid matrix guard and both authored admission test groups",
+    "Upstream TypeScript deletions and Coax tool ports, including TLS linking",
+    "Anime Lab's stage, shaders, build entry and existing renderer",
+    "Historical source/compiler/target identities and failed results"
+  ],
+  "frame_reconciliation": "docs/verification/aethyr-frame-reconciliation-2026-11-02.json",
+  "grid_visual_migration": "docs/verification/data/aethyr-ch11-2026-11-02/grid-visual-migration/qualification.json",
+  "grid_playable_route": "docs/verification/data/aethyr-ch11-2026-11-02/grid-playable-route/qualification.json",
+  "grid_same_input_pixels": "docs/verification/data/aethyr-ch11-2026-11-02/grid-moving-pixels/qualification.json",
+  "grid_final_stack": "docs/verification/aethyr-grid-final-stack-2026-11-02.json",
+  "grid_memory_tool_port": "docs/verification/data/aethyr-ch11-2026-11-02/grid-memory-tool-port/qualification.json",
+  "spirv_tool_port": "docs/verification/aethyr-spirv-tool-port-2026-11-02.json",
+  "wgsl_tool_port": "docs/verification/aethyr-wgsl-tool-port-2026-11-02.json",
+  "latest_main_reviewed": "a7010d8535 (not yet integrated; compiler R2/B3 and revision-safe realm editing must be preserved)",
+  "tooling": {
+    "initial_enforced_gate": "docs/verification/data/aethyr-tools-2026-11-02/initial-tools-check.log",
+    "initial_missing_reasons": 172,
+    "progress_gate": "docs/verification/data/aethyr-tools-2026-11-02/pre-integration-tools-check.log",
+    "progress_missing_reasons": 26,
+    "progress_scope": "Actual staged-tree scan after package/SPIRV/WGSL, four primitive WebGPU and memory-observer ports;1474tracked tool files. The earlier34-result scan is preserved separately.",
+    "full_compliance": false,
+    "historical_sources": "docs/verification/data/aethyr-ch11-2026-11-01/historical-tool-sources.md",
+    "live_tool_plan": "docs/verification/aethyr-render-tooling-plan-2026-11-02.json"
+  },
+  "page_adoption": {
+    "policy": "aethyr/render/adoption.coax",
+    "policy_sha256": "2aa2a841c314c240395f98fe2cfa95727a75bb38bf7b3c4ffc9fec59bced2f4d",
+    "driver": "aethyr/render/page-render.coax",
+    "driver_sha256": "e19d91c4667152ae147d88a72c15b2d117e05cd5c9967330bd073cc1b5e6c60b",
+    "shared_profiles": 18,
+    "explicit_unadopted_consumers": [{"slug": "anime-lab", "app": "animelab"}],
+    "unknown_or_mismatched_identities": "refused",
+    "new_authored_groups": 3,
+    "dependency_inclusive_groups_passed": 30,
+    "root_mutants": 8,
+    "root_mutants_killed": 8,
+    "survivors": 0,
+    "waivers_added": 0,
+    "mutation_log": "docs/verification/data/aethyr-tools-2026-11-02/adoption-mutation.log",
+    "generator_initial": "20 passing, 3 failing: first compile exceeded inherited 5s test timeout; two independent fixture directories omitted the new Anime Lab shader",
+    "generator_repairs": "Coax-produced attribute memoization; compile-aware 30s boundary for the all-realm test; actual Anime Lab shader included in the two style fixtures",
+    "generator_changed_scope": "4 focused checks pass, 19 filtered; prior unchanged checks retained from initial run",
+    "generator_logs": ["docs/verification/data/aethyr-tools-2026-11-02/realms-initial.log", "docs/verification/data/aethyr-tools-2026-11-02/realms-focused.log"]
+  },
+  "metadata": {
+    "command": "python3 psionic/tests/book.py --book aethyr",
+    "result": "20 programs, 108 source-linked listings, local links pass",
+    "scope": "Final changed chapter64 text before the next main integration; all local links pass",
+    "log": "docs/verification/data/aethyr-tools-2026-11-02/book-structure-final.log",
+    "static_ui": "coax/web/check-visuals.sh apps/openagents-web passed after host capture hooks changed; stdout is empty on success",
+    "static_ui_log": "docs/verification/data/aethyr-tools-2026-11-02/static-visuals-final.log"
+  },
+  "compiler": {
+    "explicit_qualified_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "matching_main_claimed": false,
+    "blocker": "https://github.com/OpenAgentsInc/openagents/issues/12638",
+    "external_work_untouched": true
+  },
+  "remaining": [
+    "Complete maintained tool ports and actual tools-check gate",
+    "Final matching-source/compiler Grid qualification; declared exact-artifact headless session/native-producer/pixel composition is retained and passing",
+    "Qualify fresh full-size Everglade runtime and close strict Dead Gears precision failure",
+    "Final source/compiler/host qualification before chapter11 completion and publication"
+  ]
+}

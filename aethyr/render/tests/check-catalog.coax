@@ -1,0 +1,114 @@
+// Native catalog data/ABI qualification and complete current consumer inventory.
+//   coax/web/tool.sh aethyr/render/tests/check-catalog.coax --work-dir DIR --receipt FILE [--coax FILE] [--compiler-source-digest FILE] [--explore-stale-compiler] [--modes debug release sanitized]
+#import "Basic";
+#load "qualification-files.coax";
+#load "catalog-tool-policy.coax";
+RTC_NAMES :: [5]string.["RenderCatalog","RenderFeatures","RenderBinding","RenderEntry","RenderUse"];
+RTC_FIELDS :: [5]string.["valid listed retired slug app page assets uniform_vec4s vertex_stride features binding_first binding_count pass_first pass_count particle_binding_first particle_binding_count particle_pass_first particle_pass_count","scene shadow casters grass surface water water_copy post post_depth traced_depth particles particle_depth particle_over media","name kind group binding stride uniform_vec4s","valid source vertex fragment wgsl_vertex wgsl_fragment binding_set","resource slot native_kind shape stride stages"];
+RTC_FAULTS :: [7]string.["asset","feature","binding","pipeline","scope","slot","kind"];
+
+rtc_modes :: (a:[]Args,out:[]string)->int {
+  at:=args_find(a,"--modes");if at== -1 {out[0]="debug";out[1]="release";out[2]="sanitized";return 3;}
+  n:=0;for i:at+1..<args_count(a) {
+    value:=args_at(a,i);if value.count>=2 && value[0..<2]=="--" {break;}
+    if n==3 || (value!="debug" && value!="release" && value!="sanitized") {return -1;}
+    for k:0..<n {if out[k]==value {return -1;}}out[n]=value;n+=1;
+  }return ifx n==0 then -1 else n;
+}
+rtc_abi :: (header:string)->bool {for name,i:RTC_NAMES {if !rtq_fields(header,name,RTC_FIELDS[i]) {tool_err("catalog ABI differs: ");tool_errln(name);return false;}}return true;}
+rtc_abi_json :: (o:[]Jo) {
+  jo_obj(o);for name,i:RTC_NAMES {jo_key(o,name);jo_arr(o);field:=0;while true {word:=rtq_word(RTC_FIELDS[i],field);if word.count==0 {break;}jo_str(o,word);field+=1;}jo_end(o);}jo_end(o);
+}
+rtc_authenticate_snapshot :: (d:Jv,directory:string,deadline:int)->bool {
+  commit:[128]u8;count:=jv_str(d,jv_get(d,0,"reference_commit"),commit[..]);if count<1 {return false;}
+  hashes:=jv_get(d,0,"sources_sha256");if jv_kind(d,hashes)!=JV_OBJECT {return false;}
+  child:=d.nodes[hashes].first;out:[16777216]u8;err:[65536]u8;env:[]string;sequence:=0;
+  while child!=-1 {
+    ref:[8192]u8;o:[1]Jo;jo_start(o[..],ref[..]);jo_put(o[..],cast(string)commit[0..<count]);jo_put(o[..],":");jo_put(o[..],jv_key(d,child));
+    label:[128]u8;label_writer:[1]Jo;jo_start(label_writer[..],label[..]);jo_put(label_writer[..],"reference-source-");jo_int(label_writer[..],sequence);sequence+=1;
+    argv:=[3]string.["git","show",jo_text(o[..])];r:=rtq_command(argv[..],env,deadline,directory,jo_text(label_writer[..]),out[..],err[..]);hash:[64]u8;
+    if !rtq_ok(r) || !S_hex(S_hash(cast(string)out[0..<r.out_n]),hash[..]) || !rtc_literal(d,child,cast(string)hash[..]) {tool_err("frozen source hash differs: ");tool_errln(jv_key(d,child));return false;}
+    child=d.nodes[child].next;
+  }return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  header_path:=args_value(a[..],"--check-header","");
+  if header_path.count>0 {bytes:[1048576]u8;n:=fs_read(header_path,bytes[..]);return ifx n>=0 && rtc_abi(cast(string)bytes[0..<n]) then 0 else 1;}
+  cwd:[4096]u8;root:=fs_cwd(cwd[..]);work:=args_value(a[..],"--work-dir","");receipt:=args_value(a[..],"--receipt","");
+  if work.count==0 || receipt.count==0 || !fs_mkdir(work) {tool_errln("usage: check-catalog --work-dir DIR --receipt FILE [--coax FILE] [--modes ...]");return 2;}
+  modes:[3]string;mode_count:=rtc_modes(a[..],modes[..]);if mode_count<0 {tool_errln("invalid mode list");return 2;}
+  compiler_buf:[4096]u8;env_coax:=proc_getenv("COAX",compiler_buf[..]);if env_coax.count==0 {env_coax="coax/bin/coax";}compiler:=args_value(a[..],"--coax",env_coax);
+  paths:[12][4096]u8;digest_path:=fs_join(fs_dir(compiler),"source-digest",paths[0][..]);digest_path=args_value(a[..],"--compiler-source-digest",digest_path);
+  compiler_hash:[64]u8;if !rtq_hash_file(compiler,compiler_hash[..]) {tool_errln("cannot hash selected compiler");return 1;}
+  self_path:[4096]u8;self_count:=cxproc_self_path(self_path[..]);if self_count<1 || self_count>self_path.count {return 1;}self_image:=cast(string)self_path[0..<self_count];self_hash:[64]u8;if !rtq_hash_file(self_image,self_hash[..]) {return 1;}
+  start:=proc_now_ms();deadline:=proc_deadline(RTQ_DEADLINE_MS,start);env:[]string;stdout:[RTQ_FILE]u8;stderr:[65536]u8;
+  version_args:=[2]string.[compiler,"version"];run:=rtq_command(version_args[..],env,deadline,work,"compiler-version",stdout[..],stderr[..]);if !rtq_ok(run) {return 1;}
+  version:[4096]u8;version_writer:[1]Jo;jo_start(version_writer[..],version[..]);jo_put(version_writer[..],rtq_trim(cast(string)stdout[0..<run.out_n]));version_count:=version_writer[0].n;
+  current_args:=[3]string.[compiler,"source-digest",root];run=rtq_command(current_args[..],env,deadline,work,"compiler-current-source",stdout[..],stderr[..]);if !rtq_ok(run) {return 1;}
+  current:[4096]u8;current_writer:[1]Jo;jo_start(current_writer[..],current[..]);jo_put(current_writer[..],rtq_trim(cast(string)stdout[0..<run.out_n]));current_count:=current_writer[0].n;
+  recorded:[4096]u8;recorded_n:=fs_read(digest_path,recorded[..]);if recorded_n<0 {tool_errln("cannot read selected compiler's source-digest record");return 1;}
+  recorded_text:=rtq_trim(cast(string)recorded[0..<recorded_n]);stale:=recorded_text!=cast(string)current[0..<current_count];
+  if stale && !args_has(a[..],"--explore-stale-compiler") {tool_errln("compiler recorded/current source digests differ; rebuild before final qualification");return 1;}
+  snapshot_path:=args_value(a[..],"--snapshot","aethyr/render/tests/catalog-6445ee0050.json");snapshot_bytes:[1048576]u8;snapshot_nodes:[32768]JvNode;snapshot:[1]Jv;
+  if !rtq_json_file(snapshot_path,snapshot_bytes[..],snapshot_nodes[..],snapshot[..]) || !rtc_authenticate_snapshot(snapshot[0],work,deadline) {return 1;}
+  expected_bytes:[1048576]u8;expected:=rtc_expected(snapshot[0],expected_bytes[..]);expected_nodes:[32768]JvNode;expected_doc:[1]Jv;
+  if expected.count==0 || !jv_parse(expected_doc[..],expected,expected_nodes[..]) {tool_errln("invalid frozen catalog expectations");return 1;}
+  binding_uses:=0;all_passes:=jv_get(snapshot[0],0,"passes");for i:0..<jv_len(snapshot[0],all_passes) {pass:=jv_at(snapshot[0],all_passes,i);binding_uses+=jv_len(snapshot[0],jv_get(snapshot[0],pass,"uses"));}
+  if !fs_write(fs_join(work,"expected.json",paths[1][..]),expected) {return 1;}
+  manifest_path:="apps/openagents-web/realms.json";manifest_bytes:[1048576]u8;manifest_nodes:[16384]JvNode;manifest:[1]Jv;
+  if !rtq_json_file(manifest_path,manifest_bytes[..],manifest_nodes[..],manifest[..]) {return 1;}
+  consumer_bytes:[1048576]u8;consumers:=rtc_consumers(snapshot[0],manifest[0],consumer_bytes[..]);if !consumers.ok {tool_errln("current realm consumer inventory differs or has an untracked renderer");return 1;}
+  if !fs_write(fs_join(work,"consumers.json",paths[2][..]),cast(string)consumer_bytes[0..<consumers.bytes]) {return 1;}
+  fixture:="aethyr/render/tests/catalog-native.coax";native:="aethyr/render/tests/catalog-native.c";inputs:[1]RtqInputs;
+  if !rtq_deps(inputs[..],compiler,fixture,deadline,work,"catalog-dependencies") || !rtq_deps(inputs[..],compiler,"aethyr/render/tests/check-catalog.coax",deadline,work,"qualifier-dependencies") || !rtq_deps(inputs[..],compiler,"coax/lib/crypto/entropy.coax",deadline,work,"qualifier-entropy-dependencies") {return 1;}
+  for path:[7]string.[native,snapshot_path,manifest_path,"aethyr/render/tests/check-catalog.coax","aethyr/render/tests/catalog-tool-policy.coax","aethyr/render/tests/tooling-policy.coax","aethyr/render/tests/qualification-files.coax"] {if !rtq_input_add(inputs[..],path) {return 1;}}
+  for name:[6]string.["tool-native","process-native","store-file-native","socket-native","entropy-native","entropy-foreign"] {
+    for ext:[2]string.[".c",".h"] {path:[4096]u8;w:[1]Jo;jo_start(w[..],path[..]);jo_put(w[..],"coax/platform/");jo_put(w[..],name);jo_put(w[..],ext);if !rtq_input_add(inputs[..],jo_text(w[..])) {return 1;}}
+  }
+  if !rtq_input_add(inputs[..],"coax/web/tool.sh") {return 1;}
+  if fs_exists(receipt) {
+    old_bytes:[1048576]u8;old_nodes:[32768]JvNode;old:[1]Jv;if !rtq_json_file(receipt,old_bytes[..],old_nodes[..],old[..]) {return 1;}
+    hash_map:[1048576]u8;w:[1]Jo;jo_start(w[..],hash_map[..]);rtq_inputs_json(w[..],inputs[..],root);map_nodes:[8192]JvNode;map_doc:[1]Jv;if !jv_parse(map_doc[..],jo_text(w[..]),map_nodes[..]) {return 1;}
+    if rtc_literal(old[0],jv_get(old[0],0,"compiler_sha256"),cast(string)compiler_hash[..]) && rtq_equal(old[0],jv_get(old[0],0,"source_sha256"),map_doc[0],0) {tool_errln("unchanged source/compiler inventory already qualified; retain its receipt");return 1;}
+  }
+  mode_record:[1048576]u8;o:[1]Jo;jo_start(o[..],mode_record[..]);jo_arr(o[..]);emitted:[2]bool;source_paths:[2][4096]u8;header_paths:[2][4096]u8;
+  for mode_index:0..<mode_count {
+    mode:=modes[mode_index];release:=mode=="release";index:=ifx release then 1 else 0;directory:=fs_join(work,ifx release then "wrapping" else "checked",paths[3][..]);if !fs_mkdir(directory) {return 1;}
+    source:=fs_join(directory,"catalog.c",source_paths[index][..]);header:=fs_join(directory,"catalog.h",header_paths[index][..]);
+    if !emitted[index] {
+      command:=[7]string.[compiler,"c",fixture,"--library","--header",header,"--release"];count:=ifx release then 7 else 6;run=rtq_command(command[0..<count],env,deadline,directory,"emission",stdout[..],stderr[..]);if !rtq_ok(run) || !fs_write(source,cast(string)stdout[0..<run.out_n]) {return 1;}
+      if rtq_find(cast(string)stderr[0..<run.err_n],"compiler is out of date",0)>=0 {stale=true;if !args_has(a[..],"--explore-stale-compiler") {tool_errln("compiler differs from current source; rebuild before final qualification");return 1;}}
+      header_bytes:[1048576]u8;hn:=fs_read(header,header_bytes[..]);if hn<0 || !rtc_abi(cast(string)header_bytes[0..<hn]) {return 1;}emitted[index]=true;
+    }
+    name:[256]u8;nwriter:[1]Jo;jo_start(nwriter[..],name[..]);jo_put(nwriter[..],"catalog-");jo_put(nwriter[..],mode);exe:=fs_join(work,jo_text(nwriter[..]),paths[4][..]);
+    cc:[16]string;cn:=0;cc[cn]="clang";cn+=1;cc[cn]="-std=c11";cn+=1;cc[cn]=ifx release then "-O2" else "-O0";cn+=1;if !release {cc[cn]="-g";cn+=1;}
+    if mode=="sanitized" {cc[cn]="-fsanitize=address,undefined";cn+=1;cc[cn]="-fno-omit-frame-pointer";cn+=1;}
+    for arg:[8]string.["-I",directory,source,native,"-lm","-o",exe,""] {if arg.count>0 {cc[cn]=arg;cn+=1;}}
+    run=rtq_command(cc[0..<cn],env,deadline,work,jo_text(nwriter[..]),stdout[..],stderr[..]);if !rtq_ok(run) {return 1;}
+    native_env:[2]string;env_count:=0;if mode=="sanitized" {native_env[0]="ASAN_OPTIONS=detect_leaks=0:halt_on_error=1";native_env[1]="UBSAN_OPTIONS=halt_on_error=1";env_count=2;}
+    execute:=[2]string.[exe,""];run=rtq_command(execute[0..<1],native_env[0..<env_count],deadline,work,mode,stdout[..],stderr[..]);if !rtq_ok(run) {return 1;}
+    actual_nodes:[32768]JvNode;actual:[1]Jv;if !jv_parse(actual[..],cast(string)stdout[0..<run.out_n],actual_nodes[..]) || !rtq_equal(actual[0],0,expected_doc[0],0) {tool_errln("native catalog receipt differs from frozen declarations");return 1;}
+    transcript_name:[128]u8;tw:[1]Jo;jo_start(tw[..],transcript_name[..]);jo_put(tw[..],mode);jo_put(tw[..],".json");transcript_path:[4096]u8;transcript:=fs_join(work,jo_text(tw[..]),transcript_path[..]);if !fs_write(transcript,cast(string)stdout[0..<run.out_n]) {return 1;}
+    transcript_hash:[64]u8;if !S_hex(S_hash(cast(string)stdout[0..<run.out_n]),transcript_hash[..]) {return 1;}
+    for fault:RTC_FAULTS {
+      execute[1]=fault;label:[256]u8;fw:[1]Jo;jo_start(fw[..],label[..]);jo_put(fw[..],mode);jo_put(fw[..],"-");jo_put(fw[..],fault);run=rtq_command(execute[..],native_env[0..<env_count],deadline,work,jo_text(fw[..]),stdout[..],stderr[..]);
+      if !rtq_ok(run) || !jv_parse(actual[..],cast(string)stdout[0..<run.out_n],actual_nodes[..]) || rtq_equal(actual[0],0,expected_doc[0],0) {tool_errln("catalog producer loss was not detected");return 1;}
+    }
+    jo_obj(o[..]);jo_key(o[..],"mode");jo_str(o[..],mode);jo_key(o[..],"profiles");jo_int(o[..],jv_len(expected_doc[0],0));jo_key(o[..],"transcript_sha256");jo_str(o[..],cast(string)transcript_hash[..]);
+    jo_key(o[..],"transcript");jo_str(o[..],transcript);jo_key(o[..],"unique_logical_bindings");jo_int(o[..],jv_len(snapshot[0],jv_get(snapshot[0],0,"bindings")));jo_key(o[..],"unique_pipelines");jo_int(o[..],jv_len(snapshot[0],all_passes));jo_key(o[..],"unique_binding_uses");jo_int(o[..],binding_uses);
+    for key,which:[3]string.["generated_c_sha256","generated_header_sha256","executable_sha256"] {hash:[64]u8;target:=ifx which==0 then source else ifx which==1 then header else exe;if !rtq_hash_file(target,hash[..]) {return 1;}jo_key(o[..],key);jo_str(o[..],cast(string)hash[..]);}
+    jo_key(o[..],"producer_faults_detected");jo_arr(o[..]);for fault:RTC_FAULTS {jo_str(o[..],fault);}jo_end(o[..]);jo_end(o[..]);
+  }jo_end(o[..]);
+  final_hash:[64]u8;if !rtq_hash_file(compiler,final_hash[..]) || cast(string)final_hash[..]!=cast(string)compiler_hash[..] || !rtq_inputs_match(inputs[..]) {return 1;}
+  if !rtq_hash_file(self_image,final_hash[..]) || cast(string)final_hash[..]!=cast(string)self_hash[..] {return 1;}
+  record:[2097152]u8;writer:[1]Jo;jo_start(writer[..],record[..]);jo_obj(writer[..]);jo_key(writer[..],"schema");jo_str(writer[..],"aethyr.render.catalog.inventory.v1");jo_key(writer[..],"status");jo_str(writer[..],ifx stale then "exploratory" else "pass");
+  jo_key(writer[..],"reference_commit");jv_write(snapshot[0],jv_get(snapshot[0],0,"reference_commit"),writer[..]);
+  jo_key(writer[..],"compiler");jo_str(writer[..],compiler);jo_key(writer[..],"compiler_version");jo_str(writer[..],cast(string)version[0..<version_count]);jo_key(writer[..],"compiler_sha256");jo_str(writer[..],cast(string)compiler_hash[..]);jo_key(writer[..],"compiler_recorded_source_digest");jo_str(writer[..],recorded_text);jo_key(writer[..],"compiler_current_source_digest");jo_str(writer[..],cast(string)current[0..<current_count]);jo_key(writer[..],"compiler_current_sources_match");jo_bool(writer[..],!stale);
+  jo_key(writer[..],"qualifier_executable");jo_str(writer[..],self_image);jo_key(writer[..],"qualifier_executable_sha256");jo_str(writer[..],cast(string)self_hash[..]);
+  jo_key(writer[..],"source_sha256");rtq_inputs_json(writer[..],inputs[..],root);jo_key(writer[..],"header_fields_checked");rtc_abi_json(writer[..]);jo_key(writer[..],"modes");jo_raw(writer[..],jo_text(o[..]));jo_key(writer[..],"consumers");jo_raw(writer[..],cast(string)consumer_bytes[0..<consumers.bytes]);jo_key(writer[..],"shared_consumers");jo_int(writer[..],consumers.shared);jo_key(writer[..],"tracked_legacy_consumers");jo_int(writer[..],consumers.legacy);jo_key(writer[..],"elapsed_ms");jo_int(writer[..],proc_now_ms()-start);
+  elapsed:=proc_now_ms()-start;seconds:[64]u8;seconds_writer:[1]Jo;jo_start(seconds_writer[..],seconds[..]);jo_int(seconds_writer[..],elapsed/1000);jo_put(seconds_writer[..],".");fraction:=[3]u8.[cast(u8)('0'+(elapsed%1000)/100),cast(u8)('0'+(elapsed%100)/10),cast(u8)('0'+elapsed%10)];jo_put(seconds_writer[..],cast(string)fraction[..]);jo_key(writer[..],"elapsed_seconds");jo_raw(writer[..],jo_text(seconds_writer[..]));
+  jo_key(writer[..],"scope");jo_str(writer[..],"Complete normal-C frozen catalog data/ABI and producer-loss controls, plus every current realm's shared or explicitly tracked legacy route. Shader reflection/arithmetic, GPU rendering, images and production readiness remain separate.");jo_end(writer[..]);
+  if writer[0].bad || !fs_mkdir(fs_dir(receipt)) || !fs_write(receipt,jo_text(writer[..])) {return 1;}
+  print("catalog: % native profiles, % shared consumers, % tracked legacy consumers; %\n",jv_len(expected_doc[0],0),consumers.shared,consumers.legacy,ifx stale then "explicit pinned-compiler observation" else "matching-source qualification");return 0;
+}

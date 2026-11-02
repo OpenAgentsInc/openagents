@@ -1,0 +1,46 @@
+{
+  "schema": "aethyr.render.wire-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "passed_exact_input_observation_parity",
+  "replacement": "aethyr/tests/check-render-host-wire.coax",
+  "record_comparator": "aethyr/tests/check-render-wire-records.coax",
+  "removed": "aethyr/tests/check_render_host_wire.py",
+  "scope": "Port of native scalar-facade qualification orchestration. Reuses the original passing old-runner observations only for identical generated C/header, actual facade C and authored C fixture bytes. No fresh producer emission or matching-main compiler claim.",
+  "qualification": "docs/verification/data/aethyr-ch11-2026-11-02/wire-tool-port/qualification.json",
+  "parity": "docs/verification/data/aethyr-ch11-2026-11-02/wire-tool-port/parity.json",
+  "policy": {
+    "file": "aethyr/tests/render-wire-policy.coax",
+    "authored_groups": 2,
+    "root_mutants": 49,
+    "killed": 49,
+    "survivors": 0,
+    "waivers_added": 0,
+    "negative_status_regression": "A new check failed before requiring nonnegative proc_wait statuses; unknown process status cannot count as a killed loss control. Red transcript retained.",
+    "source_controls": "Exactly one full source occurrence is required before replacing a guard; missing, repeated, overlapping and short output cases refuse."
+  },
+  "actual_native_observations": {
+    "modes": ["debug-O0", "optimized-O2", "ASan-UBSan-O1"],
+    "commands": 36,
+    "baseline_runs": 3,
+    "planted_controls_per_mode": ["ack", "pipeline", "mesh-capacity", "draw-object", "draw-null"],
+    "planted_controls_caught": 15,
+    "status_encoding": "The old Python API reports each SIGABRT as-6; Coax proc_wait reports134. The comparator requires these corresponding signal outcomes and retains both raw records, rather than claiming numeric exit-code identity.",
+    "source_and_tool_image_fences": "All10 input paths unchanged, including actual executed tool image and explicitly selected compiler"
+  },
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "historical_native_fixture_compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "native_fixture_sources": {
+    "Render.c": "4d3621a1b288ad21ba3391847833bb405ca6387eaa3a906eb6a00686b8219c46",
+    "Render.h": "fd0298a5f76d6956441e85b63161a673595def602655e5b12d844b2fd1427a03",
+    "coax/web/render-face.c": "d169fd4b7fd7ff62ccb6c590e043c4fc2ad03b5622f272c85561198158f6a51f",
+    "aethyr/tests/render-host-wire.c": "6690ec6bd7a3e035209c355e2a7121af43153896f165d0db3969f68e2fbcda75"
+  },
+  "retention": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/wire-tool-port/artifacts.tar.gz",
+    "bytes": 2389038,
+    "sha256": "eb0975c1c4631d1d687ff3c65bf6efe38b0bc583a97fce98e10d4668707ea7e0",
+    "readback": "Complete extracted tree compared byte-for-byte with source tree",
+    "old_tool_preserved": true,
+    "delete_after_parity": true
+  }
+}

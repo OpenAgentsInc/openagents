@@ -1,0 +1,77 @@
+// Independent readback of the retained browser capture/RFI products. This does
+// no rendering and cannot turn a failed numerical comparison into a pass.
+//   coax/web/tool.sh aethyr/tests/grid-journey-verify.coax CAPTURE_DIR OUT.json
+#import "Basic";
+#load "grid-journey-capture.coax";
+
+GridJourneyArtifact :: struct {path:[512]u8; n:int; hash:[64]u8; bytes:int;}
+GridJourneyArtifacts :: struct {rows:[64]GridJourneyArtifact; n:int;}
+gv_file :: (s:[]GridJourneyArtifacts,dir:string,name:string,expected:string)->bool {
+  if !gc_name(name) || s[0].n>=64 {return false;}
+  path:[4096]u8;bytes:[20971520]u8;
+  n:=fs_read(fs_join(dir,name,path[..]),bytes[..]);row:GridJourneyArtifact;
+  if n<0 || name.count>row.path.count || !S_hex(S_hash(cast(string)bytes[0..<n]),row.hash[..]) ||
+    (expected.count>0 && expected!=cast(string)row.hash[..]) {return false;}
+  row.bytes=n;row.n=name.count;for k:0..<name.count {row.path[k]=name[k];}
+  s[0].rows[s[0].n]=row;s[0].n+=1;return true;
+}
+gv_verify :: (s:[]GridJourneyArtifacts,dir:string)->bool {
+  path:[4096]u8;cb:[262144]u8;pb:[262144]u8;
+  cn:=fs_read(fs_join(dir,"capture.json",path[..]),cb[..]);pn:=fs_read(fs_join(dir,"render.json",path[..]),pb[..]);
+  c:[1]Jv;p:[1]Jv;cnodes:[16384]JvNode;pnodes:[16384]JvNode;
+  if cn<0 || pn<0 || !jv_parse(c[..],cast(string)cb[0..<cn],cnodes[..]) || !jv_parse(p[..],cast(string)pb[0..<pn],pnodes[..]) ||
+    !gc_package_same(c[0],0,p[0]) || gc_int(c[0],0,"width")!=320 || gc_int(c[0],0,"height")!=180 ||
+    jv_raw(c[0],jv_get(c[0],0,"format"))!="rgba16float" || jv_raw(c[0],jv_path(c[0],0,"frame_validation.ok"))!="true" {return false;}
+  if !gv_file(s,dir,"capture.json","") || !gv_file(s,dir,"render.json","") ||
+    !gv_file(s,dir,"gpu.bin",jv_raw(c[0],jv_get(c[0],0,"sha256"))) || s[0].rows[2].bytes!=320*180*8 ||
+    !gv_file(s,dir,"u.bin","") || s[0].rows[3].bytes!=112*4 ||
+    !gv_file(s,dir,"hud.bin","") || s[0].rows[4].bytes!=gc_int(c[0],0,"admitted_hud")*12*4 ||
+    !gv_file(s,dir,"draws.bin","") || s[0].rows[5].bytes!=0 ||
+    !gv_file(s,dir,"indices.bin","") || s[0].rows[6].bytes!=0 || !gv_file(s,dir,"frame.config","") ||
+    !gv_file(s,dir,"media.txt","") || s[0].rows[8].bytes!=0 {return false;}
+  buffers:=jv_get(c[0],0,"buffers");
+  for k:0..<jv_len(c[0],buffers) {
+    b:=jv_at(c[0],buffers,k);
+    if !gv_file(s,dir,jv_raw(c[0],jv_get(c[0],b,"file")),"") || s[0].rows[s[0].n-1].bytes!=gc_int(c[0],b,"logical_payload") {return false;}
+  }
+  textures:=jv_get(c[0],0,"textures");
+  if jv_len(c[0],textures)!=1 {return false;}
+  for k:0..<jv_len(c[0],textures) {
+    t:=jv_at(c[0],textures,k);
+    if !gv_file(s,dir,jv_raw(c[0],jv_get(c[0],t,"file")),jv_raw(c[0],jv_get(c[0],t,"sha256"))) {return false;}
+  }
+  modules:=jv_get(p[0],0,"modules");entries:=jv_get(p[0],0,"entries");
+  for k:0..<jv_len(p[0],modules) {
+    m:=jv_at(p[0],modules,k);
+    if !gv_file(s,dir,jv_raw(p[0],jv_get(p[0],m,"wgsl_file")),jv_raw(p[0],jv_get(p[0],m,"wgsl_sha256"))) {return false;}
+  }
+  for k:0..<jv_len(p[0],entries) {
+    e:=jv_at(p[0],entries,k);
+    if !gv_file(s,dir,jv_raw(p[0],jv_get(p[0],e,"tree_file")),jv_raw(p[0],jv_get(p[0],e,"tree_sha256"))) ||
+      !gv_file(s,dir,jv_raw(p[0],jv_get(p[0],e,"spirv_file")),jv_raw(p[0],jv_get(p[0],e,"spirv_sha256"))) {return false;}
+  }
+  return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}
+  dir:=args_at(a[..],0);s:[1]GridJourneyArtifacts;
+  ok:=gv_verify(s[..],dir);changed:=false;
+  // Reread every observed artifact; source/inputs must stay unchanged over
+  // this independent readback, including the original metadata and package.
+  before:=s[0];again:[1]GridJourneyArtifacts;
+  for k:0..<before.n {
+    r:=before.rows[k];
+    if !gv_file(again[..],dir,cast(string)r.path[0..<r.n],cast(string)r.hash[..]) {changed=true;}
+  }
+  out:[32768]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],"aethyr.grid.capture-readback.v1");jo_key(o[..],"status");jo_str(o[..],ifx ok && !changed then "passed" else "failed");
+  jo_key(o[..],"artifact_changes");jo_bool(o[..],changed);jo_key(o[..],"files");jo_arr(o[..]);
+  for k:0..<before.n {
+    r:=before.rows[k];jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],cast(string)r.path[0..<r.n]);
+    jo_key(o[..],"bytes");jo_int(o[..],r.bytes);jo_key(o[..],"sha256");jo_str(o[..],cast(string)r.hash[..]);jo_end(o[..]);
+  }
+  jo_end(o[..]);jo_key(o[..],"scope");jo_str(o[..],"Retained actual GPU/producer/texture/package/RFI transport, matching captured package and immutable hashed products. No CPU/GPU numerical comparison or current-compiler claim.");jo_end(o[..]);
+  saved:=!o[0].bad && fs_write(args_at(a[..],1),jo_text(o[..]));
+  print("% retained capture: % immutable files\n",ifx ok && !changed then "pass" else "FAIL",before.n);
+  return ifx ok && !changed && saved then 0 else 1;
+}

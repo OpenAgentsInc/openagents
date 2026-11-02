@@ -1,0 +1,78 @@
+// Same-input legacy/current driver qualification, entirely in Coax.
+// MODE LEGACY.json CURRENT.json RECEIPT.json; observations remain unmodified.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/json-f64.coax";
+ppp_equal :: (a:Jv,an:int,b:Jv,bn:int)->bool {
+  ak:=jv_kind(a,an);if ak!=jv_kind(b,bn) {return false;}
+  if ak==JV_NUMBER {x:=json_f64(jv_raw(a,an));y:=json_f64(jv_raw(b,bn));return x.ok && y.ok && x.value==y.value;}
+  if ak==JV_ARRAY || ak==JV_OBJECT {
+    n:=jv_len(a,an);if n!=jv_len(b,bn) {return false;}aa:=jv_at(a,an,0);bb:=jv_at(b,bn,0);
+    for i:0..<n {
+      node:=ifx ak==JV_OBJECT then jv_get(b,bn,jv_key(a,aa)) else bb;
+      if !ppp_equal(a,aa,b,node) {return false;}aa=a.nodes[aa].next;if ak==JV_ARRAY {bb=b.nodes[bb].next;}
+    }return true;
+  }
+  return jv_raw(a,an)==jv_raw(b,bn);
+}
+ppp_hash_for :: (d:Jv,inputs:int,base:string)->int {
+  node:=jv_at(d,inputs,0);for i:0..<jv_len(d,inputs) {if fs_base(jv_key(d,node))==base {return node;}node=d.nodes[node].next;}return -1;
+}
+ppp_cat :: (a:string,b:string,out:[]u8)->string {
+  if a.count+b.count>out.count {return "";}for i:0..<a.count {out[i]=a[i];}for i:0..<b.count {out[a.count+i]=b[i];}return cast(string)out[0..<a.count+b.count];
+}
+ppp_numeric_oracle :: (observation:string,receipt:string)->bool {
+  argv:=[6]string.["python3","aethyr/tests/raw_float_oracle.py","--observation",observation,"--receipt",receipt];out:[4096]u8;err:[4096]u8;
+  r:=proc_run(argv[..],10000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {return 2;}
+  mode:=args_at(a[..],0);old_path:=args_at(a[..],1);new_path:=args_at(a[..],2);output:=args_at(a[..],3);
+  index:=-1;names:=[5]string.["filter-format","ring8","sans-filter","sampling","session-raster"];for i:0..<5 {if mode==names[i] {index=i;}}if index<0 {return 2;}
+  old_raw:[1048576]u8;new_raw:[1048576]u8;old_nodes:[65536]JvNode;new_nodes:[65536]JvNode;od:[1]Jv;nd:[1]Jv;
+  on:=fs_read(old_path,old_raw[..]);nn:=fs_read(new_path,new_raw[..]);
+  if on<1 || nn<1 || !jv_parse(od[..],cast(string)old_raw[0..<on],old_nodes[..]) || !jv_parse(nd[..],cast(string)new_raw[0..<nn],new_nodes[..]) {return 2;}
+  old:=od[0];current:=nd[0];count:=[5]int.[40,728,40,6,6];rows:=jv_get(old,0,"results");fresh:=jv_get(current,0,"results");
+  if jv_len(old,rows)!=count[index] || jv_len(current,fresh)!=count[index] {return 1;}
+  metadata:=[5]string.["device","browser","messages","errors","source_changes"];
+  for key:metadata {if !ppp_equal(old,jv_get(old,0,key),current,jv_get(current,0,key)) {tool_errln(key);return 1;}}
+  for key:[2]string.["messages","errors"] {if jv_len(current,jv_get(current,0,key))!=0 {return 1;}}
+  if jv_len(current,jv_get(current,0,"source_changes"))!=0 {return 1;}
+  if index!=3 {for key:[3]string.["format","width","height"] {if !ppp_equal(old,jv_get(old,0,key),current,jv_get(current,0,key)) {tool_errln(key);return 1;}}}
+  oo:=jv_at(old,rows,0);nc:=jv_at(current,fresh,0);raw_words:=jv_get(current,0,"raw_words");nw:=jv_at(current,raw_words,0);
+  channels:=0;
+  for row:0..<count[index] {
+    values_key:=ifx index==3 then "actual" else "rgba";old_values:=jv_get(old,oo,values_key);new_values:=jv_get(current,nc,values_key);
+    old_words:=ifx index==4 then jv_at(old,jv_get(old,0,"raw_words"),row) else jv_get(old,oo,ifx index==3 then "raw_words" else "words");lanes:=ifx index==3 then 16 else 4;
+    if jv_len(old,old_values)!=lanes || jv_len(current,new_values)!=lanes || jv_len(old,old_words)!=lanes || jv_len(current,nw)!=lanes {return 1;}
+    if !ppp_equal(old,old_values,current,new_values) || !ppp_equal(old,old_words,current,nw) {tool_errln("GPU value/raw-word mismatch");return 1;}
+    if index==0 || index==2 {for key:[5]string.["format","x","y","lod","pixel"] {if !ppp_equal(old,jv_get(old,oo,key),current,jv_get(current,nc,key)) {tool_errln(key);return 1;}}}
+    if index==1 {if !ppp_equal(old,jv_get(old,oo,"index"),current,jv_get(current,nc,"index")) || !ppp_equal(old,old_words,current,jv_get(current,nc,"words")) {return 1;}}
+    if index==3 {for key:[2]string.["entry","wrong"] {if !ppp_equal(old,jv_get(old,oo,key),current,jv_get(current,nc,key)) {tool_errln(key);return 1;}}}
+    if index==4 && !ppp_equal(old,oo,current,nc) {return 1;}
+    channels+=lanes;oo=old.nodes[oo].next;nc=current.nodes[nc].next;nw=current.nodes[nw].next;
+  }
+  if index==1 {for key:[3]string.["discrepancies","comparison","cases_sha256"] {if !ppp_equal(old,jv_get(old,0,key),current,jv_get(current,0,key)) {tool_errln(key);return 1;}}}
+  if index==2 {if !ppp_equal(old,jv_get(old,0,"discrepancies"),current,jv_get(current,0,"discrepancies")) {return 1;}}
+  old_math_name:[4096]u8;old_math:=ppp_cat(output,".legacy-ieee754.json",old_math_name[..]);new_math_name:[4096]u8;new_math:=ppp_cat(output,".current-ieee754.json",new_math_name[..]);
+  if !ppp_numeric_oracle(old_path,old_math) || !ppp_numeric_oracle(new_path,new_math) {return 1;}
+  math_a:[131072]u8;math_b:[131072]u8;math_an:[16384]JvNode;math_bn:[16384]JvNode;ma:[1]Jv;mb:[1]Jv;
+  man:=fs_read(old_math,math_a[..]);mbn:=fs_read(new_math,math_b[..]);
+  if man<1 || mbn<1 || !jv_parse(ma[..],cast(string)math_a[0..<man],math_an[..]) || !jv_parse(mb[..],cast(string)math_b[0..<mbn],math_bn[..]) {return 1;}
+  if !ppp_equal(ma[0],jv_get(ma[0],0,"numeric_metadata_binary64_words"),mb[0],jv_get(mb[0],0,"numeric_metadata_binary64_words")) {tool_errln("exact numeric metadata words differ");return 1;}
+  if index==2 && jv_raw(ma[0],jv_get(ma[0],0,"max_error_binary64_word"))!=jv_raw(mb[0],jv_get(mb[0],0,"max_error_binary64_word")) {tool_errln("max_error exact binary64 word differs");return 1;}
+  input_key:=ifx index==3 then "source_inputs" else "inputs";old_inputs:=jv_get(old,0,input_key);new_inputs:=jv_get(current,0,input_key);input:=jv_at(old,old_inputs,0);matched:=0;
+  for i:0..<jv_len(old,old_inputs) {
+    base:=fs_base(jv_key(old,input));
+    if base!="chrome.ts" && !(base.count>6 && base[0..<6]=="check_") && !(index==4 && base=="webgpu-probe.coax") {
+      target:=ppp_hash_for(current,new_inputs,base);if target<0 || !ppp_equal(old,input,current,target) {tool_errln(base);return 1;}matched+=1;
+    }input=old.nodes[input].next;
+  }
+  receipt:[2048]u8;o:[1]Jo;jo_start(o[..],receipt[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.primitive-webgpu.driver-parity.v1");
+  jo_key(o[..],"mode");jo_str(o[..],mode);jo_key(o[..],"cases");jo_int(o[..],count[index]);jo_key(o[..],"raw_u32_channels");jo_int(o[..],channels);jo_key(o[..],"same_hash_bound_resource_inputs");jo_int(o[..],matched);
+  jo_key(o[..],"legacy");jo_str(o[..],old_path);jo_key(o[..],"current");jo_str(o[..],new_path);jo_key(o[..],"status");jo_str(o[..],"pass");jo_end(o[..]);
+  if o[0].bad || !fs_write(output,jo_text(o[..])) {return 1;}print("%: % cases / % exact raw words, all original observations, metadata, numeric verdicts and % resource hashes agree\n",mode,count[index],channels,matched);return 0;
+}

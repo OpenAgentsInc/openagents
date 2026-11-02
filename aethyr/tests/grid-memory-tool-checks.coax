@@ -1,0 +1,74 @@
+// Same-Wasm metadata and actual refusal parity against the old observer.
+// grid-memory-tool-checks NEW_IMAGE OLD_DRIVER.ts ORIGINAL.wasm OUTDIR [--new-stack]
+#load "grid-memory-policy.coax";
+#load "../render/tests/qualification-files.coax";
+gm_saved :: (dir: string,name: string,text: string) -> bool {path:[4096]u8;return fs_write(fs_join(dir,name,path[..]),text);}
+gm_compare :: (old_file: string,new_file: string) -> bool {
+  old_bytes:[262144]u8;new_bytes:[262144]u8;old_nodes:[8192]JvNode;new_nodes:[8192]JvNode;old_doc:[1]Jv;new_doc:[1]Jv;
+  if !rtq_json_file(old_file,old_bytes[..],old_nodes[..],old_doc[..]) || !rtq_json_file(new_file,new_bytes[..],new_nodes[..],new_doc[..]) {return false;}
+  for key:[19]string.["schema","status","scope","wasm_sha256","minimum_pages","maximum_pages","stack_pointer_initial","heap_base","state_size","max_vertices","vertex_floats","uniform_floats","arena_base","arena_need","arena_pages","final_memory_bytes","growth_error","effects","failures"] {
+    left:[65536]u8;right:[65536]u8;lo:[1]Jo;ro:[1]Jo;jo_start(lo[..],left[..]);jo_start(ro[..],right[..]);
+    jv_write(old_doc[0],jv_get(old_doc[0],0,key),lo[..]);jv_write(new_doc[0],jv_get(new_doc[0],0,key),ro[..]);
+    if lo[0].bad || ro[0].bad || jo_text(lo[..])!=jo_text(ro[..]) {tool_err("memory observer parity differs: ");tool_errln(key);return false;}
+  }
+  return true;
+}
+tool_main :: () -> int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  if args_at(a[..],0)=="--compare" && args_count(a[..])==3 {
+    okay:=gm_compare(args_at(a[..],1),args_at(a[..],2));print("memory observer fields match: %\n",okay);return ifx okay then 0 else 1;
+  }
+  new_stack:=args_count(a[..])==5 && args_at(a[..],4)=="--new-stack";
+  if args_count(a[..])!=4 && !new_stack {return 2;}
+  image:=args_at(a[..],0);old_driver:=args_at(a[..],1);wasm:=args_at(a[..],2);directory:=args_at(a[..],3);
+  if !fs_mkdir(directory) {return 2;}
+  bytes:[67108864]u8;count:=fs_size(wasm);if count<39 || count>bytes.count || fs_read_at(wasm,0,bytes[0..<count])!=count {return 2;}
+  source:=bytes[0..<count];d:=gm_describe(source);if !d.valid || d.stack!=4194304 || d.maximum!=1024 {return 2;}
+  // Locate the exact first global initializer through section framing, then
+  // replace 4194304 with4194303 using the same four-byte signed LEB width.
+  cursor:[1]GmCursor;cursor[0].at=8;stack_at:= -1;maximum_at:= -1;
+  while cursor[0].at<count {
+    kind:=gm_byte(source,cursor[..]);length:=gm_uleb(source,cursor[..]);begin:=cursor[0].at;end:=begin+length;
+    if cursor[0].bad || length>count-begin {return 2;}
+    section:=source[begin..<end];s:[1]GmCursor;
+    if kind==6 {globals:=gm_uleb(section,s[..]);tag:=gm_byte(section,s[..]);mutable:=gm_byte(section,s[..]);op:=gm_byte(section,s[..]);stack_at=begin+s[0].at;}
+    if kind==2 {
+      imports:=gm_uleb(section,s[..]);for i:0..<imports {
+        gm_skip_name(section,s[..]);gm_skip_name(section,s[..]);item:=gm_byte(section,s[..]);
+        if item==0 {type_index:=gm_uleb(section,s[..]);}else if item==2 {flags:=gm_uleb(section,s[..]);minimum:=gm_uleb(section,s[..]);maximum_at=begin+s[0].at;maximum:=gm_uleb(section,s[..]);}else {return 2;}
+      }
+    }
+    cursor[0].at=end;
+  }
+  if stack_at<0 || maximum_at<0 || stack_at>count-4 || maximum_at>count-2 {return 2;}
+  expected:=[4]u8.[128,128,128,2];for i:0..<4 {if source[stack_at+i]!=expected[i] {return 2;}}
+  if source[maximum_at]!=128 || source[maximum_at+1]!=8 {return 2;}
+  first_control:=ifx new_stack then 1 else 0;end_control:=ifx new_stack then 2 else 4;
+  for control:first_control..<end_control {
+    case_buf:[128]u8;co:[1]Jo;jo_start(co[..],case_buf[..]);jo_put(co[..],"control-");jo_int(co[..],control);
+    dir_buf:[4096]u8;dir:=fs_join(directory,jo_text(co[..]),dir_buf[..]);if !fs_mkdir(dir) {return 2;}
+    if control==0 {bytes[0]=1;}
+    if control==1 {for i:0..<3 {bytes[stack_at+i]=255;}bytes[stack_at+3]=1;}
+    if control==2 {bytes[maximum_at]=232;bytes[maximum_at+1]=7;}
+    size:=ifx control==3 then count/2 else count;
+    file_buf:[4096]u8;file:=fs_join(dir,"control.wasm",file_buf[..]);if !fs_write(file,cast(string)bytes[0..<size]) {return 1;}
+    first_implementation:=ifx new_stack then 1 else 0;
+    for implementation:first_implementation..<2 {
+      result_buf:[4096]u8;result:=fs_join(dir,ifx implementation==0 then "legacy.json" else "coax.json",result_buf[..]);
+      old:=[4]string.["bun",old_driver,file,result];new:=[3]string.[image,file,result];env:[]string;
+      argv:=ifx implementation==0 then old[..] else new[..];out:[1048576]u8;err:[65536]u8;
+      r:=rtq_run_raw(argv,env,60000,out[..],err[..]);
+      if !rtq_record_run(dir,ifx implementation==0 then "legacy-command" else "coax-command",argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) ||
+        r.started!=0 || r.status!=1 || r.timed_out || r.cut {return 1;}
+    }
+    if control==1 {
+      left_buf:[4096]u8;right_buf:[4096]u8;if !gm_compare(fs_join(dir,"legacy.json",left_buf[..]),fs_join(dir,"coax.json",right_buf[..])) {return 1;}
+    }
+    print("memory refusal control%: both implementations refuse, no process timeout\n",control);
+    // Restore only the changed literal bytes before the next independent case.
+    if control==0 {bytes[0]=0;}
+    if control==1 {for i:0..<3 {bytes[stack_at+i]=128;}bytes[stack_at+3]=2;}
+    if control==2 {bytes[maximum_at]=128;bytes[maximum_at+1]=8;}
+  }
+  return 0;
+}

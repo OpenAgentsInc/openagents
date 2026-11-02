@@ -1,0 +1,69 @@
+// Pure verdicts shared by native qualification tools. These compare typed
+// integer JSON receipts and emitted ABI declarations, not renderer arithmetic.
+#load "../../../coax/lib/json/json.coax";
+#authority;
+#load "tooling-policy-checks.coax";
+rtq_equal :: (a:Jv,ai:int,b:Jv,bi:int)->bool {
+  kind:=jv_kind(a,ai);if kind==0 || kind!=jv_kind(b,bi) {return false;}
+  if kind==JV_STRING {
+    x:[16384]u8;y:[16384]u8;n:=jv_str(a,ai,x[..]);m:=jv_str(b,bi,y[..]);
+    if n!=m {return false;}if n== -1 {return false;}return cast(string)x[0..<n]==cast(string)y[0..<m];
+  }
+  if kind==JV_NUMBER {return jv_raw(a,ai)==jv_raw(b,bi);}
+  if kind==JV_ARRAY {
+    if jv_len(a,ai)!=jv_len(b,bi) {return false;}
+    for i:0..<jv_len(a,ai) {if !rtq_equal(a,jv_at(a,ai,i),b,jv_at(b,bi,i)) {return false;}}return true;
+  }
+  if kind==JV_OBJECT {
+    if jv_len(a,ai)!=jv_len(b,bi) {return false;}
+    child:=a.nodes[ai].first;
+    while child!=-1 {
+      key:=jv_key(a,child);other:=rtq_member(b,bi,key);
+      if rtq_member(a,ai,key)!=child || !rtq_equal(a,child,b,other) {return false;}
+      child=a.nodes[child].next;
+    }return true;
+  }
+  return true;
+}
+// Native/frozen receipt field names are canonical ASCII JSON keys.
+rtq_member :: (d:Jv,parent:int,key:string)->int {
+  found:=-1;child:=d.nodes[parent].first;
+  while child!=-1 {
+    if jv_key(d,child)==key {if found!=-1 {return -1;}found=child;}child=d.nodes[child].next;
+  }return found;
+}
+rtq_find :: (text:string,needle:string,begin:int)->int {
+  if begin<0 {return -1;}
+  for i:begin..<text.count-needle.count+1 {if text[i..<i+needle.count]==needle {return i;}}return -1;
+}
+rtq_space :: (c:u8)->bool {return c<=32;}
+rtq_identifier :: (c:u8)->bool {return (c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='_';}
+rtq_word :: (s:string,index:int)->string {
+  at:=0;word:=0;
+  while at<s.count {
+    while at<s.count && rtq_space(s[at]) {at+=1;}
+    begin:=at;while at<s.count && !rtq_space(s[at]) {at+=1;}
+    if begin!=at {if word==index {return s[begin..<at];}word+=1;}
+  }return "";
+}
+rtq_tail :: (s:string)->string {
+  end:=0;for c,i:s {if !rtq_space(c) {end=i+1;}}begin:=end;
+  while begin>0 && rtq_identifier(s[begin-1]) {begin-=1;}return s[begin..<end];
+}
+rtq_fields :: (header:string,name:string,expected:string)->bool {
+  marker:[512]u8;o:[1]Jo;jo_start(o[..],marker[..]);jo_put(o[..],"struct coax_t_");jo_put(o[..],name);jo_put(o[..]," {");if o[0].bad {return false;}
+  start:=rtq_find(header,jo_text(o[..]),0);if start<0 {return false;}at:=start+o[0].n;end:=rtq_find(header,"}",at);if end== -1 {return false;}
+  return rtq_body(header[at..<end],expected);
+}
+rtq_body :: (body:string,expected:string)->bool {
+  begin:=0;field:=0;
+  for c,i:body {
+    if c=='{' || c=='}' {return false;}
+    if c==';' {
+      field_name:=rtq_tail(body[begin..<i]);if field_name.count==0 || field_name!=rtq_word(expected,field) {return false;}
+      field+=1;begin=i+1;
+    }
+  }
+  for c:body[begin..<body.count] {if !rtq_space(c) {return false;}}
+  return rtq_word(expected,field).count==0;
+}

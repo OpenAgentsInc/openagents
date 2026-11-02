@@ -1,0 +1,115 @@
+// Actual scalar C facade with the same five source-loss controls as the
+// retained Python runner. Coax owns processes, deadlines, files and receipts.
+//   COAX=/qualified/coax coax/web/tool.sh aethyr/tests/check-render-host-wire.coax --c Render.c --header Render.h --out DIR
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+#load "render-wire-policy.coax";
+RW_DATA :: 33554432;
+RwFault :: struct { name: string; needle: string; replacement: string; }
+RW_FAULTS :: [5] RwFault.[
+  RwFault.{name="ack", needle="coax_t_RenderHostBool q=aethyr_render_bool(submitted);if(!q.ok)return;render_uploads.states.e[slot]=aethyr_render_upload_ack(render_uploads.states.e[slot],q.value);", replacement="render_uploads.states.e[slot]=aethyr_render_upload_ack(render_uploads.states.e[slot],submitted!=0);"},
+  RwFault.{name="pipeline", needle="coax_t_RenderHostBool q=aethyr_render_bool(ready);if(!q.ok)return COAX_RenderPackageStatus_invalid;return aethyr_render_package_pipeline(candidate_view(),entry,q.value);", replacement="return aethyr_render_package_pipeline(candidate_view(),entry,ready!=0);"},
+  RwFault.{name="mesh-capacity", needle="aethyr_render_mesh_placeholder(render_descriptor_profile,set,resource,device_capacity)", replacement="aethyr_render_mesh_placeholder(render_descriptor_profile,set,resource,16)"},
+  RwFault.{name="draw-object", needle="aethyr_render_words(address,render_draw_base,render_draw_capacity,bytes)", replacement="aethyr_render_words(address,0,memory_bytes,bytes)"},
+  RwFault.{name="draw-null", needle="coax_t_RenderHostByteView span=aethyr_render_asset_span(address,render_draw_capacity,bytes,memory_bytes);", replacement="coax_t_RenderHostByteView span={.status=COAX_RenderFrameStatus_ok};"}
+];
+rw_join :: (a: string, b: string, out: [] u8) -> string { return fs_join(a, b, out); }
+rw_hash :: (path: string, hash: [] u8, data: [] u8) -> bool {
+  n := fs_read(path, data); return n >= 0 && S_hex(S_hash(cast(string) data[0..<n]), hash);
+}
+rw_run :: (argv: [] string, label: string, dir: string, negative: bool, deadline: int) -> bool {
+  remaining := proc_left(deadline, proc_now_ms());
+  if remaining == 0 { return false; }
+  ms := ifx remaining < 180000 then remaining else 180000;
+  stdout: [1048576] u8; stderr: [1048576] u8;
+  began := proc_now_ms(); result := proc_run(argv, ms, stdout[..], stderr[..]);
+  path: [4096] u8; name: [4096] u8; suffix := [2] string.[label, ".log"];
+  n := 0; for part: suffix { for c: part { name[n] = c; n += 1; } }
+  log_path := rw_join(dir, cast(string) name[0..<n], path[..]);
+  if !fs_write(log_path, cast(string) stdout[0..<result.out_n]) || !fs_append(log_path, cast(string) stderr[0..<result.err_n]) { return false; }
+  json: [16384] u8; o: [1] Jo; jo_start(o[..], json[..]); jo_obj(o[..]);
+  jo_key(o[..], "label"); jo_str(o[..], label); jo_key(o[..], "command"); jo_arr(o[..]); for a: argv { jo_str(o[..], a); } jo_end(o[..]);
+  jo_key(o[..], "started"); jo_int(o[..], result.started); jo_key(o[..], "exit_code"); jo_int(o[..], result.status);
+  elapsed:=proc_now_ms()-began;jo_key(o[..], "milliseconds"); jo_int(o[..], elapsed);
+  seconds:[64]u8;so:[1]Jo;jo_start(so[..],seconds[..]);jo_int(so[..],elapsed/1000);jo_byte(so[..],'.');
+  jo_byte(so[..],cast(u8)('0'+elapsed/100%10));jo_byte(so[..],cast(u8)('0'+elapsed/10%10));jo_byte(so[..],cast(u8)('0'+elapsed%10));
+  jo_key(o[..], "seconds");jo_raw(o[..],jo_text(so[..]));jo_key(o[..],"log");jo_str(o[..],log_path);
+  jo_key(o[..], "timed_out"); jo_bool(o[..], result.timed_out); jo_key(o[..], "cut"); jo_bool(o[..], result.cut);
+  jo_key(o[..], "expected_negative"); jo_bool(o[..], negative); jo_end(o[..]);
+  receipt: [4096] u8; rp := rw_join(dir, "commands.jsonl", receipt[..]);
+  if o[0].bad || !fs_append(rp, jo_text(o[..])) || !fs_append(rp, "\n") { return false; }
+  return rw_outcome(result.started, result.status, result.timed_out, result.cut, negative);
+}
+rw_build_run :: (compiler: string, source: string, work: string, dir: string, mode: int, name: string, negative: bool, deadline: int) -> bool {
+  driver_path: [4096] u8; dp := rw_join(work, "wire.c", driver_path[..]);
+  exe_path: [4096] u8; ep := rw_join(work, name, exe_path[..]);
+  include: [4100] u8; include[0]='-'; include[1]='I'; for i: 0..<work.count { include[i + 2] = work[i]; }
+  argv: [24] string; n := 0;
+  argv[n]=compiler;n+=1;argv[n]="-std=c11";n+=1;argv[n]="-ffp-contract=off";n+=1;argv[n]="-fno-fast-math";n+=1;
+  argv[n]=ifx mode==0 then "-O0" else ifx mode==1 then "-O2" else "-O1";n+=1;
+  if mode==2 {argv[n]="-fsanitize=address,undefined";n+=1;argv[n]="-fno-omit-frame-pointer";n+=1;}
+  argv[n]=cast(string)include[0..<work.count+2];n+=1;argv[n]=source;n+=1;argv[n]=dp;n+=1;argv[n]="-lm";n+=1;argv[n]="-o";n+=1;argv[n]=ep;n+=1;
+  build_label: [256] u8; bn := 0; for c: name {build_label[bn]=c;bn+=1;} for c: "-build" {build_label[bn]=c;bn+=1;}
+  if !rw_run(argv[0..<n], cast(string)build_label[0..<bn], dir, false, deadline) {return false;}
+  run_label: [256] u8; rn := 0; for c: name {run_label[rn]=c;rn+=1;} for c: "-run" {run_label[rn]=c;rn+=1;}
+  run := [1]string.[ep];return rw_run(run[..],cast(string)run_label[0..<rn],dir,negative,deadline);
+}
+tool_main :: () -> int #export_c {
+  args: [1] Args; if !args_load(args[..]) {return 2;}
+  source := args_value(args[..],"--c",""); header := args_value(args[..],"--header",""); out := args_value(args[..],"--out","");
+  if source=="" || header=="" || out=="" {tool_errln("usage: check-render-host-wire.coax --c Render.c --header Render.h --out DIR");return 2;}
+  if !fs_mkdir(out) {return 1;}
+  receipt_path: [4096]u8; receipt := rw_join(out,"qualification.json",receipt_path[..]);
+  if !fs_write(receipt,"{\"schema\":\"aethyr.render.browser-wire.v1\",\"status\":\"failed_or_incomplete\",\"commands\":\"per-mode commands.jsonl\"}\n") {return 1;}
+  face_bytes: [1048576]u8; face_n:=fs_read("coax/web/render-face.c",face_bytes[..]);
+  driver_bytes: [65536]u8; driver_n:=fs_read("aethyr/tests/render-host-wire.c",driver_bytes[..]);
+  header_bytes: [1048576]u8; header_n:=fs_read(header,header_bytes[..]);
+  if face_n<1 || driver_n<1 || header_n<1 {return 1;}
+  face:=cast(string)face_bytes[0..<face_n]; driver:=cast(string)driver_bytes[0..<driver_n]; hd:=cast(string)header_bytes[0..<header_n];
+  data: [RW_DATA]u8; env: [4096]u8; compiler:=proc_getenv("CC",env[..]); if compiler=="" {compiler="cc";}
+  image_path: [4096]u8; image_n:=cxargs_len(0); if image_n<1 || image_n>image_path.count {return 1;}
+  for i:0..<image_n {image_path[i]=cast(u8)cxargs_byte(0,i);}
+  tool_image:=cast(string)image_path[0..<image_n];
+  compiler_path: [4096]u8; tool_compiler:=proc_getenv("COAX",compiler_path[..]); if tool_compiler=="" {tool_compiler="coax/bin/coax";}
+  paths := [10]string.[source,header,"coax/web/render-face.c","aethyr/tests/render-host-wire.c","aethyr/render/host-policy.coax","aethyr/render/host.coax","aethyr/tests/check-render-host-wire.coax","aethyr/tests/render-wire-policy.coax",tool_image,tool_compiler];
+  before: [10][64]u8;
+  for i: 0..<paths.count {if !rw_hash(paths[i],before[i][..],data[..]) {return 1;}}
+  deadline:=proc_now_ms()+810000; changed: [1048576]u8; path: [4096]u8; work_path: [4096]u8;
+  for mode: 0..<3 {
+    name:=ifx mode==0 then "debug" else ifx mode==1 then "optimized" else "sanitized";
+    work:=rw_join(out,name,work_path[..]); if !fs_mkdir(work) {return 1;}
+    if !fs_write(rw_join(work,"Render.h",path[..]),hd) || !fs_write(rw_join(work,"wire.c",path[..]),driver) || !fs_write(rw_join(work,"RenderFace.c",path[..]),face) {return 1;}
+    if !rw_build_run(compiler,source,work,work,mode,"wire",false,deadline) {return 1;}
+    for i: 0..<RW_FAULTS.count {
+      f:=RW_FAULTS[i]; alternate:=rw_replace(face,f.needle,f.replacement,changed[..]);
+      if alternate=="" || !fs_write(rw_join(work,"RenderFace.c",path[..]),alternate) {return 1;}
+      if !rw_build_run(compiler,source,work,work,mode,f.name,true,deadline) {return 1;}
+    }
+    if !fs_write(rw_join(work,"RenderFace.c",path[..]),face) {return 1;}
+  }
+  json:[65536]u8;o:[1]Jo;jo_start(o[..],json[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.browser-wire.v1");
+  jo_key(o[..],"status");jo_str(o[..],"passed");jo_key(o[..],"native_modes");jo_int(o[..],3);jo_key(o[..],"planted_controls_per_mode");jo_int(o[..],5);
+  jo_key(o[..],"inputs");jo_obj(o[..]);
+  for i:0..<paths.count {
+    actual:[64]u8;
+    if !rw_hash(paths[i],actual[..],data[..]) || cast(string)actual[..]!=cast(string)before[i][..] {return 1;}
+    jo_key(o[..],paths[i]);jo_str(o[..],cast(string)actual[..]);
+  }
+  jo_end(o[..]);jo_key(o[..],"source_changes");jo_arr(o[..]);jo_end(o[..]);
+  jo_key(o[..],"commands");jo_arr(o[..]);
+  for mode:0..<3 {
+    mode_name:=ifx mode==0 then "debug" else ifx mode==1 then "optimized" else "sanitized";
+    mode_path:[4096]u8;cmd_path:[4096]u8;
+    work:=rw_join(out,mode_name,mode_path[..]);n:=fs_read(rw_join(work,"commands.jsonl",cmd_path[..]),data[..]);if n<0 {return 1;}
+    at:=0;while at<n {end:=at;while end<n && data[end]!='\n' {end+=1;}if end>at {jo_raw(o[..],cast(string)data[at..<end]);}at=end+1;}
+  }
+  jo_end(o[..]);
+  jo_key(o[..],"scope");jo_str(o[..],"Actual supplied generated-C/header byte inputs and scalar C facade. A tool port, not fresh producer emission or current-main compiler qualification.");
+  jo_end(o[..]);if o[0].bad || !fs_write(receipt,jo_text(o[..])) {return 1;}
+  print("wire facade: 3 native modes, 15 planted controls caught, source fences clean\n");
+  return 0;
+}

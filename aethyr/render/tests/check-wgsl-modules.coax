@@ -1,0 +1,113 @@
+// Compile every distinct supplied package WGSL module in muted headless Chrome.
+// Coax owns loops, manifests/hashes, owner mappings, controls and verdicts.
+//   coax/web/tool.sh aethyr/render/tests/check-wgsl-modules.coax --packages DIR --work-dir NEW_DIR --receipt NEW_FILE [--reference OLD_RECEIPT] [--explore-stale-compiler]
+#load "qualification-files.coax";
+#load "wgsl-tool-policy.coax";
+#load "../../tests/webgpu-session.coax";
+WGT_EFFECTS :: "aethyr/render/tests/wgsl-module-effects.js";
+WGT_MODULES :: 128;
+WGT_SOURCE :: 524288;
+WGT_CONTROL :: "not a WGSL program";
+WgtModule :: struct {hash:[64]u8;}
+WgtOwner :: struct {index:int;slug:[128]u8;n:int;set:int;}
+WgtModules :: struct {modules:[WGT_MODULES]WgtModule;n:int;owners:[256]WgtOwner;declared:int;profiles:int;}
+wgt_filename :: (s:[]WgtModules,k:int,out:[]u8)->string {
+  if k<0 || k>=s[0].n {return "";}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],cast(string)s[0].modules[k].hash[..]);jo_put(o[..],".wgsl");return ifx o[0].bad then "" else jo_text(o[..]);
+}
+wgt_owners :: (s:[]WgtModules,k:int,o:[]Jo) {
+  jo_arr(o);for i:0..<s[0].declared {owner:=s[0].owners[i];if owner.index==k {jo_obj(o);jo_key(o,"profile");jo_str(o,cast(string)owner.slug[0..<owner.n]);jo_key(o,"binding_set");jo_int(o,owner.set);jo_end(o);}}jo_end(o);
+}
+wgt_reference_input :: (d:Jv,suffix:string,digest:string)->bool {
+  if d.nodes.count==0 {return true;}map:=jv_get(d,0,"source_inputs");if jv_kind(d,map)!=JV_OBJECT {return false;}found:=false;child:=d.nodes[map].first;
+  while child!=-1 {path:=jv_key(d,child);if path.count>suffix.count && path[path.count-suffix.count-1]=='/' && path[path.count-suffix.count..<path.count]==suffix {if found || !wgt_same_text(d,child,digest) {return false;}found=true;}child=d.nodes[child].next;}return found;
+}
+wgt_collect :: (s:[]WgtModules,snapshot:Jv,packages:string,payload:string,inputs:[]RtqInputs,reference:Jv)->bool {
+  profiles:=jv_get(snapshot,0,"profiles");if jv_kind(snapshot,profiles)!=JV_ARRAY || jv_len(snapshot,profiles)<1 {return false;}s[0].profiles=jv_len(snapshot,profiles);
+  for p:0..<s[0].profiles {
+    profile:=jv_at(snapshot,profiles,p);slug_buf:[128]u8;slug_n:=jv_str(snapshot,jv_get(snapshot,profile,"slug"),slug_buf[..]);if slug_n<1 {return false;}slug:=cast(string)slug_buf[0..<slug_n];if !wgt_name(slug) {return false;}
+    paths:[4][4096]u8;directory:=fs_join(packages,slug,paths[0][..]);manifest:=fs_join(directory,"render.json",paths[1][..]);bytes:[1048576]u8;nodes:[32768]JvNode;d:[1]Jv;
+    if !rtq_input_add(inputs,manifest) || !rtq_json_file(manifest,bytes[..],nodes[..],d[..]) || !wgt_same_text(d[0],jv_get(d[0],0,"schema"),"aethyr.render.package.v1") || !wgt_same_text(d[0],jv_get(d[0],0,"slug"),slug) {return false;}
+    hash:[64]u8;suffix:=fs_join(slug,"render.json",paths[2][..]);if !rtq_hash_file(manifest,hash[..]) || !wgt_reference_input(reference,suffix,cast(string)hash[..]) {return false;}
+    modules:=jv_get(d[0],0,"modules");if jv_kind(d[0],modules)!=JV_ARRAY || jv_len(d[0],modules)==0 {return false;}
+    for m:0..<jv_len(d[0],modules) {
+      row:=jv_at(d[0],modules,m);name:[256]u8;digest:[64]u8;n:=jv_str(d[0],jv_get(d[0],row,"wgsl_file"),name[..]);hn:=jv_str(d[0],jv_get(d[0],row,"wgsl_sha256"),digest[..]);
+      if n<1 || !wgt_name(cast(string)name[0..<n]) || hn!=64 || !wgt_digest(cast(string)digest[..]) || s[0].declared>=256 {return false;}
+      path:=fs_join(directory,cast(string)name[0..<n],paths[1][..]);data:[WGT_SOURCE]u8;size:=fs_read(path,data[..]);
+      if size<1 || !rtq_input_add(inputs,path) || !S_hex(S_hash(cast(string)data[0..<size]),hash[..]) || cast(string)hash[..]!=cast(string)digest[..] {return false;}
+      suffix=fs_join(slug,cast(string)name[0..<n],paths[2][..]);if !wgt_reference_input(reference,suffix,cast(string)hash[..]) {return false;}
+      index:=-1;for k:0..<s[0].n {if cast(string)s[0].modules[k].hash[..]==cast(string)digest[..] {index=k;}}
+      if index== -1 {if s[0].n==WGT_MODULES {return false;}index=s[0].n;s[0].modules[index].hash=digest;s[0].n+=1;file:[256]u8;target:=fs_join(payload,wgt_filename(s,index,file[..]),paths[3][..]);if !fs_write(target,cast(string)data[0..<size]) || !rtq_input_add(inputs,target) {return false;}}
+      owner:WgtOwner;owner.index=index;owner.slug=slug_buf;owner.n=slug_n;owner.set=jv_int(d[0],jv_get(d[0],row,"binding_set"),-1);if owner.set<0 {return false;}s[0].owners[s[0].declared]=owner;s[0].declared+=1;
+    }
+  }return s[0].n>0;
+}
+wgt_request :: (operation:string,label:string,code:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"operation");jo_str(o[..],operation);jo_key(o[..],"label");jo_str(o[..],label);jo_key(o[..],"code");jo_str(o[..],code);jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+wgt_call :: (c:[]Cdp,request:string,work:string,label:string)->int {
+  if request.count==0 {return -1;}value:=wp_run(c,"aethyrWgslModuleStart","aethyrWgslModulePoll()",request);path:[4096]u8;name:[256]u8;o:[1]Jo;jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],".json");
+  if value<0 {saved:=fs_write(fs_join(work,jo_text(o[..]),path[..]),cast(string)c[0].msg[0..<c[0].msg_n]);return -1;}
+  bytes:[262144]u8;w:[1]Jo;jo_start(w[..],bytes[..]);jv_write(c[0].doc[0],value,w[..]);if w[0].bad || !fs_write(fs_join(work,jo_text(o[..]),path[..]),jo_text(w[..])) {return -1;}return value;
+}
+wgt_capture :: (c:[]Cdp,s:[]WgtModules,url:string,payload:string,work:string,deadline:int,out:[]u8)->int {
+  effects:[65536]u8;en:=fs_read(WGT_EFFECTS,effects[..]);browser:[65536]u8;if en<1 {return -1;}bn:=wp_open(c,url,cast(string)effects[0..<en],browser[..]);if bn<1 {return -1;}
+  request:[CDP_REQ]u8;value:=wgt_call(c,wgt_request("open","","",request[..]),work,"device");if value<0 {return -1;}
+  device:[65536]u8;dw:[1]Jo;jo_start(dw[..],device[..]);jv_write(c[0].doc[0],jv_get(c[0].doc[0],value,"device"),dw[..]);if dw[0].bad {return -1;}device_n:=dw[0].n;
+  rows:[1048576]u8;o:[1]Jo;jo_start(o[..],rows[..]);jo_arr(o[..]);errors:=0;warnings:=0;observed:=0;
+  for k:0..<s[0].n {
+    if proc_now_ms()>=deadline {return -1;}name:[256]u8;path:[4096]u8;code:[WGT_SOURCE]u8;cn:=fs_read(fs_join(payload,wgt_filename(s,k,name[..]),path[..]),code[..]);if cn<1 {return -1;}
+    label:[128]u8;lw:[1]Jo;jo_start(lw[..],label[..]);jo_put(lw[..],"module-");jo_int(lw[..],k);
+    value=wgt_call(c,wgt_request("compile",cast(string)s[0].modules[k].hash[..],cast(string)code[0..<cn],request[..]),work,jo_text(lw[..]));if value<0 {return -1;}
+    d:=c[0].doc[0];if !wgt_same_text(d,jv_get(d,value,"code_sha256"),cast(string)s[0].modules[k].hash[..]) || !wgt_admit(d,value,false) {tool_errln("WGSL program compilation or transported byte identity failed");return -1;}
+    summary:=wgt_messages(d,value);errors+=summary.errors;warnings+=summary.warnings;observed+=1;
+    jo_obj(o[..]);jo_key(o[..],"hash");jo_str(o[..],cast(string)s[0].modules[k].hash[..]);jo_key(o[..],"owners");wgt_owners(s,k,o[..]);jo_key(o[..],"messages");jv_write(d,jv_get(d,value,"messages"),o[..]);jo_key(o[..],"validation_error");jv_write(d,jv_get(d,value,"validation_error"),o[..]);jo_end(o[..]);
+  }jo_end(o[..]);if o[0].bad || proc_now_ms()>=deadline {return -1;}
+  value=wgt_call(c,wgt_request("compile","",WGT_CONTROL,request[..]),work,"malformed-control");if value<0 {return -1;}d:=c[0].doc[0];hash:[64]u8;
+  if !S_hex(S_hash(WGT_CONTROL),hash[..]) || !wgt_same_text(d,jv_get(d,value,"code_sha256"),cast(string)hash[..]) || !wgt_admit(d,value,true) {tool_errln("malformed WGSL was not refused by both compilation and validation scope");return -1;}
+  control:[65536]u8;co:[1]Jo;jo_start(co[..],control[..]);jo_obj(co[..]);jo_key(co[..],"errors");jo_int(co[..],wgt_messages(d,value).errors);jo_key(co[..],"validation_error");jv_write(d,jv_get(d,value,"validation_error"),co[..]);jo_end(co[..]);if co[0].bad {return -1;}control_n:=co[0].n;
+  value=wgt_call(c,wgt_request("close","","",request[..]),work,"close");if value<0 {return -1;}d=c[0].doc[0];uncaptured:=rtq_member(d,value,"uncaptured");if jv_kind(d,uncaptured)!=JV_ARRAY || !wgt_complete(errors,jv_len(d,uncaptured),observed,s[0].n,true,false) {return -1;}
+  writer:[1]Jo;jo_start(writer[..],out);jo_obj(writer[..]);jo_key(writer[..],"profiles");jo_int(writer[..],s[0].profiles);jo_key(writer[..],"declared_modules");jo_int(writer[..],s[0].declared);jo_key(writer[..],"unique_modules");jo_int(writer[..],s[0].n);jo_key(writer[..],"errors");jo_int(writer[..],errors);jo_key(writer[..],"warnings");jo_int(writer[..],warnings);
+  jo_key(writer[..],"browser");jo_raw(writer[..],cast(string)browser[0..<bn]);jo_key(writer[..],"device");jo_raw(writer[..],cast(string)device[0..<device_n]);jo_key(writer[..],"observations");jo_raw(writer[..],jo_text(o[..]));jo_key(writer[..],"uncaptured");jv_write(d,uncaptured,writer[..]);jo_key(writer[..],"control");jo_raw(writer[..],cast(string)control[0..<control_n]);jo_end(writer[..]);return ifx writer[0].bad then -1 else writer[0].n;
+}
+wgt_reference_result :: (reference:Jv,result:Jv)->bool {
+  if reference.nodes.count==0 {return true;}
+  for key:[10]string.["profiles","declared_modules","unique_modules","errors","warnings","browser","device","observations","uncaptured","control"] {
+    if !rtq_equal(reference,jv_get(reference,0,key),result,jv_get(result,0,key)) {tool_err("WGSL reference differs: ");tool_errln(key);return false;}
+  }return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}if args_has(a[..],"--serve") {return gp_serve(args_value(a[..],"--serve",""));}
+  work_arg:=args_value(a[..],"--work-dir","");packages_arg:=args_value(a[..],"--packages","");receipt:=args_value(a[..],"--receipt","");
+  if work_arg.count==0 || packages_arg.count==0 || receipt.count==0 || !fs_mkdir(work_arg) || fs_exists(receipt) {tool_errln("usage: check-wgsl-modules --packages DIR --work-dir NEW_DIR --receipt NEW_FILE [--reference OLD_FILE] [--explore-stale-compiler]");return 2;}
+  work_buf:[4096]u8;package_buf:[4096]u8;root_buf:[4096]u8;work:=fs_realpath(work_arg,work_buf[..]);packages:=fs_realpath(packages_arg,package_buf[..]);root:=fs_cwd(root_buf[..]);if work.count==0 || packages.count==0 {return 2;}
+  paths:[8][4096]u8;payload:=fs_join(work,"payload",paths[0][..]);if fs_exists(payload) || !fs_mkdir(payload) {tool_errln("refuse to replace existing WGSL inputs");return 2;}
+  compiler_buf:[4096]u8;env_coax:=proc_getenv("COAX",compiler_buf[..]);if env_coax.count==0 {env_coax="coax/bin/coax";}compiler:=args_value(a[..],"--coax",env_coax);digest_path:=args_value(a[..],"--compiler-source-digest",fs_join(fs_dir(compiler),"source-digest",paths[1][..]));
+  start:=proc_now_ms();deadline:=proc_deadline(750000,start);stdout:[RTQ_FILE]u8;stderr:[65536]u8;env:[]string;compiler_hash:[64]u8;if !rtq_hash_file(compiler,compiler_hash[..]) {return 1;}
+  version_args:=[2]string.[compiler,"version"];r:=rtq_command(version_args[..],env,deadline,work,"compiler-version",stdout[..],stderr[..]);if !rtq_ok(r) {return 1;}
+  version:[4096]u8;vw:[1]Jo;jo_start(vw[..],version[..]);jo_put(vw[..],rtq_trim(cast(string)stdout[0..<r.out_n]));version_n:=vw[0].n;
+  current_args:=[3]string.[compiler,"source-digest",root];r=rtq_command(current_args[..],env,deadline,work,"compiler-current-source-before",stdout[..],stderr[..]);if !rtq_ok(r) {return 1;}
+  current:[4096]u8;cw:[1]Jo;jo_start(cw[..],current[..]);jo_put(cw[..],rtq_trim(cast(string)stdout[0..<r.out_n]));current_n:=cw[0].n;recorded:[4096]u8;recorded_n:=fs_read(digest_path,recorded[..]);if recorded_n<0 {return 1;}recorded_text:=rtq_trim(cast(string)recorded[0..<recorded_n]);stale:=recorded_text!=cast(string)current[0..<current_n];
+  if stale && !args_has(a[..],"--explore-stale-compiler") {tool_errln("compiler recorded/current source digests differ; rebuild before final qualification");return 1;}
+  inputs:[1]RtqInputs;if !rtq_deps(inputs[..],compiler,"aethyr/render/tests/check-wgsl-modules.coax",deadline,work,"qualifier-dependencies") || !rtq_input_add(inputs[..],compiler) || !rtq_input_add(inputs[..],digest_path) || !rtq_input_add(inputs[..],"coax/web/tool.sh") || !rtq_input_add(inputs[..],WGT_EFFECTS) {return 1;}
+  for name:[6]string.["tool-native","process-native","store-file-native","socket-native","entropy-native","entropy-foreign"] {for ext:[2]string.[".c",".h"] {p:[4096]u8;w:[1]Jo;jo_start(w[..],p[..]);jo_put(w[..],"coax/platform/");jo_put(w[..],name);jo_put(w[..],ext);if !rtq_input_add(inputs[..],jo_text(w[..])) {return 1;}}}
+  self:[4096]u8;self_n:=cxproc_self_path(self[..]);chrome:[4096]u8;chrome_path:=cdp_chrome(chrome[..]);if self_n<1 || self_n>self.count || chrome_path.count==0 || !rtq_input_add(inputs[..],cast(string)self[0..<self_n]) || !rtq_input_add(inputs[..],chrome_path) {return 1;}
+  self_hash:[64]u8;chrome_hash:[64]u8;if !rtq_hash_file(cast(string)self[0..<self_n],self_hash[..]) || !rtq_hash_file(chrome_path,chrome_hash[..]) {return 1;}
+  snapshot_path:=args_value(a[..],"--snapshot","aethyr/render/tests/catalog-6445ee0050.json");snapshot_bytes:[1048576]u8;snapshot_nodes:[32768]JvNode;snapshot:[1]Jv;if !rtq_input_add(inputs[..],snapshot_path) || !rtq_json_file(snapshot_path,snapshot_bytes[..],snapshot_nodes[..],snapshot[..]) {return 1;}
+  reference_path:=args_value(a[..],"--reference","");reference_bytes:[1048576]u8;reference_nodes:[32768]JvNode;reference:[1]Jv;if reference_path.count>0 && (!rtq_input_add(inputs[..],reference_path) || !rtq_json_file(reference_path,reference_bytes[..],reference_nodes[..],reference[..])) {return 1;}
+  s:[1]WgtModules;if !wgt_collect(s[..],snapshot[0],packages,payload,inputs[..],reference[0]) {tool_errln("WGSL package manifest/hash or retained input identity failed");return 1;}
+  mapping:[1048576]u8;mo:[1]Jo;jo_start(mo[..],mapping[..]);jo_arr(mo[..]);for k:0..<s[0].n {jo_obj(mo[..]);jo_key(mo[..],"hash");jo_str(mo[..],cast(string)s[0].modules[k].hash[..]);jo_key(mo[..],"owners");wgt_owners(s[..],k,mo[..]);jo_end(mo[..]);}jo_end(mo[..]);
+  if mo[0].bad || !fs_write(fs_join(work,"modules.json",paths[2][..]),jo_text(mo[..])) || !rtq_input_add(inputs[..],fs_join(work,"modules.json",paths[2][..])) {return 1;}
+  port_file:=fs_join(work,"origin-port",paths[3][..]);server:=gp_start_origin(port_file);if server<0 {return 1;}
+  port_text:[32]u8;pn:=-1;for attempt:0..<100 {pn=fs_read(port_file,port_text[..]);if pn>0 {break;}proc_sleep(50);}
+  result_bytes:[2097152]u8;result_n:=-1;c:[1]Cdp;
+  if pn>0 && args_whole(cast(string)port_text[0..<pn])>0 {origin:[128]u8;url:[128]u8;head:=cdp_cat2("http://127.0.0.1:",cast(string)port_text[0..<pn],origin[..]);target:=cdp_cat2(head,"/",url[..]);result_n=wgt_capture(c[..],s[..],target,payload,work,deadline,result_bytes[..]);}
+  cdp_close(c[..]);killed:=proc_kill(server,PROC_SIGKILL);waited:=proc_wait(server,5000);released:=proc_release(server);
+  if result_n<1 {tool_errln("WGSL browser compilation failed; native observations retained");return 1;}
+  result_nodes:[65536]JvNode;result:[1]Jv;if !fs_write(fs_join(work,"result.json",paths[4][..]),cast(string)result_bytes[0..<result_n]) || !jv_parse(result[..],cast(string)result_bytes[0..<result_n],result_nodes[..]) || !wgt_reference_result(reference[0],result[0]) {return 1;}
+  r=rtq_command(current_args[..],env,deadline,work,"compiler-current-source-after",stdout[..],stderr[..]);if !rtq_ok(r) || rtq_trim(cast(string)stdout[0..<r.out_n])!=cast(string)current[0..<current_n] || !rtq_inputs_match(inputs[..]) {return 1;}
+  record:[2097152]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.wgsl-compilation.v1");jo_key(o[..],"status");jo_str(o[..],ifx stale then "exploratory" else "pass");child:=result[0].nodes[0].first;while child!=-1 {jo_key(o[..],jv_key(result[0],child));jv_write(result[0],child,o[..]);child=result[0].nodes[child].next;}
+  jo_key(o[..],"compiler_version");jo_str(o[..],cast(string)version[0..<version_n]);jo_key(o[..],"compiler_sha256");jo_str(o[..],cast(string)compiler_hash[..]);jo_key(o[..],"compiler_recorded_source_digest");jo_str(o[..],recorded_text);jo_key(o[..],"compiler_current_source_digest");jo_str(o[..],cast(string)current[0..<current_n]);jo_key(o[..],"compiler_current_sources_match");jo_bool(o[..],!stale);jo_key(o[..],"qualifier_executable");jo_str(o[..],cast(string)self[0..<self_n]);jo_key(o[..],"qualifier_executable_sha256");jo_str(o[..],cast(string)self_hash[..]);jo_key(o[..],"chrome_launcher");jo_str(o[..],chrome_path);jo_key(o[..],"chrome_launcher_sha256");jo_str(o[..],cast(string)chrome_hash[..]);
+  jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],root);jo_key(o[..],"source_changes");jo_arr(o[..]);jo_end(o[..]);jo_key(o[..],"same_input_reference");jo_str(o[..],reference_path);jo_key(o[..],"same_input_reference_equal");jo_bool(o[..],reference_path.count>0);jo_key(o[..],"browser_transport_code_hashes_match");jo_bool(o[..],true);jo_key(o[..],"origin_wait_status");jo_int(o[..],waited);jo_key(o[..],"origin_and_browser_closed");jo_bool(o[..],waited!=PROC_RUNNING);jo_key(o[..],"elapsed_ms");jo_int(o[..],proc_now_ms()-start);
+  jo_key(o[..],"scope");jo_str(o[..],"All distinct actual supplied package WGSL bytes compiled by muted headless WebGPU, every owner and diagnostic retained, plus a malformed-program refusal control. Pipeline creation, draws, images and current package build provenance remain separate. Explicit exploratory compiler is not matching-main toolchain acceptance.");jo_end(o[..]);
+  if o[0].bad || !fs_mkdir(fs_dir(receipt)) || !fs_write(receipt,jo_text(o[..])) {return 1;}print("WGSL: % profiles, % declarations, % unique modules; %\n",s[0].profiles,s[0].declared,s[0].n,ifx stale then "explicit exploratory compiler" else "matching-source qualification");return 0;
+}

@@ -97,9 +97,9 @@ if [[ -x "$coax" ]]; then
     (cd "$root" && "$coax" c aethyr/render/native-texture.coax --library --header "$out/render-native/RenderTexture.h") > "$out/render-native/RenderTexture.c"
     cp "$here/render-host.c" "$here/render-host.h" "$here/render-realm.c" "$here/render-realm.h" "$here/render-textures.c" "$here/render-textures.h" "$here/render-media.c" "$here/render-media.h" "$root/aethyr/render/tests/frame-input.h" "$out/render-native/"
     (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/render/build.coax "$render_profile" "$out/render" --coax "$coax")
-    python3 "$here/render_package.py" --package "$out/render/render.json" --app "$realm" --profile "$render_profile" --output "$out/RenderIdentity.h"
+    (cd "$root" && COAX="$coax" coax/web/tool.sh verse/native/render-package.coax --package "$out/render/render.json" --app "$realm" --profile "$render_profile" --output "$out/RenderIdentity.h")
     (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/render/build.coax --asset-table "$render_profile") > "$out/render-assets.pending.json"
-    python3 "$here/render_assets.py" --table "$out/render-assets.pending.json" --package "$out/render/render.json" --web-root "$web" --output "$out/render-assets"
+    (cd "$root" && COAX="$coax" coax/web/tool.sh verse/native/render-assets.coax --table "$out/render-assets.pending.json" --package "$out/render/render.json" --web-root "$web" --output "$out/render-assets")
     rm "$out/render-assets.pending.json"
   fi
   cp "$face" "$web"/*-face.h "$web"/*-bridge.h ${faces_too[@]+"${faces_too[@]}"} "$out/"

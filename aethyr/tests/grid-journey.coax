@@ -1,0 +1,201 @@
+// The real homepage -> WALK AROUND -> Grid input/render/replay journey.
+//   COAX=QUALIFIED coax/web/tool.sh aethyr/tests/grid-journey.coax URL OUTDIR
+// Serve the built app locally. Browser effects are offline and the clock is fixed
+// by grid-journey-browser.js; Coax owns the input schedule and every verdict.
+// No golden flag is used: those frames freeze GridWalk and cannot qualify play.
+#import "Basic";
+#load "../../coax/lib/net/cdp.coax";
+#load "grid-journey-sequence.coax";
+#load "grid-journey-capture.coax";
+
+GJ_NONE :: -999999;
+GJ_GLUE :: "aethyr/tests/grid-journey-browser.js";
+GridJourneyRun :: struct {
+  frames: int; steps: int; jumps: int; rising: int; landed: bool;
+  moved: bool; rendered: bool; max_eye_move: f64;
+  start: [10] f64; last: [10] f64;
+}
+#test "a playable journey requires movement, jumps, landing, replay steps and real submissions" {
+  r := GridJourneyRun.{frames=GJ_FRAMES,steps=255,jumps=2,rising=20,landed=true,moved=true,rendered=true,max_eye_move=0.3};
+  #assert gj_complete(r);
+  r.frames-=1; #assert !gj_complete(r); r.frames+=1;
+  r.steps=0; #assert !gj_complete(r); r.steps=255;
+  r.jumps=1; #assert !gj_complete(r); r.jumps=2;
+  r.rising=0; #assert !gj_complete(r); r.rising=20;
+  r.landed=false; #assert !gj_complete(r); r.landed=true;
+  r.moved=false; #assert !gj_complete(r); r.moved=true;
+  r.rendered=false; #assert !gj_complete(r); r.rendered=true;
+  r.max_eye_move=1.1; #assert !gj_complete(r);
+}
+gj_complete :: (r: GridJourneyRun) -> bool {
+  return r.frames==GJ_FRAMES && r.steps>200 && r.jumps==2 && r.rising>10 &&
+    r.landed && r.moved && r.rendered && r.max_eye_move<=1;
+}
+gj_local :: (url: string) -> bool {
+  return (url.count>17 && url[0..<17]=="http://127.0.0.1:") ||
+    (url.count>17 && url[0..<17]=="http://localhost:");
+}
+#test "the journey runs only against an explicit local effect fixture" {
+  #assert gj_local("http://127.0.0.1:8800") && gj_local("http://localhost:8800");
+  #assert !gj_local("https://openagents.com") && !gj_local("http://127.0.0.1.evil:80") && !gj_local("");
+}
+gj_param :: (c: [] Cdp, method: string, key: string, value: string) -> bool {
+  buf: [CDP_REQ] u8; o: [1] Jo;
+  jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],key);jo_str(o[..],value);jo_end(o[..]);
+  return !o[0].bad && cdp_call(c,method,jo_text(o[..]),30000)>=0;
+}
+gj_eval :: (c: [] Cdp, expr: string) -> int { return cdp_evaluate(c,expr); }
+gj_true :: (c: [] Cdp, expr: string) -> bool {
+  at:=gj_eval(c,expr);return at>=0 && jv_raw(c[0].doc[0],at)=="true";
+}
+gj_int :: (c: [] Cdp, at: int, path: string) -> int {
+  d:=c[0].doc[0];return jv_int(d,jv_path(d,at,path),GJ_NONE);
+}
+gj_file :: (dir: string, name: string, value: string) -> bool {
+  path: [4096] u8;return fs_write(fs_join(dir,name,path[..]),value);
+}
+gj_append :: (dir: string, name: string, value: string) -> bool {
+  path: [4096] u8;return fs_append(fs_join(dir,name,path[..]),value) && fs_append(fs_join(dir,name,path[..]),"\n");
+}
+gj_wait :: (c: [] Cdp, grid: bool) -> bool {
+  until:=proc_now_ms()+120000;
+  while proc_now_ms()<until {
+    ready:=ifx grid then "!!globalThis.coaxial?.renderBindingState?.().coherent && !!globalThis.gridJourneyGlueReady" else
+      "(async()=>!!globalThis.coaxial?.ready && !!globalThis.coaxial?.gridEntry && (await globalThis.coaxialClipStep?.(1,Infinity))===1)()";
+    if gj_true(c,ready) {return true;}
+    proc_sleep(50);
+  }
+  return false;
+}
+gj_key :: (c: [] Cdp, e: GridJourneyKey) -> bool {
+  name:=ifx e.key==-4 then "ArrowLeft" else ifx e.key==-13 then "Shift" else ifx e.key==32 then " " else ifx e.key==119 then "w" else "d";
+  code:=ifx e.key==-4 then "ArrowLeft" else ifx e.key==-13 then "ShiftLeft" else ifx e.key==32 then "Space" else ifx e.key==119 then "KeyW" else "KeyD";
+  vk:=ifx e.key==-4 then 37 else ifx e.key==-13 then 16 else ifx e.key==32 then 32 else ifx e.key==119 then 87 else 68;
+  buf: [512] u8; o: [1] Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);
+  jo_key(o[..],"type");jo_str(o[..],ifx e.down then "keyDown" else "keyUp");
+  jo_key(o[..],"key");jo_str(o[..],name);jo_key(o[..],"code");jo_str(o[..],code);
+  jo_key(o[..],"windowsVirtualKeyCode");jo_int(o[..],vk);jo_key(o[..],"nativeVirtualKeyCode");jo_int(o[..],vk);jo_end(o[..]);
+  return !o[0].bad && cdp_call(c,"Input.dispatchKeyEvent",jo_text(o[..]),30000)>=0;
+}
+gj_enter :: (c: [] Cdp) -> bool {
+  // The actual Coax-drawn entry's rectangle, after normal homepage frames.
+  v:=gj_eval(c,"coaxialClipStep(181,60)");
+  at:=gj_eval(c,"Array.from({length:4},(_,axis)=>Math.round(coaxial.gridEntry(axis)))");
+  d:=c[0].doc[0];
+  if at<0 || jv_len(d,at)!=4 {return false;}
+  x0:=jv_int(d,jv_at(d,at,0),-1);y0:=jv_int(d,jv_at(d,at,1),-1);
+  x1:=jv_int(d,jv_at(d,at,2),-1);y1:=jv_int(d,jv_at(d,at,3),-1);
+  print("Grid journey: entry rectangle % % % %\n",x0,y0,x1,y1);
+  if x0<0 || y0<0 || x1<=x0 || y1<=y0 || x1>960 || y1>540 {return false;}
+  for k: 0..<2 {
+    buf:[512]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);
+    jo_key(o[..],"type");jo_str(o[..],ifx k==0 then "mousePressed" else "mouseReleased");
+    jo_key(o[..],"x");jo_int(o[..],(x0+x1)/2);jo_key(o[..],"y");jo_int(o[..],(y0+y1)/2);
+    jo_key(o[..],"button");jo_str(o[..],"left");jo_key(o[..],"clickCount");jo_int(o[..],1);jo_end(o[..]);
+    if cdp_call(c,"Input.dispatchMouseEvent",jo_text(o[..]),30000)<0 {return false;}
+  }
+  // Navigation can retire the command's execution context. Read the new URL and
+  // binding separately; a discarded old promise never earns a passed step.
+  v=gj_eval(c,"coaxialClipStep(48,60)");
+  until:=proc_now_ms()+120000;
+  while proc_now_ms()<until {
+    if gj_true(c,"location.pathname==='/realms/the-grid' && new URLSearchParams(location.search).get('from')==='home'") {return gj_wait(c,true);}
+    proc_sleep(50);
+  }
+  return false;
+}
+gj_observe :: (c: [] Cdp, r: [] GridJourneyRun, dir: string) -> bool {
+  at:=gj_eval(c,"gridJourneyRead()");d:=c[0].doc[0];
+  if at<0 || jv_raw(d,jv_path(d,at,"golden"))!="false" || gj_int(c,at,"probe[4]")!=2 {return false;}
+  pose:[10]f64;
+  for k:0..<10 {
+    n:=args_number(jv_raw(d,jv_at(d,jv_path(d,at,"pose"),k)));
+    if !n.ok || n.value!=n.value || abs(n.value)>100000 {return false;}
+    pose[k]=n.value;
+  }
+  steps:=gj_int(c,at,"probe[0]");
+  if steps<r[0].steps || steps-r[0].steps>2 {return false;}
+  r[0].steps=steps;r[0].jumps=gj_int(c,at,"probe[5]");r[0].landed=gj_int(c,at,"probe[6]")==1;
+  if r[0].frames==0 {r[0].start=pose;} else {
+    if pose[1]>r[0].last[1] {r[0].rising+=1;}
+    dx:=pose[3]-r[0].last[3];dy:=pose[4]-r[0].last[4];dz:=pose[5]-r[0].last[5];
+    moved:=sqrt(dx*dx+dy*dy+dz*dz);
+    if moved>r[0].max_eye_move {r[0].max_eye_move=moved;}
+  }
+  r[0].last=pose;
+  r[0].moved=abs(pose[0]-r[0].start[0])+abs(pose[2]-r[0].start[2])>1;
+  r[0].rendered=jv_raw(d,jv_path(d,at,"status.submitted"))=="true";
+  return gj_append(dir,"frames.jsonl",jv_raw(d,at));
+}
+gj_run :: (c: [] Cdp, url: string, dir: string, package_dir:string) -> bool {
+  glue:[65536]u8;n:=fs_read(GJ_GLUE,glue[..]);
+  if n<0 || !gj_file(dir,"browser-glue.js",cast(string)glue[0..<n]) {return false;}
+  // Chrome ignores new-document scripts until this session enables Page.
+  if cdp_call(c,"Page.enable","",30000)<0 || cdp_call(c,"Runtime.enable","",30000)<0 {return false;}
+  if cdp_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":960,\"height\":540,\"deviceScaleFactor\":1,\"mobile\":false}",30000)<0 {return false;}
+  if package_dir.count>0 && !gj_param(c,"Page.addScriptToEvaluateOnNewDocument","source",
+    "globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba16float'") {return false;}
+  print("Grid journey: open homepage\n");
+  if !gj_param(c,"Page.addScriptToEvaluateOnNewDocument","source",cast(string)glue[0..<n]) ||
+    !gj_param(c,"Page.navigate","url",url) || !gj_wait(c,false) || !gj_enter(c) {return false;}
+  // One initial frame has zero elapsed time, exactly as a freshly opened page.
+  v:=gj_eval(c,"coaxialClipStep(1,Infinity)");
+  print("Grid journey: real Grid inputs\n");
+  r:[1]GridJourneyRun;
+  for frame:1..<GJ_FRAMES+1 {
+    for k:0..<GJ_KEYS {e:=grid_journey_key(k);if e.frame==frame && !gj_key(c,e) {return false;}}
+    v=gj_eval(c,"coaxialClipStep(1,60)");
+    if v<0 || !gj_observe(c,r[..],dir) {return false;}
+    r[0].frames+=1;
+  }
+  if !gj_complete(r[0]) {return false;}
+  print("Grid journey: replay and resource controls\n");
+  at:=gj_eval(c,"({before:gridJourneyRead(),replayed:coaxial.gridReplay(),after:gridJourneyRead(),marks:Array.from({length:coaxial.gridProbe(0)},(_,step)=>coaxial.gridMark(step))})");
+  d:=c[0].doc[0];
+  if at<0 || gj_int(c,at,"replayed")!=1 || jv_raw(d,jv_path(d,at,"before.probe"))!=jv_raw(d,jv_path(d,at,"after.probe")) ||
+    jv_raw(d,jv_path(d,at,"before.pose"))!=jv_raw(d,jv_path(d,at,"after.pose")) || !gj_file(dir,"replay.json",jv_raw(d,at)) {return false;}
+  v=gj_eval(c,"globalThis.gridJourneyMissingSans=true;coaxialClipStep(1,Infinity)");
+  at=gj_eval(c,"({state:gridJourneyRead(),effects:gridJourneyEffects.faults})");d=c[0].doc[0];
+  if at<0 || jv_raw(d,jv_path(d,at,"state.status.submitted"))!="false" ||
+    jv_raw(d,jv_path(d,at,"state.status.refusal.phase"))!="resources" ||
+    gj_int(c,at,"effects[0].writeBuffer")!=0 || gj_int(c,at,"effects[0].submit")!=0 ||
+    !gj_file(dir,"resource-refusal.json",jv_raw(d,at)) {return false;}
+  v=gj_eval(c,"globalThis.gridJourneyMissingSans=false;coaxialClipStep(1,Infinity)");
+  at=gj_eval(c,"(async()=>({state:gridJourneyRead(),validation:await coaxial.renderSettled(),effects:gridJourneyEffects}))()");d=c[0].doc[0];
+  if at<0 || jv_raw(d,jv_path(d,at,"state.status.submitted"))!="true" || jv_raw(d,jv_path(d,at,"validation.ok"))!="true" ||
+    jv_raw(d,jv_path(d,at,"effects.recovery_same_texture"))!="true" ||
+    jv_len(d,jv_path(d,at,"effects.exceptions"))!=0 || !gj_file(dir,"resource-recovery.json",jv_raw(d,at)) {return false;}
+  if package_dir.count>0 {
+    print("Grid journey: declared320x180 final-state capture\n");
+    return gc_capture(c,dir,package_dir);
+  }
+  png:[8388608]u8;pn:=cdp_screenshot(c,png[..]);
+  return pn>0 && gj_file(dir,"final.png",cast(string)png[0..<pn]);
+}
+tool_main :: () -> int #export_c {
+  a:[1]Args;
+  if !args_load(a[..]) || (args_count(a[..])!=2 && args_count(a[..])!=4) || !gj_local(args_at(a[..],0)) ||
+    (args_count(a[..])==4 && args_at(a[..],2)!="--capture") {tool_errln("usage: grid-journey http://127.0.0.1:PORT OUTDIR [--capture PACKAGE_DIR]");return 2;}
+  package_dir:=ifx args_count(a[..])==4 then args_at(a[..],3) else "";
+  dir:=args_at(a[..],1);
+  if !fs_mkdir(dir) || !gj_file(dir,"frames.jsonl","") {return 2;}
+  source:[65536]u8;
+  sn:=fs_read("aethyr/tests/grid-journey.coax",source[..]);
+  if sn<0 || !gj_file(dir,"driver.coax",cast(string)source[0..<sn]) {return 2;}
+  sn=fs_read("aethyr/tests/grid-journey-sequence.coax",source[..]);
+  if sn<0 || !gj_file(dir,"sequence.coax",cast(string)source[0..<sn]) {return 2;}
+  sn=fs_read("aethyr/tests/grid-journey-capture.coax",source[..]);
+  if sn<0 || !gj_file(dir,"capture-driver.coax",cast(string)source[0..<sn]) {return 2;}
+  c:[1]Cdp;
+  if !cdp_launch(c[..],960,540,"coax-grid-journey-") {tool_errln(cdp_error(c[..]));return 1;}
+  ok:=gj_run(c[..],args_at(a[..],0),dir,package_dir);
+  if !ok {
+    tool_err("Grid journey failed: ");tool_errln(cdp_error(c[..]));
+    diagnostic:=gj_eval(c[..],"({url:location.href,ready:globalThis.coaxial?.ready,clip:typeof globalThis.coaxialClipStep,loader:document.querySelector('#coaxial-load')?.textContent,effects:globalThis.gridJourneyEffects,render:globalThis.coaxial?.renderStatus})");
+    if diagnostic>=0 {saved_diagnostic:=gj_file(dir,"failure.json",jv_raw(c[0].doc[0],diagnostic));}
+  }
+  saved:=gj_file(dir,"result.json",ifx ok then "{\"status\":\"passed\",\"scope\":\"actual browser page input, shared submission, replay and resource refusal/recovery; native and numerical comparison separate\"}\n" else "{\"status\":\"failed\"}\n");
+  cdp_close(c[..]);
+  print("% Grid page, play, render, replay and resource recovery\n",ifx ok then "pass" else "FAIL");
+  return ifx ok && saved then 0 else 1;
+}

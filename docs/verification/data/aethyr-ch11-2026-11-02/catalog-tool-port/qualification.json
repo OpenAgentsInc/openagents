@@ -1,0 +1,59 @@
+{
+  "schema": "aethyr.catalog.qualification.tool-port.v1",
+  "date": "2026-11-02",
+  "status": "port qualified; normal native observation uses an explicit older qualified compiler",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_matches_current_sources": false,
+  "native_receipt": "native-receipt.json",
+  "native_receipt_sha256": "e9fe9ad9bf24850e45c7d7673d34440dc36b10ce4d9357ab66e4baadce814d0d",
+  "source_sha256": {
+    "aethyr/render/tests/check-catalog.coax": "90969c22869d4ac0ce283c680eccd76979e70d783d6245332c5eb177dee7a666",
+    "aethyr/render/tests/check-catalog-tooling.coax": "e11bace54f898bc5468314bdf0867a89be279e87d2288cb7decc4cbe1ca6b4a0",
+    "aethyr/render/tests/qualification-files.coax": "c7c953c0dcb57e653b45958e3098ab4b519027fb3cad0ac14ba1186616ade7b6",
+    "aethyr/render/tests/tooling-policy.coax": "92473785eb90a1f2d24d2340dac5acedf38033bb15b6b753096fd9d5d03bd840",
+    "aethyr/render/tests/tooling-policy-checks.coax": "7f1131165595976c5efed0425cf1060e34e3d3abaa79f4afd28b7100a8f2fb06",
+    "aethyr/render/tests/catalog-tool-policy.coax": "4598efd3f616e7352b94d078fa7cdac0b6159ec0b8554c8fd39e4af3d1fc5bb1",
+    "aethyr/render/tests/catalog-tool-checks.coax": "cb550db4383b553ee2800a66539e06fad15769d6cea64f74bdfb00e757d314d1"
+  },
+  "checks_first": "The generic typed-receipt/ABI and catalog/consumer checks failed against authored stubs before implementation; both assertion logs are retained.",
+  "authority_gates": [
+    {"file": "aethyr/render/tests/tooling-policy.coax", "mutants": 172, "killed": 172, "survived": 0},
+    {"file": "aethyr/render/tests/catalog-tool-policy.coax", "mutants": 220, "killed": 220, "survived": 0}
+  ],
+  "equivalent_waivers_added": 0,
+  "native": {
+    "profiles": 18,
+    "modes": ["debug", "release", "sanitized"],
+    "producer_loss_controls_per_mode": ["asset", "feature", "binding", "pipeline", "scope", "slot", "kind"],
+    "result": "all complete receipts match the independently transformed frozen declarations; all producer losses differ",
+    "qualifier_image_sha256": "90e4cb82276bddec7bc424acd84da3b0caca3608c55a195da0c47c2b6cb7501b",
+    "fences": "selected compiler, qualifier executable, complete qualifier/product Coax closures, linked native effects and source inputs match before/after",
+    "current_toolchain_limit": "The source-digest mismatch is retained explicitly as exploratory, matching the prior opt-in behavior. This is not qualification of the current compiler or release."
+  },
+  "current_consumers": {
+    "shared": 16,
+    "tracked_legacy": 1,
+    "legacy": "anime-lab / animelab",
+    "checks": "every current realm is accounted for; shared slug/module/page/asset fields match the frozen entry; listed frozen consumers cannot disappear; unknown aliases refuse"
+  },
+  "port_parity_and_controls": {
+    "expected_inventory": "every field of all 18 expected profiles matches the original Python transformation",
+    "abi": "original Python and Coax accept the actual generated native header and both reject an added RenderUse field and omitted RenderCatalog asset field",
+    "stale_identity": "actual controlled compiler executes only version and source-digest; exactly those six raw command-record files exist, with no emission or final receipt",
+    "receipt_continuity": "existing inventory.v1 root/mode fields and mode.json transcript aliases preserved; new consumer and qualifier provenance added; all three transcript hashes read back",
+    "image_fence": "native receipt and parity checks bind the identical current qualifier image; before/after qualifier and mock images match"
+  },
+  "raw_process_transport": "The existing cxproc_read_bytes effect preserves NUL and final newlines; exact-bound output, overflow, missing child, nonzero exit and deadline controls passed. No host implementation was changed.",
+  "old_default_attempt": "Retained failing attempt could not open the checkout's absent coax/bin/coax. The old exact-16 live-realm assertion is identified from its preserved source; it was not reached in that failed invocation and is not reported as a runtime observation.",
+  "retired_reference_inputs": {
+    "check_catalog.py": "52375f82c1969828ea77ecde7bcc1a718ed657352212d9e67595de6b41cf8a72",
+    "test_catalog_tooling.py": "edad937a248460f08de583595695269f468812b1fd02d0b1c211ba5b79bcac05",
+    "retention": "original bytes archived and read back with matching SHA-256 before deletion"
+  },
+  "archive": {
+    "path": "artifacts-and-reference.tar.gz",
+    "bytes": 1986924,
+    "sha256": "4cdfb4407d8579c2bc160549de9ad71e4d89e56a374ada36f660752983800908"
+  },
+  "limits": "Catalog data/ABI, copy-policy and tooling qualification only. No shader arithmetic, GPU image, complete playable realm or production readiness is inferred."
+}

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (exact rational barycentric plane/depth and perspective interpolation, independent of the Coax rasterizer).
 """Independent exact-rational plane predictions for the authored GPU probe."""
 import argparse,json,struct
 from fractions import Fraction as F

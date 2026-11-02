@@ -1,0 +1,310 @@
+{
+  "schema": "aethyr.render.comparator-port.v1",
+  "date": "2026-11-02",
+  "status": "pass_explicit_qualified_older_compiler",
+  "sources": {
+    "aethyr/render/tests/compare-frames-policy.coax": "4ee83430a81e1161ee2b420284e6e8a8c7380f81c8be213c675f06153b5173cd",
+    "aethyr/render/tests/compare-frames-checks.coax": "f646785fcda3987fce8b7adcd637caa984c5cbe0d9fa5976d2f4b59dae6f7bac",
+    "aethyr/render/tests/compare-frames.coax": "d915d4b8239f9409543a7e0ec8329015f866ee5ccfd8f717c29c5061a7c539d3",
+    "aethyr/render/tests/compare-frames-cli-checks.coax": "c7cb293a1661b048b48a4be31ab5dc33be7e9cd4fd6f105bfe9b7e1c9298898e",
+    "aethyr/render/tests/file-effects.coax": "e66ff0860b6ba09fb247de418f65c43b9aa1d22e80db6d774cd9d531c7ed3e0f",
+    "coax/lib/sys/fs.coax": "241f27df91bdf73bbe7256046ffb91789dbefa14706ddd0b00edd81b89c5d35b",
+    "coax/platform/store-file-native.c": "09bb2edc659c914c2edc9341c104f51c4df24565bc960c8d1572722575a326d5",
+    "coax/platform/store-file-native.h": "d941594ef14d8dff1015d6d10b0b7f9c943cd2ce9d5b6853de273936edbbf3b2"
+  },
+  "compiler": {
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "qualified_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "matching_checkout_compiler": false
+  },
+  "scope": "Coax all-RGBA comparison policy/CLI and generic file-range/realpath effects. No shader, renderer, GPU, screenshot allowance or exclusion mask changed. Existing renderer bytes reused for port parity only.",
+  "contract": {
+    "extent_per_axis": "1..16384",
+    "formats": [
+      "rgba32f",
+      "rgba16f",
+      "rgba8",
+      "bgra8"
+    ],
+    "channels": "all RGBA including alpha",
+    "nonfinite": "fail even when both sides have the same NaN/infinity",
+    "colour": "abs(gpu-cpu) <= 0.002 * max(1, abs(cpu))",
+    "masks": 0,
+    "sample_limit": 16,
+    "failure_count": "not capped",
+    "maximum_chunk_pixels": 4096,
+    "deadline_ms": 830000,
+    "receipt_schema": "aethyr.render.image-comparison.v1",
+    "exit_codes": {
+      "pass": 0,
+      "comparison_failure": 1,
+      "invalid_or_effect_failure": 2
+    },
+    "receipt_addition": "policy_sha256; unchanged existing comparison fields and input hashes"
+  },
+  "checks": {
+    "policy_groups": 11,
+    "root_mutants": 233,
+    "killed": 233,
+    "survivors": 0,
+    "waivers_added": 0,
+    "cli_end_to_end_cases": 10,
+    "release_imported_checks": 133,
+    "all_release_checks_pass": true
+  },
+  "parity": {
+    "case_count": 22,
+    "all_comparison_fields_exact": true,
+    "all_input_hashes_exact": true,
+    "cases": [
+      {
+        "name": "basic-rgba32f",
+        "width": 1,
+        "height": 1,
+        "format": "rgba32f",
+        "exit_status": 0,
+        "cpu_sha256": "e2d30c16feb57bb0c779d0e4b61c96d66ce9c5e7a066b1a39a2574d4fd13b2d0",
+        "gpu_sha256": "e2d30c16feb57bb0c779d0e4b61c96d66ce9c5e7a066b1a39a2574d4fd13b2d0"
+      },
+      {
+        "name": "basic-rgba16f",
+        "width": 1,
+        "height": 1,
+        "format": "rgba16f",
+        "exit_status": 0,
+        "cpu_sha256": "e2d30c16feb57bb0c779d0e4b61c96d66ce9c5e7a066b1a39a2574d4fd13b2d0",
+        "gpu_sha256": "3027ffbbad362124ae2f413d2438e3645d894e3ccd2359112aaa82fa542c304c"
+      },
+      {
+        "name": "basic-rgba8",
+        "width": 1,
+        "height": 1,
+        "format": "rgba8",
+        "exit_status": 0,
+        "cpu_sha256": "e2d30c16feb57bb0c779d0e4b61c96d66ce9c5e7a066b1a39a2574d4fd13b2d0",
+        "gpu_sha256": "0cd4a357d5701c0719178834f68abd0563170cefb7351454eb9be136ea37d206"
+      },
+      {
+        "name": "basic-bgra8",
+        "width": 1,
+        "height": 1,
+        "format": "bgra8",
+        "exit_status": 0,
+        "cpu_sha256": "e2d30c16feb57bb0c779d0e4b61c96d66ce9c5e7a066b1a39a2574d4fd13b2d0",
+        "gpu_sha256": "7b7b9befd476c56be04844e8700803c3492c2bddbbe53657187e0edcc3857bff"
+      },
+      {
+        "name": "relative-exact-floor",
+        "width": 1,
+        "height": 1,
+        "format": "rgba32f",
+        "exit_status": 0,
+        "cpu_sha256": "99afd1cb10944c48fb1c60742e5676f7a9c469f4af418e0f9f8d8774590ebb2c",
+        "gpu_sha256": "22313f7753a7ca2c2336e08bafc5b3a0ba9c46ea9f516c0e5180e76172760e68"
+      },
+      {
+        "name": "relative-first-outside",
+        "width": 1,
+        "height": 1,
+        "format": "rgba32f",
+        "exit_status": 1,
+        "cpu_sha256": "99afd1cb10944c48fb1c60742e5676f7a9c469f4af418e0f9f8d8774590ebb2c",
+        "gpu_sha256": "4ced6016def6f467e42ebcc960fecbf17c1eb000d57778d9e0d7701f5a1118b9"
+      },
+      {
+        "name": "all80channels-fail",
+        "width": 5,
+        "height": 4,
+        "format": "rgba32f",
+        "exit_status": 1,
+        "cpu_sha256": "7b6436b0c98f62380866d9432c2af0ee08ce16a171bda6951aecd95ee1307d61",
+        "gpu_sha256": "beea08e0b2386530f2625dfcc037b7237b4ca13ad5732e9798f5bbc619054fc2"
+      },
+      {
+        "name": "matching-nonfinite",
+        "width": 1,
+        "height": 1,
+        "format": "rgba32f",
+        "exit_status": 1,
+        "cpu_sha256": "a60e521d273aff94122264e9219bdef076afd94c593662c1ebddf2f93d34e5ce",
+        "gpu_sha256": "a60e521d273aff94122264e9219bdef076afd94c593662c1ebddf2f93d34e5ce"
+      },
+      {
+        "name": "all65536halfwords",
+        "width": 256,
+        "height": 256,
+        "format": "rgba16f",
+        "exit_status": 1,
+        "cpu_sha256": "70da0f9171c8decd8b7ccd7d3d9441e60a149f2683b04000db6d40ebad956afa",
+        "gpu_sha256": "448973f39029632b97f4a9f39516c7f7bf772ca231ac584bc5d135ed04d8d0bb"
+      },
+      {
+        "name": "random-binary32-all-channels",
+        "width": 32,
+        "height": 32,
+        "format": "rgba32f",
+        "exit_status": 1,
+        "cpu_sha256": "4c6539d21adc7cd41378d410c4429c3670855016c96d7382b6c2eb53be5fc07c",
+        "gpu_sha256": "153f156121b973a49bf6dbe258282303e22d34ceb1e295fe52dce62e5627d1f1"
+      },
+      {
+        "name": "all256bytecodes",
+        "width": 16,
+        "height": 16,
+        "format": "rgba8",
+        "exit_status": 0,
+        "cpu_sha256": "084d6ae99d45a62c7297f397cd7df478d131871910f24f1df5c52ca6eafe58e2",
+        "gpu_sha256": "94fdaab58e5900253fc6beb66a8a510defb81636f5d2ae0e248f7815f231af77"
+      },
+      {
+        "name": "refuse-zero",
+        "width": 0,
+        "height": 1,
+        "format": "rgba32f",
+        "exit_status": 2,
+        "cpu_sha256": "084d6ae99d45a62c7297f397cd7df478d131871910f24f1df5c52ca6eafe58e2",
+        "gpu_sha256": "084d6ae99d45a62c7297f397cd7df478d131871910f24f1df5c52ca6eafe58e2"
+      },
+      {
+        "name": "refuse-negative",
+        "width": 1,
+        "height": -1,
+        "format": "rgba32f",
+        "exit_status": 2,
+        "cpu_sha256": "084d6ae99d45a62c7297f397cd7df478d131871910f24f1df5c52ca6eafe58e2",
+        "gpu_sha256": "084d6ae99d45a62c7297f397cd7df478d131871910f24f1df5c52ca6eafe58e2"
+      },
+      {
+        "name": "refuse-wide",
+        "width": 16385,
+        "height": 1,
+        "format": "rgba32f",
+        "exit_status": 2,
+        "cpu_sha256": "084d6ae99d45a62c7297f397cd7df478d131871910f24f1df5c52ca6eafe58e2",
+        "gpu_sha256": "084d6ae99d45a62c7297f397cd7df478d131871910f24f1df5c52ca6eafe58e2"
+      },
+      {
+        "name": "refuse-unknown",
+        "width": 1,
+        "height": 1,
+        "format": "unknown",
+        "exit_status": 2,
+        "cpu_sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb",
+        "gpu_sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+      },
+      {
+        "name": "refuse-short-cpu",
+        "width": 1,
+        "height": 1,
+        "format": "rgba32f",
+        "exit_status": 2,
+        "cpu_sha256": "5322fecfc92a5e3248a297a3df3eddfb9bd9049504272e4f572b87fa36d4b3bd",
+        "gpu_sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+      },
+      {
+        "name": "refuse-extra-gpu",
+        "width": 1,
+        "height": 1,
+        "format": "rgba8",
+        "exit_status": 2,
+        "cpu_sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb",
+        "gpu_sha256": "8855508aade16ec573d21e6a485dfd0a7624085c1a14b5ecdd6485de0c6839a4"
+      },
+      {
+        "name": "refuse-short-half",
+        "width": 1,
+        "height": 1,
+        "format": "rgba16f",
+        "exit_status": 2,
+        "cpu_sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb",
+        "gpu_sha256": "837885c8f8091aeaeb9ec3c3f85a6ff470a415e610b8ba3e49f9b33c9cf9d619"
+      },
+      {
+        "name": "retained-aethyr-ch11-grid-4m-webgpu-comparison",
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "exit_status": 0,
+        "cpu_sha256": "0f462483e65e948c9710ca8e0829eea026eee31e5647855d8641dc111fa74ec6",
+        "gpu_sha256": "47c2a6565e55f52b8f9e3c21dc1bfb5155b12f317ef15ec536ad1895ee7493c8"
+      },
+      {
+        "name": "retained-aethyr-ch11-grid-4m-native-comparison",
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "exit_status": 0,
+        "cpu_sha256": "1e09c663351fbdbcaa9693aa80680abbe5428ef04cad699a9d7666a8ae0dd3e2",
+        "gpu_sha256": "ec62e7ad6b938df300c6a37de9163ad644b5643c096ec4cbe81aaebf19bf1fd0"
+      },
+      {
+        "name": "retained-aethyr-ch11-deadgears-box36-browser-comparison",
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "exit_status": 1,
+        "cpu_sha256": "c4825c7daaccb36b839b637b143c9d677bf7afa8069f6afa21c766632d510ccc",
+        "gpu_sha256": "eea19f17c7756c4880d63995deee07aa6781d36de19a46aeea203b128247ac59"
+      },
+      {
+        "name": "retained-aethyr-ch11-deadgears-box36-native-comparison",
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "exit_status": 1,
+        "cpu_sha256": "c4825c7daaccb36b839b637b143c9d677bf7afa8069f6afa21c766632d510ccc",
+        "gpu_sha256": "08fe3735b8646336168abe0d0c035efb72a7e23a98dfc05c734bac44832765e0"
+      }
+    ],
+    "all_65536_half_words": true,
+    "all_256_unorm_byte_codes": true,
+    "random_binary32_channels": 4096,
+    "retained_grid_both_gpus": "pass unchanged",
+    "retained_deadgears_both_gpus": "strict fail unchanged"
+  },
+  "file_effects": {
+    "api": [
+      "fs_read_at(path,offset,out) -> actual byte count or -1",
+      "fs_realpath(existing_path,out) -> canonical path or empty"
+    ],
+    "host_language": "C platform I/O effects only; Coax owns chunking, bounds, parsing, hashing, verdicts and path-root policy",
+    "native_modes": [
+      "tool.sh O2",
+      "debug O0",
+      "ASan+UBSan O1"
+    ],
+    "observations": [
+      "exact ranges",
+      "short reads with untouched suffix/guards",
+      "EOF and INT64_MAX offset",
+      "empty output",
+      "negative offset refusal",
+      "missing and NUL path refusal",
+      "canonical dot/symlink aliases",
+      "short realpath output leaves destination unchanged"
+    ],
+    "source_files_stable": true
+  },
+  "history": [
+    "Initial Coax lexical/refactoring failures and the failed CLI schema-length assertion retained.",
+    "Initial mutation survivors were removed with sharper boundary/diagnostic checks and bit-preserving max selection; no equivalents were waived.",
+    "Both old Python files retained until22input parity and10native Coax CLI cases passed. Original source/test bytes preserved in the archive."
+  ],
+  "publication": {
+    "legacy_files_removed": [
+      "aethyr/render/tests/compare_frames.py",
+      "aethyr/render/tests/test_compare_frames.py"
+    ],
+    "new_entry": "coax/web/tool.sh aethyr/render/tests/compare-frames.coax",
+    "maintained_callers": "Only the old Python unit module imported/called the old comparator; it is replaced by Coax checks. Historical evidence command strings remain historical."
+  },
+  "evidence": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/comparator-port/artifacts.tar.gz",
+    "sha256": "40d638914bd1dca2220086d69786762c4819e735dfbe351d807a605393bbefd9",
+    "bytes": 1566807,
+    "payloads": 194,
+    "retention": "docs/verification/data/aethyr-ch11-2026-11-02/comparator-port/retention.json",
+    "readback_verified": true
+  },
+  "remaining": "The separate maintained-tooling classification has19other Python ports open. This slice does not claim full tools-check compliance."
+}

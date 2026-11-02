@@ -1,0 +1,13 @@
+{
+  "base": "http://127.0.0.1:8817",
+  "failed": [
+    "the-grid: matches its golden (1137 blocks changed, 6 allowed, 192 moving, x 288-960, y 128-720; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-zBKbQc/the-grid.png)"
+  ],
+  "golden": [
+    {
+      "name": "the-grid",
+      "path": "/realms/the-grid"
+    }
+  ],
+  "other": []
+}

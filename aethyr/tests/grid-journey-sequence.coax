@@ -1,0 +1,30 @@
+// The frozen input schedule shared by the actual page and native-face journeys.
+// Inputs are host key codes. No expected simulation digest is calculated here.
+GJ_FRAMES :: 240;
+GJ_KEYS :: 14;
+GridJourneyKey :: struct { frame: int; key: int; down: bool; }
+
+#test "the journey's two presses are released and its controls finish released" {
+  jumps := 0; held := 0;
+  for k: 0..<GJ_KEYS {
+    e := grid_journey_key(k);
+    #assert e.frame >= 1 && e.frame <= GJ_FRAMES;
+    if e.key == 32 && e.down { jumps += 1; }
+    held += ifx e.down then 1 else -1;
+    #assert held >= 0;
+  }
+  #assert jumps == 2 && held == 0;
+  #assert grid_journey_key(-1).frame == -1 && grid_journey_key(GJ_KEYS).frame == -1;
+}
+grid_journey_key :: (k: int) -> GridJourneyKey #export_c {
+  events := [GJ_KEYS] GridJourneyKey.[
+    GridJourneyKey.{frame=1,key=119,down=true},
+    GridJourneyKey.{frame=20,key=32,down=true},GridJourneyKey.{frame=21,key=32},
+    GridJourneyKey.{frame=80,key=119},
+    GridJourneyKey.{frame=85,key=-4,down=true},GridJourneyKey.{frame=100,key=-4},
+    GridJourneyKey.{frame=110,key=-13,down=true},GridJourneyKey.{frame=110,key=119,down=true},
+    GridJourneyKey.{frame=130,key=32,down=true},GridJourneyKey.{frame=131,key=32},
+    GridJourneyKey.{frame=170,key=119},GridJourneyKey.{frame=170,key=-13},
+    GridJourneyKey.{frame=180,key=100,down=true},GridJourneyKey.{frame=200,key=100}];
+  return ifx k < 0 || k >= GJ_KEYS then GridJourneyKey.{frame=-1} else events[k];
+}

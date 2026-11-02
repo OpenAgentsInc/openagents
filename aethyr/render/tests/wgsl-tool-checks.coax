@@ -1,0 +1,44 @@
+// Authored native browser facts; no browser or product parser supplies answers.
+#test "WGSL verdict accepts warnings and info while preserving every diagnostic field" {
+  bytes:="{\"messages\":[{\"type\":\"warning\",\"message\":\"code is unreachable\",\"line\":2070,\"column\":11},{\"type\":\"info\",\"message\":\"x\",\"line\":0,\"column\":0}],\"validation_error\":null}";
+  nodes:[128]JvNode;d:[1]Jv;#assert jv_parse(d[..],bytes,nodes[..]);s:=wgt_messages(d[0],0);
+  #assert s.ok && s.errors==0 && s.warnings==1 && wgt_admit(d[0],0,false) && !wgt_admit(d[0],0,true);
+  #assert jv_parse(d[..],"{\"messages\":[],\"validation_error\":null}",nodes[..]) && wgt_admit(d[0],0,false);
+  #assert wgt_same_text(d[0],jv_get(d[0],0,"messages"),"")==false;
+}
+#test "WGSL malformed control needs both compiler errors and the actual validation error scope" {
+  nodes:[256]JvNode;d:[1]Jv;
+  #assert jv_parse(d[..],"{\"messages\":[{\"type\":\"error\",\"message\":\"unexpected token\",\"line\":1,\"column\":1},{\"type\":\"warning\",\"message\":\"warning\",\"line\":2,\"column\":3},{\"type\":\"error\",\"message\":\"another\",\"line\":3,\"column\":4}],\"validation_error\":\"x\"}",nodes[..]);
+  s:=wgt_messages(d[0],0);#assert s.ok && s.errors==2 && s.warnings==1 && wgt_admit(d[0],0,true) && !wgt_admit(d[0],0,false);
+  #assert jv_parse(d[..],"{\"messages\":[{\"type\":\"error\",\"message\":\"x\",\"line\":1,\"column\":1}],\"validation_error\":\"x\"}",nodes[..]) && wgt_admit(d[0],0,true);
+  for bad:[13]string.[
+    "{}", "{\"messages\":null,\"validation_error\":null}",
+    "{\"messages\":[],\"validation_error\":\"error\"}",
+    "{\"messages\":[{\"type\":\"error\",\"message\":\"x\",\"line\":1,\"column\":1}],\"validation_error\":null}",
+    "{\"messages\":[{\"type\":\"error\",\"message\":\"x\",\"line\":1,\"column\":1}],\"validation_error\":\"\"}",
+    "{\"messages\":[{\"type\":\"unknown\",\"message\":\"x\",\"line\":1,\"column\":1}],\"validation_error\":\"error\"}",
+    "{\"messages\":[{\"type\":\"error\",\"message\":1,\"line\":1,\"column\":1}],\"validation_error\":\"error\"}",
+    "{\"messages\":[{\"type\":\"error\",\"message\":\"x\",\"line\":-1,\"column\":1}],\"validation_error\":\"error\"}",
+    "{\"messages\":[{\"type\":\"error\",\"message\":\"x\",\"line\":1,\"column\":-1}],\"validation_error\":\"error\"}",
+    "{\"messages\":[{\"type\":\"error\",\"message\":\"x\",\"line\":1.5,\"column\":1}],\"validation_error\":\"error\"}",
+    "{\"messages\":[{\"type\":\"error\",\"message\":\"x\",\"line\":1,\"column\":1,\"extra\":0}],\"validation_error\":\"error\"}",
+    "{\"messages\":[{\"type\":\"error\",\"message\":\"x\",\"line\":1,\"line\":1}],\"validation_error\":\"error\"}",
+    "{\"messages\":[{\"type\":\"error\",\"message\":\"x\",\"line\":1,\"extra\":1}],\"validation_error\":\"error\"}"
+  ] {#assert jv_parse(d[..],bad,nodes[..]) && !wgt_admit(d[0],0,true) && !wgt_admit(d[0],0,false);}
+}
+#test "WGSL complete-run verdict refuses missing observations errors uncaptured events or source drift" {
+  #assert wgt_complete(0,0,20,20,true,false) && wgt_complete(0,0,1,1,true,false);
+  #assert !wgt_complete(1,0,20,20,true,false) && !wgt_complete(0,1,20,20,true,false) && !wgt_complete(0,0,19,20,true,false);
+  #assert !wgt_complete(0,0,21,20,true,false) && !wgt_complete(0,0,20,20,false,false) && !wgt_complete(0,0,20,20,true,true) && !wgt_complete(0,0,0,0,true,false);
+}
+#test "WGSL literal package names and lowercase hashes retain every byte boundary" {
+  #assert wgt_name("module-0_a.wgsl") && wgt_name(".a") && !wgt_name("") && !wgt_name(".") && !wgt_name("..") && !wgt_name("../x") && !wgt_name("-x") && !wgt_name("a b");
+  alphabet:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.";hex:="0123456789abcdef";
+  for value:0..<256 {
+    c:=cast(u8)value;member:=false;for a:alphabet {if c==a {member=true;}}name:=[3]u8.['x',c,'x'];#assert wgt_name(cast(string)name[..])==member;
+    digest:[64]u8;for k:0..<64 {digest[k]='0';}digest[31]=c;hm:=false;for h:hex {if c==h {hm=true;}}#assert wgt_digest(cast(string)digest[..])==hm;
+  }
+  #assert !wgt_digest("") && !wgt_digest("0");
+  nodes:[4]JvNode;d:[1]Jv;#assert jv_parse(d[..],"\"a\"",nodes[..]) && wgt_same_text(d[0],0,"a") && !wgt_same_text(d[0],0,"b") && !wgt_same_text(d[0],0,"aa");
+  #assert jv_parse(d[..],"\"\"",nodes[..]) && wgt_same_text(d[0],0,"");
+}
