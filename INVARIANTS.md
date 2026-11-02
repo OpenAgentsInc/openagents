@@ -513,7 +513,10 @@ The browser host (`coax/web/host.js`) answers `GPUDevice.lost` for its current
 device by taking a new device, building the pipelines and uploading the
 world's assets again, then putting the state region (`coaxial_state_size`)
 back as the loss found it; frames and input wait meanwhile, and the first
-frame after draws the current step. A device lost while it is rebuilt is
+frame after draws the current step. What reaches the realm from outside
+meanwhile (a socket's event, a fetch's answer, a stored value) waits too,
+in order, and is delivered after that first frame: written during the
+rebuild it would be lost when the state is put back. A device lost while it is rebuilt is
 rebuilt again. A device not replaced within 10 s, or a fourth loss in a
 minute, is handled as a stop. A trap in the engine (a frame or an input
 call), or such a stop, saves the region as it was at the start of the last
@@ -524,8 +527,9 @@ is in, so the save gives the same state digest; a save is put back once and
 from no other build, and a realm that traps again within 300 frames of one
 starts over. State a face keeps in its own statics is outside the region and
 is not saved. Check: `coax/web/gpu-recovery.coax` against a realm page
-(the Grid: recovered in 1.4 s on SwiftShader with the same digest; the trap's
-save put back with the same digest).
+(the Grid: recovered in about 0.35 s on SwiftShader with the same digest in
+12 of 12 runs, with its waiting writes delivered; the trap's save put back
+with the same digest).
 
 ## The Grid steps only on its session's record
 

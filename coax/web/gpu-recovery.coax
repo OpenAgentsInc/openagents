@@ -3,7 +3,8 @@
 // host's clip clock and its offscreen target:
 //   1. Device loss: N frames, the state region's digest, GPUDevice.destroy(); the host takes a
 //      new device, its pipelines and assets. Within --within MS (default 3000) the digest is the
-//      one the loss found, and the next frame draws.
+//      one the loss found, and the next frame draws; what reached the realm from outside during the
+//      rebuild (socket events, fetch answers) waited and is delivered after that frame.
 //   2. Trap: N frames more, the digest, then a real trap in the next frame (its state pointer out
 //      of bounds). The reload message shows and the rescue save is written; its action reloads the
 //      page, which puts the save back: the same digest, and the next frame draws.
@@ -24,7 +25,7 @@ GR_READY :: "(async()=>!!globalThis.coaxial?.ready && (await globalThis.coaxialC
 GpuRecovery :: struct {
   digest_before: [80] u8; before_n: int;
   digest_after: [80] u8; after_n: int;
-  ms: int; recovered: bool; drew_after_loss: bool;
+  ms: int; recovered: bool; drew_after_loss: bool; waited: int; released: bool;
   digest_trap: [80] u8; trap_n: int;
   stopped: bool; saved: bool; offered: bool;
   digest_rescued: [80] u8; rescued_n: int;
@@ -36,7 +37,7 @@ gr_same :: (a: [] u8, an: int, b: [] u8, bn: int) -> bool {
   return true;
 }
 gr_passed :: (r: [] GpuRecovery, within: int) -> bool {
-  return r[0].recovered && r[0].ms >= 0 && r[0].ms <= within && r[0].drew_after_loss &&
+  return r[0].recovered && r[0].ms >= 0 && r[0].ms <= within && r[0].drew_after_loss && r[0].released &&
     gr_same(r[0].digest_before[..], r[0].before_n, r[0].digest_after[..], r[0].after_n) &&
     r[0].stopped && r[0].saved && r[0].offered && r[0].drew_after_rescue &&
     gr_same(r[0].digest_trap[..], r[0].trap_n, r[0].digest_rescued[..], r[0].rescued_n);
@@ -52,7 +53,7 @@ gr_put :: (out: [] u8, s: string) -> int {
   r: [1] GpuRecovery;
   r[0].before_n = gr_put(r[0].digest_before[..], d); r[0].after_n = gr_put(r[0].digest_after[..], d);
   r[0].trap_n = gr_put(r[0].digest_trap[..], e); r[0].rescued_n = gr_put(r[0].digest_rescued[..], e);
-  r[0].ms = 2400; r[0].recovered = true; r[0].drew_after_loss = true;
+  r[0].ms = 2400; r[0].recovered = true; r[0].drew_after_loss = true; r[0].released = true;
   r[0].stopped = true; r[0].saved = true; r[0].offered = true; r[0].drew_after_rescue = true;
   #assert gr_passed(r[..], 3000);
   #assert !gr_passed(r[..], 2000);
@@ -61,6 +62,7 @@ gr_put :: (out: [] u8, s: string) -> int {
   r[0].rescued_n = gr_put(r[0].digest_rescued[..], ""); #assert !gr_passed(r[..], 3000); r[0].rescued_n = gr_put(r[0].digest_rescued[..], e);
   r[0].recovered = false; #assert !gr_passed(r[..], 3000); r[0].recovered = true;
   r[0].drew_after_loss = false; #assert !gr_passed(r[..], 3000); r[0].drew_after_loss = true;
+  r[0].released = false; #assert !gr_passed(r[..], 3000); r[0].released = true;
   r[0].saved = false; #assert !gr_passed(r[..], 3000); r[0].saved = true;
   r[0].offered = false; #assert !gr_passed(r[..], 3000); r[0].offered = true;
   r[0].stopped = false; #assert !gr_passed(r[..], 3000); r[0].stopped = true;
@@ -112,8 +114,12 @@ gr_run :: (c: [] Cdp, url: string, r: [] GpuRecovery) -> bool {
   at := cdp_evaluate(c, "coaxial.gpuRecovery?.ms ?? -1");
   r[0].ms = ifx at >= 0 then jv_int(c[0].doc[0], at, -1) else -1;
   r[0].after_n = gr_digest(c, r[0].digest_after[..]);
+  at = cdp_evaluate(c, "coaxial.gpuRecovery?.waited ?? -1");
+  r[0].waited = ifx at >= 0 then jv_int(c[0].doc[0], at, -1) else -1;
   r[0].drew_after_loss = gr_drew(c);
-  print("gpu-recovery: recovered % in % ms, digest % -> %\n", r[0].recovered, r[0].ms,
+  // What waited during the rebuild reached the realm after that first frame.
+  r[0].released = r[0].waited >= 0 && gr_true(c, "coaxial.waitingWrites()===0");
+  print("gpu-recovery: recovered % in % ms, % writes waited and were delivered %, digest % -> %\n", r[0].recovered, r[0].ms, r[0].waited, r[0].released,
     cast(string) r[0].digest_before[0..<r[0].before_n], cast(string) r[0].digest_after[0..<r[0].after_n]);
   print("gpu-recovery: trap the engine\n");
   if !gr_step(c, GR_FRAMES) {return false;}

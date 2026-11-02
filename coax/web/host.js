@@ -440,6 +440,7 @@ function drainSockets(budget = SOCKET_BUDGET_MS) {
 }
 // An event for socket id: its bytes go in the inbox, as typed text does.
 function socketEvent(id, event, text = "") {
+  if (waiting) { waiting.push(() => socketEvent(id, event, text));return; }
   const x = engine?.exports;
   if (!x?.coaxial_message) return;
   const bytes = new TextEncoder().encode(text);
@@ -635,7 +636,8 @@ const byteStorage = makeByteStorage({
   memory: () => memory,
   indexedDB: () => globalThis.indexedDB,
   capacity: () => engine?.exports.coaxial_message && engine.exports.coaxial_inbox && arena ? engine.exports.coaxial_inbox_cap?.() || 0 : 0,
-  emit: (slot, bytes) => {
+  emit: function emit(slot, bytes) {
+    if (waiting) { waiting.push(() => emit(slot, bytes));return; }
     const x = engine?.exports;
     if (!x?.coaxial_message || !x.coaxial_inbox || !arena) return;
     const dest = x.coaxial_inbox(arena.state);
@@ -764,6 +766,15 @@ async function openDevice(made = () => {}) {
 // and offers a reload that restores it (stopped).
 const RECOVER_MS = 10000, LOSSES_MAX = 3, LOSSES_WINDOW_MS = 60000;
 let recovering = null, losses = [];   // recovering: { n } while a device is rebuilt, n its attempt
+// What the world tells the realm while its device is replaced (a socket's event, a fetch's answer,
+// a stored value) waits here, in order, and reaches it after the first frame that follows: a write
+// during the rebuild would be lost when the state is put back, and one before that frame would
+// change the state the loss found. null when nothing waits.
+let waiting = null;
+function releaseWaiting() {
+  if (!waiting || recovering) return;
+  queueMicrotask(() => { const w = waiting;waiting = null;for (const write of w || []) { if (!engine) return;write(); } });
+}
 async function deviceLost(device, info) {
   if (dev) globalThis.coaxial.renderDeviceLost = { reason: info.reason, message: info.message };
   if (!gpu || gpu.device !== device || leaving || !engine) return;
@@ -773,6 +784,7 @@ async function deviceLost(device, info) {
   gpu.bg = null;
   try { gpu.renderer?.destroy(); } catch {}
   if (recovering) { recovering.n += 1;return; }   // the device being built went too: its rebuild starts again
+  waiting ||= [];
   const attempt = recovering = { n: 0 }, held = stateBytes(), until = t0 + (dev && globalThis.coaxialRecoverMs || RECOVER_MS);
   globalThis.coaxial.gpuRecovery = { state: "recovering", reason: info.reason, losses: losses.length };
   let error = null;
@@ -795,13 +807,13 @@ async function deviceLost(device, info) {
     if (gpu) gpu.bg = null;
     globalThis.coaxial.gpuRecovery = { state: "failed", reason: info.reason, losses: losses.length, error: error?.message };
     stopped(`THE GPU STOPPED: ${error?.message || "the engine went"}`, held);
-    engine = null;globalThis.coaxial.ready = false;
+    engine = null;globalThis.coaxial.ready = false;waiting = null;
     return;
   }
   new Uint8Array(memory.buffer, arena.state, held.length).set(held);
   last = 0;
   const ms = Math.round(performance.now() - t0);
-  globalThis.coaxial.gpuRecovery = { state: "recovered", reason: info.reason, losses: losses.length, ms };
+  globalThis.coaxial.gpuRecovery = { state: "recovered", reason: info.reason, losses: losses.length, ms, waited: waiting?.length ?? 0 };
   say(`GPU device replaced in ${ms} ms`);
 }
 // A new device, the pipelines and every asset the world opens with, uploaded to it; `check` throws
@@ -1589,6 +1601,7 @@ function frame(now) {
 let frameCost = 0;   // ms of main thread the drawing itself takes, smoothed: socket events get what's left
 function draw(now) {
   if (engineInstalling || !engine || !gpu?.bg || recovering) return;
+  releaseWaiting();   // once this frame, which draws the state as the loss found it, is done
   const dt = last ? (now - last) / 1000 : 0; last = now;
   const [dw, dh] = devicePixels || [Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio)), Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio))];
   const f = drawn(dw) * SUPERSAMPLE, w = Math.max(1, Math.round(dw * f)), h = Math.max(1, Math.round(dh * f));
@@ -1871,6 +1884,7 @@ function player() {
 }
 
 function send(kind, text = "") {
+  if (waiting) { waiting.push(() => send(kind, text));return; }
   const x = engine?.exports;
   if (!x?.coaxial_message) return;
   const bytes = new TextEncoder().encode(text).subarray(0, x.coaxial_inbox_cap());
@@ -1915,6 +1929,7 @@ if (dev) {
   globalThis.coaxial.stateDigest = () => (engine && arena ? rescueIdentity(stateBytes()) : Promise.resolve(""));
   globalThis.coaxial.trapNextFrame = () => { trapArmed = true;return !!engine; };
   globalThis.coaxial.loseDevice = () => { gpu?.device.destroy();return !!gpu; };
+  globalThis.coaxial.waitingWrites = () => waiting?.length ?? 0;
 }
 // The OpenAgents app turns the camera with the phone (its gyro), radians since the last call.
 globalThis.coaxial.tilt = (dyaw, dpitch) => { engine?.exports.coaxial_tilt?.(arena.state, dyaw, dpitch); };
