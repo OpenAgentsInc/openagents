@@ -11,7 +11,7 @@
   cp_done(s[..]);#assert s[0].action==0 && s[0].out_n==0;
   cp_copy(s[..],false);#assert s[0].action==2 && cast(string)s[0].outbox[0..<s[0].out_n]==HOME_PYLON_JOIN;
 }
-#test "quickstart controls and reading column fit phone desktop and high density" {
+#test "quickstart controls and reading column fit phone desktop and high density" #steps 400000000 {
   s:[1]Cp;
   for i:0..<4 {s[0].w=ifx i%2==0 then 390.0f32 else 1440.0f32;s[0].h=844;s[0].dpr=ifx i<2 then 1.0f32 else 2.0f32;cp_layout(s[..]);
     #assert s[0].body.x0>=16 && s[0].body.x1<=s[0].w-16;
@@ -20,13 +20,13 @@
     #assert s[0].limit>0 && s[0].body.x1-s[0].body.x0<=800;
   }
 }
-#test "quickstart wheel uses CSS pixels and clamps both ends" {
+#test "quickstart wheel uses CSS pixels and clamps both ends" #steps 400000000 {
   s:[1]Cp;s[0].w=390;s[0].h=844;s[0].dpr=2;cp_layout(s[..]);
   cp_wheel(s[..],123);#assert s[0].scroll==123;
   cp_wheel(s[..],100000);#assert s[0].scroll==s[0].limit;
   cp_wheel(s[..],-100000);#assert s[0].scroll==0;
 }
-#test "quickstart touch drag and cancellation never copy or navigate" {
+#test "quickstart touch drag and cancellation never copy or navigate" #steps 400000000 {
   s:[1]Cp;s[0].w=390;s[0].h=844;s[0].dpr=2;cp_layout(s[..]);
   x:=(s[0].markdown.x0+10)*2;y:=(s[0].markdown.y0+10)*2;
   #assert cp_pointer(s[..],x,y,0,1,7);#assert cp_pointer(s[..],x,y+40,1,1,7);
@@ -42,7 +42,7 @@
   #assert cp_line("first second",0,1,11,k)==1;
   #assert cp_lines("first\nsecond",1000,11,k)==2;
 }
-#test "quickstart keyboard can scroll reach links and copy without a mouse" {
+#test "quickstart keyboard can scroll reach links and copy without a mouse" #steps 400000000 {
   s:[1]Cp;s[0].w=390;s[0].h=844;cp_layout(s[..]);
   #assert cp_key(s[..],-11) && s[0].scroll>0;
   #assert cp_key(s[..],-9) && s[0].scroll==s[0].limit;
