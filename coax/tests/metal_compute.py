@@ -26,6 +26,24 @@ tensor :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #exp
     am_matmul_bf16(128,16,64,rows,cols,tokens,item*64,0,w,x,out);
 }
 '''
+# A store whose value calls a function places its target first (spec 7.3):
+# the pointer to a threadgroup array element is a threadgroup pointer.
+GROUP_PLACE='''tw :: (x:f32)->f32 {return x*2;}
+k :: (item:int,n:int,x:[]f32,out:[]f32) #export_c {
+    s:[1024]f32;red:[8]f32;
+    for thread:0..<128 {for t:0..<8 {s[thread+128*t]=x[item*1024+thread+128*t];}}
+    for thread:0..<128 {if thread<8 {red[thread]=s[thread];}}
+    for thread:0..<128 {for t:0..<8 {s[thread+128*t]=ifx thread<n && t<n then tw(s[thread+128*t]-red[t]) else 0;}}
+    for thread:0..<128 {out[item*128+thread]=s[1023-thread];}
+}
+'''
+# An f64 threadgroup array: its float-float elements are zeroed as pairs.
+GROUP_F64='''k :: (item:int,x:[]f32,out:[]f64) #export_c {
+    s:[128]f64;
+    for thread:0..<128 {s[thread]=cast(f64) x[item*128+thread];}
+    for thread:0..<128 {out[item*128+thread]=s[127-thread]*2;}
+}
+'''
 def apple(body,arrays='a:[2048]f32;b:[1024]f32;acc:[2048]f32;'):
     return '#load "'+APPLE+'";\nk :: (item:int,w:[]u32,x:[]f32,out:[]f32) #export_c {'+arrays+body+'}'
 APPLE_REFUSALS=[
@@ -101,6 +119,15 @@ class MetalCompute(unittest.TestCase):
         self.assertIn('uint coax_tid [[thread_index_in_threadgroup]], uint coax_tpg [[threads_per_threadgroup]]',out)
         self.assertIn('if (coax_tpg != 128u)',out);self.assertIn('int64_t coax_item = (int64_t)coax_tgid;',out)
         self.assertGreaterEqual(out.count('threadgroup_barrier(mem_flags::mem_threadgroup | mem_flags::mem_device);'),5)
+    def test_a_place_in_threadgroup_memory_is_a_threadgroup_pointer(self):
+        for flags in ([],['--release']):
+            r=self.run_metal(GROUP_PLACE,*flags);self.assertEqual(r.returncode,0,r.stderr)
+            self.assertRegex(r.stdout,r'threadgroup float \* coax_t\d+;')
+            self.assertNotRegex(r.stdout,r'\bthread float \* coax_t\d+;')
+    def test_an_f64_threadgroup_array_is_zeroed_as_pairs(self):
+        r=self.run_metal(GROUP_F64);self.assertEqual(r.returncode,0,r.stderr)
+        self.assertIn('.e[coax_z] = coax_ff_make(0.0f, 0.0f);',r.stdout)
+        self.assertNotIn('.e[coax_z] = 0;',r.stdout)
     def test_apple_primitives_lower_to_matrix_units(self):
         r=self.run_metal(SIMDGROUP,'--release');self.assertEqual(r.returncode,0,r.stderr)
         out=r.stdout
@@ -116,7 +143,7 @@ class MetalCompute(unittest.TestCase):
     def test_generated_metal_compiles(self):
         if not metal_toolchain():self.skipTest('no Metal toolchain')
         for source,flags,std in ((KERNEL,[],'metal3.1'),(KERNEL,['--release'],'metal3.1'),(WARP,['--release'],'metal3.1'),(GROUP,[],'metal3.1'),
-                                 (GROUP,['--release'],'metal3.1'),(SIMDGROUP,[],'metal4.0'),(SIMDGROUP,['--release'],'metal4.0')):
+                                 (GROUP,['--release'],'metal3.1'),(GROUP_PLACE,[],'metal3.1'),(GROUP_PLACE,['--release'],'metal3.1'),(GROUP_F64,[],'metal3.1'),(SIMDGROUP,[],'metal4.0'),(SIMDGROUP,['--release'],'metal4.0')):
             r=self.run_metal(source,*flags);self.assertEqual(r.returncode,0,r.stderr)
             with tempfile.TemporaryDirectory() as d:
                 p=Path(d)/'k.metal';p.write_text(r.stdout)

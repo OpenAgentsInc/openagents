@@ -646,7 +646,11 @@ struct Emitter {
       if (e->kind == ExprKind::index && e->lhs->type->kind == TypeKind::view) { space_device = true; break; }
       e = e->lhs;
     }
-    return std::string(space_device ? "device " : "thread ") + c_type(place->type) + " *";
+    // A group kernel's threadgroup array (matched by name, as compute.cpp admits it).
+    bool space_group = false;
+    if (!space_device && e && e->kind == ExprKind::ident && g_warp.shared_arrays.count(current))
+      for (const Stmt *d : g_warp.shared_arrays.at(current)) if (str_eq(e->text, d->name)) space_group = true;
+    return std::string(space_device ? "device " : space_group ? "threadgroup " : "thread ") + c_type(place->type) + " *";
   }
   // C's math.h names, with the float variants for f32; Metal overloads.
   std::string math_name(const Expr *e) {
@@ -1276,8 +1280,10 @@ struct Emitter {
           std::string n = local_name(s->name), c = c_type(s->type), T = std::to_string(g_warp.group_kernels.at(current));
           if (opts.metal_compute) line("threadgroup " + c + " &" + n + " = *coax_tg_" + n + ";");
           else { line("__shared__ " + c + " coax_tg_" + n + ";"); line(c + " &" + n + " = coax_tg_" + n + ";"); }
+          // An f64 element on Metal is a float-float pair, which 0 does not convert to.
+          std::string zero = opts.metal_compute && zero_value(s->type->elem) == "coax_ff_make(0.0f, 0.0f)" ? zero_value(s->type->elem) : "0";
           line("for (int64_t coax_z = " + std::string(opts.metal_compute ? "(int64_t)coax_lane" : "(int64_t)threadIdx.x") + "; coax_z < " +
-               std::to_string(s->type->length) + "; coax_z += " + T + ") " + n + ".e[coax_z] = 0;");
+               std::to_string(s->type->length) + "; coax_z += " + T + ") " + n + ".e[coax_z] = " + zero + ";");
           line(group_barrier());
           break;
         }
