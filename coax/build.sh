@@ -112,6 +112,31 @@ from_cache() {
   write_source_digest
   echo "coax/build.sh: installed the checked build ${expected:0:12} from $cache_root"
 }
+# A published build of this tree's compiler sources for this platform
+# (coax/published.sh, coax/RELEASE.md#published-builds): fetched, its
+# manifest and every file's hash checked, then bound to this machine with
+# its own provenance record against this tree's full fingerprint, checked
+# against the release documents, installed and kept in the cache like a
+# local bootstrap. COAX_BUILD_FRESH=1 or COAX_NO_PUBLISHED=1 bootstraps instead.
+from_published() {
+  [[ -z "${COAX_BUILD_FRESH:-}" && -z "${COAX_NO_PUBLISHED:-}" ]] || return 1
+  local got name
+  got="$(mktemp -d "${TMPDIR:-/tmp}/coax-published.XXXXXXXX")"
+  if ! ./published.sh fetch "$root" "$got" 2> "$got.log"; then
+    echo "coax/build.sh: $(tail -n 1 "$got.log" | sed 's/^coax published: //'); bootstrapping" >&2
+    rm -rf "$got" "$got.log"; return 1
+  fi
+  rm -f "$got.log"
+  ./provenance.sh write "$root" "$got/coax" "$got/provenance-check" "$got/provenance.record" "$expected" || { rm -rf "$got"; return 1; }
+  check_documents "$got/coax" || { rm -rf "$got"; exit 1; }
+  mkdir -p bin
+  for name in "${artifacts[@]}"; do cp "$got/$name" "bin/.$name.$$"; mv "bin/.$name.$$" "bin/$name"; done
+  ./provenance.sh install "$root" "$got"
+  write_source_digest
+  keep
+  echo "coax/build.sh: installed the published build $(./published.sh name "$root" | cut -c1-12) ($(./published.sh platform), from $(awk '$1 == "commit" { print substr($2, 1, 11) }' "$got/manifest"))"
+  rm -rf "$got"
+}
 # A checked build into the cache, whole or not at all, verified again first.
 keep() {
   local into name
@@ -140,6 +165,7 @@ else
     building="$lock"; echo $$ > "$lock/pid"
   fi
   if from_cache; then :
+  elif from_published; then :
   else
     snapshot="$(mktemp -d "${TMPDIR:-/tmp}/coax-build-snapshot.XXXXXXXX")"
     trap 'rm -rf "$snapshot"; [[ -z "$building" ]] || rm -rf "$building"; [[ -z "$changed_file" ]] || rm -f "$changed_file"' EXIT

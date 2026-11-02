@@ -18,6 +18,10 @@ mkdir -p bin
 host_flags=(-std=c++20 -O1 -g -Wall -Wextra -Wno-missing-field-initializers)
 if [[ -n "${COAX_HOST_TARGET:-}" ]]; then host_flags+=(-target "$COAX_HOST_TARGET"); fi
 c_flags=(-std=c11 -O1 -g)
+# Extra link flags for the executables (stage0, coax, provenance-check):
+# published Linux builds link statically (COAX_LDFLAGS=-static), so one
+# build runs on any Linux of its architecture (coax/RELEASE.md, Published builds).
+read -r -a link_flags <<< "${COAX_LDFLAGS:-}"
 if [[ -n "${COAX_HOST_TARGET:-}" ]]; then c_flags+=(-target "$COAX_HOST_TARGET"); fi
 # Stage0 has the language frontend but deliberately no proto implementation.
 # It compiles the authoritative Coax importer, then we link that C11 object
@@ -62,7 +66,7 @@ trap 'rm -rf "$work"' EXIT
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/parser.c -o "$work/seed-parser.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/checker.c -o "$work/seed-checker.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/sources.c -o "$work/seed-sources.o"
-"${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-check-domains.o" "$work/seed-mutation-schedule.o" "$work/seed-budget.o" "$work/seed-profiles.o" "$work/seed-lexer.o" "$work/seed-parser.o" "$work/seed-checker.o" "$work/seed-sources.o"
+"${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-check-domains.o" "$work/seed-mutation-schedule.o" "$work/seed-budget.o" "$work/seed-profiles.o" "$work/seed-lexer.o" "$work/seed-parser.o" "$work/seed-checker.o" "$work/seed-sources.o" ${link_flags[@]+"${link_flags[@]}"}
 fi
 # Gate results. A passing stage0 gate is kept in $COAX_GATE_CACHE (default
 # ~/.cache/coax-gates/) under a key that hashes stage0's inputs, the gate's
@@ -84,7 +88,7 @@ stage0_identity() {
     printf 'cxx\0%s\0%s\0' "$(command -v "${CXX:-c++}")" "$("${CXX:-c++}" --version)"
     printf 'host\0%s\0%s\0' "$(uname -s)" "$(uname -m)"
     if [[ "$(uname -s)" == Darwin ]]; then printf 'sdk\0%s\0%s\0' "$(xcrun --show-sdk-path)" "$(xcrun --show-sdk-version)"; fi
-    for path in COAX_CC COAX_HOST_TARGET SDKROOT MACOSX_DEPLOYMENT_TARGET IPHONEOS_DEPLOYMENT_TARGET DEVELOPER_DIR CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH; do
+    for path in COAX_CC COAX_LDFLAGS COAX_HOST_TARGET SDKROOT MACOSX_DEPLOYMENT_TARGET IPHONEOS_DEPLOYMENT_TARGET DEVELOPER_DIR CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH; do
       printf '%s\0%s\0' "$path" "${!path-}"
     done
   } | sha
@@ -279,7 +283,7 @@ gate "$work/stage0" test lib/proto/importer.coax
 gate "$work/stage0" mutate lib/proto/importer.coax
 "$work/stage0" c lib/compiler/compiler.coax --library --header "$work/proto_importer.h" > "$work/proto_importer.c"
 "${CC:-cc}" "${c_flags[@]}" -c "$work/proto_importer.c" -o "$work/proto_importer.o"
-"${CXX:-c++}" "${host_flags[@]}" -I "$work" -o "$work/coax" src/main.cpp "$work/proto_importer.o"
+"${CXX:-c++}" "${host_flags[@]}" -I "$work" -o "$work/coax" src/main.cpp "$work/proto_importer.o" ${link_flags[@]+"${link_flags[@]}"}
 "$work/coax" c lib/compiler/compiler.coax --library > "$work/rebuilt.c"
 cmp "$work/proto_importer.c" "$work/rebuilt.c"
 gate "$work/coax" test lib/compiler/budget.coax
@@ -298,7 +302,7 @@ gate "$work/coax" test lib/compiler/provenance.coax
 "$work/coax" c lib/compiler/provenance.coax --library --header "$work/final-provenance.h" > "$work/final-provenance.c"
 cmp "$work/provenance.c" "$work/final-provenance.c"
 cmp "$work/provenance.h" "$work/final-provenance.h"
-"${CC:-cc}" "${c_flags[@]}" -I "$work" "$work/provenance.c" provenance-bridge.c -o "$work/provenance-check"
+"${CC:-cc}" "${c_flags[@]}" -I "$work" "$work/provenance.c" provenance-bridge.c -o "$work/provenance-check" ${link_flags[@]+"${link_flags[@]}"}
 gate "$work/coax" test lib/compiler/mutation-schedule.coax
 "$work/coax" c lib/compiler/mutation-schedule.coax --library --header "$work/final-mutation-schedule.h" > "$work/final-mutation-schedule.c"
 cmp bootstrap/mutation-schedule.c "$work/final-mutation-schedule.c"

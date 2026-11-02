@@ -152,6 +152,51 @@ The build log prints each gate's time, or `reused` with its command.
 that the same gate passed on this machine; it is as trusted as the machine's
 cache directories, like the checked builds beside it.
 
+## Published builds
+
+A machine with neither cache bootstraps: about ten minutes on a 28-core
+host, an hour or more on a small container, every time the compiler's sources
+change. Published builds remove that wait. Each platform's release host
+bootstraps once per compiler change and publishes the result; every other
+machine downloads it.
+
+- **The name.** A build is published at
+  `https://storage.googleapis.com/openagentsgemini-cli-releases/coax/builds/<source>/<platform>.tar.gz`,
+  with `.sha256` beside it. `<source>` is `provenance.sh source-fingerprint`:
+  the same compiler inputs as the fingerprint, without the local compilers,
+  SDK or environment, so every machine of a platform names the same sources
+  the same way. Platforms: `linux-x86_64`, `linux-arm64`, `darwin-arm64`,
+  `darwin-x86_64`.
+- **What is in it.** The compiler, the provenance helper, the C artifacts
+  native tests link, and a manifest: the source fingerprint, platform,
+  commit, compiler version, toolchain, link flags and the SHA-256 of every
+  file. No `provenance.record`: a record binds a build to one machine.
+- **Who publishes.** `coax/published.sh publish` packs `coax/bin` only when it
+  is a checked build of a committed tree with no surviving mutant, and
+  uploads it only when the name is not taken (published builds are
+  immutable). `coax/publish-host.sh --every 600` runs on each release host as
+  a service and publishes `origin/main`'s compiler whenever its sources change:
+  CoderOS for Linux, with GCC for musl from nixpkgs and `COAX_LDFLAGS=-static`
+  so one build runs on any Linux of its architecture; the Mac for macOS, with
+  the system's clang and `MACOSX_DEPLOYMENT_TARGET=13.0`. No GitHub Actions.
+- **Who installs.** `coax/build.sh`, when its cache has no build for this
+  tree, tries the published one before bootstrapping: it checks the download
+  against its checksum, the manifest's source fingerprint and platform against
+  this tree and machine, every file against its hash, that a Linux build links
+  no shared library, and that the compiler runs; then writes this machine's own
+  provenance record, validates the release documents with it, installs it and
+  keeps it in the cache. A missing or failing build falls back to the
+  bootstrap and says why. `COAX_BUILD_FRESH=1` or `COAX_NO_PUBLISHED=1`
+  bootstraps.
+- **Trust.** A published build is as trusted as the release hosts and the
+  bucket's write access (the automation service account), the way the local
+  caches are as trusted as their machine. The checksum guards the transfer,
+  not the publisher. A tree whose compiler sources differ from every published
+  build always bootstraps.
+
+Check: `coax/tests/published-build.sh` (a build's manifest, names and hashes
+are checked, and a wrong source, platform, hash or extra file is refused).
+
 ## Which surviving mutants stop a build
 
 A mutation gate in the bootstrap fails on a surviving mutant only when the

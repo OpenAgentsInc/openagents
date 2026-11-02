@@ -48,14 +48,39 @@ fingerprint() (
     if [[ "$(uname -s)" == Darwin ]]; then
       printf 'default-sdk\0%s\0%s\0' "$sdk_path" "$sdk_version"
     fi
-    for path in COAX_HOST_TARGET SDKROOT MACOSX_DEPLOYMENT_TARGET IPHONEOS_DEPLOYMENT_TARGET DEVELOPER_DIR CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH; do
+    for path in COAX_LDFLAGS COAX_HOST_TARGET SDKROOT MACOSX_DEPLOYMENT_TARGET IPHONEOS_DEPLOYMENT_TARGET DEVELOPER_DIR CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH; do
       printf '%s\0%s\0' "$path" "${!path-}"
     done
   } | sha
 )
-[[ $# -ge 2 ]] || fail 'usage: provenance.sh fingerprint ROOT | write ROOT BINARY HELPER RECORD EXPECTED | verify ROOT BINARY HELPER RECORD | install ROOT BIN_DIR'
+# The compiler's sources alone, and the platform they are built for: what a
+# published build is named by (coax/published.sh). The same input files as
+# fingerprint(), without the local compilers, SDK or environment, so every
+# machine of a platform computes the same name for the same sources.
+source_fingerprint() (
+  local root="$1" path relative digest listing
+  listing="$(mktemp "${TMPDIR:-/tmp}/coax-source-inputs.XXXXXXXX")"
+  trap 'rm -f "$listing"' EXIT
+  root="$(cd "$root" && pwd -P)"
+  find "$root/coax/src" "$root/coax/bootstrap" "$root/coax/lib/compiler" "$root/coax/lib/proto" -type f -print0 | sort -z > "$listing" || fail 'cannot inventory compiler inputs'
+  {
+    printf 'coax-source-v1\0'
+    for path in coax/build.sh coax/bootstrap-build.sh coax/bootstrap-mutation-shards.sh coax/mutation-gate.sh coax/check-proto-cap.sh coax/provenance.sh coax/provenance-bridge.c coax/release.coax coax/release-model.coax coax/changelog.coax coax/changelog-model.coax coax/changelog-bridge.c coax/lib/crypto/sha256-kernel.coax scripts/coax-release.sh; do
+      digest="$(file_hash "$root/$path")" || exit 1
+      printf '%s\0%s\0' "$path" "$digest"
+    done
+    while IFS= read -r -d '' path; do
+      relative="${path#"$root"/}"
+      digest="$(file_hash "$path")" || exit 1
+      printf '%s\0%s\0' "$relative" "$digest"
+    done < "$listing"
+    printf 'os\0%s\0architecture\0%s\0' "$(uname -s)" "$(uname -m)"
+  } | sha
+)
+[[ $# -ge 2 ]] || fail 'usage: provenance.sh fingerprint ROOT | source-fingerprint ROOT | write ROOT BINARY HELPER RECORD EXPECTED | verify ROOT BINARY HELPER RECORD | install ROOT BIN_DIR'
 mode="$1"; root="$2"
 if [[ "$mode" == fingerprint ]]; then [[ $# == 2 ]] || fail 'invalid arguments'; fingerprint "$root"; exit; fi
+if [[ "$mode" == source-fingerprint ]]; then [[ $# == 2 ]] || fail 'invalid arguments'; source_fingerprint "$root"; exit; fi
 if [[ "$mode" == install ]]; then
   [[ $# == 3 ]] || fail 'invalid arguments'
   source_bin="$3"; target_bin="$root/coax/bin"

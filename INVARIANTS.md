@@ -3018,6 +3018,22 @@ verifies its record against the current tree's compiler-input fingerprint. One
 builder runs per fingerprint on a machine; the others wait and install its
 result. Every install is a copy to a temporary name followed by a rename.
 
+A machine without a cached build installs the published build of this tree's
+compiler sources for its platform before it bootstraps (owner, 2026-11-02:
+"we need release builds per platform when we ship new versions, so we don't
+need these waits"; `coax/published.sh`, `coax/RELEASE.md#published-builds`).
+A published build is named by `provenance.sh source-fingerprint` (the compiler
+inputs and the platform, not the local toolchain) and installed only when its
+download matches its checksum, its manifest names exactly this tree's source
+fingerprint and this platform, every file matches its hash, a Linux build
+links no shared library, and the compiler runs. The installing machine then
+writes its own provenance record for its full fingerprint, so every later
+install from its cache is verified as before. Only a checked build of a
+committed tree with no surviving mutant is published, and a published name is
+never replaced. Release hosts are our own machines (`coax/publish-host.sh`),
+never GitHub Actions. `COAX_BUILD_FRESH=1` or `COAX_NO_PUBLISHED=1` always
+bootstraps.
+
 The bootstrap reuses a stage0 `test` or `mutate` gate only when a passing
 result exists under a key that hashes stage0's complete inputs (sources, seeds,
 the embedded proto runtime, compilers, flags, SDK and build environment), the
