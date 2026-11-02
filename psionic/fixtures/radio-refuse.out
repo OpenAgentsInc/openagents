@@ -1,0 +1,10 @@
+60x48, not a multiple of 16: multiple
+528x48, over 512 pixels a side: large
+64x48 with 4 channels: channels
+64x48 with 16-bit channels: depth
+0x48: shape
+64x48 under a config with 5 heads of a 768 width: config
+inventory without tensor 34: missing
+inventory with 36 tensors: extra
+one block of two: shape
+summary one value short: capacity

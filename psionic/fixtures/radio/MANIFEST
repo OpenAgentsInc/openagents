@@ -1,0 +1,13 @@
+# C-RADIOv3-B, the checkpoint chapter 144 runs. Fetch these files from the
+# pinned revision into one directory; nothing here is downloaded by a check
+# and no weights are committed.
+source https://huggingface.co/nvidia/C-RADIOv3-B
+revision 44653a0482cf460bb4f12595fc3cc3dfecc403d1
+license NVIDIA Open Model License Agreement (June 2024), per the model card's front matter
+license_link https://developer.download.nvidia.com/licenses/nvidia-open-model-license-agreement-june-2024.pdf
+reference_code the repository's Python modules (radio_model.py, vit_patch_generator.py, enable_cpe_support.py, cls_token.py, input_conditioner.py, extra_timm_models.py, hf_model.py), read as text only, never run; the RADIO source license limits that code to noncommercial research and evaluation, so the Coax encoder is written separately
+sha256 27881c65f10ab2a16d4b2bda2d6f52ddc8410b0980837fc96914e72a7d190b9b model.safetensors 393038784
+sha256 f78c3717c6ba4059521ec4a5f70dfbc7c8b436f34202e893e9a7b55869ed9c5b config.json 5916
+sha256 d397d592ffa2498e46885a6a891bcd25c17ff32437de948e6da347774e0a3883 preprocessor_config.json 331
+sha256 0d8de9f10f76f6bba03fe9581e61c4f98add13c9f7d48a62ad43a49ffb169c6a README.md 11094
+not_fetched c-radio_v3-b_half.pth.tar (a pickle of the same model; never unpickled)

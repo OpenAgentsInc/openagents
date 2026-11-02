@@ -1,0 +1,10 @@
+C-RADIOv3-B: 175 tensors, 98254857 values; table 128 by 128, 4 cls and 4 register tokens
+64x48: 3 by 4 patches, 20 tokens; summary 2304 values, features 12 by 768
+48x64: 4 by 3 patches, 20 tokens; summary 2304 values, features 12 by 768
+16x16: 1 by 1 patches, 9 tokens; summary 2304 values, features 1 by 768
+224x224: 14 by 14 patches, 204 tokens; summary 2304 values, features 196 by 768
+512x512: 32 by 32 patches, 1032 tokens; summary 2304 values, features 1024 by 768
+red 0 and 255 become -1.7922626 and 1.9303361
+grid row 1 reads table rows 42 and 43 (fraction 0.3333333333333357); column 3 reads 127
+tiny encoder: ok, 64 values, within the oracle's tolerance: true
+  summary: 0.13536607 0.16132584 -0.28667647 -0.23252365 ...

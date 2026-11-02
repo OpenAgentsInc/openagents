@@ -1,0 +1,27 @@
+// Chapter 144: what the C-RADIO path refuses, each with its typed reason.
+#import "Basic";
+#load "../lib/radio.coax";
+
+// book:begin refuse
+main :: () {
+    e:=rd_c_radio_v3_b();
+    images:=[6]PxImage.[PxImage.{width=60,height=48},PxImage.{width=528,height=48},PxImage.{width=64,height=48,channels=4},
+        PxImage.{width=64,height=48,depth=16},PxImage.{width=0,height=48},PxImage.{width=64,height=48}];
+    labels:=[6]string.["60x48, not a multiple of 16","528x48, over 512 pixels a side","64x48 with 4 channels",
+        "64x48 with 16-bit channels","0x48","64x48 under a config with 5 heads of a 768 width"];
+    bad:=e;bad.heads=5;
+    for i:0..<6 {c:=ifx i==5 then bad else e;print("%: %\n",labels[i],rd_admit(c,images[i]).status);}
+    // An inventory missing its last block's ls2.grandma, then one with a stray final norm.
+    t:=rd_tiny();names:[36][128]u8;inv:[36]RdTensor;
+    for i:0..<rd_tensors(t) {need:=rd_need(t,i,names[i][..]);inv[i]=RdTensor.{name=cast(string)names[i][0..<need.count],dtype=need.dtype,shape=need.shape,elements=rd_size(need.shape)};}
+    r:=rd_inventory(t,inv[0..<34]);print("inventory without tensor %: %\n",r.cause,r.status);
+    inv[35]=RdTensor.{name="radio_model.model.norm.weight",shape=sv_s1(8),elements=8};r=rd_inventory(t,inv[0..<36]);print("inventory with % tensors: %\n",r.cause,r.status);
+    // One block where the config says two; summary room one value short.
+    w:=rd_tiny_weights();bytes:[72]u8;sv_bytes(bytes[..]);one:=[1]RdBlock.[rd_tiny_block(w.blocks[0..<RD_TINY_BLOCK])];
+    weights:=RdWeights.{patch=w.patch[..],table=w.table[..],tokens=w.tokens[..],blocks=one[..]};
+    summary:[16]f32;features:[48]f32;work:[772]f32;image:=PxImage.{width=6,height=4};
+    print("one block of two: %\n",rd_encode(t,image,bytes[..],weights,summary[..],features[..],work[..],false).status);
+    two:=[2]RdBlock.[one[0],rd_tiny_block(w.blocks[RD_TINY_BLOCK..<2*RD_TINY_BLOCK])];weights.blocks=two[..];
+    print("summary one value short: %\n",rd_encode(t,image,bytes[..],weights,summary[0..<15],features[..],work[..],false).status);
+}
+// book:end refuse

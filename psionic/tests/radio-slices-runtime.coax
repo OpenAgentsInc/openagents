@@ -1,0 +1,155 @@
+// Original-weight slices of C-RADIOv3-B (chapter 144). C maps the file and
+// moves bytes; the header scan, the inventory check, decoding and every
+// value of the encoder are Coax.
+#load "../lib/radio.coax";
+
+// The safetensors header with the two types this checkpoint uses, F32 and
+// I64 (chapter 7's rank-5 reader takes BF16 and F32 only). Same rules:
+// every tensor's span inside the payload, no overlaps, full coverage.
+RsParsed :: struct {status:PwStatus;t:RdTensor;begin:int;end:int;}
+rs_parse :: (j:[]Json,name:string)->RsParsed {
+    p:RsParsed;
+    if json_next(j)!=JSON_OBJECT {return RsParsed.{status=PwStatus.schema};}
+    k:=json_next(j);d:=false;s:=false;o:=false;
+    while k!=JSON_OBJECT_END {
+        if k!=JSON_STRING {return RsParsed.{status=PwStatus.json};}
+        key:=json_text(j);
+        if key=="dtype" {
+            if d || json_next(j)!=JSON_STRING {return RsParsed.{status=PwStatus.schema};}d=true;
+            dtype:=json_text(j);
+            if dtype=="I64" {p.t.dtype=RdDtype.i64;} else if dtype!="F32" {return RsParsed.{status=PwStatus.unsupported};}
+        } else if key=="shape" {
+            if s || json_next(j)!=JSON_ARRAY {return RsParsed.{status=PwStatus.schema};}s=true;
+            part:=json_next(j);
+            while part!=JSON_ARRAY_END {
+                if part!=JSON_NUMBER || p.t.shape.rank>=5 {return RsParsed.{status=PwStatus.shape};}
+                v:=pw_integer(json_text(j));if v.status!=PwStatus.ok || v.value<1 {return RsParsed.{status=PwStatus.shape};}
+                p.t.shape.dims[p.t.shape.rank]=v.value;p.t.shape.rank+=1;part=json_next(j);
+            }
+        } else if key=="data_offsets" {
+            if o || json_next(j)!=JSON_ARRAY || json_next(j)!=JSON_NUMBER {return RsParsed.{status=PwStatus.schema};}o=true;
+            a:=pw_integer(json_text(j));if a.status!=PwStatus.ok || json_next(j)!=JSON_NUMBER {return RsParsed.{status=PwStatus.schema};}
+            b:=pw_integer(json_text(j));if b.status!=PwStatus.ok || json_next(j)!=JSON_ARRAY_END {return RsParsed.{status=PwStatus.schema};}
+            p.begin=a.value;p.end=b.value;
+        } else {return RsParsed.{status=PwStatus.schema};}
+        k=json_next(j);
+    }
+    if !d || !s || !o {return RsParsed.{status=PwStatus.schema};}
+    p.t.name=name;p.t.elements=rd_size(p.t.shape);
+    return p;
+}
+rs_scan :: (file:[]u8,out:[]RdTensor,begins:[]int)->PwResult #export_c {
+    h:=pw_header(file);if h.status!=PwStatus.ok {return PwResult.{status=h.status};}
+    header:=file[8..<h.data];j:[1]Json;json_start_bounded(j[..],cast(string)header,header.count,header.count);
+    if json_next(j[..])!=JSON_OBJECT {return PwResult.{status=PwStatus.json};}
+    count:=0;covered:=0;payload:=file.count-h.data;t:=json_next(j[..]);
+    while t!=JSON_OBJECT_END {
+        if t!=JSON_STRING {return PwResult.{status=PwStatus.json};}
+        name:=json_text(j[..]);if !pw_name(name) {return PwResult.{status=PwStatus.unsupported};}
+        if name=="__metadata__" {
+            status:=pw_metadata(j[..]);if status!=PwStatus.ok {return PwResult.{status=status};}
+        } else {
+            if count>=out.count || count>=begins.count {return PwResult.{status=PwStatus.capacity};}
+            parsed:=rs_parse(j[..],name);if parsed.status!=PwStatus.ok {return PwResult.{status=parsed.status};}
+            tensor:=parsed.t;span:=[2]int.[parsed.begin,parsed.end];
+            width:=ifx tensor.dtype==RdDtype.i64 then 8 else 4;
+            if !pw_span(span[0],span[1],tensor.elements*width,payload) {return PwResult.{status=PwStatus.offsets};}
+            for i:0..<count {
+                if out[i].name==name {return PwResult.{status=PwStatus.duplicate};}
+                w:=ifx out[i].dtype==RdDtype.i64 then 8 else 4;
+                if h.data+span[0]<begins[i]+out[i].elements*w && begins[i]<h.data+span[1] {return PwResult.{status=PwStatus.offsets};}
+            }
+            out[count]=tensor;begins[count]=h.data+span[0];count+=1;covered+=span[1]-span[0];
+        }
+        t=json_next(j[..]);
+    }
+    if json_next(j[..])!=JSON_END {return PwResult.{status=PwStatus.json};}
+    if count==0 || covered!=payload {return PwResult.{status=PwStatus.coverage};}
+    return PwResult.{written=count,bytes=covered};
+}
+
+rs_inventory :: (inventory:[]RdTensor)->RdResult #export_c {return rd_inventory(rd_c_radio_v3_b(),inventory);}
+rs_find :: (inventory:[]RdTensor,i:int)->int {
+    name:[128]u8;key:=rd_name(rd_c_radio_v3_b(),i,name[..]);
+    for t:0..<inventory.count {if inventory[t].name==key {return t;}}
+    return -1;
+}
+rs_word :: (file:[]u8,at:int,bytes:int)->u64 {v:u64=0;for i:0..<bytes {v|=cast(u64)file[at+i]<<(8*i);}return v;}
+// summary_idxs must be [0, 1, 2], and the stored conditioner mean and
+// spread the config's values rounded to f32.
+rs_buffers :: (file:[]u8,inventory:[]RdTensor,begins:[]int)->RdResult #export_c {
+    c:=rd_c_radio_v3_b();
+    at:=begins[rs_find(inventory,0)];
+    for k:0..<c.summary {if rs_word(file,at+8*k,8)!=cast(u64)k {return RdResult.{status=RdStatus.number,cause=k};}}
+    for part:0..<2 {
+        at=begins[rs_find(inventory,1+part)];
+        for ch:0..<3 {
+            want:=ifx part==0 then c.mean[ch] else c.std[ch];
+            if f64(f32_from_bits(cast(u32)rs_word(file,at+4*ch,4)))!=want {return RdResult.{status=RdStatus.number,cause=3+3*part+ch};}
+        }
+    }
+    return RdResult.{written=c.summary+6};
+}
+// The weights the encoder reads, decoded end to end in inventory order:
+// the patch embedding, the position table, the cls and register tokens,
+// then every block's fourteen.
+rs_first :: ()->int {return 3;}
+rs_count :: ()->int #export_c {return rd_tensors(rd_c_radio_v3_b());}
+rs_used :: (i:int)->bool {return i>=rs_first() && i!=6;}
+rs_elements :: (i:int)->int #export_c {
+    if !rs_used(i) {return 0;}
+    name:[128]u8;return rd_size(rd_need(rd_c_radio_v3_b(),i,name[..]).shape);
+}
+rs_decode :: (i:int,file:[]u8,inventory:[]RdTensor,begins:[]int,out:[]f32)->RdResult #export_c {
+    t:=rs_find(inventory,i);if t<0 || !rs_used(i) {return RdResult.{status=RdStatus.missing,cause=i};}
+    if out.count!=inventory[t].elements {return RdResult.{status=RdStatus.capacity};}
+    for k:0..<out.count {
+        bits:=cast(u32)rs_word(file,begins[t]+4*k,4);
+        if !psionic_tensor_finite_bits(bits) {return RdResult.{status=RdStatus.number,cause=k};}
+        out[k]=f32_from_bits(bits);
+    }
+    return RdResult.{written=out.count};
+}
+
+rs_wide :: ()->PxImage {return PxImage.{width=64,height=48};}
+rs_tall :: ()->PxImage {return PxImage.{width=48,height=64};}
+rs_large :: ()->PxImage {return PxImage.{width=224,height=224};}
+// out: the wide image's patches, embedding, block 0, summary and features
+// (all 12 blocks), the tall image's embedding, then a 224 by 224 image's
+// patches.
+rs_output :: ()->int #export_c {
+    c:=rd_c_radio_v3_b();a:=rd_admit(c,rs_wide());b:=rd_admit(c,rs_tall());l:=rd_admit(c,rs_large());d:=c.width;
+    return a.patches*a.features+2*a.tokens*d+(c.summary+a.patches)*d+b.tokens*d+l.patches*l.features;
+}
+rs_work :: ()->int #export_c {return rd_encode_work(rd_c_radio_v3_b(),rs_large());}
+rs_block :: (w:[]f32,at:int)->RdBlock {
+    c:=rd_c_radio_v3_b();d:=c.width;i:=c.inner;
+    sizes:=[14]int.[d,d,3*d*d,3*d,d*d,d,d,d,d,i*d,i,d*i,d,d];parts:[14][]f32;p:=at;
+    for k:0..<14 {parts[k]=w[p..<p+sizes[k]];p+=sizes[k];}
+    return RdBlock.{norm1=parts[0],norm1_bias=parts[1],qkv=parts[2],qkv_bias=parts[3],proj=parts[4],proj_bias=parts[5],ls1=parts[6],
+        norm2=parts[7],norm2_bias=parts[8],fc1=parts[9],fc1_bias=parts[10],fc2=parts[11],fc2_bias=parts[12],ls2=parts[13]};
+}
+rs_slice :: (weights:[]f32,out:[]f32,work:[]f32)->RdResult #export_c {
+    c:=rd_c_radio_v3_b();d:=c.width;
+    total:=0;for i:0..<rs_count() {total+=rs_elements(i);}
+    if weights.count!=total || out.count!=rs_output() || work.count<rs_work() {return RdResult.{status=RdStatus.capacity};}
+    pe:=d*3*c.patch*c.patch;tb:=c.side*c.side*d;tk:=(c.cls+c.registers)*d;bs:=total-pe-tb-tk;
+    blocks:[12]RdBlock;for k:0..<12 {blocks[k]=rs_block(weights,pe+tb+tk+k*(bs/12));}
+    w:=RdWeights.{patch=weights[0..<pe],table=weights[pe..<pe+tb],tokens=weights[pe+tb..<pe+tb+tk],blocks=blocks[..]};
+    raw:[150528]u8;
+    a:=rd_admit(c,rs_wide());b:=rd_admit(c,rs_tall());
+    np:=a.patches*a.features;nt:=a.tokens*d;
+    o1:=np;o2:=o1+nt;o3:=o2+nt;o4:=o3+c.summary*d;o5:=o4+a.patches*d;o6:=o5+b.tokens*d;
+    sv_bytes(raw[0..<3*64*48]);image:=rs_wide();
+    r:=rd_pixels(c,image,raw[0..<3*64*48],work,out[0..<o1],false);if r.status!=RdStatus.ok {return r;}
+    r=rd_embed(c,image,out[0..<o1],w.patch,w.table,w.tokens,out[o1..<o2],work,false);if r.status!=RdStatus.ok {return r;}
+    r=rd_block(c,image,out[o1..<o2],blocks[0],out[o2..<o3],work,false);if r.status!=RdStatus.ok {return r;}
+    r=rd_encode(c,image,raw[0..<3*64*48],w,out[o3..<o4],out[o4..<o5],work,false);if r.status!=RdStatus.ok {return r;}
+    // The tall image: same bytes, transposed grid.
+    tall:=rs_tall();pt:=work[0..<np];rest:=work[np..<work.count];
+    r=rd_pixels(c,tall,raw[0..<3*64*48],rest,pt,false);if r.status!=RdStatus.ok {return r;}
+    r=rd_embed(c,tall,pt,w.patch,w.table,w.tokens,out[o5..<o6],rest,false);if r.status!=RdStatus.ok {return r;}
+    sv_bytes(raw[..]);
+    r=rd_pixels(c,rs_large(),raw[..],work,out[o6..<out.count],false);if r.status!=RdStatus.ok {return r;}
+    return RdResult.{written=out.count};
+}

@@ -1,0 +1,15 @@
+c-radio: 175 tensors in the file, inventory status 0 (cause 175), 98254857 elements
+c-radio: summary indices and conditioner status 0 (9 values)
+c-radio: decoded 98251776 weights in 0.33 s; slices and the full encoder in 1.20 s
+oracle inventory: 175 tensors, 175 expected, 0 wrong, 0 extra, 98254857 elements
+oracle buffers: summary_idxs [0, 1, 2] (config [0, 1, 2]), mean [0.48145467042922974, 0.45782750844955444, 0.40821072459220886], std [0.2686295509338379, 0.2613025903701782, 0.27577710151672363]
+  patches 64x48: 9216 values, largest |coax - oracle| / (1 + |oracle|) = 1.06e-07
+  embedding 64x48: 15360 values, largest |coax - oracle| / (1 + |oracle|) = 4.50e-08
+  block 0: 15360 values, largest |coax - oracle| / (1 + |oracle|) = 2.86e-07
+  summary (12 blocks): 2304 values, largest |coax - oracle| / (1 + |oracle|) = 1.51e-05
+  spatial features (12 blocks): 9216 values, largest |coax - oracle| / (1 + |oracle|) = 1.54e-05
+  embedding 48x64: 15360 values, largest |coax - oracle| / (1 + |oracle|) = 7.60e-08
+  patches 224x224: 150528 values, largest |coax - oracle| / (1 + |oracle|) = 1.06e-07
+summary 2304 values, spatial features 12 by 768
+within the frozen tolerance 0.0001
+c-radio slices: 74 s
