@@ -9,3 +9,11 @@ ks_sign :: (me:int,psbt:string,request:string,key:int)->KySigned {
   l:[1]KyLedger;acct:[64]u8;ks_account(key,acct[..]);work:[1]KySignWork;e:=p.e;
   return ky_sign(w,wd,sc,ks_witnesses(),e[..],me,ky_request_read(request),ps,1000,KY_T0,l[..],acct[..],work[..]);
 }
+// Agent a's result for KY_PSBT built from the fixtures (libsecp256k1's
+// signatures) without signing, for the PSBT and combine checks; "each
+// agent signs" checks that ky_sign returns these bytes.
+ks_signed :: (a:int)->KySigned {
+  r:=KySigned.{code=KyCode.ok,nin=2};b:[512]u8;bt_sha(ky_unhex(KY_PSBT,b[..]),r.psbt[..]);
+  for k:0..<2 {bt_set(KY_CHILD_PUB[2*a+k],r.p[k].pub[..]);r.p[k].n=bt_unhex(KY_PARTIAL[2*a+k],r.p[k].sig[..]).count;}
+  return r;
+}

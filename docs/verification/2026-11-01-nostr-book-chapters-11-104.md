@@ -201,9 +201,18 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
   Taproot key path) and `coax/lib/nostr/nipkeys_sign.coax` (partial
   signatures, the signed PSBT, the coordinator's transaction), all
   `#authority`. Root-only mutation: 224 of 224 and 406 of 406 killed
-  for the first two; `nipkeys_sign.coax`'s first 16-shard pass left 9
-  survivors in shards 1 to 12 (all since killed) and shards 13 to 15 hit
-  the 14-minute limit, so its pass on the final file is still owed. BIP-143's eight published signatures and BIP-341's seven
+  for the first two (`ecdsa_sign.coax` rerun after the shared test helpers
+  changed: 224 of 224 again). `nipkeys_sign.coax`: 331 of 331 killed,
+  merged from 8 shards (`--shard I/8 --jobs 4 --run-steps 250000000`,
+  11 to 12 minutes each) after its checks were ordered by cost, the xpub
+  derivation made cheaper (each xpub and branch key derived once), the
+  PSBT and combine checks fed from the libsecp256k1 fixtures, and the last
+  two survivors killed (an unchecked retry flag, a hash view one byte too
+  loose). Earlier 16-shard passes hit the 14-minute limit. Compiler: the
+  stage-0 build of the current sources (`coax/build.sh`'s release build
+  was still in its mutation gate). Tests and mutation of these files need
+  `--run-steps 250000000` for the comb's `#run` table.
+  BIP-143's eight published signatures and BIP-341's seven
   key-path witnesses are reproduced byte for byte;
   `coax/tests/bitcoin/ecdsa_sign_libsecp.py` sent 1,200 release and 200
   ASan/UBSan signatures to libsecp256k1 v0.8.0: all verify, all low-S, all

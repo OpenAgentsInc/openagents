@@ -27,11 +27,79 @@ KyWitnesses :: struct {n:[2*KY_GAP]int;ws:[2*KY_GAP][KY_WS]u8;}
 KySignWork :: struct {k1:[32]u8;c1:[32]u8;k2:[32]u8;c2:[32]u8;data:[37]u8;i:[64]u8;key:[1]SignScalar;point:[1]SignPoint;pub:[33]u8;sig:[64]u8;ec:[1]EcdsaWork;}
 
 // ---- checks
-#test "the witness scripts from the xpubs are Python's" #steps 4000000000 {
-  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();
-  x:=ky_witnesses(w,p.e[..]);
-  for k:0..<4 {#assert x.n[k]==105 && bt_hex_is(x.ws[k][0..<x.n[k]],KY_WITNESS[k]);}
-  bad:=p.e;bad[2].key="tpub";x=ky_witnesses(w,bad[..]);#assert x.n[0]==-1 && x.n[3]==-1;
+// Cheapest first: the checks run in this order for every mutant until one
+// fails, and the xpub derivation is the slowest, so it comes last.
+#test "the sighashes are Python's, and slots are found" {
+  b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);t:=ky_psbt_read(ps);u:=ky_unsigned(ps);tx:=bt_tx_read(u);x:=ks_witnesses();
+  for k:0..<2 {
+    #assert ky_slot(ky_fixture_scripts(),t.in_script[k])==k;
+    h:[32]u8;#assert bt_sighash_v0(u,tx,k,x.ws[k][0..<x.n[k]],t.in_value[k],BT_ALL,h[..]) && bt_hex_is(h[..],KY_SIGHASH[k]);
+  }
+  #assert ky_slot(ky_fixture_scripts(),t.out_script[1])==2 && ky_slot(ky_fixture_scripts(),t.out_script[0])==-1;
+}
+#test "an account key that isn't the enrollment's refuses, and nothing is signed" #steps 1000000000 {
+  s:=ks_sign(1,KY_PSBT,KY_REQUEST,0);#assert s.code==KyCode.xpub && s.nin==0 && !s.retry;   // alice's key as keyco
+  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();wd:=ky_bytes(KY_WALLET_DIGEST);sc:=ky_fixture_scripts();x:=ks_witnesses();
+  b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);r:=ky_request_read(KY_REQUEST);
+  l:[1]KyLedger;acct:[64]u8;ks_account(1,acct[..]);acct[32]^=1;work:[1]KySignWork;   // keyco's key, a changed chain code
+  #assert ky_sign(w,wd,sc,x,p.e[..],1,r,ps,1000,KY_T0,l[..],acct[..],work[..]).code==KyCode.xpub;
+  acct[32]^=1;
+  #assert ky_sign(w,wd,sc,x,p.e[..],1,r,ps,1000,KY_T0,l[..],acct[0..<63],work[..]).code==KyCode.xpub;
+  #assert ky_sign(w,wd,sc,x,p.e[..],3,r,ps,1000,KY_T0,l[..],acct[..],work[..]).code==KyCode.xpub;
+  #assert ky_sign(w,wd,sc,x,p.e[..],-1,r,ps,1000,KY_T0,l[..],acct[..],work[..]).code==KyCode.xpub;
+  two:[2]KySignWork;#assert ky_sign(w,wd,sc,x,p.e[..],1,r,ps,1000,KY_T0,l[..],acct[..],two[..]).code==KyCode.xpub;
+  zero:[64]u8;#assert ky_sign(w,wd,sc,x,p.e[..],1,r,ps,1000,KY_T0,l[..],zero[..],work[..]).code==KyCode.xpub;
+  // n - k has keyco's x and the other parity: only the first byte differs.
+  neg:=acct;nk:=sc_negate(sc_load(acct[0..<32]).value);#assert ss_write(nk,neg[0..<32]);
+  #assert ky_sign(w,wd,sc,x,p.e[..],1,r,ps,1000,KY_T0,l[..],neg[..],work[..]).code==KyCode.xpub;
+  #assert l[0].count==0;
+}
+#test "each signer's PSBT carries its partial signatures, as Python's" #steps 2000000000 {
+  b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);
+  for a:0..<3 {
+    s:=ks_signed(a);out:[1024]u8;for i:0..<1024 {out[i]=255;}
+    n:=ky_psbt_signed(ps,s,out[..]);#assert n>0 && bt_hex_is(out[0..<n],KY_PSBT_SIGNED[a]);
+    #assert ky_psbt_read(out[0..<n]).code==KyCode.ok && ky_psbt_signed(ps,s,out[0..<n-1])==-1 && ky_psbt_signed(ps,s,out[0..<n])==n;
+  }
+  out:[1024]u8;none:KySigned;none.code=KyCode.outputs;#assert ky_psbt_signed(ps,none,out[..])==-1;
+  bad:=ks_signed(0);bad.nin=1;#assert ky_psbt_signed(ps,bad,out[..])==-1;
+  #assert ky_psbt_signed(ps[0..<ps.count-1],ks_signed(0),out[..])==-1;
+  empty:KySigned;empty.code=KyCode.ok;#assert ky_psbt_signed(ps[0..<ps.count-1],empty,out[..])==-1;   // a broken PSBT reads 0 inputs
+}
+#test "two of three combine into the final transaction; one is not enough" #steps 2000000000 {
+  w:=ky_wallet_read(KY_WALLET);b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);sc:=ky_fixture_scripts();x:=ks_witnesses();
+  s:[3]KySigned;for a:0..<3 {s[a]=ks_signed(a);}
+  out:[2048]u8;
+  for i:0..<out.count {out[i]=255;}
+  n:=ky_combine(w,sc,x,ps,s[0..<2],out[..]);#assert n>0 && bt_hex_is(out[0..<n],KY_FINAL_TX);
+  two:=[2]KySigned.[s[1],s[0]];#assert ky_combine(w,sc,x,ps,two[..],out[..])==n && bt_hex_is(out[0..<n],KY_FINAL_TX);
+  t3:=ky_combine(w,sc,x,ps,s[..],out[..]);#assert t3>n-4 && t3<n+4 && out[4]==0;   // two of the three in each input, in key order: a third signature would add 72 bytes
+  m:=ky_combine(w,sc,x,ps,s[1..<3],out[..]);#assert m>0 && out[m-1]==0 && out[4]==0 && out[5]==1;   // keyco and the enclave
+  #assert ky_combine(w,sc,x,ps,s[0..<1],out[..])==-1 && ky_combine(w,sc,x,ps,s[0..<0],out[..])==-1;
+  twice:=[2]KySigned.[s[0],s[0]];#assert ky_combine(w,sc,x,ps,twice[..],out[..])==-1;
+  #assert ky_combine(w,sc,x,ps,s[0..<2],out[0..<n-1])==-1 && ky_combine(w,sc,x,ps,s[0..<2],out[0..<n])==n;
+  refused:=s[1];refused.code=KyCode.outputs;one:=[2]KySigned.[s[0],refused];#assert ky_combine(w,sc,x,ps,one[..],out[..])==-1;
+  // Signatures for another PSBT are not combined into this one.
+  other:=s[1];other.psbt[31]^=1;one=[2]KySigned.[s[0],other];#assert ky_combine(w,sc,x,ps,one[..],out[..])==-1;
+  // A key that differs from keyco's in its first byte only is not keyco's.
+  other=s[1];other.p[0].pub[0]^=1;one=[2]KySigned.[s[0],other];#assert ky_combine(w,sc,x,ps,one[..],out[..])==-1;
+  evil:[512]u8;#assert ky_combine(w,sc,x,ky_unhex(KY_PSBT_EVIL,evil[..]),s[0..<2],out[..])==-1;
+  #assert ky_combine(w,sc,x,ps[0..<ps.count-1],s[0..<2],out[..])==-1;
+  far:=sc;far.s[0]=ky_spk(KY_SPK[3]);#assert ky_combine(w,far,x,ps,s[0..<2],out[..])==-1;
+}
+#test "a PSBT whose outputs differ from its request gets no signature from anyone" #steps 1000000000 {
+  for a:0..<3 {s:=ks_sign(a,KY_PSBT_EVIL,KY_REQUEST,a);#assert s.code==KyCode.psbt && s.nin==0;}
+  for a:0..<3 {s:=ks_sign(a,KY_PSBT_EVIL,KY_REQUEST_EVIL,a);#assert s.code==KyCode.outputs && s.nin==0;}
+}
+#test "each agent signs both inputs, equal to libsecp256k1's signatures" #steps 2000000000 {
+  for a:0..<3 {
+    s:=ks_sign(a,KY_PSBT,KY_REQUEST,a);
+    #assert s.code==KyCode.ok && !s.retry && s.nin==2;
+    for k:0..<2 {
+      #assert bt_hex_is(s.p[k].pub[..],KY_CHILD_PUB[2*a+k]) && bt_hex_is(s.p[k].sig[0..<s.p[k].n],KY_PARTIAL[2*a+k]);
+    }
+    f:=ks_signed(a);#assert bt_same(s.psbt[..],f.psbt[..]);   // the PSBT's digest: the later checks use ks_signed for these results
+  }
 }
 #test "child private keys: BIP-32 vector 1 and the treasury's" #steps 1000000000 {
   // BIP-32 test vector 1: m/0H's key and chain code, then m/0H/1.
@@ -69,59 +137,15 @@ KySignWork :: struct {k1:[32]u8;c1:[32]u8;k2:[32]u8;c2:[32]u8;data:[37]u8;i:[64]
   bt_set("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140",il[..]);k[31]=1;for i:0..<31 {k[i]=0;}
   #assert !ky_add_tweak(k[..],il[..],k2[..]);                       // the child would be zero
 }
-#test "each agent signs both inputs, equal to libsecp256k1's signatures" #steps 2000000000 {
-  for a:0..<3 {
-    s:=ks_sign(a,KY_PSBT,KY_REQUEST,a);
-    #assert s.code==KyCode.ok && !s.retry && s.nin==2;
-    for k:0..<2 {
-      #assert bt_hex_is(s.p[k].pub[..],KY_CHILD_PUB[2*a+k]) && bt_hex_is(s.p[k].sig[0..<s.p[k].n],KY_PARTIAL[2*a+k]);
-    }
-  }
-}
-#test "the sighashes are Python's, and slots are found" {
-  b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);t:=ky_psbt_read(ps);u:=ky_unsigned(ps);tx:=bt_tx_read(u);x:=ks_witnesses();
-  for k:0..<2 {
-    #assert ky_slot(ky_fixture_scripts(),t.in_script[k])==k;
-    h:[32]u8;#assert bt_sighash_v0(u,tx,k,x.ws[k][0..<x.n[k]],t.in_value[k],BT_ALL,h[..]) && bt_hex_is(h[..],KY_SIGHASH[k]);
-  }
-  #assert ky_slot(ky_fixture_scripts(),t.out_script[1])==2 && ky_slot(ky_fixture_scripts(),t.out_script[0])==-1;
-}
-#test "each signer's PSBT carries its partial signatures, as Python's" #steps 2000000000 {
-  b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);
-  for a:0..<3 {
-    s:=ks_sign(a,KY_PSBT,KY_REQUEST,a);out:[1024]u8;for i:0..<1024 {out[i]=255;}
-    n:=ky_psbt_signed(ps,s,out[..]);#assert n>0 && bt_hex_is(out[0..<n],KY_PSBT_SIGNED[a]);
-    #assert ky_psbt_read(out[0..<n]).code==KyCode.ok && ky_psbt_signed(ps,s,out[0..<n-1])==-1 && ky_psbt_signed(ps,s,out[0..<n])==n;
-  }
-  out:[1024]u8;none:KySigned;none.code=KyCode.outputs;#assert ky_psbt_signed(ps,none,out[..])==-1;
-  bad:=ks_sign(0,KY_PSBT,KY_REQUEST,0);bad.nin=1;#assert ky_psbt_signed(ps,bad,out[..])==-1;
-  #assert ky_psbt_signed(ps[0..<ps.count-1],ks_sign(0,KY_PSBT,KY_REQUEST,0),out[..])==-1;
-  empty:KySigned;empty.code=KyCode.ok;#assert ky_psbt_signed(ps[0..<ps.count-1],empty,out[..])==-1;   // a broken PSBT reads 0 inputs
-}
-#test "two of three combine into the final transaction; one is not enough" #steps 2000000000 {
-  w:=ky_wallet_read(KY_WALLET);b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);sc:=ky_fixture_scripts();x:=ks_witnesses();
-  s:[3]KySigned;for a:0..<3 {s[a]=ks_sign(a,KY_PSBT,KY_REQUEST,a);}
-  out:[2048]u8;
-  for i:0..<out.count {out[i]=255;}
-  n:=ky_combine(w,sc,x,ps,s[0..<2],out[..]);#assert n>0 && bt_hex_is(out[0..<n],KY_FINAL_TX);
-  two:=[2]KySigned.[s[1],s[0]];#assert ky_combine(w,sc,x,ps,two[..],out[..])==n && bt_hex_is(out[0..<n],KY_FINAL_TX);
-  t3:=ky_combine(w,sc,x,ps,s[..],out[..]);#assert t3>n-4 && t3<n+4 && out[4]==0;   // two of the three in each input, in key order: a third signature would add 72 bytes
-  m:=ky_combine(w,sc,x,ps,s[1..<3],out[..]);#assert m>0 && out[m-1]==0 && out[4]==0 && out[5]==1;   // keyco and the enclave
-  #assert ky_combine(w,sc,x,ps,s[0..<1],out[..])==-1 && ky_combine(w,sc,x,ps,s[0..<0],out[..])==-1;
-  twice:=[2]KySigned.[s[0],s[0]];#assert ky_combine(w,sc,x,ps,twice[..],out[..])==-1;
-  #assert ky_combine(w,sc,x,ps,s[0..<2],out[0..<n-1])==-1 && ky_combine(w,sc,x,ps,s[0..<2],out[0..<n])==n;
-  refused:=s[1];refused.code=KyCode.outputs;one:=[2]KySigned.[s[0],refused];#assert ky_combine(w,sc,x,ps,one[..],out[..])==-1;
-  // Signatures for another PSBT are not combined into this one.
-  other:=s[1];other.psbt[31]^=1;one=[2]KySigned.[s[0],other];#assert ky_combine(w,sc,x,ps,one[..],out[..])==-1;
-  // A key that differs from keyco's in its first byte only is not keyco's.
-  other=s[1];other.p[0].pub[0]^=1;one=[2]KySigned.[s[0],other];#assert ky_combine(w,sc,x,ps,one[..],out[..])==-1;
-  evil:[512]u8;#assert ky_combine(w,sc,x,ky_unhex(KY_PSBT_EVIL,evil[..]),s[0..<2],out[..])==-1;
-  #assert ky_combine(w,sc,x,ps[0..<ps.count-1],s[0..<2],out[..])==-1;
-  far:=sc;far.s[0]=ky_spk(KY_SPK[3]);#assert ky_combine(w,far,x,ps,s[0..<2],out[..])==-1;
-}
-#test "a PSBT whose outputs differ from its request gets no signature from anyone" #steps 1000000000 {
-  for a:0..<3 {s:=ks_sign(a,KY_PSBT_EVIL,KY_REQUEST,a);#assert s.code==KyCode.psbt && s.nin==0;}
-  for a:0..<3 {s:=ks_sign(a,KY_PSBT_EVIL,KY_REQUEST_EVIL,a);#assert s.code==KyCode.outputs && s.nin==0;}
+#test "an input whose witness script doesn't hash to its program refuses" #steps 1000000000 {
+  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();wd:=ky_bytes(KY_WALLET_DIGEST);sc:=ky_fixture_scripts();
+  b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);r:=ky_request_read(KY_REQUEST);
+  l:[1]KyLedger;acct:[64]u8;ks_account(0,acct[..]);work:[1]KySignWork;
+  x:=ks_witnesses();x.ws[1][40]^=1;
+  s:=ky_sign(w,wd,sc,x,p.e[..],0,r,ps,1000,KY_T0,l[..],acct[..],work[..]);
+  #assert s.code==KyCode.inputs && !s.retry && s.nin==0 && work[0].k2[0]==0 && work[0].sig[0]==0;
+  out:[2048]u8;s2:[2]KySigned;s2[0]=ks_signed(0);s2[1]=ks_signed(1);
+  #assert ky_combine(w,sc,x,ps,s2[..],out[..])==-1;
 }
 #test "an exact retry signs the same bytes; a changed request with its nonce refuses" #steps 2000000000 {
   w:=ky_wallet_read(KY_WALLET);p:=ky_parties();wd:=ky_bytes(KY_WALLET_DIGEST);sc:=ky_fixture_scripts();x:=ks_witnesses();
@@ -142,41 +166,21 @@ KySignWork :: struct {k1:[32]u8;c1:[32]u8;k2:[32]u8;c2:[32]u8;data:[37]u8;i:[64]
   c=ky_sign(w,wd,sc,x,p.e[..],1,r3,ps,999,KY_T0,l[..],acct[..],work[..]);#assert c.code==KyCode.ceiling && c.retry && c.nin==0;
   #assert work[0].k2[0]==0 && work[0].k1[5]==0 && work[0].c2[9]==0 && work[0].i[3]==0 && work[0].data[1]==0 && work[0].sig[0]==0 && work[0].ec[0].hk[0]==0;
 }
-#test "an account key that isn't the enrollment's refuses, and nothing is signed" #steps 1000000000 {
-  s:=ks_sign(1,KY_PSBT,KY_REQUEST,0);#assert s.code==KyCode.xpub && s.nin==0 && !s.retry;   // alice's key as keyco
-  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();wd:=ky_bytes(KY_WALLET_DIGEST);sc:=ky_fixture_scripts();x:=ks_witnesses();
-  b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);r:=ky_request_read(KY_REQUEST);
-  l:[1]KyLedger;acct:[64]u8;ks_account(1,acct[..]);acct[32]^=1;work:[1]KySignWork;   // keyco's key, a changed chain code
-  #assert ky_sign(w,wd,sc,x,p.e[..],1,r,ps,1000,KY_T0,l[..],acct[..],work[..]).code==KyCode.xpub;
-  acct[32]^=1;
-  #assert ky_sign(w,wd,sc,x,p.e[..],1,r,ps,1000,KY_T0,l[..],acct[0..<63],work[..]).code==KyCode.xpub;
-  #assert ky_sign(w,wd,sc,x,p.e[..],3,r,ps,1000,KY_T0,l[..],acct[..],work[..]).code==KyCode.xpub;
-  #assert ky_sign(w,wd,sc,x,p.e[..],-1,r,ps,1000,KY_T0,l[..],acct[..],work[..]).code==KyCode.xpub;
-  two:[2]KySignWork;#assert ky_sign(w,wd,sc,x,p.e[..],1,r,ps,1000,KY_T0,l[..],acct[..],two[..]).code==KyCode.xpub;
-  zero:[64]u8;#assert ky_sign(w,wd,sc,x,p.e[..],1,r,ps,1000,KY_T0,l[..],zero[..],work[..]).code==KyCode.xpub;
-  // n - k has keyco's x and the other parity: only the first byte differs.
-  neg:=acct;nk:=sc_negate(sc_load(acct[0..<32]).value);#assert ss_write(nk,neg[0..<32]);
-  #assert ky_sign(w,wd,sc,x,p.e[..],1,r,ps,1000,KY_T0,l[..],neg[..],work[..]).code==KyCode.xpub;
-  #assert l[0].count==0;
-}
-#test "an input whose witness script doesn't hash to its program refuses" #steps 1000000000 {
-  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();wd:=ky_bytes(KY_WALLET_DIGEST);sc:=ky_fixture_scripts();
-  b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);r:=ky_request_read(KY_REQUEST);
-  l:[1]KyLedger;acct:[64]u8;ks_account(0,acct[..]);work:[1]KySignWork;
-  x:=ks_witnesses();x.ws[1][40]^=1;
-  s:=ky_sign(w,wd,sc,x,p.e[..],0,r,ps,1000,KY_T0,l[..],acct[..],work[..]);
-  #assert s.code==KyCode.inputs && s.nin==0 && work[0].k2[0]==0 && work[0].sig[0]==0;
-  out:[2048]u8;s2:[2]KySigned;s2[0]=ks_sign(0,KY_PSBT,KY_REQUEST,0);s2[1]=ks_sign(1,KY_PSBT,KY_REQUEST,1);
-  #assert ky_combine(w,sc,x,ps,s2[..],out[..])==-1;
+#test "the witness scripts from the xpubs are Python's" #steps 1500000000 {
+  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();
+  x:=ky_witnesses(w,p.e[..]);
+  for k:0..<4 {#assert x.n[k]==105 && bt_hex_is(x.ws[k][0..<x.n[k]],KY_WITNESS[k]);}
+  // A branch key that didn't derive (an unreadable xpub: ok is false) leaves no script.
+  none:[KY_KEYS]KyExtKey;out:[KY_WS]u8;#assert ky_witness(w,none[..],0,out[..])==-1 && ky_witness(w,none[..],1,out[..])==-1;
 }
 // book:begin witness
-// The witness script k <sorted child keys at br/i> n CHECKMULTISIG of a
-// one-path wallet, from the enrollments' xpubs, into out; its length, or
-// -1 when a key doesn't derive.
-ky_witness :: (w:KyWallet,e:[]KyEnrollment,br:int,i:int,out:[]u8)->int {
+// The witness script k <sorted child keys at index i> n CHECKMULTISIG of a
+// one-path wallet, from the enrollments' branch keys b (each xpub's child
+// at the branch), into out; its length, or -1 when a key doesn't derive.
+ky_witness :: (w:KyWallet,b:[]KyExtKey,i:int,out:[]u8)->int {
   keys:[KY_KEYS][33]u8;
   for j:0..<w.nenroll {
-    c:=ky_child(ky_child(ky_ext_key(e[j].key),br),i);
+    c:=ky_child(b[j],i);
     if !c.ok {return -1;}
     at:=j;
     while at>0 && ky_less(c.key,keys[at-1]) {keys[at]=keys[at-1];at-=1;}
@@ -187,10 +191,12 @@ ky_witness :: (w:KyWallet,e:[]KyEnrollment,br:int,i:int,out:[]u8)->int {
   out[n]=cast(u8)(0x50+w.nenroll);out[n+1]=0xae;
   return n+2;
 }
-// Every slot's witness script, derived once at admission.
+// Every slot's witness script, derived once at admission: each xpub read
+// once, each branch key derived once.
 ky_witnesses :: (w:KyWallet,e:[]KyEnrollment)->KyWitnesses {
-  r:KyWitnesses;
-  for k:0..<2*KY_GAP {r.n[k]=ky_witness(w,e,k/KY_GAP,k%KY_GAP,r.ws[k][..]);}
+  r:KyWitnesses;b:[2][KY_KEYS]KyExtKey;
+  for j:0..<w.nenroll {x:=ky_ext_key(e[j].key);b[0][j]=ky_child(x,0);b[1][j]=ky_child(x,1);}
+  for k:0..<2*KY_GAP {r.n[k]=ky_witness(w,b[k/KY_GAP][..],k%KY_GAP,r.ws[k][..]);}
   return r;
 }
 // book:end witness
@@ -200,7 +206,11 @@ ky_slot :: (all:KyScripts,s:KyScript)->int {
   return -1;
 }
 // Is s the P2WSH scriptPubKey of witness script ws (0x00 0x20 SHA-256(ws))?
-ky_ws_is :: (ws:[]u8,s:KyScript)->bool {r:KyScript;r.n=34;r.b[1]=0x20;bt_sha(ws,r.b[2..<34]);return ky_same(r,s);}
+ky_ws_is :: (ws:[]u8,s:KyScript)->bool {
+  r:KyScript;r.n=34;r.b[1]=0x20;h:[32]u8;bt_sha(ws,h[..]);
+  for k:0..<32 {r.b[2+k]=h[k];}
+  return ky_same(r,s);
+}
 // The unsigned transaction inside a PSBT v0 that ky_psbt_read accepted.
 ky_unsigned :: (psbt:[]u8)->[]u8 {g:=ky_map(psbt,KY_MAGIC.count);return psbt[g.at[0]..<g.at[0]+g.n[0]];}
 

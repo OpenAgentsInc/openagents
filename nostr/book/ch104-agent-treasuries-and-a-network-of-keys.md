@@ -911,7 +911,8 @@ The key path is checked against BIP-341's published wallet vectors.
 agent's enrollment (its public key and chain code are the xpub's), records
 the outcome in the ledger, and only then signs each input. Each input's
 script is found among the wallet's, its witness script (derived from the
-xpubs at admission, `ky_witnesses`) must hash to the input's program, and
+xpubs at admission, `ky_witnesses`, which reads each xpub and derives
+each branch key once) must hash to the input's program, and
 the child key comes from BIP-32 private derivation on the comb
 (`ky_child_priv`):
 
@@ -1230,13 +1231,25 @@ rotation, delay and hot-ceiling functions at their boundaries.
 
 The signing files are `#authority` too. On 2026-11-01 root-only mutation
 left zero survivors in `coax/lib/crypto/ecdsa_sign.coax` (224 mutants,
-153 checks) and `coax/lib/bitcoin/sighash.coax` (406 mutants, 287
-checks). `coax/lib/nostr/nipkeys_sign.coax` (about 330 mutants, 415
-checks with nipkeys.coax's) is not finished: its first full pass, in 16
-shards, left 9 survivors in shards 1 to 12, all killed since by sharper
-checks or by removing code with no effect, and shards 13 to 15 reached the
-14-minute limit; the pass on the file as it stands is still to run, split
-finer. The first runs left survivors
+153 checks; rerun after the shared test helpers changed, 224 of 224
+again, in 2 shards) and `coax/lib/bitcoin/sighash.coax` (406 mutants, 287
+checks). `coax/lib/nostr/nipkeys_sign.coax` (331 mutants, 415 checks with
+nipkeys.coax's) ran in 8 shards
+(`coax mutate coax/lib/nostr/nipkeys_sign.coax --root-only --run-steps 250000000 --shard I/8 --jobs 4`,
+11 to 12 minutes each on a loaded machine) and its merged records report
+331 mutants, 331 killed, 0 survived. Getting there took three changes to
+how the checks run, none weaker. The file allocates strings, so every
+mutant runs the checks in order until one fails: the checks are now in
+order of cost, with the xpub derivation (about 1.1 billion steps) last,
+and `ky_witnesses` reads each xpub and derives each branch key once
+(18 public derivations, not 36). The PSBT and combine checks take the
+signers' results from the libsecp256k1 fixtures (`ks_signed`) instead of
+signing again, and "each agent signs" checks that `ky_sign` returns those
+bytes, its PSBT digest included. The pass before the last left two
+survivors: the `inputs` refusal's retry flag wasn't checked (it is now),
+and `ky_ws_is` hashed into a view whose end could move by one byte
+without effect (it hashes into 32 bytes and copies them now).
+The first runs left survivors
 that pointed at code with no effect: RFC 6979's second candidate wasn't
 checked (it now is, against Python), status results of hashes that can't
 fail were chained into `ok` flags (they are assertions now), and the
