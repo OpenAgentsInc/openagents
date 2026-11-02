@@ -1,0 +1,22 @@
+{
+  "schema": "coax.bounded-current-stage0-construction.v1",
+  "root": "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current",
+  "command": [
+    "coax/build.sh"
+  ],
+  "proof_manifest": "/tmp/aethyr-authority-budget-checker-shards/incomplete.manifest",
+  "exit_code": 1,
+  "seconds": 355.084,
+  "input_fingerprint_before": "06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039",
+  "input_fingerprint_after": "06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039",
+  "construction": {
+    "snapshot": "/tmp/aethyr-authority-budget-current-construction/scratch/coax-build-snapshot.4DDIaA2O",
+    "retained_source": "/tmp/aethyr-authority-budget-current-source",
+    "retained_stage0": "/tmp/aethyr-authority-budget-current-source/retained-stage0/stage0",
+    "stage0_identity": "5ae5423a43225a8e654161e1e85a955d2650adfd3d8ae08e94d73ac9a83544a1",
+    "stage0_sha256": "2dcc56de3d155cedcfed1adece1bd5e5b353dfc69c0ca9c5971c85960b2a1f8c",
+    "input_fingerprint": "06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039",
+    "stage0_record_sha256": "c2377eac6c4bd60817ba14b6dae24de42f20b893cd6482a44e6524ae0d886bde"
+  },
+  "log": "/tmp/aethyr-authority-budget-current-construction/build.log"
+}

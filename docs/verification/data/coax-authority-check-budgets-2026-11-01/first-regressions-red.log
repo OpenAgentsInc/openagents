@@ -1,0 +1,93 @@
+FFFFFFF
+======================================================================
+FAIL: test_authority_compilation_uses_check_storage_limits (__main__.RunBudgetTests.test_authority_compilation_uses_check_storage_limits) (command='check')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-check-budgets/coax/tests/run_budget.py", line 31, in test_authority_compilation_uses_check_storage_limits
+    self.assertEqual(r.returncode, 0, r.stderr)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-run-budget-86pxwz0q/case.coax:1:64: error[E0400]: compile-time aggregate storage limit exceeded: 1572865 value slots needed, the limit is 1572864 (33554432 in coax test)
+  #authority; answer :: ()->int {return 4;} #test "large check" {words:[1572865]u8; words[1572864]=7; #assert words[1572864]==7 && answer()==4;} main :: () {}
+                                                                 ^
+  note: in #test large check
+1 error
+
+
+======================================================================
+FAIL: test_authority_compilation_uses_check_storage_limits (__main__.RunBudgetTests.test_authority_compilation_uses_check_storage_limits) (command='c')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-check-budgets/coax/tests/run_budget.py", line 31, in test_authority_compilation_uses_check_storage_limits
+    self.assertEqual(r.returncode, 0, r.stderr)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-run-budget-86pxwz0q/case.coax:1:64: error[E0400]: compile-time aggregate storage limit exceeded: 1572865 value slots needed, the limit is 1572864 (33554432 in coax test)
+  #authority; answer :: ()->int {return 4;} #test "large check" {words:[1572865]u8; words[1572864]=7; #assert words[1572864]==7 && answer()==4;} main :: () {}
+                                                                 ^
+  note: in #test large check
+1 error
+
+
+======================================================================
+FAIL: test_authority_compilation_uses_check_storage_limits (__main__.RunBudgetTests.test_authority_compilation_uses_check_storage_limits) (command='header')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-check-budgets/coax/tests/run_budget.py", line 31, in test_authority_compilation_uses_check_storage_limits
+    self.assertEqual(r.returncode, 0, r.stderr)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-run-budget-86pxwz0q/case.coax:1:64: error[E0400]: compile-time aggregate storage limit exceeded: 1572865 value slots needed, the limit is 1572864 (33554432 in coax test)
+  #authority; answer :: ()->int {return 4;} #test "large check" {words:[1572865]u8; words[1572864]=7; #assert words[1572864]==7 && answer()==4;} main :: () {}
+                                                                 ^
+  note: in #test large check
+1 error
+
+
+======================================================================
+FAIL: test_authority_compilation_uses_check_storage_limits (__main__.RunBudgetTests.test_authority_compilation_uses_check_storage_limits) (command='deps')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-check-budgets/coax/tests/run_budget.py", line 31, in test_authority_compilation_uses_check_storage_limits
+    self.assertEqual(r.returncode, 0, r.stderr)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-run-budget-86pxwz0q/case.coax:1:64: error[E0400]: compile-time aggregate storage limit exceeded: 1572865 value slots needed, the limit is 1572864 (33554432 in coax test)
+  #authority; answer :: ()->int {return 4;} #test "large check" {words:[1572865]u8; words[1572864]=7; #assert words[1572864]==7 && answer()==4;} main :: () {}
+                                                                 ^
+  note: in #test large check
+1 error
+
+
+======================================================================
+FAIL: test_authority_library_checks_get_the_same_storage_limits (__main__.RunBudgetTests.test_authority_library_checks_get_the_same_storage_limits)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-check-budgets/coax/tests/run_budget.py", line 43, in test_authority_library_checks_get_the_same_storage_limits
+    self.assertEqual(r.returncode, 0, r.stderr)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-run-budget-tkw06nbb/large-library.coax:1:76: error[E0400]: compile-time aggregate storage limit exceeded: 1572865 value slots needed, the limit is 1572864 (33554432 in coax test)
+  CheckOnlyLarge :: struct {words:[1572865]u8;} #test "large library check" {x:CheckOnlyLarge; x.words[1572864]=7; #assert x.words[1572864]==7;} library_answer :: ()->int {return 4;}
+                                                                             ^
+  note: in #test large library check
+1 error
+
+
+======================================================================
+FAIL: test_authority_checks_keep_the_published_upper_storage_bound (__main__.RunBudgetTests.test_authority_checks_keep_the_published_upper_storage_bound)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-check-budgets/coax/tests/run_budget.py", line 51, in test_authority_checks_keep_the_published_upper_storage_bound
+    self.assertIn('the limit is 33554432', r.stderr)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'the limit is 33554432' not found in '/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-run-budget-4qi3l_9y/case.coax:1:32: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check\'s budget (the file\'s: coax test --steps N, or #steps N on the check for its own)\n  #authority; #test "too large" {words:[33554433]u8; #assert words[33554432]==0;} main :: () {}\n                                 ^\n  note: in #test too large\n1 error\n'
+
+======================================================================
+FAIL: test_authority_does_not_enlarge_constant_evaluation_storage (__main__.RunBudgetTests.test_authority_does_not_enlarge_constant_evaluation_storage)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-check-budgets/coax/tests/run_budget.py", line 58, in test_authority_does_not_enlarge_constant_evaluation_storage
+    self.assertIn('the limit is 1572864', r.stderr)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'the limit is 1572864' not found in '/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-run-budget-kzvpu7e3/case.coax:1:13: error[E0380]: \'large\' is not exercised by any #test or #forall\n  #authority; large :: ()->u8 {words:[1572865]u8; return words[1572864];} A :: #run large(); #test "constant" {#assert A==0;} main :: () {}\n              ^\n  fix: #authority files check every procedure: add a #test or #forall that calls it\n1 error\n'
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.465s
+
+FAILED (failures=7)

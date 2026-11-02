@@ -1,0 +1,5 @@
+/tmp/aethyr-authority-budget-red/large-check.coax:4:3: error[E0400]: compile-time aggregate storage limit exceeded: 1572865 value slots needed, the limit is 1572864 (33554432 in coax test)
+    words:[1572865]u8;words[1572864]=7;
+    ^
+  note: in #test authority checks use the test storage budget
+1 error

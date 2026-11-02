@@ -1,0 +1,72 @@
+In file included from src/main.cpp:41:
+src/emit_c.cpp:2966:57: warning: unused parameter 'text' [-Wunused-parameter]
+ 2966 | static std::string debug_source_hash(const std::string &text) {
+      |                                                         ^
+In file included from src/main.cpp:43:
+src/effects.cpp:116:55: warning: unused parameter 'file' [-Wunused-parameter]
+  116 | static bool effects_report(const Source *,const File *file,const EmitOptions &opts,const std::string &selected,std::string *text) {
+      |                                                       ^
+2 warnings generated.
+coax bootstrap: reused   stage0 test release-model.coax
+coax bootstrap: reused   stage0 mutate release-model.coax
+coax bootstrap: reused   stage0 test changelog-model.coax
+coax bootstrap: reused   stage0 mutate changelog-model.coax --root-only
+coax bootstrap: reused   stage0 test lib/compiler/budget.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/budget.coax
+coax bootstrap: reused   stage0 test lib/compiler/check-domains.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/check-domains.coax --root-only
+coax bootstrap: reused   stage0 test lib/compiler/profiles.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/profiles.coax
+coax bootstrap: reused   stage0 test lib/compiler/provenance.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/provenance.coax
+coax bootstrap: reused   stage0 test lib/compiler/mutation-schedule.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/mutation-schedule.coax
+coax bootstrap: reused   stage0 test lib/compiler/compute.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/compute.coax
+coax bootstrap: reused   stage0 test lib/compiler/effects.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/effects.coax --root-only
+coax bootstrap: reused   stage0 test lib/compiler/quantity.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/quantity.coax --root-only
+coax bootstrap: reused   stage0 test lib/compiler/native-checks.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/native-checks.coax
+coax bootstrap: reused   stage0 test lib/compiler/native-execution.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/native-execution.coax --root-only
+coax bootstrap: reused   stage0 test lib/compiler/quantified-execution.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/quantified-execution.coax --root-only
+coax bootstrap: reused   stage0 test lib/compiler/native-semantics.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/native-semantics.coax --root-only
+coax bootstrap: reused   stage0 test lib/compiler/spirv.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/spirv.coax
+coax bootstrap: reused   stage0 test lib/compiler/shader.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/shader.coax
+coax bootstrap: reused   stage0 test lib/compiler/wgsl.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/wgsl.coax
+coax bootstrap: reused   stage0 test lib/compiler/lexer.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/lexer.coax
+coax bootstrap: reused   stage0 test lib/compiler/sources.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/sources.coax
+coax bootstrap: reused   stage0 test lib/compiler/parser.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/parser.coax
+coax bootstrap: reused   stage0 test lib/compiler/checker.coax
+coax bootstrap: reused   stage0 mutate lib/compiler/checker.coax
+coax bootstrap:     1 s  stage0 test lib/proto/wire.coax
+coax bootstrap:     0 s  stage0 mutate lib/proto/wire.coax
+coax bootstrap:     0 s  stage0 test lib/crypto/sha256-kernel.coax
+coax bootstrap:     1 s  stage0 mutate lib/crypto/sha256-kernel.coax
+coax bootstrap:     0 s  stage0 test lib/proto/fingerprint.coax
+coax bootstrap:     0 s  stage0 mutate lib/proto/fingerprint.coax
+coax bootstrap:     2 s  stage0 test lib/proto/importer.coax
+coax bootstrap:    19 s  stage0 mutate lib/proto/importer.coax
+coax bootstrap:     0 s  coax test lib/compiler/budget.coax
+coax bootstrap:     0 s  coax test lib/compiler/check-domains.coax
+coax bootstrap:     0 s  coax test lib/compiler/profiles.coax
+coax bootstrap:     0 s  coax test lib/compiler/provenance.coax
+coax bootstrap:     1 s  coax test lib/compiler/mutation-schedule.coax
+coax bootstrap:     0 s  coax test lib/compiler/lexer.coax
+coax bootstrap:     0 s  coax test lib/compiler/parser.coax
+coax bootstrap:    17 s  coax test lib/compiler/checker.coax
+coax bootstrap:     0 s  coax test lib/compiler/sources.coax
+coax bootstrap:     0 s  coax test lib/compiler/native-checks.coax
+coax bootstrap:     0 s  coax test lib/compiler/native-execution.coax
+coax bootstrap:     0 s  coax test lib/compiler/quantified-execution.coax
+coax bootstrap:     1 s  coax test lib/compiler/native-semantics.coax

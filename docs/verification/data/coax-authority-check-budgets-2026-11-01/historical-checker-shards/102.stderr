@@ -1,0 +1,4 @@
+lib/compiler/checker.coax:81557:99: mutant survived: 0 became 1
+   else {field:=CB_fields(b,type);while field!=0 && n<=64 {if CB_has_borrow(b,b.c.nodes[field].type,0) {n+=CB_leaf_count(b,b.c.nodes[field].type);}field=b.c.nodes[field].next;}}
+                                                                                                    ^
+shard 102/128: 74 of 9489 mutants, 73 killed, 1 survived

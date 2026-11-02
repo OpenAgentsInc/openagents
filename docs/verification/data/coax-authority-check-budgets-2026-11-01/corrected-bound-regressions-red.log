@@ -1,0 +1,14 @@
+F.
+======================================================================
+FAIL: test_authority_checks_keep_the_published_upper_storage_bound (__main__.RunBudgetTests.test_authority_checks_keep_the_published_upper_storage_bound)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-check-budgets/coax/tests/run_budget.py", line 51, in test_authority_checks_keep_the_published_upper_storage_bound
+    self.assertIn('the limit is 33554432', r.stderr)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'the limit is 33554432' not found in '/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-run-budget-r2kiyltf/case.coax:1:49: error[E0400]: compile-time aggregate storage limit exceeded: 33554433 value slots needed, the limit is 1572864 (33554432 in coax test)\n  #authority; #test "too large" #steps 100000000 {words:[33554433]u8; #assert words[33554432]==0;} main :: () {}\n                                                  ^\n  note: in #test too large\n1 error\n'
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.124s
+
+FAILED (failures=1)

@@ -1,0 +1,25 @@
+{
+  "schema": "coax.supported-checker-replay.v1",
+  "command": [
+    "bash",
+    "./bootstrap-build.sh",
+    "--private-replay-checker-cache",
+    "/private/tmp/aethyr-authority-budget-current-source/retained-stage0",
+    "/tmp/aethyr-authority-budget-current-checker-shards/manifest.tsv"
+  ],
+  "cwd": "/private/tmp/aethyr-authority-budget-current-source/coax",
+  "exit_code": 0,
+  "seconds": 29.002,
+  "manifest": "/tmp/aethyr-authority-budget-current-checker-shards/manifest.tsv",
+  "manifest_sha256": "c0ea90b5fdcabb56cdb3b2b658fecbc9ff6deb0b21c8e8d864ece32133a5c013",
+  "preexisting_cache": false,
+  "cache_key": "0f7daf52a229b207e8f447bbf5f8cce7d9844bf3b65abcee2bbb2e26d6c0cade",
+  "cache": "/Users/christopherdavid/.cache/coax-gates/0f7daf52a229b207e8f447bbf5f8cce7d9844bf3b65abcee2bbb2e26d6c0cade",
+  "cache_present_after": true,
+  "source_changes": [],
+  "compiler_changed": false,
+  "input_fingerprint_before": "06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039",
+  "input_fingerprint_after": "06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039",
+  "actual_merge_log": "/tmp/aethyr-authority-budget-current-checker-shards/actual-merge.log",
+  "actual_merge_log_sha256": "70f798f4a28889cb18a884259a1a9aa826b51a5801dc8c11f337a32e645eaa1d"
+}

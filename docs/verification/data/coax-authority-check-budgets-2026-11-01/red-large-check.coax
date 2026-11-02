@@ -1,0 +1,7 @@
+#authority;
+answer :: ()->int {return 4;}
+#test "authority checks use the test storage budget" {
+  words:[1572865]u8;words[1572864]=7;
+  #assert words[1572864]==7 && answer()==4;
+}
+main :: () {}

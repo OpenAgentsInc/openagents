@@ -4,8 +4,8 @@ CB_MAX_RUN_STEPS :: 250000000;
 CB_DEFAULT_RUN_STEPS :: 100000;
 CB_MAX_SLOTS :: 1572864;
 CB_MAX_CONTAINERS :: 131072;
-// coax test and mutate: checks may hold a whole world (a test's `g: [1] Everglade`),
-// so they get their own, larger aggregate limits; a compile keeps the ones above.
+// Checks in test, mutate and authority compilation may hold a whole world.
+// Constant/default evaluation in compilation keeps the smaller limits above.
 CB_MAX_TEST_SLOTS :: 33554432;
 CB_MAX_TEST_CONTAINERS :: 2097152;
 CB_MAX_STRING_LIVE :: 67108864;

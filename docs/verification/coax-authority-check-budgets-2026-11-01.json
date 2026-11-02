@@ -1,0 +1,217 @@
+{
+  "schema": "coax.authority-check-budgets.v1",
+  "status": "passed: current targeted regressions,9502/9502 checker mutation, supported normal bootstrap and provenance",
+  "scope": "Use existing published check storage limits only while compilation executes authority/library checks; scoped restoration preserves compile limits, explicit CLI test limits and check-work budgets. No storage cap is raised.",
+  "base_commit": "d4af1a43ce",
+  "old_compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "fixed_stage0_sha256": "359bc4904973908121b167011c39f81ea57602134ad52d2c58a63772ad8d9965",
+  "construction_record": "data/coax-authority-check-budgets-2026-11-01/stage0.record",
+  "limits": {
+    "compile_slots": 1572864,
+    "compile_containers": 131072,
+    "check_slots": 33554432,
+    "check_containers": 2097152
+  },
+  "targeted_groups": [
+    {
+      "test": "authority compilation uses check storage limits",
+      "commands": [
+        "check",
+        "c",
+        "header",
+        "deps"
+      ],
+      "result": "pass",
+      "log": "stage0-mixed-first-regressions.log",
+      "note": "First of .F..; only the separate library assertion failed in this historical command."
+    },
+    {
+      "test": "authority library checks get the same storage limits",
+      "result": "pass",
+      "log": "stage0-final-generic-library-green.log",
+      "note": "Final generic fixture verifies check-only instantiation is absent. The first concrete type was correctly still emitted; that failed assertion is retained separately."
+    },
+    {
+      "test": "authority checks keep published upper storage bound",
+      "result": "pass",
+      "log": "stage0-mixed-first-regressions.log",
+      "note": "Third of .F..; request33554433 refused at33554432."
+    },
+    {
+      "test": "authority does not enlarge constant evaluation storage",
+      "result": "pass",
+      "log": "stage0-mixed-first-regressions.log",
+      "note": "Fourth of .F..; #run allocation1572865 refused at1572864."
+    },
+    {
+      "test": "explicit lowered test slots, reported compile limits, independent step budget",
+      "result": "pass",
+      "groups": 3,
+      "log": "independent-limits-green.log"
+    },
+    {
+      "test": "actual evaluator allocation/partial-failure/cycle ownership plus scoped authority-limit restoration on success and assertion failure",
+      "result": "pass",
+      "modes": [
+        "ASan+UBSan"
+      ],
+      "seconds": 47.878,
+      "log": "native-storage-sanitized-green.log",
+      "environment": {
+        "CPLUS_INCLUDE_PATH": "/tmp/aethyr-authority-budget-stage0",
+        "COAX": "/tmp/aethyr-authority-budget-stage0/stage0"
+      },
+      "note": "The include path supplies the exact retained generated proto_runtime.inc for this test-only unity build; no compiler is installed or provenance rewritten."
+    }
+  ],
+  "reuse_rule": "Three successful unchanged regression bodies from the mixed run are cited individually, not rerun for a clean-looking aggregate log. The mixed command itself is not labelled passing.",
+  "files": {
+    "red-large-check.coax": "90bd996960561a8c0c17b87c0d92ae6e0feb59a45f184d8ddef388c3b186990d",
+    "red-large-check.log": "078039a6775183a80c4e615038ec469b16638bbeba41f91bf1d4620f5085bc64",
+    "first-regressions-red.log": "71df9a6dfd5a2ac16a4254961e99fa52910f1e171cee6fd993fcdf1b16943ce6",
+    "corrected-bound-regressions-red.log": "6cb567612f6db9c4c2852e50ec88ef968a54394889477e602afe1a457f917d21",
+    "stage0-mixed-first-regressions.log": "d3d3f24a1bd1c4bc29e1d8aff052c3782b845c2b9c8516665db5ba53965c7c9b",
+    "stage0-final-generic-library-green.log": "15e1b3902e99e62bc7f061b84c3f571d085b893e42f8ed52ac52d3ab8d134652",
+    "native-storage-sanitized-green.log": "8fb94ddc747fcba995d3108502dfd5922b496f93e6a432021c3be471194d7701",
+    "independent-limits-green.log": "4d781620bc10541738c207349d827f2b375d4f72493bce92c5f0ea15cb151f4e",
+    "stage0.record": "75b8ab67aebcc4bd775758971c9200c1731bb16aab3444025b18d15f1cf0dd85",
+    "bootstrap-first-bounded-attempt.log": "482c8351c86f9f3c50a9cd5140a196c98af4cc52198c23de83c4eea190c4fb1c",
+    "coax/src/main.cpp": "a19a22316e30d77178952320a62d70949d63681af22ea10c049c4a27d98ab211",
+    "coax/lib/compiler/budget.coax": "781807c699f4a76adfab27e1e3b8f751f5aca3878fd57ffd44d0bbeafeb59e9a",
+    "coax/tests/run_budget.py": "33f492f6e92418b705b1acf99232a6fdb07ec9efd101527b6e5973a3c7071828",
+    "coax/tests/ct_storage.cpp": "6cdfe1b193de745cb9b7e465ed5ad37c2588ec16bc1936fbb7893e1e5fb556ea"
+  },
+  "bootstrap": {
+    "status": "passed",
+    "current_source": "/private/tmp/aethyr-authority-budget-current-source",
+    "current_record_directory": "/tmp/aethyr-authority-budget-current-checker-shards",
+    "partition": 128,
+    "batch_deadline_seconds": 810,
+    "construction": "current/construction.json",
+    "construction_note": "The ordinary construction completed all prefix gates and its checker baseline, then intentionally refused a different binary-bound old manifest. That historical attempt is not itself a full build pass. The final normal build passed after the supported current128-shard strictmerge.",
+    "historical_inventory": "/tmp/aethyr-authority-budget-checker-shards",
+    "historical_note": "The original compiler context has one genuine depth-memo survivor. Upstream cf84463171 provides the matching regression in this current source. Historical records remain failed and were never merged into the new context or used to populate its cache.",
+    "completed_shards": 128,
+    "total_mutants": 9502,
+    "known_current_survivors": 0,
+    "latest_completed_batch": {
+      "first": 121,
+      "last": 128,
+      "seconds": 164.877,
+      "parallel": 8,
+      "jobs": 2
+    },
+    "historical_inventory_result": {
+      "mutants": 9489,
+      "killed": 9488,
+      "survived": 1,
+      "status": "strict merge failed as expected; upstream cf844 regression retained in current source"
+    },
+    "checker": {
+      "mutants": 9502,
+      "killed": 9502,
+      "survived": 0,
+      "shards": 128,
+      "replay_seconds": 29.002,
+      "manifest_sha256": "c0ea90b5fdcabb56cdb3b2b658fecbc9ff6deb0b21c8e8d864ece32133a5c013",
+      "cache_key": "0f7daf52a229b207e8f447bbf5f8cce7d9844bf3b65abcee2bbb2e26d6c0cade",
+      "cache_preexisting": false,
+      "source_changes": [],
+      "compiler_changed": false,
+      "archive": "current/checker-shards/archive-index.json",
+      "actual_merge": "current/checker-shards/actual-merge.log"
+    },
+    "historical_archive": "historical-checker-shards/archive-index.json",
+    "base_commit": "fbb44c46a2a78205feb3cf2f0e526a5a39ff82fe",
+    "final_build": {
+      "command": [
+        "coax/build.sh"
+      ],
+      "exit_status": 0,
+      "seconds": 241.866,
+      "log": "current/final-build.log",
+      "record": "current/final-build.json",
+      "deadline_seconds": 830,
+      "checker_gate": "genuinely reused the original gate cache after supported128-shard strictmerge"
+    },
+    "final_artifact": {
+      "record": "current/final-artifact.json",
+      "binary": "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+      "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+      "version": "coax0 0.47.0",
+      "source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+      "full_input_fingerprint": "06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039",
+      "provenance_verified": true,
+      "book_compiler_untouched": true
+    },
+    "current_proof_archive": "current/checker-shards/archive-index.json",
+    "historical_proof_archive": "historical-checker-shards/archive-index.json",
+    "post_rebase": {
+      "status": "passed",
+      "upstream": "c911dcf5fac4e84dfb3f0d9c2e1ad22cdbb10858",
+      "record": "current/post-rebase-provenance.json",
+      "full_input_fingerprint_unchanged": true,
+      "source_digest_unchanged": true,
+      "artifact_unchanged": true
+    }
+  },
+  "published": false,
+  "current_base_commit": "fbb44c46a2",
+  "historical_stage0_note": "Original targeted_groups, fixed_stage0_sha256, base_commit and their logs retain the old d4 identity. The distinct current qualification uses rebased main plus the same four budget changes.",
+  "targeted_current": {
+    "compiler_sha256": "2dcc56de3d155cedcfed1adece1bd5e5b353dfc69c0ca9c5971c85960b2a1f8c",
+    "input_fingerprint": "06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039",
+    "base_commit": "fbb44c46a2",
+    "retained_constructor": "current/stage0.record",
+    "groups": [
+      {
+        "tests": [
+          "authority compilation checkstorage",
+          "authority library checkstorage",
+          "published32Mupperbound",
+          "constant compilecapunchanged",
+          "explicit lowered testslots",
+          "independent checkstepbudget"
+        ],
+        "status": "passed",
+        "seconds": 0.511,
+        "log": "current/targeted-current-green.log"
+      },
+      {
+        "tests": [
+          "timings/peaks metadata",
+          "actual C++ allocator/partial-failure/cycles and authority-limit restoration success/failure"
+        ],
+        "status": "passed",
+        "seconds": 167.079,
+        "modes": [
+          "ASan+UBSan"
+        ],
+        "log": "current/storage-current-sanitized-green.log"
+      }
+    ]
+  },
+  "current_files": {
+    "current/stage0.record": "c2377eac6c4bd60817ba14b6dae24de42f20b893cd6482a44e6524ae0d886bde",
+    "current/bounded-construction.log": "25f3d7399ac1fbc4afa2802d6d1e073a48f47bb2fb7375ff0e641fe372018e4a",
+    "current/storage-current-sanitized-green.log": "284b78c223976115ba013c4ef1ee449dfe6d77dc3a1c54ee61977a2e6ed43e65",
+    "current/checker-deps.json": "578eb99c7677064cb6f4171861b2892fef570615605ee622a2d775af9e87c333",
+    "current/targeted-current-green.log": "9cc2bc05a14977ef03c22a82ac4218621de7b5536331145e285dfa575fcba813",
+    "current/construction.json": "8a662c96287d6bd80b6fc91f24c17b2166a4d6aff2425fbf8fb516036220398a",
+    "current/final-build.json": "99dc46153243d861b42c049df976f0470f299ccc95fa7366ce99e2f2f4bf4a09",
+    "current/final-artifact.json": "333cf40894d4d9f6393de14d7bf5741153f304729a5768ee2fad8061909fc347",
+    "current/bounded-build.py": "3f27ebc42f1bfd42611e3c5058482e53dfeba74b0ad21d63f1a612eefc52f396",
+    "current/final-build.log": "111b72e317bfa53fdc3e38229ab0ca73b7d042acb40e4e209360b61964680958",
+    "current/construction-driver.py": "96f56c288f6db51af93bce890ea1899d7fbd320d43bef2469bd7a0ebc23cf3dd",
+    "current/final-provenance.record": "b2f31e09286372c20fac9558039e02eadfa9261f781d95fac09540facef9e9d5",
+    "current/final-source-digest": "cc1b7897215292afb54995a6641d651639c9675433e02e6788c13cff0b167fa9",
+    "coax/src/main.cpp": "a19a22316e30d77178952320a62d70949d63681af22ea10c049c4a27d98ab211",
+    "coax/lib/compiler/budget.coax": "781807c699f4a76adfab27e1e3b8f751f5aca3878fd57ffd44d0bbeafeb59e9a",
+    "coax/tests/ct_storage.cpp": "6cdfe1b193de745cb9b7e465ed5ad37c2588ec16bc1936fbb7893e1e5fb556ea",
+    "coax/tests/run_budget.py": "33f492f6e92418b705b1acf99232a6fdb07ec9efd101527b6e5973a3c7071828",
+    "current/post-rebase-provenance.json": "f4d092587160cfdffc264d87f42c570ed40fa7b5e4fdf2b285d2b37dcc106a46"
+  },
+  "evidence_index": "data/coax-authority-check-budgets-2026-11-01/evidence-index.json",
+  "files_scope": "The original files table retains historical d4 source and log hashes. Current rebased sources and final artifact records are in current_files and evidence_index.",
+  "publication_note": "The inherited published:false field belongs to the original historical d4 targeted record. Current qualification is complete; the containing main-branch commit identifies publication of this dependency."
+}

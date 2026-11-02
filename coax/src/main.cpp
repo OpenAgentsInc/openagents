@@ -897,6 +897,21 @@ static std::string library_key(const Source *src, int32_t at, const EmitOptions 
 
 // Checks unit `at` on its own in a child process: true when it checks (and,
 // with run, when its checks pass).
+static bool run_compilation_checks(File *file) {
+  // Constant evaluation already finished under its smaller limits. Checks
+  // have the same published storage budget here as in `coax test`; keep the
+  // original limits for every later compiler phase, including failed checks.
+  auto &memory = *file->ct_memory;
+  struct RestoreLimits {
+    CtMemory &memory;
+    uint64_t slots, containers;
+    ~RestoreLimits() { memory.slot_limit = slots; memory.container_limit = containers; }
+  } restore{memory, memory.slot_limit, memory.container_limit};
+  memory.slot_limit = CB_test_slot_limit();
+  memory.container_limit = CB_test_container_limit();
+  return run_all_checks(file, TEST_STEPS, false);
+}
+
 static bool library_check_standalone(const Source *src, int32_t at, const EmitOptions &opts, bool run) {
   fflush(stdout);
   fflush(stderr);
@@ -914,7 +929,7 @@ static bool library_check_standalone(const Source *src, int32_t at, const EmitOp
     Arena arena;
     File file;
     bool ok = front_end(src->units[(size_t)at]->canonical.c_str(), &s, &arena, &file, opts, 1, false, false, nullptr);
-    if (ok && run) ok = run_all_checks(&file, TEST_STEPS, false);
+    if (ok && run) ok = run_compilation_checks(&file);
     _exit(ok && g_error_count == 0 ? 0 : 1);
   }
   int status = 0;
@@ -1052,7 +1067,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     {TimedPhase phase{"check"};ok=check(arena,file,mutation_lowering);}
     if(ok && !parsed) {TimedPhase phase{"evaluate"};g_timings.run_steps=opts.run_steps;ok=evaluate(file,opts.run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
   }
-  if (ok && !parsed) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=run_all_checks(file,TEST_STEPS,false);}
+  if (ok && !parsed) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=run_compilation_checks(file);}
   if (!ok && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
   return ok;
 }

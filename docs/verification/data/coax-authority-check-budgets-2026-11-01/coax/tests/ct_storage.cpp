@@ -1,0 +1,155 @@
+// Exercise the actual evaluator's aggregate owner and allocator under sanitizers.
+#define main coax_driver_main
+#include "../src/main.cpp"
+#undef main
+#include <cassert>
+
+int main() {
+  using namespace coax;
+  File file;
+  Evaluator evaluator{&file};
+  auto memory = file.ct_memory;
+  {
+    auto owner = evaluator.storage();
+    owner->reserve(20);
+    assert(memory->slots == owner->capacity() && memory->containers == 1);
+    auto view = owner;
+    owner.reset();
+    assert(memory->slots == view->capacity() && memory->containers == 1);
+    view.reset();
+    assert(memory->slots == 0 && memory->containers == 0);
+  }
+  {
+    auto full = evaluator.storage();
+    full->reserve(CtMemory::max_slots());
+    assert(memory->slots == CtMemory::max_slots());
+    auto another = evaluator.storage();
+    try { another->reserve(1); assert(false); } catch (const CtLimit &) {}
+    assert(memory->slots == CtMemory::max_slots() && another->empty());
+  }
+  assert(memory->slots == 0 && memory->containers == 0);
+  {
+    std::vector<std::shared_ptr<CtStorage>> all;
+    all.reserve(CtMemory::max_containers());
+    for (uint64_t i = 0; i < CtMemory::max_containers(); ++i) all.push_back(evaluator.storage());
+    try { auto extra = evaluator.storage(); (void)extra; assert(false); } catch (const CtLimit &) {}
+    assert(memory->containers == CtMemory::max_containers());
+    all.pop_back();
+    auto extra = evaluator.storage();
+    assert(memory->containers == CtMemory::max_containers());
+  }
+  assert(memory->slots == 0 && memory->containers == 0);
+  for (uint64_t i = 0; i < CtMemory::max_containers() * 3; ++i) {
+    auto ephemeral = evaluator.storage();
+  }
+  assert(memory->stores.size() <= CtMemory::max_containers() * 2);
+  assert(memory->slots == 0 && memory->containers == 0);
+  // Ordinary scope release of a deep chain must not recurse on the native
+  // stack. Every link is a live view of the preceding storage.
+  {
+    TypeInfo view_type; view_type.kind = TypeKind::view;
+    std::shared_ptr<CtStorage> chain;
+    for (int i = 0; i < 50000; ++i) {
+      auto next = evaluator.storage();
+      Value view; view.type = &view_type; view.agg = chain;
+      next->push_back(std::move(view));
+      chain = std::move(next);
+    }
+    assert(memory->containers == 50000);
+    chain.reset();
+    assert(memory->containers == 0 && memory->slots == 0);
+    assert(memory->pending == nullptr && !memory->draining);
+  }
+  // Teardown must also handle a 50,000-node cycle after external owners die.
+  {
+    std::shared_ptr<CtMemory> retained;
+    std::weak_ptr<CtStorage> weak;
+    {
+      File cyclic;
+      Evaluator e{&cyclic};
+      retained = cyclic.ct_memory;
+      TypeInfo view_type; view_type.kind = TypeKind::view;
+      auto first = e.storage(); weak = first;
+      auto chain = first;
+      for (int i = 1; i < 50000; ++i) {
+        auto next = e.storage();
+        Value view; view.type = &view_type; view.agg = chain;
+        next->push_back(std::move(view)); chain = std::move(next);
+      }
+      Value back; back.type = &view_type; back.agg = chain;
+      first->push_back(std::move(back));
+      first.reset(); chain.reset();
+      assert(!weak.expired() && retained->containers == 50000);
+    }
+    assert(weak.expired());
+    assert(retained->containers == 0 && retained->slots == 0);
+    assert(retained->pending == nullptr && !retained->draining);
+  }
+  // Nested aggregate clone must charge every backing vector, and failure while
+  // cloning unwinds its partially constructed graph instead of leaking slots.
+  TypeInfo arr; arr.kind = TypeKind::array;
+  Value outer; outer.type = &arr; outer.agg = evaluator.storage();
+  Value inner; inner.type = &arr; inner.agg = evaluator.storage();
+  inner.agg->resize(8);
+  outer.agg->push_back(inner);
+  const auto before = memory->slots;
+  {
+    auto copy = evaluator.clone(outer);
+    assert(memory->slots > before && copy.agg != outer.agg);
+    assert((*copy.agg)[0].agg != inner.agg);
+  }
+  assert(memory->slots == before);
+  {
+    auto filler = evaluator.storage();
+    filler->reserve(CtMemory::max_slots() - memory->slots - 1);
+    const auto occupied = memory->slots;
+    try { auto copy = evaluator.clone(outer); (void)copy; assert(false); } catch (const CtLimit &) {}
+    assert(memory->slots == occupied);
+  }
+  {
+    std::shared_ptr<CtMemory> retained;
+    std::weak_ptr<CtStorage> weak;
+    {
+      File cyclic;
+      Evaluator e{&cyclic};
+      retained = cyclic.ct_memory;
+      auto storage = e.storage();
+      weak = storage;
+      Value view; view.type = &arr; view.agg = storage;
+      storage->push_back(view);
+      storage.reset();
+      assert(!weak.expired());
+    }
+    assert(weak.expired());
+    assert(retained->slots == 0 && retained->containers == 0);
+  }
+  // Compilation's authority checks borrow the published test limits, then
+  // restore both original limits even when a check fails. Constants remain
+  // under the smaller compile budget before this scope is entered.
+  for (bool succeeds : {true, false}) {
+    char path[] = "/tmp/coax-authority-storage-XXXXXX";
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    std::string text = "#authority; answer :: ()->int {return 4;} "
+        "#test \"large\" {words:[1572865]u8; words[1572864]=7; "
+        "#assert words[1572864]==7 && answer()==" + std::string(succeeds ? "4" : "5") + ";} main :: () {}";
+    assert(write(fd, text.data(), text.size()) == (ssize_t)text.size());
+    assert(close(fd) == 0);
+    Source source;
+    Arena arena;
+    File checked;
+    EmitOptions options;
+    const bool was_quiet = g_quiet_errors;
+    g_quiet_errors = true;
+    g_error_count = 0;
+    assert(front_end(path, &source, &arena, &checked, options, 1, false, false, nullptr));
+    const auto slots = checked.ct_memory->slot_limit, containers = checked.ct_memory->container_limit;
+    assert(slots == CB_slot_limit() && containers == CB_container_limit());
+    assert(run_compilation_checks(&checked) == succeeds);
+    assert(checked.ct_memory->slot_limit == slots && checked.ct_memory->container_limit == containers);
+    g_error_count = 0;
+    g_quiet_errors = was_quiet;
+    assert(unlink(path) == 0);
+  }
+  return 0;
+}

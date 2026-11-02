@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Compile-time work and storage limits through the actual compiler driver."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPILER = ROOT / 'bin/coax'
+COMPILER = Path(os.environ.get('COAX', ROOT / 'bin/coax')).resolve()
 
 class RunBudgetTests(unittest.TestCase):
     def setUp(self):
@@ -19,6 +20,50 @@ class RunBudgetTests(unittest.TestCase):
         self.path.write_text(source)
         return subprocess.run([str(COMPILER), *args, str(self.path)], text=True,
                               capture_output=True, timeout=30)
+
+    def test_authority_compilation_uses_check_storage_limits(self):
+        source = ('#authority; answer :: ()->int {return 4;} '
+                  '#test "large check" {words:[1572865]u8; words[1572864]=7; '
+                  '#assert words[1572864]==7 && answer()==4;} main :: () {}')
+        for command in ('check', 'c', 'header', 'deps'):
+            with self.subTest(command=command):
+                r = self.invoke(source, command)
+                self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_authority_library_checks_get_the_same_storage_limits(self):
+        library = Path(self.tmp.name) / 'large-library.coax'
+        library.write_text('CheckOnlyLarge :: struct($N) {words:[$N]u8;} '
+                           '#test "large library check" {x:CheckOnlyLarge(1572865); '
+                           'x.words[1572864]=7; #assert x.words[1572864]==7;} '
+                           'library_answer :: ()->int {return 4;}')
+        source = ('#load "large-library.coax"; #authority; '
+                  'answer :: ()->int {return library_answer();} '
+                  '#test "answer" {#assert answer()==4;} main :: () {}')
+        r = self.invoke(source, 'c')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn('CheckOnlyLarge', r.stdout)
+
+    def test_authority_checks_keep_the_published_upper_storage_bound(self):
+        source = ('#authority; #test "too large" #steps 100000000 {words:[33554433]u8; '
+                  '#assert words[33554432]==0;} main :: () {}')
+        r = self.invoke(source, 'check')
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn('the limit is 33554432', r.stderr)
+
+    def test_authority_does_not_enlarge_constant_evaluation_storage(self):
+        source = ('#authority; large :: ()->u8 {words:[1572865]u8; return words[1572864];} '
+                  'A :: #run large(); #test "constant" {#assert A==0 && large()==0;} main :: () {}')
+        r = self.invoke(source, 'check', '--run-steps', '20000000')
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn('the limit is 1572864', r.stderr)
+
+    def test_explicit_test_storage_limit_stays_lowered(self):
+        source = ('#authority; answer :: ()->int {return 4;} '
+                  '#test "limited" {words:[1000]u8; '
+                  '#assert words[999]==0 && answer()==4;} main :: () {}')
+        r = self.invoke(source, 'test', '--slots', '100')
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn('the limit is 100', r.stderr)
 
     def test_input_validation_precedes_source_access(self):
         for value in ('', '0', '-1', '+1', '250000001', '999999999999999999999999', '1x'):

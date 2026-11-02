@@ -123,5 +123,33 @@ int main() {
     assert(weak.expired());
     assert(retained->slots == 0 && retained->containers == 0);
   }
+  // Compilation's authority checks borrow the published test limits, then
+  // restore both original limits even when a check fails. Constants remain
+  // under the smaller compile budget before this scope is entered.
+  for (bool succeeds : {true, false}) {
+    char path[] = "/tmp/coax-authority-storage-XXXXXX";
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    std::string text = "#authority; answer :: ()->int {return 4;} "
+        "#test \"large\" {words:[1572865]u8; words[1572864]=7; "
+        "#assert words[1572864]==7 && answer()==" + std::string(succeeds ? "4" : "5") + ";} main :: () {}";
+    assert(write(fd, text.data(), text.size()) == (ssize_t)text.size());
+    assert(close(fd) == 0);
+    Source source;
+    Arena arena;
+    File checked;
+    EmitOptions options;
+    const bool was_quiet = g_quiet_errors;
+    g_quiet_errors = true;
+    g_error_count = 0;
+    assert(front_end(path, &source, &arena, &checked, options, 1, false, false, nullptr));
+    const auto slots = checked.ct_memory->slot_limit, containers = checked.ct_memory->container_limit;
+    assert(slots == CB_slot_limit() && containers == CB_container_limit());
+    assert(run_compilation_checks(&checked) == succeeds);
+    assert(checked.ct_memory->slot_limit == slots && checked.ct_memory->container_limit == containers);
+    g_error_count = 0;
+    g_quiet_errors = was_quiet;
+    assert(unlink(path) == 0);
+  }
   return 0;
 }
