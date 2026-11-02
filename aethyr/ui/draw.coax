@@ -7,7 +7,8 @@
 #load "../../apps/openagents-web/font.coax";
 
 VERTEX_FLOATS :: 12;
-HdPen :: struct { d:f32; cyan:bool; top:f32; bottom:f32; }
+// quiet: the instruments without their specimen captions, for a consumer that labels them itself.
+HdPen :: struct { d:f32; cyan:bool; top:f32; bottom:f32; quiet:bool=false; }
 HdRow :: struct { label:string; value:string; status:int=1; }
 HdMeter :: struct { label:string; value:f32; readout:string; }
 HdMessage :: struct { channel:string; title:string; line1:string; line2:string; footer:string; }
@@ -31,6 +32,14 @@ HdAlert :: struct { title:string; detail:string; active:bool; }
     n:=hd_component(out[..],0,kind,HudBox.{x=20,y=20,width=280,height=140},p,4,0.72);
     #assert n>=0 && n<=60 && n%6==0;
   }
+}
+
+#test "a quiet pen draws an instrument's geometry without its captions" {
+  out:[60000]f32;b:=HudBox.{x=0,y=0,width=280,height=140};
+  p:=HdPen.{d=1,cyan=true,top=0,bottom=1000};q:=HdPen.{d=1,cyan=true,top=0,bottom=1000,quiet=true};
+  #assert hd_text(out[..],0,"TRACK",10,40,12,q,0)==0;
+  loud:=hd_heading(out[..],0,b,p,2);hush:=hd_heading(out[..],0,b,q,2);
+  #assert hush>0 && hush<loud;
 }
 
 #test "advisories draw their supplied active or acknowledged state" {
@@ -81,7 +90,7 @@ hd_line :: (out:[]f32,at:int,ax:f32,ay:f32,bx:f32,by:f32,p:HdPen,kind:int,light:
 }
 
 hd_text :: (out:[]f32,at:int,text:string,x:f32,y:f32,cap:f32,p:HdPen,kind:int)->int {
-  if y-cap<p.top || y+3>p.bottom || at<0 {return at;}
+  if p.quiet || y-cap<p.top || y+3>p.bottom || at<0 {return at;}
   k:=hd_ink(p,kind);k.sans=cap<15;
   return draw_text(out,at,text,x*p.d,y*p.d,cap*p.d,0.22,0.72,k,false,false);
 }
