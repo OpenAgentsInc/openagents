@@ -1,0 +1,155 @@
+// Chapter 210 over a live transport: the harness's MCP client and server,
+// each in its own process, speaking newline-delimited JSON-RPC on stdio, the
+// transport MCP names for a local server. The bytes are the same ones the
+// in-process example passes as strings.
+//
+//   coax/web/tool.sh psionic/examples/protocols-stdio.coax --serve
+//       the registry served on stdin and stdout, one message a line
+//   coax/web/tool.sh psionic/examples/protocols-stdio.coax CMD [ARGS...]
+//       the client: starts CMD as the server and drives it through its pipes
+//
+// The client runs the handshake, imports the tool list, and makes four
+// calls under a grant and a remote policy; it exits 0 when every answer is
+// the expected one. Any MCP server on stdio can be the server; one whose
+// tools don't fit chapter 203's types is refused at import.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../lib/harness/protocols.coax";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign;
+cxterm_write :: (s: [] u8) -> int #foreign;
+
+PS_LINE_MAX :: 1048576;       // a reply read whole, so a long one is refused as too long, not lost
+PS_WAIT_MS :: 10000;          // a reply that takes longer is a dead server
+
+ps_out :: (s: string) { b: [PR_MESSAGE_MAX + 2] u8; n := 0; for c: s { if n < b.count { b[n] = c; n += 1; } } r := cxterm_write(b[0..<n]); }
+ps_outln :: (s: string) { ps_out(s); ps_out("\n"); }
+
+// --serve: one request a line in, one reply a line out; a notification gets none.
+ps_serve :: () -> int {
+  // the server's state: chapter 203's registry, its grant, usage and world
+  rm := HT_ROOMS; fs: [5] HtField; registry := ht_registry(rm[..], fs[..]);
+  e1: [256] NxEdge; o1: [128] int; n1: [32768] int; a1: [128] u8; l1: [128] u8;
+  all := [4] int.[0, 1, 2, 3]; many := [4] int.[9, 9, 9, 9];
+  env := PrEnv.{tools = registry[..], grant = HtGrant.{tools = all[..], calls = many[..], cost = 50, effects = HtEffect.write},
+                work = ht_work(e1[..], o1[..], n1[..], a1[..], l1[..])};
+  usage: [1] HtUsage; world: [8] int;
+  line: [PR_MESSAGE_MAX] u8; reply: [PR_MESSAGE_MAX] u8;
+  for guard: 0..<1000000000 {
+    n := 0; eof := false; long := false;
+    while true {
+      c := cxterm_byte(-1);
+      if c == -2 { eof = true; break; }
+      if c < 0 { continue; }
+      if c == 10 { break; }
+      if n < line.count { line[n] = cast,trunc(u8) c; n += 1; } else { long = true; }
+    }
+    if n > 0 {
+      k := ifx long then pr_error(reply[..], -1, -32700, "Parse error")
+           else pr_serve(env, usage[..], world[..], cast(string) line[0..<n], reply[..]);
+      if k > 0 { ps_outln(cast(string) reply[0..<k]); }
+    }
+    if eof { return 0; }
+  }
+  return 0;
+}
+
+// Writes one message and its newline to the server.
+ps_send :: (h: int, s: string) -> bool {
+  for c: s { if cxproc_write(h, cast(int) c) != 0 { return false; } }
+  return cxproc_write(h, 10) == 0 && cxproc_flush(h) == 0;
+}
+
+// One reply line from the server, or "" when it ended or went quiet.
+ps_read :: (h: int, out: [] u8) -> string {
+  m := cxproc_read_line(h, PS_WAIT_MS);
+  if m < 0 || m > out.count { return ""; }
+  for i: 0..<m { out[i] = cast,trunc(u8) cxproc_line_byte(h, i); }
+  return cast(string) out[0..<m];
+}
+
+WHY :: [17] string.["ok", "shape", "malformed", "version", "id", "method", "name", "untyped", "feature", "capacity", "error", "tool", "effect", "calls", "bytes", "ask", "remote"];
+ps_why :: (w: PrWhy) -> string { if w == PrWhy.result { return "result"; } return WHY[cast(int) w]; }
+
+PsClient :: struct {
+  st: [1] PrStore;
+  e: [256] NxEdge; o: [128] int; nn: [32768] int; a: [128] u8; l: [128] u8;
+  g: [4] int; c: [4] int;
+  by: [16384] u8; ends: [64] int; sent: [64] bool; heads: [64][32] u8;
+}
+
+// One call through pr_send, the pipe and pr_receive; the value, or -1.
+ps_call :: (h: int, env: PrEnv, s: [] PrSession, text: string, approved: bool, l: [] PrLog) -> int {
+  out: [PR_MESSAGE_MAX] u8; rb: [PS_LINE_MAX] u8;
+  ps_out("call "); ps_out(text); ps_out(": ");
+  x := pr_send(env, s, text, approved, out[..], l);
+  if x.why != PrWhy.none { ps_out("refused before sending: "); ps_outln(ps_why(x.why)); return -1; }
+  if !ps_send(h, pr_message(l[0], l[0].count - 1)) { ps_outln("the server's pipe closed"); return -1; }
+  reply := ps_read(h, rb[..]);
+  y := pr_receive(env, x, reply, l);
+  if y.why != PrWhy.none { ps_outln(ps_why(y.why)); return -1; }
+  t: [128] u8; k := ht_render(env.tools, y.call, t[..]);
+  ps_outln(cast(string) t[0..<k]);
+  return y.call.value;
+}
+
+ps_client :: (args: [] Args) -> int {
+  h := cxproc_new();
+  if h < 0 { tool_errln("protocols-stdio: no process slot is free"); return 1; }
+  ok := true;
+  for i: 0..<args_count(args) { ok = ok && proc_arg(h, args_at(args, i)); }
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); tool_errln("protocols-stdio: the server could not start"); return 1; }
+  cs: [1] PsClient;
+  l := [1] PrLog.[PrLog.{bytes = cs[0].by[..], ends = cs[0].ends[..], sent = cs[0].sent[..], heads = cs[0].heads[..]}];
+  b: [PR_MESSAGE_MAX] u8; rb: [PS_LINE_MAX] u8;
+  good := true;
+  // the handshake
+  req := cast(string) b[0..<pr_initialize(b[..], 1)];
+  good = good && pr_log(l[..], true, req) && ps_send(h, req);
+  reply := ps_read(h, rb[..]);
+  w := pr_check_init(reply, 1);
+  ps_out("initialize: "); ps_outln(ps_why(w));
+  good = good && w == PrWhy.none && pr_log(l[..], false, reply);
+  req = cast(string) b[0..<pr_initialized(b[..])];
+  good = good && pr_log(l[..], true, req) && ps_send(h, req);
+  // the tool list, imported tool by tool
+  req = cast(string) b[0..<pr_list(b[..], 2)];
+  good = good && pr_log(l[..], true, req) && ps_send(h, req);
+  reply = ps_read(h, rb[..]);
+  good = good && pr_log(l[..], false, reply);
+  x := pr_import(reply, 2, 1, cs[0].st[..]);
+  tb: [16] u8;
+  ps_out("import: "); ps_out(ps_why(x.why)); ps_out(", "); ps_out(cast(string) tb[0..<json_write_int(tb[..], 0, x.count)]); ps_outln(" tools");
+  if !good || x.why != PrWhy.none || x.count != 4 {
+    k := cxproc_close_stdin(h); s := cxproc_wait(h, 5000); r := cxproc_release(h);
+    return 1;
+  }
+  // calls under a grant (get, set, add, div) and a policy: reads run, writes ask
+  cs[0].g = [4] int.[3, 2, 0, 1]; cs[0].c = [4] int.[3, 1, 2, 1];
+  env := PrEnv.{tools = cs[0].st[0].tools[0..<x.count], grant = HtGrant.{tools = cs[0].g[..], calls = cs[0].c[..], cost = 10, effects = HtEffect.write},
+                work = ht_work(cs[0].e[..], cs[0].o[..], cs[0].nn[..], cs[0].a[..], cs[0].l[..]),
+                policy = PrPolicy.{ceiling = HtEffect.write, allow = HtEffect.read, calls = 8, bytes = 200}};
+  s := [1] PrSession.[PrSession.{next = 3}];
+  v1 := ps_call(h, env, s[..], "set{\"room\":\"den\",\"on\":true}", false, l[..]);   // a write, not approved: never sent
+  v2 := ps_call(h, env, s[..], "set{\"room\":\"den\",\"on\":true}", true, l[..]);
+  v3 := ps_call(h, env, s[..], "get{\"room\":\"den\"}", false, l[..]);
+  v4 := ps_call(h, env, s[..], "add{\"a\":37,\"b\":48}", false, l[..]);
+  v5 := ps_call(h, env, s[..], "div{\"a\":7,\"b\":0}", false, l[..]);
+  k := cxproc_close_stdin(h); st := cxproc_wait(h, 5000); r := cxproc_release(h);
+  verified := pr_verify(l[0]);
+  ps_out("log: "); ps_out(cast(string) tb[0..<json_write_int(tb[..], 0, l[0].count)]); ps_out(" messages, chain verified through ");
+  ps_outln(cast(string) tb[0..<json_write_int(tb[..], 0, verified)]);
+  passed := v1 == -1 && v2 >= 0 && v3 == 1 && v4 == 85 && v5 == -1 && verified == l[0].count;
+  ps_outln(ifx passed then "stdio: ok" else "stdio: FAILED");
+  return ifx passed then 0 else 1;
+}
+
+tool_main :: () -> int #export_c {
+  ab: [1] Args; args := ab[..];
+  if !args_load(args) { tool_errln("protocols-stdio: bad arguments"); return 2; }
+  if args_count(args) == 0 { tool_errln("usage: protocols-stdio --serve | CMD [ARGS...]"); return 2; }
+  if args_at(args, 0) == "--serve" { return ps_serve(); }
+  return ps_client(args);
+}

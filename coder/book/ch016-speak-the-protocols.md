@@ -8,8 +8,10 @@
 > (`coder mcp`, chapter 23), which Claude Code drives live, and runs as an
 > agent for editors over the Agent Client Protocol (`coder acp`). System One
 > is a typed tool (`coder decide`, `coder_decide`), and `coder mcp` serves
-> each session's log as an MCP resource. The harness's own client over live
-> transports (stdio and HTTP) remains; see [What remains](#what-remains).
+> each session's log as an MCP resource. The harness's client and server
+> also run over the stdio transport, and Claude Code has called the harness
+> server's tools live. The Streamable HTTP transport remains; see
+> [What remains](#what-remains).
 
 Other programs already speak protocols for tools. A Model Context Protocol
 (MCP) server publishes tools as JSON-RPC 2.0 messages, and the Open
@@ -413,7 +415,7 @@ pr_serve :: (env:PrEnv,u:[]HtUsage,world:[]int,request:string,out:[]u8)->int {
         return json_raw(out,n,"]}}");
     }
     if m!="tools/call" {return pr_error(out,id,-32601,"Method not found");}
-    pk:=[2]string.["name","arguments"];a:=rs_get(nodes[..],p,"arguments");
+    pk:=[3]string.["name","arguments","_meta"];a:=rs_get(nodes[..],p,"arguments");
     name:=rs_string(nodes[..],rs_get(nodes[..],p,"name"));
     if !rs_keys(nodes[..],p,pk[..]) || !rs_kind(nodes[..],a,JSON_OBJECT) || name.count+nodes[a].end-nodes[a].begin>HT_TEXT_MAX {return pr_error(out,id,-32602,"Invalid params");}
     b:[HT_TEXT_MAX]u8;for c,i:name {b[i]=c;}for c,i:rs_raw(request,nodes[..],a) {b[name.count+i]=c;}
@@ -714,6 +716,43 @@ Save." with the options bug, question and praise, and got
 `{"choice":"bug","probability":1.000}`. The smoke checks the no-key answer
 and the refusal of an option that contains a comma.
 
+## Over stdio
+
+[protocols-stdio.coax](../../psionic/examples/protocols-stdio.coax) runs
+the same client and server in two processes, one JSON-RPC message per
+line on stdin and stdout, the transport MCP names for a local server.
+`--serve` serves chapter 203's registry. Given a command instead, the
+client starts that command as its server and drives it through the pipes:
+
+```sh
+$ coax/web/tool.sh psionic/examples/protocols-stdio.coax \
+    coax/web/build/tools/protocols-stdio --serve
+initialize: ok
+import: ok, 4 tools
+call set{"room":"den","on":true}: refused before sending: ask
+call set{"room":"den","on":true}: {"tool":"set","result":true}
+call get{"room":"den"}: {"tool":"get","result":true}
+call add{"a":37,"b":48}: {"tool":"add","result":85}
+call div{"a":7,"b":0}: remote
+log: 13 messages, chain verified through 13
+stdio: ok
+```
+
+Every message crosses the pipe as bytes and lands in the hash-chained
+log. The unapproved write is refused by the policy and is never sent.
+
+Pointed at another server, the client applies the same checks. Against
+`coder mcp`, the handshake passes, but the tool list is larger than one
+2,048-byte message, so the import is refused with `shape`.
+
+In the other direction, Claude Code connected to `--serve` as an MCP
+server and called `add` with 37 and 48. The first try answered "Invalid
+params": Claude Code puts `_meta` (its tool use ID and a progress token)
+in a call's params, which the specification allows and `pr_serve`
+refused. The server now admits `_meta`, a check in
+`psionic/lib/harness/protocols.coax` keeps it admitted, and the second try
+answered 85.
+
 ## Sessions as resources
 
 `coder mcp` declares the `resources` capability. `resources/list` names the
@@ -731,11 +770,12 @@ resources, reads one, and checks that a `..` URI is not found.
 
 ## What remains
 
-- **Live transports.** The harness's messages are byte strings in one
-  process. Coder's `coder mcp` serves the stdio transport for real
-  (newline-delimited messages; Claude Code connects to it), but the
-  harness's client and server here don't use it yet, and the Streamable
-  HTTP transport needs the host's socket effects.
+- **The HTTP transport.** The harness speaks stdio (see
+  [Over stdio](#over-stdio)); the Streamable HTTP transport needs the
+  host's socket effects.
+- **Lists past one message.** The harness client imports a `tools/list`
+  of at most 2,048 bytes, so a larger server such as `coder mcp` is refused
+  at import with `shape`.
 - **The rest of MCP.** Prompts, sampling, resource subscriptions, pagination with
   `nextCursor`, notifications other than `initialized`, string request ids,
   and content other than one text item.

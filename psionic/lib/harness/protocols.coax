@@ -264,6 +264,9 @@ PrLog :: struct {bytes:[]u8;ends:[]int;sent:[]bool;heads:[][32]u8;count:int;}
     ip:=[3][2]string.[[2]string.[",\"params\":{\"name\":\"get\",\"arguments\":{\"room\":\"den\"}}",""],[2]string.["\"arguments\"","\"x\":1,\"arguments\""],
         [2]string.["{\"room\":\"den\"}","[\"den\"]"]];
     for x:ip {#assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_swap(PR_FX_CALL,x[0],x[1],q[..]),b[..]))==params;}
+    // Claude Code sends _meta (its tool use id, a progress token) beside the call; the specification allows it.
+    meta:=pf_swap(PR_FX_CALL,"{\"room\":\"den\"}}","{\"room\":\"den\"},\"_meta\":{\"progressToken\":2}}",q[..]);
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],meta,b[..]))!=params && pf_text(b[..],pr_serve(env,u[..],world[..],meta,b[..]))!=invalid;
     // A call of 256 bytes reaches chapter 203, which refuses its spaces; 257 does not.
     pad:[300]u8;for i:0..<300 {pad[i]=' ';}
     long:=json_raw(p[..],json_raw(p[..],json_raw(p[..],0,"{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"add\",\"arguments\":{\"a\":1,\"b\":2"),cast(string)pad[0..<240]),"}}}");
@@ -577,7 +580,7 @@ pr_serve :: (env:PrEnv,u:[]HtUsage,world:[]int,request:string,out:[]u8)->int {
         return json_raw(out,n,"]}}");
     }
     if m!="tools/call" {return pr_error(out,id,-32601,"Method not found");}
-    pk:=[2]string.["name","arguments"];a:=rs_get(nodes[..],p,"arguments");
+    pk:=[3]string.["name","arguments","_meta"];a:=rs_get(nodes[..],p,"arguments");
     name:=rs_string(nodes[..],rs_get(nodes[..],p,"name"));
     if !rs_keys(nodes[..],p,pk[..]) || !rs_kind(nodes[..],a,JSON_OBJECT) || name.count+nodes[a].end-nodes[a].begin>HT_TEXT_MAX {return pr_error(out,id,-32602,"Invalid params");}
     b:[HT_TEXT_MAX]u8;for c,i:name {b[i]=c;}for c,i:rs_raw(request,nodes[..],a) {b[name.count+i]=c;}
