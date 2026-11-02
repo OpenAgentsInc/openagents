@@ -9,8 +9,8 @@
 CD_MCP_VERSIONS :: [3] string.["2025-06-18", "2025-03-26", "2024-11-05"];
 CD_MCP_LINE :: 1048576;
 
-CD_MCP_TOOLS :: [8] string.["coder_run", "coder_ls", "coder_status", "coder_log", "coder_send", "coder_stop", "coder_fork", "coder_replay"];
-CD_MCP_ABOUT :: [8] string.[
+CD_MCP_TOOLS :: [9] string.["coder_run", "coder_ls", "coder_status", "coder_log", "coder_send", "coder_stop", "coder_fork", "coder_replay", "coder_decide"];
+CD_MCP_ABOUT :: [9] string.[
   "Start a coding task in a repository as a background Coder session and return its ID at once. Follow it with coder_status and coder_log. engine is claude, codex, micro, psionic or echo; without it, System One picks.",
   "List Coder sessions, newest first, with state, engine, age and task.",
   "One Coder session's state: running, finished, stopped, failed or lost, its last step and its ending.",
@@ -18,9 +18,10 @@ CD_MCP_ABOUT :: [8] string.[
   "Send a message to a Coder session. A running session takes it as its next turn; an ended one continues in a new session that carries the conversation, whose ID is returned.",
   "Stop a running Coder session.",
   "Start a new background session from an existing one's conversation (its first `at` turns, or all of them) with a new task, and return the new ID.",
-  "Rebuild every request a session sent its engine from its log and compare bytes; reports each turn as same or different."];
+  "Rebuild every request a session sent its engine from its log and compare bytes; reports each turn as same or different.",
+  "Ask System One, OpenAgents' decision model, one typed question: it picks one of the options and gives its probability, as {\"choice\":...,\"probability\":...}. Use it for a judgment a program should act on, such as which of several next steps, whether a reply needs a person, or how to label a message."];
 // Each tool's input schema's properties and required list.
-CD_MCP_SCHEMAS :: [8] string.[
+CD_MCP_SCHEMAS :: [9] string.[
   "{\"type\":\"object\",\"properties\":{\"task\":{\"type\":\"string\"},\"engine\":{\"type\":\"string\",\"enum\":[\"claude\",\"codex\",\"micro\",\"psionic\",\"echo\"]},\"cwd\":{\"type\":\"string\",\"description\":\"the repository folder\"}},\"required\":[\"task\"]}",
   "{\"type\":\"object\",\"properties\":{}}",
   "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"a session ID or a unique prefix\"}},\"required\":[\"id\"]}",
@@ -28,7 +29,8 @@ CD_MCP_SCHEMAS :: [8] string.[
   "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"id\",\"message\"]}",
   "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"]}",
   "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"task\":{\"type\":\"string\"},\"at\":{\"type\":\"integer\",\"minimum\":1}},\"required\":[\"id\",\"task\"]}",
-  "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"]}"];
+  "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"]}",
+  "{\"type\":\"object\",\"properties\":{\"question\":{\"type\":\"string\"},\"options\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"minItems\":2,\"maxItems\":32},\"state\":{\"type\":\"string\",\"description\":\"what the question is about: text, or a JSON object\"}},\"required\":[\"question\",\"options\"]}"];
 
 cd_mcp_send :: (s: string) { cd_outln(s); }
 
@@ -108,6 +110,23 @@ cd_mcp_call :: (ar: [] ClArena, params: string, extra: [] string, out: [] u8) ->
     msg := cl_str(ar, args, "message");
     if id.count == 0 || msg.count == 0 { text = "coder_send needs an id and a message."; }
     else { text = cd_mcp_send_message(id, msg, ob[..], ok[..]); }
+  } else if name == "coder_decide" {
+    // the options array becomes the verb's comma list; an option with a comma can't be told apart, so it is refused
+    list := cl_raw(args, "options"); kb: [8192] u8; kn := 0; bad := false;
+    for i: 0..<cl_count(list) {
+      o := cl_text(ar, list, cl_item(list, i));
+      for c: o { if c == ',' { bad = true; } }
+      if i > 0 { kn = cd_cat(kb[..], kn, ","); }
+      kn = cd_cat(kb[..], kn, o);
+    }
+    if bad { text = "An option can't contain a comma."; }
+    else {
+      st := cl_raw(args, "state"); if st.count > 0 && st[0] == '"' { st = cl_str(ar, args, "state"); }
+      a[0] = "decide"; a[1] = cl_str(ar, args, "question"); a[2] = "--options"; a[3] = cast(string) kb[0..<kn]; a[4] = "--json"; na = 5;
+      if st.count > 0 { a[5] = "--state"; a[6] = st; na = 7; }
+      text = cd_mcp_coder(a[0..<na], ob[..], ok[..]);
+      while text.count > 0 && text[text.count - 1] == 10 { text = cast(string) text[0..<text.count - 1]; }
+    }
   } else { return ""; }
   n := json_raw(out, 0, "{\"content\":[{\"type\":\"text\",\"text\":"); n = json_write_string(out, n, ifx text.count > 0 then text else (ifx ok[0] then "Done." else "It failed."));
   n = json_raw(out, n, ifx ok[0] then "}],\"isError\":false}" else "}],\"isError\":true}");
@@ -185,12 +204,12 @@ cd_cmd_mcp :: () -> int {
   tb: [16384] u8; t := cd_mcp_tools(tb[..]);
   ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   list := cl_raw(t, "tools");
-  #assert cl_count(list) == 8;
+  #assert cl_count(list) == 9;
   first := cl_json(list, cl_item(list, 0));
   #assert cl_str(ar[..], first, "name") == "coder_run" && cl_raw(cl_raw(first, "inputSchema"), "required") == "[\"task\"]";
 }
 
-// --coder-tools: the same eight tools as an in-process SDK MCP server in a
+// --coder-tools: the same nine tools as an in-process SDK MCP server in a
 // Claude Code session, so Claude Code can start, follow and steer other
 // Coder sessions. The model sees them as mcp__coder__coder_run and so on.
 cd_claude_coder_server :: (o: [] ClOptions) {

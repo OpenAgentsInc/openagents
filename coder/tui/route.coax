@@ -176,3 +176,81 @@ cd_route_text :: (r: [] CdRoute, out: [] u8) -> string {
   #assert cd_env_value("A=1\nexport BASETEN_API_KEY=\"k1\"\n", "BASETEN_API_KEY") == "k1";
   #assert cd_env_value("BASETEN_API_KEYS=x", "BASETEN_API_KEY") == "";
 }
+
+// System One as a tool (Coder book chapter 16): `coder decide QUESTION
+// --options A,B[,...] [--state TEXT]` asks one typed choice question and
+// answers the chosen option with its probability. The state is JSON when it
+// starts with "{", else text. The coder_decide MCP tool runs this verb.
+CD_DECIDE_MAX :: 32;
+
+// 0.962: three places are what a decision carries.
+cd_prob3 :: (out: [] u8, n: int, p: f64) -> int {
+  pm := cast(int) (p * 1000.0 + 0.5);
+  k := json_write_int(out, n, pm / 1000); k = json_raw(out, k, ".");
+  k = json_raw(out, k, ifx pm % 1000 < 10 then "00" else ifx pm % 1000 < 100 then "0" else "");
+  return json_write_int(out, k, pm % 1000);
+}
+
+// Splits A,B,C into keys; the count, or -1 when there are too many or one is empty.
+cd_decide_options :: (options: string, keys: [] string) -> int {
+  n := 0; at := 0;
+  while at <= options.count {
+    e := at; while e < options.count && options[e] != ',' { e += 1; }
+    if e == at || n == keys.count { return -1; }
+    keys[n] = cast(string) options[at..<e]; n += 1;
+    at = e + 1;
+  }
+  return n;
+}
+
+// The decision as JSON: {"choice":"A","probability":0.962} or {"error":"..."}; ok[0] when decided.
+cd_decide :: (question: string, options: string, state: string, out: [] u8, ok: [] bool) -> string {
+  ok[0] = false;
+  keys: [CD_DECIDE_MAX] string; labels: [CD_DECIDE_MAX] string;
+  k := cd_decide_options(options, keys[..]);
+  why := "";
+  if question.count == 0 { why = "needs a question"; }
+  else if k < 2 { why = "needs 2 to 32 options, separated by commas, none empty"; }
+  if why.count == 0 {
+    for i: 0..<k { labels[i] = ""; }
+    cb: [1] SoClient; kb: [512] u8;
+    why = cd_so_keyed(cb[..], kb[..]);
+    if why.count == 0 {
+      buf: [65536] u8; b: [1] SoBody;
+      so_begin(b[..], buf[..], SO_MAMMOTH, "");
+      if state.count > 0 && state[0] == '{' { so_state_json(b[..], state); } else { so_state_text(b[..], ifx state.count > 0 then state else question); }
+      so_choice(b[..], "decision", question, keys[0..<k], labels[0..<k]);
+      if b[0].at < 0 { why = "the question doesn't fit a System One request"; }
+      else {
+        ob: [65536] u8; err: [4096] u8;
+        res := so_decide(cb[0], b[..], ob[..], err[..]);
+        for i: 0..<kb.count { kb[i] = 0; }
+        if res.problem.count > 0 { why = ifx res.stderr.count > 0 then res.stderr else res.problem; }
+        else {
+          ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+          c := so_choice_of(ar[..], res.body, "decision");
+          if !c.ok { why = "System One's answer has no choice"; }
+          else {
+            n := json_raw(out, 0, "{\"choice\":"); n = json_write_string(out, n, c.choice);
+            n = json_raw(out, n, ",\"probability\":"); n = cd_prob3(out, n, c.probability); n = json_raw(out, n, "}");
+            ok[0] = n > 0;
+            return ifx n < 0 then "" else cast(string) out[0..<n];
+          }
+        }
+      }
+    }
+  }
+  n := json_raw(out, 0, "{\"error\":"); n = json_write_string(out, n, why); n = json_raw(out, n, "}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+#test "decide: options split on commas; empty or too few are refused" {
+  keys: [CD_DECIDE_MAX] string;
+  #assert cd_decide_options("yes,no,later", keys[..]) == 3 && keys[2] == "later";
+  #assert cd_decide_options("a,,b", keys[..]) == -1;
+  #assert cd_decide_options("", keys[..]) == -1;
+  ob: [256] u8; ok: [1] bool;
+  #assert cd_decide("Ship it?", "yes", "", ob[..], ok[..]) == "{\"error\":\"needs 2 to 32 options, separated by commas, none empty\"}" && !ok[0];
+  b: [32] u8; n := cd_prob3(b[..], 0, 0.05);
+  #assert cast(string) b[0..<n] == "0.050";
+}

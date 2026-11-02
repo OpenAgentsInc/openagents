@@ -6,9 +6,10 @@
 > chapter4's admission, a remote policy and a hash-chained message log.
 > Coder also serves its verbs as MCP tools over the stdio transport
 > (`coder mcp`, chapter 23), which Claude Code drives live, and runs as an
-> agent for editors over the Agent Client Protocol (`coder acp`). The
-> harness's own client over live transports (stdio and HTTP), MCP resources
-> and System One as a tool remain; see [What remains](#what-remains).
+> agent for editors over the Agent Client Protocol (`coder acp`). System One
+> is a typed tool (`coder decide`, `coder_decide`). The harness's own client
+> over live transports (stdio and HTTP) and MCP resources remain; see
+> [What remains](#what-remains).
 
 Other programs already speak protocols for tools. A Model Context Protocol
 (MCP) server publishes tools as JSON-RPC 2.0 messages, and the Open
@@ -687,6 +688,32 @@ exact name), and its result a `tool_call_update` that is `completed` or
 picks (chapter 13). An editor's settings entry is the command
 `openagents coder acp`.
 
+## System One as a tool
+
+A `/v1/systemone` decision from
+[Psionic chapter 20](../../psionic/book/ch020-serve-systemone.md) is a
+typed tool. `coder decide` asks one choice question and prints the chosen
+option with its probability:
+
+```sh
+$ coder decide "Does this message need a reply from a person?" --options yes,no \
+    --state "Thanks, that fixed it! Closing the issue."
+{"choice":"no","probability":0.986}
+```
+
+The state is a JSON object when it starts with `{`, and text otherwise. The
+options are the choice's keys, 2 to 32 of them. The model is Baseten's
+mammoth-1 with the same key handling as chapter 13's route. With no key,
+the verb exits 1 and says so.
+
+`coder mcp` and `--coder-tools` offer the same decision as `coder_decide`,
+whose input schema types the question, the options array and the state. The
+tool runs the verb, so the two can't drift apart. In the live check, Claude
+Code called `mcp__coder__coder_decide` on "The app crashes when I click
+Save." with the options bug, question and praise, and got
+`{"choice":"bug","probability":1.000}`. The smoke checks the no-key answer
+and the refusal of an option that contains a comma.
+
 ## What remains
 
 - **Live transports.** The harness's messages are byte strings in one
@@ -704,8 +731,6 @@ picks (chapter 13). An editor's settings entry is the command
   the editor for permission (`session/request_permission`), read files
   through the editor, or send diffs as ACP diff content. No editor has
   driven it yet; the smoke drives it as one would.
-- **System One as a tool.** A `/v1/systemone` decision from
-  [Psionic chapter 20](../../psionic/book/ch020-serve-systemone.md) isn't yet offered as a typed tool.
 - **OpenAgents wire contracts.** This chapter speaks third-party protocols
   only. A protocol OpenAgents publishes starts in `proto/` and
   `docs/protocol/` with a version.

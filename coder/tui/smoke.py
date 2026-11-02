@@ -196,6 +196,17 @@ def verbs(check):
         tr = [json.loads(x)["mcp"]["result"]["content"][0]["text"] for x in open(term_out)] if os.path.exists(term_out) else []
         check("the agent's terminal: a prompt, typed keys, the answer on screen, then stopped",
               len(tr) == 3 and "name?" in tr[0] and "hi-bob" in tr[1] and tr[1].startswith("[running") and tr[2].startswith("[ended"))
+        # System One as a tool: coder_decide runs `coder decide`; with no key it says so, and an option with a comma is refused
+        dec_out = os.path.join(work, "decide.jsonl")
+        calls = [{"name": "coder_decide", "arguments": {"question": "Reply needed?", "options": ["yes", "no"], "state": "thanks!"}},
+                 {"name": "coder_decide", "arguments": {"question": "Pick", "options": ["a,b", "c"]}}]
+        denv = dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=dec_out, CLAUDE_STUB_MODE="calls", CLAUDE_STUB_CALLS=json.dumps(calls))
+        denv.pop("BASETEN_API_KEY", None)
+        subprocess.run([coder, "run", "go", "--engine", "claude", "--coder-tools", "--cwd", work, "--json"], cwd=REPO, env=denv, capture_output=True, text=True, timeout=120)
+        dr = [json.loads(x)["mcp"]["result"] for x in open(dec_out)] if os.path.exists(dec_out) else []
+        check("coder_decide: System One as a tool, with no key it says so; an option with a comma is refused",
+              len(dr) == 2 and dr[0]["isError"] and "no System One key" in dr[0]["content"][0]["text"]
+              and dr[1]["isError"] and "comma" in dr[1]["content"][0]["text"])
         badp = subprocess.run([coder, "run", "hi", "--allow", "run", "--ceiling", "write"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("policy: --allow can't pass --ceiling", badp.returncode == 2 and "--allow can't be above --ceiling" in badp.stderr)
         # deadlines and reports (chapter 14): a job past its deadline expires; a job's result reaches the session that started it
@@ -509,7 +520,7 @@ def verbs(check):
         unknown = rpc(5, "tools/call", {"name": "coder_nope", "arguments": {}})
         mp.stdin.close(); mp.wait(timeout=10)
         check("mcp: initialize, the tool list, a run started and its log read through tools",
-              init["result"]["serverInfo"]["name"] == "coder" and len(tools) == 8 and not started["isError"]
+              init["result"]["serverInfo"]["name"] == "coder" and len(tools) == 9 and not started["isError"]
               and "    └ via-mcp" in logged and unknown["error"]["code"] == -32602)
         bad = subprocess.run([coder, "status", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("status of an unknown ID exits 6", bad.returncode == 6)
