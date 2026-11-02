@@ -1,8 +1,9 @@
 # Chapter 11 handoff — stopped
 
 Chapter 11 is implemented for its named shared-renderer/Grid teaching profile.
-The implementation checkpoint is `e08898a43e`; it was rebased onto main
-`55099680e9`. This handoff and the final integration record accompany that
+The implementation is preserved in the delivery's main history. The runtime
+integration used main `55099680e9`; concurrent Bitcoin/Nostr work was then
+incorporated from `67f3a338aa` without changing renderer sources. This handoff and the final integration record accompany that
 delivery. Chapter 12 remains untouched. All agents have stopped and owned
 browser, loopback-server and remote measurement jobs are closed.
 
@@ -38,12 +39,14 @@ not establish numerical conformance of every catalogue shader. The selected
 compiler's fast-cache qualification does not replace the separate full
 compiler-release work tracked in issue12638.
 
-The final global tools check has one **pre-existing incoming-main failure**:
-`coax/web/api/computer-flow.ts`, introduced by `04f5e701d4`, has no valid reason
-header or Coax port. Its bytes are identical on incoming main and this delivery.
-The gate reports1515 tracked files/1 failure; the earlier chapter-port scan
-passed1506/0. This separate release-gate debt needs a real port or applicable
-owner exception. No fabricated header or port-list waiver was added.
+The last global tools check at main `67f3a338aa` has three **pre-existing
+incoming-main failures**: `coax/web/api/computer-flow.ts`,
+`coax/tests/bitcoin/chacha20_poly1305.py` and
+`coax/tests/bitcoin/chacha20_poly1305_wasm.cjs`. Their bytes are unchanged by
+this delivery. The gate reports1517 tracked files/3 failures; the earlier
+chapter-port scan passed1506/0. This separate release-gate debt needs a Coax
+port or truthful applicable reason declarations/owner exception. No fabricated
+header or port-list waiver was added.
 
 There is no automatic continuation. If work is resumed, chapter12 is the next
 book chapter. Broader realm adoption, complete Everglade CPU rendering through
