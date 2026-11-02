@@ -3,7 +3,7 @@
 # Coder in the terminal: builds coder/tui/coder.coax when stale and runs it.
 # The claude engine uses the installed claude CLI on its own login; it needs
 # no credentials from here.
-#   coder/tui/coder.sh [--engine claude|echo] [--model M] [--cwd DIR]
+#   coder/tui/coder.sh [--engine claude|echo] [--model M] [--ask] [--cwd DIR]
 #   coder/tui/coder.sh --print "TASK"
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"

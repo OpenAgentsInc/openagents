@@ -49,13 +49,13 @@ def live():
 
     steps = [("banner", read_until("/help for commands.", 600))]
     os.write(fd, b"Remember the word heliotrope. Reply with only: noted\r")
-    steps.append(("first turn", read_until("● noted", 120) and read_until("⎿ finished", 30)))
+    steps.append(("first turn", read_until("● noted", 120) and read_until("└ finished", 30)))
     os.write(fd, b"What word did I ask you to remember? Reply with only that word.\r")
     steps.append(("second turn remembers", read_until("● heliotrope", 120)))
     end = time.time() + 30
-    while out.count("⎿ finished".encode()) < 2 and time.time() < end:
+    while out.count("└ finished".encode()) < 2 and time.time() < end:
         read_until("\x00never", 0.2)
-    steps.append(("second turn ended", out.count("⎿ finished".encode()) >= 2))
+    steps.append(("second turn ended", out.count("└ finished".encode()) >= 2))
     for _ in range(3):                      # stop, clear, quit: whichever applies
         os.write(fd, b"\x03")
         time.sleep(0.5)
@@ -121,7 +121,7 @@ def main():
     send(b"\r")
     check("message committed", read_until("› hello coder", 5))
     check("reply streamed", read_until("You said: hello coder", 10))
-    check("turn ended", read_until("⎿ finished", 10))
+    check("turn ended", read_until("└ finished", 10))
     send(b"$ echo smoke-ok\r")
     check("command ran", read_until("$ echo smoke-ok · exit 0", 10))
     check("command output", read_until("    smoke-ok", 5))
@@ -129,16 +129,16 @@ def main():
     check("Shift-Enter adds a line", read_until("› top", 5) and read_until("  bottom", 5) and b"topbottom" not in out)
     check("Shift-Enter turn ended", read_until("You said: top", 10))
     end = time.time() + 15
-    while out.count("⎿ finished".encode()) < 3 and time.time() < end:
+    while out.count("└ finished".encode()) < 3 and time.time() < end:
         read_until("\x00never", 0.2)
     send(b"\x1b[200~first line\rsecond line\x1b[201~")
     send(b"\r")
     check("paste kept both lines", read_until("first line", 5) and read_until("second line", 5))
     check("paste reply", read_until("You said: first line", 10))
     end = time.time() + 15
-    while out.count("⎿ finished".encode()) < 4 and time.time() < end:
+    while out.count("└ finished".encode()) < 4 and time.time() < end:
         read_until("\x00never", 0.2)
-    check("paste turn ended", out.count("⎿ finished".encode()) >= 4)
+    check("paste turn ended", out.count("└ finished".encode()) >= 4)
     send(b"\x1b[A")
     time.sleep(0.3)
     send(b"\x03")            # clears the recalled entry

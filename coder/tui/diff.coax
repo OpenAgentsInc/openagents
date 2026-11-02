@@ -46,7 +46,10 @@ df_row :: (a: [] App, num: int, sign: u8, code: string, lang: int, hl: [] TuiHl)
   r_b: [1] DfRow; r := r_b[..]; o := r[0].o[..]; o[0].b = r[0].b[..];
   bg := ifx sign == '+' then DF_ADD_BG else ifx sign == '-' then DF_DEL_BG else "";
   tui_put(o, "      ");
-  tui_byte(o, 27); tui_put(o, "[0;38;2;110;118;129"); tui_put(o, bg); tui_put(o, "m");
+  // the number in the row's color on a changed line, grey on context
+  tui_byte(o, 27);
+  tui_put(o, ifx sign == '+' then "[0;38;2;120;210;140" else ifx sign == '-' then "[0;38;2;235;110;110" else "[0;38;2;110;118;129");
+  tui_put(o, bg); tui_put(o, "m");
   nb: [16] u8; ns := ifx num > 0 then cd_itoa(num, nb[..]) else "";
   for i: ns.count..<5 { tui_put(o, " "); }
   tui_put(o, ns); tui_put(o, " ");
@@ -72,7 +75,7 @@ df_row :: (a: [] App, num: int, sign: u8, code: string, lang: int, hl: [] TuiHl)
 }
 
 df_note :: (a: [] App, s: string) {
-  b: [2048] u8; n := cd_cat(b[..], 0, "    ⎿ "); n = cd_cat(b[..], n, s);
+  b: [2048] u8; n := cd_cat(b[..], 0, "    └ "); n = cd_cat(b[..], n, s);
   cd_commit(a, TUI_DIM, cast(string) b[0..<n]);
 }
 

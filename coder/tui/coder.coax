@@ -8,7 +8,7 @@
 // directory. Microcoder joins once its library builds on the current
 // compiler.
 //
-//   coder/tui/coder.sh [--engine claude|echo] [--model M] [--cwd DIR]
+//   coder/tui/coder.sh [--engine claude|echo] [--model M] [--ask] [--cwd DIR]
 //   coder/tui/coder.sh --print "TASK"      no TUI: one task, plain lines out
 //
 // Keys: Enter sends, Shift-Enter (Ctrl-J, Alt-Enter or a trailing \ where
@@ -44,6 +44,7 @@ App :: struct {
   plain: bool;                   // --print: no TUI, plain lines
   engine: int;
   model: string;
+  ask_first: bool;               // --ask: permission prompts instead of skipping them
   cwd: string;
   cols: int; rows: int;
   // the terminal
@@ -200,7 +201,7 @@ cd_finish :: (a: [] App, ending: int, text: string) {
   cd_reply_commit(a, true);
   if text.count > 0 && ending == END_FAILED { cd_commit_prefixed(a, TUI_RED, "● ", "  ", text); }
   sb: [256] u8; n := 0; tb: [32] u8;
-  n = cd_cat(sb[..], n, "  ⎿ ");
+  n = cd_cat(sb[..], n, "  └ ");
   n = cd_cat(sb[..], n, ifx ending == END_STOPPED then "stopped" else ifx ending == END_FAILED then "failed" else "finished");
   n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_seconds_text(cd_now(a) - a[0].started_ms, tb[..]));
   if a[0].steps > 0 { n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_itoa(a[0].steps, tb[..])); n = cd_cat(sb[..], n, ifx a[0].steps == 1 then " step" else " steps"); }
@@ -306,10 +307,13 @@ cd_claude_reset :: (q: [] ClQuery) { fresh: ClQuery; q[0] = fresh; }
 
 // Partial messages so the reply streams; the person's Claude Code login,
 // never an API key from the environment.
-cd_claude_options :: (q: [] ClQuery, cwd: string, model: string) {
+cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool) {
   o: [1] ClOptions;
   o[0].include_partial_messages = true;
-  o[0].permission_handler = true;        // permission requests come to the y/a/n prompt
+  // Tools run without asking, as with claude --dangerously-skip-permissions;
+  // --ask sends each permission request to the y/a/n prompt instead.
+  if ask { o[0].permission_handler = true; }
+  else { o[0].permission_mode = ClPermissionMode.bypass_permissions; o[0].allow_dangerously_skip_permissions = true; }
   o[0].cwd = cwd;
   if model.count > 0 { o[0].model = model; }
   cl_remove_env(o[..], "ANTHROPIC_API_KEY");
@@ -324,7 +328,7 @@ cd_claude_send :: (a: [] App, msg: string) {
   }
   cd_claude_reset(a[0].q);
   cl_init(a[0].q, a[0].qline, a[0].qarena, a[0].qout);
-  cd_claude_options(a[0].q, a[0].cwd, a[0].model);
+  cd_claude_options(a[0].q, a[0].cwd, a[0].model, a[0].ask_first);
   a[0].npending = cd_cat(a[0].pending[..], 0, msg);
   problem := cl_start(a[0].q, a[0].p, "", true, a[0].scratch);
   if problem.count > 0 { cd_finish(a, END_FAILED, problem); return; }
@@ -415,7 +419,7 @@ cd_claude_message :: (a: [] App, m: ClMessage) {
       lines := 0; for c: text { if c == 10 { lines += 1; } }
       e := 0; while e < text.count && text[e] != 10 { e += 1; }
       first := cast(string) text[0..<e];
-      rb: [1024] u8; rn := cd_cat(rb[..], 0, "    ⎿ ");
+      rb: [1024] u8; rn := cd_cat(rb[..], 0, "    └ ");
       rn = cd_cat(rb[..], rn, cast(string) first[0..<tui_fit(first, a[0].cols - 14)]);
       if lines > 0 { tb: [16] u8; rn = cd_cat(rb[..], rn, " … +"); rn = cd_cat(rb[..], rn, cd_itoa(lines, tb[..])); rn = cd_cat(rb[..], rn, " lines"); }
       cd_commit(a, ifx bad.ok && bad.value then TUI_RED else TUI_FAINT, cast(string) rb[0..<rn]);
@@ -616,7 +620,7 @@ tool_main :: () -> int #export_c {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { tool_errln("coder: bad arguments"); return 2; }
   if args_has(args, "--help") || args_has(args, "-h") {
-    tool_errln("usage: coder [--engine claude|echo] [--model M] [--cwd DIR]\n       coder --print \"TASK\" [--engine claude|echo]");
+    tool_errln("usage: coder [--engine claude|echo] [--model M] [--ask] [--cwd DIR]\n       coder --print \"TASK\" [--engine claude|echo]");
     return 0;
   }
   if args_has(args, "--version") { tool_errln(CODER_VERSION); return 0; }
@@ -629,6 +633,7 @@ tool_main :: () -> int #export_c {
   cb: [4096] u8;
   a[0].cwd = args_value(args, "--cwd", cl_getenv("PWD", cb[..]));
   a[0].model = args_value(args, "--model", "");
+  a[0].ask_first = args_has(args, "--ask");
   a[0].engine = ENGINE_CLAUDE;
   want := args_value(args, "--engine", "");
   if want == "echo" { a[0].engine = ENGINE_ECHO; }
