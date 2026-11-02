@@ -11,9 +11,9 @@
 > grant, and a job for a machine that is offline waits and is sent when the
 > machine answers. A Router killed between an effect and its record
 > resumes without repeating the effect, and the watchdog's time to
-> detection is measured for each fault. Still to come: credential handles,
-> rules for pull requests, mail and documents, and rechecking API errors
-> until they clear.
+> detection is measured for each fault. Pull request replies have their
+> required sections. Still to come: credential handles, rules for mail and
+> documents, and rechecking API errors until they clear.
 
 Chapter17's agent is only useful if it keeps working while a laptop sleeps,
 answers while a long build runs, talks the way each channel expects and
@@ -214,6 +214,26 @@ and the reply follows its rules (`rt_reply`):
 | --- | --- |
 | `chat` | At most 100 words, cut with " …". Says how a Worker stopped if it didn't finish. |
 | `issue` | Structured: the ending, steps and session first, then the full result. |
+| `pr` | A pull request body with three sections, always present: **Background** (the task), **Change** (the Worker's result), **Verification** (each command the session ran, from its log, as passed or failed; the last ten). A session that did not finish says so. |
+
+`coder policy add SOURCE --channel pr` sets a source's channel. In a live
+check, an event `$ echo pr-three` on a `pr` source got this reply:
+
+```text
+## Background
+
+$ echo pr-three
+
+## Change
+
+pr-three
+
+## Verification
+
+- `echo pr-three`: passed
+
+Session: `20261102-102740-660`
+```
 
 ### Machine daemons
 
@@ -280,8 +300,9 @@ name and finished.
 - **Duplex.** With a ten-minute job running, a new message gets a reply within
   one inference step, and the job's result arrives later as an event. A
   stopped job reports as stopped, and an expired one as expired.
-- **Channels.** Every chat reply in a replayed stream is 100 words or fewer,
-  and every pull request body has its required sections.
+- [x] **Channels.** Every chat reply in a replayed stream is 100 words or fewer,
+  and every pull request body has its required sections. Checked by unit
+  checks on `rt_reply` and `rt_reply_pr`, and the smoke's replies.
 - [x] **Restart.** Killing the loop's container mid-task and starting a new one
   resumes every open task from the log with no lost or repeated tool effects.
   Checked by the smoke: SIGKILL right after a Worker starts, and right after

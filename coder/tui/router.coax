@@ -204,6 +204,67 @@ rt_words :: (s: string, max: int, out: [] u8) -> string {
 RT_ISSUE_BYTES :: 6000;
 RT_SPILL_WORDS :: 6;        // the chat pointer's words, kept inside the cap
 
+// The commands a session ran and whether each passed, from its log's tool
+// and result lines: "- `make test`: passed" a line, the last RT_PR_CHECKS.
+RT_PR_CHECKS :: 10;
+rt_checks :: (wlog: string, ar: [] ClArena, out: [] u8) -> string {
+  labels: [RT_PR_CHECKS] [512] u8; nl: [RT_PR_CHECKS] int; good: [RT_PR_CHECKS] int; k := 0; open := -1;
+  at := 0;
+  while at < wlog.count {
+    e := at; while e < wlog.count && wlog[e] != 10 { e += 1; }
+    line := cast(string) wlog[at..<e];
+    at = e + 1;
+    if line.count == 0 { continue; }
+    ar[0].at = 0; ar[0].full = false;
+    kind := cl_str(ar, line, "kind");
+    if kind == "tool" {
+      lb := cl_str(ar, line, "label");
+      open = -1;
+      // Bash(CMD) from an engine, or "$ CMD · exit N" from a command typed in the session
+      cf := -1; ct := -1;
+      if lb.count > 6 && cast(string) lb[0..<5] == "Bash(" && lb[lb.count - 1] == ')' { cf = 5; ct = lb.count - 1; }
+      else if lb.count > 2 && lb[0] == '$' && lb[1] == ' ' {
+        cf = 2; ct = lb.count;
+        mk := " · exit ";
+        for q: 2..<lb.count { if q + mk.count <= lb.count && cast(string) lb[q..<q + mk.count] == mk { ct = q; break; } }
+      }
+      if cf >= 0 {
+        slot := k % RT_PR_CHECKS;
+        nl[slot] = cd_cat(labels[slot][..], 0, cast(string) lb[cf..<ct]); good[slot] = -1;
+        open = slot; k += 1;
+      }
+    } else if kind == "result" && open >= 0 {
+      bad := cl_bool(line, "error");
+      good[open] = ifx bad.ok && bad.value then 0 else 1;
+      open = -1;
+    }
+  }
+  n := 0;
+  first := ifx k > RT_PR_CHECKS then k - RT_PR_CHECKS else 0;
+  for j: first..<k {
+    slot := j % RT_PR_CHECKS;
+    n = cd_cat(out, n, "- `"); n = cd_cat(out, n, cast(string) labels[slot][0..<nl[slot]]); n = cd_cat(out, n, "`: ");
+    n = cd_cat(out, n, ifx good[slot] == 1 then "passed\n" else ifx good[slot] == 0 then "failed\n" else "no result\n");
+  }
+  return cast(string) out[0..<n];
+}
+
+// A pull request body: the sections a reviewer reads, always all three.
+rt_reply_pr :: (task: string, id: string, ending: string, result: string, checks: string, out: [] u8) -> string {
+  n := cd_cat(out, 0, "## Background\n\n");
+  n = cd_cat(out, n, ifx task.count > 0 then cast(string) task[0..<ifx task.count > 2000 then 2000 else task.count] else "No task text.");
+  n = cd_cat(out, n, "\n\n## Change\n\n");
+  e := ifx result.count > RT_ISSUE_BYTES then RT_ISSUE_BYTES else result.count;
+  while e > 0 && e < result.count && (result[e] & 192) == 128 { e -= 1; }
+  n = cd_cat(out, n, ifx result.count > 0 then cast(string) result[0..<e] else "No result text.");
+  if e < result.count { n = cd_cat(out, n, "\n\n… The rest is in the session: `coder log "); n = cd_cat(out, n, id); n = cd_cat(out, n, "`."); }
+  n = cd_cat(out, n, "\n\n## Verification\n\n");
+  n = cd_cat(out, n, ifx checks.count > 0 then checks else "No commands were run in this session.\n");
+  if ending != "finished" { n = cd_cat(out, n, "\nThe session ended as "); n = cd_cat(out, n, ending); n = cd_cat(out, n, ", not finished.\n"); }
+  n = cd_cat(out, n, "\nSession: `"); n = cd_cat(out, n, id); n = cd_cat(out, n, "`");
+  return cast(string) out[0..<n];
+}
+
 rt_reply :: (channel: string, id: string, ending: string, steps: int, result: string, out: [] u8) -> string {
   if channel == "issue" {
     tb: [16] u8;
@@ -766,7 +827,11 @@ rt_report :: (p: [] RtPaths, th: [] RtThreads, i: int, text: string, s: [] CsSum
   lb: [65536] u8; lar: [1] ClArena; lar[0] = ClArena.{buf = lb[..]};
   rb: [32768] u8; result := rt_last_turn(text, lar[..], rb[..]);
   ob: [16384] u8;
-  body := rt_reply(channel, id, cast(string) s[0].ending[0..<s[0].nending], s[0].steps, result, ob[..]);
+  body := "";
+  if channel == "pr" {
+    ckb: [8192] u8; car: [1] ClArena; cab: [65536] u8; car[0] = ClArena.{buf = cab[..]};
+    body = rt_reply_pr(cast(string) s[0].task[0..<s[0].ntask], id, cast(string) s[0].ending[0..<s[0].nending], result, rt_checks(text, car[..], ckb[..]), ob[..]);
+  } else { body = rt_reply(channel, id, cast(string) s[0].ending[0..<s[0].nending], s[0].steps, result, ob[..]); }
   t: RtTrigger; t.id = id; t.source = source; t.thread = thread;
   jb: [65536] u8;
   n := json_raw(jb[..], 0, "{\"thread\":"); n = json_write_string(jb[..], n, thread);
@@ -947,7 +1012,7 @@ rt_sources_with :: (sources: string, name: string, entry: string, out: [] u8) ->
 }
 
 RT_POLICY_MODES :: [3] string.["explicit_requests_only", "candidate", "ignore"];
-RT_CHANNELS :: [2] string.["chat", "issue"];
+RT_CHANNELS :: [3] string.["chat", "issue", "pr"];
 
 // One source's policy entry. authors is a comma-separated list ("*" for anyone).
 rt_policy_entry :: (mode: string, authors: string, engine: string, label: string, channel: string, deliver: bool, ci: bool, policy: string, out: [] u8) -> string {
@@ -1001,7 +1066,7 @@ cd_cmd_policy :: (args: [] Args, json: bool) -> int {
     modes := RT_POLICY_MODES; channels := RT_CHANNELS;
     if !rt_in(mode, modes[..]) { tool_errln("coder policy: --mode is explicit_requests_only, candidate or ignore"); return 2; }
     channel := args_value(args, "--channel", "");
-    if channel.count > 0 && !rt_in(channel, channels[..]) { tool_errln("coder policy: --channel is chat or issue"); return 2; }
+    if channel.count > 0 && !rt_in(channel, channels[..]) { tool_errln("coder policy: --channel is chat, issue or pr"); return 2; }
     eb: [8192] u8;
     entry := rt_policy_entry(mode, args_value(args, "--authors", "*"), args_value(args, "--engine", ""), args_value(args, "--label", ""), channel, args_has(args, "--deliver"), args_has(args, "--ci"), args_value(args, "--text", ""), eb[..]);
     next = rt_sources_with(sources, name, entry, ob[..]);
@@ -1111,6 +1176,15 @@ cd_cmd_watch :: (thread: string, stop: bool, list: bool) -> int {
   #assert issue.count < 6200 && cast(string) issue[issue.count - itail.count..<issue.count] == itail;
   #assert rt_reply("chat", "S1", "lost", 0, "", ob[..]) == "Stopped (lost): lost";
   #assert rt_reply("issue", "S1", "finished", 1, "Fixed the parser.", ob[..]) == "**Coder** finished in 1 step (session `S1`).\n\nFixed the parser.";
+  // a pull request body has its three sections, with each command's outcome
+  wl := "{\"kind\":\"user\",\"text\":\"fix it\"}\n{\"kind\":\"tool\",\"label\":\"Bash(make test)\"}\n{\"kind\":\"result\",\"text\":\"1 failed\",\"error\":true}\n{\"kind\":\"tool\",\"label\":\"Edit(a.c)\"}\n{\"kind\":\"tool\",\"label\":\"Bash(make test)\"}\n{\"kind\":\"result\",\"text\":\"ok\",\"error\":false}\n";
+  cab: [65536] u8; car: [1] ClArena; car[0] = ClArena.{buf = cab[..]}; ckb: [1024] u8;
+  ck := rt_checks(wl, car[..], ckb[..]);
+  #assert ck == "- `make test`: failed\n- `make test`: passed\n";
+  ckb2: [256] u8; #assert rt_checks("{\"kind\":\"tool\",\"label\":\"$ echo pr-ok · exit 0\"}\n{\"kind\":\"result\",\"text\":\"pr-ok\",\"error\":false}\n", car[..], ckb2[..]) == "- `echo pr-ok`: passed\n";
+  pr := rt_reply_pr("fix it", "S1", "finished", "Fixed the off-by-one in a.c.", ck, ob[..]);
+  #assert pr == "## Background\n\nfix it\n\n## Change\n\nFixed the off-by-one in a.c.\n\n## Verification\n\n- `make test`: failed\n- `make test`: passed\n\nSession: `S1`";
+  #assert cd_holds(rt_reply_pr("", "S2", "stopped", "", "", ob[..]), "## Verification\n\nNo commands were run in this session.\n\nThe session ended as stopped");
 }
 
 #test "policies: entries are written and replaced by name, others kept" {
