@@ -15,6 +15,7 @@
 #load "camera.coax";
 #load "trace-text.coax";
 #load "../../aethyr/loop.coax";   // the fixed steps: Aethyr's one clock (aethyr/book ch001)
+#load "../../aethyr/input.coax";  // keys and the thumb to one Intent (aethyr/book ch004)
 
 // The keys the host sends (coax/web/host.js KEYS): a code point, or a named key.
 PK_ESCAPE :: -1; PK_ENTER :: -2; PK_LEFT :: -4; PK_RIGHT :: -5; PK_UP :: -6; PK_DOWN :: -7; PK_SHIFT :: -13; PK_CONTROL :: -14;
@@ -506,15 +507,18 @@ ice_play_pointer :: (p: [] Play, g: [] Game, x: f32, y: f32, phase: int, kind: i
 axis_of_keys :: (plus: bool, minus: bool) -> f32 { return (ifx plus then 1.0f32 else 0.0f32) - (ifx minus then 1.0f32 else 0.0f32); }
 play_input :: (p: [] Play, g: [] Game) -> Input {
   if p[0].options.bot { return bot_input(g, p[0].bots[..]); }
-  ahead := axis_of_keys(holding(p, H_W | H_UP), holding(p, H_S | H_DOWN));
-  side := axis_of_keys(holding(p, H_D | H_RIGHT), holding(p, H_A | H_LEFT));
+  // The keys and the thumb become one Intent by Aethyr's rules (aethyr/input.coax): a stick
+  // past the dead zone decides, else the keys; a number that isn't one is no move. Sprint,
+  // jump, fire and use stay this realm's own controls, taken once a step (taps).
+  mv := input_keys(axis_of_keys(holding(p, H_D | H_RIGHT), holding(p, H_A | H_LEFT)),
+    axis_of_keys(holding(p, H_W | H_UP), holding(p, H_S | H_DOWN)), false, false, false, 0, 0, 0);
   if p[0].stick_on {
     reach := STICK_REACH * p[0].dpr;
-    ahead -= p[0].stick_dy / reach;
-    side += p[0].stick_dx / reach;
+    thumb := input_stick(p[0].stick_dx / reach, -p[0].stick_dy / reach, false, false, false, 0, 0, 0);
+    if thumb.move_x != 0 || thumb.move_y != 0 { mv = thumb; }
   }
   c := p[0].camera;
-  walk := cam_walk(c, clampf(ahead, -1, 1), clampf(side, -1, 1));
+  walk := cam_walk(c, mv.move_y, mv.move_x);
   player := g[0].player;
   aim := player.facing;
   if cam_aims(c) {
@@ -1065,6 +1069,37 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   #assert p[0].camera.yaw < yaw;
   ice_play_pointer(p, g, 300, 1900, 2, 1, 7, ZONE_STICK, 0, 0);
   #assert !p[0].stick_on && p[0].look_on;
+}
+
+#test "the thumb and the keys walk by Aethyr's input rules: one dead zone, the stick decides past it" {
+  plays: [1] Play;
+  games: [1] Game;
+  p := plays[..]; g := games[..];
+  tb: [TEST_TRACE] u8; p[0].trace = tb[..];
+  ice_play_hash(p, g, "seed=3&calm"); ice_play_act(p, g, A_TOUR_END, 0);
+  ice_play_frame(p, g, 1170, 2532, 3, 0.016);
+  reach := STICK_REACH * p[0].dpr;
+  p[0].stick_on = true;
+  // Inside the dead zone (a fifth of the reach) the thumb is no move.
+  p[0].stick_dx = 0; p[0].stick_dy = -0.19 * reach;
+  #assert play_input(p, g).walk.x == 0 && play_input(p, g).walk.z == 0;
+  // Just past it, it walks, as far as it is pushed.
+  p[0].stick_dy = -0.21 * reach;
+  w := play_input(p, g).walk;
+  #assert abs(sqrt(w.x * w.x + w.z * w.z) - 0.21) < 0.001;
+  // Past it, the stick decides and the keys held are not added in.
+  #assert ice_play_key(p, g, 'w', true, 0);
+  #assert abs(sqrt(dot2(play_input(p, g).walk, play_input(p, g).walk)) - 0.21) < 0.001;
+  // Inside it, the keys walk; a thumb whose number isn't one is no push at all.
+  p[0].stick_dy = -0.1 * reach;
+  #assert abs(sqrt(dot2(play_input(p, g).walk, play_input(p, g).walk)) - 1) < 0.001;
+  up := ice_play_key(p, g, 'w', false, 0); p[0].taps = 0;
+  p[0].stick_dy = 0.0 / 0.0;
+  #assert play_input(p, g).walk.x == 0 && play_input(p, g).walk.z == 0;
+  // Past full travel it walks at full length, never more.
+  p[0].stick_dy = -3 * reach;
+  w = play_input(p, g).walk;
+  #assert abs(sqrt(w.x * w.x + w.z * w.z) - 1) < 0.001;
 }
 
 #test "the bot plays; a round's end runs the ending to the end card" #steps 150000000 {
