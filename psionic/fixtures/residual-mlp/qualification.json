@@ -1,0 +1,1083 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-02T04:26:25.199152+00:00",
+  "scope": "Bounded CPU residualCNN with public16wideMLP head through unchanged mdl/mtr/tr/AdamW/checkpoint/state engines. New prospective architecture trial after failed linear head. No ResNet/CIFAR, GPU, compiled-convolution or general framework graduation claim.",
+  "profile": "psionic-mnist-residual-mlp-frozen-v1",
+  "compiler": {
+    "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+    "bytes": 3298840,
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa"
+  },
+  "host_compiler": {
+    "path": "/usr/bin/cc",
+    "bytes": 118928,
+    "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba"
+  },
+  "freeze": {
+    "path": "psionic/fixtures/residual-mlp/source-freeze.json",
+    "sha256": "3cdac8c52091e3b7b61a2265fcd49dddd96bcc0013bea0d312c1f7abb8e2c45c",
+    "bytes": 16111
+  },
+  "frozen_inputs_after_run_match": true,
+  "source_inventory": [
+    {
+      "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+      "bytes": 3298840,
+      "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa"
+    },
+    {
+      "path": "coax/lib/crypto/bytes.coax",
+      "bytes": 11552,
+      "sha256": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b"
+    },
+    {
+      "path": "coax/lib/crypto/sha256-kernel.coax",
+      "bytes": 16502,
+      "sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926"
+    },
+    {
+      "path": "coax/lib/crypto/sha256.coax",
+      "bytes": 13633,
+      "sha256": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004"
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+      "bytes": 365603,
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/json_suite.coax",
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    {
+      "path": "coax/lib/nostr/json.coax",
+      "bytes": 37156,
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47"
+    },
+    {
+      "path": "psionic/examples/operators/squared-relu.coax",
+      "bytes": 2563,
+      "sha256": "6e2d61749ae7b5a26bd9798c156c684927d2b67421de4be8ae7c92c0f1e06fb4"
+    },
+    {
+      "path": "psionic/fixtures/adamw/reference.coax",
+      "bytes": 6613,
+      "sha256": "0f9e0c7d46ba27fca4ccdac955a4127ae547bb86e14997fe94d0ea8c9b59a608"
+    },
+    {
+      "path": "psionic/fixtures/mnist/artifacts.coax",
+      "bytes": 738,
+      "sha256": "ea9608786e6f315f72f0dd23df8795c87bb75cb343b6a58a181cc39a614b8a44"
+    },
+    {
+      "path": "psionic/fixtures/mnist/dataset.json",
+      "bytes": 4265,
+      "sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd"
+    },
+    {
+      "path": "psionic/fixtures/models/ch04/fixtures.coax",
+      "bytes": 4015,
+      "sha256": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa"
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/experiment.json",
+      "bytes": 5875,
+      "sha256": "b6832ee672f0fe4645b87c9b49b9a517931632c5b7560952fd82ee1b61344186"
+    },
+    {
+      "path": "psionic/fixtures/resume/reference.coax",
+      "bytes": 5255,
+      "sha256": "d9b6f67974c6a598fc402fe0e84c30d3cdf0dc3a2ebea7f32ae53dd2acbb3784"
+    },
+    {
+      "path": "psionic/lib/autodiff.coax",
+      "bytes": 41125,
+      "sha256": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88"
+    },
+    {
+      "path": "psionic/lib/checkpoint/record.coax",
+      "bytes": 19941,
+      "sha256": "6194b4a99fdb4e37c3325c59a2e901cbe3613a9f7cfdd63731735899bea63562"
+    },
+    {
+      "path": "psionic/lib/checkpoint/resume.coax",
+      "bytes": 15848,
+      "sha256": "94e33ac85248cd413ae7d62ab034de0ba5ccf071695957297b82242abe8caa73"
+    },
+    {
+      "path": "psionic/lib/cores.coax",
+      "bytes": 21923,
+      "sha256": "4a1b2ff7bdf6c5b8abd8db19e7aa360e24d0b0775f4d25df19da62aeb619ed75"
+    },
+    {
+      "path": "psionic/lib/counter-rng.coax",
+      "bytes": 1303,
+      "sha256": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49"
+    },
+    {
+      "path": "psionic/lib/data/feed.coax",
+      "bytes": 29933,
+      "sha256": "9d544d962e54e9071d9009cf26089bf68c51e64a1b8f37231a1a87fbb7b52bab"
+    },
+    {
+      "path": "psionic/lib/data/mnist.coax",
+      "bytes": 11427,
+      "sha256": "2a2ce156bd67f8edffeb169a4dbaf7f1e868f02cf7f12ffae20ad12c603bfaa6"
+    },
+    {
+      "path": "psionic/lib/data/pack.coax",
+      "bytes": 11692,
+      "sha256": "20a68afeda09ad6c213a0117229e0f0d45fe7d578ab961b4b5e5ddfb0f54016b"
+    },
+    {
+      "path": "psionic/lib/data/split.coax",
+      "bytes": 27671,
+      "sha256": "6d1f0ab92f9b39fb7b7dbee0784e53c71a9f3c11e1259ee4d43fdd86ca6b9cb6"
+    },
+    {
+      "path": "psionic/lib/interchange.coax",
+      "bytes": 14124,
+      "sha256": "19273063b9aedfee1ed2b071a368483f216a1017a372b76740e1d89f51032670"
+    },
+    {
+      "path": "psionic/lib/learn.coax",
+      "bytes": 11340,
+      "sha256": "d9bce289fe24d134451428f2a500a443d0b3d173e10644109e721866f4585ce5"
+    },
+    {
+      "path": "psionic/lib/model-io/format.coax",
+      "bytes": 7692,
+      "sha256": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca"
+    },
+    {
+      "path": "psionic/lib/model-io/reader.coax",
+      "bytes": 14204,
+      "sha256": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627"
+    },
+    {
+      "path": "psionic/lib/module-cnn.coax",
+      "bytes": 2054,
+      "sha256": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1"
+    },
+    {
+      "path": "psionic/lib/module-residual.coax",
+      "bytes": 1021,
+      "sha256": "69fa151f30e9cb51f01074e602aa034ac2d62bbed2d8664ff670200f6df54570"
+    },
+    {
+      "path": "psionic/lib/module-train.coax",
+      "bytes": 6173,
+      "sha256": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f"
+    },
+    {
+      "path": "psionic/lib/module.coax",
+      "bytes": 47473,
+      "sha256": "bf57b32ede57f770fef34f900644c2ed359a5d7cb47a38ca5f2b897cf2432e33"
+    },
+    {
+      "path": "psionic/lib/operator-registry.coax",
+      "bytes": 6984,
+      "sha256": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733"
+    },
+    {
+      "path": "psionic/lib/optim/adamw.coax",
+      "bytes": 22069,
+      "sha256": "30e17db86f4b207b79d03b63fdb261722a515b20c3eebf6b5950be119cc57a64"
+    },
+    {
+      "path": "psionic/lib/residual-mlp-classifier.coax",
+      "bytes": 10773,
+      "sha256": "b579a02da2b77304798a3e240837e8800542cd1e189d03c62d8e9894af80ce45"
+    },
+    {
+      "path": "psionic/lib/residual-mlp-experiment.coax",
+      "bytes": 6446,
+      "sha256": "778fd173102b669ec2157a63db191288ad3b0bf7f3a1715757322251ab11e4e9"
+    },
+    {
+      "path": "psionic/lib/residual-mlp-policy.coax",
+      "bytes": 8175,
+      "sha256": "a8b8e8de67aa1eee8219af2b4f62cf08517072f6ad6e5c6983af84cf409fa3aa"
+    },
+    {
+      "path": "psionic/lib/tensor-ir-host.coax",
+      "bytes": 9514,
+      "sha256": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a"
+    },
+    {
+      "path": "psionic/lib/tensor-ir-kernels.coax",
+      "bytes": 4247,
+      "sha256": "d62ef0a8591bec73c9940795aa97545701c710f50be69074b9b5cb84e03b01fc"
+    },
+    {
+      "path": "psionic/lib/tensor-ir.coax",
+      "bytes": 15325,
+      "sha256": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258"
+    },
+    {
+      "path": "psionic/lib/tensor-ops-backward.coax",
+      "bytes": 32085,
+      "sha256": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2"
+    },
+    {
+      "path": "psionic/lib/tensor-ops-contract.coax",
+      "bytes": 22775,
+      "sha256": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591"
+    },
+    {
+      "path": "psionic/lib/tensor-ops.coax",
+      "bytes": 41445,
+      "sha256": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772"
+    },
+    {
+      "path": "psionic/lib/tensor-placement.coax",
+      "bytes": 17400,
+      "sha256": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0"
+    },
+    {
+      "path": "psionic/lib/tensor-view.coax",
+      "bytes": 29773,
+      "sha256": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529"
+    },
+    {
+      "path": "psionic/lib/tensor.coax",
+      "bytes": 13806,
+      "sha256": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6"
+    },
+    {
+      "path": "psionic/lib/trainer.coax",
+      "bytes": 53394,
+      "sha256": "831ae3ed34a71bd6dbc26879c1aa1f14f9b9b397e48c7d049f0add34b8b97768"
+    },
+    {
+      "path": "psionic/platform/residual-mlp-build.sh",
+      "bytes": 1024,
+      "sha256": "865a59c8d21fbff172fd6111f6c3e1d932bc5395bf8f2c895f5089984a30c2c9"
+    },
+    {
+      "path": "psionic/platform/residual-mlp-host.c",
+      "bytes": 8027,
+      "sha256": "378ddd733f255e64743885b7c7e0e37443dff6e1eba068bf1c96e062429082ea"
+    },
+    {
+      "path": "psionic/tests/cnn-modules-checks.coax",
+      "bytes": 5626,
+      "sha256": "948b217da18199adae5235fb6358d60f9809db3029a56d5337ba7ceeb1c488c0"
+    },
+    {
+      "path": "psionic/tests/mnist_reference.py",
+      "bytes": 28940,
+      "sha256": "df56a0ac38b247a4b8dd85f8ffabb1786e77c308be8ba8423dc8fc5ed15ff427"
+    },
+    {
+      "path": "psionic/tests/module-train-checks.coax",
+      "bytes": 12713,
+      "sha256": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71"
+    },
+    {
+      "path": "psionic/tests/residual-mlp-preflight.c",
+      "bytes": 351,
+      "sha256": "ecbf040d88b8449da7c9ad822072125ebec3d236c84b662957e56aeda7cf7758"
+    },
+    {
+      "path": "psionic/tests/residual-modules-checks.coax",
+      "bytes": 3725,
+      "sha256": "ae6cbff6298fcb1d926c0558fb82485c0833633392fdd8ec7d9d20974728d893"
+    },
+    {
+      "path": "psionic/tests/residual_launch.py",
+      "bytes": 3938,
+      "sha256": "b057feb5f44fe6cf7b80d998646a72467e9c17f74534ef069f7fb3483993d1bc"
+    },
+    {
+      "path": "psionic/tests/residual_launch_test.py",
+      "bytes": 3487,
+      "sha256": "a7f2dc34eccd9f5553bf394a77b1133946cd560f6234993d965b2a25aa848c8f"
+    },
+    {
+      "path": "psionic/tests/residual_mlp_reference.py",
+      "bytes": 18668,
+      "sha256": "baeb0aed9cb188662d8479366bb28c5580caaa4ffa64c3c042ce63c6de7ee7b4"
+    },
+    {
+      "path": "psionic/tests/trainer-checks.coax",
+      "bytes": 2606,
+      "sha256": "49f0c0525577d7434fe41dc1b124be6fa854a2985ea051e968ab2cbd06f9f699"
+    },
+    {
+      "path": "/usr/bin/cc",
+      "bytes": 118928,
+      "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba"
+    }
+  ],
+  "model": {
+    "parameters": 3329,
+    "nodes": 28,
+    "prediction_node": 21,
+    "loss_node": 27,
+    "inputs": 3536,
+    "largest_parameter_entry": 3136
+  },
+  "native_profiles": {
+    "debug": {
+      "build": {
+        "argv": [
+          "bash",
+          "psionic/platform/residual-mlp-build.sh",
+          "/tmp/residual-mlp-framework-20261102/debug",
+          "debug",
+          "0"
+        ],
+        "exit": 0,
+        "seconds": 64.80529791605659
+      },
+      "synthetic_state": {
+        "argv": [
+          "/tmp/residual-mlp-framework-20261102/debug/residual",
+          "--synthetic"
+        ],
+        "exit": 0,
+        "seconds": 0.29682687507010996
+      },
+      "artifacts": [
+        {
+          "path": "/tmp/residual-mlp-framework-20261102/debug/residual.c",
+          "sha256": "bf89de452727aba1fa6d61c6b9e48c9449cd7a3bb4683eabd3457c265e53d507",
+          "bytes": 847778
+        },
+        {
+          "path": "/tmp/residual-mlp-framework-20261102/debug/residual.h",
+          "sha256": "5e26f7cfd8305ae18a66233df3bb0d1ad8d0b71a1a767598500c7adc5e21397a",
+          "bytes": 208873
+        },
+        {
+          "path": "/tmp/residual-mlp-framework-20261102/debug/residual",
+          "sha256": "f7c066059c7acb80227883290995288b95add5b01510df32c7370cd2c1d64775",
+          "bytes": 408792
+        }
+      ],
+      "first_image": {
+        "verified": true,
+        "source": "original official TRAIN row0",
+        "label": 5,
+        "checks": {
+          "parameters": {
+            "count": 3329,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary64 bits"
+            }
+          },
+          "gradient": {
+            "count": 3329,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "scores": {
+            "count": 10,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "features": {
+            "count": 196,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary32 bits"
+            }
+          },
+          "loss": {
+            "count": 1,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          }
+        },
+        "observed_native_counts": {
+          "parameters": 3329,
+          "inputs": 3536,
+          "values": 1176,
+          "adjoints": 4113,
+          "flags": 392
+        },
+        "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+        "experiment_manifest_sha256": "b6832ee672f0fe4645b87c9b49b9a517931632c5b7560952fd82ee1b61344186",
+        "scope": "public residual CNN forward and all 3329 formal parameter gradients; no optimizer or quality claim"
+      }
+    },
+    "release": {
+      "build": {
+        "argv": [
+          "bash",
+          "psionic/platform/residual-mlp-build.sh",
+          "/tmp/residual-mlp-framework-20261102/release",
+          "release",
+          "0"
+        ],
+        "exit": 0,
+        "seconds": 96.29791166691575
+      },
+      "synthetic_state": {
+        "argv": [
+          "/tmp/residual-mlp-framework-20261102/release/residual",
+          "--synthetic"
+        ],
+        "exit": 0,
+        "seconds": 0.22509187506511807
+      },
+      "artifacts": [
+        {
+          "path": "/tmp/residual-mlp-framework-20261102/release/residual.c",
+          "sha256": "44a7a99bb18d1652918cac4562bfe45766050baae5621ffd95f353e9dfe3cf43",
+          "bytes": 1121702
+        },
+        {
+          "path": "/tmp/residual-mlp-framework-20261102/release/residual.h",
+          "sha256": "5e26f7cfd8305ae18a66233df3bb0d1ad8d0b71a1a767598500c7adc5e21397a",
+          "bytes": 208873
+        },
+        {
+          "path": "/tmp/residual-mlp-framework-20261102/release/residual",
+          "sha256": "3d2a942115ee1c4cbcf1922fcb03236c4a3c134c44759afdd150b44137a4c0f2",
+          "bytes": 371352
+        }
+      ],
+      "first_image": {
+        "verified": true,
+        "source": "original official TRAIN row0",
+        "label": 5,
+        "checks": {
+          "parameters": {
+            "count": 3329,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary64 bits"
+            }
+          },
+          "gradient": {
+            "count": 3329,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "scores": {
+            "count": 10,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "features": {
+            "count": 196,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary32 bits"
+            }
+          },
+          "loss": {
+            "count": 1,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          }
+        },
+        "observed_native_counts": {
+          "parameters": 3329,
+          "inputs": 3536,
+          "values": 1176,
+          "adjoints": 4113,
+          "flags": 392
+        },
+        "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+        "experiment_manifest_sha256": "b6832ee672f0fe4645b87c9b49b9a517931632c5b7560952fd82ee1b61344186",
+        "scope": "public residual CNN forward and all 3329 formal parameter gradients; no optimizer or quality claim"
+      }
+    },
+    "sanitized": {
+      "build": {
+        "argv": [
+          "bash",
+          "psionic/platform/residual-mlp-build.sh",
+          "/tmp/residual-mlp-framework-20261102/sanitized",
+          "release",
+          "1"
+        ],
+        "exit": 0,
+        "seconds": 94.17200749996118
+      },
+      "synthetic_state": {
+        "argv": [
+          "/tmp/residual-mlp-framework-20261102/sanitized/residual",
+          "--synthetic"
+        ],
+        "exit": 0,
+        "seconds": 0.3863508329959586
+      },
+      "artifacts": [
+        {
+          "path": "/tmp/residual-mlp-framework-20261102/sanitized/residual.c",
+          "sha256": "44a7a99bb18d1652918cac4562bfe45766050baae5621ffd95f353e9dfe3cf43",
+          "bytes": 1121702
+        },
+        {
+          "path": "/tmp/residual-mlp-framework-20261102/sanitized/residual.h",
+          "sha256": "5e26f7cfd8305ae18a66233df3bb0d1ad8d0b71a1a767598500c7adc5e21397a",
+          "bytes": 208873
+        },
+        {
+          "path": "/tmp/residual-mlp-framework-20261102/sanitized/residual",
+          "sha256": "be38e2b4cffdbfe626a47e55201797edab8fbe2466401035e8f2312f475db931",
+          "bytes": 735544
+        }
+      ],
+      "first_image": {
+        "verified": true,
+        "source": "original official TRAIN row0",
+        "label": 5,
+        "checks": {
+          "parameters": {
+            "count": 3329,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary64 bits"
+            }
+          },
+          "gradient": {
+            "count": 3329,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "scores": {
+            "count": 10,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "features": {
+            "count": 196,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary32 bits"
+            }
+          },
+          "loss": {
+            "count": 1,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          }
+        },
+        "observed_native_counts": {
+          "parameters": 3329,
+          "inputs": 3536,
+          "values": 1176,
+          "adjoints": 4113,
+          "flags": 392
+        },
+        "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+        "experiment_manifest_sha256": "b6832ee672f0fe4645b87c9b49b9a517931632c5b7560952fd82ee1b61344186",
+        "scope": "public residual CNN forward and all 3329 formal parameter gradients; no optimizer or quality claim"
+      }
+    }
+  },
+  "checks": {
+    "metadata_groups_per_mode": 1,
+    "policy_groups_per_mode": 8,
+    "modes": [
+      "debug",
+      "release"
+    ],
+    "policy_root_mutation": {
+      "evidence": {
+        "path": "psionic/fixtures/residual-mlp/logs/policy-mutation.evidence.json",
+        "sha256": "7d0acbe30044140bae6598c7e507e796f204e6a98b89008f96be75d17f6ef3ab",
+        "bytes": 3169
+      },
+      "result": {
+        "outcome": "passed",
+        "mutants": 117,
+        "evaluated": 117,
+        "killed": 117,
+        "survived": [],
+        "marked_equivalent": 0,
+        "unreached": "",
+        "scope": "root-only",
+        "shard": null,
+        "merged_records": 0,
+        "scheduling": "selective",
+        "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+      }
+    },
+    "shared_residual_constructor": {
+      "qualification": {
+        "path": "psionic/fixtures/residual/qualification.json",
+        "sha256": "6ab3b25e3fc3e18b12b94e054eedad95918313e1bae9d3adb04f6dbfd224646f",
+        "bytes": 43372
+      },
+      "same_unchanged_source_sha256": "69fa151f30e9cb51f01074e602aa034ac2d62bbed2d8664ff670200f6df54570",
+      "mutants": 14,
+      "killed": 14,
+      "survived": 0,
+      "note": "Inherited unchanged; no repeat. Independent full17parameter/input VJP and four native profiles are retained there."
+    }
+  },
+  "training_command": {
+    "argv": [
+      "python3",
+      "psionic/tests/residual_launch.py",
+      "--freeze",
+      "psionic/fixtures/residual-mlp/source-freeze.json",
+      "--freeze-sha256",
+      "3cdac8c52091e3b7b61a2265fcd49dddd96bcc0013bea0d312c1f7abb8e2c45c",
+      "--output",
+      "psionic/fixtures/residual-mlp/run-v3"
+    ],
+    "started_utc": "2026-11-02T04:21:25.208793+00:00",
+    "exit": 0,
+    "seconds": 76.43267637491226
+  },
+  "result": {
+    "status": 0,
+    "steps": 3072,
+    "train_rows": 49152,
+    "test_rows": 2048,
+    "baseline_class": 1,
+    "initial_loss": 1.1571417636296246,
+    "final_loss": 0.24395134977035582,
+    "initial_correct": 157,
+    "final_correct": 1789,
+    "baseline_correct": 242,
+    "checkpoint_bytes": 80236,
+    "export_bytes": 13972,
+    "replay_equal": true,
+    "export_equal": true,
+    "seconds": 76.15598
+  },
+  "independent_audit": {
+    "passed": true,
+    "failures": [],
+    "test": {
+      "rows": 2048,
+      "accuracy": 0.87353515625,
+      "majority_class": 1,
+      "majority_accuracy": 0.1181640625,
+      "correct": 1789,
+      "baseline_correct": 242,
+      "mean_sse": 0.24395134977035582
+    },
+    "initial": {
+      "correct": 157,
+      "baseline_correct": 242,
+      "mean_sse": 1.1571417636296246
+    },
+    "validation": {
+      "rows": 13,
+      "columns": [
+        "epoch",
+        "mean validation SSE",
+        "validation correct",
+        "last optimizer step mean16row training SSE"
+      ],
+      "scope": "finite extent/epoch/count checks only; validation scores were not separately captured"
+    },
+    "replay": {
+      "exact_checkpoint_bytes": true,
+      "exact_epoch6_order": true,
+      "revisions": [
+        1536,
+        1537,
+        3072
+      ]
+    },
+    "export": {
+      "tensors": 8,
+      "words": 3329,
+      "bytes": 13972,
+      "all_exported_words_match": true
+    },
+    "identities": {
+      "model": "8bac711053c019709ae33066d2e3bb8060c8de3b22c545943bc237e52cbdd68e",
+      "preprocess": "9231f692b082b70ee2bf1ade2284a7f083f032236b8ee96dabe98b726c8e5a77",
+      "dataset": "e9914cff2ade526da2ab1ac60c072f9173cc53e35b9411692de8207cb1b9009d",
+      "optimizer": "1393ec243c0f78c177cb5fa5ae25b52cf1b1b796ef1b95a90dbde459f552289b"
+    },
+    "scope": "initial/final metrics recomputed from scheduled evaluation score captures, no extra forward or training run; export-reload prediction equality is producer-recorded"
+  },
+  "prior_outcomes": [
+    {
+      "path": "../residual/attempt1-unqualified.json",
+      "outcome": "Interrupted firstlaunch after incomplete generated-artifact freeze, explicitly unqualified."
+    },
+    {
+      "path": "../residual/run-v2/audit.json",
+      "outcome": "Completed linear-head trial76.953125% fails unchanged frozen80% gate; preserved."
+    }
+  ],
+  "selection_scope": "Initializer11821/shuffle11822 are one fixed pair in each architecture trial. Same optimizer/splits/gates. Same2048 evaluation rows used across architecture trials; not an independent pristine unseen-final-test claim. No within-V3 tuning or hidden trial selection.",
+  "limitations": [
+    "Full shared-engine/compiler mutation omitted under owner focused-check instruction.",
+    "CPU f32 computation and first-order formal f64 VJP only; no GPU, compiled or higher-order convolution.",
+    "Caller retains unchanged public-constructor plans and valid live disjoint arenas; no general alias/lifetime proof.",
+    "One-next-update replay, not a fullsuffix recovery run.",
+    "Native host writes artifacts after completion; incremental crash-durable publication is not qualified.",
+    "Training time observed on shared host, no isolated performance comparison or measured peakRSS.",
+    "External tutorials/package and unfamiliar-consumer graduation remain open."
+  ],
+  "artifacts": [
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/audit.command.json",
+      "sha256": "3a0c99a43d0f192b7d13a20907ab4d5282bc6b7ea6203ef2daaeab3ebeba3d6f",
+      "bytes": 306
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/audit.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/audit.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/build-debug.command.json",
+      "sha256": "7f0dc798298dcb89afaa8487971de1d5c096d36d0826d05a9dd08c18c77b8c56",
+      "bytes": 194
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/build-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/build-debug.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/build-release.command.json",
+      "sha256": "8a93f9213fc9cd53430f5cf48a1c18937b337eed655e9627d8004ff6e3a8ff55",
+      "bytes": 198
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/build-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/build-release.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/build-sanitized.command.json",
+      "sha256": "8b648645d96afc7af153356e60f1fb2e6fc68933dd8522b56a799e4f0cc1b254",
+      "bytes": 200
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/build-sanitized.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/build-sanitized.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/oracle-debug.command.json",
+      "sha256": "dc34effcd0b63aa5c1931c0863e4e3c848e8a7da407c265f2563b545bc35da43",
+      "bytes": 283
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/oracle-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/oracle-debug.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/oracle-release.command.json",
+      "sha256": "5e719b805e823c13305251a72cf87495aa9d8058d585cc6434f042d0c7734c84",
+      "bytes": 288
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/oracle-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/oracle-release.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/oracle-sanitized.command.json",
+      "sha256": "68bcc3691eb2e8a25bc9e8d2b100429b979f94abfab8da6024535de905926e6c",
+      "bytes": 290
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/oracle-sanitized.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/oracle-sanitized.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/policy-mutation.command.json",
+      "sha256": "7a88f4bd9d49288db2b9da85cdd41909fcbd599b6a63e21aadbe3ba97f9854ee",
+      "bytes": 396
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/policy-mutation.evidence.json",
+      "sha256": "7d0acbe30044140bae6598c7e507e796f204e6a98b89008f96be75d17f6ef3ab",
+      "bytes": 3169
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/policy-mutation.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/policy-mutation.stdout",
+      "sha256": "acf224694b0c8b6b83d5af72a93b95f044965e6afebad5f01b6a9763aaa12d7f",
+      "bytes": 116
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-debug.command.json",
+      "sha256": "5e23cb538618990fdf02b61ace3f111a6b05882958864e04a343ab9d9724f628",
+      "bytes": 334
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-debug.json",
+      "sha256": "ce64daa641ca9f3e957431cfe0c63086895b66fcada37bb14d96126e0b046f39",
+      "bytes": 1299
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-debug.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-release.command.json",
+      "sha256": "eb8208aa2e0860c30fb9b0c0c30bd71edbce1740758c826edcfc6af940df2727",
+      "bytes": 338
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-release.json",
+      "sha256": "ce64daa641ca9f3e957431cfe0c63086895b66fcada37bb14d96126e0b046f39",
+      "bytes": 1299
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-release.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-sanitized.command.json",
+      "sha256": "3feab0ba633cdf3a55c4eaed86abc1606951d8860a41cc20e3877d8d3850c81a",
+      "bytes": 342
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-sanitized.json",
+      "sha256": "ce64daa641ca9f3e957431cfe0c63086895b66fcada37bb14d96126e0b046f39",
+      "bytes": 1299
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-sanitized.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/reference-sanitized.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-classifier-debug.command.json",
+      "sha256": "6813c1dd028eb03dec6a7f482381ae630a68ea1ef109f4e444d65ec25dad4dd5",
+      "bytes": 316
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-classifier-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-classifier-debug.stdout",
+      "sha256": "9a902b1a85320478c68fbf55e88d79c3037b9cb537c4653cc2b7e1152f04661f",
+      "bytes": 306
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-classifier-red.json",
+      "sha256": "d0dab30ea29688955bbeec2a17b88139341918c3d73e477e9c0cd6d5105fb2e3",
+      "bytes": 263
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-classifier-red.stderr",
+      "sha256": "f68df04d37dc0933f81141212aa7fae3bf69cff806169979965bb3c3f5ae61c4",
+      "bytes": 11324
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-classifier-red.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-classifier-release.command.json",
+      "sha256": "5e525a8703ddb9a5c12aef18956f7be6af60f5cc9b1883e1eefdc934cf4248d1",
+      "bytes": 333
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-classifier-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-classifier-release.stdout",
+      "sha256": "51dd8f4824b4f07cfb214b0495e542fcb9a5faed207b6952904f703dbf4bbcf6",
+      "bytes": 306
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-policy-debug.command.json",
+      "sha256": "20087f35a2cfd46b05b5f16fe5b6183c104955619304fb51e840a4f757205781",
+      "bytes": 260
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-policy-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-policy-debug.stdout",
+      "sha256": "c12138c14a507f9ebcd7868f97fe374da084ea2edc0a3b15c4b37e6bb895177d",
+      "bytes": 1027
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-policy-red.json",
+      "sha256": "329c0748fb2df1e5939514a1e0ee86d7d1fd73fab769391a873f4db04311a68a",
+      "bytes": 261
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-policy-red.stderr",
+      "sha256": "5f8afdd4e13b562938dc3991e329b7fba2f8ef80acc3ed3640ca013daaccf80c",
+      "bytes": 10971
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-policy-red.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-policy-release.command.json",
+      "sha256": "165d6c3ef5af4dd2ba13c861327048bcc05e4996c3b1cb4bb083c7e357ea9f2e",
+      "bytes": 277
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-policy-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/residual-mlp-policy-release.stdout",
+      "sha256": "c12138c14a507f9ebcd7868f97fe374da084ea2edc0a3b15c4b37e6bb895177d",
+      "bytes": 1027
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/synthetic-state-debug.command.json",
+      "sha256": "d7872537204cbcf0d097dae3e745ff98a588c6a7c546f0c5f3b66973ad182380",
+      "bytes": 144
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/synthetic-state-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/synthetic-state-debug.stdout",
+      "sha256": "21f5f7fc8099eb8075116e095539cea849227fab8ab92da30dcb4cab4b4a0aca",
+      "bytes": 137
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/synthetic-state-release.command.json",
+      "sha256": "98a8be1bd5427823f133bc79f41767855f6e628a48f326744d0100d98ee33f05",
+      "bytes": 146
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/synthetic-state-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/synthetic-state-release.stdout",
+      "sha256": "21f5f7fc8099eb8075116e095539cea849227fab8ab92da30dcb4cab4b4a0aca",
+      "bytes": 137
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/synthetic-state-sanitized.command.json",
+      "sha256": "4479f018619379d928e247ccb06e470f37acd7f9667672d54915cdea5b285a80",
+      "bytes": 147
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/synthetic-state-sanitized.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/synthetic-state-sanitized.stdout",
+      "sha256": "21f5f7fc8099eb8075116e095539cea849227fab8ab92da30dcb4cab4b4a0aca",
+      "bytes": 137
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/train.command.json",
+      "sha256": "bb1dd42478ea0c7613b409bc5f0dd18e3f028a582bd4bb7bbfb6e2b85ebec8bb",
+      "bytes": 399
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/train.stderr",
+      "sha256": "0787b394a87b043b40451296e1978850bba357ec776289fbae8fc20b78595bcf",
+      "bytes": 1148
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/logs/train.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "scope": "Closed runnable/native-library book inventory; metadata only, no compiler, native numerical, training or mutation reruns.",
+  "changes": [
+    "Optional libraries inventory requires native-library kind, chapter, host consumer and retained evidence paths.",
+    "Closed coverage spans runnable and library sources; evaluator replay consumes only runnable examples.",
+    "Native libraries cannot claim evaluator modes, stdout or exit status; listed evidence is not requalified.",
+    "Frozen reader, experiment, runtime and evidence files unchanged."
+  ],
+  "observations": [
+    {
+      "command": [
+        "python3",
+        "psionic/tests/book_inventory_test.py"
+      ],
+      "phase": "RED before helper implementation",
+      "exit_status": 1,
+      "groups": 5,
+      "outcome": "5 AttributeErrors for missing helper; retained separately from native observations."
+    },
+    {
+      "command": [
+        "python3",
+        "psionic/tests/book_inventory_test.py"
+      ],
+      "phase": "GREEN",
+      "exit_status": 0,
+      "groups": 5
+    },
+    {
+      "command": [
+        "python3",
+        "psionic/tests/book.py"
+      ],
+      "phase": "final integrated metadata",
+      "exit_status": 0,
+      "runnable_programs": 262,
+      "native_libraries": 1,
+      "source_linked_listings": 1292
+    }
+  ],
+  "review": "Root integration prose preserves failed/interrupted trials, evaluation reuse, documentation assistance, CPU/first-order scope and unfinished graduation. Only the two examples.json evidence digests were reviewed/refreshed; claim text/features/targets unchanged.",
+  "files": [
+    {
+      "path": "psionic/tests/book.py",
+      "sha256": "960caf0ed06aa7b520a69c636636e2f4d60b5710837f0c0e2fecbc7faa770bd2",
+      "bytes": 14853
+    },
+    {
+      "path": "psionic/tests/book_inventory_test.py",
+      "sha256": "25fe2dc544e1453712df111dedc2d9e3454baa58eb32a97c14b11d99f63cff59",
+      "bytes": 2208
+    },
+    {
+      "path": "psionic/book/examples.json",
+      "sha256": "da7f0f47c6f441582819edee0b8a728ecd07c158fafd70fcd990d0dd7c1f9bae",
+      "bytes": 74390
+    },
+    {
+      "path": "psionic/book/README.md",
+      "sha256": "ecebfb2898aa0a0a87c3503a214077348fb28bd4991a7df0ed65723aeb62d3be",
+      "bytes": 110071
+    },
+    {
+      "path": "psionic/book/ch117-models-are-compositions-of-modules.md",
+      "sha256": "72feae2ca32f8c1865daa410205d934d0a534181f41c1047eff74b937fe2a134",
+      "bytes": 44808
+    },
+    {
+      "path": "psionic/book/ch118-one-trainer-for-every-model.md",
+      "sha256": "7c11697bc526f2b1521798bc3bb118469ca149d27327dd645fc867cd0e2d2487",
+      "bytes": 70707
+    },
+    {
+      "path": "coax/book/capability-claims.json",
+      "sha256": "266c494d90c0e69ee3341e47512d83946700d7af55e2b745d1afcd475bb8b61b",
+      "bytes": 19850
+    }
+  ],
+  "logs": [
+    {
+      "path": "docs/verification/psionic-residual-framework-2026-11-01/tooling/book-integration-red.log",
+      "sha256": "81976bbb652721ff94682afced57c1c6e78baff94a00a24e7cde720a86d81276",
+      "bytes": 77
+    },
+    {
+      "path": "docs/verification/psionic-residual-framework-2026-11-01/tooling/book-metadata.log",
+      "sha256": "27ff3304bc351c8bca86e7e8f851359b20f07925ad66c43e39fe97b001277db7",
+      "bytes": 104
+    },
+    {
+      "path": "docs/verification/psionic-residual-framework-2026-11-01/tooling/inventory-green.log",
+      "sha256": "888a0c0ed615e57d32cf72be501b0c355f33b8613c81dfdaa99db33d7959487e",
+      "bytes": 103
+    },
+    {
+      "path": "docs/verification/psionic-residual-framework-2026-11-01/tooling/inventory-red.log",
+      "sha256": "cb5f290fda586ededa33f3fe2a4c200bba0830e5b7e12c3f7080ebddc237bd47",
+      "bytes": 3341
+    }
+  ]
+}

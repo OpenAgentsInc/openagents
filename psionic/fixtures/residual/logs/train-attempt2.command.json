@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "/tmp/residual-framework-20261102/release/residual",
+    "--train",
+    "/tmp/psionic-mnist-data",
+    "psionic/fixtures/residual/experiment.json",
+    "psionic/fixtures/residual/run-v2"
+  ],
+  "cwd": "/private/tmp/openagents-residual-framework-20261101",
+  "freeze_sha256": "253aa9a7a1ac83f20972b12bcdfb6aa072fc0f9d8da25098b55d0c813e2c3e52",
+  "started_utc": "2026-11-02T04:14:11.763788+00:00",
+  "exit": 1,
+  "seconds": 55.240723166032694
+}

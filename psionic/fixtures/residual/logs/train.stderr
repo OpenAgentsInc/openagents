@@ -1,0 +1,4 @@
+residual CNN validation: phase 0, step 0, loss 1.55165481, correct 70/1024
+residual CNN validation: phase 1, step 256, loss 0.444382395, correct 849/1024
+residual CNN validation: phase 1, step 512, loss 0.442599214, correct 858/1024
+residual CNN validation: phase 1, step 768, loss 0.43088981, correct 862/1024

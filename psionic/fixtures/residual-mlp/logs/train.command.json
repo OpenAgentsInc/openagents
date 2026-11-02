@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "python3",
+    "psionic/tests/residual_launch.py",
+    "--freeze",
+    "psionic/fixtures/residual-mlp/source-freeze.json",
+    "--freeze-sha256",
+    "3cdac8c52091e3b7b61a2265fcd49dddd96bcc0013bea0d312c1f7abb8e2c45c",
+    "--output",
+    "psionic/fixtures/residual-mlp/run-v3"
+  ],
+  "started_utc": "2026-11-02T04:21:25.208793+00:00",
+  "exit": 0,
+  "seconds": 76.43267637491226
+}

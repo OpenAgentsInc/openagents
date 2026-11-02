@@ -1,0 +1,53 @@
+#load "../lib/module-residual.coax";
+#load "../lib/data/mnist.coax";
+
+// Second reader attempt: public INFERENCE.md was added after reader feedback.
+#test "retained reader public construction metadata" {
+    a:=retained_definition(0);b:=retained_definition(1);c:=retained_definition(2);
+    #assert a.model.status==MdlStatus.ok && mdl_parameters(a.model)==3322;
+    #assert b.model.status==MdlStatus.ok && mdl_parameters(b.model)==2910 && b.model.program.count==18;
+    #assert c.model.status==MdlStatus.ok && mdl_parameters(c.model)==3329 && c.model.program.count==28;
+    #assert mdl_find(c.model,"block.expand.weight")>=0 && mdl_find(c.model,"fc2.bias")>=0;
+}
+
+RetainedDefinition :: struct {model:MdlModel;prediction:int;saved:int;}
+retained_definition :: (kind:int)->RetainedDefinition {
+    m:=mdl_model();
+    if kind==0 {m=mdl_data(m,"x",mdl_shape(2,1,196));}
+    else {m=mdl_data(m,"x",TvShape.{rank=4,dims=[4]int.[1,1,14,14]});}
+    x:=m.node;m=mdl_data(m,"target",mdl_shape(2,1,10));target:=m.node;
+    if kind==1 {
+        m=mdl_conv2d(m,MDL_ROOT,"conv",x,2,3,3);m=mdl_relu(m,m.node);
+        m=mdl_flatten(m,m.node);m=mdl_linear(m,MDL_ROOT,"fc",m.node,10);
+    } else {
+        first:=x;
+        if kind==2 {m=mdl_residual_conv1x1(m,MDL_ROOT,"block",x,2);m=mdl_flatten(m,m.node);first=m.node;}
+        m=mdl_linear(m,MDL_ROOT,"fc1",first,16);m=mdl_relu(m,m.node);
+        m=mdl_linear(m,MDL_ROOT,"fc2",m.node,10);
+    }
+    prediction:=m.node;m=mdl_squared_error(m,MDL_ROOT,"loss",prediction,target);
+    return RetainedDefinition.{model=m,prediction=prediction,saved=ifx kind==2 then 8 else 4};
+}
+retained_saved_logits :: (kind:int,file:[]u8,features:[]f32,scores:[]f32)->bool {
+    if kind<0 || kind>2 || features.count!=196 || scores.count!=10 {return false;}
+    def:=retained_definition(kind);m:=mdl_train(def.model,false);inputs:[4000]f32;
+    if mdl_init(m,0,inputs[..])!=MdlStatus.ok {return false;}
+    loaded:=mdl_load(m,file,inputs[..],true);
+    if loaded.status!=MdlStatus.ok || loaded.loaded!=def.saved {return false;}
+    for j:0..<196 {inputs[j]=features[j];}
+    if mdl_refresh(m,0,inputs[..])!=MdlStatus.ok {return false;}
+    f:=mdl_output(m,def.prediction);tape:=ad_tape(f.program,AdMode.{enabled=false},OrRegistry.{});
+    if tape.status!=AdStatus.ok {return false;}
+    values:[16384]f32;adjoints:[16384]f64;flags:[4096]u8;staged:[10]f32;
+    run:=ad_run(tape,AdCursor.{},inputs[..],values[..],adjoints[..],flags[..]);
+    if run.status!=AdStatus.ok {return false;}
+    if ad_value(tape,run.cursor,def.prediction,inputs[..],values[..],staged[..])!=AdStatus.ok {return false;}
+    for j:0..<10 {scores[j]=staged[j];}
+    return true;
+}
+retained_saved_row0 :: (kind:int,state:[]u8,images:[]u8,labels:[]u8,scores:[]f32)->bool #export_c {
+    d:=mn_admit(images,labels);if d.status!=MnStatus.ok {return false;}
+    features:[196]f32;
+    if mn_pool(d,images,0,features[..])!=MnStatus.ok {return false;}
+    return retained_saved_logits(kind,state,features[..],scores);
+}

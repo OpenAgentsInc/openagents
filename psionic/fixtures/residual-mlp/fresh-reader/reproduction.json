@@ -1,0 +1,195 @@
+{
+  "schema": "psionic.residual-fresh-reader.v1",
+  "status": "bounded-public-api-consumer-pass; retained-classifier-evaluation-not-run",
+  "base_commit": "31944a2a34b20c06a1e4ef3d32379cfb45ad7f67",
+  "worktree": "/private/tmp/openagents-residual-framework-20261101",
+  "first_recorded_utc": "2026-11-02T04:28:11+00:00",
+  "record_written_utc": "2026-11-02T04:32:22.382068+00:00",
+  "elapsed_seconds_since_first_recorded_clock": 251.382,
+  "timing_limit": "Each command under15minutes; no broad gate/training run",
+  "reader_identity": "separate agent /root/residual_reader; did not implement residual modules/classifiers; inherited task instructions, not source-internals research",
+  "help_received": [
+    "Root supplied worktree, task constraints, qualified compiler path and expected SHA-256.",
+    "Compiler diagnostics corrected guessed mdl_shape arity; no author/API implementation assistance."
+  ],
+  "read_scope": {
+    "repository_rules": [
+      "AGENTS.md",
+      "relevant INVARIANTS.md sections"
+    ],
+    "public_recipe_and_book": [
+      {
+        "path": "psionic/fixtures/residual-mlp/README.md",
+        "sha256": "8841772f067bc3a0fe7f9b69beaa331b1bea193fff353d31b93b16bc40e5abee"
+      },
+      {
+        "path": "psionic/book/ch117-models-are-compositions-of-modules.md",
+        "sha256": "4fddaecb87a996aac17d1b4432c610df47f1c304ce488c9fbb690b03b2e6246a"
+      },
+      {
+        "path": "psionic/book/ch118-one-trainer-for-every-model.md",
+        "sha256": "8bc9506fcb102598bf2b3cb27e21f834809b78c626cdb8723a653926564998f1"
+      },
+      {
+        "path": "psionic/examples/residual-block.coax",
+        "sha256": "fc53d8e72cdc059ea6370f2c957809f263ca8568033214a022baa9193e6f682c"
+      }
+    ],
+    "implementation_files_read": [],
+    "note": "Public chapter embedded excerpts were read. Compiler consumed dependencies without reader opening implementation files."
+  },
+  "compiler": {
+    "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "rebuilt": false
+  },
+  "host": {
+    "os": "Darwin25.4.0 arm64",
+    "cc": "Apple clang21.0.0 clang-2100.1.1.101",
+    "target": "arm64-apple-darwin25.4.0"
+  },
+  "new_consumer": {
+    "path": "psionic/examples/residual-fresh-reader.coax",
+    "sha256": "319995da9fea42bbbd9b1dc5c63ff027f15f12b461815ec11bda68b4c2600670",
+    "physical_coax_lines": 63,
+    "model_specific_host_c_lines": 0,
+    "tooling_shell_path": "psionic/tests/check_residual_fresh_reader.sh",
+    "tooling_shell_physical_lines": 28,
+    "runtime_implementation_changes": 0,
+    "parameters": 7,
+    "input_floats": 20,
+    "graph_nodes": 12,
+    "saved_tensors": 5,
+    "saved_floats": 8,
+    "state_file_bytes": 480,
+    "independent_expected_outputs": 12,
+    "reload": "every saved float and output bitwise equal",
+    "refusal": "missing required key; all21 supplied values unchanged"
+  },
+  "new_checks": {
+    "metadata": "PASS",
+    "nonzero_forward_and_named_state": "PASS",
+    "imported_library_checks_run": 0,
+    "mutation": "NOT RUN; consumer is not an authority root; no whole-library authority coverage claim"
+  },
+  "native": {
+    "generated_c_sha256": "a9d7c9fd8ad59a6e4852f0445d86f11d6c0365451886e490ddb20f0bd17b3258",
+    "generated_c_bytes": 533721,
+    "coax_profile": "checked default C; not --release",
+    "O0": {
+      "status": "PASS",
+      "binary_sha256": "97096fed09dcd60149a8a2b55c58e0e44329425d6aa71e69cf6b8f4c0f41ac21"
+    },
+    "O2": {
+      "status": "PASS",
+      "binary_sha256": "6e9995e4232380ffc37d6c5b7e411d0f3bc98727661c06ace87758745f50304c"
+    },
+    "ASan_UBSan_O1": {
+      "status": "PASS",
+      "binary_sha256": "38a6429aa7f30fbb9ac1c9b0526c9623e0fc5230a1571652bbce9abd38f2da1b",
+      "ASAN_OPTIONS": "detect_leaks=0",
+      "UBSAN_OPTIONS": "halt_on_error=1",
+      "leak_check": "UNSUPPORTED, not claimed"
+    },
+    "all_stdout_identical": true,
+    "stdout_sha256": "4624fc62ef0a80ed51a492665b79759d94f44110bdc11c14123a0063d58299b5",
+    "build_directory": "/tmp/openagents-residual-fresh-reader-20261102",
+    "prospective_freeze": false
+  },
+  "commands_and_attempts": [
+    {
+      "command": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax --help",
+      "result": "PASS: inspected public CLI help; compiler not rebuilt"
+    },
+    {
+      "command": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax test psionic/examples/residual-fresh-reader.coax --only 'fresh reader'",
+      "result": "FAIL: guessed mdl_shape helper takes three arguments, not two",
+      "elapsed_seconds": 1.825712791
+    },
+    {
+      "command": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax test psionic/examples/residual-fresh-reader.coax --only 'fresh reader'",
+      "result": "1 PASS (metadata, 131019 steps,95ms), 1 FAIL (compile-time print after inference/state assertions)",
+      "elapsed_seconds": 2.794062708
+    },
+    {
+      "command": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax test psionic/examples/residual-fresh-reader.coax --only 'fresh reader nonzero'",
+      "result": "PASS: 689201 steps,436ms; already-passing metadata check not rerun",
+      "elapsed_seconds": 3.630893959
+    },
+    {
+      "command": "/usr/bin/time -p /Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax c psionic/examples/residual-fresh-reader.coax > /tmp/openagents-residual-fresh-reader-20261102/consumer.c",
+      "result": "PASS: checked C emission; asynchronous session awaited before successful native builds",
+      "elapsed_seconds": 23.8
+    },
+    {
+      "command": "/usr/bin/time -p clang -std=c11 -O0 -fno-fast-math -ffp-contract=off /tmp/openagents-residual-fresh-reader-20261102/consumer.c -lm -o /tmp/openagents-residual-fresh-reader-20261102/consumer-O0\n/usr/bin/time -p /tmp/openagents-residual-fresh-reader-20261102/consumer-O0",
+      "result": "FAIL: erroneously launched while C emission still running; linker reports missing main; no executable",
+      "elapsed_seconds": 0.08,
+      "note": "The first batch lacked set -e and continued to a nonexistent executable after its failed link."
+    },
+    {
+      "command": "/usr/bin/time -p clang -std=c11 -O0 -fno-fast-math -ffp-contract=off /tmp/openagents-residual-fresh-reader-20261102/consumer.c -lm -o /tmp/openagents-residual-fresh-reader-20261102/consumer-O0",
+      "result": "PASS",
+      "elapsed_seconds": 1.53
+    },
+    {
+      "command": "/usr/bin/time -p clang -std=c11 -O2 -fno-fast-math -ffp-contract=off /tmp/openagents-residual-fresh-reader-20261102/consumer.c -lm -o /tmp/openagents-residual-fresh-reader-20261102/consumer-O2",
+      "result": "PASS",
+      "elapsed_seconds": 9.84
+    },
+    {
+      "command": "/usr/bin/time -p clang -std=c11 -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-fast-math -ffp-contract=off /tmp/openagents-residual-fresh-reader-20261102/consumer.c -lm -o /tmp/openagents-residual-fresh-reader-20261102/consumer-asan-ubsan",
+      "result": "PASS",
+      "elapsed_seconds": 18.63
+    },
+    {
+      "command": "/usr/bin/time -p /tmp/openagents-residual-fresh-reader-20261102/consumer-O0 > /tmp/openagents-residual-fresh-reader-20261102/O0.stdout",
+      "result": "PASS",
+      "elapsed_seconds": 0.56
+    },
+    {
+      "command": "/usr/bin/time -p /tmp/openagents-residual-fresh-reader-20261102/consumer-O2 > /tmp/openagents-residual-fresh-reader-20261102/O2.stdout",
+      "result": "PASS",
+      "elapsed_seconds": 0.36
+    },
+    {
+      "command": "/usr/bin/time -p env ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 /tmp/openagents-residual-fresh-reader-20261102/consumer-asan-ubsan > /tmp/openagents-residual-fresh-reader-20261102/asan-ubsan.stdout",
+      "result": "FAIL: Darwin AddressSanitizer reports detect_leaks unsupported; no consumer execution",
+      "elapsed_seconds": 0.24
+    },
+    {
+      "command": "set -e\n/usr/bin/time -p env ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 /tmp/openagents-residual-fresh-reader-20261102/consumer-asan-ubsan > /tmp/openagents-residual-fresh-reader-20261102/asan-ubsan.stdout\ncmp /tmp/openagents-residual-fresh-reader-20261102/O0.stdout /tmp/openagents-residual-fresh-reader-20261102/O2.stdout\ncmp /tmp/openagents-residual-fresh-reader-20261102/O0.stdout /tmp/openagents-residual-fresh-reader-20261102/asan-ubsan.stdout",
+      "result": "PASS: ASan/UBSan, O0/O2 stdout byte identical; leak checking disabled",
+      "elapsed_seconds": 0.11
+    },
+    {
+      "command": "bash -n psionic/tests/check_residual_fresh_reader.sh",
+      "result": "PASS: syntax only; complete driver not rerun because constituent checks had passed"
+    },
+    {
+      "command": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax deps psionic/examples/residual-fresh-reader.coax > /tmp/openagents-residual-fresh-reader-20261102/deps.json",
+      "result": "PASS: metadata only; copied as dependency-manifest.json; collected after execution, not a prospective freeze"
+    }
+  ],
+  "retained_not_rerun": {
+    "training_updates": 0,
+    "downloads": 0,
+    "original_dataset_reads": 0,
+    "MLP_CNN_residual_old_gates": 0,
+    "trained_artifact_loads": 0,
+    "quality_result": "RETAINED from public recipe only: residual-MLP1789/2048; not audited or reproduced by this reader"
+  },
+  "public_artifact_boundary": "README reproduction delegates to author native harness; book gives MLP/CNN constructors but residual-MLP no exact standalone constructor/output-node or file-byte bridge recipe. Reader reported gap and did not open internals or invent trained-artifact success.",
+  "unsupported_or_unqualified": [
+    "GPU/compiled/higher-order convolution",
+    "pooling/BatchNorm/general convolution options/projection",
+    "graphs over32nodes",
+    "derivative checks in this new consumer",
+    "optimizer/checkpoint resume",
+    "crash/durable publication",
+    "fresh training/full classifier accuracy",
+    "full MNIST/CIFAR/ResNet",
+    "broad framework graduation"
+  ],
+  "source_manifest_note": "dependency-manifest.json is compiler metadata collected after execution; not claimed to be a prospective training/source freeze."
+}

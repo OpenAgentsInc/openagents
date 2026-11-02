@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/tmp/residual-framework-20261102/release/residual",
+    "--oracle",
+    "/tmp/psionic-mnist-data",
+    "psionic/fixtures/residual/experiment.json",
+    "/tmp/residual-framework-20261102/capture-release"
+  ],
+  "exit": 0,
+  "seconds": 0.0196625420358032
+}

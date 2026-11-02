@@ -63,6 +63,14 @@ affine section is an example: a hand calculation, `examples/ch29_frames.coax`,
 a refused program with `E0834`, and a `#test` that compares the result with
 plain arithmetic.
 
+The same inventory may also record `libraries`: native-only Coax examples
+with `kind: "native-library"`, a `chapter`, a host `consumer` and retained
+`evidence` paths. They remain part of closed source/link coverage, but
+`book.py --coax` executes only the runnable `examples` list. Library records
+do not declare evaluator transcripts or qualify native evidence merely by
+listing it; their separate native commands and receipts state that scope.
+The inventory tooling regression is `python3 psionic/tests/book_inventory_test.py`.
+
 To find a route through the four books, see [Paths through the
 books](../../docs/books/paths.md). The [shared completion
 milestones](../../docs/books/completion.md) distinguish runnable teaching

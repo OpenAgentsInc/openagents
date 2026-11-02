@@ -1,0 +1,624 @@
+{
+  "scope": "Post-rebase source hash continuity only; frozen runtime observations not rerun. Absolute compiler/data/build identities retain original receipts. Coder move retained in current metadata.",
+  "main_base": "29552d4fa3",
+  "observations": [
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "coax/lib/crypto/bytes.coax",
+      "expected": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+      "actual": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "coax/lib/crypto/sha256-kernel.coax",
+      "expected": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+      "actual": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "coax/lib/crypto/sha256.coax",
+      "expected": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+      "actual": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+      "expected": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+      "actual": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "coax/lib/nostr/fixtures/json_suite.coax",
+      "expected": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "actual": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "coax/lib/nostr/json.coax",
+      "expected": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+      "actual": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/examples/operators/squared-relu.coax",
+      "expected": "6e2d61749ae7b5a26bd9798c156c684927d2b67421de4be8ae7c92c0f1e06fb4",
+      "actual": "6e2d61749ae7b5a26bd9798c156c684927d2b67421de4be8ae7c92c0f1e06fb4",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/fixtures/models/ch04/fixtures.coax",
+      "expected": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa",
+      "actual": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/autodiff.coax",
+      "expected": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88",
+      "actual": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/counter-rng.coax",
+      "expected": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49",
+      "actual": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/interchange.coax",
+      "expected": "19273063b9aedfee1ed2b071a368483f216a1017a372b76740e1d89f51032670",
+      "actual": "19273063b9aedfee1ed2b071a368483f216a1017a372b76740e1d89f51032670",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/learn.coax",
+      "expected": "d9bce289fe24d134451428f2a500a443d0b3d173e10644109e721866f4585ce5",
+      "actual": "d9bce289fe24d134451428f2a500a443d0b3d173e10644109e721866f4585ce5",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/model-io/format.coax",
+      "expected": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+      "actual": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/model-io/reader.coax",
+      "expected": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627",
+      "actual": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/module-cnn.coax",
+      "expected": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1",
+      "actual": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/module-residual.coax",
+      "expected": "69fa151f30e9cb51f01074e602aa034ac2d62bbed2d8664ff670200f6df54570",
+      "actual": "69fa151f30e9cb51f01074e602aa034ac2d62bbed2d8664ff670200f6df54570",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/module-train.coax",
+      "expected": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f",
+      "actual": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/module.coax",
+      "expected": "bf57b32ede57f770fef34f900644c2ed359a5d7cb47a38ca5f2b897cf2432e33",
+      "actual": "bf57b32ede57f770fef34f900644c2ed359a5d7cb47a38ca5f2b897cf2432e33",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/operator-registry.coax",
+      "expected": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733",
+      "actual": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/tensor-ir-host.coax",
+      "expected": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a",
+      "actual": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/tensor-ir-kernels.coax",
+      "expected": "d62ef0a8591bec73c9940795aa97545701c710f50be69074b9b5cb84e03b01fc",
+      "actual": "d62ef0a8591bec73c9940795aa97545701c710f50be69074b9b5cb84e03b01fc",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/tensor-ir.coax",
+      "expected": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258",
+      "actual": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/tensor-ops-backward.coax",
+      "expected": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2",
+      "actual": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/tensor-ops-contract.coax",
+      "expected": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591",
+      "actual": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/tensor-ops.coax",
+      "expected": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772",
+      "actual": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/tensor-placement.coax",
+      "expected": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0",
+      "actual": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/tensor-view.coax",
+      "expected": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529",
+      "actual": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/lib/tensor.coax",
+      "expected": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+      "actual": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/tests/cnn-modules-checks.coax",
+      "expected": "948b217da18199adae5235fb6358d60f9809db3029a56d5337ba7ceeb1c488c0",
+      "actual": "948b217da18199adae5235fb6358d60f9809db3029a56d5337ba7ceeb1c488c0",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/tests/module-train-checks.coax",
+      "expected": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71",
+      "actual": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/tests/residual-modules-checks.coax",
+      "expected": "ae6cbff6298fcb1d926c0558fb82485c0833633392fdd8ec7d9d20974728d893",
+      "actual": "ae6cbff6298fcb1d926c0558fb82485c0833633392fdd8ec7d9d20974728d893",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual/qualification.json",
+      "path": "psionic/tests/residual-native.coax",
+      "expected": "23ddfc8165547a5cee511b7d324399ff82650223fad8807b83ddf497e7d1daed",
+      "actual": "23ddfc8165547a5cee511b7d324399ff82650223fad8807b83ddf497e7d1daed",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "coax/lib/crypto/bytes.coax",
+      "expected": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+      "actual": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "coax/lib/crypto/sha256-kernel.coax",
+      "expected": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+      "actual": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "coax/lib/crypto/sha256.coax",
+      "expected": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+      "actual": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+      "expected": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+      "actual": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "coax/lib/nostr/fixtures/json_suite.coax",
+      "expected": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "actual": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "coax/lib/nostr/json.coax",
+      "expected": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+      "actual": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/examples/operators/squared-relu.coax",
+      "expected": "6e2d61749ae7b5a26bd9798c156c684927d2b67421de4be8ae7c92c0f1e06fb4",
+      "actual": "6e2d61749ae7b5a26bd9798c156c684927d2b67421de4be8ae7c92c0f1e06fb4",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/fixtures/adamw/reference.coax",
+      "expected": "0f9e0c7d46ba27fca4ccdac955a4127ae547bb86e14997fe94d0ea8c9b59a608",
+      "actual": "0f9e0c7d46ba27fca4ccdac955a4127ae547bb86e14997fe94d0ea8c9b59a608",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/fixtures/mnist/artifacts.coax",
+      "expected": "ea9608786e6f315f72f0dd23df8795c87bb75cb343b6a58a181cc39a614b8a44",
+      "actual": "ea9608786e6f315f72f0dd23df8795c87bb75cb343b6a58a181cc39a614b8a44",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/fixtures/mnist/dataset.json",
+      "expected": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+      "actual": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/fixtures/models/ch04/fixtures.coax",
+      "expected": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa",
+      "actual": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/fixtures/residual-mlp/experiment.json",
+      "expected": "b6832ee672f0fe4645b87c9b49b9a517931632c5b7560952fd82ee1b61344186",
+      "actual": "b6832ee672f0fe4645b87c9b49b9a517931632c5b7560952fd82ee1b61344186",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/fixtures/resume/reference.coax",
+      "expected": "d9b6f67974c6a598fc402fe0e84c30d3cdf0dc3a2ebea7f32ae53dd2acbb3784",
+      "actual": "d9b6f67974c6a598fc402fe0e84c30d3cdf0dc3a2ebea7f32ae53dd2acbb3784",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/autodiff.coax",
+      "expected": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88",
+      "actual": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/checkpoint/record.coax",
+      "expected": "6194b4a99fdb4e37c3325c59a2e901cbe3613a9f7cfdd63731735899bea63562",
+      "actual": "6194b4a99fdb4e37c3325c59a2e901cbe3613a9f7cfdd63731735899bea63562",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/checkpoint/resume.coax",
+      "expected": "94e33ac85248cd413ae7d62ab034de0ba5ccf071695957297b82242abe8caa73",
+      "actual": "94e33ac85248cd413ae7d62ab034de0ba5ccf071695957297b82242abe8caa73",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/cores.coax",
+      "expected": "4a1b2ff7bdf6c5b8abd8db19e7aa360e24d0b0775f4d25df19da62aeb619ed75",
+      "actual": "4a1b2ff7bdf6c5b8abd8db19e7aa360e24d0b0775f4d25df19da62aeb619ed75",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/counter-rng.coax",
+      "expected": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49",
+      "actual": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/data/feed.coax",
+      "expected": "9d544d962e54e9071d9009cf26089bf68c51e64a1b8f37231a1a87fbb7b52bab",
+      "actual": "9d544d962e54e9071d9009cf26089bf68c51e64a1b8f37231a1a87fbb7b52bab",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/data/mnist.coax",
+      "expected": "2a2ce156bd67f8edffeb169a4dbaf7f1e868f02cf7f12ffae20ad12c603bfaa6",
+      "actual": "2a2ce156bd67f8edffeb169a4dbaf7f1e868f02cf7f12ffae20ad12c603bfaa6",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/data/pack.coax",
+      "expected": "20a68afeda09ad6c213a0117229e0f0d45fe7d578ab961b4b5e5ddfb0f54016b",
+      "actual": "20a68afeda09ad6c213a0117229e0f0d45fe7d578ab961b4b5e5ddfb0f54016b",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/data/split.coax",
+      "expected": "6d1f0ab92f9b39fb7b7dbee0784e53c71a9f3c11e1259ee4d43fdd86ca6b9cb6",
+      "actual": "6d1f0ab92f9b39fb7b7dbee0784e53c71a9f3c11e1259ee4d43fdd86ca6b9cb6",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/interchange.coax",
+      "expected": "19273063b9aedfee1ed2b071a368483f216a1017a372b76740e1d89f51032670",
+      "actual": "19273063b9aedfee1ed2b071a368483f216a1017a372b76740e1d89f51032670",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/learn.coax",
+      "expected": "d9bce289fe24d134451428f2a500a443d0b3d173e10644109e721866f4585ce5",
+      "actual": "d9bce289fe24d134451428f2a500a443d0b3d173e10644109e721866f4585ce5",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/model-io/format.coax",
+      "expected": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+      "actual": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/model-io/reader.coax",
+      "expected": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627",
+      "actual": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/module-cnn.coax",
+      "expected": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1",
+      "actual": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/module-residual.coax",
+      "expected": "69fa151f30e9cb51f01074e602aa034ac2d62bbed2d8664ff670200f6df54570",
+      "actual": "69fa151f30e9cb51f01074e602aa034ac2d62bbed2d8664ff670200f6df54570",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/module-train.coax",
+      "expected": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f",
+      "actual": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/module.coax",
+      "expected": "bf57b32ede57f770fef34f900644c2ed359a5d7cb47a38ca5f2b897cf2432e33",
+      "actual": "bf57b32ede57f770fef34f900644c2ed359a5d7cb47a38ca5f2b897cf2432e33",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/operator-registry.coax",
+      "expected": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733",
+      "actual": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/optim/adamw.coax",
+      "expected": "30e17db86f4b207b79d03b63fdb261722a515b20c3eebf6b5950be119cc57a64",
+      "actual": "30e17db86f4b207b79d03b63fdb261722a515b20c3eebf6b5950be119cc57a64",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/residual-mlp-classifier.coax",
+      "expected": "b579a02da2b77304798a3e240837e8800542cd1e189d03c62d8e9894af80ce45",
+      "actual": "b579a02da2b77304798a3e240837e8800542cd1e189d03c62d8e9894af80ce45",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/residual-mlp-experiment.coax",
+      "expected": "778fd173102b669ec2157a63db191288ad3b0bf7f3a1715757322251ab11e4e9",
+      "actual": "778fd173102b669ec2157a63db191288ad3b0bf7f3a1715757322251ab11e4e9",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/residual-mlp-policy.coax",
+      "expected": "a8b8e8de67aa1eee8219af2b4f62cf08517072f6ad6e5c6983af84cf409fa3aa",
+      "actual": "a8b8e8de67aa1eee8219af2b4f62cf08517072f6ad6e5c6983af84cf409fa3aa",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/tensor-ir-host.coax",
+      "expected": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a",
+      "actual": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/tensor-ir-kernels.coax",
+      "expected": "d62ef0a8591bec73c9940795aa97545701c710f50be69074b9b5cb84e03b01fc",
+      "actual": "d62ef0a8591bec73c9940795aa97545701c710f50be69074b9b5cb84e03b01fc",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/tensor-ir.coax",
+      "expected": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258",
+      "actual": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/tensor-ops-backward.coax",
+      "expected": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2",
+      "actual": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/tensor-ops-contract.coax",
+      "expected": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591",
+      "actual": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/tensor-ops.coax",
+      "expected": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772",
+      "actual": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/tensor-placement.coax",
+      "expected": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0",
+      "actual": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/tensor-view.coax",
+      "expected": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529",
+      "actual": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/tensor.coax",
+      "expected": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+      "actual": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/lib/trainer.coax",
+      "expected": "831ae3ed34a71bd6dbc26879c1aa1f14f9b9b397e48c7d049f0add34b8b97768",
+      "actual": "831ae3ed34a71bd6dbc26879c1aa1f14f9b9b397e48c7d049f0add34b8b97768",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/platform/residual-mlp-build.sh",
+      "expected": "865a59c8d21fbff172fd6111f6c3e1d932bc5395bf8f2c895f5089984a30c2c9",
+      "actual": "865a59c8d21fbff172fd6111f6c3e1d932bc5395bf8f2c895f5089984a30c2c9",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/platform/residual-mlp-host.c",
+      "expected": "378ddd733f255e64743885b7c7e0e37443dff6e1eba068bf1c96e062429082ea",
+      "actual": "378ddd733f255e64743885b7c7e0e37443dff6e1eba068bf1c96e062429082ea",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/tests/cnn-modules-checks.coax",
+      "expected": "948b217da18199adae5235fb6358d60f9809db3029a56d5337ba7ceeb1c488c0",
+      "actual": "948b217da18199adae5235fb6358d60f9809db3029a56d5337ba7ceeb1c488c0",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/tests/mnist_reference.py",
+      "expected": "df56a0ac38b247a4b8dd85f8ffabb1786e77c308be8ba8423dc8fc5ed15ff427",
+      "actual": "df56a0ac38b247a4b8dd85f8ffabb1786e77c308be8ba8423dc8fc5ed15ff427",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/tests/module-train-checks.coax",
+      "expected": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71",
+      "actual": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/tests/residual-mlp-preflight.c",
+      "expected": "ecbf040d88b8449da7c9ad822072125ebec3d236c84b662957e56aeda7cf7758",
+      "actual": "ecbf040d88b8449da7c9ad822072125ebec3d236c84b662957e56aeda7cf7758",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/tests/residual-modules-checks.coax",
+      "expected": "ae6cbff6298fcb1d926c0558fb82485c0833633392fdd8ec7d9d20974728d893",
+      "actual": "ae6cbff6298fcb1d926c0558fb82485c0833633392fdd8ec7d9d20974728d893",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/tests/residual_launch.py",
+      "expected": "b057feb5f44fe6cf7b80d998646a72467e9c17f74534ef069f7fb3483993d1bc",
+      "actual": "b057feb5f44fe6cf7b80d998646a72467e9c17f74534ef069f7fb3483993d1bc",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/tests/residual_launch_test.py",
+      "expected": "a7f2dc34eccd9f5553bf394a77b1133946cd560f6234993d965b2a25aa848c8f",
+      "actual": "a7f2dc34eccd9f5553bf394a77b1133946cd560f6234993d965b2a25aa848c8f",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/tests/residual_mlp_reference.py",
+      "expected": "baeb0aed9cb188662d8479366bb28c5580caaa4ffa64c3c042ce63c6de7ee7b4",
+      "actual": "baeb0aed9cb188662d8479366bb28c5580caaa4ffa64c3c042ce63c6de7ee7b4",
+      "matches": true
+    },
+    {
+      "receipt": "psionic/fixtures/residual-mlp/qualification.json",
+      "path": "psionic/tests/trainer-checks.coax",
+      "expected": "49f0c0525577d7434fe41dc1b124be6fa854a2985ea051e968ab2cbd06f9f699",
+      "actual": "49f0c0525577d7434fe41dc1b124be6fa854a2985ea051e968ab2cbd06f9f699",
+      "matches": true
+    }
+  ],
+  "matched": 88,
+  "passed": true
+}

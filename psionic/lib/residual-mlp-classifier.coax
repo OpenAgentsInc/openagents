@@ -1,0 +1,162 @@
+// A real image-classifier consumer of public modules, tape, trainer and state
+// dictionaries. This file adds no tensor operator or optimizer implementation.
+#load "module-train.coax";
+#load "module-residual.coax";
+#load "trainer.coax";
+#load "data/mnist.coax";
+#load "residual-mlp-policy.coax";
+#load "../fixtures/mnist/artifacts.coax";
+
+RmlStatus :: enum u8 {ok;data;identity;capacity;model;training;checkpoint;artifact;quality;}
+RmlFirst :: struct {status:RmlStatus;loss:f64;parameters:int;inputs:int;values:int;adjoints:int;flags:int;}
+RmlEval :: struct {loss:f64;correct:int;baseline:int;}
+RmlReport :: struct {
+    status:RmlStatus;steps:int;train_rows:int;test_rows:int;baseline_class:int;
+    initial_loss:f64;final_loss:f64;initial_correct:int;final_correct:int;baseline_correct:int;
+    checkpoint_bytes:int;export_bytes:int;replay_equal:bool;export_equal:bool;
+}
+// These are this APPLICATION's admitted capacities, not adapter constants.
+RmlWork :: struct {inputs:[3536]f32;values:[16384]f32;adjoints:[16384]f64;flags:[4096]u8;entry:[3329]f32;staging:[3329]f64;gradient:[3329]f64;}
+RmlWeights :: struct {p:[3329]f64;m:[3329]f64;v:[3329]f64;}
+
+
+// Checks precede the consumer's implementation. Every expected derivative is
+// independent arithmetic: a zero network has only its last-bias derivative.
+#test "residual MLP-head CNN classifier is an ordinary named module with a shared linear readout" #steps 4000000000 {
+    m:=rml_model();q:=mtr_plan(m);
+    #assert m.status==MdlStatus.ok && m.program.count==28 && m.program.output==27;
+    #assert q.status==MtrStatus.ok && q.parameters==3329 && q.inputs==3536 && q.largest==3136;
+    #assert m.entries[2].base==206 && m.entries[6].base==213 && m.entries[7].base==3349 && m.entries[9].base==3525;
+    c:=rml_config();#assert c.optimizer==TrOptimizer.adamw && c.storage==TrStorage.binary64;
+    #assert c.examples==4096 && c.accumulate==16 && c.epochs==12 && tr_steps(c)==3072;
+    #assert c.seed==11822 && c.rate==0.003 && c.clip==1 && c.every==0 && tr_size(3329)==80236;
+}
+// book:begin model
+RmlModel :: struct {model:MdlModel;prediction:int;}
+rml_definition :: ()->RmlModel {
+    m:=mdl_model();m=mdl_data(m,"x",TvShape.{rank=4,dims=[4]int.[1,1,14,14]});x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));target:=m.node;
+    m=mdl_residual_conv1x1(m,MDL_ROOT,"block",x,2);
+    m=mdl_flatten(m,m.node);m=mdl_linear(m,MDL_ROOT,"fc1",m.node,16);m=mdl_relu(m,m.node);
+    m=mdl_linear(m,MDL_ROOT,"fc2",m.node,10);prediction:=m.node;
+    m=mdl_squared_error(m,MDL_ROOT,"loss",prediction,target);
+    return RmlModel.{model=m,prediction=prediction};
+}
+rml_model :: ()->MdlModel {return rml_definition().model;}
+rml_config :: ()->TrConfig {
+    return TrConfig.{optimizer=TrOptimizer.adamw,storage=TrStorage.binary64,
+        rate=0.003,beta1=0.9,beta2=0.999,eps=0.00000001,clip=1,bound=16,
+        examples=4096,batch=1,accumulate=16,epochs=12,shuffle=true,seed=11822};
+}
+// book:end model
+
+// A master copy is binary64. The public module computes from binary32 copies.
+rml_move :: (m:MdlModel,p:[]f64,inputs:[]f32,into:bool) {
+    at:=0;
+    for i:0..<m.count {e:=m.entries[i];if e.kind!=MdlKind.parameter || e.frozen {continue;}
+        for j:0..<e.size {if into {inputs[e.base+j]=f32(p[at+j]);} else {p[at+j]=f64(inputs[e.base+j]);}}
+        at+=e.size;
+    }
+}
+rml_inference :: (m:MdlModel,prediction:int)->AdTape {
+    f:=mdl_output(m,prediction);mode:=AdMode.{enabled=false};
+    return ad_tape(f.program,mode,OrRegistry.{});
+}
+rml_fit :: (q:MtrPlan,w:[]RmlWork)->bool {
+    // The application's fixed arenas match the checked policy capacities.
+    return rml_workspace(q.status==MtrStatus.ok,q.parameters,q.inputs,q.values,q.adjoints,q.flags,q.largest);
+}
+
+rml_digest :: (bytes:[]u8)->[32]u8 {
+    state:[112]u8;out:[32]u8;#assert sha256_init(state[..])==SHA_OK;
+    at:=0;while at<bytes.count {n:=bytes.count-at;if n>1048576 {n=1048576;}
+        #assert sha256_update_checked(state[..],bytes[at..<at+n],false)==SHA_OK;at+=n;}
+    #assert sha256_final_checked(state[..],out[..],false)==SHA_OK;return out;
+}
+rml_ids :: (c:TrConfig,manifest:[]u8,initial:[]f64,a:[32]u8,b:[32]u8,d:[32]u8,e:[32]u8)->CkIds {
+    data:[128]u8;for j:0..<32 {data[j]=a[j];data[32+j]=b[j];data[64+j]=d[j];data[96+j]=e[j];}
+    text:="mnist-idx-pool-v1:28x28;2x2-average;sum/1020;f32;first4096;next1024;official-test-first2048";
+    prep:[128]u8;for j:0..<text.count {prep[j]=text[j];}
+    model:[26664]u8;at:=ck_put(model[..],0,rml_digest(manifest));
+    for value:initial {at=ck_put64(model[..],at,f64_bits(value));}
+    return tr_ids(c,ck_digest("psionic.residual-mlp-initial-model.v1",model[0..<at]),rml_digest(prep[0..<text.count]),rml_digest(data[..]));
+}
+rml_batch :: (q:MtrPlan,c:TrConfig,run:TrRun,weights:[]RmlWeights,w:[]RmlWork,images:[]u8,labels:[]u8,d:MnDataset,order:[]int,total:[]f64,stage:[]f64)->TrStep {
+    none:[1]PkDoc;nothing:[1]u8;
+    batch:=tr_next(c,run,none[0..<0],nothing[0..<0],nothing[0..<0]);sum:TrSum;
+    #assert batch.status==TrStatus.ok;
+    for k:0..<batch.micro {
+        rows:=tr_rows(c,batch,k);#assert rows.count==1;row:=order[rows.first];
+        #assert mn_pool(d,images,row,w[0].inputs[0..<196])==MnStatus.ok;
+        #assert mn_target(cast(int)labels[8+row],w[0].inputs[196..<206])==MnStatus.ok;
+        part:=mtr_run(q,cast(u64)run.revision,weights[0].p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+        #assert part.status==MtrStatus.ok;
+        sum=tr_add(batch,sum,part.loss,w[0].gradient[..],total);
+    }
+    return tr_apply(c,run,batch,sum,weights[0].p[..],weights[0].m[..],weights[0].v[..],total,stage,order);
+}
+rml_eval :: (m:MdlModel,t:AdTape,prediction:int,p:[]f64,w:[]RmlWork,images:[]u8,labels:[]u8,d:MnDataset,first:int,count:int,baseline:int,capture:[]f32)->RmlEval {
+    #assert capture.count==0 || capture.count==count*10;
+    rml_move(m,p,w[0].inputs[..],true);#assert mdl_refresh(mdl_train(m,false),0,w[0].inputs[..])==MdlStatus.ok;
+    r:RmlEval;scores:[10]f32;
+    for k:0..<count {
+        row:=first+k;#assert mn_pool(d,images,row,w[0].inputs[0..<196])==MnStatus.ok;
+        run:=ad_run(t,AdCursor.{},w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..]);
+        #assert run.status==AdStatus.ok && ad_value(t,run.cursor,prediction,w[0].inputs[..],w[0].values[..],scores[..])==AdStatus.ok;
+        pick:=mn_argmax(scores[..]);#assert pick.status==MnStatus.ok;label:=cast(int)labels[8+row];
+        if pick.index==label {r.correct+=1;}if baseline==label {r.baseline+=1;}
+        loss:f32=0;for j:0..<10 {target:f32=0;if j==label {target=1;}error:=scores[j]-target;loss+=error*error;
+            if capture.count>0 {capture[k*10+j]=scores[j];}}
+        r.loss+=f64(loss)/f64(count);
+    }
+    return r;
+}
+
+rml_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,features:[]f32)->RmlFirst #export_c {
+    d:=mn_admit(images,labels);if d.status!=MnStatus.ok {return RmlFirst.{status=RmlStatus.data};}
+    def:=rml_definition();m:=def.model;q:=mtr_plan(m);w:[1]RmlWork;
+    if !rml_capture(params.count,gradient.count,scores.count,features.count) || !rml_fit(q,w[..]) {return RmlFirst.{status=RmlStatus.capacity};}
+    #assert mdl_init(m,11821,w[0].inputs[..])==MdlStatus.ok;rml_move(m,params,w[0].inputs[..],false);
+    #assert mn_pool(d,images,0,w[0].inputs[0..<196])==MnStatus.ok;
+    for j:0..<196 {features[j]=w[0].inputs[j];}
+    #assert mn_target(cast(int)labels[8],w[0].inputs[196..<206])==MnStatus.ok;
+    step:=mtr_run(q,0,params,w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],gradient);
+    #assert step.status==MtrStatus.ok;
+    prediction:=def.prediction;t:=rml_inference(m,prediction);run:=ad_run(t,AdCursor.{},w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..]);
+    #assert run.status==AdStatus.ok && ad_value(t,run.cursor,prediction,w[0].inputs[..],w[0].values[..],scores)==AdStatus.ok;
+    return RmlFirst.{loss=step.loss,parameters=q.parameters,inputs=q.inputs,values=q.values,adjoints=q.adjoints,flags=q.flags};
+}
+
+rml_synthetic :: ()->bool #export_c {
+    def:=rml_definition();m:=def.model;q:=mtr_plan(m);w:[1]RmlWork;p:[3329]f64;
+    if !rml_fit(q,w[..]) {return false;}
+    #assert mn_target(7,w[0].inputs[196..<206])==MnStatus.ok;
+    part:=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    if part.status!=MtrStatus.ok || part.loss!=1 {return false;}
+    for j:0..<3329 {expected:=0.0;if j==3326 {expected=-2;}if w[0].gradient[j]!=expected || p[j]!=0 {return false;}}
+    // Actual native non-finite admission, without evaluator bit conversion.
+    p[0]=f64_from_bits(0x7ff8000000000001);w[0].gradient[0]=123;
+    bad:=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    if bad.status!=MtrStatus.number || w[0].gradient[0]!=123 {return false;}
+    return !rml_accept(2048,1700,200,f64_from_bits(0x7ff0000000000000),0,true,true);
+}
+
+// Dataset-free state and inference preflight. Coax owns every comparison;
+// callers use the retained prediction node instead of guessing a graph index.
+rml_state_preflight :: ()->bool #export_c {
+    def:=rml_definition();m:=def.model;inputs:[3536]f32;fresh_inputs:[3536]f32;
+    if mdl_init(m,11821,inputs[..])!=MdlStatus.ok || mdl_init(m,999,fresh_inputs[..])!=MdlStatus.ok {return false;}
+    for j:0..<196 {v:=f32(f64(j%13-6)/8);inputs[j]=v;fresh_inputs[j]=v;}
+    file:[32768]u8;stage:[32768]u8;saved:=mdl_save(m,inputs[..],file[..],stage[..]);
+    if saved.status!=MdlStatus.ok || saved.tensors!=8 {return false;}
+    fresh:=rml_definition();loaded:=mdl_load(fresh.model,file[0..<saved.written],fresh_inputs[..],true);
+    if loaded.status!=MdlStatus.ok || loaded.loaded!=8 {return false;}
+    for e:m.entries[0..<m.count] {if mdl_saved(e) {for j:0..<e.size {if f32_bits(inputs[e.base+j])!=f32_bits(fresh_inputs[e.base+j]) {return false;}}}}
+    values:[16384]f32;adjoints:[16384]f64;flags:[4096]u8;scores:[10]f32;other:[10]f32;
+    t:=rml_inference(m,def.prediction);run:=ad_run(t,AdCursor.{},inputs[..],values[..],adjoints[..],flags[..]);
+    if run.status!=AdStatus.ok || ad_value(t,run.cursor,def.prediction,inputs[..],values[..],scores[..])!=AdStatus.ok {return false;}
+    ft:=rml_inference(fresh.model,fresh.prediction);fr:=ad_run(ft,AdCursor.{},fresh_inputs[..],values[..],adjoints[..],flags[..]);
+    if fr.status!=AdStatus.ok || ad_value(ft,fr.cursor,fresh.prediction,fresh_inputs[..],values[..],other[..])!=AdStatus.ok {return false;}
+    for j:0..<10 {if f32_bits(scores[j])!=f32_bits(other[j]) {return false;}}
+    return true;
+}

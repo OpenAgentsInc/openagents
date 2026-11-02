@@ -1,0 +1,19 @@
+#import "Basic";
+// A dataset-free public residual block. The zero branch leaves the complete
+// identity, including negative inputs. This is a composition check, not quality.
+#load "../lib/module-residual.coax";
+main :: () {
+    m:=mdl_data(mdl_model(),"x",TvShape.{rank=4,dims=[4]int.[1,1,2,3]});
+    m=mdl_residual_conv1x1(m,MDL_ROOT,"block",m.node,2);prediction:=m.node;
+    #assert m.status==MdlStatus.ok && mdl_parameters(m)==7;
+    inputs:[13]f32;#assert mdl_init(m,71,inputs[..])==MdlStatus.ok;
+    for i:0..<6 {inputs[i]=f32(f64(i-3)/4);}
+    for e:m.entries[0..<m.count] {if e.kind==MdlKind.parameter {for j:0..<e.size {inputs[e.base+j]=0;}}}
+    tape:=ad_tape(m.program,AdMode.{enabled=false},OrRegistry.{});
+    values:[128]f32;adjoints:[128]f64;flags:[64]u8;output:[6]f32;
+    run:=ad_run(tape,AdCursor.{},inputs[..],values[..],adjoints[..],flags[..]);
+    #assert run.status==AdStatus.ok && ad_value(tape,run.cursor,prediction,inputs[..],values[..],output[..])==AdStatus.ok;
+    for i:0..<6 {#assert output[i]==inputs[i];}
+    print("residual block: 1x1 expand 1->2, ReLU, 1x1 contract 2->1, identity add\n");
+    print("7 parameters, 11 nodes; zero branch preserves all 6 signed input values\n");
+}

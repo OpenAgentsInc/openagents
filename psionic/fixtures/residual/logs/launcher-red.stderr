@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_launch_test.py", line 12, in <module>
+    _spec.loader.exec_module(launch)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 747, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 880, in get_code
+  File "<frozen importlib._bootstrap_external>", line 926, in get_data
+FileNotFoundError: [Errno 2] No such file or directory: '/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_launch.py'

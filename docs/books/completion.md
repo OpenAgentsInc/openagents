@@ -26,7 +26,7 @@ tracks; the CNN work does not wait for all compiler or relay work to finish.
 | --- | --- | --- |
 | Delivered infrastructure: [Supported reader routes and delivery evidence, #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) | Give each book a clean-checkout entry command and observable application exit; bind evidence to source/compiler/target; run quick metadata checks; record published revision. | A reader can reproduce a named supported route, and a changed dependency invalidates only its affected evidence. |
 | P1: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Reuse existing result-language, analysis-cost, B2 and B3 task identities; qualify a synchronous fallible adapter, then the real polling/cancel lifecycle; teach the resulting contract. | Handled outcomes, cleanup and buffer lifetime survive success, refusal and cancellation within measured analysis bounds. |
-| P1: [Psionic public models, #12626](https://github.com/OpenAgentsInc/openagents/issues/12626) | Connect convolution to IR/autodiff/modules; train and reload a frozen CNN; add residual-model and unfamiliar-consumer acceptance; publish operator/backend limits. | Ordinary models use reusable APIs, with independent gradients, held-out quality and saved artifacts. The tiny CNN is a step toward ResNet/CIFAR, not that project's completion. |
+| P1: [Psionic public models, #12626](https://github.com/OpenAgentsInc/openagents/issues/12626) | Connect convolution to IR/autodiff/modules; train and reload a frozen CNN; add residual-model and unfamiliar-consumer acceptance; publish operator/backend limits. A same-shape residual block and frozen CPU trial now pass; independent artifact-reader checks are recorded, with fresh training still open. | Ordinary models use reusable APIs, with independent gradients, held-out quality and saved artifacts. The tiny CNN is a step toward ResNet/CIFAR, not that project's completion. |
 | P2: [Useful single-GPU training, #12627](https://github.com/OpenAgentsInc/openagents/issues/12627) | Cooperative backward and resident whole-step state, precision/overflow/resume, then a frozen 10–50M decoder with independent baseline. | Quality, tokens/s, memory and startup are measured together on the 4080. Distributed scaling follows this useful baseline. |
 | P1: [Aethyr shared rendering and playable route, #12628](https://github.com/OpenAgentsInc/openagents/issues/12628) | Common frame/pass/binding admission; migrate the Grid, then catalogue subsystems; qualify independent render profiles and resource refusals. | One playable route uses shared engine contracts on its declared native/browser targets; remaining private paths stay visible. |
 | P2: [Reproducible Forge artifacts, #12629](https://github.com/OpenAgentsInc/openagents/issues/12629) | Common invertible edits, stale-revision refusal, pinned document/engine/assets, reload, migration and isolated forks. | A later engine release cannot silently change a published world's pinned artifact. |
@@ -125,8 +125,13 @@ module/autodiff/trainer composition, caller-sized buffers, AdamW, a checked
 checkpoint replay and named inference export, with a frozen held-out quality
 rule. Its next bounded CPU CNN slice now reaches 88.5742% through reusable
 convolution/flatten layers and the same trainer, with independent gradients,
-replay and export checks. This advances the first milestone; residual models,
-CNN options, larger datasets, GPU efficiency and broader acceptance remain open.
+replay and export checks. A public same-shape residual block now reaches
+87.3535% with the same trainer and named state; its earlier failed linear-head
+trial remains visible. A separate reader has reproduced retained MLP/CNN/residual
+artifact inference after a documented recipe gap was fixed. This advances the
+first milestone; fresh reader-led training, general CNN options, larger datasets,
+GPU efficiency and ResNet/CIFAR acceptance remain open. See the
+[residual delivery record](../verification/psionic-residual-framework-2026-11-01/README.md).
 
 The [framework acceptance projects](../../psionic/book/PLAN.md#a-framework-not-only-engines)
 remain the graduation gates. Original model inference, a tiny GPU training run,

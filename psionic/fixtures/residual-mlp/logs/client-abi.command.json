@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "/usr/bin/cc",
+    "-std=c11",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-fsyntax-only",
+    "-I/tmp/residual-mlp-framework-20261102/release",
+    "psionic/tests/residual-mlp-preflight.c"
+  ],
+  "exit": 0,
+  "seconds": 0.052964750095270574,
+  "scope": "C client/header syntax only; actual exported calls already exercised by native --synthetic in three modes; no numerical execution repeated"
+}

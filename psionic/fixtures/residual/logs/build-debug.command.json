@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "bash",
+    "psionic/platform/residual-build.sh",
+    "/tmp/residual-framework-20261102/debug",
+    "debug",
+    "0"
+  ],
+  "exit": 0,
+  "seconds": 31.71391325001605
+}

@@ -1,0 +1,3 @@
+#test residual modules: named composition preserves the exact identity shape
+#test residual modules: shape index naming and capacity refusals stay explicit
+#test residual modules: sticky refusal preserves every structural counter

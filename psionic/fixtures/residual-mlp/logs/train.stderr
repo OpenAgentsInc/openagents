@@ -1,0 +1,13 @@
+residual MLP-head CNN validation: phase 0, step 0, loss 1.1599457, correct 104/1024
+residual MLP-head CNN validation: phase 1, step 256, loss 0.356802608, correct 874/1024
+residual MLP-head CNN validation: phase 1, step 512, loss 0.292356718, correct 910/1024
+residual MLP-head CNN validation: phase 1, step 768, loss 0.261178443, correct 920/1024
+residual MLP-head CNN validation: phase 1, step 1024, loss 0.242643127, correct 917/1024
+residual MLP-head CNN validation: phase 1, step 1280, loss 0.227948993, correct 940/1024
+residual MLP-head CNN validation: phase 1, step 1536, loss 0.232908919, correct 919/1024
+residual MLP-head CNN validation: phase 1, step 1792, loss 0.21086854, correct 936/1024
+residual MLP-head CNN validation: phase 1, step 2048, loss 0.209144979, correct 938/1024
+residual MLP-head CNN validation: phase 1, step 2304, loss 0.222834041, correct 931/1024
+residual MLP-head CNN validation: phase 1, step 2560, loss 0.210709059, correct 929/1024
+residual MLP-head CNN validation: phase 1, step 2816, loss 0.205232551, correct 929/1024
+residual MLP-head CNN validation: phase 1, step 3072, loss 0.201050698, correct 929/1024

@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/tmp/residual-framework-20261102/release/residual",
+    "--train",
+    "/tmp/psionic-mnist-data",
+    "psionic/fixtures/residual/experiment.json",
+    "psionic/fixtures/residual/run-v1"
+  ],
+  "exit": -15,
+  "seconds": 11.845519708003849
+}

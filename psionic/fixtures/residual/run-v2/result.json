@@ -1,0 +1,1 @@
+{"status":8,"steps":3072,"train_rows":49152,"test_rows":2048,"baseline_class":1,"initial_loss":1.4008627890580101,"final_loss":0.486577263684012,"initial_correct":137,"final_correct":1576,"baseline_correct":242,"checkpoint_bytes":47788,"export_bytes":8420,"replay_equal":true,"export_equal":true,"seconds":55.224235000}

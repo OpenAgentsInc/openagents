@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "python3",
+    "psionic/tests/residual_reference.py",
+    "verify-capture",
+    "/tmp/residual-framework-20261102/capture-debug",
+    "--data-dir",
+    "/tmp/psionic-mnist-data",
+    "--out",
+    "/tmp/residual-framework-20261102/reference-debug.json"
+  ],
+  "exit": 0,
+  "seconds": 0.22677483304869384
+}

@@ -1,0 +1,8 @@
+RESIDUAL native debug plain:
+residual native: four independent full forward/input/17parameter VJPs, identity skip,18 IEEE refusals, named state and freeze pass
+RESIDUAL native debug sanitized:
+residual native: four independent full forward/input/17parameter VJPs, identity skip,18 IEEE refusals, named state and freeze pass
+RESIDUAL native release plain:
+residual native: four independent full forward/input/17parameter VJPs, identity skip,18 IEEE refusals, named state and freeze pass
+RESIDUAL native release sanitized:
+residual native: four independent full forward/input/17parameter VJPs, identity skip,18 IEEE refusals, named state and freeze pass

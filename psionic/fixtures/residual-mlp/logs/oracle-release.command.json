@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/tmp/residual-mlp-framework-20261102/release/residual",
+    "--oracle",
+    "/tmp/psionic-mnist-data",
+    "psionic/fixtures/residual-mlp/experiment.json",
+    "/tmp/residual-mlp-framework-20261102/capture-release"
+  ],
+  "exit": 0,
+  "seconds": 0.018682209076359868
+}

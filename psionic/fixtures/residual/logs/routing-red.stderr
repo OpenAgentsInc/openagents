@@ -1,0 +1,95 @@
+FFFFFFFFF
+======================================================================
+FAIL: test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning (__main__.ResidualRouting.test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning) (alias='residual')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_gate_routing.py", line 24, in test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode())
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning (__main__.ResidualRouting.test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning) (alias='residual.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_gate_routing.py", line 24, in test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode())
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning (__main__.ResidualRouting.test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning) (alias='psionic/lib/residual.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_gate_routing.py", line 24, in test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode())
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning (__main__.ResidualRouting.test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning) (alias='module-residual')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_gate_routing.py", line 24, in test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode())
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning (__main__.ResidualRouting.test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning) (alias='module-residual.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_gate_routing.py", line 24, in test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode())
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning (__main__.ResidualRouting.test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning) (alias='psionic/lib/module-residual.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_gate_routing.py", line 24, in test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode())
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning (__main__.ResidualRouting.test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning) (alias='residual-mlp')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_gate_routing.py", line 24, in test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode())
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning (__main__.ResidualRouting.test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning) (alias='residual-mlp.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_gate_routing.py", line 24, in test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode())
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning (__main__.ResidualRouting.test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning) (alias='psionic/lib/residual-mlp.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_gate_routing.py", line 24, in test_alias_jobs_mutation_and_selected_compilers_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode())
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.465s
+
+FAILED (failures=9)

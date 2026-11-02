@@ -1,0 +1,9 @@
+ok   #test residual CNN application memory admission checks every exact extent and range endpoint (1 case, 2508 steps, 0 ms)
+ok   #test residual CNN application workspace admission checks identity and every capacity endpoint (1 case, 460 steps, 0 ms)
+ok   #test residual CNN application capture admission checks every one-off extent (1 case, 359 steps, 0 ms)
+ok   #test residual CNN application artifact admission checks every byte of all four digests (1 case, 74304 steps, 1 ms)
+ok   #test residual CNN profile admits only the frozen dataset and model extents (1 case, 180 steps, 0 ms)
+ok   #test residual CNN frozen accuracy rule rounds upwards and requires a majority margin (1 case, 336 steps, 0 ms)
+ok   #test residual CNN quality also requires lower finite loss and exact persistence checks (1 case, 286 steps, 0 ms)
+ok   #test residual CNN refuses fabricated counts before accuracy arithmetic (1 case, 201 steps, 0 ms)
+8 checks, 8 passed, 0 failed

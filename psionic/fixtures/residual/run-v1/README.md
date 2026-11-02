@@ -1,0 +1,1 @@
+Unqualified interrupted first attempt. No result/checkpoint/export artifact was written before SIGTERM. This notice was added after stopping it. See ../attempt1-unqualified.json and the retained attempt1 logs.

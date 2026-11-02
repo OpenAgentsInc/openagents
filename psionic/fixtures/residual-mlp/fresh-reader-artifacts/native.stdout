@@ -1,0 +1,4 @@
+MLP: 13632 state bytes; row0 all10 scores match retained capture bitwise; truncated-state refusal preserved10 outputs
+CNN: 11976 state bytes; row0 all10 scores match retained capture bitwise; truncated-state refusal preserved10 outputs
+residual-MLP: 13972 state bytes; row0 all10 scores match retained capture bitwise; truncated-state refusal preserved10 outputs
+new public-API retained-artifact consumer: 30 score words matched; optimizer updates0

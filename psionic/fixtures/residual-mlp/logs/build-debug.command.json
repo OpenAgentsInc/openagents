@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "bash",
+    "psionic/platform/residual-mlp-build.sh",
+    "/tmp/residual-mlp-framework-20261102/debug",
+    "debug",
+    "0"
+  ],
+  "exit": 0,
+  "seconds": 64.80529791605659
+}

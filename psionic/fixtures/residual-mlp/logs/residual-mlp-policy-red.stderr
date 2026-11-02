@@ -1,0 +1,181 @@
+psionic/lib/residual-mlp-policy.coax:25:13: error[E0315]: procedure 'rml_memory' is not declared
+      #assert rml_memory(base);
+              ^
+psionic/lib/residual-mlp-policy.coax:35:18: error[E0315]: procedure 'rml_memory' is not declared
+          #assert !rml_memory(m);
+                   ^
+psionic/lib/residual-mlp-policy.coax:37:35: error[E0315]: procedure 'rml_memory' is not declared
+      m:=base;m.manifest=0;#assert !rml_memory(m);
+                                    ^
+psionic/lib/residual-mlp-policy.coax:38:28: error[E0315]: procedure 'rml_memory' is not declared
+      m.manifest=-1;#assert !rml_memory(m);
+                             ^
+psionic/lib/residual-mlp-policy.coax:39:26: error[E0315]: procedure 'rml_memory' is not declared
+      m.manifest=2;#assert rml_memory(m);
+                           ^
+psionic/lib/residual-mlp-policy.coax:40:32: error[E0315]: procedure 'rml_memory' is not declared
+      m.manifest=1048575;#assert rml_memory(m);
+                                 ^
+psionic/lib/residual-mlp-policy.coax:41:32: error[E0315]: procedure 'rml_memory' is not declared
+      m.manifest=1048576;#assert rml_memory(m);
+                                 ^
+psionic/lib/residual-mlp-policy.coax:42:33: error[E0315]: procedure 'rml_memory' is not declared
+      m.manifest=1048577;#assert !rml_memory(m);
+                                  ^
+psionic/lib/residual-mlp-policy.coax:43:41: error[E0315]: procedure 'rml_memory' is not declared
+      m=base;m.export_file=32767;#assert !rml_memory(m);
+                                          ^
+psionic/lib/residual-mlp-policy.coax:44:33: error[E0315]: procedure 'rml_memory' is not declared
+      m.export_file=32769;#assert rml_memory(m);
+                                  ^
+psionic/lib/residual-mlp-policy.coax:45:30: error[E0315]: procedure 'rml_memory' is not declared
+      m.export_file=0;#assert !rml_memory(m);
+                               ^
+psionic/lib/residual-mlp-policy.coax:49:13: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert rml_workspace(true,3329,3536,16384,16384,4096,3329);
+              ^
+psionic/lib/residual-mlp-policy.coax:50:14: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert !rml_workspace(false,3329,3536,16384,16384,4096,3329);
+               ^
+psionic/lib/residual-mlp-policy.coax:51:14: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert !rml_workspace(true,3328,3536,16384,16384,4096,3329);
+               ^
+psionic/lib/residual-mlp-policy.coax:52:14: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert !rml_workspace(true,3330,3536,16384,16384,4096,3329);
+               ^
+psionic/lib/residual-mlp-policy.coax:53:14: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert !rml_workspace(true,3329,3535,16384,16384,4096,3329);
+               ^
+psionic/lib/residual-mlp-policy.coax:54:14: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert !rml_workspace(true,3329,3537,16384,16384,4096,3329);
+               ^
+psionic/lib/residual-mlp-policy.coax:55:13: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert rml_workspace(true,3329,3536,16383,16384,4096,3329);
+              ^
+psionic/lib/residual-mlp-policy.coax:56:14: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert !rml_workspace(true,3329,3536,16385,16384,4096,3329);
+               ^
+psionic/lib/residual-mlp-policy.coax:57:13: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert rml_workspace(true,3329,3536,16384,16383,4096,3329);
+              ^
+psionic/lib/residual-mlp-policy.coax:58:14: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert !rml_workspace(true,3329,3536,16384,16385,4096,3329);
+               ^
+psionic/lib/residual-mlp-policy.coax:59:13: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert rml_workspace(true,3329,3536,16384,16384,4095,3329);
+              ^
+psionic/lib/residual-mlp-policy.coax:60:14: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert !rml_workspace(true,3329,3536,16384,16384,4097,3329);
+               ^
+psionic/lib/residual-mlp-policy.coax:61:13: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert rml_workspace(true,3329,3536,16384,16384,4096,3328);
+              ^
+psionic/lib/residual-mlp-policy.coax:62:14: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert !rml_workspace(true,3329,3536,16384,16384,4096,3330);
+               ^
+psionic/lib/residual-mlp-policy.coax:63:13: error[E0315]: procedure 'rml_workspace' is not declared
+      #assert rml_workspace(true,3329,3536,0,0,0,0);
+              ^
+psionic/lib/residual-mlp-policy.coax:67:13: error[E0315]: procedure 'rml_capture' is not declared
+      #assert rml_capture(3329,3329,10,196);
+              ^
+psionic/lib/residual-mlp-policy.coax:71:18: error[E0315]: procedure 'rml_capture' is not declared
+          #assert !rml_capture(n[0],n[1],n[2],n[3]);
+                   ^
+psionic/lib/residual-mlp-policy.coax:76:13: error[E0315]: procedure 'rml_artifacts' is not declared
+      #assert rml_artifacts(MC_TRAIN_IMAGES_SHA,MC_TRAIN_LABELS_SHA,MC_TEST_IMAGES_SHA,MC_TEST_LABELS_SHA);
+              ^
+psionic/lib/residual-mlp-policy.coax:81:18: error[E0315]: procedure 'rml_artifacts' is not declared
+          #assert !rml_artifacts(a,b,c,d);
+                   ^
+psionic/lib/residual-mlp-policy.coax:86:13: error[E0315]: procedure 'rml_profile' is not declared
+      #assert rml_profile(60000,10000,3329,3536);
+              ^
+psionic/lib/residual-mlp-policy.coax:87:14: error[E0315]: procedure 'rml_profile' is not declared
+      #assert !rml_profile(59999,10000,3329,3536) && !rml_profile(60001,10000,3329,3536);
+               ^
+psionic/lib/residual-mlp-policy.coax:87:53: error[E0315]: procedure 'rml_profile' is not declared
+      #assert !rml_profile(59999,10000,3329,3536) && !rml_profile(60001,10000,3329,3536);
+                                                      ^
+psionic/lib/residual-mlp-policy.coax:88:14: error[E0315]: procedure 'rml_profile' is not declared
+      #assert !rml_profile(60000,9999,3329,3536) && !rml_profile(60000,10001,3329,3536);
+               ^
+psionic/lib/residual-mlp-policy.coax:88:52: error[E0315]: procedure 'rml_profile' is not declared
+      #assert !rml_profile(60000,9999,3329,3536) && !rml_profile(60000,10001,3329,3536);
+                                                     ^
+psionic/lib/residual-mlp-policy.coax:89:14: error[E0315]: procedure 'rml_profile' is not declared
+      #assert !rml_profile(60000,10000,3328,3536) && !rml_profile(60000,10000,3330,3536);
+               ^
+psionic/lib/residual-mlp-policy.coax:89:53: error[E0315]: procedure 'rml_profile' is not declared
+      #assert !rml_profile(60000,10000,3328,3536) && !rml_profile(60000,10000,3330,3536);
+                                                      ^
+psionic/lib/residual-mlp-policy.coax:90:14: error[E0315]: procedure 'rml_profile' is not declared
+      #assert !rml_profile(60000,10000,3329,3535) && !rml_profile(60000,10000,3329,3537);
+               ^
+psionic/lib/residual-mlp-policy.coax:90:53: error[E0315]: procedure 'rml_profile' is not declared
+      #assert !rml_profile(60000,10000,3329,3535) && !rml_profile(60000,10000,3329,3537);
+                                                      ^
+psionic/lib/residual-mlp-policy.coax:93:13: error[E0315]: procedure 'rml_accept' is not declared
+      #assert rml_accept(2048,1639,615,1,0.5,true,true);
+              ^
+psionic/lib/residual-mlp-policy.coax:94:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1638,200,1,0.5,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:95:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1639,616,1,0.5,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:96:13: error[E0315]: procedure 'rml_accept' is not declared
+      #assert rml_accept(2048,1640,616,1,0.5,true,true);
+              ^
+psionic/lib/residual-mlp-policy.coax:97:13: error[E0315]: procedure 'rml_accept' is not declared
+      #assert rml_accept(2048,1639,0,1000000,0,true,true);
+              ^
+psionic/lib/residual-mlp-policy.coax:98:13: error[E0315]: procedure 'rml_accept' is not declared
+      #assert rml_accept(2048,2048,1024,1,0,true,true);
+              ^
+psionic/lib/residual-mlp-policy.coax:99:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,2048,1025,1,0,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:102:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1700,200,1,1,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:103:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1700,200,1,1.0001,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:104:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1700,200,-1,0,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:105:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1700,200,1,-0.001,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:106:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1700,200,1e12,0,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:107:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1700,200,1,0.5,false,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:108:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1700,200,1,0.5,true,false);
+               ^
+psionic/lib/residual-mlp-policy.coax:111:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(0,0,0,1,0.5,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:112:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2047,1700,200,1,0.5,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:113:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2049,1700,200,1,0.5,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:114:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,-1,200,1,0.5,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:115:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,2049,200,1,0.5,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:116:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1700,-1,1,0.5,true,true);
+               ^
+psionic/lib/residual-mlp-policy.coax:117:14: error[E0315]: procedure 'rml_accept' is not declared
+      #assert !rml_accept(2048,1700,2049,1,0.5,true,true);
+               ^
+60 errors

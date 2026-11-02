@@ -1,0 +1,20 @@
+// Same-shape CPU residual composition. NCHW/f32, first-order tape gradients;
+// both convolutions are valid stride-one 1x1 operations, so no crop/padding or
+// implicit projection changes the identity branch. Public-constructor models
+// and unchanged plans with valid live disjoint arenas retain their contracts.
+#load "module-cnn.coax";
+#authority;
+#load "../tests/residual-modules-checks.coax";
+
+// y = x + contract(relu(expand(x))). Both named convolutions have 1x1
+// kernels. The second restores x's channel count; N/H/W never change.
+mdl_residual_conv1x1 :: (m:MdlModel,parent:int,name:string,x:int,hidden:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];if s.rank!=4 {return mdl_fail(m,MdlStatus.shape);}
+    r:=mdl_child(m,parent,name);me:=r.child;
+    r=mdl_conv2d(r,me,"expand",x,hidden,1,1);
+    r=mdl_relu(r,r.node);
+    r=mdl_conv2d(r,me,"contract",r.node,s.dims[1],1,1);
+    return mdl_op(r,TiOp.add,r.node,x);
+}

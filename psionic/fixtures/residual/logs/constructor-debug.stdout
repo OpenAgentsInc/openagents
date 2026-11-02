@@ -1,0 +1,5 @@
+ok   #test residual modules: named composition preserves the exact identity shape (1 case, 217884 steps, 63 ms)
+ok   #test residual modules: shape index naming and capacity refusals stay explicit (1 case, 125669 steps, 93 ms)
+ok   #test residual modules: sticky refusal preserves every structural counter (1 case, 2458 steps, 0 ms)
+3 of 214 checks (--only 'residual modules:'), 3 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

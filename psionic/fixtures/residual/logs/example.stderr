@@ -1,0 +1,9 @@
+psionic/examples/residual-block.coax:16:5: error[E0313]: print is in module Basic, which is not imported
+      print("residual block: 1x1 expand 1->2, ReLU, 1x1 contract 2->1, identity add\n");
+      ^
+  fix: add #import "Basic"; at the top of the file
+psionic/examples/residual-block.coax:17:5: error[E0313]: print is in module Basic, which is not imported
+      print("7 parameters, 11 nodes; zero branch preserves all 6 signed input values\n");
+      ^
+  fix: add #import "Basic"; at the top of the file
+2 errors

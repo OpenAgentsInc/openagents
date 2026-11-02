@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "python3",
+    "psionic/tests/residual_reference.py",
+    "verify-run",
+    "psionic/fixtures/residual/run-v2",
+    "--data-dir",
+    "/tmp/psionic-mnist-data",
+    "--out",
+    "psionic/fixtures/residual/run-v2/audit.json"
+  ],
+  "exit": 1,
+  "seconds": 0.2868731670314446
+}

@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/tmp/residual-framework-20261102/sanitized/residual",
+    "--oracle",
+    "/tmp/psionic-mnist-data",
+    "psionic/fixtures/residual/experiment.json",
+    "/tmp/residual-framework-20261102/capture-sanitized"
+  ],
+  "exit": 0,
+  "seconds": 0.11321208300068974
+}

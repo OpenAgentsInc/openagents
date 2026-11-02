@@ -1,0 +1,3 @@
+fresh reader: 12 graph nodes, 7 parameters, 5 saved tensors, 480 bytes
+12 independent nonzero-branch outputs matched; named weights/buffer and inference reload matched bitwise
+missing required key refused with all 21 caller values preserved; training updates 0

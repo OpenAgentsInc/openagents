@@ -1,0 +1,55 @@
+{
+  "verified": true,
+  "source": "original official TRAIN row0",
+  "label": 5,
+  "checks": {
+    "parameters": {
+      "count": 1977,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "comparison": "exact binary64 bits"
+      }
+    },
+    "gradient": {
+      "count": 1977,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "absolute": 2e-06,
+        "relative": 2e-06
+      }
+    },
+    "scores": {
+      "count": 10,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "absolute": 2e-06,
+        "relative": 2e-06
+      }
+    },
+    "features": {
+      "count": 196,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "comparison": "exact binary32 bits"
+      }
+    },
+    "loss": {
+      "count": 1,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "absolute": 2e-06,
+        "relative": 2e-06
+      }
+    }
+  },
+  "observed_native_counts": {
+    "parameters": 1977,
+    "inputs": 2184,
+    "values": 1176,
+    "adjoints": 2761,
+    "flags": 392
+  },
+  "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+  "experiment_manifest_sha256": "7f58a32d79fa91ce4145a1996499224ba0dfdddacea044fa0da6bdedccd81612",
+  "scope": "public residual CNN forward and all 1977 formal parameter gradients; no optimizer or quality claim"
+}

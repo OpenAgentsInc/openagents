@@ -1,0 +1,16 @@
+{
+  "scope": "Additional missing release-mode book-example run only; all unchanged debug/native/training results retained. Does not change the frozen first-reader report.",
+  "argv": [
+    "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+    "run",
+    "psionic/examples/residual-fresh-reader.coax",
+    "--release"
+  ],
+  "returncode": 0,
+  "expected_stdout_match": true,
+  "stderr_bytes": 0,
+  "identity_timing": "Post-run hashes; source matches reviewed pre-run committed inventory. No new prospective complete closure freeze.",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "source_sha256": "319995da9fea42bbbd9b1dc5c63ff027f15f12b461815ec11bda68b4c2600670",
+  "stdout_sha256": "4624fc62ef0a80ed51a492665b79759d94f44110bdc11c14123a0063d58299b5"
+}

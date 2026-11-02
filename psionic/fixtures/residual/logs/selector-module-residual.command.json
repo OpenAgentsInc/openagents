@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+    "test",
+    "psionic/lib/module-residual.coax",
+    "--library",
+    "--list",
+    "--only",
+    "residual modules:"
+  ],
+  "exit": 0,
+  "seconds": 1.3019812080310658
+}

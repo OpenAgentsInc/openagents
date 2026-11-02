@@ -1,0 +1,50 @@
+{
+  "passed": true,
+  "failures": [],
+  "test": {
+    "rows": 2048,
+    "accuracy": 0.87353515625,
+    "majority_class": 1,
+    "majority_accuracy": 0.1181640625,
+    "correct": 1789,
+    "baseline_correct": 242,
+    "mean_sse": 0.24395134977035582
+  },
+  "initial": {
+    "correct": 157,
+    "baseline_correct": 242,
+    "mean_sse": 1.1571417636296246
+  },
+  "validation": {
+    "rows": 13,
+    "columns": [
+      "epoch",
+      "mean validation SSE",
+      "validation correct",
+      "last optimizer step mean16row training SSE"
+    ],
+    "scope": "finite extent/epoch/count checks only; validation scores were not separately captured"
+  },
+  "replay": {
+    "exact_checkpoint_bytes": true,
+    "exact_epoch6_order": true,
+    "revisions": [
+      1536,
+      1537,
+      3072
+    ]
+  },
+  "export": {
+    "tensors": 8,
+    "words": 3329,
+    "bytes": 13972,
+    "all_exported_words_match": true
+  },
+  "identities": {
+    "model": "8bac711053c019709ae33066d2e3bb8060c8de3b22c545943bc237e52cbdd68e",
+    "preprocess": "9231f692b082b70ee2bf1ade2284a7f083f032236b8ee96dabe98b726c8e5a77",
+    "dataset": "e9914cff2ade526da2ab1ac60c072f9173cc53e35b9411692de8207cb1b9009d",
+    "optimizer": "1393ec243c0f78c177cb5fa5ae25b52cf1b1b796ef1b95a90dbde459f552289b"
+  },
+  "scope": "initial/final metrics recomputed from scheduled evaluation score captures, no extra forward or training run; export-reload prediction equality is producer-recorded"
+}

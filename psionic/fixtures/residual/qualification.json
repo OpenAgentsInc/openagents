@@ -1,0 +1,1214 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-02T04:24:42.071205+00:00",
+  "scope": "Supported same-shape residual constructor and bounded CPU public-model workflow; V2 linear-head experiment fails its frozen quality gate. No full Psionic/compiler gate, no old-model learning rerun.",
+  "compiler": {
+    "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+    "bytes": 3298840,
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa"
+  },
+  "host_compiler": [
+    {
+      "path": "/usr/bin/cc",
+      "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+      "bytes": 118928
+    }
+  ],
+  "core": {
+    "constructor_groups_per_mode": 3,
+    "modes": [
+      "debug",
+      "release"
+    ],
+    "source_inventory": [
+      {
+        "path": "coax/lib/crypto/bytes.coax",
+        "sha256": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+        "bytes": 11552
+      },
+      {
+        "path": "coax/lib/crypto/sha256-kernel.coax",
+        "sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+        "bytes": 16502
+      },
+      {
+        "path": "coax/lib/crypto/sha256.coax",
+        "sha256": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+        "bytes": 13633
+      },
+      {
+        "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+        "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+        "bytes": 365603
+      },
+      {
+        "path": "coax/lib/nostr/fixtures/json_suite.coax",
+        "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+        "bytes": 41864
+      },
+      {
+        "path": "coax/lib/nostr/json.coax",
+        "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+        "bytes": 37156
+      },
+      {
+        "path": "psionic/examples/operators/squared-relu.coax",
+        "sha256": "6e2d61749ae7b5a26bd9798c156c684927d2b67421de4be8ae7c92c0f1e06fb4",
+        "bytes": 2563
+      },
+      {
+        "path": "psionic/fixtures/models/ch04/fixtures.coax",
+        "sha256": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa",
+        "bytes": 4015
+      },
+      {
+        "path": "psionic/lib/autodiff.coax",
+        "sha256": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88",
+        "bytes": 41125
+      },
+      {
+        "path": "psionic/lib/counter-rng.coax",
+        "sha256": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49",
+        "bytes": 1303
+      },
+      {
+        "path": "psionic/lib/interchange.coax",
+        "sha256": "19273063b9aedfee1ed2b071a368483f216a1017a372b76740e1d89f51032670",
+        "bytes": 14124
+      },
+      {
+        "path": "psionic/lib/learn.coax",
+        "sha256": "d9bce289fe24d134451428f2a500a443d0b3d173e10644109e721866f4585ce5",
+        "bytes": 11340
+      },
+      {
+        "path": "psionic/lib/model-io/format.coax",
+        "sha256": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+        "bytes": 7692
+      },
+      {
+        "path": "psionic/lib/model-io/reader.coax",
+        "sha256": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627",
+        "bytes": 14204
+      },
+      {
+        "path": "psionic/lib/module-cnn.coax",
+        "sha256": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1",
+        "bytes": 2054
+      },
+      {
+        "path": "psionic/lib/module-residual.coax",
+        "sha256": "69fa151f30e9cb51f01074e602aa034ac2d62bbed2d8664ff670200f6df54570",
+        "bytes": 1021
+      },
+      {
+        "path": "psionic/lib/module-train.coax",
+        "sha256": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f",
+        "bytes": 6173
+      },
+      {
+        "path": "psionic/lib/module.coax",
+        "sha256": "bf57b32ede57f770fef34f900644c2ed359a5d7cb47a38ca5f2b897cf2432e33",
+        "bytes": 47473
+      },
+      {
+        "path": "psionic/lib/operator-registry.coax",
+        "sha256": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733",
+        "bytes": 6984
+      },
+      {
+        "path": "psionic/lib/tensor-ir-host.coax",
+        "sha256": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a",
+        "bytes": 9514
+      },
+      {
+        "path": "psionic/lib/tensor-ir-kernels.coax",
+        "sha256": "d62ef0a8591bec73c9940795aa97545701c710f50be69074b9b5cb84e03b01fc",
+        "bytes": 4247
+      },
+      {
+        "path": "psionic/lib/tensor-ir.coax",
+        "sha256": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258",
+        "bytes": 15325
+      },
+      {
+        "path": "psionic/lib/tensor-ops-backward.coax",
+        "sha256": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2",
+        "bytes": 32085
+      },
+      {
+        "path": "psionic/lib/tensor-ops-contract.coax",
+        "sha256": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591",
+        "bytes": 22775
+      },
+      {
+        "path": "psionic/lib/tensor-ops.coax",
+        "sha256": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772",
+        "bytes": 41445
+      },
+      {
+        "path": "psionic/lib/tensor-placement.coax",
+        "sha256": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0",
+        "bytes": 17400
+      },
+      {
+        "path": "psionic/lib/tensor-view.coax",
+        "sha256": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529",
+        "bytes": 29773
+      },
+      {
+        "path": "psionic/lib/tensor.coax",
+        "sha256": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+        "bytes": 13806
+      },
+      {
+        "path": "psionic/tests/cnn-modules-checks.coax",
+        "sha256": "948b217da18199adae5235fb6358d60f9809db3029a56d5337ba7ceeb1c488c0",
+        "bytes": 5626
+      },
+      {
+        "path": "psionic/tests/module-train-checks.coax",
+        "sha256": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71",
+        "bytes": 12713
+      },
+      {
+        "path": "psionic/tests/residual-modules-checks.coax",
+        "sha256": "ae6cbff6298fcb1d926c0558fb82485c0833633392fdd8ec7d9d20974728d893",
+        "bytes": 3725
+      },
+      {
+        "path": "psionic/tests/residual-native.coax",
+        "sha256": "23ddfc8165547a5cee511b7d324399ff82650223fad8807b83ddf497e7d1daed",
+        "bytes": 3286
+      }
+    ],
+    "native_source": [
+      {
+        "path": "psionic/tests/residual-native.c",
+        "sha256": "b6b00af99d2db3df6c0beff97e4ee542243f6395a0859ea753a8128305925a99",
+        "bytes": 3985
+      },
+      {
+        "path": "psionic/tests/check_residual_native.sh",
+        "sha256": "be329424044d3f0607ea25530f4a4a9bae0e9795b28297360d49aa5313ec40de",
+        "bytes": 1383
+      }
+    ],
+    "native_profiles": 4,
+    "native_cases_each": {
+      "independent_forward_full17parameter_and_input_vjp": 4,
+      "identity_branch": 1,
+      "IEEE_refusal_output_preservation": 18,
+      "named_state_and_freeze": 1
+    },
+    "native_artifacts": [
+      {
+        "path": "/tmp/residual-framework-20261102/native/debug/plain",
+        "sha256": "53c6a2b3280b8fba6a7a2ef09f4870206fe6a337ed4440d845223a3fe6ee788d",
+        "bytes": 290280
+      },
+      {
+        "path": "/tmp/residual-framework-20261102/native/debug/residual-native.c",
+        "sha256": "b5fd694b8958fc324495ab9c6763116469278fb854bb28e65c4be6b08aae62e1",
+        "bytes": 559171
+      },
+      {
+        "path": "/tmp/residual-framework-20261102/native/debug/sanitized",
+        "sha256": "80bbf8e0dfcf35c2039efe207f26f9977f2c8f2ae0ef3fca45c2bfc390cc3194",
+        "bytes": 1356216
+      },
+      {
+        "path": "/tmp/residual-framework-20261102/native/debug/residual-native.h",
+        "sha256": "cfd5549433d9c9a2d4976a777e381aa251dfc4ac2570d5ca5d5af1b888ad501d",
+        "bytes": 145410
+      },
+      {
+        "path": "/tmp/residual-framework-20261102/native/release/plain",
+        "sha256": "2362ee8ee8ef3d2ad7fe9e8b3fc0b19f6406bf7e548223798d567035904dc886",
+        "bytes": 246600
+      },
+      {
+        "path": "/tmp/residual-framework-20261102/native/release/residual-native.c",
+        "sha256": "97303e0bc40a90d0fda11f26a805cefd0b258f40cde342adaad380e523259c85",
+        "bytes": 702837
+      },
+      {
+        "path": "/tmp/residual-framework-20261102/native/release/sanitized",
+        "sha256": "5f690c5c517bcd66d2a9b7e46dde3cd5594491fa64e71b58821405d59c2a3653",
+        "bytes": 497912
+      },
+      {
+        "path": "/tmp/residual-framework-20261102/native/release/residual-native.h",
+        "sha256": "cfd5549433d9c9a2d4976a777e381aa251dfc4ac2570d5ca5d5af1b888ad501d",
+        "bytes": 145410
+      }
+    ],
+    "root_mutation": {
+      "evidence": {
+        "path": "psionic/fixtures/residual/logs/constructor-mutation.evidence.json",
+        "sha256": "d9351e70fe19867e8a05124c0881e1c17b789fa34dcc4a67c1e3334c9103e5a2",
+        "bytes": 47346
+      },
+      "result": {
+        "outcome": "passed",
+        "mutants": 14,
+        "evaluated": 14,
+        "killed": 14,
+        "survived": [],
+        "marked_equivalent": 0,
+        "unreached": "",
+        "scope": "root-only",
+        "shard": null,
+        "merged_records": 0,
+        "scheduling": "full",
+        "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+      }
+    }
+  },
+  "linear_head_consumer": {
+    "parameters": 1977,
+    "nodes": 23,
+    "inputs": 2184,
+    "prediction_node": 16,
+    "metadata_groups_per_mode": 1,
+    "policy_groups_per_mode": 8,
+    "policy_root_mutation": {
+      "evidence": {
+        "path": "psionic/fixtures/residual/logs/policy-mutation.evidence.json",
+        "sha256": "a7406d9e494e3c51065c48a597873b0cb99cec4e05d89d959869e2d5d7817eff",
+        "bytes": 3057
+      },
+      "result": {
+        "outcome": "passed",
+        "mutants": 117,
+        "evaluated": 117,
+        "killed": 117,
+        "survived": [],
+        "marked_equivalent": 0,
+        "unreached": "",
+        "scope": "root-only",
+        "shard": null,
+        "merged_records": 0,
+        "scheduling": "selective",
+        "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+      }
+    },
+    "native_profiles": {
+      "debug": {
+        "build": {
+          "argv": [
+            "bash",
+            "psionic/platform/residual-build.sh",
+            "/tmp/residual-framework-20261102/debug",
+            "debug",
+            "0"
+          ],
+          "exit": 0,
+          "seconds": 31.71391325001605
+        },
+        "artifacts": [
+          {
+            "path": "/tmp/residual-framework-20261102/debug/residual.c",
+            "sha256": "48877e1fe553d180f74e051ed260ef151218635caaefe3689bb3bb864948e544",
+            "bytes": 840793
+          },
+          {
+            "path": "/tmp/residual-framework-20261102/debug/residual.h",
+            "sha256": "c06d262cce4846a137e928b05695a043bf9cd9a739703ea97f99f07009f5e5dc",
+            "bytes": 208720
+          },
+          {
+            "path": "/tmp/residual-framework-20261102/debug/residual",
+            "sha256": "d03f27cc93548d5b1fd4079ebc36a52ec2b9fdc1164617535dd9448aa5ff50a3",
+            "bytes": 408520
+          }
+        ],
+        "first_image": {
+          "verified": true,
+          "source": "original official TRAIN row0",
+          "label": 5,
+          "checks": {
+            "parameters": {
+              "count": 1977,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "comparison": "exact binary64 bits"
+              }
+            },
+            "gradient": {
+              "count": 1977,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "absolute": 2e-06,
+                "relative": 2e-06
+              }
+            },
+            "scores": {
+              "count": 10,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "absolute": 2e-06,
+                "relative": 2e-06
+              }
+            },
+            "features": {
+              "count": 196,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "comparison": "exact binary32 bits"
+              }
+            },
+            "loss": {
+              "count": 1,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "absolute": 2e-06,
+                "relative": 2e-06
+              }
+            }
+          },
+          "observed_native_counts": {
+            "parameters": 1977,
+            "inputs": 2184,
+            "values": 1176,
+            "adjoints": 2761,
+            "flags": 392
+          },
+          "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+          "experiment_manifest_sha256": "7f58a32d79fa91ce4145a1996499224ba0dfdddacea044fa0da6bdedccd81612",
+          "scope": "public residual CNN forward and all 1977 formal parameter gradients; no optimizer or quality claim"
+        }
+      },
+      "release": {
+        "build": {
+          "argv": [
+            "bash",
+            "psionic/platform/residual-build.sh",
+            "/tmp/residual-framework-20261102/release",
+            "release",
+            "0"
+          ],
+          "exit": 0,
+          "seconds": 69.9985397499986
+        },
+        "artifacts": [
+          {
+            "path": "/tmp/residual-framework-20261102/release/residual.c",
+            "sha256": "dbb7fe1464f488552781946b4dd7cc08a2259e90f84ab3f3ccad2feeb68a7f69",
+            "bytes": 1112923
+          },
+          {
+            "path": "/tmp/residual-framework-20261102/release/residual.h",
+            "sha256": "c06d262cce4846a137e928b05695a043bf9cd9a739703ea97f99f07009f5e5dc",
+            "bytes": 208720
+          },
+          {
+            "path": "/tmp/residual-framework-20261102/release/residual",
+            "sha256": "609b03719e080194e16ecec8930a02f9fe494efead3abea11135833ef668f7c2",
+            "bytes": 370424
+          }
+        ],
+        "first_image": {
+          "verified": true,
+          "source": "original official TRAIN row0",
+          "label": 5,
+          "checks": {
+            "parameters": {
+              "count": 1977,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "comparison": "exact binary64 bits"
+              }
+            },
+            "gradient": {
+              "count": 1977,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "absolute": 2e-06,
+                "relative": 2e-06
+              }
+            },
+            "scores": {
+              "count": 10,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "absolute": 2e-06,
+                "relative": 2e-06
+              }
+            },
+            "features": {
+              "count": 196,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "comparison": "exact binary32 bits"
+              }
+            },
+            "loss": {
+              "count": 1,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "absolute": 2e-06,
+                "relative": 2e-06
+              }
+            }
+          },
+          "observed_native_counts": {
+            "parameters": 1977,
+            "inputs": 2184,
+            "values": 1176,
+            "adjoints": 2761,
+            "flags": 392
+          },
+          "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+          "experiment_manifest_sha256": "7f58a32d79fa91ce4145a1996499224ba0dfdddacea044fa0da6bdedccd81612",
+          "scope": "public residual CNN forward and all 1977 formal parameter gradients; no optimizer or quality claim"
+        }
+      },
+      "sanitized": {
+        "build": {
+          "argv": [
+            "bash",
+            "psionic/platform/residual-build.sh",
+            "/tmp/residual-framework-20261102/sanitized",
+            "release",
+            "1"
+          ],
+          "exit": 0,
+          "seconds": 37.14742816693615
+        },
+        "artifacts": [
+          {
+            "path": "/tmp/residual-framework-20261102/sanitized/residual.c",
+            "sha256": "dbb7fe1464f488552781946b4dd7cc08a2259e90f84ab3f3ccad2feeb68a7f69",
+            "bytes": 1112923
+          },
+          {
+            "path": "/tmp/residual-framework-20261102/sanitized/residual.h",
+            "sha256": "c06d262cce4846a137e928b05695a043bf9cd9a739703ea97f99f07009f5e5dc",
+            "bytes": 208720
+          },
+          {
+            "path": "/tmp/residual-framework-20261102/sanitized/residual",
+            "sha256": "884acb86eb960f038b24c69ef630444dab1af9f1c504816b28e5879e038615d9",
+            "bytes": 735144
+          }
+        ],
+        "first_image": {
+          "verified": true,
+          "source": "original official TRAIN row0",
+          "label": 5,
+          "checks": {
+            "parameters": {
+              "count": 1977,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "comparison": "exact binary64 bits"
+              }
+            },
+            "gradient": {
+              "count": 1977,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "absolute": 2e-06,
+                "relative": 2e-06
+              }
+            },
+            "scores": {
+              "count": 10,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "absolute": 2e-06,
+                "relative": 2e-06
+              }
+            },
+            "features": {
+              "count": 196,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "comparison": "exact binary32 bits"
+              }
+            },
+            "loss": {
+              "count": 1,
+              "max_absolute_error": 0.0,
+              "rule": {
+                "absolute": 2e-06,
+                "relative": 2e-06
+              }
+            }
+          },
+          "observed_native_counts": {
+            "parameters": 1977,
+            "inputs": 2184,
+            "values": 1176,
+            "adjoints": 2761,
+            "flags": 392
+          },
+          "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+          "experiment_manifest_sha256": "7f58a32d79fa91ce4145a1996499224ba0dfdddacea044fa0da6bdedccd81612",
+          "scope": "public residual CNN forward and all 1977 formal parameter gradients; no optimizer or quality claim"
+        }
+      }
+    },
+    "first_completed_frozen_trial": "run-v2",
+    "result": {
+      "status": 8,
+      "steps": 3072,
+      "train_rows": 49152,
+      "test_rows": 2048,
+      "baseline_class": 1,
+      "initial_loss": 1.40086278905801,
+      "final_loss": 0.486577263684012,
+      "initial_correct": 137,
+      "final_correct": 1576,
+      "baseline_correct": 242,
+      "checkpoint_bytes": 47788,
+      "export_bytes": 8420,
+      "replay_equal": true,
+      "export_equal": true,
+      "seconds": 55.224235
+    },
+    "independent_audit": {
+      "passed": false,
+      "failures": [
+        "native run did not report ok",
+        "test accuracy below frozen0.80"
+      ],
+      "test": {
+        "rows": 2048,
+        "accuracy": 0.76953125,
+        "majority_class": 1,
+        "majority_accuracy": 0.1181640625,
+        "correct": 1576,
+        "baseline_correct": 242,
+        "mean_sse": 0.486577263684012
+      },
+      "initial": {
+        "correct": 137,
+        "baseline_correct": 242,
+        "mean_sse": 1.40086278905801
+      },
+      "validation": {
+        "rows": 13,
+        "columns": [
+          "epoch",
+          "mean validation SSE",
+          "validation correct",
+          "last optimizer step mean16row training SSE"
+        ],
+        "scope": "finite extent/epoch/count checks only; validation scores were not separately captured"
+      },
+      "replay": {
+        "exact_checkpoint_bytes": true,
+        "exact_epoch6_order": true,
+        "revisions": [
+          1536,
+          1537,
+          3072
+        ]
+      },
+      "export": {
+        "tensors": 6,
+        "words": 1977,
+        "bytes": 8420,
+        "all_exported_words_match": true
+      },
+      "identities": {
+        "model": "ac99db5e7a5732df83213552d687d5379065d33e5c985dc75423a4dcac532de6",
+        "preprocess": "9231f692b082b70ee2bf1ade2284a7f083f032236b8ee96dabe98b726c8e5a77",
+        "dataset": "e9914cff2ade526da2ab1ac60c072f9173cc53e35b9411692de8207cb1b9009d",
+        "optimizer": "1393ec243c0f78c177cb5fa5ae25b52cf1b1b796ef1b95a90dbde459f552289b"
+      },
+      "scope": "initial/final metrics recomputed from scheduled evaluation score captures, no extra forward or training run; export-reload prediction equality is producer-recorded"
+    }
+  },
+  "failed_attempts": [
+    {
+      "record": "attempt1-unqualified.json",
+      "reason": "Missing complete generated-artifact freeze; process stopped, no published final result; tooling error."
+    },
+    {
+      "record": "run-v2/audit.json",
+      "reason": "76.953125% test accuracy fails frozen80% gate; quality refusal retained."
+    }
+  ],
+  "tooling": {
+    "launch_controls": {
+      "groups": 4,
+      "missing_input_cases": 16,
+      "other_negative_cases": 4,
+      "train_spy_not_invoked_on_refusal": true,
+      "chronology": "Check-first controls passed after already-launched V2; V2 used the separate hash-checked one-flow launcher recorded in logs. The new tested tool governs later launches."
+    },
+    "root_dispatch": "nine aliases tested in isolated real dispatcher copy with delegated spy; final script hash recorded separately after changes"
+  },
+  "omissions": [
+    "Full shared-engine/compiler mutation omitted under owner focused-check instruction.",
+    "No GPU, compiled or higher-order convolution; no padding/stride/dilation/groups/pooling or ResNet/CIFAR qualification.",
+    "Native alias/lifetime/general ownership proof not claimed; unchanged public-constructor plans and live disjoint caller arenas are preconditions.",
+    "Native quality host publishes artifacts after completion, not incrementally crash-durably.",
+    "Dataset slice reused across later architecture trials; not a pristine unseen final test."
+  ],
+  "artifacts": [
+    {
+      "path": "psionic/fixtures/residual/logs/audit-attempt2.command.json",
+      "sha256": "4c1a4fbaf41a333b36fbc6c8dead043415122d235f85a688f5b0e796a8990a06",
+      "bytes": 294
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/audit-attempt2.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/audit-attempt2.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/build-debug.command.json",
+      "sha256": "c9ff558d6c9c89df5341796ecd419a548245ed079e6d679c33a0207359620b99",
+      "bytes": 186
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/build-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/build-debug.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/build-release.command.json",
+      "sha256": "78e5a16246c7b9a2b9fbd6e2bccd7508b0bd4b0a7fa9c2ec45b7674a65553212",
+      "bytes": 189
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/build-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/build-release.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/build-sanitized.command.json",
+      "sha256": "5d15b89b92031ac70eeac970031588a4fe377a6af5939c6c7a5644b2da49c084",
+      "bytes": 192
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/build-sanitized.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/build-sanitized.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/classifier-named-red.json",
+      "sha256": "6ca6dcf3107cb33dc57643219fc220cf25b114a4d36cf82d865316aea7e12666",
+      "bytes": 258
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/classifier-named-red.stderr",
+      "sha256": "9af64403e3fc340a7900972c0932ac4f378dbea905f57d0f890f4ea858a2cf17",
+      "bytes": 10940
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/classifier-named-red.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/classifier-release.command.json",
+      "sha256": "886300d1a669688058cdd77242e9ba2f17f18fefe4e89fe0cc0d82f153b595fc",
+      "bytes": 321
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/classifier-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/classifier-release.stdout",
+      "sha256": "2a9a16b63047447810d40423897e2738c7bfe259eeac2bd7db5c774fbf2127b6",
+      "bytes": 287
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-debug.evidence.json",
+      "sha256": "fb4994b325e7f83c99644c8d2d9053fc73581c60ae99e19e347fab0f9d8264cd",
+      "bytes": 53957
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-debug.json",
+      "sha256": "73188b5d68c3e7e9c5a7d692f9d65e1c978af3d60fb666f44574a080a936587b",
+      "bytes": 384
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-debug.stdout",
+      "sha256": "14bf3d9a76a67e7a3812115e3d97da88ac1c9dc7d6a22193280877a4baa7434c",
+      "bytes": 491
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-mutation.evidence.json",
+      "sha256": "d9351e70fe19867e8a05124c0881e1c17b789fa34dcc4a67c1e3334c9103e5a2",
+      "bytes": 47346
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-mutation.json",
+      "sha256": "773dbf6e4c54939566a85a60e2ee096e2b5be4bbe3cdf51e9f6253d53d540b38",
+      "bytes": 391
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-mutation.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-mutation.stdout",
+      "sha256": "9eadfebc9ca8ad7a3eadd87d517e1edd57f1c7c1cf1771604a3aa3e54b83ff4d",
+      "bytes": 114
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-red.json",
+      "sha256": "0a0a40f6252c70413b6d67d4ebcb9e188a30f262aecd9de36a26cfa62ceb041c",
+      "bytes": 294
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-red.stderr",
+      "sha256": "0873390e01f6e763db9b7e0963447bc78e80130cee75083ec39a7af4bb77f3d8",
+      "bytes": 4257
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-red.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-release.evidence.json",
+      "sha256": "fbe65d146cdc08799de37608363c56508baca23ffe8d3cc6d2824976fd2dc15a",
+      "bytes": 53958
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-release.json",
+      "sha256": "dc250cbf0ada1c76ef8bceaabf8a3cb59eaf2a5c6620690df4e5cfd1e251c3ea",
+      "bytes": 404
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/constructor-release.stdout",
+      "sha256": "ec9eb092b7ab37bf2643aebe3988da43c0d752589e0b3e959565601afc3bd10c",
+      "bytes": 491
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/example-fixed.command.json",
+      "sha256": "8ece788eb8401693656b7b4c39979945e187471c5214d7aedd102ccd7953db3e",
+      "bytes": 239
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/example-fixed.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/example-fixed.stdout",
+      "sha256": "de9b08f3d1aaa854e760073c1349134382a105f94e7bcb40c388439ed8963428",
+      "bytes": 143
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/example-release.command.json",
+      "sha256": "bf88b5b73a3344b2cff63648d8b9954b68aa93483270570660fa566e9efcf1c8",
+      "bytes": 257
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/example-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/example-release.stdout",
+      "sha256": "de9b08f3d1aaa854e760073c1349134382a105f94e7bcb40c388439ed8963428",
+      "bytes": 143
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/example.command.json",
+      "sha256": "5589da523a1086931d1a2a4d50fed58eb2e272ef86c0b879b361e1b4dc8c7e61",
+      "bytes": 241
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/example.stderr",
+      "sha256": "b2a7e299454e1ad81bc14d5ad71f33965fa3e775f371980e4c6f19f8d817bfa3",
+      "bytes": 516
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/example.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/launcher-final.stderr",
+      "sha256": "e12137efc563f4465212fba471d7b78357f22786d4b5499b5a1e7b9a75714cac",
+      "bytes": 102
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/launcher-final.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/launcher-green.stderr",
+      "sha256": "629e99d3646382e7fb36d1301d5fd83ee70a24071a099e2a4623f8c1d09a5719",
+      "bytes": 1888
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/launcher-green.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/launcher-red.stderr",
+      "sha256": "5207b8a7293c9a2eea101237f540dbf87d708a36bbdd99cd12b6fcddc0984073",
+      "bytes": 589
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/launcher-red.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/native.log",
+      "sha256": "3433fefc23d6e88212de34fd92b92fe4d9f718453ec03901a875e38c7da99321",
+      "bytes": 652
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/oracle-debug.command.json",
+      "sha256": "453126b3d817d6ad9d044ecd6f2e181ff1bebaa3cc60306196c90086b5434851",
+      "bytes": 271
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/oracle-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/oracle-debug.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/oracle-release.command.json",
+      "sha256": "2e693a8cd9e75e69acb4d5702fa616ceeab87f6ecaafe638a7580af3c8a15e44",
+      "bytes": 274
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/oracle-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/oracle-release.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/oracle-sanitized.command.json",
+      "sha256": "9e05bdc476ea971fbac6129ff17794d043a13e2b9bc811e37c7525552e88e2e7",
+      "bytes": 279
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/oracle-sanitized.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/oracle-sanitized.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/policy-debug.json",
+      "sha256": "c9b13e962784ae64ecacd267dc802e529fe6110ad6764c0e1bf372f9624333c0",
+      "bytes": 256
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/policy-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/policy-debug.stdout",
+      "sha256": "ffa54e22a9f3446a593f57de509dd3204fded240f8634939f74854130323c1f7",
+      "bytes": 955
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/policy-mutation.evidence.json",
+      "sha256": "a7406d9e494e3c51065c48a597873b0cb99cec4e05d89d959869e2d5d7817eff",
+      "bytes": 3057
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/policy-mutation.json",
+      "sha256": "3e1b400c684a0cc918c0011e196787bc1583e04d5fa0d7b02e396884e82f089a",
+      "bytes": 388
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/policy-mutation.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/policy-mutation.stdout",
+      "sha256": "acf224694b0c8b6b83d5af72a93b95f044965e6afebad5f01b6a9763aaa12d7f",
+      "bytes": 116
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/policy-release.json",
+      "sha256": "7e62cbf699ab8025a41a3e371780c8edfee0bd7ee76c92ddb7d98868e2ec0727",
+      "bytes": 274
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/policy-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/policy-release.stdout",
+      "sha256": "ffa54e22a9f3446a593f57de509dd3204fded240f8634939f74854130323c1f7",
+      "bytes": 955
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/preflight-inputs.json",
+      "sha256": "d07dd4eb364f5f417cda7dae76891d89be32299465fc6624fbf1bd376e486ded",
+      "bytes": 9795
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-debug.command.json",
+      "sha256": "e9bf1d62291df92e12d2be5c5a1beaca0b79651b39662ecd64802238c38a3afb",
+      "bytes": 323
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-debug.json",
+      "sha256": "d7b26d9bad79bd25e29cedbcea9b1b46a70ecf9bbf217f8d97ca8b1dc409efe5",
+      "bytes": 1299
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-debug.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-release.command.json",
+      "sha256": "61f41f3f5320b054628228c53d6d87f31f1c156aca02a5d279d83d3d17dd0a64",
+      "bytes": 326
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-release.json",
+      "sha256": "d7b26d9bad79bd25e29cedbcea9b1b46a70ecf9bbf217f8d97ca8b1dc409efe5",
+      "bytes": 1299
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-release.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-sanitized.command.json",
+      "sha256": "100f957a0fe03f60bf6612ec82eca09af8ca41c7d6f83c4a12563b810c33c57e",
+      "bytes": 329
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-sanitized.json",
+      "sha256": "d7b26d9bad79bd25e29cedbcea9b1b46a70ecf9bbf217f8d97ca8b1dc409efe5",
+      "bytes": 1299
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-sanitized.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/reference-sanitized.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-classifier-debug.json",
+      "sha256": "eeb2397b08b0095054a88ee563e52c9bb4965b4ae61e17408d5204f55f349f45",
+      "bytes": 303
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-classifier-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-classifier-debug.stdout",
+      "sha256": "1cc827a11534fa387bc0de88b96fa7a7870c23837709f6569268e25faa6f28e6",
+      "bytes": 287
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-classifier-red.json",
+      "sha256": "c48f1ccd8904cba3ff766c07a3ebccc1c5c46ca0f116c8aa9b9edeb904e8e3fe",
+      "bytes": 258
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-classifier-red.stderr",
+      "sha256": "574d9bab4734bb317169652a53b63a8caceb118961da2bde18ab95ea6fb1639a",
+      "bytes": 13488
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-classifier-red.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-policy-debug.json",
+      "sha256": "da292491252875e7c4a2dccc4ff8a1b45464cf3cce182598deee18332c7cac8e",
+      "bytes": 257
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-policy-debug.stderr",
+      "sha256": "f38e8a75293613eb45fa1034483ba8c12bbfc1795b3a295d4de0b3fb2481b57a",
+      "bytes": 250
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-policy-debug.stdout",
+      "sha256": "de9f4bc7fc8cb985be8bff0f5789bbb64adbcd26965c8bacec1c4c11a310d831",
+      "bytes": 936
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-policy-red.json",
+      "sha256": "45041500fb804c472e3c2184e44aba49ab39472219ecf272eb9dd6bfd0bf559e",
+      "bytes": 257
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-policy-red.stderr",
+      "sha256": "fd2cdd527ca1c656042b18d6be4cafe1fa1531b3370f85c163be41a78589ce6c",
+      "bytes": 10599
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/residual-policy-red.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/routing-green.stderr",
+      "sha256": "1c1b6f7a7314749c044ac228ea739ada8daa41fe0d614d7e0a85449d779cc15a",
+      "bytes": 98
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/routing-green.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/routing-red.stderr",
+      "sha256": "9fb471849d3ad985593ee07d9bf2725f649a2c55e91a1c826c935202c3240878",
+      "bytes": 7026
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/routing-red.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/synthetic-debug.command.json",
+      "sha256": "267e14da7a4849e019dfb5019a7911fe443ca3cadbaa85c4378c693d98a982ec",
+      "bytes": 140
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/synthetic-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/synthetic-debug.stdout",
+      "sha256": "888952b053d5073f87adfcb4116d5f91c8c1c78d9b658be3fd69b4d798a75884",
+      "bytes": 128
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/synthetic-release.command.json",
+      "sha256": "4b19f22e70897496e6ec2626f9f620399e9fa6a51f6acc078d8503af46d33f35",
+      "bytes": 141
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/synthetic-release.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/synthetic-release.stdout",
+      "sha256": "888952b053d5073f87adfcb4116d5f91c8c1c78d9b658be3fd69b4d798a75884",
+      "bytes": 128
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/synthetic-sanitized.command.json",
+      "sha256": "0f20155d227f80ff6009fa3e874409064d49a21d1bf4b876625b330744389cfe",
+      "bytes": 142
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/synthetic-sanitized.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/synthetic-sanitized.stdout",
+      "sha256": "888952b053d5073f87adfcb4116d5f91c8c1c78d9b658be3fd69b4d798a75884",
+      "bytes": 128
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/train-attempt2.command.json",
+      "sha256": "cad0013eac08bd83f8bafa0af2fd76fdfcc5f519816407f4d6c4b9ff5bb373e1",
+      "bytes": 461
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/train-attempt2.stderr",
+      "sha256": "0608672e20f0a8ff61a4d4108c1d83bd4d3cc68b0f687c2e0efb51fbac09ec12",
+      "bytes": 1031
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/train-attempt2.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/train.command.json",
+      "sha256": "950ca7d2db83d6ca1d11afe6c60172a7205d60b6b9a7248c99bee2ecc76c5020",
+      "bytes": 259
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/train.stderr",
+      "sha256": "57e0af79ed8917799386782a8790355059f43a1ad04758abde874a5c1c8200c9",
+      "bytes": 311
+    },
+    {
+      "path": "psionic/fixtures/residual/logs/train.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  ]
+}

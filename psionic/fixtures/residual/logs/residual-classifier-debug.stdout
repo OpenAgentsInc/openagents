@@ -1,0 +1,3 @@
+ok   #test residual CNN classifier is an ordinary named module with a shared linear readout (1 case, 490473 steps, 59 ms)
+1 of 324 checks (--only 'residual CNN classifier'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

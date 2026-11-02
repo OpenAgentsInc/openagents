@@ -1,0 +1,264 @@
+{
+  "schema": "psionic.residual-retained-reader.v1",
+  "status": "PASS-bounded-documented-artifact-load-and-row0-inference",
+  "first_attempt": "../fresh-reader/reproduction.json",
+  "attempt_number": 2,
+  "base_commit": "31944a2a34b20c06a1e4ef3d32379cfb45ad7f67",
+  "first_recorded_utc": "2026-11-02T04:35:33+00:00",
+  "record_written_utc": "2026-11-02T04:38:16.117091+00:00",
+  "elapsed_seconds_since_new_public_recipe_read": 163.117,
+  "reader": "/root/residual_reader; separate from module/classifier author",
+  "assistance": {
+    "classification": "author-documentation-assisted follow-up",
+    "first_gap": "Original recipe delegated artifact checks to author native harness and omitted exact residual model constructor/file-byte inference bridge.",
+    "help": "After reader feedback, source author published public INFERENCE.md and root notified reader to attempt it. Reader then consumed only public documentation, not private implementation.",
+    "author_runtime_changes_for_followup": 0,
+    "private_api_or_implementation_help": false
+  },
+  "public_material": [
+    {
+      "path": "psionic/fixtures/residual-mlp/README.md",
+      "sha256": "fcf918eeb434ec992215c1c09f0fd10c75dbf90ad61a72c299ef90e974f15ef1"
+    },
+    {
+      "path": "psionic/fixtures/residual-mlp/INFERENCE.md",
+      "sha256": "a501b6d2c8fdf63b29a0eacc76bbdb95f1be26937ae8362b149f45377b6dda1c"
+    },
+    {
+      "path": "psionic/book/ch117-models-are-compositions-of-modules.md",
+      "sha256": "4fddaecb87a996aac17d1b4432c610df47f1c304ce488c9fbb690b03b2e6246a"
+    },
+    {
+      "path": "psionic/book/ch118-one-trainer-for-every-model.md",
+      "sha256": "6ebf1647665bcf3b3343456899ad5527186f50cc7aa0f19adc727a36d5da3c4b"
+    },
+    {
+      "path": "psionic/fixtures/mnist/dataset.json",
+      "sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd"
+    }
+  ],
+  "implementation_files_read": [],
+  "new_consumer": {
+    "coax": "psionic/examples/residual-retained-reader.coax",
+    "coax_sha256": "b2898b04f063268d3b44fafb0602cfad5d44b250a32e1dbd0e404cd71026e9de",
+    "coax_physical_lines": 53,
+    "host": "psionic/tests/residual-retained-reader.c",
+    "host_sha256": "5901ab26eead63fcccb9640167df4a13fd4e3ebf765df3c192f5558679486f26",
+    "host_c_physical_lines": 43,
+    "runtime_implementation_changes": 0,
+    "model_arithmetic_language": "Coax only; C performs file I/O and comparison"
+  },
+  "first_source_unchanged": {
+    "path": "psionic/examples/residual-fresh-reader.coax",
+    "sha256": "319995da9fea42bbbd9b1dc5c63ff027f15f12b461815ec11bda68b4c2600670",
+    "matches_first_attempt": true
+  },
+  "compiler": {
+    "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "rebuilt": false,
+    "profile": "checked default emission; not --release"
+  },
+  "host_platform": "Darwin25.4.0 arm64; Apple clang21.0.0 clang-2100.1.1.101; native little-endian F32 reference comparison",
+  "data_identity_verification": {
+    "observations": [
+      {
+        "path": "/tmp/psionic-mnist-data/t10k-images-idx3-ubyte",
+        "bytes": 7840016,
+        "sha256": "0fa7898d509279e482958e8ce81c8e77db3f2f8254e26661ceb7762c4d494ce7",
+        "identity_manifest": "psionic/fixtures/mnist/dataset.json",
+        "matches_public_manifest": true
+      },
+      {
+        "path": "/tmp/psionic-mnist-data/t10k-labels-idx1-ubyte",
+        "bytes": 10008,
+        "sha256": "ff7bcfd416de33731a308c3f266cc351222c34898ecbeaf847f06e48f7ec33f2",
+        "identity_manifest": "psionic/fixtures/mnist/dataset.json",
+        "matches_public_manifest": true
+      }
+    ],
+    "verification_time": "after native observations; not a prospective source/data freeze",
+    "downloads": 0
+  },
+  "models": [
+    {
+      "model": "MLP",
+      "state": "psionic/fixtures/mnist/run-v1/model.safetensors",
+      "state_bytes": 13632,
+      "state_sha256": "76203f028cb095a5de9e56e01293a0870ccd15b2e9ea7a656041ef92b56f508b",
+      "saved_tensors": 4,
+      "parameters": 3322,
+      "documented_nodes": null,
+      "capture": "psionic/fixtures/mnist/run-v1/test-scores.f32",
+      "capture_sha256": "4505722bdaca06f0235cef9c86542a484b1f02389d9640371560c8b744b259cf",
+      "row0_expected_f32_words_hex": [
+        "3c23ff10",
+        "3bfc1470",
+        "bc233c88",
+        "3d834225",
+        "3c4b86d8",
+        "3c9af278",
+        "3cd2b2f0",
+        "3f73f020",
+        "bc0430d0",
+        "bd9c1ed4"
+      ],
+      "matched_output_words": 10,
+      "truncated_state_refusal": "PASS; last byte omitted; all10 output sentinels123 preserved"
+    },
+    {
+      "model": "CNN",
+      "state": "psionic/fixtures/cnn/run-v1/model.safetensors",
+      "state_bytes": 11976,
+      "state_sha256": "69836b7ba9fe35da62e22e234cf446c92cdfbff6409de5a76976ec8903112f18",
+      "saved_tensors": 4,
+      "parameters": 2910,
+      "documented_nodes": 18,
+      "capture": "psionic/fixtures/cnn/run-v1/test-scores.f32",
+      "capture_sha256": "4d5af44c17bfd7610752c147cb2cb9aa71dae62386e0c1bce258a28699f50fdf",
+      "row0_expected_f32_words_hex": [
+        "bdab1818",
+        "bb8f8e00",
+        "3e00e216",
+        "3dae77d0",
+        "be7680e5",
+        "3bc750d0",
+        "bce373ea",
+        "3f5b115b",
+        "3d53d902",
+        "3e20949d"
+      ],
+      "matched_output_words": 10,
+      "truncated_state_refusal": "PASS; last byte omitted; all10 output sentinels123 preserved"
+    },
+    {
+      "model": "residual-MLP",
+      "state": "psionic/fixtures/residual-mlp/run-v3/model.safetensors",
+      "state_bytes": 13972,
+      "state_sha256": "06ee141c00ebcefa23b9d67159fae1501923bb561980e98b4a0c4ad06944f110",
+      "saved_tensors": 8,
+      "parameters": 3329,
+      "documented_nodes": 28,
+      "capture": "psionic/fixtures/residual-mlp/run-v3/test-scores.f32",
+      "capture_sha256": "35e20a66f432211a13504c11345d489a5fa69689f64e8c3644ae3c11c64cd813",
+      "row0_expected_f32_words_hex": [
+        "bceec2fa",
+        "3a3a3400",
+        "bcbd0230",
+        "3da25d48",
+        "3ce3bd90",
+        "b9496600",
+        "3b05d7e0",
+        "3f7d7689",
+        "3c7c2800",
+        "bdb5bf98"
+      ],
+      "matched_output_words": 10,
+      "truncated_state_refusal": "PASS; last byte omitted; all10 output sentinels123 preserved"
+    }
+  ],
+  "native": {
+    "O0": {
+      "status": "PASS",
+      "binary_sha256": "829195689ee03578a3cee65a724e9783226db14e42717665ed01c77fac943e98"
+    },
+    "O2": {
+      "status": "PASS",
+      "binary_sha256": "f5d8acab97e2044b2eb0599735e74a1f7bf6f4ba5ac28102409c5400855edca8"
+    },
+    "ASan_UBSan_O1": {
+      "status": "PASS",
+      "binary_sha256": "10ec8c5086d4515e5007c45843e88a7986db1e244c4b548918d54ff5f5cdf637"
+    }
+  },
+  "generated": {
+    "c_sha256": "3c45c2e1f7dceb7509987121fb97ddaabae49d759077cbaadc16f96ca4c2156f",
+    "header_sha256": "ea22354944a903b830b754bc5e9416764b3117e4468abecddfbdf42eb8eb2114",
+    "stdout_sha256": "02a569434a1e9fbd5fef95feb6ab609ebb98ba75d97c7ff90d3bc68cfa45b619",
+    "stdout_modes_identical": true,
+    "temporary_build_directory": "/tmp/openagents-residual-retained-reader-20261102",
+    "post_run_dependency_manifest": "dependency-manifest.json",
+    "prospective_freeze": false
+  },
+  "commands_and_attempts": [
+    {
+      "command": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax test psionic/examples/residual-retained-reader.coax --only 'retained reader public'",
+      "result": "PASS: initial construction metadata,1004232 steps,76ms",
+      "elapsed_seconds": 0.375153125
+    },
+    {
+      "command": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax test psionic/examples/residual-retained-reader.coax --only 'retained reader public' > /tmp/openagents-residual-retained-reader-20261102/check.log",
+      "result": "PASS: after changed construction replaced direct m.node assignment with local first variable;1004233 steps,78ms",
+      "note": "Second run justified by changed own constructor code, not a repeat on unchanged code."
+    },
+    {
+      "command": "/usr/bin/time -p /Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax c psionic/examples/residual-retained-reader.coax --library --header /tmp/openagents-residual-retained-reader-20261102/retained-reader.h > /tmp/openagents-residual-retained-reader-20261102/retained-reader.c",
+      "result": "PASS: checked default C and public ABI header",
+      "elapsed_seconds": 5.53
+    },
+    {
+      "command": "/usr/bin/time -p clang -std=c11 -O0 -fno-fast-math -ffp-contract=off -I/tmp/openagents-residual-retained-reader-20261102 /tmp/openagents-residual-retained-reader-20261102/retained-reader.c psionic/tests/residual-retained-reader.c -lm -o /tmp/openagents-residual-retained-reader-20261102/reader-O0",
+      "result": "PASS",
+      "elapsed_seconds": 0.32
+    },
+    {
+      "command": "/usr/bin/time -p clang -std=c11 -O2 -fno-fast-math -ffp-contract=off -I/tmp/openagents-residual-retained-reader-20261102 /tmp/openagents-residual-retained-reader-20261102/retained-reader.c psionic/tests/residual-retained-reader.c -lm -o /tmp/openagents-residual-retained-reader-20261102/reader-O2",
+      "result": "PASS",
+      "elapsed_seconds": 1.97
+    },
+    {
+      "command": "/usr/bin/time -p clang -std=c11 -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-fast-math -ffp-contract=off -I/tmp/openagents-residual-retained-reader-20261102 /tmp/openagents-residual-retained-reader-20261102/retained-reader.c psionic/tests/residual-retained-reader.c -lm -o /tmp/openagents-residual-retained-reader-20261102/reader-asan-ubsan",
+      "result": "PASS",
+      "elapsed_seconds": 4.13
+    },
+    {
+      "command": "/usr/bin/time -p /tmp/openagents-residual-retained-reader-20261102/reader-O0 /tmp/psionic-mnist-data/t10k-images-idx3-ubyte /tmp/psionic-mnist-data/t10k-labels-idx1-ubyte psionic/fixtures/mnist/run-v1/model.safetensors psionic/fixtures/mnist/run-v1/test-scores.f32 psionic/fixtures/cnn/run-v1/model.safetensors psionic/fixtures/cnn/run-v1/test-scores.f32 psionic/fixtures/residual-mlp/run-v3/model.safetensors psionic/fixtures/residual-mlp/run-v3/test-scores.f32 > /tmp/openagents-residual-retained-reader-20261102/O0.stdout",
+      "result": "PASS:3 models/30 score words and3 preserved-output refusals",
+      "elapsed_seconds": 0.41
+    },
+    {
+      "command": "/usr/bin/time -p /tmp/openagents-residual-retained-reader-20261102/reader-O2 /tmp/psionic-mnist-data/t10k-images-idx3-ubyte /tmp/psionic-mnist-data/t10k-labels-idx1-ubyte psionic/fixtures/mnist/run-v1/model.safetensors psionic/fixtures/mnist/run-v1/test-scores.f32 psionic/fixtures/cnn/run-v1/model.safetensors psionic/fixtures/cnn/run-v1/test-scores.f32 psionic/fixtures/residual-mlp/run-v3/model.safetensors psionic/fixtures/residual-mlp/run-v3/test-scores.f32 > /tmp/openagents-residual-retained-reader-20261102/O2.stdout",
+      "result": "PASS:3 models/30 score words and3 preserved-output refusals",
+      "elapsed_seconds": 0.21
+    },
+    {
+      "command": "/usr/bin/time -p env ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 /tmp/openagents-residual-retained-reader-20261102/reader-asan-ubsan /tmp/psionic-mnist-data/t10k-images-idx3-ubyte /tmp/psionic-mnist-data/t10k-labels-idx1-ubyte psionic/fixtures/mnist/run-v1/model.safetensors psionic/fixtures/mnist/run-v1/test-scores.f32 psionic/fixtures/cnn/run-v1/model.safetensors psionic/fixtures/cnn/run-v1/test-scores.f32 psionic/fixtures/residual-mlp/run-v3/model.safetensors psionic/fixtures/residual-mlp/run-v3/test-scores.f32 > /tmp/openagents-residual-retained-reader-20261102/asan-ubsan.stdout",
+      "result": "PASS:3 models/30 score words and3 preserved-output refusals; no ASan/UBSan diagnostics",
+      "elapsed_seconds": 0.75
+    },
+    {
+      "command": "cmp /tmp/openagents-residual-retained-reader-20261102/O0.stdout /tmp/openagents-residual-retained-reader-20261102/O2.stdout\ncmp /tmp/openagents-residual-retained-reader-20261102/O0.stdout /tmp/openagents-residual-retained-reader-20261102/asan-ubsan.stdout",
+      "result": "PASS:stdout byte identical"
+    },
+    {
+      "command": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax deps psionic/examples/residual-retained-reader.coax > /tmp/openagents-residual-retained-reader-20261102/deps.json",
+      "result": "PASS:post-run metadata only",
+      "elapsed_seconds": 5.583706875
+    },
+    {
+      "command": "Python tooling computes SHA-256 and sizes of existing test IDX files and compares them to decompressed identities in psionic/fixtures/mnist/dataset.json.",
+      "result": "PASS; no acquisition, optimizer work or runtime Python"
+    }
+  ],
+  "new_constructor_check": "PASS;1 selected authored check, no imported old suite",
+  "native_attempt_failures": 0,
+  "leak_check": "UNSUPPORTED on Apple; detect_leaks=0; ASan+UBSan pass is not leak qualification",
+  "retained_not_rerun": {
+    "optimizer_updates": 0,
+    "old_MLP_CNN_residual_gates": 0,
+    "training_quality_experiments": 0,
+    "downloads": 0,
+    "accuracy_claim": "Existing training/audit results RETAINED, not remeasured. Only original test row0 output equality observed."
+  },
+  "unqualified": [
+    "fresh training/unseen final test",
+    "full2048-row output reproduction/accuracy gates",
+    "independent numerical oracle",
+    "checkpoint/optimizer resume",
+    "crash/durable publication",
+    "GPU/compiled/higher-order convolution",
+    "general pooling/BatchNorm/convolution options/projections",
+    "full framework graduation/ResNet/CIFAR"
+  ],
+  "limits": "CPU f32,32-node graphs, first-order library profile; this program requests forward only. Caller arenas4000inputs/16384values/16384adjoints/4096flags; live and disjoint. Host accepts files<=16000000bytes and uses original test files, not training-image file."
+}

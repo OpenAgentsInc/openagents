@@ -799,6 +799,30 @@ convolution or optimizer implementation. The focused gate is:
 psionic/check.sh --only cnn
 ```
 
+## A same-shape residual block
+
+[`module-residual.coax`](../lib/module-residual.coax) adds
+`mdl_residual_conv1x1(m, parent, name, x, hidden)`. Its two named 1×1
+convolutions compute `x + contract(relu(expand(x)))`. The second restores
+`x`'s channels while N/H/W stay unchanged. The identity branch preserves
+negative values too: there is no final ReLU, crop, padding or implicit
+projection. Names are `name.expand.weight`, `name.expand.bias`,
+`name.contract.weight` and `name.contract.bias`.
+
+The [dataset-free example](../examples/residual-block.coax) zeros the learned
+branch and checks every signed input value passes through unchanged. Focused
+native equations independently check all 17 parameters and the complete input
+VJP of a multichannel rectangular block, including both paths of the skip.
+The [route and support table](../fixtures/residual/README.md) retain CPU f32,
+first-order eager gradients and the existing caller-owned arena contract.
+GPU/compiled/higher-order convolution, general residual projections and
+ResNet-18/CIFAR-10 are separate work. This constructor adds no IR operation.
+
+A [separate reader's consumer](../examples/residual-fresh-reader.coax)
+checks a nonzero branch, named-state reload and refusal through the public
+API. Its [record](../fixtures/residual-mlp/fresh-reader/reproduction.md)
+states the numerical and native scope separately from training acceptance.
+
 ## What is not here yet
 
 - **Broader CNNs and attention.** Valid stride-one CPU convolution is wired
@@ -830,6 +854,7 @@ psionic/check.sh --only cnn
 | `mdl_transient(m, owner, name, shape, value)`, `mdl_data(m, name, shape)` | Adds a tensor rebuilt each run, or a batch input. |
 | `mdl_node(m, node)`, `mdl_op(m, op, a, b)`, `mdl_relu(m, x)` | Adds an operation; its node is in `node`. |
 | `mdl_linear`, `mdl_layernorm`, `mdl_dropout`, `mdl_squared_error` | The layers. |
+| `mdl_residual_conv1x1(m, parent, name, x, hidden)` | Same-shape CPU 1×1 residual branch and identity add; load `module-residual.coax`. |
 | `mdl_conv2d(m, parent, name, x, out, kh, kw)` | Named valid stride-one CPU convolution, with OIHW weights and broadcast bias; load `module-cnn.coax`. |
 | `mdl_flatten(m, x)` | Batch-preserving contiguous reshape; load `module-cnn.coax`. |
 | `mdl_output(m, x)` | Chooses the output node (by default, the last). |

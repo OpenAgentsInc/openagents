@@ -1,0 +1,2 @@
+residual block: 1x1 expand 1->2, ReLU, 1x1 contract 2->1, identity add
+7 parameters, 11 nodes; zero branch preserves all 6 signed input values

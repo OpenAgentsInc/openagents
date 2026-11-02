@@ -1,0 +1,194 @@
+{
+  "schema": 1,
+  "profile": "psionic-mnist-residual-mlp-frozen-v1",
+  "status": "frozen before learning; no outcome claimed",
+  "frozen_at": "2026-11-02T04:17:59.534137+00:00",
+  "freeze_confirmation": "new architecture trial prospectively frozen before any optimizer update; initializer/shuffle roles and all optimizer/split/quality settings unchanged; prior shared test evaluation acknowledged",
+  "dataset_manifest": "../mnist/dataset.json",
+  "splits": {
+    "train": {
+      "source": "official train",
+      "first": 0,
+      "rows": 4096
+    },
+    "validation": {
+      "source": "official train",
+      "first": 4096,
+      "rows": 1024
+    },
+    "test": {
+      "source": "official test",
+      "first": 0,
+      "rows": 2048
+    }
+  },
+  "model": {
+    "shape": [
+      1,
+      1,
+      14,
+      14
+    ],
+    "activation": "ReLU",
+    "trainable_parameters": 3329,
+    "program_nodes": 28,
+    "prediction_node": 21,
+    "loss_node": 27,
+    "inputs_f32": 3536,
+    "registration_order": [
+      "x",
+      "target",
+      "block.expand.weight",
+      "block.expand.bias",
+      "block.contract.weight",
+      "block.contract.bias",
+      "fc1.weight",
+      "fc1.bias",
+      "fc2.weight",
+      "fc2.bias",
+      "loss.neg"
+    ],
+    "parameter_entries": [
+      {
+        "name": "block.expand.weight",
+        "base": 206,
+        "count": 2,
+        "shape": [
+          2,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "block.expand.bias",
+        "base": 208,
+        "count": 2,
+        "shape": [
+          1,
+          2,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "block.contract.weight",
+        "base": 210,
+        "count": 2,
+        "shape": [
+          1,
+          2,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "block.contract.bias",
+        "base": 212,
+        "count": 1,
+        "shape": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "fc1.weight",
+        "base": 213,
+        "count": 3136,
+        "shape": [
+          196,
+          16
+        ]
+      },
+      {
+        "name": "fc1.bias",
+        "base": 3349,
+        "count": 16,
+        "shape": [
+          16
+        ]
+      },
+      {
+        "name": "fc2.weight",
+        "base": 3365,
+        "count": 160,
+        "shape": [
+          16,
+          10
+        ]
+      },
+      {
+        "name": "fc2.bias",
+        "base": 3525,
+        "count": 10,
+        "shape": [
+          10
+        ]
+      }
+    ],
+    "initializer": {
+      "seed": 11821,
+      "generator": "splitmix64-top53-v1",
+      "counter": "registered entry base + element index",
+      "bound": "f32(1/sqrt(C*KH*KW)) for convolution, f32(1/sqrt(inputwidth)) for linear",
+      "formula": "f32(f64(bound) * (2 * ((cr_bits(seed,counter)>>11)/2^53) - 1))",
+      "bias": "same uniform initializer and bound as its layer weight"
+    },
+    "architecture": "identity residual: conv1x1 1to2,ReLU,conv1x1 2to1,add original input;flatten196;linear196to16;ReLU;linear16to10",
+    "layout": "NCHW input and activations, OIHW weights; cross-correlation, stride1, no padding/dilation/groups"
+  },
+  "training": {
+    "engine": "public mdl/autodiff/trainer/AdamW path; Coax owns arithmetic",
+    "optimizer": "AdamW",
+    "master_parameters": "binary64",
+    "moments": "binary64",
+    "compute_parameters": "binary32",
+    "published_row_gradients": "binary32 rounded after f64 reverse accumulation",
+    "loss": "SUM over ten one-hot squared errors per row, not mean over classes",
+    "microbatch": 1,
+    "accumulate": 16,
+    "gradient_reduction": "mean over sixteen rows",
+    "learning_rate": 0.003,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "epsilon": 1e-08,
+    "decay": 0.0,
+    "clip": 1.0,
+    "parameter_bound": 16.0,
+    "epochs": 12,
+    "shuffle": true,
+    "shuffle_seed": 11822,
+    "shuffle_algorithm": "descending Fisher-Yates using cr_bits(seed,counter)%(i+1); each epoch continues the previous permutation, counter starts at epoch*(rows-1)",
+    "schedule": "constant",
+    "every": 0,
+    "early_stopping": false
+  },
+  "evaluation": {
+    "validation": "initial and at fixed epoch boundaries; no selection or tuning",
+    "official_test": "initial and final only, fixed by this profile; never feeds gradients or selection",
+    "baseline": "constant classifier choosing the most frequent TRAINING label; lowest label on a tie; score on the same official test slice",
+    "selection": "one fixed model; no search, tuning or retries chosen by test results",
+    "cross_trial_scope": "The same2048 official-test slice was observed in the prior residual linear-head trial. Architecture choice is not independent of that evaluation; this is another prospectively frozen comparison, not a pristine unseen final test."
+  },
+  "acceptance": {
+    "final_test_accuracy_min": 0.8,
+    "final_test_accuracy_above_majority_baseline_min": 0.5,
+    "final_test_mean_sse_less_than_initial_test_mean_sse": true,
+    "require_every_condition": true
+  },
+  "reproduction": {
+    "canonical_learning_runs": 1,
+    "checkpoint": "end of epoch6",
+    "resume": "replay exactly the next optimizer UPDATE (same16rows) from checkpoint; compare all master parameters, first/second moments, order and cursor bits to the canonical next update; do not rerun six epochs",
+    "export_reload": "final state dictionary reload reproduces predictions on all2048testrows",
+    "source_binding": "before learning, root writes separate freeze record with source closure, config/preprocess/dataset identities, native C/header and binary hashes"
+  },
+  "prohibited": [
+    "Python training or optimizer steps",
+    "tuning after validation or test observations",
+    "changing sample splits, seeds, epochs or thresholds to obtain a pass",
+    "counting tooling math as a product runtime"
+  ]
+}

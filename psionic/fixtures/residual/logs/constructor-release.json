@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+    "test",
+    "psionic/lib/module-residual.coax",
+    "--library",
+    "--only",
+    "residual modules:",
+    "--release",
+    "--evidence",
+    "/tmp/residual-framework-20261102/constructor-release.evidence.json"
+  ],
+  "exit": 0,
+  "seconds": 0.21838062501046807
+}

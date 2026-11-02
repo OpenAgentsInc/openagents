@@ -1,0 +1,4 @@
+psionic/lib/residual-policy.coax:61:5: error[E0406]: assertion failed
+      #assert rn_workspace(true,1977,2184,16384,16384,4096,2909);
+      ^
+  note: in #test residual CNN application workspace admission checks identity and every capacity endpoint

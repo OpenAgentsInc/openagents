@@ -1,0 +1,33 @@
+...F
+======================================================================
+FAIL: test_valid_complete_freeze_invokes_only_its_binary_data_and_manifest (__main__.FreezeLaunchTests.test_valid_complete_freeze_invokes_only_its_binary_data_and_manifest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/residual_launch_test.py", line 32, in test_valid_complete_freeze_invokes_only_its_binary_data_and_manifest
+    self.assertEqual(argv,[str(self.root/'native/residual'),'--train',str(self.root/'data'),str(self.root/'experiment.json'),str(self.root/'new-run')])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: ['/private/var/folders/v2/0ls5nf1j509db69fk7[287 chars]run'] != ['/var/folders/v2/0ls5nf1j509db69fk73k7ms400[263 chars]run']
+
+First differing element 0:
+'/private/var/folders/v2/0ls5nf1j509db69fk7[38 chars]dual'
+'/var/folders/v2/0ls5nf1j509db69fk73k7ms400[30 chars]dual'
+
+- ['/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmpk17xhegf/native/residual',
+?   --------
+
++ ['/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmpk17xhegf/native/residual',
+   '--train',
+-  '/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmpk17xhegf/data',
+?   --------
+
++  '/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmpk17xhegf/data',
+-  '/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmpk17xhegf/experiment.json',
+?   --------
+
++  '/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmpk17xhegf/experiment.json',
+   '/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmpk17xhegf/new-run']
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.035s
+
+FAILED (failures=1)

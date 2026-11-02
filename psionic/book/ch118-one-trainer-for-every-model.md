@@ -1058,6 +1058,64 @@ transforms explicitly refuse convolution until their own derivative rules
 exist. Broader completion stays tracked in
 [#12626](https://github.com/OpenAgentsInc/openagents/issues/12626).
 
+## A residual model uses the same trainer
+
+The [public residual block](../lib/module-residual.coax) composes two 1×1
+convolutions and an identity skip. The
+[new consumer](../lib/residual-mlp-classifier.coax) adds a 196→16→10 MLP head,
+using the same `mtr_plan`/`mtr_run`, `tr_*`, named-state and checkpoint APIs.
+Its definition returns `RmlModel.{model, prediction}`: inference uses that
+explicit node rather than guessing where the scores occur in the graph.
+No IR, tape, trainer or optimizer implementation changes for this model.
+The [standalone artifact recipe](../fixtures/residual-mlp/INFERENCE.md) includes
+the checked constructor, all eight tensor names/shapes, strict `mdl_load`,
+and forward-only inference through its retained prediction node. File bytes
+come from the caller's ordinary platform I/O.
+
+This is a separately frozen 3,329-parameter, 28-node CPU profile, with eight
+saved tensors. Initializer 11821 and shuffle 11822 are distinct RNG roles in
+one trial. AdamW rate 0.003, twelve epochs, data partitions and the original
+80% accuracy/50-point majority-margin gates stay fixed. The full original
+first-image numerical check covers every 3,329 parameter derivative; observed
+error is zero. The [recipe and support table](../fixtures/residual-mlp/README.md)
+provide dataset-free state/gradient checks and the optional authenticated
+first-image preflight, without starting learning.
+
+All attempts remain visible. The first linear-head launch was interrupted
+and unqualified after a tooling freeze error. Its completed identical trial
+reached 1,576/2,048 (76.953125%) and failed the frozen accuracy gate. The new
+MLP-head architecture reaches 1,789/2,048 (87.353515625%), versus 242/2,048 for
+the training-majority baseline; test mean per-image summed squared error falls from
+1.1571417636296246 to 0.24395134977035582. It performs 3,072 updates in 76.15598s
+on a shared host. The same evaluation rows were observed across these
+architecture trials, so this is not an independent unseen-final-test result
+or a controlled architecture comparison. No within-trial tuning or gate
+change is hidden by the successful later result.
+
+The [independent audit](../fixtures/residual-mlp/run-v3/audit.json) checks all
+80,236 next-update checkpoint bytes and shuffle entries, and verifies the
+3,329 exported F32 words in eight named tensors. Coax reloads them into a
+fresh model and compares all 20,480 score words. The
+[complete freeze](../fixtures/residual-mlp/source-freeze.json) binds source,
+compiler/CC/provenance, native C/header/binary and dataset before learning;
+the launcher rehashes them after return. The failed earlier result and
+interrupted launch keep their own records. This advances bounded residual
+composition/training/state coverage; ResNet/CIFAR, broader operators and
+unfamiliar-consumer graduation remain open.
+
+A [separate reader](../fixtures/residual-mlp/fresh-reader/reproduction.md)
+then wrote a 63-line public-API consumer with a nonzero learned branch,
+independent expected values, named-state reload and refusal checks. The first
+attempt exposed a missing saved-artifact recipe. After that public recipe
+was added, the [documented follow-up](../fixtures/residual-mlp/fresh-reader-artifacts/reproduction.md)
+used a [53-line Coax library](../examples/residual-retained-reader.coax) and
+[43-line C host](../tests/residual-retained-reader.c) to load the retained MLP, CNN and
+residual artifacts. All thirty original row-zero score words match in O0,
+O2 and ASan/UBSan; truncated artifacts preserve caller output. These were
+forward-only checks, with no training, downloads or runtime modifications.
+The follow-up was explicitly assisted by improved author documentation;
+fresh training, full accuracy reproduction and framework graduation remain open.
+
 ## What is not here yet
 
 - **Broader CNN training.** The bounded CPU CNN above uses the shared

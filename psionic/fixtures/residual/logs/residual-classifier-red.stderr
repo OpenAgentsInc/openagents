@@ -1,0 +1,222 @@
+psionic/lib/checkpoint/resume.coax:8:1: error[E0372]: type 'RsStatus' is already declared at line 10
+  RsStatus :: enum u8 {ok;data;optimizer;number;}
+  ^
+psionic/lib/checkpoint/resume.coax:39:61: error[E0351]: enum 'RsStatus' has no member 'optimizer'
+      if r.status!=AwStatus.ok {return RsStep.{status=RsStatus.optimizer,run=run};}
+                                                              ^
+  fix: its members are: ok data identity capacity model training checkpoint artifact quality
+psionic/lib/residual-classifier.coax:26:31: error[E0317]: argument 1 of 'mtr_plan' is MdlModel, given [32] u8
+      m:=rs_model();q:=mtr_plan(m);
+                                ^
+psionic/lib/residual-classifier.coax:27:14: error[E0351]: [32] u8 has no field 'status'
+      #assert m.status==MdlStatus.ok && m.program.count==23 && m.program.output==22;
+               ^
+  fix: it has '.count'
+psionic/lib/residual-classifier.coax:27:40: error[E0351]: [32] u8 has no field 'program'
+      #assert m.status==MdlStatus.ok && m.program.count==23 && m.program.output==22;
+                                         ^
+  fix: it has '.count'
+psionic/lib/residual-classifier.coax:27:63: error[E0351]: [32] u8 has no field 'program'
+      #assert m.status==MdlStatus.ok && m.program.count==23 && m.program.output==22;
+                                                                ^
+  fix: it has '.count'
+psionic/lib/residual-classifier.coax:29:14: error[E0351]: [32] u8 has no field 'entries'
+      #assert m.entries[2].base==206 && m.entries[6].base==213 && m.entries[7].base==2173;
+               ^
+  fix: it has '.count'
+psionic/lib/residual-classifier.coax:29:40: error[E0351]: [32] u8 has no field 'entries'
+      #assert m.entries[2].base==206 && m.entries[6].base==213 && m.entries[7].base==2173;
+                                         ^
+  fix: it has '.count'
+psionic/lib/residual-classifier.coax:29:66: error[E0351]: [32] u8 has no field 'entries'
+      #assert m.entries[2].base==206 && m.entries[6].base==213 && m.entries[7].base==2173;
+                                                                   ^
+  fix: it has '.count'
+psionic/lib/residual-classifier.coax:30:8: error[E0315]: procedure 'rs_config' is not declared
+      c:=rs_config();#assert c.optimizer==TrOptimizer.adamw && c.storage==TrStorage.binary64;
+         ^
+psionic/lib/checkpoint/resume.coax:177:147: error[E0351]: enum 'RsStatus' has no member 'optimizer'
+      run.cursor.offset=0;groups[0].count=255;s=rs_step(docs[..],tokens[..],groups[..],AwPolicy.{},run,w[..],m[..],v[..]);#assert s.status==RsStatus.optimizer && s.run.revision==4 && s.run.cursor.offset==0 && w[0]==0;
+                                                                                                                                                    ^
+  fix: its members are: ok data identity capacity model training checkpoint artifact quality
+psionic/lib/residual-policy.coax:25:13: error[E0315]: procedure 'rs_memory' is not declared
+      #assert rs_memory(base);
+              ^
+psionic/lib/residual-policy.coax:35:18: error[E0315]: procedure 'rs_memory' is not declared
+          #assert !rs_memory(m);
+                   ^
+psionic/lib/residual-policy.coax:37:35: error[E0315]: procedure 'rs_memory' is not declared
+      m:=base;m.manifest=0;#assert !rs_memory(m);
+                                    ^
+psionic/lib/residual-policy.coax:38:28: error[E0315]: procedure 'rs_memory' is not declared
+      m.manifest=-1;#assert !rs_memory(m);
+                             ^
+psionic/lib/residual-policy.coax:39:26: error[E0315]: procedure 'rs_memory' is not declared
+      m.manifest=2;#assert rs_memory(m);
+                           ^
+psionic/lib/residual-policy.coax:40:32: error[E0315]: procedure 'rs_memory' is not declared
+      m.manifest=1048575;#assert rs_memory(m);
+                                 ^
+psionic/lib/residual-policy.coax:41:32: error[E0315]: procedure 'rs_memory' is not declared
+      m.manifest=1048576;#assert rs_memory(m);
+                                 ^
+psionic/lib/residual-policy.coax:42:33: error[E0315]: procedure 'rs_memory' is not declared
+      m.manifest=1048577;#assert !rs_memory(m);
+                                  ^
+psionic/lib/residual-policy.coax:43:41: error[E0315]: procedure 'rs_memory' is not declared
+      m=base;m.export_file=32767;#assert !rs_memory(m);
+                                          ^
+psionic/lib/residual-policy.coax:44:33: error[E0315]: procedure 'rs_memory' is not declared
+      m.export_file=32769;#assert rs_memory(m);
+                                  ^
+psionic/lib/residual-policy.coax:45:30: error[E0315]: procedure 'rs_memory' is not declared
+      m.export_file=0;#assert !rs_memory(m);
+                               ^
+psionic/lib/residual-policy.coax:49:13: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert rs_workspace(true,1977,2184,16384,16384,4096,1977);
+              ^
+psionic/lib/residual-policy.coax:50:14: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert !rs_workspace(false,1977,2184,16384,16384,4096,1977);
+               ^
+psionic/lib/residual-policy.coax:51:14: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert !rs_workspace(true,2909,2184,16384,16384,4096,1977);
+               ^
+psionic/lib/residual-policy.coax:52:14: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert !rs_workspace(true,2911,2184,16384,16384,4096,1977);
+               ^
+psionic/lib/residual-policy.coax:53:14: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert !rs_workspace(true,1977,3116,16384,16384,4096,1977);
+               ^
+psionic/lib/residual-policy.coax:54:14: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert !rs_workspace(true,1977,3118,16384,16384,4096,1977);
+               ^
+psionic/lib/residual-policy.coax:55:13: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert rs_workspace(true,1977,2184,16383,16384,4096,1977);
+              ^
+psionic/lib/residual-policy.coax:56:14: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert !rs_workspace(true,1977,2184,16385,16384,4096,1977);
+               ^
+psionic/lib/residual-policy.coax:57:13: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert rs_workspace(true,1977,2184,16384,16383,4096,1977);
+              ^
+psionic/lib/residual-policy.coax:58:14: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert !rs_workspace(true,1977,2184,16384,16385,4096,1977);
+               ^
+psionic/lib/residual-policy.coax:59:13: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert rs_workspace(true,1977,2184,16384,16384,4095,1977);
+              ^
+psionic/lib/residual-policy.coax:60:14: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert !rs_workspace(true,1977,2184,16384,16384,4097,1977);
+               ^
+psionic/lib/residual-policy.coax:61:13: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert rs_workspace(true,1977,2184,16384,16384,4096,2909);
+              ^
+psionic/lib/residual-policy.coax:62:14: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert !rs_workspace(true,1977,2184,16384,16384,4096,2911);
+               ^
+psionic/lib/residual-policy.coax:63:13: error[E0315]: procedure 'rs_workspace' is not declared
+      #assert rs_workspace(true,1977,2184,0,0,0,0);
+              ^
+psionic/lib/residual-policy.coax:67:13: error[E0315]: procedure 'rs_capture' is not declared
+      #assert rs_capture(1977,1977,10,196);
+              ^
+psionic/lib/residual-policy.coax:71:18: error[E0315]: procedure 'rs_capture' is not declared
+          #assert !rs_capture(n[0],n[1],n[2],n[3]);
+                   ^
+psionic/lib/residual-policy.coax:76:13: error[E0315]: procedure 'rs_artifacts' is not declared
+      #assert rs_artifacts(MC_TRAIN_IMAGES_SHA,MC_TRAIN_LABELS_SHA,MC_TEST_IMAGES_SHA,MC_TEST_LABELS_SHA);
+              ^
+psionic/lib/residual-policy.coax:81:18: error[E0315]: procedure 'rs_artifacts' is not declared
+          #assert !rs_artifacts(a,b,c,d);
+                   ^
+psionic/lib/residual-policy.coax:86:13: error[E0315]: procedure 'rs_profile' is not declared
+      #assert rs_profile(60000,10000,1977,2184);
+              ^
+psionic/lib/residual-policy.coax:87:14: error[E0315]: procedure 'rs_profile' is not declared
+      #assert !rs_profile(59999,10000,1977,2184) && !rs_profile(60001,10000,1977,2184);
+               ^
+psionic/lib/residual-policy.coax:87:52: error[E0315]: procedure 'rs_profile' is not declared
+      #assert !rs_profile(59999,10000,1977,2184) && !rs_profile(60001,10000,1977,2184);
+                                                     ^
+psionic/lib/residual-policy.coax:88:14: error[E0315]: procedure 'rs_profile' is not declared
+      #assert !rs_profile(60000,9999,1977,2184) && !rs_profile(60000,10001,1977,2184);
+               ^
+psionic/lib/residual-policy.coax:88:51: error[E0315]: procedure 'rs_profile' is not declared
+      #assert !rs_profile(60000,9999,1977,2184) && !rs_profile(60000,10001,1977,2184);
+                                                    ^
+psionic/lib/residual-policy.coax:89:14: error[E0315]: procedure 'rs_profile' is not declared
+      #assert !rs_profile(60000,10000,2909,2184) && !rs_profile(60000,10000,2911,2184);
+               ^
+psionic/lib/residual-policy.coax:89:52: error[E0315]: procedure 'rs_profile' is not declared
+      #assert !rs_profile(60000,10000,2909,2184) && !rs_profile(60000,10000,2911,2184);
+                                                     ^
+psionic/lib/residual-policy.coax:90:14: error[E0315]: procedure 'rs_profile' is not declared
+      #assert !rs_profile(60000,10000,1977,3116) && !rs_profile(60000,10000,1977,3118);
+               ^
+psionic/lib/residual-policy.coax:90:52: error[E0315]: procedure 'rs_profile' is not declared
+      #assert !rs_profile(60000,10000,1977,3116) && !rs_profile(60000,10000,1977,3118);
+                                                     ^
+psionic/lib/residual-policy.coax:93:13: error[E0315]: procedure 'rs_accept' is not declared
+      #assert rs_accept(2048,1639,615,1,0.5,true,true);
+              ^
+psionic/lib/residual-policy.coax:94:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1638,200,1,0.5,true,true);
+               ^
+psionic/lib/residual-policy.coax:95:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1639,616,1,0.5,true,true);
+               ^
+psionic/lib/residual-policy.coax:96:13: error[E0315]: procedure 'rs_accept' is not declared
+      #assert rs_accept(2048,1640,616,1,0.5,true,true);
+              ^
+psionic/lib/residual-policy.coax:97:13: error[E0315]: procedure 'rs_accept' is not declared
+      #assert rs_accept(2048,1639,0,1000000,0,true,true);
+              ^
+psionic/lib/residual-policy.coax:98:13: error[E0315]: procedure 'rs_accept' is not declared
+      #assert rs_accept(2048,2048,1024,1,0,true,true);
+              ^
+psionic/lib/residual-policy.coax:99:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,2048,1025,1,0,true,true);
+               ^
+psionic/lib/residual-policy.coax:102:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1700,200,1,1,true,true);
+               ^
+psionic/lib/residual-policy.coax:103:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1700,200,1,1.0001,true,true);
+               ^
+psionic/lib/residual-policy.coax:104:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1700,200,-1,0,true,true);
+               ^
+psionic/lib/residual-policy.coax:105:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1700,200,1,-0.001,true,true);
+               ^
+psionic/lib/residual-policy.coax:106:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1700,200,1e12,0,true,true);
+               ^
+psionic/lib/residual-policy.coax:107:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1700,200,1,0.5,false,true);
+               ^
+psionic/lib/residual-policy.coax:108:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1700,200,1,0.5,true,false);
+               ^
+psionic/lib/residual-policy.coax:111:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(0,0,0,1,0.5,true,true);
+               ^
+psionic/lib/residual-policy.coax:112:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2047,1700,200,1,0.5,true,true);
+               ^
+psionic/lib/residual-policy.coax:113:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2049,1700,200,1,0.5,true,true);
+               ^
+psionic/lib/residual-policy.coax:114:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,-1,200,1,0.5,true,true);
+               ^
+psionic/lib/residual-policy.coax:115:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,2049,200,1,0.5,true,true);
+               ^
+psionic/lib/residual-policy.coax:116:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1700,-1,1,0.5,true,true);
+               ^
+psionic/lib/residual-policy.coax:117:14: error[E0315]: procedure 'rs_accept' is not declared
+      #assert !rs_accept(2048,1700,2049,1,0.5,true,true);
+               ^
+71 errors

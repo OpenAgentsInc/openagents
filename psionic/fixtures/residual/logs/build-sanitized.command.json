@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "bash",
+    "psionic/platform/residual-build.sh",
+    "/tmp/residual-framework-20261102/sanitized",
+    "release",
+    "1"
+  ],
+  "exit": 0,
+  "seconds": 37.14742816693615
+}

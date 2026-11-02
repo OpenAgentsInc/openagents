@@ -1,0 +1,50 @@
+EEEEE
+======================================================================
+ERROR: test_existing_runnable_inventory_is_unchanged (__main__.Inventory.test_existing_runnable_inventory_is_unchanged)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/book_inventory_test.py", line 19, in test_existing_runnable_inventory_is_unchanged
+    self.assertEqual(book.example_inventory({"examples": [example]}, {"main.coax"}), ([example], []))
+                     ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'book' has no attribute 'example_inventory'
+
+======================================================================
+ERROR: test_library_cannot_claim_evaluator_transcripts (__main__.Inventory.test_library_cannot_claim_evaluator_transcripts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/book_inventory_test.py", line 44, in test_library_cannot_claim_evaluator_transcripts
+    book.example_inventory({"examples": [], "libraries": [library]}, {"library.coax"})
+    ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'book' has no attribute 'example_inventory'
+
+======================================================================
+ERROR: test_library_is_separate_from_runnable_examples (__main__.Inventory.test_library_is_separate_from_runnable_examples)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/book_inventory_test.py", line 23, in test_library_is_separate_from_runnable_examples
+    examples, libraries = book.example_inventory({"examples": [], "libraries": [library]}, {"library.coax"})
+                          ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'book' has no attribute 'example_inventory'
+
+======================================================================
+ERROR: test_library_requires_kind_consumer_and_evidence (__main__.Inventory.test_library_requires_kind_consumer_and_evidence)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/book_inventory_test.py", line 38, in test_library_requires_kind_consumer_and_evidence
+    book.example_inventory({"examples": [], "libraries": [library]}, {"library.coax"})
+    ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'book' has no attribute 'example_inventory'
+
+======================================================================
+ERROR: test_missing_and_duplicate_sources_refuse (__main__.Inventory.test_missing_and_duplicate_sources_refuse)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-residual-framework-20261101/psionic/tests/book_inventory_test.py", line 31, in test_missing_and_duplicate_sources_refuse
+    book.example_inventory(manifest, actual)
+    ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'book' has no attribute 'example_inventory'
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.003s
+
+FAILED (errors=5)

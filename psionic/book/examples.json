@@ -2699,6 +2699,38 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/residual-block.coax",
+      "chapter": "psionic/book/ch117-models-are-compositions-of-modules.md",
+      "stdout": "psionic/fixtures/residual-block.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/residual-fresh-reader.coax",
+      "chapter": "psionic/book/ch117-models-are-compositions-of-modules.md",
+      "stdout": "psionic/fixtures/residual-mlp/fresh-reader/native.stdout",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    }
+  ],
+  "libraries": [
+    {
+      "source": "psionic/examples/residual-retained-reader.coax",
+      "kind": "native-library",
+      "chapter": "psionic/book/ch118-one-trainer-for-every-model.md",
+      "consumer": "psionic/tests/residual-retained-reader.c",
+      "evidence": [
+        "psionic/fixtures/residual-mlp/fresh-reader-artifacts/reproduction.json",
+        "psionic/fixtures/residual-mlp/fresh-reader-artifacts/reproduction.md"
+      ]
     }
   ]
 }

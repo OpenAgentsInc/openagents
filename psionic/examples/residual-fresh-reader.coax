@@ -1,0 +1,63 @@
+#import "Basic";
+#load "../lib/module-residual.coax";
+
+// Written from the public residual recipe/book/example only. No learning.
+#test "fresh reader metadata and names" {
+    m:=reader_model();
+    #assert m.status==MdlStatus.ok && m.program.count==12 && m.top==20;
+    #assert mdl_parameters(m)==7 && mdl_state_floats(m)==8;
+    #assert mdl_find(m,"reader.expand.weight")>=0 && mdl_find(m,"reader.contract.bias")>=0;
+    #assert mdl_find(m,"calibration")>=0 && mdl_find(m,"absent")== -1;
+}
+#test "fresh reader nonzero inference and named state roundtrip" {#assert reader_verify()>0;}
+
+reader_model :: ()->MdlModel {
+    m:=mdl_data(mdl_model(),"x",TvShape.{rank=4,dims=[4]int.[1,2,2,3]});
+    m=mdl_residual_conv1x1(m,MDL_ROOT,"reader",m.node,1);prediction:=m.node;
+    m=mdl_buffer(m,MDL_ROOT,"calibration",TvShape.{rank=1,dims=[4]int.[1,0,0,0]},MdlInit.constant,0.75);
+    return mdl_output(m,prediction);
+}
+reader_data :: (inputs:[]f32) {
+    for i:0..<6 {inputs[i]=f32(f64(i-2)/2);inputs[6+i]=0.5;}
+}
+reader_weights :: (m:MdlModel,inputs:[]f32) {
+    e:=m.entries[mdl_find(m,"reader.expand.weight")];inputs[e.base]=1;inputs[e.base+1]= -1;
+    e=m.entries[mdl_find(m,"reader.expand.bias")];inputs[e.base]=0.5;
+    e=m.entries[mdl_find(m,"reader.contract.weight")];inputs[e.base]=0.5;inputs[e.base+1]= -1;
+    e=m.entries[mdl_find(m,"reader.contract.bias")];inputs[e.base]=0.25;inputs[e.base+1]=0.5;
+}
+reader_infer :: (m:MdlModel,inputs:[]f32,output:[]f32) {
+    tape:=ad_tape(m.program,AdMode.{enabled=false},OrRegistry.{});
+    values:[128]f32;adjoints:[128]f64;flags:[64]u8;
+    run:=ad_run(tape,AdCursor.{},inputs,values[..],adjoints[..],flags[..]);
+    #assert run.status==AdStatus.ok;
+    #assert ad_value(tape,run.cursor,m.program.output,inputs,values[..],output)==AdStatus.ok;
+}
+reader_verify :: ()->int {
+    m:=reader_model();inputs:[20]f32;fresh:[20]f32;out:[12]f32;again:[12]f32;
+    #assert mdl_init(m,20261101,inputs[..])==MdlStatus.ok;
+    reader_data(inputs[..]);reader_weights(m,inputs[..]);reader_infer(m,inputs[..],out[..]);
+    expected:=[12]f32.[-0.75,-0.25,0.25,1,1.75,2.5,1,1,1,0.5,0,-0.5];
+    for i:0..<12 {#assert out[i]==expected[i];}
+    bytes:[2048]u8;stage:[2048]u8;saved:=mdl_save(m,inputs[..],bytes[..],stage[..]);
+    #assert saved.status==MdlStatus.ok && saved.tensors==5 && saved.written>0;
+    n:=reader_model();#assert mdl_init(n,99,fresh[..])==MdlStatus.ok;reader_data(fresh[..]);
+    loaded:=mdl_load(n,bytes[0..<saved.written],fresh[..],true);
+    #assert loaded.status==MdlStatus.ok && loaded.loaded==5;
+    for e:m.entries[0..<m.count] {if mdl_saved(e) {for j:0..<e.size {#assert f32_bits(inputs[e.base+j])==f32_bits(fresh[e.base+j]);}}}
+    reader_infer(n,fresh[..],again[..]);
+    for i:0..<12 {#assert f32_bits(out[i])==f32_bits(again[i]);}
+    // A changed required name refuses before modifying any caller input.
+    extra:=mdl_buffer(n,MDL_ROOT,"missing",TvShape.{rank=1,dims=[4]int.[1,0,0,0]},MdlInit.constant,1);
+    held:[21]f32;for i:0..<21 {held[i]=123;}
+    refused:=mdl_load(extra,bytes[0..<saved.written],held[..],true);
+    #assert refused.status==MdlStatus.missing;
+    for i:0..<21 {#assert held[i]==123;}
+    return saved.written;
+}
+main :: () {
+    written:=reader_verify();
+    print("fresh reader: 12 graph nodes, 7 parameters, 5 saved tensors, % bytes\n",written);
+    print("12 independent nonzero-branch outputs matched; named weights/buffer and inference reload matched bitwise\n");
+    print("missing required key refused with all 21 caller values preserved; training updates 0\n");
+}

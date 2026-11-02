@@ -1,0 +1,65 @@
+// Native experiment driver. Admission and acceptance are decided by the
+// separate data, module and residual-mlp-policy authority units; this file composes
+// those results and the public trainer. The reusable classifier has no foreign effects.
+#load "residual-mlp-classifier.coax";
+
+rml_progress :: (step:int,phase:int,loss:f64,correct:int) #foreign;
+
+rml_experiment :: (images:[]u8,labels:[]u8,test_images:[]u8,test_labels:[]u8,manifest:[]u8,trace:[]f64,checkpoint:[]u8,pointer:[]u8,final_checkpoint:[]u8,final_pointer:[]u8,export_file:[]u8,predictions:[]f32,next_record:[]u8,replay_record:[]u8,next_order:[]int,replay_order:[]int,initial_predictions:[]f32)->RmlReport #export_c {
+    train:=mn_admit(images,labels);test:=mn_admit(test_images,test_labels);
+    if train.status!=MnStatus.ok || test.status!=MnStatus.ok {return RmlReport.{status=RmlStatus.data};}
+    def:=rml_definition();m:=def.model;q:=mtr_plan(m);w:[1]RmlWork;weights:[1]RmlWeights;c:=rml_config();
+    if !rml_profile(train.count,test.count,q.parameters,q.inputs) || !rml_fit(q,w[..]) {return RmlReport.{status=RmlStatus.model};}
+    memory:=RmlMemory.{manifest=manifest.count,trace=trace.count,checkpoint=checkpoint.count,final_checkpoint=final_checkpoint.count,
+        pointer=pointer.count,final_pointer=final_pointer.count,export_file=export_file.count,predictions=predictions.count,
+        next_record=next_record.count,replay_record=replay_record.count,next_order=next_order.count,replay_order=replay_order.count,initial_predictions=initial_predictions.count};
+    if !rml_memory(memory) {return RmlReport.{status=RmlStatus.capacity};}
+
+    a:=rml_digest(images);b:=rml_digest(labels);d:=rml_digest(test_images);e:=rml_digest(test_labels);
+    if !rml_artifacts(a,b,d,e) {return RmlReport.{status=RmlStatus.identity};}
+    #assert mdl_init(m,11821,w[0].inputs[..])==MdlStatus.ok;rml_move(m,weights[0].p[..],w[0].inputs[..],false);
+    ids:=rml_ids(c,manifest,weights[0].p[..],a,b,d,e);
+    histogram:[10]int;for j:0..<RML_TRAIN {histogram[cast(int)labels[8+j]]+=1;}
+    majority:=0;for j:1..<10 {if histogram[j]>histogram[majority] {majority=j;}}
+    t:=rml_inference(m,def.prediction);none:[1]PkDoc;nothing:[1]u8;empty:[1]f32;
+    initial:=rml_eval(m,t,def.prediction,weights[0].p[..],w[..],test_images,test_labels,test,0,RML_TEST,majority,initial_predictions);
+    validation:=rml_eval(m,t,def.prediction,weights[0].p[..],w[..],images,labels,train,RML_TRAIN,RML_VALID,majority,empty[0..<0]);
+    trace[0]=0;trace[1]=validation.loss;trace[2]=f64(validation.correct);trace[3]=0;
+    rml_progress(0,0,validation.loss,validation.correct);
+    order:[4096]int;begin:=tr_begin(c,RML_PARAMS,none[0..<0],nothing[0..<0],order[..]);#assert begin.status==TrStatus.ok;run:=begin.run;
+    total:[3329]f64;stage:[9987]f64;next_pointer:[80]u8;
+    while run.revision<tr_steps(c) {
+        step:=rml_batch(q,c,run,weights[..],w[..],images,labels,train,order[..],total[..],stage[..]);
+        if step.status!=TrStatus.ok {return RmlReport.{status=RmlStatus.training,steps=run.revision};}run=step.run;
+        if run.revision==1536 {#assert tr_save(ids,run,weights[0].p[..],weights[0].m[..],weights[0].v[..],checkpoint,pointer)==CkStatus.ok;}
+        if run.revision==1537 {#assert tr_save(ids,run,weights[0].p[..],weights[0].m[..],weights[0].v[..],next_record,next_pointer[..])==CkStatus.ok;for j:0..<4096 {next_order[j]=order[j];}}
+        if run.revision%256==0 {
+            validation=rml_eval(m,t,def.prediction,weights[0].p[..],w[..],images,labels,train,RML_TRAIN,RML_VALID,majority,empty[0..<0]);epoch:=run.revision/256;
+            trace[epoch*4]=f64(epoch);trace[epoch*4+1]=validation.loss;trace[epoch*4+2]=f64(validation.correct);trace[epoch*4+3]=step.loss;
+            rml_progress(run.revision,1,validation.loss,validation.correct);
+        }
+    }
+    final:=rml_eval(m,t,def.prediction,weights[0].p[..],w[..],test_images,test_labels,test,0,RML_TEST,majority,predictions);
+    #assert tr_save(ids,run,weights[0].p[..],weights[0].m[..],weights[0].v[..],final_checkpoint,final_pointer)==CkStatus.ok;
+    // Replay ONE optimizer update from the epoch-six checkpoint, not a second
+    // six-epoch run. Compare the complete next checkpoint, including moments.
+    resumed:[1]RmlWeights;back:=tr_resume(c,ids,pointer,checkpoint,none[0..<0],nothing[0..<0],resumed[0].p[..],resumed[0].m[..],resumed[0].v[..],order[..]);
+    #assert back.status==CkStatus.ok && back.run.revision==1536;
+    replay:=rml_batch(q,c,back.run,resumed[..],w[..],images,labels,train,order[..],total[..],stage[..]);#assert replay.status==TrStatus.ok;
+    gp:[80]u8;#assert tr_save(ids,replay.run,resumed[0].p[..],resumed[0].m[..],resumed[0].v[..],replay_record,gp[..])==CkStatus.ok;
+    equal:=true;for j:0..<80236 {equal=equal && replay_record[j]==next_record[j];}for j:0..<80 {equal=equal && gp[j]==next_pointer[j];}for j:0..<4096 {replay_order[j]=order[j];equal=equal && next_order[j]==order[j];}
+    // Export the compute weights, independently rebuild the model, load by
+    // tensor name, and compare every held-out score word after reloading.
+    rml_move(m,weights[0].p[..],w[0].inputs[..],true);export_stage:[32768]u8;
+    saved:=mdl_save(m,w[0].inputs[..],export_file,export_stage[..]);#assert saved.status==MdlStatus.ok;
+    fresh_def:=rml_definition();fresh:=fresh_def.model;fresh_inputs:[3536]f32;#assert mdl_init(fresh,999,fresh_inputs[..])==MdlStatus.ok;
+    loaded:=mdl_load(fresh,export_file[0..<saved.written],fresh_inputs[..],true);#assert loaded.status==MdlStatus.ok && loaded.loaded==8;
+    rml_move(fresh,resumed[0].p[..],fresh_inputs[..],false);again:[20480]f32;
+    reloaded:=rml_eval(fresh,rml_inference(fresh,fresh_def.prediction),fresh_def.prediction,resumed[0].p[..],w[..],test_images,test_labels,test,0,RML_TEST,majority,again[..]);
+    same:=true;for j:0..<20480 {same=same && f32_bits(again[j])==f32_bits(predictions[j]);}
+    ok:=rml_accept(RML_TEST,final.correct,final.baseline,initial.loss,final.loss,equal,same);
+    status:=RmlStatus.ok;if !ok {status=RmlStatus.quality;}
+    return RmlReport.{status=status,steps=run.revision,train_rows=RML_TRAIN*RML_EPOCHS,test_rows=RML_TEST,baseline_class=majority,
+        initial_loss=initial.loss,final_loss=final.loss,initial_correct=initial.correct,final_correct=final.correct,baseline_correct=final.baseline,
+        checkpoint_bytes=checkpoint.count,export_bytes=saved.written,replay_equal=equal,export_equal=same};
+}

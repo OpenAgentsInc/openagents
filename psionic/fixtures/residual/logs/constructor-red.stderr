@@ -1,0 +1,49 @@
+psionic/tests/residual-modules-checks.coax:5:12: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      return mdl_residual_conv1x1(m,0,"block",0,3);
+             ^
+psionic/tests/residual-modules-checks.coax:22:67: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      multi:=mdl_data(mdl_model(),"x",mr_test_shape(2,3,2,5));multi=mdl_residual_conv1x1(multi,0,"other",0,1);
+                                                                    ^
+psionic/tests/residual-modules-checks.coax:27:13: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      #assert mdl_residual_conv1x1(m,0,"block",-1,3).status==MdlStatus.program;
+              ^
+psionic/tests/residual-modules-checks.coax:28:13: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      #assert mdl_residual_conv1x1(m,0,"block",m.program.count,3).status==MdlStatus.program;
+              ^
+psionic/tests/residual-modules-checks.coax:29:217: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      for rank:0..<4 {a:=mdl_data(mdl_model(),"x",TvShape.{});if rank>0 {s:=mdl_shape(1,1,0);if rank==2 {s=mdl_shape(2,1,1);}if rank==3 {s=TvShape.{rank=3,dims=[4]int.[1,1,1,0]};}a=mdl_data(mdl_model(),"x",s);}#assert mdl_residual_conv1x1(a,0,"block",0,3).status==MdlStatus.shape;}
+                                                                                                                                                                                                                          ^
+psionic/tests/residual-modules-checks.coax:30:13: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      #assert mdl_residual_conv1x1(m,0,"block",0,0).status==MdlStatus.shape && mdl_residual_conv1x1(m,0,"block",0,-1).status==MdlStatus.shape;
+              ^
+psionic/tests/residual-modules-checks.coax:30:78: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      #assert mdl_residual_conv1x1(m,0,"block",0,0).status==MdlStatus.shape && mdl_residual_conv1x1(m,0,"block",0,-1).status==MdlStatus.shape;
+                                                                               ^
+psionic/tests/residual-modules-checks.coax:31:13: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      #assert mdl_residual_conv1x1(m,0,"block",0,9223372036854775807).status==MdlStatus.shape;
+              ^
+psionic/tests/residual-modules-checks.coax:32:13: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      #assert mdl_residual_conv1x1(m,-1,"block",0,3).status==MdlStatus.state;
+              ^
+psionic/tests/residual-modules-checks.coax:33:13: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      #assert mdl_residual_conv1x1(m,m.module_count,"block",0,3).status==MdlStatus.state;
+              ^
+psionic/tests/residual-modules-checks.coax:34:13: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      #assert mdl_residual_conv1x1(m,0,"bad.name",0,3).status==MdlStatus.name;
+              ^
+psionic/tests/residual-modules-checks.coax:35:42: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      full:=m;full.module_count=16;#assert mdl_residual_conv1x1(full,0,"block",0,3).status==MdlStatus.capacity;
+                                           ^
+psionic/tests/residual-modules-checks.coax:36:42: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      full=m;full.program.count=31;#assert mdl_residual_conv1x1(full,0,"block",0,3).status==MdlStatus.capacity;
+                                           ^
+psionic/tests/residual-modules-checks.coax:37:12: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      named:=mdl_residual_conv1x1(m,0,"block",0,3);#assert mdl_residual_conv1x1(named,0,"block",0,3).status==MdlStatus.name;
+             ^
+psionic/tests/residual-modules-checks.coax:37:58: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      named:=mdl_residual_conv1x1(m,0,"block",0,3);#assert mdl_residual_conv1x1(named,0,"block",0,3).status==MdlStatus.name;
+                                                           ^
+psionic/tests/residual-modules-checks.coax:41:8: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      r:=mdl_residual_conv1x1(m,-1,"",-1,0);
+         ^
+16 errors

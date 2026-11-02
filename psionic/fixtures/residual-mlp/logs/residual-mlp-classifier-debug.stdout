@@ -1,0 +1,3 @@
+ok   #test residual MLP-head CNN classifier is an ordinary named module with a shared linear readout (1 case, 670902 steps, 210 ms)
+1 of 324 checks (--only 'residual MLP-head CNN classifier'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

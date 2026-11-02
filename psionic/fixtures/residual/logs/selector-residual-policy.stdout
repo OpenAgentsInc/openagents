@@ -1,0 +1,8 @@
+#test residual CNN application memory admission checks every exact extent and range endpoint
+#test residual CNN application workspace admission checks identity and every capacity endpoint
+#test residual CNN application capture admission checks every one-off extent
+#test residual CNN application artifact admission checks every byte of all four digests
+#test residual CNN profile admits only the frozen dataset and model extents
+#test residual CNN frozen accuracy rule rounds upwards and requires a majority margin
+#test residual CNN quality also requires lower finite loss and exact persistence checks
+#test residual CNN refuses fabricated counts before accuracy arithmetic

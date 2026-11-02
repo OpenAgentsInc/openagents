@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "python3",
+    "psionic/tests/residual_reference.py",
+    "verify-capture",
+    "/tmp/residual-framework-20261102/capture-sanitized",
+    "--data-dir",
+    "/tmp/psionic-mnist-data",
+    "--out",
+    "/tmp/residual-framework-20261102/reference-sanitized.json"
+  ],
+  "exit": 0,
+  "seconds": 0.223899208009243
+}

@@ -4,6 +4,8 @@
 One checker serves the Psionic, Aethyr and Nostr books (`--book psionic|aethyr|nostr`).
 Each book keeps chapters as chNNN-slug.md, an examples.json inventory of its
 examples/*.coax programs, and a status marker on every design draft.
+Native-only library examples have a separate closed inventory with their
+host consumer and retained evidence; --coax replays runnable examples only.
 """
 import argparse
 import importlib.util
@@ -56,6 +58,21 @@ def path(name):
     return result
 
 
+def example_inventory(manifest, actual):
+    examples = manifest["examples"]
+    libraries = manifest.get("libraries", [])
+    assert isinstance(examples, list) and isinstance(libraries, list), "example inventories must be lists"
+    sources = [item["source"] for item in examples + libraries]
+    assert len(sources) == len(set(sources)), "duplicate example"
+    assert set(sources) == actual, "example inventory does not cover every program"
+    for item in libraries:
+        assert item.get("kind") == "native-library", "library requires native-library kind"
+        assert all(isinstance(item.get(key), str) and item[key] for key in ("chapter", "consumer")), "library requires chapter and host consumer"
+        assert isinstance(item.get("evidence"), list) and item["evidence"] and all(isinstance(p, str) and p for p in item["evidence"]), "library requires retained evidence paths"
+        assert not {"stdout", "exit_status", "modes"}.intersection(item), "native library is not an evaluator transcript"
+    return examples, libraries
+
+
 def check(name="psionic"):
     book, programs, readme, least = BOOKS[name]
     spec = importlib.util.spec_from_file_location("coax_book_claims", ROOT / "coax/book/capability-claims.py")
@@ -70,12 +87,9 @@ def check(name="psionic"):
     assert not errors, f"chapter registry ({book}/chapters.json): " + "; ".join(errors)
     manifest = json.loads(path(f"{book}/examples.json").read_text())
     assert manifest["schema"] == 1
-    examples = manifest["examples"]
-    assert examples or least == 0, "empty example inventory"
-    sources = [item["source"] for item in examples]
-    assert len(sources) == len(set(sources)), "duplicate example"
     actual = {str(p.relative_to(ROOT)) for p in (ROOT / programs).glob("*.coax")}
-    assert set(sources) == actual, "example inventory does not cover every program"
+    examples, libraries = example_inventory(manifest, actual)
+    assert examples or least == 0, "empty example inventory"
     linked = set()
     listings = 0
     docs = [ROOT / readme, *sorted((ROOT / book).glob("*.md"))]
@@ -129,7 +143,13 @@ def check(name="psionic"):
         assert steps is None or (type(steps) is int and 1 <= steps <= 250000000), f"run_steps is 1 to 250000000: {source}"
         limit = item.get("timeout")
         assert limit is None or (type(limit) is int and 60 <= limit <= 600), f"timeout is 60 to 600 seconds: {source}"
-    print(f"{name} book structure: {len(examples)} programs, {listings} source-linked listings, local links pass")
+    for item in libraries:
+        source, chapter = path(item["source"]), path(item["chapter"])
+        assert source in linked and chapter in linked, f"unlinked library/chapter: {source}"
+        path(item["consumer"])
+        for evidence in item["evidence"]:
+            path(evidence)
+    print(f"{name} book structure: {len(examples)} programs, {len(libraries)} native libraries, {listings} source-linked listings, local links pass")
     return examples
 
 

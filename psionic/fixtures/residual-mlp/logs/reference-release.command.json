@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "python3",
+    "psionic/tests/residual_mlp_reference.py",
+    "verify-capture",
+    "/tmp/residual-mlp-framework-20261102/capture-release",
+    "--data-dir",
+    "/tmp/psionic-mnist-data",
+    "--out",
+    "/tmp/residual-mlp-framework-20261102/reference-release.json"
+  ],
+  "exit": 0,
+  "seconds": 0.8006914590951055
+}

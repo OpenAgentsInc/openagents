@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "scope": "Unqualified interrupted first residual optimizer attempt; never use as canonical quality evidence.",
+  "reason": "Freeze writer failed because provenance filename was incorrect; shell did not stop and launched train. Process explicitly SIGTERM stopped.",
+  "preexisting_settings_sha256": "7f58a32d79fa91ce4145a1996499224ba0dfdddacea044fa0da6bdedccd81612",
+  "preexisting_input_inventory": {
+    "path": "/tmp/residual-framework-20261102/preflight-inputs.json",
+    "bytes": 9795,
+    "sha256": "d07dd4eb364f5f417cda7dae76891d89be32299465fc6624fbf1bd376e486ded"
+  },
+  "first_attempt_output": "run-v1",
+  "termination_signal": 15,
+  "settings_tuning": false,
+  "new_frozen_attempt": "run-v2",
+  "complete_freeze": {
+    "path": "psionic/fixtures/residual/source-freeze-attempt2.json",
+    "bytes": 15429,
+    "sha256": "253aa9a7a1ac83f20972b12bcdfb6aa072fc0f9d8da25098b55d0c813e2c3e52"
+  }
+}

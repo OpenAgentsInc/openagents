@@ -1,0 +1,43 @@
+// Authored before the public residual constructor.
+mr_test_shape :: (n:int,c:int,h:int,w:int)->TvShape {return TvShape.{rank=4,dims=[4]int.[n,c,h,w]};}
+mr_test_block :: ()->MdlModel {
+    m:=mdl_data(mdl_model(),"x",mr_test_shape(1,2,2,3));
+    return mdl_residual_conv1x1(m,0,"block",0,3);
+}
+#test "residual modules: named composition preserves the exact identity shape" {
+    m:=mr_test_block();
+    #assert m.status==MdlStatus.ok && m.program.count==11 && m.node==10 && m.count==5 && m.module_count==4 && m.top==29;
+    #assert mdl_parameters(m)==17 && ti_shape_equal(m.shapes[m.node],mr_test_shape(1,2,2,3));
+    #assert mdl_find(m,"block.expand.weight")==1 && mdl_find(m,"block.expand.bias")==2;
+    #assert mdl_find(m,"block.contract.weight")==3 && mdl_find(m,"block.contract.bias")==4;
+    #assert m.modules[1].parent==0 && m.modules[2].parent==1 && m.modules[3].parent==1;
+    #assert m.entries[1].base==12 && m.entries[1].size==6 && m.entries[2].base==18 && m.entries[2].size==3;
+    #assert m.entries[3].base==21 && m.entries[3].size==6 && m.entries[4].base==27 && m.entries[4].size==2;
+    #assert ti_shape_equal(m.entries[1].shape,mr_test_shape(3,2,1,1)) && ti_shape_equal(m.entries[3].shape,mr_test_shape(2,3,1,1));
+    #assert m.program.nodes[3].op==TiOp.conv2d && m.program.nodes[3].a==0 && m.program.nodes[3].b==1;
+    #assert m.program.nodes[5].op==TiOp.relu && m.program.nodes[5].a==4;
+    #assert m.program.nodes[8].op==TiOp.conv2d && m.program.nodes[8].a==5 && m.program.nodes[8].b==6;
+    #assert m.program.nodes[10].op==TiOp.add && m.program.nodes[10].a==9 && m.program.nodes[10].b==0;
+    #assert m.entries[1].value==f32(1/sqrt(2.0)) && m.entries[3].value==f32(1/sqrt(3.0));
+    multi:=mdl_data(mdl_model(),"x",mr_test_shape(2,3,2,5));multi=mdl_residual_conv1x1(multi,0,"other",0,1);
+    #assert multi.status==MdlStatus.ok && ti_shape_equal(multi.shapes[multi.node],mr_test_shape(2,3,2,5)) && mdl_parameters(multi)==10;
+}
+#test "residual modules: shape index naming and capacity refusals stay explicit" {
+    m:=mdl_data(mdl_model(),"x",mr_test_shape(1,2,2,3));
+    #assert mdl_residual_conv1x1(m,0,"block",-1,3).status==MdlStatus.program;
+    #assert mdl_residual_conv1x1(m,0,"block",m.program.count,3).status==MdlStatus.program;
+    for rank:0..<4 {a:=mdl_data(mdl_model(),"x",TvShape.{});if rank>0 {s:=mdl_shape(1,1,0);if rank==2 {s=mdl_shape(2,1,1);}if rank==3 {s=TvShape.{rank=3,dims=[4]int.[1,1,1,0]};}a=mdl_data(mdl_model(),"x",s);}#assert mdl_residual_conv1x1(a,0,"block",0,3).status==MdlStatus.shape;}
+    #assert mdl_residual_conv1x1(m,0,"block",0,0).status==MdlStatus.shape && mdl_residual_conv1x1(m,0,"block",0,-1).status==MdlStatus.shape;
+    #assert mdl_residual_conv1x1(m,0,"block",0,9223372036854775807).status==MdlStatus.shape;
+    #assert mdl_residual_conv1x1(m,-1,"block",0,3).status==MdlStatus.state;
+    #assert mdl_residual_conv1x1(m,m.module_count,"block",0,3).status==MdlStatus.state;
+    #assert mdl_residual_conv1x1(m,0,"bad.name",0,3).status==MdlStatus.name;
+    full:=m;full.module_count=16;#assert mdl_residual_conv1x1(full,0,"block",0,3).status==MdlStatus.capacity;
+    full=m;full.program.count=31;#assert mdl_residual_conv1x1(full,0,"block",0,3).status==MdlStatus.capacity;
+    named:=mdl_residual_conv1x1(m,0,"block",0,3);#assert mdl_residual_conv1x1(named,0,"block",0,3).status==MdlStatus.name;
+}
+#test "residual modules: sticky refusal preserves every structural counter" {
+    m:=mdl_data(mdl_model(),"x",mr_test_shape(1,2,2,3));m.status=MdlStatus.number;
+    r:=mdl_residual_conv1x1(m,-1,"",-1,0);
+    #assert r.status==MdlStatus.number && r.count==m.count && r.module_count==m.module_count && r.program.count==m.program.count && r.node==m.node && r.top==m.top;
+}

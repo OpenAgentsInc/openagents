@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "bash",
+    "psionic/platform/residual-mlp-build.sh",
+    "/tmp/residual-mlp-framework-20261102/release",
+    "release",
+    "0"
+  ],
+  "exit": 0,
+  "seconds": 96.29791166691575
+}
