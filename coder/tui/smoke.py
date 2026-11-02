@@ -3,7 +3,10 @@
 offline echo engine: types a message and checks the streamed reply, runs
 "$ echo ..." and checks the command row, pastes two lines with bracketed
 paste, walks history with Up, switches agent with Shift-Tab (legacy and
-kitty), then quits with Ctrl-C and checks the exit.
+kitty), then quits with Ctrl-C and checks the exit. Then the verbs without a
+terminal, in a fresh HOME: coder run --json on the psionic engine against a
+stand-in local model server (local_model.py), coder ls --json, coder log and
+coder status on an unknown ID.
 
     python3 coder/tui/smoke.py                # offline, echo engine
     python3 coder/tui/smoke.py --live         # two turns on the claude engine (your Claude Code login)
@@ -12,7 +15,7 @@ kitty), then quits with Ctrl-C and checks the exit.
 
 Test-only harness; the program under test is Coax.
 """
-import os, pty, re, select, signal, struct, sys, time, fcntl, termios
+import json, os, pty, re, select, signal, struct, subprocess, sys, tempfile, time, fcntl, termios
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STYLE = re.compile(rb"\x1b\[[0-9;?<>]*[@-~]")
@@ -82,6 +85,32 @@ def live(engine):
         sys.stdout.write(out[-3000:].decode("utf-8", "replace") + "\n")
     print("live smoke: " + ("ok" if good else "FAILED"))
     sys.exit(0 if good else 1)
+
+
+def verbs(check):
+    """run, ls, log and status, with no terminal, on the psionic engine."""
+    home = tempfile.mkdtemp(prefix="coder-smoke-")
+    server = subprocess.Popen([sys.executable, os.path.join(HERE, "local_model.py")], stdout=subprocess.PIPE, text=True)
+    try:
+        port = server.stdout.readline().strip()
+        env = dict(os.environ, HOME=home, PSIONIC_BASE_URL="http://127.0.0.1:" + port, BROWSER="/usr/bin/true")
+        coder = os.path.join(HERE, "coder.sh")
+        run = subprocess.run([coder, "run", "say ok", "--engine", "psionic", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=600)
+        lines = [json.loads(l) for l in run.stdout.splitlines() if l.startswith("{")]
+        kinds = [l["kind"] for l in lines]
+        check("run --json exits 0", run.returncode == 0)
+        check("run --json: session, user, tool, result, reply, end", kinds == ["session", "user", "tool", "result", "reply", "end"])
+        check("run --json: the local model answered", any(l.get("text") == "local-ok" for l in lines) and lines[-1].get("ending") == "finished")
+        ls = subprocess.run([coder, "ls", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        rows = json.loads(ls.stdout) if ls.returncode == 0 else []
+        check("ls --json lists the session", len(rows) == 1 and rows[0]["engine"] == "psionic" and rows[0]["state"] == "finished" and rows[0]["steps"] == 1)
+        sid = rows[0]["id"] if rows else "none"
+        log = subprocess.run([coder, "log", sid[:15]], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("log by ID prefix", log.returncode == 0 and "● local-ok" in log.stdout and "Bash(echo local-step)" in log.stdout)
+        bad = subprocess.run([coder, "status", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("status of an unknown ID exits 6", bad.returncode == 6)
+    finally:
+        server.kill()
 
 
 def main():
@@ -177,6 +206,7 @@ def main():
         os.kill(pid, signal.SIGKILL)
     check("Ctrl-C quits with status 0", status is not None and os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0)
     check("terminal restored (bracketed paste off)", b"\x1b[?2004l" in out)
+    verbs(check)
     bad = [n for n, ok in checks if not ok]
     if bad:
         sys.stdout.write("--- last output ---\n" + out[-3000:].decode("utf-8", "replace") + "\n")

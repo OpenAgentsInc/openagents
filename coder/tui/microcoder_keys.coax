@@ -9,6 +9,7 @@
 #load "../../coax/lib/microcoder/run.coax";
 #load "../../coax/lib/gateway/vertex.coax";
 #load "../../coax/lib/gateway/openrouter.coax";
+#load "../../coax/lib/gateway/psionic.coax";
 #load "../../coax/lib/sys/fs.coax";
 
 MK_SECRETS :: "/work/.secrets/";                          // under $HOME
@@ -30,6 +31,7 @@ MkKeys :: struct {
   orh: [2] string;               // OpenRouter's headers: the plan keeps them
   none: [1] string;              // no headers, also kept
   told: bool;                    // why Vertex was skipped went to stderr
+  pbase: [512] u8; purl: [600] u8; pmodel: [256] u8;   // the psionic engine's server
 }
 
 mk_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
@@ -118,6 +120,24 @@ mk_plan :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers) -> int {
     x := gw_plan_add(p, g, GW_OPENROUTER_FLASH, k[0].orh[..]);
   }
   return p[0].n;
+}
+
+// The psionic engine's plan: one keyless gateway, the Chat Completions server
+// on this machine at PSIONIC_BASE_URL (http://127.0.0.1:8080 by default),
+// with PSIONIC_MODEL or "local" as the model. Nothing leaves the machine.
+// "" when the plan is made, else why not.
+mk_plan_local :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, why: [] u8) -> string {
+  gw_plan_init(p, pb);
+  base := gw_psionic_base(k[0].pbase[..]);
+  if !gw_psionic_up(base) {
+    n := mk_cat(why, 0, "No model server answers at "); n = mk_cat(why, n, base);
+    n = mk_cat(why, n, "/v1/models. Start one there (psionic, llama-server or any Chat Completions server), or set PSIONIC_BASE_URL.");
+    return cast(string) why[0..<n];
+  }
+  model := gw_env("PSIONIC_MODEL", k[0].pmodel[..]);
+  if model.count == 0 { model = "local"; }
+  x := gw_plan_add(p, gw_psionic(base, k[0].purl[..]), model, k[0].none[0..<0]);
+  return "";
 }
 
 // ---------------------------------------------------------------- the conversation

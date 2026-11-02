@@ -42,7 +42,9 @@ cxterm_stopped :: () -> int #foreign;
 cxterm_resized :: () -> int #foreign;
 
 CODER_VERSION :: "0.1.0";
-ENGINE_ECHO :: 0; ENGINE_CLAUDE :: 1; ENGINE_CODEX :: 2; ENGINE_MICRO :: 3;
+ENGINE_ECHO :: 0; ENGINE_CLAUDE :: 1; ENGINE_CODEX :: 2; ENGINE_MICRO :: 3; ENGINE_PSIONIC :: 4;
+// Microcoder's worker runs both: psionic is Microcoder on a model served on this machine (chapter 12).
+cd_is_micro :: (e: int) -> bool { return e == ENGINE_MICRO || e == ENGINE_PSIONIC; }
 END_FINISHED :: 0; END_STOPPED :: 1; END_FAILED :: 2;
 COMMAND_MS :: 120000;      // a "$ " command is stopped after two minutes
 SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -103,7 +105,7 @@ App :: struct {
   cost: f64;
 }
 
-cd_engine_name :: (e: int) -> string { return ifx e == ENGINE_CLAUDE then "claude" else ifx e == ENGINE_CODEX then "codex" else ifx e == ENGINE_MICRO then "microcoder" else "echo"; }
+cd_engine_name :: (e: int) -> string { return ifx e == ENGINE_CLAUDE then "claude" else ifx e == ENGINE_CODEX then "codex" else ifx e == ENGINE_MICRO then "microcoder" else ifx e == ENGINE_PSIONIC then "psionic" else "echo"; }
 
 // ---------------------------------------------------------------- output
 
@@ -276,7 +278,7 @@ cd_start :: (a: [] App, msg: string) {
   }
   a[0].nerr = 0;
   if a[0].engine == ENGINE_CODEX { cd_codex_send(a, msg); return; }
-  if a[0].engine == ENGINE_MICRO { cd_micro_send(a, msg); return; }
+  if cd_is_micro(a[0].engine) { cd_micro_send(a, msg); return; }
   cd_claude_send(a, msg);
 }
 
@@ -543,7 +545,7 @@ cd_stop :: (a: [] App) {
   if a[0].cmd_h >= 0 { cd_command_stop(a); cd_finish(a, END_STOPPED, ""); return; }
   if a[0].engine == ENGINE_ECHO { cd_finish(a, END_STOPPED, ""); return; }
   if a[0].engine == ENGINE_CODEX { cd_codex_stop(a); return; }
-  if a[0].engine == ENGINE_MICRO { cd_micro_stop(a); return; }
+  if cd_is_micro(a[0].engine) { cd_micro_stop(a); return; }
   if a[0].ask { cl_deny(a[0].q, "The person stopped the turn.", true); a[0].ask = false; }
   if a[0].live && !a[0].stopping {
     a[0].stopping = true;
@@ -576,7 +578,7 @@ cd_poll :: (a: [] App) -> bool {
     if a[0].stopping && cd_now(a) - a[0].stop_ms > 5000 { cd_stop(a); return true; }
     return cd_codex_poll(a);
   }
-  if a[0].engine == ENGINE_MICRO {
+  if cd_is_micro(a[0].engine) {
     if a[0].stopping && cd_now(a) - a[0].stop_ms > 5000 { cd_stop(a); return true; }
     return cd_micro_poll(a);
   }
@@ -623,6 +625,7 @@ cd_submit :: (a: [] App) {
     if msg == "/engine claude" { cd_switch(a, ENGINE_CLAUDE); return; }
     if msg == "/engine codex" { cd_switch(a, ENGINE_CODEX); return; }
     if msg == "/engine microcoder" { cd_switch(a, ENGINE_MICRO); return; }
+    if msg == "/engine psionic" { cd_switch(a, ENGINE_PSIONIC); return; }
     cd_commit(a, TUI_RED, "  Unknown command. /help lists them.");
     return;
   }
@@ -636,7 +639,7 @@ cd_submit :: (a: [] App) {
 cd_switch :: (a: [] App, e: int) {
   a[0].engine = e;
   if a[0].log[0].nid > 0 { cs_agent(a, e); }
-  cd_commit(a, TUI_DIM, ifx e == ENGINE_CODEX then "  Agent: Codex" else ifx e == ENGINE_MICRO then "  Agent: Microcoder" else "  Agent: Claude Code");
+  cd_commit(a, TUI_DIM, ifx e == ENGINE_CODEX then "  Agent: Codex" else ifx e == ENGINE_MICRO then "  Agent: Microcoder" else ifx e == ENGINE_PSIONIC then "  Agent: Microcoder on Psionic (this machine)" else "  Agent: Claude Code");
 }
 
 cd_key :: (a: [] App, k: TuiKey) {
@@ -700,7 +703,7 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines\n       coder ls [--json]                         sessions, newest first\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|echo  --model M  --ask  --cwd DIR";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines\n       coder ls [--json]                         sessions, newest first\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
 
 // Flags that take a value: their value is not a positional argument.
 CD_VALUE_FLAGS :: [5] string.["--engine", "--model", "--cwd", "--print", "--on"];
@@ -922,7 +925,8 @@ tool_main :: () -> int #export_c {
   if want == "echo" { a[0].engine = ENGINE_ECHO; }
   else if want == "codex" { a[0].engine = ENGINE_CODEX; }
   else if want == "microcoder" || want == "micro" { a[0].engine = ENGINE_MICRO; }
-  else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude, codex, micro or echo"); return 2; }
+  else if want == "psionic" { a[0].engine = ENGINE_PSIONIC; }
+  else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude, codex, micro, psionic or echo"); return 2; }
   a[0].model_engine = a[0].engine;
 
   log_b: [1] CsLog; a[0].log = log_b[..];
@@ -950,7 +954,7 @@ tool_main :: () -> int #export_c {
   tui_csi(a[0].o[..], TUI_KEYS_ON);                     // Shift-Enter distinct from Enter
   hb: [512] u8; hn := cd_cat(hb[..], 0, "Coder ");
   hn = cd_cat(hb[..], hn, CODER_VERSION); hn = cd_cat(hb[..], hn, " · ");
-  hn = cd_cat(hb[..], hn, ifx a[0].engine == ENGINE_CLAUDE then "Claude Code" else ifx a[0].engine == ENGINE_CODEX then "Codex" else ifx a[0].engine == ENGINE_MICRO then "Microcoder" else "echo engine (offline)");
+  hn = cd_cat(hb[..], hn, ifx a[0].engine == ENGINE_CLAUDE then "Claude Code" else ifx a[0].engine == ENGINE_CODEX then "Codex" else ifx a[0].engine == ENGINE_MICRO then "Microcoder" else ifx a[0].engine == ENGINE_PSIONIC then "Microcoder on Psionic" else "echo engine (offline)");
   hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, a[0].cwd);
   cd_commit(a, TUI_BRIGHT, cast(string) hb[0..<hn]);
   cd_commit(a, TUI_FAINT, "/help for commands.");

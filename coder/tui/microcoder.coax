@@ -3,7 +3,8 @@
 // Vertex Gemini Flash, then the Gemini API, then OpenRouter. It runs as a
 // process of its own, coder/tui/mcworker.coax, which this side starts with
 // coax/web/tool.sh on the first message and talks to in JSON lines, the way
-// the claude and codex engines talk to their CLIs. The worker keeps the
+// the claude and codex engines talk to their CLIs. The psionic engine is
+// the same worker told "local": its plan is a model served on this machine. The worker keeps the
 // conversation and owns the credentials; nothing here holds a key.
 
 CD_MC_TOOL :: "/coax/web/tool.sh";              // under the repo
@@ -26,6 +27,7 @@ cd_micro_send :: (a: [] App, msg: string) {
   ob: [20000] u8;
   n := json_raw(ob[..], 0, "{\"task\":"); n = json_write_string(ob[..], n, msg);
   n = json_raw(ob[..], n, ",\"cwd\":"); n = json_write_string(ob[..], n, a[0].cwd);
+  if a[0].engine == ENGINE_PSIONIC { n = json_raw(ob[..], n, ",\"local\":true"); }
   n = json_raw(ob[..], n, "}\n");
   if n < 0 || !cd_micro_write(a, cast(string) ob[0..<n]) { cd_micro_close(a); cd_finish(a, END_FAILED, "Microcoder's worker is gone."); }
 }
@@ -61,7 +63,7 @@ cd_micro_poll :: (a: [] App) -> bool {
       sc := cxproc_stderr_count(a[0].mc_h);
       for i: 0..<sc { if en < eb.count { eb[en] = cast(u8) cxproc_stderr_byte(a[0].mc_h, i); en += 1; } }
       cd_micro_close(a);
-      if a[0].running && a[0].engine == ENGINE_MICRO { cd_finish(a, END_FAILED, ifx en > 0 then cast(string) eb[0..<en] else "Microcoder's worker exited."); }
+      if a[0].running && cd_is_micro(a[0].engine) { cd_finish(a, END_FAILED, ifx en > 0 then cast(string) eb[0..<en] else "Microcoder's worker exited."); }
       return true;
     }
     if n == CL_TOO_LONG || n > a[0].mc_line.count { continue; }
@@ -76,7 +78,7 @@ cd_mc_str :: (a: [] App, json: string, path: string) -> string { return cl_str(a
 cd_micro_line :: (a: [] App, line: string) {
   a[0].mc_ar[0].at = 0; a[0].mc_ar[0].full = false;
   kind := cd_mc_str(a, line, "kind");
-  if !a[0].running || a[0].engine != ENGINE_MICRO { return; }    // late lines after a stop
+  if !a[0].running || !cd_is_micro(a[0].engine) { return; }    // late lines after a stop
   if kind == "reply" { cd_reply_add(a, cd_mc_str(a, line, "text")); cd_reply_commit(a, false); return; }
   if kind == "attempt" {
     usd := cl_int(line, "usd_micros");

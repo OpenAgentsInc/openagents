@@ -3,6 +3,7 @@
 // Claude and Codex CLIs the other engines drive.
 //
 //   in   {"task":"...","cwd":"/path"}    a message: one Microcoder run
+//        {"task":...,"local":true}        the same on the model server on this machine (psionic)
 //        {"stop":true}                    STOP the run
 //        {"forget":true}                  forget the conversation
 //   out  {"kind":"ready"}
@@ -124,7 +125,11 @@ tool_main :: () -> int #export_c {
     cn := mk_keep(cwd[..], cl_str(ar[..], msg, "cwd"));
     tk := cast(string) task[0..<tn]; cd := cast(string) cwd[0..<cn];
     mk_keys(k[..]);
-    if mk_plan(k[..], plan[..], pb[..]) == 0 {
+    local := cl_bool(msg, "local");
+    if local.ok && local.value {
+      wb: [512] u8; why := mk_plan_local(k[..], plan[..], pb[..], wb[..]);
+      if why.count > 0 { mw_ended(out[..], "no_capacity", why); continue; }
+    } else if mk_plan(k[..], plan[..], pb[..]) == 0 {
       mw_ended(out[..], "no_capacity", "Microcoder has no model to call here: add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env.");
       continue;
     }
