@@ -2482,6 +2482,26 @@
       ]
     },
     {
+      "source": "psionic/examples/mistral-small.coax",
+      "chapter": "psionic/book/ch085-execute-mistral-small-7.md",
+      "stdout": "psionic/fixtures/mistral-small.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/mistral-small-refuse.coax",
+      "chapter": "psionic/book/ch085-execute-mistral-small-7.md",
+      "stdout": "psionic/fixtures/mistral-small-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/feed.coax",
       "chapter": "psionic/book/ch121-feed-the-accelerator.md",
       "stdout": "psionic/fixtures/feed/feed.out",

@@ -1,0 +1,19 @@
+profile mistral-small-cpu-f64-v1, tolerance 0.00001 x (1 + largest |reference value|), near-tie margin 0.00001
+pinned revision a11f36bebf709121056b1dbcc943d1c6afbe494d, 120922973936 shard bytes, header only
+text inventory: 38 lines, 38 expected, status ok, 118972845632 values in 120065825920 bytes
+  plus 222 vision and projector tensors in 856944640 bytes and 203376 header bytes: 1485 tensors, 120922973936 bytes
+config fields match the pinned config.json: true
+hand route: experts 1 and 2, weights 0.7310586 and 0.26894143, margin 0.14973849934787756
+rope: lo 12.0 hi 25.0, softmax scale 0.19496949473302966, position factor at 8192 1.0693147180559945
+small model: hidden 8, 2 heads, query rank 4, latent 3, rotary 4; 5 experts of width 3, 2 chosen, 1 shared
+  seed 0: status ok ok, largest difference 3.368912642187638e-07 (limit 0.00004743635504603966), first experts [4, 1, 2, 3, 4, 4], smallest router margin 0.018497420130014736
+  seed 1: status ok ok, largest difference 1.355105534450729e-07 (limit 0.0000316393179425114), first experts [4, 0, 4, 3, 2, 3], smallest router margin 0.027626292853483045
+  seed 2: status ok ok, largest difference 1.841326854878922e-07 (limit 0.00004683470737162018), first experts [0, 1, 4, 1, 4, 1], smallest router margin 0.04865610695839964
+weights 120065825920 bytes (728192 vectors); one expert 25165824; 6095372288 values active a token
+latent cache 46080 bytes a token (1179648 with full keys and values in f32)
+RAM 134828441600 bytes: ok resident, 14550721408 bytes to spare
+RAM available when measured 127495778304 bytes: ok resident, 7218058112 bytes to spare
+GPU 17171480576 bytes, resident: weights: the weights, state and scratch exceed the budget and streaming is off, need 120277720192, short by 103106239616
+GPU streaming: ok streamed, 14812102656 bytes resident, 105253723264 streamed through two slots of 1073741824
+RAM at 1048576 tokens: weights: the weights, state and scratch exceed the budget and streaming is off, need 168411536512
+disk: 38661877760 bytes free, the shards need 120922973936, short by 82261096176

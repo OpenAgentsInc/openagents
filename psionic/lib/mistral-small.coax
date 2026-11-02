@@ -1,0 +1,942 @@
+// Chapter 85: Mistral-Small-4-119B-2603, latent attention with a mixture of
+// 128 routed experts and one shared expert, in FP8. This file holds the
+// model's shape, the inventory of a checkpoint too large to download here,
+// its decoder layer's two halves (latent attention and the mixture) on
+// FP8 weights, and the memory plan for this host.
+// Profile mistral-small-cpu-f64-v1: FP8 E4M3 weights with their BF16 scales
+// (per tensor, or per expert), each product taken on the code's exact value
+// and the row's sum multiplied by the scale; f32 activations between steps;
+// binary64 compensated products, norms, router scores, angles and softmax;
+// every step's result narrowed to f32 once. The checkpoint's static FP8
+// activation scales are recorded but not applied: activations stay f32.
+#load "latent-attention.coax";
+#load "residency.coax";
+#load "fp8.coax";
+#load "../fixtures/mistral-small-manifest.coax";
+#load "../tests/mistral-small-oracle.coax";   // the checks' binary64 oracle
+
+// book:begin shape
+// The text model's shape: hidden width, layers, attention heads, the query
+// and key-value latent ranks, each head's non-rotary, rotary and value
+// widths, the routed experts, how many a token uses, an expert's width, the
+// shared expert's width and the vocabulary.
+M4Shape :: struct { hidden:int; layers:int; heads:int; q_rank:int; kv_rank:int; nope:int; rope:int; value:int;
+    experts:int; top_k:int; expert_mlp:int; shared_mlp:int; vocab:int; }
+M4Status :: enum u8 {ok;shape;capacity;number;arithmetic;checkpoint;}
+// The pinned text_config: hidden_size 4096, num_hidden_layers 36,
+// num_attention_heads 32, q_lora_rank 1024, kv_lora_rank 256,
+// qk_nope_head_dim 64, qk_rope_head_dim 64, v_head_dim 128,
+// n_routed_experts 128, num_experts_per_tok 4, moe_intermediate_size 2048
+// (times n_shared_experts 1 for the shared expert), vocab_size 131072.
+m4_small4 :: ()->M4Shape {
+    return M4Shape.{hidden=4096,layers=36,heads=32,q_rank=1024,kv_rank=256,nope=64,rope=64,value=128,
+        experts=128,top_k=4,expert_mlp=2048,shared_mlp=2048,vocab=131072};
+}
+// Bounds every function checks before it reads a weight.
+M4_TOP_MAX :: 8;M4_EXPERTS_MAX :: 256;
+m4_valid :: (s:M4Shape)->bool {
+    if s.hidden<1 || s.layers<1 || s.heads<1 || s.q_rank<1 || s.kv_rank<1 || s.nope<1 || s.value<1 || s.vocab<1 {return false;}
+    if s.rope<2 || s.rope%2!=0 || s.rope/2>64 || s.expert_mlp<1 || s.shared_mlp<1 {return false;}
+    return s.experts<=M4_EXPERTS_MAX && s.top_k>=1 && s.top_k<=M4_TOP_MAX && s.top_k<s.experts;
+}
+// book:end shape
+
+// book:begin checkpoint
+// One expected manifest line: per-layer lines name layers 0 .. layers - 1.
+// fp8 marks F8_E4M3 storage, else BF16; rank 0 is a scalar.
+M4Tensor :: struct { layered:bool; name:string; fp8:bool; rank:int; dims:[3]int; }
+M4_PROJECTIONS :: [5]string.["self_attn.kv_a_proj_with_mqa","self_attn.kv_b_proj","self_attn.o_proj","self_attn.q_a_proj","self_attn.q_b_proj"];
+M4_SHARED :: [3]string.["mlp.shared_experts.down_proj","mlp.shared_experts.gate_proj","mlp.shared_experts.up_proj"];
+M4_PARTS :: [3]string.[".activation_scale",".weight",".weight_scale_inv"];
+M4_EXPERT_NAMES :: [6]string.["mlp.experts.down_proj","mlp.experts.down_proj_activation_scale","mlp.experts.down_proj_scale_inv",
+    "mlp.experts.gate_up_proj","mlp.experts.gate_up_proj_activation_scale","mlp.experts.gate_up_proj_scale_inv"];
+// Constructors by rank: a scalar, a vector, a matrix, a stack of matrices.
+m4_d0 :: (name:string)->M4Tensor {return M4Tensor.{layered=true,name=name};}
+m4_d1 :: (name:string,a:int)->M4Tensor {t:=m4_d0(name);t.rank=1;t.dims[0]=a;return t;}
+m4_d2 :: (name:string,a:int,b:int)->M4Tensor {t:=m4_d1(name,a);t.rank=2;t.dims[1]=b;return t;}
+m4_d3 :: (name:string,a:int,b:int,c:int)->M4Tensor {t:=m4_d2(name,a,b);t.rank=3;t.dims[2]=c;t.fp8=true;return t;}
+// The 35 tensors of one decoder layer, in the manifest's name order. A
+// scalar's or a weight's name is its part; m4_group gives the rest.
+M4_PER_LAYER :: 35;
+m4_layer_tensor :: (s:M4Shape,k:int)->M4Tensor {
+    h:=s.hidden;E:=s.experts;I:=s.expert_mlp;
+    if k==0 {return m4_d1("input_layernorm.weight",h);}
+    if k<7 {
+        if k==1 {return m4_d3(M4_EXPERT_NAMES[0],E,h,I);}
+        if k==4 {return m4_d3(M4_EXPERT_NAMES[3],E,2*I,h);}
+        // The activation scales are one BF16 value an expert; the weight
+        // scales are stored as E x 1 x 1.
+        t:=m4_d1(M4_EXPERT_NAMES[k-1],E);
+        if k==3 || k==6 {t=m4_d3(M4_EXPERT_NAMES[k-1],E,1,1);t.fp8=false;}
+        return t;
+    }
+    if k==7 {return m4_d2("mlp.gate.weight",E,h);}
+    if k==17 {return m4_d1("post_attention_layernorm.weight",h);}
+    if k==18 {return m4_d1("self_attn.kv_a_layernorm.weight",s.kv_rank);}
+    if k==34 {return m4_d1("self_attn.q_a_layernorm.weight",s.q_rank);}
+    // Three tensors a matrix: its activation scale, its FP8 weight, its
+    // weight scale. Shared expert matrices first (k 8 to 16), then the five
+    // attention projections (k 19 to 33).
+    j:=ifx k<19 then k-8 else k-10;g:=j/3;part:=j-3*g;
+    if part!=1 {return m4_d0(M4_PARTS[part]);}
+    rows:=[8]int.[h,s.shared_mlp,s.shared_mlp,m4_row(s),s.heads*(s.nope+s.value),h,s.q_rank,s.heads*(s.nope+s.rope)];
+    cols:=[8]int.[s.shared_mlp,h,h,h,s.kv_rank,s.heads*s.value,h,s.q_rank];
+
+    t:=m4_d2(M4_PARTS[part],rows[g],cols[g]);t.fp8=true;return t;
+}
+// The name's middle for a matrix's three tensors.
+m4_group :: (k:int)->string {
+    if k>=8 && k<17 {return M4_SHARED[(k-8)/3];}
+    if k>=19 && k<34 {return M4_PROJECTIONS[(k-19)/3];}
+    return "";
+}
+M4_EXPECTED :: 3+M4_PER_LAYER;
+// Position i: the readout, the embedding, each per-layer tensor, the final norm.
+m4_expected :: (s:M4Shape,i:int)->M4Tensor {
+    t:=m4_d2("lm_head.weight",s.vocab,s.hidden);
+    if i==1 {t=m4_d2("model.embed_tokens.weight",s.vocab,s.hidden);}
+    if i==M4_EXPECTED-1 {t=m4_d1("model.norm.weight",s.hidden);}
+    if i>1 && i<M4_EXPECTED-1 {return m4_layer_tensor(s,i-2);}
+    t.layered=false;return t;
+}
+// book:end checkpoint
+
+// book:begin inventory
+m4_put :: (out:[]u8,n:int,s:string)->int {for i:0..<s.count {out[n+i]=s[i];}return n+s.count;}
+m4_put_int :: (out:[]u8,n:int,v:int)->int {
+    digits:[20]u8;k:=0;x:=v;
+    while true {digits[k]=cast(u8)('0'+x%10);k+=1;x/=10;if x==0 {break;}}
+    m:=n;while k>0 {k-=1;out[m]=digits[k];m+=1;}
+    return m;
+}
+// One manifest line: the name, the dtype, the dimensions joined by commas
+// ("-" for a scalar).
+m4_line :: (s:M4Shape,i:int,out:[]u8)->int {
+    t:=m4_expected(s,i);n:=m4_put(out,0,"language_model.");
+    if t.layered {n=m4_put(out,n,"model.layers.0..");n=m4_put_int(out,n,s.layers-1);n=m4_put(out,n,".");n=m4_put(out,n,m4_group(i-2));}
+    n=m4_put(out,n,t.name);n=m4_put(out,n,ifx t.fp8 then " F8_E4M3 " else " BF16 ");
+    if t.rank==0 {return m4_put(out,n,"-");}
+    for k:0..<t.rank {if k>0 {n=m4_put(out,n,",");}n=m4_put_int(out,n,t.dims[k]);}
+    return n;
+}
+// The values and bytes a line stands for: per-layer lines count every
+// layer; an FP8 value is one byte, a BF16 value two.
+m4_values :: (s:M4Shape,i:int)->int {
+    t:=m4_expected(s,i);v:=1;
+    for k:0..<t.rank {v*=t.dims[k];}
+    return ifx t.layered then v*s.layers else v;
+}
+m4_bytes :: (s:M4Shape,i:int)->int {return ifx m4_expected(s,i).fp8 then m4_values(s,i) else 2*m4_values(s,i);}
+// A manifest matches when it holds every expected line exactly once and
+// nothing else (the expected lines are distinct; a check holds them so).
+// bad names the first expected line missing or repeated, or
+// is -1 when they are all there once but there are more lines.
+M4Inventory :: struct { status:M4Status; lines:int; parameters:int; bytes:int; bad:int; }
+M4_LINES_MAX :: 64;
+m4_inventory :: (s:M4Shape,manifest:string)->M4Inventory {
+    if !m4_valid(s) {return M4Inventory.{status=M4Status.shape,bad=-1};}
+    ends:[65]int;lines:=0;ends[0]=-1;
+    for i:0..<manifest.count {if manifest[i]=='\n' {
+        if lines==M4_LINES_MAX {return M4Inventory.{status=M4Status.checkpoint,lines=lines+1,bad=-1};}
+        lines+=1;ends[lines]=i;
+    }}
+    r:M4Inventory;r.lines=lines;r.bad=-1;buf:[160]u8;
+    for e:0..<M4_EXPECTED {
+        n:=m4_line(s,e,buf[..]);line:=cast(string)buf[0..<n];found:=0;
+        for k:0..<lines {from:=ends[k]+1;if ends[k+1]-from==n && manifest[from..<ends[k+1]]==line {found+=1;}}
+        if found!=1 {return M4Inventory.{status=M4Status.checkpoint,lines=lines,bad=e};}
+        r.parameters+=m4_values(s,e);r.bytes+=m4_bytes(s,e);
+    }
+    if lines!=M4_EXPECTED {return M4Inventory.{status=M4Status.checkpoint,lines=lines,bad=-1};}
+    return r;
+}
+// book:end inventory
+
+// The config fields the shape is built from, written the way
+// psionic/tests/mistral_small_manifest.py copies them. The fields after
+// max_position_embeddings are what the code assumes.
+M4_INTS :: [15]string.["hidden_size","vocab_size","num_hidden_layers","num_attention_heads","num_key_value_heads","q_lora_rank","kv_lora_rank",
+    "qk_nope_head_dim","qk_rope_head_dim","v_head_dim","n_routed_experts","num_experts_per_tok","moe_intermediate_size","n_shared_experts","max_position_embeddings"];
+M4_FIXED :: "first_k_dense_replace 0\nn_group 1\ntopk_group 1\nnorm_topk_prob true\nrouted_scaling_factor 1.0\nrms_norm_eps 1e-06\nhidden_act 'silu'\nrope_interleave true\ntie_word_embeddings false\nattention_bias false\nmlp_bias false\nrope.rope_type 'yarn'\nrope.rope_theta 10000.0\nrope.factor 128.0\nrope.original_max_position_embeddings 8192\nrope.beta_fast 32.0\nrope.beta_slow 1.0\nrope.mscale 1.0\nrope.mscale_all_dim 1.0\nrope.llama_4_scaling_beta 0.1\nquant_method 'fp8'\nactivation_scheme 'static'\nweight_block_size null\n";
+M4_TOKENS :: 1048576;
+m4_config_text :: (s:M4Shape,out:[]u8)->int {
+    // Every head has its own keys and values: 32 key-value heads.
+    values:=[15]int.[s.hidden,s.vocab,s.layers,s.heads,s.heads,s.q_rank,s.kv_rank,s.nope,s.rope,s.value,s.experts,s.top_k,s.expert_mlp,s.shared_mlp/s.expert_mlp,M4_TOKENS];
+    n:=0;
+    for i:0..<15 {n=m4_put(out,n,M4_INTS[i]);n=m4_put(out,n," ");n=m4_put_int(out,n,values[i]);n=m4_put(out,n,"\n");}
+    return m4_put(out,n,M4_FIXED);
+}
+
+// book:begin steps
+// An FP8 matrix: row-major E4M3 codes and the scale every code is
+// multiplied by (the checkpoint's weight_scale_inv, a BF16 value).
+M4Matrix :: struct { codes:[]u8; scale:f32; }
+m4_matrix_ok :: (m:M4Matrix,rows:int,cols:int)->bool {
+    return m.codes.count==rows*cols && fp8_f32_scale_ok(f32_bits(m.scale));
+}
+// out[r] = scale times the sum over k of code[r, k] x[k], one compensated
+// binary64 sum a row, narrowed to f32 once. A NaN code refuses.
+m4_linear :: (m:M4Matrix,x:[]f32,out:[]f32)->bool {
+    cols:=x.count;
+    for r:0..<out.count {
+        acc:PsionicAccumulator;
+        for k:0..<cols {
+            code:=m.codes[r*cols+k];
+            if fp8_nan(code) {return false;}
+            acc=psionic_ops_accumulate(acc,fp8_unit(code)*f64(x[k]));
+        }
+        v:=psionic_ops_total(acc)*f64(m.scale);
+        if !psionic_ops_fits_f32(v) {return false;}
+        out[r]=f32(v);
+    }
+    return true;
+}
+// RMS norm with epsilon 1e-6, then the weight.
+M4_EPSILON :: 0.000001;
+m4_norm :: (x:[]f32,weight:[]f32,out:[]f32)->bool {
+    acc:PsionicAccumulator;
+    for v:x {acc=psionic_ops_accumulate(acc,f64(v)*f64(v));}
+    scale:=1/sqrt(psionic_ops_total(acc)/f64(x.count)+M4_EPSILON);
+    for i:0..<x.count {
+        v:=f64(x[i])*scale*f64(weight[i]);
+        if !psionic_ops_fits_f32(v) {return false;}
+        out[i]=f32(v);
+    }
+    return true;
+}
+// hidden += update, narrowed to f32.
+m4_residual :: (hidden:[]f32,update:[]f32)->bool {
+    for i:0..<hidden.count {
+        v:=f64(hidden[i])+f64(update[i]);
+        if !psionic_ops_fits_f32(v) {return false;}
+        hidden[i]=f32(v);
+    }
+    return true;
+}
+// book:end steps
+
+// book:begin route
+// The router for one normed input x, with one binary64 score an expert in
+// fwork: each expert's logit is its gate row
+// times x; the scores are the softmax of all the logits. The top_k largest
+// scores are chosen, the lower index first on a tie. Their weights are their
+// scores divided by the chosen scores' sum, times
+// routed_scaling_factor 1. margin is the last chosen score minus the
+// largest unchosen one: how far the selection is from changing.
+M4_SCALE :: 1.0;
+M4Route :: struct { status:M4Status; count:int; ids:[8]int; weights:[8]f32; margin:f64; }
+m4_route :: (gate:[]f32,x:[]f32,k:int,fwork:[]f64)->M4Route {
+    E:=fwork.count;h:=x.count;
+    if E<2 || E>M4_EXPERTS_MAX || k<1 || k>M4_TOP_MAX || k>=E || h<1 || gate.count!=E*h {return M4Route.{status=M4Status.shape};}
+    largest:=0.0;
+    for e:0..<E {
+        acc:PsionicAccumulator;
+        for i:0..<h {acc=psionic_ops_accumulate(acc,f64(gate[e*h+i])*f64(x[i]));}
+        // A gate value that is not finite makes the compensated sum NaN.
+        fwork[e]=psionic_ops_total(acc);
+        if !(fwork[e]==fwork[e]) {return M4Route.{status=M4Status.number};}
+        largest=ifx e==0 then fwork[e] else m4_larger(largest,fwork[e]);
+    }
+    // Every exponent is at most 0, so no exp overflows; the largest is 1.
+    acc:PsionicAccumulator;
+    for e:0..<E {fwork[e]=exp(fwork[e]-largest);acc=psionic_ops_accumulate(acc,fwork[e]);}
+    total:=psionic_ops_total(acc);
+    for e:0..<E {fwork[e]/=total;}
+    r:M4Route;r.count=k;used:[256]bool;sum:=0.0;
+    for slot:0..<k {r.ids[slot]=m4_best(fwork,used[..]);used[r.ids[slot]]=true;sum+=fwork[r.ids[slot]];}
+    r.margin=fwork[r.ids[k-1]]-fwork[m4_best(fwork,used[..])];
+    // transformers adds 1e-20 to the sum; the top k of a softmax over at
+    // most 256 experts sum to at least k / 256, where 1e-20 is below half a
+    // unit in the last place, so the sum is unchanged and the term omitted.
+    for slot:0..<k {r.weights[slot]=f32(fwork[r.ids[slot]]/sum*M4_SCALE);}
+    return r;
+}
+// The larger of two finite values, without a comparison: (a + b + |a - b|) / 2.
+m4_larger :: (a:f64,b:f64)->f64 {return (a+b+abs(a-b))/2;}
+// The unused expert with the largest score, the lowest index on a tie.
+m4_best :: (score:[]f64,used:[]bool)->int {
+    best:=-1;
+    for e:0..<score.count {if !used[e] && (best<0 || score[e]>score[best]) {best=e;}}
+    return best;
+}
+// A route whose margin is below M4_MARGIN is a near tie: a reference that
+// rounds differently may choose another expert.
+M4_MARGIN :: 0.00001;
+// book:end route
+
+// book:begin moe
+// down(silu(gate x) * up x): gate and up are width rows each, down maps
+// width back to hidden. inner holds 2 * width values.
+m4_swiglu :: (gate:M4Matrix,up:M4Matrix,down:M4Matrix,x:[]f32,inner:[]f32,out:[]f32)->bool {
+    w:=inner.count/2;g:=inner[0..<w];u:=inner[w..<2*w];
+    if !m4_linear(gate,x,g) || !m4_linear(up,x,u) {return false;}
+    for i:0..<w {
+        a:=f64(g[i]);v:=a/(1+exp(-a))*f64(u[i]);
+        if !psionic_ops_fits_f32(v) {return false;}
+        g[i]=f32(v);
+    }
+    return m4_linear(down,g,out);
+}
+// One mixture layer's weights: the block norm (post_attention_layernorm),
+// the router's gate rows (BF16, decoded), every expert's gate_up (gate rows
+// then up rows) and down codes one expert after another with one scale an
+// expert, and the shared expert's three matrices.
+M4Moe :: struct { norm:[]f32; gate:[]f32; up:[]u8; up_scale:[]f32; down:[]u8; down_scale:[]f32; shared_gate:M4Matrix; shared_up:M4Matrix; shared_down:M4Matrix; }
+m4_moe_work :: (s:M4Shape)->int {return 2*s.hidden+2*rp_max(s.expert_mlp,s.shared_mlp);}
+m4_moe_fwork :: (s:M4Shape)->int {return s.hidden+s.experts;}
+m4_moe_shape :: (s:M4Shape,w:M4Moe)->bool {
+    h:=s.hidden;E:=s.experts;I:=s.expert_mlp;S:=s.shared_mlp;
+    if !m4_valid(s) || w.norm.count!=h || w.gate.count!=E*h || w.up.count!=E*2*I*h || w.down.count!=E*h*I || w.up_scale.count!=E || w.down_scale.count!=E {return false;}
+    for e:0..<E {if !fp8_f32_scale_ok(f32_bits(w.up_scale[e])) || !fp8_f32_scale_ok(f32_bits(w.down_scale[e])) {return false;}}
+    return m4_matrix_ok(w.shared_gate,S,h) && m4_matrix_ok(w.shared_up,S,h) && m4_matrix_ok(w.shared_down,h,S);
+}
+// tokens rows of hidden through the layer: the block norm, the route, each
+// chosen expert's output times its weight, plus the shared expert's, summed
+// in binary64 and narrowed once; then the residual. routes[t] records token
+// t's route. On a refusal, written counts the tokens already done.
+M4Result :: struct { status:M4Status; written:int; }
+m4_moe :: (s:M4Shape,w:M4Moe,tokens:int,hidden:[]f32,routes:[]M4Route,work:[]f32,fwork:[]f64)->M4Result {
+    if !m4_moe_shape(s,w) {return M4Result.{status=M4Status.shape};}
+    h:=s.hidden;I:=s.expert_mlp;E:=s.experts;
+    if tokens<1 || hidden.count!=tokens*h || routes.count<tokens || work.count<m4_moe_work(s) || fwork.count<m4_moe_fwork(s) {return M4Result.{status=M4Status.capacity};}
+    normed:=work[0..<h];out:=work[h..<2*h];inner:=work[2*h..<work.count];sums:=fwork[0..<h];
+    for t:0..<tokens {
+        for i:0..<h {sums[i]=0;}
+        if !m4_norm(hidden[t*h..<(t+1)*h],w.norm,normed) {return M4Result.{status=M4Status.arithmetic,written=t};}
+        r:=m4_route(w.gate,normed,s.top_k,fwork[h..<h+E]);routes[t]=r;
+        if r.status!=M4Status.ok {return M4Result.{status=r.status,written=t};}
+        for slot:0..<r.count {
+            e:=r.ids[slot];up:=w.up[e*2*I*h..<(e+1)*2*I*h];
+            gate:=M4Matrix.{codes=up[0..<I*h],scale=w.up_scale[e]};upm:=M4Matrix.{codes=up[I*h..<2*I*h],scale=w.up_scale[e]};
+            down:=M4Matrix.{codes=w.down[e*h*I..<(e+1)*h*I],scale=w.down_scale[e]};
+            if !m4_swiglu(gate,upm,down,normed,inner[0..<2*I],out) {return M4Result.{status=M4Status.arithmetic,written=t};}
+            for i:0..<h {sums[i]+=f64(r.weights[slot])*f64(out[i]);}
+        }
+        if !m4_swiglu(w.shared_gate,w.shared_up,w.shared_down,normed,inner[0..<2*s.shared_mlp],out) {return M4Result.{status=M4Status.arithmetic,written=t};}
+        for i:0..<h {
+            v:=sums[i]+f64(out[i]);
+            if !psionic_ops_fits_f32(v) {return M4Result.{status=M4Status.arithmetic,written=t};}
+            out[i]=f32(v);
+        }
+        if !m4_residual(hidden[t*h..<(t+1)*h],out) {return M4Result.{status=M4Status.arithmetic,written=t};}
+    }
+    return M4Result.{written=tokens};
+}
+// book:end moe
+
+// book:begin rope
+// YaRN with the pinned rope_parameters: theta 10000, factor 128, original
+// context 8192, beta_fast 32, beta_slow 1. Pair j of a rotary width d turns
+// by position times inv_freq(j). The correction dimensions bound a ramp from
+// the original frequency (j below lo) to the original over 128 (j at hi or
+// above); mscale and mscale_all_dim are equal, so cos and sin are unscaled.
+M4_PI :: 3.141592653589793;
+m4_correction :: (d:int,rotations:f64)->f64 {return f64(d)*log(8192/(rotations*2*M4_PI))/(2*log(10000.0));}
+m4_inv_freq :: (d:int,j:int)->f64 {
+    // For every even width 2 to 128, 0 <= lo < hi <= d - 1 (lo is about
+    // d / 5, hi about 2d / 5, rounded up), so transformers' clamps to 0 and
+    // d - 1 and its lo == hi guard never apply; a check covers every width.
+    lo:=floor(m4_correction(d,32));hi:=-floor(-m4_correction(d,1));
+    ramp:=(f64(j)-lo)/(hi-lo);ramp=(abs(ramp)-abs(ramp-1)+1)/2;
+    base:=exp(-log(10000.0)*f64(2*j)/f64(d));
+    return base/128*ramp+base*(1-ramp);
+}
+// Rotates x's interleaved pairs (x[2j], x[2j+1]) and writes them split: the
+// first halves to out[j], the second to out[d/2 + j], the layout
+// transformers' interleaved rotary produces. q and k share it, so their
+// products are those of the pairs rotated in place.
+m4_rotate :: (x:[]f32,position:int,out:[]f32)->bool {
+    d:=x.count;
+    for j:0..<d/2 {
+        a:=f64(position)*m4_inv_freq(d,j);c:=cos(a);sn:=sin(a);u:=f64(x[2*j]);v:=f64(x[2*j+1]);
+        p:=u*c-v*sn;q:=v*c+u*sn;
+        if !psionic_ops_fits_f32(p) || !psionic_ops_fits_f32(q) {return false;}
+        out[j]=f32(p);out[d/2+j]=f32(q);
+    }
+    return true;
+}
+// The softmax scale: qk_head_dim^-1/2 times mscale^2, mscale = 0.1 ln 128 + 1
+// (yarn_get_mscale with mscale_all_dim 1); and Llama 4's position factor on
+// the query, 1 + 0.1 ln(1 + floor(position / 8192)).
+m4_softmax_scale :: (s:M4Shape)->f64 {m:=0.1*log(128.0)+1;return m*m/sqrt(f64(s.nope+s.rope));}
+m4_position_scale :: (position:int)->f64 {return 1+0.1*log(f64(1+position/8192));}
+// book:end rope
+
+// book:begin attention
+// One attention layer's weights: the block norm (input_layernorm), the
+// query's down projection, its norm and up projection, the key-value down
+// projection (latent then rotary key), the latent's norm, the latent's up
+// projection to each head's key and value (kv_b), and the output projection.
+M4Attn :: struct { norm:[]f32; q_a:M4Matrix; q_norm:[]f32; q_b:M4Matrix; kv_a:M4Matrix; kv_norm:[]f32; kv_b:M4Matrix; o:M4Matrix; }
+// A cache row a position: the normed latent then the rotated rotary key.
+m4_row :: (s:M4Shape)->int {return s.kv_rank+s.rope;}
+// Workspace, in order: kv, normed, qa, q, latent, attended, out; each
+// region is in use while its neighbour is written. at[i] is region i's
+// first value; at[7] the whole.
+m4_layout :: (s:M4Shape)->[8]int {
+    at:[8]int;
+    at[1]=m4_row(s);at[2]=at[1]+s.hidden;at[3]=at[2]+s.q_rank;at[4]=at[3]+s.heads*(s.nope+s.rope);
+    at[5]=at[4]+s.kv_rank;at[6]=at[5]+s.heads*s.value;at[7]=at[6]+s.hidden;
+    return at;
+}
+m4_attention_work :: (s:M4Shape)->int {return m4_layout(s)[7];}
+m4_attn_shape :: (s:M4Shape,w:M4Attn)->bool {
+    h:=s.hidden;
+    if !m4_valid(s) || w.norm.count!=h || w.q_norm.count!=s.q_rank || w.kv_norm.count!=s.kv_rank {return false;}
+    if !m4_matrix_ok(w.q_a,s.q_rank,h) || !m4_matrix_ok(w.q_b,s.heads*(s.nope+s.rope),s.q_rank) || !m4_matrix_ok(w.kv_a,m4_row(s),h) {return false;}
+    return m4_matrix_ok(w.kv_b,s.heads*(s.nope+s.value),s.kv_rank) && m4_matrix_ok(w.o,h,s.heads*s.value);
+}
+// The latent core for one position, absorbed: each head's non-rotary query
+// moved into latent space through its W_UK rows, scores against every cached
+// row 0 .. position (latent part through that query, rotary part directly)
+// times scale, a softmax, the weighted sum of latents, and the head's W_UV
+// rows applied after the sum. latent (kv_rank values) holds the moved query,
+// then the sum. out holds heads x value.
+m4_latent :: (s:M4Shape,kv_b:M4Matrix,q:[]f32,cache:[]f32,position:int,scale:f64,latent:[]f32,out:[]f32,scores:[]f64)->bool {
+    L:=latent.count;row:=m4_row(s);qw:=s.nope+s.rope;
+    for head:0..<s.heads {
+        for j:0..<L {
+            acc:PsionicAccumulator;
+            for i:0..<s.nope {acc=psionic_ops_accumulate(acc,f64(q[head*qw+i])*fp8_unit(kv_b.codes[(head*(s.nope+s.value)+i)*L+j]));}
+            v:=psionic_ops_total(acc)*f64(kv_b.scale);
+            if !psionic_ops_fits_f32(v) {return false;}
+            latent[j]=f32(v);
+        }
+        largest:=0.0;
+        for t:0..<position+1 {
+            acc:PsionicAccumulator;
+            for j:0..<L {acc=psionic_ops_accumulate(acc,f64(latent[j])*f64(cache[t*row+j]));}
+            for j:0..<s.rope {acc=psionic_ops_accumulate(acc,f64(q[head*qw+s.nope+j])*f64(cache[t*row+L+j]));}
+            scores[t]=psionic_ops_total(acc)*scale;
+            largest=ifx t==0 then scores[t] else m4_larger(largest,scores[t]);
+        }
+        den:PsionicAccumulator;
+        for t:0..<position+1 {scores[t]=exp(scores[t]-largest);den=psionic_ops_accumulate(den,scores[t]);}
+        total:=psionic_ops_total(den);
+        for j:0..<L {
+            acc:PsionicAccumulator;
+            for t:0..<position+1 {acc=psionic_ops_accumulate(acc,scores[t]*f64(cache[t*row+j]));}
+            latent[j]=f32(psionic_ops_total(acc)/total);   // a mean of f32 values
+        }
+        for v:0..<s.value {
+            acc:PsionicAccumulator;
+            for j:0..<L {acc=psionic_ops_accumulate(acc,fp8_unit(kv_b.codes[(head*(s.nope+s.value)+s.nope+v)*L+j])*f64(latent[j]));}
+            x:=psionic_ops_total(acc)*f64(kv_b.scale);
+            if !psionic_ops_fits_f32(x) {return false;}
+            out[head*s.value+v]=f32(x);
+        }
+    }
+    return true;
+}
+// tokens rows of hidden at positions start .. start + tokens - 1 through the
+// layer. cache holds a row for every earlier position; the layer writes each
+// token's row before it attends, so a token sees itself and everything
+// before. Every count, code and cached row is checked before the first
+// write; on an arithmetic refusal written counts the tokens done.
+m4_attention :: (s:M4Shape,w:M4Attn,tokens:int,start:int,hidden:[]f32,cache:[]f32,work:[]f32,fwork:[]f64)->M4Result {
+    if !m4_attn_shape(s,w) {return M4Result.{status=M4Status.shape};}
+    h:=s.hidden;row:=m4_row(s);
+    if tokens<1 || start<0 || hidden.count!=tokens*h || start>cache.count/row-tokens || work.count<m4_attention_work(s) || start>fwork.count-tokens {return M4Result.{status=M4Status.capacity};}
+    for m:[5]M4Matrix.[w.q_a,w.q_b,w.kv_a,w.kv_b,w.o] {for c:m.codes {if fp8_nan(c) {return M4Result.{status=M4Status.number};}}}
+    for i:0..<start*row {if (f32_bits(cache[i])&0x7fffffff)>=0x7f800000 {return M4Result.{status=M4Status.number};}}
+    at:=m4_layout(s);
+    kv:=work[0..<at[1]];normed:=work[at[1]..<at[2]];qa:=work[at[2]..<at[3]];q:=work[at[3]..<at[4]];
+    latent:=work[at[4]..<at[5]];attended:=work[at[5]..<at[6]];out:=work[at[6]..<at[7]];
+    for t:0..<tokens {
+        p:=start+t;x:=hidden[t*h..<(t+1)*h];own:=cache[p*row..<(p+1)*row];
+        ok:=m4_norm(x,w.norm,normed) && m4_linear(w.kv_a,normed,kv);
+        ok=ok && m4_norm(kv[0..<s.kv_rank],w.kv_norm,own[0..<s.kv_rank]) && m4_rotate(kv[s.kv_rank..<row],p,own[s.kv_rank..<row]);
+        ok=ok && m4_linear(w.q_a,normed,qa) && m4_norm(qa,w.q_norm,qa) && m4_linear(w.q_b,qa,q);
+        for head:0..<s.heads {
+            r:=q[head*(s.nope+s.rope)+s.nope..<(head+1)*(s.nope+s.rope)];
+            ok=ok && m4_rotate(r,p,kv[0..<s.rope]);
+            for j:0..<s.rope {r[j]=kv[j];}
+        }
+        ok=ok && m4_latent(s,w.kv_b,q,cache,p,m4_softmax_scale(s)*m4_position_scale(p),latent,attended,fwork);
+        ok=ok && m4_linear(w.o,attended,out) && m4_residual(x,out);
+        if !ok {return M4Result.{status=M4Status.arithmetic,written=t};}
+    }
+    return M4Result.{written=tokens};
+}
+// book:end attention
+
+// book:begin plan
+// Chapter 33's accounting from the shape, bytes as stored: FP8 matrices, the
+// BF16 router, embedding, readout, norms and scales. vectors: every norm and
+// scale. slot: the largest matrix that may stream, the readout. expert: one
+// routed expert's three matrices.
+m4_weights :: (s:M4Shape)->RpWeights {
+    h:=s.hidden;E:=s.experts;I:=s.expert_mlp;S:=s.shared_mlp;
+    attention:=s.q_rank*h+s.heads*(s.nope+s.rope)*s.q_rank+m4_row(s)*h+s.heads*(s.nope+s.value)*s.kv_rank+h*s.heads*s.value;
+    expert:=3*I*h;
+    // FP8 matrices one byte a value; the router two.
+    layer:=attention+E*expert+3*S*h+2*E*h;
+    // Norms (two block norms, the query and latent norms), four BF16 scale
+    // values an expert, two for each of the eight other FP8 matrices.
+    vectors:=s.layers*2*(2*h+s.q_rank+s.kv_rank+4*E+16)+2*h;
+    table:=2*s.vocab*h;
+    return RpWeights.{total=s.layers*layer+vectors+2*table,vectors=vectors,slot=table,embedding=table,expert=expert};
+}
+// f32 state for capacity tokens: each layer's latent cache rows.
+m4_state :: (s:M4Shape,capacity:int)->int {return 4*s.layers*capacity*m4_row(s);}
+// f32 scratch for chunk tokens: the residual and the widest step (the
+// attention work or the mixture's), one score row, and the logits.
+m4_scratch :: (s:M4Shape,chunk:int,capacity:int)->int {
+    return 4*(chunk*(s.hidden+rp_max(m4_attention_work(s),m4_moe_work(s)+s.experts))+capacity+s.vocab);
+}
+m4_plan :: (s:M4Shape,r:RpRequest,budget:int)->RpPlan {
+    if !m4_valid(s) {return RpPlan.{status=RpStatus.model};}
+    if r.capacity<1 || r.capacity>M4_TOKENS || r.chunk<1 || r.chunk>r.capacity {return RpPlan.{status=RpStatus.request};}
+    return rp_admit(m4_weights(s),m4_state(s,r.capacity),m4_scratch(s,r.chunk,r.capacity),r.stream,budget);
+}
+// Values a decode token multiplies: every matrix but the embedding table
+// (one row of it is read), with top_k of the experts in each layer.
+m4_active :: (s:M4Shape)->int {
+    w:=m4_weights(s);unused:=s.layers*(s.experts-s.top_k)*w.expert;
+    // The router and the readout are BF16: count their values once.
+    return w.total-w.vectors-w.embedding-unused-s.layers*s.experts*s.hidden-s.vocab*s.hidden;
+}
+// This host, measured on 2026-11-02: nvidia-smi's memory.total for the RTX
+// 4080 (16,376 MiB), free -b's total and available memory, and df's free
+// bytes on the disk that would hold the checkpoint.
+M4_HOST_GPU :: 17171480576;
+M4_HOST_RAM :: 134828441600;
+M4_HOST_AVAILABLE :: 127495778304;
+M4_HOST_DISK :: 38661877760;
+// book:end plan
+
+// Frozen before any comparison: library and oracle agree when every output
+// differs by at most M4_TOLERANCE * (1 + the largest |oracle value|).
+M4_TOLERANCE :: 0.00001;
+
+// book:begin checks-checkpoint
+#test "the pinned headers hold exactly the tensors the config names" {
+    s:=m4_small4();r:=m4_inventory(s,MS_PINNED_MANIFEST);
+    #assert MS_PINNED_LINES==38 && r.status==M4Status.ok && r.lines==38 && r.bad==-1;
+    // The text model: 118,972,845,632 values in 120,065,825,920 bytes; with
+    // the vision tower, the projector and the 3 headers, the 3 shard sizes.
+    #assert r.parameters==118972845632 && r.bytes==120065825920;
+    #assert r.bytes+MS_PINNED_OTHER_BYTES+MS_PINNED_HEADER_BYTES==MS_PINNED_BYTES;
+    // 1,485 tensors: 35 lines stand for 36 layers each, 222 are vision.
+    #assert 3+35*36+MS_PINNED_OTHER_TENSORS==MS_PINNED_TENSORS;
+    buf:[2048]u8;n:=m4_config_text(s,buf[..]);
+    #assert cast(string)buf[0..<n]==MS_PINNED_CONFIG;
+}
+// book:end checks-checkpoint
+#test "each shape change is caught at its first tensor" #steps 200000000 {
+    s:=m4_small4();a:[160]u8;
+    n:=m4_line(s,3,a[..]);#assert cast(string)a[0..<n]=="language_model.model.layers.0..35.mlp.experts.down_proj F8_E4M3 128,4096,2048";
+    n=m4_line(s,5,a[..]);#assert cast(string)a[0..<n]=="language_model.model.layers.0..35.mlp.experts.down_proj_scale_inv BF16 128,1,1";
+    n=m4_line(s,6,a[..]);#assert cast(string)a[0..<n]=="language_model.model.layers.0..35.mlp.experts.gate_up_proj F8_E4M3 128,4096,4096";
+    n=m4_line(s,10,a[..]);#assert cast(string)a[0..<n]=="language_model.model.layers.0..35.mlp.shared_experts.down_proj.activation_scale BF16 -";
+    n=m4_line(s,14,a[..]);#assert cast(string)a[0..<n]=="language_model.model.layers.0..35.mlp.shared_experts.gate_proj.weight F8_E4M3 2048,4096";
+    n=m4_line(s,25,a[..]);#assert cast(string)a[0..<n]=="language_model.model.layers.0..35.self_attn.kv_b_proj.weight F8_E4M3 6144,256";
+    n=m4_line(s,35,a[..]);#assert cast(string)a[0..<n]=="language_model.model.layers.0..35.self_attn.q_b_proj.weight_scale_inv BF16 -";
+    n=m4_line(s,36,a[..]);#assert cast(string)a[0..<n]=="language_model.model.layers.0..35.self_attn.q_a_layernorm.weight BF16 1024";
+    n=m4_line(s,0,a[..]);#assert cast(string)a[0..<n]=="language_model.lm_head.weight BF16 131072,4096";
+    n=m4_line(s,1,a[..]);#assert cast(string)a[0..<n]=="language_model.model.embed_tokens.weight BF16 131072,4096";
+    n=m4_line(s,37,a[..]);#assert cast(string)a[0..<n]=="language_model.model.norm.weight BF16 4096";
+    #assert m4_values(s,10)==36 && m4_bytes(s,10)==72 && m4_bytes(s,3)==36*128*4096*2048 && m4_bytes(s,9)==36*2*128*4096;
+    d:=s;d.experts=64;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==3;
+    d=s;d.expert_mlp=1024;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==3;
+    d=s;d.shared_mlp=4096;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==11;
+    d=s;d.vocab=131073;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==0;
+    d=s;d.layers=35;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==2;
+    d=s;d.hidden=5120;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==0;
+    d=s;d.kv_rank=512;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==20;
+    d=s;d.rope=32;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==22;
+    d=s;d.heads=16;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==25;
+    d=s;d.value=64;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==25;
+    d=s;d.q_rank=1536;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==31;
+    d=s;d.nope=128;#assert m4_inventory(d,MS_PINNED_MANIFEST).bad==25;
+    d=s;d.top_k=8;#assert m4_inventory(d,MS_PINNED_MANIFEST).status==M4Status.ok;
+    d=s;d.top_k=0;r:=m4_inventory(d,MS_PINNED_MANIFEST);#assert r.status==M4Status.shape && r.bad==-1;
+    // A repeated line, a foreign line and too many lines.
+    long:[8000]u8;k:=MS_PINNED_MANIFEST.count;
+    for i:0..<k {long[i]=MS_PINNED_MANIFEST[i];}
+    extra:="language_model.model.norm.weight BF16 4096\n";for i:0..<extra.count {long[k+i]=extra[i];}
+    r=m4_inventory(s,cast(string)long[0..<k+extra.count]);#assert r.status==M4Status.checkpoint && r.bad==37 && r.lines==39;
+    other:="other BF16 1\n";for i:0..<other.count {long[k+i]=other[i];}
+    r=m4_inventory(s,cast(string)long[0..<k+other.count]);#assert r.status==M4Status.checkpoint && r.bad==-1 && r.lines==39;
+    many:[80]u8;for i:0..<80 {many[i]='\n';}
+    r=m4_inventory(s,cast(string)many[0..<64]);#assert r.status==M4Status.checkpoint && r.lines==64 && r.bad==0;
+    r=m4_inventory(s,cast(string)many[0..<65]);#assert r.status==M4Status.checkpoint && r.lines==65 && r.bad==-1;
+}
+#test "the expected lines are distinct" #steps 200000000 {
+    s:=m4_small4();a:[160]u8;b:[160]u8;
+    for i:0..<M4_EXPECTED {n:=m4_line(s,i,a[..]);for j:i+1..<M4_EXPECTED {k:=m4_line(s,j,b[..]);#assert cast(string)a[0..<n]!=cast(string)b[0..<k];}}
+}
+#test "every shape field has a bound" {
+    s:=m4_small4();#assert m4_valid(s) && m4_valid(m4o_shape());
+    for f:0..<17 {
+        d:=s;
+        if f==0 {d.hidden=0;}if f==1 {d.layers=0;}if f==2 {d.heads=0;}if f==3 {d.q_rank=0;}if f==4 {d.kv_rank=0;}if f==5 {d.nope=0;}
+        if f==6 {d.value=0;}if f==7 {d.vocab=0;}if f==8 {d.rope=0;}if f==9 {d.rope=3;}if f==10 {d.rope=130;}if f==11 {d.expert_mlp=0;}
+        if f==12 {d.shared_mlp=0;}if f==13 {d.experts=257;}if f==14 {d.top_k=0;}if f==15 {d.top_k=9;}if f==16 {d.top_k=128;}
+        #assert !m4_valid(d);
+    }
+    d:=s;d.rope=2;d.experts=256;d.top_k=8;#assert m4_valid(d);d.rope=128;#assert m4_valid(d);
+    d.experts=9;#assert m4_valid(d);d.experts=8;#assert !m4_valid(d);d.top_k=7;#assert m4_valid(d);
+}
+
+// book:begin checks-route
+#test "the router, worked by hand" {
+    // One input value 1, four experts with gate 1, 3, 2, 0: the softmax of
+    // the logits is e, e^3, e^2, 1 over their sum 31.19, so experts 1 and 2
+    // are chosen with scores 0.6439 and 0.2369. Renormalized over the two,
+    // their weights are e^3 / (e^3 + e^2) = 0.7311 and 0.2689: the sigmoid
+    // of the logit gap, +1 and -1. The margin is 0.2369 - 0.0871 = 0.1497.
+    gate:=[4]f32.[1,3,2,0];x:=[1]f32.[1];fwork:[4]f64;
+    r:=m4_route(gate[..],x[..],2,fwork[..]);
+    sum:=exp(1.0)+exp(3.0)+exp(2.0)+1;
+    #assert r.status==M4Status.ok && r.count==2 && r.ids[0]==1 && r.ids[1]==2;
+    #assert abs(r.weights[0]-0.7310586)<1e-6 && abs(r.weights[1]-0.2689414)<1e-6 && abs(r.weights[0]+r.weights[1]-1)<1e-6;
+    #assert abs(r.margin-(exp(2.0)-exp(1.0))/sum)<1e-12 && abs(r.margin-0.149738)<1e-6;
+    #assert abs(fwork[3]-1/sum)<1e-15;
+    // One expert takes weight 1, a tie goes to the lower index with margin 0.
+    r=m4_route(gate[..],x[..],1,fwork[..]);#assert r.ids[0]==1 && r.weights[0]==1;
+    tie:=[4]f32.[2,3,3,0];r=m4_route(tie[..],x[..],2,fwork[..]);
+    #assert r.ids[0]==1 && r.ids[1]==2 && r.weights[0]==0.5 && r.weights[1]==0.5 && r.margin>0;
+    r=m4_route(tie[..],x[..],1,fwork[..]);#assert r.ids[0]==1 && r.margin==0 && r.margin<M4_MARGIN;
+    // Logits of 1000 and -1000 overflow nothing: the softmax subtracts the largest.
+    far:=[4]f32.[1000,-1000,999,0];r=m4_route(far[..],x[..],2,fwork[..]);
+    #assert r.status==M4Status.ok && r.ids[0]==0 && r.ids[1]==2 && abs(f64(r.weights[0])-1/(1+exp(-1.0)))<1e-6;
+    // Logits all near -1000: shifted by the largest, not underflowed. A
+    // workspace left holding large values does not move the shift.
+    low:=[4]f32.[-1001,-1000,-1003,-1002];big4:=[4]f64.[1e300,1e300,1e300,1e300];
+    r=m4_route(low[..],x[..],2,big4[..]);
+    #assert r.status==M4Status.ok && r.ids[0]==1 && r.ids[1]==0 && abs(f64(r.weights[0])-1/(1+exp(-1.0)))<1e-6;
+    hi4:=[4]f32.[1000,-1000,0,0];big4=[4]f64.[1e300,1e300,1e300,1e300];
+    r=m4_route(hi4[..],x[..],2,big4[..]);#assert r.status==M4Status.ok && r.ids[0]==0 && r.ids[1]==1 && r.weights[0]==1 && r.weights[1]==0;
+    // Refusals: shapes and a gate that is not finite.
+    #assert m4_route(gate[..],x[..],0,fwork[..]).status==M4Status.shape && m4_route(gate[..],x[..],4,fwork[..]).status==M4Status.shape;
+    #assert m4_route(gate[..],x[..],3,fwork[..]).status==M4Status.ok && m4_route(gate[0..<3],x[..],2,fwork[..]).status==M4Status.shape;
+    #assert m4_route(gate[..],x[0..<0],2,fwork[0..<0]).status==M4Status.shape && m4_route(gate[0..<1],x[..],1,fwork[0..<1]).status==M4Status.shape;
+    #assert m4_route(gate[0..<2],x[..],1,fwork[0..<2]).status==M4Status.ok;
+    ten:[10]f32;big:[257]f32;one:[1]f32;w10:[10]f64;w257:[257]f64;
+    #assert m4_route(ten[..],one[..],8,w10[..]).status==M4Status.ok && m4_route(ten[..],one[..],9,w10[..]).status==M4Status.shape;
+    #assert m4_route(big[0..<256],one[..],8,w257[0..<256]).status==M4Status.ok && m4_route(big[..],one[..],8,w257[..]).status==M4Status.shape;
+    huge:f32=3e38;inf:=huge*huge;bad:=gate;bad[2]=inf;#assert m4_route(bad[..],x[..],2,fwork[..]).status==M4Status.number;
+    bad[2]=-inf;#assert m4_route(bad[..],x[..],2,fwork[..]).status==M4Status.number;
+    bad[2]=3e38;#assert m4_route(bad[..],x[..],2,fwork[..]).status==M4Status.ok;
+}
+#test "the router matches the oracle's ranking by logits" {
+    for seed:0..<40 {
+        gate:[40]f32;m4o_values(seed,gate[..],0);xs:[8]f32;m4o_values(seed+3,xs[..],0.1);x:[8]f64;for i:0..<8 {x[i]=f64(xs[i]);}
+        for k:1..<5 {fwork:[5]f64;r:=m4_route(gate[..],xs[..],k,fwork[..]);#assert r.status==M4Status.ok && r.count==k && m4o_agrees(r,m4o_route(gate[..],x[..],k));}
+    }
+}
+// book:end checks-route
+
+// book:begin checks-moe
+m4_moe_view :: (f:[]f32,c:[]u8)->M4Moe {
+    return M4Moe.{norm=f[0..<8],gate=f[8..<48],up=c[0..<240],up_scale=f[48..<53],down=c[240..<360],down_scale=f[53..<58],
+        shared_gate=M4Matrix.{codes=c[360..<384],scale=f[58]},shared_up=M4Matrix.{codes=c[384..<408],scale=f[59]},shared_down=M4Matrix.{codes=c[408..<432],scale=f[60]}};
+}
+#test "the mixture layer matches the binary64 oracle, token by token and route by route" {
+    s:=m4o_shape();
+    for seed:0..<8 {
+        a:=m4o_moe_weights(seed);hidden:[56]f32;m4o_values(seed+7,hidden[..],0);h:=hidden;
+        routes:[7]M4Route;work:[22]f32;fwork:[13]f64;
+        r:=m4_moe(s,m4_moe_view(a.f[..],a.c[..]),7,h[..],routes[..],work[..],fwork[..]);
+        #assert r.status==M4Status.ok && r.written==7;
+        for t:0..<7 {
+            ref:[8]f64;m4o_moe(a.f[..],a.c[..],hidden[t*8..<t*8+8],ref[..]);g:=m4o_gap(h[t*8..<t*8+8],ref[..]);#assert g.gap<=g.limit;
+            x:[8]f64;n:[8]f64;for i:0..<8 {x[i]=f64(hidden[t*8+i]);}m4o_rms(x[..],a.f[0..<8],n[..]);
+            #assert routes[t].count==2 && m4o_agrees(routes[t],m4o_route(a.f[8..<48],n[..],2));
+        }
+    }
+}
+#test "a mixture of one token at a time equals the prompt at once" {
+    s:=m4o_shape();a:=m4o_moe_weights(3);hidden:[56]f32;m4o_values(1,hidden[..],0);w:=m4_moe_view(a.f[..],a.c[..]);
+    all:=hidden;routes:[7]M4Route;work:[22]f32;fwork:[13]f64;
+    #assert m4_moe(s,w,7,all[..],routes[..],work[..],fwork[..]).written==7;
+    each:=hidden;one:[1]M4Route;
+    for t:0..<7 {
+        #assert m4_moe(s,w,1,each[t*8..<t*8+8],one[..],work[..],fwork[..]).written==1;
+        #assert one[0].ids[0]==routes[t].ids[0] && one[0].ids[1]==routes[t].ids[1] && one[0].margin==routes[t].margin;
+    }
+    for i:0..<56 {#assert all[i]==each[i];}
+}
+// book:end checks-moe
+// book:begin checks-hand
+#test "a mixture of one hidden value, worked by hand" {
+    // Hidden 2 normalizes to 2 / sqrt(4 + 1e-6), just under 1. Gate rows 1,
+    // 2 and -1 choose expert 1 alone, weight 1. Its gate row 1 (code 0x38)
+    // gives silu(1) = 0.7311, its up row 2 (0x40) makes 1.4621, its down 3
+    // (0x44) 4.3864. The shared expert's 1, 1, 1 give silu(1) = 0.7311. The
+    // residual adds 5.1174 to 2: 7.1174, a little under
+    // 7.11741 since the normed value is a little under 1.
+    s:=M4Shape.{hidden=1,layers=1,heads=1,q_rank=1,kv_rank=1,nope=1,rope=2,value=1,experts=3,top_k=1,expert_mlp=1,shared_mlp=1,vocab=1};
+    norm:=[1]f32.[1];gate:=[3]f32.[1,2,-1];up:=[6]u8.[0x30,0x30,0x38,0x40,0x30,0x30];down:=[3]u8.[0x30,0x44,0x30];ones:=[3]f32.[1,1,1];
+    sg:=[1]u8.[0x38];
+    w:=M4Moe.{norm=norm[..],gate=gate[..],up=up[..],up_scale=ones[..],down=down[..],down_scale=ones[..],
+        shared_gate=M4Matrix.{codes=sg[..],scale=1},shared_up=M4Matrix.{codes=sg[..],scale=1},shared_down=M4Matrix.{codes=sg[..],scale=1}};
+    h:=[1]f32.[2];routes:[1]M4Route;work:[4]f32;fwork:[4]f64;
+    r:=m4_moe(s,w,1,h[..],routes[..],work[..],fwork[..]);
+    #assert r.status==M4Status.ok && r.written==1 && routes[0].ids[0]==1 && routes[0].weights[0]==1 && abs(h[0]-7.1174088)<0.000001;
+}
+// book:end checks-hand
+#test "the mixture refuses bad shapes, scales, room and arithmetic" {
+    s:=m4o_shape();a:=m4o_moe_weights(1);hidden:[56]f32;m4o_values(2,hidden[..],0);routes:[7]M4Route;work:[22]f32;fwork:[13]f64;
+    w:=m4_moe_view(a.f[..],a.c[..]);
+    #assert m4_moe_work(s)==22 && m4_moe_fwork(s)==13;
+    for k:0..<12 {
+        b:=w;
+        if k==0 {b.norm=b.norm[0..<7];}if k==1 {b.gate=b.gate[0..<39];}if k==2 {b.up=b.up[0..<239];}if k==3 {b.down=b.down[0..<119];}
+        if k==4 {b.up_scale=b.up_scale[0..<4];}if k==5 {b.down_scale=b.down_scale[0..<4];}if k==6 {b.shared_gate.codes=a.c[360..<383];}
+        if k==7 {b.shared_up.codes=a.c[384..<407];}if k==8 {b.shared_down.codes=a.c[408..<431];}if k==9 {b.shared_down.scale=0;}
+        if k==10 {b.shared_gate.scale=-1;}if k==11 {b.shared_up.scale=0;}
+        h:=hidden;#assert m4_moe(s,b,7,h[..],routes[..],work[..],fwork[..]).status==M4Status.shape;
+        for i:0..<56 {#assert h[i]==hidden[i];}
+    }
+    huge:f32=3e38;h:=hidden;
+    for e:0..<5 {
+        b:=a;b.f[48+e]=0;#assert m4_moe(s,m4_moe_view(b.f[..],b.c[..]),7,h[..],routes[..],work[..],fwork[..]).status==M4Status.shape;
+        b=a;b.f[53+e]=huge*huge;#assert m4_moe(s,m4_moe_view(b.f[..],b.c[..]),7,h[..],routes[..],work[..],fwork[..]).status==M4Status.shape;
+    }
+    t:=s;t.top_k=0;#assert m4_moe(t,w,7,h[..],routes[..],work[..],fwork[..]).status==M4Status.shape;
+    #assert m4_moe(s,w,0,h[0..<0],routes[..],work[..],fwork[..]).status==M4Status.capacity;
+    #assert m4_moe(s,w,7,h[0..<55],routes[..],work[..],fwork[..]).status==M4Status.capacity;
+    #assert m4_moe(s,w,7,h[..],routes[0..<6],work[..],fwork[..]).status==M4Status.capacity;
+    #assert m4_moe(s,w,7,h[..],routes[..],work[0..<21],fwork[..]).status==M4Status.capacity;
+    #assert m4_moe(s,w,7,h[..],routes[..],work[..],fwork[0..<12]).status==M4Status.capacity;
+    for i:0..<56 {#assert h[i]==hidden[i];}
+    // A NaN code in every expert, a gate that is not finite, a norm that
+    // overflows on the third token only.
+    b:=a;for i:0..<240 {b.c[i]=0x7f;}r:=m4_moe(s,m4_moe_view(b.f[..],b.c[..]),7,h[..],routes[..],work[..],fwork[..]);#assert r.status==M4Status.arithmetic && r.written==0;
+    b=a;b.f[8]=huge*huge;h=hidden;r=m4_moe(s,m4_moe_view(b.f[..],b.c[..]),7,h[..],routes[..],work[..],fwork[..]);#assert r.status==M4Status.number && r.written==0;
+    b=a;b.f[0]=3e38;h=hidden;h[0]=0;h[8]=0;h[16]=1;r=m4_moe(s,m4_moe_view(b.f[..],b.c[..]),7,h[..],routes[..],work[..],fwork[..]);
+    #assert r.status==M4Status.arithmetic && r.written==2 && h[16]==1 && h[1]!=hidden[1];
+    // Codes of 448 at scale 1e38 overflow the gate product; at 1e30 the
+    // products fit but silu times up overflows; the shared expert alone too.
+    b=a;for e:0..<5 {b.f[48+e]=1e38;}for i:0..<240 {b.c[i]=0x7e;}h=hidden;
+    r=m4_moe(s,m4_moe_view(b.f[..],b.c[..]),7,h[..],routes[..],work[..],fwork[..]);#assert r.status==M4Status.arithmetic && r.written==0;
+    b=a;for e:0..<5 {b.f[48+e]=1e30;}for i:0..<240 {b.c[i]=0x7e;}for i:0..<56 {h[i]=1;}
+    r=m4_moe(s,m4_moe_view(b.f[..],b.c[..]),7,h[..],routes[..],work[..],fwork[..]);#assert r.status==M4Status.arithmetic && r.written==0;
+    b=a;for e:0..<5 {b.f[48+e]=0.0625;b.f[53+e]=1e38;}for i:0..<360 {b.c[i]=0x7e;}for i:0..<56 {h[i]=1;}
+    r=m4_moe(s,m4_moe_view(b.f[..],b.c[..]),7,h[..],routes[..],work[..],fwork[..]);#assert r.status==M4Status.arithmetic && r.written==0;
+    b=a;b.f[58]=0.0625;b.f[59]=0.0625;b.f[60]=1e38;for i:360..<432 {b.c[i]=0x7e;}for i:0..<56 {h[i]=1;}
+    r=m4_moe(s,m4_moe_view(b.f[..],b.c[..]),7,h[..],routes[..],work[..],fwork[..]);#assert r.status==M4Status.arithmetic && r.written==0;
+}
+#test "the sum of routed and shared overflows though neither does alone" {
+    // A routed expert adding about 1.6e38 and the shared expert as much:
+    // each fits f32, their sum does not. Then the residual alone.
+    s:=M4Shape.{hidden=1,layers=1,heads=1,q_rank=1,kv_rank=1,nope=1,rope=2,value=1,experts=2,top_k=1,expert_mlp=1,shared_mlp=1,vocab=1};
+    norm:=[1]f32.[1];gate:=[2]f32.[1,0];up:=[4]u8.[0x40,0x38,0x40,0x38];down:=[2]u8.[0x38,0x38];sc:=[2]f32.[1,1];ds:=[2]f32.[1e38,1e38];
+    sg:=[1]u8.[0x40];sd:=[1]u8.[0x38];
+    w:=M4Moe.{norm=norm[..],gate=gate[..],up=up[..],up_scale=sc[..],down=down[..],down_scale=ds[..],
+        shared_gate=M4Matrix.{codes=sg[..],scale=1},shared_up=M4Matrix.{codes=sd[..],scale=1},shared_down=M4Matrix.{codes=sd[..],scale=1e38}};
+    h:=[1]f32.[1];routes:[1]M4Route;work:[4]f32;fwork:[3]f64;
+    r:=m4_moe(s,w,1,h[..],routes[..],work[..],fwork[..]);#assert r.status==M4Status.arithmetic && r.written==0 && h[0]==1;
+    w.shared_down.scale=1;r=m4_moe(s,w,1,h[..],routes[..],work[..],fwork[..]);#assert r.status==M4Status.ok && h[0]>1.7e38;
+    h[0]=3e38;r=m4_moe(s,w,1,h[..],routes[..],work[..],fwork[..]);#assert r.status==M4Status.arithmetic && h[0]==3e38;
+}
+
+// book:begin checks-rope
+#test "YaRN frequencies, scales and the rotation, by hand" {
+    // Width 64: the correction dimensions are 64 ln(8192 / (32 * 2 pi)) /
+    // (2 ln 10000) = 12.88, so lo = 12, and 64 ln(8192 / 2 pi) / (2 ln
+    // 10000) = 24.92, so hi = 25. Pairs below 12 keep theta^(-2j/64); pairs
+    // from 25 on turn 128 times slower; pair 18 is mixed 6/13 of the way.
+    #assert abs(m4_correction(64,32)-12.8805)<0.0001 && abs(m4_correction(64,1)-24.9217)<0.0001;
+    #assert m4_inv_freq(64,0)==1 && m4_inv_freq(64,11)==m4o_base(11) && m4_inv_freq(64,12)==m4o_base(12);
+    #assert m4_inv_freq(64,25)==m4o_base(25)/128 && m4_inv_freq(64,31)==m4o_base(31)/128;
+    #assert abs(m4_inv_freq(64,18)-(m4o_base(18)/128*6.0/13+m4o_base(18)*7.0/13))<1e-18;
+    for d:1..<65 {
+        lo:=floor(m4_correction(2*d,32));hi:=-floor(-m4_correction(2*d,1));
+        #assert lo>=0 && lo<hi && hi<=f64(2*d-1);
+        for j:0..<d {#assert abs(m4_inv_freq(2*d,j)-m4o_inv_freq(2*d,j))<=1e-15*m4o_inv_freq(2*d,j);}
+    }
+    // The softmax scale (0.1 ln 128 + 1)^2 / sqrt(128) = 0.194970; Llama 4's
+    // factor is 1 below position 8192, then 1 + 0.1 ln 2 = 1.069315.
+    #assert abs(m4_softmax_scale(m4_small4())-0.194970)<0.000001;
+    #assert m4_position_scale(0)==1 && m4_position_scale(8191)==1 && m4_position_scale(8192)==1+0.1*log(2.0);
+    #assert m4_position_scale(16383)==1+0.1*log(2.0) && m4_position_scale(16384)==1+0.1*log(3.0) && abs(m4_position_scale(8192)-1.069315)<0.000001;
+    // One pair at position 1 with frequency 1 turns by one radian.
+    x:=[2]f32.[1,0];out:[2]f32;#assert m4_rotate(x[..],1,out[..]) && out[0]==f32(cos(1.0)) && out[1]==f32(sin(1.0));
+    y:=[4]f32.[1,2,3,4];o4:[4]f32;#assert m4_rotate(y[..],0,o4[..]) && o4[0]==1 && o4[1]==3 && o4[2]==2 && o4[3]==4;
+    big:=[2]f32.[3e38,3e38];#assert !m4_rotate(big[..],1,out[..]);
+    neg:=[2]f32.[3e38,-3e38];#assert !m4_rotate(neg[..],1,out[..]);
+    // A rotated query against a rotated key depends only on their distance.
+    q:=[4]f32.[0.75,-0.5,0.25,1];k:=[4]f32.[0.5,0.25,-1,0.5];a:[4]f32;b:[4]f32;
+    #assert abs(m4o_dot(7,3,q[..],k[..],a[..],b[..])-m4o_dot(1007,1003,q[..],k[..],a[..],b[..]))<0.000001;
+    #assert abs(m4o_dot(7,3,q[..],k[..],a[..],b[..])-m4o_dot(7,4,q[..],k[..],a[..],b[..]))>0.01;
+}
+// book:end checks-rope
+
+// book:begin checks-attention
+m4_attn_view :: (f:[]f32,c:[]u8)->M4Attn {
+    return M4Attn.{norm=f[0..<8],q_a=M4Matrix.{codes=c[0..<32],scale=f[15]},q_norm=f[8..<12],q_b=M4Matrix.{codes=c[32..<80],scale=f[16]},
+        kv_a=M4Matrix.{codes=c[80..<136],scale=f[17]},kv_norm=f[12..<15],kv_b=M4Matrix.{codes=c[136..<166],scale=f[18]},o=M4Matrix.{codes=c[166..<214],scale=f[19]}};
+}
+#test "latent attention matches the expanded binary64 oracle" {
+    s:=m4o_shape();
+    at:=m4_layout(s);#assert at[0]==0 && at[1]==7 && at[2]==15 && at[3]==19 && at[4]==31 && at[5]==34 && at[6]==40 && at[7]==48;
+    #assert m4_attention_work(s)==7+2*8+4+12+3+6;
+    for seed:0..<6 {
+        a:=m4o_attn_weights(seed);hidden:[48]f32;m4o_values(seed+11,hidden[..],0);h:=hidden;
+        cache:[6*7]f32;work:[62]f32;fwork:[6]f64;
+        r:=m4_attention(s,m4_attn_view(a.f[..],a.c[..]),6,0,h[..],cache[..],work[..],fwork[..]);
+        ref:[48]f64;none:[1]f32;m4o_attention(a.f[..],a.c[..],6,0,hidden[..],none[0..<0],ref[..]);g:=m4o_gap(h[..],ref[..]);
+        #assert r.status==M4Status.ok && r.written==6 && g.gap<=g.limit;
+    }
+}
+#test "positions across 8192: the cached past, Llama 4's factor and far rotations" #steps 2000000000 {
+    s:=m4o_shape();a:=m4o_attn_weights(2);hidden:[32]f32;m4o_values(5,hidden[..],0);
+    cache:[8194*7]f32;m4o_past(1,cache[0..<8190*7]);past:=cache;
+    h:=hidden;work:[62]f32;fwork:[8194]f64;
+    r:=m4_attention(s,m4_attn_view(a.f[..],a.c[..]),4,8190,h[..],cache[..],work[..],fwork[..]);
+    ref:[32]f64;m4o_attention(a.f[..],a.c[..],4,8190,hidden[..],past[0..<8190*7],ref[..]);g:=m4o_gap(h[..],ref[..]);
+    #assert r.status==M4Status.ok && r.written==4 && g.gap<=g.limit;
+    for i:0..<8190*7 {#assert cache[i]==past[i];}
+}
+#test "one token at a time equals the prompt at once" {
+    s:=m4o_shape();a:=m4o_attn_weights(4);hidden:[48]f32;m4o_values(3,hidden[..],0);w:=m4_attn_view(a.f[..],a.c[..]);
+    all:=hidden;c1:[42]f32;work:[62]f32;fwork:[6]f64;
+    #assert m4_attention(s,w,6,0,all[..],c1[..],work[..],fwork[..]).written==6;
+    each:=hidden;c2:[42]f32;
+    for t:0..<6 {#assert m4_attention(s,w,1,t,each[t*8..<t*8+8],c2[0..<(t+1)*7],work[..],fwork[..]).written==1;}
+    for i:0..<48 {#assert all[i]==each[i];}for i:0..<42 {#assert c1[i]==c2[i];}
+}
+#test "the absorbed core equals chapter 90's ml_attention when kv_b is exact in BF16" {
+    // E4M3 codes times 0.5 are exact BF16 values, so ml_attention reads the
+    // same W_UK and W_UV; both forms agree within chapter 84's tolerance.
+    s:=m4o_shape();codes:[30]u8;m4o_codes(5,codes[..]);kv_b:=M4Matrix.{codes=codes[..],scale=0.5};
+    w:[60]u8;for i:0..<30 {b:=f32_bits(f32(fp8_unit(codes[i])*0.5))>>16;w[2*i]=cast(u8)(b&255);w[2*i+1]=cast(u8)(b>>8);}
+    ms:=MlShape.{heads=2,nope=2,rope=4,value=3,latent=3,capacity=8};
+    for p:0..<8 {
+        q:[12]f32;m4o_values(p,q[..],0);cache:[56]f32;m4o_past(p+2,cache[..]);
+        latent:[3]f32;mine:[6]f32;scores:[8]f64;
+        #assert m4_latent(s,kv_b,q[..],cache[..],p,0.375,latent[..],mine[..],scores[..]);
+        theirs:[6]f32;row:[7]f32;mw:[64]f32;msc:[16]f64;
+        r:=ml_attention(ms,MlMode.compressed,w[..],q[..],cache[p*7..<p*7+3],cache[p*7+3..<p*7+7],cache[0..<p*7],p,0.375,theirs[..],row[..],mw[..],msc[..],false);
+        #assert r.status==DsStatus.ok && la_gap(mine[..],theirs[..]).worst<=LA_TOLERANCE;
+        // Scores of +-1500 a position: the softmax shifts by the largest,
+        // so neither exp overflows nor every term underflows.
+        for sign:0..<2 {
+            big:=q;for h:0..<2 {for i:0..<2 {big[h*6+i]=0;}for i:0..<4 {big[h*6+2+i]=ifx sign==0 then 1000 else -1000;}}
+            same:=cache;for t:0..<p+1 {for i:0..<4 {same[t*7+3+i]=1;}}
+            #assert m4_latent(s,kv_b,big[..],same[..],p,0.375,latent[..],mine[..],scores[..]);
+            r=ml_attention(ms,MlMode.compressed,w[..],big[..],same[p*7..<p*7+3],same[p*7+3..<p*7+7],same[0..<p*7],p,0.375,theirs[..],row[..],mw[..],msc[..],false);
+            #assert r.status==DsStatus.ok && la_gap(mine[..],theirs[..]).worst<=LA_TOLERANCE;
+        }
+    }
+    // W_UK rows of 0 and W_UV rows of 448 at scale 1e38: the moved query
+    // is 0, the value product overflows.
+    big:[30]u8;for h:0..<2 {for v:0..<3 {for j:0..<3 {big[(h*5+2+v)*3+j]=0x7e;}}}
+    q:[12]f32;m4o_values(1,q[..],0);cache:[7]f32;m4o_past(2,cache[..]);for j:0..<3 {cache[j]=1;}latent:[3]f32;mine:[6]f32;scores:[1]f64;
+    #assert !m4_latent(s,M4Matrix.{codes=big[..],scale=1e38},q[..],cache[..],0,0.375,latent[..],mine[..],scores[..]);
+    #assert m4_latent(s,M4Matrix.{codes=big[..],scale=1e30},q[..],cache[..],0,0.375,latent[..],mine[..],scores[..]) && abs(f64(mine[0])-1.344e33)<1e27;
+}
+// book:end checks-attention
+#test "attention refuses bad shapes, codes, cache and room before it writes" {
+    s:=m4o_shape();a:=m4o_attn_weights(1);hidden:[16]f32;m4o_values(2,hidden[..],0);work:[62]f32;fwork:[2]f64;
+    w:=m4_attn_view(a.f[..],a.c[..]);
+    for k:0..<11 {
+        b:=w;
+        if k==0 {b.norm=b.norm[0..<7];}if k==1 {b.q_norm=b.q_norm[0..<3];}if k==2 {b.kv_norm=b.kv_norm[0..<2];}if k==3 {b.q_a.codes=a.c[0..<31];}
+        if k==4 {b.q_b.codes=a.c[32..<79];}if k==5 {b.kv_a.codes=a.c[80..<135];}if k==6 {b.kv_b.codes=a.c[136..<165];}if k==7 {b.o.codes=a.c[166..<213];}
+        if k==8 {b.o.scale=0;}if k==9 {b.q_a.scale=-0.5;}if k==10 {b.kv_b.scale=0;}
+        h:=hidden;cache:[14]f32;#assert m4_attention(s,b,2,0,h[..],cache[..],work[..],fwork[..]).status==M4Status.shape;
+        for i:0..<16 {#assert h[i]==hidden[i];}for c:cache {#assert c==0;}
+    }
+    t:=s;t.rope=3;h:=hidden;cache:[14]f32;#assert m4_attention(t,w,2,0,h[..],cache[..],work[..],fwork[..]).status==M4Status.shape;
+    #assert m4_attention(s,w,0,0,h[0..<0],cache[..],work[..],fwork[..]).status==M4Status.capacity;
+    #assert m4_attention(s,w,2,-1,h[..],cache[..],work[..],fwork[..]).status==M4Status.capacity;
+    #assert m4_attention(s,w,2,0,h[0..<15],cache[..],work[..],fwork[..]).status==M4Status.capacity;
+    #assert m4_attention(s,w,2,0,h[..],cache[0..<13],work[..],fwork[..]).status==M4Status.capacity;
+    #assert m4_attention(s,w,2,0,h[..],cache[..],work[0..<47],fwork[..]).status==M4Status.capacity;
+    #assert m4_attention(s,w,2,0,h[..],cache[..],work[0..<48],fwork[..]).status==M4Status.ok;h=hidden;for i:0..<14 {cache[i]=0;}
+    #assert m4_attention(s,w,2,0,h[..],cache[..],work[..],fwork[0..<1]).status==M4Status.capacity;
+    one:[8]f32;big:[1]f32;#assert m4_attention(s,w,1,M4_TOKENS,one[..],big[0..<0],work[..],fwork[..]).status==M4Status.capacity;
+    for i:0..<16 {#assert h[i]==hidden[i];}for c:cache {#assert c==0;}
+    // A NaN code in each matrix, and a cached row that is not finite.
+    last:=[5]int.[31,79,135,165,213];
+    for m:0..<5 {
+        b:=a;b.c[last[m]]=ifx m%2==0 then 0xff else 0x7f;
+        #assert m4_attention(s,m4_attn_view(b.f[..],b.c[..]),2,0,h[..],cache[..],work[..],fwork[..]).status==M4Status.number;
+    }
+    past:[21]f32;huge:f32=3e38;past[6]=huge*huge;f3:[3]f64;
+    #assert m4_attention(s,w,2,1,h[..],past[..],work[..],f3[..]).status==M4Status.number;
+    past[6]=-huge*huge;#assert m4_attention(s,w,2,1,h[..],past[..],work[..],f3[..]).status==M4Status.number;
+    past[6]=0;past[0]=huge*huge;#assert m4_attention(s,w,2,1,h[..],past[..],work[..],f3[..]).status==M4Status.number;
+    p2:[28]f32;f4:[4]f64;p2[13]=huge*huge;#assert m4_attention(s,w,2,2,h[..],p2[..],work[..],f4[..]).status==M4Status.number;
+    p2[13]=0;#assert m4_attention(s,w,2,2,h[..],p2[..],work[..],f4[..]).status==M4Status.ok;h=hidden;
+    #assert m4_attention(s,w,2,2,h[..],p2[0..<27],work[..],f4[..]).status==M4Status.capacity && m4_attention(s,w,2,2,h[..],p2[..],work[..],f4[0..<3]).status==M4Status.capacity;
+    for i:0..<16 {#assert h[i]==hidden[i];}
+    past[0]=0;past[6]=3e38;#assert m4_attention(s,w,2,1,h[..],past[..],work[..],f3[..]).status!=M4Status.number;
+}
+#test "attention stops at the token whose arithmetic overflows" {
+    s:=m4o_shape();a:=m4o_attn_weights(1);work:[62]f32;fwork:[3]f64;
+    // Block norm weights of 3e38 overflow the first token's normed row.
+    b:=a;for i:0..<8 {b.f[i]=3e38;}
+    h:[16]f32;for i:0..<16 {h[i]=2;}cache:[14]f32;
+    r:=m4_attention(s,m4_attn_view(b.f[..],b.c[..]),2,0,h[..],cache[..],work[..],fwork[..]);#assert r.status==M4Status.arithmetic && r.written==0;
+    // Large scales and codes of 448 overflow each projection in turn.
+    for m:0..<5 {
+        c:=a;h2:[8]f32;for i:0..<8 {h2[i]=1;}c1:[7]f32;
+        c.f[15+m]=3e38;for i:0..<214 {c.c[i]=0x7e;}
+        r=m4_attention(s,m4_attn_view(c.f[..],c.c[..]),1,0,h2[..],c1[..],work[..],fwork[..]);#assert r.status==M4Status.arithmetic && r.written==0;
+    }
+    // The residual: every output row alike (all codes +-448), scaled to
+    // +2e38, on a hidden of 3e38. The norm ignores a positive hidden's
+    // scale, so the output is the one measured on a hidden of ones.
+    c:=a;h3:[8]f32;for i:0..<8 {h3[i]=1;}c1:[7]f32;c.f[19]=1;for i:166..<214 {c.c[i]=0x7e;}
+    r=m4_attention(s,m4_attn_view(c.f[..],c.c[..]),1,0,h3[..],c1[..],work[..],fwork[..]);#assert r.status==M4Status.ok && h3[0]==h3[7];
+    o:=f64(h3[0])-1;c.f[19]=f32(2e38/abs(o));
+    if o<0 {for i:166..<214 {c.c[i]=0xfe;}}
+    for i:0..<8 {h3[i]=1;}r=m4_attention(s,m4_attn_view(c.f[..],c.c[..]),1,0,h3[..],c1[..],work[..],fwork[..]);
+    #assert r.status==M4Status.ok && abs(h3[0]-2e38)<1e33;
+    for i:0..<8 {h3[i]=3e38;}r=m4_attention(s,m4_attn_view(c.f[..],c.c[..]),1,0,h3[..],c1[..],work[..],fwork[..]);
+    #assert r.status==M4Status.arithmetic && r.written==0 && h3[0]==3e38;
+}
+
+// book:begin checks-plan
+// The weight bytes equal the header survey's text bytes, 728,192 of them
+// norms and scales.
+#test "the plan counts every expert, holds the model in RAM, and streams on the GPU" {
+    s:=m4_small4();w:=m4_weights(s);
+    #assert w.total==120065825920 && w.vectors==728192 && w.slot==1073741824 && w.embedding==1073741824 && w.expert==25165824;
+    #assert 36*128*w.expert==115964116992;
+    // Active a token: 6,095,372,288 values of 118,972,845,632.
+    #assert m4_active(s)==6095372288;
+    // 46,080 bytes of latent cache a token: 36 layers x (256 + 64) x 4.
+    #assert m4_state(s,1)==46080 && m4_state(s,4096)==188743680;
+    c:=la_cache(MlShape.{heads=32,nope=64,rope=64,value=128,latent=256,capacity=163840},36,4096,4);
+    #assert c.status==DsStatus.ok && c.latent_bytes==m4_state(s,4096) && c.full_bytes==36*4096*4*32*256;
+    #assert m4_scratch(s,256,4096)==4*(256*(4096+rp_max(m4_attention_work(s),m4_moe_work(s)+128))+4096+131072);
+    #assert m4_attention_work(s)==320+2*4096+1024+4096+256+4096 && m4_moe_work(s)+128==2*4096+4096+128;
+    big:=s;big.expert_mlp=8192;#assert m4_scratch(big,1,1)==4*(4096+2*4096+2*8192+128+1+131072);
+    r:=RpRequest.{capacity=4096,chunk=256,stream=false};live:=m4_state(s,4096)+m4_scratch(s,256,4096);
+    ram:=m4_plan(s,r,M4_HOST_RAM);#assert ram.status==RpStatus.ok && ram.mode==RpMode.resident && ram.resident==w.total && ram.need==w.total+live;
+    avail:=m4_plan(s,r,M4_HOST_AVAILABLE);#assert avail.mode==RpMode.resident && M4_HOST_AVAILABLE-avail.need==7218058112;
+    gpu:=m4_plan(s,r,M4_HOST_GPU);#assert gpu.status==RpStatus.weights && gpu.mode==RpMode.refused && gpu.need-M4_HOST_GPU==103106239616;
+    r.stream=true;gpu=m4_plan(s,r,M4_HOST_GPU);
+    #assert gpu.status==RpStatus.ok && gpu.mode==RpMode.streamed && gpu.resident==M4_HOST_GPU-live-2*1073741824 && gpu.streamed==w.total-gpu.resident;
+    // The whole context, 1,048,576 tokens: 48.3 GB of latent cache; RAM
+    // cannot hold it beside the weights.
+    r=RpRequest.{capacity=M4_TOKENS,chunk=256};full:=m4_plan(s,r,M4_HOST_RAM);
+    #assert full.status==RpStatus.weights && m4_state(s,M4_TOKENS)==48318382080;
+    // The checkpoint's three shards need 120.9 GB of disk; this disk had 38.7 GB free.
+    #assert MS_PINNED_BYTES-M4_HOST_DISK==82261096176;
+}
+// book:end checks-plan
+#test "the plan refuses bad shapes and requests" {
+    s:=m4_small4();r:=RpRequest.{capacity=4096,chunk=256};
+    d:=s;d.top_k=0;#assert m4_plan(d,r,M4_HOST_RAM).status==RpStatus.model;
+    for k:0..<5 {
+        q:=r;
+        if k==0 {q.capacity=0;q.chunk=0;}if k==1 {q.capacity=M4_TOKENS+1;}if k==2 {q.chunk=0;}if k==3 {q.chunk=4097;}if k==4 {q.capacity=M4_TOKENS;q.chunk=M4_TOKENS;}
+        #assert (m4_plan(s,q,1<<60).status==RpStatus.ok)==(k==4);
+    }
+    #assert m4_plan(s,r,-1).status==RpStatus.budget && m4_plan(s,r,0).status==RpStatus.state;
+    #assert m4_plan(s,RpRequest.{capacity=1,chunk=1},1<<40).status==RpStatus.ok;
+    // Each field moves the count by its own tensors.
+    d=s;d.layers=37;#assert m4_weights(d).total-m4_weights(s).total==(120065825920-728192-2*1073741824)/36+2*(8192+1024+256+512+16);
+    d=s;d.experts=129;#assert m4_weights(d).total-m4_weights(s).total==36*(25165824+2*4096+8);
+    d=s;d.top_k=5;#assert m4_active(d)-m4_active(s)==36*25165824;
+    d=s;d.vocab=1;#assert m4_weights(s).total-m4_weights(d).total==4*131071*4096;
+    #assert m4_state(s,10)-m4_state(s,9)==46080;
+    d=s;d.rope=32;#assert m4_state(s,1)-m4_state(d,1)==36*32*4;
+}

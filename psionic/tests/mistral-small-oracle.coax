@@ -1,0 +1,199 @@
+// Chapter 85's check oracle, loaded by psionic/lib/mistral-small.coax.
+// Mistral Small 4's decoder layer written from its published definition
+// (transformers main, models/mistral4/modeling_mistral4.py, Mistral4TopkRouter,
+// Mistral4Experts, Mistral4MoE and Mistral4Attention, read and not run) in
+// binary64 with nothing narrowed to f32. It shares no code with the library:
+// its own E4M3 decode, weights multiplied by their scale before each product,
+// the router ranked by logits (the softmax keeps their order) with the chosen
+// weights a softmax over the chosen logits alone, and attention in the
+// expanded form (each past latent projected to per-head keys and values),
+// with the rotary pairs rotated in place in their interleaved layout.
+
+// The checks' small model: hidden 8, 2 heads, query rank 4, latent 3,
+// non-rotary 2 and rotary 4 a head, value 3; 5 experts of width 3, 2 chosen,
+// one shared expert of width 3.
+m4o_shape :: ()->M4Shape {
+    return M4Shape.{hidden=8,layers=1,heads=2,q_rank=4,kv_rank=3,nope=2,rope=4,value=3,experts=5,top_k=2,expert_mlp=3,shared_mlp=3,vocab=11};
+}
+
+// E4M3: sign, four exponent bits (bias 7), three fraction bits; exponent 0
+// is subnormal, fraction / 8 times 2^-6.
+m4o_e4m3 :: (code:u8)->f64 {
+    e:=cast(int)((code>>3)&15);m:=f64(code&7);
+    v:=ifx e==0 then m/8 else 1+m/8;
+    p:=ifx e==0 then -6 else e-7;
+    while p>0 {v*=2;p-=1;}
+    while p<0 {v/=2;p+=1;}
+    return ifx (code&128)!=0 then -v else v;
+}
+// Codes for the checks: exponents 4 to 9 (1/8 to 4 times 1 + m/8), either
+// sign, never the NaN pattern.
+m4o_code :: (seed:int,i:int)->u8 {
+    k:=(i*7+seed*13+i*i%11+seed*i%5)%96;
+    return cast(u8)(((k/48)<<7)|((4+(k%48)/8)<<3)|(k%8));
+}
+m4o_codes :: (seed:int,out:[]u8) {for i:0..<out.count {out[i]=m4o_code(seed,i);}}
+m4o_value :: (seed:int,i:int)->f32 {return f32((i*5+seed*17+i*i%13+seed*i%7)%19-9)/10;}
+m4o_values :: (seed:int,out:[]f32,shift:f32) {for i:0..<out.count {out[i]=m4o_value(seed,i)+shift;}}
+
+// out[r] = sum over k of (code value times scale) x[k].
+m4o_lin :: (codes:[]u8,scale:f32,x:[]f64,out:[]f64) {
+    for r:0..<out.count {sum:=0.0;for k:0..<x.count {sum+=m4o_e4m3(codes[r*x.count+k])*f64(scale)*x[k];}out[r]=sum;}
+}
+m4o_rms :: (x:[]f64,weight:[]f32,out:[]f64) {
+    sum:=0.0;for v:x {sum+=v*v;}
+    r:=sqrt(sum/f64(x.count)+0.000001);
+    for i:0..<x.count {out[i]=x[i]/r*f64(weight[i]);}
+}
+m4o_silu :: (x:f64)->f64 {return x/(1+exp(-x));}
+// down(silu(gate x) * up x), gate and up each width rows.
+m4o_swiglu :: (gate:[]u8,gs:f32,up:[]u8,us:f32,down:[]u8,ds:f32,width:int,x:[]f64,out:[]f64) {
+    g:[8]f64;u:[8]f64;m4o_lin(gate,gs,x,g[0..<width]);m4o_lin(up,us,x,u[0..<width]);
+    for i:0..<width {g[i]=m4o_silu(g[i])*u[i];}
+    m4o_lin(down,ds,g[0..<width],out);
+}
+
+// The route for one normed input: chosen[e] is true for the top k by rank (an
+// expert's rank counts the experts with a larger logit, or an equal logit
+// and a smaller index); weight[e] is exp(logit - the largest chosen logit)
+// over the chosen experts' sum.
+M4oRoute :: struct { chosen:[8]bool; weight:[8]f64; }
+m4o_route :: (gate:[]f32,x:[]f64,k:int)->M4oRoute {
+    r:M4oRoute;E:=gate.count/x.count;logits:[8]f64;
+    for e:0..<E {sum:=0.0;for i:0..<x.count {sum+=f64(gate[e*x.count+i])*x[i];}logits[e]=sum;}
+    top:=-1.0e300;
+    for e:0..<E {rank:=0;for o:0..<E {if logits[o]>logits[e] || (logits[o]==logits[e] && o<e) {rank+=1;}}r.chosen[e]=rank<k;if r.chosen[e] && logits[e]>top {top=logits[e];}}
+    sum:=0.0;for e:0..<E {if r.chosen[e] {sum+=exp(logits[e]-top);}}
+    for e:0..<E {if r.chosen[e] {r.weight[e]=exp(logits[e]-top)/sum;}}
+    return r;
+}
+// The library's route agrees: the same experts, weights within 1e-6.
+m4o_agrees :: (r:M4Route,o:M4oRoute)->bool {
+    for slot:0..<r.count {e:=r.ids[slot];if !o.chosen[e] || abs(f64(r.weights[slot])-o.weight[e])>0.000001 {return false;}}
+    return true;
+}
+
+// The checks' mixture weights for one seed, flat: f32 values (norm 8, gate
+// 40, up scales 5, down scales 5, shared scales 3) and E4M3 codes (gate_up
+// 240, down 120, shared gate, up and down 24 each).
+M4O_MC :: [6]int.[0,240,360,384,408,432];
+M4oMoe :: struct { f:[61]f32; c:[432]u8; }
+m4o_moe_weights :: (seed:int)->M4oMoe {
+    a:M4oMoe;m4o_values(seed,a.f[0..<8],1);m4o_values(seed+1,a.f[8..<48],0);
+    for k:0..<5 {m4o_codes(seed+2+k,a.c[M4O_MC[k]..<M4O_MC[k+1]]);}
+    scales:=[4]f32.[0.0625,0.125,0.09375,0.25];
+    for e:0..<5 {a.f[48+e]=scales[(e+seed)%4];a.f[53+e]=scales[(e+seed+1)%4];}
+    for i:0..<3 {a.f[58+i]=scales[(i+seed+2)%4];}
+    return a;
+}
+// One token through the layer: out = hidden + routed experts + shared expert.
+m4o_moe :: (f:[]f32,c:[]u8,hidden:[]f32,out:[]f64) {
+    x:[8]f64;n:[8]f64;for i:0..<8 {x[i]=f64(hidden[i]);}
+    m4o_rms(x[..],f[0..<8],n[..]);
+    r:=m4o_route(f[8..<48],n[..],2);
+    for i:0..<8 {out[i]=x[i];}
+    y:[8]f64;
+    for e:0..<5 {if r.chosen[e] {
+        up:=c[e*48..<(e+1)*48];
+        m4o_swiglu(up[0..<24],f[48+e],up[24..<48],f[48+e],c[240+e*24..<240+(e+1)*24],f[53+e],3,n[..],y[..]);
+        for i:0..<8 {out[i]+=r.weight[e]*y[i];}
+    }}
+    m4o_swiglu(c[360..<384],f[58],c[384..<408],f[59],c[408..<432],f[60],3,n[..],y[..]);
+    for i:0..<8 {out[i]+=y[i];}
+}
+
+// YaRN for a rotary width d: pair j turns at inv_freq(j) radians a position.
+// The extrapolated frequency theta^(-2j/d), the interpolated one that over
+// 128, mixed by a ramp from the low to the high correction dimension.
+m4o_inv_freq :: (d:int,j:int)->f64 {
+    dim:=f64(d);pi:=3.14159265358979323846;
+    lo:=floor(dim*log(8192/(32*2*pi))/(2*log(10000.0)));
+    hi:=-floor(-dim*log(8192/(1*2*pi))/(2*log(10000.0)));
+    if lo<0 {lo=0;}if hi>dim-1 {hi=dim-1;}if lo==hi {hi+=0.001;}
+    ramp:=(f64(j)-lo)/(hi-lo);if ramp<0 {ramp=0;}if ramp>1 {ramp=1;}
+    extra:=exp(-log(10000.0)*2*f64(j)/dim);
+    return extra/128*ramp+extra*(1-ramp);
+}
+// Rotates the interleaved pairs (x[2j], x[2j+1]) of x in place.
+m4o_rotate :: (x:[]f64,position:int) {
+    for j:0..<x.count/2 {a:=f64(position)*m4o_inv_freq(x.count,j);c:=cos(a);s:=sin(a);u:=x[2*j];v:=x[2*j+1];x[2*j]=u*c-v*s;x[2*j+1]=v*c+u*s;}
+}
+
+// The checks' attention weights for one seed, flat: f32 values (block norm
+// 8, query norm 4, latent norm 3, the five scales) and E4M3 codes (q_a 32,
+// q_b 48, kv_a 56, kv_b 30, o 48).
+M4O_AC :: [6]int.[0,32,80,136,166,214];
+M4oAttn :: struct { f:[20]f32; c:[214]u8; }
+m4o_attn_weights :: (seed:int)->M4oAttn {
+    a:M4oAttn;m4o_values(seed,a.f[0..<8],1);m4o_values(seed+1,a.f[8..<12],1);m4o_values(seed+2,a.f[12..<15],1);
+    for k:0..<5 {m4o_codes(seed+3+k,a.c[M4O_AC[k]..<M4O_AC[k+1]]);}
+    scales:=[5]f32.[0.125,0.25,0.0625,0.5,0.125];
+    for i:0..<5 {a.f[15+i]=scales[(i+seed)%5];}
+    return a;
+}
+// The checks' past: rows of latent (3) and rotated rotary key (4).
+m4o_past :: (seed:int,out:[]f32) {for i:0..<out.count {out[i]=m4o_value(seed+9,i)*1.5;}}
+// tokens rows of hidden from position start on, with the cache rows before
+// start given. out holds each token's hidden after the layer's residual.
+// Expanded form: every position's per-head key [W_UK z; k_rope] and value
+// W_UV z, scores times (1 + 0.1 ln(1 + floor(p / 8192))) times the softmax
+// scale, in binary64 throughout; this token's own row is computed, not read.
+m4o_attention :: (f:[]f32,c:[]u8,tokens:int,start:int,hidden:[]f32,past:[]f32,out:[]f64) {
+    kvb:=c[136..<166];
+    rows:[64*7]f64;   // the latent rows of start .. start+tokens-1
+    mscale:=0.1*log(128.0)+1;softmax:=mscale*mscale/sqrt(4.0+2);
+    for t:0..<tokens {
+        p:=start+t;x:[8]f64;n:[8]f64;for i:0..<8 {x[i]=f64(hidden[t*8+i]);}
+        m4o_rms(x[..],f[0..<8],n[..]);
+        qa:[4]f64;qan:[4]f64;q:[12]f64;kv:[7]f64;
+        m4o_lin(c[0..<32],f[15],n[..],qa[..]);m4o_rms(qa[..],f[8..<12],qan[..]);m4o_lin(c[32..<80],f[16],qan[..],q[..]);
+        m4o_lin(c[80..<136],f[17],n[..],kv[..]);
+        z:[3]f64;m4o_rms(kv[0..<3],f[12..<15],z[..]);
+        kr:[4]f64;for i:0..<4 {kr[i]=kv[3+i];}m4o_rotate(kr[..],p);
+        for h:0..<2 {m4o_rotate(q[h*6+2..<h*6+6],p);}
+        for i:0..<3 {rows[t*7+i]=z[i];}
+        for i:0..<4 {rows[t*7+3+i]=kr[i];}
+        llama:=1+0.1*log(1+floor(f64(p)/8192));
+        attended:[6]f64;
+        for h:0..<2 {
+            scores:[16384]f64;top:=-1.0e300;
+            for s:0..<p+1 {
+                row:[7]f64;
+                for i:0..<7 {row[i]=ifx s<start then f64(past[s*7+i]) else rows[(s-start)*7+i];}
+                // A cached row holds its rotary key split, halves first, as
+                // the library writes it: interleave it back.
+                if s<start {for j:0..<2 {row[3+2*j]=f64(past[s*7+3+j]);row[3+2*j+1]=f64(past[s*7+5+j]);}}
+                // key: W_UK row (head h, i) times the latent, then the rotary key.
+                dot:=0.0;
+                for i:0..<2 {k:=0.0;for j:0..<3 {k+=m4o_e4m3(kvb[(h*5+i)*3+j])*f64(f[18])*row[j];}dot+=q[h*6+i]*k;}
+                for i:0..<4 {dot+=q[h*6+2+i]*row[3+i];}
+                scores[s]=dot*llama*softmax;if scores[s]>top {top=scores[s];}
+            }
+            sum:=0.0;for s:0..<p+1 {scores[s]=exp(scores[s]-top);sum+=scores[s];}
+            for v:0..<3 {acc:=0.0;
+                for s:0..<p+1 {
+                    val:=0.0;for j:0..<3 {z_j:=ifx s<start then f64(past[s*7+j]) else rows[(s-start)*7+j];val+=m4o_e4m3(kvb[(h*5+2+v)*3+j])*f64(f[18])*z_j;}
+                    acc+=scores[s]/sum*val;
+                }
+                attended[h*3+v]=acc;
+            }
+        }
+        o:[8]f64;m4o_lin(c[166..<214],f[19],attended[..],o[..]);
+        for i:0..<8 {out[t*8+i]=x[i]+o[i];}
+    }
+}
+// The largest |library - oracle| and the limit LA_TOLERANCE times one plus
+// the largest |oracle value|.
+M4oGap :: struct { gap:f64; limit:f64; }
+m4o_gap :: (a:[]f32,b:[]f64)->M4oGap {
+    g:M4oGap;big:=0.0;
+    for i:0..<a.count {d:=abs(f64(a[i])-b[i]);if d>g.gap {g.gap=d;}if abs(b[i])>big {big=abs(b[i]);}}
+    g.limit=M4_TOLERANCE*(1+big);return g;
+}
+
+// Width-64 YaRN's unmixed frequency for pair j, and one rotated query
+// against one rotated key, for the rotation checks.
+m4o_base :: (j:int)->f64 {return exp(-log(10000.0)*f64(2*j)/64);}
+m4o_dot :: (p:int,t:int,q:[]f32,k:[]f32,a:[]f32,b:[]f32)->f64 {
+    if !m4_rotate(q,p,a) || !m4_rotate(k,t,b) {return 0;}s:=0.0;for i:0..<q.count {s+=f64(a[i])*f64(b[i]);}return s;
+}

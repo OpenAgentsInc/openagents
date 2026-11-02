@@ -1,0 +1,20 @@
+#import "Basic";
+#load "../lib/mistral-small.coax";
+
+// book:begin example
+// A shape that says 64 routed experts instead of 128: the first expert line
+// no longer matches the pinned headers. The refusal names the first
+// expected tensor the headers do not hold. Then an FP8 code with the NaN
+// pattern in the small model's output projection: the attention layer
+// refuses before it writes anything.
+main :: () {
+    s:=m4_small4();s.experts=64;
+    r:=m4_inventory(s,MS_PINNED_MANIFEST);
+    buf:[160]u8;n:=m4_line(s,r.bad,buf[..]);
+    print("refused: status %, tensor % not in the pinned headers: %\n",r.status,r.bad,cast(string)buf[0..<n]);
+    t:=m4o_shape();a:=m4o_attn_weights(0);a.c[200]=0x7f;
+    hidden:[8]f32;m4o_values(1,hidden[..],0);h:=hidden;cache:[7]f32;work:[62]f32;fw:[1]f64;
+    q:=m4_attention(t,m4_attn_view(a.f[..],a.c[..]),1,0,h[..],cache[..],work[..],fw[..]);
+    print("refused: status %, % tokens written, hidden unchanged %\n",q.status,q.written,h[0]==hidden[0] && h[7]==hidden[7]);
+}
+// book:end example

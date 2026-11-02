@@ -1,0 +1,58 @@
+#import "Basic";
+#load "../lib/mistral-small.coax";
+
+// book:begin example
+main :: () {
+    print("profile mistral-small-cpu-f64-v1, tolerance % x (1 + largest |reference value|), near-tie margin %\n",M4_TOLERANCE,M4_MARGIN);
+    s:=m4_small4();
+    print("pinned revision %, % shard bytes, header only\n",MS_PINNED_REVISION,MS_PINNED_BYTES);
+    r:=m4_inventory(s,MS_PINNED_MANIFEST);
+    print("text inventory: % lines, % expected, status %, % values in % bytes\n",r.lines,M4_EXPECTED,r.status,r.parameters,r.bytes);
+    print("  plus % vision and projector tensors in % bytes and % header bytes: % tensors, % bytes\n",
+        MS_PINNED_OTHER_TENSORS,MS_PINNED_OTHER_BYTES,MS_PINNED_HEADER_BYTES,MS_PINNED_TENSORS,r.bytes+MS_PINNED_OTHER_BYTES+MS_PINNED_HEADER_BYTES);
+    buf:[2048]u8;n:=m4_config_text(s,buf[..]);
+    print("config fields match the pinned config.json: %\n",cast(string)buf[0..<n]==MS_PINNED_CONFIG);
+
+    // The hand trace: four experts, logits 1, 3, 2, 0, two chosen.
+    gate:=[4]f32.[1,3,2,0];x:=[1]f32.[1];fwork:[4]f64;
+    route:=m4_route(gate[..],x[..],2,fwork[..]);
+    print("hand route: experts % and %, weights % and %, margin %\n",route.ids[0],route.ids[1],route.weights[0],route.weights[1],route.margin);
+    print("rope: lo % hi %, softmax scale %, position factor at 8192 %\n",
+        floor(m4_correction(64,32)),-floor(-m4_correction(64,1)),m4_softmax_scale(s),m4_position_scale(8192));
+
+    // The small model: one attention layer and one mixture layer, six tokens,
+    // against the binary64 oracles.
+    t:=m4o_shape();
+    print("small model: hidden 8, 2 heads, query rank 4, latent 3, rotary 4; 5 experts of width 3, 2 chosen, 1 shared\n");
+    for seed:0..<3 {
+        a:=m4o_attn_weights(seed);m:=m4o_moe_weights(seed);hidden:[48]f32;m4o_values(seed+11,hidden[..],0);
+        h:=hidden;cache:[42]f32;work:[62]f32;fw:[13]f64;routes:[6]M4Route;
+        r0:=m4_attention(t,m4_attn_view(a.f[..],a.c[..]),6,0,h[..],cache[..],work[..],fw[0..<6]);
+        r1:=m4_moe(t,m4_moe_view(m.f[..],m.c[..]),6,h[..],routes[..],work[0..<22],fw[..]);
+        mid:[48]f64;none:[1]f32;m4o_attention(a.f[..],a.c[..],6,0,hidden[..],none[0..<0],mid[..]);
+        o:[48]f32;for i:0..<48 {o[i]=f32(mid[i]);}
+        last:[48]f64;for k:0..<6 {m4o_moe(m.f[..],m.c[..],o[k*8..<k*8+8],last[k*8..<k*8+8]);}
+        g:=m4o_gap(h[..],last[..]);smallest:=1.0;ids:[6]int;
+        for k:0..<6 {if routes[k].margin<smallest {smallest=routes[k].margin;}ids[k]=routes[k].ids[0];}
+        print("  seed %: status % %, largest difference % (limit %), first experts %, smallest router margin %\n",
+            seed,r0.status,r1.status,g.gap,g.limit,ids,smallest);
+    }
+
+    // The memory plan on this host, for 4,096 tokens in chunks of 256.
+    w:=m4_weights(s);
+    print("weights % bytes (% vectors); one expert %; % values active a token\n",w.total,w.vectors,w.expert,m4_active(s));
+    print("latent cache % bytes a token (% with full keys and values in f32)\n",m4_state(s,1),4*s.layers*s.heads*(s.nope+s.rope+s.value));
+    q:=RpRequest.{capacity=4096,chunk=256,stream=false};
+    ram:=m4_plan(s,q,M4_HOST_RAM);
+    print("RAM % bytes: % %, % bytes to spare\n",M4_HOST_RAM,ram.status,rp_mode_name(ram.mode),M4_HOST_RAM-ram.need);
+    av:=m4_plan(s,q,M4_HOST_AVAILABLE);
+    print("RAM available when measured % bytes: % %, % bytes to spare\n",M4_HOST_AVAILABLE,av.status,rp_mode_name(av.mode),M4_HOST_AVAILABLE-av.need);
+    gpu:=m4_plan(s,q,M4_HOST_GPU);
+    print("GPU % bytes, resident: %, need %, short by %\n",M4_HOST_GPU,rp_status_name(gpu.status),gpu.need,gpu.need-M4_HOST_GPU);
+    q.stream=true;gpu=m4_plan(s,q,M4_HOST_GPU);
+    print("GPU streaming: % %, % bytes resident, % streamed through two slots of %\n",gpu.status,rp_mode_name(gpu.mode),gpu.resident,gpu.streamed,gpu.slot);
+    q=RpRequest.{capacity=M4_TOKENS,chunk=256};full:=m4_plan(s,q,M4_HOST_RAM);
+    print("RAM at % tokens: %, need %\n",M4_TOKENS,rp_status_name(full.status),full.need);
+    print("disk: % bytes free, the shards need %, short by %\n",M4_HOST_DISK,MS_PINNED_BYTES,MS_PINNED_BYTES-M4_HOST_DISK);
+}
+// book:end example
