@@ -80,8 +80,10 @@
 //       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, clip, webdriver, fcp, dcl, player and account (the
 //       playtest player's public id and account, "" none; never its key), voice (the page's data-voice route, "" none), ruleset (data-ruleset: realms.json "ruleset", "" none),
 //       fork (data-fork: a fork's slug on its page, docs/verse/realm-fork.md; "" none), rules (data-rules: its rule ids, a comma between),
-//       style (the realm's art style, data-style: lowpoly, painterly, photoreal or flat; "" not a realm), zone.<id>
-//       (a zone's style, data-zones "id:style ...") and clock (data-clock: cycle, real or fixed:T; the URL's
+//       style (the realm's art style, data-style: lowpoly, painterly, photoreal, flat or anime; "" not a realm),
+//       variant (an anime realm's, data-variant: pastoral, action, dusk or neon; the URL's ?variant= sets it; no
+//       line on a page without either), zone.<id> (a zone's style, data-zones "id:style ...") and zone.<id>.variant
+//       (an anime zone's, "id:anime:variant") and clock (data-clock: cycle, real or fixed:T; the URL's
 //       ?clock=T, T from 0 to 1, pins it to fixed:T for shots; ?clock=cycle or real sets it), day (the visitor's
 //       local time of day, 0 midnight to 1)
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
@@ -644,7 +646,10 @@ function kept(store, key) {
 // The realm's style, zones and clock (docs/verse/art-styles.md, The style field).
 function styleFacts() {
   const d = script?.dataset || {}, out = { style: d.style || "" };
-  for (const z of (d.zones || "").split(/\s+/)) { const [id, st] = z.split(":"); if (id && st) out[`zone.${id}`] = st; }
+  for (const z of (d.zones || "").split(/\s+/)) { const [id, st, v] = z.split(":"); if (id && st) out[`zone.${id}`] = st; if (id && st && v) out[`zone.${id}.variant`] = v; }
+  // an anime realm's variant (data-variant); the URL's ?variant= picks another for shots
+  const pick = new URLSearchParams(location.search).get("variant");
+  if (d.variant || pick) out.variant = pick && /^[a-z]{1,16}$/.test(pick) ? pick : d.variant || "";
   const pin = new URLSearchParams(location.search).get("clock");
   out.clock = pin !== null && /^(0(\.\d{1,4})?|1(\.0{1,4})?)$/.test(pin) ? `fixed:${pin}` : pin === "cycle" || pin === "real" ? pin : d.clock || "";
   // the visitor's local time of day, 0 midnight to 1, for a clock that is real
