@@ -1,0 +1,251 @@
+// The anime style (docs/verse/art-styles.md, Anime) as a picture with no GPU: a swatch of each
+// variant at its home clock (pastoral noon, action night, dusk, neon), side by side: a round head
+// in cel tones with its spot and rim, a stone tower, a far ridge in the aerial fade, the gradient
+// sky with its warm band, stars and a towering cumulus bank in flat tones, ink lines round the
+// shapes, the vignette, and speed lines on the action panel. Drawn on the CPU from the same
+// functions and preset blocks a realm's WGSL uses (verse/style.coax, verse/style-preset.coax), so
+// it shows what those numbers draw before any realm does. Written as a plain PPM on stdout.
+//   coax/bin/coax run verse/tools/anime-swatch.coax > swatch.ppm
+//   coax/bin/coax test verse/tools/anime-swatch.coax
+#import "Basic";
+#load "../style-preset.coax";
+
+AS_W :: 192;
+AS_H :: 144;
+AS_N :: AS_W * AS_H;
+AS_SKY :: 0; AS_HEAD :: 1; AS_TOWER :: 2; AS_RIDGE :: 3; AS_GROUND :: 4;
+
+// What a pixel's ray meets: its distance (0 for the sky), its normal and which shape.
+AsHit :: struct { d: f32; nx: f32; ny: f32; nz: f32; id: int; }
+// What the checks read back from a panel.
+AsStats :: struct { head: int; head_between: int; ink: int; ink_darker: int; sky_top_luma: f32; sky_low_luma: f32; }
+
+as_dot :: (ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32) -> f32 { return ax * bx + ay * by + az * bz; }
+// The angle of (x, y) from +x, -pi to pi, to a thousandth of a radian.
+as_atan2 :: (y: f32, x: f32) -> f32 {
+  ax := abs(x); ay := abs(y);
+  if ax + ay <= 0 { return 0; }
+  a := st_min(ax, ay) / st_max(ax, ay); s := a * a;
+  t := ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;
+  if ay > ax { t = 1.5707963 - t; }
+  if x < 0 { t = 3.14159265 - t; }
+  return ifx y < 0 then -t else t;
+}
+
+// The ray through pixel (x, y) from the eye at (0, 1.6, 0), looking a little up along +z.
+as_ray :: (x: int, y: int, out: [] f32) {
+  u := (f32(x) + 0.5) / f32(AS_W) * 2.0 - 1.0; v := 1.0 - (f32(y) + 0.5) / f32(AS_H) * 2.0;
+  dx := u * 0.6 * f32(AS_W) / f32(AS_H); dy := v * 0.6 + 0.12; dz := 1.0f32;
+  l := sqrt(dx * dx + dy * dy + dz * dz);
+  out[0] = dx / l; out[1] = dy / l; out[2] = dz / l;
+}
+// The nearest of the scene's shapes along ray r from the eye.
+as_hit :: (r: [] f32) -> AsHit {
+  h: AsHit; h.id = AS_SKY; h.d = 0;
+  best := 1000000.0f32;
+  ox := 0.0f32; oy := 1.6f32; oz := 0.0f32;
+  // the head: a round 0.9 m across at (-0.9, 1.3, 4.5)
+  cx := -0.9f32; cy := 1.3f32; cz := 4.5f32; rad := 0.9f32;
+  lx := ox - cx; ly := oy - cy; lz := oz - cz;
+  b := as_dot(lx, ly, lz, r[0], r[1], r[2]); c := as_dot(lx, ly, lz, lx, ly, lz) - rad * rad;
+  disc := b * b - c;
+  if disc > 0 {
+    t := -b - sqrt(disc);
+    if t > 0 && t < best {
+      best = t; h.id = AS_HEAD; h.d = t;
+      h.nx = (ox + r[0] * t - cx) / rad; h.ny = (oy + r[1] * t - cy) / rad; h.nz = (oz + r[2] * t - cz) / rad;
+    }
+  }
+  // the tower and the far ridge: boxes
+  for k: 0..<2 {
+    x0 := ifx k == 0 then 0.6f32 else -60.0f32; x1 := ifx k == 0 then 1.8f32 else 60.0f32;
+    y0 := 0.0f32; y1 := ifx k == 0 then 4.2f32 else 9.0f32;
+    z0 := ifx k == 0 then 6.0f32 else 110.0f32; z1 := ifx k == 0 then 7.2f32 else 130.0f32;
+    tmin := -1000000.0f32; tmax := 1000000.0f32; axis := 0; sgn := 0.0f32;
+    for a: 0..<3 {
+      o := ifx a == 0 then ox else ifx a == 1 then oy else oz;
+      lo := ifx a == 0 then x0 else ifx a == 1 then y0 else z0;
+      hi := ifx a == 0 then x1 else ifx a == 1 then y1 else z1;
+      if abs(r[a]) < 0.000001 { if o < lo || o > hi { tmin = 1; tmax = 0; } continue; }
+      t0 := (lo - o) / r[a]; t1 := (hi - o) / r[a];
+      s := -1.0f32;
+      if t0 > t1 { tt := t0; t0 = t1; t1 = tt; s = 1.0; }
+      if t0 > tmin { tmin = t0; axis = a; sgn = s; }
+      if t1 < tmax { tmax = t1; }
+    }
+    if tmin <= tmax && tmin > 0 && tmin < best {
+      best = tmin; h.d = tmin; h.id = ifx k == 0 then AS_TOWER else AS_RIDGE;
+      h.nx = ifx axis == 0 then sgn else 0.0f32; h.ny = ifx axis == 1 then sgn else 0.0f32; h.nz = ifx axis == 2 then sgn else 0.0f32;
+    }
+  }
+  // the ground
+  if r[1] < 0 {
+    t := -oy / r[1];
+    if t < best { best = t; h.id = AS_GROUND; h.d = t; h.nx = 0; h.ny = 1; h.nz = 0; }
+  }
+  return h;
+}
+as_slot :: (id: int, variant: int) -> f32 {
+  if id == AS_HEAD { return f32(ANIME_SKIN); }
+  if id == AS_TOWER { return f32(ANIME_STONE); }
+  if id == AS_RIDGE { return f32(ANIME_FOLIAGE); }
+  return f32(ifx variant == ANIME_NEON then ANIME_ASPHALT else ANIME_GRASS);
+}
+as_byte :: (c: f32) -> u8 {
+  v := pow(st_sat(c), 1.0f32 / 2.2f32) * 255.0f32 + 0.5f32;
+  return cast(u8) cast(int) floor(v);
+}
+
+/** Variant `variant`'s panel into rgb (AS_N * 3 bytes, row after row), with what the checks read. */
+as_render :: (variant: int, rgb: [] u8) -> AsStats {
+  st: AsStats;
+  p := verse_style_anime(variant, STYLE_DESKTOP);
+  o: [STYLE_FLOATS] f32;
+  if !verse_style_at(p, verse_style_anime_home(variant), o[..]) { return st; }
+  dist: [AS_N] f32; nrm: [AS_N * 3] f32; ids: [AS_N] int; col: [AS_N * 3] f32; alb: [AS_N * 3] f32;
+  r: [3] f32;
+  // the key put to the left of the shapes and a little past them (its height kept), so they show both tones and a rim
+  kh := sqrt(o[SU_KEY_DIR] * o[SU_KEY_DIR] + o[SU_KEY_DIR + 2] * o[SU_KEY_DIR + 2]);
+  lx := -0.9 * kh; ly := o[SU_KEY_DIR + 1]; lz := 0.44 * kh;
+  hl := sqrt(lx * lx + lz * lz);
+  tl := verse_style_luma(o[SU_TINT], o[SU_TINT + 1], o[SU_TINT + 2]);
+  for y: 0..<AS_H { for x: 0..<AS_W {
+    i := y * AS_W + x;
+    as_ray(x, y, r[..]);
+    h := as_hit(r[..]);
+    dist[i] = h.d; ids[i] = h.id; nrm[i * 3] = h.nx; nrm[i * 3 + 1] = h.ny; nrm[i * 3 + 2] = h.nz;
+    if h.id == AS_SKY {
+      up := r[1];
+      cs := ifx hl > 0.0001 then (r[0] * lx + r[2] * lz) / (sqrt(r[0] * r[0] + r[2] * r[2]) * hl) else 0.0f32;
+      a := as_atan2(r[0], r[2]);
+      top := verse_style_anime_cumulus_top(a * 3.0, 0.45, 4.0);
+      bank := ifx up > 0 then verse_style_anime_cumulus(up, top, 0.004) else 0.0f32;
+      tone := verse_style_anime_cloud_tone(verse_style_anime_cumulus_lit(up, top, cs, verse_style_noise(a * 14.0, up * 14.0)), 0.01);
+      glow := verse_style_anime_glow(up, cs, o[SU_ZENITH + 3], o[SU_HAZE_KEY + 3]);
+      star := verse_style_anime_star(a * 40.0, up * 40.0, 0.04, 0) * o[SU_SUN + 3];
+      for ch: 0..<3 {
+        sky := verse_style_anime_sky(o[SU_ZENITH + ch], o[SU_HORIZON + ch], up, o[SU_HORIZON + 3]) + glow * o[SU_HAZE_KEY + ch] + star;
+        cloud := verse_style_anime_cloud_colour(o[SU_CLOUD_TOP + ch], o[SU_ZENITH + ch], o[SU_CLOUD_TOP + 3], tone);
+        col[i * 3 + ch] = sky + (cloud - sky) * bank;
+      }
+      if y == 0 && x == 0 { st.sky_top_luma = verse_style_luma(col[0], col[1], col[2]); }
+      continue;
+    }
+    // a surface: two cel tones (a character's for the head), its cool shadow tone at the preset's value share,
+    // the head's spot and rim, all through the aerial fade
+    ndl := h.nx * lx + h.ny * ly + h.nz * lz;
+    ndv := st_sat(-(h.nx * r[0] + h.ny * r[1] + h.nz * r[2]));
+    share := verse_style_anime_aerial(h.d, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2]);
+    w := verse_style_anime_light(ndl, 1.0);
+    band := ifx h.id == AS_HEAD then verse_style_anime_cel_char(w, ndv, o[SU_BANDS2], o[SU_BANDS2 + 1])
+            else verse_style_anime_cel(w, o[SU_BANDS], verse_style_anime_far_aa(o[SU_BANDS + 2], share));
+    hx := lx - r[0]; hy := ly - r[1]; hz := lz - r[2]; hn := sqrt(hx * hx + hy * hy + hz * hz);
+    ndh := (h.nx * hx + h.ny * hy + h.nz * hz) / st_max(hn, 0.0001);
+    spot := ifx h.id == AS_HEAD then verse_style_anime_spot(ndh, o[SU_BANDS2 + 2], 0.004, o[SU_BANDS2 + 3]) * band else 0.0f32;
+    rim := ifx h.id == AS_HEAD then verse_style_anime_rim(ndv, ndl, o[SU_RIM2 + 1], o[SU_RIM2 + 2], o[SU_RIM2])
+           else ifx h.id == AS_TOWER then verse_style_anime_rim(ndv, ndl, o[SU_RIM2 + 1], o[SU_RIM2 + 2], o[SU_RIM + 3]) else 0.0f32;
+    lit: [3] f32; sh: [3] f32;
+    for ch: 0..<3 {
+      a := verse_style_anime_colour(as_slot(h.id, variant), f32(ch));
+      lit[ch] = a * (o[SU_KEY + ch] * o[SU_KEY + 3] + o[SU_SKY_AMB + ch] * o[SU_SKY_AMB + 3] * 0.35);
+      sh[ch] = verse_style_anime_shadow(lit[ch], o[SU_TINT + ch], tl, o[SU_BANDS + 3]);
+      alb[i * 3 + ch] = lit[ch];   // the line is its lit colour darkened
+    }
+    before := o[SU_BANDS + 3] * verse_style_luma(lit[0], lit[1], lit[2]); after := verse_style_luma(sh[0], sh[1], sh[2]);
+    for ch: 0..<3 {
+      c := verse_style_banded(verse_style_keep_value(sh[ch], before, after), lit[ch], band);
+      c = c + spot * o[SU_KEY + ch] + rim * o[SU_RIM + ch];
+      col[i * 3 + ch] = verse_style_fog(c, o[SU_HAZE_COLOUR + ch], share);
+    }
+    if h.id == AS_HEAD {
+      st.head += 1;
+      if band > 0.0001 && band < 0.9999 { st.head_between += 1; }
+    }
+  } }
+  // the sky low in the frame, under the bank: its luma at the panel's left edge just over the horizon
+  as_ray(0, AS_H / 2, r[..]);
+  st.sky_low_luma = verse_style_luma(verse_style_anime_sky(o[SU_ZENITH], o[SU_HORIZON], r[1], o[SU_HORIZON + 3]),
+    verse_style_anime_sky(o[SU_ZENITH + 1], o[SU_HORIZON + 1], r[1], o[SU_HORIZON + 3]), verse_style_anime_sky(o[SU_ZENITH + 2], o[SU_HORIZON + 2], r[1], o[SU_HORIZON + 3]));
+  // ink: an edge from each surface pixel's neighbours (the ground draws none of its own), as wide as the
+  // preset's width at its distance, in its lit colour darkened
+  edge: [AS_N] f32;
+  for y: 0..<AS_H { for x: 0..<AS_W {
+    i := y * AS_W + x; edge[i] = 0;
+    if ids[i] == AS_SKY || ids[i] == AS_GROUND { continue; }
+    gap := 0.0f32; ndn := 1.0f32;
+    for k: 0..<4 {
+      nx := x + (ifx k == 0 then 1 else ifx k == 1 then -1 else 0); ny := y + (ifx k == 2 then 1 else ifx k == 3 then -1 else 0);
+      if nx < 0 || ny < 0 || nx >= AS_W || ny >= AS_H { continue; }
+      j := ny * AS_W + nx;
+      nd := ifx ids[j] == AS_SKY then 100000.0f32 else dist[j];
+      if ids[j] != ids[i] { gap = st_max(gap, nd - dist[i]); }
+      ndn = st_min(ndn, nrm[i * 3] * nrm[j * 3] + nrm[i * 3 + 1] * nrm[j * 3 + 1] + nrm[i * 3 + 2] * nrm[j * 3 + 2]);
+    }
+    edge[i] = verse_style_anime_ink_edge(gap, dist[i], ndn);
+  } }
+  for y: 0..<AS_H { for x: 0..<AS_W {
+    i := y * AS_W + x;
+    // the line's own pixel, or within its width of one (a line 2 px or more spreads a pixel out)
+    src := ifx edge[i] > 0 then i else -1; e := edge[i];
+    for k: 0..<4 {
+      nx := x + (ifx k == 0 then 1 else ifx k == 1 then -1 else 0); ny := y + (ifx k == 2 then 1 else ifx k == 3 then -1 else 0);
+      if nx < 0 || ny < 0 || nx >= AS_W || ny >= AS_H { continue; }
+      j := ny * AS_W + nx;
+      if edge[j] > e && verse_style_anime_ink_width(dist[j], o[SU_RIM2 + 3], o[SU_BLOOM + 3]) >= 2.0 { e = edge[j]; src = j; }
+    }
+    if src < 0 { continue; }
+    cover := verse_style_anime_ink_cover(e, verse_style_anime_ink_width(dist[src], o[SU_RIM2 + 3], o[SU_BLOOM + 3])) * o[SU_STYLE];
+    if cover <= 0 { continue; }
+    was := verse_style_luma(col[i * 3], col[i * 3 + 1], col[i * 3 + 2]);
+    for ch: 0..<3 {
+      ink := verse_style_anime_ink_colour(alb[src * 3 + ch], o[SU_GROUND_AMB + 3]);
+      col[i * 3 + ch] = col[i * 3 + ch] + (ink - col[i * 3 + ch]) * cover;
+    }
+    if src != i { continue; }   // the checks count the line on its own shape
+    st.ink += 1;
+    if verse_style_luma(col[i * 3], col[i * 3 + 1], col[i * 3 + 2]) < was { st.ink_darker += 1; }
+  } }
+  // post: speed lines on the action panel, the tone curve, saturation, the lifted blacks, the vignette
+  for y: 0..<AS_H { for x: 0..<AS_W {
+    i := y * AS_W + x;
+    u := (f32(x) + 0.5) / f32(AS_W) * 2.0 - 1.0; v := 1.0 - (f32(y) + 0.5) / f32(AS_H) * 2.0;
+    lines := ifx variant == ANIME_ACTION then verse_style_anime_speed_lines(as_atan2(v, u), sqrt(u * u + v * v), 0.0, 44.0, 0.62) * 0.8 else 0.0f32;
+    t: [3] f32;
+    for ch: 0..<3 { t[ch] = verse_style_tone(col[i * 3 + ch] + lines * o[SU_RIM + ch], o[SU_TONE]); }
+    lum := verse_style_luma(t[0], t[1], t[2]);
+    vig := verse_style_anime_vignette(u, v, o[SU_HAZE_COLOUR + 3]);
+    for ch: 0..<3 { rgb[i * 3 + ch] = as_byte(verse_style_lift(verse_style_saturation(t[ch], lum, o[SU_TONE + 1]), o[SU_TONE + 2]) * vig); }
+  } }
+  return st;
+}
+
+main :: () {
+  // the four panels side by side, a 4 px dark gap between
+  gap := 4;
+  wide := AS_W * ANIME_VARIANTS + gap * (ANIME_VARIANTS - 1);
+  panels: [ANIME_VARIANTS * AS_N * 3] u8;
+  for v: 0..<ANIME_VARIANTS { s := as_render(v, panels[v * AS_N * 3..<(v + 1) * AS_N * 3]); if s.head == 0 { print("anime-swatch: variant % drew nothing\n", v); } }
+  print("P3\n% %\n255\n", wide, AS_H);
+  for y: 0..<AS_H {
+    for x: 0..<wide {
+      v := x / (AS_W + gap); px := x - v * (AS_W + gap);
+      if px >= AS_W { print("16 16 20\n"); continue; }
+      i := v * AS_N * 3 + (y * AS_W + px) * 3;
+      print("% % %\n", panels[i], panels[i + 1], panels[i + 2]);
+    }
+  }
+}
+
+#test "the swatch: every variant draws its head in two hard tones, ink round its shapes, a sky darker up top" #steps 450000000 {
+  rgb: [AS_N * 3] u8;
+  for v: 0..<ANIME_VARIANTS {
+    s := as_render(v, rgb[..]);
+    // the head is there, and almost all of it one of its two tones: only its edge's antialias between
+    #assert s.head > 400;
+    #assert f32(s.head_between) < f32(s.head) * 0.06;
+    // ink lines are drawn on the shapes, and they darken what they cover there
+    #assert s.ink > 100 && s.ink_darker * 10 >= s.ink * 9;
+    // the zenith (the panel's top corner) darker than the sky low over the horizon
+    #assert s.sky_top_luma < s.sky_low_luma;
+  }
+}

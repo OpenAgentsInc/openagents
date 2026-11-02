@@ -5,7 +5,7 @@ import { expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { hasMaker, listCoax, listMarkdown, listPage, listed, page, worlds, STYLE_BLOCK, STYLE_MODULE, styled } from "./realms"
+import { hasMaker, listCoax, listMarkdown, listPage, listed, page, worlds, zoneFact, ANIME_VARIANTS, STYLE_BLOCK, STYLE_MODULE, styled } from "./realms"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const table = () => JSON.parse(readFileSync(join(SITE, "realms.json"), "utf8"))
@@ -24,7 +24,7 @@ function check(change: (realm: any) => void, opts: { site?: string; styleBlock?:
 test("the tagged table passes, and every realm has a style and a clock", () => {
   for (const w of worlds(join(SITE, "realms.json"))) {
     if (!w.realm) continue
-    expect(["lowpoly", "painterly", "photoreal", "flat"]).toContain(w.realm.style)
+    expect(["lowpoly", "painterly", "photoreal", "flat", "anime"]).toContain(w.realm.style)
     expect(w.realm.clock).toMatch(/^(cycle|real|fixed:)/)
   }
 })
@@ -80,6 +80,51 @@ test("refuses a painterly realm whose WGSL has no style block", () => {
   // a lowpoly realm with a painterly zone needs it too
   writeFileSync(join(site, "everglade.wgsl"), "// no block\n")
   expect(check((r) => { r.style = "lowpoly"; r.zones = [{ id: "glade", style: "painterly" }] }, { site, styleBlock: true })).toThrow(/partly painterly/)
+})
+// anime (docs/verse/art-styles.md, Anime): a style with variants, named by the realm or a zone
+test("takes an anime realm with or without a variant, and anime zones with their own", () => {
+  const packs = mkdtempSync(join(tmpdir(), "realms-packs-"))
+  const opts = { styleBlock: false, packs }
+  expect(check((r) => { r.style = "anime" }, opts, "fixture")).not.toThrow()
+  for (const v of ANIME_VARIANTS) expect(check((r) => { r.style = "anime"; r.variant = v }, opts, "fixture")).not.toThrow()
+  expect(check((r) => { r.style = "anime"; r.variant = "neon"; r.zones = [{ id: "street", variant: "dusk" }, { id: "hall", style: "flat" }, { id: "roof" }] }, opts, "fixture")).not.toThrow()
+  // a lowpoly realm with an anime zone in a variant of its own
+  expect(check((r) => { r.zones = [{ id: "lab", style: "anime", variant: "action" }] }, opts, "fixture")).not.toThrow()
+  expect(ANIME_VARIANTS).toEqual(["pastoral", "action", "dusk", "neon"])
+})
+test("refuses an unknown variant, and a variant on anything not drawn anime", () => {
+  const packs = mkdtempSync(join(tmpdir(), "realms-packs-"))
+  const opts = { styleBlock: false, packs }
+  expect(check((r) => { r.style = "anime"; r.variant = "shoujo" }, opts, "fixture")).toThrow(/variant is one of pastoral, action, dusk, neon/)
+  expect(check((r) => { r.style = "anime"; r.variant = "Neon" }, opts, "fixture")).toThrow(/variant is one of/)
+  expect(check((r) => { r.variant = "dusk" }, opts, "fixture")).toThrow(/a variant is anime's, but it is drawn lowpoly/)
+  expect(check((r) => { r.style = "anime"; r.zones = [{ id: "hall", style: "flat", variant: "dusk" }] }, opts, "fixture")).toThrow(/zone hall: a variant is anime's, but it is drawn flat/)
+  expect(check((r) => { r.zones = [{ id: "lab", variant: "neon" }] }, opts, "fixture")).toThrow(/zone lab: a variant is anime's/)
+  expect(check((r) => { r.style = "anime"; r.zones = [{ id: "lab", variant: "noir" }] }, opts, "fixture")).toThrow(/zone lab: variant is one of/)
+})
+test("an anime realm, or an anime zone, needs the style block in its WGSL", () => {
+  const site = mkdtempSync(join(tmpdir(), "realms-site-"))
+  const packs = mkdtempSync(join(tmpdir(), "realms-packs-"))
+  const block = `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`
+  for (const m of ["everglade", "villa", "fairy", "waterlab", "orbitleague"]) writeFileSync(join(site, `${m}.wgsl`), block)
+  const t = table()
+  const fixture = t.worlds.find((w: any) => w.id === "fixture").realm.module
+  writeFileSync(join(site, `${fixture}.wgsl`), "// no block\n")
+  expect(check((r) => { r.style = "anime" }, { site, styleBlock: true, packs }, "fixture")).toThrow(new RegExp(`${fixture}.wgsl has no style block`))
+  expect(check((r) => { r.zones = [{ id: "lab", style: "anime" }] }, { site, styleBlock: true, packs }, "fixture")).toThrow(/has no style block/)
+  // (a change to the fixture is the drop realm's and the built realm's too)
+  for (const m of [fixture, "droprealm", "myrealm"]) writeFileSync(join(site, `${m}.wgsl`), block)
+  expect(check((r) => { r.style = "anime"; r.variant = "action" }, { site, styleBlock: true, packs }, "fixture")).not.toThrow()
+})
+test("an anime page carries data-variant (pastoral when none) and its zones' variants; other pages none", () => {
+  const r = worlds().find((w) => w.id === "everglade")!.realm!
+  expect(page({ ...r, style: "anime" })).toContain(`data-style="anime" data-variant="pastoral" data-clock="cycle"`)
+  expect(page({ ...r, style: "anime", variant: "neon" })).toContain(`data-style="anime" data-variant="neon" data-clock="cycle"`)
+  const zoned = page({ ...r, style: "anime", variant: "action", zones: [{ id: "street", variant: "dusk" }, { id: "yard" }, { id: "hall", style: "flat" }] })
+  expect(zoned).toContain(`data-zones="street:anime:dusk yard:anime:action hall:flat"`)
+  expect(page({ ...r, zones: [{ id: "lab", style: "anime" }] })).toContain(`data-zones="lab:anime:pastoral"`)
+  expect(page(r)).not.toContain("data-variant")
+  expect(zoneFact({ ...r, style: "painterly" })({ id: "crypt" })).toBe("crypt:painterly")
 })
 test("the page carries data-style, data-clock and data-zones", () => {
   const r = worlds().find((w) => w.id === "everglade")!.realm!
