@@ -114,6 +114,11 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   if !w[0].on { return; }
   watch_pops_frame(s, dt);
   w[0].face = s[0].face;
+  // the realm's switches (realm_rights rows): guards who give chase, and its owner's own invincibility
+  e := s[0].ev.ed[..];
+  w[0].peace = !redit_row_on(e, "guards");
+  w[0].unhurt = redit_may(e) && redit_row(e, "invincible") >= 0 && redit_row_on(e, "invincible");   // the owner's and admins' own, off unless switched on
+  if w[0].peace { s[0].wv.want = 0; }
   if s[0].wv.want > 0 {
     w[0].wanted = true; w[0].unseen = 0; w[0].heat = hi_w(w[0].heat, HEAT_AT[clamp_w(s[0].wv.want, 1, WANTED_LEVELS)]);
     s[0].wv.want = 0;

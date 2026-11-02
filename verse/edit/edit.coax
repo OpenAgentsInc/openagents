@@ -79,6 +79,7 @@ RealmEdit :: struct {
   req_url: [REDIT_URL] u8; req_url_n: int; req_body: [REDIT_BODY] u8; req_body_n: int; req_flags: int;
   req_ready: bool; req_id: int; req_what: int; req_at: f32;
   spec_due: bool; asked: bool; settings_due: bool; cards_due: bool;
+  watched_at: f32; spec_sum: int; spec_sum2: int; spec_len: int;   // the last spec read: an unchanged one changes nothing
   // the card last accepted, once the server says so (redit_took): a realm whose things are its own lays it out
   deciding: bool; decided_thing: [REDIT_THING] u8; decided_thing_n: int; decided_x: f32; decided_z: f32; took: bool;
   switch_row: int; switch_on: bool; decide_due: int; revise: [REDIT_TYPED] u8; revise_n: int;
@@ -513,7 +514,20 @@ redit_next :: (e: [] RealmEdit) {
   }
   if e[0].cards_due && redit_may(e) { e[0].cards_due = false; redit_ask(e, REQ_E_CARDS, "/proposals", 0, false); return; }
   if e[0].asks_due && redit_may(e) { e[0].asks_due = false; redit_ask(e, REQ_E_ASKS, "/asks", 0, false); return; }
-  if e[0].panes_due && e[0].ready { e[0].panes_due = false; redit_ask(e, REQ_E_PANES, "/panes", 0, false); }
+  if e[0].panes_due && e[0].ready { e[0].panes_due = false; redit_ask(e, REQ_E_PANES, "/panes", 0, false); return; }
+  // edits from elsewhere (the CLI, Coder, another tab): an owner's page reads its spec again every second
+  if e[0].ready && redit_may(e) && !e[0].typing && !e[0].held && e[0].time - e[0].watched_at > REDIT_WATCH {
+    e[0].watched_at = e[0].time; e[0].asked = true; redit_ask(e, REQ_E_SPEC, "", 0, false);
+  }
+}
+REDIT_WATCH :: 1.0f32;
+// Two sums of a spec's bytes: the same three numbers mean the same spec.
+redit_same_spec :: (e: [] RealmEdit, text: string) -> bool {
+  a := 0; b := 0;
+  for i: 0..<text.count { a = (a * 131 + cast(int) text[i]) % 1000000007; b = (b * 257 + cast(int) text[i]) % 998244353; }
+  unchanged := e[0].spec_len == text.count && e[0].spec_sum == a && e[0].spec_sum2 == b;
+  e[0].spec_len = text.count; e[0].spec_sum = a; e[0].spec_sum2 = b;
+  return unchanged;
 }
 redit_drop_card :: (e: [] RealmEdit) {
   for c: 0..<e[0].card_n - 1 {
@@ -547,6 +561,7 @@ redit_answer :: (e: [] RealmEdit, text: string) {
   e[0].req_id = -1; e[0].req_what = REQ_E_NONE;
   status := redit_status(text); p_body := redit_body(text);
   if what == REQ_E_SPEC {
+    if status == 200 && redit_same_spec(e, p_body) && e[0].ready { return; }
     if status == 200 && redit_read(e, p_body) {
       first := !e[0].ready;
       e[0].ready = true; e[0].changed = true; e[0].version += 1;
@@ -692,6 +707,26 @@ redit_switch :: (e: [] RealmEdit, r: int) {
   e[0].row_on[r] = !e[0].row_on[r];
   e[0].switch_row = r; e[0].switch_on = e[0].row_on[r];
   e[0].changed = true; e[0].version += 1;
+}
+// What a realm's voice or typing heard, as the server's selector picked it (migrations/0104): switch one
+// of the realm's rows, or show one of these panes (edit, settings, ideas, close). Any realm's page hands
+// these here; the reply, a plain sentence to show and speak, goes into out. -1: not one of these.
+redit_heard :: (e: [] RealmEdit, word: string, key: string, on: bool, pane_said: string, out: [] u8) -> int {
+  if word != "switch" && word != "show" { return -1; }
+  if !redit_may(e) { return redit_put(out, 0, "Only the realm's owner can change that."); }
+  if word == "switch" {
+    r := redit_row(e, key);
+    if r < 0 { return redit_put(out, 0, "This realm has no such switch."); }
+    if e[0].row_on[r] != on { redit_switch(e, r); }
+    n := redit_put(out, 0, redit_label_of(e, r));
+    for i: 1..<n { if out[i] >= 'A' && out[i] <= 'Z' { out[i] = out[i] + 32; } }   // the board's capitals, said as a sentence
+    return redit_put(out, n, ifx on then ": on." else ": off.");
+  }
+  if pane_said == "close" { redit_pane(e, REDIT_SHUT); return redit_put(out, 0, "Closed."); }
+  if pane_said == "settings" { redit_pane(e, REDIT_SETTINGS); return redit_put(out, 0, "Here are the settings."); }
+  if pane_said == "ideas" { redit_pane(e, REDIT_CARDS_PANE); return redit_put(out, 0, "Here are visitors' ideas."); }
+  redit_pane(e, REDIT_BOARD);
+  return redit_put(out, 0, "Here's the edit panel.");
 }
 redit_set_tool :: (e: [] RealmEdit, t: int) {
   if !redit_may(e) || t < 0 || t >= REDIT_TOOLS || !e[0].tool_has[t] { return; }

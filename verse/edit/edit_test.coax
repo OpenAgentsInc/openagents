@@ -331,3 +331,57 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
 #test "the panel speaks plainly: IN IT, NOT IN IT YET, IDEAS for visitors' cards" {
   #assert redit_tag(true, false) == "IN IT" && redit_tag(false, false) == "NOT IN IT YET" && redit_tag(false, true) == "REMOVING";
 }
+
+#test "edits from elsewhere show up: an owner's page reads its spec again every second; the same spec changes nothing" {
+  e: [1] RealmEdit;
+  opened(e[..], "the-grid", HAND);
+  e[0].cards_due = false; e[0].asks_due = false; e[0].panes_due = false; e[0].req_ready = false; e[0].req_id = -1;
+  _ := redit_changed(e[..]);
+  v := e[0].version;
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert e[0].req_ready && url_is(e[..], "/api/playtest/realms/the-grid");
+  #assert answer(e[..], 1, HAND) && e[0].version == v && redit_row_on(e[..], "robots");
+  redit_step(e[..], 3.5, 1440, 900, 1);
+  #assert !e[0].req_ready;   // not yet a second
+  redit_step(e[..], 4.2, 1440, 900, 1);
+  #assert e[0].req_ready && answer(e[..], 2, "200\nrealm the-grid\nrole admin\nowner 1\ntool map 1\ntool jump 0\nthing crate\nrow robots 0 Robots walking their rounds\nrow names 0 Place names in the air\n");
+  #assert e[0].version == v + 1 && !redit_row_on(e[..], "robots") && redit_changed(e[..]);
+  // a visitor's page doesn't
+  w: [1] RealmEdit;
+  opened(w[..], "the-grid", VISITOR);
+  w[0].req_ready = false; w[0].req_id = -1;
+  redit_step(w[..], 9, 1440, 900, 1);
+  #assert !w[0].req_ready || !url_is(w[..], "/api/playtest/realms/the-grid");
+}
+
+reads :: (out: [] u8, n: int, text: string) -> bool {
+  if n != text.count || n > out.count { return false; }
+  for i: 0..<n { if out[i] != text[i] { return false; } }
+  return true;
+}
+#test "what the voice heard: switch a row by its id, show a pane, a visitor told no" {
+  e: [1] RealmEdit;
+  out: [160] u8;
+  opened(e[..], "the-grid", HAND);
+  e[0].cards_due = false; e[0].req_ready = false; e[0].req_id = -1;
+  #assert redit_heard(e[..], "place", "", false, "", out[..]) == -1;
+  n := redit_heard(e[..], "switch", "robots", false, "", out[..]);
+  #assert reads(out[..], n, "Robots walking their rounds: off.");
+  #assert !redit_row_on(e[..], "robots");
+  #assert e[0].switch_row == 0;
+  e[0].switch_row = -1;
+  n = redit_heard(e[..], "switch", "robots", false, "", out[..]);
+  #assert e[0].switch_row == -1 && reads(out[..], n, "Robots walking their rounds: off.");   // already off: nothing sent
+  n = redit_heard(e[..], "switch", "dragons", true, "", out[..]);
+  #assert reads(out[..], n, "This realm has no such switch.");
+  _ := redit_heard(e[..], "show", "", false, "edit", out[..]);
+  #assert e[0].pane == REDIT_BOARD;
+  _ = redit_heard(e[..], "show", "", false, "settings", out[..]);
+  #assert e[0].pane == REDIT_SETTINGS;
+  _ = redit_heard(e[..], "show", "", false, "close", out[..]);
+  #assert e[0].pane == REDIT_SHUT;
+  v: [1] RealmEdit;
+  opened(v[..], "the-grid", VISITOR);
+  n = redit_heard(v[..], "switch", "robots", true, "", out[..]);
+  #assert reads(out[..], n, "Only the realm's owner can change that.") && !redit_row_on(v[..], "robots");
+}

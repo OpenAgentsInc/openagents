@@ -258,6 +258,9 @@ ev_answered :: (s: [] Everglade, answer: string) {
   }
   if word == "undo" { edit_undo(s, true); return; }
   if word == "list" { edit_list(s); return; }
+  // switch a row, show a pane: the shared edit layer's (verse/edit/edit.coax redit_heard)
+  heard := redit_heard(s[0].ev.ed[..], word, ev_field(body, "row"), ev_true(body, "on"), ev_field(body, "panel"), s[0].ev.say[..]);
+  if heard >= 0 { s[0].ev.say_n = heard; ev_line(s, cast(string) s[0].ev.say[0..<heard]); return; }
   if word == "missing" { edit_missing(s, ev_field(body, "name"), false); return; }
   item := ev_item(ev_field(body, "item"));
   all := ev_true(body, "all");

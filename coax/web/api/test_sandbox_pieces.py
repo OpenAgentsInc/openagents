@@ -131,7 +131,7 @@ import time
 M = {"model": "gemini-2.5-flash"}   # its thinking off (migrations/0054_voice_edit_fast.sql)
 def said(**kw):   # a whole answer as the model gives it: every field, "not said" values for the rest
     a = {"edit": "none", "item": "something", "name": "", "count": 1, "arrange": "front", "onto": "ground", "colour": "unsaid", "size": 1,
-         "direction": "here", "metres": 0, "turn": 0, "all": False, "who": "nobody", "building": "unnamed"}
+         "direction": "here", "metres": 0, "turn": 0, "all": False, "who": "nobody", "building": "unnamed", "row": "unnamed", "on": False, "panel": "unsaid"}
     a.update(kw)
     return a
 s, a = voice_edit("put two barrels here", said(edit="place", item="barrel", count=2))
@@ -159,7 +159,9 @@ check("voice edit: the words are the model's only input from the admin", sent["c
 schema = sent["generationConfig"]["responseSchema"]
 props = schema["properties"]
 check("voice edit: under the realm's catalogue as enums",
-      props["edit"]["enum"] == ["place", "remove", "move", "resize", "rotate", "restore", "list", "undo", "none"]
+      props["edit"]["enum"] == ["place", "remove", "move", "resize", "rotate", "restore", "list", "undo", "switch", "show", "none"]
+      and props["row"]["enum"] == ["unnamed", "flock", "floats", "undergrowth", "daycycle", "guards", "invincible"]
+      and props["panel"]["enum"] == ["unsaid", "edit", "settings", "ideas", "close"]
       and len(props["item"]["enum"]) == 38 and props["item"]["enum"][:5] == ["crate", "barrel", "bench", "fence", "stall"]
       and props["item"]["enum"][34:] == ["person", "cat", "building", "something"]
       and props["onto"]["enum"] == ["ground", "stall", "table", "crate", "barrel", "bench", "cart", "stool"]
@@ -177,7 +179,7 @@ else:       # until the page's names land: its first five labels
     check("voice edit: the server's things are the page's (verse/everglade/edits.coax)", [x.lower() for x in coax_items] == props["item"]["enum"][:5], coax_items)
 coax_people = re.findall(r'"([^"]*)"', re.search(r'EG_PERSON :: \[22\] string\.\[([^\]]*)\]', open(os.path.join(here, "../../../verse/everglade/people.coax")).read()).group(1))
 check("voice edit: the server's people are the page's (verse/everglade/people.coax), after nobody", props["who"]["enum"] == ["nobody"] + coax_people, coax_people)
-order = ["edit", "item", "name", "count", "arrange", "onto", "colour", "size", "direction", "metres", "turn", "all", "who", "building", "reply"]
+order = ["edit", "item", "name", "count", "arrange", "onto", "colour", "size", "direction", "metres", "turn", "all", "who", "building", "row", "on", "panel", "reply"]
 check("voice edit: every field is answered, edit and item first, then name", schema["required"] == order and schema["propertyOrdering"] == order, schema)
 prompt = sent["systemInstruction"]["parts"][0]["text"]
 check("voice edit: the prompt lists every thing with its size, and shows the logged sentences",
@@ -193,6 +195,11 @@ check("voice edit: the prompt lists every thing with its size, and shows the log
 def held(sentence, answer, want, what):
     s, a = voice_edit(sentence, said(**answer))
     check("voice edit: " + what, s == 200 and a == {**want, **M}, (s, a))
+held("turn off the guards", dict(edit="switch", row="guards", on=False), {"edit": "switch", "row": "guards", "on": False}, "switch: one of the realm's rows, off")
+held("make me invincible", dict(edit="switch", row="invincible", on=True, item="crate"), {"edit": "switch", "row": "invincible", "on": True}, "switch: on, other fields dropped")
+held("open the edit panel", dict(edit="show", panel="edit"), {"edit": "show", "panel": "edit"}, "show: the editing screen's pane")
+s, a = voice_edit("turn off the dragons", said(edit="switch", row="dragons", on=False))
+check("voice edit: a switch the realm doesn't have is no edit", s == 502, (s, a))
 held("a hundred crates", dict(edit="place", item="crate", count=100, turn=45, all=True, who="Marta"), {"edit": "place", "item": "crate", "count": 40}, "a count is held to 1..40, other edits' fields dropped")
 held("some crates", dict(edit="place", item="crate", count=0), {"edit": "place", "item": "crate", "count": 1}, "a count under one is one")
 held("six pumpkins on the stall", dict(edit="place", item="pumpkin", count=6, onto="stall"), {"edit": "place", "item": "pumpkin", "count": 6, "onto": "stall"}, "place onto a thing with a top")

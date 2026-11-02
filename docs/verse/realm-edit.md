@@ -61,6 +61,17 @@ The realm reads `redit_row_on(ed, "robots")` where its code draws the thing, `re
 "map")` for a visitor's tool, `placed_*` for what was accepted, and `redit_changed(ed)` when the
 server's answer changed it.
 
+An owner's or admin's page reads the spec again every second (`REDIT_WATCH`), so a row switched
+from the CLI (`openagents realm switch SLUG ROW off`), Coder or another tab shows up in about a
+second. An unchanged spec changes nothing (`redit_same_spec`).
+
+Spoken and typed commands about the editing screen go to `redit_heard(ed, word, row, on, pane,
+out)` (migration 0104's `switch` and `show` edits): it switches one of the realm's rows by its id,
+or opens EDIT's board, SETTINGS or the cards, or closes them, and writes the sentence to show and
+speak. Every realm with the layer gets it by handing the selector's answer there. The server's
+selector lists the realm's own rows from `verse.realm_rights`, so a new row is switchable by voice
+with no new migration.
+
 EDIT opens one pane at a time (the panes rule, verse/fairy-forest/README.md "Making the world:
 panes"): FEATURES (the list below; HOLD TO TALK on a page with a voice, typing everywhere),
 SETTINGS (what visitors get; a realm whose code honours no visitor tool says so), and N WAITING
@@ -82,7 +93,7 @@ not offered (migration 0052 took the engineer's row back off).
 
 | Realm | Rows | Visitor tools | Placed |
 |---|---|---|---|
-| Everglade | flock, floats, undergrowth, daycycle | map, build (BUILD: edit mode's things, each a card) | crate, barrel, bench, fence, stall |
+| Everglade | flock, floats, undergrowth, daycycle, guards (off: the watch never gives chase), invincible (off by default; on: the owner and admins take no harm, visitors still do) | map, build (BUILD: edit mode's things, each a card) | crate, barrel, bench, fence, stall |
 | The Grid (the homepage's module walked, `newland-walk.coax`; 0082) | walkers (everyone else walking it), names (each project's name over its tree); EDIT left of HOME, under GALAXY on a phone | | |
 | Hecate's Cemetery | flight (off: a visit starts at the gate), fireflies, trail, tips, others | | |
 | Fairy Forest | sparkles, grass, ridges | fly (her wing beats in the air) | |

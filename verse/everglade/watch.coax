@@ -282,6 +282,7 @@ Watch :: struct {
   on: bool;                       // the ruleset is the SRD's and the page is not still
   actors: [WATCH_ACTORS] Actor;
   wanted: bool; unseen: f32;      // seconds no hunter has seen you
+  peace: bool; unhurt: bool;      // the realm's switches: no one gives chase (guards off); nothing hurts you
   hp: int; max: int; ac: int;     // you
   dead: bool; dead_t: f32;        // you fell, and the seconds since
   respawn: bool;                  // the realm puts you at the Road In (taken once)
@@ -1176,7 +1177,7 @@ watch_harm :: (w: [] Watch, i: int, amount: int, you: Point) {
 
 // You take a blow: at 0 you fall (you topple: watch_you_fall), and the town stands down.
 watch_hurt_you :: (w: [] Watch, amount: int) {
-  if w[0].dead { return; }
+  if w[0].dead || w[0].unhurt { return; }
   took := lo_w(w[0].temp, hi_w(amount, 0));
   w[0].temp -= took;
   w[0].hp -= amount - took; w[0].hurt_t = 0;
@@ -1240,6 +1241,7 @@ watch_off :: (w: [] Watch, i: int) -> bool { return w[0].actors[i].ready && w[0]
 watch_tick :: (w: [] Watch, dt: f32, you: Point, day: f32, boxes: [] f32, nb: int, heights: [] f32) {
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   w[0].hurt_t += t;
+  if w[0].peace && (w[0].wanted || w[0].heat > 0 || w[0].level > 0) { watch_stand_down(w); }
   // the dawn stands the dead up again
   if w[0].day >= 0 && w[0].day < 0.25 && day >= 0.25 && day < 0.5 { _ := watch_restore(w); }
   w[0].day = day;
@@ -1293,6 +1295,7 @@ watch_tick :: (w: [] Watch, dt: f32, you: Point, day: f32, boxes: [] f32, nb: in
     w[0].unseen = ifx seen then 0.0f32 else w[0].unseen + t;
     if w[0].unseen >= watch_lose_after(w) { watch_stand_down(w); }
   }
+  if w[0].peace && w[0].wanted { watch_stand_down(w); }
   // the heat rises: each level reached sends its wave
   if w[0].wanted && !w[0].dead {
     to := watch_level_for(w[0].heat);
@@ -1780,6 +1783,30 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert watch_dark(w[..]) > 0.5;
   for f: 0..<10 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
   #assert watch_dark(w[..]) == 0;
+}
+
+#test "the realm's switches: with the guards off a crime sends no one; invincible, no blow hurts you" #steps 60000000 {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  you := v3(EG_SPOT[3], 0, EG_SPOT[4] - 8);
+  _ := watch_crime(w[..], v3(EG_SPOT[3] + 20, 0, EG_SPOT[4]), WATCH_HEAR[0], you, nob[..], 0, heights[..]);
+  #assert w[0].wanted;
+  // switched off mid-chase: the town stands down and no wave comes
+  w[0].peace = true;
+  for f: 0..<20 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  #assert !w[0].wanted && w[0].level == 0 && w[0].heat == 0;
+  for i: 0..<WATCH_ACTORS { #assert w[0].actors[i].mode != WM_CHASE || !watch_here(w[..], i); }
+  // invincible: a blow that would kill you does nothing
+  w[0].unhurt = true;
+  hp := w[0].hp;
+  watch_hurt_you(w[..], 500);
+  #assert !w[0].dead && w[0].hp == hp;
+  w[0].unhurt = false;
+  watch_hurt_you(w[..], 500);
+  #assert w[0].dead;
 }
 
 #test "a blast hurts or kills the townsfolk and the watch; R or the dawn stands them up; a fallen guard is replaced" #steps 44000000 {
