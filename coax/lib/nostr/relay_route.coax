@@ -66,7 +66,7 @@ RR_KEYS :: 8;                 // authenticated keys per connection
 RR_CHALLENGE_BYTES :: 32;     // host entropy per challenge, sent as hex
 RR_AUTH_WRITES :: true;       // EVENT needs an authenticated key (see above)
 
-RR_NIP11 :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,50,62,70],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+RR_NIP11 :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,50,62,70,77],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
 
 RrRoute :: struct { action: int; reason: int; }
 RrFrame :: struct { action: int; code: int; }
@@ -548,3 +548,197 @@ rr_capacity :: (flag: int) -> int {
 }
 // The arena bytes for a store of events records.
 rr_arena :: (events: int) -> int { return events * RR_ARENA_PER; }
+
+// ---- NIP-77 Negentropy sessions (chapter 43) ---------------------------------
+//
+// A NEG-* frame is not a NIP-01 verb: ms_read reads it as RR_MS_VERB, and the
+// relay then reads it with nip77.coax's n77_read; rr_neg_route takes that
+// read's error, verb and subscription id length. Sessions are per connection
+// (bounds of ours where NIP-77 leaves the choice to the relay):
+// - at most RR_NEG_SESSIONS open; one more is NEG-ERR "blocked:". A NEG-OPEN
+//   for an id already open closes it first (NIP-77).
+// - a session keeps its filter (at most RR_NEG_FILTER bytes) and each message
+//   is answered over the store's items matching it then; a filter matching
+//   more than RR_NEG_MAX visible events is NEG-ERR "blocked:" with RR_NEG_MAX
+//   as the fourth element. A filter's limit is not applied.
+// - a session that gets no message for RR_NEG_IDLE_S seconds is closed with
+//   NEG-ERR "closed:".
+// - the relay's own messages stop at RR_NEG_FRAME bytes (nip77.coax's frame
+//   limit: what doesn't fit is one fingerprint the client asks about next),
+//   and the relay reads a client message of up to RR_NEG_IN bytes, the same
+//   bound: 65,536 hex digits, json.coax's longest string, so a Coax client
+//   reads every answer. A longer message is not JSON to n77_read (a NOTICE,
+//   with no id to name); one over a smaller buffer would be NEG-ERR
+//   "blocked:" (RR_NE_FRAME).
+// - NEG-OPEN is charged as a REQ (relay_rate.coax); NEG-MSG and NEG-CLOSE
+//   are not. A NEG-ERR from the client is a NOTICE: a relay never gets one.
+// After any NEG-ERR the session is gone (NIP-77).
+RR_N77_OK :: 0; RR_N77_VERB :: 3; RR_N77_SUB :: 4; RR_N77_FRAME :: 6;
+RR_N77_OPEN :: 1; RR_N77_MSG :: 2; RR_N77_CLOSE :: 3; RR_N77_ERR :: 4;
+RR_NEG_OPEN :: 7; RR_NEG_MSG :: 8; RR_NEG_CLOSE :: 9; RR_NEG_ERR :: 10;   // actions after RR_COUNT
+RR_NEG_SESSIONS :: 4; RR_NEG_IDLE_S :: 60; RR_NEG_MAX :: 100000;
+RR_NEG_FRAME :: 32768; RR_NEG_IN :: 32768; RR_NEG_FILTER :: 4096;
+// NEG-ERR reasons.
+RR_NE_OK :: 0; RR_NE_INVALID :: 1; RR_NE_FRAME :: 2; RR_NE_SESSIONS :: 3; RR_NE_BIG :: 4;
+RR_NE_IDLE :: 5; RR_NE_UNKNOWN :: 6; RR_NE_FILTER :: 7; RR_NE_NEG :: 8; RR_NE_LONG :: 9;
+RR_NE_REASONS :: 10;
+
+// One open sync: its id, its filter's bytes and when it last got a message.
+RrNeg :: struct { live: bool; sub: [256] u8; sub_n: int; filter: [RR_NEG_FILTER] u8; filter_n: int; since: int; }
+
+#test "NEG frames: each verb to its handler, a broken one to NEG-ERR or NOTICE" {
+  r := rr_neg_route(RR_N77_VERB, 0, 0); #assert r.action == RR_NOTICE && r.reason == RR_RS_VERB;
+  r = rr_neg_route(RR_N77_VERB, RR_N77_OPEN, 3); #assert r.action == RR_NOTICE && r.reason == RR_RS_VERB;
+  r = rr_neg_route(RR_N77_OK, RR_N77_OPEN, 1); #assert r.action == RR_NEG_OPEN && r.reason == RR_NE_OK;
+  r = rr_neg_route(RR_N77_OK, RR_N77_MSG, 64); #assert r.action == RR_NEG_MSG && r.reason == RR_NE_OK;
+  r = rr_neg_route(RR_N77_OK, RR_N77_CLOSE, 2); #assert r.action == RR_NEG_CLOSE;
+  // a NEG-ERR from a client, read or not
+  r = rr_neg_route(RR_N77_OK, RR_N77_ERR, 2); #assert r.action == RR_NOTICE && r.reason == RR_RS_FRAME;
+  r = rr_neg_route(5, RR_N77_ERR, 2); #assert r.action == RR_NOTICE && r.reason == RR_RS_FRAME;
+  // no id read, or one out of bounds: nothing to name in a NEG-ERR
+  r = rr_neg_route(2, RR_N77_MSG, 0); #assert r.action == RR_NOTICE && r.reason == RR_RS_FRAME;
+  r = rr_neg_route(1, 0, 0); #assert r.action == RR_NOTICE && r.reason == RR_RS_FRAME;
+  r = rr_neg_route(RR_N77_SUB, RR_N77_MSG, 65); #assert r.action == RR_NOTICE && r.reason == RR_RS_FRAME;
+  r = rr_neg_route(RR_N77_OK, RR_N77_MSG, 0); #assert r.action == RR_NOTICE && r.reason == RR_RS_FRAME;
+  // an id read, then a refusal: NEG-ERR naming it
+  r = rr_neg_route(RR_N77_FRAME, RR_N77_MSG, 1); #assert r.action == RR_NEG_ERR && r.reason == RR_NE_FRAME;
+  r = rr_neg_route(RR_N77_FRAME, RR_N77_OPEN, 1); #assert r.action == RR_NEG_ERR && r.reason == RR_NE_FRAME;
+  r = rr_neg_route(5, RR_N77_OPEN, 1); #assert r.action == RR_NEG_ERR && r.reason == RR_NE_INVALID;
+  r = rr_neg_route(7, RR_N77_OPEN, 1); #assert r.action == RR_NEG_ERR && r.reason == RR_NE_INVALID;
+  r = rr_neg_route(2, RR_N77_CLOSE, 1); #assert r.action == RR_NEG_ERR && r.reason == RR_NE_INVALID;
+}
+// n77_read's error and verb, and the length of the id it read.
+rr_neg_route :: (error: int, verb: int, sub_n: int) -> RrRoute {
+  if error == RR_N77_VERB { return RrRoute.{action = RR_NOTICE, reason = RR_RS_VERB}; }
+  if verb == RR_N77_ERR || sub_n < 1 || error == RR_N77_SUB { return RrRoute.{action = RR_NOTICE, reason = RR_RS_FRAME}; }
+  if error == RR_N77_FRAME { return RrRoute.{action = RR_NEG_ERR, reason = RR_NE_FRAME}; }
+  if error != RR_N77_OK { return RrRoute.{action = RR_NEG_ERR, reason = RR_NE_INVALID}; }
+  if verb == RR_N77_OPEN { return RrRoute.{action = RR_NEG_OPEN}; }
+  if verb == RR_N77_MSG { return RrRoute.{action = RR_NEG_MSG}; }
+  return RrRoute.{action = RR_NEG_CLOSE};
+}
+
+#test "NEG sessions: opened in free slots, replaced by id, closed, at most RR_NEG_SESSIONS" {
+  s: [RR_NEG_SESSIONS] RrNeg;
+  #assert rr_neg_find(s[..], "a") == -1 && rr_neg_close(s[..], "a") == false;
+  #assert rr_neg_open(s[..], "a", "{}", 100) == 0 && s[0].live && s[0].since == 100 && s[0].sub_n == 1 && s[0].sub[0] == 'a';
+  #assert s[0].filter_n == 2 && s[0].filter[0] == '{' && s[0].filter[1] == '}';
+  #assert rr_neg_find(s[..], "a") == 0 && rr_neg_find(s[..], "b") == -1 && rr_neg_find(s[..], "ab") == -1 && rr_neg_find(s[..], "") == -1;
+  #assert rr_neg_open(s[..], "ab", "{\"kinds\":[1]}", 101) == 1 && rr_neg_find(s[..], "ab") == 1 && rr_neg_find(s[..], "ac") == -1;
+  #assert cast(string) s[1].filter[0..<s[1].filter_n] == "{\"kinds\":[1]}" && cast(string) s[1].sub[0..<s[1].sub_n] == "ab";
+  // the same id again replaces it in its slot
+  #assert rr_neg_open(s[..], "a", "{\"kinds\":[7]}", 105) == 0 && s[0].since == 105 && cast(string) s[0].filter[0..<s[0].filter_n] == "{\"kinds\":[7]}";
+  #assert rr_neg_open(s[..], "c", "{}", 106) == 2 && rr_neg_open(s[..], "d", "{}", 107) == 3;
+  #assert rr_neg_open(s[..], "e", "{}", 108) == -RR_NE_SESSIONS && rr_neg_find(s[..], "e") == -1;
+  #assert rr_neg_open(s[..], "d", "{}", 109) == 3;
+  // a replaced id keeps its slot even when an earlier one is free
+  #assert rr_neg_close(s[..], "a") && rr_neg_open(s[..], "c", "{}", 109) == 2 && rr_neg_open(s[..], "a", "{}", 109) == 0;
+  // a closed slot is free again
+  #assert rr_neg_close(s[..], "ab") && !s[1].live && rr_neg_find(s[..], "ab") == -1 && !rr_neg_close(s[..], "ab");
+  #assert rr_neg_open(s[..], "e", "{}", 110) == 1;
+  // a filter over RR_NEG_FILTER bytes is refused, and closes the id it reused
+  long: [RR_NEG_FILTER + 1] u8;
+  #assert rr_neg_open(s[..], "a", cast(string) long[..], 111) == -RR_NE_LONG && rr_neg_find(s[..], "a") == -1 && rr_neg_open(s[..], "a", "{}", 111) == 0;
+  #assert rr_neg_open(s[..], "e", cast(string) long[..], 111) == -RR_NE_LONG && rr_neg_find(s[..], "e") == -1;
+  #assert rr_neg_open(s[..], "e", cast(string) long[0..<RR_NEG_FILTER], 111) == 1 && s[1].filter_n == RR_NEG_FILTER;
+  // an id longer than the slot holds (n77_read never reads one) is refused
+  big: [257] u8; for i: 0..<257 { big[i] = 'x'; }
+  #assert rr_neg_close(s[..], "e") && rr_neg_open(s[..], cast(string) big[..], "{}", 1) == -RR_NE_INVALID;
+  #assert rr_neg_open(s[..], cast(string) big[0..<256], "{}", 1) == 1 && s[1].sub_n == 256;
+  rr_neg_reset(s[..]); for i: 0..<RR_NEG_SESSIONS { #assert !s[i].live; }
+}
+rr_neg_same :: (s: RrNeg, sub: string) -> bool {
+  if !s.live || s.sub_n != sub.count { return false; }
+  for i: 0..<sub.count { if s.sub[i] != sub[i] { return false; } }
+  return true;
+}
+// The open session with this id, or -1.
+rr_neg_find :: (s: [] RrNeg, sub: string) -> int {
+  for i: 0..<s.count { if rr_neg_same(s[i], sub) { return i; } }
+  return -1;
+}
+// NEG-OPEN: closes an open session with this id, then opens one with the
+// filter at now, in the slot it had or else the first free one: the slot,
+// or -reason.
+rr_neg_open :: (s: [] RrNeg, sub: string, filter: string, now: int) -> int {
+  k := rr_neg_find(s, sub);
+  if k >= 0 { s[k].live = false; }
+  if sub.count > 256 { return -RR_NE_INVALID; }
+  if filter.count > RR_NEG_FILTER { return -RR_NE_LONG; }
+  for i: 0..<s.count { if k < 0 && !s[i].live { k = i; } }
+  if k < 0 { return -RR_NE_SESSIONS; }
+  for i: 0..<sub.count { s[k].sub[i] = sub[i]; }
+  for i: 0..<filter.count { s[k].filter[i] = filter[i]; }
+  s[k].sub_n = sub.count; s[k].filter_n = filter.count; s[k].since = now; s[k].live = true;
+  return k;
+}
+// NEG-CLOSE: whether a session with this id was open.
+rr_neg_close :: (s: [] RrNeg, sub: string) -> bool {
+  k := rr_neg_find(s, sub);
+  if k < 0 { return false; }
+  s[k].live = false;
+  return true;
+}
+rr_neg_reset :: (s: [] RrNeg) { for i: 0..<s.count { s[i].live = false; } }
+
+#test "an idle session: none until RR_NEG_IDLE_S seconds pass with no message" {
+  s: [RR_NEG_SESSIONS] RrNeg;
+  #assert rr_neg_idle(s[..], 1000000) == -1;
+  k := rr_neg_open(s[..], "a", "{}", 100); k = rr_neg_open(s[..], "b", "{}", 130);
+  #assert rr_neg_idle(s[..], 159) == -1 && rr_neg_idle(s[..], 160) == 0 && rr_neg_idle(s[..], 50) == -1;
+  rr_neg_touch(s[..], 0, 150);
+  #assert rr_neg_idle(s[..], 189) == -1 && rr_neg_idle(s[..], 190) == 1 && rr_neg_idle(s[..], 210) == 0;
+  #assert rr_neg_close(s[..], "a") && rr_neg_idle(s[..], 1000) == 1;
+}
+// The first open session with no message for RR_NEG_IDLE_S seconds at now, or -1.
+rr_neg_idle :: (s: [] RrNeg, now: int) -> int {
+  for i: 0..<s.count { if s[i].live && now - s[i].since >= RR_NEG_IDLE_S { return i; } }
+  return -1;
+}
+rr_neg_touch :: (s: [] RrNeg, k: int, now: int) { s[k].since = now; }
+
+#test "the items a session is answered over: a count, too many, or a filter that doesn't read" {
+  #assert rr_neg_items(0) == RR_NE_OK && rr_neg_items(RR_NEG_MAX) == RR_NE_OK;
+  #assert rr_neg_items(-1) == RR_NE_BIG && rr_neg_items(-2) == RR_NE_FILTER && rr_neg_items(-3) == RR_NE_FILTER;
+}
+// relay_store.coax's rd_neg_items: a count, -1 over its RR_NEG_MAX items, -2
+// for a filter that does not read.
+rr_neg_items :: (n: int) -> int {
+  if n == -1 { return RR_NE_BIG; }
+  if n < 0 { return RR_NE_FILTER; }
+  return RR_NE_OK;
+}
+
+#test "NEG-ERR texts: a NIP-01 prefix, and the record limit only when too big" {
+  for k: 0..<RR_NE_REASONS {
+    #assert (k == RR_NE_OK) == (rr_neg_prefix(k).count == 0) && (k == RR_NE_OK) == (rr_neg_text(k).count == 0);
+    #assert (k == RR_NE_BIG) == (rr_neg_records(k) == RR_NEG_MAX) && (k == RR_NE_BIG) != (rr_neg_records(k) == -1);
+  }
+  #assert rr_neg_prefix(RR_NE_INVALID) == "invalid" && rr_neg_text(RR_NE_INVALID) == "the NEG frame does not read";
+  #assert rr_neg_prefix(RR_NE_FRAME) == "blocked" && rr_neg_text(RR_NE_FRAME) == "the Negentropy message is over 32768 bytes";
+  #assert rr_neg_prefix(RR_NE_SESSIONS) == "blocked" && rr_neg_text(RR_NE_SESSIONS) == "4 syncs are already open on this connection";
+  #assert rr_neg_prefix(RR_NE_BIG) == "blocked" && rr_neg_text(RR_NE_BIG) == "this query matches more than 100000 events";
+  #assert rr_neg_prefix(RR_NE_IDLE) == "closed" && rr_neg_text(RR_NE_IDLE) == "no message for 60 seconds";
+  #assert rr_neg_prefix(RR_NE_UNKNOWN) == "closed" && rr_neg_text(RR_NE_UNKNOWN) == "no sync is open with this id";
+  #assert rr_neg_prefix(RR_NE_FILTER) == "invalid" && rr_neg_text(RR_NE_FILTER) == "malformed filter";
+  #assert rr_neg_prefix(RR_NE_NEG) == "invalid" && rr_neg_text(RR_NE_NEG) == "the Negentropy message does not read";
+  #assert rr_neg_prefix(RR_NE_LONG) == "blocked" && rr_neg_text(RR_NE_LONG) == "the filter is over 4096 bytes";
+  #assert rr_neg_prefix(-1) == "error" && rr_neg_prefix(RR_NE_REASONS) == "error";
+  #assert rr_neg_text(-1) == "sync failed" && rr_neg_text(RR_NE_REASONS) == "sync failed";
+  #assert RR_NEG_IN == 32768 && RR_NEG_FRAME == 32768 && RR_NEG_FILTER == 4096 && RR_NEG_SESSIONS == 4 && RR_NEG_MAX == 100000 && RR_NEG_IDLE_S == 60;
+}
+rr_neg_prefix :: (k: int) -> string {
+  p := [10] string.["", "invalid", "blocked", "blocked", "blocked", "closed", "closed", "invalid", "invalid", "blocked"];
+  if k < 0 || k >= RR_NE_REASONS { return "error"; }
+  return p[k];
+}
+rr_neg_text :: (k: int) -> string {
+  t := [10] string.["", "the NEG frame does not read", "the Negentropy message is over 32768 bytes",
+    "4 syncs are already open on this connection", "this query matches more than 100000 events",
+    "no message for 60 seconds", "no sync is open with this id", "malformed filter",
+    "the Negentropy message does not read", "the filter is over 4096 bytes"];
+  if k < 0 || k >= RR_NE_REASONS { return "sync failed"; }
+  return t[k];
+}
+// The NEG-ERR's fourth element (NIP-77's record limit), or -1 for none.
+rr_neg_records :: (k: int) -> int { return ifx k == RR_NE_BIG then RR_NEG_MAX else -1; }

@@ -21,10 +21,10 @@ Part IX, A relay. Result: NIP-77's `NEG-OPEN`, `NEG-MSG`, `NEG-CLOSE` and
 - One round for either side, and rounds repeated until the client knows
   the IDs it has and the server lacks (`have`) and the reverse (`need`).
 - The frame limit, and how a message that would pass it ends early.
-- What is not built: the relay process (`coax/relay/relay.coax`) does not
-  answer `NEG-OPEN` yet. Holding a session per connection, `NEG-ERR`
-  `blocked:` over a record limit and `closed:` after a timeout, and
-  replication between Coax relays are out of scope; see
+- The relay process (`coax/relay/relay.coax`) answers `NEG-OPEN`,
+  `NEG-MSG` and `NEG-CLOSE` with this file's server side, since chapter
+  103's wiring; see [The relay's sessions](#the-relays-sessions).
+  Replication between Coax relays is not built; see
   [What is not built](#what-is-not-built).
 
 ## Where the code is
@@ -1224,15 +1224,36 @@ coax/bin/coax test nostr/examples/checks/negentropy-sync.coax --run-steps 250000
 
 On 2026-11-01, `coax test` ran 477 checks, including the loaded files' own, in about 33 seconds, and the Python script ran in under a second. Root-only mutation of the checks file killed 58 of 58 mutants. Mutation of the example's own `main` was not run; its output is pinned by the fixture.
 
-### What is not built
+### The relay's sessions
 
-- Wiring NIP-77 into the relay of [chapter 34](ch034-admit-an-event.md) and
-  `coax/relay/relay.coax`, which is out of scope for this chapter. A relay
-  would keep one `Neg` per open subscription ID and connection, close the
-  old one when a `NEG-OPEN` reuses an ID, refuse a query over a record
-  limit with `NEG-ERR` `blocked:` (optionally with the limit as a fourth
-  element), and close idle sessions with `closed:`. It would also
-  advertise 77 in its NIP-11 document ([chapter 37](ch037-nip-11-relay-information.md)).
+`coax/relay/relay.coax` answers the frames with this file's server side.
+The decisions are `relay_route.coax`'s (`#authority`, root-only mutation
+573 of 573 on 2026-11-01); the items are `relay_store.coax`'s
+`rd_neg_items`:
+
+| Case | What the relay does |
+| --- | --- |
+| `NEG-OPEN` | charged as a `REQ` (chapter 44); reads the filter by `REQ`'s rules (no `search`, no empty arrays), takes the store's visible events that match it, sorted, without the filter's `limit`, and answers `NEG-MSG` with `neg_reconcile` as the server |
+| `NEG-OPEN` for an open ID | closes that sync first (NIP-77) and keeps its slot |
+| a fifth sync on one connection | `NEG-ERR` `blocked: 4 syncs are already open on this connection` |
+| more than 100,000 matching events | `NEG-ERR` `blocked: this query matches more than 100000 events`, with `100000` as the fourth element |
+| `NEG-MSG` | answered over the items matching the sync's saved filter at that moment, so an event stored between rounds takes part in the next one |
+| `NEG-MSG` for an ID that isn't open | `NEG-ERR` `closed: no sync is open with this id` |
+| 60 seconds without a message | `NEG-ERR` `closed: no message for 60 seconds` |
+| a frame that doesn't read, or a filter or message that doesn't | `NEG-ERR` `invalid: ...`, naming the ID |
+| `NEG-CLOSE` | the sync is gone; nothing is sent |
+
+The relay's frame limit is 32,768 bytes, and it reads client messages of
+up to 32,768 bytes: 65,536 hex digits, `json.coax`'s longest string, so a
+Coax client reads every answer. A longer message isn't JSON to
+`n77_read`, and is answered with a `NOTICE`. After any `NEG-ERR` the sync
+is gone. NIP-11 lists 77 ([chapter 37](ch037-nip-11-relay-information.md)).
+`relay_session.py` (under ASan and UBSan) syncs 40 stored events against
+`negentropy_ref.py` as the client and checks each case above except the
+record limit and the idle timeout, which `relay_route.coax`'s and
+`relay_store.coax`'s checks cover.
+
+### What is not built
 - Replication between Coax relays: a process that runs this sync on a
   schedule and then moves the `have` and `need` events with `EVENT` and
   `REQ`.

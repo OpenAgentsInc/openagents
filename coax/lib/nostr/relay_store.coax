@@ -31,6 +31,7 @@
 #load "relay_route.coax";
 #load "nip45.coax";
 #load "nip50.coax";
+#load "nip77.coax";
 
 RD_TOMBS :: 8192;             // tombstones the relay keeps
 RD_WORK :: RS_MAX_TAGS;       // one request's tombstones (one per tag at most)
@@ -168,6 +169,31 @@ rd_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent, w: [] RdSearch) -> boo
   if !subs[i].live { return false; }
   for k: 0..<subs[i].filters { if rd_sub_filter(subs, i, k, e, w) { return true; } }
   return false;
+}
+
+// ---- Negentropy (NIP-77) -----------------------------------------------------------
+
+// The NIP-77 items (created_at, id) of every visible record matching the
+// filter text at now, sorted (neg_sort): the count; -1 when more than
+// out.count match (relay_route.coax's RR_NEG_MAX in the relay), -2 when the
+// filter doesn't read by relay_server.coax's rules (filter_read: no
+// "search"; no empty arrays). The filter's limit is not applied: a sync
+// covers every match.
+rd_neg_items :: (d: [] RdStore, filter: string, now: int, out: [] NegItem) -> int {
+  strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter;
+  if filter_read(filter, f[..], sp[..]) != FR_OK || rs_empty(f[0]) { return -2; }
+  s := d[0].s[..];
+  later := ns_store_seen(s, now); n := 0;
+  for i: 0..<s[0].n {
+    if !ns_store_visible(s, i, now) || !nf_match(f[0], rsd_event(s, i)) { continue; }
+    if n == out.count { return -1; }
+    out[n] = NegItem.{created = s[0].recs[i].created, id = s[0].recs[i].id};
+    n += 1;
+  }
+  neg_sort(out[0..<n]);
+  return n;
 }
 
 // ---- checks -------------------------------------------------------------------
@@ -337,4 +363,28 @@ rd_t_firsts :: (d: [] RdStore, idx: [] int, n: int, out: [] u8) -> string {
   #assert rs_sub_open(subs[..], ms_read(t), t, 4) == 0 && rd_sub_matches(subs[..], 0, e1, w[..]);
   e1.original = "{\"content\":\"coax \\u00\"}";
   #assert !rd_sub_matches(subs[..], 0, e1, w[..]);
+}
+#test "Negentropy items: every visible match, sorted, the limit not applied; too many; a bad filter" {
+  t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
+  scratch: [4096] u8; items: [4] NegItem;
+  texts := [4] string.[RD_T_S1, RD_T_S2, RD_T_S3, RD_T_S4];
+  for x: texts { #assert rd_admit(d, rst_store_read(x, scratch[..]), x) == RS_ACCEPT; }
+  // created_at 990, 995, 998 (S4), 999 (S3, kind 4)
+  #assert rd_neg_items(d, "{}", 1000, items[..]) == 4;
+  #assert items[0].created == 990 && items[0].id[0] == 0xdd && items[1].created == 995 && items[1].id[0] == 0x9b;
+  #assert items[2].created == 998 && items[2].id[0] == 0x7d && items[3].created == 999 && items[3].id[0] == 0x93;
+  #assert rd_neg_items(d, "{\"kinds\":[1],\"limit\":1}", 1000, items[..]) == 3 && items[2].created == 998;
+  #assert rd_neg_items(d, "{\"kinds\":[4]}", 1000, items[..]) == 1 && items[0].created == 999;
+  #assert rd_neg_items(d, "{\"since\":996}", 1000, items[..]) == 2 && items[0].created == 998;
+  #assert rd_neg_items(d, "{\"kinds\":[7]}", 1000, items[..]) == 0;
+  // more matches than room: -1; exactly enough room: the count
+  #assert rd_neg_items(d, "{}", 1000, items[0..<3]) == -1 && rd_neg_items(d, "{\"kinds\":[1]}", 1000, items[0..<3]) == 3;
+  #assert rd_neg_items(d, "{\"kinds\":[1]}", 1000, items[0..<0]) == -1 && rd_neg_items(d, "{\"kinds\":[7]}", 1000, items[0..<0]) == 0;
+  // filters that don't read
+  #assert rd_neg_items(d, "{\"search\":\"coax\"}", 1000, items[..]) == -2 && rd_neg_items(d, "{\"kinds\":[]}", 1000, items[..]) == -2;
+  #assert rd_neg_items(d, "[]", 1000, items[..]) == -2 && rd_neg_items(d, "{\"ids\":[\"zz\"]}", 1000, items[..]) == -2;
+  // an expired event is not an item
+  u: [1] RdT; rd_t_init(u[..]); e := u[0].d[..];
+  #assert rd_admit(e, rst_store_read(RST_LIVE, scratch[..]), RST_LIVE) == RS_ACCEPT && rd_admit(e, rst_store_read(RST_PLAIN, scratch[..]), RST_PLAIN) == RS_ACCEPT;
+  #assert rd_neg_items(e, "{}", 1000, items[..]) == 2 && rd_neg_items(e, "{}", 1001, items[..]) == 1;
 }

@@ -33,9 +33,10 @@
 // varint that reaches it is refused (NEG_BOUND, NEG_VARINT). Nostr's
 // created_at values are far below.
 //
-// Not built: the relay's side of NEG-OPEN (holding sessions per connection,
-// NEG-ERR "blocked:" over a record limit, "closed:" on time out) and the
-// wiring into coax/relay/relay.coax. n77_read and n77_write_* are the frames.
+// n77_read and n77_write_* are the frames. The relay's sessions (one per
+// NEG-OPEN id on a connection, NEG-ERR "blocked:" over a record limit,
+// "closed:" when idle) are relay_route.coax's rr_neg_*, wired into
+// coax/relay/relay.coax over relay_store.coax's rd_neg_items.
 #load "json.coax";
 #load "hex.coax";
 #load "../crypto/sha256.coax";

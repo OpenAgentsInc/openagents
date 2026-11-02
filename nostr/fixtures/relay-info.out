@@ -8,16 +8,16 @@ routing: one request head, one answer
 7. OPTIONS: METHOD -> 400, answer "HTTP/1.1 400 Bad Request"
 8. head not finished: MORE -> wait, answer ""
 
-the NIP-11 answer: 717 bytes, head 197 and body 520
+the NIP-11 answer: 720 bytes, head 197 and body 523
   HTTP/1.1 200 OK\r\n
   Content-Type: application/nostr+json\r\n
-  Content-Length: 520\r\n
+  Content-Length: 523\r\n
   Access-Control-Allow-Origin: *\r\n
   Access-Control-Allow-Headers: *\r\n
   Access-Control-Allow-Methods: GET\r\n
   Connection: close\r\n
   \r\n
-  {"name":"OpenAgents Coax relay (R1)","description":"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.","supported_nips":[1,9,11,40,42,45,50,62,70],"software":"https://github.com/OpenAgentsInc/openagents","version":"r1","limitation":{"max_message_length":131072,"max_subscriptions":32,"max_limit":127,"max_subid_length":64,"max_event_tags":256,"auth_required":false,"restricted_writes":true,"created_at_upper_limit":900,"default_limit":127}}
+  {"name":"OpenAgents Coax relay (R1)","description":"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.","supported_nips":[1,9,11,40,42,45,50,62,70,77],"software":"https://github.com/OpenAgentsInc/openagents","version":"r1","limitation":{"max_message_length":131072,"max_subscriptions":32,"max_limit":127,"max_subid_length":64,"max_event_tags":256,"auth_required":false,"restricted_writes":true,"created_at_upper_limit":900,"default_limit":127}}
 
 the 400 answer: 276 bytes
   HTTP/1.1 400 Bad Request\r\n
@@ -32,8 +32,8 @@ the 400 answer: 276 bytes
 
 the client reads the document
   error: ok, name "OpenAgents Coax relay (R1)", software "https://github.com/OpenAgentsInc/openagents", version "r1"
-  supported_nips: 1 9 11 40 42 45 50 62 70
-  NIP-45 COUNT listed: true, NIP-50 search listed: true
+  supported_nips: 1 9 11 40 42 45 50 62 70 77
+  NIP-45 COUNT listed: true, NIP-50 search listed: true, NIP-77 Negentropy listed: true
 advertised against enforced
   max_message_length: advertised 131072, enforced 131072 ok
   max_subscriptions: advertised 32, enforced 32 ok
@@ -44,7 +44,7 @@ advertised against enforced
   default_limit: advertised 127, enforced 127 ok
   auth_required: advertised 0, enforced 0 ok
   restricted_writes: advertised 1, enforced 1 ok
-  supported_nips: 9 listed, relay implements 1, 9, 11, 40, 42, 45, 50, 62, 70 ok
+  supported_nips: 10 listed, relay implements 1, 9, 11, 40, 42, 45, 50, 62, 70, 77 ok
   0 mismatches
 
 each limit, at the limit and one past it
@@ -81,6 +81,8 @@ restricted_writes and auth_required:
 supported_nips:
   NIP-40, expiration 1000 at now 1000: ["OK","2428ab7235e4d5085e98c604a8bd041883da188674d85a63a2f808fd6b839c1b",false,"invalid: event has expired"]
   NIP-45 COUNT: routed to COUNT (nip45.coax)
+  NIP-77 NEG-OPEN: routed to NEG-OPEN (nip77.coax)
+  an unknown verb: ["NOTICE","invalid: unsupported message verb"]
   NIP-50 search, rs_req: ["CLOSED","s","invalid: malformed filter"]
   NIP-50 search, rs_req_search (the relay's REQ path): accepted
 

@@ -51,6 +51,14 @@
 // its content holds every term (rd_sub_matches). Ciphertext kinds (4, 1059,
 // 21059) never match a search.
 //
+// NIP-77 (chapter 43, nip77.coax): NEG-OPEN, NEG-MSG and NEG-CLOSE. Each
+// connection holds up to RR_NEG_SESSIONS syncs (relay_route.coax's rr_neg_*,
+// which also states the limits); each message is answered by neg_reconcile
+// over the store's items matching the session's filter at that moment
+// (rd_neg_items), with RR_NEG_FRAME as the relay's frame limit. Over
+// RR_NEG_MAX items, too many syncs, a client message over RR_NEG_IN bytes or
+// RR_NEG_IDLE_S seconds without a message: NEG-ERR, and the session is gone.
+//
 // Routing (which reply goes to which connection and subscription) is
 // relay_route.coax's (#authority); this file moves bytes and calls it.
 // NIP-42: every WebSocket gets a challenge after the 101 (nip42_issue, 32
@@ -81,6 +89,10 @@
 #assert RR_N42_OK == N42_OK && RR_N42_STALE == N42_STALE && RR_N42_NO_CHALLENGE == N42_NO_CHALLENGE && RR_N42_EVENT == N42_EVENT;
 #assert RR_N42_KIND == N42_KIND && RR_N42_TIME == N42_TIME && RR_N42_TAGS == N42_TAGS && RR_N42_RELAY == N42_RELAY && RR_N42_CHALLENGE == N42_CHALLENGE;
 #assert RR_NSD_DELETED == NSD_DELETED && RR_NSD_NO_ROOM == NSD_NO_ROOM;
+#assert RR_N77_OK == N77_OK && RR_N77_VERB == N77_VERB && RR_N77_SUB == N77_SUB && RR_N77_FRAME == N77_FRAME;
+#assert RR_N77_OPEN == N77_OPEN && RR_N77_MSG == N77_MSG && RR_N77_CLOSE == N77_CLOSE && RR_N77_ERR == N77_ERR;
+#assert RR_NEG_FRAME >= NEG_FRAME_MIN && 2 * (RR_NEG_FRAME + RY_NEG_SLACK) + 2 * 256 + 32 <= RY_OUT - 14;
+#assert RR_NEG_IN * 2 == JSON_MAX_STRING && RR_NEG_FRAME * 2 <= JSON_MAX_STRING;
 #assert RY_SENT <= 2032;
 
 cxsrv_listen :: (port: int) -> int #foreign;
@@ -109,6 +121,9 @@ ry_host_pow :: () -> int #foreign;
 // that pipelines a full-size frame and the next one is never cut off.
 RY_CONNS :: 16; RY_IN :: RS_MAX_MESSAGE + 14 + 65536; RY_OUT :: 140000; RY_IO_MS :: 2000;
 RY_SENT :: 2032;   // 16 filters x 127 events
+// Room past the frame limit for the one range neg_reconcile writes before it
+// cuts (16 fingerprints with their bounds, or an IdList of 31 ids).
+RY_NEG_SLACK :: 4096;
 
 RyConn :: struct {
   h: int = -1; ws: bool; gen: int;
@@ -119,6 +134,7 @@ RyConn :: struct {
   rd: [1] WsReader;
   msg: [RS_MAX_MESSAGE] u8;
   subs: [RS_MAX_SUBS] RsSub;
+  neg: [RR_NEG_SESSIONS] RrNeg;   // NIP-77 syncs
 }
 RyWork :: struct {
   frame: [RS_MAX_MESSAGE] u8;     // one unmasked frame payload
@@ -134,6 +150,9 @@ RyWork :: struct {
   pow: int;                       // --pow: the NIP-13 difficulty an EVENT needs, 0 off
   keys: [1] RtKeys;               // the per-key EVENT windows
   nip11: [4096] u8; nip11_n: int; // RR_NIP11 with the rate limits (rt_nip11)
+  neg_items: [RR_NEG_MAX] NegItem; // one sync's items (rd_neg_items)
+  neg_in: [RR_NEG_IN] u8;          // one NEG-OPEN or NEG-MSG message, decoded
+  neg_out: [RR_NEG_FRAME + RY_NEG_SLACK] u8;  // the relay's answer
 }
 
 ry_send_raw :: (c: [] RyConn, bytes: string) -> bool {
@@ -151,7 +170,7 @@ ry_text :: (c: [] RyConn, w: [] RyWork, n: int) -> bool {
 ry_shut :: (c: [] RyConn) {
   if c[0].h >= 0 { r := cxsrv_close(c[0].h); }
   c[0].h = -1; c[0].ws = false; c[0].used = 0; c[0].rd[0] = WsReader.{};
-  rr_auth_reset(c[0].auth[..]); c[0].rt[0] = RtConn.{};
+  rr_auth_reset(c[0].auth[..]); c[0].rt[0] = RtConn.{}; rr_neg_reset(c[0].neg[..]);
   for i: 0..<RS_MAX_SUBS { c[0].subs[i].live = false; }
 }
 ry_close :: (c: [] RyConn, w: [] RyWork, code: int) {
@@ -257,11 +276,77 @@ ry_auth :: (c: [] RyConn, w: [] RyWork, obj: string) {
   k := rr_auth(c[0].auth[..], a.error, key[..]);
   ok := ry_text(c, w, ms_write_ok(id[..], k == RR_A_OK, rr_auth_prefix(k), rr_auth_text(k), w[0].body[..]));
 }
+// NEG-ERR for session sub (NIP-77), with the record limit when there is one.
+ry_neg_err :: (c: [] RyConn, w: [] RyWork, sub: string, reason: int) {
+  n := n77_write_err(w[0].body[..], sub, cast(string) w[0].out[0..<ry_reason(w, rr_neg_prefix(reason), rr_neg_text(reason))]);
+  if n > 0 && rr_neg_records(reason) >= 0 {
+    n -= 1; n = json_raw(w[0].body[..], n, ",");
+    digits: [20] u8; d := 0; p := rr_neg_records(reason);
+    while d == 0 || p > 0 { digits[d] = cast(u8) ('0' + p % 10); p /= 10; d += 1; }
+    while d > 0 && n >= 0 && n < w[0].body.count { d -= 1; w[0].body[n] = digits[d]; n += 1; }
+    n = json_raw(w[0].body[..], n, "]");
+  }
+  ok := ry_text(c, w, n);
+}
+// "prefix: text" into w.out: its length.
+ry_reason :: (w: [] RyWork, prefix: string, text: string) -> int {
+  n := json_raw(w[0].out[..], 0, prefix); n = json_raw(w[0].out[..], n, ": ");
+  return json_raw(w[0].out[..], n, text);
+}
+// Ends session k with NEG-ERR reason.
+ry_neg_fail :: (c: [] RyConn, w: [] RyWork, k: int, reason: int) {
+  sub := c[0].neg[k].sub;
+  c[0].neg[k].live = false;
+  ry_neg_err(c, w, cast(string) sub[0..<c[0].neg[k].sub_n], reason);
+}
+// Answers session k's message (msg_n bytes in w.neg_in) over the store's
+// items matching its filter now; NEG-ERR ends the session on a refusal.
+ry_neg_answer :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, k: int, msg_n: int) {
+  now := cxsrv_now_s();
+  filter := c[0].neg[k].filter;
+  n := rd_neg_items(store, cast(string) filter[0..<c[0].neg[k].filter_n], now, w[0].neg_items[..]);
+  e := rr_neg_items(n);
+  if e != RR_NE_OK { ry_neg_fail(c, w, k, e); return; }
+  neg: [1] Neg;
+  m := -1;
+  if neg_init(neg[..], w[0].neg_items[0..<n], false, RR_NEG_FRAME) == NEG_OK {
+    m = neg_reconcile(neg[..], cast(string) w[0].neg_in[0..<msg_n], w[0].neg_out[..]);
+  }
+  if m < 0 { ry_neg_fail(c, w, k, RR_NE_NEG); return; }
+  rr_neg_touch(c[0].neg[..], k, now);
+  sub := c[0].neg[k].sub;
+  ok := ry_text(c, w, n77_write_msg(w[0].body[..], cast(string) sub[0..<c[0].neg[k].sub_n], cast(string) w[0].neg_out[0..<m]));
+}
+// A frame ms_read didn't know: NIP-77's, or a NOTICE.
+ry_neg :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string) {
+  f := n77_read(text, w[0].neg_in[..], RR_NEG_IN);
+  r := rr_neg_route(f.error, f.verb, f.sub_n);
+  sub := cast(string) f.sub[0..<f.sub_n];
+  if r.action == RR_NOTICE { ok := ry_notice(c, w, r.reason); return; }
+  if r.action == RR_NEG_ERR { closed := rr_neg_close(c[0].neg[..], sub); ry_neg_err(c, w, sub, r.reason); return; }
+  if r.action == RR_NEG_CLOSE { closed := rr_neg_close(c[0].neg[..], sub); return; }
+  if r.action == RR_NEG_MSG {
+    k := rr_neg_find(c[0].neg[..], sub);
+    if k < 0 { ry_neg_err(c, w, sub, RR_NE_UNKNOWN); return; }
+    ry_neg_answer(c, w, store, k, f.msg_n);
+    return;
+  }
+  rt := rt_req(c[0].rt[..], w[0].rate, cxsrv_now_s());
+  if rt != RT_OK {
+    closed := rr_neg_close(c[0].neg[..], sub);
+    ok := ry_text(c, w, n77_write_err(w[0].body[..], sub, cast(string) w[0].out[0..<ry_reason(w, rt_prefix(rt), rt_text(rt))]));
+    return;
+  }
+  k := rr_neg_open(c[0].neg[..], sub, text[f.filter_from..<f.filter_to], cxsrv_now_s());
+  if k < 0 { ry_neg_err(c, w, sub, -k); return; }
+  ry_neg_answer(c, w, store, k, f.msg_n);
+}
 ry_message :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: string) {
   c := conns[at..<at + 1];
   m := ms_read(text);
   sub := m.sub;
   r := rr_message(m.error, m.type, m.has_sub);
+  if r.action == RR_NOTICE && r.reason == RR_RS_VERB { ry_neg(c, w, store, text); return; }
   if r.action == RR_NOTICE { ok := ry_notice(c, w, r.reason); return; }
   if r.action == RR_CLOSED { ok := ry_closed(c, w, cast(string) sub[0..<m.sub_n], r.reason); return; }
   if r.action == RR_EVENT { ry_event(conns, at, w, store, text, m); return; }
@@ -339,7 +424,7 @@ ry_serve :: (conns: [] RyConn, w: [] RyWork, store: [] RdStore) {
       w[0].gen = rr_next_gen(w[0].gen);
       conns[slot].h = h; conns[slot].ws = false; conns[slot].used = 0; conns[slot].rd[0] = WsReader.{};
       conns[slot].gen = w[0].gen; rr_auth_reset(conns[slot].auth[..]); conns[slot].since = cxsrv_now_s();
-      conns[slot].rt[0] = RtConn.{};
+      conns[slot].rt[0] = RtConn.{}; rr_neg_reset(conns[slot].neg[..]);
     }
     now := cxsrv_now_s();
     for i: 0..<conns.count {
@@ -348,6 +433,9 @@ ry_serve :: (conns: [] RyConn, w: [] RyWork, store: [] RdStore) {
       t := rr_deadline(c[0].ws, c[0].used, c[0].since, now);
       if t == RR_T_DROP { ry_shut(c); continue; }
       if t == RR_T_CLOSE { ry_close(c, w, RR_CLOSE_SLOW); continue; }
+      idle := rr_neg_idle(c[0].neg[..], now);
+      while idle >= 0 && c[0].h >= 0 { ry_neg_fail(c, w, idle, RR_NE_IDLE); idle = rr_neg_idle(c[0].neg[..], now); }
+      if c[0].h < 0 { continue; }
       n := cxsrv_read(c[0].h);
       if n == 0 { continue; }
       if n < 0 { ry_shut(c); continue; }

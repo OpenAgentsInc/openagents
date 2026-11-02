@@ -98,7 +98,14 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
      347), `rd_req`/`rd_req_filter`/`rd_sub_matches` in `relay_store.coax`
      over `n50_scan`; NIP-11 then lists 50. Searches scan the store; the
      word index is not used (it is rebuilt whole after any write).
-   - Still not wired: `nip77`, `nip86`, `nip43`, `nip29`.
+   - `nip77` wired: `NEG-OPEN`/`NEG-MSG`/`NEG-CLOSE` through
+     `rr_neg_route` and per-connection sessions (`rr_neg_*`, at most 4,
+     100,000 events, 60 s idle, 32,768-byte frame limit) in
+     `relay_route.coax`, root-only 573 of 573; `rd_neg_items` in
+     `relay_store.coax`. NIP-11 lists 77; `relay_server.coax` (only
+     `RS_NIP11` changed) 347 of 347. `relay_session.py` under ASan/UBSan
+     syncs against `negentropy_ref.py`.
+   - Still not wired: `nip86`, `nip43`, `nip29`.
    - The store's size is now `--store-capacity EVENTS` (128 to 1,048,576
      records, 2 KiB of arena each; default 2,048 and 4 MiB). relay-host.c
      allocates the arrays and calls `#export_c ry_main`; `relay_route.coax`

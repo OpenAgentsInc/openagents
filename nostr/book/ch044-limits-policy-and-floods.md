@@ -596,7 +596,7 @@ the relay's store: 2048 records, 4194304 bytes
   step 5: budget spent: close, RC_FAIL
 
 == NIP-11
-597 bytes (RR_NIP11 is 520); its limitation object:
+600 bytes (RR_NIP11 is 523); its limitation object:
   "limitation":{"max_message_length":131072,"max_subscriptions":32,"max_limit":127,"max_subid_length":64,"max_event_tags":256,"auth_required":false,"restricted_writes":true,"created_at_upper_limit":900,"default_limit":127,"events_per_minute":120,"reqs_per_minute":120,"events_per_minute_per_key":60}
 reqs_per_minute 0: rt_config_ok false, rt_nip11 -1
 events_per_minute 1000001: rt_config_ok false, rt_nip11 -1
@@ -624,7 +624,7 @@ which loads the example:
 - the floods give the hand counts: 120 and 10, 60 and 10, 64 keys and a
   refused 65th, and 32, 88 and 5 for the `REQ` flood;
 - the NIP-11 document equals chapter 37's hand-written document with the
-  three fields written in by hand, 520 − 2 + 79 = 597 bytes, and is JSON;
+  three fields written in by hand, 523 − 2 + 79 = 600 bytes, and is JSON;
 - the defaults are the Rust relay's, and the R1 constants are the values
   in `relay_server.coax`'s header and the flood record.
 
@@ -691,12 +691,12 @@ rust_allow :: (c: [] RustCounter, limit: int, window: int, now: int) -> bool {
   #assert open == 32 && full == 88 && rate == 5;
 }
 // relay-info's HAND_DOC (chapter 37) with the three rate fields written in
-// by hand before its closing "}}": 520 - 2 + 79 = 597 bytes.
-HAND_DOC :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,50,62,70],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127,\"events_per_minute\":120,\"reqs_per_minute\":120,\"events_per_minute_per_key\":60}}";
+// by hand before its closing "}}": 523 - 2 + 79 = 600 bytes.
+HAND_DOC :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,50,62,70,77],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127,\"events_per_minute\":120,\"reqs_per_minute\":120,\"events_per_minute_per_key\":60}}";
 #test "the NIP-11 document is the hand-written one, and JSON" {
   doc: [1024] u8;
   n := rt_nip11(RR_NIP11, rt_default(), doc[..]);
-  #assert HAND_DOC.count == 597 && n == 597 && cast(string) doc[0..<n] == HAND_DOC && json_valid(HAND_DOC);
+  #assert HAND_DOC.count == 600 && n == 600 && cast(string) doc[0..<n] == HAND_DOC && json_valid(HAND_DOC);
   // the Rust relay's defaults (gateway/config.rs: RATE_EVENTS_PER_MIN_IP 120,
   // RATE_EVENTS_PER_MIN_PUBKEY 60, RATE_REQ_PER_MIN_IP 120)
   #assert rt_default().events == 120 && rt_default().key_events == 60 && rt_default().reqs == 120;

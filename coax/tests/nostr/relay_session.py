@@ -12,7 +12,7 @@ created_at limit, subscription/filter/frame limits, ping, a restart with
 NIP-42: a challenge on every connection, AUTH answers (right, wrong
 challenge, relay, time, kind, tags, signature, id), writes refused until
 AUTH, kind 22242 never stored or delivered, and a new challenge after a
-reconnect. Tooling only; nothing here ships. Never points at a public relay.
+reconnect; NIP-77 syncs against negentropy_ref.py as the client. Tooling only; nothing here ships. Never points at a public relay.
 
 With --tls every session above runs over wss:// (and NIP-11 over https://)
 against the relay started with --tls-cert/--tls-key, with a one-day test CA
@@ -493,6 +493,78 @@ def search(port):
     w.close(); w2.close()
 
 
+def negentropy(port):
+    """NIP-77 (nip77.coax over relay_store.coax's rd_neg_items): a sync names what each side lacks; limits answer NEG-ERR."""
+    sys.path.insert(0, str(HERE))
+    import negentropy_ref as nr
+    now = int(time.time())
+    ev = sign([{"kind": 9999, "created_at": now - 200 + i, "tags": [], "content": "negentropy %d" % i} for i in range(40)])
+    w = Ws(port)
+    check(w.auth()[2] is True and all(publish(w, e)[2] is True for e in ev), 'NIP-77: 40 kind 9999 events stored')
+    fakes = [(now - 150 + i, hashlib.sha256(b'not on the relay %d' % i).digest()) for i in range(5)]
+    mine = [(e['created_at'], bytes.fromhex(e['id'])) for e in ev[:30]] + fakes
+    c = nr.Side(mine, True)
+    w.send(['NEG-OPEN', 'n1', {'kinds': [9999]}, c.initiate().hex()])
+    have, need, rounds = [], [], 0
+    while True:
+        m = w.recv()
+        if not (isinstance(m, list) and m[:2] == ['NEG-MSG', 'n1']):
+            check(False, 'NIP-77: the relay answers NEG-MSG (got %r)' % (m,))
+            break
+        rounds += 1
+        nxt, h, n = c.reconcile(bytes.fromhex(m[2]))
+        have += h
+        need += n
+        if nxt is None:
+            break
+        w.send(['NEG-MSG', 'n1', nxt.hex()])
+    check(sorted(have) == sorted(i for _, i in fakes) and sorted(need) == sorted(bytes.fromhex(e['id']) for e in ev[30:]),
+          'NIP-77: after %d rounds the client has the 5 the relay lacks and needs the 10 it lacks' % rounds)
+    w.send(['NEG-CLOSE', 'n1'])
+    w.send(['NEG-MSG', 'n1', '61'])
+    check(w.recv() == ['NEG-ERR', 'n1', 'closed: no sync is open with this id'], 'NIP-77: NEG-MSG after NEG-CLOSE is NEG-ERR closed')
+    # an equal set: the relay's first answer settles it
+    c = nr.Side([(e['created_at'], bytes.fromhex(e['id'])) for e in ev], True)
+    w.send(['NEG-OPEN', 'eq', {'kinds': [9999]}, c.initiate().hex()])
+    m = w.recv()
+    check(m[:2] == ['NEG-MSG', 'eq'] and c.reconcile(bytes.fromhex(m[2])) == (None, [], []), 'NIP-77: the same 40 events agree in one round')
+    w.send(['NEG-CLOSE', 'eq'])
+    # at most 4 syncs on a connection; the same id again replaces its sync
+    for sub in ['s2', 's3', 's4', 's5', 's2']:
+        w.send(['NEG-OPEN', sub, {'kinds': [9999]}, nr.Side([], True).initiate().hex()])
+        check(w.recv()[:2] == ['NEG-MSG', sub], 'NIP-77: sync %s opened' % sub)
+    w.send(['NEG-OPEN', 's6', {'kinds': [9999]}, '61'])
+    check(w.recv() == ['NEG-ERR', 's6', 'blocked: 4 syncs are already open on this connection'], 'NIP-77: a fifth sync is NEG-ERR blocked')
+    w2 = Ws(port)
+    w2.send(['NEG-OPEN', 's6', {'kinds': [9999]}, '61'])
+    check(w2.recv()[:2] == ['NEG-MSG', 's6'], 'NIP-77: the limit is per connection')
+    w.send(['NEG-CLOSE', 's3'])
+    w.send(['NEG-OPEN', 's6', {'kinds': [9999]}, '61'])
+    check(w.recv()[:2] == ['NEG-MSG', 's6'], 'NIP-77: after NEG-CLOSE a slot is free again')
+    w.send(['NEG-CLOSE', 's6'])
+    # refusals
+    w.send(['NEG-OPEN', 'bad', {'search': 'x'}, '61'])
+    check(w.recv() == ['NEG-ERR', 'bad', 'invalid: malformed filter'], 'NIP-77: a search filter is NEG-ERR invalid')
+    w.send(['NEG-MSG', 's2', '6g'])
+    check(w.recv() == ['NEG-ERR', 's2', 'invalid: the NEG frame does not read'], 'NIP-77: bad hex is NEG-ERR invalid')
+    w.send(['NEG-MSG', 's2', '61'])
+    check(w.recv() == ['NEG-ERR', 's2', 'closed: no sync is open with this id'], 'NIP-77: and that sync is gone')
+    w.send(['NEG-MSG', 's4', '00'])
+    check(w.recv() == ['NEG-ERR', 's4', 'invalid: the Negentropy message does not read'], 'NIP-77: a message that is not Negentropy is NEG-ERR')
+    w.send(['NEG-MSG', 's5', '62'])
+    check(w.recv() == ['NEG-MSG', 's5', '61'], 'NIP-77: version 2 is answered with the version the relay speaks')
+    # 32768 bytes are read (and refused as Negentropy: ranges after infinity)
+    w.send(['NEG-MSG', 's5', '61' + '00' * 32767])
+    check(w.recv() == ['NEG-ERR', 's5', 'invalid: the Negentropy message does not read'], 'NIP-77: a message of 32768 bytes is read')
+    w.send(['NEG-MSG', 's5', '61' + '00' * 32768])
+    check(w.recv() == ['NOTICE', 'invalid: malformed message'], 'NIP-77: one of 32769 bytes is longer than a JSON string the relay reads: NOTICE')
+    w.send(['NEG-ERR', 'x', 'blocked: no'])
+    check(w.recv() == ['NOTICE', 'invalid: malformed message'], 'NIP-77: a NEG-ERR from a client is a NOTICE')
+    w.send(['REQ', 'still', {'kinds': [9999], 'limit': 1}])
+    check(len(w.until_eose('still')[0]) == 1, 'NIP-77: the connection still serves REQ')
+    w.close(); w2.close()
+
+
 def proof_of_work(exe, log):
     """NIP-13 (nip13.coax): --pow 8 asks for 8 leading zero bits and a nonce committing to 8."""
     refused_start(exe, ['--pow', '257'], 'a difficulty over 256', '0 to 256')
@@ -506,7 +578,7 @@ def proof_of_work(exe, log):
     try:
         port = int(p.stdout.readline().split()[-1])
         check(info(port)['limitation'].get('min_pow_difficulty') == 8, 'pow: --pow 8 is advertised as min_pow_difficulty')
-        check(info(port)['supported_nips'] == [1, 9, 11, 13, 40, 42, 45, 50, 62, 70], 'pow: --pow 8 lists NIP-13')
+        check(info(port)['supported_nips'] == [1, 9, 11, 13, 40, 42, 45, 50, 62, 70, 77], 'pow: --pow 8 lists NIP-13')
         w = Ws(port)
         check(w.auth()[2] is True, 'pow: AUTH')
         now = int(time.time())
@@ -555,7 +627,7 @@ def nip11(port):
     check(head.startswith(b'HTTP/1.1 200') and b'Access-Control-Allow-Origin: *' in head, 'NIP-11: 200 with CORS')
     lim = doc['limitation']
     check(lim['max_message_length'] == 131072 and lim['max_subscriptions'] == 32 and lim['max_limit'] == 127
-          and lim['max_subid_length'] == 64 and doc['supported_nips'] == [1, 9, 11, 40, 42, 45, 50, 62, 70], 'NIP-11: the Rust relay\'s limits, NIPs 1, 9, 11, 40, 42, 45, 50, 62, 70')
+          and lim['max_subid_length'] == 64 and doc['supported_nips'] == [1, 9, 11, 40, 42, 45, 50, 62, 70, 77], 'NIP-11: the Rust relay\'s limits, NIPs 1, 9, 11, 40, 42, 45, 50, 62, 70, 77')
     check(lim['auth_required'] is False and lim['restricted_writes'] is True, 'NIP-11: reads open, writes need AUTH')
 
 
@@ -692,6 +764,7 @@ def main():
                 deleted, kept = deletion(port)
                 protected(port)
                 search(port)
+                negentropy(port)
                 w = Ws(port)
                 w.send(['REQ', 'before', {}])
                 before, _ = w.until_eose('before')

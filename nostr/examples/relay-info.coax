@@ -1,6 +1,7 @@
 // book:begin example
 #load "../../coax/lib/nostr/relay_server.coax";
 #load "../../coax/lib/nostr/relay_route.coax";
+#load "../../coax/lib/nostr/nip77.coax";
 #import "Basic";
 
 // The relay's clock for the policy probes: relay_server_fixtures.coax's
@@ -149,7 +150,7 @@ enforced :: () -> [9] int {
 // The NIPs the relay implements, each with the code that implements it.
 // NIP-13 is not here: proof of work is off unless the relay starts with
 // --pow, and then rr_nip11_pow adds 13 to the served list.
-RELAY_NIPS :: [9] int.[
+RELAY_NIPS :: [10] int.[
   1,     // message_server.coax, relay_server.coax: EVENT, REQ, CLOSE, OK, EOSE, CLOSED, NOTICE
   9,     // store_delete.coax in rd_admit: a stored kind 5 retires what it names
   11,    // this chapter: RR_NIP11 on Accept: application/nostr+json
@@ -158,7 +159,8 @@ RELAY_NIPS :: [9] int.[
   45,    // nip45.coax through rd_count: COUNT answered with an exact count
   50,    // rd_req and rd_req_filter: "search" read, answered by nip50.coax's n50_scan
   62,    // store_delete.coax in rd_admit: a kind 62 retires its author's events
-  70     // nip70.coax's nip70_admit: a "-" event only from its authenticated author
+  70,    // nip70.coax's nip70_admit: a "-" event only from its authenticated author
+  77     // nip77.coax through rr_neg_route and rd_neg_items: NEG-OPEN, NEG-MSG, NEG-CLOSE
 ];
 // The number of fields where the document disagrees with the relay.
 info_compare :: (i: RelayInfo, say: bool) -> int {
@@ -216,6 +218,12 @@ req_reply :: (frame: string, out: [] u8) -> string {
   route := rr_message(m.error, m.type, m.has_sub);
   if route.action == RR_REQ { return "routed to REQ"; }
   if route.action == RR_COUNT { return "routed to COUNT (nip45.coax)"; }
+  if route.action == RR_NOTICE && route.reason == RR_RS_VERB {
+    // not a NIP-01 verb: the relay reads it as NIP-77's before refusing it
+    msg: [64] u8; f := n77_read(frame, msg[..], msg.count);
+    route = rr_neg_route(f.error, f.verb, f.sub_n);
+    if route.action == RR_NEG_OPEN { return "routed to NEG-OPEN (nip77.coax)"; }
+  }
   sub := m.sub;
   n := ifx route.action == RR_NOTICE then ms_write_notice(rs_prefix(route.reason), rs_text(route.reason), out)
     else ms_write_closed(cast(string) sub[0..<m.sub_n], rs_prefix(route.reason), rs_text(route.reason), out);
@@ -286,7 +294,7 @@ main :: () {
   i := info_read(RR_NIP11);
   print("  error: %, name \"%\", software \"%\", version \"%\"\n", INFO_ERRORS[i.error], i.name, i.software, i.version);
   print("  supported_nips:"); for k: 0..<i.nips_n { print(" %", i.nips[k]); } print("\n");
-  print("  NIP-45 COUNT listed: %, NIP-50 search listed: %\n", info_has(i, 45), info_has(i, 50));
+  print("  NIP-45 COUNT listed: %, NIP-50 search listed: %, NIP-77 Negentropy listed: %\n", info_has(i, 45), info_has(i, 50), info_has(i, 77));
   print("advertised against enforced\n");
   print("  % mismatches\n", info_compare(i, true));
 
@@ -349,6 +357,8 @@ main :: () {
   print("supported_nips:\n");
   print("  NIP-40, expiration 1000 at now 1000: %\n", policy_reply(RST_EXPIRED, true, out[..]));
   print("  NIP-45 COUNT: %\n", req_reply("[\"COUNT\",\"c\",{}]", out[..]));
+  print("  NIP-77 NEG-OPEN: %\n", req_reply("[\"NEG-OPEN\",\"n\",{},\"6100000200\"]", out[..]));
+  print("  an unknown verb: %\n", req_reply("[\"NEG-BOGUS\",\"n\"]", out[..]));
   sr := "[\"REQ\",\"s\",{\"search\":\"relay\"}]";
   v := rs_req(ms_read(sr), sr);
   c = ms_write_closed("s", rs_prefix(v), rs_text(v), out[..]);
