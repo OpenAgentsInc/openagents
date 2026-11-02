@@ -1,0 +1,13 @@
+peer 0's advertisement: accepted
+from peer 3 of 3: no such peer
+epoch 6, the mesh is at 7: another epoch
+the same advertisement again: not newer than the one held
+issued at 1,001 ns, received at 1,000: issued in the future
+living 1 ns longer than the mesh allows: lifetime out of bounds
+issued at 1,000 ns for 5,000 ns, received at 6,000: expired
+17 entries: more entries than an advertisement carries
+9 distinct entries from a peer of 8 frames: more blocks than the peer has frames
+8 entries, one listed twice: an entry listed twice
+peer 1 claims 3 blocks it does not hold; routed to peer 1 from peer 1; 3 missing, output equals cold: true
+a prompt of 33 tokens: refused true
+a mesh whose peers hold 7 pages of 4: configuration or traffic out of bounds

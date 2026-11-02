@@ -1,0 +1,47 @@
+// Chapter 192: the hand-traced mesh of three peers under each router, the
+// break-even of moving blocks over a slow link, a claimed hit that is gone,
+// then four routers on shared-prefix traffic and three advertising periods.
+#import "Basic";
+#load "../lib/serve-saved.coax";
+
+// Nanoseconds as milliseconds with one decimal.
+ms :: (ns:int) {print("%.%",ns/1000000,ns/100000%10);}
+show :: (name:string,p:SwPick) {
+    print("  %: peer %, ",name,p.dst);
+    if p.src<0 {print("computed cold");}
+    else if p.src==p.dst {print("% blocks reused in place",p.blocks);}
+    else {print("% blocks moved from peer %",p.blocks,p.src);}
+    print(", predicted finish % ns\n",p.est);
+}
+line :: (name:string,s:SwSim) {
+    print("  %: % transfers moving % blocks, % blocks reused in place, % claimed blocks missing\n",name,s.moves,s.moved,s.local,s.missing);
+    print("    saved against cold: predicted ");ms(s.pred_saved);print(" ms, realized ");ms(s.real_saved);
+    print(" ms; mean latency ");ms(s.latency/s.served);print(" ms; last token at ");ms(s.end);print(" ms\n");
+}
+
+// book:begin main
+main :: () {
+    f:=swx_hand();m:=swx_hand_mesh();v:=swx_hand_view(f);tok:=swx_hand_tok();r:=SwRequest.{prompt=13,output=2};
+    print("hand trace (%): claims ",SW_PROFILE);
+    for k:0..<3 {print("peer % % blocks; ",k,sw_claim(v,m,k,tok[..],13,0));}
+    print("one block over 10 Gbit/s: % ns\n",sw_block_ns(m,0,1));
+    for k:0..<4 {pol:=cast(SwPolicy)cast(u8)k;show(sw_policy_name(pol),sw_route(f[..],m,v,pol,r,tok[..],0,0));}
+    slow:=m;slow.lat[0][1]=20000000;show("saved work, 20 ms to peer 1",sw_route(f[..],slow,v,SwPolicy.saved,r,tok[..],0,0));
+
+    p:=sw_route(f[..],m,v,SwPolicy.saved,r,tok[..],0,0);g:=f;g[0].st=swx_forget(g[0].st,2);
+    d:=sw_run(g[..],m,p,r,tok[..]);
+    print("peer 0 lost its third block: % moved, % missing, cost % ns against % predicted; output % (cold %)\n",d.moved,d.missing,d.cost,p.est,d.out,pg_hash(0,tok[0..<13]));
+
+    w:=swx_traffic();reqs:[64]SwRequest;toks:[2048]int;sw_traffic(w,reqs[..],toks[..]);
+    mesh:=swx_mesh();
+    print("shared-prefix traffic: % requests % ms apart, % families of % tokens, prompts of %, % output tokens; % peers, advertising every % ms\n",w.n,w.gap/1000000,w.families,w.prefix,w.prompt,w.output,mesh.peers,mesh.period/1000000);
+    for k:0..<4 {pol:=cast(SwPolicy)cast(u8)k;line(sw_policy_name(pol),sw_sim(mesh,pol,reqs[..],toks[..]));}
+    for period:[3]int.[20000000,100000000,400000000] {
+        x:=mesh;x.period=period;x.ttl=period+period/2;s:=sw_sim(x,SwPolicy.saved,reqs[..],toks[..]);
+        print("saved work, advertising every % ms (% accepted):\n",period/1000000,s.ads);
+        line("saved work",s);
+    }
+    x:=mesh;x.ttl=10000000;
+    print("saved work, advertisements living 10 ms:\n");line("saved work",sw_sim(x,SwPolicy.saved,reqs[..],toks[..]));
+}
+// book:end main

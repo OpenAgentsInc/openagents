@@ -1,0 +1,565 @@
+// Chapter 192: route by saved work. Peers of a mesh each hold a prefix
+// cache (chapter 176's trie). Each peer advertises what it holds as a
+// bounded, short-lived list of salted block hashes, never tokens; the
+// router accepts an advertisement only if it is for this mesh's epoch,
+// newer than the one it holds, issued in the past, alive, and claims no
+// more blocks than the peer has frames. For each request the router prices
+// three ways to get the prompt's state: reuse blocks a peer claims in
+// place, move them over a link to another peer (chapter 182's link model),
+// or compute the prompt cold; it takes the smallest predicted finish. A
+// claim is a hint: when the request runs, only the blocks really there are
+// used, the rest are computed, and the realized cost and saving are kept.
+// Profile sw-saved-v1: integer nanoseconds; each peer serves one request at
+// a time, timed by chapter 175's step model; a transfer does not occupy its
+// source; peers, links and advertisements are simulated in one process.
+#authority;
+#load "serve-pages.coax";
+#load "../tests/serve-saved-checks.coax";  // the checks' brute-force router, hand-built mesh and random meshes
+
+SW_PROFILE :: "sw-saved-v1";
+SW_PEERS :: 8;
+SW_ADS :: 16;
+SW_REQUESTS :: 64;
+SW_OUTPUT :: 64;
+// The longest an advertisement may claim to live, and the longest link
+// latency: 10 s and 1 s. The most bits a link moves a nanosecond (1 Tbit/s),
+// the most bytes one block may hold (1 GiB), and the latest arrival (2^40 ns).
+SW_TTL :: 10000000000;
+SW_LAT :: 1000000000;
+SW_GBIT :: 1000;
+SW_BLOCK :: 1073741824;
+SW_TIME :: 1099511627776;
+SW_MIX :: 48271;
+
+SwStatus :: enum u8 {ok;config;order;}
+// book:begin types
+// The mesh: peers, their page geometry (device tier only, as chapter 177),
+// one-way latency in nanoseconds and bandwidth in bits a nanosecond (Gbit/s)
+// from peer to peer (0: no link), bytes of state one block holds, the
+// advertisement epoch and its salt, how often peers advertise, and how long
+// an advertisement may live.
+SwMesh :: struct {peers:int;pages:PgConfig;lat:[8][8]int;gbit:[8][8]int;block_bytes:int;epoch:int;salt:int;period:int;ttl:int;}
+// An advertisement: who sent it, for which epoch, its sequence number, when
+// it was issued and for how long it holds, and n salted block hashes.
+SwAd :: struct {peer:int;epoch:int;seq:int;issued:int;ttl:int;n:int;entry:[16]int;}
+// Why an advertisement was refused: no such peer, another epoch, not newer
+// than the one held, issued in the future, a lifetime out of bounds,
+// already expired, more entries than an advertisement carries, more blocks
+// than the peer has frames, or an entry listed twice.
+SwAdRefusal :: enum u8 {none;peer;epoch;seq;early;ttl;stale;count;over;dup;}
+// The router's view: the last advertisement it accepted from each peer.
+SwView :: struct {held:[8]bool;ad:[8]SwAd;}
+SwAccepted :: struct {refusal:SwAdRefusal;view:SwView;}
+// saved: reuse, move or compute, whichever finishes first. reuse: reuse in
+// place or compute (chapter 177's prefix affinity, from advertisements).
+// blind: the least predicted finish, ignoring caches. round: the next peer.
+SwPolicy :: enum u8 {saved;reuse;blind;round;}
+SwRequest :: struct {arrive:int;prompt:int;output:int;}
+SwPeer :: struct {busy:int;st:PgStore;}
+// The router's choice: the peer that runs the request, the peer whose
+// blocks it uses (-1: none), how many it counts on, and the predicted
+// nanoseconds from now to the last token.
+SwPick :: struct {refused:bool;dst:int;src:int;blocks:int;est:int;turn:int;}
+// book:end types
+// What happened when it ran: blocks used, moved and claimed but missing;
+// transfer and total cost; and the stand-in model's output.
+SwDone :: struct {used:int;moved:int;missing:int;link:int;cost:int;out:int;}
+SwFate :: struct {refused:bool;dst:int;src:int;claimed:int;used:int;moved:int;missing:int;pred:int;cost:int;cold:int;start:int;finish:int;out:int;}
+// A simulation's record: every request's fate and the peers' final caches;
+// requests served and refused; advertisements accepted and refused;
+// blocks reused in place, transfers and the blocks they moved, and blocks
+// claimed but missing; predicted and realized nanoseconds saved against
+// computing every prompt cold on the same peer; summed latency and the
+// last finish.
+SwSim :: struct {
+    status:SwStatus;n:int;fate:[64]SwFate;peer:[8]SwPeer;
+    served:int;refused:int;ads:int;stale:int;local:int;moves:int;moved:int;missing:int;
+    pred_saved:int;real_saved:int;latency:int;end:int;
+}
+
+// Checks come first. The hand-built mesh, the brute-force router and the
+// random meshes are in psionic/tests/serve-saved-checks.coax.
+// book:begin check-cost
+#test "the hand-worked prices and the break-even" {
+    // Chapter 175's steps: 13 rows, 17,792,472 + 12 * 1,459,182 ns; one row per further token.
+    #assert sw_cost(13,2,0)==53095128 && sw_cost(13,2,8)==41421672 && sw_cost(13,2,12)==35584944;
+    // gpt-oss-20b, 4 positions a block: 196,608 bytes, 157,287 ns a block over 10 Gbit/s.
+    m:=swx_hand_mesh();
+    #assert sw_block_ns(m,0,1)==157287 && sw_link(m,0,1,3)==2471861 && sw_link(m,0,0,3)==0 && sw_link(m,1,2,0)==2000000;
+    // Over 20 ms, a block saves 5,836,728 - 157,287 = 5,679,441 ns: 3 blocks lose, 4 win.
+    m.lat[0][1]=20000000;
+    #assert sw_link(m,0,1,3)+sw_cost(13,2,12)>sw_cost(13,2,0);
+    #assert sw_link(m,0,1,4)+sw_cost(17,2,16)<sw_cost(17,2,0);
+    #assert sw_cost(17,2,0)-sw_cost(17,2,16)-sw_link(m,0,1,4)==2717764 && sw_cost(13,2,0)-sw_cost(13,2,12)-sw_link(m,0,1,3)== -2961677;
+}
+// book:end check-cost
+// book:begin check-ads
+#test "advertisements: salted hashes of what a peer holds, newest first, bounded" {
+    f:=swx_hand();m:=swx_hand_mesh();
+    a:=sw_advertise(f[0].st,m,0,1,0);
+    #assert a.peer==0 && a.epoch==7 && a.seq==1 && a.issued==0 && a.ttl==m.ttl && a.n==3;
+    // Block 1 of A is [1,2,3,4]: chained hash 62,594, salted (62,594 * 48,271 + 12,345) mod (2^31 - 1).
+    #assert f[0].st.node[0].hash==62594 && a.entry[0]==874003672 && sw_mix(m,62594)==874003672;
+    #assert a.entry[1]==sw_mix(m,f[0].st.node[1].hash) && a.entry[2]==sw_mix(m,f[0].st.node[2].hash);
+    b:=sw_advertise(f[2].st,m,2,4,500);#assert b.n==4 && b.seq==4 && b.issued==500 && b.entry[0]==874003672;
+    // Peer 2 cached B (2 blocks shared with A) at stamp 1, then C at stamp 2: C's blocks come first.
+    #assert b.entry[0]==sw_mix(m,f[2].st.node[0].hash) && f[2].st.node[3].stamp==2 && f[2].st.node[0].stamp==2;
+    #assert b.entry[1]==sw_mix(m,f[2].st.node[1].hash) && b.entry[2]==sw_mix(m,f[2].st.node[3].hash) && b.entry[3]==sw_mix(m,f[2].st.node[2].hash);
+    // Sixteen entries at most: a peer holding more advertises its sixteen newest.
+    big:=swx_full(m);c:=sw_advertise(big,m,1,1,0);#assert c.n==16 && swx_live(big)==20;
+    for k:0..<16 {#assert c.entry[k]==sw_mix(m,big.node[19-k].hash);}
+    #assert sw_advertise(sw_store(m.pages),m,1,1,0).n==0;
+}
+// book:end check-ads
+// book:begin check-accept
+#test "advertisements that are refused, each with its reason" {
+    m:=swx_hand_mesh();f:=swx_hand();v:SwView;
+    a:=sw_advertise(f[0].st,m,0,5,1000);
+    g:=sw_accept(v,m,a,1000);#assert g.refusal==SwAdRefusal.none && g.view.held[0] && g.view.ad[0].seq==5 && !g.view.held[1];
+    w:=g.view;
+    x:=a;x.peer=-1;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.peer;
+    x.peer=3;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.peer;x.peer=2;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.none;
+    x=a;x.epoch=6;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.epoch;
+    // The same or an older sequence number is a replay; a newer one replaces.
+    #assert sw_accept(w,m,a,1000).refusal==SwAdRefusal.seq;
+    x=a;x.seq=4;x.issued=900;#assert sw_accept(w,m,x,1000).refusal==SwAdRefusal.seq && sw_accept(v,m,x,1000).refusal==SwAdRefusal.none;
+    x.seq=6;g=sw_accept(w,m,x,1000);#assert g.refusal==SwAdRefusal.none && g.view.ad[0].seq==6 && g.view.ad[0].issued==900;
+    // A refusal leaves the view as it was.
+    x.epoch=1;g=sw_accept(w,m,x,1000);#assert g.view.ad[0].seq==5 && g.view.held[0];
+    x=a;x.issued=1001;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.early;
+    x=a;x.ttl=0;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.ttl;
+    x.ttl=1;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.none;
+    x.ttl=m.ttl+1;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.ttl;
+    // Alive while now < issued + ttl.
+    x=a;x.ttl=5000;#assert sw_accept(v,m,x,5999).refusal==SwAdRefusal.none && sw_accept(v,m,x,6000).refusal==SwAdRefusal.stale;
+    x=a;x.n=-1;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.count;
+    x.n=0;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.none;
+    // Peers hold 8 frames: 8 distinct entries pass, 9 over-claim, 17 is over the bound.
+    for k:0..<16 {x.entry[k]=k+1;}
+    x.n=8;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.none;
+    x.n=9;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.over;
+    x.n=17;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.count;
+    x.n=8;x.entry[7]=1;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.dup;
+    x.entry[7]=8;x.entry[1]=8;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.dup;
+    x.entry[1]=2;x.entry[8]=1;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.none;
+    x.entry[4]=4;#assert sw_accept(v,m,x,1000).refusal==SwAdRefusal.dup;x.entry[4]=5;
+    // Peers of 16 frames: 16 entries pass.
+    x.entry[8]=9;w2:=m;w2.pages.page=2;w2.pages.cap[0]=16;x.n=16;#assert sw_accept(v,w2,x,1000).refusal==SwAdRefusal.none;
+    x.n=17;#assert sw_accept(v,w2,x,1000).refusal==SwAdRefusal.count;
+}
+// book:end check-accept
+// book:begin check-claim
+#test "claims: the longest advertised prefix, never the last block, nothing once stale" {
+    f:=swx_hand();m:=swx_hand_mesh();v:=swx_hand_view(f);tok:=swx_hand_tok();
+    #assert sw_claim(v,m,0,tok[..],13,0)==3 && sw_claim(v,m,1,tok[..],13,0)==0 && sw_claim(v,m,2,tok[..],13,0)==2;
+    // 12 positions: the third block holds the last position, so 2 at most.
+    #assert sw_claim(v,m,0,tok[..],12,0)==2 && sw_claim(v,m,0,tok[..],5,0)==1 && sw_claim(v,m,0,tok[..],4,0)==0;
+    // Issued at 0 for 1 s: alive at 999,999,999 ns, gone at 1 s.
+    #assert sw_claim(v,m,0,tok[..],13,999999999)==3 && sw_claim(v,m,0,tok[..],13,1000000000)==0;
+    // No advertisement held, or a different first token: no claim.
+    v.held[0]=false;#assert sw_claim(v,m,0,tok[..],13,0)==0;
+    v=swx_hand_view(f);t:=tok;t[0]=9;#assert sw_claim(v,m,0,t[..],13,0)==0;
+    // A changed fifth token breaks the chain after one block, though block 3's tokens are unchanged.
+    t=tok;t[4]=99;#assert sw_claim(v,m,0,t[..],13,0)==1;
+    // Another salt hashes the same blocks to entries that are not listed.
+    o:=m;o.salt=1;#assert sw_claim(v,o,0,tok[..],13,0)==0;
+}
+// book:end check-claim
+// book:begin check-route
+#test "the hand-traced routes" {
+    f:=swx_hand();m:=swx_hand_mesh();v:=swx_hand_view(f);tok:=swx_hand_tok();r:=SwRequest.{prompt=13,output=2};
+    // Peer 0 holds 3 blocks and is busy 30 ms; peer 1 is idle and empty; peer 2 holds 2 and is busy 3 ms.
+    p:=sw_route(f[..],m,v,SwPolicy.saved,r,tok[..],0,0);
+    #assert !p.refused && p.dst==1 && p.src==0 && p.blocks==3 && p.est==38056805 && p.turn==0;
+    p=sw_route(f[..],m,v,SwPolicy.reuse,r,tok[..],0,0);#assert p.dst==2 && p.src==2 && p.blocks==2 && p.est==44421672;
+    p=sw_route(f[..],m,v,SwPolicy.blind,r,tok[..],0,0);#assert p.dst==1 && p.src== -1 && p.blocks==0 && p.est==53095128;
+    p=sw_route(f[..],m,v,SwPolicy.round,r,tok[..],0,2);#assert p.dst==2 && p.src== -1 && p.est==56095128 && p.turn==0;
+    p=sw_route(f[..],m,v,SwPolicy.round,r,tok[..],0,0);#assert p.dst==0 && p.est==83095128 && p.turn==1;
+    // 10 ms later peer 2 is free: moving peer 0's 3 blocks there costs 41,056,805 - 3,000,000 = 38,056,805, a tie that goes to the lower peer.
+    p=sw_route(f[..],m,v,SwPolicy.saved,r,tok[..],10000000,0);#assert p.dst==1 && p.src==0 && p.est==38056805;
+    // At 20 ms the link to peer 1 is slower than reuse on peer 2 for 3 blocks.
+    m.lat[0][1]=20000000;p=sw_route(f[..],m,v,SwPolicy.saved,r,tok[..],0,0);#assert p.dst==2 && p.src==0 && p.blocks==3 && p.est==41056805;
+    // No link from peer 0: peer 2's 2 blocks move to idle peer 1, 43,736,246 against 44,421,672 in place.
+    m.gbit[0][1]=0;m.gbit[0][2]=0;p=sw_route(f[..],m,v,SwPolicy.saved,r,tok[..],0,0);#assert p.dst==1 && p.src==2 && p.blocks==2 && p.est==43736246;
+    m.gbit[2][1]=0;p=sw_route(f[..],m,v,SwPolicy.saved,r,tok[..],0,0);#assert p.dst==2 && p.src==2 && p.est==44421672;
+    // Equal predictions. A link of 17,038,323 ns makes moving 3 blocks to peer 1 cost what computing them does: cold wins the tie.
+    m=swx_hand_mesh();m.lat[0][1]=17038323;m.gbit[2][1]=0;g:=f;g[2].busy=30000000;
+    p=sw_route(g[..],m,v,SwPolicy.saved,r,tok[..],0,0);#assert p.dst==1 && p.src== -1 && p.est==53095128;
+    m.lat[0][1]=17038322;p=sw_route(g[..],m,v,SwPolicy.saved,r,tok[..],0,0);#assert p.dst==1 && p.src==0 && p.est==53095127;
+    // A 9-token prompt: peers 0 and 2 both claim 2 blocks over equal links; the lower source wins.
+    m=swx_hand_mesh();q:=r;q.prompt=9;p=sw_route(f[..],m,v,SwPolicy.saved,q,tok[..],0,0);
+    #assert p.dst==1 && p.src==0 && p.blocks==2 && p.est==2314574+sw_cost(9,2,8);
+    // A request outside the bounds is refused.
+    q=r;q.prompt=0;#assert sw_route(f[..],m,v,SwPolicy.saved,q,tok[..],0,0).refused;q.prompt=33;#assert sw_route(f[..],m,v,SwPolicy.saved,q,tok[..],0,0).refused;
+    q.prompt=32;#assert !sw_route(f[..],m,v,SwPolicy.saved,q,tok[..],0,0).refused;
+    q=r;q.output=0;#assert sw_route(f[..],m,v,SwPolicy.saved,q,tok[..],0,0).refused;q.output=65;#assert sw_route(f[..],m,v,SwPolicy.saved,q,tok[..],0,0).refused;
+    q.output=64;#assert !sw_route(f[..],m,v,SwPolicy.saved,q,tok[..],0,0).refused;
+}
+// book:end check-route
+// book:begin check-missing
+#test "a claimed hit that is gone falls back and gives the cold output" {
+    f:=swx_hand();m:=swx_hand_mesh();v:=swx_hand_view(f);tok:=swx_hand_tok();r:=SwRequest.{prompt=13,output=2};
+    cold:=pg_hash(0,tok[0..<13]);
+    p:=sw_route(f[..],m,v,SwPolicy.saved,r,tok[..],0,0);
+    d:=sw_run(f[..],m,p,r,tok[..]);
+    #assert d.used==3 && d.moved==3 && d.missing==0 && d.link==2471861 && d.cost==38056805 && d.out==cold;
+    // Peer 0 lost A's third block after advertising it: 2 move, 1 is computed.
+    g:=f;g[0].st=swx_forget(g[0].st,2);
+    d=sw_run(g[..],m,p,r,tok[..]);#assert d.used==2 && d.moved==2 && d.missing==1 && d.link==2314574 && d.cost==43736246 && d.out==cold;
+    // It lost everything: the refusal still costs the link's latency.
+    g[0].st=sw_store(m.pages);d=sw_run(g[..],m,p,r,tok[..]);#assert d.used==0 && d.missing==3 && d.link==2000000 && d.cost==55095128 && d.out==cold;
+    // Reuse in place that finds 1 of 2 blocks.
+    p=sw_route(f[..],m,v,SwPolicy.reuse,r,tok[..],0,0);g=f;g[2].st=swx_forget(g[2].st,1);
+    d=sw_run(g[..],m,p,r,tok[..]);#assert d.used==1 && d.moved==0 && d.missing==1 && d.link==0 && d.cost==sw_cost(13,2,4) && d.out==cold;
+    // Computing cold on a peer that holds blocks after all uses them: a hit nobody claimed.
+    p=SwPick.{dst=0,src=-1};d=sw_run(f[..],m,p,r,tok[..]);#assert d.used==3 && d.missing==0 && d.cost==sw_cost(13,2,12) && d.out==cold;
+    // Blocks moved to a peer that holds more of its own: the more it has is used.
+    p=SwPick.{dst=0,src=2,blocks=2};d=sw_run(f[..],m,p,r,tok[..]);#assert d.used==3 && d.moved==2 && d.link==m.lat[2][0]+2*sw_block_ns(m,2,0) && d.out==cold;
+}
+// book:end check-missing
+#test "configurations and traffic the simulation refuses" {
+    m:=swx_hand_mesh();q:=[2]SwRequest.[SwRequest.{prompt=4,output=1},SwRequest.{arrive=5,prompt=4,output=1}];tok:[64]int;
+    #assert sw_sim(m,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;
+    c:=m;c.peers=0;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.peers=8;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;c.peers=9;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.peers=1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;
+    c=m;c.pages.page=0;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.pages.page=-1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.pages.page=2;c.pages.cap[0]=16;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;
+    c.pages.page=8;c.pages.cap[0]=4;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;
+    c.pages.cap[0]=3;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.pages.cap[0]=4;c.pages.page=9;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.pages.dim=0;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.pages.dim=4;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;c.pages.dim=5;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.pages.cap[0]=7;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.pages.cap[0]=16;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;c.pages.cap[0]=17;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.pages.cap[1]=1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.pages.cap[2]=1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.pages.hybrid=true;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.lat[2][1]=-1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.lat[2][1]=SW_LAT;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;c.lat[2][1]=SW_LAT+1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.gbit[1][2]=-1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.gbit[1][2]=SW_GBIT;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;c.gbit[1][2]=SW_GBIT+1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    // Links beyond the mesh's peers are not read.
+    c=m;c.lat[0][2]=-1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.gbit[2][0]=-1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.lat[3][0]=-1;c.gbit[0][3]=-1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;
+    c=m;c.block_bytes=1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;
+    c=m;c.block_bytes=0;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.block_bytes=SW_BLOCK;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;c.block_bytes=SW_BLOCK+1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.salt=0;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;
+    c=m;c.salt=-1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.salt=PG_HASH-1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;c.salt=PG_HASH;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c=m;c.period=0;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.period=1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;
+    c=m;c.ttl=1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;
+    c=m;c.ttl=0;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    c.ttl=SW_TTL;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.ok;c.ttl=SW_TTL+1;#assert sw_sim(c,SwPolicy.saved,q[..],tok[..]).status==SwStatus.config;
+    #assert sw_sim(m,SwPolicy.saved,q[0..<0],tok[..]).status==SwStatus.config && sw_sim(m,SwPolicy.saved,q[0..<1],tok[..]).status==SwStatus.ok;
+    #assert sw_sim(m,SwPolicy.saved,q[..],tok[0..<63]).status==SwStatus.config;
+    many:[65]SwRequest;mt:[2080]int;for i:0..<65 {many[i]=q[0];}
+    #assert sw_sim(m,SwPolicy.saved,many[0..<64],mt[..]).status==SwStatus.ok && sw_sim(m,SwPolicy.saved,many[..],mt[..]).status==SwStatus.config;
+    o:=q;o[1].arrive=4;#assert sw_sim(m,SwPolicy.saved,o[..],tok[..]).status==SwStatus.ok;
+    o[0].arrive=5;o[1].arrive=5;#assert sw_sim(m,SwPolicy.saved,o[..],tok[..]).status==SwStatus.ok;
+    o[1].arrive=4;#assert sw_sim(m,SwPolicy.saved,o[..],tok[..]).status==SwStatus.order;
+    o[0].arrive=-1;o[1].arrive=0;#assert sw_sim(m,SwPolicy.saved,o[..],tok[..]).status==SwStatus.order;
+    o[0].arrive=0;o[1].arrive=SW_TIME;#assert sw_sim(m,SwPolicy.saved,o[..],tok[..]).status==SwStatus.ok;
+    o[1].arrive=SW_TIME+1;#assert sw_sim(m,SwPolicy.saved,o[..],tok[..]).status==SwStatus.order;
+    // Requests outside the bounds are refused one by one, and the rest run.
+    b:=q;b[0].prompt=0;s:=sw_sim(m,SwPolicy.saved,b[..],tok[..]);
+    #assert s.status==SwStatus.ok && s.refused==1 && s.served==1 && s.fate[0].refused && s.fate[0].dst== -1 && !s.fate[1].refused;
+}
+// book:begin check-frozen
+#test "frozen: four routers on shared-prefix traffic, and the advertising period" {
+    m:=swx_mesh();reqs:[64]SwRequest;tok:[2048]int;sw_traffic(swx_traffic(),reqs[..],tok[..]);
+    s:=sw_sim(m,SwPolicy.saved,reqs[..],tok[..]);
+    #assert s.status==SwStatus.ok && s.served==64 && s.ads==52 && s.stale==0 && s.moves==24 && s.moved==69 && s.local==60 && s.missing==61;
+    #assert s.pred_saved==1029317445 && s.real_saved==711268749 && s.latency==15970160055 && s.end==1661982342;
+    s=sw_sim(m,SwPolicy.reuse,reqs[..],tok[..]);
+    #assert s.moves==0 && s.local==128 && s.missing==16 && s.pred_saved==811305192 && s.real_saved==747101184 && s.latency==16154479018;
+    s=sw_sim(m,SwPolicy.blind,reqs[..],tok[..]);
+    #assert s.moves==0 && s.local==53 && s.pred_saved==0 && s.real_saved==309346584 && s.latency==18982802282;
+    s=sw_sim(m,SwPolicy.round,reqs[..],tok[..]);
+    #assert s.moves==0 && s.local==64 && s.real_saved==373550592 && s.latency==18748806096;
+    // Advertising every 20 ms: no claim is missing, and every predicted saving is realized.
+    m.period=20000000;m.ttl=30000000;s=sw_sim(m,SwPolicy.saved,reqs[..],tok[..]);
+    #assert s.ads==256 && s.missing==0 && s.moves==34 && s.pred_saved==1139327410 && s.real_saved==1139327410 && s.latency==12268903814;
+}
+// book:end check-frozen
+#test "the traffic generator" {
+    reqs:[64]SwRequest;tok:[2048]int;sw_traffic(swx_traffic(),reqs[..],tok[..]);
+    // The first draw, (7 * 1,103,515,245 + 12,345) mod 2^31 = 1,282,168,116, gives family 19,564 mod 6 = 4.
+    #assert tok[0]==401 && tok[23]==424 && tok[24]==1000024 && tok[31]==1000031 && tok[56]==1000056 && tok[32]%100==1 && tok[32]<1000;
+    #assert reqs[0].arrive==0 && reqs[1].arrive==20000000 && reqs[63].arrive==1260000000 && reqs[63].prompt==28 && reqs[63].output==4;
+}
+#test "names" {
+    #assert sw_policy_name(SwPolicy.saved)=="saved work" && sw_policy_name(SwPolicy.reuse)=="reuse in place" && sw_policy_name(SwPolicy.blind)=="cache-blind" && sw_policy_name(SwPolicy.round)=="round robin";
+    #assert sw_status_name(SwStatus.ok)=="ok" && sw_status_name(SwStatus.config)=="configuration or traffic out of bounds" && sw_status_name(SwStatus.order)=="arrivals out of order or out of range";
+    #assert sw_refusal_name(SwAdRefusal.none)=="accepted" && sw_refusal_name(SwAdRefusal.peer)=="no such peer" && sw_refusal_name(SwAdRefusal.epoch)=="another epoch";
+    #assert sw_refusal_name(SwAdRefusal.seq)=="not newer than the one held" && sw_refusal_name(SwAdRefusal.early)=="issued in the future" && sw_refusal_name(SwAdRefusal.ttl)=="lifetime out of bounds";
+    #assert sw_refusal_name(SwAdRefusal.stale)=="expired" && sw_refusal_name(SwAdRefusal.count)=="more entries than an advertisement carries";
+    #assert sw_refusal_name(SwAdRefusal.over)=="more blocks than the peer has frames" && sw_refusal_name(SwAdRefusal.dup)=="an entry listed twice";
+}
+
+// Independent checks on random meshes (psionic/tests/serve-saved-checks.coax).
+// book:begin check-oracle
+#forall "every policy's choice is the brute-force cheapest of its options" seed:0..<120 #steps 200000000 {
+    x:=swx_random(seed);
+    for k:0..<4 {
+        pol:=cast(SwPolicy)cast(u8)k;
+        p:=sw_route(x.peer[0..<x.mesh.peers],x.mesh,x.view,pol,x.req,x.tok[..],x.now,x.turn);
+        o:=swx_oracle(x,pol);
+        #assert !p.refused && p.est==o.est && swx_price(x,pol,p.dst,p.src,p.blocks)==p.est;
+        if pol==SwPolicy.round {#assert p.dst==o.dst;}
+    }
+}
+// book:end check-oracle
+#forall "the simulation: cold outputs, exact accounting, no raw tokens advertised" seed:0..<12 #steps 400000000 {
+    w:=swx_work(seed);
+    for k:0..<4 {
+        pol:=cast(SwPolicy)cast(u8)k;s:=sw_sim(w.mesh,pol,w.req[0..<w.n],w.tok[..]);
+        #assert s.status==SwStatus.ok;
+        swx_audit(s,w,pol);
+    }
+}
+#test "the random simulations reach transfers, missing hits, stale and refused advertisements" {
+    moves:=0;missing:=0;stale:=0;local:=0;
+    for seed:0..<20 {
+        w:=swx_work(seed);s:=sw_sim(w.mesh,SwPolicy.saved,w.req[0..<w.n],w.tok[..]);
+        moves+=s.moves;missing+=s.missing;stale+=s.stale;local+=s.local;
+        #assert s.stale==swx_stale(w) && s.ads+s.stale==swx_rounds(w)*w.mesh.peers;
+    }
+    #assert moves>0 && missing>0 && stale>0 && local>0;
+}
+
+// book:begin cost
+// Chapter 175's step model, as chapter 177's rr_cost in nanoseconds: the
+// prompt's rows after `cached` positions in one step, then one step a token.
+sw_cost :: (prompt:int,output:int,cached:int)->int {return cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1);}
+// Chapter 182's link model per block: bits at gbit bits a nanosecond,
+// rounded up.
+sw_block_ns :: (m:SwMesh,a:int,b:int)->int {return (m.block_bytes*8+m.gbit[a][b]-1)/m.gbit[a][b];}
+// Moving `blocks` blocks from peer a to peer b: nothing on one peer;
+// otherwise the latency, even for none (a refusal comes back), then each
+// block.
+sw_link :: (m:SwMesh,a:int,b:int,blocks:int)->int {
+    if a==b {return 0;}
+    return m.lat[a][b]+blocks*sw_block_ns(m,a,b);
+}
+// book:end cost
+
+// book:begin advertise
+// The salt: a block's chained hash (chapter 176) mixed with the epoch's
+// salt, so an advertisement lists neither tokens nor the plain hashes an
+// outsider could compute from guessed tokens.
+sw_mix :: (m:SwMesh,h:int)->int {return (h*SW_MIX+m.salt)%PG_HASH;}
+// What a peer holds, newest first (the lower node on a tie), at most
+// SW_ADS entries.
+sw_advertise :: (st:PgStore,m:SwMesh,peer:int,seq:int,now:int)->SwAd {
+    a:=SwAd.{peer=peer,epoch=m.epoch,seq=seq,issued=now,ttl=m.ttl};
+    taken:[48]bool;
+    while a.n<SW_ADS {
+        v:=-1;
+        for n:0..<PG_NODES {
+            d:=st.node[n];
+            if d.frame>=0 && !taken[n] && (v<0 || d.stamp>st.node[v].stamp) {v=n;}
+        }
+        if v<0 {return a;}
+        taken[v]=true;a.entry[a.n]=sw_mix(m,st.node[v].hash);a.n+=1;
+    }
+    return a;
+}
+// Accept an advertisement into the view, or refuse it and keep the view.
+sw_accept :: (from:SwView,m:SwMesh,a:SwAd,now:int)->SwAccepted {
+    g:=SwAccepted.{refusal=sw_refuse(from,m,a,now),view=from};
+    if g.refusal==SwAdRefusal.none {g.view.held[a.peer]=true;g.view.ad[a.peer]=a;}
+    return g;
+}
+sw_refuse :: (v:SwView,m:SwMesh,a:SwAd,now:int)->SwAdRefusal {
+    if a.peer<0 || a.peer>=m.peers {return SwAdRefusal.peer;}
+    if a.epoch!=m.epoch {return SwAdRefusal.epoch;}
+    if v.held[a.peer] && a.seq<=v.ad[a.peer].seq {return SwAdRefusal.seq;}
+    if a.issued>now {return SwAdRefusal.early;}
+    if a.ttl<1 || a.ttl>m.ttl {return SwAdRefusal.ttl;}
+    if now>=a.issued+a.ttl {return SwAdRefusal.stale;}
+    if a.n<0 || a.n>SW_ADS {return SwAdRefusal.count;}
+    if a.n>m.pages.cap[0] {return SwAdRefusal.over;}
+    for i:0..<a.n {for j:i+1..<a.n {if a.entry[i]==a.entry[j] {return SwAdRefusal.dup;}}}
+    return SwAdRefusal.none;
+}
+// The blocks peer k claims for a prompt: the longest run of its whole
+// blocks, never the one holding the last position, whose salted chained
+// hashes are all listed in k's live advertisement.
+sw_claim :: (v:SwView,m:SwMesh,k:int,tok:[]int,prompt:int,now:int)->int {
+    a:=v.ad[k];
+    if !v.held[k] || now>=a.issued+a.ttl {return 0;}
+    p:=m.pages.page;h:=0;most:=(prompt-1)/p;
+    for b:0..<most {
+        h=pg_hash(h,tok[b*p..<b*p+p]);e:=sw_mix(m,h);found:=false;
+        for j:0..<a.n {if a.entry[j]==e {found=true;}}
+        if !found {return b;}
+    }
+    return most;
+}
+// book:end advertise
+
+// book:begin route
+// Refuse a request outside the bounds; otherwise price every peer as the
+// one to run it: its wait, then computing cold, reusing its own claimed
+// blocks, or (saved work only) moving another peer's claimed blocks over a
+// link. The smallest predicted finish wins; on a tie the lower peer, then
+// computing cold before reuse, then the lower source. Round robin takes the
+// next peer in turn and computes cold.
+sw_route :: (peer:[]SwPeer,m:SwMesh,v:SwView,pol:SwPolicy,r:SwRequest,tok:[]int,now:int,turn:int)->SwPick {
+    pick:=SwPick.{refused=true,dst=-1,src=-1,turn=turn};
+    if r.prompt<1 || r.prompt>PG_PROMPT || r.output<1 || r.output>SW_OUTPUT {return pick;}
+    pick.refused=false;
+    if pol==SwPolicy.round {
+        pick.dst=turn;pick.est=sw_wait(peer,turn,now)+sw_cost(r.prompt,r.output,0);pick.turn=(turn+1)%peer.count;
+        return pick;
+    }
+    c:[8]int;
+    if pol!=SwPolicy.blind {for j:0..<peer.count {c[j]=sw_claim(v,m,j,tok,r.prompt,now);}}
+    for k:0..<peer.count {
+        w:=sw_wait(peer,k,now);
+        e:=w+sw_cost(r.prompt,r.output,0);
+        if pick.dst<0 || e<pick.est {pick=SwPick.{dst=k,src=-1,est=e,turn=turn};}
+        for j:0..<peer.count {
+            if c[j]==0 || (j!=k && (pol!=SwPolicy.saved || m.gbit[j][k]==0)) {continue;}
+            e=w+sw_link(m,j,k,c[j])+sw_cost(r.prompt,r.output,c[j]*m.pages.page);
+            if e<pick.est {pick=SwPick.{dst=k,src=j,blocks=c[j],est=e,turn=turn};}
+        }
+    }
+    return pick;
+}
+sw_wait :: (peer:[]SwPeer,k:int,now:int)->int {return cb_max(0,peer[k].busy-now);}
+// book:end route
+
+// book:begin run
+// Run the pick against what the peers really hold. Moved blocks are those
+// the source still has, up to the count the pick relied on; the
+// destination also has its own. The rest of the prompt is computed. The
+// stand-in model's output is the chained hash of the whole prompt, read
+// from the trie for the blocks used and computed for the rest, so a wrong
+// block changes it.
+sw_run :: (peer:[]SwPeer,m:SwMesh,p:SwPick,r:SwRequest,tok:[]int)->SwDone {
+    d:SwDone;src:=ifx p.src<0 then p.dst else p.src;
+    d.used=pg_match(peer[p.dst].st,0,tok,r.prompt).n;
+    have:=pg_match(peer[src].st,0,tok,r.prompt).n;
+    d.missing=cb_max(0,p.blocks-have);
+    if src!=p.dst {
+        d.moved=cb_min(p.blocks,have);d.link=sw_link(m,src,p.dst,d.moved);
+        d.used=cb_max(d.used,d.moved);
+    }
+    d.cost=d.link+sw_cost(r.prompt,r.output,d.used*m.pages.page);
+    d.out=sw_output(peer[p.dst].st,peer[src].st,tok,d.used,r.prompt);
+    return d;
+}
+// The state after `used` blocks: the destination's block when it holds
+// that many, else the moved one.
+sw_output :: (dst:PgStore,src:PgStore,tok:[]int,used:int,prompt:int)->int {
+    h:=0;a:=pg_match(dst,0,tok,prompt);b:=pg_match(src,0,tok,prompt);
+    if used>0 {h=ifx a.n>=used then dst.node[a.node[used-1]].hash else src.node[b.node[used-1]].hash;}
+    return pg_hash(h,tok[used*dst.cfg.page..<prompt]);
+}
+// book:end run
+
+// book:begin cache
+// An empty device tier, and a prompt's whole blocks committed to it as
+// chapter 177's rr_cache does: the cached prefix is held, the rest get
+// frames, the least recently used blocks make room.
+sw_store :: (c:PgConfig)->PgStore {
+    s:PgStore;s.cfg=c;s.pool=pg_pool(c);
+    for n:0..<PG_NODES {s.node[n].frame=-1;}
+    for i:0..<PG_REQUESTS {s.live[i]=-1;}
+    return s;
+}
+sw_cache :: (from:PgStore,mem:[]f64,tok:[]int,prompt:int,stamp:int)->PgStore {
+    s:=from;p:=s.cfg.page;path:=pg_match(s,0,tok,prompt);
+    for k:0..<prompt/p {
+        if k<path.n {f:=s.node[path.node[k]].frame;s.pool=pg_retain(s.pool,f);s.table[0].page[k]=f;}
+        else {s=pg_take(s,mem);s.table[0].page[k]=s.pool.got;}
+    }
+    s.table[0].n=prompt/p;
+    for k:0..<prompt/p {s=pg_commit(s,0,k,0,tok,stamp);}
+    return pg_free_table(s,0);
+}
+// book:end cache
+
+// book:begin check
+sw_check :: (m:SwMesh,reqs:[]SwRequest,tok:[]int)->SwStatus {
+    c:=m.pages;
+    if m.peers<1 || m.peers>SW_PEERS || c.page>PG_PAGE || c.dim<1 || c.dim>PG_DIM || c.hybrid {return SwStatus.config;}
+    if c.cap[0]*c.page<PG_PROMPT || c.cap[0]>PG_TIER || c.cap[1]!=0 || c.cap[2]!=0 {return SwStatus.config;}
+    for a:0..<m.peers {for b:0..<m.peers {
+        if m.lat[a][b]<0 || m.lat[a][b]>SW_LAT || m.gbit[a][b]<0 || m.gbit[a][b]>SW_GBIT {return SwStatus.config;}
+    }}
+    if m.block_bytes<1 || m.block_bytes>SW_BLOCK || m.salt<0 || m.salt>=PG_HASH || m.period<1 || m.ttl<1 || m.ttl>SW_TTL {return SwStatus.config;}
+    if reqs.count<1 || reqs.count>SW_REQUESTS || tok.count<reqs.count*PG_PROMPT {return SwStatus.config;}
+    last:=0;
+    for r:reqs {
+        if r.arrive<last || r.arrive>SW_TIME {return SwStatus.order;}
+        last=r.arrive;
+    }
+    return SwStatus.ok;
+}
+// book:end check
+
+// book:begin sim
+// Requests in arrival order. When a request arrives in a new advertising
+// round, every peer advertises what it holds, stamped with the round's
+// start, and the router accepts or refuses each at the request's arrival.
+// The request is routed, run against the real caches, and waits for its
+// peer; its prompt is cached on that peer at once.
+sw_sim :: (m:SwMesh,pol:SwPolicy,reqs:[]SwRequest,tok:[]int)->SwSim {
+    s:SwSim;s.status=sw_check(m,reqs,tok);
+    if s.status!=SwStatus.ok {return s;}
+    s.n=reqs.count;mem:[1728]f64;v:SwView;round:=-1;turn:=0;
+    for k:0..<m.peers {s.peer[k].st=sw_store(m.pages);}
+    for i:0..<s.n {
+        r:=reqs[i];now:=r.arrive;t:=tok[i*PG_PROMPT..<i*PG_PROMPT+PG_PROMPT];
+        if now/m.period>round {
+            round=now/m.period;
+            for k:0..<m.peers {
+                g:=sw_accept(v,m,sw_advertise(s.peer[k].st,m,k,round,round*m.period),now);v=g.view;
+                if g.refusal==SwAdRefusal.none {s.ads+=1;} else {s.stale+=1;}
+            }
+        }
+        p:=sw_route(s.peer[0..<m.peers],m,v,pol,r,t,now,turn);
+        s.fate[i]=SwFate.{refused=p.refused,dst=p.dst,src=p.src,claimed=p.blocks};
+        if p.refused {s.refused+=1;continue;}
+        turn=p.turn;d:=sw_run(s.peer[0..<m.peers],m,p,r,t);k:=p.dst;
+        f:=SwFate.{dst=k,src=p.src,claimed=p.blocks,used=d.used,moved=d.moved,missing=d.missing,cost=d.cost,out=d.out};
+        f.start=now+sw_wait(s.peer[..],k,now);f.pred=p.est-(f.start-now);f.cold=sw_cost(r.prompt,r.output,0);f.finish=f.start+d.cost;
+        s.fate[i]=f;s.peer[k].busy=f.finish;s.peer[k].st=sw_cache(s.peer[k].st,mem[..],t,r.prompt,i);
+        s.served+=1;s.missing+=d.missing;s.pred_saved+=f.cold-f.pred;s.real_saved+=f.cold-d.cost;s.latency+=f.finish-now;s.end=cb_max(s.end,f.finish);
+        if d.moved>0 {s.moves+=1;s.moved+=d.moved;} else {s.local+=d.used;}
+    }
+    return s;
+}
+// book:end sim
+
+// book:begin traffic
+// Shared-prefix traffic: n requests, gap nanoseconds apart; each picks one
+// of `families` prefixes of `prefix` tokens with a fixed generator, and the
+// rest of its prompt is its own.
+SwTraffic :: struct {n:int;gap:int;families:int;prefix:int;prompt:int;output:int;seed:int;}
+sw_traffic :: (w:SwTraffic,out:[]SwRequest,tok:[]int) {
+    h:=w.seed;
+    for i:0..<w.n {
+        h=(h*1103515245+12345)%2147483648;fam:=h/65536%w.families;
+        out[i]=SwRequest.{arrive=i*w.gap,prompt=w.prompt,output=w.output};
+        for p:0..<PG_PROMPT {tok[i*PG_PROMPT+p]=ifx p<w.prefix then fam*100+p+1 else 1000000+i*PG_PROMPT+p;}
+    }
+}
+// book:end traffic
+
+sw_policy_name :: (p:SwPolicy)->string {names:=[4]string.["saved work","reuse in place","cache-blind","round robin"];return names[cast(int)p];}
+sw_status_name :: (s:SwStatus)->string {
+    names:=[3]string.["ok","configuration or traffic out of bounds","arrivals out of order or out of range"];
+    return names[cast(int)s];
+}
+sw_refusal_name :: (r:SwAdRefusal)->string {
+    names:=[10]string.["accepted","no such peer","another epoch","not newer than the one held","issued in the future","lifetime out of bounds","expired","more entries than an advertisement carries","more blocks than the peer has frames","an entry listed twice"];
+    return names[cast(int)r];
+}

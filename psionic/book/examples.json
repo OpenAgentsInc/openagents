@@ -2731,6 +2731,26 @@
       ]
     },
     {
+      "source": "psionic/examples/serve-saved.coax",
+      "chapter": "psionic/book/ch192-route-by-saved-work.md",
+      "stdout": "psionic/fixtures/serve-saved/serve-saved.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/serve-saved-refuse.coax",
+      "chapter": "psionic/book/ch192-route-by-saved-work.md",
+      "stdout": "psionic/fixtures/serve-saved/serve-saved-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/mnist-classifier.coax",
       "chapter": "psionic/book/ch118-one-trainer-for-every-model.md",
       "stdout": "psionic/fixtures/mnist-classifier.out",

@@ -1,0 +1,28 @@
+hand trace (sw-saved-v1): claims peer 0 3 blocks; peer 1 0 blocks; peer 2 2 blocks; one block over 10 Gbit/s: 157287 ns
+  saved work: peer 1, 3 blocks moved from peer 0, predicted finish 38056805 ns
+  reuse in place: peer 2, 2 blocks reused in place, predicted finish 44421672 ns
+  cache-blind: peer 1, computed cold, predicted finish 53095128 ns
+  round robin: peer 0, computed cold, predicted finish 83095128 ns
+  saved work, 20 ms to peer 1: peer 2, 3 blocks moved from peer 0, predicted finish 41056805 ns
+peer 0 lost its third block: 2 moved, 1 missing, cost 43736246 ns against 38056805 predicted; output 1122935492 (cold 1122935492)
+shared-prefix traffic: 64 requests 20 ms apart, 6 families of 24 tokens, prompts of 28, 4 output tokens; 4 peers, advertising every 100 ms
+  saved work: 24 transfers moving 69 blocks, 60 blocks reused in place, 61 claimed blocks missing
+    saved against cold: predicted 1029.3 ms, realized 711.2 ms; mean latency 249.5 ms; last token at 1661.9 ms
+  reuse in place: 0 transfers moving 0 blocks, 128 blocks reused in place, 16 claimed blocks missing
+    saved against cold: predicted 811.3 ms, realized 747.1 ms; mean latency 252.4 ms; last token at 1656.9 ms
+  cache-blind: 0 transfers moving 0 blocks, 53 blocks reused in place, 0 claimed blocks missing
+    saved against cold: predicted 0.0 ms, realized 309.3 ms; mean latency 296.6 ms; last token at 1768.2 ms
+  round robin: 0 transfers moving 0 blocks, 64 blocks reused in place, 0 claimed blocks missing
+    saved against cold: predicted 0.0 ms, realized 373.5 ms; mean latency 292.9 ms; last token at 1770.7 ms
+saved work, advertising every 20 ms (256 accepted):
+  saved work: 34 transfers moving 154 blocks, 57 blocks reused in place, 0 claimed blocks missing
+    saved against cold: predicted 1139.3 ms, realized 1139.3 ms; mean latency 191.7 ms; last token at 1552.0 ms
+saved work, advertising every 100 ms (52 accepted):
+  saved work: 24 transfers moving 69 blocks, 60 blocks reused in place, 61 claimed blocks missing
+    saved against cold: predicted 1029.3 ms, realized 711.2 ms; mean latency 249.5 ms; last token at 1661.9 ms
+saved work, advertising every 400 ms (16 accepted):
+  saved work: 13 transfers moving 33 blocks, 46 blocks reused in place, 115 claimed blocks missing
+    saved against cold: predicted 855.5 ms, realized 411.9 ms; mean latency 289.4 ms; last token at 1722.7 ms
+saved work, advertisements living 10 ms:
+  saved work: 6 transfers moving 21 blocks, 64 blocks reused in place, 0 claimed blocks missing
+    saved against cold: predicted 107.2 ms, realized 480.8 ms; mean latency 269.5 ms; last token at 1723.0 ms

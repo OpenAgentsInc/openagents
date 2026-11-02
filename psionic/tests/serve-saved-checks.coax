@@ -1,0 +1,206 @@
+// Chapter 192's check helpers, loaded by psionic/lib/serve-saved.coax and
+// owned by its checks: the hand-built mesh of three peers, the frozen
+// mesh and traffic, a brute-force router that prices every option with its
+// own claim lookup and its own copy of the cost formulas, random meshes,
+// and an audit that recomputes a simulation's record from its fates.
+
+swx_next :: (h:int)->int {return (h*1103515245+12345)%2147483648;}
+// A draw below n of 30 bits from two steps of the generator.
+swx_pick :: (h:int,n:int)->int {return (h/65536*32768+swx_next(h)/65536)%n;}
+
+// Three peers, pages of 4 positions, 8 device frames each; 2 ms and
+// 10 Gbit/s between any two; gpt-oss-20b's 196,608 bytes a block of 4
+// positions (24 layers, 8 KV heads of 64, 2 bytes, K and V); advertisements
+// live 1 s.
+swx_hand_mesh :: ()->SwMesh {
+    m:=SwMesh.{peers=3,block_bytes=196608,epoch=7,salt=12345,period=1000000000,ttl=1000000000};
+    m.pages=PgConfig.{page=4,dim=1};m.pages.cap[0]=8;
+    for a:0..<3 {for b:0..<3 {if a!=b {m.lat[a][b]=2000000;m.gbit[a][b]=10;}}}
+    return m;
+}
+// A: tokens 1 to 13. B: 1 to 8, then 50 to 53. C: 1 to 8, then 60 to 63.
+swx_hand_tok :: ()->[32]int {t:[32]int;for p:0..<13 {t[p]=p+1;}return t;}
+swx_prompt :: (third:int)->[32]int {t:[32]int;for p:0..<8 {t[p]=p+1;}for p:8..<12 {t[p]=third+p-8;}return t;}
+// Peer 0 holds A's 3 blocks and is busy until 30 ms; peer 1 is empty and
+// idle; peer 2 holds B then C (2 blocks shared) and is busy until 3 ms.
+swx_hand :: ()->[3]SwPeer {
+    m:=swx_hand_mesh();f:[3]SwPeer;mem:[1728]f64;
+    for k:0..<3 {f[k].st=sw_store(m.pages);}
+    a:=swx_hand_tok();b:=swx_prompt(50);c:=swx_prompt(60);
+    f[0].busy=30000000;f[0].st=sw_cache(f[0].st,mem[..],a[..],13,0);
+    f[2].busy=3000000;f[2].st=sw_cache(f[2].st,mem[..],b[..],12,1);f[2].st=sw_cache(f[2].st,mem[..],c[..],12,2);
+    return f;
+}
+// Every peer's advertisement, issued at 0 and accepted at 0.
+swx_hand_view :: (f:[3]SwPeer)->SwView {
+    m:=swx_hand_mesh();v:SwView;
+    for k:0..<3 {v=sw_accept(v,m,sw_advertise(f[k].st,m,k,1,0),0).view;}
+    return v;
+}
+// Twenty live nodes, node n last used at step n.
+swx_full :: (m:SwMesh)->PgStore {
+    s:=sw_store(m.pages);
+    for n:0..<20 {s.node[n]=PgNode.{parent=-1,hash=n*7+1,frame=n,stamp=n};}
+    return s;
+}
+swx_live :: (s:PgStore)->int {n:=0;for k:0..<48 {if s.node[k].frame>=0 {n+=1;}}return n;}
+// Lose node k and everything under it, without returning frames (the
+// lookup reads only nodes).
+swx_forget :: (from:PgStore,k:int)->PgStore {
+    s:=from;
+    for n:0..<48 {if s.node[n].frame>=0 && pg_under(s.node[..],n,k) {s.node[n].frame=-1;}}
+    return s;
+}
+
+// The frozen run: four peers, the hand mesh's links, advertisements every
+// 100 ms living 150 ms; 64 requests 20 ms apart, prompts of 28 tokens whose
+// first 24 are one of 6 families, 4 output tokens.
+swx_mesh :: ()->SwMesh {
+    m:=SwMesh.{peers=4,block_bytes=196608,epoch=1,salt=12345,period=100000000,ttl=150000000};
+    m.pages=PgConfig.{page=4,dim=1};m.pages.cap[0]=8;
+    for a:0..<4 {for b:0..<4 {if a!=b {m.lat[a][b]=2000000;m.gbit[a][b]=10;}}}
+    return m;
+}
+swx_traffic :: ()->SwTraffic {return SwTraffic.{n=64,gap=20000000,families=6,prefix=24,prompt=28,output=4,seed=7};}
+
+// A random routing case: a mesh of 1 to 5 peers with random links, caches
+// filled from 3 families of prompts, advertisements that may be missing,
+// stale or taken before more was cached, random queues, and a request.
+SwxCase :: struct {mesh:SwMesh;peer:[8]SwPeer;view:SwView;req:SwRequest;tok:[32]int;now:int;turn:int;}
+swx_tokens :: (h:int,fam:int,shared:int,out:[]int) {
+    x:=h;
+    for p:0..<32 {x=swx_next(x);out[p]=ifx p<shared then fam*100+p+1 else x/65536%7+500;}
+}
+swx_random :: (seed:int)->SwxCase {
+    x:SwxCase;h:=swx_next(seed*7919+1);mem:[1728]f64;
+    m:=SwMesh.{peers=1+seed%5,block_bytes=1+swx_pick(h,400000),epoch=3,salt=swx_pick(h,1000),period=1000,ttl=100000000};h=swx_next(h);
+    page:=2+2*(seed/5%2);h=swx_next(h);
+    m.pages=PgConfig.{page=page,dim=1};m.pages.cap[0]=32/page;
+    for a:0..<m.peers {for b:0..<m.peers {h=swx_next(swx_next(h));m.lat[a][b]=swx_pick(h,5000000);h=swx_next(h);m.gbit[a][b]=h/65536%21;}}
+    x.mesh=m;
+    for k:0..<m.peers {
+        x.peer[k].st=sw_store(m.pages);h=swx_next(swx_next(h));x.peer[k].busy=swx_pick(h,100000000);
+        h=swx_next(h);
+        for j:0..<h/65536%4 {
+            h=swx_next(h);t:[32]int;swx_tokens(h,h/65536%3,4+h/65536%24,t[..]);h=swx_next(h);
+            x.peer[k].st=sw_cache(x.peer[k].st,mem[..],t[..],1+h/65536%32,j);
+        }
+        h=swx_next(h);mode:=h/65536%5;a:=sw_advertise(x.peer[k].st,m,k,1,0);
+        if mode<4 {x.view=sw_accept(x.view,m,a,0).view;}
+        if mode==3 {x.view.ad[k].ttl=1;}
+    }
+    // More cached after the advertisement: claims can be short of what is held.
+    h=swx_next(h);
+    if h/65536%2==0 {t:[32]int;swx_tokens(h,1,20,t[..]);x.peer[0].st=sw_cache(x.peer[0].st,mem[..],t[..],24,9);}
+    h=swx_next(h);swx_tokens(h,h/65536%3,4+h/65536%28,x.tok[..]);
+    h=swx_next(h);x.req=SwRequest.{prompt=1+h/65536%32};h=swx_next(h);x.req.output=1+h/65536%8;
+    h=swx_next(swx_next(h));x.now=swx_pick(h,50000000);h=swx_next(h);x.turn=h/65536%m.peers;
+    return x;
+}
+// Blocks peer k's advertisement lists for this prompt, each block's hash
+// taken over the whole prefix from the start and every entry scanned.
+swx_claim :: (x:SwxCase,k:int)->int {
+    v:=x.view;a:=v.ad[k];p:=x.mesh.pages.page;tok:=x.tok;
+    if !v.held[k] || x.now>=a.issued+a.ttl {return 0;}
+    c:=0;
+    for b:1..<(x.req.prompt-1)/p+1 {
+        h:=pg_hash(0,tok[0..<b*p]);e:=(h*48271+x.mesh.salt)%2147483647;listed:=false;
+        for j:0..<a.n {if a.entry[j]==e {listed=true;}}
+        if !listed {return c;}
+        c=b;
+    }
+    return c;
+}
+// The predicted finish of running on dst with b blocks from src (-1: none):
+// the wait, a link of latency and whole-nanosecond blocks when src is
+// another peer, one step of the remaining rows, a step a further token.
+swx_price :: (x:SwxCase,pol:SwPolicy,dst:int,src:int,b:int)->int {
+    m:=x.mesh;wait:=x.peer[dst].busy-x.now;if wait<0 {wait=0;}
+    link:=0;
+    if src>=0 && src!=dst {g:=m.gbit[src][dst];link=m.lat[src][dst]+b*((m.block_bytes*8+g-1)/g);}
+    rows:=x.req.prompt-b*m.pages.page;
+    return wait+link+17792472+(rows-1)*1459182+(x.req.output-1)*17792472;
+}
+SwxBest :: struct {est:int;dst:int;}
+// Every allowed option, every block count from 1 to the claim.
+swx_oracle :: (x:SwxCase,pol:SwPolicy)->SwxBest {
+    o:=SwxBest.{est=-1,dst=-1};n:=x.mesh.peers;
+    if pol==SwPolicy.round {return SwxBest.{est=swx_price(x,pol,x.turn,-1,0),dst=x.turn};}
+    for d:0..<n {
+        e:=swx_price(x,pol,d,-1,0);if o.est<0 || e<o.est {o=SwxBest.{est=e,dst=d};}
+        if pol==SwPolicy.blind {continue;}
+        for s:0..<n {
+            if s!=d && (pol==SwPolicy.reuse || x.mesh.gbit[s][d]==0) {continue;}
+            for b:1..<swx_claim(x,s)+1 {e=swx_price(x,pol,d,s,b);if e<o.est {o=SwxBest.{est=e,dst=d};}}
+        }
+    }
+    return o;
+}
+
+// A random simulation: 2 to 4 peers, random links, advertisements every
+// 5 to 80 ms living 10 to 150 ms, up to 48 requests from 2 to 5 families.
+SwxWork :: struct {mesh:SwMesh;n:int;req:[64]SwRequest;tok:[2048]int;}
+swx_work :: (seed:int)->SwxWork {
+    w:SwxWork;h:=swx_next(seed*104729+3);
+    m:=SwMesh.{peers=2+seed%3,block_bytes=50000+swx_pick(h,300000),epoch=1,salt=swx_pick(h,100000)};h=swx_next(h);
+    h=swx_next(h);m.period=5000000+swx_pick(h,75000000);h=swx_next(swx_next(h));m.ttl=10000000+swx_pick(h,140000000);
+    page:=2+2*(seed/3%2);m.pages=PgConfig.{page=page,dim=1};m.pages.cap[0]=32/page;
+    for a:0..<m.peers {for b:0..<m.peers {h=swx_next(swx_next(h));m.lat[a][b]=swx_pick(h,10000000);h=swx_next(h);m.gbit[a][b]=h/65536%16;}}
+    w.mesh=m;h=swx_next(h);w.n=8+h/65536%17;h=swx_next(h);fams:=2+h/65536%4;at:=0;
+    for i:0..<w.n {
+        h=swx_next(swx_next(h));at+=swx_pick(h,40000000);h=swx_next(h);
+        w.req[i]=SwRequest.{arrive=at,prompt=4+h/65536%29};h=swx_next(h);w.req[i].output=1+h/65536%6;
+        h=swx_next(h);swx_tokens(h,h/65536%fams,8+h/65536%24,w.tok[i*32..<i*32+32]);
+    }
+    return w;
+}
+// Recompute the record from the fates: every output is the cold run's;
+// each peer serves in arrival order, starting when it is free; costs,
+// links, savings and counters are what the fates say; the policy's limits
+// hold; and no final advertisement lists a token or an unsalted hash.
+swx_audit :: (s:SwSim,w:SwxWork,pol:SwPolicy) {
+    m:=w.mesh;all:=w.tok;free:[8]int;served:=0;saved:=0;pred:=0;lat:=0;end:=0;moves:=0;moved:=0;local:=0;missing:=0;
+    for i:0..<w.n {
+        f:=s.fate[i];r:=w.req[i];t:=all[i*32..<i*32+32];
+        #assert !f.refused && f.out==pg_hash(0,t[0..<r.prompt]);
+        start:=r.arrive;if free[f.dst]>start {start=free[f.dst];}
+        link:=0;
+        if f.src>=0 && f.src!=f.dst {g:=m.gbit[f.src][f.dst];link=m.lat[f.src][f.dst]+f.moved*((m.block_bytes*8+g-1)/g);#assert g>0 && f.moved<=f.claimed && f.used>=f.moved;}
+        else {#assert f.moved==0;}
+        rows:=r.prompt-f.used*m.pages.page;cold:=17792472+(r.prompt-1)*1459182+(r.output-1)*17792472;
+        #assert f.start==start && f.cost==link+17792472+(rows-1)*1459182+(r.output-1)*17792472 && f.finish==start+f.cost && f.cold==cold;
+        #assert f.missing>=0 && f.missing<=f.claimed && f.used*m.pages.page<r.prompt;
+        if f.missing==0 && f.used==f.claimed {#assert f.pred==f.cost;}
+        if pol==SwPolicy.blind || pol==SwPolicy.round {#assert f.src== -1 && f.claimed==0 && f.pred==cold;}
+        if pol==SwPolicy.reuse {#assert f.src== -1 || f.src==f.dst;}
+        if pol==SwPolicy.round {#assert f.dst==i%m.peers;}
+        free[f.dst]=f.finish;served+=1;saved+=cold-f.cost;pred+=cold-f.pred;lat+=f.finish-r.arrive;if f.finish>end {end=f.finish;}
+        if f.moved>0 {moves+=1;moved+=f.moved;} else {local+=f.used;}
+        missing+=f.missing;
+    }
+    #assert s.served==served && s.refused==0 && s.real_saved==saved && s.pred_saved==pred && s.latency==lat && s.end==end;
+    #assert s.moves==moves && s.moved==moved && s.local==local && s.missing==missing;
+    #assert s.ads+s.stale==swx_rounds(w)*m.peers && s.stale==swx_stale(w);
+    for k:0..<m.peers {
+        a:=sw_advertise(s.peer[k].st,m,k,1,0);#assert a.n==cb_min(swx_live(s.peer[k].st),16);
+        for j:0..<a.n {
+            for n:0..<48 {if s.peer[k].st.node[n].frame>=0 {#assert a.entry[j]!=s.peer[k].st.node[n].hash;}}
+            for i:0..<w.n {for p:0..<w.req[i].prompt {#assert a.entry[j]!=w.tok[i*32+p];}}
+        }
+    }
+}
+// Each round's advertisements arrive with its first request, and are stale
+// once their lifetime has passed: the rounds, and the stale advertisements.
+swx_rounds :: (w:SwxWork)->int {
+    round:=-1;n:=0;
+    for i:0..<w.n {at:=w.req[i].arrive;if at/w.mesh.period>round {round=at/w.mesh.period;n+=1;}}
+    return n;
+}
+swx_stale :: (w:SwxWork)->int {
+    round:=-1;n:=0;
+    for i:0..<w.n {
+        at:=w.req[i].arrive;
+        if at/w.mesh.period>round {round=at/w.mesh.period;if at>=round*w.mesh.period+w.mesh.ttl {n+=w.mesh.peers;}}
+    }
+    return n;
+}

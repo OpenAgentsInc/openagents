@@ -1,0 +1,35 @@
+// Chapter 192: advertisements the router refuses, each with its reason; a
+// request outside the bounds; a mesh the simulation refuses.
+#import "Basic";
+#load "../lib/serve-saved.coax";
+
+offer :: (name:string,v:SwView,m:SwMesh,a:SwAd,now:int) {
+    print("%: %\n",name,sw_refusal_name(sw_accept(v,m,a,now).refusal));
+}
+
+// book:begin main
+main :: () {
+    f:=swx_hand();m:=swx_hand_mesh();empty:SwView;
+    a:=sw_advertise(f[0].st,m,0,5,1000);
+    offer("peer 0's advertisement",empty,m,a,1000);
+    held:=sw_accept(empty,m,a,1000).view;
+    x:=a;x.peer=3;offer("from peer 3 of 3",empty,m,x,1000);
+    x=a;x.epoch=6;offer("epoch 6, the mesh is at 7",empty,m,x,1000);
+    offer("the same advertisement again",held,m,a,1000);
+    x=a;x.issued=1001;offer("issued at 1,001 ns, received at 1,000",empty,m,x,1000);
+    x=a;x.ttl=m.ttl+1;offer("living 1 ns longer than the mesh allows",empty,m,x,1000);
+    x=a;x.ttl=5000;offer("issued at 1,000 ns for 5,000 ns, received at 6,000",empty,m,x,6000);
+    x=a;x.n=17;offer("17 entries",empty,m,x,1000);
+    for k:0..<16 {x.entry[k]=k+1;}
+    x.n=9;offer("9 distinct entries from a peer of 8 frames",empty,m,x,1000);
+    x.n=8;x.entry[7]=1;offer("8 entries, one listed twice",empty,m,x,1000);
+    // A forged claim: peer 1 holds nothing, but advertises A's blocks.
+    tok:=swx_hand_tok();forged:=sw_advertise(f[0].st,m,1,1,0);v:=held;v=sw_accept(v,m,forged,1000).view;
+    r:=SwRequest.{prompt=13,output=2};g:=f;
+    p:=sw_route(g[..],m,v,SwPolicy.saved,r,tok[..],1000,0);d:=sw_run(g[..],m,p,r,tok[..]);
+    print("peer 1 claims % blocks it does not hold; routed to peer % from peer %; % missing, output equals cold: %\n",sw_claim(v,m,1,tok[..],13,1000),p.dst,p.src,d.missing,d.out==pg_hash(0,tok[0..<13]));
+    r.prompt=33;print("a prompt of 33 tokens: refused %\n",sw_route(f[..],m,v,SwPolicy.saved,r,tok[..],0,0).refused);
+    q:=[1]SwRequest.[SwRequest.{prompt=4,output=1}];t:[32]int;bad:=m;bad.pages.cap[0]=7;
+    print("a mesh whose peers hold 7 pages of 4: %\n",sw_status_name(sw_sim(bad,SwPolicy.saved,q[..],t[..]).status));
+}
+// book:end main
