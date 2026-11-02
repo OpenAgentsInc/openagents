@@ -1,0 +1,365 @@
+// Chapter 212: generate candidates, then check them. A seeded sampler draws
+// up to eight candidate answers to one of chapter 242's tasks; a cascade
+// checks them cheapest first (a length screen, then the selection check)
+// and stops at the first candidate that passes, never spending past the
+// budget and never choosing a candidate the check did not pass. The unbiased
+// pass@k estimator and Wilson intervals measure what more candidates buy.
+// Profile cpu-int-candidates-v1: chapter 242's integer tasks and exact
+// checker, up to 8 candidates per task, check cost counted in units (1 for
+// the length screen, 1 + half the input for the visible check, 1 + the input
+// for the exact check), binary64 for pass@k and Wilson at z = 1.96;
+// sampler-sim-v1 on chapter 242's agent-sim-v1.
+#load "../env.coax";
+#authority;
+
+CdStatus :: enum u8 {ok;shape;no_checker;budget;unsolved;}
+// none: no checker. length: chapter 242's length_only. visible: the length
+// and the first half of the answer, the tests a repair step may see.
+// exact: chapter 242's exact checker, the held-out score.
+CdCheck :: enum u8 {none;length;visible;exact;}
+CdSampler :: struct {seed:u64;skill:f64;}
+// pick: the chosen candidate, or -1. examined: candidates generated.
+CdPick :: struct {status:CdStatus;pick:int;examined:int;checks:int;cost:int;}
+CdRun :: struct {pick:CdPick;tokens:int;digest:[32]u8;}
+CdValue :: struct {status:CdStatus;value:f64;}
+CdInterval :: struct {status:CdStatus;low:f64;high:f64;}
+// any: tasks with a right candidate among the n. chosen: tasks whose pick
+// the exact checker passes. wrong: picks the exact checker fails.
+// out: tasks that ran out of budget.
+CdTally :: struct {status:CdStatus;tasks:int;any:int;chosen:int;wrong:int;out:int;checks:int;cost:int;tokens:int;}
+
+CD_CANDIDATES_MAX :: 8;
+CD_SAMPLES_MAX :: 64;
+CD_SKILL_MAX :: 0.5;
+CD_Z :: 1.96;
+CD_DIFFICULTY :: cast(u64)1099511627776;
+
+// Checks precede the implementation. The held-out set is chapter 242's
+// task-sim-v1 at seed 212; its first task is sort [6 8 0 5 0], answer
+// [0 0 5 6 8], and every value below is worked by hand from it or from
+// the formulas, or is a pinned digest.
+CD_S :: CdSampler.{seed=2120,skill=0.3};
+cd_held :: (out:[]EnTask) {#assert en_tasks(212,out)==EnStatus.ok;}
+cd_first :: ()->EnTask {t:[1]EnTask;cd_held(t[..]);return t[0];}
+cd_first_candidates :: ()->[8]EnWork {
+    t:=cd_first();c:[8]EnWork;for i:0..<8 {c[i]=cd_sample(CD_S,t,0,i);}
+    return c;
+}
+cd_pick_is :: (p:CdPick,status:CdStatus,pick:int,examined:int,checks:int,cost:int)->bool {
+    return cd_pick_same(p,CdPick.{status=status,pick=pick,examined=examined,checks=checks,cost=cost});
+}
+cd_near :: (a:f64,b:f64,tolerance:f64)->bool {return abs(a-b)<=tolerance;}
+// pass@k by brute force: of every way to pick k of n samples, where the
+// first c are right, the share that holds a right one.
+cd_brute :: (n:int,c:int,k:int)->f64 {
+    picks:=0;hits:=0;
+    for mask:0..<(1<<n) {
+        bits:=0;x:=mask;while x>0 {bits+=x&1;x>>=1;}
+        if bits==k {picks+=1;if (mask&((1<<c)-1))!=0 {hits+=1;}}
+    }
+    return f64(hits)/f64(picks);
+}
+cd_tally_is :: (x:CdTally,any:int,chosen:int,wrong:int,out:int,checks:int,cost:int,tokens:int)->bool {
+    return x.status==CdStatus.ok && x.tasks==6 && x.any==any && x.chosen==chosen && x.wrong==wrong && x.out==out && x.checks==checks && x.cost==cost && x.tokens==tokens;
+}
+
+#test "the check helpers see every field" {
+    p:=CdPick.{status=CdStatus.budget,pick=2,examined=3,checks=4,cost=5};
+    #assert cd_pick_is(p,CdStatus.budget,2,3,4,5);
+    #assert !cd_pick_is(p,CdStatus.ok,2,3,4,5) && !cd_pick_is(p,CdStatus.budget,1,3,4,5) && !cd_pick_is(p,CdStatus.budget,2,2,4,5);
+    #assert !cd_pick_is(p,CdStatus.budget,2,3,3,5) && !cd_pick_is(p,CdStatus.budget,2,3,4,4);
+    x:=CdTally.{tasks=6,any=1,chosen=2,wrong=3,out=4,checks=5,cost=6,tokens=7};#assert cd_tally_is(x,1,2,3,4,5,6,7);
+    y:=x;y.status=CdStatus.shape;#assert !cd_tally_is(y,1,2,3,4,5,6,7);
+    y=x;y.tasks=5;#assert !cd_tally_is(y,1,2,3,4,5,6,7);
+    #assert !cd_tally_is(x,0,2,3,4,5,6,7) && !cd_tally_is(x,1,0,3,4,5,6,7) && !cd_tally_is(x,1,2,0,4,5,6,7) && !cd_tally_is(x,1,2,3,0,5,6,7);
+    #assert !cd_tally_is(x,1,2,3,4,0,6,7) && !cd_tally_is(x,1,2,3,4,5,0,7) && !cd_tally_is(x,1,2,3,4,5,6,0);
+    #assert cd_near(1,1.5,0.5) && !cd_near(1,1.5,0.4) && !cd_near(1.5,1,0.4);
+    #assert cd_brute(5,2,2)==0.7 && cd_brute(3,0,1)==0 && cd_brute(3,3,1)==1 && cd_brute(3,1,0)==0;
+}
+
+#test "the sampler: a chance per task, eight candidates for the first" {
+    #assert cd_chance(CD_S,0)==0.6*tb_uniform(2120,1099511627776) && cd_chance(CD_S,7)==0.6*tb_uniform(2120,1099511627783);
+    #assert cd_chance(CdSampler.{seed=2120,skill=0},5)==0;
+    c:=cd_first_candidates();
+    #assert en_is(c[0],"6 8 0 5 0") && en_is(c[1],"0 0 5 6") && en_is(c[2],"6 8 0 5 0") && en_is(c[3],"6 8 0 5 0");
+    #assert en_is(c[4],"0 0 5 6 8") && en_is(c[5],"6 8 0 5 0") && en_is(c[6],"0 0 5 6") && en_is(c[7],"0 0 5 7 8");
+    #assert cd_sampler_ok(CdSampler.{skill=0}) && cd_sampler_ok(CdSampler.{skill=0.5});
+    #assert !cd_sampler_ok(CdSampler.{skill=-0.001}) && !cd_sampler_ok(CdSampler.{skill=0.501});
+}
+
+#test "checks and their costs" {
+    t:=cd_first();
+    #assert cd_cost(CdCheck.length,t)==1 && cd_cost(CdCheck.visible,t)==4 && cd_cost(CdCheck.exact,t)==6;
+    // Visible: the length and the first three of five values.
+    for w:[3]string.["0 0 5 6 8","0 0 5 7 8","0 0 5 6 0"] {#assert cd_passes(CdCheck.visible,t,en_w(w)) && cd_passes(CdCheck.length,t,en_w(w));}
+    for w:[5]string.["0 0 4 6 8","0 1 5 6 8","1 0 5 6 8","0 0 5 6","0 0 5 6 8 9"] {#assert !cd_passes(CdCheck.visible,t,en_w(w));}
+    // An even answer: the first two of four.
+    e:=en_task(EnKind.sort,"3 1 2 0");#assert cd_passes(CdCheck.visible,e,en_w("0 1 9 9")) && !cd_passes(CdCheck.visible,e,en_w("0 2 2 3"));
+    #assert cd_passes(CdCheck.length,t,en_w("9 9 9 9 9")) && !cd_passes(CdCheck.length,t,en_w("0 0 5 6"));
+    #assert cd_passes(CdCheck.exact,t,en_w("0 0 5 6 8")) && !cd_passes(CdCheck.exact,t,en_w("0 0 5 7 8")) && !cd_passes(CdCheck.exact,t,en_w("0 0 5 6"));
+}
+
+#test "selection by hand on the first task" {
+    t:=cd_first();c:=cd_first_candidates();
+    // Exact: 0 screened (1) and checked (6), 1 screened out (1), 2 and 3
+    // screened and checked (7 each), 4 screened and passes (7): cost 29.
+    #assert cd_pick_is(cd_select(t,c[..],CdCheck.exact,200),CdStatus.ok,4,5,9,29);
+    #assert cd_pick_is(cd_select(t,c[..],CdCheck.exact,29),CdStatus.ok,4,5,9,29);
+    #assert cd_pick_is(cd_select(t,c[..],CdCheck.exact,28),CdStatus.budget,-1,5,8,23);
+    #assert cd_pick_is(cd_select(t,c[..],CdCheck.exact,20),CdStatus.budget,-1,4,6,16);
+    #assert cd_pick_is(cd_select(t,c[..],CdCheck.exact,8),CdStatus.budget,-1,3,3,8);
+    #assert cd_pick_is(cd_select(t,c[..],CdCheck.exact,0),CdStatus.budget,-1,1,0,0);
+    #assert cd_pick_is(cd_select(t,c[..],CdCheck.visible,200),CdStatus.ok,4,5,9,21);
+    // The length check alone needs no screen, and passes candidate 0.
+    #assert cd_pick_is(cd_select(t,c[..],CdCheck.length,200),CdStatus.ok,0,1,1,1);
+    #assert cd_pick_is(cd_select(t,c[1..<2],CdCheck.length,200),CdStatus.unsolved,-1,1,1,1);
+    // Without candidate 4 the visible check takes the wrong 7; exact takes none.
+    d:=c;d[4]=c[0];
+    #assert cd_pick_is(cd_select(t,d[..],CdCheck.visible,200),CdStatus.ok,7,8,14,32);
+    #assert cd_pick_is(cd_select(t,d[..],CdCheck.exact,200),CdStatus.unsolved,-1,8,14,44);
+    // Refusals: no checker before anything else, then the shape.
+    #assert cd_pick_is(cd_select(t,c[0..<0],CdCheck.none,200),CdStatus.no_checker,-1,0,0,0);
+    #assert cd_pick_is(cd_select(t,c[..],CdCheck.none,200),CdStatus.no_checker,-1,0,0,0);
+    #assert cd_pick_is(cd_select(t,c[0..<0],CdCheck.exact,200),CdStatus.shape,-1,0,0,0);
+    #assert cd_pick_is(cd_select(t,c[..],CdCheck.exact,-1),CdStatus.shape,-1,0,0,0);
+    nine:[9]EnWork;#assert cd_pick_is(cd_select(t,nine[..],CdCheck.exact,200),CdStatus.shape,-1,0,0,0);
+    #assert cd_pick_is(cd_select(t,nine[0..<8],CdCheck.exact,200),CdStatus.unsolved,-1,8,8,8);
+}
+
+#forall "selection chooses the first candidate the check passes, within any budget" seed:0..<12 #steps 200000000 {
+    one:[1]EnTask;#assert en_tasks(cast(u64)(7000+seed),one[..])==EnStatus.ok;t:=one[0];
+    s:=CdSampler.{seed=cast(u64)(50+seed),skill=0.05*f64(seed%11)};n:=1+seed%8;
+    c:[8]EnWork;for i:0..<n {c[i]=cd_sample(s,t,seed,i);}
+    for check:[3]CdCheck.[CdCheck.length,CdCheck.visible,CdCheck.exact] {
+        first:=-1;for i:0..<n {if first<0 && cd_passes(check,t,c[i]) {first=i;}}
+        full:=cd_select(t,c[0..<n],check,100000);
+        if first>=0 {#assert full.status==CdStatus.ok && full.pick==first && full.examined==first+1;}
+        else {#assert full.status==CdStatus.unsolved && full.pick==-1 && full.examined==n;}
+        for b:0..<full.cost+2 {
+            x:=cd_select(t,c[0..<n],check,b);#assert x.cost<=b;
+            if b>=full.cost {#assert cd_pick_same(x,full);} else {#assert x.status==CdStatus.budget && x.pick==-1;}
+        }
+    }
+}
+
+#forall "pass@k equals brute force over every subset" n:1..<9,c:0..<9,k:1..<9 {
+    if c<=n && k<=n {v:=cd_pass_at(n,c,k);#assert v.status==CdStatus.ok && cd_near(v.value,cd_brute(n,c,k),0.000000000001);}
+}
+
+#test "pass@k by hand, and its refusals" {
+    // 1 - C(3,2)/C(5,2) = 1 - 3/10; 1 - C(7,4)/C(8,4) = 1 - 35/70; k past n-c gives 1.
+    #assert cd_near(cd_pass_at(5,2,2).value,0.7,0.000000000000001) && cd_pass_at(8,1,4).value==0.5;
+    #assert cd_pass_at(8,1,1).value==0.125 && cd_pass_at(8,0,8).value==0 && cd_pass_at(8,6,3).value==1;
+    #assert cd_pass_at(64,1,1).status==CdStatus.ok && cd_pass_at(1,1,1).value==1;
+    for bad:[7][3]int.[[3]int.[0,0,1],[3]int.[65,1,1],[3]int.[5,-1,1],[3]int.[5,6,1],[3]int.[5,2,0],[3]int.[5,2,6],[3]int.[-1,0,1]] {
+        v:=cd_pass_at(bad[0],bad[1],bad[2]);#assert v.status==CdStatus.shape && v.value==0;
+    }
+}
+
+#test "Wilson intervals by hand, and their refusals" {
+    e:=0.000000000001;
+    a:=cd_wilson(18,60);#assert a.status==CdStatus.ok && cd_near(a.low,0.19898010252726892,e) && cd_near(a.high,0.42508946966390415,e);
+    a=cd_wilson(8,10);#assert cd_near(a.low,0.49015684672072335,e) && cd_near(a.high,0.9433190520193067,e);
+    a=cd_wilson(1,3);#assert cd_near(a.low,0.0614903152761605,e) && cd_near(a.high,0.7923450448735121,e);
+    // At 0 and at n the formula is off by rounding; the bounds are exact.
+    a=cd_wilson(0,5);#assert a.low==0 && cd_near(a.high,0.43449149475208104,e);
+    a=cd_wilson(5,5);#assert cd_near(a.low,0.5655085052479191,e) && a.high==1;
+    for bad:[4][2]int.[[2]int.[0,0],[2]int.[-1,5],[2]int.[6,5],[2]int.[1,-1]] {
+        a=cd_wilson(bad[0],bad[1]);#assert a.status==CdStatus.shape && a.low==0 && a.high==0;
+    }
+    #assert cd_wilson(1,1).status==CdStatus.ok;
+}
+
+#test "a run's record, its replay and its refusals" {
+    t:=cd_first();x:=cd_run(CD_S,t,0,8,CdCheck.exact,200);
+    #assert cd_pick_is(x.pick,CdStatus.ok,4,5,9,29) && x.tokens==24;
+    #assert su_hex(x.digest,"dcbbb14a5814c385e3c134c9d290d2d8206c6a1c3311cad36154e30c3f7005c1");
+    #assert cd_replay(CD_S,t,0,8,CdCheck.exact,200,x);
+    ts:[2]EnTask;cd_held(ts[..]);p:=cd_run(CD_S,ts[1],1,8,CdCheck.exact,200);
+    #assert cd_pick_is(p.pick,CdStatus.ok,1,2,4,34) && p.tokens==30 && su_hex(p.digest,"b2686b46af3de62d94984f6bc41d657cebe8c235ad3c4cf905c723aca0e74055");
+    y:=cd_run(CD_S,t,0,8,CdCheck.exact,20);#assert cd_pick_is(y.pick,CdStatus.budget,-1,4,6,16) && y.tokens==19;
+    // Every input and every field is in the record.
+    for z:[4]CdRun.[cd_run(CD_S,t,0,7,CdCheck.exact,200),cd_run(CD_S,t,0,8,CdCheck.exact,199),cd_run(CD_S,t,0,8,CdCheck.visible,200),y] {#assert !su_same(z.digest,x.digest);}
+    #assert !su_same(cd_run(CdSampler.{seed=2121,skill=0.3},t,0,8,CdCheck.exact,200).digest,x.digest);
+    #assert !su_same(cd_run(CdSampler.{seed=2120,skill=0.31},t,0,8,CdCheck.exact,200).digest,x.digest);
+    #assert !su_same(cd_run(CD_S,t,1,8,CdCheck.exact,200).digest,x.digest);
+    u:=t;u.kind=EnKind.dedupe;#assert !su_same(cd_run(CD_S,u,0,8,CdCheck.exact,200).digest,x.digest);
+    u=t;u.work.v[4]=1;#assert !su_same(cd_run(CD_S,u,0,8,CdCheck.exact,200).digest,x.digest);
+    #assert !su_same(cd_run(CD_S,t,0,8,CdCheck.length,200).digest,cd_run(CD_S,t,0,8,CdCheck.length,201).digest);
+    w:=x;w.pick.status=CdStatus.budget;#assert !cd_replay(CD_S,t,0,8,CdCheck.exact,200,w);
+    w=x;w.pick.pick=3;#assert !cd_replay(CD_S,t,0,8,CdCheck.exact,200,w);
+    w=x;w.pick.examined=4;#assert !cd_replay(CD_S,t,0,8,CdCheck.exact,200,w);
+    w=x;w.pick.checks=8;#assert !cd_replay(CD_S,t,0,8,CdCheck.exact,200,w);
+    w=x;w.pick.cost=28;#assert !cd_replay(CD_S,t,0,8,CdCheck.exact,200,w);
+    w=x;w.tokens=23;#assert !cd_replay(CD_S,t,0,8,CdCheck.exact,200,w);
+    w=x;w.digest[31]^=1;#assert !cd_replay(CD_S,t,0,8,CdCheck.exact,200,w);
+    #assert !cd_replay(CD_S,t,0,8,CdCheck.exact,201,x) && !cd_replay(CD_S,t,1,8,CdCheck.exact,200,x);
+    // Refusals carry no digest.
+    for bad:[6]CdRun.[cd_run(CdSampler.{seed=2120,skill=0.501},t,0,8,CdCheck.exact,200),cd_run(CdSampler.{seed=2120,skill=-0.001},t,0,8,CdCheck.exact,200),
+                     cd_run(CD_S,t,-1,8,CdCheck.exact,200),cd_run(CD_S,t,0,0,CdCheck.exact,200),cd_run(CD_S,t,0,9,CdCheck.exact,200),cd_run(CD_S,t,0,8,CdCheck.exact,-1)] {
+        #assert cd_pick_is(bad.pick,CdStatus.shape,-1,0,0,0) && bad.tokens==0 && su_same(bad.digest,su_zero());
+    }
+    #assert cd_run(CdSampler.{seed=2120,skill=0.5},t,0,1,CdCheck.exact,0).pick.status==CdStatus.budget;
+    #assert cd_run(CD_S,t,0,8,CdCheck.none,200).pick.status==CdStatus.no_checker;
+}
+
+#test "strategies on the first six held-out tasks" {
+    ts:[6]EnTask;cd_held(ts[..]);
+    // Right candidates of 8 per task: 1, 2, 2, 4, 0 and 6.
+    right:=[6]int.[1,2,2,4,0,6];for t,r:ts {#assert cd_right(CD_S,t,r,8)==right[r];}
+    #assert cd_tally_is(cd_tally(CD_S,ts[..],8,CdCheck.exact,200),5,5,0,0,34,161,146);
+    #assert cd_tally_is(cd_tally(CD_S,ts[..],8,CdCheck.exact,40),5,5,0,1,28,128,120);
+    #assert cd_tally_is(cd_tally(CD_S,ts[..],8,CdCheck.visible,200),5,5,1,0,25,75,102);
+    #assert cd_tally(CD_S,ts[..],8,CdCheck.none,200).status==CdStatus.no_checker;
+    #assert cd_tally(CD_S,ts[..],9,CdCheck.exact,200).status==CdStatus.shape;
+    #assert cd_tally(CD_S,ts[..],1,CdCheck.exact,200).any==2;
+    // pass@k means by hand: (1+2+2+4+0+6)/48; (7+13+13+22+0+27)/(28*6); (35+55+55+69+0+70)/(70*6); 5/6.
+    e:=0.000000000000001;
+    #assert cd_near(cd_pass_mean(CD_S,ts[..],8,1).value,15.0/48,e) && cd_near(cd_pass_mean(CD_S,ts[..],8,2).value,82.0/168,e);
+    #assert cd_near(cd_pass_mean(CD_S,ts[..],8,4).value,284.0/420,e) && cd_near(cd_pass_mean(CD_S,ts[..],8,8).value,5.0/6,e);
+    #assert cd_pass_mean(CD_S,ts[0..<1],8,4).value==0.5;
+    #assert cd_pass_mean(CdSampler.{seed=2120,skill=0.6},ts[..],8,1).status==CdStatus.shape;
+    #assert cd_pass_mean(CD_S,ts[0..<0],8,1).status==CdStatus.shape && cd_pass_mean(CD_S,ts[..],9,1).status==CdStatus.shape;
+    #assert cd_pass_mean(CD_S,ts[..],8,9).status==CdStatus.shape && cd_pass_mean(CD_S,ts[..],0,1).status==CdStatus.shape;
+}
+
+// book:begin sample
+// sampler-sim-v1. Task r's chance that one candidate is right is 2 skill u,
+// with u drawn on counter 2^40 + r, so tasks run from hopeless to easy and
+// average skill. Candidate i is chapter 242's attempt i of rollout r at that
+// chance: each candidate is fixed by (seed, r, i) alone.
+cd_chance :: (s:CdSampler,r:int)->f64 {return 2*s.skill*tb_uniform(s.seed,CD_DIFFICULTY+cast(u64)r);}
+cd_sample :: (s:CdSampler,t:EnTask,r:int,i:int)->EnWork {
+    return en_attempt(EnAgent.{seed=s.seed,skill=cd_chance(s,r)},t,r,i);
+}
+// book:end sample
+
+// book:begin check
+// What one check costs, in units: the screen reads one number, the visible
+// check half the input, the exact check all of it.
+cd_cost :: (check:CdCheck,t:EnTask)->int {
+    if check==CdCheck.length {return 1;}
+    if check==CdCheck.visible {return 1+(t.work.size+1)/2;}
+    return 1+t.work.size;
+}
+cd_passes :: (check:CdCheck,t:EnTask,w:EnWork)->bool {
+    if check==CdCheck.exact {return en_check(EnChecker.exact,t,w);}
+    if !en_check(EnChecker.length_only,t,w) {return false;}
+    want:=en_solve(t);m:=ifx check==CdCheck.visible then (want.size+1)/2 else 0;
+    for i:0..<m {if w.v[i]!=want.v[i] {return false;}}
+    return true;
+}
+// book:end check
+
+// book:begin select
+// Candidates in order, each screened by length before the selection check
+// runs. The first to pass is chosen, so ties go to the lower number. A check
+// the budget cannot cover is not run: the selection stops there.
+cd_select :: (t:EnTask,c:[]EnWork,check:CdCheck,budget:int)->CdPick #export_c {
+    out:=CdPick.{pick=-1};
+    if check==CdCheck.none {out.status=CdStatus.no_checker;return out;}
+    if c.count<1 || c.count>CD_CANDIDATES_MAX || budget<0 {out.status=CdStatus.shape;return out;}
+    k:=cd_cost(check,t);
+    for w,i:c {
+        out.examined=i+1;
+        if check!=CdCheck.length {
+            if out.cost+1>budget {out.status=CdStatus.budget;return out;}
+            out.cost+=1;out.checks+=1;
+            if !cd_passes(CdCheck.length,t,w) {continue;}
+        }
+        if out.cost+k>budget {out.status=CdStatus.budget;return out;}
+        out.cost+=k;out.checks+=1;
+        if cd_passes(check,t,w) {out.pick=i;return out;}
+    }
+    out.status=CdStatus.unsolved;return out;
+}
+// book:end select
+
+// book:begin run
+cd_sampler_ok :: (s:CdSampler)->bool {return s.skill>=0 && s.skill<=CD_SKILL_MAX;}
+// Draws n candidates for task r and selects among them. Only the candidates
+// the selection examined count as generated: drawing them one at a time gives
+// the same candidates, because each depends only on (seed, r, i). The digest
+// starts from the task, the sampler and the settings, chains each examined
+// candidate, and ends with the selection.
+cd_run :: (s:CdSampler,t:EnTask,r:int,n:int,check:CdCheck,budget:int)->CdRun #export_c {
+    out:=CdRun.{pick=CdPick.{status=CdStatus.shape,pick=-1}};
+    if !cd_sampler_ok(s) || r<0 || n<1 || n>CD_CANDIDATES_MAX || budget<0 {return out;}
+    c:[CD_CANDIDATES_MAX]EnWork;for i:0..<n {c[i]=cd_sample(s,t,r,i);}
+    out.pick=cd_select(t,c[0..<n],check,budget);
+    buf:[320]u8;at:=su_text(buf[..],0,"psionic.candidates.v1");buf[at]=cast(u8)t.kind;
+    at=en_work(buf[..],at+1,t.work);at=su_u64(buf[..],at,s.seed);at=su_u64(buf[..],at,f64_bits(s.skill));
+    at=su_u64(buf[..],at,cast(u64)r);at=su_u64(buf[..],at,cast(u64)n);buf[at]=cast(u8)check;
+    at=su_u64(buf[..],at+1,cast(u64)budget);out.digest=su_hash(buf[0..<at]);
+    for i:0..<out.pick.examined {
+        out.tokens+=c[i].size;for j:0..<32 {buf[j]=out.digest[j];}
+        out.digest=su_hash(buf[0..<en_work(buf[..],32,c[i])]);
+    }
+    for j:0..<32 {buf[j]=out.digest[j];}buf[32]=cast(u8)out.pick.status;
+    at=su_u64(buf[..],33,cast(u64)(out.pick.pick+1));at=su_u64(buf[..],at,cast(u64)out.pick.checks);
+    out.digest=su_hash(buf[0..<su_u64(buf[..],at,cast(u64)out.pick.cost)]);
+    return out;
+}
+// book:end run
+
+// book:begin replay
+cd_pick_same :: (a:CdPick,b:CdPick)->bool {
+    return a.status==b.status && a.pick==b.pick && a.examined==b.examined && a.checks==b.checks && a.cost==b.cost;
+}
+cd_replay :: (s:CdSampler,t:EnTask,r:int,n:int,check:CdCheck,budget:int,claimed:CdRun)->bool #export_c {
+    x:=cd_run(s,t,r,n,check,budget);
+    return cd_pick_same(x.pick,claimed.pick) && x.tokens==claimed.tokens && su_same(x.digest,claimed.digest);
+}
+// book:end replay
+
+// book:begin estimate
+// pass@k from n samples with c right: one minus the chance that k drawn
+// without replacement are all wrong, C(n-c,k)/C(n,k), written as the
+// product of (1 - k/i) for i from n-c+1 to n. A factor is 0 once n-c < k.
+cd_pass_at :: (n:int,c:int,k:int)->CdValue #export_c {
+    if n<1 || n>CD_SAMPLES_MAX || c<0 || c>n || k<1 || k>n {return CdValue.{status=CdStatus.shape};}
+    q:=1.0;for i:n-c+1..<n+1 {q*=1-f64(k)/f64(i);}
+    return CdValue.{value=1-q};
+}
+// The Wilson score interval for k of n at z = 1.96; at 0 and at n the
+// bounds are exactly 0 and 1.
+cd_wilson :: (k:int,n:int)->CdInterval #export_c {
+    if n<1 || k<0 || k>n {return CdInterval.{status=CdStatus.shape};}
+    m:=f64(n);p:=f64(k)/m;z2:=CD_Z*CD_Z;d:=1+z2/m;
+    c:=(p+z2/(2*m))/d;h:=CD_Z*sqrt(p*(1-p)/m+z2/(4*m*m))/d;
+    return CdInterval.{low=ifx k==0 then 0.0 else c-h,high=ifx k==n then 1.0 else c+h};
+}
+// book:end estimate
+
+// book:begin tally
+// How many of n samples for task r are right.
+cd_right :: (s:CdSampler,t:EnTask,r:int,n:int)->int {
+    c:=0;for i:0..<n {if cd_passes(CdCheck.exact,t,cd_sample(s,t,r,i)) {c+=1;}}
+    return c;
+}
+// One strategy over a task set: task r is rollout r.
+cd_tally :: (s:CdSampler,tasks:[]EnTask,n:int,check:CdCheck,budget:int)->CdTally #export_c {
+    out:CdTally;
+    for t,r:tasks {
+        x:=cd_run(s,t,r,n,check,budget);p:=x.pick;
+        if p.status==CdStatus.shape || p.status==CdStatus.no_checker {return CdTally.{status=p.status};}
+        out.tasks+=1;out.checks+=p.checks;out.cost+=p.cost;out.tokens+=x.tokens;
+        if cd_right(s,t,r,n)>0 {out.any+=1;}
+        if p.status==CdStatus.budget {out.out+=1;}
+        if p.status==CdStatus.ok {
+            if cd_passes(CdCheck.exact,t,cd_sample(s,t,r,p.pick)) {out.chosen+=1;} else {out.wrong+=1;}
+        }
+    }
+    return out;
+}
+// The mean of pass@k over a task set, n samples per task.
+cd_pass_mean :: (s:CdSampler,tasks:[]EnTask,n:int,k:int)->CdValue #export_c {
+    if !cd_sampler_ok(s) || tasks.count<1 || n>CD_CANDIDATES_MAX {return CdValue.{status=CdStatus.shape};}
+    sum:=0.0;
+    for t,r:tasks {
+        v:=cd_pass_at(n,cd_right(s,t,r,n),k);if v.status!=CdStatus.ok {return v;}
+        sum+=v.value;
+    }
+    return CdValue.{value=sum/f64(tasks.count)};
+}
+// book:end tally

@@ -1,0 +1,36 @@
+// Chapter 212's heavier checks, kept apart from psionic/lib/harness/candidates.coax
+// so the chapter's example does not run them: the frozen expectations for
+// the whole held-out set, and Wilson intervals against chapter 246's
+// jg_wilson, written for a different chapter. Run with
+//   coax/bin/coax test psionic/tests/candidates-checks.coax
+#load "../lib/harness/candidates.coax";
+#load "../lib/judge.coax";
+
+cc_held :: ()->[60]EnTask {t:[60]EnTask;cd_held(t[..]);return t;}
+cc_row :: (n:int,check:CdCheck,budget:int,any:int,chosen:int,wrong:int,out:int,checks:int,cost:int,tokens:int) {
+    t:=cc_held();x:=cd_tally(CD_S,t[..],n,check,budget);
+    #assert x.status==CdStatus.ok && x.tasks==60 && x.any==any && x.chosen==chosen && x.wrong==wrong && x.out==out;
+    #assert x.checks==checks && x.cost==cost && x.tokens==tokens;
+}
+
+// Frozen: these are the chapter's numbers, and a change to the sampler, the
+// checks or the selection that moves any of them fails here.
+#test "held-out: one candidate" #steps 400000000 {cc_row(1,CdCheck.exact,200,18,18,0,0,106,576,579);}
+#test "held-out: best of 2, exact" #steps 400000000 {cc_row(2,CdCheck.exact,200,31,31,0,0,178,959,979);}
+#test "held-out: best of 4, exact" #steps 400000000 {cc_row(4,CdCheck.exact,200,40,40,0,0,269,1438,1479);}
+#test "held-out: best of 8, exact" #steps 400000000 {cc_row(8,CdCheck.exact,200,46,46,0,0,377,2010,2121);}
+#test "held-out: best of 8, exact, budget 40" #steps 400000000 {cc_row(8,CdCheck.exact,40,46,40,0,19,295,1413,1691);}
+#test "held-out: best of 8, visible" #steps 400000000 {cc_row(8,CdCheck.visible,200,46,40,19,0,264,873,1437);}
+#test "held-out: pass@k from 8 samples per task" #steps 400000000 {
+    t:=cc_held();e:=0.00005;
+    #assert cd_near(cd_pass_mean(CD_S,t[..],8,1).value,0.28125,e) && cd_near(cd_pass_mean(CD_S,t[..],8,2).value,0.4524,e);
+    #assert cd_near(cd_pass_mean(CD_S,t[..],8,4).value,0.6345,e) && cd_near(cd_pass_mean(CD_S,t[..],8,8).value,46.0/60,e);
+}
+#test "held-out: every best-of-8 run replays from its seeds" #steps 400000000 {
+    t:=cc_held();
+    for u,r:t {x:=cd_run(CD_S,u,r,8,CdCheck.exact,200);#assert cd_replay(CD_S,u,r,8,CdCheck.exact,200,x);}
+}
+
+#forall "Wilson intervals equal chapter 246's" n:1..<41,k:0..<41 {
+    if k<=n {a:=cd_wilson(k,n);b:=jg_wilson(k,n);#assert a.status==CdStatus.ok && a.low==b[0] && a.high==b[1];}
+}

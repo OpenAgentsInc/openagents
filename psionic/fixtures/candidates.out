@@ -1,0 +1,26 @@
+hand checks: pass@2 of 5 samples with 2 right 0.7; pass@4 of 8 with 1 right 0.5; Wilson 18 of 60 [0.199, 0.4251]
+the first held-out task: sort [6 8 0 5 0] -> [0 0 5 6 8]
+  candidate 0 [6 8 0 5 0]: length yes, visible no, exact no
+  candidate 1 [0 0 5 6]: length no, visible no, exact no
+  candidate 2 [6 8 0 5 0]: length yes, visible no, exact no
+  candidate 3 [6 8 0 5 0]: length yes, visible no, exact no
+  candidate 4 [0 0 5 6 8]: length yes, visible yes, exact yes
+  candidate 5 [6 8 0 5 0]: length yes, visible no, exact no
+  candidate 6 [0 0 5 6]: length no, visible no, exact no
+  candidate 7 [0 0 5 7 8]: length yes, visible yes, exact no
+  exact check, budget 200: chosen candidate 4, 5 examined, 9 checks, cost 29, 24 tokens, digest dcbbb14a5814c385
+  visible check, budget 200: chosen candidate 4, 5 examined, 9 checks, cost 21, 24 tokens, digest d33d764ddb8893fb
+  exact check, budget 20: refused: out of budget, 4 examined, 6 checks, cost 16, 19 tokens, digest 6ac30cf42c222f48
+  no checker: refused: no checker
+  a sampler with skill 0.6: refused: shape
+  pass@9 of 8 samples: refused: shape
+held-out: 60 tasks from seed 212, sampler seed 2120 with skill 0.3, 8 candidates each
+  pass@1 0.2813, pass@2 0.4524, pass@4 0.6345, pass@8 0.7667
+  1 candidate:                 any right 18, chosen right 18 [0.199, 0.4251], chosen wrong 0, out of budget 0, 106 checks, cost 576, 579 tokens
+  best of 2, exact:            any right 31, chosen right 31 [0.3931, 0.6383], chosen wrong 0, out of budget 0, 178 checks, cost 959, 979 tokens
+  best of 4, exact:            any right 40, chosen right 40 [0.5406, 0.7727], chosen wrong 0, out of budget 0, 269 checks, cost 1438, 1479 tokens
+  best of 8, exact:            any right 46, chosen right 46 [0.6456, 0.8556], chosen wrong 0, out of budget 0, 377 checks, cost 2010, 2121 tokens
+  best of 8, exact, budget 40: any right 46, chosen right 40 [0.5406, 0.7727], chosen wrong 0, out of budget 19, 295 checks, cost 1413, 1691 tokens
+  best of 8, visible:          any right 46, chosen right 40 [0.5406, 0.7727], chosen wrong 19, out of budget 0, 264 checks, cost 873, 1437 tokens
+  best of 8 against 1 candidate: [0.6456, 0.8556] against [0.199, 0.4251], better: the intervals do not overlap
+replay: 60 of 60 best-of-8 runs replay from their seeds; the first claimed with one check fewer: refuses

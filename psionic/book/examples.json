@@ -2567,6 +2567,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/candidates.coax",
+      "chapter": "psionic/book/ch212-generate-candidates-then-check-them.md",
+      "stdout": "psionic/fixtures/candidates.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,66 @@
+#import "Basic";
+#load "../lib/harness/candidates.coax";
+
+KIND :: [3]string.["sort","dedupe","prefix sums"];
+CHECK :: [4]string.["no","length","visible","exact"];
+STATUS :: [5]string.["chosen","refused: shape","refused: no checker","refused: out of budget","none passed"];
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+yes :: (b:bool)->string {return ifx b then "yes" else "no";}
+print_digest :: (d:[32]u8) {
+    digits:="0123456789abcdef";text:[16]u8;
+    for i:0..<8 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    print("%",cast(string)text[..]);
+}
+show_work :: (w:EnWork) {print("[");for i:0..<w.size {if i>0 {print(" ");}print("%",w.v[i]);}print("]");}
+show_run :: (x:CdRun) {
+    p:=x.pick;print("%",STATUS[cast(int)p.status]);
+    if p.status==CdStatus.ok {print(" candidate %",p.pick);}
+    print(", % examined, % checks, cost %, % tokens, digest ",p.examined,p.checks,p.cost,x.tokens);print_digest(x.digest);print("\n");
+}
+show_interval :: (v:CdInterval) {print("[%, %]",r4(v.low),r4(v.high));}
+show_row :: (label:string,x:CdTally) {
+    print("  % any right %, chosen right % ",label,x.any,x.chosen);show_interval(cd_wilson(x.chosen,x.tasks));
+    print(", chosen wrong %, out of budget %, % checks, cost %, % tokens\n",x.wrong,x.out,x.checks,x.cost,x.tokens);
+}
+
+// book:begin example
+main :: () {
+    print("hand checks: pass@2 of 5 samples with 2 right %; pass@4 of 8 with 1 right %; Wilson 18 of 60 ",
+        r4(cd_pass_at(5,2,2).value),r4(cd_pass_at(8,1,4).value));
+    show_interval(cd_wilson(18,60));print("\n");
+
+    // The held-out set and sampler, fixed before any run below.
+    tasks:[60]EnTask;#assert en_tasks(212,tasks[..])==EnStatus.ok;
+    s:=CdSampler.{seed=2120,skill=0.3};
+    t:=tasks[0];
+    print("the first held-out task: % ",KIND[cast(int)t.kind]);show_work(t.work);print(" -> ");show_work(en_solve(t));print("\n");
+    for i:0..<8 {
+        w:=cd_sample(s,t,0,i);print("  candidate % ",i);show_work(w);
+        print(": length %, visible %, exact %\n",yes(cd_passes(CdCheck.length,t,w)),yes(cd_passes(CdCheck.visible,t,w)),yes(cd_passes(CdCheck.exact,t,w)));
+    }
+    for c:[2]CdCheck.[CdCheck.exact,CdCheck.visible] {print("  % check, budget 200: ",CHECK[cast(int)c]);show_run(cd_run(s,t,0,8,c,200));}
+    print("  exact check, budget 20: ");show_run(cd_run(s,t,0,8,CdCheck.exact,20));
+    print("  no checker: %\n",STATUS[cast(int)cd_run(s,t,0,8,CdCheck.none,200).pick.status]);
+    print("  a sampler with skill 0.6: %\n",STATUS[cast(int)cd_run(CdSampler.{seed=2120,skill=0.6},t,0,8,CdCheck.exact,200).pick.status]);
+    print("  pass@9 of 8 samples: %\n",STATUS[cast(int)cd_pass_at(8,1,9).status]);
+
+    print("held-out: 60 tasks from seed 212, sampler seed 2120 with skill 0.3, 8 candidates each\n");
+    print("  pass@1 %, pass@2 %, pass@4 %, pass@8 %\n",r4(cd_pass_mean(s,tasks[..],8,1).value),
+        r4(cd_pass_mean(s,tasks[..],8,2).value),r4(cd_pass_mean(s,tasks[..],8,4).value),r4(cd_pass_mean(s,tasks[..],8,8).value));
+    one:=cd_tally(s,tasks[..],1,CdCheck.exact,200);show_row("1 candidate:                ",one);
+    show_row("best of 2, exact:           ",cd_tally(s,tasks[..],2,CdCheck.exact,200));
+    show_row("best of 4, exact:           ",cd_tally(s,tasks[..],4,CdCheck.exact,200));
+    eight:=cd_tally(s,tasks[..],8,CdCheck.exact,200);show_row("best of 8, exact:           ",eight);
+    show_row("best of 8, exact, budget 40:",cd_tally(s,tasks[..],8,CdCheck.exact,40));
+    show_row("best of 8, visible:         ",cd_tally(s,tasks[..],8,CdCheck.visible,200));
+    a:=cd_wilson(one.chosen,60);b:=cd_wilson(eight.chosen,60);
+    print("  best of 8 against 1 candidate: ");show_interval(b);print(" against ");show_interval(a);
+    print(", %\n",ifx b.low>a.high then "better: the intervals do not overlap" else "not shown: the intervals overlap");
+
+    replayed:=0;first:CdRun;
+    for u,r:tasks {x:=cd_run(s,u,r,8,CdCheck.exact,200);if r==0 {first=x;}if cd_replay(s,u,r,8,CdCheck.exact,200,x) {replayed+=1;}}
+    claimed:=first;claimed.pick.checks-=1;
+    print("replay: % of 60 best-of-8 runs replay from their seeds; the first claimed with one check fewer: %\n",
+        replayed,ifx cd_replay(s,t,0,8,CdCheck.exact,200,claimed) then "accepts" else "refuses");
+}
+// book:end example
