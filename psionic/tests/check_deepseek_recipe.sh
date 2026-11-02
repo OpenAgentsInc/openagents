@@ -3,6 +3,7 @@
 # against the tensor-by-tensor byte count and the position marking, both
 # transcripts in debug and release, and (with --mutate) the authority
 # file's mutation check.
+# Firm reason: 5 (a thin wrapper: runs coax test, coax run and coax mutate on chapter 101's files).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}
