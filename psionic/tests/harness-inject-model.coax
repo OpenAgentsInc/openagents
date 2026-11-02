@@ -1,0 +1,12 @@
+// Chapter 205's long comparisons, kept out of the gate's own checks so that
+// the examples, which run those checks, stay fast. psionic/check.sh runs
+// it beside harness/inject.
+#load "../lib/harness/inject.coax";
+
+#forall "labels agree with the taint model on 400 random graphs" seed: 100..<500 #steps 2000000000 { it_graphs(seed); }
+#forall "1000 batches of random calls agree with the restated policy" seed: 100..<1100 #steps 2000000000 { it_calls(seed); }
+#test "no ungranted effect on 600 random injected sessions" #steps 2000000000 {
+  tally: [4] int;
+  for seed: 100..<700 { it_random(seed, tally[..]); }
+  #assert tally[0] > 0 && tally[1] > 0 && tally[2] > 0 && tally[3] > 0;
+}

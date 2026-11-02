@@ -2651,6 +2651,26 @@
       ]
     },
     {
+      "source": "psionic/examples/inject.coax",
+      "chapter": "psionic/book/ch205-a-document-tries-to-become-the-system-prompt.md",
+      "stdout": "psionic/fixtures/inject/inject.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/inject-refuse.coax",
+      "chapter": "psionic/book/ch205-a-document-tries-to-become-the-system-prompt.md",
+      "stdout": "psionic/fixtures/inject/inject-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/candidates.coax",
       "chapter": "psionic/book/ch212-generate-candidates-then-check-them.md",
       "stdout": "psionic/fixtures/candidates.out",

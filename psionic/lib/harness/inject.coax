@@ -1,0 +1,218 @@
+// Chapter 205: a document tries to become the system prompt. A prompt is a
+// list of sections, each with the source it came from. Three sources may
+// instruct: the system text, the user and the policy. Three are data and
+// never instruct: a retrieved document, a local tool's output and a remote
+// tool's result (chapter 210). The harness writes each section into the
+// request behind a header that names its source and its byte length, so
+// text inside a document that looks like a header is only bytes of the
+// document. Every value the agent builds carries a label: the sources of
+// everything it was made from. A tool call carries two labels: its view,
+// the sources of everything the proposer was shown when it proposed the
+// call (the harness knows this, because it chose what to show), and its
+// argument's label. The gate decides every call before it runs:
+// - widening a grant is never a tool: refused (authority);
+// - a tool or a target the person did not grant: refused;
+// - a call proposed with data in view: asked (triggered), so it runs only
+//   when the person approves that call;
+// - an argument made from data: asked (tainted), unless the person's grant
+//   for that tool and target says data may flow into it;
+// - otherwise it runs.
+// Every decision is logged before an effect touches a file or the outbound
+// sink. Nothing here makes a grant: grants are the caller's list.
+// Profile ij-inject-v1: six sources, one bit each in a label; three tools
+// (write one of 4 files of up to 128 bytes, send to one of 10
+// destinations, widen a grant); caller-owned value pool, event log, files
+// and sink; length headers of 1 to 6 decimal digits.
+#authority;
+#load "../../tests/harness-inject-checks.coax";
+
+// book:begin types
+// Where a section came from, one bit each in a label.
+IjSource :: enum u8 { system; user; policy; document; tool; remote; }
+IJ_SOURCES :: 6;
+IJ_ALL :: 63;
+// system | user | policy may instruct; document | tool | remote are data.
+IJ_TRUSTED :: 7;
+IJ_DATA :: 56;
+IJ_NAMES :: [6] string.["system", "user", "policy", "document", "tool", "remote"];
+IjSection :: struct { source: IjSource; text: string; }
+// write: put text in one of the disposable files. send: put text in the
+// outbound sink for a destination. widen: ask for a wider grant.
+IjTool :: enum u8 { write; send; widen; }
+IJ_FILES :: 4;
+IJ_FILE_MAX :: 128;
+IJ_DESTS :: 10;
+// The person's grant: one tool, one target (-1: any) and whether text made
+// from data may flow into the call's argument.
+IjGrant :: struct { tool: IjTool; target: int; data: bool; }
+// A proposed call: the target file, destination or tool; arg, the value
+// it passes (-1 for widen); view, the label of what the proposer was shown.
+IjCall :: struct { tool: IjTool; target: int; arg: int; view: int; }
+IjVerdict :: enum u8 { run; ask; refuse; }
+// ok; why a call is asked (triggered, tainted); why it is refused
+// (ungranted, target, authority); calls refused before a decision (shape,
+// capacity); and refused frames (header, source, length).
+IjWhy :: enum u8 { ok; triggered; tainted; ungranted; target; authority; shape; capacity; header; source; length; }
+// The value pool: value i is bytes[ends[i - 1]..<ends[i]] with label labels[i].
+IjValues :: struct { bytes: [] u8; ends: [] int; labels: [] int; count: int; }
+// One logged decision. label: view | the argument's label. ran: whether
+// the effect happened (run, or ask and the person approved).
+IjEvent :: struct { call: IjCall; label: int; verdict: IjVerdict; why: IjWhy; ran: bool; }
+// The closed world: 4 files, the outbound sink (message i is
+// out[ends[i - 1]..<ends[i]] to dests[i]) and the event log.
+IjWorld :: struct { files: [] u8; sizes: [4] int; out: [] u8; ends: [] int; dests: [] int; sent: int; events: [] IjEvent; count: int; }
+IjParse :: struct { why: IjWhy; count: int; at: int; }
+// book:end types
+
+// book:begin values
+ij_bit :: (s: IjSource) -> int { return 1 << cast(int) s; }
+// The label of a list of sections: every source in it.
+ij_view :: (sections: [] IjSection) -> int {
+  label := 0;
+  for s: sections { label = label | ij_bit(s.source); }
+  return label;
+}
+ij_start :: (v: IjValues, i: int) -> int { if i == 0 { return 0; } return v.ends[i - 1]; }
+ij_text :: (v: IjValues, i: int) -> string { return cast(string) v.bytes[ij_start(v, i)..<v.ends[i]]; }
+// Add a value: its bytes, and a label that is its own sources and every
+// parent's label. Returns its index, or -1 when own is not a label, a
+// parent does not exist or the pool is full.
+ij_value :: (v: [] IjValues, text: string, own: int, parents: [] int) -> int {
+  n := v[0].count;
+  at := ij_start(v[0], n);
+  if own < 0 || own > IJ_ALL || n == v[0].ends.count || text.count > v[0].bytes.count - at { return -1; }
+  label := own;
+  for p: parents {
+    if p < 0 || p >= n { return -1; }
+    label = label | v[0].labels[p];
+  }
+  for c, i: text { v[0].bytes[at + i] = c; }
+  v[0].ends[n] = at + text.count; v[0].labels[n] = label; v[0].count = n + 1;
+  return n;
+}
+// book:end values
+
+// book:begin frame
+ij_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || s.count > out.count - at { return -1; }
+  for c, i: s { out[at + i] = c; }
+  return at + s.count;
+}
+IJ_HEADS :: [6] string.["@@system ", "@@user ", "@@policy ", "@@document ", "@@tool ", "@@remote "];
+// Does s hold p at byte at?
+ij_has :: (s: string, at: int, p: string) -> bool { return s.count - at >= p.count && s[at..<at + p.count] == p; }
+// Each section as @@<source> <length>\n<text>\n. Returns the byte count,
+// or -1 when out is too small.
+ij_frame :: (sections: [] IjSection, out: [] u8) -> int {
+  at := 0; names := IJ_NAMES;
+  for s: sections {
+    d: [20] u8; k := 0; x := s.text.count;
+    while true { d[19 - k] = '0' + cast(u8) (x % 10); k += 1; x /= 10; if x == 0 { break; } }
+    at = ij_put(out, at, "@@");
+    at = ij_put(out, at, names[cast(int) s.source]);
+    at = ij_put(out, at, " ");
+    at = ij_put(out, at, cast(string) d[20 - k..<20]);
+    at = ij_put(out, at, "\n");
+    at = ij_put(out, at, s.text);
+    at = ij_put(out, at, "\n");
+  }
+  return at;
+}
+// Read sections back. A section's text is exactly the length its header
+// gives, whatever bytes it holds; the source comes only from the header.
+// Refusals: header (no @@, or a length that is not 1 to 6 digits without
+// a leading zero followed by a newline), source (@@ and then not a known
+// name and a space), length (the text and its newline run past the end), capacity
+// (more sections than out holds). at: where the refused frame starts.
+ij_unframe :: (bytes: string, out: [] IjSection) -> IjParse {
+  r := IjParse.{why = IjWhy.ok}; heads := IJ_HEADS;
+  while r.at < bytes.count {
+    at := r.at;
+    if r.count == out.count { r.why = IjWhy.capacity; return r; }
+    source := -1;
+    for h, i: heads { if ij_has(bytes, at, h) { source = i; } }
+    if source < 0 {
+      r.why = ifx ij_has(bytes, at, "@@") then IjWhy.source else IjWhy.header;
+      return r;
+    }
+    at += heads[source].count; digits := at; n := 0;
+    while at < bytes.count && at - digits < 6 && bytes[at] >= '0' && bytes[at] <= '9' { n = n * 10 + cast(int) (bytes[at] - '0'); at += 1; }
+    if at == digits || (bytes[digits] == '0' && at - digits > 1) || at == bytes.count || bytes[at] != '\n' { r.why = IjWhy.header; return r; }
+    at += 1;
+    if n >= bytes.count - at || bytes[at + n] != '\n' { r.why = IjWhy.length; return r; }
+    out[r.count] = IjSection.{source = cast(IjSource) source, text = cast(string) bytes[at..<at + n]};
+    r.count += 1; r.at = at + n + 1;
+  }
+  return r;
+}
+// book:end frame
+
+// book:begin decide
+// A call's label: what was in view, and what its argument was made from.
+ij_label :: (v: IjValues, c: IjCall) -> int {
+  if c.arg < 0 || c.arg >= v.count { return c.view; }
+  return c.view | v.labels[c.arg];
+}
+// The gate's decision on one call, before anything runs.
+ij_decide :: (grants: [] IjGrant, v: IjValues, c: IjCall) -> IjEvent {
+  e := IjEvent.{call = c, label = ij_label(v, c), verdict = IjVerdict.refuse, why = IjWhy.shape};
+  limit := IJ_FILES; widen := c.tool == IjTool.widen;
+  if c.tool == IjTool.send { limit = IJ_DESTS; }
+  if widen { limit = 3; }
+  if c.target < 0 || c.target >= limit || c.view < 0 || c.view > IJ_ALL { return e; }
+  if widen != (c.arg < 0) || c.arg >= v.count { return e; }
+  // Only the person widens a grant, and not through the agent.
+  if widen { e.why = IjWhy.authority; return e; }
+  tool := false; covered := false; data := false;
+  for g: grants {
+    if g.tool != c.tool { continue; }
+    tool = true;
+    if g.target >= 0 && g.target != c.target { continue; }
+    covered = true;
+    if g.data { data = true; }
+  }
+  if !tool { e.why = IjWhy.ungranted; return e; }
+  if !covered { e.why = IjWhy.target; return e; }
+  e.verdict = IjVerdict.ask;
+  // Data in view when the call was proposed: only the person can say yes.
+  if (c.view & IJ_DATA) != 0 { e.why = IjWhy.triggered; return e; }
+  if (e.label & IJ_DATA) != 0 && !data { e.why = IjWhy.tainted; return e; }
+  e.verdict = IjVerdict.run; e.why = IjWhy.ok;
+  return e;
+}
+// book:end decide
+
+// book:begin act
+ij_file :: (w: IjWorld, k: int) -> string { return cast(string) w.files[k * IJ_FILE_MAX..<k * IJ_FILE_MAX + w.sizes[k]]; }
+ij_message :: (w: IjWorld, i: int) -> string {
+  from := 0;
+  if i > 0 { from = w.ends[i - 1]; }
+  return cast(string) w.out[from..<w.ends[i]];
+}
+// Decide a call, log the decision, and only then let the effect happen: a
+// run, or an ask the person approved. A malformed call, or one that does
+// not fit the log, the file or the sink, is refused and logs nothing.
+ij_act :: (w: [] IjWorld, grants: [] IjGrant, v: IjValues, c: IjCall, approved: bool) -> IjEvent {
+  e := ij_decide(grants, v, c);
+  if e.why == IjWhy.shape { return e; }
+  e.ran = e.verdict == IjVerdict.run || (e.verdict == IjVerdict.ask && approved);
+  n := w[0].count; s := w[0].sent; text := "";
+  if c.arg >= 0 { text = ij_text(v, c.arg); }
+  at := 0;
+  if s > 0 { at = w[0].ends[s - 1]; }
+  full := n == w[0].events.count;
+  if e.ran && c.tool == IjTool.write && text.count > IJ_FILE_MAX { full = true; }
+  if e.ran && c.tool == IjTool.send && (s == w[0].ends.count || text.count > w[0].out.count - at) { full = true; }
+  if full { return IjEvent.{call = c, label = e.label, verdict = IjVerdict.refuse, why = IjWhy.capacity}; }
+  w[0].events[n] = e; w[0].count = n + 1;
+  if !e.ran { return e; }
+  if c.tool == IjTool.write {
+    for b, i: text { w[0].files[c.target * IJ_FILE_MAX + i] = b; }
+    w[0].sizes[c.target] = text.count;
+  } else {
+    for b, i: text { w[0].out[at + i] = b; }
+    w[0].ends[s] = at + text.count; w[0].dests[s] = c.target; w[0].sent = s + 1;
+  }
+  return e;
+}
+// book:end act

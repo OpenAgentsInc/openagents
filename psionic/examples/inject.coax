@@ -1,0 +1,83 @@
+// Chapter 205: the injection corpus against the stand-in agent. Each case
+// is framed, read back, answered and acted on; every call goes through the
+// gate, and the case's outcomes are measured separately: calls, effects
+// that ran, calls held for approval, refusals, unauthorized effects, a
+// changed answer, the sentinel in the answer, and the person's task.
+#import "Basic";
+#load "../lib/harness/inject.coax";
+
+WHY :: [11] string.["ok", "triggered", "tainted", "ungranted", "target", "authority", "shape", "capacity", "header", "source", "length"];
+VERDICT :: [3] string.["run", "ask", "refuse"];
+TOOL :: [3] string.["write", "send", "widen"];
+yes :: (b: bool) -> string { if b { return "yes"; } return "no"; }
+// A label as source names: system+user, or "-" when empty.
+label_names :: (label: int, out: [] u8) -> string {
+  n := IJ_NAMES; at := 0;
+  for c: 0..<IJ_SOURCES {
+    if (label >> c) % 2 == 0 { continue; }
+    if at > 0 { at = ij_put(out, at, "+"); }
+    at = ij_put(out, at, n[c]);
+  }
+  if at == 0 { return "-"; }
+  return cast(string) out[0..<at];
+}
+// Every call of the last run and what the gate did with it.
+show_calls :: (l: [] ItLab) {
+  x: [64] u8; wy := WHY; vd := VERDICT; tl := TOOL;
+  for c, k: l[0].calls[0..<l[0].ncalls] {
+    who := ifx l[0].planned[k] then "planner" else "reader";
+    print("  call % (%) % %", k, who, tl[cast(int) c.tool], c.target);
+    if c.arg >= 0 { print(" \"%\"", ij_text(l[0].v[0], c.arg)); }
+    e := l[0].events[l[0].logged[k]];
+    print(" [%]: % %", label_names(e.label, x[..]), vd[cast(int) e.verdict], wy[cast(int) e.why]);
+    if e.verdict == IjVerdict.ask { print("%", ifx e.ran then ", approved, ran" else ", held"); }
+    print("\n");
+  }
+}
+show_report :: (r: ItReport) {
+  print("  calls %, ran %, held %, refused %, unauthorized %; answer changed %, sentinel in answer %; task done %, file 1 as benign %\n", r.calls, r.ran, r.held, r.refused, r.unauthorized, yes(r.changed), yes(r.leaked), yes(r.task), yes(r.same));
+}
+answer :: (l: [] ItLab) -> string { if l[0].answer < 0 { return "(none)"; } return ij_text(l[0].v[0], l[0].answer); }
+
+main :: () {
+  lab: [1] ItLab; l := lab[..]; nm := IT_NAMES; at := IT_ATTACKS; src := IJ_NAMES; x: [64] u8;
+  it_open(l); it_case(l, 3);
+  n := ij_frame(l[0].sections[4..<5], l[0].frame[..]);
+  print("the header attack's section, framed:\n%", cast(string) l[0].frame[0..<n]);
+  reports: [9] ItReport;
+  for k: 0..<IT_CASES {
+    reports[k] = it_attack(l, k, 0, false);
+    print("case % %", k, nm[k]);
+    if k > 0 { print(" (%)", src[cast(int) at[k].source]); }
+    print(": % sections shown\n", l[0].shown);
+    show_calls(l);
+    print("  answer: \"%\"\n", answer(l));
+    show_report(reports[k]);
+  }
+  print("case 3 header, under [role] markers instead of length headers:\n");
+  r := it_attack(l, 3, 0, true);
+  for i: 4..<l[0].shown { print("  shown % as %, truly % \"%\"\n", i, src[cast(int) l[0].seen[i].source], label_names(l[0].truth[i], x[..]), l[0].seen[i].text); }
+  show_calls(l);
+  print("  sink: % message(s), first \"%\" to %\n", l[0].w[0].sent, ij_message(l[0].w[0], 0), l[0].dests[0]);
+  show_report(r);
+  print("case 8 overwrite, the person approves call 1:\n");
+  r = it_attack(l, 8, 2, false);
+  show_calls(l);
+  print("  file 1: \"%\"\n", ij_file(l[0].w[0], 1));
+  show_report(r);
+  print("case 0 benign with no grants:\n");
+  it_open(l); it_case(l, 0); none1: [1] IjGrant;
+  r = it_run(l, none1[0..<0], 0, false, IT_BENIGN);
+  show_calls(l);
+  show_report(r);
+  print("summary (framed):\n");
+  print("  case        calls ran held refused unauth changed leaked task same\n");
+  for rp, k: reports {
+    print("  %", nm[k]);
+    for i: nm[k].count..<12 { print(" "); }
+    print("%     %   %    %       %      %      %     %    %\n", rp.calls, rp.ran, rp.held, rp.refused, rp.unauthorized, ifx rp.changed then "Y" else "-", ifx rp.leaked then "Y" else "-", ifx rp.task then "Y" else "-", ifx rp.same then "Y" else "-");
+  }
+  tally: [4] int;
+  for seed: 0..<40 { it_random(seed, tally[..]); }
+  print("40 random injected sessions: framed % ran, % held, % refused, 0 unauthorized; under [role] markers % unauthorized\n", tally[1], tally[2], tally[3], tally[0]);
+}

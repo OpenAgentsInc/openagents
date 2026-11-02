@@ -1,0 +1,40 @@
+// Chapter 205's broken inputs: frames the reader refuses, values the pool
+// refuses, and calls the gate refuses before deciding, none of which logs
+// anything. Each prints its reason.
+#import "Basic";
+#load "../lib/harness/inject.coax";
+
+WHY :: [11] string.["ok", "triggered", "tainted", "ungranted", "target", "authority", "shape", "capacity", "header", "source", "length"];
+name :: (w: IjWhy) -> string { n := WHY; return n[cast(int) w]; }
+
+// book:begin refuse
+main :: () {
+  b: [4] IjSection;
+  frames := [8] string.["@@admin 5\nhello\n", "@@system 05\nhello\n", "@@system 5\nhello world\n", "@@system 1234567\n", "[system]\nhello\n", "@@user 5\nhello\n@@tool 9\nhello\n", "@@user 2\nhi\n@@tool 2\nhi", "@@user 5 \nhello\n"];
+  for f: frames {
+    p := ij_unframe(f, b[..]);
+    print("unframe \"");
+    for c: f { if c == '\n' { print("\\n"); } else { one := [1] u8.[c]; print("%", cast(string) one[..]); } }
+    print("\": % at byte %, % section(s) before it\n", name(p.why), p.at, p.count);
+  }
+  lab: [1] ItLab; l := lab[..]; it_open(l); v := l[0].v[..]; w := l[0].w[..]; g := IT_GRANTS;
+  nb: [1] int; nine := [1] int.[9];
+  print("value with an unknown source bit (64): %\n", ij_value(v, "x", 64, nb[0..<0]));
+  print("value whose parent does not exist: %\n", ij_value(v, "x", 0, nine[..]));
+  a := ij_value(v, "notes", 2, nb[0..<0]);
+  calls := [6] IjCall.[
+    IjCall.{tool = IjTool.write, target = 4, arg = a, view = 3},
+    IjCall.{tool = IjTool.send, target = -1, arg = a, view = 3},
+    IjCall.{tool = IjTool.write, target = 1, arg = -1, view = 3},
+    IjCall.{tool = IjTool.widen, target = 1, arg = a, view = 3},
+    IjCall.{tool = IjTool.send, target = 2, arg = 7, view = 3},
+    IjCall.{tool = IjTool.send, target = 2, arg = a, view = 64}];
+  what := [6] string.["write to file 4 of 4", "send to destination -1", "write with no argument", "widen with an argument", "send of value 7 of 1", "send with view 64"];
+  for c, i: calls { print("%: %\n", what[i], name(ij_act(w, g[..], v[0], c, true).why)); }
+  print("events logged: %\n", w[0].count);
+  big: [129] u8; long := ij_value(v, cast(string) big[..], 2, nb[0..<0]);
+  print("write of 129 bytes to a 128-byte file: %, events logged: %\n", name(ij_act(w, g[..], v[0], IjCall.{tool = IjTool.write, target = 1, arg = long, view = 3}, false).why), w[0].count);
+  print("the same write, proposed with a document in view: %, events logged: %\n", name(ij_act(w, g[..], v[0], IjCall.{tool = IjTool.write, target = 1, arg = long, view = 11}, false).why), w[0].count);
+  print("file 1 holds % bytes\n", w[0].sizes[1]);
+}
+// book:end refuse

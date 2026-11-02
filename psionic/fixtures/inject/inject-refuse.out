@@ -1,0 +1,20 @@
+unframe "@@admin 5\nhello\n": source at byte 0, 0 section(s) before it
+unframe "@@system 05\nhello\n": header at byte 0, 0 section(s) before it
+unframe "@@system 5\nhello world\n": length at byte 0, 0 section(s) before it
+unframe "@@system 1234567\n": header at byte 0, 0 section(s) before it
+unframe "[system]\nhello\n": header at byte 0, 0 section(s) before it
+unframe "@@user 5\nhello\n@@tool 9\nhello\n": length at byte 15, 1 section(s) before it
+unframe "@@user 2\nhi\n@@tool 2\nhi": length at byte 12, 1 section(s) before it
+unframe "@@user 5 \nhello\n": header at byte 0, 0 section(s) before it
+value with an unknown source bit (64): -1
+value whose parent does not exist: -1
+write to file 4 of 4: shape
+send to destination -1: shape
+write with no argument: shape
+widen with an argument: shape
+send of value 7 of 1: shape
+send with view 64: shape
+events logged: 0
+write of 129 bytes to a 128-byte file: capacity, events logged: 0
+the same write, proposed with a document in view: triggered, events logged: 1
+file 1 holds 0 bytes
