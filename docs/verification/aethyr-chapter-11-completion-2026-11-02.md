@@ -8,8 +8,8 @@ reference. Its named numerical teaching profile is the moving Grid's recorded
 target, consumer and application completion are separate facts.
 
 The [final main integration](aethyr-chapter-11-final-integration-2026-11-02.json)
-retains the merged-host route and metadata checks, and separately records an
-unrelated pre-existing global tools-gate failure from incoming main.
+retains the merged-host route and metadata checks, the incoming global
+tools-gate failures and their eventual1528/0 resolution.
 
 The shared registry's existing target vocabulary records `cpu` and `wasm`.
 The precise WebGPU/Vulkan devices, formats and raster profiles are named here

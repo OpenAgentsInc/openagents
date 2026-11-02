@@ -1,0 +1,3 @@
+new non-Coax tool with no Firm reason: line and not on the port list: coax/tests/bitcoin/chacha20_poly1305.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/tests/bitcoin/chacha20_poly1305_wasm.cjs
+tools-check: 1528 tracked tool files, 2 new without a reason

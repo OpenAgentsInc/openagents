@@ -1,8 +1,8 @@
 {
   "schema": "aethyr.render.chapter11-final-integration.v1",
   "date": "2026-11-02",
-  "status": "chapter_profile_passed_with_separate_preexisting_global_tools_failure",
-  "implementation_checkpoint": "ea1790224c6278d1d5914dfbeb50f1bc16ff7c34",
+  "status": "chapter_profile_book_and_global_tools_gates_passed",
+  "implementation_checkpoint_before_transport_rebases": "ea1790224c6278d1d5914dfbeb50f1bc16ff7c34",
   "runtime_probe_main_base": "55099680e93994c1e5a9ac768689746c42f6cf41",
   "last_verified_upstream_base_before_push": "67f3a338aa3faf67137156f9e12ecb5ceebd1d1c",
   "concurrent_main_update": "Incoming Bitcoin/crypto and Nostr documentation changes required one further clean rebase. No Aethyr, renderer, host, tool wrapper or compiler-source bytes changed in that rebase. Loose push-book/push-tools/push-rebase/push-renderer-source-diff records supplement the earlier runtime archive.",
@@ -24,7 +24,7 @@
     "uniforms_HUD_and_raw_GPU_image": "Each cmp is byte-identical to the already-qualified final Grid frame. Raw GPU SHA remainsc5520f750dde14fbb394d8cf95b239ddbc61dbc8c9b35c9b8579a85acad5ac2c. No unchanged passing colour comparator was rerun.",
     "retained": "Actual executed drivers/glue, producer/RFI/package/resource bytes, served source bodies and the finalized source/hash ledger"
   },
-  "global_tools_gate": {
+  "global_tools_gate_before_upstream_port_and_reason_declarations": {
     "command": "COAX=SELECTED coax/web/tool.sh tools-check",
     "exit": 1,
     "tracked_tool_files": 1517,
@@ -35,6 +35,14 @@
     "chapter_patch_changes_to_that_file": false,
     "disposition": "Pre-existing incoming-main release-gate failures, retained and handed off. Computer-flow test orchestration needs a real Coax port or applicable owner exception; genuine independent/reference checks need truthful declarations where applicable. No invented Firm reason or growing port-list waiver was added. These unchanged files are separate from chapter11's completed profile; the repository-wide gate is not reported as passing.",
     "earlier_chapter_port_scan": "The actual pre-integration scan at source base8c9027ad9c passed1506tracked files with zero missing reasons; that log remains in final-artifacts."
+  },
+  "global_tools_gate_final": {
+    "exit": 0,
+    "tracked_tool_files": 1528,
+    "missing_reasons": 0,
+    "upstream_resolution": "323089d447 ports computer-flow to Coax while preserving its entry wrapper.",
+    "comment_only_resolution": "The Python checker contains an independent arbitrary-precision Poly1305 model and RFC/Wycheproof/OpenSSL fixtures. The CJS runner invokes OpenSSL through Node crypto to supply independent reference vectors. Their truthful declarations arrived concurrently on main6009989a99; the final rebase preserves those upstream reason2 headers and drops our duplicate comment proposals. No cryptographic/test logic changed and no unchanged crypto gate was rerun.",
+    "retained": "Loose tools-final-pass.log, tools-before-reason-declarations.log and book-after-concurrent-parakeet.log supplement the previous epochs. The new book check again passes20programs/108listings/local links. Earlier global failures remain retained, not rewritten."
   },
   "other_checks": "Merged tool.sh/deepseek wrapper bash syntax and owned diff whitespace pass. The initial metadata gate rejected unsupported webgpu/vulkan registry enums; corrected to the existing cpu/wasm vocabulary while exact GPU profiles remain in prose/evidence. Both failure and successful logs are retained.",
   "cleanup": "All subagents and their children stopped. Both native namespaces removed after complete output retention. Final loopback origin finalized; old owned server8817/PID44086 terminated and no longer present. No later-chapter job remains.",

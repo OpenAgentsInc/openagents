@@ -39,17 +39,16 @@ not establish numerical conformance of every catalogue shader. The selected
 compiler's fast-cache qualification does not replace the separate full
 compiler-release work tracked in issue12638.
 
-The last global tools check at main `67f3a338aa` has three **pre-existing
-incoming-main failures**: `coax/web/api/computer-flow.ts`,
-`coax/tests/bitcoin/chacha20_poly1305.py` and
-`coax/tests/bitcoin/chacha20_poly1305_wasm.cjs`. Their bytes are unchanged by
-this delivery. The gate reports1517 tracked files/3 failures; the earlier
-chapter-port scan passed1506/0. This separate release-gate debt needs a Coax
-port or truthful applicable reason declarations/owner exception. No fabricated
-header or port-list waiver was added.
+The final global tools check **passes1528 tracked files with zero missing
+reasons**. Earlier incoming-main failures remain in the evidence. Upstream
+`323089d447` supplied the computer-flow Coax port. Main `6009989a99` supplied
+the two independent crypto checks' truthful reason2 declarations. The final
+rebase preserves those upstream headers and drops our duplicate proposals.
+No cryptographic or test logic changed, and no port-list waiver or owner
+exception was used.
 
 There is no automatic continuation. If work is resumed, chapter12 is the next
 book chapter. Broader realm adoption, complete Everglade CPU rendering through
 bounded pass/draw slices, GitBook publication identity and the separate global
-tool/compiler issues retain their own qualification work; they are not implied
+compiler issues retain their own qualification work; they are not implied
 by chapter11's completed profile.

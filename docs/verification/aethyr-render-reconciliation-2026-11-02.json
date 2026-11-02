@@ -11,7 +11,7 @@
   "final_interior_comparison": "docs/verification/aethyr-frame-interiors-2026-11-02.json",
   "final_main_integration": "docs/verification/aethyr-chapter-11-final-integration-2026-11-02.json",
   "final_handoff": "docs/verification/aethyr-chapter-11-handoff-2026-11-02.md",
-  "final_tooling": "The chapter-port scan passed1506/0 before final main integration. The last global scan at incoming main67f3a338aa reports1517/3 for unchanged upstream computer-flow.ts and two new Bitcoin check files. These failures are retained separately and not relabelled pass.",
+  "final_tooling": "Final global scan passes1528/0 after upstream323089d447 computer-flow Coax port and two truthful comment-only reason declarations for independent Python/OpenSSL reference checkers. Earlier1506/0,1515/1,1517/3 and1528/2 epochs remain retained with their actual outcomes.",
   "limits": "Dead Gears full strict remains FAIL3 with159RGBA pixels unqualified; full Everglade CPU remains budget-refused/unqualified. Catalogue/host checks do not imply catalogue-wide numerical conformance. The unused20B experiment is withdrawn.",
   "base_main": "8ed49c9b6a7f23c25b4f516993073441082b30b1",
   "rebased_checkpoint": "dbbfe6bf70360b6500a62a9a60213a6ce7ee725c",
