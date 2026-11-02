@@ -332,6 +332,16 @@
       ]
     },
     {
+      "source": "psionic/examples/sparse-attention.coax",
+      "chapter": "psionic/book/ch086-sparse-attention-and-shared-layers.md",
+      "stdout": "psionic/fixtures/sparse-attention.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/delta-chunks.coax",
       "chapter": "psionic/book/ch042-deltanet-in-chunks.md",
       "stdout": "psionic/fixtures/delta-chunks.out",

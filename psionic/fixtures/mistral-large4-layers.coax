@@ -1,0 +1,28 @@
+// Mistral Large 4's per-layer attention maps, transcribed from the text
+// configuration of config.json at mistralai/Mistral-Large-4-1T-A52B revision
+// 395730aefd2f928daaf7b69fbd9fefab0ee69b64 (8,220 bytes, sha256
+// 3081fb94f5001f34a21e08437df710bb0b6423beada9184b566a8f5b1ee46277).
+// No weights were read. kv_source_layers: the layer whose KV each layer
+// reads. no_rope_layers: 1 for a rotary layer, 0 for a NoPE layer.
+// indexer_types: 1 for "full" (the layer has its own indexer), 0 for "shared".
+ML4_LAYERS :: 72;
+ML4_KV_SOURCE :: [72]int.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,35,40,41,42,35,44,45,46,35,48,49,50,35,52,53,54,35,56,57,58,35,60,61,62,35,64,65,66,35,68,69,70,35];
+ML4_ROTARY :: [72]u8.[1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0];
+ML4_INDEXER_FULL :: [72]u8.[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1];
+// kv_lora_rank 512 plus qk_rope_head_dim 64: one latent row per token and layer.
+ML4_KV_ROW :: 576;
+// index_n_heads 32, index_head_dim 128, index_topk 2048.
+ML4_INDEX_HEADS :: 32;
+ML4_INDEX_WIDTH :: 128;
+ML4_INDEX_TOPK :: 2048;
+// final_logit_softcapping.
+ML4_SOFTCAP :: 30.0;
+// rope_parameters: yarn, rope_theta 10000, factor 2048, original 512,
+// beta_fast 32, beta_slow 1, attention_factor 1.0; qk_rope_head_dim 64.
+ML4_ROPE_DIM :: 64;
+ML4_ROPE_THETA :: 10000.0;
+ML4_YARN_FACTOR :: 2048.0;
+ML4_YARN_ORIGINAL :: 512;
+ML4_YARN_FAST :: 32.0;
+ML4_YARN_SLOW :: 1.0;
+ML4_YARN_ATTENTION :: 1.0;

@@ -1,0 +1,498 @@
+// Chapter 86: sparse attention and shared layers. The attention features
+// Mistral Large 4 adds, each on its own small fixture: a lightning indexer
+// that scores every past key cheaply and keeps the top k, attention over only
+// the kept keys, a cross-layer KV sharing map with exact cache accounting,
+// NoPE layers beside rotary ones, tanh soft-capping and its slope, and YaRN
+// frequencies for long context.
+// Profile sparse-attention-cpu-f64-v1: binary64 inputs and outputs; indexer
+// keys as FP8 E4M3 codes with one UE8M0 scale per key, decoded exactly by
+// chapter 82's fp8_unit and fp8_power; chapter 4's compensated sums for every
+// dot product, softmax denominator and weighted sum; the top k ordered by
+// score, ties to the earlier position. Sparse attention and masked dense
+// attention over the same keys are equal bit for bit.
+#load "ops.coax";
+#load "fp8.coax";
+#load "../fixtures/mistral-large4-layers.coax";
+#load "../tests/sparse-attention-oracle.coax";   // the checks' binary64 oracle
+
+// book:begin types
+SaStatus :: enum u8 {ok;shape;range;capacity;number;later;chain;mismatch;}
+// Frozen before any comparison: a result agrees with the oracle when every
+// value differs by at most SA_TOLERANCE * (1 + |oracle|).
+SA_TOLERANCE :: 0.000000000001;
+SA_TOPK_MAX :: 2048;          // Large 4's index_topk
+SA_CONTEXT_MAX :: 1048576;    // Large 4's max_position_embeddings
+SA_HEADS_MAX :: 64;
+SA_WIDTH_MAX :: 256;
+SA_PAIRS_MAX :: 128;
+SA_ROW_MAX :: 65536;
+SA_LAYERS_MAX :: 128;
+SaResult :: struct {status:SaStatus;written:int;}
+// YaRN: rotary width dim, base theta, scale factor over original positions,
+// band edges in turns (fast > slow), and the attention factor that
+// multiplies cos and sin.
+SaYarn :: struct {dim:int;theta:f64;factor:f64;original:int;fast:f64;slow:f64;attention:f64;}
+SaBands :: struct {status:SaStatus;low:int;high:int;positions:int;}
+// owners: layers that keep their own KV; at: the first refused layer, or -1.
+SaMap :: struct {status:SaStatus;layers:int;owners:int;at:int;}
+// Values per token over all layers, and bytes for tokens at one element size.
+SaCache :: struct {status:SaStatus;shared:int;unshared:int;shared_bytes:int;unshared_bytes:int;}
+// book:end types
+
+SA_PI :: 3.141592653589793;
+
+
+#test "hand case: indexer scores, ties to the earlier key, top k in position order" {
+    q:=[4]f64.[1,0,0,1];w:=[2]f64.[1,0.5];codes:=so_hand_codes();scales:=[4]u8.[127,127,127,127];out:=[5]f64.[-7,-7,-7,-7,-7];
+    r:=sa_index(2,2,4,q[..],w[..],codes[..],scales[..],out[..]);
+    #assert r.status==SaStatus.ok && r.written==4 && out[0]==1.5 && out[1]==2 && out[2]==2 && out[3]==0.75 && out[4]==-7;
+    ids:=[4]int.[-1,-1,-1,-1];
+    s:=sa_select(out[0..<4],4,1,ids[..]);#assert s.status==SaStatus.ok && s.written==1 && ids[0]==1 && ids[1]==-1;
+    s=sa_select(out[0..<4],4,2,ids[..]);#assert s.written==2 && ids[0]==1 && ids[1]==2;
+    s=sa_select(out[0..<4],4,3,ids[..]);#assert s.written==3 && ids[0]==0 && ids[1]==1 && ids[2]==2;
+    s=sa_select(out[0..<4],4,9,ids[..]);#assert s.written==4 && ids[0]==0 && ids[1]==1 && ids[2]==2 && ids[3]==3;
+    // A scale of 2^1 doubles key 3's score to 1.5, tying key 0: key 0 wins.
+    scales[3]=128;r=sa_index(2,2,4,q[..],w[..],codes[..],scales[..],out[..]);#assert out[3]==1.5;
+    s=sa_select(out[0..<4],4,3,ids[..]);#assert s.written==3 && ids[0]==0 && ids[1]==1 && ids[2]==2;
+    out[0]=1;s=sa_select(out[0..<4],4,3,ids[..]);#assert ids[0]==1 && ids[1]==2 && ids[2]==3;
+    // Attention over keys 1 and 2: equal logits, values 4 and 2, output 3.
+    aq:=[2]f64.[1,0];keys:[8]f64;values:=[4]f64.[10,4,2,2];o:=[2]f64.[-7,-7];work:[4]f64;
+    sel:=[2]int.[1,2];a:=sa_attend(1,2,1,4,aq[..],keys[..],values[..],sel[..],1,0,o[..],work[..]);
+    #assert a.status==SaStatus.ok && a.written==1 && o[0]==3 && o[1]==-7;
+    mask:=[4]u8.[0,1,1,0];d:=sa_dense(1,2,1,4,aq[..],keys[..],values[..],mask[..],1,0,o[..],work[..]);#assert d.status==SaStatus.ok && d.written==1 && o[0]==3;
+    every:=[4]int.[0,1,2,3];a=sa_attend(1,2,1,4,aq[..],keys[..],values[..],every[..],1,0,o[..],work[..]);#assert o[0]==4.5;
+}
+#test "the first largest score sets the softmax shift" {
+    a:=[3]f64.[1,3,3];#assert sa_argmax(a[..])==1 && sa_argmax(a[0..<2])==1 && sa_argmax(a[0..<1])==0;
+    b:=[3]f64.[5,3,5];#assert sa_argmax(b[..])==0;
+}
+#test "generated: indexer, selection, sparse and dense attention meet the oracle" {
+    heads:=3;width:=4;n:=12;dk:=6;dv:=5;ah:=2;
+    q:[12]f64;for i:0..<q.count {q[i]=so_value(i+2,13);}
+    w:=[3]f64.[1,0.5,0.25];
+    codes:[48]u8;for i:0..<codes.count {codes[i]=so_code(i);}
+    scales:[12]u8;for i:0..<n {scales[i]=cast(u8)(126+i%3);}
+    // Key 7 repeats key 2, so their scores tie.
+    for i:0..<width {codes[7*width+i]=codes[2*width+i];}scales[7]=scales[2];
+    scores:[12]f64;ref:[12]f64;
+    #assert sa_index(heads,width,n,q[..],w[..],codes[..],scales[..],scores[..]).status==SaStatus.ok;
+    so_index(heads,width,n,q[..],w[..],codes[..],scales[..],ref[..]);
+    for i:0..<n {#assert scores[i]==ref[i];}
+    // Ties exist in this fixture, so tie order is exercised.
+    ties:=0;for i:0..<n {for j:i+1..<n {if scores[i]==scores[j] {ties+=1;}}}#assert ties>0;
+    aq:[12]f64;for i:0..<aq.count {aq[i]=so_value(i+5,11);}
+    keys:[72]f64;for i:0..<keys.count {keys[i]=so_value(i+3,17);}
+    values:[60]f64;for i:0..<values.count {values[i]=so_value(i+7,19);}
+    caps:=[2]f64.[0,2];
+    for k:1..<15 {for c:0..<2 {
+        ids:[12]int;chosen:[12]u8;mask:[12]u8;
+        s:=sa_select(scores[..],n,k,ids[..]);m:=s.written;
+        #assert s.status==SaStatus.ok && m==ifx k<n then k else n;
+        so_topk(scores[..],n,k,chosen[..]);
+        c2:=0;for t:0..<n {if chosen[t]==1 {#assert ids[c2]==t;c2+=1;mask[t]=1;}}#assert c2==m;
+        sparse:[10]f64;dense:[10]f64;full:[10]f64;oracle:[10]f64;work:[12]f64;
+        #assert sa_attend(ah,dk,dv,n,aq[..],keys[..],values[..],ids[0..<m],0.5,caps[c],sparse[..],work[..]).status==SaStatus.ok;
+        #assert sa_dense(ah,dk,dv,n,aq[..],keys[..],values[..],mask[..],0.5,caps[c],dense[..],work[..]).status==SaStatus.ok;
+        so_attend(ah,dk,dv,n,aq[..],keys[..],values[..],chosen[..],0.5,caps[c],oracle[..]);
+        for i:0..<10 {#assert f64_bits(sparse[i])==f64_bits(dense[i]);}
+        #assert so_gap(sparse[..],oracle[..])<=SA_TOLERANCE;
+        all:[12]u8;for t:0..<n {all[t]=1;}
+        #assert sa_dense(ah,dk,dv,n,aq[..],keys[..],values[..],all[..],0.5,caps[c],full[..],work[..]).status==SaStatus.ok;
+        same:=true;for i:0..<10 {if f64_bits(full[i])!=f64_bits(sparse[i]) {same=false;}}
+        #assert same==(k>=n);
+    }}
+}
+#test "soft-capping: hand values, the slope, and the oracle" {
+    #assert sa_cap(5,0)==5 && sa_slope(5,0)==1 && f64_bits(sa_tanh(0))==0 && sa_tanh(-400)== -1 && sa_tanh(400)==1;
+    #assert abs(sa_cap(30,30)-22.847824678672946)<0.00000000000001 && abs(sa_slope(30,30)-0.41997434161402614)<0.000000000000001;
+    #assert abs(sa_cap(90,30)-29.851642610601914)<0.00000000000001 && abs(sa_slope(90,30)-0.009866037165440211)<0.000000000000001;
+    #assert sa_cap(-30,30)== -sa_cap(30,30) && sa_slope(-30,30)==sa_slope(30,30) && sa_cap(0,30)==0 && sa_slope(0,30)==1;
+    for i:0..<41 {
+        x:=f64(i-20)*4.5;h:=0.0001;
+        #assert abs(sa_cap(x,30)-30*so_tanh(x/30))<=SA_TOLERANCE*30;
+        #assert abs(sa_cap(x,30))<30;
+        fd:=(sa_cap(x+h,30)-sa_cap(x-h,30))/(2*h);#assert abs(fd-sa_slope(x,30))<0.0000001;
+    }
+    #assert sa_logit(3,2,0)==6 && sa_logit(15,2,30)==sa_cap(30,30);
+}
+#test "YaRN: Large 4's bands by hand, frequencies against the oracle" {
+    y:=SaYarn.{dim=ML4_ROPE_DIM,theta=ML4_ROPE_THETA,factor=ML4_YARN_FACTOR,original=ML4_YARN_ORIGINAL,fast=ML4_YARN_FAST,slow=ML4_YARN_SLOW,attention=ML4_YARN_ATTENTION};
+    f:[33]f64;f[32]=-7;b:=sa_yarn(y,f[..]);
+    #assert b.status==SaStatus.ok && b.low==3 && b.high==16 && b.positions==1048576 && f[32]==-7;
+    #assert f[0]==1 && f[3]==exp(-6.0/64*log(10000.0));
+    #assert abs(f[4]/0.2919144307916101-1)<0.000000000000001 && abs(f[8]/0.06155724158653846-1)<0.000000000000001;
+    #assert abs(f[16]/0.0000048828125-1)<0.000000000000001 && abs(f[31]/0.0000000651133511798498-1)<0.000000000000001;
+    r:[32]f64;e:[2]int;so_yarn(64,10000,2048,512,32,1,r[..],e[..]);
+    #assert e[0]==3 && e[1]==16 && so_gap(f[0..<32],r[..])<=SA_TOLERANCE;
+    // A small rotary width: low 0, high dim - 1, both admitted.
+    small:=SaYarn.{dim=4,theta=10000,factor=8,original=512,fast=32,slow=0.002,attention=1};g:[2]f64;
+    b=sa_yarn(small,g[..]);so_yarn(4,10000,8,512,32,0.002,r[0..<2],e[..]);
+    #assert b.status==SaStatus.ok && b.low==0 && b.high==3 && b.positions==4096 && e[0]==0 && e[1]==3 && so_gap(g[..],r[0..<2])<=SA_TOLERANCE;
+    one:=small;one.slow=16;b=sa_yarn(one,g[..]);#assert b.status==SaStatus.ok && b.low==0 && b.high==1;
+    so_yarn(4,10000,8,512,32,16,r[0..<2],e[..]);#assert so_gap(g[..],r[0..<2])<=SA_TOLERANCE && g[1]==exp(-0.5*log(10000.0))/8;
+    // Refusals.
+    for c:0..<17 {
+        t:=y;out:=f[..];expect:=SaStatus.number;
+        if c==0 {t.dim=3;expect=SaStatus.shape;}else if c==1 {t.dim=0;expect=SaStatus.shape;}else if c==2 {t.dim=258;expect=SaStatus.shape;}
+        else if c==3 {t.theta=1;}else if c==4 {t.factor=0.5;}else if c==5 {t.slow=0;}else if c==6 {t.fast=1;}else if c==7 {t.attention=0;}
+        else if c==8 {t.original=0;expect=SaStatus.range;}else if c==9 {t.original=513;expect=SaStatus.range;}
+        else if c==10 {t.fast=100000;expect=SaStatus.range;}else if c==11 {t.slow=0.00000000000001;expect=SaStatus.range;}
+        else if c==12 {out=f[0..<31];expect=SaStatus.capacity;}else if c==13 {t.theta=so_inf();}
+        else if c==14 {t.fast=so_inf();}else if c==15 {t.attention=so_inf();}
+        else {t.factor=so_inf();}
+        f[0]=-7;#assert sa_yarn(t,out).status==expect && f[0]==-7;
+    }
+    big:=y;big.factor=1;big.original=1048576;#assert sa_yarn(big,f[..]).status==SaStatus.ok;
+    wide:=small;wide.dim=256;wide.slow=1;wf:[128]f64;#assert sa_yarn(wide,wf[..]).status==SaStatus.ok;
+    #assert sa_yarn(small,g[0..<1]).status==SaStatus.capacity;
+    over:=small;over.slow=0.00001;#assert sa_yarn(over,g[..]).status==SaStatus.range;
+    near:=y;near.fast=2;b=sa_yarn(near,f[..]);#assert b.status==SaStatus.ok && b.low==12 && b.high==16;
+    near.fast=1.99;#assert sa_yarn(near,f[..]).status==SaStatus.number;
+    two:=SaYarn.{dim=2,theta=10000,factor=8,original=512,fast=32,slow=1,attention=1};b=sa_yarn(two,g[..]);#assert b.status==SaStatus.ok && b.low==0 && b.high==1;
+    unit:=SaYarn.{dim=64,theta=10000,factor=8,original=1,fast=0.1,slow=0.01,attention=1};b=sa_yarn(unit,f[..]);#assert b.status==SaStatus.ok && b.low==1 && b.high==10 && b.positions==8;
+}
+#test "NoPE and rotary layers: a NoPE layer ignores positions, a rotary one sees distance" {
+    y:=SaYarn.{dim=4,theta=10000,factor=8,original=512,fast=32,slow=0.002,attention=1};fr:[2]f64;#assert sa_yarn(y,fr[..]).status==SaStatus.ok;
+    x:=[6]f64.[0.5,-1,1,2,-0.5,0.25];out:=[7]f64.[-7,-7,-7,-7,-7,-7,-7];
+    r:=sa_place(false,2,4,x[..],1000,fr[..],1,out[..]);
+    #assert r.status==SaStatus.ok && r.written==6 && out[6]==-7;for i:0..<6 {#assert out[i]==x[i];}
+    r=sa_place(true,2,4,x[..],0,fr[..],1,out[..]);for i:0..<6 {#assert out[i]==x[i];}
+    // Position 3, against complex multiplication in the oracle; with attention factor 2.
+    ref:[4]f64;r=sa_place(true,2,4,x[..],3,fr[..],2,out[..]);so_rotate(x[2..<6],3,fr[..],2,ref[..]);
+    #assert out[0]==0.5 && out[1]==-1 && so_gap(out[2..<6],ref[..])<=SA_TOLERANCE;
+    // Scores: rotary layers depend on the distance only, NoPE layers on nothing.
+    qx:=[6]f64.[1,0.5,-1,0.25,0.75,1];kx:=[6]f64.[0.5,0.5,1,-1,0.5,2];
+    near:=so_pair_score(true,qx[..],kx[..],7,3,fr[..]);
+    #assert abs(near-so_pair_score(true,qx[..],kx[..],1007,1003,fr[..]))<0.000000001 && abs(near-so_pair_score(true,qx[..],kx[..],7,4,fr[..]))>0.01;
+    #assert so_pair_score(false,qx[..],kx[..],7,3,fr[..])==so_pair_score(false,qx[..],kx[..],900000,2,fr[..]);
+    // Refusals.
+    for c:0..<10 {
+        nope:=2;rope:=4;p:=3;xi:=x[..];oi:=out[..];fi:=fr[..];ms:=1.0;expect:=SaStatus.shape;
+        if c==0 {nope=-1;}else if c==1 {rope=0;}else if c==2 {rope=3;xi=x[0..<5];}else if c==3 {p=-1;expect=SaStatus.range;}
+        else if c==4 {p=SA_CONTEXT_MAX;expect=SaStatus.range;}else if c==5 {xi=x[0..<5];expect=SaStatus.capacity;}
+        else if c==6 {oi=out[0..<5];expect=SaStatus.capacity;}else if c==7 {fi=fr[0..<1];expect=SaStatus.capacity;}
+        else if c==8 {ms=0;expect=SaStatus.number;}else {nope=253;expect=SaStatus.shape;}
+        out[0]=-7;#assert sa_place(true,nope,rope,xi,p,fi,ms,oi).status==expect && out[0]==-7;
+    }
+    bad:=x;bad[4]=so_nan();#assert sa_place(false,2,4,bad[..],0,fr[..],1,out[..]).status==SaStatus.number && out[0]==-7;
+    for i:0..<2 {bf:=fr;bf[i]=so_inf();#assert sa_place(false,2,4,x[..],0,bf[..],1,out[..]).status==SaStatus.number;}
+    #assert sa_place(false,2,4,x[..],0,fr[..],so_inf(),out[..]).status==SaStatus.number;
+    #assert sa_place(false,2,4,x[..],0,fr[..],1,out[0..<6]).status==SaStatus.ok;
+    edge:[256]f64;eo:[256]f64;ef:[128]f64;#assert sa_place(true,0,256,edge[..],SA_CONTEXT_MAX-1,ef[..],1,eo[..]).status==SaStatus.ok;
+    #assert sa_place(true,0,2,x[0..<2],0,fr[0..<1],1,out[..]).status==SaStatus.ok;
+}
+#test "KV sharing: Large 4's pinned map, exact cache accounting, a shared read is the source's state" {
+    width:[72]int;for l:0..<72 {width[l]=ML4_KV_ROW;}
+    ksrc:=ML4_KV_SOURCE;krot:=ML4_ROTARY;
+    m:=sa_map(ksrc[..],krot[..],width[..]);
+    #assert m.status==SaStatus.ok && m.layers==72 && m.owners==63 && m.at==-1;
+    c:=sa_cache(ksrc[..],krot[..],width[..],1048576,1);
+    #assert c.status==SaStatus.ok && c.shared==63*576 && c.unshared==72*576 && c.shared_bytes==63*576*1048576 && c.unshared_bytes==72*576*1048576;
+    c=sa_cache(ksrc[..],krot[..],width[..],1,2);#assert c.shared_bytes==63*576*2 && c.unshared_bytes==72*576*2;
+    c=sa_cache(ksrc[..],krot[..],width[..],3,4);#assert c.shared_bytes==63*576*12;
+    // A small model in Large 4's pattern: rope, rope, rope, nope twice; layer 7 reads layer 3.
+    src:=[8]int.[0,1,2,3,4,5,6,3];rot:=[8]u8.[1,1,1,0,1,1,1,0];wd:=[8]int.[3,3,3,2,3,3,3,2];tokens:=4;
+    sm:=sa_map(src[..],rot[..],wd[..]);#assert sm.status==SaStatus.ok && sm.owners==7;
+    sc:=sa_cache(src[..],rot[..],wd[..],tokens,4);#assert sc.shared==20 && sc.unshared==22 && sc.shared_bytes==320 && sc.unshared_bytes==352;
+    cache:[80]f64;for i:0..<80 {cache[i]=-7;}written:=0;
+    for l:0..<8 {at:=sa_offset(src[..],wd[..],tokens,l);#assert at>=0;
+        if src[l]==l {for i:0..<tokens*wd[l] {cache[at+i]=f64(100*l+i);written+=1;}}}
+    #assert written==sc.shared*tokens && 4*written==sc.shared_bytes && cache[79]==f64(100*6+11);
+    #assert sa_offset(src[..],wd[..],tokens,7)==sa_offset(src[..],wd[..],tokens,3) && sa_offset(src[..],wd[..],tokens,3)==36 && sa_offset(src[..],wd[..],tokens,4)==44;
+    seven:=sa_offset(src[..],wd[..],tokens,7);for i:0..<8 {#assert cache[seven+i]==f64(300+i);}
+    #assert sa_offset(src[..],wd[..],tokens,0)==0 && sa_offset(src[..],wd[..],tokens,8)== -1 && sa_offset(src[..],wd[..],tokens,-1)== -1;
+    // Refusals name the first bad layer.
+    for k:0..<9 {
+        s:=src;r:=rot;w:=wd;expect:=SaStatus.later;at:=7;
+        if k==0 {s[7]=8;}else if k==1 {s[2]=3;at=2;}else if k==2 {s[7]= -1;expect=SaStatus.range;}
+        else if k==3 {s[5]=4;s[7]=5;expect=SaStatus.chain;}else if k==4 {w[7]=3;expect=SaStatus.mismatch;}
+        else if k==5 {s[7]=2;w[7]=3;expect=SaStatus.mismatch;}else if k==6 {w[1]=0;at=1;expect=SaStatus.shape;}
+        else if k==7 {r[6]=2;at=6;expect=SaStatus.shape;}else {w[0]=SA_ROW_MAX+1;at=0;expect=SaStatus.shape;}
+        got:=sa_map(s[..],r[..],w[..]);#assert got.status==expect && got.at==at && got.owners==0;
+        #assert sa_cache(s[..],r[..],w[..],1,1).status==expect;
+    }
+    #assert sa_map(src[0..<1],rot[0..<1],wd[0..<1]).status==SaStatus.ok && sa_map(src[0..<0],rot[0..<0],wd[0..<0]).at==-1;
+    #assert sa_map(src[0..<0],rot[0..<0],wd[0..<0]).status==SaStatus.capacity && sa_map(src[..],rot[0..<7],wd[..]).status==SaStatus.capacity && sa_map(src[..],rot[..],wd[0..<7]).status==SaStatus.capacity;
+    big:[129]int;br:[129]u8;bw:[129]int;for l:0..<129 {big[l]=l;bw[l]=1;}
+    #assert sa_map(big[0..<128],br[0..<128],bw[0..<128]).status==SaStatus.ok && sa_map(big[..],br[..],bw[..]).status==SaStatus.capacity;
+    edge:=wd;edge[3]=SA_ROW_MAX;edge[7]=SA_ROW_MAX;#assert sa_map(src[..],rot[..],edge[..]).status==SaStatus.ok;
+    for b:0..<6 {#assert (sa_cache(src[..],rot[..],wd[..],1,b).status==SaStatus.ok)==(b==1 || b==2 || b==4);}
+    #assert sa_cache(src[..],rot[..],wd[..],0,1).status==SaStatus.range && sa_cache(src[..],rot[..],wd[..],SA_CONTEXT_MAX+1,1).status==SaStatus.range;
+    #assert sa_cache(src[..],rot[..],wd[..],SA_CONTEXT_MAX,1).status==SaStatus.ok && sa_cache(src[..],rot[..],wd[..],3,5).shared==0;
+}
+#test "refusals: bad k, short buffers, non-finite inputs and bad selections" {
+    q:=[4]f64.[1,0,0,1];w:=[2]f64.[1,0.5];codes:=so_hand_codes();scales:=[4]u8.[127,127,127,127];out:=[4]f64.[-7,-7,-7,-7];
+    for c:0..<13 {
+        h:=2;wd:=2;n:=4;qi:=q[..];wi:=w[..];ci:=codes[..];si:=scales[..];oi:=out[..];expect:=SaStatus.capacity;
+        bq:=q;bw:=w;bc:=codes;bs:=scales;
+        if c==0 {h=0;expect=SaStatus.shape;}else if c==1 {wd=0;expect=SaStatus.shape;}else if c==2 {n=0;expect=SaStatus.range;}
+        else if c==3 {qi=q[0..<3];}else if c==4 {wi=w[0..<1];}else if c==5 {ci=codes[0..<7];}else if c==6 {si=scales[0..<3];}else if c==7 {oi=out[0..<3];}
+        else if c==8 {bq[1]=so_nan();qi=bq[..];expect=SaStatus.number;}
+        else if c==9 {bw[1]=so_inf();wi=bw[..];expect=SaStatus.number;}
+        else if c==10 {bc[5]=0xff;ci=bc[..];expect=SaStatus.number;}else if c==11 {bs[2]=255;si=bs[..];expect=SaStatus.number;}
+        else {h=65;expect=SaStatus.shape;}
+        #assert sa_index(h,wd,n,qi,wi,ci,si,oi).status==expect && out[0]==-7;
+    }
+    #assert sa_index(1,257,1,q[..],w[..],codes[..],scales[..],out[..]).status==SaStatus.shape;
+    #assert sa_index(2,2,4,q[..],w[..],codes[..],scales[..],out[..]).status==SaStatus.ok && sa_index(2,2,1,q[..],w[..],codes[0..<2],scales[0..<1],out[0..<1]).status==SaStatus.ok;
+    wide:[256]f64;wc:[256]u8;ws:=[1]u8.[127];ww:=[1]f64.[1];wo:[1]f64;#assert sa_index(1,256,1,wide[..],ww[..],wc[..],ws[..],wo[..]).status==SaStatus.ok;
+    many:[64]f64;mw:[64]f64;mc:[1]u8;mo:[1]f64;#assert sa_index(64,1,1,many[..],mw[..],mc[..],ws[..],mo[..]).status==SaStatus.ok;
+    // A score that overflows stops the scorer at that key; earlier scores stay written.
+    huge:=[4]f64.[1.0e200,0,0,1.0e200];hw:=[2]f64.[1.0e100,0.5];hs:=[4]u8.[127,254,127,127];part:=[4]f64.[-7,-7,-7,-7];
+    hr:=sa_index(2,2,4,huge[..],hw[..],codes[..],hs[..],part[..]);
+    #assert hr.status==SaStatus.number && hr.written==1 && part[0]>=1.0e300 && part[0]<1.0001e300 && part[1]==-7;
+    // Selection.
+    sc:=[4]f64.[1.5,2,2,0.75];ids:=[4]int.[-1,-1,-1,-1];
+    #assert sa_select(sc[..],4,0,ids[..]).status==SaStatus.range && sa_select(sc[..],4,SA_TOPK_MAX+1,ids[..]).status==SaStatus.range;
+    #assert sa_select(sc[..],4,SA_TOPK_MAX,ids[..]).status==SaStatus.ok;
+    #assert sa_select(sc[..],0,1,ids[..]).status==SaStatus.capacity && sa_select(sc[..],5,1,ids[..]).status==SaStatus.capacity;
+    #assert sa_select(sc[..],4,3,ids[0..<2]).status==SaStatus.capacity && sa_select(sc[..],2,3,ids[0..<1]).status==SaStatus.capacity;
+    ids[0]=-1;#assert sa_select(sc[..],1,1,ids[..]).status==SaStatus.ok && ids[0]==0;
+    ids[0]=-1;#assert sa_select(sc[..],4,3,ids[0..<3]).status==SaStatus.ok && sa_select(sc[..],2,3,ids[0..<2]).status==SaStatus.ok && ids[0]==0 && ids[1]==1;
+    bad:=sc;bad[3]=so_nan();ids[0]=-1;#assert sa_select(bad[..],4,1,ids[..]).status==SaStatus.number && ids[0]==-1;
+    #assert sa_select(bad[..],3,1,ids[..]).status==SaStatus.ok;
+    bad[0]=so_nan();ids[0]=-1;#assert sa_select(bad[..],1,1,ids[..]).status==SaStatus.number && ids[0]==-1;
+    // Attention.
+    aq:=[2]f64.[1,0];keys:[8]f64;values:=[4]f64.[10,4,2,2];o:=[2]f64.[-7,-7];work:[4]f64;sel:=[2]int.[1,2];mask:=[4]u8.[0,1,1,0];
+    for c:0..<22 {
+        h:=1;dk:=2;dv:=1;n:=4;qi:=aq[..];ki:=keys[..];vi:=values[..];si:=sel[..];mi:=mask[..];sc2:=1.0;cap:=0.0;oi:=o[..];wi:=work[..];expect:=SaStatus.capacity;
+        bk:=keys;bs:=[2]int.[1,1];zero:=[4]u8.[0,0,0,0];
+        if c==0 {h=0;expect=SaStatus.shape;}else if c==1 {dk=0;expect=SaStatus.shape;}else if c==2 {dv=0;expect=SaStatus.shape;}
+        else if c==3 {dv=257;expect=SaStatus.shape;}else if c==4 {n=0;expect=SaStatus.range;}
+        else if c==5 {qi=aq[0..<1];}else if c==6 {ki=keys[0..<7];}else if c==7 {vi=values[0..<3];}else if c==8 {oi=o[0..<0];}
+        else if c==9 {sc2=0;expect=SaStatus.number;}else if c==10 {cap= -1;expect=SaStatus.number;}
+        else if c==11 {sc2=so_inf();expect=SaStatus.number;}else if c==12 {cap=so_inf();expect=SaStatus.number;}
+        else if c==13 {bk[3]=so_nan();ki=bk[..];expect=SaStatus.number;}
+        else if c==14 {si=bs[..];mi=zero[..];expect=SaStatus.range;}else if c==15 {bs[0]= -1;bs[1]=0;si=bs[..];mi=mask[0..<3];}
+        else if c==16 {bs[0]=2;bs[1]=4;si=bs[..];mi=mask[..];wi=work[0..<3];}
+        else if c==17 {si=sel[0..<0];expect=SaStatus.range;mi=zero[..];}
+        else if c==18 {bs[0]=0;bs[1]=4;si=bs[..];expect=SaStatus.range;mi=zero[..];}
+        else if c==19 {aq[0]=so_nan();expect=SaStatus.number;}
+        else if c==20 {values[2]=so_inf();expect=SaStatus.number;}
+        else {cap=so_nan();expect=SaStatus.number;}
+        s:=sa_attend(h,dk,dv,n,qi,ki,vi,si,sc2,cap,oi,wi);d:=sa_dense(h,dk,dv,n,qi,ki,vi,mi,sc2,cap,oi,wi);
+        if c==15 {#assert s.status==SaStatus.range && d.status==SaStatus.capacity;}
+        else if c==16 {#assert s.status==SaStatus.range && d.status==SaStatus.capacity;}
+        else {#assert s.status==expect && d.status==expect;}
+        #assert o[0]==-7;aq[0]=1;values[2]=2;
+    }
+    five:=[5]int.[0,1,2,3,3];#assert sa_attend(1,2,1,4,aq[..],keys[..],values[..],five[..],1,0,o[..],work[..]).status==SaStatus.range;
+    #assert sa_attend(1,2,1,4,aq[..],keys[..],values[..],sel[..],1,0,o[..],work[0..<2]).status==SaStatus.ok && o[0]==3;
+    nan:=[2]f64.[so_nan(),1];#assert sa_attend(1,2,1,4,aq[..],keys[..],values[..],sel[..],nan[0],0,o[..],work[..]).status==SaStatus.number;
+    big:[257]f64;#assert sa_attend(1,257,1,1,big[0..<257],big[0..<257],big[0..<1],sel[0..<1],1,0,o[..],work[..]).status==SaStatus.shape;
+    #assert sa_attend(65,1,1,1,big[0..<65],big[0..<1],big[0..<1],sel[0..<0],1,0,o[..],work[..]).status==SaStatus.shape;
+    z1:=[1]int.[0];flat:[256]f64;fo:[256]f64;#assert sa_attend(64,1,1,1,flat[0..<64],flat[0..<1],flat[0..<1],z1[..],1,0,fo[0..<64],work[..]).status==SaStatus.ok;
+    #assert sa_dense(1,256,256,1,flat[..],flat[..],flat[..],mask[1..<2],1,0,fo[..],work[..]).status==SaStatus.ok;
+    #assert sa_attend(1,2,1,4,aq[..],keys[..],values[..],sel[..],1,0,o[0..<1],work[..]).status==SaStatus.ok && o[0]==3;
+    // A kept logit of -1e300 still outweighs every masked key.
+    lq:=[1]f64.[-1];lk:=[2]f64.[5,1.0e300];lv:=[2]f64.[10,2];lm:=[2]u8.[0,1];lo:[1]f64;lw:[2]f64;
+    #assert sa_dense(1,1,1,2,lq[..],lk[..],lv[..],lm[..],1,0,lo[..],lw[..]).status==SaStatus.ok && lo[0]==2;
+}
+
+sa_finite :: (x:f64)->bool {return x-x==0;}
+sa_all_finite :: (a:[]f64)->bool {for v:a {if !sa_finite(v) {return false;}}return true;}
+sa_shape :: (heads:int,width:int)->bool {return heads>=1 && heads<=SA_HEADS_MAX && width>=1 && width<=SA_WIDTH_MAX;}
+sa_dot :: (a:[]f64,ai:int,b:[]f64,bi:int,n:int)->f64 {
+    acc:PsionicAccumulator;for i:0..<n {acc=psionic_ops_accumulate(acc,a[ai+i]*b[bi+i]);}return psionic_ops_total(acc);
+}
+
+// book:begin index
+// Scores n keys for one query: the sum over indexer heads j of
+// weight_j * max(0, q_j . k_s). Keys are FP8 E4M3 codes, width per key, with
+// one UE8M0 scale per key. A score that is not finite stops the scorer.
+sa_index :: (heads:int,width:int,n:int,q:[]f64,weights:[]f64,codes:[]u8,scales:[]u8,out:[]f64)->SaResult {
+    if !sa_shape(heads,width) {return SaResult.{status=SaStatus.shape};}
+    if n<1 {return SaResult.{status=SaStatus.range};}
+    if q.count!=heads*width || weights.count!=heads || codes.count!=n*width || scales.count!=n || out.count<n {return SaResult.{status=SaStatus.capacity};}
+    if !sa_all_finite(q) || !sa_all_finite(weights) {return SaResult.{status=SaStatus.number};}
+    for c:codes {if fp8_nan(c) {return SaResult.{status=SaStatus.number};}}
+    for c:scales {if c==255 {return SaResult.{status=SaStatus.number};}}
+    for s:0..<n {
+        unit:=fp8_power(scales[s]);total:PsionicAccumulator;
+        for j:0..<heads {
+            dot:PsionicAccumulator;
+            for i:0..<width {dot=psionic_ops_accumulate(dot,q[j*width+i]*(fp8_unit(codes[s*width+i])*unit));}
+            d:=psionic_ops_total(dot);
+            total=psionic_ops_accumulate(total,weights[j]*((d+abs(d))/2));
+        }
+        score:=psionic_ops_total(total);
+        if !sa_finite(score) {return SaResult.{status=SaStatus.number,written=s};}
+        out[s]=score;
+    }
+    return SaResult.{written=n};
+}
+// book:end index
+
+// book:begin select
+// The top k of scores[0..n): larger scores first, an equal score to the
+// earlier position. ids receives the chosen positions in increasing order;
+// written is min(k, n).
+sa_select :: (scores:[]f64,n:int,k:int,ids:[]int)->SaResult {
+    if k<1 || k>SA_TOPK_MAX {return SaResult.{status=SaStatus.range};}
+    if n<1 || scores.count<n || (ids.count<k && ids.count<n) {return SaResult.{status=SaStatus.capacity};}
+    for t:0..<n {if !sa_finite(scores[t]) {return SaResult.{status=SaStatus.number};}}
+    // ids[0..count) holds the best so far, best first.
+    count:=0;
+    for t:0..<n {
+        j:=count;
+        if count<k {count+=1;}else if scores[t]>scores[ids[k-1]] {j=k-1;}else {continue;}
+        while j>0 && scores[t]>scores[ids[j-1]] {ids[j]=ids[j-1];j-=1;}
+        ids[j]=t;
+    }
+    // The last kept key is the threshold; keep everything that beats it, in position order.
+    last:=scores[ids[count-1]];at:=ids[count-1];c:=0;
+    for t:0..<n {if scores[t]>last || (scores[t]==last && t<=at) {ids[c]=t;c+=1;}}
+    return SaResult.{written=count};
+}
+// book:end select
+
+// book:begin cap
+// Soft-capping: cap * tanh(x / cap), and its slope 1 - tanh(x / cap)^2.
+// A cap of 0 leaves x alone.
+sa_tanh :: (a:f64)->f64 {t:=exp(-2*abs(a));v:=(1-t)/(1+t);if a<0 {return -v;}return v;}
+sa_cap :: (x:f64,cap:f64)->f64 {if cap==0 {return x;}return cap*sa_tanh(x/cap);}
+sa_slope :: (x:f64,cap:f64)->f64 {if cap==0 {return 1;}t:=sa_tanh(x/cap);return 1-t*t;}
+sa_logit :: (dot:f64,scale:f64,cap:f64)->f64 {return sa_cap(dot*scale,cap);}
+// book:end cap
+
+sa_argmax :: (a:[]f64)->int {best:=0;for i:1..<a.count {if a[i]>a[best] {best=i;}}return best;}
+sa_check :: (heads:int,dk:int,dv:int,n:int,q:[]f64,keys:[]f64,values:[]f64,scale:f64,cap:f64,out:[]f64)->SaStatus {
+    if !sa_shape(heads,dk) || dv<1 || dv>SA_WIDTH_MAX {return SaStatus.shape;}
+    if n<1 {return SaStatus.range;}
+    if q.count!=heads*dk || keys.count!=n*dk || values.count!=n*dv || out.count<heads*dv {return SaStatus.capacity;}
+    if !(scale>0) || !sa_finite(scale) || !(cap>=0) || !sa_finite(cap) {return SaStatus.number;}
+    if !sa_all_finite(q) || !sa_all_finite(keys) || !sa_all_finite(values) {return SaStatus.number;}
+    return SaStatus.ok;
+}
+
+// book:begin attend
+// Multi-query attention over the selected keys only: every head reads the
+// same keys and values. ids must increase and lie in 0..n-1.
+sa_attend :: (heads:int,dk:int,dv:int,n:int,q:[]f64,keys:[]f64,values:[]f64,ids:[]int,scale:f64,cap:f64,out:[]f64,work:[]f64)->SaResult {
+    status:=sa_check(heads,dk,dv,n,q,keys,values,scale,cap,out);if status!=SaStatus.ok {return SaResult.{status=status};}
+    m:=ids.count;if m<1 {return SaResult.{status=SaStatus.range};}
+    for i:0..<m {if ids[i]<0 || ids[i]>=n || (i>0 && ids[i]<=ids[i-1]) {return SaResult.{status=SaStatus.range};}}
+    if work.count<m {return SaResult.{status=SaStatus.capacity};}
+    for h:0..<heads {
+        for i:0..<m {work[i]=sa_logit(sa_dot(q,h*dk,keys,ids[i]*dk,dk),scale,cap);}
+        top:=work[sa_argmax(work[0..<m])];sum:PsionicAccumulator;
+        for i:0..<m {work[i]=exp(work[i]-top);sum=psionic_ops_accumulate(sum,work[i]);}
+        den:=psionic_ops_total(sum);
+        for j:0..<dv {acc:PsionicAccumulator;for i:0..<m {acc=psionic_ops_accumulate(acc,work[i]*values[ids[i]*dv+j]);}out[h*dv+j]=psionic_ops_total(acc)/den;}
+    }
+    return SaResult.{written=heads*dv};
+}
+// book:end attend
+
+// book:begin dense
+// The same attention over every key, with each unmasked key's logit set to
+// minus infinity: its weight exp(-inf) is exactly 0.
+sa_dense :: (heads:int,dk:int,dv:int,n:int,q:[]f64,keys:[]f64,values:[]f64,mask:[]u8,scale:f64,cap:f64,out:[]f64,work:[]f64)->SaResult {
+    status:=sa_check(heads,dk,dv,n,q,keys,values,scale,cap,out);if status!=SaStatus.ok {return SaResult.{status=status};}
+    if mask.count!=n || work.count<n {return SaResult.{status=SaStatus.capacity};}
+    any:=false;for t:0..<n {if mask[t]!=0 {any=true;}}
+    if !any {return SaResult.{status=SaStatus.range};}
+    hole:=-1.0e300;hole*=1.0e300;   // minus infinity
+    for h:0..<heads {
+        for t:0..<n {work[t]=hole;if mask[t]!=0 {work[t]=sa_logit(sa_dot(q,h*dk,keys,t*dk,dk),scale,cap);}}
+        top:=work[sa_argmax(work[0..<n])];sum:PsionicAccumulator;
+        for t:0..<n {work[t]=exp(work[t]-top);sum=psionic_ops_accumulate(sum,work[t]);}
+        den:=psionic_ops_total(sum);
+        for j:0..<dv {acc:PsionicAccumulator;for t:0..<n {acc=psionic_ops_accumulate(acc,work[t]*values[t*dv+j]);}out[h*dv+j]=psionic_ops_total(acc)/den;}
+    }
+    return SaResult.{written=heads*dv};
+}
+// book:end dense
+
+// book:begin yarn
+// YaRN inverse frequencies for pairs 0..dim/2-1. Pair i turns
+// original * theta^(-2i/dim) / (2 pi) times over the original context.
+// Pairs at or below low (at least fast turns) keep their frequency; pairs at
+// or above high (at most slow turns) are divided by factor; pairs between
+// blend linearly. fast >= 2 slow keeps low < high; a band outside 0..dim-1
+// is refused.
+sa_yarn :: (y:SaYarn,freqs:[]f64)->SaBands {
+    if y.dim%2!=0 || y.dim<2 || y.dim/2>SA_PAIRS_MAX {return SaBands.{status=SaStatus.shape};}
+    if !(y.theta>1) || !(y.factor>=1) || !(y.slow>0) || !(y.fast>=2*y.slow) || !(y.attention>0) {return SaBands.{status=SaStatus.number};}
+    if !sa_finite(y.theta) || !sa_finite(y.factor) || !sa_finite(y.fast) || !sa_finite(y.attention) {return SaBands.{status=SaStatus.number};}
+    if y.original<1 || f64(y.original)*y.factor>f64(SA_CONTEXT_MAX) {return SaBands.{status=SaStatus.range};}
+    if freqs.count<y.dim/2 {return SaBands.{status=SaStatus.capacity};}
+    d:=f64(y.dim)/(2*log(y.theta));
+    low:=floor(d*log(f64(y.original)/(y.fast*2*SA_PI)));
+    high:=-floor(-d*log(f64(y.original)/(y.slow*2*SA_PI)));
+    if low<0 || high>f64(y.dim-1) {return SaBands.{status=SaStatus.range};}
+    for i:0..<y.dim/2 {
+        base:=exp(-f64(2*i)/f64(y.dim)*log(y.theta));
+        r:=(f64(i)-low)/(high-low);r=(r+abs(r))/2;r=1-((1-r)+abs(1-r))/2;
+        freqs[i]=base*(1-r)+base/y.factor*r;
+    }
+    return SaBands.{low=int(low),high=int(high),positions=int(f64(y.original)*y.factor)};
+}
+// book:end yarn
+
+// book:begin place
+// Places a query or key row (nope values, then rope values) at a position.
+// A rotary layer rotates the rope values in split halves, pair i being
+// (i, i + rope/2), by position * freqs[i], with cos and sin multiplied by
+// the attention factor; a NoPE layer copies them unchanged.
+sa_place :: (rotary:bool,nope:int,rope:int,x:[]f64,position:int,freqs:[]f64,attention:f64,out:[]f64)->SaResult {
+    if nope<0 || rope<2 || rope%2!=0 || nope+rope>SA_WIDTH_MAX {return SaResult.{status=SaStatus.shape};}
+    if position<0 || position>=SA_CONTEXT_MAX {return SaResult.{status=SaStatus.range};}
+    if x.count!=nope+rope || out.count<nope+rope || freqs.count<rope/2 {return SaResult.{status=SaStatus.capacity};}
+    if !sa_all_finite(x) || !sa_all_finite(freqs[0..<rope/2]) || !(attention>0) || !sa_finite(attention) {return SaResult.{status=SaStatus.number};}
+    for i:0..<nope+rope {out[i]=x[i];}
+    if rotary {
+        h:=rope/2;
+        for i:0..<h {
+            angle:=f64(position)*freqs[i];c:=cos(angle)*attention;s:=sin(angle)*attention;
+            a:=x[nope+i];b:=x[nope+h+i];
+            out[nope+i]=a*c-b*s;out[nope+h+i]=a*s+b*c;
+        }
+    }
+    return SaResult.{written=nope+rope};
+}
+// book:end place
+
+// book:begin map
+// Checks a KV sharing map. source[l] is the layer whose KV layer l reads (l
+// itself when it keeps its own). A source must not be later, must keep its
+// own KV, and must match the reader's row width and position kind (rotary 1,
+// NoPE 0).
+sa_map :: (source:[]int,rotary:[]u8,width:[]int)->SaMap {
+    n:=source.count;
+    if n<1 || n>SA_LAYERS_MAX || rotary.count!=n || width.count!=n {return SaMap.{status=SaStatus.capacity,at=-1};}
+    owners:=0;
+    for l:0..<n {
+        s:=source[l];bad:=SaStatus.ok;
+        if width[l]<1 || width[l]>SA_ROW_MAX || rotary[l]>1 {bad=SaStatus.shape;}
+        else if s<0 {bad=SaStatus.range;}
+        else if s>l {bad=SaStatus.later;}
+        else if source[s]!=s {bad=SaStatus.chain;}
+        else if width[s]!=width[l] || rotary[s]!=rotary[l] {bad=SaStatus.mismatch;}
+        if bad!=SaStatus.ok {return SaMap.{status=bad,layers=n,at=l};}
+        if s==l {owners+=1;}
+    }
+    return SaMap.{layers=n,owners=owners,at=-1};
+}
+// book:end map
+
+// book:begin cache
+// Exact cache values per token with sharing (owners only) and without (every
+// layer), and bytes for tokens at 1, 2 or 4 bytes a value.
+sa_cache :: (source:[]int,rotary:[]u8,width:[]int,tokens:int,bytes:int)->SaCache {
+    m:=sa_map(source,rotary,width);if m.status!=SaStatus.ok {return SaCache.{status=m.status};}
+    if tokens<1 || tokens>SA_CONTEXT_MAX || (bytes!=1 && bytes!=2 && bytes!=4) {return SaCache.{status=SaStatus.range};}
+    c:SaCache;
+    for l:0..<source.count {c.unshared+=width[l];if source[l]==l {c.shared+=width[l];}}
+    c.shared_bytes=c.shared*tokens*bytes;c.unshared_bytes=c.unshared*tokens*bytes;
+    return c;
+}
+// Where layer l's KV starts in a cache that stores each owner's tokens x width
+// values in layer order. A sharing layer gets its source's offset. Call it
+// on a map sa_map accepts; a layer outside the map gives -1.
+sa_offset :: (source:[]int,width:[]int,tokens:int,layer:int)->int {
+    if layer<0 || layer>=source.count {return -1;}
+    at:=0;for o:0..<source[layer] {if source[o]==o {at+=width[o]*tokens;}}
+    return at;
+}
+// book:end cache

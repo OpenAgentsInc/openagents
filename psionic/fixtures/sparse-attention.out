@@ -1,0 +1,36 @@
+profile sparse-attention-cpu-f64-v1, tolerance 1e-12 x (1 + |oracle|)
+hand indexer scores 1.5 2.0 2.0 0.75
+  top 1: keys 1
+  top 2: keys 1 2
+  top 3: keys 0 1 2
+  attention over keys 1 and 2: sparse 3.0, masked dense 3.0, every key 4.5
+generated: 12 indexer scores equal the oracle's true; keys 2 and 7 tie at 3.9736328125
+  k 3: 3 keys, brute force agrees true, sparse = masked dense bit for bit true, = every key false, oracle gap 0.0
+  k 6: 6 keys, brute force agrees true, sparse = masked dense bit for bit true, = every key false, oracle gap 6.910406069286122e-17
+  k 11: 11 keys, brute force agrees true, sparse = masked dense bit for bit true, = every key false, oracle gap 4.640850727473248e-17
+  k 2048: 12 keys, brute force agrees true, sparse = masked dense bit for bit true, = every key true, oracle gap 2.3532612866991853e-17
+Large 4 map: ok, 72 layers, 63 keep their own KV, 18 NoPE layers, layer 71 reads layer 35
+  KV values per token: 36288 shared, 41472 unshared; at 1048576 tokens and 1 byte: 38050725888 and 43486543872 bytes
+  indexer: 44 of 72 layers marked full, 5632 index values per token against 9216
+small shared model, 4 tokens, f32: 320 bytes shared, 352 unshared; layer 7 reads offset 36 (layer 3's), first values 300.0 301.0
+rotary scores, positions (7,3) 3.8963223124948048 (1007,1003) 3.8963223124948043 (7,4) 2.973822799109444
+NoPE scores, positions (7,3) 1.875 (900000,2) 1.875
+cap 30: x 0.0 -> 0.0, slope 1.0
+cap 30: x 30.0 -> 22.847824678672946, slope 0.41997434161402614
+cap 30: x 60.0 -> 28.920827402274504, slope 0.07065082485316465
+cap 30: x 90.0 -> 29.851642610601917, slope 0.00986603716543999
+YaRN: ok, low 3, high 16, positions 1048576
+  pair 0: frequency 1.0, wavelength 6.283185307179586 positions
+  pair 3: frequency 0.4216965034285822, wavelength 14.899780425245321 positions
+  pair 4: frequency 0.29191443079161006, wavelength 21.52406542609394 positions
+  pair 8: frequency 0.06155724158653845, wavelength 102.07061176298086 positions
+  pair 16: frequency 4.8828124999999976e-06, wavelength 1286796.35091038 positions
+  pair 31: frequency 6.511335117984979e-08, wavelength 96496113.21378285 positions
+refused: k 0: range; k 2049: range
+refused: a NaN score: number
+refused: layer 2 reads layer 5: later at layer 2
+refused: layer 7 reads layer 5, which reads layer 4: chain at layer 7
+refused: NoPE layer 7 reads rotary layer 2: mismatch at layer 7
+refused: width 3 reads width 2: mismatch at layer 7
+refused: YaRN fast 1.5 against slow 1: number
+refused: a NaN indexer query: number

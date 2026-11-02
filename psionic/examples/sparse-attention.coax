@@ -1,0 +1,89 @@
+#import "Basic";
+#load "../lib/sparse-attention.coax";
+
+// book:begin example
+main :: () {
+    print("profile sparse-attention-cpu-f64-v1, tolerance % x (1 + |oracle|)\n",SA_TOLERANCE);
+    // The hand case: two indexer heads, four FP8 keys [1 1] [2 -1] [-1 4] [0.5 0.5].
+    q:=[4]f64.[1,0,0,1];w:=[2]f64.[1,0.5];codes:=so_hand_codes();scales:=[4]u8.[127,127,127,127];scores:[4]f64;
+    r:=sa_index(2,2,4,q[..],w[..],codes[..],scales[..],scores[..]);#assert r.status==SaStatus.ok;
+    print("hand indexer scores % % % %\n",scores[0],scores[1],scores[2],scores[3]);
+    for k:1..<4 {ids:[4]int;s:=sa_select(scores[..],4,k,ids[..]);#assert s.status==SaStatus.ok;
+        print("  top %: keys",k);for i:0..<s.written {print(" %",ids[i]);}print("\n");}
+    aq:=[2]f64.[1,0];keys:[8]f64;values:=[4]f64.[10,4,2,2];o:[1]f64;work:[4]f64;
+    sel:=[2]int.[1,2];mask:=[4]u8.[0,1,1,0];every:=[4]int.[0,1,2,3];
+    #assert sa_attend(1,2,1,4,aq[..],keys[..],values[..],sel[..],1,0,o[..],work[..]).status==SaStatus.ok;sparse:=o[0];
+    #assert sa_dense(1,2,1,4,aq[..],keys[..],values[..],mask[..],1,0,o[..],work[..]).status==SaStatus.ok;dense:=o[0];
+    #assert sa_attend(1,2,1,4,aq[..],keys[..],values[..],every[..],1,0,o[..],work[..]).status==SaStatus.ok;
+    print("  attention over keys 1 and 2: sparse %, masked dense %, every key %\n",sparse,dense,o[0]);
+
+    // A generated case: 3 indexer heads of width 4, 12 keys, 2 attention heads.
+    n:=12;gq:[12]f64;for i:0..<12 {gq[i]=so_value(i+2,13);}gw:=[3]f64.[1,0.5,0.25];
+    gc:[48]u8;for i:0..<48 {gc[i]=so_code(i);}gs:[12]u8;for i:0..<n {gs[i]=cast(u8)(126+i%3);}
+    for i:0..<4 {gc[28+i]=gc[8+i];}gs[7]=gs[2];
+    gscore:[12]f64;ref:[12]f64;#assert sa_index(3,4,n,gq[..],gw[..],gc[..],gs[..],gscore[..]).status==SaStatus.ok;
+    so_index(3,4,n,gq[..],gw[..],gc[..],gs[..],ref[..]);
+    equal:=true;for i:0..<n {if gscore[i]!=ref[i] {equal=false;}}
+    print("generated: 12 indexer scores equal the oracle's %; keys 2 and 7 tie at %\n",equal,gscore[2]);
+    hq:[12]f64;for i:0..<12 {hq[i]=so_value(i+5,11);}hk:[72]f64;for i:0..<72 {hk[i]=so_value(i+3,17);}
+    hv:[60]f64;for i:0..<60 {hv[i]=so_value(i+7,19);}all:[12]u8;for t:0..<n {all[t]=1;}
+    full:[10]f64;fw:[12]f64;#assert sa_dense(2,6,5,n,hq[..],hk[..],hv[..],all[..],0.5,0,full[..],fw[..]).status==SaStatus.ok;
+    ks:=[4]int.[3,6,11,2048];
+    for c:0..<4 {
+        ids:[12]int;chosen:[12]u8;gm:[12]u8;s:=sa_select(gscore[..],n,ks[c],ids[..]);#assert s.status==SaStatus.ok;
+        so_topk(gscore[..],n,ks[c],chosen[..]);same:=true;at:=0;
+        for t:0..<n {if chosen[t]==1 {if ids[at]!=t {same=false;}at+=1;gm[t]=1;}}
+        a:[10]f64;d:[10]f64;oracle:[10]f64;
+        #assert sa_attend(2,6,5,n,hq[..],hk[..],hv[..],ids[0..<s.written],0.5,0,a[..],fw[..]).status==SaStatus.ok;
+        #assert sa_dense(2,6,5,n,hq[..],hk[..],hv[..],gm[..],0.5,0,d[..],fw[..]).status==SaStatus.ok;
+        so_attend(2,6,5,n,hq[..],hk[..],hv[..],chosen[..],0.5,0,oracle[..]);
+        bits:=true;asfull:=true;for i:0..<10 {if f64_bits(a[i])!=f64_bits(d[i]) {bits=false;}if f64_bits(a[i])!=f64_bits(full[i]) {asfull=false;}}
+        print("  k %: % keys, brute force agrees %, sparse = masked dense bit for bit %, = every key %, oracle gap %\n",
+            ks[c],s.written,same && at==s.written,bits,asfull,so_gap(a[..],oracle[..]));
+    }
+
+    // Mistral Large 4's pinned maps.
+    src:=ML4_KV_SOURCE;rot:=ML4_ROTARY;row:[72]int;for l:0..<72 {row[l]=ML4_KV_ROW;}
+    m:=sa_map(src[..],rot[..],row[..]);
+    nope:=0;for l:0..<72 {if rot[l]==0 {nope+=1;}}full_index:=0;for l:0..<72 {if ML4_INDEXER_FULL[l]==1 {full_index+=1;}}
+    print("Large 4 map: %, % layers, % keep their own KV, % NoPE layers, layer 71 reads layer %\n",m.status,m.layers,m.owners,nope,src[71]);
+    c:=sa_cache(src[..],rot[..],row[..],1048576,1);
+    print("  KV values per token: % shared, % unshared; at 1048576 tokens and 1 byte: % and % bytes\n",c.shared,c.unshared,c.shared_bytes,c.unshared_bytes);
+    print("  indexer: % of 72 layers marked full, % index values per token against %\n",full_index,full_index*ML4_INDEX_WIDTH,72*ML4_INDEX_WIDTH);
+
+    // A small model in the same pattern: layer 7 reads layer 3.
+    ss:=[8]int.[0,1,2,3,4,5,6,3];sr:=[8]u8.[1,1,1,0,1,1,1,0];sw:=[8]int.[3,3,3,2,3,3,3,2];
+    sc:=sa_cache(ss[..],sr[..],sw[..],4,4);
+    cache:[80]f64;for l:0..<8 {if ss[l]==l {at:=sa_offset(ss[..],sw[..],4,l);for i:0..<4*sw[l] {cache[at+i]=f64(100*l+i);}}}
+    seven:=sa_offset(ss[..],sw[..],4,7);
+    print("small shared model, 4 tokens, f32: % bytes shared, % unshared; layer 7 reads offset % (layer 3's), first values % %\n",
+        sc.shared_bytes,sc.unshared_bytes,seven,cache[seven],cache[seven+1]);
+
+    // NoPE and rotary placement.
+    y:=SaYarn.{dim=4,theta=10000,factor=8,original=512,fast=32,slow=0.002,attention=1};fr:[2]f64;#assert sa_yarn(y,fr[..]).status==SaStatus.ok;
+    qx:=[6]f64.[1,0.5,-1,0.25,0.75,1];kx:=[6]f64.[0.5,0.5,1,-1,0.5,2];
+    print("rotary scores, positions (7,3) % (1007,1003) % (7,4) %\n",so_pair_score(true,qx[..],kx[..],7,3,fr[..]),
+        so_pair_score(true,qx[..],kx[..],1007,1003,fr[..]),so_pair_score(true,qx[..],kx[..],7,4,fr[..]));
+    print("NoPE scores, positions (7,3) % (900000,2) %\n",so_pair_score(false,qx[..],kx[..],7,3,fr[..]),so_pair_score(false,qx[..],kx[..],900000,2,fr[..]));
+
+    // Soft-capping at Large 4's 30.
+    for x:0..<4 {v:=f64(x*30);print("cap 30: x % -> %, slope %\n",v,sa_cap(v,ML4_SOFTCAP),sa_slope(v,ML4_SOFTCAP));}
+
+    // YaRN at Large 4's parameters.
+    ly:=SaYarn.{dim=ML4_ROPE_DIM,theta=ML4_ROPE_THETA,factor=ML4_YARN_FACTOR,original=ML4_YARN_ORIGINAL,fast=ML4_YARN_FAST,slow=ML4_YARN_SLOW,attention=ML4_YARN_ATTENTION};
+    lf:[32]f64;b:=sa_yarn(ly,lf[..]);
+    print("YaRN: %, low %, high %, positions %\n",b.status,b.low,b.high,b.positions);
+    pairs:=[6]int.[0,3,4,8,16,31];for i:0..<6 {p:=pairs[i];print("  pair %: frequency %, wavelength % positions\n",p,lf[p],2*SA_PI/lf[p]);}
+
+    // Refusals.
+    ids:[4]int;
+    print("refused: k 0: %; k 2049: %\n",sa_select(scores[..],4,0,ids[..]).status,sa_select(scores[..],4,2049,ids[..]).status);
+    bad:=scores;bad[1]=so_nan();print("refused: a NaN score: %\n",sa_select(bad[..],4,2,ids[..]).status);
+    later:=ss;later[2]=5;lm:=sa_map(later[..],sr[..],sw[..]);print("refused: layer 2 reads layer 5: % at layer %\n",lm.status,lm.at);
+    chain:=ss;chain[5]=4;chain[7]=5;cm:=sa_map(chain[..],sr[..],sw[..]);print("refused: layer 7 reads layer 5, which reads layer 4: % at layer %\n",cm.status,cm.at);
+    mixed:=ss;mixed[7]=2;mw:=sw;mw[7]=3;mm:=sa_map(mixed[..],sr[..],mw[..]);print("refused: NoPE layer 7 reads rotary layer 2: % at layer %\n",mm.status,mm.at);
+    wide:=sw;wide[7]=3;wm:=sa_map(ss[..],sr[..],wide[..]);print("refused: width 3 reads width 2: % at layer %\n",wm.status,wm.at);
+    slow:=ly;slow.fast=1.5;print("refused: YaRN fast 1.5 against slow 1: %\n",sa_yarn(slow,lf[..]).status);
+    nanq:=q;nanq[0]=so_nan();print("refused: a NaN indexer query: %\n",sa_index(2,2,4,nanq[..],w[..],codes[..],scales[..],scores[..]).status);
+}
+// book:end example

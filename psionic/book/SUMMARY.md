@@ -93,7 +93,7 @@
 - [83. A coding agent](ch083-a-coding-agent.md) — design draft
 - [84. Attention through a latent](ch084-attention-through-a-latent.md) — partly implemented
 - [85. Execute Mistral Small 7](ch085-execute-mistral-small-7.md) — design draft
-- [86. Sparse attention and shared layers](ch086-sparse-attention-and-shared-layers.md) — design draft
+- [86. Sparse attention and shared layers](ch086-sparse-attention-and-shared-layers.md) — partly implemented
 - [87. The model's own draft head](ch087-the-models-own-draft-head.md) — design draft
 
 - [88. Execute a DeepSeek R1 distill](ch088-execute-a-deepseek-r1-distill.md)
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75–82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–154, 156–159, 161–163, 165, 167–173, 175–183, 186–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75–82, 84, 86, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–154, 156–159, 161–163, 165, 167–173, 175–183, 186–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

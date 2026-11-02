@@ -1,0 +1,126 @@
+// Chapter 86's check oracle, loaded by psionic/lib/sparse-attention.coax.
+// Written separately from the library: FP8 codes decode through chapter 82's
+// generated table of exact values (not fp8_unit), the top k is chosen by
+// counting how many keys beat each key, attention is a plain two-pass
+// softmax with plain sums, tanh is the textbook ratio of exponentials, the
+// YaRN band edges are found by scanning pair numbers, and rotation is complex
+// multiplication. Everything is binary64.
+
+// The value of one FP8 E4M3 code under a UE8M0 scale, from the table.
+so_fp8 :: (code:u8,scale:u8)->f64 {
+    v:=f64_from_bits(FP8_E4M3_UNIT_BITS[code]);
+    e:=int(scale)-127;
+    while e>0 {v*=2;e-=1;}
+    while e<0 {v/=2;e+=1;}
+    return v;
+}
+
+// Indexer scores: for each key s, the sum over heads j of
+// weight_j * max(0, q_j . k_s).
+so_index :: (heads:int,width:int,n:int,q:[]f64,weights:[]f64,codes:[]u8,scales:[]u8,out:[]f64) {
+    for s:0..<n {
+        total:=0.0;
+        for j:0..<heads {
+            dot:=0.0;
+            for i:0..<width {dot+=q[j*width+i]*so_fp8(codes[s*width+i],scales[s]);}
+            if dot>0 {total+=weights[j]*dot;}
+        }
+        out[s]=total;
+    }
+}
+
+// chosen[t] is 1 when fewer than k keys beat key t: a larger score, or an
+// equal score at an earlier position.
+so_topk :: (scores:[]f64,n:int,k:int,chosen:[]u8) {
+    for t:0..<n {
+        beaten:=0;
+        for u:0..<n {if scores[u]>scores[t] || (scores[u]==scores[t] && u<t) {beaten+=1;}}
+        chosen[t]=ifx beaten<k then cast(u8)1 else cast(u8)0;
+    }
+}
+
+so_tanh :: (a:f64)->f64 {
+    if a>20 {return 1;}
+    if a< -20 {return -1;}
+    return (exp(a)-exp(-a))/(exp(a)+exp(-a));
+}
+
+// Multi-query attention over the chosen keys: every head reads the same keys
+// and values. A cap of 0 leaves the logits alone.
+so_attend :: (heads:int,dk:int,dv:int,n:int,q:[]f64,keys:[]f64,values:[]f64,chosen:[]u8,scale:f64,cap:f64,out:[]f64) {
+    for h:0..<heads {
+        logit:[64]f64;top:=-1.0e300;
+        for t:0..<n {
+            x:=0.0;for i:0..<dk {x+=q[h*dk+i]*keys[t*dk+i];}
+            x*=scale;if cap>0 {x=cap*so_tanh(x/cap);}
+            logit[t]=x;if chosen[t]==1 && x>top {top=x;}
+        }
+        sum:=0.0;
+        for t:0..<n {if chosen[t]==1 {sum+=exp(logit[t]-top);}}
+        for i:0..<dv {
+            acc:=0.0;
+            for t:0..<n {if chosen[t]==1 {acc+=exp(logit[t]-top)*values[t*dv+i];}}
+            out[h*dv+i]=acc/sum;
+        }
+    }
+}
+
+// YaRN frequencies. The number of turns pair i makes over the original
+// context is original * theta^(-2i/dim) / (2 pi). The low edge is the last
+// whole pair number at or below the point where that count falls to fast;
+// the high edge is the first whole pair number at or above the point where it
+// falls to slow. Both points are found by bisection on the continuous pair
+// number, then rounded.
+so_turns :: (dim:int,theta:f64,original:int,x:f64)->f64 {return f64(original)*exp(-2*x/f64(dim)*log(theta))/(2*3.141592653589793);}
+so_edge :: (dim:int,theta:f64,original:int,turns:f64)->f64 {
+    lo:=-1000.0;hi:=1000.0;
+    for i:0..<200 {mid:=(lo+hi)/2;if so_turns(dim,theta,original,mid)>turns {lo=mid;}else {hi=mid;}}
+    return (lo+hi)/2;
+}
+so_yarn :: (dim:int,theta:f64,factor:f64,original:int,fast:f64,slow:f64,freqs:[]f64,edges:[]int) {
+    a:=so_edge(dim,theta,original,fast);b:=so_edge(dim,theta,original,slow);
+    low:=0;while f64(low+1)<=a {low+=1;}
+    high:=0;while f64(high)<b {high+=1;}
+    if high>dim-1 {high=dim-1;}
+    edges[0]=low;edges[1]=high;
+    for i:0..<dim/2 {
+        base:=1/exp(f64(2*i)/f64(dim)*log(theta));
+        r:=0.0;if i>low {r=f64(i-low)/f64(high-low);}if r>1 {r=1;}
+        freqs[i]=base*(1-r)+base/factor*r;
+    }
+}
+
+// Split-half rotation as complex multiplication: (x_i + i x_{i+h}) e^{i p f_i}.
+so_rotate :: (x:[]f64,position:int,freqs:[]f64,mscale:f64,out:[]f64) {
+    h:=x.count/2;
+    for i:0..<h {
+        c:=cos(f64(position)*freqs[i])*mscale;s:=sin(f64(position)*freqs[i])*mscale;
+        out[i]=x[i]*c-x[i+h]*s;out[i+h]=x[i]*s+x[i+h]*c;
+    }
+}
+
+// The largest |a - r| / (1 + |r|).
+so_gap :: (a:[]f64,r:[]f64)->f64 {
+    worst:=0.0;for i:0..<a.count {d:=abs(a[i]-r[i])/(1+abs(r[i]));if d>worst {worst=d;}}return worst;
+}
+
+// A generated value: dyadic, exact in binary64 and in sums of a few terms.
+so_value :: (i:int,m:int)->f64 {return f64((i*37+11)%m-m/2)/8;}
+// A generated FP8 code: a finite E4M3 value between -4 and 4.
+so_code :: (i:int)->u8 {c:=cast(u8)((i*53+7)%72);if (i%3)==1 {c|=128;}return c;}
+
+// The score of query row q at position p against key row k at position t,
+// each placed by chapter 86's sa_place (nope 2, rope 4), as a plain sum.
+so_pair_score :: (rotary:bool,q:[]f64,k:[]f64,p:int,t:int,freqs:[]f64)->f64 {
+    a:[6]f64;b:[6]f64;ra:=sa_place(rotary,2,4,q,p,freqs,1,a[..]);rb:=sa_place(rotary,2,4,k,t,freqs,1,b[..]);
+    if ra.status!=SaStatus.ok || rb.status!=SaStatus.ok {return -1.0e300;}
+    s:=0.0;for i:0..<6 {s+=a[i]*b[i];}return s;
+}
+
+// Non-finite values made at run time.
+so_inf :: ()->f64 {x:=1.0e300;x*=1.0e300;return x;}
+so_nan :: ()->f64 {x:=so_inf();return x-x;}
+
+// The chapter's hand case: two indexer heads of width 2 and four keys
+// [1 1], [2 -1], [-1 4], [0.5 0.5] as FP8 E4M3 codes.
+so_hand_codes :: ()->[8]u8 {return [8]u8.[0x38,0x38,0x40,0xb8,0xb8,0x48,0x30,0x30];}
