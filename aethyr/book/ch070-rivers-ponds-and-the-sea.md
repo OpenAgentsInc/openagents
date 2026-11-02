@@ -74,7 +74,7 @@ module that any realm declares, instead of code that belongs to Everglade.
 - [docs/verse/water.md](../../docs/verse/water.md): phases W1–W11, each with
   its port notes and differences from the previous Rust engine.
 - [verse/water.coax](../../verse/water.coax) and
-  [verse/rigid.coax](../../verse/rigid.coax): the W1 physics, with all
+  [aethyr/rigid.coax](../../aethyr/rigid.coax): the W1 physics, with all
   fifteen of the old tests as `#test` checks.
 - [verse/everglade/river.coax](../../verse/everglade/river.coax): Everglade's
   4 m river, its current round the bridge piles, and its rowboats.

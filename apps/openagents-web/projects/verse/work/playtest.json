@@ -770,8 +770,8 @@
       ],
       "body": "Remove view switching. Inside the house the camera pulls in smoothly against walls and fades or cuts away what stands between it and you; verified with headless shots through every room and doorway on desktop and phone.",
       "files": [
-        "verse/camera.coax",
-        "verse/player.coax",
+        "aethyr/camera.coax",
+        "aethyr/player.coax",
         "apps/openagents-web/realm-face.c"
       ],
       "acceptance": [
@@ -791,7 +791,7 @@
         "verse",
         "redesign"
       ],
-      "body": "Give the Haunted House's characters idle variety, a look at the player when near, gestures while talking and reactions to haunts, with the engine's motions (verse/motion.coax) and skinned characters where available.",
+      "body": "Give the Haunted House's characters idle variety, a look at the player when near, gestures while talking and reactions to haunts, with the engine's motions (aethyr/motion.coax) and skinned characters where available.",
       "files": [
         "verse/haunt.coax"
       ],

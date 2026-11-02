@@ -1,6 +1,6 @@
 # 21. Find where they touch
 
-> **Status: unimplemented — design draft.** [`verse/contact.coax`](../../verse/contact.coax)
+> **Status: unimplemented — design draft.** [`aethyr/contact.coax`](../../aethyr/contact.coax)
 > already finds sphere–sphere, sphere–box, box–plane and sphere–triangle
 > contacts in f64, with swept sphere tests. This chapter plans the general
 > narrow phase: any convex pair, meshes, signed distance fields and stable
@@ -86,7 +86,7 @@ bodies, and is required by IPC in chapter 30.
 - GJK distance on random polytopes against brute-force vertex/face
   distances; EPA depth against a brute-force minimum over face normals of
   the explicitly built Minkowski difference (small cases only).
-- Agreement with `verse/contact.coax` on its shapes.
+- Agreement with `aethyr/contact.coax` on its shapes.
 - Symmetry: every test with arguments swapped.
 - Manifold stability: a box at rest on a plane reports the same four feature
   IDs for 10,000 steps.

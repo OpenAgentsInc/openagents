@@ -2,7 +2,7 @@
 
 > **Status: unimplemented — design draft.** Aethyr already catches a fast
 > ball with swept tests (`sweep_sphere_plane`, `sweep_sphere_sphere` in
-> [`verse/contact.coax`](../../verse/contact.coax)) and runs Belt 2200 in
+> [`aethyr/contact.coax`](../../aethyr/contact.coax)) and runs Belt 2200 in
 > lockstep (`lock_tick`, `belt_hash` in
 > [`apps/openagents-web/belt-lockstep.coax`](../../apps/openagents-web/belt-lockstep.coax)).
 > This chapter plans time acceleration as event scheduling. Nothing here
@@ -50,7 +50,7 @@ knew when it acted, from chapter 45's stamps.
 
 ## What exists today
 
-[`verse/contact.coax`](../../verse/contact.coax) has `sweep_sphere_plane`
+[`aethyr/contact.coax`](../../aethyr/contact.coax) has `sweep_sphere_plane`
 and `sweep_sphere_sphere`; its check catches a ball at 200 m/s before it
 passes a wall, and games split the step at the hit. Belt 2200's lockstep
 applies ordered commands per tick and compares state hashes

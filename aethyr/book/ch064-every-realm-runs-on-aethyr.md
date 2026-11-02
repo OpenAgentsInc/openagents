@@ -93,11 +93,19 @@ no-private-copies gate keep `ec-migrate` open. Anime Lab is newer than
 the retained sixteen-realm shader inventory; its explicit legacy route must
 not be counted as shared renderer adoption.
 
-Shared modules already in use: [verse/player.coax](../../verse/player.coax),
-[camera.coax](../../verse/camera.coax),
-[terrain.coax](../../verse/terrain.coax),
-[particles.coax](../../verse/particles.coax),
-[cinematic.coax](../../verse/cinematic.coax). The task list is
+The engine modules that lived in `verse/` moved to `aethyr/` in one scripted
+commit: player, camera, figure, contact, terrain, stand, sticks, motion,
+skin, rigid, gravity, thrust, vehicle, particles, particle-motion,
+cinematic, spacecam, throw, arrange, flock, orbit and command, with
+`verse/space.coax` becoming [aethyr/points.coax](../points.coax) beside the
+typed spaces. Every `#load`, build line and mention moved with them; module
+names and C symbols did not change. `verse/` keeps realm content.
+
+Shared modules already in use: [aethyr/player.coax](../../aethyr/player.coax),
+[camera.coax](../../aethyr/camera.coax),
+[terrain.coax](../../aethyr/terrain.coax),
+[particles.coax](../../aethyr/particles.coax),
+[cinematic.coax](../../aethyr/cinematic.coax). The task list is
 `apps/openagents-web/projects/verse/work/engine-core.json`.
 
 ## What it builds

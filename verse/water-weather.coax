@@ -30,7 +30,7 @@
 // sample each frame.
 //   coax/bin/coax test --library verse/water-weather.coax --steps 2000000000
 
-#load "rigid.coax";
+#load "../aethyr/rigid.coax";
 
 WEATHER_TICK_HZ :: 120;          // the world tick (physics::water::event::TICK_HZ)
 WEATHER_BLOCK_SECONDS :: 600;

@@ -26,7 +26,7 @@ splash=$!
 # The realms: the engine's house, player and thumbs, each its own library as on
 # iOS, under realm.coax's HUD; the house's light from the engine itself.
 # (realm.wgsl, the house, loads its light in its Coax: gpu/realm.coax.)
-# (particles.wgsl loads verse/particle-motion.coax and haunt-light.coax in its Coax: gpu/particles.coax.)
+# (particles.wgsl loads aethyr/particle-motion.coax and haunt-light.coax in its Coax: gpu/particles.coax.)
 # The art styles' shading (verse/style.coax, docs/verse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
 style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_shade verse_style_cool verse_style_keep_value verse_style_banded verse_style_ambient verse_style_dab verse_style_rim verse_style_haze verse_style_haze_glow verse_style_haze_teal verse_style_haze_hue verse_style_fog verse_style_sky_t verse_style_sky_band verse_style_halo verse_style_hash verse_style_noise verse_style_cloud_field verse_style_cloud_cover verse_style_cloud_lit verse_style_cloud_fade verse_style_tone verse_style_saturation verse_style_lift verse_style_luma verse_style_bloom_share verse_style_bloom_mix verse_style_shadow_reach verse_style_shadow_snap verse_style_shadow_across verse_style_shadow_depth verse_style_shadow_taps verse_style_shadow_radius verse_style_shadow_tap verse_style_contact verse_style_shaft_source verse_style_shaft_fade verse_style_shaft_tap verse_style_shaft_total verse_style_shaft verse_style_gust verse_style_wind verse_style_bend verse_style_grass_tilt verse_style_blade_height verse_style_grass_fade verse_style_grass_blades verse_style_grass_clear verse_style_segment verse_style_part verse_style_tip verse_style_jitter"
@@ -64,29 +64,30 @@ flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 ve
 # (Orbit League, orbitleague.wgsl, loads them in its Coax: gpu/orbitleague.coax.)
 # (waterlab.wgsl loads verse/style.coax in its Coax: gpu/waterlab.coax.)
 m="$here/../../verse"
+a="$here/../../aethyr"   # the engine modules (#12609)
 # The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.
 "$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &
 voice=$!
 "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
-  "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" "$m/particles.coax" "$m/cinematic.coax" "$m/setpiece.coax" &
+  "$m/haunt.coax" "$m/haunt-buffer.coax" "$a/player.coax" "$m/grid.coax" "$a/particles.coax" "$a/cinematic.coax" "$m/setpiece.coax" &
 realm=$!
 # /worlds/garden: the engine's world pieces (camera, terrain, throwing,
 # arranging) in an open-air realm, with the player and thumbs as their own libraries.
 "$here/../../coax/web/wasm.sh" "$here/garden.coax" "$here/garden-face.c" "$here/build/garden.wasm" \
-  "$m/player.coax" "$m/grid.coax" &
+  "$a/player.coax" "$m/grid.coax" &
 garden=$!
 # /worlds/everglade: the forest city's blockout (verse/everglade/plan.coax), with the player, thumbs and its river (verse/everglade/river.coax).
 "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
-  "$m/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" &
+  "$a/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" &
 everglade=$!
 # /worlds/fairy-forest: the park (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
 "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
-  "$m/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" "$here/../../coax/lib/qr/qr-memory.coax" &
+  "$a/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" "$here/../../coax/lib/qr/qr-memory.coax" &
 fairy=$!
 # /worlds/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
 # with the player, thumbs and figures (villafig.coax: the engine's figures and motions) as libraries.
 "$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.c" "$here/build/villa.wasm" \
-  "$m/player.coax" "$m/grid.coax" "$here/villafig.coax" &
+  "$a/player.coax" "$m/grid.coax" "$here/villafig.coax" &
 villa=$!
 # /worlds/anime-lab: direct an anime (docs/verse/anime-lab.md), with the anime style's numbers as a library.
 "$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" \
@@ -136,13 +137,13 @@ gridcrowd=$!
 # (?stage=ident ... ?stage=end, docs/verse/clips.md), drawn at twice its pixels for clips.
 "$here/../../coax/web/wasm.sh" "$here/speedrunhud.coax" "$here/speedrunhud-face.c" "$here/build/speedrunhud.wasm" &
 speedrunhud=$!
-# /worlds/belt-2200: the solar-system strategy game over the engine's orbits (verse/orbit.coax, verse/spacecam.coax; verse/stars.coax in gpu/belt.coax).
+# /worlds/belt-2200: the solar-system strategy game over the engine's orbits (aethyr/orbit.coax, aethyr/spacecam.coax; verse/stars.coax in gpu/belt.coax).
 "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
 # /worlds/orbit-league: car ball in orbit, on the space primitives (docs/verse/space.md).
 "$here/../../coax/web/wasm.sh" "$here/orbitleague.coax" "$here/orbitleague-face.c" "$here/build/orbitleague.wasm" &
 orbitleague=$!
-# /worlds/characters: the engine's figures (verse/figure.coax).
+# /worlds/characters: the engine's figures (aethyr/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
 # The public homepage and /new-land alias, and /worlds/the-grid: the same module walked (data-page 1, newland-walk.coax). Warm start is real Coax-verified

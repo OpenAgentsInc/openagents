@@ -1,7 +1,7 @@
 # 80. Terrain and scatter from a seed
 
 > **Status: unimplemented — design draft.** Today
-> [`verse/terrain.coax`](../../verse/terrain.coax) builds a heightfield from
+> [`aethyr/terrain.coax`](../../aethyr/terrain.coax) builds a heightfield from
 > rolling hills, levelled where paths run and on flats. Everglade scatters its
 > forest on a jittered grid with a fixed seed
 > (`apps/openagents-web/everglade.coax`), and made realms compose their
@@ -128,7 +128,7 @@ The rules:
 
 ## What exists today
 
-- [verse/terrain.coax](../../verse/terrain.coax): the heightfield, hills,
+- [aethyr/terrain.coax](../../aethyr/terrain.coax): the heightfield, hills,
   path levelling, height, normal and ray queries.
 - [verse/everglade/plan.coax](../../verse/everglade/plan.coax): Everglade's
   ground, bounds, streets and clearings.

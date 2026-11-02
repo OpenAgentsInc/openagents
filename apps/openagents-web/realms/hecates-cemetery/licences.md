@@ -12,6 +12,6 @@ Every model in Hecate's Cemetery is drawn in code from the Verse engine's own sh
 | Benches | boxes | `villa.coax` `bench` | Apache-2.0 |
 | The fountain | cylinders, a sphere | `villa.coax` `fountain` | Apache-2.0 |
 | The field's edge stones | boxes | `villa.coax` `edge_stone` | Apache-2.0 |
-| Paths and ground | the engine's heightfield | `verse/terrain.coax`, `villa.wgsl` | Apache-2.0 |
-| You and the dog | the engine's figures and motions | `verse/figure.coax`, `verse/motion.coax`, `villafig.coax` | Apache-2.0 |
+| Paths and ground | the engine's heightfield | `aethyr/terrain.coax`, `villa.wgsl` | Apache-2.0 |
+| You and the dog | the engine's figures and motions | `aethyr/figure.coax`, `aethyr/motion.coax`, `villafig.coax` | Apache-2.0 |
 | The planet, the moon and the stars | a sphere, the sky shader | `villa.coax` `planet`, `villa.wgsl` | Apache-2.0 |

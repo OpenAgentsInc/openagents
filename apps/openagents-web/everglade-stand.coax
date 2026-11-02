@@ -1,4 +1,4 @@
-// Standing on what stands (verse/stand.coax): every surface you come down
+// Standing on what stands (aethyr/stand.coax): every surface you come down
 // onto holds you, you and the town's people alike. The town's pieces are
 // floors (verse/demolish.coax demo_stand: a box's top, a roof's two slopes,
 // a tower roof's cone, the rubble lying still), and over them the
@@ -7,7 +7,7 @@
 //
 // everglade_stand answers for anyone: the highest surface at (x, z) at or
 // under a height, the ground (walk_at) the lowest. The player's controller
-// (verse/player.coax) takes the floors round you each frame
+// (aethyr/player.coax) takes the floors round you each frame
 // (everglade_floors_near, over the ground you walk on, as its walls are);
 // the people's feet stand on what they came down on (ab_perch:
 // everglade-abilities.coax), and a body thrown by a blast lands on it

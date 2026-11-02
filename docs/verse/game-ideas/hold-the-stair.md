@@ -95,13 +95,13 @@ other defenders, a life cleric heals the tower).
 | Walls that break into rubble | Wall of Stone with AC and hit points; rubble damage | `verse/demolish.coax`, Everglade |
 | Red damage numbers | Rising red numbers over whoever takes damage | Everglade |
 | Waves of enemies on a rules engine | Dead Gears' waves, entities and event log | `verse/deadgears/rules.coax`, `verse/deadgears/ecs.coax` |
-| Walking a path | Characters following garden paths | `verse/terrain.coax` |
-| Placing things on a grid | Minecraft-style placing from the playtest redesign | `verse/edit/`, `verse/arrange.coax` |
+| Walking a path | Characters following garden paths | `aethyr/terrain.coax` |
+| Placing things on a grid | Minecraft-style placing from the playtest redesign | `verse/edit/`, `aethyr/arrange.coax` |
 | Tap, long-press, drag to swap | Everglade's hotbar | `apps/openagents-web/everglade-hotbar.coax` |
 
 ## What the engine needs
 
-1. **Paths as lanes** (`verse/terrain.coax`): a path with a distance along
+1. **Paths as lanes** (`aethyr/terrain.coax`): a path with a distance along
    it, so "first", "last", "strongest" and "closest" targeting are cheap,
    and enemies that move along it at their speed.
 2. **Splitting enemies**: an entity that, at 0 hit points, spawns its inner
@@ -115,13 +115,13 @@ other defenders, a life cleric heals the tower).
    grid in the entity system.
 5. **Hundreds of enemies on a phone**: instanced bubbles (one mesh,
    per-instance colour and size), and particles for pops.
-6. **A top-down tactical camera** (`verse/camera.coax`): pinch zoom, pan,
+6. **A top-down tactical camera** (`aethyr/camera.coax`): pinch zoom, pan,
    and a slight tilt.
 7. **Seeded dice for replays and co-op**: one seed per map so a replay or a
    shared match rolls the same dice (Ice Cream Man is already seeded).
 8. **Content as data**: layers, defenders, levels and maps as text tables
    that an agent can write and the engine checks, like motions
-   (`verse/motion.coax`) and set pieces (`verse/setpiece.coax`).
+   (`aethyr/motion.coax`) and set pieces (`verse/setpiece.coax`).
 
 ## Milestones
 

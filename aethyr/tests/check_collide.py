@@ -36,7 +36,7 @@ def frozen_legacy(work):
             dependency = str((path.parent / name.decode()).resolve().relative_to(mirror))
             materialize(dependency)
 
-    materialize("verse/player.coax")
+    materialize("aethyr/player.coax")
     adapter = mirror / "aethyr/tests/collide-legacy.coax"
     adapter.parent.mkdir(parents=True, exist_ok=True)
     adapter.write_bytes((ROOT / "aethyr/tests/collide-legacy.coax").read_bytes())

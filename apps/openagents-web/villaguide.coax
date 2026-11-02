@@ -8,7 +8,7 @@
 //
 // The way to your tombstone: when your dog's stone goes into the garden, a
 // glowing line runs on the ground from you to it, along the garden paths
-// (verse/terrain.coax verse_route_points), and fades when you get there.
+// (aethyr/terrain.coax verse_route_points), and fades when you get there.
 // WALK TO THEIR STONE in YOUR DOG lights it again.
 
 EXAMPLE_X :: -15.15; EXAMPLE_Z :: -16.0;   // the stone, facing south down the avenue

@@ -1,5 +1,5 @@
 // A recorded walk for aethyr/replay.coax's host check: the walking controller
-// (verse/player.coax) on a clock of uneven frames, with a peer whose updates arrive twice and
+// (aethyr/player.coax) on a clock of uneven frames, with a peer whose updates arrive twice and
 // out of order and a model whose answers set your pace, arrive late, twice and from an old
 // epoch. The same file runs natively (aethyr/examples/replay-a-walk.coax) and in wasm
 // (coax/web/replay-hosts.coax, through replay-walk-face.c); both must give the same digests.
@@ -7,7 +7,7 @@
 #load "../replay.coax";
 #load "../loop.coax";
 #load "../rand.coax";
-#load "../../verse/player.coax";
+#load "../player.coax";
 
 WALK_FRAMES :: 240;
 WALK_EVENTS :: 1024;

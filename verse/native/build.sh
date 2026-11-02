@@ -19,14 +19,14 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../.." && pwd -P)"
 web="$root/apps/openagents-web"
 # The libraries the site's build links REALM's module with: the paths after its wasm.sh line's
-# output, continued over backslashed lines, with $m (verse/) and $here (apps/openagents-web) put in.
+# output, continued over backslashed lines, with $m (verse/), $a (aethyr/) and $here (apps/openagents-web) put in.
 site_libraries() {
   awk -v want="\"\$here/$1.coax\"" '
     !on && index($0, "coax/web/wasm.sh\" " want " ") { on = 1; line = $0 }
     on && line != $0 { line = line " " $0 }
     on { if ($0 !~ /\\[ \t]*$/) { print line; exit } }' "$web/build.sh" |
     tr ' \t\\&' '\n\n\n\n' | tr -d '"' | grep '\.coax$' | sed 1d |
-    sed -e "s#^\$m/#$root/verse/#" -e "s#^\$here/#$web/#"
+    sed -e "s#^\$m/#$root/verse/#" -e "s#^\$a/#$root/aethyr/#" -e "s#^\$here/#$web/#"
 }
 if [[ "${1:-}" == --libraries ]]; then site_libraries "${2:?usage: build.sh --libraries REALM}"; exit; fi
 realm="${1:?usage: build.sh REALM OUT}"
@@ -40,7 +40,7 @@ fi
 units_too=(); faces_too=()   # Coax units kept by their own names, and C faces of their own
 case "$realm" in
   everglade) app="$web/everglade.coax"; face="$web/everglade-face.c"
-    libraries=("$root/verse/player.coax" "$root/verse/grid.coax" "$root/verse/everglade/river.coax" "$root/verse/everglade/guard-guide-policy.coax") ;;
+    libraries=("$root/aethyr/player.coax" "$root/verse/grid.coax" "$root/verse/everglade/river.coax" "$root/verse/everglade/guard-guide-policy.coax") ;;
   stair) app="$web/stair.coax"; face="$web/stair-face.c"; libraries=() ;;
   # a flat realm (belt, waterlab, orbitleague): its module and face, its libraries #loaded
   # the Grid (/realms/the-grid, the homepage's module): its session (verse/gridwalk.coax, which

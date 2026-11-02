@@ -7,7 +7,7 @@
 //
 // The view looks down on the ecliptic (+X right, +Y up the screen), tipped
 // by `tilt` radians about the screen's horizontal so +Z shows as height.
-//   coax/bin/coax test --library verse/spacecam.coax
+//   coax/bin/coax test --library aethyr/spacecam.coax
 
 #load "rigid.coax";
 #load "../coax/lib/quantity.coax" as spacecam_units;

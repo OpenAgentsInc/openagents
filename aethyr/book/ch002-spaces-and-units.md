@@ -181,7 +181,7 @@ the interpolation on all three axes.
 The existing realm boundary keeps its `Point` layout for C callers, but
 the conversion goes through Aethyr's distinct local and world types:
 
-<!-- source: verse/space.coax feet -->
+<!-- source: aethyr/points.coax feet -->
 ```jai
 // A realm that steps its controller on a flat floor supplies that floor's world
 // height from its terrain or bridge once. Figures and cameras share the resulting
@@ -211,7 +211,7 @@ performs that calculation, then converts to Grid units with a nonzero origin:
 
 <!-- source: aethyr/examples/feet-at-a-realm-boundary.coax example -->
 ```jai
-#load "../../verse/space.coax";
+#load "../points.coax";
 #load "../space.coax" as engine;
 #import "Basic";
 
@@ -371,11 +371,11 @@ pixels are separate qualifications in chapters 11 and 85.
 The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
 replaces the older vector types behind the existing C interfaces:
 
-- `Point` in [verse/space.coax](../../verse/space.coax);
-- `Vec3` in [verse/player.coax](../../verse/player.coax);
+- `Point` in [aethyr/points.coax](../../aethyr/points.coax);
+- `Vec3` in [aethyr/player.coax](../../aethyr/player.coax);
 - the f64 `D3` type with a floating origin in
-  [verse/rigid.coax](../../verse/rigid.coax) and
-  [verse/spacecam.coax](../../verse/spacecam.coax). When these move, this
+  [aethyr/rigid.coax](../../aethyr/rigid.coax) and
+  [aethyr/spacecam.coax](../../aethyr/spacecam.coax). When these move, this
   module gains f64 spaces. These types and floating-origin arithmetic are
   outside this chapter's native f32 profile.
 

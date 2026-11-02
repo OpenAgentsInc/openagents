@@ -136,7 +136,7 @@ boom_close :: (b: Boom) -> bool { return b.has && b.length < CAM_CLOSE; }
 // zoom (first person under CAM_FIRST_PERSON), Shift Lock and the zoom to go
 // back to from first person.
 Camera :: struct { yaw: f32 = 3.14159265; pitch: f32 = 0.35; zoom: f32 = CAM_THIRD_PERSON; shift_lock: bool; third: f32 = CAM_THIRD_PERSON; }
-// atan on [0, 1], within 2e-5 rad (verse/space.coax's).
+// atan on [0, 1], within 2e-5 rad (aethyr/points.coax's).
 atan_unit :: (t: f32) -> f32 {
   q := t * t;
   return t * (0.99997726 + q * (-0.33262347 + q * (0.19354346 + q * (-0.11643287 + q * (0.05265332 + q * -0.01172120)))));

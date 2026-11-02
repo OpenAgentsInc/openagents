@@ -353,7 +353,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "1482bd1fb89db651c630f8a016bd71165f72a9a13078749f0832e0fa4799ef27"
+          "sha256": "912aee1118864313bf149cdb3a07e5a388d29251f736185c284bdbd6ecf822c6"
         },
         {
           "path": "coax/QUANTITIES.md",
@@ -385,7 +385,7 @@
         },
         {
           "path": "coax/SPATIAL.md",
-          "sha256": "0c934934cc1699886844c780a9990c47c627dc760878bed4926a5f8472ec9e19"
+          "sha256": "fa4048273babc55a0c71e31aecfb9c12917d7f70fa58e56955a210f439cfc622"
         },
         {
           "path": "coax/tests/spatial.py",
@@ -461,7 +461,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "1482bd1fb89db651c630f8a016bd71165f72a9a13078749f0832e0fa4799ef27"
+          "sha256": "912aee1118864313bf149cdb3a07e5a388d29251f736185c284bdbd6ecf822c6"
         },
         {
           "path": "verse/everglade/gpu.module",

@@ -110,7 +110,7 @@ deadgears_quad :: (v:u32)->V2 {
   return q[cast(int)v];
 }
 // The figures (deadgears.coax ROUNDS, the first objects): each a bone of a
-// verse/figure.coax rig, a round cone from end a (r0: its place, its radius)
+// aethyr/figure.coax rig, a round cone from end a (r0: its place, its radius)
 // to end b (r1), as Hecate's Cemetery draws its figures' bones: two half
 // balls and the side between, eight round, two rings to a half
 // (ROUND_VERTICES, 240).

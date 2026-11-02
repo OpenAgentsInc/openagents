@@ -8,14 +8,14 @@
 // axes (yaw 0 faces +z, a quarter turn +x), so seen from above with north
 // up, +x is to the left. A box is five
 // numbers: min x, min z, max x, max z, height. The ground and the paths
-// are verse/terrain.coax's: a heightfield with rolling hills that rise past
+// are aethyr/terrain.coax's: a heightfield with rolling hills that rise past
 // the walls, levelled where the streets run and flat under the commons,
 // the market, the forecourt and each building.
 // The checks walk the whole city on a half-metre grid and build its
 // ground, so they need a larger step budget than a file's default:
 //   coax/bin/coax test --library verse/everglade/plan.coax --steps 2000000000
 
-#load "../terrain.coax";
+#load "../../aethyr/terrain.coax";
 
 EG_CELLS :: 104;        // the ground's cells a side
 EG_CELL :: 2.0;         // metres each
@@ -32,7 +32,7 @@ EG_BOX :: 5;
 EG_GAP :: 2.0;          // metres between two buildings, and between a building and the palisade
 EG_PROP_GAP :: 1.0;     // between a prop and anything else
 EG_CLEAR :: 0.5;        // what a street keeps clear of on either side
-EG_RADIUS :: 0.3;       // a walker's capsule (verse/player.coax RADIUS)
+EG_RADIUS :: 0.3;       // a walker's capsule (aethyr/player.coax RADIUS)
 
 // ---- the palisade: four timber walls 4.5 m high, with a gate in each and
 // a tower either side of every gate. The South Gate is the main one, 6 m
@@ -110,7 +110,7 @@ EG_FOUNTAIN :: 0; EG_BOARD :: 1; EG_STALL :: 2; EG_WAYSTONE :: 8; EG_PILLAR :: 9
 // The bridge over the river where the trail crosses it: a deck you walk on, not in the way.
 EG_BRIDGE :: [5] f32.[84, -18, 92, -5, 0.5];   // its ends on the ground the river's carve leaves as it was
 
-// ---- the streets and the trails out (verse/terrain.coax nodes and links)
+// ---- the streets and the trails out (aethyr/terrain.coax nodes and links)
 EG_NODES :: 30;
 EG_NODE_XZ :: [60] f32.[
   0, 12,   12, 0,   0, -12,   -12, 0,   8.5, 8.5,   8.5, -8.5,   -8.5, -8.5,   -8.5, 8.5,

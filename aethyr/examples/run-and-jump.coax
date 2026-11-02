@@ -1,5 +1,5 @@
 // book:begin example
-#load "../../verse/player.coax";
+#load "../player.coax";
 #import "Basic";
 
 // The walking controller on the 1/64 s step: how many steps it takes to reach RUN, how high

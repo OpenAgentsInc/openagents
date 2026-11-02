@@ -98,10 +98,10 @@
       "title": "Use Verse's player controller",
       "parent": "dg-character",
       "size": "L",
-      "body": "Owner: \"no character controller, it's blocky, horrible\". Dead Gears walks you with its own 40-line walk() (fixed speeds, no acceleration, no jump, yaw = camera). The Grid, Everglade and the garden share verse/player.coax: acceleration, turning to face your way, run, gravity, jump, steps, a camera that pulls in at walls. Move Dead Gears onto it: the arena's hull, reactor and cover as its walls, the creatures and the support engineer as its bodies. Strafe while aiming (the character faces the crosshair when the cutter is up, faces the way it walks when not).",
+      "body": "Owner: \"no character controller, it's blocky, horrible\". Dead Gears walks you with its own 40-line walk() (fixed speeds, no acceleration, no jump, yaw = camera). The Grid, Everglade and the garden share aethyr/player.coax: acceleration, turning to face your way, run, gravity, jump, steps, a camera that pulls in at walls. Move Dead Gears onto it: the arena's hull, reactor and cover as its walls, the creatures and the support engineer as its bodies. Strafe while aiming (the character faces the crosshair when the cutter is up, faces the way it walks when not).",
       "files": [
         "apps/openagents-web/deadgears.coax",
-        "verse/player.coax"
+        "aethyr/player.coax"
       ],
       "acceptance": [
         "Walking starts and stops with acceleration, not instantly",
@@ -150,10 +150,10 @@
       "title": "Creatures with real bodies",
       "parent": "dg-character",
       "size": "L",
-      "body": "The mutants are box figures too. Build them as soft-bone figures (verse/figure.coax, the rounded bones the shadow visitor uses) or skinned meshes, each kind with its own silhouette and gait. Severed limbs come off where the shot hit and keep their shape; a crawler that lost its legs drags itself.",
+      "body": "The mutants are box figures too. Build them as soft-bone figures (aethyr/figure.coax, the rounded bones the shadow visitor uses) or skinned meshes, each kind with its own silhouette and gait. Severed limbs come off where the shot hit and keep their shape; a crawler that lost its legs drags itself.",
       "files": [
         "apps/openagents-web/deadgears.coax",
-        "verse/figure.coax"
+        "aethyr/figure.coax"
       ],
       "acceptance": [
         "Each creature kind is recognisable by silhouette alone",

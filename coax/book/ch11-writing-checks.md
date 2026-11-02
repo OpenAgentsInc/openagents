@@ -566,14 +566,14 @@ used the most:
 $ coax test fairy.coax --only "trees keep off" --profile steps
 ok   #test trees keep off the trails, the stream and the glades (1 case, 136279918 steps)
         own steps  share   with calls     calls  procedure
-         20906514  15.3%     31837809     28755  shaped  verse/terrain.coax:114
+         20906514  15.3%     31837809     28755  shaped  aethyr/terrain.coax:114
          16723986  12.3%     18290298     15356  ffp_lake_near  verse/fairy-forest/park.coax:32
          15105764  11.1%     20123292         1  path_planes  apps/openagents-web/fairy.coax:291
          13859453  10.2%     15855558      3041  ff_stream_near_some  verse/fairy-forest/forest.coax:496
-         13223648   9.7%     14257179      1016  verse_path_nearest  verse/terrain.coax:88
+         13223648   9.7%     14257179      1016  verse_path_nearest  aethyr/terrain.coax:88
          10778886   7.9%     13093768      1707  ffpk_path_gap  apps/openagents-web/fairypark.coax:15
           8000610   5.9%      8001730     28755  ffp_rock_lift  verse/fairy-forest/park.coax:91
-          6713210   4.9%      6713210    897270  lo  verse/space.coax:27
+          6713210   4.9%      6713210    897270  lo  aethyr/points.coax:27
      ... 68 more procedures
 ```
 
@@ -1101,7 +1101,7 @@ Because the file is `#authority`, those 16 checks run every time
 `apps/openagents-ios/generate.sh` compiles it to C for the iOS app. A
 change that lets a quote be paid twice doesn't make it to a build.
 
-Not every file needs that. `verse/camera.coax`, the camera that
+Not every file needs that. `aethyr/camera.coax`, the camera that
 circles the Grid and swoops down behind your character, has ten checks
 but no `#authority`. Its checks use helpers like `near` for comparing
 floats within a tolerance, and its rules are about motion: "the ease only
@@ -1109,9 +1109,9 @@ rises", "the dolly is smooth, above the ground, and comes in from
 behind". Mutating it shows that the checks leave a lot unpinned:
 
 ```shell
-$ coax mutate verse/camera.coax
+$ coax mutate aethyr/camera.coax
 ...
-verse/camera.coax:116:89: mutant survived: '&&' became '||'
+aethyr/camera.coax:116:89: mutant survived: '&&' became '||'
   same :: (a: Point, b: Point, tolerance: f32) -> bool { return near(a.x, b.x, tolerance) && near(a.y, b.y, tolerance) && near(a.z, b.z, tolerance); }
                                                                                           ^
 87 mutants, 63 killed, 24 survived

@@ -65,7 +65,7 @@ grid_draw :: (w: *GridWorld, alpha: f32, out: *Frame) {
 - [apps/openagents-web/newland-walk.coax](../../apps/openagents-web/newland-walk.coax)
   over [newland.coax](../../apps/openagents-web/newland.coax): the
   homepage's places, trees, roads, Pylons and people walked with
-  [verse/player.coax](../../verse/player.coax); a click opens the homepage's
+  [aethyr/player.coax](../../aethyr/player.coax); a click opens the homepage's
   card; the room posts positions about five times a second.
 - [verse/tools/pack_grid.py](../../verse/tools/pack_grid.py) packs the demo's
   Grid scene; [verse/cast.coax](../../verse/cast.coax) reads `Cast.bin`.

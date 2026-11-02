@@ -2,8 +2,8 @@
 
 > **Status: unimplemented — design draft.** Aethyr's thrusters already burn
 > tanks with Tsiolkovsky delta-v (`thrust_apply`, `delta_v`, `fuel_for` in
-> [`verse/thrust.coax`](../../verse/thrust.coax); `orbit_burn_step` in
-> [`verse/orbit.coax`](../../verse/orbit.coax)); this chapter plans
+> [`aethyr/thrust.coax`](../../aethyr/thrust.coax); `orbit_burn_step` in
+> [`aethyr/orbit.coax`](../../aethyr/orbit.coax)); this chapter plans
 > variable-mass flight with separate mass and energy accounts. Nothing here
 > runs yet.
 
@@ -50,11 +50,11 @@ mass is consumed; under constant thrust, acceleration rises.
 
 ## What exists today
 
-[`verse/thrust.coax`](../../verse/thrust.coax) has `Thruster` (a force at a
+[`aethyr/thrust.coax`](../../aethyr/thrust.coax) has `Thruster` (a force at a
 body point along a body direction, with exhaust speed), `Tank` and `Burn`;
 `ve_of_isp`, `delta_v`, `fuel_for`, `delta_v_left`, `thrust_apply`,
 `rcs_apply` and `rcs_hold`. A tank holds real propellant or a game budget
-(a boost meter). [`verse/orbit.coax`](../../verse/orbit.coax) adds
+(a boost meter). [`aethyr/orbit.coax`](../../aethyr/orbit.coax) adds
 `orbit_delta_v`, `orbit_propellant`, `orbit_burn_time` and
 `orbit_burn_step` (RK4 with mass flowing); its check gives the rocket
 equation's delta-v to 1e-7 for Lagrange 2's tug (120 kN at Isp 330 s).

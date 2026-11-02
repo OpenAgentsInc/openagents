@@ -4,7 +4,7 @@
 #load "../../../verse/gpu/wgsl.coax";
 
 // The characters realm (characters.coax): a night garden and the figures
-// standing in it, each a few dozen round cones (verse/figure.coax) melted
+// standing in it, each a few dozen round cones (aethyr/figure.coax) melted
 // into one body and found by marching each pixel's ray through it, then the
 // HUD's strokes and plates. A figure is lit (its coat under the moon) or a
 // soft silhouette: black, its edge a fuzzy fringe that thins into the night,

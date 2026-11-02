@@ -1,7 +1,7 @@
 // Where you are in a walkable realm, kept so a reload puts you back there
 // (eg-pos): your feet, the way you face, the camera's yaw, pitch and
 // distance, its view (the Haunted House's first or third person) and the
-// room you are in. Every realm on the shared controller (verse/player.coax)
+// room you are in. Every realm on the shared controller (aethyr/player.coax)
 // keeps its place this way; its face does the platform half
 // (place-face.h) and the realm says what counts as open ground.
 //
@@ -301,7 +301,7 @@ verse_place_try :: (x: f32, z: f32, i: int) -> Place #export_c {
   return p;
 }
 // Whether a body radius r standing at (x, y, z) is clear of walls (min x,
-// y, z, max x, y, z each, verse/player.coax WALL): the ones it would stand
+// y, z, max x, y, z each, aethyr/player.coax WALL): the ones it would stand
 // inside, from its feet to its head.
 verse_place_clear :: (walls: [] f32, n: int, x: f32, y: f32, z: f32, r: f32) -> bool #export_c {
   for w: 0..<n {

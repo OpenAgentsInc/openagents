@@ -9,7 +9,7 @@ retains the actual compiler, consumer reports and verification scope.
 
 ```shell
 coax/bin/coax deps psionic/lib/robotics/panda-control.coax --effects --proc pc_step
-coax/bin/coax deps verse/camera.coax --effects --proc verse_orbit_follow
+coax/bin/coax deps aethyr/camera.coax --effects --proc verse_orbit_follow
 ```
 
 Coax owns effect classification, reachable closure, cycle detection and witness

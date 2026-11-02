@@ -93,7 +93,7 @@ AB_WALLS :: 12;
 AB_WW_LEVEL :: 0.3;        // m the ground may rise or fall along it
 AB_WIND_LIFT :: 11.0;      // m/s up it throws you (spells.rs WIND_LIFT)
 AB_HEAR_WW :: 30.0;
-AB_RADIUS :: 0.3; AB_HEIGHT :: 1.8;   // your capsule (verse/player.coax)
+AB_RADIUS :: 0.3; AB_HEIGHT :: 1.8;   // your capsule (aethyr/player.coax)
 // Levitate: the old bar's 18 m (spells.rs LEVITATE_HEIGHT), rising and sinking as it did.
 AB_LEV_TOP :: 18.0; AB_LEV_RISE :: 4.0; AB_LEV_SINK :: 3.0; AB_LEV_LIFE :: 600.0;
 // Feather Fall: 60 feet a round, 60 feet's reach, a minute.
@@ -104,7 +104,7 @@ AB_GUST_FORCE :: 60.0;     // N it pushes a loose thing with (a 3 kg chunk 20 m/
 AB_HEAR_GUST :: 20.0;
 // Thunderwave: a 15-foot cube, 10 feet a push, 2d8, heard 300 feet off.
 // Wall of Stone: two 10-foot panels, 6 inches thick, ten minutes; each pair two of your bodies
-// (everglade.coax bodies, verse/player.coax capsules) at knee and head height.
+// (everglade.coax bodies, aethyr/player.coax capsules) at knee and head height.
 AB_ST_PANEL :: 3.048; AB_ST_THICK :: 0.1524; AB_ST_LIFE :: 600.0; AB_STONES :: 4; AB_ST_BODIES :: 2;
 // each panel an object: AC 15, 30 hit points an inch of its thickness (6 inches: 180)
 AB_ST_AC :: 15; AB_ST_HP :: 180;

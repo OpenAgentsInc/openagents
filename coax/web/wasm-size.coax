@@ -75,7 +75,7 @@ ws_resolve :: (dir: string, rel: string, out: [] u8) -> string {
 }
 #test "paths resolve as the compiler's #load does" {
   o: [256] u8;
-  #assert ws_resolve("apps/openagents-web", "../../verse/player.coax", o[..]) == "verse/player.coax";
+  #assert ws_resolve("apps/openagents-web", "../../aethyr/player.coax", o[..]) == "aethyr/player.coax";
   #assert ws_resolve("verse/everglade", "plan.coax", o[..]) == "verse/everglade/plan.coax";
   #assert ws_resolve("verse/everglade", "./../style.coax", o[..]) == "verse/style.coax";
   #assert ws_resolve("a", "../../b.coax", o[..]) == "../b.coax";

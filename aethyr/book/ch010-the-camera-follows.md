@@ -4,7 +4,7 @@
 > [aethyr/follow.coax](../follow.coax), the follow camera, and
 > [aethyr/shot.coax](../shot.coax), the shot every camera makes. Every
 > walking realm draws its camera through them, and the free orbit in
-> [verse/camera.coax](../../verse/camera.coax) draws its shot through
+> [aethyr/camera.coax](../../aethyr/camera.coax) draws its shot through
 > `aethyr/shot.coax`. The camera steps after the player's step, and the
 > player's step never touches it.
 
@@ -328,7 +328,7 @@ walk_view_at :: (p: Player, mode: int) -> Vec3 { return vp(walk_view(p, mode).at
 
 ### The free orbit
 
-An open realm uses the free orbit in `verse/camera.coax`. Its `Orbit` keeps
+An open realm uses the free orbit in `aethyr/camera.coax`. Its `Orbit` keeps
 the look, the zoom and the easing, and its shot comes from
 `aethyr/shot.coax`. The eye sits on a line from the pivot at your shoulder.
 As you zoom in past the closest distance, `first` goes from 0 to 1: the
@@ -341,7 +341,7 @@ and cosine, and its shots are the same bits as before the move. A check of
 ```jai
 // The free orbit: it circles a pivot at your shoulder and, zoomed in past its closest, goes on
 // into your head. `first` is how far in it is, from 0 (outside) to 1 (your eyes). It draws only,
-// and it uses the C library's sine and cosine as it did in verse/camera.coax, so its shots are
+// and it uses the C library's sine and cosine as it did in aethyr/camera.coax, so its shots are
 // the same bits as before.
 SHOT_ORBIT_DIST :: 5.2;      // how far ahead of the eye the point it looks at is
 SHOT_ORBIT_HEIGHT :: 1.45;   // the pivot, above the feet
@@ -633,7 +633,7 @@ frames of 1/64 s. Then it tries a dive whose time isn't a number:
 
 <!-- source: aethyr/examples/one-camera-at-a-time.coax example -->
 ```jai
-#load "../../verse/player.coax";
+#load "../player.coax";
 #import "Basic";
 
 // The cameras read the walker and never move it. One walk into a wall and a jump, with the
@@ -749,7 +749,7 @@ coax/bin/coax test aethyr/follow.coax --library
 coax/bin/coax mutate aethyr/follow.coax
 coax/bin/coax test aethyr/shot.coax --library
 coax/bin/coax mutate aethyr/shot.coax
-coax/bin/coax test verse/player.coax --library
+coax/bin/coax test aethyr/player.coax --library
 coax/bin/coax test verse/gridwalk.coax --library
 ```
 
@@ -781,26 +781,26 @@ coax/bin/coax test verse/gridwalk.coax --library
 - the helpers' edges: which of two equal values a minimum or clamp returns,
   seen in the sign of a zero, and the ends of the finite range.
 
-`verse/player.coax` adds the check that the player is the same whether the
+`aethyr/player.coax` adds the check that the player is the same whether the
 camera steps every step, never, or twice a step, and a check that the
 comparison sees each of the 21 fields it names.
 
 `coax mutate` kills all 189 mutants of `aethyr/follow.coax` and all 54 of
 `aethyr/shot.coax`, and no mutant survives on the changed lines of
-`verse/player.coax` or `verse/camera.coax`.
+`aethyr/player.coax` or `aethyr/camera.coax`.
 
 ## Still to do
 
 The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
 moves the rest of the realms' cameras onto `CameraShot`:
 
-- `verse/space.coax`'s `Shot`, which the overview, Start's dolly and the
+- `aethyr/points.coax`'s `Shot`, which the overview, Start's dolly and the
   free orbit's realms use, becomes `CameraShot`. Today the orbit converts
   between the two at its edge.
 - The homepage's dive into the Grid (`apps/openagents-web/newland-walk.coax`,
   `wk_dive`) moves onto `shot_dive`.
 - Ice Cream Man's boom (`verse/icecream/camera.coax`) and `SpaceCam`
-  (`verse/spacecam.coax`) make `CameraShot`s.
+  (`aethyr/spacecam.coax`) make `CameraShot`s.
 - The free orbit's easing (`verse_orbit_follow`, `verse_orbit_limit`) moves
   from the frame to the fixed step, and `verse_orbit_room` reads the realm's
   `Colliders` through `follow_room`.

@@ -4,8 +4,8 @@
 // capacity, and prints what a caller can observe: the restored colour on a
 // grid over each patch at several times, and the blooms the page draws.
 #import "Basic";
-#load "../../../verse/camera.coax";
-#load "../../../verse/terrain.coax";
+#load "../../../aethyr/camera.coax";
+#load "../../../aethyr/terrain.coax";
 #load "../../../verse/fairy-forest/forest.coax";
 
 fx_print :: (f: [] Forest, now: f64) {

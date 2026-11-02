@@ -3,7 +3,7 @@
 > **Status: unimplemented — design draft.** Aethyr already propagates two-body
 > Kepler orbits and hands ships between spheres of influence
 > (`orbit_propagate`, `orbit_dominant`, `orbit_soi_blend` in
-> [`verse/orbit.coax`](../../verse/orbit.coax)); this chapter plans
+> [`aethyr/orbit.coax`](../../aethyr/orbit.coax)); this chapter plans
 > integrators whose error is stated per observable. Nothing here runs yet.
 
 Propagation is the question "where will it be". Every method answers it with
@@ -59,7 +59,7 @@ inside the Newtonian envelope.
 
 ## What exists today
 
-[`verse/orbit.coax`](../../verse/orbit.coax) solves Kepler's equation for
+[`aethyr/orbit.coax`](../../aethyr/orbit.coax) solves Kepler's equation for
 ellipses (`kepler_elliptic`) and hyperbolas (`kepler_hyperbolic`) to 1e-12,
 propagates with `orbit_propagate`, and hands states between bodies with
 `orbit_soi_radius`, `orbit_body_soi`, `orbit_relative`, `orbit_absolute` and

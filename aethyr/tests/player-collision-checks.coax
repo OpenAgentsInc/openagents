@@ -1,4 +1,4 @@
-// Loaded by verse/player.coax: exercise the real fixed step and its public
+// Loaded by aethyr/player.coax: exercise the real fixed step and its public
 // diagnostics, rather than another copy of the capsule arithmetic.
 
 #test "the checked fixed step admits the normal walking contact" {

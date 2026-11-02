@@ -596,7 +596,7 @@ hh_atan2 :: (y:f32,x:f32)->f32 {
  if ay>ax{angle=1.57079633-angle;}if x<0{angle=3.14159265-angle;}if y<0{angle=-angle;}return angle;
 }
 // ---- the characters' life: idle variety, looking at you, gestures, startles.
-// The house's people are whole meshes (no joints, so verse/motion.coax's
+// The house's people are whole meshes (no joints, so aethyr/motion.coax's
 // keyframes don't apply): their life is a lean, a sway, a bob and a turn of the
 // whole body, chosen here from time, who they are and what is going on.
 HauntLife :: struct { yaw:f32; pitch:f32; roll:f32; lift:f32; stretch:f32; }

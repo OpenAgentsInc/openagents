@@ -60,16 +60,16 @@ delta-v, propellant and time are computed, not invented.
 
 - Orbit League: [orbitleague.coax](../../apps/openagents-web/orbitleague.coax)
   (rules and drawing; `orbitleague.wgsl` traces the scene) over
-  [verse/vehicle.coax](../../verse/vehicle.coax),
-  [contact.coax](../../verse/contact.coax),
-  [gravity.coax](../../verse/gravity.coax),
-  [thrust.coax](../../verse/thrust.coax),
-  [rigid.coax](../../verse/rigid.coax) and
+  [aethyr/vehicle.coax](../../aethyr/vehicle.coax),
+  [contact.coax](../../aethyr/contact.coax),
+  [gravity.coax](../../aethyr/gravity.coax),
+  [thrust.coax](../../aethyr/thrust.coax),
+  [rigid.coax](../../aethyr/rigid.coax) and
   [drum.coax](../../verse/drum.coax); the room server in
   [coax/web/room/room.coax](../../coax/web/room/room.coax).
 - Belt 2200: [belt.coax](../../apps/openagents-web/belt.coax) over
-  [verse/orbit.coax](../../verse/orbit.coax),
-  [spacecam.coax](../../verse/spacecam.coax) and
+  [aethyr/orbit.coax](../../aethyr/orbit.coax),
+  [spacecam.coax](../../aethyr/spacecam.coax) and
   [stars.coax](../../verse/stars.coax);
   [belt-lockstep.coax](../../apps/openagents-web/belt-lockstep.coax) and
   [belt-net.coax](../../apps/openagents-web/belt-net.coax) for two players.

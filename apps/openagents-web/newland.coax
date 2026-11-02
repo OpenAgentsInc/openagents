@@ -12,7 +12,7 @@
 #load "newland-golden-data.coax";
 #load "realms.coax";
 #load "galaxy.coax";
-#load "../../verse/figure.coax";
+#load "../../aethyr/figure.coax";
 #load "../../verse/hud/frame.coax";
 #load "newland-network.coax";
 #load "newland-xp.coax";

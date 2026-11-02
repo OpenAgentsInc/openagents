@@ -23,7 +23,7 @@ many fixed steps to run and how far the frame lies between the last two.
   moves everything outside its steps (animation, its room's timing) by it, so
   one clock clamps the whole frame. `ran` is the steps the last frame ran.
 
-The player controller (`verse/player.coax`, every walking realm) steps on it
+The player controller (`aethyr/player.coax`, every walking realm) steps on it
 at 1/64 s, Orbit League at 1/120 s, and Dead Gears' rules
 (`verse/deadgears/ecs.coax`), Everglade's debris (`verse/demolish.coax`) and
 Hold the Stair at 1/60 s. The page faces of the haunted house, Fairy Forest,
@@ -107,7 +107,7 @@ zone (0.2). The steps read it through an `InputBuffer`:
 - Values that aren't numbers, and axes past full travel, are refused or
   clamped and counted (`mended`). `input_blur` releases every level at once.
 
-The walking controller (`verse/player.coax`) takes its jump from the first
+The walking controller (`aethyr/player.coax`) takes its jump from the first
 step after the press. In the realms that call `verse_player_input` once a
 frame, its look still turns the camera at once; the Grid's session splits
 the look over the steps, and the other realms follow with ec-migrate. Checks: every press goes to the step a
@@ -119,7 +119,7 @@ on the next. Mutation: 126 of 126 killed (`input.coax`).
 ## Query (`aethyr/query.coax`)
 
 A realm's colliders are one `Colliders` value in world space: a flat ground,
-boxes, capsules and floors (`verse/stand.coax`). Four queries read it:
+boxes, capsules and floors (`aethyr/stand.coax`). Four queries read it:
 
 - `query_ground` (and `query_stand` for feet): the highest surface at or
   below a height, its slope, whether it is too steep (`QUERY_STEEP`, 55
@@ -179,7 +179,7 @@ state's digest (`replay_play` refuses another), keeps a state digest every
 step, and reports the first step that differs. `aethyr/rand.coax` draws by
 seed, stream and counter. `aethyr/math.coax` computes sine, cosine and
 powers from exact IEEE operations: with the C library's, a recorded walk
-parted natively and in wasm after 105 steps; `verse/player.coax`'s step uses
+parted natively and in wasm after 105 steps; `aethyr/player.coax`'s step uses
 them now. Checks: live sessions with late, repeated and out-of-order
 answers and updates replay to the same digest at every step with no request
 sent; a planted fault is found at its step; `coax/web/replay-hosts.coax`
@@ -217,10 +217,10 @@ down to a live one in 0.75 s by default, eased at both ends, the look-at
 arriving 1.3 times sooner; a time that isn't a number is a cut). Each reads
 state already drawn between steps; none steps physics.
 
-The walking controller (`verse/player.coax`) keeps its camera fields, which
+The walking controller (`aethyr/player.coax`) keeps its camera fields, which
 the realms' C faces read. Its step no longer moves them: `camera_step` runs
 `follow_track` after each player step (`step_once`), and its view modes are
-the three shots. `verse/camera.coax`'s free orbit draws its shot through
+the three shots. `aethyr/camera.coax`'s free orbit draws its shot through
 `aethyr/shot.coax`. The arithmetic is the same as before (200,000 random
 orbits and 100,000 random walkers gave the same bits), so the Grid's pinned
 session digest and its recorded host session are unchanged. Checks:
@@ -229,7 +229,7 @@ calculations for boxes, capsules, slants and the wall band, pull-in and
 back-out at any step size, tracking leaves the colliders as they were, the
 third- and first-person shots), `aethyr/shot.coax` (top down, the orbit's
 line outside, halfway and inside, a dive that lands exactly and moves at most
-3.43 m a frame over 87.78 m in 48 frames, cuts), `verse/player.coax` ("the
+3.43 m a frame over 87.78 m in 48 frames, cuts), `aethyr/player.coax` ("the
 player is the same whether its camera steps every step, never, or twice a
 step": a walk into a wall, round it and past a body with two jumps and a
 turn at 60 FPS, comparing 21 fields every frame) and `verse/gridwalk.coax`
@@ -239,7 +239,7 @@ most 0.016 m between frames (measured 0.013 m), it rises every frame of a
 jump's rising arc, and drawing the last step instead changes its move by more
 than three times the bound). Mutation: 189 of 189 (`follow.coax`), 54 of 54
 (`shot.coax`), none surviving on the changed lines of `player.coax` and
-`camera.coax`. `verse/space.coax`'s `Shot`, the homepage's dive into the
+`camera.coax`. `aethyr/points.coax`'s `Shot`, the homepage's dive into the
 Grid, Ice Cream Man's boom and `SpaceCam` move onto `CameraShot` with
 ec-migrate.
 
@@ -271,7 +271,7 @@ reported), takes, peaks and ties, measured frames over budget in each kind,
 counts below zero, unknown kinds and a sum past the largest `int`.
 Mutation: 139 of 139 killed. Steps are measured per realm (Loop, above):
 Hold the Stair's, Orbit League's and Dead Gears' budget checks take each
-frame's steps, a 3 s stall's included, and `verse/player.coax` checks the
+frame's steps, a 3 s stall's included, and `aethyr/player.coax` checks the
 walkers'. Refusal inside the writers is still to do.
 
 ## Assets (`aethyr/assets.coax`)
@@ -339,8 +339,8 @@ and a 0.4 m step up and off, at 60 FPS against the 64 Hz steps.
 ## The Grid on the engine core (`verse/gridwalk.coax`)
 
 The Grid (`/realms/the-grid`) is the first realm whose simulation is one Coax
-session on the engine core. `GridWalk` holds you (`verse/player.coax`), the
-phone's thumbs (`verse/sticks.coax`, moved out of `verse/grid.coax`), the
+session on the engine core. `GridWalk` holds you (`aethyr/player.coax`), the
+phone's thumbs (`aethyr/sticks.coax`, moved out of `verse/grid.coax`), the
 input buffer and the session's record. The page's C face calls
 `gridwalk_frame` once a frame with the keys held, the drag, arrow, tilt and
 wheel amounts and the frame's time, passes touches to `gridwalk_touch`, and

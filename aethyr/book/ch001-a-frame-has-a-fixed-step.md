@@ -2,7 +2,7 @@
 
 > Engine-core task: `ec-loop` (#12609), done in `3102756f8b`. The module is
 > [aethyr/loop.coax](../loop.coax). The walking controller in
-> [verse/player.coax](../../verse/player.coax), which every walking realm
+> [aethyr/player.coax](../../aethyr/player.coax), which every walking realm
 > uses, and Orbit League step on it.
 
 A display shows frames at its own rate: 60 frames a second on most phones,
@@ -335,7 +335,7 @@ drops the time of the other eight. The next frame runs one step, like any
 other frame.
 
 The controller has a stronger check, "a run and jump has the same states at
-30, 60, 120 and 144 FPS" in `verse/player.coax`. It runs a jump at each rate
+30, 60, 120 and 144 FPS" in `aethyr/player.coax`. It runs a jump at each rate
 and compares every step, bit for bit, with the same jump run one step at a
 time. It also requires the drawn feet to lie between the last two steps.
 
@@ -421,7 +421,7 @@ least three times over, so a change back to last-step drawing fails.
 ```shell
 coax/bin/coax test aethyr/loop.coax --library
 coax/bin/coax mutate aethyr/loop.coax
-coax/bin/coax test verse/player.coax --library --only FPS
+coax/bin/coax test aethyr/player.coax --library --only FPS
 ```
 
 `aethyr/loop.coax` has nine checks. They cover:
@@ -443,7 +443,7 @@ coax/bin/coax test verse/player.coax --library --only FPS
 
 Before this module, each realm kept its own accumulator:
 
-- `verse/player.coax`: f32 seconds, 1/64 s, eight steps, 0.25 s.
+- `aethyr/player.coax`: f32 seconds, 1/64 s, eight steps, 0.25 s.
 - Orbit League: f64, 1/120 s, at most eight steps of carried time.
 - Dead Gears' ECS clock in
   [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax): f64, 1/60 s, a

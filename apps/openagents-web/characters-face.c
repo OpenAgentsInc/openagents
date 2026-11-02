@@ -1,7 +1,7 @@
 // The characters realm's C face for the browser: scalar Wasm exports that
 // wrap characters.coax, which takes views. Every pointer is an offset into
 // the host's WebAssembly.Memory. Logic stays in characters.coax and
-// verse/figure.coax.
+// aethyr/figure.coax.
 #include "characters.h"
 #include "analytics-face.h"
 

@@ -4,10 +4,10 @@
 // no camera steps physics:
 // - the follow camera behind a walker and first person (aethyr/follow.coax, which loads this);
 // - top down, high over the drawn feet;
-// - the free orbit an open realm uses (verse/camera.coax's Orbit holds its look, zoom and easing);
+// - the free orbit an open realm uses (aethyr/camera.coax's Orbit holds its look, zoom and easing);
 // - the dive, from a shot far off down to a live camera's shot.
 //
-// It loads only aethyr/space.coax, so a realm with its own cameras (verse/camera.coax) can load it.
+// It loads only aethyr/space.coax, so a realm with its own cameras (aethyr/camera.coax) can load it.
 //   coax/bin/coax test aethyr/shot.coax --library
 //   coax/bin/coax mutate aethyr/shot.coax
 
@@ -38,7 +38,7 @@ shot_mix :: (a: WorldPoint, b: WorldPoint, share: f32) -> WorldPoint {
 // book:begin orbit
 // The free orbit: it circles a pivot at your shoulder and, zoomed in past its closest, goes on
 // into your head. `first` is how far in it is, from 0 (outside) to 1 (your eyes). It draws only,
-// and it uses the C library's sine and cosine as it did in verse/camera.coax, so its shots are
+// and it uses the C library's sine and cosine as it did in aethyr/camera.coax, so its shots are
 // the same bits as before.
 SHOT_ORBIT_DIST :: 5.2;      // how far ahead of the eye the point it looks at is
 SHOT_ORBIT_HEIGHT :: 1.45;   // the pivot, above the feet

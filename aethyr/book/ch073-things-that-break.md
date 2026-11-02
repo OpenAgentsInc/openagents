@@ -74,7 +74,7 @@ they have to agree on identity, timing, authority and lifetime.
 - [verse/everglade/previous/destructible-buildings.md](../../verse/everglade/previous/destructible-buildings.md):
   the original design, its networking decision and its delivery plan
   (D0–D3).
-- [verse/stand.coax](../../verse/stand.coax): the top of each standing
+- [aethyr/stand.coax](../../aethyr/stand.coax): the top of each standing
   piece as a floor you walk on.
 
 ## What it builds

@@ -10,9 +10,9 @@
 // away at once (a link to another place) has the flock waiting for them
 // there. The ribbon is FLOCK_TRAIL points a bird, one every
 // FLOCK_TRAIL_EVERY seconds, newest first from flock_trail.
-//   coax/bin/coax test verse/flock.coax --library
+//   coax/bin/coax test aethyr/flock.coax --library
 
-#load "space.coax";
+#load "points.coax";
 
 FLOCK_BIRDS :: 7;
 FLOCK_TRAIL :: 10;

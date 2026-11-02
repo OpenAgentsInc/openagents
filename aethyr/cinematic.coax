@@ -9,9 +9,9 @@
 //   on a key or a touch, verse_flight_take for what is on screen now (the
 //   host changes the scene behind a cut), verse_flight_active until it is
 //   over. A free orbit takes the last shot with verse_orbit_toward.
-//   coax/bin/coax test verse/cinematic.coax
+//   coax/bin/coax test aethyr/cinematic.coax
 
-#load "space.coax";
+#load "points.coax";
 
 FLIGHT_KEYS :: 16;
 HANDBACK :: 0.9;           // seconds: from the flight's last shot to the live camera

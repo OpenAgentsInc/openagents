@@ -2,7 +2,7 @@
 // (director.coax) played at a moment t. Pure, like the director: given the
 // events and t it says who is on the stage, where, in which pose and with
 // which feeling, which effects are running and how old they are, and where
-// the camera is (its shots flown with verse/cinematic.coax). The realm
+// the camera is (its shots flown with aethyr/cinematic.coax). The realm
 // (apps/openagents-web/animelab.coax) draws what this says; the live voice
 // path will drive the same function. The same events and t always give the
 // same stage, so a take renders the same frames every time.
@@ -17,7 +17,7 @@
 //   coax/bin/coax test verse/anime/stage.coax --library
 
 #load "director.coax";
-#load "../cinematic.coax";
+#load "../../aethyr/cinematic.coax";
 
 // ---- The stage's marks
 COURT :: 12.0f32;                    // m: the courtyard's half width (walls at ±COURT)
@@ -375,7 +375,7 @@ sg_frame :: (s: Stage, shot: StageShot, k: f32) -> CamNow {
 }
 
 // Where the camera is at t: the current shot's move flown from its start to its end over SHOT_DRIFT
-// (verse/cinematic.coax, eased), shaken as the stage says.
+// (aethyr/cinematic.coax, eased), shaken as the stage says.
 anime_camera_at :: (s: Stage, t: f32) -> CamNow {
   a := sg_frame(s, s.shot, 0);
   b := sg_frame(s, s.shot, 1);

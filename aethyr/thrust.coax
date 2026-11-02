@@ -1,4 +1,4 @@
-// Thrusters and RCS for verse/rigid.coax bodies (docs/verse/space.md): a
+// Thrusters and RCS for aethyr/rigid.coax bodies (docs/verse/space.md): a
 // force at a point of the body along a direction, both in the body's frame,
 // fed from a tank. Ships, jet packs and a car's boost all use it.
 //
@@ -7,7 +7,7 @@
 // part of the body's mass when `carried` (a ship), or a game's budget that
 // weighs nothing when not (a car's boost meter, 0 to 100). RCS turns a
 // wanted torque into the body's torque, clamped to what its jets give.
-//   coax/bin/coax test --library verse/thrust.coax
+//   coax/bin/coax test --library aethyr/thrust.coax
 
 #load "contact.coax";
 

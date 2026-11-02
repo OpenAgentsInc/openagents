@@ -1,4 +1,4 @@
-// Aethyr's fixed-step kinematic walker, extracted from verse/player.coax.
+// Aethyr's fixed-step kinematic walker, extracted from aethyr/player.coax.
 // The original controller ports aethyr-cpp src/player_core.cpp and
 // three-player-controller (hh-hang/three-player-controller, MIT).
 //
@@ -7,7 +7,7 @@
 // collision and locomotion profiles and optional world-height terrain views.
 // It also retains the camera state adapters used by the first-person,
 // third-person and top-down views; follow.coax alone moves the camera.
-// verse/player.coax owns the compatible C exports. This shared core exports
+// aethyr/player.coax owns the compatible C exports. This shared core exports
 // no C symbols, so a realm and its Player library may both load it.
 //
 // Units are metres and seconds, +Y up and yaw0 along +Z. The fixed walking
@@ -15,7 +15,7 @@
 // constants below name the published defaults for existing callers/checks.
 
 #module "aethyr.walk";
-#load "../verse/stand.coax";
+#load "stand.coax";
 #load "loop.coax";
 #load "input.coax";
 #load "query.coax";   // the ground under you: one query for every walking realm
@@ -75,7 +75,7 @@ World :: struct {
   room: f32 = 1000;
   bodies: [] f32;
   walls: [] f32;
-  floors: [] f32;       // STAND_FLOATS numbers each (verse/stand.coax), on the same floor as the walls
+  floors: [] f32;       // STAND_FLOATS numbers each (aethyr/stand.coax), on the same floor as the walls
   heightfields: [] QueryHeightfield;
   collision: CollideProfile;
   locomotion: LocomotionProfile;
@@ -533,7 +533,7 @@ walk_advance_among :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32) -> 
   w.walls = walls;
   return advance_in(w, p, frame);
 }
-// And on floors (STAND_FLOATS numbers each, verse/stand.coax), on the same floor as the walls.
+// And on floors (STAND_FLOATS numbers each, aethyr/stand.coax), on the same floor as the walls.
 walk_advance_on :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32) -> Player {
   w: World;
   w.bodies = bodies;
@@ -1588,7 +1588,7 @@ walk_constrain :: (p:Player,x:f32,z:f32)->Player {
  return next;
 }
 
-// ---- floors (verse/stand.coax): a roof's slopes, a tower's cone
+// ---- floors (aethyr/stand.coax): a roof's slopes, a tower's cone
 
 // A gable roof 8 m across x and 10 m along z, its ridge along z at x 0: eaves `eave` up, the ridge 3 m over them.
 gable :: (f: [] f32, eave: f32) {

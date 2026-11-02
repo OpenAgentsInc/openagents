@@ -13,11 +13,11 @@
 //   free to look straight up or down; zooming out again comes back out.
 //
 // The host keeps a Dolly or an Orbit value and passes it back each frame.
-//   coax/bin/coax test verse/camera.coax
+//   coax/bin/coax test aethyr/camera.coax
 
-#load "space.coax";
-#load "../aethyr/shot.coax" as ash;   // the free orbit's shot is Aethyr's (book chapter 10)
-#load "../aethyr/space.coax" as asp;
+#load "points.coax";
+#load "shot.coax" as ash;   // the free orbit's shot is Aethyr's (book chapter 10)
+#load "space.coax" as asp;
 
 CENTER_X :: 0.0;          // what the overview circles: the spawn and its terminal
 CENTER_Z :: 3.0;

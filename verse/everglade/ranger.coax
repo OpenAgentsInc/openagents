@@ -4,9 +4,9 @@
 // per joint its parent (parents first), its rest translation and rotation (x, y, z, w) and
 // its inverse bind (three rows of four); per clip its seconds, the metres a loop travels (0
 // for a clip on the clock) and, per joint, its translation and rotation keys (first, count)
-// into the key lists: time then the value. Scale is 1 everywhere (within 1e-5). verse/skin.coax plays it.
+// into the key lists: time then the value. Scale is 1 everywhere (within 1e-5). aethyr/skin.coax plays it.
 
-#load "../skin.coax";
+#load "../../aethyr/skin.coax";
 
 RANGER_JOINTS :: 75;
 RANGER_CLIPS :: 8;

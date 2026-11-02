@@ -1,6 +1,6 @@
 -- Planetary Villa: emotes an agent makes from a sentence about the pet
 -- (hc-emotes; verse/planetary-villa/README.md). "She always spun twice before
--- lying down" goes to Gemini with the motion format (verse/motion.coax), the
+-- lying down" goes to Gemini with the motion format (aethyr/motion.coax), the
 -- dog's joints and how far each turns, and the stock emotes as examples; it
 -- answers one motion. The page checks it with the engine's own reader
 -- (verse_motion_read): if a turn is out of range it asks again with the

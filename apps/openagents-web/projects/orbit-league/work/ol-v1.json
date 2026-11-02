@@ -81,10 +81,10 @@
       "title": "Ball cam and the chase camera",
       "size": "S",
       "labels": [],
-      "body": "A chase camera behind the car and a ball cam toggled with one button (on screen on a phone) that keeps the ball in view, blended with verse/camera.coax shots.",
+      "body": "A chase camera behind the car and a ball cam toggled with one button (on screen on a phone) that keeps the ball in view, blended with aethyr/camera.coax shots.",
       "files": [
         "apps/openagents-web/realms/orbit-league/",
-        "verse/camera.coax"
+        "aethyr/camera.coax"
       ],
       "acceptance": [
         "Toggling ball cam keeps the ball on screen while the car drives away from it",
@@ -101,7 +101,7 @@
       "title": "A goal explodes in the team's colour and knocks cars back",
       "size": "S",
       "labels": [],
-      "body": "When the ball crosses a goal line: a particle burst in the scoring team's colour (verse/particles.coax), every car pushed back from the goal, a short pause, then kickoff positions.",
+      "body": "When the ball crosses a goal line: a particle burst in the scoring team's colour (aethyr/particles.coax), every car pushed back from the goal, a short pause, then kickoff positions.",
       "files": [
         "apps/openagents-web/realms/orbit-league/"
       ],
@@ -141,12 +141,12 @@
       "labels": [
         "engine"
       ],
-      "body": "Add contacts to verse/rigid.coax: sphere against box, box against box (the car as an oriented box), sphere against mesh (the arena), with friction and restitution. Swept tests for the ball at speed so it never passes through a goal frame. Generalise Dead Gears' arena_sweep (verse/deadgears/arena.coax).",
+      "body": "Add contacts to aethyr/rigid.coax: sphere against box, box against box (the car as an oriented box), sphere against mesh (the arena), with friction and restitution. Swept tests for the ball at speed so it never passes through a goal frame. Generalise Dead Gears' arena_sweep (verse/deadgears/arena.coax).",
       "files": [
-        "verse/rigid.coax"
+        "aethyr/rigid.coax"
       ],
       "acceptance": [
-        "coax test verse/rigid.coax passes with tests for each contact pair",
+        "coax test aethyr/rigid.coax passes with tests for each contact pair",
         "A ball at 100 m/s fired at a goal post never passes through it in a test"
       ],
       "blocked_by": [],
@@ -163,12 +163,12 @@
       "labels": [
         "engine"
       ],
-      "body": "A new verse/vehicle.coax: four wheel rays, suspension springs, tyre grip, a handbrake drift, and sticky driving on walls and ceilings when the wheels touch and the car is fast enough. Jump, double jump and dodge impulses are fixed numbers so skill shots repeat exactly. Boost is a rear rocket that works in the air.",
+      "body": "A new aethyr/vehicle.coax: four wheel rays, suspension springs, tyre grip, a handbrake drift, and sticky driving on walls and ceilings when the wheels touch and the car is fast enough. Jump, double jump and dodge impulses are fixed numbers so skill shots repeat exactly. Boost is a rear rocket that works in the air.",
       "files": [
-        "verse/vehicle.coax"
+        "aethyr/vehicle.coax"
       ],
       "acceptance": [
-        "coax test verse/vehicle.coax passes",
+        "coax test aethyr/vehicle.coax passes",
         "The same inputs from the same start give the same car path bit for bit in a test"
       ],
       "blocked_by": [
@@ -188,11 +188,11 @@
       "body": "The ball's response to a car hit depends on where on the car it lands, the car's speed and spin, tuned so a front-flip shot and a side dodge feel distinct. The first playable moves onto the vehicle controller and contacts.",
       "files": [
         "apps/openagents-web/realms/orbit-league/",
-        "verse/vehicle.coax"
+        "aethyr/vehicle.coax"
       ],
       "acceptance": [
         "A test hits the ball with the nose, a corner and the roof and gets three distinct directions",
-        "The realm uses verse/vehicle.coax"
+        "The realm uses aethyr/vehicle.coax"
       ],
       "blocked_by": [
         "ol-vehicle",
@@ -211,10 +211,10 @@
       "labels": [
         "engine"
       ],
-      "body": "Gravity points toward the drum's outer wall, scaled by spin. verse/player.coax and verse/throw.coax take a gravity function instead of a constant; existing realms keep their constant through it.",
+      "body": "Gravity points toward the drum's outer wall, scaled by spin. aethyr/player.coax and aethyr/throw.coax take a gravity function instead of a constant; existing realms keep their constant through it.",
       "files": [
-        "verse/player.coax",
-        "verse/throw.coax"
+        "aethyr/player.coax",
+        "aethyr/throw.coax"
       ],
       "acceptance": [
         "Existing realms' tests still pass",

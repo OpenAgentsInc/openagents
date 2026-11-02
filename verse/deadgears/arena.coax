@@ -15,7 +15,7 @@
 // restored fight moves exactly as the original.
 //   coax/bin/coax test --library verse/deadgears/arena.coax --steps 40000000   (the flow-field check walks ~25M)
 
-#load "../space.coax";
+#load "../../aethyr/points.coax";
 
 BOXES :: 16;
 Block :: struct { lo: Point; hi: Point; }

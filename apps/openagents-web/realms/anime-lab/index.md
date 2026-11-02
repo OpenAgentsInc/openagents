@@ -14,7 +14,7 @@ Direct an anime with your voice, at https://openagents.com/worlds/anime-lab. It 
 ## How it is made
 
 - `verse/anime/director.coax` is the director: the catalogue of directions, reading the decision model's answers, the session and the timeline with the anime grammar, with its checks.
-- `verse/anime/stage.coax` plays a timeline at a moment: who stands where, their poses and feelings, the effects, the draw-in, and the camera's shots flown with `verse/cinematic.coax`.
+- `verse/anime/stage.coax` plays a timeline at a moment: who stands where, their poses and feelings, the effects, the draw-in, and the camera's shots flown with `aethyr/cinematic.coax`.
 - `apps/openagents-web/animelab.coax` is the world and its overlay; `animelab-cast.coax`, `animelab-world.coax` and `animelab-mesh.coax` build the cast, the academy and the effects; `animelab-style.coax` gives the anime style's numbers; `gpu/animelab.coax` is its shaders, written to `animelab.wgsl`.
 - `docs/verse/anime-lab.md` in the OpenAgents repository is the plan: live voice, partial words, Psionic's decision model and the makers come next.
 

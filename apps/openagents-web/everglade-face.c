@@ -1,5 +1,5 @@
 // Everglade's C face for the browser (coax/web/host.js): everglade.coax is
-// the page, verse/player.coax walks you (its own library, as the realm
+// the page, aethyr/player.coax walks you (its own library, as the realm
 // links it) and verse/grid.coax reads a phone's thumbs. Once a frame it
 // passes values between them in order: the page's controls, the player's
 // step among the city's walls, then the page's frame with where you

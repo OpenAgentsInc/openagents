@@ -12,12 +12,12 @@
 // turns everything below it. Pitch + tips a bone that points up forward (a
 // bow, a nod) and swings a bone that hangs down backward (an arm, a leg);
 // roll + tips the top of the body toward its left. Every joint has limits
-// (verse_figure_limit) a motion is checked against (verse/motion.coax).
+// (verse_figure_limit) a motion is checked against (aethyr/motion.coax).
 //
 // The gaits are worked out here, from a clock: a person idles, walks and
 // runs; an animal walks (each foot in turn), trots (diagonal pairs) and
 // runs (a gallop, its back flexing), each foot's stride timed to its legs.
-//   coax/bin/coax test verse/figure.coax --library
+//   coax/bin/coax test aethyr/figure.coax --library
 
 #module "verse.figure";   // a page may #load it as an alias (Dead Gears does)
 

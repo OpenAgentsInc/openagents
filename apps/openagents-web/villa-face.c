@@ -1,5 +1,5 @@
 // Hecate's Cemetery's C face for the browser (coax/web/host.js): villa.coax
-// is the page, verse/player.coax walks you, verse/grid.coax reads a phone's
+// is the page, aethyr/player.coax walks you, verse/grid.coax reads a phone's
 // thumbs and villafig.coax poses the figures (each its own library). Once
 // a frame it passes values between them in order: the page's controls, the
 // player's step among the garden's walls, the page's step (the flight, the

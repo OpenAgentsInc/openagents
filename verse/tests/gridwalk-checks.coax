@@ -21,7 +21,7 @@
   for k: 0..<REPLAY_COUNTERS { #assert g[0].n[k] == before.n[k]; }
 }
 
-// A 1000 x 2000 pixel phone at 2 pixels a point, as verse/sticks.coax's checks.
+// A 1000 x 2000 pixel phone at 2 pixels a point, as aethyr/sticks.coax's checks.
 gw_new :: (g: [] GridWalk) {
   g[0] = GridWalk.{};
   gridwalk_place(g, 28, 28, -2.35619449, 1.35, 9);

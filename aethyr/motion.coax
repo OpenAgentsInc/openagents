@@ -1,7 +1,7 @@
 // Verse motions: emotes and other moves as small keyframe documents that an
 // agent can write from a description ("she always spins twice before lying
 // down") and the engine checks, plays and blends over a figure's gait
-// (verse/figure.coax). A motion is text, a statement a line (or separated
+// (aethyr/figure.coax). A motion is text, a statement a line (or separated
 // by ';', so one fits in a link):
 //
 //   motion wave            its name: a-z, 0-9, _ and -, at most 32
@@ -20,7 +20,7 @@
 // the legs walking. Every turn is checked against its joint's limits
 // (verse_figure_limit) and refused with the line and the allowed range,
 // never bent to fit: the writer gets the reason and tries again.
-//   coax/bin/coax test verse/motion.coax --library
+//   coax/bin/coax test aethyr/motion.coax --library
 
 #load "figure.coax";
 

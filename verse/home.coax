@@ -353,7 +353,7 @@ verse_home_frame :: (h: int, now: f64, width: f64, height: f64, scale: f64, safe
 }
 
 // The Start bar alone: laid out at the bottom, pressed and flashing. The
-// home draws it over its graph; the Grid's overview (verse/camera.coax)
+// home draws it over its graph; the Grid's overview (aethyr/camera.coax)
 // draws it over the Grid.
 verse_home_hud_frame :: (h: int, now: f64, width: f64, height: f64, scale: f64, safe_bottom: f64) #export_c {
   if width < 1.0 || height < 1.0 || scale < 1.0 || width > 16384.0 || height > 16384.0 { return; }

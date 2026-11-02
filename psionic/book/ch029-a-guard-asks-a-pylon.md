@@ -145,7 +145,7 @@ Focused checks avoid real models and the unchanged world/crypto suites:
 coax/bin/coax test verse/everglade/guard-decision.coax --library
 coax/bin/coax mutate verse/everglade/guard-decision.coax --root-only --jobs 4
 verse/test_guard_ai.sh
-coax/web/wasm.sh apps/openagents-web/everglade.coax apps/openagents-web/everglade-face.c /tmp/everglade.wasm verse/player.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-decision.coax
+coax/web/wasm.sh apps/openagents-web/everglade.coax apps/openagents-web/everglade-face.c /tmp/everglade.wasm aethyr/player.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-decision.coax
 EVERGLADE_GUARD_WASM=/tmp/everglade.wasm bun test coax/web/everglade-guard.test.ts
 ```
 

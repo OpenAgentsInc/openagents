@@ -4,7 +4,7 @@
 // verse/water.coax river body with the level profile the plan's carve
 // follows and a current from water_flow_river round the bridge's piles,
 // drawn with the W2 shader (verse/water-look.coax, everglade.wgsl). It is
-// its own library, as verse/player.coax is: the realm's face
+// its own library, as aethyr/player.coax is: the realm's face
 // (apps/openagents-web/everglade-face.c) passes values between it, the page
 // and the controller.
 //
@@ -22,7 +22,7 @@
 //   modifier is +0: a minute), at least 30 s; out of breath, an Exhaustion
 //   level every 6 s; the sixth defeats, and you come to on the nearer bank.
 //   Breathing again removes them; breath refills over 6 s.
-// - Floats: ducks and lily pads, rigid bodies (verse/rigid.coax) on
+// - Floats: ducks and lily pads, rigid bodies (aethyr/rigid.coax) on
 //   water_apply's buoyancy and drag; a duck paddles back to its stretch of
 //   the glade against the current, a lily pad is held by its stem.
 //
@@ -135,7 +135,7 @@ River :: struct {
   ready: bool;
   rise: f32;            // m the rain has raised the river (verse/water-weather.coax, at most 0.15; W9)
   flow_boost: f32;      // and how much faster its current runs for it (0 to 0.6)
-  n: int; cell: f32; west: f32; south: f32;      // the ground the bed is (verse/terrain.coax's grid)
+  n: int; cell: f32; west: f32; south: f32;      // the ground the bed is (aethyr/terrain.coax's grid)
   points: [RIVER_POINTS] D2; widths: [RIVER_POINTS] f64; lengths: [RIVER_POINTS] f64;
   profile: [RIVER_PROFILE] D2; profile_n: int;
   flow: [RIVER_FLOW] D2;
@@ -186,7 +186,7 @@ Swim :: struct {
 
 // ---- the bed
 
-// The ground's height at (x, z), as verse/terrain.coax's verse_terrain_height
+// The ground's height at (x, z), as aethyr/terrain.coax's verse_terrain_height
 // reads it (the same two triangles a cell the ground draws).
 river_bed :: (r: [] River, heights: [] f32, x: f32, z: f32) -> f32 {
   n := r[0].n;

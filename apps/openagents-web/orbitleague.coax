@@ -1,9 +1,9 @@
 // Orbit League (docs/verse/game-ideas/orbit-league.md): electric roadsters
 // playing ball in a glass arena in orbit. This file is the game's rules and
 // its drawing only; the physics is the engine's space primitives
-// (docs/verse/space.md): verse/vehicle.coax drives the cars, verse/contact.coax
-// answers every touch, verse/gravity.coax says which way is down, and
-// verse/thrust.coax burns the boost.
+// (docs/verse/space.md): aethyr/vehicle.coax drives the cars, aethyr/contact.coax
+// answers every touch, aethyr/gravity.coax says which way is down, and
+// aethyr/thrust.coax burns the boost.
 //
 // The first playable: you (blue) against one bot (magenta), a five-minute
 // match, a goal at each end of a flat box arena. Every 90 seconds of play the
@@ -24,9 +24,9 @@
 #load "font.coax";
 #load "ui.coax";
 #load "analytics.coax";
-#load "../../verse/vehicle.coax";
-#load "../../verse/gravity.coax";
-#load "../../verse/thrust.coax";
+#load "../../aethyr/vehicle.coax";
+#load "../../aethyr/gravity.coax";
+#load "../../aethyr/thrust.coax";
 #load "../../verse/drum.coax";
 #load "../../verse/sphere.coax";
 #load "../../aethyr/loop.coax";   // Aethyr's one clock: fixed 120 Hz steps

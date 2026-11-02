@@ -1,5 +1,5 @@
 // book:begin example
-#load "../../verse/space.coax";
+#load "../points.coax";
 #load "../space.coax" as engine;
 #import "Basic";
 

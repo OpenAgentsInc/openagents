@@ -45,7 +45,7 @@ def main():
   'machine':checked(['sysctl','-n','machdep.cpu.brand_string']).decode().strip(),
   'c_toolchain':checked([cc,'--version']).decode().splitlines()[0],
   'cache_scope':'fresh outputs and repeated single-shot invocations; OS caches uncontrolled, no incremental compiler','contract':contract,'sanitized':args.sanitize,'repeats':args.repeats,'modes':{}}
- report['sources_sha256']={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [ROOT/'verse/cast.coax',ROOT/'verse/player.coax',ROOT/'verse/benchmarks.coax',BASE/'native.cpp',BASE/'reader-f32.inc',ROOT/'coax/src/main.cpp',ROOT/'coax/src/emit_c.cpp',ROOT/'coax/src/coax.h']}
+ report['sources_sha256']={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [ROOT/'verse/cast.coax',ROOT/'aethyr/player.coax',ROOT/'verse/benchmarks.coax',BASE/'native.cpp',BASE/'reader-f32.inc',ROOT/'coax/src/main.cpp',ROOT/'coax/src/emit_c.cpp',ROOT/'coax/src/coax.h']}
  for mode in ['debug','app','release']:
   work=out/mode;work.mkdir(exist_ok=True);flags=['-O0' if mode=='debug' else '-O2','-g','-ffp-contract=off']
   if args.sanitize:flags+=['-fsanitize=address,undefined','-fno-omit-frame-pointer']

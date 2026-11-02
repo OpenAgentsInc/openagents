@@ -23,7 +23,7 @@
 #load "../aethyr/collision-profiles.coax" as walk_profiles;
 #load "../aethyr/collide.coax" as walk_capsule;
 #load "../aethyr/query.coax" as grid_queries;
-#load "sticks.coax";         // the phone's thumbs
+#load "../aethyr/sticks.coax";         // the phone's thumbs
 #load "../aethyr/replay.coax";
 #load "tests/gridwalk-checks.coax";   // the checks' sessions
 #authority;
@@ -39,7 +39,7 @@ GridWalk :: struct {
   profile: int = GW_PROFILE;
   you: pc.Player;
   input: InputBuffer;        // what the steps read (aethyr/input.coax)
-  thumbs: Sticks;            // the phone's fingers (verse/sticks.coax)
+  thumbs: Sticks;            // the phone's fingers (aethyr/sticks.coax)
   prev_theta: f32;           // the camera's turn when the last step began, for drawing
   prev_phi: f32;
   // the record (aethyr/replay.coax) and the state it starts from
@@ -178,7 +178,7 @@ gridwalk_frame :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: b
 
 // A finger (its slot), as the page's pointer reports it: 0 began, 1 moved, 2 ended, 3 cancelled.
 // A finger on the walking side is the move stick; on the other side it looks, and a quick tap
-// there jumps (verse/sticks.coax).
+// there jumps (aethyr/sticks.coax).
 gridwalk_touch :: (g: [] GridWalk, slot: int, phase: int, x: f32, y: f32) #export_c {
   if g.count < 1 { return; }
   g[0].thumbs = verse_sticks_world_touch(g[0].thumbs, slot, phase, x, y, g[0].width, g[0].height, g[0].dpr, g[0].now);

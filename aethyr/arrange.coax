@@ -10,7 +10,7 @@
 //   verse_arrange_click to place or take out what it points at,
 //   verse_arrange_turn to walk the view round the object, and
 //   verse_arrange_tip / verse_arrange_base to draw the stems.
-//   coax/bin/coax test --library verse/arrange.coax
+//   coax/bin/coax test --library aethyr/arrange.coax
 
 #load "camera.coax";
 

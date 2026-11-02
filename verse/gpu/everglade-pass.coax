@@ -89,7 +89,7 @@ run :: (host: string, p: EpPass, work: string, live: bool, keep: string, native:
   if !fs_mkdir(frame_dir) { tool_errln("everglade-pass: cannot make a directory"); return 1; }
   wasm := fs_join(work, "everglade.wasm", b[1][..]);
   build := [8] string.["coax/web/wasm.sh", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-face.c", wasm,
-    "verse/player.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax"];
+    "aethyr/player.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax"];
   if step("the wasm", build[..], o[..]) < 0 { return 1; }
   base := [15] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "coax/web/tool.sh", "verse/native/wasm-run.coax", wasm, "--pack", EP_PACK, "--facts", "verse/native/everglade.facts",
     "--extra", "9000", "--size", "320x180", "--dump", frame_dir];

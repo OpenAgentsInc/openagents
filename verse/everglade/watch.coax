@@ -43,7 +43,7 @@
 #load "routines.coax";
 #load "people-rig.coax";
 #load "../rules/srd5-combat.coax";
-#load "../stand.coax";
+#load "../../aethyr/stand.coax";
 
 WATCH_NEW :: 6;                        // the watch past the two gate guards
 WATCH_REIN :: 10;                      // the heat's reinforcements at most at once (WANTED levels 2 to 5)
@@ -320,7 +320,7 @@ Watch :: struct {
   bound_said: int;                // for the page: 1 bound, 2 resisted (it says so once and clears it)
   darts_hit: int;                 // for the checks
   call_cool: f32;                 // till a guard may call for help again (ROLE_CALL)
-  // what a thrown body comes down onto besides the ground (verse/stand.coax: the roofs and rubble round
+  // what a thrown body comes down onto besides the ground (aethyr/stand.coax: the roofs and rubble round
   // the bodies in flight, the realm's to set each frame), in the world
   floors: [WATCH_FLOORS * STAND_FLOATS] f32; floor_n: int;
 }

@@ -1,6 +1,6 @@
 // Hecate's Cemetery's figures: you (a person, a soft shadow) and the pets
 // (dogs, glowing white), posed by the Verse engine's figures and motions
-// (verse/figure.coax, verse/motion.coax). villa-face.c links this as its own
+// (aethyr/figure.coax, aethyr/motion.coax). villa-face.c links this as its own
 // library, because the engine's figure maths and the realm's camera maths
 // each bring their own small helpers. The face keeps one Figs, steps each
 // figure by how fast it moves, plays the emotes villa.coax asks for, and
@@ -12,7 +12,7 @@
 // same kind an agent writes from a sentence: ROLL OVER, HOWL and SLEEP.
 //   coax/bin/coax test apps/openagents-web/villafig.coax --library
 
-#load "../../verse/motion.coax";
+#load "../../aethyr/motion.coax";
 
 VF_FIGS :: 16;
 VF_MOTIONS :: 24;

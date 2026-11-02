@@ -11,7 +11,7 @@
 // Ported in spirit from Lagrange 2's `verse-lagrange` orbit crate
 // (`git show 0b401561a0^:docs/verse/lagrange-2.md`): DE440 GM values and
 // the same rocket equation.
-//   coax/bin/coax test verse/orbit.coax --library --steps 2000000000
+//   coax/bin/coax test aethyr/orbit.coax --library --steps 2000000000
 
 #load "rigid.coax";
 
@@ -31,7 +31,7 @@ State :: struct { r: D3; v: D3; }
 
 orbit_state_of :: (r: D3, v: D3) -> State { return State.{r = r, v = v}; }
 
-// atan2 over atan_d (verse/rigid.coax): there is no atan intrinsic.
+// atan2 over atan_d (aethyr/rigid.coax): there is no atan intrinsic.
 atan2_d :: (y: f64, x: f64) -> f64 {
   if x > 0.0 { return atan_d(y / x); }
   if x < 0.0 {

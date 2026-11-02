@@ -1,4 +1,4 @@
-// Contacts for verse/rigid.coax bodies (docs/verse/space.md): finding where
+// Contacts for aethyr/rigid.coax bodies (docs/verse/space.md): finding where
 // two shapes touch, and the impulse that answers it, in f64.
 //
 // Shapes: a sphere (a centre and a radius), an oriented box (a body's pose
@@ -14,8 +14,8 @@
 // rest), Coulomb friction up to mu times it, and a positional push for the
 // overlap past SLOP. A body with mass 0 is static (it never moves).
 // Forces and impulses at a point (rigid_force_at, rigid_impulse_at) are here
-// too: verse/vehicle.coax and verse/thrust.coax push bodies with them.
-//   coax/bin/coax test --library verse/contact.coax
+// too: aethyr/vehicle.coax and aethyr/thrust.coax push bodies with them.
+//   coax/bin/coax test --library aethyr/contact.coax
 
 #load "rigid.coax";
 

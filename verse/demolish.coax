@@ -30,7 +30,7 @@
 //   and it lands on what still stands, so a roof whose walls went on one side
 //   sags onto the other and slides off. It breaks into chunks when it leans
 //   past 62 degrees (a roof 50), strikes something hard, or has fallen 6 s.
-// - Physics: bodies are verse/rigid.coax's, stepped at a fixed 60 Hz, with
+// - Physics: bodies are aethyr/rigid.coax's, stepped at a fixed 60 Hz, with
 //   box contacts by impulses at the corners (restitution, Coulomb friction)
 //   against the ground, the pieces still standing (a roof by its slopes),
 //   and each other (a chunk's corners in another's box, both ways, found on a
@@ -55,7 +55,7 @@
 //   and carried by the current, and lodges where it comes to rest or after
 //   DEMO_FLOAT_LIFE s; coming in fast it raises a splash event.
 //
-// - Standing (verse/stand.coax): every standing piece's top is a floor you
+// - Standing (aethyr/stand.coax): every standing piece's top is a floor you
 //   come down onto and walk on (demo_stand): a box's top face, a roof's two
 //   slopes either side of its ridge, a tower roof's cone (demo_set_top), and
 //   each sleeping chunk's or loose piece's top face, so a roof blown away no
@@ -67,10 +67,10 @@
 // demo_dust_at and demo_bit_at the dust and splinters.
 //   coax/bin/coax test --library verse/demolish.coax --steps 2000000000
 
-#load "space.coax";
-#load "rigid.coax";
-#load "terrain.coax";
-#load "stand.coax";
+#load "../aethyr/points.coax";
+#load "../aethyr/rigid.coax";
+#load "../aethyr/terrain.coax";
+#load "../aethyr/stand.coax";
 #load "../aethyr/loop.coax";   // the steps are Aethyr's one clock's
 
 DEMO_PIECES :: 4000;
@@ -545,7 +545,7 @@ demo_link :: (w: [] DemoWorld) {
   w[0].linked = true;
 }
 
-// ---- standing on what stands (verse/stand.coax)
+// ---- standing on what stands (aethyr/stand.coax)
 
 demo_set_top :: (w: [] DemoWorld, i: int, kind: int) {
   if i < 0 || i >= w[0].n { return; }
@@ -639,7 +639,7 @@ demo_stand :: (w: [] DemoWorld, x: f32, z: f32, below: f32, pad: f32) -> StandHi
 }
 // The floors within `reach` of (x, z) (pieces still standing, rubble lying still), lowered by `base`,
 // into out from floor `at` on, at most up to its end: for a walker that takes a list
-// (verse/player.coax World.floors). Returns how many floors out holds now.
+// (aethyr/player.coax World.floors). Returns how many floors out holds now.
 demo_stand_near :: (w: [] DemoWorld, x: f32, z: f32, reach: f32, base: f32, out: [] f32, at: int) -> int {
   n := at;
   cap := out.count / STAND_FLOATS;

@@ -32,7 +32,7 @@
 // empty under the same camera.
 //   coax/bin/coax test apps/openagents-web/gridcrowd.coax
 
-#load "../../verse/space.coax";
+#load "../../aethyr/points.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 6;     // no strokes yet

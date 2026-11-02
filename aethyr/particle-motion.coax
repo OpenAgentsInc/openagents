@@ -1,4 +1,4 @@
-#load "../aethyr/render/noise.coax";
+#load "render/noise.coax";
 // Where a particle is and how bright, from its emitter, its number and the
 // clock alone: nothing is kept between frames, so the GPU draws every
 // particle of every emitter in one instanced pass (particles.wgsl, generated

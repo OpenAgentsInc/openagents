@@ -1,4 +1,4 @@
-// A wheeled vehicle on verse/rigid.coax and verse/contact.coax
+// A wheeled vehicle on aethyr/rigid.coax and aethyr/contact.coax
 // (docs/verse/space.md): one rigid body (its chassis), four wheels as
 // suspension rays from mounts on the chassis, and tyres that grip.
 //
@@ -22,9 +22,9 @@
 //
 // The world is a list of planes (a box arena is six); a curved arena gives
 // its tangent planes under each wheel. Gravity comes in as an acceleration
-// (verse/gravity.coax gravity_at). Body collisions are vehicle_collide: the
+// (aethyr/gravity.coax gravity_at). Body collisions are vehicle_collide: the
 // chassis box against the same planes.
-//   coax/bin/coax test --library verse/vehicle.coax
+//   coax/bin/coax test --library aethyr/vehicle.coax
 
 #load "contact.coax";
 

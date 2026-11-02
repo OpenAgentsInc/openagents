@@ -2,7 +2,7 @@
 
 > Engine-core task: `ec-input` (#12609). The module is
 > [aethyr/input.coax](../input.coax). The walking controller in
-> [verse/player.coax](../../verse/player.coax) takes its jump from it, and
+> [aethyr/player.coax](../../aethyr/player.coax) takes its jump from it, and
 > its run rule and dead zone come from it.
 
 Input arrives as events at any time: keys, mouse moves, touches, and pad
@@ -471,7 +471,7 @@ The controller's checks cover these cases:
 ```shell
 coax/bin/coax test aethyr/input.coax --library
 coax/bin/coax mutate aethyr/input.coax
-coax/bin/coax test verse/player.coax --library
+coax/bin/coax test aethyr/player.coax --library
 ```
 
 `aethyr/input.coax` has nine checks. They cover:

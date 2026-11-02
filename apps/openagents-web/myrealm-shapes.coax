@@ -1,5 +1,5 @@
 // A made realm's round things (myrealm.coax round_cone, myrealm.wgsl round_vertex): its people as
-// verse/figure.coax figures, bone by bone (as Hecate's Cemetery and Dead Gears draw theirs), and
+// aethyr/figure.coax figures, bone by bone (as Hecate's Cemetery and Dead Gears draw theirs), and
 // owls with round bodies and pale faces, flying or perched.
 
 SKIN_RGB :: [12] f32.[0.96, 0.78, 0.64,  0.8, 0.58, 0.42,  0.6, 0.4, 0.28,  0.42, 0.28, 0.2];
@@ -349,7 +349,7 @@ ISLE_D :: [6] f32.[36, 40, 42, 52, 40, 42];
 ISLE_Y :: [6] f32.[4, 2.5, 7, 10, 5, 7];
 ISLE_W :: [6] f32.[8, 6, 6, 8, 7, 6];
 
-// ---- the herd as verse/figure.coax animals, bone by bone (HERDS' order; a chicken keeps
+// ---- the herd as aethyr/figure.coax animals, bone by bone (HERDS' order; a chicken keeps
 // myrealm-things.coax beast): each kind's build, coat and marks, and what it carries (horns,
 // antlers, a mane, a hump, wool).
 // size, legs, body, girth, head, snout, ears (0 pricked, 1 hanging), tail, fluff, tail curl, ruff

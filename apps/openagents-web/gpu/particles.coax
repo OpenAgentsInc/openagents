@@ -2,13 +2,13 @@
 // build.sh writes that module from this with coax/web/wgsl-module.coax (particles.module,
 // particles.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../verse/gpu/wgsl.coax";
-#load "../../../verse/particle-motion.coax";
+#load "../../../aethyr/particle-motion.coax";
 #load "../../../verse/haunt-light.coax";
 
 // A realm's particles: one instanced draw after the house, PER particles an
-// emitter (verse/particles.coax), each a small quad facing the eye, added to
+// emitter (aethyr/particles.coax), each a small quad facing the eye, added to
 // the light behind it and hidden where the house is in front. Where a
-// particle is and how bright comes from verse/particle-motion.coax,
+// particle is and how bright comes from aethyr/particle-motion.coax,
 // written as WGSL by coax wgsl at build time into the generated block
 // below. Group 0 is the realm's uniforms (realm.wgsl U, read up to its
 // panels); group 1 the frame's emitters.

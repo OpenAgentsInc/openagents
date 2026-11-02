@@ -9,7 +9,7 @@
 //   query_sweep    the first touch of a sphere moving along a vector, in [0, 1]
 //
 // Colliders are in world space (aethyr/space.coax): a flat ground at a height, boxes (min and
-// max corners), capsules (two ends and a radius) and floors (verse/stand.coax: quads, cones,
+// max corners), capsules (two ends and a radius) and floors (aethyr/stand.coax: quads, cones,
 // domes, rings). Floors answer query_ground; rays, overlaps and sweeps cover the ground, the
 // boxes and the capsules. Every shape is solid: a ray or sweep that starts inside one hits it at
 // t = 0. Ties go to the earlier collider (the ground, then boxes, then capsules, each by index),
@@ -25,7 +25,7 @@
 #load "ground-query.coax" as height_rays;
 #load "ground-contact.coax" as height_contacts;
 #load "../coax/lib/quantity.coax" as quantities;
-#load "../verse/stand.coax";
+#load "stand.coax";
 #load "tests/query-oracle.coax";   // the checks' oracles
 #load "tests/query-heightfield.coax";
 
@@ -49,7 +49,7 @@ Colliders :: struct {
   ground: f32;
   boxes: [] f32;
   capsules: [] f32;
-  floors: [] f32;      // STAND_FLOATS numbers each (verse/stand.coax)
+  floors: [] f32;      // STAND_FLOATS numbers each (aethyr/stand.coax)
   heightfields: [] QueryHeightfield;
   heightfield_budget: int = height_rays.GROUND_RAY_CELLS;
 }

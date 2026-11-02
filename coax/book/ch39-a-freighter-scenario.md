@@ -30,7 +30,7 @@ a study profile, not flight qualification.
 1. **The scenario as data.** Cargo mass, tanks, drive, radiator and
    destination, each parameter with an R20 provenance record
    ([chapter 37](ch37-provenance-and-rule-modules.md)).
-2. **Frames.** The states in `verse/orbit.coax` and `verse/gravity.coax`
+2. **Frames.** The states in `aethyr/orbit.coax` and `aethyr/gravity.coax`
    move onto R12 types ([chapter 29](ch29-units-and-frames.md)). A full state
    transform includes the `ω × r` term, and a position-only transform applied
    to a velocity is refused. Heliocentric positions are f64; an f32 position

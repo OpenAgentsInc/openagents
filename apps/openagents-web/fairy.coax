@@ -13,8 +13,8 @@
 // The layout, the fade and the troubles are verse/fairy-forest/forest.coax;
 // the stream and the pond are verse/fairy-forest/stream.coax (verse/water.coax
 // physics, drawn in the painted water preset). You walk and run on the
-// engine's controller (verse/player.coax) and see the valley through the free
-// orbit (verse/camera.coax); every Space press is one wing beat up, with no
+// engine's controller (aethyr/player.coax) and see the valley through the free
+// orbit (aethyr/camera.coax); every Space press is one wing beat up, with no
 // limit, holding it beats on and climbs, and letting go glides down (the face does the flight).
 //
 // The look (fairy.wgsl, the flat style of docs/verse/art-styles.md): three
@@ -30,8 +30,8 @@
 
 #load "font.coax";
 #load "analytics.coax";
-#load "../../verse/camera.coax";
-#load "../../verse/terrain.coax";
+#load "../../aethyr/camera.coax";
+#load "../../aethyr/terrain.coax";
 #load "../../verse/fairy-forest/forest.coax";
 #load "../../verse/fairy-forest/park.coax";   // the park: Central Park at a quarter of its size
 #load "../../verse/fairy-forest/talk.coax";
@@ -2250,7 +2250,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   body := ffl_part_worn(s[0].life[..], worn, FFL_BODY);
   ups := FFL_BODY_UP; acrosses := FFL_BODY_ACROSS;
   s[0].fig_on = true; s[0].fig_at = shown; s[0].fig_up = ups[body]; s[0].fig_across = acrosses[body];
-  // zoomed into your head (first person, verse/camera.coax) you aren't drawn, unless the map lifts the eye out
+  // zoomed into your head (first person, aethyr/camera.coax) you aren't drawn, unless the map lifts the eye out
   if !verse_orbit_inside(s[0].orbit) || s[0].map[0].lift > 0.5 { fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap, worn); }
   s[0].fig_on = false;
   ffk_carried(s, shown, face);
@@ -2482,7 +2482,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert g[0].button.x1 > g[0].button.x0;
 }
 
-// What the player library (verse/player.coax) stands on: a wall whose top is
+// What the player library (aethyr/player.coax) stands on: a wall whose top is
 // within STEP_UP (0.55 m) of your feet and under you. Its own tests cover the
 // landing and the pushing out; these check the boxes are where the trees are.
 top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {

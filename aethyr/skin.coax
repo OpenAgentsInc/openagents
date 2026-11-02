@@ -18,9 +18,9 @@
 // length. skin_palette then writes each joint's skinning matrix (its posed
 // transform times its inverse bind) as three rows of four for the vertex
 // shader.
-//   coax/bin/coax test verse/skin.coax --library
+//   coax/bin/coax test aethyr/skin.coax --library
 
-#load "space.coax";
+#load "points.coax";
 
 SKIN_JOINTS_MAX :: 96;
 SKIN_FADE :: 0.22;        // seconds a change of clip blends (the old engine's transition)

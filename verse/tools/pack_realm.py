@@ -482,7 +482,7 @@ CHECK_JOINTS = (0, 13, 20, 26, 33, 45, 60, 74)
 
 
 def rig_coax(m, c, prefix, triangles):
-    """The character's skeleton and clips as Coax constants, for verse/skin.coax."""
+    """The character's skeleton and clips as Coax constants, for aethyr/skin.coax."""
     J = c["joints"]
     for j in J:
         if max(abs(v - 1) for v in j["s"]) > 1e-5:
@@ -511,9 +511,9 @@ def rig_coax(m, c, prefix, triangles):
            "// per joint its parent (parents first), its rest translation and rotation (x, y, z, w) and",
            "// its inverse bind (three rows of four); per clip its seconds, the metres a loop travels (0",
            "// for a clip on the clock) and, per joint, its translation and rotation keys (first, count)",
-           "// into the key lists: time then the value. Scale is 1 everywhere (within 1e-5). verse/skin.coax plays it.",
+           "// into the key lists: time then the value. Scale is 1 everywhere (within 1e-5). aethyr/skin.coax plays it.",
            "",
-           '#load "../skin.coax";',
+           '#load "../../aethyr/skin.coax";',
            "",
            f"{P}_JOINTS :: {len(J)};",
            f"{P}_CLIPS :: {len(c['clips'])};",

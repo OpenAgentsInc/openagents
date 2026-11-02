@@ -749,7 +749,7 @@ floating-origin camera already does by hand.
 **Consumer/gate:** move one Verse camera/world transform path and the joint
 and pose values of the simulated robot (Psionic chapters 168–170) onto these
 types, then the spacecraft scenario's heliocentric, body-fixed, ship and
-drum-interior states (`verse/orbit.coax`, `verse/gravity.coax`). Fixtures cover point/vector algebra, refused frame and unit mixing,
+drum-interior states (`aethyr/orbit.coax`, `aethyr/gravity.coax`). Fixtures cover point/vector algebra, refused frame and unit mixing,
 composition through a frame chain, exact and rounded conversions, a jumping
 frame, a refused position-only transform of a velocity, a rotating-frame state
 round trip against the inertial result, an f32 astronomical position refused

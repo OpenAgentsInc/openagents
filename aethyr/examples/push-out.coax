@@ -1,5 +1,5 @@
 // book:begin example
-#load "../../verse/player.coax";
+#load "../player.coax";
 #import "Basic";
 
 // A walker meets a realm's colliders: a 0.1 m wall it runs into, two steps 0.55 m and 0.56 m

@@ -75,7 +75,7 @@ What every realm module exports:
 | `coaxial_action`, `coaxial_outbox`, `coaxial_outbox_len`, `coaxial_action_done` | for saves | Action 4 keeps the outbox in the realm's slot; action 1 goes to a URL (`/realms` to leave). |
 | `coaxial_asset`, `coaxial_asset_ready` | with assets | Where a `data:` asset goes in memory, and that each asset arrived. |
 | `coaxial_draws`, `coaxial_draw_count`, `coaxial_stores`, ... | with a 3D scene | The scene's indexed draws over its storage, index and texture assets (`realm.wgsl` `scene_vs`/`scene_fs`). |
-| `coaxial_particle_cap`, `coaxial_particles`, `coaxial_particle_bytes`, `coaxial_particle_instances` | with particles | Emitters from `verse/particles.coax`, drawn by `particles.wgsl` when the page names `particles:/particles.wgsl`; Everglade's are its spells' fire and smoke puffs (`everglade-fx.wgsl`, whose `particle_over_vs`/`particle_over_fs` draw the smoke first, premultiplied over). |
+| `coaxial_particle_cap`, `coaxial_particles`, `coaxial_particle_bytes`, `coaxial_particle_instances` | with particles | Emitters from `aethyr/particles.coax`, drawn by `particles.wgsl` when the page names `particles:/particles.wgsl`; Everglade's are its spells' fire and smoke puffs (`everglade-fx.wgsl`, whose `particle_over_vs`/`particle_over_fs` draw the smoke first, premultiplied over). |
 
 Shared engine pieces stay in `verse/` and are linked as the Haunted House
 links them (`build.sh` lists them after the face): `player.coax` walks,

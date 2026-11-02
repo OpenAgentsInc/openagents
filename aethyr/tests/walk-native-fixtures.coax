@@ -1,7 +1,7 @@
 // The same adapter compiles against current Player and the git-pinned pre-extraction Player.
 // Its worlds are data; it does not reproduce either controller's arithmetic.
-#load "../../verse/player.coax";
-#load "../../verse/stand.coax";
+#load "../player.coax";
+#load "../stand.coax";
 #load "../query.coax" as parity_query;
 #load "../ground.coax" as parity_ground;
 

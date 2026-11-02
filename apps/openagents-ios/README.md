@@ -130,8 +130,8 @@ device and frame-tail evidence remain open.
 | --- | --- |
 | `../../verse/home.coax` | Graph generation, dust, pulses, animation, touch ownership, HUD layout, closed resource admission and generated proto codec calls |
 | `../../verse/grid.coax` | The Grid: projecting and fading its ground ring, the view matrix, the move/look/jump touch policy |
-| `../../verse/camera.coax` | The home's overview orbit and Start's dolly down to you |
-| `../../verse/player.coax` | Walking, running, jumping, bumping into the robots and the terminal, and the third-person camera, ported from aethyr-cpp |
+| `../../aethyr/camera.coax` | The home's overview orbit and Start's dolly down to you |
+| `../../aethyr/player.coax` | Walking, running, jumping, bumping into the robots and the terminal, and the third-person camera, ported from aethyr-cpp |
 | `../../verse/cast.coax` | Your character (skinned, idle/walk/run/jump/dance clips cross-faded) and the six robots, including the Foreman by the start, with a body capsule per robot bone that you collide with; reads and checks `Cast.bin` |
 | `OpenAgents/Resources/Cast.bin`, `cast-layer*.jpg` | Packed by `../../verse/tools/pack_cast.py` from aethyr-cpp assets (Quaternius models, CC0) |
 | `../../verse/light.coax` | Scalar shader functions: sky, dots, threads, glass bar, bloom, tone mapping |

@@ -4,7 +4,7 @@
 // in it is the homepage's: land_scene draws the same places, trees, task ticks, roads, Pylons, XP,
 // agents and people from the same tables and the same live relay fold, in the same inks and
 // shaders. Only the camera differs: behind you as you walk among them, with the engine's
-// controller (verse/player.coax, its own library, which the face steps) and the phone's thumbs
+// controller (aethyr/player.coax, its own library, which the face steps) and the phone's thumbs
 // (verse/grid.coax). The HUD is the Grid's: THE GRID with the project you are nearest, HOME and
 // REALMS, the controls' hint, the live status and the thumb's ring. A click (not a drag) on a
 // project, a person, an agent or a Pylon opens the homepage's card for it.

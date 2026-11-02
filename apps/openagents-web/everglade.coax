@@ -19,9 +19,9 @@
 // stands (plant_thicket), where everglade_hold stops you. Nothing you can
 // see as open ground is behind an invisible wall.
 //
-// You walk it with the engine's controller (verse/player.coax, its own
+// You walk it with the engine's controller (aethyr/player.coax, its own
 // library) among the plan's solids and see it through the free orbit
-// (verse/camera.coax). M (or MAP on a phone) lifts the camera over the city;
+// (aethyr/camera.coax). M (or MAP on a phone) lifts the camera over the city;
 // the location's hash starts you at a place (#market, #temple ...) and
 // #above opens on the map view. Players can't change the city; an admin
 // can, by voice (everglade-voice.coax): what they place is published over
@@ -38,14 +38,14 @@
 // in; the step you are on shows under the title, with a mark over where it
 // sends you. The stages are kept in this browser for its player (action 4,
 // the save slot everglade; message 4 gives them back). Handing in the river
-// quest brings the bird flock (eg-companion, verse/flock.coax), drawn here.
+// quest brings the bird flock (eg-companion, aethyr/flock.coax), drawn here.
 //
 // The player walks on a flat floor and is drawn at the ground's height
-// where it stands, as in the Garden; the ground is verse/terrain.coax's.
+// where it stands, as in the Garden; the ground is aethyr/terrain.coax's.
 // You are the old Everglade's player, the Universal male Ranger of the old
 // Rust Verse engine's last pinned pack: its mesh and textures come in the
 // realm's pack, its skeleton and clips are verse/everglade/ranger.coax
-// (both written by verse/tools/pack_realm.py), and verse/skin.coax plays
+// (both written by verse/tools/pack_realm.py), and aethyr/skin.coax plays
 // the clip the controller's state picks (idle, walk, run, jump), as the old
 // engine did. Its joints' skinning matrices go to the GPU each frame (store
 // 2) and everglade.wgsl skins its vertices with them.
@@ -57,11 +57,11 @@
 
 #load "font.coax";
 #load "analytics.coax";
-#load "../../verse/camera.coax";
+#load "../../aethyr/camera.coax";
 #load "../../verse/everglade/plan.coax";
 #load "../../verse/everglade/people.coax";
 #load "../../verse/everglade/quests.coax";
-#load "../../verse/flock.coax";
+#load "../../aethyr/flock.coax";
 #load "../../verse/everglade/ranger.coax";
 #load "../../verse/everglade/folk.coax";
 #load "../../verse/everglade/rumours.coax";
@@ -83,7 +83,7 @@
 #load "everglade-fork.coax";   // FORK, and a fork's rules (docs/verse/realm-fork.md)
 #load "everglade-reply.coax";
 #load "everglade-forge.coax";   // EDIT opens Aethyrforge's panels (docs/verse/aethyrforge.md)
-#load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (verse/stand.coax)
+#load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (aethyr/stand.coax)
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/budget.coax";
@@ -427,7 +427,7 @@ Everglade :: struct {
   kept: [SAVE_BYTES] u8; kept_n: int;      // the save this browser gave back, read again once the player is known
   dirty: bool;                             // the stages changed: keep them
   flock: bool;                             // the bird flock is yours (the river quest handed in)
-  birds: [1] Flock;                        // and where its birds are (verse/flock.coax)
+  birds: [1] Flock;                        // and where its birds are (aethyr/flock.coax)
   // you, the Ranger: its rig, its playback and its joints' skinning matrices (store 2)
   rig: [1] Ranger; skin: [1] Skin; palette: [PALETTE_FLOATS] f32;
   // the city's people: how each lives, their poses, their rig, the pack's parts and who is shown
@@ -1043,7 +1043,7 @@ everglade_unreached :: (s: [] Everglade, grid: [] u8, queue: [] u32, at: [] f32)
 }
 
 // A walker's way from `from` toward `to` among the city's walls and bodies, the trunks and rocks
-// round it and the world's edge, as verse/player.coax moves you (a stride a step, then out of each
+// round it and the world's edge, as aethyr/player.coax moves you (a stride a step, then out of each
 // body and wall too high to step onto, sideways): where it stands after `steps` steps, or once there.
 walk_toward :: (s: [] Everglade, from: Point, to: Point, steps: int) -> Point {
   p := from;
@@ -2944,7 +2944,7 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
 }
 
 // You: the old Everglade's Ranger, playing the clip what you are doing picks
-// (verse/skin.coax: idle, walk, run, jump; a gait by the distance you move),
+// (aethyr/skin.coax: idle, walk, run, jump; a gait by the distance you move),
 // turned to face your way and standing on the ground. Its joints' skinning
 // matrices are store 2; everglade.wgsl skins its vertices with them.
 // On a still page (a golden, reduced motion), once it has settled into standing idle, it holds the
@@ -3767,7 +3767,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].draws[d] = cast(u32) s[0].ranger_first;
   s[0].draws[d + 1] = cast(u32) s[0].ranger_count;
   s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + RANGER_AT);
-  // not in a beast's shape (everglade-circle.coax), nor zoomed into your head (first person, verse/camera.coax)
+  // not in a beast's shape (everglade-circle.coax), nor zoomed into your head (first person, aethyr/camera.coax)
   s[0].draws[d + 3] = cast(u32) (ifx s[0].ranger_count > 0 && ci_you_shown(s) && !you_inside(s) then 1 else 0);
   s[0].kit_triangles += s[0].ranger_count / 3;
   d = LATHE_DRAW * 4;

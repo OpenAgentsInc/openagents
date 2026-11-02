@@ -78,7 +78,7 @@ lo_s :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
 hi_s :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
 clamp_s :: (a: f32, low: f32, high: f32) -> f32 { return lo_s(high, hi_s(low, a)); }
 
-// The ground's height at (x, z), as verse/terrain.coax reads it.
+// The ground's height at (x, z), as aethyr/terrain.coax reads it.
 stream_bed :: (r: [] Stream, heights: [] f32, x: f32, z: f32) -> f32 {
   n := r[0].n;
   m := ifx r[0].grid_rows > 0 then r[0].grid_rows else n;

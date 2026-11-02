@@ -97,7 +97,7 @@ and takes them into it.
 | lanterns | gold, orange, red, green, blue, violet, white; 4 to 16 | lights in cages on dark posts, a pool of light each after dark |
 | flock | crow, bat, owl, parrot, gull, dragon, fairy, firefly, butterfly; 1 to 12 | wings circling low ahead of whoever walks (owls: tawny, broad, slow, a round pale-faced head; 0083); a dragon high and wide; fairies, fireflies and butterflies flit low, fairies and fireflies glowing (0088) |
 | props | crates, barrels, wagon, fence, camp, campfire, boat, bridge, signpost, well, treasure, graves, tumbleweeds, statue, fountain, wall, wreck, dock (up to 8) | the fixture pack's props (two wagons: "Wagons"); a campfire with its light, boats on the water (sails at sea), a bridge across the river, a well, a chest and gold, gravestones, rolling tumbleweeds, a stone statue (0088); a fountain (a stone basin, water and glowing jets), a stone wall with a gap, a shipwreck (a broken hull on its side, ribs and a mast) (0092) |
-| character | a name and a role (up to 4) | a figure (verse/figure.coax, drawn bone by bone as round cones: myrealm-shapes.coax) with its name and role |
+| character | a name and a role (up to 4) | a figure (aethyr/figure.coax, drawn bone by bone as round cones: myrealm-shapes.coax) with its name and role |
 | house | white, red, blue, green, yellow, brown, grey; small to large; 1 to 5 | walls, a gabled roof, a door and lit windows (0065); a small one is "a cottage" (0092) |
 | herd | bison, deer, horse, sheep, goat, cow, pig, wolf, fox, dog, camel, chicken, dinosaur, elephant, giraffe, monkey, squirrel; 1 to 10; up to two herds (10 animals in all) | animals roaming their own patches of the land and stopping to graze (0079); elephants with trunks, tusks and big ears, giraffes with long patched necks, monkeys with pale faces, squirrels with bushy tails (0092) |
 | mist | (on or off) | mist lying low over the land: the haze starts at once, four times as thick, and greys the horizon (0092; `uniforms[RAY_AT + 11]`) |
@@ -269,7 +269,7 @@ between you and them (`NEAR_A`). The ground has its own look whatever was asked:
 clumps of flowers and a few stones (dry tufts on sand and stone, stones on snow), broad patches of
 warmer and cooler ground, and soft hills on the horizon (a floating island instead has islands in
 sight and clouds at its edge). None of it is a feature or a listed line. People and animals are
-verse/figure.coax rigs drawn bone by bone as round cones (myrealm.wgsl `round_vertex`); owls are
+aethyr/figure.coax rigs drawn bone by bone as round cones (myrealm.wgsl `round_vertex`); owls are
 round with pale faces, three of them perched on the giant tree's branches; the rest are owl-sized
 (about a metre of wing, broad plain plates tapering to a rounded tip). Owls and every other bird
 but a dragon and the low fliers circle a round placed inside the view from where you start, on a

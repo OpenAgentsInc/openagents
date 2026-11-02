@@ -3,7 +3,7 @@
 > Engine-core task: `ec-query` (#12609). The module is
 > [aethyr/query.coax](../query.coax), with its oracles in
 > [aethyr/tests/query-oracle.coax](../tests/query-oracle.coax). The walking
-> controller in [verse/player.coax](../../verse/player.coax) asks it for the
+> controller in [aethyr/player.coax](../../aethyr/player.coax) asks it for the
 > ground under your feet.
 
 Several systems ask where things are in a realm:
@@ -82,13 +82,13 @@ Colliders :: struct {
   ground: f32;
   boxes: [] f32;
   capsules: [] f32;
-  floors: [] f32;      // STAND_FLOATS numbers each (verse/stand.coax)
+  floors: [] f32;      // STAND_FLOATS numbers each (aethyr/stand.coax)
   heightfields: [] QueryHeightfield;
   heightfield_budget: int = height_rays.GROUND_RAY_CELLS;
 }
 ```
 
-Floors use the formats in `verse/stand.coax`: quads, cones, domes, and rings.
+Floors use the formats in `aethyr/stand.coax`: quads, cones, domes, and rings.
 Floors answer `query_ground`. Rays, overlaps, and sweeps cover flat ground,
 heightfield triangles, boxes and capsules. Chapter 8 supplies the heightfield
 implementation and checked work budgets.
@@ -599,7 +599,7 @@ edge, and a box's top holds you while your capsule is over it.
 ```shell
 coax/bin/coax test aethyr/query.coax --library
 coax/bin/coax mutate aethyr/query.coax --library --root-only
-coax/bin/coax test verse/player.coax --library
+coax/bin/coax test aethyr/player.coax --library
 ```
 
 The original scene checks and the heightfield suites cover:
@@ -635,7 +635,7 @@ legacy permissive query continues to skip malformed shapes for trusted callers.
 queries and moves the legacy terrain sampler onto the shared implementation.
 The remaining realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
 includes the four terrain realms' floor-relative adapters, their older ray
-helpers, Everglade's wall-filter step constants and moving `verse/stand.coax`
+helpers, Everglade's wall-filter step constants and moving `aethyr/stand.coax`
 into the engine. Rays against floor shapes for roof and rubble picking remain
 outside this query profile.
 

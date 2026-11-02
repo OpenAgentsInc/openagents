@@ -1,7 +1,7 @@
 # 18. Rigid bodies and time steps
 
 > **Status: unimplemented — design draft.** Aethyr already steps free rigid
-> bodies in f64 ([`verse/rigid.coax`](../../verse/rigid.coax)); this chapter
+> bodies in f64 ([`aethyr/rigid.coax`](../../aethyr/rigid.coax)); this chapter
 > plans the Aethyr solver that generalizes it to batches, devices and
 > stated precision profiles. Nothing here runs yet.
 
@@ -93,7 +93,7 @@ reports its own error budget rather than inheriting the CPU's.
 - Intermediate-axis spin: the flip period against the Jacobi elliptic
   solution, and `|L|` and energy drift reported per profile over 10⁵ steps.
 - Momentum ledger: total momentum changes only by named external impulses.
-- Agreement with `verse/rigid.coax` on shared cases within a stated
+- Agreement with `aethyr/rigid.coax` on shared cases within a stated
   tolerance; device kernels against the CPU profile within theirs.
 - Step-halving: error falls at the integrator's stated order.
 

@@ -136,7 +136,7 @@ with the message `affine operation is not admitted`.
 - `.x`, `.y` and `.z` are raw scalars. Assigning them asserts the unit and
   frame. The compiler doesn't check where the number came from.
 - Metal, CUDA, SPIR-V and WGSL output refuse spatial values (`E0836`).
-- The first consumer is the Verse space camera, `verse/spacecam.coax`. Its
+- The first consumer is the Verse space camera, `aethyr/spacecam.coax`. Its
   world point and floating origin are `f64` points, and the published camera
   signatures keep their raw layouts.
 
@@ -206,7 +206,7 @@ bad := apply_position(drum_to_ship, state_local.velocity); // refused
 The roadmap names three consumers. Their adoption today:
 
 - One Verse camera and world transform path. The space camera,
-  `verse/spacecam.coax`, uses `f64` points for its world point and floating
+  `aethyr/spacecam.coax`, uses `f64` points for its world point and floating
   origin. The rest of the camera transform is untyped.
 - The joint and pose values of the simulated robot in
   [Psionic chapters 168–170](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/book/ch168-imitation-before-robotics-scale.md).
@@ -214,7 +214,7 @@ The roadmap names three consumers. Their adoption today:
   and `panda-fk-math.coax`) return typed world positions. Joints and poses
   are untyped.
 - The spacecraft scenario's heliocentric, body-fixed, ship and drum-interior
-  states (`verse/orbit.coax`, `verse/gravity.coax`). Not adopted; these need
+  states (`aethyr/orbit.coax`, `aethyr/gravity.coax`). Not adopted; these need
   the planned state transforms.
 
 Fixtures cover point and vector algebra, refused frame and unit mixing,

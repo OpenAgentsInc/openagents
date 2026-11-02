@@ -2,7 +2,7 @@
 
 > **Status: implemented.** Profile: **native f32 meshes and capsule contacts**.
 > The checked ground, ray, sphere-contact and walking-capsule modules live in
-> `aethyr/`. `verse/terrain.coax` and the real fixed-step controller use them;
+> `aethyr/`. `aethyr/terrain.coax` and the real fixed-step controller use them;
 > each walking realm declares its collision profile. This profile qualifies
 > native arithmetic, state publication and the existing C boundaries. Whole-realm
 > coordinate migration remains in [chapter 64](ch064-every-realm-runs-on-aethyr.md).
@@ -231,9 +231,9 @@ and preserves the input Player. The old C exports retain their signatures.
 Trusted direct helpers such as `move_across` retain their larger-move contract;
 new runtime movement uses the checked fixed-step entry.
 
-The resolver reads bodies but never pushes them back. `verse/contact.coax`
+The resolver reads bodies but never pushes them back. `aethyr/contact.coax`
 owns explicit rigid-body impulse and force calls. `verse/demolish.coax`
-resolves debris contacts and publishes floor views. `verse/throw.coax` owns
+resolves debris contacts and publishes floor views. `aethyr/throw.coax` owns
 throwing and fetching. None of these connections implies an automatic
 walker-to-rigid-body impulse.
 

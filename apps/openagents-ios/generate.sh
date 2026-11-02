@@ -26,7 +26,8 @@ for name in home player grid cast camera wallet haunt hud benchmarks; do
   base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
   debug_flags=()
   if [[ "${CONFIGURATION:-Debug}" == Debug ]]; then debug_flags+=(--debug-info --source-map "$out/$base.map.json"); fi
-  "$compiler" c "verse/$name.coax" --library --header "$out/$base.h" "${debug_flags[@]}" > "$out/$base.c.tmp"
+  src=verse; case "$name" in player|camera) src=aethyr ;; esac   # the engine modules (#12609)
+  "$compiler" c "$src/$name.coax" --library --header "$out/$base.h" "${debug_flags[@]}" > "$out/$base.c.tmp"
   mv "$out/$base.c.tmp" "$out/$base.c"
 done
 "$compiler" c verse/haunt-buffer.coax --library --header "$out/HauntBuffer.h" > "$out/HauntBuffer.c"

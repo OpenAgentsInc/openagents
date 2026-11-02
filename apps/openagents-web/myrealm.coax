@@ -38,7 +38,7 @@
 #load "access.coax";   // who may make a realm: BUILD YOUR OWN REALM hides on make 0
 #load "../../verse/edit/edit.coax";   // the board, settings and cards every realm shares
 #load "../../verse/style-preset.coax";
-#load "../../verse/figure.coax" as fig;   // the figures: you, the villagers, the characters
+#load "../../aethyr/figure.coax" as fig;   // the figures: you, the villagers, the characters
 #load "myrealm-shapes.coax";   // the round things: figures and owls
 #load "../../aethyr/forge/edit.coax";   // the realm document's edits: a move, undo, the revision a save names
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
@@ -1269,7 +1269,7 @@ lantern_post :: (s: [] MyRealm, x: f32, z: f32) {
   solid(s, x, z, 0.2);
 }
 
-// A figure (myrealm-shapes.coax person_figure: a verse/figure.coax person, bone by bone) facing yaw;
+// A figure (myrealm-shapes.coax person_figure: a aethyr/figure.coax person, bone by bone) facing yaw;
 // seen from above (top-down) a size larger, and you on a bright ring. look picks its skin, hair and
 // trousers; pace 0 stands, 1 walks, phase is how far through its strides.
 PERSON_RGB :: [12] f32.[0.35, 0.55, 0.42,  0.62, 0.42, 0.78,  0.36, 0.5, 0.82,  0.8, 0.62, 0.3];

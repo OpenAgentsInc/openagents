@@ -15,7 +15,7 @@
 //
 // Each answer is a StandHit: the height, its slope (dy/dx, dy/dz) and which
 // floor it is. A slope steeper than STAND_STEEP (55 degrees) holds you only
-// as long as you slide down it (verse/player.coax). `pad` lets a floor hold
+// as long as you slide down it (aethyr/player.coax). `pad` lets a floor hold
 // a body whose middle is just past its edge (half a foot on a wall's top);
 // past a sloped floor's edge it is its edge's height.
 //
@@ -24,7 +24,7 @@
 // floors cost a few per question. A realm whose floors can go (a roof blown
 // away) keeps them in the grid and skips the ones gone as it reads a cell.
 // Only builtins are used here, so any file may load it.
-//   coax/bin/coax test --library verse/stand.coax
+//   coax/bin/coax test --library aethyr/stand.coax
 
 #module "verse.stand";   // its own module: the walker and aethyr/query.coax both load it
 
@@ -32,7 +32,7 @@
 STAND_FLOATS :: 10;
 STAND_QUAD :: 1; STAND_CONE :: 2; STAND_DOME :: 3; STAND_RING :: 4;
 STAND_NONE :: -1000000.0;
-STAND_STEP :: 0.55;         // the highest top a walker steps onto (verse/player.coax STEP_UP)
+STAND_STEP :: 0.55;         // the highest top a walker steps onto (aethyr/player.coax STEP_UP)
 STAND_STEEP :: 1.43;        // tan 55 degrees: a steeper slope slides you off
 STAND_SIDE :: 64;           // cells a side
 STAND_CELL :: 4.0;          // m a cell
@@ -168,7 +168,7 @@ stand_top :: (f: [] f32, n: int, x: f32, z: f32, below: f32, pad: f32) -> StandH
   return best;
 }
 // Whether one of floors 0..<n has its surface over (x, z) between `over` and `under`: it would cut through a
-// body standing there (verse/player.coax keeps you from walking into a roof's slope from the side).
+// body standing there (aethyr/player.coax keeps you from walking into a roof's slope from the side).
 stand_cuts :: (f: [] f32, n: int, x: f32, z: f32, over: f32, under: f32) -> bool {
   for k: 0..<n {
     h := stand_at(f, k, x, z, 0);

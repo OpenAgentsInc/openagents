@@ -1,8 +1,8 @@
 # 72. Effects made of particles
 
 > **Status: unimplemented — design draft.** Today two private effect
-> systems exist. [`verse/particles.coax`](../../verse/particles.coax) and
-> [`verse/particle-motion.coax`](../../verse/particle-motion.coax) draw
+> systems exist. [`aethyr/particles.coax`](../../aethyr/particles.coax) and
+> [`aethyr/particle-motion.coax`](../../aethyr/particle-motion.coax) draw
 > embers, dust and fireflies for the Haunted House and Hecate's Cemetery,
 > and [`verse/everglade/gpu-fx.coax`](../../verse/everglade/gpu-fx.coax)
 > draws Everglade's spell fire, smoke, sparks and shockwave rings. This
@@ -62,9 +62,9 @@ and capped by a budget.
 
 ## What exists today
 
-- [verse/particles.coax](../../verse/particles.coax): emitter layout, caps
+- [aethyr/particles.coax](../../aethyr/particles.coax): emitter layout, caps
   and the Haunted House's emitter choice, with three `#test` checks.
-- [verse/particle-motion.coax](../../verse/particle-motion.coax): ember,
+- [aethyr/particle-motion.coax](../../aethyr/particle-motion.coax): ember,
   dust and firefly motion, with checks that embers rise and fade, dust stays
   in its room, and fireflies blink.
 - [apps/openagents-web/gpu/particles.coax](../../apps/openagents-web/gpu/particles.coax):

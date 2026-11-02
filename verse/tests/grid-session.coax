@@ -7,7 +7,7 @@
 // (grid-session-face.c) exports the same numbers, and the check compares them step by step.
 //
 // The turns are slow and come while you walk, so the steps' sines and cosines of the camera's
-// turn (verse/player.coax `wish`) cover angles where macOS's libm and wasi-libc round sinf and
+// turn (aethyr/player.coax `wish`) cover angles where macOS's libm and wasi-libc round sinf and
 // cosf differently: sinf for |theta| < pi/4 and past 3 pi/4, cosf between, about 3 inputs in
 // 100 in each. With `sin` or `cos` there instead of aethyr/math.coax's, the host check fails
 // (sinf at step 243, cosf at step 434, 2026-10-31).

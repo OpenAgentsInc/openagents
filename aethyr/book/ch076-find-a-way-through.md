@@ -1,7 +1,7 @@
 # 76. Find a way through
 
 > **Status: unimplemented — design draft.** Today three path systems exist.
-> [`verse/terrain.coax`](../../verse/terrain.coax) routes followers along a
+> [`aethyr/terrain.coax`](../../aethyr/terrain.coax) routes followers along a
 > realm's path graph (Hecate's dog, the glowing way to a memorial), Everglade's
 > townsfolk walk the town's road graph by shortest length
 > (`verse/everglade/routines.coax`), and Dead Gears flows its creatures over a
@@ -64,7 +64,7 @@ player.
 
 ## What exists today
 
-- [verse/terrain.coax](../../verse/terrain.coax): the path graph,
+- [aethyr/terrain.coax](../../aethyr/terrain.coax): the path graph,
   `verse_route_next`, `verse_route_points`, `Follower`,
   `verse_follower_step` and `verse_follower_step_among`.
 - [verse/everglade/plan.coax](../../verse/everglade/plan.coax): Everglade's

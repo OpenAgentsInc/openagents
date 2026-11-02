@@ -11,7 +11,7 @@ glowing head and tail lights); the floor and glass reflect the ball and the
 cars; a ringed ice giant, a moon and the station's ribs sit outside the glass.
 A goal blasts a shell of light and sparks in the scorer's colour; hard hits
 throw sparks and shake the camera; the ball and the boost leave trails. Six
-big and ten small boost pads; the dodge is in `verse/vehicle.coax`.
+big and ten small boost pads; the dodge is in `aethyr/vehicle.coax`.
 
 ## The game in one line
 
@@ -77,10 +77,10 @@ each pixel, so none of them alias or turn to moire at any distance.
 
 | Need | What we have | Where |
 |---|---|---|
-| Rigid bodies in f64 with quaternions | Newton for the centre of mass, Euler's equations, RK4 rotation, sleeping | `verse/rigid.coax` |
-| A ball that flies, bounces and rolls | Thrown balls on terrain, knocking scenery | `verse/throw.coax` |
-| Cameras that blend shots | Overview, dolly and free orbit as blended shots | `verse/camera.coax` |
-| Boost trails, sparks, goal explosions | Particle emitters drawn in one instanced pass | `verse/particles.coax`, `verse/particle-motion.coax` |
+| Rigid bodies in f64 with quaternions | Newton for the centre of mass, Euler's equations, RK4 rotation, sleeping | `aethyr/rigid.coax` |
+| A ball that flies, bounces and rolls | Thrown balls on terrain, knocking scenery | `aethyr/throw.coax` |
+| Cameras that blend shots | Overview, dolly and free orbit as blended shots | `aethyr/camera.coax` |
+| Boost trails, sparks, goal explosions | Particle emitters drawn in one instanced pass | `aethyr/particles.coax`, `aethyr/particle-motion.coax` |
 | Phone thumbs and buttons | Sticks, hotbar slots, long-press tooltips | `verse/grid.coax` (sticks), `verse/hud.coax`, Everglade's hotbar |
 | Deterministic replays | Ice Cream Man's seeded rules replay traces against a reference | `verse/icecream/replay.c`, `verse/icecream/trace.coax` |
 | Rooms and names over players | The Grid's multiplayer (positions five times a second) | `apps/openagents-web/thegrid-people.coax`, `apps/openagents-web/room.coax` |
@@ -88,19 +88,19 @@ each pixel, so none of them alias or turn to moire at any distance.
 
 ## What the engine needs
 
-1. **Contacts for rigid bodies** (`verse/rigid.coax`): sphere-against-box,
+1. **Contacts for rigid bodies** (`aethyr/rigid.coax`): sphere-against-box,
    box-against-box (the car as an oriented box), sphere-against-mesh (the
    arena), with friction and restitution. Swept tests for the ball at
    speed, so it never passes through the goal frame. Dead Gears already
    sweeps spheres against boxes (`verse/deadgears/arena.coax`
    `arena_sweep`); generalise it.
-2. **A vehicle controller**: a new `verse/vehicle.coax` with four wheel
+2. **A vehicle controller**: a new `aethyr/vehicle.coax` with four wheel
    rays, suspension springs, tyre grip, a handbrake, and "sticky" driving
    on walls and ceilings when the wheels touch. The jump, double jump and
    dodge impulses are fixed numbers, so skill shots repeat exactly.
 3. **Changing gravity**: gravity as a field (toward the drum's outer wall,
-   scaled by spin), not a constant. `verse/player.coax` and
-   `verse/throw.coax` take a constant gravity today.
+   scaled by spin), not a constant. `aethyr/player.coax` and
+   `aethyr/throw.coax` take a constant gravity today.
 4. **Fast authoritative multiplayer**: a WebSocket room on the API with a
    60 Hz server tick, client prediction for your own car, interpolation for
    others, and rollback on correction. The ball must be the server's.

@@ -1,5 +1,5 @@
 // Native assertions use hand-derived fixed-step values and exact nanosecond schedules.
-#load "../../verse/player.coax";
+#load "../player.coax";
 #load "../walk.coax" as native_scheduler;
 
 walk_tuned_assertions :: () #export_c {

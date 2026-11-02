@@ -359,7 +359,7 @@ Stair :: struct {
   card_shot: bool;   // ?card=1: the world without the HUD, for a link's card (coax/web/og-render.ts)
   // the map's layout this frame
   portrait: bool; ox: f32; oy: f32; tile: f32; scols: int; srows: int;
-  // the camera (verse/camera.coax's zoom and focus): the map as laid out to fit (bx, by, bt), its
+  // the camera (aethyr/camera.coax's zoom and focus): the map as laid out to fit (bx, by, bt), its
   // middle on the screen (acx, acy), how far in (zoom, 1 to ZOOM_MAX) and the map point, in tiles,
   // at that middle (fu, fv); what lies outside clip_y0..clip_y1 is the HUD's
   bx: f32; by: f32; bt: f32; acx: f32; acy: f32; clip_y0: f32; clip_y1: f32;

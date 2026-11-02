@@ -67,7 +67,7 @@ def qualify(args):
     record = Path(args.record).resolve()
     began = time.monotonic()
     compiler = Path(args.coax).resolve()
-    entries = [ROOT / f'apps/openagents-web/{args.realm}.coax', ROOT / 'verse/player.coax']
+    entries = [ROOT / f'apps/openagents-web/{args.realm}.coax', ROOT / 'aethyr/player.coax']
     sources = gate.snapshot([*entries, DRIVER, WASM_DRIVER, Path(__file__), Path(gate.__file__),
         Path(__file__).with_name('test_follower_hosts_tooling.py')])
     expected = {name: (ROOT / name, digest) for name, digest in sources.items()}

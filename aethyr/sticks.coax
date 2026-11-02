@@ -7,9 +7,9 @@
 //
 // The realm keeps a Sticks value and passes it back on every call. Every name here starts with
 // sticks_ or STICKS_, so the Grid's session (verse/gridwalk.coax) can load it beside the walking
-// controller (verse/player.coax). verse/grid.coax draws the stick and the slot.
-//   coax/bin/coax test verse/sticks.coax --library
-//   coax/bin/coax mutate verse/sticks.coax
+// controller (aethyr/player.coax). verse/grid.coax draws the stick and the slot.
+//   coax/bin/coax test aethyr/sticks.coax --library
+//   coax/bin/coax mutate aethyr/sticks.coax
 
 #module "verse.sticks";
 

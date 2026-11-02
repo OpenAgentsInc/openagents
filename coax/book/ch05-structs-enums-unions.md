@@ -396,7 +396,7 @@ positions after two steps. Use this style when you have many values to
 update, or when the values are too large to copy back and forth cheaply.
 
 > Note: The procedures in the native Verse home use the first style
-> almost everywhere. `verse/player.coax` advances the player with
+> almost everywhere. `aethyr/player.coax` advances the player with
 > `verse_player_advance_among :: (p: Player, frame: f32, ...) -> Player`,
 > and the host keeps the returned `Player`. A procedure that hands back the
 > whole new state is easy to test, because the old state is still there to

@@ -3,7 +3,7 @@
 // (ecs.coax, arena.coax, rules.coax: every system and check of the demo);
 // this file is the page over them: the ship's hull as the demo built it, the
 // cover, the reactor, the cargo, the bolts and the cutter's beams, the
-// engineers as verse/figure.coax figures and the creatures as bone-box
+// engineers as aethyr/figure.coax figures and the creatures as bone-box
 // figures, the camera at your
 // shoulder, the controls (keyboard and two thumbs), the HUD, the deck's hour
 // (each wave later in the day), its lamps and alarms, and the save kept in
@@ -25,7 +25,7 @@
 #load "../../aethyr/walk.coax" as pc;   // the controller every walkable realm shares (#6d99)
 #load "../../aethyr/collision-profiles.coax" as walk_profiles;
 #load "../../aethyr/collide.coax" as walk_capsule;
-#load "../../verse/figure.coax" as fig;  // the creatures' bodies and gaits (#ea44)
+#load "../../aethyr/figure.coax" as fig;  // the creatures' bodies and gaits (#ea44)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -68,7 +68,7 @@ SAVE_TAG_1 :: "deadgears-save 1";   // before the fight was kept mid-wave
 SAVES :: 11;
 
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
-DG_RUN_BY_DEFAULT :: true;   // verse/player.coax RUN_BY_DEFAULT: moving runs, Shift (HOLD_RUN) walks
+DG_RUN_BY_DEFAULT :: true;   // aethyr/player.coax RUN_BY_DEFAULT: moving runs, Shift (HOLD_RUN) walks
 HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16;
 HOLD_TURN_LEFT :: 32; HOLD_TURN_RIGHT :: 64; HOLD_TILT_UP :: 128; HOLD_TILT_DOWN :: 256; HOLD_FIRE :: 512; HOLD_REPAIR :: 1024; HOLD_JUMP :: 2048;
 
@@ -114,7 +114,7 @@ DeadGears :: struct {
   touch: bool; golden: bool; still: bool;
   card: bool;   // ?card=1: the hold without the HUD, for a link's card (coax/web/og-render.ts)
   feet: Point; yaw: f32; pitch: f32; walking: f32;
-  pl: pc.Player;            // you, walked by verse/player.coax
+  pl: pc.Player;            // you, walked by aethyr/player.coax
   face: f32;                // the way you face: the crosshair with the cutter up, else the way you walk
   raised: f32;              // seconds the cutter stays up after a shot
   jump_tap: bool;           // JUMP tapped on a phone: one jump on the next step
@@ -713,7 +713,7 @@ the_world :: (s: [] DeadGears) -> pc.World {
   return w;
 }
 
-// You walk with verse/player.coax (#6d99), as the Grid, Everglade and the
+// You walk with aethyr/player.coax (#6d99), as the Grid, Everglade and the
 // garden do: you speed up and slow down, run, jump (Space, or JUMP on a
 // phone), step onto what is low enough and stand on what you jump onto,
 // among the hull, the cover, the reactor, the crates and every other
@@ -961,7 +961,7 @@ build_hull :: (s: [] DeadGears) {
   s[0].hull_n = s[0].obj_n;
 }
 
-// ---- the engineers (#4d39): each a verse/figure.coax person in a hard
+// ---- the engineers (#4d39): each a aethyr/figure.coax person in a hard
 // suit, drawn bone by bone as round cones (as Hecate's Cemetery draws you).
 // The legs walk and run by the metres walked, a stride for a stride's
 // length, so the feet don't slide; over them the arms carry the cutter: at
@@ -1203,12 +1203,12 @@ creature :: (s: [] DeadGears, kind: int, x: f32, z: f32, yaw: f32, hp: f32, m: M
     limb(s, origin, yaw, v3(0, 0.26, 0.19), v3(0.16, 0.035, 0.025), v3(0.8, 0.45, 0.3), 1, 0, 0);
     return;
   }
-  // The rest are soft-bone figures (#ea44, verse/figure.coax): each kind its
+  // The rest are soft-bone figures (#ea44, aethyr/figure.coax): each kind its
   // own build and gait, drawn bone by bone.
   bones(s, kind, origin, yaw, m, flesh, bone, dark);
 }
 
-// ---- the creatures' bodies (#ea44): verse/figure.coax rigs and gaits,
+// ---- the creatures' bodies (#ea44): aethyr/figure.coax rigs and gaits,
 // each kind its own silhouette. The crawler is a long low four-legged
 // thing, the hound a deep-chested runner with a tail, the reaver a lean
 // stalker reaching with bone blades, the brute a hunched giant with spines
@@ -1633,7 +1633,7 @@ camera :: (s: [] DeadGears, w: f32, h: f32) {
   f := view_dir(s);
   at := shoulder_at(s);
   // Pulled in by the hull, cover, reactor, crates and bodies as every
-  // realm's camera is (verse/player.coax camera_room), and kept over the deck.
+  // realm's camera is (aethyr/player.coax camera_room), and kept over the deck.
   dist := f32(CAMERA_DIST);
   if s[0].wall_n == 0 { gather_world(s); }
   room := pc.camera_room(the_world(s), pc.v3(at.x, at.y, at.z), pc.v3(-f.x, -f.y, -f.z), dist);
@@ -2219,7 +2219,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   }
 }
 
-// ---- the controller (#6d99): verse/player.coax walks you
+// ---- the controller (#6d99): aethyr/player.coax walks you
 
 feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel.x + s[0].pl.vel.z * s[0].pl.vel.z); }
 

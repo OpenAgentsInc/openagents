@@ -3,7 +3,7 @@
 > **Status: unimplemented — design draft.** Aethyr already makes spin gravity:
 > a gravity field for a spinning drum with centrifugal down and Coriolis on
 > moving things (`gravity_drum`, `gravity_on`, `drum_spin_for` in
-> [`verse/gravity.coax`](../../verse/gravity.coax);
+> [`aethyr/gravity.coax`](../../aethyr/gravity.coax);
 > [`verse/drum.coax`](../../verse/drum.coax), used by Orbit League). This
 > chapter plans interior frames, compartments and a crew-load model. Nothing
 > here runs yet.
@@ -54,7 +54,7 @@ following the factors in [NASA's acceleration brief](https://www.nasa.gov/wp-con
 
 ## What exists today
 
-[`verse/gravity.coax`](../../verse/gravity.coax) has `GravityField` with
+[`aethyr/gravity.coax`](../../aethyr/gravity.coax) has `GravityField` with
 none, constant, point-mass and drum kinds; `gravity_at`, `gravity_coriolis`,
 `gravity_on`, `gravity_up` and `gravity_step`; `drum_spin_for` and
 `drum_rim_speed`. Its checks give a 100 m drum spun for 1 g 1 g at the rim

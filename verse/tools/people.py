@@ -627,7 +627,7 @@ def build(spec, size, first_layer):
     if skeletons["male"].names != skeletons["female"].names or skeletons["male"].parent != skeletons["female"].parent:
         raise SystemExit("people: the male and female skeletons aren't the same joints")
     if len(skeletons["male"].names) > 96:
-        raise SystemExit("people: more joints than verse/skin.coax holds")
+        raise SystemExit("people: more joints than aethyr/skin.coax holds")
     layers = []          # (source name, image bytes)
     layer_of = {}        # (image, box) -> layer number
     variants = {k: home_path(v) for k, v in spec.get("variants", {}).items()}
@@ -678,7 +678,7 @@ def bind_rows(sk):
 
 
 def posed(sk, clip, body, time):
-    """Every joint's world position `time` seconds into clip, sampled as verse/skin.coax does, in f64."""
+    """Every joint's world position `time` seconds into clip, sampled as aethyr/skin.coax does, in f64."""
     def pair(keys, t):
         i = max(sum(1 for k in keys if k[0] <= t) - 1, 0)
         a = keys[i]; b = keys[i + 1] if i + 1 < len(keys) else a
@@ -737,9 +737,9 @@ def rig_coax(manifest, rig, parts, prefix):
            "// (three rows of four); per clip its seconds and the metres a loop travels (0 on the clock), per",
            "// joint its rotation keys (first, count) into PEOPLE_KEYS_R (time, x, y, z, w) and its",
            "// translation keys into the body's PEOPLE_KEYS_T_* (time, x, y, z: the pelvis's only, the",
-           "// library's move from its rest added to the body's rest). verse/skin.coax plays it.",
+           "// library's move from its rest added to the body's rest). aethyr/skin.coax plays it.",
            "",
-           '#load "../skin.coax";',
+           '#load "../../aethyr/skin.coax";',
            "",
            f"{P}_JOINTS :: {J};",
            f"{P}_CLIPS :: {len(cl)};",
@@ -764,7 +764,7 @@ def rig_coax(manifest, rig, parts, prefix):
            arr(f"{P}_KEYS_T_M", "f32", flat(keys_t["male"]), 8, f9),
            arr(f"{P}_KEYS_T_F", "f32", flat(keys_t["female"]), 8, f9),
            arr(f"{P}_KEYS_R", "f32", flat(kr), 10, f9),
-           "// Checks, sampled in f64 as verse/skin.coax samples (posed in people.py): part way into each",
+           "// Checks, sampled in f64 as aethyr/skin.coax samples (posed in people.py): part way into each",
            "// clip, where a joint stands: body (0 male, 1 female), clip, seconds, joint, x, y, z.",
            arr(f"{P}_CHECK", "f32", flat((b, ci, tm, j) + tuple(posed(sk, c, body, tm)[j])
                                          for b, (body, sk) in enumerate((("male", m), ("female", f)))

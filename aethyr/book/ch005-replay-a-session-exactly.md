@@ -391,7 +391,7 @@ from those exact operations:
 Each result is within 2 units in the last place of the C library's, and the
 `f64` kernels match Python's `math` at the ends of their ranges.
 
-`verse/player.coax` now calls these in its step, and the walk gives the same
+`aethyr/player.coax` now calls these in its step, and the walk gives the same
 digests on both hosts. A simulation step calls `aethyr/math.coax`, never
 `sin`, `cos`, `tan`, `exp`, `log` or `pow` (INVARIANTS.md). Drawing can use
 either, because what it computes isn't part of a step's state.

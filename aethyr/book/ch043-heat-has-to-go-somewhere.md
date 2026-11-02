@@ -1,7 +1,7 @@
 # 43. Heat has to go somewhere
 
 > **Status: unimplemented — design draft.** Aethyr's ships have no thermal
-> state today: [`verse/thrust.coax`](../../verse/thrust.coax) burns a tank
+> state today: [`aethyr/thrust.coax`](../../aethyr/thrust.coax) burns a tank
 > and nothing heats. This chapter plans a lumped thermal network with
 > radiators, finite sinks and failures. Nothing here runs yet.
 
@@ -55,11 +55,11 @@ term, with Newton refinement), and the energy ledger is checked per step.
 
 ## What exists today
 
-Nothing thermal. [`verse/thrust.coax`](../../verse/thrust.coax) and
-`orbit_burn_step` in [`verse/orbit.coax`](../../verse/orbit.coax) model
+Nothing thermal. [`aethyr/thrust.coax`](../../aethyr/thrust.coax) and
+`orbit_burn_step` in [`aethyr/orbit.coax`](../../aethyr/orbit.coax) model
 thrust and mass only; [`verse/stars.coax`](../../verse/stars.coax) draws
 the Sun's disc and corona but carries no radiative flux. The momentum ledger
-in [`verse/rigid.coax`](../../verse/rigid.coax) (`Ledger`, `ledger_add`,
+in [`aethyr/rigid.coax`](../../aethyr/rigid.coax) (`Ledger`, `ledger_add`,
 `ledger_error`) is the pattern this chapter's energy ledger follows.
 
 ## What it builds

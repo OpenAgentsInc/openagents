@@ -15,10 +15,10 @@
 // counting a metre over grass as OFF_PATH metres on a path, and straight
 // over the grass for the last stretch. It needs no memory of its route:
 // verse_route_next picks the next point from where it stands.
-//   coax/bin/coax test --library verse/terrain.coax
+//   coax/bin/coax test --library aethyr/terrain.coax
 
-#load "space.coax";
-#load "../aethyr/ground.coax";
+#load "points.coax";
+#load "ground.coax";
 #load "../coax/lib/quantity.coax" as terrain_units;
 
 // rim_from and rim shape the bowl's edge: a city wider than a garden

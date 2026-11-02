@@ -523,7 +523,7 @@ tasks (native-gpu.json) come after the port.
     realms.json. --upto ENTRY compares the frame after that entry's pass.
     int-hash --page now also swaps verse/style.coax's hash (the villa's
     leaves jitter by it) and reduces sin's argument in a copy of
-    verse/particle-motion.coax (sin of a particle's index times a few is
+    aethyr/particle-motion.coax (sin of a particle's index times a few is
     each GPU's own). Dead Gears matches with 0 values past the tolerance,
     the villa with 19, Ice Cream with 51 (17 pixels one 8-bit step apart
     on one face: give it --allow 60). realm.sh check: each one's 90th

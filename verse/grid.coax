@@ -1,10 +1,10 @@
 #load "../coax/lib/quantity.coax" as quantities;
-#load "sticks.coax";   // the touch controls (the move stick, the look finger, the hotbar's slot)
+#load "../aethyr/sticks.coax";   // the touch controls (the move stick, the look finger, the hotbar's slot)
 #load "grid-render.coax"; // shared frame/pass/binding admission for the matrix output
 // The Grid: the bare Verse world, as aethyr-cpp's src/grid.cpp draws it. A
 // ground of lines every 4 m out to 264 m, brighter on the street lines every
 // 24 m, fading into the black field from 6 m to 110 m, with a ring at your
-// feet. You walk it with verse/player.coax; your character and the robots
+// feet. You walk it with aethyr/player.coax; your character and the robots
 // are verse/cast.coax's, drawn by the host with verse_grid_view.
 //
 // aethyr's Pylon terminal stands 4 m ahead of where you start ("The
@@ -12,7 +12,7 @@
 //
 // The lines are projected here and drawn as the home's screen-space line
 // packets, so the Grid shares the home's line, bloom and tone stages. The
-// touch controls are verse/sticks.coax's; this draws the move stick and the
+// touch controls are aethyr/sticks.coax's; this draws the move stick and the
 // hotbar's dance slot, which stays lit while you dance.
 
 host_line :: (h: int, ax: f64, ay: f64, bx: f64, by: f64, light_a: f64, light_b: f64, width: f64) #foreign;
@@ -33,7 +33,7 @@ NEAR :: 0.05;
 LINES :: 56;            // most lines one axis can show: 2 FOG_END / SPACING + 1
 PIECES :: 29;           // most pieces one line can show: 2 FOG_END / SEGMENT + 2
 DANCE :: 1;             // the dance slot's icon
-STICK :: STICKS_RADIUS; // the move stick's radius, in points (verse/sticks.coax)
+STICK :: STICKS_RADIUS; // the move stick's radius, in points (aethyr/sticks.coax)
 stick_rest_y :: (height: f32, k: f32) -> f32 { return sticks_rest_y(height, k); }
 dance_slot :: (height: f32, k: f32) -> SticksSlot { return sticks_dance_slot(height, k); }
 
@@ -349,7 +349,7 @@ hotbar_out :: (h: int, s: Sticks, height: f32, k: f32, dancing: bool, now: f64) 
 // ---- The frame ----
 
 // How far the fog is pushed out: an eye further from you than the follow
-// camera (verse/camera.coax's overview and dolly) sees the ground lit as
+// camera (aethyr/camera.coax's overview and dolly) sees the ground lit as
 // the follow camera would, so from high up the Grid is a lit disc around you.
 FOLLOW :: 6.0;
 reach :: (eye: Vec3, feet: Vec3) -> f32 { return hi(0, length(sub(eye, feet)) - f32(FOLLOW)); }

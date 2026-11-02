@@ -26,7 +26,7 @@ def main():
     record = {"schema": "coax-spatial-spacecam-v1", "compiler": str(COMPILER),
               "compiler_sha256": sha(COMPILER), "platform": platform.platform(),
               "source_sha256": {str(p.relative_to(ROOT)): sha(p) for p in
-                                 (source, harness, Path(__file__).resolve(), ROOT / "verse/spacecam.coax")},
+                                 (source, harness, Path(__file__).resolve(), ROOT / "aethyr/spacecam.coax")},
               "cases_per_mode": 512, "coordinate_observations_per_mode": 1536,
               "non_nan_comparison": "exact F64 bits", "nan_comparison": "classification; canonicalized only in transcript",
               "commands": [], "modes": [], "passed": False}
@@ -43,7 +43,7 @@ def main():
 
     try:
         refusal = work / "f32-refused.coax"
-        refusal.write_text(f'#load "{ROOT / "verse/spacecam.coax"}";\n#load "{ROOT / "coax/lib/quantity.coax"}" as q;\nSCN_refuse_low_precision :: (p:Point3(SpaceCamWorld,q.Metre,f32)) {{}}\n')
+        refusal.write_text(f'#load "{ROOT / "aethyr/spacecam.coax"}";\n#load "{ROOT / "coax/lib/quantity.coax"}" as q;\nSCN_refuse_low_precision :: (p:Point3(SpaceCamWorld,q.Metre,f32)) {{}}\n')
         failed = run("actual-world-f32-refusal", [COMPILER, "c", refusal, "--library"], success=False)
         assert failed.stderr.count(b"error[") == 1 and b"E0833" in failed.stderr and b"SpaceCamWorld" in failed.stderr and not failed.stdout
         outputs = []

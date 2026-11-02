@@ -113,7 +113,7 @@ reflection is refused with E0835; Metal, CUDA, SPIR-V and WGSL spatial-value use
 with E0836. Frame/type admission uses E0832/E0833, and affine/mismatch refusals
 E0834. No device ABI or physical metadata reflection is qualified here.
 
-The narrow real consumer is [Spacecam](../verse/spacecam.coax). Its world point
+The narrow real consumer is [Spacecam](../aethyr/spacecam.coax). Its world point
 and floating origin become internal minimum-f64 points, and subtraction yields
 a vector before explicit raw D3 coordinates return to the existing rendering
 path. The published D3/SpaceCam signatures and layouts stay unchanged. Two

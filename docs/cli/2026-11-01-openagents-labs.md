@@ -94,7 +94,7 @@ A function belongs when all of these hold:
 | Design Lab's native app tours | **Out** | They need simulators and app source, so they are developer tooling inside `apps/` |
 | CAD Lab | **Out** | Its kernel was Rust (Truck) and is gone. It returns only with a Coax kernel |
 | Robot Lab | **Out** | MuJoCo, LeRobot and policy runs need GPUs and physical hosts |
-| Ship Lab | **Out for now** | The space primitives (`verse/orbit.coax`, `thrust.coax`, `vehicle.coax`) have no spacecraft document yet. When one exists, `labs ship check` fits the pattern |
+| Ship Lab | **Out for now** | The space primitives (`aethyr/orbit.coax`, `thrust.coax`, `vehicle.coax`) have no spacecraft document yet. When one exists, `labs ship check` fits the pattern |
 | Briefing Lab | **Out of labs** | It belongs with the project queue, as `project brief SLUG`, if anywhere |
 | The hosted Labs platform (`/v1/labs`, cards, chat tools, enrolled hosts) | **Out** | The CLI v1 rule: a domain ships only when its routes exist and are tested. Those routes were Rust and are gone. The CLI's MCP server gives agents the same tools without a hosted store |
 | MetaHuman, Fab and other private-asset renders | **Out** | Private assets never enter a user tool. They stay in the owner's private pipeline |

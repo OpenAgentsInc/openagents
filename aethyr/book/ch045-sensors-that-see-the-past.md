@@ -56,7 +56,7 @@ world to an agent; it has no accessor for truth.
 Belt 2200's tactical combat (`Tac`, `TacUnit`, `tac_step`,
 `tac_nearest_enemy`, `tac_lead` in
 [`apps/openagents-web/belt-tactical.coax`](../../apps/openagents-web/belt-tactical.coax))
-targets and leads from current positions. [`verse/orbit.coax`](../../verse/orbit.coax)
+targets and leads from current positions. [`aethyr/orbit.coax`](../../aethyr/orbit.coax)
 gives geometric states only. Psionic's game-decision path
 ([`docs/verse/pylon-guard-decisions.md`](../../docs/verse/pylon-guard-decisions.md))
 already passes typed context rather than raw state to a model, the pattern

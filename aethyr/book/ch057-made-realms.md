@@ -56,7 +56,7 @@ them, and every engine improvement reaches all of them at once.
   by `myrealm.wgsl` with [verse/style-preset.coax](../../verse/style-preset.coax).
 - The catalogue, cameras and palettes in
   [realm-builder.md](../../docs/verse/realm-builder.md); figures from
-  [verse/figure.coax](../../verse/figure.coax).
+  [aethyr/figure.coax](../../aethyr/figure.coax).
 - Talk through the character chat Everglade's people use
   (`POST /api/playtest/npc/ask`), refused for visitors with TALK off.
 - [droprealm.coax](../../apps/openagents-web/droprealm.coax) (`MIN_SIZE`,

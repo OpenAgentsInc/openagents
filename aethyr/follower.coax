@@ -10,7 +10,7 @@
 #load "math.coax" as ff_math;
 #load "ground.coax" as mesh;
 #load "../coax/lib/quantity.coax" as units;
-#load "../verse/throw.coax";
+#load "throw.coax";
 #load "tests/follower-oracle.coax";
 
 FrameCursor :: struct { started: bool; frames: int; ticks: int; carry_ns: int; }

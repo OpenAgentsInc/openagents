@@ -1,9 +1,9 @@
 # 78. Cinematics and close-ups
 
 > **Status: unimplemented — design draft.** Today
-> [`verse/cinematic.coax`](../../verse/cinematic.coax) flies authored camera
+> [`aethyr/cinematic.coax`](../../aethyr/cinematic.coax) flies authored camera
 > paths (Hecate's Cemetery's arrival flight uses it),
-> [`verse/arrange.coax`](../../verse/arrange.coax) frames one object up close
+> [`aethyr/arrange.coax`](../../aethyr/arrange.coax) frames one object up close
 > for placing flowers in a vase, and
 > [`coax/web/clip.coax`](../../coax/web/clip.coax) records clips one fixed step
 > at a time. Each hands the camera back in its own way. This chapter plans
@@ -59,13 +59,13 @@ view never jumps and the player can always skip.
 
 ## What exists today
 
-- [verse/cinematic.coax](../../verse/cinematic.coax): flights, keys,
+- [aethyr/cinematic.coax](../../aethyr/cinematic.coax): flights, keys,
   easing, cuts, skip and hand-back, with `#test`s.
-- [verse/arrange.coax](../../verse/arrange.coax): the close-up arranging
+- [aethyr/arrange.coax](../../aethyr/arrange.coax): the close-up arranging
   view, used by [apps/openagents-web/garden.coax](../../apps/openagents-web/garden.coax).
 - [apps/openagents-web/villa.coax](../../apps/openagents-web/villa.coax):
   Hecate's Cemetery's arrival flight.
-- [verse/camera.coax](../../verse/camera.coax): `Shot` and the orbit.
+- [aethyr/camera.coax](../../aethyr/camera.coax): `Shot` and the orbit.
 - [coax/web/clip.coax](../../coax/web/clip.coax) and
   [docs/verse/clips.md](../../docs/verse/clips.md): the clip recorder and
   staged moments.

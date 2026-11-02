@@ -1,16 +1,16 @@
 // The Garden, openagents.com/worlds/garden: a small open-air Verse realm that
 // shows the engine's world pieces at work. You walk it with the engine's
-// controller (verse/player.coax, linked as its own library, as the realm
-// links it) and see it through the free orbit (verse/camera.coax Orbit),
+// controller (aethyr/player.coax, linked as its own library, as the realm
+// links it) and see it through the free orbit (aethyr/camera.coax Orbit),
 // which turns with a mouse drag, the arrow keys or your right thumb, zooms
 // with the wheel, swings in behind you as you walk, and pulls in where a
-// tree, a hedge or a hill is in the way. The ground is verse/terrain.coax's:
+// tree, a hedge or a hill is in the way. The ground is aethyr/terrain.coax's:
 // rolling hills in a shallow bowl, levelled where the garden's paths run,
 // and a dog that follows you by those paths. There is a ball
-// (verse/throw.coax): E picks it up, E or a click throws it the way the
+// (aethyr/throw.coax): E picks it up, E or a click throws it the way the
 // camera looks (an arc shows where it will land), it bounces and rolls, and
 // the dog fetches it back to you. On the pedestal in the plaza stands a
-// vase: E beside it (verse/arrange.coax) brings the camera in close, where a
+// vase: E beside it (aethyr/arrange.coax) brings the camera in close, where a
 // click on the vase puts a flower in it and a click on a flower takes it
 // out, then E, Escape or DONE hands the view back. The vase's flowers are
 // kept in this browser (save.coax, the realm save slot "garden", as the
@@ -31,13 +31,13 @@
 #load "font.coax";
 #load "analytics.coax";
 #load "save.coax";
-#load "../../verse/camera.coax";
-#load "../../verse/throw.coax";
+#load "../../aethyr/camera.coax";
+#load "../../aethyr/throw.coax";
 #load "../../aethyr/follower.coax" as follow;
 #load "../../aethyr/locomotion.coax" as route_tuning;
 #load "../../aethyr/walk-frame.coax" as walk_frame;
 #load "../../aethyr/loop.coax" as realm_loop;
-#load "../../verse/arrange.coax";
+#load "../../aethyr/arrange.coax";
 #load "place-orbit.coax";
 #load "../../aethyr/budget.coax";
 
@@ -1117,7 +1117,7 @@ garden_frame_in :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f3
     }
   } else { play(s, shown, face, vx, vz, t); }
   vase(s);
-  // nor zoomed into your head (first person, verse/camera.coax)
+  // nor zoomed into your head (first person, aethyr/camera.coax)
   if !(s[0].vase.blend > 0.6 && flat_length(v3(shown.x, 0, shown.z)) < 1.3) && !(verse_orbit_inside(s[0].orbit) && s[0].vase.blend < 0.5) {
     figure(s, u, shown, face, s[0].stride, act, s[0].fetch.ball.held == 0);
   }

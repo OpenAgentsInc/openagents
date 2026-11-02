@@ -134,7 +134,7 @@ prints a constructed player and then runs a zeroed clock:
 
 <!-- source: aethyr/examples/state-defaults.coax example -->
 ```jai
-#load "../../verse/player.coax";
+#load "../player.coax";
 #import "Basic";
 
 // A player constructed natively takes its declared defaults. WebAssembly memory starts

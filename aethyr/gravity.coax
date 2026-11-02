@@ -9,8 +9,8 @@
 //             drum's rotating frame is centrifugal, omega^2 r away from
 //             its axis, with Coriolis -2 omega x v on anything moving
 // and `scale` multiplies it (a station spinning down to 0 and back up).
-// Units are metres, seconds and radians, f64 (verse/rigid.coax).
-//   coax/bin/coax test --library verse/gravity.coax
+// Units are metres, seconds and radians, f64 (aethyr/rigid.coax).
+//   coax/bin/coax test --library aethyr/gravity.coax
 
 #load "rigid.coax";
 

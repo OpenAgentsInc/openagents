@@ -54,7 +54,7 @@ Impulse from the hit, recoil and venting gas act on the ship's body.
 
 Belt 2200's tactical layer has `TacUnit`, `TacMissile`, `TacSlug`,
 `TacTracer`, `tac_pass` (a slug passing a target), `tac_hurt` (hull damage)
-and `tac_resolve`. [`verse/contact.coax`](../../verse/contact.coax)'s
+and `tac_resolve`. [`aethyr/contact.coax`](../../aethyr/contact.coax)'s
 `rigid_impulse_at` applies an impulse at a point and its rays
 (`ray_triangle`, `ray_sphere`) find entry points. There are no layers,
 components or graph.

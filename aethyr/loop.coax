@@ -9,7 +9,7 @@
 // a backlog past that is dropped, so a stall never makes the next frame slower. Each of
 // those is counted on the clock (refused, overlong, stalls, dropped_ns): frame pacing a realm
 // and its checks can read.
-// It replaced the realms' own accumulators: verse/player.coax's (f32 seconds, 1/64 s, 8 steps,
+// It replaced the realms' own accumulators: aethyr/player.coax's (f32 seconds, 1/64 s, 8 steps,
 // 0.25 s), Orbit League's (f64, 1/120 s, a carry capped at 8 steps), Dead Gears' ECS clock
 // (f64, 1/60 s, 0.1 s, 8 steps), verse/demolish.coax's (f64, 1/60 s, 0.25 s, 6 steps), Hold the
 // Stair's (f32, 1/60 s, 0.1 s, up to 64 steps) and the 0.1 s clamps in the page faces' C.

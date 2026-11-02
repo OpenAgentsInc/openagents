@@ -1,9 +1,9 @@
 // The characters realm, openagents.com/worlds/characters: the Verse
-// engine's figures (verse/figure.coax) in a night garden, drawn by
+// engine's figures (aethyr/figure.coax) in a night garden, drawn by
 // characters.wgsl. Two shadow visitors (soft silhouettes, black, fuzzy at
 // the edge and lit only at the rim), a lit one to compare, a dog and a fox;
 // tap or click a figure to choose it, then its gait (STAND, WALK, TROT for
-// an animal, RUN), its look (SOFT or LIT), an emote (verse/motion.coax: a
+// an animal, RUN), its look (SOFT or LIT), an emote (aethyr/motion.coax: a
 // person's WAVE, BOW, CHEER, SHRUG, DANCE; an animal's SIT, LIE, DIG,
 // FETCH, BOW, WAG), played over its gait, and its SHAPE: a slider for each
 // of its build's numbers, its pattern and its colours. An agent sets the
@@ -17,7 +17,7 @@
 
 #load "font.coax";
 #load "analytics.coax";
-#load "../../verse/motion.coax";
+#load "../../aethyr/motion.coax";
 #load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0

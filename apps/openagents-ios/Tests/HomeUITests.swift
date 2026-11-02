@@ -1,7 +1,7 @@
 import XCTest
 
 final class HomeUITests: XCTestCase {
-    /// Start's dolly (verse/camera.coax) has landed behind you.
+    /// Start's dolly (aethyr/camera.coax) has landed behind you.
     private func arrived(_ app: XCUIApplication, within timeout: TimeInterval = 15) -> Bool {
         let grid = app.otherElements["grid.world"]
         let landed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in

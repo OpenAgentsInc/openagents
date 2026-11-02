@@ -9,7 +9,7 @@
 //   verse_command_group_set(c, g)  group g is the selection (Ctrl or Cmd and a digit)
 //   verse_command_group_recall     the selection is group g (the digit), false when it's empty
 //   verse_command_push / pop       an order at the end of a unit's queue (Shift and an order), the next one off it
-//   coax/bin/coax test verse/command.coax --library
+//   coax/bin/coax test aethyr/command.coax --library
 
 CMD_UNITS :: 64;
 CMD_GROUPS :: 10;

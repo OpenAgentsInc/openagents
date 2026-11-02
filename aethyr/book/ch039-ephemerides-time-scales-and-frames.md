@@ -2,7 +2,7 @@
 
 > **Status: unimplemented — design draft.** Aethyr's space games already place
 > the Sun, planets, the Moon, Ceres and Vesta from J2000 mean elements
-> (`orbit_body` and `orbit_body_state` in [`verse/orbit.coax`](../../verse/orbit.coax)),
+> (`orbit_body` and `orbit_body_state` in [`aethyr/orbit.coax`](../../aethyr/orbit.coax)),
 > on one time axis with no named scale or frame. This chapter plans a pinned
 > ephemeris with recorded time scales and full state transforms. Nothing here
 > runs yet.
@@ -67,7 +67,7 @@ named query, so a caller cannot mix a geometric state with an apparent one.
 
 ## What exists today
 
-[`verse/orbit.coax`](../../verse/orbit.coax) holds `Orbit` (a, e, i, node,
+[`aethyr/orbit.coax`](../../aethyr/orbit.coax) holds `Orbit` (a, e, i, node,
 periapsis, mean anomaly at epoch, mu) and `State` (r, v), with
 `orbit_state`, `orbit_from_state` and `orbit_propagate`. `orbit_body(k)`
 returns J2000 mean elements for the Sun, Mercury to Saturn, the Moon about
@@ -98,7 +98,7 @@ light-time correction ([space primitives](../../docs/verse/space.md)).
   a transform that omits `ω × r` is caught by a velocity check.
 - A query outside coverage, and a UTC time beyond the leap-second table,
   are refused.
-- `verse/orbit.coax`'s mean-element ephemeris is measured against the
+- `aethyr/orbit.coax`'s mean-element ephemeris is measured against the
   pinned table over a stated span, so its position error per body is a
   reported number, not an assumption.
 

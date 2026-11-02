@@ -2,7 +2,7 @@
 
 > **Status: runnable — native and Wasm fixed-step walking.**
 > `aethyr/walk.coax` owns the controller and declared locomotion tuning;
-> `verse/player.coax` retains its C facade. The Garden and villa's fetching
+> `aethyr/player.coax` retains its C facade. The Garden and villa's fetching
 > dogs consume the same paid steps and drawing alpha. The core, facade,
 > replay and actual scene adapters have separate qualification records.
 > Complete special realm adapters remain chapter 64's migration.
@@ -203,7 +203,7 @@ measures each of these:
 
 <!-- source: aethyr/examples/run-and-jump.coax example -->
 ```jai
-#load "../../verse/player.coax";
+#load "../player.coax";
 #import "Basic";
 
 // The walking controller on the 1/64 s step: how many steps it takes to reach RUN, how high
@@ -347,11 +347,11 @@ animation, rather than instances of this follower controller.
 
 ```shell
 coax/bin/coax test aethyr/walk.coax --library
-coax/bin/coax test verse/player.coax --library
+coax/bin/coax test aethyr/player.coax --library
 coax/bin/coax test verse/gridwalk.coax --library
 ```
 
-Checks in `verse/player.coax` for this chapter:
+Checks in `aethyr/player.coax` for this chapter:
 
 - "jump acts on the press, not the hold, and only from the ground";
 - "placed in the air, you fall to the floor", "standing eases onto a floor
@@ -391,7 +391,7 @@ records the C facade parity, actual scene checks and complete Wasm links.
 ## The module and the realm boundary
 
 `aethyr/walk.coax` owns Player, World, physical stepping and interpolation.
-The Walk unit declares no C exports of its own. `verse/player.coax` retains
+The Walk unit declares no C exports of its own. `aethyr/player.coax` retains
 the published `verse_player_*` C signatures as thin adapters to `walk_*`.
 Coax consumers that qualify names load Walk directly; an alias cannot
 re-export a different module's types. Related generated C headers must still

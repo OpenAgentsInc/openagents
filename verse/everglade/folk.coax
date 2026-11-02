@@ -229,7 +229,7 @@ folk_start :: (f: [] Folk, i: int) {
 // Person i's life for dt seconds: you stand at you (none if far is true), they
 // are being talked to (talking), and their last answer came `answered` seconds
 // ago (a large number if none); the town's clock is `clock`, the ground
-// `heights` (verse/terrain.coax's, for the ponds' depth). Puts them where their
+// `heights` (aethyr/terrain.coax's, for the ponds' depth). Puts them where their
 // day has them, and chooses the clip, the way they face and the head's turn;
 // skin_advance and folk_pose do the rest.
 folk_step :: (f: [] Folk, i: int, dt: f32, you: Point, talking: bool, answered: f32, clock: FolkClock, heights: [] f32) {

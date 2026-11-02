@@ -139,12 +139,12 @@
       "labels": [
         "engine"
       ],
-      "body": "A path in verse/terrain.coax carries distance along it, enemies move along it at their speed, and first, last, strongest and closest targeting are cheap.",
+      "body": "A path in aethyr/terrain.coax carries distance along it, enemies move along it at their speed, and first, last, strongest and closest targeting are cheap.",
       "files": [
-        "verse/terrain.coax"
+        "aethyr/terrain.coax"
       ],
       "acceptance": [
-        "coax test verse/terrain.coax passes with targeting tests for first, last, strongest and closest"
+        "coax test aethyr/terrain.coax passes with targeting tests for first, last, strongest and closest"
       ],
       "blocked_by": [],
       "blocks": [
@@ -218,7 +218,7 @@
       "title": "Layers, defenders, levels and maps as text tables",
       "size": "M",
       "labels": [],
-      "body": "Content as data an agent can write and the engine checks, like motions (verse/motion.coax) and set pieces (verse/setpiece.coax).",
+      "body": "Content as data an agent can write and the engine checks, like motions (aethyr/motion.coax) and set pieces (verse/setpiece.coax).",
       "files": [
         "apps/openagents-web/realms/hold-the-stair/"
       ],
@@ -415,9 +415,9 @@
       "title": "A top-down tactical camera with pinch zoom",
       "size": "S",
       "labels": [],
-      "body": "Pinch zoom, pan and a slight tilt in verse/camera.coax.",
+      "body": "Pinch zoom, pan and a slight tilt in aethyr/camera.coax.",
       "files": [
-        "verse/camera.coax"
+        "aethyr/camera.coax"
       ],
       "acceptance": [
         "Pinch zoom and pan work on a phone"

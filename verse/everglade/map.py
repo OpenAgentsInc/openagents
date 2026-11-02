@@ -3,7 +3,7 @@
 
 Reads the arrays in verse/everglade/plan.coax (the one source of the city's
 layout) and writes docs/verse/everglade-map.svg, or with --times prints the
-walking times the plan doc tables (verse/player.coax walks at 3.5 m/s).
+walking times the plan doc tables (aethyr/player.coax walks at 3.5 m/s).
 
   python3 verse/everglade/map.py docs/verse/everglade-map.svg
   python3 verse/everglade/map.py --times

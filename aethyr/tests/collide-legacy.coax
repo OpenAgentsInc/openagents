@@ -1,4 +1,4 @@
-#load "../../verse/player.coax";
+#load "../player.coax";
 
 // The published controller's actual functions, compiled separately, rather
 // than a copy of its arithmetic in the new library's tests.

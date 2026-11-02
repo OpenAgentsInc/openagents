@@ -22,7 +22,7 @@ FK_SLUG :: 48; FK_NAME :: 40; FK_URL :: 160; FK_BODY :: 200; FK_NOTE :: 60;
 FK_MIDNIGHT :: 0.0;          // the clock night holds it at (0 midnight, 0.5 noon)
 FK_WAVE_FIRST :: 20.0;       // seconds before the first wave
 FK_WAVE_EVERY :: 45.0;       // and between waves
-FK_GRAVITY :: 24.0;          // verse/player.coax GRAVITY
+FK_GRAVITY :: 24.0;          // aethyr/player.coax GRAVITY
 FK_LOW :: 0.3333;            // low gravity's share of it
 FK_ACT_NAVIGATE :: 1;        // host.js: go to the outbox's path
 FK_ASK_NONE :: 0; FK_ASK_INFO :: 1; FK_ASK_FORK :: 2; FK_ASK_PUBLISH :: 3;

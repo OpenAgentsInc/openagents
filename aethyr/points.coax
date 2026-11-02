@@ -6,9 +6,9 @@
 //
 // Units are metres, seconds and radians; +Y is up, and yaw 0 faces +Z, as
 // in openagents.engine.v1.
-//   coax/bin/coax test verse/space.coax --library
+//   coax/bin/coax test aethyr/points.coax --library
 
-#load "../aethyr/space.coax" as feet_space;
+#load "space.coax" as feet_space;
 
 PI :: 3.14159265;
 TAU :: 6.2831853;

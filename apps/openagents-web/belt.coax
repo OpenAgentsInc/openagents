@@ -1,8 +1,8 @@
 // Belt 2200, openagents.com/worlds/belt-2200: the first playable of the hard
 // sci-fi RTS (docs/verse/game-ideas/belt-2200.md). This file is the game's
-// rules and its drawing only; the space is the engine's: verse/orbit.coax
+// rules and its drawing only; the space is the engine's: aethyr/orbit.coax
 // (Kepler orbits, the ephemeris, Lambert transfers, the rocket equation),
-// verse/spacecam.coax (the floating origin and twelve decades of zoom) and
+// aethyr/spacecam.coax (the floating origin and twelve decades of zoom) and
 // verse/stars.coax (the sky, in belt.wgsl). docs/verse/space.md lists them.
 //
 // You run the Free Belt's Hearth Station at Ceres and three ships. Select a
@@ -22,9 +22,9 @@
 
 #load "font.coax";
 #load "analytics.coax";
-#load "../../verse/orbit.coax";
-#load "../../verse/spacecam.coax";
-#load "../../verse/command.coax";
+#load "../../aethyr/orbit.coax";
+#load "../../aethyr/spacecam.coax";
+#load "../../aethyr/command.coax";
 #load "belt-station.coax";
 #load "belt-tactical.coax";
 #load "belt-rival.coax";
@@ -163,7 +163,7 @@ Belt :: struct {
   ships: [SHIPS] Ship; ship_n: int;
   rocks: [ROCKS] Rock;
   ices: [ICE_ROCKS] Orbit;
-  cmd: [1] Command;      // which ships are chosen, the control groups and each ship's queue of orders (verse/command.coax)
+  cmd: [1] Command;      // which ships are chosen, the control groups and each ship's queue of orders (aethyr/command.coax)
   press_t: f32;          // when a finger went down, for a long-press
   dest: int = -1;        // the destination being planned, -1 none
   eco: Plan; fast: Plan; replan: f32;
@@ -377,7 +377,7 @@ ship_state :: (s: [] Belt, k: int, t: f64) -> State {
 }
 
 // A ship in flight: its heliocentric coast, handed over to a hyperbola about the world it
-// leaves or reaches inside that world's sphere of influence (verse/orbit.coax), so it swings
+// leaves or reaches inside that world's sphere of influence (aethyr/orbit.coax), so it swings
 // out from its world and in to its periapsis instead of flying through the centres.
 is_world :: (p: int) -> bool { return p >= 1 && p < BODIES; }
 flight_state :: (sh: Ship, t: f64) -> State {

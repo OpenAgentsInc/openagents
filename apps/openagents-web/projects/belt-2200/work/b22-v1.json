@@ -146,12 +146,12 @@
       "labels": [
         "engine"
       ],
-      "body": "A new verse/orbit.coax: Kepler orbits from orbital elements for the Sun's planets, Jupiter's and Saturn's major moons and named Belt rocks, scaled for play, in f64 like verse/rigid.coax.",
+      "body": "A new aethyr/orbit.coax: Kepler orbits from orbital elements for the Sun's planets, Jupiter's and Saturn's major moons and named Belt rocks, scaled for play, in f64 like aethyr/rigid.coax.",
       "files": [
-        "verse/orbit.coax"
+        "aethyr/orbit.coax"
       ],
       "acceptance": [
-        "coax test verse/orbit.coax passes",
+        "coax test aethyr/orbit.coax passes",
         "A planet's position after one period matches its start to within 1e-9 of its orbit radius in a test"
       ],
       "blocked_by": [],
@@ -227,9 +227,9 @@
       "labels": [
         "engine"
       ],
-      "body": "Ship trajectories as patched conics with sphere-of-influence handoff, in verse/orbit.coax.",
+      "body": "Ship trajectories as patched conics with sphere-of-influence handoff, in aethyr/orbit.coax.",
       "files": [
-        "verse/orbit.coax"
+        "aethyr/orbit.coax"
       ],
       "acceptance": [
         "A test ship leaving Earth's sphere of influence continues on the matching heliocentric orbit"
@@ -251,7 +251,7 @@
       ],
       "body": "Solve Lambert's problem to turn a destination and arrival time into a burn, a coast and the reaction mass it costs; a faster route costs more. A simplified planner first if full Lambert is too heavy on a phone.",
       "files": [
-        "verse/orbit.coax"
+        "aethyr/orbit.coax"
       ],
       "acceptance": [
         "Planned transfers reach their target within tolerance in tests",
@@ -273,7 +273,7 @@
       "body": "The first playable's ship flies the planned transfer: the planned burn drawn on the map, a timeline scrubber, and fuel and arrival time.",
       "files": [
         "apps/openagents-web/realms/belt-2200/",
-        "verse/command.coax"
+        "aethyr/command.coax"
       ],
       "acceptance": [
         "A launched ship follows its drawn route and arrives at the shown time"
@@ -353,9 +353,9 @@
       "title": "Fleets, box select and groups",
       "size": "M",
       "labels": [],
-      "body": "Box select, control groups and a command queue in verse/command.coax; on phones tap select and long-press for orders (the hotbar's rules).",
+      "body": "Box select, control groups and a command queue in aethyr/command.coax; on phones tap select and long-press for orders (the hotbar's rules).",
       "files": [
-        "verse/command.coax",
+        "aethyr/command.coax",
         "verse/hud.coax"
       ],
       "acceptance": [

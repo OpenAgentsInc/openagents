@@ -26,7 +26,7 @@ behaviour, zero surviving mutants. One short section per primitive is in
 | `ground-contact.coax` | Sphere overlap and continuous sphere contact against triangle faces, edges, vertices and constant edge continuation |
 | `collide.coax` | Checked kinematic capsule resolution, declared passes/travel and atomic refusal diagnostics |
 | `collision-profiles.coax` | Explicit supported realm identities and their collision profiles; unknown identities refuse |
-| `walk.coax` | The fixed-step walking controller and camera-state adapters; declared locomotion tuning; an ephemeral trace of the actual paid steps; `verse/player.coax` retains its C facade |
+| `walk.coax` | The fixed-step walking controller and camera-state adapters; declared locomotion tuning; an ephemeral trace of the actual paid steps; `aethyr/player.coax` retains its C facade |
 | `locomotion.coax` | Finite, bounded walking and grounded-route tuning, separate from capsule collision profiles |
 | `walk-frame.coax` | Shared post-step targets and velocity records, with no C exports or persistent clock |
 | `follower.coax` | Grounded route followers and fetch on the realm's paid steps: checked terrain, declared tuning, strict directions, atomic refusal and previous-pose drawing, with no second clock |
@@ -62,9 +62,20 @@ coax/bin/coax mutate aethyr/audio/score.coax --library --root-only
 coax/web/tool.sh aethyr/tools/score.coax promo-epic OUT.wav [--seconds S] [--home S] ...
 ```
 
-The older engine modules (the overview, dolly and orbit easing in `verse/camera.coax`, `figure.coax`,
-`contact.coax`, `terrain.coax` and the rest) move here with the realm
-migration (ec-migrate).
+The engine modules that were in `verse/` moved here in one scripted commit
+(ec-migrate, #12609), keeping their module names and C symbols:
+
+| Module | What |
+| --- | --- |
+| `player.coax` | The walking controller's C surface over `walk.coax` |
+| `camera.coax`, `cinematic.coax`, `arrange.coax`, `spacecam.coax` | The overview, dolly and free orbit; authored flights; the close-up arranging view; the floating-origin space camera |
+| `points.coax` | The points and arithmetic the world modules share (was `verse/space.coax`; `space.coax` here is the typed spaces) |
+| `stand.coax`, `terrain.coax`, `throw.coax`, `flock.coax` | Floors to stand on; heightfield ground, paths and followers; thrown and carried things; a following flock |
+| `sticks.coax` | The touch controls: move stick, look finger, pinch, tap, the hotbar's slot |
+| `figure.coax`, `motion.coax`, `skin.coax` | Soft figures, keyframed motions, skinned clips |
+| `rigid.coax`, `contact.coax`, `gravity.coax`, `thrust.coax`, `vehicle.coax`, `orbit.coax` | Rigid bodies, contacts, gravity fields, thrusters, wheeled vehicles, orbits |
+| `particles.coax`, `particle-motion.coax` | Particle emitters and their stateless motion |
+| `command.coax` | Selection, groups and order queues for commanding units |
 
 ```sh
 coax/bin/coax test aethyr/loop.coax --library

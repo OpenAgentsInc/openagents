@@ -3,7 +3,7 @@
 > **Status: unimplemented — design draft.** Aethyr already plans impulsive
 > transfers: Lambert by universal variables, Hohmann, and a planner over
 > flight times (`orbit_lambert`, `orbit_hohmann`, `orbit_transfer`,
-> `orbit_plan` in [`verse/orbit.coax`](../../verse/orbit.coax)). This
+> `orbit_plan` in [`aethyr/orbit.coax`](../../aethyr/orbit.coax)). This
 > chapter plans finite-thrust rendezvous with path constraints and gravity
 > assists. Nothing here runs yet.
 
@@ -60,7 +60,7 @@ energy change follows from that rotation.
 
 ## What exists today
 
-[`verse/orbit.coax`](../../verse/orbit.coax) has `Lambert` and
+[`aethyr/orbit.coax`](../../aethyr/orbit.coax) has `Lambert` and
 `orbit_lambert`, `Hohmann` and `orbit_hohmann`, `Transfer` and
 `orbit_transfer`, `orbit_plan` (the cheapest over a range of flight times,
 or the quickest under a delta-v budget), and `orbit_departure`,

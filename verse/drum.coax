@@ -2,19 +2,19 @@
 // inside of a cylinder as the drivable surface, the floor curving up into
 // the walls and over into the ceiling, closed by two flat end walls with a
 // goal mouth in each. Everything here is in the drum's own rotating frame:
-// its spin is a verse/gravity.coax drum field, so "down" is away from the
+// its spin is a aethyr/gravity.coax drum field, so "down" is away from the
 // axis wherever you are, and a car that drives up the curve is still on the
 // floor when it is upside down at the top.
 //
-// The curve is given to the engine as planes, the way verse/vehicle.coax and
-// verse/contact.coax already take a flat arena: drum_planes(d, pos) is the
+// The curve is given to the engine as planes, the way aethyr/vehicle.coax and
+// aethyr/contact.coax already take a flat arena: drum_planes(d, pos) is the
 // tangent plane under pos (the rim's nearest point) and the two end walls.
 // For a car or a ball a few metres across inside a drum tens of metres
 // round, the tangent plane is within millimetres of the curve under it.
 //   coax/bin/coax test --library verse/drum.coax --steps 2000000000
 
-#load "vehicle.coax";
-#load "gravity.coax";
+#load "../aethyr/vehicle.coax";
+#load "../aethyr/gravity.coax";
 
 Drum :: struct {
   centre: D3;     // a point on the axis, midway between the ends

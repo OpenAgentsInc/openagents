@@ -5,7 +5,7 @@
 // and a fountain, and through the east gate an open field.
 //
 // Choosing Hecate's Cemetery on the galaxy opens this page, and the visit
-// starts with a flight (verse/cinematic.coax): out in space toward the
+// starts with a flight (aethyr/cinematic.coax): out in space toward the
 // planet, then a cut down through the night over the garden to its south
 // gate, where the camera is handed to you. A key, a click or a tap skips it.
 //
@@ -14,13 +14,13 @@
 // now; a pale outline on shapes and path edges so they read in the dark
 // (villa.wgsl's post pass, verse/look.coax); and what glows (the dog)
 // blooms. You are a shadow: an all-black figure with fuzzy edges and a
-// light trail of particles while you move (verse/particles.coax).
+// light trail of particles while you move (aethyr/particles.coax).
 //
-// You walk with the engine's controller (verse/player.coax) and see it from
-// the free orbit over your shoulder (verse/camera.coax), which turns with a
+// You walk with the engine's controller (aethyr/player.coax) and see it from
+// the free orbit over your shoulder (aethyr/camera.coax), which turns with a
 // drag, the arrow keys or your right thumb, zooms with the wheel and pulls
 // in where a tombstone, a hedge or a tree is in the way. The ground and
-// the paths are verse/terrain.coax's; the dog follows you by the paths.
+// the paths are aethyr/terrain.coax's; the dog follows you by the paths.
 //
 // This file is the page: the layout, the controls, the flight, the HUD and
 // what the scene draws (villa.wgsl). villa-face.c binds it for the browser,
@@ -30,14 +30,14 @@
 
 #load "font.coax";
 #load "analytics.coax";
-#load "../../verse/camera.coax";
-#load "../../verse/throw.coax";
+#load "../../aethyr/camera.coax";
+#load "../../aethyr/throw.coax";
 #load "../../aethyr/follower.coax" as follow;
 #load "../../aethyr/locomotion.coax" as route_tuning;
 #load "../../aethyr/walk-frame.coax" as walk_frame;
 #load "../../aethyr/loop.coax" as realm_loop;
-#load "../../verse/cinematic.coax";
-#load "../../verse/particles.coax";
+#load "../../aethyr/cinematic.coax";
+#load "../../aethyr/particles.coax";
 #load "villapet.coax";
 #load "villaplay.coax";
 #load "villaroom.coax";
@@ -138,7 +138,7 @@ Villa :: struct {
   follower_alpha: f32; follower_steps: int; follower_clocked: bool;
   follower_status: follow.FollowerStatus;
   pet_still: bool;          // the face says it plays a motion that keeps it where it is
-  // The flight in (verse/cinematic.coax), and where it is this frame.
+  // The flight in (aethyr/cinematic.coax), and where it is this frame.
   flight: Flight;
   flight_begun: bool;
   fl_active: bool;          // the flight has the camera (flying, or handing back)
@@ -152,7 +152,7 @@ Villa :: struct {
   bones: [FIGS * FIG_BONES * BONE_FLOATS] f32;
   bone_n: [FIGS] int;
   bound: [FIGS * 4] f32;
-  // Particles (verse/particles.coax emitters), for the face to hand the host.
+  // Particles (aethyr/particles.coax emitters), for the face to hand the host.
   emitters: [VERSE_EMITTERS * VERSE_EMITTER_FLOATS] f32;
   emitter_n: int;
   // The scene.
@@ -1093,7 +1093,7 @@ figures :: (s: [] Villa, u: [] f32) {
     n := s[0].bone_n[f];
     if n <= 0 { continue; }
     if f == 0 && in_space(s) { continue; }
-    if f == 0 && verse_orbit_inside(s[0].orbit) { continue; }   // zoomed into your head (first person, verse/camera.coax)
+    if f == 0 && verse_orbit_inside(s[0].orbit) { continue; }   // zoomed into your head (first person, aethyr/camera.coax)
     glowing := f == 1;
     for i: 0..<n {
       o := (f * FIG_BONES + i) * BONE_FLOATS;
@@ -1124,7 +1124,7 @@ figures :: (s: [] Villa, u: [] f32) {
 }
 
 // A dog's bone in its coat or its markings' colour. Its bones come in the rig's order
-// (verse/figure.coax animal): the back's two, the chest's, the neck's, the muzzle, the nose,
+// (aethyr/figure.coax animal): the back's two, the chest's, the neck's, the muzzle, the nose,
 // the eyes, the ears, the tail's, a ruff, then four to a leg (front left, front right, hind
 // left, hind right: the top, two below it, the paw), the legs always last.
 dog_colour :: (p: [] PetUi, region: int, i: int, n: int) -> Point {

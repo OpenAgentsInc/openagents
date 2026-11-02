@@ -1,7 +1,7 @@
 // Anime Lab's style block (docs/verse/art-styles.md, Anime), its own library
 // for the page's face (animelab-face.c): the anime preset in a variant and a
 // tier, at the realm's clock, as verse_style_at writes it. It is a library of
-// its own because the stage's camera (verse/cinematic.coax, verse/space.coax)
+// its own because the stage's camera (aethyr/cinematic.coax, aethyr/points.coax)
 // and the presets' checks share short names in one unit; the face hands the
 // block to animelab.coax, which copies it into the uniforms.
 //   coax/bin/coax test apps/openagents-web/animelab-style.coax --library

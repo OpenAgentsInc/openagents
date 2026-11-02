@@ -1,5 +1,5 @@
 // book:begin example
-#load "../../verse/player.coax";
+#load "../player.coax";
 #import "Basic";
 
 // A running jump drawn at 60 FPS on the 64 Hz step. Each frame, how much the drawn

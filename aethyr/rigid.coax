@@ -15,7 +15,7 @@
 // Units are metres, seconds, kilograms and radians; +Y is up. The world's
 // bodies live in the caller's array; RigidWorld holds a view of them, and
 // rigid_step writes through it.
-//   coax/bin/coax test --library verse/rigid.coax
+//   coax/bin/coax test --library aethyr/rigid.coax
 
 D2 :: struct { x: f64; y: f64; }
 D3 :: struct { x: f64; y: f64; z: f64; }

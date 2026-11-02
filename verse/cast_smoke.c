@@ -2,7 +2,7 @@
 // admitted with aethyr's counts, a minute of walking, running and jumping
 // and the robots' patrols give finite palettes, and damaged copies,
 // including non-finite numbers the Coax evaluator cannot hold, are refused.
-// The dance plays and a step ends it. Then verse/player.coax walks you at the Foreman among the robots'
+// The dance plays and a step ends it. Then aethyr/player.coax walks you at the Foreman among the robots'
 // bodies: its leg stops you, and you can walk under it between its legs.
 #include "Cast.h"
 #include "Player.h"

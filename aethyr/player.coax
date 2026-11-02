@@ -2,7 +2,7 @@
 // Load aethyr/walk.coax directly for a qualified Coax API: aliases are not reexports.
 // These wrappers do no policy or arithmetic; the authoritative core owns both.
 #module "verse.player";
-#load "../aethyr/walk.coax" as walk;
+#load "walk.coax" as walk;
 
 verse_player_advance_in_realm_traced :: (p: walk.Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> walk.AdvanceTrace #export_c {
   return walk.walk_advance_in_realm_traced(p, frame, bodies, walls, floors, realm);

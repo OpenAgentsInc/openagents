@@ -17,7 +17,7 @@ PF_CAP :: [6] int.[40, 24, 24, 120, 1200, 300];
 PF_LABEL :: [6] string.["NAME", "BORN", "PASSED", "A LINE FOR THE STONE", "ABOUT THEM", "WHAT MADE THEM THEM"];
 PF_KEY :: [6] string.["name", "born", "died", "line", "story", "traits"];
 
-// The avatar's numbers (verse/figure.coax Shape, in its order) and what the panel calls them.
+// The avatar's numbers (aethyr/figure.coax Shape, in its order) and what the panel calls them.
 AV_NUMBERS :: 10;
 AV_KEY :: [10] string.["size", "legs", "body", "girth", "head", "snout", "ears", "ear_size", "tail", "fluff"];
 AV_LABEL :: [10] string.["SIZE", "LEGS", "BODY", "BUILD", "HEAD", "SNOUT", "EARS DOWN", "EAR SIZE", "TAIL", "FLUFF"];

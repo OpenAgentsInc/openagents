@@ -2,8 +2,8 @@
 
 > **Status: unimplemented — design draft.** Today three animation paths
 > exist side by side: the Grid's cast (`verse/cast.coax`), skinned rigs
-> (`verse/skin.coax`) and rounded-bone figures with checked motions
-> (`verse/figure.coax`, `verse/motion.coax`). This chapter plans one Aethyr
+> (`aethyr/skin.coax`) and rounded-bone figures with checked motions
+> (`aethyr/figure.coax`, `aethyr/motion.coax`). This chapter plans one Aethyr
 > pose pipeline that all three feed. Nothing here runs yet.
 
 A character on screen is a skeleton, a pose per frame and something drawn
@@ -46,13 +46,13 @@ runs on the clock. Clip choice follows movement: airborne jumps, below
   assets). `verse_cast_open` admits every buffer, index, joint and frame;
   seven clips cross-fade over 0.18 s; robot capsules
   (`verse_cast_bodies`) are placed with the same palette that draws them.
-- [verse/skin.coax](../../verse/skin.coax): rigs and clips as the old Rust
+- [aethyr/skin.coax](../../aethyr/skin.coax): rigs and clips as the old Rust
   engine played them, `SKIN_FADE` 0.22 s, distance-driven gaits, and
   `skin_palette`; Everglade's Ranger is its first user.
-- [verse/figure.coax](../../verse/figure.coax): person and four-legged rigs
+- [aethyr/figure.coax](../../aethyr/figure.coax): person and four-legged rigs
   of round cones, shapes set by an agent or a slider, gaits worked out from
   a clock, and `verse_figure_limit` per joint.
-- [verse/motion.coax](../../verse/motion.coax): motions as text (`motion`,
+- [aethyr/motion.coax](../../aethyr/motion.coax): motions as text (`motion`,
   `rig`, `seconds`, keys with joint angles), each turn checked against its
   joint's limits and refused with the line and the allowed range.
 

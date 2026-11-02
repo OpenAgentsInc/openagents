@@ -1,7 +1,7 @@
 # 22. Contact as an optimization
 
 > **Status: unimplemented — design draft.** Aethyr resolves contacts by
-> sequential impulses ([`verse/contact.coax`](../../verse/contact.coax)).
+> sequential impulses ([`aethyr/contact.coax`](../../aethyr/contact.coax)).
 > This chapter plans the constraint solver an articulated robot needs:
 > contacts, joint limits and friction solved together as one convex
 > problem. Nothing here runs yet.

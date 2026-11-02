@@ -600,7 +600,7 @@ world_down :: (r: [] Realm, v: RealmView, x: f32, y: f32, id: int) {
   r[0].wf_two = true; r[0].wf_two_moved = r[0].wf_travel; r[0].wf_two_at = r[0].time; r[0].wf_grab = false;
 }
 
-// The angle of (x, y), radians (-pi to pi), as verse/space.coax's atan2.
+// The angle of (x, y), radians (-pi to pi), as aethyr/points.coax's atan2.
 turn_of :: (y: f32, x: f32) -> f32 {
   ax := abs(x); ay := abs(y);
   if ax == 0 && ay == 0 { return 0; }

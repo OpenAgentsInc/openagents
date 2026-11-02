@@ -1,9 +1,9 @@
 // A kept place (place.coax) for a realm seen through the free orbit
-// (verse/camera.coax): Everglade, the Grid, the Garden and Hecate's
+// (aethyr/camera.coax): Everglade, the Grid, the Garden and Hecate's
 // Cemetery. The camera's yaw, pitch and the distance asked for are what is
 // kept; putting you back starts the orbit behind your feet and turns it to them.
 #load "place.coax";
-#load "../../verse/camera.coax";
+#load "../../aethyr/camera.coax";
 
 // Where you are, for keeping: feet (the face's player), facing, the orbit, the room.
 verse_place_of :: (x: f32, y: f32, z: f32, face: f32, o: Orbit, room: int) -> Place #export_c {

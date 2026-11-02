@@ -41,7 +41,7 @@ and tests. It covers what the specification's "Coupling with
 - **Ledger terms.** Each force is a `Push` under `water.buoyancy` or
   `water.drag`; `water_record` enters them into a momentum `Ledger`.
 
-[`verse/rigid.coax`](../../verse/rigid.coax) holds the rigid bodies water
+[`aethyr/rigid.coax`](../../aethyr/rigid.coax) holds the rigid bodies water
 pushes on: the old `body.rs`, `World::step` without contacts, sleep with
 support, and `ledger.rs`.
 
@@ -51,7 +51,7 @@ them with:
 
 ```sh
 coax/bin/coax test --library verse/water.coax --steps 500000000
-coax/bin/coax test --library verse/rigid.coax
+coax/bin/coax test --library aethyr/rigid.coax
 ```
 
 ### Differences from the Rust W1
@@ -137,7 +137,7 @@ bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
   breath): ground, wading past 0.4 m, swimming past 1.25 m or off the
   bed, diving with the eye under; a swimmer settles at the float line, an
   idle diver rises at 0.6 m/s. Half speed wading and swimming (SRD 5.2.1),
-  a sixth less each Exhaustion level; `verse/player.coax`'s walk and run
+  a sixth less each Exhaustion level; `aethyr/player.coax`'s walk and run
   speeds are unchanged on land (its new `pace` is 1 there). Breath: a
   minute (the Ranger's Constitution is +0), then an Exhaustion level
   every 6 s; the sixth puts you on the nearer bank. No jumping afloat; the

@@ -11,7 +11,7 @@
 // Fetch is a character's game with it (a dog's): it follows you; when the
 // ball is thrown it runs straight to it, picks it up in its mouth, brings
 // it back by the paths and drops it at your feet.
-//   coax/bin/coax test --library verse/throw.coax
+//   coax/bin/coax test --library aethyr/throw.coax
 
 #load "terrain.coax";
 

@@ -23,7 +23,7 @@ A Verse world at https://openagents.com/worlds/belt-2200: a hard sci-fi strategy
 
 ## How it is made
 
-- The orbits are the engine's: `verse/orbit.coax` (two-body Kepler motion, the planets' J2000 mean elements, spheres of influence, Lambert transfers and the rocket equation), `verse/spacecam.coax` (a floating origin in f64, so a 120 m hull and Jupiter's orbit draw with one camera) and `verse/stars.coax` (the starfield and the Sun). `docs/verse/space.md` in the OpenAgents repository lists them.
+- The orbits are the engine's: `aethyr/orbit.coax` (two-body Kepler motion, the planets' J2000 mean elements, spheres of influence, Lambert transfers and the rocket equation), `aethyr/spacecam.coax` (a floating origin in f64, so a 120 m hull and Jupiter's orbit draw with one camera) and `verse/stars.coax` (the starfield and the Sun). `docs/verse/space.md` in the OpenAgents repository lists them.
 - `apps/openagents-web/belt.coax` is the game: its rules (ships, fuel, mining, the rivals' routes) and its drawing: glowing line art as on the homepage over shaded worlds (Saturn's rings, the Earth's air, Jupiter's bands) and the Belt's dust with its Kirkwood gaps. `belt-face.c` binds it for the browser and `belt.wgsl` draws it.
 - The design is `docs/verse/game-ideas/belt-2200.md`. The factions, ships and places are original.
 

@@ -1,5 +1,5 @@
 // Fairy Forest's C face for the browser (coax/web/host.js): fairy.coax is
-// the page, verse/player.coax walks you (its own library), verse/grid.coax
+// the page, aethyr/player.coax walks you (its own library), verse/grid.coax
 // reads a phone's thumbs and verse/fairy-forest/stream.coax is the stream
 // and the pond (Stream.h). Once a frame it passes values between them in
 // order: the page's controls, the player's step among the forest's walls

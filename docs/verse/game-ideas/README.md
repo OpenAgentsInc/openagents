@@ -29,7 +29,7 @@ once, in the engine, before any of the three:
    updates a second with prediction and rollback, and Belt 2200 needs
    deterministic lockstep. Both need a WebSocket room service with an
    authoritative tick.
-2. **Contacts in the rigid-body solver.** `verse/rigid.coax` steps bodies in
+2. **Contacts in the rigid-body solver.** `aethyr/rigid.coax` steps bodies in
    f64 with quaternion attitude and RK4 rotation, but has no contacts or
    joints. Car-on-ball, car-on-wall and ship-on-ship all need collision
    detection and impulse response.

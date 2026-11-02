@@ -411,11 +411,11 @@
         "engine",
         "art-styles"
       ],
-      "body": "Skinned and figure characters take the character shading: two bands (edge 0.40, softness 0.08), rim 0.45, the tinted shadow and the cast shadow, no specular, textures sampled with LOD bias +2 at 512 texels so fine grain goes. Emissive materials (Hecate's dog) and designed blacks (the shadow visitor) are exempt by material flag. The pack's character layers go through the painterly checks. verse/skin.coax and verse/figure.coax consumers get the same functions.\n\nSpecification: `docs/verse/art-styles.md`, 11. Characters.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-figures; Everglade: eg-paint-people. Those tasks wait on this one.",
+      "body": "Skinned and figure characters take the character shading: two bands (edge 0.40, softness 0.08), rim 0.45, the tinted shadow and the cast shadow, no specular, textures sampled with LOD bias +2 at 512 texels so fine grain goes. Emissive materials (Hecate's dog) and designed blacks (the shadow visitor) are exempt by material flag. The pack's character layers go through the painterly checks. aethyr/skin.coax and aethyr/figure.coax consumers get the same functions.\n\nSpecification: `docs/verse/art-styles.md`, 11. Characters.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-figures; Everglade: eg-paint-people. Those tasks wait on this one.",
       "files": [
         "verse/style.coax",
-        "verse/skin.coax",
-        "verse/figure.coax",
+        "aethyr/skin.coax",
+        "aethyr/figure.coax",
         "apps/openagents-web/fixture.wgsl"
       ],
       "acceptance": [
@@ -624,7 +624,7 @@
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
         "verse/everglade/plan.coax",
-        "verse/terrain.coax"
+        "aethyr/terrain.coax"
       ],
       "acceptance": [
         "From the South Gate, the river crossing and `#above`, at least two distinct ridge layers show through the haze (shots in a note)",

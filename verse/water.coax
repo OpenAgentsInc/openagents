@@ -32,7 +32,7 @@
 //   over-relaxation (Batchelor 1967).
 //
 // Nothing here renders; the look of water (W2 on) never feeds back into
-// these forces. Rigid bodies come from verse/rigid.coax.
+// these forces. Rigid bodies come from aethyr/rigid.coax.
 //
 // Storage: Coax has no growable arrays yet, so everything with a length
 // (polygons, courses, profiles, flow grids, a set's grid cells, pushes)
@@ -46,7 +46,7 @@
 // the default and take about half a minute:
 //   coax/bin/coax test --library verse/water.coax --steps 500000000
 
-#load "rigid.coax";
+#load "../aethyr/rigid.coax";
 
 FRESH :: 1000.0;            // kg/m^3
 SALT :: 1025.0;

@@ -313,7 +313,7 @@ end-to-end migration of every world coordinate.
 
 The current avatar renderers consume the interpolated feet for a frame, not
 the last fixed step alone. Realms whose controller steps on a flat floor use
-`feet_in_world` (`verse/space.coax`) to apply the terrain or bridge origin
+`feet_in_world` (`aethyr/points.coax`) to apply the terrain or bridge origin
 once; that world point is shared by the figure and camera. Everglade's wading
 origin is relative, while its swimming height is already absolute.
 
@@ -415,7 +415,7 @@ the south-west/north-east diagonal. Exact stored vertices retain their bits.
 Its metre-quantity boundary refuses invalid dimensions, spacing, coordinates,
 sampled heights and gradients. Beyond the mesh, consumers zero the gradient
 on each clamped axis before forming the constant continuation's normal.
-`verse/terrain.coax` retains its Ground C layout and delegates sampling to it.
+`aethyr/terrain.coax` retains its Ground C layout and delegates sampling to it.
 
 `query.coax` admits at most 16 heightfields. The exact ray and sphere-contact
 helpers have explicit cell budgets; exhaustion is a refusal, never a miss.
@@ -445,7 +445,7 @@ current recorded session agrees at every step natively and in Wasm. Evidence:
 
 ## Walking profiles and route followers share the realm's paid steps
 
-`aethyr/walk.coax` owns the walking controller; `verse/player.coax` retains
+`aethyr/walk.coax` owns the walking controller; `aethyr/player.coax` retains
 its published C signatures as thin adapters. Input's legacy `input_runs` C
 export remains; production pages reach one copy. The coupled Dead Gears and
 Player boundary probe explicitly prefixes one duplicate helper copy in a
@@ -497,7 +497,7 @@ The camera steps after it (`camera_step`, run by `step_once` in
 every step, never, or twice a step. Every camera answers with one
 `CameraShot` (`aethyr/shot.coax`) built from state already drawn between
 steps: third and first person (`follow_shot`, `follow_first_shot`), top down
-(`shot_top`), the free orbit (`shot_orbit`, which `verse/camera.coax` draws
+(`shot_top`), the free orbit (`shot_orbit`, which `aethyr/camera.coax` draws
 through) and the dive (`shot_dive`, where a time that isn't a number is a
 cut). No camera steps physics. Checks: `aethyr/walk.coax` ("the player is
 the same whether its camera steps every step, never, or twice a step", "each
@@ -2712,13 +2712,13 @@ varints, and emits existing HudInvocation bytes. Native adapters only transfer
 bytes; the resource and invocation have no second hand-written wire codec.
 The home is the Grid seen from high above, slowly orbiting, with only the Start
 bar over it (`verse_home_hud_frame`). Start dollies the camera down to land
-behind you; `verse/camera.coax` owns the overview orbit and the dolly path
+behind you; `aethyr/camera.coax` owns the overview orbit and the dolly path
 (eased, from behind and above, never below where it lands, a cut under
 reduced motion; a tap hurries it). Controls, the hotbar and the balance appear
 only once it lands. The balance sits top right as whole sats with no grouping
 (`₿1234`, or `₿–` with the reason spoken while there is none) and opens the wallet.
 `verse/grid.coax` owns its projection and line art,
-`verse/sticks.coax` the move/look/jump touch policy; `aethyr/walk.coax` owns walking and camera state behind the `verse/player.coax` C facade; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
+`aethyr/sticks.coax` the move/look/jump touch policy; `aethyr/walk.coax` owns walking and camera state behind the `aethyr/player.coax` C facade; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
 character's clips and poses you and the robots. The native adapter only routes
 the Start invocation there, passes numbers between the libraries each frame
 and binds the buffers Coax admitted. A cast whose offsets, indices, joints or
@@ -2735,8 +2735,8 @@ jumping, and keeps the camera out of it. The hotbar is aethyr's HUD slot:
 Dance_Loop while you stand); walking or jumping ends it. The Grid has no
 buildings, peers or network use yet.
 
-Check: `coax/build.sh test`, `coax test verse/grid.coax`, `verse/camera.coax`,
-`verse/player.coax` and `verse/cast.coax`, `verse/test_cast.sh` (the
+Check: `coax/build.sh test`, `coax test verse/grid.coax`, `aethyr/camera.coax`,
+`aethyr/player.coax` and `verse/cast.coax`, `verse/test_cast.sh` (the
 real Cast.bin under ASan/UBSan, with corrupted copies refused, and you
 walking into the Foreman's leg and stopping),
 `PROTOC=... python3 verse/test_home.py`, the sanitizer harness and the iOS

@@ -556,7 +556,7 @@ The first small world consumer is the floating-origin camera. Its public
 it explicitly constructs two F64 world points and subtracts them before
 returning raw coordinates. Nothing narrows the astronomical positions first.
 
-<!-- source: verse/spacecam.coax spacecam-relative -->
+<!-- source: aethyr/spacecam.coax spacecam-relative -->
 ```jai
 spacecam_relative :: (c: SpaceCam, p: D3) -> D3 {
   world: Point3(SpaceCamWorld, spacecam_units.Metre, f64);

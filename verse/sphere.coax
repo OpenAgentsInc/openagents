@@ -2,7 +2,7 @@
 // the drivable surface, spun about one axis, so it pulls hardest at the
 // equator and not at all at the poles, where the goals are. As in
 // verse/drum.coax everything is in the sphere's own rotating frame: its
-// spin is a verse/gravity.coax drum field about the axis, so "down" is away
+// spin is a aethyr/gravity.coax drum field about the axis, so "down" is away
 // from the axis, and on the sphere's surface it leans toward the equator
 // the nearer you are to a pole.
 //
@@ -11,8 +11,8 @@
 // sphere tens of metres round it is within millimetres of the curve.
 //   coax/bin/coax test --library verse/sphere.coax --steps 2000000000
 
-#load "vehicle.coax";
-#load "gravity.coax";
+#load "../aethyr/vehicle.coax";
+#load "../aethyr/gravity.coax";
 
 Sphere :: struct {
   centre: D3;

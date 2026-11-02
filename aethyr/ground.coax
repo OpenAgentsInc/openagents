@@ -1,7 +1,7 @@
 // Aethyr's sampled ground: the same south-west to north-east triangles that are drawn.
 // Coordinates and returned heights are metres. The caller owns the read-only height view.
 // Invalid descriptors, coordinates or sampled corners return an empty (ok false) answer.
-// The descriptor retains verse/terrain.coax's field order and defaults for its C boundary.
+// The descriptor retains aethyr/terrain.coax's field order and defaults for its C boundary.
 
 #module "aethyr.ground";
 #load "../coax/lib/quantity.coax" as units;

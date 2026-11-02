@@ -51,7 +51,7 @@ def check(case, compiler, directory, cc, release=False, sanitize=False):
     player_c, player_h = directory / "Player.c", directory / "Player.h"
     if not player_c.exists():
         with player_c.open("wb") as output:
-            run([compiler, "c", str(ROOT / "verse/player.coax"), "--library", "--header", str(player_h), *codegen], stdout=output)
+            run([compiler, "c", str(ROOT / "aethyr/player.coax"), "--library", "--header", str(player_h), *codegen], stdout=output)
     # Ice Cream Man and the shared controller both call their distinct
     # struct Player. Keep those C headers in separate translation units,
     # just as the product's independent libraries keep their ABIs apart.

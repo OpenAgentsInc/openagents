@@ -1,6 +1,6 @@
 // Belt 2200's C face for the browser (coax/web/host.js): scalar Wasm exports
 // over belt.coax, which holds the game's rules, its drawing and its
-// analytics over the engine's space (verse/orbit.coax, verse/spacecam.coax).
+// analytics over the engine's space (aethyr/orbit.coax, aethyr/spacecam.coax).
 // It decides nothing; after each call it hands the analytics batch to the
 // host's HTTP import. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).

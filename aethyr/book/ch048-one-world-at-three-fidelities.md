@@ -2,9 +2,9 @@
 
 > **Status: unimplemented — design draft.** Aethyr's space games today mix
 > engineering and game rules in one state: a tank holds real propellant or a
-> boost meter (`thruster_budget` in [`verse/thrust.coax`](../../verse/thrust.coax)),
+> boost meter (`thruster_budget` in [`aethyr/thrust.coax`](../../aethyr/thrust.coax)),
 > and the floating-origin camera (`spacecam_screen` in
-> [`verse/spacecam.coax`](../../verse/spacecam.coax)) keeps presentation
+> [`aethyr/spacecam.coax`](../../aethyr/spacecam.coax)) keeps presentation
 > apart from f64 state. This chapter plans fidelity profiles, typed rule
 > modules, batched rollouts and admitted environments over one state.
 > Nothing here runs yet.
@@ -54,9 +54,9 @@ Psionic chapter 234's exact replay.
 
 ## What exists today
 
-[`verse/thrust.coax`](../../verse/thrust.coax) has `thruster` (real
+[`aethyr/thrust.coax`](../../aethyr/thrust.coax) has `thruster` (real
 propellant) and `thruster_budget` (a game meter) side by side, chosen per
-game. [`verse/spacecam.coax`](../../verse/spacecam.coax) keeps positions in
+game. [`aethyr/spacecam.coax`](../../aethyr/spacecam.coax) keeps positions in
 f64 metres and converts to f32 only after subtracting the camera's centre;
 its check draws a hull 5 AU out to a millionth of a pixel. Orbit League
 ([`apps/openagents-web/orbitleague.coax`](../../apps/openagents-web/orbitleague.coax))

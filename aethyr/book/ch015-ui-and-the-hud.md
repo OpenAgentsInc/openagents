@@ -77,7 +77,7 @@ rectangle comes from the same function that placed the drawing.
 - Filament, the stroke font in `apps/openagents-web/font.coax`
   ([coax/font.md](../../coax/font.md)), and GPUI's atlas for Geist in
   `coax/web/gpui.js`.
-- [verse/arrange.coax](../../verse/arrange.coax): a close-up view where
+- [aethyr/arrange.coax](../../aethyr/arrange.coax): a close-up view where
   point and click place or take out objects.
 
 ## The design in Aethyr

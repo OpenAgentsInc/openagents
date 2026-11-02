@@ -42,13 +42,13 @@ A person's joints and their limits (pitch, yaw, roll, in degrees): `hips` (free:
 
 An animal's joints: `pelvis` (free), `spine` and `chest` (-40..40, -40..40, -30..30), `neck` (-70..80, -80..80, -40..40), `head` (-60..60, -60..60, -45..45), `left_ear` and `right_ear` (-70..70, -60..60, -70..70), `tail`, `tail_2` and `tail_3` (-80..100, -80..80, -40..40); each leg, `front_left_`, `front_right_`, `hind_left_` and `hind_right_` followed by its joints from the top: a front leg's `shoulder` (-130..80, -25..25, -40..40), `elbow` (-10..150, -10..10, -10..10), `wrist` (-40..130, -10..10, -10..10) and `paw` (-80..80, -20..20, -20..20); a hind leg's `hip` (-110..80, -25..25, -40..40), `knee` (-30..130, -10..10, -10..10), `hock` (-130..40, -10..10, -10..10) and `paw` (-80..80, -20..20, -20..20). `nose`, the ear tips, `tail_tip`, the toes and the eyes are ends and don't turn.
 
-The engine's own emotes are written in this same form (`verse/motion.coax`).
+The engine's own emotes are written in this same form (`aethyr/motion.coax`).
 
 ## How it is made
 
-- `verse/figure.coax` is the engine's figure: a rig (a person, or a four-legged animal), a shape (size, legs, body, girth, head, and for an animal its snout, ears, tail and coat) and a pose (each joint's turn, held to the joint's limits). It places the posed bones in the world and works out the gaits from a clock.
+- `aethyr/figure.coax` is the engine's figure: a rig (a person, or a four-legged animal), a shape (size, legs, body, girth, head, and for an animal its snout, ears, tail and coat) and a pose (each joint's turn, held to the joint's limits). It places the posed bones in the world and works out the gaits from a clock.
 - An animal's gaits: a walk lifts one foot at a time (hind left, front left, hind right, front right), a trot moves diagonal pairs together, and a run is a bounding gallop with the spine flexing.
-- `verse/motion.coax` reads and checks motion documents and plays and blends them over a pose.
+- `aethyr/motion.coax` reads and checks motion documents and plays and blends them over a pose.
 - `apps/openagents-web/characters.coax` is the world: the figures, where they walk, the view and the controls.
 - `apps/openagents-web/characters.wgsl` draws it: each pixel's ray is marched through the figures' bones, melted into one smooth body; a soft silhouette's edge is how near the ray passed, so it fades out instead of ending at a line.
 

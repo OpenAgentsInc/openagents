@@ -6,9 +6,9 @@
 // (three rows of four); per clip its seconds and the metres a loop travels (0 on the clock), per
 // joint its rotation keys (first, count) into PEOPLE_KEYS_R (time, x, y, z, w) and its
 // translation keys into the body's PEOPLE_KEYS_T_* (time, x, y, z: the pelvis's only, the
-// library's move from its rest added to the body's rest). verse/skin.coax plays it.
+// library's move from its rest added to the body's rest). aethyr/skin.coax plays it.
 
-#load "../skin.coax";
+#load "../../aethyr/skin.coax";
 
 PEOPLE_JOINTS :: 65;
 PEOPLE_CLIPS :: 12;
@@ -3036,7 +3036,7 @@ PEOPLE_KEYS_R :: [24250] f32.[
   2.9333334, -0.643334676, 0.0315638403, -0.225757059, 0.730861115, 0.0, 0.000338496496, -0.756883088, 0.653550092, 0.000392010408,
   1.9666667, 0.000354102007, -0.729746658, 0.683717447, 0.000377972096, 2.9333334, 0.000338496496, -0.756883088, 0.653550092, 0.000392010408
 ];
-// Checks, sampled in f64 as verse/skin.coax samples (posed in people.py): part way into each
+// Checks, sampled in f64 as aethyr/skin.coax samples (posed in people.py): part way into each
 // clip, where a joint stands: body (0 male, 1 female), clip, seconds, joint, x, y, z.
 PEOPLE_CHECK :: [1596] f32.[
   0.0, 0.0, 0.0, 1.0, 0.00531694433, 0.909572363, -0.0793943629,

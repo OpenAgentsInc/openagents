@@ -10,7 +10,7 @@ private final class Surface: UIView {
 
 /// Native lifecycle/input adapter. Coax owns the screen and all touch policy.
 /// Start opens the Grid: verse/grid.coax draws it and reads the fingers,
-/// verse/player.coax walks it, verse/cast.coax animates you and the
+/// aethyr/player.coax walks it, verse/cast.coax animates you and the
 /// robots, and this file passes numbers between them.
 final class HomeViewController: UIViewController {
     private var surface: Surface { view as! Surface }
@@ -53,7 +53,7 @@ final class HomeViewController: UIViewController {
     private var palette: [coax_t_Joint] = []
     private var bodies: [Float] = []
     private var inGrid: Bool { gridHandle != 0 }
-    /// The home is the Grid seen from high above (verse/camera.coax's
+    /// The home is the Grid seen from high above (aethyr/camera.coax's
     /// overview) under the Start bar; Start dollies the camera down to you,
     /// and then you play.
     private enum Stage { case overview, arriving(coax_t_Dolly), playing }

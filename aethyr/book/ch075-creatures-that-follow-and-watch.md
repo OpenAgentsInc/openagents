@@ -2,7 +2,7 @@
 
 > **Status: unimplemented — design draft.** Today each realm writes its own
 > creatures. Everglade's bird companion uses
-> [`verse/flock.coax`](../../verse/flock.coax), its town watch decides who
+> [`aethyr/flock.coax`](../../aethyr/flock.coax), its town watch decides who
 > sees a crime in `verse/everglade/watch.coax`, a guard's cosmetic choice can
 > come from a decision model (`verse/everglade/guard-*.coax`, gated by
 > [`verse/test_guard_ai.sh`](../../verse/test_guard_ai.sh)), and Hecate's
@@ -72,7 +72,7 @@ than from the true state, and replay exactly.
 
 ## What exists today
 
-- [verse/flock.coax](../../verse/flock.coax): the following flock, used by
+- [aethyr/flock.coax](../../aethyr/flock.coax): the following flock, used by
   Everglade's bird companion (`eg-companion`) and the made-realm `flock`
   feature.
 - [verse/everglade/watch.coax](../../verse/everglade/watch.coax): the town
