@@ -272,8 +272,38 @@ counts below zero, unknown kinds and a sum past the largest `int`.
 Mutation: 139 of 139 killed. Steps are measured per realm (Loop, above):
 Hold the Stair's, Orbit League's and Dead Gears' budget checks take each
 frame's steps, a 3 s stall's included, and `verse/player.coax` checks the
-walkers'. Content-hashed asset identity and refusal inside the writers are
-still to do.
+walkers'. Refusal inside the writers is still to do.
+
+## Assets (`aethyr/assets.coax`)
+
+An asset is known by its content: its `AssetId` is the SHA-256 of its bytes,
+written as the 64 lowercase hex digits `sha256sum` prints. Two realms that use
+one mesh share it, and an edited texture is a new asset under a new name. An
+`AssetRegistry` holds what a realm has loaded against a declared byte limit
+and 64 slots. `asset_admit` takes a pack (its entries and the ids its table
+names) whole or not at all:
+
+- an entry whose bytes don't hash to its table's id is refused
+  (`ASSET_MISMATCH`, with the entry);
+- a pack whose new bytes would pass the limit is refused
+  (`ASSET_OVER_BYTES`): bytes already held, and an entry repeated in the
+  pack, count once;
+- a pack that needs more slots than are free is refused (`ASSET_FULL`), and
+  a table that doesn't match its entries one for one is `ASSET_MALFORMED`.
+
+A refusal changes nothing that is held; it is counted and the first is kept
+for the report, as a frame budget's is. `asset_release` drops one use, and
+the last use frees the bytes and the slot. Checks: SHA-256 vectors and
+sha256sum's hex read back; a planted edited texture refuses its whole pack;
+shared bytes, a repeated entry, the limit to the byte, a negative limit and
+full slots; and over 16 seeded sessions of packs and releases, the registry
+matches a plain count of uses and every pack is all or nothing. Mutation:
+162 of 162 killed (`--root-only`; SHA-256 has its own gate). The file is
+`#authority`. Realm packs (`verse/tools/pack_realm.py`, `VPK1`) don't load
+through it yet: that is the asset path of
+[book chapter 53](../../aethyr/book/ch053-bring-in-assets.md). A page that
+links it beside another library that loads `sha256-kernel.coax` gets
+`S_hash` and `S_hex` twice (see 691c76ee7f).
 
 ## The Grid on the engine core (`verse/gridwalk.coax`)
 

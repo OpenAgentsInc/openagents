@@ -496,6 +496,17 @@ Checks: each realm's "... frames fit its declared budget" (three frames at
 each of three screens), and `aethyr/budget.coax`'s planted overflow
 (mutation 0 survivors).
 
+## An asset is its content hash, and a pack is admitted whole or not at all
+
+An Aethyr asset's identity is the SHA-256 of its bytes (`aethyr/assets.coax`,
+`#authority`), never its name or path. `asset_admit` hashes every entry of a
+pack before taking anything: an entry that doesn't hash to its table's id,
+new bytes past the registry's declared limit, or more new assets than free
+slots refuses the whole pack and changes nothing held. Bytes already held are
+shared and counted once; the last `asset_release` frees them. Checks:
+`aethyr/assets.coax` (a planted edited texture, the limit to the byte, a
+seeded model of uses; mutation 0 survivors with `--root-only`).
+
 ## A lost GPU device or an engine trap keeps the realm's session
 
 The browser host (`coax/web/host.js`) answers `GPUDevice.lost` for its current

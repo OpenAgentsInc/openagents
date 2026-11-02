@@ -1,0 +1,384 @@
+// Aethyr's asset identity (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md, book
+// chapter 16). An asset is known by its content: its `AssetId` is the SHA-256 of its bytes, so two
+// realms that use one mesh share it, and a changed texture is a new asset under a new name.
+//
+// An `AssetRegistry` holds what a realm has loaded, against a declared byte limit. A pack comes
+// with a table naming each entry's id; `asset_admit` hashes every entry, and takes the whole pack
+// or none of it:
+//   - an entry whose bytes don't hash to the id its table names is refused (ASSET_MISMATCH);
+//   - a pack whose new bytes would pass the limit is refused (ASSET_OVER_BYTES): bytes the
+//     registry already holds, and an entry repeated in the pack, count once;
+//   - a pack that needs more slots than are free is refused (ASSET_FULL);
+//   - a table that doesn't match its entries one for one is refused (ASSET_MALFORMED).
+// A refusal changes nothing that is held. It is counted, and the first is kept for the report, as
+// `aethyr/budget.coax` keeps a frame's. `asset_release` drops one use; an asset's bytes are freed
+// when its last use goes.
+//
+// Names here (locals too) start with `asset` or `ast_`: every declaration is visible to every
+// module a realm loads, and a local may not shadow a realm's procedure.
+//   coax/bin/coax test aethyr/assets.coax --library
+//   coax/bin/coax mutate aethyr/assets.coax --root-only
+
+#module "aethyr.assets";
+#authority;
+#load "../coax/lib/crypto/sha256-kernel.coax";
+
+// book:begin identity
+// An asset's identity: the SHA-256 of its bytes, as eight big-endian words.
+AssetId :: struct { words: [8] u32; }
+
+asset_id :: (content: string) -> AssetId {
+  ast_d := S_hash(content);
+  return AssetId.{words = ast_d.words};
+}
+
+asset_same :: (a: AssetId, b: AssetId) -> bool {
+  for ast_k: 0..<8 { if a.words[ast_k] != b.words[ast_k] { return false; } }
+  return true;
+}
+// book:end identity
+
+// The id as 64 lowercase hex digits, the form sha256sum prints and a pack's table holds.
+asset_hex :: (id: AssetId, out: [] u8) -> bool {
+  return S_hex(S_Digest.{words = id.words}, out);
+}
+
+ASSET_HEX_DIGITS :: "0123456789abcdef";
+
+// A hex digit's value, or -1 for anything else (uppercase included: a table has one spelling).
+asset_digit :: (c: u8) -> int {
+  for ast_k: 0..<16 { if ASSET_HEX_DIGITS[ast_k] == c { return ast_k; } }
+  return -1;
+}
+
+// Reads a table's 64 hex digits into out[0]; refuses (and leaves out[0]) any other text.
+asset_parse :: (text: string, out: [] AssetId) -> bool {
+  if text.count != 64 || out.count < 1 { return false; }
+  ast_id := AssetId.{};
+  for ast_k: 0..<64 {
+    ast_v := asset_digit(text[ast_k]);
+    if ast_v < 0 { return false; }
+    ast_w := ast_k / 8;
+    ast_id.words[ast_w] = ast_id.words[ast_w] * 16 + cast(u32) ast_v;   // at most 7 digits before: no carry
+  }
+  out[0] = ast_id;
+  return true;
+}
+
+// book:begin registry
+ASSET_SLOTS :: 64;          // assets a registry holds at most
+
+ASSET_OK :: 0;
+ASSET_MISMATCH :: 1;        // an entry's bytes don't hash to the id its table names
+ASSET_OVER_BYTES :: 2;      // the pack's new bytes would pass the registry's limit
+ASSET_FULL :: 3;            // the pack needs more slots than are free
+ASSET_MALFORMED :: 4;       // the table and the entries don't match one for one
+ASSET_NONE :: -1;           // no entry, no slot
+
+// The first pack a registry refused: why, at which entry (ASSET_NONE for the pack as a whole),
+// the bytes or slots it asked for, and how much of the limit was in use.
+AssetRefusal :: struct { kind: int = ASSET_OK; entry: int = ASSET_NONE; asked: int; used: int; limit: int; }
+
+AssetRegistry :: struct {
+  limit: int;                       // bytes the realm declared its assets may hold
+  ids: [ASSET_SLOTS] AssetId;
+  sizes: [ASSET_SLOTS] int;         // each held asset's bytes
+  uses: [ASSET_SLOTS] int;          // each slot's uses; 0 is a free slot
+  used: int;                        // bytes held
+  held: int;                        // assets held
+  packs: int;                       // packs admitted
+  refused: int;                     // packs refused
+  first: AssetRefusal;              // the first pack refused
+}
+// book:end registry
+
+asset_registry :: (limit: int) -> AssetRegistry { return AssetRegistry.{limit = limit}; }
+
+// The slot holding id, or ASSET_NONE.
+asset_find :: (r: AssetRegistry, id: AssetId) -> int {
+  for ast_s: 0..<ASSET_SLOTS { if r.uses[ast_s] > 0 && asset_same(r.ids[ast_s], id) { return ast_s; } }
+  return ASSET_NONE;
+}
+
+asset_uses :: (r: AssetRegistry, id: AssetId) -> int {
+  ast_s := asset_find(r, id);
+  if ast_s == ASSET_NONE { return 0; }
+  return r.uses[ast_s];
+}
+
+// Whether every pack so far was admitted: what a realm's asset check asserts.
+asset_ok :: (r: AssetRegistry) -> bool { return r.refused == 0; }
+
+asset_refuse :: (r: [] AssetRegistry, kind: int, entry: int, asked: int, used: int) -> int {
+  r[0].refused += 1;
+  if r[0].refused == 1 { r[0].first = AssetRefusal.{kind = kind, entry = entry, asked = asked, used = used, limit = r[0].limit}; }
+  return kind;
+}
+
+// book:begin admit
+// Admits a pack: content[k] is entry k's bytes and table[k] the id its table names. Every
+// entry is hashed and checked before anything is taken; then each entry adds a use, to the slot
+// that already holds it or to a free one. Returns ASSET_OK or the refusal, which changes nothing.
+asset_admit :: (r: [] AssetRegistry, content: [] string, table: [] AssetId) -> int {
+  if content.count != table.count || content.count > ASSET_SLOTS { return asset_refuse(r, ASSET_MALFORMED, ASSET_NONE, content.count, r[0].held); }
+  ast_n := content.count;
+  for ast_k: 0..<ast_n {
+    if !asset_same(asset_id(content[ast_k]), table[ast_k]) { return asset_refuse(r, ASSET_MISMATCH, ast_k, content[ast_k].count, r[0].used); }
+  }
+  // New bytes and slots: an entry the registry doesn't hold, the first time the pack names it.
+  ast_bytes := 0;
+  ast_slots := 0;
+  for ast_k: 0..<ast_n {
+    ast_new := asset_find(r[0], table[ast_k]) == ASSET_NONE;
+    for ast_j: 0..<ast_k { if asset_same(table[ast_j], table[ast_k]) { ast_new = false; } }
+    if ast_new { ast_bytes += content[ast_k].count; ast_slots += 1; }
+  }
+  if ast_bytes > r[0].limit - r[0].used { return asset_refuse(r, ASSET_OVER_BYTES, ASSET_NONE, ast_bytes, r[0].used); }
+  if ast_slots > ASSET_SLOTS - r[0].held { return asset_refuse(r, ASSET_FULL, ASSET_NONE, ast_slots, r[0].held); }
+  for ast_k: 0..<ast_n {
+    ast_s := asset_find(r[0], table[ast_k]);
+    if ast_s == ASSET_NONE {
+      ast_s = 0;
+      while r[0].uses[ast_s] > 0 { ast_s += 1; }
+      r[0].ids[ast_s] = table[ast_k];
+      r[0].sizes[ast_s] = content[ast_k].count;
+      r[0].used += content[ast_k].count;
+      r[0].held += 1;
+    }
+    r[0].uses[ast_s] += 1;
+  }
+  r[0].packs += 1;
+  return ASSET_OK;
+}
+// book:end admit
+
+// Drops one use of id; its bytes and slot are freed with the last. False for an id not held.
+asset_release :: (r: [] AssetRegistry, id: AssetId) -> bool {
+  ast_s := asset_find(r[0], id);
+  if ast_s == ASSET_NONE { return false; }
+  r[0].uses[ast_s] -= 1;
+  if r[0].uses[ast_s] == 0 {
+    r[0].used -= r[0].sizes[ast_s];
+    r[0].sizes[ast_s] = 0;
+    r[0].ids[ast_s] = AssetId.{};
+    r[0].held -= 1;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Checks.
+
+ASSET_MESH :: "mesh: 24 vertices of a crate";
+ASSET_TEXTURE :: "texture: oak planks, 4x4";
+ASSET_SOUND :: "sound: a door";
+
+asset_hex_of :: (content: string, out: [] u8) -> bool { return asset_hex(asset_id(content), out); }
+
+// A one-entry table and content, for checks.
+asset_one :: (r: [] AssetRegistry, content: string) -> int {
+  ast_c := [1] string.[content];
+  ast_t := [1] AssetId.[asset_id(content)];
+  return asset_admit(r, ast_c[..], ast_t[..]);
+}
+
+#test "an asset's id is the SHA-256 of its bytes, and sha256sum's hex reads back" {
+  ast_out: [64] u8;
+  #assert asset_hex_of("", ast_out[..]);
+  #assert cast(string) ast_out[..] == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  #assert asset_hex_of("abc", ast_out[..]);
+  #assert cast(string) ast_out[..] == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  ast_back: [1] AssetId;
+  #assert asset_parse(cast(string) ast_out[..], ast_back[..]) && asset_same(ast_back[0], asset_id("abc"));
+  #assert !asset_same(ast_back[0], asset_id("abd")) && !asset_same(asset_id(""), asset_id(" "));
+  // Each word is read where it was written: the last word alone differs.
+  ast_last := asset_id("abc");
+  ast_last.words[7] ^= 1;
+  #assert !asset_same(ast_last, asset_id("abc"));
+  ast_first := asset_id("abc");
+  ast_first.words[0] ^= 0x80000000;
+  #assert !asset_same(ast_first, asset_id("abc"));
+  #assert asset_same(asset_id(ASSET_MESH), asset_id(ASSET_MESH));
+  #assert !asset_hex(asset_id("abc"), ast_out[0..<63]);
+}
+
+#test "a table's id is 64 lowercase hex digits and nothing else" {
+  ast_got := [1] AssetId.[asset_id("kept")];
+  #assert asset_parse("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", ast_got[..]);
+  #assert asset_same(ast_got[0], asset_id("abc"));
+  #assert ast_got[0].words[0] == 0xba7816bf && ast_got[0].words[7] == 0xf20015ad;
+  ast_keep := [1] AssetId.[asset_id("kept")];
+  #assert !asset_parse("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015a", ast_keep[..]);     // 63
+  #assert !asset_parse("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad0", ast_keep[..]);   // 65
+  #assert !asset_parse("BA7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", ast_keep[..]);    // uppercase
+  #assert !asset_parse("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ag", ast_keep[..]);    // last digit
+  #assert !asset_parse("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015a/", ast_keep[..]);    // below '0'
+  #assert asset_same(ast_keep[0], asset_id("kept"));
+  #assert !asset_parse("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", ast_keep[0..<0]);
+  #assert asset_digit(48) == 0 && asset_digit(57) == 9 && asset_digit(97) == 10 && asset_digit(102) == 15;
+  #assert asset_digit(103) == -1 && asset_digit(65) == -1 && asset_digit(47) == -1 && asset_digit(0) == -1;
+  ast_zero: [1] AssetId;
+  #assert asset_parse("0000000000000000000000000000000000000000000000000000000000000000", ast_zero[..]);
+  #assert asset_same(ast_zero[0], AssetId.{});
+}
+
+// book:begin planted
+#test "a pack is taken whole: its bytes, slots and uses, and a refusal changes nothing" {
+  ar := [1] AssetRegistry.[asset_registry(100)];
+  ast_c := [2] string.[ASSET_MESH, ASSET_TEXTURE];
+  ast_t := [2] AssetId.[asset_id(ASSET_MESH), asset_id(ASSET_TEXTURE)];
+  #assert asset_admit(ar[..], ast_c[..], ast_t[..]) == ASSET_OK;
+  #assert ar[0].used == ASSET_MESH.count + ASSET_TEXTURE.count && ar[0].held == 2 && ar[0].packs == 1;
+  #assert asset_find(ar[0], ast_t[0]) == 0 && asset_find(ar[0], ast_t[1]) == 1;
+  #assert asset_uses(ar[0], ast_t[0]) == 1 && asset_uses(ar[0], asset_id(ASSET_SOUND)) == 0;
+  #assert asset_find(ar[0], asset_id(ASSET_SOUND)) == ASSET_NONE && asset_ok(ar[0]);
+  #assert ar[0].sizes[0] == ASSET_MESH.count && ar[0].sizes[1] == ASSET_TEXTURE.count;
+  // The texture was edited: its bytes no longer hash to the id the table names. The whole pack
+  // is refused, the sound that came first included.
+  ast_edit := [2] string.[ASSET_SOUND, "texture: oak planks, 4x5"];
+  ast_et := [2] AssetId.[asset_id(ASSET_SOUND), asset_id(ASSET_TEXTURE)];
+  before := ar[0];
+  #assert asset_admit(ar[..], ast_edit[..], ast_et[..]) == ASSET_MISMATCH;
+  #assert ar[0].used == before.used && ar[0].held == 2 && ar[0].packs == 1 && asset_uses(ar[0], ast_t[1]) == 1;
+  #assert asset_uses(ar[0], asset_id(ASSET_SOUND)) == 0 && ar[0].refused == 1 && !asset_ok(ar[0]);
+  #assert ar[0].first.kind == ASSET_MISMATCH && ar[0].first.entry == 1 && ar[0].first.asked == 24;
+  #assert ar[0].first.used == before.used && ar[0].first.limit == 100;
+  // The first entry is checked too.
+  ast_e0 := [2] string.["texture: oak planks, 4x5", ASSET_SOUND];
+  ast_t0 := [2] AssetId.[asset_id(ASSET_TEXTURE), asset_id(ASSET_SOUND)];
+  ae := [1] AssetRegistry.[asset_registry(100)];
+  #assert asset_admit(ae[..], ast_e0[..], ast_t0[..]) == ASSET_MISMATCH && ae[0].first.entry == 0 && ae[0].held == 0;
+  // A free slot holds no asset, not even the all-zero id.
+  #assert asset_find(ae[0], AssetId.{}) == ASSET_NONE && asset_uses(ae[0], AssetId.{}) == 0;
+  // A second refusal is counted; the first is kept.
+  #assert asset_one(ar[..], "a sound 100 bytes long, more than is left, ............................................") == ASSET_OVER_BYTES;
+  #assert ar[0].refused == 2 && ar[0].first.kind == ASSET_MISMATCH && ar[0].used == before.used;
+}
+// book:end planted
+
+#test "bytes already held are shared, not counted twice, and freed with their last use" {
+  ar := [1] AssetRegistry.[asset_registry(ASSET_MESH.count + ASSET_TEXTURE.count)];
+  #assert asset_one(ar[..], ASSET_MESH) == ASSET_OK;
+  // A second realm's pack uses the same mesh: no new bytes, a second use.
+  ast_c := [2] string.[ASSET_MESH, ASSET_TEXTURE];
+  ast_t := [2] AssetId.[asset_id(ASSET_MESH), asset_id(ASSET_TEXTURE)];
+  #assert asset_admit(ar[..], ast_c[..], ast_t[..]) == ASSET_OK;
+  #assert ar[0].used == ar[0].limit && ar[0].held == 2 && asset_uses(ar[0], ast_t[0]) == 2;
+  // Full to the byte: one more byte is refused, nothing at all fits.
+  #assert asset_one(ar[..], "x") == ASSET_OVER_BYTES && ar[0].first.asked == 1 && ar[0].first.used == ar[0].limit;
+  #assert asset_one(ar[..], ASSET_MESH) == ASSET_OK && asset_uses(ar[0], ast_t[0]) == 3;
+  #assert asset_release(ar[..], ast_t[0]) && asset_release(ar[..], ast_t[0]);
+  #assert ar[0].used == ar[0].limit && asset_uses(ar[0], ast_t[0]) == 1 && ar[0].held == 2;
+  #assert asset_release(ar[..], ast_t[0]);
+  #assert ar[0].used == ASSET_TEXTURE.count && ar[0].held == 1 && asset_find(ar[0], ast_t[0]) == ASSET_NONE;
+  #assert ar[0].sizes[0] == 0 && asset_same(ar[0].ids[0], AssetId.{}) && ar[0].uses[0] == 0;
+  #assert !asset_release(ar[..], ast_t[0]) && ar[0].used == ASSET_TEXTURE.count && ar[0].held == 1;
+  // The freed slot is the first a new asset takes.
+  #assert asset_one(ar[..], "x") == ASSET_OK && asset_find(ar[0], asset_id("x")) == 0 && ar[0].sizes[0] == 1;
+}
+
+#test "an entry repeated in one pack counts its bytes once and adds a use each time" {
+  ar := [1] AssetRegistry.[asset_registry(ASSET_SOUND.count)];
+  ast_c := [3] string.[ASSET_SOUND, ASSET_SOUND, ASSET_SOUND];
+  ast_t := [3] AssetId.[asset_id(ASSET_SOUND), asset_id(ASSET_SOUND), asset_id(ASSET_SOUND)];
+  #assert asset_admit(ar[..], ast_c[..], ast_t[..]) == ASSET_OK;
+  #assert ar[0].used == ASSET_SOUND.count && ar[0].held == 1 && asset_uses(ar[0], ast_t[0]) == 3;
+  // At the limit exactly is admitted; one byte past is not.
+  ab := [1] AssetRegistry.[asset_registry(ASSET_SOUND.count + ASSET_MESH.count - 1)];
+  ast_two := [2] string.[ASSET_SOUND, ASSET_MESH];
+  ast_tt := [2] AssetId.[asset_id(ASSET_SOUND), asset_id(ASSET_MESH)];
+  #assert asset_admit(ab[..], ast_two[..], ast_tt[..]) == ASSET_OVER_BYTES;
+  #assert ab[0].first.asked == ASSET_SOUND.count + ASSET_MESH.count && ab[0].first.entry == ASSET_NONE && ab[0].first.used == 0;
+  #assert ab[0].used == 0 && ab[0].held == 0 && ab[0].packs == 0;
+  // A limit below zero admits nothing, not even an empty asset.
+  an := [1] AssetRegistry.[asset_registry(-1)];
+  #assert asset_one(an[..], "") == ASSET_OVER_BYTES && an[0].held == 0;
+  az := [1] AssetRegistry.[asset_registry(0)];
+  #assert asset_one(az[..], "") == ASSET_OK && az[0].held == 1 && az[0].used == 0;
+}
+
+#test "a table that doesn't match its entries, and a pack past the free slots, are refused" {
+  ar := [1] AssetRegistry.[asset_registry(1000)];
+  ast_c := [2] string.[ASSET_MESH, ASSET_TEXTURE];
+  ast_t := [1] AssetId.[asset_id(ASSET_MESH)];
+  #assert asset_admit(ar[..], ast_c[..], ast_t[..]) == ASSET_MALFORMED;
+  #assert ar[0].first.kind == ASSET_MALFORMED && ar[0].first.asked == 2 && ar[0].first.entry == ASSET_NONE && ar[0].held == 0;
+  #assert asset_admit(ar[..], ast_c[0..<0], ast_t[0..<0]) == ASSET_OK && ar[0].packs == 1 && ar[0].held == 0;
+  // Fill every slot but one with one-byte assets, then ask for two new ones.
+  ast_bytes: [ASSET_SLOTS + 1] u8;
+  for ast_k: 0..<ASSET_SLOTS - 1 {
+    ast_bytes[ast_k] = cast(u8) ast_k;
+    #assert asset_one(ar[..], cast(string) ast_bytes[ast_k..<ast_k + 1]) == ASSET_OK;
+  }
+  #assert ar[0].held == ASSET_SLOTS - 1 && ar[0].used == ASSET_SLOTS - 1;
+  ast_pair := [2] string.["new one", "new two"];
+  ast_pt := [2] AssetId.[asset_id("new one"), asset_id("new two")];
+  #assert asset_admit(ar[..], ast_pair[..], ast_pt[..]) == ASSET_FULL;
+  #assert ar[0].refused == 2 && ar[0].held == ASSET_SLOTS - 1 && asset_uses(ar[0], ast_pt[0]) == 0;
+  af := ar[0];
+  af.refused = 0;
+  afs := [1] AssetRegistry.[af];
+  #assert asset_admit(afs[..], ast_pair[..], ast_pt[..]) == ASSET_FULL;
+  #assert afs[0].first.kind == ASSET_FULL && afs[0].first.entry == ASSET_NONE && afs[0].first.asked == 2;
+  #assert afs[0].first.used == ASSET_SLOTS - 1 && afs[0].first.limit == 1000;
+  // One more fits exactly, and an asset already held still takes a use with no slot free.
+  #assert asset_admit(ar[..], ast_pair[0..<1], ast_pt[0..<1]) == ASSET_OK && ar[0].held == ASSET_SLOTS;
+  #assert asset_one(ar[..], "new one") == ASSET_OK && asset_uses(ar[0], ast_pt[0]) == 2;
+  #assert asset_one(ar[..], "new two") == ASSET_FULL && ar[0].first.kind == ASSET_MALFORMED;
+  // A pack longer than the registry is malformed before anything is hashed.
+  ast_long: [ASSET_SLOTS + 1] string;
+  ast_lt: [ASSET_SLOTS + 1] AssetId;
+  for ast_k: 0..<ASSET_SLOTS + 1 { ast_long[ast_k] = "new one"; ast_lt[ast_k] = asset_id("new one"); }
+  ab := [1] AssetRegistry.[asset_registry(1000)];
+  #assert asset_admit(ab[..], ast_long[..], ast_lt[..]) == ASSET_MALFORMED && ab[0].first.asked == ASSET_SLOTS + 1;
+  #assert asset_admit(ab[..], ast_long[0..<ASSET_SLOTS], ast_lt[0..<ASSET_SLOTS]) == ASSET_OK && ab[0].held == 1;
+  #assert asset_uses(ab[0], ast_lt[0]) == ASSET_SLOTS;
+}
+
+#forall "admits and releases match a plain count of uses, and every pack is all or nothing" seed: 0..<16 {
+  ar := [1] AssetRegistry.[asset_registry(30 + (seed * 13) % 60)];
+  ast_model: [6] int;     // the uses each pool content should have
+  ast_pool := [6] string.[ASSET_MESH, ASSET_TEXTURE, ASSET_SOUND, "glyph atlas", "x", ""];
+  ast_ids: [6] AssetId;
+  for ast_p: 0..<6 { ast_ids[ast_p] = asset_id(ast_pool[ast_p]); }
+  ast_state := seed * 7919 + 1;   // a plain LCG below 2^31
+  for ast_round: 0..<24 {
+    ast_state = (ast_state * 1103515245 + 12345) % 2147483648;
+    ast_n := (ast_state / 256) % 4;
+    ast_c: [3] string;
+    ast_t: [3] AssetId;
+    ast_pick: [3] int;
+    for ast_k: 0..<ast_n {
+      ast_state = (ast_state * 1103515245 + 12345) % 2147483648;
+      ast_pick[ast_k] = (ast_state / 256) % 6;
+      ast_c[ast_k] = ast_pool[ast_pick[ast_k]];
+      ast_t[ast_k] = ast_ids[ast_pick[ast_k]];
+    }
+    ast_state = (ast_state * 1103515245 + 12345) % 2147483648;
+    if (ast_state / 512) % 3 == 0 && ast_n > 0 {
+      ast_had := ast_model[ast_pick[0]];
+      #assert asset_release(ar[..], ast_t[0]) == (ast_had > 0);
+      if ast_had > 0 { ast_model[ast_pick[0]] -= 1; }
+    } else {
+      // The model: the new bytes of contents not yet held, each counted once.
+      ast_new := 0;
+      for ast_k: 0..<ast_n {
+        ast_first := ast_model[ast_pick[ast_k]] == 0;
+        for ast_j: 0..<ast_k { if ast_pick[ast_j] == ast_pick[ast_k] { ast_first = false; } }
+        if ast_first { ast_new += ast_c[ast_k].count; }
+      }
+      ast_fits := ast_new <= ar[0].limit - ar[0].used;
+      ast_got := asset_admit(ar[..], ast_c[0..<ast_n], ast_t[0..<ast_n]);
+      #assert (ast_got == ASSET_OK) == ast_fits;
+      if ast_fits { for ast_k: 0..<ast_n { ast_model[ast_pick[ast_k]] += 1; } }
+      else { #assert ast_got == ASSET_OVER_BYTES; }
+    }
+    ast_bytes := 0;
+    ast_held := 0;
+    for ast_p: 0..<6 {
+      #assert asset_uses(ar[0], ast_ids[ast_p]) == ast_model[ast_p];
+      if ast_model[ast_p] > 0 { ast_bytes += ast_pool[ast_p].count; ast_held += 1; }
+    }
+    #assert ar[0].used == ast_bytes && ar[0].held == ast_held && ar[0].used <= ar[0].limit;
+  }
+}

@@ -4,7 +4,8 @@
 > The module is [aethyr/budget.coax](../budget.coax). Every realm declares a
 > frame budget beside its state and has a check that draws its frames at
 > three screen sizes and fails when any frame passes the budget.
-> Content-hashed asset identity is still to do.
+> Content-hashed asset identity is [aethyr/assets.coax](../assets.coax);
+> realm packs don't load through it yet.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can
@@ -363,12 +364,16 @@ which its check pins.
 
 ## Still to do
 
-- **Asset identity.** An asset's identity is its content hash, so two realms
-  that use one mesh share it and a changed texture is a new asset.
-  `aethyr/assets.coax` keeps the registry a pack loads into and refuses a
-  pack past its byte budget. Today asset packs have byte budgets in
-  `verse/packs/` that `verse/tools/pack_realm.py` checks
-  ([realm-host.md](../../docs/verse/realm-host.md)).
+- **Asset packs through the registry.** An asset's identity is its content
+  hash, so two realms that use one mesh share it and a changed texture is a
+  new asset. [aethyr/assets.coax](../assets.coax) is the registry: it admits
+  a pack whole or refuses it (an entry that doesn't hash to its table's id,
+  new bytes past the limit, no free slot) and frees bytes with their last use
+  (mutation 162 of 162). The realms' `VPK1` packs still load without it;
+  their byte budgets are in `verse/packs/`, checked by
+  `verse/tools/pack_realm.py` ([realm-host.md](../../docs/verse/realm-host.md)),
+  and moving them onto it is [chapter 53](ch053-bring-in-assets.md)'s import
+  path.
 - **Refusal at the writer.** The realms' quad writers still stop silently
   at a full buffer. The check catches a clipped frame because the vertex
   limit is below the buffer. The renderer's writers
