@@ -1,0 +1,121 @@
+// Chapter 210: a harness client and an MCP server, both in this process,
+// speak MCP 2025-06-18 to each other: the handshake, the tool list, calls
+// under chapter 203's grant and a remote policy, and a Responses function
+// call. Every message crosses as bytes and lands in the message log. Then
+// the refusals: the specification's own tool list, a server on another
+// version, and calls the client never sends.
+#import "Basic";
+#load "../lib/harness/protocols.coax";
+
+WHY :: [17]string.["ok","shape","malformed","version","id","method","name","untyped","feature","capacity","error","tool","effect","calls","bytes","ask","remote"];
+EFFECT :: [3]string.["none","read","write"];
+print_digest :: (d:[32]u8) {
+    digits:="0123456789abcdef";text:[16]u8;
+    for i:0..<8 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    print("%",cast(string)text[..]);
+}
+show_type :: (t:HtType) {
+    if t.kind==HtKind.integer {print("int%",t.digits);}
+    else if t.kind==HtKind.boolean {print("bool");}
+    else {print("{");for w,i:t.choices {if i>0 {print("|");}print("%",w);}print("}");}
+}
+why_name :: (w:PrWhy)->string {if w==PrWhy.result {return "result";}return WHY[cast(int)w];}
+
+// book:begin session
+// The server: chapter 203's registry, its own grant, usage and world.
+Server :: struct {env:PrEnv;usage:[1]HtUsage;world:[8]int;}
+// Send one request to the server, logging the request and its reply.
+exchange :: (sv:[]Server,request:string,reply:[]u8,l:[]PrLog)->string {
+    #assert pr_log(l,true,request);
+    n:=pr_serve(sv[0].env,sv[0].usage[..],sv[0].world[..],request,reply);
+    print("  -> %\n",request);
+    if n==0 {print("  (no reply)\n");return "";}
+    print("  <- %\n",cast(string)reply[0..<n]);
+    #assert pr_log(l,false,cast(string)reply[0..<n]);
+    return cast(string)reply[0..<n];
+}
+// One remote call: the client's pr_send, the server, the client's pr_receive.
+remote_call :: (env:PrEnv,s:[]PrSession,sv:[]Server,text:string,approved:bool,l:[]PrLog) {
+    out:[PR_MESSAGE_MAX]u8;reply:[PR_MESSAGE_MAX]u8;
+    print("call %",text);if approved {print(" (approved)");}print(": ");
+    x:=pr_send(env,s,text,approved,out[..],l);
+    if x.why!=PrWhy.none {print("refused before sending: %",why_name(x.why));if x.why==PrWhy.tool {print(" (chapter 203: %)",HT_WHY[cast(int)x.call.why]);}print("\n");return;}
+    request:=pr_message(l[0],l[0].count-1);
+    n:=pr_serve(sv[0].env,sv[0].usage[..],sv[0].world[..],request,reply[..]);
+    y:=pr_receive(env,x,cast(string)reply[0..<n],l);
+    if y.why==PrWhy.none {r:[128]u8;k:=ht_render(env.tools,y.call,r[..]);print("%\n",cast(string)r[0..<k]);}
+    else {print("%\n",why_name(y.why));}
+    print("  -> %\n  <- %\n",request,cast(string)reply[0..<n]);
+}
+// book:end session
+
+main :: () {
+    rm:=HT_ROOMS;fs:[5]HtField;registry:=ht_registry(rm[..],fs[..]);
+    e1:[256]NxEdge;o1:[128]int;n1:[32768]int;a1:[128]u8;l1:[128]u8;
+    all:=[4]int.[0,1,2,3];many:=[4]int.[9,9,9,9];
+    sv:[1]Server;sv[0].env=PrEnv.{tools=registry[..],grant=HtGrant.{tools=all[..],calls=many[..],cost=50,effects=HtEffect.write},work=ht_work(e1[..],o1[..],n1[..],a1[..],l1[..])};
+    by:[8192]u8;ends:[32]int;sent:[32]bool;heads:[32][32]u8;l:=[1]PrLog.[PrLog.{bytes=by[..],ends=ends[..],sent=sent[..],heads=heads[..]}];
+    b:[PR_MESSAGE_MAX]u8;reply:[PR_MESSAGE_MAX]u8;
+
+    print("handshake\n");
+    r:=exchange(sv[..],cast(string)b[0..<pr_initialize(b[..],1)],reply[..],l[..]);
+    print("  initialize: %\n",why_name(pr_check_init(r,1)));
+    r=exchange(sv[..],cast(string)b[0..<pr_initialized(b[..])],reply[..],l[..]);
+
+    print("tools/list\n");
+    r=exchange(sv[..],cast(string)b[0..<pr_list(b[..],2)],reply[..],l[..]);
+    st:[1]PrStore;x:=pr_import(r,2,1,st[..]);print("  import: %, % tools\n",why_name(x.why),x.count);
+    for t:st[0].tools[0..<x.count] {
+        print("  % (",t.name);for f,i:t.fields {if i>0 {print(", ");}print("%: ",f.name);show_type(f.type);}
+        print(") -> ");show_type(t.result);print(", %, cost %\n",EFFECT[cast(int)t.effect],t.cost);
+    }
+
+    print("calls: grant get, set, add, div; policy: reads run, writes ask, at most 8 calls and 200 bytes\n");
+    e2:[256]NxEdge;o2:[128]int;n2:[32768]int;a2:[128]u8;l2:[128]u8;
+    g:=[4]int.[3,2,0,1];c:=[4]int.[3,1,2,1];
+    env:=PrEnv.{tools=st[0].tools[0..<x.count],grant=HtGrant.{tools=g[..],calls=c[..],cost=10,effects=HtEffect.write},work=ht_work(e2[..],o2[..],n2[..],a2[..],l2[..]),
+        policy=PrPolicy.{ceiling=HtEffect.write,allow=HtEffect.read,calls=8,bytes=200}};
+    s:=[1]PrSession.[PrSession.{next=3}];
+    remote_call(env,s[..],sv[..],"get{\"room\":\"den\"}",false,l[..]);
+    remote_call(env,s[..],sv[..],"set{\"room\":\"den\",\"on\":true}",false,l[..]);
+    remote_call(env,s[..],sv[..],"set{\"room\":\"den\",\"on\":true}",true,l[..]);
+    remote_call(env,s[..],sv[..],"get{\"room\":\"den\"}",false,l[..]);
+    remote_call(env,s[..],sv[..],"add{\"a\":37,\"b\":48}",false,l[..]);
+    remote_call(env,s[..],sv[..],"div{\"a\":7,\"b\":0}",false,l[..]);
+    remote_call(env,s[..],sv[..],"add{\"a\":999,\"b\":1}",false,l[..]);
+    remote_call(env,s[..],sv[..],"get{\"room\":\"attic\"}",false,l[..]);
+    remote_call(env,s[..],sv[..],"mul{\"a\":1,\"b\":2}",false,l[..]);
+    remote_call(env,s[..],sv[..],"get{\"room\":\"hall\"}",false,l[..]);
+    print("  session: % calls, % bytes, cost %\n",s[0].calls,s[0].bytes,s[0].usage.cost);
+
+    print("Responses function call\n");
+    print("  tool: %\n",cast(string)b[0..<pr_function_put(b[..],0,env.tools[3])]);
+    print("  item: %\n",PR_FX_FUNCTION_CALL);
+    k:=pr_function_call(PR_FX_FUNCTION_CALL,b[..]);text:=cast(string)b[0..<k];
+    s2:=[1]PrSession.[PrSession.{next=20}];out:[PR_MESSAGE_MAX]u8;
+    y:=pr_send(env,s2[..],text,false,out[..],l[..]);
+    request:=pr_message(l[0],l[0].count-1);
+    n:=pr_serve(sv[0].env,sv[0].usage[..],sv[0].world[..],request,reply[..]);
+    y=pr_receive(env,y,cast(string)reply[0..<n],l[..]);
+    rt:[128]u8;rk:=ht_render(env.tools,y.call,rt[..]);
+    print("  call: %, sent as request %, %\n",text,y.id,why_name(y.why));
+    print("  output: %\n",cast(string)out[0..<pr_function_output_put(out[..],"call_1",cast(string)rt[0..<rk])]);
+
+    print("refusals\n");
+    st2:[1]PrStore;
+    print("  the specification's tools/list example: %\n",why_name(pr_import(PR_FX_SPEC_LIST,1,1,st2[..]).why));
+    one:=pf_swap(PR_FX_SPEC_LIST,",\"nextCursor\":\"next-page-cursor\"","",b[..]);x=pr_import(one,1,1,st2[..]);
+    print("  the same, one page: %, tool %\n",why_name(x.why),x.tool);
+    loc:=pf_swap(one,"\"required\":[\"location\"]}","\"required\":[\"location\"]},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"]}",out[..]);
+    x=pr_import(loc,1,1,st2[..]);print("  with an output schema: %, tool %, field %\n",why_name(x.why),x.tool,x.field);
+    print("  a server on 2024-11-05: %\n",why_name(pr_check_init(pf_swap(PR_FX_INIT_REPLY,"2025-06-18","2024-11-05",b[..]),1)));
+    print("  the specification's error reply: %\n",why_name(pr_result(PR_FX_SPEC_ERROR,3,env.tools[0]).why));
+    print("  the specification's failed call: %\n",why_name(pr_result(PR_FX_SPEC_FAILED,4,env.tools[0]).why));
+    print("  the specification's tools/call example, served: %\n",cast(string)reply[0..<pr_serve(sv[0].env,sv[0].usage[..],sv[0].world[..],PR_FX_SPEC_CALL,reply[..])]);
+    q:=env;q.policy.ceiling=HtEffect.read;s3:=[1]PrSession.[PrSession.{next=30}];
+    print("  set under a read-only ceiling: %\n",why_name(pr_send(q,s3[..],"set{\"room\":\"hall\",\"on\":true}",true,out[..],l[..]).why));
+
+    print("log: % messages, % sent, chain verified through %, head ",l[0].count,sent_count(l[0]),pr_verify(l[0]));
+    print_digest(l[0].heads[l[0].count-1]);print("\n");
+}
+sent_count :: (g:PrLog)->int {n:=0;for i:0..<g.count {if g.sent[i] {n+=1;}}return n;}

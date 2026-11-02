@@ -1,0 +1,680 @@
+// Chapter 210: speak the protocols. External tools arrive over the Model
+// Context Protocol (MCP) as JSON-RPC 2.0 messages, and models name tools as
+// Open Responses function calls. This unit maps both onto chapter 203's
+// typed capabilities. A tools/list reply is imported tool by tool into
+// HtTool declarations, and a tool whose arguments or result have no typed
+// counterpart is refused, never guessed. A harness call is translated into
+// a tools/call request byte for byte, after chapter 203's admission and a
+// remote policy in the shape of chapter 204's; the reply comes back
+// through the same after stage as a built-in tool. The other direction
+// serves a registry as an MCP server. Every message sent or received is
+// appended to a hash-chained message log before anything acts on it.
+// Profile cpu-mcp-2025-06-18-subset-v1: MCP protocol version 2025-06-18
+// over JSON-RPC 2.0, integer ids of 0 to 999999 only; initialize,
+// notifications/initialized, tools/list (one page) and tools/call; input
+// and output schemas limited to chapter 203's types (integer 0 to 10^d-1
+// for d of 1 to 6, boolean, or a string enum of up to 8 words), every
+// property required; one message is at most 2048 bytes; Responses function
+// tools and function_call items as chapter 79 accepts them. No transport:
+// messages are byte strings handed between caller and server.
+#load "tools.coax";
+#load "../responses/json.coax";
+#load "../suite.coax";
+#load "../../tests/harness-protocols-fixtures.coax";
+#authority;
+
+PR_VERSION :: "2025-06-18";
+PR_MESSAGE_MAX :: 2048;
+PR_NODES :: 256;
+PR_WORDS :: 64;
+
+// Why a message, an import or a call was refused; none is success.
+// malformed: not the message the subset expects. version: jsonrpc is not
+// 2.0, or the server answered another protocol version. id: a reply to
+// another request. untyped: a value with no typed counterpart. feature: a
+// schema keyword or protocol feature outside the subset. error: the peer
+// answered with a JSON-RPC error. tool: chapter 203 refused the call.
+// effect, calls, bytes: the remote policy refused it; ask: it needs an
+// approval. remote: the tool itself reported an error (isError).
+// result: the result does not fit its declared type.
+PrWhy :: enum u8 {none;shape;malformed;version;id;method;name;untyped;feature;capacity;error;tool;effect;calls;bytes;ask;remote;result;}
+// An import's outcome: the tool and the field (-1 when they do not apply)
+// where it was refused, and how many tools it holds.
+PrImport :: struct {why:PrWhy;tool:int=-1;field:int=-1;count:int;}
+// Storage for an imported registry. The declarations are views into it.
+PrStore :: struct {tools:[HT_TOOLS_MAX]HtTool;fields:[HT_TOOLS_MAX*HT_FIELDS_MAX]HtField;words:[PR_WORDS]string;nodes:[PR_NODES]RsNode;arena:[PR_MESSAGE_MAX]u8;}
+PrType :: struct {why:PrWhy;type:HtType;used:int;}
+PrObject :: struct {why:PrWhy;field:int=-1;count:int;used:int;}
+// The remote policy, chapter 204's in small: the strongest effect a remote
+// tool may have, the strongest that runs without an approval, and limits on
+// remote calls and on the bytes of their calls.
+PrPolicy :: struct {ceiling:HtEffect;allow:HtEffect;calls:int;bytes:int;}
+PrEnv :: struct {tools:[]HtTool;grant:HtGrant;work:HtWork;policy:PrPolicy;}
+// A client session: chapter 203's usage, the policy's counts, and the next
+// request id.
+PrSession :: struct {usage:HtUsage;calls:int;bytes:int;next:int;}
+// One call's outcome: why, chapter 203's event, and the request id.
+PrEvent :: struct {why:PrWhy;call:HtEvent;id:int=-1;}
+// The message log: every message's bytes, where each ends, which way it
+// went, and the chain of digests.
+PrLog :: struct {bytes:[]u8;ends:[]int;sent:[]bool;heads:[][32]u8;count:int;}
+
+// Checks first. The fixtures in psionic/tests/harness-protocols-fixtures.coax
+// are written by hand from the specification's message shapes for
+// chapter 203's registry; PR_FX_SPEC_* are the specification's own examples.
+#test "writers: chapter 203's registry as MCP tools and Responses functions, byte for byte" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);b:[PR_MESSAGE_MAX]u8;
+    want:=[4]string.[PR_FX_ADD,PR_FX_DIV,PR_FX_SET,PR_FX_GET];
+    for t,i:r {n:=pr_tool_put(b[..],0,t);#assert pf_text(b[..],n)==want[i] && pr_tool_put(b[0..<n],0,t)==n && pr_tool_put(b[0..<n-1],0,t)== -1;}
+    #assert pf_text(b[..],pr_function_put(b[..],0,r[3]))==PR_FX_FUNCTION;
+    #assert pf_text(b[..],pr_type_put(b[..],0,ht_int(1)))=="{\"type\":\"integer\",\"minimum\":0,\"maximum\":9}";
+    #assert pf_text(b[..],pr_type_put(b[..],0,ht_int(6)))=="{\"type\":\"integer\",\"minimum\":0,\"maximum\":999999}";
+    #assert pf_text(b[..],pr_object_put(b[..],0,fs[0..<0]))=="{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}";
+    #assert pf_text(b[..],pr_head(b[..],0))=="{\"jsonrpc\":\"2.0\",\"id\":0";
+    #assert pf_text(b[..],pr_initialize(b[..],1))==PR_FX_INIT && pf_text(b[..],pr_initialized(b[..]))==PR_FX_INITIALIZED && pf_text(b[..],pr_list(b[..],2))==PR_FX_LIST_REQUEST;
+    #assert pf_text(b[..],pr_call_put(b[..],3,r[3],"get{\"room\":\"den\"}"))==PR_FX_CALL && pf_text(b[..],pr_call_put(b[..],4,r[0],"add{\"a\":37,\"b\":48}"))==PR_FX_ADD_CALL;
+    #assert pr_call_put(b[0..<PR_FX_CALL.count-1],3,r[3],"get{\"room\":\"den\"}")== -1;
+    #assert pf_text(b[..],pr_value_put(b[..],0,ht_bool(),1))=="{\"result\":true}" && pf_text(b[..],pr_value_put(b[..],0,HtType.{kind=HtKind.choice,choices=rm[..]},2))=="{\"result\":\"study\"}";
+    #assert pf_text(b[..],pr_value_put(b[..],0,ht_int(3),0))=="{\"result\":0}" && pf_text(b[..],pr_value_put(b[..],0,ht_bool(),0))=="{\"result\":false}";
+}
+#test "import: the served list is chapter 203's registry, and exports to the same bytes" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);s:[1]PrStore;b:[PR_MESSAGE_MAX]u8;
+    want:=[4]string.[PR_FX_ADD,PR_FX_DIV,PR_FX_SET,PR_FX_GET];
+    x:=pr_import(PR_FX_LIST,2,1,s[..]);#assert x.why==PrWhy.none && x.count==4 && x.tool== -1 && x.field== -1;
+    for t,i:s[0].tools[0..<4] {#assert pf_same_tool(t,r[i]) && t.cost==1 && pf_text(b[..],pr_tool_put(b[..],0,t))==want[i];}
+    // add and div have no effect, which crosses as read-only.
+    e:=[4]HtEffect.[HtEffect.read,HtEffect.read,HtEffect.write,HtEffect.read];for t,i:s[0].tools[0..<4] {#assert t.effect==e[i];}
+    #assert pr_import(PR_FX_LIST,2,7,s[..]).count==4 && s[0].tools[3].cost==7;
+    // Each tool's fields and words have their own storage.
+    other:=pf_swap(PR_FX_LIST,"[\"hall\",\"den\",\"study\"]},\"on\"","[\"attic\",\"den\"]},\"on\"",b[..]);
+    #assert pr_import(other,2,1,s[..]).why==PrWhy.none && s[0].tools[2].fields[0].type.choices[0]=="attic" && s[0].tools[3].fields[0].type.choices.count==3 && s[0].tools[3].fields[0].type.choices[0]=="hall";
+    #assert s[0].tools[0].fields[1].name=="b" && s[0].tools[2].fields[1].name=="on";
+    // Storage is filled from the start: fields, then words, in order.
+    #assert pr_import(PR_FX_LIST,2,1,s[..]).why==PrWhy.none && s[0].fields[0].name=="a" && s[0].words[0]=="hall" && s[0].words[3]=="hall";
+    // A choice result keeps its words when the next tool's words follow it.
+    word:=pf_swap(PR_FX_LIST,"\"properties\":{\"result\":{\"type\":\"boolean\"}}","\"properties\":{\"result\":{\"type\":\"string\",\"enum\":[\"x\",\"y\"]}}",b[..]);
+    #assert pr_import(word,2,1,s[..]).why==PrWhy.none && s[0].tools[2].result.choices.count==2 && s[0].tools[2].result.choices[0]=="x" && s[0].tools[3].fields[0].type.choices[0]=="hall";
+    // An empty list imports as no tools.
+    #assert pr_import("{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[]}}",2,1,s[..]).why==PrWhy.none;
+    // The specification's own list: one page only, then a tool with no output schema.
+    #assert pf_import(PR_FX_SPEC_LIST,"","",1,PrWhy.feature,-1,-1);
+    #assert pf_import(PR_FX_SPEC_LIST,",\"nextCursor\":\"next-page-cursor\"","",1,PrWhy.untyped,0,-1);
+    // With an output schema its free-string location is still untyped.
+    sp:=pf_swap(PR_FX_SPEC_LIST,",\"nextCursor\":\"next-page-cursor\"","",b[..]);
+    #assert pf_import(sp,"\"required\":[\"location\"]}","\"required\":[\"location\"]},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"]}",1,PrWhy.untyped,0,0);
+}
+#test "import: the envelope and the tool, each refusal exact" {
+    o:=PR_FX_ONE;
+    #assert pf_import(o,"","",2,PrWhy.none,-1,-1);
+    #assert pf_import(o,"}]}}","}]}",2,PrWhy.malformed,-1,-1) && pf_import(o,"\"2.0\"","\"1.0\"",2,PrWhy.version,-1,-1);
+    #assert pf_import(o,"\"id\":2","\"id\":3",2,PrWhy.id,-1,-1) && pf_import(o,"\"id\":2","\"id\":\"2\"",2,PrWhy.id,-1,-1) && pf_import(o,"\"id\":2,","",2,PrWhy.id,-1,-1);
+    #assert pf_import(PR_FX_SPEC_ERROR,"","",3,PrWhy.error,-1,-1) && pf_import(o,"\"id\":2,","\"id\":2,\"x\":1,",2,PrWhy.malformed,-1,-1);
+    #assert pf_import("{\"jsonrpc\":\"2.0\",\"id\":2}","","",2,PrWhy.malformed,-1,-1) && pf_import("{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":[]}","","",2,PrWhy.malformed,-1,-1);
+    #assert pf_import(o,"\"result\":{","\"result\":{\"nextCursor\":\"x\",",2,PrWhy.feature,-1,-1) && pf_import("{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":{}}}","","",2,PrWhy.malformed,-1,-1);
+    #assert pf_import("{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[1]}}","","",2,PrWhy.malformed,0,-1) && pf_import(o,"\"name\":\"get\",","",2,PrWhy.malformed,0,-1);
+    #assert pf_import(o,"\"name\":\"get\"","\"name\":5",2,PrWhy.malformed,0,-1) && pf_import(o,"\"name\":\"get\"","\"name\":\"Get\"",2,PrWhy.name,0,-1);
+    #assert pf_import(o,"{\"name\":\"get\",","{\"name\":\"get\",\"icons\":[],",2,PrWhy.feature,0,-1);
+    #assert pf_import(o,"{\"name\":\"get\",","{\"name\":\"get\",\"title\":\"Get\",\"description\":\"Reads a room.\",",2,PrWhy.none,-1,-1);
+    // Annotations: the five hints of the specification, and nothing else.
+    #assert pf_import(o,"\"readOnlyHint\":true","\"readOnlyHint\":true,\"x\":1",2,PrWhy.feature,0,-1);
+    #assert pf_import(o,"\"readOnlyHint\":true","\"title\":\"t\",\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false",2,PrWhy.none,-1,-1);
+    b:[4096]u8;s:[1]PrStore;
+    #assert pr_import(pf_swap(o,",\"annotations\":{\"readOnlyHint\":true}","",b[..]),2,1,s[..]).why==PrWhy.none && s[0].tools[0].effect==HtEffect.write;
+    #assert pr_import(pf_swap(o,"\"readOnlyHint\":true","\"readOnlyHint\":\"true\"",b[..]),2,1,s[..]).why==PrWhy.none && s[0].tools[0].effect==HtEffect.write;
+    #assert pr_import(o,2,1,s[..]).why==PrWhy.none && s[0].tools[0].effect==HtEffect.read;
+    #assert pf_import(o,"\"inputSchema\":","\"title\":",2,PrWhy.malformed,0,-1);
+    // Two tools of one name; nine tools; a message over 2048 bytes.
+    two:=pf_swap(PR_FX_LIST,PR_FX_ADD,PR_FX_GET,b[..]);#assert pf_import(two,"","",2,PrWhy.name,3,-1);
+    small:="{\"name\":\"a\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"required\":[]},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"]}}";
+    names:="abcdefghi";m:[2048]u8;n:=json_raw(m[..],0,"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[");
+    for k:0..<9 {if k>0 {n=json_raw(m[..],n,",");}at:=n;n=json_raw(m[..],n,small);m[at+9]=names[k];}
+    eight:=json_raw(m[..],n-small.count-1,"]}}");#assert pr_import(cast(string)m[0..<eight],2,1,s[..]).why==PrWhy.none && s[0].tools[7].name=="h";
+    n=json_raw(m[..],json_raw(m[..],n-small.count-1,","),small);m[n-small.count+9]='i';n=json_raw(m[..],n,"]}}");
+    #assert pf_import(cast(string)m[0..<n],"","",2,PrWhy.capacity,8,-1);
+    p:[2049]u8;#assert pr_import(pf_pad(o,2048,p[..]),2,1,s[..]).why==PrWhy.none && pr_import(pf_pad(o,2049,p[..]),2,1,s[..]).why==PrWhy.shape;
+}
+#test "import: schemas outside the subset are refused, never guessed" {
+    o:=PR_FX_ONE;
+    // The input schema object.
+    #assert pf_import(o,"{\"type\":\"object\",\"properties\":{\"room\"","{\"type\":\"array\",\"properties\":{\"room\"",2,PrWhy.untyped,0,-1);
+    #assert pf_import(o,"{\"type\":\"object\",\"properties\":{\"room\"","{\"$schema\":\"x\",\"type\":\"object\",\"properties\":{\"room\"",2,PrWhy.feature,0,-1);
+    #assert pf_import(o,"\"additionalProperties\":false","\"additionalProperties\":true",2,PrWhy.feature,0,-1);
+    #assert pf_import(o,"],\"additionalProperties\":false}","]}",2,PrWhy.none,-1,-1);
+    #assert pf_import(o,"\"properties\":{\"room\":{\"type\":\"string\",\"enum\":[\"hall\",\"den\",\"study\"]}}","\"properties\":5",2,PrWhy.malformed,0,-1);
+    #assert pf_import(o,"\"properties\":{\"room\":{\"type\":\"string\",\"enum\":[\"hall\",\"den\",\"study\"]}},","",2,PrWhy.malformed,0,-1);
+    #assert pf_import(o,"\"required\":[\"room\"]","\"required\":\"room\"",2,PrWhy.malformed,0,-1);
+    #assert pf_import(o,"\"inputSchema\":{","\"inputSchema\":[],\"title\":{",2,PrWhy.malformed,0,-1);
+    // Every property required exactly once, and nothing else required.
+    #assert pf_import(o,"\"required\":[\"room\"]","\"required\":[]",2,PrWhy.feature,0,0) && pf_import(o,"\"required\":[\"room\"]","\"required\":[\"room\",\"room\"]",2,PrWhy.feature,0,0);
+    #assert pf_import(o,"\"required\":[\"room\"]","\"required\":[\"room\",\"x\"]",2,PrWhy.feature,0,-1) && pf_import(o,"\"required\":[\"room\"]","\"required\":[\"room\",5]",2,PrWhy.feature,0,-1);
+    #assert pf_import(o,"\"properties\":{\"room\"","\"properties\":{\"Room\"",2,PrWhy.name,0,0);
+    // Five properties is one past chapter 203's four.
+    b:[4096]u8;c:[4096]u8;five:=pf_swap(pf_swap(o,"\"study\"]}}","\"study\"]},\"b\":{\"type\":\"boolean\"},\"c\":{\"type\":\"boolean\"},\"d\":{\"type\":\"boolean\"},\"e\":{\"type\":\"boolean\"}}",b[..]),"\"required\":[\"room\"]","\"required\":[\"room\",\"b\",\"c\",\"d\",\"e\"]",c[..]);
+    #assert pf_import(five,"","",2,PrWhy.capacity,0,4);
+    #assert pf_import(five,",\"e\":{\"type\":\"boolean\"}","",2,PrWhy.feature,0,-1);
+    #assert pf_import(five,",\"e\"]","]",2,PrWhy.capacity,0,4);
+    #assert pf_import(pf_swap(five,",\"e\":{\"type\":\"boolean\"}","",b[..]),",\"e\"]","]",2,PrWhy.none,-1,-1);
+    // The output schema: exactly one property, result, of a typed kind.
+    #assert pf_import(o,"{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"]","{\"result\":{\"type\":\"boolean\"},\"x\":{\"type\":\"boolean\"}},\"required\":[\"result\",\"x\"]",2,PrWhy.untyped,0,-1);
+    #assert pf_import(o,"{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"]","{\"value\":{\"type\":\"boolean\"}},\"required\":[\"value\"]",2,PrWhy.untyped,0,-1);
+    #assert pf_import(o,"{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"]","{\"result\":{\"type\":\"string\"}},\"required\":[\"result\"]",2,PrWhy.untyped,0,-1);
+    #assert pf_import(o,"{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"]","{\"result\":{\"type\":\"boolean\",\"x\":1}},\"required\":[\"result\"]",2,PrWhy.feature,0,-1);
+    #assert pf_import(o,"{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"]","{\"a\":{\"type\":\"boolean\"},\"b\":{\"type\":\"boolean\"}},\"required\":[\"a\",\"b\"]",2,PrWhy.untyped,0,-1);
+    #assert pf_import(o,"\"outputSchema\":{\"type\"","\"outputSchema\":{\"$schema\":\"x\",\"type\"",2,PrWhy.feature,0,-1);
+    #assert pf_import(o,"{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"]","{\"result\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":9}},\"required\":[\"result\"]",2,PrWhy.none,-1,-1);
+}
+#test "import: property types, at their bounds" {
+    k:=HtKind.integer;
+    #assert pf_property(PF_ROOM,PrWhy.none,HtKind.choice,0,3);
+    #assert pf_property("{\"type\":\"integer\",\"minimum\":0,\"maximum\":9}",PrWhy.none,k,1,0) && pf_property("{\"type\":\"integer\",\"maximum\":99,\"minimum\":0,\"description\":\"x\"}",PrWhy.none,k,2,0);
+    #assert pf_property("{\"type\":\"integer\",\"minimum\":0,\"maximum\":999999}",PrWhy.none,k,6,0) && pf_property("{\"type\":\"integer\",\"minimum\":0,\"maximum\":9999999}",PrWhy.feature,k,0,0);
+    no:=[11]string.["{\"type\":\"integer\",\"minimum\":1,\"maximum\":9}","{\"type\":\"integer\",\"minimum\":0,\"maximum\":100}","{\"type\":\"integer\",\"minimum\":0,\"maximum\":-9}",
+        "{\"type\":\"integer\",\"maximum\":9}","{\"type\":\"integer\",\"minimum\":0}","{\"type\":\"integer\",\"minimum\":0,\"maximum\":9,\"enum\":[1]}","{\"type\":\"integer\",\"minimum\":\"0\",\"maximum\":9}",
+        "{\"type\":\"integer\",\"minimum\":0,\"maximum\":\"9\"}","{\"type\":\"integer\",\"minimum\":0.0,\"maximum\":9}","{\"type\":\"integer\",\"minimum\":0,\"maximum\":9.0}","{\"type\":\"integer\",\"minimum\":0,\"maximum\":9,\"default\":1}"];
+    for x:no {#assert pf_property(x,PrWhy.feature,k,0,0);}
+    #assert pf_property("{\"type\":\"boolean\",\"description\":\"x\"}",PrWhy.none,HtKind.boolean,0,0);
+    nb:=[3]string.["{\"type\":\"boolean\",\"maximum\":1}","{\"type\":\"boolean\",\"minimum\":0}","{\"type\":\"boolean\",\"enum\":[true]}"];for x:nb {#assert pf_property(x,PrWhy.feature,k,0,0);}
+    ns:=[6]string.["{\"type\":\"string\",\"minimum\":0,\"enum\":[\"a\"]}","{\"type\":\"string\",\"maximum\":0,\"enum\":[\"a\"]}","{\"type\":\"string\",\"enum\":[]}",
+        "{\"type\":\"string\",\"enum\":[\"New York\"]}","{\"type\":\"string\",\"enum\":[\"a\",\"a\"]}","{\"type\":\"string\",\"enum\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\"]}"];
+    for x:ns {#assert pf_property(x,PrWhy.feature,k,0,0);}
+    #assert pf_property("{\"type\":\"string\",\"enum\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\"]}",PrWhy.none,HtKind.choice,0,8);
+    #assert pf_property("{\"type\":\"string\",\"enum\":\"a\"}",PrWhy.malformed,k,0,0) && pf_property("{\"type\":\"string\",\"enum\":[\"a\",1]}",PrWhy.malformed,k,0,0) && pf_property("5",PrWhy.malformed,k,0,0);
+    nt:=[6]string.["{\"type\":\"string\"}","{\"type\":\"number\"}","{}","{\"type\":\"array\"}","{\"type\":\"object\"}","{\"type\":\"null\",\"enum\":[\"a\"]}"];
+    for x:nt {#assert pf_property(x,PrWhy.untyped,k,0,0);}
+    #assert pf_property("{\"type\":\"string\",\"pattern\":\"x\",\"enum\":[\"a\"]}",PrWhy.feature,k,0,0);
+    // The words go where the caller's storage has room, and no further.
+    nodes:[16]RsNode;arena:[256]u8;w:[3]string;#assert rs_json(PF_ROOM,nodes[..],arena[..]).ok;
+    t:=pr_type(nodes[..],0,w[..],0);#assert t.why==PrWhy.none && t.used==3 && w[2]=="study";
+    #assert pr_type(nodes[..],0,w[0..<2],0).why==PrWhy.capacity && pr_type(nodes[..],0,w[..],1).why==PrWhy.capacity;
+    #assert pr_type(nodes[..],0,w[..],0).type.choices.count==3;
+}
+#test "client: the server's answer to initialize" {
+    b:[512]u8;r:=PR_FX_INIT_REPLY;
+    #assert pr_check_init(r,1)==PrWhy.none && pr_check_init(r,2)==PrWhy.id && pr_check_init(pf_swap(r,"\"2.0\"","\"1.0\"",b[..]),1)==PrWhy.version;
+    #assert pr_check_init(pf_swap(r,"2025-06-18","2024-11-05",b[..]),1)==PrWhy.version && pr_check_init(pf_swap(r,"{\"tools\":{}}","{}",b[..]),1)==PrWhy.feature;
+    #assert pr_check_init(pf_swap(r,"{\"tools\":{}}","{\"tools\":true}",b[..]),1)==PrWhy.feature && pr_check_init(pf_swap(r,"\"capabilities\":{\"tools\":{}},","",b[..]),1)==PrWhy.feature;
+    #assert pr_check_init(pf_swap(r,"}}}","}}",b[..]),1)==PrWhy.malformed && pr_check_init(PR_FX_SPEC_ERROR,3)==PrWhy.error;
+}
+#test "client: tools/call replies, each refusal exact" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);b:[PR_MESSAGE_MAX]u8;c:[PR_MESSAGE_MAX]u8;
+    x:=pr_result(PR_FX_CALL_REPLY,3,r[3]);#assert x.why==PrWhy.none && x.call.value==0 && x.id==3;
+    yes:=pf_swap(pf_swap(PR_FX_CALL_REPLY,"\\\"result\\\":false","\\\"result\\\":true",b[..]),"{\"result\":false}","{\"result\":true}",c[..]);
+    #assert pr_result(yes,3,r[3]).call.value==1 && pr_result(yes,3,r[3]).why==PrWhy.none;
+    x=pr_result(PR_FX_ADD_REPLY,4,r[0]);#assert x.why==PrWhy.none && x.call.value==85;
+    #assert pr_result(PR_FX_DIV_REPLY,5,r[1]).why==PrWhy.remote && pr_result(PR_FX_SPEC_FAILED,4,r[0]).why==PrWhy.remote && pr_result(PR_FX_SPEC_ERROR,3,r[0]).why==PrWhy.error;
+    #assert pr_result(PR_FX_ADD_REPLY,5,r[0]).why==PrWhy.id && pr_result(PR_FX_ADD_REPLY,4,r[3]).why==PrWhy.result;
+    room:=r[3];room.result=HtType.{kind=HtKind.choice,choices=rm[..]};
+    study:="{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"result\\\":\\\"study\\\"}\"}],\"structuredContent\":{\"result\":\"study\"}}}";
+    x=pr_result(study,3,room);#assert x.why==PrWhy.none && x.call.value==2;
+    #assert pr_result(pf_swap(study,"{\"result\":\"study\"}","{\"result\":\"attic\"}",b[..]),3,room).why==PrWhy.result;
+    #assert pr_result(pf_swap(study,"{\"result\":\"study\"}","{\"result\":\"den\"}",b[..]),3,room).why==PrWhy.malformed;
+    // Values that do not fit the declared type: the after stage withholds them.
+    bad:=[9]string.["1000","1e2","1E2","-1","8.5","1234567","\"85\"","true","null"];
+    for v:bad {k:=json_raw(c[..],json_raw(c[..],0,"{\"result\":"),v);k=json_raw(c[..],k,"}");#assert pr_result(pf_swap(PR_FX_ADD_REPLY,"{\"result\":85}",cast(string)c[0..<k],b[..]),4,r[0]).why==PrWhy.result;}
+    #assert pr_result(pf_swap(PR_FX_ADD_REPLY,"{\"result\":85}","{\"result\":0}",b[..]),4,r[0]).why==PrWhy.malformed;
+    six:=r[0];six.result=ht_int(6);nodes:[4]RsNode;arena:[16]u8;
+    #assert rs_json("999999",nodes[..],arena[..]).ok && pr_value(nodes[..],0,six.result)==999999 && pr_value(nodes[..],0,r[0].result)== -1;
+    #assert rs_json("1000000",nodes[..],arena[..]).ok && pr_value(nodes[..],0,six.result)== -1 && rs_json("0",nodes[..],arena[..]).ok && pr_value(nodes[..],0,r[0].result)==0;
+    #assert pr_result(pf_swap(PR_FX_CALL_REPLY,"{\"result\":false}","{\"result\":1}",b[..]),3,r[3]).why==PrWhy.result;
+    // The content: one text item whose text is the structured result's bytes.
+    m:=[7][2]string.[[2]string.["\"text\":\"{\\\"result\\\":85}\"","\"text\":\"{\\\"result\\\":86}\""],[2]string.["}],","},{\"type\":\"text\",\"text\":\"\"}],"],
+        [2]string.["\"type\":\"text\"","\"type\":\"image\""],[2]string.["\"text\":\"{\\\"result\\\":85}\"","\"text\":5"],[2]string.["\"isError\":false","\"isError\":\"no\""],
+        [2]string.["\"content\":[{\"type\":\"text\",\"text\":\"{\\\"result\\\":85}\"}],",""],[2]string.["{\"type\":\"text\",","{\"type\":\"text\",\"x\":1,"]];
+    for p:m {#assert pr_result(pf_swap(PR_FX_ADD_REPLY,p[0],p[1],b[..]),4,r[0]).why==PrWhy.malformed;}
+    #assert pr_result(pf_swap(PR_FX_ADD_REPLY,"{\"type\":\"text\",\"text\":\"{\\\"result\\\":85}\"}","{\"text\":\"{\\\"result\\\":85}\",\"type\":\"text\"}",b[..]),4,r[0]).why==PrWhy.malformed;
+    #assert pr_result(pf_swap(PR_FX_ADD_REPLY,"\"content\":[{","\"content\":[[{",b[..]),4,r[0]).why==PrWhy.malformed;
+    #assert pr_result(pf_swap(PR_FX_DIV_REPLY,"\"content\":[{\"type\":\"text\",\"text\":\"{\\\"error\\\":\\\"run\\\",\\\"tool\\\":\\\"div\\\",\\\"field\\\":\\\"b\\\"}\"}],","",b[..]),5,r[1]).why==PrWhy.malformed;
+    #assert pr_result(pf_swap(PR_FX_ADD_REPLY,",\"isError\":false","",b[..]),4,r[0]).why==PrWhy.none;
+    #assert pr_result(pf_swap(PR_FX_SPEC_FAILED,"\"text\":\"Failed to fetch weather data: API rate limit exceeded\"","\"text\":5",b[..]),4,r[0]).why==PrWhy.malformed;
+    // The structured result: present, one key, a plain value.
+    st:=[4]string.[",\"structuredContent\":{\"result\":85}",",\"structuredContent\":{\"result\":85,\"x\":1}",",\"structuredContent\":{}",",\"structuredContent\":{\"result\":[85]}"];
+    for v,i:st {if i>0 {#assert pr_result(pf_swap(PR_FX_ADD_REPLY,st[0],v,b[..]),4,r[0]).why==PrWhy.untyped;}}
+    #assert pr_result(pf_swap(PR_FX_ADD_REPLY,st[0],"",b[..]),4,r[0]).why==PrWhy.untyped;
+    #assert pr_result(pf_swap(PR_FX_ADD_REPLY,",\"isError\":false",",\"_meta\":{}",b[..]),4,r[0]).why==PrWhy.feature;
+    #assert pr_result(pf_swap(PR_FX_ADD_REPLY,"}}","}",b[..]),4,r[0]).why==PrWhy.malformed && pr_result("{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":5}",4,r[0]).why==PrWhy.malformed;
+    p:[2049]u8;#assert pr_result(pf_pad(PR_FX_ADD_REPLY,2048,p[..]),4,r[0]).why==PrWhy.none && pr_result(pf_pad(PR_FX_ADD_REPLY,2049,p[..]),4,r[0]).why==PrWhy.shape;
+}
+#test "server: chapter 203's registry answers the fixtures byte for byte" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);e:[256]NxEdge;o:[128]int;n:[32768]int;a:[128]u8;l:[128]u8;w:=ht_work(e[..],o[..],n[..],a[..],l[..]);
+    g:=[4]int.[0,1,2,3];c:=[4]int.[9,9,9,9];env:=pf_env(r[..],g[..],c[..],w);u:[1]HtUsage;world:[8]int;b:[PR_MESSAGE_MAX]u8;q:[PR_MESSAGE_MAX]u8;
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],PR_FX_INIT,b[..]))==PR_FX_INIT_REPLY;
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_swap(PR_FX_INIT,"2025-06-18","2024-11-05",q[..]),b[..]))==PR_FX_INIT_REPLY;
+    #assert pr_serve(env,u[..],world[..],PR_FX_INITIALIZED,b[..])==0;
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],PR_FX_LIST_REQUEST,b[..]))==PR_FX_LIST;
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],PR_FX_CALL,b[..]))==PR_FX_CALL_REPLY;
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],PR_FX_ADD_CALL,b[..]))==PR_FX_ADD_REPLY && u[0].calls[0]==1 && u[0].calls[3]==1 && u[0].cost==2;
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],PR_FX_DIV_CALL,b[..]))==PR_FX_DIV_REPLY && u[0].calls[1]==1;
+    set:="{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"set\",\"arguments\":{\"room\":\"den\",\"on\":true}}}";
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],set,b[..]))=="{\"jsonrpc\":\"2.0\",\"id\":6,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"result\\\":true}\"}],\"structuredContent\":{\"result\":true},\"isError\":false}}" && world[1]==1;
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],PR_FX_SPEC_CALL,b[..]))=="{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32602,\"message\":\"{\\\"error\\\":\\\"unknown\\\",\\\"at\\\":0}\"}}";
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_swap(PR_FX_ADD_CALL,"37","999",q[..]),b[..]))=="{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"error\\\":\\\"result\\\",\\\"tool\\\":\\\"add\\\"}\"}],\"isError\":true}}";
+    parse:="{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}";invalid:="{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"Invalid Request\"}}";
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],"{",b[..]))==parse;
+    p:[2049]u8;#assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_pad(PR_FX_LIST_REQUEST,2049,p[..]),b[..]))==parse && pf_text(b[..],pr_serve(env,u[..],world[..],pf_pad(PR_FX_LIST_REQUEST,2048,p[..]),b[..]))==PR_FX_LIST;
+    iv:=[7][2]string.[[2]string.["\"2.0\"","\"1.0\""],[2]string.["\"id\":2","\"id\":\"2\""],[2]string.["\"id\":2,",""],[2]string.["\"id\":2","\"id\":1000000"],
+        [2]string.["\"id\":2","\"id\":-2"],[2]string.["\"method\"","\"x\":1,\"method\""],[2]string.["{\"jsonrpc\":\"2.0\",","{"]];
+    for x:iv {#assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_swap(PR_FX_LIST_REQUEST,x[0],x[1],q[..]),b[..]))==invalid;}
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_swap(PR_FX_LIST_REQUEST,"\"id\":2","\"id\":999999",q[..]),b[..]))==pf_swap(PR_FX_LIST,"\"id\":2","\"id\":999999",p[..]);
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_swap(PR_FX_LIST_REQUEST,"\"id\":2","\"id\":0",q[..]),b[..]))==pf_swap(PR_FX_LIST,"\"id\":2","\"id\":0",p[..]);
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],"{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"ping\"}",b[..]))=="{\"jsonrpc\":\"2.0\",\"id\":0,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}";
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_swap(PR_FX_INITIALIZED,"notifications/initialized","notifications/cancelled",q[..]),b[..]))==invalid;
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_swap(PR_FX_LIST_REQUEST,"tools/list","resources/list",q[..]),b[..]))=="{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}";
+    params:="{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":-32602,\"message\":\"Invalid params\"}}";
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_swap(PR_FX_CALL,"\"name\":\"get\",","",q[..]),b[..]))=="{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":-32602,\"message\":\"{\\\"error\\\":\\\"unknown\\\",\\\"at\\\":0}\"}}";
+    ip:=[3][2]string.[[2]string.[",\"params\":{\"name\":\"get\",\"arguments\":{\"room\":\"den\"}}",""],[2]string.["\"arguments\"","\"x\":1,\"arguments\""],
+        [2]string.["{\"room\":\"den\"}","[\"den\"]"]];
+    for x:ip {#assert pf_text(b[..],pr_serve(env,u[..],world[..],pf_swap(PR_FX_CALL,x[0],x[1],q[..]),b[..]))==params;}
+    // A call of 256 bytes reaches chapter 203, which refuses its spaces; 257 does not.
+    pad:[300]u8;for i:0..<300 {pad[i]=' ';}
+    long:=json_raw(p[..],json_raw(p[..],json_raw(p[..],0,"{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"add\",\"arguments\":{\"a\":1,\"b\":2"),cast(string)pad[0..<240]),"}}}");
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],cast(string)p[0..<long],b[..]))=="{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":-32602,\"message\":\"{\\\"error\\\":\\\"arguments\\\",\\\"tool\\\":\\\"add\\\",\\\"field\\\":\\\"b\\\",\\\"at\\\":15}\"}}";
+    long=json_raw(p[..],json_raw(p[..],json_raw(p[..],0,"{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"add\",\"arguments\":{\"a\":1,\"b\":2"),cast(string)pad[0..<241]),"}}}");
+    #assert pf_text(b[..],pr_serve(env,u[..],world[..],cast(string)p[0..<long],b[..]))==params;
+    // A reply that does not fit out is -1.
+    #assert pr_serve(env,u[..],world[..],PR_FX_LIST_REQUEST,b[0..<PR_FX_LIST.count-1])== -1 && pr_serve(env,u[..],world[0..<7],PR_FX_ADD_CALL,b[..])>0;
+}
+#test "Responses: function tools and calls, both ways" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);b:[PR_MESSAGE_MAX]u8;q:[PR_MESSAGE_MAX]u8;
+    n:=pr_function_call(PR_FX_FUNCTION_CALL,b[..]);#assert pf_text(b[..],n)=="get{\"room\":\"den\"}";
+    #assert pf_text(q[..],pr_function_call_put(q[..],"call_1",pf_text(b[..],n)))==PR_FX_FUNCTION_CALL;
+    #assert pf_text(q[..],pr_function_call_put(q[..],"c","{}"))=="{\"type\":\"function_call\",\"call_id\":\"c\",\"name\":\"\",\"arguments\":\"{}\"}";
+    #assert pf_text(q[..],pr_function_call_put(q[..],"c","get"))=="{\"type\":\"function_call\",\"call_id\":\"c\",\"name\":\"get\",\"arguments\":\"\"}";
+    t:[64]u8;k:=ht_render(r[..],HtEvent.{tool=3},t[..]);#assert pf_text(b[..],pr_function_output_put(b[..],"call_1",pf_text(t[..],k)))==PR_FX_FUNCTION_OUTPUT;
+    #assert pr_function_call(PR_FX_FUNCTION_CALL,b[0..<16])== -1 && pr_function_call(PR_FX_FUNCTION_CALL,b[0..<17])==17;
+    no:=[6][2]string.[[2]string.["\"function_call\"","\"function_call_output\""],[2]string.["{\"type\"","{\"id\":\"fc_1\",\"type\""],[2]string.["\"call_1\"","1"],
+        [2]string.["\"name\":\"get\"","\"name\":7"],[2]string.["\"arguments\":\"{\\\"room\\\":\\\"den\\\"}\"","\"arguments\":{\"room\":\"den\"}"],[2]string.["{\"type\"","[\"type\""]];
+    for x:no {#assert pr_function_call(pf_swap(PR_FX_FUNCTION_CALL,x[0],x[1],q[..]),b[..])== -1;}
+    #assert pr_function_call(pf_swap(PR_FX_FUNCTION_CALL,"\"name\":\"get\",","",q[..]),b[..])== -1;
+}
+#test "log: every message chained, and every change found" {
+    by:[1024]u8;ends:[4]int;sent:[4]bool;heads:[4][32]u8;l:=[1]PrLog.[PrLog.{bytes=by[..],ends=ends[..],sent=sent[..],heads=heads[..]}];
+    #assert pr_log(l[..],true,PR_FX_INIT) && pr_log(l[..],false,PR_FX_INIT_REPLY) && pr_log(l[..],true,PR_FX_INITIALIZED) && l[0].count==3;
+    #assert by[0]=='{' && ends[0]==PR_FX_INIT.count && ends[2]==PR_FX_INIT.count+PR_FX_INIT_REPLY.count+PR_FX_INITIALIZED.count;
+    // Digests from Python's hashlib over the same encoding.
+    #assert su_hex(heads[0],"4beb3b935b361d0c5fc9b165f5820617838dbf56fa49beac6cd73bd4842d90e3") && su_hex(heads[1],"a98e4f2f4567fb64e8f22cefc62840b736903159697b6c2bf5db2e3914b6711e");
+    #assert su_hex(heads[2],"b08cece75f1269db8ace7ecf10a1276d4d66dcaabb0fd8b13abf60344381a99f");
+    #assert pr_verify(l[0])==3 && pr_message(l[0],0)==PR_FX_INIT && pr_message(l[0],1)==PR_FX_INIT_REPLY && pr_message(l[0],2)==PR_FX_INITIALIZED && sent[0] && !sent[1];
+    by[ends[0]+5]='x';#assert pr_verify(l[0])==1;by[ends[0]+5]=PR_FX_INIT_REPLY[5];sent[2]=false;#assert pr_verify(l[0])==2;sent[2]=true;
+    h:=heads[0];heads[0][0]=h[0]+1;#assert pr_verify(l[0])==0;heads[0]=h;#assert pr_verify(l[0])==3;
+    // Full: the bytes exactly, then any of the three arrays.
+    room:=1024-ends[2];x:=l;#assert !pr_log(x[..],true,cast(string)by[0..<room+1]) && x[0].count==3 && pr_log(x[..],true,cast(string)by[0..<room]) && x[0].count==4;
+    x=l;x[0].ends=ends[0..<3];#assert !pr_log(x[..],true,"{}");x=l;x[0].sent=sent[0..<3];#assert !pr_log(x[..],true,"{}");x=l;x[0].heads=heads[0..<3];#assert !pr_log(x[..],true,"{}");
+    big:[4096]u8;y:=[1]PrLog.[PrLog.{bytes=big[..],ends=ends[..],sent=sent[..],heads=heads[..]}];#assert !pr_log(y[..],true,cast(string)big[0..<2049]) && pr_log(y[..],true,cast(string)big[0..<2048]);
+}
+#test "calls: admission, the remote policy, the log and the after stage" {
+    s:[1]PrStore;#assert pr_import(PR_FX_LIST,2,2,s[..]).count==4;
+    e:[256]NxEdge;o:[128]int;n:[32768]int;a:[128]u8;lv:[128]u8;w:=ht_work(e[..],o[..],n[..],a[..],lv[..]);
+    g:=[3]int.[3,2,0];c:=[3]int.[2,2,2];env:=pf_env(s[0].tools[0..<4],g[..],c[..],w);
+    by:[2048]u8;ends:[8]int;sent:[8]bool;heads:[8][32]u8;l:=[1]PrLog.[PrLog.{bytes=by[..],ends=ends[..],sent=sent[..],heads=heads[..]}];
+    ss:=[1]PrSession.[PrSession.{next=3}];b:[PR_MESSAGE_MAX]u8;
+    x:=pr_send(env,ss[..],"get{\"room\":\"den\"}",false,b[..],l[..]);
+    #assert x.why==PrWhy.none && x.id==3 && x.call.tool==3 && x.call.ran && x.call.cost==2 && l[0].count==1 && pr_message(l[0],0)==PR_FX_CALL && sent[0];
+    #assert ss[0].usage.calls[0]==1 && ss[0].usage.calls[2]==0 && ss[0].usage.cost==2 && ss[0].calls==1 && ss[0].bytes==17 && ss[0].next==4;
+    y:=pr_receive(env,x,PR_FX_CALL_REPLY,l[..]);#assert y.why==PrWhy.none && y.call.value==0 && y.call.tool==3 && l[0].count==2 && !sent[1] && pr_message(l[0],1)==PR_FX_CALL_REPLY;
+    // A write asks; an approval runs it.
+    set:="set{\"room\":\"den\",\"on\":true}";
+    x=pr_send(env,ss[..],set,false,b[..],l[..]);#assert x.why==PrWhy.ask && x.id== -1 && l[0].count==2 && ss[0].calls==1 && ss[0].usage.cost==2;
+    x=pr_send(env,ss[..],set,true,b[..],l[..]);#assert x.why==PrWhy.none && x.id==4 && ss[0].usage.calls[1]==1 && ss[0].bytes==17+set.count;
+    #assert pr_receive(env,x,PR_FX_CALL_REPLY,l[..]).why==PrWhy.id;
+    // The ceiling, then the limits.
+    q:=env;q.policy.ceiling=HtEffect.read;#assert pr_send(q,ss[..],set,true,b[..],l[..]).why==PrWhy.effect;
+    q=env;q.policy.allow=HtEffect.write;#assert pr_send(q,ss[..],set,false,b[..],l[..]).why==PrWhy.none && ss[0].calls==3;
+    q=env;q.policy.calls=3;#assert pr_send(q,ss[..],"add{\"a\":1,\"b\":2}",false,b[..],l[..]).why==PrWhy.calls;
+    q=env;q.policy.bytes=ss[0].bytes+15;#assert pr_send(q,ss[..],"add{\"a\":1,\"b\":2}",false,b[..],l[..]).why==PrWhy.bytes;
+    q.policy.bytes=ss[0].bytes+16;#assert pr_send(q,ss[..],"add{\"a\":1,\"b\":2}",false,b[..],l[..]).why==PrWhy.none && ss[0].calls==4;
+    // Chapter 203 refuses before the policy is asked: the second get spends the grant's two.
+    ss[0].calls=0;ss[0].bytes=0;
+    #assert pr_send(env,ss[..],"get{\"room\":\"hall\"}",false,b[..],l[..]).why==PrWhy.none;
+    x=pr_send(env,ss[..],"get{\"room\":\"hall\"}",false,b[..],l[..]);#assert x.why==PrWhy.tool && x.call.why==HtWhy.calls && x.id== -1;
+    x=pr_send(env,ss[..],"div{\"a\":1,\"b\":2}",false,b[..],l[..]);#assert x.why==PrWhy.tool && x.call.why==HtWhy.ungranted;
+    // No room to write the request, or to log it: nothing is charged.
+    before:=ss[0];k:=l[0].count;
+    #assert pr_send(env,ss[..],"add{\"a\":1,\"b\":2}",false,b[0..<10],l[..]).why==PrWhy.shape && ss[0].calls==before.calls && l[0].count==k;
+    full:=l;full[0].ends=ends[0..<k];#assert pr_send(env,ss[..],"add{\"a\":1,\"b\":2}",false,b[..],full[..]).why==PrWhy.capacity && ss[0].calls==before.calls && ss[0].usage.cost==before.usage.cost;
+    #assert pr_receive(env,PrEvent.{id=3,call=HtEvent.{tool=3}},PR_FX_CALL_REPLY,full[..]).why==PrWhy.capacity;
+    z:=pr_receive(env,PrEvent.{id=4,call=HtEvent.{tool=0}},PR_FX_ADD_REPLY,l[..]);#assert z.why==PrWhy.none && z.call.value==85 && l[0].count==k+1;
+}
+
+// book:begin write
+// The writers append to out at at and return the new length, or -1 when
+// out is too small; -1 stays -1 down a chain.
+pr_type_put :: (out:[]u8,at:int,t:HtType)->int {
+    if t.kind==HtKind.integer {return json_raw(out,json_write_int(out,json_raw(out,at,"{\"type\":\"integer\",\"minimum\":0,\"maximum\":"),ht_power(t.digits)-1),"}");}
+    if t.kind==HtKind.boolean {return json_raw(out,at,"{\"type\":\"boolean\"}");}
+    n:=json_raw(out,at,"{\"type\":\"string\",\"enum\":[");
+    for w,i:t.choices {if i>0 {n=json_raw(out,n,",");}n=json_write_string(out,n,w);}
+    return json_raw(out,n,"]}");
+}
+// An object schema: every field a property, in order, and every one required.
+pr_object_put :: (out:[]u8,at:int,fields:[]HtField)->int {
+    n:=json_raw(out,at,"{\"type\":\"object\",\"properties\":{");
+    for f,i:fields {if i>0 {n=json_raw(out,n,",");}n=pr_type_put(out,json_raw(out,json_write_string(out,n,f.name),":"),f.type);}
+    n=json_raw(out,n,"},\"required\":[");
+    for f,i:fields {if i>0 {n=json_raw(out,n,",");}n=json_write_string(out,n,f.name);}
+    return json_raw(out,n,"],\"additionalProperties\":false}");
+}
+// An MCP tool. The result is the property result of the output schema. MCP
+// has no word for a tool with no effect, so none crosses as read-only.
+pr_tool_put :: (out:[]u8,at:int,t:HtTool)->int {
+    result:=[1]HtField.[HtField.{name="result",type=t.result}];
+    n:=pr_object_put(out,json_raw(out,json_write_string(out,json_raw(out,at,"{\"name\":"),t.name),",\"inputSchema\":"),t.fields);
+    n=pr_object_put(out,json_raw(out,n,",\"outputSchema\":"),result[..]);
+    return json_raw(out,n,ifx t.effect==HtEffect.write then ",\"annotations\":{\"readOnlyHint\":false}}" else ",\"annotations\":{\"readOnlyHint\":true}}");
+}
+// A JSON-RPC message's head: version and id.
+pr_head :: (out:[]u8,id:int)->int {return json_write_int(out,json_raw(out,0,"{\"jsonrpc\":\"2.0\",\"id\":"),id);}
+// book:end write
+
+// book:begin import
+// A property's schema as one of chapter 203's types. A JSON type with no
+// typed counterpart (number, array, object, a free string) is untyped; a
+// keyword outside the subset is a feature.
+pr_type :: (nodes:[]RsNode,i:int,words:[]string,used:int)->PrType {
+    r:=PrType.{why=PrWhy.feature,used=used};
+    keys:=[5]string.["type","description","minimum","maximum","enum"];
+    if !rs_kind(nodes,i,JSON_OBJECT) {r.why=PrWhy.malformed;return r;}
+    if !rs_keys(nodes,i,keys[..]) {return r;}
+    kind:=rs_string(nodes,rs_get(nodes,i,"type"));lo:=rs_get(nodes,i,"minimum");hi:=rs_get(nodes,i,"maximum");e:=rs_get(nodes,i,"enum");
+    if kind=="integer" {
+        if e!= -1 || !rs_kind(nodes,lo,JSON_NUMBER) || !rs_kind(nodes,hi,JSON_NUMBER) || nodes[lo].text!="0" {return r;}
+        m:=nodes[hi].text;for c:m {if c!='9' {return r;}}
+        r.type=ht_int(m.count);
+    }
+    else if kind=="boolean" {if lo!= -1 || hi!= -1 || e!= -1 {return r;}r.type=ht_bool();}
+    else if kind=="string" && e!= -1 {
+        if lo!= -1 || hi!= -1 {return r;}
+        if !rs_kind(nodes,e,JSON_ARRAY) {r.why=PrWhy.malformed;return r;}
+        n:=used;k:=e+1;
+        while k<nodes[e].next {
+            if n==words.count {r.why=PrWhy.capacity;return r;}
+            if !rs_kind(nodes,k,JSON_STRING) {r.why=PrWhy.malformed;return r;}
+            words[n]=nodes[k].text;n+=1;k=nodes[k].next;
+        }
+        r.type=HtType.{kind=HtKind.choice,choices=words[used..<n]};r.used=n;
+    }
+    else {r.why=PrWhy.untyped;return r;}
+    if ht_type(r.type) {r.why=PrWhy.none;}
+    return r;
+}
+// An object schema's properties as fields, in the order they are written.
+// Every property must be required exactly once; additionalProperties may
+// only be false.
+pr_object :: (nodes:[]RsNode,i:int,fields:[]HtField,words:[]string,used:int)->PrObject {
+    r:=PrObject.{why=PrWhy.feature,used=used};
+    keys:=[4]string.["type","properties","required","additionalProperties"];
+    if !rs_kind(nodes,i,JSON_OBJECT) {r.why=PrWhy.malformed;return r;}
+    if !rs_keys(nodes,i,keys[..]) {return r;}
+    if rs_string(nodes,rs_get(nodes,i,"type"))!="object" {r.why=PrWhy.untyped;return r;}
+    more:=rs_get(nodes,i,"additionalProperties");if more!= -1 && !rs_kind(nodes,more,JSON_FALSE) {return r;}
+    p:=rs_get(nodes,i,"properties");q:=rs_get(nodes,i,"required");
+    if !rs_kind(nodes,p,JSON_OBJECT) || !rs_kind(nodes,q,JSON_ARRAY) {r.why=PrWhy.malformed;return r;}
+    k:=p+1;
+    while k<nodes[p].next {
+        r.field=r.count;name:=nodes[k].key;
+        if r.count==fields.count {r.why=PrWhy.capacity;return r;}
+        if !ht_word(name) {r.why=PrWhy.name;return r;}
+        t:=pr_type(nodes,k,words,r.used);if t.why!=PrWhy.none {r.why=t.why;return r;}
+        fields[r.count]=HtField.{name=name,type=t.type};r.used=t.used;r.count+=1;
+        listed:=0;j:=q+1;while j<nodes[q].next {if rs_string(nodes,j)==name {listed+=1;}j=nodes[j].next;}
+        if listed!=1 {return r;}
+        k=nodes[k].next;
+    }
+    r.field= -1;
+    if nodes[q].next-q-1!=r.count {return r;}
+    r.why=PrWhy.none;return r;
+}
+// One MCP tool. The output schema must declare exactly one property,
+// result; readOnlyHint true imports as read, anything else as write.
+pr_tool :: (nodes:[]RsNode,i:int,fields:[]HtField,words:[]string,used:int,cost:int,out:[]HtTool)->PrObject {
+    r:=PrObject.{why=PrWhy.malformed,used=used};
+    keys:=[6]string.["name","title","description","inputSchema","outputSchema","annotations"];
+    notes:=[5]string.["title","readOnlyHint","destructiveHint","idempotentHint","openWorldHint"];
+    if !rs_kind(nodes,i,JSON_OBJECT) || !rs_kind(nodes,rs_get(nodes,i,"name"),JSON_STRING) {return r;}
+    r.why=PrWhy.feature;if !rs_keys(nodes,i,keys[..]) {return r;}
+    name:=rs_string(nodes,rs_get(nodes,i,"name"));if !ht_word(name) {r.why=PrWhy.name;return r;}
+    a:=rs_get(nodes,i,"annotations");if a!= -1 && !rs_keys(nodes,a,notes[..]) {return r;}
+    o:=rs_get(nodes,i,"outputSchema");if o== -1 {r.why=PrWhy.untyped;return r;}
+    x:=pr_object(nodes,rs_get(nodes,i,"inputSchema"),fields,words,used);if x.why!=PrWhy.none {return x;}
+    one:[1]HtField;y:=pr_object(nodes,o,one[..],words,x.used);
+    if y.why==PrWhy.capacity || (y.why==PrWhy.none && (y.count!=1 || one[0].name!="result")) {y.why=PrWhy.untyped;}
+    if y.why!=PrWhy.none {y.field= -1;return y;}
+    effect:=ifx rs_kind(nodes,rs_get(nodes,a,"readOnlyHint"),JSON_TRUE) then HtEffect.read else HtEffect.write;
+    out[0]=HtTool.{name=name,fields=fields[0..<x.count],result=one[0].type,effect=effect,cost=cost};
+    x.used=y.used;return x;
+}
+// The JSON-RPC envelope of a reply to request id: the result node, or why not.
+pr_reply :: (nodes:[]RsNode,id:int)->PrObject {
+    r:=PrObject.{why=PrWhy.malformed};keys:=[4]string.["jsonrpc","id","result","error"];
+    if !rs_keys(nodes,0,keys[..]) {return r;}
+    if rs_string(nodes,rs_get(nodes,0,"jsonrpc"))!="2.0" {r.why=PrWhy.version;return r;}
+    b:[24]u8;want:=cast(string)b[0..<json_write_int(b[..],0,id)];k:=rs_get(nodes,0,"id");
+    if !rs_kind(nodes,k,JSON_NUMBER) || nodes[k].text!=want {r.why=PrWhy.id;return r;}
+    if rs_get(nodes,0,"error")!= -1 {r.why=PrWhy.error;return r;}
+    r.field=rs_get(nodes,0,"result");if rs_kind(nodes,r.field,JSON_OBJECT) {r.why=PrWhy.none;}
+    return r;
+}
+// A tools/list reply to request id, imported into s: one page (no
+// nextCursor), at most 8 tools, each typed or the whole import refused.
+pr_import :: (reply:string,id:int,cost:int,s:[]PrStore)->PrImport {
+    r:=PrImport.{why=PrWhy.malformed};
+    if reply.count>PR_MESSAGE_MAX {r.why=PrWhy.shape;return r;}
+    if !rs_json(reply,s[0].nodes[..],s[0].arena[..]).ok {return r;}
+    nodes:=s[0].nodes[..];e:=pr_reply(nodes,id);if e.why!=PrWhy.none {r.why=e.why;return r;}
+    keys:=[1]string.["tools"];if !rs_keys(nodes,e.field,keys[..]) {r.why=PrWhy.feature;return r;}
+    list:=rs_get(nodes,e.field,"tools");if !rs_kind(nodes,list,JSON_ARRAY) {return r;}
+    k:=list+1;used:=0;nf:=0;
+    while k<nodes[list].next {
+        r.tool=r.count;
+        if r.count==HT_TOOLS_MAX {r.why=PrWhy.capacity;return r;}
+        x:=pr_tool(nodes,k,s[0].fields[nf..<nf+HT_FIELDS_MAX],s[0].words[..],used,cost,s[0].tools[r.count..<r.count+1]);
+        if x.why!=PrWhy.none {r.why=x.why;r.field=x.field;return r;}
+        used=x.used;nf+=x.count;r.count+=1;k=nodes[k].next;
+    }
+    r.tool= -1;
+    // The tools are typed one by one already; what ht_check can still find
+    // is a name used twice. (No tools at all is its shape, and is allowed.)
+    c:=ht_check(s[0].tools[0..<r.count]);if c.why==HtWhy.schema {r.why=PrWhy.name;r.tool=c.tool;return r;}
+    r.why=PrWhy.none;return r;
+}
+// book:end import
+
+// book:begin client
+// The client's three fixed requests, and the check of the server's answer
+// to initialize: the same protocol version, and a tools capability.
+pr_initialize :: (out:[]u8,id:int)->int {
+    return json_raw(out,pr_head(out,id),",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"psionic\",\"version\":\"210\"}}}");
+}
+pr_initialized :: (out:[]u8)->int {return json_raw(out,0,"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");}
+pr_list :: (out:[]u8,id:int)->int {return json_raw(out,pr_head(out,id),",\"method\":\"tools/list\"}");}
+pr_check_init :: (reply:string,id:int)->PrWhy {
+    nodes:[32]RsNode;arena:[512]u8;
+    if !rs_json(reply,nodes[..],arena[..]).ok {return PrWhy.malformed;}
+    e:=pr_reply(nodes[..],id);if e.why!=PrWhy.none {return e.why;}
+    if rs_string(nodes[..],rs_get(nodes[..],e.field,"protocolVersion"))!=PR_VERSION {return PrWhy.version;}
+    c:=rs_get(nodes[..],e.field,"capabilities");
+    if !rs_kind(nodes[..],rs_get(nodes[..],c,"tools"),JSON_OBJECT) {return PrWhy.feature;}
+    return PrWhy.none;
+}
+// A harness call, name{arguments}, as a tools/call request: the arguments
+// object is the call's own bytes after the name.
+pr_call_put :: (out:[]u8,id:int,t:HtTool,text:string)->int {
+    n:=json_write_string(out,json_raw(out,pr_head(out,id),",\"method\":\"tools/call\",\"params\":{\"name\":"),t.name);
+    return json_raw(out,json_raw(out,json_raw(out,n,",\"arguments\":"),text[t.name.count..<text.count]),"}}");
+}
+// A result as the tool returns it: {"result":value}, its declared type.
+pr_value_put :: (out:[]u8,at:int,t:HtType,v:int)->int {
+    n:=json_raw(out,at,"{\"result\":");
+    if t.kind==HtKind.integer {n=json_write_int(out,n,v);}
+    else if t.kind==HtKind.boolean {n=json_raw(out,n,ifx v==1 then "true" else "false");}
+    else {n=json_write_string(out,n,t.choices[v]);}
+    return json_raw(out,n,"}");
+}
+// The after stage for a value read from bytes: an integer of at most the
+// declared digits (JSON itself refuses a leading zero), a boolean, or one
+// of the words, which is exactly what chapter 203's ht_fits allows. -1 when
+// it is none of these.
+pr_value :: (nodes:[]RsNode,i:int,t:HtType)->int {
+    if t.kind==HtKind.integer {
+        if !rs_kind(nodes,i,JSON_NUMBER) {return -1;}
+        x:=nodes[i].text;v:=0;
+        if x.count>t.digits {return -1;}
+        // A JSON number's other bytes: a sign, a point, an exponent.
+        for c:x {if c=='-' || c=='.' || c=='e' || c=='E' {return -1;}v=v*10+cast(int)(c-'0');}
+        return v;
+    }
+    if t.kind==HtKind.boolean {return ifx rs_kind(nodes,i,JSON_TRUE) then 1 else ifx rs_kind(nodes,i,JSON_FALSE) then 0 else -1;}
+    for w,k:t.choices {if rs_string(nodes,i)==w {return k;}}
+    return -1;
+}
+// A tools/call reply for tool t: a JSON-RPC error, the tool's own error
+// (isError true), or structuredContent {"result":value} whose value fits
+// the declared type, with the same bytes as its one text content.
+pr_result :: (reply:string,id:int,t:HtTool)->PrEvent {
+    r:=PrEvent.{why=PrWhy.malformed,id=id};nodes:[48]RsNode;arena:[PR_MESSAGE_MAX]u8;
+    if reply.count>PR_MESSAGE_MAX {r.why=PrWhy.shape;return r;}
+    if !rs_json(reply,nodes[..],arena[..]).ok {return r;}
+    e:=pr_reply(nodes[..],id);if e.why!=PrWhy.none {r.why=e.why;return r;}
+    keys:=[3]string.["content","structuredContent","isError"];one:=[2]string.["type","text"];result:=[1]string.["result"];
+    if !rs_keys(nodes[..],e.field,keys[..]) {r.why=PrWhy.feature;return r;}
+    bad:=rs_get(nodes[..],e.field,"isError");c:=rs_get(nodes[..],e.field,"content");
+    if bad!= -1 && !rs_kind(nodes[..],bad,JSON_FALSE) && !rs_kind(nodes[..],bad,JSON_TRUE) {return r;}
+    if !rs_kind(nodes[..],c,JSON_ARRAY) || nodes[c].next!=c+4 || !rs_keys(nodes[..],c+1,one[..]) || rs_string(nodes[..],rs_get(nodes[..],c+1,"type"))!="text" || !rs_kind(nodes[..],c+3,JSON_STRING) {return r;}
+    if rs_kind(nodes[..],bad,JSON_TRUE) {r.why=PrWhy.remote;return r;}
+    s:=rs_get(nodes[..],e.field,"structuredContent");
+    if !rs_keys(nodes[..],s,result[..]) || s+2!=nodes[s].next {r.why=PrWhy.untyped;return r;}
+    v:=pr_value(nodes[..],s+1,t.result);if v<0 {r.why=PrWhy.result;return r;}
+    b:[PR_MESSAGE_MAX]u8;n:=pr_value_put(b[..],0,t.result,v);if nodes[c+3].text!=cast(string)b[0..<n] {return r;}
+    r.why=PrWhy.none;r.call.value=v;return r;
+}
+// book:end client
+
+// book:begin server
+// The other direction: a registry served as an MCP server. A request that
+// is not JSON, not JSON-RPC 2.0 with an integer id, or not a method of the
+// subset gets JSON-RPC's own error; the initialized notification gets no
+// reply (0 bytes); a call goes through chapter 203's
+// ht_call. A call refused before it runs is a protocol error (-32602, the
+// spec's code for an unknown tool or bad arguments) with chapter 203's
+// rendered refusal as its message; a call that ran and failed is the
+// tool's error, isError true, with the refusal as its text.
+pr_error :: (out:[]u8,id:int,code:int,message:string)->int {
+    n:=ifx id== -1 then json_raw(out,0,"{\"jsonrpc\":\"2.0\",\"id\":null") else pr_head(out,id);
+    n=json_write_string(out,json_raw(out,json_write_int(out,json_raw(out,n,",\"error\":{\"code\":"),code),",\"message\":"),message);
+    return json_raw(out,n,"}}");
+}
+pr_serve :: (env:PrEnv,u:[]HtUsage,world:[]int,request:string,out:[]u8)->int {
+    nodes:[64]RsNode;arena:[PR_MESSAGE_MAX]u8;keys:=[4]string.["jsonrpc","id","method","params"];
+    if request.count>PR_MESSAGE_MAX || !rs_json(request,nodes[..],arena[..]).ok {return pr_error(out,-1,-32700,"Parse error");}
+    k:=rs_get(nodes[..],0,"id");m:=rs_string(nodes[..],rs_get(nodes[..],0,"method"));id:=-1;
+    if k== -1 && m=="notifications/initialized" {return 0;}
+    if rs_kind(nodes[..],k,JSON_NUMBER) {id=pr_value(nodes[..],k,ht_int(HT_DIGITS_MAX));}
+    if !rs_keys(nodes[..],0,keys[..]) || rs_string(nodes[..],rs_get(nodes[..],0,"jsonrpc"))!="2.0" || id== -1 {return pr_error(out,-1,-32600,"Invalid Request");}
+    p:=rs_get(nodes[..],0,"params");
+    if m=="initialize" {return json_raw(out,pr_head(out,id),",\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"psionic\",\"version\":\"210\"}}}");}
+    if m=="tools/list" {
+        n:=json_raw(out,pr_head(out,id),",\"result\":{\"tools\":[");
+        for t,i:env.tools {if i>0 {n=json_raw(out,n,",");}n=pr_tool_put(out,n,t);}
+        return json_raw(out,n,"]}}");
+    }
+    if m!="tools/call" {return pr_error(out,id,-32601,"Method not found");}
+    pk:=[2]string.["name","arguments"];a:=rs_get(nodes[..],p,"arguments");
+    name:=rs_string(nodes[..],rs_get(nodes[..],p,"name"));
+    if !rs_keys(nodes[..],p,pk[..]) || !rs_kind(nodes[..],a,JSON_OBJECT) || name.count+nodes[a].end-nodes[a].begin>HT_TEXT_MAX {return pr_error(out,id,-32602,"Invalid params");}
+    b:[HT_TEXT_MAX]u8;for c,i:name {b[i]=c;}for c,i:rs_raw(request,nodes[..],a) {b[name.count+i]=c;}
+    e:=ht_call(env.tools,env.grant,u,cast(string)b[0..<name.count+nodes[a].end-nodes[a].begin],world,env.work);
+    t:[128]u8;rn:=ht_render(env.tools,e,t[..]);
+    if !e.ran {return pr_error(out,id,-32602,cast(string)t[0..<rn]);}
+    n:=json_raw(out,pr_head(out,id),",\"result\":{\"content\":[{\"type\":\"text\",\"text\":");
+    if e.why!=HtWhy.none {return json_raw(out,json_write_string(out,n,cast(string)t[0..<rn]),"}],\"isError\":true}}");}
+    v:[64]u8;vn:=pr_value_put(v[..],0,env.tools[e.tool].result,e.value);
+    return json_raw(out,json_raw(out,json_raw(out,json_write_string(out,n,cast(string)v[0..<vn]),"}],\"structuredContent\":"),cast(string)v[0..<vn]),",\"isError\":false}}");
+}
+// book:end server
+
+// book:begin responses
+// Open Responses function tools, as chapter 79 accepts them: a tool is
+// {"type":"function","name":...,"parameters":schema,"strict":true}, a call
+// is a function_call item whose arguments are the JSON text as a string,
+// and its answer is a function_call_output with the same call_id.
+pr_function_put :: (out:[]u8,at:int,t:HtTool)->int {
+    n:=json_write_string(out,json_raw(out,at,"{\"type\":\"function\",\"name\":"),t.name);
+    return json_raw(out,pr_object_put(out,json_raw(out,n,",\"parameters\":"),t.fields),",\"strict\":true}");
+}
+pr_function_call_put :: (out:[]u8,call:string,text:string)->int {
+    p:=0;while p<text.count && text[p]!='{' {p+=1;}
+    n:=json_write_string(out,json_raw(out,json_write_string(out,json_raw(out,0,"{\"type\":\"function_call\",\"call_id\":"),call),",\"name\":"),text[0..<p]);
+    return json_raw(out,json_write_string(out,json_raw(out,n,",\"arguments\":"),text[p..<text.count]),"}");
+}
+// A function_call item as a harness call, name then arguments, in out.
+// -1 when the item is not a function_call of the subset.
+pr_function_call :: (item:string,out:[]u8)->int {
+    nodes:[8]RsNode;arena:[PR_MESSAGE_MAX]u8;keys:=[4]string.["type","call_id","name","arguments"];
+    if !rs_json(item,nodes[..],arena[..]).ok || !rs_keys(nodes[..],0,keys[..]) || rs_string(nodes[..],rs_get(nodes[..],0,"type"))!="function_call" {return -1;}
+    for k:keys[1..<4] {if !rs_kind(nodes[..],rs_get(nodes[..],0,k),JSON_STRING) {return -1;}}
+    return json_raw(out,json_raw(out,0,rs_string(nodes[..],rs_get(nodes[..],0,"name"))),rs_string(nodes[..],rs_get(nodes[..],0,"arguments")));
+}
+pr_function_output_put :: (out:[]u8,call:string,text:string)->int {
+    n:=json_write_string(out,json_raw(out,0,"{\"type\":\"function_call_output\",\"call_id\":"),call);
+    return json_raw(out,json_write_string(out,json_raw(out,n,",\"output\":"),text),"}");
+}
+// book:end responses
+
+// book:begin log
+// Every message, sent or received, is appended before anything acts on it.
+// Its digest covers the previous digest, the direction and the bytes.
+pr_digest :: (previous:[32]u8,sent:bool,text:string)->[32]u8 {
+    b:[PR_MESSAGE_MAX+96]u8;at:=su_text(b[..],0,"psionic.harness.protocols.message.v1");
+    for x,i:previous {b[at+i]=x;}at=su_text(b[..],su_flag(b[..],at+32,sent),text);
+    return su_hash(b[0..<at]);
+}
+pr_start :: (g:PrLog,i:int)->int {return ifx i==0 then 0 else g.ends[i-1];}
+pr_log :: (l:[]PrLog,sent:bool,text:string)->bool {
+    g:=l[0];at:=pr_start(g,g.count);
+    if text.count>PR_MESSAGE_MAX || g.count==g.ends.count || g.count==g.sent.count || g.count==g.heads.count || at+text.count>g.bytes.count {return false;}
+    for c,i:text {g.bytes[at+i]=c;}
+    previous:[32]u8;if g.count>0 {previous=g.heads[g.count-1];}
+    g.ends[g.count]=at+text.count;g.sent[g.count]=sent;g.heads[g.count]=pr_digest(previous,sent,text);l[0].count=g.count+1;
+    return true;
+}
+pr_message :: (g:PrLog,i:int)->string {return cast(string)g.bytes[pr_start(g,i)..<g.ends[i]];}
+// The first message whose digest the chain does not explain, or count.
+pr_verify :: (g:PrLog)->int {
+    previous:[32]u8;
+    for i:0..<g.count {d:=pr_digest(previous,g.sent[i],pr_message(g,i));if !su_same(d,g.heads[i]) {return i;}previous=d;}
+    return g.count;
+}
+// book:end log
+
+// book:begin call
+// A remote call. Chapter 203 admits it against the imported registry (the
+// grant, the budgets, the argument grammar); the policy decides; the
+// request is logged; then the call is charged. A refusal sends and charges
+// nothing.
+pr_send :: (env:PrEnv,s:[]PrSession,text:string,approved:bool,out:[]u8,l:[]PrLog)->PrEvent {
+    x:=s[0];r:=PrEvent.{why=PrWhy.tool};p:=env.policy;
+    r.call=ht_admit(env.tools,env.grant,x.usage,text,env.work);
+    if r.call.why!=HtWhy.none {return r;}
+    t:=env.tools[r.call.tool];
+    if cast(u8)t.effect>cast(u8)p.ceiling {r.why=PrWhy.effect;}
+    else if x.calls>=p.calls {r.why=PrWhy.calls;}
+    else if x.bytes+text.count>p.bytes {r.why=PrWhy.bytes;}
+    else if cast(u8)t.effect>cast(u8)p.allow && !approved {r.why=PrWhy.ask;}
+    else {
+        n:=pr_call_put(out,x.next,t,text);
+        if n== -1 {r.why=PrWhy.shape;}
+        else if !pr_log(l,true,cast(string)out[0..<n]) {r.why=PrWhy.capacity;}
+        else {
+            j:=0;while env.grant.tools[j]!=r.call.tool {j+=1;}
+            s[0].usage.calls[j]+=1;s[0].usage.cost+=t.cost;s[0].calls=x.calls+1;s[0].bytes=x.bytes+text.count;s[0].next=x.next+1;
+            r.why=PrWhy.none;r.id=x.next;r.call.cost=t.cost;r.call.ran=true;
+        }
+    }
+    return r;
+}
+// The reply to a sent call, logged, then read through the after stage.
+pr_receive :: (env:PrEnv,sent:PrEvent,reply:string,l:[]PrLog)->PrEvent {
+    r:=sent;if !pr_log(l,false,reply) {r.why=PrWhy.capacity;return r;}
+    x:=pr_result(reply,sent.id,env.tools[sent.call.tool]);r.why=x.why;r.call.value=x.call.value;
+    return r;
+}
+// book:end call

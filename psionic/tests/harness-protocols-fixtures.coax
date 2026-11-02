@@ -1,0 +1,66 @@
+// Chapter 210's conformance fixtures: JSON-RPC and Responses messages written
+// by hand from the MCP 2025-06-18 specification's message shapes (the tools and
+// lifecycle pages) and chapter 79's function items, for chapter 203's registry.
+// The PR_FX_SPEC_* messages are the specification's own examples. Escaped
+// into Coax strings by a scratch script; nothing here is generated otherwise.
+PR_FX_ADD :: "{\"name\":\"add\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999},\"b\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999}},\"required\":[\"a\",\"b\"],\"additionalProperties\":false},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999}},\"required\":[\"result\"],\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}}";
+PR_FX_DIV :: "{\"name\":\"div\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999},\"b\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999}},\"required\":[\"a\",\"b\"],\"additionalProperties\":false},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999}},\"required\":[\"result\"],\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}}";
+PR_FX_SET :: "{\"name\":\"set\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"room\":{\"type\":\"string\",\"enum\":[\"hall\",\"den\",\"study\"]},\"on\":{\"type\":\"boolean\"}},\"required\":[\"room\",\"on\"],\"additionalProperties\":false},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"],\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":false}}";
+PR_FX_GET :: "{\"name\":\"get\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"room\":{\"type\":\"string\",\"enum\":[\"hall\",\"den\",\"study\"]}},\"required\":[\"room\"],\"additionalProperties\":false},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"],\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}}";
+PR_FX_LIST :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[{\"name\":\"add\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999},\"b\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999}},\"required\":[\"a\",\"b\"],\"additionalProperties\":false},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999}},\"required\":[\"result\"],\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"div\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999},\"b\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999}},\"required\":[\"a\",\"b\"],\"additionalProperties\":false},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999}},\"required\":[\"result\"],\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"set\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"room\":{\"type\":\"string\",\"enum\":[\"hall\",\"den\",\"study\"]},\"on\":{\"type\":\"boolean\"}},\"required\":[\"room\",\"on\"],\"additionalProperties\":false},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"],\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":false}},{\"name\":\"get\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"room\":{\"type\":\"string\",\"enum\":[\"hall\",\"den\",\"study\"]}},\"required\":[\"room\"],\"additionalProperties\":false},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"],\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}}]}}";
+PR_FX_ONE :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[{\"name\":\"get\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"room\":{\"type\":\"string\",\"enum\":[\"hall\",\"den\",\"study\"]}},\"required\":[\"room\"],\"additionalProperties\":false},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"boolean\"}},\"required\":[\"result\"],\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}}]}}";
+PR_FX_INIT :: "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"psionic\",\"version\":\"210\"}}}";
+PR_FX_INIT_REPLY :: "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"psionic\",\"version\":\"210\"}}}";
+PR_FX_INITIALIZED :: "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}";
+PR_FX_LIST_REQUEST :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}";
+PR_FX_CALL :: "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"get\",\"arguments\":{\"room\":\"den\"}}}";
+PR_FX_CALL_REPLY :: "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"result\\\":false}\"}],\"structuredContent\":{\"result\":false},\"isError\":false}}";
+PR_FX_ADD_CALL :: "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"add\",\"arguments\":{\"a\":37,\"b\":48}}}";
+PR_FX_ADD_REPLY :: "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"result\\\":85}\"}],\"structuredContent\":{\"result\":85},\"isError\":false}}";
+PR_FX_DIV_CALL :: "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"div\",\"arguments\":{\"a\":7,\"b\":0}}}";
+PR_FX_DIV_REPLY :: "{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"error\\\":\\\"run\\\",\\\"tool\\\":\\\"div\\\",\\\"field\\\":\\\"b\\\"}\"}],\"isError\":true}}";
+PR_FX_SPEC_LIST :: "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"get_weather\",\"title\":\"Weather Information Provider\",\"description\":\"Get current weather information for a location\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"City name or zip code\"}},\"required\":[\"location\"]}}],\"nextCursor\":\"next-page-cursor\"}}";
+PR_FX_SPEC_CALL :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"get_weather\",\"arguments\":{\"location\":\"New York\"}}}";
+PR_FX_SPEC_ERROR :: "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: invalid_tool_name\"}}";
+PR_FX_SPEC_FAILED :: "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Failed to fetch weather data: API rate limit exceeded\"}],\"isError\":true}}";
+PR_FX_FUNCTION :: "{\"type\":\"function\",\"name\":\"get\",\"parameters\":{\"type\":\"object\",\"properties\":{\"room\":{\"type\":\"string\",\"enum\":[\"hall\",\"den\",\"study\"]}},\"required\":[\"room\"],\"additionalProperties\":false},\"strict\":true}";
+PR_FX_FUNCTION_CALL :: "{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"get\",\"arguments\":\"{\\\"room\\\":\\\"den\\\"}\"}";
+PR_FX_FUNCTION_OUTPUT :: "{\"type\":\"function_call_output\",\"call_id\":\"call_1\",\"output\":\"{\\\"tool\\\":\\\"get\\\",\\\"result\\\":false}\"}";
+
+// text with its first old replaced by new, in out; the checks build their
+// broken messages this way. text itself when old does not occur.
+pf_swap :: (text:string,old:string,new:string,out:[]u8)->string {
+    at:=-1;i:=0;while at<0 && i+old.count<=text.count {if text[i..<i+old.count]==old {at=i;}i+=1;}
+    if at<0 {return text;}
+    n:=0;for c:text[0..<at] {out[n]=c;n+=1;}for c:new {out[n]=c;n+=1;}for c:text[at+old.count..<text.count] {out[n]=c;n+=1;}
+    return cast(string)out[0..<n];
+}
+pf_text :: (b:[]u8,n:int)->string {if n<0 {return "<-1>";}return cast(string)b[0..<n];}
+pf_same_type :: (a:HtType,b:HtType)->bool {
+    if a.kind!=b.kind || a.digits!=b.digits || a.choices.count!=b.choices.count {return false;}
+    for w,i:a.choices {if w!=b.choices[i] {return false;}}
+    return true;
+}
+pf_same_tool :: (a:HtTool,b:HtTool)->bool {
+    if a.name!=b.name || a.fields.count!=b.fields.count || !pf_same_type(a.result,b.result) {return false;}
+    for f,i:a.fields {if f.name!=b.fields[i].name || !pf_same_type(f.type,b.fields[i].type) {return false;}}
+    return true;
+}
+// The import of base with its first old replaced by new: is it refused
+// for why, at tool and field?
+pf_import :: (base:string,old:string,new:string,id:int,why:PrWhy,tool:int,field:int)->bool {
+    b:[4096]u8;s:[1]PrStore;x:=pr_import(pf_swap(base,old,new,b[..]),id,1,s[..]);
+    return x.why==why && x.tool==tool && x.field==field;
+}
+// The type a property schema imports as, through a one-tool list.
+pf_property :: (schema:string,why:PrWhy,kind:HtKind,digits:int,words:int)->bool {
+    b:[4096]u8;s:[1]PrStore;x:=pr_import(pf_swap(PR_FX_ONE,PF_ROOM,schema,b[..]),2,1,s[..]);
+    if x.why!=why {return false;}
+    if why!=PrWhy.none {return x.tool==0 && x.field==0;}
+    t:=s[0].tools[0].fields[0].type;return t.kind==kind && t.digits==digits && t.choices.count==words;
+}
+// The checks' client: grant cost 50, reads run, writes ask, 4 calls, 100 bytes.
+pf_env :: (tools:[]HtTool,g:[]int,c:[]int,w:HtWork)->PrEnv {return PrEnv.{tools=tools,grant=HtGrant.{tools=g,calls=c,cost=50,effects=HtEffect.write},work=w,policy=PrPolicy.{ceiling=HtEffect.write,allow=HtEffect.read,calls=4,bytes=100}};}
+PF_ROOM ::"{\"type\":\"string\",\"enum\":[\"hall\",\"den\",\"study\"]}";
+// text followed by spaces up to n bytes, in out.
+pf_pad :: (text:string,n:int,out:[]u8)->string {for i:0..<n {out[i]=ifx i<text.count then text[i] else ' ';}return cast(string)out[0..<n];}

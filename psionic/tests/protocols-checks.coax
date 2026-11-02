@@ -1,0 +1,35 @@
+// Chapter 210's heavier checks, kept apart from psionic/lib/harness/protocols.coax
+// so the chapter's example does not run them. Random registries come from
+// chapter 203's own enumeration oracle (psionic/tests/harness-tools-oracle.coax),
+// which writes every call of a registry by hand: each registry is served,
+// listed, imported and exported again to the same bytes, and every call
+// goes client to server to client with the outcome chapter 203's ht_call
+// gives directly. Run with
+//   coax/bin/coax test psionic/tests/protocols-checks.coax
+#load "../lib/harness/protocols.coax";
+
+#forall "random registries cross MCP and back unchanged, and so does every call" seed:0..<40 #steps 2000000000 {
+    sd:=cast(u64)seed;fields:[9]HtField;words:[36]string;tools:[3]HtTool;count:=to_registry(sd,fields[..],words[..],tools[..]);
+    e:[256]NxEdge;o:[128]int;nx:[32768]int;a:[128]u8;l:[128]u8;w:=ht_work(e[..],o[..],nx[..],a[..],l[..]);
+    all:=[3]int.[0,1,2];many:=[3]int.[1,1,1];
+    server:=PrEnv.{tools=tools[0..<count],grant=HtGrant.{tools=all[0..<count],calls=many[0..<count],cost=10,effects=HtEffect.write},work=w};
+    list:[PR_MESSAGE_MAX]u8;b:[PR_MESSAGE_MAX]u8;u:[1]HtUsage;world:[8]int;
+    n:=pr_serve(server,u[..],world[..],PR_FX_LIST_REQUEST,list[..]);#assert n>0;
+    st:[1]PrStore;x:=pr_import(cast(string)list[0..<n],2,1,st[..]);#assert x.why==PrWhy.none && x.count==count;
+    for t,i:st[0].tools[0..<count] {#assert pf_same_tool(t,tools[i]) && t.effect==HtEffect.read;}
+    back:=server;back.tools=st[0].tools[0..<count];#assert pf_text(b[..],pr_serve(back,u[..],world[..],PR_FX_LIST_REQUEST,b[..]))==cast(string)list[0..<n];
+    client:=back;client.policy=PrPolicy.{ceiling=HtEffect.write,allow=HtEffect.write,calls=1,bytes=HT_TEXT_MAX};
+    text:[12800]u8;starts:[TO_CALLS_MAX+1]int;calls:=to_calls(tools[0..<count],text[..],starts[..]);
+    for k:0..<calls {if k%7==0 || k==calls-1 {
+        call:=cast(string)text[starts[k]..<starts[k+1]];
+        du:[1]HtUsage;dw:[8]int;d:=ht_call(tools[0..<count],server.grant,du[..],call,dw[..],w);#assert d.ran;
+        by:[4096]u8;ends:[2]int;sent:[2]bool;heads:[2][32]u8;lg:=[1]PrLog.[PrLog.{bytes=by[..],ends=ends[..],sent=sent[..],heads=heads[..]}];
+        s:=[1]PrSession.[PrSession.{next=k}];out:[PR_MESSAGE_MAX]u8;su:[1]HtUsage;sw:[8]int;
+        y:=pr_send(client,s[..],call,false,out[..],lg[..]);#assert y.why==PrWhy.none && y.id==k;
+        m:=pr_serve(server,su[..],sw[..],pr_message(lg[0],0),b[..]);
+        y=pr_receive(client,y,cast(string)b[0..<m],lg[..]);
+        if d.why==HtWhy.none {#assert y.why==PrWhy.none && y.call.value==d.value;}
+        else {#assert y.why==PrWhy.remote;}
+        #assert pr_verify(lg[0])==2 && sw[0]==dw[0];
+    }}
+}

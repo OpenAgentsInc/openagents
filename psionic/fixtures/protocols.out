@@ -1,0 +1,55 @@
+handshake
+  -> {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"psionic","version":"210"}}}
+  <- {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"psionic","version":"210"}}}
+  initialize: ok
+  -> {"jsonrpc":"2.0","method":"notifications/initialized"}
+  (no reply)
+tools/list
+  -> {"jsonrpc":"2.0","id":2,"method":"tools/list"}
+  <- {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"add","inputSchema":{"type":"object","properties":{"a":{"type":"integer","minimum":0,"maximum":999},"b":{"type":"integer","minimum":0,"maximum":999}},"required":["a","b"],"additionalProperties":false},"outputSchema":{"type":"object","properties":{"result":{"type":"integer","minimum":0,"maximum":999}},"required":["result"],"additionalProperties":false},"annotations":{"readOnlyHint":true}},{"name":"div","inputSchema":{"type":"object","properties":{"a":{"type":"integer","minimum":0,"maximum":999},"b":{"type":"integer","minimum":0,"maximum":999}},"required":["a","b"],"additionalProperties":false},"outputSchema":{"type":"object","properties":{"result":{"type":"integer","minimum":0,"maximum":999}},"required":["result"],"additionalProperties":false},"annotations":{"readOnlyHint":true}},{"name":"set","inputSchema":{"type":"object","properties":{"room":{"type":"string","enum":["hall","den","study"]},"on":{"type":"boolean"}},"required":["room","on"],"additionalProperties":false},"outputSchema":{"type":"object","properties":{"result":{"type":"boolean"}},"required":["result"],"additionalProperties":false},"annotations":{"readOnlyHint":false}},{"name":"get","inputSchema":{"type":"object","properties":{"room":{"type":"string","enum":["hall","den","study"]}},"required":["room"],"additionalProperties":false},"outputSchema":{"type":"object","properties":{"result":{"type":"boolean"}},"required":["result"],"additionalProperties":false},"annotations":{"readOnlyHint":true}}]}}
+  import: ok, 4 tools
+  add (a: int3, b: int3) -> int3, read, cost 1
+  div (a: int3, b: int3) -> int3, read, cost 1
+  set (room: {hall|den|study}, on: bool) -> bool, write, cost 1
+  get (room: {hall|den|study}) -> bool, read, cost 1
+calls: grant get, set, add, div; policy: reads run, writes ask, at most 8 calls and 200 bytes
+call get{"room":"den"}: {"tool":"get","result":false}
+  -> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get","arguments":{"room":"den"}}}
+  <- {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"result\":false}"}],"structuredContent":{"result":false},"isError":false}}
+call set{"room":"den","on":true}: refused before sending: ask
+call set{"room":"den","on":true} (approved): {"tool":"set","result":true}
+  -> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"set","arguments":{"room":"den","on":true}}}
+  <- {"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"{\"result\":true}"}],"structuredContent":{"result":true},"isError":false}}
+call get{"room":"den"}: {"tool":"get","result":true}
+  -> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"get","arguments":{"room":"den"}}}
+  <- {"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"{\"result\":true}"}],"structuredContent":{"result":true},"isError":false}}
+call add{"a":37,"b":48}: {"tool":"add","result":85}
+  -> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"add","arguments":{"a":37,"b":48}}}
+  <- {"jsonrpc":"2.0","id":6,"result":{"content":[{"type":"text","text":"{\"result\":85}"}],"structuredContent":{"result":85},"isError":false}}
+call div{"a":7,"b":0}: remote
+  -> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"div","arguments":{"a":7,"b":0}}}
+  <- {"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"{\"error\":\"run\",\"tool\":\"div\",\"field\":\"b\"}"}],"isError":true}}
+call add{"a":999,"b":1}: remote
+  -> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"add","arguments":{"a":999,"b":1}}}
+  <- {"jsonrpc":"2.0","id":8,"result":{"content":[{"type":"text","text":"{\"error\":\"result\",\"tool\":\"add\"}"}],"isError":true}}
+call get{"room":"attic"}: refused before sending: tool (chapter 203: arguments)
+call mul{"a":1,"b":2}: refused before sending: tool (chapter 203: unknown)
+call get{"room":"hall"}: {"tool":"get","result":false}
+  -> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"get","arguments":{"room":"hall"}}}
+  <- {"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"result\":false}"}],"structuredContent":{"result":false},"isError":false}}
+  session: 7 calls, 131 bytes, cost 7
+Responses function call
+  tool: {"type":"function","name":"get","parameters":{"type":"object","properties":{"room":{"type":"string","enum":["hall","den","study"]}},"required":["room"],"additionalProperties":false},"strict":true}
+  item: {"type":"function_call","call_id":"call_1","name":"get","arguments":"{\"room\":\"den\"}"}
+  call: get{"room":"den"}, sent as request 20, ok
+  output: {"type":"function_call_output","call_id":"call_1","output":"{\"tool\":\"get\",\"result\":true}"}
+refusals
+  the specification's tools/list example: feature
+  the same, one page: untyped, tool 0
+  with an output schema: untyped, tool 0, field 0
+  a server on 2024-11-05: version
+  the specification's error reply: error
+  the specification's failed call: remote
+  the specification's tools/call example, served: {"jsonrpc":"2.0","id":2,"error":{"code":-32602,"message":"{\"error\":\"unknown\",\"at\":0}"}}
+  set under a read-only ceiling: effect
+log: 21 messages, 11 sent, chain verified through 21, head ad31e7e949cc25fd
