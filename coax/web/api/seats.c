@@ -3,6 +3,9 @@
 // lives; migrations/0110_realm_seats.sql keeps them; this file moves the facts in and the answers
 // out, and for a hosted seat talks to the runner that holds its page.
 //
+// Every route takes the account by a NIP-98 signature, or from this site's own page by its logged-in
+// session (the YOUR AGENT pane, verse/edit/agent.coax; a POST must carry this site's Origin). Never
+// by the player key.
 //   POST /api/playtest/seats              {slug, hosted?}  signed (NIP-98) -> {id, slug, hosted, player: {id, key}, until}
 //                                         the seat's own player key: its page plays with it as the account
 //   GET  /api/playtest/seats              signed -> {seats: [{id, slug, hosted, opened_ms, kept_ms}]}
@@ -241,11 +244,17 @@ bool seats_route(const request *q) {
   if (!post && strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
   char from[256];
   if (post && api_header(q, "Origin", from, sizeof from) && strcmp(from, site_origin())) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
-  // a seat is an account's: only a signed caller (caller-policy.coax), never the player key
+  // a seat is an account's: a signed caller (caller-policy.coax), or, unsigned, this site's own page
+  // logged in (its oa_session; a POST only with this site's Origin); never the player key
   char signer[65] = "", key[160] = "";
   int sig = access_signed(q, db, signer);
   if (sig < 0) return true;
-  if (sig == 0) { refuse(q, sp_open(false, false, 0, false, false)); return true; }
+  if (sig == 0) {
+    bool signed_req = false, payload = false, unseen = false;
+    bool here = !post || (api_header(q, "Origin", from, sizeof from) && !strcmp(from, site_origin()));
+    if (!here || !site_identity(q, db, signer, &signed_req, &payload, &unseen) || signed_req) signer[0] = 0;
+    if (!signer[0]) { refuse(q, sp_open(false, false, 0, false, false)); return true; }
+  }
   const char *pv[1] = {signer};
   char *acct = one(db, "SELECT auth.account_of($1)", 1, pv);
   if (!acct || !access_caller_key(db, signer, key)) { free(acct); api_json(q->fd, 500, "{\"error\":\"not read\"}"); return true; }

@@ -6,7 +6,7 @@ realm-seat`) and `openagents realm play` with its verbs and MCP tools.
 Slice 4, presence in made realms with the AGENT tag, built 2026-11-02
 (#12655). Seats as their account (a private realm seats its owner and site
 admins) and slice 5, hosted seats, built locally 2026-11-02 (#12655); not
-deployed.
+deployed. The agent pane (YOUR AGENT) built 2026-11-02 (#12655); not deployed.
 
 Agents can make and edit realms through the routes and the CLI
 ([realm-edit.md](realm-edit.md), [the CLI spec](../cli/2026-11-01-openagents-cli-v1.md)).
@@ -186,7 +186,51 @@ panel) comes after, on the same runner as the project agents.
    `coax/lib/net/cdp.coax`). Checks: `coax/web/api/test_room.py` (oa-api
    against a stand-in runner; the runner against a stand-in oa-seat: key on
    stdin and not in its log, 8 at once, idle close, close) and `seat.coax`.
-   The web page's agent panel is not built.
+   The agent pane is below.
+
+## The agent pane (YOUR AGENT)
+
+**Built** 2026-11-02 (#12655), not deployed. A made realm's owner opens EDIT >
+AGENT on the realm's page and presses START YOUR AGENT. The page posts
+`{"slug": SLUG, "hosted": true}` to `/api/playtest/seats`, the same route and
+runner `openagents realm play --hosted` uses. The page's logged-in session
+(`oa_session`) is the account. The player key never opens a seat, and a POST
+must carry this site's Origin. The runner holds the seat's key; the page
+never gets it.
+
+The pane's first look comes in by itself. After that the owner types a verb in
+plain words, and the pane turns it into one of the actions above:
+
+| Typed | Action |
+| --- | --- |
+| `look left`, `right`, `around`, `up`, `down`, `-45` | `look` |
+| `look`, `see`, `where am I` | `see` |
+| `go Maple`, `go to the well`, `go 4.5 -2` | `go` |
+| `say WORDS` | `say` |
+| `jump`, `map`, `build barrel`, `use TOOL [THING]` | `use` |
+| `bye` | `bye` |
+
+Each answer adds plain lines under the verb: what happened ("Go: reached."),
+where the agent stands ("At 3.5, -1.3, facing 90 degrees."), who answered
+("Maple: ..."), and the three nearest things ("Near: Maple 1.1 m, house 3.0
+m, tree 4.0 m."). CLOSE ends the seat on the runner as well. A refusal gets one
+plain sentence, for example "Log in to start your agent: it plays as your
+account." or "All 8 agent seats are busy. Try again in a few minutes."
+
+The pane's state and verbs are `verse/edit/agent.coax`, and it is drawn in the
+edit layer (`verse/edit/edit.coax`, `redit_agent_pane`). A realm offers the
+pane with `redit_agent`, as `myrealm.coax` does. The forge screen's YOUR
+AGENT tab (`aethyrforge.md`) is the same pane.
+
+Checks:
+- `verse/edit/agent_test.coax`: the verbs, each request and answer, refusals,
+  the log, and the pane on a desktop and a phone.
+- `coax/web/api/test_room.py`: a logged-in page opens, acts in and closes a
+  hosted seat. The session sent from another site's page is refused, and so
+  are a POST without this site's Origin, an unknown session and the player key.
+- `coax/web/tool.sh agent-pane API TOKEN MODULE [SHOTS]`: the page in
+  headless Chrome against a local oa-api and a stand-in runner. Its header
+  lists what to start first.
 
 The check, run against staging on 2026-11-02 with the made realm
 `village-green` (a well, two houses and Maple, a baker): `play`, `look

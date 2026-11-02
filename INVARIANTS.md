@@ -136,7 +136,9 @@ signature 401, 40 s fresh, gone at once).
 ## A seat's key is its account's, and only while the seat is open
 
 `POST /api/playtest/seats` opens a seat only for a verified NIP-98 caller
-(`coax/web/api/seats.c`; caller-policy.coax), and only where
+(`coax/web/api/seats.c`; caller-policy.coax) or, unsigned, this site's own
+logged-in page (its `oa_session`, a POST only with this site's Origin: the
+YOUR AGENT pane, `verse/edit/agent.coax`), never for the player key, and only where
 `coax/web/api/seat-policy.coax` (`#authority`) admits it: a made realm the
 caller may see, fewer than 8 other seats open on the site, and for a hosted
 seat a configured runner. Opening one closes the account's open seat. The
@@ -149,7 +151,10 @@ key goes only to the runner, on its oa-seat's stdin; the caller never gets
 it. Checks: `coax/web/api/test_room.py` (unsigned 401, unseen realm 404,
 replaced key dead, private realm for owner and admin seat, keep and close by
 the account only, idle close at 10 minutes and not before, 8 a site, the
-hosted key only to the runner), `seat-policy.coax` (0 surviving mutants).
+hosted key only to the runner; a logged-in page opens, acts in and closes a
+hosted seat, while its session from another site's page, a POST without this
+site's Origin, an unknown session and the player key are refused),
+`seat-policy.coax` (0 surviving mutants).
 
 ## Only a root admin changes who is an admin
 

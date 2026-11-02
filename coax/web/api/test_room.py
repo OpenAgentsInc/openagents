@@ -275,6 +275,31 @@ if os.environ.get("WAKE_PORT"):
     check("another account can't act in it", signed_call("POST", f"{SEATS}/{h1['id']}/act", {"op": "look"}, AK_)[0] == 404)
     check("closing it tells the runner", signed_call("POST", f"{SEATS}/{h1['id']}/close", {}, OK_)[0] == 200
           and [b for p, b, _ in runner_seen if p == "/seat/close"] == [{"id": h1["id"]}])
+    # The YOUR AGENT pane (verse/edit/agent.coax): the realm's own page, logged in on this site, opens,
+    # acts in and closes a hosted seat with its session; another site's page and the player key can't.
+    tok = "d" * 64
+    sql(f"insert into signin.sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256('{tok}'), 'hex'), "
+        f"'{pubkey_of(OK_)}', 0, 9999999999999) on conflict do nothing")
+    on_page = {"Content-Type": "application/json", "Cookie": "oa_session=" + tok, "Origin": API}
+
+    def page_call(path, body, headers=on_page):
+        status, out, _ = call("POST", path, json.dumps(body).encode(), headers)
+        try:
+            return status, json.loads(out)
+        except ValueError:
+            return status, out
+    status, h3 = page_call(SEATS, {"slug": "seat-green", "hosted": True})
+    check("a logged-in page on this site opens a hosted seat as its account, without the key", status == 200 and h3["hosted"] is True
+          and "key" not in h3["player"] and sql(f"select account from verse.seats where id = {h3['id']}") == other_acct, h3)
+    status, ob = page_call(f"{SEATS}/{h3['id']}/act", {"op": "look", "turn": -90})
+    check("the page's verbs reach the seat", status == 200 and ob["result"] == "looked"
+          and [b for p, b, _ in runner_seen if p == "/seat/act"][-1] == {"id": h3["id"], "action": {"op": "look", "turn": -90}}, ob)
+    check("the session on another site's page is refused", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Origin": "https://elsewhere.example"})[0] == 403)
+    check("a POST without this site's Origin isn't the session's", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {"Content-Type": "application/json", "Cookie": "oa_session=" + tok})[0] == 401)
+    check("the player key is no account here", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {"Content-Type": "application/json", "Origin": API, "X-Verse-Player": visitor["key"]})[0] == 401)
+    check("an unknown session is no account", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Cookie": "oa_session=" + "e" * 64})[0] == 401)
+    check("the page closes its seat", page_call(f"{SEATS}/{h3['id']}/close", {}) == (200, {"closed": True})
+          and [b for p, b, _ in runner_seen if p == "/seat/close"][-1] == {"id": h3["id"]})
     fake.shutdown(); fake.server_close()
     time.sleep(1.1)   # a NIP-98 signature is good once: the same request needs the next second
     status, h2 = signed_call("POST", SEATS, {"slug": "seat-green", "hosted": True}, OK_)

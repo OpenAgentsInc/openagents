@@ -1,0 +1,331 @@
+// YOUR AGENT (docs/verse/realm-seat.md "The agent pane"; docs/verse/aethyrforge.md, the YOUR AGENT tab):
+// the realm's owner starts a hosted seat in it from the page, sends it verbs and watches what it sees.
+// The server holds the seat: POST /api/playtest/seats {slug, hosted: true} opens it on the runner,
+// the same path `openagents realm play --hosted` takes (coax/web/api/seats.c); each verb is POST
+// .../seats/ID/act, answered with the seat's observation (coax/lib/media/realm_seat.coax); CLOSE is
+// POST .../seats/ID/close. The page's logged-in session is the account; the seat's key stays with
+// the runner. This is the pane's state and nothing else: no key, no socket. The edit layer sends its
+// requests (edit.coax redit_next) and draws it (redit_agent_pane); the forge screen uses the same.
+//
+// What you type is one of the seat's verbs, in plain words:
+//   look left | right | around | up | down | -45     turn (or look up and down, in first person)
+//   look, see, where am I                          just look
+//   go Maple | go to the well | go 4.5 -2          walk to someone or something, or a point
+//   say WORDS                                      to the character nearest
+//   jump | map | build barrel | use TOOL [THING]   a tool the realm has on
+//   bye                                            end the talk
+// Each answer comes in as plain lines: what happened, where it stands, who answered, what's near.
+//   coax/bin/coax test verse/edit/agent_test.coax
+
+RA_LINES :: 32; RA_LINE :: 180; RA_ACT :: 600; RA_WHY :: 100; RA_SAY :: 400; RA_NAME :: 48;
+// the seat: none, opening, open, a verb in flight, closing
+RA_NONE :: 0; RA_OPENING :: 1; RA_OPEN :: 2; RA_ACTING :: 3; RA_CLOSING :: 4;
+// what the pane sends next
+RAQ_NONE :: 0; RAQ_OPEN :: 1; RAQ_ACT :: 2; RAQ_CLOSE :: 3;
+// a line of the log: what you asked, what your agent saw, a note
+RAL_YOU :: 0; RAL_SAW :: 1; RAL_NOTE :: 2;
+RA_SEATS :: "/api/playtest/seats";
+RA_TRY :: "Try: look left, go Maple, say hello, jump, bye.";
+
+RealmAgent :: struct {
+  slug: [64] u8; slug_n: int;
+  seat: [24] u8; seat_n: int;          // the open seat's id, "" none
+  state: int; due: int; sent: int;     // RA_*, the request to send, the one in flight
+  act: [RA_ACT] u8; act_n: int;        // the next verb, as the seat's action JSON
+  line: [RA_LINES * RA_LINE] u8; line_len: [RA_LINES] int; line_kind: [RA_LINES] int; line_n: int;
+  why: [RA_WHY] u8; why_n: int;        // what went wrong last, in plain words
+}
+
+ra_view :: (a: [] RealmAgent) -> int { return a[0].state; }
+ra_due :: (a: [] RealmAgent) -> int { return a[0].due; }
+ra_seat :: (a: [] RealmAgent) -> string { return cast(string) a[0].seat[0..<a[0].seat_n]; }
+ra_why :: (a: [] RealmAgent) -> string { return cast(string) a[0].why[0..<a[0].why_n]; }
+ra_line :: (a: [] RealmAgent, i: int) -> string {
+  if i < 0 || i >= a[0].line_n { return ""; }
+  return cast(string) a[0].line[i * RA_LINE..<i * RA_LINE + a[0].line_len[i]];
+}
+ra_kind :: (a: [] RealmAgent, i: int) -> int { return ifx i >= 0 && i < a[0].line_n then a[0].line_kind[i] else RAL_NOTE; }
+ra_say_why :: (a: [] RealmAgent, p_text: string) { a[0].why_n = redit_copy(a[0].why[..], p_text); }
+// A line onto the log; the oldest goes when it's full.
+ra_add :: (a: [] RealmAgent, p_kind: int, p_text: string) {
+  if a[0].line_n == RA_LINES {
+    for i: 1..<RA_LINES {
+      for j: 0..<a[0].line_len[i] { a[0].line[(i - 1) * RA_LINE + j] = a[0].line[i * RA_LINE + j]; }
+      a[0].line_len[i - 1] = a[0].line_len[i]; a[0].line_kind[i - 1] = a[0].line_kind[i];
+    }
+    a[0].line_n = RA_LINES - 1;
+  }
+  i := a[0].line_n;
+  a[0].line_len[i] = redit_copy(a[0].line[i * RA_LINE..<(i + 1) * RA_LINE], p_text);
+  a[0].line_kind[i] = p_kind; a[0].line_n = i + 1;
+}
+
+ra_start :: (a: [] RealmAgent, slug: string) {
+  if cast(string) a[0].slug[0..<a[0].slug_n] == slug { return; }
+  a[0].slug_n = redit_copy(a[0].slug[..], slug);
+  a[0].seat_n = 0; a[0].state = RA_NONE; a[0].due = RAQ_NONE; a[0].sent = RAQ_NONE; a[0].line_n = 0; a[0].why_n = 0;
+}
+// START: a hosted seat for this realm.
+ra_open :: (a: [] RealmAgent) -> bool {
+  if a[0].state != RA_NONE || a[0].slug_n == 0 { return false; }
+  a[0].state = RA_OPENING; a[0].due = RAQ_OPEN; a[0].why_n = 0;
+  return true;
+}
+// CLOSE: the seat ends, on the runner too.
+ra_close :: (a: [] RealmAgent) -> bool {
+  if a[0].state != RA_OPEN { return false; }
+  a[0].state = RA_CLOSING; a[0].due = RAQ_CLOSE; a[0].why_n = 0;
+  return true;
+}
+// Words typed: one verb for the seat, sent when the last one is answered.
+ra_verb :: (a: [] RealmAgent, p_words: string) -> bool {
+  if a[0].state == RA_ACTING { ra_say_why(a, "One at a time: your agent is still on the last one."); return false; }
+  if a[0].state != RA_OPEN { ra_say_why(a, ifx a[0].state == RA_CLOSING then "Your agent is leaving." else "Start your agent first."); return false; }
+  n := ra_action(p_words, a[0].act[..]);
+  if n == 0 { ra_say_why(a, RA_TRY); return false; }
+  a[0].act_n = n; a[0].state = RA_ACTING; a[0].due = RAQ_ACT; a[0].why_n = 0;
+  ra_add(a, RAL_YOU, ra_trim(p_words));
+  return true;
+}
+
+// ---- the request to send: its kind, its URL and body (lens[0], lens[1]), and it is in flight
+
+ra_take :: (a: [] RealmAgent, p_url: [] u8, p_body: [] u8, lens: [] int) -> int {
+  k := a[0].due;
+  lens[0] = 0; lens[1] = 0;
+  if k == RAQ_NONE { return RAQ_NONE; }
+  u := redit_put(p_url, 0, RA_SEATS);
+  b := 0;
+  if k == RAQ_OPEN {
+    b = redit_put(p_body, 0, "{\"slug\":"); b = redit_quote(p_body, b, cast(string) a[0].slug[0..<a[0].slug_n]); b = redit_put(p_body, b, ",\"hosted\":true}");
+  } else {
+    u = redit_put(p_url, u, "/"); u = redit_put(p_url, u, ra_seat(a)); u = redit_put(p_url, u, ifx k == RAQ_ACT then "/act" else "/close");
+    b = ifx k == RAQ_ACT then redit_put(p_body, 0, cast(string) a[0].act[0..<a[0].act_n]) else redit_put(p_body, 0, "{}");
+  }
+  lens[0] = u; lens[1] = b;
+  a[0].sent = k; a[0].due = RAQ_NONE;
+  return k;
+}
+ra_take_kind :: (a: [] RealmAgent) -> int { u: [256] u8; b: [RA_ACT] u8; lens: [2] int; return ra_take(a, u[..], b[..], lens[..]); }
+// The page couldn't send it: back to where it was.
+ra_unsent :: (a: [] RealmAgent) {
+  k := a[0].sent; a[0].sent = RAQ_NONE;
+  if k == RAQ_OPEN { a[0].state = RA_NONE; }
+  else if k == RAQ_ACT || k == RAQ_CLOSE { a[0].state = RA_OPEN; }
+  ra_say_why(a, "That didn't go out. Try again.");
+}
+// Its answer: STATUS and the body.
+ra_answer :: (a: [] RealmAgent, status: int, p_body: string) {
+  k := a[0].sent; a[0].sent = RAQ_NONE;
+  if k == RAQ_OPEN {
+    at := redit_json_at(p_body, "id");
+    e := at; while e >= 0 && e < p_body.count && p_body[e] >= '0' && p_body[e] <= '9' { e += 1; }
+    if status == 200 && at >= 0 && e > at && e - at <= 18 {
+      a[0].seat_n = redit_copy(a[0].seat[..], p_body[at..<e]);
+      ra_add(a, RAL_NOTE, "Your agent is in the realm.");
+      a[0].act_n = redit_put(a[0].act[..], 0, "{\"op\":\"see\"}");
+      a[0].state = RA_ACTING; a[0].due = RAQ_ACT;
+      return;
+    }
+    a[0].state = RA_NONE;
+    ra_say_why(a, ifx status == 401 then "Log in to start your agent: it plays as your account."
+                  else ifx status == 404 then "This realm isn't open to your account."
+                  else ifx status == 429 then "All 8 agent seats are busy. Try again in a few minutes."
+                  else ifx status == 503 then "Hosted agents aren't running on this site yet."
+                  else ifx status == 502 || status == 200 then "Your agent didn't start. Try again."
+                  else "That didn't work. Try again.");
+    return;
+  }
+  if k == RAQ_ACT {
+    if status == 200 { a[0].state = RA_OPEN; ra_saw(a, p_body); return; }
+    if status == 404 || status == 401 {
+      a[0].state = RA_NONE; a[0].seat_n = 0;
+      ra_say_why(a, "Your agent's seat closed after 10 quiet minutes. Start it again.");
+      return;
+    }
+    a[0].state = RA_OPEN;
+    ra_say_why(a, "Your agent didn't answer that. Try again.");
+    return;
+  }
+  if k == RAQ_CLOSE {
+    a[0].state = RA_NONE; a[0].seat_n = 0;
+    ra_add(a, RAL_NOTE, "Your agent left the realm.");
+  }
+}
+
+// ---- an observation, as plain lines
+
+// A JSON string's value, unescaped, into p_out ("" when the key has no string).
+ra_json_str :: (p_text: string, key: string, p_out: [] u8) -> string {
+  at := redit_json_at(p_text, key);
+  if at < 0 || at >= p_text.count || p_text[at] != '"' { return ""; }
+  i := at + 1; n := 0;
+  while i < p_text.count && p_text[i] != '"' && n < p_out.count {
+    c := p_text[i];
+    if c == '\\' && i + 1 < p_text.count {
+      d := p_text[i + 1]; i += 2;
+      if d == 'u' { i += 4; c = '?'; } else if d == 'n' || d == 't' || d == 'r' { c = ' '; } else { c = d; }
+    } else { i += 1; }
+    p_out[n] = c; n += 1;
+  }
+  return cast(string) p_out[0..<n];
+}
+// A number at i (its end in p_end[0]).
+ra_num_at :: (p_text: string, i: int, p_end: [] int) -> f32 {
+  e := i;
+  while e < p_text.count && ((p_text[e] >= '0' && p_text[e] <= '9') || p_text[e] == '-' || p_text[e] == '.') { e += 1; }
+  p_end[0] = e;
+  return ifx e > i then redit_number(p_text[i..<e]) else 0;
+}
+// One decimal, half away from zero: -1.25 is -1.3.
+ra_put_dec :: (p_buf: [] u8, at: int, v: f32) -> int {
+  t := cast(int) (redit_hi(v, -v) * 10 + 0.5);
+  n := at;
+  if v < 0 && t > 0 { n = redit_put(p_buf, n, "-"); }
+  n = redit_put_int(p_buf, n, t / 10); n = redit_put(p_buf, n, ".");
+  return redit_put_int(p_buf, n, t % 10);
+}
+ra_saw :: (a: [] RealmAgent, p_body: string) {
+  b: [RA_LINE] u8; s: [RA_LINE] u8; end: [1] int;
+  p_op := ra_json_str(p_body, "op", s[..]);
+  n := 0;
+  if redit_json_true(p_body, "ok") {
+    n = redit_put(b[..], 0, p_op);
+    if n > 0 && b[0] >= 'a' && b[0] <= 'z' { b[0] -= 32; }
+    n = redit_put(b[..], n, ": ");
+  } else { n = redit_put(b[..], 0, "Not done: "); }
+  n = redit_put(b[..], n, ra_json_str(p_body, "result", s[..])); n = redit_put(b[..], n, ".");
+  ra_add(a, RAL_SAW, cast(string) b[0..<n]);
+  at := redit_json_at(p_body, "at");
+  if at >= 0 && at < p_body.count && p_body[at] == '[' {
+    x := ra_num_at(p_body, at + 1, end[..]);
+    z := ifx end[0] < p_body.count && p_body[end[0]] == ',' then ra_num_at(p_body, end[0] + 1, end[..]) else 0.0f32;
+    fa := redit_json_at(p_body, "facing");
+    f := ifx fa >= 0 then ra_num_at(p_body, fa, end[..]) else 0.0f32;
+    n = redit_put(b[..], 0, "At "); n = ra_put_dec(b[..], n, x); n = redit_put(b[..], n, ", "); n = ra_put_dec(b[..], n, z);
+    n = redit_put(b[..], n, ", facing ");
+    p_deg := cast(int) (redit_hi(f, -f) + 0.5);
+    if f < 0 && p_deg > 0 { n = redit_put(b[..], n, "-"); }
+    n = redit_put_int(b[..], n, p_deg); n = redit_put(b[..], n, " degrees.");
+    ra_add(a, RAL_SAW, cast(string) b[0..<n]);
+  }
+  p_who := ra_json_str(p_body, "talking", s[..]);
+  if p_who.count > 0 {
+    n = redit_put(b[..], 0, p_who); n = redit_put(b[..], n, ": ");
+    t: [RA_LINE] u8;
+    n = redit_put(b[..], n, ra_json_str(p_body, "answer", t[..]));
+    ra_add(a, RAL_SAW, cast(string) b[0..<n]);
+  }
+  // what's near, nearest first: the first three
+  na := redit_json_at(p_body, "near");
+  if na < 0 || na >= p_body.count || p_body[na] != '[' { return; }
+  n = redit_put(b[..], 0, "Near: "); p_k := 0;
+  i := na + 1;
+  while i < p_body.count && p_body[i] != ']' && p_k < 3 {
+    if p_body[i] != '{' { i += 1; continue; }
+    e := i + 1; p_in := false;
+    while e < p_body.count && (p_in || p_body[e] != '}') {
+      if p_body[e] == '\\' && p_in { e += 2; continue; }
+      if p_body[e] == '"' { p_in = !p_in; }
+      e += 1;
+    }
+    if e >= p_body.count { break; }
+    p_obj := p_body[i..<e + 1];
+    p_name := ra_json_str(p_obj, "name", s[..]);
+    if p_name.count == 0 { p_name = ra_json_str(p_obj, "kind", s[..]); }
+    da := redit_json_at(p_obj, "d");
+    if p_k > 0 { n = redit_put(b[..], n, ", "); }
+    n = redit_put(b[..], n, p_name); n = redit_put(b[..], n, " ");
+    n = ra_put_dec(b[..], n, ifx da >= 0 then ra_num_at(p_obj, da, end[..]) else 0.0f32); n = redit_put(b[..], n, " m");
+    p_k += 1; i = e + 1;
+  }
+  if p_k > 0 { n = redit_put(b[..], n, "."); ra_add(a, RAL_SAW, cast(string) b[0..<n]); }
+}
+
+// ---- words to an action (realm_seat.coax's JSON); 0 when they aren't one
+
+ra_trim :: (p_text: string) -> string {
+  i := 0; e := p_text.count;
+  while i < e && (p_text[i] == ' ' || p_text[i] == '\t' || p_text[i] == '\n') { i += 1; }
+  while e > i && (p_text[e - 1] == ' ' || p_text[e - 1] == '\t' || p_text[e - 1] == '\n') { e -= 1; }
+  return p_text[i..<e];
+}
+// Is p_w the word p_low, in any case.
+ra_is :: (p_w: string, p_low: string) -> bool {
+  if p_w.count != p_low.count { return false; }
+  for i: 0..<p_w.count { c := p_w[i]; if c >= 'A' && c <= 'Z' { c += 32; } if c != p_low[i] { return false; } }
+  return true;
+}
+// A plain number: -?digits(.digits)?, at most 9 characters.
+ra_numeric :: (p_w: string) -> bool {
+  if p_w.count == 0 || p_w.count > 9 { return false; }
+  i := ifx p_w[0] == '-' then 1 else 0; p_digits := 0; p_dot := false;
+  while i < p_w.count {
+    if p_w[i] == '.' && !p_dot && p_digits > 0 { p_dot = true; i += 1; continue; }
+    if p_w[i] < '0' || p_w[i] > '9' { return false; }
+    p_digits += 1; i += 1;
+  }
+  return p_digits > 0 && p_w[p_w.count - 1] != '.';
+}
+ra_one_word :: (p_w: string) -> bool {
+  if p_w.count == 0 || p_w.count > 16 { return false; }
+  for c: p_w { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) { return false; } }
+  return true;
+}
+ra_use :: (p_out: [] u8, p_tool: string, p_thing: string) -> int {
+  n := redit_put(p_out, 0, "{\"op\":\"use\",\"tool\":\""); n = redit_put(p_out, n, p_tool); n = redit_put(p_out, n, "\"");
+  if p_thing.count > 0 { n = redit_put(p_out, n, ",\"thing\":\""); n = redit_put(p_out, n, p_thing); n = redit_put(p_out, n, "\""); }
+  return redit_put(p_out, n, "}");
+}
+ra_turn :: (p_out: [] u8, p_field: string, v: int) -> int {
+  n := redit_put(p_out, 0, "{\"op\":\"look\",\""); n = redit_put(p_out, n, p_field); n = redit_put(p_out, n, "\":");
+  n = redit_put_int(p_out, n, v);
+  return redit_put(p_out, n, "}");
+}
+ra_action :: (p_words: string, p_out: [] u8) -> int {
+  p_line := ra_trim(p_words);
+  p_w0 := redit_word(p_line, 0);
+  p_rest := ra_trim(redit_rest(p_line, 1));
+  p_w1 := redit_word(p_rest, 0);
+  p_more := ra_trim(redit_rest(p_rest, 1));
+  if p_line.count == 0 { return 0; }
+  if ra_is(p_w0, "see") || ra_is(p_w0, "where") || ((ra_is(p_w0, "look") || ra_is(p_w0, "turn")) && p_rest.count == 0) { return redit_put(p_out, 0, "{\"op\":\"see\"}"); }
+  if ra_is(p_w0, "look") || ra_is(p_w0, "turn") {
+    if p_more.count > 0 { return 0; }
+    if ra_is(p_w1, "left") { return ra_turn(p_out, "turn", -90); }
+    if ra_is(p_w1, "right") { return ra_turn(p_out, "turn", 90); }
+    if ra_is(p_w1, "around") || ra_is(p_w1, "back") { return ra_turn(p_out, "turn", 180); }
+    if ra_is(p_w1, "up") { return ra_turn(p_out, "pitch", 20); }
+    if ra_is(p_w1, "down") { return ra_turn(p_out, "pitch", -20); }
+    if ra_numeric(p_w1) && !redit_has(p_w1, ".") {
+      v := redit_int(p_w1);
+      if v >= -180 && v <= 180 { return ra_turn(p_out, "turn", v); }
+    }
+    return 0;
+  }
+  if ra_is(p_w0, "go") || ra_is(p_w0, "walk") {
+    p_to := ifx ra_is(p_w1, "to") then p_more else p_rest;
+    if p_to.count == 0 || p_to.count > RA_NAME { return 0; }
+    p_x := redit_word(p_to, 0); p_z := ra_trim(redit_rest(p_to, 1));
+    if ra_numeric(p_x) && ra_numeric(p_z) {
+      n := redit_put(p_out, 0, "{\"op\":\"go\",\"x\":"); n = redit_put(p_out, n, p_x); n = redit_put(p_out, n, ",\"z\":"); n = redit_put(p_out, n, p_z);
+      return redit_put(p_out, n, "}");
+    }
+    n := redit_put(p_out, 0, "{\"op\":\"go\",\"to\":"); n = redit_quote(p_out, n, p_to);
+    return redit_put(p_out, n, "}");
+  }
+  if ra_is(p_w0, "say") {
+    if p_rest.count == 0 || p_rest.count > RA_SAY { return 0; }
+    n := redit_put(p_out, 0, "{\"op\":\"say\",\"words\":"); n = redit_quote(p_out, n, p_rest);
+    return redit_put(p_out, n, "}");
+  }
+  if (ra_is(p_w0, "jump") || ra_is(p_w0, "map")) && p_rest.count == 0 { return ra_use(p_out, ifx ra_is(p_w0, "jump") then "jump" else "map", ""); }
+  if ra_is(p_w0, "use") {
+    if (ra_is(p_w1, "jump") || ra_is(p_w1, "map")) && p_more.count == 0 { return ra_use(p_out, ifx ra_is(p_w1, "jump") then "jump" else "map", ""); }
+    if ra_is(p_w1, "build") && ra_one_word(p_more) { return ra_use(p_out, "build", p_more); }
+    return 0;
+  }
+  if ra_is(p_w0, "build") && ra_one_word(p_rest) { return ra_use(p_out, "build", p_rest); }
+  if ra_is(p_w0, "bye") && p_rest.count == 0 { return redit_put(p_out, 0, "{\"op\":\"bye\"}"); }
+  return 0;
+}

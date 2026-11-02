@@ -1,0 +1,244 @@
+// Checks for YOUR AGENT (agent.coax, and its pane in edit.coax): the verbs typed become the seat's
+// actions, each request the pane sends, what each answer shows, and the pane drawn on a desktop and
+// a phone, the same pane the forge screen's YOUR AGENT tab uses.
+//   coax/bin/coax test verse/edit/agent_test.coax
+
+#load "../../apps/openagents-web/font.coax";
+#load "../../apps/openagents-web/analytics.coax";
+#load "edit.coax";
+
+VERTEX_FLOATS :: 16;
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+OBS_GO :: "{\"op\":\"go\",\"ok\":true,\"result\":\"reached\",\"realm\":\"village-green\",\"at\":[3.5,-1.25],\"facing\":90.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":2.0},{\"kind\":\"house\",\"id\":\"entity:1\",\"d\":3.0,\"bearing\":90.0},{\"kind\":\"tree\",\"id\":\"entity:4\",\"d\":4.0,\"bearing\":-30.0},{\"kind\":\"rock\",\"id\":\"entity:5\",\"d\":9.0,\"bearing\":10.0}]}";
+OBS_SAY :: "{\"op\":\"say\",\"ok\":true,\"result\":\"answered\",\"realm\":\"village-green\",\"at\":[3.5,-1.25],\"facing\":90.0,\"camera\":\"third\",\"tools\":[],\"talking\":\"Maple\",\"answer\":\"Bread, mostly. And \\\"buns\\\".\",\"others\":1,\"agents\":0,\"near\":[]}";
+OBS_NO :: "{\"op\":\"say\",\"ok\":false,\"result\":\"no one near\",\"realm\":\"village-green\",\"at\":[0.0,0.0],\"facing\":0.0,\"camera\":\"third\",\"tools\":[],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[]}";
+
+verb_is :: (words: string, want: string) -> bool { b: [RA_ACT] u8; n := ra_action(words, b[..]); return cast(string) b[0..<n] == want; }
+// What the pane sends next: its kind, and the URL and body it names.
+sent_is :: (a: [] RealmAgent, kind: int, url: string, body: string) -> bool {
+  u: [REDIT_URL] u8; b: [RA_ACT] u8; lens: [2] int;
+  k := ra_take(a, u[..], b[..], lens[..]);
+  return k == kind && cast(string) u[0..<lens[0]] == url && cast(string) b[0..<lens[1]] == body;
+}
+last_line :: (a: [] RealmAgent) -> string { return ra_line(a, a[0].line_n - 1); }
+has_line :: (a: [] RealmAgent, text: string) -> bool { for i: 0..<a[0].line_n { if ra_line(a, i) == text { return true; } } return false; }
+// A seat already open: id 41.
+seated :: (a: [] RealmAgent) {
+  ra_start(a, "village-green");
+  u1 := ra_open(a);
+  u2 := sent_is(a, RAQ_OPEN, "/api/playtest/seats", "{\"slug\":\"village-green\",\"hosted\":true}");
+  ra_answer(a, 200, "{\"id\":41,\"slug\":\"village-green\",\"hosted\":true,\"player\":{\"id\":\"p-1\"},\"until\":600000}");
+  u3 := sent_is(a, RAQ_ACT, "/api/playtest/seats/41/act", "{\"op\":\"see\"}");
+  ra_answer(a, 200, OBS_NO);
+}
+
+#test "words become one of the seat's actions; anything else is no action" {
+  #assert verb_is("look left", "{\"op\":\"look\",\"turn\":-90}") && verb_is("Look Right", "{\"op\":\"look\",\"turn\":90}");
+  #assert verb_is("turn around", "{\"op\":\"look\",\"turn\":180}") && verb_is("look -45", "{\"op\":\"look\",\"turn\":-45}");
+  #assert verb_is("look up", "{\"op\":\"look\",\"pitch\":20}") && verb_is("look down", "{\"op\":\"look\",\"pitch\":-20}");
+  #assert verb_is("look", "{\"op\":\"see\"}") && verb_is("  see ", "{\"op\":\"see\"}") && verb_is("where am I", "{\"op\":\"see\"}");
+  #assert verb_is("go Maple", "{\"op\":\"go\",\"to\":\"Maple\"}") && verb_is("go to the well", "{\"op\":\"go\",\"to\":\"the well\"}");
+  #assert verb_is("walk to house", "{\"op\":\"go\",\"to\":\"house\"}") && verb_is("go 4.5 -2", "{\"op\":\"go\",\"x\":4.5,\"z\":-2}");
+  #assert verb_is("say What do you bake?", "{\"op\":\"say\",\"words\":\"What do you bake?\"}");
+  #assert verb_is("say \"hi\" \\ there", "{\"op\":\"say\",\"words\":\"\\\"hi\\\" \\\\ there\"}");
+  #assert verb_is("jump", "{\"op\":\"use\",\"tool\":\"jump\"}") && verb_is("use map", "{\"op\":\"use\",\"tool\":\"map\"}");
+  #assert verb_is("build barrel", "{\"op\":\"use\",\"tool\":\"build\",\"thing\":\"barrel\"}") && verb_is("use build crate", "{\"op\":\"use\",\"tool\":\"build\",\"thing\":\"crate\"}");
+  #assert verb_is("bye", "{\"op\":\"bye\"}");
+  #assert verb_is("", "") && verb_is("dance", "") && verb_is("look 200", "") && verb_is("look sideways", "") && verb_is("say", "") && verb_is("go", "");
+  #assert verb_is("use", "") && verb_is("use fly", "") && verb_is("build", "") && verb_is("build a b", "") && verb_is("go 1e9 2", "{\"op\":\"go\",\"to\":\"1e9 2\"}");
+  long: [500] u8; for i: 0..<500 { long[i] = 'a'; }
+  for i: 0..<4 { long[i] = "say "[i]; }
+  #assert verb_is(cast(string) long[..], "");   // more than 400 characters said
+}
+#test "START opens a hosted seat for this realm; the first look comes by itself" {
+  a: [1] RealmAgent;
+  ra_start(a[..], "village-green");
+  #assert ra_view(a[..]) == RA_NONE && ra_due(a[..]) == RAQ_NONE;
+  #assert ra_open(a[..]) && ra_view(a[..]) == RA_OPENING && !ra_open(a[..]);
+  #assert sent_is(a[..], RAQ_OPEN, "/api/playtest/seats", "{\"slug\":\"village-green\",\"hosted\":true}") && ra_due(a[..]) == RAQ_NONE;
+  ra_answer(a[..], 200, "{\"id\":41,\"slug\":\"village-green\",\"hosted\":true,\"player\":{\"id\":\"p-1\"},\"until\":600000}");
+  #assert ra_view(a[..]) == RA_ACTING && ra_seat(a[..]) == "41" && has_line(a[..], "Your agent is in the realm.");
+  #assert sent_is(a[..], RAQ_ACT, "/api/playtest/seats/41/act", "{\"op\":\"see\"}");
+  ra_answer(a[..], 200, OBS_GO);
+  #assert ra_view(a[..]) == RA_OPEN;
+}
+#test "an observation comes in as plain lines: what happened, where, who answered, what's near" {
+  a: [1] RealmAgent; seated(a[..]);
+  #assert ra_verb(a[..], "go Maple") && ra_view(a[..]) == RA_ACTING && last_line(a[..]) == "go Maple" && ra_kind(a[..], a[0].line_n - 1) == RAL_YOU;
+  #assert !ra_verb(a[..], "look left") && ra_why(a[..]) == "One at a time: your agent is still on the last one.";
+  #assert sent_is(a[..], RAQ_ACT, "/api/playtest/seats/41/act", "{\"op\":\"go\",\"to\":\"Maple\"}");
+  first := a[0].line_n;
+  ra_answer(a[..], 200, OBS_GO);
+  #assert ra_view(a[..]) == RA_OPEN && a[0].line_n == first + 3;
+  #assert ra_line(a[..], first) == "Go: reached." && ra_kind(a[..], first) == RAL_SAW;
+  #assert ra_line(a[..], first + 1) == "At 3.5, -1.3, facing 90 degrees.";
+  #assert ra_line(a[..], first + 2) == "Near: Maple 1.1 m, house 3.0 m, tree 4.0 m.";
+  #assert ra_verb(a[..], "say What do you bake?") && sent_is(a[..], RAQ_ACT, "/api/playtest/seats/41/act", "{\"op\":\"say\",\"words\":\"What do you bake?\"}");
+  first = a[0].line_n;
+  ra_answer(a[..], 200, OBS_SAY);
+  #assert ra_line(a[..], first) == "Say: answered." && ra_line(a[..], first + 2) == "Maple: Bread, mostly. And \"buns\".";
+  #assert ra_verb(a[..], "say hello") && sent_is(a[..], RAQ_ACT, "/api/playtest/seats/41/act", "{\"op\":\"say\",\"words\":\"hello\"}");
+  first = a[0].line_n;
+  ra_answer(a[..], 200, OBS_NO);
+  #assert ra_line(a[..], first) == "Not done: no one near." && ra_line(a[..], first + 1) == "At 0.0, 0.0, facing 0 degrees." && a[0].line_n == first + 2;
+}
+#test "words that aren't a verb say what is, and send nothing" {
+  a: [1] RealmAgent; seated(a[..]);
+  n := a[0].line_n;
+  #assert !ra_verb(a[..], "dance") && ra_why(a[..]) == "Try: look left, go Maple, say hello, jump, bye." && a[0].line_n == n && ra_due(a[..]) == RAQ_NONE;
+  b: [1] RealmAgent; ra_start(b[..], "village-green");
+  #assert !ra_verb(b[..], "look left") && ra_why(b[..]) == "Start your agent first." && ra_due(b[..]) == RAQ_NONE;
+}
+#test "each refusal to open says what it means; START works again after" {
+  codes := [7] int.[401, 404, 429, 503, 502, 500, 0];
+  words := [7] string.["Log in to start your agent: it plays as your account.", "This realm isn't open to your account.",
+                       "All 8 agent seats are busy. Try again in a few minutes.", "Hosted agents aren't running on this site yet.",
+                       "Your agent didn't start. Try again.", "That didn't work. Try again.", "That didn't work. Try again."];
+  for i: 0..<7 {
+    a: [1] RealmAgent; ra_start(a[..], "village-green");
+    #assert ra_open(a[..]) && sent_is(a[..], RAQ_OPEN, "/api/playtest/seats", "{\"slug\":\"village-green\",\"hosted\":true}");
+    ra_answer(a[..], codes[i], "{\"error\":\"x\"}");
+    #assert ra_view(a[..]) == RA_NONE && ra_why(a[..]) == words[i] && ra_seat(a[..]).count == 0 && ra_open(a[..]);
+  }
+  // a 200 without a seat's id is no seat
+  a: [1] RealmAgent; ra_start(a[..], "village-green"); u4 := ra_open(a[..]); u5 := ra_take_kind(a[..]);
+  ra_answer(a[..], 200, "{\"slug\":\"village-green\"}");
+  #assert ra_view(a[..]) == RA_NONE && ra_why(a[..]) == "Your agent didn't start. Try again.";
+}
+#test "a seat gone (10 idle minutes) or a runner that didn't answer, said plainly" {
+  a: [1] RealmAgent; seated(a[..]);
+  #assert ra_verb(a[..], "jump") && ra_take_kind(a[..]) == RAQ_ACT;
+  ra_answer(a[..], 502, "{\"error\":\"the runner didn't answer\"}");
+  #assert ra_view(a[..]) == RA_OPEN && ra_why(a[..]) == "Your agent didn't answer that. Try again.";
+  #assert ra_verb(a[..], "jump") && ra_take_kind(a[..]) == RAQ_ACT;
+  ra_answer(a[..], 404, "{\"error\":\"no such open hosted seat\"}");
+  #assert ra_view(a[..]) == RA_NONE && ra_seat(a[..]).count == 0 && ra_why(a[..]) == "Your agent's seat closed after 10 quiet minutes. Start it again.";
+  // a request the page couldn't send goes back to where it was
+  b: [1] RealmAgent; seated(b[..]);
+  #assert ra_verb(b[..], "bye") && ra_take_kind(b[..]) == RAQ_ACT;
+  ra_unsent(b[..]);
+  #assert ra_view(b[..]) == RA_OPEN && ra_why(b[..]) == "That didn't go out. Try again.";
+  c: [1] RealmAgent; ra_start(c[..], "village-green"); u6 := ra_open(c[..]); u7 := ra_take_kind(c[..]); ra_unsent(c[..]);
+  #assert ra_view(c[..]) == RA_NONE;
+}
+#test "CLOSE ends the seat; the realm keeps no agent of yours" {
+  a: [1] RealmAgent; seated(a[..]);
+  #assert ra_close(a[..]) && ra_view(a[..]) == RA_CLOSING && !ra_verb(a[..], "jump") && !ra_close(a[..]);
+  #assert sent_is(a[..], RAQ_CLOSE, "/api/playtest/seats/41/close", "{}");
+  ra_answer(a[..], 200, "{\"closed\":true}");
+  #assert ra_view(a[..]) == RA_NONE && ra_seat(a[..]).count == 0 && last_line(a[..]) == "Your agent left the realm.";
+  // already gone on the server: closed all the same
+  b: [1] RealmAgent; seated(b[..]); u8 := ra_close(b[..]); u9 := ra_take_kind(b[..]);
+  ra_answer(b[..], 404, "{\"error\":\"no such open seat\"}");
+  #assert ra_view(b[..]) == RA_NONE && last_line(b[..]) == "Your agent left the realm.";
+  c: [1] RealmAgent; ra_start(c[..], "village-green");
+  #assert !ra_close(c[..]);
+}
+#test "the log keeps the newest lines" {
+  a: [1] RealmAgent; seated(a[..]);
+  for i: 0..<40 { #assert ra_verb(a[..], "look left") && ra_take_kind(a[..]) == RAQ_ACT; ra_answer(a[..], 200, OBS_NO); }
+  #assert a[0].line_n == RA_LINES && ra_line(a[..], RA_LINES - 1) == "At 0.0, 0.0, facing 0 degrees." && ra_line(a[..], RA_LINES - 2) == "Not done: no one near." && ra_line(a[..], RA_LINES - 3) == "look left";
+  #assert ra_line(a[..], -1) == "" && ra_line(a[..], RA_LINES) == "";
+}
+
+// ---- the pane in the edit layer
+
+OWNER_SPEC :: "200\nrealm village-green\nowner 1\nrole owner\nrow water 1 Large pond\n";
+// An owner's edit layer, laid out at width x height, with YOUR AGENT offered.
+owner_edit :: (e: [] RealmEdit, w: f32, h: f32) {
+  redit_start(e, "village-green"); redit_agent(e);
+  e[0].req_id = 0; e[0].req_what = REQ_E_SPEC; e[0].req_ready = false;
+  u10 := redit_message(e, HTTP_KIND, OWNER_SPEC);
+  redit_step(e, 1, w, h, 1);
+  // the layer's own first reads (the cards, the panes) answered, so its one request is free
+  for i: 0..<8 {
+    if !e[0].req_ready { break; }
+    p_spec := e[0].req_what == REQ_E_SPEC;
+    redit_requested(e, 1);
+    u11 := redit_message(e, HTTP_KIND + 1, ifx p_spec then OWNER_SPEC else "200\n");
+    redit_step(e, 1, w, h, 1);
+  }
+}
+drawn :: (e: [] RealmEdit) -> int { out: [6000 * VERTEX_FLOATS] f32; return redit_hud(e, out[..], 0, RBox.{x0 = e[0].width - 92, y0 = 16, x1 = e[0].width - 12, y1 = 54}); }
+tap :: (e: [] RealmEdit, b: int) -> bool {
+  if !e[0].shown[b] { return false; }
+  x := (e[0].boxes[b].x0 + e[0].boxes[b].x1) / 2; y := (e[0].boxes[b].y0 + e[0].boxes[b].y1) / 2;
+  u11 := redit_pointer(e, x, y, 0, 1); u12 := redit_pointer(e, x, y, 2, 1);
+  return true;
+}
+two :: (b: [] u8, x: string, y: string) -> string { n := redit_put(b, 0, x); n = redit_put(b, n, y); return cast(string) b[0..<n]; }
+
+#test "YOUR AGENT is a tab for the owner: START, then verbs typed, then CLOSE, through the layer's one request" {
+  e: [1] RealmEdit; owner_edit(e[..], 1440, 900); mb: [2048] u8;
+  #assert redit_may(e[..]) && e[0].agent;
+  #assert drawn(e[..]) > 0 && tap(e[..], RB_EDIT) && drawn(e[..]) > 0 && e[0].shown[RB_ATAB] && !e[0].shown[RB_AMAIN];
+  #assert tap(e[..], RB_ATAB) && e[0].pane == REDIT_AGENT_PANE && drawn(e[..]) > 0 && e[0].shown[RB_AMAIN] && !e[0].shown[RB_ACLOSE];
+  #assert redit_probe(e[..], 88) == RA_NONE && redit_probe(e[..], 4 * RB_AMAIN) >= 0;
+  #assert tap(e[..], RB_AMAIN) && ra_view(e[0].ag[..]) == RA_OPENING;
+  redit_step(e[..], 2, 1440, 900, 1);
+  #assert e[0].req_ready && cast(string) e[0].req_url[0..<e[0].req_url_n] == "/api/playtest/seats" && e[0].req_what == REQ_E_AGENT;
+  #assert cast(string) e[0].req_body[0..<e[0].req_body_n] == "{\"slug\":\"village-green\",\"hosted\":true}";
+  #assert (e[0].req_flags & HTTP_POST) != 0 && (e[0].req_flags & TRACK_KEY) == 0;   // the session is the account, never the player key
+  redit_requested(e[..], 3);
+  #assert redit_message(e[..], HTTP_KIND + 3, "200\n{\"id\":41,\"slug\":\"village-green\",\"hosted\":true,\"player\":{\"id\":\"p-1\"},\"until\":600000}");
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert cast(string) e[0].req_url[0..<e[0].req_url_n] == "/api/playtest/seats/41/act" && cast(string) e[0].req_body[0..<e[0].req_body_n] == "{\"op\":\"see\"}";
+  redit_requested(e[..], 4);
+  #assert redit_message(e[..], HTTP_KIND + 4, two(mb[..], "200\n", OBS_GO)) && redit_probe(e[..], 88) == RA_OPEN && redit_probe(e[..], 89) == e[0].ag[0].line_n;
+  #assert drawn(e[..]) > 0 && e[0].shown[RB_ACLOSE] && e[0].shown[RB_AFIELD];
+  // type a verb: the field, the words, ENTER
+  #assert tap(e[..], RB_AFIELD) && e[0].typing;
+  #assert redit_message(e[..], REDIT_MSG_TEXT, "look left");
+  #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && !e[0].typing && ra_view(e[0].ag[..]) == RA_ACTING;
+  redit_step(e[..], 4, 1440, 900, 1);
+  #assert cast(string) e[0].req_body[0..<e[0].req_body_n] == "{\"op\":\"look\",\"turn\":-90}";
+  redit_requested(e[..], 5);
+  #assert redit_message(e[..], HTTP_KIND + 5, two(mb[..], "200\n", OBS_NO)) && ra_view(e[0].ag[..]) == RA_OPEN;
+  #assert drawn(e[..]) > 0 && tap(e[..], RB_ACLOSE) && ra_view(e[0].ag[..]) == RA_CLOSING;
+  redit_step(e[..], 5, 1440, 900, 1);
+  #assert cast(string) e[0].req_url[0..<e[0].req_url_n] == "/api/playtest/seats/41/close";
+  redit_requested(e[..], 6);
+  #assert redit_message(e[..], HTTP_KIND + 6, "200\n{\"closed\":true}") && ra_view(e[0].ag[..]) == RA_NONE;
+}
+#test "a visitor has no YOUR AGENT; a realm that doesn't offer it shows four tabs at most" {
+  e: [1] RealmEdit; redit_start(e[..], "village-green"); redit_agent(e[..]);
+  e[0].req_id = 0; e[0].req_what = REQ_E_SPEC;
+  u13 := redit_message(e[..], HTTP_KIND, "200\nrealm village-green\nowner 0\nrole visitor\n");
+  redit_step(e[..], 1, 1440, 900, 1);
+  #assert !redit_may(e[..]) && drawn(e[..]) == 0 && !e[0].shown[RB_ATAB];
+  redit_pane(e[..], REDIT_AGENT_PANE);
+  #assert e[0].pane == REDIT_SHUT;
+  f: [1] RealmEdit; redit_start(f[..], "village-green");
+  f[0].req_id = 0; f[0].req_what = REQ_E_SPEC;
+  u14 := redit_message(f[..], HTTP_KIND, "200\nrealm village-green\nowner 1\nrole owner\n");
+  redit_step(f[..], 1, 1440, 900, 1);
+  #assert drawn(f[..]) > 0 && tap(f[..], RB_EDIT) && drawn(f[..]) > 0 && !f[0].shown[RB_ATAB];
+}
+#test "on a phone the pane fits the screen, its buttons inside it" {
+  e: [1] RealmEdit; owner_edit(e[..], 390, 844);
+  #assert drawn(e[..]) > 0 && tap(e[..], RB_EDIT) && drawn(e[..]) > 0 && tap(e[..], RB_ATAB) && drawn(e[..]) > 0;
+  #assert e[0].shown[RB_ATAB] && e[0].boxes[RB_ATAB].x0 >= 0 && e[0].boxes[RB_ATAB].x1 <= 390 && e[0].boxes[RB_ATAB].y1 <= 844;
+  #assert e[0].shown[RB_AMAIN] && e[0].boxes[RB_AMAIN].x0 >= 0 && e[0].boxes[RB_AMAIN].x1 <= 390 && e[0].boxes[RB_AMAIN].y1 <= 844;
+}

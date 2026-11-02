@@ -202,7 +202,9 @@ like anyone's. Coder gets the realm tools (`openagents mcp`) by default.
    is the only gate.
 6. **Publish sheet** with the card from the forge camera; `openagents forge SLUG`.
 7. **Your agent tab.** The paired Coder (#12642) or the hosted builder; BUILD IT on an
-   asked thing.
+   asked thing. The hosted agent that plays the realm is built (#12655): the edit layer's
+   AGENT pane (`verse/edit/agent.coax`, [realm-seat.md](realm-seat.md) "The agent pane"),
+   which this tab reuses.
 8. **Pin the published build** (#12629): a published realm plays the engine build and
    assets it was published with. Done for made realms (migration 0107,
    `aethyr/forge/publish.coax`, `coax/web/engine-served.coax` for the served bytes'

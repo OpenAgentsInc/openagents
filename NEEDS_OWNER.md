@@ -55,6 +55,15 @@ GPU (the GPU process dies), and with SwiftShader the realm page reports
 Mac or the staging runner. `realm use build THING` still needs a staging
 realm with BUILD on; no listed staging realm has it.
 
+The agent pane (EDIT > AGENT on a made realm; `verse/edit/agent.coax`,
+`seats.c` now takes the page's logged-in session) ships with the same release.
+After step 1, on staging, logged in, on a made realm of yours: EDIT > AGENT >
+START YOUR AGENT, type `look left`, then CLOSE. The headless page check
+(`coax/web/tool.sh agent-pane`, its header says what to start) has not passed
+on coderos-4080: the page there fails to fetch its engine when DevTools serves
+it (one 900 KB DevTools message breaks the connection; a local URL is refused
+as "failed to fetch"). Run it on the Mac.
+
 ## Verse OS V2: which Spark wallet runs on Linux (2026-11-02)
 
 Verse OS makes your Nostr identity in the Grid (docs/os/2026-11-02-verse-os.md,
