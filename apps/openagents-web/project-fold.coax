@@ -897,13 +897,15 @@ write_log :: (s: [] Store, f: [] Fold, t: [] Tables) {
     n = json_raw(w, n, " - ");
     n = cell_into(w, n, str(s, f[0].subject[r]));
     if n < 0 { t[0].complete = false; continue; }
+    at := m;
     m = chicago_into(out, m, f[0].log_at[best], true);
     m = json_raw(out, m, "|");
     m = cell_into(out, m, cast(string) w[0..<n]);
     m = json_raw(out, m, "\n");
+    // the newest rows that fit: an older row that doesn't is left out, never cut
+    if m < 0 { m = at; break; }
   }
-  if m < 0 { t[0].complete = false; }
-  t[0].log_n = ifx m < 0 then 0 else m;
+  t[0].log_n = m;
 }
 
 // WORK_PLANS (alias | mark | step, marks x done, > doing, o to do) for the
