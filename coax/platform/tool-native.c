@@ -53,6 +53,18 @@ int64_t cxterm_raw(int64_t on) {
   g_term_raw = 0;
   return tcsetattr(0, TCSANOW, &g_term_saved) == 0 ? 0 : -1;
 }
+/* cxterm_keys(1) is cxterm_raw(1) for a key-driven shell: Ctrl-C, Ctrl-Z,
+   Ctrl-S, Ctrl-Q and Ctrl-V arrive as bytes instead of signals or flow
+   control, and Enter arrives as CR. cxterm_keys(0) puts back what was there. */
+int64_t cxterm_keys(int64_t on) {
+  if (!on) return cxterm_raw(0);
+  if (cxterm_raw(1) != 0) return -1;
+  struct termios t;
+  if (tcgetattr(0, &t) != 0) return -1;
+  t.c_lflag &= ~(tcflag_t)(ISIG | IEXTEN);
+  t.c_iflag &= ~(tcflag_t)(IXON | ICRNL | INLCR);
+  return tcsetattr(0, TCSANOW, &t) == 0 ? 0 : -1;
+}
 int64_t cxterm_size(void) {
   struct winsize w;
   if (ioctl(0, TIOCGWINSZ, &w) != 0 || w.ws_row == 0 || w.ws_col == 0) return -1;

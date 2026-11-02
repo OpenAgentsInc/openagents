@@ -41,6 +41,7 @@ typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
    catches SIGINT, SIGTERM and SIGHUP (cxterm_stopped() then names the signal)
    and SIGWINCH (cxterm_resized() says once that the size changed). */
 int64_t cxterm_raw(int64_t on);
+int64_t cxterm_keys(int64_t on);  /* raw, and Ctrl-C/Z/S/Q/V and Enter as bytes */
 int64_t cxterm_size(void);
 int64_t cxterm_byte(int64_t timeout_ms);
 int64_t cxterm_write(coax_v_u8 s);

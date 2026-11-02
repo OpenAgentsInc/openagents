@@ -1,0 +1,629 @@
+// Coder in the terminal: an inline TUI (Coder book, chapter 36). Finished
+// turns go into the terminal's own scrollback; a live region at the bottom
+// holds the working status, the reply as it streams, and the composer.
+// Engines: claude (the installed Claude Code CLI on its own login, driven
+// over stream-json by coax/lib/agent/claude, one session for the whole
+// conversation) and echo (offline: it streams your words back). In either,
+// a message that starts with "$ " runs that command in the working
+// directory. Microcoder joins once its library builds on the current
+// compiler.
+//
+//   coder/tui/coder.sh [--engine claude|echo] [--model M] [--cwd DIR]
+//   coder/tui/coder.sh --print "TASK"      no TUI: one task, plain lines out
+//
+// Keys: Enter sends, Ctrl-J, Alt-Enter or a trailing \ adds a line, Up and
+// Down walk history, Esc stops a run, Ctrl-C stops a run, clears the
+// composer, or quits; Ctrl-D on an empty composer quits. /help lists the
+// slash commands.
+
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/tui/tui.coax";
+#load "../../coax/lib/agent/claude/claude.coax";
+
+cxterm_keys :: (on: int) -> int #foreign;
+cxproc_sleep_ms :: (ms: int) -> int #foreign;
+cxterm_size :: () -> int #foreign;
+cxterm_byte :: (timeout_ms: int) -> int #foreign;
+cxterm_write :: (s: [] u8) -> int #foreign;
+cxterm_watch :: () -> int #foreign;
+cxterm_stopped :: () -> int #foreign;
+cxterm_resized :: () -> int #foreign;
+
+CODER_VERSION :: "0.1.0";
+ENGINE_ECHO :: 0; ENGINE_CLAUDE :: 1;
+END_FINISHED :: 0; END_STOPPED :: 1; END_FAILED :: 2;
+COMMAND_MS :: 120000;      // a "$ " command is stopped after two minutes
+SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+App :: struct {
+  plain: bool;                   // --print: no TUI, plain lines
+  engine: int;
+  model: string;
+  cwd: string;
+  cols: int; rows: int;
+  // the terminal
+  ob: [1048576] u8; o: [1] TuiOut;
+  lv: [1] TuiLive;
+  rows_buf: [1] TuiRows;
+  keys: [1] TuiKeys;
+  ed: [1] TuiEditor;
+  inb: [8192] u8; nin: int; last_in_ms: int;
+  quit: bool;
+  // a run
+  running: bool;
+  started_ms: int;
+  steps: int;
+  rep: [65536] u8; nrep: int; rep_done: int; rep_lines: int;   // the reply; committed up to rep_done
+  // echo engine
+  echo: [8192] u8; necho: int; echo_at: int; echo_next_ms: int;
+  // a "$ " command
+  cmd: [8192] u8; ncmd: int; cmd_h: int = -1; cmd_out: [65536] u8; ncmd_out: int; cmd_started: int;
+  // claude engine: one CLI session for the conversation
+  q: [] ClQuery; p: [] ClProcess; qline: [] u8; qarena: [] u8; qout: [] u8; scratch: [] u8;
+  live: bool;                     // the CLI is running
+  stopping: bool; stop_ms: int;   // an interrupt was sent
+  pending: [16384] u8; npending: int;   // the first message, sent once initialize is answered
+  ask: bool;                      // a permission request waits for y, a or n
+  ask_text: [1024] u8; nask: int;
+  ask_input: [65536] u8; nask_input: int;
+  ask_perm: [16384] u8; nask_perm: int;
+  turns: int;
+  cost: f64;
+}
+
+// ---------------------------------------------------------------- output
+
+cd_flush :: (a: [] App) {
+  if a[0].o[0].n > 0 { r := cxterm_write(a[0].o[0].b[0..<a[0].o[0].n]); a[0].o[0].n = 0; }
+}
+
+// Finished text into the scrollback (or stdout, plain).
+cd_commit :: (a: [] App, style: int, s: string) {
+  if a[0].plain { tui_put(a[0].o[..], s); tui_put(a[0].o[..], "\n"); cd_flush(a); return; }
+  tui_live_commit(a[0].o[..], a[0].lv[..], style, s);
+}
+
+// Text under a prefix, continued lines indented to match.
+cd_commit_prefixed :: (a: [] App, style: int, first: string, cont: string, s: string) {
+  buf: [65536] u8; n := 0;
+  n = cd_cat(buf[..], n, first);
+  for c: s {
+    if c == 10 { n = cd_cat(buf[..], n, "\n"); n = cd_cat(buf[..], n, cont); }
+    else if n < buf.count { buf[n] = c; n += 1; }
+  }
+  cd_commit(a, style, cast(string) buf[0..<n]);
+}
+
+cd_itoa :: (v: int, out: [] u8) -> string { o_b: [1] TuiOut; o := o_b[..]; o[0].b = out; tui_int(o, v); return tui_text(o); }
+
+cd_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+cd_seconds_text :: (ms: int, out: [] u8) -> string {
+  b: [16] u8;
+  n := cd_cat(out, 0, cd_itoa(ms / 1000, b[..]));
+  n = cd_cat(out, n, "."); n = cd_cat(out, n, cd_itoa((ms % 1000) / 100, b[..])); n = cd_cat(out, n, "s");
+  return cast(string) out[0..<n];
+}
+
+// ---------------------------------------------------------------- the live region
+
+cd_draw :: (a: [] App) {
+  if a[0].plain { return; }
+  r := a[0].rows_buf[..];
+  tui_rows_reset(r);
+  cols := a[0].cols - 1;
+  if a[0].running {
+    sb: [160] u8; n := 0;
+    spin := SPIN;
+    n = cd_cat(sb[..], n, spin[(cd_now(a) / 100) % 10]);
+    n = cd_cat(sb[..], n, ifx a[0].ask then " Waiting for you" else " Working");
+    if a[0].steps > 0 { tb: [16] u8; n = cd_cat(sb[..], n, " · step "); n = cd_cat(sb[..], n, cd_itoa(a[0].steps + 1, tb[..])); }
+    tb2: [32] u8; n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_seconds_text(cd_now(a) - a[0].started_ms, tb2[..]));
+    n = cd_cat(sb[..], n, " · Esc to stop");
+    k := tui_rows_add(r, TUI_DIM, cast(string) sb[0..<n]);
+    // the reply's unfinished line
+    if a[0].nrep > a[0].rep_done {
+      first := ifx a[0].rep_lines == 0 then "● " else "  ";
+      w := tui_rows_wrap(r, TUI_PLAIN, first, "  ", cast(string) a[0].rep[a[0].rep_done..<a[0].nrep], cols);
+    }
+    if a[0].ask {
+      w := tui_rows_wrap(r, TUI_BRIGHT, "? ", "  ", cast(string) a[0].ask_text[0..<a[0].nask], cols);
+      k = tui_rows_add(r, TUI_DIM, "  y allow · a allow and don't ask again · n deny");
+    }
+  }
+  rule: [4096] u8; nr := 0;
+  for i: 0..<cols { nr = cd_cat(rule[..], nr, "─"); }
+  k := tui_rows_add(r, TUI_FAINT, cast(string) rule[0..<nr]);
+  max := a[0].rows - r[0].n - 3;
+  if max < 1 { max = 1; } if max > 12 { max = 12; }
+  tui_rows_editor(r, a[0].ed[..], "› ", "  ", cols, max, TUI_BRIGHT);
+  k = tui_rows_add(r, TUI_FAINT, cast(string) rule[0..<nr]);
+  hint := ifx a[0].engine == ENGINE_CLAUDE then "Enter send · Ctrl-J newline · ↑ history · Esc stop · Ctrl-C quit · claude"
+          else "Enter send · Ctrl-J newline · ↑ history · Esc stop · Ctrl-C quit · echo (offline)";
+  k = tui_rows_add(r, TUI_FAINT, cast(string) hint[0..<tui_fit(hint, cols)]);
+  tui_live_draw(a[0].o[..], a[0].lv[..], r);
+  cd_flush(a);
+}
+
+cd_now :: (a: [] App) -> int { return cxproc_now_ms(); }
+
+// ---------------------------------------------------------------- the reply
+
+cd_reply_add :: (a: [] App, s: string) { for c: s { if a[0].nrep < a[0].rep.count { a[0].rep[a[0].nrep] = c; a[0].nrep += 1; } } }
+
+// Commits whole lines of the reply; with all, the rest too.
+cd_reply_commit :: (a: [] App, all: bool) {
+  for guard: 0..<100000 {
+    at := a[0].rep_done;
+    if at >= a[0].nrep { return; }
+    nl := at; while nl < a[0].nrep && a[0].rep[nl] != 10 { nl += 1; }
+    if nl >= a[0].nrep && !all { return; }
+    line := cast(string) a[0].rep[at..<nl];
+    first := ifx a[0].rep_lines == 0 then "● " else "  ";
+    cd_commit_prefixed(a, TUI_PLAIN, first, "  ", line);
+    a[0].rep_lines += 1;
+    a[0].rep_done = ifx nl < a[0].nrep then nl + 1 else nl;
+  }
+}
+
+cd_finish :: (a: [] App, ending: int, text: string) {
+  cd_reply_commit(a, true);
+  if text.count > 0 && ending == END_FAILED { cd_commit_prefixed(a, TUI_RED, "● ", "  ", text); }
+  sb: [256] u8; n := 0; tb: [32] u8;
+  n = cd_cat(sb[..], n, "  ⎿ ");
+  n = cd_cat(sb[..], n, ifx ending == END_STOPPED then "stopped" else ifx ending == END_FAILED then "failed" else "finished");
+  n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_seconds_text(cd_now(a) - a[0].started_ms, tb[..]));
+  if a[0].steps > 0 { n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_itoa(a[0].steps, tb[..])); n = cd_cat(sb[..], n, ifx a[0].steps == 1 then " step" else " steps"); }
+  cd_commit(a, ifx ending == END_FINISHED then TUI_FAINT else TUI_RED, cast(string) sb[0..<n]);
+  a[0].running = false; a[0].ask = false;
+}
+
+cd_command_event :: (a: [] App, cmd: string, exit: int, timed_out: bool, output: string) {
+  cd_reply_commit(a, true);
+  sb: [4096] u8; n := 0; tb: [16] u8;
+  n = cd_cat(sb[..], n, "  $ "); n = cd_cat(sb[..], n, cmd);
+  n = cd_cat(sb[..], n, ifx timed_out then " · timed out" else " · exit ");
+  if !timed_out { n = cd_cat(sb[..], n, cd_itoa(exit, tb[..])); }
+  cd_commit(a, ifx exit == 0 && !timed_out then TUI_DIM else TUI_RED, cast(string) sb[0..<n]);
+  // the first lines of output
+  shown := 0; at := 0; total := 0;
+  for c: output { if c == 10 { total += 1; } }
+  if output.count > 0 && output[output.count - 1] != 10 { total += 1; }
+  while at < output.count && shown < 4 {
+    nl := at; while nl < output.count && output[nl] != 10 { nl += 1; }
+    line := cast(string) output[at..<nl];
+    lb: [512] u8; ln := cd_cat(lb[..], 0, "    ");
+    ln = cd_cat(lb[..], ln, cast(string) line[0..<tui_fit(line, a[0].cols - 6)]);
+    cd_commit(a, TUI_FAINT, cast(string) lb[0..<ln]);
+    shown += 1; at = nl + 1;
+  }
+  if total > shown { mb: [64] u8; mn := cd_cat(mb[..], 0, "    … "); mn = cd_cat(mb[..], mn, cd_itoa(total - shown, tb[..])); mn = cd_cat(mb[..], mn, " more lines"); cd_commit(a, TUI_FAINT, cast(string) mb[0..<mn]); }
+}
+
+// ---------------------------------------------------------------- engines
+
+cd_start :: (a: [] App, msg: string) {
+  a[0].running = true; a[0].started_ms = cd_now(a); a[0].steps = 0;
+  a[0].nrep = 0; a[0].rep_done = 0; a[0].rep_lines = 0;
+  a[0].turns += 1;
+  if msg.count > 2 && msg[0] == '$' && msg[1] == ' ' { cd_command_start(a, cast(string) msg[2..<msg.count]); return; }
+  if a[0].engine == ENGINE_ECHO {
+    a[0].necho = 0; a[0].echo_at = 0; a[0].echo_next_ms = cd_now(a) + 300;
+    a[0].necho = cd_cat(a[0].echo[..], 0, "Echo engine, offline. You said: ");
+    a[0].necho = cd_cat(a[0].echo[..], a[0].necho, msg);
+    a[0].necho = cd_cat(a[0].echo[..], a[0].necho, "\nStart with \"$ \" to run a command here, or use /engine claude for Claude Code.");
+    return;
+  }
+  cd_claude_send(a, msg);
+}
+
+// ---------------------------------------------------------------- "$ " commands
+
+cd_command_start :: (a: [] App, cmd: string) {
+  a[0].ncmd = cd_cat(a[0].cmd[..], 0, cmd);
+  a[0].ncmd_out = 0; a[0].cmd_started = cd_now(a);
+  h := cxproc_new();
+  if h < 0 { cd_finish(a, END_FAILED, "No process slot is free."); return; }
+  wb: [8300] u8; wn := cd_cat(wb[..], 0, "exec 2>&1; "); wn = cd_cat(wb[..], wn, cmd);
+  ok := cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, cast(string) wb[0..<wn]);
+  if a[0].cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, a[0].cwd); }
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); cd_finish(a, END_FAILED, "The command could not start."); return; }
+  c := cxproc_close_stdin(h);
+  a[0].cmd_h = h;
+}
+
+// Takes the lines the command has written; true when something changed.
+cd_command_poll :: (a: [] App) -> bool {
+  h := a[0].cmd_h;
+  changed := false;
+  for guard: 0..<256 {
+    n := cxproc_read_line(h, 0);
+    if n == CL_TIMEOUT { break; }
+    if n == CL_EOF || (n < 0 && n != CL_TOO_LONG) {
+      status := cxproc_wait(h, 5000);
+      r := cxproc_release(h); a[0].cmd_h = -1;
+      cd_command_event(a, cast(string) a[0].cmd[0..<a[0].ncmd], status, false, cast(string) a[0].cmd_out[0..<a[0].ncmd_out]);
+      a[0].steps = 1;
+      cd_finish(a, ifx status == 0 then END_FINISHED else END_FAILED, "");
+      return true;
+    }
+    if n > 0 {
+      for i: 0..<n { if a[0].ncmd_out < a[0].cmd_out.count { a[0].cmd_out[a[0].ncmd_out] = cast,trunc(u8) cxproc_line_byte(h, i); a[0].ncmd_out += 1; } }
+    }
+    if a[0].ncmd_out < a[0].cmd_out.count { a[0].cmd_out[a[0].ncmd_out] = 10; a[0].ncmd_out += 1; }
+    changed = true;
+  }
+  if cd_now(a) - a[0].cmd_started > COMMAND_MS {
+    k := cxproc_kill(h, CL_SIGKILL); status := cxproc_wait(h, 5000);
+    r := cxproc_release(h); a[0].cmd_h = -1;
+    cd_command_event(a, cast(string) a[0].cmd[0..<a[0].ncmd], -1, true, cast(string) a[0].cmd_out[0..<a[0].ncmd_out]);
+    cd_finish(a, END_FAILED, "");
+    return true;
+  }
+  return changed;
+}
+
+cd_command_stop :: (a: [] App) {
+  if a[0].cmd_h < 0 { return; }
+  k := cxproc_kill(a[0].cmd_h, CL_SIGKILL); status := cxproc_wait(a[0].cmd_h, 5000);
+  r := cxproc_release(a[0].cmd_h); a[0].cmd_h = -1;
+}
+
+// ---------------------------------------------------------------- claude engine
+
+cd_claude_reset :: (q: [] ClQuery) { fresh: ClQuery; q[0] = fresh; }
+
+// Partial messages so the reply streams; the person's Claude Code login,
+// never an API key from the environment.
+cd_claude_options :: (q: [] ClQuery, cwd: string, model: string) {
+  o: [1] ClOptions;
+  o[0].include_partial_messages = true;
+  o[0].cwd = cwd;
+  if model.count > 0 { o[0].model = model; }
+  cl_remove_env(o[..], "ANTHROPIC_API_KEY");
+  q[0].options = o[0];
+}
+
+// Starts the CLI on the first message; later messages go to the same session.
+cd_claude_send :: (a: [] App, msg: string) {
+  if a[0].live {
+    cl_send_user(a[0].q, msg);
+    return;
+  }
+  cd_claude_reset(a[0].q);
+  cl_init(a[0].q, a[0].qline, a[0].qarena, a[0].qout);
+  cd_claude_options(a[0].q, a[0].cwd, a[0].model);
+  a[0].npending = cd_cat(a[0].pending[..], 0, msg);
+  problem := cl_start(a[0].q, a[0].p, "", true, a[0].scratch);
+  if problem.count > 0 { cd_finish(a, END_FAILED, problem); return; }
+  a[0].live = true;
+}
+
+cd_claude_close :: (a: [] App) {
+  if !a[0].live { return; }
+  x := cl_end_input(a[0].q, a[0].p);
+  k := cl_kill(a[0].p);
+  cl_close(a[0].p);
+  a[0].live = false;
+}
+
+// A short label for a tool call: Bash(command), Read(file_path) and so on.
+cd_tool_label :: (a: [] App, name: string, input: string, out: [] u8) -> string {
+  n := cd_cat(out, 0, name);
+  arg := cl_str(a[0].q[0].ar[..], input, "command");
+  if arg.count == 0 { arg = cl_str(a[0].q[0].ar[..], input, "file_path"); }
+  if arg.count == 0 { arg = cl_str(a[0].q[0].ar[..], input, "pattern"); }
+  if arg.count == 0 { arg = cl_str(a[0].q[0].ar[..], input, "url"); }
+  if arg.count == 0 { arg = cl_str(a[0].q[0].ar[..], input, "description"); }
+  if arg.count > 0 {
+    n = cd_cat(out, n, "(");
+    line := 0; while line < arg.count && arg[line] != 10 { line += 1; }
+    shown := cast(string) arg[0..<line];
+    n = cd_cat(out, n, cast(string) shown[0..<tui_fit(shown, a[0].cols - name.count - 10)]);
+    if line < arg.count || tui_fit(shown, a[0].cols - name.count - 10) < shown.count { n = cd_cat(out, n, "…"); }
+    n = cd_cat(out, n, ")");
+  }
+  return cast(string) out[0..<n];
+}
+
+cd_claude_message :: (a: [] App, m: ClMessage) {
+  q := a[0].q;
+  if m.parent_tool_use_id.count > 0 { return; }       // a subagent's own traffic
+  if m.kind == ClKind.stream_event {
+    t := cl_str(q[0].ar[..], m.line, "event.type");
+    if t == "content_block_delta" && cl_str(q[0].ar[..], m.line, "event.delta.type") == "text_delta" {
+      cd_reply_add(a, cl_str(q[0].ar[..], m.line, "event.delta.text"));
+      cd_reply_commit(a, false);
+    }
+    return;
+  }
+  if m.kind == ClKind.assistant {
+    content := cl_raw(m.line, "message.content");
+    count := cl_count(content);
+    for i: 0..<count {
+      item := cl_json(content, cl_item(content, i));
+      if cl_str(q[0].ar[..], item, "type") != "tool_use" { continue; }
+      cd_reply_commit(a, true); a[0].rep_lines = 0; a[0].nrep = 0; a[0].rep_done = 0;
+      lb: [1024] u8;
+      label := cd_tool_label(a, cl_str(q[0].ar[..], item, "name"), cl_raw(item, "input"), lb[..]);
+      cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", label);
+      a[0].steps += 1;
+    }
+    return;
+  }
+  if m.kind == ClKind.user {
+    content := cl_raw(m.line, "message.content");
+    count := cl_count(content);
+    for i: 0..<count {
+      item := cl_json(content, cl_item(content, i));
+      if cl_str(q[0].ar[..], item, "type") != "tool_result" { continue; }
+      text := cl_str(q[0].ar[..], item, "content");
+      if text.count == 0 { text = cl_str(q[0].ar[..], item, "content.0.text"); }
+      bad := cl_bool(item, "is_error");
+      lines := 0; for c: text { if c == 10 { lines += 1; } }
+      e := 0; while e < text.count && text[e] != 10 { e += 1; }
+      first := cast(string) text[0..<e];
+      rb: [1024] u8; rn := cd_cat(rb[..], 0, "    ⎿ ");
+      rn = cd_cat(rb[..], rn, cast(string) first[0..<tui_fit(first, a[0].cols - 14)]);
+      if lines > 0 { tb: [16] u8; rn = cd_cat(rb[..], rn, " … +"); rn = cd_cat(rb[..], rn, cd_itoa(lines, tb[..])); rn = cd_cat(rb[..], rn, " lines"); }
+      cd_commit(a, ifx bad.ok && bad.value then TUI_RED else TUI_FAINT, cast(string) rb[0..<rn]);
+    }
+    return;
+  }
+  if m.kind == ClKind.result {
+    r := cl_result_of(q[0].ar[..], m);
+    a[0].cost += r.total_cost_usd;
+    ok := r.kind == ClResultKind.success && !r.is_error;
+    if !ok && a[0].nrep == 0 && r.result.count > 0 { cd_reply_add(a, r.result); }
+    cd_finish(a, ifx ok then END_FINISHED else ifx a[0].stopping then END_STOPPED else END_FAILED, ifx ok then "" else "Claude Code ended the turn with an error.");
+    a[0].stopping = false;
+  }
+}
+
+// One poll of the CLI; true when something changed.
+cd_claude_poll :: (a: [] App) -> bool {
+  if !a[0].live || a[0].ask { return false; }
+  q := a[0].q; p := a[0].p;
+  changed := false;
+  for guard: 0..<64 {
+    ev := cl_poll(q, p, 0);
+    if ev.kind == ClEventKind.idle { break; }
+    changed = true;
+    if ev.kind == ClEventKind.initialized {
+      cl_send_user(q, cast(string) a[0].pending[0..<a[0].npending]);
+      continue;
+    }
+    if ev.kind == ClEventKind.end || ev.kind == ClEventKind.failed {
+      eb: [2048] u8; why := cl_error(q);
+      if why.count == 0 { why = cl_stderr(p, eb[..]); }
+      if why.count == 0 { why = "Claude Code exited."; }
+      wb: [2600] u8; wn := cd_cat(wb[..], 0, why);
+      cd_claude_close(a);
+      if a[0].running { cd_finish(a, END_FAILED, cast(string) wb[0..<wn]); }
+      return true;
+    }
+    if ev.kind == ClEventKind.permission {
+      lb: [1024] u8;
+      label := cd_tool_label(a, ev.request.tool_name, ev.request.input, lb[..]);
+      a[0].nask = cd_cat(a[0].ask_text[..], 0, "Allow ");
+      a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, label);
+      a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, "?");
+      a[0].nask_input = cd_cat(a[0].ask_input[..], 0, ev.request.input);
+      a[0].nask_perm = cd_cat(a[0].ask_perm[..], 0, ev.request.permission_suggestions);
+      a[0].ask = true;
+      return true;      // no more polls until answered: a poll would refuse the request
+    }
+    if ev.kind == ClEventKind.hook { cl_hook_answer(q, "{}"); continue; }
+    if ev.kind == ClEventKind.message { cd_claude_message(a, ev.message); }
+    if !a[0].live { return true; }
+  }
+  return changed;
+}
+
+cd_claude_answer :: (a: [] App, c: int) {
+  if c == 'y' || c == 'Y' { cl_allow(a[0].q, cast(string) a[0].ask_input[0..<a[0].nask_input], ""); }
+  else if c == 'a' || c == 'A' { cl_allow(a[0].q, cast(string) a[0].ask_input[0..<a[0].nask_input], cast(string) a[0].ask_perm[0..<a[0].nask_perm]); }
+  else { cl_deny(a[0].q, "The person denied this.", false); }
+  ab: [1100] u8; an := cd_cat(ab[..], 0, "  ");
+  an = cd_cat(ab[..], an, cast(string) a[0].ask_text[0..<a[0].nask]);
+  an = cd_cat(ab[..], an, ifx c == 'y' || c == 'Y' then " yes" else ifx c == 'a' || c == 'A' then " yes, from now on" else " no");
+  cd_commit(a, TUI_DIM, cast(string) ab[0..<an]);
+  a[0].ask = false;
+}
+
+cd_stop :: (a: [] App) {
+  if !a[0].running { return; }
+  if a[0].cmd_h >= 0 { cd_command_stop(a); cd_finish(a, END_STOPPED, ""); return; }
+  if a[0].engine == ENGINE_ECHO { cd_finish(a, END_STOPPED, ""); return; }
+  if a[0].ask { cl_deny(a[0].q, "The person stopped the turn.", true); a[0].ask = false; }
+  if a[0].live && !a[0].stopping {
+    a[0].stopping = true;
+    x := cl_interrupt(a[0].q);
+    a[0].stop_ms = cd_now(a);
+    return;           // the turn ends with its result
+  }
+  // asked twice, or no answer: end the session; the next message starts a new one
+  cd_claude_close(a);
+  a[0].stopping = false;
+  cd_finish(a, END_STOPPED, "");
+}
+
+// One poll of the running engine; true when something changed.
+cd_poll :: (a: [] App) -> bool {
+  if a[0].live && !a[0].running { return cd_claude_poll(a); }   // late lines between turns
+  if !a[0].running { return false; }
+  if a[0].cmd_h >= 0 { return cd_command_poll(a); }
+  if a[0].engine == ENGINE_CLAUDE {
+    if a[0].stopping && cd_now(a) - a[0].stop_ms > 5000 { cd_stop(a); return true; }
+    return cd_claude_poll(a);
+  }
+  if cd_now(a) < a[0].echo_next_ms { return false; }
+  // a word at a time, like a stream
+  at := a[0].echo_at;
+  if at >= a[0].necho { cd_finish(a, END_FINISHED, ""); return true; }
+  e := at; while e < a[0].necho && a[0].echo[e] != ' ' && a[0].echo[e] != 10 { e += 1; }
+  if e < a[0].necho { e += 1; }
+  cd_reply_add(a, cast(string) a[0].echo[at..<e]);
+  cd_reply_commit(a, false);
+  a[0].echo_at = e;
+  a[0].echo_next_ms = cd_now(a) + 45;
+  return true;
+}
+
+// ---------------------------------------------------------------- input
+
+HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login) or echo (offline)\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
+
+cd_submit :: (a: [] App) {
+  text := tui_ed_text(a[0].ed[..]);
+  // trim
+  s := 0; e := text.count;
+  while s < e && (text[s] == ' ' || text[s] == 10) { s += 1; }
+  while e > s && (text[e - 1] == ' ' || text[e - 1] == 10) { e -= 1; }
+  if s == e { return; }
+  mb: [16384] u8; mn := cd_cat(mb[..], 0, cast(string) text[s..<e]);
+  msg := cast(string) mb[0..<mn];
+  tui_ed_remember(a[0].ed[..], msg);
+  tui_ed_clear(a[0].ed[..]);
+  if msg[0] == '/' {
+    cd_commit_prefixed(a, TUI_DIM, "› ", "  ", msg);
+    if msg == "/quit" || msg == "/exit" { a[0].quit = true; return; }
+    if msg == "/help" { cd_commit_prefixed(a, TUI_DIM, "  ", "  ", HELP); return; }
+    if msg == "/clear" {
+      cd_claude_close(a);
+      if !a[0].plain { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); a[0].lv[0].drawn = 0; a[0].lv[0].at = 0; }
+      cd_commit(a, TUI_FAINT, "  The conversation is cleared; the next message starts a new session.");
+      return;
+    }
+    if msg == "/engine echo" { cd_claude_close(a); a[0].engine = ENGINE_ECHO; cd_commit(a, TUI_DIM, "  Engine: echo (offline)."); return; }
+    if msg == "/engine claude" { a[0].engine = ENGINE_CLAUDE; cd_commit(a, TUI_DIM, "  Engine: claude."); return; }
+    cd_commit(a, TUI_RED, "  Unknown command. /help lists them.");
+    return;
+  }
+  cd_commit_prefixed(a, TUI_BRIGHT, "› ", "  ", msg);
+  cd_start(a, msg);
+}
+
+cd_key :: (a: [] App, k: TuiKey) {
+  if k.kind == TUI_K_NONE { return; }
+  if a[0].ask && k.kind == TUI_K_CHAR { cd_claude_answer(a, k.cp); return; }
+  if k.kind == TUI_K_CTRL_C {
+    if a[0].running { cd_stop(a); return; }
+    if a[0].ed[0].n > 0 { tui_ed_clear(a[0].ed[..]); return; }
+    a[0].quit = true; return;
+  }
+  if k.kind == TUI_K_CTRL_D { if a[0].ed[0].n == 0 && !a[0].running { a[0].quit = true; } else { x := tui_ed_key(a[0].ed[..], TuiKey.{kind = TUI_K_DELETE}); } return; }
+  if k.kind == TUI_K_ESC { if a[0].running { cd_stop(a); } return; }
+  if k.kind == TUI_K_CLEAR { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); a[0].lv[0].drawn = 0; a[0].lv[0].at = 0; return; }
+  r := tui_ed_key(a[0].ed[..], k);
+  if r == TUI_ED_SUBMIT {
+    if a[0].running { return; }      // one task at a time for now; the text stays
+    cd_submit(a);
+  }
+}
+
+// Reads what stdin has and decodes whole keys; a lone ESC counts as Esc
+// after 30 ms with nothing behind it.
+cd_read_keys :: (a: [] App, wait_ms: int) -> bool {
+  got := false;
+  b := cxterm_byte(wait_ms);
+  if b == -2 { a[0].quit = true; return true; }
+  while b >= 0 {
+    if a[0].nin < a[0].inb.count { a[0].inb[a[0].nin] = cast,trunc(u8) b; a[0].nin += 1; }
+    got = true;
+    b = cxterm_byte(0);
+  }
+  if got { a[0].last_in_ms = cd_now(a); }
+  changed := got;
+  at := 0;
+  for guard: 0..<8192 {
+    if at >= a[0].nin { break; }
+    more := cd_now(a) - a[0].last_in_ms < 30;
+    r := tui_key(a[0].keys[..], cast(string) a[0].inb[0..<a[0].nin], at, more);
+    if r.used == 0 { break; }
+    cd_key(a, r.key);
+    changed = true;
+    at += r.used;
+  }
+  for i: at..<a[0].nin { a[0].inb[i - at] = a[0].inb[i]; }
+  a[0].nin -= at;
+  return changed;
+}
+
+cd_size :: (a: [] App) {
+  s := cxterm_size();
+  a[0].rows = 24; a[0].cols = 80;
+  if s > 0 { a[0].rows = s / 65536; a[0].cols = s % 65536; }
+  if a[0].cols < 20 { a[0].cols = 20; } if a[0].cols > 1000 { a[0].cols = 1000; }
+  if a[0].rows < 6 { a[0].rows = 6; }
+}
+
+// ---------------------------------------------------------------- start
+
+tool_main :: () -> int #export_c {
+  args_b: [1] Args; args := args_b[..];
+  if !args_load(args) { tool_errln("coder: bad arguments"); return 2; }
+  if args_has(args, "--help") || args_has(args, "-h") {
+    tool_errln("usage: coder [--engine claude|echo] [--model M] [--cwd DIR]\n       coder --print \"TASK\" [--engine claude|echo]");
+    return 0;
+  }
+  if args_has(args, "--version") { tool_errln(CODER_VERSION); return 0; }
+  a_b: [1] App; a := a_b[..];
+  q: [1] ClQuery; p: [1] ClProcess;
+  qline_b: [CL_LINE_MAX] u8; qarena_b: [CL_LINE_MAX] u8; qout_b: [262144] u8; scratch_b: [196608] u8;
+  a[0].q = q[..]; a[0].p = p[..]; a[0].qline = qline_b[..]; a[0].qarena = qarena_b[..]; a[0].qout = qout_b[..]; a[0].scratch = scratch_b[..];
+  a[0].o[0].b = a[0].ob[..];
+  cb: [4096] u8;
+  a[0].cwd = args_value(args, "--cwd", cl_getenv("PWD", cb[..]));
+  a[0].model = args_value(args, "--model", "");
+  a[0].engine = ENGINE_CLAUDE;
+  want := args_value(args, "--engine", "");
+  if want == "echo" { a[0].engine = ENGINE_ECHO; }
+  else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude or echo"); return 2; }
+
+  task := args_value(args, "--print", "");
+  if task.count > 0 || args_has(args, "--print") {
+    a[0].plain = true; a[0].cols = 100; a[0].rows = 40;
+    if task.count == 0 { tool_errln("coder: --print needs a task"); return 2; }
+    tui_ed_set(a[0].ed[..], task);
+    cd_submit(a);
+    for guard: 0..<100000000 { if !a[0].running { break; } if a[0].ask { cd_claude_answer(a, 'n'); } if !cd_poll(a) { x := cxproc_sleep_ms(5); } }
+    cd_claude_close(a);
+    return 0;
+  }
+
+  if cxterm_size() < 0 { tool_errln("coder: needs a terminal; use --print \"TASK\" for plain output"); return 2; }
+  w := cxterm_watch();
+  x := cxterm_keys(1);
+  cd_size(a);
+  tui_csi(a[0].o[..], "?2004h");                       // bracketed paste
+  hb: [512] u8; hn := cd_cat(hb[..], 0, "Coder ");
+  hn = cd_cat(hb[..], hn, CODER_VERSION); hn = cd_cat(hb[..], hn, " · ");
+  hn = cd_cat(hb[..], hn, ifx a[0].engine == ENGINE_CLAUDE then "Claude Code" else "echo engine (offline)");
+  hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, a[0].cwd);
+  cd_commit(a, TUI_BRIGHT, cast(string) hb[0..<hn]);
+  cd_commit(a, TUI_FAINT, "/help for commands.");
+  cd_draw(a);
+  last_draw := 0;
+  while !a[0].quit {
+    if cxterm_stopped() != 0 { break; }
+    dirty := false;
+    if cxterm_resized() != 0 { cd_size(a); dirty = true; }
+    wait := ifx a[0].running then 10 else 40;
+    if cd_read_keys(a, wait) { dirty = true; }
+    if a[0].quit { break; }
+    if cd_poll(a) { dirty = true; }
+    now := cd_now(a);
+    if a[0].running && now - last_draw >= 100 { dirty = true; }
+    if dirty { cd_draw(a); last_draw = now; }
+  }
+  if a[0].running { cd_stop(a); }
+  cd_claude_close(a);
+  tui_live_erase(a[0].o[..], a[0].lv[..]);
+  tui_csi(a[0].o[..], "?2004l"); tui_csi(a[0].o[..], "?25h"); tui_csi(a[0].o[..], "0m");
+  cd_flush(a);
+  x = cxterm_keys(0);
+  return 0;
+}

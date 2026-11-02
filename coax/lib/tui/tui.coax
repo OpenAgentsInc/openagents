@@ -1,0 +1,593 @@
+// A small terminal UI kit for inline shells (Coder book, Part VI): bytes out
+// with escape sequences, UTF-8 and display widths, a key decoder with
+// bracketed paste, a multi-line composer, and an inline live region that is
+// redrawn at the bottom while finished text goes into the terminal's own
+// scrollback above it. No platform code: the program brings the terminal
+// (coax/platform/tool-native.c's cxterm_*), so all of this is testable.
+
+// ---------------------------------------------------------------- output
+
+TuiOut :: struct { b: [] u8; n: int; }
+
+tui_byte :: (o: [] TuiOut, c: int) { if o[0].n < o[0].b.count { o[0].b[o[0].n] = cast,trunc(u8) c; o[0].n += 1; } }
+tui_put :: (o: [] TuiOut, s: string) { for c: s { tui_byte(o, cast(int) c); } }
+tui_int :: (o: [] TuiOut, v: int) {
+  if v < 0 { tui_byte(o, '-'); tui_int(o, -v); return; }
+  d: [24] u8; k := 0; x := v;
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  for i: 0..<k { tui_byte(o, cast(int) d[k - 1 - i]); }
+}
+// ESC [ s: a control sequence.
+tui_csi :: (o: [] TuiOut, s: string) { tui_byte(o, 27); tui_byte(o, '['); tui_put(o, s); }
+tui_csi_n :: (o: [] TuiOut, n: int, final: string) { tui_byte(o, 27); tui_byte(o, '['); tui_int(o, n); tui_put(o, final); }
+tui_text :: (o: [] TuiOut) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+
+// Styles: the Coder ladder, four intensities of white, and two signal colors.
+TUI_PLAIN :: 0; TUI_BRIGHT :: 1; TUI_DIM :: 2; TUI_FAINT :: 3; TUI_RED :: 4; TUI_GREEN :: 5;
+tui_style :: (o: [] TuiOut, s: int) {
+  if s == TUI_PLAIN { tui_csi(o, "0m"); }
+  else if s == TUI_BRIGHT { tui_csi(o, "0;1;38;2;255;255;255m"); }
+  else if s == TUI_DIM { tui_csi(o, "0;38;2;150;150;150m"); }
+  else if s == TUI_FAINT { tui_csi(o, "0;38;2;90;90;90m"); }
+  else if s == TUI_RED { tui_csi(o, "0;38;2;235;100;100m"); }
+  else if s == TUI_GREEN { tui_csi(o, "0;38;2;120;210;140m"); }
+}
+
+// ---------------------------------------------------------------- UTF-8 and widths
+
+TuiRune :: struct { cp: int; len: int; }
+
+// The code point at s[i]; a bad byte reads as U+FFFD of length 1.
+tui_rune :: (s: string, i: int) -> TuiRune {
+  c := cast(int) s[i];
+  if c < 0x80 { return TuiRune.{cp = c, len = 1}; }
+  k := 0; cp := 0;
+  if c >= 0xf0 && c < 0xf8 { k = 4; cp = c & 7; }
+  else if c >= 0xe0 { k = 3; cp = c & 15; }
+  else if c >= 0xc0 { k = 2; cp = c & 31; }
+  if k == 0 || i + k > s.count { return TuiRune.{cp = 0xfffd, len = 1}; }
+  for j: 1..<k {
+    d := cast(int) s[i + j];
+    if (d & 0xc0) != 0x80 { return TuiRune.{cp = 0xfffd, len = 1}; }
+    cp = (cp << 6) | (d & 63);
+  }
+  return TuiRune.{cp = cp, len = k};
+}
+
+// Columns a code point takes: 0 for combining marks and joiners, 2 for wide
+// East Asian and emoji ranges, 1 otherwise. A short table, not full UAX #11.
+tui_width :: (cp: int) -> int {
+  if cp < 32 || cp == 127 { return 0; }
+  if (cp >= 0x300 && cp <= 0x36f) || (cp >= 0x200b && cp <= 0x200f) || (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0x1f3fb && cp <= 0x1f3ff) { return 0; }
+  if (cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf) || (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) { return 2; }
+  if (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) || (cp >= 0xffe0 && cp <= 0xffe6) { return 2; }
+  if (cp >= 0x1f300 && cp <= 0x1f64f) || (cp >= 0x1f900 && cp <= 0x1faff) || (cp >= 0x20000 && cp <= 0x3fffd) { return 2; }
+  return 1;
+}
+
+tui_text_width :: (s: string) -> int {
+  w := 0; i := 0;
+  while i < s.count { r := tui_rune(s, i); w += tui_width(r.cp); i += r.len; }
+  return w;
+}
+
+// The longest prefix of s that fits in cols columns, in bytes.
+tui_fit :: (s: string, cols: int) -> int {
+  w := 0; i := 0;
+  while i < s.count {
+    r := tui_rune(s, i);
+    cw := tui_width(r.cp);
+    if w + cw > cols { break; }
+    w += cw; i += r.len;
+  }
+  return i;
+}
+
+// ---------------------------------------------------------------- keys
+
+TUI_K_NONE :: 0; TUI_K_CHAR :: 1; TUI_K_ENTER :: 2; TUI_K_NEWLINE :: 3; TUI_K_BACKSPACE :: 4; TUI_K_DELETE :: 5;
+TUI_K_LEFT :: 6; TUI_K_RIGHT :: 7; TUI_K_UP :: 8; TUI_K_DOWN :: 9; TUI_K_HOME :: 10; TUI_K_END :: 11;
+TUI_K_CTRL_C :: 12; TUI_K_CTRL_D :: 13; TUI_K_KILL_LINE :: 14; TUI_K_KILL_END :: 15; TUI_K_KILL_WORD :: 16;
+TUI_K_ESC :: 17; TUI_K_WORD_LEFT :: 18; TUI_K_WORD_RIGHT :: 19; TUI_K_TAB :: 20; TUI_K_CLEAR :: 21; TUI_K_PASTE :: 22;
+
+// A key; for TUI_K_CHAR, cp; for TUI_K_PASTE, text (into the decoder's paste buffer).
+TuiKey :: struct { kind: int; cp: int; text: string; }
+TuiKeyRead :: struct { key: TuiKey; used: int; }   // used 0: need more bytes
+
+TuiKeys :: struct {
+  pasting: bool;
+  paste: [65536] u8; np: int;
+}
+
+tui_named :: (kind: int, used: int) -> TuiKeyRead { return TuiKeyRead.{key = TuiKey.{kind = kind}, used = used}; }
+
+// Decodes one key from b[at..]. With more false, a lone ESC is the Esc key
+// (the caller waited and nothing followed); with more true, an unfinished
+// sequence asks for more bytes (used 0).
+tui_key :: (k: [] TuiKeys, b: string, at: int, more: bool) -> TuiKeyRead {
+  if at >= b.count { return tui_named(TUI_K_NONE, 0); }
+  if k[0].pasting {
+    // inside bracketed paste: everything up to ESC [ 2 0 1 ~ is text
+    i := at;
+    while i < b.count {
+      if b[i] == 27 {
+        if i + 6 > b.count { if more { break; } }
+        else if cast(string) b[i + 1..<i + 6] == "[201~" {
+          k[0].pasting = false;
+          t := cast(string) k[0].paste[0..<k[0].np]; k[0].np = 0;
+          return TuiKeyRead.{key = TuiKey.{kind = TUI_K_PASTE, text = t}, used = i + 6 - at};
+        }
+      }
+      c := b[i];
+      if c == 13 { c = 10; }
+      if k[0].np < k[0].paste.count { k[0].paste[k[0].np] = c; k[0].np += 1; }
+      i += 1;
+    }
+    return TuiKeyRead.{key = TuiKey.{kind = TUI_K_NONE}, used = i - at};
+  }
+  c := cast(int) b[at];
+  if c == 13 { return tui_named(TUI_K_ENTER, 1); }
+  if c == 10 { return tui_named(TUI_K_NEWLINE, 1); }        // Ctrl-J
+  if c == 127 || c == 8 { return tui_named(TUI_K_BACKSPACE, 1); }
+  if c == 9 { return tui_named(TUI_K_TAB, 1); }
+  if c == 1 { return tui_named(TUI_K_HOME, 1); }            // Ctrl-A
+  if c == 5 { return tui_named(TUI_K_END, 1); }             // Ctrl-E
+  if c == 2 { return tui_named(TUI_K_LEFT, 1); }            // Ctrl-B
+  if c == 6 { return tui_named(TUI_K_RIGHT, 1); }           // Ctrl-F
+  if c == 3 { return tui_named(TUI_K_CTRL_C, 1); }
+  if c == 4 { return tui_named(TUI_K_CTRL_D, 1); }
+  if c == 21 { return tui_named(TUI_K_KILL_LINE, 1); }      // Ctrl-U
+  if c == 11 { return tui_named(TUI_K_KILL_END, 1); }       // Ctrl-K
+  if c == 23 { return tui_named(TUI_K_KILL_WORD, 1); }      // Ctrl-W
+  if c == 12 { return tui_named(TUI_K_CLEAR, 1); }          // Ctrl-L
+  if c == 16 { return tui_named(TUI_K_UP, 1); }             // Ctrl-P
+  if c == 14 { return tui_named(TUI_K_DOWN, 1); }           // Ctrl-N
+  if c == 27 {
+    if at + 1 >= b.count { return ifx more then tui_named(TUI_K_NONE, 0) else tui_named(TUI_K_ESC, 1); }
+    n := cast(int) b[at + 1];
+    if n == 13 { return tui_named(TUI_K_NEWLINE, 2); }       // Alt-Enter
+    if n == 127 { return tui_named(TUI_K_KILL_WORD, 2); }    // Alt-Backspace
+    if n == 'b' { return tui_named(TUI_K_WORD_LEFT, 2); }
+    if n == 'f' { return tui_named(TUI_K_WORD_RIGHT, 2); }
+    if n == 'O' {                                            // SS3: arrows in application mode
+      if at + 2 >= b.count { return ifx more then tui_named(TUI_K_NONE, 0) else tui_named(TUI_K_ESC, 1); }
+      f := cast(int) b[at + 2];
+      if f == 'A' { return tui_named(TUI_K_UP, 3); } if f == 'B' { return tui_named(TUI_K_DOWN, 3); }
+      if f == 'C' { return tui_named(TUI_K_RIGHT, 3); } if f == 'D' { return tui_named(TUI_K_LEFT, 3); }
+      if f == 'H' { return tui_named(TUI_K_HOME, 3); } if f == 'F' { return tui_named(TUI_K_END, 3); }
+      return tui_named(TUI_K_NONE, 3);
+    }
+    if n != '[' { return tui_named(TUI_K_ESC, 1); }
+    // CSI: parameters, then a final byte in @..~
+    i := at + 2;
+    while i < b.count && (b[i] < 0x40 || b[i] > 0x7e) { i += 1; }
+    if i >= b.count { return ifx more then tui_named(TUI_K_NONE, 0) else tui_named(TUI_K_ESC, 1); }
+    p := cast(string) b[at + 2..<i];
+    f := cast(int) b[i];
+    used := i + 1 - at;
+    if f == '~' {
+      if p == "200" { k[0].pasting = true; k[0].np = 0; return tui_named(TUI_K_NONE, used); }
+      if p == "3" { return tui_named(TUI_K_DELETE, used); }
+      if p == "1" || p == "7" { return tui_named(TUI_K_HOME, used); }
+      if p == "4" || p == "8" { return tui_named(TUI_K_END, used); }
+      return tui_named(TUI_K_NONE, used);
+    }
+    if f == 'u' && (p == "13;2" || p == "13;3" || p == "13;5") { return tui_named(TUI_K_NEWLINE, used); }   // kitty: Shift/Alt/Ctrl-Enter
+    alt := p == "1;3" || p == "1;5";
+    if f == 'A' { return tui_named(TUI_K_UP, used); }
+    if f == 'B' { return tui_named(TUI_K_DOWN, used); }
+    if f == 'C' { return tui_named(ifx alt then TUI_K_WORD_RIGHT else TUI_K_RIGHT, used); }
+    if f == 'D' { return tui_named(ifx alt then TUI_K_WORD_LEFT else TUI_K_LEFT, used); }
+    if f == 'H' { return tui_named(TUI_K_HOME, used); }
+    if f == 'F' { return tui_named(TUI_K_END, used); }
+    return tui_named(TUI_K_NONE, used);
+  }
+  if c < 32 { return tui_named(TUI_K_NONE, 1); }
+  // a UTF-8 character; wait for the rest of it
+  ulen := 1;
+  if c >= 0xf0 { ulen = 4; } else if c >= 0xe0 { ulen = 3; } else if c >= 0xc0 { ulen = 2; }
+  if at + ulen > b.count { return ifx more then tui_named(TUI_K_NONE, 0) else tui_named(TUI_K_NONE, b.count - at); }
+  r := tui_rune(b, at);
+  return TuiKeyRead.{key = TuiKey.{kind = TUI_K_CHAR, cp = r.cp}, used = r.len};
+}
+
+// ---------------------------------------------------------------- the composer
+
+TUI_EDIT_BYTES :: 16384;
+TUI_HISTORY :: 64;
+TUI_HISTORY_BYTES :: 4096;
+
+TuiEditor :: struct {
+  buf: [TUI_EDIT_BYTES] u8; n: int;
+  cur: int;                      // a byte offset on a character boundary
+  hist: [TUI_HISTORY] [TUI_HISTORY_BYTES] u8; hlen: [TUI_HISTORY] int;
+  nh: int;                       // entries held (newest at (top - 1) mod TUI_HISTORY)
+  top: int;
+  browse: int;                   // 0: editing; k: showing the k-th newest entry
+}
+
+tui_ed_text :: (e: [] TuiEditor) -> string { return cast(string) e[0].buf[0..<e[0].n]; }
+
+tui_ed_set :: (e: [] TuiEditor, s: string) {
+  n := ifx s.count < TUI_EDIT_BYTES then s.count else TUI_EDIT_BYTES;
+  for i: 0..<n { e[0].buf[i] = s[i]; }
+  e[0].n = n; e[0].cur = n;
+}
+
+tui_ed_clear :: (e: [] TuiEditor) { e[0].n = 0; e[0].cur = 0; e[0].browse = 0; }
+
+tui_ed_insert :: (e: [] TuiEditor, s: string) {
+  if e[0].n + s.count > TUI_EDIT_BYTES { return; }
+  i := e[0].n - 1;
+  while i >= e[0].cur { e[0].buf[i + s.count] = e[0].buf[i]; i -= 1; }
+  for j: 0..<s.count { e[0].buf[e[0].cur + j] = s[j]; }
+  e[0].n += s.count; e[0].cur += s.count;
+}
+
+tui_ed_insert_cp :: (e: [] TuiEditor, cp: int) {
+  b: [4] u8; k := 0;
+  if cp < 0x80 { b[0] = cast,trunc(u8) cp; k = 1; }
+  else if cp < 0x800 { b[0] = cast,trunc(u8) (0xc0 | (cp >> 6)); b[1] = cast,trunc(u8) (0x80 | (cp & 63)); k = 2; }
+  else if cp < 0x10000 { b[0] = cast,trunc(u8) (0xe0 | (cp >> 12)); b[1] = cast,trunc(u8) (0x80 | ((cp >> 6) & 63)); b[2] = cast,trunc(u8) (0x80 | (cp & 63)); k = 3; }
+  else { b[0] = cast,trunc(u8) (0xf0 | (cp >> 18)); b[1] = cast,trunc(u8) (0x80 | ((cp >> 12) & 63)); b[2] = cast,trunc(u8) (0x80 | ((cp >> 6) & 63)); b[3] = cast,trunc(u8) (0x80 | (cp & 63)); k = 4; }
+  tui_ed_insert(e, cast(string) b[0..<k]);
+}
+
+tui_ed_delete :: (e: [] TuiEditor, from: int, to: int) {
+  if from >= to { return; }
+  d := to - from;
+  for i: to..<e[0].n { e[0].buf[i - d] = e[0].buf[i]; }
+  e[0].n -= d;
+  if e[0].cur >= to { e[0].cur -= d; } else if e[0].cur > from { e[0].cur = from; }
+}
+
+tui_ed_prev :: (e: [] TuiEditor, at: int) -> int {
+  i := at - 1;
+  while i > 0 && (e[0].buf[i] & 0xc0) == 0x80 { i -= 1; }
+  return ifx i < 0 then 0 else i;
+}
+tui_ed_next :: (e: [] TuiEditor, at: int) -> int {
+  if at >= e[0].n { return e[0].n; }
+  return at + tui_rune(tui_ed_text(e), at).len;
+}
+tui_ed_line_start :: (e: [] TuiEditor, at: int) -> int { i := at; while i > 0 && e[0].buf[i - 1] != 10 { i -= 1; } return i; }
+tui_ed_line_end :: (e: [] TuiEditor, at: int) -> int { i := at; while i < e[0].n && e[0].buf[i] != 10 { i += 1; } return i; }
+tui_ed_is_space :: (c: u8) -> bool { return c == ' ' || c == 10 || c == 9; }
+
+tui_ed_word_left :: (e: [] TuiEditor, at: int) -> int {
+  i := at;
+  while i > 0 && tui_ed_is_space(e[0].buf[i - 1]) { i -= 1; }
+  while i > 0 && !tui_ed_is_space(e[0].buf[i - 1]) { i -= 1; }
+  return i;
+}
+tui_ed_word_right :: (e: [] TuiEditor, at: int) -> int {
+  i := at;
+  while i < e[0].n && tui_ed_is_space(e[0].buf[i]) { i += 1; }
+  while i < e[0].n && !tui_ed_is_space(e[0].buf[i]) { i += 1; }
+  return i;
+}
+
+// Columns from the start of the line to at.
+tui_ed_col :: (e: [] TuiEditor, at: int) -> int { s := tui_ed_line_start(e, at); return tui_text_width(cast(string) e[0].buf[s..<at]); }
+// The offset in the line starting at s whose column is nearest col, not past it.
+tui_ed_at_col :: (e: [] TuiEditor, s: int, col: int) -> int {
+  end := tui_ed_line_end(e, s);
+  return s + tui_fit(cast(string) e[0].buf[s..<end], col);
+}
+
+tui_ed_remember :: (e: [] TuiEditor, s: string) {
+  if s.count == 0 { return; }
+  slot := e[0].top % TUI_HISTORY;
+  n := ifx s.count < TUI_HISTORY_BYTES then s.count else TUI_HISTORY_BYTES;
+  for i: 0..<n { e[0].hist[slot][i] = s[i]; }
+  e[0].hlen[slot] = n;
+  e[0].top += 1;
+  if e[0].nh < TUI_HISTORY { e[0].nh += 1; }
+  e[0].browse = 0;
+}
+
+tui_ed_show_history :: (e: [] TuiEditor, k: int) {
+  if k <= 0 { e[0].browse = 0; tui_ed_set(e, ""); return; }
+  slot := (e[0].top - k) % TUI_HISTORY;
+  if slot < 0 { slot += TUI_HISTORY; }
+  tui_ed_set(e, cast(string) e[0].hist[slot][0..<e[0].hlen[slot]]);
+  e[0].browse = k;
+}
+
+TUI_ED_KEPT :: 0; TUI_ED_SUBMIT :: 1; TUI_ED_IGNORED :: 2;
+
+// Applies an editing key; TUI_ED_SUBMIT when Enter asks to send the text.
+tui_ed_key :: (e: [] TuiEditor, k: TuiKey) -> int {
+  kd := k.kind;
+  if kd == TUI_K_CHAR { tui_ed_insert_cp(e, k.cp); return TUI_ED_KEPT; }
+  if kd == TUI_K_PASTE { tui_ed_insert(e, k.text); return TUI_ED_KEPT; }
+  if kd == TUI_K_NEWLINE { tui_ed_insert(e, "\n"); return TUI_ED_KEPT; }
+  if kd == TUI_K_ENTER {
+    // a line ending in a backslash continues instead of sending
+    if e[0].cur > 0 && e[0].cur == e[0].n && e[0].buf[e[0].cur - 1] == '\\' { e[0].buf[e[0].cur - 1] = 10; return TUI_ED_KEPT; }
+    return TUI_ED_SUBMIT;
+  }
+  if kd == TUI_K_BACKSPACE { tui_ed_delete(e, tui_ed_prev(e, e[0].cur), e[0].cur); return TUI_ED_KEPT; }
+  if kd == TUI_K_DELETE { tui_ed_delete(e, e[0].cur, tui_ed_next(e, e[0].cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_LEFT { e[0].cur = tui_ed_prev(e, e[0].cur); return TUI_ED_KEPT; }
+  if kd == TUI_K_RIGHT { e[0].cur = tui_ed_next(e, e[0].cur); return TUI_ED_KEPT; }
+  if kd == TUI_K_WORD_LEFT { e[0].cur = tui_ed_word_left(e, e[0].cur); return TUI_ED_KEPT; }
+  if kd == TUI_K_WORD_RIGHT { e[0].cur = tui_ed_word_right(e, e[0].cur); return TUI_ED_KEPT; }
+  if kd == TUI_K_HOME { e[0].cur = tui_ed_line_start(e, e[0].cur); return TUI_ED_KEPT; }
+  if kd == TUI_K_END { e[0].cur = tui_ed_line_end(e, e[0].cur); return TUI_ED_KEPT; }
+  if kd == TUI_K_KILL_LINE { tui_ed_delete(e, tui_ed_line_start(e, e[0].cur), e[0].cur); return TUI_ED_KEPT; }
+  if kd == TUI_K_KILL_END { tui_ed_delete(e, e[0].cur, tui_ed_line_end(e, e[0].cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_KILL_WORD { tui_ed_delete(e, tui_ed_word_left(e, e[0].cur), e[0].cur); return TUI_ED_KEPT; }
+  if kd == TUI_K_UP || kd == TUI_K_DOWN {
+    s := tui_ed_line_start(e, e[0].cur);
+    multi := false; for i: 0..<e[0].n { if e[0].buf[i] == 10 { multi = true; } }
+    if multi && kd == TUI_K_UP && s > 0 { col := tui_ed_col(e, e[0].cur); e[0].cur = tui_ed_at_col(e, tui_ed_line_start(e, s - 1), col); return TUI_ED_KEPT; }
+    en := tui_ed_line_end(e, e[0].cur);
+    if multi && kd == TUI_K_DOWN && en < e[0].n { col := tui_ed_col(e, e[0].cur); e[0].cur = tui_ed_at_col(e, en + 1, col); return TUI_ED_KEPT; }
+    if multi && e[0].browse == 0 { return TUI_ED_KEPT; }
+    // history
+    if kd == TUI_K_UP && e[0].browse < e[0].nh { tui_ed_show_history(e, e[0].browse + 1); }
+    else if kd == TUI_K_DOWN && e[0].browse > 0 { tui_ed_show_history(e, e[0].browse - 1); }
+    return TUI_ED_KEPT;
+  }
+  return TUI_ED_IGNORED;
+}
+
+// ---------------------------------------------------------------- layout
+
+TUI_MAX_ROWS :: 256;
+TUI_ROW_BYTES :: 1024;
+
+// Lines of styled text for the live region, each already fitted to the width.
+TuiRows :: struct {
+  text: [TUI_MAX_ROWS] [TUI_ROW_BYTES] u8; len: [TUI_MAX_ROWS] int; style: [TUI_MAX_ROWS] int;
+  n: int;
+  cur_row: int; cur_col: int;    // where the cursor goes, -1 to hide it
+}
+
+tui_rows_reset :: (r: [] TuiRows) { r[0].n = 0; r[0].cur_row = -1; r[0].cur_col = 0; }
+
+tui_rows_add :: (r: [] TuiRows, style: int, s: string) -> int {
+  if r[0].n >= TUI_MAX_ROWS { return -1; }
+  k := r[0].n;
+  n := ifx s.count < TUI_ROW_BYTES then s.count else TUI_ROW_BYTES;
+  for i: 0..<n { r[0].text[k][i] = s[i]; }
+  r[0].len[k] = n; r[0].style[k] = style;
+  r[0].n += 1;
+  return k;
+}
+
+tui_rows_append :: (r: [] TuiRows, k: int, s: string) {
+  if k < 0 { return; }
+  for c: s { if r[0].len[k] < TUI_ROW_BYTES { r[0].text[k][r[0].len[k]] = c; r[0].len[k] += 1; } }
+}
+
+// Adds text wrapped to cols columns after a first-line prefix and a
+// continuation prefix of the same width; returns the rows added.
+tui_rows_wrap :: (r: [] TuiRows, style: int, first: string, cont: string, s: string, cols: int) -> int {
+  room := cols - tui_text_width(first);
+  if room < 4 { room = 4; }
+  added := 0; at := 0;
+  for guard: 0..<TUI_MAX_ROWS {
+    nl := at; while nl < s.count && s[nl] != 10 { nl += 1; }
+    line := cast(string) s[at..<nl];
+    pos := 0;
+    for g2: 0..<TUI_MAX_ROWS {
+      take := tui_fit(cast(string) line[pos..<line.count], room);
+      if take == 0 && pos < line.count { take = tui_rune(line, pos).len; }
+      // break at the last space when the line goes on
+      if pos + take < line.count {
+        sp := pos + take; while sp > pos && line[sp - 1] != ' ' { sp -= 1; }
+        if sp > pos { take = sp - pos; }
+      }
+      k := tui_rows_add(r, style, ifx added == 0 then first else cont);
+      tui_rows_append(r, k, cast(string) line[pos..<pos + take]);
+      added += 1; pos += take;
+      if pos >= line.count { break; }
+    }
+    if nl >= s.count { break; }
+    at = nl + 1;
+  }
+  return added;
+}
+
+// Lays the composer out under a prompt, wrapped to cols, at most max_rows
+// tall (scrolled to keep the cursor in view), and places the cursor.
+tui_rows_editor :: (r: [] TuiRows, e: [] TuiEditor, prompt: string, cont: string, cols: int, max_rows: int, style: int) {
+  room := cols - tui_text_width(prompt);
+  if room < 4 { room = 4; }
+  // rows of (start, end) offsets, and which holds the cursor
+  starts: [TUI_MAX_ROWS] int; ends: [TUI_MAX_ROWS] int; nrow := 0;
+  crow := 0; ccol := 0;
+  text := tui_ed_text(e);
+  at := 0;
+  for guard: 0..<TUI_MAX_ROWS {
+    nl := at; while nl < text.count && text[nl] != 10 { nl += 1; }
+    pos := at;
+    for g2: 0..<TUI_MAX_ROWS {
+      take := tui_fit(cast(string) text[pos..<nl], room);
+      if take == 0 && pos < nl { take = tui_rune(text, pos).len; }
+      if nrow < TUI_MAX_ROWS { starts[nrow] = pos; ends[nrow] = pos + take; }
+      last := pos + take >= nl;
+      if e[0].cur >= pos && (e[0].cur < pos + take || (last && e[0].cur <= nl)) {
+        crow = nrow; ccol = tui_text_width(cast(string) text[pos..<e[0].cur]);
+        if ccol >= room { crow = nrow + 1; ccol = 0; }   // the cursor sits past a full row
+      }
+      nrow += 1; pos += take;
+      if last { if ccol == 0 && crow == nrow && nrow < TUI_MAX_ROWS { starts[nrow] = nl; ends[nrow] = nl; nrow += 1; } break; }
+    }
+    if nl >= text.count { break; }
+    at = nl + 1;
+  }
+  if nrow > TUI_MAX_ROWS { nrow = TUI_MAX_ROWS; }
+  first := 0;
+  mr := ifx max_rows < 1 then 1 else max_rows;
+  if crow >= mr { first = crow - mr + 1; }
+  last := first + mr; if last > nrow { last = nrow; }
+  for i: first..<last {
+    k := tui_rows_add(r, style, ifx i == 0 then prompt else cont);
+    tui_rows_append(r, k, cast(string) text[starts[i]..<ends[i]]);
+    if i == crow { r[0].cur_row = k; r[0].cur_col = tui_text_width(ifx i == 0 then prompt else cont) + ccol; }
+  }
+}
+
+// ---------------------------------------------------------------- the live region
+
+// The rows drawn at the bottom of the terminal last time, and the cursor's
+// row within them, so the next draw can come back to their top.
+TuiLive :: struct { drawn: int; at: int; hidden: bool; }
+
+// Moves to the top of the live region and erases it and everything below.
+tui_live_erase :: (o: [] TuiOut, lv: [] TuiLive) {
+  if lv[0].drawn > 0 {
+    if lv[0].at > 0 { tui_csi_n(o, lv[0].at, "A"); }
+    tui_byte(o, 13); tui_csi(o, "J");
+  }
+  lv[0].drawn = 0; lv[0].at = 0;
+}
+
+// Draws rows as the live region; the cursor ends where the rows place it.
+tui_live_draw :: (o: [] TuiOut, lv: [] TuiLive, r: [] TuiRows) {
+  tui_csi(o, "?25l");
+  tui_live_erase(o, lv);
+  for i: 0..<r[0].n {
+    if i > 0 { tui_put(o, "\r\n"); }
+    tui_style(o, r[0].style[i]);
+    tui_put(o, cast(string) r[0].text[i][0..<r[0].len[i]]);
+    tui_style(o, TUI_PLAIN);
+    tui_csi(o, "K");
+  }
+  lv[0].drawn = r[0].n;
+  lv[0].at = ifx r[0].n > 0 then r[0].n - 1 else 0;
+  if r[0].cur_row >= 0 && r[0].cur_row < r[0].n {
+    up := r[0].n - 1 - r[0].cur_row;
+    if up > 0 { tui_csi_n(o, up, "A"); }
+    tui_byte(o, 13);
+    if r[0].cur_col > 0 { tui_csi_n(o, r[0].cur_col, "C"); }
+    lv[0].at = r[0].cur_row;
+    tui_csi(o, "?25h");
+  }
+}
+
+// Writes finished text into the scrollback above the live region: erase the
+// region, write the text and a line end; the caller draws the region again.
+tui_live_commit :: (o: [] TuiOut, lv: [] TuiLive, style: int, s: string) {
+  tui_live_erase(o, lv);
+  tui_style(o, style);
+  for c: s { if c == 10 { tui_style(o, TUI_PLAIN); tui_put(o, "\r\n"); tui_style(o, style); } else { tui_byte(o, cast(int) c); } }
+  tui_style(o, TUI_PLAIN);
+  tui_put(o, "\r\n");
+}
+
+// ---------------------------------------------------------------- checks
+
+// Test bytes: ` is ESC and | is Ctrl-C, since Coax strings have no \e.
+tui_tb :: (s: string, out: [] u8) -> string {
+  for i: 0..<s.count { c := s[i]; if c == '`' { c = 27; } else if c == '|' { c = 3; } out[i] = c; }
+  return cast(string) out[0..<s.count];
+}
+
+#test "UTF-8 runes and widths: ASCII, accents, CJK, emoji, combining marks" {
+  s := "aé中😀";
+  r := tui_rune(s, 0); #assert r.cp == 'a' && r.len == 1;
+  r = tui_rune(s, 1); #assert r.cp == 0xe9 && r.len == 2;
+  r = tui_rune(s, 3); #assert r.cp == 0x4e2d && r.len == 3;
+  r = tui_rune(s, 6); #assert r.cp == 0x1f600 && r.len == 4;
+  #assert tui_text_width(s) == 6;
+  #assert tui_text_width("é") == 1 || tui_text_width("é") == 2;
+  #assert tui_fit("中中中", 5) == 6 && tui_fit("abc", 2) == 2;
+  bad_b: [1] u8; bad := bad_b[..]; bad[0] = 0xff; #assert tui_rune(cast(string) bad[..], 0).cp == 0xfffd;
+}
+
+#test "keys: control bytes, CSI and SS3 arrows, Alt-Enter, kitty Shift-Enter, UTF-8" {
+  tb1: [64] u8; tb2: [64] u8; tb3: [64] u8; tb4: [64] u8; tb5: [64] u8; tb6: [64] u8; tb7: [64] u8; tb8: [64] u8; tb9: [64] u8; tb10: [64] u8; tb11: [64] u8;
+  k_b: [1] TuiKeys; k := k_b[..];
+  #assert tui_key(k, "\r", 0, false).key.kind == TUI_K_ENTER;
+  #assert tui_key(k, tui_tb("|", tb1[..]), 0, false).key.kind == TUI_K_CTRL_C;
+  #assert tui_key(k, tui_tb("`[A", tb2[..]), 0, false).key.kind == TUI_K_UP && tui_key(k, tui_tb("`[A", tb3[..]), 0, false).used == 3;
+  #assert tui_key(k, tui_tb("`OD", tb4[..]), 0, false).key.kind == TUI_K_LEFT;
+  #assert tui_key(k, tui_tb("`[1;3C", tb5[..]), 0, false).key.kind == TUI_K_WORD_RIGHT;
+  #assert tui_key(k, tui_tb("`\r", tb6[..]), 0, false).key.kind == TUI_K_NEWLINE;
+  #assert tui_key(k, tui_tb("`[13;2u", tb7[..]), 0, false).key.kind == TUI_K_NEWLINE;
+  #assert tui_key(k, tui_tb("`[3~", tb8[..]), 0, false).key.kind == TUI_K_DELETE;
+  #assert tui_key(k, tui_tb("`", tb9[..]), 0, false).key.kind == TUI_K_ESC;
+  #assert tui_key(k, tui_tb("`", tb10[..]), 0, true).used == 0;
+  #assert tui_key(k, tui_tb("`[1;", tb11[..]), 0, true).used == 0;
+  r := tui_key(k, "é", 0, false); #assert r.key.kind == TUI_K_CHAR && r.key.cp == 0xe9 && r.used == 2;
+  half := "é"; #assert tui_key(k, cast(string) half[0..<1], 0, true).used == 0;
+}
+
+#test "bracketed paste arrives as one key, newlines kept, even split across reads" {
+  tb12: [64] u8; tb13: [64] u8; tb14: [64] u8;
+  k_b: [1] TuiKeys; k := k_b[..];
+  s := tui_tb("`[200~line one\rline two`[201~x", tb12[..]);
+  r := tui_key(k, s, 0, false); #assert r.key.kind == TUI_K_NONE && k[0].pasting;
+  at := r.used;
+  r = tui_key(k, s, at, false); #assert r.key.kind == TUI_K_PASTE && r.key.text == "line one\nline two";
+  at += r.used;
+  #assert tui_key(k, s, at, false).key.cp == 'x';
+  // split: the end marker arrives in two pieces
+  k2_b: [1] TuiKeys; k2 := k2_b[..];
+  a := tui_tb("`[200~ab`[2", tb13[..]);
+  r = tui_key(k2, a, 0, true); r = tui_key(k2, a, r.used, true);
+  #assert r.key.kind == TUI_K_NONE && r.used == 2;
+  r = tui_key(k2, tui_tb("`[201~", tb14[..]), 0, true); #assert r.key.kind == TUI_K_PASTE && r.key.text == "ab";
+}
+
+#test "the composer: insert, move, delete words, continue with a backslash, submit" {
+  e_b: [1] TuiEditor; e := e_b[..];
+  for c: "hello world" { x := tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = cast(int) c}); }
+  #assert tui_ed_text(e) == "hello world" && e[0].cur == 11;
+  x := tui_ed_key(e, TuiKey.{kind = TUI_K_KILL_WORD}); #assert tui_ed_text(e) == "hello ";
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_HOME}); #assert e[0].cur == 0;
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = 0xe9}); #assert tui_ed_text(e) == "éhello " && e[0].cur == 2;
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_LEFT}); #assert e[0].cur == 0;
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_DELETE}); #assert tui_ed_text(e) == "hello ";
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_END});
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = '\\'});
+  #assert tui_ed_key(e, TuiKey.{kind = TUI_K_ENTER}) == TUI_ED_KEPT && tui_ed_text(e) == "hello \n";
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = 'x'});
+  #assert tui_ed_key(e, TuiKey.{kind = TUI_K_ENTER}) == TUI_ED_SUBMIT;
+}
+
+#test "history: Up and Down walk sent entries newest first and back to empty" {
+  e_b: [1] TuiEditor; e := e_b[..];
+  tui_ed_remember(e, "first"); tui_ed_remember(e, "second");
+  x := tui_ed_key(e, TuiKey.{kind = TUI_K_UP}); #assert tui_ed_text(e) == "second";
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_UP}); #assert tui_ed_text(e) == "first";
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_UP}); #assert tui_ed_text(e) == "first";
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_DOWN}); #assert tui_ed_text(e) == "second";
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_DOWN}); #assert tui_ed_text(e) == "";
+}
+
+#test "wrapping breaks at spaces, and the composer places the cursor" {
+  r_b: [1] TuiRows; r := r_b[..]; tui_rows_reset(r);
+  n := tui_rows_wrap(r, TUI_PLAIN, "● ", "  ", "one two three four", 10);
+  #assert n == 3 && cast(string) r[0].text[0][0..<r[0].len[0]] == "● one two ";
+  e_b: [1] TuiEditor; e := e_b[..]; tui_ed_set(e, "abcdefgh\nxy");
+  tui_rows_reset(r);
+  tui_rows_editor(r, e, "› ", "  ", 6, 10, TUI_PLAIN);
+  #assert r[0].n == 3 && cast(string) r[0].text[1][0..<r[0].len[1]] == "  efgh";
+  #assert r[0].cur_row == 2 && r[0].cur_col == 4;
+  e[0].cur = 4; tui_rows_reset(r); tui_rows_editor(r, e, "› ", "  ", 6, 10, TUI_PLAIN);
+  #assert r[0].cur_row == 1 && r[0].cur_col == 2;
+  // a full row puts the cursor on a fresh row below it
+  tui_ed_set(e, "abcd"); tui_rows_reset(r); tui_rows_editor(r, e, "› ", "  ", 6, 10, TUI_PLAIN);
+  #assert r[0].n == 2 && r[0].cur_row == 1 && r[0].cur_col == 2;
+}
+
+#test "the live region returns to its top, erases, redraws, and commits above itself" {
+  ob: [4096] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = ob[..];
+  lv_b: [1] TuiLive; lv := lv_b[..];
+  r_b: [1] TuiRows; r := r_b[..]; tui_rows_reset(r);
+  k := tui_rows_add(r, TUI_PLAIN, "status"); k = tui_rows_add(r, TUI_PLAIN, "› hi");
+  r[0].cur_row = 1; r[0].cur_col = 4;
+  tui_live_draw(o, lv, r);
+  #assert lv[0].drawn == 2 && lv[0].at == 1;
+  o[0].n = 0;
+  tui_live_commit(o, lv, TUI_PLAIN, "done");
+  t := tui_text(o);
+  #assert t.count > 6 && t[0] == 27 && t[1] == '[' && t[2] == '1' && t[3] == 'A';
+  #assert lv[0].drawn == 0;
+}
