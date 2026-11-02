@@ -1,5 +1,5 @@
-// Chapter 58: a head dimension inferred by division, text the tokenizer
-// cannot split yet, and a cache asked for more positions than it holds,
+// Chapter 58: a head dimension inferred by division, text that is not
+// well-formed UTF-8, and a cache asked for more positions than it holds,
 // each refused with its status.
 #import "Basic";
 #load "../lib/minitron.coax";
@@ -11,8 +11,8 @@ main :: () {
     print("head_dim 3072/32 = %: %, first missing: %\n",d.head_dim,r.status,cast(string)buf[0..<n]);
     d=LM_4B;d.layers=26;r=lm_inventory(d,LM_PINNED_MANIFEST);print("26 layers: %\n",r);
 
-    tb:=LM_TOKEN_BYTES;tr:=LM_TOKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
-    print("non-ASCII text: %\n",lm_prompt(t,"café",ids[..]));
+    tg:LmTokenRig;t:=lm_token_fixture(tg.data[..],tg.bytes[..],tg.ranks[..],tg.slots[..]);ids:[64]int;
+    cut:=[4]u8.[0x63,0x61,0x66,0xc3];print("\"caf\" and half of an é: %\n",lm_prompt(t,cast(string)cut[..],ids[..]));
     print("a byte outside the fixture table: %\n",lm_encode(t,"is ~",ids[..]));
 
     s:=ms_tiny();g:LmTinyRig;m:=lm_tiny_model(g.bytes[..],g.head[..],g.layers[..]);c:=lm_tiny_cache(g.keys[..],g.values[..]);

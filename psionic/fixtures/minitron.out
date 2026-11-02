@@ -1,8 +1,10 @@
 checkpoint 5205ef7d: 291 tensors, 4512746496 parameters: ok
 prompt (6 tokens): 128000 791 6864 315 9822 374
 contractions: 40 3358 2019 433 25 45373 17773 3009 11 814 2351 19804 13
+unicode: 47013 64 1080 30872 668 220 20 13281
 llama3: f28 0.0032114459947525913 (kept) f29 0.00216657076350336 (blended) f35*8 0.000764496988317175 (divided)
 tiny: 10 cached steps against one full pass: identical bits true, within 2e-6 of float64 true
+tiny: 80 cached steps in a 100-position cache against one full pass: identical bits true, within 1e-5 of float64 true
 tiny 1 3 7, temperature 0.0 seed 0: 4 4 4 4 4 4 4 4
 tiny 1 3 7, temperature 1.0 seed 58: 7 6 1 7 12 5 1 5
 tiny 1 3 7, temperature 1.0 seed 58: 7 6 1 7 12 5 1 5

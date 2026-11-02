@@ -537,7 +537,7 @@ for unit in "${selected_coax[@]+"${selected_coax[@]}"}"; do
     # domino loads chapter 158's field and 124's AdamW, which gate themselves, and its checks' oracles in psionic/tests.
     # conformer loads chapter 142's pixels and 53's counter RNG, which gate themselves, and its checks' references in psionic/tests.
     # tdt loads chapter 151's spectral and 53's counter RNG, which gate themselves, the pinned Parakeet manifest in psionic/fixtures and its checks' references in psionic/tests.
-    # minitron loads chapter 81's ministral and chapter 53's next-token, which gate themselves, and its pinned manifest, tokenizer table and float64 references in psionic/fixtures. psionic/tests/check_minitron_slices.sh runs it on original weights.
+    # minitron loads chapter 81's ministral (its UTF-8 decoder, Unicode class table and hash index among them) and chapter 53's next-token, which gate themselves, and its pinned manifest, tokenizer table and float64 references in psionic/fixtures. psionic/tests/check_minitron_slices.sh runs it on original weights; its --run and --long modes are checked by psionic/tests/minitron_run_oracle.py.
     # ministral loads chapter 7's BF16 matrix-vector product (qwen-matvec), which gates itself, and its pinned checkpoint, Tekken and reference fixtures in psionic/fixtures.
     # ministral-decode loads chapter 58's minitron (and through it chapter 81's ministral), which gate themselves. psionic/tests/check_ministral_slices.sh --run runs it on original weights, checked by psionic/tests/ministral_run_oracle.py.
     # diagnose loads chapter 104's tape and chapter 103's tabular units, which gate themselves.

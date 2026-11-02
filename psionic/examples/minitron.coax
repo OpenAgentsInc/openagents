@@ -1,7 +1,8 @@
 // Chapter 58: the pinned Llama-3.1-Minitron-4B-Width-Base inventory, the
-// Llama 3 tokenizer on the prompt, llama3 rotary frequencies, and the
-// two-layer synthetic model run through the key-value cache: full against
-// cached logits, greedy continuation and seeded continuation.
+// Llama 3 tokenizer on the prompt and on text beyond ASCII, llama3 rotary
+// frequencies, and the two-layer synthetic model run through the key-value
+// cache: full against cached logits (also past position 64), greedy
+// continuation and seeded continuation.
 #import "Basic";
 #load "../lib/minitron.coax";
 
@@ -10,10 +11,12 @@ main :: () {
     r:=lm_inventory(LM_4B,LM_PINNED_MANIFEST);
     print("checkpoint %: % tensors, % parameters: %\n",cast(string)LM_PINNED_REVISION[0..<8],LM_PINNED_TENSORS,r.written,r.status);
 
-    tb:=LM_TOKEN_BYTES;tr:=LM_TOKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
+    tg:LmTokenRig;t:=lm_token_fixture(tg.data[..],tg.bytes[..],tg.ranks[..],tg.slots[..]);ids:[64]int;
     p:=lm_prompt(t,"The capital of France is",ids[..]);print("prompt (% tokens):",p.written);
     for i:0..<p.written {print(" %",ids[i]);}print("\n");
     e:=lm_encode(t,"I'll say it: DON'T stop, they're HERE.",ids[..]);print("contractions:");
+    for i:0..<e.written {print(" %",ids[i]);}print("\n");
+    e=lm_encode(t,"Ça coûte 5 €",ids[..]);print("unicode:");
     for i:0..<e.written {print(" %",ids[i]);}print("\n");
 
     f:[64]f64;lm_rope_frequencies(128,f[..]);
@@ -28,6 +31,11 @@ main :: () {
     d:=lm_decode(s,m,c,0,tokens[..],hidden[..],full[..],work[..]);same:=d.status==MsStatus.ok;
     for i:0..<16 {if full[i]!=step[i] {same=false;}}
     print("tiny: 10 cached steps against one full pass: identical bits %, within 2e-6 of float64 %\n",same,worst<2e-6);
+    long:=LM_TINY_LONG;lk:[2*100*8]f32;lv:[2*100*8]f32;lc:=LmCache.{keys=lk[..],values=lv[..],capacity=100};lh:[1280]f32;lw:[1280]f32;
+    for k:0..<80 {d=lm_decode(s,m,lc,k,long[k..<k+1],lh[..],step[..],lw[..]);if d.status!=MsStatus.ok {print("refused %\n",d);return;}}
+    d=lm_decode(s,m,lc,0,long[..],lh[..],full[..],lw[..]);same=d.status==MsStatus.ok;worst=0;
+    for i:0..<16 {if full[i]!=step[i] {same=false;}x:=abs(f64(full[i])-LM_TINY_LONG_LOGITS[i]);if x>worst {worst=x;}}
+    print("tiny: 80 cached steps in a 100-position cache against one full pass: identical bits %, within 1e-5 of float64 %\n",same,worst<1e-5);
 
     st:[16]f64;o:[16]int;tm:[16]int;probs:[16]f64;nostop:[1]int;out:[8]int;
     k:=LmSampler.{options=NxOptions.{temperature=0},stops=nostop[0..<0],probabilities=probs[..],work=nx_work(st[..],o[..],tm[..])};

@@ -16,6 +16,8 @@ and not from any downloaded code. Pure Python, float64. Tooling only.
         compare (or write) psionic/fixtures/minitron-tiny.coax
     python3 -I psionic/tests/minitron_reference.py slice-tokens MODEL_DIRECTORY OUT_DIRECTORY
         write OUT_DIRECTORY/tokens.txt, the prompt the slices run
+    python3 -I psionic/tests/minitron_reference.py long-tokens MODEL_DIRECTORY OUT_DIRECTORY
+        write OUT_DIRECTORY/tokens.txt, the 74-token passage the long slices run
     python3 -I psionic/tests/minitron_reference.py slices MODEL_DIRECTORY OUT_DIRECTORY
         recompute the original-weight slices the Coax harness wrote and compare
 
@@ -32,6 +34,11 @@ import re
 import struct
 import sys
 from array import array
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+# Chapter 81's reference supplies Python-side helpers only: Coax string
+# literals, and regex classes spelled out from unicodedata.
+from ministral_reference import WHITE_SPACE, char_class, coax_string  # noqa: E402
 
 REVISION = "5205ef7d36204947e3b973cb8b147a816ccd7e6a"
 SOURCE = "https://huggingface.co/nvidia/Llama-3.1-Minitron-4B-Width-Base"
@@ -75,9 +82,27 @@ TOKEN_STRINGS = [
     "a+b=c; // comment",
     "'resume' 'S",
     "",
+    "caf\u00e9",
+    "\u00c7a co\u00fbte 5 \u20ac",
+    "\u041f\u0440\u0438\u0432\u0435\u0442, \u043c\u0438\u0440!",
+    "\u65e5\u672c\u8a9e\u306e\u30c6\u30ad\u30b9\u30c8",
+    "na\u00efve r\u00e9sum\u00e9",
+    "e\u0301te\u0301 \u0301x",
+    "\u0393\u03b5\u03b9\u03ac \u03c3\u03bf\u03c5",
+    "\U0001f44d ok",
+    "a\u00a0b \u00a0 c\u00a0\u0301",
+    "\u01c5emal \u00bd\u00b2\u216b",
+    "I'\u017f x '\u017fx",
+    "\u0661\u0662\u0663\u0664\u0665 \u0666",
+    "x\u2028y\u3000\u3000z",
 ]
-# The prompt the original-weight slices run.
+# The prompt the original-weight slices run, and a passage that reaches past
+# position 64 for the long slices.
 SLICE_PROMPT = "The capital of France is"
+LONG_PROMPT = ("The river rose in the night, and by morning the lower town was under water. People carried "
+               "what they could up the hill to the church, where the priest had opened the doors and lit the "
+               "stoves. Nobody knew how long the rain would last, so the baker began to bake bread for everyone "
+               "who had come up from the river, and the children carried it")
 
 
 def sha256(path):
@@ -86,27 +111,6 @@ def sha256(path):
         for chunk in iter(lambda: f.read(1 << 24), b""):
             d.update(chunk)
     return d.hexdigest()
-
-
-def coax_string(s):
-    out = []
-    for ch in s:
-        c = ord(ch)
-        if ch == "\\":
-            out.append("\\\\")
-        elif ch == '"':
-            out.append('\\"')
-        elif ch == "\n":
-            out.append("\\n")
-        elif ch == "\r":
-            out.append("\\r")
-        elif ch == "\t":
-            out.append("\\t")
-        elif 32 <= c < 127:
-            out.append(ch)
-        else:
-            raise ValueError(f"fixture text must be printable ASCII: {s!r}")
-    return '"' + "".join(out) + '"'
 
 
 def compare_or_write(path, text, write, what):
@@ -189,28 +193,38 @@ def pin(directory, write):
 
 # ---- tokens ----------------------------------------------------------------
 
-# The Llama 3 split pattern restricted to ASCII text: \p{L} is A-Za-z, \p{N}
-# is 0-9, and \s is Unicode White_Space, whose ASCII members are tab to
-# carriage return and space.
-S = r"\t\n\x0b\x0c\r "
-ASCII_PATTERN = re.compile(
-    r"'(?:[sS]|[tT]|[rR][eE]|[vV][eE]|[mM]|[lL][lL]|[dD])"
-    r"|[^\r\nA-Za-z0-9]?[A-Za-z]+"
-    r"|[0-9]{1,3}"
-    rf"| ?[^{S}A-Za-z0-9]+[\r\n]*"
-    rf"|[{S}]*[\r\n]+"
-    rf"|[{S}]+(?![^{S}])"
-    rf"|[{S}]+"
-)
+# The Llama 3 split pattern over Unicode. Python's re has no \p{..} classes, so
+# each class is spelled out as code point ranges from unicodedata (chapter 81's
+# char_class), and \s and \S as Unicode White_Space. The contractions keep the
+# pattern's (?i:...): Python's re folds case the way Unicode does, so 's also
+# matches 'S and the long s, U+017F. The matching itself, alternatives in order
+# and backtracking, is Python's regular-expression engine.
 LLAMA3_PATTERN = (r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*"
                   r"|\s*[\r\n]+|\s+(?!\S)|\s+")
+_PATTERN = []
+
+
+def unicode_pattern():
+    L = char_class(("Lu", "Ll", "Lt", "Lm", "Lo"))
+    N = char_class(("Nd", "Nl", "No"))
+    S = char_class((), WHITE_SPACE)
+    return re.compile(
+        r"(?i:'s|'t|'re|'ve|'m|'ll|'d)"
+        rf"|[^\r\n{L}{N}]?[{L}]+"
+        rf"|[{N}]{{1,3}}"
+        rf"| ?[^{S}{L}{N}]+[\r\n]*"
+        rf"|[{S}]*[\r\n]+"
+        rf"|[{S}]+(?![^{S}])"
+        rf"|[{S}]+"
+    )
 
 
 def pieces(text):
-    assert all(ord(c) < 128 for c in text)
+    if not _PATTERN:
+        _PATTERN.append(unicode_pattern())
     out, at = [], 0
     while at < len(text):
-        m = ASCII_PATTERN.match(text, at)
+        m = _PATTERN[0].match(text, at)
         assert m and m.end() > at
         out.append(text[at:m.end()].encode())
         at = m.end()
@@ -268,9 +282,9 @@ def encode(vocab, merges, text):
     return [t for p in pieces(text) for t in merge_bpe(vocab, merges, p)]
 
 
-def slice_tokens(directory, out):
+def slice_tokens(directory, out, prompt=SLICE_PROMPT):
     vocab, merges = load_tokenizer(directory)
-    tokens = [BOS] + encode(vocab, merges, SLICE_PROMPT)
+    tokens = [BOS] + encode(vocab, merges, prompt)
     (pathlib.Path(out) / "tokens.txt").write_text(" ".join(map(str, tokens)) + "\n")
     print(f"{len(tokens)} tokens: {tokens}")
     return 0
@@ -279,7 +293,6 @@ def slice_tokens(directory, out):
 def tokens(directory, write):
     vocab, merges = load_tokenizer(directory)
     table = byte_unicode()
-    inverse = {v: k for k, v in table.items()}
     # The fixture table is the vocabulary restricted to the fixture's pieces:
     # every entry whose bytes occur inside some piece, with its id as rank.
     subset, expected = {}, []
@@ -293,15 +306,22 @@ def tokens(directory, write):
                         subset[p[i:j]] = vocab[w]
             ids += merge_bpe(vocab, merges, p)
         expected.append(ids)
-    assert all(bytes(inverse[c] for c in w) is not None for w in list(vocab)[:10])
     entries = sorted(subset.items())
+    data, ends = [], [0]
+    for piece, _ in entries:
+        data += list(piece)
+        ends.append(len(data))
     lines = [
         "// The Llama 3 vocabulary restricted to chapter 58's fixture strings, written by",
         f"// psionic/tests/minitron_reference.py tokens from tokenizer.json at {REVISION}.",
-        "// Each entry is a byte string and its id, which is its rank. The expected ids",
-        "// come from Hugging Face's merge-list rule over the full 280,147 merges.",
+        "// Entry k is the bytes LM_TOKEN_DATA[LM_TOKEN_ENDS[k]..<LM_TOKEN_ENDS[k+1]] (some",
+        "// are partial UTF-8 sequences) and its id, which is its rank. The expected ids",
+        "// come from Hugging Face's merge-list rule over the full 280,147 merges, after",
+        "// Python's re split the text with the Unicode pattern.",
         f"LM_TOKEN_ENTRIES :: {len(entries)};",
-        f"LM_TOKEN_BYTES :: [{len(entries)}]string.[" + ",".join(coax_string(b.decode()) for b, _ in entries) + "];",
+        f"LM_TOKEN_DATA_BYTES :: {len(data)};",
+        f"LM_TOKEN_DATA :: [{len(data)}]u8.[" + ",".join(map(str, data)) + "];",
+        f"LM_TOKEN_ENDS :: [{len(ends)}]int.[" + ",".join(map(str, ends)) + "];",
         f"LM_TOKEN_RANKS :: [{len(entries)}]int.[" + ",".join(str(r) for _, r in entries) + "];",
         f"LM_TOKEN_TEXTS :: [{len(TOKEN_STRINGS)}]string.[" + ",".join(coax_string(t) for t in TOKEN_STRINGS) + "];",
     ]
@@ -395,6 +415,8 @@ def layer(x_rows, w, shape, freqs):
 # rotate-half pairs. Every weight is a multiple of 1/32, exact in BF16.
 TINY = dict(d=8, heads=4, kv=2, hd=4, hidden=12, vocab=16, layers=2)
 TINY_TOKENS = [1, 3, 7, 12, 4, 9, 0, 15, 2, 11]
+# 80 tokens, so the cache reaches past position 64.
+TINY_LONG = [(5 * i + 1) % 16 for i in range(80)]
 
 
 def tiny_value(k, i):
@@ -442,6 +464,11 @@ def tiny(write):
     for row in x:
         h = rms(row, norm)
         logits += [math.fsum(a * b for a, b in zip(head[r * d:(r + 1) * d], h)) for r in range(t["vocab"])]
+    x = [embed[tok * d:(tok + 1) * d] for tok in TINY_LONG]
+    for w in layers:
+        x = layer(x, w, (d, t["heads"], t["kv"], t["hd"], t["hidden"]), freqs)
+    h = rms(x[-1], norm)
+    long_logits = [math.fsum(a * b for a, b in zip(head[r * d:(r + 1) * d], h)) for r in range(t["vocab"])]
     big = rope_frequencies(HEAD_DIM)
     picks = [0, 1, 20, 28, 29, 32, 34, 35, 63]
     lines = [
@@ -449,6 +476,8 @@ def tiny(write):
         f"LM_TINY_TOKENS :: [{len(TINY_TOKENS)}]int.[" + ",".join(map(str, TINY_TOKENS)) + "];",
         f"LM_TINY_FREQS :: [{len(freqs)}]f64.[" + coax_floats(freqs) + "];",
         f"LM_TINY_LOGITS :: [{len(logits)}]f64.[" + coax_floats(logits) + "];",
+        f"LM_TINY_LONG :: [{len(TINY_LONG)}]int.[" + ",".join(map(str, TINY_LONG)) + "];",
+        f"LM_TINY_LONG_LOGITS :: [{len(long_logits)}]f64.[" + coax_floats(long_logits) + "];",
         f"LM_ROPE_PICKS :: [{len(picks)}]int.[" + ",".join(map(str, picks)) + "];",
         f"LM_ROPE_FREQS :: [{len(picks)}]f64.[" + coax_floats(big[i] for i in picks) + "];",
     ]
@@ -551,6 +580,8 @@ def main():
         return tiny(write)
     if a[:1] == ["slice-tokens"] and len(a) == 3 and not write:
         return slice_tokens(a[1], a[2])
+    if a[:1] == ["long-tokens"] and len(a) == 3 and not write:
+        return slice_tokens(a[1], a[2], LONG_PROMPT)
     if a[:1] == ["slices"] and len(a) == 3 and not write:
         return slices(a[1], a[2])
     print(__doc__.strip().splitlines()[8].strip(), file=sys.stderr)

@@ -7,15 +7,22 @@
 # reference in psionic/tests/minitron_reference.py within its frozen
 # tolerance.
 #   psionic/tests/check_minitron_slices.sh MODEL_DIRECTORY
+# With --long, it runs the same layer 0 checks over a 74-token passage, past
+# position 64, against the parallel float64 reference in
+# psionic/tests/minitron_run_oracle.py (a few minutes).
 # With --continue, it instead runs the recorded whole-model continuations
-# (minutes; not a routine check).
+# (minutes; not a routine check). With --run, it runs the recorded greedy
+# continuation, recomputes every layer from position 0 and checks each
+# layer's output, the last logits and the greedy tokens against
+# psionic/tests/minitron_run_oracle.py (about ten minutes; not a routine
+# check).
 # The caller supplies the original files; nothing is downloaded and no
 # weights are committed.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 mode=slices
-if [[ ${1-} == --continue ]]; then mode=continue; shift; fi
-if [[ $# -ne 1 ]]; then echo "usage: psionic/tests/check_minitron_slices.sh [--continue] MODEL_DIRECTORY" >&2; exit 2; fi
+case ${1-} in --continue|--run|--long) mode=${1#--}; shift;; esac
+if [[ $# -ne 1 ]]; then echo "usage: psionic/tests/check_minitron_slices.sh [--long|--continue|--run] MODEL_DIRECTORY" >&2; exit 2; fi
 model=$1
 coax=${COAX:-$PWD/coax/bin/coax}
 cc=${COAX_CC:-cc}
@@ -30,7 +37,14 @@ python3 -I psionic/tests/minitron_reference.py tiny
     -Wno-unknown-pragmas -Wno-unused-function -Wno-unused-parameter -I"$out" \
     "$out/minitron-slices-runtime.c" psionic/tests/minitron_run.c -lm -o "$out/minitron-run"
 python3 -I psionic/tests/minitron_reference.py slice-tokens "$model" "$out"
-if [[ $mode == slices ]]; then
+if [[ $mode == run ]]; then
+    "$out/minitron-run" run "$model" "$out/tokens.txt" 8 "$out"
+    python3 -I psionic/tests/minitron_run_oracle.py run "$model" "$out"
+elif [[ $mode == long ]]; then
+    python3 -I psionic/tests/minitron_reference.py long-tokens "$model" "$out"
+    "$out/minitron-run" slices "$model" "$out/tokens.txt" "$out"
+    python3 -I psionic/tests/minitron_run_oracle.py long "$model" "$out"
+elif [[ $mode == slices ]]; then
     "$out/minitron-run" slices "$model" "$out/tokens.txt" "$out"
     python3 -I psionic/tests/minitron_reference.py slices "$model" "$out"
 else

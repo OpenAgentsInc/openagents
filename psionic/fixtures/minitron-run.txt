@@ -1,0 +1,52 @@
+# Chapter 58's recorded original-weight runs of Llama-3.1-Minitron-4B-Width-Base (revision 5205ef7d), 2026-11-02.
+# The whole-model run: psionic/tests/minitron_run.c run on one CPU thread (the commands check_minitron_slices.sh --run
+# runs), then psionic/tests/minitron_run_oracle.py run in float64 on 20 processes. Recorded, not a routine check.
+prompt (6 tokens): 128000 791 6864 315 9822 374
+greedy, all 32 layers through the cache: 8 tokens, cache length 13, 351.3 s: 12366 13 578 4033 4221 374 8753 13
+full recompute over 13 tokens, 248.2 s: last logits identical bits to the cached run
+layer  0: 13 positions: max |difference| 2.055e-07, largest |value| 2.306e+00
+layer  1: 13 positions: max |difference| 1.067e-05, largest |value| 2.427e+02
+layer  2: 13 positions: max |difference| 1.854e-05, largest |value| 2.428e+02
+layer  3: 13 positions: max |difference| 1.529e-05, largest |value| 2.429e+02
+layer  4: 13 positions: max |difference| 1.721e-05, largest |value| 2.430e+02
+layer  5: 13 positions: max |difference| 2.289e-05, largest |value| 2.430e+02
+layer  6: 13 positions: max |difference| 1.320e-05, largest |value| 2.431e+02
+layer  7: 13 positions: max |difference| 1.324e-05, largest |value| 2.432e+02
+layer  8: 13 positions: max |difference| 1.061e-05, largest |value| 2.432e+02
+layer  9: 13 positions: max |difference| 1.652e-05, largest |value| 2.433e+02
+layer 10: 13 positions: max |difference| 1.611e-05, largest |value| 2.452e+02
+layer 11: 13 positions: max |difference| 1.276e-05, largest |value| 2.452e+02
+layer 12: 13 positions: max |difference| 1.301e-05, largest |value| 2.453e+02
+layer 13: 13 positions: max |difference| 1.927e-05, largest |value| 2.454e+02
+layer 14: 13 positions: max |difference| 2.248e-05, largest |value| 2.454e+02
+layer 15: 13 positions: max |difference| 1.350e-05, largest |value| 2.456e+02
+layer 16: 13 positions: max |difference| 1.677e-05, largest |value| 2.456e+02
+layer 17: 13 positions: max |difference| 1.120e-05, largest |value| 2.459e+02
+layer 18: 13 positions: max |difference| 1.811e-05, largest |value| 2.459e+02
+layer 19: 13 positions: max |difference| 1.212e-05, largest |value| 2.459e+02
+layer 20: 13 positions: max |difference| 8.330e-06, largest |value| 2.459e+02
+layer 21: 13 positions: max |difference| 1.195e-05, largest |value| 2.459e+02
+layer 22: 13 positions: max |difference| 1.527e-05, largest |value| 2.458e+02
+layer 23: 13 positions: max |difference| 1.614e-05, largest |value| 2.458e+02
+layer 24: 13 positions: max |difference| 1.443e-05, largest |value| 2.458e+02
+layer 25: 13 positions: max |difference| 1.494e-05, largest |value| 2.457e+02
+layer 26: 13 positions: max |difference| 1.881e-05, largest |value| 2.458e+02
+layer 27: 13 positions: max |difference| 1.606e-05, largest |value| 2.456e+02
+layer 28: 13 positions: max |difference| 2.399e-05, largest |value| 2.455e+02
+layer 29: 13 positions: max |difference| 1.669e-05, largest |value| 2.453e+02
+layer 30: 13 positions: max |difference| 1.271e-05, largest |value| 2.431e+02
+layer 31: 13 positions: max |difference| 1.279e-05, largest |value| 2.897e+01
+last logits: max |difference| 1.580e-06, largest |value| 2.003e+01
+reference greedy at positions 5..12: [12366, 13, 578, 4033, 4221, 374, 8753, 13] (the tokens the Coax run emitted)
+emitted text: ' Paris. The official language is French.'
+reference: 693 s on 20 processes
+# The long slices: psionic/tests/check_minitron_slices.sh --long, layer 0 over a 74-token passage.
+slice embed: 74 tokens, 0.001 s
+slice layer0: 74 tokens in one call, 46.391 s
+slice layer0 through the cache (72, then 1, then 1): identical bits
+slice readout: lm_head rows 0..4096, 0.071 s
+embed: 74 tokens, exact
+layer 0: 74 tokens (positions 0..73): max |difference| 2.055e-07, largest |value| 2.306e+00
+readout rows 0..4096 of lm_head at position 73: max |difference| 5.106e-07, largest |value| 8.381e+00
+reference: 139 s on 20 processes
+Minitron long: 277 s

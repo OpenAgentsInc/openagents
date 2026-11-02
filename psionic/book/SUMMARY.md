@@ -63,7 +63,7 @@
 - [55. Search without scanning everything](ch055-search-without-scanning-everything.md) — partly implemented
 - [56. Rerank the candidates](ch056-rerank-the-candidates.md) — partly implemented
 - [57. Answer from current sources](ch057-answer-from-current-sources.md) — partly implemented
-- [58. Continue a passage](ch058-continue-a-passage.md) — partly implemented
+- [58. Continue a passage](ch058-continue-a-passage.md)
 - [59. Run in the browser](ch059-run-in-the-browser.md) — partly implemented
 
 - [60. Original MXFP4 weights](ch060-original-mxfp4-weights.md) — first gpt-oss branch chapter

@@ -24,7 +24,7 @@ LM_HIGH_FACTOR :: 4.0;
 LM_ORIGINAL :: 8192.0;
 LM_BOS :: 128000;
 LM_EOS :: 128001;
-LM_POSITIONS_MAX :: 64;
+LM_POSITIONS_MAX :: 4096;
 // book:end shape
 
 // ---- the checkpoint --------------------------------------------------------
@@ -109,52 +109,66 @@ lm_inventory :: (s:MsShape,manifest:string)->MsResult {
 // ---- the tokenizer ---------------------------------------------------------
 
 // book:begin pieces
-// The Llama 3 split pattern on ASCII text, alternatives in order:
+// The Llama 3 split pattern, alternatives in order:
 //   (?i:'s|'t|'re|'ve|'m|'ll|'d)   a contraction, any case
 //   [^\r\n\p{L}\p{N}]?\p{L}+       one optional non-letter, non-digit,
 //                                  non-newline, then letters
 //   \p{N}{1,3}                     one to three digits
-//   " ?[^\s\p{L}\p{N}]+[\r\n]*"     punctuation, then newlines
+//   " ?[^\s\p{L}\p{N}]+[\r\n]*"     punctuation and marks, then newlines
 //   \s*[\r\n]+ | \s+(?!\S) | \s+   whitespace, as in chapter 81
-lm_letter :: (c:u8)->bool {k:=ms_class(c);return k==MS_UPPER || k==MS_LOWER;}
-lm_letters :: (s:string,at:int)->int {p:=at;while p<s.count && lm_letter(s[p]) {p+=1;}return p;}
-lm_lower :: (c:u8)->u8 {if ms_class(c)==MS_UPPER {return c+32;}return c;}
+// It reads code points with chapter 81's UTF-8 decoder and class table. A
+// letter is any of Lu, Ll, Lt, Lm and Lo; unlike Tekken's pattern, a mark
+// (M) is not part of a word but punctuation. Case folding in the
+// contractions is Unicode's: s also matches S and the long s, U+017F.
+LM_SET_LETTER :: 0x23;
+lm_fold :: (code:int)->int {
+    if code>='A' && code<='Z' {return code+32;}
+    if code==0x17f {return 's';}
+    return code;
+}
 LM_CONTRACTIONS :: [7]string.["s","t","re","ve","m","ll","d"];
 lm_contraction :: (s:string,at:int)->int {
     if s[at]!='\'' {return at;}
     for c:LM_CONTRACTIONS {
-        if at+c.count<s.count {
-            same:=true;for i:0..<c.count {if lm_lower(s[at+1+i])!=c[i] {same=false;}}
-            if same {return at+1+c.count;}
+        p:=at+1;same:=true;
+        for i:0..<c.count {
+            if p<s.count && lm_fold(ms_utf8(s,p).code)==cast(int)c[i] {p=ms_utf8(s,p).next;} else {same=false;break;}
         }
+        if same {return p;}
     }
     return at;
 }
 lm_piece :: (s:string,at:int)->int {
     end:=lm_contraction(s,at);if end>at {return end;}
-    c:=ms_class(s[at]);p:=at;
-    if c==MS_OTHER || (c==MS_SPACE && !ms_newline(s[at])) {p+=1;}
-    end=lm_letters(s,p);if end>p {return end;}
-    if c==MS_DIGIT {return nx_min(ms_run(s,at,MS_DIGIT),at+3);}
+    c:=ms_class_at(s,at);p:=at;
+    if c==MS_OTHER || c==MS_MARK || (c==MS_SPACE && !ms_newline(s[at])) {p=ms_utf8(s,at).next;}
+    end=ms_span(s,p,LM_SET_LETTER);if end>p {return end;}
+    if c==MS_DIGIT {
+        q:=at;for i:0..<3 {if q<s.count && ms_class_at(s,q)==MS_DIGIT {q=ms_utf8(s,q).next;}}
+        return q;
+    }
     p=at;if s[p]==' ' {p+=1;}
-    end=ms_run(s,p,MS_OTHER);
+    end=ms_span(s,p,MS_SET_PUNCT);
     if end>p {while end<s.count && ms_newline(s[end]) {end+=1;}return end;}
-    run:=ms_run(s,at,MS_SPACE);last:=at;
-    for i:at..<run {if ms_newline(s[i]) {last=i+1;}}
+    // Whitespace: through the last newline of the run, else all but the last
+    // code point before a non-space, else the whole run.
+    run:=at;last:=at;final:=at;
+    while run<s.count && ms_class_at(s,run)==MS_SPACE {final=run;if ms_newline(s[run]) {last=run+1;}run=ms_utf8(s,run).next;}
     if last>at {return last;}
-    if run==s.count || run-at==1 {return run;}
-    return run-1;
+    if run==s.count || final==at {return run;}
+    return final;
 }
 // book:end pieces
 
 // book:begin encode
-// ASCII text to ids: split into pieces, then chapter 81's tiktoken rule over
-// original ranks. Llama 3's ids are its ranks, so chapter 81's offset of 1000
-// special ids comes off. lm_prompt puts <|begin_of_text|> first, as the
-// tokenizer's template does.
+// UTF-8 text to ids: split into pieces, then chapter 81's tiktoken rule over
+// original ranks. Text that is not well-formed UTF-8 is refused
+// (unsupported, cause the byte offset). Llama 3's ids are its ranks, so
+// chapter 81's offset of 1000 special ids comes off. lm_prompt puts
+// <|begin_of_text|> first, as the tokenizer's template does.
 lm_encode :: (t:MsTable,text:string,out:[]int)->MsResult {
-    for i:0..<text.count {if text[i]>=128 {return MsResult.{status=MsStatus.unsupported,cause=i};}}
-    at:=0;n:=0;
+    at:=0;while at<text.count {p:=ms_utf8(text,at);if p.code<0 {return MsResult.{status=MsStatus.unsupported,cause=at};}at=p.next;}
+    at=0;n:=0;
     while at<text.count {
         end:=lm_piece(text,at);
         r:=ms_bpe(t,text[at..<end],out[n..<out.count]);
@@ -172,35 +186,72 @@ lm_prompt :: (t:MsTable,text:string,out:[]int)->MsResult {
 }
 // book:end encode
 
+// The fixture's restricted table, copied into caller storage and indexed
+// when the slots allow it (otherwise lookups scan).
+lm_token_fixture :: (data:[]u8,bytes:[]string,ranks:[]int,slots:[]int)->MsTable {
+    for i:0..<LM_TOKEN_DATA_BYTES {data[i]=LM_TOKEN_DATA[i];}
+    for k:0..<LM_TOKEN_ENTRIES {bytes[k]=cast(string)data[LM_TOKEN_ENDS[k]..<LM_TOKEN_ENDS[k+1]];ranks[k]=LM_TOKEN_RANKS[k];}
+    t:=MsTable.{bytes=bytes[0..<LM_TOKEN_ENTRIES],ranks=ranks[0..<LM_TOKEN_ENTRIES],slots=slots};
+    if ms_index(t).status!=MsStatus.ok {t.slots=slots[0..<0];}
+    return t;
+}
+LmTokenRig :: struct {data:[LM_TOKEN_DATA_BYTES]u8;bytes:[LM_TOKEN_ENTRIES]string;ranks:[LM_TOKEN_ENTRIES]int;slots:[1024]int;}
+
 #test "Llama 3 ids match the merge-list rule over the full vocabulary on every fixture string" {
-    tb:=LM_TOKEN_BYTES;tr:=LM_TOKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};out:[64]int;
-    for k:0..<LM_TOKEN_TEXTS.count {
-        r:=lm_encode(t,LM_TOKEN_TEXTS[k],out[..]);from:=LM_TOKEN_STARTS[k];
-        #assert r.status==MsStatus.ok && r.written==LM_TOKEN_STARTS[k+1]-from;
-        for i:0..<r.written {#assert out[i]==LM_TOKEN_IDS[from+i];}
+    g:LmTokenRig;t:=lm_token_fixture(g.data[..],g.bytes[..],g.ranks[..],g.slots[..]);out:[64]int;
+    #assert t.slots.count==1024 && t.bytes.count==LM_TOKEN_ENTRIES;
+    for i:0..<LM_TOKEN_DATA_BYTES {#assert g.data[i]==LM_TOKEN_DATA[i];}
+    for k:0..<LM_TOKEN_ENTRIES {#assert t.ranks[k]==LM_TOKEN_RANKS[k] && t.bytes[k].count==LM_TOKEN_ENDS[k+1]-LM_TOKEN_ENDS[k];}
+    scan:=lm_token_fixture(g.data[..],g.bytes[..],g.ranks[..],g.slots[0..<512]);#assert scan.slots.count==0;
+    // Both lookups, the hash index and the scan, give the reference's ids.
+    for u:0..<2 {
+        table:=t;if u==1 {table=scan;}
+        for k:0..<LM_TOKEN_TEXTS.count {
+            r:=lm_encode(table,LM_TOKEN_TEXTS[k],out[..]);from:=LM_TOKEN_STARTS[k];
+            #assert r.status==MsStatus.ok && r.written==LM_TOKEN_STARTS[k+1]-from;
+            for i:0..<r.written {#assert out[i]==LM_TOKEN_IDS[from+i];}
+        }
     }
+    #assert LM_TOKEN_TEXTS.count==22 && LM_TOKEN_TEXTS[9]=="café";
     r:=lm_prompt(t,"The capital of France is",out[..]);
     #assert r.status==MsStatus.ok && r.written==6 && out[0]==128000 && out[1]==791 && out[5]==374;
     r=lm_prompt(t,"",out[0..<1]);#assert r.status==MsStatus.ok && r.written==1 && out[0]==128000;
     #assert lm_prompt(t,"",out[0..<0]).status==MsStatus.capacity;
     r=lm_prompt(t,"Hello",out[0..<1]);#assert r.status==MsStatus.capacity;
-    bad:=[3]u8.[0x41,0xc3,0xa9];r=lm_prompt(t,cast(string)bad[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==1;
+    // Malformed UTF-8 is refused at its first bad byte, before any piece.
+    bad:=[4]u8.[0x41,0x41,0xc3,0x41];r=lm_prompt(t,cast(string)bad[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==2;
+    r=lm_encode(t,cast(string)bad[0..<3],out[..]);#assert r.status==MsStatus.unsupported && r.cause==2;
     edge:=[2]u8.[128,0x41];r=lm_encode(t,cast(string)edge[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==0;
     edge[0]=127;r=lm_encode(t,cast(string)edge[0..<1],out[..]);#assert r.status==MsStatus.range && r.cause==0;
     r=lm_encode(t,"is ~",out[..]);#assert r.status==MsStatus.range && r.cause==3;
+    // NUL is well-formed UTF-8 (code point 0); it is only missing from the table.
+    r=lm_encode(t,"\0",out[..]);#assert r.status==MsStatus.range && r.cause==0;
 }
 #test "pieces follow the Llama 3 pattern's alternatives in order" {
     #assert lm_piece("'s",0)==2 && lm_piece("'S x",0)==2 && lm_piece("'re",0)==3 && lm_piece("'RE",0)==3 && lm_piece("'Ve",0)==3;
     #assert lm_piece("'ll",0)==3 && lm_piece("'LLx",0)==3 && lm_piece("'d",0)==2 && lm_piece("'m",0)==2 && lm_piece("'t",0)==2;
     #assert lm_piece("'r",0)==2 && lm_piece("'x",0)==2 && lm_piece("'",0)==1 && lm_piece("''",0)==2 && lm_piece("'l",0)==2;
+    #assert lm_piece("'lx",0)==3 && lm_piece("'rex",0)==3 && lm_piece("'rx",0)==3 && lm_piece("'Tx",0)==2 && lm_piece("'MM",0)==2;
     #assert lm_piece("Hello",0)==5 && lm_piece("CamelCase",0)==9 && lm_piece(" world",0)==6 && lm_piece("\tand",0)==4 && lm_piece(",x",0)==2;
     #assert lm_piece("\nand",0)==1 && lm_piece("1234567",0)==3 && lm_piece("12",0)==2 && lm_piece("1234",0)==3 && lm_piece("123",0)==3 && lm_piece("1",0)==1 && lm_piece("12a",0)==2;
     #assert lm_piece(" 5",0)==1 && lm_piece("!!x",0)==2 && lm_piece(" //c",0)==3 && lm_piece("?\n\nA",0)==3 && lm_piece("./x",0)==2;
     #assert lm_piece("   x",0)==2 && lm_piece("  ",0)==2 && lm_piece(" \n x",0)==2 && lm_piece("\t",0)==1 && lm_piece("  \n",0)==3;
+    #assert lm_piece(" !A",0)==2 && lm_piece(" !a",0)==2 && lm_piece(" !1",0)==2 && lm_piece(" ! ",0)==2;
     #assert lm_piece("!\n/x",0)==2 && lm_piece("a b",1)==3 && lm_piece("ab",1)==2 && lm_piece("Zz",0)==2 && lm_piece("aZ",0)==2;
-    #assert lm_lower('A')=='a' && lm_lower('Z')=='z' && lm_lower('a')=='a' && lm_lower('@')=='@' && lm_lower('[')=='[';
-    #assert lm_letter('a') && lm_letter('Z') && !lm_letter('0') && !lm_letter(' ') && !lm_letter('\'');
-    #assert lm_letters("ab1",0)==2 && lm_letters("ab",0)==2 && lm_letters("1",0)==0;
+    // Beyond ASCII, by code point: letters of every case and script are one
+    // word; a mark starts a word or joins punctuation, never a word's end.
+    #assert lm_piece("café",0)==5 && lm_piece("日本語の",0)==12 && lm_piece("ǅemal",0)==6 && lm_piece("Γειά σ",0)==8;
+    #assert lm_piece("éte",0)==1 && lm_piece("éte",1)==5 && lm_piece(" ́x",0)==3 && lm_piece("́́x",0)==4 && lm_piece("€€5",0)==6;
+    // Spaces beyond ASCII: no-break space and U+2028 take a following letter
+    // as the optional first code point; U+3000 runs end before the last one.
+    #assert lm_piece(" b",0)==3 && lm_piece(" ́",0)==2 && lm_piece("   c",0)==3 && lm_piece(" y",0)==4;
+    #assert lm_piece("　　z",0)==3 && lm_piece("　　",0)==6 && lm_piece("　\n　",0)==4 && lm_piece("　",0)==3;
+    // Digits of any script, three code points at most.
+    #assert lm_piece("١٢٣٤",0)==6 && lm_piece("1²3",0)==4 && lm_piece("½²Ⅻ",0)==7 && lm_piece("١ ",0)==2;
+    // Contractions fold case as Unicode does: the long s matches s.
+    #assert lm_piece("'ſx",0)==3 && lm_piece("'žx",0)==4 && lm_piece("'ſ",0)==3;
+    #assert lm_fold('A')=='a' && lm_fold('Z')=='z' && lm_fold('a')=='a' && lm_fold('@')=='@' && lm_fold('[')=='[';
+    #assert lm_fold(0x17f)=='s' && lm_fold(0x17e)==0x17e && lm_fold(0x180)==0x180 && lm_fold(0x53)=='s';
 }
 
 // ---- the decoder -----------------------------------------------------------
@@ -287,7 +338,7 @@ lm_layer_rope :: (s:MsShape,w:MsLayer,c:LmCache,layer:int,start:int,x:[]f32,n:in
     d:=s.width;hd:=s.head_dim;q:=s.heads*hd;kv:=s.kv_heads*hd;group:=s.heads/s.kv_heads;base:=layer*c.capacity*kv;
     if x.count!=n*d || out.count<n*d || work.count<n*q {return MsResult.{status=MsStatus.capacity};}
     freqs:[128]f64;if rope==LmRope.yarn {ms_rope_frequencies(hd,freqs[..]);} else {lm_rope_frequencies(hd,freqs[..]);}
-    hb:[8192]f32;ob:[8192]f32;ab:[16384]f32;gb:[32768]f32;ub:[32768]f32;sb:[64]f64;sg:[32768]f32;stage:=sg[..];
+    hb:[8192]f32;ob:[8192]f32;ab:[16384]f32;gb:[32768]f32;ub:[32768]f32;sb:[LM_POSITIONS_MAX]f64;sg:[32768]f32;stage:=sg[..];
     h:=hb[0..<d];o:=ob[0..<d];a:=ab[0..<q];gate:=gb[0..<s.hidden];up:=ub[0..<s.hidden];
     for t:0..<n {
         p:=start+t;qs:=work[t*q..<(t+1)*q];ks:=c.keys[base+p*kv..<base+(p+1)*kv];vs:=c.values[base+p*kv..<base+(p+1)*kv];
@@ -454,6 +505,22 @@ lm_tiny_cache :: (keys:[]f32,values:[]f32)->LmCache {return LmCache.{keys=keys,v
     for t:0..<10 {#assert lm_layer_step(s,bm.layers[0],c,0,t,x[t*8..<(t+1)*8],1,theirs[t*8..<(t+1)*8],work[..]).status==MsStatus.ok;}
     for i:0..<80 {#assert ours[i]==theirs[i];}
 }
+#test "past position 64 the cache still gives the full recompute's bits and the float64 logits" #steps 400000000 {
+    s:=ms_tiny();g:LmTinyRig;m:=lm_tiny_model(g.bytes[..],g.head[..],g.layers[..]);
+    keys:[2*100*8]f32;values:[2*100*8]f32;c:=LmCache.{keys=keys[..],values=values[..],capacity=100};
+    tokens:=LM_TINY_LONG;hidden:[1280]f32;work:[1280]f32;full:[16]f32;step:[16]f32;
+    #assert tokens.count==80 && lm_cache_fits(s,c) && lm_work(s,80)==1280;
+    for t:0..<80 {#assert lm_decode(s,m,c,t,tokens[t..<t+1],hidden[..],step[..],work[..]).written==t+1;}
+    #assert lm_decode(s,m,c,0,tokens[..],hidden[..],full[..],work[..]).written==80;
+    for i:0..<16 {#assert full[i]==step[i] && abs(f64(full[i])-LM_TINY_LONG_LOGITS[i])<1e-5;}
+    // A prefill of 70 and then single steps reach the same bits.
+    #assert lm_decode(s,m,c,0,tokens[0..<70],hidden[..],step[..],work[..]).written==70;
+    for t:70..<80 {#assert lm_decode(s,m,c,t,tokens[t..<t+1],hidden[..],step[..],work[..]).written==t+1;}
+    for i:0..<16 {#assert full[i]==step[i];}
+    // The capacity bounds the positions: 80 tokens at 21 do not fit in 100.
+    #assert lm_decode(s,m,c,21,tokens[..],hidden[..],step[..],work[..]).status==MsStatus.shape;
+    #assert lm_decode(s,m,c,20,tokens[..],hidden[..],step[..],work[..]).written==100;
+}
 #test "the head is read in chunks the projection admits, with the same bits" {
     s:=ms_tiny();g:LmTinyRig;m:=lm_tiny_model(g.bytes[..],g.head[..],g.layers[..]);
     #assert qm_valid(1,LM_READOUT_ROWS,1) && !qm_valid(1,LM_READOUT_ROWS+1,1);
@@ -508,8 +575,8 @@ lm_tiny_cache :: (keys:[]f32,values:[]f32)->LmCache {return LmCache.{keys=keys,v
     small:=c;small.keys=g.keys[0..<255];#assert !lm_cache_fits(s,small) && lm_layer_step(s,w,small,0,0,x[0..<8],1,out[..],work[..]).status==MsStatus.shape;
     small=c;small.values=g.values[0..<255];#assert !lm_cache_fits(s,small);
     small=c;small.capacity=0;small.keys=g.keys[0..<0];small.values=g.values[0..<0];#assert !lm_cache_fits(s,small);
-    big:[2*65*8]f32;bigv:[2*65*8]f32;wide:=LmCache.{keys=big[..],values=bigv[..],capacity=65};#assert !lm_cache_fits(s,wide);
-    wide=LmCache.{keys=big[0..<2*64*8],values=bigv[0..<2*64*8],capacity=64};#assert lm_cache_fits(s,wide);
+    big:[2*4097*8]f32;bigv:[2*4097*8]f32;wide:=LmCache.{keys=big[..],values=bigv[..],capacity=4097};#assert !lm_cache_fits(s,wide);
+    wide=LmCache.{keys=big[0..<2*4096*8],values=bigv[0..<2*4096*8],capacity=4096};#assert lm_cache_fits(s,wide);
     one:=LmCache.{keys=big[0..<16],values=bigv[0..<16],capacity=1};#assert lm_cache_fits(s,one);
     // A NaN weight in each place a token passes is refused with where it sat.
     for k:0..<9 {

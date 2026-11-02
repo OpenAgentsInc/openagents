@@ -1,14 +1,5 @@
 # 58. Continue a passage
 
-> **Status: partly implemented.** The pinned checkpoint's inventory, the
-> Llama 3 tokenizer on ASCII text, llama3 rotary frequencies, a key-value
-> cache whose incremental logits equal the full recompute's bit for bit, and
-> greedy and seeded continuation run on the CPU. On the original weights,
-> layer 0 and an `lm_head` chunk match an independent float64 reference, and
-> all 32 layers continue a prompt greedily and with a seed. An independent
-> reference for the whole model's logits, the tokenizer's full Unicode
-> pattern and positions past 64 remain.
-
 This chapter runs the first NVIDIA text generator in the plan,
 Llama-3.1-Minitron-4B-Width-Base. It is a base model, so the task is plain
 continuation: given a passage, produce the next tokens. Its decoder has the
@@ -56,7 +47,7 @@ LM_HIGH_FACTOR :: 4.0;
 LM_ORIGINAL :: 8192.0;
 LM_BOS :: 128000;
 LM_EOS :: 128001;
-LM_POSITIONS_MAX :: 64;
+LM_POSITIONS_MAX :: 4096;
 ```
 
 The head dimension is a field of its own. Dividing the width by the heads
@@ -125,50 +116,67 @@ output) + 2 x 1,024 x 3,072 (key and value) + 3 x 9,216 x 3,072 (SwiGLU).
 
 ## The tokenizer
 
-Llama 3 splits text with one pattern, then merges bytes. On ASCII text its
-Unicode classes reduce to letters A-Z and a-z, digits 0-9, whitespace (tab to
-carriage return, and space) and everything else. Three things differ from
-chapter 81's Tekken pattern: contractions such as `'ll` come first in any
-case, a word is any run of letters with no upper/lower split, and digits go
-in groups of up to three.
+Llama 3 splits text with one pattern, then merges bytes. The pattern works on
+Unicode code points, so the split reads text with chapter 81's UTF-8 decoder
+(`ms_utf8`) and its table of 3,123 code point ranges written from Unicode
+15.1.0 (`ms_point_class`). Of chapter 81's seven classes, Llama 3 needs four
+sets: letters (upper, lower, title, modifier and other letters), digits (any
+`N` category), whitespace (Unicode `White_Space`) and everything else,
+including combining marks. Four things differ from Tekken's pattern:
+contractions such as `'ll` come first in any case, a word is any run of
+letters with no upper/lower split, a mark is never part of a word, and
+digits go in groups of up to three.
 
 <!-- source: psionic/lib/minitron.coax pieces -->
 ```jai
-// The Llama 3 split pattern on ASCII text, alternatives in order:
+// The Llama 3 split pattern, alternatives in order:
 //   (?i:'s|'t|'re|'ve|'m|'ll|'d)   a contraction, any case
 //   [^\r\n\p{L}\p{N}]?\p{L}+       one optional non-letter, non-digit,
 //                                  non-newline, then letters
 //   \p{N}{1,3}                     one to three digits
-//   " ?[^\s\p{L}\p{N}]+[\r\n]*"     punctuation, then newlines
+//   " ?[^\s\p{L}\p{N}]+[\r\n]*"     punctuation and marks, then newlines
 //   \s*[\r\n]+ | \s+(?!\S) | \s+   whitespace, as in chapter 81
-lm_letter :: (c:u8)->bool {k:=ms_class(c);return k==MS_UPPER || k==MS_LOWER;}
-lm_letters :: (s:string,at:int)->int {p:=at;while p<s.count && lm_letter(s[p]) {p+=1;}return p;}
-lm_lower :: (c:u8)->u8 {if ms_class(c)==MS_UPPER {return c+32;}return c;}
+// It reads code points with chapter 81's UTF-8 decoder and class table. A
+// letter is any of Lu, Ll, Lt, Lm and Lo; unlike Tekken's pattern, a mark
+// (M) is not part of a word but punctuation. Case folding in the
+// contractions is Unicode's: s also matches S and the long s, U+017F.
+LM_SET_LETTER :: 0x23;
+lm_fold :: (code:int)->int {
+    if code>='A' && code<='Z' {return code+32;}
+    if code==0x17f {return 's';}
+    return code;
+}
 LM_CONTRACTIONS :: [7]string.["s","t","re","ve","m","ll","d"];
 lm_contraction :: (s:string,at:int)->int {
     if s[at]!='\'' {return at;}
     for c:LM_CONTRACTIONS {
-        if at+c.count<s.count {
-            same:=true;for i:0..<c.count {if lm_lower(s[at+1+i])!=c[i] {same=false;}}
-            if same {return at+1+c.count;}
+        p:=at+1;same:=true;
+        for i:0..<c.count {
+            if p<s.count && lm_fold(ms_utf8(s,p).code)==cast(int)c[i] {p=ms_utf8(s,p).next;} else {same=false;break;}
         }
+        if same {return p;}
     }
     return at;
 }
 lm_piece :: (s:string,at:int)->int {
     end:=lm_contraction(s,at);if end>at {return end;}
-    c:=ms_class(s[at]);p:=at;
-    if c==MS_OTHER || (c==MS_SPACE && !ms_newline(s[at])) {p+=1;}
-    end=lm_letters(s,p);if end>p {return end;}
-    if c==MS_DIGIT {return nx_min(ms_run(s,at,MS_DIGIT),at+3);}
+    c:=ms_class_at(s,at);p:=at;
+    if c==MS_OTHER || c==MS_MARK || (c==MS_SPACE && !ms_newline(s[at])) {p=ms_utf8(s,at).next;}
+    end=ms_span(s,p,LM_SET_LETTER);if end>p {return end;}
+    if c==MS_DIGIT {
+        q:=at;for i:0..<3 {if q<s.count && ms_class_at(s,q)==MS_DIGIT {q=ms_utf8(s,q).next;}}
+        return q;
+    }
     p=at;if s[p]==' ' {p+=1;}
-    end=ms_run(s,p,MS_OTHER);
+    end=ms_span(s,p,MS_SET_PUNCT);
     if end>p {while end<s.count && ms_newline(s[end]) {end+=1;}return end;}
-    run:=ms_run(s,at,MS_SPACE);last:=at;
-    for i:at..<run {if ms_newline(s[i]) {last=i+1;}}
+    // Whitespace: through the last newline of the run, else all but the last
+    // code point before a non-space, else the whole run.
+    run:=at;last:=at;final:=at;
+    while run<s.count && ms_class_at(s,run)==MS_SPACE {final=run;if ms_newline(s[run]) {last=run+1;}run=ms_utf8(s,run).next;}
     if last>at {return last;}
-    if run==s.count || run-at==1 {return run;}
-    return run-1;
+    if run==s.count || final==at {return run;}
+    return final;
 }
 ```
 
@@ -180,19 +188,31 @@ whole entry of the vocabulary, so each is one token: 791, 6864, 315, 9822 and
 prompt is six ids. In `I'll say it: DON'T`, the contraction rule makes `'ll`
 and `'T` their own pieces, and `DON` stays one word.
 
+Beyond ASCII, the same rules work by code point. `Ça coûte 5 €` splits into
+`Ça`, ` coûte`, ` `, `5` and ` €`: `Ç` and `û` are letters, so each word is
+one piece; the space before `5` stands alone, because a digit is not a
+letter and ` 5` matches no alternative; and `€` is a symbol, so ` €` is
+punctuation. In `été` written with combining accents (`e`, U+0301, `te`,
+U+0301), the first accent is not a letter, so it ends the word `e` and then
+starts the next one as its optional first code point: `e`, then U+0301 `te`.
+Arabic-Indic digits `١٢٣٤٥` go in groups of three code points, `١٢٣` and
+`٤٥`, not three bytes. Case folding follows Unicode: `'ſ` (the long s,
+U+017F) is the contraction `'s`.
+
 The merging is chapter 81's tiktoken rule over original ranks (`ms_bpe`).
 Llama 3's ids are its ranks, so the 1,000 special ids chapter 81 adds come
 off again:
 
 <!-- source: psionic/lib/minitron.coax encode -->
 ```jai
-// ASCII text to ids: split into pieces, then chapter 81's tiktoken rule over
-// original ranks. Llama 3's ids are its ranks, so chapter 81's offset of 1000
-// special ids comes off. lm_prompt puts <|begin_of_text|> first, as the
-// tokenizer's template does.
+// UTF-8 text to ids: split into pieces, then chapter 81's tiktoken rule over
+// original ranks. Text that is not well-formed UTF-8 is refused
+// (unsupported, cause the byte offset). Llama 3's ids are its ranks, so
+// chapter 81's offset of 1000 special ids comes off. lm_prompt puts
+// <|begin_of_text|> first, as the tokenizer's template does.
 lm_encode :: (t:MsTable,text:string,out:[]int)->MsResult {
-    for i:0..<text.count {if text[i]>=128 {return MsResult.{status=MsStatus.unsupported,cause=i};}}
-    at:=0;n:=0;
+    at:=0;while at<text.count {p:=ms_utf8(text,at);if p.code<0 {return MsResult.{status=MsStatus.unsupported,cause=at};}at=p.next;}
+    at=0;n:=0;
     while at<text.count {
         end:=lm_piece(text,at);
         r:=ms_bpe(t,text[at..<end],out[n..<out.count]);
@@ -210,12 +230,24 @@ lm_prompt :: (t:MsTable,text:string,out:[]int)->MsResult {
 }
 ```
 
+Merging works on bytes, so a piece outside ASCII can end as tokens that are
+parts of a character. ` coûte` becomes ` co`, the two bytes of `û` (30872)
+and `te`; `٦` is not in the vocabulary as a whole, so it ends as its two
+bytes, 149 and 99.
+
 The fixture table is the vocabulary restricted to the fixture strings'
-pieces (334 entries). The independent check is a different algorithm over
-different data: the reference script runs Hugging Face's merge-list rule
-(byte-level letters, `ignore_merges`, the earliest of 280,147 merges first)
-over the full `tokenizer.json`, and the Coax ids must equal its ids on all
-nine fixture strings.
+pieces: 492 entries, some of them partial UTF-8 sequences, held as bytes and
+indexed with chapter 81's hash index (`ms_index`). The independent check is
+a different algorithm over different data: the reference script splits with
+Python's regular-expression engine (each `\p{..}` class spelled out as code
+point ranges from Python's `unicodedata`), then runs Hugging Face's
+merge-list rule (byte-level letters, `ignore_merges`, the earliest of
+280,147 merges first) over the full `tokenizer.json`. The Coax ids must
+equal its ids on all 22 fixture strings, 13 of them outside ASCII: accented
+Latin, Cyrillic, Greek, Japanese, an emoji, combining marks, no-break and
+ideographic spaces, U+2028, a title-case letter, fractions and Roman
+numerals, Arabic-Indic digits and the long s. Text that is not well-formed
+UTF-8 is refused before any piece is split.
 
 ## Positions
 
@@ -273,7 +305,9 @@ position on; a check runs both on the synthetic model to show they differ.
 
 Generating one token at a time, a decoder would recompute every earlier
 position's keys and values at each step. A cache keeps them: for each layer,
-the rotated keys and the values of every position seen so far.
+the rotated keys and the values of every position seen so far. A cache holds
+at most 4,096 positions; the layer step keeps one score per cached position
+on its stack, and that bound sizes it.
 
 <!-- source: psionic/lib/minitron.coax cache -->
 ```jai
@@ -319,7 +353,7 @@ lm_layer_rope :: (s:MsShape,w:MsLayer,c:LmCache,layer:int,start:int,x:[]f32,n:in
     d:=s.width;hd:=s.head_dim;q:=s.heads*hd;kv:=s.kv_heads*hd;group:=s.heads/s.kv_heads;base:=layer*c.capacity*kv;
     if x.count!=n*d || out.count<n*d || work.count<n*q {return MsResult.{status=MsStatus.capacity};}
     freqs:[128]f64;if rope==LmRope.yarn {ms_rope_frequencies(hd,freqs[..]);} else {lm_rope_frequencies(hd,freqs[..]);}
-    hb:[8192]f32;ob:[8192]f32;ab:[16384]f32;gb:[32768]f32;ub:[32768]f32;sb:[64]f64;sg:[32768]f32;stage:=sg[..];
+    hb:[8192]f32;ob:[8192]f32;ab:[16384]f32;gb:[32768]f32;ub:[32768]f32;sb:[LM_POSITIONS_MAX]f64;sg:[32768]f32;stage:=sg[..];
     h:=hb[0..<d];o:=ob[0..<d];a:=ab[0..<q];gate:=gb[0..<s.hidden];up:=ub[0..<s.hidden];
     for t:0..<n {
         p:=start+t;qs:=work[t*q..<(t+1)*q];ks:=c.keys[base+p*kv..<base+(p+1)*kv];vs:=c.values[base+p*kv..<base+(p+1)*kv];
@@ -364,7 +398,11 @@ recompute's bit for bit. That makes the check exact rather than toleranced:
 the synthetic model run one token at a time, as a prefill of four followed
 by three and then single tokens, and as one call over all ten, gives
 identical logits, and a cache full of another sequence's values is
-overwritten position by position.
+overwritten position by position. Past position 64 nothing changes: the
+synthetic model over 80 tokens in a 100-position cache, one token at a time
+and as a prefill of 70 followed by single tokens, gives the one-call
+recompute's bits, and its last logits lie within 10^-5 of a float64
+reference computed over all 80 positions.
 
 The step subtracts each row's maximum score before exponentiating, where
 chapter 81's layer does not. A check scales the synthetic model's attention
@@ -496,10 +534,12 @@ main :: () {
     r:=lm_inventory(LM_4B,LM_PINNED_MANIFEST);
     print("checkpoint %: % tensors, % parameters: %\n",cast(string)LM_PINNED_REVISION[0..<8],LM_PINNED_TENSORS,r.written,r.status);
 
-    tb:=LM_TOKEN_BYTES;tr:=LM_TOKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
+    tg:LmTokenRig;t:=lm_token_fixture(tg.data[..],tg.bytes[..],tg.ranks[..],tg.slots[..]);ids:[64]int;
     p:=lm_prompt(t,"The capital of France is",ids[..]);print("prompt (% tokens):",p.written);
     for i:0..<p.written {print(" %",ids[i]);}print("\n");
     e:=lm_encode(t,"I'll say it: DON'T stop, they're HERE.",ids[..]);print("contractions:");
+    for i:0..<e.written {print(" %",ids[i]);}print("\n");
+    e=lm_encode(t,"Ça coûte 5 €",ids[..]);print("unicode:");
     for i:0..<e.written {print(" %",ids[i]);}print("\n");
 
     f:[64]f64;lm_rope_frequencies(128,f[..]);
@@ -514,6 +554,11 @@ main :: () {
     d:=lm_decode(s,m,c,0,tokens[..],hidden[..],full[..],work[..]);same:=d.status==MsStatus.ok;
     for i:0..<16 {if full[i]!=step[i] {same=false;}}
     print("tiny: 10 cached steps against one full pass: identical bits %, within 2e-6 of float64 %\n",same,worst<2e-6);
+    long:=LM_TINY_LONG;lk:[2*100*8]f32;lv:[2*100*8]f32;lc:=LmCache.{keys=lk[..],values=lv[..],capacity=100};lh:[1280]f32;lw:[1280]f32;
+    for k:0..<80 {d=lm_decode(s,m,lc,k,long[k..<k+1],lh[..],step[..],lw[..]);if d.status!=MsStatus.ok {print("refused %\n",d);return;}}
+    d=lm_decode(s,m,lc,0,long[..],lh[..],full[..],lw[..]);same=d.status==MsStatus.ok;worst=0;
+    for i:0..<16 {if full[i]!=step[i] {same=false;}x:=abs(f64(full[i])-LM_TINY_LONG_LOGITS[i]);if x>worst {worst=x;}}
+    print("tiny: 80 cached steps in a 100-position cache against one full pass: identical bits %, within 1e-5 of float64 %\n",same,worst<1e-5);
 
     st:[16]f64;o:[16]int;tm:[16]int;probs:[16]f64;nostop:[1]int;out:[8]int;
     k:=LmSampler.{options=NxOptions.{temperature=0},stops=nostop[0..<0],probabilities=probs[..],work=nx_work(st[..],o[..],tm[..])};
@@ -535,15 +580,18 @@ coax/bin/coax run psionic/examples/minitron.coax
 checkpoint 5205ef7d: 291 tensors, 4512746496 parameters: ok
 prompt (6 tokens): 128000 791 6864 315 9822 374
 contractions: 40 3358 2019 433 25 45373 17773 3009 11 814 2351 19804 13
+unicode: 47013 64 1080 30872 668 220 20 13281
 llama3: f28 0.0032114459947525913 (kept) f29 0.00216657076350336 (blended) f35*8 0.000764496988317175 (divided)
 tiny: 10 cached steps against one full pass: identical bits true, within 2e-6 of float64 true
+tiny: 80 cached steps in a 100-position cache against one full pass: identical bits true, within 1e-5 of float64 true
 tiny 1 3 7, temperature 0.0 seed 0: 4 4 4 4 4 4 4 4
 tiny 1 3 7, temperature 1.0 seed 58: 7 6 1 7 12 5 1 5
 tiny 1 3 7, temperature 1.0 seed 58: 7 6 1 7 12 5 1 5
 tiny 1 3 7, temperature 1.0 seed 59: 10 9 12 10 13 10 1 10
 ```
 
-The tiny model's greedy continuation repeats one token; at width 8 it has
+The `unicode` line is `Ça coûte 5 €` as traced above. The tiny model's
+greedy continuation repeats one token; at width 8 it has
 little to say. The seeded runs show the same seed and counter giving the
 same eight tokens, and another seed giving others.
 
@@ -557,8 +605,8 @@ main :: () {
     print("head_dim 3072/32 = %: %, first missing: %\n",d.head_dim,r.status,cast(string)buf[0..<n]);
     d=LM_4B;d.layers=26;r=lm_inventory(d,LM_PINNED_MANIFEST);print("26 layers: %\n",r);
 
-    tb:=LM_TOKEN_BYTES;tr:=LM_TOKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
-    print("non-ASCII text: %\n",lm_prompt(t,"café",ids[..]));
+    tg:LmTokenRig;t:=lm_token_fixture(tg.data[..],tg.bytes[..],tg.ranks[..],tg.slots[..]);ids:[64]int;
+    cut:=[4]u8.[0x63,0x61,0x66,0xc3];print("\"caf\" and half of an é: %\n",lm_prompt(t,cast(string)cut[..],ids[..]));
     print("a byte outside the fixture table: %\n",lm_encode(t,"is ~",ids[..]));
 
     s:=ms_tiny();g:LmTinyRig;m:=lm_tiny_model(g.bytes[..],g.head[..],g.layers[..]);c:=lm_tiny_cache(g.keys[..],g.values[..]);
@@ -580,7 +628,7 @@ coax/bin/coax run psionic/examples/minitron-refuse.coax
 ```text
 head_dim 3072/32 = 96: checkpoint, first missing: model.layers.0.self_attn.k_proj.weight BF16 768,3072
 26 layers: MsResult.{status = checkpoint, written = 0, cause = -292}
-non-ASCII text: MsResult.{status = unsupported, written = 0, cause = 3}
+"caf" and half of an é: MsResult.{status = unsupported, written = 0, cause = 3}
 a byte outside the fixture table: MsResult.{status = range, written = 0, cause = 3}
 2 tokens at position 15 of a 16-position cache: MsResult.{status = shape, written = 0, cause = 0}
 token 16 of 16: MsResult.{status = range, written = 0, cause = 1}
@@ -588,8 +636,11 @@ token 16 of 16: MsResult.{status = range, written = 0, cause = 1}
 temperature -1: MsResult.{status = number, written = 0, cause = 1}
 ```
 
-Both programs exit with status 0, and their transcripts are compared exactly
-in debug and release builds.
+Text cut off after the lead byte of `é` is refused at byte 3, before any
+piece is split; text that is well-formed but needs bytes the fixture table
+lacks (`~`) is refused at the piece that needs them. Both programs exit with
+status 0, and their transcripts are compared exactly in debug and release
+builds.
 
 ## The original weights
 
@@ -645,20 +696,113 @@ drew the eighth. The cache made the continuation cheaper: 13 positions cost
 comparison cost 128 seconds, and recomputing at every step would cost the sum
 over steps.
 
-The whole-model outputs have no independent reference: the float64
-reference script is pure Python and computes one layer over six tokens in
-about a minute, too slow for 32 layers. What checks them is the cache's
-bit-for-bit agreement with the full recompute, the layer 0 and readout
-slices against the reference, and the plausibility of the text.
+## The whole model against float64
+
+The independent check of the whole model is a second, parallel float64
+reference, `psionic/tests/minitron_run_oracle.py`. It recomputes all 32
+layers from the original BF16 bytes with the reference script's own norm,
+llama3 frequencies, rotate-half pairs and causal softmax, and spreads the
+matrix-vector products over 20 worker processes with chapter 81's
+`ministral_run_oracle.py`. With `--run`, the slice script runs the greedy
+continuation, recomputes every layer from position 0 over the prompt and the
+first seven emitted tokens, and writes each layer's output, the last logits
+and the emitted tokens for the reference to compare:
+
+```shell
+COAX_CC=gcc psionic/tests/check_minitron_slices.sh --run ~/models/llama-3.1-minitron-4b-width-base-5205ef7d
+```
+
+The tolerance was frozen before the first comparison, as in chapter 81:
+every layer's output and the last logits may differ from float64 by at most
+10^-3 of the slice's largest magnitude. The reference must also pick, at
+every position from the prompt's last on, the same greedy token the Coax run
+emitted. The recorded run (`psionic/fixtures/minitron-run.txt`; about ten
+minutes for Coax on one thread and twelve for the reference, on a shared
+machine):
+
+```text
+prompt (6 tokens): 128000 791 6864 315 9822 374
+greedy, all 32 layers through the cache: 8 tokens, cache length 13, 351.3 s: 12366 13 578 4033 4221 374 8753 13
+full recompute over 13 tokens, 248.2 s: last logits identical bits to the cached run
+layer  0: 13 positions: max |difference| 2.055e-07, largest |value| 2.306e+00
+layer  1: 13 positions: max |difference| 1.067e-05, largest |value| 2.427e+02
+layer  2: 13 positions: max |difference| 1.854e-05, largest |value| 2.428e+02
+layer  3: 13 positions: max |difference| 1.529e-05, largest |value| 2.429e+02
+layer  4: 13 positions: max |difference| 1.721e-05, largest |value| 2.430e+02
+layer  5: 13 positions: max |difference| 2.289e-05, largest |value| 2.430e+02
+layer  6: 13 positions: max |difference| 1.320e-05, largest |value| 2.431e+02
+layer  7: 13 positions: max |difference| 1.324e-05, largest |value| 2.432e+02
+layer  8: 13 positions: max |difference| 1.061e-05, largest |value| 2.432e+02
+layer  9: 13 positions: max |difference| 1.652e-05, largest |value| 2.433e+02
+layer 10: 13 positions: max |difference| 1.611e-05, largest |value| 2.452e+02
+layer 11: 13 positions: max |difference| 1.276e-05, largest |value| 2.452e+02
+layer 12: 13 positions: max |difference| 1.301e-05, largest |value| 2.453e+02
+layer 13: 13 positions: max |difference| 1.927e-05, largest |value| 2.454e+02
+layer 14: 13 positions: max |difference| 2.248e-05, largest |value| 2.454e+02
+layer 15: 13 positions: max |difference| 1.350e-05, largest |value| 2.456e+02
+layer 16: 13 positions: max |difference| 1.677e-05, largest |value| 2.456e+02
+layer 17: 13 positions: max |difference| 1.120e-05, largest |value| 2.459e+02
+layer 18: 13 positions: max |difference| 1.811e-05, largest |value| 2.459e+02
+layer 19: 13 positions: max |difference| 1.212e-05, largest |value| 2.459e+02
+layer 20: 13 positions: max |difference| 8.330e-06, largest |value| 2.459e+02
+layer 21: 13 positions: max |difference| 1.195e-05, largest |value| 2.459e+02
+layer 22: 13 positions: max |difference| 1.527e-05, largest |value| 2.458e+02
+layer 23: 13 positions: max |difference| 1.614e-05, largest |value| 2.458e+02
+layer 24: 13 positions: max |difference| 1.443e-05, largest |value| 2.458e+02
+layer 25: 13 positions: max |difference| 1.494e-05, largest |value| 2.457e+02
+layer 26: 13 positions: max |difference| 1.881e-05, largest |value| 2.458e+02
+layer 27: 13 positions: max |difference| 1.606e-05, largest |value| 2.456e+02
+layer 28: 13 positions: max |difference| 2.399e-05, largest |value| 2.455e+02
+layer 29: 13 positions: max |difference| 1.669e-05, largest |value| 2.453e+02
+layer 30: 13 positions: max |difference| 1.271e-05, largest |value| 2.431e+02
+layer 31: 13 positions: max |difference| 1.279e-05, largest |value| 2.897e+01
+last logits: max |difference| 1.580e-06, largest |value| 2.003e+01
+reference greedy at positions 5..12: [12366, 13, 578, 4033, 4221, 374, 8753, 13] (the tokens the Coax run emitted)
+emitted text: ' Paris. The official language is French.'
+reference: 693 s on 20 processes
+```
+
+The largest layer difference, 2.4 x 10^-5 against values up to 246, is about
+10^-7 of the scale, four orders of magnitude inside the tolerance; the last
+logits differ by at most 1.6 x 10^-6. The float64 model picks the same eight
+tokens, so ` Paris. The official language is French.` is the model's
+continuation, not an artefact of f32 rounding.
+
+## Past position 64
+
+With `--long`, the script runs the slices over a 74-token passage instead of
+the six-token prompt: layer 0 in one call and through the cache (72 tokens,
+then 1, then 1), compared bit for bit, and layer 0 and `lm_head` rows 0 to
+4,095 at position 73 against the float64 reference within the slices'
+frozen 10^-4:
+
+```shell
+COAX_CC=gcc psionic/tests/check_minitron_slices.sh --long ~/models/llama-3.1-minitron-4b-width-base-5205ef7d
+```
+
+```text
+slice embed: 74 tokens, 0.001 s
+slice layer0: 74 tokens in one call, 46.391 s
+slice layer0 through the cache (72, then 1, then 1): identical bits
+slice readout: lm_head rows 0..4096, 0.071 s
+embed: 74 tokens, exact
+layer 0: 74 tokens (positions 0..73): max |difference| 2.055e-07, largest |value| 2.306e+00
+readout rows 0..4096 of lm_head at position 73: max |difference| 5.106e-07, largest |value| 8.381e+00
+reference: 139 s on 20 processes
+```
+
+Position 73 exercises llama3 scaling only a little: it changes only the
+frequencies whose wavelength exceeds 2,048 positions, and in 74 positions
+those turn by less than 4 percent of a cycle. Long contexts in the thousands, where the scaled band carries
+most of the position signal, are not checked against the original weights.
 
 ## What remains
 
-- An independent reference for whole-model logits on recorded prompts.
-- The tokenizer's full Unicode pattern; text outside ASCII is refused.
-- Positions past 64 (the cache's bound here), where llama3 scaling starts
-  to matter beyond the first few thousand positions.
-- Throughput: one token through all 32 layers takes about 11 seconds on one
-  core.
+- Throughput: one token through all 32 layers takes 11 to 27 seconds on one
+  core, depending on the machine's load.
+- Contexts in the thousands of positions on the original weights. The cache
+  holds 4,096 positions, but the longest checked real-weight prompt is 74
+  tokens.
 
 ## Sources
 

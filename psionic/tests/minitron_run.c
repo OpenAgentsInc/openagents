@@ -1,4 +1,6 @@
-/* Chapter 58's original-weight runs of Llama-3.1-Minitron-4B-Width-Base.
+/* Firm reason: 5 (thin wrapper with no logic: maps the shards, calls the Coax decoder and writes its outputs; all arithmetic is Coax)
+ *
+ * Chapter 58's original-weight runs of Llama-3.1-Minitron-4B-Width-Base.
  * All arithmetic is Coax (psionic/lib/minitron.coax through
  * minitron-slices-runtime.coax); this file maps the two shards, finds
  * tensors with the Coax inventory reader, and writes or prints results. The
@@ -12,6 +14,15 @@
  *       all 32 layers: prefill, then STEPS tokens through chapter 53's
  *       sampler (temperature 0 is greedy); with "full", recompute the last
  *       logits from position 0 and compare them bit for bit
+ *   minitron-run run MODEL_DIR TOKENS STEPS OUT_DIR
+ *       all 32 layers: STEPS greedy tokens through the cache, then every
+ *       layer recomputed from position 0 over the prompt and every emitted
+ *       token but the last, the last logits compared bit for bit with the
+ *       cached run, and each layer's output (layers.f32), those logits
+ *       (logits.f32) and the emitted tokens (emitted.txt) written to OUT_DIR
+ *       for psionic/tests/minitron_run_oracle.py
+ * The slices take up to CAPACITY tokens, so a prompt can reach past
+ * position 64.
  */
 #define _POSIX_C_SOURCE 200809L
 #include "minitron-slices-runtime.h"
@@ -24,7 +35,7 @@
 #include <time.h>
 #include <unistd.h>
 
-enum { D = 3072, VOCAB = 128256, LAYERS = 32, CAPACITY = 64, READOUT_ROWS = 4096, TENSORS = 291 };
+enum { D = 3072, VOCAB = 128256, LAYERS = 32, CAPACITY = 128, READOUT_ROWS = 4096, TENSORS = 291 };
 static const char *SHARDS[2] = {"model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"};
 static const int64_t SIZES[2] = {4978354640LL, 4047172128LL};
 
@@ -161,11 +172,67 @@ static int run(const char *dir, const char *tokpath, int steps, double temperatu
     return 0;
 }
 
+static int dump_run(const char *dir, const char *tokpath, int steps, const char *out_dir) {
+    int64_t tokens[CAPACITY]; int count = read_tokens(tokpath, tokens, CAPACITY);
+    if (steps < 1 || count + steps > CAPACITY) { fprintf(stderr, "steps out of range\n"); return 2; }
+    map_shards(dir);
+    coax_t_MsLayer layers[LAYERS];
+    for (int l = 0; l < LAYERS; l++) layers[l] = layer(l);
+    coax_t_LmModel m = {tensor("model.embed_tokens.weight", VOCAB, D), tensor("model.norm.weight", D, 0),
+                        tensor("lm_head.weight", VOCAB, D), {layers, LAYERS}, COAX_LmRope_llama3};
+    int64_t cache_n = lm_cache_size(S, CAPACITY), work_n = lm_work(S, CAPACITY);
+    float *keys = calloc(cache_n, 4), *values = calloc(cache_n, 4), *hidden = calloc(2 * CAPACITY * D, 4);
+    float *work = calloc(work_n, 4), *logits = calloc(VOCAB, 4), *again = calloc(VOCAB, 4);
+    float *dump = calloc((size_t)LAYERS * CAPACITY * D, 4);
+    double *stage = calloc(VOCAB, 8), *probs = calloc(VOCAB, 8);
+    int64_t *order = calloc(VOCAB, 8), *temp = calloc(VOCAB, 8), out[CAPACITY], stops[1] = {128001};
+    if (!keys || !values || !hidden || !work || !logits || !again || !dump || !stage || !probs || !order || !temp) { fprintf(stderr, "allocation failed\n"); return 2; }
+    coax_t_LmCache c = {span(keys, cache_n), span(values, cache_n), CAPACITY};
+    coax_t_LmSampler k = {{0.0, 0, 1.0}, {0, 0}, {stops, 1}, {probs, VOCAB}, {{stage, VOCAB}, {order, VOCAB}, {temp, VOCAB}}};
+    printf("prompt (%d tokens):", count);
+    for (int i = 0; i < count; i++) printf(" %lld", (long long)tokens[i]);
+    printf("\n");
+    fflush(stdout);
+    double t0 = now();
+    coax_t_MsResult r = lm_continue(S, m, c, (coax_v_s64){tokens, count}, steps, k, (coax_v_s64){out, steps},
+                                    span(hidden, 2 * CAPACITY * D), span(logits, VOCAB), span(work, work_n));
+    if (r.status) { fprintf(stderr, "continue status %u written %lld cause %lld\n", r.status, (long long)r.written, (long long)r.cause); return 1; }
+    printf("greedy, all 32 layers through the cache: %lld tokens, cache length %lld, %.1f s:", (long long)r.written, (long long)r.cause, now() - t0);
+    for (int i = 0; i < r.written; i++) printf(" %lld", (long long)out[i]);
+    printf("\n");
+    fflush(stdout);
+    /* The full recompute, layer by layer from position 0, keeping each
+     * layer's output for the independent reference. */
+    int64_t all[CAPACITY]; int n = 0;
+    for (int i = 0; i < count; i++) all[n++] = tokens[i];
+    for (int i = 0; i + 1 < r.written; i++) all[n++] = out[i];
+    double t1 = now();
+    float *x = hidden, *y = hidden + CAPACITY * D;
+    coax_t_MsResult f = ms_embed(S, m.embed, (coax_v_s64){all, n}, span(x, (int64_t)n * D));
+    for (int l = 0; l < LAYERS && !f.status; l++) {
+        f = lm_layer_step(S, layers[l], c, l, 0, span(x, (int64_t)n * D), n, span(y, (int64_t)n * D), span(work, work_n));
+        memcpy(dump + (size_t)l * n * D, y, (size_t)n * D * 4);
+        float *swap = x; x = y; y = swap;
+    }
+    if (!f.status) f = lm_readout(S, m.head, m.norm, span(x + (size_t)(n - 1) * D, D), span(again, VOCAB), span(work, work_n), 32768);
+    if (f.status) { fprintf(stderr, "full recompute status %u cause %lld\n", f.status, (long long)f.cause); return 1; }
+    int same = memcmp(logits, again, VOCAB * 4) == 0;
+    printf("full recompute over %d tokens, %.1f s: last logits %s\n", n, now() - t1, same ? "identical bits to the cached run" : "DIFFERENT");
+    if (write_f32(out_dir, "layers.f32", dump, (size_t)LAYERS * n * D) || write_f32(out_dir, "logits.f32", again, VOCAB)) return 1;
+    char path[4096]; snprintf(path, sizeof path, "%s/emitted.txt", out_dir);
+    FILE *ef = fopen(path, "w"); if (!ef) { perror(path); return 1; }
+    for (int i = 0; i < r.written; i++) fprintf(ef, "%lld\n", (long long)out[i]);
+    if (fclose(ef)) { perror(path); return 1; }
+    return same ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
+    if (argc == 6 && !strcmp(argv[1], "run")) return dump_run(argv[2], argv[3], atoi(argv[4]), argv[5]);
     if (argc == 5 && !strcmp(argv[1], "slices")) return slices(argv[2], argv[3], argv[4]);
     if ((argc == 7 || (argc == 8 && !strcmp(argv[7], "full"))) && !strcmp(argv[1], "continue"))
         return run(argv[2], argv[3], atoi(argv[4]), atof(argv[5]), strtoull(argv[6], NULL, 10), argc == 8);
     fprintf(stderr, "usage: minitron-run slices MODEL_DIR TOKENS OUT_DIR\n"
-                    "       minitron-run continue MODEL_DIR TOKENS STEPS TEMPERATURE SEED [full]\n");
+                    "       minitron-run continue MODEL_DIR TOKENS STEPS TEMPERATURE SEED [full]\n"
+                    "       minitron-run run MODEL_DIR TOKENS STEPS OUT_DIR\n");
     return 2;
 }
