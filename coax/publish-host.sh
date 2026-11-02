@@ -55,4 +55,12 @@ once() {
   esac
 }
 if [[ "$every" == 0 ]]; then once; exit; fi
-while true; do once || log 'failed; trying again next round'; sleep "$every"; done
+# Each round runs the clone's current script in a new process, so a change to
+# this script on main takes effect next round (bash would keep running the old
+# text it already loaded).
+while true; do
+  [[ -d "$clone/.git" ]] && git -C "$clone" fetch -q origin main && git -C "$clone" checkout -q --detach origin/main
+  if [[ -x "$clone/coax/publish-host.sh" ]]; then "$clone/coax/publish-host.sh" || log 'failed; trying again next round'
+  else once || log 'failed; trying again next round'; fi
+  sleep "$every"
+done
