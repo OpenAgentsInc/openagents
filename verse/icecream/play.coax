@@ -961,7 +961,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   #assert !o.has_seed && !o.trace;
 }
 
-#test "keys walk the kid; a step's input is recorded as a trace line" {
+#test "keys walk the kid; a step's input is recorded as a trace line" #steps 40000000 {
   plays: [1] Play;
   games: [1] Game;
   p := plays[..]; g := games[..];
@@ -1003,7 +1003,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   #assert p[0].frame_dt == 0 && p[0].steps.ran == 0;
 }
 
-#test "the browser's trace replays to the same state" {
+#test "the browser's trace replays to the same state" #steps 80000000 {
   plays: [1] Play;
   games: [1] Game;
   p := plays[..]; g := games[..];
@@ -1067,7 +1067,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   #assert !p[0].stick_on && p[0].look_on;
 }
 
-#test "the bot plays; a round's end runs the ending to the end card" {
+#test "the bot plays; a round's end runs the ending to the end card" #steps 150000000 {
   plays: [1] Play;
   games: [1] Game;
   p := plays[..]; g := games[..];

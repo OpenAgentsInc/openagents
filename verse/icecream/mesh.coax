@@ -1137,7 +1137,7 @@ part_of :: (kind: s32, index: s32, v: [] Vtx) -> int {
   return icecream_mesh_sprinkle(index, v);
 }
 
-#test "models: the demo's counts, bounds and vertices" {
+#test "models: the demo's counts, bounds and vertices" #steps 40000000 {
   v: [4096] Vtx;
   for k: 0..<ORACLE_PARTS.count {
     o := ORACLE_PARTS[k];
@@ -1169,18 +1169,18 @@ house_matches_oracle :: (k: int) {
   #assert s.count == o.count && near3(s.lo, o.lo) && near3(s.hi, o.hi);
   #assert s.hash == BANDED_HOUSE_HASHES[k] && s.hash != o.hash;
 }
-#test "house: repaired wall bands with the demo's counts and bounds, fixture 1" { #assert ORACLE_HOUSES.count == 10; house_matches_oracle(0); }
-#test "house: repaired wall bands with the demo's counts and bounds, fixture 2" { house_matches_oracle(1); }
-#test "house: repaired wall bands with the demo's counts and bounds, fixture 3" { house_matches_oracle(2); }
-#test "house: repaired wall bands with the demo's counts and bounds, fixture 4" { house_matches_oracle(3); }
-#test "house: repaired wall bands with the demo's counts and bounds, fixture 5" { house_matches_oracle(4); }
-#test "house: repaired wall bands with the demo's counts and bounds, fixture 6" { house_matches_oracle(5); }
-#test "house: repaired wall bands with the demo's counts and bounds, fixture 7" { house_matches_oracle(6); }
-#test "house: repaired wall bands with the demo's counts and bounds, fixture 8" { house_matches_oracle(7); }
-#test "house: repaired wall bands with the demo's counts and bounds, fixture 9" { house_matches_oracle(8); }
-#test "house: repaired wall bands with the demo's counts and bounds, fixture 10" { house_matches_oracle(9); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 1" #steps 300000000 { #assert ORACLE_HOUSES.count == 10; house_matches_oracle(0); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 2" #steps 600000000 { house_matches_oracle(1); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 3" #steps 300000000 { house_matches_oracle(2); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 4" #steps 300000000 { house_matches_oracle(3); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 5" #steps 300000000 { house_matches_oracle(4); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 6" #steps 300000000 { house_matches_oracle(5); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 7" #steps 300000000 { house_matches_oracle(6); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 8" #steps 300000000 { house_matches_oracle(7); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 9" #steps 300000000 { house_matches_oracle(8); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 10" #steps 300000000 { house_matches_oracle(9); }
 
-#test "house: the same seed builds the same geometry, another seed another" {
+#test "house: the same seed builds the same geometry, another seed another" #steps 250000000 {
   games: [3] Game;
   a := games[0..<1];
   b := games[1..<2];
@@ -1208,7 +1208,7 @@ house_matches_oracle :: (k: int) {
   #assert same && differ;
 }
 
-#test "a full view keeps counting, and writes nothing past its end" {
+#test "a full view keeps counting, and writes nothing past its end" #steps 100000000 {
   games: [1] Game;
   g := games[..];
   house_of(g, 4, tuning_for(Difficulty.easy));
