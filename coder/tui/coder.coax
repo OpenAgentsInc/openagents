@@ -36,6 +36,7 @@
 #load "plugins.coax";
 #load "router.coax";
 #load "mcp.coax";
+#load "approvals.coax";
 
 cxterm_keys :: (on: int) -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
@@ -69,6 +70,7 @@ App :: struct {
   model: string;
   model_engine: int;             // --model is for the engine it came with
   ask_first: bool;               // --ask: permission prompts instead of skipping them
+  pol: [1] CdPolicy;              // --allow, --ceiling, --root: approvals answered by policy (chapters 10 and 11)
   cwd: string;
   cols: int; rows: int;
   // the terminal
@@ -467,7 +469,7 @@ cd_claude_send :: (a: [] App, msg: string) {
   }
   cd_claude_reset(a[0].q);
   cl_init(a[0].q, a[0].qline, a[0].qarena, a[0].qout);
-  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first, cd_effort(a));
+  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a));
   a[0].npending = cd_cat(a[0].pending[..], 0, msg);
   problem := cl_start(a[0].q, a[0].p, "", true, a[0].scratch);
   if problem.count > 0 { cd_finish(a, END_FAILED, problem); return; }
@@ -620,6 +622,15 @@ cd_claude_poll :: (a: [] App) -> bool {
     if ev.kind == ClEventKind.permission {
       lb: [1024] u8;
       label := cd_tool_label(a, ev.request.tool_name, ev.request.input, lb[..]);
+      if a[0].pol[0].on {
+        pw: [256] u8; pn: [1] int;
+        verdict := cd_claude_verdict(a, ev.request.tool_name, ev.request.input, label, pw[..], pn[..]);
+        if verdict == CD_VERDICT_RUN { cl_allow(q, ev.request.input, ""); continue; }
+        if verdict == CD_VERDICT_REFUSE {
+          db: [400] u8; dn := cd_cat(db[..], 0, "Coder's policy refuses this: "); dn = cd_cat(db[..], dn, cast(string) pw[0..<pn[0]]);
+          cl_deny(q, cast(string) db[0..<dn], false); continue;
+        }
+      }
       a[0].nask = cd_cat(a[0].ask_text[..], 0, "Allow ");
       a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, label);
       a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, "?");
@@ -903,10 +914,10 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp                                 the verbs as MCP tools on stdio, for Claude Code or another agent\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --effort low|medium|high  --model M  --ask  --cwd DIR";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp                                 the verbs as MCP tools on stdio, for Claude Code or another agent\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --effort low|medium|high  --model M  --ask  --cwd DIR\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
 
 // Flags that take a value: their value is not a positional argument.
-CD_VALUE_FLAGS :: [18] string.["--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
+CD_VALUE_FLAGS :: [21] string.["--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
 
 // Positional argument k (0 is the verb), skipping flags and their values.
 cd_positional :: (args: [] Args, k: int) -> string {
@@ -1569,6 +1580,8 @@ tool_main :: () -> int #export_c {
   else if want == "psionic" { a[0].engine = ENGINE_PSIONIC; }
   else if want == "auto" { a[0].auto_engine = true; }
   else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude, codex, micro, psionic, echo or auto"); return 2; }
+  perr := cd_policy_args(a[0].pol[..], args_value(args, "--allow", ""), args_value(args, "--ceiling", ""), args_value(args, "--root", ""));
+  if perr.count > 0 { tool_errln(perr); return 2; }
   ef := args_value(args, "--effort", "");
   if ef.count > 0 {
     if ef != "low" && ef != "medium" && ef != "high" { tool_errln("coder: --effort is low, medium or high"); return 2; }

@@ -139,6 +139,21 @@ def verbs(check):
         check("--effort reaches Claude Code", os.path.exists(os.path.join(fake, "args")) and "--effort=high" in open(os.path.join(fake, "args")).read())
         bad = subprocess.run([coder, "run", "hi", "--effort", "huge"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("--effort takes low, medium or high", bad.returncode == 2 and "--effort is low, medium or high" in bad.stderr)
+        # approvals answered by policy (chapters 10 and 11): a stand-in claude asks three times
+        stub = os.path.join(home, "stubbin"); os.makedirs(stub, exist_ok=True)
+        with open(os.path.join(stub, "claude"), "w") as f:
+            f.write("#!/bin/sh\nexec " + sys.executable + " " + os.path.join(HERE, "claude_stub.py") + " \"$@\"\n")
+        os.chmod(os.path.join(stub, "claude"), 0o755)
+        work = os.path.realpath(tempfile.mkdtemp(prefix="coder-policy-")); answers = os.path.join(home, "answers")
+        pol = subprocess.run([coder, "run", "go", "--engine", "claude", "--allow", "write", "--ceiling", "write", "--cwd", work, "--json"], cwd=REPO,
+                             env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=answers), capture_output=True, text=True, timeout=120)
+        verdicts = [(l["tool"], l["verdict"]) for l in (json.loads(x) for x in pol.stdout.splitlines() if '"approval"' in x)]
+        check("policy: write inside runs, outside asks, a command above the ceiling is refused",
+              verdicts == [("Write(a.txt)", "run"), ("Write(/etc/stub-outside.txt)", "ask"), ("Bash(touch b.txt)", "refuse")])
+        sent = [json.loads(x)["behavior"] for x in open(answers)] if os.path.exists(answers) else []
+        check("policy: Claude Code gets allow, then deny with no one to ask, then deny", sent == ["allow", "deny", "deny"] and '"ending":"finished"' in pol.stdout)
+        badp = subprocess.run([coder, "run", "hi", "--allow", "run", "--ceiling", "write"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("policy: --allow can't pass --ceiling", badp.returncode == 2 and "--allow can't be above --ceiling" in badp.stderr)
         # a progress bar and colors read back as a terminal shows them (chapter 37)
         bar = subprocess.run([coder, "run", "$ printf '10%%\\r100%%\\n\\033[32mok\\033[0m\\n'", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         res = [json.loads(l) for l in bar.stdout.splitlines() if '"kind":"result"' in l]

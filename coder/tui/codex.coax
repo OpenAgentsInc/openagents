@@ -13,7 +13,7 @@ cd_codex_settings :: (a: [] App) -> CxSettings {
   st.cwd = a[0].cwd;
   if a[0].model_engine == ENGINE_CODEX { st.model = a[0].model; }
   st.effort = cd_effort(a);       // low, medium or high: the same words Codex takes
-  if a[0].ask_first { st.approval_policy = "untrusted"; st.sandbox = "workspace-write"; st.ask_person = true; }
+  if a[0].ask_first || a[0].pol[0].on { st.approval_policy = "untrusted"; st.sandbox = "workspace-write"; st.ask_person = true; }
   else { st.approval_policy = "never"; st.sandbox = "danger-full-access"; }
   return st;
 }
@@ -147,17 +147,27 @@ cd_codex_poll :: (a: [] App) -> bool {
       continue;
     }
     if ev.kind == CxEventKind.approval {
-      a[0].nask = cd_cat(a[0].ask_text[..], 0, "Allow ");
-      lb: [1024] u8;
+      lb: [1024] u8; what := "more permissions for this turn"; effect := CD_EFFECT_RUN; inside := true;
       if ev.of == CX_ASK_EXEC || ev.of == CX_ASK_EXEC_V1 {
         cmd := cd_cx_str(a, ev.params, "command");
         if cmd.count == 0 { cmd = cd_cx_str(a, ev.params, "command.0"); }
-        a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, cd_label(a, "Bash", cmd, lb[..]));
+        what = cd_label(a, "Bash", cmd, lb[..]);
+        cw := cd_cx_str(a, ev.params, "cwd");
+        if cw.count > 0 { inside = cd_inside(a[0].pol[..], a[0].cwd, cw); }
       } else if ev.of == CX_ASK_PATCH || ev.of == CX_ASK_PATCH_V1 {
-        a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, "these file changes");
-      } else {
-        a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, "more permissions for this turn");
+        what = "these file changes"; effect = CD_EFFECT_WRITE;
+        gr := cd_cx_str(a, ev.params, "grantRoot");
+        if gr.count > 0 { inside = cd_inside(a[0].pol[..], a[0].cwd, gr); }
       }
+      if a[0].pol[0].on {
+        pw: [256] u8;
+        verdict := cd_policy_decide(a[0].pol[..], effect, inside, pw[..]);
+        k := 0; while k < pw.count && pw[k] != 0 { k += 1; }
+        cd_approval_note(a, what, effect, inside, verdict, cast(string) pw[0..<k]);
+        if verdict != CD_VERDICT_ASK { cx_approve(a[0].cx, verdict == CD_VERDICT_RUN); continue; }
+      }
+      a[0].nask = cd_cat(a[0].ask_text[..], 0, "Allow ");
+      a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, what);
       a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, "?");
       a[0].ask = true;
       return true;      // no more polls until answered: a poll would decline it

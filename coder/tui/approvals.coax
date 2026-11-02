@@ -1,0 +1,194 @@
+// Approvals by policy (Coder book chapters 10 and 11, in chapter 5's shape).
+// A policy is data: the strongest effect a session may ever use (the
+// ceiling), the effect that runs without asking (allow), and the roots: the
+// folders a tool may touch without asking. Each permission request from
+// Claude Code or Codex becomes a tool, an effect and a room, and the policy
+// gives one verdict:
+//
+// - refuse: the effect is above the ceiling. No one is asked.
+// - run: the effect is at or below allow, and every path is inside a root.
+// - ask: anything else. The terminal UI asks the person; a job with no one
+//   to ask refuses.
+//
+// The effect comes from the tool's exact name, a bounded enum; a tool Coder
+// doesn't know takes the strongest effect. Paths come from the input's path
+// fields. A path with a ".." part counts as outside. A command's room is
+// the working directory, so the ceiling is what bounds a command.
+//
+// --allow, --ceiling and --root set the policy; any one of them turns it on.
+// Every verdict is an "approval" line in the session log.
+
+CD_EFFECTS :: [4] string.["read", "network", "write", "run"];
+CD_EFFECT_READ :: 0;
+CD_EFFECT_NETWORK :: 1;
+CD_EFFECT_WRITE :: 2;
+CD_EFFECT_RUN :: 3;
+
+CD_VERDICT_REFUSE :: 0;
+CD_VERDICT_RUN :: 1;
+CD_VERDICT_ASK :: 2;
+CD_VERDICTS :: [3] string.["refuse", "run", "ask"];
+
+CdPolicy :: struct {
+  on: bool;
+  allow: int;                     // runs without asking at or below this
+  ceiling: int;                   // never above this
+  roots: [4096] u8; nroots: int;  // folders, one per line; the working directory is always one
+}
+
+// -1 when name isn't an effect.
+cd_effect_index :: (name: string) -> int {
+  effects := CD_EFFECTS;
+  for e, i: effects { if e == name { return i; } }
+  return -1;
+}
+
+// The effect of a Claude Code tool, by its exact name.
+cd_effect_of :: (tool: string) -> int {
+  reads := [8] string.["Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite", "TodoRead", "Task"];
+  for r: reads { if r == tool { return CD_EFFECT_READ; } }
+  if tool == "WebFetch" || tool == "WebSearch" { return CD_EFFECT_NETWORK; }
+  writes := [4] string.["Edit", "Write", "MultiEdit", "NotebookEdit"];
+  for w: writes { if w == tool { return CD_EFFECT_WRITE; } }
+  return CD_EFFECT_RUN;           // Bash, and any tool Coder doesn't know
+}
+
+// Whether path is under root (or is root).
+cd_under :: (path: string, root: string) -> bool {
+  r := root; while r.count > 1 && r[r.count - 1] == '/' { r = cast(string) r[0..<r.count - 1]; }
+  if r.count == 0 || path.count < r.count || cast(string) path[0..<r.count] != r { return false; }
+  return path.count == r.count || path[r.count] == '/' || r == "/";
+}
+
+cd_has_dotdot :: (path: string) -> bool {
+  at := 0;
+  while at < path.count {
+    e := at; while e < path.count && path[e] != '/' { e += 1; }
+    if e - at == 2 && path[at] == '.' && path[at + 1] == '.' { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+
+// Whether one path is inside the policy's roots or the working directory;
+// a relative path is under the working directory.
+cd_inside :: (p: [] CdPolicy, cwd: string, path: string) -> bool {
+  if path.count == 0 { return true; }
+  if cd_has_dotdot(path) { return false; }
+  if path[0] != '/' { return true; }
+  if cwd.count > 0 && cd_under(path, cwd) { return true; }
+  roots := cast(string) p[0].roots[0..<p[0].nroots];
+  at := 0;
+  while at < roots.count {
+    e := at; while e < roots.count && roots[e] != 10 { e += 1; }
+    if e > at && cd_under(path, cast(string) roots[at..<e]) { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+
+// The verdict for an effect in a room; why says which rule decided.
+cd_policy_decide :: (p: [] CdPolicy, effect: int, inside: bool, why: [] u8) -> int {
+  effects := CD_EFFECTS;
+  n := 0;
+  if effect > p[0].ceiling {
+    n = cd_cat(why, 0, effects[effect]); n = cd_cat(why, n, " is above the ceiling, ");
+    n = cd_cat(why, n, effects[p[0].ceiling]);
+    return CD_VERDICT_REFUSE;
+  }
+  if !inside { n = cd_cat(why, 0, "outside the roots"); return CD_VERDICT_ASK; }
+  if effect <= p[0].allow { n = cd_cat(why, 0, effects[effect]); n = cd_cat(why, n, " inside the roots"); return CD_VERDICT_RUN; }
+  n = cd_cat(why, 0, effects[effect]); n = cd_cat(why, n, " is above what runs freely, ");
+  n = cd_cat(why, n, effects[p[0].allow]);
+  return CD_VERDICT_ASK;
+}
+
+// Reads --allow, --ceiling and --root; "" when they are fine, else why not.
+cd_policy_args :: (p: [] CdPolicy, allow: string, ceiling: string, roots: string) -> string {
+  p[0] = CdPolicy.{};
+  p[0].allow = CD_EFFECT_READ; p[0].ceiling = CD_EFFECT_RUN;
+  if allow.count == 0 && ceiling.count == 0 && roots.count == 0 { return ""; }
+  p[0].on = true;
+  if allow.count > 0 { p[0].allow = cd_effect_index(allow); if p[0].allow < 0 { return "coder: --allow is read, network, write or run"; } }
+  if ceiling.count > 0 { p[0].ceiling = cd_effect_index(ceiling); if p[0].ceiling < 0 { return "coder: --ceiling is read, network, write or run"; } }
+  if p[0].allow > p[0].ceiling { return "coder: --allow can't be above --ceiling"; }
+  // --root A,B: absolute folders
+  at := 0; n := 0;
+  while at < roots.count {
+    e := at; while e < roots.count && roots[e] != ',' { e += 1; }
+    r := cast(string) roots[at..<e];
+    if r.count > 0 {
+      if r[0] != '/' { return "coder: --root takes absolute folders"; }
+      n = cd_cat(p[0].roots[..], n, r); n = cd_cat(p[0].roots[..], n, "\n");
+    }
+    at = e + 1;
+  }
+  p[0].nroots = n;
+  return "";
+}
+
+// The paths a Claude Code tool input names.
+CD_PATH_FIELDS :: [4] string.["file_path", "path", "notebook_path", "cwd"];
+
+#test "effects come from exact tool names; unknown tools take the strongest" {
+  #assert cd_effect_of("Read") == CD_EFFECT_READ && cd_effect_of("Grep") == CD_EFFECT_READ;
+  #assert cd_effect_of("WebFetch") == CD_EFFECT_NETWORK;
+  #assert cd_effect_of("Edit") == CD_EFFECT_WRITE && cd_effect_of("Write") == CD_EFFECT_WRITE;
+  #assert cd_effect_of("Bash") == CD_EFFECT_RUN && cd_effect_of("mcp__x__y") == CD_EFFECT_RUN;
+}
+
+#test "rooms: under the working directory or a root, never through .." {
+  p: [1] CdPolicy;
+  #assert cd_policy_args(p[..], "write", "", "/data/shared") == "";
+  #assert cd_inside(p[..], "/w/repo", "/w/repo/src/a.c");
+  #assert cd_inside(p[..], "/w/repo", "src/a.c");
+  #assert !cd_inside(p[..], "/w/repo", "/w/repo2/a.c");
+  #assert !cd_inside(p[..], "/w/repo", "/w/repo/../x");
+  #assert cd_inside(p[..], "/w/repo", "/data/shared/x");
+  #assert !cd_inside(p[..], "/w/repo", "/etc/passwd");
+}
+
+#test "verdicts: refuse above the ceiling, run within allow inside, else ask" {
+  p: [1] CdPolicy; why: [256] u8;
+  #assert cd_policy_args(p[..], "write", "write", "") == "";
+  #assert cd_policy_decide(p[..], CD_EFFECT_RUN, true, why[..]) == CD_VERDICT_REFUSE;
+  #assert cd_policy_decide(p[..], CD_EFFECT_WRITE, true, why[..]) == CD_VERDICT_RUN;
+  #assert cd_policy_decide(p[..], CD_EFFECT_READ, false, why[..]) == CD_VERDICT_ASK;
+  #assert cd_policy_args(p[..], "read", "", "") == "";
+  #assert cd_policy_decide(p[..], CD_EFFECT_WRITE, true, why[..]) == CD_VERDICT_ASK;
+  #assert cd_policy_args(p[..], "run", "write", "") != "";
+  #assert cd_policy_args(p[..], "all", "", "") != "";
+  #assert cd_policy_args(p[..], "", "", "relative") != "";
+}
+
+// One approval verdict: a line in the session log and a row in the transcript.
+cd_approval_note :: (a: [] App, label: string, effect: int, inside: bool, verdict: int, why: string) {
+  effects := CD_EFFECTS; verdicts := CD_VERDICTS;
+  o := a[0].log[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"approval\",\"tool\":"); n = json_write_string(o, n, label);
+  n = json_raw(o, n, ",\"effect\":"); n = json_write_string(o, n, effects[effect]);
+  n = json_raw(o, n, ",\"inside\":"); n = json_raw(o, n, ifx inside then "true" else "false");
+  n = json_raw(o, n, ",\"verdict\":"); n = json_write_string(o, n, verdicts[verdict]);
+  n = json_raw(o, n, ",\"why\":"); n = json_write_string(o, n, why);
+  n = json_raw(o, n, "}");
+  if a[0].log[0].nid > 0 && n > 0 { cs_put(a, n); }
+  if verdict == CD_VERDICT_ASK { return; }       // the prompt shows it
+  rb: [1400] u8;
+  rn := cd_cat(rb[..], 0, ifx verdict == CD_VERDICT_RUN then "  Allowed " else "  Refused ");
+  rn = cd_cat(rb[..], rn, label); rn = cd_cat(rb[..], rn, " · policy: "); rn = cd_cat(rb[..], rn, why);
+  cd_commit(a, ifx verdict == CD_VERDICT_RUN then TUI_DIM else TUI_RED, cast(string) rb[0..<rn]);
+}
+
+// The verdict for a Claude Code permission request, noted.
+cd_claude_verdict :: (a: [] App, tool: string, input: string, label: string, why: [] u8, nwhy: [] int) -> int {
+  effect := cd_effect_of(tool);
+  inside := true;
+  fields := CD_PATH_FIELDS;
+  for f: fields { v := cl_str(a[0].q[0].ar[..], input, f); if v.count > 0 && !cd_inside(a[0].pol[..], a[0].cwd, v) { inside = false; } }
+  for i: 0..<why.count { why[i] = 0; }
+  verdict := cd_policy_decide(a[0].pol[..], effect, inside, why);
+  k := 0; while k < why.count && why[k] != 0 { k += 1; }
+  nwhy[0] = k;
+  cd_approval_note(a, label, effect, inside, verdict, cast(string) why[0..<k]);
+  return verdict;
+}

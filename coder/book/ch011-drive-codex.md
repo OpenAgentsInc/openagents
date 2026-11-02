@@ -4,10 +4,10 @@
 > app-server` on the person's own ChatGPT login (checked with codex-cli
 > 0.163.0): `coder run "TASK" --engine codex` and the terminal UI's second
 > agent. One thread holds the conversation; commands, their output and file
-> changes as unified diffs show in the transcript and the session log. Still
-> to come: approvals answered by chapter 5's policy, and a new recording
-> against a current Codex release (chapter 26 found `main` well past
-> 0.163.0).
+> changes as unified diffs show in the transcript and the session log.
+> With `--allow`, `--ceiling` or `--root`, chapter 5's policy answers
+> approvals. Still to come: a live run against a current Codex release
+> (chapter 26 found `main` well past 0.163.0).
 
 Codex is the other engine many people have. Coder drives it through
 `codex app-server`, the Codex CLI's JSON-RPC 2.0 server over stdio.
@@ -48,6 +48,21 @@ unified diffs with the same line numbers, colors and syntax highlighting as
 Claude Code's edits, and writes each one to the log as a `diff` line with
 its path and counts of added and removed lines.
 
+## Approvals by policy
+
+`--allow`, `--ceiling` and `--root` work as in
+[chapter 10](ch010-drive-claude-code.md#approvals-by-policy). With a policy,
+Coder starts the thread with approval policy `untrusted`, the
+`workspace-write` sandbox and you as the reviewer, then answers each
+approval itself:
+
+- A command is `run`, in its `cwd`.
+- A file change is `write`, in its `grantRoot` when Codex names one.
+- A request for more permissions is `run`.
+
+A verdict of ask comes to the y/a/n prompt in the terminal UI and is
+declined in a job.
+
 ## Checks
 
 ```sh
@@ -72,7 +87,9 @@ quota left to pass.
   CLI, and its events appear in `coder log`.
 - [ ] The live smoke passes against a named Codex version (blocked by the
   account's usage limit until 2026-11-08).
-- [ ] Approvals are answered by chapter 5's policy.
+- [x] Approvals are answered by chapter 5's policy. The decision is the
+  same code as chapter 10's, checked there; the live Codex check waits for
+  the usage limit above.
 
 ## Sources
 
