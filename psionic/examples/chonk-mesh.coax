@@ -1,0 +1,48 @@
+// Chapter 199: Le Chonk (Mistral Large 4) across a mesh with its own draft
+// head. The boundary contract at each cut, the head's bytes and room on
+// the last stage, modeled rounds of draft and verification on chapter
+// 198's plans, and a small model decoding greedily with a draft head across
+// simulated stages and expert peers, equal to plain decoding of the whole.
+#import "Basic";
+#load "../lib/chonk-mesh.coax";
+
+// Bytes as gigabytes with three decimals; nanoseconds as milliseconds with one.
+ckx_gb :: (b:int) {print("%.",b/1000000000);v:=b%1000000000/1000000;print("%",v/100);print("%",v/10%10);print("%",v%10);}
+ckx_ms :: (ns:int) {print("%.% ms",ns/1000000,ns%1000000/100000);}
+
+// book:begin example
+main :: () {
+    c:=l4_large4();m:=ck_large4(c,32768);parts:[CK_PARTS_MAX]CkPart;
+    print("contracts at 32,768 positions (bytes for 1 position without the head; for 4 with it):\n");
+    for cut:[5]int.[15,17,39,45,60] {
+        n:=ck_contract(m,cut,true,parts[..]);print("  cut %:",cut);
+        for x:parts[0..<n] {print(" % %",ck_kind_name(x.kind),x.layer);}
+        print("; % and % bytes\n",ck_bytes(parts[0..<ck_contract(m,cut,false,parts[..])],1),ck_bytes(parts[0..<n],4));
+    }
+    h:=ck_head(l4c_mesh(1,1));
+    print("draft head: backbone % bytes once a round, % a draft, cache % bytes; % in all (chapter 198 counts % in the headers)\n",
+        h.backbone,h.step,h.cache,h.backbone+h.step+h.cache,l4_inventory(c,L4_PINNED_MANIFEST).draft);
+    print("mesh: chapter 198's 256 GB peers and links (assumed rates); a draft kept with probability alpha, independently (assumed)\n");
+    for nw:[3]int.[51,24,18] {
+        g:=l4c_mesh(nw/10,nw%10);p:=l4_plan(c,g);n:=g.stages;peers:=n*g.width;
+        print("  % x % = % peers, last leader ",n,g.width,peers);ckx_gb(p.stage[n-1].leader);print(" GB + head ");ckx_gb(h.backbone+h.step+h.cache);print(" GB\n");
+        for k:[4]int.[0,1,2,4] {
+            r:=ck_round(c,g,p,k);print("    k %: round ",k);ckx_ms(r.round);print(" (draft ");ckx_ms(r.draft);print("), first cut sends % bytes\n",r.send[0]);
+        }
+        for a:[3]int.[5,7,9] {
+            alpha:=cast(f64)a/10;k:=ck_best(c,g,p,alpha);t:=ck_per_token(ck_round(c,g,p,k),alpha);
+            print("    alpha 0.%: best k %, a token ",a,k);ckx_ms(t);print(" (plain ");ckx_ms(ck_per_token(ck_round(c,g,p,0),alpha));print("), % peer-ms a token\n",peers*t/1000000);
+        }
+    }
+    // The small model: 6 layers, layers 3 and 5 read layer 1's cache; the head reads layers 1, 3 and 5.
+    src:=[6]int.[0,1,2,1,4,1];taps:=[3]int.[1,3,5];prompt:[4]int;drafted:=0;accepted:=0;
+    for seed:0..<3 {for n:[2]int.[2,3] {for k:[2]int.[2,4] {
+        ckc_prompt(seed,4,prompt[..]);cut:=ckc_cut(seed,6,n);
+        r:=ckc_run(seed,src[..],taps[..],cut[0..<n+1],2,k,prompt[..],12,CkFault.{},-1);
+        print("small model, seed %, stages at",seed);for i:1..<n {print(" %",cut[i]);}
+        print(", k %: % rounds, % of % drafts kept, same tokens as plain decoding %, % bytes sent (counted %)\n",k,r.split.rounds,r.split.accepted,r.split.drafted,r.same,r.split.sent,r.want);
+        drafted+=r.split.drafted;accepted+=r.split.accepted;
+    }}}
+    print("small model acceptance: % of % drafts\n",accepted,drafted);
+}
+// book:end example

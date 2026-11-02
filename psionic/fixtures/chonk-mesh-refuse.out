@@ -1,0 +1,12 @@
+9 drafts: input
+1 GB peers: chapter 198's plan refused
+3 stages of 2 peers at 183 GB, 1 draft: no room for the draft head on the last stage, 4069523456 bytes short; without drafts: ok
+a prompt of one token: input
+cuts 0 3 3: input
+hidden rows dropped at cut 2: a part is missing, hidden 2
+layer 1's cache rows dropped at cut 2: a part is missing, cache 1
+tap 1 dropped at cut 2: a part is missing, tap 1
+hidden rows sent twice: an extra part
+a value in the hidden rows changed: a part refused, checksum
+their digest changed: a part is missing, hidden 2
+layer 1's attention overflows: whole a layer's arithmetic failed, split a layer's arithmetic failed

@@ -1,0 +1,45 @@
+contracts at 32,768 positions (bytes for 1 position without the head; for 4 with it):
+  cut 15: hidden 15 tap 1; 24612 and 196680 bytes
+  cut 17: hidden 17 selection 16 tap 1; 32840 and 229484 bytes
+  cut 39: hidden 39 cache 35 tap 1 tap 18 tap 36; 26696 and 401588 bytes
+  cut 45: hidden 45 cache 35 selection 44 tap 1 tap 18 tap 36; 34924 and 434392 bytes
+  cut 60: hidden 60 cache 35 tap 1 tap 18 tap 36 tap 54; 26696 and 499928 bytes
+draft head: backbone 3758484480 bytes once a round, 441453568 a draft, cache 3538944 bytes; 4203476992 in all (chapter 198 counts 4199938048 in the headers)
+mesh: chapter 198's 256 GB peers and links (assumed rates); a draft kept with probability alpha, independently (assumed)
+  5 x 1 = 5 peers, last leader 179.694 GB + head 4.203 GB
+    k 0: round 136.1 ms (draft 0.0 ms), first cut sends 24612 bytes
+    k 1: round 228.2 ms (draft 10.4 ms), first cut sends 98376 bytes
+    k 2: round 310.7 ms (draft 11.6 ms), first cut sends 147528 bytes
+    k 4: round 475.7 ms (draft 13.8 ms), first cut sends 245832 bytes
+    alpha 0.5: best k 0, a token 136.1 ms (plain 136.1 ms), 680 peer-ms a token
+    alpha 0.7: best k 1, a token 134.2 ms (plain 136.1 ms), 671 peer-ms a token
+    alpha 0.9: best k 3, a token 114.3 ms (plain 136.1 ms), 571 peer-ms a token
+  2 x 4 = 8 peers, last leader 130.872 GB + head 4.203 GB
+    k 0: round 77.5 ms (draft 0.0 ms), first cut sends 26696 bytes
+    k 1: round 109.3 ms (draft 10.4 ms), first cut sends 200884 bytes
+    k 2: round 131.7 ms (draft 11.6 ms), first cut sends 301236 bytes
+    k 4: round 176.4 ms (draft 13.8 ms), first cut sends 501940 bytes
+    alpha 0.5: best k 1, a token 72.9 ms (plain 77.5 ms), 583 peer-ms a token
+    alpha 0.7: best k 2, a token 60.1 ms (plain 77.5 ms), 481 peer-ms a token
+    alpha 0.9: best k 6, a token 42.4 ms (plain 77.5 ms), 339 peer-ms a token
+  1 x 8 = 8 peers, last leader 153.541 GB + head 4.203 GB
+    k 0: round 76.3 ms (draft 0.0 ms), first cut sends 4 bytes
+    k 1: round 107.9 ms (draft 10.4 ms), first cut sends 8 bytes
+    k 2: round 130.0 ms (draft 11.6 ms), first cut sends 12 bytes
+    k 4: round 174.3 ms (draft 13.8 ms), first cut sends 20 bytes
+    alpha 0.5: best k 1, a token 71.9 ms (plain 76.3 ms), 575 peer-ms a token
+    alpha 0.7: best k 2, a token 59.3 ms (plain 76.3 ms), 475 peer-ms a token
+    alpha 0.9: best k 6, a token 41.9 ms (plain 76.3 ms), 335 peer-ms a token
+small model, seed 0, stages at 4, k 2: 9 rounds, 4 of 18 drafts kept, same tokens as plain decoding true, 5160 bytes sent (counted 5160)
+small model, seed 0, stages at 4, k 4: 9 rounds, 4 of 36 drafts kept, same tokens as plain decoding true, 7392 bytes sent (counted 7392)
+small model, seed 0, stages at 1 4, k 2: 9 rounds, 4 of 18 drafts kept, same tokens as plain decoding true, 6480 bytes sent (counted 6480)
+small model, seed 0, stages at 1 4, k 4: 9 rounds, 4 of 36 drafts kept, same tokens as plain decoding true, 9288 bytes sent (counted 9288)
+small model, seed 1, stages at 5, k 2: 11 rounds, 1 of 22 drafts kept, same tokens as plain decoding true, 6192 bytes sent (counted 6192)
+small model, seed 1, stages at 5, k 4: 11 rounds, 1 of 44 drafts kept, same tokens as plain decoding true, 8920 bytes sent (counted 8920)
+small model, seed 1, stages at 3 5, k 2: 11 rounds, 1 of 22 drafts kept, same tokens as plain decoding true, 10800 bytes sent (counted 10800)
+small model, seed 1, stages at 3 5, k 4: 11 rounds, 1 of 44 drafts kept, same tokens as plain decoding true, 15552 bytes sent (counted 15552)
+small model, seed 2, stages at 4, k 2: 6 rounds, 6 of 12 drafts kept, same tokens as plain decoding true, 3612 bytes sent (counted 3612)
+small model, seed 2, stages at 4, k 4: 6 rounds, 6 of 24 drafts kept, same tokens as plain decoding true, 5100 bytes sent (counted 5100)
+small model, seed 2, stages at 2 3, k 2: 6 rounds, 6 of 12 drafts kept, same tokens as plain decoding true, 5376 bytes sent (counted 5376)
+small model, seed 2, stages at 2 3, k 4: 6 rounds, 6 of 24 drafts kept, same tokens as plain decoding true, 7584 bytes sent (counted 7584)
+small model acceptance: 44 of 312 drafts

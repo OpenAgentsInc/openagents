@@ -1,0 +1,94 @@
+// Chapter 199's check helpers, loaded by psionic/lib/chonk-mesh.coax and
+// owned by its checks: the small model with a vocabulary and its draft
+// head, built from chapter 85's oracle weights and chapter 87's fixtures,
+// a run whole and split, and a plain greedy loop over positions and layers
+// written here without stages, messages or drafts.
+
+// The small model: chapter 198's l4c weights for `layers` layers with
+// sources src, an 8-token vocabulary (embedding and readout from chapter
+// 85's oracle values), taps at the given layers, every layer its own
+// indexer. The draft head: chapter 87's cell with the target's embedding
+// and readout, a fixed recurrence and a fixed projection of the taps.
+// rounds, accepted and digest: the schedule replayed from the plain loop's
+// tokens and tap rows with chapter 87's dh_draft.
+CkcRun :: struct {whole:CkRun;split:CkRun;reference:bool;same:bool;want:int;rounds:int;accepted:int;digest:int;wout:[24]int;sout:[24]int;rout:[33]int;}
+ckc_prompt :: (seed:int,count:int,out:[]int) {for i:0..<count {out[i]=(seed*7+i*3+1)%8;}}
+// Chapter 198's seeded cut into n stages.
+ckc_cut :: (seed:int,layers:int,n:int)->[9]int {cut:[9]int;l4c_cut(seed,layers,n,cut[..]);return cut;}
+// The split at cut (cut.count - 1 stages) over width expert peers with k
+// drafts, against the whole model with none and the plain loop. bad: -1,
+// or chapter 198's hook (2 l: layer l's attention overflows).
+ckc_run :: (seed:int,src:[]int,taps:[]int,cut:[]int,width:int,k:int,prompt:[]int,steps:int,fault:CkFault,bad:int)->CkcRun {
+    s:=m4o_shape();h:=s.hidden;r:CkcRun;layers:=src.count;n:=cut.count-1;plen:=prompt.count;
+    f:[8*L4_F]f32;c:[8*L4_C]u8;l4c_fill(seed,layers,f[..],c[..]);
+    if bad>=0 {f[bad/2*L4_F+15]=3e38;}
+    embed:[64]f32;out:[64]f32;m4o_values(seed+7,embed[..],0);m4o_values(seed+9,out[..],0);
+    t:=CkToy.{base=l4c_toy(layers,src,f[..],c[..]),vocab=8,embed=embed[..],out=out[..]};
+    t.model=CkModel.{layers=layers,hidden=h,ntaps=taps.count};
+    for l:0..<layers {t.model.src[l]=src[l];t.model.full[l]=1;t.model.row[l]=m4_row(s);}
+    for j:0..<taps.count {t.model.taps[j]=taps[j];}
+    recur:[64]f64;he:[64]f64;ho:[64]f64;proj:[512]f64;
+    dh_fill(seed,0.5,recur[..]);dh_fill(seed+3,0.25,proj[0..<8*8*taps.count]);
+    for i:0..<64 {he[i]=cast(f64)embed[i];ho[i]=cast(f64)out[i];}
+    d:=CkDraft.{cell=DhCell.{vocab=8,width=8,recur=recur[..],embed=he[..],out=ho[..]},proj=proj[0..<8*8*taps.count]};
+    // Whole: one stage, every expert on one peer, no drafts.
+    single:[8][1]XmPeer;sv:[8][]XmPeer;zeros:[8][5]int;zv:[8][]int;for l:0..<8 {sv[l]=single[l][..];zv[l]=zeros[l][..];}
+    whole:=[2]int.[0,layers];
+    wc:=ifx layers>0 then whole[..] else whole[0..<1];
+    r.whole=ck_generate(t,d,wc,prompt,steps,0,sv[..],zv[..],CkFault.{},r.wout[..]);
+    // Split: stages at cut, experts contiguous over width peers.
+    store:[8][40]XmExpert;peers:[8][8]XmPeer;owner:[8][5]int;pv:[8][]XmPeer;ov:[8][]int;
+    for l:0..<layers {
+        xs:=xm_contiguous(5,width,owner[l][..]);
+        xmc_peers(s,l4_moe(t.base,l),owner[l][..],store[l][..],peers[l][0..<width]);pv[l]=peers[l][0..<width];ov[l]=owner[l][..];
+    }
+    r.split=ck_generate(t,d,cut,prompt,steps,k,pv[..],ov[..],fault,r.sout[..]);
+    if r.whole.status!=CkStatus.ok {return r;}
+    // The plain loop: every position through every layer, in order.
+    // It runs k positions past the steps (when they fit), so the replay
+    // below can compare the last round's drafts.
+    rc:[8][32*7]f32;work:[7*8*6+64]f32;fwork:[80]f64;r.reference=true;rtap:[32][32]f32;
+    kk:=ifx k>=0 && k<=8 && plen+steps+k<=33 then k else 0;
+    for q:0..<plen+steps+kk-1 {
+        token:=ifx q<plen then prompt[q] else r.rout[q-plen];x:[8]f32;
+        for j:0..<h {x[j]=embed[token*h+j];}
+        for l:0..<layers {
+            routes:[1]M4Route;w:=m4_attn_view(f[l*L4_F..<l*L4_F+20],c[l*L4_C..<l*L4_C+214]);
+            if src[l]==l {r.reference=r.reference && m4_attention(s,w,1,q,x[..],rc[l][..],work[..],fwork[..]).status==M4Status.ok;}
+            else {r.reference=r.reference && l4_read(s,w,q,x[..],rc[src[l]][..],work[..],fwork[..]);}
+            r.reference=r.reference && m4_moe(s,m4_moe_view(f[l*L4_F+20..<(l+1)*L4_F],c[l*L4_C+214..<(l+1)*L4_C]),1,x[..],routes[..],work[..],fwork[..]).status==M4Status.ok;
+            for j:0..<taps.count {if taps[j]==l {for v:0..<h {rtap[q][j*h+v]=x[v];}}}
+        }
+        if q>=plen-1 {
+            best:=0;top:=0.0;
+            for v:0..<8 {z:=0.0;for j:0..<h {z+=cast(f64)out[v*h+j]*cast(f64)x[j];}if v==0 || z>top {best=v;top=z;}}
+            r.rout[q-plen+1]=best;
+        }
+    }
+    r.same=true;for i:0..<steps {r.same=r.same && r.wout[i]==r.rout[i] && r.sout[i]==r.rout[i];}
+    // The replay: drafts from the last kept position's taps, kept while
+    // they match the plain loop's tokens.
+    pos:=plen-1;last:=plen-2;pending:=prompt[plen-1];written:=0;
+    while written<steps {
+        dr:[8]int;kept:=0;
+        if kk>0 {
+            g:[8]f64;q:[512]f64;nn:[1]f64;wide:=h*taps.count;
+            for i:0..<8 {z:=0.0;for j:0..<wide {z+=proj[i*wide+j]*cast(f64)rtap[last][j];}g[i]=z/(1+abs(z));}
+            used:=dh_draft(d.cell,g[..],pending,kk,true,nn[0..<0],dr[..],q[..]);#assert used==0;
+            for j:0..<kk {r.digest=(r.digest*31+dr[j]+1)%2147483647;}
+            while kept<kk && dr[kept]==r.rout[written+kept] {kept+=1;}
+        }
+        written+=kept+1;last=pos+kept;pending=r.rout[written-1];pos+=kept+1;r.rounds+=1;r.accepted+=kept;
+    }
+    // The bytes a pass of `count` positions sends, per cut: the hidden rows,
+    // each earlier cache a later layer reads, and (with drafts) each tap
+    // before the cut, as chapter 186's messages. Summed over the split's
+    // passes: 4 (9 passes + width positions) a part.
+    for i:1..<n {
+        b:=cut[i];r.want+=4*(9*r.split.passes+h*r.split.positions);
+        for x:0..<b {for l:b..<layers {if src[l]==x {r.want+=4*(9*r.split.passes+m4_row(s)*r.split.positions);break;}}}
+        if k>0 {for tp:taps {if tp<b {r.want+=4*(9*r.split.passes+h*r.split.positions);}}}
+    }
+    return r;
+}
+// The hand-worked meshes are chapter 198's l4c_mesh.

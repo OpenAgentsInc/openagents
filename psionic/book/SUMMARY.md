@@ -218,7 +218,7 @@
 - [196. Work with Mesh-LLM](ch196-work-with-mesh-llm.md) — partly implemented
 - [197. DeepSeek V4.1 Flash across stages](ch197-deepseek-v41-flash-across-stages.md) — partly implemented
 - [198. Mistral Large 4 across a mesh](ch198-mistral-large-4-across-a-mesh.md) — partly implemented
-- [199. Le Chonk across a mesh](ch199-le-chonk-across-a-mesh.md) — design draft
+- [199. Le Chonk across a mesh](ch199-le-chonk-across-a-mesh.md) — partly implemented
 
 - 200–214, 251, 252: moved to [Coder: Coding Agents From Scratch](../../coder/book/SUMMARY.md), chapters 1–8 and 14–22
 
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–82, 83, 84, 85, 86, 87, 88–102, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–197, 198, 215–250 have runnable code; the [introduction](README.md)
-table gives each one's exact status. Planned chapters without runnable code
-are design drafts. The physics engine and spacecraft chapters
+Chapters 1–53, 55–82, 83, 84, 85, 86, 87, 88–102, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–197, 198, 199, 215–250 have runnable code; the [introduction](README.md)
+table gives each one's exact status. No design drafts remain: every
+chapter has runnable code, in full or in part. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

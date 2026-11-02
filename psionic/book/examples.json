@@ -3513,6 +3513,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/chonk-mesh.coax",
+      "chapter": "psionic/book/ch199-le-chonk-across-a-mesh.md",
+      "stdout": "psionic/fixtures/chonk-mesh.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/chonk-mesh-refuse.coax",
+      "chapter": "psionic/book/ch199-le-chonk-across-a-mesh.md",
+      "stdout": "psionic/fixtures/chonk-mesh-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

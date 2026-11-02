@@ -1,0 +1,34 @@
+// Chapter 199: rounds and runs that are refused, each with what was wrong,
+// and boundary parts dropped, added or changed on the wire.
+#import "Basic";
+#load "../lib/chonk-mesh.coax";
+
+// book:begin refuse
+main :: () {
+    c:=l4_large4();m:=l4c_mesh(2,4);p:=l4_plan(c,m);
+    print("9 drafts: %\n",ck_status_name(ck_round(c,m,p,9).status));
+    g:=l4c_mesh(4,1);g.budget=1000000000;
+    print("1 GB peers: %\n",ck_status_name(ck_round(c,g,l4_plan(c,g),1).status));
+    h:=l4c_mesh(3,2);h.budget=183000000000;q:=l4_plan(c,h);r:=ck_round(c,h,q,1);
+    print("3 stages of 2 peers at 183 GB, 1 draft: %, % bytes short; without drafts: %\n",ck_status_name(r.status),r.gap,ck_status_name(ck_round(c,h,q,0).status));
+
+    src:=[6]int.[0,1,2,1,4,1];taps:=[3]int.[1,3,5];prompt:[4]int;ckc_prompt(1,4,prompt[..]);cut:=[4]int.[0,2,4,6];
+    s:=ckc_run(1,src[..],taps[..],cut[..],2,2,prompt[0..<1],6,CkFault.{},-1);
+    print("a prompt of one token: %\n",ck_status_name(s.split.status));
+    bad:=[3]int.[0,3,3];s=ckc_run(1,src[..],taps[..],bad[..],2,2,prompt[..],6,CkFault.{},-1);
+    print("cuts 0 3 3: %\n",ck_status_name(s.split.status));
+    names:=[3]string.["hidden rows","layer 1's cache rows","tap 1"];
+    for d:0..<3 {
+        s=ckc_run(1,src[..],taps[..],cut[..],2,2,prompt[..],6,CkFault.{drop=d},-1);
+        print("% dropped at cut 2: %, % %\n",names[d],ck_status_name(s.split.status),ck_kind_name(s.split.part.kind),s.split.part.layer);
+    }
+    s=ckc_run(1,src[..],taps[..],cut[..],2,2,prompt[..],6,CkFault.{extra=true},-1);
+    print("hidden rows sent twice: %\n",ck_status_name(s.split.status));
+    s=ckc_run(1,src[..],taps[..],cut[..],2,2,prompt[..],6,CkFault.{word=9,value=7},-1);
+    print("a value in the hidden rows changed: %, %\n",ck_status_name(s.split.status),stg_refusal_name(s.split.refusal));
+    s=ckc_run(1,src[..],taps[..],cut[..],2,2,prompt[..],6,CkFault.{word=1},-1);
+    print("their digest changed: %, % %\n",ck_status_name(s.split.status),ck_kind_name(s.split.part.kind),s.split.part.layer);
+    s=ckc_run(1,src[..],taps[..],cut[..],2,2,prompt[..],6,CkFault.{},2);
+    print("layer 1's attention overflows: whole %, split %\n",ck_status_name(s.whole.status),ck_status_name(s.split.status));
+}
+// book:end refuse
