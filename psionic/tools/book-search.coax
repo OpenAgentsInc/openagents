@@ -4,6 +4,7 @@
 //   ... --eval psionic/fixtures/book-search/heldout.tsv [--json]
 //   ... --rerank-eval psionic/fixtures/book-search/heldout.tsv   (chapter 56)
 //   ... --answer-eval psionic/fixtures/book-search/heldout.tsv   (chapter 57)
+//   ... --bundle DIR [--reference FILE]   the browser bundle and native result lines (chapter 59)
 //   ... --no-build      refuse a stale index instead of rebuilding it
 //   ... --rebuild       rebuild the index;  --train  retrain the weights too
 // Runs from the repository root. The weights and the index live in
@@ -18,6 +19,7 @@
 #load "../lib/book-search/hnsw.coax";
 #load "../lib/book-search/rerank.coax";
 #load "../lib/book-search/answer.coax";
+#load "../lib/book-search/browser.coax";
 #load "../lib/verdict.coax";
 
 FILES_MAX :: 1024;
@@ -401,7 +403,7 @@ freshness :: (held: Bs, now: Bs, quiet: bool) -> BsFresh {
 }
 
 // ---- search ------------------------------------------------------------------------
-Search :: struct { lexical: [LIST_MAX] BsHit; ln: int; dense: [LIST_MAX] BsHit; dn: int; fused: [LIST_MAX] BsHit; fn: int; words: int; known: int; }
+Search :: struct { e: [BE_WIDTH] f32; lexical: [LIST_MAX] BsHit; ln: int; dense: [LIST_MAX] BsHit; dn: int; fused: [LIST_MAX] BsHit; fn: int; words: int; known: int; }
 search :: (b: Bs, text: string, book: int, scores: [] f64, out: [] Search) {
   table := PT_TOY; t := pt_layout(table[..]); word: [64] u8;
   ids: [4096] int; n := 0; words := 0; at := 0;
@@ -411,8 +413,7 @@ search :: (b: Bs, text: string, book: int, scores: [] f64, out: [] Search) {
     at = w.next;
   }
   out[0].words = words; out[0].known = n;
-  e: [BE_WIDTH] f32;
-  be_embed(b.table, b.query, ids[0..<n], e[..]);
+  be_embed(b.table, b.query, ids[0..<n], out[0].e[..]);
   distinct: [4096] int; for i: 0..<n { distinct[i] = ids[i]; }
   k := bs_distinct(distinct[0..<n]);
   P := b.passage_n;
@@ -422,7 +423,7 @@ search :: (b: Bs, text: string, book: int, scores: [] f64, out: [] Search) {
   }
   out[0].ln = bs_top(scores[0..<P], 0, out[0].lexical[..]);
   for p: 0..<P {
-    scores[p] = bs_dot(e[..], b.embeddings[p * BE_WIDTH..<(p + 1) * BE_WIDTH]);
+    scores[p] = bs_dot(out[0].e[..], b.embeddings[p * BE_WIDTH..<(p + 1) * BE_WIDTH]);
     if (book >= 0 && b.files[b.passages[p].file].book != book) || n == 0 { scores[p] = -2; }
   }
   out[0].dn = bs_top(scores[0..<P], -2, out[0].dense[..]);
@@ -957,6 +958,63 @@ reason_name :: (r: VdReason) -> string {
   return "other";
 }
 
+// ---- chapter 59: the browser bundle ---------------------------------------------------
+// A store over a Bs (files copied into flat arrays; everything else shared).
+BundleFiles :: struct { path_from: [FILES_MAX] int; path_to: [FILES_MAX] int; hashes: [FILES_MAX * 32] u8; status: [FILES_MAX] int; book: [FILES_MAX] int; length: [PASSAGES_MAX] int; }
+bundle_store :: (b: Bs, f: [] BundleFiles) -> BbStore {
+  for i: 0..<b.file_n {
+    x := b.files[i];
+    f[0].path_from[i] = x.path_from; f[0].path_to[i] = x.path_to; f[0].status[i] = cast(int) x.status; f[0].book[i] = x.book;
+    for k: 0..<32 { f[0].hashes[32 * i + k] = x.hash[k]; }
+  }
+  for p: 0..<b.passage_n { f[0].length[p] = b.bt[p] - b.hf[p]; }
+  return BbStore.{table = b.table, query = b.query, vocab = b.vocab, words = b.vocab[0].n, names = b.names, path_from = f[0].path_from[..], path_to = f[0].path_to[..],
+    hashes = f[0].hashes[..], status = f[0].status[..], book = f[0].book[..], file_n = b.file_n, heads = b.heads, heads_n = b.heads_n, passages = b.passages,
+    length = f[0].length[..], tf = b.tf, tt = b.tt, passage_n = b.passage_n, df = b.df, average = b.average, terms = b.terms, counts = b.counts,
+    terms_n = ifx b.passage_n > 0 then b.tt[b.passage_n - 1] else 0, embeddings = b.embeddings};
+}
+// Writes DIR/encoder.bin (the weights file, byte for byte), DIR/index.bin,
+// DIR/manifest.txt (the corpus digest of the books as they are now) and,
+// with a query file, DIR/reference.txt: one native result line per query.
+write_bundle :: (held: Bs, now: Bs, wpath: string, dir: string, queries: string) -> int {
+  if !fs_mkdir(dir) { tool_errln("book-search: cannot make the bundle directory"); return 2; }
+  enc: [OUT_MAX] u8; idx: [OUT_MAX] u8; man: [4096] u8; pb: [4096] u8;
+  en := fs_read(wpath, enc[..]);
+  if en < 0 { tool_errln("book-search: cannot read the weights"); return 2; }
+  m := BbManifest.{ok = true, profile = BB_PROFILE, encoder = bs_file_hash(enc[..], 0, en), encoder_bytes = en};
+  hf: [1] BundleFiles; nf: [1] BundleFiles;
+  s := bundle_store(held, hf[..]);
+  m.corpus = bb_corpus(bundle_store(now, nf[..]));
+  wi := [1] BbW.[BbW.{buf = idx[..]}];
+  bb_write_index(wi[..], s, m.encoder);
+  m.index = bs_file_hash(idx[..], 0, wi[0].n); m.index_bytes = wi[0].n;
+  wm := [1] BbW.[BbW.{buf = man[..]}];
+  bb_write_manifest(wm[..], m);
+  if wi[0].full || wm[0].full || !fs_write(fs_join(dir, "encoder.bin", pb[..]), cast(string) enc[0..<en]) || !fs_write(fs_join(dir, "index.bin", pb[..]), cast(string) idx[0..<wi[0].n])
+     || !fs_write(fs_join(dir, "manifest.txt", pb[..]), cast(string) man[0..<wm[0].n]) { tool_errln("book-search: cannot write the bundle"); return 2; }
+  ib: [32] u8;
+  print_err3("book-search: bundle encoder.bin bytes ", itoa(en, ib[..]), "");
+  print_err3("book-search: bundle index.bin bytes ", itoa(wi[0].n, ib[..]), "");
+  if queries.count == 0 { return 0; }
+  text: [1048576] u8;
+  n := fs_read(queries, text[..]);
+  if n < 0 { tool_errln("book-search: cannot read the query file"); return 2; }
+  out: [4194304] u8; wo := [1] BbW.[BbW.{buf = out[..]}];
+  scores: [PASSAGES_MAX] f64; r: [1] Search; count := 0; at := 0;
+  while at < n {
+    end := at; while end < n && text[end] != '\n' { end += 1; }
+    line := cast(string) text[at..<end]; at = end + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    tab := 0; while tab < line.count && line[tab] != '\t' { tab += 1; }
+    search(held, line[0..<tab], -1, scores[..], r[..]);
+    bb_line(wo[..], r[0].e[..], r[0].words, r[0].known, r[0].lexical[0..<r[0].ln], r[0].dense[0..<r[0].dn], r[0].fused[0..<r[0].fn]);
+    count += 1;
+  }
+  if wo[0].full || !fs_write(fs_join(dir, "reference.txt", pb[..]), cast(string) out[0..<wo[0].n]) { tool_errln("book-search: cannot write the reference"); return 2; }
+  print_err3("book-search: native reference lines ", itoa(count, ib[..]), "");
+  return 0;
+}
+
 // ---- main ------------------------------------------------------------------------
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -964,7 +1022,7 @@ tool_main :: () -> int #export_c {
   query := ""; i := 0;
   while i < args_count(a[..]) {
     x := args_at(a[..], i);
-    if x == "--k" || x == "--book" || x == "--mode" || x == "--eval" || x == "--rerank-eval" || x == "--answer-eval" { i += 2; continue; }
+    if x == "--k" || x == "--book" || x == "--mode" || x == "--eval" || x == "--rerank-eval" || x == "--answer-eval" || x == "--bundle" || x == "--reference" { i += 2; continue; }
     if x.count > 1 && x[0] == '-' && x[1] == '-' { i += 1; continue; }
     query = x; i += 1;
   }
@@ -972,7 +1030,8 @@ tool_main :: () -> int #export_c {
   reval := args_value(a[..], "--rerank-eval", "");
   aeval := args_value(a[..], "--answer-eval", "");
   json := args_has(a[..], "--json");
-  if query.count == 0 && eval.count == 0 && reval.count == 0 && aeval.count == 0 && !args_has(a[..], "--rebuild") && !args_has(a[..], "--train") {
+  bundle := args_value(a[..], "--bundle", "");
+  if query.count == 0 && bundle.count == 0 && eval.count == 0 && reval.count == 0 && aeval.count == 0 && !args_has(a[..], "--rebuild") && !args_has(a[..], "--train") {
     tool_errln("usage: coax/web/tool.sh psionic/tools/book-search.coax \"QUERY\" [--k N] [--book coax|psionic|aethyr] [--mode fused|bm25|dense] [--json] [--no-build]");
     tool_errln("       coax/web/tool.sh psionic/tools/book-search.coax --eval FILE [--json] [--verbose] | --rebuild | --train");
     return 2;
@@ -1035,6 +1094,7 @@ tool_main :: () -> int #export_c {
   if reval.count > 0 { return rerank_eval(held[0], reval); }
   if aeval.count > 0 { return answer_eval(held[0], now[0], aeval); }
   if eval.count > 0 { return evaluate(held[0], eval, json, args_has(a[..], "--verbose")); }
+  if bundle.count > 0 { return write_bundle(held[0], now[0], wpath, bundle, args_value(a[..], "--reference", "")); }
   if query.count == 0 { return 0; }
 
   scores: [PASSAGES_MAX] f64; r: [1] Search;

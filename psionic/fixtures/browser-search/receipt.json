@@ -1,0 +1,60 @@
+{
+  "chapter": "psionic/book/ch059-run-in-the-browser.md",
+  "what": "chapter 54's search (bs-attnpool-d64-v1 query encoder, BM25, exhaustive vector search, fusion) compiled to Wasm and run in headless Chrome on the 36 held-out queries, compared with the native CPU tool",
+  "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+  "served_by": "coax/web/serve.sh --static on 127.0.0.1 (no compression)",
+  "manifest": {
+    "encoder": "66a9e806e7b80477b053ae2b090adb5b768fb4abfb2f3cb652eae8e6a00d948b 2879613",
+    "index": "34918e3047468559826a1e9f0f5d9acf04e8df4146156a05149bdb676741f909 5592998",
+    "corpus": "cfc1a5da6d01604bbce9bcb032899d3243c4d8de6751e56f794cc81f6258f41f"
+  },
+  "queries": 36,
+  "tolerance": "none: every query embedding (64 binary32 values) and the first ten passages and binary64 scores of each ranking must be identical",
+  "equal": true,
+  "first_difference": null,
+  "reference_sha256": "c7b10c555b4f2fe1db190f50a189d27efbc5689f6d6b478f20ad1f2712e99c66",
+  "browser_sha256": "c7b10c555b4f2fe1db190f50a189d27efbc5689f6d6b478f20ad1f2712e99c66",
+  "download_bytes": {
+    "wasm": 100085,
+    "manifest": 288,
+    "encoder": 2879613,
+    "index": 5592998,
+    "total": 8572984
+  },
+  "load_ms": {
+    "fetch": 61.5,
+    "instantiate": 27.9,
+    "admit": 120.0,
+    "ready": 209.5,
+    "queries": 153.7
+  },
+  "memory": {
+    "bytes": 67108864,
+    "state": 35592112,
+    "heapBase": 50382976,
+    "after": 67108864
+  },
+  "counts": {
+    "passages": 7731,
+    "words": 10633,
+    "files": 401
+  },
+  "refusals": {
+    "wrong-encoder": {
+      "verdict": 3,
+      "message": "refused: wrong encoder: its bytes are not the encoder the manifest names",
+      "answered": false
+    },
+    "other-encoder": {
+      "verdict": 6,
+      "message": "refused: the index's embeddings were made by another encoder",
+      "answered": false
+    },
+    "stale": {
+      "verdict": 7,
+      "message": "refused: stale index: it holds other books than the manifest's current corpus",
+      "answered": false
+    }
+  },
+  "error": null
+}

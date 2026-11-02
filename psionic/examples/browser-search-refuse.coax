@@ -1,0 +1,62 @@
+// Chapter 59's broken cases: the page is handed a bundle that does not match
+// its manifest, and refuses before it searches.
+#import "Basic";
+#load "../lib/book-search/browser.coax";
+
+Served :: struct { enc: [16384] u8; en: int; idx: [8192] u8; xn: int; man: [512] u8; mn: int; }
+// The three files for a book: encoder, index and a manifest naming both and
+// the corpus `current` (the books the site says are current).
+serve :: (books: [] BbSmall, current: [32] u8, out: [] Served) {
+  s := books[0].store[0];
+  we := [1] BbW.[BbW.{buf = out[0].enc[..]}]; wi := [1] BbW.[BbW.{buf = out[0].idx[..]}]; wm := [1] BbW.[BbW.{buf = out[0].man[..]}];
+  bb_write_encoder(we[..], s, "");
+  m := BbManifest.{ok = true, profile = BB_PROFILE, encoder = bs_file_hash(out[0].enc[..], 0, we[0].n), encoder_bytes = we[0].n, corpus = current};
+  bb_write_index(wi[..], s, m.encoder);
+  m.index = bs_file_hash(out[0].idx[..], 0, wi[0].n); m.index_bytes = wi[0].n;
+  bb_write_manifest(wm[..], m);
+  out[0].en = we[0].n; out[0].xn = wi[0].n; out[0].mn = wm[0].n;
+}
+attempt :: (name: string, man: [] u8, enc: [] u8, idx: [] u8) {
+  page: [1] BbSmall; bb_small(page[..]);
+  v := bb_load(man, enc, idx, page[0].store[..]);
+  print("%: %\n", name, bb_verdict_text(v));
+}
+
+// book:begin refuse
+main :: () {
+  paths := [2] string.["psionic/book/ch001-learning-a-number.md", "psionic/book/ch054-search-the-book.md"];
+  before := [2] string.["# 1. Learning a number\n\nThe loss is the mean squared error.\n", "# 54. Search the book\n\n> **Status: unimplemented — design draft.** Nothing here runs yet.\n"];
+  now := [2] string.["# 1. Learning a number\n\nThe loss is the mean squared error.\n", "# 54. Search the book\n\nRank passages by BM25 and by squared error of embeddings.\n"];
+  old: [1] BbSmall; cur: [1] BbSmall;
+  if !bb_small_books(old[..], paths[..], before[..]) || !bb_small_books(cur[..], paths[..], now[..]) { print("the book does not fit\n"); return; }
+  current := bb_corpus(cur[0].store[0]);
+  good: [1] Served; serve(cur[..], current, good[..]);
+  attempt("current bundle", good[0].man[0..<good[0].mn], good[0].enc[0..<good[0].en], good[0].idx[0..<good[0].xn]);
+
+  // An index and encoder built before chapter 54 changed, under today's manifest.
+  stale: [1] Served; serve(old[..], current, stale[..]);
+  attempt("index built from the old books", stale[0].man[0..<stale[0].mn], stale[0].enc[0..<stale[0].en], stale[0].idx[0..<stale[0].xn]);
+
+  // One number of the query vector differs; the manifest names the real encoder.
+  enc := good[0].enc; enc[good[0].en - 1] ^= 1;
+  attempt("encoder with one changed byte", good[0].man[0..<good[0].mn], enc[0..<good[0].en], good[0].idx[0..<good[0].xn]);
+
+  // The same changed encoder with a manifest that names it: the sizes and the
+  // 64 numbers per word match, but the index was embedded by the other one.
+  other: [1] BbSmall; ok := bb_small_books(other[..], paths[..], now[..]); other[0].query[3] = 0.5;
+  mixed: [1] Served; serve(other[..], current, mixed[..]);
+  mb: [512] u8; wm := [1] BbW.[BbW.{buf = mb[..]}];
+  m := bb_read_manifest(cast(string) mixed[0].man[0..<mixed[0].mn]);
+  m.index = bs_file_hash(good[0].idx[..], 0, good[0].xn); m.index_bytes = good[0].xn;
+  bb_write_manifest(wm[..], m);
+  attempt("another encoder beside this index", mb[0..<wm[0].n], mixed[0].enc[0..<mixed[0].en], good[0].idx[0..<good[0].xn]);
+
+  // A download cut short, under a manifest that names the cut bytes.
+  cut := good[0].xn - 100;
+  m = bb_read_manifest(cast(string) good[0].man[0..<good[0].mn]);
+  m.index = bs_file_hash(good[0].idx[..], 0, cut); m.index_bytes = cut;
+  mc: [512] u8; wc := [1] BbW.[BbW.{buf = mc[..]}]; bb_write_manifest(wc[..], m);
+  attempt("index cut short", mc[0..<wc[0].n], good[0].enc[0..<good[0].en], good[0].idx[0..<cut]);
+  attempt("index cut short, old manifest", good[0].man[0..<good[0].mn], good[0].enc[0..<good[0].en], good[0].idx[0..<cut]);
+}
+// book:end refuse

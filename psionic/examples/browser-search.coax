@@ -1,0 +1,65 @@
+// Chapter 59: a two-chapter book becomes a bundle, the "browser" side admits
+// it and searches it, and both sides' result lines are compared byte for byte.
+#import "Basic";
+#load "../lib/book-search/browser.coax";
+
+// book:begin example
+main :: () {
+  paths := [2] string.["psionic/book/ch001-learning-a-number.md", "psionic/book/ch054-search-the-book.md"];
+  chapters := [2] string.[
+    "# 1. Learning a number\n\nTrain one weight by gradient descent.\n\n## Measure the error\n\nThe loss is the mean squared error of the predictions.\n",
+    "# 54. Search the book\n\n> **Status: unimplemented — design draft.** Nothing here runs yet.\n\n## Rank passages\n\nRank passages by BM25, then by squared error of embeddings.\n"];
+  native: [1] BbSmall;
+  if !bb_small_books(native[..], paths[..], chapters[..]) { print("the book does not fit\n"); return; }
+  s := native[0].store[0];
+  print("native index: % files, % passages, % words\n", s.file_n, s.passage_n, s.words);
+
+  // The three files the site serves.
+  enc: [32768] u8; idx: [32768] u8; man: [512] u8;
+  we := [1] BbW.[BbW.{buf = enc[..]}]; wi := [1] BbW.[BbW.{buf = idx[..]}]; wm := [1] BbW.[BbW.{buf = man[..]}];
+  bb_write_encoder(we[..], s, "");
+  encoder := bs_file_hash(enc[..], 0, we[0].n);
+  bb_write_index(wi[..], s, encoder);
+  m := BbManifest.{ok = true, profile = BB_PROFILE, encoder = encoder, encoder_bytes = we[0].n, index_bytes = wi[0].n, corpus = bb_corpus(s)};
+  m.index = bs_file_hash(idx[..], 0, wi[0].n);
+  bb_write_manifest(wm[..], m);
+  hex: [64] u8;
+  print("encoder.bin % bytes, sha256 %\n", we[0].n, bs_hex(m.encoder, 8, hex[..]));
+  print("index.bin   % bytes, sha256 %\n", wi[0].n, bs_hex(m.index, 8, hex[..]));
+  print("corpus      sha256 %\n", bs_hex(m.corpus, 8, hex[..]));
+
+  // The page: hash, parse and admit what it downloaded, then search it.
+  page: [1] BbSmall; bb_small(page[..]);
+  v := bb_load(man[0..<wm[0].n], enc[0..<we[0].n], idx[0..<wi[0].n], page[0].store[..]);
+  print("page: %\n", bb_verdict_text(v));
+  query := "squared error";
+  scores: [32] f64; r: [1] BbResult; mine: [1] BbResult;
+  bb_search(page[0].store[0], query, scores[..], r[..]);
+  bb_search(s, query, scores[..], mine[..]);
+  a := bs_find(page[0].vocab[0], "squared"); b := bs_find(page[0].vocab[0], "error");
+  print("query \"%\": % of % words known; e[%] = e[%] = 0x%\n", query, r[0].known, r[0].words, a, b, cast(string) bb_bits32(r[0].e[a], hex[..]));
+  for i: 0..<r[0].fn {
+    h := r[0].fused[i]; p := h.passage;
+    f := page[0].passages[p].file;
+    status := bs_section_status(cast(BsStatus) page[0].status[f], bb_heads(page[0].store[0], p));
+    print("%. % > % [%]\n   bm25 rank %, dense rank %\n", i + 1, bb_path(page[0].store[0], f), bb_heads(page[0].store[0], p), bs_status_label(status),
+          bb_rank(r[0].lexical[0..<r[0].ln], p), bb_rank(r[0].dense[0..<r[0].dn], p));
+  }
+  print("dense score of the best passage: %\n", r[0].dense[0].score);
+  l1: [4096] u8; l2: [4096] u8;
+  w1 := [1] BbW.[BbW.{buf = l1[..]}]; w2 := [1] BbW.[BbW.{buf = l2[..]}];
+  bb_result_line(w1[..], r[..]); bb_result_line(w2[..], mine[..]);
+  print("result line % bytes; page and native lines equal: %\n", w1[0].n, cast(string) l1[0..<w1[0].n] == cast(string) l2[0..<w2[0].n]);
+}
+// book:end example
+// The binary32 bits of x as 8 hex digits.
+bb_bits32 :: (x: f32, out: [] u8) -> [] u8 {
+  w := [1] BbW.[BbW.{buf = out}];
+  bb_hex_bits(w[..], cast(u64) f32_bits(x), 8);
+  return out[0..<8];
+}
+// The 1-based rank of passage p in hits, or 0.
+bb_rank :: (hits: [] BsHit, p: int) -> int {
+  for i: 0..<hits.count { if hits[i].passage == p { return i + 1; } }
+  return 0;
+}

@@ -106,6 +106,18 @@ production. The runbook is in `nostr/book/ch103-replace-relay-openagents-com.md`
 Any refused line in the import (a forged or malformed event in the export)
 also comes to you before the cutover continues.
 
+## Psionic chapter 59: book search on openagents.com (2026-11-01)
+
+Chapter 59's browser search runs locally (`psionic/web/book-search/check.sh`:
+Wasm in headless Chrome, results equal bit for bit to the native tool on the
+36 held-out queries, stale and wrong-encoder bundles refused). Putting it on
+openagents.com is a production deploy, which agents don't run. To ship it:
+decide the URL (for example `/search`), add the page and its three bundle
+files (`coax/web/build/book-search-web/`: `search.wasm`, `bundle/manifest.txt`,
+`bundle/encoder.bin`, `bundle/index.bin`, about 8.6 MB uncompressed) to the
+site's release, and rebuild the bundle on every deploy so the manifest names
+the books being served. Until then the chapter stays partly implemented.
+
 ## Psionic chapter 177: machines for a live multi-replica run (2026-11-01)
 
 The router, bounded queues and autoscaler (`psionic/lib/serve-route.coax`,

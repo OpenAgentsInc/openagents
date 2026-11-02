@@ -1,0 +1,16 @@
+native index: 2 files, 4 passages, 36 words
+encoder.bin 10042 bytes, sha256 a9c4630b5eabea06
+index.bin   2006 bytes, sha256 d3589ef39fa00822
+corpus      sha256 505937e484281adb
+page: admitted
+query "squared error": 2 of 2 words known; e[16] = e[12] = 0x3f3504f3
+1. psionic/book/ch001-learning-a-number.md > 1. Learning a number > Measure the error [implemented]
+   bm25 rank 1, dense rank 1
+2. psionic/book/ch054-search-the-book.md > 54. Search the book > Rank passages [design draft, not implemented]
+   bm25 rank 2, dense rank 2
+3. psionic/book/ch001-learning-a-number.md > 1. Learning a number [implemented]
+   bm25 rank 0, dense rank 3
+4. psionic/book/ch054-search-the-book.md > 54. Search the book [design draft, not implemented]
+   bm25 rank 0, dense rank 4
+dense score of the best passage: 0.3810003812005398
+result line 726 bytes; page and native lines equal: true

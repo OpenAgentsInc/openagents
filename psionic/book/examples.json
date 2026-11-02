@@ -1662,6 +1662,26 @@
       ]
     },
     {
+      "source": "psionic/examples/browser-search.coax",
+      "chapter": "psionic/book/ch059-run-in-the-browser.md",
+      "stdout": "psionic/fixtures/browser-search/browser-search.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/browser-search-refuse.coax",
+      "chapter": "psionic/book/ch059-run-in-the-browser.md",
+      "stdout": "psionic/fixtures/browser-search/browser-search-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/memory.coax",
       "chapter": "coder/book/ch019-remember-a-fact-then-revise-it.md",
       "stdout": "psionic/fixtures/memory/memory.out",

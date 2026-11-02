@@ -1,0 +1,6 @@
+current bundle: admitted
+index built from the old books: refused: stale index: it holds other books than the manifest's current corpus
+encoder with one changed byte: refused: wrong encoder: its bytes are not the encoder the manifest names
+another encoder beside this index: refused: the index's embeddings were made by another encoder
+index cut short: refused: the index does not parse or its corpus digest does not match its files
+index cut short, old manifest: refused: the index bytes are not the index the manifest names

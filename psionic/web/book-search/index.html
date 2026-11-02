@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book search</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; max-width: 900px; background: #fff; color: #111; }
+  input { font: inherit; width: 60%; padding: 4px 8px; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Search the Coax, Psionic and Aethyr books</h1>
+<p id="status">Loading the query encoder and the index…</p>
+<form id="form"><input id="query" placeholder="memory that outlives the procedure that made it"> <button>Search</button></form>
+<pre id="out"></pre>
+<script>
+// Psionic chapter 59's page host. It fetches the Wasm module and the bundle,
+// copies bytes in and out, and times each step. Every decision (whether the
+// bundle is admitted, every score and ranking) is made by Coax in search.wasm.
+// ?bundle=DIR picks the bundle directory; ?queries=FILE runs a query file and
+// keeps its result lines in window.bookSearch.lines.
+(async () => {
+  const params = new URLSearchParams(location.search);
+  const dir = params.get("bundle") || "bundle", queries = params.get("queries") || "";
+  const report = { userAgent: navigator.userAgent, bundle: dir };
+  window.bookSearch = report;
+  const status = document.getElementById("status");
+  try {
+    const t0 = performance.now();
+    const get = async (url) => { const r = await fetch(url, { cache: "no-store" }); if (!r.ok) throw new Error(`${url}: ${r.status}`); return new Uint8Array(await r.arrayBuffer()); };
+    const [wasm, manifest, encoder, index] = await Promise.all(["search.wasm", `${dir}/manifest.txt`, `${dir}/encoder.bin`, `${dir}/index.bin`].map(get));
+    const t1 = performance.now();
+    const memory = new WebAssembly.Memory({ initial: 1024, maximum: 1024 });
+    const module = await WebAssembly.compile(wasm);
+    const imports = { env: { memory }, wasi_snapshot_preview1: {} };
+    for (const imp of WebAssembly.Module.imports(module)) {
+      if (imp.kind === "function") (imports[imp.module] ||= {})[imp.name] ||= () => { throw new Error(`unsupported import ${imp.module}.${imp.name}`); };
+    }
+    const x = (await WebAssembly.instantiate(module, imports)).exports;
+    x._initialize?.();
+    x.search_init();
+    const t2 = performance.now();
+    const put = (kind, bytes) => {
+      if (bytes.length > x.search_capacity(kind)) throw new Error(`file ${kind} is larger than its buffer`);
+      new Uint8Array(memory.buffer, x.search_buffer(kind), bytes.length).set(bytes); return bytes.length;
+    };
+    const text = (n) => new TextDecoder().decode(new Uint8Array(memory.buffer, x.search_buffer(4), n).slice());
+    const verdict = x.search_load(put(0, manifest), put(1, encoder), put(2, index));
+    const t3 = performance.now();
+    report.verdict = verdict;
+    report.message = text(x.search_message());
+    report.bytes = { wasm: wasm.length, manifest: manifest.length, encoder: encoder.length, index: index.length };
+    report.bytes.total = report.bytes.wasm + report.bytes.manifest + report.bytes.encoder + report.bytes.index;
+    report.ms = { fetch: t1 - t0, instantiate: t2 - t1, admit: t3 - t2, ready: t3 - t0 };
+    report.memory = { bytes: memory.buffer.byteLength, state: x.search_state_bytes(), heapBase: x.__heap_base ? x.__heap_base.value : 0 };
+    report.counts = { passages: x.search_count(0), words: x.search_count(1), files: x.search_count(2) };
+    status.textContent = verdict === 0
+      ? `Ready: ${report.counts.passages} passages, ${report.counts.words} words, ${(report.bytes.total / 1e6).toFixed(1)} MB in ${report.ms.ready.toFixed(0)} ms. The search runs in this tab.`
+      : `This page will not search: ${report.message}.`;
+    const ask = (q, k) => { const n = put(3, new TextEncoder().encode(q)); const m = x.search_query(n, k); return m < 0 ? "" : text(m); };
+    document.getElementById("form").onsubmit = (e) => { e.preventDefault(); document.getElementById("out").textContent = ask(document.getElementById("query").value, 10); };
+    if (queries && verdict === 0) {
+      const file = await get(queries);
+      const t4 = performance.now();
+      const n = x.search_queries(put(3, file));
+      report.ms.queries = performance.now() - t4;
+      report.lines = n < 0 ? "" : text(n);
+      report.memory.after = memory.buffer.byteLength;
+    }
+    report.done = true;
+  } catch (e) {
+    report.error = String(e); report.done = true;
+    status.textContent = `This page will not search: ${e}`;
+  }
+})();
+</script>
+</body>
+</html>

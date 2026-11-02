@@ -1,0 +1,600 @@
+// Chapter 59: chapter 54's search from a downloaded bundle, the same Coax
+// compiled natively and to Wasm. The bundle is the query encoder (chapter
+// 54's weights file, byte for byte), an index (document embeddings, BM25's
+// lists and the heading paths, no passage text) and a manifest naming both by
+// SHA-256 and naming the corpus they were built from. Loading hashes and
+// parses everything and asks bundle.coax whether to answer; a search then
+// runs chapter 54's BM25, exhaustive vector search and fusion over the
+// bundle. Each result is also written as one line of exact bit patterns, so a
+// browser run and a native run can be compared byte for byte.
+#load "encoder.coax";
+#load "bundle.coax";
+
+BB_TOP :: 100;
+BB_SHOW :: 10;
+BB_ENCODER_MAGIC :: "PSIONIC-BOOK-SEARCH-WEIGHTS-1\n";
+BB_INDEX_MAGIC :: "PSIONIC-BOOK-SEARCH-WEB-INDEX-1\n";
+BB_MANIFEST_MAGIC :: "psionic-book-search-bundle 1";
+
+BbW :: struct { buf: [] u8; n: int; full: bool; }
+BbR :: struct { buf: [] u8; at: int; bad: bool; }
+// Everything a search reads, as views over the caller's storage. Files are
+// their paths in names, their content SHA-256 in hashes (32 bytes each),
+// their status (BsStatus) and book; passages keep chapter 54's identity and
+// BM25 length, and their sorted distinct terms are terms[tf[p]..<tt[p]].
+BbStore :: struct {
+  table: [] f64; query: [] f64; vocab: [] BsVocab; words: int;
+  names: [] u8; path_from: [] int; path_to: [] int; hashes: [] u8; status: [] int; book: [] int; file_n: int;
+  heads: [] u8; heads_n: int;
+  passages: [] BsPassage; length: [] int; tf: [] int; tt: [] int; passage_n: int;
+  df: [] int; average: f64; terms: [] int; counts: [] int; terms_n: int;
+  embeddings: [] f32;
+}
+// One query's results: its embedding and the three rankings, best first.
+BbResult :: struct { e: [BE_WIDTH] f32; words: int; known: int; lexical: [BB_TOP] BsHit; ln: int; dense: [BB_TOP] BsHit; dn: int; fused: [BB_TOP] BsHit; fn: int; }
+
+// ---- bytes ----------------------------------------------------------------------
+bb_byte :: (w: [] BbW, c: u8) { if w[0].n == w[0].buf.count { w[0].full = true; return; } w[0].buf[w[0].n] = c; w[0].n += 1; }
+bb_bytes :: (w: [] BbW, s: [] u8) { for c: s { bb_byte(w, c); } }
+bb_text :: (w: [] BbW, s: string) { for c: s { bb_byte(w, c); } }
+bb_uint :: (w: [] BbW, x: u64, size: int) { for i: 0..<size { bb_byte(w, cast,trunc(u8) ((x >> cast(u64) (8 * i)) & 255)); } }
+bb_u32 :: (w: [] BbW, x: int) { bb_uint(w, cast(u64) x, 4); }
+bb_str :: (w: [] BbW, s: string) { bb_u32(w, s.count); bb_text(w, s); }
+bb_f32 :: (w: [] BbW, x: f32) { bb_uint(w, cast(u64) f32_bits(x), 4); }
+bb_f64 :: (w: [] BbW, x: f64) { bb_uint(w, f64_bits(x), 8); }
+bb_get :: (r: [] BbR) -> u8 { if r[0].at >= r[0].buf.count { r[0].bad = true; return 0; } c := r[0].buf[r[0].at]; r[0].at += 1; return c; }
+bb_read_uint :: (r: [] BbR, size: int) -> u64 { x: u64 = 0; for i: 0..<size { x |= cast(u64) bb_get(r) << cast(u64) (8 * i); } return x; }
+bb_read_u32 :: (r: [] BbR) -> int { return cast(int) bb_read_uint(r, 4); }
+bb_read_into :: (r: [] BbR, out: [] u8) { for i: 0..<out.count { out[i] = bb_get(r); } }
+bb_read_str :: (r: [] BbR) -> string {
+  n := bb_read_u32(r);
+  if r[0].bad || r[0].at + n > r[0].buf.count { r[0].bad = true; return ""; }
+  s := cast(string) r[0].buf[r[0].at..<r[0].at + n]; r[0].at += n; return s;
+}
+// A 4-byte value in 0..<limit, or the reader goes bad.
+bb_read_below :: (r: [] BbR, limit: int) -> int { return bb_read_sized(r, limit, 4); }
+bb_read_sized :: (r: [] BbR, limit: int, size: int) -> int { x := cast(int) bb_read_uint(r, size); if x >= limit { r[0].bad = true; return 0; } return x; }
+
+#test "integers and floats are little-endian and read back exactly" {
+  buf: [32] u8; w := [1] BbW.[BbW.{buf = buf[..]}];
+  bb_u32(w[..], 0x01020304); bb_f32(w[..], 0.6); bb_f64(w[..], -2.5); bb_str(w[..], "ab");
+  #assert !w[0].full && w[0].n == 22 && buf[0] == 4 && buf[3] == 1 && buf[16] == 2 && buf[20] == 'a';
+  r := [1] BbR.[BbR.{buf = buf[0..<w[0].n]}];
+  #assert bb_read_u32(r[..]) == 0x01020304 && f32_from_bits(cast(u32) bb_read_uint(r[..], 4)) == 0.6 && f64_from_bits(bb_read_uint(r[..], 8)) == -2.5;
+  #assert bb_read_str(r[..]) == "ab" && !r[0].bad && r[0].at == 22;
+  #assert bb_get(r[..]) == 0 && r[0].bad;
+  small: [3] u8; v := [1] BbW.[BbW.{buf = small[..]}];
+  bb_u32(v[..], 7); #assert v[0].full && v[0].n == 3;
+  long := [6] u8.[9, 0, 0, 0, 'x', 'y'];
+  q := [1] BbR.[BbR.{buf = long[..]}];
+  #assert bb_read_str(q[..]) == "" && q[0].bad;
+  lim := [4] u8.[5, 0, 0, 0];
+  l := [1] BbR.[BbR.{buf = lim[..]}]; #assert bb_read_below(l[..], 6) == 5 && !l[0].bad;
+  l[0].at = 0; #assert bb_read_below(l[..], 5) == 0 && l[0].bad;
+  l[0].at = 0; l[0].bad = false; #assert bb_read_sized(l[..], 6, 2) == 5 && l[0].at == 2 && !l[0].bad;
+}
+
+// ---- hex ------------------------------------------------------------------------
+bb_hex_digit :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+// Lower-case hex of 64 characters into out; false otherwise.
+bb_unhex :: (s: string, out: [] u8) -> bool {
+  if s.count != 64 { return false; }
+  for i: 0..<32 {
+    hi := bb_hex_digit(s[2 * i]); lo := bb_hex_digit(s[2 * i + 1]);
+    if hi < 0 || lo < 0 { return false; }
+    out[i] = cast,trunc(u8) (hi * 16 + lo);
+  }
+  return true;
+}
+// x as `digits` lower-case hex digits, most significant first.
+bb_hex_bits :: (w: [] BbW, x: u64, digits: int) {
+  for i: 0..<digits { bb_byte(w, BS_HEX[cast(int) ((x >> cast(u64) (4 * (digits - 1 - i))) & 15)]); }
+}
+// A whole number of decimal digits, or -1.
+bb_number :: (s: string) -> int {
+  if s.count == 0 || s.count > 12 { return -1; }
+  x := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } x = x * 10 + cast(int) (c - '0'); }
+  return x;
+}
+bb_decimal :: (w: [] BbW, x: int) {
+  d: [20] u8; n := 0; v := x;
+  while true { d[n] = cast,trunc(u8) ('0' + v % 10); n += 1; v /= 10; if v == 0 { break; } }
+  for i: 0..<n { bb_byte(w, d[n - 1 - i]); }
+}
+
+#test "hex digests and numbers parse strictly" {
+  h: [32] u8; out: [64] u8;
+  s := "00ff10a0b0c0d0e0f00112233445566778899aabbccddeeff0123456789abcde";
+  #assert bb_unhex(s, h[..]) && h[0] == 0 && h[1] == 255 && h[2] == 16 && h[31] == 0xde && bs_hex(h, 32, out[..]) == s;
+  #assert !bb_unhex(s[0..<63], h[..]) && !bb_unhex("00FF10a0b0c0d0e0f00112233445566778899aabbccddeeff0123456789abcde", h[..]);
+  #assert !bb_unhex("0g0000000000000000000000000000000000000000000000000000000000000000", h[..]) && !bb_unhex("g000000000000000000000000000000000000000000000000000000000000000", h[..]);
+  #assert bb_hex_digit('9') == 9 && bb_hex_digit('a') == 10 && bb_hex_digit('f') == 15 && bb_hex_digit('/') == -1 && bb_hex_digit(':') == -1 && bb_hex_digit('`') == -1 && bb_hex_digit('g') == -1;
+  #assert bb_number("0") == 0 && bb_number("4096") == 4096 && bb_number("") == -1 && bb_number("1x") == -1 && bb_number("-1") == -1 && bb_number("999999999999") == 999999999999 && bb_number("1000000000000") == -1;
+  #assert bb_number("/") == -1 && bb_number(":") == -1;
+  buf: [40] u8; w := [1] BbW.[BbW.{buf = buf[..]}];
+  bb_hex_bits(w[..], 0x3f19999a, 8); bb_byte(w[..], ' '); bb_decimal(w[..], 0); bb_byte(w[..], ' '); bb_decimal(w[..], 7710);
+  #assert cast(string) buf[0..<w[0].n] == "3f19999a 0 7710";
+}
+
+// ---- the corpus and the manifest ------------------------------------------------
+// The corpus digest: SHA-256 over every file in order, as its path, a newline
+// and its 32-byte content hash.
+bb_corpus :: (s: BbStore) -> [32] u8 {
+  state: [112] u8; out: [32] u8; nl := [1] u8.['\n'];
+  r := sha256_init(state[..]);
+  for f: 0..<s.file_n {
+    r = sha256_update_checked(state[..], s.names[s.path_from[f]..<s.path_to[f]], false);
+    r = sha256_update_checked(state[..], nl[..], false);
+    r = sha256_update_checked(state[..], s.hashes[32 * f..<32 * f + 32], false);
+  }
+  r = sha256_final_checked(state[..], out[..], false);
+  return out;
+}
+bb_path :: (s: BbStore, f: int) -> string { return cast(string) s.names[s.path_from[f]..<s.path_to[f]]; }
+bb_heads :: (s: BbStore, p: int) -> string { q := s.passages[p]; return cast(string) s.heads[q.head_from..<q.head_to]; }
+
+// book:begin manifest
+// The manifest, five lines of text:
+//   psionic-book-search-bundle 1
+//   profile bs-attnpool-d64-v1
+//   encoder <sha256 hex> <bytes>
+//   index <sha256 hex> <bytes>
+//   corpus <sha256 hex>
+bb_write_manifest :: (w: [] BbW, m: BbManifest) {
+  hex: [64] u8;
+  bb_text(w, BB_MANIFEST_MAGIC); bb_text(w, "\nprofile "); bb_text(w, m.profile);
+  bb_text(w, "\nencoder "); bb_text(w, bs_hex(m.encoder, 32, hex[..])); bb_byte(w, ' '); bb_decimal(w, m.encoder_bytes);
+  bb_text(w, "\nindex "); bb_text(w, bs_hex(m.index, 32, hex[..])); bb_byte(w, ' '); bb_decimal(w, m.index_bytes);
+  bb_text(w, "\ncorpus "); bb_text(w, bs_hex(m.corpus, 32, hex[..])); bb_byte(w, '\n');
+}
+// book:end manifest
+// Line k of text (without its newline), or "" past the end.
+bb_line_at :: (text: string, k: int) -> string {
+  at := 0;
+  for i: 0..<k {
+    while at < text.count && text[at] != '\n' { at += 1; }
+    at += 1;
+  }
+  if at > text.count { return ""; }
+  end := at; while end < text.count && text[end] != '\n' { end += 1; }
+  return text[at..<end];
+}
+// "key <hex>" or "key <hex> <bytes>": the digest into out and the byte count
+// (0 when sized is false), or -1 when the line is not exactly that.
+bb_field :: (line: string, key: string, sized: bool, out: [] u8) -> int {
+  n := key.count;
+  if line.count < n + 65 || line[0..<n] != key || line[n] != ' ' || !bb_unhex(line[n + 1..<n + 65], out) { return -1; }
+  rest := line[n + 65..<line.count];
+  if !sized { return ifx rest.count == 0 then 0 else -1; }
+  if rest.count < 2 || rest[0] != ' ' { return -1; }
+  return bb_number(rest[1..<rest.count]);
+}
+bb_read_manifest :: (text: string) -> BbManifest {
+  m: BbManifest;
+  p := bb_line_at(text, 1);
+  if bb_line_at(text, 0) != BB_MANIFEST_MAGIC || p.count < 9 || p[0..<8] != "profile " || bb_line_at(text, 6).count > 0 || bb_line_at(text, 5).count > 0 { return m; }
+  m.profile = p[8..<p.count];
+  m.encoder_bytes = bb_field(bb_line_at(text, 2), "encoder", true, m.encoder[..]);
+  m.index_bytes = bb_field(bb_line_at(text, 3), "index", true, m.index[..]);
+  c := bb_field(bb_line_at(text, 4), "corpus", false, m.corpus[..]);
+  m.ok = m.encoder_bytes >= 0 && m.index_bytes >= 0 && c == 0;
+  return m;
+}
+
+// The manifest with byte `at` replaced (or appended, at the end) by c: does it parse?
+bb_manifest_with :: (text: string, at: int, c: u8) -> bool {
+  buf: [600] u8; for i: 0..<text.count { buf[i] = text[i]; }
+  buf[at] = c; n := ifx at == text.count then at + 1 else text.count;
+  return bb_read_manifest(cast(string) buf[0..<n]).ok;
+}
+#test "a manifest writes and reads back, and anything else does not parse" {
+  m := BbManifest.{ok = true, profile = BB_PROFILE, encoder = bb_digest(0xab), encoder_bytes = 2731234, index = bb_digest(1), index_bytes = 5, corpus = bb_digest(0xc0)};
+  buf: [512] u8; w := [1] BbW.[BbW.{buf = buf[..]}];
+  bb_write_manifest(w[..], m);
+  text := cast(string) buf[0..<w[0].n];
+  #assert bb_line_at(text, 0) == "psionic-book-search-bundle 1" && bb_line_at(text, 1) == "profile bs-attnpool-d64-v1" && bb_line_at(text, 5) == "" && text[text.count - 1] == '\n';
+  #assert bb_line_at(text, 3) == "index 0101010101010101010101010101010101010101010101010101010101010101 5";
+  r := bb_read_manifest(text);
+  #assert r.ok && r.profile == BB_PROFILE && r.encoder_bytes == 2731234 && r.index_bytes == 5 && bb_same(r.encoder, m.encoder) && bb_same(r.index, m.index) && bb_same(r.corpus, m.corpus);
+  #assert !bb_read_manifest(text[1..<text.count]).ok && !bb_read_manifest("").ok;
+  #assert !bb_manifest_with(text, 29, 'P') && !bb_manifest_with(text, 60, ':') && bb_manifest_with(text, 60, text[60]);
+  #assert !bb_manifest_with(text, text.count, 'x') && bb_manifest_with(text, text.count, '\n');
+  #assert !bb_manifest_with(text, text.count - 1, 'x');
+  #assert !bb_read_manifest("psionic-book-search-bundle 1\nprofile ").ok && !bb_read_manifest("psionic-book-search-bundle 1\nprofile x").ok;
+  h: [32] u8; z := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert bb_field("corpus 0000000000000000000000000000000000000000000000000000000000000000", "corpus", false, h[..]) == 0;
+  #assert bb_field("corpus 0000000000000000000000000000000000000000000000000000000000000000 1", "corpus", false, h[..]) == -1;
+  #assert bb_field("index 0000000000000000000000000000000000000000000000000000000000000000 12", "index", true, h[..]) == 12;
+  #assert bb_field("index 0000000000000000000000000000000000000000000000000000000000000000", "index", true, h[..]) == -1;
+  #assert bb_field("index 0000000000000000000000000000000000000000000000000000000000000000 ", "index", true, h[..]) == -1;
+  #assert bb_field("index 0000000000000000000000000000000000000000000000000000000000000000x1", "index", true, h[..]) == -1;
+  #assert bb_field("indexx000000000000000000000000000000000000000000000000000000000000000 1", "index", true, h[..]) == -1;
+  #assert bb_field("inde 0000000000000000000000000000000000000000000000000000000000000000 1", "index", true, h[..]) == -1 && z.count == 64;
+}
+
+// ---- the encoder ------------------------------------------------------------------
+// Chapter 54's weights file: magic, profile, the revision it was trained at
+// (40 bytes), word count, width, every word and its count, then the table and
+// the query vector in binary32. The table is used exactly as stored.
+bb_read_encoder :: (bytes: [] u8, s: [] BbStore) -> string {
+  r := [1] BbR.[BbR.{buf = bytes}];
+  magic: [30] u8; bb_read_into(r[..], magic[..]);
+  if cast(string) magic[..] != BB_ENCODER_MAGIC { return ""; }
+  profile := bb_read_str(r[..]);
+  r[0].at += 40;
+  count := bb_read_u32(r[..]); width := bb_read_u32(r[..]);
+  if r[0].bad || count < 1 || count > s[0].vocab[0].from.count || width != BE_WIDTH || count * BE_WIDTH > s[0].table.count { return ""; }
+  bs_vocab_clear(s[0].vocab);
+  for e: 0..<count {
+    word := bb_read_str(r[..]); c := bb_read_u32(r[..]);
+    if r[0].bad || bs_count(s[0].vocab, word) != e { return ""; }
+    s[0].vocab[0].count[e] = c;
+  }
+  for i: 0..<count * BE_WIDTH { s[0].table[i] = f64(f32_from_bits(cast(u32) bb_read_uint(r[..], 4))); }
+  for d: 0..<BE_WIDTH { s[0].query[d] = f64(f32_from_bits(cast(u32) bb_read_uint(r[..], 4))); }
+  if r[0].bad || r[0].at != bytes.count { return ""; }
+  s[0].words = count;
+  return profile;
+}
+bb_write_encoder :: (w: [] BbW, s: BbStore, trained_at: string) {
+  bb_text(w, BB_ENCODER_MAGIC); bb_str(w, BB_PROFILE);
+  for i: 0..<40 { bb_byte(w, ifx i < trained_at.count then trained_at[i] else '0'); }
+  bb_u32(w, s.words); bb_u32(w, BE_WIDTH);
+  for e: 0..<s.words { bb_str(w, bs_vocab_word(s.vocab[0], e)); bb_u32(w, s.vocab[0].count[e]); }
+  for i: 0..<s.words * BE_WIDTH { bb_f32(w, cast(f32) s.table[i]); }
+  for d: 0..<BE_WIDTH { bb_f32(w, cast(f32) s.query[d]); }
+}
+
+// ---- the index ------------------------------------------------------------------------
+// book:begin index
+// The index: magic; the encoder digest that made its embeddings; its corpus
+// digest; every file (path, content hash, status, book); the heading paths;
+// every passage (file, heading span, part, BM25 length, term span, identity
+// hash); document frequencies; the average length; terms and counts as
+// 16-bit numbers; and the embeddings in binary32.
+bb_write_index :: (w: [] BbW, s: BbStore, encoder: [32] u8) {
+  made := encoder; corpus := bb_corpus(s);
+  bb_text(w, BB_INDEX_MAGIC); bb_bytes(w, made[..]); bb_bytes(w, corpus[..]);
+  bb_u32(w, s.file_n);
+  for f: 0..<s.file_n { bb_str(w, bb_path(s, f)); bb_bytes(w, s.hashes[32 * f..<32 * f + 32]); bb_u32(w, s.status[f]); bb_u32(w, s.book[f]); }
+  bb_u32(w, s.heads_n); bb_bytes(w, s.heads[0..<s.heads_n]);
+  bb_u32(w, s.passage_n);
+  for p: 0..<s.passage_n {
+    q := s.passages[p];
+    bb_u32(w, q.file); bb_u32(w, q.head_from); bb_u32(w, q.head_to); bb_u32(w, q.part);
+    bb_u32(w, s.length[p]); bb_u32(w, s.tf[p]); bb_u32(w, s.tt[p]); bb_bytes(w, q.hash[..]);
+  }
+  bb_u32(w, s.words);
+  for e: 0..<s.words { bb_u32(w, s.df[e]); }
+  bb_f64(w, s.average);
+  bb_u32(w, s.terms_n);
+  for i: 0..<s.terms_n { bb_uint(w, cast(u64) s.terms[i], 2); }
+  for i: 0..<s.terms_n { bb_uint(w, cast(u64) s.counts[i], 2); }
+  for i: 0..<s.passage_n * BE_WIDTH { bb_f32(w, s.embeddings[i]); }
+}
+// book:end index
+// Reads an index into s, after the encoder (the word count must agree). Every
+// count and span is checked against s's storage and the values read before
+// it; ok is false on the first one out of range.
+BbHead :: struct { ok: bool; encoder: [32] u8; corpus: [32] u8; }
+bb_read_index :: (bytes: [] u8, s: [] BbStore) -> BbHead {
+  h: BbHead;
+  r := [1] BbR.[BbR.{buf = bytes}];
+  magic: [32] u8; bb_read_into(r[..], magic[..]);
+  if cast(string) magic[..] != BB_INDEX_MAGIC { return h; }
+  bb_read_into(r[..], h.encoder[..]); bb_read_into(r[..], h.corpus[..]);
+  s[0].file_n = bb_read_below(r[..], s[0].path_from.count + 1);
+  at := 0;
+  for f: 0..<s[0].file_n {
+    path := bb_read_str(r[..]);
+    if r[0].bad || at + path.count > s[0].names.count { return h; }
+    s[0].path_from[f] = at; for c: path { s[0].names[at] = c; at += 1; } s[0].path_to[f] = at;
+    bb_read_into(r[..], s[0].hashes[32 * f..<32 * f + 32]);
+    s[0].status[f] = bb_read_below(r[..], 3); s[0].book[f] = bb_read_below(r[..], BS_BOOKS);
+  }
+  s[0].heads_n = bb_read_below(r[..], s[0].heads.count + 1);
+  bb_read_into(r[..], s[0].heads[0..<s[0].heads_n]);
+  s[0].passage_n = bb_read_below(r[..], s[0].passages.count + 1);
+  if r[0].bad { return h; }
+  for p: 0..<s[0].passage_n {
+    q: BsPassage;
+    q.file = bb_read_below(r[..], s[0].file_n); q.head_from = bb_read_below(r[..], s[0].heads_n + 1);
+    q.head_to = bb_read_below(r[..], s[0].heads_n + 1); q.part = bb_read_u32(r[..]);
+    s[0].length[p] = bb_read_u32(r[..]); s[0].tf[p] = bb_read_below(r[..], s[0].terms.count + 1); s[0].tt[p] = bb_read_below(r[..], s[0].terms.count + 1);
+    bb_read_into(r[..], q.hash[..]);
+    if q.head_to < q.head_from || s[0].tt[p] < s[0].tf[p] { return h; }
+    s[0].passages[p] = q;
+  }
+  if bb_read_u32(r[..]) != s[0].words || r[0].bad { return h; }
+  for e: 0..<s[0].words { s[0].df[e] = bb_read_u32(r[..]); }
+  s[0].average = f64_from_bits(bb_read_uint(r[..], 8));
+  s[0].terms_n = bb_read_below(r[..], s[0].terms.count + 1);
+  if r[0].bad || !(s[0].average > 0) || s[0].passage_n * BE_WIDTH > s[0].embeddings.count { return h; }
+  for i: 0..<s[0].terms_n { s[0].terms[i] = bb_read_sized(r[..], s[0].words, 2); }
+  for i: 0..<s[0].terms_n { s[0].counts[i] = cast(int) bb_read_uint(r[..], 2); }
+  for p: 0..<s[0].passage_n { if s[0].tt[p] > s[0].terms_n { return h; } }
+  for i: 0..<s[0].passage_n * BE_WIDTH { s[0].embeddings[i] = f32_from_bits(cast(u32) bb_read_uint(r[..], 4)); }
+  h.ok = !r[0].bad && r[0].at == bytes.count;
+  return h;
+}
+
+// ---- loading ----------------------------------------------------------------------------
+// book:begin load
+// Hashes and parses the three downloaded files into s and decides whether
+// the page may answer from them. Nothing is searched unless this says
+// admitted.
+bb_load :: (manifest: [] u8, encoder: [] u8, index: [] u8, s: [] BbStore) -> BbVerdict {
+  m := bb_read_manifest(cast(string) manifest);
+  seen := BbSeen.{encoder_bytes = encoder.count, index_bytes = index.count};
+  seen.encoder = bs_file_hash(encoder, 0, encoder.count);
+  seen.index = bs_file_hash(index, 0, index.count);
+  seen.profile = bb_read_encoder(encoder, s);
+  if seen.profile.count > 0 {
+    h := bb_read_index(index, s);
+    seen.index_ok = h.ok; seen.index_encoder = h.encoder; seen.index_corpus = h.corpus;
+    if h.ok { seen.listed_corpus = bb_corpus(s[0]); }
+  }
+  return bb_admit(m, seen);
+}
+// book:end load
+
+// ---- search ---------------------------------------------------------------------------------
+// book:begin search
+// Chapter 54's search over the bundle: the query's known words, its
+// embedding, BM25's top 100, exhaustive vector search's top 100, and their
+// reciprocal-rank fusion. scores holds one number per passage.
+bb_search :: (s: BbStore, text: string, scores: [] f64, out: [] BbResult) {
+  table := PT_TOY; t := pt_layout(table[..]); word: [64] u8;
+  ids: [4096] int; n := 0; words := 0; at := 0;
+  while at < text.count && n < ids.count {
+    w := bs_word(table[..], t, text, at, word[..]);
+    if w.size > 0 { words += 1; id := bs_find(s.vocab[0], cast(string) word[0..<w.size]); if id >= 0 { ids[n] = id; n += 1; } }
+    at = w.next;
+  }
+  out[0].words = words; out[0].known = n;
+  be_embed(s.table, s.query, ids[0..<n], out[0].e[..]);
+  distinct: [4096] int; for i: 0..<n { distinct[i] = ids[i]; }
+  k := bs_distinct(distinct[0..<n]);
+  P := s.passage_n;
+  for p: 0..<P { scores[p] = bs_passage_bm25(distinct[0..<k], s.terms[s.tf[p]..<s.tt[p]], s.counts[s.tf[p]..<s.tt[p]], s.df, P, s.length[p], s.average); }
+  out[0].ln = bs_top(scores[0..<P], 0, out[0].lexical[..]);
+  for p: 0..<P { scores[p] = ifx n == 0 then -2.0 else bs_dot(out[0].e[..], s.embeddings[p * BE_WIDTH..<(p + 1) * BE_WIDTH]); }
+  out[0].dn = bs_top(scores[0..<P], -2, out[0].dense[..]);
+  bs_fuse(out[0].lexical[0..<out[0].ln], out[0].dense[0..<out[0].dn], scores[0..<P]);
+  out[0].fn = bs_top(scores[0..<P], 0, out[0].fused[..]);
+}
+// book:end search
+
+// book:begin line
+// One result as exact bits: known/words, the 64 binary32 embedding values,
+// then the first ten of each ranking as passage:score (binary64 bits).
+bb_hits :: (w: [] BbW, name: string, hits: [] BsHit) {
+  bb_byte(w, ' '); bb_text(w, name); bb_byte(w, '=');
+  top := ifx hits.count < BB_SHOW then hits.count else BB_SHOW;
+  for i: 0..<top {
+    if i > 0 { bb_byte(w, ','); }
+    bb_decimal(w, hits[i].passage); bb_byte(w, ':'); bb_hex_bits(w, f64_bits(hits[i].score), 16);
+  }
+}
+bb_line :: (w: [] BbW, e: [] f32, words: int, known: int, bm: [] BsHit, dn: [] BsHit, fu: [] BsHit) {
+  bb_decimal(w, known); bb_byte(w, '/'); bb_decimal(w, words); bb_text(w, " e=");
+  for d: 0..<e.count { bb_hex_bits(w, cast(u64) f32_bits(e[d]), 8); }
+  bb_hits(w, "bm25", bm); bb_hits(w, "dense", dn); bb_hits(w, "fused", fu);
+  bb_byte(w, '\n');
+}
+// book:end line
+bb_result_line :: (w: [] BbW, r: [] BbResult) {
+  bb_line(w, r[0].e[..], r[0].words, r[0].known, r[0].lexical[0..<r[0].ln], r[0].dense[0..<r[0].dn], r[0].fused[0..<r[0].fn]);
+}
+// Every query of a query file (the text before each line's tab; empty lines
+// and lines starting with # are skipped), one line each. Returns how many.
+bb_queries :: (s: BbStore, file: string, scores: [] f64, r: [] BbResult, w: [] BbW) -> int {
+  n := 0; at := 0;
+  while at < file.count {
+    end := at; while end < file.count && file[end] != '\n' { end += 1; }
+    line := file[at..<end]; at = end + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    tab := 0; while tab < line.count && line[tab] != '\t' { tab += 1; }
+    bb_search(s, line[0..<tab], scores, r);
+    bb_result_line(w, r);
+    n += 1;
+  }
+  return n;
+}
+
+// ---- a small index, built in memory -------------------------------------------------
+// book:begin build
+// Indexes the chapters pool[from[f]..<to[f]], whose paths are already in
+// s.names (path_from, path_to): status, book and content hash per file,
+// chapter 54's passages, a vocabulary of every word, BM25's lists, and each
+// passage's word ids in order into ids. The encoder's table and query vector
+// are set afterwards; bb_embed_all then embeds every passage. False when any
+// storage is too small.
+bb_index_books :: (pool: [] u8, from: [] int, to: [] int, s: [] BbStore, ids: [] int) -> bool {
+  s[0].passage_n = 0; s[0].heads_n = 0; s[0].file_n = from.count;
+  for f: 0..<from.count {
+    path := bb_path(s[0], f); base := 0;
+    for i: 0..<path.count { if path[i] == '/' { base = i + 1; } }
+    s[0].status[f] = cast(int) bs_status(path[base..<path.count], cast(string) pool[from[f]..<to[f]]);
+    s[0].book[f] = ifx bs_book(path) < 0 then 0 else bs_book(path);
+    h := bs_file_hash(pool, from[f], to[f]); for i: 0..<32 { s[0].hashes[32 * f + i] = h[i]; }
+    r := bs_chunk(pool, from[f], to[f], f, s[0].passages, s[0].passage_n, s[0].heads, s[0].heads_n);
+    if r.full { return false; }
+    s[0].passage_n = r.passages; s[0].heads_n = r.heads;
+  }
+  bs_vocab_clear(s[0].vocab);
+  table := PT_TOY; t := pt_layout(table[..]); word: [64] u8;
+  n := 0; total := 0; s[0].terms_n = 0;
+  for p: 0..<s[0].passage_n {
+    q := s[0].passages[p]; start := n;
+    texts := [2] string.[bb_heads(s[0], p), cast(string) pool[q.from..<q.to]];
+    for text: texts {
+      at := 0;
+      while at < text.count {
+        w := bs_word(table[..], t, text, at, word[..]);
+        if w.size > 0 {
+          if n == ids.count { return false; }
+          ids[n] = bs_count(s[0].vocab, cast(string) word[0..<w.size]);
+          if ids[n] < 0 { return false; }
+          n += 1;
+        }
+        at = w.next;
+      }
+    }
+    s[0].length[p] = n - start; total += n - start;
+    tf := s[0].terms_n;
+    if tf + n - start > s[0].terms.count { return false; }
+    for i: start..<n { s[0].terms[tf + i - start] = ids[i]; }
+    d := bs_distinct(s[0].terms[tf..<tf + n - start]);
+    for j: tf..<tf + d {
+      c := 0; for i: start..<n { if ids[i] == s[0].terms[j] { c += 1; } }
+      s[0].counts[j] = c;
+    }
+    s[0].tf[p] = tf; s[0].tt[p] = tf + d; s[0].terms_n = tf + d;
+  }
+  s[0].words = s[0].vocab[0].n;
+  for e: 0..<s[0].words { s[0].df[e] = 0; }
+  for j: 0..<s[0].terms_n { s[0].df[s[0].terms[j]] += 1; }
+  s[0].average = ifx s[0].passage_n > 0 then f64(total) / f64(s[0].passage_n) else 1;
+  return true;
+}
+// Every passage's embedding from its word ids (bb_index_books's order).
+bb_embed_all :: (s: [] BbStore, ids: [] int) {
+  at := 0;
+  for p: 0..<s[0].passage_n {
+    be_embed(s[0].table, s[0].query, ids[at..<at + s[0].length[p]], s[0].embeddings[p * BE_WIDTH..<(p + 1) * BE_WIDTH]);
+    at += s[0].length[p];
+  }
+}
+// book:end build
+
+// Storage for a small book (the chapter's examples and checks), and its
+// store over that storage.
+BbSmall :: struct {
+  pool: [4096] u8; ids: [1024] int; table: [BE_WIDTH * BE_WIDTH] f64; query: [BE_WIDTH] f64;
+  slots: [256] int; vpool: [1024] u8; vfrom: [BE_WIDTH] int; vsize: [BE_WIDTH] int; vcount: [BE_WIDTH] int; vocab: [1] BsVocab;
+  names: [512] u8; path_from: [8] int; path_to: [8] int; hashes: [256] u8; status: [8] int; book: [8] int;
+  heads: [1024] u8; passages: [32] BsPassage; length: [32] int; tf: [32] int; tt: [32] int;
+  df: [BE_WIDTH] int; terms: [1024] int; counts: [1024] int; embeddings: [32 * BE_WIDTH] f32;
+  store: [1] BbStore;
+}
+bb_small :: (b: [] BbSmall) {
+  b[0].vocab[0] = BsVocab.{slots = b[0].slots[..], pool = b[0].vpool[..], from = b[0].vfrom[..], size = b[0].vsize[..], count = b[0].vcount[..]};
+  b[0].store[0] = BbStore.{table = b[0].table[..], query = b[0].query[..], vocab = b[0].vocab[..], names = b[0].names[..], path_from = b[0].path_from[..],
+    path_to = b[0].path_to[..], hashes = b[0].hashes[..], status = b[0].status[..], book = b[0].book[..], heads = b[0].heads[..], passages = b[0].passages[..],
+    length = b[0].length[..], tf = b[0].tf[..], tt = b[0].tt[..], df = b[0].df[..], terms = b[0].terms[..], counts = b[0].counts[..], embeddings = b[0].embeddings[..]};
+  bs_vocab_clear(b[0].vocab[..]);
+}
+// book:begin small
+// Indexes the chapters with a hand-set encoder: word e's row is the unit
+// vector on axis e and the query vector is zero, so attention is uniform and
+// a passage's embedding is its word counts scaled to length one. At most 64
+// distinct words.
+bb_small_books :: (b: [] BbSmall, paths: [] string, chapters: [] string) -> bool {
+  bb_small(b);
+  from: [8] int; to: [8] int; at := 0; name := 0;
+  if paths.count > from.count { return false; }
+  for f: 0..<paths.count {
+    b[0].path_from[f] = name; for c: paths[f] { b[0].names[name] = c; name += 1; } b[0].path_to[f] = name;
+    from[f] = at; for c: chapters[f] { b[0].pool[at] = c; at += 1; } to[f] = at;
+  }
+  if !bb_index_books(b[0].pool[..], from[0..<paths.count], to[0..<paths.count], b[0].store[..], b[0].ids[..]) { return false; }
+  for i: 0..<BE_WIDTH * BE_WIDTH { b[0].table[i] = 0; }
+  for e: 0..<b[0].store[0].words { b[0].table[e * BE_WIDTH + e] = 1; }
+  for d: 0..<BE_WIDTH { b[0].query[d] = 0; }
+  bb_embed_all(b[0].store[..], b[0].ids[..]);
+  return true;
+}
+// book:end small
+
+#test "a bundle read back searches exactly like the store it was written from, and hand-derived values hold" {
+  paths := [2] string.["psionic/book/ch001-learning-a-number.md", "psionic/book/ch054-search-the-book.md"];
+  chapters := [2] string.[
+    "# 1. Learning a number\n\nTrain one weight by gradient descent.\n\n## Measure the error\n\nThe loss is the mean squared error of the predictions.\n",
+    "# 54. Search the book\n\n> **Status: unimplemented — design draft.** Nothing here runs yet.\n\n## Rank passages\n\nRank passages by BM25, then by squared error of embeddings.\n"];
+  a: [1] BbSmall;
+  #assert bb_small_books(a[..], paths[..], chapters[..]);
+  s := a[0].store[0];
+  #assert s.file_n == 2 && s.passage_n == 4 && s.words == 36 && s.status[0] == 0 && s.status[1] == 1 && s.book[0] == 1;
+  enc: [16384] u8; idx: [8192] u8; man: [512] u8;
+  we := [1] BbW.[BbW.{buf = enc[..]}]; wi := [1] BbW.[BbW.{buf = idx[..]}]; wm := [1] BbW.[BbW.{buf = man[..]}];
+  bb_write_encoder(we[..], s, "");
+  m := BbManifest.{ok = true, profile = BB_PROFILE, encoder = bs_file_hash(enc[..], 0, we[0].n), encoder_bytes = we[0].n, corpus = bb_corpus(s)};
+  bb_write_index(wi[..], s, m.encoder);
+  m.index = bs_file_hash(idx[..], 0, wi[0].n); m.index_bytes = wi[0].n;
+  bb_write_manifest(wm[..], m);
+  // Encoder: magic 30, profile 4 + 18, revision 40, two counts 8, words, rows and the query vector.
+  wordbytes := 0; for e: 0..<s.words { wordbytes += 8 + bs_vocab_word(s.vocab[0], e).count; }
+  #assert we[0].n == 30 + 22 + 40 + 8 + wordbytes + 4 * (s.words + 1) * BE_WIDTH;
+  b: [1] BbSmall; bb_small(b[..]);
+  #assert bb_load(man[0..<wm[0].n], enc[0..<we[0].n], idx[0..<wi[0].n], b[0].store[..]) == BbVerdict.admitted;
+  t := b[0].store[0];
+  #assert t.passage_n == 4 && t.words == 36 && t.terms_n == s.terms_n && t.average == s.average && t.heads_n == s.heads_n && bb_path(t, 1) == paths[1];
+  scores: [32] f64; r: [1] BbResult; q: [1] BbResult;
+  bb_search(t, "squared error", scores[..], r[..]);
+  bb_search(s, "squared error", scores[..], q[..]);
+  // Hand values: uniform attention over two one-hot rows gives 1/sqrt(2) on
+  // both axes; "Measure the error" holds the 4 times, error twice, squared
+  // once and ten other words once, so its cosine is 3 / sqrt(2 * 31).
+  sq := bs_find(t.vocab[0], "squared"); er := bs_find(t.vocab[0], "error");
+  #assert f32_bits(r[0].e[sq]) == 0x3f3504f3 && f32_bits(r[0].e[er]) == 0x3f3504f3 && r[0].known == 2 && r[0].words == 2;
+  #assert bb_heads(t, r[0].dense[0].passage) == "1. Learning a number > Measure the error" && abs(r[0].dense[0].score - 3 / sqrt(62.0)) < 1e-6;
+  #assert r[0].fused[0].passage == r[0].dense[0].passage && r[0].ln == 2 && r[0].dn == 4 && r[0].fn == 4;
+  // Each score again, from the original store by chapter 54's procedures.
+  e: [BE_WIDTH] f32; ids := [2] int.[sq, er];
+  be_embed(s.table, s.query, ids[..], e[..]);
+  for d: 0..<BE_WIDTH { #assert f32_bits(e[d]) == f32_bits(r[0].e[d]); }
+  for i: 0..<r[0].dn { p := r[0].dense[i].passage; #assert f64_bits(r[0].dense[i].score) == f64_bits(bs_dot(e[..], s.embeddings[p * BE_WIDTH..<(p + 1) * BE_WIDTH])); }
+  terms := [2] int.[er, sq]; k := bs_distinct(terms[..]);
+  for i: 0..<r[0].ln {
+    p := r[0].lexical[i].passage;
+    want := bs_passage_bm25(terms[0..<k], s.terms[s.tf[p]..<s.tt[p]], s.counts[s.tf[p]..<s.tt[p]], s.df, 4, s.length[p], s.average);
+    #assert f64_bits(r[0].lexical[i].score) == f64_bits(want);
+  }
+  l1: [4096] u8; l2: [4096] u8; w1 := [1] BbW.[BbW.{buf = l1[..]}]; w2 := [1] BbW.[BbW.{buf = l2[..]}];
+  bb_result_line(w1[..], r[..]); bb_result_line(w2[..], q[..]);
+  #assert cast(string) l1[0..<w1[0].n] == cast(string) l2[0..<w2[0].n] && w1[0].n > 600;
+  // An unknown query has no embedding and no dense list; a query file runs every line.
+  bb_search(t, "zebra", scores[..], r[..]);
+  #assert r[0].known == 0 && r[0].words == 1 && r[0].dn == 0 && r[0].ln == 0 && r[0].fn == 0;
+  out: [16384] u8; wo := [1] BbW.[BbW.{buf = out[..]}];
+  #assert bb_queries(t, "# a comment\n\nsquared error\tx#y\nzebra\n", scores[..], r[..], wo[..]) == 2;
+  #assert cast(string) out[0..<w2[0].n] == cast(string) l2[0..<w2[0].n] && cast(string) out[w2[0].n..<w2[0].n + 6] == "0/1 e=";
+  // One byte changed anywhere in the index refuses it.
+  idx[100] ^= 1;
+  c: [1] BbSmall; bb_small(c[..]);
+  #assert bb_load(man[0..<wm[0].n], enc[0..<we[0].n], idx[0..<wi[0].n], c[0].store[..]) == BbVerdict.index_changed;
+}
+
+#test "the small book's files and result line have fixed digests" {
+  paths := [2] string.["psionic/book/ch001-learning-a-number.md", "psionic/book/ch054-search-the-book.md"];
+  chapters := [2] string.[
+    "# 1. Learning a number\n\nTrain one weight by gradient descent.\n\n## Measure the error\n\nThe loss is the mean squared error of the predictions.\n",
+    "# 54. Search the book\n\n> **Status: unimplemented — design draft.** Nothing here runs yet.\n\n## Rank passages\n\nRank passages by BM25, then by squared error of embeddings.\n"];
+  a: [1] BbSmall;
+  #assert bb_small_books(a[..], paths[..], chapters[..]);
+  s := a[0].store[0];
+  enc: [16384] u8; idx: [8192] u8; hex: [64] u8;
+  we := [1] BbW.[BbW.{buf = enc[..]}]; wi := [1] BbW.[BbW.{buf = idx[..]}];
+  bb_write_encoder(we[..], s, "");
+  e := bs_file_hash(enc[..], 0, we[0].n);
+  bb_write_index(wi[..], s, e);
+  // The corpus digest was computed independently: Python's hashlib over each
+  // path, a newline and the SHA-256 of the chapter's bytes.
+  #assert bs_hex(bb_corpus(s), 32, hex[..]) == "505937e484281adbda13b07679095b4de5d02a29a611b91f29d0fbfe58c6fc57";
+  #assert we[0].n == 10042 && bs_hex(e, 32, hex[..]) == "a9c4630b5eabea069d62f4913f359e8b739ccaded9722be62eff36418f85cc10";
+  #assert wi[0].n == 2006 && bs_hex(bs_file_hash(idx[..], 0, wi[0].n), 32, hex[..]) == "d3589ef39fa00822ff0a097850860572f7d0e116d2499a5f96025c33c97b16d7";
+  scores: [32] f64; r: [1] BbResult; line: [4096] u8; w := [1] BbW.[BbW.{buf = line[..]}];
+  bb_search(s, "squared error", scores[..], r[..]);
+  bb_result_line(w[..], r[..]);
+  #assert w[0].n == 726 && bs_hex(bs_file_hash(line[..], 0, w[0].n), 32, hex[..]) == "6e92f1a95a727b8ede82f64e91a1d51faa59ce703d0c1d02bfeb4f21df4ac252";
+  #assert cast(string) line[0..<10] == "2/2 e=0000" && line[w[0].n - 1] == '\n';
+  // A small book whose words do not fit, and too many chapters, refuse.
+  big := [9] string.["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+  #assert !bb_small_books(a[..], big[..], big[..]);
+}

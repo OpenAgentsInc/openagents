@@ -1,0 +1,112 @@
+// Chapter 59: whether a browser may answer from a downloaded search bundle.
+// A bundle is three files: a manifest the site writes from the books as they
+// are now, the query encoder (chapter 54's weights file, unchanged) and the
+// index (document embeddings and BM25 lists). The page computes what it
+// downloaded: each file's SHA-256 and size, the encoder the index says made
+// its embeddings, the corpus digest the index records, and the corpus digest
+// of the file list the index holds. This file decides, from those values
+// alone, whether the page may answer. Equal vector sizes prove nothing: the
+// encoder is named by the digest of its bytes.
+#authority;
+
+BbVerdict :: enum u8 { admitted; malformed; wrong_profile; encoder_changed; index_changed; corrupt_index; other_encoder; stale_index; }
+BB_PROFILE :: "bs-attnpool-d64-v1";
+// What the manifest promises. ok is false when it did not parse.
+BbManifest :: struct { ok: bool; profile: string; encoder: [32] u8; encoder_bytes: int; index: [32] u8; index_bytes: int; corpus: [32] u8; }
+// What the page found in the downloaded bytes. index_ok is false when the
+// index did not parse or held a value out of range.
+BbSeen :: struct {
+  profile: string; encoder: [32] u8; encoder_bytes: int; index: [32] u8; index_bytes: int;
+  index_ok: bool; index_encoder: [32] u8; index_corpus: [32] u8; listed_corpus: [32] u8;
+}
+
+bb_same :: (a: [32] u8, b: [32] u8) -> bool {
+  for i: 0..<32 { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+// book:begin admit
+// The checks run in this order, and the first that fails names the refusal:
+// the manifest parses and names this encoder profile; the encoder and index
+// bytes are the ones the manifest names; the encoder's own header names the
+// same profile; the index parses; the index's
+// embeddings were made by that same encoder; the index's recorded corpus
+// digest is the digest of the files it lists; and that corpus is the books
+// the manifest says are current.
+bb_admit :: (m: BbManifest, s: BbSeen) -> BbVerdict {
+  if !m.ok { return BbVerdict.malformed; }
+  if m.profile != BB_PROFILE { return BbVerdict.wrong_profile; }
+  if s.encoder_bytes != m.encoder_bytes || !bb_same(s.encoder, m.encoder) { return BbVerdict.encoder_changed; }
+  if s.index_bytes != m.index_bytes || !bb_same(s.index, m.index) { return BbVerdict.index_changed; }
+  if s.profile != BB_PROFILE { return BbVerdict.wrong_profile; }
+  if !s.index_ok || !bb_same(s.index_corpus, s.listed_corpus) { return BbVerdict.corrupt_index; }
+  if !bb_same(s.index_encoder, m.encoder) { return BbVerdict.other_encoder; }
+  if !bb_same(s.index_corpus, m.corpus) { return BbVerdict.stale_index; }
+  return BbVerdict.admitted;
+}
+// book:end admit
+
+bb_verdict_text :: (v: BbVerdict) -> string {
+  if v == BbVerdict.admitted { return "admitted"; }
+  if v == BbVerdict.malformed { return "refused: the manifest does not parse"; }
+  if v == BbVerdict.wrong_profile { return "refused: the bundle is not for encoder profile bs-attnpool-d64-v1"; }
+  if v == BbVerdict.encoder_changed { return "refused: wrong encoder: its bytes are not the encoder the manifest names"; }
+  if v == BbVerdict.index_changed { return "refused: the index bytes are not the index the manifest names"; }
+  if v == BbVerdict.corrupt_index { return "refused: the index does not parse or its corpus digest does not match its files"; }
+  if v == BbVerdict.other_encoder { return "refused: the index's embeddings were made by another encoder"; }
+  return "refused: stale index: it holds other books than the manifest's current corpus";
+}
+
+bb_digest :: (x: u8) -> [32] u8 { d: [32] u8; for i: 0..<32 { d[i] = x; } return d; }
+bb_good :: () -> BbManifest {
+  return BbManifest.{ok = true, profile = BB_PROFILE, encoder = bb_digest(1), encoder_bytes = 100, index = bb_digest(2), index_bytes = 200, corpus = bb_digest(3)};
+}
+bb_seen :: () -> BbSeen {
+  return BbSeen.{profile = BB_PROFILE, encoder = bb_digest(1), encoder_bytes = 100, index = bb_digest(2), index_bytes = 200,
+                 index_ok = true, index_encoder = bb_digest(1), index_corpus = bb_digest(3), listed_corpus = bb_digest(3)};
+}
+
+#test "digests compare every byte" {
+  a := bb_digest(7);
+  #assert bb_same(a, bb_digest(7)) && !bb_same(a, bb_digest(8));
+  b := a; b[0] = 0; #assert !bb_same(a, b);
+  c := a; c[31] = 0; #assert !bb_same(a, c);
+  d := a; d[16] = 9; #assert !bb_same(d, a);
+}
+#test "a bundle that matches its manifest is admitted" {
+  #assert bb_admit(bb_good(), bb_seen()) == BbVerdict.admitted;
+}
+#test "each mismatch names its own refusal, in order" {
+  m := bb_good(); s := bb_seen();
+  bad := m; bad.ok = false; #assert bb_admit(bad, s) == BbVerdict.malformed;
+  bad = m; bad.profile = "bs-attnpool-d64-v2"; #assert bb_admit(bad, s) == BbVerdict.wrong_profile;
+  t := s; t.profile = ""; #assert bb_admit(m, t) == BbVerdict.wrong_profile;
+  t = s; t.encoder_bytes = 101; #assert bb_admit(m, t) == BbVerdict.encoder_changed;
+  t = s; t.encoder[5] = 0; #assert bb_admit(m, t) == BbVerdict.encoder_changed;
+  t = s; t.index_bytes = 199; #assert bb_admit(m, t) == BbVerdict.index_changed;
+  t = s; t.index[31] = 0; #assert bb_admit(m, t) == BbVerdict.index_changed;
+  t = s; t.index_ok = false; #assert bb_admit(m, t) == BbVerdict.corrupt_index;
+  t = s; t.listed_corpus = bb_digest(4); #assert bb_admit(m, t) == BbVerdict.corrupt_index;
+  t = s; t.index_encoder = bb_digest(9); #assert bb_admit(m, t) == BbVerdict.other_encoder;
+  t = s; t.index_corpus = bb_digest(4); t.listed_corpus = bb_digest(4); #assert bb_admit(m, t) == BbVerdict.stale_index;
+  bad = m; bad.corpus = bb_digest(5); #assert bb_admit(bad, s) == BbVerdict.stale_index;
+  // Two faults at once: the earlier check names the refusal.
+  t = s; t.encoder[0] = 0; t.index[0] = 0; #assert bb_admit(m, t) == BbVerdict.encoder_changed;
+  t = s; t.index[0] = 0; t.index_ok = false; #assert bb_admit(m, t) == BbVerdict.index_changed;
+  t = s; t.index_ok = false; t.index_encoder = bb_digest(9); #assert bb_admit(m, t) == BbVerdict.corrupt_index;
+  t = s; t.index_encoder = bb_digest(9); t.index_corpus = bb_digest(4); t.listed_corpus = bb_digest(4); #assert bb_admit(m, t) == BbVerdict.other_encoder;
+  bad = m; bad.ok = false; bad.profile = ""; #assert bb_admit(bad, s) == BbVerdict.malformed;
+  bad = m; bad.profile = ""; t = s; t.encoder_bytes = 0; #assert bb_admit(bad, t) == BbVerdict.wrong_profile;
+  t = s; t.profile = ""; t.index[0] = 0; #assert bb_admit(m, t) == BbVerdict.index_changed;
+  t = s; t.profile = ""; t.index_ok = false; #assert bb_admit(m, t) == BbVerdict.wrong_profile;
+}
+#test "every verdict has its own text" {
+  #assert bb_verdict_text(BbVerdict.admitted) == "admitted";
+  #assert bb_verdict_text(BbVerdict.malformed) == "refused: the manifest does not parse";
+  #assert bb_verdict_text(BbVerdict.wrong_profile) == "refused: the bundle is not for encoder profile bs-attnpool-d64-v1";
+  #assert bb_verdict_text(BbVerdict.encoder_changed) == "refused: wrong encoder: its bytes are not the encoder the manifest names";
+  #assert bb_verdict_text(BbVerdict.index_changed) == "refused: the index bytes are not the index the manifest names";
+  #assert bb_verdict_text(BbVerdict.corrupt_index) == "refused: the index does not parse or its corpus digest does not match its files";
+  #assert bb_verdict_text(BbVerdict.other_encoder) == "refused: the index's embeddings were made by another encoder";
+  #assert bb_verdict_text(BbVerdict.stale_index) == "refused: stale index: it holds other books than the manifest's current corpus";
+}
