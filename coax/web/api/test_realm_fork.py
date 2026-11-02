@@ -98,6 +98,9 @@ def realm_fork_checks():
           and b_call("POST", "/api/playtest/world/made-doomglade", {"doc": {"everglade": 1, "edits": "eg-edit 1\n"}, "summary": "x"}, other)[0] == 403)
     check("a visitor can't edit the fork by voice", b_call("POST", "/api/playtest/realm/doomglade/edit", {"sentence": "a crate here"}, other)[0] == 403)
     check("its owner may (an empty sentence is a 400, not a 403)", b_call("POST", "/api/playtest/realm/doomglade/edit", {"sentence": ""}, owner)[0] == 400)
+    fork_rows = [r["id"] for r in json.loads(sql("select verse.voice_edit_rows('doomglade')::text"))]
+    check("by voice the fork switches its own rows (its rules too) and speaks with Everglade's catalogue (0106)",
+          "night" in fork_rows and "flock" in fork_rows and sql("select verse.voice_edit_catalogue('doomglade') = verse.voice_edit_catalogue('everglade')") == "t", fork_rows)
 
     # editing: the shared edit layer's spec and switches, by its owner only
     st, spec = b_call("GET", R + "doomglade", key=owner)

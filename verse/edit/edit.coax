@@ -24,6 +24,13 @@
 // reads both (redit_lore, redit_quest*), so a realm's characters can know their lore and give their
 // quests.
 //
+// THE REALM'S VOICE (migrations/0106_voice_every_realm.sql, openagents#12643): what its owner or an admin
+// says or types to the realm itself, not to a character, goes to the server's selector (redit_hear; POST
+// /api/playtest/realm/<slug>/edit), which answers one typed verb: switch a row, show a pane, look (asked
+// again at .../look with the frame on screen, the host's flag 32), ask (the words go on the list, as the
+// board's ADD), or a short chat reply. The reply is shown under EDIT and spoken (action 9). A realm wires
+// it once: redit_hear for words its own voice heard, or redit_hears to offer V / HOLD TO TALK and Enter.
+//
 // YOUR COMPUTER (computer.coax, openagents#12642): a realm that wires the person's own Coder
 // (redit_computer; its face carries the wire, apps/openagents-web/computer-face.h) gets a fourth pane,
 // where this browser pairs with the person's computer and sends it requests for this realm.
@@ -40,10 +47,13 @@ REDIT_UNKNOWN :: 0; REDIT_VISITOR :: 1; REDIT_ADMIN :: 2; REDIT_OWNER :: 3;
 REDIT_SHUT :: 0; REDIT_BOARD :: 1; REDIT_SETTINGS :: 2; REDIT_CARDS_PANE :: 3; REDIT_LORE_PANE :: 4; REDIT_QUEST_PANE :: 5; REDIT_COMPUTER_PANE :: 6;
 REQ_E_NONE :: 0; REQ_E_SPEC :: 1; REQ_E_SWITCH :: 2; REQ_E_SETTINGS :: 3; REQ_E_CARDS :: 4; REQ_E_DECIDE :: 5; REQ_E_REVISE :: 6; REQ_E_PLACE :: 7;
 REQ_E_PANES :: 8; REQ_E_LORE :: 9; REQ_E_QUEST :: 10; REQ_E_ASKS :: 11; REQ_E_ADD :: 12; REQ_E_DELETE :: 13;
+REQ_E_HEAR :: 14; REQ_E_LOOK :: 15;   // the realm's voice: the selector, then a look with the frame
 // buttons: EDIT, the three tabs, TALK, TYPE IT, ACCEPT, DECLINE, SAVE, LORE <-> QUEST, and MORE (the feature list's next page)
 RB_EDIT :: 0; RB_TAB :: 1; RB_TALK :: 4; RB_TYPE :: 5; RB_ACCEPT :: 6; RB_DECLINE :: 7; RB_SAVE :: 8; RB_SWAP :: 9; RB_MORE :: 10; RB_DOC :: 11;
 // YOUR COMPUTER: its tab, the pane's main button, FORGET (or CANCEL), COPY (the command), and the field you type in
-RB_CTAB :: 12; RB_CMAIN :: 13; RB_CFORGET :: 14; RB_CCOPY :: 15; RB_CFIELD :: 16; RB_N :: 17;
+RB_CTAB :: 12; RB_CMAIN :: 13; RB_CFORGET :: 14; RB_CCOPY :: 15; RB_CFIELD :: 16;
+// the realm's voice: HOLD TO TALK under EDIT (a realm that offers it: redit_hears)
+RB_HEAR :: 17; RB_N :: 18;
 REDIT_ACT_COPY :: 2;   // coax/web/host.js: the outbox's text to the clipboard
 // What its owner asked for (migrations/0078_realm_asks.sql): the asks, each applied, waiting (NOT APPLIED) or removing.
 REDIT_ASKS :: 24; REDIT_WORDS :: 120; REDIT_ITEMS :: 40;   // the list: the board's rows, then the asks (REDIT_ROWS + REDIT_ASKS)
@@ -53,7 +63,9 @@ REDIT_ARMED_S :: 4.0f32;   // DELETE, tapped once, reads SURE? this long
 RF_LORE :: 0; RF_ASK :: 1; RF_STEP :: 2; RF_REWARD :: 5; RF_N :: 6;
 REDIT_LORES :: 12; REDIT_QUESTS :: 12; REDIT_DRAFT :: 400; REDIT_PART :: 160;
 REDIT_MSG_TEXT :: 1; REDIT_MSG_VOICE :: 50; REDIT_FACTS :: 600;
-REDIT_ACT_VOICE :: 7; REDIT_ACT_VOICE_TO :: 8;
+REDIT_ACT_VOICE :: 7; REDIT_ACT_VOICE_TO :: 8; REDIT_ACT_VOICE_SAY :: 9;
+REDIT_HTTP_FRAME :: 32;   // coax/web/HTTP.md: the next frame drawn goes with the JSON body as its "image"
+REDIT_REPLY :: 300; REDIT_REPLY_S :: 10.0f32;   // a reply (the server keeps 300 characters), shown this long
 // a design document (coax/web/docs.js): the picker opens for this URL; its answer comes back as 54, "STATUS\nbody" (1: on its way)
 REDIT_ACT_DOC :: 31; REDIT_MSG_DOC :: 54;
 REDIT_FACING :: "Realm editor";   // whom the voice host leaves our turns to: this layer answers
@@ -113,6 +125,11 @@ RealmEdit :: struct {
   del_row: int; del_ask: int; list_first: int; list_page: int;
   // YOUR COMPUTER (computer.coax): on when the realm's face carries the wire; COPY's command; FORGET tapped once
   computer: bool; pc: [1] RealmComputer; copy: [32] u8; copy_n: int; forget_armed_at: f32;
+  // the realm's voice: the words for the selector (hear_due: REQ_E_HEAR or REQ_E_LOOK), its reply to show
+  // and speak, whether push to talk and typing go to it, and whether the realm offers it under EDIT
+  hear: [REDIT_TYPED] u8; hear_n: int; hear_due: int; asking: bool;
+  reply: [REDIT_REPLY] u8; reply_n: int; reply_at: f32; say_due: bool;
+  to_selector: bool; hear_typing: bool; hears: bool;
 }
 
 // ---- small helpers of its own (a realm's names stay its own)
@@ -453,6 +470,18 @@ redit_next :: (e: [] RealmEdit) {
   if redit_busy(e) || e[0].slug_n == 0 { return; }
   b := e[0].req_body[..];
   if e[0].spec_due { e[0].spec_due = false; e[0].asked = true; redit_ask(e, REQ_E_SPEC, "", 0, false); return; }
+  if e[0].hear_due != 0 {
+    look := e[0].hear_due == REQ_E_LOOK; e[0].hear_due = 0; e[0].asking = true;
+    n := redit_put(b, 0, ifx look then "{\"question\":" else "{\"sentence\":");
+    n = redit_quote(b, n, cast(string) e[0].hear[0..<e[0].hear_n]);
+    e[0].req_body_n = redit_put(b, n, "}");
+    m := redit_put(e[0].req_url[..], 0, "/api/playtest/realm/");
+    m = redit_put(e[0].req_url[..], m, cast(string) e[0].slug[0..<e[0].slug_n]);
+    e[0].req_url_n = redit_put(e[0].req_url[..], m, ifx look then "/look" else "/edit");
+    e[0].req_flags = HTTP_POST | HTTP_ANSWER | TRACK_KEY | (ifx look then REDIT_HTTP_FRAME else 0);
+    e[0].req_what = ifx look then REQ_E_LOOK else REQ_E_HEAR; e[0].req_ready = true; e[0].req_at = e[0].time;
+    return;
+  }
   if e[0].save_due == REQ_E_LORE {
     e[0].save_due = 0;
     n := redit_put(b, 0, "{\"who\":"); n = redit_quote(b, n, cast(string) e[0].focus[0..<e[0].focus_n]);
@@ -584,6 +613,7 @@ redit_answer :: (e: [] RealmEdit, text: string) {
     } else if !e[0].ready { e[0].failed = true; }
     return;
   }
+  if what == REQ_E_HEAR || what == REQ_E_LOOK { redit_heard_answer(e, what, status, p_body); return; }
   if what == REQ_E_SWITCH { if status != 200 { redit_note(e, "Not switched. Try again."); } e[0].spec_due = true; return; }
   if what == REQ_E_SETTINGS { if status != 200 { redit_note(e, "Not saved. Try again."); } e[0].spec_due = true; return; }
   if what == REQ_E_ADD {
@@ -680,7 +710,10 @@ redit_message :: (e: [] RealmEdit, kind: int, text: string) -> bool #export_c {
     p_cut := 0; while p_cut < text.count && text[p_cut] != '|' { p_cut += 1; }
     said := ifx p_cut + 1 <= text.count then text[p_cut + 1..<text.count] else "";
     e[0].caption_n = redit_copy(e[0].caption[..], said);
-    if text[0..<p_cut] == "heard" && said.count > 0 { e[0].heard_due = false; redit_say(e, said); }
+    if text[0..<p_cut] == "heard" && said.count > 0 {
+      e[0].heard_due = false;
+      if e[0].to_selector { _ := redit_hear(e, said); } else { redit_say(e, said); }
+    }
     return true;
   }
   return false;
@@ -705,14 +738,25 @@ redit_take_action :: (e: [] RealmEdit, p_outbox: [] u8) -> RAct {
     m := redit_put(p_outbox, 0, "/api/playtest/realms/"); m = redit_put(p_outbox, m, cast(string) e[0].slug[0..<e[0].slug_n]); m = redit_put(p_outbox, m, "/asks/doc");
     return RAct.{kind = REDIT_ACT_DOC, n = m};
   }
-  if e[0].want_voice == 0 { return RAct.{kind = 0, n = 0}; }
+  if e[0].want_voice == 0 {
+    if e[0].say_due && e[0].voice {
+      e[0].say_due = false;
+      return RAct.{kind = REDIT_ACT_VOICE_SAY, n = redit_put(p_outbox, 0, cast(string) e[0].reply[0..<e[0].reply_n])};
+    }
+    return RAct.{kind = 0, n = 0};
+  }
   if !e[0].faced { e[0].faced = true; return RAct.{kind = REDIT_ACT_VOICE_TO, n = redit_put(p_outbox, 0, REDIT_FACING)}; }
   w := e[0].want_voice; e[0].want_voice = 0;
   return RAct.{kind = REDIT_ACT_VOICE, n = redit_put(p_outbox, 0, ifx w == 1 then "on" else "end")};
 }
 redit_talk_down :: (e: [] RealmEdit) {
   if !e[0].voice || !redit_may(e) || e[0].held { return; }
-  e[0].held = true; e[0].want_voice = 1; e[0].caption_n = 0; e[0].note_n = 0; e[0].faced = false;
+  e[0].held = true; e[0].want_voice = 1; e[0].caption_n = 0; e[0].note_n = 0; e[0].faced = false; e[0].to_selector = false;
+}
+// The realm's own push to talk (V, or HOLD TO TALK under EDIT): what it hears goes to the selector.
+redit_hear_down :: (e: [] RealmEdit) {
+  if !e[0].voice || !redit_may(e) || e[0].held { return; }
+  e[0].held = true; e[0].want_voice = 1; e[0].caption_n = 0; e[0].faced = false; e[0].to_selector = true; e[0].reply_n = 0;
 }
 redit_talk_up :: (e: [] RealmEdit) {
   if !e[0].held { return; }
@@ -741,11 +785,78 @@ redit_heard :: (e: [] RealmEdit, word: string, key: string, on: bool, pane_said:
     for i: 1..<n { if out[i] >= 'A' && out[i] <= 'Z' { out[i] = out[i] + 32; } }   // the board's capitals, said as a sentence
     return redit_put(out, n, ifx on then ": on." else ": off.");
   }
-  if pane_said == "close" { redit_pane(e, REDIT_SHUT); return redit_put(out, 0, "Closed."); }
-  if pane_said == "settings" { redit_pane(e, REDIT_SETTINGS); return redit_put(out, 0, "Here are the settings."); }
-  if pane_said == "ideas" { redit_pane(e, REDIT_CARDS_PANE); return redit_put(out, 0, "Here are visitors' ideas."); }
-  redit_pane(e, REDIT_BOARD);
+  // a pane already open stays open (redit_pane toggles)
+  if pane_said == "close" { if e[0].pane != REDIT_SHUT { redit_pane(e, e[0].pane); } return redit_put(out, 0, "Closed."); }
+  if pane_said == "settings" { if e[0].pane != REDIT_SETTINGS { redit_pane(e, REDIT_SETTINGS); } return redit_put(out, 0, "Here are the settings."); }
+  if pane_said == "ideas" { if e[0].pane != REDIT_CARDS_PANE { redit_pane(e, REDIT_CARDS_PANE); } return redit_put(out, 0, "Here are visitors' ideas."); }
+  if e[0].pane != REDIT_BOARD { redit_pane(e, REDIT_BOARD); }
   return redit_put(out, 0, "Here's the edit panel.");
+}
+
+// ---- the realm's voice (migrations/0106): words for the selector, and its answer
+
+// Words said or typed to the realm (not to a character): the server's selector answers them. False
+// when this viewer may not edit the realm (the realm's own voice answers them then).
+redit_hear :: (e: [] RealmEdit, p_words: string) -> bool {
+  if !redit_may(e) || p_words.count == 0 || e[0].slug_n == 0 { return false; }
+  e[0].hear_n = redit_copy(e[0].hear[..], p_words); e[0].hear_due = REQ_E_HEAR;
+  e[0].caption_n = redit_copy(e[0].caption[..], p_words); e[0].reply_n = 0;
+  return true;
+}
+// The realm offers its voice under EDIT (each frame: off while you talk to a character, whose keys
+// type): V or HOLD TO TALK, and Enter to type.
+redit_hears :: (e: [] RealmEdit, on: bool) { e[0].hears = on; if !on && e[0].hear_typing { e[0].typing = false; e[0].hear_typing = false; } }
+// A reply to show (under EDIT, and in the open pane's note) and to speak.
+redit_reply :: (e: [] RealmEdit, text: string) {
+  e[0].reply_n = redit_copy(e[0].reply[..], text); e[0].reply_at = e[0].time; e[0].say_due = true;
+  redit_note(e, text);
+}
+redit_reply_of :: (e: [] RealmEdit) -> string { return cast(string) e[0].reply[0..<e[0].reply_n]; }
+// A string field of our server's JSON ("" none): its replies hold no quotes (verse.voice_edit_reply).
+redit_json_text :: (text: string, key: string) -> string {
+  at := redit_json_at(text, key);
+  if at < 0 || at >= text.count || text[at] != '"' { return ""; }
+  e := at + 1; while e < text.count && text[e] != '"' { e += 1; }
+  return text[at + 1..<e];
+}
+redit_json_true :: (text: string, key: string) -> bool { at := redit_json_at(text, key); return at >= 0 && at + 4 <= text.count && text[at..<at + 4] == "true"; }
+// Where a key's value starts, past the colon and spaces (-1 none).
+redit_json_at :: (text: string, key: string) -> int {
+  n := key.count + 2;
+  if text.count < n { return -1; }
+  for i: 0..<text.count - n + 1 {
+    if text[i] != '"' || text[i + n - 1] != '"' || text[i + 1..<i + n - 1] != key { continue; }
+    j := i + n; while j < text.count && text[j] == ' ' { j += 1; }
+    if j >= text.count || text[j] != ':' { continue; }
+    j += 1; while j < text.count && text[j] == ' ' { j += 1; }
+    return j;
+  }
+  return -1;
+}
+// The selector's answer: switch and show here (redit_heard), look asked again with the frame, ask onto
+// the list, chat said as it is; every answer, a refusal too, is shown and spoken.
+redit_heard_answer :: (e: [] RealmEdit, what: int, status: int, p_body: string) {
+  e[0].asking = false;
+  if status != 200 {
+    redit_reply(e, ifx status == 422 then "Sorry, I didn't catch that." else ifx status == 429 then "One at a time: say it again in a moment."
+                   else ifx status == 401 || status == 403 then "Only its owner and admins change it." else "That didn't work. Try again.");
+    return;
+  }
+  word := redit_json_text(p_body, "edit");
+  if word == "chat" {
+    p_said := redit_json_text(p_body, "reply");
+    redit_reply(e, ifx p_said.count > 0 then p_said else "That didn't work. Try again.");
+    return;
+  }
+  if word == "look" && what == REQ_E_HEAR { e[0].hear_due = REQ_E_LOOK; e[0].asking = true; return; }   // the same words, with the screen
+  if word == "ask" {
+    redit_say(e, cast(string) e[0].hear[0..<e[0].hear_n]);
+    redit_reply(e, "I've put that on the realm's list.");
+    return;
+  }
+  out: [REDIT_REPLY] u8;
+  n := redit_heard(e, word, redit_json_text(p_body, "row"), redit_json_true(p_body, "on"), redit_json_text(p_body, "panel"), out[..]);
+  redit_reply(e, ifx n >= 0 then cast(string) out[0..<n] else "I can't make that change here.");
 }
 redit_set_tool :: (e: [] RealmEdit, t: int) {
   if !redit_may(e) || t < 0 || t >= REDIT_TOOLS || !e[0].tool_has[t] { return; }
@@ -755,12 +866,13 @@ redit_decide :: (e: [] RealmEdit, accept: bool) { if redit_may(e) && e[0].card_n
 redit_pane :: (e: [] RealmEdit, pane: int) {
   if !redit_may(e) { return; }
   e[0].pane = ifx e[0].pane == pane then REDIT_SHUT else pane;
-  e[0].typing = false; e[0].field = 0;
+  e[0].typing = false; e[0].field = 0; e[0].hear_typing = false;
   if pane == REDIT_CARDS_PANE { e[0].cards_due = true; }
   if pane == REDIT_BOARD { e[0].asks_due = true; e[0].armed = -1; }
 }
 redit_toggle :: (e: [] RealmEdit) {
   if e[0].pane != REDIT_SHUT { e[0].pane = REDIT_SHUT; e[0].typing = false; e[0].field = 0; redit_talk_up(e); return; }
+  e[0].typing = false; e[0].hear_typing = false;
   // by a character: its lore comes up; anywhere else, the board
   if redit_may(e) && e[0].near_n > 0 { redit_focus(e, cast(string) e[0].near[0..<e[0].near_n], cast(string) e[0].near_name[0..<e[0].near_name_n]); return; }
   redit_pane(e, REDIT_BOARD);
@@ -769,6 +881,7 @@ redit_send_typed :: (e: [] RealmEdit) {
   w := cast(string) e[0].typed[0..<e[0].typed_n];
   e[0].typing = false;
   if e[0].pane == REDIT_COMPUTER_PANE { redit_computer_send(e, w); e[0].typed_n = 0; return; }
+  if e[0].hear_typing { e[0].hear_typing = false; _ := redit_hear(e, w); e[0].typed_n = 0; return; }
   if w.count > 0 { redit_say(e, w); e[0].caption_n = redit_copy(e[0].caption[..], w); }
   e[0].typed_n = 0;
 }
@@ -797,11 +910,20 @@ redit_key :: (e: [] RealmEdit, key: int, p_down: bool) -> int {
   if e[0].typing {
     if !p_down { return 2; }
     if key == REDIT_KEY_ENTER { redit_send_typed(e); return 1; }
-    if key == REDIT_KEY_ESCAPE { e[0].typing = false; e[0].typed_n = 0; return 1; }
+    if key == REDIT_KEY_ESCAPE { e[0].typing = false; e[0].hear_typing = false; e[0].typed_n = 0; return 1; }
     if key == REDIT_KEY_BACKSPACE { if e[0].typed_n > 0 { e[0].typed_n -= 1; while e[0].typed_n > 0 && (e[0].typed[e[0].typed_n] & 0xC0) == 0x80 { e[0].typed_n -= 1; } } return 1; }
     return 2;
   }
-  if e[0].pane == REDIT_SHUT { return 0; }
+  if e[0].pane == REDIT_SHUT {
+    // the realm's voice: V held talks to the realm, Enter types to it (a realm that offers it)
+    if !e[0].hears || !redit_may(e) { return 0; }
+    if key == REDIT_KEY_ENTER && p_down { e[0].typing = true; e[0].hear_typing = true; e[0].typed_n = 0; return 1; }
+    if (key == 'v' || key == 'V') && e[0].voice {
+      if p_down { redit_hear_down(e); } else { redit_talk_up(e); }
+      return 1;
+    }
+    return 0;
+  }
   if key == REDIT_KEY_ESCAPE && p_down { redit_toggle(e); return 1; }
   return 0;
 }
@@ -833,6 +955,7 @@ redit_pointer :: (e: [] RealmEdit, x: f32, y: f32, phase: int, id: int) -> bool 
   if phase == 0 {
     b := redit_button_at(e, x, y);
     if b == RB_TALK { e[0].press = b; e[0].finger = id; redit_talk_down(e); return true; }
+    if b == RB_HEAR { e[0].press = b; e[0].finger = id; redit_hear_down(e); return true; }
     if b >= 0 { e[0].press = b; e[0].finger = id; return true; }
     d := redit_del_at(e, x, y);
     if d >= 0 { e[0].del_press = d; e[0].finger = id; return true; }
@@ -847,7 +970,7 @@ redit_pointer :: (e: [] RealmEdit, x: f32, y: f32, phase: int, id: int) -> bool 
   b := e[0].press; r := e[0].row_press; fp := e[0].field_press; dp := e[0].del_press;
   e[0].press = -1; e[0].row_press = -1; e[0].finger = -1; e[0].field_press = 0; e[0].del_press = -1;
   if fp > 0 && phase != 3 && redit_field_at(e, x, y) == fp - 1 { e[0].typing = true; e[0].field = fp; e[0].typed_n = 0; return true; }
-  if b == RB_TALK { redit_talk_up(e); return true; }
+  if b == RB_TALK || b == RB_HEAR { redit_talk_up(e); return true; }
   if phase == 3 { return true; }
   if b >= 0 && redit_button_at(e, x, y) == b { redit_press(e, b); }
   if dp >= 0 && redit_del_at(e, x, y) == dp { redit_delete_tap(e, dp); }
@@ -929,7 +1052,7 @@ redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
       w: [24] u8; m := redit_put_int(w[..], 0, e[0].waiting); m = redit_put(w[..], m, ifx e[0].waiting == 1 then " NEW IDEA" else " NEW IDEAS");
       n = redit_text(e, out, n, cast(string) w[0..<m], anchor.x0, anchor.y1 + 14 * k, 6.5 * k, redit_parch(k, 0.9), 0);
     }
-    return n;
+    return redit_hear_hud(e, out, n, anchor);
   }
   p_phone := e[0].width < 640 * k;
   pw := ifx p_phone then e[0].width - 24 * k else redit_lo(360 * k, e[0].width - 24 * k);
@@ -964,6 +1087,35 @@ redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
     n = redit_text(e, out, n, cast(string) e[0].note[0..<e[0].note_n], x0 + pad, y1 - pad, 7 * k, redit_parch(k, 0.9), room);
   }
   return n;
+}
+
+// Under EDIT, with the panes shut: the realm's voice. HOLD TO TALK (a realm that offers it, on a page
+// with a voice), what you type to it, what it heard while it asks, and its reply for a while.
+redit_hear_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
+  k := e[0].dpr; n := at;
+  p_w := redit_lo(300 * k, e[0].width - 24 * k);
+  x1 := anchor.x1; x0 := redit_hi(12 * k, x1 - p_w);
+  y := anchor.y1 + (ifx e[0].waiting > 0 then 24 * k else 10 * k);
+  if e[0].hears && e[0].voice {
+    p_bw := redit_lo(150 * k, p_w);
+    n = redit_button(e, out, n, RB_HEAR, RBox.{x0 = x1 - p_bw, y0 = y, x1 = x1, y1 = y + 30 * k}, ifx e[0].held then "LISTENING" else "HOLD TO TALK", e[0].held);
+    y += 38 * k;
+  }
+  p_shown := "";
+  if e[0].typing && e[0].hear_typing {
+    e[0].type_box = RBox.{x0 = x0, y0 = y, x1 = x1, y1 = y + 30 * k};
+    redit_plate(e, e[0].type_box, 0.95, 1);
+    p_typed := cast(string) e[0].typed[0..<e[0].typed_n];
+    return redit_text(e, out, n, ifx p_typed.count > 0 then p_typed else "SAY WHAT YOU WANT, THEN ENTER", x0 + 8 * k, y + 19 * k, 8 * k,
+                      redit_parch(k, ifx p_typed.count > 0 then 0.95f32 else 0.5f32), p_w - 16 * k);
+  }
+  if e[0].reply_n > 0 && e[0].time - e[0].reply_at < REDIT_REPLY_S { p_shown = redit_reply_of(e); }
+  else if (e[0].held && e[0].to_selector) || e[0].asking || e[0].hear_due != 0 { p_shown = cast(string) e[0].caption[0..<e[0].caption_n]; }
+  if p_shown.count == 0 { return n; }
+  p_lines := 4; cap := 7.5 * k;
+  p_h := f32(p_lines) * cap * 1.7 + 14 * k;
+  redit_plate(e, RBox.{x0 = x0, y0 = y, x1 = x1, y1 = y + p_h}, 0.85, 0);
+  return redit_wrap(e, out, n, p_shown, x0 + 8 * k, y + 6 * k, cap, p_w - 16 * k, p_lines, redit_parch(k, 0.95));
 }
 
 redit_rows_at :: (e: [] RealmEdit, out: [] f32, at: int, i: int, label: string, on: bool, x: f32, y: f32, room: f32) -> int {

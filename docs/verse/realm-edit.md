@@ -80,6 +80,45 @@ spoken sentences, `200 {edit: "chat", reply}`, shown and spoken as any chat answ
 and counted with voice edits; the picture is never stored. Any page can send flag 32 on a request
 of its own.
 
+## The realm's voice
+
+Every realm with rows takes its owner's and admins' voice, not only Everglade (migration 0106,
+openagents#12643). `POST /api/playtest/realm/<slug>/edit {sentence}` serves any realm with
+`verse.realm_rights` rows or a made realm (its rows are its board: `verse.edit_made_board`, keyed
+by `verse.edit_key` as the board is). A realm without a voice catalogue gets the shared verbs
+only, under a typed enum:
+
+| Verb | Fields | What the page does |
+| --- | --- | --- |
+| `switch` | `row`, `on` | switches the row (`redit_heard`, then `POST .../switch` as a tap does) |
+| `show` | `panel`: edit, settings, ideas, close | opens or closes that pane; one already open stays open |
+| `look` | | asks again at `.../look` with the frame on screen |
+| `ask` | | puts the words on the realm's list, as FEATURES' ADD does (`POST .../asks`) |
+| `chat` | `reply` | the answer, said as it is |
+
+A realm with a catalogue (Everglade) keeps its own verbs and prompt; `ask` is only for a realm
+without one. A fork speaks with its base's catalogue and switches its own rows. Who may speak is
+checked as for edits: a site admin, or the realm's owner or admins by `X-Verse-Player`
+(`verse.edit_may`, made realms included).
+
+The edit layer does the whole trip, so a realm only wires it:
+
+- `redit_hear(ed, words)` sends words said or typed to the realm itself (not to a character).
+  It returns false for a visitor, whose words stay the realm's own.
+- The answer is handled in the layer (`redit_heard_answer`). Every answer, a refusal too, is shown
+  under EDIT for ten seconds (and in an open pane's note) and spoken as action 9.
+- `redit_hears(ed, on)`, each frame, offers the voice under EDIT with the panes shut: V held or
+  HOLD TO TALK on a page with a voice, and Enter to type. Pass false while a character talk has the
+  keys.
+
+Wired today:
+
+| Page | How words reach the selector |
+| --- | --- |
+| Everglade | its own HOLD TO TALK (everglade-voice.coax), with its catalogue's verbs |
+| Haunted House (and every page on realm.coax) | VOICE, while you face no one: the page faces the realm (`REDIT_FACING`) for its owner and admins, and `realm_hear` hands the words over |
+| A made realm (myrealm.coax) | V, HOLD TO TALK under EDIT, or Enter, outside a character talk (`redit_hears`) |
+
 EDIT opens one pane at a time (the panes rule, verse/fairy-forest/README.md "Making the world:
 panes"): FEATURES (the list below; HOLD TO TALK on a page with a voice, typing everywhere),
 SETTINGS (what visitors get; a realm whose code honours no visitor tool says so), and N WAITING

@@ -2545,6 +2545,8 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
     if !s[0].entered && track_begin(t, "realm-enter") { s[0].entered = true; track_str(t, "slug", "built"); track_bool(t, "owner", false); track_end(t); }
   }
   if s[0].slug_n > 0 { redit_start(s[0].ed[..], slug_text(s)); redit_computer(s[0].ed[..]); }   // its face carries YOUR COMPUTER
+  // its owner talks or types to the realm itself (V, HOLD TO TALK under EDIT, Enter) outside a talk with a character
+  redit_hears(s[0].ed[..], s[0].talk_p < 0);
   redit_step(s[0].ed[..], s[0].time, width, height, s[0].dpr);
   // the board changed the realm: read the spec again once the layer is done
   if s[0].ed[0].version != s[0].ed_seen && !redit_busy(s[0].ed[..]) && s[0].ed[0].switch_row < 0 && s[0].ed[0].revise_n == 0 {
@@ -2972,6 +2974,34 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   opened(q[..], u[..], "built", SAMPLE);
   n2 := frame_of(q[..], u[..], 2560, 1600);
   #assert !q[0].owner && !q[0].ed[0].shown[RB_EDIT];
+}
+#test "its owner talks to the realm itself: V outside a talk goes to the selector, its switch is done and its reply spoken; in a talk V types" {
+  s: [1] MyRealm; t: [1] Track;
+  opened_with(s[..], t[..], "moonlit-marsh", "realm moonlit-marsh\nname Moonlit Marsh\nstyle lowpoly\nground forest\ntime day\nowner 1\ntool talk 1\ntool voice 1\nfeature water large\ncharacter Old Mott|keeps the bridge\n", VOICED);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  edit_opened(s[..]);
+  _f := redit_message(s[0].ed[..], REDIT_FACTS, VOICED);   // the face hands the page's facts to the layer too
+  s[0].ed[0].cards_due = false; s[0].ed[0].asks_due = false;
+  m := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].ed[0].voice && s[0].ed[0].hears && s[0].ed[0].shown[RB_HEAR];
+  #assert realm_key(s[..], t[..], 'v', true) && s[0].ed[0].held;
+  #assert realm_action(s[..]) == REDIT_ACT_VOICE_TO && action_text(s[..]) == REDIT_FACING;
+  #assert realm_action(s[..]) == REDIT_ACT_VOICE && action_text(s[..]) == "on";
+  #assert realm_key(s[..], t[..], 'v', false) && realm_action(s[..]) == REDIT_ACT_VOICE && action_text(s[..]) == "end";
+  // the face hands the voice's words to the layer first
+  #assert redit_message(s[0].ed[..], MSG_VOICE, "heard|get rid of the pond");
+  s[0].ed[0].req_ready = false; s[0].ed[0].req_id = -1; s[0].ed[0].spec_due = false;
+  m2 := frame_of(s[..], t[..], 2560, 1600);
+  #assert cast(string) s[0].ed[0].req_url[0..<s[0].ed[0].req_url_n] == "/api/playtest/realm/moonlit-marsh/edit";
+  redit_requested(s[0].ed[..], 7);
+  #assert redit_message(s[0].ed[..], HTTP_KIND + 7, "200\n{\"edit\": \"switch\", \"on\": false, \"row\": \"water\"}");
+  #assert !redit_row_on(s[0].ed[..], "water");
+  #assert realm_action(s[..]) == ACT_VOICE_SAY && action_text(s[..]) == "Large pond: off.";
+  // talking with a character, V types into the talk
+  by_mott(s[..]);
+  k := realm_key(s[..], t[..], 'e', true);
+  m3 := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].talk_p == 0 && !s[0].ed[0].hears && !realm_key(s[..], t[..], 'v', true) && !s[0].ed[0].held;
 }
 #test "a row switched on the board reads the realm again once the layer is done" {
   s: [1] MyRealm; t: [1] Track;

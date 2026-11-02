@@ -267,8 +267,49 @@ s, a = voice_edit("put a crate here", said(edit="place", item="crate"), cookie=N
 check("voice edit: signed out is refused", s == 401, (s, a))
 s, a = voice_edit("put a crate here", said(edit="place", item="crate"), origin="https://evil.example")
 check("voice edit: another site's page is refused", s == 403, (s, a))
-s, a = voice_edit("put a crate here", said(edit="place", item="crate"), realm="ice-cream-man")
-check("voice edit: a realm without voice edits says so", s == 400, (s, a))
+s, a = voice_edit("put a crate here", said(edit="place", item="crate"), realm="belt-2200")
+check("voice edit: a realm without rows or a catalogue says so", s == 400, (s, a))
 check("voice edit: every sentence is kept with the admin who said it",
       sql("select count(*) from verse.voice_edits where pubkey = '" + admin_hex + "'") == "52" and sql("select count(*) from verse.voice_edits where pubkey <> '" + admin_hex + "'") == "0",
       sql("select count(*) from verse.voice_edits"))
+
+# ---- every realm's voice (migrations/0106_voice_every_realm.sql, openagents#12643): a realm with rows and
+# no catalogue takes the shared verbs only: switch its rows, show a pane, look, ask (onto its list), or chat.
+def generic(sentence, answer, realm="haunted-house"):
+    a = {"edit": "none", "row": "unnamed", "on": False, "panel": "unsaid", "reply": ""}
+    a.update(answer)
+    return voice_edit(sentence, a, realm=realm)
+s, a = generic("turn off the sounds", {"edit": "switch", "row": "sounds", "on": False})
+sent = piece_seen[-1]["body"]
+schema = sent["generationConfig"]["responseSchema"]
+prompt = sent["systemInstruction"]["parts"][0]["text"]
+check("every realm: a hand-built realm's switch, held to its own rows", s == 200 and a == {"edit": "switch", "row": "sounds", "on": False, **M}, (s, a))
+check("every realm: its schema is the shared verbs and its rows, nothing of Everglade's",
+      schema["properties"]["edit"]["enum"] == ["switch", "show", "look", "ask", "none"]
+      and schema["properties"]["row"]["enum"] == ["unnamed", "others", "sounds", "scares", "chat"]
+      and schema["required"] == ["edit", "row", "on", "panel", "reply"] and "item" not in schema["properties"], schema)
+check("every realm: the prompt names the realm, its rows and the shared verbs, and no catalogue",
+      "the owner of Haunted House" in prompt and "- sounds: The house's sounds (the creaks, thunder and sounds of the house)" in prompt
+      and "- ask: " in prompt and "- look: " in prompt and "- show: " in prompt and "place" not in prompt, prompt)
+for sentence, answer, want in (("open the settings", {"edit": "show", "panel": "settings", "row": "sounds"}, {"edit": "show", "panel": "settings"}),
+                               ("why is the floor flickering", {"edit": "look", "on": True}, {"edit": "look"}),
+                               ("add a ghost in the attic", {"edit": "ask", "row": "chat"}, {"edit": "ask"})):
+    s, a = generic(sentence, answer)
+    check("every realm: " + sentence + " is " + want["edit"] + ", its own fields only", s == 200 and a == {**want, **M}, (s, a))
+s, a = generic("hello there", {"edit": "none", "reply": "Hello. Ask me to switch something, open the edit panel or look at the screen."})
+check("every realm: chat answers", s == 200 and a["edit"] == "chat" and a["reply"].startswith("Hello."), (s, a))
+check("every realm: a catalogue's verb or a row it hasn't is no edit",
+      generic("put a crate here", {"edit": "place"})[0] == 502 and generic("turn off the guards", {"edit": "switch", "row": "guards"})[0] == 502)
+time.sleep(0.05)
+s, raw, _ = call("POST", "/api/playtest/realm/haunted-house/look", json.dumps({"question": "what is that", "image": "QUJD"}).encode(),
+                 {"Content-Type": "application/json", "Cookie": "oa_session=" + "9" * 64, "Origin": API})
+check("every realm: look answers from the picture, the realm named", s == 200 and "Haunted House" in piece_seen[-1]["body"]["systemInstruction"]["parts"][0]["text"], (s, raw))
+check("every realm: Everglade keeps its catalogue and no ask", "ask" not in json.loads(sql("select verse.voice_edit_schema('everglade')::text"))["properties"]["edit"]["enum"])
+# a made realm (test_realm_builder.py's): its board's rows, by the board's keys
+made_rows = sql("select verse.voice_edit_rows('moonlit-marsh')::text")
+board_keys = [l.split(" ")[1] for l in sql("select verse.edit_rows('moonlit-marsh')").split("\n") if l.startswith("row ")]
+check("every realm: a made realm's rows are its board's", made_rows != "[]" and [r["id"] for r in json.loads(made_rows)] == board_keys, (made_rows, board_keys))
+key0 = board_keys[0] if board_keys else "none"
+s, a = generic("turn that off", {"edit": "switch", "row": key0, "on": False}, realm="moonlit-marsh")
+check("every realm: a made realm's row switched by voice", s == 200 and a == {"edit": "switch", "row": key0, "on": False, **M}, (s, a))
+check("every realm: a made realm's prompt is by its name", "the owner of Moonlit Marsh" in piece_seen[-1]["body"]["systemInstruction"]["parts"][0]["text"])

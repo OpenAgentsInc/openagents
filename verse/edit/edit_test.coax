@@ -385,3 +385,93 @@ reads :: (out: [] u8, n: int, text: string) -> bool {
   n = redit_heard(v[..], "switch", "robots", true, "", out[..]);
   #assert reads(out[..], n, "Only the realm's owner can change that.") && !redit_row_on(v[..], "robots");
 }
+#test "a pane asked for by voice while open stays open" {
+  e: [1] RealmEdit;
+  out: [160] u8;
+  opened(e[..], "the-grid", HAND);
+  _ := redit_heard(e[..], "show", "", false, "edit", out[..]);
+  _ = redit_heard(e[..], "show", "", false, "edit", out[..]);
+  #assert e[0].pane == REDIT_BOARD;
+}
+
+// One trip through the selector: the request it sends, then the server's answer to it.
+heard_trip :: (e: [] RealmEdit, t: f32, url: string, p_body: string, reply: string) -> bool {
+  redit_step(e, t, 1440, 900, 1);
+  if !e[0].req_ready || !url_is(e, url) || !body_is(e, p_body) { return false; }
+  return answer(e, 2, reply);
+}
+#test "the realm's voice: words go to the selector; switch, show, look, ask and chat are done, shown and spoken" {
+  e: [1] RealmEdit;
+  ob: [400] u8;
+  opened(e[..], "moonlit-marsh", MADE);
+  e[0].cards_due = false; e[0].asks_due = false;
+  _f := redit_message(e[..], REDIT_FACTS, "voice=made-realm\nplayer=p-1\n");
+  // switch one of the board's rows by its key
+  #assert redit_hear(e[..], "get rid of the pond");
+  #assert heard_trip(e[..], 2, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"get rid of the pond\"}", "200\n{\"on\": false, \"row\": \"water\", \"edit\": \"switch\", \"model\": \"m\"}");
+  #assert (e[0].req_flags & REDIT_HTTP_FRAME) == 0 && !redit_row_on(e[..], "water") && e[0].switch_row == 0;
+  #assert redit_reply_of(e[..]) == "Large pond: off.";
+  a := redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE_SAY && cast(string) ob[0..<a.n] == "Large pond: off.";
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/moonlit-marsh/switch") && answer(e[..], 2, "200\n{}");
+  e[0].spec_due = false;
+  // show: the editing screen opens
+  #assert redit_hear(e[..], "open the edit panel");
+  #assert heard_trip(e[..], 4, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"open the edit panel\"}", "200\n{\"edit\": \"show\", \"panel\": \"edit\"}");
+  #assert e[0].pane == REDIT_BOARD && redit_reply_of(e[..]) == "Here's the edit panel.";
+  e[0].asks_due = false;
+  // look: the same words again at /look, with the frame on screen; its answer said as it is
+  #assert redit_hear(e[..], "what's that dark strip");
+  #assert heard_trip(e[..], 5, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"what's that dark strip\"}", "200\n{\"edit\": \"look\"}");
+  #assert e[0].reply_n == 0;
+  #assert heard_trip(e[..], 6, "/api/playtest/realm/moonlit-marsh/look", "{\"question\":\"what's that dark strip\"}", "200\n{\"edit\": \"chat\", \"reply\": \"That is the edge of the sky dome.\"}");
+  #assert redit_reply_of(e[..]) == "That is the edge of the sky dome.";
+  // ask: the words go on the list, as the board's ADD
+  #assert redit_hear(e[..], "add a dragon by the lake");
+  #assert heard_trip(e[..], 7, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"add a dragon by the lake\"}", "200\n{\"edit\": \"ask\"}");
+  redit_step(e[..], 8, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/moonlit-marsh/asks") && body_is(e[..], "{\"words\":\"add a dragon by the lake\"}");
+  _a := answer(e[..], 2, "200\nask 3 waiting\n");
+  e[0].spec_due = false; e[0].asks_due = false;
+  // a refusal is said too
+  #assert redit_hear(e[..], "mumble");
+  #assert heard_trip(e[..], 9, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"mumble\"}", "422\n{\"error\":\"none fit\"}");
+  #assert redit_reply_of(e[..]) == "Sorry, I didn't catch that.";
+  // a visitor's words are the realm's own
+  v: [1] RealmEdit;
+  opened(v[..], "the-grid", VISITOR);
+  #assert !redit_hear(v[..], "turn off the robots");
+}
+#test "a realm that offers its voice: V talks and Enter types to it with the panes shut; the reply shows under EDIT" {
+  e: [1] RealmEdit;
+  out: [20000 * VERTEX_FLOATS] f32;
+  ob: [400] u8;
+  opened(e[..], "moonlit-marsh", MADE);
+  e[0].cards_due = false;
+  #assert redit_key(e[..], 'v', true) == 0;   // not offered: the realm's key
+  redit_hears(e[..], true);
+  _f := redit_message(e[..], REDIT_FACTS, "voice=made-realm\nplayer=p-1\n");
+  _ := redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].shown[RB_HEAR];
+  #assert redit_key(e[..], 'v', true) == 1 && e[0].held && e[0].to_selector;
+  a := redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE_TO && cast(string) ob[0..<a.n] == REDIT_FACING;
+  a = redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE && cast(string) ob[0..<a.n] == "on";
+  #assert redit_key(e[..], 'v', false) == 1 && !e[0].held;
+  a = redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE && cast(string) ob[0..<a.n] == "end";
+  #assert redit_message(e[..], REDIT_MSG_VOICE, "heard|what's in here") && e[0].hear_due == REQ_E_HEAR && e[0].revise_n == 0;
+  #assert heard_trip(e[..], 2, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"what's in here\"}", "200\n{\"edit\": \"chat\", \"reply\": \"A pond, mostly.\"}");
+  p0 := e[0].plate_n;
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].plate_n > p0 || e[0].plate_n >= 2;   // the reply's plate under EDIT
+  // Enter types to it; the typed words go to the selector, not the board
+  #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && redit_typing(e[..]) && e[0].hear_typing;
+  #assert redit_message(e[..], REDIT_MSG_TEXT, "open the settings");
+  #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && !redit_typing(e[..]);
+  #assert e[0].hear_due == REQ_E_HEAR && e[0].revise_n == 0;
+  #assert heard_trip(e[..], 3, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"open the settings\"}", "200\n{\"edit\": \"show\", \"panel\": \"settings\"}");
+  #assert e[0].pane == REDIT_SETTINGS;
+}

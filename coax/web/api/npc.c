@@ -266,8 +266,9 @@ bool piece_route(const request *q) {
 //   {sentence}  a site admin (admin_who: admins.conf, by site login, the admin cookie or NIP-98), or the
 //               realm's owner or one of its admin accounts (X-Verse-Player; verse.edit_may)
 //   -> 200 {edit, item?, count?, model}; 400 no sentence or realm, 401/403, 422 nothing fits, 429, 502, 503
-// Gemini picks one edit from the realm's catalogue (migrations/0045_realm_voice_edit.sql) and SQL holds
-// the answer to it; the page does the edit and publishes the realm's world (an admin's write, checked there).
+// Gemini picks one edit from the realm's catalogue (migrations/0045_realm_voice_edit.sql), or for any
+// other realm with rows, hand-built or made, one of the shared verbs (switch, show, look, ask: 0106),
+// and SQL holds the answer to it; the page does the edit and publishes the realm's world (an admin's write, checked there).
 //   OA_EDIT_URL    the generateContent URL (tests point it at a fake)
 //   OA_EDIT_MODEL  the model (gemini-2.5-flash, its thinking off: migrations/0054_voice_edit_fast.sql)
 //   OA_EDIT_TIMEOUT_MS  how long one try may take (4000); an unanswered or failed try is tried once more
@@ -327,20 +328,13 @@ bool voice_edit_route(const request *q) {
   if (denied && api_header(q, "X-Verse-Player", key, sizeof key) && key[0]) {
     const char *ev[2] = {name, key};
     PGresult *m = PQexecParams(db, "SELECT encode(sha256(convert_to($2, 'UTF8')), 'hex') FROM (SELECT 1) x "
-                                   "WHERE ((verse.edit_hand($1)).slug IS NOT NULL OR (verse.fork_of($1)).slug IS NOT NULL) AND verse.edit_may($1, $2, false)", 2, NULL, ev, NULL, NULL, 0);
+                                   "WHERE verse.voice_realm($1) AND verse.edit_may($1, $2, false)", 2, NULL, ev, NULL, NULL, 0);
     if (PQresultStatus(m) == PGRES_TUPLES_OK && PQntuples(m) == 1) { snprintf(who, 65, "%s", PQgetvalue(m, 0, 0)); denied = 0; }
     else if (denied == 401) denied = 403;   // a player who may not edit this realm
     PQclear(m);
   }
   if (denied) { api_json(q->fd, denied, denied == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
-  // a fork (migrations/0075_realm_forks.sql) is edited by voice as its base is: the base's catalogue
-  {
-    const char *fv[1] = {name};
-    PGresult *f = PQexecParams(db, "SELECT (verse.fork_of($1)).base", 1, NULL, fv, NULL, NULL, 0);
-    if (PQresultStatus(f) == PGRES_TUPLES_OK && PQntuples(f) == 1 && !PQgetisnull(f, 0, 0) && strlen(PQgetvalue(f, 0, 0)) < sizeof name)
-      snprintf(name, sizeof name, "%s", PQgetvalue(f, 0, 0));
-    PQclear(f);
-  }
+  // a fork speaks with its base's catalogue and switches its own rows (migrations/0106_voice_every_realm.sql)
   char *body = malloc(q->body_len + 3);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");

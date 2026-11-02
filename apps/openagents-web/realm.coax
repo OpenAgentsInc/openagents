@@ -280,6 +280,9 @@ realm_voice :: (r: [] Realm, text: string) #export_c {
   }
 }
 realm_heard :: (r: [] Realm) -> string #export_c { return cast(string) r[0].heard[0..<r[0].heard_n]; }
+// What VOICE heard said to the realm itself (no one faced): its owner's and admins' words go to the
+// edit layer's selector (verse/edit/edit.coax redit_hear), whose reply is shown and spoken.
+realm_hear :: (r: [] Realm) -> bool #export_c { return redit_hear(r[0].ed[..], realm_heard(r)); }
 
 // Who is logged in (host.js message 606, /api/auth/me's lines): the npub of
 // a "K|" line, shortened to its start and end for the HUD; "" nobody.
@@ -304,8 +307,11 @@ realm_viewer :: (r: [] Realm, text: string) #export_c {
 realm_me :: (r: [] Realm) -> string #export_c { return cast(string) r[0].viewer[0..<r[0].viewer_n]; }
 
 // Every frame: whom you're talking to ("" nobody), told to voice.js when it
-// changes and the host's outbox is free, so VOICE answers as them.
-realm_voice_to :: (r: [] Realm, who: string) #export_c {
+// changes and the host's outbox is free, so VOICE answers as them. Talking to
+// nobody, the realm's owner and admins face the realm itself: the page answers
+// what VOICE heard through the edit layer's selector (realm_hear).
+realm_voice_to :: (r: [] Realm, p_said_to: string) #export_c {
+  who := ifx p_said_to.count == 0 && redit_may(r[0].ed[..]) then REDIT_FACING else p_said_to;
   if r[0].action != 0 || seen_same(r[0].voice_to[..], r[0].voice_to_n, who) { return; }
   r[0].voice_to_n = tw_copy(r[0].voice_to[..], 0, who);
   r[0].out_n = put(r[0].outbox[..], 0, cast(string) r[0].voice_to[0..<r[0].voice_to_n]);
