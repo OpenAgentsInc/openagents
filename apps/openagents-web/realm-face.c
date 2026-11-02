@@ -209,6 +209,9 @@ static void toast(const char *t) { house.toast = text(t); house.toast_until = no
 // The arena's state is unused: everything lives here, and a new build starts over.
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) { return (uint32_t)(sizeof(coax_t_Haunt) * 31u + sizeof(coax_t_Realm)); }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return 16; }
+// A new state's declared defaults. Its state declares none, so the zeroed memory the host
+// hands it is its start; the host calls this first all the same (coax/web/state-defaults.coax).
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { (void)state; }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_realm_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_realm_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_realm_uniform_floats(); }

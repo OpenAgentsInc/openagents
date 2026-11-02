@@ -38,6 +38,8 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
                     + offsetof(coax_t_VerseState, plates) * 7u + offsetof(coax_t_VerseState, outbox) * 13u + 0x564552u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_VerseState); }
+// A new state's declared defaults (coax_default_T, from the compiler). The host calls this first.
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_VerseState((coax_t_VerseState *)(uintptr_t)state); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_verse_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_verse_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_verse_uniform_floats(); }

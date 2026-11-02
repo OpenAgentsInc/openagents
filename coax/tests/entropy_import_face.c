@@ -33,6 +33,7 @@ EXPORT("probe_at") uint32_t probe_at(uint32_t p,int32_t n){return consume_random
 EXPORT("probe_output") uint32_t probe_output(void){return (uint32_t)(uintptr_t)output;}
 EXPORT("coaxial_layout") uint32_t layout(void){return 1;}
 EXPORT("coaxial_state_size") uint32_t state_size(void){return 4;}
+EXPORT("coaxial_state_init") void state_init(uint32_t s){(void)s;}
 EXPORT("coaxial_max_vertices") uint32_t vertices(void){return 0;}
 EXPORT("coaxial_vertex_floats") uint32_t floats(void){return 4;}
 EXPORT("coaxial_uniform_floats") uint32_t uniforms(void){return 4;}

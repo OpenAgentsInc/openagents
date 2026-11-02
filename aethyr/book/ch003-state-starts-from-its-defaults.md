@@ -103,11 +103,14 @@ this, the browser host runs the compiler's initializers too:
    zeros and then every default into `*p`, in place, so a state larger than
    the stack is safe.
 2. Each page's C face exports `coaxial_state_init(state)`, which calls
-   `coax_default_T` on a new state. A constructor that `_initialize` runs
-   calls it for the face's own globals, such as the player and the thumb
-   controls.
+   `coax_default_T` on a new state. A face whose state declares no defaults
+   still exports it, with an empty body. A constructor that `_initialize`
+   runs calls `coax_default_T` for the face's own globals, such as the player
+   and the thumb controls.
 3. [`coax/web/host.js`](../../coax/web/host.js) calls `coaxial_state_init` on
-   the new state before the first frame.
+   the new state before the first frame. The call is unconditional: an
+   engine without the export fails to start rather than starting with zeros,
+   and `coax/web/tool.sh state-defaults` fails a face that doesn't export it.
 
 Both hosts run code the compiler generates from the same declarations. No
 default is copied by hand, and no build step edits the generated C.
@@ -213,10 +216,6 @@ reader's query.
   `replay_play` refuses a replay from any other state
   ([chapter 5](ch005-replay-a-session-exactly.md)). Each realm writes its
   own state digest as it moves onto replay, starting with the Grid.
-- The host calls `coaxial_state_init` with `?.`, so an engine without the
-  export still starts with zeros. After every realm is built by the same
-  `build.sh` step, the realm migration makes the call unconditional. For
-  details, see [chapter 64](ch064-every-realm-runs-on-aethyr.md).
 
 ## Dependencies
 

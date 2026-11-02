@@ -40,7 +40,7 @@ coax/build.sh
 ## 3. Write the module (three files in `apps/openagents-web/`)
 
 Start from the template: `verse/realm-template/` is a whole small realm
-(Star Catcher, about 460 lines of Coax with four `#test` checks that play
+(Star Catcher, about 500 lines of Coax with five `#test` checks that play
 it, no assets) that a fresh agent made from this skill. Copy its files
 to `apps/openagents-web/<module>.coax` and `<module>-face.c`, and its
 `gpu/starcatch.coax`, `.module` and `.bindings` to
@@ -71,10 +71,15 @@ realm can leave out.
 - Draw a way back: Escape and a drawn REALMS button go to `/realms`
   (action 1); every realm has one.
 - `<module>-face.c`: the browser exports over the module (`coaxial_layout`,
-  `coaxial_state_size`, `coaxial_frame`, input, inbox/outbox). Copy the
-  face you started from and rename; it decides nothing. The compiler
-  writes `<module>.h`, where your state struct `Foo` is `coax_t_Foo` and a
-  view of it `coax_v_t_Foo`.
+  `coaxial_state_size`, `coaxial_state_init`, `coaxial_frame`, input,
+  inbox/outbox). Copy the face you started from and rename; it decides
+  nothing. The compiler writes `<module>.h`, where your state struct `Foo`
+  is `coax_t_Foo`, a view of it `coax_v_t_Foo`, and its declared defaults
+  `coax_default_t_Foo`, which `coaxial_state_init` calls (the host calls it
+  on every new state, so every face has it).
+- Step the game on Aethyr's one clock (`aethyr/loop.coax`), as the template's
+  `catch_run` does: fixed steps, a frame counted for at most its clamp, and
+  never more than 8 steps a frame. Don't write your own accumulator.
 - `gpu/<module>.coax`: the shaders, in Coax: `<module>_bg_vs`/`_bg_fs` (a
   full-screen pass) and `<module>_fx_vs`/`_fx_fs` (the vertices your frame
   writes). The fx pass adds light (a stroke's colour times its light), it

@@ -8,7 +8,9 @@
 // in headless Chrome (coax/web/wasm-chrome.coax) and compares the state,
 // byte for byte, with the native coax_init of its type. It also builds the
 // face natively and compares every face global of a defaulted type with that
-// type's native coax_init. Needs apps/openagents-web/build.sh first.
+// type's native coax_init, and fails an engine whose face has no
+// coaxial_state_init export at all: host.js calls it on every new state.
+// Needs apps/openagents-web/build.sh first.
 //   coax/web/tool.sh state-defaults            (from the repo root: every engine)
 //   coax/web/tool.sh state-defaults NAME...    (only those engines; skips the Orbit League and Grid expectations)
 #load "wasm-chrome.coax";
@@ -210,6 +212,26 @@ sd_defaulted :: (headers: string, units: string, type: string) -> string {
   }
   return "";
 }
+// Whether a face exports coaxial_state_init, which host.js calls on every new state.
+sd_inits :: (face: string) -> bool { return sd_find(face, "EXPORT(\"coaxial_state_init\")", 0) >= 0; }
+
+// Whether another face linked into engine i's module exports coaxial_state_init.
+sd_shared_inits :: (es: [] Engine, i: int, buf: [] u8) -> bool {
+  for j: 0..<es.count {
+    if j == i || es[j].wasm != es[i].wasm { continue; }
+    n := fs_read(es[j].face, buf);
+    if n >= 0 && sd_inits(cast(string) buf[0..<n]) { return true; }
+  }
+  return false;
+}
+
+#test "a face exports coaxial_state_init, with or without defaults" {
+  #assert sd_inits("EXPORT(\"coaxial_state_init\") void coaxial_state_init(uint32_t state) { coax_default_t_T((coax_t_T *)(uintptr_t)state); }\n");
+  #assert sd_inits("x\nEXPORT(\"coaxial_state_init\") void coaxial_state_init(uint32_t state) { (void)state; }\n");
+  #assert !sd_inits("EXPORT(\"coaxial_state_size\") uint32_t coaxial_state_size(void) { return 16; }\n");
+  #assert !sd_inits("// coaxial_state_init is called by the host\n");
+}
+
 sd_plan :: (face: string, headers: string, units: string, p: [] Plan) {
   p[0] = Plan.{};
   // sizeof(NAME) in coaxial_state_size's body
@@ -611,6 +633,11 @@ tool_main :: () -> int #export_c {
     unit_names := ar_one(ar[..], cast(string) names[0..<nn]);
     fn := fs_read(e[0].face, facetext[..]);
     if fn < 0 { li2(fails[..], e[0].name, ": can't read its face"); continue; }
+    // host.js calls coaxial_state_init on every new state, so every face exports it, with or without defaults
+    // (one module can link several faces, as the homepage's does: one of them exports it)
+    if !sd_inits(cast(string) facetext[0..<fn]) && !sd_shared_inits(w[0].es[0..<w[0].ne], i, faceout[..]) {
+      li2(fails[..], e[0].name, ": no coaxial_state_init export (host.js calls it on every new state)");
+    }
     p: [1] Plan;
     sd_plan(cast(string) facetext[0..<fn], cast(string) headers[0..<hn], unit_names, p[..]);
     if p[0].nstate == 0 && p[0].nglobals == 0 { continue; }

@@ -38,6 +38,7 @@
 #load "realms.coax";
 #load "galaxy.coax";
 #load "access.coax";
+#load "../../aethyr/loop.coax";   // the orbs' fixed steps: Aethyr's one clock (aethyr/book ch001)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 40000;
@@ -149,7 +150,8 @@ VerseState :: struct {
   note: int; nudge_at: f32;
   landed: bool;              // the page's step event is sent
   going: bool; going_at: f32; join_id: int; answered: bool;
-  orbs: [ORBS] Orb; orb_n: int; orb_id: int; seeded: bool; orb_acc: f32;
+  orbs: [ORBS] Orb; orb_n: int; orb_id: int; seeded: bool;
+  orb_steps: FrameClock;   // the orbs' steps (aethyr/loop.coax): 1/60 s, a frame counted for at most 0.1 s, at most 8
   hold: Orb; holding: bool; hold_at: f32;   // the orb being made under a press
   // the Agent orb: held (push to talk) by pointer guide_id; what voice.js last said
   guide_held: bool; guide_id: int; guide_on: bool; guide_at: f32;
@@ -911,13 +913,18 @@ orb_step :: (s: [] VerseState, w: f32, h: f32) {
 lo_i :: (a: int, b: int) -> int { if a < b { return a; } return b; }
 
 // The orbs at 60 steps a second whatever the frame rate, and drawn.
+ORB_STEP_NS :: 16666667;      // 1/60 s on the clock (aethyr/loop.coax)
+ORB_FRAME_NS :: 100000000;    // the longest frame that counts: 0.1 s
 draw_orbs :: (s: [] VerseState, out: [] f32, at: int, dt: f32) -> int {
   k := hi(s[0].dpr, 0.5); w := s[0].width / k; h := s[0].height / k;
   if !s[0].seeded { orb_seed(s, w, h); }
-  s[0].orb_acc = lo(s[0].orb_acc + clamp(dt, 0, 0.1), 0.1);
   // still (reduced motion, or the release walk's golden): they move only while a press makes one
   moving := !s[0].still || s[0].holding;
-  while s[0].orb_acc >= 1.0 / 60.0 { s[0].orb_acc -= 1.0 / 60.0; if moving { orb_step(s, w, h); } }
+  c := s[0].orb_steps;
+  c.step_ns = ORB_STEP_NS; c.max_frame_ns = ORB_FRAME_NS;
+  c = loop_accept(c, cast(f64) dt);
+  for n: 0..<loop_due(c) { if moving { orb_step(s, w, h); } }
+  s[0].orb_steps = loop_ran(c);
   vertices := at;
   for e: 0..<s[0].spark_n {
     p := s[0].sparks[e];
@@ -1374,6 +1381,18 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert s[0].orb_n >= 1 && s[0].orb_n <= 5;
   for i: 0..<s[0].orb_n { o := s[0].orbs[i]; #assert o.x >= 0 && o.x <= 1440 && o.y >= 0 && o.y <= 900; }
   #assert verse_cursor(s[..]) == 2 && !verse_wants_text(s[..]);
+}
+
+#test "the orbs run at most 8 steps a frame, however long it was, on Aethyr's clock" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
+  s[0].still = false;
+  frame(s[..], t[..], 3.0);   // a stalled tab: counted as 0.1 s, so 5 or 6 steps with what was owed
+  #assert s[0].orb_steps.ran >= 5 && s[0].orb_steps.ran <= 6 && s[0].orb_steps.overlong == 1 && s[0].orb_steps.ran <= LOOP_MAX_STEPS;
+  for i: 0..<60 { frame(s[..], t[..], 1.0 / 60.0); #assert s[0].orb_steps.ran <= 2; }
+  #assert s[0].orb_steps.stalls == 0 && s[0].orb_steps.ticks >= 64 && s[0].orb_steps.ticks <= 66;
+  frame(s[..], t[..], -1.0);
+  #assert s[0].orb_steps.ran == 0 && s[0].orb_steps.refused == 1;
 }
 
 #test "a returning player's email is filled in and joined again" {

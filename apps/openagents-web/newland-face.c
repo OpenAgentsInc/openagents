@@ -165,6 +165,9 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
                     + offsetof(coax_t_LandState, plot) * 7u + offsetof(coax_t_LandState, playtest) * 13u + 0x4c414eu);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_LandState); }
+// A new state's declared defaults. Its state declares none, so the zeroed memory the host
+// hands it is its start; the host calls this first all the same (coax/web/state-defaults.coax).
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { (void)state; }
 EXPORT("coaxial_land_captured") int64_t captured(void) {return coaxial_land_captured();}
 EXPORT("coaxial_land_pylons") uint32_t pylons(uint32_t state) {return (uint32_t)state_at(state)->pylons;}
 EXPORT("coaxial_land_pylon_status") int32_t pylon_status(uint32_t state,uint32_t i) {return i<(uint32_t)state_at(state)->pylons?(int32_t)state_at(state)->pyl.e[i].status:-1;}

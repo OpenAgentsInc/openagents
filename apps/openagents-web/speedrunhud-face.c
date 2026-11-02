@@ -17,6 +17,9 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_SpeedrunHud) * 1000003u + offsetof(coax_t_SpeedrunHud, panel) * 7u + 0x53485544u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_SpeedrunHud); }
+// A new state's declared defaults. Its state declares none, so the zeroed memory the host
+// hands it is its start; the host calls this first all the same (coax/web/state-defaults.coax).
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { (void)state; }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_speedrunhud_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_speedrunhud_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_speedrunhud_uniform_floats(); }

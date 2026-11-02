@@ -16,6 +16,7 @@
 #load "font.coax";
 #load "analytics.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../aethyr/loop.coax";   // the fixed steps: Aethyr's one clock (aethyr/book ch001)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 60000;
@@ -26,6 +27,8 @@ PANELS :: 12;   // the HUD's four, then the edit layer's plates
 UNIFORM_FLOATS :: 60;
 
 STEP :: 0.0166666667;
+WATCH_STEP_NS :: 16666667;    // the same step on the clock (aethyr/loop.coax)
+WATCH_FRAME_NS :: 100000000;  // the longest frame that counts: 0.1 s
 READY :: 0; PLAY :: 1; WON :: 2; LOST :: 3;
 
 OUTBOX_CAP :: 64;
@@ -111,7 +114,8 @@ Watch :: struct {
   lines: [LINES] Line; line_n: int;
   banner: [32] u8; banner_n: int; sub: [LINE_CAP] u8; sub_n: int; banner_t: f32;
   hit: f32;
-  clock: f32; acc: f32; play_t: f32;
+  clock: f32; play_t: f32;
+  pace: FrameClock;      // the fixed steps (aethyr/loop.coax): 1/60 s, at most 8 a frame
   seed: u32;
   width: f32; height: f32; dpr: f32;
   golden: bool;
@@ -313,7 +317,7 @@ watch_start :: (s: [] Watch) {
   s[0].started = true;
   s[0].seed = 20261031;
   track_init(s[0].track[..], "watchtower");
-  s[0].clock = 0; s[0].acc = 0;
+  s[0].clock = 0;
   watch_reset(s);
 }
 go :: (s: [] Watch) {
@@ -1301,22 +1305,29 @@ draw_card :: (s: [] Watch, out: [] f32, at: int, w: f32, h: f32, k: f32, t: f32)
   return n;
 }
 
+// A frame's fixed steps, on Aethyr's one clock (aethyr/loop.coax): the frame counts for at most
+// 0.1 s, its steps are 1/60 s, at most 8 run, and a backlog past that is dropped, never run later.
+// The drawn clock moves by what the frame counted for.
+watch_run :: (s: [] Watch, dt: f32) {
+  c := s[0].pace;
+  c.step_ns = WATCH_STEP_NS; c.max_frame_ns = WATCH_FRAME_NS;
+  c = loop_accept(c, cast(f64) dt);
+  s[0].clock += cast(f32) loop_counted(c);
+  for k: 0..<loop_due(c) { step(s, f32(STEP)); }
+  s[0].pace = loop_ran(c);
+}
+
 watch_frame :: (s: [] Watch, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
   watch_start(s);
   if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
   k := hi(dpr, 0.5);
-  step_dt := lo(hi(dt, 0), 0.1);
-  if s[0].golden || still { step_dt = 0; }
+  step_dt := ifx s[0].golden || still then 0.0f32 else dt;
   redit_start(s[0].ed[..], "watchtower");
   redit_step(s[0].ed[..], s[0].clock, width, height, dpr);
   track_frame(s[0].track[..], dt, width, height, dpr);
   if redit_open(s[0].ed[..]) && s[0].phase == PLAY { step_dt = 0; }
-  s[0].clock += step_dt;
-  s[0].acc += step_dt;
-  guard := 0;
-  while s[0].acc >= f32(STEP) && guard < 16 { step(s, f32(STEP)); s[0].acc -= f32(STEP); guard += 1; }
-  if guard >= 16 { s[0].acc = 0; }
+  watch_run(s, step_dt);
   t := s[0].clock;
   if s[0].phase == PLAY { s[0].ended_at = t; }
   if s[0].demo > 0 && s[0].phase != PLAY && s[0].phase != READY && t - s[0].ended_at > 9 { demo_shift(s); }
@@ -1478,6 +1489,26 @@ frame_at :: (s: [] Watch, w: f32, h: f32, dpr: f32, dt: f32) -> int {
 run :: (s: [] Watch, secs: f32) {
   steps := int(secs / f32(STEP));
   for i: 0..<steps { if s[0].phase != PLAY { return; } step(s, f32(STEP)); }
+}
+
+#test "a frame runs at most 8 steps, however long it was" {
+  s: [1] Watch;
+  watch_start(s[..]);
+  go(s[..]);
+  watch_run(s[..], 3.0);   // a stalled tab: counted as 0.1 s, so 5 steps and most of a sixth owed
+  #assert s[0].pace.ran == 5 && s[0].pace.overlong == 1 && s[0].pace.ran <= LOOP_MAX_STEPS;
+  #assert abs(s[0].clock - 0.1) < 0.000001;
+  fed := WATCH_FRAME_NS;
+  for f: 0..<120 {
+    watch_run(s[..], cast(f32) (1.0 / 60.0));
+    fed += loop_ns(cast(f64) cast(f32) (1.0 / 60.0));
+    #assert s[0].pace.ran >= 0 && s[0].pace.ran <= 2;   // one a frame, two while the stall's owed step comes due
+  }
+  // every nanosecond fed is stepped or owed: none dropped, none run twice
+  #assert s[0].pace.ticks * WATCH_STEP_NS + s[0].pace.carry_ns == fed && s[0].pace.stalls == 0;
+  // golden: no time, no steps
+  s[0].golden = true;
+  #assert frame_at(s[..], 1440, 900, 1, 0.5) > 0 && s[0].pace.ran == 0;
 }
 
 #test "a frame draws the map and the HUD on a desktop and on a 390 px phone, inside the vertex budget" #steps 28325347 {

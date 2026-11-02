@@ -38,6 +38,7 @@ typedef struct {uint8_t inbox[4096];uint32_t replies,kind,length;} State;
 static uint8_t scratch[1049600];static int capacity=4096;
 E("coaxial_layout") int layout(void){return 1;}
 E("coaxial_state_size") int size(void){return sizeof(State);}
+E("coaxial_state_init") void init(int s){}
 E("coaxial_vertex_floats") int vf(void){return 4;}
 E("coaxial_max_vertices") int mv(void){return 6;}
 E("coaxial_uniform_floats") int uf(void){return 4;}

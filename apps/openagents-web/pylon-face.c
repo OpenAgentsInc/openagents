@@ -27,6 +27,9 @@ static void drain(uint32_t p){
 EXPORT("coaxial_golden") void golden(uint32_t on){golden_mode=on!=0;}
 EXPORT("coaxial_layout") uint32_t layout(void){return sizeof(coax_t_Pylon)*1000003u+0x50594c4eu;}
 EXPORT("coaxial_state_size") uint32_t state_size(void){return sizeof(coax_t_Pylon);}
+// A new state's declared defaults. Its state declares none, so the zeroed memory the host
+// hands it is its start; the host calls this first all the same (coax/web/state-defaults.coax).
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { (void)state; }
 EXPORT("coaxial_max_vertices") uint32_t max_vertices(void){return 300000;}
 EXPORT("coaxial_vertex_floats") uint32_t vertex_floats(void){return 16;}
 EXPORT("coaxial_uniform_floats") uint32_t uniform_floats(void){return 16;}

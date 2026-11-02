@@ -152,8 +152,8 @@ loop_ran :: (c: FrameClock) -> FrameClock {
 
 // One frame in one call: accept its time, and the steps it runs.
 FrameTick :: struct { clock: FrameClock; steps: int; }
-loop_frame :: (c: FrameClock, frame: f64) -> FrameTick {
-  a := loop_accept(c, frame);
+loop_frame :: (c: FrameClock, seconds: f64) -> FrameTick {
+  a := loop_accept(c, seconds);
   return FrameTick.{clock = loop_ran(a), steps = a.due};
 }
 
@@ -454,6 +454,16 @@ Before this module, each realm kept its own accumulator:
   64 steps a frame.
 - The page faces of the haunted house, Fairy Forest, the Garden, Everglade
   and the villa: a 0.1 s clamp in C before the player stepped.
+- The realm template, Star Catcher
+  ([verse/realm-template/starcatch.coax](../../verse/realm-template/starcatch.coax)),
+  which every new realm copies, and Watchtower: f32, 1/60 s, 0.1 s, and a
+  guard of 16 steps a frame.
+- Ice Cream Man's rules
+  ([verse/icecream/play.coax](../../verse/icecream/play.coax)): f32, 1/30 s,
+  0.1 s, at most four steps, and the whole backlog thrown away at the cap.
+- The Verse landing's orbs
+  ([apps/openagents-web/verse.coax](../../apps/openagents-web/verse.coax)):
+  f32, 1/60 s, at most 0.1 s owed.
 
 All of them now step on `aethyr/loop.coax`. Dead Gears' clock keeps its
 1/60 s step as 16,666,666 ns, rounded down, so 0.05 s is still three steps
@@ -471,14 +481,19 @@ No frame runs more steps than a realm's budget of 8
 | Dead Gears' rules | 1/60 s | 0.05 s | 3 |
 | Everglade's debris | 1/60 s | 0.25 s | 6 |
 | Hold the Stair | 1/60 s | 0.1 s of play times the speed | 8 (it was 64) |
+| The realm template and Watchtower | 1/60 s | 0.1 s | 6 (it was 16) |
+| Ice Cream Man's rules | 1/30 s | 0.1 s | 4 |
+| The Verse landing's orbs | 1/60 s | 0.1 s | 6 |
 
 At 8x, Hold the Stair runs at full speed down to 60 FPS. Below that, and in
 Orbit League below 15 FPS, the time past the cap is dropped and counted on
 the clock. Everglade runs two clocks a frame, the player's and the debris',
 so a stalled frame there runs up to 14 steps in all.
 
-The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
-still moves Ice Cream Man's 1/30 s step.
+Each of these realms has a check that feeds it a stalled 3 s frame and
+asserts it runs no more than its cap. Ice Cream Man's cap keeps the part of a
+step the dropped backlog leaves, as every clock does, where its own
+accumulator threw it all away.
 
 ## Dependencies
 

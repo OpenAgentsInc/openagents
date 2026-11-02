@@ -32,6 +32,9 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
 // data-page 1: /admin/reports, the review queue; 2: /admin/access; else /admin/analytics.
 EXPORT("coaxial_page") void coaxial_page(uint32_t state, int32_t page) { coaxial_admin_page(at(state), page); }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_AdminHost); }
+// A new state's declared defaults. Its state declares none, so the zeroed memory the host
+// hands it is its start; the host calls this first all the same (coax/web/state-defaults.coax).
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { (void)state; }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_admin_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_projects_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_projects_uniform_floats(); }

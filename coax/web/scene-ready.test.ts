@@ -33,6 +33,7 @@ const face = `#include <stdint.h>
 static uint32_t draws[4]={0,MODE==2 ? 0 : 3,0,MODE==3 ? 0 : 1}; static int arrived;
 E("coaxial_layout") int layout(void){return 1;}
 E("coaxial_state_size") int size(void){return 16;}
+E("coaxial_state_init") void init(int s){}
 E("coaxial_vertex_floats") int vf(void){return 4;}
 E("coaxial_max_vertices") int mv(void){return 6;}
 E("coaxial_uniform_floats") int uf(void){return 4;}

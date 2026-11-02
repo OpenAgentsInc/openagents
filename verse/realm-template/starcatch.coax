@@ -13,6 +13,7 @@
 //   coax/bin/coax test apps/openagents-web/starcatch.coax --steps 2000000000
 
 #load "font.coax";
+#load "../../aethyr/loop.coax";   // the fixed steps: Aethyr's one clock (aethyr/book ch001)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 12000;
@@ -24,6 +25,8 @@ STARS :: 24;
 GOAL :: 15;
 MISSES :: 3;
 STEP :: 0.0166666667;
+CATCH_STEP_NS :: 16666667;    // the same step on the clock (aethyr/loop.coax)
+CATCH_FRAME_NS :: 100000000;  // the longest frame that counts: 0.1 s
 BASKET_Y :: 0.86;       // the basket's rim, as a share of the height
 BASKET_HALF :: 0.085;   // its half width, as a share of the width
 BASKET_SPEED :: 0.85;   // widths a second
@@ -51,7 +54,8 @@ Catch :: struct {
   keys: int;             // arrows held, bits
   finger: int;           // a finger's hold, bits (and which finger)
   finger_id: int;
-  clock: f32; acc: f32; flash: f32;
+  clock: f32; flash: f32;
+  steps: FrameClock;     // the fixed steps (aethyr/loop.coax): 1/60 s, at most 8 a frame
   width: f32; height: f32; dpr: f32;
   golden: bool;
   galaxy: Rect;          // the REALMS button
@@ -294,18 +298,24 @@ draw_hud :: (s: [] Catch, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
   return n;
 }
 
+// A frame's fixed steps, on Aethyr's one clock (aethyr/loop.coax): the frame counts for at most
+// 0.1 s, its steps are 1/60 s, at most 8 run, and a backlog past that is dropped, never run later.
+// The drawn clock moves by what the frame counted for.
+catch_run :: (s: [] Catch, dt: f32) {
+  c := s[0].steps;
+  c.step_ns = CATCH_STEP_NS; c.max_frame_ns = CATCH_FRAME_NS;
+  c = loop_accept(c, cast(f64) dt);
+  s[0].clock += cast(f32) loop_counted(c);
+  for k: 0..<loop_due(c) { step(s, f32(STEP)); }
+  s[0].steps = loop_ran(c);
+}
+
 catch_frame :: (s: [] Catch, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
   catch_start(s);
   if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
   k := hi(dpr, 0.5);
-  step_dt := lo(hi(dt, 0), 0.1);
-  if s[0].golden || still { step_dt = 0; }
-  s[0].clock += step_dt;
-  s[0].acc += step_dt;
-  guard := 0;
-  while s[0].acc >= f32(STEP) && guard < 16 { step(s, f32(STEP)); s[0].acc -= f32(STEP); guard += 1; }
-  if guard >= 16 { s[0].acc = 0; }
+  catch_run(s, ifx s[0].golden || still then 0.0f32 else dt);
   for i: 0..<u.count { u[i] = 0; }
   u[0] = width; u[1] = height; u[2] = s[0].clock; u[3] = 1;
   u[U_INFO] = GROUND_Y * height; u[U_INFO + 1] = s[0].flash;
@@ -400,6 +410,27 @@ frame_at :: (s: [] Catch, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert c > 7 * 3 && text_width(HOW_1, c) <= w * 0.9 + 0.01 && text_width(HOW_2, c) < w * 0.9 && text_width(HOW_3, c) < w * 0.9;
   big := fit_cap("YOU CAUGHT THEM ALL", 30 * 3, w * 0.9);
   #assert big > 12 * 3 && text_width("YOU CAUGHT THEM ALL", big) <= w * 0.9 + 0.01 && text_width("THE STARS GOT AWAY", big) < w * 0.9;
+}
+
+#test "a frame runs at most 8 steps, however long it was" {
+  s: [1] Catch;
+  catch_start(s[..]);
+  catch_run(s[..], 3.0);   // a stalled tab: counted as 0.1 s, so 5 steps and most of a sixth owed
+  #assert s[0].steps.ran == 5 && s[0].steps.overlong == 1 && s[0].steps.ran <= LOOP_MAX_STEPS;
+  #assert abs(s[0].clock - 0.1) < 0.000001;
+  fed := CATCH_FRAME_NS;
+  for f: 0..<120 {
+    catch_run(s[..], cast(f32) (1.0 / 60.0));
+    fed += loop_ns(cast(f64) cast(f32) (1.0 / 60.0));
+    #assert s[0].steps.ran >= 0 && s[0].steps.ran <= 2;   // one a frame, two while the stall's owed step comes due
+  }
+  // every nanosecond fed is stepped or owed: none dropped, none run twice
+  #assert s[0].steps.ticks * CATCH_STEP_NS + s[0].steps.carry_ns == fed && s[0].steps.stalls == 0;
+  #assert s[0].steps.ticks >= 125 && s[0].steps.ticks <= 126;
+  // golden or still: no time, no steps
+  #assert frame_at(s[..], 1440, 900, 1, 0.5) > 0 && s[0].steps.ran >= 5 && s[0].steps.ran <= 6;
+  s[0].golden = true;
+  #assert frame_at(s[..], 1440, 900, 1, 0.5) > 0 && s[0].steps.ran == 0;
 }
 
 #test "space starts the game, the arrows move the basket and let go it stops" {

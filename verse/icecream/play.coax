@@ -14,6 +14,7 @@
 //   coax/bin/coax test verse/icecream/play.coax --library --steps 4000000000
 #load "camera.coax";
 #load "trace-text.coax";
+#load "../../aethyr/loop.coax";   // the fixed steps: Aethyr's one clock (aethyr/book ch001)
 
 // The keys the host sends (coax/web/host.js KEYS): a code point, or a named key.
 PK_ESCAPE :: -1; PK_ENTER :: -2; PK_LEFT :: -4; PK_RIGHT :: -5; PK_UP :: -6; PK_DOWN :: -7; PK_SHIFT :: -13; PK_CONTROL :: -14;
@@ -30,6 +31,9 @@ MAX_PARTICLES :: 120;
 TRACE_CAP :: 3000000;   // the page's trace buffer (icecream-face.c), attached as Play.trace
 TEST_TRACE :: 65536;    // a check's: a Play the checks build stays under the compile-time storage cap
 STEP :: 0.0333333333f32;
+ICE_STEP_NS :: 33333333;      // the same step on the clock (aethyr/loop.coax)
+ICE_FRAME_NS :: 100000000;    // the longest frame that counts: 0.1 s
+ICE_MAX_STEPS :: 4;           // the rules steps one frame may run
 
 Phase :: enum u8 { title; playing; menu; ending; over; }
 // The HUD's buttons and the page's acts (world.cpp act).
@@ -91,7 +95,7 @@ Play :: struct {
   best: [3] f32; new_best: bool;
   toast: Toast; toast_n: u32; toast_count: u32;
   particles: [MAX_PARTICLES] Particle; particle_n: int;
-  acc: f32;
+  steps: FrameClock;    // the rules steps (aethyr/loop.coax): 1/30 s, at most 4 a frame
   stepped: u64;
   bots: [1] Bot;
   // the round's trace: attached by the face (TRACE_CAP bytes) or a check (TEST_TRACE)
@@ -307,7 +311,8 @@ new_run :: (p: [] Play, g: [] Game) {
   nb: Boom;
   p[0].boom = nb;
   p[0].man_yaw = 0; p[0].particle_n = 0; p[0].spotted = 0; p[0].hurt = 0; p[0].daylight = 0; p[0].select = -1;
-  p[0].acc = 0; p[0].end_t = 0; p[0].new_best = false;
+  fresh_steps: FrameClock;
+  p[0].steps = fresh_steps; p[0].end_t = 0; p[0].new_best = false;
   trace_begin(p, g);
 }
 start_playing :: (p: [] Play, g: [] Game) {
@@ -808,23 +813,32 @@ view_now :: (p: [] Play, g: [] Game) -> View {
   return view;
 }
 
+// The seconds a frame's time counts for on Aethyr's clock (aethyr/loop.coax): refused below zero or
+// past a number, at most 0.1 s.
+ice_pace :: () -> FrameClock {
+  c: FrameClock;
+  c.step_ns = ICE_STEP_NS; c.max_frame_ns = ICE_FRAME_NS; c.max_steps = ICE_MAX_STEPS;
+  return c;
+}
+ice_counts :: (frame_dt: f32) -> f32 { return cast(f32) loop_counts(ice_pace(), cast(f64) frame_dt); }
+// The rules steps a frame of `dt` counted seconds makes due, on the clock: 1/30 s each, at most 4,
+// and a backlog past that dropped, never run later. A round that ends mid-frame runs no more.
+ice_run :: (p: [] Play, g: [] Game, dt: f32) {
+  c := p[0].steps;
+  c.step_ns = ICE_STEP_NS; c.max_frame_ns = ICE_FRAME_NS; c.max_steps = ICE_MAX_STEPS;
+  c = loop_accept(c, cast(f64) dt);
+  for k: 0..<loop_due(c) { if p[0].phase == Phase.playing { step_once(p, g); } }
+  p[0].steps = loop_ran(c);
+}
+
 // One frame of play: the steps due, the ending's clock, the animation and the view.
 ice_play_frame :: (p: [] Play, g: [] Game, width: f32, height: f32, dpr: f32, frame_dt: f32) #export_c {
   if !p[0].started { play_reset(p, g); }
   p[0].width = cmax(width, 1); p[0].height = cmax(height, 1); p[0].dpr = cmax(dpr, 0.5);
-  step := ifx p[0].suspended then 0.0f32 else clampf(frame_dt, 0, 0.1);
+  step := ifx p[0].suspended then 0.0f32 else ice_counts(frame_dt);
   p[0].time += step;
   p[0].frame_dt = step;
-  if running(p) {
-    p[0].acc += step;
-    n := 0;
-    while p[0].acc >= STEP && n < 4 && p[0].phase == Phase.playing {
-      p[0].acc -= STEP;
-      step_once(p, g);
-      n += 1;
-    }
-    if n == 4 { p[0].acc = 0; }
-  }
+  if running(p) { ice_run(p, g, step); }
   if p[0].phase == Phase.ending {
     p[0].end_t += step;
     if g[0].status == Status.escaped { p[0].daylight = cmin(p[0].end_t / ENDING * 1.4, 1); }
@@ -966,6 +980,27 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   lines := 0;
   for i: 0..<text.count { if text[i] == '\n' { lines += 1; } }
   #assert lines == 6 + 30;
+}
+
+#test "a frame runs at most 4 rules steps, however long it was, on Aethyr's clock" {
+  plays: [1] Play;
+  games: [1] Game;
+  p := plays[..]; g := games[..];
+  tb: [TEST_TRACE] u8; p[0].trace = tb[..];
+  ice_play_hash(p, g, "seed=3"); ice_play_act(p, g, A_TOUR_END, 0);
+  #assert running(p);
+  ice_play_frame(p, g, 1440, 900, 1, 3.0);   // a stalled tab: counted as 0.1 s, so 3 steps
+  #assert p[0].frame_dt == 0.1 && p[0].steps.ran == 3 && g[0].tick == 3;
+  // a frame owed more than 4 steps runs 4 and drops the rest, keeping the part of a step it leaves
+  c := p[0].steps; c.carry_ns = 2 * ICE_STEP_NS;
+  p[0].steps = c;
+  t0 := g[0].tick;
+  ice_run(p, g, 0.1);
+  #assert p[0].steps.ran == ICE_MAX_STEPS && g[0].tick == t0 + 4 && ICE_MAX_STEPS <= LOOP_MAX_STEPS;
+  #assert p[0].steps.stalls == 1 && p[0].steps.carry_ns < ICE_STEP_NS;
+  // negative or no number: no time, no steps
+  ice_play_frame(p, g, 1440, 900, 1, -1.0);
+  #assert p[0].frame_dt == 0 && p[0].steps.ran == 0;
 }
 
 #test "the browser's trace replays to the same state" {

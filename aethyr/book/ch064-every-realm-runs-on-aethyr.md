@@ -52,7 +52,7 @@ ground query instead of loading Aethyr's.
 | Made realms | Declared frame budgets and typed move/undo operations in `myrealm.coax`; shared player paths where adopted. | Camera modes, side-view collision, the drop realm's walk/follow and one document/edit/publication model. |
 | Everglade | Shared walking ground/collision and follow camera; debris on `aethyr/loop.coax`; its face uses the player's counted frame time. | Forest-specific spatial/body adapters, edge hold, effect plumbing and a complete recorded realm session. |
 | Dead Gears | `ecs_clock_frame` delegates scheduling to `aethyr/loop.coax`; walking uses the shared controller. | The private entity store, rule/input adapters and arena spatial representation. The wrapper's name does not imply a second clock implementation. |
-| Ice Cream Man | Declared frame budget and existing rule-trace checks. | `verse/icecream/play.coax` still owns its frame clamp/accumulator, input mapping and the separate boom camera. |
+| Ice Cream Man | Declared frame budget, existing rule-trace checks, and its 1/30 s rules steps on `aethyr/loop.coax` (`ice_run`, at most 4 a frame). | Input mapping and the separate boom camera in `verse/icecream/play.coax`. |
 | Hecate's Cemetery | Shared walking/camera and paid-step fetch in the actual villa face. | Flight/boat handover, special controls and the remaining floor-relative adapters. |
 | Fairy Forest | Shared walking/camera and counted frame time. | Flight in `fairy-face.c` and its recorded-session integration. |
 | Space games | Orbit League's 120 Hz steps use `aethyr/loop.coax`; both games have existing simulation/network checks. | Belt's lockstep schedule, space-camera/world-frame adapters and shared session/profile integration. |
@@ -61,18 +61,20 @@ ground query instead of loading Aethyr's.
 Clock migration already moved these paths onto `aethyr/loop.coax`
 ([chapter 1](ch001-a-frame-has-a-fixed-step.md), "What it replaced"): Dead
 Gears' `ecs_clock_frame`, Orbit League's step cap, `verse/demolish.coax`,
-Hold the Stair's solo and co-op clocks, and the 0.1 s clamps in five page
-faces. This is evidence of adoption, not completion of `ec-migrate`.
-Ice Cream Man's 30-a-second frame accumulator still needs migration; Belt's
-network commits and game-time ticks need an explicit session integration.
-Keep those scopes distinct from the shared walking and rigid-game clocks.
+Hold the Stair's solo and co-op clocks, the 0.1 s clamps in five page
+faces, Ice Cream Man's 1/30 s rules steps, the realm template
+([verse/realm-template/starcatch.coax](../../verse/realm-template/starcatch.coax),
+which every new realm copies), Watchtower and the Verse landing's orbs. Each of
+the last four has a check that a stalled frame runs no more than its cap of
+at most 8 steps
+([one-clock invariant](../../INVARIANTS.md#a-realms-frame-time-is-what-its-clock-counts-and-no-frame-runs-past-8-steps)).
+This is evidence of adoption, not completion of `ec-migrate`. Belt's network
+commits and game-time ticks need an explicit session integration. Keep that
+scope distinct from the shared walking and rigid-game clocks.
 
-Ice Cream Man's accumulator is an open conformance gap against the
-[one-clock invariant](../../INVARIANTS.md#a-realms-frame-time-is-what-its-clock-counts-and-no-frame-runs-past-8-steps):
-`ice_play_frame` in [play.coax](../../verse/icecream/play.coax) still clamps
-`frame_dt`, adds it to `acc` and runs its own due-step loop. Migration must
-remove that scheduling logic while preserving the rule traces. The invariant
-is the required architecture; the remaining private path does not relax it.
+Every page face now exports `coaxial_state_init`, and
+[`coax/web/host.js`](../../coax/web/host.js) calls it unconditionally
+([chapter 3](ch003-state-starts-from-its-defaults.md)).
 
 The renderer migration also has a working baseline: all catalogue realms
 have Coax-generated WGSL and the native Vulkan port's recorded checks

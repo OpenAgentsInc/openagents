@@ -85,7 +85,7 @@ loop_accept_ns :: (c: FrameClock, frame_ns: int) -> FrameClock {
   return next;
 }
 // book:end accept
-loop_accept :: (c: FrameClock, frame: f64) -> FrameClock { return loop_accept_ns(c, loop_ns(frame)); }
+loop_accept :: (c: FrameClock, seconds: f64) -> FrameClock { return loop_accept_ns(c, loop_ns(seconds)); }
 
 // book:begin ran
 // How many steps to run now.
@@ -103,8 +103,8 @@ loop_ran :: (c: FrameClock) -> FrameClock {
 
 // One frame in one call: accept its time, and the steps it runs.
 FrameTick :: struct { clock: FrameClock; steps: int; }
-loop_frame :: (c: FrameClock, frame: f64) -> FrameTick {
-  a := loop_accept(c, frame);
+loop_frame :: (c: FrameClock, seconds: f64) -> FrameTick {
+  a := loop_accept(c, seconds);
   return FrameTick.{clock = loop_ran(a), steps = a.due};
 }
 
@@ -115,11 +115,11 @@ loop_alpha :: (c: FrameClock) -> f32 {
 }
 // book:end ran
 
-// The seconds the last accepted frame counted for, and the seconds a frame of `frame` would
+// The seconds the last accepted frame counted for, and the seconds a frame of `seconds` would
 // count for on c: what a realm advances the time outside its steps by (its animation, its
 // room's timing), so that time is clamped and dropped as the steps are, by this clock alone.
 loop_counted :: (c: FrameClock) -> f64 { return cast(f64) c.counted_ns / f64(LOOP_SECOND); }
-loop_counts :: (c: FrameClock, frame: f64) -> f64 { return loop_counted(loop_accept(c, frame)); }
+loop_counts :: (c: FrameClock, seconds: f64) -> f64 { return loop_counted(loop_accept(c, seconds)); }
 
 // One step's time, and the simulation's time so far, in seconds.
 loop_step :: (c: FrameClock) -> f64 { return cast(f64) c.step_ns / f64(LOOP_SECOND); }
