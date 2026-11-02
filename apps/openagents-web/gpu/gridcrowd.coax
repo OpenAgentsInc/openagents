@@ -1,0 +1,275 @@
+// The Grid crowd's shaders (gridcrowd.coax): build.sh writes apps/openagents-web/gridcrowd.wgsl
+// from this with coax/web/wgsl-module.coax (gridcrowd.module and gridcrowd.bindings beside it).
+// First translated by coax/web/wgsl-coax.coax from the Grid page's shader (thegrid.wgsl, 2d84c124dc^).
+#load "../../../verse/gpu/wgsl.coax";
+
+// The Grid crowd's passes (gridcrowd.coax, the staged crowd running into
+// the Everglade gate): the near-black field behind, the scene, and the
+// strokes (none yet). The scene is the Grid's art in its flat colours,
+// unlit (pack_grid.py wrote them as the display values the demo drew),
+// fading into the field with distance: the faces, the lines (a quad each,
+// built here from its two ends and kept a pixel and a half wide on the
+// screen) and the agents, the Grid's robot skinned here from its clips'
+// frames, one instance each. The players are the human character from
+// Cast.bin (verse/cast.coax), drawn in vertex order from its triangles and
+// skinned with the joint palettes the face writes each frame, textured from
+// its sheets and lit softly from above. Every number comes from gridcrowd.coax.
+// GridcrowdU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   glow 5
+//   k 6
+//   robot_base 7
+//   r0 8
+//   r1 12
+//   r2 16
+//   r3 20
+//   eye 24
+//   field 28
+//   people 32
+// the view: clip = rows · world
+// the eye, and a line's width in device pixels
+// fading from x to y metres; bones a frame
+// Cast.bin's body vertices and indices (words), joints, the first person's instance
+GRIDCROWD_FIELD :: ()->V3 {return v3(0.0392f32,0.0392f32,0.0392f32);} // the art's background, 0.003 linear
+gridcrowd_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+gridcrowd_bg_fs :: (pos:V4)->V4 {
+  return wg_make_f4_f3f(GRIDCROWD_FIELD(),1.0f32);
+}
+// ---- the scene // 6 words: x, y, z, colour, joints, weights // 7 words: two ends, colour // a frame's bones, three rows each // Cast.bin
+GridcrowdRobot :: struct {place:V4; frames:V4; } // x, y, z, yaw; scale, frame a, frame b, blend // each person's joints, three rows each, placed in the world // the character's texture layers
+gridcrowd_cf :: (i:u32,body:[]u32)->f32 {
+  return f32_from_bits(body[cast(int)i]);
+}
+gridcrowd_f :: (i:u32,vertices:[]u32)->f32 {
+  return f32_from_bits(vertices[cast(int)i]);
+}
+gridcrowd_lf :: (i:u32,lines:[]u32)->f32 {
+  return f32_from_bits(lines[cast(int)i]);
+}
+gridcrowd_clip :: (w:V3,u:[]f32)->V4 {
+  p:V4=v4(w.x,w.y,w.z,1.0f32);
+  return v4(wg_dot4(wg_at4(u,8),p),wg_dot4(wg_at4(u,12),p),wg_dot4(wg_at4(u,16),p),wg_dot4(wg_at4(u,20),p));
+}
+// A robot vertex in the world: its bones' matrices, between two frames, then its place.
+gridcrowd_bone :: (frame:f32,j:u32,row:u32,u:[]f32,bones:[]V4)->V4 {
+  return bones[cast(int)add_wrap(mul_wrap(add_wrap(mul_wrap(wg_u32_f(frame),wg_u32_f(u[30])),j),cast(u32)3),row)];
+}
+gridcrowd_skinned :: (v:u32,r:GridcrowdRobot,u:[]f32,vertices:[]u32,bones:[]V4)->V3 {
+  b:u32=mul_wrap(v,cast(u32)6);
+  p:V4=v4(gridcrowd_f(b,vertices),gridcrowd_f(add_wrap(b,cast(u32)1),vertices),gridcrowd_f(add_wrap(b,cast(u32)2),vertices),1.0f32);
+  joints:V4=wg_mul_f4f(wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,cast(u32)4)]),255.0f32);
+  weights:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,cast(u32)5)]);
+  m:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    k:u32=0;
+    while k<4 {
+      w:f32=wg_get_f4(weights,cast(int)k);
+      if (w<=0.0f32) {
+        {k=add_wrap(k,1); continue;}
+      }
+      j:u32=wg_u32_f(wg_get_f4(joints,cast(int)k)+0.5f32);
+      q:V3=v3(0.0f32,0.0f32,0.0f32);
+      {
+        row:u32=0;
+        while row<3 {
+          a:f32=wg_dot4(gridcrowd_bone(r.frames.y,j,row,u,bones),p);
+          c:f32=wg_dot4(gridcrowd_bone(r.frames.z,j,row,u,bones),p);
+          q=wg_set_f3(q,cast(int)row,mix(a,c,r.frames.w));
+          row=add_wrap(row,1);
+        }
+      }
+      m=wg_add_f3f3(m,wg_mul_f3f(q,w));
+      k=add_wrap(k,1);
+    }
+  }
+  s:V3=wg_mul_ff3(r.frames.x,m);
+  cy:f32=cos(r.place.w);
+  sy:f32=sin(r.place.w);
+  return v3((r.place.x+(s.x*cy))+(s.z*sy),r.place.y+s.y,(r.place.z-(s.x*sy))+(s.z*cy));
+}
+GridcrowdS :: struct {pos:V4; world:V3; colour:V3; uv:V2; normal:V3; layer:f32 #flat; }
+// a person's texture layer; -1 the art's flat colour, 255 a person's flat colour
+// A person's corner: triangle corner id of Cast.bin's body, skinned with person h's palette.
+gridcrowd_person :: (id:u32,h:u32,u:[]f32,body:[]u32,palette:[]V4)->GridcrowdS {
+  o:GridcrowdS;
+  v:u32=body[cast(int)add_wrap(wg_u32_f(u[33]),id)];
+  b:u32=add_wrap(wg_u32_f(u[32]),mul_wrap(v,cast(u32)16));
+  p:V4=v4(gridcrowd_cf(b,body),gridcrowd_cf(add_wrap(b,cast(u32)1),body),gridcrowd_cf(add_wrap(b,cast(u32)2),body),1.0f32);
+  n:V3=v3(gridcrowd_cf(add_wrap(b,cast(u32)3),body),gridcrowd_cf(add_wrap(b,cast(u32)4),body),gridcrowd_cf(add_wrap(b,cast(u32)5),body));
+  w:V4=v4(gridcrowd_cf(add_wrap(b,cast(u32)8),body),gridcrowd_cf(add_wrap(b,cast(u32)9),body),gridcrowd_cf(add_wrap(b,cast(u32)10),body),gridcrowd_cf(add_wrap(b,cast(u32)11),body));
+  j:V4=wg_mul_f4f(wg_unpack4x8unorm(body[cast(int)add_wrap(b,cast(u32)12)]),255.0f32);
+  at:V3=v3(0.0f32,0.0f32,0.0f32);
+  nn:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    k:u32=0;
+    while k<4 {
+      if (wg_get_f4(w,cast(int)k)<=0.0f32) {
+        {k=add_wrap(k,1); continue;}
+      }
+      r:u32=mul_wrap(add_wrap(mul_wrap(h,wg_u32_f(u[34])),wg_u32_f(wg_get_f4(j,cast(int)k)+0.5f32)),cast(u32)3);
+      r0:V4=palette[cast(int)r];
+      r1:V4=palette[cast(int)add_wrap(r,cast(u32)1)];
+      r2:V4=palette[cast(int)add_wrap(r,cast(u32)2)];
+      at=wg_add_f3f3(at,wg_mul_ff3(wg_get_f4(w,cast(int)k),v3(wg_dot4(r0,p),wg_dot4(r1,p),wg_dot4(r2,p))));
+      nn=wg_add_f3f3(nn,wg_mul_ff3(wg_get_f4(w,cast(int)k),v3(wg_dot3(v3(r0.x,r0.y,r0.z),n),wg_dot3(v3(r1.x,r1.y,r1.z),n),wg_dot3(v3(r2.x,r2.y,r2.z),n))));
+      k=add_wrap(k,1);
+    }
+  }
+  tint:V4=wg_unpack4x8unorm(body[cast(int)add_wrap(b,cast(u32)13)]);
+  o.world=at;
+  o.pos=gridcrowd_clip(at,u);
+  o.colour=v3(tint.x,tint.y,tint.z);
+  o.uv=v2(gridcrowd_cf(add_wrap(b,cast(u32)6),body),gridcrowd_cf(add_wrap(b,cast(u32)7),body));
+  o.normal=nn;
+  o.layer=tint.w*255.0f32;
+  return o;
+}
+gridcrowd_decode1 :: (c:f32)->f32 {
+  if (c<=0.04045f32) {
+    return c/12.92f32;
+  }
+  return pow((c+0.055f32)/1.055f32,2.4f32);
+}
+gridcrowd_decode :: (c:V3)->V3 {
+  return v3(gridcrowd_decode1(c.x),gridcrowd_decode1(c.y),gridcrowd_decode1(c.z));
+}
+gridcrowd_encode1 :: (c:f32)->f32 {
+  x:f32=clampf(c,0.0f32,1.0f32);
+  if (x<=0.0031308f32) {
+    return x*12.92f32;
+  }
+  return (1.055f32*pow(x,1.0f32/2.4f32))-0.055f32;
+}
+gridcrowd_encode :: (c:V3)->V3 {
+  return v3(gridcrowd_encode1(c.x),gridcrowd_encode1(c.y),gridcrowd_encode1(c.z));
+}
+gridcrowd_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,lines:[]u32,bones:[]V4,body:[]u32,robots:[]GridcrowdRobot,palette:[]V4)->GridcrowdS {
+  o:GridcrowdS;
+  if ((cast(f32)(instance))>=u[35]) {
+    return gridcrowd_person(id,sub_wrap(instance,wg_u32_f(u[35])),u,body,palette);
+  }
+  o.layer=-1.0f32;
+  r:GridcrowdRobot=robots[cast(int)instance];
+  if ((id&0x80000000)==0) {
+    // a face's corner: the art's, in the world, or a robot's
+    w:V3=v3(gridcrowd_f(mul_wrap(id,cast(u32)6),vertices),gridcrowd_f(add_wrap(mul_wrap(id,cast(u32)6),cast(u32)1),vertices),gridcrowd_f(add_wrap(mul_wrap(id,cast(u32)6),cast(u32)2),vertices));
+    if ((cast(f32)(id))>=u[7]) {
+      w=gridcrowd_skinned(id,r,u,vertices,bones);
+    }
+    o.world=w;
+    o.pos=gridcrowd_clip(w,u);
+    o.colour=wg_sw_rgb_f4(wg_unpack4x8unorm(vertices[cast(int)add_wrap(mul_wrap(id,cast(u32)6),cast(u32)3)]));
+    return o;
+  }
+  // a line's corner: its quad across the screen, a pixel and a half wide
+  k:u32=id&0x7fffffff;
+  b:u32=mul_wrap((k/6),cast(u32)7);
+  c:u32=lines[cast(int)add_wrap(b,cast(u32)6)];
+  a:V3=v3(gridcrowd_lf(b,lines),gridcrowd_lf(add_wrap(b,cast(u32)1),lines),gridcrowd_lf(add_wrap(b,cast(u32)2),lines));
+  e:V3=v3(gridcrowd_lf(add_wrap(b,cast(u32)3),lines),gridcrowd_lf(add_wrap(b,cast(u32)4),lines),gridcrowd_lf(add_wrap(b,cast(u32)5),lines));
+  if ((c>>24)==0) {
+    a=gridcrowd_skinned(lines[cast(int)b],r,u,vertices,bones);
+    e=gridcrowd_skinned(lines[cast(int)add_wrap(b,cast(u32)1)],r,u,vertices,bones);
+  }
+  corner:u32=k%6;
+  alongs:[6]f32=[6]f32.[0.0f32,1.0f32,1.0f32,0.0f32,1.0f32,0.0f32];
+  along:f32=alongs[cast(int)corner];
+  sides:[6]f32=[6]f32.[-1.0f32,-1.0f32,1.0f32,-1.0f32,1.0f32,1.0f32];
+  side:f32=sides[cast(int)corner];
+  pa:V4=gridcrowd_clip(a,u);
+  pe:V4=gridcrowd_clip(e,u);
+  // keep both ends in front of the eye, so a line that runs behind it still draws
+  near:f32=0.05f32;
+  if ((pa.w<near)&&(pe.w<near)) {
+    o.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+    return o;
+  }
+  if (pa.w<near) {
+    t:f32=(near-pa.w)/(pe.w-pa.w);
+    pa=wg_mix_f4f4f(pa,pe,t);
+    a=wg_mix_f3f3f(a,e,t);
+  }
+  if (pe.w<near) {
+    t:f32=(near-pe.w)/(pa.w-pe.w);
+    pe=wg_mix_f4f4f(pe,pa,t);
+    e=wg_mix_f3f3f(e,a,t);
+  }
+  sa:V2=wg_mul_f2f(wg_mul_f2f2(wg_div_f2f(v2(pa.x,pa.y),pa.w),wg_at2(u,0)),0.5f32);
+  se:V2=wg_mul_f2f(wg_mul_f2f2(wg_div_f2f(v2(pe.x,pe.y),pe.w),wg_at2(u,0)),0.5f32);
+  dir:V2=wg_sub_f2f2(se,sa);
+  if (wg_length2(dir)<0.0001f32) {
+    dir=v2(1.0f32,0.0f32);
+  }
+  n:V2=wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_normalize2(v2(-dir.y,dir.x)),u[27]),0.5f32),side);
+  p:V4=wg_mix_f4f4f(pa,pe,along);
+  o.pos=wg_make_f4_f2ff(wg_add_f2f2(v2(p.x,p.y),wg_mul_f2f(wg_div_f2f2(n,wg_mul_f2f(wg_at2(u,0),0.5f32)),p.w)),p.z,p.w);
+  o.world=wg_mix_f3f3f(a,e,along);
+  o.colour=wg_sw_rgb_f4(wg_unpack4x8unorm(c));
+  return o;
+}
+gridcrowd_scene_fs :: (s:GridcrowdS,u:[]f32,sheets:Tex2DArray,sheet:Sampler)->V4 {
+  d:f32=wg_length2(wg_sub_f2f2(v2(u[24],u[26]),v2(s.world.x,s.world.z)));
+  t:f32=clampf((d-u[28])/fmax(u[29]-u[28],1.0f32),0.0f32,1.0f32);
+  // a person: the sheet's colour under the tint, lit from above and the front (sampled every time, so
+  // the sample stays in uniform control flow)
+  albedo:V3=wg_sw_rgb_f4(gpu_sample_layer(sheets,sheet,s.uv,wg_i32_f(clampf(s.layer,0.0f32,5.0f32))));
+  up:V3=wg_normalize3(v3(0.35f32,0.85f32,0.4f32));
+  light:f32=0.72f32+(0.62f32*fmax(wg_dot3(wg_normalize3(wg_add_f3f3(s.normal,v3(0.0f32,0.0001f32,0.0f32))),up),0.0f32));
+  colour:V3=s.colour;
+  if (s.layer>=0.0f32) {
+    colour=ifx s.layer>250.0f32 then gridcrowd_encode(wg_mul_f3f(gridcrowd_decode(s.colour),light)) else gridcrowd_encode(wg_mul_f3f(wg_mul_f3f3(albedo,gridcrowd_decode(s.colour)),light));
+  }
+  c:V3=wg_mix_f3f3f(colour,GRIDCROWD_FIELD(),(t*t)*(3.0f32-(2.0f32*t)));
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+// ---- the HUD's strokes
+GridcrowdV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+gridcrowd_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+gridcrowd_fx_vs :: (_vid2:u32,_iid3:u32,in_:gridcrowd_fx_vs_in,u:[]f32)->GridcrowdV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:GridcrowdV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+gridcrowd_fx_fs :: (v:GridcrowdV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_mul_f4f :: (a:V4,b:f32)->V4 {return v4(a.x*b,a.y*b,a.z*b,a.w*b);}
+wg_get_f4 :: (p:V4,i:int)->f32 {if i==0 {return p.x;} if i==1 {return p.y;} if i==2 {return p.z;} return p.w;}
+wg_get_f3 :: (p:V3,i:int)->f32 {if i==0 {return p.x;} if i==1 {return p.y;} return p.z;}
+wg_set_f3 :: (p:V3,i:int,x:f32)->V3 {r:=p; if i==0 {r.x=x;} if i==1 {r.y=x;} if i==2 {r.z=x;} return r;}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_mul_ff3 :: (a:f32,b:V3)->V3 {return v3(a*b.x,a*b.y,a*b.z);}
+wg_sw_rgb_f4 :: (p:V4)->V3 {return v3(p.x,p.y,p.z);}
+wg_mix_f4f4f :: (p0:V4,p1:V4,p2:f32)->V4 {return v4(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2),mix(p0.w,p1.w,p2));}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_make_f4_f2ff :: (p0:V2,p1:f32,p2:f32)->V4 {return v4(p0.x,p0.y,p1,p2);}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}

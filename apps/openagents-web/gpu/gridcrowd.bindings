@@ -1,0 +1,10 @@
+# gridcrowd's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as coax/web/host.js lays them out.
+u 0 0 uniform 9
+vertices 1 0
+lines 1 1
+bones 1 2
+body 1 3
+robots 1 4
+palette 1 5
+sheets 1 6
+sheet 1 7

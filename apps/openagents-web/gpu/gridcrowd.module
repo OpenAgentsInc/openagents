@@ -1,0 +1,3 @@
+--vertices gridcrowd_bg_vs,gridcrowd_scene_vs,gridcrowd_fx_vs
+--fragments gridcrowd_bg_fs,gridcrowd_scene_fs,gridcrowd_fx_fs
+--bindings apps/openagents-web/gpu/gridcrowd.bindings --strip gridcrowd_

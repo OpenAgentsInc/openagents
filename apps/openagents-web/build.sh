@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm, build/gridcrowd.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -105,6 +105,11 @@ stair=$!
 # /realms/watchtower: a cyber defense range: find the intruder, isolate and reimage hosts (docs/research/cybersecurity).
 "$here/../../coax/web/wasm.sh" "$here/watchtower.coax" "$here/watchtower-face.c" "$here/build/watchtower.wasm" &
 watchtower=$!
+# /demos/grid-crowd: the Grid's art (verse/tools/pack_grid.py) with a staged crowd of players (verse/cast.coax)
+# and agents running into the Everglade gate, for clips (?stage=crowd, docs/verse/clips.md).
+"$here/../../coax/web/wasm.sh" "$here/gridcrowd.coax" "$here/gridcrowd-face.c" "$here/build/gridcrowd.wasm" \
+  "$m/cast.coax" &
+gridcrowd=$!
 # /realms/belt-2200: the solar-system strategy game over the engine's orbits (verse/orbit.coax, verse/spacecam.coax; verse/stars.coax in gpu/belt.coax).
 "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
@@ -213,6 +218,7 @@ wait "$icecream"
 wait "$deadgears"
 wait "$stair"
 wait "$watchtower"
+wait "$gridcrowd"
 wait "$belt"
 wait "$orbitleague"
 wait "$everglade"

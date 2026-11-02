@@ -44,6 +44,18 @@ realm, a feature being shown off, or a moment a player really had.
    simulated, staged, generated), game, commit, stage or replay id, seed,
    size and frame rate. Recorded clips name the session, never the player.
 
+## Staged demos
+
+- **Grid Crowd** (`/demos/grid-crowd?stage=crowd`, `apps/openagents-web/gridcrowd.coax`):
+  340 characters (200 players from Cast.bin, 140 Grid robots) run across the
+  Grid into the Everglade gate under a high-wide-then-drift camera. Seeded and
+  stepped on whole ticks, so two recordings are byte-identical frame for frame.
+  `&players=N&agents=N` (up to 1024 and 1022) and `&seed=N` change it.
+
+  ```shell
+  coax/web/tool.sh clip "http://127.0.0.1:8800/demos/grid-crowd?stage=crowd" ~/Desktop/verse-crowd-portal.mp4 --size 1920x1080 --seconds 18 --skip 2
+  ```
+
 ## Next
 
 - Inputs on a timeline in `clip.coax` (key and pointer events at frame
