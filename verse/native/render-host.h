@@ -31,5 +31,15 @@ int rhg_execute(RhgRenderer *renderer,const coax_t_RenderRuntimeFrame *receipt,c
 VksImage *rhg_screen(RhgRenderer *renderer);
 VksImage *rhg_target_image(RhgRenderer *renderer,coax_t_RenderTarget target);
 uint64_t rhg_draw_commands(const RhgRenderer *renderer);
+// The GPU resource ledger (aethyr/render/registry.coax), one per process as in
+// the browser's face. Ask before creating a buffer or image, release when it is
+// freed; a zero handle is none. Words come from Coax (aethyr_render_*_words).
+enum {RHG_UNIFORM,RHG_STORAGE,RHG_COLOR,RHG_VERTEX,RHG_INDEX,RHG_TEXTURE};
+typedef struct {int64_t slot,generation;} RhgHandle;
+int rhg_ledger_acquire(int kind,int64_t words,RhgHandle *out);
+void rhg_ledger_release(RhgHandle *handle);
+int rhg_ledger_live(const RhgHandle *handle);
+// 0 epoch, 1 live objects, 2 live words, 3 slots, 4 word budget.
+int64_t rhg_ledger_info(int field);
 void rhg_close(RhgRenderer *renderer);
 #endif

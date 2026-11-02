@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-typedef struct {coax_t_RFTextureNeed need;unsigned char *packed;size_t bytes;VksImage image;int open,array;} RhgtImage;
+typedef struct {coax_t_RFTextureNeed need;unsigned char *packed;size_t bytes;VksImage image;RhgHandle handle;int open,array;} RhgtImage;
 struct RhgTextures {Vkc *device;const RfiFrame *raw;RhgtImage *images;coax_t_RenderHostNamedTexture *names;};
 static void rhgt_error(char *error,size_t bytes,const char *message){if(bytes)snprintf(error,bytes,"%s",message);}
 static VkFormat rhgt_format(coax_t_RenderTexelFormat f){
@@ -37,7 +37,7 @@ int rhgt_frame_admit(RhgTextures *t,int64_t profile,const coax_t_RenderRuntimeFr
   }
   return 1;
 }
-void rhgt_close(RhgTextures *t){if(!t)return;if(t->images)for(size_t i=0;i<t->raw->texture_count;i++){if(t->images[i].open)vks_image_free(t->device,&t->images[i].image);free(t->images[i].packed);}free(t->images);free(t->names);free(t);}
+void rhgt_close(RhgTextures *t){if(!t)return;if(t->images)for(size_t i=0;i<t->raw->texture_count;i++){if(t->images[i].open){vks_image_free(t->device,&t->images[i].image);rhg_ledger_release(&t->images[i].handle);}free(t->images[i].packed);}free(t->images);free(t->names);free(t);}
 RhgTextures *rhgt_open(Vkc *device,const RfiFrame *raw,char *error,size_t error_bytes){
   RhgTextures *t=calloc(1,sizeof*t);if(!t)return NULL;t->device=device;t->raw=raw;
   t->names=rfi_array(raw->texture_count,sizeof*t->names);t->images=rfi_array(raw->texture_count,sizeof*t->images);if(!t->names||!t->images){rhgt_close(t);return NULL;}
@@ -68,7 +68,10 @@ const VksImage *rhgt_image(RhgTextures *t,coax_t_RenderHostTextureReceipt receip
     if(!extent.valid){rhgt_error(error,error_bytes,"texture device extent refused by Coax");return NULL;}
     // The codec admitted the authored chain. A canonical atlas can stop
     // before1x1; device extent admission does not add or replace its mips.
+    int64_t words=aethyr_render_texture_words(extent.width,extent.height,source->layers,(int64_t)source->level_count,aethyr_native_texel_bytes(image->need.format));
+    if(!rhg_ledger_acquire(RHG_TEXTURE,words,&image->handle)){rhgt_error(error,error_bytes,"texture allocation refused by the Coax ledger");return NULL;}
     image->image=vks_image_levels(t->device,(uint32_t)extent.width,(uint32_t)extent.height,(uint32_t)source->layers,array,rhgt_format(image->need.format),VKS_TEXTURE,(uint32_t)source->level_count);
     vks_upload(t->device,&image->image,image->packed,image->bytes);image->open=1;image->array=array;}
+  if(!rhg_ledger_live(&image->handle)){rhgt_error(error,error_bytes,"texture is not live in the Coax ledger");return NULL;}
   return &image->image;
 }

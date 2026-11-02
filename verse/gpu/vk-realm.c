@@ -567,7 +567,9 @@ int main(int argc, char **argv) {
 #endif
   if (v.validating) printf("vk-realm: validation: %d errors, %d warnings\n", vkc_validation_errors, vkc_validation_warnings);
 #ifdef AETHYR_RENDER_TYPED
+  printf("vk-realm: ledger: %lld objects, %lld words live at the last frame (epoch %lld)\n",(long long)rhg_ledger_info(1),(long long)rhg_ledger_info(2),(long long)rhg_ledger_info(0));
   rhgr_close(s);
+  printf("vk-realm: ledger: %lld objects live after close\n",(long long)rhg_ledger_info(1));
 #else
   vk_spec_close(&v, s);
 #endif

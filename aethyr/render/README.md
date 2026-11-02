@@ -203,8 +203,21 @@ coax/web/tool.sh aethyr/tests/render-ledger.coax http://127.0.0.1:8800/realms/th
 The headless check loads the served Grid, matches the ledger's live count to
 the objects the renderer holds, releases the Sans atlas's handle under the
 renderer and sees the next frame refused before any GPU write, then loses the
-device and sees every new object live and no old handle live. The native
-Vulkan host (`verse/native/render-host.c`) does not use the ledger yet.
+device and sees every new object live and no old handle live.
+
+The native Vulkan host uses the same ledger through the same exports, one per
+process. `render-host.c` owns it and its frame targets. `render-realm.c`
+asks it for the vertex, index, named and generated buffers, and
+`render-textures.c` for the realm's images. Each frame is a new epoch. A
+target, buffer or image that is not live refuses the frame before its
+candidate is prepared or its buffers are written. `vk-realm` prints the
+ledger at the last frame and after close:
+
+```sh
+REALM=newland VERSE_GPU_CHECK_SIZES='' verse/gpu/realm.sh local check
+```
+
+The iOS Metal host (`HomeRenderer.swift`) does not use the ledger yet.
 
 ### Native projection consumer and residual adapters
 

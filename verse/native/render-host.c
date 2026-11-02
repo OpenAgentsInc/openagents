@@ -6,11 +6,26 @@
 #include <string.h>
 
 typedef struct {VksPipe pipe;VksPass pass;VksBinding bindings[32];int open;} RhgDraw;
+static coax_t_RenderHostRegistryBank rhg_ledger_bank;static int rhg_ledger_opened;
+static coax_v_t_RenderRegistry rhg_ledger(void){
+  coax_v_t_RenderRegistry v=aethyr_render_registry_storage((coax_v_t_RenderHostRegistryBank){&rhg_ledger_bank,1});
+  if(!rhg_ledger_opened){aethyr_render_registry_open(v);rhg_ledger_opened=1;}return v;
+}
+int rhg_ledger_acquire(int kind,int64_t words,RhgHandle *out){
+  coax_t_RrGrant g=aethyr_render_registry_acquire(rhg_ledger(),aethyr_render_resource_kind(kind),words);
+  if(g.status!=COAX_RrStatus_ok)return 0;out->slot=g.handle.slot;out->generation=g.handle.generation;return 1;
+}
+void rhg_ledger_release(RhgHandle *h){if(h->generation>0)aethyr_render_registry_release(rhg_ledger(),h->slot,h->generation);*h=(RhgHandle){0};}
+int rhg_ledger_live(const RhgHandle *h){return h->generation>0&&aethyr_render_registry_live(rhg_ledger(),h->slot,h->generation);}
+int64_t rhg_ledger_info(int field){
+  coax_v_t_RenderRegistry v=rhg_ledger();
+  switch(field){case 0:return v.data[0].epoch;case 1:return v.data[0].live;case 2:return v.data[0].words;case 3:return v.data[0].limit.slots;case 4:return v.data[0].limit.words;default:return -1;}
+}
 struct RhgRenderer {
   Vkc *v;int64_t profile;char *json;
   coax_t_RenderHostPackageState state;coax_t_RenderHostEntryBank entries;
   RhgBytes *shaders;size_t shader_count;
-  VksImage targets[COAX_RenderTarget_invalid];int target_open[COAX_RenderTarget_invalid];
+  VksImage targets[COAX_RenderTarget_invalid];int target_open[COAX_RenderTarget_invalid];RhgHandle target_handles[COAX_RenderTarget_invalid];
   VksSurface *surfaces;int *surface_open;RhgDraw *draws;int64_t op_count;
   const coax_t_RenderRuntimeFrame *receipt;const RhgFrame *frame;
   coax_t_RenderDecodedDraw *decoded;uint64_t draw_commands;
@@ -33,7 +48,7 @@ static void rhg_frame_close(RhgRenderer *r){
 }
 void rhg_close(RhgRenderer *r){
   if(!r)return;rhg_frame_close(r);
-  for(size_t i=0;i<COAX_RenderTarget_invalid;i++)if(r->target_open[i])vks_image_free(r->v,&r->targets[i]);
+  for(size_t i=0;i<COAX_RenderTarget_invalid;i++)if(r->target_open[i]){vks_image_free(r->v,&r->targets[i]);rhg_ledger_release(&r->target_handles[i]);}
   if(r->shaders)for(size_t i=0;i<r->shader_count;i++)free((void*)r->shaders[i].data);
   free(r->shaders);free(r->json);free(r);
 }
@@ -62,8 +77,13 @@ static int rhg_target(RhgRenderer *r,coax_t_RenderTarget id,const coax_t_FrameCo
   coax_t_RenderTargetDescriptor desc=aethyr_render_target_raw(id,counts->width,counts->height,coarse!=0,screen,r->v->props.limits.maxImageDimension2D);
   if(desc.status!=COAX_RenderResourceStatus_ok)return rhg_error(error,size,"target extent refused by Coax");
   VkFormat format=rhg_format(desc.format);
-  if(r->target_open[id]&&(r->targets[id].w!=(uint32_t)desc.width||r->targets[id].h!=(uint32_t)desc.height||r->targets[id].format!=format)){vks_image_free(r->v,&r->targets[id]);r->target_open[id]=0;}
-  if(!r->target_open[id]){r->targets[id]=vks_image(r->v,(uint32_t)desc.width,(uint32_t)desc.height,1,0,format,VKS_TARGET);r->target_open[id]=1;}
+  if(r->target_open[id]&&(r->targets[id].w!=(uint32_t)desc.width||r->targets[id].h!=(uint32_t)desc.height||r->targets[id].format!=format)){vks_image_free(r->v,&r->targets[id]);rhg_ledger_release(&r->target_handles[id]);r->target_open[id]=0;}
+  if(!r->target_open[id]){
+    int64_t words=aethyr_render_format_words(desc.format,desc.width,desc.height,1,1);
+    if(!rhg_ledger_acquire(desc.format==COAX_RenderTextureFormat_depth32?RHG_TEXTURE:RHG_COLOR,words,&r->target_handles[id]))return rhg_error(error,size,"target allocation refused by the Coax ledger");
+    r->targets[id]=vks_image(r->v,(uint32_t)desc.width,(uint32_t)desc.height,1,0,format,VKS_TARGET);r->target_open[id]=1;}
+  // Every attachment a pass uses is live in the ledger before its candidate is prepared.
+  if(!rhg_ledger_live(&r->target_handles[id]))return rhg_error(error,size,"target is not live in the Coax ledger");
   return 1;
 }
 static VksPass rhg_attachments(RhgRenderer *r,coax_t_RenderOp op){
@@ -151,6 +171,8 @@ int rhg_execute(RhgRenderer *r,const coax_t_RenderRuntimeFrame *receipt,const Rh
   if(frame->media_receipt.status!=COAX_RenderHostMediaStatus_ok||frame->media_receipt.count<0||frame->media_receipt.count>frame->media_rects.count)return rhg_error(error,size,"Coax media candidate refused before Vulkan effects");
   if(receipt->status!=COAX_RenderRuntimeStatus_ok)return rhg_error(error,size,"Coax frame refused before Vulkan effects");
   int errors_before=vkc_validation_errors,warnings_before=vkc_validation_warnings;
+  // Each frame is a new ledger epoch; an object released before it is not live in it.
+  if(!aethyr_render_registry_advance(rhg_ledger()))return rhg_error(error,size,"the Coax ledger's epochs are spent");
   rhg_frame_close(r);r->receipt=receipt;r->frame=frame;r->draw_commands=0;
   r->decoded=calloc(receipt->counts.draw_count?(size_t)receipt->counts.draw_count:1,sizeof*r->decoded);if(!r->decoded)return rhg_error(error,size,"decoded draw allocation failed");
   for(int64_t i=0;i<receipt->counts.draw_count;i++){r->decoded[i]=aethyr_render_decode_draw(frame->draw_words,i);if(r->decoded[i].kind==COAX_RenderDrawKind_invalid)return rhg_error(error,size,"validated draw transport changed");}
