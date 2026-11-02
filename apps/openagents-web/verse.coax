@@ -1,13 +1,13 @@
 // The Verse's way in, drawn by Coax: the landing (openagents.com/verse, page 0)
 // and the galaxy (page 1), ported from the playtest's Kiki flow (aethyr-cpp
 // frozen/kiki at revision 8, demo/kiki-2026-10-27b). The web's galaxy page is
-// retired (2026-10-31: /verse/galaxy redirects to /realms); page 1 stays as
+// retired (2026-10-31: /verse/galaxy redirects to /worlds); page 1 stays as
 // the native host's travel hub, which a realm's REALMS button opens there
 // (verse/native/realm-host.c rh_realm_of, verse/gpu/realm.sh).
 //
 // The landing, as playtest.openagents.com drew it: A HAUNTED HOUSE PLAYTEST over
 // ENTER THE VERSE, the one line about the house, and PLAYTEST NOW, which
-// opens the Haunted House (/realms/haunted-house) directly. No email is asked for; one this browser gave the old
+// opens the Haunted House (/worlds/haunted-house) directly. No email is asked for; one this browser gave the old
 // playtest is still joined again (POST /api/playtest/join, how "return").
 //
 // Under PLAYTEST NOW, the Agent orb (ptr-landing-guide): hold it to talk to
@@ -16,11 +16,11 @@
 //
 // The galaxy: the playtest's worlds turning on their orbits, from the realm
 // host's table (realms.json, written into realms.coax): an open world opens
-// its realm's page (/realms/<slug>); only the Haunted House has a tag under
+// its realm's page (/worlds/<slug>); only the Haunted House has a tag under
 // it. Coding is coming later, and Blue Rush and Big Brain are locked. A world the table
 // doesn't list (the fixture realm) shows only with ?realms=all. Drag turns it. Players' own
 // realms (pt-planets) circle outside them, the newest REALMS, and each
-// opens its world (/realms/haunted-house#<id>); MAKE YOUR REALM opens the builder (/realms/new),
+// opens its world (/worlds/haunted-house#<id>); MAKE YOUR REALM opens the builder (/worlds/new),
 // and hides while realm making is invite only for this visitor (access.coax: make 0)
 // (a name, its kind, look, view and time of day) on the server
 // (/api/playtest/planets), or YOUR REALM opens the one you have.
@@ -127,7 +127,7 @@ ACT_VOICE :: 7; MSG_VOICE :: 50;
 GUIDE_TEXT :: 400;
 
 REALMS :: 8; REALM_ID :: 64; REALM_NAME :: 40;
-MAKE_URL :: "/realms/new";   // the realm builder (builder.coax)
+MAKE_URL :: "/worlds/new";   // the realm builder (builder.coax)
 REALM_ORBIT :: 0.53f32;
 // The galaxy's requests, one at a time: the realm you have and the realms.
 WANT_MINE :: 1; WANT_LIST :: 2;
@@ -570,7 +570,7 @@ verse_facts :: (s: [] VerseState, facts: string) #export_c {
 
 open_realm :: (s: [] VerseState, id: string) {
   if s[0].next_n > 0 || s[0].action != 0 || !world_id_ok(id) { return; }
-  n := put(s[0].next[..], 0, "/realms/haunted-house#");
+  n := put(s[0].next[..], 0, "/worlds/haunted-house#");
   s[0].next_n = put(s[0].next[..], n, id);
   s[0].answered = true; s[0].going_at = s[0].time;
 }
@@ -1138,7 +1138,7 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
     if s[0].over == p { vertices = ring(out, vertices, q.x, q.y, q.r * 1.4 + 2 * k, q.r * 1.4 + 2 * k, 40, 0.6 * k, 0.6, 1.5 * k, 0.93, 0.93, 0.95); }
   }
   // MAKE YOUR REALM, or YOUR REALM once you have one
-  realm_label := ifx s[0].mine_n > 0 then "YOUR REALM" else "MAKE YOUR REALM";
+  realm_label := ifx s[0].mine_n > 0 then "YOUR WORLD" else "MAKE YOUR WORLD";
   rw := measure(realm_label, GAP, SPACE, false) * 8 * k + 36 * k;
   if s[0].mine_n > 0 || !access_hides_make(s[0].acc[..]) {
     vertices = plate_button(s, out, vertices, BTN_REALM, Box.{x0 = cx - rw * 0.5, y0 = 96 * k, x1 = cx + rw * 0.5, y1 = 124 * k}, realm_label, true);
@@ -1357,7 +1357,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   click(s[..], t[..], s[0].boxes[BTN_ENTER]);
   #assert batch_has(t[..], "\"ev\":\"start\"") && batch_has(t[..], "\"how\":\"guest\"") && !s[0].req_ready;
   redraw(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/haunted-house";
   take_action(s[..]);
   click(s[..], t[..], s[0].boxes[BTN_ENTER]);
   redraw(s[..], t[..], 0.016);
@@ -1427,12 +1427,12 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 0, 1);
   poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
   redraw(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/haunted-house";
   #assert batch_has(t[..], "\"open\":true");
 }
 
 #test "every open world opens its own realm page; an unlisted one only with realms=all" {
-  #assert PLANET_ID[HOUSE] == "house" && PLANET_ID[CODING] == "coding" && PLANET_PATH[HOUSE] == "/realms/haunted-house";
+  #assert PLANET_ID[HOUSE] == "house" && PLANET_ID[CODING] == "coding" && PLANET_PATH[HOUSE] == "/worlds/haunted-house";
   fixture := -1;
   for p: 0..<PLANETS {
     #assert (PLANET_KIND[p] == KIND_OPEN) == (PLANET_PATH[p].count > 0);
@@ -1449,7 +1449,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 0, 1);
     poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
     redraw(s[..], t[..], 0.016);
-    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/fixture";
+    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/fixture";
   }
 }
 
@@ -1473,7 +1473,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     #assert verse_key(s[..], t[..], KEY_RIGHT, 0) && s[0].over == HOUSE;
     #assert verse_key(s[..], t[..], KEY_ENTER, 0);
     redraw(s[..], t[..], 0.016);
-    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house";
+    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/haunted-house";
   }
 }
 
@@ -1534,21 +1534,21 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   poke(s[..], t[..], q.x, q.y, POINTER_DOWN, 0, 1);
   poke(s[..], t[..], q.x, q.y, POINTER_UP, 0, 1);
   frame(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house#planet-b";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/haunted-house#planet-b";
   take_action(s[..]);
   click(s[..], t[..], s[0].boxes[BTN_REALM]);
   frame(s[..], t[..], 0.016);
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/haunted-house#planet-mine1";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/haunted-house#planet-mine1";
 }
 
-#test "MAKE YOUR REALM opens the realm builder, on a phone and a desk" {
+#test "MAKE YOUR WORLD opens the realm builder, on a phone and a desk" {
   for size: 0..<2 {
     s: [1] VerseState; t: [1] Track;
     page_at(s[..], t[..], PAGE_GALAXY, ifx size == 0 then 402 else 1440, ifx size == 0 then 874 else 900);
     #assert s[0].shown[BTN_REALM] && s[0].mine_n == 0;
     click(s[..], t[..], s[0].boxes[BTN_REALM]);
     frame(s[..], t[..], 0.016);
-    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/new";
+    #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/new";
     #assert batch_has(t[..], "make-realm") && !verse_wants_text(s[..]) && !s[0].req_ready;
   }
 }
@@ -1570,7 +1570,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert s[0].action == ACT_NAVIGATE;
 }
 
-#test "MAKE YOUR REALM hides on the galaxy only when the access answer says make 0" {
+#test "MAKE YOUR WORLD hides on the galaxy only when the access answer says make 0" {
   answers := [3] string.["200\ninvites 1\nmake 0\nin 0\ncreator 0\nasked none\n", "200\ninvites 0\nmake 1\nin 0\ncreator 0\nasked none\n", "0\n"];
   for z: 0..<3 {
     s: [1] VerseState; t: [1] Track;

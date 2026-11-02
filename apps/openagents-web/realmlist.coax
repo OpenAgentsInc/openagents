@@ -1,4 +1,4 @@
-// /realms, drawn by Coax: every listed realm, as a list and as a
+// /worlds, drawn by Coax: every listed realm, as a list and as a
 // grid of towers on the homepage's line-art floor. The sort is POPULAR (its
 // visitors), RECENT (when it opened), PLAYED (minutes in it) or A-Z; the
 // towers move to their new places and grow to the sort's numbers, and the
@@ -15,7 +15,7 @@
 // once (realms-listed.coax decides the rows), and they join the list and the grid in the
 // server's order, newest first, as many as fit in MAX_REALMS; the list's note says "+N MORE"
 // for the rest. Until the answer, and on any failure, the page is the table alone.
-// MAKE A REALM, at the header's top right, opens /realms/new; it hides while realm making is invite
+// MAKE A REALM, at the header's top right, opens /worlds/new; it hides while realm making is invite
 // only and this visitor isn't an approved creator (access.coax: GET /api/playtest/access once).
 
 #load "font.coax";
@@ -408,8 +408,8 @@ put_count :: (buf: [] u8, at: int, n: int, counted: bool) -> int {
 // ---------------------------------------------------------------- layout
 
 Layout :: struct { wide: bool; header: Box; scene: Box; list: Box; home: Box; make: Box; chips: [4] Box; row_h: f32; rows_top: f32; }
-MAKE_LABEL :: "MAKE A REALM";
-MAKE_URL :: "/realms/new";
+MAKE_LABEL :: "MAKE A WORLD";
+MAKE_URL :: "/worlds/new";
 
 WIDE :: 900.0;   // CSS pixels: the scene and the list side by side from here
 CHIP_CAP :: 8.0;
@@ -658,11 +658,11 @@ header :: (out: [] f32, at: int, l: Layout, p: Pen, sort: int, hot: int, make: b
   v = put(out, v, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, ifx hot == HIT_HOME then white else dim);
   crumb := x + text_width("OPENAGENTS", 7 * d) + SPACE * 7 * d;
   v = put(out, v, "/", crumb, b.y0 + 22 * d, 7 * d, dim);
-  v = put(out, v, "REALMS", crumb + text_width("/", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, accent);
+  v = put(out, v, "WORLDS", crumb + text_width("/", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, accent);
   ty := b.y0 + 58 * d;
-  v = put(out, v, "REALMS", x, ty, 26 * d, white);
+  v = put(out, v, "WORLDS", x, ty, 26 * d, white);
   if l.wide {
-    tx := x + text_width("REALMS", 26 * d) + 22 * d;
+    tx := x + text_width("WORLDS", 26 * d) + 22 * d;
     v = put_fit(out, v, "WORLDS ON THE VERSE YOU PLAY IN THE BROWSER", tx, ty - 4 * d, 8 * d, white, l.chips[0].x0 - tx - 30 * d);
   } else {
     v = put_fit(out, v, "WORLDS YOU PLAY IN THE BROWSER", x, ty + 22 * d, 7.5 * d, white, right - x);
@@ -736,17 +736,17 @@ draw_list :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order:
   d := p.d; b := l.list;
   buf: [48] u8;
   c := put_int(buf[..], 0, n);
-  c += put_text(buf[..], c, ifx n == 1 then " REALM" else " REALMS");
+  c += put_text(buf[..], c, ifx n == 1 then " WORLD" else " WORLDS");
   if s[0].more > 0 { c += put_text(buf[..], c, "  +"); c += put_int(buf[..], c, s[0].more); c += put_text(buf[..], c, " MORE"); }
   if l.wide { c += put_text(buf[..], c, "  -  ENTER OPENS"); }
-  v := titled(out, at, b, "ALL REALMS", cast(string) buf[0..<c], p);
+  v := titled(out, at, b, "ALL WORLDS", cast(string) buf[0..<c], p);
   dim := ink(p, INK_DIM);
   if l.wide {
     total := 0.0f32;
     for k: 0..<3 { total += WIDTHS[k] * d; }
     cx := b.x1 - 20 * d - total;
     y := l.rows_top - 6 * d;
-    v = put(out, v, "REALM", b.x0 + 46 * d, y, 6 * d, dim);
+    v = put(out, v, "WORLD", b.x0 + 46 * d, y, 6 * d, dim);
     for k: 0..<3 { v = put(out, v, COLUMNS[k], cx, y, 6 * d, dim); cx += WIDTHS[k] * d; }
   }
   for k: 0..<n {
@@ -827,7 +827,7 @@ open_rank :: (s: [] RealmsState, k: int) {
   n := sorted(s, s[0].sort, order[..]);
   if k < 0 || k >= n { return; }
   buf: [96] u8;
-  m := put_text(buf[..], 0, "/realms/");
+  m := put_text(buf[..], 0, "/worlds/");
   m += put_text(buf[..], m, cell(s, order[k], C_SLUG));
   navigate(s, cast(string) buf[0..<m]);
 }
@@ -1056,7 +1056,7 @@ rank_of :: (s: [] RealmsState, slug: string) -> int {
     #assert row_visible(l, b) && within(b, l.list);
     x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
     #assert realms_pointer(s[..], x, y, P_DOWN, 0) && realms_pointer(s[..], x, y, P_UP, 0);
-    want: [96] u8; m := put_text(want[..], 0, "/realms/"); m += put_text(want[..], m, field(REALMS_ROWS, order[0], C_SLUG));
+    want: [96] u8; m := put_text(want[..], 0, "/worlds/"); m += put_text(want[..], m, field(REALMS_ROWS, order[0], C_SLUG));
     #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], cast(string) want[0..<m]);
     coaxial_realms_action_done(s[..]);
     // the last realm's tower, at the front of the grid
@@ -1068,7 +1068,7 @@ rank_of :: (s: [] RealmsState, slug: string) -> int {
     tx := (tb.x0 + tb.x1) * 0.5; ty := tb.y1 - 4;
     #assert hit(s[..], tx, ty) == n - 1;
     #assert realms_pointer(s[..], tx, ty, P_DOWN, 0) && realms_pointer(s[..], tx, ty, P_UP, 0);
-    m = put_text(want[..], 0, "/realms/"); m += put_text(want[..], m, field(REALMS_ROWS, r, C_SLUG));
+    m = put_text(want[..], 0, "/worlds/"); m += put_text(want[..], m, field(REALMS_ROWS, r, C_SLUG));
     #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], cast(string) want[0..<m]);
   }
 }
@@ -1144,7 +1144,7 @@ rank_of :: (s: [] RealmsState, slug: string) -> int {
   #assert s[0].gx[0] == cell_x(k, rank) && s[0].gy[0] == cell_y(k, rank);
 }
 
-#test "MAKE A REALM is in the header on a desktop and a phone, and opens /realms/new" {
+#test "MAKE A WORLD is in the header on a desktop and a phone, and opens /worlds/new" {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   uniforms: [UNIFORM_FLOATS] f32;
   sizes := [4] f32.[1440, 900, 390, 844];
@@ -1161,7 +1161,7 @@ rank_of :: (s: [] RealmsState, slug: string) -> int {
   }
 }
 
-#test "MAKE A REALM hides only when the access answer says make 0" {
+#test "MAKE A WORLD hides only when the access answer says make 0" {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   uniforms: [UNIFORM_FLOATS] f32;
   answers := [3] string.["200\ninvites 1\nmake 0\nin 0\ncreator 0\nasked none\n", "200\ninvites 1\nmake 1\nin 1\ncreator 1\nasked none\n", "404\n{\"error\":\"not found\"}"];
@@ -1240,6 +1240,6 @@ listed_answer :: (s: [] RealmsState, status: string, n: int, total: int) {
     for i: 0..<n { if same(cell(s[..], order[i], C_SLUG), "made-realm-0") { k = i; } }
     #assert k >= 0;
     open_rank(s[..], k);
-    #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/realms/made-realm-0");
+    #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/worlds/made-realm-0");
   }
 }

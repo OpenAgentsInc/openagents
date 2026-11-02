@@ -1,7 +1,7 @@
-// The fixture realm (openagents.com/realms/fixture): the realm host's test
+// The fixture realm (openagents.com/worlds/fixture): the realm host's test
 // world (docs/verse/realm-host.md). It is a realm like any other: its own
 // module (this file and fixture-face.c), its own page written from
-// realms.json (unlisted: the /realms list leaves it out), its own save slot and its own asset pack. A lamp stands on a
+// realms.json (unlisted: the /worlds list leaves it out), its own save slot and its own asset pack. A lamp stands on a
 // round floor ringed with kit pieces from the pack; you move it (WASD or the
 // arrows, or a drag) and it lights what it nears, and it stays where you left
 // it, kept in this realm's slot with how many times you came, apart from
@@ -290,7 +290,7 @@ fixture_key :: (s: [] Fixture, key: int, down: bool) -> bool #export_c {
   if !s[0].started { fixture_reset(s); }
   h := hold_of(key);
   if h != 0 { s[0].held = ifx down then s[0].held | h else s[0].held & (15 - h); return true; }
-  if down && key == KEY_ESCAPE { leave_to(s, "/realms"); return true; }
+  if down && key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
   return false;
 }
 fixture_blur :: (s: [] Fixture) #export_c { s[0].held = 0; s[0].dragging = false; s[0].press = -1; }
@@ -475,7 +475,7 @@ fixture_pointer :: (s: [] Fixture, x: f32, y: f32, phase: int, kind: int, id: in
     return true;
   }
   if s[0].press >= 0 {
-    if phase == POINTER_UP && b == s[0].press && b == BTN_GALAXY { leave_to(s, "/realms"); }
+    if phase == POINTER_UP && b == s[0].press && b == BTN_GALAXY { leave_to(s, "/worlds"); }
     if phase != POINTER_MOVE { s[0].press = -1; }
     return true;
   }
@@ -547,7 +547,7 @@ draw_pack :: (s: [] Fixture, out: [] f32, at: int) -> int {
   buf: [160] u8;
   top := ifx phone then 136 * k else 88 * k;
   if !s[0].pack_ready {
-    n := put(buf[..], 0, ifx s[0].pack_failed then "THE REALM'S PACK DIDN'T ARRIVE" else "LOADING THE REALM'S PACK ");
+    n := put(buf[..], 0, ifx s[0].pack_failed then "THE WORLD'S PACK DIDN'T ARRIVE" else "LOADING THE WORLD'S PACK ");
     if !s[0].pack_failed && s[0].total > 0 { n = put_kb(buf[..], n, s[0].loaded); n = put(buf[..], n, " OF "); n = put_kb(buf[..], n, s[0].total); }
     line := cast(string) buf[0..<n];
     bw := lo(w - 2 * g, 360 * k);
@@ -607,7 +607,7 @@ draw_realm :: (s: [] Fixture, out: [] f32) -> int {
 
   // the title, the slot and the visit
   g := 16 * k;
-  title := "FIXTURE REALM";
+  title := "FIXTURE WORLD";
   buf: [96] u8;
   n := put(buf[..], 0, "SAVED IN SLOT ");
   n = put(buf[..], n, ifx s[0].slot_n > 0 then cast(string) s[0].slot[0..<s[0].slot_n] else "?");
@@ -627,7 +627,7 @@ draw_realm :: (s: [] Fixture, out: [] f32) -> int {
   s[0].boxes[BTN_GALAXY] = b; s[0].shown[BTN_GALAXY] = true;
   look: f32 = LOOK_LIT; if s[0].hover == BTN_GALAXY || s[0].press == BTN_GALAXY { look += LOOK_HOVER; }
   plate(s, b, 0.92, look);
-  vertices = centred(d, out, vertices, "REALMS", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
+  vertices = centred(d, out, vertices, "WORLDS", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
 
   // what to do
   hint := ifx phone then "DRAG TO MOVE THE LAMP. IT STAYS WHERE YOU LEAVE IT." else "WASD, THE ARROWS OR A DRAG MOVE THE LAMP. IT STAYS WHERE YOU LEAVE IT.";
@@ -660,7 +660,7 @@ draw_paint :: (s: [] Fixture, out: [] f32) -> int {
   s[0].boxes[BTN_GALAXY] = b; s[0].shown[BTN_GALAXY] = true;
   look: f32 = LOOK_LIT; if s[0].hover == BTN_GALAXY || s[0].press == BTN_GALAXY { look += LOOK_HOVER; }
   plate(s, b, 0.92, look);
-  vertices = centred(d, out, vertices, "REALMS", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
+  vertices = centred(d, out, vertices, "WORLDS", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
   return vertices;
 }
 
@@ -754,7 +754,7 @@ outbox_is :: (s: [] Fixture, text: string) -> bool { return cast(string) s[0].ou
 
 #test "a visit is counted and kept in the realm's own slot" {
   s: [1] Fixture;
-  fixture_message(s[..], HOST_FACTS, "tab=1\nrealm=fixture\nslot=fixture\nurl=https://openagents.com/realms/fixture");
+  fixture_message(s[..], HOST_FACTS, "tab=1\nrealm=fixture\nslot=fixture\nurl=https://openagents.com/worlds/fixture");
   #assert s[0].visits == 1 && cast(string) s[0].slot[0..<s[0].slot_n] == "fixture";
   tick(s[..], 0.016);
   #assert fixture_action(s[..]) == ACT_KEEP && outbox_is(s[..], "fixture-save 1 0 0 1");
@@ -835,19 +835,19 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   #assert cast(string) buf[0..<put_kb(buf[..], 0, 524288)] == "512 KB";
 }
 
-#test "REALMS and Escape go to /realms" {
+#test "WORLDS and Escape go to /worlds" {
   s: [1] Fixture;
   tick(s[..], 0.016);
   b := s[0].boxes[BTN_GALAXY];
   tap(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, 0);
-  #assert fixture_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/realms");
+  #assert fixture_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/worlds");
   t: [1] Fixture;
   #assert fixture_key(t[..], KEY_ESCAPE, true) && fixture_action(t[..]) == ACT_NAVIGATE;
 }
 
 #test "?style=painterly opens the style fixture at the page's clock, and keeps nothing" {
   s: [1] Fixture;
-  fixture_message(s[..], HOST_FACTS, "realm=fixture\nslot=fixture\nurl=https://openagents.com/realms/fixture?style=painterly&clock=0.25\nclock=fixed:0.25");
+  fixture_message(s[..], HOST_FACTS, "realm=fixture\nslot=fixture\nurl=https://openagents.com/worlds/fixture?style=painterly&clock=0.25\nclock=fixed:0.25");
   #assert s[0].paint == STYLE_PAINTERLY && s[0].clock == 0.25 && s[0].visits == 0;
   fixture_catalog(s[..], CATALOG);
   #assert fixture_draw_count(s[..]) == 0;   // the pack's meshes stay out of the test scene
@@ -863,7 +863,7 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   #assert fixture_caster_instances(t[..]) == 0 && fixture_caster_vertices(t[..]) == 0;
   // ?probe=shadow draws the shadow band's mask for the style check (painted 2)
   m: [1] Fixture;
-  fixture_message(m[..], HOST_FACTS, "realm=fixture\nslot=fixture\nurl=https://openagents.com/realms/fixture?style=painterly&probe=shadow\nclock=fixed:0.5");
+  fixture_message(m[..], HOST_FACTS, "realm=fixture\nslot=fixture\nurl=https://openagents.com/worlds/fixture?style=painterly&probe=shadow\nclock=fixed:0.5");
   #assert m[0].mask && fixture_frame(m[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0 && u[7] == 2;
   press_key(s[..], 'd', true);
   for i: 0..<10 { step_by(s[..], 0.05); }
@@ -871,14 +871,14 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
 }
 #test "a phone-width canvas takes the phone tier" {
   s: [1] Fixture;
-  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly\nclock=fixed:0.5");
+  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/fixture?style=painterly\nclock=fixed:0.5");
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   #assert fixture_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true) > 0;
   #assert u[STYLE_AT + SU_SHADOW] == 1024 && u[STYLE_AT + SU_STYLE + 2] == STYLE_PHONE;
 }
 #test "without the query the fixture is the fixture: no style block, the lamp moves" {
   s: [1] Fixture;
-  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?clock=0.25\nclock=fixed:0.25");
+  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/fixture?clock=0.25\nclock=fixed:0.25");
   #assert s[0].paint == -1 && s[0].visits == 1;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
@@ -894,35 +894,35 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
 #test "the painterly fixture draws 24 blades a square metre to 32 m, 8 to 18 m on a phone, none in the probe or lowpoly" {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   s: [1] Fixture;
-  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly\nclock=fixed:0.5");
+  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/fixture?style=painterly\nclock=fixed:0.5");
   #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
   #assert fixture_grass_instances(s[..]) == 49152;
   #assert fixture_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true) > 0;
   #assert fixture_grass_instances(s[..]) == 5184;
   m: [1] Fixture;
-  fixture_message(m[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly&probe=shadow\nclock=fixed:0.5");
+  fixture_message(m[..], HOST_FACTS, "url=https://openagents.com/worlds/fixture?style=painterly&probe=shadow\nclock=fixed:0.5");
   #assert fixture_frame(m[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
   #assert fixture_grass_instances(m[..]) == 0;
   l: [1] Fixture;
-  fixture_message(l[..], HOST_FACTS, "url=https://openagents.com/realms/fixture\nclock=fixed:0.5");
+  fixture_message(l[..], HOST_FACTS, "url=https://openagents.com/worlds/fixture\nclock=fixed:0.5");
   #assert fixture_frame(l[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
   #assert fixture_grass_instances(l[..]) == 0;
 }
 #test "?sun= and ?sunup= put the day's key where a check needs it (behind the tree), and nothing else" {
   s: [1] Fixture;
-  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly&clock=0.75&sun=158&sunup=7\nclock=fixed:0.75");
+  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/fixture?style=painterly&clock=0.75&sun=158&sunup=7\nclock=fixed:0.75");
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
   #assert abs(u[STYLE_AT + SU_KEY_DIR + 1] - cast(f32) sin(7 * DEG)) < 0.0001 && abs(u[STYLE_AT + SU_KEY_DIR + 2] - cast(f32) (cos(7 * DEG) * cos(158 * DEG))) < 0.0001;
   #assert abs(u[STYLE_AT + SU_KEY + 1] - 0.66) < 0.001;
   n: [1] Fixture;
-  fixture_message(n[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly&clock=0.75\nclock=fixed:0.75");
+  fixture_message(n[..], HOST_FACTS, "url=https://openagents.com/worlds/fixture?style=painterly&clock=0.75\nclock=fixed:0.75");
   #assert fixture_frame(n[..], out[..], u[..], 2880, 1800, 2, 0.016, true) > 0;
   #assert u[STYLE_AT + SU_KEY_DIR + 1] > 0.3;
 }
 #test "?clock=cycle turns the style fixture's day: a quarter in twelve minutes" {
   s: [1] Fixture;
-  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/fixture?style=painterly&clock=cycle\nclock=cycle\nnow=2880000\nday=0.3");
+  fixture_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/fixture?style=painterly&clock=cycle\nclock=cycle\nnow=2880000\nday=0.3");
   #assert s[0].clock == 0;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   for i: 0..<7200 { fixture_step(s[..], 0.1); }

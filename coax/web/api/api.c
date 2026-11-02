@@ -254,7 +254,7 @@ static void old_link(const request *q) {
   for (const char *c = id; ok && *c; c++) ok = (*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-';
   if (ok && !strcmp(id, "haunted-house")) ok = false;
   char head[300];
-  snprintf(loc, sizeof loc, "https://openagents.com/realms/haunted-house?from=playtest%s%s", ok ? "#" : "", ok ? id : "");
+  snprintf(loc, sizeof loc, "https://openagents.com/worlds/haunted-house?from=playtest%s%s", ok ? "#" : "", ok ? id : "");
   snprintf(head, sizeof head, "Location: %s\r\n", loc);
   api_respond(q->fd, 301, "text/plain", head, "", 0);
 }

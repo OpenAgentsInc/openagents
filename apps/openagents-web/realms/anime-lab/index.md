@@ -1,6 +1,6 @@
 # Anime Lab
 
-Direct an anime with your voice, at https://openagents.com/realms/anime-lab. It is unlisted: the [realms list](https://openagents.com/realms) leaves it out, so you open it by its address. It is drawn in the Verse's anime style, its action variant (cel shading in two flat tones, coloured ink lines, a vivid dusk sky with towering flat-shaded clouds).
+Direct an anime with your voice, at https://openagents.com/worlds/anime-lab. It is unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address. It is drawn in the Verse's anime style, its action variant (cel shading in two flat tones, coloured ink lines, a vivid dusk sky with towering flat-shaded clouds).
 
 ## What it shows
 
@@ -15,9 +15,9 @@ Direct an anime with your voice, at https://openagents.com/realms/anime-lab. It 
 
 - `verse/anime/director.coax` is the director: the catalogue of directions, reading the decision model's answers, the session and the timeline with the anime grammar, with its checks.
 - `verse/anime/stage.coax` plays a timeline at a moment: who stands where, their poses and feelings, the effects, the draw-in, and the camera's shots flown with `verse/cinematic.coax`.
-- `apps/openagents-web/animelab.coax` is the realm and its overlay; `animelab-cast.coax`, `animelab-world.coax` and `animelab-mesh.coax` build the cast, the academy and the effects; `animelab-style.coax` gives the anime style's numbers; `gpu/animelab.coax` is its shaders, written to `animelab.wgsl`.
+- `apps/openagents-web/animelab.coax` is the world and its overlay; `animelab-cast.coax`, `animelab-world.coax` and `animelab-mesh.coax` build the cast, the academy and the effects; `animelab-style.coax` gives the anime style's numbers; `gpu/animelab.coax` is its shaders, written to `animelab.wgsl`.
 - `docs/verse/anime-lab.md` in the OpenAgents repository is the plan: live voice, partial words, Psionic's decision model and the makers come next.
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

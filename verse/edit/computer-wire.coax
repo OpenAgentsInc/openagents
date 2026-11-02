@@ -449,9 +449,9 @@ cwt_ok :: (outcome: int) -> HbReply { r: HbReply; r.ok = true; r.outcome = outco
   #assert cwt_lines(cw[..], l[..]) == "thread 44444444444444444444444444444444\n";
   #assert cwt_op(cw[..], CW_READ, CWT_THREAD, 0, 6) == CW_SENT && cwt_take_request(cw[..], h[..]) == HB_OP_THREAD_READ && h[0].q[0].after == 0;
   st := cwt_ok(HB_OUT_STEPS); st.thread = CWT_THREAD; st.state = HB_RUNNING; st.next = 2; st.nsteps = 2;
-  st.steps[0] = HbStep.{seq = 1, kind = "tool", text = "Reading the realm"}; st.steps[1] = HbStep.{seq = 2, kind = "text", text = "Placing\na barn"};
+  st.steps[0] = HbStep.{seq = 1, kind = "tool", text = "Reading the world"}; st.steps[1] = HbStep.{seq = 2, kind = "text", text = "Placing\na barn"};
   cwt_answer(cw[..], h[..], st);
-  #assert cwt_lines(cw[..], l[..]) == "step 1 Reading the realm\nstep 2 Placing a barn\nrun running 2\n";
+  #assert cwt_lines(cw[..], l[..]) == "step 1 Reading the world\nstep 2 Placing a barn\nrun running 2\n";
   #assert cwt_op(cw[..], CW_STOP, CWT_THREAD, 0, 7) == CW_SENT && cwt_take_request(cw[..], h[..]) == HB_OP_THREAD_STOP;
   sp := cwt_ok(HB_OUT_DISPATCHED); sp.operation = HB_OP_THREAD_STOP; sp.reference = CWT_THREAD;
   cwt_answer(cw[..], h[..], sp);

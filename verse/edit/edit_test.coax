@@ -373,7 +373,7 @@ reads :: (out: [] u8, n: int, text: string) -> bool {
   n = redit_heard(e[..], "switch", "robots", false, "", out[..]);
   #assert e[0].switch_row == -1 && reads(out[..], n, "Robots walking their rounds: off.");   // already off: nothing sent
   n = redit_heard(e[..], "switch", "dragons", true, "", out[..]);
-  #assert reads(out[..], n, "This realm has no such switch.");
+  #assert reads(out[..], n, "This world has no such switch.");
   _ := redit_heard(e[..], "show", "", false, "edit", out[..]);
   #assert e[0].pane == REDIT_BOARD;
   _ = redit_heard(e[..], "show", "", false, "settings", out[..]);
@@ -383,7 +383,7 @@ reads :: (out: [] u8, n: int, text: string) -> bool {
   v: [1] RealmEdit;
   opened(v[..], "the-grid", VISITOR);
   n = redit_heard(v[..], "switch", "robots", true, "", out[..]);
-  #assert reads(out[..], n, "Only the realm's owner can change that.") && !redit_row_on(v[..], "robots");
+  #assert reads(out[..], n, "Only the world's owner can change that.") && !redit_row_on(v[..], "robots");
 }
 #test "a pane asked for by voice while open stays open" {
   e: [1] RealmEdit;

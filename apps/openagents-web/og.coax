@@ -4,7 +4,7 @@
 // missing, too long or the wrong size under it. The rows are og/pages.txt,
 // which coax/web/og.ts writes when a release is staged, fetched once:
 //   path|kind|noindex|title|description|url|image|alt|source|width|height|kb|errors|warnings|progress
-// Then the realms players made at /realms/new, newest first (coax/web/api, GET
+// Then the realms players made at /worlds/new, newest first (coax/web/api, GET
 // /api/playtest/realms/made, the same columns): the API writes their pages, not a
 // release. ALL shows every page, PROBLEMS only the ones with an error or a
 // warning. A card opens its page.
@@ -475,7 +475,15 @@ og_act :: (s: [] OgState, target: int) {
   if target < 0 { return; }
   order: [OG_ROWS] int;
   n := og_shown(s, order[..]);
-  if target < n { og_go(s, og_cell(s, order[target], O_PATH)); }
+  if target < n {
+    path := og_cell(s, order[target], O_PATH);
+    // a realm's directory is still realms/; its address is /worlds/
+    if path.count > 8 && same(path[0..<8], "/realms/") {
+      to: [512] u8; k := put_text(to[..], 0, "/worlds/"); k += put_text(to[..], k, path[8..<path.count]);
+      og_go(s, cast(string) to[0..<k]); return;
+    }
+    og_go(s, path);
+  }
 }
 coaxial_og_pointer :: (s: [] OgState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
   if s.count < 1 { return false; }
@@ -537,7 +545,7 @@ coaxial_og_max_vertices :: () -> int #export_c { return OG_MAX_VERTICES; }
 
 OG_TEST_DATA :: 4096;
 OG_TEST_VERTICES :: 40000;
-OG_FIXTURE :: "200\n# path|kind|noindex|title|description|url|image|alt|source|width|height|kb|errors|warnings|progress\n/|page||OpenAgents|Explore real projects.|https://openagents.com|/og/home.jpg|OpenAgents|rendered|1200|630|80|||\n/projects/coax|project||Coax|A systems language.|https://openagents.com/projects/coax|/og/default.jpg|OpenAgents|default|1200|630|40|a project without its own card|title is long; description is short|101 100 21\n/realms/dead-gears|realm||Dead Gears|Hold the ship.|https://openagents.com/realms/dead-gears|/og/realms/dead-gears.jpg|x|rendered|1200|630|90|||\n";
+OG_FIXTURE :: "200\n# path|kind|noindex|title|description|url|image|alt|source|width|height|kb|errors|warnings|progress\n/|page||OpenAgents|Explore real projects.|https://openagents.com|/og/home.jpg|OpenAgents|rendered|1200|630|80|||\n/projects/coax|project||Coax|A systems language.|https://openagents.com/projects/coax|/og/default.jpg|OpenAgents|default|1200|630|40|a project without its own card|title is long; description is short|101 100 21\n/realms/dead-gears|realm||Dead Gears|Hold the ship.|https://openagents.com/worlds/dead-gears|/og/realms/dead-gears.jpg|x|rendered|1200|630|90|||\n";
 
 #test "the rows come from og/pages.txt; PROBLEMS shows only the pages with one" {
   s: [1] OgState; data: [OG_TEST_DATA] u8; s[0].data = data[..];
@@ -559,8 +567,8 @@ OG_FIXTURE :: "200\n# path|kind|noindex|title|description|url|image|alt|source|w
   s: [1] OgState; data: [OG_TEST_DATA] u8; s[0].data = data[..];
   og_answer(s[..], OG_FIXTURE);
   #assert s[0].made && cast(string) s[0].ask[0..<s[0].ask_n] == OG_MADE_URL;
-  og_answer(s[..], "200\n/realms/moss-keep|made||Moss Keep|A forest at dusk. A realm built on the Verse.|https://openagents.com/realms/moss-keep|/realms/moss-keep/card.jpg?v=9|Moss Keep|made|1200|630|88|||\n");
-  #assert !s[0].made && s[0].status == 200 && s[0].row_n == 4 && og_cell(s[..], 3, O_TITLE) == "Moss Keep" && og_cell(s[..], 3, O_IMAGE) == "/realms/moss-keep/card.jpg?v=9";
+  og_answer(s[..], "200\n/realms/moss-keep|made||Moss Keep|A forest at dusk. A realm built on the Verse.|https://openagents.com/worlds/moss-keep|/worlds/moss-keep/card.jpg?v=9|Moss Keep|made|1200|630|88|||\n");
+  #assert !s[0].made && s[0].status == 200 && s[0].row_n == 4 && og_cell(s[..], 3, O_TITLE) == "Moss Keep" && og_cell(s[..], 3, O_IMAGE) == "/worlds/moss-keep/card.jpg?v=9";
   q: [1] OgState; qd: [OG_TEST_DATA] u8; q[0].data = qd[..];
   og_answer(q[..], OG_FIXTURE);
   og_answer(q[..], "503\n");
@@ -582,7 +590,7 @@ OG_FIXTURE :: "200\n# path|kind|noindex|title|description|url|image|alt|source|w
   #assert og_hit(s[..], x, y) == 2;
   p1 := coaxial_og_pointer(s[..], x, y, P_DOWN, 0);
   p2 := coaxial_og_pointer(s[..], x, y, P_UP, 0);
-  #assert s[0].action == OG_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/dead-gears";
+  #assert s[0].action == OG_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/dead-gears";
   n2 := coaxial_og_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, true);
   #assert og_layout(s[..]).cols == 1 && n2 > 0;
 }

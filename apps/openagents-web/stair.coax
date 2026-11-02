@@ -1,4 +1,4 @@
-// Hold the Stair, openagents.com/realms/hold-the-stair: a popping tower
+// Hold the Stair, openagents.com/worlds/hold-the-stair: a popping tower
 // defense on the SRD 5e rules (docs/verse/game-ideas/hold-the-stair.md).
 // Bubble-beasts climb a winding stair from the cellar door to the top of the
 // wizard's tower; you place a party beside it with gold. Each defender rolls
@@ -1443,7 +1443,7 @@ press :: (s: [] Stair, b: int) {
   if b == B_START { if start_wave(s) { s[0].selected = -1; s[0].card = -1; } return; }
   if b == B_FAST { coop_do(s, CoOrder.{kind = CO_SPEED, cls = ifx s[0].speed >= 3 then 1 else s[0].speed + 1}); return; }
   if b == B_PAUSE { coop_do(s, CoOrder.{kind = CO_PAUSE, cls = ifx s[0].paused then 0 else 1}); return; }
-  if b == B_GALAXY { leave_to(s, "/realms"); return; }
+  if b == B_GALAXY { leave_to(s, "/worlds"); return; }
   if b == B_MAP { coop_do(s, CoOrder.{kind = CO_MAP, cls = s[0].map + 1}); return; }
   if b == B_AGAIN { coop_do(s, CoOrder.{kind = CO_AGAIN}); return; }
   if b == B_INVITE { coop_invite(s); return; }
@@ -1688,7 +1688,7 @@ tip_pointer :: (s: [] Stair, x: f32, y: f32, phase: int, kind: int, id: int) -> 
   if !s[0].tip_down || id != s[0].tip_id { return false; }
   if phase == 1 { return true; }
   s[0].tip_down = false;
-  if phase == 2 && on { leave_to(s, "/realms/hold-the-stair/tip"); }
+  if phase == 2 && on { leave_to(s, "/worlds/hold-the-stair/tip"); }
   return true;
 }
 // ?KEY=VALUE in a page's URL, exactly.
@@ -2137,7 +2137,7 @@ button_label :: (s: [] Stair, b: int, buf: [] u8) -> int {
     n := put(buf, 0, "WAVE "); n = put_int(buf, n, s[0].wave); return put(buf, n, " CLIMBING");
   }
   if b == B_FAST { n := put(buf, 0, "SPEED "); return put_int(buf, n, s[0].speed); }
-  if b == B_GALAXY { return put(buf, 0, "REALMS"); }
+  if b == B_GALAXY { return put(buf, 0, "WORLDS"); }
   if b >= B_STONE && b <= B_SLOW {
     sp := b - B_STONE;
     if sp == SPELL_SLOW && s[0].slow_t > 0 { n := put(buf, 0, "SLOW "); n = put_int(buf, n, cast(int) floor(s[0].slow_t + 0.999)); return put(buf, n, "S"); }
@@ -3052,7 +3052,7 @@ placed_at :: (s: [] Stair, c: int, cls: int, lv: int) -> int {
 #test "area queries: a Fireball's 20-foot sphere and a Lightning Bolt's line over five hundred beasts look only at the tiles they cover, and find what a full scan finds" #steps 730000000 {
   s: [1] Stair;
   stair_start(s[..]);
-  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=swarm");
+  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/worlds/hold-the-stair?stage=swarm");
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   for f: 0..<60 { n := stair_frame(s[..], out[..], u[..], 1280, 800, 1, 0.05, false); }
   live := live_beasts(s[..]);
@@ -3123,7 +3123,7 @@ placed_at :: (s: [] Stair, c: int, cls: int, lv: int) -> int {
   #assert s[0].shown[B_MAP];
   press(s[..], B_MAP);
   #assert s[0].map == 0 && s[0].ct[0].way2_n == 0;
-  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?map=2");
+  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/worlds/hold-the-stair?map=2");
   #assert s[0].map == 1 && s[0].phase == BUILD;
   #assert start_wave(s[..]);
   layout(s[..], 1280, 800, 1); buttons(s[..], 1280, 800, 1);
@@ -3324,7 +3324,7 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
 #test "the staged highlight is the last wave against a full party at the top level, and the stair is busy" #steps 60000000 {
   s: [1] Stair;
   stair_start(s[..]);
-  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=highlight");
+  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/worlds/hold-the-stair?stage=highlight");
   #assert s[0].phase == FIGHT && s[0].wave == waves_of(s[..]) && s[0].placed >= 16;
   for k: 0..<DEFENDERS { if s[0].party[k].live { #assert s[0].party[k].level == MAX_LEVEL; } }
   for i: 0..<720 { step(s[..], f32(STEP)); }
@@ -3335,7 +3335,7 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
 #test "the swarm stage keeps five hundred beasts on the stair, every one drawn within the vertex budget" #steps 1290000000 {
   s: [1] Stair;
   stair_start(s[..]);
-  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=swarm");
+  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/worlds/hold-the-stair?stage=swarm");
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   for f: 0..<120 { n := stair_frame(s[..], out[..], u[..], 1280, 800, 1, 0.05, false); }
   #assert live_beasts(s[..]) >= SWARM && s[0].phase == FIGHT;
@@ -3375,7 +3375,7 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
     cx := (t.x0 + t.x1) * 0.5; cy := (t.y0 + t.y1) * 0.5;
     #assert stair_pointer(s, cx, cy, 0, 1, 4) && s[0].press < 0 && !s[0].down_on;
     #assert stair_pointer(s, cx, cy, 2, 1, 4) && s[0].action == ACT_NAVIGATE;
-    #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hold-the-stair/tip";
+    #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/hold-the-stair/tip";
   }
 }
 
@@ -3476,19 +3476,19 @@ STAIR_BUDGET :: FrameBudget.{steps = 8, vertices = 48000, draws = 0, bytes = 393
     for i: 0..<BUDGET_SCREENS {
       s: [1] Stair;
       stair_start(s[..]);
-      if stage == 1 { stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=swarm"); }
+      if stage == 1 { stair_message(s[..], HOST_PAGE, "url=https://openagents.com/worlds/hold-the-stair?stage=swarm"); }
       sc := budget_screen(i);
       for f: 0..<frames { n := stair_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, 0.05, false); budget_measure(m[..], n, 0, bytes); }
     }
   }
-  #assert budget_ok(m[0]) && m[0].peak[BUDGET_VERTICES] == 39354;
+  #assert budget_ok(m[0]) && m[0].peak[BUDGET_VERTICES] == 39360;
   #assert MAX_VERTICES - STAIR_BUDGET.vertices == 4000;   // the buffer keeps 4,000 vertices past the budget
 }
 
-#test "REALMS has six more Filament strokes than the old GALAXY exit label" {
+#test "WORLDS has seven more Filament strokes than the old GALAXY exit label" {
  out:[256*VERTEX_FLOATS]f32;k:=Ink.{core=1,light=1,glow=0,red=1,green=1,blue=1,mode=0};
  #assert draw_text(out[..],0,"GALAXY",0,20,12,0.1,0.5,k,false,false)==192;
- #assert draw_text(out[..],0,"REALMS",0,20,12,0.1,0.5,k,false,false)==228;
+ #assert draw_text(out[..],0,"WORLDS",0,20,12,0.1,0.5,k,false,false)==234;
  s:[1]Stair;stair_start(s[..]);label:[16]u8;n:=button_label(s[..],B_GALAXY,label[..]);
- #assert (cast(string)label[0..<n])=="REALMS";
+ #assert (cast(string)label[0..<n])=="WORLDS";
 }

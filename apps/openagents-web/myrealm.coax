@@ -1,7 +1,7 @@
-// A realm someone built (docs/verse/realm-builder.md): /realms/<slug>, made at /realms/new from one
+// A realm someone built (docs/verse/realm-builder.md): /worlds/<slug>, made at /worlds/new from one
 // prompt and the features its maker checked. The page's data-text is the realm's slug (the page the
-// API writes, migrations/0048_realm_builder.sql builder_page); /realms/built is this module's own
-// page, which opens the realm after its # (/realms/built#moonlit-marsh) or, with none, a small
+// API writes, migrations/0048_realm_builder.sql builder_page); /worlds/built is this module's own
+// page, which opens the realm after its # (/worlds/built#moonlit-marsh) or, with none, a small
 // realm of its own so every release checks the module.
 //
 // The realm is its spec (GET /api/playtest/realms/<slug>, a line each): its name, style, ground and
@@ -19,7 +19,7 @@
 // and the cards for what visitors propose, each with ACCEPT and DECLINE. With BUILD on, a visitor's
 // placed thing is a proposal; the owner's goes in at once.
 //
-// The camera is the maker's (the spec's "camera", chosen at /realms/new; 0049_realm_builder_setup.sql):
+// The camera is the maker's (the spec's "camera", chosen at /worlds/new; 0049_realm_builder_setup.sql):
 //   third  behind you (W and S walk, A and D turn, a mouse drag turns; on a phone a thumb walks and turns)
 //   first  at eye height, your figure unseen; the same keys, and a drag looks round and up and down
 //          (on a phone a thumb on the right half looks; on the left it walks)
@@ -540,7 +540,7 @@ kept_restore :: (s: [] MyRealm) {
 hi_int :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 clamp_int :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
 
-// A realm of its own, for /realms/built with no realm named: what every release checks.
+// A realm of its own, for /worlds/built with no realm named: what every release checks.
 SAMPLE :: "realm built\nname A Realm You Built\nstyle lowpoly\nground meadow\ntime dusk\nowner 0\ntool build 0\ntool fly 0\ntool jump 1\ntool map 1\ntool talk 1\ntool voice 0\nfeature water medium\nfeature trees round 9\nfeature rocks 6\nfeature plants 10\nfeature lanterns gold 8\nfeature props crates\ncharacter Mira|the herbalist\n";
 
 // ---- in from the host
@@ -562,7 +562,7 @@ realm_message :: (s: [] MyRealm, t: [] Track, kind: int, text: string) #export_c
   }
   if kind == HOST_FACTS {
     s[0].facts = true;
-    // /realms/built#SLUG: the realm after the #
+    // /worlds/built#SLUG: the realm after the #
     url := fact_of(text, "url");
     hash := 0; while hash < url.count && url[hash] != '#' { hash += 1; }
     if s[0].slug_n == 0 && hash + 1 < url.count && slug_ok(url[hash + 1..<url.count]) { s[0].slug_n = copy_into(s[0].slug[..], url[hash + 1..<url.count]); }
@@ -752,7 +752,7 @@ forge_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
     return;
   }
   // FORK: "slug S", "path P", "page 0|1"; the page goes there. A new fork is private (0099) and has
-  // no page of its own (page 0): its owner opens it at /realms/built#S, as MAKE IT does (builder.coax).
+  // no page of its own (page 0): its owner opens it at /worlds/built#S, as MAKE IT does (builder.coax).
   if status == 200 {
     slug := ""; path := ""; page := false;
     i := 0;
@@ -764,12 +764,12 @@ forge_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
     }
     if s[0].action == 0 && slug.count > 0 && slug.count <= 60 {
       n := 0;
-      if page && starts(path, "/realms/") { n = put(s[0].outbox[..], 0, path); }
-      else { n = put(s[0].outbox[..], 0, "/realms/built#"); n = put(s[0].outbox[..], n, slug); }
+      if page && (starts(path, "/worlds/") || starts(path, "/realms/")) { n = put(s[0].outbox[..], 0, "/worlds/"); n = put(s[0].outbox[..], n, path[8..<path.count]); }   // an API from before worlds says /realms/
+      else { n = put(s[0].outbox[..], 0, "/worlds/built#"); n = put(s[0].outbox[..], n, slug); }
       s[0].out_n = n; s[0].action = ACT_NAVIGATE; return;
     }
   }
-  set_note(s, ifx status == 429 then "That's today's realms. Fork it tomorrow." else ifx status == 403 then "Making realms is by invite for now." else "Not forked. Try again.");
+  set_note(s, ifx status == 429 then "That's today's worlds. Fork it tomorrow." else ifx status == 403 then "Making worlds is by invite for now." else "Not forked. Try again.");
 }
 
 // ---- requests
@@ -1755,8 +1755,8 @@ realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_
 }
 realm_blur :: (s: [] MyRealm) #export_c { talk_let_go(s); s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; s[0].row_press = -1; s[0].cell_press = -1; }
 can_build :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && (s[0].owner || s[0].tools[TOOL_BUILD]); }
-leave :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms"); s[0].action = ACT_NAVIGATE; } }
-go_new :: (s: [] MyRealm) { if s[0].action == 0 && !access_hides_make(s[0].acc[..]) { s[0].out_n = put(s[0].outbox[..], 0, "/realms/new"); s[0].action = ACT_NAVIGATE; } }
+leave :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; } }
+go_new :: (s: [] MyRealm) { if s[0].action == 0 && !access_hides_make(s[0].acc[..]) { s[0].out_n = put(s[0].outbox[..], 0, "/worlds/new"); s[0].action = ACT_NAVIGATE; } }
 
 // A thing placed two metres in front of you.
 place_thing :: (s: [] MyRealm, t: [] Track, thing: int) {
@@ -1877,12 +1877,12 @@ PROP_WORDS :: [PROP_KINDS] string.["crates", "barrels", "wagons", "a fence", "a 
 CAMERA_CONTROLS :: [4] string.[
   "W and S or the arrows walk, A and D turn, a mouse drag turns; on a phone a thumb walks and turns.",
   "W and S walk, A and D turn, a drag looks round; on a phone the left thumb walks and the right looks.",
-  "W, A, S and D walk that way, as a thumb or a drag does; the realm is seen from above.",
+  "W, A, S and D walk that way, as a thumb or a drag does; the world is seen from above.",
   "A and D walk left and right, W or Space jumps; on a phone drag left or right, and up to jump."];
 // What the character knows: the realm, the others in it and its owner's lore.
 knows_of :: (s: [] MyRealm, out: [] u8, at: int, p: int) -> int {
   n := json_in(out, at, "You live in "); n = json_in(out, n, name_text(s));
-  n = json_in(out, n, ", a realm on the Verse that someone built from one prompt. It is ");
+  n = json_in(out, n, ", a world on the Verse that someone built from one prompt. It is ");
   n = json_in(out, n, TIMES[s[0].tod]); n = json_in(out, n, " here, on "); n = json_in(out, n, GROUNDS[s[0].ground]); n = json_in(out, n, " ground.");
   n = json_in(out, n, LAND_WORDS[s[0].land]);
   if s[0].water > 0 { n = json_in(out, n, ifx s[0].water_kind == 2 then " A river runs across it." else ifx s[0].water_kind == 3 then " There is a frozen pond." else ifx s[0].water_kind == 4 then " There is a pool of lava." else " There is water."); }
@@ -1903,7 +1903,7 @@ knows_of :: (s: [] MyRealm, out: [] u8, at: int, p: int) -> int {
   }
   who: [PERSON] u8; wn := who_of(s, p, who[..]);
   lore := redit_lore(s[0].ed[..], cast(string) who[0..<wn]);
-  if lore.count > 0 { n = json_in(out, n, " Your story, as the realm's owner wrote it: "); n = json_in(out, n, lore); }
+  if lore.count > 0 { n = json_in(out, n, " Your story, as the world's owner wrote it: "); n = json_in(out, n, lore); }
   return n;
 }
 // The question's body (the talk so far, oldest first, then the question); 0 when it didn't fit.
@@ -2319,11 +2319,11 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   g := 16 * k;
   // the name, and whose it is
   buf: [TITLE + 8] u8;
-  tn := put(buf[..], 0, ifx s[0].name_n > 0 then name_text(s) else "A realm"); upper(buf[..], tn);
+  tn := put(buf[..], 0, ifx s[0].name_n > 0 then name_text(s) else "A world"); upper(buf[..], tn);
   title := cast(string) buf[0..<tn];
-  sub := ifx !s[0].spec_ready then (ifx s[0].spec_failed then "THIS REALM ISN'T HERE" else "OPENING THE REALM")
-         else ifx s[0].owner && s[0].from_n > 0 then "YOUR FORK" else ifx s[0].owner then "YOUR REALM"
-         else ifx s[0].from_n > 0 then "A FORK ON THE VERSE" else ifx s[0].slug_n == 0 then "A REALM SOMEONE BUILT" else "A REALM ON THE VERSE";
+  sub := ifx !s[0].spec_ready then (ifx s[0].spec_failed then "THIS WORLD ISN'T HERE" else "OPENING THE WORLD")
+         else ifx s[0].owner && s[0].from_n > 0 then "YOUR FORK" else ifx s[0].owner then "YOUR WORLD"
+         else ifx s[0].from_n > 0 then "A FORK ON THE VERSE" else ifx s[0].slug_n == 0 then "A WORLD SOMEONE BUILT" else "A WORLD ON THE VERSE";
   bw := 104 * k;
   // the owner's: which version visitors see, and whether yours differs (book chapter 54)
   lb: [48] u8; ln := live_line(s, lb[..]); live := cast(string) lb[0..<ln];
@@ -2333,7 +2333,7 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   n = write(d, out, n, title, tb.x0 + 14 * k, tb.y0 + 22 * k, fit_cap(title, 11 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, white(k, 0.97), false, false);
   n = write(d, out, n, sub, tb.x0 + 14 * k, tb.y0 + 39 * k, fit_cap(sub, 7.5 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, bronze(k, 0.9), false, false);
   if ln > 0 { n = write(d, out, n, live, tb.x0 + 14 * k, tb.y0 + 54 * k, fit_cap(live, 7 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, white(k, 0.8), false, false); }
-  n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 36 * k}, "REALMS", false);
+  n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 36 * k}, "WORLDS", false);
   // the owner's and admins', under REALMS: EDIT, and its pane (verse/edit/edit.coax)
   right := g + 46 * k;
   n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = w - g - bw, y0 = right, x1 = w - g, y1 = right + 36 * k});
@@ -2343,7 +2343,7 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   }
   if s[0].ed[0].plate_n > 0 { right += 46 * k; }
   if s[0].spec_failed && !s[0].spec_ready && !access_hides_make(s[0].acc[..]) {
-    n = pill(s, out, n, BTN_NEW, Box.{x0 = w * 0.5 - 110 * k, y0 = h * 0.5 - 22 * k, x1 = w * 0.5 + 110 * k, y1 = h * 0.5 + 22 * k}, "BUILD YOUR OWN REALM", true);
+    n = pill(s, out, n, BTN_NEW, Box.{x0 = w * 0.5 - 110 * k, y0 = h * 0.5 - 22 * k, x1 = w * 0.5 + 110 * k, y1 = h * 0.5 + 22 * k}, "BUILD YOUR OWN WORLD", true);
   }
   // the tools along the bottom: only those the owner gives (the owner has BUILD always)
   bh := 40 * k; gap := 8 * k;
@@ -2698,7 +2698,7 @@ water_drawn :: (s: [] MyRealm, t: [] Track) -> f32 {
   return u[WATER_AT + 3];
 }
 opened :: (s: [] MyRealm, t: [] Track, slug: string, spec: string) {
-  opened_with(s, t, slug, spec, "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/x\nplayer=p-1\n");
+  opened_with(s, t, slug, spec, "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/worlds/x\nplayer=p-1\n");
 }
 opened_with :: (s: [] MyRealm, t: [] Track, slug: string, spec: string, f: string) {
   track_init(t, "realm");
@@ -2746,7 +2746,7 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   #assert abs(q[0].lantern_b - 1.0) < 0.01;
 }
 
-#test "a realm that isn't here offers BUILD YOUR OWN REALM unless the access answer says make 0" {
+#test "a realm that isn't here offers BUILD YOUR OWN WORLD unless the access answer says make 0" {
   answers := [3] string.["200\ninvites 1\nmake 0\nin 0\ncreator 0\nasked none\n", "200\ninvites 0\nmake 1\nin 0\ncreator 0\nasked none\n", "0\n"];
   for z: 0..<3 {
     s: [1] MyRealm; t: [1] Track;
@@ -2758,7 +2758,7 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
     realm_message(s[..], t[..], MSG_DATA_TEXT, "gone-realm");
     n := frame_of(s[..], t[..], 2560, 1600);
     realm_requested(s[..], 2);
-    realm_message(s[..], t[..], HTTP_ANSWER_KIND + 2, "404\n{\"error\":\"no such realm\"}");
+    realm_message(s[..], t[..], HTTP_ANSWER_KIND + 2, "404\n{\"error\":\"no such world\"}");
     m := frame_of(s[..], t[..], 2560, 1600);
     #assert s[0].spec_failed && s[0].shown[BTN_NEW] == (z != 0);
     go_new(s[..]);
@@ -3096,15 +3096,15 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   for i: 0..<s[0].solid_n { dx := s[0].x - s[0].solid_x[i]; dz := s[0].z - s[0].solid_z[i]; #assert sqrt(dx * dx + dz * dz) >= s[0].solid_r[i] + BODY_R - 0.01; }
 }
 
-#test "/realms/built opens the realm after its #, or with none its own small realm" {
+#test "/worlds/built opens the realm after its #, or with none its own small realm" {
   s: [1] MyRealm; t: [1] Track;
   track_init(t[..], "realm");
-  f := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/built#moonlit-marsh\nplayer=p-1\n";
+  f := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/worlds/built#moonlit-marsh\nplayer=p-1\n";
   realm_message(s[..], t[..], HOST_FACTS, f);
   #assert slug_text(s[..]) == "moonlit-marsh";
   q: [1] MyRealm; u: [1] Track;
   track_init(u[..], "realm");
-  g := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/built\nplayer=p-1\n";
+  g := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/worlds/built\nplayer=p-1\n";
   t0 := track_message(u[..], HOST_FACTS, g);
   realm_message(q[..], u[..], HOST_FACTS, g);
   realm_catalog(q[..], PACK);
@@ -3267,7 +3267,7 @@ SIDE :: "realm flat\nname Flat\nstyle painterly\nground desert\ntime dusk\ncamer
 
 TALKS :: "realm moonlit-marsh\nname Moonlit Marsh\nstyle lowpoly\nground forest\ntime day\nowner 0\ntool talk 1\ntool voice 1\ncharacter Old Mott|keeps the bridge\n";
 MUTE :: "realm hush\nname Hush\nstyle lowpoly\nground forest\ntime day\nowner 0\ntool talk 0\ntool voice 1\ncharacter Old Mott|keeps the bridge\n";
-VOICED :: "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/x\nplayer=p-1\nvoice=made-realm\n";
+VOICED :: "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/worlds/x\nplayer=p-1\nvoice=made-realm\n";
 has_text :: (text: string, part: string) -> bool {
   if part.count > text.count { return false; }
   for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
@@ -3339,10 +3339,10 @@ action_text :: (s: [] MyRealm) -> string { return cast(string) s[0].outbox[0..<s
   #assert realm_probe(s[..], 3000) == 'H' && realm_probe(s[..], 3001) == 'i' && realm_probe(s[..], 3002) == '.' && realm_probe(s[..], 3003) == -1;
 }
 
-#test "/realms/built's own realm talks too: its answer on the first id is the realm's, not the edit layer's" {
+#test "/worlds/built's own realm talks too: its answer on the first id is the realm's, not the edit layer's" {
   s: [1] MyRealm; t: [1] Track;
   track_init(t[..], "realm");
-  g := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/built\nplayer=p-1\n";
+  g := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/worlds/built\nplayer=p-1\n";
   realm_message(s[..], t[..], HOST_FACTS, g);
   realm_catalog(s[..], PACK);
   n := frame_of(s[..], t[..], 2560, 1600);
@@ -3607,8 +3607,8 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert may_undo(s[..]) && !forge_dirty(s[0].fd[..]) && s[0].published_rev == 4 && s[0].server_undo == 1;
   tap_box(s[..], t[..], s[0].boxes[BTN_FORK]);
   #assert url_is(s[..], "/api/playtest/realms/forge-court/fork?as=lines") && body_is(s[..], "{}");
-  answered(s[..], t[..], 5, "200\nslug forge-court-fork\npath /realms/forge-court-fork\npage 1\n");
-  #assert realm_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/forge-court-fork";
+  answered(s[..], t[..], 5, "200\nslug forge-court-fork\npath /worlds/forge-court-fork\npage 1\n");
+  #assert realm_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/forge-court-fork";
 }
 
 #test "a moved tree stands where the document says; a save from an older revision is refused and kept unsaved" #steps 30000000 {
@@ -3670,7 +3670,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   move_press(v[..]);
   #assert v[0].moving < 0;
   w: [1] MyRealm; x: [1] Track;
-  opened(w[..], x[..], "built", SAMPLE);   // /realms/built's own realm has no revision: nothing to fork
+  opened(w[..], x[..], "built", SAMPLE);   // /worlds/built's own realm has no revision: nothing to fork
   m := frame_of(w[..], x[..], 2560, 1600);
   #assert !w[0].shown[BTN_FORK];
   s: [1] MyRealm; t: [1] Track;
@@ -3962,7 +3962,7 @@ ROOM_TWO :: "200\n{\"you\": {\"id\": \"p-1\", \"name\": \"Guest 0001\"}, \"last\
   // the template's own small realm, with no slug, has no room
   b: [1] MyRealm; bt: [1] Track;
   track_init(bt[..], "realm");
-  realm_message(b[..], bt[..], HOST_FACTS, "tab=t1\nurl=https://openagents.com/realms/built\n");
+  realm_message(b[..], bt[..], HOST_FACTS, "tab=t1\nurl=https://openagents.com/worlds/built\n");
   realm_catalog(b[..], PACK);
   m := frame_of(b[..], bt[..], 1280, 800);
   #assert b[0].spec_ready && !realm_room_ask(b[..]);

@@ -1,6 +1,6 @@
 # Ice Cream Man
 
-A Verse realm at https://openagents.com/realms/ice-cream-man: the Ice Cream Man's house, built in the browser from a seed, and the game played in it. Find the three check-out keys, then hold Use at the front door to escape before he scoops you.
+A Verse world at https://openagents.com/worlds/ice-cream-man: the Ice Cream Man's house, built in the browser from a seed, and the game played in it. Find the three check-out keys, then hold Use at the front door to escape before he scoops you.
 
 ## How to play
 
@@ -9,7 +9,7 @@ A Verse realm at https://openagents.com/realms/ice-cream-man: the Ice Cream Man'
 - On a phone: the stick on the left walks, drag on the right to look, and the Fire, Jump, Use, Sprint and View buttons sit under your right thumb. Tap a tool in the bar to pick it, or Next.
 - The first visit starts with a four-step tour; Help in the menu shows it again.
 - Add `#seed=12` (any number) to the address for another house; without one it is house 3. `#easy` and `#hard` set the difficulty, `#bot` lets the game's own bot play.
-- Realms in the menu (or Escape on the end card) goes to the [realms list](https://openagents.com/realms).
+- Worlds in the menu (or Escape on the end card) goes to the [worlds list](https://openagents.com/worlds).
 - This browser keeps your settings (timer, jumpscares, sprint, difficulty), your best escape on each difficulty and whether you've seen the tour. A private window keeps nothing.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
@@ -18,8 +18,8 @@ A Verse realm at https://openagents.com/realms/ice-cream-man: the Ice Cream Man'
 - `verse/icecream/` holds the game in Coax: `rules.coax` (the house and the rules, replaying every recorded trace of the original game step for step), `mesh.coax` (every room, piece of furniture and model as vertices, checked against the original C++), `camera.coax` (the moving camera), `play.coax` (the play loop: input, the 30 steps a second, the effects and the trace) and `scene.coax` (the house and everything that moves, packed for the GPU).
 - `apps/openagents-web/icecream.coax` is the HUD and its cards, `icecream-face.c` binds both for the browser, `icecream.wgsl` draws them: banded light, each room's fluorescent flicker, the fog, the ink outlines and the HUD's plates.
 - Add `#trace=600` and the page hands out the first 600 steps' inputs; `verse/icecream/test-browser.sh` plays the page headless and replays what it recorded on the native rules, step for step.
-- The page is written from `realms.json` by `coax/web/realms.ts`. The contract every realm follows is `docs/verse/realm-host.md` in the OpenAgents repository.
+- The page is written from `realms.json` by `coax/web/realms.ts`. The contract every world follows is `docs/verse/realm-host.md` in the OpenAgents repository.
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

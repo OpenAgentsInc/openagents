@@ -1,5 +1,5 @@
 // A page's own share card (docs/web/og-tags.md): a page whose app script has data-card=URL (a
-// realm made at /realms/new, coax/web/api/migrations/0071_made_realm_share.sql) asks the server
+// realm made at /worlds/new, coax/web/api/migrations/0071_made_realm_share.sql) asks the server
 // whether this visitor should take its picture (GET URL: "want" or "no", its owner when it has none
 // or it changed since). If so, once the scene is drawn and has settled, one frame is copied in the
 // same task it was drawn in (host.js frame(): a WebGPU canvas keeps its picture only until it is

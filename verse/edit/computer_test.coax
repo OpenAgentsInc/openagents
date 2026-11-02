@@ -143,7 +143,7 @@ keep_is :: (c: [] RealmComputer, text: string) -> bool { b: [512] u8; m := rc_ke
   rc_reply(c[..], "thread 2222222222222222222222222222222222222222222222222222222222222222\n");
   #assert c[0].run_state == RJ_RUNNING && rc_thread(c[..]) == THREAD;
   rc_step_time(c[..], 10 + RC_READ_POLL_S); #assert sends(c[..], RO_READ);
-  rc_reply(c[..], "step 1 Reading the realm\nstep 2 Placing a lighthouse\nrun running 2\n");
+  rc_reply(c[..], "step 1 Reading the world\nstep 2 Placing a lighthouse\nrun running 2\n");
   #assert c[0].step_n == 2 && rc_step(c[..], 1) == "Placing a lighthouse" && c[0].cursor == 2;
   rc_step_time(c[..], 10 + 2 * RC_READ_POLL_S); #assert sends(c[..], RO_READ);
   rc_reply(c[..], "step 2 Placing a lighthouse\nstep 3 Saved\nrun done 3\n");
@@ -199,7 +199,7 @@ keep_is :: (c: [] RealmComputer, text: string) -> bool { b: [512] u8; m := rc_ke
   c: [1] RealmComputer;
   rc_facts(c[..], UA_MAC, "http://golden.localhost:8080/realms/pine-forest?relay=ws://localhost:7777&x=1");
   #assert cast(string) c[0].relay[0..<c[0].relay_n] == "ws://localhost:7777";
-  rc_facts(c[..], UA_MAC, "https://openagents.com/realms/pine-forest");
+  rc_facts(c[..], UA_MAC, "https://openagents.com/worlds/pine-forest");
   #assert c[0].relay_n == 0;
 }
 
@@ -265,7 +265,7 @@ typed :: (e: [] RealmEdit, text: string) { _ := redit_message(e, REDIT_MSG_TEXT,
   redraw(e[..]);
   #assert !e[0].shown[RB_CMAIN];   // nothing to stop until it has started
   rc_op_sent(c, rc_next_op(c), true);
-  rc_reply(c, "thread 2222222222222222222222222222222222222222222222222222222222222222\nstep 1 Reading the realm\n");
+  rc_reply(c, "thread 2222222222222222222222222222222222222222222222222222222222222222\nstep 1 Reading the world\n");
   redraw(e[..]);
   #assert e[0].shown[RB_CMAIN] && tap(e[..], RB_CMAIN) && c[0].run_state == RJ_STOPPING;
   redraw(e[..]);

@@ -19,7 +19,7 @@
 #load "analytics.coax";
 #load "../../verse/edit/edit.coax";   // the Grid's EDIT and its feature list (docs/verse/realm-edit.md)
 #load "newland-walkers.coax";
-#load "newland-walk.coax";   // the Grid, /realms/the-grid: this scene, walked (data-page 1)
+#load "newland-walk.coax";   // the Grid, /worlds/the-grid: this scene, walked (data-page 1)
 #load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
@@ -1409,7 +1409,7 @@ galaxy_panel :: (out: [] f32, at: int, s: [] LandState, l: Layout, p: Pen, t: f3
   v := frame(out, at, b, 8 * d, ink(p, INK_BRIGHT), 0.75 * light, p);
   cap := 7.0 * d;
   o := dimmed(ink(p, INK_BRIGHT), light);
-  v = put(out, v, "REALMS", b.x0 + 12 * d, b.y0 + 16 * d, cap, o);
+  v = put(out, v, "WORLDS", b.x0 + 12 * d, b.y0 + 16 * d, cap, o);
   disc := gal_disc(b, d);
   m := disc.r;
   rot := ifx p.still then 0.6f32 else 0.6 + t * 0.03;
@@ -2254,7 +2254,7 @@ coaxial_land_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
   #assert s[0].gal_r[6] > 0 && s[0].gal_r[15] == 0 && s[0].gal_r[7] == 0;   // Everglade shown; Planetary Villa and Fairy Forest not
   down := coaxial_land_pointer(s[..], s[0].gal_x[6], s[0].gal_y[6], POINTER_DOWN, 0, 1);
   #assert coaxial_land_pointer(s[..], s[0].gal_x[6], s[0].gal_y[6], POINTER_UP, 0, 1);
-  #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "https://openagents.com/realms/everglade") && s[0].gal_sel == 6;
+  #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "https://openagents.com/worlds/everglade") && s[0].gal_sel == 6;
   coaxial_land_action_done(s[..]);
   #assert coaxial_land_key(s[..], KEY_RIGHT, 0) && s[0].gal_sel != 6 && galaxy_public(s[0].gal_sel);
   #assert coaxial_land_key(s[..], KEY_ENTER, 0) && s[0].action == ACT_NAVIGATE;

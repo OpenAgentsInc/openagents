@@ -3,7 +3,7 @@
 // project has somewhere to walk on day one. When the owner publishes a drop,
 // the API (coax/web/api/drops.c) packs the drop's models into one asset pack
 // (the realm host's VPK1, docs/verse/realm-host.md) and writes a page at
-// /projects/<slug>/realm that opens this module on it. /realms/drop is the
+// /projects/<slug>/realm that opens this module on it. /worlds/drop is the
 // same realm on the fixture's pack, so every build names this module's files
 // and the release walk checks it.
 //
@@ -203,7 +203,7 @@ realm_key :: (s: [] DropRealm, key: int, down: bool) -> bool #export_c {
 }
 realm_blur :: (s: [] DropRealm) #export_c { s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; }
 
-back_url :: (s: [] DropRealm) -> string { return ifx s[0].back_n > 0 then cast(string) s[0].back[0..<s[0].back_n] else "/realms"; }
+back_url :: (s: [] DropRealm) -> string { return ifx s[0].back_n > 0 then cast(string) s[0].back[0..<s[0].back_n] else "/worlds"; }
 leave :: (s: [] DropRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, back_url(s)); s[0].action = ACT_NAVIGATE; } }
 
 button_at :: (s: [] DropRealm, x: f32, y: f32) -> int {
@@ -506,7 +506,7 @@ draw_pack :: (s: [] DropRealm, out: [] f32, at: int, top: f32) -> int {
   if !s[0].pack_ready || s[0].model_n == 0 {
     n := 0;
     if s[0].pack_ready { n = put(buf[..], 0, "NO MODELS TO PLACE YET: DROP A .GLB ON THE PROJECT"); }
-    else if s[0].pack_failed { n = put(buf[..], 0, "THE REALM'S MODELS DIDN'T ARRIVE"); }
+    else if s[0].pack_failed { n = put(buf[..], 0, "THE WORLD'S MODELS DIDN'T ARRIVE"); }
     else {
       n = put(buf[..], 0, "BRINGING IN THE MODELS ");
       if s[0].total > 0 { n = put_kb(buf[..], n, s[0].loaded); n = put(buf[..], n, " OF "); n = put_kb(buf[..], n, s[0].total); }
@@ -570,10 +570,10 @@ draw_realm :: (s: [] DropRealm, out: [] f32) -> int {
   // the name, and what this is
   g := 16 * k;
   buf: [TITLE + 8] u8;
-  tn := put(buf[..], 0, ifx s[0].name_n > 0 then cast(string) s[0].name[0..<s[0].name_n] else "A first realm");
+  tn := put(buf[..], 0, ifx s[0].name_n > 0 then cast(string) s[0].name[0..<s[0].name_n] else "A first world");
   upper(buf[..], tn);
   title := cast(string) buf[0..<tn];
-  sub := ifx s[0].name_n > 0 then "ITS FIRST REALM, MADE FROM ITS DROP" else "WHERE A PROJECT'S DROPPED MODELS STAND";
+  sub := ifx s[0].name_n > 0 then "ITS FIRST WORLD, MADE FROM ITS DROP" else "WHERE A PROJECT'S DROPPED MODELS STAND";
   tw := hi(measure(title, GAP, SPACE, false) * 11 * k, measure(sub, GAP, SPACE, false) * 7.5 * k) + 32 * k;
   bw := 112 * k;
   tb := Box.{x0 = g, y0 = g, x1 = lo(g + tw, ifx phone then w - g else w - 2 * g - bw), y1 = g + 54 * k};
@@ -587,7 +587,7 @@ draw_realm :: (s: [] DropRealm, out: [] f32) -> int {
   s[0].boxes[BTN_BACK] = b; s[0].shown[BTN_BACK] = true;
   look: f32 = LOOK_LIT; if s[0].hover == BTN_BACK || s[0].press == BTN_BACK { look += LOOK_HOVER; }
   plate(s, b, 0.92, look);
-  vertices = centred(d, out, vertices, ifx s[0].back_n > 0 then "PROJECT" else "REALMS", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
+  vertices = centred(d, out, vertices, ifx s[0].back_n > 0 then "PROJECT" else "WORLDS", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
 
   // what to do, until you have walked a little
   if s[0].walked < 6 {
@@ -791,11 +791,11 @@ landed :: (s: [] DropRealm, m: int, x: f32, y: f32, z: f32) -> [3] f32 {
   #assert realm_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/projects/lantern-garden");
   realm_action_done(s[..]);
   #assert realm_key(s[..], KEY_ESCAPE, true) && realm_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/projects/lantern-garden");
-  // a link off this site is not taken; with none, back is /realms
+  // a link off this site is not taken; with none, back is /worlds
   t: [1] DropRealm;
   realm_message(t[..], MSG_DATA_TEXT, "X\nhttps://example.com");
   realm_message(t[..], MSG_DATA_TEXT, "X\n//example.com");
-  #assert t[0].back_n == 0 && back_url(t[..]) == "/realms";
+  #assert t[0].back_n == 0 && back_url(t[..]) == "/worlds";
 }
 
 #test "while the pack streams nothing is drawn from it; an empty pack says so" {

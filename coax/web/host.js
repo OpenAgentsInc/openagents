@@ -1804,7 +1804,7 @@ function rescueFrom(record, id, layout, size) {
   rescueTaken = true;
   rescueWrite(null);
   if (id && record.wasm === id && record.layout === layout && record.size === size && record.bytes?.byteLength === size) pendingRescue = new Uint8Array(record.bytes);
-  else say(`${app}: a save from another build of this realm was not put back`);
+  else say(`${app}: a save from another build of this world was not put back`);
 }
 const stateBytes = () => new Uint8Array(memory.buffer, arena.state, arena.stateSize).slice();
 const worldIn = () => firstAssets.every((a) => a.done) && [...firstPacks].every((p) => p.done);
@@ -1827,7 +1827,7 @@ function trapped(e) {
   say(`${app} trapped: ${e.message}`, true);
   const again = restoredFrames >= 0 && restoredFrames < RESCUE_SETTLE;
   engine = null;globalThis.coaxial.ready = false;
-  stopped(`THE REALM STOPPED: ${e.message}`, again ? null : frameHeld?.slice() ?? null, again ? "START OVER" : "");
+  stopped(`THE WORLD STOPPED: ${e.message}`, again ? null : frameHeld?.slice() ?? null, again ? "START OVER" : "");
 }
 // The reload message: what stopped, and one action. With the state to save, the save goes first
 // and the reload puts it back; without, the realm starts over.
@@ -1976,7 +1976,7 @@ const voice = script?.dataset.voice
   ? startVoice({ send, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;
 
 // The location's hash, for an app that opens something by it (a link straight to it).
-// Action 1 to a same-page address that differs only after its # (/realms/built#a to #b) reloads the
+// Action 1 to a same-page address that differs only after its # (/worlds/built#a to #b) reloads the
 // page: assigning such an address only changes the hash, and the app would go on showing the old one.
 function navigateTo(path) {
   const to = new URL(path, location.href);

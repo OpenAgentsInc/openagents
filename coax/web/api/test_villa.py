@@ -250,10 +250,10 @@ s, raw, hh = call("GET", "/memorial/" + pet["slug"])
 mpage = raw.decode()
 check("villa: a memorial's page names her in its title and link preview", s == 200 and "<title>Hecate, in Hecate's Cemetery</title>" in mpage
       and '<meta property="og:title" content="Hecate, in Hecate\'s Cemetery">' in mpage and re.search(r'<meta property="og:url" content="https?://[^"]+/memorial/%s">' % pet["slug"], mpage)
-      and re.search(r'og:image" content="https?://[^"]+/realms/hecates-cemetery/card.jpg"', mpage) and "summary_large_image" in mpage and "noindex" not in mpage, mpage[:600])
+      and re.search(r'og:image" content="https?://[^"]+/worlds/hecates-cemetery/card.jpg"', mpage) and "summary_large_image" in mpage and "noindex" not in mpage, mpage[:600])
 embedded = re.search(r'<script type="application/json" id="memorial">(.*?)</script>', mpage, re.S)
 check("villa: the page carries the memorial anyone sees, and takes its script from the site's shell", embedded is not None
-      and json.loads(embedded.group(1)) == v("GET", "memorial/" + pet["slug"])[1] and 'fetch("/realms/hecates-cemetery/memorial/")' in mpage
+      and json.loads(embedded.group(1)) == v("GET", "memorial/" + pet["slug"])[1] and 'fetch("/worlds/hecates-cemetery/memorial/")' in mpage
       and 's.dataset.page = "0"' in mpage and mpage.count("<main>") == 1, mpage[-900:])
 check("villa: a trailing slash is the same page", call("GET", "/memorial/%s/" % pet["slug"])[0] == 200)
 s, raw, _ = call("GET", "/memorial/zzzzzzzz")

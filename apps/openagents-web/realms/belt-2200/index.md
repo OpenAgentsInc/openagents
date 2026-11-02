@@ -1,6 +1,6 @@
 # Belt 2200
 
-A Verse realm at https://openagents.com/realms/belt-2200: a hard sci-fi strategy game set in the solar system in the year 2200. The Sun, Mercury to Saturn, the Moon, Ceres, Vesta and a field of Belt rocks move on their real orbits. You run the Free Belt's Hearth Station at Ceres and three ships; the Terran Compact flies its own routes, and the Mars Union mines the Belt against you.
+A Verse world at https://openagents.com/worlds/belt-2200: a hard sci-fi strategy game set in the solar system in the year 2200. The Sun, Mercury to Saturn, the Moon, Ceres, Vesta and a field of Belt rocks move on their real orbits. You run the Free Belt's Hearth Station at Ceres and three ships; the Terran Compact flies its own routes, and the Mars Union mines the Belt against you.
 
 ## How to play
 
@@ -27,6 +27,6 @@ A Verse realm at https://openagents.com/realms/belt-2200: a hard sci-fi strategy
 - `apps/openagents-web/belt.coax` is the game: its rules (ships, fuel, mining, the rivals' routes) and its drawing: glowing line art as on the homepage over shaded worlds (Saturn's rings, the Earth's air, Jupiter's bands) and the Belt's dust with its Kirkwood gaps. `belt-face.c` binds it for the browser and `belt.wgsl` draws it.
 - The design is `docs/verse/game-ideas/belt-2200.md`. The factions, ships and places are original.
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

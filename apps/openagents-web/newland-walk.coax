@@ -1,4 +1,4 @@
-// The Grid, openagents.com/realms/the-grid: the homepage's own scene, walked.
+// The Grid, openagents.com/worlds/the-grid: the homepage's own scene, walked.
 //
 // The page is the homepage's module (newland.coax) with data-page 1 (coaxial_land_page). Everything
 // in it is the homepage's: land_scene draws the same places, trees, task ticks, roads, Pylons, XP,
@@ -16,7 +16,7 @@
 // WALK AROUND (?from=home) the camera comes down from the homepage's view onto you.
 
 WK_HOME :: "/";
-WK_GALAXY :: "/realms";
+WK_GALAXY :: "/worlds";
 WK_ROOM :: "the-grid";
 WK_POST_EVERY :: 0.2;        // s between posts to the room
 WK_SPAWN_X :: 28.0;          // m from the places' middle: south-east of them, where the homepage looks from,
@@ -373,7 +373,7 @@ wk_hud :: (out: [] f32, at: int, s: [] LandState, u: [] f32, f: LandFrame, width
   w[0].galaxy_box = gb; w[0].home_box = hb;
   v = button(out, v, hb, "HOME", true, hover && inside(hb, s[0].px, s[0].py) || w[0].press == WK_PRESS_HOME, false, p, hud);
   glass(u, 1, hb, 7 * d, 0.95 * hud, 1);
-  v = button(out, v, gb, "REALMS", true, hover && inside(gb, s[0].px, s[0].py) || w[0].press == WK_PRESS_GALAXY, false, p, hud);
+  v = button(out, v, gb, "WORLDS", true, hover && inside(gb, s[0].px, s[0].py) || w[0].press == WK_PRESS_GALAXY, false, p, hud);
   glass(u, 2, gb, 7 * d, 0.95 * hud, 1);
   // EDIT for the Grid's owner and admins (verse/edit/edit.coax): left of HOME, or under REALMS on a
   // phone where the title fills the row; its plates are the glass after the page's own
@@ -519,7 +519,7 @@ wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
   return coaxial_walk_frame(s, out, u, 1440, 900, 1, 0.016, false, WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0,
                             WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
 }
-#test "keys walk and turn, a drag looks and is never a click, HOME and REALMS go where they say" {
+#test "keys walk and turn, a drag looks and is never a click, HOME and WORLDS go where they say" {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   coaxial_land_page(s[..], 1); s[0].time = 9;
@@ -564,9 +564,9 @@ wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
   #assert coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0,
                              WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0) > 0;
   #assert s[0].walk[0].seen[0];
-  #assert wk_from_home("https://openagents.com/realms/the-grid?from=home") && wk_from_home("/realms/the-grid?a=1&from=home#x");
-  #assert !wk_from_home("/realms/the-grid?from=homes") && !wk_from_home("/realms/the-grid#from=home");
-  coaxial_walk_facts(s[..], "tab=t\nurl=https://openagents.com/realms/the-grid?from=home\n");
+  #assert wk_from_home("https://openagents.com/worlds/the-grid?from=home") && wk_from_home("/worlds/the-grid?a=1&from=home#x");
+  #assert !wk_from_home("/worlds/the-grid?from=homes") && !wk_from_home("/worlds/the-grid#from=home");
+  coaxial_walk_facts(s[..], "tab=t\nurl=https://openagents.com/worlds/the-grid?from=home\n");
   #assert s[0].wk[0].from_home;
   // the dive starts at the homepage's view, far over the places, and ends behind you
   first := coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0,
@@ -577,7 +577,7 @@ wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
                              WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0) > 0;
   #assert s[0].view.eye.y < 2;
 }
-#test "the Grid's EDIT: its owner gets it left of HOME (under REALMS on a phone), its pane's glass, and the board's rows switch the names and the walkers" #steps 90000000 {
+#test "the Grid's EDIT: its owner gets it left of HOME (under WORLDS on a phone), its pane's glass, and the board's rows switch the names and the walkers" #steps 90000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   coaxial_land_page(s[..], 1); s[0].time = 9;

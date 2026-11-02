@@ -228,13 +228,13 @@ coop_say :: (s: [] Stair, t: string) { stair_message(s, SOCKET_KIND + 4 * s[0].l
 #test "co-op over the relay: INVITE makes a room, the partner who joins gets the game, both play it in lockstep with each other's defenders, and a nudged client is mended" #steps 130000000 {
   a: [1] Stair; b: [1] Stair;
   stair_start(a[..]); stair_start(b[..]);
-  stair_message(a[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair\n");
-  stair_message(b[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?coop=abc234&desync=1\n");
+  stair_message(a[..], HOST_PAGE, "url=https://openagents.com/worlds/hold-the-stair\n");
+  stair_message(b[..], HOST_PAGE, "url=https://openagents.com/worlds/hold-the-stair?coop=abc234&desync=1\n");
   // INVITE: a's room and its link
   coop_invite(a[..]);
   #assert a[0].action == ACT_COPY && lr_on(a[0].lock[..]) && a[0].lock[0].code_n == 6;
   link := cast(string) a[0].outbox[0..<a[0].out_n];
-  #assert link.count > 40 && link[0..<47] == "https://openagents.com/realms/hold-the-stair?co";
+  #assert link.count > 40 && link[0..<47] == "https://openagents.com/worlds/hold-the-stair?co";
   #assert b[0].lock[0].state == LR_JOINING && cast(string) b[0].lock[0].code[0..<6] == "abc234" && b[0].nudge;
   stair_socket_opened(a[..], 0); stair_socket_opened(b[..], 0);
   coop_say(a[..], "y 0 0");

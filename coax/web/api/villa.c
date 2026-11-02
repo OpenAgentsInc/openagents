@@ -331,12 +331,12 @@ static void memorial_page(const request *q, PGconn *db, const char *slug) {
     "<meta property=\"og:type\" content=\"website\">\n<meta property=\"og:site_name\" content=\"OpenAgents\">\n"
     "<meta property=\"og:title\" content=\"%s\">\n<meta property=\"og:description\" content=\"%s\">\n"
     "<meta property=\"og:url\" content=\"%s\">\n"
-    "<meta property=\"og:image\" content=\"%s/realms/hecates-cemetery/card.jpg\">\n"
+    "<meta property=\"og:image\" content=\"%s/worlds/hecates-cemetery/card.jpg\">\n"
     "<meta property=\"og:image:width\" content=\"1200\">\n<meta property=\"og:image:height\" content=\"630\">\n"
     "<meta property=\"og:image:alt\" content=\"Hecate's Cemetery, a moonlit memorial garden\">\n"
     "<meta name=\"twitter:card\" content=\"summary_large_image\">\n"
     "<meta name=\"twitter:title\" content=\"%s\">\n<meta name=\"twitter:description\" content=\"%s\">\n"
-    "<meta name=\"twitter:image\" content=\"%s/realms/hecates-cemetery/card.jpg\">\n"
+    "<meta name=\"twitter:image\" content=\"%s/worlds/hecates-cemetery/card.jpg\">\n"
     "<meta name=\"theme-color\" content=\"#000000\">\n<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\">\n"
     "<script>if (\"gpu\" in navigator) document.documentElement.classList.add(\"gpu\")</script>\n"
     "<style>\nhtml,body{margin:0;height:100%%;background:#3c4a6b;color:#ededed}\n"
@@ -345,7 +345,7 @@ static void memorial_page(const request *q, PGconn *db, const char *slug) {
     "canvas[data-cursor=pointer]{cursor:pointer}\nmain{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}\n"
     "html:not(.gpu) body{overflow:auto}\na{color:#ededed}\n"
     ".gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%%);white-space:nowrap;padding:0}\n</style>\n</head>\n<body>\n"
-    "<canvas id=\"coaxial\" aria-hidden=\"true\"></canvas>\n<main>\n<h1>%s</h1>\n<p><a href=\"/realms/hecates-cemetery\">Hecate's Cemetery</a></p>\n</main>\n"
+    "<canvas id=\"coaxial\" aria-hidden=\"true\"></canvas>\n<main>\n<h1>%s</h1>\n<p><a href=\"/worlds/hecates-cemetery\">Hecate's Cemetery</a></p>\n</main>\n"
     "<script type=\"application/json\" id=\"memorial\">",
     title, desc, found ? "" : "<meta name=\"robots\" content=\"noindex\">\n", url, title, desc, url, origin(), title, desc, origin(),
     found ? title : "This memorial isn't here");
@@ -354,7 +354,7 @@ static void memorial_page(const request *q, PGconn *db, const char *slug) {
     for (const char *c = a.body; *c; c++) { if (*c == '<') page_add(&b, "\\u003c"); else take((char *)c, 1, 1, &b); }
   }
   page_add(&b, "</script>\n<script type=\"module\">\n"
-    "const t = await (await fetch(\"/realms/hecates-cemetery/memorial/\")).text();\n"
+    "const t = await (await fetch(\"/worlds/hecates-cemetery/memorial/\")).text();\n"
     "const from = new DOMParser().parseFromString(t, \"text/html\").querySelector(\"script[data-app]\");\n"
     "const s = document.createElement(\"script\");\n"
     "for (const a of from.attributes) s.setAttribute(a.name, a.value);\n"

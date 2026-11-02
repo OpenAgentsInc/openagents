@@ -1,6 +1,6 @@
 # Sandbox
 
-Open ground in the Verse that everyone builds on together, at https://openagents.com/realms/sandbox. There is one Sandbox, shared: what anyone builds there is published, and everyone who comes sees it.
+Open ground in the Verse that everyone builds on together, at https://openagents.com/worlds/sandbox. There is one Sandbox, shared: what anyone builds there is published, and everyone who comes sees it.
 
 ## What is here
 
@@ -29,6 +29,6 @@ Open ground in the Verse that everyone builds on together, at https://openagents
 - Z takes the whole piece back in one step. The piece is published to the shared Sandbox at once, so everyone sees it.
 - How it works: the sentence goes to our server (`POST /api/playtest/sandbox/piece`), where Google's Gemini picks one piece from this fixed list and its fields, under a schema of the list's own words. The server checks the answer against the list (`coax/web/api/migrations/0036_sandbox_pieces.sql`) and keeps the sentence with what was picked. The page checks the answer again and lays the piece out with a seeded generator (`verse/setpiece.coax`). The Sandbox's engine (`verse/haunt.coax`) draws it. A sentence the list can't make, like a castle, gets an answer saying what it can make.
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

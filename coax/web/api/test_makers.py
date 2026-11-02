@@ -41,7 +41,7 @@ check("makers: a code needs an admin (someone else)", s == 403, (s, b))
 
 s, b, _ = mk_post("/api/admin/makers/orbit-league/code", {}, keyfile=os.environ["ADMIN_KEY"])
 mk_code = json.loads(b).get("code", "") if s == 200 else ""
-check("makers: an admin makes a code and its link", s == 200 and len(mk_code) == 32 and json.loads(b)["link"].endswith("/realms/orbit-league/claim#code=" + mk_code), (s, b))
+check("makers: an admin makes a code and its link", s == 200 and len(mk_code) == 32 and json.loads(b)["link"].endswith("/worlds/orbit-league/claim#code=" + mk_code), (s, b))
 check("makers: only the code's hash is kept", sql(f"select count(*) from makers.codes where code_sha256 = '{mk_code}'") == "0"
       and sql("select count(*) from makers.codes where realm = 'orbit-league' and used is null") == "1")
 check("makers: the code is never logged", mk_code and mk_code not in open(os.environ["API_LOG"]).read())

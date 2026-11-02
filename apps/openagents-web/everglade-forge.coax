@@ -20,7 +20,7 @@
 #load "../../verse/hud/frame.coax";
 
 FG_ALL :: 0; FG_REALM :: 1; FG_ENGINE :: 2;
-FG_FILTER_WORDS :: [3] string.["ALL", "REALM", "ENGINE"];
+FG_FILTER_WORDS :: [3] string.["ALL", "WORLD", "ENGINE"];
 FG_ROWS :: 16;          // rows on the screen at most
 FG_LIVE :: 6;           // this visit's edits shown at most
 FG_LINE :: 96;
@@ -31,11 +31,11 @@ FG_FIXED_KIND :: [FG_FIXED] int.[FG_ENGINE, FG_ENGINE, FG_REALM, FG_ENGINE, FG_R
 FG_FIXED_WHEN :: [FG_FIXED] string.["NOV 02 14:48", "NOV 02 14:27", "NOV 02 14:05", "NOV 02 13:44", "NOV 02 13:33", "NOV 02 13:31", "NOV 01 18:20", "NOV 01 02:12", "OCT 31 21:46", "OCT 31 09:42"];
 FG_FIXED_TITLE :: [FG_FIXED] string.[
   "BROWSER FRAMES QUALIFIED",
-  "THE VOICE IN EVERY REALM",
+  "THE VOICE IN EVERY WORLD",
   "GUARDS SWITCHED ON",
   "THE VOICE LOOKS AT THE SCREEN",
   "OWNER CAN'T BE HURT ADDED",
-  "REALM SWITCHES BY VOICE",
+  "WORLD SWITCHES BY VOICE",
   "TWO STALLS BY THE SOUTH GATE",
   "GROUND AND COLLISION",
   "FRAME BUDGETS, REFUSED WHOLE",
@@ -247,7 +247,7 @@ forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
     n = fg_text(s, out, n, title, rb.x0 + 14 * k, rb.y0 + 19 * k, fg_fit(title, 8.5 * k, room), fg_grey(k, 0.95, 0));
     n = fg_text(s, out, n, when, rb.x1 - 12 * k - ww, rb.y0 + 18 * k, 6.5 * k, fg_grey(k, 0.7, 2));
     // its tag: ENGINE · the commit, or REALM · how it was made
-    chip: [40] u8; tn := ev_put(chip[..], ifx engine then "ENGINE · " else "REALM · ");
+    chip: [40] u8; tn := ev_put(chip[..], ifx engine then "ENGINE · " else "WORLD · ");
     tn += ev_put(chip[tn..<chip.count], ifx key < 0 then "BY HAND" else FG_FIXED_WHO[key]);
     n = fg_text(s, out, n, cast(string) chip[0..<tn], rb.x0 + 14 * k, rb.y0 + 33 * k, 6 * k, ifx engine then fg_cyan(k, 0.8) else fg_grey(k, 0.7, 1));
     // what it changed
@@ -318,5 +318,5 @@ forge_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int) -> bool {
 
 #test "?forge opens it on a local server only" {
   #assert fg_has("http://127.0.0.1:8801/realms/everglade?forge", "://127.0.0.1") && fg_has("http://127.0.0.1:8801/realms/everglade?forge", "forge");
-  #assert !fg_has("https://openagents.com/realms/everglade?forge", "://127.0.0.1") && !fg_has("https://openagents.com/realms/everglade?forge", "://localhost");
+  #assert !fg_has("https://openagents.com/worlds/everglade?forge", "://127.0.0.1") && !fg_has("https://openagents.com/worlds/everglade?forge", "://localhost");
 }

@@ -250,12 +250,12 @@ static bool playtest(const request *q, PGconn *db, const char *rest) {
 }
 
 // ---- /api/admin/access
-// /realms' text copy (realms/index.md, written by coax/web/realms.ts) links to /realms/new. With
+// /worlds' text copy (realms/index.md, written by coax/web/realms.ts) links to /worlds/new. With
 // realm_invites on it doesn't: the API writes the marker realms/invite-only.txt ("on" or "off") and
 // the copy with or without the link into the site's bucket, in a child; coax/web/upload.py keeps the
 // marker and drops the link from each release's copy while it says "on". Without a bucket (a dev
 // server, the tests) nothing is written.
-#define BUILD_LINK ", [build your own realm](https://openagents.com/realms/new)"
+#define BUILD_LINK ", [build your own world](https://openagents.com/worlds/new)"
 static char *replaced(const char *text, const char *from, const char *to) {
   const char *at = strstr(text, from);
   if (!at) return NULL;

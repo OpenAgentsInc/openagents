@@ -121,7 +121,10 @@ static bool resolve(const char *url, char *out, size_t cap) {
   if (path[0] != '/' || strstr(path, "..") || strstr(path, "/.")) return false;
   if (!strcmp(path, "/")) return snprintf(out, cap, "%s/index.html", app_dir) < (int)cap;
   if (!strncmp(path, "/coaxial/", 9)) return snprintf(out, cap, "%s/%s", host_dir, path + 9) < (int)cap;
-  if (snprintf(out, cap, "%s%s", app_dir, path) >= (int)cap) return false;
+  // /worlds and /worlds/* are the app's realms/, as the load balancer serves them (coax/web/api/lb.sh)
+  if (!strcmp(path, "/worlds") || !strncmp(path, "/worlds/", 8)) {
+    if (snprintf(out, cap, "%s/realms%s", app_dir, path + 7) >= (int)cap) return false;
+  } else if (snprintf(out, cap, "%s%s", app_dir, path) >= (int)cap) return false;
   struct stat st;
   if (stat(out, &st) == 0 && S_ISDIR(st.st_mode)) {
     size_t n = strlen(out);

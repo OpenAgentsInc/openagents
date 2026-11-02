@@ -1,4 +1,4 @@
-# Licences: the Fixture Realm pack
+# Licences: the Fixture World pack
 
 Every asset in `fixture.pack` (1,267,160 bytes of its 1,500,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/fixture.json`.
 

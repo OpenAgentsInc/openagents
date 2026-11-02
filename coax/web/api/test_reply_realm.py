@@ -57,7 +57,7 @@ def reply_realm_checks():
     words = 'Ship it <script>alert("x")</script> & \'quote\' |bar|\n\r\x07 next'
     st, made = r_call("POST", "/api/playtest/replies", {"realm": "everglade", "text": words, "seed": 424242}, maker)
     rid = made.get("id", "") if st == 200 else ""
-    check("a reply is made: its id and its page's path", st == 200 and len(rid) == 12 and made["path"] == "/realms/everglade/reply/" + rid and made["page"] is True, made)
+    check("a reply is made: its id and its page's path", st == 200 and len(rid) == 12 and made["path"] == "/worlds/everglade/reply/" + rid and made["page"] is True, made)
     kept = sql("select words from verse.replies where id = '%s'" % rid)
     check("its words are kept as one line of plain characters: no line breaks, bars or control characters",
           kept == 'Ship it <script>alert("x")</script> & \'quote\' bar next', kept)
@@ -79,10 +79,10 @@ def reply_realm_checks():
     check("its page has every preview tag and the realm's card until its own",
           '<meta property="og:title" content="“Ship it &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; \'quote\' bar next”">' in page
           and '<meta name="twitter:card" content="summary_large_image">' in page and '<meta property="og:image:width" content="1200">' in page
-          and '/realms/everglade/og.jpg"' in page and '<meta property="og:url" content="' in page and "/realms/everglade/reply/" + rid + '">' in page, page[:1800])
+          and '/worlds/everglade/og.jpg"' in page and '<meta property="og:url" content="' in page and "/worlds/everglade/reply/" + rid + '">' in page, page[:1800])
     check("its page opens Everglade with the reply: its words come from the API, never from the page",
           'data-reply="%s"' % rid in page and 's.dataset.lines = "620:/api/playtest/replies/" + id' in page
-          and 's.dataset.cardOn = "impact"' in page and 'fetch("/realms/everglade"' in page and page.count("Ship it") == 4, page[-1200:])
+          and 's.dataset.cardOn = "impact"' in page and 'fetch("/worlds/everglade"' in page and page.count("Ship it") == 4, page[-1200:])
     md = site.get("realms/everglade/reply/%s/index.md" % rid, {}).get("data", b"").decode()
     check("its text quotes the words with markup escaped", "> Ship it \\<script\\>alert" in md and "<script>" not in md, md)
     check("an unknown or malformed id is a 404", r_call("GET", "/api/playtest/replies/zzzzzzzzzzzz")[0] == 404
@@ -116,8 +116,8 @@ def reply_realm_checks():
     page = site.get("realms/everglade/reply/" + rid, {}).get("data", b"").decode()
     check("its card is kept in the bucket and its page names it",
           st == 200 and site.get("realms/everglade/reply/%s/card.jpg" % rid, {}).get("data") == jpeg
-          and got.get("image", "").startswith("/realms/everglade/reply/%s/card.jpg?v=" % rid) and got.get("page") is True
-          and "/realms/everglade/reply/%s/card.jpg?v=" % rid in page and "/realms/everglade/og.jpg" not in page, (st, raw))
+          and got.get("image", "").startswith("/worlds/everglade/reply/%s/card.jpg?v=" % rid) and got.get("page") is True
+          and "/worlds/everglade/reply/%s/card.jpg?v=" % rid in page and "/worlds/everglade/og.jpg" not in page, (st, raw))
     check("once it has its card its maker isn't asked again", r_call("GET", "/api/playtest/replies/%s/card" % rid, key=maker)[1] == "no")
 
     # a player makes so many a day

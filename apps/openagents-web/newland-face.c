@@ -1,6 +1,6 @@
 // The live homepage C face: scalar Wasm exports over the Coax procedures.
 // The state the host keeps is the page's clock, its tables and its input.
-// The same module is the Grid (/realms/the-grid, data-page 1, newland-walk.coax): the same
+// The same module is the Grid (/worlds/the-grid, data-page 1, newland-walk.coax): the same
 // scene walked. There verse/gridwalk.coax (its own library) is the session: you, the phone's
 // thumbs and the record of what you did, stepped on Aethyr's engine core. Once a frame this face
 // hands it the page's controls and the frame's time, then hands the page where you are. Where

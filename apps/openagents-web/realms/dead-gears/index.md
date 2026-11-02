@@ -1,6 +1,6 @@
 # Dead Gears
 
-A Verse realm at https://openagents.com/realms/dead-gears: a ship's hold to hold against three waves of mutants. Between waves you repair the reactor; three repairs and the ship holds.
+A Verse world at https://openagents.com/worlds/dead-gears: a ship's hold to hold against three waves of mutants. Between waves you repair the reactor; three repairs and the ship holds.
 
 ## How to play
 
@@ -10,7 +10,7 @@ A Verse realm at https://openagents.com/realms/dead-gears: a ship's hold to hold
 - Lift costs 15 psi and holds a crate in front of you; throw it into a creature to stun and hurt it. Stun costs 35 psi and freezes everything in front of you for a moment. Psi comes back while you don't use it.
 - The support engineer follows you, fights beside you and walks over to help repair.
 - Each wave comes later in the day: the afternoon, the golden hour, then dusk, and the lamps come up as the light goes. Alarms flash as a wave comes.
-- The fight is kept in this browser at each wave and each repair: come back and it goes on from there. AGAIN starts over; REALMS goes to the [realms list](https://openagents.com/realms).
+- The fight is kept in this browser at each wave and each repair: come back and it goes on from there. AGAIN starts over; WORLDS goes to the [worlds list](https://openagents.com/worlds).
 - `?hour=17.5` holds the deck at that hour; `?spawn=200` adds 200 more mutants, to see a crowd.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
@@ -18,8 +18,8 @@ A Verse realm at https://openagents.com/realms/dead-gears: a ship's hold to hold
 
 - The game is the original Dead Gears from the Aethyr demo, ported to Coax. `verse/deadgears/` holds its entity system (`ecs.coax`), the hold's collisions and walking grid (`arena.coax`) and its rules (`rules.coax`), with every check of the original's tests.
 - `apps/openagents-web/deadgears.coax` is the page: the ship's hull, the cover, the reactor, the cargo, the engineers and the creatures, all boxes as the original drew them; the camera, the controls, the HUD, the hour and the lamps, and the saves. `deadgears-face.c` binds it for the browser and `deadgears.wgsl` draws it.
-- The page is written from `realms.json` by `coax/web/realms.ts`. The contract every realm follows is `docs/verse/realm-host.md` in the OpenAgents repository.
+- The page is written from `realms.json` by `coax/web/realms.ts`. The contract every world follows is `docs/verse/realm-host.md` in the OpenAgents repository.
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

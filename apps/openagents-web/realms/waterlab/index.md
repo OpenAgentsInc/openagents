@@ -1,6 +1,6 @@
 # Water Lab
 
-The water system's test scene at https://openagents.com/realms/waterlab: a sea to the horizon breaking on a sloping beach, drawn in the painted water look. It shows the parts of Verse's water that have no home in Everglade yet. It is unlisted: the [realms list](https://openagents.com/realms) leaves it out, so you open it by its address.
+The water system's test scene at https://openagents.com/worlds/waterlab: a sea to the horizon breaking on a sloping beach, drawn in the painted water look. It shows the parts of Verse's water that have no home in Everglade yet. It is unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address.
 
 ## What it shows
 
@@ -16,9 +16,9 @@ The water system's test scene at https://openagents.com/realms/waterlab: a sea t
 
 - `verse/water-spectrum.coax` is the sea: the spectrum, the transform, the foam and the surf, with its checks.
 - `verse/water-ocean.coax` is the rings and the 8 m squares, with the checks that every visitor's sea agrees.
-- `apps/openagents-web/waterlab.coax` is the realm, `waterlab-face.c` binds it for the browser, `waterlab.wgsl` draws it.
+- `apps/openagents-web/waterlab.coax` is the world, `waterlab-face.c` binds it for the browser, `waterlab.wgsl` draws it.
 - `docs/verse/water.md` in the OpenAgents repository says what of the water system is done and what is next.
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

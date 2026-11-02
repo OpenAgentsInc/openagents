@@ -11,7 +11,7 @@
 // (action 31: coax/web/card.js holds the next frame drawn, the HUD off for it but for the sign), and
 // once the reply has its id the frame goes to it as its card (action 32, "URL\nTITLE\nLINE").
 //
-// Its page (/realms/everglade/reply/<id>) opens this realm with the reply (message 620, the API's
+// Its page (/worlds/everglade/reply/<id>) opens this realm with the reply (message 620, the API's
 // lines: id=, house=, seed=, kind=, text=): the same sign, the same place to stand, and the same
 // swarm from the same dice, a few seconds after the town is in; then WATCH AGAIN and REPLY WITH
 // YOUR OWN. The town's debris steps with the frames, so the dust may fall a little differently;
@@ -284,10 +284,10 @@ rp_card :: (s: [] Everglade) {
   n = rp_put(t[..], n, "\nA reply from Everglade, smashed with a meteor shower. Watch it again on openagents.com.");
   rp_act(s, RP_CARD, cast(string) t[0..<n]);
 }
-// The reply's link: this page's origin, /realms/everglade/reply/<id>.
+// The reply's link: this page's origin, /worlds/everglade/reply/<id>.
 rp_link :: (s: [] Everglade, out: [] u8) -> string {
   n := rp_put(out, 0, ifx s[0].rp.origin_n > 0 then cast(string) s[0].rp.origin[0..<s[0].rp.origin_n] else "https://openagents.com");
-  n = rp_put(out, n, "/realms/everglade/reply/");
+  n = rp_put(out, n, "/worlds/everglade/reply/");
   n = rp_put(out, n, rp_id(s));
   return cast(string) out[0..<n];
 }
@@ -363,7 +363,7 @@ rp_press :: (s: [] Everglade, b: int) {
   if b == RP_B_AGAIN { if s[0].rp.phase == RP_FAILED && !s[0].rp.replay { rp_send(s); } else { rp_smash(s); } return; }
   if b == RP_B_COPY { buf: [200] u8; rp_act(s, RP_COPY, rp_link(s, buf[..])); s[0].rp.copied = 0.001; return; }
   if b == RP_B_VISIT { buf: [200] u8; rp_act(s, RP_NAV, rp_link(s, buf[..])); return; }
-  if b == RP_B_OWN { rp_act(s, RP_NAV, "/realms/everglade#reply"); return; }
+  if b == RP_B_OWN { rp_act(s, RP_NAV, "/worlds/everglade#reply"); return; }
 }
 // A press on a button: taken on its way down, done when it lifts on the same button.
 rp_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
@@ -561,7 +561,7 @@ rp_hud :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   if phone(s) { y = gutter + 110 * k; }
   if ph == RP_TYPING {
     plate(s, u, Box.{x0 = x0, y0 = y, x1 = x0 + pw, y1 = y + 150 * k}, 0.86, 0);
-    n = draw_text(out, n, "REPLY WITH A REALM", x0 + 16 * k, y + 24 * k, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+    n = draw_text(out, n, "REPLY WITH A WORLD", x0 + 16 * k, y + 24 * k, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
     n = draw_text(out, n, "PASTE A POST'S LINK OR TYPE A LINE: IT GOES ON A HOUSE'S SIGN", x0 + 16 * k, y + 44 * k, small, GAP, SPACE, ink(k, 0.75, PARCH_R, PARCH_G, PARCH_B), false, false);
     f := Box.{x0 = x0 + 14 * k, y0 = y + 58 * k, x1 = x0 + pw - 14 * k, y1 = y + 92 * k};
     s[0].rp.boxes[RP_B_FIELD] = f;
@@ -629,7 +629,7 @@ rp_hud :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
 #test "reply: a line goes up on the house, is smashed, and is sent once with its seed, escaped" #steps 337000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
-  everglade_message(g[..], MSG_FACTS, "url=https://openagents.com/realms/everglade#reply\nnow=1730000000123\nplayer=p-1\n");
+  everglade_message(g[..], MSG_FACTS, "url=https://openagents.com/worlds/everglade#reply\nnow=1730000000123\nplayer=p-1\n");
   rp_open(g[..]);
   #assert rp_typing(g[..]) && everglade_wants_text(g[..]);
   everglade_message(g[..], MSG_TEXT, "Ship  \"it\" \\ |now|\t");
@@ -659,10 +659,10 @@ rp_hud :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   // sent once, and its link once kept
   rp_send(g[..]);
   #assert everglade_reply_post(g[..]).count == n && everglade_reply_post(g[..]).count == 0;
-  everglade_reply_answer(g[..], "200\n{\"id\":\"0a1b2c3d4e5f\",\"path\":\"/realms/everglade/reply/0a1b2c3d4e5f\",\"page\":true}");
+  everglade_reply_answer(g[..], "200\n{\"id\":\"0a1b2c3d4e5f\",\"path\":\"/worlds/everglade/reply/0a1b2c3d4e5f\",\"page\":true}");
   #assert g[0].rp.phase == RP_LINKED && rp_id(g[..]) == "0a1b2c3d4e5f";
   buf: [200] u8;
-  #assert rp_link(g[..], buf[..]) == "https://openagents.com/realms/everglade/reply/0a1b2c3d4e5f";
+  #assert rp_link(g[..], buf[..]) == "https://openagents.com/worlds/everglade/reply/0a1b2c3d4e5f";
   // a refusal says why, and TRY AGAIN sends it again
   g[0].rp.phase = RP_SENDING;
   everglade_reply_answer(g[..], "400\n{\"error\":\"a line is 140 characters at most\"}");

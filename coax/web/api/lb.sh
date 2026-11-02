@@ -8,7 +8,8 @@
 # as headers (geography, RTT, TLS, the client's address in X-Forwarded-For),
 # which pt-capture records. Every other path keeps its rule; what no rule
 # names goes to the site's bucket (the coder service is retired).
-# Old addresses move: /verse/galaxy (retired 2026-10-31) to /realms, on both hosts.
+# Old addresses move: /verse/galaxy (retired 2026-10-31), /realms and /realm to /worlds, on both hosts;
+# /worlds is the site's realms/ (2026-11-02: realms are worlds).
 #
 # Private projects (private.c, docs/private-projects.md):
 #   lb.sh private-route SLUG   /projects/SLUG and /projects/SLUG/* on both hosts -> the API
@@ -166,12 +167,13 @@ for pm in m["pathMatchers"]:
         changed = True
         print("url map: production " + want[0]["fullPathMatch"] + " to " + to)
 # The galaxy is retired (2026-10-31): /verse/galaxy, /verse/galaxy/ and anything under it move for
-# good to /realms, the query dropped, on both hosts (smoke.sh checks it), ahead of the /verse/ rule.
+# good to /worlds (it was /realms until 2026-11-02), the query dropped, on both hosts (smoke.sh checks
+# it), ahead of the /verse/ rule.
 for pm in m["pathMatchers"]:
     if pm["name"] not in ("production", "staging"): continue
     rules = pm.setdefault("routeRules", [])
     match = [{"fullPathMatch": "/verse/galaxy"}, {"prefixMatch": "/verse/galaxy/"}]
-    go = {"pathRedirect": "/realms", "stripQuery": True, "redirectResponseCode": "MOVED_PERMANENTLY_DEFAULT"}
+    go = {"pathRedirect": "/worlds", "stripQuery": True, "redirectResponseCode": "MOVED_PERMANENTLY_DEFAULT"}
     rule = next((r for r in rules if r.get("matchRules") == match), None)
     if rule and rule.get("urlRedirect") == go: continue
     if rule: rules.remove(rule)
@@ -179,7 +181,42 @@ for pm in m["pathMatchers"]:
     rules.append({"priority": free, "matchRules": match, "urlRedirect": go})
     rules.sort(key=lambda r: r["priority"])
     changed = True
-    print(f"url map: {pm['name']} /verse/galaxy to /realms")
+    print(f"url map: {pm['name']} /verse/galaxy to /worlds")
+# Realms are worlds (2026-11-02): /worlds and /worlds/* are the site's realms/ pages and objects
+# (the bucket keeps its realms/ names, so the API's made realms and replies stay where they are),
+# and /realms, /realms/*, /realm and /realm/* move for good to /worlds, path and query kept.
+for pm in m["pathMatchers"]:
+    if pm["name"] not in ("production", "staging"): continue
+    rules = pm.setdefault("routeRules", [])
+    bucket = f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendBuckets/" + ("coaxial-openagents-web" if pm["name"] == "production" else "coaxial-openagents-web-staging")
+    for rule in rules:   # /realms/ no longer goes to the site under its own name
+        if rule.get("service") == bucket and not rule.get("routeAction"):
+            keep = [x for x in rule.get("matchRules", []) if (x.get("fullPathMatch") or x.get("prefixMatch")) not in ("/realms", "/realms/")]
+            if keep != rule.get("matchRules", []) and keep: rule["matchRules"] = keep; changed = True
+    moves = (([{"fullPathMatch": "/realms"}], {"pathRedirect": "/worlds"}),
+             ([{"prefixMatch": "/realms/"}], {"prefixRedirect": "/worlds/"}),
+             ([{"fullPathMatch": "/realm"}], {"pathRedirect": "/worlds"}),
+             ([{"prefixMatch": "/realm/"}], {"prefixRedirect": "/worlds/"}))
+    for want, to in moves:
+        go = {**to, "redirectResponseCode": "MOVED_PERMANENTLY_DEFAULT"}
+        rule = next((r for r in rules if r.get("matchRules") == want), None)
+        if rule and rule.get("urlRedirect") == go: continue
+        if rule: rules.remove(rule)
+        free = next(p for p in range(2, 40) if p not in {r["priority"] for r in rules})
+        rules.append({"priority": free, "matchRules": want, "urlRedirect": go})
+        rules.sort(key=lambda r: r["priority"])
+        changed = True
+        print(f"url map: {pm['name']} {next(iter(want[0].values()))} to {next(iter(to.values()))}")
+    for want, to in (([{"fullPathMatch": "/worlds"}], "/realms"), ([{"prefixMatch": "/worlds/"}], "/realms/")):
+        go = {"urlRewrite": {"pathPrefixRewrite": to}}
+        rule = next((r for r in rules if r.get("matchRules") == want), None)
+        if rule and rule.get("routeAction") == go and rule.get("service") == bucket: continue
+        if rule: rules.remove(rule)
+        free = next(p for p in range(2, 40) if p not in {r["priority"] for r in rules})
+        rules.append({"priority": free, "matchRules": want, "service": bucket, "routeAction": go})
+        rules.sort(key=lambda r: r["priority"])
+        changed = True
+        print(f"url map: {pm['name']} {next(iter(want[0].values()))} is the site's {to}")
 # The coder service is retired (docs/2026-10-28-coder-service-deprecation.md): whatever no rule
 # names is the site's bucket, so an unknown path gets the Coax 404.
 for pm in m["pathMatchers"]:

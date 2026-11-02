@@ -6,7 +6,7 @@
 // the world's asset bytes, its textures and the world's first frame. Each phase has a share of the
 // bar and moves only by what was counted; nothing advances on a timer. It fades on the first frame
 // that draws the world, and on a failure it says what failed and offers one action that works.
-// Made realms (/realms/<slug>, written by the realm builder) have no markup of their own: the host
+// Made realms (/worlds/<slug>, written by the realm builder) have no markup of their own: the host
 // puts the same in when the page names a realm.
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -87,7 +87,7 @@ export function startLoading({ realm, assets = 0, textured = false, scene = fals
     const h1 = document.querySelector("main h1"), link = document.querySelector("main a[href]");
     const style = document.head.appendChild(document.createElement("style")); // loading screen
     style.textContent = LOADER_CSS;
-    document.body.insertAdjacentHTML("afterbegin", loaderMarkup(h1?.textContent || "Realm", link?.getAttribute("href") || location.pathname)); // loading screen
+    document.body.insertAdjacentHTML("afterbegin", loaderMarkup(h1?.textContent || "World", link?.getAttribute("href") || location.pathname)); // loading screen
     el = document.getElementById("coaxial-load");
   }
   if (!el) return NONE;

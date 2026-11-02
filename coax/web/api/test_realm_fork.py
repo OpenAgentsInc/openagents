@@ -58,27 +58,27 @@ def realm_fork_checks():
 
     st, f = b_call("POST", R + "everglade/fork", {"rules": ["waves", "night", "night"], "name": "Doomglade"}, owner)
     check("FORK makes a realm of its own at /realms/<slug>, with the rules chosen (once each, in Everglade's order), and writes its page",
-          st == 200 and f["slug"] == "doomglade" and f["path"] == "/realms/doomglade" and f["base"] == "everglade" and f["from"] == "everglade"
+          st == 200 and f["slug"] == "doomglade" and f["path"] == "/worlds/doomglade" and f["base"] == "everglade" and f["from"] == "everglade"
           and f["rules"] == ["night", "waves"] and f["page"] is False, (st, f))
     page = site.get("realms/doomglade", {}).get("data", b"").decode()
     check("its page loads Everglade's module with this fork's slug, slot and rules",
           'data-fork="doomglade"' in page and 'data-base="everglade"' in page and 'data-rules="night,waves"' in page
-          and 'fetch("/realms/" + me.dataset.base' in page and 's.dataset.slot = "made-" + slug' in page
+          and 'fetch("/worlds/" + me.dataset.base' in page and 's.dataset.slot = "made-" + slug' in page
           and "/api/playtest/realms/\" + slug + \"/card" in page, page[-900:])
     check("its page says what it was forked from, links to it and credits its maker",
-          'Forked from <a href="/realms/everglade">Everglade</a>, made by OpenAgents.' in page, page[:2400])
+          'Forked from <a href="/worlds/everglade">Everglade</a>, made by OpenAgents.' in page, page[:2400])
     check("its line says what it forks and its rules, until its owner writes one",
           'content="A fork of Everglade on the Verse by OpenAgents: always night, hostile waves."' in page, page[:1600])
     check("unpublished, it is noindex and not on /og's rows",
           '<meta name="robots" content="noindex">' in page and "/realms/doomglade|" not in b_call("GET", R + "made")[1], page[:600])
     md = site.get("realms/doomglade/index.md", {}).get("data", b"").decode()
-    check("its text names what it forks and its rules", "A fork of Everglade (https://openagents.com/realms/everglade), made by OpenAgents" in md
+    check("its text names what it forks and its rules", "A fork of Everglade (https://openagents.com/worlds/everglade), made by OpenAgents" in md
           and "- Always night\n- Hostile waves" in md and "No destruction" not in md, md)
     check("it is on the list of made pages the site keeps", b"doomglade" in site.get("realms/made-slugs.txt", {}).get("data", b""))
 
     st, ln = b_call("POST", R + "everglade/fork?as=lines", {"rules": ["lowgrav"], "name": "Doom <script>alert(1)</script>"}, other)
     check("?as=lines answers the slug and path as lines; a name's markup is taken out",
-          st == 200 and lines(ln).startswith("slug doom-scriptalert-1-script\npath /realms/doom-scriptalert-1-script\n"), (st, ln))
+          st == 200 and lines(ln).startswith("slug doom-scriptalert-1-script\npath /worlds/doom-scriptalert-1-script\n"), (st, ln))
     escaped = site.get("realms/doom-scriptalert-1-script", {}).get("data", b"").decode()
     check("and never reaches its page as markup", "<script>alert" not in escaped and "<h1>Doom scriptalert(1)/script</h1>" in escaped, escaped[2000:2600])
     st, plain = b_call("POST", R + "everglade/fork", {"rules": []}, other)
@@ -151,7 +151,7 @@ def realm_fork_checks():
         time.sleep(0.1)
     check("published, its page is written again: indexed, with its own line and still crediting Everglade",
           "noindex" not in page and 'content="Always night in Everglade, and the watch comes in waves. bRun./b"' in page
-          and 'Forked from <a href="/realms/everglade">Everglade</a>' in page, page[:1200])
+          and 'Forked from <a href="/worlds/everglade">Everglade</a>' in page, page[:1200])
     rows = b_call("GET", R + "made")[1]
     check("and it is on /og's rows with its line, an unpublished fork still not", "/realms/doomglade|made||Doomglade|Always night in Everglade" in rows
           and "/realms/everglade-fork|" not in rows and "/realms/moonlit-marsh|" in rows, rows[:400])
@@ -165,7 +165,7 @@ def realm_fork_checks():
           and ff["name"] == "Doomglade Fork" and ff["rules"] == ["waves"], (st, ff))
     page2 = site.get("realms/" + ff.get("slug", "x"), {}).get("data", b"").decode()
     check("its page links what it was forked from and the realm that came from",
-          'Forked from <a href="/realms/doomglade">Doomglade</a>, a fork of <a href="/realms/everglade">Everglade</a> made by OpenAgents.' in page2
+          'Forked from <a href="/worlds/doomglade">Doomglade</a>, a fork of <a href="/worlds/everglade">Everglade</a> made by OpenAgents.' in page2
           and 'data-base="everglade"' in page2 and "row flock 0 " in b_call("GET", R + ff.get("slug", "x"), key=other)[1], page2[2000:2600])
     check("the fork it came from is unchanged", "waves 1 Hostile waves" in line_map(b_call("GET", R + "doomglade/fork")[1])["rule"]
           and "lowgrav 1 Low gravity" in line_map(b_call("GET", R + "doomglade/fork")[1])["rule"])
@@ -231,7 +231,7 @@ def realm_fork_checks():
         if page3:
             break
         time.sleep(0.1)
-    check("the fork's page names its parent and plays the made-realm template", 'Forked from <a href="/realms/forge-court">Forge Court</a> at revision 4.' in page3
+    check("the fork's page names its parent and plays the made-realm template", 'Forked from <a href="/worlds/forge-court">Forge Court</a> at revision 4.' in page3
           and 'data-made="forge-court-copy"' in page3, page3[:1600])
     st, auto, _ = call("POST", R + "forge-court/fork", json.dumps({"name": "Forge Court Probe"}).encode(),
                     {"Content-Type": "application/json", "X-Verse-Player": rival, "X-Verse-Automation": "forge-journey"})

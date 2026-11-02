@@ -38,7 +38,7 @@ Milestones, in order:
 
 - #e232 **The moonlit cemetery and its field**: 0 of 4 done, 0 ready. The cemetery garden, its paths and tombstones, and the open field beside it, lit only by the moon.
 
-- #1a85 **You, the visitor from another realm**: 0 of 2 done, 0 ready. Your character: a shadow with soft edges and a trail of particles.
+- #1a85 **You, the visitor from another world**: 0 of 2 done, 0 ready. Your character: a shadow with soft edges and a trail of particles.
 
 - #7768 **Bring your pet: make and customize its avatar**: 0 of 5 done, 0 ready. Upload text, images or video about your pet, late or new; an agent builds a glowing avatar you customize, with emotes and skills.
 
@@ -140,7 +140,7 @@ Blocked by Verse engine work, tracked in the Verse project (https://openagents.c
 ## Acceptance
 
 - Side-by-side screenshots at desktop and phone show the moonlit look Kiki approves
-- Frame time stays inside the realm's budget on a phone
+- Frame time stays inside the world's budget on a phone
 
 ### #1871 The cemetery garden and the field beside it
 
@@ -178,7 +178,7 @@ Blocked by Verse engine work, tracked in the Verse project (https://openagents.c
 
 ### #e2af Your character: an all-black humanoid with fuzzy edges
 
-status open · size M · labels web, character, needs-verse · milestone #1a85 You, the visitor from another realm
+status open · size M · labels web, character, needs-verse · milestone #1a85 You, the visitor from another world
 
 Waits on: #e172 Everything lit by moonlight: dim, blue, with outlines (open)
 
@@ -193,15 +193,15 @@ Blocked by Verse engine work, tracked in the Verse project (https://openagents.c
 - The shadow reads clearly against the moonlit garden
 - Its edges look soft at desktop and phone sizes
 
-### #a37a Particles that show you're visiting from another realm
+### #a37a Particles that show you're visiting from another world
 
-status open · size S · labels web, effects, needs-verse · milestone #1a85 You, the visitor from another realm
+status open · size S · labels web, effects, needs-verse · milestone #1a85 You, the visitor from another world
 
 Waits on: #e2af Your character: an all-black humanoid with fuzzy edges (open)
 
 Event: `a37a650fe59c4eca0676a07968047314ed3d6ac3b85fa1ceb7998a27da7a1b26`
 
-A light trail of particles around the visitor while it moves, so it reads as a guest from another realm.
+A light trail of particles around the visitor while it moves, so it reads as a guest from another world.
 
 Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-particles. This task can't land until those are done.
 
@@ -463,7 +463,7 @@ Waits on: #7963 Place the vase anywhere; the tutorial leads you to the tombstone
 
 Event: `47bcc0d966285331272ff7d3de57246f0a47e919febf5bbaf62251b6e735139c`
 
-From landing to making your pet, playing fetch, picking flowers and placing the vase by the tombstone: one tip at a time, in the realm's plate style.
+From landing to making your pet, playing fetch, picking flowers and placing the vase by the tombstone: one tip at a time, in the world's plate style.
 
 ## Acceptance
 

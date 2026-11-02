@@ -236,12 +236,12 @@ fork_message :: (s: [] Everglade, kind: int, text: string) -> bool {
     else { fk_say(s, ifx st == 403 then "ONLY ITS OWNER PUBLISHES IT" else "NOT PUBLISHED: TRY AGAIN"); }
     return true;
   }
-  // FORK IT: "slug S", "path /realms/S"
+  // FORK IT: "slug S", "path /worlds/S"
   s[0].fk[0].going = false;
   if st != 200 {
     // 403: making realms is invite only and this player isn't an approved creator (coax/web/api access)
-    fk_say(s, ifx st == 401 then "NO PLAYER YET: TRY AGAIN IN A MOMENT" else ifx st == 429 then "THAT'S TODAY'S REALMS"
-              else ifx st == 403 then "MAKING REALMS IS INVITE ONLY FOR NOW" else "NOT FORKED: TRY AGAIN");
+    fk_say(s, ifx st == 401 then "NO PLAYER YET: TRY AGAIN IN A MOMENT" else ifx st == 429 then "THAT'S TODAY'S WORLDS"
+              else ifx st == 403 then "MAKING WORLDS IS INVITE ONLY FOR NOW" else "NOT FORKED: TRY AGAIN");
     return true;
   }
   path := "";
@@ -251,8 +251,10 @@ fork_message :: (s: [] Everglade, kind: int, text: string) -> bool {
     if e - i > 5 && body[i..<i + 5] == "path " { path = body[i + 5..<e]; }
     i = e + 1;
   }
-  if path.count < 9 || path[0..<8] != "/realms/" || !fk_slug_ok(path[8..<path.count]) { fk_say(s, "NOT FORKED: TRY AGAIN"); return true; }
-  fk_go(s, path);
+  if path.count < 9 || (path[0..<8] != "/worlds/" && path[0..<8] != "/realms/") || !fk_slug_ok(path[8..<path.count]) { fk_say(s, "NOT FORKED: TRY AGAIN"); return true; }
+  to: [FK_URL] u8;   // an API from before worlds says /realms/
+  m := fk_put(to[..], 0, "/worlds/"); m = fk_put(to[..], m, path[8..<path.count]);
+  fk_go(s, cast(string) to[0..<m]);
   return true;
 }
 fk_go :: (s: [] Everglade, path: string) {
@@ -285,7 +287,7 @@ fork_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   }
   else if hit == FB_ORIGINAL && s[0].fk[0].from_n > 0 {
     buf: [FK_URL] u8;
-    n := fk_put(buf[..], 0, "/realms/");
+    n := fk_put(buf[..], 0, "/worlds/");
     n = fk_put(buf[..], n, cast(string) s[0].fk[0].from[0..<s[0].fk[0].from_n]);
     fk_go(s, cast(string) buf[0..<n]);
   }
@@ -442,8 +444,8 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
           && cast(string) g[0].fk[0].req_body[0..<g[0].fk[0].req_body_n] == "{\"rules\":[\"night\",\"waves\"]}"
           && g[0].fk[0].req_flags == HTTP_POST | HTTP_ANSWER | TRACK_KEY;
   everglade_fork_requested(g[..], 4);
-  #assert fork_message(g[..], HTTP_KIND + 4, "200\nslug doomglade\npath /realms/doomglade\npage 1\n");
-  #assert everglade_action(g[..]) == FK_ACT_NAVIGATE && cast(string) g[0].outbox[0..<g[0].out_n] == "/realms/doomglade";
+  #assert fork_message(g[..], HTTP_KIND + 4, "200\nslug doomglade\npath /worlds/doomglade\npage 1\n");
+  #assert everglade_action(g[..]) == FK_ACT_NAVIGATE && cast(string) g[0].outbox[0..<g[0].out_n] == "/worlds/doomglade";
   // a path that isn't a realm's is never followed
   g[0].fk[0].going = false;
   fork_it(g[..]);
@@ -454,7 +456,7 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   fork_it(g[..]);
   everglade_fork_requested(g[..], 6);
   #assert fork_message(g[..], HTTP_KIND + 6, "403\ninvite only") && everglade_action(g[..]) == 0;
-  #assert cast(string) g[0].fk[0].note[0..<g[0].fk[0].note_n] == "MAKING REALMS IS INVITE ONLY FOR NOW";
+  #assert cast(string) g[0].fk[0].note[0..<g[0].fk[0].note_n] == "MAKING WORLDS IS INVITE ONLY FOR NOW";
 }
 
 #test "a fork's pane says what it was forked from and who made it; hostile waves send the watch in" #steps 337000000 {

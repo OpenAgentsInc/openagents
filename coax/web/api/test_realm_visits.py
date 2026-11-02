@@ -15,7 +15,7 @@ def vpost(sid, events, headers=None):
 vpost(vsid("01"), [vev("session-start", 1, {"pid": "vis-aaaa0001"}), vev("page-view", 2, {"pid": "vis-aaaa0001", "path": "/realms/vt-house"})])
 vpost(vsid("02"), [vev("session-start", 1, {"pid": "vis-aaaa0002"}), vev("page-view", 2, {"pid": "vis-aaaa0002", "path": "/realm/vt-house"}),
                    vev("page-view", 3, {"pid": "vis-aaaa0002", "path": "/realms/vt-glade/hotbar"})])
-vpost(vsid("03"), [vev("session-start", 1, {"pid": "vis-aaaa0001"}), vev("page-view", 2, {"pid": "vis-aaaa0001", "path": "/realms/vt-house"})])
+vpost(vsid("03"), [vev("session-start", 1, {"pid": "vis-aaaa0001"}), vev("page-view", 2, {"pid": "vis-aaaa0001", "path": "/worlds/vt-house"})])   # its address since November 2
 # our team and automation in the Haunted House count for nothing; neither does the list page itself
 vpost(vsid("04"), [vev("session-start", 1, {"pid": "vis-team0004"}), vev("page-view", 2, {"pid": "vis-team0004", "path": "/realms/vt-house"})], {"Cookie": "oa_team=1"})
 vpost(vsid("05"), [vev("session-start", 1, {"pid": "vis-auto0005"}), vev("page-view", 2, {"pid": "vis-auto0005", "path": "/realms/vt-house"})], {"X-Verse-Automation": "release-smoke"})

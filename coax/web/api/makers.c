@@ -97,7 +97,7 @@ static void make_code(const request *q, PGconn *db, const char *realm) {
   else if (atoi(PQgetvalue(r, 0, 0)) != 200) api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   else {
     char out[512];
-    snprintf(out, sizeof out, "{\"realm\":\"%s\",\"code\":\"%s\",\"link\":\"%s/realms/%s/claim#code=%s\"}", realm, code, origin(), realm, code);
+    snprintf(out, sizeof out, "{\"realm\":\"%s\",\"code\":\"%s\",\"link\":\"%s/worlds/%s/claim#code=%s\"}", realm, code, origin(), realm, code);
     api_json(q->fd, 200, out);
     api_log("makers: a claim code for %s", realm);
   }
@@ -280,7 +280,7 @@ bool makers_route(const request *q) {
   const char *slash = strchr(realm, '/');
   size_t n = slash ? (size_t)(slash - realm) : strlen(realm);
   const char *what = slash ? slash + 1 : "";
-  if (!slug_ok(realm, n)) { api_json(q->fd, 404, "{\"error\":\"no such realm\"}"); return true; }
+  if (!slug_ok(realm, n)) { api_json(q->fd, 404, "{\"error\":\"no such world\"}"); return true; }
   char slug[65]; memcpy(slug, realm, n); slug[n] = 0;
   bool post = !strcmp(q->method, "POST");
   char from[256];

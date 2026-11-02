@@ -8,7 +8,7 @@
 //   GET  /api/playtest/replies/<id>/card                    -> text/plain "want" (its maker, no card yet) or "no"
 //   POST /api/playtest/replies/<id>/card  (image/jpeg)      -> 200 {image, page}: its maker; 400 not a 1200x630 JPEG, 413, 403, 404
 //
-// Its page, /realms/everglade/reply/<id> (and .../index.html, .../index.md), and its card,
+// Its page, /worlds/everglade/reply/<id> (the bucket's realms/everglade/reply/<id>) (and .../index.html, .../index.md), and its card,
 // .../card.jpg, are written into the site's bucket (OA_SITE_BUCKET) by a child with its own
 // connection; a release keeps them (coax/web/upload.py).
 //   OA_REPLIES_PER_DAY   replies a player makes a day (40)
@@ -85,7 +85,7 @@ static void make(const request *q, PGconn *db, const char *key) {
   PGconn *c = api_db_new();
   bool paged = c && write_page(c, id);
   char out[200];
-  snprintf(out, sizeof out, "{\"id\":\"%s\",\"path\":\"/realms/everglade/reply/%s\",\"page\":%s}", id, id, paged ? "true" : "false");
+  snprintf(out, sizeof out, "{\"id\":\"%s\",\"path\":\"/worlds/everglade/reply/%s\",\"page\":%s}", id, id, paged ? "true" : "false");
   api_json(q->fd, 200, out);
   if (c) PQfinish(c);
   _exit(0);
@@ -120,7 +120,7 @@ static void card(const request *q, PGconn *db, const char *id, const char *key, 
   const char *w[2] = {id, kb};
   char *at = sql_one(c, "SELECT verse.reply_card_kept($1, $2::int)", 2, w);
   bool paged = at && write_page(c, id);
-  snprintf(out, sizeof out, "{\"image\":\"/realms/everglade/reply/%s/card.jpg?v=%s\",\"page\":%s}", id, at ? at : "0", paged ? "true" : "false");
+  snprintf(out, sizeof out, "{\"image\":\"/worlds/everglade/reply/%s/card.jpg?v=%s\",\"page\":%s}", id, at ? at : "0", paged ? "true" : "false");
   api_json(q->fd, 200, out);
   free(at);
   PQfinish(c);

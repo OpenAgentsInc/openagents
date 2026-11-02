@@ -154,7 +154,7 @@ demo_grid :: (out:[]f32,at:int,b:HudBox,p:HdPen,t:f32,selected:int)->int {
   v:=at;
   for i:-12..<13 {f:=cast(f32)i;v=demo_grid_line(out,v,b,f,-12,0,f,12,0,t,p,1,0.2);v=demo_grid_line(out,v,b,-12,f,0,12,f,0,t,p,1,0.2);}
   xs:=[5]f32.[-4,3,-1,5,-5];zs:=[5]f32.[-3,-4,4,3,3];
-  names:=[5]string.["COAX / COMPILER","AETHYR / ENGINE","PSIONIC / COMPUTE","VERSE / REALMS","NOSTR / RELAY"];
+  names:=[5]string.["COAX / COMPILER","AETHYR / ENGINE","PSIONIC / COMPUTE","VERSE / WORLDS","NOSTR / RELAY"];
   for i:0..<5 {
     x:=xs[i];z:=zs[i];sel:=i==selected;
     for j:0..<4 {

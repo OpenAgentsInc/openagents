@@ -3,7 +3,7 @@
 // realmlist.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../verse/gpu/wgsl.coax";
 
-// /realms' two passes (realmlist.coax decides every number): a dark nebula,
+// /worlds' two passes (realmlist.coax decides every number): a dark nebula,
 // dimmer than the splash's so the HUD reads over it, with the glass of up to
 // ten HUD panels, then the strokes. Cold, not warm: orange is Bitcoin's.
 //

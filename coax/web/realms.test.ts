@@ -183,7 +183,7 @@ test("Everglade and Hold the Stair play by the SRD 5e ruleset and their pages sa
 })
 test("refuses an unknown ruleset", () => expect(check((r) => (r.ruleset = "pathfinder"))).toThrow(/ruleset is one of/))
 
-// /realms (realmlist.coax): every listed realm, with when it opened and its one line.
+// /worlds (realmlist.coax): every listed realm, with when it opened and its one line.
 test("a listed realm needs when it opened and its one line; an unlisted one doesn't", () => {
   expect(check((r) => delete r.added)).toThrow(/needs added/)
   expect(check((r) => (r.added = "Oct 28"))).toThrow(/needs added/)
@@ -192,7 +192,7 @@ test("a listed realm needs when it opened and its one line; an unlisted one does
   expect(check((r) => (r.line = "x".repeat(61)))).toThrow(/needs line/)
   expect(check((r) => { delete r.added; delete r.line }, { styleBlock: false }, "fixture")).not.toThrow()
 })
-test("/realms lists the listed realms: its rows, its text and its links", () => {
+test("/worlds lists the listed realms: its rows, its text and its links", () => {
   const list = worlds(join(SITE, "realms.json"), { styleBlock: false })
   const shown = listed(list)
   expect(shown.length).toBeGreaterThan(1)
@@ -200,8 +200,8 @@ test("/realms lists the listed realms: its rows, its text and its links", () => 
   const rows = JSON.parse(listCoax(list).match(/REALMS_ROWS :: (".*");/)![1]).trim().split("\n")
   expect(rows.map((l: string) => l.split("|")[0])).toEqual(shown.map((r) => r.slug))
   for (const r of shown) {
-    expect(listMarkdown(list)).toContain(`(https://openagents.com/realms/${r.slug})`)
-    expect(listPage(list)).toContain(`<a href="/realms/${r.slug}">`)
+    expect(listMarkdown(list)).toContain(`(https://openagents.com/worlds/${r.slug})`)
+    expect(listPage(list)).toContain(`<a href="/worlds/${r.slug}">`)
   }
   expect(listPage(list)).toContain('data-app="realmlist" data-lines="44:/api/analytics/realms"')
 })

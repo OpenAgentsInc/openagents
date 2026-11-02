@@ -1,5 +1,5 @@
 // The realms list's C face for the browser: scalar Wasm exports over the
-// Coax procedures in realmlist.coax (/realms). The host keeps one RealmsState.
+// Coax procedures in realmlist.coax (/worlds). The host keeps one RealmsState.
 #include "realmlist.h"
 #include "analytics-face.h"
 #include <stddef.h>

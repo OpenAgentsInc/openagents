@@ -59,12 +59,13 @@ def check(ok, what):
 
 pages = ["/projects", "/projects/index.md", "/projects/coax/demo"] + [p for slug in sys.argv[5].split() for p in (f"/projects/{slug}", f"/projects/{slug}/index.md")]
 check(all(f"/projects/{slug}" in pages for slug in ("coax", "verse", "planetary-villa")), f"the project pages: {sys.argv[5].strip()}")
-moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md",   # the old addresses: 301 to /projects/* and /realms/*
-         "/realm/haunted-house", "/realm/everglade?from=playtest", "/realm/haunted-house/index.md", "/realm/everglade/og.jpg", "/realm/hecates-cemetery/card.jpg"]
+moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md",   # the old addresses: 301 to /projects/* and /worlds/*
+         "/realm/haunted-house", "/realm/everglade?from=playtest", "/realm/haunted-house/index.md", "/realm/everglade/og.jpg", "/realm/hecates-cemetery/card.jpg",
+         "/realms", "/realms/", "/realms/everglade", "/realms/everglade?from=playtest", "/realms/haunted-house/index.md", "/realms/built"]
 extra = [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})] if coder else [("/" + uuid.uuid4().hex, {404})]
 verse = ["/verse", "/verse/index.md"]   # the playtest's landing
-retired = ["/verse/galaxy", "/verse/galaxy/", "/verse/galaxy/index.md", "/verse/galaxy?realms=all"]   # the galaxy: 301 to /realms (lb.sh)
-first = fetch(["/", ("/", "GET", "http"), "/realms/haunted-house", "/realms/haunted-house/index.md"] + pages + moved + [p for p, _ in extra] + verse + retired)
+retired = ["/verse/galaxy", "/verse/galaxy/", "/verse/galaxy/index.md", "/verse/galaxy?realms=all"]   # the galaxy: 301 to /worlds (lb.sh)
+first = fetch(["/", ("/", "GET", "http"), "/worlds/haunted-house", "/worlds/haunted-house/index.md"] + pages + moved + [p for p, _ in extra] + verse + retired)
 (s, h, page), redirect, house, house_md = first[:4]
 s_pages = first[4:4 + len(pages)]
 s_moved = first[4 + len(pages):4 + len(pages) + len(moved)]
@@ -114,16 +115,16 @@ for path, (s, h, body) in zip(pages, s_pages):
     if path.count("/") == 2 and not path.endswith(".md"):
         slug = path.rsplit("/", 1)[1]
         check(re.search(rb'data-text="[0-9a-f]{64} ' + slug.encode() + rb'"', body) is not None, f"{path} names its project")
-# The old /project/* and /realm/* addresses move for good to /projects/* and /realms/*, path and query kept.
+# The old /project/*, /realm/* and /realms/* addresses move for good to /projects/* and /worlds/*, path and query kept.
 for path, (s, h, _) in zip(moved, s_moved):
-    want = re.sub(r"^/(project|realm)/", lambda m: f"/{m.group(1)}s/", path)
+    want = re.sub(r"^/project/", "/projects/", re.sub(r"^/realms?(?=/|$)", "/worlds", path))
     where = h.get("location", "")
     check(s == 301 and where in (want, f"https://{host}{want}"), f"{path} moves to {want} ({s} {where})")
 # The Haunted House: its page, its Markdown, and every asset it names (the
 # house's document, geometry and sheets; sounds and their loop).
-check(house[0] == 200 and b'data-app="realm"' in house[2], f"/realms/haunted-house ({house[0]})")
-check(house_md[0] == 200, f"/realms/haunted-house/index.md ({house_md[0]})")
-check(len(urls) >= 16, f"/realms/haunted-house names its assets ({len(urls)})")
+check(house[0] == 200 and b'data-app="realm"' in house[2], f"/worlds/haunted-house ({house[0]})")
+check(house_md[0] == 200, f"/worlds/haunted-house/index.md ({house_md[0]})")
+check(len(urls) >= 16, f"/worlds/haunted-house names its assets ({len(urls)})")
 for u, (s, h, _) in zip(urls, got[len(files):]):
     check(s == 200 and "immutable" in h.get("cache-control", ""), f"{u} ({s})")
 for (path, want), (s, _, body) in zip(extra, s_extra):
@@ -131,10 +132,10 @@ for (path, want), (s, _, body) in zip(extra, s_extra):
         check(s in want, f"coder still answers {path} ({s})")
     else:
         check(s in want and b'data-page="1"' in body, f"an unknown path gets the Coax 404 ({s})")
-# The galaxy is retired: every address of it moves for good to /realms, its query dropped.
+# The galaxy is retired: every address of it moves for good to /worlds, its query dropped.
 for path, (s, h, _) in zip(retired, s_retired):
     where = h.get("location", "")
-    check(s == 301 and where in ("/realms", f"https://{host}/realms"), f"{path} moves to /realms ({s} {where})")
+    check(s == 301 and where in ("/worlds", f"https://{host}/worlds"), f"{path} moves to /worlds ({s} {where})")
 # The Verse's way in: the landing (the verse app's page 0) and its Markdown.
 for path, (s, h, body) in zip(verse, s_verse):
     if path.endswith(".md"):
@@ -154,7 +155,7 @@ check(cs == 200 and ch.get("content-type", "").startswith("image/jpeg") and cb[:
 # Link previews (docs/web/og-tags.md, coax/web/og.ts): a page of each kind names a whole preview,
 # and its card is a JPEG on the site.
 if not coder:
-    for path in ["/", "/projects/coax", "/realms/dead-gears", "/pylon"]:
+    for path in ["/", "/projects/coax", "/worlds/dead-gears", "/pylon"]:
         ps, _, pb = get(path)
         head = pb.split(b"</head>", 1)[0]
         named = {k: v for k, v in re.findall(rb'<meta (?:property|name)="((?:og|twitter):[a-z:]+)" content="([^"]*)">', head)}

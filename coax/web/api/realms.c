@@ -116,7 +116,7 @@ static bool sql_json(const request *q, PGconn *db, const char *sql, int n, const
 }
 
 static void text_answer(int fd, PGresult *r) {
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetisnull(r, 0, 0)) { api_json(fd, 404, "{\"error\":\"no such realm\"}"); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetisnull(r, 0, 0)) { api_json(fd, 404, "{\"error\":\"no such world\"}"); return; }
   const char *t = PQgetvalue(r, 0, 0);
   api_respond(fd, 200, "text/plain; charset=utf-8", NULL, t, strlen(t));
 }
@@ -225,7 +225,8 @@ static char *sql_one(PGconn *c, const char *sql, int n, const char *const *v) {
   return out;
 }
 
-// The page at /realms/<slug> (an object of that name, as upload.py writes a site's pages), at
+// The page at /worlds/<slug>: the bucket's realms/<slug> (an object of that name, as upload.py writes a
+// site's pages; the load balancer serves realms/ at /worlds, lb.sh), at
 // .../index.html, its index.md, and the list of made realms. Without a bucket (a dev server) it is
 // skipped and the page says so: /realms/built#<slug> opens it there.
 // A private realm (0099) has no page there: write_page writes nothing for it, and making a realm
@@ -352,7 +353,7 @@ static void card(const request *q, PGconn *db, const char *slug, const char *key
   const char *v[3] = {slug, key, admin};
   if (!post) {
     char *want = sql_one(db, "SELECT verse.builder_card_want($1, $2, $3::boolean)", 3, v);
-    if (!want) { api_json(q->fd, 404, "{\"error\":\"no such realm\"}"); return; }
+    if (!want) { api_json(q->fd, 404, "{\"error\":\"no such world\"}"); return; }
     api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, want, strlen(want));
     free(want);
     return;
@@ -360,7 +361,7 @@ static void card(const request *q, PGconn *db, const char *slug, const char *key
   char *may = sql_one(db, "SELECT verse.builder_card_may($1, $2, $3::boolean)", 3, v);
   int status = may ? atoi(may) : 500;
   free(may);
-  if (status == 404) { api_json(q->fd, 404, "{\"error\":\"no such realm\"}"); return; }
+  if (status == 404) { api_json(q->fd, 404, "{\"error\":\"no such world\"}"); return; }
   if (status != 200) { api_json(q->fd, status == 403 ? 403 : 500, status == 403 ? "{\"error\":\"only its owner and admins\"}" : "{\"error\":\"not kept\"}"); return; }
   if (q->body_len > CARD_MAX) { api_json(q->fd, 413, "{\"error\":\"a card is under 300 KB\"}"); return; }
   if (!jpeg_1200x630((const unsigned char *)q->body, q->body_len)) { api_json(q->fd, 400, "{\"error\":\"a 1200x630 JPEG\"}"); return; }
@@ -378,7 +379,7 @@ static void card(const request *q, PGconn *db, const char *slug, const char *key
   const char *w[2] = {slug, kb};
   char *at = sql_one(c, "SELECT verse.builder_card_kept($1, $2::int)", 2, w);
   bool paged = at && write_page(c, slug);
-  snprintf(out, sizeof out, "{\"image\":\"/realms/%s/card.jpg?v=%s\",\"page\":%s}", slug, at ? at : "0", paged ? "true" : "false");
+  snprintf(out, sizeof out, "{\"image\":\"/worlds/%s/card.jpg?v=%s\",\"page\":%s}", slug, at ? at : "0", paged ? "true" : "false");
   api_json(q->fd, 200, out);
   _exit(0);
 }
@@ -417,7 +418,7 @@ static void make_answer(int fd, const char *answer, const char *slug, bool lines
   }
   if (lines) {
     char out[200];
-    snprintf(out, sizeof out, "slug %s\npath /realms/%s\npage %d\n", slug, slug, paged ? 1 : 0);
+    snprintf(out, sizeof out, "slug %s\npath /worlds/%s\npage %d\n", slug, slug, paged ? 1 : 0);
     api_respond(fd, 200, "text/plain; charset=utf-8", NULL, out, strlen(out));
     return;
   }
@@ -479,7 +480,7 @@ static void fork_realm(const request *q, PGconn *db, const char *slug, const cha
     const char *v[3] = {slug, key, admin};
     PGresult *r = PQexecParams(db, "SELECT verse.fork_info($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
-    else if (PQresultStatus(r) == PGRES_TUPLES_OK) api_json(q->fd, 404, "{\"error\":\"this realm can't be forked\"}");
+    else if (PQresultStatus(r) == PGRES_TUPLES_OK) api_json(q->fd, 404, "{\"error\":\"this world can't be forked\"}");
     else { api_log("realms: fork info: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
     PQclear(r);
     return;
@@ -789,7 +790,7 @@ static bool realm_hidden(const request *q, PGconn *db, const char *slug, const c
   if (!ok) api_log("realms: hidden: %s", PQerrorMessage(db));
   PQclear(r);
   if (!ok) { api_json(q->fd, 500, "{\"error\":\"not read\"}"); return true; }
-  if (hidden) api_json(q->fd, 404, "{\"error\":\"no such realm\"}");
+  if (hidden) api_json(q->fd, 404, "{\"error\":\"no such world\"}");
   return hidden;
 }
 
@@ -844,7 +845,7 @@ bool realms_route(const request *q) {
     return true;
   }
   if (!strcmp(rest, "mine")) {   // the caller's realms (0098): "realm SLUG|REV|PUBLISHED|LISTED|NAME" lines, or JSON
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET your realms\"}"); return true; }
+    if (post) { api_json(q->fd, 405, "{\"error\":\"GET your worlds\"}"); return true; }
     const char *v[1] = {key};
     PGresult *r = PQexecParams(db, "SELECT x->>'lines', (x->'body')::text FROM verse.realms_mine($1) x", 1, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("realms: mine: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
@@ -872,7 +873,7 @@ bool realms_route(const request *q) {
   const char *slash = strchr(rest, '/');
   size_t n = slash ? (size_t)(slash - rest) : strlen(rest);
   char slug[49];
-  if (!slug_ok(rest, n)) { api_json(q->fd, 404, "{\"error\":\"no such realm\"}"); return true; }
+  if (!slug_ok(rest, n)) { api_json(q->fd, 404, "{\"error\":\"no such world\"}"); return true; }
   memcpy(slug, rest, n); slug[n] = 0;
   const char *what = slash ? slash + 1 : "";
   // A site admin (admins.conf, by site login or NIP-98) is an admin of every realm; SQL decides the rest.
@@ -925,7 +926,7 @@ bool realms_route(const request *q) {
     return true;
   }
   if (!*what) {
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the realm\"}"); return true; }
+    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the world\"}"); return true; }
     const char *v[3] = {slug, key, admin};
     PGresult *r = PQexecParams(db, "SELECT verse.realm_edit_spec($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     text_answer(q->fd, r);
@@ -949,7 +950,7 @@ bool realms_route(const request *q) {
     const char *v[3] = {slug, key, admin};
     PGresult *r = PQexecParams(db, "SELECT verse.edit_panes($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
-    else if (PQresultStatus(r) == PGRES_TUPLES_OK) api_json(q->fd, 404, "{\"error\":\"no such realm\"}");
+    else if (PQresultStatus(r) == PGRES_TUPLES_OK) api_json(q->fd, 404, "{\"error\":\"no such world\"}");
     else { api_log("realms: panes: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
     PQclear(r);
     return true;

@@ -1,6 +1,6 @@
 # Watchtower
 
-A Verse realm at https://openagents.com/realms/watchtower: a cyber defense range. A small company network stands on the Grid: a firewall, mail and web servers, three workstations, a file server, the directory (DC) and the vault. An intruder works its way in from the internet and heads for the vault. You read the sensor log, find it and evict it before it empties the vault, without taking so much offline that the business goes dark.
+A Verse world at https://openagents.com/worlds/watchtower: a cyber defense range. A small company network stands on the Grid: a firewall, mail and web servers, three workstations, a file server, the directory (DC) and the vault. An intruder works its way in from the internet and heads for the vault. You read the sensor log, find it and evict it before it empties the vault, without taking so much offline that the business goes dark.
 
 Everything is simulated. No real systems or traffic are involved. The log lines are modelled on real log formats (logon events, DNS, SMB, Kerberos, process launches) so that reading them here carries over to a real security console.
 
@@ -13,7 +13,7 @@ Everything is simulated. No real systems or traffic are involved. The log lines 
 - C reimages it: the host goes offline for 5 seconds and comes back clean.
 - R resets every admin credential. It costs a little uptime and can run every 25 seconds. If the DC still holds an implant, the intruder takes the keys again, so clean the DC first.
 - You have two responders, so two scans or reimages can run at once.
-- REALMS at the top right, or Escape, goes to the [realms list](https://openagents.com/realms).
+- WORLDS at the top right, or Escape, goes to the [worlds list](https://openagents.com/worlds).
 
 ## What you are watching
 
@@ -42,6 +42,6 @@ The after-action report says how long the shift ran, how many steps the intruder
 - The page is written from `realms.json` by `coax/web/realms.ts` (`docs/verse/realm-host.md`).
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

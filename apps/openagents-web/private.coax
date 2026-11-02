@@ -37,7 +37,7 @@
 // /api/auth/key, unless a session already exists (the phone's stays, and the
 // page offers SWITCH TO MY WORDS ACCOUNT). The key lives only while a call signs.
 
-// /realms/<slug>/claim#code=... is page 4 (ev-claim-realm, docs/verse/makers.md): a maker's
+// /worlds/<slug>/claim#code=... is page 4 (ev-claim-realm, docs/verse/makers.md): a maker's
 // one-time claim link. The page logs in the way /login does (the words account kept in this
 // browser, or a session the phone app made), then takes a display name and a Lightning address
 // and posts them with the code to oa-api (/api/playtest/makers/<slug>/claim). The code leaves
@@ -1160,10 +1160,10 @@ pv_invite :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   x0 := (w - colw) * 0.5;
   f := PvFlow.{y = 110 * d - s[0].scroll, v = v};
   done := s[0].claim_state == CLAIM_DONE;
-  f.v = put_fit(out, f.v, ifx done then "YOU CAN MAKE REALMS" else "AN INVITE TO MAKE REALMS", x0, f.y, ifx w / d < 520 then 11 * d else 14 * d, white, colw);
+  f.v = put_fit(out, f.v, ifx done then "YOU CAN MAKE WORLDS" else "AN INVITE TO MAKE WORLDS", x0, f.y, ifx w / d < 520 then 11 * d else 14 * d, white, colw);
   f.y += 30 * d;
   if done {
-    f.v = pv_chip(s, out, f.v, "MAKE A REALM", x0, f.y, H_IMAKE, true, p, true, 0);
+    f.v = pv_chip(s, out, f.v, "MAKE A WORLD", x0, f.y, H_IMAKE, true, p, true, 0);
     f.y += 34 * d;
     f.y -= 12 * d;
     f = pv_text(s, out, f, "YOUR ACCOUNT IS ON THIS DEVICE. MY ACCOUNT SHOWS ITS 12 WORDS: KEEP THEM TO USE IT ELSEWHERE.", x0, colw, 6, dim, 3, true, 0);
@@ -1293,7 +1293,7 @@ pv_claim :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
     f.y += 12 * d;
   }
   f.y -= 12 * d;
-  f = pv_text(s, out, f, "PLAYERS' TIPS FOR THIS REALM GO TO THIS ADDRESS, IN BITCOIN.", x0, colw, 6, dim, 2, true, 0);
+  f = pv_text(s, out, f, "PLAYERS' TIPS FOR THIS WORLD GO TO THIS ADDRESS, IN BITCOIN.", x0, colw, 6, dim, 2, true, 0);
   s[0].content = f.y + 40 * d + s[0].scroll;
   return f.v;
 }
@@ -1351,7 +1351,7 @@ pv_tip :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   rn := pv_realm_name(realm[..], pv_slug(s));
   big := ifx w / d < 520 then 11 * d else 14 * d;
   if s[0].maker_status != 200 {
-    word := ifx s[0].maker_status == 404 then "NOBODY HAS CLAIMED THIS REALM YET" else ifx s[0].maker_status == 599 then "OFFLINE: TRY AGAIN SOON" else "LOADING";
+    word := ifx s[0].maker_status == 404 then "NOBODY HAS CLAIMED THIS WORLD YET" else ifx s[0].maker_status == 599 then "OFFLINE: TRY AGAIN SOON" else "LOADING";
     f.v = put_fit(out, f.v, cast(string) realm[0..<rn], x0, f.y, big, white, colw);
     f.y += 30 * d;
     f.v = put(out, f.v, word, x0, f.y, 7 * d, dim);
@@ -2193,9 +2193,9 @@ pv_act :: (s: [] PrivateState, target: int) {
   if target == H_CNAME { s[0].typing = true; s[0].focus = 4; }
   else if target == H_CLN || target == H_CNEXT { s[0].typing = true; s[0].focus = 5; }
   else if target == H_CLAIM { s[0].focus = 5; pv_claim_send(s); }
-  else if target == H_COPEN { n := pv_put(s[0].outbox[..], 0, "/realms/"); s[0].out_n = pv_put(s[0].outbox[..], n, pv_slug(s)); s[0].action = PV_NAVIGATE; }
+  else if target == H_COPEN { n := pv_put(s[0].outbox[..], 0, "/worlds/"); s[0].out_n = pv_put(s[0].outbox[..], n, pv_slug(s)); s[0].action = PV_NAVIGATE; }
   else if target == H_CACCOUNT { pv_go(s, "/login"); }
-  else if target == H_IMAKE { pv_go(s, "/realms/new"); }
+  else if target == H_IMAKE { pv_go(s, "/worlds/new"); }
   else if target == H_DAPPROVE { pv_device_approve(s); }
   else if target >= H_TIP0 && target < H_TIP0 + 3 { pv_tip_ask(s, PV_TIP_SATS[target - H_TIP0]); }
   else if target == H_TIP_COPY && s[0].tip_inv_n > 0 { s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].tip_inv[0..<s[0].tip_inv_n]); s[0].action = TK_ACT_COPY; s[0].claim_note_n = pv_put(s[0].claim_note[..], 0, "COPIED"); }
@@ -2940,9 +2940,9 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
   #assert pv_has_hit(s[..], H_COPEN) && !pv_has_hit(s[..], H_CLAIM);
   pv_act(s[..], H_COPEN);
-  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/orbit-league";
+  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/orbit-league";
 }
-#test "an invite link logs in with the words account, then redeems its code once; MAKE A REALM opens the builder" {
+#test "an invite link logs in with the words account, then redeems its code once; MAKE A WORLD opens the builder" {
   s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
   out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   coaxial_private_page(s[..], 6);
@@ -2985,7 +2985,7 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
   #assert pv_has_hit(s[..], H_IMAKE) && s[0].post_kind == 0;
   pv_act(s[..], H_IMAKE);
-  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/new";
+  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/new";
 }
 #test "an invite the server refuses says its words and isn't sent again; a lapsed session sends it once more" {
   s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
@@ -3175,7 +3175,7 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   // but it is no dead end: OPEN BELT 2200 goes back to the realm
   #assert pv_has_hit(s[..], H_COPEN);
   pv_act(s[..], H_COPEN);
-  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/belt-2200";
+  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/belt-2200";
 }
 #test "/login: a browser that logged out stays logged out; LOG IN WITH MY WORDS logs straight in" {
   s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];

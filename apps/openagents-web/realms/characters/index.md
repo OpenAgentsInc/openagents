@@ -1,6 +1,6 @@
 # Characters
 
-A Verse realm at https://openagents.com/realms/characters that shows the engine's characters: figures built from a few dozen rounded bones, posed and moved by the engine and drawn in a night garden.
+A Verse world at https://openagents.com/worlds/characters that shows the engine's characters: figures built from a few dozen rounded bones, posed and moved by the engine and drawn in a night garden.
 
 - Two shadow visitors: soft silhouettes, black all through, their edges a fuzzy fringe that thins into the night, lit by nothing but a rim of moonlight.
 - A guest drawn lit, in its coat's colours, to compare.
@@ -12,7 +12,7 @@ Choose a figure by tapping or clicking it, then its gait (STAND, WALK, RUN, and 
 
 A figure's build is a short document too. Put it in the link and the chosen figure takes it, or the page says which line it refused and why:
 
-    https://openagents.com/realms/characters#shape=size 0.7; legs 0.85; snout 1.35; ear_size 1.5; tail 1.6; fluff 1.9; pattern points; coat 0.66 0.24 0.06; marks 0.03 0.03 0.03
+    https://openagents.com/worlds/characters#shape=size 0.7; legs 0.85; snout 1.35; ear_size 1.5; tail 1.6; fluff 1.9; pattern points; coat 0.66 0.24 0.06; marks 0.03 0.03 0.03
 
 Each statement is a name and its value; what isn't named keeps its value. The numbers and their ranges (1 is the usual): `size` (0.4..1.8, the whole figure), `legs` (0.5..1.6), `body` (0.6..1.6, its length), `girth` (0.6..1.6), `head` (0.7..1.5), and for an animal `snout` (0.4..1.6), `ears` (0 drops them, 1 stands them up), `ear_size` (0.5..1.8), `tail` (0..1.8, 0 for none) and `fluff` (0.5..2, the tail's thickness). `pattern` is `plain`, `patches`, `points` (dark legs, ears, muzzle and tail tip), `stripes` or `socks`; `coat R G B` and `marks R G B` are colours, each 0..1; `look` is `soft` or `lit`.
 
@@ -20,7 +20,7 @@ Each statement is a name and its value; what isn't named keeps its value. The nu
 
 An emote is a small text document, a statement a line (or separated by `;`, so a whole one fits in a link). The engine checks it, plays it and blends it over the figure's gait. Put one in the link and the page plays it on a figure of its rig (YOURS among the emotes), or says on the screen which line it refused and why:
 
-    https://openagents.com/realms/characters#motion=nod; rig person; seconds 1.2; loop; at 0; head 20 0 0; at 0.6; head -15 0 0
+    https://openagents.com/worlds/characters#motion=nod; rig person; seconds 1.2; loop; at 0; head 20 0 0; at 0.6; head -15 0 0
 
 The statements:
 
@@ -49,7 +49,7 @@ The engine's own emotes are written in this same form (`verse/motion.coax`).
 - `verse/figure.coax` is the engine's figure: a rig (a person, or a four-legged animal), a shape (size, legs, body, girth, head, and for an animal its snout, ears, tail and coat) and a pose (each joint's turn, held to the joint's limits). It places the posed bones in the world and works out the gaits from a clock.
 - An animal's gaits: a walk lifts one foot at a time (hind left, front left, hind right, front right), a trot moves diagonal pairs together, and a run is a bounding gallop with the spine flexing.
 - `verse/motion.coax` reads and checks motion documents and plays and blends them over a pose.
-- `apps/openagents-web/characters.coax` is the realm: the figures, where they walk, the view and the controls.
+- `apps/openagents-web/characters.coax` is the world: the figures, where they walk, the view and the controls.
 - `apps/openagents-web/characters.wgsl` draws it: each pixel's ray is marched through the figures' bones, melted into one smooth body; a soft silhouette's edge is how near the ray passed, so it fades out instead of ending at a line.
 
 Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.

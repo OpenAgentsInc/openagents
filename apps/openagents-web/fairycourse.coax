@@ -587,8 +587,8 @@ ffc_note_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> in
   s: [1] Fairy;
   fairy_start(s[..]);
   fairy_clock(s[..], 29000000.0 * 60000);
-  ffc_facts(s[..], "tab=x\nurl=https://openagents.com/realms/fairy-forest#course=old\nnow=1");
-  #assert cast(string) s[0].race[0].url[0..<s[0].race[0].url_n] == "https://openagents.com/realms/fairy-forest";
+  ffc_facts(s[..], "tab=x\nurl=https://openagents.com/worlds/fairy-forest#course=old\nnow=1");
+  #assert cast(string) s[0].race[0].url[0..<s[0].race[0].url_n] == "https://openagents.com/worlds/fairy-forest";
   ffc_open(s[..]);
   #assert s[0].race[0].making && s[0].race[0].shown == FFC_SHOWN_MINE;
   // two hoops are not a course
@@ -630,7 +630,7 @@ ffc_note_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> in
   id := cast(string) s[0].life[0].course.id[0..<s[0].life[0].course.id_n];
   #assert id.count == 10 && ffc_action(s[..]) == 2;
   link := cast(string) s[0].race[0].out[0..<ffc_outbox(s[..], 2)];
-  #assert link.count == 60 && link[0..<50] == "https://openagents.com/realms/fairy-forest#course=" && link[50..<60] == id;
+  #assert link.count == 60 && link[0..<50] == "https://openagents.com/worlds/fairy-forest#course=" && link[50..<60] == id;
   ffc_action_done(s[..], 2);
   #assert ffc_action(s[..]) == 3 && ffc_outbox(s[..], 3) == 17;
   #assert cast(string) s[0].race[0].out[0..<7] == "course=" && cast(string) s[0].race[0].out[7..<17] == id;

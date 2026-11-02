@@ -165,11 +165,11 @@ net_say :: (s: [] Belt, t: string) { belt_message(s, SOCKET_KIND + 4 * s[0].lock
 #test "net: INVITE makes a room; the one who joins gets the game; both fleets' orders play the same game in lockstep; a nudged client is seen by both and mended" #steps 80000000 {
   a: [1] Belt; b: [1] Belt;
   belt_start(a[..]); belt_start(b[..]);
-  belt_message(a[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200\n");
-  belt_message(b[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200?coop=k7q2mm&desync=1\n");
+  belt_message(a[..], HOST_PAGE, "url=https://openagents.com/worlds/belt-2200\n");
+  belt_message(b[..], HOST_PAGE, "url=https://openagents.com/worlds/belt-2200?coop=k7q2mm&desync=1\n");
   net_invite(a[..]);
   #assert a[0].action == ACT_COPY && lr_on(a[0].lock[..]);
-  #assert cast(string) a[0].outbox[0..<44] == "https://openagents.com/realms/belt-2200?coop";
+  #assert cast(string) a[0].outbox[0..<44] == "https://openagents.com/worlds/belt-2200?coop";
   #assert b[0].lock[0].state == LR_JOINING && b[0].net_nudge;
   belt_socket_opened(a[..], 0); belt_socket_opened(b[..], 0);
   net_say(a[..], "y 0 0");

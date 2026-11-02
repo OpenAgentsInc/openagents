@@ -1,4 +1,4 @@
-// A Verse realm on the web, drawn by Coax: openagents.com/realms/haunted-house
+// A Verse realm on the web, drawn by Coax: openagents.com/worlds/haunted-house
 // first. The world is the Verse engine's own code, unchanged from the iOS app:
 // verse/haunt.coax plays the Haunted House, player.coax walks you through
 // it and grid.coax reads a phone's thumbs, and realm-face.c binds them for
@@ -193,7 +193,7 @@ BTN_CHAT :: BTN_DECLINE + 1; BTN_SAY :: BTN_CHAT + 1;          // the hotbar's C
 BTN_GFX :: BTN_SAY + 1;                                         // the hotbar's graphics: HIGH, MEDIUM, LOW
 BTN_VOICE :: BTN_GFX + 1;                                       // the hotbar's VOICE: talk to the house
 BTN_PIECE :: BTN_VOICE + 1;                                     // edit mode's MAKE A SET PIECE (the Sandbox)
-BTN_OWN :: BTN_PIECE + 1;                                       // the quest done: BUILD YOUR OWN REALM (/realms/new)
+BTN_OWN :: BTN_PIECE + 1;                                       // the quest done: BUILD YOUR OWN REALM (/worlds/new)
 BUTTONS :: BTN_OWN + 1;
 ACT_VOICE :: 7;     // host.js (coax/web/voice.js): the outbox is "on" or "off"
 ACT_VOICE_TO :: 8;  // voice.js: whom you face, the outbox a character's name ("" nobody)
@@ -418,7 +418,7 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   if b == BTN_USE { r[0].asks |= ifx v.target.count > 0 then ASK_USE else ASK_GOAL; }
   if b == BTN_HINT { r[0].asks |= ASK_HINT; }
   if b == BTN_BYE { r[0].asks |= ASK_BYE; }
-  if b == BTN_EXIT && r[0].action == 0 { r[0].out_n = put(r[0].outbox[..], 0, "/realms"); r[0].action = ACT_NAVIGATE; }
+  if b == BTN_EXIT && r[0].action == 0 { r[0].out_n = put(r[0].outbox[..], 0, "/worlds"); r[0].action = ACT_NAVIGATE; }
   if b == BTN_MAP { r[0].map = !r[0].map && redit_tool(r[0].ed[..], "map"); }   // SETTINGS can keep the big map from visitors
   if b == BTN_SEND && r[0].typed_n > 0 { r[0].asks |= ASK_SEND; }
   if b == BTN_CANCEL { r[0].typing = false; }
@@ -431,7 +431,7 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   }
   if b == BTN_SAY { r[0].chat = true; realm_open_text(r, TYPE_CHAT); }
   if b == BTN_PIECE && v.pieces { realm_open_text(r, TYPE_PIECE); }
-  if b == BTN_OWN && v.quest >= QUEST_STEPS && r[0].action == 0 && !access_hides_make(r[0].acc[..]) { r[0].out_n = put(r[0].outbox[..], 0, "/realms/new"); r[0].action = ACT_NAVIGATE; }
+  if b == BTN_OWN && v.quest >= QUEST_STEPS && r[0].action == 0 && !access_hides_make(r[0].acc[..]) { r[0].out_n = put(r[0].outbox[..], 0, "/worlds/new"); r[0].action = ACT_NAVIGATE; }
   if b == BTN_ACCEPT && v.offers > 0 { r[0].asks |= ASK_ACCEPT; }
   if b == BTN_DECLINE && v.offers > 0 { r[0].asks |= ASK_DECLINE; }
   // a hotbar slot takes its item in hand, or puts it away; the picked thing is let go
@@ -1447,10 +1447,10 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
     if redit_row_on(r[0].ed[..], "others") { vertices = draw_others(r, v, out, vertices); }
     vertices = draw_map(r, v, out, vertices, uniforms);
   }
-  // REALMS, under the minimap: to /realms (a way out without the browser's back)
+  // REALMS, under the minimap: to /worlds (a way out without the browser's back)
   if !aside && !r[0].map && !(phone(r) && chat_shown(r, v)) {   // a phone's chat spans the width under the minimap
     mb := minimap_box(r);
-    vertices = hud_button(r, out, vertices, BTN_EXIT, Box.{x0 = mb.x0, y0 = mb.y1 + 8 * k, x1 = mb.x1, y1 = mb.y1 + 8 * k + (ifx phone(r) then 34 * k else 30 * k)}, "REALMS", "", false);
+    vertices = hud_button(r, out, vertices, BTN_EXIT, Box.{x0 = mb.x0, y0 = mb.y1 + 8 * k, x1 = mb.x1, y1 = mb.y1 + 8 * k + (ifx phone(r) then 34 * k else 30 * k)}, "WORLDS", "", false);
   }
   if !aside && !v.no_voice && redit_tool(r[0].ed[..], "voice") { vertices = draw_voice_button(r, out, vertices); }
   vertices = redit_hud(r[0].ed[..], out, vertices, edit_box(r));
@@ -1486,7 +1486,7 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
     vertices = draw_hotbar(r, v, out, vertices);
     if v.pieces && v.selected.count == 0 { vertices = hud_button(r, out, vertices, BTN_PIECE, piece_box(r), "MAKE A SET PIECE", ifx phone(r) then "" else "P", false); }
     // the house done: on to building your own realm (docs/verse/realm-builder.md)
-    if v.quest >= QUEST_STEPS && v.selected.count == 0 && !access_hides_make(r[0].acc[..]) { vertices = hud_button(r, out, vertices, BTN_OWN, piece_box(r), "BUILD YOUR OWN REALM", "", true); }
+    if v.quest >= QUEST_STEPS && v.selected.count == 0 && !access_hides_make(r[0].acc[..]) { vertices = hud_button(r, out, vertices, BTN_OWN, piece_box(r), "BUILD YOUR OWN WORLD", "", true); }
     hint := hint_line(r, v);
     if hint.count > 0 {
       if v.selected.count > 0 { vertices = centred(d, out, vertices, v.selected, r[0].width * 0.5, hotbar_top(r) - 32 * k, 9 * k, orange(k, 0.95)); }
@@ -1989,18 +1989,18 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   #assert r[0].quality == 0;
 }
 
-#test "on screen while walking: your name, the minimap, REALMS, VOICE and the hotbar, and no other button" {
+#test "on screen while walking: your name, the minimap, WORLDS, VOICE and the hotbar, and no other button" {
   r: [1] Realm; desk(r[..]); v := items(view());
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
   shown := 0;
   for i: 0..<BUTTONS { if r[0].shown[i] { shown += 1; } }
   #assert shown == 3 + v.item_n && r[0].shown[BTN_MAP] && r[0].shown[BTN_VOICE] && r[0].shown[BTN_EXIT];
-  // REALMS, pressed and lifted on it, goes to /realms
+  // REALMS, pressed and lifted on it, goes to /worlds
   g := r[0].boxes[BTN_EXIT]; gx := (g.x0 + g.x1) * 0.5; gy := (g.y0 + g.y1) * 0.5;
   #assert g.y0 > minimap_box(r[..]).y1 && g.x1 <= 1440 * 2;
   #assert realm_pointer(r[..], v, gx, gy, POINTER_DOWN, 0, 1) && realm_pointer(r[..], v, gx, gy, POINTER_UP, 0, 1);
-  #assert r[0].action == ACT_NAVIGATE && cast(string) r[0].outbox[0..<r[0].out_n] == "/realms";
+  #assert r[0].action == ACT_NAVIGATE && cast(string) r[0].outbox[0..<r[0].out_n] == "/worlds";
   #assert !r[0].shown[BTN_VIEW] && !r[0].shown[BTN_EDIT] && !r[0].shown[BTN_CHAT] && !r[0].shown[BTN_GFX];
   // the hotbar's slots act on release over them: one takes its item in hand, again puts it away
   b := slot_box(r[..], 1);
@@ -2119,7 +2119,7 @@ plated :: (u: [] f32, b: Box) -> f32 {
   #assert a > b;                                  // the way glows on the edge
 }
 
-#test "the house done: BUILD YOUR OWN REALM goes to /realms/new; before, it isn't there" {
+#test "the house done: BUILD YOUR OWN WORLD goes to /worlds/new; before, it isn't there" {
   r: [1] Realm; desk(r[..]); v := view();
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   a := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
@@ -2128,10 +2128,10 @@ plated :: (u: [] f32, b: Box) -> f32 {
   b := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
   #assert r[0].shown[BTN_OWN];
   realm_do(r[..], v, BTN_OWN);
-  #assert r[0].action == ACT_NAVIGATE && cast(string) r[0].outbox[0..<r[0].out_n] == "/realms/new";
+  #assert r[0].action == ACT_NAVIGATE && cast(string) r[0].outbox[0..<r[0].out_n] == "/worlds/new";
 }
 
-#test "BUILD YOUR OWN REALM hides only when the access answer says make 0" {
+#test "BUILD YOUR OWN WORLD hides only when the access answer says make 0" {
   answers := [3] string.["200\ninvites 1\nmake 0\nin 1\ncreator 0\nasked waiting\n", "200\ninvites 1\nmake 1\nin 1\ncreator 1\nasked none\n", "503\n{\"error\":\"no database\"}"];
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   for z: 0..<3 {

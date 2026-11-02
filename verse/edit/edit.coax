@@ -620,7 +620,7 @@ redit_answer :: (e: [] RealmEdit, text: string) {
     if status == 200 {
       redit_read_rows(e, p_body);
       p_first := p_body[0..<redit_line_end(p_body, 0)];
-      redit_note(e, ifx redit_word(p_first, 2) == "applied" then "Applied: it's in the realm now." else "Not applied yet: it stays on the list.");
+      redit_note(e, ifx redit_word(p_first, 2) == "applied" then "Applied: it's in the world now." else "Not applied yet: it stays on the list.");
       e[0].spec_due = true; e[0].asks_due = true; e[0].list_first = 0;
     }
     else if status == 429 { redit_note(e, "One at a time: say it again in a moment."); }
@@ -637,7 +637,7 @@ redit_answer :: (e: [] RealmEdit, text: string) {
     return;
   }
   if what == REQ_E_REVISE {
-    if status == 200 { redit_read_rows(e, p_body); redit_note(e, "The board is the realm now."); e[0].spec_due = true; }
+    if status == 200 { redit_read_rows(e, p_body); redit_note(e, "The board is the world now."); e[0].spec_due = true; }
     else if status == 429 { redit_note(e, "One at a time: say it again in a moment."); }
     else if status == 403 { redit_note(e, "Only its owner and admins change it."); }
     else { redit_note(e, ifx p_body.count > 0 && p_body.count < 60 then p_body else "Not heard. Try again."); }
@@ -659,7 +659,7 @@ redit_answer :: (e: [] RealmEdit, text: string) {
       p_gone := ifx what == REQ_E_LORE then redit_draft(e, RF_LORE).count == 0 else redit_draft(e, RF_ASK).count == 0;
       redit_note(e, ifx what == REQ_E_LORE then (ifx p_gone then "Lore cleared." else "Lore saved.") else (ifx p_gone then "Quest taken away." else "Quest saved: it is in the world now."));
     } else if status == 403 { redit_note(e, "Only its owner and admins change it."); }
-    else if status == 409 { redit_note(e, "This realm is full of them."); }
+    else if status == 409 { redit_note(e, "This world is full of them."); }
     else { redit_note(e, "Not saved. Try again."); }
     return;
   }
@@ -776,10 +776,10 @@ redit_switch :: (e: [] RealmEdit, r: int) {
 // these here; the reply, a plain sentence to show and speak, goes into out. -1: not one of these.
 redit_heard :: (e: [] RealmEdit, word: string, key: string, on: bool, pane_said: string, out: [] u8) -> int {
   if word != "switch" && word != "show" { return -1; }
-  if !redit_may(e) { return redit_put(out, 0, "Only the realm's owner can change that."); }
+  if !redit_may(e) { return redit_put(out, 0, "Only the world's owner can change that."); }
   if word == "switch" {
     r := redit_row(e, key);
-    if r < 0 { return redit_put(out, 0, "This realm has no such switch."); }
+    if r < 0 { return redit_put(out, 0, "This world has no such switch."); }
     if e[0].row_on[r] != on { redit_switch(e, r); }
     n := redit_put(out, 0, redit_label_of(e, r));
     for i: 1..<n { if out[i] >= 'A' && out[i] <= 'Z' { out[i] = out[i] + 32; } }   // the board's capitals, said as a sentence
@@ -851,7 +851,7 @@ redit_heard_answer :: (e: [] RealmEdit, what: int, status: int, p_body: string) 
   if word == "look" && what == REQ_E_HEAR { e[0].hear_due = REQ_E_LOOK; e[0].asking = true; return; }   // the same words, with the screen
   if word == "ask" {
     redit_say(e, cast(string) e[0].hear[0..<e[0].hear_n]);
-    redit_reply(e, "I've put that on the realm's list.");
+    redit_reply(e, "I've put that on the world's list.");
     return;
   }
   out: [REDIT_REPLY] u8;
@@ -1470,7 +1470,7 @@ redit_cstatus :: (c: [] RealmComputer) -> string {
 }
 // What the job's view says above what was asked.
 redit_chead :: (c: [] RealmComputer, v: int) -> string {
-  if v == RV_DONE { return "DONE. THE REALM SHOWS IT:"; }
+  if v == RV_DONE { return "DONE. THE WORLD SHOWS IT:"; }
   if v == RV_STOPPED { return "STOPPED:"; }
   if v == RV_FAILED { return "IT STOPPED WITH A PROBLEM:"; }
   if c[0].run_state == RJ_STOPPING { return "STOPPING:"; }
@@ -1497,7 +1497,7 @@ redit_computer_pane :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, r
   p_half := (room - 8 * k) / 2;
   p_forget := ifx e[0].forget_armed_at > 0 then "SURE? TAP AGAIN" else "FORGET THIS COMPUTER";
   if v == RV_UNPAIRED {
-    yy = redit_cline(e, out, n[..], "BUILD THIS REALM WITH CODER ON YOUR COMPUTER.", x, yy, room, 0.95);
+    yy = redit_cline(e, out, n[..], "BUILD THIS WORLD WITH CODER ON YOUR COMPUTER.", x, yy, room, 0.95);
     yy = redit_cline(e, out, n[..], "1. ON YOUR COMPUTER, RUN:", x, yy, room, 0.8);
     yy = redit_cmd(e, out, n[..], RC_HOST_CMD, x, yy, room);
     yy = redit_cline(e, out, n[..], "2. PASTE THE KEY IT SHOWS HERE:", x, yy, room, 0.8);
@@ -1529,7 +1529,7 @@ redit_computer_pane :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, r
     n[0] = redit_outline(e, out, n[0], RB_CFORGET, RBox.{x0 = x, y0 = yy, x1 = x + room, y1 = yy + 26 * k}, p_forget, e[0].forget_armed_at > 0);
     yy += 34 * k;
   } else if v == RV_ALLOWED {
-    yy = redit_cline(e, out, n[..], "TELL CODER WHAT TO BUILD IN THIS REALM:", x, yy, room, 0.95);
+    yy = redit_cline(e, out, n[..], "TELL CODER WHAT TO BUILD IN THIS WORLD:", x, yy, room, 0.95);
     yy = redit_cfield(e, out, n[..], "TAP TO TYPE", "", x, yy, room);
     n[0] = redit_button(e, out, n[0], RB_CMAIN, RBox.{x0 = x, y0 = yy, x1 = x + p_half, y1 = yy + 32 * k}, ifx e[0].typing then "SEND" else "TYPE A REQUEST", true);
     n[0] = redit_outline(e, out, n[0], RB_CFORGET, RBox.{x0 = x + p_half + 8 * k, y0 = yy + 3 * k, x1 = x + room, y1 = yy + 29 * k}, p_forget, e[0].forget_armed_at > 0);

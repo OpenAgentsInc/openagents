@@ -1,4 +1,4 @@
-// The water lab (openagents.com/realms/waterlab): the water system's test
+// The water lab (openagents.com/worlds/waterlab): the water system's test
 // scene (docs/verse/water.md), for what has no home in Everglade. An
 // unlisted realm with no assets: waterlab.wgsl's bg_fs traces a sea to the
 // horizon breaking on a sloping beach, in the painted water look (the

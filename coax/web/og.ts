@@ -111,6 +111,9 @@ export function progress(app: string): Map<string, string> {
 /** Where a page's rendered card lives (og-render.ts writes it): og/<dir>.jpg, the homepage's og/home.jpg. */
 export const renderedCard = (dir: string) => `/og/${dir || "home"}.jpg`
 
+/** A site directory's public address: realms/ is served at /worlds (lb.sh, 2026-11-02), and back. */
+export const pub = (dir: string) => dir.replace(/^realms(?=\/|$)/, "worlds")
+const local = (path: string) => path.replace(/^\/worlds(?=\/|$)/, "/realms")
 /** One page's preview: what its tags say, filled in, and what is wrong with it. */
 export function preview(html: string, dir: string, app: string, files: string, realms = realmSlugs(app)): Preview {
   const { title, meta } = tags(html)
@@ -119,16 +122,16 @@ export function preview(html: string, dir: string, app: string, files: string, r
   const warnings: string[] = [], errors: string[] = []
   const t = meta.get("og:title") || bare(title)
   const desc = meta.get("og:description") || brief(meta.get("description") || "")
-  const url = meta.get("og:url") || `${ORIGIN}/${dir}`.replace(/\/$/, "")
+  const url = meta.get("og:url") || `${ORIGIN}/${pub(dir)}`.replace(/\/$/, "")
   let image = meta.get("og:image") ?? "", source: Source = "page"
   if (image.startsWith(ORIGIN)) image = image.slice(ORIGIN.length)
   if (!image) {
-    const own = ["og.jpg", "card.jpg"].map((f) => `/${dir ? dir + "/" : ""}${f}`).find((f) => existsSync(join(files, f)))
+    const own = ["og.jpg", "card.jpg"].map((f) => `/${dir ? pub(dir) + "/" : ""}${f}`).find((f) => existsSync(join(files, local(f))))
     if (own) { image = own; source = "hand" }
     else if (existsSync(join(files, renderedCard(dir)))) { image = renderedCard(dir); source = "rendered" }
     else { image = DEFAULT_IMAGE; source = "default" }
   } else if (image === renderedCard(dir)) source = "rendered"
-  else if (dir && image.startsWith(`/${dir}/`)) source = "hand"
+  else if (dir && (image.startsWith(`/${dir}/`) || image.startsWith(`/${pub(dir)}/`))) source = "hand"
   else if (image === DEFAULT_IMAGE) source = "default"
   const alt = meta.get("og:image:alt") || (source === "default" ? "OpenAgents" : `${t}, on OpenAgents`)
   if (!t) errors.push("no title")
@@ -136,10 +139,10 @@ export function preview(html: string, dir: string, app: string, files: string, r
   if (t.length > 60) warnings.push(`title is ${t.length} characters (previews cut near 60)`)
   if (desc && desc.length > 200) warnings.push(`description is ${desc.length} characters (previews cut near 200)`)
   if (desc && desc.length < 50 && !noindex) warnings.push(`description is only ${desc.length} characters`)
-  if (url !== `${ORIGIN}/${dir}`.replace(/\/$/, "") && !(dir === "" && url === ORIGIN + "/")) warnings.push(`og:url is ${url}, not this page`)
+  if (url !== `${ORIGIN}/${pub(dir)}`.replace(/\/$/, "") && !(dir === "" && url === ORIGIN + "/")) warnings.push(`og:url is ${url}, not this page`)
   if (meta.get("twitter:card") && meta.get("twitter:card") !== "summary_large_image") warnings.push(`twitter:card is ${meta.get("twitter:card")}: a small square preview`)
   let width = 0, height = 0, bytes = 0
-  const file = image.startsWith("/") ? join(files, image) : ""
+  const file = image.startsWith("/") ? join(files, local(image)) : ""
   if (!file) warnings.push(`image is off the site: ${image}`)
   else if (!existsSync(file)) errors.push(`image ${image} is not on the site`)
   else {

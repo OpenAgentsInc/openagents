@@ -1,5 +1,5 @@
 // Who may make a realm (docs/auth/2026-10-31-realm-invites-and-auth.md). A page that links to
-// /realms/new asks GET /api/playtest/access once (its face sends it with the player key and the
+// /worlds/new asks GET /api/playtest/access once (its face sends it with the player key and the
 // site cookie) and hides MAKE A REALM only when the answer says `make 0`: realm making is invite
 // only and this visitor isn't an approved creator. Before the answer, and on any failure (no
 // answer, a non-200, an older API's 404), the links show as they always have. The server decides;
@@ -52,7 +52,7 @@ access_take :: (a: [] Access, kind: int, text: string) -> bool {
   return true;
 }
 
-#test "MAKE A REALM shows before the answer, on a failure, and with make 1; hides with make 0" {
+#test "MAKE A WORLD shows before the answer, on a failure, and with make 1; hides with make 0" {
   a: [1] Access;
   #assert access_wants(a[..]) && !access_hides_make(a[..]);
   access_sent(a[..], 3);

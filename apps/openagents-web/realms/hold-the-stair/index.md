@@ -1,6 +1,6 @@
 # Hold the Stair
 
-A Verse realm at https://openagents.com/realms/hold-the-stair: a popping tower defense on the SRD 5e rules (System Reference Document 5.2.1, CC BY 4.0). Bubble-beasts climb the stair of a wizard's tower from the cellar door to the top; you hold it with a party of adventurers whose attacks roll real dice.
+A Verse world at https://openagents.com/worlds/hold-the-stair: a popping tower defense on the SRD 5e rules (System Reference Document 5.2.1, CC BY 4.0). Bubble-beasts climb the stair of a wizard's tower from the cellar door to the top; you hold it with a party of adventurers whose attacks roll real dice.
 
 ## How to play
 
@@ -44,6 +44,6 @@ The red numbers rise over whatever is hit; MISS, SAVED and IMMUNE say why nothin
 - The design is `docs/verse/game-ideas/hold-the-stair.md` in the OpenAgents repository; the page is written from `realms.json` by `coax/web/realms.ts` (`docs/verse/realm-host.md`).
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

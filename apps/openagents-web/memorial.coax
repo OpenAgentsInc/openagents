@@ -42,7 +42,7 @@ K_ESCAPE :: -1; K_ENTER :: -2; K_UP :: -6; K_DOWN :: -7; K_HOME :: -8; K_END :: 
 P_DOWN :: 0; P_MOVE :: 1; P_UP :: 2;
 MSG_TEXT :: 2;           // the page's data-text: the memorial's JSON
 ACT_NAVIGATE :: 1; ACT_COPY :: 2;
-REALM :: "/realms/hecates-cemetery";
+REALM :: "/worlds/hecates-cemetery";
 SITE :: "https://openagents.com";
 
 // What a press can land on.
@@ -631,16 +631,16 @@ tap :: (s: [] Memorial, b: Box) {
   given(s[..], ECHO);
   #assert memorial_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true) > 0;
   tap(s[..], kind_box(s[..], B_VISIT));
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hecates-cemetery/#m/ab12cd34";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/hecates-cemetery/#m/ab12cd34";
   coaxial_memorial_action_done(s[..]);
   tap(s[..], kind_box(s[..], B_COPY));
   #assert s[0].action == ACT_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "https://openagents.com/memorial/ab12cd34";
   coaxial_memorial_action_done(s[..]);
   tap(s[..], kind_box(s[..], B_NOTE));
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hecates-cemetery/#m/ab12cd34";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/hecates-cemetery/#m/ab12cd34";
   coaxial_memorial_action_done(s[..]);
   tap(s[..], kind_box(s[..], B_HOME));
-  #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hecates-cemetery";
+  #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/hecates-cemetery";
   coaxial_memorial_action_done(s[..]);
   #assert memorial_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true) > 0;
   tap(s[..], kind_box(s[..], B_MEDIA));
@@ -666,7 +666,7 @@ tap :: (s: [] Memorial, b: Box) {
   n := memorial_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true);
   #assert n > 0 && s[0].buttons >= 1;
   tap(s[..], kind_box(s[..], B_HOME));
-  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hecates-cemetery";
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/hecates-cemetery";
   // waiting for it (no data yet, not refused): a word, no buttons but the way home
   w: [1] Memorial;
   #assert memorial_frame(w[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true) > 0;

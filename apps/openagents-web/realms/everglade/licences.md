@@ -154,7 +154,7 @@ Every asset in `everglade.pack` (9,039,012 bytes of its 9,050,000-byte budget) a
 
 ## The HUD's icons
 
-The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack under /realms/everglade/hotbar/, not in it. game-icons.net, CC BY 3.0, https://game-icons.net; the credits are in `assets/verse/icons/game-icons/CREDITS.md`.
+The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack under /worlds/everglade/hotbar/, not in it. game-icons.net, CC BY 3.0, https://game-icons.net; the credits are in `assets/verse/icons/game-icons/CREDITS.md`.
 
 | Icon | File | Credit |
 | --- | --- | --- |

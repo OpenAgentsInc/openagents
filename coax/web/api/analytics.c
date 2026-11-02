@@ -201,7 +201,7 @@ static void ingest(const request *q) {
 }
 
 // GET /api/analytics/realms: how much each realm is played, for /realms (realmlist.coax), a line a
-// realm: "slug|visitors|visits|minutes". A visit is a page-view of /realms/<slug> (or its old
+// realm: "slug|visitors|visits|minutes". A visit is a page-view of /worlds/<slug> (or its old /realms/<slug>,
 // /realm/<slug>); visitors are its distinct devices (pid); minutes run from each visit to the
 // session's next page-view or its last event, at most three hours a visit. The filter is
 // /admin/analytics' (admin.c KEPT): a session with an automation mark, an agent's session-start or
@@ -209,7 +209,7 @@ static void ingest(const request *q) {
 // Counts only, no visitor's data; kept a minute so a busy page costs one query.
 #define REALM_VISITS \
   "WITH pv AS (SELECT e.sid, e.ms, e.p->>'pid' AS pid, " \
-  "    substring(coalesce(e.p->>'path', '') from '^/realms?/([a-z0-9-]+)(/.*)?$') AS slug, " \
+  "    substring(coalesce(e.p->>'path', '') from '^/(?:realms?|worlds)/([a-z0-9-]+)(/.*)?$') AS slug, " \
   "    lead(e.ms) OVER (PARTITION BY e.sid ORDER BY e.ms, e.id) AS next_ms " \
   "  FROM analytics.events e WHERE e.ev = 'page-view' AND e.space = 'web'), " \
   "k AS (SELECT pv.* FROM pv WHERE pv.slug IS NOT NULL AND NOT EXISTS (SELECT 1 FROM analytics.events x " \

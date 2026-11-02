@@ -57,7 +57,7 @@ void rh_page(RealmHost *h, int page);
 // Travel: a navigation (action 1) since the last call, as the realm it opens in SLUG (cap bytes):
 // 1 when it names one, 0 when there was none or it is the web's (a tip page, the builder, a site).
 int rh_went(char *slug, size_t cap);
-// The realm a path opens: /realms (every realm's way out) the galaxy, the verse app's page 1 ("galaxy"), / and /new-land the Grid
+// The realm a path opens (/worlds the same as /realms): /realms (every realm's way out) the galaxy, the verse app's page 1 ("galaxy"), / and /new-land the Grid
 // ("the-grid"), /realms/SLUG (then nothing, /, ? or #) SLUG; an https://openagents.com
 // prefix is the same site. 0 for any other path.
 int rh_realm_of(const char *path, size_t len, char *slug, size_t cap);

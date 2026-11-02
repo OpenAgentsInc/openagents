@@ -20,7 +20,8 @@ const types: Record<string, string> = { wasm: "application/wasm", wgsl: "text/pl
 const isFile = (p: string) => { try { return statSync(p).isFile() } catch { return false } }
 
 export function resolve(root: string, pathname: string): { file: string; type: string } | null {
-  const rel = normalize(decodeURIComponent(pathname)).replace(/^\/+|\/+$/g, "")
+  // /worlds and /worlds/* are the site's realms/, as the load balancer serves them (coax/web/api/lb.sh)
+  const rel = normalize(decodeURIComponent(pathname)).replace(/^\/+|\/+$/g, "").replace(/^worlds(?=\/|$)/, "realms")
   if (rel.startsWith("..")) return null
   const at = join(root, rel)
   const html = types.html

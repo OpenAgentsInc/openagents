@@ -1,7 +1,7 @@
 // The Grid's walkers on the homepage, and the way in (grid-walk).
 //
 // WALK AROUND, a button by PYLONS and TUTORIAL: one click and the camera dives into the middle of
-// the homepage's grid, then the page goes on to the Grid (/realms/the-grid?from=home), whose camera
+// the homepage's grid, then the page goes on to the Grid (/worlds/the-grid?from=home), whose camera
 // comes down the rest of the way onto you at the start spot (thegrid-people.coax). The click is
 // counted (analytics "walk-around").
 //
@@ -20,7 +20,7 @@ WALK_ASK_EVERY :: 1.0;     // s between asks
 WALK_ASK_AFTER :: 2.5;     // s before the first, so the page's first seconds are only its own
 WALK_SCALE :: spaces.GRID_PER_METRE;   // the named world-to-grid conversion's scale
 WALK_DIVE :: 0.75;         // s the camera dives before the page goes on
-WALK_URL :: "/realms/the-grid?from=home";
+WALK_URL :: "/worlds/the-grid?from=home";
 
 Walkers :: struct {
   room: [1] RoomState;

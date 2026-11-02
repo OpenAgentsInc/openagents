@@ -2186,8 +2186,8 @@ crumb_at :: (s: [] ProjectState, x: f32, y: f32) -> string {
 // The header's link to the project's first realm: WALK THE REALM, or REALM where the crumbs leave less room.
 realm_label :: (w: [] Work, b: Box, d: f32) -> string {
   crumbs := text_width("OPENAGENTS / PROJECTS /", 7 * d) + SPACE * 7 * d + text_width(w[0].name, 7 * d);
-  long := "WALK THE REALM";
-  return ifx b.x0 + 18 * d + crumbs + 24 * d + text_width(long, 7 * d) <= b.x1 - 18 * d then long else "REALM";
+  long := "WALK THE WORLD";
+  return ifx b.x0 + 18 * d + crumbs + 24 * d + text_width(long, 7 * d) <= b.x1 - 18 * d then long else "WORLD";
 }
 realm_box :: (w: [] Work, b: Box, d: f32) -> Box {
   if w[0].realm.count == 0 { return Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }

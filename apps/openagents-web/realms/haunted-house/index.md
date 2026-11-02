@@ -1,6 +1,6 @@
 # Haunted House
 
-A Verse realm you walk through in the browser at https://openagents.com/realms/haunted-house: a house at night with nine haunts to set off, characters to talk to, doors to open, and a quest, Make it yours.
+A Verse world you walk through in the browser at https://openagents.com/worlds/haunted-house: a house at night with nine haunts to set off, characters to talk to, doors to open, and a quest, Make it yours.
 
 It is the same Coax code the OpenAgents iOS app runs, compiled to WebAssembly and drawn with WebGPU:
 
@@ -33,7 +33,7 @@ Everyone else in the same world is drawn where they stand, a pale figure with th
 
 ## A player's own world
 
-A link with a world's id after `#` (`/realms/haunted-house#planet-…`) opens that player's world: what its owner last published (`GET /api/playtest/world/<id>`) over the house. Its owner's edits are published as each one is made (a placing, or a drag, size or turn when it ends) and at the quest's save step; anyone else's are offered to the owner instead (`POST /api/playtest/change/<id>`). The owner sees the newest offer waiting, with who made it, and presses ACCEPT (the world is published with it) or DECLINE (nothing changes); `GET /api/playtest/log/<id>` lists every publish and offer. Nothing is paid. `coax/web/api/realm-flow.ts` plays this in headless Chrome.
+A link with a world's id after `#` (`/worlds/haunted-house#planet-…`) opens that player's world: what its owner last published (`GET /api/playtest/world/<id>`) over the house. Its owner's edits are published as each one is made (a placing, or a drag, size or turn when it ends) and at the quest's save step; anyone else's are offered to the owner instead (`POST /api/playtest/change/<id>`). The owner sees the newest offer waiting, with who made it, and presses ACCEPT (the world is published with it) or DECLINE (nothing changes); `GET /api/playtest/log/<id>` lists every publish and offer. Nothing is paid. `coax/web/api/realm-flow.ts` plays this in headless Chrome.
 
 ## On the screen
 
@@ -51,6 +51,6 @@ A browser with WebGPU: a current Chrome or Edge, or Safari 26. About 6.6 MB arri
 
 Original layout and art by OpenAgents (Apache-2.0); sounds CC0; Quaternius CC0 props (`apps/openagents-ios/OpenAgents/Resources/Haunt-NOTICE.txt`).
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

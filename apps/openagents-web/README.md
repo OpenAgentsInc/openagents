@@ -22,7 +22,7 @@ carry accessible text. Visible UI is drawn in Coax.
 `verse.wgsl`, `data-page` 0): the landing, where PLAYTEST NOW opens the
 Haunted House. Its panels are the Haunted House's wood-and-bronze plates, not
 the HUD bar. The app's page 1, the galaxy, runs only on the native host;
-`/verse/galaxy` redirects to `/realms`, where every realm is listed.
+`/verse/galaxy` redirects to `/worlds`, where every world is listed.
 
 ```sh
 coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000

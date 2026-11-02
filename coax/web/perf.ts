@@ -83,7 +83,7 @@ const WALK = (n: number) => `(async () => {
 // its own Chrome while the page under test walks. A trivial WebGPU page holds 60 FPS through a model
 // deciding on the GPU when Everglade doesn't (it waits behind the model at each of its nine passes),
 // so the control is the same kind of page.
-const CONTROL = process.env.PERF_CONTROL ?? "https://openagents.com/realms/everglade?clock=0.5#market"
+const CONTROL = process.env.PERF_CONTROL ?? "https://openagents.com/worlds/everglade?clock=0.5#market"
 const TIMES = (ms: number) => `new Promise((ok) => { const d = []; let last = 0; const t0 = performance.now(); const f = (t) => { if (last) d.push(t - last); last = t; if (t - t0 < ${ms}) requestAnimationFrame(f); else ok(d); }; requestAnimationFrame(f); })`
 
 class Browser {

@@ -70,61 +70,61 @@ voice=$!
 "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
   "$m/haunt.coax" "$m/haunt-buffer.coax" "$m/player.coax" "$m/grid.coax" "$m/particles.coax" "$m/cinematic.coax" "$m/setpiece.coax" &
 realm=$!
-# /realms/garden: the engine's world pieces (camera, terrain, throwing,
+# /worlds/garden: the engine's world pieces (camera, terrain, throwing,
 # arranging) in an open-air realm, with the player and thumbs as their own libraries.
 "$here/../../coax/web/wasm.sh" "$here/garden.coax" "$here/garden-face.c" "$here/build/garden.wasm" \
   "$m/player.coax" "$m/grid.coax" &
 garden=$!
-# /realms/everglade: the forest city's blockout (verse/everglade/plan.coax), with the player, thumbs and its river (verse/everglade/river.coax).
+# /worlds/everglade: the forest city's blockout (verse/everglade/plan.coax), with the player, thumbs and its river (verse/everglade/river.coax).
 "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
   "$m/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" &
 everglade=$!
-# /realms/fairy-forest: the park (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
+# /worlds/fairy-forest: the park (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
 "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
   "$m/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" "$here/../../coax/lib/qr/qr-memory.coax" &
 fairy=$!
-# /realms/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
+# /worlds/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
 # with the player, thumbs and figures (villafig.coax: the engine's figures and motions) as libraries.
 "$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.c" "$here/build/villa.wasm" \
   "$m/player.coax" "$m/grid.coax" "$here/villafig.coax" &
 villa=$!
-# /realms/anime-lab: direct an anime (docs/verse/anime-lab.md), with the anime style's numbers as a library.
+# /worlds/anime-lab: direct an anime (docs/verse/anime-lab.md), with the anime style's numbers as a library.
 "$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" \
   "$here/animelab-style.coax" &
 animelab=$!
-# /realms/fixture: the realm host's test world, the smallest realm module.
+# /worlds/fixture: the realm host's test world, the smallest realm module.
 "$here/../../coax/web/wasm.sh" "$here/fixture.coax" "$here/fixture-face.c" "$here/build/fixture.wasm" &
 fixture=$!
-# /realms/waterlab: the water system's test scene (docs/verse/water.md), the spectral sea in Coax.
+# /worlds/waterlab: the water system's test scene (docs/verse/water.md), the spectral sea in Coax.
 "$here/../../coax/web/wasm.sh" "$here/waterlab.coax" "$here/waterlab-face.c" "$here/build/waterlab.wasm" &
 waterlab=$!
-# /realms/anime-lab: direct an anime (docs/verse/anime-lab.md): the director and stage (verse/anime/), the
+# /worlds/anime-lab: direct an anime (docs/verse/anime-lab.md): the director and stage (verse/anime/), the
 # anime style's block from its own library (animelab-style.coax). (animelab.wgsl loads verse/style.coax in gpu/animelab.coax.)
 "$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" "$here/animelab-style.coax" &
 animelab=$!
-# /realms/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
+# /worlds/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
 "$here/../../coax/web/wasm.sh" "$here/droprealm.coax" "$here/droprealm-face.c" "$here/build/droprealm.wasm" &
 droprealm=$!
-# /realms/built and every /realms/<slug> made at /realms/new: a realm someone built (myrealm.coax).
+# /worlds/built and every /worlds/<slug> made at /worlds/new: a realm someone built (myrealm.coax).
 # YOUR COMPUTER's wire (verse/edit/computer-wire.coax) links beside it; its signing tables need the larger budget.
 # Without the renderer carrier (COAXIAL_RENDER=0): the carrier's native host and the wire both link
 # coax/lib/crypto/sha256.coax, so wasm-ld finds S_hash and S_hex twice.
 COAXIAL_RENDER=0 COAXIAL_RUN_STEPS=250000000 "$here/../../coax/web/wasm.sh" "$here/myrealm.coax" "$here/myrealm-face.c" "$here/build/myrealm.wasm" \
   "$here/../../verse/edit/computer-wire.coax" "$here/../../coax/lib/crypto/entropy.coax" &
 myrealm=$!
-# /realms/new: build your own realm (docs/verse/realm-builder.md).
+# /worlds/new: build your own realm (docs/verse/realm-builder.md).
 "$here/../../coax/web/wasm.sh" "$here/builder.coax" "$here/builder-face.c" "$here/build/builder.wasm" &
 builder=$!
-# /realms/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
+# /worlds/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
 "$here/../../coax/web/wasm.sh" "$here/icecream.coax" "$here/icecream-face.c" "$here/build/icecream.wasm" "$m/icecream/scene.coax" &
 icecream=$!
-# /realms/dead-gears: the ship survival game (verse/deadgears/rules.coax, loaded by the page).
+# /worlds/dead-gears: the ship survival game (verse/deadgears/rules.coax, loaded by the page).
 "$here/../../coax/web/wasm.sh" "$here/deadgears.coax" "$here/deadgears-face.c" "$here/build/deadgears.wasm" &
 deadgears=$!
-# /realms/hold-the-stair: the popping tower defense on the SRD 5e rules (verse/rules/srd5-combat.coax).
+# /worlds/hold-the-stair: the popping tower defense on the SRD 5e rules (verse/rules/srd5-combat.coax).
 "$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
 stair=$!
-# /realms/watchtower: a cyber defense range: find the intruder, isolate and reimage hosts (docs/research/cybersecurity).
+# /worlds/watchtower: a cyber defense range: find the intruder, isolate and reimage hosts (docs/research/cybersecurity).
 "$here/../../coax/web/wasm.sh" "$here/watchtower.coax" "$here/watchtower-face.c" "$here/build/watchtower.wasm" &
 watchtower=$!
 # /demos/grid-crowd: the Grid's art (verse/tools/pack_grid.py) with a staged crowd of players (verse/cast.coax)
@@ -136,16 +136,16 @@ gridcrowd=$!
 # (?stage=ident ... ?stage=end, docs/verse/clips.md), drawn at twice its pixels for clips.
 "$here/../../coax/web/wasm.sh" "$here/speedrunhud.coax" "$here/speedrunhud-face.c" "$here/build/speedrunhud.wasm" &
 speedrunhud=$!
-# /realms/belt-2200: the solar-system strategy game over the engine's orbits (verse/orbit.coax, verse/spacecam.coax; verse/stars.coax in gpu/belt.coax).
+# /worlds/belt-2200: the solar-system strategy game over the engine's orbits (verse/orbit.coax, verse/spacecam.coax; verse/stars.coax in gpu/belt.coax).
 "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
-# /realms/orbit-league: car ball in orbit, on the space primitives (docs/verse/space.md).
+# /worlds/orbit-league: car ball in orbit, on the space primitives (docs/verse/space.md).
 "$here/../../coax/web/wasm.sh" "$here/orbitleague.coax" "$here/orbitleague-face.c" "$here/build/orbitleague.wasm" &
 orbitleague=$!
-# /realms/characters: the engine's figures (verse/figure.coax).
+# /worlds/characters: the engine's figures (verse/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
-# The public homepage and /new-land alias, and /realms/the-grid: the same module walked (data-page 1, newland-walk.coax). Warm start is real Coax-verified
+# The public homepage and /new-land alias, and /worlds/the-grid: the same module walked (data-page 1, newland-walk.coax). Warm start is real Coax-verified
 # public data; open pages independently watch and refresh Nostr in Coax.
 # The capture is `openagents project landing` (apps/openagents-cli, Coax, built here in seconds).
 "$here/../openagents-cli/build.sh" > /dev/null
@@ -197,7 +197,7 @@ cmp -s "$here/nip01.wgsl" "$here/pylon.wgsl" || cp "$here/nip01.wgsl" "$here/pyl
 pylon=$!
 # Keep the public join command identical to the tested source, never a fork.
 cmp -s "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh" || cp "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh"
-# /realms: every listed realm as a list and a grid of towers (realms/list.coax, written by realms.ts).
+# /worlds: every listed realm as a list and a grid of towers (realms/list.coax, written by realms.ts).
 "$here/../../coax/web/wasm.sh" "$here/realmlist.coax" "$here/realmlist-face.c" "$here/build/realmlist.wasm" &
 realmlist=$!
 # /memorial/<slug>: a pet's memorial from Hecate's Cemetery, its page (oa-api serves the HTML, villa.c memorial_page).

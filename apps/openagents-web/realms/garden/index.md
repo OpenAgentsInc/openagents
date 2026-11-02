@@ -1,6 +1,6 @@
 # The Garden
 
-A small open-air Verse realm you walk in the browser at https://openagents.com/realms/garden. It shows the Verse engine's world pieces at work, one at a time, as they are built for Planetary Villa (https://openagents.com/projects/planetary-villa).
+A small open-air Verse world you walk in the browser at https://openagents.com/worlds/garden. It shows the Verse engine's world pieces at work, one at a time, as they are built for Planetary Villa (https://openagents.com/projects/planetary-villa).
 
 ## The camera
 

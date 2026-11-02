@@ -150,8 +150,10 @@ int rh_realm_of(const char *p, size_t n, char *slug, size_t cap) {
   while (end < n && p[end] != '?' && p[end] != '#') end++;
   if (end == 1 && p[0] == '/') return put_slug("the-grid", 8, slug, cap);
   if ((end == 9 || end == 10) && starts(p, end, "/new-land") && (end == 9 || p[9] == '/')) return put_slug("the-grid", 8, slug, cap);
-  if ((end == 7 || end == 8) && starts(p, end, "/realms") && (end == 7 || p[7] == '/')) return put_slug("galaxy", 6, slug, cap);
-  if (!starts(p, end, "/realms/")) return 0;
+  // /worlds is the web's name for /realms since 2026-11-02 (the same length); both open the same
+  int worlds = starts(p, end, "/worlds");
+  if ((end == 7 || end == 8) && (worlds || starts(p, end, "/realms")) && (end == 7 || p[7] == '/')) return put_slug("galaxy", 6, slug, cap);
+  if (!starts(p, end, "/realms/") && !starts(p, end, "/worlds/")) return 0;
   size_t a = 8, b = a;
   while (b < end && p[b] != '/') {
     char c = p[b];

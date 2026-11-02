@@ -1126,7 +1126,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (!track_state.page_n) track_init(tr(), track_cstr("haunt"));   // the facts come before the first frame
   if (kind == 600) {   // the Sandbox is this page too: its events are the Sandbox's (the analytics contract)
     coax_string at = track_facts_path((coax_string){(const char *)inbox, length});
-    if (at.count == 15 && !memcmp(at.data, "/realms/sandbox", 15)) track_init(tr(), track_cstr("sandbox"));
+    if (at.count == 15 && (!memcmp(at.data, "/worlds/sandbox", 15) || !memcmp(at.data, "/realms/sandbox", 15))) track_init(tr(), track_cstr("sandbox"));
   }
   // who may make a realm (access.coax): asked once with the page's facts, its answer taken here
   if (realm_access_take(realm_of(), kind, (coax_string){(const char *)inbox, length})) return;

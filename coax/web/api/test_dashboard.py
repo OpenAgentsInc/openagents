@@ -87,11 +87,11 @@ check("and the review queue", status == 200, (status, body[:120]))
 status, body, _ = call("GET", reports, headers={"Cookie": "oa_session=" + "b" * 64})
 check("someone else logged in on the site: admins only", status == 403 and b"Sessions" not in body, (status, body[:120]))
 
-# ---- a realm's old address (/realm/<slug>, before October 29) counts with its new one (/realms/<slug>)
-post(batch("c00000000000000r9", [ev("page-view", 1, {"path": "/realm/everglade"}), ev("page-view", 2, {"path": "/realms/everglade"})]))
+# ---- a realm's old addresses (/realm/<slug> before October 29, /realms/<slug> before November 2) count with its new one (/worlds/<slug>)
+post(batch("c00000000000000r9", [ev("page-view", 1, {"path": "/realm/everglade"}), ev("page-view", 2, {"path": "/realms/everglade"}), ev("page-view", 3, {"path": "/worlds/everglade"})]))
 text = call("GET", reports, headers={"Cookie": "oa_session=" + "a" * 64})[1].decode()
 pages = text.split("#PAGES|")[1].split("\n#")[0] if "#PAGES|" in text else ""
-check("pages: /realm/everglade and /realms/everglade are one row", "\n/realms/everglade|2" in pages and "/realm/everglade|" not in pages, pages[:400])
+check("pages: /realm/everglade, /realms/everglade and /worlds/everglade are one row", "\n/worlds/everglade|3" in pages and "/realm/everglade|" not in pages and "/realms/everglade|" not in pages, pages[:400])
 
 # ---- every realm's card: how far visits got and what they did, a tally's counts summed, the app's visits counted
 app_ua = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 OpenAgentsApp/412"}

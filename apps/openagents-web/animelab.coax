@@ -1,4 +1,4 @@
-// Anime Lab, openagents.com/realms/anime-lab (unlisted): direct an anime with
+// Anime Lab, openagents.com/worlds/anime-lab (unlisted): direct an anime with
 // your voice (docs/verse/anime-lab.md). ?stage=direct plays the demo: a
 // simulated directing session, each spoken line heard (partial words, then
 // final), turned by the director into typed directions over the catalogue
@@ -730,7 +730,7 @@ ANIMELAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 6, draws = 
   #assert s[0].mode == STAGE_FILM && s[0].pinned == 4.5 && s[0].card && s[0].variant == ANIME_ACTION && near(s[0].clock, 0.78, 0.0001);
   #assert s[0].length == FILM_LENGTH && s[0].n > 6;
   d := [1] Animelab.[Animelab.{}];
-  animelab_message(d[..], HOST_FACTS, "url=https://openagents.com/realms/anime-lab?stage=direct\nclock=fixed:0.78");
+  animelab_message(d[..], HOST_FACTS, "url=https://openagents.com/worlds/anime-lab?stage=direct\nclock=fixed:0.78");
   #assert d[0].mode == STAGE_DIRECT && d[0].pinned < 0 && !d[0].card && d[0].length == DEMO_LENGTH;
 }
 

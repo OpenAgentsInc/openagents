@@ -45,7 +45,9 @@ static int test_travel(void) {
     {"/realms/orbit-league", "orbit-league"}, {"/realms/orbit-league/", "orbit-league"}, {"/realms/orbit-league/?quick=2v2", "orbit-league"},
     {"/realms/haunted-house#a=1", "haunted-house"}, {"https://openagents.com/realms/belt-2200", "belt-2200"},
     {"/realms/hold-the-stair/tip", ""}, {"/realms/Bad", ""}, {"/docs", ""}, {"https://example.com/realms/x", ""},
-    {"lightning:lnbc1", ""}, {"/verse/galaxy", ""}, {"/realmsx", ""}, {"/new-landing", ""}, {"", ""}};
+    {"lightning:lnbc1", ""}, {"/verse/galaxy", ""}, {"/realmsx", ""}, {"/new-landing", ""}, {"", ""},
+    {"/worlds", "galaxy"}, {"/worlds/", "galaxy"}, {"/worlds/everglade", "everglade"}, {"https://openagents.com/worlds/belt-2200?x=1", "belt-2200"},
+    {"/worlds/hold-the-stair/tip", ""}, {"/worldsx", ""}};
   int bad = 0;
   for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
     char slug[64] = "";

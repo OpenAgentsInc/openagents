@@ -1,4 +1,4 @@
-// /realms' public made realms (realmlist.coax): GET /api/playtest/realms/listed
+// /worlds' public made realms (realmlist.coax): GET /api/playtest/realms/listed
 // (coax/web/api/migrations/0101_realm_list.sql), asked once by the page's face. Its
 // answer comes as "STATUS\n" then the body (coax/web/host.js):
 //   total N

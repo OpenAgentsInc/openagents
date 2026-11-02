@@ -1,12 +1,12 @@
 # Fairy Forest
 
-A Verse realm, drawn flat, you walk in the browser at https://openagents.com/realms/fairy-forest. It is a first version, unlisted: the [realms list](https://openagents.com/realms) leaves it out, so you open it by its address. The plan for the whole realm is in `verse/fairy-forest/README.md`.
+A Verse world, drawn flat, you walk in the browser at https://openagents.com/worlds/fairy-forest. It is a first version, unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address. The plan for the whole world is in `verse/fairy-forest/README.md`.
 
 ## The park
 
 Central Park at a quarter of its size: a long rectangle about 1 km from 59th Street in the south to 110th Street in the north and 208 m across, between Central Park West and Fifth Avenue, with low blocks of the avenues round it. Gentle rolling ground with Umpire Rock, Vista Rock and other outcrops; the Pond with Gapstow Bridge, the Lake with Bow Bridge and the Loeb Boathouse, Turtle Pond, the Reservoir, Harlem Meer and Conservatory Water; the drives' loop, footpaths and the Mall's Literary Walk to Bethesda Terrace and the Angel of the Waters. Simple low-poly trees and bushes, and as plain shapes the Carousel, the Dairy, Wollman Rink, the Bandshell, Strawberry Fields' Imagine circle, Alice in Wonderland, Belvedere Castle, the Delacorte Theater, Cleopatra's Needle and the Conservatory Garden's gate. Each landmark's name shows over it as you come near. You walk over Gapstow and Bow Bridges on their decks, and over the footbridge on the Loch once it is mended.
 
-Press M (or MAP by the title) to see the whole park from above with every landmark's and glade's name and a ring where you are; M, Esc or WALK takes you back. `/realms/fairy-forest#map` opens on it.
+Press M (or MAP by the title) to see the whole park from above with every landmark's and glade's name and a ring where you are; M, Esc or WALK takes you back. `/worlds/fairy-forest#map` opens on it.
 
 The heart tree stands in the Ramble. Five glades: Mossbank by the Pond, where you wake; The Reeds at the Pool, where the Loch runs into a pond on its way to Harlem Meer; Lanternwood in the North Woods; Thornfall at the north edge, brambles round a fallen giant tree; and the Old Ring by Cleopatra's Needle, nine standing stones. The glades and the heart tree start faded, grey and pale, and colour spreads outward from everything you restore.
 
@@ -38,6 +38,6 @@ Where you are and what you restored (the bloomed patches and the woken roots) is
 
 No voice talk yet.
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

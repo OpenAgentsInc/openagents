@@ -1,11 +1,11 @@
-// Build your own realm (openagents.com/realms/new; docs/verse/realm-builder.md): the step after the
+// Build your own realm (openagents.com/worlds/new; docs/verse/realm-builder.md): the step after the
 // Haunted House. Tap TALK, say the world you want, tap again to send (the microphone is open only
 // while TALK is on: coax/web/voice.js, the voice host's speech to text), or type it. The words
 // go to the server's typed planner (POST /api/playtest/realms/plan, migrations/0048_realm_builder.sql),
 // which answers a board: the realm's name, its style, ground and time of day, and its features a
 // few words each, each with a box to check on or off. Talk again to change it. MAKE IT makes the
 // realm from only what is checked (POST /api/playtest/realms) and you are taken to it,
-// /realms/<slug>. Nothing here reads the words: the server's model does, and this page only
+// /worlds/<slug>. Nothing here reads the words: the server's model does, and this page only
 // shows the board it answers and sends back which boxes are checked.
 //
 // First, a few setup questions one at a time (migrations/0049_realm_builder_setup.sql): 2D or 3D,
@@ -603,11 +603,11 @@ take_answer :: (s: [] Builder, t: [] Track, text: string) {
       if starts(line, "path ") { path = line[5..<line.count]; }
       if line == "page 1" { page = true; }
     }
-    if slug.count == 0 || slug.count > 60 { fail(s, "The realm wasn't made. Try again."); return; }
+    if slug.count == 0 || slug.count > 60 { fail(s, "The world wasn't made. Try again."); return; }
     if track_begin(t, "realm-made") { track_str(t, "slug", slug); track_bool(t, "page", page); track_end(t); }
     n := 0;
-    if page && starts(path, "/realms/") { n = put(s[0].outbox[..], 0, path); }
-    else { n = put(s[0].outbox[..], 0, "/realms/built#"); n = put(s[0].outbox[..], n, slug); }
+    if page && (starts(path, "/worlds/") || starts(path, "/realms/")) { n = put(s[0].outbox[..], 0, "/worlds/"); n = put(s[0].outbox[..], n, path[8..<path.count]); }   // an API from before worlds says /realms/
+    else { n = put(s[0].outbox[..], 0, "/worlds/built#"); n = put(s[0].outbox[..], n, slug); }
     s[0].out_n = n; s[0].action = ACT_NAVIGATE; s[0].phase = PH_GOING;
   }
 }
@@ -733,7 +733,7 @@ toggle :: (s: [] Builder, t: [] Track, i: int) {
   s[0].on[i] = !s[0].on[i];
   if track_begin(t, "builder-toggle") { track_str(t, "feature", kind_of(s, i)); track_bool(t, "on", s[0].on[i]); track_end(t); }
 }
-go_back :: (s: [] Builder) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms"); s[0].action = ACT_NAVIGATE; } }
+go_back :: (s: [] Builder) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; } }
 
 builder_key :: (s: [] Builder, t: [] Track, key: int, mods: int, down: bool) -> bool #export_c {
   begin(s);
@@ -1056,7 +1056,7 @@ draw_board :: (s: [] Builder, out: [] f32, at: int, area: Box) -> int {
       if is_tool(s, i) != (pass == 1) { continue; }
       if first {
         first = false;
-        head := ifx pass == 0 then "IN YOUR REALM" else "VISITORS CAN";
+        head := ifx pass == 0 then "IN YOUR WORLD" else "VISITORS CAN";
         if y + 20 * k > s[0].list.y0 && y + 6 * k < s[0].list.y1 {
           n = write(d, out, n, head, area.x0 + pad, y + 18 * k, 7 * k, GAP, SPACE, bronze(k, 0.75), false, false);
         }
@@ -1115,9 +1115,9 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
   bw := 104 * k;
   tb := Box.{x0 = g, y0 = g, x1 = w - g - bw - 10 * k, y1 = g + 44 * k};
   // a heading, not a plate: a plate here read as a box to type in
-  title := "BUILD YOUR OWN REALM";
+  title := "BUILD YOUR OWN WORLD";
   n = write(d, out, n, title, tb.x0 + 2 * k, tb.y0 + 31 * k, fit_cap(title, 15 * k, tb.x1 - tb.x0 - 4 * k), GAP, SPACE, white(k, 0.98), false, false);
-  n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 44 * k}, "REALMS", false);
+  n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 44 * k}, "WORLDS", false);
   if s[0].phase == PH_SETUP { return draw_setup(s, out, n, tb.y1 + 14 * k); }
   if s[0].phase == PH_INVITE { return draw_invite(s, out, n, tb.y1 + 14 * k); }
 
@@ -1181,7 +1181,7 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
     status = ifx m2 > 0 then cast(string) buf[0..<m2] else (ifx s[0].held then "LISTENING: TAP TALK TO SEND" else "SENDING");
   }
   else if s[0].phase == PH_PLANNING { status = ifx s[0].doc_busy then "READING YOUR DOCUMENT" else ifx s[0].plan > 0 then "CHANGING THE BOARD" else "MAKING YOUR BOARD"; }
-  else if s[0].phase == PH_MAKING { status = "MAKING YOUR REALM"; }
+  else if s[0].phase == PH_MAKING { status = "MAKING YOUR WORLD"; }
   else if s[0].phase == PH_GOING { status = "TAKING YOU THERE"; }
   else if s[0].note_n > 0 { status = note_text(s); }
   if status.count > 0 {
@@ -1259,7 +1259,7 @@ draw_invite :: (s: [] Builder, out: [] f32, at: int, top: f32) -> int {
   cx := w * 0.5; x0 := cx - col * 0.5; x1 := cx + col * 0.5;
   y := top + hi((h - top - 300 * k) * 0.35, 8 * k);
   n = centred(d, out, n, "INVITE ONLY", cx, y + 30 * k, fit_cap("INVITE ONLY", 18 * k, col), white(k, 0.98));
-  line := "REALM MAKING IS INVITE ONLY FOR NOW.";
+  line := "WORLD MAKING IS INVITE ONLY FOR NOW.";
   n = centred(d, out, n, line, cx, y + 58 * k, fit_cap(line, 8.5 * k, col), bronze(k, 0.9));
   fh := 48 * k; bw := lo(130 * k, col * 0.34); gap := 10 * k;
   fy := y + 84 * k;
@@ -1363,8 +1363,8 @@ frame_of :: (s: [] Builder, t: [] Track, w: f32, h: f32, dpr: f32) -> int {
 }
 ready :: (s: [] Builder, t: [] Track, voice: bool) {
   track_init(t, "realm-builder");
-  facts := ifx voice then "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/new\nplayer=p-1234\nvoice=haunted-house\n"
-           else "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/new\nplayer=p-1234\n";
+  facts := ifx voice then "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/worlds/new\nplayer=p-1234\nvoice=haunted-house\n"
+           else "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/worlds/new\nplayer=p-1234\n";
   t0 := track_message(t, HOST_FACTS, facts);
   builder_message(s, t, HOST_FACTS, facts);
   // past the setup questions, every one skipped (the setup's own checks start at the first)
@@ -1496,17 +1496,17 @@ answer :: (s: [] Builder, t: [] Track, text: string) { id := 3; builder_requeste
   builder_action_done(s[..]); a0 := builder_action(s[..]);
   tap(s[..], t[..], s[0].boxes[BTN_MAKE]);
   #assert s[0].phase == PH_MAKING && cast(string) s[0].req_url[0..<s[0].req_url_n] == MAKE_URL && body_is(s[..], "{\"plan\":41,\"on\":[true,true,false,true,true,false]}");
-  answer(s[..], t[..], "200\nslug moonlit-marsh\npath /realms/moonlit-marsh\npage 1\n");
-  #assert builder_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/realms/moonlit-marsh");
+  answer(s[..], t[..], "200\nslug moonlit-marsh\npath /worlds/moonlit-marsh\npage 1\n");
+  #assert builder_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/worlds/moonlit-marsh");
   q: [1] Builder; u: [1] Track;
   ready(q[..], u[..], true);
   m2 := frame_of(q[..], u[..], 780, 1688, 2);
   builder_message(q[..], u[..], MSG_VOICE, "heard|x");
   answer(q[..], u[..], BOARD);
   make_it(q[..], u[..]);
-  answer(q[..], u[..], "200\nslug moonlit-marsh\npath /realms/moonlit-marsh\npage 0\n");
+  answer(q[..], u[..], "200\nslug moonlit-marsh\npath /worlds/moonlit-marsh\npage 0\n");
   a1 := builder_action(q[..]);
-  #assert outbox_is(q[..], "/realms/built#moonlit-marsh");
+  #assert outbox_is(q[..], "/worlds/built#moonlit-marsh");
 }
 
 #test "the board's description line: tap it, type, Enter keeps it, and it goes with MAKE IT" {
@@ -1626,7 +1626,7 @@ answer :: (s: [] Builder, t: [] Track, text: string) { id := 3; builder_requeste
 #test "a browser without a player key is given one and keeps it" {
   s: [1] Builder; t: [1] Track;
   track_init(t[..], "realm-builder");
-  facts := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/new\nplayer=\n";
+  facts := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/worlds/new\nplayer=\n";
   t0 := track_message(t[..], HOST_FACTS, facts);
   builder_message(s[..], t[..], HOST_FACTS, facts);
   n := frame_of(s[..], t[..], 2560, 1600, 2);

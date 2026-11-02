@@ -9,7 +9,7 @@
 // match, a goal at each end of a flat box arena. Every 90 seconds of play the
 // station spins down: gravity fades to nothing for half a minute, then
 // comes back. W/S (or the arrows) drive, A/D steer, Space jumps (twice),
-// Shift boosts, C is ball cam, Escape goes to /realms. On a phone
+// Shift boosts, C is ball cam, Escape goes to /worlds. On a phone
 // the left thumb steers and drives; JUMP and BOOST are on the right.
 // ?stage=highlight plays a staged goal for clips (docs/verse/clips.md).
 // ?arena=drum (or PLAY IN THE DRUM when a match ends) plays inside a spinning drum
@@ -1766,7 +1766,7 @@ clip_save :: (s: [] OrbitLeague) {
   if s[0].action != 0 { return; }
   k := 0;
   for i: 0..<s[0].origin_url_n { s[0].outbox[k] = s[0].origin_url[i]; k += 1; }
-  for b: "/realms/orbit-league/#clip=" { s[0].outbox[k] = b; k += 1; }
+  for b: "/worlds/orbit-league/#clip=" { s[0].outbox[k] = b; k += 1; }
   n := clip_write(s, s[0].outbox[k..<OUTBOX]);
   if n == 0 { return; }
   s[0].out_n = k + n; s[0].action = ACT_COPY;
@@ -1840,7 +1840,7 @@ clip_step :: (s: [] OrbitLeague) {
   if s[0].clip_hold > 1.5 { clip_restart(s); }
 }
 play_realm :: (s: [] OrbitLeague) {
-  if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms/orbit-league/"); s[0].action = ACT_NAVIGATE; }
+  if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds/orbit-league/"); s[0].action = ACT_NAVIGATE; }
 }
 // ---- paint (ol-paint): your car's colour and decal, kept in this browser
 // and sent with your car online, so the others see it.
@@ -1873,12 +1873,12 @@ decal_name :: (p: int) -> string {
 // QUICK MATCH: this mode's queue on the room server (ol-quick-match).
 quick_match :: (s: [] OrbitLeague) {
   if s[0].action != 0 { return; }
-  s[0].out_n = put(s[0].outbox[..], 0, ifx s[0].cars_n == CARS then "/realms/orbit-league/?quick=2v2" else "/realms/orbit-league/?quick=1v1");
+  s[0].out_n = put(s[0].outbox[..], 0, ifx s[0].cars_n == CARS then "/worlds/orbit-league/?quick=2v2" else "/worlds/orbit-league/?quick=1v1");
   s[0].action = ACT_NAVIGATE;
   track_tally(s[0].track[..], "quick", "");
 }
 // TIP: the maker's tip page.
-tip :: (s: [] OrbitLeague) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms/orbit-league/tip"); s[0].action = ACT_NAVIGATE; } }
+tip :: (s: [] OrbitLeague) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds/orbit-league/tip"); s[0].action = ACT_NAVIGATE; } }
 
 // A finger or the mouse on TIP: only TIP's own presses are taken.
 tip_pointer :: (s: [] OrbitLeague, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
@@ -1904,7 +1904,7 @@ hold_of :: (key: int) -> int {
   return 0;
 }
 
-leave :: (s: [] OrbitLeague) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms"); s[0].action = ACT_NAVIGATE; } }
+leave :: (s: [] OrbitLeague) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; } }
 
 toggle_cam :: (s: [] OrbitLeague) {
   s[0].ball_cam = !s[0].ball_cam;
@@ -2301,7 +2301,7 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
   v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, sb.y0 + 29 * k, 12 * k, white(k, 0.95));
   // REALMS, top left
   bb := Box.{x0 = g, y0 = g, x1 = g + 96 * k, y1 = g + 34 * k};
-  v = hud_button(s, out, v, BTN_BACK, bb, "REALMS", 8 * k);
+  v = hud_button(s, out, v, BTN_BACK, bb, "WORLDS", 8 * k);
   // PAINT, under it, before a kickoff and at the end; it opens the picker
   if (s[0].phase == PHASE_KICKOFF || s[0].phase == PHASE_OVER || s[0].paint_open) && !s[0].clip_play {
     pb := Box.{x0 = g, y0 = bb.y1 + 10 * k, x1 = g + 96 * k, y1 = bb.y1 + 44 * k};
@@ -2642,12 +2642,12 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   #assert spin_share(67.0, 60.0) == 0.0 && spin_share(67.0, 90.0) == 1.0;
   #assert spin_share(97.0, 0.0) == 1.0 && spin_clock(97.0, 0.0) < -1000.0;
   s: [1] OrbitLeague;
-  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?spin=60\n");
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?spin=60\n");
   #assert s[0].spin_every == 60.0;
-  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?spin=off\n");
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?spin=off\n");
   #assert s[0].spin_every == 0.0;
   t: [1] OrbitLeague;
-  game_message(t[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?spin=half\n");
+  game_message(t[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?spin=half\n");
   t[0].phase = PHASE_PLAY; t[0].played = 10.0; set_spin(t[..]);
   #assert t[0].spin_every == SPIN_EVERY && near_d(t[0].field.scale, HALF_SPIN, 0.000001) && t[0].spin_now == 1.0;
   // the tanks fill as the spin-down starts
@@ -2678,9 +2678,9 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
 #test "?stage=highlight sets up the shot: a hard hit, then a goal for blue within 2 s; without it, a plain kickoff" #steps 30000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
-  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league\n");
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league\n");
   #assert s[0].stage == STAGE_NONE && s[0].phase == PHASE_KICKOFF && !s[0].ball_cam;
-  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?stage=highlight\n");
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?stage=highlight\n");
   #assert s[0].stage == STAGE_HIGHLIGHT && s[0].phase == PHASE_PLAY && s[0].score[0] == 2 && s[0].score[1] == 2;
   top := 0.0; goal := -1.0; near := 99.0;
   for k: 0..<cast(int) (2.0 / STEP) {
@@ -2731,7 +2731,7 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
     cx := (t.x0 + t.x1) * 0.5; cy := (t.y0 + t.y1) * 0.5;
     #assert game_pointer(s, cx, cy, POINTER_DOWN, 1, 4) && !s[0].stick;
     #assert game_pointer(s, cx, cy, POINTER_UP, 1, 4) && s[0].action == ACT_NAVIGATE;
-    #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/orbit-league/tip";
+    #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/orbit-league/tip";
   }
 }
 
@@ -3004,9 +3004,9 @@ drum_game :: (s: [] OrbitLeague) {
 }
 #test "?arena=drum plays in the drum; the box is the default" {
   s: [1] OrbitLeague;
-  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league\n");
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league\n");
   #assert !s[0].drum;
-  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?arena=drum\n");
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?arena=drum\n");
   #assert s[0].drum && s[0].field.kind == GRAVITY_DRUM;
 }
 #test "when a match ends, PLAY IN THE DRUM starts one in the drum, and PLAY IN THE BOX goes back" {
@@ -3074,7 +3074,7 @@ drum_game :: (s: [] OrbitLeague) {
 }
 #test "?room=NAME opens a socket to this site's room, and reports your car 60 times a second once it opens" {
   s: [1] OrbitLeague;
-  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?room=Topher-1\n");
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?room=Topher-1\n");
   #assert s[0].online && s[0].no_bot && s[0].pipe[0].n == 1 && s[0].pipe[0].op[0] == PIPE_OPEN;
   #assert pipe_bytes(s[..][0].pipe[..], 0) == "wss://openagents.com/api/room/orbit-league/topher-1";
   pipe_drained(s[0].pipe[..]);
@@ -3162,7 +3162,7 @@ sphere_game :: (s: [] OrbitLeague) {
 }
 #test "?arena=sphere plays in the sphere: the cars start on its curve on their wheels and the ball at its lowest point" #steps 60000000 {
   s: [1] OrbitLeague;
-  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?arena=sphere\n");
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?arena=sphere\n");
   #assert s[0].sphere && !s[0].drum && arena_kind(s[..]) == ARENA_SPHERE;
   sp := arena_sphere();
   for i: 1..<1 + s[0].cars_n {
@@ -3247,7 +3247,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
 #test "with 150 ms of latency your car answers the first frame you press, and the ball you hit is drawn without a jump (ol-prediction)" #steps 170000000 {
   room: [1] OrbitLeague; room_reset(room[..]);
   c: [1] OrbitLeague;
-  game_message(c[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?room=lag&lag=150\n");
+  game_message(c[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?room=lag&lag=150\n");
   game_socket_opened(c[..], 2);
   game_message(c[..], SOCKET_KIND + 4 * 2 + SOCKET_OPENED, "");
   #assert c[0].lag == 0.15;
@@ -3304,7 +3304,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
 
 #test "?mode=2v2 puts you and a blue bot against two magenta bots, a phone plays 2v2 unless told, and the room stays 1v1 (ol-bot-modes)" {
   s: [1] OrbitLeague;
-  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?mode=2v2\n");
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?mode=2v2\n");
   #assert s[0].cars_n == CARS;
   for c: 0..<CARS {
     b := s[0].bodies[c + 1];
@@ -3313,13 +3313,13 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
     #assert b.pos.z * side > 10.0 && near_d(b.pos.y, 1.0, 0.01) && rigid_axis(b, D3_Z).z * side < -0.99;
   }
   p: [1] OrbitLeague;
-  game_message(p[..], HOST_FACTS, "coarse=1\nurl=https://openagents.com/realms/orbit-league\n");
+  game_message(p[..], HOST_FACTS, "coarse=1\nurl=https://openagents.com/worlds/orbit-league\n");
   #assert p[0].cars_n == CARS;
   q: [1] OrbitLeague;
-  game_message(q[..], HOST_FACTS, "coarse=1\nurl=https://openagents.com/realms/orbit-league?mode=1v1\n");
+  game_message(q[..], HOST_FACTS, "coarse=1\nurl=https://openagents.com/worlds/orbit-league?mode=1v1\n");
   #assert q[0].cars_n == 2 && q[0].bodies[MATE].pos.y < -100.0;
   r: [1] OrbitLeague;
-  game_message(r[..], HOST_FACTS, "coarse=1\nurl=https://openagents.com/realms/orbit-league?room=a\n");
+  game_message(r[..], HOST_FACTS, "coarse=1\nurl=https://openagents.com/worlds/orbit-league?room=a\n");
   #assert r[0].cars_n == 2;
 }
 #test "in a 2v2 all three bots drive after the kickoff, the one of a pair further from the ball hangs back, and PLAY 1V1 / PLAY 2V2 switch (ol-bot-modes)" #steps 110000000 {
@@ -3389,7 +3389,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   for i: 0..<7 { #assert clip_read_num(cast(string) buf[0..<k], at[..], ok[..]) == xs[i]; }
   #assert clip_read_int(cast(string) buf[0..<k], at[..], ok[..]) == -12345 && ok[0] && at[0] == k;
   s: [1] OrbitLeague; game_reset(s[..]);
-  #assert !clip_open(s[..], "https://openagents.com/realms/orbit-league/#clip=o1ABC") && !s[0].clip_play;
+  #assert !clip_open(s[..], "https://openagents.com/worlds/orbit-league/#clip=o1ABC") && !s[0].clip_play;
 }
 #test "a saved clip's link plays the same replay in another game: your drives as recorded, the bot deciding again, the ball into the same goal (ol-clips)" #steps 300000000 {
   s: [1] OrbitLeague;
@@ -3404,7 +3404,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   run_for(s[..], CELEBRATE + STEP);
   #assert s[0].phase == PHASE_REPLAY;
   link: [OUTBOX] u8;
-  k := put(link[..], 0, "https://openagents.com/realms/orbit-league/#clip=");
+  k := put(link[..], 0, "https://openagents.com/worlds/orbit-league/#clip=");
   n := clip_write(s[..], link[k..<OUTBOX]);
   #assert n > 0 && k + n < OUTBOX;
   q: [1] OrbitLeague; game_reset(q[..]);

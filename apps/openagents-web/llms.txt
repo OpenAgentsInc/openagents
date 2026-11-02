@@ -28,10 +28,10 @@ Open projects with tasks any person or agent can pick up.
 ## The Verse
 
 - [Enter the Verse](https://openagents.com/verse/index.md): the way in, as a guest or with an email.
-- [Realms](https://openagents.com/realms/index.md): every realm you can open, newest first.
-- [Haunted House](https://openagents.com/realms/haunted-house): nine haunts to find and characters to talk to, in the browser.
-- [The Garden](https://openagents.com/realms/garden) and [Characters](https://openagents.com/realms/characters): smaller realms.
-- [Make a realm](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md): the skill for an agent: shallow-clone the repo, build a realm, check it and open a pull request.
+- [Worlds](https://openagents.com/worlds/index.md): every world you can open, newest first.
+- [Haunted House](https://openagents.com/worlds/haunted-house): nine haunts to find and characters to talk to, in the browser.
+- [The Garden](https://openagents.com/worlds/garden) and [Characters](https://openagents.com/worlds/characters): smaller worlds.
+- [Make a world](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md): the skill for an agent: shallow-clone the repo, build a world, check it and open a pull request.
 
 ## Accounts
 

@@ -1,4 +1,4 @@
-// Belt 2200, openagents.com/realms/belt-2200: the first playable of the hard
+// Belt 2200, openagents.com/worlds/belt-2200: the first playable of the hard
 // sci-fi RTS (docs/verse/game-ideas/belt-2200.md). This file is the game's
 // rules and its drawing only; the space is the engine's: verse/orbit.coax
 // (Kepler orbits, the ephemeris, Lambert transfers, the rocket equation),
@@ -1521,7 +1521,7 @@ tip_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> b
   if !s[0].tip_down || id != s[0].tip_id { return false; }
   if phase == 1 { return true; }
   s[0].tip_down = false;
-  if phase == 2 && on && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms/belt-2200/tip"); s[0].action = ACT_NAVIGATE; }
+  if phase == 2 && on && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds/belt-2200/tip"); s[0].action = ACT_NAVIGATE; }
   return true;
 }
 belt_golden :: (s: [] Belt, on: bool) #export_c { s[0].golden = on; }
@@ -1643,7 +1643,7 @@ press_button :: (s: [] Belt, i: int) {
     // twice to start over: the first press asks
     if s[0].new_armed > 0 { s[0].new_armed = 0; if !net_send(s, N_NEW, 0, 0, 0) { new_game(s); } } else { s[0].new_armed = 3.0; }
   }
-  if b.id == B_GALAXY && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms"); s[0].action = ACT_NAVIGATE; }
+  if b.id == B_GALAXY && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; }
 }
 
 screen_of :: (s: [] Belt, p: D3) -> D2 { return spacecam_screen(s[0].cam, p, f64(s[0].w), f64(s[0].h)); }
@@ -2554,7 +2554,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     button(s, out, d, x0, sy, x0 + bw, sy + 28 * k, B_SPEED, i, labels[i], 6.5 * k, s[0].speed == i);
   }
   gx := m + 4 * (bw + 6 * k);
-  button(s, out, d, ifx phone then w - m - 46 * k else gx, sy, ifx phone then w - m else gx + 70 * k, sy + 28 * k, B_GALAXY, 0, ifx phone then "EXIT" else "REALMS", 6.5 * k, false);
+  button(s, out, d, ifx phone then w - m - 46 * k else gx, sy, ifx phone then w - m else gx + 70 * k, sy + 28 * k, B_GALAXY, 0, ifx phone then "EXIT" else "WORLDS", 6.5 * k, false);
   // INVITE: a game for two (belt-net.coax); on a phone where SYSTEM goes, when SYSTEM isn't up
   away0 := s[0].cam.goal_scale > system_scale(s) * 4.0 || s[0].cam.goal_scale < system_scale(s) / 3.0 || s[0].follow >= 0 || s[0].follow_place >= 0;
   if !s[0].golden && !s[0].card && s[0].stage == STAGE_NONE && (!phone || !away0) {
@@ -3628,15 +3628,15 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
 
 #test "the highlight stage: LANTERN braking hard past Saturn's rings with IRONWAKE on its tail, Saturn big in every frame, and the save untouched" #steps 370000000 {
   // without the parameter nothing is staged
-  #assert stage_of("https://openagents.com/realms/belt-2200") == STAGE_NONE;
-  #assert stage_of("https://openagents.com/realms/belt-2200?stage=other") == STAGE_NONE;
-  #assert stage_of("https://openagents.com/realms/belt-2200?x=1&stage=highlight#a") == STAGE_HIGHLIGHT;
-  #assert stage_of("https://openagents.com/realms/belt-2200?stage=battle") == STAGE_BATTLE;
+  #assert stage_of("https://openagents.com/worlds/belt-2200") == STAGE_NONE;
+  #assert stage_of("https://openagents.com/worlds/belt-2200?stage=other") == STAGE_NONE;
+  #assert stage_of("https://openagents.com/worlds/belt-2200?x=1&stage=highlight#a") == STAGE_HIGHLIGHT;
+  #assert stage_of("https://openagents.com/worlds/belt-2200?stage=battle") == STAGE_BATTLE;
   s: [1] Belt;
   belt_start(s[..]);
   #assert stage_hull(s[..], STAGE_SHIP) == 0;
   s[0].w = 1280; s[0].h = 720; s[0].dpr = 1;
-  belt_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200?stage=highlight");
+  belt_message(s[..], HOST_PAGE, "url=https://openagents.com/worlds/belt-2200?stage=highlight");
   #assert s[0].stage == STAGE_HIGHLIGHT;
   k := s[0].stage_ship;
   sh := s[0].ships[k];
@@ -3688,7 +3688,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     kept := belt_action(s); belt_action_done(s);
     #assert belt_pointer(s, cx, cy, 0, kind, 4) && !s[0].mouse_down && s[0].fingers[0].id < 0;
     #assert belt_pointer(s, cx, cy, 2, kind, 4) && s[0].action == ACT_NAVIGATE;
-    #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/belt-2200/tip";
+    #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/belt-2200/tip";
   }
 }
 

@@ -238,7 +238,7 @@
     wk[0].realm = "/projects/lantern-garden/realm";
     rb := realm_box(wk[..], hb, 2);
     #assert rb.x1 > rb.x0 && rb.x1 <= hb.x1 && rb.x0 > hb.x0 + 36 + text_width("OPENAGENTS / PROJECTS /", 14);
-    #assert same(realm_label(wk[..], hb, 2), ifx k == 0 then "WALK THE REALM" else "REALM");
+    #assert same(realm_label(wk[..], hb, 2), ifx k == 0 then "WALK THE WORLD" else "WORLD");
     s[0].px = (rb.x0 + rb.x1) * 0.5; s[0].py = (rb.y0 + rb.y1) * 0.5;
     if k == 0 { #assert coaxial_project_cursor(s[..], wk[..]) == 1; }
     #assert click(s[..], wk[..], s[0].px, s[0].py) && s[0].action == ACT_NAVIGATE;

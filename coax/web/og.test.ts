@@ -57,6 +57,8 @@ test("a project or realm on the default card, a missing image, a wrong size and 
   expect(ok.source).toBe("rendered")
   const realm = preview(page(`<title>Dead Gears · OpenAgents</title>\n<meta name="description" content="Hold a ship's hold against three waves, then repair the reactor.">\n<meta property="og:image" content="https://openagents.com/og/realms/dead-gears.jpg">`), "realms/dead-gears", app, app)
   expect(realm.kind).toBe("realm")
+  expect(realm.url).toBe("https://openagents.com/worlds/dead-gears")   // realms/ is served at /worlds
+  expect(realm.path).toBe("/realms/dead-gears")   // its directory, where og-render.ts writes its card
   expect(realm.errors.join()).toContain("not on the site")
   writeFileSync(join(app, "og/small.jpg"), jpeg(400, 400))
   const small = preview(page(`<title>X</title>\n<meta name="description" content="A page whose card is a small square picture, not a link card.">\n<meta property="og:image" content="/og/small.jpg">`), "x", app, app)

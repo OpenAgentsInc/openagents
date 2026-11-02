@@ -1,4 +1,4 @@
-// Dead Gears, openagents.com/realms/dead-gears: the ship survival game, ported
+// Dead Gears, openagents.com/worlds/dead-gears: the ship survival game, ported
 // from aethyr-demo's src/dead_gears.cpp. The rules are verse/deadgears/
 // (ecs.coax, arena.coax, rules.coax: every system and check of the demo);
 // this file is the page over them: the ship's hull as the demo built it, the
@@ -485,7 +485,7 @@ deadgears_key :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c {
   used := redit_key(s[0].ed[..], key, true);
   if used > 0 { return used == 1; }
   if key == KEY_ESCAPE {
-    if fight_over(s) { leave_to(s, "/realms"); return true; }
+    if fight_over(s) { leave_to(s, "/worlds"); return true; }
     set_paused(s, !s[0].paused);
     return true;
   }
@@ -528,7 +528,7 @@ press :: (s: [] DeadGears, b: int) {
   if b == BTN_PAUSE { set_paused(s, !s[0].paused); }
   else if b == BTN_RESUME { set_paused(s, false); }
   else if b == BTN_AGAIN { again(s); }
-  else if b == BTN_GALAXY { leave_to(s, "/realms"); }
+  else if b == BTN_GALAXY { leave_to(s, "/worlds"); }
   else if b != BTN_FIRE { done := act(s, b); }
 }
 
@@ -1922,7 +1922,7 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
     second := Rect.{x0 = card.x1 - 16 * k - bw2, y0 = by, x1 = card.x1 - 16 * k, y1 = by + 36 * k};
     if fight_over(s) { n = hud_button(s, u, out, n, BTN_AGAIN, first, "AGAIN", 9 * k, true, true); }
     else { n = hud_button(s, u, out, n, BTN_RESUME, first, "RESUME", 9 * k, true, true); }
-    n = hud_button(s, u, out, n, BTN_GALAXY, second, "REALMS", 9 * k, false, true);
+    n = hud_button(s, u, out, n, BTN_GALAXY, second, "WORLDS", 9 * k, false, true);
   }
   return n;
 }

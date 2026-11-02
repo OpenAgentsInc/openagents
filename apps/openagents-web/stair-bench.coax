@@ -10,7 +10,7 @@
 main :: () {
   s: [1] Stair;
   stair_start(s[..]);
-  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=swarm");
+  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/worlds/hold-the-stair?stage=swarm");
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   for f: 0..<60 { n := stair_frame(s[..], out[..], u[..], 1280, 800, 1, 0.05, false); }
   hits: [BEASTS] int;

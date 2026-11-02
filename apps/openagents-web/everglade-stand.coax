@@ -283,7 +283,7 @@ eg_roof_at :: (r: EgRoof, x: f32) -> f32 { return r.eave + (r.ridge - r.eave) * 
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
   _ := everglade_warp(g[..]);
-  everglade_message(g[..], MSG_FACTS, "now=1\nruleset=srd5\nplayer=p-1\nurl=https://openagents.com/realms/everglade?stage=roof");
+  everglade_message(g[..], MSG_FACTS, "now=1\nruleset=srd5\nplayer=p-1\nurl=https://openagents.com/worlds/everglade?stage=roof");
   #assert everglade_warp(g[..]);
   r := eg_temple_roof(g[..]);
   p := everglade_spawn(g[..]);

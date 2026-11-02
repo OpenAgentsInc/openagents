@@ -3,9 +3,9 @@
 //
 //   apps/openagents-web/realms.coax           the galaxy's worlds (verse.coax loads it)
 //   apps/openagents-web/realms/<slug>/index.html  each realm's page: its module, assets and save slot
-//   apps/openagents-web/realms/list.coax      /realms' rows (realmlist.coax): every listed realm
-//   apps/openagents-web/realms/index.md       /realms as text
-//   apps/openagents-web/realms/index.html     /realms: the page, its links for agents and readers without a GPU
+//   apps/openagents-web/realms/list.coax      /worlds' rows (realmlist.coax): every listed realm
+//   apps/openagents-web/realms/index.md       /worlds as text
+//   apps/openagents-web/realms/index.html     /worlds: the page, its links for agents and readers without a GPU
 //
 // Adding a realm is data: a world with a realm in realms.json, its module
 // (<module>.coax, <module>-face.c, <module>.wgsl, built by build.sh) and
@@ -70,7 +70,7 @@ export type Realm = { slug: string; title: string; description: string; share?: 
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
-// added: when the realm opened, Chicago time to the minute (/realms' RECENT); line: its one line there.
+// added: when the realm opened, Chicago time to the minute (/worlds' RECENT); line: its one line there.
 export const ADDED = /^20\d\d-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d$/
 export const CLOCK = /^(cycle|real|fixed:(0(\.\d{1,4})?|1(\.0{1,4})?))$/
 // What coax wgsl writes into a realm's WGSL from the style presets: a painterly, photoreal, flat or
@@ -143,7 +143,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
       throw new Error(`realms.json: ${r.slug}: a listed realm needs added, when it opened (YYYY-MM-DDTHH:MM, Chicago)`)
     if (r.added !== undefined && !ADDED.test(r.added)) throw new Error(`realms.json: ${r.slug}: added is YYYY-MM-DDTHH:MM`)
     if (w.kind === "open" && w.listed !== false && (typeof r.line !== "string" || !/^[^|\n"\\]{1,60}$/.test(r.line)))
-      throw new Error(`realms.json: ${r.slug}: a listed realm needs line, its one line on /realms (at most 60, no | or ")`)
+      throw new Error(`realms.json: ${r.slug}: a listed realm needs line, its one line on /worlds (at most 60, no | or ")`)
     for (const a of r.assets) if (!/^[a-z]+:\S+$/.test(a)) throw new Error(`realms.json: ${r.slug}: asset ${a}`)
     const g = r.golden
     if (!g || !(g.lit > 0 && g.lit < 1) || !(g.settle >= 0 && g.settle <= 20000) || !(Number.isInteger(g.blocks) && g.blocks >= 0)) throw new Error(`realms.json: ${r.slug}: golden needs lit (0 to 1), settle (ms) and blocks`)
@@ -179,7 +179,7 @@ export function coax(list: World[]): string {
     `PLANET_A :: ${col("f32", (w) => num(w.orbit.a))};`,
     `PLANET_SIZE :: ${col("f32", (w) => num(w.orbit.size))};`,
     `PLANET_LISTED :: ${col("bool", (w) => String(w.listed !== false))};`,
-    `PLANET_PATH :: ${col("string", (w) => lit(w.realm ? `/realms/${w.realm.slug}` : ""))};`,
+    `PLANET_PATH :: ${col("string", (w) => lit(w.realm ? `/worlds/${w.realm.slug}` : ""))};`,
     "// Its art style (docs/verse/art-styles.md; a world without a realm is lowpoly) and its clock.",
     "PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2; PLANET_FLAT :: 3; PLANET_ANIME :: 4;   // verse/style-preset.coax STYLE_*",
     `PLANET_STYLE :: ${col("int", (w) => `PLANET_${(w.realm?.style ?? "lowpoly").toUpperCase()}`)};`,
@@ -188,7 +188,7 @@ export function coax(list: World[]): string {
   ].join("\n")
 }
 
-// /realms (realmlist.coax): the listed realms, in the table's order.
+// /worlds (realmlist.coax): the listed realms, in the table's order.
 export function listed(list: World[]): Realm[] {
   return list.filter((w) => w.kind === "open" && w.listed !== false && w.realm).map((w) => w.realm!)
 }
@@ -196,7 +196,7 @@ export function listCoax(list: World[]): string {
   const rows = listed(list).map((r) => `${r.slug}|${r.title}|${r.line}|${r.added}|${r.style}\n`).join("")
   return [
     "// Written by coax/web/realms.ts from realms.json: change the table, not this file.",
-    "// /realms' rows (realmlist.coax), the listed realms in the table's order:",
+    "// /worlds' rows (realmlist.coax), the listed realms in the table's order:",
     "// slug | title | its one line | when it opened (Chicago, YYYY-MM-DDTHH:MM) | art style",
     `REALMS_ROWS :: ${JSON.stringify(rows)};`,
     "",
@@ -207,34 +207,34 @@ export function listMarkdown(list: World[]): string {
   const day = (a: string) => `${MONTHS[Number(a.slice(5, 7)) - 1]} ${Number(a.slice(8, 10))}, ${a.slice(0, 4)}`
   const rows = listed(list).sort((a, b) => (a.added! < b.added! ? 1 : a.added! > b.added! ? -1 : 0))
   return [
-    "# Realms",
+    "# Worlds",
     "",
     "Worlds on the Verse you play in the browser, newest first. The page sorts them by most recent, most visited, most played and A to Z; visits leave out our own team and automation.",
     "",
-    ...rows.map((r) => `- [${r.title}](https://openagents.com/realms/${r.slug}): ${r.line}. Opened ${day(r.added!)}.`),
+    ...rows.map((r) => `- [${r.title}](https://openagents.com/worlds/${r.slug}): ${r.line}. Opened ${day(r.added!)}.`),
     "",
-    "Also: [the Verse](https://openagents.com/verse), [build your own realm](https://openagents.com/realms/new).",
+    "Also: [the Verse](https://openagents.com/verse), [build your own world](https://openagents.com/worlds/new).",
     "",
   ].join("\n")
 }
 export function listPage(list: World[]): string {
-  const links = listed(list).map((r) => `<li><a href="/realms/${r.slug}">${esc(r.title)}</a></li>`).join("\n")
+  const links = listed(list).map((r) => `<li><a href="/worlds/${r.slug}">${esc(r.title)}</a></li>`).join("\n")
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Realms · OpenAgents</title>
-<meta name="description" content="Every realm on the Verse you can play in the browser, sorted by most popular, most recent, most played or A to Z.">
+<title>Worlds · OpenAgents</title>
+<meta name="description" content="Every world on the Verse you can play in the browser, sorted by most popular, most recent, most played or A to Z.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OpenAgents">
-<meta property="og:title" content="Realms">
-<meta property="og:description" content="Every realm on the Verse you can play in the browser.">
-<meta property="og:url" content="https://openagents.com/realms">
+<meta property="og:title" content="Worlds">
+<meta property="og:description" content="Every world on the Verse you can play in the browser.">
+<meta property="og:url" content="https://openagents.com/worlds">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="alternate" type="text/markdown" href="/realms/index.md">
+<link rel="alternate" type="text/markdown" href="/worlds/index.md">
 <script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
 <style>
 html,body{margin:0;height:100%;background:#000;color:#ededed}
@@ -250,11 +250,11 @@ a{color:#ededed}
 <body>
 <canvas id="coaxial" aria-hidden="true"></canvas>
 <main>
-<h1>Realms</h1>
+<h1>Worlds</h1>
 <ul>
 ${links}
 </ul>
-<p><a href="/realms/index.md">Realms as text</a></p>
+<p><a href="/worlds/index.md">Worlds as text</a></p>
 </main>
 <script type="module" src="/coaxial/host.js" data-app="realmlist" data-lines="44:/api/analytics/realms"></script>
 </body>
@@ -267,10 +267,10 @@ ${links}
 export const hasMaker = (slug: string, site = SITE) => existsSync(join(site, "realms", slug, "tip", "index.html"))
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
 export function page(r: Realm): string {
-  const url = `https://openagents.com/realms/${r.slug}`, t = esc(r.title), d = esc(r.description), share = esc(r.share ?? brief(r.description))
+  const url = `https://openagents.com/worlds/${r.slug}`, t = esc(r.title), d = esc(r.description), share = esc(r.share ?? brief(r.description))
   // its link preview (docs/web/og-tags.md): its hand-made card, else the one og-render.ts renders from a still of it
   const card = `https://openagents.com${r.card ?? renderedCard(`realms/${r.slug}`)}`
-  const alt = esc(r.card ? r.alt : `${r.title}: a still of the realm, with its name`)
+  const alt = esc(r.card ? r.alt : `${r.title}: a still of the world, with its name`)
   const slot = ` data-realm="${r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
     + (r.page ? ` data-page="${r.page}"` : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")
@@ -302,7 +302,7 @@ export function page(r: Realm): string {
 <meta name="twitter:image" content="${card}">
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="alternate" type="text/markdown" href="/realms/${r.slug}/index.md">
+<link rel="alternate" type="text/markdown" href="/worlds/${r.slug}/index.md">
 <script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
 <style>
 html,body{margin:0;height:100%;background:#000;color:#ededed}
@@ -319,9 +319,9 @@ ${LOADER_CSS}
 </head>
 <body>
 <canvas id="coaxial" aria-hidden="true"></canvas>
-${loaderMarkup(r.title, `/realms/${r.slug}/index.md`)}
+${loaderMarkup(r.title, `/worlds/${r.slug}/index.md`)}
 <main>
-<h1>${t}</h1><p><a href="/realms/${r.slug}/index.md">${t}</a></p>
+<h1>${t}</h1><p><a href="/worlds/${r.slug}/index.md">${t}</a></p>
 </main>
 <script type="module" src="/coaxial/host.js" data-app="${r.module}"${renderAttributes(r.slug, r.module)}${slot}${assets}></script>
 </body>

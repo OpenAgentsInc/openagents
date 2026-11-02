@@ -1,19 +1,19 @@
 # Hecate's Cemetery
 
-The first expansion of Planetary Villa, Kiki's world on the Verse, at https://openagents.com/realms/hecates-cemetery. Open it from the [realms list](https://openagents.com/realms) and a short flight carries you there: out through space to the planet, then down through the night to the cemetery's south gate. A key, a click or a tap skips it.
+The first expansion of Planetary Villa, Kiki's world on the Verse, at https://openagents.com/worlds/hecates-cemetery. Open it from the [worlds list](https://openagents.com/worlds) and a short flight carries you there: out through space to the planet, then down through the night to the cemetery's south gate. A key, a click or a tap skips it.
 
 - A memorial garden lit only by the moon, which stands still in the sky and shows the real moon's phase tonight.
 - Garden paths between 64 tombstone plots, hedges, cypresses, benches round a fountain, and a gate east into an open field.
-- You are a spirit visiting from another realm: a soft, see-through figure of pale light with wisps rising off it and a trail of light behind you. A dog glowing white walks with you.
+- You are a spirit visiting from another world: a soft, see-through figure of pale light with wisps rising off it and a trail of light behind you. A dog glowing white walks with you.
 - Hekate, goddess of the moon, floats round the garden's ring path with a torch of cold moonlight, her large black dog, a long-coated Groenendael, at her heels.
 - Drawn in flat-shaded low poly in moonlit pastels: periwinkle sky, sage ground, cream and lavender stone, teal and sage trees, soft lavender shadows and a light line along every outline.
 
 On a computer: WASD moves you at a run, a drag or the arrow keys turn the camera, the wheel zooms, Shift walks. On a phone: the left thumb moves you (a full push runs, a light one walks) and the right thumb looks.
 
-The design is Kiki's: https://github.com/OpenAgentsInc/openagents/blob/main/verse/planetary-villa/README.md. Every model is drawn from the engine's own shapes in code; [the licences](/realms/hecates-cemetery/licences.md).
+The design is Kiki's: https://github.com/OpenAgentsInc/openagents/blob/main/verse/planetary-villa/README.md. Every model is drawn from the engine's own shapes in code; [the licences](/worlds/hecates-cemetery/licences.md).
 
 Project: https://openagents.com/projects/planetary-villa
 
-## Make your own realm
+## Make your own world
 
 An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

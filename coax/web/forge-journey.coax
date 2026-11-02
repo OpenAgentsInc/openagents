@@ -85,7 +85,7 @@ origin_of :: (url: string) -> string {
 }
 
 #test "a journey's pieces" {
-  #assert origin_of("https://staging.openagents.com/realms/new") == "https://staging.openagents.com" && origin_of("nope") == "";
+  #assert origin_of("https://staging.openagents.com/worlds/new") == "https://staging.openagents.com" && origin_of("nope") == "";
   #assert slug_ok("aethyrforge-journey-test-1a2b") && !slug_ok("x'y") && !slug_ok("");
   #assert starts("Aethyrforge Journey Test 1a Fork", "Aethyrforge Journey Test") && ends("Aethyrforge Journey Test 1a Fork", " Fork");
   #assert step_name(Step.ORIGINAL) == "12 the original is unchanged" && cast(int) Step.ORIGINAL == STEPS - 1;
@@ -133,7 +133,7 @@ wait_probe :: (c: [] Cdp, field: int, want: int, ms: int) -> bool {
 }
 // A private realm has no page of its own: its owner opens /realms/built#SLUG (0099), read here as /realms/SLUG.
 path_now :: (c: [] Cdp, out: [] u8) -> string {
-  return js_str(c, "location.pathname === '/realms/built' && location.hash.length > 1 ? '/realms/' + location.hash.slice(1) : location.pathname", out);
+  return js_str(c, "(location.pathname === '/realms/built' || location.pathname === '/worlds/built') && location.hash.length > 1 ? '/worlds/' + location.hash.slice(1) : location.pathname", out);
 }
 
 // ---- the typed actions
@@ -236,7 +236,7 @@ went_to :: (r: [] Run, c: [] Cdp, from: string, out: [] u8, ms: int) -> int {
   until := proc_now_ms() + ms; p: [256] u8;
   while proc_now_ms() < until {
     now := path_now(c, p[..]);
-    if starts(now, "/realms/") && now != from && slug_ok(now[8..<now.count]) {
+    if (starts(now, "/worlds/") || starts(now, "/realms/")) && now != from && slug_ok(now[8..<now.count]) {
       n := 0; for ch: now[8..<now.count] { out[n] = ch; n += 1; }
       return n;
     }
@@ -262,7 +262,7 @@ generate :: (r: [] Run, c: [] Cdp, stamp: string) -> bool {
   if r[0].board_only { return true; }
   proc_sleep(500);
   if !tap(r, c, B_MAKE) { return false; }
-  r[0].slug_n = went_to(r, c, "/realms/new", r[0].slug[..], 120000);
+  r[0].slug_n = went_to(r, c, "/worlds/new", r[0].slug[..], 120000);
   if r[0].slug_n == 0 { return why_n(r, "MAKE IT never opened the realm", probe(c, 0)); }
   if !realm_ready(r, c) { return false; }
   // the server: revision 1, its name, unlisted, never published
@@ -453,7 +453,7 @@ publish :: (r: [] Run, c: [] Cdp) -> bool {
   return true;
 }
 fork :: (r: [] Run, c: [] Cdp) -> bool {
-  from: [1] Buf; bput(from[..], "/realms/"); bput(from[..], slug_text(r));
+  from: [1] Buf; bput(from[..], "/worlds/"); bput(from[..], slug_text(r));
   if !tap(r, c, R_FORK) { return false; }
   r[0].fork_n = went_to(r, c, btext(from[..]), r[0].fork[..], 60000);
   if r[0].fork_n == 0 { return why_n(r, "FORK never opened the fork", probe(c, 15)); }
@@ -533,10 +533,10 @@ tool_main :: () -> int #export_c {
   stamp := btext(st[..]);
   c: [1] Cdp;
   if !cdp_launch(c[..], r[0].w, r[0].h, "coax-forge-journey-") { tool_err("forge-journey: "); tool_errln(cdp_error(c[..])); return 1; }
-  u: [1] Buf; bput(u[..], origin); bput(u[..], "/realms/new");
+  u: [1] Buf; bput(u[..], origin); bput(u[..], "/worlds/new");
   print("forge-journey % at %x% (%), mark aethyrforge-journey\n", origin, r[0].w, r[0].h, ifx r[0].phone then "phone, touch" else "desktop");
   status := 0;
-  if !open_page(r[..], c[..], btext(u[..])) { tool_err("forge-journey: opening /realms/new: "); tool_errln(cdp_error(c[..])); status = 1; }
+  if !open_page(r[..], c[..], btext(u[..])) { tool_err("forge-journey: opening /worlds/new: "); tool_errln(cdp_error(c[..])); status = 1; }
   png: [FJ_SHOT] u8;
   i := 0;
   while status == 0 && i < STEPS {
@@ -544,8 +544,8 @@ tool_main :: () -> int #export_c {
     good := run_step(r[..], c[..], s, stamp);
     print("% %: % (% ms)\n", ifx good then "ok  " else "FAIL", step_name(s), ifx good then "" else cast(string) r[0].fail[0..<r[0].fail_n], proc_now_ms() - t0);
     if s == Step.GENERATE && good && r[0].board_only { print("     the board came back; --board-only stops here\n"); cdp_close(c[..]); return 0; }
-    if s == Step.GENERATE && good { print("     realm /realms/% (%)\n", slug_text(r[..]), cast(string) r[0].name[0..<r[0].name_n]); }
-    if s == Step.FORK && good { print("     fork /realms/%\n", fork_text(r[..])); }
+    if s == Step.GENERATE && good { print("     world /worlds/% (%)\n", slug_text(r[..]), cast(string) r[0].name[0..<r[0].name_n]); }
+    if s == Step.FORK && good { print("     fork /worlds/%\n", fork_text(r[..])); }
     if shots.count > 0 {
       p: [1] Buf; bput(p[..], shots); bput(p[..], "-"); bint(p[..], i + 1); bput(p[..], ".png");
       n := cdp_screenshot(c[..], png[..]);
