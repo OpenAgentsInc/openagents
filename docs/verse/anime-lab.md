@@ -229,6 +229,42 @@ confidence, and whether it was in stock or drew in. The session is the
 example above, with our own names: Draconia (the heroine), Kai (the hero),
 three hooded figures and a dark lord.
 
+Built (A2), November 2:
+
+- **The director** is `verse/anime/director.coax`: the catalogue (the
+  table above, plus `hesitant` among the feelings), `anime_read` holding
+  each of the decision model's answers (one flat JSON object a direction,
+  catalogue words and a confidence `p`, as the typed selector returns them)
+  to the catalogue, the demo's 13 lines and 18 recorded answers, and
+  `anime_timeline`, which lays them out under the grammar: a direction
+  plays `DECIDE` (0.35 s) after its words end; a camera direction waits out
+  a close-up's 0.6 s and any wind-up (a cast's 0.4 s anticipation); a flash
+  cut is 3 white frames and the feeling with it shows after them; under
+  0.5 nothing plays, 0.5 to 0.85 plays with a "did you mean" chip. When a
+  direction's subject is off the shot the engine adds its own framing
+  (marked ENGINE in the caption). Its checks cover all of that.
+- **The stage** is `verse/anime/stage.coax`: the timeline at a moment t
+  (poses blended, the cast's wind-up and release, feelings, who has
+  entered, spells in flight and their bursts, smoke, rubble, the breach,
+  the draw-in's phases, the frame's flash, impact frame, speed lines and
+  shake), and the camera, each shot's move flown with `verse/cinematic.coax`.
+  The engine's own reactions are named there: the heroes turn to face what
+  appears behind them, everyone recoils from a huge impact, whoever walks
+  on from behind comes out of smoke.
+- **The realm** is `apps/openagents-web/animelab.coax` (with
+  `animelab-cast.coax`, `animelab-world.coax`, `animelab-mesh.coax`,
+  `animelab-style.coax`, `gpu/animelab.coax`): Skyreach Academy's
+  courtyard at dusk in the action variant, the cast built from primitives
+  with anime faces whose marks change with the feeling, the effects, the
+  ink dragon's draw-in (ink strokes along its body, flat colour flooding
+  out from them, then its shading), and the caption. `?stage=film` plays a
+  ten-second take of the same stage without the caption; `&t=` holds a
+  moment, `&card=1` hides the caption.
+- **Simulated:** the voice and the decision model (their output is
+  recorded in the session). The draw-in's maker is too: the dragon's shape
+  is the stage's own, and the draw-in shows the reveal the maker will
+  drive.
+
 ## The work, in order
 
 | Step | What | Done when |

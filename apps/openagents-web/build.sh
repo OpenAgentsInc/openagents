@@ -88,6 +88,10 @@ fixture=$!
 # /realms/waterlab: the water system's test scene (docs/verse/water.md), the spectral sea in Coax.
 "$here/../../coax/web/wasm.sh" "$here/waterlab.coax" "$here/waterlab-face.c" "$here/build/waterlab.wasm" &
 waterlab=$!
+# /realms/anime-lab: direct an anime (docs/verse/anime-lab.md): the director and stage (verse/anime/), the
+# anime style's block from its own library (animelab-style.coax). (animelab.wgsl loads verse/style.coax in gpu/animelab.coax.)
+"$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" "$here/animelab-style.coax" &
+animelab=$!
 # /realms/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
 "$here/../../coax/web/wasm.sh" "$here/droprealm.coax" "$here/droprealm-face.c" "$here/build/droprealm.wasm" &
 droprealm=$!
@@ -219,6 +223,7 @@ wait "$garden"
 wait "$characters"
 wait "$fixture"
 wait "$waterlab"
+wait "$animelab"
 wait "$droprealm"
 wait "$builder"
 wait "$myrealm"
