@@ -1,5 +1,18 @@
 # Owner actions
 
+## Psionic chapter 74: run gpt-oss-120b on the Mac (2026-11-02)
+
+The chapter 74 planner (`psionic/lib/gptoss/device-choice.coax`) admits 120b
+resident on the 128 GB M5 Max (65,574,023,296 bytes at a 4,096-token cache,
+within the 107.5 GiB working set) and picks it over the RTX 4080 (24.6 vs a
+worst-case 9.5 tokens/s). No agent has documented access to the Mac from
+coderos-4080. Once chapter 72's Metal harness takes the 120b sizes, run it on
+the Mac with the original 120b shards and keep the log. The run needs
+allocation headroom, logits and routes against chapter 73's references,
+equal greedy IDs, and decode and prefill rates. Separately, decide whether
+coderos-4080 should get the 65.2 GB of 120b shards for the 4080
+expert-streaming path. Its disk has about 35 GB free.
+
 ## Psionic chapter 196: working with Mesh-LLM (2026-11-01)
 
 `psionic/lib/peer/meshllm.coax` maps Mesh-LLM peers to capability claims and

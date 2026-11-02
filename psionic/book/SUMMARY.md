@@ -80,7 +80,7 @@
 - [71. Throughput is a gate](ch071-throughput-is-a-gate.md) — partly implemented
 - [72. gpt-oss-20b on Metal](ch072-gpt-oss-on-metal.md)
 - [73. Execute gpt-oss-120b](ch073-execute-gpt-oss-120b.md)
-- [74. Fit 120b on the right device](ch074-fit-120b-on-the-right-device.md) — design draft
+- [74. Fit 120b on the right device](ch074-fit-120b-on-the-right-device.md) — partly implemented
 - [75. Let the small model guess](ch075-let-the-small-model-guess.md)
 - [76. Verify a draft block in parallel](ch076-verify-a-draft-block-in-parallel.md) — partly implemented
 - [77. Call a tool](ch077-call-a-tool.md)
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75–82, 83, 84, 85, 86, 87, 88–102, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–197, 215–250 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–82, 83, 84, 85, 86, 87, 88–102, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–197, 215–250 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

@@ -1,0 +1,14 @@
+device: NVIDIA GeForce RTX 4080 sm_89, 16711352320 bytes total, 16302145536 free, driver 13020
+pinned 3812106240 bytes in 288 expert images; 8 device slots of 13236480 bytes
+token 0 (warm-up): 1906053120 bytes in 80020 us, 23819 bytes/us
+token 1: 1906053120 bytes in 79997 us, 23826 bytes/us
+token 2: 1906053120 bytes in 80000 us, 23825 bytes/us
+token 3: 1906053120 bytes in 79999 us, 23825 bytes/us
+token 4: 1906053120 bytes in 79987 us, 23829 bytes/us
+token 5: 1906053120 bytes in 79997 us, 23826 bytes/us
+token 6: 1906053120 bytes in 79995 us, 23827 bytes/us
+token 7: 1906053120 bytes in 79998 us, 23826 bytes/us
+token 8: 1906053120 bytes in 79986 us, 23829 bytes/us
+token 9: 1906053120 bytes in 79993 us, 23827 bytes/us
+token 10: 1906053120 bytes in 80008 us, 23823 bytes/us
+timed: 10 tokens, 19060531200 bytes in 799960 us, 23826 bytes/us; last slot matches its image: yes

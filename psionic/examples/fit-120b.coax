@@ -1,0 +1,52 @@
+// Chapter 74: choose the device for gpt-oss-120b. The planner sees the
+// 128 GiB Mac of chapter 72 and the RTX 4080 of this host, each with an
+// effective read rate from its own measured 20b decode run, and the 4080's
+// link rate from this chapter's expert upload receipt.
+#import "Basic";
+#load "../lib/gptoss/device-choice.coax";
+#load "../lib/comparator.coax";
+#load "../lib/expert-stream.coax";
+#load "../fixtures/fit-120b/rtx4080-upload.coax";
+
+milli :: (x:int) {v:=x%1000;print("%.",x/1000);print("%",v/100);print("%",v/10%10);print("%",v%10);}
+show :: (name:string,p:FcPlan) {
+    print("%: % (%)\n",name,fc_mode_name(p.mode),fc_status_name(p.status));
+    if p.status!=FcStatus.ok {return;}
+    print("  device % bytes, host pinned % bytes, expert cache % slots\n",p.device,p.pinned,p.slots);
+    print("  worst-case step: read % bytes, copy % bytes, % us, tokens/s ",p.read,p.copied,p.step_us);milli(p.milli);print("\n");
+}
+
+// book:begin example
+// 128-step decode medians from position 1,025, in nanoseconds: chapter
+// 72's Mac run and chapter 71's 4080 receipt (five runs each).
+MAC_DECODE_NS :: 3683000000;RTX_DECODE_NS :: 2279540283;
+MAC_WORKING_SET :: 115427246080;MAC_BUFFER :: 86543591014;   // 107.5 GiB and 80.6 GiB, as chapter 72 printed them
+RTX_RESERVE :: 268435456;                                    // chapter 45's 256 MiB
+main :: () {
+    g:=rp_gptoss_120b();w:=rp_weights(g);r:=RpRequest.{capacity=4096,chunk=256};
+    print("120b: % weight bytes, % in % experts of %, % dense\n",w.total,36*128*w.expert,36*128,w.expert,w.total-36*128*w.expert);
+    ns:[10]int;total:=0;
+    for us,i:FU_TOKEN_US {ns[i]=us*1000;total+=us;}
+    st:=cm_two_pass(ns[..]);wf:=cm_welford(ns[..]);
+    link:=10*FU_TOKEN_BYTES/total;
+    print("upload receipt: % tokens of % bytes, mean % ns, sd % ns (Welford agrees: %), % bytes/us\n",
+        st.n,FU_TOKEN_BYTES,cast(int)(st.mean+0.5),cast(int)(st.sd+0.5),cast(int)(wf.mean+0.5)==cast(int)(st.mean+0.5),link);
+    mac:=FcDevice.{memory=MAC_WORKING_SET,buffer=MAC_BUFFER,read_rate=fc_rate(rp_gptoss_20b(),1025,128,MAC_DECODE_NS)};
+    rtx:=FcDevice.{memory=FU_FREE-RTX_RESERVE,buffer=FU_FREE-RTX_RESERVE,read_rate=fc_rate(rp_gptoss_20b(),1025,128,RTX_DECODE_NS),
+        link_rate=link,host=FU_HOST_AVAILABLE};
+    print("read rates from the 20b runs: Mac % bytes/us, RTX 4080 % bytes/us\n",mac.read_rate,rtx.read_rate);
+    devices:=[2]FcDevice.[rtx,mac];plans:[2]FcPlan;
+    best:=fc_pick(g,r,devices[..],plans[..]);
+    show("RTX 4080 16 GB",plans[0]);show("Apple M5 Max 128 GB",plans[1]);
+    names:=[2]string.["RTX 4080 16 GB","Apple M5 Max 128 GB"];
+    print("pick: %\n",names[best]);
+    // What the 4080's cache could save, on chapter 191's synthetic router
+    // (not gpt-oss routing): 384 tokens, the last 256 counted.
+    keys:=36*128;per:=36*4;trace:[384*36*4]int;gate:[36*128*XS_WIDTH]f32;f:[128]f64;work:[865+3*36*128]int;none:[1]int;
+    t:=xs_trace(1,2,384,36,128,4,trace[..],gate[..],f[..]);
+    c:=xs_replay(XsPolicy.lru,trace[..],per,128*per,plans[0].slots,keys,none[0..<0],work[..]);
+    cost:=xs_cost(c.misses,256,w.expert,link,plans[0].read,rtx.read_rate);
+    print("synthetic trace %, LRU over % slots: % of % hits, % copies a token, tokens/s ",t.status,plans[0].slots,c.hits,c.accesses,c.misses/256);
+    milli(cost.serial_milli);print("\n");
+}
+// book:end example

@@ -2092,6 +2092,26 @@
       ]
     },
     {
+      "source": "psionic/examples/fit-120b.coax",
+      "chapter": "psionic/book/ch074-fit-120b-on-the-right-device.md",
+      "stdout": "psionic/fixtures/fit-120b/fit-120b.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/fit-120b-refuse.coax",
+      "chapter": "psionic/book/ch074-fit-120b-on-the-right-device.md",
+      "stdout": "psionic/fixtures/fit-120b/fit-120b-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/comparator-protocol.coax",
       "chapter": "psionic/book/ch034-benchmark-against-llama-cpp-and-cublas.md",
       "stdout": "psionic/fixtures/comparator/comparator-protocol.out",

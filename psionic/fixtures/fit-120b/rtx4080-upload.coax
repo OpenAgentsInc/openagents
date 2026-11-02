@@ -1,0 +1,15 @@
+// Chapter 74's receipt: psionic/tests/expert_upload_bench.c on coderos-4080,
+// 2026-11-02 08:34 CST, built with gcc -O2 against psionic/platform/cuda-host.c
+// at 4a9f67d976. 288 distinct original-size expert images (13,236,480 bytes
+// each) pinned in host memory; each token copies 144 of them (36 layers * 4
+// selected) one at a time into 8 device slots, timed with device events. One
+// warm-up token, then ten timed ones, in microseconds rounded up. The last
+// slot matched its source byte for byte. Load average 4.36 when it began.
+// The harness output is psionic/fixtures/fit-120b/rtx4080-upload.log.
+FU_MACHINE :: "coderos-4080 Linux 6.18.49 driver 13020";
+FU_DEVICE :: "NVIDIA GeForce RTX 4080 sm_89, 16711352320 bytes total, 16302145536 free";
+FU_FREE :: 16302145536;
+FU_HOST_AVAILABLE :: 127165370368;   // MemAvailable, 124,184,932 kB, read from /proc/meminfo just before the run
+FU_WARMUP_US :: 80020;
+FU_TOKEN_US :: [10]int.[79997,80000,79999,79987,79997,79995,79998,79986,79993,80008];
+FU_TOKEN_BYTES :: 1906053120;

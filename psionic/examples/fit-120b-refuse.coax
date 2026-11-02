@@ -1,0 +1,29 @@
+// Chapter 74: devices and requests the device-choice planner refuses, each
+// with its typed reason, before any byte is allocated.
+#import "Basic";
+#load "../lib/gptoss/device-choice.coax";
+
+say :: (label:string,p:FcPlan) {print("%: % (%)\n",label,fc_mode_name(p.mode),fc_status_name(p.status));}
+// book:begin refuse
+main :: () {
+    g:=rp_gptoss_120b();r:=RpRequest.{capacity=4096,chunk=256};
+    rtx:=FcDevice.{memory=16033710080,buffer=16033710080,read_rate=211578,link_rate=23826,host=127165370368};
+    mac:=FcDevice.{memory=115427246080,buffer=86543591014,read_rate=130953};
+    small:=mac;small.memory=48*1073741824;small.buffer=small.memory*3/4;
+    say("a 64 GB Mac with a 48 GiB working set",fc_plan(g,r,small));
+    big:=mac;big.buffer=60*1073741824;
+    say("the 128 GB Mac if its largest buffer were 60 GiB",fc_plan(g,r,big));
+    host:=rtx;host.host=32*1073741824;
+    say("the RTX 4080 on a host with 32 GiB to pin",fc_plan(g,r,host));
+    card:=rtx;card.memory=4*1073741824;card.buffer=card.memory;
+    say("a 4 GiB card",fc_plan(g,r,card));
+    card.memory=256*1048576;
+    say("256 MiB of card for a 4,096-token cache",fc_plan(g,r,card));
+    say("capacity 131,073 for a 131,072-token model",fc_plan(g,RpRequest.{capacity=131073,chunk=1},mac));
+    no_rate:=mac;no_rate.read_rate=0;
+    say("a device with no measured read rate",fc_plan(g,r,no_rate));
+    say("Elephant, which has no experts",fc_plan(rp_elephant(),r,mac));
+    plans:[2]FcPlan;none:=[2]FcDevice.[small,card];
+    print("pick among the 64 GB Mac and the 256 MiB card: %\n",fc_pick(g,r,none[..],plans[..]));
+}
+// book:end refuse

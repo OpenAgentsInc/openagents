@@ -1,0 +1,190 @@
+// Chapter 74: fit gpt-oss-120b on the right device. Given what a device may
+// allocate, how fast the engine reads its resident weights there and how
+// fast bytes cross its host link, decide whether a gpt-oss model runs with
+// every weight resident, runs with its dense weights resident and its
+// experts streamed from host memory through a device expert cache, or is
+// refused with a typed reason; then pick the admitted device with the best
+// worst-case decode rate. Nothing is allocated here.
+// Profile fc-120b-v1: bytes exact from chapter 33's rp-plan-v1 accounting;
+// rates in bytes a microsecond (MB/s); times in microseconds rounded up; the
+// rate a worst-case decode step at full capacity allows, in tokens a second
+// times 1,000, rounded down. Worst case: the step reads its resident bytes
+// at the read rate and, streamed, every selected expert misses the cache
+// and crosses the link first, with no overlap.
+#authority;
+#load "../residency.coax";
+
+FcStatus :: enum u8 {ok;model;request;device;state;memory;dense;host;}
+FcMode :: enum u8 {refused;resident;experts;}
+// A device as the engine sees it: the bytes it may allocate (free memory
+// less a reserve), the largest single buffer (the resident engine keeps
+// every weight in one), the effective rate it reads resident bytes in a
+// decode step, the host-to-device copy rate (0 when memory is unified and
+// nothing crosses a link), and the host bytes that may be pinned for
+// streamed experts.
+FcDevice :: struct {memory:int;buffer:int;read_rate:int;link_rate:int;host:int;}
+// dense and experts split the weights; slots is the expert cache in
+// experts; device is every byte allocated on the device, pinned the host
+// bytes; read and copied are one worst-case step's bytes; step_us its time.
+FcPlan :: struct {status:FcStatus;mode:FcMode;dense:int;experts:int;state:int;scratch:int;slots:int;device:int;pinned:int;read:int;copied:int;step_us:int;milli:int;}
+
+fc_us :: (bytes:int,rate:int)->int {return (bytes+rate-1)/rate;}
+
+// book:begin rate
+// An effective read rate from a measured decode run: steps decode steps
+// starting at position first took ns nanoseconds; chapter 33 counts the
+// bytes each step reads. Bytes a microsecond, rounded down; 0 for a run
+// outside the model's bounds.
+fc_rate :: (m:RpModel,first:int,steps:int,ns:int)->int {
+    if steps<1 || ns<1 || rp_decode(m,first).status!=RpStatus.ok || rp_decode(m,first+steps-1).status!=RpStatus.ok {return 0;}
+    bytes:=0;
+    for n:first..<first+steps {bytes+=rp_decode(m,n).bytes;}
+    return bytes*1000/ns;
+}
+// book:end rate
+
+// book:begin plan
+// The streamed mode keeps at least two layers' selections in the cache:
+// one layer's experts in use while the next layer's are copied.
+fc_plan :: (m:RpModel,r:RpRequest,d:FcDevice)->FcPlan {
+    if !rp_valid(m) || m.arch!=RpArch.moe {return FcPlan.{status=FcStatus.model};}
+    if r.capacity<1 || r.capacity>m.max_tokens || r.chunk<1 || r.chunk>r.capacity {return FcPlan.{status=FcStatus.request};}
+    if d.memory<0 || d.buffer<0 || d.read_rate<1 || d.link_rate<0 || d.host<0 {return FcPlan.{status=FcStatus.device};}
+    w:=rp_weights(m);expert:=w.expert;
+    p:=FcPlan.{experts=rp_layers(m)*m.experts*expert,state=rp_state(m,r.capacity),scratch=rp_scratch(m,r.chunk,r.capacity)};
+    p.dense=w.total-p.experts;p.read=rp_decode(m,r.capacity).bytes;
+    live:=p.state+p.scratch;
+    if w.total+live<=d.memory && w.total<=d.buffer {
+        p.mode=FcMode.resident;p.device=w.total+live;
+    } else {
+        if live>d.memory {p.status=FcStatus.state;return p;}
+        if d.link_rate==0 {p.status=FcStatus.memory;return p;}
+        if p.dense+live+2*m.selected*expert>d.memory {p.status=FcStatus.dense;return p;}
+        if p.experts>d.host {p.status=FcStatus.host;return p;}
+        p.mode=FcMode.experts;p.slots=(d.memory-p.dense-live)/expert;
+        p.device=p.dense+live+p.slots*expert;p.pinned=p.experts;p.copied=rp_layers(m)*m.selected*expert;
+        p.step_us=fc_us(p.copied,d.link_rate);
+    }
+    p.step_us+=fc_us(p.read,d.read_rate);
+    p.milli=1000000000/p.step_us;
+    return p;
+}
+// book:end plan
+
+// book:begin pick
+// Plan every device and return the index of the admitted one with the
+// highest worst-case rate (the first on a tie), or -1 when none admits.
+fc_pick :: (m:RpModel,r:RpRequest,devices:[]FcDevice,plans:[]FcPlan)->int {
+    best:=-1;top:int;
+    for i:0..<devices.count {
+        p:=fc_plan(m,r,devices[i]);
+        if i<plans.count {plans[i]=p;}
+        if p.status==FcStatus.ok && (best<0 || p.milli>top) {best=i;top=p.milli;}
+    }
+    return best;
+}
+// book:end pick
+
+fc_status_name :: (s:FcStatus)->string {
+    names:=[8]string.["ok","model: not a valid mixture-of-experts shape","request: capacity or chunk outside 1..max tokens",
+        "device: a negative size or a rate below 1","state: the state and scratch alone exceed the device",
+        "memory: the weights exceed unified memory and nothing can stream","dense: the dense weights, state, scratch and two layers of experts exceed the device",
+        "host: the host cannot pin every expert"];
+    return names[cast(int)s];
+}
+fc_mode_name :: (m:FcMode)->string {names:=[3]string.["refused","resident","experts streamed"];return names[cast(int)m];}
+
+// ---- Checks. Independent values are worked by hand in chapter 74 from the
+// pinned 120b inventory: 36 * 128 experts of 13,236,480 bytes, and
+// the two measured 128-step decode runs from position 1,025.
+FC_REQ :: RpRequest.{capacity=4096,chunk=256};
+FC_4080 :: FcDevice.{memory=16033710080,buffer=16033710080,read_rate=211578,link_rate=23826,host=127165370368};
+FC_MAC :: FcDevice.{memory=115427246080,buffer=86543591014,read_rate=130953,host=0};
+
+#test "the 120b split and the decode bytes match the hand count" {
+    p:=fc_plan(rp_gptoss_120b(),FC_REQ,FC_MAC);
+    #assert p.status==FcStatus.ok && p.mode==FcMode.resident;
+    #assert p.experts==60993699840 && p.dense==4255115904 && p.dense+p.experts==65248815744;
+    #assert p.state==311427072 && p.scratch==13780480 && p.read==5314482432;
+    #assert p.device==65248815744+311427072+13780480 && p.slots==0 && p.pinned==0 && p.copied==0;
+    // 5,314,482,432 / 130,953 = 40,583.13, rounded up; 10^9 / 40,584 = 24,640.25.
+    #assert p.step_us==40584 && p.milli==24640;
+    // A step that takes one microsecond runs at exactly 10^9 thousandths of a token a second.
+    d:=FC_MAC;d.read_rate=p.read;#assert fc_plan(rp_gptoss_120b(),FC_REQ,d).step_us==1 && fc_plan(rp_gptoss_120b(),FC_REQ,d).milli==1000000000;
+    // Rounding up: whole microseconds stay whole, any remainder adds one.
+    #assert fc_us(1,1)==1 && fc_us(4,2)==2 && fc_us(3,2)==2 && fc_us(0,7)==0;
+}
+#test "the measured runs give the hand rates" {
+    // 128 steps from 1,025 read 482,301,542,400 bytes: 2,279,540,283 ns and 3,683,000,000 ns.
+    #assert fc_rate(rp_gptoss_20b(),1025,128,2279540283)==211578 && fc_rate(rp_gptoss_20b(),1025,128,3683000000)==130953;
+    #assert fc_rate(rp_gptoss_20b(),1025,1,1000)==rp_decode(rp_gptoss_20b(),1025).bytes;
+    #assert fc_rate(rp_gptoss_20b(),1025,1,1)==1000*rp_decode(rp_gptoss_20b(),1025).bytes;
+    #assert fc_rate(rp_gptoss_20b(),1025,0,1000)==0 && fc_rate(rp_gptoss_20b(),1025,128,0)==0;
+    #assert fc_rate(rp_gptoss_20b(),0,1,1000)==0 && fc_rate(rp_gptoss_20b(),131072,1,1000)==rp_decode(rp_gptoss_20b(),131072).bytes;
+    #assert fc_rate(rp_gptoss_20b(),131072,2,1000)==0;
+}
+#test "the 4080 keeps dense weights resident and streams experts" {
+    p:=fc_plan(rp_gptoss_120b(),FC_REQ,FC_4080);
+    #assert p.status==FcStatus.ok && p.mode==FcMode.experts;
+    // (16,033,710,080 - 4,255,115,904 - 325,207,552) / 13,236,480 = 865.29.
+    #assert p.slots==865 && p.device==4255115904+325207552+865*13236480 && p.pinned==60993699840;
+    #assert p.copied==36*4*13236480 && p.copied==1906053120;
+    // 25,118.7 rounds up to 25,119; 79,998.9 to 79,999.
+    #assert p.step_us==25119+79999 && p.milli==9513;
+}
+pick1 :: (a:FcDevice,plans:[]FcPlan)->int {d:=[1]FcDevice.[a];return fc_pick(rp_gptoss_120b(),FC_REQ,d[..],plans);}
+pick2 :: (a:FcDevice,b:FcDevice,plans:[]FcPlan)->int {d:=[2]FcDevice.[a,b];return fc_pick(rp_gptoss_120b(),FC_REQ,d[..],plans);}
+pick3 :: (a:FcDevice,b:FcDevice,c:FcDevice,plans:[]FcPlan)->int {d:=[3]FcDevice.[a,b,c];return fc_pick(rp_gptoss_120b(),FC_REQ,d[..],plans);}
+#test "pick prefers the faster admitted device, the first on a tie" {
+    plans:[3]FcPlan;
+    #assert pick2(FC_4080,FC_MAC,plans[..])==1;
+    #assert plans[0].mode==FcMode.experts && plans[1].mode==FcMode.resident;
+    #assert pick2(FC_MAC,FC_4080,plans[..])==0;
+    #assert pick2(FC_MAC,FC_MAC,plans[..])==0;
+    #assert pick3(FC_4080,FC_4080,FC_MAC,plans[..])==2;
+    fast:=FC_4080;fast.link_rate=30000;
+    #assert pick2(FC_4080,fast,plans[..])==1;
+    #assert pick2(fast,FC_4080,plans[..])==0;
+    // One byte a microsecond: an admitted device whose rate rounds down to 0 is still picked.
+    slow:=FC_MAC;slow.read_rate=1;#assert pick1(slow,plans[..])==0 && plans[0].milli==0 && plans[0].step_us==5314482432;
+    small:=FC_MAC;small.memory=1;
+    #assert pick1(small,plans[..])==-1 && plans[0].status==FcStatus.state;
+    // A refused device before an admitted one, and fewer plans than devices.
+    #assert pick2(small,FC_4080,plans[0..<1])==1 && plans[0].status==FcStatus.state;
+}
+#test "every boundary refuses with its reason" {
+    g:=rp_gptoss_120b();live:=311427072+13780480;all:=65248815744+live;
+    d:=FC_MAC;d.memory=all;#assert fc_plan(g,FC_REQ,d).mode==FcMode.resident;
+    d.memory=all-1;#assert fc_plan(g,FC_REQ,d).status==FcStatus.memory;
+    d=FC_MAC;d.buffer=65248815744;#assert fc_plan(g,FC_REQ,d).mode==FcMode.resident;
+    d.buffer=65248815743;#assert fc_plan(g,FC_REQ,d).status==FcStatus.memory;
+    d=FC_4080;d.memory=live;#assert fc_plan(g,FC_REQ,d).status==FcStatus.dense;
+    d.memory=live-1;#assert fc_plan(g,FC_REQ,d).status==FcStatus.state;
+    least:=4255115904+live+8*13236480;
+    d.memory=least;p:=fc_plan(g,FC_REQ,d);#assert p.mode==FcMode.experts && p.slots==8 && p.device==least;
+    d.memory=least-1;#assert fc_plan(g,FC_REQ,d).status==FcStatus.dense;
+    d=FC_4080;d.host=60993699840;#assert fc_plan(g,FC_REQ,d).mode==FcMode.experts;
+    d.host=60993699839;#assert fc_plan(g,FC_REQ,d).status==FcStatus.host;
+    d=FC_4080;d.memory=all;d.buffer=65248815743;p=fc_plan(g,FC_REQ,d);#assert p.mode==FcMode.experts && p.copied==1906053120;
+    // A resident plan on a linked device copies nothing.
+    d.buffer=all;p=fc_plan(g,FC_REQ,d);#assert p.mode==FcMode.resident && p.step_us==25119 && p.copied==0;
+}
+#test "malformed inputs refuse before any arithmetic" {
+    g:=rp_gptoss_120b();
+    #assert fc_plan(rp_elephant(),FC_REQ,FC_MAC).status==FcStatus.model;
+    bad:=g;bad.selected=0;#assert fc_plan(bad,FC_REQ,FC_MAC).status==FcStatus.model;
+    #assert fc_plan(g,RpRequest.{capacity=0,chunk=1},FC_MAC).status==FcStatus.request;
+    #assert fc_plan(g,RpRequest.{capacity=1,chunk=1},FC_MAC).status==FcStatus.ok;
+    #assert fc_plan(g,RpRequest.{capacity=131073,chunk=1},FC_MAC).status==FcStatus.request;
+    #assert fc_plan(g,RpRequest.{capacity=131072,chunk=1},FC_MAC).status==FcStatus.ok;
+    #assert fc_plan(g,RpRequest.{capacity=8,chunk=0},FC_MAC).status==FcStatus.request;
+    #assert fc_plan(g,RpRequest.{capacity=8,chunk=9},FC_MAC).status==FcStatus.request;
+    #assert fc_plan(g,RpRequest.{capacity=8,chunk=8},FC_MAC).status==FcStatus.ok;
+    for i:0..<5 {
+        d:=FC_4080;
+        if i==0 {d.memory=-1;} else if i==1 {d.buffer=-1;} else if i==2 {d.read_rate=0;} else if i==3 {d.link_rate=-1;} else {d.host=-1;}
+        #assert fc_plan(g,FC_REQ,d).status==FcStatus.device && fc_plan(g,FC_REQ,d).mode==FcMode.refused;
+    }
+    d:=FC_4080;d.memory=0;d.buffer=0;d.read_rate=1;d.link_rate=0;d.host=0;#assert fc_plan(g,FC_REQ,d).status==FcStatus.state;
+    #assert fc_status_name(FcStatus.host)=="host: the host cannot pin every expert" && fc_mode_name(FcMode.experts)=="experts streamed";
+}

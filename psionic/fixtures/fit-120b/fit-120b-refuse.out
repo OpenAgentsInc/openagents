@@ -1,0 +1,9 @@
+a 64 GB Mac with a 48 GiB working set: refused (memory: the weights exceed unified memory and nothing can stream)
+the 128 GB Mac if its largest buffer were 60 GiB: refused (memory: the weights exceed unified memory and nothing can stream)
+the RTX 4080 on a host with 32 GiB to pin: refused (host: the host cannot pin every expert)
+a 4 GiB card: refused (dense: the dense weights, state, scratch and two layers of experts exceed the device)
+256 MiB of card for a 4,096-token cache: refused (state: the state and scratch alone exceed the device)
+capacity 131,073 for a 131,072-token model: refused (request: capacity or chunk outside 1..max tokens)
+a device with no measured read rate: refused (device: a negative size or a rate below 1)
+Elephant, which has no experts: refused (model: not a valid mixture-of-experts shape)
+pick among the 64 GB Mac and the 256 MiB card: -1

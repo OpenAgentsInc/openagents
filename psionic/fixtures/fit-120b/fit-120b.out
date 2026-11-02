@@ -1,0 +1,11 @@
+120b: 65248815744 weight bytes, 60993699840 in 4608 experts of 13236480, 4255115904 dense
+upload receipt: 10 tokens of 1906053120 bytes, mean 79996000 ns, sd 6377 ns (Welford agrees: true), 23826 bytes/us
+read rates from the 20b runs: Mac 130953 bytes/us, RTX 4080 211578 bytes/us
+RTX 4080 16 GB: experts streamed (ok)
+  device 16029878656 bytes, host pinned 60993699840 bytes, expert cache 865 slots
+  worst-case step: read 5314482432 bytes, copy 1906053120 bytes, 105118 us, tokens/s 9.513
+Apple M5 Max 128 GB: resident (ok)
+  device 65574023296 bytes, host pinned 0 bytes, expert cache 0 slots
+  worst-case step: read 5314482432 bytes, copy 0 bytes, 40584 us, tokens/s 24.640
+pick: Apple M5 Max 128 GB
+synthetic trace ok, LRU over 865 slots: 28988 of 36864 hits, 30 copies a token, tokens/s 23.691
