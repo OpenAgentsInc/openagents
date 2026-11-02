@@ -1,5 +1,14 @@
 # Owner actions
 
+## GPU resource ledger: check on a real GPU (#12628, 2026-11-02)
+
+`aethyr/tests/render-ledger.coax` passed on coderos-4080 only on SwiftShader,
+against the Grid and the fixture realm. Headless Chromium's GPU process dies
+on the RTX 4080 here. On the Mac, with a served build (`coax/web/serve.sh
+apps/openagents-web`), run `coax/web/tool.sh aethyr/tests/render-ledger.coax
+http://127.0.0.1:8800/realms/the-grid/`, then the same for `/realms/everglade/`.
+Add the results to issue #12628. Not blocking.
+
 ## GPU device loss and trap recovery: check on real GPUs (#12651, 2026-11-02)
 
 `coax/web/host.js` now replaces a lost GPU device and keeps the realm's
