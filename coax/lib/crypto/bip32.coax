@@ -3,6 +3,7 @@
 // caller-owned 32-byte views; locals holding secrets are zeroed before return.
 #load "sha512.coax";
 #load "secp_mult_const.coax";
+#load "secp_encode.coax";
 BIP32_HARDENED :: 2147483648;
 
 // The compressed public key (33 bytes) of a private key.
@@ -11,10 +12,7 @@ bip32_public :: (key: [] u8, out: [] u8) -> bool #export_c {
   k := sc_load(key);
   if !k.ok || sc_is_zero(k.value) { return false; }
   p := smc_multiply(k.value, sg_generator());
-  e := sg_encode_public(p.value);
-  if !p.ok || !e.ok || e.length != 33 { return false; }
-  for i: 0..<33 { out[i] = e.bytes[i]; }
-  return true;
+  return p.ok && se_encode(p.value, SE_COMPRESSED, out) == SE_COMPRESSED;
 }
 // The master key and chain code of a seed (16 to 64 bytes).
 bip32_master :: (seed: [] u8, key: [] u8, chain: [] u8) -> bool #export_c {

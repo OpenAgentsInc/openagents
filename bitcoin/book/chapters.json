@@ -379,15 +379,24 @@
   {
    "number": 17,
    "title": "Point encodings: compressed, uncompressed and x-only",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch017-point-encodings-compressed-uncompressed-and-x-only.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     15
    ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
+   "source": [
+    "coax/lib/crypto/secp_encode.coax",
+    "bitcoin/examples/point-encodings.coax",
+    "bitcoin/examples/checks/point-encodings.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": [
+    "coax/lib/crypto/bip32.coax",
+    "coax/lib/nostr/nipkeys.coax"
+   ]
   },
   {
    "number": 18,

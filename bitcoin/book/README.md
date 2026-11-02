@@ -38,10 +38,10 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 85 chapters, 20 are implemented and 65 are planned. The 20
+Of the 85 chapters, 21 are implemented and 64 are planned. The 21
 implemented chapters have runnable examples, qualified on native CPU, and 16
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7, 10 and 12 are new.
+chapters 5, 6, 7, 10, 12 and 17 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -128,7 +128,7 @@ The curve from field arithmetic to scalar multiplication, point encodings and ke
 | [14. Scalars mod n](ch014-scalars-mod-n.md) | Runnable: native C and wasm | x-only ECDH that validates the peer key and returns the raw shared x, checked against labelled Wycheproof secp256k1 inputs, for NIP-44 conversation keys. |
 | [15. The secp256k1 group law](ch015-the-secp256k1-group-law.md) | Runnable: native C and wasm | Points on y² = x³ + 7 in affine and Jacobian coordinates, doubling and complete addition with the point at infinity and the P + (−P) case handled. |
 | [16. Scalar multiplication](ch016-scalar-multiplication.md) | Runnable: native C and wasm | `npub`, `nsec` and `note`, and the TLV forms `nprofile`, `nevent` and `naddr` with relay hints, plus the `nostr:` URI scheme of NIP-21. |
-| 17. Point encodings: compressed, uncompressed and x-only | Planned | Compressed, uncompressed and x-only encodings round-trip for random points. Hybrid encodings (`0x06`, `0x07`) and points off the curve refuse. |
+| [17. Point encodings: compressed, uncompressed and x-only](ch017-point-encodings-compressed-uncompressed-and-x-only.md) | Runnable: native C | One codec for SEC 1 compressed and uncompressed keys and BIP-340 x-only keys, checked against Bitcoin Core, Wycheproof, BIP-32, BIP-340 and BIP-341 keys and a Python reference. Hybrid keys, infinity, coordinates at least p and points off the curve refuse. |
 | [18. Keys and randomness](ch018-keys-and-randomness.md) | Runnable: native C and wasm | Private keys from host entropy with rejection of 0 and values at least n, the entropy contract per host, and one signer-request contract for a local key, a NIP-07 browser signer and a phone over NIP-46. |
 
 ### Part IV. Signatures (chapters 19–25)

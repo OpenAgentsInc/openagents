@@ -1,0 +1,188 @@
+// Public-key encodings for secp256k1 (Bitcoin chapter 17): SEC 1 compressed
+// (33 bytes, prefix 02 for even y or 03 for odd y), SEC 1 uncompressed
+// (65 bytes, prefix 04, then x and y) and BIP-340 x-only (32 bytes of x, the
+// point with even y). This file is the one codec; the compressed form and
+// lift_x are chapter 15's sg_decode_public, sg_encode_public and
+// sg_lift_x_public, which it builds on.
+//
+// Every decoder refuses the point at infinity, the hybrid prefixes 06 and
+// 07, a coordinate at least p, a point off the curve and any other length or
+// prefix. Public keys are public data, so these calls may take variable
+// time: they branch on lengths, prefixes and whether a point is valid.
+#load "secp_group.coax";
+
+SE_XONLY :: 32;
+SE_COMPRESSED :: 33;
+SE_UNCOMPRESSED :: 65;
+
+// book:begin decode
+// A SEC 1 public key: 33 bytes with prefix 02 or 03, or 65 bytes with
+// prefix 04. Anything else, including infinity's one-byte 00 and the hybrid
+// prefixes 06 and 07, refuses with ok false and the value infinity.
+se_decode :: (bytes: [] u8) -> SgResult #export_c {
+  // Compressed: lift_x, then negate y when the prefix's low bit says odd.
+  if bytes.count == SE_COMPRESSED { return sg_decode_public(bytes); }
+  r: SgResult; r.value = sg_infinity();
+  if bytes.count != SE_UNCOMPRESSED || bytes[0] != 4 { return r; }
+  // Uncompressed: both coordinates below p, and y^2 = x^3 + 7.
+  x := sf_load_strict(bytes[1..<33]); y := sf_load_strict(bytes[33..<65]);
+  if !x.ok || !y.ok { return r; } // mutant: equivalent (a refused load is zero, and no point has x = 0 or y = 0)
+  seven: SecpField; seven.limb[0] = 7;
+  rhs := sf_add(sf_multiply(sf_square(x.value), x.value), seven);
+  if sf_equal_mask(sf_square(y.value), rhs) != CB_MAX64 { return r; }
+  r.value.x = x.value; r.value.y = y.value;
+  r.value.z = sg_generator().z;   // z = 1: the point is affine
+  r.ok = true; return r;
+}
+// A BIP-340 x-only public key: 32 bytes of x, lifted to the point with
+// even y. It refuses x >= p and an x with no point.
+se_decode_xonly :: (bytes: [] u8) -> SgResult #export_c {
+  return sg_lift_x_public(bytes);
+}
+// book:end decode
+
+// book:begin encode
+// Writes a in one of the three forms (SE_XONLY, SE_COMPRESSED or
+// SE_UNCOMPRESSED) to out[0..<form] and returns form. Returns 0, and writes
+// nothing, for an unknown form, a short output, an invalid point or
+// infinity, which has no encoding in any of the three forms.
+se_encode :: (a: SgPoint, form: int, out: [] u8) -> int #export_c {
+  if form != SE_XONLY && form != SE_COMPRESSED && form != SE_UNCOMPRESSED { return 0; }
+  if out.count < form { return 0; }
+  // Prefix 02 or 03, then x; a length of 1 is infinity.
+  c := sg_encode_public(a);
+  if !c.ok || c.length != SE_COMPRESSED { return 0; }
+  if form == SE_XONLY { for i: 0..<32 { out[i] = c.bytes[1 + i]; } return form; }
+  if form == SE_COMPRESSED { for i: 0..<33 { out[i] = c.bytes[i]; } return form; }
+  affine := sg_to_affine(a);
+  out[0] = 4;
+  for i: 0..<32 { out[1 + i] = c.bytes[1 + i]; }
+  #assert sf_store(affine.value.y, out[33..<65]);
+  return form;
+}
+// 1 when a's y is odd, 0 when it is even, and -1 for an invalid point or
+// infinity. An x-only key drops this bit; Taproot carries it separately.
+se_parity :: (a: SgPoint) -> int #export_c {
+  c := sg_encode_public(a);
+  if !c.ok || c.length != SE_COMPRESSED { return -1; }
+  return cast(int) (c.bytes[0] & 1);
+}
+// book:end encode
+
+// Decodes input (32 bytes as x-only, 33 or 65 bytes as SEC 1) and writes it
+// back in form. Returns the bytes written, or 0 when either step refuses.
+se_recode :: (input: [] u8, form: int, out: [] u8) -> int #export_c {
+  p := ifx input.count == SE_XONLY then se_decode_xonly(input) else se_decode(input);
+  if !p.ok { return 0; }
+  return se_encode(p.value, form, out);
+}
+
+// ---- checks
+
+SE_T_GX :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+SE_T_GY :: "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
+se_t_nibble :: (c: u8) -> u8 { return ifx c < 'a' then c - '0' else c - 'a' + 10; }
+se_t_bytes :: (hex: string, out: [] u8) {
+  for i: 0..<hex.count / 2 { out[i] = (se_t_nibble(hex[2 * i]) << 4) | se_t_nibble(hex[2 * i + 1]); }
+}
+se_t_same :: (a: [] u8, b: [] u8) -> bool { return cb_ct_equal(a, b) == CB_MAX64; }
+// G in one of the three forms, from SEC 2's generator, into out[0..<form].
+se_t_g :: (form: int, out: [] u8) {
+  x: [32] u8; y: [32] u8; se_t_bytes(SE_T_GX, x[..]); se_t_bytes(SE_T_GY, y[..]);
+  if form == SE_XONLY { for i: 0..<32 { out[i] = x[i]; } return; }
+  out[0] = ifx form == SE_COMPRESSED then 2 else 4;
+  for i: 0..<32 { out[1 + i] = x[i]; }
+  if form == SE_UNCOMPRESSED { for i: 0..<32 { out[33 + i] = y[i]; } }
+}
+
+#test "G encodes and decodes in all three forms" #steps 200000000 {
+  g := sg_generator();
+  for form: [3] int.[SE_XONLY, SE_COMPRESSED, SE_UNCOMPRESSED] {
+    want: [65] u8; got: [65] u8; se_t_g(form, want[..]); expected := want[0..<form];
+    #assert se_encode(g, form, got[..]) == form && se_t_same(got[0..<form], expected);
+    p := ifx form == SE_XONLY then se_decode_xonly(expected) else se_decode(expected);
+    #assert p.ok && sg_equal_mask(p.value, g) == CB_MAX64;
+    #assert se_recode(expected, form, got[..]) == form && se_t_same(got[0..<form], expected);
+  }
+  #assert se_parity(g) == 0;
+}
+#test "an odd y gives prefix 03, and x-only drops the parity" {
+  g := sg_generator(); minus := sg_negate(g).value;
+  c: [33] u8; u: [65] u8; x: [32] u8; gu: [65] u8;
+  #assert se_encode(minus, SE_COMPRESSED, c[..]) == 33 && c[0] == 3;
+  #assert se_encode(minus, SE_UNCOMPRESSED, u[..]) == 65 && u[0] == 4;
+  se_t_g(SE_UNCOMPRESSED, gu[..]);
+  // -G has G's x and y' = p - y; p - y is odd because y is even.
+  #assert se_t_same(u[1..<33], gu[1..<33]) && !se_t_same(u[33..<65], gu[33..<65]) && (u[64] & 1) == 1;
+  #assert se_parity(minus) == 1;
+  back := se_decode(c[..]); #assert back.ok && sg_equal_mask(back.value, minus) == CB_MAX64;
+  back = se_decode(u[..]); #assert back.ok && sg_equal_mask(back.value, minus) == CB_MAX64;
+  #assert se_encode(minus, SE_XONLY, x[..]) == 32 && se_t_same(x[..], c[1..<33]);
+  lifted := se_decode_xonly(x[..]); #assert lifted.ok && sg_equal_mask(lifted.value, g) == CB_MAX64;
+}
+#forall "points 2G to 9G round-trip in all three forms" k: 2..<10 #steps 300000000 {
+  p := sg_generator(); for i: 1..<k { p = sg_add(p, sg_generator()).value; }
+  c: [33] u8; u: [65] u8; x: [32] u8; again: [65] u8;
+  #assert se_encode(p, SE_COMPRESSED, c[..]) == 33 && se_encode(p, SE_UNCOMPRESSED, u[..]) == 65;
+  #assert se_encode(p, SE_XONLY, x[..]) == 32 && se_parity(p) == cast(int) (c[0] & 1);
+  #assert se_t_same(c[1..<33], u[1..<33]) && se_t_same(x[..], c[1..<33]) && (u[64] & 1) == (c[0] & 1);
+  d := se_decode(c[..]); #assert d.ok && sg_equal_mask(d.value, p) == CB_MAX64;
+  d = se_decode(u[..]); #assert d.ok && sg_equal_mask(d.value, p) == CB_MAX64;
+  #assert se_recode(c[..], SE_UNCOMPRESSED, again[..]) == 65 && se_t_same(again[..], u[..]);
+  #assert se_recode(u[..], SE_COMPRESSED, again[..]) == 33 && se_t_same(again[0..<33], c[..]);
+  #assert se_recode(x[..], SE_XONLY, again[..]) == 32 && se_t_same(again[0..<32], x[..]);
+}
+#test "hybrid prefixes, wrong lengths and infinity refuse" {
+  u: [65] u8; se_t_g(SE_UNCOMPRESSED, u[..]); inf := sg_infinity();
+  #assert se_decode(u[..]).ok;
+  // Hybrid: 06 for even y (G's), 07 for odd. Neither is accepted.
+  for prefix: [6] u8.[0, 1, 2, 3, 6, 7] {
+    u[0] = prefix; r := se_decode(u[..]);
+    #assert !r.ok && sg_equal_mask(r.value, inf) == CB_MAX64;
+  }
+  // 04 with 33 bytes, 02 with 65 bytes, and other lengths.
+  u[0] = 4; #assert !se_decode(u[0..<33]).ok && !se_decode(u[0..<64]).ok;
+  u[0] = 2; #assert !se_decode(u[..]).ok && se_decode(u[0..<33]).ok;
+  #assert !se_decode(u[0..<32]).ok && !se_decode(u[0..<34]).ok && !se_decode(u[0..<0]).ok;
+  // Infinity's SEC 1 form is one 00 byte; this codec refuses it.
+  zero: [1] u8; #assert !se_decode(zero[..]).ok;
+  out: [65] u8;
+  for form: [3] int.[SE_XONLY, SE_COMPRESSED, SE_UNCOMPRESSED] {
+    #assert se_encode(inf, form, out[..]) == 0;
+  }
+  for i: 0..<65 { #assert out[i] == 0; }
+  #assert se_parity(inf) == -1;
+}
+#test "x or y at least p and points off the curve refuse" {
+  u: [65] u8; se_t_g(SE_UNCOMPRESSED, u[..]);
+  // y + 1 is still below p but off the curve.
+  u[64] += 1; #assert !se_decode(u[..]).ok;
+  u[64] -= 1; #assert se_decode(u[..]).ok;
+  // x = p and y = p.
+  p: [32] u8; for i: 0..<32 { p[i] = 255; } p[27] = 254; p[30] = 252; p[31] = 47;
+  bad := u; for i: 0..<32 { bad[1 + i] = p[i]; } #assert !se_decode(bad[..]).ok;
+  bad = u; for i: 0..<32 { bad[33 + i] = p[i]; } #assert !se_decode(bad[..]).ok;
+  // The point with x = 1 is on the curve; x written as p + 1 is the same
+  // field element but not canonical, so it refuses in every form.
+  one: [32] u8; one[31] = 1; lifted := se_decode_xonly(one[..]);
+  #assert lifted.ok && se_encode(lifted.value, SE_UNCOMPRESSED, bad[..]) == 65 && se_decode(bad[..]).ok;
+  p[31] = 48; for i: 0..<32 { bad[1 + i] = p[i]; }
+  #assert !se_decode(bad[..]).ok && !se_decode_xonly(p[..]).ok;
+  bad[0] = 2; #assert !se_decode(bad[0..<33]).ok;
+  p[31] = 47; #assert !se_decode_xonly(p[..]).ok;
+  // x = 0 has no point: 7 is not a square mod p.
+  zero: [33] u8; zero[0] = 2; #assert !se_decode(zero[..]).ok && !se_decode_xonly(zero[1..<33]).ok;
+  out: [65] u8;
+  #assert se_recode(zero[..], SE_COMPRESSED, out[..]) == 0 && se_recode(bad[..], SE_UNCOMPRESSED, out[..]) == 0;
+}
+#test "unknown forms, short outputs and invalid points write nothing" {
+  g := sg_generator(); out: [65] u8;
+  #assert se_encode(g, 0, out[..]) == 0 && se_encode(g, 34, out[..]) == 0 && se_encode(g, 64, out[..]) == 0;
+  #assert se_encode(g, SE_COMPRESSED, out[0..<32]) == 0 && se_encode(g, SE_UNCOMPRESSED, out[0..<64]) == 0;
+  #assert se_encode(g, SE_XONLY, out[0..<31]) == 0;
+  bad: SgPoint; bad.x.limb[0] = 1; bad.z.limb[0] = 1;
+  #assert se_encode(bad, SE_UNCOMPRESSED, out[..]) == 0 && se_parity(bad) == -1;
+  for i: 0..<65 { #assert out[i] == 0; }
+  // An output longer than the form is written only up to the form.
+  #assert se_encode(g, SE_XONLY, out[..]) == 32 && out[32] == 0;
+}

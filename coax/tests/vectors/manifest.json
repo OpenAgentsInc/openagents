@@ -522,6 +522,19 @@
       "bytes": 35931
     },
     {
+      "path": "upstream/bitcoin-core/script_tests.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/script_tests.json",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "secp256k1-point-encodings"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "ccfadc13f9b06888faf57a4a2f86dd8feff35c80aa710cbf3eb421f326b8d8b7",
+      "bytes": 238752
+    },
+    {
       "path": "upstream/bitcoin-core/COPYING",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING",

@@ -466,7 +466,8 @@ A signer must know the wallet's scripts to recognise its inputs and change.
 BIP-32 public derivation gets a child public key from an xpub: with
 `I = HMAC-SHA512(chain, K || index)`, the child key is `I_L·G + K` and its
 chain code `I_R`. The code computes `I_L·G + K` as one variable-time sum,
-since nothing here is secret:
+since nothing here is secret. It reads and writes the 33-byte key with
+[Bitcoin chapter 17](../../bitcoin/book/ch017-point-encodings-compressed-uncompressed-and-x-only.md)'s codec:
 
 <!-- source: coax/lib/nostr/nipkeys.coax xpub -->
 ```jai
@@ -498,12 +499,10 @@ ky_child :: (parent:KyExtKey,index:int)->KyExtKey {
   for k:0..<33 {data[k]=p.key[k];}
   for k:0..<4 {data[33+k]=cast(u8)((index>>(8*(3-k)))&255);}
   if !hmac_sha512(p.chain[..],data[..],i[..]) {return r;}
-  il:=sc_load(i[0..<32]);a:=sg_decode_public(p.key[..]);
+  il:=sc_load(i[0..<32]);a:=se_decode(p.key[..]);
   if !il.ok || !a.ok {return r;}                          // IL >= n, or a key off the curve
   s:=ecmult_vartime(il.value,a.value,sc_small(1));        // IL·G + K: public data, variable time
-  e:=sg_encode_public(s.value);
-  if e.length!=33 {return r;}                             // infinity encodes as one byte
-  for k:0..<33 {r.key[k]=e.bytes[k];}
+  if se_encode(s.value,SE_COMPRESSED,r.key[..])!=SE_COMPRESSED {return r;}   // infinity has no encoding
   for k:0..<32 {r.chain[k]=i[32+k];}
   r.version=p.version;r.ok=true;return r;
 }

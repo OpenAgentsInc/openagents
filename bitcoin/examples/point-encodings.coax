@@ -1,0 +1,126 @@
+// book:begin example
+#load "../../coax/lib/crypto/secp_encode.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [130] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Print a field element as 32 big-endian bytes.
+show_field :: (label: string, a: SecpField) {
+  b: [32] u8;
+  if sf_store(a, b[..]) { show(label, b[..]); }
+}
+// Decode hex into out and return the filled view.
+bytes_of :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  if r.error != 0 { print("bad hex\n"); }
+  return out[0..<r.written];
+}
+same_point :: (a: SgPoint, b: SgPoint) -> bool { return sg_equal_mask(a, b) == CB_MAX64; }
+same_bytes :: (a: [] u8, b: [] u8) -> bool { return cb_ct_equal(a, b) == CB_MAX64; }
+// Decode hex as SEC 1, or as x-only when it is 32 bytes, and say whether it
+// decoded.
+decodes :: (text: string) -> bool {
+  b: [65] u8; v := bytes_of(text, b[..]);
+  return ifx v.count == SE_XONLY then se_decode_xonly(v).ok else se_decode(v).ok;
+}
+// a^e mod m for small numbers: the toy curve's arithmetic.
+power :: (a: int, e: int, m: int) -> int {
+  r := 1; for i: 0..<e { r = (r * a) % m; }
+  return r;
+}
+// Decompress x on y^2 = x^3 + 7 over F_23, where 23 = 3 mod 4, so a square
+// root of a is a^((23 + 1) / 4) = a^6.
+toy :: (x: int) {
+  rhs := (x * x * x + 7) % 23; root := power(rhs, 6, 23);
+  print("toy x = %: x^3 + 7 = %, % ^ 6 = %, % ^ 2 = %", x, rhs, rhs, root, root, (root * root) % 23);
+  if (root * root) % 23 != rhs { print(": no point, refused\n"); return; }
+  even := ifx root % 2 == 0 then root else 23 - root;
+  print(": prefix 02 gives y = %, prefix 03 gives y = %\n", even, 23 - even);
+}
+
+main :: () {
+  // The worked example on a toy curve.
+  toy(1);
+  toy(3);
+
+  // G: the three encodings.
+  g := sg_generator();
+  c: [33] u8; u: [65] u8; x: [32] u8;
+  print("encode G: % bytes, % bytes, % bytes\n", se_encode(g, SE_COMPRESSED, c[..]),
+    se_encode(g, SE_UNCOMPRESSED, u[..]), se_encode(g, SE_XONLY, x[..]));
+  show("G compressed", c[..]);
+  show("G uncompressed", u[..]);
+  show("G x-only", x[..]);
+
+  // Decompressing G by hand: y^2 = x^3 + 7, the root, its parity.
+  gx := sf_load_strict(x[..]).value; seven: SecpField; seven.limb[0] = 7;
+  rhs := sf_add(sf_multiply(sf_square(gx), gx), seven);
+  root := sf_sqrt(rhs);
+  show_field("x^3 + 7", rhs);
+  show_field("its square root (even)", root.value);
+  show_field("p minus the root (odd)", sf_negate(root.value));
+  print("02 || x decodes to G: %\n", same_point(se_decode(c[..]).value, g));
+  c[0] = 3; print("03 || x decodes to -G: %\n", same_point(se_decode(c[..]).value, sg_negate(g).value));
+  c[0] = 2;
+
+  // BIP-340 test vector 0: secret key 3, so the public key is 3G.
+  three := sg_add(sg_double(g).value, g).value; t: [65] u8;
+  print("3G parity: %\n", se_parity(three));
+  if se_encode(three, SE_COMPRESSED, t[..]) == 33 { show("3G compressed", t[0..<33]); }
+  if se_encode(three, SE_UNCOMPRESSED, t[..]) == 65 { show("3G uncompressed", t[..]); }
+  if se_encode(three, SE_XONLY, t[..]) == 32 { show("3G x-only", t[0..<32]); }
+  row0: [32] u8;
+  print("matches BIP-340 vector 0's public key: %\n",
+    same_bytes(t[0..<32], bytes_of("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9", row0[..])));
+
+  // x-only drops the parity bit: -G and G have the same x-only key, which
+  // lifts to the point with even y.
+  minus := sg_negate(g).value; mx: [32] u8;
+  if se_encode(minus, SE_XONLY, mx[..]) != 32 { print("encode refused\n"); }
+  print("-G parity: %, x-only equals G's: %, lifts to G: %\n", se_parity(minus),
+    same_bytes(mx[..], x[..]), same_point(se_decode_xonly(mx[..]).value, g));
+
+  // A key from Bitcoin Core's script_tests.json in both of its forms.
+  k1: [33] u8; k2: [65] u8; out: [65] u8;
+  kc := bytes_of("038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508", k1[..]);
+  ku := bytes_of("048282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150811f8a8098557dfe45e8256e830b60ace62d613ac2f7b17bed31b6eaff6e26caf", k2[..]);
+  print("script_tests 0382...: recoded uncompressed matches 0482...: %\n",
+    se_recode(kc, SE_UNCOMPRESSED, out[..]) == 65 && same_bytes(out[..], ku));
+  print("script_tests 0482...: recoded compressed matches 0382...: %\n",
+    se_recode(ku, SE_COMPRESSED, out[..]) == 33 && same_bytes(out[0..<33], kc));
+
+  // Round trips of 32 points: P(0) = G, P(i + 1) = 2 P(i) + G.
+  p := g; agree := [3] int.[0, 0, 0]; odd := 0;
+  forms := [3] int.[SE_COMPRESSED, SE_UNCOMPRESSED, SE_XONLY];
+  for i: 0..<32 {
+    odd += se_parity(p);
+    for f: 0..<3 {
+      e: [65] u8; n := se_encode(p, forms[f], e[..]);
+      back := ifx n == SE_XONLY then se_decode_xonly(e[0..<n]) else se_decode(e[0..<n]);
+      // x-only gives back P when y is even and -P when it is odd.
+      want := ifx n == SE_XONLY && se_parity(p) == 1 then sg_negate(p).value else p;
+      if back.ok && same_point(back.value, want) { agree[f] += 1; }
+    }
+    p = sg_add(sg_double(p).value, g).value;
+  }
+  print("32 points (% with odd y): compressed %, uncompressed %, x-only % round-trip\n", odd, agree[0], agree[1], agree[2]);
+
+  // Refusals.
+  u[0] = 6; print("hybrid 06 || G: decodes %\n", se_decode(u[..]).ok);
+  u[0] = 7; print("hybrid 07 || G: decodes %\n", se_decode(u[..]).ok);
+  u[0] = 4; print("04 prefix in 33 bytes: decodes %\n", se_decode(u[0..<33]).ok);
+  u[0] = 2; print("02 prefix in 65 bytes: decodes %\n", se_decode(u[..]).ok); u[0] = 4;
+  zero: [1] u8; print("infinity's 00: decodes %\n", se_decode(zero[..]).ok);
+  u[64] += 1; print("G with y + 1: decodes %\n", se_decode(u[..]).ok); u[64] -= 1;
+  print("x = p (Wycheproof tcId 487): decodes %\n", decodes("04fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f0000000000000000000000000000000000000000000000000000000000000000"));
+  print("BIP-32 vector 5's 02 || 00...07: decodes %\n", decodes("020000000000000000000000000000000000000000000000000000000000000007"));
+  print("BIP-340 vector 5's x-only key: decodes %\n", decodes("eefdea4cdb677750a420fee807eacf21eb9898ae79b9768766e4faa04a2d4a34"));
+  print("BIP-340 vector 14's x = p + 1: decodes %\n", decodes("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc30"));
+  print("encode infinity: % bytes\n", se_encode(sg_infinity(), SE_COMPRESSED, out[..]));
+}
+// book:end example

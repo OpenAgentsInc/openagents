@@ -317,12 +317,10 @@ ky_child :: (parent:KyExtKey,index:int)->KyExtKey {
   for k:0..<33 {data[k]=p.key[k];}
   for k:0..<4 {data[33+k]=cast(u8)((index>>(8*(3-k)))&255);}
   if !hmac_sha512(p.chain[..],data[..],i[..]) {return r;}
-  il:=sc_load(i[0..<32]);a:=sg_decode_public(p.key[..]);
+  il:=sc_load(i[0..<32]);a:=se_decode(p.key[..]);
   if !il.ok || !a.ok {return r;}                          // IL >= n, or a key off the curve
   s:=ecmult_vartime(il.value,a.value,sc_small(1));        // IL·G + K: public data, variable time
-  e:=sg_encode_public(s.value);
-  if e.length!=33 {return r;}                             // infinity encodes as one byte
-  for k:0..<33 {r.key[k]=e.bytes[k];}
+  if se_encode(s.value,SE_COMPRESSED,r.key[..])!=SE_COMPRESSED {return r;}   // infinity has no encoding
   for k:0..<32 {r.chain[k]=i[32+k];}
   r.version=p.version;r.ok=true;return r;
 }

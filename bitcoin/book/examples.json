@@ -164,6 +164,16 @@
       "timeout": 240
     },
     {
+      "source": "bitcoin/examples/point-encodings.coax",
+      "chapter": "bitcoin/book/ch017-point-encodings-compressed-uncompressed-and-x-only.md",
+      "stdout": "bitcoin/fixtures/point-encodings.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "bitcoin/examples/keys.coax",
       "chapter": "bitcoin/book/ch018-keys-and-randomness.md",
       "stdout": "bitcoin/fixtures/keys.out",

@@ -1,0 +1,31 @@
+toy x = 1: x^3 + 7 = 8, 8 ^ 6 = 13, 13 ^ 2 = 8: prefix 02 gives y = 10, prefix 03 gives y = 13
+toy x = 3: x^3 + 7 = 11, 11 ^ 6 = 9, 9 ^ 2 = 12: no point, refused
+encode G: 33 bytes, 65 bytes, 32 bytes
+G compressed: 0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+G uncompressed: 0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
+G x-only: 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+x^3 + 7: 4866d6a5ab41ab2c6bcc57ccd3735da5f16f80a548e5e20a44e4e9b8118c26f2
+its square root (even): 483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
+p minus the root (odd): b7c52588d95c3b9aa25b0403f1eef75702e84bb7597aabe663b82f6f04ef2777
+02 || x decodes to G: true
+03 || x decodes to -G: true
+3G parity: 0
+3G compressed: 02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+3G uncompressed: 04f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672
+3G x-only: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+matches BIP-340 vector 0's public key: true
+-G parity: 1, x-only equals G's: true, lifts to G: true
+script_tests 0382...: recoded uncompressed matches 0482...: true
+script_tests 0482...: recoded compressed matches 0382...: true
+32 points (15 with odd y): compressed 32, uncompressed 32, x-only 32 round-trip
+hybrid 06 || G: decodes false
+hybrid 07 || G: decodes false
+04 prefix in 33 bytes: decodes false
+02 prefix in 65 bytes: decodes false
+infinity's 00: decodes false
+G with y + 1: decodes false
+x = p (Wycheproof tcId 487): decodes false
+BIP-32 vector 5's 02 || 00...07: decodes false
+BIP-340 vector 5's x-only key: decodes false
+BIP-340 vector 14's x = p + 1: decodes false
+encode infinity: 0 bytes

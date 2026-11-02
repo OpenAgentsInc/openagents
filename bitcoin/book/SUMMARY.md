@@ -30,6 +30,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [14. Scalars mod n](ch014-scalars-mod-n.md) — implemented
 - [15. The secp256k1 group law](ch015-the-secp256k1-group-law.md) — implemented
 - [16. Scalar multiplication](ch016-scalar-multiplication.md) — implemented
+- [17. Point encodings: compressed, uncompressed and x-only](ch017-point-encodings-compressed-uncompressed-and-x-only.md) — implemented
 - [18. Keys and randomness](ch018-keys-and-randomness.md) — implemented
 
 **IV. Signatures**

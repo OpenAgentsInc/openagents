@@ -101,6 +101,18 @@ that a maliciously replaced manifest is authentic.
   case: SipHash with k0 = 1 and k1 = 2 of the SHA-256d of an empty
   version-1 transaction is `0x79751e980c2a0a35`. Its streaming,
   SipHash-1-3 and `siphash.json` checks are not claimed.
+- **Point encodings (Bitcoin chapter 17):** Bitcoin Core's
+  `script_tests.json`, at the same revision as `tx_valid.json`, holds public
+  keys in script pushes: the generator G compressed (`0279be…`) and
+  uncompressed (`0479be…`), a second key in both forms (`038282…` and
+  `048282…`), the hybrid key `0679be…` and malformed pushes that the
+  `STRICTENC` cases refuse with `PUBKEYTYPE`. Chapter 17 reads those keys and
+  the comments that name each failure; it does not run the scripts. It also
+  reads the SEC 1 points inside the Wycheproof ECDH public keys whose
+  SubjectPublicKeyInfo header is the named-curve secp256k1 one (455 distinct
+  valid uncompressed points, one compressed, and the off-curve,
+  invalid-compressed, twist and empty points), and the keys in BIP-32,
+  BIP-340 and BIP-341's files. The ECDH results themselves stay unadapted.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -140,7 +152,7 @@ index is OpenAgents Apache-2.0; it does not relicense upstream material.
 ## Inventory
 
 All dates below are retrieval dates (2026-10-28; the RIPEMD-160 and BIP-32
-files, the Bitcoin chapter 5 files and the SipHash files, 2026-11-02), not claims about
+files, the Bitcoin chapter 5 and 17 files and the SipHash files, 2026-11-02), not claims about
 publication.
 The complete revision/license/archive fields are in `manifest.json`.
 
@@ -183,6 +195,7 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip341/wallet-test-vectors.json`](upstream/bip341/wallet-test-vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0341/wallet-test-vectors.json) | `403e19fb81dd1f31e745699216308f61fb403774b2aafa87b631b8f7c042d37f` |
 | [`upstream/bitcoin-core/tx_valid.json`](upstream/bitcoin-core/tx_valid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/tx_valid.json) | `0abeb1a6e4b942e4e43ef8d49b7356c1f6204bcb14163f24153f4d0ec5418011` |
 | [`upstream/bitcoin-core/chainparams.cpp`](upstream/bitcoin-core/chainparams.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/chainparams.cpp) | `cfadf1478377c32625280520655b598674e6d487f08d7f7a80ac69252104b5e1` |
+| [`upstream/bitcoin-core/script_tests.json`](upstream/bitcoin-core/script_tests.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/script_tests.json) | `ccfadc13f9b06888faf57a4a2f86dd8feff35c80aa710cbf3eb421f326b8d8b7` |
 | [`upstream/bitcoin-core/COPYING`](upstream/bitcoin-core/COPYING) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING) | `b028769f3852a9368ab10bd754ff01ebb741f84a2fa658c9aff82a631bc6ecfc` |
 | [`upstream/btcd/genesis_test.go`](upstream/btcd/genesis_test.go) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/chaincfg/genesis_test.go) | `e188c4fb27cccec22a0853be80f5c9b308e88045baccbf81a2058b01c7155452` |
 | [`upstream/btcd/LICENSE`](upstream/btcd/LICENSE) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/LICENSE) | `10db068dbe11e2b3d652a3d4ae3cdd7998b84b12cdefe3d8083a2b63c295c13f` |

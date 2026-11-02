@@ -1,0 +1,40 @@
+// The checks of point-encodings.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/point-encodings.coax
+#load "../point-encodings.coax";
+#load "../../../coax/tests/bitcoin/point_vectors.coax";
+
+// book:begin published
+// Every published key in coax/tests/bitcoin/point_vectors.coax decodes or
+// refuses as its source says, and a key that decodes re-encodes to the same
+// bytes. The table is copied from the pinned files by
+// coax/tests/bitcoin/points.py, which also runs Wycheproof's 455 valid
+// points through the codec in C.
+#forall "each published key decodes or refuses as stated and re-encodes exactly" i: 0..<PV_KEYS.count #steps 500000000 {
+  k := PV_KEYS[i]; b: [65] u8; out: [65] u8;
+  v := bytes_of(k.hex, b[..]);
+  // The empty encoding asks for a compressed key back; it refuses first.
+  n := se_recode(v, ifx v.count == 0 then SE_COMPRESSED else v.count, out[..]);
+  #assert (n > 0) == k.ok;
+  if k.ok { #assert same_bytes(out[0..<v.count], v); }
+}
+// Bitcoin Core's script_tests.json uses G and a second key in both forms.
+#forall "a compressed key and its uncompressed form are one point" i: 0..<PV_PAIRS.count #steps 500000000 {
+  c: [33] u8; u: [65] u8; out: [65] u8;
+  cv := bytes_of(PV_PAIRS[i].compressed, c[..]); uv := bytes_of(PV_PAIRS[i].uncompressed, u[..]);
+  #assert se_recode(cv, SE_UNCOMPRESSED, out[..]) == 65 && same_bytes(out[..], uv);
+  #assert se_recode(uv, SE_COMPRESSED, out[..]) == 33 && same_bytes(out[0..<33], cv);
+}
+// book:end published
+
+// book:begin parity
+// An x-only key is the compressed key without its prefix when y is even. A
+// BIP-341 output key is x-only; its compressed form starts with 02.
+#forall "x-only keys lift to the point whose compressed form is 02 || x" i: 0..<PV_KEYS.count #steps 500000000 {
+  k := PV_KEYS[i]; b: [65] u8; out: [65] u8;
+  v := bytes_of(k.hex, b[..]);
+  if k.ok && v.count == SE_XONLY {
+    #assert se_recode(v, SE_COMPRESSED, out[..]) == 33 && out[0] == 2 && same_bytes(out[1..<33], v);
+  }
+}
+// book:end parity

@@ -71,7 +71,7 @@ otherwise. Nostr From Scratch needs Parts I–V.
 | [14. Scalars mod n](ch014-scalars-mod-n.md) — implemented | 2, 3 | Scalar operations match the big-integer oracle. Out-of-range keys and `s` values refuse, each with its own status. | — |
 | [15. The secp256k1 group law](ch015-the-secp256k1-group-law.md) — implemented | 13 | Group laws hold on random points: associativity, `P + (-P) = O`, `2P = P + P`. `lift_x` refuses every x whose `x^3 + 7` is not a square. | — |
 | [16. Scalar multiplication](ch016-scalar-multiplication.md) — implemented | 14, 15, 3 | All three paths give the oracle's point for random and edge scalars (0, 1, `n - 1`). The constant-time paths pass the timing harness with leaky controls detected. | — |
-| 17. Point encodings: compressed, uncompressed and x-only — planned | 15 | Compressed, uncompressed and x-only encodings round-trip for random points. Hybrid encodings (`0x06`, `0x07`) and points off the curve refuse. | SEC 1, BIP-340 |
+| [17. Point encodings: compressed, uncompressed and x-only](ch017-point-encodings-compressed-uncompressed-and-x-only.md) — implemented | 15 | Compressed, uncompressed and x-only encodings round-trip for random points. Hybrid encodings (`0x06`, `0x07`) and points off the curve refuse. | SEC 1, BIP-340 |
 | [18. Keys and randomness](ch018-keys-and-randomness.md) — implemented | 14, 3 | A key drawn on each host is a valid scalar, and a forced out-of-range draw is retried. A signer reply with the wrong ID, pubkey or body is refused. | — |
 
 ### Part IV. Signatures
