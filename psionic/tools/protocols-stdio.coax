@@ -3,9 +3,9 @@
 // transport MCP names for a local server. The bytes are the same ones the
 // in-process example passes as strings.
 //
-//   coax/web/tool.sh psionic/examples/protocols-stdio.coax --serve
+//   coax/web/tool.sh psionic/tools/protocols-stdio.coax --serve
 //       the registry served on stdin and stdout, one message a line
-//   coax/web/tool.sh psionic/examples/protocols-stdio.coax CMD [ARGS...]
+//   coax/web/tool.sh psionic/tools/protocols-stdio.coax CMD [ARGS...]
 //       the client: starts CMD as the server and drives it through its pipes
 //
 // The client runs the handshake, imports the tool list, and makes four

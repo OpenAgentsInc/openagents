@@ -718,14 +718,14 @@ and the refusal of an option that contains a comma.
 
 ## Over stdio
 
-[protocols-stdio.coax](../../psionic/examples/protocols-stdio.coax) runs
+[protocols-stdio.coax](../../psionic/tools/protocols-stdio.coax) runs
 the same client and server in two processes, one JSON-RPC message per
 line on stdin and stdout, the transport MCP names for a local server.
 `--serve` serves chapter 203's registry. Given a command instead, the
 client starts that command as its server and drives it through the pipes:
 
-```sh
-$ coax/web/tool.sh psionic/examples/protocols-stdio.coax \
+```shell
+$ coax/web/tool.sh psionic/tools/protocols-stdio.coax \
     coax/web/build/tools/protocols-stdio --serve
 initialize: ok
 import: ok, 4 tools
