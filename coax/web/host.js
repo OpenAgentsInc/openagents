@@ -210,6 +210,7 @@ const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "
 // Grown at load to whatever the app's module declares (importedMemoryPages).
 const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 }); // 8 MiB, at most 64 MiB
 let engine = null;   // { exports, layout }
+let engineBytes = null;   // the running engine's wasm: a rescue save names it (rescueIdentity)
 let engineInstalling = false;
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
 let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, vertexBuffer, bg, fx }
@@ -311,6 +312,7 @@ async function loadEngine(bytes, generation) {
   const instance = await WebAssembly.instantiate(module, imports);
   if (generation !== wanted) { stopEngine();return false; } // memory was already initialized
   const kept = await keptRead;   // before the first frame, so a kept world opens with it
+  const rescue = await rescueRead, rescueId = rescue ? await rescueIdentity(bytes) : "";
   if (generation !== wanted) { stopEngine();return false; }
   byteStorage.reset(); // pending effects belong to the old engine, even if its state layout survives
   httpRequests.reset();
@@ -341,6 +343,9 @@ async function loadEngine(bytes, generation) {
   if (golden) x.coaxial_golden?.(1);
   x.coaxial_quality?.(arena.state, golden ? 0 : quality);
   engine = { exports: x, layout };
+  engineBytes = bytes;
+  arena.stateSize = stateSize;
+  rescueFrom(rescue, rescueId, layout, stateSize);   // a save this realm left when it stopped: put back once its world is in
   installedGeneration = generation;
   invalidateScene();
   // Renderer metadata and scratch belong to this concrete Wasm instance.
@@ -709,19 +714,30 @@ function pageFacts() {
     .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
 }
 addEventListener("visibilitychange", () => send(document.hidden ? HIDDEN_KIND : SHOWN_KIND));
-addEventListener("pagehide", () => { send(LEAVE_KIND); httpRequests.reset(); });
+let leaving = false;   // the page is going: a device lost now is not replaced
+addEventListener("pagehide", () => { leaving = true;send(LEAVE_KIND); httpRequests.reset(); });
+addEventListener("pageshow", () => { leaving = false; });
 addEventListener("error", (e) => send(ERROR_KIND, `${String(e.message || "").slice(0, 200)}\n${String(e.filename || "").split("/").pop()}\n${e.lineno || 0}`));
 addEventListener("unhandledrejection", (e) => send(ERROR_KIND, `${String(e.reason?.message || e.reason || "").slice(0, 200)}\npromise\n0`));
 
 // ---- GPU: device, the two pipelines from the app's WGSL, buffers
 async function startGpu() {
-  if (!navigator.gpu) return false;
+  const opened = await openDevice((device) => { loading.watch(device);loading.step("shaders"); });
+  if (!opened) return false;
+  gpu = opened;
+  makeBuffers();
+  return loadShaders();
+}
+// A device and the canvas configured for it, watched for loss (deviceLost). The first start and a
+// lost device's replacement both take theirs here.
+async function openDevice(made = () => {}) {
+  if (!navigator.gpu) return null;
   const adapter = await navigator.gpu.requestAdapter();
-  if (!adapter) return false;
+  if (!adapter) return null;
   const device = await adapter.requestDevice();
-  loading.watch(device);
-  if (dev) { device.lost.then((info) => { globalThis.coaxial.renderDeviceLost = { reason: info.reason, message: info.message }; });device.addEventListener("uncapturederror", (event) => { console.error("RENDER DEVICE",event.error?.message); }); }
-  loading.step("shaders");
+  device.lost.then((info) => deviceLost(device, info));
+  made(device);
+  if (dev) device.addEventListener("uncapturederror", (event) => { console.error("RENDER DEVICE",event.error?.message); });
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque", usage: GPUTextureUsage.RENDER_ATTACHMENT | (captureRequested ? GPUTextureUsage.COPY_SRC : 0) });
@@ -736,9 +752,79 @@ async function startGpu() {
     }
     return measuredTexture;
   } } : context;
-  gpu = { device, context: renderContext, format: measuredFormat || format };
+  return { adapter, device, context: renderContext, format: measuredFormat || format };   // the adapter held: a collected one can drop its device
+}
+
+// ---- a lost GPU device (aethyr/book ch085). The engine and every byte of its state are in
+// memory, not on the GPU, so the host takes a new device, builds the pipelines again, uploads the
+// assets again, and puts the state back as the loss found it (the assets' deliveries during the
+// rebuild do not change it). Frames and input wait meanwhile; the first frame after draws the
+// current step (no time passes in it). A new device lost while it is being built is built again.
+// A device that can't be replaced within RECOVER_MS, or a fourth loss in a minute, saves the realm
+// and offers a reload that restores it (stopped).
+const RECOVER_MS = 10000, LOSSES_MAX = 3, LOSSES_WINDOW_MS = 60000;
+let recovering = null, losses = [];   // recovering: { n } while a device is rebuilt, n its attempt
+async function deviceLost(device, info) {
+  if (dev) globalThis.coaxial.renderDeviceLost = { reason: info.reason, message: info.message };
+  if (!gpu || gpu.device !== device || leaving || !engine) return;
+  const t0 = performance.now();
+  losses = losses.filter((t) => t0 - t < LOSSES_WINDOW_MS);losses.push(t0);
+  say(`GPU device lost (${info.reason}${info.message ? `: ${info.message}` : ""}); taking a new one`, true);
+  gpu.bg = null;
+  try { gpu.renderer?.destroy(); } catch {}
+  if (recovering) { recovering.n += 1;return; }   // the device being built went too: its rebuild starts again
+  const attempt = recovering = { n: 0 }, held = stateBytes(), until = t0 + (dev && globalThis.coaxialRecoverMs || RECOVER_MS);
+  globalThis.coaxial.gpuRecovery = { state: "recovering", reason: info.reason, losses: losses.length };
+  let error = null;
+  for (;;) {
+    const n = attempt.n;
+    try {
+      if (losses.length > LOSSES_MAX) throw new Error(`the GPU was lost ${losses.length} times in a minute`);
+      let timer;
+      const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error("no new GPU device in time")), Math.max(0, until - performance.now())); });
+      await Promise.race([late, rebuildGpu(() => {
+        if (attempt.n !== n) throw new Error("the new device was lost too");
+        if (performance.now() > until) throw new Error("no new GPU device in time");
+      }, until)]).finally(() => clearTimeout(timer));
+      if (attempt.n === n) { error = null;break; }
+    } catch (e) { error = e; }
+    if (attempt.n === n || losses.length > LOSSES_MAX || performance.now() > until) break;
+  }
+  recovering = null;
+  if (error || !engine) {
+    if (gpu) gpu.bg = null;
+    globalThis.coaxial.gpuRecovery = { state: "failed", reason: info.reason, losses: losses.length, error: error?.message };
+    stopped(`THE GPU STOPPED: ${error?.message || "the engine went"}`, held);
+    engine = null;globalThis.coaxial.ready = false;
+    return;
+  }
+  new Uint8Array(memory.buffer, arena.state, held.length).set(held);
+  last = 0;
+  const ms = Math.round(performance.now() - t0);
+  globalThis.coaxial.gpuRecovery = { state: "recovered", reason: info.reason, losses: losses.length, ms };
+  say(`GPU device replaced in ${ms} ms`);
+}
+// A new device, the pipelines and every asset the world opens with, uploaded to it; `check` throws
+// once this attempt is lost or late.
+async function rebuildGpu(check, until) {
+  // A GPU process that crashed is started again by the browser; until it is, there is no adapter.
+  let opened = null;
+  for (let wait = 100; !(opened = await openDevice()) && performance.now() + wait < until; wait *= 2) await new Promise((ok) => setTimeout(ok, wait));
+  if (!opened) throw new Error("no GPU device");
+  check();
+  if (!renderUrl) {
+    // the legacy path keeps its assets' GPU objects on the rows: fetched again (the browser's cache)
+    for (const a of firstAssets) Object.assign(a, { done: false, fetching: false, failed: false, buffer: null, texture: null });
+    for (const pack of firstPacks) Object.assign(pack, { done: false, fetching: false });
+  } else engine?.exports.coaxial_render_reset?.();   // the renderer's bookkeeping starts over with its resources
+  gpu = opened;
   makeBuffers();
-  return loadShaders();
+  if (!(await loadShaders())) throw new Error("the shaders did not build");
+  check();
+  // the renderer path's rows are new ones (loadShadersOnce): none done yet
+  await Promise.all([...firstAssets.map(loadAsset), ...[...firstPacks].map(loadPack)]);
+  check();
+  if (firstAssets.some((a) => a.failed) || assets.some((a) => a.pack && a.failed)) throw new Error("the world's assets did not load again");
 }
 
 function makeBuffers() {
@@ -1075,7 +1161,7 @@ async function loadPack(pack) {
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
     if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
     else layers.failed = true;
-    for (const e of of(PACK_SOUND)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
+    for (const e of of(PACK_SOUND)) if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
   } catch (e) { for (const a of parts) a.failed = true; say(`${app}: ${e.message}`, true); }
   pack.fetching = false;pack.done = true;
   if (!parts.every(currentAsset)) return;
@@ -1502,20 +1588,22 @@ function frame(now) {
 }
 let frameCost = 0;   // ms of main thread the drawing itself takes, smoothed: socket events get what's left
 function draw(now) {
-  if (engineInstalling || !engine || !gpu?.bg) return;
+  if (engineInstalling || !engine || !gpu?.bg || recovering) return;
   const dt = last ? (now - last) / 1000 : 0; last = now;
   const [dw, dh] = devicePixels || [Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio)), Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio))];
   const f = drawn(dw) * SUPERSAMPLE, w = Math.max(1, Math.round(dw * f)), h = Math.max(1, Math.round(dh * f));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   const dpr = scale();
   let n = 0;
+  frameStart();   // a rescue save put back, then this frame's start kept (a trap saves it)
+  const trap = dev && trapArmed;trapArmed = false;
   try {
     for (let k = 0; probeAt && !gpu.probed && k < probeAt * 10; k++)
       engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, 0.1, 0);
     if (probeDo && !gpu.probed) runProbe(w, h, dpr);
-    n = engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
+    n = engine.exports.coaxial_frame(trap ? -16 : arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
     if (gpu.gpuiOn) gpuiFrame(dpr);
-  } catch (e) { say(`${app} trapped: ${e.message}`, true); loading.fail(`ENGINE STOPPED: ${e.message}`); engine = null; return; }
+  } catch (e) { trapped(e); return; }
   if (gpu.renderer) {
     try {
       const submitted = gpu.renderer.frame(n, w, h, captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? (encoder, texture) => readBack(encoder, texture) : null);
@@ -1659,7 +1747,84 @@ function draw(now) {
 // ---- input: keys, the pointer and typed text go to the app; its actions come out
 const KEYS = { Escape: -1, Enter: -2, Backspace: -3, ArrowLeft: -4, ArrowRight: -5, ArrowUp: -6, ArrowDown: -7,
   Home: -8, End: -9, PageUp: -10, PageDown: -11, Delete: -12, Shift: -13, Control: -14, Tab: -15 };
-const call = (name, ...args) => (engine && engine.exports[name] ? engine.exports[name](arena.state, ...args) : 0);
+// Input waits while a lost device is replaced (its state is put back as the loss found it), and a
+// trap here stops the engine as one in a frame does.
+const call = (name, ...args) => {
+  if (!engine || recovering || !engine.exports[name]) return 0;
+  try { return engine.exports[name](arena.state, ...args); } catch (e) { trapped(e); return 0; }
+};
+
+// ---- a realm that stops (aethyr/book ch085). A trap in the engine leaves its state as far as the
+// trapping call got, so the host keeps a copy of the state at each frame's start (every frame, or
+// every HOLD_EVERY-th for a state over HOLD_BYTES) and, when the engine traps, saves the last one
+// as the realm's rescue save and shows the reload message. The next load of the same engine (its
+// wasm's SHA-256, its layout and state size all match) puts the save back once its world is in,
+// so the save gives the same state digest; a save from any other build is dropped. A save is put
+// back once: a realm that traps again within RESCUE_SETTLE frames of one starts over. The save is
+// the state region the host owns (coaxial_state_size), the contract every face keeps its state in.
+// IndexedDB coaxial-rescue, store saves, keyed by the save slot. Not in a golden walk.
+const HOLD_BYTES = 2 * 1048576, HOLD_EVERY = 30, RESCUE_SETTLE = 300;
+let frameHeld = null, heldFrames = 0, restoredFrames = -1, pendingRescue = null, rescueTaken = false, trapArmed = false;
+const rescueDb = realmId && !golden ? new Promise((ok) => {
+  try { const r = indexedDB.open("coaxial-rescue", 1); r.onupgradeneeded = () => r.result.createObjectStore("saves"); r.onsuccess = () => ok(r.result); r.onerror = r.onblocked = () => ok(null); }
+  catch { ok(null); }
+}) : Promise.resolve(null);
+const rescueRead = rescueDb.then((db) => !db ? null : new Promise((ok) => {
+  try { const q = db.transaction("saves").objectStore("saves").get(slot); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }
+  catch { ok(null); }
+}));
+function rescueWrite(value) {
+  return rescueDb.then((db) => !db ? false : new Promise((ok) => {
+    try {
+      const t = db.transaction("saves", "readwrite"), store = t.objectStore("saves");
+      if (value) store.put(value, slot); else store.delete(slot);
+      t.oncomplete = () => ok(true);t.onerror = t.onabort = () => ok(false);
+    } catch { ok(false); }
+  }));
+}
+async function rescueIdentity(bytes) {
+  try { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join(""); }
+  catch { return ""; }   // no SubtleCrypto (an insecure origin): no save
+}
+function rescueFrom(record, id, layout, size) {
+  if (!record || rescueTaken) return;
+  rescueTaken = true;
+  rescueWrite(null);
+  if (id && record.wasm === id && record.layout === layout && record.size === size && record.bytes?.byteLength === size) pendingRescue = new Uint8Array(record.bytes);
+  else say(`${app}: a save from another build of this realm was not put back`);
+}
+const stateBytes = () => new Uint8Array(memory.buffer, arena.state, arena.stateSize).slice();
+const worldIn = () => firstAssets.every((a) => a.done) && [...firstPacks].every((p) => p.done);
+function frameStart() {
+  if (pendingRescue && worldIn()) {
+    new Uint8Array(memory.buffer, arena.state, pendingRescue.length).set(pendingRescue);
+    pendingRescue = null;restoredFrames = 0;
+    globalThis.coaxial.rescued = dev ? rescueIdentity(stateBytes()) : true;   // checks: the state as put back, before its frame
+    say(`${app}: back where it stopped`);
+  }
+  if (restoredFrames >= 0) restoredFrames += 1;
+  if (!realmId || golden) return;
+  const size = arena.stateSize;
+  if (size > HOLD_BYTES && heldFrames++ % HOLD_EVERY) return;
+  if (frameHeld?.length !== size) frameHeld = new Uint8Array(size);
+  frameHeld.set(new Uint8Array(memory.buffer, arena.state, size));
+}
+function trapped(e) {
+  if (!engine) return;
+  say(`${app} trapped: ${e.message}`, true);
+  const again = restoredFrames >= 0 && restoredFrames < RESCUE_SETTLE;
+  engine = null;globalThis.coaxial.ready = false;
+  stopped(`THE REALM STOPPED: ${e.message}`, again ? null : frameHeld?.slice() ?? null, again ? "START OVER" : "");
+}
+// The reload message: what stopped, and one action. With the state to save, the save goes first
+// and the reload puts it back; without, the realm starts over.
+function stopped(what, bytes, action = "") {
+  const saving = bytes && engineBytes && arena ? rescueIdentity(engineBytes).then((wasm) => wasm
+    ? rescueWrite({ wasm, layout: arena.layout, size: bytes.length, bytes: bytes.buffer, at: Date.now() }) : false) : Promise.resolve(false);
+  const told = globalThis.coaxial.stopped = { what, saved: null };
+  saving.then((ok) => { told.saved = ok; });
+  loading.stop(what, action || (bytes ? "RELOAD WHERE YOU WERE" : "RELOAD"), () => saving.finally(() => location.reload()));
+}
 let field = null;   // INVARIANTS.md: the keyboard field, an invisible input over the app's drawn field (keyboard, paste, context menu)
 let touched = false;
 
@@ -1742,6 +1907,11 @@ if (dev) {
   globalThis.coaxial.renderEngineMarker = () => engine?.exports.coaxial_reload_marker?.() ?? null;
   globalThis.coaxial.renderBindingState = () => ({ stopped: !engine || !gpu?.bg, coherent: !!engine && !!gpu?.renderer && engine.exports === gpu.renderer.x });
   globalThis.coaxial.renderBank = () => engine?.exports.coaxial_render_active_bank?.();
+  // Recovery checks (coax/web/gpu-recovery.coax): the state region's SHA-256, a real trap in the
+  // next frame (its state pointer out of bounds), and a lost device.
+  globalThis.coaxial.stateDigest = () => (engine && arena ? rescueIdentity(stateBytes()) : Promise.resolve(""));
+  globalThis.coaxial.trapNextFrame = () => { trapArmed = true;return !!engine; };
+  globalThis.coaxial.loseDevice = () => { gpu?.device.destroy();return !!gpu; };
 }
 // The OpenAgents app turns the camera with the phone (its gyro), radians since the last call.
 globalThis.coaxial.tilt = (dyaw, dpitch) => { engine?.exports.coaxial_tilt?.(arena.state, dyaw, dpitch); };

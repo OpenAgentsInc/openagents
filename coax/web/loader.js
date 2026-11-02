@@ -74,7 +74,7 @@ export async function readBytes(response, progress) {
   return out;
 }
 
-const NONE = { on: false, engine() {}, step() {}, watch() {}, bytes() {}, textures() {}, assetDone() {}, frame() {}, fail() {} };
+const NONE = { on: false, engine() {}, step() {}, watch() {}, bytes() {}, textures() {}, assetDone() {}, frame() {}, fail() {}, stop() {} };
 
 /** The page's loading screen, or one that does nothing on a page without one (a page that isn't a
  *  realm). `assets`: how many assets the host will load after the GPU; `textured`: any of them
@@ -118,7 +118,7 @@ export function startLoading({ realm, assets = 0, textured = false, scene = fals
     finished = true;
     if (golden) { el.remove(); return; }
     el.classList.add("gone");
-    const away = () => el.remove();
+    const away = () => { if (!failed) el.remove(); };   // a stop since brings it back
     el.addEventListener("transitionend", away, { once: true });
     setTimeout(away, 600); // reduced motion has no transition to end
   };
@@ -202,6 +202,20 @@ export function startLoading({ realm, assets = 0, textured = false, scene = fals
       la.setAttribute("href", "");
       la.addEventListener("click", (e) => { e.preventDefault(); location.reload(); });
       el.dataset.state = "fail";
+    },
+    // The realm stopped (host.js: an engine trap, a GPU it couldn't replace), while loading or long
+    // after: the same card again, what stopped and one action, `act` (host.js reloads, the save first).
+    stop(what, action, act) {
+      finished = true; failed = true;
+      if (!el.isConnected) { el.classList.remove("gone"); document.body.prepend(el); } // the reload message
+      const le = el.querySelector(".le"), la = el.querySelector(".la"), again = la.cloneNode(false);
+      le.textContent = String(what).slice(0, 160);
+      again.textContent = action;
+      again.setAttribute("href", "");
+      again.addEventListener("click", (e) => { e.preventDefault(); act(); });
+      la.replaceWith(again);
+      el.dataset.state = "fail";
+      again.focus({ preventScroll: true });
     },
   };
 }

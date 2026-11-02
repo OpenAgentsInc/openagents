@@ -1,0 +1,159 @@
+// A realm that loses its GPU device, or whose engine traps, keeps its session (GitHub #12651,
+// aethyr/book ch085). Against a realm page served locally (coax serve), in headless Chrome, on the
+// host's clip clock and its offscreen target:
+//   1. Device loss: N frames, the state region's digest, GPUDevice.destroy(); the host takes a
+//      new device, its pipelines and assets. Within --within MS (default 3000) the digest is the
+//      one the loss found, and the next frame draws.
+//   2. Trap: N frames more, the digest, then a real trap in the next frame (its state pointer out
+//      of bounds). The reload message shows and the rescue save is written; its action reloads the
+//      page, which puts the save back: the same digest, and the next frame draws.
+//   COAX=... coax/web/tool.sh coax/web/gpu-recovery.coax http://127.0.0.1:PORT/realms/the-grid/ [--within MS]
+// Headless and muted; never a window. CHROME names the browser: on Linux, where the GPU process
+// dies headless (NEEDS_OWNER.md), one that adds --use-webgpu-adapter=swiftshader.
+// The digest is the region the host owns (coaxial_state_size); state a face keeps in its own
+// statics is not in it (host.js, "a realm that stops").
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+GR_FRAMES :: 30;
+GR_WAIT_MS :: 120000;
+GR_SETUP :: "globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba16float'";
+// The page is in, its world drawn, on one more zero-time frame.
+GR_READY :: "(async()=>!!globalThis.coaxial?.ready && (await globalThis.coaxialClipStep?.(1,Infinity))===1 && coaxial.sceneReady===true)()";
+
+GpuRecovery :: struct {
+  digest_before: [80] u8; before_n: int;
+  digest_after: [80] u8; after_n: int;
+  ms: int; recovered: bool; drew_after_loss: bool;
+  digest_trap: [80] u8; trap_n: int;
+  stopped: bool; saved: bool; offered: bool;
+  digest_rescued: [80] u8; rescued_n: int;
+  drew_after_rescue: bool;
+}
+gr_same :: (a: [] u8, an: int, b: [] u8, bn: int) -> bool {
+  if an != 64 || bn != an {return false;}   // a SHA-256 in hex
+  for i: 0..<an {if a[i] != b[i] {return false;}}
+  return true;
+}
+gr_passed :: (r: [] GpuRecovery, within: int) -> bool {
+  return r[0].recovered && r[0].ms >= 0 && r[0].ms <= within && r[0].drew_after_loss &&
+    gr_same(r[0].digest_before[..], r[0].before_n, r[0].digest_after[..], r[0].after_n) &&
+    r[0].stopped && r[0].saved && r[0].offered && r[0].drew_after_rescue &&
+    gr_same(r[0].digest_trap[..], r[0].trap_n, r[0].digest_rescued[..], r[0].rescued_n);
+}
+gr_put :: (out: [] u8, s: string) -> int {
+  n := ifx s.count < out.count then s.count else out.count;
+  for i: 0..<n {out[i] = s[i];}
+  return n;
+}
+#test "recovery passes only with the same digests, in time, with a frame drawn after each" {
+  d := "76b93f823a247a0a79cf18ba464cea806c7de1538013a21dcdb0e73870be690b";
+  e := "0e6213414749505b24ba3c91481b26ef7bc306d9eaa448253864aca84cc6f928";
+  r: [1] GpuRecovery;
+  r[0].before_n = gr_put(r[0].digest_before[..], d); r[0].after_n = gr_put(r[0].digest_after[..], d);
+  r[0].trap_n = gr_put(r[0].digest_trap[..], e); r[0].rescued_n = gr_put(r[0].digest_rescued[..], e);
+  r[0].ms = 2400; r[0].recovered = true; r[0].drew_after_loss = true;
+  r[0].stopped = true; r[0].saved = true; r[0].offered = true; r[0].drew_after_rescue = true;
+  #assert gr_passed(r[..], 3000);
+  #assert !gr_passed(r[..], 2000);
+  r[0].after_n = gr_put(r[0].digest_after[..], e); #assert !gr_passed(r[..], 3000); r[0].after_n = gr_put(r[0].digest_after[..], d);
+  r[0].rescued_n = gr_put(r[0].digest_rescued[..], d); #assert !gr_passed(r[..], 3000); r[0].rescued_n = gr_put(r[0].digest_rescued[..], e);
+  r[0].rescued_n = gr_put(r[0].digest_rescued[..], ""); #assert !gr_passed(r[..], 3000); r[0].rescued_n = gr_put(r[0].digest_rescued[..], e);
+  r[0].recovered = false; #assert !gr_passed(r[..], 3000); r[0].recovered = true;
+  r[0].drew_after_loss = false; #assert !gr_passed(r[..], 3000); r[0].drew_after_loss = true;
+  r[0].saved = false; #assert !gr_passed(r[..], 3000); r[0].saved = true;
+  r[0].offered = false; #assert !gr_passed(r[..], 3000); r[0].offered = true;
+  r[0].stopped = false; #assert !gr_passed(r[..], 3000); r[0].stopped = true;
+  r[0].drew_after_rescue = false; #assert !gr_passed(r[..], 3000); r[0].drew_after_rescue = true;
+  r[0].ms = -1; #assert !gr_passed(r[..], 3000);
+}
+gr_local :: (url: string) -> bool {
+  return (url.count > 17 && url[0..<17] == "http://127.0.0.1:") || (url.count > 17 && url[0..<17] == "http://localhost:");
+}
+#test "the check runs only against a page served on this machine" {
+  #assert gr_local("http://127.0.0.1:8800/realms/the-grid/") && gr_local("http://localhost:8800/x");
+  #assert !gr_local("https://openagents.com/realms/the-grid/") && !gr_local("http://127.0.0.1.evil:80") && !gr_local("");
+}
+gr_param :: (c: [] Cdp, method: string, key: string, value: string) -> bool {
+  buf: [CDP_REQ] u8; o: [1] Jo;
+  jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], key); jo_str(o[..], value); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, method, jo_text(o[..]), 30000) >= 0;
+}
+gr_true :: (c: [] Cdp, expr: string) -> bool {
+  at := cdp_evaluate(c, expr); return at >= 0 && jv_raw(c[0].doc[0], at) == "true";
+}
+// Polls expr until it is true (a navigation in between only fails a poll).
+gr_until :: (c: [] Cdp, expr: string) -> bool {
+  until := proc_now_ms() + GR_WAIT_MS;
+  while proc_now_ms() < until {if gr_true(c, expr) {return true;} proc_sleep(50);}
+  return false;
+}
+// The page's state digest (hex) into out.
+gr_digest :: (c: [] Cdp, out: [] u8) -> int {
+  at := cdp_evaluate(c, "coaxial.stateDigest()"); if at < 0 {return 0;}
+  return gr_put(out, jv_raw(c[0].doc[0], at));
+}
+gr_step :: (c: [] Cdp, frames: int) -> bool {
+  return gr_true(c, ifx frames == 1 then "coaxialClipStep(1,60).then((v)=>v===1)" else "coaxialClipStep(30,60).then((v)=>v===1)");
+}
+// A frame drew: the clip clock stepped and the renderer, where the page has one, submitted it.
+gr_drew :: (c: [] Cdp) -> bool {
+  return gr_true(c, "coaxialClipStep(1,60).then((v)=>v===1 && (!globalThis.coaxial.renderStatus || coaxial.renderStatus.submitted===true))");
+}
+gr_run :: (c: [] Cdp, url: string, r: [] GpuRecovery) -> bool {
+  if cdp_call(c, "Page.enable", "", 30000) < 0 || cdp_call(c, "Runtime.enable", "", 30000) < 0 {return false;}
+  if !gr_param(c, "Page.addScriptToEvaluateOnNewDocument", "source", GR_SETUP) || !gr_param(c, "Page.navigate", "url", url) {return false;}
+  print("gpu-recovery: open %\n", url);
+  if !gr_until(c, GR_READY) || !gr_step(c, GR_FRAMES) {return false;}
+  r[0].before_n = gr_digest(c, r[0].digest_before[..]);
+  print("gpu-recovery: lose the device\n");
+  if !gr_true(c, "coaxial.loseDevice()") {return false;}
+  r[0].recovered = gr_until(c, "coaxial.gpuRecovery?.state==='recovered'");
+  at := cdp_evaluate(c, "coaxial.gpuRecovery?.ms ?? -1");
+  r[0].ms = ifx at >= 0 then jv_int(c[0].doc[0], at, -1) else -1;
+  r[0].after_n = gr_digest(c, r[0].digest_after[..]);
+  r[0].drew_after_loss = gr_drew(c);
+  print("gpu-recovery: recovered % in % ms, digest % -> %\n", r[0].recovered, r[0].ms,
+    cast(string) r[0].digest_before[0..<r[0].before_n], cast(string) r[0].digest_after[0..<r[0].after_n]);
+  print("gpu-recovery: trap the engine\n");
+  if !gr_step(c, GR_FRAMES) {return false;}
+  r[0].trap_n = gr_digest(c, r[0].digest_trap[..]);
+  if !gr_true(c, "coaxial.trapNextFrame()") {return false;}
+  stepped := cdp_evaluate(c, "coaxialClipStep(1,60)");
+  r[0].stopped = gr_until(c, "globalThis.coaxial.stopped?.saved!=null && globalThis.coaxial.ready===false");
+  r[0].saved = gr_true(c, "coaxial.stopped.saved===true");
+  r[0].offered = gr_true(c, "document.querySelector('#coaxial-load[data-state=fail] .la')?.textContent==='RELOAD WHERE YOU WERE'");
+  if !r[0].offered {return false;}
+  // The card's own action: it reloads the page (a new document; this evaluation returns first).
+  if !gr_true(c, "(setTimeout(()=>document.querySelector('#coaxial-load .la').click(),50),true)") {return false;}
+  proc_sleep(500);
+  if !gr_until(c, "(async()=>!!globalThis.coaxial?.ready && (await globalThis.coaxialClipStep?.(1,Infinity))===1 && !!globalThis.coaxial.rescued)()") {return false;}
+  at = cdp_evaluate(c, "coaxial.rescued");
+  r[0].rescued_n = ifx at >= 0 then gr_put(r[0].digest_rescued[..], jv_raw(c[0].doc[0], at)) else 0;
+  r[0].drew_after_rescue = gr_drew(c);
+  print("gpu-recovery: saved %, put back % -> %\n", r[0].saved,
+    cast(string) r[0].digest_trap[0..<r[0].trap_n], cast(string) r[0].digest_rescued[0..<r[0].rescued_n]);
+  return true;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0);
+  within := 3000;
+  w := args_find(a[..], "--within");
+  if w > 0 {n := args_number(args_at(a[..], w + 1)); if !n.ok || n.value < 0.0 {ok = false;} else {within = cast(int) n.value;}}
+  if !ok || !gr_local(url) {tool_errln("usage: coax/web/tool.sh coax/web/gpu-recovery.coax http://127.0.0.1:PORT/realms/SLUG/ [--within MS]"); return 2;}
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 320, 240, "coax-gpu-recovery-") {tool_err("gpu-recovery: "); tool_errln(cdp_error(c[..])); return 1;}
+  r: [1] GpuRecovery;
+  ran := gr_run(c[..], url, r[..]);
+  if !ran {
+    tool_err("gpu-recovery: the page did not get through: "); tool_errln(cdp_error(c[..]));
+    at := cdp_evaluate(c[..], "JSON.stringify({url:location.href,ready:globalThis.coaxial?.ready,recovery:globalThis.coaxial?.gpuRecovery,stopped:globalThis.coaxial?.stopped,card:document.querySelector('#coaxial-load')?.textContent})");
+    if at >= 0 {tool_errln(jv_raw(c[0].doc[0], at));}
+  }
+  cdp_close(c[..]);
+  passed := ran && gr_passed(r[..], within);
+  print("% device loss and engine trap keep the session (within % ms)\n", ifx passed then "pass" else "FAIL", within);
+  return ifx passed then 0 else 1;
+}

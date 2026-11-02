@@ -472,6 +472,26 @@ Checks: each realm's "... frames fit its declared budget" (three frames at
 each of three screens), and `aethyr/budget.coax`'s planted overflow
 (mutation 0 survivors).
 
+## A lost GPU device or an engine trap keeps the realm's session
+
+The browser host (`coax/web/host.js`) answers `GPUDevice.lost` for its current
+device by taking a new device, building the pipelines and uploading the
+world's assets again, then putting the state region (`coaxial_state_size`)
+back as the loss found it; frames and input wait meanwhile, and the first
+frame after draws the current step. A device lost while it is rebuilt is
+rebuilt again. A device not replaced within 10 s, or a fourth loss in a
+minute, is handled as a stop. A trap in the engine (a frame or an input
+call), or such a stop, saves the region as it was at the start of the last
+frame to IndexedDB `coaxial-rescue` under the save slot and shows the reload
+message with one action. The next load of the same engine (its wasm's
+SHA-256, layout and state size all match) puts the save back once its world
+is in, so the save gives the same state digest; a save is put back once and
+from no other build, and a realm that traps again within 300 frames of one
+starts over. State a face keeps in its own statics is outside the region and
+is not saved. Check: `coax/web/gpu-recovery.coax` against a realm page
+(the Grid: recovered in 1.4 s on SwiftShader with the same digest; the trap's
+save put back with the same digest).
+
 ## The Grid steps only on its session's record
 
 The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,

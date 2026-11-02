@@ -1,5 +1,17 @@
 # Owner actions
 
+## GPU device loss and trap recovery: check on real GPUs (#12651, 2026-11-02)
+
+`coax/web/host.js` now replaces a lost GPU device and keeps the realm's
+state, and saves a realm whose engine traps so the reload puts it back. The
+check, `coax/web/gpu-recovery.coax`, passed on coderos-4080 against the Grid
+only on SwiftShader (headless Chromium's GPU process still dies there, see
+"Coax Nostr queue" below), so the 3-second budget is not yet measured on a
+real GPU. On the Mac, with a served build (`coax/web/serve.sh
+apps/openagents-web`), run `coax/web/tool.sh coax/web/gpu-recovery.coax
+http://127.0.0.1:8800/realms/the-grid/` and then the same against Everglade
+and the fixture realm, and add the results to issue #12651. Not blocking.
+
 ## Background jobs stopped after desktop lockups (2026-11-02)
 
 At the owner's request, the open-issues chat stopped its eight mutation
