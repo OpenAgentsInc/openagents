@@ -114,7 +114,14 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
      only with `--admin`. `relay_route.coax` root-only 824 of 824;
      `relay_session.py` (ASan/UBSan) drives ban, list, disallow, unban and
      allow against a running relay.
-   - Still not wired: `nip43`, `nip29`.
+   - `nip29` wired behind `--groups`: `g29_admit` on a copy of the event's
+     group (`rr_group_slot`), kept only when the store takes the event; up
+     to 64 groups in memory; NIP-11 lists 29 (`rr_nip11_nip`). No relay
+     key, so no 39000 to 39003 events. `relay_route.coax` root-only 890 of
+     890.
+   - Still not wired: `nip43`. It needs a relay key (a secret key file,
+     `self` in NIP-11, the relay signing 13534, 8000 and 8001), which is
+     not built.
    - The store's size is now `--store-capacity EVENTS` (128 to 1,048,576
      records, 2 KiB of arena each; default 2,048 and 4 MiB). relay-host.c
      allocates the arrays and calls `#export_c ry_main`; `relay_route.coax`

@@ -603,13 +603,14 @@ Part X are wired into it, and what the rest still need.
 | `nip77.coax` | 43 | Wired | `ry_message` reads a verb `ms_read` doesn't know with `n77_read`; `rr_neg_route` sends it to `ry_neg`. Up to 4 syncs per connection (`rr_neg_open`, `RrNeg` in each `RyConn`), each answered by `neg_reconcile` over `rd_neg_items` (the visible events matching its saved filter) with a 32,768-byte frame limit; `NEG-ERR` over 100,000 events, for a fifth sync, an unknown ID, a frame that doesn't read, and after 60 idle seconds (`rr_neg_idle`, swept each poll). `NEG-OPEN` is charged as a REQ. Step 9's remote check against the Rust relay is still the owner's |
 | `nip13.coax` | 56 | Wired | `--pow BITS` (default 0, off; `rr_pow`): `nip13_admit` before the signature, refused "pow: ..."; NIP-11 then carries `min_pow_difficulty` and lists 13 (`rr_nip11_pow`) |
 | `nip86.coax` | 67 | Wired with `--admin` | `--admin PUBKEY` (up to 4): `ry_http` reads a POST with `rr_post` and answers with `ry_admin` (`n86_serve`, NIP-98 `u` the relay URL; 400 or 413 for a request `rr_post` refuses); `ry_event` calls `n86_admit` after the signature and the rate limit. The policy is in memory; used NIP-98 IDs are forgotten 121 s after the last (`rr_admin_forget`). NIP-11 lists 86 only with `--admin` (`rr_nip11_base`) |
-| `nip43.coax` | 67 | Not wired | A relay key (`n43_self` in NIP-11), membership state from kinds 13534, 8000 and 8001, and the join and leave requests routed to `n43_request` |
-| `nip29.coax` | 59 | Not wired | Group state per `h` tag, `g29_admit` for events with an `h` tag, and the relay-signed metadata, admins and members events (`g29_write_*`) |
+| `nip43.coax` | 67 | Not wired | A relay key: a secret key file the host loads (never printed), `self` in NIP-11 (`n43_self`), and the relay signing kind 13534, 8000 and 8001 events; then membership state from them, and the join and leave requests routed to `n43_request`. The relay has no key yet, which also keeps NIP-29's 39000 to 39003 events unpublished |
+| `nip29.coax` | 59 | Wired with `--groups` | Up to 64 groups (`G29Group` in `RyWork`); `ry_event` puts every EVENT to `g29_admit` on a copy of its group (`rr_group_slot` picks it by `h` tag, or a free slot for a 9007), and the copy replaces the group only when the store takes the event. Refusals are `OK` false (`rr_group_prefix`, `rr_group_text`). In memory; no relay key, so no 39000 to 39003 events (`g29_write_*` unused). NIP-11 lists 29 only with `--groups` (`rr_nip11_nip`) |
 
 The served NIP-11 document lists what is wired: `supported_nips` is
 `[1,9,11,40,42,45,50,62,70,77]` in `RR_NIP11` (and its copy `RS_NIP11`);
-with `--admin` the relay serves `RR_NIP11_ADMIN`, which adds 86, and
-`rr_nip11_pow` adds 13 when `--pow` is above 0 (chapter 37).
+with `--admin` the relay serves `RR_NIP11_ADMIN`, which adds 86;
+`rr_nip11_pow` adds 13 when `--pow` is above 0 (chapter 37), and
+`rr_nip11_nip` adds 29 with `--groups`.
 
 ## How the code is checked
 

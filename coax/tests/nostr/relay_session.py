@@ -660,6 +660,43 @@ def admin(exe, log):
         p.terminate(); p.wait(10)
 
 
+def groups(exe, log):
+    """NIP-29 (nip29.coax through relay.coax's ry_event): --groups, a group created, joined, posted to and refused."""
+    p = subprocess.Popen([str(exe), '--listen', '127.0.0.1', '--port', '0', '--rate', '1000,1000,1000', '--groups'] + TLS_ARGS,
+                         stdout=subprocess.PIPE, stderr=log, text=True, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
+    try:
+        port = int(p.stdout.readline().split()[-1])
+        check(info(port)['supported_nips'] == [1, 9, 11, 29, 40, 42, 45, 50, 62, 70, 77], 'NIP-29: with --groups NIP-11 lists 29')
+        now = int(time.time())
+        b_key = 'coax relay r1 second test key'
+        bk = sign([{"kind": 1, "created_at": 1, "tags": [], "content": ""}], b_key)[0]['pubkey']
+        a = sign([{"kind": 9007, "created_at": now - 9, "tags": [["h", "g1"]], "content": ""},
+                  {"kind": 9, "created_at": now - 8, "tags": [["h", "g1"]], "content": "hello group"},
+                  {"kind": 9007, "created_at": now - 7, "tags": [["h", "g1"]], "content": "again"},
+                  {"kind": 39000, "created_at": now - 7, "tags": [["d", "g1"]], "content": ""},
+                  {"kind": 9, "created_at": now - 7, "tags": [["h", "nope"]], "content": "nowhere"},
+                  {"kind": 1, "created_at": now - 7, "tags": [], "content": "no group at all"}])
+        b = sign([{"kind": 9021, "created_at": now - 6, "tags": [["h", "g1"]], "content": ""},
+                  {"kind": 9021, "created_at": now - 5, "tags": [["h", "g1"]], "content": "twice"},
+                  {"kind": 9000, "created_at": now - 5, "tags": [["h", "g1"], ["p", bk, "admin"]], "content": ""},
+                  {"kind": 9, "created_at": now - 4, "tags": [["h", "g1"]], "content": "a member posts"}], b_key)
+        w = Ws(port)
+        check(w.auth()[2] is True, 'NIP-29: AUTH')
+        check(publish(w, a[0]) == ['OK', a[0]['id'], True, ''], 'NIP-29: a create-group is stored')
+        check(publish(w, a[1])[2] is True, 'NIP-29: its creator posts to it')
+        check(publish(w, a[2])[3] == 'duplicate: the group already exists', 'NIP-29: a second create of g1 is refused')
+        check(publish(w, a[3])[3] == 'restricted: group metadata is signed only by the relay', 'NIP-29: a 39000 not from the relay is refused')
+        check(publish(w, a[4])[3] == 'invalid: no such group', 'NIP-29: a post to a group that does not exist is refused')
+        check(publish(w, a[5])[2] is True, 'NIP-29: an event without an h tag is not the groups\' business')
+        check(publish(w, b[0])[2] is True, 'NIP-29: another key joins the open group')
+        check(publish(w, b[1])[3] == 'duplicate: already a member', 'NIP-29: and cannot join twice')
+        check(publish(w, b[2])[3] == "restricted: your roles in this group don't allow this", 'NIP-29: a plain member cannot put a user')
+        check(publish(w, b[3])[2] is True, 'NIP-29: the new member posts')
+        w.close()
+    finally:
+        p.terminate(); p.wait(10)
+
+
 def proof_of_work(exe, log):
     """NIP-13 (nip13.coax): --pow 8 asks for 8 leading zero bits and a nonce committing to 8."""
     refused_start(exe, ['--pow', '257'], 'a difficulty over 256', '0 to 256')
@@ -891,6 +928,7 @@ def main():
             rate_limits(exe, log)
             proof_of_work(exe, log)
             admin(exe, log)
+            groups(exe, log)
             if tls:
                 tls_cases(exe, d, log, store, client)
         err = (d / 'relay.err').read_text()

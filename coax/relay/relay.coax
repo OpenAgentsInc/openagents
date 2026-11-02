@@ -66,6 +66,12 @@
 // so a banned key or event, or a kind or key the lists keep out, is
 // refused. The lists are in memory; NIP-11 then lists 86.
 //
+// NIP-29 (chapter 59, nip29.coax): with --groups every EVENT is put to
+// g29_admit after n86_admit; an event with an h tag needs its group's
+// consent, and the group's state changes only once the store takes the
+// event (relay_route.coax's rr_group_slot picks the slot). Up to RR_GROUPS
+// groups, in memory; the relay signs no 39000 to 39003 events.
+//
 // Routing (which reply goes to which connection and subscription) is
 // relay_route.coax's (#authority); this file moves bytes and calls it.
 // NIP-42: every WebSocket gets a challenge after the 101 (nip42_issue, 32
@@ -82,6 +88,7 @@
 #load "../lib/nostr/nip70.coax";
 #load "../lib/nostr/nip13.coax";
 #load "../lib/nostr/nip86.coax";
+#load "../lib/nostr/nip29.coax";
 // message_server.coax's frames agree with message.coax's (#6015).
 #load "../lib/nostr/message_agree.coax";
 
@@ -102,6 +109,7 @@
 #assert RR_N86_OK == N86_ADMIT_OK && RR_N86_BANNED == N86_ADMIT_BANNED && RR_N86_NOT_ALLOWED == N86_ADMIT_NOT_ALLOWED;
 #assert RR_N86_EVENT == N86_ADMIT_EVENT && RR_N86_KIND == N86_ADMIT_KIND && RR_N86_KIND_NOT_ALLOWED == N86_ADMIT_KIND_NOT_ALLOWED;
 #assert RR_ADMINS == N86_MAX_ADMINS && RR_SEEN == N86_SEEN && RR_POST_HEAD + RR_POST_BODY <= RY_IN;
+#assert RR_G29_OK == G29_OK && RR_G29_PASS == G29_PASS && RR_G29_FULL == G29_SIGNER + 1;
 #assert RR_NEG_FRAME >= NEG_FRAME_MIN && 2 * (RR_NEG_FRAME + RY_NEG_SLACK) + 2 * 256 + 32 <= RY_OUT - 14;
 #assert RR_NEG_IN * 2 == JSON_MAX_STRING && RR_NEG_FRAME * 2 <= JSON_MAX_STRING;
 #assert RY_SENT <= 2032;
@@ -127,6 +135,7 @@ ry_host_tls :: () -> int #foreign;
 ry_host_rate :: (i: int) -> int #foreign;
 ry_host_pow :: () -> int #foreign;
 ry_host_admin_count :: () -> int #foreign;
+ry_host_groups :: () -> int #foreign;
 ry_host_admin_len :: (k: int) -> int #foreign;
 ry_host_admin_byte :: (k: int, i: int) -> int #foreign;
 
@@ -171,6 +180,8 @@ RyWork :: struct {
   admin_last: int;                 // when a NIP-98 id was last remembered
   url: [512] u8; url_n: int;       // the relay URL, which a NIP-98 u tag names
   http: [N86_OUT] u8;              // one NIP-86 reply body
+  groups_on: bool;                 // --groups
+  groups: [RR_GROUPS] G29Group;    // NIP-29 groups (exists marks a live slot)
 }
 
 ry_send_raw :: (c: [] RyConn, bytes: string) -> bool {
@@ -220,6 +231,7 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
   r := rs_admit_read(event, cxsrv_now_s(), rr_writes_need_auth(true), rr_authed(c[0].auth[..]), w[0].scratch[..]);
   if r.reason == RS_BAD_EVENT { ok := ry_notice(c, w, RS_BAD_EVENT); return; }
   id := r.e.id;
+  gi := -1; gt: [1] G29Group;      // the event's group slot, and its state if the store takes it
   if r.reason == RS_ACCEPT && w[0].pow > 0 {
     a := nip13_admit(event, w[0].pow, w[0].scratch[..], false);
     if a.error != N13_OK { ry_ok_reason(c, w, id[..], cast(string) w[0].out[0..<nip13_reason(a, w[0].out[..])]); return; }
@@ -231,6 +243,18 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
     if rt != RT_OK { ok := ry_text(c, w, ms_write_ok(id[..], false, rt_prefix(rt), rt_text(rt), w[0].body[..])); return; }
     a := n86_admit(w[0].admin[0], key, id, r.e.kind);
     if a != N86_ADMIT_OK { ok := ry_text(c, w, ms_write_ok(id[..], false, rr_admin_prefix(a), rr_admin_text(a), w[0].body[..])); return; }
+    if w[0].groups_on {
+      gr := g29_read(r.e);
+      if gr.status == G29_OK && gr.has_h {
+        live: [RR_GROUPS] bool; same: [RR_GROUPS] bool;
+        for i: 0..<RR_GROUPS { live[i] = w[0].groups[i].exists; same[i] = live[i] && g29_same(w[0].groups[i].id, gr.h); }
+        gi = rr_group_slot(live[..], same[..], r.e.kind == G29_CREATE_GROUP);
+        if gi >= 0 && live[gi] { gt[0] = w[0].groups[gi]; }
+      }
+      relay: [32] u8;   // the relay has no key: no event is the relay's
+      g := ifx gi == -2 then RR_G29_FULL else g29_admit(gt[..], r.e, relay);
+      if g != G29_OK && g != G29_PASS { ok := ry_text(c, w, ms_write_ok(id[..], false, rr_group_prefix(g), rr_group_text(g), w[0].body[..])); return; }
+    }
     p := nip70_admit(event, true, c[0].auth[..], w[0].scratch[..]);
     if p.decision != N70_ACCEPT { ok := ry_text(c, w, ms_write_ok(id[..], false, nip70_prefix(p.decision), nip70_text(p.decision), w[0].body[..])); return; }
   }
@@ -241,6 +265,7 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
   prefix := ifx rr_store_extra(reason) then rr_store_prefix(reason) else rs_prefix(reason);
   why := ifx rr_store_extra(reason) then rr_store_text(reason) else rs_text(reason);
   ok := ry_text(c, w, ms_write_ok(id[..], rs_accepted(reason), prefix, why, w[0].body[..]));
+  if rr_fanout(reason) && gi >= 0 { w[0].groups[gi] = gt[0]; }
   if rr_fanout(reason) { ry_fanout(conns, w, r.e); }
 }
 // OK false with reason, "prefix: text" (nip13_reason's form).
@@ -579,7 +604,12 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
   if b < 0 { print("relay: --rate needs three limits from 1 to %\n", RT_LIMIT_MAX); return; }
   w[0].pow = rr_pow(ry_host_pow());
   if w[0].pow < 0 { print("relay: --pow needs 0 to % bits\n", RR_POW_MAX); return; }
-  w[0].nip11_n = rr_nip11_pow(cast(string) base[0..<b], w[0].pow, w[0].nip11[..]);
+  w[0].groups_on = ry_host_groups() == 1;
+  powed: [4096] u8;
+  pn := rr_nip11_pow(cast(string) base[0..<b], w[0].pow, powed[..]);
+  w[0].nip11_n = pn;
+  if pn >= 0 && w[0].groups_on { w[0].nip11_n = rr_nip11_nip(cast(string) powed[0..<pn], 29, w[0].nip11[..]); }
+  else { for i: 0..<pn { w[0].nip11[i] = powed[i]; } }
   if w[0].nip11_n < 0 { print("relay: the NIP-11 document does not fit\n"); return; }
   print("relay: listening on port %\n", cxsrv_bound_port());
   ry_serve(conns[..], w[..], store[..]);

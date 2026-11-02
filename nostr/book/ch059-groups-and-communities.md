@@ -892,8 +892,40 @@ ran in debug and release with the same output. These runs used the cached
 release compiler in `~/.cache/coax-release`. The full mutation run
 (`COAX_MUTATION_FULL=1`) and a mutation run of the example were not run.
 
+### The relay's groups
+
+Since chapter 103's wiring, `coax/relay/relay.coax` started with
+`--groups` puts every `EVENT` to `g29_admit` after its signature, the rate
+limit and NIP-86's `n86_admit`:
+
+- The relay keeps up to 64 groups. `relay_route.coax`'s `rr_group_slot`
+  (`#authority`) picks the slot: the live group whose id is the event's
+  `h` tag, or for a 9007 the first free slot; a 9007 with none free is
+  `restricted: this relay holds no more groups`.
+- `g29_admit` runs on a copy of the group, and the copy replaces the group
+  only when the store then takes the event, so a refused or duplicate
+  event changes nothing.
+- Each refusal is an `OK` false with a NIP-01 prefix (`rr_group_prefix`,
+  `rr_group_text`): for example `invalid: no such group`, `duplicate:
+  already a member`, `restricted: your roles in this group don't allow
+  this`.
+- An event without an `h` tag is not the groups' business (`G29_PASS`),
+  except kinds 39000 to 39005, which only the relay may sign.
+- NIP-11 lists 29 only with `--groups` (`rr_nip11_nip`).
+
+Root-only mutation of `relay_route.coax` on 2026-11-01: 890 of 890
+killed. `relay_session.py` (ASan and UBSan) creates a group, posts to it,
+joins it from a second key, and checks the refusals for a second create,
+a 39000, a group that doesn't exist, a second join and a member putting a
+user.
+
 ### Not built
 
+- In the relay: the relay has no key of its own, so it publishes no 39000
+  to 39003 events, and no admin or moderation event can be the relay's.
+  The groups are kept in memory: a restart starts with none, though the
+  events stay in the store. A 9005 drops the event from the group's
+  `previous` window but not from the store.
 - Kind 9010 `update-pin-list` and 39005 pinned events, 39004 LiveKit
   participants and the LiveKit token endpoint, subgroups (`parent` and
   `child` tags), and `supported_kinds`.

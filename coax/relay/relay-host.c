@@ -6,7 +6,7 @@
    lent to ry_main for the life of the process.
      relay --listen 127.0.0.1 --port 7447 [--url ws://name:7447] [--store FILE]
            [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem]
-           [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]...
+           [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups]
    (port 0 picks a free one). --url is the relay URL NIP-42 AUTH events
    must name; without it the relay uses ws://ADDRESS:PORT, or
    wss://ADDRESS:PORT with TLS. --tls-cert and --tls-key (both, PEM) make
@@ -19,8 +19,8 @@
    relay_rate.coax's defaults 120,120,60 without it) and --pow the NIP-13
    difficulty an EVENT needs (0, off, without it); relay.coax checks both
    values. --admin PUBKEY (64 hex digits, up to 4 times) turns on NIP-86
-   management for those keys; relay.coax checks each. Effects only; every
-   relay decision is Coax. */
+   management for those keys; relay.coax checks each. --groups turns on
+   NIP-29 groups. Effects only; every relay decision is Coax. */
 #define _DEFAULT_SOURCE /* getentropy */
 #include "socket-server-native.h"
 #include "store-file-native.h"
@@ -49,6 +49,7 @@ static long long rate[3] = {-1, -1, -1};
 static long long pow_bits = -1;
 static const char *admins[8];
 static int admin_n = 0;
+static int groups = 0;
 
 int64_t ry_host_port(void) { return port; }
 int64_t ry_host_url_count(void) { return (int64_t)strlen(url); }
@@ -64,6 +65,7 @@ int64_t ry_host_rate(int64_t i) { return i >= 0 && i < 3 ? (int64_t)rate[i] : -1
 int64_t ry_host_pow(void) { return (int64_t)pow_bits; }
 /* --admin's values: how many, and each one's bytes (relay.coax checks them). */
 int64_t ry_host_admin_count(void) { return admin_n; }
+int64_t ry_host_groups(void) { return groups; }
 int64_t ry_host_admin_len(int64_t k) { return k >= 0 && k < admin_n ? (int64_t)strlen(admins[k]) : -1; }
 int64_t ry_host_admin_byte(int64_t k, int64_t i) { return k >= 0 && k < admin_n && i >= 0 && i < (int64_t)strlen(admins[k]) ? (unsigned char)admins[k][i] : -1; }
 int64_t ry_host_random(void) {
@@ -103,6 +105,7 @@ int main(int argc, char **argv) {
       char tail = 0;
       if (sscanf(argv[++i], "%lld%c", &pow_bits, &tail) != 1) { fprintf(stderr, "relay: --pow takes a number of bits\n"); return 2; }
     }
+    else if (!strcmp(argv[i], "--groups")) groups = 1;
     else if (!strcmp(argv[i], "--admin") && i + 1 < argc) {
       if (admin_n == 8) { fprintf(stderr, "relay: too many --admin keys\n"); return 2; }
       admins[admin_n++] = argv[++i];
@@ -115,7 +118,7 @@ int main(int argc, char **argv) {
       if (cxstore_set_path(argv[++i]) != 0) { fprintf(stderr, "relay: bad --store path\n"); return 2; }
       store = 1;
     }
-    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]...\n"); return 2; }
+    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups]\n"); return 2; }
   }
   if ((cert == NULL) != (key == NULL)) { fprintf(stderr, "relay: --tls-cert and --tls-key go together\n"); return 2; }
   if (cert != NULL) {

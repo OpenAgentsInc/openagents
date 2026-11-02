@@ -175,7 +175,7 @@ The list names what the relay does, not what its libraries could do:
 | 70 | an event with the `"-"` tag only from a connection authenticated as its author | `nip70.coax`'s `nip70_admit` (chapter 42) |
 | 77 | `NEG-OPEN`, `NEG-MSG` and `NEG-CLOSE`: Negentropy over the stored events matching a filter, up to 4 syncs per connection | `rr_neg_route` and `rr_neg_*` in `relay_route.coax`, `rd_neg_items` in `relay_store.coax`, over `nip77.coax` (chapter 43) |
 
-Two NIPs are listed only when they are turned on:
+Three NIPs are listed only when they are turned on:
 
 - NIP-13, proof of work: off by default. With `--pow BITS` the relay asks
   each `EVENT` for that many leading zero bits (chapter 56), and
@@ -185,6 +185,9 @@ Two NIPs are listed only when they are turned on:
   relay answers NIP-86 calls from that key (chapter 67) and serves
   `RR_NIP11_ADMIN`, the same document with 86 after 77
   (`rr_nip11_base`).
+- NIP-29, groups: off by default. With `--groups` the relay keeps NIP-29
+  groups (chapter 59), and `rr_nip11_nip` puts 29 before the first larger
+  NIP. `rr_nip13_at` is now `rr_nip_at` for 13.
 
 `relay_server.coax`'s `rs_req` still refuses a filter with `search`
 (`CLOSED` with `invalid: malformed filter`); the relay's `REQ` path calls
@@ -1075,7 +1078,7 @@ To run them:
 coax/bin/coax test nostr/examples/checks/relay-info.coax
 ```
 
-On 2026-11-01 `coax test` ran 303 checks, including the loaded units' own
+On 2026-11-01 `coax test` ran 311 checks, including the loaded units' own
 checks (`nip77.coax`'s among them since NIP-77), and all passed. The limit check is the largest, at 17.7
 million steps, because it copies two 65,536-byte fragments. The checks
 file has no procedures of its own, so `coax mutate --root-only` on it has

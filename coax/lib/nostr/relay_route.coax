@@ -479,10 +479,12 @@ rr_pow :: (flag: int) -> int {
   #assert rr_nip13_at("\"supported_nips\":[1/40]") == -1 && rr_nip13_at("\"supported_nips\":[1:40]") == -1;
   #assert rr_nip13_at("\"supported_nips\":[12,13]") == -1 && rr_nip13_at("\"supported_nips\":[0,14]") == 20;
 }
-// Where "13," goes in doc's supported_nips: the offset of its first entry
-// above 13. -1 when there is no such list, an entry isn't a decimal
-// integer, 13 is already listed, or no entry is above 13.
-rr_nip13_at :: (doc: string) -> int {
+// Where "13," goes in doc's supported_nips (rr_nip_at).
+rr_nip13_at :: (doc: string) -> int { return rr_nip_at(doc, 13); }
+// Where "nip," goes in doc's supported_nips: the offset of its first entry
+// above nip. -1 when there is no such list, an entry isn't a decimal
+// integer, nip is already listed, or no entry is above nip.
+rr_nip_at :: (doc: string, nip: int) -> int {
   key := "\"supported_nips\":[";
   p := doc.count;
   for i: 0..<doc.count - key.count { if doc[i..<i + key.count] == key { p = i + key.count; } }
@@ -491,10 +493,10 @@ rr_nip13_at :: (doc: string) -> int {
     c := doc[p];
     if c >= '0' && c <= '9' { v = v * 10 + cast(int) (c - '0'); }
     else {
-      if p == start || v == 13 || c != ',' { return -1; }
+      if p == start || v == nip || c != ',' { return -1; }
       start = p + 1; v = 0;
     }
-    if v > 13 { return start; }
+    if v > nip { return start; }
     p += 1;
   }
   return -1;
@@ -976,3 +978,112 @@ RR_NIP11_ADMIN :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A 
 }
 // The document before rt_nip11 and rr_nip11_pow: with 86 when admin keys are set.
 rr_nip11_base :: (admin: bool) -> string { return ifx admin then RR_NIP11_ADMIN else RR_NIP11; }
+
+// ---- NIP-29 groups (chapter 59) ------------------------------------------------
+//
+// With --groups the relay keeps up to RR_GROUPS groups and puts every EVENT
+// to nip29.coax's g29_admit after its signature, the rate limit and
+// n86_admit: an event with an h tag must be admitted by its group, and the
+// group's state (members, roles, flags, invites, recent ids) changes only
+// when the store then takes the event. A create-group (9007) takes a free
+// slot; the RR_GROUPS + 1st is refused. The relay has no key of its own, so
+// it publishes no 39000 to 39003 events, and any such event (signed by
+// anyone but the relay) is refused. The groups are in memory: a restart
+// starts with none. Without --groups the relay doesn't look at h tags, and
+// NIP-11 doesn't list 29.
+RR_GROUPS :: 64;
+// g29_admit's answers, mirrored (tied to nip29.coax in relay.coax), and
+// one of ours: no free slot for a new group.
+RR_G29_OK :: 0; RR_G29_PASS :: 4; RR_G29_FULL :: 15; RR_G29_REASONS :: 16;
+
+#test "a group's slot: its own, a free one for a create, or none" {
+  live := [4] bool.[true, false, true, false]; same := [4] bool.[false, false, true, false];
+  #assert rr_group_slot(live[..], same[..], false) == 2 && rr_group_slot(live[..], same[..], true) == 2;
+  same[2] = false;
+  #assert rr_group_slot(live[..], same[..], false) == -1 && rr_group_slot(live[..], same[..], true) == 1;
+  // a free slot's stale id never matches
+  same[1] = true; #assert rr_group_slot(live[..], same[..], false) == -1 && rr_group_slot(live[..], same[..], true) == 1;
+  live[1] = true; live[3] = true; same[1] = false;
+  #assert rr_group_slot(live[..], same[..], true) == -2 && rr_group_slot(live[..], same[..], false) == -1;
+  same[3] = true; #assert rr_group_slot(live[..], same[..], true) == 3;
+  // slot 0, matching or free
+  live[0] = true; same[0] = true; #assert rr_group_slot(live[..], same[..], false) == 0;
+  live[0] = false; same[3] = false; #assert rr_group_slot(live[..], same[..], true) == 0 && rr_group_slot(live[..], same[..], false) == -1;
+}
+// The slot for an event's group: the live one whose id matches (same[i]),
+// else for a create the first free one; -1 when there is none (the event
+// is then put to an empty group, which refuses it), -2 when a create finds
+// no free slot.
+rr_group_slot :: (live: [] bool, same: [] bool, create: bool) -> int {
+  for i: 0..<live.count { if live[i] && same[i] { return i; } }
+  if !create { return -1; }
+  for i: 0..<live.count { if !live[i] { return i; } }
+  return -2;
+}
+
+#test "group refusals: a NIP-01 prefix and a text for each" {
+  #assert rr_group_prefix(RR_G29_OK) == "" && rr_group_text(RR_G29_OK) == "" && rr_group_prefix(RR_G29_PASS) == "" && rr_group_text(RR_G29_PASS) == "";
+  for k: 0..<RR_G29_REASONS {
+    if k != RR_G29_OK && k != RR_G29_PASS { #assert rr_group_prefix(k).count > 0 && rr_group_text(k).count > 0; }
+  }
+  #assert rr_group_prefix(1) == "invalid" && rr_group_text(1) == "the event does not read";
+  #assert rr_group_prefix(2) == "invalid" && rr_group_text(2) == "malformed group tags";
+  #assert rr_group_prefix(3) == "invalid" && rr_group_text(3) == "too many group tags or values";
+  #assert rr_group_prefix(5) == "invalid" && rr_group_text(5) == "no such group";
+  #assert rr_group_prefix(6) == "duplicate" && rr_group_text(6) == "the group already exists";
+  #assert rr_group_prefix(7) == "invalid" && rr_group_text(7) == "a previous tag names an event this group doesn't have";
+  #assert rr_group_prefix(8) == "restricted" && rr_group_text(8) == "only members may post to this group";
+  #assert rr_group_prefix(9) == "restricted" && rr_group_text(9) == "your roles in this group don't allow this";
+  #assert rr_group_prefix(10) == "restricted" && rr_group_text(10) == "the invite code does not match";
+  #assert rr_group_prefix(11) == "restricted" && rr_group_text(11) == "this group is closed: join with an invite code";
+  #assert rr_group_prefix(12) == "duplicate" && rr_group_text(12) == "already a member";
+  #assert rr_group_prefix(13) == "invalid" && rr_group_text(13) == "this group action is not supported";
+  #assert rr_group_prefix(14) == "restricted" && rr_group_text(14) == "group metadata is signed only by the relay";
+  #assert rr_group_prefix(RR_G29_FULL) == "restricted" && rr_group_text(RR_G29_FULL) == "this relay holds no more groups";
+  #assert rr_group_prefix(-1) == "error" && rr_group_prefix(RR_G29_REASONS) == "error";
+  #assert rr_group_text(-1) == "refused by the group" && rr_group_text(RR_G29_REASONS) == "refused by the group";
+}
+rr_group_prefix :: (k: int) -> string {
+  p := [16] string.["", "invalid", "invalid", "invalid", "", "invalid", "duplicate", "invalid", "restricted",
+    "restricted", "restricted", "restricted", "duplicate", "invalid", "restricted", "restricted"];
+  if k < 0 || k >= RR_G29_REASONS { return "error"; }
+  return p[k];
+}
+rr_group_text :: (k: int) -> string {
+  t := [16] string.["", "the event does not read", "malformed group tags", "too many group tags or values", "",
+    "no such group", "the group already exists", "a previous tag names an event this group doesn't have",
+    "only members may post to this group", "your roles in this group don't allow this", "the invite code does not match",
+    "this group is closed: join with an invite code", "already a member", "this group action is not supported",
+    "group metadata is signed only by the relay", "this relay holds no more groups"];
+  if k < 0 || k >= RR_G29_REASONS { return "refused by the group"; }
+  return t[k];
+}
+
+#test "a NIP joins supported_nips before the first larger one" {
+  out: [96] u8;
+  n := rr_nip11_nip("{\"supported_nips\":[1,9,11,40]}}", 29, out[..]); #assert cast(string) out[0..<n] == "{\"supported_nips\":[1,9,11,29,40]}}";
+  n = rr_nip11_nip("{\"supported_nips\":[30]}", 29, out[..]); #assert cast(string) out[0..<n] == "{\"supported_nips\":[29,30]}";
+  #assert rr_nip11_nip("{\"supported_nips\":[30]}", 29, out[0..<26]) == 26 && rr_nip11_nip("{\"supported_nips\":[30]}", 29, out[0..<25]) == -1;
+  #assert rr_nip11_nip("{\"supported_nips\":[1,29,40]}", 29, out[..]) == -1 && rr_nip11_nip("{\"supported_nips\":[1,28]}", 29, out[..]) == -1;
+  n = rr_nip11_nip("{\"supported_nips\":[1,290]}", 29, out[..]); #assert cast(string) out[0..<n] == "{\"supported_nips\":[1,29,290]}";
+  n = rr_nip11_nip("{\"supported_nips\":[1,290]}", 110, out[..]); #assert cast(string) out[0..<n] == "{\"supported_nips\":[1,110,290]}";
+  n = rr_nip11_nip("{\"supported_nips\":[1,40]}", 13, out[..]); #assert cast(string) out[0..<n] == "{\"supported_nips\":[1,13,40]}";
+  #assert rr_nip_at("\"supported_nips\":[1,9,11,40]", 29) == 25 && rr_nip_at("\"supported_nips\":[300]", 29) == 18;
+  #assert rr_nip_at("\"supported_nips\":[29]", 29) == -1 && rr_nip_at("\"supported_nips\":[2,9]", 29) == -1;
+  #assert rr_nip_at("\"supported_nips\":[1,9,11,40]", 13) == rr_nip13_at("\"supported_nips\":[1,9,11,40]");
+}
+// doc with nip (above 0) in its supported_nips before the first larger
+// entry (rr_nip_at), into out: the length, or -1.
+rr_nip11_nip :: (doc: string, nip: int, out: [] u8) -> int {
+  at := rr_nip_at(doc, nip);
+  if at == -1 { return -1; }
+  digits: [8] u8; d := 0; q := nip;
+  while q > 0 { digits[d] = cast(u8) ('0' + q % 10); q /= 10; d += 1; }
+  if doc.count + d + 1 > out.count { return -1; }
+  k := 0;
+  for i: 0..<doc.count {
+    if i == at { while d > 0 { d -= 1; out[k] = digits[d]; k += 1; } out[k] = ','; k += 1; }
+    out[k] = doc[i]; k += 1;
+  }
+  return k;
+}
