@@ -82,6 +82,7 @@
 #load "everglade-room.coax";
 #load "everglade-fork.coax";   // FORK, and a fork's rules (docs/verse/realm-fork.md)
 #load "everglade-reply.coax";
+#load "everglade-forge.coax";   // EDIT opens Aethyrforge's panels (docs/verse/aethyrforge.md)
 #load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (verse/stand.coax)
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "../../verse/style-preset.coax";
@@ -447,6 +448,7 @@ Everglade :: struct {
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
   fk: [] EgFork;                           // FORK, and a fork's rules: the face holds it (everglade-fork.coax everglade_attach_fork)
+  fg: EgForge;                             // Aethyrforge's panels in edit mode (everglade-forge.coax)
   rp: Reply;                               // reply with a realm: the sign, the smash, its link (everglade-reply.coax)
   floors: [EG_STAND_NEAR * STAND_FLOATS] f32;   // the floors round you for the controller (everglade-stand.coax)
 }
@@ -934,6 +936,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
     spells_facts(s, text);
     fork_facts(s, text);
     weather_facts(s, text);
+    forge_facts(s, fact(text, "url"));   // ?forge on a local server (everglade-forge.coax)
     eg_stage(s, fact(text, "url"));   // ?stage=roof (everglade-stand.coax)
     s[0].day = verse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
     s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
@@ -1265,13 +1268,16 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
   if s[0].board { return board_pointer(s, x, y, phase, id); }
-  if fork_pointer(s, x, y, phase, id) { return true; }
-  if rp_pointer(s, x, y, phase, id) { return true; }   // reply with a realm (everglade-reply.coax)
-  if talk_pointer(s, x, y, phase, id) { return true; }
-  if chat_pointer(s, x, y, phase, id) { return true; }
+  // Aethyrforge's panels in edit mode: only they and edit mode's own presses (everglade-forge.coax)
+  forge := forge_on(s);
+  if forge && forge_pointer(s, x, y, phase) { return true; }
+  if !forge && fork_pointer(s, x, y, phase, id) { return true; }
+  if !forge && rp_pointer(s, x, y, phase, id) { return true; }   // reply with a realm (everglade-reply.coax)
+  if !forge && talk_pointer(s, x, y, phase, id) { return true; }
+  if !forge && chat_pointer(s, x, y, phase, id) { return true; }
   if everglade_voice_pointer(s, x, y, phase, id) { return true; }
-  if everglade_guide_pointer(s, x, y, phase, id) { return true; }
-  if spells_pointer(s, x, y, phase, kind, id) { if phase == 0 || phase == 2 { everglade_guard_invalidate(s); } return true; }
+  if !forge && everglade_guide_pointer(s, x, y, phase, id) { return true; }
+  if !forge && spells_pointer(s, x, y, phase, kind, id) { if phase == 0 || phase == 2 { everglade_guard_invalidate(s); } return true; }
   if kind != 0 {
     s[0].touch = true;
     if phase == 0 && in_box(s[0].map_button, x, y) { s[0].map_finger = id; return true; }
@@ -3592,6 +3598,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   w := s[0].width; h := s[0].height;
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
   if rp_clean(s) { return rp_sign(s, out, u, 0); }   // the moment of impact: the view and the sign alone (everglade-reply.coax)
+  if forge_on(s) { s[0].map_button = Box.{}; return forge_hud(s, out, u, 0); }   // EDIT: Aethyrforge's panels alone (everglade-forge.coax)
   n := ifx s[0].paint_only || eg_pane_open(s) then 0 else labels(s, out, u, 0, you);   // the feature list's pane open: no place names over it
   n = rp_sign(s, out, u, n);
   if !s[0].paint_only && s[0].talk < 0 && !(phone(s) && eg_pane_open(s)) { n = room_chat_draw(s, out, u, n); }   // the room's chat (everglade-room.coax)

@@ -91,7 +91,7 @@ ev_say :: (s: [] Everglade, text: string) { s[0].ev.say_n = ev_put(s[0].ev.say[.
 everglade_voice_message :: (s: [] Everglade, kind: int, text: string) -> bool {
   if redit_message(s[0].ev.ed[..], kind, text) { return true; }
   if kind == MSG_VIEWER {
-    s[0].ev.admin = false;
+    s[0].ev.admin = s[0].fg.local;   // ?forge on a local server keeps it (everglade-forge.coax)
     i := 0;
     while i < text.count {
       e := i; while e < text.count && text[e] != '\n' { e += 1; }

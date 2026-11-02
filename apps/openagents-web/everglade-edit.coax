@@ -346,7 +346,9 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   // EDIT, left of MAP: the shared layer's for its owner and admins (THE BOARD, SETTINGS, the cards
   // under it), BUILD for a visitor the owner lets build
   mb := s[0].map_button;
-  if !s[0].above {
+  bare := forge_on(s);   // Aethyrforge's panels draw DONE and the rest (everglade-forge.coax)
+  if bare { for i: 0..<RB_N { s[0].ev.ed[0].shown[i] = false; } }
+  if !s[0].above && !bare {
     visitor := !s[0].ev.admin;
     word := ifx s[0].ev.editing then "DONE" else ifx visitor then "BUILD" else "EDIT";
     bw := text_width(word, 9 * k) + 32 * k;
@@ -395,7 +397,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   top_y := ifx phone(s) then mb.y1 + 14 * k else 16 * k;
   pw := hi(text_width(title, 11 * k), lw) + 32 * k;
   ph := ifx line.count > 0 then 54 * k else 36 * k;
-  aside := phone(s) && eg_pane_open(s);
+  aside := (phone(s) && eg_pane_open(s)) || bare;
   if !aside {
     plate(s, u, Box.{x0 = floor((w - pw) / 2), y0 = top_y, x1 = floor((w + pw) / 2), y1 = top_y + ph}, 0.82, 0);
     n = draw_text(out, n, title, floor((w - text_width(title, 11 * k)) / 2), floor(top_y + 11 * k + 12 * k), 11 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
@@ -408,7 +410,8 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   y := bottom - 8 * k;
   sure := s[0].ev.sure > 0;
   digit: [1] u8;
-  if phone(s) {
+  if bare {}   // no hotbar: 1 to 5, Z, Y and Esc still work
+  else if phone(s) {
     acts := [4] string.["UNDO", "REDO", "ORIGINAL", "DONE"];
     for i: 0..<4 { if s[0].ev.admin || i == 3 { n = edit_button(s, out, u, n, EB_UNDO + i, edit_row(s, ifx s[0].ev.admin then i else 0, ifx s[0].ev.admin then 4 else 1, 120 * k, bh, y), ifx i == 2 && sure then "SURE?" else acts[i], "", i == 3 || (i == 2 && sure)); } }
     y -= bh + 6 * k;
@@ -523,9 +526,10 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
   edit_press(s[..], EB_ITEM + 1);
   s[0].plate_n = 4;
-  n := everglade_edit_hud(s[..], out[..], u[..], 0, 840);
+  // an admin's edit mode is Aethyrforge's (everglade-forge.coax): the picked thing's row, no hotbar, DONE top right
+  n := forge_hud(s[..], out[..], u[..], 0);
   #assert n > 0 && s[0].plate_n <= PLATES && s[0].ev.boxes[EB_DONE].x1 > 0 && s[0].ev.boxes[EB_OP + EOP_DELETE].x1 > 0;
-  #assert s[0].ev.boxes[EB_OP].y1 < s[0].ev.boxes[EB_ITEM].y0;
+  #assert s[0].ev.boxes[EB_ITEM].x1 == 0 && s[0].ev.boxes[EB_DONE].y1 < s[0].ev.boxes[EB_OP].y0;
   // a press on DONE leaves edit mode
   d := s[0].ev.boxes[EB_DONE];
   #assert everglade_edit_pointer(s[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 1) && !s[0].ev.editing;

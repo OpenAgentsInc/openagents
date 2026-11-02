@@ -1,0 +1,322 @@
+// Aethyrforge in Everglade (docs/verse/aethyrforge.md): what an admin's EDIT opens. Everglade's own
+// HUD goes (the name, MAP, the chat, HP, the hints, the spell bar, the hotbar and the feature list),
+// and the forge's panels come up in the Verse's HUD look (verse/hud/frame.coax: a faint outline with
+// two 45° cuts, bright L brackets, greys and one blue):
+//   top left    AETHYRFORGE, the realm and that it is live
+//   under it    CHANGES: the realm's last edits and the engine updates that touch this realm, newest
+//               first, filtered ALL, REALM or ENGINE; a row tapped opens what it changed (+ added,
+//               ~ changed, - removed)
+//   top right   DONE (Esc)
+// Edit mode's keys and picks are as before (everglade-edit.coax): 1 to 5 place, Z undo, Y redo, a
+// click on a thing picks it and its row moves, turns, resizes or deletes it.
+//
+// The realm's rows are the edits made here this visit (the list everglade-edit.coax publishes) and,
+// for now, a fixed list of earlier ones; the engine's rows are a fixed list of real commits that
+// changed what Everglade does or how it looks. A change feed from the server replaces both lists.
+//
+// On a local server (127.0.0.1 or localhost) ?forge opens it with no login, to look at; nothing is
+// written then, since every write is an admin's and the server checks it.
+
+#load "../../verse/hud/frame.coax";
+
+FG_ALL :: 0; FG_REALM :: 1; FG_ENGINE :: 2;
+FG_FILTER_WORDS :: [3] string.["ALL", "REALM", "ENGINE"];
+FG_ROWS :: 16;          // rows on the screen at most
+FG_LIVE :: 6;           // this visit's edits shown at most
+FG_LINE :: 96;
+
+// The fixed rows (newest first): kind, when, title, who, and what changed (lines split by '|').
+FG_FIXED :: 10;
+FG_FIXED_KIND :: [FG_FIXED] int.[FG_ENGINE, FG_ENGINE, FG_REALM, FG_ENGINE, FG_REALM, FG_ENGINE, FG_REALM, FG_ENGINE, FG_ENGINE, FG_ENGINE];
+FG_FIXED_WHEN :: [FG_FIXED] string.["NOV 02 14:48", "NOV 02 14:27", "NOV 02 14:05", "NOV 02 13:44", "NOV 02 13:33", "NOV 02 13:31", "NOV 01 18:20", "NOV 01 02:12", "OCT 31 21:46", "OCT 31 09:42"];
+FG_FIXED_TITLE :: [FG_FIXED] string.[
+  "BROWSER FRAMES QUALIFIED",
+  "THE VOICE IN EVERY REALM",
+  "GUARDS SWITCHED ON",
+  "THE VOICE LOOKS AT THE SCREEN",
+  "OWNER CAN'T BE HURT ADDED",
+  "REALM SWITCHES BY VOICE",
+  "TWO STALLS BY THE SOUTH GATE",
+  "GROUND AND COLLISION",
+  "FRAME BUDGETS, REFUSED WHOLE",
+  "PARTICLES WRITTEN FROM COAX"];
+FG_FIXED_WHO :: [FG_FIXED] string.["92839858FF", "1C6CB42541", "BY VOICE", "335FCE0A3E", "BY VOICE", "5091D5D5EF", "BY HAND", "BD73544A7E", "372857BC4D", "3F183468CF"];
+FG_FIXED_DIFF :: [FG_FIXED] string.[
+  "= EVERGLADE'S FRAMES MATCH THE REVIEWED LOOK|~ THE GOLDEN SHOTS RETAKEN AT THE SOUTH GATE",
+  "+ SWITCH A FEATURE BY SAYING SO|+ OPEN THE EDITING SCREEN BY VOICE|~ EVERGLADE'S HOLD TO TALK GOES THROUGH THE SHARED LAYER",
+  "~ GUARDS WHO CHASE YOU: OFF TO IN IT",
+  "+ ASK ABOUT WHAT YOU SEE: THE FRAME GOES WITH THE QUESTION",
+  "+ OWNER CAN'T BE HURT: NOT IN IT YET",
+  "+ THE GUARDS ROW: THE WATCH STANDS DOWN WHEN IT IS OFF|+ THE INVINCIBLE ROW: NO HARM TO THE OWNER WHEN IT IS ON",
+  "+ STALL AT 12, -18|+ STALL AT 15, -18",
+  "~ GROUND HEIGHTS AND WHAT YOU STAND ON COME FROM THE ENGINE|~ WALLS STOP YOU AT THE SAME LINE ON EVERY MACHINE",
+  "~ A FRAME OVER ITS BUDGET IS REFUSED WHOLE, NOT HALF DRAWN",
+  "~ RAIN AND SPELL PARTICLES: WGSL WRITTEN FROM COAX"];
+
+EgForge :: struct {
+  filter: int;
+  open: int;                    // the row opened (its key: -1 - live index, or fixed index), -2 none
+  opened: bool;                 // a row was opened since edit mode began (else the newest is)
+  local: bool;                  // a local server: ?forge opens it with no login
+  tabs: [3] Box;
+  rows: [FG_ROWS] Box; row_key: [FG_ROWS] int; row_n: int;
+  line: [FG_LINE] u8;
+}
+
+FG_CYAN_R :: 0.216; FG_CYAN_G :: 0.851; FG_CYAN_B :: 0.851;
+FG_RED_R :: 0.92; FG_RED_G :: 0.48; FG_RED_B :: 0.42;
+
+forge_on :: (s: [] Everglade) -> bool { return s[0].ev.editing && s[0].ev.admin && !s[0].above && s[0].talk < 0 && !s[0].board; }
+
+// ?forge on a local server: edit mode as an admin's, to look at (the server refuses every write).
+forge_facts :: (s: [] Everglade, url: string) {
+  local := fg_has(url, "://127.0.0.1") || fg_has(url, "://localhost");
+  if local && fg_has(url, "forge") { s[0].fg.local = true; s[0].ev.admin = true; if !s[0].ev.editing { edit_toggle(s); } }
+}
+fg_has :: (text: string, part: string) -> bool {
+  if part.count == 0 || text.count < part.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+fg_grey :: (k: f32, light: f32, tone: int) -> Ink { g := verse_hud_tone(tone); return ink(k, light, g, g, g); }
+fg_cyan :: (k: f32, light: f32) -> Ink { return ink(k, light, FG_CYAN_R, FG_CYAN_G, FG_CYAN_B); }
+
+fg_rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: f32, light: f32, r: f32, g: f32, b: f32) -> int {
+  if lit(out, at, ax, ay, bx, by, 0.5 * k, light, 1.0 * k, r, g, b, 0) { return at + 6; }
+  return at;
+}
+// The Verse's HUD frame: the outline with its two cuts, the brackets on the other two corners.
+fg_frame :: (s: [] Everglade, out: [] f32, at: int, b: Box, cut: f32, light: f32, accent: bool) -> int {
+  k := hi(s[0].dpr, 0.5); n := at;
+  g := verse_hud_tone(1);
+  for i: 0..<6 {
+    a := verse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i); c := verse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i + 1);
+    n = fg_rule(out, n, a.x, a.y, c.x, c.y, k, verse_hud_outline() * light, g, g, g);
+  }
+  arm := verse_hud_frame_arm(b.x1 - b.x0, k); down := arm * verse_hud_arm_down();
+  r := ifx accent then FG_CYAN_R else g; gg := ifx accent then FG_CYAN_G else g; bb := ifx accent then FG_CYAN_B else g;
+  n = fg_rule(out, n, b.x0, b.y0 + down, b.x0, b.y0, k, light, r, gg, bb);
+  n = fg_rule(out, n, b.x0, b.y0, b.x0 + arm, b.y0, k, light, r, gg, bb);
+  n = fg_rule(out, n, b.x1, b.y1 - down, b.x1, b.y1, k, light, r, gg, bb);
+  return fg_rule(out, n, b.x1, b.y1, b.x1 - arm, b.y1, k, light, r, gg, bb);
+}
+fg_text :: (s: [] Everglade, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, i: Ink) -> int {
+  return draw_text(out, at, text, floor(x), floor(base), cap, GAP, SPACE, i, false, false);
+}
+// text cut to fit width (its cap shrinks, down to two thirds)
+fg_fit :: (text: string, cap: f32, width: f32) -> f32 {
+  w := text_width(text, cap);
+  if w <= width || w <= 0 { return cap; }
+  return hi(cap * width / w, cap * 0.66);
+}
+
+// The rows to show: this visit's edits (newest first), then the fixed rows, under the filter.
+fg_kind_of :: (key: int) -> int { return ifx key < 0 then FG_REALM else FG_FIXED_KIND[key]; }
+fg_keys :: (s: [] Everglade, keys: [] int) -> int {
+  n := 0;
+  live := s[0].ev.edits.n;
+  shown := 0;
+  i := live - 1;
+  while i >= 0 && shown < FG_LIVE && n < keys.count {
+    if s[0].fg.filter != FG_ENGINE { keys[n] = -1 - i; n += 1; }
+    shown += 1; i -= 1;
+  }
+  for f: 0..<FG_FIXED {
+    if n >= keys.count { break; }
+    if s[0].fg.filter == FG_ALL || s[0].fg.filter == FG_FIXED_KIND[f] { keys[n] = f; n += 1; }
+  }
+  return n;
+}
+fg_live_title :: (s: [] Everglade, i: int, buf: [] u8) -> string {
+  n := ev_put(buf, "PLACED ");
+  n += ev_put(buf[n..<buf.count], EG_EDIT_LABEL[eg_edit_kind(s[0].ev.edits.things[i].kind)]);
+  return cast(string) buf[0..<n];
+}
+fg_live_diff :: (s: [] Everglade, i: int, buf: [] u8) -> string {
+  t := s[0].ev.edits.things[i];
+  n := ev_put(buf, "+ ");
+  n += ev_put(buf[n..<buf.count], EG_EDIT_LABEL[eg_edit_kind(t.kind)]);
+  n += ev_put(buf[n..<buf.count], " AT ");
+  n = eg_put_int(buf, n, cast(int) floor(t.x + 0.5));
+  n += ev_put(buf[n..<buf.count], ", ");
+  n = eg_put_int(buf, n, cast(int) floor(t.z + 0.5));
+  return cast(string) buf[0..<n];
+}
+// how many lines a fixed row's change has ('|' between them)
+fg_diff_lines :: (key: int) -> int {
+  if key < 0 { return 1; }
+  d := FG_FIXED_DIFF[key]; c := 1;
+  for i: 0..<d.count { if d[i] == '|' { c += 1; } }
+  return c;
+}
+fg_diff_line :: (key: int, j: int) -> string {
+  d := FG_FIXED_DIFF[key]; at := 0; c := 0;
+  for i: 0..<d.count + 1 {
+    if i == d.count || d[i] == '|' {
+      if c == j { return d[at..<i]; }
+      c += 1; at = i + 1;
+    }
+  }
+  return "";
+}
+
+// Everything the forge draws in edit mode. Returns the vertices drawn so far.
+forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height;
+  g := 16 * k;
+  // edit mode's picks and the picked thing's row (everglade-edit.coax, bare: no hotbar, no pane)
+  n := everglade_edit_hud(s, out, u, at, h - g);
+  narrow := phone(s);
+  pw := ifx narrow then w - 2 * g else lo(420 * k, w * 0.42);
+  t := f32(s[0].time);
+  // AETHYRFORGE, top left
+  hb := Box.{x0 = g, y0 = g, x1 = g + pw, y1 = g + 58 * k};
+  plate(s, u, hb, 0.8, 0);
+  n = fg_frame(s, out, n, hb, verse_hud_cut(1) * k, 1, true);
+  n = fg_text(s, out, n, "AETHYRFORGE", hb.x0 + 16 * k, hb.y0 + 26 * k, 12 * k, fg_grey(k, 0.97, 0));
+  said := ifx s[0].fg.local then "EVERGLADE · LOCAL PREVIEW" else "EVERGLADE · LIVE";
+  n = fg_text(s, out, n, said, hb.x0 + 16 * k, hb.y0 + 44 * k, 7 * k, fg_cyan(k, 0.95));
+  // the live dot, slowly breathing
+  dx := hb.x1 - 22 * k; dy := hb.y0 + 22 * k;
+  pulse := 0.55 + 0.45 * sin(t * 2.2);
+  if lit(out, n, dx - 0.01, dy, dx + 0.01, dy, 3 * k, pulse, 3 * k, FG_CYAN_R, FG_CYAN_G, FG_CYAN_B, 0) { n += 6; }
+  // ticks along the header's foot
+  tx := hb.x0 + 16 * k;
+  while tx < hb.x1 - 40 * k {
+    n = fg_rule(out, n, tx, hb.y1 - 6 * k, tx, hb.y1 - 3 * k, k, 0.25, verse_hud_tone(2), verse_hud_tone(2), verse_hud_tone(2));
+    tx += 8 * k;
+  }
+  // DONE, top right
+  dw := text_width("DONE · ESC", 8.5 * k) + 36 * k;
+  db := Box.{x0 = w - g - dw, y0 = g, x1 = w - g, y1 = g + 40 * k};
+  if narrow { db = Box.{x0 = w - g - dw, y0 = hb.y1 + 8 * k, x1 = w - g, y1 = hb.y1 + 48 * k}; }
+  s[0].ev.boxes[EB_DONE] = db;
+  plate(s, u, db, 0.82, ifx s[0].ev.lit == EB_DONE then 2.0f32 else 0.0f32);
+  n = fg_frame(s, out, n, db, verse_hud_cut(0) * k, 1, false);
+  n = fg_text(s, out, n, "DONE · ESC", db.x0 + 18 * k, db.y1 - 15 * k, 8.5 * k, fg_grey(k, 0.95, 0));
+  // CHANGES, under it
+  top := ifx narrow then db.y1 + 10 * k else hb.y1 + 10 * k;
+  bottom := ifx narrow then lo(h - g, top + 300 * k) else lo(h - g, top + 620 * k);
+  pb := Box.{x0 = g, y0 = top, x1 = g + pw, y1 = bottom};
+  plate(s, u, pb, 0.78, 0);
+  n = fg_frame(s, out, n, pb, verse_hud_cut(2) * k, 1, true);
+  keys: [FG_ROWS] int;
+  kn := fg_keys(s, keys[..]);
+  if !s[0].fg.opened && kn > 0 { s[0].fg.open = keys[0]; }
+  head: [32] u8; hn := ev_put(head[..], "CHANGES · "); hn = eg_put_int(head[..], hn, kn);
+  n = fg_text(s, out, n, cast(string) head[0..<hn], pb.x0 + 16 * k, pb.y0 + 24 * k, 9 * k, fg_grey(k, 0.95, 0));
+  // the filter: ALL, REALM, ENGINE
+  fx := pb.x1 - 16 * k;
+  i := 2;
+  while i >= 0 {
+    word := FG_FILTER_WORDS[i];
+    bw := text_width(word, 7 * k) + 20 * k;
+    b := Box.{x0 = fx - bw, y0 = pb.y0 + 10 * k, x1 = fx, y1 = pb.y0 + 32 * k};
+    s[0].fg.tabs[i] = b;
+    on := s[0].fg.filter == i;
+    n = fg_frame(s, out, n, b, 5 * k, ifx on then 1.0f32 else 0.55f32, on);
+    if on { n = fg_rule(out, n, b.x0 + 6 * k, b.y1 - 3 * k, b.x1 - 6 * k, b.y1 - 3 * k, k, 0.9, FG_CYAN_R, FG_CYAN_G, FG_CYAN_B); }
+    n = fg_text(s, out, n, word, b.x0 + 10 * k, b.y1 - 7 * k, 7 * k, ifx on then fg_cyan(k, 1) else fg_grey(k, 0.75, 1));
+    fx = b.x0 - 6 * k; i -= 1;
+  }
+  n = fg_rule(out, n, pb.x0 + 12 * k, pb.y0 + 42 * k, pb.x1 - 12 * k, pb.y0 + 42 * k, k, 0.3, verse_hud_tone(2), verse_hud_tone(2), verse_hud_tone(2));
+  // the rows
+  y := pb.y0 + 50 * k;
+  foot := pb.y1 - 30 * k;
+  s[0].fg.row_n = 0;
+  buf: [FG_LINE] u8;
+  for r: 0..<kn {
+    key := keys[r];
+    open := s[0].fg.open == key;
+    lines := ifx open then fg_diff_lines(key) else 0;
+    rh := 40 * k + cast(f32) lines * 15 * k + (ifx open then 6 * k else 0.0f32);
+    if y + rh > foot { break; }
+    rb := Box.{x0 = pb.x0 + 8 * k, y0 = y, x1 = pb.x1 - 8 * k, y1 = y + rh};
+    s[0].fg.rows[s[0].fg.row_n] = rb; s[0].fg.row_key[s[0].fg.row_n] = key; s[0].fg.row_n += 1;
+    kind := fg_kind_of(key);
+    engine := kind == FG_ENGINE;
+    // the tick at its left: blue for the engine, white for the realm
+    tr := ifx engine then FG_CYAN_R else verse_hud_tone(0); tgr := ifx engine then FG_CYAN_G else verse_hud_tone(0); tbb := ifx engine then FG_CYAN_B else verse_hud_tone(0);
+    n = fg_rule(out, n, rb.x0 + 4 * k, rb.y0 + 8 * k, rb.x0 + 4 * k, rb.y0 + 32 * k, k, ifx open then 1.0f32 else 0.7f32, tr, tgr, tbb);
+    if open { n = fg_frame(s, out, n, rb, 6 * k, 0.8, engine); }
+    title := ifx key < 0 then fg_live_title(s, -1 - key, buf[..]) else FG_FIXED_TITLE[key];
+    when := ifx key < 0 then "THIS VISIT" else FG_FIXED_WHEN[key];
+    ww := text_width(when, 6.5 * k);
+    room := rb.x1 - rb.x0 - 32 * k - ww - 12 * k;
+    n = fg_text(s, out, n, title, rb.x0 + 14 * k, rb.y0 + 19 * k, fg_fit(title, 8.5 * k, room), fg_grey(k, 0.95, 0));
+    n = fg_text(s, out, n, when, rb.x1 - 12 * k - ww, rb.y0 + 18 * k, 6.5 * k, fg_grey(k, 0.7, 2));
+    // its tag: ENGINE · the commit, or REALM · how it was made
+    chip: [40] u8; tn := ev_put(chip[..], ifx engine then "ENGINE · " else "REALM · ");
+    tn += ev_put(chip[tn..<chip.count], ifx key < 0 then "BY HAND" else FG_FIXED_WHO[key]);
+    n = fg_text(s, out, n, cast(string) chip[0..<tn], rb.x0 + 14 * k, rb.y0 + 33 * k, 6 * k, ifx engine then fg_cyan(k, 0.8) else fg_grey(k, 0.7, 1));
+    // what it changed
+    for j: 0..<lines {
+      line := ifx key < 0 then fg_live_diff(s, -1 - key, buf[..]) else fg_diff_line(key, j);
+      ly := rb.y0 + 52 * k + cast(f32) j * 15 * k;
+      c := ifx line.count > 0 then line[0] else ' ';
+      li := ifx c == '+' then fg_cyan(k, 0.95) else ifx c == '-' then ink(k, 0.95, FG_RED_R, FG_RED_G, FG_RED_B) else fg_grey(k, 0.85, 1);
+      n = fg_text(s, out, n, line, rb.x0 + 22 * k, ly, fg_fit(line, 6.5 * k, rb.x1 - rb.x0 - 36 * k), li);
+    }
+    if !open && r + 1 < kn { n = fg_rule(out, n, rb.x0 + 14 * k, rb.y1, rb.x1 - 6 * k, rb.y1, k, 0.15, verse_hud_tone(2), verse_hud_tone(2), verse_hud_tone(2)); }
+    y += rh + 4 * k;
+  }
+  if kn == 0 { n = fg_text(s, out, n, "NOTHING HERE YET", pb.x0 + 16 * k, pb.y0 + 72 * k, 7.5 * k, fg_grey(k, 0.7, 2)); }
+  // the keys, along its foot
+  keys_line := ifx narrow then "TAP A THING TO PICK IT" else "1-5 PLACE · Z UNDO · Y REDO · CLICK A THING TO PICK IT";
+  n = fg_rule(out, n, pb.x0 + 12 * k, foot + 4 * k, pb.x1 - 12 * k, foot + 4 * k, k, 0.3, verse_hud_tone(2), verse_hud_tone(2), verse_hud_tone(2));
+  n = fg_text(s, out, n, keys_line, pb.x0 + 16 * k, pb.y1 - 11 * k, fg_fit(keys_line, 6.5 * k, pw - 32 * k), fg_grey(k, 0.65, 2));
+  return n;
+}
+
+// A press on the filter or on a row (opens it; again closes it). True when it was ours.
+forge_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int) -> bool {
+  if !forge_on(s) || phase != 0 { return false; }
+  for i: 0..<3 { if in_box(s[0].fg.tabs[i], x, y) { s[0].fg.filter = i; s[0].fg.opened = false; return true; } }
+  for r: 0..<s[0].fg.row_n {
+    if in_box(s[0].fg.rows[r], x, y) {
+      key := s[0].fg.row_key[r];
+      s[0].fg.open = ifx s[0].fg.open == key then -1000 else key; s[0].fg.opened = true;
+      return true;
+    }
+  }
+  return false;
+}
+
+#test "the forge: EDIT hides Everglade's HUD, CHANGES filters and opens rows, DONE leaves" #steps 337000000 {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  #assert everglade_key(s[..], 'b', 0) && forge_on(s[..]);
+  s[0].width = 1600; s[0].height = 900; s[0].dpr = 1;
+  out: [60000 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s[0].plate_n = 0;
+  n := forge_hud(s[..], out[..], u[..], 0);
+  #assert n > 0 && s[0].fg.row_n > 0 && s[0].ev.boxes[EB_DONE].x1 > s[0].ev.boxes[EB_DONE].x0;
+  #assert s[0].ev.boxes[EB_UNDO].x1 == 0;   // no hotbar
+  all := s[0].fg.row_n;
+  // ENGINE only: every row is an engine update
+  t := s[0].fg.tabs[FG_ENGINE];
+  #assert forge_pointer(s[..], (t.x0 + t.x1) / 2, (t.y0 + t.y1) / 2, 0) && s[0].fg.filter == FG_ENGINE;
+  s[0].plate_n = 0; n = forge_hud(s[..], out[..], u[..], 0);
+  #assert s[0].fg.row_n > 0 && s[0].fg.row_n < all;
+  for r: 0..<s[0].fg.row_n { #assert fg_kind_of(s[0].fg.row_key[r]) == FG_ENGINE; }
+  // a row tapped opens it; tapped again closes it
+  b := s[0].fg.rows[1];
+  #assert forge_pointer(s[..], (b.x0 + b.x1) / 2, b.y0 + 4, 0) && s[0].fg.open == s[0].fg.row_key[1];
+  #assert forge_pointer(s[..], (b.x0 + b.x1) / 2, b.y0 + 4, 0) && s[0].fg.open != s[0].fg.row_key[1];
+  // a thing placed is the newest realm row
+  #assert forge_pointer(s[..], (s[0].fg.tabs[FG_REALM].x0 + s[0].fg.tabs[FG_REALM].x1) / 2, (s[0].fg.tabs[FG_REALM].y0 + s[0].fg.tabs[FG_REALM].y1) / 2, 0);
+  s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
+  #assert everglade_key(s[..], '1', 0) && s[0].ev.edits.n == 1;
+  s[0].plate_n = 0; n = forge_hud(s[..], out[..], u[..], 0);
+  #assert s[0].fg.row_key[0] == -1;
+  // DONE leaves
+  d := s[0].ev.boxes[EB_DONE];
+  #assert everglade_pointer(s[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 0, 1) && !s[0].ev.editing;
+}
+
+#test "?forge opens it on a local server only" {
+  #assert fg_has("http://127.0.0.1:8801/realms/everglade?forge", "://127.0.0.1") && fg_has("http://127.0.0.1:8801/realms/everglade?forge", "forge");
+  #assert !fg_has("https://openagents.com/realms/everglade?forge", "://127.0.0.1") && !fg_has("https://openagents.com/realms/everglade?forge", "://localhost");
+}
