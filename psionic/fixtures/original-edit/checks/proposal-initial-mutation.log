@@ -1,0 +1,14 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/original-proposal.coax:16:40: mutant survived: '||' became '&&'
+      if !jv_parse(d[..],text,nodes[..]) || jv_kind(d[0],0)!=JV_ARRAY || jv_len(d[0],0)!=3 {return r;}
+                                         ^
+psionic/lib/original-proposal.coax:17:36: mutant survived: -99 became -98
+      a:=jv_int(d[0],jv_at(d[0],0,0),-99);b:=jv_int(d[0],jv_at(d[0],0,1),-99);c:=jv_int(d[0],jv_at(d[0],0,2),-99);
+                                     ^
+psionic/lib/original-proposal.coax:17:72: mutant survived: -99 became -98
+      a:=jv_int(d[0],jv_at(d[0],0,0),-99);b:=jv_int(d[0],jv_at(d[0],0,1),-99);c:=jv_int(d[0],jv_at(d[0],0,2),-99);
+                                                                         ^
+psionic/lib/original-proposal.coax:17:108: mutant survived: -99 became -98
+      a:=jv_int(d[0],jv_at(d[0],0,0),-99);b:=jv_int(d[0],jv_at(d[0],0,1),-99);c:=jv_int(d[0],jv_at(d[0],0,2),-99);
+                                                                                                             ^
+45 mutants, 41 killed, 4 survived

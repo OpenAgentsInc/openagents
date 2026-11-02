@@ -44,10 +44,12 @@ coax_t_GShape pg_shape(const PgSession *session);
 const char *pg_error(const PgSession *session);
 #ifdef PSIONIC_DEVICE_TEST
 void pg_profile(PgSession *session,int enable);
-PcStatus pg_patch(PgSession *session,size_t offset,const void *bytes,size_t count);
 PcStatus pg_open_cpu(coax_t_GProfile profile,coax_v_t_GFile files,PgSession **out,coax_t_GResult *why);
 /* Metal build only (gptoss-metal.c): repeat selected launches on the CPU. */
 void pg_qualify(PgSession *session,int enable);
 void pg_qualify_report(PgSession *session,int64_t *checked,int64_t *exact,double *worst,int *worst_kind,double *worst_wide,int *worst_wide_kind);
+#endif
+#if defined(PSIONIC_DEVICE_TEST) || defined(PSIONIC_WEIGHT_EDIT_TEST)
+PcStatus pg_patch(PgSession *session,size_t offset,const void *bytes,size_t count);
 #endif
 #endif

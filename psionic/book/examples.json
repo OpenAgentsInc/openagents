@@ -3593,6 +3593,15 @@
       "exit_status": 0,
       "modes": ["debug", "release"],
       "timeout": 180
+    },
+    {
+      "source": "psionic/examples/original-weight-edit.coax",
+      "chapter": "psionic/book/ch255-edit-an-original-language-model.md",
+      "stdout": "psionic/fixtures/original-edit/example.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"],
+      "run_steps": 2000000,
+      "timeout": 180
     }
   ],
   "libraries": [

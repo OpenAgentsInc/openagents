@@ -1,0 +1,1 @@
+{"case":6,"variant":0,"complete":true,"correct":true,"parse":0,"repeat_span":0,"milliseconds":1083,"prefix_tokens":70,"generated":[200005,35644,200008,13462,6052,12650,13,200007,200006,173781,200005,17196,200008,72782,200002],"final":"Paris","raw_status":0,"raw":"<|channel|>analysis<|message|>Just answer Paris.<|end|><|start|>assistant<|channel|>final<|message|>Paris<|return|>"}

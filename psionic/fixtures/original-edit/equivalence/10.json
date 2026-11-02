@@ -1,0 +1,1 @@
+{"candidate":"fd96c27d9b8b5c9a0369266481af3784253bf6dccfdb344538c739bb226fc260","same_hidden":true,"rows":[{"got_hex":"c0424b0f20000000","expected_hex":"c0424b0f13128bc9","scaled_error_hex":"3e660326d8d4b1ed"},{"got_hex":"4054a7f960000000","expected_hex":"4054a7f968095a4a","scaled_error_hex":"3e589a2c9d42343c"}]}

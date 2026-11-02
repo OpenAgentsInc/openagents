@@ -1,0 +1,49 @@
+// Serial chapter255 build/check orchestration, no model download.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+och_run :: (args:[]string,seconds:int,out:[]u8)->int {
+    err:[65536]u8;r:=proc_run(args,seconds*1000,out,err[..]);if r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}return r.out_n;
+}
+och_native :: ()->int {
+    p:[1024]u8;dir:=fs_temp("original-window-native-",p[..]);#assert dir.count>0;cb:[1024]u8;eb:[1024]u8;cpath:=fs_join(dir,"checks.c",cb[..]);exe:=fs_join(dir,"checks",eb[..]);out:[16777216]u8;
+    for mode:0..<2 {cmd:=[5]string.["coax/bin/coax","c","psionic/tests/original-window-native.coax","--library","--release"];n:=och_run(cmd[0..<4+mode],120,out[..]);if n<0 {return 1;}
+        #assert fs_write(cpath,cast(string)out[0..<n]) && fs_append(cpath,"\nint main(void) { return (int)original_window_native_checks(); }\n");
+        for sanitizer:0..<2 {cc:=[12]string.["cc","-std=c11",ifx mode==0 then "-O0" else "-O2","-ffp-contract=off","-fno-fast-math",cpath,"-lm","-o",exe,"-g","-fsanitize=address,undefined","-fno-omit-frame-pointer"];
+            if och_run(cc[0..<10+2*sanitizer],120,out[..])<0 {return 1;}run:=[1]string.[exe];if och_run(run[..],60,out[..])<0 {return 1;}print("native mode %, sanitizers %: passed (65280 finite BF16 codes, nonfinite proposals)\n",mode,sanitizer);
+        }
+    }#assert fs_remove(dir);return 0;
+}
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 {return 2;}
+    phase:=args_at(a[..],0);
+    if phase=="native" {return och_native();}
+    if phase=="checks" {out:[16777216]u8;for source:[2]string.["psionic/lib/original-window.coax","psionic/lib/original-proposal.coax"] {for mode:0..<2 {cmd:=[4]string.["coax/bin/coax","test",source,"--release"];n:=och_run(cmd[0..<3+mode],600,out[..]);if n<0 {return 1;}print("checks %, release %: passed\n",source,mode);}}
+        for test:[2]string.["answer matching","rank-one removal"] {cmd:=[7]string.["coax/bin/coax","test","psionic/lib/original-study.coax","--only",test,"--release","--list"];for mode:0..<2 {if och_run(cmd[0..<5+mode],120,out[..])<0 {return 1;}}}
+        gradient:=[5]string.["coax/bin/coax","test","psionic/tools/original-edit-prepare.coax","--only","channel-only fitting"];if och_run(gradient[..],120,out[..])<0 {return 1;}return 0;
+    }
+    if phase=="mutate" {out:[16777216]u8;for source:[2]string.["psionic/lib/original-window.coax","psionic/lib/original-proposal.coax"] {cmd:=[7]string.["coax/bin/coax","mutate",source,"--root-only","--jobs","1","--mutation-stats"];n:=och_run(cmd[..],600,out[..]);if n<0 {return 1;}print("%\n",cast(string)out[0..<n]);}return 0;}
+    if phase=="book" {out:[16777216]u8;oracle:=[3]string.["python3","-I","psionic/tests/original_edit_oracle.py"];n:=och_run(oracle[..],180,out[..]);if n<0 {return 1;}print("%\n",cast(string)out[0..<n]);
+        expected:[65536]u8;k:=fs_read("psionic/fixtures/original-edit/example.out",expected[..]);#assert k>0;
+        for mode:0..<2 {cmd:=[6]string.["coax/bin/coax","run","psionic/examples/original-weight-edit.coax","--run-steps","2000000","--release"];n=och_run(cmd[0..<5+mode],180,out[..]);if n<0 || k!=n+1 || cast(string)out[0..<n]!=cast(string)expected[0..<k-1] || expected[k-1]!='\n' {tool_errln("original edit example drift");return 1;}}
+        book:=[3]string.["python3","-I","psionic/tests/book.py"];if och_run(book[..],120,out[..])<0 {return 1;}print("book: oracle, exact debug/release example, inventory/links passed; no live inference\n");return 0;
+    }
+    if phase=="all" {out:[16777216]u8;start:=proc_now_ms();for part:[4]string.["checks","mutate","native","book"] {left:=840-(proc_now_ms()-start)/1000;if left<=0 {return 1;}cmd:=[3]string.["coax/web/tool.sh","psionic/tools/check-original-edit.coax",part];n:=och_run(cmd[..],left,out[..]);if n<0 {return 1;}print("%\n",cast(string)out[0..<n]);}return 0;}
+    if args_at(a[..],0)=="run" {
+        if args_count(a[..])!=3 {return 2;}mode:=args_at(a[..],1);root:=args_at(a[..],2);cmd:=[4]string.["coax/web/build/tools/original-edit/runner",root,"coax/web/build/tools/original-edit/kernels.metal",mode];out:[1048576]u8;start:=proc_now_ms();n:=och_run(cmd[..],840,out[..]);elapsed:=proc_now_ms()-start;
+        if n>=0 {print("%\n",cast(string)out[0..<n]);}b:[1024]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"mode");jo_str(j[..],mode);jo_key(j[..],"milliseconds");jo_int(j[..],elapsed);jo_key(j[..],"success");jo_bool(j[..],n>=0);jo_end(j[..]);
+        path:[1024]u8;name:=fs_join("psionic/fixtures/original-edit",mode,path[..]);suffix:=".command.json";full:[1024]u8;at:=0;for part:[2]string.[name,suffix] {for c:part {full[at]=c;at+=1;}}#assert fs_write(cast(string)full[0..<at],jo_text(j[..]));return ifx n>=0 then 0 else 1;
+    }
+    if args_count(a[..])!=1 || args_at(a[..],0)!="build" {tool_errln("usage: check-original-edit build | run MODE ORIGINAL_DIR");return 2;}
+    dir:="coax/web/build/tools/original-edit";#assert fs_mkdir(dir);out:[33554432]u8;
+    // Raw redirection avoids proc_run's 64KiB per-line limit on generated
+    // constant tables. The shell only execs the fixed argv; no build logic.
+    c:=[13]string.["/bin/sh","-c","exec \"$@\" > coax/web/build/tools/original-edit/device-host.c","coax-c","coax/bin/coax","c","psionic/tools/original-edit-run.coax","--library","--release","--run-steps","2000000","--header","coax/web/build/tools/original-edit/device-host.h"];
+    n:=och_run(c[..],180,out[..]);if n<0 {return 1;}
+    metal:=[4]string.["coax/bin/coax","metal-compute","psionic/lib/gptoss/device-kernels.coax","--release"];n=och_run(metal[..],180,out[..]);if n<0 {return 1;}#assert fs_write("coax/web/build/tools/original-edit/kernels.metal",cast(string)out[0..<n]);
+    obj:=[9]string.["cc","-fobjc-arc","-mmacosx-version-min=15.0","-O2","-c","psionic/platform/metal-host.m","-o","coax/web/build/tools/original-edit/metal.o","-Wall"];if och_run(obj[..],120,out[..])<0 {return 1;}
+    cc:=[24]string.["cc","-std=c11","-O2","-D_DARWIN_C_SOURCE","-DPSIONIC_WEIGHT_EDIT_TEST","-ffp-contract=off","-fno-fast-math","-Icoax/web/build/tools/original-edit","-Ipsionic/platform","coax/web/build/tools/original-edit/device-host.c","psionic/platform/gptoss-metal.c","psionic/platform/original-edit-metal.c","coax/web/build/tools/original-edit/metal.o","coax/platform/tool-native.c","coax/platform/store-file-native.c","coax/platform/process-native.c","-framework","Metal","-framework","Foundation","-lm","-o","coax/web/build/tools/original-edit/runner","-g"];
+    if och_run(cc[..],240,out[..])<0 {return 1;}print("original-edit: Coax host, Metal kernels and effect-only adapter built\n");return 0;
+}

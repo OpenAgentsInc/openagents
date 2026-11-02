@@ -1,0 +1,8 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/original-window.coax:71:122: mutant survived: 16384 became 16385
+      if !we_name(w.name) || w.rows<1 || w.rows>1048576 || w.cols<1 || w.cols>1048576 || w.first<0 || w.count<1 || w.count>16384 || cast(u8)w.dtype>1 {return false;}
+                                                                                                                           ^
+psionic/lib/original-window.coax:71:147: mutant survived: 1 became 2
+      if !we_name(w.name) || w.rows<1 || w.rows>1048576 || w.cols<1 || w.cols>1048576 || w.first<0 || w.count<1 || w.count>16384 || cast(u8)w.dtype>1 {return false;}
+                                                                                                                                                    ^
+123 mutants, 121 killed, 2 survived

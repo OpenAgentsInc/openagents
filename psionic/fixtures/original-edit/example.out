@@ -1,0 +1,9 @@
+original window: 2880 BF16 values, 5760 bytes, 1 changed; exact restoration true
+stale base: identity refusal, published bytes 0
+rank-one removal: [0.0,2.0;0.0,4.0], output [12.0,24.0]
+recorded candidate 0: primary dev 2/6, held 5/12; retained held 24/24
+recorded candidate 2: primary dev 1/6, held 3/12; retained held 24/24
+recorded candidate 5: primary dev 0/6, held 0/12; retained held 0/24
+recorded candidate 6: primary dev 1/6, held 3/12; retained held 24/24
+recorded candidate 12: primary dev 1/6, held 3/12; retained held 24/24
+quality: unverifiable (no_floor)

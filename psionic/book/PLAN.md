@@ -121,9 +121,9 @@ one's logs.
 [Chapter 254](ch254-write-a-network-from-a-specification.md) constructs small
 networks directly and through the gate compiler, with recorded proposals,
 same-architecture trained baselines and distance-informed control. Chapter
-255 is a *design draft* (its first line says
-*Status: unimplemented — design draft*, with no runnable code).
-The other chapters have runnable profiles, complete or partial. A
+255 implements bounded original BF16/F32 windows and records original-model
+readout interventions against explicit baselines, including failures.
+The chapters have runnable profiles, complete or partial. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
 listings use `jai` Markdown fences.
@@ -894,7 +894,7 @@ targeted sparse changes do not establish preserved behavior by their size.
 | --- | --- |
 | [253. Read and repair a model's weights](ch253-read-and-repair-a-models-weights.md) — runnable: weight-edit-f64-v1, bounded CPU and recorded local proposer trials | Named rank-0–4 binary64 tensors, SHA-256 base binding, sparse expected-old/replacement edits with whole-result publication and exact reversal; a trained decoder's permanent edits checked against activation interventions, five saved seeds, no-op/random/permuted/untrained/erased controls, separate fine-tuning and 32 fresh GPT-OSS trials. The chapter records failed proposals, harmful edits and a descriptive criterion's false positives. |
 | [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) — runnable bounded CPU | Direct ReLU4 weights and postfix-to-gated-weight compilation: 19 recorded calls, 16 admitted artifacts, exact arithmetic on 1936 held-out rows per task and shortest walks from 25 starts given oracle distances. Native/hand/planner references match and native arithmetic is cheaper; three-seed AdamW and frozen/online Q baselines, three admission failures, planted boundary failure, costs and offline replay are recorded. No learned-navigation or original-model claim. |
-| [255. Edit an original language model](ch255-edit-an-original-language-model.md) — design draft | A reproducible original-model failure, versioned bounded window/overlay editing beyond chapter 253's small profile, intervention controls, sampling-only and fine-tuning baselines, retained-capability floors and independent qualification before any shadow promotion. Qwen3.5-0.8B generation support and a reproduction of the blog remain unimplemented. |
+| [255. Edit an original language model](ch255-edit-an-original-language-model.md) — runnable: original-window-v1, bounded CPU and recorded original Metal trials | Immutable identity-bound BF16/F32 windows; GPT-OSS-20B readout edits, sampling/prompt/random/channel-only fitting controls, three declined LLM proposals, held-out retained tasks, exact rollback and independent offline audits. Failed finite goals and unverifiable independent quality remain explicit. Qwen3.5 generation, loop repair and shadow adoption remain open. |
 
 ## A framework, not only engines
 

@@ -1,0 +1,1 @@
+{"case":8,"variant":0,"complete":true,"correct":true,"parse":0,"repeat_span":0,"milliseconds":1027,"prefix_tokens":70,"generated":[200005,35644,200008,17045,25,40510,13,200007,200006,173781,200005,17196,200008,173844,200002],"final":"Tokyo","raw_status":0,"raw":"<|channel|>analysis<|message|>Answer: Tokyo.<|end|><|start|>assistant<|channel|>final<|message|>Tokyo<|return|>"}

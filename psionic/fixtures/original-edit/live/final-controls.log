@@ -1,0 +1,5 @@
+analysis_id=35644, final_id=17196
+authenticated Metal original startup_ms=92700
+variant,case,complete,correct,tokens,repeat,parse,milliseconds
+candidate 15 carries identical greedy source 0; no new sequences
+16,36,true,true,57,0,0,4874

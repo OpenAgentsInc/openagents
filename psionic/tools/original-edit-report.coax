@@ -1,0 +1,65 @@
+// Re-score inert records and freeze selection before opening held-out cases.
+// tool.sh: run-steps 2000000
+#import "Basic";
+#load "original-edit-data.coax";
+#load "../lib/harmony.coax";
+#load "../lib/verdict.coax";
+#load "../../coax/lib/sys/tool.coax";
+OtMetric :: struct {total:int;complete:int;correct:int;tokens:int;limits:int;repeats:int;parse:int;loss:f64;confident:int;}
+ot_read :: (id:int,which:int)->OtMetric {
+    source:=od_run_id(id);path:[1024]u8;bytes:[32768]u8;n:=fs_read(od_path("runs/",source*100+which,".json",path[..]),bytes[..]);#assert n>0;j:[1]Jv;nodes:[512]JvNode;#assert jv_parse(j[..],cast(string)bytes[0..<n],nodes[..]);
+    #assert jv_int(j[0],jv_get(j[0],0,"case"),-1)==which && jv_int(j[0],jv_get(j[0],0,"variant"),-1)==source;
+    r:=OtMetric.{total=1};r.complete=ifx jv_kind(j[0],jv_get(j[0],0,"complete"))==JV_TRUE then 1 else 0;r.tokens=jv_len(j[0],jv_get(j[0],0,"generated"));last:=jv_int(j[0],jv_at(j[0],jv_get(j[0],0,"generated"),r.tokens-1),-1);r.limits=ifx r.complete==0 && last!=200002 && last!=200012 && r.tokens==jv_int(j[0],jv_get(j[0],0,"budget"),64) then 1 else 0;r.repeats=ifx jv_int(j[0],jv_get(j[0],0,"repeat_span"),-1)>0 then 1 else 0;r.parse=ifx jv_int(j[0],jv_get(j[0],0,"parse"),-1)!=0 then 1 else 0;
+    final:[4096]u8;k:=jv_str(j[0],jv_get(j[0],0,"final"),final[..]);#assert k>=0;r.correct=ifx r.complete==1 && os_match(cast(string)final[0..<k],OS_CASES[which].answer) then 1 else 0;return r;
+}
+ot_sum :: (a:OtMetric,b:OtMetric)->OtMetric {return OtMetric.{total=a.total+b.total,complete=a.complete+b.complete,correct=a.correct+b.correct,tokens=a.tokens+b.tokens,limits=a.limits+b.limits,repeats=a.repeats+b.repeats,parse=a.parse+b.parse,loss=a.loss+b.loss,confident=a.confident+b.confident};}
+ot_group :: (id:int,held:bool,target:bool)->OtMetric {r:OtMetric;for which:0..<54 {if OS_CASES[which].held==held && os_primary(which)==target {r=ot_sum(r,ot_read(id,which));}}return r;}
+ot_loss :: (c:OdCandidate,d:OdData,which:int,table:[]u8)->OtMetric {
+    path:[1024]u8;raw:[804352]u8;hidden:[11520]u8;#assert fs_read(od_path("answer/",which,".logits.f32",path[..]),raw[..])==804352 && fs_read(od_path("answer/",which,".f32",path[..]),hidden[..])==11520;
+    original:=d.original;logits:[201088]f64;for i:0..<201088 {logits[i]=ow_value(raw[..],i,OwType.f32);}
+    for row:0..<2 {bytes:=c.row[row].bytes;for i:0..<2880 {logits[d.ids[row]]+=(ow_value(bytes[0..<5760],i,OwType.bf16)-ow_value(original[row][..],i,OwType.bf16))*ow_value(hidden[..],i,OwType.f32);}}
+    ids:[32]int;stage:[32]int;symbols:[1024]int;encoded:=hs_encode_checked(table,os_reference(which),ids[..],stage[..],symbols[..],false);#assert encoded.status==PtStatus.ok && encoded.written>0;
+    top:=0;for i:1..<201088 {if logits[i]>logits[top] {top=i;}}den:PsionicAccumulator;for x:logits {den=psionic_ops_accumulate(den,exp(x-logits[top]));}total:=psionic_ops_total(den);
+    return OtMetric.{loss=logits[top]+log(total)-logits[ids[0]],confident=ifx top!=ids[0] && 1/total>0.9 then 1 else 0};
+}
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}mode:=args_at(a[..],0);d:=od_load();
+    if mode=="select" {best:=-1;primary:OtMetric;retained:OtMetric;
+        for id:3..<16 {c:=od_candidate(id,d);if !c.valid || c.changed==0 {continue;}p:=ot_group(id,false,true);r:=ot_group(id,false,false);
+            if best<0 || p.correct>primary.correct || (p.correct==primary.correct && (r.correct>retained.correct || (r.correct==retained.correct && p.tokens+r.tokens<primary.tokens+retained.tokens))) {best=id;primary=p;retained=r;}
+        }#assert best>=0;b:[2048]u8;j:[1]Jo;hex:[64]u8;winner:=od_candidate(best,d);jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"winner");jo_int(j[..],best);jo_key(j[..],"digest");jo_str(j[..],od_hex(winner.digest,hex[..]));jo_key(j[..],"primary_correct");jo_int(j[..],primary.correct);jo_key(j[..],"retained_correct");jo_int(j[..],retained.correct);jo_key(j[..],"tokens");jo_int(j[..],primary.tokens+retained.tokens);jo_end(j[..]);
+        name:="psionic/fixtures/original-edit/selection.json";#assert !fs_exists(name) && fs_write(name,jo_text(j[..]));print("selected candidate %: dev primary %/6 retained %/12 tokens %\n",best,primary.correct,retained.correct,primary.tokens+retained.tokens);return 0;
+    }
+    if mode=="qualify" {
+        raw:[2048]u8;n:=fs_read("psionic/fixtures/original-edit/selection.json",raw[..]);#assert n>0;j:[1]Jv;nodes:[64]JvNode;#assert jv_parse(j[..],cast(string)raw[0..<n],nodes[..]);id:=jv_int(j[0],jv_get(j[0],0,"winner"),-1);#assert id>=3 && id<16;
+        baseline:[12]f64;candidate:[12]f64;tasks:[12]int;part:[12]int;for i:0..<12 {baseline[i]=f64(ot_read(0,42+i).correct);candidate[i]=f64(ot_read(id,42+i).correct);tasks[i]=i;}
+        q:=vd_decision(baseline[..],candidate[..],tasks[..],part[..],0,NsFloor.{},1,255,1000);#assert q.status==VdStatus.ok && q.result.verdict==VdVerdict.unverifiable;
+        p:=ot_group(id,true,true);base:=ot_group(0,true,true);r:=ot_group(id,true,false);br:=ot_group(0,true,false);finite:=p.correct>=base.correct+2 && r.correct>=br.correct;
+        out:[2048]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"candidate");jo_int(o[..],id);jo_key(o[..],"finite_goal");jo_bool(o[..],finite);jo_key(o[..],"verdict");jo_str(o[..],"unverifiable");jo_key(o[..],"reason");jo_str(o[..],ifx q.result.reason==VdReason.no_headroom then "no_headroom" else "no_floor");jo_key(o[..],"baseline_blocks");jo_int(o[..],0);jo_end(o[..]);
+        #assert fs_write("psionic/fixtures/original-edit/quality.json",jo_text(o[..]));print("candidate % finite goal %, chapter241 % (%)\n",id,finite,q.result.verdict,q.result.reason);return 0;
+    }
+    if mode=="supplement" {print("id,held,target,total,complete,correct,tokens,limits,repetitions,parse\n");for id:[4]int.[1,17,18,19] {for scope:0..<4 {held:=scope>=2;target:=scope%2==0;m:=ot_group(id,held,target);print("%,%,%,%,%,%,%,%,%,%\n",id,held,target,m.total,m.complete,m.correct,m.tokens,m.limits,m.repeats,m.parse);}}return 0;}
+    if mode=="ledger" {
+        sequences:=0;emitted:=0;prompts:=0;milliseconds:=0;prefix:[54]int;
+        for id:0..<20 {if id>=13 && id<=15 {continue;}for which:0..<54 {if id==16 && which!=36 {continue;}
+            path:[1024]u8;raw:[32768]u8;n:=fs_read(od_path("runs/",id*100+which,".json",path[..]),raw[..]);#assert n>0;j:[1]Jv;nodes:[512]JvNode;#assert jv_parse(j[..],cast(string)raw[0..<n],nodes[..]);
+            p:=jv_int(j[0],jv_get(j[0],0,"prefix_tokens"),-1);#assert p>0;sequences+=1;prompts+=p;emitted+=jv_len(j[0],jv_get(j[0],0,"generated"));milliseconds+=jv_int(j[0],jv_get(j[0],0,"milliseconds"),-1);if id==0 {prefix[which]=p;}
+        }}
+        extra:=3+13*prefix[36];for which:0..<54 {extra+=2*prefix[which]+5;if !OS_CASES[which].held {extra+=prefix[which];}}
+        print("key,value\nsequences,%\nemitted_tokens,%\nprompt_tokens,%\ngeneration_milliseconds,%\ncarried_comparisons,162\nextra_prefill_calls,141\nextra_prefill_tokens,%\nextra_single_steps,85\nall_prefill_calls,%\nall_single_steps,%\n",sequences,emitted,prompts,milliseconds,extra,sequences+141,emitted-sequences+85);return 0;
+    }
+    if mode=="matrix" || mode=="source" {
+        table:[11000000]u8;nt:=0;if mode=="matrix" {nt=fs_read("psionic/fixtures/harmony/gptoss.hst",table[..]);#assert nt>0;print("id,valid,changed,held,target,total,complete,correct,tokens,limits,repetitions,parse,forced_final_first_token_nll,confident_wrong_first\n");}
+        else {print("// Recorded original-model results, scorer original-answer-v2.\nOE_RESULTS :: [16][12]int.[\n");}
+        for id:0..<16 {c:=od_candidate(id,d);values:[12]int;
+            for scope:0..<4 {held:=scope>=2;target:=scope%2==0;m:OtMetric;if c.valid {m=ot_group(id,held,target);
+                    if mode=="matrix" {for which:0..<54 {if OS_CASES[which].held==held && os_primary(which)==target {nll:=ot_loss(c,d,which,table[0..<nt]);m.loss+=nll.loss;m.confident+=nll.confident;}}}
+                }
+                values[scope*3]=m.total;values[scope*3+1]=m.correct;values[scope*3+2]=m.tokens;
+                if mode=="matrix" {print("%,%,%,%,%,%,%,%,%,%,%,%,%,%\n",id,c.valid,c.changed,held,target,m.total,m.complete,m.correct,m.tokens,m.limits,m.repeats,m.parse,ifx m.total>0 then m.loss/f64(m.total) else 0.0,m.confident);}
+            }
+            if mode=="source" {print("[12]int.[");for i:0..<12 {if i>0 {print(",");}print("%",values[i]);}print("]%\n",ifx id==15 then "" else ",");}
+        }if mode=="source" {print("];\n");raw:[2048]u8;n:=fs_read("psionic/fixtures/original-edit/quality.json",raw[..]);#assert n>0;j:[1]Jv;nodes:[32]JvNode;#assert jv_parse(j[..],cast(string)raw[0..<n],nodes[..]);v:[64]u8;why:[64]u8;nv:=jv_str(j[0],jv_get(j[0],0,"verdict"),v[..]);nw:=jv_str(j[0],jv_get(j[0],0,"reason"),why[..]);print("OE_QUALITY :: \"% (%)\";\n",cast(string)v[0..<nv],cast(string)why[0..<nw]);}return 0;
+    }
+    return 2;
+}

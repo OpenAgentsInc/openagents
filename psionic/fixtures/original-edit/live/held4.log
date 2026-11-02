@@ -1,0 +1,41 @@
+analysis_id=35644, final_id=17196
+authenticated Metal original startup_ms=94649
+variant,case,complete,correct,tokens,repeat,parse,milliseconds
+12,12,true,true,5,0,0,1404
+12,13,true,true,6,0,0,1113
+12,14,true,true,6,0,0,1105
+12,15,true,true,6,0,0,1108
+12,16,true,true,6,0,0,1154
+12,17,true,true,6,0,0,1116
+12,18,true,true,6,0,0,1134
+12,19,true,true,5,0,0,1047
+12,20,true,true,5,0,0,1050
+12,21,true,true,6,0,0,1082
+12,22,true,true,6,0,0,1104
+12,23,true,true,5,0,0,1053
+12,24,true,true,5,0,0,995
+12,25,true,true,5,0,0,1019
+12,26,true,true,5,0,0,996
+12,27,true,true,6,0,0,1070
+12,28,true,true,5,0,0,1026
+12,29,true,true,5,0,0,1028
+12,30,true,true,5,0,0,1004
+12,31,true,true,5,0,0,1015
+12,32,true,true,5,0,0,1016
+12,33,true,true,5,0,0,1011
+12,34,true,true,5,0,0,1022
+12,35,true,true,5,0,0,1014
+12,42,true,true,6,0,0,1098
+12,43,true,false,6,0,0,1107
+12,44,true,false,8,0,0,1240
+12,45,true,true,7,0,0,1182
+12,46,true,false,8,0,0,1266
+12,47,true,false,9,0,0,1333
+12,48,true,false,6,0,0,1092
+12,49,true,false,7,0,0,1177
+12,50,true,false,7,0,0,1168
+12,51,true,true,6,0,0,1107
+12,52,true,false,9,0,0,1334
+12,53,true,false,7,0,0,1172
+candidate 13 carries identical greedy source 0; no new sequences
+candidate 14 carries identical greedy source 0; no new sequences

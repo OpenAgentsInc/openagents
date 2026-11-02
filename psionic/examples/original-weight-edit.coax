@@ -1,0 +1,25 @@
+// A bounded original window and the frozen experiment's result ledger.
+#import "Basic";
+#load "../lib/original-study.coax";
+#load "../fixtures/original-edit/rows.coax";
+#load "../fixtures/original-edit/results.coax";
+// book:begin example
+main :: () {
+    w:=OwWindow.{model=OE_MODEL,shard=OE_SHARD,name="unembedding.weight",rows=201088,cols=2880,first=35644*2880,count=2880};
+    source:=OE_ROWS[0];pin:=ow_identity(w,source[..]);#assert pin.status==OwStatus.ok;
+    p:[2880]f64;for i:0..<2880 {p[i]=ow_value(source[..],i,OwType.bf16);}p[0]=-p[0];
+    edit:=ow_apply(w,source[..],pin.digest,p[..]);#assert edit.status==OwStatus.ok && edit.changed==1;
+    p[0]=-p[0];back:=ow_apply(w,edit.bytes[0..<edit.count],edit.digest,p[..]);
+    #assert back.status==OwStatus.ok && we_same(back.digest,pin.digest);
+    for i:0..<5760 {#assert back.bytes[i]==source[i] && source[i]==OE_ROWS[0][i];}
+    stale:=ow_apply(w,edit.bytes[0..<edit.count],pin.digest,p[..]);#assert stale.status==OwStatus.identity && stale.count==0;
+    print("original window: % BF16 values, % bytes, % changed; exact restoration true\n",w.count,edit.count,edit.changed);
+    print("stale base: identity refusal, published bytes %\n",stale.count);
+    weights:=[4]f64.[1,2,3,4];direction:=[2]f64.[1,0];removed:=os_remove(weights[..],2,2,direction[..]);
+    print("rank-one removal: [%,%;%,%], output [%,%]\n",removed[0],removed[1],removed[2],removed[3],removed[0]*5+removed[1]*6,removed[2]*5+removed[3]*6);
+    for id:[5]int.[0,2,5,6,12] {r:=OE_RESULTS[id];
+        print("recorded candidate %: primary dev %/%, held %/%; retained held %/%\n",id,r[1],r[0],r[7],r[6],r[10],r[9]);
+    }
+    print("quality: %\n",OE_QUALITY);
+}
+// book:end example

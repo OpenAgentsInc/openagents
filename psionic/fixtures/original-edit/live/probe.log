@@ -1,0 +1,15 @@
+analysis_id=35644, final_id=17196
+authenticated Metal original startup_ms=113925
+variant,case,complete,correct,tokens,repeat,parse,milliseconds
+0,0,true,true,20,0,0,2712
+0,1,true,true,30,0,0,3789
+0,2,true,true,37,0,0,4542
+0,3,true,true,37,0,0,3521
+0,4,true,true,20,0,0,1185
+0,5,true,true,20,0,0,1295
+0,6,true,true,15,0,0,1083
+0,7,true,true,16,0,0,1048
+0,8,true,true,15,0,0,1027
+0,9,true,true,20,0,0,1164
+0,10,true,true,15,0,0,1011
+0,11,true,false,18,0,0,1117

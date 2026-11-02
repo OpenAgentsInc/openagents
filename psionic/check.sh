@@ -28,6 +28,7 @@ cc=${COAX_CC:-cc}
 if [[ ${#only[@]} -eq 0 ]]; then
     coax/web/tool.sh psionic/tools/check-weight-space.coax all
     coax/web/tool.sh psionic/tools/check-construction.coax all
+    coax/web/tool.sh psionic/tools/check-original-edit.coax all
 fi
 # A mesh-only request skips unrelated weight/text oracle provisioning.
 if [[ ${#only[@]} -gt 0 ]]; then
@@ -76,6 +77,9 @@ fi
 # A chapter-only request avoids unrelated oracle/package setup.
 if [[ ${#only[@]} -eq 1 ]]; then
     chapter=${only[0]%.coax}; chapter=${chapter#psionic/lib/}
+    if [[ $chapter == original-window || $chapter == original-proposal || $chapter == original-study || $chapter == original-edit ]]; then
+        exec coax/web/tool.sh psionic/tools/check-original-edit.coax all
+    fi
     if [[ $chapter == construct || $chapter == construct-program || $chapter == construction || $chapter == construction-study || $chapter == construction-learn ]]; then
         exec coax/web/tool.sh psionic/tools/check-construction.coax all
     fi

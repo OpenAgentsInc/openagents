@@ -1,0 +1,3 @@
+ok   #test answer matching removes formatting, never invents missing final answers (1 case, 31162 steps, 0 ms)
+1 of 164 checks (--only 'answer matching'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

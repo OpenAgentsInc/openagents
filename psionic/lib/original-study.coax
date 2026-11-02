@@ -1,0 +1,104 @@
+// Chapter 255's frozen tasks and exploratory measurements; no promotion.
+#load "original-window.coax";
+#load "gptoss/sampling.coax";
+#load "../../coax/lib/json/json.coax";
+OsCase :: struct {prompt:string;answer:string;target:bool;held:bool;}
+OsRun :: struct {ids:[128]int;count:int;prefix:int;complete:bool;correct:bool;parse:int;repeat:int;final:[4096]u8;final_n:int;milliseconds:int;}
+OS_CASES :: [54]OsCase.[
+    OsCase.{prompt="What is 17 * 23? Reply with the integer only.",answer="391",target=true},
+    OsCase.{prompt="What is 27 * 34? Reply with the integer only.",answer="918",target=true},
+    OsCase.{prompt="What is 64 * 19? Reply with the integer only.",answer="1216",target=true},
+    OsCase.{prompt="What is 23 * 47? Reply with the integer only.",answer="1081",target=true},
+    OsCase.{prompt="What is 123 + 789? Reply with the integer only.",answer="912",target=true},
+    OsCase.{prompt="What is 144 / 12? Reply with the integer only.",answer="12",target=true},
+    OsCase.{prompt="What is the capital of France? Reply with the city name only.",answer="paris"},
+    OsCase.{prompt="What is 2 + 2? Reply with the integer only.",answer="4"},
+    OsCase.{prompt="What is the capital of Japan? Reply with the city name only.",answer="tokyo"},
+    OsCase.{prompt="What is the opposite of hot? Reply with one word only.",answer="cold"},
+    OsCase.{prompt="Write the word cat in uppercase. Reply with that word only.",answer="cat"},
+    OsCase.{prompt="What is the chemical formula of water? Reply with the formula only.",answer="h2o"},
+    OsCase.{prompt="What is 19 * 29? Reply with the integer only.",answer="551",target=true,held=true},
+    OsCase.{prompt="What is 38 * 42? Reply with the integer only.",answer="1596",target=true,held=true},
+    OsCase.{prompt="What is 76 * 18? Reply with the integer only.",answer="1368",target=true,held=true},
+    OsCase.{prompt="What is 53 * 27? Reply with the integer only.",answer="1431",target=true,held=true},
+    OsCase.{prompt="What is 125 * 16? Reply with the integer only.",answer="2000",target=true,held=true},
+    OsCase.{prompt="What is 99 * 99? Reply with the integer only.",answer="9801",target=true,held=true},
+    OsCase.{prompt="What is 487 + 638? Reply with the integer only.",answer="1125",target=true,held=true},
+    OsCase.{prompt="What is 1000 - 387? Reply with the integer only.",answer="613",target=true,held=true},
+    OsCase.{prompt="What is 1728 / 12? Reply with the integer only.",answer="144",target=true,held=true},
+    OsCase.{prompt="What is 37 squared? Reply with the integer only.",answer="1369",target=true,held=true},
+    OsCase.{prompt="What is 2 to the power 11? Reply with the integer only.",answer="2048",target=true,held=true},
+    OsCase.{prompt="What is the sum of integers 1 through 20? Reply with the integer only.",answer="210",target=true,held=true},
+    OsCase.{prompt="What is the capital of Italy? Reply with the city name only.",answer="rome",held=true},
+    OsCase.{prompt="What is the capital of Germany? Reply with the city name only.",answer="berlin",held=true},
+    OsCase.{prompt="What is the capital of Spain? Reply with the city name only.",answer="madrid",held=true},
+    OsCase.{prompt="What is the capital of Canada? Reply with the city name only.",answer="ottawa",held=true},
+    OsCase.{prompt="What is 3 + 4? Reply with the integer only.",answer="7",held=true},
+    OsCase.{prompt="What is 9 - 5? Reply with the integer only.",answer="4",held=true},
+    OsCase.{prompt="What is the opposite of up? Reply with one word only.",answer="down",held=true},
+    OsCase.{prompt="What is the opposite of left? Reply with one word only.",answer="right",held=true},
+    OsCase.{prompt="Write the word dog in uppercase. Reply with that word only.",answer="dog",held=true},
+    OsCase.{prompt="Write the word blue in uppercase. Reply with that word only.",answer="blue",held=true},
+    OsCase.{prompt="What is the chemical symbol of gold? Reply with the symbol only.",answer="au",held=true},
+    OsCase.{prompt="How many days are in a week? Reply with the integer only.",answer="7",held=true},
+    OsCase.{prompt="What is 137 * 269? Reply with the integer only.",answer="36853",target=true},
+    OsCase.{prompt="What is 728 * 463? Reply with the integer only.",answer="337064",target=true},
+    OsCase.{prompt="What is 1347 * 829? Reply with the integer only.",answer="1116663",target=true},
+    OsCase.{prompt="What is 17 to the power 5? Reply with the integer only.",answer="1419857",target=true},
+    OsCase.{prompt="What is 2026 * 1102? Reply with the integer only.",answer="2232652",target=true},
+    OsCase.{prompt="What is 9876 * 5432? Reply with the integer only.",answer="53646432",target=true},
+    OsCase.{prompt="What is 173 * 347? Reply with the integer only.",answer="60031",target=true,held=true},
+    OsCase.{prompt="What is 846 * 579? Reply with the integer only.",answer="489834",target=true,held=true},
+    OsCase.{prompt="What is 1653 * 743? Reply with the integer only.",answer="1228179",target=true,held=true},
+    OsCase.{prompt="What is 19 to the power 5? Reply with the integer only.",answer="2476099",target=true,held=true},
+    OsCase.{prompt="What is 2027 * 1103? Reply with the integer only.",answer="2235781",target=true,held=true},
+    OsCase.{prompt="What is 8765 * 4321? Reply with the integer only.",answer="37873565",target=true,held=true},
+    OsCase.{prompt="What is 314 * 159? Reply with the integer only.",answer="49926",target=true,held=true},
+    OsCase.{prompt="What is 2718 * 281? Reply with the integer only.",answer="763758",target=true,held=true},
+    OsCase.{prompt="What is 4567 * 1234? Reply with the integer only.",answer="5635678",target=true,held=true},
+    OsCase.{prompt="What is 23 to the power 4? Reply with the integer only.",answer="279841",target=true,held=true},
+    OsCase.{prompt="What is 6789 * 2345? Reply with the integer only.",answer="15920205",target=true,held=true},
+    OsCase.{prompt="What is 1111 * 7777? Reply with the integer only.",answer="8640247",target=true,held=true}
+];
+
+#test "answer matching removes formatting, never invents missing final answers" {
+    #assert os_match(" **391**.\n","391") && os_match("PARIS!","paris") && !os_match("not Paris","paris") && !os_match("","391");
+    #assert !os_match("17*23=391","391") && os_match("H2O","h2o") && os_match("H₂O","h2o");
+    ids:=[9]int.[1,2,3,1,2,3,1,2,3];#assert os_repeat(ids[..])==3;#assert os_repeat(ids[0..<5])==0;
+}
+os_match :: (text:string,answer:string)->bool {
+    b:[4096]u8;n:=0;at:=0;while at<text.count {v:=text[at];at+=1;
+        if v==226 && at+1<text.count && text[at]==130 && text[at+1]>=128 && text[at+1]<=137 {v=48+text[at+1]-128;at+=2;}
+        if v>=65 && v<=90 {v+=32;}if (v>=97 && v<=122) || (v>=48 && v<=57) || v=='-' {b[n]=v;n+=1;}}
+    return cast(string)b[0..<n]==answer;
+}
+os_primary :: (which:int)->bool {return which>=36;}
+os_repeat :: (ids:[]int)->int {
+    best:=0;for span:3..<17 {if ids.count<3*span {continue;}
+        for start:0..<ids.count-3*span+1 {same:=true;for i:0..<span {if ids[start+i]!=ids[start+span+i] || ids[start+i]!=ids[start+2*span+i] {same=false;}}
+            if same && span>best {best=span;}
+        }
+    }return best;
+}
+os_reference :: (which:int)->string {
+    if which==6 {return "Paris";}if which==8 {return "Tokyo";}if which==10 {return "CAT";}if which==11 {return "H2O";}
+    if which==24 {return "Rome";}if which==25 {return "Berlin";}if which==26 {return "Madrid";}if which==27 {return "Ottawa";}
+    if which==32 {return "DOG";}if which==33 {return "BLUE";}if which==34 {return "Au";}return OS_CASES[which].answer;
+}
+// Admitted rectangular matrices only: rows*cols == p.count <= 16384.
+// book:begin rank
+os_rank :: (p:[]f64,rows:int,cols:int,u:[]f64,v:[]f64,alpha:f64)->[16384]f64 {
+    out:[16384]f64;for row:0..<rows {for col:0..<cols {out[row*cols+col]=p[row*cols+col]+alpha*u[row]*v[col];}}return out;
+}
+os_remove :: (p:[]f64,rows:int,cols:int,direction:[]f64)->[16384]f64 {
+    u:[16384]f64;den:=0.0;for x:direction {den+=x*x;}#assert den>0;
+    for row:0..<rows {for col:0..<cols {u[row]+=p[row*cols+col]*direction[col]/den;}}
+    return os_rank(p,rows,cols,u[0..<rows],direction,-1);
+}
+// book:end rank
+#test "rank-one removal equals projecting out the same activation direction" {
+    p:=[4]f64.[1,2,3,4];d:=[2]f64.[1,0];r:=os_remove(p[..],2,2,d[..]);
+    #assert r[0]==0 && r[1]==2 && r[2]==0 && r[3]==4;
+    #assert r[0]*5+r[1]*6==12 && r[2]*5+r[3]*6==24;
+    #assert p[0]*0+p[1]*6==12 && p[2]*0+p[3]*6==24;
+}

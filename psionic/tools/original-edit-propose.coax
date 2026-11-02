@@ -1,0 +1,42 @@
+// Three text-only experimental subjects, not delegated coding agents.
+#import "Basic";
+#load "original-edit-data.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+op_prompt :: (id:int,d:OdData) {
+    print("Propose a bounded permanent readout weight edit for original GPT-OSS-20B, 2880 hidden dimensions. No tools. Return ONLY one JSON array [analysis_scale,final_scale,alpha]. Scales are integers0..2. ");
+    if id<15 {print("Alpha MUST be0; no activation-derived direction is available in this arm. ");}else {print("Alpha is integer-4..4; it subtracts alpha*d from analysis and adds alpha*d to final. d is the mean normalized development channel activation, rescaled to length1/16. ");}
+    print("This scales two named output rows and optionally adds a rank-one term. All other original weights stay frozen; BF16 coefficients are rounded ties-to-even after F32. Goal: complete correct harder arithmetic within64 emitted tokens without hurting nominal arithmetic and short factual instructions. No held-out result is available. Two row labels and this mechanism were selected by the experiment author. [1,1,0] declines editing. You cannot alter prompts, evaluation or sampling.\n");
+    original:=d.original;for row:0..<2 {print("% row %, exact decoded BF16 weights: [",ifx row==0 then "analysis" else "final",d.ids[row]);for i:0..<2880 {if i>0 {print(",");}print("%",ow_value(original[row][..],i,OwType.bf16));}print("]\n");}
+    if id>=14 {aa:=0.0;bb:=0.0;ab:=0.0;for i:0..<2880 {a:=ow_value(original[0][..],i,OwType.bf16);b:=ow_value(original[1][..],i,OwType.bf16);aa+=a*a;bb+=b*b;ab+=a*b;}
+        print("Harness numerical analysis (no activations): squared row norms %, %; cosine %.\n",aa,bb,ab/sqrt(aa*bb));}
+    if id==15 {
+        print("Development observations ONLY. Primary questions are 137*269,728*463,1347*829,17^5,2026*1102,9876*5432. Base completes2/6; four hit64 tokens without final, no triple repetition. Nominal/retained pass12/12 after fixing Unicode subscript normalization. Per-method development observations follow (raw records; scorer-v1 H₂O bug is corrected as noted):\n");
+        for method:0..<13 {target:=0;retained:=0;tokens:=0;limits:=0;
+            for which:0..<54 {if OS_CASES[which].held {continue;}path:[1024]u8;data:[32768]u8;n:=fs_read(od_path("runs/",method*100+which,".json",path[..]),data[..]);#assert n>0;j:[1]Jv;nodes:[512]JvNode;#assert jv_parse(j[..],cast(string)data[0..<n],nodes[..]);
+                final:[4096]u8;k:=jv_str(j[0],jv_get(j[0],0,"final"),final[..]);complete:=jv_kind(j[0],jv_get(j[0],0,"complete"))==JV_TRUE;
+                if complete && os_match(cast(string)final[0..<k],OS_CASES[which].answer) {if os_primary(which) {target+=1;}else {retained+=1;}}
+                count:=jv_len(j[0],jv_get(j[0],0,"generated"));tokens+=count;if !complete && count==64 {limits+=1;}
+            }print("method %: primary %/6 retained %/12 tokens % limit hits %\n",method,target,retained,tokens,limits);
+        }
+        direction:=d.direction;for which:36..<42 {h:=od_vector(which);dot:=0.0;for i:0..<2880 {dot+=h[i]*direction[i];}raw:[804352]u8;path:[1024]u8;#assert fs_read(od_path("channel/",which,".logits.f32",path[..]),raw[..])==804352;print("dev channel case %: analysis logit %, final logit %, h dot d %\n",which,ow_value(raw[..],35644,OwType.f32),ow_value(raw[..],17196,OwType.f32),dot);}
+    }
+    print("Return the final three-integer JSON array immediately.\n");
+}
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: original-edit-propose prompt|live ID(13..15)");return 2;}
+    id:=args_whole(args_at(a[..],1));if id<13 || id>15 {return 2;}d:=od_load();mode:=args_at(a[..],0);
+    if mode=="prompt" {op_prompt(id,d);return 0;}if mode!="live" {return 2;}
+    #assert fs_mkdir("psionic/fixtures/original-edit/llm");path:[1024]u8;prompt:[1048576]u8;n:=fs_read(od_path("llm/",id,".prompt.txt",path[..]),prompt[..]);#assert n>0;
+    response:=od_path("llm/",id,".response.json",path[..]);#assert !fs_exists(response);
+    request:[2097152]u8;j:[1]Jo;jo_start(j[..],request[..]);jo_obj(j[..]);jo_key(j[..],"model");jo_str(j[..],"claude-opus-5-5");jo_key(j[..],"input");jo_str(j[..],cast(string)prompt[0..<n]);jo_key(j[..],"tools");jo_arr(j[..]);jo_end(j[..]);jo_key(j[..],"effort");jo_str(j[..],"low");jo_key(j[..],"max_budget_usd");jo_int(j[..],1);jo_key(j[..],"timeout_ms");jo_int(j[..],100000);jo_end(j[..]);#assert !j[0].bad;
+    #assert fs_write(od_path("llm/",id,".request.json",path[..]),jo_text(j[..]));
+    args:=[24]string.["claude","--print","--no-session-persistence","--no-chrome","--tools","","--strict-mcp-config","--mcp-config","{\"mcpServers\":{}}","--disable-slash-commands","--setting-sources","","--settings","{\"disableAllHooks\":true}","--system-prompt","You are a text-only numerical experiment subject. Return only the requested JSON. Do not use tools.","--output-format","json","--max-budget-usd","1","--effort","low","--model","claude-opus-5-5"];
+    temp:[1024]u8;dir:=fs_temp("original-edit-text-",temp[..]);#assert dir.count>0;h:=proc_new();#assert h>=0 && proc_cwd(h,dir) && proc_unset(h,"CLAUDECODE");for arg:args {#assert proc_arg(h,arg);}
+    #assert proc_arg(h,cast(string)prompt[0..<n]);start:=proc_now_ms();#assert proc_start(h)==0 && proc_close_stdin(h);deadline:=proc_deadline(100000,start);out:[65536]u8;used:=0;line:[65536]u8;bad:=false;
+    while true {k:=proc_line(h,proc_left(deadline,proc_now_ms()),line[..]);if k==PROC_EOF {break;}if k<0 || used+k+1>65536 {bad=true;break;}if used>0 {out[used]='\n';used+=1;}for i:0..<k {out[used]=line[i];used+=1;}}
+    if bad {k:=proc_kill(h,9);}status:=proc_wait(h,proc_left(deadline,proc_now_ms()));if status==PROC_RUNNING {bad=true;k:=proc_kill(h,9);status=proc_wait(h,2000);}err:[8192]u8;error:=proc_stderr(h,err[..]);done:=proc_release(h);
+    #assert fs_write(od_path("llm/",id,".response.json",path[..]),cast(string)out[0..<used]);if error.count>0 {#assert fs_write(od_path("llm/",id,".stderr",path[..]),error);}
+    b:[128]u8;jj:[1]Jo;jo_start(jj[..],b[..]);jo_obj(jj[..]);jo_key(jj[..],"milliseconds");jo_int(jj[..],proc_now_ms()-start);jo_key(jj[..],"status");jo_int(jj[..],status);jo_key(jj[..],"cut_or_timeout");jo_bool(jj[..],bad);jo_end(jj[..]);#assert fs_write(od_path("llm/",id,".timing.json",path[..]),jo_text(jj[..]));#assert fs_remove(dir);
+    print("proposal %: process status %, cut/timeout %, admitted %\n",id,status,bad,od_response(id).valid);return 0;
+}

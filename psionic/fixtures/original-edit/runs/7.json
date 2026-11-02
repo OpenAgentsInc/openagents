@@ -1,0 +1,1 @@
+{"case":7,"variant":0,"complete":true,"correct":true,"parse":0,"repeat_span":0,"milliseconds":1048,"prefix_tokens":70,"generated":[200005,35644,200008,13462,4733,220,19,13,200007,200006,173781,200005,17196,200008,19,200002],"final":"4","raw_status":0,"raw":"<|channel|>analysis<|message|>Just output 4.<|end|><|start|>assistant<|channel|>final<|message|>4<|return|>"}

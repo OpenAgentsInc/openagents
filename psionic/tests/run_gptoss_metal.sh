@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 2 (independent emitted-kernel inventory and numerical parity oracle; native build/run wrapper).
 # gpt-oss-20b on an Apple GPU through Metal (psionic/platform/gptoss-metal.c).
 # Without a Metal device the harness prints SKIP and exits 0; there is no CPU
 # fallback. The original weights are the caller's; nothing is downloaded.
@@ -26,8 +27,12 @@ python3 -I - "$out/device-kernels.metal" <<'EOF'
 import re,sys
 plan=open('psionic/lib/gptoss/device-plan.coax').read();metal=open(sys.argv[1]).read()
 names=[n for n in re.findall(r'"(gk_[a-z0-9_]*)"',re.search(r'GD_NAMES :: .*?;',plan,re.S)[0])]
-missing=[n for n in names if f'kernel void {n}(' not in metal];assert len(names)==45 and not missing,missing
-print(f'coax metal-compute admits all {len(names)} gpt-oss device kernels')
+# The name table also lists three experimental MMA entries; the active
+# runtime publishes only gd_kernel_count() entries (currently 45).
+count=int(re.search(r'gd_kernel_count :: .*?return (\d+);',plan,re.S)[1])
+assert 0<count<=len(names)
+missing=[n for n in names[:count] if f'kernel void {n}(' not in metal];assert not missing,missing
+print(f'coax metal-compute admits all {count} active gpt-oss device kernels')
 EOF
 "$cc" -fobjc-arc -mmacosx-version-min=15.0 -O2 -Wall -Wextra -Werror -c psionic/platform/metal-host.m -o "$out/metal-host.o"
 "$cc" -std=c11 -O2 -g -ffp-contract=off -fno-fast-math -DPSIONIC_DEVICE_TEST -I"$out" -Ipsionic/platform \

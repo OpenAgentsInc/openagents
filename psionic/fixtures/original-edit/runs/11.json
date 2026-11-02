@@ -1,0 +1,1 @@
+{"case":11,"variant":0,"complete":true,"correct":false,"parse":0,"repeat_span":0,"milliseconds":1117,"prefix_tokens":70,"generated":[200005,35644,200008,13462,487,17,46,13,200007,200006,173781,200005,17196,200008,39,153435,46,200002],"final":"H₂O","raw_status":0,"raw":"<|channel|>analysis<|message|>Just H2O.<|end|><|start|>assistant<|channel|>final<|message|>H₂O<|return|>"}

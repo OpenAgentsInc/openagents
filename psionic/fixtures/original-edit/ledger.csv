@@ -1,0 +1,11 @@
+key,value
+sequences,865
+emitted_tokens,21109
+prompt_tokens,61080
+generation_milliseconds,1914827
+carried_comparisons,162
+extra_prefill_calls,141
+extra_prefill_tokens,10054
+extra_single_steps,85
+all_prefill_calls,1006
+all_single_steps,20329

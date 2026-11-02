@@ -3956,3 +3956,28 @@ handle and keeps the generations, so no handle from before the loss is live
 again. Checks: the ledger's own checks and its mutation gate;
 `aethyr/tests/render-ledger.coax` on the served Grid (exact count, a released
 handle refused at use, recovery after a lost device).
+
+## Bounded original-model weight windows
+
+`psionic/lib/original-window.coax` owns `original-window-v1`, separate from
+`weight-edit-f64-v1`. A window admits little-endian finite BF16/F32 bytes,
+matrix dimensions 1–1048576 and a contained flattened span of 1–16384
+coefficients. SHA-256 binds profile, trusted model/shard pins, name, shape,
+offset, count, dtype and all source bits. Whole-shard authentication and
+trustworthy pins remain caller obligations. Identity alone is not provenance.
+
+Replacement requires the exact source identity/count and finite proposed
+values within ±2^20. It rounds F64 to F32, then BF16 ties-to-even where
+applicable, and returns owned complete bytes. Count is bytes; changed counts
+encoded coefficients. Refusals publish zero payload/count/digests. Source
+bytes never mutate; restoration binds the edited identity and original bits.
+Decode/encode helpers and the study's matrix arithmetic require admitted
+views; the public identity/apply boundary performs admission.
+
+The original-model experiment patches only private idle GPU copies through a
+test-only effect hook, restoring both original rows before candidate writes.
+Any upload failure aborts before inference. It adds no serving patch API,
+quality authority or automatic promotion. Same-digest carried observations
+are explicitly identified and never counted as new trials. Scoring, finite
+worksheet success and chapter-241 independent qualification stay distinct.
+Evidence: `docs/verification/psionic-ch255-2026-11-02.md`.

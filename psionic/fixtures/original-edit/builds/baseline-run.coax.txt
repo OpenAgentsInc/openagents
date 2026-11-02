@@ -1,0 +1,125 @@
+// Native Metal experiment entry; built by check-original-edit.coax build.
+#import "Basic";
+#load "../lib/gptoss/device-host.coax";
+#load "../lib/original-study.coax";
+#load "original-edit-data.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+oe_open :: (root:[]u8,model:int,capacity:int,budget:int,source:[]u8)->int #foreign;
+oe_original :: (file:int,offset:int,out:[]u8)->int #foreign;
+oe_reset :: ()->int #foreign;
+oe_prefill :: (tokens:[]int,control:[]int)->int #foreign;
+oe_step :: (token:int,position:int,control:[]int)->int #foreign;
+oe_read :: (slot:int,values:[]f32)->int #foreign;
+oe_patch :: (offset:int,bytes:[]u8)->int #foreign;
+oe_close :: ()->int #foreign;
+oe_bytes :: (values:[]f32,out:[]u8)->int #foreign;
+oe_save_floats :: (path:string,values:[]f32) {bytes:[804352]u8;#assert oe_bytes(values,bytes[0..<values.count*4])==0 && fs_write(path,cast(string)bytes[0..<values.count*4]);}
+OE_ROOT :: "psionic/fixtures/original-edit/";
+oe_path :: (stem:string,id:int,suffix:string,out:[]u8)->string {
+    b:[64]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_int(j[..],id);n:=0;
+    for part:[4]string.[OE_ROOT,stem,jo_text(j[..]),suffix] {for c:part {out[n]=c;n+=1;}}return cast(string)out[0..<n];
+}
+oe_token :: (table:[]u8,text:string)->int {ids:[32]int;stage:[32]int;symbols:[1024]int;r:=hs_encode_checked(table,text,ids[..],stage[..],symbols[..],false);#assert r.status==PtStatus.ok && r.written==1;return ids[0];}
+oe_prompt :: (table:[]u8,which:int,force:bool,final_id:int,out:[]int)->int {
+    system:[1024]u8;work:[1024]u8;sys:=hm_system_checked(0,system[..],work[..],false);#assert sys.status==PtStatus.ok;
+    messages:=[2]HmMessage.[HmMessage.{role=HmRole.system,body=cast(string)system[0..<sys.written]},HmMessage.{role=HmRole.user,body=OS_CASES[which].prompt}];stage:[1024]int;symbols:[1024]int;
+    r:=hm_render_checked(table,messages[..],true,out,stage[..],symbols[..],false);#assert r.status==HmStatus.ok;n:=r.written;
+    if force {out[n]=200005;out[n+1]=final_id;out[n+2]=200008;n+=3;}return n;
+}
+oe_generate :: (table:[]u8,which:int,variant:int,final_id:int)->OsRun {
+    r:OsRun;input:[1024]int;n:=oe_prompt(table,which,variant==2,final_id,input[..]);r.prefix=n;control:[8]int;
+    #assert oe_reset()==0;start:=proc_now_ms();#assert oe_prefill(input[0..<n],control[..])==0 && control[0]==0;
+    logits:[201088]f32;prob:[201088]f64;stage:[201088]f64;order:[201088]int;tmp:[201088]int;mask:[1]u8;state:=GSeed.{seed=cast(u64)(255+which)};
+    for step:0..<64 {
+        #assert oe_read(18,logits[..])==0;token:=0;
+        if variant==1 {d:=gs_distribution(logits[..],mask[0..<0],0.6,20,0.95,prob[..],stage[..],order[..],tmp[..],false);#assert d.status==GStatus.ok;draw:=gs_draw(state);state=draw.next;token=gs_pick(prob[..],draw.value).token;}
+        else {for i:1..<201088 {if logits[i]>logits[token] {token=i;}}}
+        r.ids[r.count]=token;r.count+=1;input[n]=token;n+=1;
+        if token==200002 || token==200012 {break;}
+        if step<63 {#assert oe_step(token,n-1,control[..])==0 && control[0]==0;}
+    }r.milliseconds=proc_now_ms()-start;r.repeat=os_repeat(r.ids[0..<r.count]);
+    records:[16]HmRecord;draft:[16]HmRecord;bytes:[8192]u8;work:[8192]u8;
+    parsed:=hm_parse_checked(table,input[0..<n],false,records[..],draft[..],bytes[..],work[..],false);r.parse=cast(int)parsed.status;
+    if parsed.status==HmStatus.ok && r.ids[r.count-1]==200002 {
+        for i:0..<parsed.written {visible:[4096]u8;shown:=gt_display(records[i],cast(string)bytes[0..<parsed.bytes],visible[..],false);
+            if shown.status==GStatus.ok {r.complete=true;r.final_n=shown.written;for k:0..<shown.written {r.final[k]=visible[k];}}
+        }
+    }r.correct=r.complete && os_match(cast(string)r.final[0..<r.final_n],OS_CASES[which].answer);return r;
+}
+oe_save_run :: (table:[]u8,which:int,variant:int,r:OsRun) {
+    path:[1024]u8;name:=oe_path("runs/",variant*100+which,".json",path[..]);#assert !fs_exists(name);
+    b:[32768]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"case");jo_int(j[..],which);jo_key(j[..],"variant");jo_int(j[..],variant);
+    jo_key(j[..],"complete");jo_bool(j[..],r.complete);jo_key(j[..],"correct");jo_bool(j[..],r.correct);jo_key(j[..],"parse");jo_int(j[..],r.parse);jo_key(j[..],"repeat_span");jo_int(j[..],r.repeat);jo_key(j[..],"milliseconds");jo_int(j[..],r.milliseconds);
+    jo_key(j[..],"prefix_tokens");jo_int(j[..],r.prefix);jo_key(j[..],"generated");jo_arr(j[..]);for i:0..<r.count {jo_int(j[..],r.ids[i]);}jo_end(j[..]);
+    jo_key(j[..],"scorer");jo_str(j[..],"original-answer-v2");input:[1024]int;prefix:=oe_prompt(table,which,variant==2,17196,input[..]);#assert prefix==r.prefix;
+    jo_key(j[..],"prompt_ids");jo_arr(j[..]);for i:0..<prefix {jo_int(j[..],input[i]);}jo_end(j[..]);
+    meta:[8192]u8;mp:[1024]u8;mn:=fs_read(od_path("candidates/",variant,".json",mp[..]),meta[..]);if mn>0 {mj:[1]Jv;nodes:[128]JvNode;digest:[64]u8;#assert jv_parse(mj[..],cast(string)meta[0..<mn],nodes[..]);k:=jv_str(mj[0],jv_get(mj[0],0,"digest"),digest[..]);#assert k==64;jo_key(j[..],"candidate_digest");jo_str(j[..],cast(string)digest[..]);}
+    final:=r.final;jo_key(j[..],"final");jo_str(j[..],cast(string)final[0..<r.final_n]);raw:[8192]u8;scratch:[8192]u8;tokens:=r.ids;decoded:=hs_decode_checked(table,tokens[0..<r.count],raw[..],scratch[..],false);
+    jo_key(j[..],"raw_status");jo_int(j[..],cast(int)decoded.status);jo_key(j[..],"raw");jo_str(j[..],cast(string)raw[0..<decoded.written]);jo_end(j[..]);#assert !j[0].bad && fs_write(name,jo_text(j[..]));
+    print("%,%,%,%,%,%,%,%\n",variant,which,r.complete,r.correct,r.count,r.repeat,r.parse,r.milliseconds);
+}
+oe_install :: (d:OdData,c:OdCandidate,head:GDParam) {
+    #assert c.valid;original:=d.original;
+    // No inference between the restores and both candidate writes. An effect
+    // failure aborts this private process before any candidate is evaluated.
+    for row:0..<2 {#assert oe_patch(head.device+d.ids[row]*5760,original[row][..])==0;}
+    for row:0..<2 {bytes:=c.row[row].bytes;#assert oe_patch(head.device+d.ids[row]*5760,bytes[0..<5760])==0;}
+}
+oe_equivalent :: (d:OdData,c:OdCandidate,head:GDParam,id:int,table:[]u8) {
+    path:[1024]u8;name:=od_path("equivalence/",id,".json",path[..]);if fs_exists(name) {return;}
+    #assert fs_mkdir("psionic/fixtures/original-edit/equivalence");input:[1024]int;n:=oe_prompt(table,36,false,17196,input[..]);control:[8]int;
+    #assert oe_reset()==0 && oe_prefill(input[0..<n],control[..])==0 && oe_step(200005,n,control[..])==0 && control[0]==0;
+    h:[2880]f32;got:[201088]f32;#assert oe_read(1,h[..])==0 && oe_read(18,got[..])==0;
+    reference:=od_vector(36);for i:0..<2880 {#assert f32_bits(h[i])==f32_bits(cast(f32)reference[i]);}
+    raw:[804352]u8;#assert fs_read("psionic/fixtures/original-edit/channel/36.logits.f32",raw[..])==804352;
+    original:=d.original;b:[4096]u8;j:[1]Jo;hex:[64]u8;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"candidate");jo_str(j[..],od_hex(c.digest,hex[..]));jo_key(j[..],"same_hidden");jo_bool(j[..],true);jo_key(j[..],"rows");jo_arr(j[..]);
+    for row:0..<2 {bytes:=c.row[row].bytes;expected:=ow_value(raw[..],d.ids[row],OwType.f32);
+        for i:0..<2880 {expected+=(ow_value(bytes[0..<5760],i,OwType.bf16)-ow_value(original[row][..],i,OwType.bf16))*reference[i];}
+        error:=abs(f64(got[d.ids[row]])-expected)/(1+abs(expected));#assert error<0.0005;
+        if id==3 {#assert f32_bits(got[d.ids[row]])==f32_bits(cast(f32)ow_value(raw[..],d.ids[row],OwType.f32));}
+        jo_obj(j[..]);jo_key(j[..],"got_hex");jo_str(j[..],od_float(f64(got[d.ids[row]]),hex[..]));jo_key(j[..],"expected_hex");jo_str(j[..],od_float(expected,hex[..]));jo_key(j[..],"scaled_error_hex");jo_str(j[..],od_float(error,hex[..]));jo_end(j[..]);
+    }jo_end(j[..]);jo_end(j[..]);#assert !j[0].bad && fs_write(name,jo_text(j[..]));
+}
+oe_capture :: (table:[]u8,which:int,channel:bool,final_id:int) {
+    input:[1024]int;n:=oe_prompt(table,which,!channel,final_id,input[..]);control:[8]int;#assert oe_reset()==0 && oe_prefill(input[0..<n],control[..])==0 && control[0]==0;
+    if channel {#assert oe_step(200005,n,control[..])==0 && control[0]==0;}
+    else { // rerun the final message marker singly so slot1 holds final RMS
+        #assert oe_reset()==0 && oe_prefill(input[0..<n-1],control[..])==0 && control[0]==0;#assert oe_step(200008,n-1,control[..])==0 && control[0]==0;
+    }
+    normal:[2880]f32;logits:[201088]f32;#assert oe_read(1,normal[..])==0 && oe_read(18,logits[..])==0;
+    path:[1024]u8;name:=oe_path(ifx channel then "channel/" else "answer/",which,".f32",path[..]);#assert !fs_exists(name);oe_save_floats(name,normal[..]);
+    // Full fixed-prefix logits are retained once, not recomputed per edit.
+    name=oe_path(ifx channel then "channel/" else "answer/",which,".logits.f32",path[..]);#assert !fs_exists(name);oe_save_floats(name,logits[..]);
+}
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: original-edit-run ORIGINAL_DIR METAL_SOURCE probe");return 2;}
+    mode:=args_at(a[..],2);screen:=mode=="probe" || mode=="stress";lo:=1;hi:=13;held:=false;
+    if mode=="dev-proposals" {lo=13;hi=16;}else if !screen && mode!="dev-baselines" {found:=false;for group:0..<6 {names:=[6]string.["held0","held1","held2","held3","held4","held5"];if mode==names[group] {found=true;held=true;lo=group*3;hi=lo+3;if hi>16 {hi=16;}}}#assert found && fs_exists("psionic/fixtures/original-edit/selection.json");}
+    #assert fs_mkdir(OE_ROOT) && fs_mkdir("psionic/fixtures/original-edit/runs") && fs_mkdir("psionic/fixtures/original-edit/channel") && fs_mkdir("psionic/fixtures/original-edit/answer");
+    table:[11000000]u8;nt:=fs_read("psionic/fixtures/harmony/gptoss.hst",table[..]);#assert nt>0 && hs_admit(table[0..<nt]);analysis:=oe_token(table[0..<nt],"analysis");final_id:=oe_token(table[0..<nt],"final");print("analysis_id=%, final_id=%\n",analysis,final_id);
+    pins:[10]GArtifact;specs:[543]GSpec;p:=g_profile(0,512,pins[..],specs[..]);root:[4096]u8;dir:=args_at(a[..],0);for i:0..<dir.count {root[i]=dir[i];}
+    source:[2097152]u8;ns:=fs_read(args_at(a[..],1),source[..]);#assert ns>0;started:=proc_now_ms();#assert oe_open(root[0..<dir.count],0,512,17179869184,source[0..<ns])==0;print("authenticated Metal original startup_ms=%\n",proc_now_ms()-started);
+    params:[363]GDParam;#assert gd_params(p,params[..]).status==GStatus.ok;head:=params[2];
+    if mode=="probe" {for row:0..<2 {id:=ifx row==0 then analysis else final_id;path:[1024]u8;name:=oe_path("original-row-",row,".bf16",path[..]);bytes:[5760]u8;#assert oe_original(head.file,head.begin+id*5760,bytes[..])==0 && !fs_exists(name) && fs_write(name,cast(string)bytes[..]);}
+    for parity:0..<2 {tokens:=[2]int.[200006,173781];control:[8]int;#assert oe_reset()==0 && oe_prefill(tokens[0..<parity+1],control[..])==0 && control[0]==0;
+        logits:[201088]f32;#assert oe_read(18,logits[..])==0;path:[1024]u8;oe_save_floats(oe_path("parity-",parity,".f32",path[..]),logits[..]);}
+    }
+    print("variant,case,complete,correct,tokens,repeat,parse,milliseconds\n");
+    if screen {first:=ifx mode=="probe" then 0 else 36;end:=ifx mode=="probe" then 12 else 42;
+        for which:first..<end {r:=oe_generate(table[0..<nt],which,0,final_id);oe_save_run(table[0..<nt],which,0,r);oe_capture(table[0..<nt],which,true,final_id);oe_capture(table[0..<nt],which,false,final_id);#assert proc_now_ms()-started<800000;}
+    }else {
+        d:=od_load();original:=d.original;for row:0..<2 {actual:[5760]u8;#assert oe_original(head.file,head.begin+d.ids[row]*5760,actual[..])==0 && cast(string)actual[..]==cast(string)original[row][..];}
+        for id:lo..<hi {c:=od_candidate(id,d);od_save(id,d,c);if !c.valid {print("invalid candidate %; no inference credited\n",id);continue;}oe_install(d,c,head);oe_equivalent(d,c,head,id,table[0..<nt]);
+            for which:0..<54 {if OS_CASES[which].held!=held {continue;}path:[1024]u8;name:=oe_path("runs/",id*100+which,".json",path[..]);if fs_exists(name) {continue;}
+                if held && id==0 {oe_capture(table[0..<nt],which,false,final_id);}
+                r:=oe_generate(table[0..<nt],which,id,final_id);oe_save_run(table[0..<nt],which,id,r);#assert proc_now_ms()-started<800000;
+            }
+        }
+        if mode=="held5" {negative:=od_candidate(5,d);oe_install(d,negative,head);base:=od_candidate(0,d);oe_install(d,base,head);
+            r:=oe_generate(table[0..<nt],36,0,final_id);oe_save_run(table[0..<nt],36,16,r);
+        }
+    }
+    #assert oe_close()==0;return 0;
+}

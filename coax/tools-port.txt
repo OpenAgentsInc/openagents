@@ -635,7 +635,6 @@ psionic/tests/run_elephant.sh
 psionic/tests/run_elephant_device.sh
 psionic/tests/run_elephant_metal.sh
 psionic/tests/run_elephant_quality.sh
-psionic/tests/run_gptoss_metal.sh
 psionic/tests/run_group_kernels.sh
 psionic/tests/run_mammoth.sh
 psionic/tests/run_mammoth_device.sh

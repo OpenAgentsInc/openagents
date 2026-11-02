@@ -1,0 +1,8 @@
+90eafb64ff0703cc3ae3b425cdbcc52d7a73b968cb7bd4efcabf17b9ae27fab7  coax/web/build/tools/original-edit/runner
+71ed1f07a545b8d1fa2e53d4368fb8dd2f6f659085462dd19273989b295fd325  coax/web/build/tools/original-edit/device-host.c
+9572052fa4545905d8800a8d7d8a4ce8b73537219aa7d78533f570097a0d345c  coax/web/build/tools/original-edit/device-host.h
+f76da7f90ac1d4d281874e9b825f282e3b162ca55cca869f57be070a4152a44c  coax/web/build/tools/original-edit/kernels.metal
+a76808f2c92928512783fc8f5e9431a012824ffe5c3360c52cab9bff10f2b5e2  psionic/tools/original-edit-run.coax
+f4107e2f122e15de4fe5fa5f7d74d178389cbbc95b72d0cdcc913a5035f257bd  psionic/tools/original-edit-data.coax
+4ea7016372f80021d745f4125e9adecf69fb23e78aa9876fb9f2b1fd61ccaf75  psionic/lib/original-study.coax
+c1e10736b439dc2f26465d1041c79849bcf026d2fb7542ba0477776be94a63a7  psionic/fixtures/original-edit/protocol.md

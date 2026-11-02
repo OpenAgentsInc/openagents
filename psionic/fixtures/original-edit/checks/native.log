@@ -1,0 +1,4 @@
+native mode 0, sanitizers 0: passed (65280 finite BF16 codes, nonfinite proposals)
+native mode 0, sanitizers 1: passed (65280 finite BF16 codes, nonfinite proposals)
+native mode 1, sanitizers 0: passed (65280 finite BF16 codes, nonfinite proposals)
+native mode 1, sanitizers 1: passed (65280 finite BF16 codes, nonfinite proposals)

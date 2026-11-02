@@ -1,0 +1,68 @@
+// Shared inert candidate construction. Original authentication happens in the
+// live engine; this tool reads the windows it captured, never original shards.
+#load "../lib/original-study.coax";
+#load "../lib/original-proposal.coax";
+#load "../lib/gptoss/weights.coax";
+#load "../lib/harmony/admission.coax";
+#load "../../coax/lib/sys/fs.coax";
+OdData :: struct {model:[32]u8;shard:[32]u8;ids:[2]int;original:[2][5760]u8;direction:[2880]f64;}
+OdCandidate :: struct {valid:bool;alpha:f64;scales:[2]int;row:[2]OwResult;digest:[32]u8;changed:int;norm2:f64;}
+od_path :: (stem:string,id:int,suffix:string,out:[]u8)->string {j:[1]Jo;b:[64]u8;jo_start(j[..],b[..]);jo_int(j[..],id);n:=0;for part:[4]string.["psionic/fixtures/original-edit/",stem,jo_text(j[..]),suffix] {for c:part {out[n]=c;n+=1;}}return cast(string)out[0..<n];}
+od_unhex :: (s:string)->[32]u8 {r:[32]u8;#assert s.count==64;for i:0..<64 {c:=s[i];v:=ifx c<=57 then cast(int)c-48 else cast(int)c-87;#assert v>=0 && v<16;r[i/2]=r[i/2]*16+cast(u8)v;}return r;}
+od_hex :: (d:[32]u8,b:[]u8)->string {hex:="0123456789abcdef";for i:0..<32 {b[2*i]=hex[d[i]>>4];b[2*i+1]=hex[d[i]&15];}return cast(string)b[0..<64];}
+od_float :: (v:f64,b:[]u8)->string {hex:="0123456789abcdef";bits:=f64_bits(v);for i:0..<16 {b[i]=hex[cast(int)((bits>>cast(u64)(60-4*i))&15)];}return cast(string)b[0..<16];}
+od_window :: (d:OdData,row:int)->OwWindow {return OwWindow.{model=d.model,shard=d.shard,name="unembedding.weight",rows=201088,cols=2880,first=d.ids[row]*2880,count=2880};}
+od_vector :: (which:int)->[2880]f64 {path:[1024]u8;bytes:[11520]u8;#assert fs_read(od_path("channel/",which,".f32",path[..]),bytes[..])==11520;r:[2880]f64;for i:0..<2880 {r[i]=ow_value(bytes[..],i,OwType.f32);}return r;}
+od_load :: ()->OdData {
+    d:=OdData.{ids=[2]int.[35644,17196]};pins:[10]GArtifact;specs:[543]GSpec;p:=g_profile(0,512,pins[..],specs[..]);d.shard=od_unhex(p.pins[2].sha);
+    b:[4096]u8;n:=we_text(b[..],0,"original-edit-model-v1");n=we_text(b[..],n,"openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee");n=we_text(b[..],n,"gpt-oss-metal-f32-ff-v1");n=we_text(b[..],n,HS_TABLE_SHA);
+    for pin:p.pins {n=we_text(b[..],n,pin.name);n=we_word(b[..],n,cast(u64)pin.bytes);n=we_text(b[..],n,pin.sha);}#assert sha256_hash_checked(b[0..<n],d.model[..],false)==SHA_OK;
+    for row:0..<2 {path:[1024]u8;#assert fs_read(od_path("original-row-",row,".bf16",path[..]),d.original[row][..])==5760;}
+    for which:36..<42 {h:=od_vector(which);norm:=0.0;for v:h {norm+=v*v;}#assert norm>0;norm=sqrt(norm);
+        for i:0..<2880 {d.direction[i]+=h[i]/norm/6;}
+    }norm:=0.0;for v:d.direction {norm+=v*v;}#assert norm>0;norm=16*sqrt(norm);for i:0..<2880 {d.direction[i]/=norm;}return d;
+}
+od_response :: (id:int)->OpProposal {
+    path:[1024]u8;bytes:[65536]u8;n:=fs_read(od_path("llm/",id,".response.json",path[..]),bytes[..]);if n<0 {return OpProposal.{};}
+    j:[1]Jv;nodes:[2048]JvNode;text:[8192]u8;sub:[32]u8;if !jv_parse(j[..],cast(string)bytes[0..<n],nodes[..]) {return OpProposal.{};}
+    k:=jv_str(j[0],jv_get(j[0],0,"subtype"),sub[..]);if k!=7 || cast(string)sub[0..<k]!="success" || jv_kind(j[0],jv_get(j[0],0,"is_error"))!=JV_FALSE {return OpProposal.{};}
+    k=jv_str(j[0],jv_get(j[0],0,"result"),text[..]);if k<1 {return OpProposal.{};}r:=op_parse(cast(string)text[0..<k]);if id<15 && r.alpha!=0 {return OpProposal.{};}return r;
+}
+od_alpha :: ()->f64 {bytes:[8]u8;#assert fs_read("psionic/fixtures/original-edit/fit-alpha.f64",bytes[..])==8;bits:u64;for i:0..<8 {bits|=cast(u64)bytes[i]<<cast(u64)(8*i);}return f64_from_bits(bits);}
+od_run_id :: (id:int)->int {
+    if id<13 || id>15 {return id;}path:[1024]u8;raw:[1024]u8;n:=fs_read(od_path("candidates/",id,".carry.json",path[..]),raw[..]);if n<0 {return id;}
+    j:[1]Jv;nodes:[32]JvNode;#assert jv_parse(j[..],cast(string)raw[0..<n],nodes[..]);source:=jv_int(j[0],jv_get(j[0],0,"source"),-1);#assert source>=0 && source<=12 && source!=1 && source!=2;return source;
+}
+od_candidate :: (id:int,d:OdData)->OdCandidate {
+    c:=OdCandidate.{valid=true,scales=[2]int.[1,1]};if id==4 {c.scales[0]=0;}if id==5 {c.scales[1]=0;}
+    if id==6 {c.alpha=1;}if id==7 {c.alpha=2;}if id>=8 && id<=11 {c.alpha=4;}if id==12 {c.alpha=od_alpha();}
+    if id>=13 {op:=od_response(id);if !op.valid {return OdCandidate.{};}c.scales=[2]int.[op.analysis,op.final];c.alpha=f64(op.alpha);}
+    original:=d.original;direction:=d.direction;
+    for row:0..<2 {w:=od_window(d,row);p:[2880]f64;for i:0..<2880 {p[i]=f64(c.scales[row])*ow_value(original[row][..],i,OwType.bf16)+(ifx row==0 then -c.alpha else c.alpha)*direction[i];}
+        base:=ow_identity(w,original[row][..]);#assert base.status==OwStatus.ok;c.row[row]=ow_apply(w,original[row][..],base.digest,p[..]);#assert c.row[row].status==OwStatus.ok;
+        if id>=9 && id<=11 {
+            // Shuffle replacements only between equal source codepoints.
+            // Every encoded delta and zero/nonzero count is preserved exactly.
+            bytes:=c.row[row].bytes;seed:=cast(u64)(255+id-9);counter:u64;
+            for i:0..<2880 {eligible:[2880]int;count:=0;
+                for j:i..<2880 {if original[row][2*j]==original[row][2*i] && original[row][2*j+1]==original[row][2*i+1] {eligible[count]=j;count+=1;}}
+                at:=eligible[cast(int)(gs_bits(seed,counter)%cast(u64)count)];counter+=1;
+                for byte:0..<2 {old:=bytes[2*i+byte];bytes[2*i+byte]=bytes[2*at+byte];bytes[2*at+byte]=old;}
+            }for i:0..<2880 {p[i]=ow_value(bytes[0..<5760],i,OwType.bf16);}c.row[row]=ow_apply(w,original[row][..],base.digest,p[..]);#assert c.row[row].status==OwStatus.ok;
+        }
+        c.changed+=c.row[row].changed;bytes:=c.row[row].bytes;for i:0..<2880 {delta:=ow_value(bytes[0..<5760],i,OwType.bf16)-ow_value(original[row][..],i,OwType.bf16);c.norm2+=delta*delta;}
+    }
+    b:[256]u8;n:=we_text(b[..],0,"original-overlay-v1");for x:d.model {b[n]=x;n+=1;}for row:0..<2 {for x:c.row[row].digest {b[n]=x;n+=1;}}
+    #assert sha256_hash_checked(b[0..<n],c.digest[..],false)==SHA_OK;return c;
+}
+od_save :: (id:int,d:OdData,c:OdCandidate) {
+    #assert fs_mkdir("psionic/fixtures/original-edit/candidates");path:[1024]u8;b:[8192]u8;j:[1]Jo;hex:[64]u8;jo_start(j[..],b[..]);jo_obj(j[..]);
+    jo_key(j[..],"id");jo_int(j[..],id);jo_key(j[..],"valid");jo_bool(j[..],c.valid);jo_key(j[..],"model");jo_str(j[..],od_hex(d.model,hex[..]));jo_key(j[..],"shard");jo_str(j[..],od_hex(d.shard,hex[..]));
+    jo_key(j[..],"digest");jo_str(j[..],od_hex(c.digest,hex[..]));jo_key(j[..],"changed");jo_int(j[..],c.changed);jo_key(j[..],"norm2_hex");jo_str(j[..],od_float(c.norm2,hex[..]));jo_key(j[..],"alpha_hex");jo_str(j[..],od_float(c.alpha,hex[..]));jo_key(j[..],"scales");jo_arr(j[..]);for v:c.scales {jo_int(j[..],v);}jo_end(j[..]);
+    jo_key(j[..],"windows");jo_arr(j[..]);
+    if c.valid {for row:0..<2 {w:=od_window(d,row);r:=c.row[row];data:=r.bytes;name:=od_path("candidates/",id,ifx row==0 then "-0.bf16" else "-1.bf16",path[..]);
+        if fs_exists(name) {old:[5760]u8;#assert fs_read(name,old[..])==5760 && cast(string)old[..]==cast(string)data[0..<5760];}else {#assert fs_write(name,cast(string)data[0..<5760]);}
+        jo_obj(j[..]);jo_key(j[..],"name");jo_str(j[..],w.name);jo_key(j[..],"rows");jo_int(j[..],w.rows);jo_key(j[..],"cols");jo_int(j[..],w.cols);jo_key(j[..],"first");jo_int(j[..],w.first);jo_key(j[..],"count");jo_int(j[..],w.count);jo_key(j[..],"dtype");jo_int(j[..],cast(int)w.dtype);jo_key(j[..],"base");jo_str(j[..],od_hex(r.base,hex[..]));jo_key(j[..],"digest");jo_str(j[..],od_hex(r.digest,hex[..]));jo_key(j[..],"changed");jo_int(j[..],r.changed);jo_end(j[..]);
+    }}jo_end(j[..]);jo_end(j[..]);#assert !j[0].bad;name:=od_path("candidates/",id,".json",path[..]);
+    if fs_exists(name) {old:[8192]u8;n:=fs_read(name,old[..]);#assert n>=0 && cast(string)old[0..<n]==jo_text(j[..]);}else {#assert fs_write(name,jo_text(j[..]));}
+}

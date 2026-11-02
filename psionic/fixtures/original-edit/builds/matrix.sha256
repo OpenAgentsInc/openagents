@@ -1,0 +1,9 @@
+ec854501b1fd7999e65b08cf425de74f8ad5eb076b3993ab49fd46572a7a5b81  coax/web/build/tools/original-edit/runner
+0a2ce881d5b972b1ca3ed47bdc549572585bca032079cfe87414cc4fa4e8b452  coax/web/build/tools/original-edit/device-host.c
+9572052fa4545905d8800a8d7d8a4ce8b73537219aa7d78533f570097a0d345c  coax/web/build/tools/original-edit/device-host.h
+f76da7f90ac1d4d281874e9b825f282e3b162ca55cca869f57be070a4152a44c  coax/web/build/tools/original-edit/kernels.metal
+943b23d4ab4564e73e633dd3cf2ba445b0ace0c1ba10afa428a9ef0c02908e7d  psionic/platform/original-edit-metal.c
+35b7adbb320e2e17cbde1aeee1d7805db4000f23d628002c51d9ac33af1c6040  psionic/platform/gptoss-metal.c
+2664db093ed62edadf3abd03b497a433cef9ba0c4aa347b8d17cab8276d07420  psionic/tools/original-edit-run.coax
+845e61892a59fe95c33d38cf1fadf0094fb21854862c6065cf33e7a89b6cd2f2  psionic/tools/original-edit-data.coax
+4ea7016372f80021d745f4125e9adecf69fb23e78aa9876fb9f2b1fd61ccaf75  psionic/lib/original-study.coax

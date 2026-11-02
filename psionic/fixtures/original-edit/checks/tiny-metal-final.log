@@ -1,0 +1,32 @@
+coax metal-compute admits all 45 active gpt-oss device kernels
+device Apple M5 Max (Apple family 10) unified=1 working set 107.5 GiB, largest buffer 80.6 GiB
+zero-budget preflight refuses before reading invalid artifact bytes
+tiny backend=Metal admission=0.981924 s
+logits max scaled error 2.32160242e-07; fixed bound 0.0005
+trace max scaled error 5.79519838e-07; fixed bound 0.0005
+mixture max scaled error 3.80819624e-08; fixed bound 0.0005
+logits max scaled error 8.96742448e-07; fixed bound 0.0005
+trace max scaled error 1.18552685e-06; fixed bound 0.0005
+mixture max scaled error 3.74882427e-08; fixed bound 0.0005
+logits max scaled error 4.17597762e-07; fixed bound 0.0005
+trace max scaled error 1.61103905e-06; fixed bound 0.0005
+mixture max scaled error 3.98111027e-08; fixed bound 0.0005
+logits max scaled error 5.02386451e-07; fixed bound 0.0005
+trace max scaled error 1.22376752e-06; fixed bound 0.0005
+mixture max scaled error 2.16601824e-08; fixed bound 0.0005
+batch logits max scaled error 5.02386451e-07; fixed bound 0.0005
+batch trace max scaled error 1.22376752e-06; fixed bound 0.0005
+batch mixture max scaled error 2.16601824e-08; fixed bound 0.0005
+batch logits max scaled error 5.02386451e-07; fixed bound 0.0005
+batch trace max scaled error 1.22376752e-06; fixed bound 0.0005
+batch mixture max scaled error 2.16601824e-08; fixed bound 0.0005
+batch logits max scaled error 5.02386451e-07; fixed bound 0.0005
+batch trace max scaled error 1.22376752e-06; fixed bound 0.0005
+batch mixture max scaled error 2.16601824e-08; fixed bound 0.0005
+batch logits max scaled error 5.02386451e-07; fixed bound 0.0005
+batch trace max scaled error 1.22376752e-06; fixed bound 0.0005
+batch mixture max scaled error 2.16601824e-08; fixed bound 0.0005
+cancelled prefill returns before the next chunk and preserves committed state
+batched prefill splits 1/3, 2/2, 3/1 and 4 preserve all serial cache bytes
+invalid prompt IDs and mismatched sequential position preserve public state
+late serial and batch head failure preserves the full public cache and logits

@@ -140,8 +140,12 @@ coax_t_GDPlan pg_plan(const PgSession *s){return s->plan;}
 coax_t_GShape pg_shape(const PgSession *s){return s->shape;}
 const char *pg_error(const PgSession *s){return s->error;}
 
-#ifdef PSIONIC_DEVICE_TEST
+#if defined(PSIONIC_DEVICE_TEST) || defined(PSIONIC_WEIGHT_EDIT_TEST)
+/* Private experimental sessions only, GPU idle. Coax admits complete candidate
+   windows; failure terminates the experiment before another inference. */
 PcStatus pg_patch(PgSession *s,size_t offset,const void *bytes,size_t count){if(offset>(size_t)s->plan.upload.e[0] || count>(size_t)s->plan.upload.e[0]-offset)return PC_ARGUMENT;memcpy(pg_bytes(s,0)+offset,bytes,count);return PC_OK;}
+#endif
+#ifdef PSIONIC_DEVICE_TEST
 void pg_profile(PgSession *s,int enable){
     if(enable){memset(s->seconds,0,(size_t)gd_kernel_count()*sizeof *s->seconds);memset(s->launches,0,(size_t)gd_kernel_count()*sizeof *s->launches);}
     else {double total=0;for(int64_t i=0;i<gd_kernel_count();i++)total+=s->seconds[i];

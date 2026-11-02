@@ -1,0 +1,12 @@
+original prefix 0: 201088 logits, max scaled error 9.98402877e-06, exact argmax 7
+original prefix 1: 201088 logits, max scaled error 9.05275518e-06, exact argmax 200005
+candidate artifacts: 19 records, independently reconstructed encoded weights and identities
+generations: 865 saved sequences, 21109 emitted tokens, 61080 prompt tokens; framing, exact scoring and repetition agree
+permanent GPU edits and independent activation/output interventions agree under the frozen bound
+channel-only AdamW: independent 200-step fit agrees, alpha 0.8624249821905133
+proposer usage: {'input_tokens': 6, 'cache_creation_input_tokens': 155477, 'cache_read_input_tokens': 0, 'output_tokens': 139}, including 112 reported thinking output tokens; list USD 1.246620, client ms 23053
+historical baseline and held-out model-driver snapshots match their observed build manifests
+logical driver calls: 1006 prefills (71134 token positions), 20329 single steps; per-generation ms 1914827
+public Coax fixture rows and recorded result constants match the raw artifact ledger
+matrix/supplement CSV: all generation metrics and full-vocabulary first-token NLL/confident-wrong proxies agree independently
+frozen selection 6, explicit no-op carries and failed finite goal/independent qualification verified

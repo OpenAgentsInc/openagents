@@ -1,0 +1,1 @@
+{"case":10,"variant":0,"complete":true,"correct":true,"parse":0,"repeat_span":0,"milliseconds":1011,"prefix_tokens":69,"generated":[200005,35644,200008,13462,4733,76140,13,200007,200006,173781,200005,17196,200008,54389,200002],"final":"CAT","raw_status":0,"raw":"<|channel|>analysis<|message|>Just output CAT.<|end|><|start|>assistant<|channel|>final<|message|>CAT<|return|>"}

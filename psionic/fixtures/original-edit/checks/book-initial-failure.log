@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/.codex/worktrees/psionic-weight-space/openagents/psionic/tests/book.py", line 299, in <module>
+    main()
+    ~~~~^^
+  File "/Users/christopherdavid/.codex/worktrees/psionic-weight-space/openagents/psionic/tests/book.py", line 293, in main
+    examples = check(args.book)
+  File "/Users/christopherdavid/.codex/worktrees/psionic-weight-space/openagents/psionic/tests/book.py", line 96, in check
+    assert not errors, f"chapter registry ({book}/chapters.json): " + "; ".join(errors)
+           ^^^^^^^^^^
+AssertionError: chapter registry (psionic/book/chapters.json): README.md: ch255-edit-an-original-language-model.md status must be 'Runnable: original-window-v1, bounded CPU and recorded original GPT-OSS-20B Metal trials' (optionally followed by ' (...)'), not 'Runnable: original-window-v1 (bounded CPU; recorded original Metal trials)'

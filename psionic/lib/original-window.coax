@@ -1,0 +1,103 @@
+// original-window-v1: immutable, identity-bound BF16/F32 tensor windows.
+// Authentication of the original shard and trustworthy model/shard pins are
+// caller obligations. This admits bytes, never quality or deployment.
+#load "weight-edit.coax";
+#authority;
+// book:begin types
+OwType :: enum u8 {bf16;f32;unsupported;}
+OwStatus :: enum u8 {ok;layout;number;identity;}
+OwWindow :: struct {model:[32]u8;shard:[32]u8;name:string;rows:int;cols:int;first:int;count:int;dtype:OwType;}
+OwIdentity :: struct {status:OwStatus;digest:[32]u8;}
+OwResult :: struct {status:OwStatus;count:int;changed:int;base:[32]u8;digest:[32]u8;bytes:[65536]u8;}
+// book:end types
+
+#test "BF16 replacement owns bytes, binds the window and restores exactly" {
+    w:=OwWindow.{name="head",rows=8,cols=2,first=4,count=4};src:=[8]u8.[128,63,0,64,0,0,0,128];p:=[4]f64.[1,2,0,-0.0];id:=ow_identity(w,src[..]);#assert id.status==OwStatus.ok;
+    expected:=[32]u8.[0x3c,0x24,0xe6,0xed,0x69,0xc6,0xed,0xf7,0x64,0x30,0x25,0x5c,0xe3,0xc4,0x55,0x60,0xe1,0xb8,0x26,0xfa,0x8e,0xba,0x77,0x7a,0xf5,0x0e,0xc0,0x19,0xa2,0x62,0x51,0xb5];#assert we_same(id.digest,expected);
+    same:=ow_apply(w,src[..],id.digest,p[..]);#assert same.status==OwStatus.ok && same.count==8 && same.changed==0 && we_same(same.digest,id.digest);
+    p[1]=-3;edit:=ow_apply(w,src[..],id.digest,p[..]);#assert edit.status==OwStatus.ok && edit.changed==1 && edit.bytes[2]==64 && edit.bytes[3]==192 && src[2]==0 && src[3]==64;
+    #assert we_same(edit.base,id.digest) && !we_same(edit.digest,id.digest);
+    p[1]=2;back:=ow_apply(w,edit.bytes[0..<8],edit.digest,p[..]);#assert back.status==OwStatus.ok && we_same(back.digest,id.digest);
+    for i:0..<8 {#assert back.bytes[i]==src[i];}for i:8..<65536 {#assert back.bytes[i]==0;}
+    stale:=ow_apply(w,edit.bytes[0..<8],id.digest,p[..]);#assert stale.status==OwStatus.identity && stale.count==0 && stale.changed==0;for b:stale.bytes {#assert b==0;}
+}
+#test "rounding is F64 to F32 then BF16 ties to even; F32 stores its own bits" {
+    #assert ow_encoded(1.00390625,OwType.bf16)==0x3f80 && ow_encoded(1.01171875,OwType.bf16)==0x3f82;
+    #assert ow_encoded(-1.00390625,OwType.bf16)==0xbf80 && ow_encoded(-1.01171875,OwType.bf16)==0xbf82;
+    #assert ow_encoded(1.003906250001,OwType.bf16)==0x3f80; // declared double-rounding boundary
+    #assert ow_encoded(1.25,OwType.f32)==0x3fa00000 && ow_encoded(-0.0,OwType.f32)==0x80000000;
+    w:=OwWindow.{name="f",rows=1,cols=2,count=2,dtype=OwType.f32};src:=[8]u8.[0,0,128,63,0,0,0,192];p:=[2]f64.[-2,1];id:=ow_identity(w,src[..]);r:=ow_apply(w,src[..],id.digest,p[..]);
+    #assert r.status==OwStatus.ok && r.changed==2 && ow_value(r.bytes[..],0,w.dtype)==-2 && ow_value(r.bytes[..],1,w.dtype)==1;
+    #assert ow_value(src[..],0,w.dtype)==1 && ow_value(src[..],1,w.dtype)==-2;
+}
+#test "every metadata field and every original byte participates in identity" {
+    w:=OwWindow.{name="head",rows=4,cols=4,count=2};s:=[4]u8.[128,63,0,0];id:=ow_identity(w,s[..]);
+    for k:0..<8 {v:=w;if k==0 {v.model[31]=1;}if k==1 {v.shard[0]=1;}if k==2 {v.name="other";}if k==3 {v.rows=5;}if k==4 {v.cols=5;}if k==5 {v.first=1;}if k==6 {v.count=1;}if k==7 {v.dtype=OwType.f32;v.count=1;}
+        r:=ow_identity(v,s[0..<v.count*ow_width(v.dtype)]);#assert r.status==OwStatus.ok && !we_same(r.digest,id.digest);
+    }
+    t:=s;t[2]=1;#assert !we_same(ow_identity(w,t[..]).digest,id.digest);
+}
+#test "layout and late numeric refusals never publish a partial window" {
+    w:=OwWindow.{name="x",rows=1,cols=2,count=2};s:=[4]u8.[128,63,0,64];p:=[2]f64.[1,1048577];id:=ow_identity(w,s[..]);r:=ow_apply(w,s[..],id.digest,p[..]);
+    #assert r.status==OwStatus.number && r.count==0 && r.changed==0;for b:r.bytes {#assert b==0;}for b:r.digest {#assert b==0;}for b:r.base {#assert b==0;}
+    p[1]=-1048577;#assert ow_apply(w,s[..],id.digest,p[..]).status==OwStatus.number;
+    p[1]=-1048576;#assert ow_apply(w,s[..],id.digest,p[..]).status==OwStatus.ok;p[1]=1048576;#assert ow_apply(w,s[..],id.digest,p[..]).status==OwStatus.ok;
+    #assert ow_apply(w,s[..],id.digest,p[0..<1]).status==OwStatus.layout;
+    for k:0..<10 {v:=w;if k==0 {v.name="";}if k==1 {v.rows=0;}if k==2 {v.rows=1048577;}if k==3 {v.cols=0;}if k==4 {v.cols=1048577;}if k==5 {v.first=-1;}if k==6 {v.first=1;}if k==7 {v.count=0;}if k==8 {v.count=16385;}if k==9 {v.dtype=cast(OwType)2;}
+        #assert ow_identity(v,s[..]).status==OwStatus.layout && ow_apply(v,s[..],id.digest,p[..]).status==OwStatus.layout;
+    }
+    #assert ow_identity(w,s[0..<3]).status==OwStatus.layout;
+    bad:=[6]u32.[0x7f80,0xff80,0x7fc1,0x7f800000,0xff800000,0x7fc00001];
+    for k:0..<6 {v:=OwWindow.{name="bad",rows=1,cols=1,count=1,dtype=ifx k<3 then OwType.bf16 else OwType.f32};b:[4]u8;for j:0..<ow_width(v.dtype) {b[j]=cast(u8)((bad[k]>>cast(u32)(8*j))&255);}
+        #assert ow_identity(v,b[0..<ow_width(v.dtype)]).status==OwStatus.number;
+        q:=[1]f64.[0];#assert ow_apply(v,b[0..<ow_width(v.dtype)],id.digest,q[..]).status==OwStatus.number;
+    }
+}
+#test "low-byte changes and subnormal F32 encodings remain observable" {
+    w:=OwWindow.{name="head",rows=1,cols=1,count=1};s:=[2]u8.[128,63];p:=[1]f64.[1.0078125];id:=ow_identity(w,s[..]);r:=ow_apply(w,s[..],id.digest,p[..]);#assert r.changed==1 && r.bytes[0]==129 && r.bytes[1]==63;
+    v:=OwWindow.{name="f",rows=1,cols=2,count=2,dtype=OwType.f32};bytes:=[8]u8.[171,170,170,62,1,0,0,128];
+    #assert f32_bits(cast(f32)ow_value(bytes[..],0,v.dtype))==0x3eaaaaab && f32_bits(cast(f32)ow_value(bytes[..],1,v.dtype))==0x80000001;
+    q:=[2]f64.[f64(f32_from_bits(0x3eaaaaab)),f64(f32_from_bits(0x80000001))];pin:=ow_identity(v,bytes[..]);same:=ow_apply(v,bytes[..],pin.digest,q[..]);#assert same.status==OwStatus.ok && same.changed==0 && we_same(same.digest,pin.digest);
+}
+#test "window limits admit an original-sized matrix without materializing it" {
+    w:=OwWindow.{name="unembedding.weight",rows=201088,cols=2880,first=200006*2880,count=2880};#assert ow_layout(w,5760);
+    w.rows=1048576;w.cols=1048576;w.first=w.rows*w.cols-16384;w.count=16384;#assert ow_layout(w,32768);
+    w.dtype=OwType.f32;#assert ow_layout(w,65536);w.first+=1;#assert !ow_layout(w,65536);
+    w.first=0;w.count=16385;#assert !ow_layout(w,65540);
+    w.count=1;w.dtype=OwType.unsupported;#assert !ow_layout(w,4);
+    #assert ow_width(OwType.bf16)==2 && ow_width(OwType.f32)==4;
+}
+
+ow_width :: (dtype:OwType)->int {return ifx dtype==OwType.bf16 then 2 else 4;}
+ow_layout :: (w:OwWindow,bytes:int)->bool {
+    if !we_name(w.name) || w.rows<1 || w.rows>1048576 || w.cols<1 || w.cols>1048576 || w.first<0 || w.count<1 || w.count>16384 || cast(u8)w.dtype>1 {return false;}
+    return w.first<=w.rows*w.cols-w.count && bytes==ow_width(w.dtype)*w.count;
+}
+ow_bits :: (bytes:[]u8,i:int,dtype:OwType)->u32 {
+    bits:u32;width:=ow_width(dtype);for j:0..<width {bits|=cast(u32)bytes[width*i+j]<<cast(u32)(8*j);}if dtype==OwType.bf16 {bits<<=16;}return bits;
+}
+ow_value :: (bytes:[]u8,i:int,dtype:OwType)->f64 {return f64(f32_from_bits(ow_bits(bytes,i,dtype)));}
+ow_encoded :: (v:f64,dtype:OwType)->u32 {
+    bits:=f32_bits(cast(f32)v);if dtype==OwType.bf16 {return (bits+0x7fff+((bits>>16)&1))>>16;}return bits;
+}
+ow_identity :: (w:OwWindow,bytes:[]u8)->OwIdentity {
+    r:OwIdentity;if !ow_layout(w,bytes.count) {r.status=OwStatus.layout;return r;}
+    for i:0..<w.count {if (ow_bits(bytes,i,w.dtype)&0x7f800000)==0x7f800000 {r.status=OwStatus.number;return r;}}
+    b:[66000]u8;n:=we_text(b[..],0,"original-window-v1");for x:w.model {b[n]=x;n+=1;}for x:w.shard {b[n]=x;n+=1;}
+    n=we_text(b[..],n,w.name);n=we_word(b[..],n,cast(u64)w.rows);n=we_word(b[..],n,cast(u64)w.cols);n=we_word(b[..],n,cast(u64)w.first);n=we_word(b[..],n,cast(u64)w.count);n=we_word(b[..],n,cast(u64)w.dtype);
+    for x:bytes {b[n]=x;n+=1;}#assert sha256_hash_checked(b[0..<n],r.digest[..],false)==SHA_OK;return r;
+}
+// book:begin apply
+ow_apply :: (w:OwWindow,source:[]u8,pin:[32]u8,proposed:[]f64)->OwResult {
+    r:OwResult;id:=ow_identity(w,source);if id.status!=OwStatus.ok {r.status=id.status;return r;}
+    if !we_same(pin,id.digest) {r.status=OwStatus.identity;return r;}
+    if proposed.count!=w.count {r.status=OwStatus.layout;return r;}
+    for v:proposed {if !we_number(v) {r.status=OwStatus.number;return r;}}
+    width:=ow_width(w.dtype);
+    for i:0..<w.count {bits:=ow_encoded(proposed[i],w.dtype);different:=false;
+        for j:0..<width {b:=cast(u8)((bits>>cast(u32)(8*j))&255);r.bytes[width*i+j]=b;if b!=source[width*i+j] {different=true;}}
+        if different {r.changed+=1;}
+    }
+    r.count=source.count;r.base=id.digest;r.digest=ow_identity(w,r.bytes[0..<r.count]).digest;return r;
+}
+// book:end apply
