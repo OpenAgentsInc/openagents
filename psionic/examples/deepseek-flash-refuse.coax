@@ -9,7 +9,7 @@ RUNS :: [5]string.["ok","shape","capacity","token","piece"];
 CHECKS :: [10]string.["ok","capacity","name","dtype","shape","layers","count","bytes","extra","missing"];
 // book:begin refuse
 main :: () {
-    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;logits:[448]f32;arena:[1968000]u8;trace:=DfTrace.{routes=routes[..],picks=picks[..],logits=logits[..]};
+    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;scores:[2240]f32;logits:[448]f32;arena:[984000]u8;trace:=DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]};
     stages:=STAGES;runs:=RUNS;checks:=CHECKS;
     // A 0xFF UE8M0 scale (NaN) in layer 7's shared expert.
     r:=df_forward(DfTiny.{poison_layer=7},tokens[..],trace,arena[..]);

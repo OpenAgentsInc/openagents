@@ -181,14 +181,13 @@ df_hash :: (seed:int,i:int)->int {
 // FP8 E4M3 codes with exponent field 1..7 and either sign, UE8M0 block
 // scales 2^-6..2^-4: every weight is finite and between 2^-12 and 0.12.
 df_fp8 :: (seed:int,rows:int,cols:int,data:[]u8,scales:[]u8)->DeMatrix {
-    if seed>=0 {for i:0..<rows*cols {h:=df_hash(seed,i);code:=h%56+8;if (h>>8)%2==1 {code+=128;}data[i]=cast(u8)code;}
-    }n:=((rows+31)/32)*(cols/32);if seed>=0 {for b:0..<n {scales[b]=cast(u8)(121+df_hash(seed+500000,b)%3);}}
+    for i:0..<rows*cols {h:=df_hash(seed,i);code:=h%56+8;if (h>>8)%2==1 {code+=128;}data[i]=cast(u8)code;}
+    n:=((rows+31)/32)*(cols/32);for b:0..<n {scales[b]=cast(u8)(121+df_hash(seed+500000,b)%3);}
     return DeMatrix.{kind=DeKind.fp8,rows=rows,columns=cols,data=data[0..<rows*cols],scales=scales[0..<n]};
 }
 // FP4 E2M1 nibbles, any code, one UE8M0 scale per row and 32 columns.
-// A negative seed leaves the storage as it is.
 df_fp4 :: (seed:int,rows:int,cols:int,data:[]u8,scales:[]u8)->DeMatrix {
-    n:=rows*(cols/32);if seed>=0 {for i:0..<rows*cols/2 {data[i]=cast(u8)(df_hash(seed,i)%256);}for b:0..<n {scales[b]=cast(u8)(122+df_hash(seed+500000,b)%3);}}
+    n:=rows*(cols/32);for i:0..<rows*cols/2 {data[i]=cast(u8)(df_hash(seed,i)%256);}for b:0..<n {scales[b]=cast(u8)(122+df_hash(seed+500000,b)%3);}
     return DeMatrix.{kind=DeKind.fp4,rows=rows,columns=cols,data=data[0..<rows*cols/2],scales=scales[0..<n]};
 }
 // k/256 for |k| <= 128 and 1 + k/64 for |k| <= 8 are exact BF16 values.
@@ -213,18 +212,17 @@ df_moe :: (t:DfTiny,layer:int,p:int,x:[]f32,routes:[]int,out:[]f32)->DfResult {
     route:=dr_route(DrConfig.{profile=DrProfile.v41,k=DF_K,scale=1.5},logits[..],bias[..],scores[..],ranked[..],false);
     if route.status!=DrStatus.ok {return df_fail(p,layer,DfStage.route,cast(u8)route.status);}
     ids:[2]int;weights:[2]f32;for i:0..<DF_K {ids[i]=route.ids[i];weights[i]=f32(route.weights[i]);routes[i]=route.ids[i];}
-    // Only the two routed experts are generated; the other six keep valid
-    // all-zero FP4 storage, as an expert cache's empty slots would.
-    data:[12288]u8;scales:[768]u8;experts:[8]DeExpert;
-    for e:0..<DF_E {at:=e*1536;sat:=e*96;s:=df_seed(layer,20+3*e);if e!=ids[0] && e!=ids[1] {s=-1;}
-        experts[e]=DeExpert.{gate=df_fp4(s,DF_F,DF_D,data[at..<at+512],scales[sat..<sat+32]),up=df_fp4(ifx s<0 then s else s+1,DF_F,DF_D,data[at+512..<at+1024],scales[sat+32..<sat+64]),
-            down=df_fp4(ifx s<0 then s else s+2,DF_D,DF_F,data[at+1024..<at+1536],scales[sat+64..<sat+96])};}
-    sd:[3072]u8;ss:[3]u8;
-    shared:=DeExpert.{gate=df_fp8(df_seed(layer,50),DF_F,DF_D,sd[0..<1024],ss[0..<1]),up=df_fp8(df_seed(layer,51),DF_F,DF_D,sd[1024..<2048],ss[1..<2]),
-        down=df_fp8(df_seed(layer,52),DF_D,DF_F,sd[2048..<3072],ss[2..<3])};
-    if t.poison_layer==layer {ss[2]=255;}
+    // Only the two routed experts are generated, as an expert cache would
+    // hold only what the router picked; they sit in slots 0 and 1.
+    store:[3]DfStore;experts:[2]DeExpert;slots:=[2]int.[0,1];
+    for i:0..<DF_K {s:=df_seed(layer,20+3*ids[i]);
+        experts[i]=DeExpert.{gate=df_fp4(s,DF_F,DF_D,store[i].gate[..],store[i].gate_scales[..]),up=df_fp4(s+1,DF_F,DF_D,store[i].up[..],store[i].up_scales[..]),
+            down=df_fp4(s+2,DF_D,DF_F,store[i].down[..],store[i].down_scales[..])};}
+    shared:=DeExpert.{gate=df_fp8(df_seed(layer,50),DF_F,DF_D,store[2].gate[..],store[2].gate_scales[..]),up=df_fp8(df_seed(layer,51),DF_F,DF_D,store[2].up[..],store[2].up_scales[..]),
+        down=df_fp8(df_seed(layer,52),DF_D,DF_F,store[2].down[..],store[2].down_scales[..])};
+    if t.poison_layer==layer {store[2].down_scales[0]=255;}
     floats:[224]f32;wide:[64]f64;acc:[32]PsionicAccumulator;
-    r:=de_mixture(experts[..],shared,xn[..],ids[..],weights[..],10,out,DeWork.{floats=floats[..],wide=wide[..]},acc[..],false);
+    r:=de_mixture(experts[..],shared,xn[..],slots[..],weights[..],10,out,DeWork.{floats=floats[..],wide=wide[..]},acc[..],false);
     if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.experts,cast(u8)r.status);}
     return DfResult.{};
 }
@@ -244,11 +242,23 @@ positions and the logits of seven tokens to
 across all 280 routing decisions is 2.5 × 10^-5, so no expert choice is a
 near tie.
 
-The compile-time evaluator that runs `#test` cannot afford the full stack, so
-the check in `flash.coax` runs layers 0–20 without Engram for two tokens:
-window-only layers, ratio-2 pooling with its indexers, and the candidate
-source at layer 20. It compares every route and selection exactly and every
-logit within 10^-5. The example runs everything natively.
+The compile-time evaluator that runs `#test` cannot afford the full stack
+for seven tokens, so `DfTiny`'s `first` and `layers` pick a run of layers
+`first..<layers` that each step enters straight from the embedding, and the
+oracle takes the same range. The checks in `flash.coax` cover every path in
+pieces: layers 0–20 without Engram for two tokens (window-only layers, ratio-2
+pooling with its indexers, and the candidate source at layer 20); layers 20–39
+for two tokens (ratio-1 pooling, the indexers at 24, 28, 32 and 36 that read
+layer 20's keys and candidate mask, and the borrowing layers); layers 20–24
+for all eight positions (the window wraps, and from the seventh token the
+candidate mask drops a block); Engram after layer 0 for two tokens and at
+layer 14 alone for one; the Engram gate on its own with an all-zero stream;
+the weight generators; and every refusal, with the poisoned scale at layer 0.
+Each compares every route, selection, index score and logit bit for bit: the
+trace also records the eight index scores behind each layer's selection,
+because a small change to a key moves a score long before it changes which
+positions win. Together they leave no `coax mutate` survivor in `flash.coax`.
+The example runs the whole stack natively.
 
 ## Run it
 
@@ -266,8 +276,8 @@ main :: () {
     print("plan: GPU % with % experts; RAM cache % slots per layer, % experts; disk % experts\n",rp_mode_name(plan.gpu.mode),plan.vram,plan.ram/40,plan.ram,plan.disk);
     print("a token reads % bytes on the GPU, % over PCIe, % from disk: % us, % milli-tokens/s modeled\n",plan.bytes_gpu,plan.bytes_link,plan.bytes_disk,plan.micros,plan.milli_tokens);
     print("verdict: %\n",dv_verdict_name(plan.status));
-    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;logits:[448]f32;arena:[1968000]u8;
-    r:=df_forward(DfTiny.{},tokens[..],DfTrace.{routes=routes[..],picks=picks[..],logits=logits[..]},arena[..]);#assert r.status==DfRun.ok;
+    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;scores:[2240]f32;logits:[448]f32;arena:[984000]u8;
+    r:=df_forward(DfTiny.{},tokens[..],DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]},arena[..]);#assert r.status==DfRun.ok;
     same_routes:=0;same_picks:=0;same_logits:=0;
     for i:0..<560 {if routes[i]==DVG_ROUTES[i] {same_routes+=1;}}for i:0..<840 {if picks[i]==DVG_PICKS[i] {same_picks+=1;}}
     for i:0..<448 {if f32_bits(logits[i])==DVG_LOGITS[i] {same_logits+=1;}}
@@ -314,7 +324,7 @@ that are too small each refuse with their own reason
 <!-- source: psionic/examples/deepseek-flash-refuse.coax refuse -->
 ```jai
 main :: () {
-    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;logits:[448]f32;arena:[1968000]u8;trace:=DfTrace.{routes=routes[..],picks=picks[..],logits=logits[..]};
+    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;scores:[2240]f32;logits:[448]f32;arena:[984000]u8;trace:=DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]};
     stages:=STAGES;runs:=RUNS;checks:=CHECKS;
     // A 0xFF UE8M0 scale (NaN) in layer 7's shared expert.
     r:=df_forward(DfTiny.{poison_layer=7},tokens[..],trace,arena[..]);

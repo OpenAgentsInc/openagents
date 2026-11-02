@@ -15,8 +15,8 @@ main :: () {
     print("plan: GPU % with % experts; RAM cache % slots per layer, % experts; disk % experts\n",rp_mode_name(plan.gpu.mode),plan.vram,plan.ram/40,plan.ram,plan.disk);
     print("a token reads % bytes on the GPU, % over PCIe, % from disk: % us, % milli-tokens/s modeled\n",plan.bytes_gpu,plan.bytes_link,plan.bytes_disk,plan.micros,plan.milli_tokens);
     print("verdict: %\n",dv_verdict_name(plan.status));
-    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;logits:[448]f32;arena:[1968000]u8;
-    r:=df_forward(DfTiny.{},tokens[..],DfTrace.{routes=routes[..],picks=picks[..],logits=logits[..]},arena[..]);#assert r.status==DfRun.ok;
+    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;scores:[2240]f32;logits:[448]f32;arena:[984000]u8;
+    r:=df_forward(DfTiny.{},tokens[..],DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]},arena[..]);#assert r.status==DfRun.ok;
     same_routes:=0;same_picks:=0;same_logits:=0;
     for i:0..<560 {if routes[i]==DVG_ROUTES[i] {same_routes+=1;}}for i:0..<840 {if picks[i]==DVG_PICKS[i] {same_picks+=1;}}
     for i:0..<448 {if f32_bits(logits[i])==DVG_LOGITS[i] {same_logits+=1;}}

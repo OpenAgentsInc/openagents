@@ -115,6 +115,7 @@ class State:
         self.keys = {l: [] for l in range(L)}
         self.old = {l: ([0.0] * W, [0.0] * W) for l in range(L)}
         self.picks = {}
+        self.scores = {}
         self.mask = [0] * CAP
 
 
@@ -154,12 +155,14 @@ def attention(st, layer, p, x):
                 st.comp[layer].append(sparse.packed(1, [[frombf(b) for b in latent]], W)['values'])
         if index_owner == layer:
             st.picks[layer] = []
+            st.scores[layer] = [0.0] * CAP
             if visible:
                 iq = sparse.rotate(True, p, IH, W, R, False, [bf(v) for v in project(fp8(seed(layer, 9), IH * W, QL), qrn)])
                 iq = sparse.packed(2, [[frombf(b) for b in iq[h * W:(h + 1) * W]] for h in range(IH)], W)['values']
                 weights = [bf(v) for v in project(fp8(seed(layer, 10), IH, D), xn)]
                 keys = [v for r in st.keys[kv_owner][:visible] for v in r]
                 scores = sparse.index_values(IH, W, iq, keys, weights) + [0.0] * (CAP - visible)
+                st.scores[layer] = scores
                 if layer == 20:
                     st.mask = sparse.candidates(scores, visible, BLOCK, BLOCKS)
                 mask = st.mask if candidate >= 0 else [1] * CAP
@@ -173,7 +176,8 @@ def attention(st, layer, p, x):
     low = []
     for g in range(G):
         low += project(fp8(seed(layer, 4 + g), OL, W), o[g * 32:(g + 1) * 32])
-    return project(fp8(seed(layer, 6), D, G * OL), low), ids
+    seen = st.scores[index_owner] if ratio else [0.0] * CAP
+    return project(fp8(seed(layer, 6), D, G * OL), low), ids, seen
 
 
 def moe(layer, x):
@@ -204,6 +208,12 @@ def engram_layer(layer, ids, x):
             code, scale = codes[col], codes[256 + col // 32]
             rows.append(frombf(cache.bf_round(f32(expert.scalar('fp8', code, scale)))))
     kv = project(fp8(seed(layer, 90), 160, 6144), rows)
+    return engram_mix(layer, kv, x)
+
+
+# The per-stream gate: the value row scaled by a sigmoid of the signed root
+# of the normalized key-stream agreement.
+def engram_mix(layer, kv, x):
     out = list(x)
     for c in range(HC):
         h = x[c * D:(c + 1) * D]; key = kv[c * D:(c + 1) * D]
@@ -211,27 +221,27 @@ def engram_layer(layer, ids, x):
         rstd = (1 / math.sqrt(math.fsum(v * v for v in h) / D + 1e-20)) * (1 / math.sqrt(math.fsum(v * v for v in key) / D + 1e-20))
         d = math.fsum(a * b * k for a, b, k in zip(h, w, key)) * rstd / math.sqrt(D)
         z = math.copysign(math.sqrt(max(abs(d), 1e-6)), d)
-        gate = 1 / (1 + math.exp(-z)) if z >= 0 else math.exp(z) / (1 + math.exp(z))
+        gate = 1 / (1 + math.exp(-z))
         for j in range(D):
             out[c * D + j] = f32(h[j] + gate * kv[4 * D + j])
     return out
 
 
-def run(layers=L, use_engram=True, tokens=TOKENS):
+def run(layers=L, use_engram=True, tokens=TOKENS, first=0):
     mapping = [(i * 37 + 11) % 99092 for i in range(V)]
     hashes = engram.hashes(tokens, [1] * len(tokens), mapping)
     st = State()
-    routes, picks, logits, margins = [], [], [], []
+    routes, picks, logits, margins, scores = [], [], [], [], []
     for p, token in enumerate(tokens):
         x = [frombf(bf16(7, token * D + j)) for j in range(D)] * HC
         pre = [1.0, 0.0, 0.0, 0.0]
-        for layer in range(layers):
+        for layer in range(first, layers):
             if use_engram and layer in (1, 14):
                 slot = 0 if layer == 1 else 1
                 x = engram_layer(layer, hashes[p * 48 + slot * 24:p * 48 + slot * 24 + 24], x)
             rows, scale, base = hyper_weights(layer, 70)
             a = hyper.split(hyper.project(x, rows), scale, base)
-            y, ids = attention(st, layer, p, hyper.collapse(x, pre, D))
+            y, ids, seen = attention(st, layer, p, hyper.collapse(x, pre, D))
             x = hyper.expand(y, x, a, D)
             rows, scale, base = hyper_weights(layer, 73)
             b = hyper.split(hyper.project(x, rows), scale, base)
@@ -240,29 +250,48 @@ def run(layers=L, use_engram=True, tokens=TOKENS):
             pre = b['pre']
             routes += chosen
             picks += ids + [-1] * (TOPK - len(ids))
+            scores += seen
             margins.append(margin)
         hn = rms(hyper.collapse(x, pre, D), 9)
         logits += [f32(math.fsum(frombf(bf16(8, v * D + j)) * hn[j] for j in range(D))) for v in range(V)]
         print(f'step {p}: token {token}, top logit id {max(range(V), key=lambda v: logits[p * V + v])}', file=sys.stderr)
-    return routes, picks, logits, margins
+    return routes, picks, logits, margins, scores
 
 
-def emit(routes, picks, logits, margins, prefix='DVG'):
+def emit(routes, picks, logits, margins, scores, prefix='DVG'):
     s = ''
     s += f'{prefix}_ROUTES :: [{len(routes)}]int.[' + ','.join(map(str, routes)) + '];\n'
     s += f'{prefix}_PICKS :: [{len(picks)}]int.[' + ','.join(map(str, picks)) + '];\n'
     s += f'{prefix}_LOGITS :: [{len(logits)}]u32.[' + ','.join(f'0x{bits32(v):08x}' for v in logits) + '];\n'
     s += f'{prefix}_MIN_MARGIN :: {min(margins)!r};\n'
+    if prefix != 'DVG':
+        s += f'{prefix}_SCORES :: [{len(scores)}]u32.[' + ','.join(f'0x{bits32(v):08x}' for v in scores) + '];\n'
     return s
 
 
+def mix_case():
+    x = [0.0 if i < D else unit(5, i, 10) for i in range(HC * D)]
+    kv = [0.0 if 2 * D <= i < 3 * D else unit(6, i, 10) for i in range(160)]
+    return x, kv, engram_mix(1, kv, x)
+
+
 def main():
-    routes, picks, logits, margins = run()
+    routes, picks, logits, margins, scores = run()
     text = '// Chapter 100 composed-oracle goldens (psionic/tests/deepseek_flash_oracle.py).\n'
     text += f'DVG_TOKENS :: [{len(TOKENS)}]int.[' + ','.join(map(str, TOKENS)) + '];\n'
-    text += emit(routes, picks, logits, margins)
+    text += emit(routes, picks, logits, margins, scores)
     text += '// Layers 0-20 without Engram, two steps: what the compile-time check affords.\n'
     text += emit(*run(21, False, TOKENS[:2]), prefix='DVG21')
+    text += '// Layers 20-39 without Engram, two steps: ratio-1 sharing and every indexer.\n'
+    text += emit(*run(40, False, TOKENS[:2], 20), prefix='DVG2040')
+    text += '// Layers 20-24 for eight tokens: the window wraps and the candidate mask drops a block.\n'
+    text += emit(*run(25, False, TOKENS + [29], 20), prefix='DVG2024')
+    text += '// Layers 0-1 with Engram for two steps, and layer 14 alone for one.\n'
+    text += emit(*run(2, True, TOKENS[:2]), prefix='DVGE1')
+    text += emit(*run(15, True, TOKENS[:1], 14), prefix='DVGE14')
+    text += '// The Engram gate alone on a fixed input: stream 0 and key stream 2 are zero.\n'
+    x, kv, mixed = mix_case()
+    text += 'DVGM_OUT :: [128]u32.[' + ','.join(f'0x{bits32(v):08x}' for v in mixed) + '];\n'
     print(f'smallest router margin {min(margins)!r}; {len(logits)} logits')
     if '--write' in sys.argv[1:]:
         FIXTURE.write_text(text)
