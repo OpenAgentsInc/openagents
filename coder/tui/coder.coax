@@ -299,6 +299,7 @@ cd_start :: (a: [] App, msg: string) {
     sent = cast(string) fb[0..<n];
     a[0].pre = "";
   }
+  cs_request(a, sent);           // what the engine is sent, as a digest `coder replay` rebuilds (chapters 2 and 23)
   if a[0].engine == ENGINE_ECHO {
     a[0].necho = 0; a[0].echo_at = 0; a[0].echo_next_ms = cd_now(a) + 300;
     a[0].necho = cd_cat(a[0].echo[..], 0, "Echo engine, offline. You said: ");
@@ -814,10 +815,10 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
 
 // Flags that take a value: their value is not a positional argument.
-CD_VALUE_FLAGS :: [11] string.["--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck"];
+CD_VALUE_FLAGS :: [17] string.["--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
 
 // Positional argument k (0 is the verb), skipping flags and their values.
 cd_positional :: (args: [] Args, k: int) -> string {
@@ -963,6 +964,12 @@ cd_cmd_log :: (id: string, json: bool) -> int {
   text := cd_session_file(id, fb[..], ib[..]);
   if text.count == 0 { tool_err("coder: no session "); tool_errln(id); return 6; }
   if json { cd_out(text); return 0; }
+  cd_render(text);
+  return 0;
+}
+
+// A session log's lines as `coder log` shows them.
+cd_render :: (text: string) {
   ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   at := 0;
   while at < text.count {
@@ -1008,7 +1015,263 @@ cd_cmd_log :: (id: string, json: bool) -> int {
     }
     if n > 0 { cd_outln(cast(string) ob[0..<n]); }
   }
+}
+
+// ---------------------------------------------------------------- messages to a job (coder attach)
+
+// A job's messages wait in sessions/ID.inbox, one file each, named by the
+// time they were sent. Whoever renames a message to .taken first owns it, so
+// a message is taken once even when the job and `coder attach` race.
+cd_msg_put :: (id: string, text: string, path_out: [] u8) -> string {
+  db: [1300] u8; dir := cd_sibling(id, ".inbox", db[..]);
+  if dir.count == 0 { return ""; }
+  x := fs_mkdir(dir);
+  tb: [24] u8;
+  n := cd_cat(path_out, 0, dir); n = cd_cat(path_out, n, "/"); n = cd_cat(path_out, n, cd_itoa(cxproc_wall_us(), tb[..])); n = cd_cat(path_out, n, ".msg");
+  jb: [65536] u8;
+  m := json_raw(jb[..], 0, "{\"text\":"); m = json_write_string(jb[..], m, text); m = json_raw(jb[..], m, "}\n");
+  if m < 0 || !fs_write(cast(string) path_out[0..<n], cast(string) jb[0..<m]) { return ""; }
+  return cast(string) path_out[0..<n];
+}
+
+// Takes the message at path: "" when someone else took it first.
+cd_msg_take :: (path: string, out: [] u8) -> string {
+  tb: [1400] u8; tn := cd_cat(tb[..], cd_cat(tb[..], 0, path), ".taken");
+  if !fs_rename(path, cast(string) tb[0..<tn]) { return ""; }
+  jb: [65536] u8; jn := fs_read(cast(string) tb[0..<tn], jb[..]);
+  x := fs_remove(cast(string) tb[0..<tn]);
+  if jn <= 0 { return ""; }
+  ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  n := cd_cat(out, 0, cl_str(ar[..], cast(string) jb[0..<jn], "text"));
+  return cast(string) out[0..<n];
+}
+
+// Takes the oldest message waiting for id; "" when there is none.
+cd_msg_next :: (id: string, out: [] u8) -> string {
+  db: [1300] u8; dir := cd_sibling(id, ".inbox", db[..]);
+  if dir.count == 0 || !fs_exists(dir) { return ""; }
+  for attempt: 0..<4 {
+    l_b: [1] FsList; n := fs_list(dir, l_b[..]);
+    best := -1;
+    for i: 0..<n {
+      name := fs_entry(l_b[..], i);
+      if name.count < 5 || cast(string) name[name.count - 4..<name.count] != ".msg" { continue; }
+      if best < 0 { best = i; continue; }
+      o := fs_entry(l_b[..], best);
+      if name.count < o.count || (name.count == o.count && cd_less(name, o)) { best = i; }
+    }
+    if best < 0 { return ""; }
+    pb: [1400] u8; pn := cd_cat(pb[..], cd_cat(pb[..], cd_cat(pb[..], 0, dir), "/"), fs_entry(l_b[..], best));
+    m := cd_msg_take(cast(string) pb[0..<pn], out);
+    if m.count > 0 { return m; }
+  }
+  return "";
+}
+
+cd_less :: (x: string, y: string) -> bool {
+  for i: 0..<x.count { if i >= y.count { return false; } if x[i] != y[i] { return x[i] < y[i]; } }
+  return x.count < y.count;
+}
+
+// coder attach ID ["MESSAGE"]: follow a session as it runs; with a message,
+// the job takes it as its next turn, or, when the job has ended, the
+// conversation continues in a fork that attach then follows.
+cd_cmd_attach :: (id_in: string, msg: string, json: bool) -> int {
+  fb: [4194304] u8; ib: [128] u8;
+  text := cd_session_file(id_in, fb[..], ib[..]);
+  // a job that was just started writes its session file a moment after its pid file
+  for w: 0..<100 { if text.count > 0 || cd_job_pid(id_in) <= 0 { break; } x := cxproc_sleep_ms(100); text = cd_session_file(id_in, fb[..], ib[..]); }
+  if text.count == 0 { tool_err("coder: no session "); tool_errln(id_in); return 6; }
+  k := 0; while k < ib.count && ib[k] != 0 { k += 1; }
+  idb: [64] u8; idn := cd_cat(idb[..], 0, cast(string) ib[0..<k]);
+  pending: [1400] u8; npending := 0;
+  if msg.count > 0 {
+    p := cd_msg_put(cast(string) idb[0..<idn], msg, pending[..]);
+    if p.count == 0 { tool_errln("coder attach: could not leave the message"); return 1; }
+    npending = p.count;
+  }
+  shown := 0;
+  for guard: 0..<100000000 {
+    id := cast(string) idb[0..<idn];
+    text = cd_session_file(id, fb[..], ib[..]);
+    end := text.count; while end > shown && text[end - 1] != 10 { end -= 1; }
+    if end > shown {
+      if json { cd_out(cast(string) text[shown..<end]); } else { cd_render(cast(string) text[shown..<end]); }
+      shown = end;
+    }
+    pid := cd_job_pid(id);
+    alive := pid > 0 && cxproc_pid_alive(pid) == 1;
+    if npending > 0 && !fs_exists(cast(string) pending[0..<npending]) { npending = 0; }   // the job took it
+    if npending > 0 && !alive {
+      // the job is over: take the message back and continue the conversation in a fork
+      mb: [65536] u8; m := cd_msg_take(cast(string) pending[0..<npending], mb[..]);
+      npending = 0;
+      if m.count > 0 {
+        args := [3] string.["fork", id, m];
+        nb: [256] u8; nid := rt_coder(args[..], nb[..]);
+        if nid.count == 0 || nid.count > 40 { tool_errln("coder attach: the session has ended and a fork did not start"); return 1; }
+        if !json { lb: [200] u8; ln := cd_cat(lb[..], 0, "  The session had ended; continuing in "); ln = cd_cat(lb[..], ln, nid); cd_outln(cast(string) lb[0..<ln]); }
+        idn = cd_cat(idb[..], 0, nid); shown = 0;
+        for w: 0..<100 { if cd_job_pid(nid) > 0 { break; } x := cxproc_sleep_ms(50); }
+        continue;
+      }
+    }
+    if !alive && npending == 0 {
+      s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+      cs_read(text, s[..], ar[..]);
+      if end == text.count { return ifx cast(string) s[0].ending[0..<s[0].nending] == "finished" then 0 else 1; }
+    }
+    x := cxproc_sleep_ms(200);
+  }
   return 0;
+}
+
+// ---------------------------------------------------------------- coder bench
+
+CD_SUITES :: [3] string.["harness", "checks", "smoke"];
+CD_SUITE_ABOUT :: [3] string.[
+  "chapter 21: the harness measured end to end, with seeds, verdicts and a receipt chain",
+  "Coder's own checks: coax test coder/tui/coder.coax",
+  "the offline smoke: the terminal UI in a pseudo-terminal, then every verb"];
+
+// coder bench [SUITE] [--json]: runs a suite from this checkout, reports
+// whether it passed and how long it took, and keeps the report in
+// ~/.openagents/coder/bench.
+cd_cmd_bench :: (suite: string, json: bool) -> int {
+  names := CD_SUITES; about := CD_SUITE_ABOUT;
+  k := -1; for i: 0..<names.count { if names[i] == suite { k = i; } }
+  if k < 0 {
+    if suite.count > 0 { tool_err("coder bench: no suite "); tool_errln(suite); }
+    for i: 0..<names.count { lb: [256] u8; ln := cd_cat(lb[..], 0, names[i]); while ln < 10 { ln = cd_cat(lb[..], ln, " "); } ln = cd_cat(lb[..], ln, about[i]); cd_outln(cast(string) lb[0..<ln]); }
+    return ifx suite.count > 0 then 2 else 0;
+  }
+  rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+  if repo.count == 0 { tool_errln("coder bench: run it through coder/tui/coder.sh, which names the checkout"); return 2; }
+  cb: [4200] u8; cn := cd_cat(cb[..], cd_cat(cb[..], 0, repo), "/coax/bin/coax");
+  argv: [3] string; na := 3;
+  if k == 0 { argv[0] = cast(string) cb[0..<cn]; argv[1] = "run"; argv[2] = "psionic/examples/measure-harness.coax"; }
+  else if k == 1 { argv[0] = cast(string) cb[0..<cn]; argv[1] = "test"; argv[2] = "coder/tui/coder.coax"; }
+  else { argv[0] = "python3"; argv[1] = "coder/tui/smoke.py"; na = 2; }
+  if !json { lb: [256] u8; ln := cd_cat(lb[..], 0, "Running "); ln = cd_cat(lb[..], ln, names[k]); ln = cd_cat(lb[..], ln, ": "); ln = cd_cat(lb[..], ln, about[k]); cd_outln(cast(string) lb[0..<ln]); }
+  env := [1] string.["BROWSER=/usr/bin/true"];
+  t0 := cxproc_wall_us();
+  ob: [1048576] u8; ok: [1] bool;
+  out := rt_run_in(argv[0..<na], env[..], repo, 1800, ob[..], ok[..]);
+  ms := (cxproc_wall_us() - t0) / 1000;
+  // the last line that says something: a total or a verdict
+  e := out.count; while e > 0 && (out[e - 1] == 10 || out[e - 1] == ' ') { e -= 1; }
+  st := e; while st > 0 && out[st - 1] != 10 { st -= 1; }
+  last := cast(string) out[st..<e];
+  jb: [8192] u8;
+  n := json_raw(jb[..], 0, "{\"suite\":"); n = json_write_string(jb[..], n, names[k]);
+  n = json_raw(jb[..], n, ifx ok[0] then ",\"passed\":true" else ",\"passed\":false");
+  n = json_raw(jb[..], n, ",\"ms\":"); n = json_write_int(jb[..], n, ms);
+  n = json_raw(jb[..], n, ",\"at_us\":"); n = json_write_int(jb[..], n, t0);
+  n = json_raw(jb[..], n, ",\"last\":"); n = json_write_string(jb[..], n, cast(string) last[0..<ifx last.count > 2000 then 2000 else last.count]);
+  n = json_raw(jb[..], n, "}");
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count > 0 && n > 0 {
+    pb: [1300] u8; pn := cd_cat(pb[..], 0, home); pn = cd_cat(pb[..], pn, "/.openagents/coder/bench"); x := fs_mkdir(cast(string) pb[0..<pn]);
+    ib: [32] u8; pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, names[k]); pn = cd_cat(pb[..], pn, "-"); pn = cd_cat(pb[..], pn, cs_make_id(t0, ib[..])); pn = cd_cat(pb[..], pn, ".json");
+    lb: [8200] u8; ln := cd_cat(lb[..], cd_cat(lb[..], 0, cast(string) jb[0..<n]), "\n");
+    y := fs_write(cast(string) pb[0..<pn], cast(string) lb[0..<ln]);
+  }
+  if json { cd_outln(cast(string) jb[0..<n]); }
+  else {
+    tb: [32] u8; lb: [2300] u8;
+    ln := cd_cat(lb[..], 0, ifx ok[0] then "passed · " else "FAILED · "); ln = cd_cat(lb[..], ln, cd_seconds_text(ms, tb[..]));
+    ln = cd_cat(lb[..], ln, " · "); ln = cd_cat(lb[..], ln, cast(string) last[0..<ifx last.count > 200 then 200 else last.count]);
+    cd_outln(cast(string) lb[0..<ln]);
+  }
+  return ifx ok[0] then 0 else 1;
+}
+
+// ---------------------------------------------------------------- coder replay
+
+// SHA-256 of s as 64 lowercase hex digits.
+cd_sha256_hex :: (s: string, out: [] u8) -> string {
+  ib: [65536] u8; n := ifx s.count <= ib.count then s.count else ib.count;
+  for i: 0..<n { ib[i] = s[i]; }
+  d: [32] u8; x := sha256_hash_checked(ib[0..<n], d[..], false);
+  digits := "0123456789abcdef";
+  for i: 0..<32 { out[2 * i] = digits[cast(int) (d[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (d[i] & 15)]; }
+  return cast(string) out[0..<64];
+}
+
+// The message a turn sent its engine, rebuilt from the log: the user's text,
+// and for a fork's first turn, the parent's first `at` turns ahead of it.
+cd_rebuild :: (user: string, parent: string, at: int, first: bool, out: [] u8) -> string {
+  if !first || parent.count == 0 { n := cd_cat(out, 0, user); return cast(string) out[0..<n]; }
+  fb: [4194304] u8; ib: [128] u8;
+  ptext := cd_session_file(parent, fb[..], ib[..]);
+  ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  tb: [40000] u8; tn: [1] int;
+  turns := cs_turns_text(ptext, at, ar[..], tb[..], tn[..]);
+  if turns == 0 { n := cd_cat(out, 0, user); return cast(string) out[0..<n]; }
+  n := cd_cat(out, 0, "Earlier in this conversation:\n\n"); n = cd_cat(out, n, cast(string) tb[0..<tn[0]]);
+  n = cd_cat(out, n, "\n\nNow: "); n = cd_cat(out, n, user);
+  return cast(string) out[0..<n];
+}
+
+// coder replay ID: rebuilds every request the session sent from its log and
+// compares each one's bytes, by SHA-256 and length, with what was logged.
+cd_cmd_replay :: (id: string, json: bool) -> int {
+  fb: [4194304] u8; ib: [128] u8;
+  text := cd_session_file(id, fb[..], ib[..]);
+  if text.count == 0 { tool_err("coder: no session "); tool_errln(id); return 6; }
+  pb: [64] u8; pn := 0; at := 0;
+  ub: [65536] u8; un := 0; have_user := false; first := true; users := 0;
+  requests := 0; matched := 0; tb: [24] u8;
+  pos := 0;
+  if json { cd_out("{\"requests\":["); }
+  while pos < text.count {
+    e := pos; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[pos..<e];
+    pos = e + 1;
+    ab: [131072] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    kind := cl_str(ar[..], line, "kind");
+    if kind == "session" {
+      pn = cd_cat(pb[..], 0, cl_str(ar[..], line, "parent"));
+      a2 := cl_int(line, "at"); at = ifx a2.ok then a2.value else 0;
+    } else if kind == "user" {
+      un = cd_cat(ub[..], 0, cl_str(ar[..], line, "text")); have_user = true; users += 1;
+      first = users == 1;
+    } else if kind == "request" {
+      requests += 1;
+      want := cl_str(ar[..], line, "sha256"); wb := cl_int(line, "bytes");
+      rb: [131072] u8; hb: [64] u8;
+      sent := ifx have_user then cd_rebuild(cast(string) ub[0..<un], cast(string) pb[0..<pn], at, first, rb[..]) else "";
+      got := cd_sha256_hex(sent, hb[..]);
+      same := have_user && got == want && wb.ok && wb.value == sent.count;
+      if same { matched += 1; }
+      have_user = false;
+      if json {
+        ob: [512] u8;
+        n := json_raw(ob[..], 0, ifx requests > 1 then ",{\"turn\":" else "{\"turn\":"); n = json_write_int(ob[..], n, users);
+        n = json_raw(ob[..], n, ",\"bytes\":"); n = json_write_int(ob[..], n, sent.count);
+        n = json_raw(ob[..], n, ",\"sha256\":"); n = json_write_string(ob[..], n, got);
+        n = json_raw(ob[..], n, ifx same then ",\"same\":true}" else ",\"same\":false}");
+        cd_out(cast(string) ob[0..<n]);
+      } else {
+        ob: [512] u8;
+        n := cd_cat(ob[..], 0, "turn "); n = cd_cat(ob[..], n, cd_itoa(users, tb[..]));
+        n = cd_cat(ob[..], n, ifx same then ": same bytes (" else ": DIFFERENT (");
+        n = cd_cat(ob[..], n, cd_itoa(sent.count, tb[..])); n = cd_cat(ob[..], n, " bytes, sha256 ");
+        n = cd_cat(ob[..], n, cast(string) got[0..<12]); n = cd_cat(ob[..], n, "…)");
+        cd_outln(cast(string) ob[0..<n]);
+      }
+    }
+  }
+  if json {
+    ob: [128] u8; n := json_raw(ob[..], 0, "],\"matched\":"); n = json_write_int(ob[..], n, matched);
+    n = json_raw(ob[..], n, ",\"total\":"); n = json_write_int(ob[..], n, requests); n = json_raw(ob[..], n, "}");
+    cd_outln(cast(string) ob[0..<n]);
+  } else {
+    ob: [128] u8; n := cd_cat(ob[..], 0, cd_itoa(matched, tb[..])); n = cd_cat(ob[..], n, " of ");
+    n = cd_cat(ob[..], n, cd_itoa(requests, tb[..])); n = cd_cat(ob[..], n, " requests rebuilt with the same bytes.");
+    cd_outln(cast(string) ob[0..<n]);
+  }
+  return ifx matched == requests then 0 else 1;
 }
 
 // The engine to run for a decision: System One's pick when it is sure and the
@@ -1164,6 +1427,11 @@ tool_main :: () -> int #export_c {
   if verb == "log" { return cd_cmd_log(cd_positional(args, 1), json); }
   if verb == "route" { return cd_cmd_route(cd_positional(args, 1), json); }
   if verb == "stop" { return cd_cmd_stop(cd_positional(args, 1), json); }
+  if verb == "bench" { return cd_cmd_bench(cd_positional(args, 1), json); }
+  if verb == "policy" { return cd_cmd_policy(args, json); }
+  if verb == "watch" { st := args_value(args, "--stop", ""); return cd_cmd_watch(ifx st.count > 0 then st else cd_positional(args, 1), st.count > 0, args_has(args, "--list")); }
+  if verb == "replay" { return cd_cmd_replay(cd_positional(args, 1), json); }
+  if verb == "attach" { return cd_cmd_attach(cd_positional(args, 1), cd_positional(args, 2), json); }
   if verb == "trigger" { return cd_cmd_trigger(cd_positional(args, 1), args_value(args, "--thread", ""), args_value(args, "--source", "local"), args_value(args, "--author", "me"), args_has(args, "--to-agent")); }
   if verb == "router" { return cd_cmd_router(args_has(args, "--once"), cd_atoi(args_value(args, "--stuck", "1800")), json); }
   pl_b: [1] PlRegistry; pl_load(pl_b[..]);
@@ -1241,8 +1509,24 @@ tool_main :: () -> int #export_c {
     // `coder stop ID` leaves ID.stop: the run stops as if Esc was pressed
     stb: [1300] u8; stop_file := cs_sibling(a[0].log, ".stop", stb[..]);
     next_look := cd_now(a); stopped := false;
+    pfb0: [1300] u8; job_pid_file := cs_sibling(a[0].log, ".pid", pfb0[..]);
     for guard: 0..<100000000 {
-      if !a[0].running { break; }
+      if !a[0].running {
+        // a detached job takes messages left by `coder attach` as its next turns
+        if sess.count == 0 || stopped { break; }
+        mb: [65536] u8; m := cd_msg_next(cs_id(a[0].log), mb[..]);
+        if m.count == 0 {
+          // about to end: drop the pid file, then look once more, so a message sent meanwhile is not lost
+          pt: [32] u8; ptn := fs_read(job_pid_file, pt[..]);
+          x := fs_remove(job_pid_file);
+          m = cd_msg_next(cs_id(a[0].log), mb[..]);
+          if m.count == 0 { break; }
+          if ptn > 0 { y := fs_write(job_pid_file, cast(string) pt[0..<ptn]); }
+        }
+        tui_ed_set(a[0].ed[..], m);
+        cd_submit(a);
+        continue;
+      }
       if a[0].ask { cd_claude_answer(a, 'n'); }
       if !stopped && stop_file.count > 0 && cd_now(a) >= next_look {
         next_look = cd_now(a) + 200;

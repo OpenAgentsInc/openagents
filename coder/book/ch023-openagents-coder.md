@@ -1,11 +1,13 @@
 # 23. `openagents coder`
 
 > **Status: partly implemented.** `openagents coder` runs `run` (with
-> `--detach`), `ls`, `status`, `log`, `stop`, `fork` and `route`, with
-> `--json` and the spec's exit codes, and with no verb opens the terminal
-> UI. Each conversation is a session file in `~/.openagents/coder/sessions`.
-> Still to come: `attach`, `replay`, `bench`, the server verbs (`watch`,
-> `policy`, `daemon`, `--on cloud`), and the same verbs as MCP tools.
+> `--detach`), `ls`, `status`, `log`, `stop`, `fork`, `route`, `attach`,
+> `replay`, `bench`, `watch` and `policy`, with `--json` and the spec's exit
+> codes, and with no verb opens the terminal UI. `trigger` and `router` run
+> chapter 17's Router. `watch` and `policy` work locally through that Router
+> instead of a server. Each conversation is a session file in
+> `~/.openagents/coder/sessions`. Still to come: `daemon`, `--on cloud`, and
+> the same verbs as MCP tools.
 
 Every chapter in this book ends in a verb. This chapter puts them into the
 `coder` domain of the `openagents` binary.
@@ -63,6 +65,65 @@ openagents coder log 20261102-0659
 20261102-065728-986  microcoder finished  1m ago   What is 2+2? Reply with only the number.
 ```
 
+### Following and replaying a session
+
+`coder attach ID` prints the session's log as `coder log` does and keeps
+following it until the session ends. `coder attach ID "MESSAGE"` also
+leaves a message for the job:
+
+- A running job (`coder run --detach`) takes it as its next turn when the
+  current turn ends, so the conversation stays on the same engine.
+- If the job has already ended, `attach` takes the message back and starts
+  a fork that carries the conversation, then follows the fork.
+
+Messages wait in `sessions/ID.inbox`, one file each. Whoever renames a
+message first owns it, so a message the job and `attach` both reach is taken
+once. Before a job ends, it removes its pid file and then looks for messages
+once more, so a message sent while it ends is still taken.
+
+`coder replay ID` rebuilds every request the session sent an engine from the
+log alone, and compares bytes. Each turn logs a `request` line with the
+SHA-256 and length of exactly what the engine was sent. `replay` rebuilds
+that text from the `user` line, and for a fork's first turn, from the
+parent's log up to the `at` turn. It then compares digests:
+
+```text
+turn 1: same bytes (226 bytes, sha256 6307ff109763…)
+1 of 1 requests rebuilt with the same bytes.
+```
+
+A changed log fails: editing the fork's `user` line makes `replay` report
+`DIFFERENT` and exit 1.
+
+### Suites
+
+`coder bench SUITE` runs a suite from the checkout and reports whether it
+passed and how long it took. Each report is kept in
+`~/.openagents/coder/bench/SUITE-ID.json`:
+
+| Suite | What it runs |
+| --- | --- |
+| `harness` | Chapter 21's measurement: tasks through the harness with seeds, verdicts and a receipt chain |
+| `checks` | `coax test coder/tui/coder.coax` |
+| `smoke` | The offline smoke: the terminal UI in a pseudo-terminal, then every verb |
+
+```json
+{"suite":"checks","passed":true,"ms":5022,"at_us":1793605778040508,"last":"233 checks, 233 passed, 0 failed"}
+```
+
+### The Router's verbs
+
+`coder trigger`, `coder router`, `coder watch` and `coder policy` run the
+Router of chapters 17 and 20 on this machine:
+
+- `coder policy add NAME --mode M [--authors A,B] [--engine E] [--label L]
+  [--channel chat|issue] [--deliver] [--text POLICY]` writes a source's
+  policy to `router/sources.json`; `list` and `rm` read and remove them.
+- `coder watch THREAD` makes every later event on the Thread addressed to
+  the agent. For a GitHub Thread such as `github:owner/repo#123` whose
+  repository has no policy yet, it adds one that admits only the account
+  `gh` is logged in as.
+
 ### The session log
 
 [coder/tui/session.coax](../../coder/tui/session.coax) writes one JSON
@@ -77,6 +138,9 @@ object a line, appended as things happen:
 | `result` | `text` (cut to 4,000 bytes, with `bytes` when cut), `error` |
 | `diff` | `path`, `adds`, `dels`: one file an edit changed |
 | `reply` | `text`: the reply since the last tool call, written before the next one and at the end |
+| `request` | `sha256`, `bytes`: what the turn sent its engine, for `replay` |
+| `route` | System One's engine decision, when `run` had no `--engine` (chapter 13) |
+| `hook` | `on`, `plugin`, `run`, `ok`, `text`: a plugin hook that ran (chapter 15) |
 | `end` | `ending`, `ms`, `steps`, and `text` when it failed |
 
 An ID is the UTC start time to the millisecond, such as
@@ -97,6 +161,11 @@ such session, 130 stopped.
   and the spec's exit codes, and the offline smoke (`python3
   coder/tui/smoke.py`) runs them in a fresh `HOME`. `fork` and `stop` are
   chapter 14's; `route` is chapter 13's.
+- [x] `attach`, `replay`, `bench`, `watch` and `policy` exist, and the smoke
+  checks each: a message taken by a running job and by a fork of an ended
+  one, a fork's request rebuilt byte for byte and a changed log refused, a
+  suite's report kept, a watched Thread's event starting a Worker, and
+  sources added, listed and removed.
 - [ ] Each verb exists in the command table with `--json` and the spec's exit
   codes, and a `coder-journey` check runs `run`, `log`, `fork`, `stop` and
   `replay` on a fixture repository.

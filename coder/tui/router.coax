@@ -497,6 +497,8 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
   b: [1300] u8;
   l_b: [1] FsList; l := l_b[..];
   ib: [1300] u8; inbox := rt_path(p, "/inbox", ib[..]);
+  wlb: [65536] u8; wn := fs_read(rt_path(p, "/router/watched", b[..]), wlb[..]);
+  watched := cast(string) wlb[0..<ifx wn > 0 then wn else 0];
   n := fs_list(inbox, l);
   done := 0;
   for i: 0..<n {
@@ -517,6 +519,7 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
     policy := rt_source(ar[..], sources, t.source);
     mode := ifx policy.count > 0 then cl_str(ar[..], policy, "mode") else "";
     k := rt_thread_find(th, t.thread);
+    if t.thread.count > 0 && rt_has_line(watched, t.thread) { t.to_agent = true; }   // coder watch THREAD
     fate := rt_fast(t, mode, policy.count > 0 && rt_author_ok(ar[..], policy, t.author), k >= 0);
     fates := RT_FATES;
     engine := ifx policy.count > 0 then cl_str(ar[..], policy, "engine") else "";
@@ -683,6 +686,141 @@ cd_cmd_trigger :: (text: string, thread: string, source: string, author: string,
   return 0;
 }
 
+// ---------------------------------------------------------------- coder policy, coder watch
+
+// sources.json with source name's entry replaced by entry (removed when entry is ""). Keeps the others as they are.
+rt_sources_with :: (sources: string, name: string, entry: string, out: [] u8) -> string {
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  all := cl_raw(sources, "sources");
+  n := json_raw(out, 0, "{\"sources\":{");
+  k := 0;
+  for i: 0..<cl_count(all) {
+    ar[0].at = 0; ar[0].full = false;
+    key := cl_text(ar[..], all, cl_key(all, i));
+    if key == name { continue; }
+    n = json_raw(out, n, ifx k > 0 then ",\n  " else "\n  "); n = json_write_string(out, n, key); n = json_raw(out, n, ":");
+    n = json_raw(out, n, cl_json(all, cl_item(all, i)));
+    k += 1;
+  }
+  if entry.count > 0 { n = json_raw(out, n, ifx k > 0 then ",\n  " else "\n  "); n = json_write_string(out, n, name); n = json_raw(out, n, ":"); n = json_raw(out, n, entry); }
+  n = json_raw(out, n, "}}\n");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+RT_POLICY_MODES :: [3] string.["explicit_requests_only", "candidate", "ignore"];
+RT_CHANNELS :: [2] string.["chat", "issue"];
+
+// One source's policy entry. authors is a comma-separated list ("*" for anyone).
+rt_policy_entry :: (mode: string, authors: string, engine: string, label: string, channel: string, deliver: bool, policy: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"mode\":"); n = json_write_string(out, n, mode);
+  n = json_raw(out, n, ",\"authors\":[");
+  at := 0; k := 0;
+  while at <= authors.count {
+    e := at; while e < authors.count && authors[e] != ',' { e += 1; }
+    if e > at { n = json_raw(out, n, ifx k > 0 then "," else ""); n = json_write_string(out, n, cast(string) authors[at..<e]); k += 1; }
+    at = e + 1;
+  }
+  n = json_raw(out, n, "]");
+  if engine.count > 0 { n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, engine); }
+  if label.count > 0 { n = json_raw(out, n, ",\"label\":"); n = json_write_string(out, n, label); }
+  if channel.count > 0 { n = json_raw(out, n, ",\"channel\":"); n = json_write_string(out, n, channel); }
+  if deliver { n = json_raw(out, n, ",\"deliver\":true"); }
+  if policy.count > 0 { n = json_raw(out, n, ",\"policy\":"); n = json_write_string(out, n, policy); }
+  n = json_raw(out, n, "}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+rt_in :: (v: string, set: [] string) -> bool { for x: set { if x == v { return true; } } return false; }
+
+// coder policy list | add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel C] [--deliver] [--text POLICY] | rm NAME
+cd_cmd_policy :: (args: [] Args, json: bool) -> int {
+  p: [1] RtPaths;
+  if !rt_init(p[..]) { tool_errln("coder policy: no $HOME"); return 1; }
+  b: [1300] u8; path := rt_path(p[..], "/router/sources.json", b[..]);
+  sb: [65536] u8; sn := fs_read(path, sb[..]);
+  sources := ifx sn > 0 then cast(string) sb[0..<sn] else "{\"sources\":{}}";
+  what := cd_positional(args, 1); name := cd_positional(args, 2);
+  if what == "" || what == "list" {
+    all := cl_raw(sources, "sources");
+    if json { cd_outln(ifx all.count > 0 then all else "{}"); return 0; }
+    if cl_count(all) <= 0 { cd_outln("No sources: coder policy add NAME --mode explicit_requests_only|candidate|ignore"); return 0; }
+    ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    for i: 0..<cl_count(all) {
+      ar[0].at = 0; ar[0].full = false;
+      lb: [4096] u8; ln := cd_cat(lb[..], 0, cl_text(ar[..], all, cl_key(all, i))); ln = cd_cat(lb[..], ln, "  ");
+      ln = cd_cat(lb[..], ln, cl_json(all, cl_item(all, i)));
+      cd_outln(cast(string) lb[0..<ln]);
+    }
+    return 0;
+  }
+  if name.count == 0 { tool_errln("coder policy: name the source, such as local or github:OWNER/REPO"); return 2; }
+  ob: [65536] u8; next := "";
+  if what == "rm" { next = rt_sources_with(sources, name, "", ob[..]); }
+  else if what == "add" {
+    mode := args_value(args, "--mode", "explicit_requests_only");
+    modes := RT_POLICY_MODES; channels := RT_CHANNELS;
+    if !rt_in(mode, modes[..]) { tool_errln("coder policy: --mode is explicit_requests_only, candidate or ignore"); return 2; }
+    channel := args_value(args, "--channel", "");
+    if channel.count > 0 && !rt_in(channel, channels[..]) { tool_errln("coder policy: --channel is chat or issue"); return 2; }
+    eb: [8192] u8;
+    entry := rt_policy_entry(mode, args_value(args, "--authors", "*"), args_value(args, "--engine", ""), args_value(args, "--label", ""), channel, args_has(args, "--deliver"), args_value(args, "--text", ""), eb[..]);
+    next = rt_sources_with(sources, name, entry, ob[..]);
+  } else { tool_errln("coder policy: list, add or rm"); return 2; }
+  if next.count == 0 || !fs_write(path, next) { tool_errln("coder policy: could not write router/sources.json"); return 1; }
+  lb: [512] u8; ln := cd_cat(lb[..], 0, ifx what == "rm" then "Removed " else "Saved "); ln = cd_cat(lb[..], ln, name);
+  cd_outln(ifx json then (ifx what == "rm" then "{\"removed\":true}" else "{\"saved\":true}") else cast(string) lb[0..<ln]);
+  return 0;
+}
+
+// coder watch THREAD | --list | --stop THREAD: events on a watched Thread are
+// addressed to the agent, as if each one named it. A GitHub Thread whose
+// source has no policy gets one that admits only the person gh is logged in as.
+cd_cmd_watch :: (thread: string, stop: bool, list: bool) -> int {
+  p: [1] RtPaths;
+  if !rt_init(p[..]) { tool_errln("coder watch: no $HOME"); return 1; }
+  b: [1300] u8; wp: [1300] u8; wpath := rt_path(p[..], "/router/watched", wp[..]);
+  wb: [65536] u8; wn := fs_read(wpath, wb[..]);
+  watched := cast(string) wb[0..<ifx wn > 0 then wn else 0];
+  if list { cd_out(watched); return 0; }
+  if thread.count == 0 { tool_errln("coder watch: coder watch THREAD, such as github:OWNER/REPO#123"); return 2; }
+  if stop {
+    ob: [65536] u8; n := 0; at := 0;
+    while at < watched.count {
+      e := at; while e < watched.count && watched[e] != 10 { e += 1; }
+      line := cast(string) watched[at..<e]; at = e + 1;
+      if line.count > 0 && line != thread { n = cd_cat(ob[..], n, line); n = cd_cat(ob[..], n, "\n"); }
+    }
+    x := fs_write(wpath, cast(string) ob[0..<n]);
+    cd_outln("Stopped watching it.");
+    return 0;
+  }
+  if !rt_has_line(watched, thread) {
+    lb: [600] u8; ln := cd_cat(lb[..], cd_cat(lb[..], 0, thread), "\n");
+    x := fs_append(wpath, cast(string) lb[0..<ln]);
+  }
+  // a GitHub Thread: make sure its repository is a source
+  h := 0; while h < thread.count && thread[h] != '#' { h += 1; }
+  source := cast(string) thread[0..<h];
+  if rt_github_repo(source).count > 0 && rt_github_number(thread).count > 0 {
+    sp: [1300] u8; spath := rt_path(p[..], "/router/sources.json", sp[..]);
+    sb: [65536] u8; sn := fs_read(spath, sb[..]);
+    sources := ifx sn > 0 then cast(string) sb[0..<sn] else "{\"sources\":{}}";
+    ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    if rt_source(ar[..], sources, source).count == 0 {
+      ghb: [1024] u8; argv := [5] string.[rt_gh(ghb[..]), "api", "user", "--jq", ".login"];
+      ub: [256] u8; ok: [1] bool; login := rt_run(argv[..], ub[..], ok[..]);
+      if !ok[0] || login.count == 0 { tool_errln("coder watch: watching it; add a policy for its repository with coder policy add (gh is not logged in)"); return 0; }
+      eb: [1024] u8; entry := rt_policy_entry("explicit_requests_only", login, "", "", "issue", false, "", eb[..]);
+      ob: [65536] u8; next := rt_sources_with(sources, source, entry, ob[..]);
+      x := fs_write(spath, next);
+      lb: [600] u8; ln := cd_cat(lb[..], 0, "Added the source "); ln = cd_cat(lb[..], ln, source); ln = cd_cat(lb[..], ln, ": only "); ln = cd_cat(lb[..], ln, login); ln = cd_cat(lb[..], ln, "'s comments reach Coder.");
+      cd_outln(cast(string) lb[0..<ln]);
+    }
+  }
+  cd_outln("Watching it. coder router starts a worker on its next event.");
+  return 0;
+}
+
 #test "the fast path decides on bounded fields: source, author, thread, addressed" {
   t: RtTrigger; t.thread = "ci"; t.to_agent = false;
   #assert rt_fast(t, "", true, false) == RT_DROP_SOURCE && rt_fast(t, "ignore", true, true) == RT_DROP_SOURCE;
@@ -726,6 +864,16 @@ cd_cmd_trigger :: (text: string, thread: string, source: string, author: string,
   #assert words == 101 && chat.count > 4 && cast(string) chat[chat.count - 4..<chat.count] == " …";
   #assert rt_reply("chat", "S1", "lost", 0, "", ob[..]) == "Stopped (lost): lost";
   #assert rt_reply("issue", "S1", "finished", 1, "Fixed the parser.", ob[..]) == "**Coder** finished in 1 step (session `S1`).\n\nFixed the parser.";
+}
+
+#test "policies: entries are written and replaced by name, others kept" {
+  eb: [1024] u8; ob: [4096] u8; ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  e := rt_policy_entry("candidate", "alice,bob", "claude", "", "chat", false, "Requests about this repo.", eb[..]);
+  #assert e == "{\"mode\":\"candidate\",\"authors\":[\"alice\",\"bob\"],\"engine\":\"claude\",\"channel\":\"chat\",\"policy\":\"Requests about this repo.\"}";
+  s1 := rt_sources_with("{\"sources\":{\"local\":{\"mode\":\"ignore\",\"authors\":[\"*\"]}}}", "chat", e, ob[..]);
+  #assert cl_str(ar[..], rt_source(ar[..], s1, "chat"), "mode") == "candidate" && cl_str(ar[..], rt_source(ar[..], s1, "local"), "mode") == "ignore";
+  ob2: [4096] u8; s2 := rt_sources_with(s1, "local", "", ob2[..]);
+  #assert rt_source(ar[..], s2, "local").count == 0 && rt_source(ar[..], s2, "chat").count > 0;
 }
 
 #test "GitHub sources: repo, issue number and cursor time" {

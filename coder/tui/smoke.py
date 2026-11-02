@@ -93,7 +93,9 @@ GH_STUB = r"""
 import os, sys
 d = os.environ["GH_STUB_DIR"]
 a = sys.argv[1:]
-if a[:1] == ["api"]:
+if a[:2] == ["api", "user"]:
+    print("alice")
+elif a[:1] == ["api"]:
     if "/issues/comments" in a[1]:
         print('{"k":"comment:555","c":"555","n":7,"a":"alice","t":"thanks"}')
         if os.path.exists(os.path.join(d, "gh-posted")):
@@ -120,7 +122,7 @@ def verbs(check):
         lines = [json.loads(l) for l in run.stdout.splitlines() if l.startswith("{")]
         kinds = [l["kind"] for l in lines]
         check("run --json exits 0", run.returncode == 0)
-        check("run --json: session, user, tool, result, reply, end", kinds == ["session", "user", "tool", "result", "reply", "end"])
+        check("run --json: session, user, request, tool, result, reply, end", kinds == ["session", "user", "request", "tool", "result", "reply", "end"])
         check("run --json: the local model answered", any(l.get("text") == "local-ok" for l in lines) and lines[-1].get("ending") == "finished")
         ls = subprocess.run([coder, "ls", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         rows = json.loads(ls.stdout) if ls.returncode == 0 else []
@@ -156,6 +158,24 @@ def verbs(check):
         fl = [json.loads(l) for l in fork.stdout.splitlines() if l.startswith("{")]
         check("fork carries the parent's turns", fork.returncode == 0 and fl[0].get("parent") == pid_ and fl[0].get("at") == 1
               and any("User: remember heliotrope" in l.get("text", "") and "Now: what word?" in l.get("text", "") for l in fl if l["kind"] == "reply"))
+        # replay rebuilds every request from the log, a fork's from its parent's too, and finds a changed log
+        fid = fl[0]["id"] if fl else "none"
+        rp = subprocess.run([coder, "replay", fid, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        fpath = os.path.join(home, ".openagents", "coder", "sessions", fid + ".jsonl")
+        body = open(fpath).read() if os.path.exists(fpath) else ""
+        with open(fpath, "w") as f:
+            f.write(body.replace('"text":"what word?"', '"text":"what WORD?"'))
+        rp2 = subprocess.run([coder, "replay", fid, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        with open(fpath, "w") as f:
+            f.write(body)
+        check("replay: a fork's request rebuilds with the same bytes; a changed log does not",
+              rp.returncode == 0 and json.loads(rp.stdout)["matched"] == 1 and rp2.returncode == 1 and json.loads(rp2.stdout)["matched"] == 0)
+        # attach: a message becomes a running job's next turn; to an ended job, it continues in a fork
+        aj = subprocess.run([coder, "run", "$ sleep 2; echo one", "--engine", "echo", "--detach"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120).stdout.strip()
+        at1 = subprocess.run([coder, "attach", aj, "$ echo two"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        at2 = subprocess.run([coder, "attach", aj, "$ echo three"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        check("attach: the job takes the message as its next turn", at1.returncode == 0 and "› $ echo two" in at1.stdout and "    └ two" in at1.stdout)
+        check("attach: an ended job's conversation continues in a fork", at2.returncode == 0 and "continuing in" in at2.stdout and "    └ three" in at2.stdout)
         # a background job, then stop it
         job = subprocess.run([coder, "run", "$ sleep 60", "--engine", "echo", "--detach"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         jid = job.stdout.strip()
@@ -275,6 +295,27 @@ def verbs(check):
               and posted.startswith("issue comment 7 -R o/r --body **Coder** finished in") and "gh-ok" in posted)
         g4 = grouter()
         check("github: the Router's own comment is not an event", g4 == [])
+        # coder policy and coder watch: sources are edited by name; a watched Thread's events are addressed to the agent
+        def cmd(*a, e=None):
+            return subprocess.run([coder, *a], cwd=REPO, env=e or genv, capture_output=True, text=True, timeout=120)
+        w1 = cmd("watch", "github:p/q#3")
+        pol = json.loads(cmd("policy", "list", "--json").stdout)
+        check("watch: a GitHub Thread's repository becomes a source that admits only the gh login",
+              w1.returncode == 0 and pol.get("github:p/q") == {"mode": "explicit_requests_only", "authors": ["alice"], "channel": "issue"})
+        pa = cmd("policy", "add", "local", "--mode", "explicit_requests_only", "--authors", "me", "--engine", "echo")
+        cmd("trigger", "$ echo watched", "--thread", "w")
+        def lrouter():
+            r = cmd("router", "--once", "--json")
+            return [l for l in (json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")) if l.get("source") == "local" and l.get("thread") == "w"]
+        before = lrouter()
+        cmd("watch", "w")
+        cmd("trigger", "$ echo watched", "--thread", "w")
+        after = lrouter()
+        check("watch: an unaddressed event on a watched Thread starts a worker", pa.returncode == 0
+              and [l["fate"] for l in before] == ["dropped: not addressed to the agent"] and [l["fate"] for l in after] == ["addressed to the agent: new worker"])
+        cmd("policy", "rm", "local")
+        bad = cmd("policy", "add", "x", "--mode", "loud")
+        check("policy: rm removes a source; an unknown mode is refused", "local" not in json.loads(cmd("policy", "list", "--json").stdout) and bad.returncode == 2)
         # no --engine and no System One key: the default engine, and the log says why
         bare = dict(env, PATH="/usr/bin:/bin")
         for k in ("BASETEN_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):
@@ -283,6 +324,10 @@ def verbs(check):
         rl = [json.loads(l) for l in routed.stdout.splitlines() if l.startswith("{")]
         check("run without --engine or a key: the default, and why", len(rl) > 1 and rl[1]["kind"] == "route" and not rl[1]["ok"]
               and rl[1]["ran"] == "microcoder" and "System One key" in rl[1]["text"])
+        bn = subprocess.run([coder, "bench", "checks", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=600)
+        br = json.loads(bn.stdout) if bn.returncode == 0 else {}
+        check("bench: a suite runs and its report is kept", br.get("passed") is True and "passed, 0 failed" in br.get("last", "")
+              and len(os.listdir(os.path.join(home, ".openagents", "coder", "bench"))) == 1)
         bad = subprocess.run([coder, "status", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("status of an unknown ID exits 6", bad.returncode == 6)
     finally:

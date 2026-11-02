@@ -6,6 +6,8 @@
 //   openagents coder run "TASK" [--json]   one task; exits 0 finished, 1 failed, 130 stopped
 //   openagents coder ls | status ID | log ID | stop ID [--json]
 //   openagents coder fork ID "TASK" [--at TURN] | route "TASK" | run "TASK" --detach
+//   openagents coder attach ID ["MESSAGE"] | replay ID | bench [SUITE]
+//   openagents coder trigger "TEXT" | router | watch THREAD | policy list|add|rm
 // Sessions are in ~/.openagents/coder/sessions, one JSON-lines file each.
 
 cxproc_exec :: (h: int) -> int #foreign;
@@ -19,6 +21,11 @@ coder_usage :: () {
   print("%\n", "  coder run \"TASK\" --detach          a background job: prints its ID and returns");
   print("%\n", "  coder fork ID \"TASK\" [--at TURN]   a new session carrying ID's turns");
   print("%\n", "  coder stop ID                      stop a running session");
+  print("%\n", "  coder attach ID [\"MESSAGE\"]        follow a session; a message becomes the job's next turn");
+  print("%\n", "  coder replay ID                    rebuild every request from the log and compare bytes");
+  print("%\n", "  coder trigger \"TEXT\" [--thread T] [--to-agent] | router [--once]   the Router (book chapters 17, 20)");
+  print("%\n", "  coder watch THREAD | policy list|add|rm   what the Router acts on");
+  print("%\n", "  coder bench [SUITE]                run a suite (harness, checks, smoke) and report it");
   print("%\n", "  coder ls                           sessions, newest first");
   print("%\n", "  coder status ID                    one session's state (ID may be a prefix)");
   print("%\n", "  coder log ID                       one session's log");

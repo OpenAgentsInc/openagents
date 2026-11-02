@@ -121,6 +121,9 @@ In the live check, the Router read six hours of comments on this repository
 and dropped each one with `dropped: author not allowed`, because that
 source's author list allowed no one. A second pass found nothing new.
 
+`coder policy add` writes these entries, and `coder watch THREAD` makes
+every later event on a Thread addressed to the agent (chapter 23).
+
 ### Sources and the fast path
 
 Each source has a policy in `~/.openagents/coder/router/sources.json`:

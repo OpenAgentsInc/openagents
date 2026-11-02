@@ -160,6 +160,16 @@ cs_text :: (a: [] App, kind: string, key: string, text: string) {
   cs_put(a, n);
 }
 
+// The digest and length of what a turn sent its engine.
+cs_request :: (a: [] App, sent: string) {
+  hb: [64] u8; h := cd_sha256_hex(sent, hb[..]);
+  o := a[0].log[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"request\",\"sha256\":"); n = json_write_string(o, n, h);
+  n = json_raw(o, n, ",\"bytes\":"); n = json_write_int(o, n, sent.count);
+  n = json_raw(o, n, "}");
+  cs_put(a, n);
+}
+
 cs_user :: (a: [] App, text: string) { a[0].log[0].nreply = 0; cs_text(a, "user", "text", text); }
 cs_agent :: (a: [] App, engine: int) { cs_text(a, "agent", "engine", cd_engine_name(engine)); }
 cs_tool :: (a: [] App, label: string) { cs_reply_flush(a); cs_text(a, "tool", "label", label); }

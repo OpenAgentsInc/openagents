@@ -477,13 +477,16 @@ Coder is the Worker that takes one repository task to a pull request
 ([the split](../../coder/book/PLAN.md#openagents-and-coder)).
 
 Shipped 2026-11-02: `run` (with `--detach`), `ls`, `status`, `log`, `stop`,
-`fork` and `route`
+`fork`, `route`, `attach`, `replay`, `bench`, `trigger`, `router`, `watch`
+and `policy`
 (`apps/openagents-cli/coder.coax` runs `coder/tui/coder.sh`, which owns the
 verbs). Sessions are JSON-lines files in `~/.openagents/coder/sessions`. `run`
 exits 0 when the task finished, 1 when it failed and 130 when it was stopped;
 `status`, `log`, `stop` and `fork` exit 6 for an unknown ID. Without
 `--engine`, `run` asks System One which engine to use (`route` prints only
-that decision). `--on` isn't there yet. The other verbs are still planned.
+that decision). `attach`, `replay` and `bench` run locally too, and so do
+`watch` and `policy`, through the local Router (`coder router`, with `coder
+trigger` for events). `daemon` and `--on` aren't there yet.
 
 | Verb | What it does | Needs a server |
 | --- | --- | --- |
@@ -495,8 +498,8 @@ that decision). `--on` isn't there yet. The other verbs are still planned.
 | `coder stop ID` | stop a task and its tools | no |
 | `coder fork ID [--at TURN]` | a new task from a turn boundary | no |
 | `coder replay ID` | rebuild every request from the log and compare bytes | no |
-| `coder watch THREAD` | subscribe Coder to a Thread such as `github:owner/repo#123` | yes |
-| `coder policy list\|add\|rm` | trigger policies for acting without being asked | yes |
+| `coder watch THREAD` | subscribe Coder to a Thread such as `github:owner/repo#123` | no: the local Router |
+| `coder policy list\|add\|rm` | trigger policies for acting without being asked | no: the local Router |
 | `coder daemon` | attach this machine as an execution environment | yes |
 | `coder bench SUITE` | run a harness suite and report it | no |
 
