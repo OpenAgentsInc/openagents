@@ -1,0 +1,44 @@
+{
+  "schema": "aethyr.beacon.fixture-alias-final-gates.v1",
+  "status": "pass",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "source_sha256": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/lib/pylon/beacon.coax": "2c49cb3aab76f594dfab68f1e7a7e18c917b584cdfb2c9e35bcba0875cce334a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/lib/pylon/template.coax": "23e447bd6f3c7c82f64b933b37826801d881c4b82fdfdb4861af82bce4120754",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_probe.coax": "889500770d1f84e5840a8f0e4c89ea8795f6f0c0f84fce3bbbfa392726ef3eda",
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_checks.coax": "214f7def96b01117d9b216606bbe3f5a3e69246db5626e618fe5bb30d7494f37"
+  },
+  "source_changes": [],
+  "results": [
+    {
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+        "test",
+        "psionic/lib/pylon/beacon.coax",
+        "--library",
+        "--evidence",
+        "/tmp/aethyr-ch11-beacon-alias/final/checks.evidence.json"
+      ],
+      "returncode": 0,
+      "seconds": 0.701
+    },
+    {
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+        "mutate",
+        "psionic/lib/pylon/beacon.coax",
+        "--library",
+        "--root-only",
+        "--jobs",
+        "4",
+        "--evidence",
+        "/tmp/aethyr-ch11-beacon-alias/final/mutation.evidence.json"
+      ],
+      "returncode": 0,
+      "seconds": 20.046
+    }
+  ],
+  "seconds": 20.749,
+  "scope": "Productbeacon functions unchanged; selected fixture owner corrected. Full imported baseline and root-entry mutations run without equivalence marks."
+}

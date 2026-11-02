@@ -1,0 +1,1 @@
+{"status": "passed", "checks": 46, "mutants": 839, "killed": 839, "native_status": "reused_identical_generated_inputs", "seconds": 21.373, "source_changes": []}

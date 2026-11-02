@@ -1,0 +1,7 @@
+FAIL #test the envelope refusals: kind, tags, marker, digest, expiration and auth (11 ms)
+psionic/lib/pylon/beacon.coax:120:5: error[E0406]: assertion failed
+      #assert pb_read(30200,PB_KEY,good,PB_CONTENT,PB_Y).code==PbCode.digest && pb_read(30200,PB_KEY,good,PB_CONTENT,"1111").code==PbCode.digest;
+      ^
+  note: in #test the envelope refusals: kind, tags, marker, digest, expiration and auth
+1 of 672 checks (--only 'the envelope refusals: kind, tags, marker, digest, expiration and auth'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,46 @@
+{
+  "label": "1fac",
+  "scope": "bare",
+  "command": [
+    "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+    "test",
+    "psionic/lib/pylon/beacon.coax",
+    "--library",
+    "--run-steps",
+    "128000",
+    "--only",
+    "the envelope refusals: kind, tags, marker, digest, expiration and auth",
+    "--steps",
+    "400000000",
+    "--evidence",
+    "/tmp/aethyr-ch11-beacon-alias/1fac-bare.evidence.json"
+  ],
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_changed": false,
+  "returncode": 1,
+  "seconds": 0.117,
+  "source_sha256": {
+    "psionic/lib/pylon/beacon.coax": "b248a658ec9559da08105f12110bb3a232332908575e134114d027425325d839",
+    "psionic/lib/pylon/template.coax": "23e447bd6f3c7c82f64b933b37826801d881c4b82fdfdb4861af82bce4120754",
+    "coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046"
+  },
+  "source_changes": [],
+  "claims": [
+    {
+      "kind": "#test",
+      "name": "the envelope refusals: kind, tags, marker, digest, expiration and auth",
+      "outcome": "counterexample",
+      "at": {
+        "file": "psionic/lib/pylon/beacon.coax",
+        "line": 120,
+        "col": 5
+      },
+      "cases": 1,
+      "steps": 776034,
+      "code": "E0406",
+      "message": "assertion failed"
+    }
+  ]
+}

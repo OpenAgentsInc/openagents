@@ -1,0 +1,209 @@
+{
+  "schema": "psionic.beacon.alias-parity.v1",
+  "status": "passed",
+  "root": "/Users/christopherdavid/work/openagents-pylon-beacon-alias",
+  "compiler": "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+  "commands": [
+    {
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+        "test",
+        "psionic/tests/pylon/beacon_alias_checks.coax",
+        "--library",
+        "--evidence",
+        "/private/tmp/psionic-beacon-alias-main-qualified/checks.evidence.json"
+      ],
+      "returncode": 0,
+      "seconds": 0.683,
+      "log": "checks.log",
+      "stdout": "ok   #test a borrowed beacon tag view sees scratch writes while a separate owner stays stable (1 case, 205505 steps, 3 ms)\nok   #test the chapter-24 beacon content is JCS-ordered and exact (1 case, 238351 steps, 2 ms)\nok   #test the template carries d, t, x, expiration and the owner's auth (1 case, 1969768 steps, 26 ms)\nok   #test the reader admits the written beacon and reports what routes on it (1 case, 415180 steps, 5 ms)\nok   #test the envelope refusals: kind, tags, marker, digest, expiration and auth (1 case, 1958114 steps, 27 ms)\nok   #test content fields 0-9 refuse out of range values (1 case, 1489978 steps, 20 ms)\nok   #test content fields 10-19 refuse out of range values (1 case, 1342746 steps, 18 ms)\nok   #test content fields 20-29 refuse out of range values (1 case, 1686954 steps, 22 ms)\nok   #test content fields 30-39 refuse out of range values (1 case, 1400027 steps, 19 ms)\nok   #test content fields 40-49 refuse out of range values (1 case, 1362486 steps, 18 ms)\nok   #test content that is not one object, or lacks a field (1 case, 2886165 steps, 39 ms)\nok   #test list bounds: 16 services, 16 settlements, 8 pools (1 case, 2090018 steps, 29 ms)\nok   #test slugs, models, labels and the signer at their byte bounds (1 case, 3543571 steps, 49 ms)\nok   #test content edges that a beacon may carry (1 case, 3010318 steps, 42 ms)\nok   #test served identities: a name, then sha256 or gguf-tensors digests (1 case, 14712 steps, 0 ms)\nok   #test hardware classes follow NIP-PYLON's bands (1 case, 1331 steps, 0 ms)\nok   #forall freshness: future, stale, rollback and newer by the reader's clock (12 cases, 718 steps, 0 ms)\nok   #test freshness at its exact edges (1 case, 577 steps, 0 ms)\nok   #test the lifecycle: start, drain, stop, restart (1 case, 281 steps, 0 ms)\nok   #test the republish schedule: changes at once, refreshes inside 60..240 s, never after offline (1 case, 1316 steps, 0 ms)\nok   #test small helpers (1 case, 926 steps, 0 ms)\nok   #test a template is the five unsigned fields in NIP-01 order (1 case, 20355 steps, 0 ms)\nok   #test hex keys are exactly 64 lowercase digits (1 case, 5319 steps, 0 ms)\nok   #test the tag reader counts a name and returns its first tag's values (1 case, 78826 steps, 1 ms)\nok   #test a raw value is the exact bytes of one value and the reader moves past it (1 case, 6330 steps, 0 ms)\nok   #test the pinned JSONTestSuite cases: every y_ parses, every n_ is refused (1 case, 249087 steps, 4 ms)\nok   #test tokens come with their byte ranges, keys marked (1 case, 5481 steps, 0 ms)\nok   #test limits: depth 16, the input and a string's length; a refusal sticks (1 case, 8336362 steps, 111 ms)\nok   #test UTF-8 inside strings, byte by byte (1 case, 4456 steps, 0 ms)\nok   #test unescaping: every escape, surrogate pairs, refusal of lone ones and of what doesn't fit (1 case, 4576 steps, 0 ms)\nok   #test bounded starts raise the input and string limits (1 case, 8324023 steps, 110 ms)\nok   #test integers within 2^53, and nothing else (1 case, 4092 steps, 0 ms)\nok   #test the writer escapes as NIP-01 does, appends, and refuses what doesn't fit (1 case, 5557 steps, 0 ms)\nok   #test reused parser state is reset and refusal ranges remain observable (1 case, 730 steps, 0 ms)\nok   #test original input budget is inclusive without parsing a megabyte (1 case, 1048837 steps, 16 ms)\nok   #forall hex and decimal classification on every byte (256 cases, 19068 steps, 0 ms)\nok   #test token ranges, whitespace, scalar skip and malformed containers (1 case, 10131 steps, 0 ms)\nok   #test unescape helper boundaries are explicit even before parser admission (1 case, 12906 steps, 0 ms)\nok   #test writer control bytes, exact output and sticky failures (1 case, 1785 steps, 0 ms)\nok   #test fixed Unicode encoding boundaries match independent UTF-8 fixtures (1 case, 4679 steps, 0 ms)\nok   #test UTF-8 width at raw byte boundaries and truncated spans (1 case, 5332 steps, 0 ms)\nok   #test minimal numbers and parser failure metadata remain exact (1 case, 9514 steps, 0 ms)\nok   #test raw string budget includes a nonzero opening offset (1 case, 4391851 steps, 56 ms)\nok   #test truncated strings refuse at the original byte and control writes stay bounded (1 case, 2989 steps, 0 ms)\nok   #test short Unicode escapes and paired low surrogates cannot bypass admission (1 case, 640 steps, 0 ms)\n45 checks, 45 passed, 0 failed\n"
+    },
+    {
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+        "mutate",
+        "psionic/lib/pylon/beacon.coax",
+        "--library",
+        "--root-only",
+        "--jobs",
+        "4",
+        "--evidence",
+        "/private/tmp/psionic-beacon-alias-main-qualified/mutation.evidence.json"
+      ],
+      "returncode": 0,
+      "seconds": 19.858,
+      "log": "mutation.log",
+      "stdout": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n839 mutants, 839 killed, 0 survived\n"
+    },
+    {
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+        "c",
+        "psionic/tests/pylon/beacon_alias_probe.coax",
+        "--library",
+        "--header",
+        "/private/tmp/psionic-beacon-alias-main-qualified/Probe.h"
+      ],
+      "returncode": 0,
+      "seconds": 0.772,
+      "log": "emission.log",
+      "stdout": ""
+    }
+  ],
+  "seconds": 21.373,
+  "source_sha256": {
+    "psionic/tests/pylon/beacon_alias_checks.coax": "214f7def96b01117d9b216606bbe3f5a3e69246db5626e618fe5bb30d7494f37",
+    "psionic/tests/pylon/beacon_alias_probe.coax": "889500770d1f84e5840a8f0e4c89ea8795f6f0c0f84fce3bbbfa392726ef3eda",
+    "psionic/lib/pylon/beacon.coax": "2c49cb3aab76f594dfab68f1e7a7e18c917b584cdfb2c9e35bcba0875cce334a",
+    "psionic/lib/pylon/template.coax": "23e447bd6f3c7c82f64b933b37826801d881c4b82fdfdb4861af82bce4120754",
+    "coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+  },
+  "source_changes": [],
+  "generated_c_sha256": "a8a9312ce5e374ba4caf816abab74db6a23b4f6c506101addb160ed09efc6c05",
+  "generated_header_sha256": "8d077d76f024fb954c1d39f3eebb1e366910e665e5a07eab319a0fce251a8877",
+  "checks": 46,
+  "mutation": {
+    "outcome": "passed",
+    "mutants": 839,
+    "evaluated": 839,
+    "killed": 839,
+    "survived": [],
+    "marked_equivalent": 0,
+    "unreached": "",
+    "scope": "root-only",
+    "shard": null,
+    "merged_records": 0,
+    "scheduling": "full",
+    "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+  },
+  "native": {
+    "status": "reused_identical_generated_inputs",
+    "prior_record": "/private/tmp/aethyr-ch11-beacon-alias/native-final.json",
+    "prior_record_sha256": "7657ed3fe233fb0d03d7b25ad229004ce992b50f67297e1d346faf4e714c1ae3",
+    "modes": [
+      {
+        "mode": "debug",
+        "build": {
+          "command": [
+            "/usr/bin/cc",
+            "-std=c11",
+            "-ffp-contract=off",
+            "-fno-fast-math",
+            "-O0",
+            "-I/tmp/aethyr-ch11-beacon-alias/native-final",
+            "/tmp/aethyr-ch11-beacon-alias/native-final/Probe.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c",
+            "-lm",
+            "-o",
+            "/tmp/aethyr-ch11-beacon-alias/native-final/debug-probe"
+          ],
+          "returncode": 0,
+          "seconds": 0.16,
+          "stdout": ""
+        },
+        "run": {
+          "command": [
+            "/tmp/aethyr-ch11-beacon-alias/native-final/debug-probe"
+          ],
+          "returncode": 0,
+          "seconds": 0.268,
+          "stdout": "4 2 4 148 148 44 93\n"
+        },
+        "observed": [
+          4,
+          2,
+          4,
+          148,
+          148,
+          44,
+          93
+        ]
+      },
+      {
+        "mode": "optimized",
+        "build": {
+          "command": [
+            "/usr/bin/cc",
+            "-std=c11",
+            "-ffp-contract=off",
+            "-fno-fast-math",
+            "-O2",
+            "-I/tmp/aethyr-ch11-beacon-alias/native-final",
+            "/tmp/aethyr-ch11-beacon-alias/native-final/Probe.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c",
+            "-lm",
+            "-o",
+            "/tmp/aethyr-ch11-beacon-alias/native-final/optimized-probe"
+          ],
+          "returncode": 0,
+          "seconds": 0.427,
+          "stdout": ""
+        },
+        "run": {
+          "command": [
+            "/tmp/aethyr-ch11-beacon-alias/native-final/optimized-probe"
+          ],
+          "returncode": 0,
+          "seconds": 0.189,
+          "stdout": "4 2 4 148 148 44 93\n"
+        },
+        "observed": [
+          4,
+          2,
+          4,
+          148,
+          148,
+          44,
+          93
+        ]
+      },
+      {
+        "mode": "sanitized",
+        "build": {
+          "command": [
+            "/usr/bin/cc",
+            "-std=c11",
+            "-ffp-contract=off",
+            "-fno-fast-math",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-omit-frame-pointer",
+            "-I/tmp/aethyr-ch11-beacon-alias/native-final",
+            "/tmp/aethyr-ch11-beacon-alias/native-final/Probe.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c",
+            "-lm",
+            "-o",
+            "/tmp/aethyr-ch11-beacon-alias/native-final/sanitized-probe"
+          ],
+          "returncode": 0,
+          "seconds": 0.628,
+          "stdout": ""
+        },
+        "run": {
+          "command": [
+            "/tmp/aethyr-ch11-beacon-alias/native-final/sanitized-probe"
+          ],
+          "returncode": 0,
+          "seconds": 0.293,
+          "stdout": "4 2 4 148 148 44 93\n"
+        },
+        "observed": [
+          4,
+          2,
+          4,
+          148,
+          148,
+          44,
+          93
+        ]
+      }
+    ],
+    "scope": "Exact C,header and driver bytes match the prior three native modes; no native execution repeated."
+  },
+  "scope": "The original beacon fixture alone gains a separate baseline owner. Existing product procedures/exports and every assertion remain unchanged. CT uses the fixed full imported check suite plus the independent alias witness. Native uses normal checked Coax C; optimized means host-C O2,not Coax--release."
+}

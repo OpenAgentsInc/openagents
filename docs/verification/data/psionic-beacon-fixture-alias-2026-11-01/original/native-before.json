@@ -1,0 +1,189 @@
+{
+  "schema": "aethyr.beacon.alias-native-ct.v1",
+  "status": "confirmed_preexisting_fixture_alias",
+  "scope": "NormalC from308 preserves borrowed-view aliasing and agrees with1fac CT.308 CT snapshots the old string and fails the independent alias witness. Productbeacon functions are unchanged.",
+  "source_sha256": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/lib/pylon/beacon.coax": "b248a658ec9559da08105f12110bb3a232332908575e134114d027425325d839",
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/lib/pylon/template.coax": "23e447bd6f3c7c82f64b933b37826801d881c4b82fdfdb4861af82bce4120754",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_probe.coax": "889500770d1f84e5840a8f0e4c89ea8795f6f0c0f84fce3bbbfa392726ef3eda",
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_checks.coax": "214f7def96b01117d9b216606bbe3f5a3e69246db5626e618fe5bb30d7494f37",
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c": "ab918152404504f6eaae6595acd78ea21c95aaca64a9d194f7cc08514fdea26d",
+    "/tmp/aethyr-ch11-beacon-alias/native-before/Probe.c": "0450156a428f3817dd6961fab86d346c2bf3cbd7d33e1923660a280e44ad2641",
+    "/tmp/aethyr-ch11-beacon-alias/native-before/Probe.h": "8d077d76f024fb954c1d39f3eebb1e366910e665e5a07eab319a0fce251a8877"
+  },
+  "source_changes": [],
+  "native_emission_compiler": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "native_emission": "coax c probe --library --header Probe.h; original308 authority checks passed before emission",
+  "native_modes": [
+    {
+      "mode": "debug",
+      "build": {
+        "command": [
+          "/usr/bin/cc",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-O0",
+          "-I/tmp/aethyr-ch11-beacon-alias/native-before",
+          "/tmp/aethyr-ch11-beacon-alias/native-before/Probe.c",
+          "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c",
+          "-lm",
+          "-o",
+          "/tmp/aethyr-ch11-beacon-alias/native-before/debug-probe"
+        ],
+        "returncode": 0,
+        "expected_returncode": 0,
+        "seconds": 0.176,
+        "stdout": ""
+      },
+      "run": {
+        "command": [
+          "/tmp/aethyr-ch11-beacon-alias/native-before/debug-probe"
+        ],
+        "returncode": 0,
+        "expected_returncode": 0,
+        "seconds": 0.268,
+        "stdout": "4 2 4 148 148 44 93\n"
+      },
+      "observed": [
+        4,
+        2,
+        4,
+        148,
+        148,
+        44,
+        93
+      ]
+    },
+    {
+      "mode": "optimized",
+      "build": {
+        "command": [
+          "/usr/bin/cc",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-O2",
+          "-I/tmp/aethyr-ch11-beacon-alias/native-before",
+          "/tmp/aethyr-ch11-beacon-alias/native-before/Probe.c",
+          "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c",
+          "-lm",
+          "-o",
+          "/tmp/aethyr-ch11-beacon-alias/native-before/optimized-probe"
+        ],
+        "returncode": 0,
+        "expected_returncode": 0,
+        "seconds": 0.437,
+        "stdout": ""
+      },
+      "run": {
+        "command": [
+          "/tmp/aethyr-ch11-beacon-alias/native-before/optimized-probe"
+        ],
+        "returncode": 0,
+        "expected_returncode": 0,
+        "seconds": 0.233,
+        "stdout": "4 2 4 148 148 44 93\n"
+      },
+      "observed": [
+        4,
+        2,
+        4,
+        148,
+        148,
+        44,
+        93
+      ]
+    },
+    {
+      "mode": "sanitized",
+      "build": {
+        "command": [
+          "/usr/bin/cc",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-O1",
+          "-g",
+          "-fsanitize=address,undefined",
+          "-fno-omit-frame-pointer",
+          "-I/tmp/aethyr-ch11-beacon-alias/native-before",
+          "/tmp/aethyr-ch11-beacon-alias/native-before/Probe.c",
+          "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c",
+          "-lm",
+          "-o",
+          "/tmp/aethyr-ch11-beacon-alias/native-before/sanitized-probe"
+        ],
+        "returncode": 0,
+        "expected_returncode": 0,
+        "seconds": 0.63,
+        "stdout": ""
+      },
+      "run": {
+        "command": [
+          "/tmp/aethyr-ch11-beacon-alias/native-before/sanitized-probe"
+        ],
+        "returncode": 0,
+        "expected_returncode": 0,
+        "seconds": 0.308,
+        "stdout": "4 2 4 148 148 44 93\n"
+      },
+      "observed": [
+        4,
+        2,
+        4,
+        148,
+        148,
+        44,
+        93
+      ]
+    }
+  ],
+  "ct": [
+    {
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "test",
+        "psionic/tests/pylon/beacon_alias_checks.coax",
+        "--library",
+        "--only",
+        "a borrowed beacon tag view sees scratch writes while a separate owner stays stable",
+        "--evidence",
+        "/tmp/aethyr-ch11-beacon-alias/308-alias-witness.evidence.json"
+      ],
+      "returncode": 1,
+      "expected_returncode": 1,
+      "seconds": 0.105,
+      "stdout": "FAIL #test a borrowed beacon tag view sees scratch writes while a separate owner stays stable (3 ms)\npsionic/tests/pylon/beacon_alias_checks.coax:7:5: error[E0406]: assertion failed\n      #assert witness.borrowed_code == cast(int)PbCode.tags;\n      ^\n  note: in #test a borrowed beacon tag view sees scratch writes while a separate owner stays stable\n1 of 45 checks (--only 'a borrowed beacon tag view sees scratch writes while a separate owner stays stable'), 0 passed, 1 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n",
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "evidence": "/tmp/aethyr-ch11-beacon-alias/308-alias-witness.evidence.json"
+    },
+    {
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+        "test",
+        "psionic/tests/pylon/beacon_alias_checks.coax",
+        "--library",
+        "--only",
+        "a borrowed beacon tag view sees scratch writes while a separate owner stays stable",
+        "--evidence",
+        "/tmp/aethyr-ch11-beacon-alias/1fac-alias-witness.evidence.json"
+      ],
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 0.061,
+      "stdout": "ok   #test a borrowed beacon tag view sees scratch writes while a separate owner stays stable (1 case, 205505 steps, 3 ms)\n1 of 45 checks (--only 'a borrowed beacon tag view sees scratch writes while a separate owner stays stable'), 1 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n",
+      "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+      "evidence": "/tmp/aethyr-ch11-beacon-alias/1fac-alias-witness.evidence.json"
+    }
+  ],
+  "compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n",
+  "expected_literal_tags": "[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"expiration\",\"1791400300\"]]",
+  "expected_count": 148,
+  "expected_statuses": {
+    "before": "digest",
+    "borrowed_after_overwrite": "tags",
+    "separate_owner": "digest"
+  }
+}

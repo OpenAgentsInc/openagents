@@ -1,0 +1,64 @@
+{
+  "schema": "psionic.pylon-beacon-fixture-alias.v1",
+  "status": "qualified",
+  "base_commit": "1b4de66cce03cd35e972fe373cedd079e7540d9f",
+  "source": "psionic/lib/pylon/beacon.coax",
+  "source_sha256_before": "b248a658ec9559da08105f12110bb3a232332908575e134114d027425325d839",
+  "source_sha256_after": "2c49cb3aab76f594dfab68f1e7a7e18c917b584cdfb2c9e35bcba0875cce334a",
+  "production_functions_unchanged": true,
+  "existing_assertions_preserved": true,
+  "patch": "data/psionic-beacon-fixture-alias-2026-11-01/beacon-test-only.patch",
+  "cause": "The original good string borrowed mutable tags[512]. Duplicate-tag cases rewrote that owner before the wrong-digest assertions. Its 148-byte view then ended in a comma instead of a closing bracket, so pb_read correctly reported tags before reaching digest validation. A separate good_tags owner preserves the intended baseline.",
+  "language_contract": "coax/spec.md:307-312 says cast(string) bytes[..] borrows the byte view. Copying a string copies its descriptor. The string cannot write through that descriptor; writes through the owner remain observable.",
+  "original_contexts": {
+    "308_bare": "passed_original_fixture",
+    "308_grid": "passed_original_fixture",
+    "1fac_bare": "failed_original_fixture_at120",
+    "1fac_grid": "failed_original_fixture_at120",
+    "evidence": "data/psionic-beacon-fixture-alias-2026-11-01/original/diagnosis.json"
+  },
+  "independent_witness": {
+    "literal_tag_bytes": 148,
+    "before": "digest",
+    "after_scratch_rewrite": "tags",
+    "separate_owner": "digest",
+    "borrowed_tail": 44,
+    "stable_tail": 93,
+    "native_modes": [
+      "debug",
+      "C-O2",
+      "ASan+UBSan"
+    ],
+    "old_CT_witness": "308 CT does not observe the owner rewrite and fails the new borrow witness.",
+    "current_CT_witness": "1fac CT agrees with the native execution.",
+    "original_record": "data/psionic-beacon-fixture-alias-2026-11-01/original/native-before.json"
+  },
+  "current_qualification": {
+    "record": "data/psionic-beacon-fixture-alias-2026-11-01/current-main/qualification.json",
+    "ordinary_checks": 45,
+    "authority_coverage_claim": 1,
+    "root_mutants": 839,
+    "killed": 839,
+    "survivors": 0,
+    "equivalence_marks": 0,
+    "seconds": 21.373,
+    "native_reuse": "The generated C, header and driver match the retained final 1fac native proof byte for byte. Its debug, C-O2 and ASan/UBSan results are reused without execution.",
+    "source_changes": []
+  },
+  "compiler": {
+    "binary": "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "qualified_dependency": "8008dcc0386f7ba819faa7b1bc8c4454ed460fae",
+    "compiler_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "qualified_bootstrap_fingerprint": "06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039",
+    "current_checkout_bootstrap_fingerprint": "b15bec693f91050e59f2b8d5ec4743a0e4dc9397bfb24ea76fb22719095db6a9",
+    "scope": "The gate uses the external1fac artifact qualified at commit8008dcc038. At the measured1b4de66cce checkout its C++/Coax source digest still matched. Subsequent rebase preserves every module input, but adds upstream Metal-compute emitter and installer changes. This record does not claim a bootstrap, installation or qualification of that newly changed compiler implementation.",
+    "qualification_checkout": "1b4de66cce03cd35e972fe373cedd079e7540d9f"
+  },
+  "reproduce": [
+    "python3 psionic/tests/pylon/check_beacon_alias.py --coax /absolute/path/to/qualified/coax --out /tmp/beacon-alias-new"
+  ],
+  "scope": "Only the existing test owner changes in the product library. No beacon policy, protocol, export or runtime code changes. The original failures and differing compiler observations remain retained. This is not a renderer or full Psionic release result.",
+  "evidence_index": "data/psionic-beacon-fixture-alias-2026-11-01/evidence-index.json",
+  "post_rebase": "data/psionic-beacon-fixture-alias-2026-11-01/post-rebase.json"
+}

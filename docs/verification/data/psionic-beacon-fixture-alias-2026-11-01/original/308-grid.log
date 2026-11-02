@@ -1,0 +1,3 @@
+ok   #test the envelope refusals: kind, tags, marker, digest, expiration and auth (1 case, 1957601 steps, 29 ms)
+1 of 672 checks (--only 'the envelope refusals: kind, tags, marker, digest, expiration and auth'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

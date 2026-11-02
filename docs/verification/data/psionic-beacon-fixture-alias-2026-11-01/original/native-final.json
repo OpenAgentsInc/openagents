@@ -1,0 +1,150 @@
+{
+  "schema": "aethyr.beacon.final-native-parity.v1",
+  "status": "pass",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "source_sha256": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/lib/pylon/beacon.coax": "2c49cb3aab76f594dfab68f1e7a7e18c917b584cdfb2c9e35bcba0875cce334a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/lib/pylon/template.coax": "23e447bd6f3c7c82f64b933b37826801d881c4b82fdfdb4861af82bce4120754",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_probe.coax": "889500770d1f84e5840a8f0e4c89ea8795f6f0c0f84fce3bbbfa392726ef3eda",
+    "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c": "ab918152404504f6eaae6595acd78ea21c95aaca64a9d194f7cc08514fdea26d"
+  },
+  "source_changes": [],
+  "emission": {
+    "command": [
+      "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax",
+      "c",
+      "psionic/tests/pylon/beacon_alias_probe.coax",
+      "--library",
+      "--header",
+      "/tmp/aethyr-ch11-beacon-alias/native-final/Probe.h"
+    ],
+    "returncode": 0,
+    "seconds": 0.802,
+    "stdout": ""
+  },
+  "generated_c_sha256": "a8a9312ce5e374ba4caf816abab74db6a23b4f6c506101addb160ed09efc6c05",
+  "generated_header_sha256": "8d077d76f024fb954c1d39f3eebb1e366910e665e5a07eab319a0fce251a8877",
+  "native_modes": [
+    {
+      "mode": "debug",
+      "build": {
+        "command": [
+          "/usr/bin/cc",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-O0",
+          "-I/tmp/aethyr-ch11-beacon-alias/native-final",
+          "/tmp/aethyr-ch11-beacon-alias/native-final/Probe.c",
+          "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c",
+          "-lm",
+          "-o",
+          "/tmp/aethyr-ch11-beacon-alias/native-final/debug-probe"
+        ],
+        "returncode": 0,
+        "seconds": 0.16,
+        "stdout": ""
+      },
+      "run": {
+        "command": [
+          "/tmp/aethyr-ch11-beacon-alias/native-final/debug-probe"
+        ],
+        "returncode": 0,
+        "seconds": 0.268,
+        "stdout": "4 2 4 148 148 44 93\n"
+      },
+      "observed": [
+        4,
+        2,
+        4,
+        148,
+        148,
+        44,
+        93
+      ]
+    },
+    {
+      "mode": "optimized",
+      "build": {
+        "command": [
+          "/usr/bin/cc",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-O2",
+          "-I/tmp/aethyr-ch11-beacon-alias/native-final",
+          "/tmp/aethyr-ch11-beacon-alias/native-final/Probe.c",
+          "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c",
+          "-lm",
+          "-o",
+          "/tmp/aethyr-ch11-beacon-alias/native-final/optimized-probe"
+        ],
+        "returncode": 0,
+        "seconds": 0.427,
+        "stdout": ""
+      },
+      "run": {
+        "command": [
+          "/tmp/aethyr-ch11-beacon-alias/native-final/optimized-probe"
+        ],
+        "returncode": 0,
+        "seconds": 0.189,
+        "stdout": "4 2 4 148 148 44 93\n"
+      },
+      "observed": [
+        4,
+        2,
+        4,
+        148,
+        148,
+        44,
+        93
+      ]
+    },
+    {
+      "mode": "sanitized",
+      "build": {
+        "command": [
+          "/usr/bin/cc",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-O1",
+          "-g",
+          "-fsanitize=address,undefined",
+          "-fno-omit-frame-pointer",
+          "-I/tmp/aethyr-ch11-beacon-alias/native-final",
+          "/tmp/aethyr-ch11-beacon-alias/native-final/Probe.c",
+          "/Users/christopherdavid/work/openagents-aethyr-book/psionic/tests/pylon/beacon_alias_native.c",
+          "-lm",
+          "-o",
+          "/tmp/aethyr-ch11-beacon-alias/native-final/sanitized-probe"
+        ],
+        "returncode": 0,
+        "seconds": 0.628,
+        "stdout": ""
+      },
+      "run": {
+        "command": [
+          "/tmp/aethyr-ch11-beacon-alias/native-final/sanitized-probe"
+        ],
+        "returncode": 0,
+        "seconds": 0.293,
+        "stdout": "4 2 4 148 148 44 93\n"
+      },
+      "observed": [
+        4,
+        2,
+        4,
+        148,
+        148,
+        44,
+        93
+      ]
+    }
+  ],
+  "scope": "Actual normal-C emission on the final1fac compiler, checked Coax arithmetic; optimized labels C-O2,not Coax--release. Same independent7word alias observation as the before-native proof and1fac CT witness. Full fixedbeacon CT checks and839-site mutation have separate receipts."
+}

@@ -1,0 +1,5 @@
+psionic/tests/pylon/beacon_alias_probe.coax:15:5: error[E0323]: the result of 'pb_tags_for' (string) is not used
+      pb_tags_for(scratch[..],PB_CONTENT,"1791400300",",[\"expiration\",\"1\"]");
+      ^
+  fix: use it: result := pb_tags_for(...);
+1 error

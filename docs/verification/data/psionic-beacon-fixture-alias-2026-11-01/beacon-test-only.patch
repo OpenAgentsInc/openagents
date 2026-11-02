@@ -1,0 +1,12 @@
+--- before/psionic/lib/pylon/beacon.coax
++++ after/psionic/lib/pylon/beacon.coax
+@@ -103,7 +103,8 @@
+     #assert a.code==PbCode.ok && a.auth && a.owner==PB_OWNER && a.auth_signature=="ab";
+ }
+ #test "the envelope refusals: kind, tags, marker, digest, expiration and auth" {
+-    tags:[512]u8;good:=pb_tags_for(tags[..],PB_CONTENT,"1791400300","");
++    // Keep the baseline owner intact while malformed-tag cases reuse tags.
++    tags:[512]u8;good_tags:[512]u8;good:=pb_tags_for(good_tags[..],PB_CONTENT,"1791400300","");
+     #assert pb_read(30201,PB_KEY,good,PB_CONTENT,PB_X).code==PbCode.kind;
+     #assert pb_read(30200,PB_OWNER,good,PB_CONTENT,PB_X).code==PbCode.provider;
+     #assert pb_read(30200,PB_KEY,"[]",PB_CONTENT,PB_X).code==PbCode.tags && pb_read(30200,PB_KEY,"{",PB_CONTENT,PB_X).code==PbCode.tags;

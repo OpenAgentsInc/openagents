@@ -1,0 +1,3 @@
+ok   #test a borrowed beacon tag view sees scratch writes while a separate owner stays stable (1 case, 205505 steps, 3 ms)
+1 of 45 checks (--only 'a borrowed beacon tag view sees scratch writes while a separate owner stays stable'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

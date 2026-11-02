@@ -1,0 +1,11 @@
+// Test-only observation of the borrowed strings used by the beacon fixtures.
+#load "beacon_alias_probe.coax";
+
+#test "a borrowed beacon tag view sees scratch writes while a separate owner stays stable" {
+    witness := pylon_beacon_alias_probe();
+    #assert witness.before_code == cast(int)PbCode.digest;
+    #assert witness.borrowed_code == cast(int)PbCode.tags;
+    #assert witness.stable_code == cast(int)PbCode.digest;
+    #assert witness.borrowed_count == witness.stable_count && witness.borrowed_count == 148;
+    #assert witness.borrowed_tail == ',' && witness.stable_tail == ']';
+}

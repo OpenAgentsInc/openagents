@@ -1,0 +1,7 @@
+FAIL #test a borrowed beacon tag view sees scratch writes while a separate owner stays stable (3 ms)
+psionic/tests/pylon/beacon_alias_checks.coax:7:5: error[E0406]: assertion failed
+      #assert witness.borrowed_code == cast(int)PbCode.tags;
+      ^
+  note: in #test a borrowed beacon tag view sees scratch writes while a separate owner stays stable
+1 of 45 checks (--only 'a borrowed beacon tag view sees scratch writes while a separate owner stays stable'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

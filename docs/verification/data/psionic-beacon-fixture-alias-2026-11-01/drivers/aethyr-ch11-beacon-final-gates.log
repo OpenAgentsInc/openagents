@@ -1,0 +1,3 @@
+{"command": ["/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax", "test", "psionic/lib/pylon/beacon.coax", "--library", "--evidence", "/tmp/aethyr-ch11-beacon-alias/final/checks.evidence.json"], "returncode": 0, "seconds": 0.701}
+{"command": ["/Users/christopherdavid/work/openagents-aethyr-check-budgets-current/coax/bin/coax", "mutate", "psionic/lib/pylon/beacon.coax", "--library", "--root-only", "--jobs", "4", "--evidence", "/tmp/aethyr-ch11-beacon-alias/final/mutation.evidence.json"], "returncode": 0, "seconds": 20.046}
+PASS
