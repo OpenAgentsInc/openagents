@@ -1,0 +1,36 @@
+toy curve y^2 = x^3 + 7 mod 43, n = 31, G = (2, 12)
+d = 7, k = 10: z = 5 gives (11, 2), z = 6 gives (11, 30)
+k = (z1 - z2) / (s1 - s2) = 10, d = (s1*k - z1) / r = 7
+RFC 6979, key 1, SHA-256("Satoshi Nakamoto")
+h: a0dc65ffca799873cbea0ac274015b9526505daaaed385155425f7337704883e
+K = HMAC_K(V || 00 || x || h): 0b663006e369d6851668b59760c0cfbaa5d09e23e6f916443b3de4d558bf91b7
+V = HMAC_K(V): 616cad1051aebe08197d002dbdb90bdc2bb6b65b3d768c518863056a840c03f0
+K = HMAC_K(V || 01 || x || h): f457c01688026ee0b9236e5c7ff1478007ad0b697855f592efa9468ecf0c1f86
+V = HMAC_K(V): a196437a8f26fbc9e519e4fd4b5d10d62e6a5306c98ca431b96131f403bff4ae
+k = HMAC_K(V): 8f8a276c19f4149656b280621e358cce24f5f52542772691ee69063b74f15d15
+r = x(k*G) mod n: 934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d8
+s = (z + r*d) / k: dbbd3162d46e9f9bef7feb87c16dc13b4f6568a87f4e83f728e2443ba586675c
+s > (n-1)/2: true, so the signer publishes n - s
+ecdsa_sign: true
+r || s: 934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d82442ce9d2b916064108014783e923ec36b49743e2ffa1c4496f01a512aafd9e5
+equals libsecp256k1's: true, verifies (low-S): true
+DER: 3045022100934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d802202442ce9d2b916064108014783e923ec36b49743e2ffa1c4496f01a512aafd9e5
+one nonce for two hashes
+same r: true
+recovered d: 69ec59eaa1f4f2e36b639716b7c30ca86d9a5375c7b38d8918bd9c0ebc80ba64
+equals the key: true
+a nonce below 2^12
+k found after 2748 steps
+recovered d equals the key: true
+tiny-secp256k1 ecdsa.json
+2020 of 2020 equal libsecp256k1's signature, 2020 are low-S
+101 of 101 verify with chapter 19's verifier
+refusals
+Private key == 0: signed false, out untouched true
+Private key >= G: signed false, out untouched true
+Private key >= G: signed false, out untouched true
+Private key >= G: signed false, out untouched true
+31-byte hash: false
+63-byte output: false
+views that overlap: false
+a workspace of two: false

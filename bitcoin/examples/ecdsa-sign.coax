@@ -1,0 +1,187 @@
+// book:begin example
+#load "../../coax/lib/crypto/ecdsa_sign.coax";
+#load "../../coax/lib/crypto/ecdsa_verify.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/ecdsa_sign_vectors.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [160] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+show_scalar :: (label: string, s: ScScalar) {
+  b: [32] u8;
+  if sc_store(s, b[..]) { show(label, b[..]); }
+}
+// Decode hex into out and return the filled part. Every literal here and
+// in the vector table is valid hex, so a decoding error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+bytes_same :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+hex_scalar :: (text: string) -> ScScalar {
+  b: [32] u8;
+  return sc_load(decode(text, b[..])).value;
+}
+// The compressed public key d·G, for the verifier.
+compressed_key :: (d: [] u8, out: [] u8) -> [] u8 {
+  #assert se_encode(smb_multiply_web(sc_load(d).value), SE_COMPRESSED, out) == SE_COMPRESSED;
+  return out[0..<33];
+}
+
+// ---- the toy curve of chapter 19: y^2 = x^3 + 7 over F_43, 31 points.
+TOY_P :: 43;
+TOY_N :: 31;
+Toy :: struct { x: int; y: int; }
+TOY_G :: Toy.{x=2,y=12};
+TOY_INFINITY :: Toy.{x=-1,y=-1};
+toy_mod :: (a: int, m: int) -> int { r := a % m; return ifx r < 0 then r + m else r; }
+toy_inverse :: (a: int, m: int) -> int {
+  r := 1;
+  for i: 0..<m-2 { r = toy_mod(r * a, m); }
+  return r;
+}
+toy_add :: (a: Toy, b: Toy) -> Toy {
+  if a.x < 0 { return b; }
+  if b.x < 0 { return a; }
+  if a.x == b.x && toy_mod(a.y + b.y, TOY_P) == 0 { return TOY_INFINITY; }
+  slope := ifx a.x == b.x then toy_mod(3 * a.x * a.x * toy_inverse(2 * a.y, TOY_P), TOY_P)
+           else toy_mod((b.y - a.y) * toy_inverse(toy_mod(b.x - a.x, TOY_P), TOY_P), TOY_P);
+  x := toy_mod(slope * slope - a.x - b.x, TOY_P);
+  return Toy.{x=x,y=toy_mod(slope * (a.x - x) - a.y, TOY_P)};
+}
+toy_times :: (k: int, p: Toy) -> Toy {
+  r := TOY_INFINITY;
+  for i: 0..<k { r = toy_add(r, p); }
+  return r;
+}
+ToySig :: struct { r: int; s: int; }
+// s = (z + r·d) / k mod n, with r = x(k·G) mod n.
+toy_sign :: (z: int, d: int, k: int) -> ToySig {
+  r := toy_times(k, TOY_G).x % TOY_N;
+  return ToySig.{r=r,s=toy_mod(toy_inverse(k, TOY_N) * (z + r * d), TOY_N)};
+}
+
+// ---- the signing equation without RFC 6979 or low-S, for the attacks.
+// A signer must never take k from anywhere but a nonce rule; these
+// procedures exist to show what goes wrong when it does.
+RawSig :: struct { r: ScScalar; s: ScScalar; }
+raw_sign :: (z: ScScalar, d: ScScalar, k: ScScalar) -> RawSig {
+  x: [32] u8;
+  #assert sf_store(sg_to_affine(smb_multiply_web(k)).value.x, x[..]);
+  r := sc_reduce_bytes(x[..]).value;
+  return RawSig.{r=r,s=sc_mul(sc_inverse(k).value, sc_add(z, sc_mul(r, d)))};
+}
+// Two signatures with one k: k = (z1 - z2) / (s1 - s2), then d = (s1·k - z1) / r.
+reused_key :: (z1: ScScalar, a: RawSig, z2: ScScalar, b: RawSig) -> ScScalar {
+  k := sc_mul(sc_sub(z1, z2), sc_inverse(sc_sub(a.s, b.s)).value);
+  return sc_mul(sc_sub(sc_mul(a.s, k), z1), sc_inverse(a.r).value);
+}
+// A nonce below 2^bits: walk j·G for j = 1, 2, ... until x(j·G) mod n = r,
+// then d = (s·j - z) / r. Returns j, or 0 when no j below the bound fits.
+small_nonce :: (sig: RawSig, bits: int) -> int {
+  point := sg_generator();
+  for j: 1..<(1 << bits) {
+    x: [32] u8;
+    #assert sf_store(sg_to_affine(point).value.x, x[..]);
+    if sc_equal(sc_reduce_bytes(x[..]).value, sig.r) { return j; }
+    point = sg_add(point, sg_generator()).value;
+  }
+  return 0;
+}
+
+SATOSHI_KEY :: "0000000000000000000000000000000000000000000000000000000000000001";
+SATOSHI_SIG :: "934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d82442ce9d2b916064108014783e923ec36b49743e2ffa1c4496f01a512aafd9e5";
+TEST_KEY :: "69ec59eaa1f4f2e36b639716b7c30ca86d9a5375c7b38d8918bd9c0ebc80ba64";
+
+main :: () {
+  // The toy curve: one nonce for two hashes gives the key away.
+  print("toy curve y^2 = x^3 + 7 mod 43, n = 31, G = (2, 12)\n");
+  a := toy_sign(5, 7, 10); b := toy_sign(6, 7, 10);
+  print("d = 7, k = 10: z = 5 gives (%, %), z = 6 gives (%, %)\n", a.r, a.s, b.r, b.s);
+  k := toy_mod((5 - 6) * toy_inverse(toy_mod(a.s - b.s, TOY_N), TOY_N), TOY_N);
+  print("k = (z1 - z2) / (s1 - s2) = %, d = (s1*k - z1) / r = %\n", k, toy_mod((a.s * k - 5) * toy_inverse(a.r, TOY_N), TOY_N));
+
+  // RFC 6979 one step at a time, for the key 1 and SHA-256("Satoshi Nakamoto").
+  print("RFC 6979, key 1, SHA-256(\"Satoshi Nakamoto\")\n");
+  key: [32] u8; hash: [32] u8; text := "Satoshi Nakamoto"; message: [16] u8;
+  for i: 0..<16 { message[i] = text[i]; }
+  #assert sha256_hash_checked(message[..], hash[..], false) == SHA_OK;
+  d := decode(SATOSHI_KEY, key[..]);
+  show("h", hash[..]);
+  w: [1] EcdsaWork;
+  for i: 0..<32 { w[0].hv[i] = 1; w[0].hk[i] = 0; w[0].buf[33+i] = d[i]; w[0].buf[65+i] = hash[i]; }   // h < n
+  ec_step(w[..], 0, 97); show("K = HMAC_K(V || 00 || x || h)", w[0].hk[..]); show("V = HMAC_K(V)", w[0].hv[..]);
+  ec_step(w[..], 1, 97); show("K = HMAC_K(V || 01 || x || h)", w[0].hk[..]); show("V = HMAC_K(V)", w[0].hv[..]);
+  ec_next(w[..]); show("k = HMAC_K(V)", w[0].hv[..]);
+  nonce := sc_load(w[0].hv[..]).value;
+  raw := raw_sign(sc_reduce_bytes(hash[..]).value, sc_load(d).value, nonce);
+  show_scalar("r = x(k*G) mod n", raw.r);
+  show_scalar("s = (z + r*d) / k", raw.s);
+  print("s > (n-1)/2: %, so the signer publishes n - s\n", !sc_equal(ec_low(raw.s), raw.s));
+  out: [64] u8; want: [64] u8; pub: [33] u8; der: [72] u8;
+  print("ecdsa_sign: %\n", ecdsa_sign(d, hash[..], w[..], out[..], false));
+  show("r || s", out[..]);
+  print("equals libsecp256k1's: %, verifies (low-S): %\n", bytes_same(out[..], decode(SATOSHI_SIG, want[..])),
+    ecdsa_verify_vartime(hash[..], compressed_key(d, pub[..]), out[..], true));
+  n := ecdsa_der(out[..], der[..]);
+  show("DER", der[0..<n]);
+
+  // One nonce, two hashes, on secp256k1: anyone can solve for the key.
+  print("one nonce for two hashes\n");
+  z1 := sc_reduce_bytes(hash[..]).value; z2 := sc_add(z1, sc_small(1));
+  secret := hex_scalar(TEST_KEY);
+  s1 := raw_sign(z1, secret, nonce); s2 := raw_sign(z2, secret, nonce);
+  print("same r: %\n", sc_equal(s1.r, s2.r));
+  found := reused_key(z1, s1, z2, s2);
+  show_scalar("recovered d", found);
+  print("equals the key: %\n", sc_equal(found, secret));
+
+  // A biased nonce: k below 2^12. The search costs at most 4,095 additions.
+  print("a nonce below 2^12\n");
+  small := raw_sign(z1, secret, sc_small(2748));
+  j := small_nonce(small, 12);
+  print("k found after % steps\n", j);
+  recovered := sc_mul(sc_sub(sc_mul(small.s, sc_small(cast(u32) j)), z1), sc_inverse(small.r).value);
+  print("recovered d equals the key: %\n", sc_equal(recovered, secret));
+
+  // The pinned vectors: every signature byte for byte and low-S. Every
+  // 20th is also verified: chapter 19's verifier costs ten signatures.
+  print("tiny-secp256k1 ecdsa.json\n");
+  equal := 0; low := 0; verified := 0; tried := 0;
+  for i: 0..<ES_CASES.count {
+    c := ES_CASES[i]; kb: [32] u8; mb: [32] u8; sig: [64] u8; got: [64] u8; q: [33] u8; v: [1] EcdsaWork;
+    dk := decode(c.d, kb[..]); m := decode(c.m, mb[..]);
+    #assert ecdsa_sign(dk, m, v[..], got[..], false);
+    if bytes_same(got[..], decode(c.sig, sig[..])) { equal += 1; }
+    if !ev_high_s_vartime(sc_load(got[32..<64]).value) { low += 1; }
+    if i % 20 != 0 { continue; }
+    tried += 1;
+    if ecdsa_verify_vartime(m, compressed_key(dk, q[..]), got[..], true) { verified += 1; }
+  }
+  print("% of % equal libsecp256k1's signature, % are low-S\n", equal, ES_CASES.count, low);
+  print("% of % verify with chapter 19's verifier\n", verified, tried);
+
+  print("refusals\n");
+  for i: 0..<ES_REFUSE.count {
+    c := ES_REFUSE[i]; kb: [32] u8; mb: [32] u8; sig: [64] u8;
+    sig[0] = 7;
+    ok := ecdsa_sign(decode(c.d, kb[..]), decode(c.m, mb[..]), w[..], sig[..], false);
+    print("%: signed %, out untouched %\n", c.why, ok, sig[0] == 7);
+  }
+  print("31-byte hash: %\n", ecdsa_sign(d, hash[0..<31], w[..], out[..], false));
+  print("63-byte output: %\n", ecdsa_sign(d, hash[..], w[..], out[0..<63], false));
+  print("views that overlap: %\n", ecdsa_sign(d, hash[..], w[..], out[..], true));
+  two: [2] EcdsaWork;
+  print("a workspace of two: %\n", ecdsa_sign(d, hash[..], two[..], out[..], false));
+}
+// book:end example

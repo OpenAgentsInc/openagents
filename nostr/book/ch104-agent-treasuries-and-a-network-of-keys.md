@@ -749,20 +749,25 @@ nonce is not random: RFC 6979 derives it from the key and the hash with
 HMAC-SHA256. V starts as 32 bytes of 0x01 and K as 32 bytes of 0x00; two
 rounds mix in `x || h` (the key, and the hash reduced mod *n*); each later
 V = HMAC_K(V) is a candidate, kept when it lies in [1, *n*−1].
+[Bitcoin chapter 20](../../bitcoin/book/ch020-sign-with-ecdsa.md) teaches
+this signer in full, with its vectors and its secret-flow probe.
 
 <!-- source: coax/lib/crypto/ecdsa_sign.coax rfc6979 -->
 ```jai
 // RFC 6979 section 3.2 for SHA-256 and secp256k1's 256-bit order: the
-// first two candidates for key and hash (bits2octets(h) is h mod n), into
-// w.first and w.second.
-ec_candidates :: (key:[]u8,hash:[]u8,w:[]EcdsaWork) {
-  z:=sc_reduce_bytes(hash);   // the message hash is public
-  for i:0..<32 {w[0].hv[i]=1;w[0].hk[i]=0;w[0].buf[33+i]=key[i];}
-  #assert ss_write(z.value,w[0].buf[65..<97]);
-  ec_step(w,0,97);ec_step(w,1,97);
-  ec_next(w);for i:0..<32 {w[0].first[i]=w[0].hv[i];}
-  ec_step(w,0,33);
-  ec_next(w);for i:0..<32 {w[0].second[i]=w[0].hv[i];}
+// first two candidates for key and hash, into w.first and w.second.
+// bits2octets(h) is h mod n. buf holds V || tag || key || h.
+ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) {
+  z := sc_reduce_bytes(hash);                      // the message hash is public
+  for i: 0..<32 { w[0].hv[i] = 1; w[0].hk[i] = 0; w[0].buf[33+i] = key[i]; }   // b, c: V = 01..01, K = 00..00
+  #assert ss_write(z.value, w[0].buf[65..<97]);
+  ec_step(w, 0, 97);                               // d, e: K = HMAC_K(V || 00 || key || h), V = HMAC_K(V)
+  ec_step(w, 1, 97);                               // f, g: K = HMAC_K(V || 01 || key || h), V = HMAC_K(V)
+  ec_next(w);                                      // h: V = HMAC_K(V), the first candidate
+  for i: 0..<32 { w[0].first[i] = w[0].hv[i]; }
+  ec_step(w, 0, 33);                               // h, retry: K = HMAC_K(V || 00), V = HMAC_K(V)
+  ec_next(w);                                      // V = HMAC_K(V), the second candidate
+  for i: 0..<32 { w[0].second[i] = w[0].hv[i]; }
 }
 ```
 
@@ -781,19 +786,20 @@ replaces *s* by *n* − *s* with a mask when 2*s* ≥ *n*:
 // hash under a 32-byte key, with RFC 6979's nonce. Views are stable and
 // disjoint (overlap is the host's truthful observation). out is written
 // only when the result is true; the workspace is cleared either way.
-ecdsa_sign :: (key:[]u8,hash:[]u8,w:[]EcdsaWork,out:[]u8,overlap:bool)->bool #export_c {
-  if !ec_views(key,hash,w,out,overlap) {return false;}
-  #assert ss_key(key,w[0].key[..],false);
-  ec_candidates(key,hash,w);ec_pick(w);
-  #assert sp_base(w[0].k,w[0].point[..]) && sp_x(w[0].point[..],w[0].x[..]);
-  w[0].r=sc_reduce_bytes(w[0].x[..]).value;              // r = x(kG) mod n
-  z:=sc_reduce_bytes(hash).value;
-  inverse:=sc_inverse(w[0].k);
-  w[0].s=ec_low(sc_mul(inverse.value,sc_add(z,sc_mul(w[0].r,w[0].key[0].safe))));
-  valid:=w[0].key[0].valid & w[0].valid & w[0].point[0].finite & ec_nonzero(w[0].r) & ec_nonzero(w[0].s);
-  if !ec_declassify(valid) {return ec_clear(w);}
-  for i:0..<8 {
-    #assert cb_store_be32(out,28-4*i,w[0].r.limbs[i]) && cb_store_be32(out,60-4*i,w[0].s.limbs[i]);
+ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
+  if !ec_views(key, hash, w, out, overlap) { return false; }
+  #assert ss_key(key, w[0].key[..], false);              // d, or 1 with valid = 0
+  ec_candidates(key, hash, w);
+  ec_pick(w);                                            // k
+  #assert sp_base(w[0].k, w[0].point[..]) && sp_x(w[0].point[..], w[0].x[..]);
+  w[0].r = sc_reduce_bytes(w[0].x[..]).value;            // r = x(kG) mod n
+  z := sc_reduce_bytes(hash).value;                      // z = h mod n
+  w[0].kinv = sc_inverse(w[0].k).value;
+  w[0].s = ec_low(sc_mul(w[0].kinv, sc_add(z, sc_mul(w[0].r, w[0].key[0].safe))));   // s = (z + r*d) / k, low half
+  valid := w[0].key[0].valid & w[0].valid & w[0].point[0].finite & ec_nonzero(w[0].r) & ec_nonzero(w[0].s);
+  if !ec_declassify(valid) { return ec_clear(w); }      // the one fact the signer reveals
+  for i: 0..<8 {
+    #assert cb_store_be32(out, 28-4*i, w[0].r.limbs[i]) && cb_store_be32(out, 60-4*i, w[0].s.limbs[i]);
   }
   return !ec_clear(w);
 }

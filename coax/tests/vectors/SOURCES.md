@@ -58,6 +58,14 @@ that a maliciously replaced manifest is authentic.
   (464 cases, 100 public keys) at the same revision as the ECDH file,
   retrieved 2026-11-02 for Bitcoin chapter 19. Its Bitcoin variant requires
   strict DER and low-S; every case gives its expected result.
+- **ECDSA signing:** tiny-secp256k1's complete `tests/fixtures/ecdsa.json`
+  at revision `e1fd7a77`, retrieved 2026-11-02 for Bitcoin chapter 20. Its
+  2,020 `valid` rows give a key, a 32-byte hash and the compact signature
+  that libsecp256k1 makes with RFC 6979 and low-S; its 4 `invalid.sign`
+  rows are keys that must refuse. Chapter 20 signs every `valid` row byte
+  for byte. The `extraEntropy` rows (libsecp256k1's `ndata`) and the
+  `verify` and `recover` rows are not claimed. RFC 6979's own appendix
+  vectors have no secp256k1 case.
 - **BIP-340:** all 19 official CSV rows, including invalid signatures and
   message lengths 0, 1, 17 and 100. The associated license is retained.
 - **RIPEMD-160:** the authors' paper (Dobbertin, Bosselaers and Preneel,
@@ -179,6 +187,8 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/wycheproof/ecdh_secp256k1_test.json`](upstream/wycheproof/ecdh_secp256k1_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdh_secp256k1_test.json) | `049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae` |
 | [`upstream/wycheproof/chacha20_poly1305_test.json`](upstream/wycheproof/chacha20_poly1305_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/chacha20_poly1305_test.json) | `fe61d25f90e1bde4461d00eafe61049e5f29bd999f36b766df9cda90906ad53d` |
 | [`upstream/wycheproof/ecdsa_secp256k1_sha256_bitcoin_test.json`](upstream/wycheproof/ecdsa_secp256k1_sha256_bitcoin_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdsa_secp256k1_sha256_bitcoin_test.json) | `d3729ce83ff9740c45e74921009a4061eff6c09185b8dd1225ccd06ac57048a4` |
+| [`upstream/tiny-secp256k1/ecdsa.json`](upstream/tiny-secp256k1/ecdsa.json) | [pinned source](https://raw.githubusercontent.com/bitcoinjs/tiny-secp256k1/e1fd7a77bb0ca87fb4726fb1fd4f424f30a04db9/tests/fixtures/ecdsa.json) | `b830aa30d0ab3b6c51440caffac9206b24ae5450a387a2db73789f5ce795595d` |
+| [`upstream/tiny-secp256k1/LICENSE`](upstream/tiny-secp256k1/LICENSE) | [pinned source](https://raw.githubusercontent.com/bitcoinjs/tiny-secp256k1/e1fd7a77bb0ca87fb4726fb1fd4f424f30a04db9/LICENSE) | `ae6f2b755062444d218c8de466a0c73b686f89285855353a2eae0ade5933d661` |
 | [`upstream/wycheproof/LICENSE`](upstream/wycheproof/LICENSE) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/LICENSE) | `58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd` |
 | [`upstream/json/LICENSE`](upstream/json/LICENSE) | [pinned source](https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/LICENSE) | `8bd0e0578be788c617ea01d18b2a8146e3746ae50bddadc65a5f9d3aad08ad49` |
 | [`upstream/json/y_string_escaped_control_character.json`](upstream/json/y_string_escaped_control_character.json) | [pinned source](https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/y_string_escaped_control_character.json) | `1a9f37085203c6d712945c5fb87ad5e08fa38515e51ee4a637c7558bb1b82725` |

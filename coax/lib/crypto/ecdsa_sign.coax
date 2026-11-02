@@ -1,16 +1,26 @@
-// ECDSA signing on secp256k1 for Bitcoin's segwit v0 spends (chapter 104):
-// RFC 6979 deterministic nonces (HMAC-SHA256), low-S (BIP-62/BIP-146), and
-// DER encoding (BIP-66). The key and the nonce are secrets: no branch and
-// no index depends on them (Bitcoin chapter 3). The nonce point is the fixed-base
-// comb k*G (Bitcoin chapter 16, sp_base); scalars are Bitcoin chapter 14's fixed-loop
-// arithmetic, with the inverse a fixed public exponent. Every secret lives
-// in the caller's workspace, which is cleared on every return.
+// ECDSA signing on secp256k1, as Bitcoin signs (Bitcoin From Scratch,
+// chapter 20): RFC 6979 deterministic nonces with HMAC-SHA256 (chapter 8),
+// low-S (BIP-62, BIP-146), and a minimal DER encoder for the result
+// (chapter 21 owns strict DER and BIP-66). Bitcoin's pre-Taproot spends
+// (chapter 104 of Nostr From Scratch, coax/lib/bitcoin/sighash.coax) and
+// NIP-06 key checks use it.
+//
+// The key and the nonce are secrets: no branch and no index depends on them
+// (chapter 3). The nonce point is the fixed-base comb k*G (chapter 16,
+// sp_base); scalars are chapter 14's fixed-loop arithmetic, with the inverse
+// a fixed public exponent. The secret values the signer keeps (K, V, both
+// nonce candidates, the key, the nonce, its inverse and the nonce point)
+// live in the caller's workspace, which is cleared on every return.
+// Temporaries inside the arithmetic are stack copies that erasure does not
+// reach (chapter 3).
 //
 // RFC 6979 loops until a candidate lies in [1, n-1]; a candidate outside
 // it has probability below 2^-127. This signer always derives exactly two
 // candidates and selects the first valid one with a mask, so its work
 // never depends on the key; when both are invalid (probability below
-// 2^-254) it refuses instead of looping. r = 0 and s = 0 refuse the same way.
+// 2^-254) it refuses instead of looping. r = 0 and s = 0 refuse the same
+// way, where libsecp256k1 would try the next candidate (probability below
+// 2^-255). Extra entropy (libsecp256k1's ndata) is not supported.
 #load "hmac.coax";
 #load "schnorr_point_workspace.coax";
 #load "schnorr_scalar_workspace.coax";
@@ -22,7 +32,7 @@ EcdsaWork :: struct {
   first:[32]u8;second:[32]u8;                 // the two candidates
   a:[1]SignScalar;b:[1]SignScalar;key:[1]SignScalar;
   point:[1]SignPoint;x:[32]u8;
-  k:ScScalar;r:ScScalar;s:ScScalar;valid:u64;
+  k:ScScalar;kinv:ScScalar;r:ScScalar;s:ScScalar;valid:u64;
 }
 
 // ---- checks
@@ -102,47 +112,65 @@ SATOSHI :: "a0dc65ffca799873cbea0ac274015b9526505daaaed385155425f7337704883e";  
 }
 
 // ---- RFC 6979
+// book:begin drbg
 // One HMAC-SHA256 under K over buf[0..<n], into out (never K itself).
-ec_hmac :: (w:[]EcdsaWork,n:int,out:[]u8) {#assert hmac_sha256_checked(w[0].hk[..],w[0].buf[0..<n],out,false)==SHA_OK;}
+ec_hmac :: (w: [] EcdsaWork, n: int, out: [] u8) {
+  #assert hmac_sha256_checked(w[0].hk[..], w[0].buf[0..<n], out, false) == SHA_OK;
+}
 // V = HMAC_K(V).
-ec_next :: (w:[]EcdsaWork) {for i:0..<32 {w[0].buf[i]=w[0].hv[i];}ec_hmac(w,32,w[0].hv[..]);}
-// K = HMAC_K(V || tag [|| x || h]) then V = HMAC_K(V); x and h are already
-// in buf[33..<97], and n is 33 without them, 97 with.
-ec_step :: (w:[]EcdsaWork,tag:u8,n:int) {
-  for i:0..<32 {w[0].buf[i]=w[0].hv[i];}w[0].buf[32]=tag;
-  ec_hmac(w,n,w[0].t[..]);for i:0..<32 {w[0].hk[i]=w[0].t[i];}
+ec_next :: (w: [] EcdsaWork) {
+  for i: 0..<32 { w[0].buf[i] = w[0].hv[i]; }
+  ec_hmac(w, 32, w[0].hv[..]);
+}
+// K = HMAC_K(V || tag [|| key || h]), then V = HMAC_K(V). key and h are
+// already in buf[33..<97]; n is 33 without them and 97 with them.
+ec_step :: (w: [] EcdsaWork, tag: u8, n: int) {
+  for i: 0..<32 { w[0].buf[i] = w[0].hv[i]; }
+  w[0].buf[32] = tag;
+  ec_hmac(w, n, w[0].t[..]);
+  for i: 0..<32 { w[0].hk[i] = w[0].t[i]; }
   ec_next(w);
 }
+// book:end drbg
 // book:begin rfc6979
 // RFC 6979 section 3.2 for SHA-256 and secp256k1's 256-bit order: the
-// first two candidates for key and hash (bits2octets(h) is h mod n), into
-// w.first and w.second.
-ec_candidates :: (key:[]u8,hash:[]u8,w:[]EcdsaWork) {
-  z:=sc_reduce_bytes(hash);   // the message hash is public
-  for i:0..<32 {w[0].hv[i]=1;w[0].hk[i]=0;w[0].buf[33+i]=key[i];}
-  #assert ss_write(z.value,w[0].buf[65..<97]);
-  ec_step(w,0,97);ec_step(w,1,97);
-  ec_next(w);for i:0..<32 {w[0].first[i]=w[0].hv[i];}
-  ec_step(w,0,33);
-  ec_next(w);for i:0..<32 {w[0].second[i]=w[0].hv[i];}
+// first two candidates for key and hash, into w.first and w.second.
+// bits2octets(h) is h mod n. buf holds V || tag || key || h.
+ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) {
+  z := sc_reduce_bytes(hash);                      // the message hash is public
+  for i: 0..<32 { w[0].hv[i] = 1; w[0].hk[i] = 0; w[0].buf[33+i] = key[i]; }   // b, c: V = 01..01, K = 00..00
+  #assert ss_write(z.value, w[0].buf[65..<97]);
+  ec_step(w, 0, 97);                               // d, e: K = HMAC_K(V || 00 || key || h), V = HMAC_K(V)
+  ec_step(w, 1, 97);                               // f, g: K = HMAC_K(V || 01 || key || h), V = HMAC_K(V)
+  ec_next(w);                                      // h: V = HMAC_K(V), the first candidate
+  for i: 0..<32 { w[0].first[i] = w[0].hv[i]; }
+  ec_step(w, 0, 33);                               // h, retry: K = HMAC_K(V || 00), V = HMAC_K(V)
+  ec_next(w);                                      // V = HMAC_K(V), the second candidate
+  for i: 0..<32 { w[0].second[i] = w[0].hv[i]; }
 }
 // book:end rfc6979
-// k = the first candidate in [1, n-1], by mask; valid is 0 when neither is.
-ec_pick :: (w:[]EcdsaWork) {
-  #assert ss_key(w[0].first[..],w[0].a[..],false) && ss_key(w[0].second[..],w[0].b[..],false);
-  w[0].k=sc_select(w[0].a[0].valid,w[0].a[0].safe,w[0].b[0].safe);
-  w[0].valid=w[0].a[0].valid|w[0].b[0].valid;
+// book:begin pick
+// k = the first candidate in [1, n-1], chosen with a mask; valid is 0 when
+// neither is. ss_key loads a candidate without a branch (chapter 24).
+ec_pick :: (w: [] EcdsaWork) {
+  #assert ss_key(w[0].first[..], w[0].a[..], false) && ss_key(w[0].second[..], w[0].b[..], false);
+  w[0].k = sc_select(w[0].a[0].valid, w[0].a[0].safe, w[0].b[0].safe);
+  w[0].valid = w[0].a[0].valid | w[0].b[0].valid;
 }
+// book:end pick
 
 // ---- signing
-// n - s when s > (n-1)/2: for s < n, 2s >= n exactly then.
-ec_low :: (s:ScScalar)->ScScalar {
-  wide:[9]u32;carry:u32;
-  for i:0..<8 {wide[i]=(s.limbs[i]<<1)|carry;carry=s.limbs[i]>>31;}
-  wide[8]=carry;
-  high:=sc_subtract_n(wide).borrow^1;
-  return sc_select(high,sc_negate(s),s);
+// book:begin low
+// n - s when s > (n-1)/2. For s < n, that holds exactly when 2s >= n, so
+// compute 2s in nine limbs, subtract n, and select on the borrow.
+ec_low :: (s: ScScalar) -> ScScalar {
+  wide: [9] u32; carry: u32;
+  for i: 0..<8 { wide[i] = (s.limbs[i] << 1) | carry; carry = s.limbs[i] >> 31; }
+  wide[8] = carry;
+  high := sc_subtract_n(wide).borrow ^ 1;
+  return sc_select(high, sc_negate(s), s);
 }
+// book:end low
 ec_nonzero :: (a:ScScalar)->u64 {bits:u32;for i:0..<8 {bits|=a.limbs[i];}return sc_zero_bit(bits)^1;}
 // Validity is the call's public result; r and s are published.
 ec_declassify :: (valid:u64)->bool {return valid==1;}
@@ -155,19 +183,20 @@ ec_views :: (key:[]u8,hash:[]u8,w:[]EcdsaWork,out:[]u8,overlap:bool)->bool {
 // hash under a 32-byte key, with RFC 6979's nonce. Views are stable and
 // disjoint (overlap is the host's truthful observation). out is written
 // only when the result is true; the workspace is cleared either way.
-ecdsa_sign :: (key:[]u8,hash:[]u8,w:[]EcdsaWork,out:[]u8,overlap:bool)->bool #export_c {
-  if !ec_views(key,hash,w,out,overlap) {return false;}
-  #assert ss_key(key,w[0].key[..],false);
-  ec_candidates(key,hash,w);ec_pick(w);
-  #assert sp_base(w[0].k,w[0].point[..]) && sp_x(w[0].point[..],w[0].x[..]);
-  w[0].r=sc_reduce_bytes(w[0].x[..]).value;              // r = x(kG) mod n
-  z:=sc_reduce_bytes(hash).value;
-  inverse:=sc_inverse(w[0].k);
-  w[0].s=ec_low(sc_mul(inverse.value,sc_add(z,sc_mul(w[0].r,w[0].key[0].safe))));
-  valid:=w[0].key[0].valid & w[0].valid & w[0].point[0].finite & ec_nonzero(w[0].r) & ec_nonzero(w[0].s);
-  if !ec_declassify(valid) {return ec_clear(w);}
-  for i:0..<8 {
-    #assert cb_store_be32(out,28-4*i,w[0].r.limbs[i]) && cb_store_be32(out,60-4*i,w[0].s.limbs[i]);
+ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
+  if !ec_views(key, hash, w, out, overlap) { return false; }
+  #assert ss_key(key, w[0].key[..], false);              // d, or 1 with valid = 0
+  ec_candidates(key, hash, w);
+  ec_pick(w);                                            // k
+  #assert sp_base(w[0].k, w[0].point[..]) && sp_x(w[0].point[..], w[0].x[..]);
+  w[0].r = sc_reduce_bytes(w[0].x[..]).value;            // r = x(kG) mod n
+  z := sc_reduce_bytes(hash).value;                      // z = h mod n
+  w[0].kinv = sc_inverse(w[0].k).value;
+  w[0].s = ec_low(sc_mul(w[0].kinv, sc_add(z, sc_mul(w[0].r, w[0].key[0].safe))));   // s = (z + r*d) / k, low half
+  valid := w[0].key[0].valid & w[0].valid & w[0].point[0].finite & ec_nonzero(w[0].r) & ec_nonzero(w[0].s);
+  if !ec_declassify(valid) { return ec_clear(w); }      // the one fact the signer reveals
+  for i: 0..<8 {
+    #assert cb_store_be32(out, 28-4*i, w[0].r.limbs[i]) && cb_store_be32(out, 60-4*i, w[0].s.limbs[i]);
   }
   return !ec_clear(w);
 }

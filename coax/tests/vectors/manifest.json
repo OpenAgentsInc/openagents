@@ -199,6 +199,32 @@
       "bytes": 305419
     },
     {
+      "path": "upstream/tiny-secp256k1/ecdsa.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoinjs/tiny-secp256k1/e1fd7a77bb0ca87fb4726fb1fd4f424f30a04db9/tests/fixtures/ecdsa.json",
+      "revision": "git:e1fd7a77bb0ca87fb4726fb1fd4f424f30a04db9",
+      "license": "MIT",
+      "covers": [
+        "ecdsa-secp256k1-sign-rfc6979"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "b830aa30d0ab3b6c51440caffac9206b24ae5450a387a2db73789f5ce795595d",
+      "bytes": 718216
+    },
+    {
+      "path": "upstream/tiny-secp256k1/LICENSE",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoinjs/tiny-secp256k1/e1fd7a77bb0ca87fb4726fb1fd4f424f30a04db9/LICENSE",
+      "revision": "git:e1fd7a77bb0ca87fb4726fb1fd4f424f30a04db9",
+      "license": "MIT",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "ae6f2b755062444d218c8de466a0c73b686f89285855353a2eae0ade5933d661",
+      "bytes": 1079
+    },
+    {
       "path": "upstream/wycheproof/LICENSE",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/LICENSE",

@@ -197,6 +197,18 @@
       ]
     },
     {
+      "source": "bitcoin/examples/ecdsa-sign.coax",
+      "chapter": "bitcoin/book/ch020-sign-with-ecdsa.md",
+      "stdout": "bitcoin/fixtures/ecdsa-sign.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 420
+    },
+    {
       "source": "bitcoin/examples/schnorr-verify.coax",
       "chapter": "bitcoin/book/ch023-verify-a-schnorr-signature.md",
       "stdout": "bitcoin/fixtures/schnorr-verify.out",

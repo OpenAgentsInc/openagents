@@ -449,18 +449,28 @@
   {
    "number": 20,
    "title": "Sign with ECDSA",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch020-sign-with-ecdsa.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     19,
     8,
     18,
     3
    ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
+   "source": [
+    "coax/lib/crypto/ecdsa_sign.coax",
+    "bitcoin/examples/ecdsa-sign.coax",
+    "bitcoin/examples/checks/ecdsa-sign.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/bitcoin/sighash.coax",
+    "coax/lib/nostr/nipkeys_sign.coax"
+   ]
   },
   {
    "number": 21,

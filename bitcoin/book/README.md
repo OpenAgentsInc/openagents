@@ -38,18 +38,17 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 85 chapters, 22 are implemented and 63 are planned. The 22
-implemented chapters have runnable examples, qualified on native CPU, and 17
+Of the 85 chapters, 23 are implemented and 62 are planned. The 23
+implemented chapters have runnable examples, qualified on native CPU, and 18
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7, 10, 12, 17 and 19 are new.
+chapters 5, 6, 7, 10, 12, 17, 19 and 20 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
-that later chapters will teach already exists in places: ECDSA signing
-(`coax/lib/crypto/ecdsa_sign.coax`), BIP-39 and BIP-32 (`bip39.coax`,
-`bip32.coax`), and the BIP-143 and BIP-341
-signature hashes (`coax/lib/bitcoin/sighash.coax`), written for Nostr
-chapter 104's agent treasuries.
+that later chapters will teach already exists in places: BIP-39 and BIP-32
+(`bip39.coax`, `bip32.coax`), and the BIP-143 and BIP-341 signature hashes
+(`coax/lib/bitcoin/sighash.coax`), written for Nostr chapter 104's agent
+treasuries.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -138,7 +137,7 @@ ECDSA as Bitcoin uses it, BIP-340 Schnorr signatures and batch verification.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [19. Verify ECDSA](ch019-verify-ecdsa.md) | Runnable: native C and wasm | ECDSA verification over a 32-byte hash with the low-S rule as the caller's choice and one strict DER reader, checked against all 464 Wycheproof `ecdsa_secp256k1_sha256_bitcoin_test.json` cases, Python integers and libsecp256k1, natively and in Wasm. A high-S signature refuses under the low-S rule. |
-| 20. Sign with ECDSA | Planned | RFC 6979 nonces match published secp256k1 vectors. Every signature is low-S and verifies in an independent library. A secret-probe run finds no secret-dependent branch. |
+| [20. Sign with ECDSA](ch020-sign-with-ecdsa.md) | Runnable: native C and wasm | RFC 6979 signing with low-S, equal byte for byte to libsecp256k1 on all 2,020 signing rows of tiny-secp256k1's `ecdsa.json`, natively and in Wasm, with every signature verified by libsecp256k1, Python and chapter 19's verifier. A Memcheck secret probe finds one key-dependent branch, the declared validity decision. |
 | 21. Strict DER | Planned | Every DER case in Bitcoin Core's `script_tests.json` that BIP-66 decides gives its expected result. |
 | 22. Public key recovery and signed messages | Planned | Bitcoin Core `signmessage` signatures for pinned keys verify, and recovery returns the signing key. A recovery ID out of range refuses. |
 | [23. Verify a Schnorr signature](ch023-verify-a-schnorr-signature.md) | Runnable: native C and wasm | BIP-340 verification over byte-view messages, checked against all 19 rows of the official `test-vectors.csv`, including messages of 0, 1, 17 and 100 bytes, with a Nostr wrapper that requires 32-byte event IDs. |
