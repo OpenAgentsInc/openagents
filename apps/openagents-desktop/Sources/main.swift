@@ -203,7 +203,7 @@ final class ChatView: MTKView, MTKViewDelegate {
   }
 }
 
-final class App: NSObject, NSApplicationDelegate {
+final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
   var window: NSWindow!
   func applicationDidFinishLaunching(_ n: Notification) {
     Router.loadKey()
@@ -225,6 +225,8 @@ final class App: NSObject, NSApplicationDelegate {
     window.center()
     let args = CommandLine.arguments
     zeron.configure(args)
+    zeron.configureDictation()
+    window.delegate = self
     zeron.applyShortcuts()
     // the frame it had at quit, kept on a screen
     if !args.contains("--shot"), let f = zeron.savedFrame(), f.width >= 900, f.height >= 600 { window.setFrame(window.constrainFrameRect(f, to: NSScreen.main), display: false) }
@@ -253,9 +255,13 @@ final class App: NSObject, NSApplicationDelegate {
       }
     }
   }
+  func applicationDidBecomeActive(_ n: Notification) { (window?.contentView as? ZeronView)?.activateDictation() }
+  func applicationWillResignActive(_ n: Notification) { (window?.contentView as? ZeronView)?.deactivateDictation() }
+  func windowDidBecomeKey(_ n: Notification) { (window?.contentView as? ZeronView)?.activateDictation() }
+  func windowDidResignKey(_ n: Notification) { (window?.contentView as? ZeronView)?.deactivateDictation() }
   func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
   // Claude Code's process group goes with the app.
-  func applicationWillTerminate(_ n: Notification) { if let v = window?.contentView as? ZeronView { v.flushStore(force: true); v.saveSettings(); dsk_quit(v.desk) } }
+  func applicationWillTerminate(_ n: Notification) { if let v = window?.contentView as? ZeronView { v.shutdownDictation(); v.flushStore(force: true); v.saveSettings(); dsk_quit(v.desk) } }
 
   // Zeron's menu bar (crates/ui/src/app_menus.rs) for what this app has: the
   // app menu, File (New Session Cmd+N, New Session in Folder… Shift+Cmd+N, Close Tab Cmd+W), View (Toggle Sidebar Cmd+S), Edit (the composer's Undo, Redo, Cut, Copy, Paste, Select All,
@@ -277,6 +283,8 @@ final class App: NSObject, NSApplicationDelegate {
     services.submenu = servicesMenu; NSApp.servicesMenu = servicesMenu
     menu("OpenAgents", [
       item("About OpenAgents", #selector(NSApplication.orderFrontStandardAboutPanel(_:))), .separator(),
+      item("Enable Local Dictation — Parakeet", #selector(ZeronView.toggleDictation(_:))),
+      item("Hold ⌘D or microphone · on-device draft only", nil), .separator(),
       services, .separator(),
       item("Hide OpenAgents", #selector(NSApplication.hide(_:)), "h"),
       item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),

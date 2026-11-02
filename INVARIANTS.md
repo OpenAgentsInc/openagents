@@ -2545,6 +2545,16 @@ publish only successful lookups. A1 contexts keep
 their ordinary field walk. Selecting an inline array behind a source view
 parameter substitutes the actual storage at that path, preserving local witnesses.
 
+The 2026-11-02 desktop continuation extends the represented projection from
+eight to twenty-four logical steps, retaining every origin component. Step 25 still
+refuses E0381, and a represented local escape still refuses E0383. Internal
+native headers and their objects rebuild together; no wire contract changes.
+A whole write wider than 64 descriptor leaves chooses existing wildcard array
+precision for all its arrays before publishing effects. Distinct fields stay
+distinct, exact 64 writes stay exact, and 257 independent effects still refuse.
+A private type classification memo resets each pass and publishes no failed
+preflight result. Historical dated verification keeps its eight-step profile.
+
 The pass shares A1's existing 1,048,576-step work budget and memo workspace.
 Its bounded effect/report capacities do not enlarge that budget; exhaustion is
 E0381. Optional reports expose only a committed used prefix, with count zero on
@@ -2554,7 +2564,7 @@ published-value or C-padding contract.
 
 Retained whole writes stream aggregate descriptor leaves individually under
 that shared budget. Aggregate width has no separate 64-leaf/element cutoff;
-the per-leaf 64-term/128-pair, per-procedure 64-effect and eight-step path limits
+the per-leaf 64-term/128-pair, per-procedure 256-effect and twenty-four-step path limits
 remain. A cold structural scan meters every field. A private per-execution
 shape cache may reuse a complete validated immediate-field layout; warm reuse
 meters its selected retaining-field validation and recursive visits. Shapes
@@ -3184,8 +3194,24 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
 - **Only the voice host calls a speech provider.** The phone and web clients
   never hold Google credentials. The host never logs tokens or audio. Renders
   are cached by SHA-256 of profile, revision, text and rate.
-- **The microphone is opt-in.** It opens only after the person turns on the voice
-  toggle and sees that Google processes their speech.
+- **The microphone is opt-in.** Phone/web conversation capture opens only after
+  the person turns on the voice toggle and sees that Google processes speech.
+  Coder for Mac has a separate, default-off **Local Dictation — Parakeet**
+  setting and macOS permission. Its microphone opens only while both the app
+  and its composer window are active. Audio stays in memory on this computer;
+  no speech provider, audio file or telemetry receives it. Focus/consent loss
+  stops capture and invalidates the request. Loaded model residency is separate
+  from microphone admission.
+
+Coder dictation's `apps/shared/dictation-policy.coax` is `#authority`: it gates
+readiness/consent, 450 ms pre-roll, 300 ms minimum hold, 200 ms tail, a 60-second
+capture cap, silence and current-ticket final publication. `dictation.coax`
+reuses Verse's resampling/VAD and plans complete nonoverlapping Parakeet slices.
+The desktop insertion authority holds the original composer text, selection
+and send count. It admits one complete UTF-8 insertion only for the current
+unchanged draft; edits, cancellation, IME and navigation invalidate it. Literal
+newlines stay draft bytes. It never calls a send operation. Checks and explicit
+hardware limits: `docs/verification/coder-dictation-2026-11-02/README.md`.
 
 Model-boundary exception: Debug builds accept `-OAVoiceFixture` (a bundled
 recording through the same uplink path as the microphone) and

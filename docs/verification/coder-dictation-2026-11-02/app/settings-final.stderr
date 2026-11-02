@@ -1,0 +1,4 @@
+coax/lib/systemone/request.coax:169:31: error[E0381]: type checker storage or nesting budget exceeded
+    keys: [2] string; keys[0] = "billing"; keys[1] = "technical_support";
+                                ^
+1 error

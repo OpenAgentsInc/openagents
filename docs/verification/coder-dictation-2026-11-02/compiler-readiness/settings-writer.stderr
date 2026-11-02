@@ -1,0 +1,4 @@
+/tmp/dictation-screen-head-baseline/apps/openagents-desktop/zeron/screen.coax:550:46: error[E0381]: type checker storage or nesting budget exceeded
+    s[0].cats[MODE_CLAUDE] = s[0].engine[0].cat[0];
+                                               ^
+1 error

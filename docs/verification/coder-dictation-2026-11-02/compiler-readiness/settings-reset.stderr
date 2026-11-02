@@ -1,0 +1,4 @@
+/tmp/dictation-screen-head-baseline/apps/openagents-desktop/zeron/claude.coax:1374:92: error[E0381]: type checker storage or nesting budget exceeded
+  e_copy_options :: (destination:[]ClQuery,source:[]ClOptions) {destination[0].options=source[0];}
+                                                                                             ^
+1 error

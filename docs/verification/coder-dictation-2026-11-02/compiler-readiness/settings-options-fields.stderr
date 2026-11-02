@@ -1,0 +1,4 @@
+/tmp/dictation-screen-head-baseline/apps/openagents-desktop/zeron/claude.coax:1414:45: error[E0381]: type checker storage or nesting budget exceeded
+   destination[0].options.env_remove=source[0].env_remove;
+                                              ^
+1 error

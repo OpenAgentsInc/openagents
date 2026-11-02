@@ -1,0 +1,3 @@
+FAIL #forall retained summary pending256 preserves ordering duplicate reuse and atomic257 refusal (307 ms)
+1 of 1206 checks (--only 'retained summary pending256'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

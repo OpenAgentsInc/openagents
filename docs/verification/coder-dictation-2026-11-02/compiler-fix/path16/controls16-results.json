@@ -1,0 +1,82 @@
+[
+  {
+    "name": "append-limit15",
+    "module": "checker.coax",
+    "old": "path.count>=BS_MAX_PATH",
+    "new": "path.count>=15",
+    "file": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/checker.coax",
+    "argv": [
+      "/Users/christopherdavid/.cache/coax-release/6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e/coax",
+      "test",
+      "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/checker.coax",
+      "--library",
+      "--only",
+      "sixteen"
+    ],
+    "compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "returncode": 1,
+    "elapsed_s": 11.818192582926713,
+    "killed": true,
+    "sha256": "879bf12b099b56614d68c2cce2be2e41b0869d77f18daa2740119387b61490a6"
+  },
+  {
+    "name": "append-limit17",
+    "module": "checker.coax",
+    "old": "path.count>=BS_MAX_PATH",
+    "new": "path.count>BS_MAX_PATH",
+    "file": "/tmp/dictation-compiler-fix/controls16/append-limit17/coax/lib/compiler/checker.coax",
+    "argv": [
+      "/Users/christopherdavid/.cache/coax-release/6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e/coax",
+      "test",
+      "/tmp/dictation-compiler-fix/controls16/append-limit17/coax/lib/compiler/checker.coax",
+      "--library",
+      "--only",
+      "sixteen"
+    ],
+    "compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "returncode": 1,
+    "elapsed_s": 11.72746595798526,
+    "killed": true,
+    "sha256": "7c0136b6afa63bfe971b97c258728cd48ea4a2d6c871f30520b3e9467ff4f48b"
+  },
+  {
+    "name": "projection-eight",
+    "module": "query-projection-cache.coax",
+    "old": "steps:[BS_MAX_PATH]CB_ProjectionStep",
+    "new": "steps:[8]CB_ProjectionStep",
+    "file": "/tmp/dictation-compiler-fix/controls16/projection-eight/coax/lib/compiler/checker.coax",
+    "argv": [
+      "/Users/christopherdavid/.cache/coax-release/6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e/coax",
+      "test",
+      "/tmp/dictation-compiler-fix/controls16/projection-eight/coax/lib/compiler/checker.coax",
+      "--library",
+      "--only",
+      "sixteen"
+    ],
+    "compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "returncode": 1,
+    "elapsed_s": 11.250714916968718,
+    "killed": true,
+    "sha256": "4153611dad5c1cb7635f21046a59270494b42797432bdb137787b617a9d47a7b"
+  },
+  {
+    "name": "projection-high-index",
+    "module": "query-projection-cache.coax",
+    "old": " || (j>=8 && q.path.steps[j].index!=0)",
+    "new": "",
+    "file": "/tmp/dictation-compiler-fix/controls16/projection-high-index/coax/lib/compiler/checker.coax",
+    "argv": [
+      "/Users/christopherdavid/.cache/coax-release/6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e/coax",
+      "test",
+      "/tmp/dictation-compiler-fix/controls16/projection-high-index/coax/lib/compiler/checker.coax",
+      "--library",
+      "--only",
+      "sixteen"
+    ],
+    "compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "returncode": 1,
+    "elapsed_s": 11.230327792000026,
+    "killed": true,
+    "sha256": "4153611dad5c1cb7635f21046a59270494b42797432bdb137787b617a9d47a7b"
+  }
+]

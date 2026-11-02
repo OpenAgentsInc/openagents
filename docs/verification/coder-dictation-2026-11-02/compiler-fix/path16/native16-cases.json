@@ -1,0 +1,44 @@
+[
+  {
+    "index": 0,
+    "name": "return borrow path append admits sixteen steps and refuses malformed input atomically",
+    "cases": 10,
+    "parameter": true
+  },
+  {
+    "index": 1,
+    "name": "return borrow sixteen projections preserve parameter and local escape witnesses",
+    "cases": 4,
+    "parameter": true
+  },
+  {
+    "index": 2,
+    "name": "retained sixteen projection witnesses retain the final slot and reject inactive field cache tails",
+    "cases": 3,
+    "parameter": true
+  },
+  {
+    "index": 3,
+    "name": "retained join preflight refuses malformed field tails before reading them",
+    "cases": 4,
+    "parameter": true
+  },
+  {
+    "index": 4,
+    "name": "retained join keeps the64 effect limit across writes",
+    "cases": 1,
+    "parameter": false
+  },
+  {
+    "index": 5,
+    "name": "retained join selects all array fields before spending the effect prefix",
+    "cases": 3,
+    "parameter": true
+  },
+  {
+    "index": 6,
+    "name": "retained join memo keeps complete frozen facts and resets on a fresh run",
+    "cases": 8,
+    "parameter": true
+  }
+]

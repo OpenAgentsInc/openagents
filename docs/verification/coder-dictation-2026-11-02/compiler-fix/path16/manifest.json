@@ -1,0 +1,421 @@
+{
+  "schema": 1,
+  "algorithm": "sha256",
+  "artifacts": [
+    {
+      "path": "source/borrow-summary.coax.gz",
+      "bytes": 6182,
+      "sha256": "82932574cd42d3aa1d19d8350b0e29bebe237d06d65aebfc24e9cb86dd64fcdf",
+      "uncompressed_bytes": 30350,
+      "uncompressed_sha256": "ddfd86b7fd27e394ffea3372f8a6fa5c03a40adf0d1149101a33f42f5de98fae",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/borrow-summary.coax"
+    },
+    {
+      "path": "source/checker.coax.gz",
+      "bytes": 462475,
+      "sha256": "b4014f319b49b79d6c66d7b8a33e1f24f64ab8cdef04b35a87444b9f942578a4",
+      "uncompressed_bytes": 5489589,
+      "uncompressed_sha256": "4153611dad5c1cb7635f21046a59270494b42797432bdb137787b617a9d47a7b",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/checker.coax"
+    },
+    {
+      "path": "source/literal-projection-cache.coax.gz",
+      "bytes": 1186,
+      "sha256": "b12724d5a4fc2bf30027f9dbce1fa931553a846c2e7157961c6f1befd03cdd2c",
+      "uncompressed_bytes": 2804,
+      "uncompressed_sha256": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/literal-projection-cache.coax"
+    },
+    {
+      "path": "source/quantity.coax.gz",
+      "bytes": 1953,
+      "sha256": "ec08b4bbf81e57a77ea0657389861e02c2ba1921139857238c7681261ae7703c",
+      "uncompressed_bytes": 6156,
+      "uncompressed_sha256": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/quantity.coax"
+    },
+    {
+      "path": "source/query-index.coax.gz",
+      "bytes": 1671,
+      "sha256": "4f3792cb914bddaee4ea4a7e9c5ddbc1e781dbf37ab974d451a23f8afddd260e",
+      "uncompressed_bytes": 3906,
+      "uncompressed_sha256": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/query-index.coax"
+    },
+    {
+      "path": "source/query-projection-cache.coax.gz",
+      "bytes": 1997,
+      "sha256": "1929a894ee7630aad309a62586e725d78a415399b6950949269802cbc2c2ecf6",
+      "uncompressed_bytes": 5966,
+      "uncompressed_sha256": "09403bb93f2caa0b5883bb22aa3f9c566381ebe819c90ee0c12f5575de3c2135",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/query-projection-cache.coax"
+    },
+    {
+      "path": "source/result-flow.coax.gz",
+      "bytes": 1657,
+      "sha256": "10a0693b1f3f055eaf1854573352da016acd9dbd9ead8817112b633383b795a1",
+      "uncompressed_bytes": 6040,
+      "uncompressed_sha256": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/result-flow.coax"
+    },
+    {
+      "path": "source/result-handling.coax.gz",
+      "bytes": 6804,
+      "sha256": "f9bab367b09083646f835a95e54e4a8eefb468a59b095f0e2de70a5e851472d8",
+      "uncompressed_bytes": 42762,
+      "uncompressed_sha256": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/result-handling.coax"
+    },
+    {
+      "path": "source/retain-policy.coax.gz",
+      "bytes": 4520,
+      "sha256": "339193ef243183eb4e1e5df20638f61ed9a21f2e21bd15a791c303de19d6ae0c",
+      "uncompressed_bytes": 20853,
+      "uncompressed_sha256": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/retain-policy.coax"
+    },
+    {
+      "path": "source/spatial-mutation.coax.gz",
+      "bytes": 1604,
+      "sha256": "935ffb867dd7dac99734ad23a50133a83864ed175b3b47ddc48f9b252aecb48a",
+      "uncompressed_bytes": 5163,
+      "uncompressed_sha256": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/spatial-mutation.coax"
+    },
+    {
+      "path": "source/spatial-policy.coax.gz",
+      "bytes": 2562,
+      "sha256": "b9e8ffe7e487d32a613c6679f97a9cd0d992a9d71a150cbcc78c66af323f6041",
+      "uncompressed_bytes": 9550,
+      "uncompressed_sha256": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/spatial-policy.coax"
+    },
+    {
+      "path": "source/sum-layout.coax.gz",
+      "bytes": 1295,
+      "sha256": "5420c91bd0038b2f25f17e707e70799f2cafd9e792122cc8fd48c27964a9d931",
+      "uncompressed_bytes": 3650,
+      "uncompressed_sha256": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/sum-layout.coax"
+    },
+    {
+      "path": "source/sum-types.coax.gz",
+      "bytes": 8762,
+      "sha256": "a08bbc2e4323670aa65e51d38a0952ff4e2cc831ad446a120466ff4644c11f23",
+      "uncompressed_bytes": 45657,
+      "uncompressed_sha256": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/sum-types.coax"
+    },
+    {
+      "path": "source/unit-algebra.coax.gz",
+      "bytes": 2667,
+      "sha256": "97429bdac05a7f54e2c2d259eaccb24cdbd9f61f6e34ead237c129bc01b72896",
+      "uncompressed_bytes": 9564,
+      "uncompressed_sha256": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/unit-algebra.coax"
+    },
+    {
+      "path": "source/unit-forms.coax.gz",
+      "bytes": 2271,
+      "sha256": "e025fe8d72ddee668b11b8e7ea0cea73a16d33c20dcc3dc85b5c80a1d52bdf4e",
+      "uncompressed_bytes": 8595,
+      "uncompressed_sha256": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/unit-forms.coax"
+    },
+    {
+      "path": "path16-v2.stdout.gz",
+      "bytes": 469,
+      "sha256": "1f9b581afc6ee692f1a712b63159a46ba2f625dece6850e9e09148d6e42ee3c2",
+      "uncompressed_bytes": 905,
+      "uncompressed_sha256": "04ff1db88e64a2f607b9efda79f1499c850e334ba619957185457f6d83a85156",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/path16-v2.stdout"
+    },
+    {
+      "path": "path16-v2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/dictation-compiler-fix/path16-v2.stderr"
+    },
+    {
+      "path": "retained16.stdout.gz",
+      "bytes": 3954,
+      "sha256": "7abea7721cf101a53ae4a898b7b5b5a5284d7a6e1541a0b23203f1e99c9c57c8",
+      "uncompressed_bytes": 12566,
+      "uncompressed_sha256": "7919ada45e45193ca16c698692bc95dd2f0f15391f44761336ca313348dfc7f8",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/retained16.stdout"
+    },
+    {
+      "path": "retained16.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/dictation-compiler-fix/retained16.stderr"
+    },
+    {
+      "path": "controls16-results.json",
+      "bytes": 3249,
+      "sha256": "9b9edf12d59c7d621c99783c7be466d7794a3209860dd50fb6251db9849c5ed4",
+      "origin": "/tmp/dictation-compiler-fix/controls16-results.json"
+    },
+    {
+      "path": "native16-cases.json",
+      "bytes": 1088,
+      "sha256": "ccc51fda4c564d7aa99c6c55fa5daaabd15f79de32cb69dc4951cbcdff58ecde",
+      "origin": "/tmp/dictation-compiler-fix/native16-cases.json"
+    },
+    {
+      "path": "native16-main.c",
+      "bytes": 615,
+      "sha256": "b85172271456ad46c8ef995f4f2248b0faff8a3b634fa6f452d47834655ad8a2",
+      "origin": "/tmp/dictation-compiler-fix/native16-main.c"
+    },
+    {
+      "path": "native16-generate.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/dictation-compiler-fix/native16-generate.stderr"
+    },
+    {
+      "path": "effects64.json.gz",
+      "bytes": 2009,
+      "sha256": "4b5c54502f4e60b483d4af256d29ac6aa244bfe511b5131658eb197043cc3388",
+      "uncompressed_bytes": 72366,
+      "uncompressed_sha256": "56b3e044a96452a2be5d16d5345c6f3e6e58e63969e8cb1f7afd899b6d574860",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/effects64.json"
+    },
+    {
+      "path": "effects64.stdout.gz",
+      "bytes": 810,
+      "sha256": "89e45f55e2fe7808084426420180c7d695a32ce3d104db6cb21383f0fa840b98",
+      "uncompressed_bytes": 1710,
+      "uncompressed_sha256": "c2d9c3fd56b981e6bb6614194e9a235f66837af71ad439c4dad1fb8e208ad316",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/effects64.stdout"
+    },
+    {
+      "path": "effects64.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/dictation-compiler-fix/effects64.stderr"
+    },
+    {
+      "path": "native16.coax.gz",
+      "bytes": 2828,
+      "sha256": "3c80e7b005e77f31869a187bf7ec270e387c9b0731b22c20f5c3703877d8fe24",
+      "uncompressed_bytes": 13873,
+      "uncompressed_sha256": "9c9117eb4bc393b0338f3a119897eaa15fd991df993c1f9ed6f5dcd1f3b97d97",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/native16.coax"
+    },
+    {
+      "path": "native16.c.gz",
+      "bytes": 137073,
+      "sha256": "321e23429f6d74e65d3809d7c35d57c1edcc3392ff9232373c6df80926c17878",
+      "uncompressed_bytes": 989586,
+      "uncompressed_sha256": "b17a5b3bb9a704cbc28bbb928e4423be7cfdc346607087e6934f69bc3e96e7ba",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/native16.c"
+    },
+    {
+      "path": "native16.h.gz",
+      "bytes": 15548,
+      "sha256": "bab709685e905c5f208d21634e776ca06b5d275e81a9927f4d6ea31fd9f1b6bb",
+      "uncompressed_bytes": 120298,
+      "uncompressed_sha256": "5274ca256151d910bb1e4ddec5197cbc5431aa7a54c025450feb20600216f8ee",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/native16.h"
+    },
+    {
+      "path": "checker-canonical.c.gz",
+      "bytes": 131813,
+      "sha256": "a3410128defeb33036c2c6d6a575e216aad126b5592a4446d44816b6e0fa36f8",
+      "uncompressed_bytes": 942532,
+      "uncompressed_sha256": "1b3923ffa04349c668f2e1e6f500f05c150c3bc1f6e02ad7f5f7f75dd844f744",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/checker-canonical.c"
+    },
+    {
+      "path": "checker-canonical.h.gz",
+      "bytes": 15491,
+      "sha256": "02720f3615dc8bdfc299fe8672f77d068dd1ed1742c3e9e7784a049f3a697278",
+      "uncompressed_bytes": 120036,
+      "uncompressed_sha256": "3d0c71488f5ae9a1ebb2fe388a58b34bf8ce4285dfc95d40ccb36b484c274bad",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/checker-canonical.h"
+    },
+    {
+      "path": "full-compiler16.stdout.gz",
+      "bytes": 279213,
+      "sha256": "f54c3e9c286ee0b09f656c846647ffd4fc45701ea977279403261945684b994c",
+      "uncompressed_bytes": 2026775,
+      "uncompressed_sha256": "e2a17f22d10970b61d8179a83482a4d02338938478adc0b40626cc092a889b66",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/full-compiler16.stdout"
+    },
+    {
+      "path": "full-compiler16.stderr.gz",
+      "bytes": 20,
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "uncompressed_bytes": 0,
+      "uncompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/full-compiler16.stderr"
+    },
+    {
+      "path": "full-compiler16.h.gz",
+      "bytes": 36342,
+      "sha256": "3029f9f0b8bce4069210643c5439340dbc5dd25e94ae9d3112aaf0d233c4120d",
+      "uncompressed_bytes": 292048,
+      "uncompressed_sha256": "99213324a582e25de0835fefa3d723d5f9e94a70dadd3338fddd68d5293cdc32",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/full-compiler16.h"
+    },
+    {
+      "path": "control16-append-limit15.stdout.gz",
+      "bytes": 461,
+      "sha256": "84385c54f94769085d2febc64369b29dc65f3279e2b1fab32a8c6a0128d8f81d",
+      "uncompressed_bytes": 859,
+      "uncompressed_sha256": "632d6453dfb457c2e5760023746d1349289284e6cb4011e17b90765706b3a5a6",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/control16-append-limit15.stdout"
+    },
+    {
+      "path": "control16-append-limit15.stderr",
+      "bytes": 1800,
+      "sha256": "21f5c13aa0497329eee4d146e25d3364c279b593560631f59c1c6bc5baa3447a",
+      "origin": "/tmp/dictation-compiler-fix/control16-append-limit15.stderr"
+    },
+    {
+      "path": "control16-append-limit17.stdout.gz",
+      "bytes": 467,
+      "sha256": "ae8cde3264a34ff683f47572dba8ce43d59ebed38c1cb47e8907aed5ba8d7575",
+      "uncompressed_bytes": 860,
+      "uncompressed_sha256": "ddedf355db8cc0449f7d54f74d39c932e5cc69530704efbc78afb44a9cdf4489",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/control16-append-limit17.stdout"
+    },
+    {
+      "path": "control16-append-limit17.stderr",
+      "bytes": 1564,
+      "sha256": "b90e42b68fdedf3c023d183b58997f9494c178561befe76cdafe04ddf091af15",
+      "origin": "/tmp/dictation-compiler-fix/control16-append-limit17.stderr"
+    },
+    {
+      "path": "control16-projection-eight.stdout.gz",
+      "bytes": 473,
+      "sha256": "3c35fa84c5ad8ccc8503eb6c631fa2c89c7ee248ff332c9d0e1d8aa61baf1f28",
+      "uncompressed_bytes": 883,
+      "uncompressed_sha256": "7ab3f4e52a04b4c4fb5cb89b930a705d1f7a0833e95da1a6243eb5567d67470c",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/control16-projection-eight.stdout"
+    },
+    {
+      "path": "control16-projection-eight.stderr",
+      "bytes": 472,
+      "sha256": "6a002f874d58cb6b12d73b53de2a3364e9b119baf7bb851f44771e8447590230",
+      "origin": "/tmp/dictation-compiler-fix/control16-projection-eight.stderr"
+    },
+    {
+      "path": "control16-projection-high-index.stdout.gz",
+      "bytes": 476,
+      "sha256": "9ee527c40516a4ae9abea2d2219743abb63003371cf421f5aa9b9e4d67d527e1",
+      "uncompressed_bytes": 883,
+      "uncompressed_sha256": "70e4fa8f3f74fb626ff0913ed8719cfb5fceda30926bcd33baaa498ef27c2e43",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/control16-projection-high-index.stdout"
+    },
+    {
+      "path": "control16-projection-high-index.stderr",
+      "bytes": 790,
+      "sha256": "d7004000e3615fb688d06704014b2ff99de684da70cb59f45b58dcb3217b1ad3",
+      "origin": "/tmp/dictation-compiler-fix/control16-projection-high-index.stderr"
+    },
+    {
+      "path": "native16-o0.stdout.gz",
+      "bytes": 49,
+      "sha256": "96babadb087c6052a381f18dda4dc8cd2100dcd4df6da3dabd4aa2fba675e828",
+      "uncompressed_bytes": 29,
+      "uncompressed_sha256": "3aa1ba875db1485259746695d7b32bde2b8c80de67c73b984b5170411925e0a1",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/native16-o0.stdout"
+    },
+    {
+      "path": "native16-o0.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/dictation-compiler-fix/native16-o0.stderr"
+    },
+    {
+      "path": "native16-o2.stdout.gz",
+      "bytes": 49,
+      "sha256": "96babadb087c6052a381f18dda4dc8cd2100dcd4df6da3dabd4aa2fba675e828",
+      "uncompressed_bytes": 29,
+      "uncompressed_sha256": "3aa1ba875db1485259746695d7b32bde2b8c80de67c73b984b5170411925e0a1",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/native16-o2.stdout"
+    },
+    {
+      "path": "native16-o2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/dictation-compiler-fix/native16-o2.stderr"
+    },
+    {
+      "path": "native16-asan.stdout.gz",
+      "bytes": 49,
+      "sha256": "96babadb087c6052a381f18dda4dc8cd2100dcd4df6da3dabd4aa2fba675e828",
+      "uncompressed_bytes": 29,
+      "uncompressed_sha256": "3aa1ba875db1485259746695d7b32bde2b8c80de67c73b984b5170411925e0a1",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-fix/native16-asan.stdout"
+    },
+    {
+      "path": "native16-asan.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/dictation-compiler-fix/native16-asan.stderr"
+    },
+    {
+      "path": "dictation-compiler-bootstrap.stdout.gz",
+      "bytes": 533,
+      "sha256": "e51c5d9e3a8ffdd4d71be23446cb433e6033f95c6447960cae95a1fb9a8f12cd",
+      "uncompressed_bytes": 4646,
+      "uncompressed_sha256": "6ff84abc099178814f2a0095dd8bfe2393c26b465d925412758f98d92a7c2c04",
+      "encoding": "gzip;mtime=0",
+      "origin": "/tmp/dictation-compiler-bootstrap.stdout"
+    },
+    {
+      "path": "dictation-compiler-bootstrap.stderr",
+      "bytes": 725,
+      "sha256": "e6a948e4b34d8cce15cd7b456eda2b5b74ff179281a269429843c3230981c997",
+      "origin": "/tmp/dictation-compiler-bootstrap.stderr"
+    },
+    {
+      "path": "record.json",
+      "bytes": 3627,
+      "sha256": "d9efd09dd8d21baf071be7bd97d10010427f8d67c62bcb02e5759709f2dbfeec"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2067,
+      "sha256": "e532c9e8e73ee4f3a16046d6c263161f7c36885ff8f01144ec6ad1ac198870bc"
+    }
+  ]
+}

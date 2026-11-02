@@ -1,0 +1,4 @@
+apps/openagents-desktop/zeron/screen.coax:419:68: error[E0381]: type checker storage or nesting budget exceeded
+      if cx[0].cat_gen != s[0].cx_gen { s[0].cx_gen = cx[0].cat_gen; zr_catalogs(s); zr_labels(s); }   // Codex listed its models
+                                                                     ^
+1 error

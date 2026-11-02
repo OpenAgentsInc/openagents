@@ -1,0 +1,114 @@
+{
+  "schema": "openagents.coder.dictation.privacy-clear.v1",
+  "status": "passed-narrow-native-and-gpu-integration",
+  "purpose": "Explicitly clear resident utterance-derived work/results while retaining validated immutable weights, vocabulary, allocations, GPU pipelines and decoder pool. Coder recognize defers clear after copying text, including thrown failure.",
+  "public_info_abi": "unchanged; additive psionic_parakeet_clear(handle) only",
+  "semantics": {
+    "active_handle": 1,
+    "invalid_handle": 0,
+    "serialization": "API lock then Metal lock, same order as encode; encode waits completed GPU commands before releasing Metal lock",
+    "cpu_wipe": "Full allocated w32/w64/wave/features/encoded/last-snapshots and token/frame/draft/stats/text/info fields; has_result invalidated",
+    "gpu_wipe": "Full allocated shared-buffer capacities1..3; weight0, loaded identity, module/kernel/allocations retained",
+    "implementation": "Apple AnnexK memset_s; portable volatile-byte fallback. Compiler cannot elide explicit writes."
+  },
+  "scope_limits": [
+    "Caller-owned input/output is preserved, not erased. A returned transcript remains in its intended composer draft.",
+    "This clears live long-lived resident arenas, not all transient stack/register copies or OS/driver forensic remnants.",
+    "An in-flight immutable clip must remain until its bounded recognition call finishes; cancellation suppresses delivery immediately, then deferred clearing and buffer release finish after recognition.",
+    "No model arithmetic/storage reduction changes and no full29-corpus, whole-model CPU or legacy mutation run repeated."
+  ],
+  "tests": {
+    "cpu_private_effect": {
+      "O0": {
+        "returncode": 0,
+        "stdout": "native-o0.stdout",
+        "binary_sha256": "972c7103dbb5abbcfec7c4509d5a8bfb293778de7c804594105f05b83b884f4d"
+      },
+      "O2": {
+        "returncode": 0,
+        "stdout": "native-o2.stdout",
+        "binary_sha256": "81df83802ea0c448ca3b7e2b6ae0b0f47019ad8cb30ca4737a1a8a71a1fde612"
+      },
+      "ASan_UBSan": {
+        "returncode": 0,
+        "stdout": "native-asan.stdout",
+        "binary_sha256": "e221c070a0bdf54531fc912315d09b598f15026ceb7325f6ba7d71a24567a96a"
+      },
+      "proof": "Synthetic owned engine, all mutable regions poisoned then physically inspected zero, full tails, immutable weights/vocab unchanged, idempotence/invalid handles, public inspectors refuse without writes, caller bytes preserved."
+    },
+    "gpu_buffer_effect": {
+      "O2": {
+        "returncode": 0,
+        "stdout": "metal-work-final.stdout",
+        "binary_sha256": "b8b7f603dcc2452d9282c079636f082fb88a9b994f5ac692c678e8458759eb7f"
+      },
+      "ASan_UBSan": {
+        "returncode": 0,
+        "stdout": "metal-work-asan.stdout",
+        "binary_sha256": "26e1c2c9108334b9dfb8441ff0053d5f98431eadbb6d4d9bb821bcece15a067e"
+      },
+      "proof": "Tiny injected shared-memory arena, guards around full capacities, weight0 and bound resources/loaded identity retained. No GPU/model arithmetic invoked."
+    },
+    "actual_gpu": {
+      "returncode": 0,
+      "stdout": "gpu.stdout",
+      "binary_sha256": "0e9270d3333d69df75e6714853b4fa3c9fbfcd97e8534dd359c3c269d93531d5",
+      "proof": "Original pinned model opens once; clear before first use; known3.195sclip success\u2192clear\u2192sameclip success with identical expected text, same engine and decoder thread count; snapshots invalidated after each clear.",
+      "input": "psionic/fixtures/parakeet/6930-75918-0011.pcm",
+      "input_sha256": "caded890c7f34459729f8597df2d9fe575f199b465894b3dae852e9262b41a62",
+      "expected_text": "I am convinced of what I say, said the Count."
+    },
+    "swift_defer": {
+      "normal": {
+        "returncode": 0,
+        "stdout": "swift-clear.stdout",
+        "binary_sha256": "07f824f0c6a29827b0a6e69d0bfd9170cf4a7a7018703f7c50cad0a7b2bdeb00"
+      },
+      "ASan": {
+        "returncode": 0,
+        "stdout": "swift-clear-asan.stdout",
+        "binary_sha256": "582882e0ba746c7d8139ff2a6e3da19129d5e5828a51ae2e97966822e9689e47"
+      },
+      "proof": "Injected C ABI verifies successful returned text survives and resident clear executes exactly once both on success and thrown recognition failure. No device/model execution in this composition oracle."
+    }
+  },
+  "sanitizers": {
+    "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1",
+    "leak_sanitizer": "Not claimed on macOS.",
+    "unchanged_model_math": "Previously qualified native objects reused unsanitized; changed C memory effects and their oracles are sanitized."
+  },
+  "model": {
+    "id": "nvidia/parakeet-tdt-0.6b-v3",
+    "revision": "541d1f99c6b0c3cd0b11a95167540bb8edefd82b"
+  },
+  "source_pins": {
+    "psionic/platform/psionic-parakeet.h": "96bc7d563ba0f63f8206387435614220ab345485234879288eda2910ec430d3c",
+    "psionic/platform/parakeet-face.c": "8a36b666ba68b2ab9ab167c5e6ec33be83824215932304fb8968dfc0d1848f02",
+    "psionic/platform/parakeet-metal.h": "9aa93db40745801027303cb25cf7cf92882303b16a4978854e37aa8aa3e78db7",
+    "psionic/platform/parakeet-metal.c": "03fe80f1d45efe3c2916c127519bb46cecade758fd1fcd6932e85dd27c42f327",
+    "psionic/tests/parakeet-clear-native.c": "2e1905519222ee5effabdfe1a08cd5c599e0552b44db4ef1b72313e97f027105",
+    "psionic/tests/parakeet-clear-metal.c": "942dc76426a1c2fbee8aa2b05846e344d0b038e112f567c710aa2c90e801df47",
+    "psionic/tests/parakeet-clear-gpu.c": "a6ff488f2c9e844b3fe5b63869c4d5817c8169c855e3e7ae61cc66cc7ab79110",
+    "apps/openagents-desktop/Sources/Dictation.swift": "af2b7b75b7d794a085e45dfc2971fced7f8eab26e2aa510a648bf2e16bc651ae",
+    "apps/openagents-desktop/tests/dictation-recognizer-clear.h": "fde2c309610aa04fc443536cc88ee2e1d7119df98e423b5d9019f58a4f2f27a4",
+    "apps/openagents-desktop/tests/dictation-recognizer-clear.c": "479bebfd6351b20b0576488881ba713a26367d656a752204ef91dc4ece3e5a19",
+    "apps/openagents-desktop/tests/dictation-recognizer-clear.swift": "b8c1ba2a270a80b418aa1f560f88b7e2de14c6c2aaa14586a2ba21165adbb19c"
+  },
+  "unchanged_producer_inputs": {
+    "parakeet-runtime.o": "ac650364f948c2b93f40500be778476dd8d2b223b7e4c45fa1ba67cf6059dcd7",
+    "parakeet-threads.o": "8939edc428284cf27232dc4876de9546d69c16e9ab4f21a182b9b8dab9a17d02",
+    "metal-host.o": "46f973b4f797c2b63c8bbef40689550cb40fea1a66be19ee8a65cd4a6c4c0e1f",
+    "parakeet-runtime.h": "57a3f105b9df2a30bdea80719b0da3a7a9fb67d0ba82a011a22ea86d8f3e9af3",
+    "parakeet-fast.h": "f2e3e02871496f462d6a28895264d1ca5163773cbf2d31bd09c4ff5e950680d4",
+    "parakeet-metal-source.h": "42f138f1391577420f5afcaeddb3f23270ca4f8b4ef0fda5590082955611f446"
+  },
+  "library_sha256": "9416db1f9b29740baf155bc05b60e427683fd511813772dbc0e662c6546dbfe0",
+  "canonical_installed_library_sha256": "9416db1f9b29740baf155bc05b60e427683fd511813772dbc0e662c6546dbfe0",
+  "canonical_equals_qualified": true,
+  "build_scope": "Only changed C effect objects compiled; original Coax arithmetic/thread/Metal host objects reused. No Coax compiler or global budget changed. Canonical native archive/objects/executable installed by atomic rename after tests.",
+  "read_only_peer_review": {
+    "result": "no blocking omission or lock/lifetime issue found",
+    "scope": "Actual C clear implementation, full mutable-region inventory, Metal/API lock order and barriers, Swift copy-before-defer/failure cleanup, and documented ownership limitations. No extra test or source edit."
+  }
+}

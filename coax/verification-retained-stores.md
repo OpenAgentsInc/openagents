@@ -14,7 +14,16 @@ Complete default-empty source descriptors differ from zero-length views of an ow
 
 Optional observations expose procedure/call owner and site, independent fact/relation completeness, forbidden status and pending count. Consumers read only `CK_State.retain_report_count` after successful `CK_run`. Type, store, authority, Metal and resource rejection leave count zero. Accepted manual/pending rows are explicit. Raw report capacity and private cache tails are not an admitted result.
 
-Existing query/origin/path/depth limits and the single shared 1,048,576 work counter remain. B1 separately memoizes borrow presence and mutable-descriptor discovery only after type instantiation, resets both private type caches once per run, and charges reset and discovery to the same work counter. Resolved direct local slots use their already-checked path and leaf type; view crossings retain the raw backing analysis. A separate B1 field cache indexes frozen concrete types and field ordinals in the existing query pool. Type-owned kind4 rows hold eight lazy field positions and stay separate from declaration-owned value/storage rows; reset, probe and miss work stay within the same budget. Failed lookups do not publish rows or fill slots. A1 contexts retain their ordinary field walk. Zero-depth B1 discovery queries reuse the corresponding frozen type fact; A1 and positive-depth discovery keep their existing traversal. Query misses reuse the type projection already validated before lookup. Sets and per-procedure effects are bounded at 64, logical paths at 8, and each supplied store at 128 raw pairs. Coax computes an additional bounded effect workspace, clamped from twice the authored node count to 128..16,384 rows. Native code allocates/transports it. Observations are disabled normally and add no report work then; an explicitly requested short output refuses E0381 with zero committed count.
+Existing query/origin/path/depth limits and the single shared 1,048,576 work counter remain. B1 separately memoizes borrow presence and mutable-descriptor discovery only after type instantiation, resets both private type caches once per run, and charges reset and discovery to the same work counter. Resolved direct local slots use their already-checked path and leaf type; view crossings retain the raw backing analysis. A separate B1 field cache indexes frozen concrete types and field ordinals in the existing query pool. Type-owned kind4 rows hold eight lazy field positions and stay separate from declaration-owned value/storage rows; reset, probe and miss work stay within the same budget. Failed lookups do not publish rows or fill slots. A1 contexts retain their ordinary field walk. Zero-depth B1 discovery queries reuse the corresponding frozen type fact; A1 and positive-depth discovery keep their existing traversal. Query misses reuse the type projection already validated before lookup. Origin sets and supplied-store outputs are bounded at 64, canonical per-procedure summaries at 256, logical paths at 24, and each supplied store at 128 raw pairs. Coax computes an additional bounded effect workspace, clamped from twice the authored node count to 128..16,384 rows. Native code allocates/transports it. Observations are disabled normally and add no report work then; an explicitly requested short output refuses E0381 with zero committed count.
+
+Whole writes whose complete descriptor count exceeds 64 choose the existing
+unknown-element array projection before visiting their first field. Every
+source/destination element is represented, with distinct field ordinals; the
+pass never publishes 64 exact effects and then discovers a 65th array effect.
+Exact 64-element writes retain exact projections, and 257 distinct fields or
+independent effects still refuse. A private frozen-type classification memo
+publishes only successful results and resets on every retained pass. Its cold
+field walk validates bounds and charges the existing work counter.
 
 Retained whole writes stream their descriptor leaves through those same per-leaf buffers and limits. There is no separately materialized aggregate leaf set or fixed aggregate-width quota. Cold structural validation meters every field, including fields without descriptors. A private per-execution cache retains two recent complete validated immediate-field shapes with at most eight retaining fields each. Warm reuse validates and meters the selected fields and their recursive visits; larger shapes retain full streaming traversal. Exact type, declaration and field-head identity plus captured maximum visited field/type IDs preserve prefix bounds. The instantiated graph stays frozen during that execution; arbitrary changes to unvisited scalar links or types are outside this cache contract. After a child query rejects, structural traversal and later retained-store stages stop. Existing A1 query-internal diagnostic collection is unchanged. A late local witness still reports E0383 at the original RHS, and a late effect-capacity or work refusal still leaves the public report count zero. The initial B1 profile refused writes above 64 descriptor leaves or borrowed-array elements. The streamed profile replaces those structural refusals with the existing per-leaf and whole-pass bounds. A1 returned-value leaf limits are unchanged.
 
@@ -53,8 +62,8 @@ The actual [`so_post`](lib/systemone/transport.coax) chain selects caller `out`
 for `body`, caller `err` for `stderr`, static messages for `problem`, and scalars
 for `usage`, with modeled default-empty alternatives. Selected return facts do
 not discharge incomplete foreign-retention or host-entry outlives obligations.
-The existing eight-step paths, depth 32, 64-origin sets and shared
-1,048,576-work budget are unchanged.
+The current profile uses twenty-four-step paths. Depth 32, 64-origin sets and the
+shared 1,048,576-work budget are unchanged.
 
 The [early-exit record](../docs/verification/coax-b2-early-exit-2026-11-01/README.md)
 binds the changed guard's focused proof and matching-image full compiler cost:
@@ -94,6 +103,14 @@ races, overlapping snapshots and host-entry outlives duties are not
 automatically discharged. By-value mutable-view carriers (including sums),
 broader context/getter cases, recursive fixed points, foreign retention and
 nested-block/loop lifetimes remain manual. An unknown remote outcome never
-proves safe retry. Full desktop settings/Lab checking retains its recorded
-eight-step path refusal E0381; component checks do not qualify the whole app.
+proves safe retry. The historical desktop settings/Lab receipt retains its eight-step path refusal
+E0381. The 2026-11-02 dictation continuation extends represented paths to twenty-four
+without changing analysis work or admitting a local escape; its separate receipt
+records the actual desktop build result.
 R0 device/reviewer and the earlier failed page-golden gates remain separate.
+
+The current internal twenty-four-step representation and whole-write array precision
+are recorded separately in the [2026-11-02 compiler continuation](../docs/verification/coder-dictation-2026-11-02/compiler-fix/README.md).
+Earlier dated receipts keep their original eight-step representation, source
+and producer identities. Native headers must be regenerated with their C
+objects; this changes no protocol wire message or general lifetime proof.

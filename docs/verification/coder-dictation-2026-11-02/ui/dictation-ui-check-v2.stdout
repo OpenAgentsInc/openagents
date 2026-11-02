@@ -1,0 +1,4 @@
+ok   #test dictation Cmd-D begins only from an opted-in focused composer (1 case, 675 steps, 0 ms)
+ok   #test dictation microphone hit is bounded and opt-in (1 case, 234 steps, 0 ms)
+ok   #test dictation consent requires an explicit successful true boolean (1 case, 38 steps, 0 ms)
+3 checks, 3 passed, 0 failed

@@ -137,7 +137,7 @@ expression nodes create no memo work.
 These memo links and workspace tails are internal scratch, not a published
 summary format. The query, origin and work limits are unchanged.
 
-Helper-write descent shares the existing depth-32 guard, eight-step paths,
+Helper-write descent shares the existing depth-32 guard, twenty-four-step paths,
 64-origin sets and 1,048,576 work counter. Calls and arguments stay within the
 checked graph's admitted used prefixes. No parser allocation ordering is
 assumed. Resource exhaustion remains E0381, with no public summary ABI change.
@@ -180,3 +180,9 @@ fresh qualification of every declaration in the changed compiler.
 
 Focused guard checks and matching-image cost do not establish normal release
 qualification, bootstrap fixed points or a full desktop application build.
+
+The current internal twenty-four-step representation and whole-write array precision
+are recorded separately in the [2026-11-02 compiler continuation](../docs/verification/coder-dictation-2026-11-02/compiler-fix/README.md).
+Earlier dated receipts keep their original eight-step representation, source
+and producer identities. Native headers must be regenerated with their C
+objects; this changes no protocol wire message or general lifetime proof.

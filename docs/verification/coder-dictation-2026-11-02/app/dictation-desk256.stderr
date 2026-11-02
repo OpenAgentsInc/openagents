@@ -1,0 +1,7 @@
+warning: coax256 was compiled with optimization - stepping may behave oddly; variables may not be available.
+error: <user expression 0>:1:1: use of undeclared identifier 'l_owner'
+   1 | l_owner
+     | ^
+error: <user expression 0>:1:1: use of undeclared identifier 'l_site'
+   1 | l_site
+     | ^

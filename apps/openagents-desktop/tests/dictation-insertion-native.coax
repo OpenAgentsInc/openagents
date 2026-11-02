@@ -1,0 +1,16 @@
+// Native-only boundary witness: checks public draft observations after the
+// same guarded insertion path that the desktop screen calls.
+#load "../zeron/dictation.coax";
+dictation_insertion_native :: ()->int #export_c {
+ c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"prefix tail");c[0].anchor=7;c[0].caret=7;count:=c[0].hist[UNDO].count;
+ if !zdi_begin(g[..],c[..],1) || !zdi_apply(g[..],c[..],1,"hello\nrun_command") {return 1;}
+ if typed(c[..])!="prefix hello\nrun_command tail" || c[0].sent!=0 || c[0].last_n!=0 || c[0].hist[UNDO].count!=count+1 {return 2;}
+ composer_undo(c[..]);if typed(c[..])!="prefix tail" || c[0].caret!=7 || c[0].sent!=0 {return 3;}
+ if zdi_apply(g[..],c[..],1,"repeated") {return 4;}
+ if !zdi_begin(g[..],c[..],2) {return 5;}zdi_cancel(g[..]);composer_insert(c[..],"!");composer_undo(c[..]);if typed(c[..])!="prefix tail" || zdi_apply(g[..],c[..],2,"stale") {return 6;}
+ if !zdi_begin(g[..],c[..],3) || zdi_apply(g[..],c[..],2,"old") || !zdi_apply(g[..],c[..],3,"latest") {return 7;}
+ if typed(c[..])!="prefix latest tail" || c[0].sent!=0 || c[0].last_n!=0 {return 8;}
+ composer_undo(c[..]);if !zdi_begin(g[..],c[..],4) {return 9;}before:=c[0].hist[UNDO].count;
+ raw:=[1]u8.[195];if zdi_apply(g[..],c[..],4,cast(string)raw[..]) || typed(c[..])!="prefix tail" || c[0].hist[UNDO].count!=before || c[0].sent!=0 {return 10;}
+ return 0;
+}

@@ -1,0 +1,17 @@
+// Dictation UI strings are data derived from the controller's typed facts.
+#test "dictation status distinguishes capture, recognition and preparation" {
+ #assert zdu_label(2,0,0,0)=="Listening · release to finish";
+ #assert zdu_label(3,0,0,0)=="Finishing…" && zdu_label(5,0,0,0)=="Transcribing locally…";
+ #assert zdu_label(1,0,0,2)=="Loading Parakeet…";
+ #assert zdu_label(1,0,1,0)=="Microphone permission denied";
+ #assert zdu_label(1,5,0,0)=="Draft inserted · review and send";
+}
+zdu_label :: (phase:int,outcome:int,fault:int,preparing:int)->string {
+ if fault==1 {return "Microphone permission denied";}if fault==2 {return "Parakeet model unavailable";}
+ if fault==3 {return "Microphone unavailable";}if fault==4 {return "Transcription failed";}if fault==5 {return "Unsupported microphone format";}
+ if preparing==1 {return "Allow microphone access";}if preparing==2 {return "Loading Parakeet…";}if preparing==3 {return "Preparing microphone…";}
+ if phase==2 {return "Listening · release to finish";}if phase==3 {return "Finishing…";}if phase==4 || phase==5 {return "Transcribing locally…";}
+ if outcome==1 {return "Hold a little longer to dictate";}if outcome==2 {return "No speech detected";}if outcome==3 {return "Dictation cancelled";}
+ if outcome==4 {return "Dictation failed";}if outcome==5 {return "Draft inserted · review and send";}if outcome==6 {return "60-second limit reached";}
+ return "Hold ⌘D or the microphone";
+}

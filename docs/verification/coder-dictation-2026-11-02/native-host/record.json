@@ -1,0 +1,83 @@
+{
+  "schema": "openagents.coder.dictation-native-host.v1",
+  "status": "passed-focused-effect-and-recorded-model-qualification",
+  "controller_policy": "250/250 emitted root mutants killed, retained by policy agent separately",
+  "native_effect_cases": {
+    "count": 14,
+    "normal": {
+      "returncode": 0,
+      "stdout": "retry-normal.stdout",
+      "stderr": "retry-normal.stderr",
+      "binary_sha256": "dfd588d1cc7f441a23ed7ecded0cd623f68c4e5d9e4eabc2cac9ffc06c0f75c9"
+    },
+    "asan": {
+      "returncode": 0,
+      "stdout": "retry-asan.stdout",
+      "stderr": "retry-asan.stderr",
+      "binary_sha256": "589e52bfe5219b208472605ac8e7273b96dbca044016a5f7d02d8cfbacd9f1b4",
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1"
+      },
+      "scope": "Swift host plus generated controller/C bridge are address-sanitized. No model call is made in fake-device checks. The independent C controller record separately qualifies UBSan. Leak checking is not claimed."
+    },
+    "coverage": [
+      "disabled opens no effects",
+      "asynchronous permission never resumes released hold",
+      "denied permission",
+      "disable during model warming rejects late completion",
+      "sub-300ms tap never calls recognizer",
+      "silence never calls recognizer",
+      "exact400ms pre-roll +300msheld +200mstail audio",
+      "cancel during recognition suppresses result",
+      "background stops capture/clears audio but keeps resident model; reactivation no reload",
+      "capture error stops/blocks until explicit rearm",
+      "ASR failure then healthy warm audio and a second hold recover on same model",
+      "empty ASR becomes NoSpeech",
+      "nonfinite input stops capture",
+      "stalled tail stops capture",
+      "60-second bounded clip covers3model-sizedsegments and Coaxjoins text"
+    ]
+  },
+  "retry_regression": {
+    "red_returncode": 133,
+    "red_stderr": "retry-red.stderr",
+    "expected_message": "old ASR error stopped healthy capture on next audio",
+    "fixture": "producer/Dictation-red-branch.swift",
+    "scope": "Restore only the old unconditional existing-error branch against final strengthened native tests; expected top-level Swift oracle assertion trap. No microphone or real model involved.",
+    "green": "retry-normal.stdout"
+  },
+  "recorded_model": {
+    "returncode": 0,
+    "stdout": "real-model.stdout",
+    "stderr": "real-model.stderr",
+    "actual_tested_binary_sha256": "ee6ac320c51658e6ca6b41bf47075dea544fd0b67c72f373ed6cce7a637e3c7e",
+    "source_epoch": "Before final ASR-error retry guard. Snapshot reconstructed by reversing only that known later branch delta; actual tested executable is retained outside Git.",
+    "source_snapshot": "producer/Dictation-before-retry.swift",
+    "reuse_reason": "The later patch changes only handling of an existing ASR error on new warm audio; input values, timing/windows, model invocation and successful delivery remain unchanged. New failure/retry path is qualified by final normal and ASan cases; passing actual-model recognition was not repeated.",
+    "input": "psionic/fixtures/parakeet/6930-75918-0011.pcm",
+    "input_sha256": "caded890c7f34459729f8597df2d9fe575f199b465894b3dae852e9262b41a62",
+    "expected_text": "I am convinced of what I say, said the Count.",
+    "engine": "Resident original pinned Parakeet v3, GPU required; same CoderDictation/control/recognizer callback route with fixture capture transport only.",
+    "limit": "No real microphone or permission dialog exercised; public PCM file is read only. No capture files are written. Not a key-release latency benchmark."
+  },
+  "build": {
+    "coax_compiler": "/Users/christopherdavid/work/openagents/coax/bin/coax",
+    "coax_compiler_current_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "swift": "Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)\nTarget: arm64-apple-macosx26.0",
+    "parakeet_library_sha256": "0ecf8d29dd0f08136753d8199f66e4f915deaaadd2a079b69a05028da2f313f0",
+    "controller_generated_c_sha256": "c7d5a9319fd9e6a855b671cd563a6da2440cd7e8d6ffa5127e6e2bbfd14054e9",
+    "controller_generated_header_sha256": "3fe37ed9379355d5928d26291f1eae325c4d74f583e0cc452eab5b6938adca46",
+    "initial_failure": "build.stderr retains older producer attempt that exceeded the inherited Voice quiet-gap test budget; final build uses the reviewed existing check annotation and current compiler. No global compiler budget changed."
+  },
+  "source_pins": {
+    "apps/openagents-desktop/Sources/Dictation.swift": "72d66afba2fc627d83103437db2965662129765b795d17136e4fa7724b8c97b9",
+    "apps/openagents-desktop/dictation-build.coax": "1da7ae7767f5ca75c6157a0221ba3fb1afcbc66de5724a3e8a5597dacf1bac6a",
+    "apps/openagents-desktop/dictation-face.c": "4d9563f007f0c52d45aa819e400064145b179e28a8d4ab0a5b840e3f8e4a53fd",
+    "apps/openagents-desktop/dictation-face.h": "20e22c6290fefe930b406f28da52d6764b59141d3f08e3f50a5bc17bb1782352",
+    "apps/openagents-desktop/tests/dictation-host.swift": "de70ce88b006287d96a118ee24e9df0d644571cc9cef90237f477a8a171089bd",
+    "apps/shared/dictation-policy.coax": "c7fe68bee50055426a9ee3c1f796b8b31cf3c2d1bd538e7cf3ec77c8981d6597",
+    "apps/shared/dictation.coax": "5f9e08fbeef3a8d383e6bcdf41d23e120fadb9a49ee89b3bddd4245887dfb978",
+    "verse/voice.coax": "d5f6ad16804b49c441fb4fabc2f7890c58ed4e3f7f18f1e4c39ee4ff800d9d64"
+  },
+  "no_running_microphone": true
+}

@@ -1,0 +1,83 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/shared/dictation-policy.coax:78:92: mutant survived: the assignment was removed
+  dgp_cancel :: (g0:DctGate)->DctGate {g:=g0;g.phase=dgp_idle(g);g.outcome=DCT_CANCEL;g.fault=0;return g;}
+                                                                                             ^
+apps/shared/dictation-policy.coax:79:125: mutant survived: the assignment was removed
+  dgp_enable :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.enabled==on {return g;}g.enabled=on;g=dgp_cancel(g);if on {g.outcome=0;}return g;}
+                                                                                                                              ^
+apps/shared/dictation-policy.coax:79:126: mutant survived: 0 became 1
+  dgp_enable :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.enabled==on {return g;}g.enabled=on;g=dgp_cancel(g);if on {g.outcome=0;}return g;}
+                                                                                                                               ^
+apps/shared/dictation-policy.coax:80:123: mutant survived: the assignment was removed
+  dgp_active :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.active==on {return g;}g.active=on;g=dgp_cancel(g);if on {g.outcome=0;}return g;}
+                                                                                                                            ^
+apps/shared/dictation-policy.coax:80:124: mutant survived: 0 became 1
+  dgp_active :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.active==on {return g;}g.active=on;g=dgp_cancel(g);if on {g.outcome=0;}return g;}
+                                                                                                                             ^
+apps/shared/dictation-policy.coax:81:114: mutant survived: the assignment was removed
+  dgp_ready :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.ready==on {return g;}g.ready=on;if on {g.pending=0;g.fault=0;g.outcome=0;}else {g=dgp_cancel(g);}return g;}
+                                                                                                                   ^
+apps/shared/dictation-policy.coax:81:126: mutant survived: the assignment was removed
+  dgp_ready :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.ready==on {return g;}g.ready=on;if on {g.pending=0;g.fault=0;g.outcome=0;}else {g=dgp_cancel(g);}return g;}
+                                                                                                                               ^
+apps/shared/dictation-policy.coax:81:127: mutant survived: 0 became 1
+  dgp_ready :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.ready==on {return g;}g.ready=on;if on {g.pending=0;g.fault=0;g.outcome=0;}else {g=dgp_cancel(g);}return g;}
+                                                                                                                                ^
+apps/shared/dictation-policy.coax:82:97: mutant survived: '<' became '<='
+  dgp_begin :: (g0:DctGate,now:int)->DctGate {g:=g0;if !dgp_capture(g) || g.phase!=DCT_IDLE || now<0 || now>1000000000000 || g.ticket>=9223372036854775807 {return g;}g.ticket+=1;g.phase=DCT_HELD;g.pressed=now;g.until=now+59550;g.outcome=0;g.fault=0;return g;}
+                                                                                                  ^
+apps/shared/dictation-policy.coax:82:98: mutant survived: 0 became 1
+  dgp_begin :: (g0:DctGate,now:int)->DctGate {g:=g0;if !dgp_capture(g) || g.phase!=DCT_IDLE || now<0 || now>1000000000000 || g.ticket>=9223372036854775807 {return g;}g.ticket+=1;g.phase=DCT_HELD;g.pressed=now;g.until=now+59550;g.outcome=0;g.fault=0;return g;}
+                                                                                                   ^
+apps/shared/dictation-policy.coax:82:235: mutant survived: the assignment was removed
+  dgp_begin :: (g0:DctGate,now:int)->DctGate {g:=g0;if !dgp_capture(g) || g.phase!=DCT_IDLE || now<0 || now>1000000000000 || g.ticket>=9223372036854775807 {return g;}g.ticket+=1;g.phase=DCT_HELD;g.pressed=now;g.until=now+59550;g.outcome=0;g.fault=0;return g;}
+                                                                                                                                                                                                                                            ^
+apps/shared/dictation-policy.coax:82:245: mutant survived: the assignment was removed
+  dgp_begin :: (g0:DctGate,now:int)->DctGate {g:=g0;if !dgp_capture(g) || g.phase!=DCT_IDLE || now<0 || now>1000000000000 || g.ticket>=9223372036854775807 {return g;}g.ticket+=1;g.phase=DCT_HELD;g.pressed=now;g.until=now+59550;g.outcome=0;g.fault=0;return g;}
+                                                                                                                                                                                                                                                      ^
+apps/shared/dictation-policy.coax:82:246: mutant survived: 0 became 1
+  dgp_begin :: (g0:DctGate,now:int)->DctGate {g:=g0;if !dgp_capture(g) || g.phase!=DCT_IDLE || now<0 || now>1000000000000 || g.ticket>=9223372036854775807 {return g;}g.ticket+=1;g.phase=DCT_HELD;g.pressed=now;g.until=now+59550;g.outcome=0;g.fault=0;return g;}
+                                                                                                                                                                                                                                                       ^
+apps/shared/dictation-policy.coax:83:149: mutant survived: the assignment was removed
+  dgp_fault :: (g0:DctGate,reason:int)->DctGate {g:=dgp_cancel(g0);g.outcome=DCT_ERROR;g.fault=ifx reason>=1 && reason<=5 then reason else 3;g.pending=0;return g;}
+                                                                                                                                                      ^
+apps/shared/dictation-policy.coax:85:91: mutant survived: '<' became '<='
+  dgp_release :: (g0:DctGate,now:int)->DctGate {g:=g0;if g.phase!=DCT_HELD {return g;}if now<g.pressed || now>1000000000000 {return dgp_fault(g,3);}if now-g.pressed<300 {g=dgp_cancel(g);g.outcome=DCT_TAP;return g;}g.phase=DCT_TAIL;if now+200<g.until {g.until=now+200;}return g;}
+                                                                                            ^
+apps/shared/dictation-policy.coax:85:108: mutant survived: '>' became '>='
+  dgp_release :: (g0:DctGate,now:int)->DctGate {g:=g0;if g.phase!=DCT_HELD {return g;}if now<g.pressed || now>1000000000000 {return dgp_fault(g,3);}if now-g.pressed<300 {g=dgp_cancel(g);g.outcome=DCT_TAP;return g;}g.phase=DCT_TAIL;if now+200<g.until {g.until=now+200;}return g;}
+                                                                                                             ^
+apps/shared/dictation-policy.coax:85:240: mutant survived: '<' became '<='
+  dgp_release :: (g0:DctGate,now:int)->DctGate {g:=g0;if g.phase!=DCT_HELD {return g;}if now<g.pressed || now>1000000000000 {return dgp_fault(g,3);}if now-g.pressed<300 {g=dgp_cancel(g);g.outcome=DCT_TAP;return g;}g.phase=DCT_TAIL;if now+200<g.until {g.until=now+200;}return g;}
+                                                                                                                                                                                                                                                 ^
+apps/shared/dictation-policy.coax:85:237: mutant survived: 200 became 201
+  dgp_release :: (g0:DctGate,now:int)->DctGate {g:=g0;if g.phase!=DCT_HELD {return g;}if now<g.pressed || now>1000000000000 {return dgp_fault(g,3);}if now-g.pressed<300 {g=dgp_cancel(g);g.outcome=DCT_TAP;return g;}g.phase=DCT_TAIL;if now+200<g.until {g.until=now+200;}return g;}
+                                                                                                                                                                                                                                              ^
+apps/shared/dictation-policy.coax:92:204: mutant survived: 0 became 1
+  dgp_result :: (g0:DctGate,ticket:u64,ok:bool)->DctGate {g:=g0;if g.phase!=DCT_WORK || g.ticket!=ticket {return g;}g.phase=dgp_idle(g);g.outcome=ifx ok then DCT_SUCCESS else DCT_ERROR;g.fault=ifx ok then 0 else 4;return g;}
+                                                                                                                                                                                                             ^
+apps/shared/dictation-policy.coax:93:96: mutant survived: '>=' became '>'
+  dgp_segment :: (total:int,offset:int)->int {if total<320 || total>DCT_MAX || offset<0 || offset>=total {return 0;}left:=total-offset;if left<320 {return 0;}if left<=DCT_SEGMENT {return left;}n:=DCT_SEGMENT;tail:=left-n;if tail<320 {n-=320-tail;}return n;}
+                                                                                                 ^
+apps/shared/dictation-policy.coax:93:164: mutant survived: '<=' became '<'
+  dgp_segment :: (total:int,offset:int)->int {if total<320 || total>DCT_MAX || offset<0 || offset>=total {return 0;}left:=total-offset;if left<320 {return 0;}if left<=DCT_SEGMENT {return left;}n:=DCT_SEGMENT;tail:=left-n;if tail<320 {n-=320-tail;}return n;}
+                                                                                                                                                                     ^
+apps/shared/dictation-policy.coax:93:227: mutant survived: '<' became '<='
+  dgp_segment :: (total:int,offset:int)->int {if total<320 || total>DCT_MAX || offset<0 || offset>=total {return 0;}left:=total-offset;if left<320 {return 0;}if left<=DCT_SEGMENT {return left;}n:=DCT_SEGMENT;tail:=left-n;if tail<320 {n-=320-tail;}return n;}
+                                                                                                                                                                                                                                    ^
+apps/shared/dictation-policy.coax:93:228: mutant survived: 320 became 321
+  dgp_segment :: (total:int,offset:int)->int {if total<320 || total>DCT_MAX || offset<0 || offset>=total {return 0;}left:=total-offset;if left<320 {return 0;}if left<=DCT_SEGMENT {return left;}n:=DCT_SEGMENT;tail:=left-n;if tail<320 {n-=320-tail;}return n;}
+                                                                                                                                                                                                                                     ^
+apps/shared/dictation-policy.coax:94:135: mutant survived: '>' became '>='
+  dgp_text :: (phase:int,current:u64,ticket:u64,have:int,add:int)->int {if phase!=DCT_WORK || current!=ticket || have<0 || add<0 || have>8000 || add>8000 {return -1;}gap:=ifx have>0 && add>0 then 1 else 0;if have+gap+add>8000 {return -1;}return have+gap+add;}
+                                                                                                                                        ^
+apps/shared/dictation-policy.coax:94:136: mutant survived: 8000 became 8001
+  dgp_text :: (phase:int,current:u64,ticket:u64,have:int,add:int)->int {if phase!=DCT_WORK || current!=ticket || have<0 || add<0 || have>8000 || add>8000 {return -1;}gap:=ifx have>0 && add>0 then 1 else 0;if have+gap+add>8000 {return -1;}return have+gap+add;}
+                                                                                                                                         ^
+apps/shared/dictation-policy.coax:94:148: mutant survived: 8000 became 8001
+  dgp_text :: (phase:int,current:u64,ticket:u64,have:int,add:int)->int {if phase!=DCT_WORK || current!=ticket || have<0 || add<0 || have>8000 || add>8000 {return -1;}gap:=ifx have>0 && add>0 then 1 else 0;if have+gap+add>8000 {return -1;}return have+gap+add;}
+                                                                                                                                                     ^
+apps/shared/dictation-policy.coax:94:179: mutant survived: 0 became 1
+  dgp_text :: (phase:int,current:u64,ticket:u64,have:int,add:int)->int {if phase!=DCT_WORK || current!=ticket || have<0 || add<0 || have>8000 || add>8000 {return -1;}gap:=ifx have>0 && add>0 then 1 else 0;if have+gap+add>8000 {return -1;}return have+gap+add;}
+                                                                                                                                                                                    ^
+243 mutants, 216 killed, 27 survived

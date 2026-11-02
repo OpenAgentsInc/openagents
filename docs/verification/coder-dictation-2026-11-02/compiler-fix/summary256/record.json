@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "date": "2026-11-02",
+  "status": "completed historical path16/summary256 compiler slice; desktop unresolved",
+  "profile": {
+    "path_steps": 16,
+    "per_procedure_effects": 256,
+    "BS_origin_set": 64,
+    "RP_supplied_store_terms": 64,
+    "global_work": 1048576
+  },
+  "source": {
+    "closure": "source/*.coax.gz:15-file frozen snapshot from native256-src/coax/lib/compiler",
+    "checker_sha256": "5107ecdc486426a25ee8a310d7a5d436f712d790d1deba535c7a49c57c145adf",
+    "borrow_summary_sha256": "ddfd86b7fd27e394ffea3372f8a6fa5c03a40adf0d1149101a33f42f5de98fae"
+  },
+  "producer": {
+    "path": "/tmp/dictation-compiler-fix/normal16-coax",
+    "sha256": "c80416bac2b814ca876b877cd2b0165dbfed68a6084e5631c0c1009816d719ea",
+    "candidate_path": "/tmp/dictation-compiler-fix/coax256",
+    "candidate_sha256": "9905a74935114b23872b35a46e4f924696539f874790205ec1f34bb274c05611"
+  },
+  "checks": {
+    "summary_groups": 4,
+    "passed": 4,
+    "failed": 0,
+    "stdout": "summary256.stdout.gz",
+    "stderr": "summary256.stderr",
+    "scope": "Focused summary groups; not full authority mutation coverage."
+  },
+  "native": {
+    "result": "PASS",
+    "cases_each": 11,
+    "profiles": [
+      "O0",
+      "O2",
+      "ASan+UBSan"
+    ],
+    "source": "native256.coax.gz",
+    "cases": "native256-cases.json",
+    "driver": "native256-main.c",
+    "scope": "Coax check-body probes plus native complete256 CR_apply/257 refusal fixture; not an independent semantic implementation."
+  },
+  "sensitivity_controls": {
+    "killed": 4,
+    "total": 4,
+    "result": "controls256-results.json",
+    "scope": "Four authored controls; not full mutation."
+  },
+  "self_emission": {
+    "result": "PASS",
+    "canonical_source_all_authority_checks": "passed as part of reported canonical C generation",
+    "byte_equality": {
+      "c": true,
+      "h": true
+    },
+    "ready_c": "checker256-ready.c.gz",
+    "ready_h": "checker256-ready.h.gz",
+    "self_c": "checker256-self.c.gz",
+    "self_h": "checker256-self.h.gz",
+    "stderr": "checker256-self.stderr"
+  },
+  "full_compiler": {
+    "result": "PASS",
+    "exit_status": 0,
+    "input": "coax/lib/compiler/compiler.coax",
+    "work": 1039516,
+    "budget": 1048576,
+    "remaining": 9060,
+    "remaining_percent": 0.8640289306640625,
+    "stdout": "full-compiler256.stdout.gz",
+    "stderr": "full-compiler256.stderr.gz",
+    "header": "full-compiler256.h.gz"
+  },
+  "prior128_diagnostic": {
+    "result": "FAIL at exact distinct128-effect capacity",
+    "diagnostic": "effects128.json.gz",
+    "actual_error": "actual128.stderr",
+    "effect_count": 128,
+    "global_effects": 1147,
+    "work": 394525
+  },
+  "desktop": {
+    "result": "NOT PASSED; unresolved in this profile",
+    "error": "E0381 at apps/openagents-desktop/zeron/desk.coax:523:11",
+    "stderr": "actual256.stderr",
+    "scope": "This record does not diagnose the new capacity or claim desktop success. The parent is investigating it separately."
+  },
+  "stack_context": {
+    "LP64_pending_obligation_bytes": 616,
+    "pending256_bytes": 157696,
+    "note": "Larger fixed pending staging increases native stack use. Recursive CR_leaf may reserve it at each aggregate layer. This profile is not stack-neutral."
+  },
+  "limitations": [
+    "This is historical path16/summary256; later path24 qualification is separate.",
+    "No complete desktop, microphone, real-user dictation or composer delivery claim.",
+    "No binaries included.",
+    "Existing successful results were packaged without reruns."
+  ]
+}

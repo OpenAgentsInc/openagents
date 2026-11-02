@@ -1,0 +1,117 @@
+// Dictation admission is local, opt-in and ticketed. A transcript is only a
+// draft candidate; this controller has no send or engine-command operation.
+#authority;
+DCT_OFF :: 0; DCT_IDLE :: 1; DCT_HELD :: 2; DCT_TAIL :: 3; DCT_CLIP :: 4; DCT_WORK :: 5;
+DCT_NONE :: 0; DCT_TAP :: 1; DCT_SILENCE :: 2; DCT_CANCEL :: 3; DCT_ERROR :: 4; DCT_SUCCESS :: 5; DCT_LIMIT :: 6;
+DCT_MAX :: 960000; DCT_PRE :: 7200; DCT_SEGMENT :: 327520;
+DctGate :: struct {enabled:bool;active:bool;ready:bool;phase:int;outcome:int;fault:int;pending:int;ticket:u64;pressed:int;until:int;}
+#test "dictation capture requires all consent focus and readiness facts" {
+ for bits:0..<8 {g:=DctGate.{enabled=(bits&1)!=0,active=(bits&2)!=0,ready=(bits&4)!=0,phase=DCT_IDLE};#assert dgp_capture(g)==(bits==7);n:=dgp_begin(g,1000);#assert (n.phase==DCT_HELD)==(bits==7);}
+}
+#test "dictation begins only idle with a monotonic positive ticket and a bounded clock" {
+ g:=DctGate.{enabled=true,active=true,ready=true,phase=DCT_IDLE,ticket=7};n:=dgp_begin(g,1000);#assert n.ticket==8 && n.pressed==1000 && n.until==60550 && n.outcome==0;
+ for phase:0..<6 {if phase!=1 {g.phase=phase;#assert dgp_begin(g,1000).phase==phase && dgp_begin(g,1000).ticket==7;}}
+ g.phase=1;#assert dgp_begin(g,-1).ticket==7;#assert dgp_begin(g,1000000000001).ticket==7;#assert dgp_begin(g,1000000000000).ticket==8;
+ g.ticket=9223372036854775807;#assert dgp_begin(g,1).ticket==g.ticket;
+}
+#test "dictation duplicate facts preserve a held request while focus or consent loss invalidates it" {
+ g:=dgp_begin(DctGate.{enabled=true,active=true,ready=true,phase=1},1000);
+ #assert dgp_enable(g,true).phase==2 && dgp_active(g,true).phase==2 && dgp_ready(g,true).phase==2;
+ a:=dgp_enable(g,false);#assert !a.enabled && a.phase==0 && a.outcome==3;
+ a=dgp_active(g,false);#assert a.enabled && !a.active && a.phase==0 && a.outcome==3;
+ a=dgp_ready(g,false);#assert !a.ready && a.phase==1 && a.outcome==3;
+ a=dgp_active(a,false);a=dgp_active(a,true);#assert a.phase==1;
+ a=dgp_enable(dgp_enable(a,false),true);#assert a.phase==1;
+}
+#test "dictation release distinguishes a tap from the exact minimum and bounds the tail" {
+ g:=dgp_begin(DctGate.{enabled=true,active=true,ready=true,phase=1},1000);
+ a:=dgp_release(g,1299);#assert a.phase==1 && a.outcome==1;
+ a=dgp_release(g,1300);#assert a.phase==3 && a.until==1500 && a.outcome==0;
+ a=dgp_release(g,60500);#assert a.phase==3 && a.until==60550;
+ a=dgp_release(g,999);#assert a.phase==1 && a.outcome==4 && a.fault==3;
+ a=dgp_release(g,1000000000001);#assert a.outcome==4;
+ g.phase=5;#assert dgp_release(g,1300).phase==5;
+}
+#test "dictation finalization waits for captured time and rejects stalled audio" {
+ g:=DctGate.{phase=3,until=1500};#assert !dgp_due(g,1499,24000) && !dgp_due(g,1500,23999) && dgp_due(g,1500,24000);
+ g.phase=2;#assert dgp_due(g,1500,24000);g.phase=4;#assert !dgp_due(g,2000,32000);
+ g.phase=3;#assert !dgp_stalled(g,2500) && dgp_stalled(g,2501);g.phase=2;#assert dgp_stalled(g,2501);g.phase=1;#assert !dgp_stalled(g,2501);
+}
+#test "dictation silence gate needs a complete clip real speech and a loud thirty milliseconds" {
+ #assert !dgp_speech(319,2560,20000) && !dgp_speech(320,2559,20000) && !dgp_speech(320,2560,10737.41824);
+ #assert dgp_speech(320,2560,10737.41825) && !dgp_speech(960001,2560,20000) && dgp_speech(960000,2560,20000);
+ g:=DctGate.{phase=3,enabled=true,active=true,ready=true};a:=dgp_finish(g,4800,2560,20000);#assert a.phase==4 && a.outcome==0;
+ g.phase=2;a=dgp_finish(g,960000,2560,20000);#assert a.phase==4 && a.outcome==6;
+ a=dgp_finish(g,4800,0,20000);#assert a.phase==1 && a.outcome==2;
+ g.phase=1;#assert dgp_finish(g,4800,2560,20000).phase==1;
+}
+#test "dictation results require the current recognizing ticket and cannot survive cancellation" {
+ g:=DctGate.{enabled=true,active=true,ready=true,phase=4,ticket=3};#assert !dgp_result_ok(g,3,true);
+ a:=dgp_decode(g,2);#assert a.phase==4;a=dgp_decode(g,3);#assert a.phase==5;
+ #assert !dgp_result_ok(a,2,true) && !dgp_result_ok(a,3,false) && dgp_result_ok(a,3,true);
+ a=dgp_result(a,3,true,1);#assert a.phase==1 && a.outcome==5;#assert dgp_cancel(a).outcome==3;
+ g.phase=5;#assert dgp_result(g,2,true,1).phase==5;a=dgp_result(g,3,false,1);#assert a.phase==1 && a.outcome==4 && a.fault==4;
+ g.ready=false;#assert !dgp_result_ok(g,3,true) && dgp_decode(DctGate.{phase=4,ticket=3},3).phase==4;
+}
+#test "dictation fault and preparation facts have bounded explicit meanings" {
+ g:=DctGate.{enabled=true,active=true,ready=true,phase=2};for n:1..<6 {a:=dgp_fault(g,n);#assert a.phase==1 && a.outcome==4 && a.fault==n && a.pending==0 && a.ready==(n==4);}
+ #assert dgp_fault(g,0).fault==3 && dgp_fault(g,6).fault==3;
+ for n:1..<4 {a:=dgp_preparing(g,n);#assert !a.ready && a.pending==n && a.outcome==0 && a.fault==0;}
+ #assert dgp_preparing(g,0).pending==0 && dgp_preparing(g,4).pending==0;
+ a:=dgp_ready(dgp_preparing(g,2),true);#assert a.ready && a.pending==0 && a.fault==0;
+}
+#forall "dictation model segments cover exact audio without a too-short final chunk" total:320..<1400 {
+ offset:=0;for step:0..<4 {n:=dgp_segment(total,offset);if n>0 {#assert n>=320 && n<=327520;offset+=n;}}#assert offset==total;
+}
+#test "dictation segmentation handles every boundary without omitted or duplicated samples" {
+ for total:[8]int.[327520,327521,327839,327840,655040,655041,655359,960000] {offset:=0;count:=0;while offset<total {n:=dgp_segment(total,offset);#assert n>=320 && n<=327520;offset+=n;count+=1;}#assert offset==total && count<=3;#assert dgp_segment(total,offset)==0;}
+ #assert dgp_segment(319,0)==0 && dgp_segment(960001,0)==0 && dgp_segment(500,-1)==0 && dgp_segment(500,181)==0;
+ #assert dgp_segment(327521,0)==327201 && dgp_segment(327521,327201)==320;
+}
+#test "dictation combined text stays bounded and never accepts another ticket" {
+ #assert dgp_text(5,3,3,0,0)==0 && dgp_text(5,3,3,0,5)==5 && dgp_text(5,3,3,5,0)==5 && dgp_text(5,3,3,5,3)==9;
+ #assert dgp_text(5,3,3,7999,0)==7999 && dgp_text(5,3,3,7999,1)== -1 && dgp_text(5,3,3,0,8000)==8000;
+ #assert dgp_text(4,3,3,0,1)== -1 && dgp_text(5,3,4,0,1)== -1 && dgp_text(5,3,3,-1,1)== -1 && dgp_text(5,3,3,0,-1)== -1;
+}
+#test "dictation boundary facts clear stale notices and retain exact timing limits" {
+ g:=DctGate.{enabled=true,active=true,ready=true,phase=1,outcome=4,fault=2,pending=3};a:=dgp_begin(g,0);#assert a.phase==2 && a.ticket==1 && a.outcome==0 && a.fault==0;
+ a=dgp_cancel(g);#assert a.fault==0 && a.outcome==3;
+ g.enabled=false;a=dgp_enable(g,true);#assert a.enabled && a.outcome==0;
+ g.enabled=true;g.active=false;a=dgp_active(g,true);#assert a.active && a.outcome==0;
+ g.active=true;g.ready=false;a=dgp_ready(g,true);#assert a.ready && a.pending==0 && a.fault==0 && a.outcome==0;
+ a=dgp_fault(g,2);#assert a.pending==0;
+ g.ready=true;g.phase=2;g.pressed=1000;g.until=60550;a=dgp_release(g,1000);#assert a.outcome==1 && a.fault==0;
+ a=dgp_release(g,60349);#assert a.phase==3 && a.until==60549;
+ a=dgp_release(g,1000000000000);#assert a.phase==3 && a.until==60550;
+ g.phase=5;g.ticket=3;a=dgp_result(g,3,true,1);#assert a.fault==0 && a.outcome==5;
+ #assert dgp_segment(327520,0)==327520 && dgp_segment(327840,0)==327520;
+ #assert dgp_text(5,3,3,8000,0)==8000 && dgp_text(5,3,3,1,1)==3;
+ #assert dgp_text(5,3,3,9223372036854775807,9223372036854775807)== -1;
+}
+#test "dictation publishes assembled bytes only after an eligible final result" {
+ for bits:0..<8 {for phase:0..<6 {for outcome:0..<7 {g:=DctGate.{enabled=(bits&1)!=0,active=(bits&2)!=0,ready=(bits&4)!=0,phase=phase,outcome=outcome};#assert dgp_delivery(g)==(bits==7 && phase==1 && outcome==5);}}}
+}
+#test "dictation successful empty recognition is no speech and never an eligible draft" {
+ g:=DctGate.{enabled=true,active=true,ready=true,phase=5,ticket=3};a:=dgp_result(g,3,true,0);#assert a.phase==1 && a.outcome==2 && a.fault==0 && !dgp_delivery(a);
+ a=dgp_result(g,3,true,1);#assert a.outcome==5 && dgp_delivery(a);a=dgp_result(g,3,false,0);#assert a.outcome==4 && a.fault==4;
+}
+dgp_capture :: (g:DctGate)->bool {return g.enabled && g.active && g.ready;}
+dgp_idle :: (g:DctGate)->int {return ifx g.enabled && g.active then DCT_IDLE else DCT_OFF;}
+dgp_cancel :: (g0:DctGate)->DctGate {g:=g0;g.phase=dgp_idle(g);g.outcome=DCT_CANCEL;g.fault=0;return g;}
+dgp_enable :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.enabled==on {return g;}g.enabled=on;g=dgp_cancel(g);if on {g.outcome=0;}return g;}
+dgp_active :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.active==on {return g;}g.active=on;g=dgp_cancel(g);if on {g.outcome=0;}return g;}
+dgp_ready :: (g0:DctGate,on:bool)->DctGate {g:=g0;if g.ready==on {return g;}g.ready=on;if on {g.pending=0;g.fault=0;g.outcome=0;}else {g=dgp_cancel(g);}return g;}
+dgp_begin :: (g0:DctGate,now:int)->DctGate {g:=g0;if !dgp_capture(g) || g.phase!=DCT_IDLE || now<0 || now>1000000000000 || g.ticket>=9223372036854775807 {return g;}g.ticket+=1;g.phase=DCT_HELD;g.pressed=now;g.until=now+59550;g.outcome=0;g.fault=0;return g;}
+dgp_fault :: (g0:DctGate,reason:int)->DctGate {g:=dgp_cancel(g0);g.outcome=DCT_ERROR;g.fault=ifx reason>=1 && reason<=5 then reason else 3;g.pending=0;if g.fault!=4 {g.ready=false;}return g;}
+dgp_preparing :: (g0:DctGate,reason:int)->DctGate {g:=dgp_cancel(g0);g.ready=false;g.outcome=0;g.pending=ifx reason>=1 && reason<=3 then reason else 0;return g;}
+dgp_release :: (g0:DctGate,now:int)->DctGate {g:=g0;if g.phase!=DCT_HELD {return g;}if now<g.pressed || now>1000000000000 {return dgp_fault(g,3);}if now-g.pressed<300 {g=dgp_cancel(g);g.outcome=DCT_TAP;return g;}g.phase=DCT_TAIL;d:=now+200-g.until;g.until+=d&(d>>63);return g;}
+dgp_due :: (g:DctGate,now:int,audio_end:int)->bool {return (g.phase==DCT_HELD || g.phase==DCT_TAIL) && now>=g.until && audio_end>=g.until*16;}
+dgp_stalled :: (g:DctGate,now:int)->bool {return (g.phase==DCT_HELD || g.phase==DCT_TAIL) && now>g.until+1000;}
+dgp_speech :: (samples:int,speech:int,power:f64)->bool {return samples>=320 && samples<=DCT_MAX && speech>=2560 && power>10737.41824;}
+dgp_finish :: (g0:DctGate,samples:int,speech:int,power:f64)->DctGate {g:=g0;if g.phase!=DCT_HELD && g.phase!=DCT_TAIL {return g;}if !dgp_speech(samples,speech,power) {g.phase=dgp_idle(g);g.outcome=DCT_SILENCE;return g;}g.outcome=ifx g.phase==DCT_HELD then DCT_LIMIT else DCT_NONE;g.phase=DCT_CLIP;return g;}
+dgp_decode :: (g0:DctGate,ticket:u64)->DctGate {g:=g0;if g.phase==DCT_CLIP && g.ticket==ticket && dgp_capture(g) {g.phase=DCT_WORK;}return g;}
+dgp_result_ok :: (g:DctGate,ticket:u64,ok:bool)->bool {return g.phase==DCT_WORK && g.ticket==ticket && dgp_capture(g) && ok;}
+dgp_result :: (g0:DctGate,ticket:u64,ok:bool,bytes:int)->DctGate {g:=g0;if g.phase!=DCT_WORK || g.ticket!=ticket {return g;}g.phase=dgp_idle(g);g.outcome=ifx !ok then DCT_ERROR else ifx bytes>0 then DCT_SUCCESS else DCT_SILENCE;g.fault=ifx ok then 0 else 4;return g;}
+dgp_segment :: (total:int,offset:int)->int {if total<320 || total>DCT_MAX || offset<0 {return 0;}left:=total-offset;if left<320 {return 0;}if left<=DCT_SEGMENT {return left;}tail:=left-DCT_SEGMENT;short:=320-tail;return DCT_SEGMENT-(short&((short>>63)^(-1)));}
+dgp_text :: (phase:int,current:u64,ticket:u64,have:int,add:int)->int {if phase!=DCT_WORK || current!=ticket || have<0 || add<0 {return -1;}gap:u64=ifx have>0 && add>0 then 1 else 0;total:=cast(u64)have+cast(u64)add+gap;if total>8000 {return -1;}return cast(int)total;}
+dgp_delivery :: (g:DctGate)->bool {return dgp_capture(g) && g.phase==DCT_IDLE && g.outcome==DCT_SUCCESS;}

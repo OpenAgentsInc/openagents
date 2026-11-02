@@ -11,13 +11,13 @@
 #define OFFSET(T,F,N) _Static_assert(offsetof(T,F)==N,"LP64 " #T "." #F)
 _Static_assert(sizeof(void*)==8 && sizeof(int64_t)==8,"named native LP64 profile");
 ABI(coax_t_BS_Step,16,8); OFFSET(coax_t_BS_Step,kind,0); OFFSET(coax_t_BS_Step,index,8);
-ABI(coax_t_BS_Path,136,8); OFFSET(coax_t_BS_Path,count,0); OFFSET(coax_t_BS_Path,steps,8);
-_Static_assert(sizeof(((coax_t_BS_Path*)0)->steps.e)==128,"eight inline steps");
-ABI(coax_t_BS_Origin,168,8); OFFSET(coax_t_BS_Origin,kind,0); OFFSET(coax_t_BS_Origin,root,8);
+ABI(coax_t_BS_Path,392,8); OFFSET(coax_t_BS_Path,count,0); OFFSET(coax_t_BS_Path,steps,8);
+_Static_assert(sizeof(((coax_t_BS_Path*)0)->steps.e)==384,"twenty-four inline steps");
+ABI(coax_t_BS_Origin,424,8); OFFSET(coax_t_BS_Origin,kind,0); OFFSET(coax_t_BS_Origin,root,8);
 OFFSET(coax_t_BS_Origin,role,16); OFFSET(coax_t_BS_Origin,type,24); OFFSET(coax_t_BS_Origin,path,32);
-ABI(coax_t_BS_Binding,208,8); OFFSET(coax_t_BS_Binding,formal,0); OFFSET(coax_t_BS_Binding,actual_type,168);
-OFFSET(coax_t_BS_Binding,complete,176); OFFSET(coax_t_BS_Binding,callee_root,184);
-OFFSET(coax_t_BS_Binding,start,192); OFFSET(coax_t_BS_Binding,count,200);
+ABI(coax_t_BS_Binding,464,8); OFFSET(coax_t_BS_Binding,formal,0); OFFSET(coax_t_BS_Binding,actual_type,424);
+OFFSET(coax_t_BS_Binding,complete,432); OFFSET(coax_t_BS_Binding,callee_root,440);
+OFFSET(coax_t_BS_Binding,start,448); OFFSET(coax_t_BS_Binding,count,456);
 ABI(coax_t_BS_Result,16,8); OFFSET(coax_t_BS_Result,status,0); OFFSET(coax_t_BS_Result,count,8);
 ABI(coax_v_t_BS_Origin,16,8); OFFSET(coax_v_t_BS_Origin,data,0); OFFSET(coax_v_t_BS_Origin,count,8);
 ABI(coax_v_t_BS_Binding,16,8); OFFSET(coax_v_t_BS_Binding,data,0); OFFSET(coax_v_t_BS_Binding,count,8);
@@ -36,7 +36,7 @@ static coax_t_BS_Binding binding(coax_t_BS_Origin formal,int complete,int64_t ca
 }
 static int same(coax_t_BS_Origin a,coax_t_BS_Origin b) {
   if(a.kind!=b.kind || a.root!=b.root || a.role!=b.role || a.type!=b.type || a.path.count!=b.path.count)return 0;
-  for(int i=0;i<8;i++)if(a.path.steps.e[i].kind!=b.path.steps.e[i].kind || a.path.steps.e[i].index!=b.path.steps.e[i].index)return 0;
+  for(int i=0;i<24;i++)if(a.path.steps.e[i].kind!=b.path.steps.e[i].kind || a.path.steps.e[i].index!=b.path.steps.e[i].index)return 0;
   return 1;
 }
 struct Guard { uint64_t before[2];coax_t_BS_Origin out[66];uint64_t after[2]; };
@@ -71,13 +71,13 @@ static void valid_path(coax_t_BS_Path p,int expected){calls++;cases++;assert(BS_
 static void valid_origin(coax_t_BS_Origin o,int expected){calls++;cases++;assert(BS_origin_valid(o)==expected);}
 
 static void vocabulary(void) {
-  coax_t_BS_Path p={0};valid_path(p,1);p.count=-1;valid_path(p,0);p.count=9;valid_path(p,0);
-  p.count=8;for(int i=0;i<8;i++){p.steps.e[i].kind=FIELD;p.steps.e[i].index=i;}valid_path(p,1);
-  p.count=7;p.steps.e[7].kind=0;p.steps.e[7].index=0;valid_path(p,1);p.count=8;p.steps.e[7].kind=FIELD;
-  p.steps.e[7].index=INT64_C(2147483647);valid_path(p,1);p.steps.e[7].index=INT64_C(2147483648);valid_path(p,0);
+  coax_t_BS_Path p={0};valid_path(p,1);p.count=-1;valid_path(p,0);p.count=25;valid_path(p,0);
+  p.count=24;for(int i=0;i<24;i++){p.steps.e[i].kind=FIELD;p.steps.e[i].index=i;}valid_path(p,1);
+  p.count=23;p.steps.e[23].kind=0;p.steps.e[23].index=0;valid_path(p,1);p.count=24;p.steps.e[23].kind=FIELD;
+  p.steps.e[23].index=INT64_C(2147483647);valid_path(p,1);p.steps.e[23].index=INT64_C(2147483648);valid_path(p,0);
   memset(&p,0,sizeof(p));p.count=1;p.steps.e[0].kind=ELEMENT;p.steps.e[0].index=-1;valid_path(p,0);p.steps.e[0].index=0;valid_path(p,1);
-  p.steps.e[0].kind=DEREFERENCE;valid_path(p,1);p.steps.e[0].index=1;valid_path(p,0);p.steps.e[0].kind=4;valid_path(p,0);
-  memset(&p,0,sizeof(p));p.steps.e[7].kind=FIELD;valid_path(p,0);p.steps.e[7].kind=0;p.steps.e[7].index=1;valid_path(p,0);
+  p.steps.e[0].kind=DEREFERENCE;valid_path(p,1);p.steps.e[0].index=1;valid_path(p,0);p.steps.e[0].kind=4;valid_path(p,1);p.steps.e[0].index=63;valid_path(p,1);p.steps.e[0].index=64;valid_path(p,0);p.steps.e[0].kind=5;valid_path(p,0);
+  memset(&p,0,sizeof(p));p.steps.e[23].kind=FIELD;valid_path(p,0);p.steps.e[23].kind=0;p.steps.e[23].index=1;valid_path(p,0);
   coax_t_BS_Origin o=origin(STATIC,1,0,1);valid_origin(o,1);o.root=INT64_C(2147483647);valid_origin(o,1);o.root=INT64_C(2147483648);valid_origin(o,0);
   o=origin(LOCAL,1,0,1);valid_origin(o,1);o.root=0;valid_origin(o,0);o.root=-1;valid_origin(o,0);
   o=origin(PARAMETER,0,INLINE,1);valid_origin(o,1);o.root=63;valid_origin(o,1);o.root=64;valid_origin(o,0);
@@ -165,7 +165,30 @@ static void substitution(void) {
   expect_sub(s,3,1,b,2,p,64,0,UNKNOWN,0,0); /* missing input precedes work/capacity */
   b[1].count=2;expect_sub(s,2,1,b,2,p,64,1,CAPACITY,0,0);
 }
+static void high_paths(void) {
+  for(int position=8;position<24;position++)for(int field=0;field<2;field++){
+    coax_t_BS_Origin a=origin(PARAMETER,0,DESCRIPTOR,7);a.path.count=24;
+    for(int k=0;k<24;k++){a.path.steps.e[k].kind=FIELD;a.path.steps.e[k].index=k;}
+    coax_t_BS_Origin b=a;if(field)b.path.steps.e[position].kind=ELEMENT;else b.path.steps.e[position].index++;
+    coax_t_BS_Origin values[3]={b,a,a},expected[2]={a,b};
+    expect_union(values,3,1,0,0,1,3,OK,expected,2);
+    coax_t_BS_Origin refs[2]={a,b},pool[2]={origin(STATIC,101,0,7),origin(LOCAL,202,0,7)};
+    coax_t_BS_Binding bindings[2]={binding(a,1,0,0,1),binding(b,1,0,1,1)};
+    expect_sub(refs,2,1,bindings,2,pool,2,3,OK,pool,2);
+    a.kind=STATIC;a.root=1;a.role=0;a.path.count=8;
+    for(int k=8;k<24;k++){a.path.steps.e[k].kind=0;a.path.steps.e[k].index=0;}
+    if(field)a.path.steps.e[position].kind=FIELD;else a.path.steps.e[position].index=1;
+    valid_path(a.path,0);expect_union(&a,1,0,0,0,0,2,INVALID,0,0);
+  }
+  coax_t_BS_Origin a=origin(PARAMETER,0,INLINE,7);a.path.count=24;
+  for(int k=0;k<24;k++){a.path.steps.e[k].kind=FIELD;a.path.steps.e[k].index=k;}
+  coax_t_BS_Binding b=binding(a,1,501,0,0);coax_t_BS_Origin expected=a;expected.kind=LOCAL;expected.root=501;expected.role=0;
+  expect_sub(&a,1,1,&b,1,0,0,1,OK,&expected,1);
+  a.role=DESCRIPTOR;b=binding(a,1,0,0,0);b.formal.path.count=23;b.formal.path.steps.e[23].kind=0;b.formal.path.steps.e[23].index=0;
+  expect_sub(&a,1,1,&b,1,0,0,1,UNKNOWN,0,0);
+  a.path.steps.e[23].kind=DEREFERENCE;a.path.steps.e[23].index=0;valid_origin(a,1);a.role=INLINE;valid_origin(a,0);a.kind=LOCAL;a.role=0;a.root=1;valid_origin(a,0);
+}
 int main(void) {
-  vocabulary();unions();substitution();
+  vocabulary();unions();substitution();high_paths();
   printf("{\"scope\":\"standalone set operations, not lifetime safety\",\"cases\":%u,\"calls\":%u,\"refusals\":%u,\"origin_size\":%zu,\"binding_size\":%zu}\n",cases,calls,refusals,sizeof(coax_t_BS_Origin),sizeof(coax_t_BS_Binding));return 0;
 }

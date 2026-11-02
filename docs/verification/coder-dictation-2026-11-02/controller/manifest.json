@@ -1,0 +1,133 @@
+{
+  "schema": "openagents.dictation.controller.evidence.v1",
+  "files": {
+    "README.md": {
+      "sha256": "9623b84e6e8f4f4884b22b4a73ad7e4f5332545f8ed1e0ea2a57514bc0aef2e3",
+      "bytes": 3972
+    },
+    "dictation-audio-check-v2.log": {
+      "sha256": "86eda9f4d84649a4ca6e49729f225ad5ef091585a0a9170d18ff35ba26719a30",
+      "bytes": 2018
+    },
+    "dictation-audio-check.log": {
+      "sha256": "a40e22da8829750df84bbcb74db8ee413c68852a612a8ef5e01748c67670c6f0",
+      "bytes": 2274
+    },
+    "dictation-audio-final.log": {
+      "sha256": "451f64e3dd3436c3142cee917cf045d1333de7634e8c41f961a353294124b03d",
+      "bytes": 2381
+    },
+    "dictation-audio-final2.log": {
+      "sha256": "8fae07853097a268ba75fa0d63209eb3c6613624260347ad51c46d63fe95f826",
+      "bytes": 2498
+    },
+    "dictation-controller-asan.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "dictation-controller-final-asan.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "dictation-controller-final-o0.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "dictation-controller-final-o2.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "dictation-controller-o0.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "dictation-controller-o2.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "dictation-controller-qualified-asan.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "dictation-controller-qualified-o0.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "dictation-controller-qualified-o2.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "dictation-controller-v2-o0.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "dictation-policy-check-final.log": {
+      "sha256": "137c6a09eb914ff422fe3586a5e350f9f8af4c64fd1dff041ce833b1c2b71a86",
+      "bytes": 1658
+    },
+    "dictation-policy-check-v2.log": {
+      "sha256": "78d9576eb4e4a20aad686ba245c6de5c1798415c09740ad6cefcdb6ad37e081d",
+      "bytes": 1429
+    },
+    "dictation-policy-check-v3.log": {
+      "sha256": "bbc1e1884a3ed868d0a922ef41393db459df4c6ce0ce2ce799d9a7e182c32955",
+      "bytes": 1430
+    },
+    "dictation-policy-check-v4.log": {
+      "sha256": "196878e4d8a7a55c83f421da9522e7020baae7baab533c3da7d21f873f90e9c5",
+      "bytes": 1542
+    },
+    "dictation-policy-check.log": {
+      "sha256": "e7742f2e408c00b5d25bfd04af51175d1f53c068cc32b4dcc1757d8e0dd03000",
+      "bytes": 1316
+    },
+    "dictation-policy-mutation-final.log": {
+      "sha256": "6ff3fed0dabf98de1e87f99b03672a260f70d2ef1ca63024077c4f0adef3d293",
+      "bytes": 116
+    },
+    "dictation-policy-mutation-v2.log": {
+      "sha256": "afa6bff3e3630174ad3e654d03c46f4403daf13160ffa987de3cfdd92935e464",
+      "bytes": 116
+    },
+    "dictation-policy-mutation-v3.log": {
+      "sha256": "715eaa1eeb54a91b5893cf8ff7405ded1f4e0b988aec08b5eba4eb7b8f626265",
+      "bytes": 116
+    },
+    "dictation-policy-mutation-v4.log": {
+      "sha256": "acd958015964e419f2e5a5b306dfe35eafe8a7cadffebb66cc95f56332b36013",
+      "bytes": 116
+    },
+    "dictation-policy-mutation.log": {
+      "sha256": "296733e3a4eeb6f3f334751f443d99137a1bdf564765eb0844b761989367f9c9",
+      "bytes": 12530
+    },
+    "dictation-policy-red.log": {
+      "sha256": "309ae817031eba74f499517daa8d20ecdd22282243f4d8a03f66f3feb879bc66",
+      "bytes": 21368
+    },
+    "dictation-release-green.log": {
+      "sha256": "33b0e23f5c69a1683a8376944094703d886928f10e847794ed6630ffa6479c41",
+      "bytes": 312
+    },
+    "dictation-release-red.log": {
+      "sha256": "c9d6b89a837b9011687e7982bbfe8dc69b565efb914cd9e0e654bd66aa3933c0",
+      "bytes": 580
+    },
+    "dictation.c": {
+      "sha256": "191d32e19f3295cc1c61c5ccf8692f4bb226d7357bf35f9e8643e01c7ee6d143",
+      "bytes": 196213
+    },
+    "dictation.h": {
+      "sha256": "67f671af35188c66e939f2ad975c005b6150b99dbc5a9e008b3e3d55ff3f0abb",
+      "bytes": 46609
+    },
+    "record.json": {
+      "sha256": "8133393aedac1df9f13e32dde0efd3d236b91c9a6febb8b8c3a725027f9077d7",
+      "bytes": 4722
+    },
+    "source-snapshot.tar.gz": {
+      "sha256": "89f7c2ad1ca4e449ffac97455c3168acbebbe37463bf53b06f3a2b3e852d3546",
+      "bytes": 26607
+    }
+  }
+}

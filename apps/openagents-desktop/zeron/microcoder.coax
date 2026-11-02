@@ -97,6 +97,7 @@ LabMc :: struct {
   cwd: [1024] u8; ncwd: int;
   keys_read: bool;
   or_key: [512] u8; nor: int;
+  or_headers: [2] string;       // retained by plan: storage must outlive lab_mc_plan
   gm_key: [512] u8; ngm: int;
   keyfile: [1200] u8; nkf: int;   // Vertex's service-account key file, when there is one
   gcloud: [1200] u8; ngc: int;
@@ -190,19 +191,20 @@ lab_mc_vertex :: (m: [] LabMc) -> string {
 // The plan for one message: every gateway this Mac has a credential for, Vertex first. How many.
 lab_mc_plan :: (m: [] LabMc) -> int {
   gw_plan_init(m[0].plan[..], m[0].pb[..]);
-  none: [1] string;
-  if m[0].ours_on && lab_mc_ours_fresh(m).count == 0 { x := gw_plan_add(m[0].plan[..], gw_ours(m[0].ours[..]), GW_OURS_FLASH, none[0..<0]); }
-  if lab_mc_vertex(m).count == 0 { x := gw_plan_add(m[0].plan[..], gw_vertex(m[0].vx[..]), GW_VERTEX_FLASH, none[0..<0]); }
+  if m[0].ours_on && lab_mc_ours_fresh(m).count == 0 { x := gw_plan_add(m[0].plan[..], gw_ours(m[0].ours[..]), GW_OURS_FLASH, m[0].or_headers[0..<0]); }
+  if lab_mc_vertex(m).count == 0 { x := gw_plan_add(m[0].plan[..], gw_vertex(m[0].vx[..]), GW_VERTEX_FLASH, m[0].or_headers[0..<0]); }
   if m[0].ngm > 0 {
     g := gw_gemini(GW_GEMINI_FLASH, true, m[0].gurl[..]); g.key_value = e_str(m[0].gm_key[..], m[0].ngm);
-    x := gw_plan_add(m[0].plan[..], g, GW_GEMINI_FLASH, none[0..<0]);
+    x := gw_plan_add(m[0].plan[..], g, GW_GEMINI_FLASH, m[0].or_headers[0..<0]);
   }
-  if m[0].nor > 0 {
-    g := gw_openrouter(false); g.key_value = e_str(m[0].or_key[..], m[0].nor);
-    h := GW_OPENROUTER_HEADERS;
-    x := gw_plan_add(m[0].plan[..], g, GW_OPENROUTER_FLASH, h[..]);
-  }
+  if m[0].nor > 0 { x := lab_mc_add_openrouter(m); }
   return m[0].plan[0].n;
+}
+
+lab_mc_add_openrouter :: (m:[]LabMc)->bool {
+ g:=gw_openrouter(false);g.key_value=e_str(m[0].or_key[..],m[0].nor);
+ m[0].or_headers=GW_OPENROUTER_HEADERS;
+ return gw_plan_add(m[0].plan[..],g,GW_OPENROUTER_FLASH,m[0].or_headers[..]);
 }
 
 LMC_EFFORTS :: [5] string.["low", "medium", "high", "high", "high"];   // EFFORT_IDS to what Gemini takes
@@ -490,4 +492,17 @@ lab_mc_stop :: (m: [] LabMc, s: [] Session) -> bool {
   lab_mc_take(m[0].v[..], s, ev[..], n);
   if m[0].v[0].running { m[0].v[0].running = false; s_turn_end(s, false, ""); }
   return true;
+}
+
+#test "dictation desktop build keeps OpenRouter plan headers in their caller-owned arena" {
+ m:[1]LabMc;gw_plan_init(m[0].plan[..],m[0].pb[..]);
+ #assert gw_plan_add(m[0].plan[..],gw_openrouter(false),GW_OPENROUTER_FLASH,m[0].or_headers[0..<0]);
+ #assert m[0].plan[0].attempts[0].headers.count==0;gw_plan_init(m[0].plan[..],m[0].pb[..]);
+ m[0].or_key[0]='x';m[0].nor=1;
+ #assert lab_mc_add_openrouter(m[..]) && m[0].plan[0].n==1;
+ a:=m[0].plan[0].attempts[0];
+ #assert a.headers.count==2 && a.headers[0]=="X-Title: OpenAgents" && a.headers[1]=="HTTP-Referer: https://openagents.com";
+ #assert a.gateway.key_value=="x" && a.model==GW_OPENROUTER_FLASH;
+ m[0].or_headers[0]="owner still alive";
+ #assert m[0].plan[0].attempts[0].headers[0]=="owner still alive";
 }

@@ -613,7 +613,7 @@ LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\
   #assert !ss[0].live;
 }
 
-#test "a Lab message waits while Elephant loads, then asks; a Psionic route waits for gpt-oss-20b; a failed load lets Claude Code answer" {
+#test "a Lab message waits while Elephant loads and handles stopping and a failed load" {
   pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
   e: [1] Engine; l: [1] Lab; p: [1] PsEngine; g: [1] GpuSwitch; gs_init(g[..]);
   g[0].url_n = e_set(g[0].url[..], 0, GS_SWITCH_URL); g[0].host_n = e_set(g[0].host[..], 0, GS_HOST);
@@ -632,6 +632,13 @@ LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\
   #assert after == GT_LAB;
   l[0].phase = LAB_IDLE; lab_fail(ss[..], gs_why(g[..]));
   #assert !ss[0].live && ss[0].parts[ss[0].n - 1].notice == N_ERROR && s_has(s_text_of(ss[..], ss[0].n - 1), "couldn't load elephant on the rtx 4080: the server exited (1): out of memory");
+}
+#test "a Psionic Lab route handles a failed gpt-oss load and lets Claude Code answer" {
+  pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  e: [1] Engine; l: [1] Lab; p: [1] PsEngine; g: [1] GpuSwitch; gs_init(g[..]);
+  g[0].url_n = e_set(g[0].url[..], 0, GS_SWITCH_URL); g[0].host_n = e_set(g[0].host[..], 0, GS_HOST);
+  g[0].model = GS_ELEPHANT; g[0].phase = GS_IDLE; g[0].after = GT_NONE;
+  lab_fail(ss[..], "prior model load failed");
   // routed to Psionic while gpt-oss-20b loads, and the load fails: Psionic's offline chip, then Claude Code answers
   lab_send(l[..], e[..], p[..], g[..], ss[..], "explain MXFP4 briefly");
   lab_route(l[..], e[..], p[..], g[..], ss[..], LAB_TEST_PSIONIC, 1800);

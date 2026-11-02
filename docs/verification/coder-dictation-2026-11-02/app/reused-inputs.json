@@ -1,0 +1,23 @@
+{
+  "scope": "Reused already-qualified unchanged/native inputs for incremental desktop link; sources/producers retain their component receipts. No unchanged checks repeated. New zeron generation/native bridge/Swift link and actual offscreen gestures have separate final results.",
+  "files": {
+    "apps/openagents-desktop/build/c/chat.c": "4e4db74711cf8081e7d59105beb6df5574388de3fd852c9ac01952b504aaebf0",
+    "apps/openagents-desktop/build/c/chat.h": "82d3322b956e41cc55d2df84e625cb88b7a0b71df1233d001dfc4291b7b29fce",
+    "apps/openagents-desktop/build/c/chat.o": "de475f75c68b311b008d77f75e1942d6c91ea2e41b8276ee3c78051c5f51f352",
+    "apps/openagents-desktop/build/c/face.o": "d19eecb45d14c41078030d268834cd8c189810d50c9c1ea264f0b52e0e8c4766",
+    "apps/openagents-desktop/build/c/router.c": "2aaf864952fd0f450980321e6c7d5a9a21fe97be5ba5fe81ba57374b4678653b",
+    "apps/openagents-desktop/build/c/router.h": "7e08ea60c446cbf5c5d2ad43465df93f367e1f968bf7e4d14d166baf04c0907f",
+    "apps/openagents-desktop/build/c/router.o": "7db07058d6db9bba77676093f3f5058a3e89c4dd0099a5398d6ccb54f717be27",
+    "apps/openagents-desktop/build/c/route-face.o": "c9ceff997f4f523c053f18a504377242e3528ddd8d7244745631595a8c02020e",
+    "apps/openagents-desktop/build/c/process.o": "20c29b28ed896fcb50fc797004df52b0d21a0f2607e482aa6bf55910776535d6",
+    "apps/openagents-desktop/build/c/lab-sign.c": "c4f43988d23c614efffdcbf97d8a71feef6badac60280d730b71b42f89783756",
+    "apps/openagents-desktop/build/c/lab-sign.h": "1a191793619e8847b2dd4732089784d18a38c83646dc8de18622d3b7d628e703",
+    "apps/openagents-desktop/build/c/lab-sign.o": "7c73e2fa445c4ebfc4762cb047177221cf24d3cca832d466f72b0c21761448c9",
+    "apps/openagents-desktop/build/c/dictation.c": "c7d5a9319fd9e6a855b671cd563a6da2440cd7e8d6ffa5127e6e2bbfd14054e9",
+    "apps/openagents-desktop/build/c/dictation.h": "3fe37ed9379355d5928d26291f1eae325c4d74f583e0cc452eab5b6938adca46",
+    "apps/openagents-desktop/build/c/dictation.o": "ef0490672fcd1530bc81f0483bd22e3ed45a5da57f577ba65fb34e5ae21a2a15",
+    "apps/openagents-desktop/build/c/dictation-face.o": "9f07375dd9b5330b8d7bb700aab62c7e2b3ba50575fc16c495c90e4107f9a1e0",
+    "apps/openagents-desktop/build/OpenAgents.app/Contents/Resources/default.metallib": "d314bd79e960e9ff7a0bee3d8f864c58c6268009a587ac170578d2ef4f669c2e",
+    "psionic/build/parakeet/libpsionic-parakeet.a": "9416db1f9b29740baf155bc05b60e427683fd511813772dbc0e662c6546dbfe0"
+  }
+}

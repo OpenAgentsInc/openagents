@@ -1,0 +1,7 @@
+/tmp/coder-dictation-host/Dictation-before-retry.swift:262:75: warning: immutable value 'fault' was never used; consider replacing with '_' or removing it [#no-usage]
+260 |   }
+261 |   private func audio(_ samples: [Float], rate: Int32, first: Int64) {
+262 |     let phase = dct_phase(controller), outcome = dct_outcome(controller), fault = dct_fault_reason(controller)
+    |                                                                           `- warning: immutable value 'fault' was never used; consider replacing with '_' or removing it [#no-usage]
+263 |     samples.withUnsafeBufferPointer { dct_audio(controller, $0.baseAddress, Int32($0.count), rate, first) }
+264 |     if dct_outcome(controller) == 4 { captureFault(Int32(dct_fault_reason(controller))) }

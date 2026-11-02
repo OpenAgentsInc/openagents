@@ -1,4 +1,7 @@
 /* Metal effects only. Coax owns all arithmetic, plans and dispatch order. */
+#ifdef __APPLE__
+#define __STDC_WANT_LIB_EXT1__ 1
+#endif
 #include "parakeet-fast.h"
 #include "parakeet-metal.h"
 #include "metal-host.h"
@@ -22,6 +25,13 @@ static int64_t loaded_count;
 static PmBatch batch;
 static double seconds;
 static char error_text[512];
+static void wipe(void *p,size_t n){if(!p||!n)return;
+#ifdef __APPLE__
+ (void)memset_s(p,n,0,n);
+#else
+ volatile unsigned char *bytes=p;while(n--)*bytes++=0;
+#endif
+}
 static int fail(const char *operation) {snprintf(error_text,sizeof error_text,"%s: %s",operation,pm_log());return -1;}
 static void clear_locked(void){
  for(int i=0;i<4;i++){if(bufs[i])pm_free(bufs[i]);bufs[i]=0;bases[i]=0;sizes[i]=0;}
@@ -107,4 +117,10 @@ int pk_metal_encode_shape(const int64_t s[9],const float *ew,int64_t ne,const fl
 }
 const char *pk_metal_error(void){return error_text;}
 double pk_metal_seconds(void){return seconds;}
+void pk_metal_clear_work(void){pthread_mutex_lock(&mu);
+ /* encode_locked holds this same lock through pm_wait, including failed
+  * submissions. No GPU command can still access these shared buffers. */
+ for(int i=1;i<4;i++)wipe(bases[i],sizes[i]);
+ seconds=0;wipe(error_text,sizeof error_text);pthread_mutex_unlock(&mu);
+}
 void pk_metal_close(void){pthread_mutex_lock(&mu);clear_locked();pthread_mutex_unlock(&mu);}

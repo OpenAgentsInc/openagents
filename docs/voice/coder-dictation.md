@@ -1,0 +1,78 @@
+# Local dictation in Coder for Mac
+
+**Integration status:** the offscreen app passes recorded-audio keyboard hold,
+microphone hold, exact draft insertion, Undo and zero-send checks using an
+isolated 2,097,152-work compiler. The complete desktop build still exceeds the
+unchanged default 1,048,576-work cap in imported checks. Budget adoption remains
+an owner decision; the tested bundle and its exact producers are recorded in the
+[application handoff](../verification/coder-dictation-2026-11-02/app/README.md).
+
+Coder's composer in OpenAgents for Mac accepts speech through Psionic's own
+original-weight Parakeet v3 engine. Speech becomes an editable draft at the
+caret. It never presses Enter, submits a message or runs a command.
+
+## Use it
+
+1. Install the pinned model using [Psionic's setup guide](../../psionic/docs/parakeet.md).
+   The default is `~/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99`;
+   `OPENAGENTS_PARAKEET_MODEL` selects another copy of those exact files.
+2. Once the default-budget blocker above is reconciled, build the current
+   compiler with `coax/build.sh`, then build with
+   `apps/openagents-desktop/build.sh` and open its
+   `build/OpenAgents.app` when ready. In the **OpenAgents** menu, turn on
+   **Enable Local Dictation — Parakeet**, then grant macOS microphone access.
+   The setting defaults off and is saved locally.
+3. Wait for the initial model load. Hold **⌘D**, speak, then release it.
+   Holding the microphone below the composer does the same thing.
+4. Review the inserted draft and send it yourself. Undo removes the insertion
+   as one edit. Escape cancels a pending dictation.
+
+The system's microphone indicator stays on while dictation is enabled and
+this app's composer window is active: a short in-memory pre-roll protects the
+first word. Switching apps or windows stops capture, clears audio and cancels
+the request. The loaded model stays resident across focus changes; disabling
+dictation or quitting closes it. Permission denial, missing model data, an
+unsupported input format or inference failure is shown by the composer.
+
+## What the implementation guarantees
+
+Coax owns consent, focus admission, tickets, the timeline, PCM conversion,
+Verse's resampler and speech/level measurements, segment bounds and text
+joining. Swift handles AppKit events, microphone permission/capture and worker
+scheduling. Psionic owns recognition, with its Metal encoder and exact
+row-parallel CPU decoder. Audio never enters a hosted provider, an audio file,
+telemetry or a transcript store.
+
+The timeline keeps up to 450 ms before the press, ignores holds shorter than
+300 ms, includes up to 200 ms after release and caps the complete captured clip
+at 60 seconds. A level gate and at least 160 ms of speech must pass before
+inference. Empty ASR text is also “No speech detected.” The controller reuses
+Verse's Coax resampling at 16, 24, 44.1 and 48 kHz; the host takes the default
+input's first channel. It refuses other rates rather than mislabeling samples.
+
+Parakeet's per-call bound remains 327,520 samples. Longer clips are divided
+into at most three independent model requests, with exact coverage and no
+omitted or repeated samples; their text is joined only after all succeed.
+This is bounded offline segmentation. Cross-boundary word quality is not a
+full-context or streaming equivalence claim.
+
+A result belongs to its original chat, ticket, text, selection and send count.
+Editing, moving the selection, using IME, resetting or leaving the chat, losing
+focus, disabling dictation and cancellation invalidate it. A stale completion
+cannot consume a newer request. The whole joined insertion must fit; a refusal
+leaves the draft and undo history untouched. Newlines are literal text, and
+neither a successful transcript nor an error reaches the send path.
+
+## Verification and limits
+
+[The dated record](../verification/coder-dictation-2026-11-02/README.md)
+keeps focused policy mutations, native O0/O2 and sanitizer checks, asynchronous
+host-effect cases, the real resident Metal recording and offscreen app checks.
+Tests use public recordings or injected capture/permission effects; they never
+open the owner's microphone or a visible window.
+
+The [Hex proposal](2026-11-02-coder-voice-from-hex.md) still has later work:
+repository vocabulary rescoring, spoken formatting, device selection, partial
+text while speaking, streaming and measured key-release latency. The terminal
+UI's toggle gesture and a standalone `openagents dictate` command are separate.
+No 300 ms dictation-latency or representative multilingual-quality claim is made.

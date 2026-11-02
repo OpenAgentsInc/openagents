@@ -1,0 +1,126 @@
+{
+  "schema": "coax.borrow-path16.focused-native.v1",
+  "scope": "Changed16step supplied-fact foundation and actual native ABI only; not wholecompiler or lifetime-safety qualification. No full mutation gate.",
+  "status": "passed",
+  "source_pins": {
+    "coax/lib/compiler/borrow-summary.coax": "ddfd86b7fd27e394ffea3372f8a6fa5c03a40adf0d1149101a33f42f5de98fae",
+    "coax/tests/borrow-summary-native.c": "f0ea09711213ee51f226db545c026d69a881953f403f94f01408e76cff0c96ef",
+    "coax/tests/borrow_summary_native.py": "ba24cda6bb379327fad66a74595b90250c3b661982df07d5a5c1f1e8437b2d86"
+  },
+  "compiler": {
+    "path": "/tmp/coax-12625-closure/native-v6/coax",
+    "sha256": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c"
+  },
+  "coax_checks": {
+    "passed": 29,
+    "record": "borrow-summary-16-check.log"
+  },
+  "bounds": {
+    "path": 16,
+    "set": 64,
+    "bindings": 64,
+    "pool": 256,
+    "candidate_work": 128
+  },
+  "native": {
+    "o0": {
+      "returncode": 0,
+      "record": "borrow-summary-16-o0.stdout",
+      "binary_sha256": "fb7b2d6135bea00f9ab9b16cb9aeeb76fb6a22df8838a41cbcc5ef7d884f6d59",
+      "observed": {
+        "scope": "standalone set operations, not lifetime safety",
+        "cases": 166,
+        "calls": 166,
+        "refusals": 59,
+        "origin_size": 296,
+        "binding_size": 336
+      }
+    },
+    "o2": {
+      "returncode": 0,
+      "record": "borrow-summary-16-o2.stdout",
+      "binary_sha256": "723bfd818b9660a86dc8d048eb14137c414bef6d278be1d48c69192cf1bad5ea",
+      "observed": {
+        "scope": "standalone set operations, not lifetime safety",
+        "cases": 166,
+        "calls": 166,
+        "refusals": 59,
+        "origin_size": 296,
+        "binding_size": 336
+      }
+    },
+    "asan": {
+      "returncode": 0,
+      "record": "borrow-summary-16-asan.stdout",
+      "binary_sha256": "4ef3da40741dd3a9051363e246b6f1ac2276aa9d407728f94c95633fcb052320",
+      "observed": {
+        "scope": "standalone set operations, not lifetime safety",
+        "cases": 166,
+        "calls": 166,
+        "refusals": 59,
+        "origin_size": 296,
+        "binding_size": 336
+      }
+    }
+  },
+  "native_abi": {
+    "path_size": 264,
+    "origin_size": 296,
+    "binding_size": 336,
+    "alignment": 8
+  },
+  "sanitizers": "address+undefined fatal; ASANdetect_leaks0 onmacOS, no leak claim",
+  "source_note": "Only production changes are BS_MAX_PATH16 and16 inline slots; algorithm bodies retain dynamic path.count/BS_MAX_PATH loops. Existing native kind4/variant index1 expectation was stale against already-supportedBS_VARIANT, now corrected with63/64 andkind5 controls.",
+  "coverage": [
+    "16 admitted/17 refused depth",
+    "Inactive high slots8..15 remain canonicalzero and invalid suffix dominates unknown atomically",
+    "Every highslot kind/index distinguishes canonical union identity and exact substitution",
+    "Inline rebasing preserves all16 slots;15step prefix does not match16step formal",
+    "Native independent logical-record comparator covers all16 slots; whole untouched tail guards remain byte-exact"
+  ],
+  "peer_review": {
+    "checker_sha256": "4153611dad5c1cb7635f21046a59270494b42797432bdb137787b617a9d47a7b",
+    "projection_cache_sha256": "09403bb93f2caa0b5883bb22aa3f9c566381ebe819c90ee0c12f5575de3c2135",
+    "finding": "No concrete bypass found in current16slot integration; field cache block remains8 and high unused slots are rejected. Local escape17depth controls, live malformed-field witness and join-memo reset are present. Actualdesktop/fullcompiler checks belong to coordinator."
+  },
+  "archive": {
+    "scope": "Byte-exact deterministic gzip of actual retained source/generated artifacts; no check or compiler execution repeated.",
+    "artifacts": {
+      "borrow-summary-native.c": {
+        "file": "borrow-summary-native.c.gz",
+        "uncompressed_sha256": "f0ea09711213ee51f226db545c026d69a881953f403f94f01408e76cff0c96ef",
+        "uncompressed_bytes": 15640,
+        "gzip_sha256": "3b34091a35be15907e91be25dd8ff5374053100ca98622b589f0389e00115967",
+        "gzip_bytes": 4014
+      },
+      "borrow-summary.c": {
+        "file": "borrow-summary.c.gz",
+        "uncompressed_sha256": "4b5ba1652c1886f790388e09a3deb1f502c8a1b5d327bcfab082d118a7c2415e",
+        "uncompressed_bytes": 31920,
+        "gzip_sha256": "cb993efb84bf637772408e86ac161276bf428979487cb483df20667d0c0d9932",
+        "gzip_bytes": 6047
+      },
+      "borrow-summary.coax": {
+        "file": "borrow-summary.coax.gz",
+        "uncompressed_sha256": "ddfd86b7fd27e394ffea3372f8a6fa5c03a40adf0d1149101a33f42f5de98fae",
+        "uncompressed_bytes": 30350,
+        "gzip_sha256": "9fac7429e835e80f75d00221af646f5e3afb62d67322384ee6fa24d936100de3",
+        "gzip_bytes": 6220
+      },
+      "borrow-summary.h": {
+        "file": "borrow-summary.h.gz",
+        "uncompressed_sha256": "bfab1cb9d180d42330271e17022e53c909f4a473ec50862851c8b524b9fa4838",
+        "uncompressed_bytes": 10279,
+        "gzip_sha256": "7273c32bc30a0fac0a88a24e12196e0c9ce48d6cbaf48bacfac143456a33e44c",
+        "gzip_bytes": 1836
+      },
+      "borrow_summary_native.py": {
+        "file": "borrow_summary_native.py.gz",
+        "uncompressed_sha256": "ba24cda6bb379327fad66a74595b90250c3b661982df07d5a5c1f1e8437b2d86",
+        "uncompressed_bytes": 5376,
+        "gzip_sha256": "6d5e9564c679ae695bd024f2430d26d4ba69fd1062153b2ee98f9faddeac54b9",
+        "gzip_bytes": 2057
+      }
+    }
+  }
+}

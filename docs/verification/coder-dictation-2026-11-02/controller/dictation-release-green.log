@@ -1,0 +1,3 @@
+ok   #test dictation release after automatic finalization cannot erase a frozen clip or assembling transcript (1 case, 83417 steps, 7 ms)
+1 of 61 checks (--only 'dictation release after automatic'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

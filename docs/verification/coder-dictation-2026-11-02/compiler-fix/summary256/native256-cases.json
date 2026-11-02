@@ -1,0 +1,26 @@
+[
+  {
+    "index": 0,
+    "name": "retained accumulated256 pairs admit and a distinct257th refuses at the original site",
+    "cases": 2,
+    "parameter": true
+  },
+  {
+    "index": 1,
+    "name": "retained summary pending256 preserves ordering duplicate reuse and atomic257 refusal",
+    "cases": 5,
+    "parameter": true
+  },
+  {
+    "index": 2,
+    "name": "retained join keeps the256 effect limit across writes",
+    "cases": 1,
+    "parameter": false
+  },
+  {
+    "index": 3,
+    "name": "native complete256 CR_apply bound,257 refusal",
+    "cases": 3,
+    "parameter": true
+  }
+]

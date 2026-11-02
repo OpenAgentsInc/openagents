@@ -1,0 +1,46 @@
+{
+  "schema": "coder.dictation.compiler-readiness.v1",
+  "status": "preexisting-full-desktop-compile-blocker-reproduced",
+  "scope": "Bounded read-only diagnosis; no compiler, budget or production source changes. Natural-boundary variants exist only in an isolated /tmp baseline closure and compressed source receipts.",
+  "baseline_head": "eead95dc9de93926443b11754a4fa9303a17dcca",
+  "baseline_sources": 64,
+  "current_checkout_compiler_fingerprint": "6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e",
+  "cache_diagnostics": {
+    "6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e": {
+      "compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+      "checker_c_sha256": "5d7e53b7cb02a1ef972168eb9dc9b1fdf86ee23ea2e8c5b0fdc4db5813bbfd51",
+      "saved_provenance": [
+        "coax-provenance-v1",
+        "6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e",
+        "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+        "e3f951434943e33048035f4bc33221c7cb7ed7b13cb73118b17dc38cc2c81d42"
+      ]
+    },
+    "6a191188e6de71b92b649f837f33ccc0a0456e2d043166fa8dabd64772449cfe": {
+      "compiler_sha256": "68134b4d2fdc4b20be36b92b4fc9e03f902a8162c0046e03197223faa7558aa3",
+      "checker_c_sha256": "5d7e53b7cb02a1ef972168eb9dc9b1fdf86ee23ea2e8c5b0fdc4db5813bbfd51",
+      "saved_provenance": [
+        "coax-provenance-v1",
+        "6a191188e6de71b92b649f837f33ccc0a0456e2d043166fa8dabd64772449cfe",
+        "68134b4d2fdc4b20be36b92b4fc9e03f902a8162c0046e03197223faa7558aa3",
+        "d9adf84197527800bad5976459802eaefbfaf1295f31895bb57b2d38692e306a"
+      ]
+    }
+  },
+  "main_fetched": "b4b24683e1",
+  "latest_main_compiler_change": "timing instrumentation; checker.coax unchanged",
+  "observations": [
+    "Exact HEAD baseline without any dictation changes fails E0381 at settings52 k[0].chats[i].s.",
+    "Current dictation tree fails same existing projection at settings53; trusted priorv6 --release fails also.",
+    "Newer checked14:27 cache6a fails the same exact baseline. Both cache checker.c byte hashes are identical.",
+    "LLDB first CK_resource has callers CB_add_path, CB_prepend, CB_expr/CB_query, CR_leaf. CK_State shows518types,2locals,semanticdepth0 beforeerror. Thus guard bytes/globaltypearena/semanticdepth256 are not the demonstrated cause.",
+    "CB_add_path has eight-step path admission and valid-spare-slot checks. Raw failing path contents were not captured, so exact rejection condition is not asserted.",
+    "Returning the state view through ds_chat_at merely moves refusal into helperreturn.",
+    "Per-session writer passes that site but reveals screen catalogcopy. Typed PkCatalog copy helper passes that site but reveals Claude optionscopy.",
+    "Typed queryoptions and reset helpers still fail; even explicit53-field ClOptions copy fails on env_remove stringarray. Source factoring is not shown to repair the complete application."
+  ],
+  "source_workarounds_applied_to_product": false,
+  "compiler_installed_or_rebuilt": false,
+  "lldb_end": "Process intentionally killed after breakpoint inspection; not a compiler crash observation.",
+  "passing_insert_component": "../insertion/record.json"
+}

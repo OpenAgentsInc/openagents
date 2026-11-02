@@ -1,0 +1,5 @@
+/tmp/dictation-compiler-fix/controls16/projection-eight/coax/lib/compiler/query-projection-cache.coax:54:77: error[E0410]: index 8 is out of bounds for 8 elements
+    else {CK_resource(b.c,b.state[0].loc);return p.type;}w.next_type=t;p.steps[i]=w;
+                                                                              ^
+  note: in #forall retained sixteen projection witnesses retain the final slot and reject inactive field cache tails
+  counterexample: mode = 0

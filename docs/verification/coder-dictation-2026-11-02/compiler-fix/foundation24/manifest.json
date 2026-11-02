@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "algorithm": "sha256",
+  "artifacts": [
+    {
+      "path": "source/borrow-summary.coax.gz",
+      "bytes": 6226,
+      "sha256": "f0acdb125a214047d58e17fcd95ff704e6bc3ea49566dc70f47c10689470a022",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 30358,
+      "uncompressed_sha256": "fa04aa299e27a7138ef3f1884c473030131356ed1e1a53b02da24a7175031101",
+      "origin": "/tmp/openagents-12625-complete-20261101/coax/lib/compiler/borrow-summary.coax"
+    },
+    {
+      "path": "source/borrow-summary-native.c.gz",
+      "bytes": 4021,
+      "sha256": "2ef60bc527010d8e17a0d630d21222424e6e380930e3647a835b1bd56b9c992b",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 15644,
+      "uncompressed_sha256": "eb8a11f5851cd8e1f8665d5291a090fff221a722647ed9c5267f59547fb24e7f",
+      "origin": "/tmp/openagents-12625-complete-20261101/coax/tests/borrow-summary-native.c"
+    },
+    {
+      "path": "source/borrow_summary_native.py.gz",
+      "bytes": 2056,
+      "sha256": "52f82ba18146ea9816f3e5e1ce01996289b69fc45589b7ed1684780c2b80a861",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 5376,
+      "uncompressed_sha256": "14b99975a5c78e0a8474f63e64b58a5a49f0f81a6766d2fec5d653eb023cbb92",
+      "origin": "/tmp/openagents-12625-complete-20261101/coax/tests/borrow_summary_native.py"
+    },
+    {
+      "path": "borrow-summary.c.gz",
+      "bytes": 6046,
+      "sha256": "070446f8e45a0751b16d4a0d344cb02d06c7e4c61763b3466b1b40f09d6e4b53",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 31920,
+      "uncompressed_sha256": "4f4737130b4d0772aa2f7131b1285b1a89d939b7d4e548360f2f44097db049b1",
+      "origin": "/tmp/borrow-summary.c"
+    },
+    {
+      "path": "borrow-summary.h.gz",
+      "bytes": 1840,
+      "sha256": "6c67a1ec223ed775c681716acd43be1554178fc12c7de8e1d25717fd1208824f",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 10279,
+      "uncompressed_sha256": "44dd4f32c214433b86d1d1b6da0d04ed5f44813c111db4ed4617d7fc98dd9f54",
+      "origin": "/tmp/borrow-summary.h"
+    },
+    {
+      "path": "check.stdout",
+      "bytes": 3156,
+      "sha256": "34a3ad12b6d60282107890e0b799914207215822767fe3a5184ff0bc9c96bef1",
+      "origin": "/tmp/borrow-summary-24-check.stdout"
+    },
+    {
+      "path": "check.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/borrow-summary-24-check.stderr"
+    },
+    {
+      "path": "generate.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/borrow-summary-24-generate.stderr"
+    },
+    {
+      "path": "o0.stdout",
+      "bytes": 134,
+      "sha256": "754410018d60cb9335405b74b5b490db1ea2eccaed94b2812fd1add72bfc755b",
+      "origin": "/tmp/borrow-summary-24-o0.stdout"
+    },
+    {
+      "path": "o0.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/borrow-summary-24-o0.stderr"
+    },
+    {
+      "path": "o2.stdout",
+      "bytes": 134,
+      "sha256": "754410018d60cb9335405b74b5b490db1ea2eccaed94b2812fd1add72bfc755b",
+      "origin": "/tmp/borrow-summary-24-o2.stdout"
+    },
+    {
+      "path": "o2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/borrow-summary-24-o2.stderr"
+    },
+    {
+      "path": "asan.stdout",
+      "bytes": 134,
+      "sha256": "754410018d60cb9335405b74b5b490db1ea2eccaed94b2812fd1add72bfc755b",
+      "origin": "/tmp/borrow-summary-24-asan.stdout"
+    },
+    {
+      "path": "asan.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/borrow-summary-24-asan.stderr"
+    },
+    {
+      "path": "record.json",
+      "bytes": 3340,
+      "sha256": "eb6f0fb32fc6a1a24a3121f5051e4babd7d1cf86d12c0a47c629e013832fb93a"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1147,
+      "sha256": "4e11ec133792bc92b319c92a7d2f9e1412cf9e44e305f1e93db6d81fb7e6f4a0"
+    }
+  ]
+}

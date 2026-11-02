@@ -1,0 +1,10 @@
+settings set auto-confirm true
+breakpoint set --name coax_p_CK_resource
+run
+register read x0 x1
+expression -- unsigned long $ctx = $x0
+expression -- unsigned long $st = *(unsigned long*)($ctx + 80)
+memory read --format decimal --size 8 --count 14 $st
+thread backtrace --count 18
+process kill
+quit

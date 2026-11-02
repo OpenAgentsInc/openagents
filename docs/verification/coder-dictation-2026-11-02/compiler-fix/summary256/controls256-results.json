@@ -1,0 +1,82 @@
+[
+  {
+    "name": "summary255",
+    "old": "CR_MAX_EFFECTS :: 256;",
+    "new": "CR_MAX_EFFECTS :: 255;",
+    "only": "retained summary pending256",
+    "file": "/tmp/dictation-compiler-fix/controls256/summary255/coax/lib/compiler/checker.coax",
+    "source_sha256": "18f54856a3dacd07a1efa2559d1951d45e5b1cb38c25f3970307302c2d103cd7",
+    "argv": [
+      "/tmp/dictation-compiler-fix/normal16-coax",
+      "test",
+      "/tmp/dictation-compiler-fix/controls256/summary255/coax/lib/compiler/checker.coax",
+      "--library",
+      "--only",
+      "retained summary pending256"
+    ],
+    "compiler_sha256": "c80416bac2b814ca876b877cd2b0165dbfed68a6084e5631c0c1009816d719ea",
+    "returncode": 1,
+    "elapsed_s": 10.981173125095665,
+    "killed": true
+  },
+  {
+    "name": "summary257",
+    "old": "CR_MAX_EFFECTS :: 256;",
+    "new": "CR_MAX_EFFECTS :: 257;",
+    "only": "retained join keeps the256",
+    "file": "/tmp/dictation-compiler-fix/controls256/summary257/coax/lib/compiler/checker.coax",
+    "source_sha256": "d51a240fe750c28b2e2258803d2126cfa43cd7483e97614c1d1b2391e3e99498",
+    "argv": [
+      "/tmp/dictation-compiler-fix/normal16-coax",
+      "test",
+      "/tmp/dictation-compiler-fix/controls256/summary257/coax/lib/compiler/checker.coax",
+      "--library",
+      "--only",
+      "retained join keeps the256"
+    ],
+    "compiler_sha256": "c80416bac2b814ca876b877cd2b0165dbfed68a6084e5631c0c1009816d719ea",
+    "returncode": 1,
+    "elapsed_s": 11.679482250008732,
+    "killed": true
+  },
+  {
+    "name": "pending-duplicate",
+    "old": "if comparison==0 {return used;}at=i;break;",
+    "new": "if comparison==0 {return used+1;}at=i;break;",
+    "only": "retained summary pending256",
+    "file": "/tmp/dictation-compiler-fix/controls256/pending-duplicate/coax/lib/compiler/checker.coax",
+    "source_sha256": "704ada5cd9e738c4f9c336d353e5d848caa558e01b9f0db3071a60f50a6f7ed2",
+    "argv": [
+      "/tmp/dictation-compiler-fix/normal16-coax",
+      "test",
+      "/tmp/dictation-compiler-fix/controls256/pending-duplicate/coax/lib/compiler/checker.coax",
+      "--library",
+      "--only",
+      "retained summary pending256"
+    ],
+    "compiler_sha256": "c80416bac2b814ca876b877cd2b0165dbfed68a6084e5631c0c1009816d719ea",
+    "returncode": 1,
+    "elapsed_s": 11.336446707951836,
+    "killed": true
+  },
+  {
+    "name": "pending-empty-span",
+    "old": "if used>=staging.count || used>=CR_MAX_EFFECTS",
+    "new": "if used>staging.count || used>=CR_MAX_EFFECTS",
+    "only": "retained summary pending256",
+    "file": "/tmp/dictation-compiler-fix/controls256/pending-empty-span/coax/lib/compiler/checker.coax",
+    "source_sha256": "6ce3328ebabce7b1972aab3796b2aab8330c616b20254ac52d852de47a9ecf0f",
+    "argv": [
+      "/tmp/dictation-compiler-fix/normal16-coax",
+      "test",
+      "/tmp/dictation-compiler-fix/controls256/pending-empty-span/coax/lib/compiler/checker.coax",
+      "--library",
+      "--only",
+      "retained summary pending256"
+    ],
+    "compiler_sha256": "c80416bac2b814ca876b877cd2b0165dbfed68a6084e5631c0c1009816d719ea",
+    "returncode": 1,
+    "elapsed_s": 12.330720291938633,
+    "killed": true
+  }
+]

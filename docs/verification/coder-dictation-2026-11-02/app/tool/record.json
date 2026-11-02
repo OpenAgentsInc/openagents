@@ -1,0 +1,73 @@
+{
+  "schema": "openagents.coder.dictation-app-tool.v1",
+  "status": "passed-tool-only-not-an-app-run",
+  "sources": {
+    "apps/openagents-desktop/tests/check-dictation-app.coax": {
+      "sha256": "922e701028ce10296d0fb8b2fc3540461b7d8be9ebaf1a6db3d522878c701cac",
+      "bytes": 9249
+    }
+  },
+  "compiler": {
+    "path": "/tmp/coax-12625-closure/native-v6/coax",
+    "sha256": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c",
+    "bytes": 3609464
+  },
+  "native_tool": {
+    "path": "coax/web/build/tools/check-dictation-app-a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c",
+    "sha256": "4557f6904012ddfd45d905f9399ced138d389974be57c3f55c28612eebc8c153",
+    "bytes": 118944
+  },
+  "checks": {
+    "pure_groups": 4,
+    "passed": 4,
+    "failed": 0,
+    "log": "checks.stdout",
+    "usage_status": 2,
+    "missing_app_status": 2,
+    "dsl_injection_status": 2,
+    "native_tool_generation": "passed; expected no-argument usage status 2",
+    "scope": "No application, microphone or visible UI was launched. Source oracle checks preceded only stale-screenshot removal and receipt prose edits; unchanged oracle bodies were not rerun."
+  },
+  "artifacts": {
+    "badargs.stderr": {
+      "sha256": "3e16b3acbe97f31d8cb92e4eba3a576d14650f5873594f414505b27e72fab728",
+      "bytes": 54
+    },
+    "badargs.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "checks.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "checks.stdout": {
+      "sha256": "13c828fa84c6e33d18d0e773b7e98fbc959892715b3e95f47d13d0dd1f0bd853",
+      "bytes": 619
+    },
+    "injection.stderr": {
+      "sha256": "c65ea1b292e860921d56f2528658b1d72af30d1b302785b63ffcc83ba1323242",
+      "bytes": 59
+    },
+    "injection.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "usage-native.stderr": {
+      "sha256": "520a08d8f10ea995e868f0a22cb3a675e9862ce485260ed48fa7c14cd8f8545f",
+      "bytes": 61
+    },
+    "usage-native.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "usage.stderr": {
+      "sha256": "520a08d8f10ea995e868f0a22cb3a675e9862ce485260ed48fa7c14cd8f8545f",
+      "bytes": 61
+    },
+    "usage.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "schema": "coder.dictation.insertion.v1",
+  "status": "passed-guarded-draft-profile",
+  "scope": "Shared Coax composer admission, one-shot request binding, atomic literal insertion, undo and no-submit. No model, microphone or native UI is exercised by these focused checks. Root app integration has separate evidence.",
+  "sources": {
+    "apps/openagents-desktop/zeron/dictation.coax": "684e7fee6c58198018d17737d8f8fe57696d47305b9d07fb3158cc27ec1eee8b",
+    "apps/openagents-desktop/tests/dictation-insertion-native.coax": "eeb98b4138253c71ffb3fe511a9c638feef9f0a0d049e7d1034e8e2ad4dc05ee",
+    "apps/openagents-desktop/tests/dictation-insertion-native.c": "6707f4999f0abf302a35a823c84efac1bc1abc1a3998388ccbe1123baa8cbdf7",
+    "apps/shared/zeron/composer.coax": "e1febf99aed7ffc48520aeb93f33d6ce6709f4aa40de78fa091450117512cf19",
+    "apps/shared/zeron/gpui.coax": "73edf966ba9cb05c3970fc7c1a8ce1b2157f0c740e5d84938d560b6793608eca",
+    "coax/lib/proto/wire.coax": "bf7f55c25616bcabe0417b0ed2cfa56272e75545b2dc8e13c961d88bb458b87a"
+  },
+  "compilers": {
+    "coax/bin/coax": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+    "/tmp/coax-12625-closure/native-v6/coax": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c"
+  },
+  "checks": {
+    "authored_groups": 10,
+    "total_including_dependencies": 51,
+    "passed": 51,
+    "record": "green3.stdout"
+  },
+  "mutation": {
+    "scope": "root-only new insertion policy, dependency checks retained",
+    "mutants": 218,
+    "killed": 218,
+    "survived": 0,
+    "equivalent_waivers": 0,
+    "record": "mutation2.stdout",
+    "earlier_observation": "218/207/11; missing right-side spacing and exact-capacity tests, then added real both-side and capacity-boundary oracles without product edits or waivers."
+  },
+  "native": {
+    "generated_by": "/tmp/coax-12625-closure/native-v6/coax",
+    "profiles": [
+      "-O0 -g -ffp-contract=off -fno-fast-math",
+      "-O2 -g -ffp-contract=off -fno-fast-math",
+      "-O1 -g -ffp-contract=off -fno-fast-math -fsanitize=address,undefined -fno-sanitize-recover=all"
+    ],
+    "records": [
+      "native-o0.stdout",
+      "native-o2.stdout",
+      "native-asan.stdout"
+    ],
+    "errors": [
+      "native-o0.stderr",
+      "native-o2.stderr",
+      "native-asan.stderr"
+    ],
+    "asan_options": "detect_leaks=0:halt_on_error=1",
+    "ubsan_options": "halt_on_error=1",
+    "leak_sanitizer_claim": false,
+    "witness": "Literal newline/code-looking bytes, one undo, stale and cancelled request, edit+undo cannot revive, malformed UTF8 and unchanged sent/last counters. Each native stdout ends PASS; fatal sanitizer batch exited0."
+  },
+  "preconditions": [
+    "State/composer views each contain one owned element.",
+    "Screen cancels guard at every user edit/selection/IME/navigation/reset; snapshot is a secondary check, not a global event revision counter.",
+    "Guard belongs to origin chat; root checks current chat identity before invoking insertion.",
+    "Failed matching completion consumes its own ticket; old tickets never consume a newer request."
+  ],
+  "implementation": "Only composer_paste is called; no composer_submit or engine/session send call exists in this module."
+}

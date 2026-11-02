@@ -189,7 +189,7 @@ CR_Phase :: enum u8 {fresh;active;done;seeded;}
 CK_Node :: struct {kind:CK_Tag;loc:CK_Loc;name:string;name2:string;loc2:CK_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:u64;
   type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;scope:int;collides:bool;clash:int;effects:u8;own_effects:u8;effects_known:bool;generic:bool;
   origin:int;pristine:int;chain:int;key:string;quantity:u8;unit:Q_Unit;unit_form:int;unit_link:int;unit_generated:bool;frame_decl:bool;frame:SP_Frame;spatial_link:int;lowering:CK_Lowering;mutation_status:CK_Mutation;mutation_op:u32;mutation_proc:int;borrow_binding:int;borrow_owner:int;borrow_writes:int;borrow_returns:int;borrow_calls:int;borrow_next:int;borrow_status:u8;borrow_query:int;retain_head:int;retain_count:int;retain_mark:CR_Phase;retain_incomplete:bool;retain_relation:bool;effect_present:bool;pure_decl:bool;effect_head:int;effect_loc:CK_Loc;sum_variant:int= -1;propagate_type:int;}
-CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;need:int;carrier:int;unit:int;space:SP_Type;retain_presence:u8;retain_mutable:u8;retain_fields:int;sum_error:int;sum_payload_offset:int;sum_default:int= -1;}
+CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;need:int;carrier:int;unit:int;space:SP_Type;retain_presence:u8;retain_mutable:u8;retain_join:u8;retain_fields:int;sum_error:int;sum_payload_offset:int;sum_default:int= -1;}
 CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;local_backing:bool;decl:int;}
 CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
 // Where a type is being resolved, for $T: which procedure owns the type
@@ -386,7 +386,7 @@ CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[12] string.["bytes_ov
  if mode==3 {queries[row].decl=4;}if mode==4 {queries[row].kind=0;}if mode==5 {queries[row].kind=4;}
  if mode==6 {queries[row].status=0;}if mode==7 {queries[row].status=4;}if mode==8 {queries[row].next=-1;}
  if mode==9 {queries[row].next=nodes[3].borrow_query;}if mode==10 {queries[row].next=nodes[3].borrow_query+1;}
- if mode==11 {queries[row].path.count=9;}if mode==12 {queries[row].type=17;}if mode==13 {queries[row].start=-1;}if mode==14 {queries[row].count=-1;}
+ if mode==11 {queries[row].path.count=25;}if mode==12 {queries[row].type=17;}if mode==13 {queries[row].start=-1;}if mode==14 {queries[row].count=-1;}
  if mode==15 {queries[row].start=work[0].origins+1;}if mode==16 {queries[row].count=2;}
  if mode==18 {work[0].queries=-1;}if mode==19 {work[0].queries=129;}if mode==20 {work[0].origins=-1;}if mode==21 {work[0].origins=1025;}if mode==22 {work[0].work=1048576;}
  if mode==23 || mode==24 {second:=CB_query(b,2,4,BS_Path.{},out[..]);#assert second.count==1 && !second.incomplete && out[0].kind==BS_PARAMETER && out[0].root==1;if mode==23 {queries[nodes[4].borrow_query-1].count=2;}}
@@ -80189,10 +80189,10 @@ CK_spatial_fixture :: (c:CK_Context) {
  got:=CB_place(b,2+counts[sample]);refused:=sample==3 || sample==5;#assert got.decl==(ifx refused then 0 else 3) && state[0].fatal==refused && work[0].depth==prior[sample];if refused {#assert state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==67 && errors[0].loc.column==3;}else {#assert state[0].error_count==0;}
 }
 
-#forall "return borrow path append admits eight steps and refuses malformed input atomically" sample:0..<10 {
+#forall "return borrow path append admits twenty-four steps and refuses malformed input atomically" sample:0..<10 {
  nodes:[4]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=16}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=71,column=5}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};path:BS_Path;kind:=BS_FIELD;index:=2;
- if sample==1 {path.count=7;for i:0..<7 {path.steps[i]=BS_Step.{kind=BS_FIELD,index=i};}kind=BS_ELEMENT;index=3;}if sample==2 {path.count=8;for i:0..<8 {path.steps[i]=BS_Step.{kind=BS_FIELD,index=i};}}if sample==3 {path.count=-1;}if sample==4 {kind=0;index=0;}if sample==5 {index=-1;}if sample==6 {path.count=1;path.steps[0]=BS_Step.{kind=BS_FIELD,index=2147483648};}if sample==7 {path.steps[7].kind=BS_FIELD;}if sample==8 {path.steps[0].kind=BS_FIELD;}if sample==9 {path.steps[0].index=1;}
- got:=CB_add_path(b,path,kind,index);if sample<2 {count:=ifx sample==0 then 1 else 8;#assert got.count==count && got.steps[count-1].kind==kind && got.steps[count-1].index==index && !state[0].fatal && state[0].error_count==0;for i:0..<count-1 {#assert got.steps[i].kind==BS_FIELD && got.steps[i].index==i;}}else {#assert got.count==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==71 && errors[0].loc.column==5;for i:0..<8 {#assert got.steps[i].kind==0 && got.steps[i].index==0;}}
+ if sample==1 {path.count=23;for i:0..<23 {path.steps[i]=BS_Step.{kind=BS_FIELD,index=i};}kind=BS_ELEMENT;index=3;}if sample==2 {path.count=24;for i:0..<24 {path.steps[i]=BS_Step.{kind=BS_FIELD,index=i};}}if sample==3 {path.count=-1;}if sample==4 {kind=0;index=0;}if sample==5 {index=-1;}if sample==6 {path.count=1;path.steps[0]=BS_Step.{kind=BS_FIELD,index=2147483648};}if sample==7 {path.steps[23].kind=BS_FIELD;}if sample==8 {path.steps[0].kind=BS_FIELD;}if sample==9 {path.steps[0].index=1;}
+ got:=CB_add_path(b,path,kind,index);if sample<2 {count:=ifx sample==0 then 1 else 24;#assert got.count==count && got.steps[count-1].kind==kind && got.steps[count-1].index==index && !state[0].fatal && state[0].error_count==0;for i:0..<count-1 {#assert got.steps[i].kind==BS_FIELD && got.steps[i].index==i;}}else {#assert got.count==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==71 && errors[0].loc.column==5;for i:0..<24 {#assert got.steps[i].kind==0 && got.steps[i].index==0;}}
 }
 
 #forall "return borrow default fields preserve empty values explicit static defaults and unknown projections" sample:0..<9 {
@@ -80439,9 +80439,9 @@ CK_spatial_fixture :: (c:CK_Context) {
 }
 
 #test "return borrow opacity at the maximum exact descriptor path does not read an inactive step" {
- nodes:[80]CK_Node;types:[32]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=79,type_count=27}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
- for i:0..<8 {types[16+i]=CK_Type.{kind=CK_Kind.struct_,decl=40+i*2};nodes[40+i*2]=CK_Node.{kind=CK_Tag.struct_,head=41+i*2};nodes[41+i*2]=CK_Node.{kind=CK_Tag.field,type=ifx i==7 then 24 else 17+i};}types[24]=CK_Type.{kind=CK_Kind.view,elem=25};types[25]=CK_Type.{kind=CK_Kind.struct_,decl=60};nodes[60]=CK_Node.{kind=CK_Tag.struct_,head=61};nodes[61]=CK_Node.{kind=CK_Tag.field,type=3};
- nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3,borrow_calls=30};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[28]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};for i:0..<8 {nodes[20+i]=CK_Node.{kind=CK_Tag.expr_field,type=ifx i==0 then 24 else 24-i,a=21+i,field_index=0};}nodes[30]=CK_Node.{kind=CK_Tag.expr_call,type=1,head=20};p:=BS_Path.{count=8};for i:0..<8 {p.steps[i]=BS_Step.{kind=BS_FIELD};}
+ nodes:[160]CK_Node;types:[48]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=159,type_count=42}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ for i:0..<24 {types[16+i]=CK_Type.{kind=CK_Kind.struct_,decl=40+i*2};nodes[40+i*2]=CK_Node.{kind=CK_Tag.struct_,head=41+i*2};nodes[41+i*2]=CK_Node.{kind=CK_Tag.field,type=ifx i==23 then 40 else 17+i};}types[40]=CK_Type.{kind=CK_Kind.view,elem=41};types[41]=CK_Type.{kind=CK_Kind.struct_,decl=92};nodes[92]=CK_Node.{kind=CK_Tag.struct_,head=93};nodes[93]=CK_Node.{kind=CK_Tag.field,type=3};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3,borrow_calls=30};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[124]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};for i:0..<24 {nodes[100+i]=CK_Node.{kind=CK_Tag.expr_field,type=ifx i==0 then 40 else 40-i,a=101+i,field_index=0};}nodes[30]=CK_Node.{kind=CK_Tag.expr_call,type=1,head=100};p:=BS_Path.{count=24};for i:0..<24 {p.steps[i]=BS_Step.{kind=BS_FIELD};}
  #assert !CB_opaque(b,3,p) && !state[0].fatal && state[0].error_count==0;
 }
 
@@ -80716,7 +80716,7 @@ CK_spatial_fixture :: (c:CK_Context) {
  if sample>=4 && sample<=8 {p.count=1;indices:=[5]int.[0,1,2,2147483647,2147483646];p.steps[0]=BS_Step.{kind=BS_ELEMENT,index=indices[sample-4]};}
  if sample==9 || sample==21 || sample==23 || sample==25 || sample==26 {p.count=1;p.steps[0]=BS_Step.{kind=BS_DEREFERENCE};}
  if sample==10 {p.count=3;p.steps[0]=BS_Step.{kind=BS_FIELD};p.steps[1]=BS_Step.{kind=BS_ELEMENT};p.steps[2]=BS_Step.{kind=BS_DEREFERENCE};}
- if sample==11 {p.count=9;}if sample==12 {p.count=1;}if sample==13 {p.steps[7]=BS_Step.{kind=BS_FIELD};}
+ if sample==11 {p.count=25;}if sample==12 {p.count=1;}if sample==13 {p.steps[7]=BS_Step.{kind=BS_FIELD};}
  if sample==16 || sample==17 || sample==20 || sample==24 {p.count=1;p.steps[0]=BS_Step.{kind=BS_ELEMENT};}
  if sample==25 {types[18].elem=0;}if sample==26 {types[18].elem=24;}if sample==27 || sample==29 {nodes[2].type=0;}if sample==28 {types[16].decl=0;}if sample==29 {p.count=2;p.steps[1]=BS_Step.{kind=BS_ELEMENT};}
  result:=CB_type(b,roots[sample],p);#assert result==expected[sample];
@@ -81292,7 +81292,7 @@ CK_spatial_fixture :: (c:CK_Context) {
  if mode==2 {CB_run(c,queries[..],origins[0..<1023]);}
  if mode==3 {work[0].work=1048575;#assert CB_tick(b,CK_Loc.{}) && work[0].work==1048576;#assert !CB_tick(b,CK_Loc.{});}
  if mode==4 {work[0].depth=31;z:=CB_expr(b,5,BS_Path.{},false,out[..]);#assert z.count==1 && !z.incomplete && !state[0].fatal && work[0].depth==31;work[0].depth=32;z=CB_expr(b,5,BS_Path.{},false,out[..]);}
- if mode==5 {path:=BS_Path.{count=9};ignored:=CB_type(b,16,path);}
+ if mode==5 {path:=BS_Path.{count=25};ignored:=CB_type(b,16,path);}
  if mode==6 {nodes[3].borrow_owner=0;ignored:=CB_query(b,2,3,BS_Path.{},out[..]);}
  if mode==7 {nodes[5].kind=CK_Tag.expr_call;ignored:=CB_expr(b,5,BS_Path.{},false,out[..]);}
  if mode==8 {work[0].queries=128;for i:0..<128 {queries[i]=CK_BorrowQuery.{kind=1,decl=2,status=2};}ignored:=CB_query(b,2,3,BS_Path.{},out[..]);}
@@ -81343,8 +81343,24 @@ CK_borrow_caps :: (nodes:int)->CK_BorrowCaps #export_c {
 CB_tick :: (b:CB_Context,loc:CK_Loc)->bool {
  if b.c.state[0].fatal {return false;}b.state[0].work+=1;if b.state[0].work>1048576 {where:=loc;if where.line==0 {where=b.state[0].loc;}CK_resource(b.c,where);return false;}return true;
 }
+#forall "return borrow sixteen projections preserve parameter and local escape witnesses" local:bool,too_deep:bool {
+ nodes:[160]CK_Node;types:[64]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=159,type_count=ifx too_deep then 43 else 34}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}layers:=ifx too_deep then 25 else 16;view:=16+layers;array:=view+1;types[view]=CK_Type.{kind=CK_Kind.view,elem=12};types[array]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};
+ for i:0..<layers {types[16+i]=CK_Type.{kind=CK_Kind.struct_,decl=60+i*2};nodes[60+i*2]=CK_Node.{kind=CK_Tag.struct_,head=61+i*2};nodes[61+i*2]=CK_Node.{kind=CK_Tag.field,type=ifx i==layers-1 then view else 17+i};nodes[20+i]=CK_Node.{kind=CK_Tag.expr_field,type=ifx i==layers-1 then view else 17+i,a=ifx i==0 then 10 else 19+i,field_index=0,loc=CK_Loc.{line=920,column=7,offset=92007}};}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=16,head=3,b=5,borrow_returns=11,borrow_writes=ifx local then 15 else 0};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[9]=CK_Node.{kind=CK_Tag.stmt_var,type=16,a=8,borrow_owner=2,borrow_writes=ifx local then 15 else 0};nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=9,loc=CK_Loc.{line=920,column=7,offset=92007}};nodes[11]=CK_Node.{kind=CK_Tag.stmt_return,a=10};nodes[12]=CK_Node.{kind=CK_Tag.stmt_var,type=array,borrow_owner=2};nodes[13]=CK_Node.{kind=CK_Tag.expr_ident,type=array,borrow_binding=12};nodes[14]=CK_Node.{kind=CK_Tag.expr_slice,type=view,a=13};nodes[15]=CK_Node.{kind=CK_Tag.stmt_assign,c=19+layers,a=14,borrow_owner=2};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],borrow_queries=queries[..],borrow_origins=origins[..]};CK_borrow_returns(c);
+ if too_deep {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}else if local {#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==920 && errors[0].loc.column==7 && errors[0].loc.offset==92007;}else {#assert !state[0].fatal && state[0].error_count==0 && nodes[2].borrow_status==1;}
+}
+
+#forall "retained twenty-four projection witnesses retain the final slot and reject inactive field cache tails" mode:0..<3 {
+ nodes:[128]CK_Node;types:[40]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=127,type_count=40}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=921,column=7,offset=92107}}];for i:0..<16 {types[i]=CK_builtin(i);}path:=BS_Path.{count=24};
+ for i:0..<24 {types[16+i]=CK_Type.{kind=CK_Kind.struct_,decl=40+i*2};nodes[40+i*2]=CK_Node.{kind=CK_Tag.struct_,head=41+i*2};nodes[41+i*2]=CK_Node.{kind=CK_Tag.field,type=ifx i==23 then 3 else 17+i};path.steps[i]=BS_Step.{kind=BS_FIELD};}
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};out:[64]BS_Origin;first:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && first.count==1 && !first.incomplete && out[0].kind==BS_PARAMETER && out[0].type==12 && out[0].path.count==24 && out[0].path.steps[23].kind==BS_FIELD;
+ if mode>0 {row:=types[16].retain_fields-1;if mode==1 {queries[row].path.steps[23].kind=BS_FIELD;}else {queries[row].path.steps[23].index=41;}}
+ again:=CB_query(b,2,3,path,out[..]);if mode==0 {#assert !state[0].fatal && state[0].error_count==0 && again.count==1 && !again.incomplete && out[0].path.count==24;}else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==921 && errors[0].loc.column==7 && errors[0].loc.offset==92107;}
+}
+
 CB_add_path :: (b:CB_Context,path:BS_Path,kind:u8,index:int)->BS_Path {
- r:=path;if path.count<0 || path.count>=8 {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}if path.steps[path.count].kind!=0 || path.steps[path.count].index!=0 {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}r.steps[r.count]=BS_Step.{kind=kind,index=index};r.count+=1;if !BS_path_valid(r) {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}return r;
+ r:=path;if path.count<0 || path.count>=BS_MAX_PATH {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}if path.steps[path.count].kind!=0 || path.steps[path.count].index!=0 {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}r.steps[r.count]=BS_Step.{kind=kind,index=index};r.count+=1;if !BS_path_valid(r) {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}return r;
 }
 // The path's prefix before its first dereference: the part that stays inside
 // the root's own storage.
@@ -81379,7 +81395,7 @@ CB_field :: (b:CB_Context,type:int,index:int)->int {
  while link!=0 {
   if link<1 || link>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return 0;}if !CB_tick(b,b.state[0].loc) {return 0;}q:=b.queries[link-1];
   if q.kind!=4 || q.decl!=type || q.type!=b.c.types[type].decl || q.status!=2 || q.count!=head || q.retain_classes || q.start<0 || q.path.count!=0 || q.next<0 || q.next>=link {CK_resource(b.c,b.state[0].loc);return 0;}
-  for i:0..<8 {if q.path.steps[i].kind!=0 {CK_resource(b.c,b.state[0].loc);return 0;}}
+  for i:0..<BS_MAX_PATH {if q.path.steps[i].kind!=0 || (i>=8 && q.path.steps[i].index!=0) {CK_resource(b.c,b.state[0].loc);return 0;}}
   if q.start==block {row=link;field=q.path.steps[offset].index;break;}if hinted {CK_resource(b.c,b.state[0].loc);return 0;}link=q.next;
  }
  if field==0 {
@@ -81749,7 +81765,7 @@ CB_leaf_count :: (b:CB_Context,type:int)->int {
   // Unit/owned payloads contribute zero; the existing overflow sentinel stays128.
   count:=CK_sum_count(b.c,type);variant:=0;while variant<count && n<=64 {payload:=CB_variant(b,type,variant);if payload==0 {return 0;}if CB_has_borrow(b,payload,0) {n+=CB_leaf_count(b,payload);}variant+=1;}
  }
- else if r.kind==CK_Kind.struct_ {field:=CB_fields(b,type);while field!=0 && n<=64 {if CB_has_borrow(b,b.c.nodes[field].type,0) {n+=CB_leaf_count(b,b.c.nodes[field].type);}field=b.c.nodes[field].next;}}
+ else if r.kind==CK_Kind.struct_ {field:=CB_fields(b,type);while field!=0 && n<=64 {if b.c.state[0].fatal || (b.retain_fields && !CB_tick(b,b.state[0].loc)) {return 128;}if field<2 || field>b.c.state[0].used || b.c.nodes[field].kind!=CK_Tag.field {CK_resource(b.c,b.state[0].loc);return 128;}if CB_has_borrow(b,b.c.nodes[field].type,0) {n+=CB_leaf_count(b,b.c.nodes[field].type);}field=b.c.nodes[field].next;}}
  else if r.kind==CK_Kind.void_ || r.kind==CK_Kind.integer || r.kind==CK_Kind.floating || r.kind==CK_Kind.bool_ || r.kind==CK_Kind.untyped_int || r.kind==CK_Kind.untyped_float || r.kind==CK_Kind.enum_ {return 0;}
  else {CK_resource(b.c,b.state[0].loc);return 0;}
  return ifx n>64 then 128 else n;
@@ -84947,12 +84963,13 @@ CK_borrow_return :: (c:CK_Context,id:int) {if c.nodes[id].borrow_owner!=0 {retur
  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};r:=CR_Context.{b=b,effects=effects[..],state=cr[..]};z:=CR_pairs(r,2,3,12,sources[..],true,addresses[..],true,pending[..],CR_Result.{complete=true,relation=true});
  #assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==193 && errors[0].loc.column==7 && errors[0].loc.offset==19307 && z.pending==0 && state[0].retain_report_count==0;
 }
-// Owner64 is an actual accumulated relation bound, not an arbitrary prior counter.
-#forall "retained accumulated64 pairs admit and a distinct65th refuses at the original site" direct:bool {
- nodes:[128]CK_Node;types:[19]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=127,type_count=19}];work:[1]CB_State;effects:[128]CK_RetainEffect;cr:[1]CR_State;pending:[64]RP_Obligation;source:=[1]BS_Origin.[BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12}];addresses:[66]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=30};types[18]=CK_Type.{kind=CK_Kind.view,elem=17};nodes[30]=CK_Node.{kind=CK_Tag.struct_,head=31};for i:0..<66 {nodes[31+i]=CK_Node.{kind=CK_Tag.field,type=16,next=ifx i==65 then 0 else 32+i};}nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=10,b=5};nodes[5].kind=CK_Tag.stmt_block;nodes[3]=CK_Node.{kind=CK_Tag.stmt_assign};nodes[4]=CK_Node.{kind=CK_Tag.stmt_assign,loc=CK_Loc.{line=194,column=7,offset=19407}};
- nodes[10]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,next=11};nodes[11]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2};for i:0..<66 {addresses[i]=BS_Origin.{kind=BS_PARAMETER,root=1,role=BS_DESCRIPTOR,type=16,path=BS_Path.{count=2}};addresses[i].path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};addresses[i].path.steps[1]=BS_Step.{kind=BS_FIELD,index=i};}
- c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};r:=CR_Context.{b=b,effects=effects[..],state=cr[..]};prior:=CR_pairs(r,2,3,12,source[..],true,addresses[0..<64],true,pending[..],CR_Result.{complete=true,relation=true});#assert !state[0].fatal && state[0].error_count==0 && prior.complete && !prior.relation && prior.pending==64;
- z:CR_Result;if direct {row:=RP_Obligation.{source=RP_Term.{frame=2,origin=source[0]},destination=RP_Address.{storage=RP_Term.{frame=2,origin=addresses[64]},value_type=12}};CR_effect(r,2,4,row);}else {z=CR_pairs(r,2,4,12,source[..],true,addresses[64..<66],true,pending[..],prior);}#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==194 && errors[0].loc.column==7 && errors[0].loc.offset==19407 && z.pending==0 && state[0].retain_report_count==0;
+// Owner256 is an actual accumulated relation bound, not an arbitrary prior counter.
+#forall "retained accumulated256 pairs admit and a distinct257th refuses at the original site" branch:0..<2 #steps 50000000 {
+ direct:=branch==1;
+ nodes:[512]CK_Node;types:[19]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=511,type_count=19}];work:[1]CB_State;effects:[512]CK_RetainEffect;cr:[1]CR_State;pending:[256]RP_Obligation;source:=[1]BS_Origin.[BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12}];addresses:[258]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=30};types[18]=CK_Type.{kind=CK_Kind.view,elem=17};nodes[30]=CK_Node.{kind=CK_Tag.struct_,head=31};for i:0..<258 {nodes[31+i]=CK_Node.{kind=CK_Tag.field,type=16,next=ifx i==257 then 0 else 32+i};}nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=10,b=5};nodes[5].kind=CK_Tag.stmt_block;nodes[3]=CK_Node.{kind=CK_Tag.stmt_assign};nodes[4]=CK_Node.{kind=CK_Tag.stmt_assign,loc=CK_Loc.{line=194,column=7,offset=19407}};
+ nodes[10]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,next=11};nodes[11]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2};for i:0..<258 {addresses[i]=BS_Origin.{kind=BS_PARAMETER,root=1,role=BS_DESCRIPTOR,type=16,path=BS_Path.{count=2}};addresses[i].path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};addresses[i].path.steps[1]=BS_Step.{kind=BS_FIELD,index=i};}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};r:=CR_Context.{b=b,effects=effects[..],state=cr[..]};prior:=CR_pairs(r,2,3,12,source[..],true,addresses[0..<64],true,pending[..],CR_Result.{complete=true,relation=true});#assert !state[0].fatal && state[0].error_count==0 && prior.complete && !prior.relation && prior.pending==64;for batch:1..<4 {prior=CR_pairs(r,2,3,12,source[..],true,addresses[batch*64..<batch*64+64],true,pending[..],prior);#assert !state[0].fatal && state[0].error_count==0 && prior.pending==(batch+1)*64;}#assert nodes[2].retain_count==256;
+ z:CR_Result;if direct {row:=RP_Obligation.{source=RP_Term.{frame=2,origin=source[0]},destination=RP_Address.{storage=RP_Term.{frame=2,origin=addresses[256]},value_type=12}};CR_effect(r,2,4,row);}else {z=CR_pairs(r,2,4,12,source[..],true,addresses[256..<258],true,pending[..],prior);}#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==194 && errors[0].loc.column==7 && errors[0].loc.offset==19407 && z.pending==0 && state[0].retain_report_count==0;
 }
 // CR_apply84618:40: an otherwise plausible unused effect slot is not published.
 #test "retained applied effects never admit a plausible row beyond the published prefix" {
@@ -85004,8 +85021,20 @@ CK_borrow_return :: (c:CK_Context,id:int) {if c.nodes[id].borrow_owner!=0 {retur
  else {#assert !state[0].fatal && state[0].error_count==0 && cr[0].reports==1 && reports[0].kind==2 && reports[0].owner==2 && reports[0].site==8 && reports[0].facts_complete && reports[0].relation_complete && !reports[0].forbidden && reports[0].pending==0;}
 }
 
+#forall "retained summary pending256 preserves ordering duplicate reuse and atomic257 refusal" mode:0..<5 {
+ if mode>=4 {other:[257]RP_Obligation;row:RP_Obligation;#assert CR_pending_insert(other[..],0,row)== -1;#assert CR_pending_insert(other[0..<0],0,row)== -1;return;}
+ pending:[256]RP_Obligation;for i:0..<256 {row:=RP_Obligation.{source=RP_Term.{origin=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12,path=BS_Path.{count=1}}}};row.source.origin.path.steps[0]=BS_Step.{kind=BS_FIELD,index=255-i};#assert CR_pending_insert(pending[..],i,row)==i+1;}
+ for i:0..<256 {#assert pending[i].source.origin.path.steps[0].index==i;}
+ row:=pending[64];if mode==0 {#assert CR_pending_insert(pending[..],256,row)==256;}else {row.source.origin.path.steps[0].index=256;used:=ifx mode==1 then 256 else ifx mode==2 then -1 else 257;#assert CR_pending_insert(pending[..],used,row)== -1;}
+ for i:0..<256 {#assert pending[i].source.origin.path.steps[0].index==i;}
+}
+#test "retained summary256 keeps the per-store RP64 refusal" {
+ sources:[65]RP_Term;addresses:[1]RP_Address;out:[65]RP_Obligation;for i:0..<65 {out[i].source.frame=900+i;}a:=RP_check(2,12,sources[..],true,addresses[..],true,out[0..<64]);b:=RP_check(2,12,sources[0..<1],true,addresses[..],true,out[..]);#assert a.status==RP_Status.invalid && b.status==RP_Status.invalid && a.obligation_count==0 && b.obligation_count==0;for i:0..<65 {#assert out[i].source.frame==900+i;}
+}
+
+CR_MAX_EFFECTS :: 256;
 CR_Shape :: struct {type:int;decl:int;head:int;count:int;max_field:int;max_type:int;fields:[8]int;ordinals:[8]int;}
-CR_State :: struct {effects:int;reports:int;depth:int;shape:CR_Shape;shape_previous:CR_Shape;leaves:int;}
+CR_State :: struct {effects:int;reports:int;depth:int;shape:CR_Shape;shape_previous:CR_Shape;leaves:int;join_arrays:bool;}
 CR_Context :: struct {b:CB_Context;effects:[]CK_RetainEffect;reports:[]CK_RetainObservation;state:[]CR_State;}
 CR_Result :: struct {complete:bool;relation:bool;pending:int;}
 CR_shape_matches :: (shape:CR_Shape,type:int,decl:int,head:int)->bool {return shape.type==type && shape.decl==decl && shape.head==head;}
@@ -85069,10 +85098,17 @@ CR_address :: (b:CB_Context,id:int,path:BS_Path,slot_type:int,out:[]BS_Origin)->
   for j:cross+1..<path.count {owner.path=CB_add_path(b,owner.path,path.steps[j].kind,path.steps[j].index);}owner.type=slot_type;result=CB_put(b,out,result,owner);
  }return result;
 }
+// Per-call pending effects share this procedure's bounded summary capacity.
+// The supplied-store RP kernel keeps its independent64-term staging limit.
+CR_pending_insert :: (staging:[]RP_Obligation,used:int,value:RP_Obligation)->int {
+ if used<0 || used>staging.count || staging.count>CR_MAX_EFFECTS {return -1;}at:=used;
+ for i:0..<used {comparison:=rp_compare(staging[i],value);if comparison<0 {continue;}if comparison==0 {return used;}at=i;break;}
+ if used>=staging.count || used>=CR_MAX_EFFECTS {return -1;}i:=used;while i>at {staging[i]=staging[i-1];i-=1;}staging[at]=value;return used+1;
+}
 CR_effect :: (r:CR_Context,owner:int,site:int,row:RP_Obligation) {
  b:=r.b;link:=b.c.nodes[owner].retain_head;
  while link!=0 {if link<1 || link>r.state[0].effects || !CB_tick(b,b.c.nodes[site].loc) {CK_resource(b.c,b.c.nodes[site].loc);return;}old:=r.effects[link-1];if bs_compare(old.source,row.source.origin)==0 && bs_compare(old.destination,row.destination.storage.origin)==0 {return;}link=old.next;}
- if b.c.nodes[owner].retain_count>=64 || r.state[0].effects>=r.effects.count {CK_resource(b.c,b.c.nodes[site].loc);return;}
+ if b.c.nodes[owner].retain_count>=CR_MAX_EFFECTS || r.state[0].effects>=r.effects.count {CK_resource(b.c,b.c.nodes[site].loc);return;}
  // This formal projection is invariant for the frozen canonical effect.
  formal:=CB_at(b,b.c.nodes[owner].head,row.source.origin.root);if b.c.state[0].fatal {return;}place:=CB_type(b,b.c.nodes[formal].type,row.source.origin.path);if b.c.state[0].fatal {return;}
  at:=r.state[0].effects;r.effects[at]=CK_RetainEffect.{source=row.source.origin,destination=row.destination.storage.origin,value_type=row.destination.value_type,witness=site,next=b.c.nodes[owner].retain_head,source_storage=b.c.types[place].kind==CK_Kind.array};r.state[0].effects+=1;b.c.nodes[owner].retain_head=at+1;b.c.nodes[owner].retain_count+=1;
@@ -85086,9 +85122,9 @@ CR_pairs :: (r:CR_Context,owner:int,site:int,key:int,sources:[]BS_Origin,sc:bool
  if decision.status!=RP_Status.ok {CK_resource(b.c,b.c.nodes[site].loc);return CR_Result.{};}
  if decision.forbidden {CK_error(b.c,b.c.nodes[site].loc,"E0383","retained borrow may refer to callee-local inline storage","keep retained backing in the caller and satisfy its outlives obligation");return CR_Result.{};}
  result:=CR_Result.{complete=prior.complete && decision.facts_complete,relation=prior.relation && decision.relation_complete,pending=prior.pending};
- // Both callers own64 pending slots; their accumulated pairs are a subset of
- // this owner's canonical64-effect relation. Admit that relation before insert.
- for i:0..<decision.obligation_count {CR_effect(r,owner,site,rows[i]);if b.c.state[0].fatal {return CR_Result.{};}result.pending=rp_insert(pending,result.pending,rows[i]);}
+ // Both callers own256 pending slots; their accumulated pairs are a subset of
+ // this owner's canonical256-effect relation. Admit that relation before insert.
+ for i:0..<decision.obligation_count {CR_effect(r,owner,site,rows[i]);if b.c.state[0].fatal {return CR_Result.{};}inserted:=CR_pending_insert(pending,result.pending,rows[i]);if inserted<0 {CK_resource(b.c,b.c.nodes[site].loc);return CR_Result.{};}result.pending=inserted;}
  // Pending pairs can later discharge at callers. A local/manual relation
  // remains a separate sticky private fact, not indistinguishable from pending.
  for i:0..<sources.count {for j:0..<addresses.count {
@@ -85125,6 +85161,54 @@ CR_mutable :: (b:CB_Context,type:int)->bool {
  if b.c.state[0].fatal {return false;}if type<1 || type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
  cached:=b.c.types[type].retain_mutable;if cached==1 {return false;}if cached==2 {return true;}
  result:=CB_discover(b,type,0,true);if !b.c.state[0].fatal {b.c.types[type].retain_mutable=ifx result then cast(u8)2 else cast(u8)1;}return result;
+}
+
+// A whole wide write chooses array precision before publishing any effects.
+// Every element remains represented by its field-specific wildcard.
+#forall "retained join preflight refuses malformed field tails before reading them" mode:0..<4 {
+ nodes:[64]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=63,type_count=17}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=914,column=7}}];rs:[1]CR_State;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=40,retain_presence=2};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=41};nodes[41]=CK_Node.{kind=CK_Tag.field,type=3,next=ifx mode==0 then 64 else ifx mode==1 then 42 else ifx mode==2 then 1 else -1};nodes[42]=CK_Node.{kind=CK_Tag.proc,type=3};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,b=3,borrow_writes=10};nodes[3].kind=CK_Tag.stmt_block;nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=16,borrow_owner=2};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=5};nodes[7]=CK_Node.{kind=CK_Tag.expr_struct,type=16};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=7,c=6,borrow_owner=2,loc=CK_Loc.{line=914,column=7,offset=91407}};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],retain_fields=true};r:=CR_Context.{b=b,state=rs[..]};CR_seed(r,2);
+ #assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==914 && errors[0].loc.column==7 && errors[0].loc.offset==91407 && state[0].retain_report_count==0;
+}
+
+#test "retained join keeps the256 effect limit across writes" {
+ nodes:[32]CK_Node;types:[19]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=31,type_count=19}];work:[1]CB_State;effects:[512]CK_RetainEffect;rs:[1]CR_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=257};types[17]=CK_Type.{kind=CK_Kind.view,elem=16};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,next=4,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;nodes[6]=CK_Node.{kind=CK_Tag.stmt_assign,loc=CK_Loc.{line=912,column=7}};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};r:=CR_Context.{b=b,effects=effects[..],state=rs[..]};
+ for i:0..<257 {source:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12,path=BS_Path.{count=1}};source.path.steps[0]=BS_Step.{kind=BS_ELEMENT,index=i};destination:=BS_Origin.{kind=BS_PARAMETER,root=1,role=BS_DESCRIPTOR,type=3,path=BS_Path.{count=2}};destination.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};destination.path.steps[1]=BS_Step.{kind=BS_ELEMENT,index=i};row:=RP_Obligation.{source=RP_Term.{frame=2,origin=source},destination=RP_Address.{storage=RP_Term.{frame=2,origin=destination},value_type=12}};CR_effect(r,2,6,row);if i==255 {CR_effect(r,2,6,row);#assert !state[0].fatal && nodes[2].retain_count==256;}if i<256 {#assert !state[0].fatal && state[0].error_count==0 && nodes[2].retain_count==i+1;}}
+ #assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==912 && errors[0].loc.column==7 && nodes[2].retain_count==256 && rs[0].effects==256 && state[0].retain_report_count==0;
+}
+
+#forall "retained join selects all array fields before spending the effect prefix" mode:0..<3 {
+ exact64:=mode==1;unsafe:=mode==2;
+ nodes:[160]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;state:=[1]CK_State.[CK_State.{used=159,type_count=21}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=ifx exact64 then 64 else 32};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=40};types[18]=CK_Type.{kind=CK_Kind.view,elem=17};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=41};for i:0..<(ifx exact64 then 1 else 3) {nodes[41+i]=CK_Node.{kind=CK_Tag.field,type=16,next=ifx exact64 || i==2 then 0 else 42+i};}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5,borrow_writes=10};nodes[3]=CK_Node.{kind=CK_Tag.param,type=18,next=4,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=3};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[8]=CK_Node.{kind=CK_Tag.expr_index,type=17,a=6,b=7};nodes[9]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=4};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=9,c=8,borrow_owner=2};
+ if unsafe {
+  types[19]=CK_Type.{kind=CK_Kind.array,elem=12,length=1};types[20]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[9]=CK_Node.{kind=CK_Tag.expr_struct,type=17,head=60,loc=CK_Loc.{line=913,column=7}};for i:0..<3 {nodes[60+i]=CK_Node.{kind=CK_Tag.field_init,field_index=i,a=ifx i==2 then 68 else 64+i,next=ifx i==2 then 0 else 61+i};}nodes[63]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=4};nodes[64]=CK_Node.{kind=CK_Tag.expr_field,type=16,a=63,field_index=0};nodes[65]=CK_Node.{kind=CK_Tag.expr_field,type=16,a=63,field_index=1};nodes[68]=CK_Node.{kind=CK_Tag.expr_array,type=16,head=70};nodes[69]=CK_Node.{kind=CK_Tag.expr_field,type=16,a=63,field_index=2};for i:0..<31 {nodes[70+i]=CK_Node.{kind=CK_Tag.expr_index,type=3,a=69,b=103,next=71+i};}nodes[101]=CK_Node.{kind=CK_Tag.expr_cast,type=3,a=104};nodes[103]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[104]=CK_Node.{kind=CK_Tag.expr_slice,type=20,a=105};nodes[105]=CK_Node.{kind=CK_Tag.expr_ident,type=19,borrow_binding=106};nodes[106]=CK_Node.{kind=CK_Tag.stmt_var,type=19,borrow_owner=2};
+ }
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};CR_run(b);
+ if unsafe {#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==913 && errors[0].loc.column==7 && state[0].retain_report_count==0;return;}
+ #assert !state[0].fatal && state[0].error_count==0 && nodes[2].retain_count==(ifx exact64 then 64 else 3) && state[0].retain_report_count==1 && reports[0].facts_complete && !reports[0].relation_complete && reports[0].pending==(ifx exact64 then 64 else 3);
+ if exact64 {return;}for i:0..<3 {#assert effects[i].source.path.count==2 && effects[i].source.path.steps[0].kind==BS_FIELD && effects[i].source.path.steps[0].index==i && effects[i].source.path.steps[1].kind==BS_ELEMENT && effects[i].source.path.steps[1].index==2147483647 && effects[i].destination.path.count==3 && effects[i].destination.path.steps[1].kind==BS_FIELD && effects[i].destination.path.steps[1].index==i && effects[i].destination.path.steps[2].kind==BS_ELEMENT && effects[i].destination.path.steps[2].index==2147483647;}
+}
+
+// The frozen type graph is shared by all typed writes in one retained pass.
+// Cache only a complete classification; reset it with the other B1 type facts.
+#forall "retained join memo keeps complete frozen facts and resets on a fresh run" mode:0..<8 {
+ nodes:[8]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=17}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=915,column=7,offset=91507}}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=ifx mode==1 then 65 else 64};nodes[1].kind=CK_Tag.file;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],retain_fields=true};
+ if mode==3 {state[0].fatal=true;#assert !CR_join_arrays(b,16) && state[0].error_count==0 && work[0].work==0;return;}
+ if mode==6 {types[16].retain_join=3;}
+ if mode==7 {types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};work[0].work=1048576;}
+ answer:=CR_join_arrays(b,ifx mode==4 then 0 else ifx mode==5 then 17 else 16);
+ if mode>=4 {#assert !answer && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==915 && errors[0].loc.column==7 && errors[0].loc.offset==91507;if mode==7 {#assert types[16].retain_join==0;}return;}
+ #assert answer==(mode==1) && !state[0].fatal && state[0].error_count==0;work[0].work=1048576;#assert CR_join_arrays(b,16)==answer && !state[0].fatal && work[0].work==1048576;
+ work[0].work=0;types[16].length=ifx mode==1 then 64 else 65;CR_run(b);#assert !state[0].fatal && CR_join_arrays(b,16)==(mode!=1) && state[0].error_count==0;
+}
+
+CR_join_arrays :: (b:CB_Context,type:int)->bool {
+ if b.c.state[0].fatal {return false;}if type<1 || type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+ cached:=b.c.types[type].retain_join;if cached==1 {return false;}if cached==2 {return true;}if cached!=0 {CK_resource(b.c,b.state[0].loc);return false;}
+ result:=CB_leaf_count(b,type)>64;if b.c.state[0].fatal {return false;}b.c.types[type].retain_join=ifx result then cast(u8)2 else cast(u8)1;return result;
 }
 
 CR_leaf :: (r:CR_Context,owner:int,write:int,type:int,path:BS_Path) {
@@ -85169,7 +85253,7 @@ CR_leaf :: (r:CR_Context,owner:int,write:int,type:int,path:BS_Path) {
  // An array whose elements would not all fit the write's 64-leaf budget is
  // one leaf set, the unknown element, as in CB_leaves: its sources and
  // addresses are every element's.
- if t.kind==CK_Kind.array && CR_presence(b,t.elem) {if r.state[0].leaves+t.length*CB_leaf_count(b,t.elem)>64 {CR_leaf(r,owner,write,t.elem,CB_add_path(b,path,BS_ELEMENT,2147483647));return;}for i:0..<t.length {
+ if t.kind==CK_Kind.array && CR_presence(b,t.elem) {if r.state[0].join_arrays || r.state[0].leaves+t.length*CB_leaf_count(b,t.elem)>64 {CR_leaf(r,owner,write,t.elem,CB_add_path(b,path,BS_ELEMENT,2147483647));return;}for i:0..<t.length {
   CR_leaf(r,owner,write,t.elem,CB_add_path(b,path,BS_ELEMENT,i));
   if b.c.state[0].fatal || b.c.state[0].error_count>0 {return;}
  }}
@@ -85184,12 +85268,20 @@ CR_seed :: (r:CR_Context,owner:int) {
  while write!=0 {
   if write<2 || write>b.c.state[0].used || b.c.nodes[write].kind!=CK_Tag.stmt_assign || b.c.nodes[write].borrow_owner!=owner || !CB_tick(b,n.loc) {CK_resource(b.c,n.loc);return;}
   target:=b.c.nodes[write].c;rhs:=b.c.nodes[write].a;if target<2 || target>b.c.state[0].used || rhs<2 || rhs>b.c.state[0].used {CK_resource(b.c,b.c.nodes[write].loc);return;}
-  if CR_presence(b,b.c.nodes[target].type) {r.state[0].leaves=0;CR_leaf(r,owner,write,b.c.nodes[target].type,BS_Path.{});}
+  if CR_presence(b,b.c.nodes[target].type) {r.state[0].leaves=0;prior_loc:=b.state[0].loc;b.state[0].loc=b.c.nodes[write].loc;r.state[0].join_arrays=CR_join_arrays(b,b.c.nodes[target].type);b.state[0].loc=prior_loc;if b.c.state[0].fatal {return;}CR_leaf(r,owner,write,b.c.nodes[target].type,BS_Path.{});}
   if b.c.state[0].fatal || b.c.state[0].error_count>0 {return;}write=b.c.nodes[write].borrow_writes;
  }
 }
+#forall "retained summary256 applies128 exact effects and rejects malformed callee counts before queries" mode:0..<3 {
+ nodes:[64]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=63,type_count=18}];queries:[512]CK_BorrowQuery;origins:[4096]BS_Origin;work:[1]CB_State;effects:[512]CK_RetainEffect;reports:[4]CK_RetainObservation;rs:=[1]CR_State.[CR_State.{effects=128}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=129};types[17]=CK_Type.{kind=CK_Kind.view,elem=16};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5,borrow_calls=30};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,next=4,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;nodes[20]=CK_Node.{kind=CK_Tag.proc,type=1,head=21,b=23,retain_head=128,retain_count=ifx mode==0 then 128 else ifx mode==1 then 257 else -1,retain_relation=true};nodes[21]=CK_Node.{kind=CK_Tag.param,type=16,next=22,borrow_owner=20};nodes[22]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=20};nodes[23].kind=CK_Tag.stmt_block;nodes[30]=CK_Node.{kind=CK_Tag.expr_call,type=1,proc=20,head=31,borrow_owner=2,loc=CK_Loc.{line=933,column=7,offset=93307}};nodes[31]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,next=32};nodes[32]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=4};
+ for i:0..<128 {src:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12,path=BS_Path.{count=1}};src.path.steps[0]=BS_Step.{kind=BS_ELEMENT,index=i};dst:=BS_Origin.{kind=BS_PARAMETER,root=1,role=BS_DESCRIPTOR,type=3,path=BS_Path.{count=2}};dst.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};dst.path.steps[1]=BS_Step.{kind=BS_ELEMENT,index=i};effects[i]=CK_RetainEffect.{source=src,destination=dst,value_type=12,witness=30,next=i};}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=rs[..]};CR_apply(r,2,30,false);
+ if mode>0 {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==933 && errors[0].loc.column==7 && errors[0].loc.offset==93307 && work[0].work==0 && rs[0].reports==0;}
+ else {#assert !state[0].fatal && state[0].error_count==0 && nodes[2].retain_count==128 && rs[0].effects==256 && rs[0].reports==1 && reports[0].facts_complete && !reports[0].relation_complete && reports[0].pending==128;}
+}
+
 CR_apply :: (r:CR_Context,owner:int,call:int,active:bool) {
- b:=r.b;e:=b.c.nodes[call];callee:=b.c.nodes[e.proc];pending:[64]RP_Obligation;result:=CR_Result.{complete=!active && !callee.retain_incomplete,relation=callee.retain_relation};
+ b:=r.b;e:=b.c.nodes[call];callee:=b.c.nodes[e.proc];if callee.retain_count<0 || callee.retain_count>CR_MAX_EFFECTS {CK_resource(b.c,e.loc);return;}pending:[CR_MAX_EFFECTS]RP_Obligation;result:=CR_Result.{complete=!active && !callee.retain_incomplete,relation=callee.retain_relation};
  link:=callee.retain_head;remaining:=callee.retain_count;
  while remaining>0 {
   if link<1 || link>r.state[0].effects || !CB_tick(b,e.loc) {CK_resource(b.c,e.loc);return;}effect:=r.effects[link-1];next:=effect.next;
@@ -85245,7 +85337,7 @@ CR_execute :: (b:CB_Context,effects:[]CK_RetainEffect) {
 CR_run :: (b:CB_Context) {
  b.c.state[0].retain_report_count=0;raw:=b;raw.retain_classes=false;
  // Reset only the committed type prefix; the type graph is frozen for this run.
- for type:1..<b.c.state[0].type_count {if !CB_tick(b,b.state[0].loc) {return;}b.c.types[type].retain_presence=0;b.c.types[type].retain_mutable=0;b.c.types[type].retain_fields=0;}
+ for type:1..<b.c.state[0].type_count {if !CB_tick(b,b.state[0].loc) {return;}b.c.types[type].retain_presence=0;b.c.types[type].retain_mutable=0;b.c.types[type].retain_join=0;b.c.types[type].retain_fields=0;}
  raw.retain_fields=true;
  if b.c.retain_effects.count==0 {effects:[128]CK_RetainEffect;CR_execute(raw,effects[..]);}
  else {CR_execute(raw,b.c.retain_effects);}
@@ -85449,14 +85541,14 @@ CR_run :: (b:CB_Context) {
  for i:0..<16 {types[i]=CK_builtin(i);}types[18]=CK_Type.{kind=CK_Kind.array,elem=3,length=64};types[16]=types[18];if record {types[16]=CK_Type.{kind=CK_Kind.struct_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=41};nodes[41]=CK_Node.{kind=CK_Tag.field,type=3,next=42};nodes[42]=CK_Node.{kind=CK_Tag.field,type=18};}types[17]=CK_Type.{kind=CK_Kind.view,elem=16};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4,borrow_writes=10};nodes[3]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=2,next=9};nodes[9]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[4].kind=CK_Tag.stmt_block;nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=3};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=CK_Node.{kind=CK_Tag.expr_index,type=16,a=5,b=6};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=9,loc=CK_Loc.{line=440,column=11,offset=44011}};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=8,c=7,borrow_owner=2,loc=CK_Loc.{line=440,column=3,offset=44003}};
  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};
  // A leftover count from an earlier write doesn't join this write's array.
- rstate:=[1]CR_State.[CR_State.{leaves=64}];r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=rstate[..]};CR_seed(r,2);
+ rstate:=[1]CR_State.[CR_State.{leaves=64,join_arrays=true}];r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=rstate[..]};CR_seed(r,2);
  // The record's string leaves 63, so its [64] is one leaf: two obligations.
  #assert !state[0].fatal && state[0].error_count==0 && rstate[0].effects==(ifx record then 2 else 64) && rstate[0].leaves==(ifx record then 2 else 64);
 }
 
-#forall "retained streamed aggregates preserve the canonical64 effect refusal and atomic reports" shape:0..<3 {
- over:=shape>0;nodes:[112]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=111,type_count=18}];work:[1]CB_State;queries:[512]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;
- for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=ifx over then 65 else 64};if shape==2 {types[16]=CK_Type.{kind=CK_Kind.struct_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=41};for i:0..<65 {nodes[41+i]=CK_Node.{kind=CK_Tag.field,type=3,next=ifx i==64 then 0 else 42+i};}}types[17]=CK_Type.{kind=CK_Kind.view,elem=16};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4,borrow_writes=10};nodes[3]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=2,next=9};nodes[9]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[4].kind=CK_Tag.stmt_block;nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=3};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=CK_Node.{kind=CK_Tag.expr_index,type=16,a=5,b=6};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=9,loc=CK_Loc.{line=440,column=11,offset=44011}};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=8,c=7,borrow_owner=2,loc=CK_Loc.{line=440,column=3,offset=44003}};
+#forall "retained streamed aggregates preserve the canonical256 effect refusal and atomic reports" shape:0..<3 #steps 50000000 {
+ over:=shape>0;nodes:[336]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=335,type_count=18}];work:[1]CB_State;queries:[512]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[512]CK_RetainEffect;reports:[4]CK_RetainObservation;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=ifx over then 65 else 64};if shape==2 {types[16]=CK_Type.{kind=CK_Kind.struct_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=41};for i:0..<257 {nodes[41+i]=CK_Node.{kind=CK_Tag.field,type=3,next=ifx i==256 then 0 else 42+i};}}types[17]=CK_Type.{kind=CK_Kind.view,elem=16};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4,borrow_writes=10};nodes[3]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=2,next=9};nodes[9]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[4].kind=CK_Tag.stmt_block;nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=3};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=CK_Node.{kind=CK_Tag.expr_index,type=16,a=5,b=6};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=9,loc=CK_Loc.{line=440,column=11,offset=44011}};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=8,c=7,borrow_owner=2,loc=CK_Loc.{line=440,column=3,offset=44003}};
  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};CR_run(b);
  // 65 fields are 65 obligations; 65 array elements are one, the unknown element.
  if shape==2 {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==440 && errors[0].loc.column==11 && errors[0].loc.offset==44011 && state[0].retain_report_count==0;}

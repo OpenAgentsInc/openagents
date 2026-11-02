@@ -1,0 +1,10 @@
+/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/checker.coax:80195:87: error[E0406]: assertion failed
+   got:=CB_add_path(b,path,kind,index);if sample<2 {count:=ifx sample==0 then 1 else 16;#assert got.count==count && got.steps[count-1].kind==kind && got.steps[count-1].index==index && !state[0].fatal && state[0].error_count==0;for i:0..<count-1 {#assert got.steps[i].kind==BS_FIELD && got.steps[i].index==i;}}else {#assert got.count==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==71 && errors[0].loc.column==5;for i:0..<16 {#assert got.steps[i].kind==0 && got.steps[i].index==0;}}
+                                                                                        ^
+  note: in #forall return borrow path append admits sixteen steps and refuses malformed input atomically
+  counterexample: sample = 1
+/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/checker.coax:81351:278: error[E0406]: assertion failed
+   if too_deep {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}else if local {#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==920 && errors[0].loc.column==7 && errors[0].loc.offset==92007;}else {#assert !state[0].fatal && state[0].error_count==0 && nodes[2].borrow_status==1;}
+                                                                                                                                                                                                                                                                                       ^
+  note: in #forall return borrow sixteen projections preserve parameter and local escape witnesses
+  counterexample: local = false, too_deep = false

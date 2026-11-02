@@ -1,0 +1,5 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-desktop/zeron/dictation-ui.coax:31:13: mutant survived: '&&' became '||'
+   if key==53 && holding {return 3;}
+              ^
+40 mutants, 39 killed, 1 survived

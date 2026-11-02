@@ -35,6 +35,7 @@ ds_save :: (k: [] Desk, x: f32, y: f32, w: f32, h: f32, out: [] u8) -> int {
   cl_put(o[..], ",\"w\":"); ds_put_num(o[..], cast(int) w); cl_put(o[..], ",\"h\":"); ds_put_num(o[..], cast(int) h); cl_put(o[..], "}");
   cl_put(o[..], ",\"sidebar\":{\"width\":"); ds_put_num(o[..], cast(int) k[0].width);
   cl_put(o[..], ifx k[0].collapsed then ",\"collapsed\":true}" else ",\"collapsed\":false}");
+  cl_put(o[..], ifx k[0].dictation_enabled then ",\"dictation\":{\"enabled\":true}" else ",\"dictation\":{\"enabled\":false}");
   if k[0].n > 0 {
     s := dsk_chat(k);
     cl_put(o[..], ",\"defaults\":{\"mode\":"); cl_put_string(o[..], names[s[0].mode]);
@@ -86,6 +87,7 @@ ds_load :: (g: [] Settings, k: [] Desk, json: string) -> int {
     pn := e_copy(path[..], 0, "shortcuts."); pn = e_copy(path[..], pn, knames[j]);
     got := dsk_set_shortcut(k, j, cl_str(ar[..], t, cast(string) path[0..<pn]));
   }
+  consent:=cl_bool(t,"dictation.enabled");k[0].dictation_enabled=zdu_consent(consent.ok,consent.value);
   if !cl_at(t, "sessions").ok { g[0].sessions = 0; return 0; }
   dsk_init(k);
   wd := cl_int(t, "sidebar.width");
@@ -224,4 +226,14 @@ coaxial_ds_defaults :: (g: [] Settings, s: [] ZeronState) #export_c { if g.count
   t := cast(string) out[0..<m];
   abuf: [4096] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
   #assert cl_str(ar[..], t, "shortcuts.toggle_sidebar") == "cmd+b" && cl_str(ar[..], t, "shortcuts.close_window") == "shift+cmd+w" && cl_str(ar[..], t, "shortcuts.new_session") == "alt+cmd+t";
+}
+
+#test "dictation settings are opt-in and malformed or missing consent resets to off" {
+ k:[1]Desk;g:[1]Settings;
+ #assert !coaxial_desk_dictation_enabled(k[..]);
+ n:=ds_load(g[..],k[..],"{\"dictation\":{\"enabled\":true},\"sessions\":[]}");#assert n==0 && coaxial_desk_dictation_enabled(k[..]);
+ out:[DS_JSON]u8;n=ds_save(k[..],0,0,900,600,out[..]);#assert n>0;
+ k2:[1]Desk;g2:[1]Settings;n=ds_load(g2[..],k2[..],cast(string)out[0..<n]);#assert coaxial_desk_dictation_enabled(k2[..]);
+ n=ds_load(g[..],k[..],"{\"dictation\":{\"enabled\":\"true\"}}");#assert !coaxial_desk_dictation_enabled(k[..]);
+ coaxial_desk_dictation_set(k[..],true);n=ds_load(g[..],k[..],"{}");#assert !coaxial_desk_dictation_enabled(k[..]);
 }

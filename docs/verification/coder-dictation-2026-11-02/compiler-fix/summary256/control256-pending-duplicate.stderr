@@ -1,0 +1,5 @@
+/tmp/dictation-compiler-fix/controls256/pending-duplicate/coax/lib/compiler/checker.coax:85028:31: error[E0406]: assertion failed
+   row:=pending[64];if mode==0 {#assert CR_pending_insert(pending[..],256,row)==256;}else {row.source.origin.path.steps[0].index=256;used:=ifx mode==1 then 256 else ifx mode==2 then -1 else 257;#assert CR_pending_insert(pending[..],used,row)== -1;}
+                                ^
+  note: in #forall retained summary pending256 preserves ordering duplicate reuse and atomic257 refusal
+  counterexample: mode = 0

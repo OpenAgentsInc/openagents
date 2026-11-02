@@ -11,6 +11,7 @@
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Local dictation uses the microphone while enabled and this window is active. Parakeet processes audio on this Mac and inserts an editable draft; it never sends a message.</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict>
 </plist>

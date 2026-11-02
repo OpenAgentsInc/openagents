@@ -1,0 +1,50 @@
+// Native dictation build effects, orchestrated in Coax. No model is loaded.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+DIB_PARAKEET_INPUTS :: [52]string.[
+  "coax/bin/coax", "psionic/lib/parakeet.coax", "psionic/lib/tdt.coax",
+  "psionic/lib/conformer.coax", "psionic/lib/spectral.coax", "psionic/lib/pixels.coax",
+  "psionic/lib/parakeet/runtime.coax", "psionic/lib/parakeet/fast.coax", "psionic/lib/parakeet/device.coax",
+  "psionic/platform/parakeet-face.c", "psionic/platform/psionic-parakeet.h",
+  "psionic/platform/parakeet-build.sh", "psionic/platform/parakeet-metal.c", "psionic/platform/parakeet-metal.h",
+  "psionic/platform/metal-host.m", "psionic/platform/metal-host.h", "psionic/lib/whisper/wav.coax",
+  "coax/lib/json/json.coax", "coax/lib/crypto/sha256.coax", "coax/lib/crypto/sha256-kernel.coax",
+  "psionic/platform/parakeet-build.coax", "psionic/lib/parakeet/plan.coax", "psionic/lib/parakeet/model-policy.coax",
+  "psionic/lib/parakeet/front.coax", "psionic/lib/parakeet/front-plan.coax", "psionic/lib/parakeet/text.coax",
+  "psionic/lib/whisper/device.coax", "coax/lib/compute/apple.coax", "psionic/lib/ops.coax", "psionic/lib/tensor.coax",
+  "psionic/lib/counter-rng.coax", "coax/lib/crypto/bytes.coax",
+  "coax/lib/nostr/fixtures/coax_relay.coax", "coax/lib/nostr/fixtures/json_suite.coax", "coax/lib/nostr/json.coax",
+  "coax/lib/sys/args.coax", "coax/lib/sys/fs.coax", "coax/lib/sys/proc.coax", "coax/lib/sys/tool.coax",
+  "psionic/fixtures/parakeet-tdt-manifest.coax", "psionic/lib/ops-contract.coax",
+  "psionic/lib/tensor-ops-contract.coax", "psionic/lib/tensor-ops.coax", "psionic/lib/tensor-view.coax",
+  "psionic/lib/whisper/ggml.coax", "psionic/tests/conformer-checks.coax",
+  "psionic/tests/parakeet-model-checks.coax", "psionic/tests/tdt-checks.coax",
+  "psionic/lib/parakeet/parallel-plan.coax", "psionic/lib/parakeet/parallel.coax",
+  "psionic/platform/parakeet-threads.c", "psionic/platform/parakeet-threads.h"];
+
+
+DibPaths :: struct {bytes:[32768]u8;used:int;}
+dib_path :: (p:[]DibPaths,dir:string,name:string)->string {
+ start:=p[0].used;for c:dir {p[0].bytes[p[0].used]=c;p[0].used+=1;}p[0].bytes[p[0].used]='/';p[0].used+=1;for c:name {p[0].bytes[p[0].used]=c;p[0].used+=1;}return cast(string)p[0].bytes[start..<p[0].used];
+}
+dib_run :: (argv:[]string,out:[]u8,deadline:int)->int {
+ left:=deadline-proc_now_ms();if left<=0 {tool_errln("Dictation build exceeded its fourteen-minute limit");return -1;}
+ err:[65536]u8;r:=proc_run(argv,ifx left<180000 then left else 180000,out,err[..]);
+ if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}return r.out_n;
+}
+tool_main :: ()->int #export_c {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: dictation-build SOURCE_ROOT OUTPUT_DIRECTORY");return 2;}
+ root:=args_at(args[..],0);dir:=args_at(args[..],1);if root.count<1 || root.count>512 || dir.count<1 || dir.count>512 {return 2;}
+ deadline:=proc_now_ms()+840000;p:[1]DibPaths;env:[4096]u8;ccenv:[4096]u8;coax:=proc_getenv("COAX",env[..]);if coax=="" {coax=dib_path(p[..],root,"coax/bin/coax");}cc:=proc_getenv("COAX_CC",ccenv[..]);if cc=="" {cc="cc";}
+ out:[16777216]u8;mk:=[3]string.["mkdir","-p",dir];if dib_run(mk[..],out[..],deadline)<0 {return 1;}
+ lib:=dib_path(p[..],root,"psionic/build/parakeet/libpsionic-parakeet.a");built:=fs_mtime_ns(lib);stale:=built<0;
+ for item:DIB_PARAKEET_INPUTS {b:[1200]u8;stamp:=fs_mtime_ns(fs_join(root,item,b[..]));if stamp<0 || stamp>built {stale=true;}}
+ if stale {script:=dib_path(p[..],root,"psionic/platform/parakeet-build.sh");dest:=dib_path(p[..],root,"psionic/build/parakeet");a:=[4]string.["bash",script,dest,root];if dib_run(a[..],out[..],deadline)<0 {return 1;}}
+ src:=dib_path(p[..],root,"apps/shared/dictation.coax");header:=dib_path(p[..],dir,"dictation.h");code:=dib_path(p[..],dir,"dictation.c");
+ gen:=[9]string.[coax,"c",src,"--release","--library","--header",header,"--run-steps","250000000"];n:=dib_run(gen[..],out[..],deadline);if n<0 || !fs_write(code,cast(string)out[0..<n]) {return 1;}
+ native:=dib_path(p[..],root,"apps/openagents-desktop/dictation-face.c");include:=dib_path(p[..],root,"apps/openagents-desktop");obj:=dib_path(p[..],dir,"dictation.o");face:=dib_path(p[..],dir,"dictation-face.o");sources:=[2]string.[code,native];objects:=[2]string.[obj,face];
+ for i:0..<2 {a:=[16]string.[cc,"-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable","-Wno-unused-but-set-variable","-I",dir,"-I",include,"-c",sources[i],"-o",objects[i]];if dib_run(a[..],out[..],deadline)<0 {return 1;}}
+ print("%\n%\n%\n",obj,face,lib);return 0;
+}

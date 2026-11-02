@@ -1,0 +1,38 @@
+{
+  "scope": "Read-only source comparison, not execution or approval",
+  "audited_baseline": "../current24/source/checker.coax.gz",
+  "baseline_checker_sha256": "fddbcce761a1d1b254684fe816b3699d7a64f142f021b00f57bd920aa603932f",
+  "probe_checker_sha256": "f12b199262be723b3ca52f8d859e5e801de91bce7e376fde6347ab6fa392a69d",
+  "actual_changed_lines": 88,
+  "declared_changed_lines": 88,
+  "every_changed_number_delta": 1048576,
+  "numeric_substitution_counts": {
+    "1048575->2097151": 24,
+    "1048576->2097152": 57,
+    "1048577->2097153": 7,
+    "1048570->2097146": 3,
+    "1048574->2097150": 3,
+    "1048448->2097024": 2,
+    "1048480->2097056": 1,
+    "1047776->2096352": 1,
+    "1048573->2097149": 6,
+    "1048064->2096640": 1,
+    "1048500->2097076": 2,
+    "1048544->2097120": 1,
+    "1048568->2097144": 2,
+    "1048512->2097088": 1,
+    "1048320->2096896": 2
+  },
+  "every_other_byte_on_changed_lines_identical": true,
+  "other14_modules_identical": true,
+  "unchanged_lines_containing1M": 17,
+  "production_change_sites": [
+    "CK_borrow_caps.work",
+    "CB_tick work cutoff",
+    "CK_retain_caps.work"
+  ],
+  "fixture_changes": "Paired work initialization/expected limits shifted equally, preserving remaining fuel and exact boundary offsets.",
+  "unrelated_arithmetic_constants_unchanged": true,
+  "sum_scan_explicit_bound_unchanged": true,
+  "default_profile": "The archived current24 default remains1,048,576. This probe does not authorize or publish a default change."
+}

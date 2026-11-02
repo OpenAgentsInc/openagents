@@ -1,0 +1,267 @@
+{
+  "schema": "openagents.coder.dictation-app-diagnostic-build.v1",
+  "observed_at_utc": "2026-11-02T22:52:02.130829+00:00",
+  "status": "passed-isolated-2m-codegen-native-compile-swift-link-and-codesign",
+  "default_budget": 1048576,
+  "diagnostic_budget": 2097152,
+  "default_repository_budget_changed": false,
+  "scope": "Root reported successful full app generation under an isolated development compiler. Root compiled changed zeron C and bridge at O2. The default budget still refuses this app; this diagnostic is not a normal release/bootstrap proof. App runtime result has its own receipt. Empty compiler diagnostics and available derived artifacts are archived without repeating generation or tests.",
+  "producer": {
+    "path": "/tmp/dictation-compiler-fix/coax2m",
+    "sha256": "5f3ab58f0b24c5af4e7285262b1b2b79ae6bc0ed54f840938f5f5d971cf8b0bd",
+    "bytes": 2304216
+  },
+  "artifacts": {
+    "dictation-zeron-compile.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "dictation-zeron-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "dictation-zeron-face.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "dictation-zeron-face.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "dictation-app-link.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "dictation-app-link.stderr": {
+      "sha256": "0a17452d7ebff2083fa7c337c2c661d193bc0ba1b02f9cd62acf8729e52eb1b7",
+      "bytes": 723
+    },
+    "actual2m.c.gz": {
+      "sha256": "82c0090aa70b104f4e2ae139d6689ebc000af41473066f896b71a26f3df58243",
+      "bytes": 364195,
+      "decompressed": {
+        "sha256": "bcfbdac1f47fa20b5c2e1b933d47bc578a43cf3ca169f6f1a7716f1b011b9c43",
+        "bytes": 2284182
+      }
+    },
+    "actual2m.h.gz": {
+      "sha256": "b259e6ed70c4515e813afabada79169fe77ed9d7f398cf330046aab91f8177ad",
+      "bytes": 51796,
+      "decompressed": {
+        "sha256": "9418c1a0399169f93490bf8bd6b77f761fe9887643d7ebcf8044bb8b0593a328",
+        "bytes": 404408
+      }
+    },
+    "checker2m.c.gz": {
+      "sha256": "c1d2729302a35602ceddf577ac5caa7d53fc87959ac673a1517570fc1820a3c2",
+      "bytes": 135492,
+      "decompressed": {
+        "sha256": "81398abf69b6ac42d8a713858ac1ee9af741aa599c75e5cc1d86024a730d36af",
+        "bytes": 945618
+      }
+    },
+    "checker2m.h.gz": {
+      "sha256": "c4025194a0a38c3cee762448b8ce8df53cbbf16f2819464a805e628cbb11da68",
+      "bytes": 15788,
+      "decompressed": {
+        "sha256": "aa9f418e1b315271d83f702a7b91628f482f459839bafded8cad011e59fd728e",
+        "bytes": 120081
+      }
+    },
+    "actual2m.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "probe2m-changes.json": {
+      "sha256": "e3c89e29106b2ccb5fef71e9c1a25d103daf12ce35d03d25581fb036d2d36423",
+      "bytes": 68472
+    },
+    "dictation-codesign.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "dictation-codesign.stderr": {
+      "sha256": "913c9f55667331865ff4d31ee8da7b564836423489f54c385be73a93c3fe662c",
+      "bytes": 75
+    }
+  },
+  "native_artifacts": {
+    "apps/openagents-desktop/build/c/zeron.c": {
+      "sha256": "bcfbdac1f47fa20b5c2e1b933d47bc578a43cf3ca169f6f1a7716f1b011b9c43",
+      "bytes": 2284182
+    },
+    "apps/openagents-desktop/build/c/zeron.h": {
+      "sha256": "9418c1a0399169f93490bf8bd6b77f761fe9887643d7ebcf8044bb8b0593a328",
+      "bytes": 404408
+    },
+    "apps/openagents-desktop/build/c/zeron.o": {
+      "sha256": "f611e9fcffc2c2dd9058f846b13ee7d9d24c631daf3c7505951bd28984bc7c6c",
+      "bytes": 1376160
+    },
+    "apps/openagents-desktop/build/c/zeron-face.o": {
+      "sha256": "71bd69f99e577ba4c235afc1f6e2b0daf804e7f0cd6b49a841a7454b9f14a488",
+      "bytes": 19584
+    },
+    "apps/openagents-desktop/build/OpenAgents.app/Contents/MacOS/OpenAgents": {
+      "sha256": "7e4da4815814d3cba989721b750698a7badea67cf3346d81ba5f60e073c613a0",
+      "bytes": 2562728
+    },
+    "psionic/build/parakeet/libpsionic-parakeet.a": {
+      "sha256": "9416db1f9b29740baf155bc05b60e427683fd511813772dbc0e662c6546dbfe0",
+      "bytes": 640736
+    }
+  },
+  "generation_matches_installed": {
+    "c": true,
+    "header": true
+  },
+  "isolated_compiler_source_closure": {
+    "coax/lib/compiler/borrow-summary.coax": {
+      "archived": "isolated-source/borrow-summary.coax.gz",
+      "sha256": "fa04aa299e27a7138ef3f1884c473030131356ed1e1a53b02da24a7175031101",
+      "bytes": 30358,
+      "compressed": {
+        "sha256": "f0acdb125a214047d58e17fcd95ff704e6bc3ea49566dc70f47c10689470a022",
+        "bytes": 6226
+      }
+    },
+    "coax/lib/compiler/checker.coax": {
+      "archived": "isolated-source/checker.coax.gz",
+      "sha256": "f12b199262be723b3ca52f8d859e5e801de91bce7e376fde6347ab6fa392a69d",
+      "bytes": 5494768,
+      "compressed": {
+        "sha256": "750680ee63296be5dcc36addfb97bf99a5aaa851abf863c533905539dd3d767d",
+        "bytes": 483632
+      }
+    },
+    "coax/lib/compiler/literal-projection-cache.coax": {
+      "archived": "isolated-source/literal-projection-cache.coax.gz",
+      "sha256": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a",
+      "bytes": 2804,
+      "compressed": {
+        "sha256": "06d45053a061e68c830652bc23a46a8f9628ccadd9efa8b3745429d8d61d9409",
+        "bytes": 1187
+      }
+    },
+    "coax/lib/compiler/quantity.coax": {
+      "archived": "isolated-source/quantity.coax.gz",
+      "sha256": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+      "bytes": 6156,
+      "compressed": {
+        "sha256": "2e779ecb4853e0c78137d32f8d5341db026ee8f715335a77e95ab30d9d06fc2d",
+        "bytes": 1953
+      }
+    },
+    "coax/lib/compiler/query-index.coax": {
+      "archived": "isolated-source/query-index.coax.gz",
+      "sha256": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+      "bytes": 3906,
+      "compressed": {
+        "sha256": "2eeb01b00aa7572ca67b9389a1d0a7178307e253153039fa5e1d98ad5eb3c5d4",
+        "bytes": 1671
+      }
+    },
+    "coax/lib/compiler/query-projection-cache.coax": {
+      "archived": "isolated-source/query-projection-cache.coax.gz",
+      "sha256": "09403bb93f2caa0b5883bb22aa3f9c566381ebe819c90ee0c12f5575de3c2135",
+      "bytes": 5966,
+      "compressed": {
+        "sha256": "4d781cb67d389434eb5266e88327ae0cec8b9698032010fb7e0a52f087e3fbe8",
+        "bytes": 1998
+      }
+    },
+    "coax/lib/compiler/result-flow.coax": {
+      "archived": "isolated-source/result-flow.coax.gz",
+      "sha256": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef",
+      "bytes": 6040,
+      "compressed": {
+        "sha256": "fde524a9f386555bd81f20291f309499c619952aece2c5d350236e615eb48b5d",
+        "bytes": 1657
+      }
+    },
+    "coax/lib/compiler/result-handling.coax": {
+      "archived": "isolated-source/result-handling.coax.gz",
+      "sha256": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+      "bytes": 42762,
+      "compressed": {
+        "sha256": "09a31b295cd5e447607db73a9d24d277d0b1e029ea372de384d6a8b76bc2bb25",
+        "bytes": 6913
+      }
+    },
+    "coax/lib/compiler/retain-policy.coax": {
+      "archived": "isolated-source/retain-policy.coax.gz",
+      "sha256": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+      "bytes": 20853,
+      "compressed": {
+        "sha256": "ad58672f71780bf5ec1e4aedd02fef9d3b5a8810a9583361aa6e6c4343f58705",
+        "bytes": 4541
+      }
+    },
+    "coax/lib/compiler/spatial-mutation.coax": {
+      "archived": "isolated-source/spatial-mutation.coax.gz",
+      "sha256": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+      "bytes": 5163,
+      "compressed": {
+        "sha256": "513f95f1f208e72852280e8644cf6104282484cd419acad5be8c1f720c8db27d",
+        "bytes": 1604
+      }
+    },
+    "coax/lib/compiler/spatial-policy.coax": {
+      "archived": "isolated-source/spatial-policy.coax.gz",
+      "sha256": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+      "bytes": 9550,
+      "compressed": {
+        "sha256": "ac8bf3fb6683a8ef9b6d8de91543a6ecb3a1d0ba465e147bdee662441a9e45cb",
+        "bytes": 2567
+      }
+    },
+    "coax/lib/compiler/sum-layout.coax": {
+      "archived": "isolated-source/sum-layout.coax.gz",
+      "sha256": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169",
+      "bytes": 3650,
+      "compressed": {
+        "sha256": "5435a9800453d3609e9d8c2e08d492e8a8f3fdaa2b200c37050e2caaf87ba502",
+        "bytes": 1295
+      }
+    },
+    "coax/lib/compiler/sum-types.coax": {
+      "archived": "isolated-source/sum-types.coax.gz",
+      "sha256": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+      "bytes": 45657,
+      "compressed": {
+        "sha256": "88f10bc3243a6d0dcd43603863804a1599f3c3bdda03cd82dabafb81282c75f0",
+        "bytes": 8847
+      }
+    },
+    "coax/lib/compiler/unit-algebra.coax": {
+      "archived": "isolated-source/unit-algebra.coax.gz",
+      "sha256": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+      "bytes": 9564,
+      "compressed": {
+        "sha256": "d47bd76edaf215cfcc8425a7a362a6d8abc00695e03fbd4fe78bb220e6b6c469",
+        "bytes": 2667
+      }
+    },
+    "coax/lib/compiler/unit-forms.coax": {
+      "archived": "isolated-source/unit-forms.coax.gz",
+      "sha256": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+      "bytes": 8595,
+      "compressed": {
+        "sha256": "9c5b8be9ca6c2de19984d88eb79b6d93a9e04590a7cd58c2c1f74edd480d1aa2",
+        "bytes": 2278
+      }
+    }
+  },
+  "root_reported_exit_statuses": {
+    "generation": 0,
+    "zeron_native_compile": 0,
+    "zeron_face_compile": 0,
+    "swift_link": 0
+  },
+  "signed_executable": {
+    "sha256": "df4bccd94f12b8310f853e13016383953da954b64e0f2f6bc5e21cb8b86de886",
+    "bytes": 2566000,
+    "matches_actual_integration": true
+  },
+  "codesign": "Diagnostics retained; actual app receipt pins the resulting executable. No independent signature validation claimed."
+}

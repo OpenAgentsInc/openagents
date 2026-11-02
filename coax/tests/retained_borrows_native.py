@@ -220,7 +220,7 @@ def run(compiler, directory, expected_compiler_sha256=None):
             binary = directory/name
             execute(name + '-compile', [*cc, '-std=c11', *flags, '-Wall', '-Wextra',
                     '-Werror', '-Wno-unused-function', '-Wno-unused-variable',
-                    '-Wno-unused-parameter', '-Wno-misleading-indentation',
+                    '-Wno-unused-but-set-variable', '-Wno-unused-parameter', '-Wno-misleading-indentation',
                     '-ffp-contract=off', '-fno-fast-math', '-I', directory,
                     *c_sources, DRIVER, '-lm', '-o', binary], 180)
             record['artifacts'][str(binary)] = digest(binary)
@@ -230,8 +230,8 @@ def run(compiler, directory, expected_compiler_sha256=None):
             observed = json.loads(output)
             expected_counts = {'cases': 21, 'source_cases': 19, 'negative_cases': negative_cases,
                                'matched_reports': expected_reports, 'disabled_controls': 1,
-                               'short_controls': 1, 'effect_size': 368,
-                               'effect_source_storage_offset': 360,
+                               'short_controls': 1, 'effect_size': 880,
+                               'effect_source_storage_offset': 872,
                                'observation_size': 40, 'caps_size': 24}
             if any(type(observed.get(key)) is not int or observed[key] != value
                    for key, value in expected_counts.items()):

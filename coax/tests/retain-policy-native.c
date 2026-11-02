@@ -12,9 +12,9 @@ typedef coax_t_RP_Term Term;
 typedef coax_t_RP_Address Address;
 typedef coax_t_RP_Obligation Obligation;
 typedef coax_t_RP_Result Result;
-ABI(Term,176);OFF(Term,frame,0);OFF(Term,origin,8);
-ABI(Address,184);OFF(Address,storage,0);OFF(Address,value_type,176);
-ABI(Obligation,360);OFF(Obligation,source,0);OFF(Obligation,destination,176);
+ABI(Term,432);OFF(Term,frame,0);OFF(Term,origin,8);
+ABI(Address,440);OFF(Address,storage,0);OFF(Address,value_type,432);
+ABI(Obligation,872);OFF(Obligation,source,0);OFF(Obligation,destination,432);
 ABI(Result,32);OFF(Result,status,0);OFF(Result,facts_complete,1);
 OFF(Result,relation_complete,2);OFF(Result,forbidden,3);
 OFF(Result,obligation_count,8);OFF(Result,bad_source,16);OFF(Result,bad_destination,24);
@@ -34,7 +34,7 @@ static Address address(int kind,int root) {
 }
 static int same_term(Term a,Term b) {
  if(a.frame!=b.frame||a.origin.kind!=b.origin.kind||a.origin.root!=b.origin.root||a.origin.role!=b.origin.role||a.origin.type!=b.origin.type||a.origin.path.count!=b.origin.path.count)return 0;
- for(int i=0;i<8;i++)if(a.origin.path.steps.e[i].kind!=b.origin.path.steps.e[i].kind||a.origin.path.steps.e[i].index!=b.origin.path.steps.e[i].index)return 0;
+ for(int i=0;i<24;i++)if(a.origin.path.steps.e[i].kind!=b.origin.path.steps.e[i].kind||a.origin.path.steps.e[i].index!=b.origin.path.steps.e[i].index)return 0;
  return 1;
 }
 static int same_address(Address a,Address b){return a.value_type==b.value_type&&same_term(a.storage,b.storage);}
@@ -109,13 +109,13 @@ static void metadata(void){
  s=good;s.frame=10;bad(9,7,&s,1,&target,1,64,INVALID);s=term(STATIC,3,7);s.frame=9;bad(9,7,&s,1,&target,1,64,INVALID);
  s=good;s.origin.type=8;bad(9,7,&s,1,&target,1,64,INVALID);d=target;d.value_type=8;bad(9,7,&good,1,&d,1,64,INVALID);
  d=target;d.storage.origin.path.count=0;d.storage.origin.path.steps.e[0].kind=0;bad(9,7,&good,1,&d,1,64,INVALID);
- for(int i=0;i<8;i++){
+ for(int i=0;i<24;i++){
   s=good;s.origin.path.steps.e[i].kind=1;bad(9,7,&s,1,&target,1,64,INVALID);
   d=target;d.storage.origin.path.steps.e[i].index=1;bad(9,7,&good,1,&d,1,64,INVALID);
  }
  /* Exact FIELD before wildcard DEREFERENCE, with full depth and preserved rows. */
- s=good;s.origin.path.count=8;d=target;d.storage.origin.path.count=8;
- for(int i=0;i<8;i++){s.origin.path.steps.e[i].kind=i%2?2:1;s.origin.path.steps.e[i].index=i;d.storage.origin.path.steps.e[i].kind=i==4?3:1;d.storage.origin.path.steps.e[i].index=i==4?0:i;}
+ s=good;s.origin.path.count=24;d=target;d.storage.origin.path.count=24;
+ for(int i=0;i<24;i++){s.origin.path.steps.e[i].kind=i%2?2:1;s.origin.path.steps.e[i].index=i;d.storage.origin.path.steps.e[i].kind=i==4?3:1;d.storage.origin.path.steps.e[i].index=i==4?0:i;}
  Obligation one={s,d};check(9,7,&s,1,1,&d,1,1,1,OK,1,0,0,-1,-1,&one,1);
  d.storage.origin.path.steps.e[4].index=1;bad(9,7,&s,1,&d,1,64,INVALID);
 }

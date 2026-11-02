@@ -1378,7 +1378,7 @@ over_reply :: (s: [] VoiceState, r: [] Rng, kind: int, reply: int, frames: int, 
   #assert -30.0 + 12.0 <= f + ECHO_MARGIN_DB;   // a 12 dB burst over the leak is not speech
 }
 
-#test "a quiet gap teaches nothing; the next reply's loud start doesn't cut it off" {
+#test "a quiet gap teaches nothing; the next reply's loud start doesn't cut it off" #steps 40000000 {
   s := fresh(16000);
   r: [1] Rng;
   skip(s[..], r[..], 0, 30, 0);

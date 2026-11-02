@@ -1,0 +1,6 @@
+ok   #test dictation app oracle admits exact keyboard undo mouse draft sequence with no sends (1 case, 3623 steps, 0 ms)
+ok   #test dictation app oracle refuses incomplete reordered and changed composer observations (1 case, 16633 steps, 0 ms)
+ok   #test dictation app oracle rejects fixture timeouts and unknown scripted actions (1 case, 13286 steps, 0 ms)
+ok   #test dictation app script paths cannot introduce another fixture command (1 case, 1005 steps, 0 ms)
+4 of 126 checks (--only 'dictation app'), 4 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

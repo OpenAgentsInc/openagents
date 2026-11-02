@@ -1,0 +1,91 @@
+{
+  "schema": "openagents.coder-dictation.controller.v1",
+  "status": "passed-controller-profile",
+  "scope": "Only new controller/policy/composition/native ABI; existing model/math gates reused from Parakeet chapter153. No microphone, network, actual owner audio or visible window used.",
+  "compiler": {
+    "path": "/tmp/coax-12625-closure/native-v6/coax",
+    "sha256": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c"
+  },
+  "sources": {
+    "apps/shared/dictation-policy.coax": "c7fe68bee50055426a9ee3c1f796b8b31cf3c2d1bd538e7cf3ec77c8981d6597",
+    "apps/shared/dictation.coax": "5f9e08fbeef3a8d383e6bcdf41d23e120fadb9a49ee89b3bddd4245887dfb978",
+    "apps/openagents-desktop/dictation-face.c": "4d9563f007f0c52d45aa819e400064145b179e28a8d4ab0a5b840e3f8e4a53fd",
+    "apps/openagents-desktop/dictation-face.h": "20e22c6290fefe930b406f28da52d6764b59141d3f08e3f50a5bc17bb1782352",
+    "apps/openagents-desktop/tests/dictation-controller.c": "6f88d570ea80232f61ce4b904c244241730d828d128705f1511f9c77b1125f66",
+    "verse/voice.coax": "d5f6ad16804b49c441fb4fabc2f7890c58ed4e3f7f18f1e4c39ee4ff800d9d64"
+  },
+  "generated": {
+    "dictation.c": "191d32e19f3295cc1c61c5ccf8692f4bb226d7357bf35f9e8643e01c7ee6d143",
+    "dictation.h": "67f671af35188c66e939f2ad975c005b6150b99dbc5a9e008b3e3d55ff3f0abb"
+  },
+  "policy": {
+    "checks": 14,
+    "mutants": 250,
+    "killed": 250,
+    "survived": 0,
+    "record": "dictation-policy-mutation-final.log",
+    "earlier_survivors": "Original243/216/27 retained; removed redundant equality/duplicated sum guards and added missing public boundary/state-reset oracles, no equivalent waivers."
+  },
+  "audio": {
+    "record": "dictation-audio-final2.log",
+    "profile": "Existing Verse20ms resampler and speech likelihood; sourceF32mono converted to s16 in Coax,16/24/44.1/48kHz; causal filter preserves its existing delay.",
+    "partial_tail": "Flush only valid prefix; restore/replay resampler history and skip already emitted prefix, never insert synthetic audio or duplicate output.",
+    "capture_ring_samples": 16000,
+    "selected_preroll_samples": 7200,
+    "min_hold_ms": 300,
+    "release_tail_ms": 200,
+    "maximum_samples": 960000,
+    "maximum_model_segment": 327520,
+    "vad_min_speech_samples": 2560,
+    "loudness": "Maximum complete480sample rolling mean-square window must exceed10737.41824 (\u221250dBFS).",
+    "checks": 20
+  },
+  "native_oracles": [
+    "Concrete900ms clip with15ms+5ms partial final frame has exact expected14400 f32 samples.",
+    "Too-small copies preserve output; old/wrong tickets cannot consume current clip.",
+    "Late release after cap/finalization preserves frozen clip and assembled text.",
+    "Only final successful nonempty assembled text can be copied; empty successful ASR becomesNoSpeech.",
+    "Actual60second capture has960000 exact samples,3 complete disjoint model-bounded segments.",
+    "Tap and silence never become recognizer work; unsupported/NaN PCM and unavailable source facts revoke readiness."
+  ],
+  "voice_test_annotation": {
+    "change": "Only#steps40000000 on the existing quiet-gap check; its existing file comment already prescribes40M.",
+    "all_other_source_bytes_identical": true,
+    "reason": "The unchanged check needs more than C-codegen default20M; no production body or compiler budget changed."
+  },
+  "limits": [
+    "No claim of true streaming ASR or context equivalence across independent long-clip segments.",
+    "Platform permission/microphone and actual resident recognizer integration belong to separate host/root receipts.",
+    "Generic audio composition uses authority policy plus native sanitizer/oracle coverage; only changed pure policy root sites were mutation-tested."
+  ],
+  "host": {
+    "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+    "cc": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+  },
+  "native_profiles": {
+    "o0": {
+      "result": "passed",
+      "exit_status": 0,
+      "record": "dictation-controller-qualified-o0.log",
+      "binary_sha256": "dae1ece383bb9756a3d57ca8f4dfe7de4278b5db6c10e665206bfd163e20dfcf"
+    },
+    "o2": {
+      "result": "passed",
+      "exit_status": 0,
+      "record": "dictation-controller-qualified-o2.log",
+      "binary_sha256": "72ef0e2b93b42e57121f58ca48111504f34938823cb6c0560d5e6112120f9a42"
+    },
+    "asan": {
+      "result": "passed",
+      "exit_status": 0,
+      "record": "dictation-controller-qualified-asan.log",
+      "binary_sha256": "6b5c159e1dab091835dfd56c62af8ea4eb3400124fddd2eb79bf0bc24dfa8fbb",
+      "sanitizers": [
+        "address",
+        "undefined"
+      ],
+      "options": "detect_leaks=0:halt_on_error=1; UBSANhalt_on_error=1",
+      "leak_check_claim": false
+    }
+  }
+}

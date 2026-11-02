@@ -97,6 +97,13 @@ caller storage; they do not expose a view into the next request's workspace.
 Closing releases weights and GPU resources. An empty recognized transcript is
 valid; silence admission/VAD is the caller's separate responsibility.
 
+`psionic_parakeet_clear(engine)` explicitly discards the live resident audio,
+feature, decoder, text and inspection buffers after a call. It invalidates
+last-result inspection while retaining the authenticated weights, vocabulary,
+Metal pipelines and decoder workers. Coder uses it after both successful and
+failed recognition. Caller-owned copies and in-flight audio remain their
+owners' responsibility; this is not a forensic erasure claim.
+
 ## Profiles and evidence
 
 The resident frontend follows the pinned NeMo valid-length convention:
@@ -125,6 +132,7 @@ snapshot/output copies, microphone/key events and composer insertion. The
 recording harness's whole-process time also includes load and artifact I/O.
 This engine is the Parakeet foundation for
 [the Coder voice proposal](../../docs/voice/2026-11-02-coder-voice-from-hex.md).
-That proposal's microphone capture, opt-in UI, pre-roll/tail, vocabulary
-rescoring and composer integration are separate work. This engine neither
-records a microphone nor executes a transcript.
+The [Mac dictation integration](../../docs/voice/coder-dictation.md) supplies
+opt-in capture, pre-roll/tail, bounded segmentation and guarded composer drafts.
+Vocabulary rescoring and real streaming remain separate. This engine itself
+neither records a microphone nor executes a transcript.

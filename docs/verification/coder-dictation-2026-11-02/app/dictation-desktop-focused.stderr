@@ -1,0 +1,5 @@
+apps/openagents-desktop/zeron/microcoder.coax:203:10: error[E0383]: retained borrow may refer to callee-local inline storage
+      x := gw_plan_add(m[0].plan[..], g, GW_OPENROUTER_FLASH, h[..]);
+           ^
+  fix: keep retained backing in the caller and satisfy its outlives obligation
+1 error

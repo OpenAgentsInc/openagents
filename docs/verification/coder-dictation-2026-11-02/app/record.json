@@ -1,0 +1,153 @@
+{
+  "schema": "openagents.coder.dictation-app-aggregate.v1",
+  "observed_at_utc": "2026-11-02T22:53:41.316487+00:00",
+  "status": "passed-actual-app-under-isolated-2m-compiler-default-build-blocked",
+  "diagnostic_budget": 2097152,
+  "repository_default_budget": 1048576,
+  "repository_budget_changed": false,
+  "ordinary_default_budget_build": "blocked by E0381; owner budget choice or compiler correction pending",
+  "runtime": {
+    "schema": "openagents.coder.dictation-app-check.v1",
+    "passed": true,
+    "app": "/tmp/openagents-12625-complete-20261101/apps/openagents-desktop/build/OpenAgents.app/Contents/MacOS/OpenAgents",
+    "root": "/tmp/openagents-12625-complete-20261101",
+    "app_sha256": "df4bccd94f12b8310f853e13016383953da954b64e0f2f6bc5e21cb8b86de886",
+    "pcm_sha256": "caded890c7f34459729f8597df2d9fe575f199b465894b3dae852e9262b41a62",
+    "identities_unchanged": true,
+    "started": 0,
+    "exit_status": 0,
+    "timed_out": false,
+    "output_cut": false,
+    "elapsed_ms": 20929,
+    "drafts": 3,
+    "draft_states": 3,
+    "fixture_timeouts": 0,
+    "observations_ok": true,
+    "screenshot_png": true,
+    "screenshot_sha256": "92511739f1e17a1ded686992f4f4b9beedbcad113fa8a5e7eab7a7c9bb62b18e",
+    "expected_full_draft": "Please inspect I am convinced of what I say, said the Count.",
+    "scope": "Actual offscreen app, recorded audio and real local Parakeet; keyboard then Undo then mouse; no microphone, visible window or send. Synthetic 500 ms idle silence replaces pre-roll between gestures; not a latency benchmark."
+  },
+  "sources": {
+    "apps/openagents-desktop/Sources/Dictation.swift": {
+      "sha256": "af2b7b75b7d794a085e45dfc2971fced7f8eab26e2aa510a648bf2e16bc651ae",
+      "bytes": 16505
+    },
+    "apps/openagents-desktop/Sources/Zeron.swift": {
+      "sha256": "878d03b50cf8150e82f79642d28dbe735afd2c6f9b7e7aba308f3d036d5cfd9a",
+      "bytes": 64107
+    },
+    "apps/openagents-desktop/Sources/main.swift": {
+      "sha256": "8a7e65005c9ee104447ea03d27d03c0c898defd184d6d86d244f0dc5e5db0ab0",
+      "bytes": 22461
+    },
+    "apps/openagents-desktop/build.sh": {
+      "sha256": "48ef16f28be1b0d94ac8ce767c0402128125a26b60a17e7bf4d30c4f20f653ab",
+      "bytes": 3286
+    },
+    "apps/openagents-desktop/Info.plist": {
+      "sha256": "4fae8eb2db4f6381147aecda69be581e9e3addfd25f5ce86a15dbcd141012d61",
+      "bytes": 984
+    },
+    "apps/openagents-desktop/face.h": {
+      "sha256": "63b939550410500b133f9282f96c32157cdc743a838a7824894d9f6883fca35d",
+      "bytes": 9439
+    },
+    "apps/openagents-desktop/zeron-face.c": {
+      "sha256": "e565c2959b0a60dda10b749067963daf1363bd0bc7ef9837b3f0716e51ae0b72",
+      "bytes": 18406
+    },
+    "apps/openagents-desktop/dictation-build.coax": {
+      "sha256": "1da7ae7767f5ca75c6157a0221ba3fb1afcbc66de5724a3e8a5597dacf1bac6a",
+      "bytes": 4795
+    },
+    "apps/openagents-desktop/dictation-face.c": {
+      "sha256": "4d9563f007f0c52d45aa819e400064145b179e28a8d4ab0a5b840e3f8e4a53fd",
+      "bytes": 2887
+    },
+    "apps/openagents-desktop/dictation-face.h": {
+      "sha256": "20e22c6290fefe930b406f28da52d6764b59141d3f08e3f50a5bc17bb1782352",
+      "bytes": 2101
+    },
+    "apps/openagents-desktop/zeron/dictation.coax": {
+      "sha256": "684e7fee6c58198018d17737d8f8fe57696d47305b9d07fb3158cc27ec1eee8b",
+      "bytes": 9504
+    },
+    "apps/openagents-desktop/zeron/dictation-ui.coax": {
+      "sha256": "54944d66cb0005f95b61753faf6a6612d8b94a5c11f601955fafafc4744f0f3e",
+      "bytes": 2687
+    },
+    "apps/openagents-desktop/zeron/dictation-labels.coax": {
+      "sha256": "56f6002ae55f292a1490e08d4433bcb0096005978153e8cc0833fe9344a6a0c1",
+      "bytes": 1455
+    },
+    "apps/openagents-desktop/zeron/desk.coax": {
+      "sha256": "b11c348c40ff119cc2c0389c56d9ad685c7f81971acd21ff60a347d7ceb678f8",
+      "bytes": 62269
+    },
+    "apps/openagents-desktop/zeron/screen.coax": {
+      "sha256": "c79ab404f046d4292c30c40c9e0c279ff9573cf0fe9157a1dd446502f2c54d40",
+      "bytes": 83038
+    },
+    "apps/openagents-desktop/zeron/settings.coax": {
+      "sha256": "227d02ebe24293970686d76657c921cbc19ad159fd004bf6e230936925113427",
+      "bytes": 14068
+    },
+    "apps/shared/dictation.coax": {
+      "sha256": "5f9e08fbeef3a8d383e6bcdf41d23e120fadb9a49ee89b3bddd4245887dfb978",
+      "bytes": 10358
+    },
+    "apps/shared/dictation-policy.coax": {
+      "sha256": "c7fe68bee50055426a9ee3c1f796b8b31cf3c2d1bd538e7cf3ec77c8981d6597",
+      "bytes": 11453
+    },
+    "apps/openagents-desktop/tests/check-dictation-app.coax": {
+      "sha256": "922e701028ce10296d0fb8b2fc3540461b7d8be9ebaf1a6db3d522878c701cac",
+      "bytes": 9249
+    }
+  },
+  "model_library": {
+    "path": "psionic/build/parakeet/libpsionic-parakeet.a",
+    "sha256": "9416db1f9b29740baf155bc05b60e427683fd511813772dbc0e662c6546dbfe0",
+    "bytes": 640736
+  },
+  "integration_artifacts": {
+    "dictation.png": {
+      "sha256": "92511739f1e17a1ded686992f4f4b9beedbcad113fa8a5e7eab7a7c9bb62b18e",
+      "bytes": 128626
+    },
+    "receipt.json": {
+      "sha256": "0a19ab3494915ce69624e0a4cf3ce814adde0c7b9758ec1bca42bb97102cd810",
+      "bytes": 1005
+    },
+    "silence.pcm": {
+      "sha256": "f85f2c34eb2843d2aa5951ee6e8e76985655b2e3ae2cbdd76bdfd654ecf19997",
+      "bytes": 16000
+    },
+    "stderr.txt": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "stdout.txt": {
+      "sha256": "a51ba285c345f86650cd9b088f0643d2f774b0979d9f93b02931796c8d71f737",
+      "bytes": 241
+    },
+    "steps.txt": {
+      "sha256": "9c9c460ffcca9eef20914a60c2cc90f37562330d066ceaebab8358082d59049f",
+      "bytes": 580
+    }
+  },
+  "build_record": {
+    "path": "diagnostic-build/record.json",
+    "sha256": "2f99b9dc341585773876119387ef419dd16d01773df836ff9176c5004ba65ac1",
+    "bytes": 10406
+  },
+  "screen_checks": {
+    "selected": 20,
+    "passed": 20,
+    "failed": 0,
+    "stdout": "dictation-screen-negative-v4.stdout",
+    "scope": "Coax profile only, unchanged passing result reused"
+  },
+  "scope": "Actual signed offscreen Mac app with injected public PCM and resident GPU Parakeet; keyboard hold, exact draft, one Undo, mouse hold, exact draft, all sent=0 parts=0. No microphone, permission dialog, owner audio, visible window or playback. Not a hardware/TCC test or latency benchmark. No passing test was repeated for packaging."
+}

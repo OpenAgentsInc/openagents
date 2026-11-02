@@ -145,3 +145,23 @@ int32_t zr_last_text(void *state, uint8_t *out, int32_t cap);
 int32_t zr_choose_named(void *state, int32_t which, const uint8_t *name, int32_t length);
 void zr_open_menu(void *state, int32_t which);
 void zr_attach_file(void *state, const uint8_t *path, int32_t path_len, const uint8_t *name, int32_t name_len, const uint8_t *bytes, int32_t length, int32_t failure);
+
+// Local hold-to-talk dictation: only guarded composer draft insertion.
+#include "dictation-face.h"
+#include "../../psionic/platform/psionic-parakeet.h"
+int32_t dsk_dictation_enabled(void *desk);
+void dsk_dictation_set(void *desk, int32_t enabled);
+int32_t dsk_dictation_hit(void *desk, float x, float y);
+int32_t zr_dictation_begin(void *state, int64_t ticket, int32_t source);
+void zr_dictation_cancel(void *state);
+int32_t zr_dictation_apply(void *state, int64_t ticket, int32_t current, const uint8_t *text, int32_t n);
+void zr_dictation_status(void *state, int32_t enabled, int32_t phase, int32_t outcome, int32_t fault, int32_t preparing);
+int32_t zr_dictation_source(void *state);
+int32_t zr_dictation_key(void *state, int32_t key, int32_t mods, int32_t down, int32_t repeated, int32_t marked, int32_t room);
+int32_t zr_dictation_draft(void *state, uint8_t *out, int32_t cap);
+int32_t zr_dictation_sent(void *state);
+int32_t zr_dictation_parts(void *state);
+
+int32_t zr_dictation_focus(int32_t active, int32_t key);
+
+int32_t dsk_dictation_point(void *desk, float *out);

@@ -8,6 +8,9 @@
 int pk_metal_available(void);
 int pk_metal_encode(const float *ew,int64_t ne,const float *x,int64_t nx,int64_t frames,float *work,int64_t nw,float *out,int64_t no);
 void pk_metal_close(void);
+/* Discard full shared work-buffer capacities after pending commands finish;
+ * retain immutable weights, allocations and compiled pipelines. */
+void pk_metal_clear_work(void);
 const char *pk_metal_error(void);
 double pk_metal_seconds(void);
 /* Verification entry: shape fields are mels/channels/dim/heads/hidden/kernel/

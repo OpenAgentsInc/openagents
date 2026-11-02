@@ -1,0 +1,41 @@
+{
+  "schema": "coder.dictation.ui.v1",
+  "scope": "Pure Coax native gesture, consent, focus admission, microphone hit geometry and status text. No actual event loop or microphone.",
+  "checks": {
+    "initial_check": "dictation-ui-check.stderr retained (source typo, corrected)",
+    "passing_three_groups": "dictation-ui-check-v2.stdout",
+    "final_four_groups": "Baseline checks retained by final mutation-v3; fourth group adds active-app/key-window conjunction.",
+    "labels": "dictation-labels-check.stdout"
+  },
+  "mutation": {
+    "scope": "root-only, dependency checks retained",
+    "mutants": 41,
+    "killed": 41,
+    "survived": 0,
+    "equivalent_waivers": 0,
+    "final": "dictation-ui-mutation-v3.stdout",
+    "earlier": "Initial 40/39/1 result retained; added a real Escape-without-active-hold oracle, no equivalence waiver."
+  },
+  "sources": {
+    "apps/openagents-desktop/zeron/dictation-ui.coax": "54944d66cb0005f95b61753faf6a6612d8b94a5c11f601955fafafc4744f0f3e",
+    "apps/openagents-desktop/zeron/dictation-labels.coax": "56f6002ae55f292a1490e08d4433bcb0096005978153e8cc0833fe9344a6a0c1"
+  },
+  "compiler": {
+    "path": "/tmp/coax-12625-closure/native-v6/coax",
+    "sha256": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c"
+  },
+  "artifacts": {
+    "dictation-labels-check.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "dictation-labels-check.stdout": "11241bfb129d701d110d82ea5a1eb52b8d567328abed19e87783a8c8b993005e",
+    "dictation-ui-check-v2.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "dictation-ui-check-v2.stdout": "6fb108a10a01c3fcc0697849c076909b03272ec26cb64239425edc3fb5d3cc30",
+    "dictation-ui-check.stderr": "d0eb945c5d5c49da861fd5cdfd8c4227b9542d84802f169b071e615b8a947f8f",
+    "dictation-ui-check.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "dictation-ui-mutation-v2.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "dictation-ui-mutation-v2.stdout": "07a37c773e28b10190d0ba60d5f03a79691464b5b23b77e018fb174d076ca628",
+    "dictation-ui-mutation-v3.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "dictation-ui-mutation-v3.stdout": "8d09e97cd02bb414730c2e4028c0afc55998e1d3dddcab5e3fcdded91f5d01d9",
+    "dictation-ui-mutation.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "dictation-ui-mutation.stdout": "d547c69a88a33e54d22574d7a9039688d9634dbecd9dc4b560a495a482d17ef8"
+  }
+}

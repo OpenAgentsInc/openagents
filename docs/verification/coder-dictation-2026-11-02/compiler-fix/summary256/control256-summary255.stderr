@@ -1,0 +1,5 @@
+/tmp/dictation-compiler-fix/controls256/summary255/coax/lib/compiler/checker.coax:85026:237: error[E0406]: assertion failed
+   pending:[256]RP_Obligation;for i:0..<256 {row:=RP_Obligation.{source=RP_Term.{origin=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12,path=BS_Path.{count=1}}}};row.source.origin.path.steps[0]=BS_Step.{kind=BS_FIELD,index=255-i};#assert CR_pending_insert(pending[..],i,row)==i+1;}
+                                                                                                                                                                                                                                              ^
+  note: in #forall retained summary pending256 preserves ordering duplicate reuse and atomic257 refusal
+  counterexample: mode = 0

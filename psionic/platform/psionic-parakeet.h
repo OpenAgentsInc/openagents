@@ -25,6 +25,11 @@ int psionic_parakeet_last_info(psionic_parakeet *s,psionic_parakeet_info *info);
  * a partial pthread startup keeps the successfully created workers.0 for
  * an invalid handle. Per-output arithmetic is independent of this count. */
 int psionic_parakeet_decoder_threads(psionic_parakeet *s);
+/* Explicitly discard resident utterance work and inspection results. Keeps
+ * validated immutable weights/vocabulary and the warm decoder/GPU resources.
+ * Caller-owned input/output bytes are untouched. Returns1 for the active
+ * handle,0 for an invalid handle; serialized after any active recognition. */
+int psionic_parakeet_clear(psionic_parakeet *s);
 /* Copy last successful token IDs and encoded-frame indices, or -1 for
  * insufficient capacity/no result. No pointers into the engine escape. */
 int64_t psionic_parakeet_tokens(psionic_parakeet *s,int64_t *tokens,int64_t *frames,size_t cap);

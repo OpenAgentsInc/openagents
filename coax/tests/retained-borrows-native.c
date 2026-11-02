@@ -16,14 +16,14 @@
 #define ABI(T,S) _Static_assert(sizeof(T)==S && _Alignof(T)==8,"LP64 " #T)
 #define OFF(T,F,N) _Static_assert(offsetof(T,F)==N,"LP64 " #T "." #F)
 _Static_assert(sizeof(void*)==8 && sizeof(int64_t)==8,"LP64 observer");
-ABI(coax_t_BS_Origin,168);
-ABI(coax_t_CK_RetainEffect,368);
+ABI(coax_t_BS_Origin,424);
+ABI(coax_t_CK_RetainEffect,880);
 OFF(coax_t_CK_RetainEffect,source,0);
-OFF(coax_t_CK_RetainEffect,destination,168);
-OFF(coax_t_CK_RetainEffect,value_type,336);
-OFF(coax_t_CK_RetainEffect,witness,344);
-OFF(coax_t_CK_RetainEffect,next,352);
-OFF(coax_t_CK_RetainEffect,source_storage,360);
+OFF(coax_t_CK_RetainEffect,destination,424);
+OFF(coax_t_CK_RetainEffect,value_type,848);
+OFF(coax_t_CK_RetainEffect,witness,856);
+OFF(coax_t_CK_RetainEffect,next,864);
+OFF(coax_t_CK_RetainEffect,source_storage,872);
 ABI(coax_t_CK_RetainObservation,40);
 OFF(coax_t_CK_RetainObservation,kind,0);
 OFF(coax_t_CK_RetainObservation,owner,8);

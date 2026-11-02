@@ -1,0 +1,179 @@
+(lldb) target create "/tmp/dictation-compiler-fix/coax256"
+Current executable set to '/tmp/dictation-compiler-fix/coax256' (arm64).
+(lldb) settings set -- target.run-args  "c" "apps/openagents-desktop/zeron/settings.coax" "--library"
+(lldb) command source -s 0 '/tmp/dictation-desk256.lldb'
+Executing commands in '/tmp/dictation-desk256.lldb'.
+(lldb) settings set auto-confirm true
+(lldb) settings set interpreter.stop-command-source-on-error false
+(lldb) breakpoint set --name coax_p_CK_resource
+Breakpoint 1: where = coax256`coax_p_CK_resource + 8 at checker256-ready.c:5108:10, address = 0x00000001000dd2d8
+(lldb) run
+Process 34545 launched: '/tmp/dictation-compiler-fix/coax256' (arm64)
+Process 34545 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 1.1
+    frame #0: 0x00000001000dd2d8 coax256`coax_p_CK_resource(l_c=coax_t_CK_Context @ 0x000000016fd144f0, l_loc=(line = 914, column = 11, offset = 46465)) at checker256-ready.c:5108:10 [opt]
+   5105	}
+   5106	
+   5107	static void coax_p_CK_resource(coax_t_CK_Context l_c, coax_t_CK_Loc l_loc) {
+-> 5108	  if (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 474))).fatal)
+    	         ^
+   5109	  {
+   5110	    return;
+   5111	  }
+Target 0: (coax256) stopped.
+(lldb) thread backtrace --count 10
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 1.1
+  * frame #0: 0x00000001000dd2d8 coax256`coax_p_CK_resource(l_c=coax_t_CK_Context @ 0x000000016fd144f0, l_loc=(line = 914, column = 11, offset = 46465)) at checker256-ready.c:5108:10 [opt]
+    frame #1: 0x0000000100112d90 coax256`coax_p_CB_add_path(l_b=coax_t_CB_Context @ 0x000000016fd14868, l_path=coax_t_BS_Path @ 0x000000016fd197f0, l_kind='\x01', l_index=<unavailable>) at checker256-ready.c:0 [opt]
+    frame #2: 0x00000001001178f4 coax256`coax_p_CB_prepend(l_b=coax_t_CB_Context @ 0x000000016fd1e310, l_path=<unavailable>, l_kind=<unavailable>, l_index=<unavailable>) at checker256-ready.c:12515:149 [opt]
+    frame #3: 0x0000000100115fa4 coax256`coax_p_CB_expr(l_b=coax_t_CB_Context @ 0x000000016fd2c730, l_id=7812, l_path=coax_t_BS_Path @ 0x000000016fd27c10, l_storage=false, l_out=<unavailable>) at checker256-ready.c:13816:47 [opt]
+    frame #4: 0x0000000100115ee4 coax256`coax_p_CB_expr(l_b=coax_t_CB_Context @ 0x000000016fd3ab50, l_id=7814, l_path=coax_t_BS_Path @ 0x000000016fd36030, l_storage=false, l_out=<unavailable>) at checker256-ready.c:13806:16 [opt]
+    frame #5: 0x0000000100116e50 coax256`coax_p_CB_expr(l_b=coax_t_CB_Context @ 0x000000016fd48f70, l_id=7815, l_path=coax_t_BS_Path @ 0x000000016fd44450, l_storage=false, l_out=<unavailable>) at checker256-ready.c:13826:16 [opt]
+    frame #6: 0x0000000100115ee4 coax256`coax_p_CB_expr(l_b=coax_t_CB_Context @ 0x000000016fd4e550, l_id=<unavailable>, l_path=<unavailable>, l_storage=false, l_out=<unavailable>) at checker256-ready.c:13806:16 [opt]
+    frame #7: 0x00000001001125d8 coax256`coax_p_CB_query(l_b=coax_t_CB_Context @ 0x000000016fd5cf30, l_kind=<unavailable>, l_decl=7810, l_path=coax_t_BS_Path @ 0x000000016fd58410, l_out=<unavailable>) at checker256-ready.c:0:149 [opt]
+    frame #8: 0x0000000100115d04 coax256`coax_p_CB_expr(l_b=coax_t_CB_Context @ 0x000000016fd61c50, l_id=7819, l_path=coax_t_BS_Path @ 0x000000016fd61b08, l_storage=false, l_out=<unavailable>) at checker256-ready.c:13786:18 [opt]
+    frame #9: 0x00000001001222ec coax256`coax_p_CR_apply(l_r=coax_t_CR_Context @ 0x000000016fd91c98, l_owner=7677, l_call=7818, l_active=<unavailable>) at checker256-ready.c:15641:33 [opt]
+(lldb) frame select 0
+frame #0: 0x00000001000dd2d8 coax256`coax_p_CK_resource(l_c=coax_t_CK_Context @ 0x000000016fd144f0, l_loc=(line = 914, column = 11, offset = 46465)) at checker256-ready.c:5108:10 [opt]
+   5105	}
+   5106	
+   5107	static void coax_p_CK_resource(coax_t_CK_Context l_c, coax_t_CK_Loc l_loc) {
+-> 5108	  if (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 474))).fatal)
+    	         ^
+   5109	  {
+   5110	    return;
+   5111	  }
+(lldb) expression -- l_c.state.data[0].used
+(int64_t) $0 = 156210
+(lldb) expression -- l_c.state.data[0].type_count
+(int64_t) $1 = 543
+(lldb) frame select 1
+frame #1: 0x0000000100112d90 coax256`coax_p_CB_add_path(l_b=coax_t_CB_Context @ 0x000000016fd14868, l_path=coax_t_BS_Path @ 0x000000016fd197f0, l_kind='\x01', l_index=<unavailable>) at checker256-ready.c:0 [opt]
+   12445	  return 1;
+   12446	}
+   12447	
+-> 12448	static coax_t_BS_Path coax_p_CB_add_path(coax_t_CB_Context l_b, coax_t_BS_Path l_path, uint8_t l_kind, int64_t l_index) {
+   12449	  coax_t_BS_Path l_r = l_path;
+   12450	  if (((l_path).count < INT64_C(0)) || ((l_path).count >= INT64_C(16)))
+   12451	  {
+note: This address is not associated with a specific line of code. This may be due to compiler optimizations.
+(lldb) frame variable l_b l_r l_path l_owner l_site
+(coax_t_CB_Context) l_b = {
+  c = {
+    nodes = {
+      data = 0x0000000753000000
+      count = 467101
+    }
+    types = {
+      data = 0x0000000763000000
+      count = 467101
+    }
+    locals = {
+      data = 0x0000000735400000
+      count = 155711
+    }
+    errors = {
+      data = 0x0000000768800000
+      count = 1245576
+    }
+    bytes = (data = "65536[65536] [65536] u84[4] [4] f32[] ZeronState1024[1024] [1024] u88192[8192] [8192] u864[64] [64] u8160[160] [160] u88512[8512] [8512] u864[64] [64] DskChat64[64] [64] int136[136] [136] DskHit256[256] [256] u82000[2000] [2000] u8128[128] [128] RmMsg8000[8000] [8000] u832[32] [32] RmAsk4000[4000] [4000] u864[64] [64] RmNotes1[1] [1] Room8[8] [8] DskOut24[24] [24] u85[5] [5] [24] u85[5] [5] int1[1] [1] ZrDictationGuard98[98] [98] f329604[9604] [9604] f3212[12] [12] GpFont40[40] [40] GpIcon32[32] [32] u820[20] [20] int512[512] [512] GpCluster1024[1024] [1024] int2304[2304] [2304] GpCell96[96] [96] u832[32] [32] GpChip1[1] [1] Atlas200[200] [200] int131072[131072] [131072] u82[2] [2] History5[5] [5] f321[1] [1] Composer256[256] [256] MdBlock2048[2048] [2048] MdRun256[256] [256] MdItem1[1] [1] MdDoc256[256] [256] TRow64[64] [64] TGroup256[256] [256] Tool512[512] [512] DiffLine32768[32768] [32768] u82048[2048] [2048] TItem4096[4096] [4096] TItem1024[1024] [1024] TSel256[256] [256] THit64[64] [64] TNotice16[16] [1"..., count = 94556432)
+    state = {
+      data = 0x000000016fdfc3b0
+      count = 1
+    }
+    modules = {
+      data = 0x0000000ae289c010
+      count = 1
+    }
+    aliases = {
+      data = NULL
+      count = 0
+    }
+    exports = {
+      data = NULL
+      count = 0
+    }
+    borrow_queries = {
+      data = 0x0000000739000000
+      count = 16384
+    }
+    borrow_origins = {
+      data = 0x0000000737000000
+      count = 65536
+    }
+    retain_effects = {
+      data = 0x0000000773c00000
+      count = 16384
+    }
+    retain_reports = {
+      data = NULL
+      count = 0
+    }
+    result_work = {
+      data = 0x0000000774800000
+      count = 1245592
+    }
+  }
+  queries = {
+    data = 0x0000000739000000
+    count = 16384
+  }
+  origins = {
+    data = 0x0000000737000000
+    count = 65536
+  }
+  state = {
+    data = 0x000000016fda6a80
+    count = 1
+  }
+  retain_classes = true
+  retain_fields = true
+  literal_cache = true
+  query_index = true
+}
+(coax_t_BS_Path) l_r = {
+  count = 16
+  steps = {
+    e = {
+      [0] = (kind = '\x03', index = 0)
+      [1] = (kind = '\x01', index = 0)
+      [2] = (kind = '\x02', index = 2147483647)
+      [3] = (kind = '\x01', index = 0)
+      [4] = (kind = '\x03', index = 0)
+      [5] = (kind = '\x01', index = 39)
+      [6] = (kind = '\x02', index = 2147483647)
+      [7] = (kind = '\x01', index = 7)
+      [8] = (kind = '\x03', index = 0)
+      [9] = (kind = '\x01', index = 0)
+      [10] = (kind = '\x02', index = 2147483647)
+      [11] = (kind = '\x01', index = 1)
+      [12] = (kind = '\x03', index = 0)
+      [13] = (kind = '\x01', index = 0)
+      [14] = (kind = '\x02', index = 2147483647)
+      [15] = (kind = '\x01', index = 0)
+    }
+  }
+}
+(coax_t_BS_Path) l_path = {
+  count = 16
+  steps = {
+    e = {
+      [0] = (kind = '\x03', index = 0)
+      [1] = (kind = '\x01', index = 0)
+      [2] = (kind = '\x02', index = 2147483647)
+      [3] = (kind = '\x01', index = 0)
+      [4] = (kind = '\x03', index = 0)
+      [5] = (kind = '\x01', index = 39)
+      [6] = (kind = '\x02', index = 2147483647)
+      [7] = (kind = '\x01', index = 7)
+      [8] = (kind = '\x03', index = 0)
+      [9] = (kind = '\x01', index = 0)
+      [10] = (kind = '\x02', index = 2147483647)
+      [11] = (kind = '\x01', index = 1)
+      [12] = (kind = '\x03', index = 0)
+      [13] = (kind = '\x01', index = 0)
+      [14] = (kind = '\x02', index = 2147483647)
+      [15] = (kind = '\x01', index = 0)
+    }
+  }
+}

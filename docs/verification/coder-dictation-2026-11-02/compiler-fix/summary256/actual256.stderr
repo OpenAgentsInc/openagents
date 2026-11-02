@@ -1,0 +1,4 @@
+apps/openagents-desktop/zeron/desk.coax:523:11: error[E0381]: type checker storage or nesting budget exceeded
+      s := k[0].chats[i].s;
+            ^
+1 error

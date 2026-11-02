@@ -1,0 +1,184 @@
+{
+  "files": {
+    "build-v2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "retry-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "retry-red.stderr": {
+      "sha256": "475eea8c611f1607108f54caacd36cb45c078bb640804605ccc3f8cfa2d7a23f",
+      "bytes": 155
+    },
+    "build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "typecheck.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "retry-red-build.stderr": {
+      "sha256": "0727336deec255fbb405f5c711ebac1c4553c170054cd103aba09239101e5e88",
+      "bytes": 767
+    },
+    "record.json": {
+      "sha256": "eac32797e3032e8fe85cb1e5d7d033aaaa190decdf0955f3646e0f6a2f3abed7",
+      "bytes": 5458
+    },
+    "build-final.stdout": {
+      "sha256": "d1c58bddc384f4bc7806af7ec2140cbb484ee3eb266140d9d0c19713bf58bb90",
+      "bytes": 170
+    },
+    "retry-normal.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "retry-normal.stdout": {
+      "sha256": "39eed07de04f41d826dd9c0b62d89404722565eeeb06c000baaddf6bc97019b0",
+      "bytes": 81
+    },
+    "build-final.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "typecheck.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "retry-red-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "retry-red.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "build.stderr": {
+      "sha256": "de6b66652d3c855f49847af6804ff0ff1688503d318c749cdfcabfe1bfe1c68b",
+      "bytes": 351
+    },
+    "build-v2.stdout": {
+      "sha256": "d1c58bddc384f4bc7806af7ec2140cbb484ee3eb266140d9d0c19713bf58bb90",
+      "bytes": 170
+    },
+    "retry-asan.stdout": {
+      "sha256": "39eed07de04f41d826dd9c0b62d89404722565eeeb06c000baaddf6bc97019b0",
+      "bytes": 81
+    },
+    "oracle-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "retry-asan-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "oracle-build-v2.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "build-v3.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "host-cases-asan.stdout": {
+      "sha256": "39eed07de04f41d826dd9c0b62d89404722565eeeb06c000baaddf6bc97019b0",
+      "bytes": 81
+    },
+    "source-final.tar.gz": {
+      "sha256": "88989ca899c6a0bf7a870b9b31a3d794d72545510252dbd5fd80d8da3c28062b",
+      "bytes": 34397
+    },
+    "host-cases.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "retry-normal-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "real-model.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "oracle-asan-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "build-empty-final.stdout": {
+      "sha256": "d1c58bddc384f4bc7806af7ec2140cbb484ee3eb266140d9d0c19713bf58bb90",
+      "bytes": 170
+    },
+    "oracle-build-final.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "real-model.stdout": {
+      "sha256": "594aae9f1bec2478f4005202a7ad2780585e7872105033c7b36eb66b259a68b6",
+      "bytes": 83
+    },
+    "build-empty-final.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "oracle-build-final.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "oracle-asan-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "retry-normal-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "host-cases.stdout": {
+      "sha256": "39eed07de04f41d826dd9c0b62d89404722565eeeb06c000baaddf6bc97019b0",
+      "bytes": 81
+    },
+    "build-v3.stdout": {
+      "sha256": "d1c58bddc384f4bc7806af7ec2140cbb484ee3eb266140d9d0c19713bf58bb90",
+      "bytes": 170
+    },
+    "oracle-build-v2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "host-cases-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "oracle-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "retry-asan-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "producer/Dictation-red-branch.swift": {
+      "sha256": "bd7c8e47091955fca4ff0da8ac34360c0c9401629800a9d40d44dfe4eaa2dde0",
+      "bytes": 16236
+    },
+    "producer/Dictation-before-retry.swift": {
+      "sha256": "ddaa4d7010bb30a995e3947417fd44c1d5ea98b8403fd99c4a03d391f37a643b",
+      "bytes": 16198
+    },
+    "producer/dictation.h": {
+      "sha256": "3fe37ed9379355d5928d26291f1eae325c4d74f583e0cc452eab5b6938adca46",
+      "bytes": 46649
+    },
+    "producer/dictation.c": {
+      "sha256": "c7d5a9319fd9e6a855b671cd563a6da2440cd7e8d6ffa5127e6e2bbfd14054e9",
+      "bytes": 196412
+    },
+    "README.md": {
+      "sha256": "841ea4f48497aad2877f3a4cdf45c8f8d8bb0610fcabd550ab5363fbf97435f1",
+      "bytes": 3328
+    }
+  }
+}

@@ -1,0 +1,115 @@
+// In-memory dictation audio, using the Verse's existing resampler and VAD.
+#load "dictation-policy.coax";
+#load "../../verse/voice.coax";
+DCT_RING :: 16000;
+DctState :: struct {
+ gate:DctGate;clip:[]f32;n:int;speech:int;last_tick:int = -1;
+ ring:[DCT_RING]s16;ring_tick:[DCT_RING]int;ring_speech:[DCT_RING]bool;ring_n:int;ring_at:int;
+ level:[480]s16;level_at:int;level_n:int;power:f64;peak:f64;
+ voice:[1]VoiceState;input:[MAX_IN]s16;input_n:int;emitted:int;rate:int;anchor:int;source:int;frames:int;
+ text:[8000]u8;text_n:int;
+}
+#test "dictation audio converts a partial final frame without adding or omitting samples" {
+ clip:[16000]f32;s:[1]DctState;s[0].clip=clip[..];s[0].gate=DctGate.{enabled=true,active=true,ready=true,phase=1};
+ a:[320]f32;for i:0..<320 {a[i]=ifx i%16<8 then 0.25 else -0.25;}
+ for j:0..<20 {dct_audio_feed(s[..],a[..],16000,j*20);}
+ ticket:=dct_start(s[..],400);#assert ticket==1 && s[0].n==6400;
+ dct_end(s[..],700);for j:20..<44 {dct_audio_feed(s[..],a[..],16000,j*20);}dct_audio_feed(s[..],a[0..<240],16000,880);dct_clock(s[..],895);
+ #assert s[0].gate.phase==3 && s[0].n==14080;dct_audio_feed(s[..],a[0..<80],16000,895);dct_clock(s[..],900);
+ #assert s[0].gate.phase==4 && s[0].n==14400;for i:0..<14400 {#assert s[0].clip[i]==a[i%320];}
+}
+#test "dictation silence and short taps never become model requests" {
+ clip:[8000]f32;s:[1]DctState;s[0].clip=clip[..];s[0].gate=DctGate.{enabled=true,active=true,ready=true,phase=1};a:[320]f32;
+ ticket:=dct_start(s[..],0);dct_end(s[..],299);#assert s[0].gate.outcome==1 && s[0].n==0;
+ ticket=dct_start(s[..],400);for j:0..<30 {dct_audio_feed(s[..],a[..],16000,400+j*20);}dct_end(s[..],800);dct_clock(s[..],1000);#assert s[0].gate.outcome==2 && s[0].gate.phase==1 && s[0].n==0;
+}
+#test "dictation raw chunks use the Verse resampler and reject incompatible source facts" {
+ clip:[8000]f32;s:[1]DctState;s[0].clip=clip[..];s[0].gate=DctGate.{enabled=true,active=true,ready=true,phase=1};a:[960]f32;for i:0..<960 {a[i]=0.1;}
+ dct_audio_feed(s[..],a[0..<400],48000,1000);dct_audio_feed(s[..],a[400..<960],48000,1008);#assert s[0].frames==1 && s[0].ring_n==320;
+ v:[1]VoiceState;v[0].input_rate=48000;v[0].in_n=960;x:[960]s16;for i:0..<960 {x[i]=to_s16(a[i]*32768);}out:[320]s16;resample(v[..],x[..],out[..]);for i:0..<320 {#assert s[0].ring[i]==out[i];}
+ ticket:=dct_start(s[..],1020);dct_audio_feed(s[..],a[..],44100,1020);#assert s[0].gate.outcome==4 && s[0].gate.fault==5 && s[0].n==0;
+ dct_audio_feed(s[..],a[..],8000,1040);#assert s[0].gate.fault==5;
+}
+#test "dictation late and cancelled results cannot retain audio or partial text" {
+ clip:[8000]f32;s:[1]DctState;s[0].clip=clip[..];s[0].gate=DctGate.{enabled=true,active=true,ready=true,phase=5,ticket=7};
+ s[0].n=2;clip[0]=0.5;clip[1]=0.25;#assert dct_add_text(s[..],7,"first") && dct_add_text(s[..],7,"second");#assert cast(string)s[0].text[0..<s[0].text_n]=="first second";
+ #assert !dct_complete(s[..],6,true) && s[0].n==2;#assert dct_complete(s[..],7,true) && s[0].n==0 && clip[0]==0 && s[0].text_n==12;
+ dct_abort(s[..]);#assert s[0].text_n==0 && s[0].gate.outcome==3 && !dct_complete(s[..],7,true);
+}
+#test "dictation frozen clips are immutable while the warm ring keeps listening" {
+ clip:[8000]f32;s:[1]DctState;s[0].clip=clip[..];s[0].gate=DctGate.{enabled=true,active=true,ready=true,phase=4,ticket=1};s[0].n=2;clip[0]=0.25;clip[1]=0.5;
+ a:[320]f32;for i:0..<320 {a[i]= -0.25;}dct_audio_feed(s[..],a[..],16000,0);#assert s[0].n==2 && clip[0]==0.25 && clip[1]==0.5 && s[0].ring_n==320;
+}
+#test "dictation release after automatic finalization cannot erase a frozen clip or assembling transcript" {
+ clip:[2]f32;s:[1]DctState;s[0].clip=clip[..];s[0].n=2;clip[0]=0.25;clip[1]=0.5;s[0].gate=DctGate.{enabled=true,active=true,ready=true,phase=4,ticket=1};
+ dct_end(s[..],61000);#assert s[0].n==2 && clip[0]==0.25 && s[0].gate.phase==4;
+ #assert dct_begin_decode(s[..],1) && dct_add_text(s[..],1,"first");dct_end(s[..],61001);#assert s[0].n==2 && s[0].text_n==5 && s[0].gate.phase==5;
+}
+dct_clip_clear :: (s:[]DctState) {for i:0..<s[0].n {s[0].clip[i]=0;}s[0].n=0;s[0].speech=0;s[0].last_tick= -1;s[0].power=0;s[0].peak=0;s[0].level_at=0;s[0].level_n=0;for i:0..<480 {s[0].level[i]=0;}}
+dct_text_clear :: (s:[]DctState) {for i:0..<s[0].text_n {s[0].text[i]=0;}s[0].text_n=0;}
+dct_ring_clear :: (s:[]DctState) {for i:0..<DCT_RING {s[0].ring[i]=0;s[0].ring_tick[i]=0;s[0].ring_speech[i]=false;}s[0].ring_n=0;s[0].ring_at=0;for i:0..<MAX_IN {s[0].input[i]=0;}for i:0..<HIST {s[0].voice[0].hist[i]=0;}s[0].input_n=0;s[0].emitted=0;s[0].rate=0;s[0].source=0;s[0].frames=0;}
+dct_clear :: (s:[]DctState) {dct_clip_clear(s);dct_text_clear(s);dct_ring_clear(s);}
+dct_abort :: (s:[]DctState) #export_c {s[0].gate=dgp_cancel(s[0].gate);dct_clear(s);}
+dct_failed :: (s:[]DctState,reason:int) #export_c {s[0].gate=dgp_fault(s[0].gate,reason);dct_clear(s);}
+dct_set_enabled :: (s:[]DctState,on:bool) #export_c {old:=s[0].gate.enabled;s[0].gate=dgp_enable(s[0].gate,on);if old!=on {dct_clear(s);}}
+dct_set_active :: (s:[]DctState,on:bool) #export_c {old:=s[0].gate.active;s[0].gate=dgp_active(s[0].gate,on);if old!=on {dct_clear(s);}}
+dct_set_ready :: (s:[]DctState,on:bool) #export_c {old:=s[0].gate.ready;s[0].gate=dgp_ready(s[0].gate,on);if old && !on {dct_clear(s);}}
+dct_prepare :: (s:[]DctState,reason:int) #export_c {s[0].gate=dgp_preparing(s[0].gate,reason);dct_clear(s);}
+dct_store :: (s:[]DctState,x:s16,tick:int,speech:bool) {
+ if s[0].n>=s[0].clip.count || s[0].n>=DCT_MAX || tick<=s[0].last_tick {return;}
+ s[0].clip[s[0].n]=f32(x)/32768;s[0].n+=1;s[0].last_tick=tick;if speech {s[0].speech+=1;}
+ at:=s[0].level_at;old:=f64(s[0].level[at]);v:=f64(x);s[0].power+=v*v-old*old;s[0].level[at]=x;s[0].level_at=(at+1)%480;
+ if s[0].level_n<480 {s[0].level_n+=1;}if s[0].level_n==480 {p:=s[0].power/480;if p>s[0].peak {s[0].peak=p;}}
+}
+dct_start :: (s:[]DctState,now:int)->u64 #export_c {
+ old:=s[0].gate.ticket;s[0].gate=dgp_begin(s[0].gate,now);if s[0].gate.ticket==old {return 0;}
+ dct_clip_clear(s);dct_text_clear(s);lo:=(now-450)*16;hi:=s[0].gate.until*16;
+ first:=(s[0].ring_at-s[0].ring_n+DCT_RING)%DCT_RING;
+ for j:0..<s[0].ring_n {i:=(first+j)%DCT_RING;t:=s[0].ring_tick[i];if t>=lo && t<hi {dct_store(s,s[0].ring[i],t,s[0].ring_speech[i]);}}
+ return s[0].gate.ticket;
+}
+dct_end :: (s:[]DctState,now:int) #export_c {before:=s[0].gate.phase;s[0].gate=dgp_release(s[0].gate,now);if before==DCT_HELD && s[0].gate.phase!=DCT_TAIL && s[0].gate.phase!=DCT_HELD {dct_clip_clear(s);dct_text_clear(s);}}
+dct_emit_frame :: (s:[]DctState,valid:int,full:bool) {
+ saved:[HIST]s16;for i:0..<HIST {saved[i]=s[0].voice[0].hist[i];}out:[FRAME]s16;resample(s[0].voice[..],s[0].input[..],out[..]);
+ if !full {for i:0..<HIST {s[0].voice[0].hist[i]=saved[i];}}
+ l:=measure(out[0..<valid]);p:=speech_likelihood(l.rms_db,s[0].voice[0].noise_db,l.zcr);speech:=p>=0.6;
+ if full {s[0].voice[0].noise_db=noise_next(s[0].voice[0].noise_db,l.rms_db,speech);}
+ for k:s[0].emitted..<valid {
+  tick:=s[0].anchor*16+s[0].frames*320+k;at:=s[0].ring_at;s[0].ring[at]=out[k];s[0].ring_tick[at]=tick;s[0].ring_speech[at]=speech;s[0].ring_at=(at+1)%DCT_RING;if s[0].ring_n<DCT_RING {s[0].ring_n+=1;}
+  g:=s[0].gate;if (g.phase==DCT_HELD || g.phase==DCT_TAIL) && tick>=(g.pressed-450)*16 && tick<g.until*16 {dct_store(s,out[k],tick,speech);}
+ }
+ s[0].emitted=valid;
+ if full {s[0].frames+=1;s[0].input_n=0;s[0].emitted=0;}
+}
+dct_audio_feed :: (s:[]DctState,source:[]f32,rate:int,start:int) #export_c {
+ if !dgp_capture(s[0].gate) {return;}
+ if source.count<1 || source.count>16384 || (rate!=16000 && rate!=24000 && rate!=44100 && rate!=48000) || start<0 || start>1000000000000 {dct_failed(s,5);return;}
+ if s[0].rate!=0 && s[0].rate!=rate {if s[0].gate.phase==DCT_HELD || s[0].gate.phase==DCT_TAIL {dct_failed(s,5);return;}dct_ring_clear(s);}
+ if s[0].rate==0 {s[0].rate=rate;s[0].anchor=start;s[0].voice[0].input_rate=cast(u32)rate;s[0].voice[0].in_n=cast(u32)(rate/50);}
+ expected:=s[0].anchor+s[0].source*1000/rate;if start<expected-100 || start>expected+100 {dct_failed(s,3);return;}
+ for v:source {if v!=v || v>3.4e38 || v< -3.4e38 {dct_failed(s,5);return;}}
+ for v:source {s[0].input[s[0].input_n]=to_s16(clampf(v,-1,1)*32768);s[0].input_n+=1;s[0].source+=1;if s[0].input_n==rate/50 {dct_emit_frame(s,320,true);}}
+}
+dct_clock :: (s:[]DctState,now:int) #export_c {
+ g:=s[0].gate;if g.phase!=DCT_HELD && g.phase!=DCT_TAIL {return;}
+ input_end:=s[0].anchor*16+ifx s[0].rate>0 then s[0].source*16000/s[0].rate else 0;
+ if now>=g.until && input_end>=g.until*16 {
+  if s[0].input_n>0 {n:=s[0].input_n;for i:n..<s[0].rate/50 {s[0].input[i]=0;}dct_emit_frame(s,n*16000/s[0].rate,false);}
+  s[0].gate=dgp_finish(g,s[0].n,s[0].speech,s[0].peak);if s[0].gate.phase!=DCT_CLIP {dct_clip_clear(s);}
+ }else if dgp_stalled(g,now) {dct_failed(s,3);}
+}
+dct_begin_decode :: (s:[]DctState,ticket:u64)->bool #export_c {old:=s[0].gate.phase;s[0].gate=dgp_decode(s[0].gate,ticket);return old==DCT_CLIP && s[0].gate.phase==DCT_WORK;}
+dct_add_text :: (s:[]DctState,ticket:u64,text:string)->bool #export_c {
+ n:=dgp_text(s[0].gate.phase,s[0].gate.ticket,ticket,s[0].text_n,text.count);if n<0 {return false;}
+ at:=s[0].text_n;if at>0 && text.count>0 {s[0].text[at]=' ';at+=1;}for c:text {s[0].text[at]=c;at+=1;}s[0].text_n=n;return true;
+}
+dct_complete :: (s:[]DctState,ticket:u64,success:bool)->bool #export_c {
+ if s[0].gate.phase!=DCT_WORK || s[0].gate.ticket!=ticket {return false;}ok:=dgp_result_ok(s[0].gate,ticket,success);publish:=ok && s[0].text_n>0;s[0].gate=dgp_result(s[0].gate,ticket,ok,s[0].text_n);dct_clip_clear(s);if !publish {dct_text_clear(s);}return publish;
+}
+dct_allow :: (s:[]DctState)->bool #export_c {return dgp_capture(s[0].gate);}
+dct_next_segment :: (s:[]DctState,offset:int)->int #export_c {if s[0].gate.phase!=DCT_CLIP && s[0].gate.phase!=DCT_WORK {return 0;}return dgp_segment(s[0].n,offset);}
+dct_copy_samples :: (s:[]DctState,offset:int,out:[]f32)->int #export_c {
+ if (s[0].gate.phase!=DCT_CLIP && s[0].gate.phase!=DCT_WORK) || offset<0 || offset>s[0].n || out.count<s[0].n-offset {return -1;}
+ n:=s[0].n-offset;for i:0..<n {out[i]=s[0].clip[offset+i];}return n;
+}
+dct_copy_words :: (s:[]DctState,out:[]u8)->int #export_c {if !dgp_delivery(s[0].gate) || out.count<s[0].text_n {return -1;}for i:0..<s[0].text_n {out[i]=s[0].text[i];}return s[0].text_n;}

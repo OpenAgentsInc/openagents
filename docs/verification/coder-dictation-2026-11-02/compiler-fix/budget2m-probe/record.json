@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "date": "2026-11-02",
+  "status": "private diagnostic only; not published default or approval",
+  "profile": {
+    "path_steps": 24,
+    "per_procedure_effects": 256,
+    "BS_origin_set": 64,
+    "RP_supplied_store_terms": 64,
+    "diagnostic_global_work": 2097152,
+    "default_global_work_at_audit": 1048576
+  },
+  "source": {
+    "closure": "source/*.coax.gz:15 frozen diagnostic modules",
+    "sha256": {
+      "borrow-summary.coax": "fa04aa299e27a7138ef3f1884c473030131356ed1e1a53b02da24a7175031101",
+      "checker.coax": "f12b199262be723b3ca52f8d859e5e801de91bce7e376fde6347ab6fa392a69d",
+      "literal-projection-cache.coax": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a",
+      "quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+      "query-index.coax": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+      "query-projection-cache.coax": "09403bb93f2caa0b5883bb22aa3f9c566381ebe819c90ee0c12f5575de3c2135",
+      "result-flow.coax": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef",
+      "result-handling.coax": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+      "retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+      "spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+      "spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+      "sum-layout.coax": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169",
+      "sum-types.coax": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+      "unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+      "unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33"
+    },
+    "changes": "probe2m-changes.json.gz",
+    "independent_audit": "independent-source-audit.json"
+  },
+  "producers": {
+    "historical_emitter": {
+      "path": "/tmp/dictation-compiler-fix/coax24",
+      "sha256": "b29230bc39481b7e5ad3d5215640d1d6327eb0a31f78f863875e329c6f9149bb"
+    },
+    "private_diagnostic_host": {
+      "path": "/tmp/dictation-compiler-fix/coax2m",
+      "sha256": "5f3ab58f0b24c5af4e7285262b1b2b79ae6bc0ed54f840938f5f5d971cf8b0bd",
+      "scope": "manually linked private host; not a normal bootstrap or release"
+    }
+  },
+  "checker_emission": {
+    "result": "PASS reported by compiler agent",
+    "c": "checker2m.c.gz",
+    "header": "checker2m.h.gz",
+    "stderr": "checker2m.stderr",
+    "scope": "Original diagnostic source-path emission. Correctly rooted canonical emission is tracked separately."
+  },
+  "actual_settings_emission": {
+    "result": "PASS reported by compiler agent at22:50:33UTC",
+    "exit_status": 0,
+    "input": "apps/openagents-desktop/zeron/settings.coax",
+    "c": "actual2m.c.gz",
+    "header": "actual2m.h.gz",
+    "stderr": "actual2m.stderr",
+    "scope": "Application source C generation only; generated C was not compiled/launched as a UI in this record."
+  },
+  "correctly_rooted_canonical_emission": {
+    "status": "PASS reported by compiler agent; byte normalization independently verified",
+    "exit_status": 0,
+    "c": "checker2m-canonical.c.gz",
+    "header": "checker2m-canonical.h.gz",
+    "stderr": "checker2m-canonical.stderr",
+    "normalization": {
+      "operation": "Remove only the literal snapshot prefix from original diagnostic C and header",
+      "literal_prefix": "/tmp/dictation-compiler-fix/probe2m-src/coax/",
+      "comparisons": {
+        "c": {
+          "snapshot_prefix_occurrences": 17,
+          "original_sha256": "81398abf69b6ac42d8a713858ac1ee9af741aa599c75e5cc1d86024a730d36af",
+          "rooted_sha256": "b7f719a536d872565bc4b0dc97b6edaf4b03423f992f534b4e748d8e293344c0",
+          "normalized_bytes_equal": true
+        },
+        "h": {
+          "snapshot_prefix_occurrences": 1,
+          "original_sha256": "aa9f418e1b315271d83f702a7b91628f482f459839bafded8cad011e59fd728e",
+          "rooted_sha256": "169296b245a685279a90dcea7831394e126df0a83772fe3ff1efbf6e1b5d628a",
+          "normalized_bytes_equal": true
+        }
+      }
+    },
+    "scope": "Changed-producer emitted output fixed point after source-path normalization; no normal bootstrap or release claim."
+  },
+  "approval": {
+    "status": "No approval or default adoption claimed by this diagnostic record",
+    "owner": "Parent/user decides independently whether to adopt a different work budget."
+  },
+  "limitations": [
+    "No production files edited during this source audit or packaging.",
+    "The current24 default1M qualification remains unchanged.",
+    "No UI, microphone, composer insertion or end-to-end dictation result.",
+    "No normal bootstrap or release qualification.",
+    "No test reruns performed for packaging.",
+    "No executable binaries included."
+  ]
+}

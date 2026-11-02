@@ -197,3 +197,20 @@ int32_t dsk_store_take(void *desk, int32_t i, int32_t force, uint8_t *out, int32
 void dsk_store_load(void *desk, int32_t i, const uint8_t *text, int32_t n) { coaxial_desk_store_load(desk_at(desk), i, str(text, n)); }
 void dsk_still(void *desk) { coaxial_desk_still(desk_at(desk)); }
 int32_t dsk_shortcut(void *desk, int32_t j, uint8_t *out, int32_t cap) { return (int32_t)coaxial_desk_shortcut(desk_at(desk), j, (coax_v_u8){out, cap}); }
+
+int32_t dsk_dictation_enabled(void *desk){return coaxial_desk_dictation_enabled(desk_at(desk));}
+void dsk_dictation_set(void *desk,int32_t enabled){coaxial_desk_dictation_set(desk_at(desk),enabled!=0);}
+int32_t dsk_dictation_hit(void *desk,float x,float y){return coaxial_desk_dictation_hit(desk_at(desk),x,y);}
+int32_t zr_dictation_begin(void *state,int64_t ticket,int32_t source){return coaxial_zeron_dictation_begin(at(state),ticket,source);}
+void zr_dictation_cancel(void *state){coaxial_zeron_dictation_cancel(at(state));}
+int32_t zr_dictation_apply(void *state,int64_t ticket,int32_t current,const uint8_t *text,int32_t n){return coaxial_zeron_dictation_apply(at(state),ticket,current!=0,str(text,n));}
+void zr_dictation_status(void *state,int32_t enabled,int32_t phase,int32_t outcome,int32_t fault,int32_t preparing){coaxial_zeron_dictation_status(at(state),enabled!=0,phase,outcome,fault,preparing);}
+int32_t zr_dictation_source(void *state){return (int32_t)coaxial_zeron_dictation_source(at(state));}
+int32_t zr_dictation_key(void *state,int32_t key,int32_t mods,int32_t down,int32_t repeated,int32_t marked,int32_t room){return (int32_t)coaxial_zeron_dictation_key(at(state),key,mods,down!=0,repeated!=0,marked!=0,room!=0);}
+int32_t zr_dictation_draft(void *state,uint8_t *out,int32_t cap){coax_t_ZeronState*s=state;int64_t n=s->composer.e[0].n;if(n>cap)return -1;memcpy(out,s->composer.e[0].text.e,(size_t)n);return (int32_t)n;}
+int32_t zr_dictation_sent(void *state){return (int32_t)((coax_t_ZeronState*)state)->composer.e[0].sent;}
+int32_t zr_dictation_parts(void *state){return (int32_t)((coax_t_ZeronState*)state)->session.e[0].n;}
+
+int32_t zr_dictation_focus(int32_t active,int32_t key){return coaxial_dictation_focus(active!=0,key!=0);}
+
+int32_t dsk_dictation_point(void *desk,float *out){return coaxial_desk_dictation_point(desk_at(desk),(coax_v_f32){out,2});}

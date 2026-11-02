@@ -1,0 +1,35 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-desktop/zeron/dictation.coax:107:8: mutant survived: 0 became 1
+   if lo>0 && zdi_gap(c[0].text[lo-1],text[0]) {left=1;}
+         ^
+apps/openagents-desktop/zeron/dictation.coax:107:52: mutant survived: 1 became 2
+   if lo>0 && zdi_gap(c[0].text[lo-1],text[0]) {left=1;}
+                                                     ^
+apps/openagents-desktop/zeron/dictation.coax:108:66: mutant survived: the assignment was removed
+   if hi<c[0].n && zdi_gap(text[text.count-1],c[0].text[hi]) {right=1;}
+                                                                   ^
+apps/openagents-desktop/zeron/dictation.coax:108:67: mutant survived: 1 became 2
+   if hi<c[0].n && zdi_gap(text[text.count-1],c[0].text[hi]) {right=1;}
+                                                                    ^
+apps/openagents-desktop/zeron/dictation.coax:109:23: mutant survived: '+' became '-'
+   need:=left+text.count+right;
+                        ^
+apps/openagents-desktop/zeron/dictation.coax:110:25: mutant survived: 8000 became 8001
+   if c[0].n-(hi-lo)+need>COMPOSER_TEXT {return false;}
+                          ^
+apps/openagents-desktop/zeron/dictation.coax:114:24: mutant survived: the assignment was removed
+   if right!=0 {draft[at]=' ';at+=1;}
+                         ^
+apps/openagents-desktop/zeron/dictation.coax:114:25: mutant survived: 32 became 33
+   if right!=0 {draft[at]=' ';at+=1;}
+                          ^
+apps/openagents-desktop/zeron/dictation.coax:114:31: mutant survived: the assignment was removed
+   if right!=0 {draft[at]=' ';at+=1;}
+                                ^
+apps/openagents-desktop/zeron/dictation.coax:114:31: mutant survived: '+=' became '-='
+   if right!=0 {draft[at]=' ';at+=1;}
+                                ^
+apps/openagents-desktop/zeron/dictation.coax:114:33: mutant survived: 1 became 2
+   if right!=0 {draft[at]=' ';at+=1;}
+                                  ^
+218 mutants, 207 killed, 11 survived

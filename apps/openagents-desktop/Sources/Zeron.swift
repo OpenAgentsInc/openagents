@@ -289,6 +289,114 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   let first = zr_new()!
   // The shown session's chat: the text input, the menus and the host's actions are its.
   var state: UnsafeMutableRawPointer { dsk_active(desk) ?? first }
+  // The capture/recognizer host never submits. Coax binds a result to one
+  // unchanged composer, and the ordinary Enter/Send paths remain explicit.
+  var dictationSetup = false
+  var dictationTarget: (ticket: UInt64, chat: UnsafeMutableRawPointer)?
+  var dictationPhase: Int32 = 0, dictationOutcome: Int32 = 0
+  var dictationFault: Int32 = 0, dictationPreparing: Int32 = 0
+  var dictationFixture: Bool { CommandLine.arguments.contains("--shot") && CommandLine.arguments.contains("--dictation-fixture") }
+  lazy var dictation: CoderDictation = CoderDictation(fixture: dictationFixture, onState: { [weak self] phase, outcome, fault, preparing in
+    guard let self else { return }
+    self.dictationPhase = phase; self.dictationOutcome = outcome
+    self.dictationFault = fault; self.dictationPreparing = preparing
+    self.syncDictation()
+    if let target = self.dictationTarget, zr_dictation_source(target.chat) == 0 { self.dictationTarget = nil }
+  }, onTranscript: { [weak self] ticket, text in
+    guard let self, let target = self.dictationTarget, target.ticket == ticket else { return }
+    let bytes = Array(text.utf8)
+    let current = self.state == target.chat && dsk_room_shown(self.desk) == 0
+    let inserted = bytes.withUnsafeBufferPointer { zr_dictation_apply(target.chat, Int64(ticket), current ? 1 : 0, $0.baseAddress, Int32($0.count)) }
+    self.dictationTarget = nil
+    self.dictationPhase = 1; self.dictationOutcome = inserted != 0 ? 5 : 3
+    if inserted == 0 { self.dictation.cancel() }
+    self.syncDictation()
+  })
+  var dictationWaitMode = 0 // offscreen fixture: 1 model ready, 2 request finished
+  var dictationFixtureClock: Int64 = 1000
+  func fixtureDictationKey(down: Bool) {
+    guard dictationFixture else { return }
+    dictation.fixtureTime(dictationFixtureClock)
+    guard let event = NSEvent.keyEvent(with: down ? .keyDown : .keyUp, location: .zero,
+      modifierFlags: down ? .command : [], timestamp: ProcessInfo.processInfo.systemUptime,
+      windowNumber: window?.windowNumber ?? 0, context: nil, characters: "d",
+      charactersIgnoringModifiers: "d", isARepeat: false, keyCode: 2) else { return }
+    if down { keyDown(with: event) } else { keyUp(with: event) }
+  }
+  func fixtureDictationMouse(down: Bool) {
+    guard dictationFixture else { return }
+    dictation.fixtureTime(dictationFixtureClock)
+    var point: [Float] = [0,0]
+    guard dsk_dictation_point(desk, &point) != 0 else { return }
+    let d = window?.backingScaleFactor ?? 2
+    let local = NSPoint(x: CGFloat(point[0])/d, y: bounds.height-CGFloat(point[1])/d)
+    let location = convert(local, to: nil)
+    guard let event = NSEvent.mouseEvent(with: down ? .leftMouseDown : .leftMouseUp,
+      location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+      windowNumber: window?.windowNumber ?? 0, context: nil, eventNumber: 0, clickCount: 1,
+      pressure: down ? 1 : 0) else { return }
+    if down { mouseDown(with: event) } else { mouseUp(with: event) }
+  }
+  func fixtureDictationAudio(_ path: String) {
+    guard dictationFixture, let data = FileManager.default.contents(atPath: path), data.count % 2 == 0 else { return }
+    let bytes = [UInt8](data)
+    var audio = [Float](); audio.reserveCapacity(bytes.count / 2)
+    for i in stride(from: 0, to: bytes.count, by: 2) {
+      let value = Int16(bitPattern: UInt16(bytes[i]) | (UInt16(bytes[i+1]) << 8))
+      audio.append(Float(value) / 32768)
+    }
+    let start = dictationFixtureClock
+    for at in stride(from: 0, to: audio.count, by: 320) {
+      let stamp = start + Int64(at / 16)
+      dictation.fixtureTime(stamp)
+      dictation.fixtureAudio(Array(audio[at..<min(at+320,audio.count)]), rate: 16000, firstSampleMS: stamp)
+    }
+    dictationFixtureClock = start + Int64(audio.count / 16)
+    dictation.fixtureTime(dictationFixtureClock)
+  }
+  func fixtureDictationTail() {
+    guard dictationFixture else { return }
+    for _ in 0..<10 {
+      dictation.fixtureAudio([Float](repeating: 0, count: 320), rate: 16000, firstSampleMS: dictationFixtureClock)
+      dictationFixtureClock += 20; dictation.fixtureTime(dictationFixtureClock)
+    }
+  }
+  func configureDictation() {
+    guard !CommandLine.arguments.contains("--shot") || dictationFixture else { return }
+    dictationSetup = true
+    dictation.setEnabled(dsk_dictation_enabled(desk) != 0)
+    if dictationFixture { dictation.activate() }
+    if !CommandLine.arguments.contains("--shot"), zr_dictation_focus(NSApp.isActive ? 1 : 0, window?.isKeyWindow == true ? 1 : 0) != 0 { dictation.activate() }
+    syncDictation()
+  }
+  func syncDictation() {
+    if let target = dictationTarget, target.chat != state || dsk_room_shown(desk) != 0 { cancelDictation() }
+    zr_dictation_status(state, dsk_dictation_enabled(desk), dictationPhase, dictationOutcome, dictationFault, dictationPreparing)
+    needsDisplay = true
+  }
+  func cancelDictation() {
+    if let target = dictationTarget { zr_dictation_cancel(target.chat); dictationTarget = nil }
+    if dictationSetup { dictation.cancel() }
+  }
+  func cancelDictationForEdit() { if dictationTarget != nil { cancelDictation() } }
+  func beginDictation(source: Int32) {
+    guard dictationSetup else { return }
+    cancelDictationForEdit(); syncDictation()
+    let origin = state, ticket = dictation.begin()
+    guard ticket > 0 else { return }
+    if zr_dictation_begin(origin, Int64(ticket), source) != 0 { dictationTarget = (ticket, origin) }
+    else { dictation.cancel() }
+  }
+  func activateDictation() { if dictationSetup, !CommandLine.arguments.contains("--shot"), zr_dictation_focus(NSApp.isActive ? 1 : 0, window?.isKeyWindow == true ? 1 : 0) != 0 { dictation.activate() } }
+  func deactivateDictation() { cancelDictationForEdit(); if dictationSetup { dictation.deactivate() } }
+  func shutdownDictation() { cancelDictationForEdit(); if dictationSetup { dictation.shutdown() } }
+  @objc func toggleDictation(_ sender: Any?) {
+    cancelDictationForEdit()
+    dsk_dictation_set(desk, dsk_dictation_enabled(desk) == 0 ? 1 : 0)
+    if dictationSetup { dictation.setEnabled(dsk_dictation_enabled(desk) != 0) }
+    saveSettings(); syncDictation()
+  }
+
   var queue: MTLCommandQueue!
   var pipeline: MTLRenderPipelineState!
   // each chat's atlas (a chat's glyph cache is its own), made when it is first shown
@@ -348,6 +456,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   }
 
   func render(_ pass: MTLRenderPassDescriptor, size: CGSize, dpr: CGFloat, done: ((MTLCommandBuffer) -> Void)? = nil) {
+    syncDictation()
     let shown = state
     if atlases[shown] == nil || atlases[shown]!.dpr != dpr { atlases[shown] = zeronAtlas(device!, state: shown, dpr: dpr) }
     let now = CACurrentMediaTime(), dt = Float(now - last); last = now
@@ -442,6 +551,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   }
   // A new session: its own chat (and engines) in a folder, shown in a new tab.
   func newSession(cwd: String) {
+    cancelDictationForEdit()
     guard let chat = zr_new() else { return }
     Array(cwd.utf8).withUnsafeBufferPointer { zr_attach(chat, $0.baseAddress, Int32($0.count)) }
     ds_defaults(settings, chat)
@@ -594,7 +704,12 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
       }
       if frames == 45, let i = args.firstIndex(of: "--type"), i + 1 < args.count { self.typed(args[i + 1]) }
       if let h = hold {
-        if CACurrentMediaTime() >= h.until || (h.idle && zr_live(self.state) == 0) { hold = nil; next = frames + 4 }
+        let speechReady = self.dictationWaitMode == 1 && self.dictation.isReady()
+        let speechDone = self.dictationWaitMode == 2 && self.dictationTarget == nil
+        if CACurrentMediaTime() >= h.until || speechReady || speechDone || (self.dictationWaitMode == 0 && h.idle && zr_live(self.state) == 0) {
+          if self.dictationWaitMode != 0 && !speechReady && !speechDone { print("dictation fixture: wait timed out") }
+          self.dictationWaitMode = 0; hold = nil; next = frames + 4
+        }
       } else if frames >= next && index < steps.count {
         hold = self.step(steps[index]); index += 1; next = frames + 4
       }
@@ -633,6 +748,24 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
       _ = dsk_pointer(desk, nums[2], nums[3], 2, 1, 0)
     case "wheel" where nums.count == 1: _ = dsk_wheel(desk, nums[0])
     case "move" where nums.count == 2: _ = dsk_pointer(desk, nums[0], nums[1], 1, 1, 0)
+    case "dictation" where dictationFixture:
+      if arg == "on" { dsk_dictation_set(desk, 1); dictation.setEnabled(true); dictation.activate(); syncDictation() }
+      else if arg == "off" { dsk_dictation_set(desk, 0); dictation.setEnabled(false); syncDictation() }
+      else if arg == "down" { fixtureDictationKey(down: true) }
+      else if arg == "up" { fixtureDictationKey(down: false); fixtureDictationTail() }
+      else if arg == "mousedown" { fixtureDictationMouse(down: true) }
+      else if arg == "mouseup" { fixtureDictationMouse(down: false); fixtureDictationTail() }
+      else if arg == "cancel" { cancelDictationForEdit() }
+      else if arg.hasPrefix("feed ") { fixtureDictationAudio(String(arg.dropFirst(5))) }
+      else if arg == "state" { let v = dictation.inspect(); print("dictation: phase=\(v.0) outcome=\(v.1) samples=\(v.3)") }
+    case "waitdictationready" where dictationFixture:
+      dictationWaitMode = 1; return (CACurrentMediaTime() + min(120, max(0, Double(arg) ?? 60)), false)
+    case "waitdictation" where dictationFixture:
+      dictationWaitMode = 2; return (CACurrentMediaTime() + min(120, max(0, Double(arg) ?? 10)), false)
+    case "draft":
+      var b = [UInt8](repeating: 0, count: 8192); let n = Int(zr_dictation_draft(state, &b, Int32(b.count)))
+      print("draft: " + String(decoding: b[0..<max(0,n)], as: UTF8.self))
+      print("draft-state: sent=\(zr_dictation_sent(state)) parts=\(zr_dictation_parts(state))")
     case "fixture": zr_fixture(state, arg == "closed" ? 0 : arg == "table" ? 2 : 1)
     case "newchat": zr_new_chat(state)
     case "folder": newSession(cwd: (arg as NSString).expandingTildeInPath)   // a new session in that folder, as the folder picker makes it
@@ -737,12 +870,18 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   }
   override func mouseDown(with e: NSEvent) {
     window?.makeFirstResponder(self)
+    let (x, y) = place(e)
+    if dsk_dictation_hit(desk, x, y) != 0 { beginDictation(source: 2); return }
+    cancelDictationForEdit()
     if hasMarkedText() { inputContext?.discardMarkedText() }
     _ = pointer(e, 0)
   }
-  override func mouseDragged(with e: NSEvent) { _ = pointer(e, 1) }
+  override func mouseDragged(with e: NSEvent) { if zr_dictation_source(state) != 2 { _ = pointer(e, 1) } }
   override func mouseMoved(with e: NSEvent) { _ = pointer(e, 1) }
-  override func mouseUp(with e: NSEvent) { _ = pointer(e, 2) }
+  override func mouseUp(with e: NSEvent) {
+    if zr_dictation_source(state) == 2 { if dictationSetup { dictation.end() }; return }
+    _ = pointer(e, 2)
+  }
   override func scrollWheel(with e: NSEvent) {
     // GPUI's pixel delta: precise deltas as they come, lines times the line height
     let dy = e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 22.75
@@ -753,7 +892,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
 
   // ---- the keyboard: Zeron's keymap first, then the input context (IME, dead keys, plain typing)
 
-  func typed(_ s: String) { Array(s.utf8).withUnsafeBufferPointer { zr_text(state, $0.baseAddress, Int32($0.count)) } }
+  func typed(_ s: String) { cancelDictationForEdit(); Array(s.utf8).withUnsafeBufferPointer { zr_text(state, $0.baseAddress, Int32($0.count)) } }
   func mods(_ e: NSEvent) -> Int32 {
     var m: Int32 = 0
     if e.modifierFlags.contains(.shift) { m |= 1 }
@@ -789,6 +928,11 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     return dsk_key(desk, Int32(c.value), mods) != 0
   }
   override func keyDown(with e: NSEvent) {
+    let action = zr_dictation_key(state, Int32(e.keyCode), mods(e), 1, e.isARepeat ? 1 : 0, hasMarkedText() ? 1 : 0, dsk_room_shown(desk))
+    if action == 1 { beginDictation(source: 1); return }
+    if action == 3 { cancelDictationForEdit(); return }
+    if action == 4 { return }
+    cancelDictationForEdit()
     if !hasMarkedText(), deskKey(code: ZeronView.named[e.keyCode] ?? 0, char: e.charactersIgnoringModifiers, mods: mods(e)) { needsDisplay = true; return }
     if dsk_room_shown(desk) != 0 { return }   // the ROOM tab takes no typing
     guard zr_wants_text(state) != 0 else {
@@ -807,15 +951,22 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     inputContext?.handleEvent(e)
   }
 
+  override func keyUp(with e: NSEvent) {
+    if zr_dictation_key(state, Int32(e.keyCode), mods(e), 0, 0, hasMarkedText() ? 1 : 0, dsk_room_shown(desk)) == 2 {
+      if dictationSetup { dictation.end() }; return
+    }
+    super.keyUp(with: e)
+  }
+
   // ---- the Edit menu (and Cmd+C/X/V/A/Z, its key equivalents)
 
-  @objc func newChat(_ sender: Any?) { newSession(cwd: shownFolder()) }
-  @objc func newSessionInFolder(_ sender: Any?) { pickFolder() }
-  @objc func closeTab(_ sender: Any?) { if dsk_close_tab(desk) == 0 { window?.performClose(sender) } }
+  @objc func newChat(_ sender: Any?) { cancelDictationForEdit(); newSession(cwd: shownFolder()) }
+  @objc func newSessionInFolder(_ sender: Any?) { cancelDictationForEdit(); pickFolder() }
+  @objc func closeTab(_ sender: Any?) { cancelDictationForEdit(); if dsk_close_tab(desk) == 0 { window?.performClose(sender) } }
   @objc func toggleSidebar(_ sender: Any?) { dsk_toggle(desk) }
-  @objc func undo(_ sender: Any?) { zr_undo(state) }
-  @objc func redo(_ sender: Any?) { zr_redo(state) }
-  @objc override func selectAll(_ sender: Any?) { zr_select_all(state) }
+  @objc func undo(_ sender: Any?) { cancelDictationForEdit(); zr_undo(state) }
+  @objc func redo(_ sender: Any?) { cancelDictationForEdit(); zr_redo(state) }
+  @objc override func selectAll(_ sender: Any?) { cancelDictationForEdit(); zr_select_all(state) }
   @objc func copy(_ sender: Any?) {
     let n = Int(zr_selected_count(state))
     guard n > 0 else { return }
@@ -824,11 +975,11 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     pasteboard.clearContents()
     pasteboard.setString(String(decoding: bytes, as: UTF8.self), forType: .string)
   }
-  @objc func cut(_ sender: Any?) {
+  @objc func cut(_ sender: Any?) { cancelDictationForEdit();
     guard zr_can_cut(state) != 0 else { return }
     copy(sender); zr_cut(state)
   }
-  @objc func paste(_ sender: Any?) {
+  @objc func paste(_ sender: Any?) { cancelDictationForEdit();
     let pb = pasteboard
     // files and images are attachments in Zeron (staged, not typed)
     if zr_wants_text(state) != 0, attach(from: pb) { return }
@@ -840,6 +991,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     let focused = zr_wants_text(state) != 0
     switch item.action {
+    case #selector(toggleDictation(_:)): item.state = dsk_dictation_enabled(desk) != 0 ? .on : .off; return true
     case #selector(undo(_:)), #selector(redo(_:)), #selector(paste(_:)): return focused
     case #selector(selectAll(_:)): return true
     case #selector(copy(_:)): return zr_selected_count(state) > 0
@@ -851,13 +1003,13 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   // ---- NSTextInputClient (GPUI's ElementInputHandler over the composer)
 
   func string(_ value: Any) -> String { (value as? NSAttributedString)?.string ?? (value as? String) ?? "" }
-  func insertText(_ value: Any, replacementRange: NSRange) {
+  func insertText(_ value: Any, replacementRange: NSRange) { cancelDictationForEdit();
     let bytes = Array(string(value).utf8)
     let from = replacementRange.location == NSNotFound ? -1 : Int32(replacementRange.location)
     let to = replacementRange.location == NSNotFound ? -1 : Int32(replacementRange.location + replacementRange.length)
     bytes.withUnsafeBufferPointer { zr_replace(state, from, to, $0.baseAddress, Int32($0.count)) }
   }
-  func setMarkedText(_ value: Any, selectedRange: NSRange, replacementRange: NSRange) {
+  func setMarkedText(_ value: Any, selectedRange: NSRange, replacementRange: NSRange) { cancelDictationForEdit();
     let bytes = Array(string(value).utf8)
     let from = replacementRange.location == NSNotFound ? -1 : Int32(replacementRange.location)
     let to = replacementRange.location == NSNotFound ? -1 : Int32(replacementRange.location + replacementRange.length)

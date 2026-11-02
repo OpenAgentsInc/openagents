@@ -1,6 +1,9 @@
 /* Process/file/memory/Metal effects for the resident Coax Parakeet engine.
  * Model admission, WAV/audio rules, token rendering and JSON are Coax. */
 #define _POSIX_C_SOURCE 200809L
+#ifdef __APPLE__
+#define __STDC_WANT_LIB_EXT1__ 1
+#endif
 #include "parakeet-runtime.h"
 #include "psionic-parakeet.h"
 #include "parakeet-threads.h"
@@ -39,6 +42,23 @@ static void error(char *out,size_t cap,const char *message){if(out&&cap)snprintf
 static void status_error(char *out,size_t cap,const char *phase,int status){if(out&&cap)snprintf(out,cap,"Parakeet %s refused (status %d)",phase,status);}
 static mapped map_file(const char *path){mapped m={0};int fd=open(path,O_RDONLY);if(fd<0)return m;struct stat st;if(fstat(fd,&st)||st.st_size<=0||(uint64_t)st.st_size>SIZE_MAX){close(fd);return m;}void *p=mmap(NULL,(size_t)st.st_size,PROT_READ,MAP_PRIVATE,fd,0);close(fd);if(p==MAP_FAILED)return m;m.data=p;m.size=st.st_size;return m;}
 static void unmap(mapped m){if(m.data)munmap(m.data,(size_t)m.size);}
+static void wipe(void *p,size_t n){if(!p||!n)return;
+#ifdef __APPLE__
+ (void)memset_s(p,n,0,n);
+#else
+ volatile unsigned char *bytes=p;while(n--)*bytes++=0;
+#endif
+}
+static void clear_work_locked(psionic_parakeet *s){
+ wipe(s->w32,(size_t)s->n32*sizeof *s->w32);wipe(s->w64,(size_t)s->n64*sizeof *s->w64);wipe(s->wave,MAX_SAMPLES*sizeof *s->wave);
+ wipe(s->features,128*2048*sizeof *s->features);wipe(s->encoded,256*1024*sizeof *s->encoded);
+ wipe(s->last_features,128*2048*sizeof *s->last_features);wipe(s->last_encoded,256*1024*sizeof *s->last_encoded);
+ wipe(s->tokens,sizeof s->tokens);wipe(s->frames,sizeof s->frames);wipe(s->draft_tokens,sizeof s->draft_tokens);wipe(s->draft_frames,sizeof s->draft_frames);
+ wipe(s->stats,sizeof s->stats);wipe(s->text,sizeof s->text);wipe(&s->info,sizeof s->info);s->has_result=0;
+#ifdef PSIONIC_PARAKEET_METAL
+ if(s->gpu)pk_metal_clear_work();
+#endif
+}
 static void release(psionic_parakeet *s){if(!s)return;free(s->ew);free(s->dw);free(s->w32);free(s->w64);free(s->wave);free(s->features);free(s->encoded);free(s->last_features);free(s->last_encoded);free(s->pieces);free(s->bytes);free(s);}
 int64_t cxpk_encode(coax_v_f32 ew,coax_v_f32 x,int64_t frames,coax_v_f32 work,coax_v_f32 out){
 #ifdef PSIONIC_PARAKEET_METAL
@@ -104,10 +124,11 @@ done:pthread_mutex_unlock(&lock);return ok;
 }
 int psionic_parakeet_last_info(psionic_parakeet *s,psionic_parakeet_info *out){pthread_mutex_lock(&lock);int ok=s&&s==resident&&s->has_result&&out;if(ok)*out=s->info;pthread_mutex_unlock(&lock);return ok;}
 int psionic_parakeet_decoder_threads(psionic_parakeet *s){pthread_mutex_lock(&lock);int n=s&&s==resident?pk_threads_count():0;pthread_mutex_unlock(&lock);return n;}
+int psionic_parakeet_clear(psionic_parakeet *s){pthread_mutex_lock(&lock);int ok=s&&s==resident;if(ok)clear_work_locked(s);pthread_mutex_unlock(&lock);return ok;}
 int64_t psionic_parakeet_tokens(psionic_parakeet *s,int64_t *tokens,int64_t *frames,size_t cap){pthread_mutex_lock(&lock);int64_t n=-1;if(s&&s==resident&&s->has_result&&tokens&&frames&&cap>=(size_t)s->stats[1]){n=s->stats[1];memcpy(tokens,s->tokens,(size_t)n*8);memcpy(frames,s->frames,(size_t)n*8);}pthread_mutex_unlock(&lock);return n;}
 int psionic_parakeet_json(psionic_parakeet *s,char *out,size_t cap){pthread_mutex_lock(&lock);int ok=0;if(s&&s==resident&&s->has_result&&out&&cap<=INT64_MAX){uint8_t draft[JSON_MAX];int64_t n=pkrt_json((coax_string){s->text,s->stats[0]},s->info.gpu,s->info.samples,(coax_v_s64){s->stats,4},(coax_v_s64){s->tokens,s->stats[1]},(coax_v_s64){s->frames,s->stats[1]},(coax_v_u8){draft,sizeof draft});if(n>=0&&(size_t)n<cap){memcpy(out,draft,(size_t)n);out[n]=0;ok=1;}}pthread_mutex_unlock(&lock);return ok;}
 int64_t psionic_parakeet_stage(psionic_parakeet *s,int stage,float *out,size_t cap){pthread_mutex_lock(&lock);int64_t n=-1;if(s&&s==resident&&s->has_result&&s->info.samples>0&&out&&(stage==0||stage==1)){int64_t size=stage==0?s->info.feature_frames*128:s->info.encoded_frames*1024;if(cap>=(size_t)size){memcpy(out,stage==0?s->last_features:s->last_encoded,(size_t)size*4);n=size;}}pthread_mutex_unlock(&lock);return n;}
-void psionic_parakeet_close(psionic_parakeet *s){pthread_mutex_lock(&lock);if(s&&s==resident){resident=NULL;
+void psionic_parakeet_close(psionic_parakeet *s){pthread_mutex_lock(&lock);if(s&&s==resident){clear_work_locked(s);resident=NULL;
  pk_threads_stop();
 #ifdef PSIONIC_PARAKEET_METAL
  pk_metal_close();

@@ -1,0 +1,4 @@
+apps/openagents-desktop/zeron/lab.coax:637:13: error[E0381]: type checker storage or nesting budget exceeded
+    lab_route(l[..], e[..], p[..], g[..], ss[..], LAB_TEST_PSIONIC, 1800);
+              ^
+1 error

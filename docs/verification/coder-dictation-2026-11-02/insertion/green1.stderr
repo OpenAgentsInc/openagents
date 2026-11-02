@@ -1,0 +1,9 @@
+apps/openagents-desktop/zeron/dictation.coax:103:56: error[E0362]: cannot cast string to [] u8
+   if !current || text.count>COMPOSER_TEXT || !PB_no_nul(cast([]u8)text) || !PB_utf8(cast([]u8)text) {return false;}
+                                                         ^
+  fix: cast converts numbers, enums to and from integers, and a [] u8 view to a string
+apps/openagents-desktop/zeron/dictation.coax:103:84: error[E0362]: cannot cast string to [] u8
+   if !current || text.count>COMPOSER_TEXT || !PB_no_nul(cast([]u8)text) || !PB_utf8(cast([]u8)text) {return false;}
+                                                                                     ^
+  fix: cast converts numbers, enums to and from integers, and a [] u8 view to a string
+2 errors

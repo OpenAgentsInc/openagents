@@ -1,0 +1,45 @@
+// Native Coder dictation gestures, explicit consent restore and status labels.
+// The host supplies hardware observations; these rules choose their meaning.
+#authority;
+#test "dictation Cmd-D begins only from an opted-in focused composer" {
+ #assert zdu_key(2,8,true,false,false,true,true,false,false)==1;
+ for fault:0..<6 {mods:=8;marked:=false;enabled:=true;focused:=true;room:=false;key:=2;
+  if fault==0 {mods=9;}if fault==1 {marked=true;}if fault==2 {enabled=false;}if fault==3 {focused=false;}if fault==4 {room=true;}if fault==5 {key=3;}
+  #assert zdu_key(key,mods,true,false,marked,enabled,focused,room,false)==0;
+ }
+ #assert zdu_key(2,8,true,true,false,true,true,false,false)==4;
+ #assert zdu_key(2,0,false,false,true,false,false,true,true)==2;
+ #assert zdu_key(2,0,false,false,false,true,true,false,false)==0;
+ #assert zdu_key(53,0,true,false,false,true,true,false,true)==3;
+ #assert zdu_key(53,0,true,false,false,true,true,false,false)==0;
+ #assert zdu_key(3,0,true,false,false,true,true,false,true)==0;
+ #assert zdu_key(53,0,false,false,false,true,true,false,true)==0;
+}
+#test "dictation microphone hit is bounded and opt-in" {
+ #assert zdu_hit(true,10,20,100,50,82,74);
+ #assert zdu_hit(true,10,20,100,50,109.9,101.9);
+ #assert !zdu_hit(false,10,20,100,50,90,80);
+ #assert !zdu_hit(true,10,20,100,50,81,80) && !zdu_hit(true,10,20,100,50,110,80);
+ #assert !zdu_hit(true,10,20,100,50,90,73) && !zdu_hit(true,10,20,100,50,90,102);
+}
+#test "dictation consent requires an explicit successful true boolean" {
+ #assert zdu_consent(true,true);
+ #assert !zdu_consent(false,true) && !zdu_consent(true,false) && !zdu_consent(false,false);
+}
+#test "dictation capture needs both the active application and its key composer window" {
+ #assert coaxial_dictation_focus(true,true);
+ #assert !coaxial_dictation_focus(false,true) && !coaxial_dictation_focus(true,false) && !coaxial_dictation_focus(false,false);
+}
+coaxial_dictation_focus :: (active:bool,key:bool)->bool #export_c {return active && key;}
+zdu_key :: (key:int,mods:int,down:bool,repeated:bool,marked:bool,enabled:bool,focused:bool,room:bool,holding:bool)->int {
+ // Hardware D is keyCode2 and Escape53 on AppKit. Return1 begin,2 end,
+ // 3 cancel,4 consume repeat,0 ordinary input. Key-up needn't retain Cmd.
+ if !down {return ifx key==2 && holding then 2 else 0;}
+ if key==53 && holding {return 3;}
+ if key!=2 || mods!=8 || marked || !enabled || !focused || room {return 0;}
+ return ifx repeated then 4 else 1;
+}
+zdu_hit :: (enabled:bool,x:f32,y:f32,w:f32,h:f32,px:f32,py:f32)->bool {
+ return enabled && px>=x+w-28 && px<x+w && py>=y+h+4 && py<y+h+32;
+}
+zdu_consent :: (present:bool,value:bool)->bool {return present && value;}

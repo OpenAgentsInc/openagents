@@ -1,0 +1,10 @@
+/tmp/dictation-compiler-fix/controls16/append-limit17/coax/lib/compiler/checker.coax:81363:117: error[E0410]: index 16 is out of bounds for 16 elements
+   r:=path;if path.count<0 || path.count>BS_MAX_PATH {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}if path.steps[path.count].kind!=0 || path.steps[path.count].index!=0 {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}r.steps[r.count]=BS_Step.{kind=kind,index=index};r.count+=1;if !BS_path_valid(r) {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}return r;
+                                                                                                                      ^
+  note: in #forall return borrow path append admits sixteen steps and refuses malformed input atomically
+  counterexample: sample = 2
+/tmp/dictation-compiler-fix/controls16/append-limit17/coax/lib/compiler/checker.coax:81363:117: error[E0410]: index 16 is out of bounds for 16 elements
+   r:=path;if path.count<0 || path.count>BS_MAX_PATH {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}if path.steps[path.count].kind!=0 || path.steps[path.count].index!=0 {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}r.steps[r.count]=BS_Step.{kind=kind,index=index};r.count+=1;if !BS_path_valid(r) {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}return r;
+                                                                                                                      ^
+  note: in #forall return borrow sixteen projections preserve parameter and local escape witnesses
+  counterexample: local = false, too_deep = true

@@ -1,0 +1,63 @@
+coax bootstrap:     1 s  stage0 test release-model.coax
+coax bootstrap: skipped  stage0 mutate release-model.coax (COAX_MUTATION=0)
+coax bootstrap:     0 s  stage0 test changelog-model.coax
+coax bootstrap: skipped  stage0 mutate changelog-model.coax --root-only (COAX_MUTATION=0)
+coax bootstrap:     1 s  stage0 test lib/compiler/budget.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/budget.coax (COAX_MUTATION=0)
+coax bootstrap:     0 s  stage0 test lib/compiler/check-domains.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/check-domains.coax --root-only (COAX_MUTATION=0)
+coax bootstrap:     0 s  stage0 test lib/compiler/profiles.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/profiles.coax (COAX_MUTATION=0)
+coax bootstrap:     0 s  stage0 test lib/compiler/provenance.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/provenance.coax (COAX_MUTATION=0)
+coax bootstrap:     0 s  stage0 test lib/compiler/mutation-schedule.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/mutation-schedule.coax (COAX_MUTATION=0)
+coax bootstrap:     1 s  stage0 test lib/compiler/compute.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/compute.coax (COAX_MUTATION=0)
+coax bootstrap:     0 s  stage0 test lib/compiler/effects.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/effects.coax --root-only (COAX_MUTATION=0)
+coax bootstrap:     0 s  stage0 test lib/compiler/quantity.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/quantity.coax --root-only (COAX_MUTATION=0)
+coax bootstrap:     1 s  stage0 test lib/compiler/native-checks.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/native-checks.coax (COAX_MUTATION=0)
+coax bootstrap:     0 s  stage0 test lib/compiler/native-execution.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/native-execution.coax --root-only (COAX_MUTATION=0)
+coax bootstrap:     1 s  stage0 test lib/compiler/quantified-execution.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/quantified-execution.coax --root-only (COAX_MUTATION=0)
+coax bootstrap:     2 s  stage0 test lib/compiler/native-semantics.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/native-semantics.coax --root-only (COAX_MUTATION=0)
+coax bootstrap:     1 s  stage0 test lib/compiler/spirv.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/spirv.coax (COAX_MUTATION=0)
+coax bootstrap:     5 s  stage0 test lib/compiler/shader.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/shader.coax (COAX_MUTATION=0)
+coax bootstrap:     1 s  stage0 test lib/compiler/wgsl.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/wgsl.coax (COAX_MUTATION=0)
+coax bootstrap:     2 s  stage0 test lib/compiler/lexer.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/lexer.coax (COAX_MUTATION=0)
+coax bootstrap:     0 s  stage0 test lib/compiler/sources.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/sources.coax (COAX_MUTATION=0)
+coax bootstrap:     2 s  stage0 test lib/compiler/parser.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/parser.coax (COAX_MUTATION=0)
+coax bootstrap:    78 s  stage0 test lib/compiler/checker.coax
+coax bootstrap: skipped  stage0 mutate lib/compiler/checker.coax (COAX_MUTATION=0)
+coax bootstrap:     1 s  stage0 test lib/proto/wire.coax
+coax bootstrap: skipped  stage0 mutate lib/proto/wire.coax (COAX_MUTATION=0)
+coax bootstrap:     0 s  stage0 test lib/crypto/sha256-kernel.coax
+coax bootstrap: skipped  stage0 mutate lib/crypto/sha256-kernel.coax (COAX_MUTATION=0)
+coax bootstrap:     1 s  stage0 test lib/proto/fingerprint.coax
+coax bootstrap: skipped  stage0 mutate lib/proto/fingerprint.coax (COAX_MUTATION=0)
+coax bootstrap:     4 s  stage0 test lib/proto/importer.coax
+coax bootstrap: skipped  stage0 mutate lib/proto/importer.coax (COAX_MUTATION=0)
+coax bootstrap:     0 s  coax test lib/compiler/budget.coax
+coax bootstrap:     0 s  coax test lib/compiler/check-domains.coax
+coax bootstrap:     0 s  coax test lib/compiler/profiles.coax
+coax bootstrap:     0 s  coax test lib/compiler/provenance.coax
+coax bootstrap:     0 s  coax test lib/compiler/mutation-schedule.coax
+coax bootstrap:     1 s  coax test lib/compiler/lexer.coax
+coax bootstrap:     1 s  coax test lib/compiler/parser.coax
+coax bootstrap:    43 s  coax test lib/compiler/checker.coax
+coax bootstrap:     0 s  coax test lib/compiler/sources.coax
+coax bootstrap:     0 s  coax test lib/compiler/native-checks.coax
+coax bootstrap:     0 s  coax test lib/compiler/native-execution.coax
+coax bootstrap:     0 s  coax test lib/compiler/quantified-execution.coax
+coax bootstrap:     1 s  coax test lib/compiler/native-semantics.coax

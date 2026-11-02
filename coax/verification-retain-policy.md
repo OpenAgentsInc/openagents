@@ -69,7 +69,7 @@ origin, preserving frame/value keys. Output is additionally limited by caller
 capacity. Invalid/work/capacity returns clear flags/count and witness indices
 −1 without changing logical output. Success publishes only its logical prefix;
 unused tail fields and outside guards stay unchanged. Native comparisons cover
-named fields and all eight path slots, not unspecified C padding. Valid pointers,
+named fields and all twenty-four path slots, not unspecified C padding. Valid pointers,
 extents, disjoint immutable inputs, alignment and lifetime remain caller duties.
 
 ## Actual verification and retained failures
@@ -122,3 +122,9 @@ remain open. B3 includes actual generated root default initialization and
 storage alive through completion/cancellation. B0 alone resolves none of those
 obligations. A1's retained caller-state store and lifecycle limitation remains
 unchanged.
+
+The current internal twenty-four-step representation and whole-write array precision
+are recorded separately in the [2026-11-02 compiler continuation](../docs/verification/coder-dictation-2026-11-02/compiler-fix/README.md).
+Earlier dated receipts keep their original eight-step representation, source
+and producer identities. Native headers must be regenerated with their C
+objects; this changes no protocol wire message or general lifetime proof.

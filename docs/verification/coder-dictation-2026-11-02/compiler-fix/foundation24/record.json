@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "date": "2026-11-02",
+  "scope": "Independent supplied-fact path/set kernel; not compiler, retained-lifetime or desktop proof",
+  "source_sha256": "fa04aa299e27a7138ef3f1884c473030131356ed1e1a53b02da24a7175031101",
+  "producer": {
+    "path": "/tmp/dictation-compiler-fix/normal16-coax",
+    "sha256": "c80416bac2b814ca876b877cd2b0165dbfed68a6084e5631c0c1009816d719ea"
+  },
+  "profile": {
+    "path_steps": 24,
+    "path_size": 392,
+    "origin_size": 424,
+    "binding_size": 464,
+    "set": 64,
+    "bindings": 64,
+    "pool": 256,
+    "candidate_work": 128
+  },
+  "checks": {
+    "groups": 29,
+    "passed": 29,
+    "failed": 0,
+    "command": [
+      "/tmp/dictation-compiler-fix/normal16-coax",
+      "test",
+      "coax/lib/compiler/borrow-summary.coax"
+    ],
+    "stdout": "check.stdout",
+    "stderr": "check.stderr"
+  },
+  "native": {
+    "profiles": {
+      "o0": {
+        "result": "PASS",
+        "observed": {
+          "scope": "standalone set operations, not lifetime safety",
+          "cases": 230,
+          "calls": 230,
+          "refusals": 75,
+          "origin_size": 424,
+          "binding_size": 464
+        },
+        "binary_sha256": "93e0c74454e98df1df1acb5823ba6507f49075e42aac6eefc78d421128247333"
+      },
+      "o2": {
+        "result": "PASS",
+        "observed": {
+          "scope": "standalone set operations, not lifetime safety",
+          "cases": 230,
+          "calls": 230,
+          "refusals": 75,
+          "origin_size": 424,
+          "binding_size": 464
+        },
+        "binary_sha256": "0aee7229fb72df5367f66faa17509d6004680056c2d3529eb5ff8aaecc1e129e"
+      },
+      "asan": {
+        "result": "PASS",
+        "observed": {
+          "scope": "standalone set operations, not lifetime safety",
+          "cases": 230,
+          "calls": 230,
+          "refusals": 75,
+          "origin_size": 424,
+          "binding_size": 464
+        },
+        "binary_sha256": "e9e633e31433b0b74c5a3151e609a199e1dce1cc74c4f2cc0ca75347a1fa81cc"
+      }
+    },
+    "base_cc_flags": [
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-Wno-unused-function",
+      "-Wno-unused-variable",
+      "-Wno-unused-parameter",
+      "-Wno-misleading-indentation",
+      "-ffp-contract=off",
+      "-fno-fast-math",
+      "-I",
+      "/tmp",
+      "/tmp/borrow-summary.c",
+      "coax/tests/borrow-summary-native.c",
+      "-lm"
+    ],
+    "profile_flags": {
+      "o0": [
+        "-O0"
+      ],
+      "o2": [
+        "-O2"
+      ],
+      "asan": [
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer"
+      ]
+    },
+    "sanitizer_runtime": {
+      "ASAN_OPTIONS": "detect_leaks=0",
+      "UBSAN_OPTIONS": "halt_on_error=1"
+    },
+    "claims": [
+      "24-step acceptance and25-step refusal",
+      "all high slots8 through23 remain distinct in canonical union/exact substitution",
+      "inactive high kind/index tails refuse atomically",
+      "24-step inline rebasing and shorter23-step formal mismatch",
+      "unchanged set64/bindings64/pool256/work128 boundaries"
+    ]
+  },
+  "limitations": [
+    "No full mutation rerun performed.",
+    "No compiler budget, escape-safety, application-launch or microphone claim.",
+    "Historical foundation16 record remains unchanged.",
+    "No binaries included."
+  ]
+}

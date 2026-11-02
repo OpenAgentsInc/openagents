@@ -507,3 +507,28 @@ Resolved: the owner stated that the two-hour task limit was never approved
 and directed its removal on 2026-11-01. Commit `099d3575b0` removes it from
 `AGENTS.md`. B1 implementation and qualification continue, followed by the
 next Coax book chapter. No owner action is pending for this item.
+
+## 2026-11-02 — Coder local Parakeet dictation hardware check
+
+Agents test recorded speech and injected permission/capture effects without
+opening your microphone or showing a window. The remaining hardware check is
+[local dictation](docs/voice/coder-dictation.md):
+
+- [ ] Build/open `apps/openagents-desktop/build/OpenAgents.app` when ready;
+      enable **OpenAgents → Enable Local Dictation — Parakeet**, grant macOS
+      microphone permission and wait for model readiness.
+- [ ] Hold **⌘D** or the microphone, speak and release. Confirm the words land
+      at the composer caret, one Undo removes them, and nothing is sent.
+- [ ] Cancel with Escape or switch apps during a hold/recognition. Confirm no
+      stale words appear, capture stops in the background, and returning can
+      rearm without reloading the already-loaded model.
+- [ ] Disable the setting and confirm the microphone indicator goes away.
+
+### Desktop compiler work-budget decision
+
+The default 1,048,576-work profile passes the changed dictation units and the
+compiler itself, but the full desktop entry exhausts it in imported checks.
+An isolated 2,097,152-work candidate compiles that entry successfully. The
+repository default remains unchanged while the owner's async choice is pending:
+raise the bounded cap for this larger application, or retain it and optimize
+the remaining analysis. See the dated dictation application's handoff record.

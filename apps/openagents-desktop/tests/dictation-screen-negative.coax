@@ -1,0 +1,33 @@
+// Screen-level negatives: exercise the actual public callbacks, never an
+// engine, microphone, window or stand-in copy of the insertion policy.
+#load "../zeron/screen.coax";
+#test "dictation screen terminal outcomes clear the guarded draft without a send" {
+ for outcome:1..<5 {
+  s:[1]ZeronState;s[0].dictation_enabled=true;s[0].composer[0].focused=true;
+  composer_insert(s[0].composer[..],"keep this draft");parts:=s[0].session[0].n;sent:=s[0].composer[0].sent;seen:=s[0].seen_sent;
+  #assert coaxial_zeron_dictation_begin(s[..],7,2);
+  coaxial_zeron_dictation_status(s[..],true,1,outcome,0,0);
+  #assert !s[0].dictation[0].active && coaxial_zeron_dictation_source(s[..])==0;
+  #assert !coaxial_zeron_dictation_apply(s[..],7,true,"late final");
+  #assert typed(s[0].composer[..])=="keep this draft" && s[0].session[0].n==parts && s[0].composer[0].sent==sent && s[0].seen_sent==seen;
+ }
+}
+#test "dictation microphone restores composer focus while keyboard and IME admission stay strict" {
+ s:[1]ZeronState;s[0].dictation_enabled=true;
+ #assert !coaxial_zeron_dictation_begin(s[..],1,1);
+ #assert coaxial_zeron_dictation_begin(s[..],2,2) && s[0].composer[0].focused;
+ #assert coaxial_zeron_dictation_key(s[..],53,0,true,false,false,false)==3;
+ #assert coaxial_zeron_dictation_key(s[..],2,0,false,false,false,false)==0;
+ coaxial_zeron_mark(s[..],-1,-1,"n",-1,-1);
+ #assert !s[0].dictation[0].active && !coaxial_zeron_dictation_begin(s[..],3,2);
+ #assert s[0].composer[0].sent==0 && s[0].seen_sent==0 && s[0].session[0].n==0;
+}
+#test "dictation successful recognition waits for insertion and keyboard release need not retain Cmd" {
+ s:[1]ZeronState;s[0].dictation_enabled=true;s[0].composer[0].focused=true;
+ #assert coaxial_zeron_dictation_begin(s[..],10,1);
+ #assert coaxial_zeron_dictation_key(s[..],2,0,false,false,true,true)==2;
+ coaxial_zeron_dictation_status(s[..],true,1,5,0,0);
+ #assert s[0].dictation[0].active && coaxial_zeron_dictation_source(s[..])==1;
+ #assert coaxial_zeron_dictation_apply(s[..],10,true,"a final draft") && typed(s[0].composer[..])=="a final draft";
+ #assert coaxial_zeron_dictation_source(s[..])==0 && s[0].composer[0].sent==0 && s[0].seen_sent==0 && s[0].session[0].n==0;
+}

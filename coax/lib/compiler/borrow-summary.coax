@@ -5,10 +5,10 @@
 BS_STATIC :: cast(u8)1; BS_LOCAL :: cast(u8)2; BS_PARAMETER :: cast(u8)3;
 BS_INLINE :: cast(u8)1; BS_DESCRIPTOR :: cast(u8)2;
 BS_FIELD :: cast(u8)1; BS_ELEMENT :: cast(u8)2; BS_DEREFERENCE :: cast(u8)3; BS_VARIANT :: cast(u8)4;
-BS_MAX_SET :: 64; BS_MAX_BINDINGS :: 64; BS_MAX_POOL :: 256; BS_MAX_PATH :: 8; BS_MAX_WORK :: 128;
+BS_MAX_SET :: 64; BS_MAX_BINDINGS :: 64; BS_MAX_POOL :: 256; BS_MAX_PATH :: 24; BS_MAX_WORK :: 128;
 BS_Status :: enum u8 {ok;invalid;unknown;capacity;work;}
 BS_Step :: struct {kind:u8;index:int;}
-BS_Path :: struct {count:int;steps:[8]BS_Step;}
+BS_Path :: struct {count:int;steps:[24]BS_Step;}
 BS_Origin :: struct {kind:u8;root:int;role:u8;type:int;path:BS_Path;}
 BS_Binding :: struct {formal:BS_Origin;actual_type:int;complete:bool;callee_root:int;start:int;count:int;}
 BS_Result :: struct {status:BS_Status;count:int;}
@@ -22,12 +22,12 @@ BS_Result :: struct {status:BS_Status;count:int;}
  #assert path_ok && origin_ok && empty.status==BS_Status.ok && empty.count==0;
 }
 
-#forall "logical path vocabulary and depth are bounded" depth:0..<10,kind:0..<5,index:-1..<2 {
- p:BS_Path;p.count=depth;for i:0..<8 {if i<depth {p.steps[i]=BS_Step.{kind=cast(u8)kind,index=index};}}
- want:=depth<=8 && (depth==0 || ((kind==1 || kind==2 || kind==4) && index>=0) || (kind==3 && index==0));
+#forall "logical path vocabulary and depth are bounded" depth:0..<26,kind:0..<5,index:-1..<2 {
+ p:BS_Path;p.count=depth;for i:0..<24 {if i<depth {p.steps[i]=BS_Step.{kind=cast(u8)kind,index=index};}}
+ want:=depth<=24 && (depth==0 || ((kind==1 || kind==2 || kind==4) && index>=0) || (kind==3 && index==0));
  #assert BS_path_valid(p)==want;
 }
-#forall "inactive logical path fields must be zero" position:0..<8,field:bool {
+#forall "inactive logical path fields must be zero" position:0..<24,field:bool {
  p:BS_Path;if field {p.steps[position].kind=BS_FIELD;}else {p.steps[position].index=1;}
  #assert !BS_path_valid(p);
 }
@@ -51,12 +51,12 @@ BS_Result :: struct {status:BS_Status;count:int;}
  a:=BS_Origin.{kind=BS_STATIC,root=1,type=1};b:=a;
  if component==0 {b.kind=BS_LOCAL;}else if component==1 {b.root=2;}else if component==2 {a.kind=BS_PARAMETER;a.root=0;a.role=BS_INLINE;b=a;b.role=BS_DESCRIPTOR;}
  else if component==3 {b.type=2;}else if component==4 {b.path.count=1;b.path.steps[0]=BS_Step.{kind=BS_FIELD};}
- else {a.path.count=ifx component==7 then 8 else 1;for i:0..<a.path.count {a.path.steps[i]=BS_Step.{kind=BS_FIELD};}b=a;if component==5 {b.path.steps[0].kind=BS_ELEMENT;}else if component==6 {b.path.steps[0].index=1;}else {b.path.steps[7].index=1;}}
+ else {a.path.count=ifx component==7 then 24 else 1;for i:0..<a.path.count {a.path.steps[i]=BS_Step.{kind=BS_FIELD};}b=a;if component==5 {b.path.steps[0].kind=BS_ELEMENT;}else if component==6 {b.path.steps[0].index=1;}else {b.path.steps[23].index=1;}}
  values:=[3]BS_Origin.[ifx reverse then b else a,ifx reverse then a else b,a];out:[3]BS_Origin;out[2]=BS_Origin.{kind=BS_LOCAL,root=999,type=99};r:=BS_union(values[..],true,values[0..<0],true,out[..]);
  #assert r.status==BS_Status.ok && r.count==2 && out[2].root==999;
  #assert out[0].kind==a.kind && out[0].root==a.root && out[0].role==a.role && out[0].type==a.type && out[0].path.count==a.path.count;
  #assert out[1].kind==b.kind && out[1].root==b.root && out[1].role==b.role && out[1].type==b.type && out[1].path.count==b.path.count;
- for i:0..<8 {#assert out[0].path.steps[i].kind==a.path.steps[i].kind && out[0].path.steps[i].index==a.path.steps[i].index && out[1].path.steps[i].kind==b.path.steps[i].kind && out[1].path.steps[i].index==b.path.steps[i].index;}
+ for i:0..<24 {#assert out[0].path.steps[i].kind==a.path.steps[i].kind && out[0].path.steps[i].index==a.path.steps[i].index && out[1].path.steps[i].kind==b.path.steps[i].kind && out[1].path.steps[i].index==b.path.steps[i].index;}
 }
 #forall "complete empty sets differ from unresolved facts" left_known:bool,right_known:bool {
  a:[1]BS_Origin;out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=91,type=7}];r:=BS_union(a[0..<0],left_known,a[0..<0],right_known,out[..]);
@@ -183,6 +183,30 @@ BS_Result :: struct {status:BS_Status;count:int;}
  out:=[2]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=900,type=1},BS_Origin.{kind=BS_LOCAL,root=901,type=1}];r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);
  if last==63 {#assert r.status==BS_Status.ok && r.count==(ifx concrete then 1 else 2) && out[0].kind==BS_STATIC && out[0].root==1;if !concrete {#assert out[1].kind==BS_LOCAL && out[1].root==1;}}
  else {#assert r.status==BS_Status.work && r.count==0 && out[0].root==900 && out[1].root==901;}
+}
+
+#forall "twenty-four-step union and substitution preserve every newly admitted high identity slot" position:8..<24,field:bool {
+ a:=BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_DESCRIPTOR,type=7,path=BS_Path.{count=24}};
+ for i:0..<24 {a.path.steps[i]=BS_Step.{kind=BS_FIELD,index=i};}b:=a;
+ if field {b.path.steps[position].kind=BS_ELEMENT;}else {b.path.steps[position].index+=1;}
+ values:=[3]BS_Origin.[b,a,a];out:[3]BS_Origin;out[2].root=999;r:=BS_union(values[..],true,values[0..<0],true,out[..]);
+ #assert r.status==BS_Status.ok && r.count==2 && bs_compare(out[0],a)==0 && bs_compare(out[1],b)==0 && out[2].root==999;
+ refs:=[2]BS_Origin.[a,b];pool:=[2]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=101,type=7},BS_Origin.{kind=BS_LOCAL,root=202,type=7}];bindings:=[2]BS_Binding.[BS_Binding.{formal=a,actual_type=7,complete=true,count=1},BS_Binding.{formal=b,actual_type=7,complete=true,start=1,count=1}];
+ r=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.ok && r.count==2 && out[0].kind==BS_STATIC && out[0].root==101 && out[1].kind==BS_LOCAL && out[1].root==202 && out[2].root==999;
+}
+#test "twenty-four-step inline rebasing retains the last slot and shorter formals never match" {
+ p:=BS_Origin.{kind=BS_PARAMETER,role=BS_INLINE,type=7,path=BS_Path.{count=24}};for i:0..<24 {p.path.steps[i]=BS_Step.{kind=BS_FIELD,index=i};}
+ refs:=[1]BS_Origin.[p];bindings:=[1]BS_Binding.[BS_Binding.{formal=p,actual_type=7,complete=true,callee_root=501}];pool:[1]BS_Origin;out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=900,type=7}];
+ r:=BS_substitute(refs[..],true,bindings[..],pool[0..<0],out[..]);#assert r.status==BS_Status.ok && r.count==1 && out[0].kind==BS_LOCAL && out[0].root==501 && out[0].role==0 && out[0].path.count==24;
+ for i:0..<24 {#assert out[0].path.steps[i].kind==BS_FIELD && out[0].path.steps[i].index==i;}
+ p.role=BS_DESCRIPTOR;refs[0]=p;bindings[0]=BS_Binding.{formal=p,actual_type=7,complete=true};bindings[0].formal.path.count=23;bindings[0].formal.path.steps[23]=BS_Step.{};out[0].root=900;
+ r=BS_substitute(refs[..],true,bindings[..],pool[0..<0],out[..]);#assert r.status==BS_Status.unknown && r.count==0 && out[0].root==900;
+}
+#forall "high inactive slots remain invalid and dominate unknown without publication" position:8..<24,field:bool {
+ a:=BS_Origin.{kind=BS_STATIC,root=1,type=7,path=BS_Path.{count=8}};for i:0..<8 {a.path.steps[i]=BS_Step.{kind=BS_FIELD,index=i};}
+ if field {a.path.steps[position].kind=BS_FIELD;}else {a.path.steps[position].index=1;}
+ values:=[1]BS_Origin.[a];out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=900,type=7}];r:=BS_union(values[..],false,values[0..<0],false,out[..]);
+ #assert r.status==BS_Status.invalid && r.count==0 && out[0].root==900;
 }
 
 // Logical inactive step fields are canonical zeros; C padding is unspecified.

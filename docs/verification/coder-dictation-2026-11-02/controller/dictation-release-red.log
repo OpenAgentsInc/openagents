@@ -1,0 +1,7 @@
+FAIL #test dictation release after automatic finalization cannot erase a frozen clip or assembling transcript (7 ms)
+apps/shared/dictation.coax:45:23: error[E0406]: assertion failed
+   dct_end(s[..],61000);#assert s[0].n==2 && clip[0]==0.25 && s[0].gate.phase==4;
+                        ^
+  note: in #test dictation release after automatic finalization cannot erase a frozen clip or assembling transcript
+1 of 61 checks (--only 'dictation release after automatic'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

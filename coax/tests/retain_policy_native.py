@@ -74,7 +74,7 @@ class RetainPolicyNative(unittest.TestCase):
         observed=json.loads(data);self.assertGreater(observed['cases'],0);self.assertEqual(observed['calls'],observed['cases'])
         self.assertGreaterEqual(observed['cases'],1100);self.assertGreater(observed['refusals'],0)
         self.assertEqual(observed['independent_check_cases'],112);self.assertEqual(observed['independent_bounds_cases'],16)
-        self.assertEqual([observed[k]for k in ['term_size','address_size','obligation_size','result_size']],[176,184,360,32])
+        self.assertEqual([observed[k]for k in ['term_size','address_size','obligation_size','result_size']],[432,440,872,32])
         self.record['profiles'][profile]={'outcome':'passed','binary':str(binary),'binary_sha256':digest(binary),'observed':observed}
         self.save();self.assertTrue(self.record['inputs_unchanged']);self.assertTrue(self.record['artifacts_unchanged'])
     def test_checked_O0(self):self.qualify('O0',['-O0'])

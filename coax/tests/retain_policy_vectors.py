@@ -1,4 +1,8 @@
-"""Mechanical literal-oracle to C transport; never computes expected policy."""
+"""Mechanical historical eight-slot oracle transport into twenty-four-slot carriers.
+
+The original literal oracle and its identity stay unchanged. New inactive slots
+are explicit zeroes; this adapter never computes expected lifetime policy.
+"""
 import hashlib
 import json
 from pathlib import Path
@@ -27,6 +31,7 @@ def origin(row):
     steps=[]
     for step in path['steps']:
         exact(step,('kind','index'));steps.append('{.kind='+integer(step['kind'])+',.index='+integer(step['index'])+'}')
+    steps += ['{.kind=0,.index=0}'] * 16
     return '{.kind='+integer(row['kind'])+',.root='+integer(row['root'])+',.role='+integer(row['role'])+',.type='+integer(row['type'])+',.path={.count='+integer(path['count'])+',.steps={.e={'+','.join(steps)+'}}}}'
 
 def term(row):
@@ -70,4 +75,4 @@ def generate(output):
     lines+=['}']
     output.write_text('\n'.join(lines)+'\n')
     if digest(ORACLE)!=before:raise ValueError('oracle changed during encoding')
-    return {'schema':'coax.retain-policy.literal-vector-transport.v1','oracle':str(ORACLE),'oracle_sha256':before,'original_oracle_sha256':ORIGINAL_SHA256,'adapter_sha256':digest(__file__),'generated_include':str(output),'generated_include_sha256':digest(output),'check_cases':len(checks),'bounds_cases':len(bounds),'case_ids':[row['id']for row in checks],'scope':'Mechanical literal input/expected carrier encoding only. No expected relations, statuses, obligations or witnesses are calculated. All path slots and named fields are compared; no C aggregate-padding contract.'}
+    return {'schema':'coax.retain-policy.literal-vector-transport.v2','oracle':str(ORACLE),'oracle_sha256':before,'original_oracle_sha256':ORIGINAL_SHA256,'adapter_sha256':digest(__file__),'generated_include':str(output),'generated_include_sha256':digest(output),'check_cases':len(checks),'bounds_cases':len(bounds),'case_ids':[row['id']for row in checks],'scope':'Mechanical literal input/expected carrier encoding only. No expected relations, statuses, obligations or witnesses are calculated. All path slots and named fields are compared; no C aggregate-padding contract.'}

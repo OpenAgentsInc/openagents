@@ -1,0 +1,7 @@
+apps/openagents-desktop/Sources/Zeron.swift:132:9: warning: variable 'header' was never mutated; consider changing to 'let' constant
+ 130 |                     space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue)!
+ 131 |   for (f, s) in slots.enumerated() {
+ 132 |     var header: [Float] = [Float(CTFontGetAscent(s.font)), Float(CTFontGetDescent(s.font)), Float(s.cell), Float(s.penX), Float(s.penY), Float(s.y0), Float(s.cols)]
+     |         `- warning: variable 'header' was never mutated; consider changing to 'let' constant
+ 133 |     var codes = (0..<glyphs).map { UniChar(truncatingIfNeeded: zr_glyph_code(Int32($0))) }
+ 134 |     var ids = [CGGlyph](repeating: 0, count: glyphs)

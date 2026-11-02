@@ -42,7 +42,7 @@ has no slice-length input. By-value inline bindings always produce callee-local
 storage. Contained-descriptor bindings preserve the actual pointee identities.
 
 The internal profile bounds each input/output set and binding list to 64,
-the shared origin pool to 256, projection depth to eight and candidate work
+the shared origin pool to 256, projection depth to twenty-four and candidate work
 to 128 insertions. Duplicates count as work but consume no additional output
 capacity. Status values distinguish `ok`, `invalid`, `unknown`, `capacity`
 and `work`.
@@ -83,3 +83,9 @@ The historical A0 qualification did not load the kernel into the compiler;
 its record binds that actual producer, source and unchanged compiled closure.
 The later return-summary integration has its own checker/producer/seed record.
 Neither record establishes general ownership or retained request lifetimes.
+
+The current internal twenty-four-step representation and whole-write array precision
+are recorded separately in the [2026-11-02 compiler continuation](../docs/verification/coder-dictation-2026-11-02/compiler-fix/README.md).
+Earlier dated receipts keep their original eight-step representation, source
+and producer identities. Native headers must be regenerated with their C
+objects; this changes no protocol wire message or general lifetime proof.

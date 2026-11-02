@@ -1,0 +1,10 @@
+coax/build.sh: no published build f37941ff2d2f9d5c232592a6c7aada46c081ccef20c6c4cad3d2300a69de72d5/darwin-arm64; bootstrapping
+In file included from src/main.cpp:41:
+src/emit_c.cpp:3745:57: warning: unused parameter 'text' [-Wunused-parameter]
+ 3745 | static std::string debug_source_hash(const std::string &text) {
+      |                                                         ^
+In file included from src/main.cpp:43:
+src/effects.cpp:127:55: warning: unused parameter 'file' [-Wunused-parameter]
+  127 | static bool effects_report(const Source *,const File *file,const EmitOptions &opts,const std::string &selected,std::string *text) {
+      |                                                       ^
+2 warnings generated.

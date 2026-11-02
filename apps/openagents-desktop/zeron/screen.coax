@@ -22,6 +22,9 @@
 // fonts and icons listed here, gives the engine its buffers and working
 // folder, then each frame asks for the vertices. Based on Zeron by Wing, MIT.
 
+#load "dictation.coax";
+#load "dictation-ui.coax";
+#load "dictation-labels.coax";
 #load "modes.coax";
 
 ZR_MAX_VERTICES :: 200000;
@@ -40,6 +43,11 @@ HOST_CODEX_LOGIN :: 4; HOST_CODEX_INSTALL :: 5;     // Terminal running `codex l
 
 ZeronState :: struct {
   ready: bool;
+  dictation: [1] ZrDictationGuard;
+  dictation_enabled: bool;
+  dictation_phase: int; dictation_outcome: int; dictation_fault: int; dictation_preparing: int;
+  dictation_source: int; // 1 keyboard, 2 pointer; kept until completed/cancelled
+
   width: f32; height: f32; d: f32;
   atlas: [1] Atlas;
   composer: [1] Composer;
@@ -293,6 +301,7 @@ zr_lab_psionic :: (s: [] ZeronState) -> bool { return s[0].mode == MODE_LAB && s
 // each engine forgets the conversation (Claude's session, Codex's thread,
 // Psionic's replay) so the next message starts a new one; the draft stays.
 zr_new_chat :: (s: [] ZeronState) {
+  zdi_cancel(s[0].dictation[..]); s[0].dictation_source=0;
   if s[0].session[0].live { zr_stop(s); }
   e := s[0].engine[..];
   if e[0].running { e_close(e); }
@@ -468,6 +477,7 @@ zr_paint :: (s: [] ZeronState, out: [] f32) -> int {
     y := round_layout((h - composer_height(c[0].lines)) / 2 - ZR_HERO_LIFT);
     t[0].nr = 0; t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
     v = paint_composer(out, v, c, s[0].atlas[..], th, d, x, y, cw);
+    v = zr_paint_dictation(out, v, s, th, d);
     v = zr_paint_failure(out, v, s, th, d, x, y, cw);
     v = pk_paint(out, v, s[0].picker[..], zr_view_cat(s), zr_menu_sel(s), s[0].atlas[..], th, d, w, h);
     zr_update_cursor(s);
@@ -484,6 +494,7 @@ zr_paint :: (s: [] ZeronState, out: [] f32) -> int {
   v = t_paint(out, v, t, s[0].atlas[..], th, d, h, stack - STATUS_STRIP_HEIGHT);
   v = paint_composer_docked(out, v, c, s[0].atlas[..], th, d, x, h - ZR_DOCK_BOTTOM, cw);
   v = zr_paint_status(out, v, s, th, d, x, h - ZR_DOCK_BOTTOM, cw);
+  v = zr_paint_dictation(out, v, s, th, d);
   v = zr_paint_failure(out, v, s, th, d, x, c[0].y, cw);
   v = pk_paint(out, v, s[0].picker[..], zr_view_cat(s), zr_menu_sel(s), s[0].atlas[..], th, d, w, h);
   zr_update_cursor(s);
@@ -602,6 +613,7 @@ coaxial_zeron_pointer :: (s: [] ZeronState, x: f32, y: f32, phase: int, clicks: 
   shift := (mods & MOD_SHIFT) != 0;
   p := s[0].picker[..];
   if phase == 0 {
+    zdi_cancel(s[0].dictation[..]);
     s[0].swallow = false;
     // an open menu takes the press; outside it, the press closes it and goes on (unless it was on the menu's own chip)
     if pk_is_open(p) {
@@ -650,7 +662,7 @@ coaxial_zeron_wheel :: (s: [] ZeronState, dy: f32) -> bool #export_c {
   t_hover(s[0].transcript[..], s[0].lx, s[0].ly);
   return moved;
 }
-coaxial_zeron_key :: (s: [] ZeronState, key_code: int, mods: int) -> bool #export_c {
+coaxial_zeron_key :: (s: [] ZeronState, key_code: int, mods: int) -> bool #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count < 1 { return false; }
   // an open menu holds the keyboard
   p := s[0].picker[..];
@@ -664,19 +676,19 @@ coaxial_zeron_key :: (s: [] ZeronState, key_code: int, mods: int) -> bool #expor
   return composer_key(s[0].composer[..], s[0].atlas[..], key_code, mods);
 }
 // Typing: text with no range (replaces the selection or the composition).
-coaxial_zeron_text :: (s: [] ZeronState, text: string) #export_c {
+coaxial_zeron_text :: (s: [] ZeronState, text: string) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count > 0 && pk_is_open(s[0].picker[..]) { b := pk_text(s[0].picker[..], zr_view_cat(s), text); return; }
   if s.count < 1 || !s[0].composer[0].focused { return; }
   composer_insert(s[0].composer[..], text);
 }
 
 // The Edit menu.
-coaxial_zeron_undo :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_undo(s[0].composer[..]); } }
-coaxial_zeron_redo :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_redo(s[0].composer[..]); } }
+coaxial_zeron_undo :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_undo(s[0].composer[..]); } }
+coaxial_zeron_redo :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_redo(s[0].composer[..]); } }
 coaxial_zeron_can_undo :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && can_undo(s[0].composer[..]); }
 coaxial_zeron_can_redo :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && can_redo(s[0].composer[..]); }
 // Select All: the focused composer's text, else the whole transcript.
-coaxial_zeron_select_all :: (s: [] ZeronState) #export_c {
+coaxial_zeron_select_all :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count < 1 { return; }
   if s[0].composer[0].focused { composer_select_all(s[0].composer[..]); return; }
   t := s[0].transcript[..];
@@ -935,21 +947,21 @@ coaxial_zeron_answer :: (s: [] ZeronState, allow: bool) -> bool #export_c {
 }
 coaxial_zeron_quit :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); ps_close(s[0].psionic[..]); switch so_request_discard(s[0].lab[0].owner[..],s[0].lab[0].ticket) {case ok {}case err(failure) {}} gs_close(s[0].gpu[..]); cxe_close(s[0].codex); } }
 coaxial_zeron_scroll_to :: (s: [] ZeronState, px: f32) #export_c { if s.count > 0 { s[0].want_scroll = ifx px < 0 then 0.0f32 else px; } }
-coaxial_zeron_cut :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_cut_selection(s[0].composer[..]); } }
-coaxial_zeron_paste :: (s: [] ZeronState, text: string) #export_c {
+coaxial_zeron_cut :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_cut_selection(s[0].composer[..]); } }
+coaxial_zeron_paste :: (s: [] ZeronState, text: string) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count < 1 || !s[0].composer[0].focused { return; }
   composer_paste(s[0].composer[..], text);
 }
 
 // NSTextInputClient, in UTF-16 offsets (from < 0: no range given).
-coaxial_zeron_replace :: (s: [] ZeronState, from16: int, to16: int, text: string) #export_c {
+coaxial_zeron_replace :: (s: [] ZeronState, from16: int, to16: int, text: string) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count > 0 && pk_is_open(s[0].picker[..]) { b := pk_text(s[0].picker[..], zr_view_cat(s), text); return; }
   if s.count < 1 || !s[0].composer[0].focused { return; }
   c := s[0].composer[..];
   if from16 < 0 { composer_replace(c, -1, -1, text); return; }
   composer_replace(c, byte_of(c, from16), byte_of(c, to16), text);
 }
-coaxial_zeron_mark :: (s: [] ZeronState, from16: int, to16: int, text: string, sel_from16: int, sel_to16: int) #export_c {
+coaxial_zeron_mark :: (s: [] ZeronState, from16: int, to16: int, text: string, sel_from16: int, sel_to16: int) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); }
   if s.count < 1 || !s[0].composer[0].focused || pk_is_open(s[0].picker[..]) { return; }
   c := s[0].composer[..];
   sf := ifx sel_from16 < 0 then -1 else byte_in(text, sel_from16);
@@ -957,7 +969,7 @@ coaxial_zeron_mark :: (s: [] ZeronState, from16: int, to16: int, text: string, s
   if from16 < 0 { composer_mark(c, -1, -1, text, sf, st); return; }
   composer_mark(c, byte_of(c, from16), byte_of(c, to16), text, sf, st);
 }
-coaxial_zeron_unmark :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_unmark(s[0].composer[..]); } }
+coaxial_zeron_unmark :: (s: [] ZeronState) #export_c { if s.count > 0 { zdi_cancel(s[0].dictation[..]); } if s.count > 0 { composer_unmark(s[0].composer[..]); } }
 // which 0: the selection's start, 1 its end, 2 the composition's start, 3 its end (-1 without one), 4 the text's length.
 coaxial_zeron_range16 :: (s: [] ZeronState, which: int) -> int #export_c {
   if s.count < 1 { return -1; }
@@ -1393,4 +1405,61 @@ zr_test_screen :: (s: [] ZeronState) {
   coaxial_zeron_new_chat(s[..]);
   n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
   #assert zr_empty(s[..]) && t[0].nr == 0 && !c[0].docked;
+}
+
+// Dictation callbacks only edit the draft. They never use the send path.
+coaxial_zeron_dictation_begin :: (s:[]ZeronState,ticket:int,source:int)->bool #export_c {
+ if s.count<1 || !s[0].dictation_enabled || (source!=1 && source!=2) || pk_is_open(s[0].picker[..]) {return false;}
+ if ticket<=0 || s[0].composer[0].marked {return false;}
+ if source==2 {s[0].composer[0].focused=true;}
+ if !zdi_begin(s[0].dictation[..],s[0].composer[..],ticket) {return false;}
+ s[0].dictation_source=source;return true;
+}
+coaxial_zeron_dictation_cancel :: (s:[]ZeronState) #export_c {if s.count>0 {zdi_cancel(s[0].dictation[..]);s[0].dictation_source=0;}}
+coaxial_zeron_dictation_apply :: (s:[]ZeronState,ticket:int,current:bool,text:string)->bool #export_c {
+ if s.count<1 {return false;}if ticket!=s[0].dictation[0].ticket {return false;}if !current || !s[0].dictation_enabled {zdi_cancel(s[0].dictation[..]);s[0].dictation_source=0;return false;}
+ ok:=zdi_apply(s[0].dictation[..],s[0].composer[..],ticket,text);
+ if !s[0].dictation[0].active {s[0].dictation_source=0;}return ok;
+}
+coaxial_zeron_dictation_status :: (s:[]ZeronState,enabled:bool,phase:int,outcome:int,fault:int,preparing:int) #export_c {
+ if s.count<1 {return;}s[0].dictation_enabled=enabled;s[0].dictation_phase=phase;s[0].dictation_outcome=outcome;s[0].dictation_fault=fault;s[0].dictation_preparing=preparing;
+ if !enabled || phase==0 || (phase==1 && outcome>=1 && outcome<=4) {coaxial_zeron_dictation_cancel(s);}
+}
+coaxial_zeron_dictation_source :: (s:[]ZeronState)->int #export_c {return ifx s.count>0 then s[0].dictation_source else 0;}
+coaxial_zeron_dictation_key :: (s:[]ZeronState,key:int,mods:int,down:bool,repeated:bool,marked:bool,room:bool)->int #export_c {
+ if s.count<1 {return 0;}holding:=s[0].dictation_source==1 || (key==53 && s[0].dictation[0].active);
+ return zdu_key(key,mods,down,repeated,marked,s[0].dictation_enabled,s[0].composer[0].focused && !pk_is_open(s[0].picker[..]),room,holding);
+}
+coaxial_zeron_dictation_hit :: (s:[]ZeronState,x:f32,y:f32)->bool #export_c {
+ if s.count<1 || pk_is_open(s[0].picker[..]) {return false;}d:=ifx s[0].d<1 then 1.0f32 else s[0].d;c:=s[0].composer[..];
+ return zdu_hit(s[0].dictation_enabled,c[0].x,c[0].y,c[0].w,c[0].h,x/d,y/d);
+}
+zr_paint_dictation :: (out:[]f32,at:int,s:[]ZeronState,th:Theme,d:f32)->int {
+ if !s[0].dictation_enabled {return at;}c:=s[0].composer[..];x:=c[0].x+c[0].w-28;y:=c[0].y+c[0].h+4;
+ active:=s[0].dictation_phase==2 || s[0].dictation_phase==3;fg:=ifx active then th.accent else th.muted;
+ bg:=ifx active then opacity(th.accent,0.15) else th.surface;
+ v:=paint_quad(out,at,d,x,y,28,28,14,0,bg,bg);
+ // A microphone drawn in Coax: capsule, lower cradle, stem and base.
+ v=paint_quad(out,v,d,x+7,y+10,14,11,7,1.5,rgba(0,0,0,0),fg);
+ v=paint_quad(out,v,d,x+6,y+8,16,7,0,0,bg,bg);
+ v=paint_quad(out,v,d,x+10,y+4,8,14,4,1.5,rgba(0,0,0,0),fg);
+ v=paint_quad(out,v,d,x+13.25,y+21,1.5,3,0,0,fg,fg);
+ v=paint_quad(out,v,d,x+9,y+24,10,1.5,0,0,fg,fg);
+ label:=zdu_label(s[0].dictation_phase,s[0].dictation_outcome,s[0].dictation_fault,s[0].dictation_preparing);
+ return paint_text(out,v,s[0].atlas[..],d,FONT_CHIP,label,x-8-text_width(s[0].atlas[..],FONT_CHIP,label),y,28,fg);
+}
+#test "dictation screen inserts a literal draft without a session or send" {
+ s:[1]ZeronState;test_atlas(s[0].atlas[..]);s[0].dictation_enabled=true;s[0].composer[0].focused=true;
+ composer_insert(s[0].composer[..],"Existing");sent:=s[0].composer[0].sent;seen:=s[0].seen_sent;parts:=s[0].session[0].n;
+ #assert coaxial_zeron_dictation_begin(s[..],12,1);
+ #assert coaxial_zeron_dictation_apply(s[..],12,true,"hello\nworld");
+ #assert typed(s[0].composer[..])=="Existing hello\nworld";
+ #assert s[0].composer[0].sent==sent && s[0].seen_sent==seen && s[0].session[0].n==parts;
+ #assert !coaxial_zeron_dictation_apply(s[..],12,true,"again");
+ #assert coaxial_zeron_dictation_begin(s[..],13,2);coaxial_zeron_text(s[..],"!");coaxial_zeron_undo(s[..]);
+ #assert !coaxial_zeron_dictation_apply(s[..],13,true,"stale");
+ #assert coaxial_zeron_dictation_begin(s[..],14,1);#assert coaxial_zeron_dictation_begin(s[..],15,1);
+ #assert !coaxial_zeron_dictation_apply(s[..],14,false,"old completion") && s[0].dictation[0].active && s[0].dictation[0].ticket==15;
+ #assert !coaxial_zeron_dictation_apply(s[..],15,false,"other chat");
+ #assert s[0].composer[0].sent==sent && s[0].seen_sent==seen && s[0].session[0].n==parts;
 }

@@ -1,0 +1,2526 @@
+{
+  "schema": "openagents.coder.dictation-handoff-inventory.v1",
+  "observed_at_utc": "2026-11-02T22:53:41.319337+00:00",
+  "status": "passed-actual-app-under-isolated-2m-compiler-default-build-blocked",
+  "head": "eead95dc9de93926443b11754a4fa9303a17dcca",
+  "origin_main": "b3c05f3c1da17edb5cbc6c3a945769d1f6c9b73a",
+  "scope": "Read-only source and artifact inventory at handoff. Other agents may continue editing; this is not a final commit manifest or qualification of an app executable. Earlier component receipts retain their exact historical source pins. The manifest excludes itself. No test was repeated to package this inventory.",
+  "changed_sources": {
+    "INVARIANTS.md": {
+      "sha256": "39660f79d2b9d4de046cd2b0298882a60997f4cad1202d9bd6381227b02efca6",
+      "bytes": 245401,
+      "stable_during_read": true
+    },
+    "NEEDS_OWNER.md": {
+      "sha256": "8f1825119e6cb9f242feb9d24c99d661a6ebb2b42582f53bf195fe49057fb6ea",
+      "bytes": 25876,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/Info.plist": {
+      "sha256": "4fae8eb2db4f6381147aecda69be581e9e3addfd25f5ce86a15dbcd141012d61",
+      "bytes": 984,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/Sources/Dictation.swift": {
+      "sha256": "af2b7b75b7d794a085e45dfc2971fced7f8eab26e2aa510a648bf2e16bc651ae",
+      "bytes": 16505,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/Sources/Zeron.swift": {
+      "sha256": "878d03b50cf8150e82f79642d28dbe735afd2c6f9b7e7aba308f3d036d5cfd9a",
+      "bytes": 64107,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/Sources/main.swift": {
+      "sha256": "8a7e65005c9ee104447ea03d27d03c0c898defd184d6d86d244f0dc5e5db0ab0",
+      "bytes": 22461,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/build.sh": {
+      "sha256": "48ef16f28be1b0d94ac8ce767c0402128125a26b60a17e7bf4d30c4f20f653ab",
+      "bytes": 3286,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/dictation-build.coax": {
+      "sha256": "1da7ae7767f5ca75c6157a0221ba3fb1afcbc66de5724a3e8a5597dacf1bac6a",
+      "bytes": 4795,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/dictation-face.c": {
+      "sha256": "4d9563f007f0c52d45aa819e400064145b179e28a8d4ab0a5b840e3f8e4a53fd",
+      "bytes": 2887,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/dictation-face.h": {
+      "sha256": "20e22c6290fefe930b406f28da52d6764b59141d3f08e3f50a5bc17bb1782352",
+      "bytes": 2101,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/face.h": {
+      "sha256": "63b939550410500b133f9282f96c32157cdc743a838a7824894d9f6883fca35d",
+      "bytes": 9439,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/tests/check-dictation-app.coax": {
+      "sha256": "922e701028ce10296d0fb8b2fc3540461b7d8be9ebaf1a6db3d522878c701cac",
+      "bytes": 9249,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/tests/dictation-controller.c": {
+      "sha256": "6f88d570ea80232f61ce4b904c244241730d828d128705f1511f9c77b1125f66",
+      "bytes": 3774,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/tests/dictation-host.swift": {
+      "sha256": "de70ce88b006287d96a118ee24e9df0d644571cc9cef90237f477a8a171089bd",
+      "bytes": 15732,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/tests/dictation-insertion-native.c": {
+      "sha256": "6707f4999f0abf302a35a823c84efac1bc1abc1a3998388ccbe1123baa8cbdf7",
+      "bytes": 402,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/tests/dictation-insertion-native.coax": {
+      "sha256": "eeb98b4138253c71ffb3fe511a9c638feef9f0a0d049e7d1034e8e2ad4dc05ee",
+      "bytes": 1393,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/tests/dictation-recognizer-clear.c": {
+      "sha256": "479bebfd6351b20b0576488881ba713a26367d656a752204ef91dc4ece3e5a19",
+      "bytes": 1252,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/tests/dictation-recognizer-clear.h": {
+      "sha256": "fde2c309610aa04fc443536cc88ee2e1d7119df98e423b5d9019f58a4f2f27a4",
+      "bytes": 279,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/tests/dictation-recognizer-clear.swift": {
+      "sha256": "b8c1ba2a270a80b418aa1f560f88b7e2de14c6c2aaa14586a2ba21165adbb19c",
+      "bytes": 1007,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/tests/dictation-screen-negative.coax": {
+      "sha256": "ac45e4886968947e3ee66c60193f343c5b836b39ede2e4f2ecca6e2962ead02c",
+      "bytes": 2209,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/zeron-face.c": {
+      "sha256": "e565c2959b0a60dda10b749067963daf1363bd0bc7ef9837b3f0716e51ae0b72",
+      "bytes": 18406,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/zeron/desk.coax": {
+      "sha256": "b11c348c40ff119cc2c0389c56d9ad685c7f81971acd21ff60a347d7ceb678f8",
+      "bytes": 62269,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/zeron/dictation-labels.coax": {
+      "sha256": "56f6002ae55f292a1490e08d4433bcb0096005978153e8cc0833fe9344a6a0c1",
+      "bytes": 1455,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/zeron/dictation-ui.coax": {
+      "sha256": "54944d66cb0005f95b61753faf6a6612d8b94a5c11f601955fafafc4744f0f3e",
+      "bytes": 2687,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/zeron/dictation.coax": {
+      "sha256": "684e7fee6c58198018d17737d8f8fe57696d47305b9d07fb3158cc27ec1eee8b",
+      "bytes": 9504,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/zeron/lab.coax": {
+      "sha256": "187f282ecd7481a3c9594334d768d1a988103a9019b3a78a90ea022ab49d6e4a",
+      "bytes": 53495,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/zeron/microcoder.coax": {
+      "sha256": "92f4f36ca545e31067be525696b052535821d6676939fbd7bb3fd73d60a1d228",
+      "bytes": 26063,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/zeron/screen.coax": {
+      "sha256": "c79ab404f046d4292c30c40c9e0c279ff9573cf0fe9157a1dd446502f2c54d40",
+      "bytes": 83038,
+      "stable_during_read": true
+    },
+    "apps/openagents-desktop/zeron/settings.coax": {
+      "sha256": "227d02ebe24293970686d76657c921cbc19ad159fd004bf6e230936925113427",
+      "bytes": 14068,
+      "stable_during_read": true
+    },
+    "apps/shared/dictation-policy.coax": {
+      "sha256": "c7fe68bee50055426a9ee3c1f796b8b31cf3c2d1bd538e7cf3ec77c8981d6597",
+      "bytes": 11453,
+      "stable_during_read": true
+    },
+    "apps/shared/dictation.coax": {
+      "sha256": "5f9e08fbeef3a8d383e6bcdf41d23e120fadb9a49ee89b3bddd4245887dfb978",
+      "bytes": 10358,
+      "stable_during_read": true
+    },
+    "coax/book/ch06-memory.md": {
+      "sha256": "f69c6f504035df776dbf9a7f9d3619799e9ad3bfdb7a26ed1bc7ef32d583025a",
+      "bytes": 41625,
+      "stable_during_read": true
+    },
+    "coax/bootstrap/checker.c": {
+      "sha256": "86b29c7f143388eec9ec97982d12d8ccb91efdc3e4e0095a3f336899394beb08",
+      "bytes": 944853,
+      "stable_during_read": true
+    },
+    "coax/bootstrap/checker.h": {
+      "sha256": "169296b245a685279a90dcea7831394e126df0a83772fe3ff1efbf6e1b5d628a",
+      "bytes": 120036,
+      "stable_during_read": true
+    },
+    "coax/lib/compiler/borrow-summary.coax": {
+      "sha256": "fa04aa299e27a7138ef3f1884c473030131356ed1e1a53b02da24a7175031101",
+      "bytes": 30358,
+      "stable_during_read": true
+    },
+    "coax/lib/compiler/checker.coax": {
+      "sha256": "fddbcce761a1d1b254684fe816b3699d7a64f142f021b00f57bd920aa603932f",
+      "bytes": 5494768,
+      "stable_during_read": true
+    },
+    "coax/lib/compiler/query-projection-cache.coax": {
+      "sha256": "09403bb93f2caa0b5883bb22aa3f9c566381ebe819c90ee0c12f5575de3c2135",
+      "bytes": 5966,
+      "stable_during_read": true
+    },
+    "coax/tests/borrow-summary-native.c": {
+      "sha256": "eb8a11f5851cd8e1f8665d5291a090fff221a722647ed9c5267f59547fb24e7f",
+      "bytes": 15644,
+      "stable_during_read": true
+    },
+    "coax/tests/borrow_summary_native.py": {
+      "sha256": "14b99975a5c78e0a8474f63e64b58a5a49f0f81a6766d2fec5d653eb023cbb92",
+      "bytes": 5376,
+      "stable_during_read": true
+    },
+    "coax/tests/retain-policy-native.c": {
+      "sha256": "b5ee0478d3ebe89112eb3e3bb52ee96a875a2bedd69fa29e8a7efbc5e4dacd01",
+      "bytes": 8617,
+      "stable_during_read": true
+    },
+    "coax/tests/retain_policy_native.py": {
+      "sha256": "a7f1370f14c408330274260db0e9d3442632bed605e33fcb59bdcf7450380b5d",
+      "bytes": 6225,
+      "stable_during_read": true
+    },
+    "coax/tests/retain_policy_vectors.py": {
+      "sha256": "37544417aecfb7c881fc59c7fd3f9dbf26a70e4543dc3ef6cead323cf922dd85",
+      "bytes": 5891,
+      "stable_during_read": true
+    },
+    "coax/tests/retained-borrows-native.c": {
+      "sha256": "251f2a4743e94e38f49380eccda2b93b73944aa854adefe2d4b81c49be292fbc",
+      "bytes": 13865,
+      "stable_during_read": true
+    },
+    "coax/tests/retained_borrows_native.py": {
+      "sha256": "a166415e6f4343bb36393956231815adc50e975e1b98c34cf9d3ef1dde48651b",
+      "bytes": 14864,
+      "stable_during_read": true
+    },
+    "coax/verification-borrow-origins.md": {
+      "sha256": "9d39706c51bf5dedc03ddfbe854ce44bc23ecf339b793d518178d4c822ddfd6f",
+      "bytes": 5228,
+      "stable_during_read": true
+    },
+    "coax/verification-retain-policy.md": {
+      "sha256": "d3543c4c72d71db5d2902defc2e6281a5cc092bf7f909bcbddb18131fede8229",
+      "bytes": 8437,
+      "stable_during_read": true
+    },
+    "coax/verification-retained-stores.md": {
+      "sha256": "b8e8464240b93b6bbfaff3a178580fbda8e8335907e8319e35e769df8e134cf7",
+      "bytes": 13251,
+      "stable_during_read": true
+    },
+    "coax/verification-return-borrows.md": {
+      "sha256": "89d0fdb86ef4a35cf2fd68dc0f5a26b8088c3227faf82ac1bba5a7caf7a02030",
+      "bytes": 11116,
+      "stable_during_read": true
+    },
+    "docs/desktop/coax-desktop.md": {
+      "sha256": "55454995afc395abdb3901698acf01f0bc2f76ad3440ef8d0cb783357451c6b4",
+      "bytes": 39729,
+      "stable_during_read": true
+    },
+    "docs/voice/2026-11-02-coder-voice-from-hex.md": {
+      "sha256": "b8586a4c63854180ad65b32f343f2847f1edd0b2ba872ab8412de5c776351743",
+      "bytes": 23121,
+      "stable_during_read": true
+    },
+    "docs/voice/coder-dictation.md": {
+      "sha256": "ab16c3180473802f7fff1d5aa9a6247c98c61dc40f801c4cb63de162c55e6a0c",
+      "bytes": 4616,
+      "stable_during_read": true
+    },
+    "psionic/book/PLAN.md": {
+      "sha256": "39fea943ba73851c92c683c7eff05d35e950cca17cd7b2c9b7cfd1a3ce99f6ee",
+      "bytes": 197978,
+      "stable_during_read": true
+    },
+    "psionic/book/README.md": {
+      "sha256": "3a5e144cb2c2f9c2bcbb79b47e9c8aae1f10f7605ee3c440e6cb952e472e4cb2",
+      "bytes": 124218,
+      "stable_during_read": true
+    },
+    "psionic/book/ch153-transcribe-with-parakeet.md": {
+      "sha256": "f948b23027ef9ea9ff0ce95c3e239e6a6c79ca8801f4ffb4cb9bea9c3dc328f3",
+      "bytes": 73788,
+      "stable_during_read": true
+    },
+    "psionic/book/chapters.json": {
+      "sha256": "1082714fc45654e5bb7d92b1fd1dd5f35e1b1c7f8bfbf553417c020039a4cb55",
+      "bytes": 119432,
+      "stable_during_read": true
+    },
+    "psionic/docs/parakeet.md": {
+      "sha256": "020fce25c800e1042bce3e82a7425dde6fb9dd7afe903327a4a8e951e2dc560a",
+      "bytes": 7571,
+      "stable_during_read": true
+    },
+    "psionic/platform/parakeet-face.c": {
+      "sha256": "8a36b666ba68b2ab9ab167c5e6ec33be83824215932304fb8968dfc0d1848f02",
+      "bytes": 13953,
+      "stable_during_read": true
+    },
+    "psionic/platform/parakeet-metal.c": {
+      "sha256": "03fe80f1d45efe3c2916c127519bb46cecade758fd1fcd6932e85dd27c42f327",
+      "bytes": 6974,
+      "stable_during_read": true
+    },
+    "psionic/platform/parakeet-metal.h": {
+      "sha256": "9aa93db40745801027303cb25cf7cf92882303b16a4978854e37aa8aa3e78db7",
+      "bytes": 1222,
+      "stable_during_read": true
+    },
+    "psionic/platform/psionic-parakeet.h": {
+      "sha256": "96bc7d563ba0f63f8206387435614220ab345485234879288eda2910ec430d3c",
+      "bytes": 3079,
+      "stable_during_read": true
+    },
+    "psionic/tests/parakeet-clear-gpu.c": {
+      "sha256": "a6ff488f2c9e844b3fe5b63869c4d5817c8169c855e3e7ae61cc66cc7ab79110",
+      "bytes": 2369,
+      "stable_during_read": true
+    },
+    "psionic/tests/parakeet-clear-metal.c": {
+      "sha256": "942dc76426a1c2fbee8aa2b05846e344d0b038e112f567c710aa2c90e801df47",
+      "bytes": 1508,
+      "stable_during_read": true
+    },
+    "psionic/tests/parakeet-clear-native.c": {
+      "sha256": "2e1905519222ee5effabdfe1a08cd5c599e0552b44db4ef1b72313e97f027105",
+      "bytes": 3298,
+      "stable_during_read": true
+    },
+    "verse/voice.coax": {
+      "sha256": "d5f6ad16804b49c441fb4fabc2f7890c58ed4e3f7f18f1e4c39ee4ff800d9d64",
+      "bytes": 64128,
+      "stable_during_read": true
+    }
+  },
+  "component_evidence": {
+    "docs/verification/coder-dictation-2026-11-02/README.md": {
+      "sha256": "1a0708a7b2f067bf462d1e27fd750eaba13a33491f9d25831ed3147627bdf0a6",
+      "bytes": 3505
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/README.md": {
+      "sha256": "e944b183dcfdf3a3a205b4a0999e7c27f85a65cf25f55fd9dfd345fdb1484f21",
+      "bytes": 3912
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/compiler-bootstrap16.stderr": {
+      "sha256": "e6a948e4b34d8cce15cd7b456eda2b5b74ff179281a269429843c3230981c997",
+      "bytes": 725
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/compiler-bootstrap16.stdout": {
+      "sha256": "6ff84abc099178814f2a0095dd8bfe2393c26b465d925412758f98d92a7c2c04",
+      "bytes": 4646
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/actual2m.c.gz": {
+      "sha256": "82c0090aa70b104f4e2ae139d6689ebc000af41473066f896b71a26f3df58243",
+      "bytes": 364195
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/actual2m.h.gz": {
+      "sha256": "b259e6ed70c4515e813afabada79169fe77ed9d7f398cf330046aab91f8177ad",
+      "bytes": 51796
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/actual2m.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/checker2m.c.gz": {
+      "sha256": "c1d2729302a35602ceddf577ac5caa7d53fc87959ac673a1517570fc1820a3c2",
+      "bytes": 135492
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/checker2m.h.gz": {
+      "sha256": "c4025194a0a38c3cee762448b8ce8df53cbbf16f2819464a805e628cbb11da68",
+      "bytes": 15788
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/dictation-app-link.stderr": {
+      "sha256": "0a17452d7ebff2083fa7c337c2c661d193bc0ba1b02f9cd62acf8729e52eb1b7",
+      "bytes": 723
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/dictation-app-link.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/dictation-codesign.stderr": {
+      "sha256": "913c9f55667331865ff4d31ee8da7b564836423489f54c385be73a93c3fe662c",
+      "bytes": 75
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/dictation-codesign.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/dictation-zeron-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/dictation-zeron-compile.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/dictation-zeron-face.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/dictation-zeron-face.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/borrow-summary.coax.gz": {
+      "sha256": "f0acdb125a214047d58e17fcd95ff704e6bc3ea49566dc70f47c10689470a022",
+      "bytes": 6226
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/checker.coax.gz": {
+      "sha256": "750680ee63296be5dcc36addfb97bf99a5aaa851abf863c533905539dd3d767d",
+      "bytes": 483632
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/literal-projection-cache.coax.gz": {
+      "sha256": "06d45053a061e68c830652bc23a46a8f9628ccadd9efa8b3745429d8d61d9409",
+      "bytes": 1187
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/quantity.coax.gz": {
+      "sha256": "2e779ecb4853e0c78137d32f8d5341db026ee8f715335a77e95ab30d9d06fc2d",
+      "bytes": 1953
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/query-index.coax.gz": {
+      "sha256": "2eeb01b00aa7572ca67b9389a1d0a7178307e253153039fa5e1d98ad5eb3c5d4",
+      "bytes": 1671
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/query-projection-cache.coax.gz": {
+      "sha256": "4d781cb67d389434eb5266e88327ae0cec8b9698032010fb7e0a52f087e3fbe8",
+      "bytes": 1998
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/result-flow.coax.gz": {
+      "sha256": "fde524a9f386555bd81f20291f309499c619952aece2c5d350236e615eb48b5d",
+      "bytes": 1657
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/result-handling.coax.gz": {
+      "sha256": "09a31b295cd5e447607db73a9d24d277d0b1e029ea372de384d6a8b76bc2bb25",
+      "bytes": 6913
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/retain-policy.coax.gz": {
+      "sha256": "ad58672f71780bf5ec1e4aedd02fef9d3b5a8810a9583361aa6e6c4343f58705",
+      "bytes": 4541
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/spatial-mutation.coax.gz": {
+      "sha256": "513f95f1f208e72852280e8644cf6104282484cd419acad5be8c1f720c8db27d",
+      "bytes": 1604
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/spatial-policy.coax.gz": {
+      "sha256": "ac8bf3fb6683a8ef9b6d8de91543a6ecb3a1d0ba465e147bdee662441a9e45cb",
+      "bytes": 2567
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/sum-layout.coax.gz": {
+      "sha256": "5435a9800453d3609e9d8c2e08d492e8a8f3fdaa2b200c37050e2caaf87ba502",
+      "bytes": 1295
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/sum-types.coax.gz": {
+      "sha256": "88f10bc3243a6d0dcd43603863804a1599f3c3bdda03cd82dabafb81282c75f0",
+      "bytes": 8847
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/unit-algebra.coax.gz": {
+      "sha256": "d47bd76edaf215cfcc8425a7a362a6d8abc00695e03fbd4fe78bb220e6b6c469",
+      "bytes": 2667
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/isolated-source/unit-forms.coax.gz": {
+      "sha256": "9c5b8be9ca6c2de19984d88eb79b6d93a9e04590a7cd58c2c1f74edd480d1aa2",
+      "bytes": 2278
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/probe2m-changes.json": {
+      "sha256": "e3c89e29106b2ccb5fef71e9c1a25d103daf12ce35d03d25581fb036d2d36423",
+      "bytes": 68472
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/diagnostic-build/record.json": {
+      "sha256": "2f99b9dc341585773876119387ef419dd16d01773df836ff9176c5004ba65ac1",
+      "bytes": 10406
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-app-check.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-app-check.stdout": {
+      "sha256": "78867b469017c84769370b80cd32de97d9a317eeb21d14a227f4cd5c6a2ace22",
+      "bytes": 116
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-desk256.stderr": {
+      "sha256": "b954a2e36c0be8999fd82945ac656adb5fdf354b10ad3cd521a2ee338fbb2f62",
+      "bytes": 297
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-desk256.stdout": {
+      "sha256": "11cb87c07f3f496d90574434c6255d8d468880dc64e14f270db200a89cc919ed",
+      "bytes": 8627
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-desktop-focused-v2.stderr": {
+      "sha256": "d41d7913aa2f485763f9cf481cd711b65d8bbfb3165b372a55f491ae48d174f6",
+      "bytes": 297
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-desktop-focused-v2.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-desktop-focused-v3.stderr": {
+      "sha256": "40a59094515a8f1d8a27c55c471213a48f13cb3f56da7dacbb07f075efbf3621",
+      "bytes": 234
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-desktop-focused-v3.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-desktop-focused.stderr": {
+      "sha256": "1b7723cb9f31225b4cb31fab06c41a430986e18c5802b3c7141e63593cf06e9e",
+      "bytes": 295
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-desktop-focused.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-screen-negative-v2.stderr": {
+      "sha256": "d41d7913aa2f485763f9cf481cd711b65d8bbfb3165b372a55f491ae48d174f6",
+      "bytes": 297
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-screen-negative-v2.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-screen-negative-v3.stderr": {
+      "sha256": "40a59094515a8f1d8a27c55c471213a48f13cb3f56da7dacbb07f075efbf3621",
+      "bytes": 234
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-screen-negative-v3.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-screen-negative-v4.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-screen-negative-v4.stdout": {
+      "sha256": "2e37507673a0505f04db1b4a0451012f91055100b5f02ef2c58c2c17a4732912",
+      "bytes": 2557
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-screen-negative.stderr": {
+      "sha256": "1b7723cb9f31225b4cb31fab06c41a430986e18c5802b3c7141e63593cf06e9e",
+      "bytes": 295
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/dictation-screen-negative.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/integration/dictation.png": {
+      "sha256": "92511739f1e17a1ded686992f4f4b9beedbcad113fa8a5e7eab7a7c9bb62b18e",
+      "bytes": 128626
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/integration/receipt.json": {
+      "sha256": "0a19ab3494915ce69624e0a4cf3ce814adde0c7b9758ec1bca42bb97102cd810",
+      "bytes": 1005
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/integration/silence.pcm": {
+      "sha256": "f85f2c34eb2843d2aa5951ee6e8e76985655b2e3ae2cbdd76bdfd654ecf19997",
+      "bytes": 16000
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/integration/stderr.txt": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/integration/stdout.txt": {
+      "sha256": "a51ba285c345f86650cd9b088f0643d2f774b0979d9f93b02931796c8d71f737",
+      "bytes": 241
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/integration/steps.txt": {
+      "sha256": "9c9c460ffcca9eef20914a60c2cc90f37562330d066ceaebab8358082d59049f",
+      "bytes": 580
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/record.json": {
+      "sha256": "f146b82d64d1c0282cbf240407359c5bffd224b579cc1ca7411a0e0e0f509c73",
+      "bytes": 6379
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/reused-inputs.json": {
+      "sha256": "c883d29c6fd647e20fdf5d1510338a509a9d678fe2fa145c1232d3e7e509692e",
+      "bytes": 2451
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/settings-final.stderr": {
+      "sha256": "abdb34e354346329273f90b12c387fa17b1987c3f4451a947d878fc62095a992",
+      "bytes": 218
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/badargs.stderr": {
+      "sha256": "3e16b3acbe97f31d8cb92e4eba3a576d14650f5873594f414505b27e72fab728",
+      "bytes": 54
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/badargs.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/checks.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/checks.stdout": {
+      "sha256": "13c828fa84c6e33d18d0e773b7e98fbc959892715b3e95f47d13d0dd1f0bd853",
+      "bytes": 619
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/injection.stderr": {
+      "sha256": "c65ea1b292e860921d56f2528658b1d72af30d1b302785b63ffcc83ba1323242",
+      "bytes": 59
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/injection.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/record.json": {
+      "sha256": "5254721d5f9a16bf194bbf23a233a246f9548f4e5b7a3f707f3249128acc12b0",
+      "bytes": 2536
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/usage-native.stderr": {
+      "sha256": "520a08d8f10ea995e868f0a22cb3a675e9862ce485260ed48fa7c14cd8f8545f",
+      "bytes": 61
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/usage-native.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/usage.stderr": {
+      "sha256": "520a08d8f10ea995e868f0a22cb3a675e9862ce485260ed48fa7c14cd8f8545f",
+      "bytes": 61
+    },
+    "docs/verification/coder-dictation-2026-11-02/app/tool/usage.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/README.md": {
+      "sha256": "fa1105fe9070a99876a2d113d85455e19c8127387a4c64f7ab30a5708919176e",
+      "bytes": 2726
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/README.md": {
+      "sha256": "28997828093e965447012aa0aa39ccf10b35f07458bc3411e16c489d4fc7b909",
+      "bytes": 2063
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/actual2m.c.gz": {
+      "sha256": "82c0090aa70b104f4e2ae139d6689ebc000af41473066f896b71a26f3df58243",
+      "bytes": 364195
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/actual2m.h.gz": {
+      "sha256": "b259e6ed70c4515e813afabada79169fe77ed9d7f398cf330046aab91f8177ad",
+      "bytes": 51796
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/actual2m.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/checker2m-canonical.c.gz": {
+      "sha256": "d3e188b0897f184e3bee31ff60cf250767678d70389d7e5792b7d0cad5097b41",
+      "bytes": 135448
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/checker2m-canonical.h.gz": {
+      "sha256": "f272abd0bf83242de39cae0a60962e42bf0a8444731eb7b8f66171aa7664d58c",
+      "bytes": 15755
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/checker2m-canonical.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/checker2m.c.gz": {
+      "sha256": "c1d2729302a35602ceddf577ac5caa7d53fc87959ac673a1517570fc1820a3c2",
+      "bytes": 135492
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/checker2m.h.gz": {
+      "sha256": "c4025194a0a38c3cee762448b8ce8df53cbbf16f2819464a805e628cbb11da68",
+      "bytes": 15788
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/checker2m.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/independent-source-audit.json": {
+      "sha256": "5f83c731318f893817f3f7680efbed10bbdeb00dabccb235e480fe6c72f93ac0",
+      "bytes": 1486
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/manifest.json": {
+      "sha256": "5b068eba04746ac7057eefdc47b92820d67bcea8025a125392b2d61d5c73a63c",
+      "bytes": 10231
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/probe2m-changes.json.gz": {
+      "sha256": "77443e943884d3863ca429ec4f1b75ad5afa12c2fcb5eac9031e01f4f6705ce8",
+      "bytes": 6670
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/record.json": {
+      "sha256": "a55f8007d07b38308efe067d828ab71ab49cb2c73a199f647ff52662a4bf048e",
+      "bytes": 4929
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/borrow-summary.coax.gz": {
+      "sha256": "f0acdb125a214047d58e17fcd95ff704e6bc3ea49566dc70f47c10689470a022",
+      "bytes": 6226
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/checker.coax.gz": {
+      "sha256": "750680ee63296be5dcc36addfb97bf99a5aaa851abf863c533905539dd3d767d",
+      "bytes": 483632
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/literal-projection-cache.coax.gz": {
+      "sha256": "06d45053a061e68c830652bc23a46a8f9628ccadd9efa8b3745429d8d61d9409",
+      "bytes": 1187
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/quantity.coax.gz": {
+      "sha256": "2e779ecb4853e0c78137d32f8d5341db026ee8f715335a77e95ab30d9d06fc2d",
+      "bytes": 1953
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/query-index.coax.gz": {
+      "sha256": "2eeb01b00aa7572ca67b9389a1d0a7178307e253153039fa5e1d98ad5eb3c5d4",
+      "bytes": 1671
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/query-projection-cache.coax.gz": {
+      "sha256": "4d781cb67d389434eb5266e88327ae0cec8b9698032010fb7e0a52f087e3fbe8",
+      "bytes": 1998
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/result-flow.coax.gz": {
+      "sha256": "fde524a9f386555bd81f20291f309499c619952aece2c5d350236e615eb48b5d",
+      "bytes": 1657
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/result-handling.coax.gz": {
+      "sha256": "09a31b295cd5e447607db73a9d24d277d0b1e029ea372de384d6a8b76bc2bb25",
+      "bytes": 6913
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/retain-policy.coax.gz": {
+      "sha256": "ad58672f71780bf5ec1e4aedd02fef9d3b5a8810a9583361aa6e6c4343f58705",
+      "bytes": 4541
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/spatial-mutation.coax.gz": {
+      "sha256": "513f95f1f208e72852280e8644cf6104282484cd419acad5be8c1f720c8db27d",
+      "bytes": 1604
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/spatial-policy.coax.gz": {
+      "sha256": "ac8bf3fb6683a8ef9b6d8de91543a6ecb3a1d0ba465e147bdee662441a9e45cb",
+      "bytes": 2567
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/sum-layout.coax.gz": {
+      "sha256": "5435a9800453d3609e9d8c2e08d492e8a8f3fdaa2b200c37050e2caaf87ba502",
+      "bytes": 1295
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/sum-types.coax.gz": {
+      "sha256": "88f10bc3243a6d0dcd43603863804a1599f3c3bdda03cd82dabafb81282c75f0",
+      "bytes": 8847
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/unit-algebra.coax.gz": {
+      "sha256": "d47bd76edaf215cfcc8425a7a362a6d8abc00695e03fbd4fe78bb220e6b6c469",
+      "bytes": 2667
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/budget2m-probe/source/unit-forms.coax.gz": {
+      "sha256": "9c5b8be9ca6c2de19984d88eb79b6d93a9e04590a7cd58c2c1f74edd480d1aa2",
+      "bytes": 2278
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/README.md": {
+      "sha256": "1aaf9692424617e42d42cdcc58175105db56e23a9130d627c285c31f3e3a03dc",
+      "bytes": 2225
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/actual24.stderr": {
+      "sha256": "15bccc522be3476697817c4faddb4dbb1d62d1e79abb8be039ac72bba2df8a2f",
+      "bytes": 208
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/checker24-self.c.gz": {
+      "sha256": "f4d4b77b5df7949d419d23d997538288b91e017cc92d0933d5ebce5db6d0b61f",
+      "bytes": 135444
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/checker24-self.h.gz": {
+      "sha256": "f272abd0bf83242de39cae0a60962e42bf0a8444731eb7b8f66171aa7664d58c",
+      "bytes": 15755
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/checker24.c.gz": {
+      "sha256": "f4d4b77b5df7949d419d23d997538288b91e017cc92d0933d5ebce5db6d0b61f",
+      "bytes": 135444
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/checker24.h.gz": {
+      "sha256": "f272abd0bf83242de39cae0a60962e42bf0a8444731eb7b8f66171aa7664d58c",
+      "bytes": 15755
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/full-compiler24.h.gz": {
+      "sha256": "ddbe9bf4fbdb59b8dadcc2ecc3adf9339f94b92d214a03644d0bfc4472dc1792",
+      "bytes": 37062
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/full-compiler24.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/full-compiler24.stdout.gz": {
+      "sha256": "509e85848cbaf2402266d90cf1e86a0218a90780f0265e74cd78ee4d0ee61830",
+      "bytes": 287014
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/manifest.json": {
+      "sha256": "cd4376e0253f0230d9762ec94315869a405b0c7b55759bb3cf32a98fe2433b49",
+      "bytes": 34126
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/native-drivers/retain-policy-native.c.gz": {
+      "sha256": "7ba20ecb957912e90d4458c93150e8dc8b6ea11703d37d9ae66692f6deb4947b",
+      "bytes": 2843
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/native-drivers/retain_policy_native.py.gz": {
+      "sha256": "5e78c58b76e070e51b8d511ac0bb0808a03b2cec6407d45ec5120a86a95e1785",
+      "bytes": 2286
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/native-drivers/retained-borrows-native.c.gz": {
+      "sha256": "e5779bfed63f93c54423e595d8054353c928ef45251dd2c8e51d20df7f6e9635",
+      "bytes": 4392
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/native-drivers/retained_borrows_native.py.gz": {
+      "sha256": "4a80533261bc5b9d5f4c6352b84023158b78e0c41f0877810ddf937d514fe52a",
+      "bytes": 4713
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/path24.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/path24.stdout.gz": {
+      "sha256": "d67b19aec4435d0f1db7dd4420c2ff2d4b1cfa8e92dbf10f75466cc112b84166",
+      "bytes": 390
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/O0-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/O0-compile.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/O0-run.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/O0-run.stdout.gz": {
+      "sha256": "d1afa957eeab35c54129fe891673dc26cb3d55a999e8a91d90da72540ea4cefe",
+      "bytes": 136
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/O2-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/O2-compile.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/O2-run.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/O2-run.stdout.gz": {
+      "sha256": "d1afa957eeab35c54129fe891673dc26cb3d55a999e8a91d90da72540ea4cefe",
+      "bytes": 136
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/emission-profile.json.gz": {
+      "sha256": "b61789bf39a6fb9facfefd4602c32c3466e484f468bb297d5ca455c7b62fa738",
+      "bytes": 470
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/emit.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/emit.stdout.gz": {
+      "sha256": "b7e38199a29f55f6c86024aba524fe666ada21e20d089419334bb2cb0cb6b53a",
+      "bytes": 8358
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/qualification.json.gz": {
+      "sha256": "69cb5ed21ad505a823eebcf256f2380e60987904edfc45d360b0409d9aded58c",
+      "bytes": 3123
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/retain-policy-vectors.inc.gz": {
+      "sha256": "00e5b89ea9c679e8fe3b8cb97c462d8b06bfab97484d8c218cbad3b0bb15d648",
+      "bytes": 10585
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/retain-policy.c.gz": {
+      "sha256": "b7e38199a29f55f6c86024aba524fe666ada21e20d089419334bb2cb0cb6b53a",
+      "bytes": 8358
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/retain-policy.h.gz": {
+      "sha256": "d3aef5cfba777bc48e67e6ef9e9596a761868625e01ca7821396c7730a14d947",
+      "bytes": 2904
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/sanitized-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/sanitized-compile.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/sanitized-run.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/policy-native24/sanitized-run.stdout.gz": {
+      "sha256": "d1afa957eeab35c54129fe891673dc26cb3d55a999e8a91d90da72540ea4cefe",
+      "bytes": 136
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/record.json": {
+      "sha256": "3878237b499a89873f62987750be93367be058e923b0b45b00b0d377f5635d29",
+      "bytes": 7794
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/O0-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/O0-compile.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/O0-run.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/O0-run.stdout.gz": {
+      "sha256": "a2ab8174ca125d7674fd494c37fdc1f2e6d07ef3bfa81df795617a2a2f4e9f53",
+      "bytes": 1454
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/O2-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/O2-compile.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/O2-run.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/O2-run.stdout.gz": {
+      "sha256": "a2ab8174ca125d7674fd494c37fdc1f2e6d07ef3bfa81df795617a2a2f4e9f53",
+      "bytes": 1454
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/checker.c.gz": {
+      "sha256": "b81daa055d2ea6afe5802929bd0ed8a3a106a17abc14da424cba0ce407f6e3a7",
+      "bytes": 135501
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/checker.h.gz": {
+      "sha256": "cbfc58b648d98b238da90819bd124c74dcbd6e9c7a965ab666987b2627304d01",
+      "bytes": 15799
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/checker.profile.json.gz": {
+      "sha256": "9c768ef8a0d7b4fedb2ec2658d585cf47ceaa34a4349b58be340cabf9f64c2fa",
+      "bytes": 1132
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/emit-checker.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/emit-checker.stdout.gz": {
+      "sha256": "b81daa055d2ea6afe5802929bd0ed8a3a106a17abc14da424cba0ce407f6e3a7",
+      "bytes": 135501
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/emit-lexer.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/emit-lexer.stdout.gz": {
+      "sha256": "a196bcc29f64d55843e9cac64f7e7e05a8765ae6b0128d42b8b5397deea366b3",
+      "bytes": 12589
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/emit-parser.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/emit-parser.stdout.gz": {
+      "sha256": "c63a36e2833fee89aacd31a23c78311b1b11ada6689ecca63580268a86861e60",
+      "bytes": 20990
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/lexer.c.gz": {
+      "sha256": "a196bcc29f64d55843e9cac64f7e7e05a8765ae6b0128d42b8b5397deea366b3",
+      "bytes": 12589
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/lexer.h.gz": {
+      "sha256": "41a5e2ef057fba44229accf808158aed5ed8f8f6ecf9e8f04e8724435bd1551f",
+      "bytes": 2968
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/lexer.profile.json.gz": {
+      "sha256": "fa11caf5d23ea859b910937c14008bfc180d7a18b0734a0e4d2cafa14d7d01d9",
+      "bytes": 405
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/parser.c.gz": {
+      "sha256": "c63a36e2833fee89aacd31a23c78311b1b11ada6689ecca63580268a86861e60",
+      "bytes": 20990
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/parser.h.gz": {
+      "sha256": "b18adf768757234e14ecb48f58044c9328ec74464f860cca9a9dc41101249b62",
+      "bytes": 4330
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/parser.profile.json.gz": {
+      "sha256": "c9caa2f98abd547b4444ff3cc5c58d86ea63ae7df36ff3bc9c21f09a1c265001",
+      "bytes": 407
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/qualification.json.gz": {
+      "sha256": "9ac4d4d5bfbb96e674cdfa29bc896fcb1f1073c4a75ca13a9e97758eecee5be1",
+      "bytes": 12531
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/retained-borrow-native-vectors.inc.gz": {
+      "sha256": "ee3869c7aeb58992f03d9181faa48e855209e0c154abd0eb1e973764913244ae",
+      "bytes": 1377
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/sanitized-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/sanitized-compile.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/sanitized-run.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/retained-native24/sanitized-run.stdout.gz": {
+      "sha256": "a2ab8174ca125d7674fd494c37fdc1f2e6d07ef3bfa81df795617a2a2f4e9f53",
+      "bytes": 1454
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/borrow-summary.coax.gz": {
+      "sha256": "f0acdb125a214047d58e17fcd95ff704e6bc3ea49566dc70f47c10689470a022",
+      "bytes": 6226
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/checker.coax.gz": {
+      "sha256": "1a74008069d7ac18504312d6d98399dbdbb7e52037ac862fdb673efe53e672e9",
+      "bytes": 483630
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/literal-projection-cache.coax.gz": {
+      "sha256": "06d45053a061e68c830652bc23a46a8f9628ccadd9efa8b3745429d8d61d9409",
+      "bytes": 1187
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/quantity.coax.gz": {
+      "sha256": "2e779ecb4853e0c78137d32f8d5341db026ee8f715335a77e95ab30d9d06fc2d",
+      "bytes": 1953
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/query-index.coax.gz": {
+      "sha256": "2eeb01b00aa7572ca67b9389a1d0a7178307e253153039fa5e1d98ad5eb3c5d4",
+      "bytes": 1671
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/query-projection-cache.coax.gz": {
+      "sha256": "4d781cb67d389434eb5266e88327ae0cec8b9698032010fb7e0a52f087e3fbe8",
+      "bytes": 1998
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/result-flow.coax.gz": {
+      "sha256": "fde524a9f386555bd81f20291f309499c619952aece2c5d350236e615eb48b5d",
+      "bytes": 1657
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/result-handling.coax.gz": {
+      "sha256": "09a31b295cd5e447607db73a9d24d277d0b1e029ea372de384d6a8b76bc2bb25",
+      "bytes": 6913
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/retain-policy.coax.gz": {
+      "sha256": "ad58672f71780bf5ec1e4aedd02fef9d3b5a8810a9583361aa6e6c4343f58705",
+      "bytes": 4541
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/spatial-mutation.coax.gz": {
+      "sha256": "513f95f1f208e72852280e8644cf6104282484cd419acad5be8c1f720c8db27d",
+      "bytes": 1604
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/spatial-policy.coax.gz": {
+      "sha256": "ac8bf3fb6683a8ef9b6d8de91543a6ecb3a1d0ba465e147bdee662441a9e45cb",
+      "bytes": 2567
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/sum-layout.coax.gz": {
+      "sha256": "5435a9800453d3609e9d8c2e08d492e8a8f3fdaa2b200c37050e2caaf87ba502",
+      "bytes": 1295
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/sum-types.coax.gz": {
+      "sha256": "88f10bc3243a6d0dcd43603863804a1599f3c3bdda03cd82dabafb81282c75f0",
+      "bytes": 8847
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/unit-algebra.coax.gz": {
+      "sha256": "d47bd76edaf215cfcc8425a7a362a6d8abc00695e03fbd4fe78bb220e6b6c469",
+      "bytes": 2667
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/source/unit-forms.coax.gz": {
+      "sha256": "9c5b8be9ca6c2de19984d88eb79b6d93a9e04590a7cd58c2c1f74edd480d1aa2",
+      "bytes": 2278
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-asan-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-asan-compile.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-asan.stdout": {
+      "sha256": "a2e6e94a4a9a9cc69b6d7e74fa518be152fccf7aed7e865c3c2a01f8e57520cc",
+      "bytes": 40
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-generate.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-main.c.gz": {
+      "sha256": "bf4420c03bc9874ce62fb9a6cecfa5e9abb874bd583ab21181d8e7c61fd42714",
+      "bytes": 209
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-o0-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-o0-compile.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-o0.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-o0.stdout": {
+      "sha256": "a2e6e94a4a9a9cc69b6d7e74fa518be152fccf7aed7e865c3c2a01f8e57520cc",
+      "bytes": 40
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-o2-compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-o2-compile.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-o2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24-o2.stdout": {
+      "sha256": "a2e6e94a4a9a9cc69b6d7e74fa518be152fccf7aed7e865c3c2a01f8e57520cc",
+      "bytes": 40
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24.c.gz": {
+      "sha256": "96980cb3ff6344191210a0227b023f3d0064ad7dcde76e8e0f97b5123c978ce0",
+      "bytes": 138929
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24.coax.gz": {
+      "sha256": "fa2047ce14695dc6da370bed5cd3f1d25337d9c7c860281f0a893a61ddb0faf1",
+      "bytes": 1931
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native24.h.gz": {
+      "sha256": "d07cf85aafb0b8cd020c34447ae2fc33949d4b2ca04a9acc52eac73a26dd7ee3",
+      "bytes": 15806
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/current24/summary-native24/native256-cases.json": {
+      "sha256": "2ae76941982c067bc65c28bb62974b0920ea49d11d30f3c29665d23001b0b3cf",
+      "bytes": 586
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/README.md": {
+      "sha256": "a2f849c47c23265221710360f45c5397d5ed44965bb91a48924059766bf6cd93",
+      "bytes": 2382
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary-16-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary-16-asan.stdout": {
+      "sha256": "f54996ae16b39c2376ce5ea07358a4b659460fe167f1e41288c304ad81416e9d",
+      "bytes": 134
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary-16-check.log": {
+      "sha256": "062e6debb512dd048042ca49f37c5d8f33331aeafb6f128eb50b8a7796dab4d7",
+      "bytes": 3145
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary-16-o0.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary-16-o0.stdout": {
+      "sha256": "f54996ae16b39c2376ce5ea07358a4b659460fe167f1e41288c304ad81416e9d",
+      "bytes": 134
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary-16-o2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary-16-o2.stdout": {
+      "sha256": "f54996ae16b39c2376ce5ea07358a4b659460fe167f1e41288c304ad81416e9d",
+      "bytes": 134
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary-native.c.gz": {
+      "sha256": "3b34091a35be15907e91be25dd8ff5374053100ca98622b589f0389e00115967",
+      "bytes": 4014
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary.c.gz": {
+      "sha256": "cb993efb84bf637772408e86ac161276bf428979487cb483df20667d0c0d9932",
+      "bytes": 6047
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary.coax.gz": {
+      "sha256": "9fac7429e835e80f75d00221af646f5e3afb62d67322384ee6fa24d936100de3",
+      "bytes": 6220
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow-summary.h.gz": {
+      "sha256": "7273c32bc30a0fac0a88a24e12196e0c9ce48d6cbaf48bacfac143456a33e44c",
+      "bytes": 1836
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/borrow_summary_native.py.gz": {
+      "sha256": "6d5e9564c679ae695bd024f2430d26d4ba69fd1062153b2ee98f9faddeac54b9",
+      "bytes": 2057
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/manifest.json": {
+      "sha256": "8b8509c473a76a42f09f75748d3c54eee851c3f1ea3f5083c0649e29b18e3d5a",
+      "bytes": 2074
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation/record.json": {
+      "sha256": "079d905c5fbdb04362bd5ab5048ede45f66aa776b61a0eff3bf2d8903f264029",
+      "bytes": 5462
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/README.md": {
+      "sha256": "4e11ec133792bc92b319c92a7d2f9e1412cf9e44e305f1e93db6d81fb7e6f4a0",
+      "bytes": 1147
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/asan.stdout": {
+      "sha256": "754410018d60cb9335405b74b5b490db1ea2eccaed94b2812fd1add72bfc755b",
+      "bytes": 134
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/borrow-summary.c.gz": {
+      "sha256": "070446f8e45a0751b16d4a0d344cb02d06c7e4c61763b3466b1b40f09d6e4b53",
+      "bytes": 6046
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/borrow-summary.h.gz": {
+      "sha256": "6c67a1ec223ed775c681716acd43be1554178fc12c7de8e1d25717fd1208824f",
+      "bytes": 1840
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/check.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/check.stdout": {
+      "sha256": "34a3ad12b6d60282107890e0b799914207215822767fe3a5184ff0bc9c96bef1",
+      "bytes": 3156
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/generate.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/manifest.json": {
+      "sha256": "a3e148bf085d67b8b65aa906b23f5b33d38346e70ecbd4f9731e33fc048e110b",
+      "bytes": 4138
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/o0.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/o0.stdout": {
+      "sha256": "754410018d60cb9335405b74b5b490db1ea2eccaed94b2812fd1add72bfc755b",
+      "bytes": 134
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/o2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/o2.stdout": {
+      "sha256": "754410018d60cb9335405b74b5b490db1ea2eccaed94b2812fd1add72bfc755b",
+      "bytes": 134
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/record.json": {
+      "sha256": "eb6f0fb32fc6a1a24a3121f5051e4babd7d1cf86d12c0a47c629e013832fb93a",
+      "bytes": 3340
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/source/borrow-summary-native.c.gz": {
+      "sha256": "2ef60bc527010d8e17a0d630d21222424e6e380930e3647a835b1bd56b9c992b",
+      "bytes": 4021
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/source/borrow-summary.coax.gz": {
+      "sha256": "f0acdb125a214047d58e17fcd95ff704e6bc3ea49566dc70f47c10689470a022",
+      "bytes": 6226
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/foundation24/source/borrow_summary_native.py.gz": {
+      "sha256": "52f82ba18146ea9816f3e5e1ce01996289b69fc45589b7ed1684780c2b80a861",
+      "bytes": 2056
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/README.md": {
+      "sha256": "e532c9e8e73ee4f3a16046d6c263161f7c36885ff8f01144ec6ad1ac198870bc",
+      "bytes": 2067
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/checker-canonical.c.gz": {
+      "sha256": "a3410128defeb33036c2c6d6a575e216aad126b5592a4446d44816b6e0fa36f8",
+      "bytes": 131813
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/checker-canonical.h.gz": {
+      "sha256": "02720f3615dc8bdfc299fe8672f77d068dd1ed1742c3e9e7784a049f3a697278",
+      "bytes": 15491
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/control16-append-limit15.stderr": {
+      "sha256": "21f5c13aa0497329eee4d146e25d3364c279b593560631f59c1c6bc5baa3447a",
+      "bytes": 1800
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/control16-append-limit15.stdout.gz": {
+      "sha256": "84385c54f94769085d2febc64369b29dc65f3279e2b1fab32a8c6a0128d8f81d",
+      "bytes": 461
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/control16-append-limit17.stderr": {
+      "sha256": "b90e42b68fdedf3c023d183b58997f9494c178561befe76cdafe04ddf091af15",
+      "bytes": 1564
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/control16-append-limit17.stdout.gz": {
+      "sha256": "ae8cde3264a34ff683f47572dba8ce43d59ebed38c1cb47e8907aed5ba8d7575",
+      "bytes": 467
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/control16-projection-eight.stderr": {
+      "sha256": "6a002f874d58cb6b12d73b53de2a3364e9b119baf7bb851f44771e8447590230",
+      "bytes": 472
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/control16-projection-eight.stdout.gz": {
+      "sha256": "3c35fa84c5ad8ccc8503eb6c631fa2c89c7ee248ff332c9d0e1d8aa61baf1f28",
+      "bytes": 473
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/control16-projection-high-index.stderr": {
+      "sha256": "d7004000e3615fb688d06704014b2ff99de684da70cb59f45b58dcb3217b1ad3",
+      "bytes": 790
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/control16-projection-high-index.stdout.gz": {
+      "sha256": "9ee527c40516a4ae9abea2d2219743abb63003371cf421f5aa9b9e4d67d527e1",
+      "bytes": 476
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/controls16-results.json": {
+      "sha256": "9b9edf12d59c7d621c99783c7be466d7794a3209860dd50fb6251db9849c5ed4",
+      "bytes": 3249
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/dictation-compiler-bootstrap.stderr": {
+      "sha256": "e6a948e4b34d8cce15cd7b456eda2b5b74ff179281a269429843c3230981c997",
+      "bytes": 725
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/dictation-compiler-bootstrap.stdout.gz": {
+      "sha256": "e51c5d9e3a8ffdd4d71be23446cb433e6033f95c6447960cae95a1fb9a8f12cd",
+      "bytes": 533
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/effects64.json.gz": {
+      "sha256": "4b5c54502f4e60b483d4af256d29ac6aa244bfe511b5131658eb197043cc3388",
+      "bytes": 2009
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/effects64.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/effects64.stdout.gz": {
+      "sha256": "89e45f55e2fe7808084426420180c7d695a32ce3d104db6cb21383f0fa840b98",
+      "bytes": 810
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/full-compiler16.h.gz": {
+      "sha256": "3029f9f0b8bce4069210643c5439340dbc5dd25e94ae9d3112aaf0d233c4120d",
+      "bytes": 36342
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/full-compiler16.stderr.gz": {
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "bytes": 20
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/full-compiler16.stdout.gz": {
+      "sha256": "f54c3e9c286ee0b09f656c846647ffd4fc45701ea977279403261945684b994c",
+      "bytes": 279213
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/manifest.json": {
+      "sha256": "d251c46b25fbf2cd25ba10cff4e823777a8d5d914a02b5a6c8992f2bd624b2c6",
+      "bytes": 18171
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16-asan.stdout.gz": {
+      "sha256": "96babadb087c6052a381f18dda4dc8cd2100dcd4df6da3dabd4aa2fba675e828",
+      "bytes": 49
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16-cases.json": {
+      "sha256": "ccc51fda4c564d7aa99c6c55fa5daaabd15f79de32cb69dc4951cbcdff58ecde",
+      "bytes": 1088
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16-generate.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16-main.c": {
+      "sha256": "b85172271456ad46c8ef995f4f2248b0faff8a3b634fa6f452d47834655ad8a2",
+      "bytes": 615
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16-o0.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16-o0.stdout.gz": {
+      "sha256": "96babadb087c6052a381f18dda4dc8cd2100dcd4df6da3dabd4aa2fba675e828",
+      "bytes": 49
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16-o2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16-o2.stdout.gz": {
+      "sha256": "96babadb087c6052a381f18dda4dc8cd2100dcd4df6da3dabd4aa2fba675e828",
+      "bytes": 49
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16.c.gz": {
+      "sha256": "321e23429f6d74e65d3809d7c35d57c1edcc3392ff9232373c6df80926c17878",
+      "bytes": 137073
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16.coax.gz": {
+      "sha256": "3c80e7b005e77f31869a187bf7ec270e387c9b0731b22c20f5c3703877d8fe24",
+      "bytes": 2828
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/native16.h.gz": {
+      "sha256": "bab709685e905c5f208d21634e776ca06b5d275e81a9927f4d6ea31fd9f1b6bb",
+      "bytes": 15548
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/path16-v2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/path16-v2.stdout.gz": {
+      "sha256": "1f9b581afc6ee692f1a712b63159a46ba2f625dece6850e9e09148d6e42ee3c2",
+      "bytes": 469
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/record.json": {
+      "sha256": "d9efd09dd8d21baf071be7bd97d10010427f8d67c62bcb02e5759709f2dbfeec",
+      "bytes": 3627
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/retained16.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/retained16.stdout.gz": {
+      "sha256": "7abea7721cf101a53ae4a898b7b5b5a5284d7a6e1541a0b23203f1e99c9c57c8",
+      "bytes": 3954
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/borrow-summary.coax.gz": {
+      "sha256": "82932574cd42d3aa1d19d8350b0e29bebe237d06d65aebfc24e9cb86dd64fcdf",
+      "bytes": 6182
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/checker.coax.gz": {
+      "sha256": "b4014f319b49b79d6c66d7b8a33e1f24f64ab8cdef04b35a87444b9f942578a4",
+      "bytes": 462475
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/literal-projection-cache.coax.gz": {
+      "sha256": "b12724d5a4fc2bf30027f9dbce1fa931553a846c2e7157961c6f1befd03cdd2c",
+      "bytes": 1186
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/quantity.coax.gz": {
+      "sha256": "ec08b4bbf81e57a77ea0657389861e02c2ba1921139857238c7681261ae7703c",
+      "bytes": 1953
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/query-index.coax.gz": {
+      "sha256": "4f3792cb914bddaee4ea4a7e9c5ddbc1e781dbf37ab974d451a23f8afddd260e",
+      "bytes": 1671
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/query-projection-cache.coax.gz": {
+      "sha256": "1929a894ee7630aad309a62586e725d78a415399b6950949269802cbc2c2ecf6",
+      "bytes": 1997
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/result-flow.coax.gz": {
+      "sha256": "10a0693b1f3f055eaf1854573352da016acd9dbd9ead8817112b633383b795a1",
+      "bytes": 1657
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/result-handling.coax.gz": {
+      "sha256": "f9bab367b09083646f835a95e54e4a8eefb468a59b095f0e2de70a5e851472d8",
+      "bytes": 6804
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/retain-policy.coax.gz": {
+      "sha256": "339193ef243183eb4e1e5df20638f61ed9a21f2e21bd15a791c303de19d6ae0c",
+      "bytes": 4520
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/spatial-mutation.coax.gz": {
+      "sha256": "935ffb867dd7dac99734ad23a50133a83864ed175b3b47ddc48f9b252aecb48a",
+      "bytes": 1604
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/spatial-policy.coax.gz": {
+      "sha256": "b9e8ffe7e487d32a613c6679f97a9cd0d992a9d71a150cbcc78c66af323f6041",
+      "bytes": 2562
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/sum-layout.coax.gz": {
+      "sha256": "5420c91bd0038b2f25f17e707e70799f2cafd9e792122cc8fd48c27964a9d931",
+      "bytes": 1295
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/sum-types.coax.gz": {
+      "sha256": "a08bbc2e4323670aa65e51d38a0952ff4e2cc831ad446a120466ff4644c11f23",
+      "bytes": 8762
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/unit-algebra.coax.gz": {
+      "sha256": "97429bdac05a7f54e2c2d259eaccb24cdbd9f61f6e34ead237c129bc01b72896",
+      "bytes": 2667
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/path16/source/unit-forms.coax.gz": {
+      "sha256": "e025fe8d72ddee668b11b8e7ea0cea73a16d33c20dcc3dc85b5c80a1d52bdf4e",
+      "bytes": 2271
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/README.md": {
+      "sha256": "b08b765169754f7476db8b66105b9fab0f69efd81232c671f79fc80437fa8dca",
+      "bytes": 1644
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/actual128.stderr": {
+      "sha256": "da539032432b400a4d01caa2d55a0b74ff56114784cbb4c30366cea71f527fa3",
+      "bytes": 321
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/actual256.stderr": {
+      "sha256": "9b167a8ef4841bfb0e48b36600424c9cbe3765b3cb2a593858532cd9e6b2d2f6",
+      "bytes": 160
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/checker256-ready.c.gz": {
+      "sha256": "13e7b0eb3dbce0d05228c50a7ed8880ec20114158dc2aeb16c0ef7174fe202c4",
+      "bytes": 135453
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/checker256-ready.h.gz": {
+      "sha256": "34b386352622b1c78da707679afc461692778236b60f875bdcbf06ec8b9cb99e",
+      "bytes": 15771
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/checker256-self.c.gz": {
+      "sha256": "13e7b0eb3dbce0d05228c50a7ed8880ec20114158dc2aeb16c0ef7174fe202c4",
+      "bytes": 135453
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/checker256-self.h.gz": {
+      "sha256": "34b386352622b1c78da707679afc461692778236b60f875bdcbf06ec8b9cb99e",
+      "bytes": 15771
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/checker256-self.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/control256-pending-duplicate.stderr": {
+      "sha256": "c2b7a43b0045d546370cc751e6b4a9c167e7bab867a0e3516c156fb95a03a9ee",
+      "bytes": 544
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/control256-pending-duplicate.stdout": {
+      "sha256": "b8cf9c0e4715564225d40a0042faa571ef3557625801667c46613365527c2ab1",
+      "bytes": 277
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/control256-pending-empty-span.stderr": {
+      "sha256": "c5836c90c3f7a6e79314adfe5fe882d12434af71ad10c62a7abf6555a06af989",
+      "bytes": 550
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/control256-pending-empty-span.stdout": {
+      "sha256": "13617a811f554b18add6fddbecd29ea33bfb6c4ffa09a51d6223c31a9c6a7c58",
+      "bytes": 278
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/control256-summary255.stderr": {
+      "sha256": "ec3fc464f737908a4d61a309419cdb4db4f4e59cd9ab6cdee46baf94d023224c",
+      "bytes": 785
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/control256-summary255.stdout": {
+      "sha256": "8097d63b9550eebf0a446b00eb4278883e135e248d65f13eeb8806d2cae124cd",
+      "bytes": 275
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/control256-summary257.stderr": {
+      "sha256": "3e308fc84e16385974f38466db1186138d5c687505e5f7df987594e7978e48e1",
+      "bytes": 420
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/control256-summary257.stdout": {
+      "sha256": "3862ded89e7bfc0ced8a7e84a174c1e7ec36eca8701247bc9f4f40fa998c2a9f",
+      "bytes": 243
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/controls256-results.json": {
+      "sha256": "852008df9cb113f0b95316dde11ba476e70dea741def3262cb1b2dd407b29450",
+      "bytes": 3151
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/effects128.json.gz": {
+      "sha256": "5ad904d640166c07baa15d20c12c7991fe40a59831f07b368de49ee1697db9f5",
+      "bytes": 3563
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/effects128.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/effects128.stdout.gz": {
+      "sha256": "ca3ee78b91bcd3ed765cd88846cb0be01340a82ef01311e684b1c420b05798ea",
+      "bytes": 807
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/full-compiler256.h.gz": {
+      "sha256": "ab8352e2befd830e267dc691de34ff0844a52e4af4111e86d295f640f3c9f3f0",
+      "bytes": 37083
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/full-compiler256.stderr.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/full-compiler256.stdout.gz": {
+      "sha256": "33fca2c18a2ccf55f0da210d0864ce448200e73718e9265b02146d8517039648",
+      "bytes": 287008
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/manifest.json": {
+      "sha256": "1ad3b97219892a5bbb85eb9375b61debdc50eac9144aabbde4dd0f468f990262",
+      "bytes": 17039
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256-asan.stdout": {
+      "sha256": "fd05c64f080e17cb793567aba1bd4e31df395c81cdf8b7e8aee784d260889247",
+      "bytes": 33
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256-cases.json": {
+      "sha256": "2ae76941982c067bc65c28bb62974b0920ea49d11d30f3c29665d23001b0b3cf",
+      "bytes": 586
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256-generate.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256-main.c": {
+      "sha256": "e4f286564d1c79924cbc216113c7b9af9ed4865fe74740d3e46d793c4b838a4b",
+      "bytes": 428
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256-o0.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256-o0.stdout": {
+      "sha256": "fd05c64f080e17cb793567aba1bd4e31df395c81cdf8b7e8aee784d260889247",
+      "bytes": 33
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256-o2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256-o2.stdout": {
+      "sha256": "fd05c64f080e17cb793567aba1bd4e31df395c81cdf8b7e8aee784d260889247",
+      "bytes": 33
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256.c.gz": {
+      "sha256": "6c0b9a68ec1ab1d2cb120360227ed172d0fe7f793218d418c505937af7a3d725",
+      "bytes": 138937
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256.coax.gz": {
+      "sha256": "016b29e302d1d6f1afe5e84d732565abf81a68e0514480b43018e52defe0608f",
+      "bytes": 1931
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/native256.h.gz": {
+      "sha256": "83132c46324d1e26b9aa09bc0ad106a6e63835cefbf239e05d3b6014b2a343b7",
+      "bytes": 15823
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/record.json": {
+      "sha256": "b03370ab4bc132dc1e515f0f1a731e9623412d137d6145654f7c9906fa16f28b",
+      "bytes": 3544
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/borrow-summary.coax.gz": {
+      "sha256": "9fac7429e835e80f75d00221af646f5e3afb62d67322384ee6fa24d936100de3",
+      "bytes": 6220
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/checker.coax.gz": {
+      "sha256": "1b172b5bd19cd9088469ae1e84e0ee86f8cb3cd1f5d8e2f8f79523c414ea8ef7",
+      "bytes": 483593
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/literal-projection-cache.coax.gz": {
+      "sha256": "06d45053a061e68c830652bc23a46a8f9628ccadd9efa8b3745429d8d61d9409",
+      "bytes": 1187
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/quantity.coax.gz": {
+      "sha256": "2e779ecb4853e0c78137d32f8d5341db026ee8f715335a77e95ab30d9d06fc2d",
+      "bytes": 1953
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/query-index.coax.gz": {
+      "sha256": "2eeb01b00aa7572ca67b9389a1d0a7178307e253153039fa5e1d98ad5eb3c5d4",
+      "bytes": 1671
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/query-projection-cache.coax.gz": {
+      "sha256": "4d781cb67d389434eb5266e88327ae0cec8b9698032010fb7e0a52f087e3fbe8",
+      "bytes": 1998
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/result-flow.coax.gz": {
+      "sha256": "fde524a9f386555bd81f20291f309499c619952aece2c5d350236e615eb48b5d",
+      "bytes": 1657
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/result-handling.coax.gz": {
+      "sha256": "09a31b295cd5e447607db73a9d24d277d0b1e029ea372de384d6a8b76bc2bb25",
+      "bytes": 6913
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/retain-policy.coax.gz": {
+      "sha256": "ad58672f71780bf5ec1e4aedd02fef9d3b5a8810a9583361aa6e6c4343f58705",
+      "bytes": 4541
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/spatial-mutation.coax.gz": {
+      "sha256": "513f95f1f208e72852280e8644cf6104282484cd419acad5be8c1f720c8db27d",
+      "bytes": 1604
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/spatial-policy.coax.gz": {
+      "sha256": "ac8bf3fb6683a8ef9b6d8de91543a6ecb3a1d0ba465e147bdee662441a9e45cb",
+      "bytes": 2567
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/sum-layout.coax.gz": {
+      "sha256": "5435a9800453d3609e9d8c2e08d492e8a8f3fdaa2b200c37050e2caaf87ba502",
+      "bytes": 1295
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/sum-types.coax.gz": {
+      "sha256": "88f10bc3243a6d0dcd43603863804a1599f3c3bdda03cd82dabafb81282c75f0",
+      "bytes": 8847
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/unit-algebra.coax.gz": {
+      "sha256": "d47bd76edaf215cfcc8425a7a362a6d8abc00695e03fbd4fe78bb220e6b6c469",
+      "bytes": 2667
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/source/unit-forms.coax.gz": {
+      "sha256": "9c5b8be9ca6c2de19984d88eb79b6d93a9e04590a7cd58c2c1f74edd480d1aa2",
+      "bytes": 2278
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/summary256.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-fix/summary256/summary256.stdout.gz": {
+      "sha256": "ca642d7ba730ec6de88a3ee1e3ce0957417b478791d43de08d1c006cf72a9ab1",
+      "bytes": 369
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/README.md": {
+      "sha256": "5dc44fc2bb312873579e386bb1f1886594695d3dea32d62f0a26fdd3a351f610",
+      "bytes": 738
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/baseline-closure.json": {
+      "sha256": "fa7d8360c28a969ae7c812f1b91039c127d7900d6385516e494548114e614343",
+      "bytes": 9746
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/claude-options-fields-source.coax.gz": {
+      "sha256": "3350daf73f3f4db721ba415a03d37ec7c43a53b25b33108d3ba5c83946e6f7f2",
+      "bytes": 22420
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/claude-options-source.coax.gz": {
+      "sha256": "f0766c3d29676ee2bb1a13d648150c4382d84c4f9a792f3dfdc6b6613a74a61f",
+      "bytes": 21880
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/claude-reset-source.coax.gz": {
+      "sha256": "eb47b41dfece5f4016b03d8981f6a57d1373a98c55714fbfdb12c6cc07136043",
+      "bytes": 21891
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/record.json": {
+      "sha256": "9b497f04aa4966fdec9e95fdf80beee71fa1c95d3847e1b2f7aa7d87e8bc22cd",
+      "bytes": 3237
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/resource-lldb.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/resource-lldb.stdout.gz": {
+      "sha256": "30fd50577920c00cabbe9ebd05740e1c550b1921f161084a22d9413e9b77cb67",
+      "bytes": 1020
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/resource.lldb": {
+      "sha256": "d280a821c66a66b10abfd08c162daee08e50ba2b9b354ee488fd73ee77faf1c8",
+      "bytes": 297
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/screen-catalog-source.coax.gz": {
+      "sha256": "7330c928ed99eb8766372f861bbc0e3fe32648474306d3b2a242ab8eb99fefaa",
+      "bytes": 20437
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-baseline-newcache.stderr": {
+      "sha256": "ce58a1471efd289574a1a15f25378037187bd599d91f4ff6bda03cd0e9684b1d",
+      "bytes": 230
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-baseline.stderr": {
+      "sha256": "ce58a1471efd289574a1a15f25378037187bd599d91f4ff6bda03cd0e9684b1d",
+      "bytes": 230
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-catalog.stderr": {
+      "sha256": "67ffa6316e8a03cc416325d76cc117c8d5baeca9419115dee2deecac37cb1ec2",
+      "bytes": 203
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-helper-source.coax.gz": {
+      "sha256": "adc89f17d2614e991f733b93c717e79baae63197cf90de629529eb78e8fb27ff",
+      "bytes": 3951
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-helper.stderr": {
+      "sha256": "59b66332ba438ad91e0baf74b91bba3121aa471ba76fac15716f4d4f4f69e27b",
+      "bytes": 298
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-options-fields.stderr": {
+      "sha256": "ceeceb685752ff7f1f8e66161155ed72eb88205c3b349c51d9320a0ffdf562ed",
+      "bytes": 264
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-options.stderr": {
+      "sha256": "78b95cdcff609757c863afa806b864319085b81565322ecd07951c720bf7da54",
+      "bytes": 202
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-release.stderr": {
+      "sha256": "b705b5f878a731f92e0c8efa313e60baf4fe2fc641ed09f818f435e9fb8767a2",
+      "bytes": 194
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-reset.stderr": {
+      "sha256": "f78fe63f45c8c7e6011856155329f39c67f8cb507ab1bf86632c97003b07b030",
+      "bytes": 351
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-writer-source.coax.gz": {
+      "sha256": "45fbc65d94b3cf570da6d2094e822fea2c1cb8d38758c16e74bc3245a08450a1",
+      "bytes": 3968
+    },
+    "docs/verification/coder-dictation-2026-11-02/compiler-readiness/settings-writer.stderr": {
+      "sha256": "f185a841fb4dbce62f28205dfdf95e5997f84a0645e4c088e54dbd3d08753679",
+      "bytes": 257
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/README.md": {
+      "sha256": "9623b84e6e8f4f4884b22b4a73ad7e4f5332545f8ed1e0ea2a57514bc0aef2e3",
+      "bytes": 3972
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-audio-check-v2.log": {
+      "sha256": "86eda9f4d84649a4ca6e49729f225ad5ef091585a0a9170d18ff35ba26719a30",
+      "bytes": 2018
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-audio-check.log": {
+      "sha256": "a40e22da8829750df84bbcb74db8ee413c68852a612a8ef5e01748c67670c6f0",
+      "bytes": 2274
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-audio-final.log": {
+      "sha256": "451f64e3dd3436c3142cee917cf045d1333de7634e8c41f961a353294124b03d",
+      "bytes": 2381
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-audio-final2.log": {
+      "sha256": "8fae07853097a268ba75fa0d63209eb3c6613624260347ad51c46d63fe95f826",
+      "bytes": 2498
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-controller-asan.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-controller-final-asan.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-controller-final-o0.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-controller-final-o2.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-controller-o0.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-controller-o2.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-controller-qualified-asan.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-controller-qualified-o0.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-controller-qualified-o2.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-controller-v2-o0.log": {
+      "sha256": "2506f0160c3b733f445d0a29683414dce7e4bcde9c4ee8255f597af8639c34b7",
+      "bytes": 117
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-check-final.log": {
+      "sha256": "137c6a09eb914ff422fe3586a5e350f9f8af4c64fd1dff041ce833b1c2b71a86",
+      "bytes": 1658
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-check-v2.log": {
+      "sha256": "78d9576eb4e4a20aad686ba245c6de5c1798415c09740ad6cefcdb6ad37e081d",
+      "bytes": 1429
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-check-v3.log": {
+      "sha256": "bbc1e1884a3ed868d0a922ef41393db459df4c6ce0ce2ce799d9a7e182c32955",
+      "bytes": 1430
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-check-v4.log": {
+      "sha256": "196878e4d8a7a55c83f421da9522e7020baae7baab533c3da7d21f873f90e9c5",
+      "bytes": 1542
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-check.log": {
+      "sha256": "e7742f2e408c00b5d25bfd04af51175d1f53c068cc32b4dcc1757d8e0dd03000",
+      "bytes": 1316
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-mutation-final.log": {
+      "sha256": "6ff3fed0dabf98de1e87f99b03672a260f70d2ef1ca63024077c4f0adef3d293",
+      "bytes": 116
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-mutation-v2.log": {
+      "sha256": "afa6bff3e3630174ad3e654d03c46f4403daf13160ffa987de3cfdd92935e464",
+      "bytes": 116
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-mutation-v3.log": {
+      "sha256": "715eaa1eeb54a91b5893cf8ff7405ded1f4e0b988aec08b5eba4eb7b8f626265",
+      "bytes": 116
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-mutation-v4.log": {
+      "sha256": "acd958015964e419f2e5a5b306dfe35eafe8a7cadffebb66cc95f56332b36013",
+      "bytes": 116
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-mutation.log": {
+      "sha256": "296733e3a4eeb6f3f334751f443d99137a1bdf564765eb0844b761989367f9c9",
+      "bytes": 12530
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-policy-red.log": {
+      "sha256": "309ae817031eba74f499517daa8d20ecdd22282243f4d8a03f66f3feb879bc66",
+      "bytes": 21368
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-release-green.log": {
+      "sha256": "33b0e23f5c69a1683a8376944094703d886928f10e847794ed6630ffa6479c41",
+      "bytes": 312
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation-release-red.log": {
+      "sha256": "c9d6b89a837b9011687e7982bbfe8dc69b565efb914cd9e0e654bd66aa3933c0",
+      "bytes": 580
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation.c": {
+      "sha256": "191d32e19f3295cc1c61c5ccf8692f4bb226d7357bf35f9e8643e01c7ee6d143",
+      "bytes": 196213
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/dictation.h": {
+      "sha256": "67f671af35188c66e939f2ad975c005b6150b99dbc5a9e008b3e3d55ff3f0abb",
+      "bytes": 46609
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/manifest.json": {
+      "sha256": "65318b7c804f4e9a4fe1259d8a409cd7e80e8181523fcf2ddab94598c45af53f",
+      "bytes": 4817
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/record.json": {
+      "sha256": "8133393aedac1df9f13e32dde0efd3d236b91c9a6febb8b8c3a725027f9077d7",
+      "bytes": 4722
+    },
+    "docs/verification/coder-dictation-2026-11-02/controller/source-snapshot.tar.gz": {
+      "sha256": "89f7c2ad1ca4e449ffac97455c3168acbebbe37463bf53b06f3a2b3e852d3546",
+      "bytes": 26607
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/README.md": {
+      "sha256": "5a0ee5bc5912ea8faf58d04c92237ebe51f6af686857be063459b7efa6fdd6b7",
+      "bytes": 3079
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/dictation-insertion.c.gz": {
+      "sha256": "fbbe90c98ad964e2be16e9a7859b7bd8a9e19dc0846b43337cc08ae36aba6dcb",
+      "bytes": 37775
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/dictation-insertion.h.gz": {
+      "sha256": "ed9b1bb711460ea659af48fc7853a10ba68afb02a22a8fe94901dabe300afffa",
+      "bytes": 437
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/green1.stderr": {
+      "sha256": "fae7dcfb34df71dcb670fdcd6548ef8f93663f3d57f9bbaa681e00cdc489b5ed",
+      "bytes": 753
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/green1.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/green2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/green2.stdout": {
+      "sha256": "ab95269f25a6f4dfe6db5cd5ad4049eb95fe003fca6d012a8898c104ca68a659",
+      "bytes": 5455
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/green3.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/green3.stdout": {
+      "sha256": "d2ef1b789af16ede8a4f0e5ac0c031210e1ca58aac698029a1b60d687bb4df06",
+      "bytes": 5597
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/manifest.json": {
+      "sha256": "2a6381557a349785c613bcea87b370f3c43552c2b972237b291c185d4c048f71",
+      "bytes": 3118
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/mutation1.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/mutation1.stdout": {
+      "sha256": "5ad6be6307e6ab8eb1f7ceb3074d5f631a2a0fba518c6a1f68077239e3a1ad0b",
+      "bytes": 2027
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/mutation2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/mutation2.stdout": {
+      "sha256": "7ee408b247d00975fe87330010f94f6ae83da9cc487e523864ea570433c3f610",
+      "bytes": 116
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/native-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/native-asan.stdout": {
+      "sha256": "ef5a61d6978cbbfaa934b70b32a18fe6387a4f7eba85a2ddf3c1e3b5a73560fa",
+      "bytes": 79
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/native-generate.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/native-o0.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/native-o0.stdout": {
+      "sha256": "ef5a61d6978cbbfaa934b70b32a18fe6387a4f7eba85a2ddf3c1e3b5a73560fa",
+      "bytes": 79
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/native-o2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/native-o2.stdout": {
+      "sha256": "ef5a61d6978cbbfaa934b70b32a18fe6387a4f7eba85a2ddf3c1e3b5a73560fa",
+      "bytes": 79
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/record.json": {
+      "sha256": "6de7afda4ac4d130585790c5ae2097a7d1ea7562c036fec83b8151ed7e959339",
+      "bytes": 3228
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/red.stderr": {
+      "sha256": "c274f4f7c277e2a1cd9216071be1d03574ef19cb2720c8a4c375a7ee23c4f96b",
+      "bytes": 10748
+    },
+    "docs/verification/coder-dictation-2026-11-02/insertion/red.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/README.md": {
+      "sha256": "841ea4f48497aad2877f3a4cdf45c8f8d8bb0610fcabd550ab5363fbf97435f1",
+      "bytes": 3328
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/build-empty-final.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/build-empty-final.stdout": {
+      "sha256": "d1c58bddc384f4bc7806af7ec2140cbb484ee3eb266140d9d0c19713bf58bb90",
+      "bytes": 170
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/build-final.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/build-final.stdout": {
+      "sha256": "d1c58bddc384f4bc7806af7ec2140cbb484ee3eb266140d9d0c19713bf58bb90",
+      "bytes": 170
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/build-v2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/build-v2.stdout": {
+      "sha256": "d1c58bddc384f4bc7806af7ec2140cbb484ee3eb266140d9d0c19713bf58bb90",
+      "bytes": 170
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/build-v3.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/build-v3.stdout": {
+      "sha256": "d1c58bddc384f4bc7806af7ec2140cbb484ee3eb266140d9d0c19713bf58bb90",
+      "bytes": 170
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/build.stderr": {
+      "sha256": "de6b66652d3c855f49847af6804ff0ff1688503d318c749cdfcabfe1bfe1c68b",
+      "bytes": 351
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/host-cases-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/host-cases-asan.stdout": {
+      "sha256": "39eed07de04f41d826dd9c0b62d89404722565eeeb06c000baaddf6bc97019b0",
+      "bytes": 81
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/host-cases.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/host-cases.stdout": {
+      "sha256": "39eed07de04f41d826dd9c0b62d89404722565eeeb06c000baaddf6bc97019b0",
+      "bytes": 81
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/manifest.json": {
+      "sha256": "397b4bcb27a48c0a4cfc14bdadd397dd8004ef718186b487b5ef7e912fc01821",
+      "bytes": 6263
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/oracle-asan-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/oracle-asan-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/oracle-build-final.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/oracle-build-final.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/oracle-build-v2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/oracle-build-v2.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/oracle-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/oracle-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/producer/Dictation-before-retry.swift": {
+      "sha256": "ddaa4d7010bb30a995e3947417fd44c1d5ea98b8403fd99c4a03d391f37a643b",
+      "bytes": 16198
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/producer/Dictation-red-branch.swift": {
+      "sha256": "bd7c8e47091955fca4ff0da8ac34360c0c9401629800a9d40d44dfe4eaa2dde0",
+      "bytes": 16236
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/producer/dictation.c": {
+      "sha256": "c7d5a9319fd9e6a855b671cd563a6da2440cd7e8d6ffa5127e6e2bbfd14054e9",
+      "bytes": 196412
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/producer/dictation.h": {
+      "sha256": "3fe37ed9379355d5928d26291f1eae325c4d74f583e0cc452eab5b6938adca46",
+      "bytes": 46649
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/real-model.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/real-model.stdout": {
+      "sha256": "594aae9f1bec2478f4005202a7ad2780585e7872105033c7b36eb66b259a68b6",
+      "bytes": 83
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/record.json": {
+      "sha256": "eac32797e3032e8fe85cb1e5d7d033aaaa190decdf0955f3646e0f6a2f3abed7",
+      "bytes": 5458
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-asan-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-asan-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-asan.stdout": {
+      "sha256": "39eed07de04f41d826dd9c0b62d89404722565eeeb06c000baaddf6bc97019b0",
+      "bytes": 81
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-normal-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-normal-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-normal.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-normal.stdout": {
+      "sha256": "39eed07de04f41d826dd9c0b62d89404722565eeeb06c000baaddf6bc97019b0",
+      "bytes": 81
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-red-build.stderr": {
+      "sha256": "0727336deec255fbb405f5c711ebac1c4553c170054cd103aba09239101e5e88",
+      "bytes": 767
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-red-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-red.stderr": {
+      "sha256": "475eea8c611f1607108f54caacd36cb45c078bb640804605ccc3f8cfa2d7a23f",
+      "bytes": 155
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/retry-red.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/source-final.tar.gz": {
+      "sha256": "88989ca899c6a0bf7a870b9b31a3d794d72545510252dbd5fd80d8da3c28062b",
+      "bytes": 34397
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/typecheck.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/native-host/typecheck.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/README.md": {
+      "sha256": "d1a2dfaf884f06352cdbf52c242ed0934e58f999eab757aa0c817909bbe5cf3c",
+      "bytes": 2857
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/face-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/face-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/gpu-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/gpu-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/gpu.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/gpu.stdout": {
+      "sha256": "0ef900dc6a978ad8fbcb9e3938c2c3a0bb6626d7c5d43b8ace8c98bcf6276117",
+      "bytes": 120
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/installed.json": {
+      "sha256": "3d089ff1d857e654e5dfd4046917618a5eb392c050b7866eaa626cf213b93e0c",
+      "bytes": 459
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/manifest.json": {
+      "sha256": "f1d2176be323e4e558a90b1dd24b1704d717bb9342318f25fe033f696c225ec0",
+      "bytes": 6119
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work-asan-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work-asan-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work-asan.stdout": {
+      "sha256": "30a79fd806dad0cfa74b207b727fc82a546c0d370c31da7a7a0e2f171ed1fd3d",
+      "bytes": 102
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work-build-final.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work-build-final.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work-final.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work-final.stdout": {
+      "sha256": "30a79fd806dad0cfa74b207b727fc82a546c0d370c31da7a7a0e2f171ed1fd3d",
+      "bytes": 102
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/metal-work.stdout": {
+      "sha256": "30a79fd806dad0cfa74b207b727fc82a546c0d370c31da7a7a0e2f171ed1fd3d",
+      "bytes": 102
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-asan-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-asan-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-asan.stdout": {
+      "sha256": "48125a9589ca46cdc554aca1fa3afabf83f097510599f5d32a0f12875ad2f5fc",
+      "bytes": 124
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-o0-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-o0-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-o0.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-o0.stdout": {
+      "sha256": "48125a9589ca46cdc554aca1fa3afabf83f097510599f5d32a0f12875ad2f5fc",
+      "bytes": 124
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-o2-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-o2-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-o2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/native-o2.stdout": {
+      "sha256": "48125a9589ca46cdc554aca1fa3afabf83f097510599f5d32a0f12875ad2f5fc",
+      "bytes": 124
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/record.json": {
+      "sha256": "464b08b593d4dd98e9e14af749198c695f280150794358b3314734f315aa81ba",
+      "bytes": 7469
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/source.tar.gz": {
+      "sha256": "90c0c853d8f83b9e85d6b8fdc9a9739ec337e704fbb02bb995a7a281429c9982",
+      "bytes": 15556
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/swift-clear-asan-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/swift-clear-asan-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/swift-clear-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/swift-clear-asan.stdout": {
+      "sha256": "0bbca422c213c4128608295ed9e1a4ff37f9a941d888af90b9fd6df41fccb422",
+      "bytes": 104
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/swift-clear-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/swift-clear-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/swift-clear.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/privacy-clear/swift-clear.stdout": {
+      "sha256": "0bbca422c213c4128608295ed9e1a4ff37f9a941d888af90b9fd6df41fccb422",
+      "bytes": 104
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-labels-check.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-labels-check.stdout": {
+      "sha256": "11241bfb129d701d110d82ea5a1eb52b8d567328abed19e87783a8c8b993005e",
+      "bytes": 133
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-ui-check-v2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-ui-check-v2.stdout": {
+      "sha256": "6fb108a10a01c3fcc0697849c076909b03272ec26cb64239425edc3fb5d3cc30",
+      "bytes": 311
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-ui-check.stderr": {
+      "sha256": "d0eb945c5d5c49da861fd5cdfd8c4227b9542d84802f169b071e615b8a947f8f",
+      "bytes": 217
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-ui-check.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-ui-mutation-v2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-ui-mutation-v2.stdout": {
+      "sha256": "07a37c773e28b10190d0ba60d5f03a79691464b5b23b77e018fb174d076ca628",
+      "bytes": 114
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-ui-mutation-v3.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-ui-mutation-v3.stdout": {
+      "sha256": "8d09e97cd02bb414730c2e4028c0afc55998e1d3dddcab5e3fcdded91f5d01d9",
+      "bytes": 114
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-ui-mutation.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/dictation-ui-mutation.stdout": {
+      "sha256": "d547c69a88a33e54d22574d7a9039688d9634dbecd9dc4b560a495a482d17ef8",
+      "bytes": 256
+    },
+    "docs/verification/coder-dictation-2026-11-02/ui/record.json": {
+      "sha256": "0a656cc9a72c9d515c33e19d2cdba7a54fa9a45689029c55e82fd0f0d9cad107",
+      "bytes": 2551
+    }
+  },
+  "native_inputs": {
+    "apps/openagents-desktop/build/c/chat.c": {
+      "recorded_sha256": "4e4db74711cf8081e7d59105beb6df5574388de3fd852c9ac01952b504aaebf0",
+      "sha256": "4e4db74711cf8081e7d59105beb6df5574388de3fd852c9ac01952b504aaebf0",
+      "bytes": 486675,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/chat.h": {
+      "recorded_sha256": "82d3322b956e41cc55d2df84e625cb88b7a0b71df1233d001dfc4291b7b29fce",
+      "sha256": "82d3322b956e41cc55d2df84e625cb88b7a0b71df1233d001dfc4291b7b29fce",
+      "bytes": 56431,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/chat.o": {
+      "recorded_sha256": "de475f75c68b311b008d77f75e1942d6c91ea2e41b8276ee3c78051c5f51f352",
+      "sha256": "de475f75c68b311b008d77f75e1942d6c91ea2e41b8276ee3c78051c5f51f352",
+      "bytes": 291936,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/face.o": {
+      "recorded_sha256": "d19eecb45d14c41078030d268834cd8c189810d50c9c1ea264f0b52e0e8c4766",
+      "sha256": "d19eecb45d14c41078030d268834cd8c189810d50c9c1ea264f0b52e0e8c4766",
+      "bytes": 3536,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/router.c": {
+      "recorded_sha256": "2aaf864952fd0f450980321e6c7d5a9a21fe97be5ba5fe81ba57374b4678653b",
+      "sha256": "2aaf864952fd0f450980321e6c7d5a9a21fe97be5ba5fe81ba57374b4678653b",
+      "bytes": 409051,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/router.h": {
+      "recorded_sha256": "7e08ea60c446cbf5c5d2ad43465df93f367e1f968bf7e4d14d166baf04c0907f",
+      "sha256": "7e08ea60c446cbf5c5d2ad43465df93f367e1f968bf7e4d14d166baf04c0907f",
+      "bytes": 2504,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/router.o": {
+      "recorded_sha256": "7db07058d6db9bba77676093f3f5058a3e89c4dd0099a5398d6ccb54f717be27",
+      "sha256": "7db07058d6db9bba77676093f3f5058a3e89c4dd0099a5398d6ccb54f717be27",
+      "bytes": 60944,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/route-face.o": {
+      "recorded_sha256": "c9ceff997f4f523c053f18a504377242e3528ddd8d7244745631595a8c02020e",
+      "sha256": "c9ceff997f4f523c053f18a504377242e3528ddd8d7244745631595a8c02020e",
+      "bytes": 824,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/process.o": {
+      "recorded_sha256": "20c29b28ed896fcb50fc797004df52b0d21a0f2607e482aa6bf55910776535d6",
+      "sha256": "20c29b28ed896fcb50fc797004df52b0d21a0f2607e482aa6bf55910776535d6",
+      "bytes": 23392,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/lab-sign.c": {
+      "recorded_sha256": "c4f43988d23c614efffdcbf97d8a71feef6badac60280d730b71b42f89783756",
+      "sha256": "c4f43988d23c614efffdcbf97d8a71feef6badac60280d730b71b42f89783756",
+      "bytes": 527481,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/lab-sign.h": {
+      "recorded_sha256": "1a191793619e8847b2dd4732089784d18a38c83646dc8de18622d3b7d628e703",
+      "sha256": "1a191793619e8847b2dd4732089784d18a38c83646dc8de18622d3b7d628e703",
+      "bytes": 77072,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/lab-sign.o": {
+      "recorded_sha256": "7c73e2fa445c4ebfc4762cb047177221cf24d3cca832d466f72b0c21761448c9",
+      "sha256": "7c73e2fa445c4ebfc4762cb047177221cf24d3cca832d466f72b0c21761448c9",
+      "bytes": 188472,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/dictation.c": {
+      "recorded_sha256": "c7d5a9319fd9e6a855b671cd563a6da2440cd7e8d6ffa5127e6e2bbfd14054e9",
+      "sha256": "c7d5a9319fd9e6a855b671cd563a6da2440cd7e8d6ffa5127e6e2bbfd14054e9",
+      "bytes": 196412,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/dictation.h": {
+      "recorded_sha256": "3fe37ed9379355d5928d26291f1eae325c4d74f583e0cc452eab5b6938adca46",
+      "sha256": "3fe37ed9379355d5928d26291f1eae325c4d74f583e0cc452eab5b6938adca46",
+      "bytes": 46649,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/dictation.o": {
+      "recorded_sha256": "ef0490672fcd1530bc81f0483bd22e3ed45a5da57f577ba65fb34e5ae21a2a15",
+      "sha256": "ef0490672fcd1530bc81f0483bd22e3ed45a5da57f577ba65fb34e5ae21a2a15",
+      "bytes": 51056,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/c/dictation-face.o": {
+      "recorded_sha256": "9f07375dd9b5330b8d7bb700aab62c7e2b3ba50575fc16c495c90e4107f9a1e0",
+      "sha256": "9f07375dd9b5330b8d7bb700aab62c7e2b3ba50575fc16c495c90e4107f9a1e0",
+      "bytes": 4032,
+      "matches_reused_record": true
+    },
+    "apps/openagents-desktop/build/OpenAgents.app/Contents/Resources/default.metallib": {
+      "recorded_sha256": "d314bd79e960e9ff7a0bee3d8f864c58c6268009a587ac170578d2ef4f669c2e",
+      "sha256": "d314bd79e960e9ff7a0bee3d8f864c58c6268009a587ac170578d2ef4f669c2e",
+      "bytes": 39740,
+      "matches_reused_record": true
+    },
+    "psionic/build/parakeet/libpsionic-parakeet.a": {
+      "recorded_sha256": "9416db1f9b29740baf155bc05b60e427683fd511813772dbc0e662c6546dbfe0",
+      "sha256": "9416db1f9b29740baf155bc05b60e427683fd511813772dbc0e662c6546dbfe0",
+      "bytes": 640736,
+      "matches_reused_record": true
+    }
+  }
+}

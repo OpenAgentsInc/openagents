@@ -1,0 +1,4 @@
+apps/openagents-desktop/zeron/lab.coax:398:43: error[E0381]: type checker storage or nesting budget exceeded
+    if l[0].via == 3 && l[0].mc.count > 0 { lab_mc_pump(l[0].mc, s); }
+                                            ^
+1 error

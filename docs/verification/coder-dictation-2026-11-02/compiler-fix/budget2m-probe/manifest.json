@@ -1,0 +1,237 @@
+{
+  "schema": 1,
+  "algorithm": "sha256",
+  "artifacts": [
+    {
+      "path": "source/borrow-summary.coax.gz",
+      "bytes": 6226,
+      "sha256": "f0acdb125a214047d58e17fcd95ff704e6bc3ea49566dc70f47c10689470a022",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 30358,
+      "uncompressed_sha256": "fa04aa299e27a7138ef3f1884c473030131356ed1e1a53b02da24a7175031101",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/borrow-summary.coax"
+    },
+    {
+      "path": "source/checker.coax.gz",
+      "bytes": 483632,
+      "sha256": "750680ee63296be5dcc36addfb97bf99a5aaa851abf863c533905539dd3d767d",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 5494768,
+      "uncompressed_sha256": "f12b199262be723b3ca52f8d859e5e801de91bce7e376fde6347ab6fa392a69d",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/checker.coax"
+    },
+    {
+      "path": "source/literal-projection-cache.coax.gz",
+      "bytes": 1187,
+      "sha256": "06d45053a061e68c830652bc23a46a8f9628ccadd9efa8b3745429d8d61d9409",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 2804,
+      "uncompressed_sha256": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/literal-projection-cache.coax"
+    },
+    {
+      "path": "source/quantity.coax.gz",
+      "bytes": 1953,
+      "sha256": "2e779ecb4853e0c78137d32f8d5341db026ee8f715335a77e95ab30d9d06fc2d",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 6156,
+      "uncompressed_sha256": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/quantity.coax"
+    },
+    {
+      "path": "source/query-index.coax.gz",
+      "bytes": 1671,
+      "sha256": "2eeb01b00aa7572ca67b9389a1d0a7178307e253153039fa5e1d98ad5eb3c5d4",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 3906,
+      "uncompressed_sha256": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/query-index.coax"
+    },
+    {
+      "path": "source/query-projection-cache.coax.gz",
+      "bytes": 1998,
+      "sha256": "4d781cb67d389434eb5266e88327ae0cec8b9698032010fb7e0a52f087e3fbe8",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 5966,
+      "uncompressed_sha256": "09403bb93f2caa0b5883bb22aa3f9c566381ebe819c90ee0c12f5575de3c2135",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/query-projection-cache.coax"
+    },
+    {
+      "path": "source/result-flow.coax.gz",
+      "bytes": 1657,
+      "sha256": "fde524a9f386555bd81f20291f309499c619952aece2c5d350236e615eb48b5d",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 6040,
+      "uncompressed_sha256": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/result-flow.coax"
+    },
+    {
+      "path": "source/result-handling.coax.gz",
+      "bytes": 6913,
+      "sha256": "09a31b295cd5e447607db73a9d24d277d0b1e029ea372de384d6a8b76bc2bb25",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 42762,
+      "uncompressed_sha256": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/result-handling.coax"
+    },
+    {
+      "path": "source/retain-policy.coax.gz",
+      "bytes": 4541,
+      "sha256": "ad58672f71780bf5ec1e4aedd02fef9d3b5a8810a9583361aa6e6c4343f58705",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 20853,
+      "uncompressed_sha256": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/retain-policy.coax"
+    },
+    {
+      "path": "source/spatial-mutation.coax.gz",
+      "bytes": 1604,
+      "sha256": "513f95f1f208e72852280e8644cf6104282484cd419acad5be8c1f720c8db27d",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 5163,
+      "uncompressed_sha256": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/spatial-mutation.coax"
+    },
+    {
+      "path": "source/spatial-policy.coax.gz",
+      "bytes": 2567,
+      "sha256": "ac8bf3fb6683a8ef9b6d8de91543a6ecb3a1d0ba465e147bdee662441a9e45cb",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 9550,
+      "uncompressed_sha256": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/spatial-policy.coax"
+    },
+    {
+      "path": "source/sum-layout.coax.gz",
+      "bytes": 1295,
+      "sha256": "5435a9800453d3609e9d8c2e08d492e8a8f3fdaa2b200c37050e2caaf87ba502",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 3650,
+      "uncompressed_sha256": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/sum-layout.coax"
+    },
+    {
+      "path": "source/sum-types.coax.gz",
+      "bytes": 8847,
+      "sha256": "88f10bc3243a6d0dcd43603863804a1599f3c3bdda03cd82dabafb81282c75f0",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 45657,
+      "uncompressed_sha256": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/sum-types.coax"
+    },
+    {
+      "path": "source/unit-algebra.coax.gz",
+      "bytes": 2667,
+      "sha256": "d47bd76edaf215cfcc8425a7a362a6d8abc00695e03fbd4fe78bb220e6b6c469",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 9564,
+      "uncompressed_sha256": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/unit-algebra.coax"
+    },
+    {
+      "path": "source/unit-forms.coax.gz",
+      "bytes": 2278,
+      "sha256": "9c5b8be9ca6c2de19984d88eb79b6d93a9e04590a7cd58c2c1f74edd480d1aa2",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 8595,
+      "uncompressed_sha256": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-src/coax/lib/compiler/unit-forms.coax"
+    },
+    {
+      "path": "probe2m-changes.json.gz",
+      "bytes": 6670,
+      "sha256": "77443e943884d3863ca429ec4f1b75ad5afa12c2fcb5eac9031e01f4f6705ce8",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 68472,
+      "uncompressed_sha256": "e3c89e29106b2ccb5fef71e9c1a25d103daf12ce35d03d25581fb036d2d36423",
+      "origin": "/tmp/dictation-compiler-fix/probe2m-changes.json"
+    },
+    {
+      "path": "checker2m.c.gz",
+      "bytes": 135492,
+      "sha256": "c1d2729302a35602ceddf577ac5caa7d53fc87959ac673a1517570fc1820a3c2",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 945618,
+      "uncompressed_sha256": "81398abf69b6ac42d8a713858ac1ee9af741aa599c75e5cc1d86024a730d36af",
+      "origin": "/tmp/dictation-compiler-fix/checker2m.c"
+    },
+    {
+      "path": "checker2m.h.gz",
+      "bytes": 15788,
+      "sha256": "c4025194a0a38c3cee762448b8ce8df53cbbf16f2819464a805e628cbb11da68",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 120081,
+      "uncompressed_sha256": "aa9f418e1b315271d83f702a7b91628f482f459839bafded8cad011e59fd728e",
+      "origin": "/tmp/dictation-compiler-fix/checker2m.h"
+    },
+    {
+      "path": "actual2m.c.gz",
+      "bytes": 364195,
+      "sha256": "82c0090aa70b104f4e2ae139d6689ebc000af41473066f896b71a26f3df58243",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 2284182,
+      "uncompressed_sha256": "bcfbdac1f47fa20b5c2e1b933d47bc578a43cf3ca169f6f1a7716f1b011b9c43",
+      "origin": "/tmp/dictation-compiler-fix/actual2m.c"
+    },
+    {
+      "path": "actual2m.h.gz",
+      "bytes": 51796,
+      "sha256": "b259e6ed70c4515e813afabada79169fe77ed9d7f398cf330046aab91f8177ad",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 404408,
+      "uncompressed_sha256": "9418c1a0399169f93490bf8bd6b77f761fe9887643d7ebcf8044bb8b0593a328",
+      "origin": "/tmp/dictation-compiler-fix/actual2m.h"
+    },
+    {
+      "path": "checker2m.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/dictation-compiler-fix/checker2m.stderr"
+    },
+    {
+      "path": "actual2m.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/dictation-compiler-fix/actual2m.stderr"
+    },
+    {
+      "path": "independent-source-audit.json",
+      "bytes": 1486,
+      "sha256": "5f83c731318f893817f3f7680efbed10bbdeb00dabccb235e480fe6c72f93ac0"
+    },
+    {
+      "path": "record.json",
+      "bytes": 4929,
+      "sha256": "a55f8007d07b38308efe067d828ab71ab49cb2c73a199f647ff52662a4bf048e"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2063,
+      "sha256": "28997828093e965447012aa0aa39ccf10b35f07458bc3411e16c489d4fc7b909"
+    },
+    {
+      "path": "checker2m-canonical.c.gz",
+      "bytes": 135448,
+      "sha256": "d3e188b0897f184e3bee31ff60cf250767678d70389d7e5792b7d0cad5097b41",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 944853,
+      "uncompressed_sha256": "b7f719a536d872565bc4b0dc97b6edaf4b03423f992f534b4e748d8e293344c0",
+      "origin": "/tmp/dictation-compiler-fix/checker2m-canonical.c"
+    },
+    {
+      "path": "checker2m-canonical.h.gz",
+      "bytes": 15755,
+      "sha256": "f272abd0bf83242de39cae0a60962e42bf0a8444731eb7b8f66171aa7664d58c",
+      "encoding": "gzip;mtime=0",
+      "uncompressed_bytes": 120036,
+      "uncompressed_sha256": "169296b245a685279a90dcea7831394e126df0a83772fe3ff1efbf6e1b5d628a",
+      "origin": "/tmp/dictation-compiler-fix/checker2m-canonical.h"
+    },
+    {
+      "path": "checker2m-canonical.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin": "/tmp/dictation-compiler-fix/checker2m-canonical.stderr"
+    }
+  ]
+}

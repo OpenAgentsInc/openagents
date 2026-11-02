@@ -1,0 +1,203 @@
+{
+  "schema": 1,
+  "date": "2026-11-02",
+  "status": "qualified path24/summary256 compiler slice; application still unresolved",
+  "profile": {
+    "path_steps": 24,
+    "per_procedure_effects": 256,
+    "BS_origin_set": 64,
+    "RP_supplied_store_terms": 64,
+    "global_work": 1048576
+  },
+  "source": {
+    "closure": "source/*.coax.gz:15 current frozen checker modules",
+    "sha256": {
+      "borrow-summary.coax": "fa04aa299e27a7138ef3f1884c473030131356ed1e1a53b02da24a7175031101",
+      "checker.coax": "fddbcce761a1d1b254684fe816b3699d7a64f142f021b00f57bd920aa603932f",
+      "literal-projection-cache.coax": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a",
+      "quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+      "query-index.coax": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+      "query-projection-cache.coax": "09403bb93f2caa0b5883bb22aa3f9c566381ebe819c90ee0c12f5575de3c2135",
+      "result-flow.coax": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef",
+      "result-handling.coax": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+      "retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+      "spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+      "spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+      "sum-layout.coax": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169",
+      "sum-types.coax": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+      "unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+      "unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33"
+    }
+  },
+  "producer": {
+    "historical_normal16": {
+      "path": "/tmp/dictation-compiler-fix/normal16-coax",
+      "sha256": "c80416bac2b814ca876b877cd2b0165dbfed68a6084e5631c0c1009816d719ea"
+    },
+    "development_manual_host24": {
+      "path": "/tmp/dictation-compiler-fix/coax24",
+      "sha256": "b29230bc39481b7e5ad3d5215640d1d6327eb0a31f78f863875e329c6f9149bb",
+      "scope": "manual development host, not a completed normal bootstrap or release"
+    }
+  },
+  "canonical_self_emission": {
+    "result": "PASS",
+    "byte_equal_c": true,
+    "byte_equal_header": true,
+    "canonical_c": "checker24.c.gz",
+    "canonical_h": "checker24.h.gz",
+    "self_c": "checker24-self.c.gz",
+    "self_h": "checker24-self.h.gz"
+  },
+  "focused_checks": {
+    "groups": 4,
+    "passed": 4,
+    "failed": 0,
+    "stdout": "path24.stdout.gz",
+    "stderr": "path24.stderr",
+    "scope": "Selected twenty-four projection checks only; not full mutation/authority coverage."
+  },
+  "native_profiles": {
+    "policy-native24": {
+      "O0": {
+        "outcome": "passed",
+        "cases": 1283,
+        "qualification": "policy-native24/qualification.json.gz"
+      },
+      "O2": {
+        "outcome": "passed",
+        "cases": 1283,
+        "qualification": "policy-native24/qualification.json.gz"
+      },
+      "sanitized": {
+        "outcome": "passed",
+        "cases": 1283,
+        "qualification": "policy-native24/qualification.json.gz"
+      }
+    },
+    "retained-native24": {
+      "O0": {
+        "outcome": "passed",
+        "cases": 21,
+        "qualification": "retained-native24/qualification.json.gz"
+      },
+      "O2": {
+        "outcome": "passed",
+        "cases": 21,
+        "qualification": "retained-native24/qualification.json.gz"
+      },
+      "sanitized": {
+        "outcome": "passed",
+        "cases": 21,
+        "qualification": "retained-native24/qualification.json.gz"
+      }
+    }
+  },
+  "reused_evidence": {
+    "foundation24": "../foundation24/record.json:29checks, independent literalC230cases/75refusals per O0/O2/ASan with current24-step kernel",
+    "historical_summary_controls": "../summary256/controls256-results.json:4authored controls on the earlier path16/summary256 profile; not rerun here and not current-layout mutation qualification"
+  },
+  "full_compiler": {
+    "result": "PASS",
+    "exit_status": 0,
+    "input": "coax/lib/compiler/compiler.coax",
+    "work": 1039516,
+    "budget": 1048576,
+    "remaining": 9060,
+    "remaining_percent": 0.8640289306640625,
+    "stdout": "full-compiler24.stdout.gz",
+    "stderr": "full-compiler24.stderr",
+    "header": "full-compiler24.h.gz"
+  },
+  "staging_stack": {
+    "seed_leaf_pending": 64,
+    "accumulated_apply_pending": 256,
+    "RP_obligation_LP64_bytes": 872,
+    "leaf_pending_bytes": 55808,
+    "apply_pending_bytes": 223232,
+    "review": "CR_leaf uses one supplied-store RP64 result and discards its accumulated result, so64 preserves all facts. CR_apply accumulates exact relations across callee effects and keeps256. The recursive leaf no longer reserves256 pending rows. This is not a generic maximum-depth stack-safety claim."
+  },
+  "desktop": {
+    "result": "NOT PASSED in this record",
+    "stderr": "actual24.stderr",
+    "error": "E0381 at apps/openagents-desktop/zeron/lab.coax:637:13",
+    "scope": "Root is diagnosing this remaining resource refusal; no app, UI, microphone or end-to-end dictation success claimed."
+  },
+  "synthetic_current_layout_summary_native": {
+    "status": "PASS",
+    "cases_per_profile": 11,
+    "profiles": {
+      "o0": {
+        "result": "PASS",
+        "cases": 11,
+        "binary_sha256": "a62ea118a44e6d0c2219b6b8b957e43c73fb1a1f996f8c5f3d99990875ce55c9",
+        "stdout": "summary-native24/native24-o0.stdout",
+        "stderr": "summary-native24/native24-o0.stderr"
+      },
+      "o2": {
+        "result": "PASS",
+        "cases": 11,
+        "binary_sha256": "f3c5e0e2e9c0e7da1848da2a60851f3cd4d0e38a568bf7de4a10f389923aa941",
+        "stdout": "summary-native24/native24-o2.stdout",
+        "stderr": "summary-native24/native24-o2.stderr"
+      },
+      "asan": {
+        "result": "PASS",
+        "cases": 11,
+        "binary_sha256": "6e8a4a6a2fbf6051bdcca99482e224c3168e47f0d34c21a2c79029b70258f5b0",
+        "stdout": "summary-native24/native24-asan.stdout",
+        "stderr": "summary-native24/native24-asan.stderr"
+      }
+    },
+    "source_closure_matches_all15_archived_modules": true,
+    "source": "summary-native24/native24.coax.gz",
+    "driver": "summary-native24/native24-main.c.gz",
+    "cases": "summary-native24/native256-cases.json",
+    "claims": [
+      "256 exact accumulated relations admitted",
+      "257th distinct relation refuses without committed public report",
+      "duplicate reuse at full256 capacity",
+      "undersized/oversized pending span refusals",
+      "complete256 CR_apply positive;257 and-1 callee-count negatives before queries"
+    ],
+    "scope": "Synthetic Coax probes compiled and run natively under current24 layout; not full application or independent semantic implementation.",
+    "reported_commands": {
+      "base": [
+        "cc",
+        "-std=c11",
+        "native24.c",
+        "native24-main.c"
+      ],
+      "profile_flags": {
+        "o0": [
+          "-O0"
+        ],
+        "o2": [
+          "-O2"
+        ],
+        "asan": [
+          "-O1",
+          "-g",
+          "-fsanitize=address,undefined",
+          "-fno-sanitize-recover=all"
+        ]
+      },
+      "sanitizer_environment": {
+        "ASAN_OPTIONS": "detect_leaks=0",
+        "UBSAN_OPTIONS": "halt_on_error=1"
+      },
+      "reported_exit_status": {
+        "o0": 0,
+        "o2": 0,
+        "asan": 0
+      }
+    }
+  },
+  "limitations": [
+    "No final normal bootstrap or release certification claimed.",
+    "No full mutation rerun.",
+    "Historical result reuse is explicitly scoped.",
+    "No binaries included.",
+    "No tests rerun during packaging."
+  ]
+}

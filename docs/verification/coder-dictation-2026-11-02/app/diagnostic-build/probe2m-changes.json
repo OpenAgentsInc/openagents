@@ -1,0 +1,442 @@
+[
+  {
+    "line": 368,
+    "before": " nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=7}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{work=1048575}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};\n",
+    "after": " nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=7}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{work=2097151}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};\n"
+  },
+  {
+    "line": 391,
+    "before": " if mode==18 {work[0].queries=-1;}if mode==19 {work[0].queries=129;}if mode==20 {work[0].origins=-1;}if mode==21 {work[0].origins=1025;}if mode==22 {work[0].work=1048576;}\n",
+    "after": " if mode==18 {work[0].queries=-1;}if mode==19 {work[0].queries=129;}if mode==20 {work[0].origins=-1;}if mode==21 {work[0].origins=1025;}if mode==22 {work[0].work=2097152;}\n"
+  },
+  {
+    "line": 404,
+    "before": " nodes:[4]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=3}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{work=1048576,loc=CK_Loc.{line=22,column=4}}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.proc,loc=ifx located then CK_Loc.{line=17,column=7} else CK_Loc.{}};nodes[3]=CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=29,column=3}};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};\n",
+    "after": " nodes:[4]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=3}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{work=2097152,loc=CK_Loc.{line=22,column=4}}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.proc,loc=ifx located then CK_Loc.{line=17,column=7} else CK_Loc.{}};nodes[3]=CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=29,column=3}};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};\n"
+  },
+  {
+    "line": 80181,
+    "before": " ids:=[16]int.[2,15,3,4,5,6,6,6,6,6,0,1,16,11,2,12];if sample==5 {nodes[2].type=16;}if sample==7 {nodes[7].kind=CK_Tag.expr_ident;}if sample==8 {nodes[7].value=2147483647;}if sample==9 {nodes[7].value=2147483648;}if sample==14 {work[0].work=1048576;}\n",
+    "after": " ids:=[16]int.[2,15,3,4,5,6,6,6,6,6,0,1,16,11,2,12];if sample==5 {nodes[2].type=16;}if sample==7 {nodes[7].kind=CK_Tag.expr_ident;}if sample==8 {nodes[7].value=2147483647;}if sample==9 {nodes[7].value=2147483648;}if sample==14 {work[0].work=2097152;}\n"
+  },
+  {
+    "line": 80233,
+    "before": " if sample==0 {nodes[8].borrow_owner=0;}if sample==1 {nodes[8].borrow_owner=1;}if sample==2 {nodes[8].borrow_owner=80;}if sample==3 {nodes[4].borrow_writes=1;}if sample==4 {nodes[4].borrow_writes=80;}if sample==5 {nodes[30].kind=CK_Tag.proc;}if sample==6 {nodes[30].c=0;}if sample==7 {nodes[30].c=1;}if sample==8 {nodes[30].c=80;}if sample==9 {nodes[4].borrow_writes=2;nodes[2]=CK_Node.{kind=CK_Tag.stmt_assign,c=31};}if sample==10 {nodes[4].borrow_writes=79;nodes[79]=CK_Node.{kind=CK_Tag.stmt_assign,c=31};}if sample==11 {nodes[30].c=2;nodes[2]=CK_Node.{kind=CK_Tag.expr_int,type=12};}if sample==12 {nodes[30].c=79;nodes[79]=CK_Node.{kind=CK_Tag.expr_int,type=12};}if sample==13 {nodes[8].borrow_owner=2;nodes[2]=CK_Node.{kind=CK_Tag.proc};}if sample==14 {nodes[8].borrow_owner=79;nodes[79]=CK_Node.{kind=CK_Tag.proc};}if sample==15 {work[0].work=1048576;}\n",
+    "after": " if sample==0 {nodes[8].borrow_owner=0;}if sample==1 {nodes[8].borrow_owner=1;}if sample==2 {nodes[8].borrow_owner=80;}if sample==3 {nodes[4].borrow_writes=1;}if sample==4 {nodes[4].borrow_writes=80;}if sample==5 {nodes[30].kind=CK_Tag.proc;}if sample==6 {nodes[30].c=0;}if sample==7 {nodes[30].c=1;}if sample==8 {nodes[30].c=80;}if sample==9 {nodes[4].borrow_writes=2;nodes[2]=CK_Node.{kind=CK_Tag.stmt_assign,c=31};}if sample==10 {nodes[4].borrow_writes=79;nodes[79]=CK_Node.{kind=CK_Tag.stmt_assign,c=31};}if sample==11 {nodes[30].c=2;nodes[2]=CK_Node.{kind=CK_Tag.expr_int,type=12};}if sample==12 {nodes[30].c=79;nodes[79]=CK_Node.{kind=CK_Tag.expr_int,type=12};}if sample==13 {nodes[8].borrow_owner=2;nodes[2]=CK_Node.{kind=CK_Tag.proc};}if sample==14 {nodes[8].borrow_owner=79;nodes[79]=CK_Node.{kind=CK_Tag.proc};}if sample==15 {work[0].work=2097152;}\n"
+  },
+  {
+    "line": 80243,
+    "before": " if sample==0 {id=2;}if sample==1 {id=79;}if sample==2 {id=1;}if sample==3 {id=80;}if sample==5 {nodes[30].kind=CK_Tag.expr_cast;}if sample==6 {nodes[30]=CK_Node.{kind=CK_Tag.expr_field,a=31,field_index=1};}if sample>=7 && sample<=9 || sample>=13 {nodes[30]=CK_Node.{kind=CK_Tag.expr_index,a=31,b=32};}if sample==8 {nodes[32].kind=CK_Tag.expr_ident;}if sample==9 {nodes[31].type=19;}if sample==10 {nodes[30].kind=CK_Tag.expr_call;}if sample==11 {nodes[30]=CK_Node.{kind=CK_Tag.expr_field,a=31};nodes[31].kind=CK_Tag.expr_call;}if sample==12 {id=2;work[0].work=1048576;}if sample==13 {nodes[32].value=2147483646;}if sample==14 {nodes[32].value=2147483647;}if sample==15 {nodes[32].value=2147483648;}\n",
+    "after": " if sample==0 {id=2;}if sample==1 {id=79;}if sample==2 {id=1;}if sample==3 {id=80;}if sample==5 {nodes[30].kind=CK_Tag.expr_cast;}if sample==6 {nodes[30]=CK_Node.{kind=CK_Tag.expr_field,a=31,field_index=1};}if sample>=7 && sample<=9 || sample>=13 {nodes[30]=CK_Node.{kind=CK_Tag.expr_index,a=31,b=32};}if sample==8 {nodes[32].kind=CK_Tag.expr_ident;}if sample==9 {nodes[31].type=19;}if sample==10 {nodes[30].kind=CK_Tag.expr_call;}if sample==11 {nodes[30]=CK_Node.{kind=CK_Tag.expr_field,a=31};nodes[31].kind=CK_Tag.expr_call;}if sample==12 {id=2;work[0].work=2097152;}if sample==13 {nodes[32].value=2147483646;}if sample==14 {nodes[32].value=2147483647;}if sample==15 {nodes[32].value=2147483648;}\n"
+  },
+  {
+    "line": 80347,
+    "before": " work[0].work=1048576;nodes[2].type=1;nodes[2].borrow_returns=0;\n",
+    "after": " work[0].work=2097152;nodes[2].type=1;nodes[2].borrow_returns=0;\n"
+  },
+  {
+    "line": 80525,
+    "before": " nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=6,type_count=16}];work:=[1]CB_State.[CB_State.{work=1048575,loc=CK_Loc.{line=84,column=1}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[2]=CK_Node.{kind=CK_Tag.proc,type=12,b=3,borrow_returns=4,loc=CK_Loc.{line=91,column=2}};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block,head=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_return,a=5};nodes[5]=CK_Node.{kind=CK_Tag.expr_int,type=12};CB_walk(b,2,false);#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==91 && errors[0].loc.column==2;\n",
+    "after": " nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=6,type_count=16}];work:=[1]CB_State.[CB_State.{work=2097151,loc=CK_Loc.{line=84,column=1}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[2]=CK_Node.{kind=CK_Tag.proc,type=12,b=3,borrow_returns=4,loc=CK_Loc.{line=91,column=2}};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block,head=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_return,a=5};nodes[5]=CK_Node.{kind=CK_Tag.expr_int,type=12};CB_walk(b,2,false);#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==91 && errors[0].loc.column==2;\n"
+  },
+  {
+    "line": 80558,
+    "before": " nodes:[40]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=31,type_count=18}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=127,column=8}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};types[3]=CK_builtin(3);types[17]=CK_Type.{kind=CK_Kind.struct_,decl=20};nodes[20]=CK_Node.{kind=CK_Tag.struct_,head=21};nodes[21]=CK_Node.{kind=CK_Tag.field,type=3,b=22};nodes[22]=CK_Node.{kind=CK_Tag.expr_string,type=3};nodes[2]=CK_Node.{kind=CK_Tag.proc};nodes[3]=CK_Node.{kind=CK_Tag.stmt_var,type=17,borrow_owner=2,loc=CK_Loc.{line=ifx sample%2==0 then 0 else 1,column=8}};if sample<2 {work[0].work=1048575;}p:=BS_Path.{count=1};p.steps[0]=BS_Step.{kind=BS_FIELD};out:[64]BS_Origin;r:=CB_query(b,2,3,p,out[..]);if sample<2 {#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==(ifx sample==0 then 127 else 1) && errors[0].loc.column==8 && r.count==0 && !r.incomplete;}else {#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_STATIC && out[0].root==22 && out[0].type==12;}#assert work[0].loc.line==127 && work[0].loc.column==8;\n",
+    "after": " nodes:[40]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=31,type_count=18}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=127,column=8}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};types[3]=CK_builtin(3);types[17]=CK_Type.{kind=CK_Kind.struct_,decl=20};nodes[20]=CK_Node.{kind=CK_Tag.struct_,head=21};nodes[21]=CK_Node.{kind=CK_Tag.field,type=3,b=22};nodes[22]=CK_Node.{kind=CK_Tag.expr_string,type=3};nodes[2]=CK_Node.{kind=CK_Tag.proc};nodes[3]=CK_Node.{kind=CK_Tag.stmt_var,type=17,borrow_owner=2,loc=CK_Loc.{line=ifx sample%2==0 then 0 else 1,column=8}};if sample<2 {work[0].work=2097151;}p:=BS_Path.{count=1};p.steps[0]=BS_Step.{kind=BS_FIELD};out:[64]BS_Origin;r:=CB_query(b,2,3,p,out[..]);if sample<2 {#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==(ifx sample==0 then 127 else 1) && errors[0].loc.column==8 && r.count==0 && !r.incomplete;}else {#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_STATIC && out[0].root==22 && out[0].type==12;}#assert work[0].loc.line==127 && work[0].loc.column==8;\n"
+  },
+  {
+    "line": 80566,
+    "before": " nodes:[24]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=16}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=109,column=7,offset=202}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};nodes[0].next=2;nodes[1].next=2;nodes[16].next=2;nodes[2].next=15;nodes[15].next=2;heads:=[7]int.[0,1,16,15,2,2,2];if sample==4 {work[0].work=1048576;}if sample==6 {work[0].work=1048575;}\n",
+    "after": " nodes:[24]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=16}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=109,column=7,offset=202}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};nodes[0].next=2;nodes[1].next=2;nodes[16].next=2;nodes[2].next=15;nodes[15].next=2;heads:=[7]int.[0,1,16,15,2,2,2];if sample==4 {work[0].work=2097152;}if sample==6 {work[0].work=2097151;}\n"
+  },
+  {
+    "line": 80633,
+    "before": " if mode==0 {id=1;}if mode==1 {id=128;}if mode==2 {nodes[2].type=0;}if mode==3 {nodes[2].type=17;}if mode==4 {id=10;}if mode==5 {nodes[2].kind=CK_Tag.expr_bool;nodes[2].type=2;}if mode==6 {nodes[2].kind=CK_Tag.expr_call;nodes[2].type=16;nodes[2].proc=128;}if mode==7 {work[0].work=1048576;}if mode==8 {id=127;nodes[127].loc=CK_Loc.{line=113,column=5};work[0].depth=32;}\n",
+    "after": " if mode==0 {id=1;}if mode==1 {id=128;}if mode==2 {nodes[2].type=0;}if mode==3 {nodes[2].type=17;}if mode==4 {id=10;}if mode==5 {nodes[2].kind=CK_Tag.expr_bool;nodes[2].type=2;}if mode==6 {nodes[2].kind=CK_Tag.expr_call;nodes[2].type=16;nodes[2].proc=128;}if mode==7 {work[0].work=2097152;}if mode==8 {id=127;nodes[127].loc=CK_Loc.{line=113,column=5};work[0].depth=32;}\n"
+  },
+  {
+    "line": 80673,
+    "before": " nodes:[40]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=39,type_count=16}];work:=[1]CB_State.[CB_State.{work=1048576-sample,loc=CK_Loc.{line=83,column=3}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[2]=CK_Node.{kind=CK_Tag.proc,borrow_calls=30};nodes[8]=CK_Node.{kind=CK_Tag.stmt_var,type=12,borrow_owner=2};nodes[30]=CK_Node.{kind=CK_Tag.expr_call,type=1,head=20,loc=CK_Loc.{line=84,column=4}};nodes[20]=CK_Node.{kind=CK_Tag.expr_int,type=11,loc=CK_Loc.{line=85,column=5}};\n",
+    "after": " nodes:[40]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=39,type_count=16}];work:=[1]CB_State.[CB_State.{work=2097152-sample,loc=CK_Loc.{line=83,column=3}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[2]=CK_Node.{kind=CK_Tag.proc,borrow_calls=30};nodes[8]=CK_Node.{kind=CK_Tag.stmt_var,type=12,borrow_owner=2};nodes[30]=CK_Node.{kind=CK_Tag.expr_call,type=1,head=20,loc=CK_Loc.{line=84,column=4}};nodes[20]=CK_Node.{kind=CK_Tag.expr_int,type=11,loc=CK_Loc.{line=85,column=5}};\n"
+  },
+  {
+    "line": 80698,
+    "before": " heads:=[10]int.[2,2,2,2,2,1,16,0,2,2];indices:=[10]int.[0,1,2,-1,3,0,0,0,1,0];expected:=[10]int.[2,7,15,0,0,0,0,0,0,0];if sample==8 {nodes[2].next=16;}if sample==9 {work[0].work=1048576;}\n",
+    "after": " heads:=[10]int.[2,2,2,2,2,1,16,0,2,2];indices:=[10]int.[0,1,2,-1,3,0,0,0,1,0];expected:=[10]int.[2,7,15,0,0,0,0,0,0,0];if sample==8 {nodes[2].next=16;}if sample==9 {work[0].work=2097152;}\n"
+  },
+  {
+    "line": 80748,
+    "before": " nodes:[4]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=16}];work:=[1]CB_State.[CB_State.{work=ifx exhausted then 1048576 else 1048575,loc=CK_Loc.{line=47,column=8}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}\n",
+    "after": " nodes:[4]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=16}];work:=[1]CB_State.[CB_State.{work=ifx exhausted then 2097152 else 2097151,loc=CK_Loc.{line=47,column=8}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}\n"
+  },
+  {
+    "line": 80749,
+    "before": " result:=CB_has_borrow(b,3,0);#assert result==!exhausted && state[0].fatal==exhausted && work[0].work==(ifx exhausted then 1048577 else 1048576);if exhausted {#assert state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==47 && errors[0].loc.column==8;}else {#assert state[0].error_count==0;}\n",
+    "after": " result:=CB_has_borrow(b,3,0);#assert result==!exhausted && state[0].fatal==exhausted && work[0].work==(ifx exhausted then 2097153 else 2097152);if exhausted {#assert state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==47 && errors[0].loc.column==8;}else {#assert state[0].error_count==0;}\n"
+  },
+  {
+    "line": 80750,
+    "before": " state[0].fatal=false;state[0].error_count=0;work[0].work=ifx exhausted then 1048576 else 1048575;result=CB_mutable_descriptors(b,12,0);#assert !result && state[0].fatal==exhausted && work[0].work==(ifx exhausted then 1048577 else 1048576);if exhausted {#assert state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==47 && errors[0].loc.column==8;}else {#assert state[0].error_count==0;}\n",
+    "after": " state[0].fatal=false;state[0].error_count=0;work[0].work=ifx exhausted then 2097152 else 2097151;result=CB_mutable_descriptors(b,12,0);#assert !result && state[0].fatal==exhausted && work[0].work==(ifx exhausted then 2097153 else 2097152);if exhausted {#assert state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==47 && errors[0].loc.column==8;}else {#assert state[0].error_count==0;}\n"
+  },
+  {
+    "line": 81226,
+    "before": " #assert r.queries==queries[sample] && r.origins==origins[sample] && r.work==(ifx queries[sample]==0 then 0 else 1048576);\n",
+    "after": " #assert r.queries==queries[sample] && r.origins==origins[sample] && r.work==(ifx queries[sample]==0 then 0 else 2097152);\n"
+  },
+  {
+    "line": 81293,
+    "before": " if mode==3 {work[0].work=1048575;#assert CB_tick(b,CK_Loc.{}) && work[0].work==1048576;#assert !CB_tick(b,CK_Loc.{});}\n",
+    "after": " if mode==3 {work[0].work=2097151;#assert CB_tick(b,CK_Loc.{}) && work[0].work==2097152;#assert !CB_tick(b,CK_Loc.{});}\n"
+  },
+  {
+    "line": 81341,
+    "before": " return CK_BorrowCaps.{queries=queries,origins=origins,work=1048576};\n",
+    "after": " return CK_BorrowCaps.{queries=queries,origins=origins,work=2097152};\n"
+  },
+  {
+    "line": 81344,
+    "before": " if b.c.state[0].fatal {return false;}b.state[0].work+=1;if b.state[0].work>1048576 {where:=loc;if where.line==0 {where=b.state[0].loc;}CK_resource(b.c,where);return false;}return true;\n",
+    "after": " if b.c.state[0].fatal {return false;}b.state[0].work+=1;if b.state[0].work>2097152 {where:=loc;if where.line==0 {where=b.state[0].loc;}CK_resource(b.c,where);return false;}return true;\n"
+  },
+  {
+    "line": 84421,
+    "before": " else {#assert r.effects==(ifx sample<3 then 128 else ifx sample==3 then 128 else 16384) && r.reports==(ifx sample<4 then 128 else ifx sample==4 then 8192 else 16384) && r.work==1048576;}\n",
+    "after": " else {#assert r.effects==(ifx sample<3 then 128 else ifx sample==3 then 128 else 16384) && r.reports==(ifx sample<4 then 128 else ifx sample==4 then 8192 else 16384) && r.work==2097152;}\n"
+  },
+  {
+    "line": 84529,
+    "before": " nodes:[96]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=95,type_count=17}];work:=[1]CB_State.[CB_State.{work=1048570,loc=CK_Loc.{line=90,column=7}}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;out:[1]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=20};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1};nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=16,borrow_owner=2};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=5};nodes[20]=CK_Node.{kind=CK_Tag.struct_,head=21};for i:0..<64 {nodes[21+i]=CK_Node.{kind=CK_Tag.field,type=3,next=ifx i==63 then 0 else 22+i};}path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_FIELD,index=63};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_address(b,6,path,3,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && work[0].work>1048570 && work[0].work<=1048576;#assert out[0].kind==BS_LOCAL && out[0].root==5 && out[0].role==0 && out[0].type==3 && out[0].path.count==1 && out[0].path.steps[0].kind==BS_FIELD && out[0].path.steps[0].index==63;\n",
+    "after": " nodes:[96]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=95,type_count=17}];work:=[1]CB_State.[CB_State.{work=2097146,loc=CK_Loc.{line=90,column=7}}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;out:[1]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=20};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1};nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=16,borrow_owner=2};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=5};nodes[20]=CK_Node.{kind=CK_Tag.struct_,head=21};for i:0..<64 {nodes[21+i]=CK_Node.{kind=CK_Tag.field,type=3,next=ifx i==63 then 0 else 22+i};}path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_FIELD,index=63};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_address(b,6,path,3,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && work[0].work>2097146 && work[0].work<=2097152;#assert out[0].kind==BS_LOCAL && out[0].root==5 && out[0].role==0 && out[0].type==3 && out[0].path.count==1 && out[0].path.steps[0].kind==BS_FIELD && out[0].path.steps[0].index==63;\n"
+  },
+  {
+    "line": 84555,
+    "before": " if mode==0 {work[0].work=1048574;path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_FIELD,index=63};#assert CB_field(b,16,63)==83 && CB_type(b,16,path)==3 && !state[0].fatal && state[0].error_count==0 && work[0].work==1048576 && work[0].queries==1;}\n",
+    "after": " if mode==0 {work[0].work=2097150;path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_FIELD,index=63};#assert CB_field(b,16,63)==83 && CB_type(b,16,path)==3 && !state[0].fatal && state[0].error_count==0 && work[0].work==2097152 && work[0].queries==1;}\n"
+  },
+  {
+    "line": 84556,
+    "before": " else if mode==1 {b.retain_fields=false;work[0].work=1048574;#assert CB_field(b,16,63)==0 && state[0].fatal && errors[0].code==\"E0381\" && work[0].work==1048577;}\n",
+    "after": " else if mode==1 {b.retain_fields=false;work[0].work=2097150;#assert CB_field(b,16,63)==0 && state[0].fatal && errors[0].code==\"E0381\" && work[0].work==2097153;}\n"
+  },
+  {
+    "line": 84578,
+    "before": " else if mode==1 {#assert CB_field(b,16,1)==4 && work[0].queries==128 && types[16].retain_fields==head && !state[0].fatal && state[0].error_count==0;work[0].work=1048575;#assert CB_field(b,16,1)==4 && !state[0].fatal && work[0].work==1048576;}\n",
+    "after": " else if mode==1 {#assert CB_field(b,16,1)==4 && work[0].queries==128 && types[16].retain_fields==head && !state[0].fatal && state[0].error_count==0;work[0].work=2097151;#assert CB_field(b,16,1)==4 && !state[0].fatal && work[0].work==2097152;}\n"
+  },
+  {
+    "line": 84579,
+    "before": " else {if mode==2 {work[0].work=1048576;}value:=CB_field(b,16,ifx mode==3 then 8 else 0);#assert value==0 && state[0].fatal && errors[0].code==\"E0381\" && work[0].queries==128 && types[16].retain_fields==head && queries[127].path.steps[0].index==3;}\n",
+    "after": " else {if mode==2 {work[0].work=2097152;}value:=CB_field(b,16,ifx mode==3 then 8 else 0);#assert value==0 && state[0].fatal && errors[0].code==\"E0381\" && work[0].queries==128 && types[16].retain_fields==head && queries[127].path.steps[0].index==3;}\n"
+  },
+  {
+    "line": 84585,
+    "before": " nodes:[128]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=18};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};types[17]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3,b=4,type=1,borrow_writes=6};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block};nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=16,borrow_owner=2};nodes[6]=CK_Node.{kind=CK_Tag.stmt_assign,a=9,c=8,borrow_owner=2};nodes[8]=CK_Node.{kind=CK_Tag.expr_field,type=17,a=10,field_index=63};nodes[9]=CK_Node.{kind=CK_Tag.expr_field,type=17,a=11,field_index=63};nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=5};nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 17 else 11,next=ifx i==63 then 0 else 21+i};}work[0].work=1048448;b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};CR_run(b);#assert !state[0].fatal && state[0].error_count==0 && work[0].work>1048448 && work[0].work<=1048576 && nodes[2].retain_count==0;\n",
+    "after": " nodes:[128]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=18};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};types[17]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3,b=4,type=1,borrow_writes=6};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block};nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=16,borrow_owner=2};nodes[6]=CK_Node.{kind=CK_Tag.stmt_assign,a=9,c=8,borrow_owner=2};nodes[8]=CK_Node.{kind=CK_Tag.expr_field,type=17,a=10,field_index=63};nodes[9]=CK_Node.{kind=CK_Tag.expr_field,type=17,a=11,field_index=63};nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=5};nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 17 else 11,next=ifx i==63 then 0 else 21+i};}work[0].work=2097024;b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};CR_run(b);#assert !state[0].fatal && state[0].error_count==0 && work[0].work>2097024 && work[0].work<=2097152 && nodes[2].retain_count==0;\n"
+  },
+  {
+    "line": 84590,
+    "before": " if mode<2 {expected:=mode==1;#assert CR_presence(b,16)==expected && !state[0].fatal;work[0].work=1048576;#assert CB_has_borrow(b,16,0)==expected && !state[0].fatal && state[0].error_count==0 && work[0].work==1048576;}\n",
+    "after": " if mode<2 {expected:=mode==1;#assert CR_presence(b,16)==expected && !state[0].fatal;work[0].work=2097152;#assert CB_has_borrow(b,16,0)==expected && !state[0].fatal && state[0].error_count==0 && work[0].work==2097152;}\n"
+  },
+  {
+    "line": 84593,
+    "before": " else {work[0].work=1048576;#assert !CB_has_borrow(b,16,0) && state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && types[16].retain_presence==0;}\n",
+    "after": " else {work[0].work=2097152;#assert !CB_has_borrow(b,16,0) && state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && types[16].retain_presence==0;}\n"
+  },
+  {
+    "line": 84596,
+    "before": " nodes:[96]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=95,type_count=18};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};types[17]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 17 else 11,next=ifx i==63 then 0 else 21+i};}work[0].work=1048480;b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_FIELD,index=63};out:[64]BS_Origin;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && !r.incomplete && r.count==1 && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==12 && work[0].work<=1048576;\n",
+    "after": " nodes:[96]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=95,type_count=18};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};types[17]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 17 else 11,next=ifx i==63 then 0 else 21+i};}work[0].work=2097056;b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_FIELD,index=63};out:[64]BS_Origin;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && !r.incomplete && r.count==1 && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==12 && work[0].work<=2097152;\n"
+  },
+  {
+    "line": 84618,
+    "before": " if mode==0 {origins[0].kind=0;}if mode==1 {origins[0].root=-1;}if mode==2 {origins[0].type=0;}if mode==3 {origins[0].path.steps[7].index=1;}if mode==4 {queries[0].start=-1;}if mode==5 {queries[0].count=-1;}if mode==6 {queries[0].start=2;}if mode==7 {queries[0].count=2;}if mode==8 {queries[0].type=17;}if mode==10 {queries[0].count=2;work[0].origins=2;origins[1]=BS_Origin.{};}if mode==11 {work[0].work=1048575;}if mode==12 || mode==13 {count:=ifx mode==12 then 65 else 64;queries[0].count=count;work[0].origins=count;for i:0..<count {origins[i]=BS_Origin.{kind=BS_STATIC,root=100+i,type=12};}}\n",
+    "after": " if mode==0 {origins[0].kind=0;}if mode==1 {origins[0].root=-1;}if mode==2 {origins[0].type=0;}if mode==3 {origins[0].path.steps[7].index=1;}if mode==4 {queries[0].start=-1;}if mode==5 {queries[0].count=-1;}if mode==6 {queries[0].start=2;}if mode==7 {queries[0].count=2;}if mode==8 {queries[0].type=17;}if mode==10 {queries[0].count=2;work[0].origins=2;origins[1]=BS_Origin.{};}if mode==11 {work[0].work=2097151;}if mode==12 || mode==13 {count:=ifx mode==12 then 65 else 64;queries[0].count=count;work[0].origins=count;for i:0..<count {origins[i]=BS_Origin.{kind=BS_STATIC,root=100+i,type=12};}}\n"
+  },
+  {
+    "line": 84629,
+    "before": " work[0].queries=128;work[0].origins=1024;origins[1023]=BS_Origin.{kind=BS_STATIC,root=700,type=12};if mode==8 {work[0].work=1048576;}if mode==9 {path.steps[7].index=1;}if mode==10 {nodes[3].type=0;}if mode==11 {work[0].queries=129;}if mode==12 {work[0].origins=1025;}if mode==13 {b.retain_fields=false;}out:[64]BS_Origin;out[0]=BS_Origin.{kind=BS_STATIC,root=900,type=12};r:=CB_query(b,3,3,path,ifx mode==7 then out[0..<0] else out[..]);\n",
+    "after": " work[0].queries=128;work[0].origins=1024;origins[1023]=BS_Origin.{kind=BS_STATIC,root=700,type=12};if mode==8 {work[0].work=2097152;}if mode==9 {path.steps[7].index=1;}if mode==10 {nodes[3].type=0;}if mode==11 {work[0].queries=129;}if mode==12 {work[0].origins=1025;}if mode==13 {b.retain_fields=false;}out:[64]BS_Origin;out[0]=BS_Origin.{kind=BS_STATIC,root=900,type=12};r:=CB_query(b,3,3,path,ifx mode==7 then out[0..<0] else out[..]);\n"
+  },
+  {
+    "line": 84642,
+    "before": " if first {#assert CB_has_borrow(b,type,0)==borrow && CB_mutable_descriptors(b,type,0)==mutable;}else {#assert CB_mutable_descriptors(b,type,0)==mutable && CB_has_borrow(b,type,0)==borrow;}#assert !state[0].fatal && state[0].error_count==0;work[0].work=1048576;#assert CB_mutable_descriptors(b,type,0)==mutable && CB_has_borrow(b,type,0)==borrow && !state[0].fatal && state[0].error_count==0 && work[0].work==1048576;\n",
+    "after": " if first {#assert CB_has_borrow(b,type,0)==borrow && CB_mutable_descriptors(b,type,0)==mutable;}else {#assert CB_mutable_descriptors(b,type,0)==mutable && CB_has_borrow(b,type,0)==borrow;}#assert !state[0].fatal && state[0].error_count==0;work[0].work=2097152;#assert CB_mutable_descriptors(b,type,0)==mutable && CB_has_borrow(b,type,0)==borrow && !state[0].fatal && state[0].error_count==0 && work[0].work==2097152;\n"
+  },
+  {
+    "line": 84648,
+    "before": " else if mode==4 {work[0].work=1048576;#assert !CB_mutable_descriptors(b,16,0) && state[0].fatal && errors[0].code==\"E0381\" && types[16].retain_mutable==0;state[0].fatal=false;state[0].error_count=0;work[0].work=0;#assert CB_mutable_descriptors(b,16,0) && !state[0].fatal;work[0].work=1048576;#assert CB_mutable_descriptors(b,16,0) && !state[0].fatal;}\n",
+    "after": " else if mode==4 {work[0].work=2097152;#assert !CB_mutable_descriptors(b,16,0) && state[0].fatal && errors[0].code==\"E0381\" && types[16].retain_mutable==0;state[0].fatal=false;state[0].error_count=0;work[0].work=0;#assert CB_mutable_descriptors(b,16,0) && !state[0].fatal;work[0].work=2097152;#assert CB_mutable_descriptors(b,16,0) && !state[0].fatal;}\n"
+  },
+  {
+    "line": 84652,
+    "before": " else {#assert CB_mutable_descriptors(b,16,0) && !state[0].fatal;work[0].work=1048576;#assert !CB_mutable_descriptors(b,16,1) && state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\";}\n",
+    "after": " else {#assert CB_mutable_descriptors(b,16,0) && !state[0].fatal;work[0].work=2097152;#assert !CB_mutable_descriptors(b,16,1) && state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\";}\n"
+  },
+  {
+    "line": 84657,
+    "before": " if mode<3 {#assert !state[0].fatal && state[0].error_count==0 && cr[0].effects==1 && nodes[2].retain_count==1 && effects[0].source_storage==(mode==1 || mode==2) && effects[0].witness==4 && bs_compare(effects[0].source,source)==0;work[0].work=1048575;CR_effect(r,2,4,row);#assert !state[0].fatal && state[0].error_count==0 && cr[0].effects==1 && nodes[2].retain_count==1 && effects[0].source_storage==(mode==1 || mode==2);}\n",
+    "after": " if mode<3 {#assert !state[0].fatal && state[0].error_count==0 && cr[0].effects==1 && nodes[2].retain_count==1 && effects[0].source_storage==(mode==1 || mode==2) && effects[0].witness==4 && bs_compare(effects[0].source,source)==0;work[0].work=2097151;CR_effect(r,2,4,row);#assert !state[0].fatal && state[0].error_count==0 && cr[0].effects==1 && nodes[2].retain_count==1 && effects[0].source_storage==(mode==1 || mode==2);}\n"
+  },
+  {
+    "line": 84663,
+    "before": " source:=BS_Origin.{kind=BS_PARAMETER,root=63,role=BS_DESCRIPTOR,type=12,path=BS_Path.{count=1}};source.path.steps[0]=BS_Step.{kind=BS_FIELD,index=63};destination:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12,path=BS_Path.{count=1}};destination.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};row:=RP_Obligation.{source=RP_Term.{frame=50,origin=source},destination=RP_Address.{storage=RP_Term.{frame=50,origin=destination},value_type=12}};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};r:=CR_Context.{b=b,effects=effects[..],state=cr[..]};CR_effect(r,50,70,row);#assert !state[0].fatal && cr[0].effects==1;CR_apply(r,2,70,false);#assert !state[0].fatal && state[0].error_count==0 && nodes[2].retain_count==1;work[0].work=1047776;for i:0..<8 {CR_apply(r,2,70,false);}#assert !state[0].fatal && state[0].error_count==0 && work[0].work<=1048576 && nodes[2].retain_count==1 && cr[0].effects==2;\n",
+    "after": " source:=BS_Origin.{kind=BS_PARAMETER,root=63,role=BS_DESCRIPTOR,type=12,path=BS_Path.{count=1}};source.path.steps[0]=BS_Step.{kind=BS_FIELD,index=63};destination:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12,path=BS_Path.{count=1}};destination.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};row:=RP_Obligation.{source=RP_Term.{frame=50,origin=source},destination=RP_Address.{storage=RP_Term.{frame=50,origin=destination},value_type=12}};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};r:=CR_Context.{b=b,effects=effects[..],state=cr[..]};CR_effect(r,50,70,row);#assert !state[0].fatal && cr[0].effects==1;CR_apply(r,2,70,false);#assert !state[0].fatal && state[0].error_count==0 && nodes[2].retain_count==1;work[0].work=2096352;for i:0..<8 {CR_apply(r,2,70,false);}#assert !state[0].fatal && state[0].error_count==0 && work[0].work<=2097152 && nodes[2].retain_count==1 && cr[0].effects==2;\n"
+  },
+  {
+    "line": 84805,
+    "before": " effects[0]=CK_RetainEffect.{source=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12},destination=BS_Origin.{kind=BS_STATIC,root=50,type=3},value_type=12,witness=8};if mode==2 {work[0].work=1048576;}\n",
+    "after": " effects[0]=CK_RetainEffect.{source=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12},destination=BS_Origin.{kind=BS_STATIC,root=50,type=3},value_type=12,witness=8};if mode==2 {work[0].work=2097152;}\n"
+  },
+  {
+    "line": 84862,
+    "before": " if mode==31 {warm:=b;warm.retain_classes=true;out:[64]BS_Origin;got:=CB_expr(warm,10,BS_Path.{},false,out[..]);#assert !state[0].fatal && got.count==1;work[0].work=1048573;work[0].loc=CK_Loc.{line=244,column=7};CR_leaf(r,2,11,16,BS_Path.{});#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==231 && errors[0].loc.column==9;return;}\n",
+    "after": " if mode==31 {warm:=b;warm.retain_classes=true;out:[64]BS_Origin;got:=CB_expr(warm,10,BS_Path.{},false,out[..]);#assert !state[0].fatal && got.count==1;work[0].work=2097149;work[0].loc=CK_Loc.{line=244,column=7};CR_leaf(r,2,11,16,BS_Path.{});#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==231 && errors[0].loc.column==9;return;}\n"
+  },
+  {
+    "line": 84943,
+    "before": " if mode==0 {effects[1]=effects[0];nodes[2].retain_head=2;}else if mode==1 {work[0].work=1048576;}else {work[0].work=1048575;}\n",
+    "after": " if mode==0 {effects[1]=effects[0];nodes[2].retain_head=2;}else if mode==1 {work[0].work=2097152;}else {work[0].work=2097151;}\n"
+  },
+  {
+    "line": 84946,
+    "before": " else {#assert !state[0].fatal && state[0].error_count==0 && work[0].work==1048576;}\n",
+    "after": " else {#assert !state[0].fatal && state[0].error_count==0 && work[0].work==2097152;}\n"
+  },
+  {
+    "line": 85051,
+    "before": " return CK_RetainCaps.{effects=n,reports=reports,work=1048576};\n",
+    "after": " return CK_RetainCaps.{effects=n,reports=reports,work=2097152};\n"
+  },
+  {
+    "line": 85143,
+    "before": " if mode<2 {expected:=mode==1;#assert CR_presence(b,16)==expected && !state[0].fatal;work[0].work=1048576;#assert CR_presence(b,16)==expected && !state[0].fatal && state[0].error_count==0 && work[0].work==1048576;}\n",
+    "after": " if mode<2 {expected:=mode==1;#assert CR_presence(b,16)==expected && !state[0].fatal;work[0].work=2097152;#assert CR_presence(b,16)==expected && !state[0].fatal && state[0].error_count==0 && work[0].work==2097152;}\n"
+  },
+  {
+    "line": 85144,
+    "before": " else if mode==2 {work[0].work=1048576;#assert !CR_presence(b,16) && state[0].fatal && errors[0].code==\"E0381\";state[0].fatal=false;state[0].error_count=0;work[0].work=0;types[16].elem=3;#assert CR_presence(b,16) && !state[0].fatal;}\n",
+    "after": " else if mode==2 {work[0].work=2097152;#assert !CR_presence(b,16) && state[0].fatal && errors[0].code==\"E0381\";state[0].fatal=false;state[0].error_count=0;work[0].work=0;types[16].elem=3;#assert CR_presence(b,16) && !state[0].fatal;}\n"
+  },
+  {
+    "line": 85148,
+    "before": " else if mode==8 {work[0].work=1048576;state[0].retain_report_count=7;CR_run(b);#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && work[0].work==1048577 && state[0].retain_report_count==0;}\n",
+    "after": " else if mode==8 {work[0].work=2097152;state[0].retain_report_count=7;CR_run(b);#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && work[0].work==2097153 && state[0].retain_report_count==0;}\n"
+  },
+  {
+    "line": 85201,
+    "before": " if mode==7 {types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};work[0].work=1048576;}\n",
+    "after": " if mode==7 {types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};work[0].work=2097152;}\n"
+  },
+  {
+    "line": 85204,
+    "before": " #assert answer==(mode==1) && !state[0].fatal && state[0].error_count==0;work[0].work=1048576;#assert CR_join_arrays(b,16)==answer && !state[0].fatal && work[0].work==1048576;\n",
+    "after": " #assert answer==(mode==1) && !state[0].fatal && state[0].error_count==0;work[0].work=2097152;#assert CR_join_arrays(b,16)==answer && !state[0].fatal && work[0].work==2097152;\n"
+  },
+  {
+    "line": 85353,
+    "before": " b.retain_fields=mode<2;b.retain_classes=mode%2==1;work[0].work=1048064;seen:=0;\n",
+    "after": " b.retain_fields=mode<2;b.retain_classes=mode%2==1;work[0].work=2096640;seen:=0;\n"
+  },
+  {
+    "line": 85378,
+    "before": " work[0].work=1048573;#assert CB_field(b,16,7)==ids[7] && !state[0].fatal && state[0].error_count==0 && work[0].queries==128 && types[16].retain_fields==head;\n",
+    "after": " work[0].work=2097149;#assert CB_field(b,16,7)==ids[7] && !state[0].fatal && state[0].error_count==0 && work[0].queries==128 && types[16].retain_fields==head;\n"
+  },
+  {
+    "line": 85400,
+    "before": " if mode==10 {work[0].work=1048575;}\n",
+    "after": " if mode==10 {work[0].work=2097151;}\n"
+  },
+  {
+    "line": 85414,
+    "before": " b.retain_classes=mode%2==1;b.retain_fields=mode<2 || mode>=4;if mode>=2 && mode<4 {work[0].field_row=-1;}work[0].work=1048575;\n",
+    "after": " b.retain_classes=mode%2==1;b.retain_fields=mode<2 || mode>=4;if mode>=2 && mode<4 {work[0].field_row=-1;}work[0].work=2097151;\n"
+  },
+  {
+    "line": 85422,
+    "before": " if mode==0 {work[0].work=1048575;#assert CB_field(b,17,0)==2 && !state[0].fatal && state[0].error_count==0;}\n",
+    "after": " if mode==0 {work[0].work=2097151;#assert CB_field(b,17,0)==2 && !state[0].fatal && state[0].error_count==0;}\n"
+  },
+  {
+    "line": 85424,
+    "before": " else if mode==2 {#assert CB_field(b,16,63)==83 && !state[0].fatal;work[0].work=1048575;#assert CB_field(b,16,63)==83 && !state[0].fatal && state[0].error_count==0;}\n",
+    "after": " else if mode==2 {#assert CB_field(b,16,63)==83 && !state[0].fatal;work[0].work=2097151;#assert CB_field(b,16,63)==83 && !state[0].fatal && state[0].error_count==0;}\n"
+  },
+  {
+    "line": 85425,
+    "before": " else {if mode==3 {work[0].field_head=1;}else {work[0].field_block=1;}work[0].work=1048575;#assert CB_field(b,16,0)==0 && state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==221 && errors[0].loc.column==7;}\n",
+    "after": " else {if mode==3 {work[0].field_head=1;}else {work[0].field_block=1;}work[0].work=2097151;#assert CB_field(b,16,0)==0 && state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==221 && errors[0].loc.column==7;}\n"
+  },
+  {
+    "line": 85435,
+    "before": " if mode==16 {queries[0].path.steps[0].index=-1;}if mode==17 {queries[0].path.steps[0].index=1;nodes[1]=CK_Node.{kind=CK_Tag.field,type=11};}if mode==18 {queries[0].path.steps[0].index=121;nodes[121]=CK_Node.{kind=CK_Tag.field,type=11};}if mode==19 {nodes[20].kind=CK_Tag.param;}if mode==20 {nodes[20].type=0;}if mode==21 {nodes[20].type=20;}if mode==22 {work[0].work=1048576;}if mode==23 {b.queries=queries[0..<0];}if mode==24 {types[16].retain_fields=0;work[0].field_head=0;work[0].queries=128;}\n",
+    "after": " if mode==16 {queries[0].path.steps[0].index=-1;}if mode==17 {queries[0].path.steps[0].index=1;nodes[1]=CK_Node.{kind=CK_Tag.field,type=11};}if mode==18 {queries[0].path.steps[0].index=121;nodes[121]=CK_Node.{kind=CK_Tag.field,type=11};}if mode==19 {nodes[20].kind=CK_Tag.param;}if mode==20 {nodes[20].type=0;}if mode==21 {nodes[20].type=20;}if mode==22 {work[0].work=2097152;}if mode==23 {b.queries=queries[0..<0];}if mode==24 {types[16].retain_fields=0;work[0].field_head=0;work[0].queries=128;}\n"
+  },
+  {
+    "line": 85447,
+    "before": " state[0].fatal=false;state[0].error_count=0;nodes[21].kind=CK_Tag.field;work[0].work=1048575;\n",
+    "after": " state[0].fatal=false;state[0].error_count=0;nodes[21].kind=CK_Tag.field;work[0].work=2097151;\n"
+  },
+  {
+    "line": 85529,
+    "before": " nodes:[48]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=47,type_count=20}];work:=[1]CB_State.[CB_State.{work=1048500}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;\n",
+    "after": " nodes:[48]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=47,type_count=20}];work:=[1]CB_State.[CB_State.{work=2097076}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;\n"
+  },
+  {
+    "line": 85535,
+    "before": " if record {#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && work[0].work==1048577 && state[0].retain_report_count==0;}\n",
+    "after": " if record {#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && work[0].work==2097153 && state[0].retain_report_count==0;}\n"
+  },
+  {
+    "line": 85536,
+    "before": " else {#assert !state[0].fatal && state[0].error_count==0 && work[0].work<1048576;}\n",
+    "after": " else {#assert !state[0].fatal && state[0].error_count==0 && work[0].work<2097152;}\n"
+  },
+  {
+    "line": 85605,
+    "before": "  if mode==33 {work[0].work=1048544;CR_leaf(r,20,10,19,BS_Path.{});nodes[5].type=16;nodes[7].type=16;nodes[8].type=16;CR_leaf(r,20,10,16,BS_Path.{});CR_leaf(r,20,10,16,BS_Path.{});nodes[5].type=19;nodes[7].type=19;nodes[8].type=19;CR_leaf(r,20,10,19,BS_Path.{});#assert !state[0].fatal && state[0].error_count==0 && state[0].retain_report_count==0;return;}\n",
+    "after": "  if mode==33 {work[0].work=2097120;CR_leaf(r,20,10,19,BS_Path.{});nodes[5].type=16;nodes[7].type=16;nodes[8].type=16;CR_leaf(r,20,10,16,BS_Path.{});CR_leaf(r,20,10,16,BS_Path.{});nodes[5].type=19;nodes[7].type=19;nodes[8].type=19;CR_leaf(r,20,10,19,BS_Path.{});#assert !state[0].fatal && state[0].error_count==0 && state[0].retain_report_count==0;return;}\n"
+  },
+  {
+    "line": 85613,
+    "before": " if mode<5 || (mode>=12 && mode<=14) || mode==22 || mode==26 {work[0].work=1048576-(ifx mode==2 then 96 else ifx mode==4 then 0 else ifx mode==22 then 7 else 8);}\n",
+    "after": " if mode<5 || (mode>=12 && mode<=14) || mode==22 || mode==26 {work[0].work=2097152-(ifx mode==2 then 96 else ifx mode==4 then 0 else ifx mode==22 then 7 else 8);}\n"
+  },
+  {
+    "line": 85616,
+    "before": " else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && state[0].retain_report_count==0;if mode==4 {#assert work[0].work==1048577;}}\n",
+    "after": " else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && state[0].retain_report_count==0;if mode==4 {#assert work[0].work==2097153;}}\n"
+  },
+  {
+    "line": 85620,
+    "before": " nodes:[48]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=47,type_count=18}];work:=[1]CB_State.[CB_State.{work=1048500}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;rs:[1]CR_State;\n",
+    "after": " nodes:[48]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=47,type_count=18}];work:=[1]CB_State.[CB_State.{work=2097076}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;rs:[1]CR_State;\n"
+  },
+  {
+    "line": 85622,
+    "before": " c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};r:=CR_Context.{b=b,effects=effects[..],state=rs[..]};CR_leaf(r,20,10,16,BS_Path.{});#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && work[0].work==1048577 && state[0].retain_report_count==0;\n",
+    "after": " c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};r:=CR_Context.{b=b,effects=effects[..],state=rs[..]};CR_leaf(r,20,10,16,BS_Path.{});#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && work[0].work==2097153 && state[0].retain_report_count==0;\n"
+  },
+  {
+    "line": 85671,
+    "before": " work[0].work=1048568;CR_leaf(r,20,10,16,BS_Path.{});#assert !state[0].fatal && state[0].error_count==0 && state[0].retain_report_count==0;\n",
+    "after": " work[0].work=2097144;CR_leaf(r,20,10,16,BS_Path.{});#assert !state[0].fatal && state[0].error_count==0 && state[0].retain_report_count==0;\n"
+  },
+  {
+    "line": 85704,
+    "before": " if sample==0 {work[0].work=1048576;}if sample==1 {work[0].queries=128;}if sample==2 {work[0].origins=1024;}\n",
+    "after": " if sample==0 {work[0].work=2097152;}if sample==1 {work[0].queries=128;}if sample==2 {work[0].origins=1024;}\n"
+  },
+  {
+    "line": 85731,
+    "before": " if sample==13 {work[0].work=1048576;}if sample==14 {work[0].work=1048575;}\n",
+    "after": " if sample==13 {work[0].work=2097152;}if sample==14 {work[0].work=2097151;}\n"
+  },
+  {
+    "line": 85947,
+    "before": " work[0].work=1048512;\n",
+    "after": " work[0].work=2097088;\n"
+  },
+  {
+    "line": 85949,
+    "before": " #assert work[0].work<=1048576;\n",
+    "after": " #assert work[0].work<=2097152;\n"
+  },
+  {
+    "line": 86022,
+    "before": " work[0].work=1048320;for i:0..<64 {index:=(i*5+3)%16;path.steps[0].index=index;got:=CB_expr(b,10,path,false,out[..]);#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && !got.incomplete && out[0].kind==BS_STATIC && out[0].root==80+index && out[0].type==12 && out[0].path.count==0;}#assert work[0].work<=1048576;\n",
+    "after": " work[0].work=2096896;for i:0..<64 {index:=(i*5+3)%16;path.steps[0].index=index;got:=CB_expr(b,10,path,false,out[..]);#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && !got.incomplete && out[0].kind==BS_STATIC && out[0].root==80+index && out[0].type==12 && out[0].path.count==0;}#assert work[0].work<=2097152;\n"
+  },
+  {
+    "line": 86032,
+    "before": " nodes:[64]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=63,type_count=17}];work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=20,loc=CK_Loc.{line=420,column=5,offset=42005}};nodes[20]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=40};nodes[40]=CK_Node.{kind=CK_Tag.expr_string,type=3};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],literal_cache=true};out:[64]BS_Origin;path:=BS_Path.{count=1};path.steps[0].kind=BS_FIELD;if warm {got:=CB_expr(b,10,path,false,out[..]);#assert !state[0].fatal && got.count==1;work[0].work=1048575;}else {path.steps[0].kind=BS_ELEMENT;}out[0].root=901;got:=CB_expr(b,10,path,false,out[..]);#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==420 && errors[0].loc.column==5 && errors[0].loc.offset==42005 && got.count==0 && !got.incomplete && out[0].root==901;\n",
+    "after": " nodes:[64]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=63,type_count=17}];work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=20,loc=CK_Loc.{line=420,column=5,offset=42005}};nodes[20]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=40};nodes[40]=CK_Node.{kind=CK_Tag.expr_string,type=3};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],literal_cache=true};out:[64]BS_Origin;path:=BS_Path.{count=1};path.steps[0].kind=BS_FIELD;if warm {got:=CB_expr(b,10,path,false,out[..]);#assert !state[0].fatal && got.count==1;work[0].work=2097151;}else {path.steps[0].kind=BS_ELEMENT;}out[0].root=901;got:=CB_expr(b,10,path,false,out[..]);#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==420 && errors[0].loc.column==5 && errors[0].loc.offset==42005 && got.count==0 && !got.incomplete && out[0].root==901;\n"
+  },
+  {
+    "line": 86039,
+    "before": " nodes:[128]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=127,type_count=17}];work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=32,loc=CK_Loc.{line=430,column=5,offset=43005}};for i:0..<16 {nodes[32+i]=CK_Node.{kind=CK_Tag.field_init,field_index=i,a=80+i,next=ifx i==15 then 0 else 33+i};nodes[80+i]=CK_Node.{kind=CK_Tag.expr_string,type=3};}c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],retain_fields=true};out:[64]BS_Origin;path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_FIELD,index=15};first:=CB_expr(b,10,path,false,out[..]);#assert !state[0].fatal && first.count==1 && out[0].root==95;work[0].work=1048570;out[0].root=901;got:=CB_expr(b,10,path,false,out[..]);#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==430 && errors[0].loc.column==5 && errors[0].loc.offset==43005 && got.count==0 && !got.incomplete && out[0].root==901;\n",
+    "after": " nodes:[128]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=127,type_count=17}];work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=32,loc=CK_Loc.{line=430,column=5,offset=43005}};for i:0..<16 {nodes[32+i]=CK_Node.{kind=CK_Tag.field_init,field_index=i,a=80+i,next=ifx i==15 then 0 else 33+i};nodes[80+i]=CK_Node.{kind=CK_Tag.expr_string,type=3};}c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],retain_fields=true};out:[64]BS_Origin;path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_FIELD,index=15};first:=CB_expr(b,10,path,false,out[..]);#assert !state[0].fatal && first.count==1 && out[0].root==95;work[0].work=2097146;out[0].root=901;got:=CB_expr(b,10,path,false,out[..]);#assert state[0].fatal && state[0].error_count==1 && errors[0].code==\"E0381\" && errors[0].loc.line==430 && errors[0].loc.column==5 && errors[0].loc.offset==43005 && got.count==0 && !got.incomplete && out[0].root==901;\n"
+  },
+  {
+    "line": 86050,
+    "before": " b.query_index=CB_index_begin(b);#assert !state[0].fatal;path.steps[0].index=0;warm:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && warm.count==1;work[0].work=1048320;\n",
+    "after": " b.query_index=CB_index_begin(b);#assert !state[0].fatal;path.steps[0].index=0;warm:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && warm.count==1;work[0].work=2096896;\n"
+  },
+  {
+    "line": 86052,
+    "before": " #assert work[0].queries==16 && work[0].origins==16 && work[0].work<=1048576;\n",
+    "after": " #assert work[0].queries==16 && work[0].origins==16 && work[0].work<=2097152;\n"
+  },
+  {
+    "line": 86090,
+    "before": " if mode==0 {nodes[3].borrow_query=-1;}if mode==1 {nodes[3].borrow_query=3;}if mode==2 {work[0].queries=1;}if mode==3 {queries[1].decl=4;}if mode==4 {queries[1].kind=4;}if mode==5 {queries[1].status=0;}if mode==6 {queries[1].next=2;}if mode==7 {queries[1].path.steps[7].index=1;}if mode==8 {queries[0].type=12;}if mode==9 {queries[0].start=-1;}if mode==10 {queries[0].count=-1;}if mode==11 {queries[0].start=3;}if mode==12 {queries[0].count=3;}if mode==14 {scratch[19]=1;}if mode==15 {for i:0..<8 {if scratch[10+i]==2 {scratch[10+i]=-1;}}}if mode==16 {for i:0..<8 {if scratch[10+i]==2 {scratch[10+i]=3;}}}if mode==17 {scratch[18]=2;}if mode==18 {scratch[8]=1;}if mode==19 {work[0].work=1048576;}if mode==20 {queries[0].decl=4;}\n",
+    "after": " if mode==0 {nodes[3].borrow_query=-1;}if mode==1 {nodes[3].borrow_query=3;}if mode==2 {work[0].queries=1;}if mode==3 {queries[1].decl=4;}if mode==4 {queries[1].kind=4;}if mode==5 {queries[1].status=0;}if mode==6 {queries[1].next=2;}if mode==7 {queries[1].path.steps[7].index=1;}if mode==8 {queries[0].type=12;}if mode==9 {queries[0].start=-1;}if mode==10 {queries[0].count=-1;}if mode==11 {queries[0].start=3;}if mode==12 {queries[0].count=3;}if mode==14 {scratch[19]=1;}if mode==15 {for i:0..<8 {if scratch[10+i]==2 {scratch[10+i]=-1;}}}if mode==16 {for i:0..<8 {if scratch[10+i]==2 {scratch[10+i]=3;}}}if mode==17 {scratch[18]=2;}if mode==18 {scratch[8]=1;}if mode==19 {work[0].work=2097152;}if mode==20 {queries[0].decl=4;}\n"
+  },
+  {
+    "line": 86096,
+    "before": " if malformed==0 {queries[0].decl=4;}if malformed==1 {queries[0].kind=4;}if malformed==2 {queries[0].status=4;}if malformed==3 {queries[0].next=1;}if malformed==4 {queries[0].next=-1;}if malformed==5 {queries[0].path.steps[7].kind=BS_FIELD;}if malformed==6 {work[0].work=1048575;}\n",
+    "after": " if malformed==0 {queries[0].decl=4;}if malformed==1 {queries[0].kind=4;}if malformed==2 {queries[0].status=4;}if malformed==3 {queries[0].next=1;}if malformed==4 {queries[0].next=-1;}if malformed==5 {queries[0].path.steps[7].kind=BS_FIELD;}if malformed==6 {work[0].work=2097151;}\n"
+  },
+  {
+    "line": 86114,
+    "before": " c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};b.query_index=CB_index_begin(b);work[0].work=1048576;out:[64]BS_Origin;out[0]=BS_Origin.{kind=BS_STATIC,root=900,type=12};r:=CB_query(b,2,3,BS_Path.{},out[..]);#assert state[0].fatal && errors[0].code==\"E0381\" && r.count==0 && out[0].root==900 && nodes[3].borrow_query==0 && work[0].queries==0 && work[0].origins==0;\n",
+    "after": " c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};b.query_index=CB_index_begin(b);work[0].work=2097152;out:[64]BS_Origin;out[0]=BS_Origin.{kind=BS_STATIC,root=900,type=12};r:=CB_query(b,2,3,BS_Path.{},out[..]);#assert state[0].fatal && errors[0].code==\"E0381\" && r.count==0 && out[0].root==900 && nodes[3].borrow_query==0 && work[0].queries==0 && work[0].origins==0;\n"
+  },
+  {
+    "line": 86203,
+    "before": " nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=17}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;scratch:[1280]int;work:=[1]CB_State.[CB_State.{queries=1,origins=1}];out:[2]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,borrow_query=1,loc=CK_Loc.{line=723,column=5}};queries[0]=CK_BorrowQuery.{kind=2,decl=3,type=16,status=2,count=1};origins[0]=BS_Origin.{kind=BS_PARAMETER,root=0,type=12,role=BS_DESCRIPTOR};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};b.query_index=CB_index_begin(b);work[0].work=1048575;r:=CB_query(b,2,3,BS_Path.{},out[..]);\n",
+    "after": " nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=17}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;scratch:[1280]int;work:=[1]CB_State.[CB_State.{queries=1,origins=1}];out:[2]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,borrow_query=1,loc=CK_Loc.{line=723,column=5}};queries[0]=CK_BorrowQuery.{kind=2,decl=3,type=16,status=2,count=1};origins[0]=BS_Origin.{kind=BS_PARAMETER,root=0,type=12,role=BS_DESCRIPTOR};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};b.query_index=CB_index_begin(b);work[0].work=2097151;r:=CB_query(b,2,3,BS_Path.{},out[..]);\n"
+  },
+  {
+    "line": 86215,
+    "before": " work[0].work=1048573;path.steps[0].index=0;r=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==13 && bs_path_equal(out[0].path,path);\n",
+    "after": " work[0].work=2097149;path.steps[0].index=0;r=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==13 && bs_path_equal(out[0].path,path);\n"
+  },
+  {
+    "line": 86230,
+    "before": " work[0].work=1048573;path.steps[0].index=0;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==13 && bs_path_equal(out[0].path,path);\n",
+    "after": " work[0].work=2097149;path.steps[0].index=0;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==13 && bs_path_equal(out[0].path,path);\n"
+  },
+  {
+    "line": 86260,
+    "before": " work[0].work=1048575;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==12 && bs_path_equal(out[0].path,path);\n",
+    "after": " work[0].work=2097151;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==12 && bs_path_equal(out[0].path,path);\n"
+  },
+  {
+    "line": 86265,
+    "before": " work[0].work=1048575;#assert CB_type(b,18,path)==(ifx block==0 then 17 else 16) && !state[0].fatal && state[0].error_count==0;\n",
+    "after": " work[0].work=2097151;#assert CB_type(b,18,path)==(ifx block==0 then 17 else 16) && !state[0].fatal && state[0].error_count==0;\n"
+  },
+  {
+    "line": 86271,
+    "before": " work[0].work=1048573;path.steps[0].index=0;r=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].root==0 && out[0].type==13 && bs_path_equal(out[0].path,path);\n",
+    "after": " work[0].work=2097149;path.steps[0].index=0;r=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].root==0 && out[0].type==13 && bs_path_equal(out[0].path,path);\n"
+  },
+  {
+    "line": 86275,
+    "before": " nodes:[24]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=23,type_count=19}];work:=[1]CB_State.[CB_State.{work=1048568}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=16,length=64};types[18]=CK_Type.{kind=CK_Kind.union_,decl=10};nodes[10]=CK_Node.{kind=CK_Tag.union_,head=11};nodes[11]=CK_Node.{kind=CK_Tag.variant,type=17,value=0,next=12};nodes[12]=CK_Node.{kind=CK_Tag.variant,type=16,value=1,next=13};nodes[13]=CK_Node.{kind=CK_Tag.variant,type=16,value=2};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};\n",
+    "after": " nodes:[24]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=23,type_count=19}];work:=[1]CB_State.[CB_State.{work=2097144}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=16,length=64};types[18]=CK_Type.{kind=CK_Kind.union_,decl=10};nodes[10]=CK_Node.{kind=CK_Tag.union_,head=11};nodes[11]=CK_Node.{kind=CK_Tag.variant,type=17,value=0,next=12};nodes[12]=CK_Node.{kind=CK_Tag.variant,type=16,value=1,next=13};nodes[13]=CK_Node.{kind=CK_Tag.variant,type=16,value=2};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};\n"
+  },
+  {
+    "line": 86289,
+    "before": " work[0].work=1048574;path.steps[0].index=0;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==13 && bs_path_equal(out[0].path,path);\n",
+    "after": " work[0].work=2097150;path.steps[0].index=0;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==13 && bs_path_equal(out[0].path,path);\n"
+  },
+  {
+    "line": 86313,
+    "before": " nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=17}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;scratch:[1280]int;work:=[1]CB_State.[CB_State.{queries=1,origins=1}];out:[2]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,borrow_query=1,loc=CK_Loc.{line=786,column=9,offset=78609}};queries[0]=CK_BorrowQuery.{kind=2,decl=3,type=16,status=2,count=1,next=1};origins[0]=BS_Origin.{kind=BS_PARAMETER,root=0,type=12,role=BS_DESCRIPTOR};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};b.query_index=CB_index_begin(b);work[0].work=1048576;out[0]=BS_Origin.{kind=BS_STATIC,root=901,type=12};r:=CB_query(b,2,3,BS_Path.{},out[..]);\n",
+    "after": " nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=17}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;scratch:[1280]int;work:=[1]CB_State.[CB_State.{queries=1,origins=1}];out:[2]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,borrow_query=1,loc=CK_Loc.{line=786,column=9,offset=78609}};queries[0]=CK_BorrowQuery.{kind=2,decl=3,type=16,status=2,count=1,next=1};origins[0]=BS_Origin.{kind=BS_PARAMETER,root=0,type=12,role=BS_DESCRIPTOR};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};b.query_index=CB_index_begin(b);work[0].work=2097152;out[0]=BS_Origin.{kind=BS_STATIC,root=901,type=12};r:=CB_query(b,2,3,BS_Path.{},out[..]);\n"
+  },
+  {
+    "line": 86319,
+    "before": " work[0].work=1048575;#assert CB_type(b,18,path)==17 && !state[0].fatal && state[0].error_count==0;\n",
+    "after": " work[0].work=2097151;#assert CB_type(b,18,path)==17 && !state[0].fatal && state[0].error_count==0;\n"
+  },
+  {
+    "line": 86323,
+    "before": " field.steps[0].index=8;#assert CB_type(b,18,field)==16 && !state[0].fatal;work[0].work=1048573;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].type==13 && bs_path_equal(out[0].path,path);\n",
+    "after": " field.steps[0].index=8;#assert CB_type(b,18,field)==16 && !state[0].fatal;work[0].work=2097149;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].type==13 && bs_path_equal(out[0].path,path);\n"
+  }
+]

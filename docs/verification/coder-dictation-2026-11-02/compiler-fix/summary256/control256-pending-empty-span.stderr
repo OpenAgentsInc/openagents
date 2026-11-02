@@ -1,0 +1,5 @@
+/tmp/dictation-compiler-fix/controls256/pending-empty-span/coax/lib/compiler/checker.coax:85106:117: error[E0410]: index 0 is out of bounds for 0 elements
+   if used>staging.count || used>=CR_MAX_EFFECTS {return -1;}i:=used;while i>at {staging[i]=staging[i-1];i-=1;}staging[at]=value;return used+1;
+                                                                                                                      ^
+  note: in #forall retained summary pending256 preserves ordering duplicate reuse and atomic257 refusal
+  counterexample: mode = 4

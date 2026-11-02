@@ -3,7 +3,7 @@
 // facts. The complete declaration query chain and raw/class eligibility remain
 // authoritative. Only successful completed query rows publish a witness.
 CB_ProjectionStep :: struct {type:int;decl:int;head:int;field_head:int;row:int;field:int;next_type:int;}
-CB_QueryProjection :: struct {decl:int;kind:u8;classes:bool;root:int;type:int;path:BS_Path;query:int;head:int;used:int;types:int;steps:[8]CB_ProjectionStep;}
+CB_QueryProjection :: struct {decl:int;kind:u8;classes:bool;root:int;type:int;path:BS_Path;query:int;head:int;used:int;types:int;steps:[BS_MAX_PATH]CB_ProjectionStep;}
 // The private hit value is unspecified after fatal; its sole caller checks fatal before use.
 CB_projection_hit :: (b:CB_Context,p:CB_QueryProjection,kind:u8,decl:int,path:BS_Path)->bool {
  if p.classes!=b.retain_classes || p.root!=b.c.nodes[decl].type || p.used!=b.c.state[0].used || p.types!=b.c.state[0].type_count || p.head!=b.c.nodes[decl].borrow_query {return false;}
@@ -20,7 +20,7 @@ CB_projection_hit :: (b:CB_Context,p:CB_QueryProjection,kind:u8,decl:int,path:BS
    if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return b.c.state[0].fatal;}
    charged:=CB_tick(b,b.state[0].loc);if !charged {return charged;}q:=b.queries[w.row-1];
    if q.kind!=4 || q.decl!=t || q.type!=r.decl || q.status!=2 || q.count!=w.head || q.retain_classes || q.start!=step.index/8 || q.path.count!=0 || q.next<0 || q.next>=w.row {CK_resource(b.c,b.state[0].loc);return b.c.state[0].fatal;}
-   for j:0..<8 {if q.path.steps[j].kind!=0 {CK_resource(b.c,b.state[0].loc);return charged;}}
+   for j:0..<BS_MAX_PATH {if q.path.steps[j].kind!=0 || (j>=8 && q.path.steps[j].index!=0) {CK_resource(b.c,b.state[0].loc);return charged;}}
    if q.path.steps[step.index%8].index!=w.field {return false;}
    if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return b.c.state[0].fatal;}
    f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return b.c.state[0].fatal;}

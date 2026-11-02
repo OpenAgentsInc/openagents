@@ -1,0 +1,22 @@
+FAIL #test dictation audio converts a partial final frame without adding or omitting samples (148 ms)
+apps/shared/dictation.coax:18:2: error[E0406]: assertion failed
+   #assert s[0].gate.phase==3 && s[0].n==14080;dct_audio_feed(s[..],a[0..<80],16000,895);dct_clock(s[..],900);
+   ^
+  note: in #test dictation audio converts a partial final frame without adding or omitting samples
+ok   #test dictation silence and short taps never become model requests (1 case, 3661336 steps, 107 ms)
+ok   #test dictation raw chunks use the Verse resampler and reject incompatible source facts (1 case, 4857117 steps, 131 ms)
+ok   #test dictation late and cancelled results cannot retain audio or partial text (1 case, 510805 steps, 14 ms)
+ok   #test dictation frozen clips are immutable while the warm ring keeps listening (1 case, 174293 steps, 8 ms)
+ok   #test dictation capture requires all consent focus and readiness facts (1 case, 587 steps, 0 ms)
+ok   #test dictation begins only idle with a monotonic positive ticket and a bounded clock (1 case, 706 steps, 0 ms)
+ok   #test dictation duplicate facts preserve a held request while focus or consent loss invalidates it (1 case, 548 steps, 0 ms)
+ok   #test dictation release distinguishes a tap from the exact minimum and bounds the tail (1 case, 463 steps, 0 ms)
+ok   #test dictation finalization waits for captured time and rejects stalled audio (1 case, 228 steps, 0 ms)
+ok   #test dictation silence gate needs a complete clip real speech and a loud thirty milliseconds (1 case, 356 steps, 0 ms)
+ok   #test dictation results require the current recognizing ticket and cannot survive cancellation (1 case, 421 steps, 0 ms)
+ok   #test dictation fault and preparation facts have bounded explicit meanings (1 case, 969 steps, 0 ms)
+ok   #forall dictation model segments cover exact audio without a too-short final chunk (1080 cases, 162002 steps, 4 ms)
+ok   #test dictation segmentation handles every boundary without omitted or duplicated samples (1 case, 1626 steps, 0 ms)
+ok   #test dictation combined text stays bounded and never accepts another ticket (1 case, 501 steps, 0 ms)
+16 of 59 checks (--only 'dictation'), 15 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

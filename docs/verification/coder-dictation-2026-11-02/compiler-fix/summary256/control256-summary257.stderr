@@ -1,0 +1,4 @@
+/tmp/dictation-compiler-fix/controls256/summary257/coax/lib/compiler/checker.coax:85178:2: error[E0406]: assertion failed
+   #assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==912 && errors[0].loc.column==7 && nodes[2].retain_count==256 && rs[0].effects==256 && state[0].retain_report_count==0;
+   ^
+  note: in #test retained join keeps the256 effect limit across writes

@@ -1,0 +1,263 @@
+apps/shared/dictation-policy.coax:1:1: error[E0336]: the program has no 'main'
+  // Dictation admission is local, opt-in and ticketed. A transcript is only a
+  ^
+  fix: add main :: () { ... }
+apps/shared/dictation-policy.coax:9:111: error[E0315]: procedure 'dgp_capture' is not declared
+   for bits:0..<8 {g:=DctGate.{enabled=(bits&1)!=0,active=(bits&2)!=0,ready=(bits&4)!=0,phase=DCT_IDLE};#assert dgp_capture(g)==(bits==7);n:=dgp_begin(g,1000);#assert (n.phase==DCT_HELD)==(bits==7);}
+                                                                                                                ^
+apps/shared/dictation-policy.coax:9:140: error[E0315]: procedure 'dgp_begin' is not declared
+   for bits:0..<8 {g:=DctGate.{enabled=(bits&1)!=0,active=(bits&2)!=0,ready=(bits&4)!=0,phase=DCT_IDLE};#assert dgp_capture(g)==(bits==7);n:=dgp_begin(g,1000);#assert (n.phase==DCT_HELD)==(bits==7);}
+                                                                                                                                             ^
+apps/shared/dictation-policy.coax:12:78: error[E0315]: procedure 'dgp_begin' is not declared
+   g:=DctGate.{enabled=true,active=true,ready=true,phase=DCT_IDLE,ticket=7};n:=dgp_begin(g,1000);#assert n.ticket==8 && n.pressed==1000 && n.until==60550 && n.outcome==0;
+                                                                               ^
+apps/shared/dictation-policy.coax:13:54: error[E0315]: procedure 'dgp_begin' is not declared
+   for phase:0..<6 {if phase!=1 {g.phase=phase;#assert dgp_begin(g,1000).phase==phase && dgp_begin(g,1000).ticket==7;}}
+                                                       ^
+apps/shared/dictation-policy.coax:13:88: error[E0315]: procedure 'dgp_begin' is not declared
+   for phase:0..<6 {if phase!=1 {g.phase=phase;#assert dgp_begin(g,1000).phase==phase && dgp_begin(g,1000).ticket==7;}}
+                                                                                         ^
+apps/shared/dictation-policy.coax:14:20: error[E0315]: procedure 'dgp_begin' is not declared
+   g.phase=1;#assert dgp_begin(g,-1).ticket==7;#assert dgp_begin(g,1000000000001).ticket==7;#assert dgp_begin(g,1000000000000).ticket==8;
+                     ^
+apps/shared/dictation-policy.coax:14:54: error[E0315]: procedure 'dgp_begin' is not declared
+   g.phase=1;#assert dgp_begin(g,-1).ticket==7;#assert dgp_begin(g,1000000000001).ticket==7;#assert dgp_begin(g,1000000000000).ticket==8;
+                                                       ^
+apps/shared/dictation-policy.coax:14:99: error[E0315]: procedure 'dgp_begin' is not declared
+   g.phase=1;#assert dgp_begin(g,-1).ticket==7;#assert dgp_begin(g,1000000000001).ticket==7;#assert dgp_begin(g,1000000000000).ticket==8;
+                                                                                                    ^
+apps/shared/dictation-policy.coax:15:39: error[E0315]: procedure 'dgp_begin' is not declared
+   g.ticket=9223372036854775807;#assert dgp_begin(g,1).ticket==g.ticket;
+                                        ^
+apps/shared/dictation-policy.coax:18:5: error[E0315]: procedure 'dgp_begin' is not declared
+   g:=dgp_begin(DctGate.{enabled=true,active=true,ready=true,phase=1},1000);
+      ^
+apps/shared/dictation-policy.coax:19:10: error[E0315]: procedure 'dgp_enable' is not declared
+   #assert dgp_enable(g,true).phase==2 && dgp_active(g,true).phase==2 && dgp_ready(g,true).phase==2;
+           ^
+apps/shared/dictation-policy.coax:19:41: error[E0315]: procedure 'dgp_active' is not declared
+   #assert dgp_enable(g,true).phase==2 && dgp_active(g,true).phase==2 && dgp_ready(g,true).phase==2;
+                                          ^
+apps/shared/dictation-policy.coax:19:72: error[E0315]: procedure 'dgp_ready' is not declared
+   #assert dgp_enable(g,true).phase==2 && dgp_active(g,true).phase==2 && dgp_ready(g,true).phase==2;
+                                                                         ^
+apps/shared/dictation-policy.coax:20:5: error[E0315]: procedure 'dgp_enable' is not declared
+   a:=dgp_enable(g,false);#assert !a.enabled && a.phase==0 && a.outcome==3;
+      ^
+apps/shared/dictation-policy.coax:21:4: error[E0315]: procedure 'dgp_active' is not declared
+   a=dgp_active(g,false);#assert a.enabled && !a.active && a.phase==0 && a.outcome==3;
+     ^
+apps/shared/dictation-policy.coax:22:4: error[E0315]: procedure 'dgp_ready' is not declared
+   a=dgp_ready(g,false);#assert !a.ready && a.phase==1 && a.outcome==3;
+     ^
+apps/shared/dictation-policy.coax:23:4: error[E0315]: procedure 'dgp_active' is not declared
+   a=dgp_active(a,false);a=dgp_active(a,true);#assert a.phase==1;
+     ^
+apps/shared/dictation-policy.coax:23:26: error[E0315]: procedure 'dgp_active' is not declared
+   a=dgp_active(a,false);a=dgp_active(a,true);#assert a.phase==1;
+                           ^
+apps/shared/dictation-policy.coax:24:4: error[E0315]: procedure 'dgp_enable' is not declared
+   a=dgp_enable(dgp_enable(a,false),true);#assert a.phase==1;
+     ^
+apps/shared/dictation-policy.coax:24:15: error[E0315]: procedure 'dgp_enable' is not declared
+   a=dgp_enable(dgp_enable(a,false),true);#assert a.phase==1;
+                ^
+apps/shared/dictation-policy.coax:27:5: error[E0315]: procedure 'dgp_begin' is not declared
+   g:=dgp_begin(DctGate.{enabled=true,active=true,ready=true,phase=1},1000);
+      ^
+apps/shared/dictation-policy.coax:28:5: error[E0315]: procedure 'dgp_release' is not declared
+   a:=dgp_release(g,1299);#assert a.phase==1 && a.outcome==1;
+      ^
+apps/shared/dictation-policy.coax:29:4: error[E0315]: procedure 'dgp_release' is not declared
+   a=dgp_release(g,1300);#assert a.phase==3 && a.until==1500 && a.outcome==0;
+     ^
+apps/shared/dictation-policy.coax:30:4: error[E0315]: procedure 'dgp_release' is not declared
+   a=dgp_release(g,60500);#assert a.phase==3 && a.until==60550;
+     ^
+apps/shared/dictation-policy.coax:31:4: error[E0315]: procedure 'dgp_release' is not declared
+   a=dgp_release(g,999);#assert a.phase==1 && a.outcome==4 && a.fault==3;
+     ^
+apps/shared/dictation-policy.coax:32:4: error[E0315]: procedure 'dgp_release' is not declared
+   a=dgp_release(g,1000000000001);#assert a.outcome==4;
+     ^
+apps/shared/dictation-policy.coax:33:20: error[E0315]: procedure 'dgp_release' is not declared
+   g.phase=5;#assert dgp_release(g,1300).phase==5;
+                     ^
+apps/shared/dictation-policy.coax:36:43: error[E0315]: procedure 'dgp_due' is not declared
+   g:=DctGate.{phase=3,until=1500};#assert !dgp_due(g,1499,24000) && !dgp_due(g,1500,23999) && dgp_due(g,1500,24000);
+                                            ^
+apps/shared/dictation-policy.coax:36:69: error[E0315]: procedure 'dgp_due' is not declared
+   g:=DctGate.{phase=3,until=1500};#assert !dgp_due(g,1499,24000) && !dgp_due(g,1500,23999) && dgp_due(g,1500,24000);
+                                                                      ^
+apps/shared/dictation-policy.coax:36:94: error[E0315]: procedure 'dgp_due' is not declared
+   g:=DctGate.{phase=3,until=1500};#assert !dgp_due(g,1499,24000) && !dgp_due(g,1500,23999) && dgp_due(g,1500,24000);
+                                                                                               ^
+apps/shared/dictation-policy.coax:37:20: error[E0315]: procedure 'dgp_due' is not declared
+   g.phase=2;#assert dgp_due(g,1500,24000);g.phase=4;#assert !dgp_due(g,2000,32000);
+                     ^
+apps/shared/dictation-policy.coax:37:61: error[E0315]: procedure 'dgp_due' is not declared
+   g.phase=2;#assert dgp_due(g,1500,24000);g.phase=4;#assert !dgp_due(g,2000,32000);
+                                                              ^
+apps/shared/dictation-policy.coax:38:21: error[E0315]: procedure 'dgp_stalled' is not declared
+   g.phase=3;#assert !dgp_stalled(g,2500) && dgp_stalled(g,2501);g.phase=2;#assert dgp_stalled(g,2501);g.phase=1;#assert !dgp_stalled(g,2501);
+                      ^
+apps/shared/dictation-policy.coax:38:44: error[E0315]: procedure 'dgp_stalled' is not declared
+   g.phase=3;#assert !dgp_stalled(g,2500) && dgp_stalled(g,2501);g.phase=2;#assert dgp_stalled(g,2501);g.phase=1;#assert !dgp_stalled(g,2501);
+                                             ^
+apps/shared/dictation-policy.coax:38:82: error[E0315]: procedure 'dgp_stalled' is not declared
+   g.phase=3;#assert !dgp_stalled(g,2500) && dgp_stalled(g,2501);g.phase=2;#assert dgp_stalled(g,2501);g.phase=1;#assert !dgp_stalled(g,2501);
+                                                                                   ^
+apps/shared/dictation-policy.coax:38:121: error[E0315]: procedure 'dgp_stalled' is not declared
+   g.phase=3;#assert !dgp_stalled(g,2500) && dgp_stalled(g,2501);g.phase=2;#assert dgp_stalled(g,2501);g.phase=1;#assert !dgp_stalled(g,2501);
+                                                                                                                          ^
+apps/shared/dictation-policy.coax:41:11: error[E0315]: procedure 'dgp_speech' is not declared
+   #assert !dgp_speech(319,2560,20000) && !dgp_speech(320,2559,20000) && !dgp_speech(320,2560,10737.41824);
+            ^
+apps/shared/dictation-policy.coax:41:42: error[E0315]: procedure 'dgp_speech' is not declared
+   #assert !dgp_speech(319,2560,20000) && !dgp_speech(320,2559,20000) && !dgp_speech(320,2560,10737.41824);
+                                           ^
+apps/shared/dictation-policy.coax:41:73: error[E0315]: procedure 'dgp_speech' is not declared
+   #assert !dgp_speech(319,2560,20000) && !dgp_speech(320,2559,20000) && !dgp_speech(320,2560,10737.41824);
+                                                                          ^
+apps/shared/dictation-policy.coax:42:10: error[E0315]: procedure 'dgp_speech' is not declared
+   #assert dgp_speech(320,2560,10737.41825) && !dgp_speech(960001,2560,20000) && dgp_speech(960000,2560,20000);
+           ^
+apps/shared/dictation-policy.coax:42:47: error[E0315]: procedure 'dgp_speech' is not declared
+   #assert dgp_speech(320,2560,10737.41825) && !dgp_speech(960001,2560,20000) && dgp_speech(960000,2560,20000);
+                                                ^
+apps/shared/dictation-policy.coax:42:80: error[E0315]: procedure 'dgp_speech' is not declared
+   #assert dgp_speech(320,2560,10737.41825) && !dgp_speech(960001,2560,20000) && dgp_speech(960000,2560,20000);
+                                                                                 ^
+apps/shared/dictation-policy.coax:43:62: error[E0315]: procedure 'dgp_finish' is not declared
+   g:=DctGate.{phase=3,enabled=true,active=true,ready=true};a:=dgp_finish(g,4800,2560,20000);#assert a.phase==4 && a.outcome==0;
+                                                               ^
+apps/shared/dictation-policy.coax:44:14: error[E0315]: procedure 'dgp_finish' is not declared
+   g.phase=2;a=dgp_finish(g,960000,2560,20000);#assert a.phase==4 && a.outcome==6;
+               ^
+apps/shared/dictation-policy.coax:45:4: error[E0315]: procedure 'dgp_finish' is not declared
+   a=dgp_finish(g,4800,0,20000);#assert a.phase==1 && a.outcome==2;
+     ^
+apps/shared/dictation-policy.coax:46:20: error[E0315]: procedure 'dgp_finish' is not declared
+   g.phase=1;#assert dgp_finish(g,4800,2560,20000).phase==1;
+                     ^
+apps/shared/dictation-policy.coax:49:77: error[E0315]: procedure 'dgp_result_ok' is not declared
+   g:=DctGate.{enabled=true,active=true,ready=true,phase=4,ticket=3};#assert !dgp_result_ok(g,3,true);
+                                                                              ^
+apps/shared/dictation-policy.coax:50:5: error[E0315]: procedure 'dgp_decode' is not declared
+   a:=dgp_decode(g,2);#assert a.phase==4;a=dgp_decode(g,3);#assert a.phase==5;
+      ^
+apps/shared/dictation-policy.coax:50:42: error[E0315]: procedure 'dgp_decode' is not declared
+   a:=dgp_decode(g,2);#assert a.phase==4;a=dgp_decode(g,3);#assert a.phase==5;
+                                           ^
+apps/shared/dictation-policy.coax:51:11: error[E0315]: procedure 'dgp_result_ok' is not declared
+   #assert !dgp_result_ok(a,2,true) && !dgp_result_ok(a,3,false) && dgp_result_ok(a,3,true);
+            ^
+apps/shared/dictation-policy.coax:51:39: error[E0315]: procedure 'dgp_result_ok' is not declared
+   #assert !dgp_result_ok(a,2,true) && !dgp_result_ok(a,3,false) && dgp_result_ok(a,3,true);
+                                        ^
+apps/shared/dictation-policy.coax:51:67: error[E0315]: procedure 'dgp_result_ok' is not declared
+   #assert !dgp_result_ok(a,2,true) && !dgp_result_ok(a,3,false) && dgp_result_ok(a,3,true);
+                                                                    ^
+apps/shared/dictation-policy.coax:52:4: error[E0315]: procedure 'dgp_result' is not declared
+   a=dgp_result(a,3,true);#assert a.phase==1 && a.outcome==5;#assert dgp_cancel(a).outcome==3;
+     ^
+apps/shared/dictation-policy.coax:52:68: error[E0315]: procedure 'dgp_cancel' is not declared
+   a=dgp_result(a,3,true);#assert a.phase==1 && a.outcome==5;#assert dgp_cancel(a).outcome==3;
+                                                                     ^
+apps/shared/dictation-policy.coax:53:20: error[E0315]: procedure 'dgp_result' is not declared
+   g.phase=5;#assert dgp_result(g,2,true).phase==5;a=dgp_result(g,3,false);#assert a.phase==1 && a.outcome==4 && a.fault==4;
+                     ^
+apps/shared/dictation-policy.coax:53:52: error[E0315]: procedure 'dgp_result' is not declared
+   g.phase=5;#assert dgp_result(g,2,true).phase==5;a=dgp_result(g,3,false);#assert a.phase==1 && a.outcome==4 && a.fault==4;
+                                                     ^
+apps/shared/dictation-policy.coax:54:25: error[E0315]: procedure 'dgp_result_ok' is not declared
+   g.ready=false;#assert !dgp_result_ok(g,3,true) && dgp_decode(DctGate.{phase=4,ticket=3},3).phase==4;
+                          ^
+apps/shared/dictation-policy.coax:54:52: error[E0315]: procedure 'dgp_decode' is not declared
+   g.ready=false;#assert !dgp_result_ok(g,3,true) && dgp_decode(DctGate.{phase=4,ticket=3},3).phase==4;
+                                                     ^
+apps/shared/dictation-policy.coax:57:75: error[E0315]: procedure 'dgp_fault' is not declared
+   g:=DctGate.{enabled=true,active=true,ready=true,phase=2};for n:1..<6 {a:=dgp_fault(g,n);#assert a.phase==1 && a.outcome==4 && a.fault==n && a.pending==0;}
+                                                                            ^
+apps/shared/dictation-policy.coax:58:10: error[E0315]: procedure 'dgp_fault' is not declared
+   #assert dgp_fault(g,0).fault==3 && dgp_fault(g,6).fault==3;
+           ^
+apps/shared/dictation-policy.coax:58:37: error[E0315]: procedure 'dgp_fault' is not declared
+   #assert dgp_fault(g,0).fault==3 && dgp_fault(g,6).fault==3;
+                                      ^
+apps/shared/dictation-policy.coax:59:18: error[E0315]: procedure 'dgp_preparing' is not declared
+   for n:1..<4 {a:=dgp_preparing(g,n);#assert !a.ready && a.pending==n && a.outcome==0 && a.fault==0;}
+                   ^
+apps/shared/dictation-policy.coax:60:10: error[E0315]: procedure 'dgp_preparing' is not declared
+   #assert dgp_preparing(g,0).pending==0 && dgp_preparing(g,4).pending==0;
+           ^
+apps/shared/dictation-policy.coax:60:43: error[E0315]: procedure 'dgp_preparing' is not declared
+   #assert dgp_preparing(g,0).pending==0 && dgp_preparing(g,4).pending==0;
+                                            ^
+apps/shared/dictation-policy.coax:61:5: error[E0315]: procedure 'dgp_ready' is not declared
+   a:=dgp_ready(dgp_preparing(g,2),true);#assert a.ready && a.pending==0 && a.fault==0;
+      ^
+apps/shared/dictation-policy.coax:61:15: error[E0315]: procedure 'dgp_preparing' is not declared
+   a:=dgp_ready(dgp_preparing(g,2),true);#assert a.ready && a.pending==0 && a.fault==0;
+                ^
+apps/shared/dictation-policy.coax:64:31: error[E0315]: procedure 'dgp_segment' is not declared
+   offset:=0;for step:0..<4 {n:=dgp_segment(total,offset);if n>0 {#assert n>=320 && n<=327520;offset+=n;}}#assert offset==total;
+                                ^
+apps/shared/dictation-policy.coax:67:120: error[E0315]: procedure 'dgp_segment' is not declared
+   for total:[8]int.[327520,327521,327839,327840,655040,655041,655359,960000] {offset:=0;count:=0;while offset<total {n:=dgp_segment(total,offset);#assert n>=320 && n<=327520;offset+=n;count+=1;}#assert offset==total && count<=3;#assert dgp_segment(total,offset)==0;}
+                                                                                                                         ^
+apps/shared/dictation-policy.coax:67:236: error[E0315]: procedure 'dgp_segment' is not declared
+   for total:[8]int.[327520,327521,327839,327840,655040,655041,655359,960000] {offset:=0;count:=0;while offset<total {n:=dgp_segment(total,offset);#assert n>=320 && n<=327520;offset+=n;count+=1;}#assert offset==total && count<=3;#assert dgp_segment(total,offset)==0;}
+                                                                                                                                                                                                                                             ^
+apps/shared/dictation-policy.coax:68:10: error[E0315]: procedure 'dgp_segment' is not declared
+   #assert dgp_segment(319,0)==0 && dgp_segment(960001,0)==0 && dgp_segment(500,-1)==0 && dgp_segment(500,181)==0;
+           ^
+apps/shared/dictation-policy.coax:68:35: error[E0315]: procedure 'dgp_segment' is not declared
+   #assert dgp_segment(319,0)==0 && dgp_segment(960001,0)==0 && dgp_segment(500,-1)==0 && dgp_segment(500,181)==0;
+                                    ^
+apps/shared/dictation-policy.coax:68:63: error[E0315]: procedure 'dgp_segment' is not declared
+   #assert dgp_segment(319,0)==0 && dgp_segment(960001,0)==0 && dgp_segment(500,-1)==0 && dgp_segment(500,181)==0;
+                                                                ^
+apps/shared/dictation-policy.coax:68:89: error[E0315]: procedure 'dgp_segment' is not declared
+   #assert dgp_segment(319,0)==0 && dgp_segment(960001,0)==0 && dgp_segment(500,-1)==0 && dgp_segment(500,181)==0;
+                                                                                          ^
+apps/shared/dictation-policy.coax:69:10: error[E0315]: procedure 'dgp_segment' is not declared
+   #assert dgp_segment(327521,0)==327201 && dgp_segment(327521,327201)==320;
+           ^
+apps/shared/dictation-policy.coax:69:43: error[E0315]: procedure 'dgp_segment' is not declared
+   #assert dgp_segment(327521,0)==327201 && dgp_segment(327521,327201)==320;
+                                            ^
+apps/shared/dictation-policy.coax:72:10: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(5,3,3,0,0)==0 && dgp_text(5,3,3,0,5)==5 && dgp_text(5,3,3,5,0)==5 && dgp_text(5,3,3,5,3)==9;
+           ^
+apps/shared/dictation-policy.coax:72:36: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(5,3,3,0,0)==0 && dgp_text(5,3,3,0,5)==5 && dgp_text(5,3,3,5,0)==5 && dgp_text(5,3,3,5,3)==9;
+                                     ^
+apps/shared/dictation-policy.coax:72:62: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(5,3,3,0,0)==0 && dgp_text(5,3,3,0,5)==5 && dgp_text(5,3,3,5,0)==5 && dgp_text(5,3,3,5,3)==9;
+                                                               ^
+apps/shared/dictation-policy.coax:72:88: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(5,3,3,0,0)==0 && dgp_text(5,3,3,0,5)==5 && dgp_text(5,3,3,5,0)==5 && dgp_text(5,3,3,5,3)==9;
+                                                                                         ^
+apps/shared/dictation-policy.coax:73:10: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(5,3,3,7999,0)==7999 && dgp_text(5,3,3,7999,1)== -1 && dgp_text(5,3,3,0,8000)==8000;
+           ^
+apps/shared/dictation-policy.coax:73:42: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(5,3,3,7999,0)==7999 && dgp_text(5,3,3,7999,1)== -1 && dgp_text(5,3,3,0,8000)==8000;
+                                           ^
+apps/shared/dictation-policy.coax:73:73: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(5,3,3,7999,0)==7999 && dgp_text(5,3,3,7999,1)== -1 && dgp_text(5,3,3,0,8000)==8000;
+                                                                          ^
+apps/shared/dictation-policy.coax:74:10: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(4,3,3,0,1)== -1 && dgp_text(5,3,4,0,1)== -1 && dgp_text(5,3,3,-1,1)== -1 && dgp_text(5,3,3,0,-1)== -1;
+           ^
+apps/shared/dictation-policy.coax:74:38: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(4,3,3,0,1)== -1 && dgp_text(5,3,4,0,1)== -1 && dgp_text(5,3,3,-1,1)== -1 && dgp_text(5,3,3,0,-1)== -1;
+                                       ^
+apps/shared/dictation-policy.coax:74:66: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(4,3,3,0,1)== -1 && dgp_text(5,3,4,0,1)== -1 && dgp_text(5,3,3,-1,1)== -1 && dgp_text(5,3,3,0,-1)== -1;
+                                                                   ^
+apps/shared/dictation-policy.coax:74:95: error[E0315]: procedure 'dgp_text' is not declared
+   #assert dgp_text(4,3,3,0,1)== -1 && dgp_text(5,3,4,0,1)== -1 && dgp_text(5,3,3,-1,1)== -1 && dgp_text(5,3,3,0,-1)== -1;
+                                                                                                ^
+87 errors

@@ -1,0 +1,107 @@
+// Offscreen Mac app integration: real Parakeet, real keyboard/mouse routes,
+// editable composer drafts and Undo. Fixture capture never opens a microphone.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+
+DAPP_FULL :: "Please inspect I am convinced of what I say, said the Count.";
+DAPP_GOOD :: "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndraft: Please inspect\ndraft-state: sent=0 parts=0\ndraft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0";
+DappObserved :: struct {ok:bool;drafts:int;states:int;timeouts:int;rejected:bool;}
+
+#test "dictation app oracle admits exact keyboard undo mouse draft sequence with no sends" {
+ r:=dapp_observe(DAPP_GOOD);#assert r.ok && r.drafts==3 && r.states==3 && r.timeouts==0 && !r.rejected;
+}
+#test "dictation app oracle refuses incomplete reordered and changed composer observations" {
+ #assert !dapp_observe("").ok;
+ #assert !dapp_observe("draft-state: sent=0 parts=0").ok;
+ #assert !dapp_observe("draft: Please inspect\ndraft-state: sent=0 parts=0").ok;
+ bytes:[1024]u8;for i:0..<DAPP_GOOD.count {bytes[i]=DAPP_GOOD[i];}
+ bytes[7]='X';#assert !dapp_observe(cast(string)bytes[0..<DAPP_GOOD.count]).ok;
+ for i:0..<DAPP_GOOD.count {bytes[i]=DAPP_GOOD[i];}
+ for i:0..<DAPP_GOOD.count-7 {if cast(string)bytes[i..<i+7]=="sent=0 " {bytes[i+5]='1';}}
+ #assert !dapp_observe(cast(string)bytes[0..<DAPP_GOOD.count]).ok;
+}
+#test "dictation app oracle rejects fixture timeouts and unknown scripted actions" {
+ b:[2048]u8;n:=0;n=dapp_put(b[..],n,DAPP_GOOD);n=dapp_put(b[..],n,"\ndictation fixture: wait timed out");r:=dapp_observe(cast(string)b[0..<n]);#assert !r.ok && r.timeouts==1;
+ n=DAPP_GOOD.count;n=dapp_put(b[..],n,"\nunknown step: unexpected");#assert !dapp_observe(cast(string)b[0..<n]).ok;
+}
+#test "dictation app script paths cannot introduce another fixture command" {
+ #assert dapp_path("/tmp/project with spaces") && !dapp_path("") && !dapp_path("/tmp/a ; send unwanted") && !dapp_path("/tmp/a\nb");
+ b:[32]u8;#assert dapp_put(b[0..<3],0,"four")==-1 && dapp_put(b[..],0,"abc")==3;
+}
+
+dapp_starts :: (s:string,prefix:string)->bool {return s.count>=prefix.count && s[0..<prefix.count]==prefix;}
+dapp_path :: (s:string)->bool {if !fs_path_ok(s) {return false;}for b:s {if b==';' || b==10 || b==13 {return false;}}return true;}
+dapp_put :: (out:[]u8,at:int,text:string)->int {
+ if at<0 || at>out.count || text.count>out.count-at {return -1;}
+ for i:0..<text.count {out[at+i]=text[i];}return at+text.count;
+}
+dapp_observe :: (text:string)->DappObserved {
+ r:=DappObserved.{};from:=0;waiting:=false;
+ for i:0..<text.count+1 {
+  if i==text.count || text[i]=='\n' {
+   end:=i;if end>from && text[end-1]==13 {end-=1;}line:=text[from..<end];from=i+1;
+   if dapp_starts(line,"dictation fixture: wait timed out") {r.timeouts+=1;}
+   if dapp_starts(line,"unknown step:") {r.rejected=true;}
+   if dapp_starts(line,"draft: ") {
+    if waiting || r.drafts>=3 {r.rejected=true;}
+    expected:=ifx r.drafts==1 then "Please inspect" else DAPP_FULL;
+    if line[7..<line.count]!=expected {r.rejected=true;}r.drafts+=1;waiting=true;
+   }else if dapp_starts(line,"draft-state:") {
+    if !waiting || line!="draft-state: sent=0 parts=0" {r.rejected=true;}r.states+=1;waiting=false;
+   }
+  }
+ }
+ r.ok=r.drafts==3 && r.states==3 && !waiting && !r.rejected && r.timeouts==0;return r;
+}
+dapp_hash :: (path:string,out:[]u8)->bool {
+ if out.count<64 {return false;}n:=fs_size(path);if n<0 {return false;}
+ state:[112]u8;chunk:[65536]u8;digest:[32]u8;
+ if sha256_init(state[..])!=SHA_OK {return false;}at:=0;
+ while at<n {take:=ifx n-at<chunk.count then n-at else chunk.count;got:=fs_read_at(path,at,chunk[0..<take]);if got!=take || sha256_update_checked(state[..],chunk[0..<take],false)!=SHA_OK {return false;}at+=take;}
+ if sha256_final_checked(state[..],digest[..],false)!=SHA_OK {return false;}
+ digits:="0123456789abcdef";for i:0..<32 {out[2*i]=digits[digest[i]>>4];out[2*i+1]=digits[digest[i]&15];}return true;
+}
+dapp_script :: (pcm:string,silence:string,out:[]u8)->string {
+ at:=dapp_put(out,0,"newchat ; type Please inspect ; menu Enable Local Dictation — Parakeet ; waitdictationready 90 ; dictation down ; dictation feed ");
+ at=dapp_put(out,at,pcm);at=dapp_put(out,at," ; dictation up ; waitdictation 15 ; draft ; key cmd+z ; draft ; dictation feed ");
+ at=dapp_put(out,at,silence);at=dapp_put(out,at," ; dictation mousedown ; dictation feed ");at=dapp_put(out,at,pcm);
+ at=dapp_put(out,at," ; dictation mouseup ; waitdictation 15 ; draft");return ifx at<0 then "" else cast(string)out[0..<at];
+}
+tool_main :: ()->int #export_c {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {tool_errln("usage: check-dictation-app APP_OR_EXECUTABLE ROOT OUTPUT_DIR");return 2;}
+ input:=args_at(args[..],0);root:=args_at(args[..],1);dir:=args_at(args[..],2);
+ if !dapp_path(input) || !dapp_path(root) || !dapp_path(dir) {tool_errln("paths must be nonempty and contain no semicolon or newline");return 2;}
+ executable:[4096]u8;app:=ifx fs_kind(input)==FS_DIR then fs_join(input,"Contents/MacOS/OpenAgents",executable[..]) else input;
+ p:[4096]u8;pcm:=fs_join(root,"psionic/fixtures/parakeet/6930-75918-0011.pcm",p[..]);
+ if fs_kind(app)!=FS_FILE || fs_kind(pcm)!=FS_FILE || !fs_mkdir(dir) {tool_errln("app, recorded fixture or output directory unavailable");return 2;}
+ sp:[4096]u8;shotp:[4096]u8;scriptp:[4096]u8;outp:[4096]u8;errp:[4096]u8;recp:[4096]u8;
+ silence:=fs_join(dir,"silence.pcm",sp[..]);shot:=fs_join(dir,"dictation.png",shotp[..]);
+ script_path:=fs_join(dir,"steps.txt",scriptp[..]);stdout_path:=fs_join(dir,"stdout.txt",outp[..]);stderr_path:=fs_join(dir,"stderr.txt",errp[..]);receipt:=fs_join(dir,"receipt.json",recp[..]);
+ zeros:[16000]u8;script:[16384]u8;steps:=dapp_script(pcm,silence,script[..]);
+ if steps=="" || !fs_write(silence,cast(string)zeros[..]) || !fs_write(script_path,steps) {tool_errln("cannot write synthetic silence or fixture script");return 1;}
+ if fs_kind(shot)!=FS_NONE && !fs_remove(shot) {tool_errln("cannot remove previous screenshot");return 1;}
+ app_before:[64]u8;pcm_before:[64]u8;app_after:[64]u8;pcm_after:[64]u8;shot_hash:[64]u8;
+ if !dapp_hash(app,app_before[..]) || !dapp_hash(pcm,pcm_before[..]) {tool_errln("cannot identify app or recording");return 1;}
+ argv:=[7]string.[app,"--shot",shot,"--demo","--dictation-fixture","--do",steps];out:[65536]u8;err:[65536]u8;started:=proc_now_ms();
+ got:=proc_run(argv[..],180000,out[..],err[..]);elapsed:=proc_now_ms()-started;observed:=dapp_observe(cast(string)out[0..<got.out_n]);
+ files_written:=fs_write(stdout_path,cast(string)out[0..<got.out_n]) && fs_write(stderr_path,cast(string)err[0..<got.err_n]);
+ identities:=dapp_hash(app,app_after[..]) && dapp_hash(pcm,pcm_after[..]) && cast(string)app_before[..]==cast(string)app_after[..] && cast(string)pcm_before[..]==cast(string)pcm_after[..];
+ png:[8]u8;signature:=[8]u8.[137,80,78,71,13,10,26,10];image:=fs_read_at(shot,0,png[..])==8 && fs_size(shot)>8;
+ for i:0..<8 {if png[i]!=signature[i] {image=false;}}
+ if image {image=dapp_hash(shot,shot_hash[..]);}
+ passed:=got.started==0 && got.status==0 && !got.timed_out && !got.cut && observed.ok && image && identities && files_written;
+ data:[32768]u8;o:[1]Jo;jo_start(o[..],data[..]);jo_obj(o[..]);
+ jo_key(o[..],"schema");jo_str(o[..],"openagents.coder.dictation-app-check.v1");jo_key(o[..],"passed");jo_bool(o[..],passed);
+ jo_key(o[..],"app");jo_str(o[..],app);jo_key(o[..],"root");jo_str(o[..],root);jo_key(o[..],"app_sha256");jo_str(o[..],cast(string)app_before[..]);jo_key(o[..],"pcm_sha256");jo_str(o[..],cast(string)pcm_before[..]);
+ jo_key(o[..],"identities_unchanged");jo_bool(o[..],identities);jo_key(o[..],"started");jo_int(o[..],got.started);jo_key(o[..],"exit_status");jo_int(o[..],got.status);jo_key(o[..],"timed_out");jo_bool(o[..],got.timed_out);jo_key(o[..],"output_cut");jo_bool(o[..],got.cut);jo_key(o[..],"elapsed_ms");jo_int(o[..],elapsed);
+ jo_key(o[..],"drafts");jo_int(o[..],observed.drafts);jo_key(o[..],"draft_states");jo_int(o[..],observed.states);jo_key(o[..],"fixture_timeouts");jo_int(o[..],observed.timeouts);jo_key(o[..],"observations_ok");jo_bool(o[..],observed.ok);
+ jo_key(o[..],"screenshot_png");jo_bool(o[..],image);jo_key(o[..],"screenshot_sha256");jo_str(o[..],ifx image then cast(string)shot_hash[..] else "");jo_key(o[..],"expected_full_draft");jo_str(o[..],DAPP_FULL);
+ jo_key(o[..],"scope");jo_str(o[..],"Actual offscreen app, recorded audio and real local Parakeet; keyboard then Undo then mouse; no microphone, visible window or send. Synthetic 500 ms idle silence replaces pre-roll between gestures; not a latency benchmark.");jo_end(o[..]);
+ if o[0].bad || !fs_write(receipt,jo_text(o[..])) {tool_errln("cannot write app verification receipt");return 1;}
+ if !passed {tool_errln("dictation app check failed; inspect receipt.json and stdout/stderr");return 1;}
+ print("Dictation app: keyboard and mouse exact draft, Undo, zero sends/parts, PNG and unchanged producer identities passed\n");return 0;
+}

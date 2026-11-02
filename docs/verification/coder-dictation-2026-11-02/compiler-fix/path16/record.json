@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "date": "2026-11-02",
+  "status": "historical intermediate qualification; not the final desktop release profile",
+  "profile": {
+    "path_steps": 16,
+    "per_procedure_effects": 64,
+    "BS_origin_set": 64,
+    "RP_supplied_store_terms": 64,
+    "global_work": 1048576
+  },
+  "source_recovery": {
+    "snapshot": "/tmp/dictation-compiler-fix/controls16/append-limit15/coax/lib/compiler/checker.coax",
+    "snapshot_sha256": "879bf12b099b56614d68c2cce2be2e41b0869d77f18daa2740119387b61490a6",
+    "unique_replacement": {
+      "old": "path.count>=15",
+      "new": "path.count>=BS_MAX_PATH",
+      "occurrences": 1
+    },
+    "recovered_checker_sha256": "4153611dad5c1cb7635f21046a59270494b42797432bdb137787b617a9d47a7b",
+    "closure": "source/*.coax.gz is the complete supplied checker load-module snapshot; checker is recovered, other modules are byte copies",
+    "foundation_cross_reference": "../foundation/record.json"
+  },
+  "producers": {
+    "focused_checks_and_fault_controls_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "full_compiler_native_sha256": "d4665fd030d43ee2b90223b6a31c39003f5df8701654bbde47d7d88c9767c602"
+  },
+  "checks": {
+    "sixteen": {
+      "groups": 6,
+      "passed": 6,
+      "failed": 0,
+      "log": "path16-v2.stdout.gz"
+    },
+    "retained": {
+      "groups": 104,
+      "passed": 104,
+      "failed": 0,
+      "log": "retained16.stdout.gz"
+    },
+    "focused_fault_controls": {
+      "killed": 4,
+      "total": 4,
+      "result": "controls16-results.json",
+      "scope": "Four authored sensitivity controls; not a full mutation run."
+    }
+  },
+  "native": {
+    "cases_each": 33,
+    "profiles": [
+      "O0",
+      "O2",
+      "ASan+UBSan"
+    ],
+    "result": "PASS",
+    "source": "native16.coax.gz",
+    "generated": "native16.c.gz",
+    "header": "native16.h.gz",
+    "driver": "native16-main.c",
+    "cases": "native16-cases.json",
+    "scope": "Coax check-body probes compiled to native code and executed by the C driver; not an independent C semantic implementation."
+  },
+  "bootstrap": {
+    "result": "PASS reported by compiler agent; logs retained",
+    "mutations": "Explicitly skipped with COAX_MUTATION=0",
+    "stdout": "dictation-compiler-bootstrap.stdout.gz",
+    "stderr": "dictation-compiler-bootstrap.stderr"
+  },
+  "full_compiler": {
+    "result": "PASS",
+    "input": "coax/lib/compiler/compiler.coax",
+    "work_used": 1039065,
+    "budget": 1048576,
+    "remaining": 9511,
+    "remaining_percent": 0.9070396423339844,
+    "exit_status": 0,
+    "stdout": "full-compiler16.stdout.gz",
+    "stderr": "full-compiler16.stderr.gz",
+    "header": "full-compiler16.h.gz"
+  },
+  "desktop": {
+    "result": "NOT PASSED in this profile",
+    "reason": "After correcting the actual generated-header ABI, the application reaches the distinct per-procedure64-effect capacity in lab_pump; this is not work exhaustion. The debugger was intentionally killed after collecting the failing boundary.",
+    "diagnostic": "effects64.json.gz",
+    "owner": 118846,
+    "site": 118881,
+    "effects": 64,
+    "global_effects": 1066,
+    "work_at_failure": 372508,
+    "remaining_work_at_failure": 676068,
+    "stdout": "effects64.stdout.gz",
+    "stderr": "effects64.stderr"
+  },
+  "limitations": [
+    "Historical16-path/64-effect record; later128-effect or other approved profiles require separate qualification.",
+    "No desktop launch, microphone capture, real-user dictation or end-to-end composer claim is made here.",
+    "No tests were rerun to package these existing results.",
+    "No binaries are included."
+  ]
+}

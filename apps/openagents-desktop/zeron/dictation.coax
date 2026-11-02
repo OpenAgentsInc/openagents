@@ -1,0 +1,127 @@
+// A recognition result may replace only the exact draft/selection it began
+// from. The screen also cancels this ticket at every edit/navigation event,
+// so editing and undoing cannot revive an old request. Transcript bytes are
+// pasted as one undoable draft edit; this module never submits a message.
+#load "../../shared/zeron/composer.coax";
+#load "../../../coax/lib/proto/wire.coax";
+#authority;
+ZrDictationGuard :: struct {
+  active:bool;ticket:int;sent:int;anchor:int;caret:int;n:int;
+  snapshot:[COMPOSER_TEXT]u8;
+}
+
+#test "dictation appends words as one undoable draft edit and never sends" {
+ c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"Please inspect");c[0].sent=7;c[0].last_n=3;c[0].last[0]='o';c[0].last[1]='l';c[0].last[2]='d';undo:=c[0].hist[UNDO].count;
+ #assert zdi_begin(g[..],c[..],41) && zdi_current(g[..],c[..],41);
+ #assert zdi_apply(g[..],c[..],41,"the code.") && typed(c[..])=="Please inspect the code.";
+ #assert c[0].sent==7 && c[0].last_n==3 && cast(string)c[0].last[0..<3]=="old";
+ #assert c[0].hist[UNDO].count==undo+1 && !g[0].active;
+ #assert !zdi_apply(g[..],c[..],41,"again") && typed(c[..])=="Please inspect the code.";
+ composer_undo(c[..]);#assert typed(c[..])=="Please inspect" && c[0].anchor==14 && c[0].caret==14 && c[0].sent==7;
+ composer_redo(c[..]);#assert typed(c[..])=="Please inspect the code." && c[0].sent==7;
+}
+#test "dictation replaces a reversed selection and joins interior words without losing text" {
+ c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"keep OLD tail");c[0].anchor=8;c[0].caret=5;
+ #assert zdi_begin(g[..],c[..],3) && zdi_apply(g[..],c[..],3,"new") && typed(c[..])=="keep new tail";
+ c[0].anchor=4;c[0].caret=4;#assert zdi_begin(g[..],c[..],4) && zdi_apply(g[..],c[..],4,"spoken") && typed(c[..])=="keep spoken new tail";
+ #assert c[0].sent==0 && c[0].last_n==0;
+}
+#test "dictation Unicode and newlines stay literal editable bytes rather than key events" {
+ c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;#assert zdi_begin(g[..],c[..],1);
+ #assert zdi_apply(g[..],c[..],1,"Écouter 👋\nrm -rf /\n") && typed(c[..])=="Écouter 👋\nrm -rf /\n";
+ #assert c[0].sent==0 && c[0].last_n==0 && c[0].hist[UNDO].count==1;
+ composer_undo(c[..]);#assert c[0].n==0 && c[0].sent==0;
+}
+#test "dictation refuses changed draft selection send focus or IME without altering the new draft" {
+ for fault:0..<8 {
+  c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"draft");#assert zdi_begin(g[..],c[..],5);
+  if fault==0 {c[0].text[0]='D';}if fault==1 {c[0].text[4]='T';}if fault==2 {composer_insert(c[..],"x");}if fault==3 {c[0].anchor=0;}if fault==4 {c[0].caret=0;}if fault==5 {c[0].sent=1;}if fault==6 {c[0].focused=false;}if fault==7 {c[0].marked=true;}
+  before:=c[0];#assert !zdi_current(g[..],c[..],5) && !zdi_apply(g[..],c[..],5,"late") && !g[0].active;
+  #assert typed(c[..])==cast(string)before.text[0..<before.n] && c[0].anchor==before.anchor && c[0].caret==before.caret && c[0].sent==before.sent;
+  #assert c[0].hist[UNDO].count==before.hist[UNDO].count && c[0].marked==before.marked && c[0].focused==before.focused;
+ }
+}
+#test "dictation stale tickets cannot consume a newer request and cancellation cannot be undone" {
+ c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"draft");#assert zdi_begin(g[..],c[..],1) && zdi_begin(g[..],c[..],2);
+ #assert !zdi_current(g[..],c[..],1) && !zdi_apply(g[..],c[..],1,"old") && zdi_current(g[..],c[..],2);
+ zdi_cancel(g[..]);#assert !zdi_current(g[..],c[..],2) && !zdi_apply(g[..],c[..],2,"cancelled");
+ #assert zdi_begin(g[..],c[..],3);zdi_cancel(g[..]);composer_insert(c[..],"x");composer_undo(c[..]);#assert typed(c[..])=="draft" && !zdi_apply(g[..],c[..],3,"revived");
+ #assert c[0].sent==0;
+}
+#test "dictation begin admits only a positive ticket and a focused unmarked valid selection" {
+ for fault:0..<9 {
+  c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"draft");#assert zdi_begin(g[..],c[..],1);ticket:=2;
+  if fault==0 {ticket=0;}if fault==1 {ticket= -1;}if fault==2 {c[0].focused=false;}if fault==3 {c[0].marked=true;}if fault==4 {c[0].n= -1;}if fault==5 {c[0].n=COMPOSER_TEXT+1;}if fault==6 {c[0].anchor= -1;}if fault==7 {c[0].caret=6;}if fault==8 {c[0].anchor=6;}
+  #assert !zdi_begin(g[..],c[..],ticket) && !g[0].active;
+ }
+ c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;c[0].caret= -1;#assert !zdi_begin(g[..],c[..],1);
+}
+#test "dictation refuses empty malformed NUL and oversized results before touching draft or undo" {
+ for fault:0..<4 {
+  c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"draft");#assert zdi_begin(g[..],c[..],1);before:=c[0].hist[UNDO].count;bytes:[COMPOSER_TEXT+1]u8;for i:0..<bytes.count {bytes[i]='x';}
+  text:="";if fault==1 {bytes[0]=0xc3;text=cast(string)bytes[0..<1];}if fault==2 {bytes[0]=0;text=cast(string)bytes[0..<1];}if fault==3 {text=cast(string)bytes[..];}
+  #assert !zdi_apply(g[..],c[..],1,text) && !g[0].active && typed(c[..])=="draft" && c[0].hist[UNDO].count==before && c[0].sent==0;
+ }
+}
+#test "dictation admits exactly full output and refuses a required join space beyond capacity atomically" {
+ c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;bytes:[COMPOSER_TEXT]u8;for i:0..<bytes.count {bytes[i]='a';}
+ #assert zdi_begin(g[..],c[..],1) && zdi_apply(g[..],c[..],1,cast(string)bytes[..]) && c[0].n==COMPOSER_TEXT;
+ undo:=c[0].hist[UNDO].count;#assert zdi_begin(g[..],c[..],2) && !zdi_apply(g[..],c[..],2,"b") && c[0].n==COMPOSER_TEXT && c[0].hist[UNDO].count==undo;
+ c[0].anchor=0;c[0].caret=COMPOSER_TEXT;#assert zdi_begin(g[..],c[..],3) && zdi_apply(g[..],c[..],3,"x") && typed(c[..])=="x" && c[0].sent==0;
+}
+#test "dictation joining separates words but preserves whitespace and surrounding punctuation" {
+ left:=[12]u8.['a','z',' ',9,10,13,'(', '[','{','.','"',0xc3];
+ right:=[17]u8.['a','z',' ',9,10,13,'.',',',';',':','?','!',')',']','}', '(',0xc3];
+ for i:0..<left.count {for j:0..<right.count {
+  lspace:=i>=2 && i<=5;ropen:=j>=6 && j<=14;expected:=!lspace && !(j>=2 && j<=5) && !(i>=6 && i<=8) && !ropen;
+  #assert zdi_gap(left[i],right[j])==expected;
+ }}
+ c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"word!");c[0].anchor=4;c[0].caret=4;#assert zdi_begin(g[..],c[..],1) && zdi_apply(g[..],c[..],1,",") && typed(c[..])=="word,!";
+}
+
+#test "dictation joins both sides at the first interior byte and accounts for both spaces at exact capacity" {
+ c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"ab");c[0].anchor=1;c[0].caret=1;
+ #assert zdi_begin(g[..],c[..],1) && zdi_apply(g[..],c[..],1,"x") && typed(c[..])=="a x b" && c[0].caret==4 && c[0].sent==0;
+ for n:COMPOSER_TEXT-3..<COMPOSER_TEXT-1 {
+  full:[1]Composer;guard:[1]ZrDictationGuard;full[0].focused=true;bytes:[COMPOSER_TEXT]u8;for i:0..<n {bytes[i]='a';}composer_insert(full[..],cast(string)bytes[0..<n]);full[0].anchor=1;full[0].caret=1;before:=full[0].hist[UNDO].count;
+  #assert zdi_begin(guard[..],full[..],1);ok:=zdi_apply(guard[..],full[..],1,"x");#assert ok==(n==COMPOSER_TEXT-3);
+  if ok {#assert full[0].n==COMPOSER_TEXT && cast(string)full[0].text[0..<5]=="a x a" && full[0].hist[UNDO].count==before+1;}
+  else {#assert full[0].n==n && full[0].hist[UNDO].count==before && full[0].text[1]=='a' && full[0].caret==1;}
+ }
+}
+
+zdi_begin :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int)->bool {
+ g[0].active=false;
+ if ticket<=0 || !c[0].focused || c[0].marked || c[0].n<0 || c[0].n>COMPOSER_TEXT {return false;}
+ if c[0].anchor<0 || c[0].anchor>c[0].n || c[0].caret<0 || c[0].caret>c[0].n {return false;}
+ g[0].ticket=ticket;g[0].sent=c[0].sent;g[0].anchor=c[0].anchor;g[0].caret=c[0].caret;g[0].n=c[0].n;
+ for i:0..<c[0].n {g[0].snapshot[i]=c[0].text[i];}
+ g[0].active=true;return true;
+}
+zdi_cancel :: (g:[]ZrDictationGuard) {g[0].active=false;}
+zdi_current :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int)->bool {
+ if !g[0].active || ticket!=g[0].ticket || !c[0].focused || c[0].marked || c[0].n!=g[0].n || c[0].sent!=g[0].sent || c[0].anchor!=g[0].anchor || c[0].caret!=g[0].caret {return false;}
+ for i:0..<g[0].n {if c[0].text[i]!=g[0].snapshot[i] {return false;}}
+ return true;
+}
+zdi_space :: (b:u8)->bool {return b==' ' || b==9 || b==10 || b==13;}
+zdi_open :: (b:u8)->bool {return b=='(' || b=='[' || b=='{';}
+zdi_close :: (b:u8)->bool {return b=='.' || b==',' || b==';' || b==':' || b=='?' || b=='!' || b==')' || b==']' || b=='}';}
+zdi_gap :: (left:u8,right:u8)->bool {return !zdi_space(left) && !zdi_space(right) && !zdi_open(left) && !zdi_close(right);}
+zdi_apply :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int,text:string)->bool {
+ if ticket!=g[0].ticket {return false;}
+ current:=zdi_current(g,c,ticket);g[0].active=false;
+ if !current || text.count>COMPOSER_TEXT {return false;}
+ validated:[COMPOSER_TEXT]u8;for i:0..<text.count {validated[i]=text[i];}
+ if !PB_no_nul(validated[0..<text.count]) || !PB_utf8(validated[0..<text.count]) {return false;}
+ lo:=sel_lo(c);hi:=sel_hi(c);left:=0;right:=0;
+ if lo>0 && zdi_gap(c[0].text[lo-1],text[0]) {left=1;}
+ if hi<c[0].n && zdi_gap(text[text.count-1],c[0].text[hi]) {right=1;}
+ need:=left+text.count+right;
+ if c[0].n-(hi-lo)+need>COMPOSER_TEXT {return false;}
+ draft:[COMPOSER_TEXT+2]u8;at:=0;
+ if left!=0 {draft[at]=' ';at+=1;}
+ for b:text {draft[at]=b;at+=1;}
+ if right!=0 {draft[at]=' ';at+=1;}
+ composer_paste(c,cast(string)draft[0..<at]);return true;
+}

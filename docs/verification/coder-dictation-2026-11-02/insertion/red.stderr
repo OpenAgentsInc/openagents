@@ -1,0 +1,115 @@
+apps/openagents-desktop/zeron/dictation.coax:15:10: error[E0315]: procedure 'zdi_begin' is not declared
+   #assert zdi_begin(g[..],c[..],41) && zdi_current(g[..],c[..],41);
+           ^
+apps/openagents-desktop/zeron/dictation.coax:15:39: error[E0315]: procedure 'zdi_current' is not declared
+   #assert zdi_begin(g[..],c[..],41) && zdi_current(g[..],c[..],41);
+                                        ^
+apps/openagents-desktop/zeron/dictation.coax:16:10: error[E0315]: procedure 'zdi_apply' is not declared
+   #assert zdi_apply(g[..],c[..],41,"the code.") && typed(c[..])=="Please inspect the code.";
+           ^
+apps/openagents-desktop/zeron/dictation.coax:19:11: error[E0315]: procedure 'zdi_apply' is not declared
+   #assert !zdi_apply(g[..],c[..],41,"again") && typed(c[..])=="Please inspect the code.";
+            ^
+apps/openagents-desktop/zeron/dictation.coax:25:10: error[E0315]: procedure 'zdi_begin' is not declared
+   #assert zdi_begin(g[..],c[..],3) && zdi_apply(g[..],c[..],3,"new") && typed(c[..])=="keep new tail";
+           ^
+apps/openagents-desktop/zeron/dictation.coax:25:38: error[E0315]: procedure 'zdi_apply' is not declared
+   #assert zdi_begin(g[..],c[..],3) && zdi_apply(g[..],c[..],3,"new") && typed(c[..])=="keep new tail";
+                                       ^
+apps/openagents-desktop/zeron/dictation.coax:26:37: error[E0315]: procedure 'zdi_begin' is not declared
+   c[0].anchor=4;c[0].caret=4;#assert zdi_begin(g[..],c[..],4) && zdi_apply(g[..],c[..],4,"spoken") && typed(c[..])=="keep spoken new tail";
+                                      ^
+apps/openagents-desktop/zeron/dictation.coax:26:65: error[E0315]: procedure 'zdi_apply' is not declared
+   c[0].anchor=4;c[0].caret=4;#assert zdi_begin(g[..],c[..],4) && zdi_apply(g[..],c[..],4,"spoken") && typed(c[..])=="keep spoken new tail";
+                                                                  ^
+apps/openagents-desktop/zeron/dictation.coax:30:64: error[E0315]: procedure 'zdi_begin' is not declared
+   c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;#assert zdi_begin(g[..],c[..],1);
+                                                                 ^
+apps/openagents-desktop/zeron/dictation.coax:31:10: error[E0315]: procedure 'zdi_apply' is not declared
+   #assert zdi_apply(g[..],c[..],1,"Écouter 👋\nrm -rf /\n") && typed(c[..])=="Écouter 👋\nrm -rf /\n";
+           ^
+apps/openagents-desktop/zeron/dictation.coax:37:96: error[E0315]: procedure 'zdi_begin' is not declared
+    c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"draft");#assert zdi_begin(g[..],c[..],5);
+                                                                                                 ^
+apps/openagents-desktop/zeron/dictation.coax:39:25: error[E0315]: procedure 'zdi_current' is not declared
+    before:=c[0];#assert !zdi_current(g[..],c[..],5) && !zdi_apply(g[..],c[..],5,"late") && !g[0].active;
+                          ^
+apps/openagents-desktop/zeron/dictation.coax:39:56: error[E0315]: procedure 'zdi_apply' is not declared
+    before:=c[0];#assert !zdi_current(g[..],c[..],5) && !zdi_apply(g[..],c[..],5,"late") && !g[0].active;
+                                                         ^
+apps/openagents-desktop/zeron/dictation.coax:45:95: error[E0315]: procedure 'zdi_begin' is not declared
+   c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"draft");#assert zdi_begin(g[..],c[..],1) && zdi_begin(g[..],c[..],2);
+                                                                                                ^
+apps/openagents-desktop/zeron/dictation.coax:45:123: error[E0315]: procedure 'zdi_begin' is not declared
+   c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"draft");#assert zdi_begin(g[..],c[..],1) && zdi_begin(g[..],c[..],2);
+                                                                                                                            ^
+apps/openagents-desktop/zeron/dictation.coax:46:11: error[E0315]: procedure 'zdi_current' is not declared
+   #assert !zdi_current(g[..],c[..],1) && !zdi_apply(g[..],c[..],1,"old") && zdi_current(g[..],c[..],2);
+            ^
+apps/openagents-desktop/zeron/dictation.coax:46:42: error[E0315]: procedure 'zdi_apply' is not declared
+   #assert !zdi_current(g[..],c[..],1) && !zdi_apply(g[..],c[..],1,"old") && zdi_current(g[..],c[..],2);
+                                           ^
+apps/openagents-desktop/zeron/dictation.coax:46:76: error[E0315]: procedure 'zdi_current' is not declared
+   #assert !zdi_current(g[..],c[..],1) && !zdi_apply(g[..],c[..],1,"old") && zdi_current(g[..],c[..],2);
+                                                                             ^
+apps/openagents-desktop/zeron/dictation.coax:47:2: error[E0315]: procedure 'zdi_cancel' is not declared
+   zdi_cancel(g[..]);#assert !zdi_current(g[..],c[..],2) && !zdi_apply(g[..],c[..],2,"cancelled");
+   ^
+apps/openagents-desktop/zeron/dictation.coax:47:29: error[E0315]: procedure 'zdi_current' is not declared
+   zdi_cancel(g[..]);#assert !zdi_current(g[..],c[..],2) && !zdi_apply(g[..],c[..],2,"cancelled");
+                              ^
+apps/openagents-desktop/zeron/dictation.coax:47:60: error[E0315]: procedure 'zdi_apply' is not declared
+   zdi_cancel(g[..]);#assert !zdi_current(g[..],c[..],2) && !zdi_apply(g[..],c[..],2,"cancelled");
+                                                             ^
+apps/openagents-desktop/zeron/dictation.coax:48:10: error[E0315]: procedure 'zdi_begin' is not declared
+   #assert zdi_begin(g[..],c[..],3);zdi_cancel(g[..]);composer_insert(c[..],"x");composer_undo(c[..]);#assert typed(c[..])=="draft" && !zdi_apply(g[..],c[..],3,"revived");
+           ^
+apps/openagents-desktop/zeron/dictation.coax:48:35: error[E0315]: procedure 'zdi_cancel' is not declared
+   #assert zdi_begin(g[..],c[..],3);zdi_cancel(g[..]);composer_insert(c[..],"x");composer_undo(c[..]);#assert typed(c[..])=="draft" && !zdi_apply(g[..],c[..],3,"revived");
+                                    ^
+apps/openagents-desktop/zeron/dictation.coax:48:135: error[E0315]: procedure 'zdi_apply' is not declared
+   #assert zdi_begin(g[..],c[..],3);zdi_cancel(g[..]);composer_insert(c[..],"x");composer_undo(c[..]);#assert typed(c[..])=="draft" && !zdi_apply(g[..],c[..],3,"revived");
+                                                                                                                                        ^
+apps/openagents-desktop/zeron/dictation.coax:53:96: error[E0315]: procedure 'zdi_begin' is not declared
+    c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"draft");#assert zdi_begin(g[..],c[..],1);ticket:=2;
+                                                                                                 ^
+apps/openagents-desktop/zeron/dictation.coax:55:12: error[E0315]: procedure 'zdi_begin' is not declared
+    #assert !zdi_begin(g[..],c[..],ticket) && !g[0].active;
+             ^
+apps/openagents-desktop/zeron/dictation.coax:57:80: error[E0315]: procedure 'zdi_begin' is not declared
+   c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;c[0].caret= -1;#assert !zdi_begin(g[..],c[..],1);
+                                                                                 ^
+apps/openagents-desktop/zeron/dictation.coax:61:96: error[E0315]: procedure 'zdi_begin' is not declared
+    c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"draft");#assert zdi_begin(g[..],c[..],1);before:=c[0].hist[UNDO].count;bytes:[COMPOSER_TEXT+1]u8;for i:0..<bytes.count {bytes[i]='x';}
+                                                                                                 ^
+apps/openagents-desktop/zeron/dictation.coax:63:12: error[E0315]: procedure 'zdi_apply' is not declared
+    #assert !zdi_apply(g[..],c[..],1,text) && !g[0].active && typed(c[..])=="draft" && c[0].hist[UNDO].count==before && c[0].sent==0;
+             ^
+apps/openagents-desktop/zeron/dictation.coax:68:10: error[E0315]: procedure 'zdi_begin' is not declared
+   #assert zdi_begin(g[..],c[..],1) && zdi_apply(g[..],c[..],1,cast(string)bytes[..]) && c[0].n==COMPOSER_TEXT;
+           ^
+apps/openagents-desktop/zeron/dictation.coax:68:38: error[E0315]: procedure 'zdi_apply' is not declared
+   #assert zdi_begin(g[..],c[..],1) && zdi_apply(g[..],c[..],1,cast(string)bytes[..]) && c[0].n==COMPOSER_TEXT;
+                                       ^
+apps/openagents-desktop/zeron/dictation.coax:69:38: error[E0315]: procedure 'zdi_begin' is not declared
+   undo:=c[0].hist[UNDO].count;#assert zdi_begin(g[..],c[..],2) && !zdi_apply(g[..],c[..],2,"b") && c[0].n==COMPOSER_TEXT && c[0].hist[UNDO].count==undo;
+                                       ^
+apps/openagents-desktop/zeron/dictation.coax:69:67: error[E0315]: procedure 'zdi_apply' is not declared
+   undo:=c[0].hist[UNDO].count;#assert zdi_begin(g[..],c[..],2) && !zdi_apply(g[..],c[..],2,"b") && c[0].n==COMPOSER_TEXT && c[0].hist[UNDO].count==undo;
+                                                                    ^
+apps/openagents-desktop/zeron/dictation.coax:70:49: error[E0315]: procedure 'zdi_begin' is not declared
+   c[0].anchor=0;c[0].caret=COMPOSER_TEXT;#assert zdi_begin(g[..],c[..],3) && zdi_apply(g[..],c[..],3,"x") && typed(c[..])=="x" && c[0].sent==0;
+                                                  ^
+apps/openagents-desktop/zeron/dictation.coax:70:77: error[E0315]: procedure 'zdi_apply' is not declared
+   c[0].anchor=0;c[0].caret=COMPOSER_TEXT;#assert zdi_begin(g[..],c[..],3) && zdi_apply(g[..],c[..],3,"x") && typed(c[..])=="x" && c[0].sent==0;
+                                                                              ^
+apps/openagents-desktop/zeron/dictation.coax:77:11: error[E0315]: procedure 'zdi_gap' is not declared
+    #assert zdi_gap(left[i],right[j])==expected;
+            ^
+apps/openagents-desktop/zeron/dictation.coax:79:122: error[E0315]: procedure 'zdi_begin' is not declared
+   c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"word!");c[0].anchor=4;c[0].caret=4;#assert zdi_begin(g[..],c[..],1) && zdi_apply(g[..],c[..],1,",") && typed(c[..])=="word,!";
+                                                                                                                           ^
+apps/openagents-desktop/zeron/dictation.coax:79:150: error[E0315]: procedure 'zdi_apply' is not declared
+   c:[1]Composer;g:[1]ZrDictationGuard;c[0].focused=true;composer_insert(c[..],"word!");c[0].anchor=4;c[0].caret=4;#assert zdi_begin(g[..],c[..],1) && zdi_apply(g[..],c[..],1,",") && typed(c[..])=="word,!";
+                                                                                                                                                       ^
+38 errors

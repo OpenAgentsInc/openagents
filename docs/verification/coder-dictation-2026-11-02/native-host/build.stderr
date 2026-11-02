@@ -1,0 +1,7 @@
+/tmp/openagents-12625-complete-20261101/verse/voice.coax:1219:3: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    a = a ^ (a >> 17);
+    ^
+  note: in #test a quiet gap teaches nothing; the next reply's loud start doesn't cut it off
+1 error
+
+

@@ -1,0 +1,180 @@
+{
+  "files": {
+    "gpu.stdout": {
+      "sha256": "0ef900dc6a978ad8fbcb9e3938c2c3a0bb6626d7c5d43b8ace8c98bcf6276117",
+      "bytes": 120
+    },
+    "metal-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "swift-clear-asan-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "metal-work-final.stdout": {
+      "sha256": "30a79fd806dad0cfa74b207b727fc82a546c0d370c31da7a7a0e2f171ed1fd3d",
+      "bytes": 102
+    },
+    "gpu-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-o0.stdout": {
+      "sha256": "48125a9589ca46cdc554aca1fa3afabf83f097510599f5d32a0f12875ad2f5fc",
+      "bytes": 124
+    },
+    "swift-clear-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-o2.stdout": {
+      "sha256": "48125a9589ca46cdc554aca1fa3afabf83f097510599f5d32a0f12875ad2f5fc",
+      "bytes": 124
+    },
+    "swift-clear-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-o2-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "face-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "record.json": {
+      "sha256": "464b08b593d4dd98e9e14af749198c695f280150794358b3314734f315aa81ba",
+      "bytes": 7469
+    },
+    "native-asan.stdout": {
+      "sha256": "48125a9589ca46cdc554aca1fa3afabf83f097510599f5d32a0f12875ad2f5fc",
+      "bytes": 124
+    },
+    "native-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-o2-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-o2.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "swift-clear-asan.stdout": {
+      "sha256": "0bbca422c213c4128608295ed9e1a4ff37f9a941d888af90b9fd6df41fccb422",
+      "bytes": 104
+    },
+    "source.tar.gz": {
+      "sha256": "90c0c853d8f83b9e85d6b8fdc9a9739ec337e704fbb02bb995a7a281429c9982",
+      "bytes": 15556
+    },
+    "face-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-o0.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "swift-clear-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "gpu.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "metal-work-final.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "gpu-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "swift-clear-asan-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "metal-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "README.md": {
+      "sha256": "d1a2dfaf884f06352cdbf52c242ed0934e58f999eab757aa0c817909bbe5cf3c",
+      "bytes": 2857
+    },
+    "metal-work-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "metal-work-asan-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "installed.json": {
+      "sha256": "3d089ff1d857e654e5dfd4046917618a5eb392c050b7866eaa626cf213b93e0c",
+      "bytes": 459
+    },
+    "swift-clear.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-asan-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "metal-work.stdout": {
+      "sha256": "30a79fd806dad0cfa74b207b727fc82a546c0d370c31da7a7a0e2f171ed1fd3d",
+      "bytes": 102
+    },
+    "metal-work-asan.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "metal-work-build-final.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-o0-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-o0-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "metal-work-build-final.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "metal-work-asan.stdout": {
+      "sha256": "30a79fd806dad0cfa74b207b727fc82a546c0d370c31da7a7a0e2f171ed1fd3d",
+      "bytes": 102
+    },
+    "native-asan-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "metal-work.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "swift-clear.stdout": {
+      "sha256": "0bbca422c213c4128608295ed9e1a4ff37f9a941d888af90b9fd6df41fccb422",
+      "bytes": 104
+    },
+    "metal-work-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "metal-work-asan-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  }
+}

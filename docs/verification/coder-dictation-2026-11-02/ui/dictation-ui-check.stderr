@@ -1,0 +1,5 @@
+apps/openagents-desktop/zeron/dictation-ui.coax:1:1: error[E0336]: the program has no 'main'
+  // Native Coder dictation gestures, explicit consent restore and status labels.
+  ^
+  fix: add main :: () { ... }
+1 error

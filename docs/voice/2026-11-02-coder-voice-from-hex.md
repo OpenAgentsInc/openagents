@@ -1,7 +1,18 @@
 # Voice in Coder: what we take from Hex
 
-*Proposal, 2026-11-02. Coder dictation is not built yet. The Parakeet engine
-foundation described below is now qualified separately in Psionic chapter 153.*
+*Proposal and implementation notes, 2026-11-02. Coder for Mac now uses local
+Parakeet hold-to-talk dictation. The terminal UI, standalone dictation command,
+vocabulary features and streaming work below remain proposals.*
+
+The [implemented Mac path](coder-dictation.md) uses an explicit opt-in,
+⌘D/microphone hold and release, Verse's resampler/VAD, a resident Parakeet
+engine and guarded insertion into an unchanged composer. It never sends.
+The 450/300/200 ms timeline follows the pinned Hex source; the complete
+capture is capped at 60 seconds and split into bounded offline model calls.
+This differs from the original Whisper-first proposal below: Mac dictation
+links `libpsionic-parakeet.a`, and only final text is inserted. D0/D1 and
+D3/D4 are not completed by the Mac integration; the proposed latency targets
+are still targets. [Checks and limits](../verification/coder-dictation-2026-11-02/README.md).
 
 This document does three things:
 
@@ -26,8 +37,9 @@ start with `hex/` are in that clone.
 - **Speech stays on your computer.** Psionic's Whisper already transcribes
   on the CPU and on Metal, faster than whisper.cpp
   ([transcribe.md](../../psionic/docs/transcribe.md)). Coder links
-  `libpsionic-whisper.a` through `psionic/platform/psionic-stt.h`. No audio
-  leaves the machine, no account is needed, and no speech provider is billed.
+  `libpsionic-parakeet.a` for Mac dictation; the existing voice host retains
+  its Whisper API. No audio leaves the machine, no account is needed, and no
+  speech provider is billed.
 - **One engine, two hosts.** The rules (timing, levels, formatting, the
   vocabulary list) are Coax, shared by the terminal UI and the Mac app. The
   hosts do only microphone capture and key handling.
@@ -86,7 +98,7 @@ Two measured facts from Hex matter most for us:
 | Psionic text to speech | Rule-based teaching version only | `psionic/lib/speak.coax`, ch. 155 |
 | Zeron's dictation in Coder Desktop (Rust): Parakeet v3 INT8 on ONNX, hold Cmd+D, at most 60 s, transcribes into the draft and never sends | Shipped in the sibling repo; not ported to the Coax Mac app | `~/work/coder-desktop/crates/voice`, `crates/ui/src/dictation.rs` |
 | Coder terminal UI and CLI | Shipped, no voice | `coder/tui/coder.coax` (submit is `cd_submit`, line 1076) |
-| OpenAgents Mac app (Coax port of Zeron) | Shipped, no voice; "Not ported from Zeron's input: … dictation" | `apps/openagents-desktop/`, [coax-desktop.md](../desktop/coax-desktop.md) |
+| OpenAgents Mac app (Coax port of Zeron) | Local Parakeet hold-to-talk drafts; explicit opt-in and final-only insertion | `apps/openagents-desktop/`, [dictation guide](coder-dictation.md) |
 
 [coax-native-voice.md](coax-native-voice.md) decided Google speech for
 *conversations* through our voice host, and named no model running on our
@@ -214,14 +226,15 @@ machine, model and build, as coax-native-voice.md requires.
 
 **Take later:**
 
-- **Parakeet in Coder.** Psionic's bounded resident engine now matches actual
+- **Parakeet tuning in Coder.** Psionic's bounded resident engine now matches actual
   NeMo on chapter 153's frozen 29-recording qualification. Its measured offline
   row-parallel pass processes 298.435 s audio in 27.199 s reported inference
   on an M5 Max (original baseline 48.375 s). The single-pass comparison has
   uncontrolled machine load and filesystem caches; it is not a 300 ms
-  key-release result. Keep it resident, measure dictation timing and
-  implement the 60-second segmentation policy before choosing it as default.
-  Hex makes Parakeet the default for speed and accuracy, and Zeron ships it.
+  key-release result. The Mac integration now keeps it resident and implements
+  the 60-second segmented capture policy. Measuring release latency and tuning
+  boundary-word quality remain open. Hex makes Parakeet the default for speed
+  and accuracy, and Zeron ships it.
   Hex's vocabulary rescoring (rescore look-alike spans with the
   transducer's score instead of boosting tokens) is the method to copy
   then.
@@ -254,7 +267,7 @@ machine, model and build, as coax-native-voice.md requires.
   `NSMicrophoneUsageDescription` to `apps/openagents-desktop/Info.plist`.
 - `INVARIANTS.md` says the microphone opens only through the voice toggle
   and after the person sees that Google processes their speech. Local
-  dictation needs an amended invariant in the same change as D1: Coder's
+  dictation now has an amended invariant in the Mac integration: Coder's
   dictation setting is a second opt-in path, its audio never leaves the
   machine, and no speech provider is called. The check is a test that the
   dictation path links no network code and writes no audio files.
@@ -272,22 +285,24 @@ Each phase ends with its checks passing and a measurement committed.
   `openagents dictate --stream`; partials in the status line; the final into
   the editor before `cd_submit` ever runs. The invariant amendment lands
   here.
-- **D2. Mac app.** The microphone in the composer (Zeron's position and
-  states: "Hold to dictate", "Listening", "Transcribing"), ⌘D hold to talk,
-  a settings toggle and an input-device picker. Capture in Swift,
-  recognition in process with `libpsionic-whisper.a`, the model warmed at
-  launch when dictation is on.
+- **D2. Mac app — implemented core.** The composer's microphone and ⌘D hold
+  to talk insert a final, editable draft without sending. A default-off menu
+  toggle admits capture; Swift owns microphone effects and the resident
+  `libpsionic-parakeet.a` runs recognition locally. Focus loss stops capture
+  and cancels insertion, while retaining the loaded model. Device selection
+  and real microphone/TCC acceptance remain open; see the
+  [implementation guide](coder-dictation.md) and `NEEDS_OWNER.md`.
 - **D3. Code-aware text.** The project vocabulary, spoken symbols, casing
   and filler rules in `dictation.coax`, each with `#test`s, plus the user
   word list in settings.
 - **D4. Evaluation and tuning.** The corpus and harness below, and the
   latency table filled in. Pick the default model (`base.en` or `small.en`)
   from the numbers.
-- **D5. Later.** Integrate the now-qualified Parakeet engine: resident lifetime,
-  silence admission, 20.47-second model-bound segmentation, vocabulary rescoring
-  and measured release latency. The optional cleanup pass and Linux capture
-  also remain here. Engine qualification does not complete D0–D4 or authorize
-  opening a microphone.
+- **D5. Remaining Parakeet work.** Resident lifetime, silence admission and
+  bounded segmentation now ship with D2. Vocabulary rescoring, measured release
+  latency and representative dictation evaluation remain open. The optional
+  cleanup pass and Linux capture also remain here. Mac integration does not
+  complete D0, D1, D3 or D4, and tests do not open the owner's microphone.
 
 Talking with Coder out loud (spoken replies, barge-in) is not in these
 phases. When it comes, it uses the voice host and `openagents.voice.v1`:
@@ -327,9 +342,10 @@ a `Route` to the Coder session and the Mac app as one more client.
 
 These have a recommended answer; the owner may change them.
 
-1. **Default model.** Recommend `base.en`: it spells our names right with
-   beam search and the word list, and runs in about 200 ms per pass on
-   Metal. `small.en` is the option for accents and noise.
+1. **Default model.** The Mac path now uses pinned original-weight Parakeet v3.
+   The earlier Whisper `base.en`/`small.en` choice belongs to the proposed
+   terminal/CLI path. Neither choice establishes the release-latency targets
+   or repository-vocabulary quality without the evaluation above.
 2. **Shortcut in the terminal.** Recommend Ctrl+Space. Terminals with the
    kitty keyboard protocol could get hold-to-talk later.
 3. **Microphone warm or cold.** Recommend warm while the app is focused and

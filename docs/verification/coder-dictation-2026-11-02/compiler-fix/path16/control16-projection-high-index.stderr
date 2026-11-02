@@ -1,0 +1,5 @@
+/tmp/dictation-compiler-fix/controls16/projection-high-index/coax/lib/compiler/checker.coax:81359:172: error[E0406]: assertion failed
+   again:=CB_query(b,2,3,path,out[..]);if mode==0 {#assert !state[0].fatal && state[0].error_count==0 && again.count==1 && !again.incomplete && out[0].path.count==16;}else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==921 && errors[0].loc.column==7 && errors[0].loc.offset==92107;}
+                                                                                                                                                                             ^
+  note: in #forall retained sixteen projection witnesses retain the final slot and reject inactive field cache tails
+  counterexample: mode = 2

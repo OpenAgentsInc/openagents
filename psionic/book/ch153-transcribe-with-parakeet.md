@@ -1,12 +1,18 @@
 # 153. Transcribe with Parakeet
 
+The Mac dictation controller, native effects and recorded-audio offscreen app
+checks pass. The complete app uses an isolated 2,097,152-work compiler; the
+unchanged default cap still blocks generation in imported checks. The
+[application handoff](../../docs/verification/coder-dictation-2026-11-02/app/README.md)
+records the passing diagnostic build and the open default-budget decision.
+
 > **Status: implemented — bounded resident Metal profile.** The original
 > Parakeet v3 weights run through a Coax frontend, Metal encoder and CPU TDT
 > decoder, with a resident native API and CLI. All 29 frozen recordings match
 > actual NeMo tokens, frame positions and text; complete intermediate tensors
 > pass the declared tolerance. The earlier CPU observations below retain
-> their original teaching profile. Streaming and Coder's microphone UI remain
-> separate work.
+> their original teaching profile. Coder for Mac now consumes the engine for
+> local hold-to-talk draft insertion; streaming remains separate work.
 
 [Chapter 152](ch152-a-speech-encoder.md) built NVIDIA NeMo's FastConformer
 encoder: it turns 100 log-mel frames a second into 12.5 encoded frames a
@@ -79,6 +85,12 @@ the previous successful text, token/frame metadata and stage snapshots intact.
 An inspection copies a snapshot into caller storage rather than returning a
 view into reused inference workspace.
 
+An explicit `psionic_parakeet_clear` request invalidates those snapshots and
+wipes the live resident audio/feature/decoder buffers, while keeping weights,
+vocabulary, pipelines and workers warm. Coder requests this after recognition,
+including failures. Caller copies and an in-flight request retain their own
+lifetimes; the API does not promise forensic erasure of arbitrary process memory.
+
 The current profile accepts **320 through 327,520 samples**, or 20 ms through
 20.47 seconds. A GPU request fails explicitly if Metal is unavailable; it
 never silently performs a slow CPU transcription. `--cpu` selects the slower
@@ -86,11 +98,13 @@ compensated teaching arithmetic explicitly. The CLI supports text and JSON.
 It refuses forced language, vocabulary bias, prompts and timestamp-file flags
 that this recognizer does not implement. Language is inferred by the model.
 
-This is a whole-utterance recognizer. Coder microphone capture, the dictation
-timeline, vocabulary rescoring, 60-second segmentation and speculative partials
-remain the separate [voice plan](../../docs/voice/2026-11-02-coder-voice-from-hex.md)
-and chapter 154. No speech is captured, message submitted or command executed
-by this chapter's transcription API.
+This is a whole-utterance recognizer. [Coder for Mac](../../docs/voice/coder-dictation.md)
+now supplies opt-in microphone capture, the hold/release timeline, a 60-second
+segmentation cap and guarded insertion into the composer. It never submits the
+draft. Vocabulary rescoring and speculative partials remain later work in the
+[voice plan](../../docs/voice/2026-11-02-coder-voice-from-hex.md); chapter 154's
+cache-aware streaming is separate from this checkpoint. The transcription API
+itself captures no microphone and executes no commands.
 
 ## What the official reference caught
 
