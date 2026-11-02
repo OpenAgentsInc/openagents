@@ -8,6 +8,7 @@ RTO_FILE :: 67108864;
 RtoFile :: struct {path:[4096]u8;n:int;hash:[64]u8;}
 RtoState :: struct {files:[512]RtoFile;n:int;hits:[128]int;active:[32]bool;requests:int;served:int;changed:bool;}
 #load "render-test-sinks.coax";
+#load "render-test-websockets.coax";
 rto_string :: (d:Jv,node:int,out:[]u8)->string {n:=jv_str(d,node,out);return ifx n<0 then "" else cast(string)out[0..<n];}
 rto_prefix :: (value:string,prefix:string)->bool {return value.count>=prefix.count && value[0..<prefix.count]==prefix;}
 rto_suffix :: (value:string,suffix:string)->bool {return value.count>=suffix.count && value[value.count-suffix.count..<value.count]==suffix;}
@@ -48,21 +49,23 @@ rto_serve :: (port_file:string,config_file:string,ledger:string)->int {
   if !rtq_json_file(config_file,config[..],nodes[..],d[..]) || jv_raw(d[0],jv_get(d[0],0,"schema"))!="aethyr.render-test-origin.v1" || !fs_mkdir(ledger) {return 2;}
   path:[4096]u8;for name:[4]string.["ready.json","requests.jsonl","final.json","post-sinks.jsonl"] {if fs_exists(fs_join(ledger,name,path[..])) {return 2;}}
   life:=jv_int(d[0],jv_get(d[0],0,"lifetime_ms"),180000);routes:=jv_get(d[0],0,"routes");variants:=jv_get(d[0],0,"variants");
-  if life<1 || life>840000 || jv_kind(d[0],routes)!=JV_ARRAY || jv_len(d[0],routes)>128 || jv_len(d[0],variants)>32 {return 2;}
+  if life<1 || life>840000 || jv_kind(d[0],routes)!=JV_ARRAY || jv_len(d[0],routes)>128 || jv_len(d[0],variants)>32 || !rws_config(d[0]) {return 2;}
   s:[1]RtoState;pins:=jv_get(d[0],0,"pins");
   for k:0..<jv_len(d[0],pins) {row:=jv_at(d[0],pins,k);p:[4096]u8;hash:[64]u8;name:=rto_string(d[0],jv_get(d[0],row,"file"),p[..]);expected:=rto_string(d[0],jv_get(d[0],row,"sha256"),hash[..]);actual:[64]u8;if !rtq_hash_file(name,actual[..]) || cast(string)actual[..]!=expected || !rto_pin(s[..],name,expected) {return 2;}}
   for k:0..<jv_len(d[0],variants) {s[0].active[k]=jv_kind(d[0],jv_get(d[0],jv_at(d[0],variants,k),"enabled"))==JV_TRUE;}
   config_hash:[64]u8;self:[4096]u8;self_name:=gp_self(self[..]);self_hash:[64]u8;if !rtq_hash_file(config_file,config_hash[..]) || !rto_pin(s[..],config_file,cast(string)config_hash[..]) || !rtq_hash_file(self_name,self_hash[..]) || !rto_pin(s[..],self_name,cast(string)self_hash[..]) {return 2;}
   posts:[1]RtoPosts;if !rps_init(posts[..],s[..],d[0],ledger,port_file) {return 2;}
   listener:=cxsock_listen(0);if listener<0 {return 1;}port:=cxsock_port(listener);
-  ready:[8192]u8;rw:[1]Jo;jo_start(rw[..],ready[..]);jo_obj(rw[..]);jo_key(rw[..],"schema");jo_str(rw[..],"aethyr.render-test-origin.ready.v1");jo_key(rw[..],"port");jo_int(rw[..],port);jo_key(rw[..],"config_sha256");jo_str(rw[..],cast(string)config_hash[..]);jo_key(rw[..],"image_sha256");jo_str(rw[..],cast(string)self_hash[..]);jo_key(rw[..],"lifetime_ms");jo_int(rw[..],life);jo_key(rw[..],"POST_supported");jo_bool(rw[..],posts[0].n>0);jo_key(rw[..],"declared_POST_sinks");jo_int(rw[..],posts[0].n);jo_end(rw[..]);
+  ready:[8192]u8;rw:[1]Jo;jo_start(rw[..],ready[..]);jo_obj(rw[..]);jo_key(rw[..],"schema");jo_str(rw[..],"aethyr.render-test-origin.ready.v1");jo_key(rw[..],"port");jo_int(rw[..],port);jo_key(rw[..],"config_sha256");jo_str(rw[..],cast(string)config_hash[..]);jo_key(rw[..],"image_sha256");jo_str(rw[..],cast(string)self_hash[..]);jo_key(rw[..],"lifetime_ms");jo_int(rw[..],life);jo_key(rw[..],"POST_supported");jo_bool(rw[..],posts[0].n>0);jo_key(rw[..],"declared_POST_sinks");jo_int(rw[..],posts[0].n);if jv_len(d[0],jv_get(d[0],0,"idle_websockets"))>0 {jo_key(rw[..],"idle_websocket_routes");jv_write(d[0],jv_get(d[0],0,"idle_websockets"),rw[..]);jo_key(rw[..],"idle_websocket_capacity");jo_int(rw[..],8);}jo_end(rw[..]);
   number:[32]u8;nw:[1]Jo;jo_start(nw[..],number[..]);jo_int(nw[..],port);
   if rw[0].bad || !rto_saved(ledger,"ready.json",jo_text(rw[..])) || !rto_saved(ledger,"requests.jsonl","") || !fs_write(port_file,jo_text(nw[..])) {closed:=cxsock_close(listener);return 1;}
-  deadline:=proc_now_ms()+life;finished:=false;passed:=false;
+  idle:[1]RtoIdle;idle_enabled:=jv_len(d[0],jv_get(d[0],0,"idle_websockets"))>0;for k:0..<16 {idle[0].sockets[k].h= -1;}deadline:=proc_now_ms()+life;finished:=false;passed:=false;
   while proc_now_ms()<deadline {
+    if idle_enabled && !rws_poll(idle[..],ledger) {s[0].changed=true;}
     h:=cxsock_accept(listener,ifx proc_left(deadline,proc_now_ms())>1000 then 1000 else proc_left(deadline,proc_now_ms()));if h<0 {continue;}
     request:[65536]u8;count:=rto_read_head(h,request[..]);head:RtoHead;if count>0 {head=rto_head(cast(string)request[0..<count]);}s[0].requests+=1;
     status:=404;mime:="text/plain";mime_storage:[256]u8;file:[4096]u8;file_n:=0;body:[RTO_FILE]u8;body_n:=0;response_known:=false;original:[64]u8;original_known:=false;served:[64]u8;variant_name:[1024]u8;variant_n:=0;
+    if head.valid && head.method=="GET" && head.length==0 && rws_route(d[0],head.path) {upgraded:=rws_upgrade(idle[..],s[..],ledger,h,cast(string)request[0..<count],head);if !upgraded {s[0].changed=true;}continue;}
     if !head.valid || (head.method=="GET" && head.length!=0) {status=400;}
     // Without declared sinks the legacy refusal remains unchanged. A sink
     // consumes only an exact configured URL and never derives a path from it.
@@ -104,9 +107,9 @@ rto_serve :: (port_file:string,config_file:string,ledger:string)->int {
     if status==404 && !response_known {missing:="not found";for c,k:missing {body[k]=c;}body_n=missing.count;}
     hashed:=S_hex(S_hash(cast(string)body[0..<body_n]),served[..]);sent:=rto_reply(h,status,mime,cast(string)body[0..<body_n]);
     logged:=hashed && rto_journal(s[..],ledger,head,status,cast(string)file[0..<file_n],ifx original_known then cast(string)original[..] else "",cast(string)served[..],body_n,cast(string)variant_name[0..<variant_n],sent);closed:=cxsock_close(h);if !logged {s[0].changed=true;}
-    if finished {passed=rto_final(s[..],posts[..],ledger,"requested");break;}
+    if finished {if idle_enabled && !rws_final(idle[..],ledger) {s[0].changed=true;}passed=rto_final(s[..],posts[..],ledger,"requested");break;}
   }
-  closed:=cxsock_close(listener);if !finished {passed=rto_final(s[..],posts[..],ledger,"deadline");}return ifx passed then 0 else 1;
+  closed:=cxsock_close(listener);if !finished {if idle_enabled && !rws_final(idle[..],ledger) {s[0].changed=true;}passed=rto_final(s[..],posts[..],ledger,"deadline");}return ifx passed then 0 else 1;
 }
 rto_start :: (port_file:string,config_file:string,ledger:string)->int {
   paths:[4][4096]u8;if !rto_fresh(fs_exists(port_file),fs_exists(fs_join(ledger,"ready.json",paths[0][..])),fs_exists(fs_join(ledger,"requests.jsonl",paths[1][..])),fs_exists(fs_join(ledger,"final.json",paths[2][..]))) || fs_exists(fs_join(ledger,"post-sinks.jsonl",paths[3][..])) {return -1;}

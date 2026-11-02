@@ -1,0 +1,10 @@
+// Typed ABI declarations only; unchanged native-gpu-effects.c owns the SDK.
+#module "aethyr.tests.depth.effects";
+ngfx_open :: ()->int #foreign; ngfx_info :: (field:int)->int #foreign; ngfx_name :: (index:int)->int #foreign;
+ngfx_blob :: (bytes:int)->int #foreign; ngfx_blob_put :: (blob:int,offset:int,byte:int)->int #foreign; ngfx_blob_word :: (blob:int,index:int)->int #foreign;
+ngfx_buffer :: (bytes:int)->int #foreign; ngfx_buffer_word :: (buffer:int,index:int,word:int)->int #foreign;
+ngfx_image :: (w:int,h:int,layers:int,array:int,format:int,use:int)->int #foreign;
+ngfx_begin :: (words_handle:int)->int #foreign; ngfx_binding :: (slot:int,kind:int,resource:int,offset:int,range:int)->int #foreign;
+ngfx_target :: (slot:int,image:int)->int #foreign; ngfx_clear :: (lane:int,word:int)->int #foreign; ngfx_field :: (field:int,value:int)->int #foreign;
+ngfx_pipe_open :: ()->int #foreign; ngfx_submit :: ()->int #foreign; ngfx_pipe_close :: ()->int #foreign;
+ngfx_read :: (image:int,bytes:int)->int #foreign; ngfx_close :: ()->int #foreign;

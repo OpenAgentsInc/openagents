@@ -1,0 +1,31 @@
+#load "render-test-websocket-policy.coax";
+RtoIdleSocket :: struct {h:int= -1;bytes:[256]u8;n:int;}
+RtoIdle :: struct {sockets:[16]RtoIdleSocket;active:int;opened:int;closed:int;ledger:bool=true;}
+rws_journal :: (idle:[]RtoIdle,ledger:string,action:string,handle:int,status:int,sent:bool)->bool {
+  bytes:[2048]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"action");jo_str(o[..],action);jo_key(o[..],"handle");jo_int(o[..],handle);jo_key(o[..],"status");jo_int(o[..],status);jo_key(o[..],"sent");jo_bool(o[..],sent);jo_key(o[..],"active");jo_int(o[..],idle[0].active);jo_end(o[..]);okay:=!o[0].bad && rto_append(ledger,"websockets.jsonl",jo_text(o[..]));idle[0].ledger=idle[0].ledger && okay;return okay;
+}
+rws_drop :: (idle:[]RtoIdle,k:int,ledger:string,reason:string,code:int)->bool {
+  h:=idle[0].sockets[k].h;if h<0 {return true;}sent:=true;if code>0 {frame:[128]u8;n:=wss_close_write(code,frame[..]);sent=n>0 && wp_send(h,cast(string)frame[0..<n]);}closed:=cxsock_close(h);idle[0].sockets[k].h= -1;idle[0].sockets[k].n=0;idle[0].active-=1;idle[0].closed+=1;return rws_journal(idle,ledger,reason,h,closed,sent);
+}
+rws_poll :: (idle:[]RtoIdle,ledger:string)->bool {
+  for k:0..<16 {h:=idle[0].sockets[k].h;if h<0 {continue;}n:=cxsock_read(h,0);if n== -2 {if idle[0].sockets[k].n==0 {continue;}n=0;}if n<0 {dropped:=rws_drop(idle,k,ledger,"peer-ended",0);continue;}
+    used:=idle[0].sockets[k].n;if n>idle[0].sockets[k].bytes.count-used {dropped:=rws_drop(idle,k,ledger,"idle-capacity",1009);continue;}for j:0..<n {idle[0].sockets[k].bytes[used+j]=cast,trunc(u8)cxsock_byte(h,j);}idle[0].sockets[k].n+=n;
+    while idle[0].sockets[k].h>=0 && idle[0].sockets[k].n>0 {count:=idle[0].sockets[k].n;bytes:=cast(string)idle[0].sockets[k].bytes[0..<count];frame:=wss_frame_read(bytes,125);if frame.status==WS_FRAME_MORE {break;}if frame.status!=WS_FRAME_OK {dropped:=rws_drop(idle,k,ledger,"invalid-frame",1002);break;}payload:[125]u8;pn:=wss_unmask(bytes,frame,payload[..]);if pn<0 {dropped:=rws_drop(idle,k,ledger,"invalid-payload",1002);break;}
+      if frame.op==WS_OP_CLOSE {code:=ws_close_code(cast(string)payload[0..<pn]);dropped:=rws_drop(idle,k,ledger,ifx code<0 then "invalid-close" else "peer-close",ifx code<0 then 1002 else 1000);break;}
+      if frame.op==WS_OP_PING {response:[128]u8;rn:=wss_frame_write(WS_OP_PONG,cast(string)payload[0..<pn],response[..]);sent:=rn>0 && wp_send(h,cast(string)response[0..<rn]);recorded:=rws_journal(idle,ledger,"ping",h,0,sent);if !sent {dropped:=rws_drop(idle,k,ledger,"pong-write",0);break;}}
+      else if frame.op!=WS_OP_PONG {dropped:=rws_drop(idle,k,ledger,"idle-only",1003);break;}
+      left:=count-frame.total;for j:0..<left {idle[0].sockets[k].bytes[j]=idle[0].sockets[k].bytes[frame.total+j];}idle[0].sockets[k].n=left;
+    }
+  }return idle[0].ledger;
+}
+rws_upgrade :: (idle:[]RtoIdle,s:[]RtoState,ledger:string,h:int,request:string,head:RtoHead)->bool {
+  hello:=wss_request(request);status:=ifx !rws_capacity(idle[0].active) then 503 else ifx hello.status!=WSS_OK || request.count-hello.consumed>256 then 400 else 101;sent:=false;response:[512]u8;n:=0;
+  if status==101 {n=wss_accept_write(request[hello.key_from..<hello.key_to],response[..]);sent=n>0 && wp_send(h,cast(string)response[0..<n]);}else {sent=rto_reply(h,status,"text/plain","idle websocket refused");}
+  hash:[64]u8;hashed:=S_hex(S_hash(ifx n>0 then cast(string)response[0..<n] else "idle websocket refused"),hash[..]);logged:=hashed && rto_journal(s,ledger,head,status,"","",cast(string)hash[..],n,"idle-websocket",sent);idle[0].ledger=idle[0].ledger && logged;
+  if status==101 && sent {for k:0..<16 {if idle[0].sockets[k].h<0 {idle[0].sockets[k].h=h;idle[0].sockets[k].n=request.count-hello.consumed;for j:0..<idle[0].sockets[k].n {idle[0].sockets[k].bytes[j]=request[hello.consumed+j];}idle[0].opened+=1;idle[0].active+=1;recorded:=rws_journal(idle,ledger,"accepted",h,101,true);return logged && recorded;}}}
+  closed:=cxsock_close(h);return logged;
+}
+rws_final :: (idle:[]RtoIdle,ledger:string)->bool {
+  for k:0..<16 {if idle[0].sockets[k].h>=0 {closed:=rws_drop(idle,k,ledger,"finalize",1001);}}
+  body:[4096]u8;o:[1]Jo;jo_start(o[..],body[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render-test-origin.idle-websockets.v1");jo_key(o[..],"opened");jo_int(o[..],idle[0].opened);jo_key(o[..],"closed");jo_int(o[..],idle[0].closed);jo_key(o[..],"active");jo_int(o[..],idle[0].active);jo_key(o[..],"ledger_complete");jo_bool(o[..],idle[0].ledger);passed:=idle[0].active==0 && idle[0].opened==idle[0].closed && idle[0].ledger;jo_key(o[..],"status");jo_str(o[..],ifx passed then "passed" else "failed");jo_end(o[..]);return !o[0].bad && rto_saved(ledger,"websockets-final.json",jo_text(o[..])) && passed;
+}

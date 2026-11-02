@@ -1,0 +1,15 @@
+// Join the retained actual cap8 observer's entire input inventory to archive
+// bodies. The sole superseded source is named explicitly, never guessed.
+#import "Basic";
+#load "render-test-origin.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}root:=args_at(a[..],0);target:=args_at(a[..],1);paths:[3][4096]u8;receipt:=fs_join(root,"evidence/actual-cap8/qualification.json",paths[0][..]);bytes:[65536]u8;nodes:[4096]JvNode;d:[1]Jv;if !rtq_json_file(receipt,bytes[..],nodes[..],d[..]) {return 1;}inputs:=jv_get(d[0],0,"inputs");row:=d[0].nodes[inputs].first;count:=0;same:=true;body:[131072]u8;o:[1]Jo;jo_start(o[..],body[..]);jo_obj(o[..]);jo_key(o[..],"rows");jo_arr(o[..]);
+  repo:[4096]u8;repo_name:=fs_cwd(repo[..]);while row!= -1 {original:=jv_key(d[0],row);source_key:=original;if original.count>repo_name.count && original[0..<repo_name.count]==repo_name && original[repo_name.count]=='/' {source_key=original[repo_name.count+1..<original.count];}mapped:[8192]u8;w:[1]Jo;jo_start(w[..],mapped[..]);
+    if original=="/tmp/aethyr-authority-budget-qualified-1fac/coax" {jo_put(w[..],"images/compiler-1fac");}
+    else if rto_suffix(original,"/coax/web/build/tools/render-test-websocket-tool-checks-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa") {jo_put(w[..],"images/observer-cap8");}
+    else if rto_suffix(original,"/actual-cap8/config.json") {jo_put(w[..],"evidence/actual-cap8/config.json");}
+    else if source_key=="aethyr/tests/render-test-websocket-policy.coax" {jo_put(w[..],"evidence/epochs/cap8/render-test-websocket-policy.coax");}
+    else {jo_put(w[..],"source/");jo_put(w[..],source_key);}
+    path:=fs_join(root,jo_text(w[..]),paths[1][..]);hash:[64]u8;okay:=!w[0].bad && rtq_hash_file(path,hash[..]) && cast(string)hash[..]==jv_raw(d[0],row);same=same && okay;jo_obj(o[..]);jo_key(o[..],"input");jo_str(o[..],original);jo_key(o[..],"body");jo_str(o[..],jo_text(w[..]));jo_key(o[..],"sha256");jo_str(o[..],jv_raw(d[0],row));jo_key(o[..],"equal");jo_bool(o[..],okay);jo_end(o[..]);count+=1;row=d[0].nodes[row].next;
+  }jo_end(o[..]);jo_key(o[..],"status");jo_str(o[..],ifx same then "passed" else "failed");jo_key(o[..],"count");jo_int(o[..],count);self:[4096]u8;image:=gp_self(self[..]);hash:[64]u8;if !rtq_hash_file(image,hash[..]) {return 1;}jo_key(o[..],"observer_image_sha256");jo_str(o[..],cast(string)hash[..]);if !rtq_hash_file("aethyr/tests/render-test-websocket-source-checks.coax",hash[..]) {return 1;}jo_key(o[..],"observer_source_sha256");jo_str(o[..],cast(string)hash[..]);jo_end(o[..]);print("retained websocket source inventory: % (% files)\n",same,count);return ifx !o[0].bad && fs_write(target,jo_text(o[..])) && same then 0 else 1;
+}

@@ -120,6 +120,21 @@ cdp_flags :: (a: [] Args, os: int, chrome: string, profile: string, w: int, h: i
   ok = ok && k > 0 && args_add(a, cast(string) size[0..<k]);
   return ok && args_add(a, "--remote-debugging-port=0") && args_add(a, "about:blank") && args_add(a, "");
 }
+#test "legacy background observer flags preserve headless mute and omit window size" {
+  a:[1]Args;#assert cdp_background_flags(a[..],TOOL_MAC,"/c","/p",1,1);
+  #assert args_count(a[..])==15 && args_at(a[..],1)=="--headless=new" && args_at(a[..],2)=="--mute-audio";
+  #assert args_at(a[..],9)=="--disable-background-timer-throttling" && args_at(a[..],10)=="--disable-renderer-backgrounding" && args_at(a[..],11)=="--disable-backgrounding-occluded-windows" && args_at(a[..],12)=="--remote-debugging-port=0" && args_at(a[..],13)=="about:blank" && args_at(a[..],14)=="";
+  for k:0..<args_count(a[..]) {arg:=args_at(a[..],k);#assert !(arg.count>=14 && arg[0..<14]=="--window-size=");}
+  b:[1]Args;#assert cdp_background_flags(b[..],2,"/c","/p",8192,8192) && args_at(b[..],9)=="--ignore-gpu-blocklist" && args_at(b[..],10)=="--disable-background-timer-throttling";
+}
+// The original browser observer profile used by render-host/goldens: the
+// three explicit background flags and no Chrome --window-size override.
+// Viewport dimensions remain the caller's Emulation.setDeviceMetricsOverride.
+// Existing cdp_flags/cdp_launch keep their byte-identical default arguments.
+cdp_background_flags :: (a:[]Args,os:int,chrome:string,profile:string,w:int,h:int)->bool {
+  base:[1]Args;if !cdp_flags(base[..],os,chrome,profile,w,h) {return false;}
+  for k:0..<args_count(base[..]) {arg:=args_at(base[..],k);if arg.count>=14 && arg[0..<14]=="--window-size=" {continue;}if arg=="--remote-debugging-port=0" {for flag:[3]string.["--disable-background-timer-throttling","--disable-renderer-backgrounding","--disable-backgrounding-occluded-windows"] {if !args_add(a,flag) {return false;}}}if !args_add(a,arg) {return false;}}return true;
+}
 // a then b in out, or "" when they do not fit.
 cdp_cat2 :: (a: string, b: string, out: [] u8) -> string {
   if a.count + b.count > out.count { return ""; }
@@ -353,14 +368,17 @@ cdp_next_wait :: (attempt: int, waited_ms: int, limit_ms: int) -> int {
 // named prefix...) and connects to its first page. False with cdp_error
 // set; whatever was started is closed again. A launch that fails (no
 // DevTools port, no page target, no connection) is tried once more.
-cdp_launch :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {
+cdp_launch :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {return cdp_launch_profile(c,w,h,prefix,false);}
+cdp_launch_background :: (c:[]Cdp,w:int,h:int,prefix:string)->bool {return cdp_launch_profile(c,w,h,prefix,true);}
+cdp_launch_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background:bool) -> bool {
   for attempt: 0..<CDP_LAUNCH_TRIES {
-    if cdp_launch_once(c, w, h, prefix) { return true; }
+    if cdp_launch_once_profile(c, w, h, prefix,background) { return true; }
     if c[0].err_n > 0 && cdp_error(c) == "no headless Chromium on this machine; set CHROME" { return false; }
   }
   return false;
 }
-cdp_launch_once :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {
+cdp_launch_once :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {return cdp_launch_once_profile(c,w,h,prefix,false);}
+cdp_launch_once_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background:bool) -> bool {
   c[0].proc = -1; c[0].h = -1; c[0].used = 0; c[0].id = 0; c[0].err_n = 0;
   bin: [4096] u8;
   chrome := cdp_chrome(bin[..]);
@@ -369,7 +387,8 @@ cdp_launch_once :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {
   c[0].profile_n = profile.count;
   if profile.count == 0 { return cdp_fail(c, "could not make a temporary profile", ""); }
   a: [1] Args;
-  if !cdp_flags(a[..], cxtool_os(), chrome, profile, w, h) { cdp_close(c); return cdp_fail(c, "the browser's arguments do not fit", ""); }
+  fitted:=ifx background then cdp_background_flags(a[..],cxtool_os(),chrome,profile,w,h) else cdp_flags(a[..],cxtool_os(),chrome,profile,w,h);
+  if !fitted { cdp_close(c); return cdp_fail(c, "the browser's arguments do not fit", ""); }
   p := proc_new();
   ok := p >= 0;
   for i: 0..<args_count(a[..]) - 1 { ok = ok && proc_arg(p, args_at(a[..], i)); }

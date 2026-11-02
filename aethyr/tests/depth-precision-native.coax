@@ -1,0 +1,28 @@
+// Fixed-function diagnostic worker. All fixtures, sampling and bookkeeping
+// remain Coax; unchanged native-gpu-effects.c performs typed Vulkan effects.
+#load "depth-precision-fixtures.coax";
+#load "../render/tests/qualification-files.coax";
+ngfx_open :: ()->int #foreign; ngfx_info :: (field:int)->int #foreign; ngfx_name :: (index:int)->int #foreign;
+ngfx_blob :: (bytes:int)->int #foreign; ngfx_blob_put :: (blob:int,offset:int,byte:int)->int #foreign; ngfx_blob_word :: (blob:int,index:int)->int #foreign;
+ngfx_buffer :: (bytes:int)->int #foreign; ngfx_buffer_word :: (buffer:int,index:int,word:int)->int #foreign;
+ngfx_image :: (w:int,h:int,layers:int,array:int,format:int,use:int)->int #foreign;
+ngfx_begin :: (words_handle:int)->int #foreign; ngfx_binding :: (slot:int,kind:int,resource:int,offset:int,range:int)->int #foreign;
+ngfx_target :: (slot:int,image:int)->int #foreign; ngfx_clear :: (lane:int,word:int)->int #foreign; ngfx_field :: (field:int,value:int)->int #foreign;
+ngfx_pipe_open :: ()->int #foreign; ngfx_submit :: ()->int #foreign; ngfx_pipe_close :: ()->int #foreign;
+ngfx_read :: (image:int,bytes:int)->int #foreign; ngfx_close :: ()->int #foreign;
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}spv:=args_at(a[..],0);output:=args_at(a[..],1);inputs:[1]RtqInputs;if !rtq_input_add(inputs[..],spv) {return 2;}
+  bytes:[1048576]u8;n:=fs_read(spv,bytes[..]);if n<20 || n%4!=0 || bytes[0]!=3 || bytes[1]!=2 || bytes[2]!=35 || bytes[3]!=7 {return 2;}
+  if ngfx_open()!=0 {return 2;}good:=ngfx_info(9)==1;blob:=ngfx_blob(n);if blob<0 {good=false;}if good {for k:0..<n {good=good && ngfx_blob_put(blob,k,cast(int)bytes[k])==0;}}
+  uniform:=ngfx_buffer(96);good=good && uniform>=0;record:[131072]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.depth-precision-native.v1");jo_key(o[..],"format");jo_str(o[..],"rgba32float");jo_key(o[..],"depth_format");jo_str(o[..],"depth32float");jo_key(o[..],"rows");jo_arr(o[..]);
+  for index:0..<23 {if !good {break;}c:=dp_case(index);for v:0..<6 {for lane:0..<4 {good=good && ngfx_buffer_word(uniform,v*4+lane,cast(int)f32_bits(c.clips[v][lane]))==0;}}
+    color:=ngfx_image(c.width,c.height,1,0,2,2);depth:=ngfx_image(c.width,c.height,1,0,3,2);good=good && color>=0 && depth>=0 && ngfx_begin(blob)==0;
+    good=good && ngfx_binding(0,1,uniform,0,96)==0 && ngfx_field(0,1)==0 && ngfx_field(1,c.count)==0 && ngfx_target(0,color)==0 && ngfx_field(2,1)==0 && ngfx_field(3,depth)==0 && ngfx_field(4,1)==0 && ngfx_field(5,1)==0;
+    for lane:0..<4 {good=good && ngfx_clear(lane,cast(int)f32_bits(-1.0))==0;}
+    if !good || ngfx_pipe_open()!=0 {good=false;break;}good=ngfx_submit()==0;
+    rgba:=ifx good then ngfx_read(color,c.width*c.height*16) else -1;zs:=ifx good then ngfx_read(depth,c.width*c.height*4) else -1;good=good && rgba>=0 && zs>=0;
+    jo_arr(o[..]);if good {for sample:0..<(ifx index<15 then 3 else 1) {x:=ifx index<15 then dp_pixel(sample,0) else 0;y:=ifx index<15 then dp_pixel(sample,1) else 1;pixel:=y*c.width+x;jo_obj(o[..]);jo_key(o[..],"rgba_words");jo_arr(o[..]);for lane:0..<4 {word:=ngfx_blob_word(rgba,pixel*4+lane);good=good && word>=0;jo_int(o[..],word);}jo_end(o[..]);jo_key(o[..],"depth_word");jo_int(o[..],ngfx_blob_word(zs,pixel));jo_end(o[..]);}}jo_end(o[..]);good=ngfx_pipe_close()==0 && good;
+  }jo_end(o[..]);jo_key(o[..],"device");jo_obj(o[..]);for field:3..<6 {jo_key(o[..],ifx field==3 then "vendor" else ifx field==4 then "device" else "driver");jo_int(o[..],ngfx_info(field));}name:[256]u8;nn:=0;while nn<name.count {byte:=ngfx_name(nn);if byte<=0 {break;}name[nn]=cast(u8)byte;nn+=1;}jo_key(o[..],"name");jo_str(o[..],cast(string)name[0..<nn]);jo_end(o[..]);
+  validation:=ngfx_info(9);closed:=ngfx_close();errors:=ngfx_info(6);warnings:=ngfx_info(7);stable:=rtq_inputs_match(inputs[..]);good=good && closed==0 && errors==0 && warnings==0 && stable;
+  jo_key(o[..],"validation_enabled");jo_int(o[..],validation);jo_key(o[..],"errors");jo_int(o[..],errors);jo_key(o[..],"warnings");jo_int(o[..],warnings);jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],stable);jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],".");jo_key(o[..],"status");jo_str(o[..],ifx good then "passed" else "failed");jo_end(o[..]);if o[0].bad || !fs_write(output,jo_text(o[..])) {return 2;}return ifx good then 0 else 1;
+}

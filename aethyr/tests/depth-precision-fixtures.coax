@@ -1,0 +1,28 @@
+// Input-only diagnostic hypotheses. No GPU observations enter this module.
+#load "depth-precision-checks.coax";
+DpCase :: struct {valid:bool;count:int;width:int;height:int;clips:[6][4]f32;}
+dp_case :: (index:int)->DpCase {
+  c:DpCase;if index<0 || index>=23 {return c;}c.valid=true;c.count=ifx index<15 then 3 else 6;c.width=ifx index<15 then 64 else 2;c.height=c.width;
+  ws:=[3]f32.[1,1,1];zs:=[3]f32.[0.5,0.5,0.5];
+  if index>=1 && index<=6 {w:=ifx index==1 || index==4 then 3.0f32 else ifx index==2 || index==5 then 5.0f32 else 7.0f32;ws=[3]f32.[w,w,w];z:=ifx w==3 then 2.5f32 else ifx w==5 then 4.5f32 else 6.0f32;zs=[3]f32.[z,z,z];if index>=4 {zs=[3]f32.[0.75,w*0.5,z];}}
+  if index>=7 && index<=11 {ws=[3]f32.[3,5,7];zs=[3]f32.[1,1,1];if index==8 {zs=[3]f32.[0.75,2.5,6];}if index==9 {ws=[3]f32.[7,3,5];zs=[3]f32.[0.75,2.5,4.5];}if index==10 {ws=[3]f32.[5,7,3];zs=[3]f32.[4.5,6,2.5];}if index==11 {zs=[3]f32.[1.5,2.5,3.5];}}
+  if index>=12 && index<=14 {w:=ifx index==12 then 3.0f32 else ifx index==13 then 5.0f32 else 7.0f32;ws=[3]f32.[w,w,w];z:=ifx index==12 then 1.0f32 else w*0.25;zs=[3]f32.[z,z,z];}
+  if index>=19 {w:=ifx index==19 then 3.0f32 else ifx index==20 then 5.0f32 else 7.0f32;ws=[3]f32.[w,w,w];if index==22 {ws=[3]f32.[3,5,7];}}
+  for vertex:0..<c.count {v:=vertex%3;w:=ws[v];x:=ifx v==1 then 0.890625f32 else -0.859375f32;y:=ifx v==2 then -0.890625f32 else 0.859375f32;z:=zs[v];
+    if index>=15 {x=ifx v==1 then 1.0f32 else -1.0f32;y=ifx v==2 then 1.0f32 else -1.0f32;z=0.5;
+      if index==15 || index>=19 {z=ifx (vertex<3 && v!=2) || (vertex>=3 && v==2) then 0.500000059604644775390625f32 else 0.5f32;}
+      if index==17 {z=ifx vertex<3 then 0.75f32 else 0.25f32;}if index==18 {z=ifx vertex<3 then 0.25f32 else 0.75f32;}z*=w;
+    }c.clips[vertex]=[4]f32.[x*w,y*w,z,w];
+  }return c;
+}
+dp_weight :: (sample:int,vertex:int)->f64 {return ifx sample==vertex then 0.5 else 0.25;}
+dp_pixel :: (sample:int,axis:int)->int {return ifx (sample==1 && axis==0) || (sample==2 && axis==1) then 32 else 18;}
+dp_window :: (z:f32,w:f32,model:int)->f64 {
+  if model==0 {return cast(f64)z/cast(f64)w;}
+  if model==1 {value:f32=z/w;return cast(f64)value;}
+  inverse:f32=1.0f32/w;value:f32=z*inverse;return cast(f64)value;
+}
+dp_depth :: (c:DpCase,model:int,triangle:int,sample:int)->f32 {
+  sum:=0.0;for v:0..<3 {clip:=c.clips[triangle*3+v];sum+=dp_weight(sample,v)*dp_window(clip[2],clip[3],model);}return cast(f32)sum;
+}
+dp_winner :: (c:DpCase,model:int,sample:int)->int {return ifx c.count==6 && dp_depth(c,model,1,sample)<dp_depth(c,model,0,sample) then 2 else 1;}

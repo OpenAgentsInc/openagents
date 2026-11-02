@@ -1,0 +1,32 @@
+// A second, heldout input-only family. No target colour/depth enters it.
+IbCase :: struct {valid:bool;vertices:int;width:int=64;height:int=64;screen:[6][2]f64;clips:[6][4]f32;}
+#test "heldout XY perturbations retain the same eight-bit coverage vertices" {
+  for index:0..<17 {c:=ib_case(index);#assert c.valid && c.vertices==(ifx index<13 then 3 else 6);for v:0..<c.vertices {for axis:0..<2 {base:=ifx (v%3==1 && axis==0) || (v%3==2 && axis==1) then 60.5 else 4.5;#assert abs(c.screen[v][axis]-base)<=0.0009765625;#assert floor(c.screen[v][axis]*256.0+0.5)==base*256.0;}}}
+  #assert !ib_case(-1).valid && !ib_case(17).valid;
+}
+#test "heldout winner controls distinguish original-plane from snapped-plane depth" {
+  #assert ib_winner(ib_case(13),true,0)==2 && ib_winner(ib_case(13),false,0)==1;
+  #assert ib_winner(ib_case(14),true,0)==1 && ib_winner(ib_case(14),false,0)==2;
+  #assert ib_winner(ib_case(15),true,0)==1 && ib_winner(ib_case(15),false,0)==1;
+  #assert ib_winner(ib_case(16),true,0)==2 && ib_winner(ib_case(16),false,0)==2;
+  #assert ib_depth(ib_case(0),false,0,0)==0.375 && ib_depth(ib_case(0),true,0,0)==0.375;
+}
+ib_case :: (index:int)->IbCase {
+  c:IbCase;if index<0 || index>=17 {return c;}c.valid=true;c.vertices=ifx index<13 then 3 else 6;
+  for v:0..<c.vertices {vertex:=v%3;c.screen[v]=[2]f64.[ifx vertex==1 then 60.5 else 4.5,ifx vertex==2 then 60.5 else 4.5];}
+  if index>=1 && index<=12 {which:=(index-1)/2;direction:=ifx index%2==1 then 1.0 else -1.0;c.screen[which/2][which%2]+=direction*0.0009765625;}
+  if index==13 || index==14 {c.screen[0][0]+=ifx index==13 then 0.0009765625 else -0.0009765625;}
+  for v:0..<c.vertices {vertex:=v%3;z:=ifx vertex==0 then 0.125f32 else ifx vertex==1 then 0.875f32 else 0.375f32;
+    if index==13 && v>=3 {z=0.374996185302734375;}if index==14 && v>=3 {z=0.375003814697265625;}
+    if index==15 {z=0.5;}if index==16 {z=ifx v<3 then 0.75f32 else 0.25f32;}
+    c.clips[v]=[4]f32.[cast(f32)(c.screen[v][0]/32.0-1.0),cast(f32)(1.0-c.screen[v][1]/32.0),z,1];
+  }return c;
+}
+ib_point :: (c:IbCase,v:int,snapped:bool,axis:int)->f64 {return ifx snapped then floor(c.screen[v][axis]*256.0+0.5)/256.0 else c.screen[v][axis];}
+ib_edge :: (ax:f64,ay:f64,bx:f64,by:f64,px:f64,py:f64)->f64 {return (bx-ax)*(py-ay)-(by-ay)*(px-ax);}
+ib_depth :: (c:IbCase,snapped:bool,triangle:int,sample:int)->f32 {
+  start:=triangle*3;ax:=ib_point(c,start,snapped,0);ay:=ib_point(c,start,snapped,1);bx:=ib_point(c,start+1,snapped,0);by:=ib_point(c,start+1,snapped,1);cx:=ib_point(c,start+2,snapped,0);cy:=ib_point(c,start+2,snapped,1);px:=ifx sample==1 then 32.5 else 18.5;py:=ifx sample==2 then 32.5 else 18.5;
+  area:=ib_edge(ax,ay,bx,by,cx,cy);a:=ib_edge(bx,by,cx,cy,px,py)/area;b:=ib_edge(cx,cy,ax,ay,px,py)/area;cc:=ib_edge(ax,ay,bx,by,px,py)/area;
+  return cast(f32)(a*cast(f64)c.clips[start][2]+b*cast(f64)c.clips[start+1][2]+cc*cast(f64)c.clips[start+2][2]);
+}
+ib_winner :: (c:IbCase,snapped:bool,sample:int)->int {return ifx c.vertices==6 && ib_depth(c,snapped,1,sample)<ib_depth(c,snapped,0,sample) then 2 else 1;}

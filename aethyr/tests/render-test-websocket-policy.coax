@@ -1,0 +1,19 @@
+// Exact optional idle-WebSocket routes and bounded ownership. The shared RFC
+// 6455 parser, key digest and framing remain the existing Coax implementation.
+#load "render-test-origin-policy.coax";
+#load "../../coax/lib/net/ws_server.coax";
+#authority;
+#test "idle websocket routes are explicit unique safe paths and bounded" {
+  for source:[3]string.["{}","{\"idle_websockets\":[]}","{\"idle_websockets\":[\"/coaxial/live\",\"/other\"]}"] {d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],source,nodes[..]) && rws_config(d[0]);}
+  for source:[8]string.["{\"idle_websockets\":null}","{\"idle_websockets\":{}}","{\"idle_websockets\":[3]}","{\"idle_websockets\":[\"/coaxial/live\",\"/coaxial/live\"]}","{\"idle_websockets\":[\"/a?b\"]}","{\"idle_websockets\":[\"/__rto/finalize\"]}","{\"idle_websockets\":[\"/__rto/control/a/1\"]}","{\"idle_websockets\":[\"/../x\"]}"] {d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],source,nodes[..]) && !rws_config(d[0]);}
+  #assert rws_capacity(0) && rws_capacity(7) && !rws_capacity(8) && !rws_capacity(-1);
+  d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],"{\"idle_websockets\":[\"/coaxial/live\"]}",nodes[..]) && rws_route(d[0],"/coaxial/live") && !rws_route(d[0],"/other") && !rws_route(d[0],"/coaxial/live/x");
+  for count:[2]int.[16,17] {bytes:[4096]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"idle_websockets");jo_arr(o[..]);for k:0..<count {path:[64]u8;w:[1]Jo;jo_start(w[..],path[..]);jo_put(w[..],"/idle-");jo_int(w[..],k);jo_str(o[..],jo_text(w[..]));}jo_end(o[..]);jo_end(o[..]);big:[128]JvNode;#assert jv_parse(d[..],jo_text(o[..]),big[..]) && rws_config(d[0])==(count==16);}
+}
+rws_capacity :: (n:int)->bool {return n>=0 && n<8;}
+rws_config :: (d:Jv)->bool {
+  rows:=jv_get(d,0,"idle_websockets");if rows== -1 {return true;}if jv_kind(d,rows)!=JV_ARRAY || jv_len(d,rows)>16 {return false;}
+  for k:0..<jv_len(d,rows) {row:=jv_at(d,rows,k);path:=jv_raw(d,row);if jv_kind(d,row)!=JV_STRING || !rto_path_valid(path) || path=="/__rto/finalize" || rtq_find(path,"/__rto/control/",0)==0 {return false;}for j:0..<k {if jv_raw(d,jv_at(d,rows,j))==path {return false;}}}return true;
+}
+rws_route :: (d:Jv,path:string)->bool {rows:=jv_get(d,0,"idle_websockets");for k:0..<jv_len(d,rows) {if jv_raw(d,jv_at(d,rows,k))==path {return true;}}return false;}
+rto_path_valid :: (path:string)->bool {return path!="" && rto_path(path)==path;}

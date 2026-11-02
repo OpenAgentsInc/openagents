@@ -1,0 +1,22 @@
+#load "interpolation-basis-fixtures.coax";
+#load "webgpu-session.coax";
+#load "../render/tests/qualification-files.coax";
+ib_request :: (o:[]Jo,code:string) {
+  jo_obj(o);jo_key(o,"code");jo_str(o,code);jo_key(o,"vertex");jo_str(o,"render_depth_precision_probe_vs");jo_key(o,"fragment");jo_str(o,"render_depth_precision_probe_fs");jo_key(o,"format");jo_str(o,"rgba32float");
+  jo_key(o,"primitive");jo_raw(o,"{\"topology\":\"triangle-list\",\"cullMode\":\"none\"}");jo_key(o,"depthStencil");jo_raw(o,"{\"format\":\"depth32float\",\"depthWriteEnabled\":true,\"depthCompare\":\"less\",\"depthBias\":0,\"depthBiasSlopeScale\":0,\"depthBiasClamp\":0}");
+  jo_key(o,"uniform");jo_raw(o,"{\"size\":96,\"usage\":72}");jo_key(o,"readback");jo_raw(o,"{\"size\":256,\"usage\":9}");jo_key(o,"readback_row_bytes");jo_int(o,256);jo_key(o,"target_usage");jo_int(o,17);jo_key(o,"clear");jo_raw(o,"{\"r\":-1,\"g\":-1,\"b\":-1,\"a\":-1}");jo_key(o,"depth_clear");jo_int(o,1);jo_key(o,"layout");jo_raw(o,"[{\"binding\":0,\"visibility\":1,\"buffer\":{\"type\":\"uniform\",\"minBindingSize\":96}}]");
+  jo_key(o,"cases");jo_arr(o);for index:0..<17 {c:=ib_case(index);jo_obj(o);jo_key(o,"size");jo_raw(o,"[64,64]");jo_key(o,"extent");jo_raw(o,"[64,64,1]");jo_key(o,"depth_readback");jo_raw(o,"{\"size\":16384,\"usage\":9}");jo_key(o,"vertices");jo_int(o,c.vertices);jo_key(o,"clip_words");jo_arr(o);for v:0..<6 {for lane:0..<4 {jo_int(o,cast(int)f32_bits(c.clips[v][lane]));}}jo_end(o);jo_key(o,"samples");jo_arr(o);for sample:0..<(ifx index<13 then 3 else 1) {x:=ifx sample==1 then 32 else 18;y:=ifx sample==2 then 32 else 18;jo_obj(o);jo_key(o,"origin");jo_arr(o);jo_int(o,x);jo_int(o,y);jo_int(o,0);jo_end(o);jo_key(o,"depth_byte_offset");jo_int(o,y*256+x*4);jo_end(o);}jo_end(o);jo_end(o);}jo_end(o);jo_end(o);
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}if args_has(a[..],"--serve") {return gp_serve(args_value(a[..],"--serve",""));}
+  plan:=args_value(a[..],"--plan","");output:=args_value(a[..],"--output","");wgsl:=args_value(a[..],"--shader","");hash:[64]u8;
+  if output=="" || wgsl=="" || fs_exists(output) || !rtq_hash_file(plan,hash[..]) || cast(string)hash[..]!="e662959a1ca8f6c3cc082195d71de6d6ecb61e08a93c3639c50d73515e0715cb" {return 2;}
+  inputs:[1]RtqInputs;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {return 2;}temp:[4096]u8;work:=fs_temp("aethyr-basis-",temp[..]);if work=="" {return 1;}
+  deadline:=proc_deadline(120000,proc_now_ms());if !rtq_deps(inputs[..],compiler,"aethyr/tests/check-interpolation-basis-webgpu.coax",deadline,work,"observer-deps") {return 2;}
+  for path:[6]string.[plan,wgsl,compiler,"aethyr/tests/depth-precision-effects.js","aethyr/tests/render-depth-precision-probe.coax","aethyr/tests/render-depth-precision-probe.bindings"] {if !rtq_input_add(inputs[..],path) {return 2;}}
+  code:[262144]u8;cn:=fs_read(wgsl,code[..]);effects:[65536]u8;en:=fs_read("aethyr/tests/depth-precision-effects.js",effects[..]);if cn<1 || en<1 {return 2;}port_buffer:[4096]u8;port_path:=fs_join(work,"port",port_buffer[..]);server:=gp_start_origin(port_path);status:=1;
+  if server>=0 {port:[32]u8;pn:=-1;for attempt:0..<100 {pn=fs_read(port_path,port[..]);if pn>0 {break;}proc_sleep(50);}if pn>0 {url:[128]u8;uo:[1]Jo;jo_start(uo[..],url[..]);jo_put(uo[..],"http://127.0.0.1:");jo_put(uo[..],cast(string)port[0..<pn]);jo_put(uo[..],"/");c:[1]Cdp;browser:[65536]u8;bn:=wp_open(c[..],jo_text(uo[..]),cast(string)effects[0..<en],browser[..]);
+    if bn>0 {request:[524288]u8;ro:[1]Jo;jo_start(ro[..],request[..]);ib_request(ro[..],cast(string)code[0..<cn]);if !ro[0].bad {value:=wp_run(c[..],"depthPrecisionStart","depthPrecisionPoll()",jo_text(ro[..]));if value>=0 {record:[524288]u8;rr:[1]Jo;jo_start(rr[..],record[..]);jo_obj(rr[..]);jo_key(rr[..],"schema");jo_str(rr[..],"aethyr.interpolation-basis-webgpu.v1");jo_key(rr[..],"observation");jv_write(c[0].doc[0],value,rr[..]);jo_key(rr[..],"browser");jo_raw(rr[..],cast(string)browser[0..<bn]);jo_key(rr[..],"source_fence_unchanged");stable:=rtq_inputs_match(inputs[..]);jo_bool(rr[..],stable);jo_key(rr[..],"inputs");rtq_inputs_json(rr[..],inputs[..],".");jo_end(rr[..]);if stable && !rr[0].bad && fs_write(output,jo_text(rr[..])) {status=0;}}}}cdp_close(c[..]);
+  }killed:=proc_kill(server,PROC_SIGKILL);waited:=proc_wait(server,5000);released:=proc_release(server);}
+  removed:=fs_remove(work);return ifx removed then status else 1;
+}

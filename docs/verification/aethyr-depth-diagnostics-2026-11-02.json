@@ -1,0 +1,123 @@
+{
+  "schema": "aethyr.fixed-function-depth-diagnostics.v1",
+  "status": "diagnostics_complete_candidate_models_rejected",
+  "product_change": false,
+  "mask_or_tolerance_change": false,
+  "scope": "New authored fixed-function probes only. No unchanged DeadGears frame, shader, producer or realm gate was rerun. No target DeadGears colour or depth was used to construct either frozen input family.",
+  "compiler": {
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "scope": "Explicit older exploratory Coax compiler, not the current main compiler. New shader and workers emitted once per new input family. Host C uses FP_CONTRACT OFF; remote GCC also uses -ffp-contract=off -fno-fast-math."
+  },
+  "shader": {
+    "source": "aethyr/tests/render-depth-precision-probe.coax",
+    "wgsl_sha256": "40dc4ebae05c56c777f1e6c249ec237fc6693cb57c153ab1fb655497f0610692",
+    "spirv_sha256": "df9a62aef952a1887164570e2c4a38e759ac6c399aa4237c1a8b1daac910f9a8",
+    "effect": "Transport 24 authored clip words unchanged from a uniform/storage binding; flat triangle ID 1/2. Fragment output is position.z, position.w, ID, 1. No hand-written shader arithmetic, custom depth, bias, discard, blending or multisampling.",
+    "same_shader_reused_for_heldout_basis_family": true,
+    "attachments": "RGBA32 float plus D32 float, single sample, clear depth 1, strict LESS and writes enabled; both FS position.z and stored D32 words retained."
+  },
+  "first_family": {
+    "plan": "aethyr-depth-precision-probes-20261102/plan.json",
+    "plan_sha256": "f2a213c4a7ec87b9573ab72f19f22c777648cf3b9eca573d3ae4b1abda58e4d0",
+    "freeze": "Plan and all three whole-vector predictions existed and were SHA-256 reported before the first GPU execution.",
+    "fixtures": "15 depth-plane cases at three interior samples plus eight two-triangle winner controls: 53 observations/backend. Non-power-of-two w=3/5/7, same/mixed w, constant/varying clip z; exact lattice XY and exact binary barycentric weights. Controls include adjacent-float crossing, exact ties, both separated-depth orders and non-power-of-two crossings.",
+    "models": [
+      "0: f64(clip.z)/f64(w), f64 linear interpolation, final f32 nearest-even",
+      "1: f32(clip.z/w), f64 linear interpolation, final f32 nearest-even",
+      "2: f32(clip.z*f32(1/w)), f64 linear interpolation, final f32 nearest-even"
+    ],
+    "webgpu": {
+      "device": "Apple metal-3 via muted headless Chrome",
+      "receipt": "aethyr-depth-precision-probes-20261102/webgpu-complete.json",
+      "comparison": "aethyr-depth-precision-probes-20261102/webgpu-complete-comparison.json",
+      "exact_model_matches_of_53": [29, 34, 36],
+      "complete_models_matching": [],
+      "finite_complete_samples": 53,
+      "messages": 0,
+      "validation_errors": 0,
+      "all_fs_z_words_equal_stored_d32": true
+    },
+    "vulkan": {
+      "host": "coderos-4080",
+      "device": "NVIDIA RTX 4080; exact IDs and driver retained in result.json",
+      "receipt": "aethyr-depth-precision-native-complete-20261102/result.json",
+      "comparison": "aethyr-depth-precision-native-complete-20261102/comparison.json",
+      "controller": "aethyr-depth-precision-native-complete-20261102/controller.json",
+      "exact_model_matches_of_53": [29, 30, 32],
+      "complete_models_matching": [],
+      "finite_complete_samples": 53,
+      "validation_errors": 0,
+      "validation_warnings": 0,
+      "all_fs_z_words_equal_stored_d32": true,
+      "worker_sha256_before_and_after_execution": "bd1d95d263335d729aba109cfac42ce8f585896bc3ffd35d0f6bdd38c2b4c040",
+      "host_compiler": "GCC 15.2.0; path/wrapper SHA and full version output retained",
+      "reused_bridge": "Historical sampling-first RenderCaps.c/h, ce39570eb993aedf6e6665af58debb41922b497ae0ef28d283a87f9beff4052e / efa90e4d121c8fcb28c34479f3dfa3da9381a1be6f985079f7083cf7ae4eae0f. These unused feature/view bridge functions satisfy the unchanged SDK shim link; no claim of current-main bridge emission.",
+      "payload_fences_and_owned_cleanup": "passed"
+    },
+    "conclusion": "All three frozen complete global arithmetic models are rejected on each observed backend. Constant-depth cases alone agree with reciprocal multiplication, but varying planes reject that as a complete model. The analytic w1 adjacent-float contest keeps earlier ID1 at depth0.5 on both GPUs, while every frozen RNE model predicts later ID2. This is not a basis for a production profile, per-pixel model selection, a new depth-error band or a mask."
+  },
+  "heldout_coordinate_basis_family": {
+    "plan": "aethyr-depth-precision-probes-20261102/interpolation-basis-heldout.json",
+    "plan_sha256": "e662959a1ca8f6c3cc082195d71de6d6ecb61e08a93c3639c50d73515e0715cb",
+    "freeze": "A separate input-only tool accepts no observation argument. Both complete predicted vectors were frozen and SHA-256 reported before either heldout GPU execution.",
+    "fixtures": "w1; screen triangle (4.5,4.5),(60.5,4.5),(4.5,60.5), z=.125/.875/.375. Baseline plus each vertex axis perturbed by +/-1/1024px retains identical nearest8 coverage vertices. Two crossing controls use fixed front depths .375-/+1/262144 with opposite snapped/original winners; exact tie/separated controls complete 17 cases/43 samples per backend.",
+    "webgpu": {
+      "receipt": "aethyr-interpolation-basis-probes-20261102/webgpu.json",
+      "comparison": "aethyr-interpolation-basis-probes-20261102/comparison.json",
+      "same_coverage_bin_perturbations_changing_depth_of_36": 0,
+      "crossing_winners_cases_13_14": [2, 1],
+      "exact_matches_snapped_original_of_43": [16, 3],
+      "finite_complete_samples": 43,
+      "validation_errors": 0
+    },
+    "vulkan": {
+      "receipt": "aethyr-interpolation-basis-native-20261102/result.json",
+      "comparison": "aethyr-interpolation-basis-native-20261102/comparison.json",
+      "controller": "aethyr-interpolation-basis-native-20261102/controller.json",
+      "same_coverage_bin_perturbations_changing_depth_of_36": 0,
+      "crossing_winners_cases_13_14": [2, 1],
+      "exact_matches_snapped_original_of_43": [3, 2],
+      "finite_complete_samples": 43,
+      "validation_errors": 0,
+      "validation_warnings": 0,
+      "worker_sha256_before_and_after_execution": "3267693dcc6bfd33f09ed47984a389c5fde45b5a332871ae61375b0f614ce4bf",
+      "payload_fences_and_owned_cleanup": "passed"
+    },
+    "conclusion": "Observed invariance within coverage bins and opposite-winner controls support the existing eight-bit interpolation coordinate basis on these devices. Reject original-coordinate interpolation as a proposed CPU correction. Exact f64/RNE plane arithmetic is separately rejected; neither whole model matches every sample. No universal subpixel/interpolator contract is inferred."
+  },
+  "checks": {
+    "first_fixture_checks": 5,
+    "shader_transport_checks": 1,
+    "heldout_fixture_checks": 2,
+    "packet_policy_mutants": 33,
+    "packet_policy_killed": 33,
+    "packet_policy_survivors": 0,
+    "packet_policy_scope": "Finite complete RGBA, supported depth/tag domain, alpha1 and exact FSz/D32 correspondence; this is observation admission, not device-model conformance."
+  },
+  "development_reds_retained": [
+    "Initial WebGPU attempted a 1x1 D32 copy; API validation required whole-subresource copying. Its validation message and zero buffers remain invalid, not evidence.",
+    "Whole-D32 browser adapter initially requested the same mapped range repeatedly; fixed by retaining one mapped ArrayBuffer. Original error stream and overlap adapter retained.",
+    "Initial native controller used command-record label result, which overwrote result.json after SCP. Hash join correctly refused and namespace was removed. First native worker compilation succeeded; its exact downloaded image was reused after the command-label fix, avoiding another passing compilation. The failed controller run supplies no admitted depth data.",
+    "Initial packet mutation exposed a NaN payload-LSB loss; added the specific control, final33/33zero."
+  ],
+  "source_epochs": {
+    "first_webgpu_fence": "Actual receipt fences plan, WGSL, browser effects and first fixture/check sources (five named files). The complete contemporary observer/helper sources and cached executable are retained separately; no broader aggregate before/after fence is claimed for this first browser epoch.",
+    "heldout_webgpu_fence": "Full Coax dependency inventory plus plan, compiler, shader/source/bindings and browser effects unchanged.",
+    "native_fences": "Full Coax worker/controller dependencies plus all staged C/header/SPIRV inputs unchanged. Remote payload hashes before/after, downloaded actual worker hash before/after, result download hash before/after and cleanup records retained.",
+    "controller_evolution": "First failed overlap controller and first successful controller-used.coax snapshots are retained. Current controller adds explicit worker-source/input-plan inventory for heldout family. Current cached controller image belongs to that final heldout epoch, not the earlier53 capture."
+  },
+  "primary_sources_reviewed": [
+    { "url": "https://docs.vulkan.org/spec/latest/chapters/vertexpostproc.html#vertexpostproc-coord-transform", "fact": "Perspective division defines normalized device coordinates as clip components divided by w." },
+    { "url": "https://docs.vulkan.org/spec/latest/chapters/fundamentals.html#fundamentals-fp-ops", "fact": "Nonshader viewport/depth representation and operation details are not fixed; the approximate minimum-precision statement supplies no universal four-ULP CPU-plane band." },
+    { "url": "https://docs.vulkan.org/spec/latest/chapters/primsrast.html#primsrast-polygons-basic", "fact": "Triangle data use framebuffer-space barycentric areas; sample z is linearly interpolated. The text does not prescribe the exact measured arithmetic used here." },
+    { "url": "https://www.w3.org/TR/2026/CRD-webgpu-20260915/#rasterization", "fact": "Abstract rasterization maps clip values through z/w and viewport depth, then interpolates attributes/depth in framebuffer space." },
+    { "url": "https://www.w3.org/TR/2026/CRD-WGSL-20261026/#position-builtin-value", "fact": "Fragment position.z is rasterization-point depth; position.w is the interpolated reciprocal vertex w." }
+  ],
+  "retention": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/depth-diagnostics/artifacts.tar.gz",
+    "bytes": 965472,
+    "sha256": "f6700bbf09d631def1b1933a6dabba8303b9f7440eb2da7016d73b883e60ac8e",
+    "readback": "Complete system-tar extraction and whole payload/readback directory diff: exit0, no differences, including empty command streams.",
+    "contents": "Both frozen plans, generated WGSL/SPIRV and C, all actual raw observations/comparison receipts, development failures, remote command argv/stdout/stderr, staged inputs, native images, source closures, fixed observer snapshots and contemporary cached Coax tool images."
+  }
+}

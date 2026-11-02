@@ -1,0 +1,20 @@
+#load "interpolation-basis-fixtures.coax";
+#load "depth-precision-policy.coax";
+#load "../render/tests/qualification-files.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {return 2;}kind:=args_at(a[..],0);input:=args_at(a[..],1);plan:=args_at(a[..],2);output:=args_at(a[..],3);hash:[64]u8;
+  if (kind!="webgpu" && kind!="native") || !rtq_hash_file(plan,hash[..]) || cast(string)hash[..]!="e662959a1ca8f6c3cc082195d71de6d6ecb61e08a93c3639c50d73515e0715cb" {return 2;}
+  inputs:[1]RtqInputs;if !rtq_input_add(inputs[..],plan) || !rtq_input_add(inputs[..],input) {return 2;}bytes:[524288]u8;nodes:[16384]JvNode;d:[1]Jv;if !rtq_json_file(input,bytes[..],nodes[..],d[..]) {return 2;}
+  root:=ifx kind=="webgpu" then jv_get(d[0],0,"observation") else 0;rows:=jv_get(d[0],root,"rows");good:=jv_len(d[0],rows)==17 && jv_raw(d[0],jv_get(d[0],0,"source_fence_unchanged"))=="true";
+  if kind=="webgpu" {good=good && jv_len(d[0],jv_get(d[0],root,"messages"))==0 && jv_len(d[0],jv_get(d[0],root,"errors"))==0;}
+  else {good=good && jv_int(d[0],jv_get(d[0],0,"validation_enabled"),0)==1 && jv_int(d[0],jv_get(d[0],0,"errors"),-1)==0 && jv_int(d[0],jv_get(d[0],0,"warnings"),-1)==0 && jv_raw(d[0],jv_get(d[0],0,"status"))=="passed";}
+  matches:[2]int;baselines:[3]u32;changed:=0;total:=0;record:[131072]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.interpolation-basis-comparison.v1");jo_key(o[..],"backend");jo_str(o[..],kind);jo_key(o[..],"observations");jo_arr(o[..]);
+  for index:0..<17 {c:=ib_case(index);row:=jv_at(d[0],rows,index);count:=ifx index<13 then 3 else 1;good=good && jv_len(d[0],row)==count;
+    for sample:0..<count {packet:=jv_at(d[0],row,sample);rgba:=jv_get(d[0],packet,"rgba_words");words:[5]u32;good=good && jv_len(d[0],rgba)==4;
+      for lane:0..<5 {value:=jv_int(d[0],ifx lane<4 then jv_at(d[0],rgba,lane) else jv_get(d[0],packet,"depth_word"),-1);if value<0 || value>4294967295 {good=false;}else {words[lane]=cast(u32)value;}}
+      good=good && dpo_packet(words);if index==0 {baselines[sample]=words[0];}if index>=1 && index<13 && baselines[sample]!=words[0] {changed+=1;}
+      total+=1;jo_obj(o[..]);jo_key(o[..],"case");jo_int(o[..],index);jo_key(o[..],"sample");jo_int(o[..],sample);jo_key(o[..],"actual_depth_word");jo_int(o[..],cast(int)words[0]);jo_key(o[..],"actual_tag_word");jo_int(o[..],cast(int)words[2]);jo_key(o[..],"model_matches");jo_arr(o[..]);
+      for model:0..<2 {winner:=ib_winner(c,model==0,sample);same:=words[0]==f32_bits(ib_depth(c,model==0,winner-1,sample)) && words[2]==f32_bits(cast(f32)winner);if same {matches[model]+=1;}jo_bool(o[..],same);}jo_end(o[..]);jo_end(o[..]);
+    }
+  }jo_end(o[..]);jo_key(o[..],"samples");jo_int(o[..],total);jo_key(o[..],"same_coverage_bin_perturbations_changing_depth");jo_int(o[..],changed);jo_key(o[..],"matching_samples_per_model_snapped_original");jo_arr(o[..]);for count:matches {jo_int(o[..],count);}jo_end(o[..]);jo_key(o[..],"observations_valid");jo_bool(o[..],good);stable:=rtq_inputs_match(inputs[..]);jo_key(o[..],"inputs_unchanged");jo_bool(o[..],stable);jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],".");jo_end(o[..]);if o[0].bad || !fs_write(output,jo_text(o[..])) {return 2;}return ifx good && stable then 0 else 1;
+}

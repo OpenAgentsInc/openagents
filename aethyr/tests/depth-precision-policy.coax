@@ -1,0 +1,16 @@
+#authority;
+#test "depth packets require finite complete RGBA and matching D32 words" {
+  good:=[5]u32.[0x3f000000,0x3e800000,0x3f800000,0x3f800000,0x3f000000];#assert dpo_packet(good);
+  for lane:0..<5 {bad:=good;bad[lane]=0x7fc00000;#assert !dpo_packet(bad);bad=good;bad[lane]=0x7f800000;#assert !dpo_packet(bad);}
+  bad:=good;bad[0]=0x3f000001;#assert !dpo_packet(bad);bad=good;bad[4]=0x3f000001;#assert !dpo_packet(bad);
+  bad=good;bad[2]=0x40000000;#assert dpo_packet(bad);bad[2]=0;#assert !dpo_packet(bad);
+  bad=good;bad[3]=0;#assert !dpo_packet(bad);bad=good;bad[0]=0;bad[4]=0;#assert dpo_packet(bad);
+  bad=good;bad[0]=0x3f800000;bad[4]=bad[0];#assert dpo_packet(bad);bad[0]=0x3f800001;bad[4]=bad[0];#assert !dpo_packet(bad);
+  bad=good;bad[1]=0;#assert !dpo_packet(bad);bad[1]=1;#assert dpo_packet(bad);bad[1]=0x3f800000;#assert dpo_packet(bad);bad[1]=0x3f800001;#assert !dpo_packet(bad);
+  #assert dpo_finite(0) && dpo_finite(0x7f7fffff) && !dpo_finite(0xff800000) && !dpo_finite(0x7f800001);
+}
+dpo_finite :: (word:u32)->bool {return (word&0x7f800000)!=0x7f800000;}
+dpo_packet :: (words:[5]u32)->bool {
+  for word:words {if !dpo_finite(word) {return false;}}
+  return words[0]<=0x3f800000 && words[1]>0 && words[1]<=0x3f800000 && (words[2]==0x3f800000 || words[2]==0x40000000) && words[3]==0x3f800000 && words[4]==words[0];
+}

@@ -1,0 +1,70 @@
+{
+  "schema": "aethyr.render.idle-websocket-port.v1",
+  "status": "passed",
+  "scope": "Optional literal idle-WebSocket routes for the Coax fixture origin. No producer, shader, realm geometry or numerical GPU gate is emitted or repeated.",
+  "api": {
+    "configuration": {"idle_websockets": ["/coaxial/live"]},
+    "maximum_routes": 16,
+    "maximum_simultaneous_peers": 8,
+    "capacity_reason": "The existing socket SDK has sixteen handles. Eight idle peers leave capacity for the listener, ordinary requests and finalization.",
+    "default": "Absent configuration retains existing GET/POST behavior and produces no WebSocket ledger.",
+    "protocol": "Existing Coax RFC6455 request/key/SHA1/base64/frame implementations; no new protocol implementation or host effects.",
+    "lifetime": "Each socket is owned until client termination, a bounded idle-protocol refusal, or origin finalization/deadline. Finalization closes every surviving peer before the existing source/output gate. Ledger or cleanup failure fails that gate."
+  },
+  "qualification": {
+    "pure_checks": 119,
+    "root_policy_mutants": 38,
+    "killed": 38,
+    "survived": 0,
+    "waivers": 0,
+    "actual_cases": 18,
+    "actual_passed": 18,
+    "actual_observations": [
+      "Ordinary GET remains available",
+      "Actual RFC6455 HTTP101 response and published sample accept digest",
+      "Masked NUL/high-byte ping receives byte-exact pong",
+      "Client close receives a server close",
+      "Unknown route404, incorrect version400 and malformed key400",
+      "Unmasked client control closes1002",
+      "Eight simultaneous owned peers and ninth-peer503",
+      "All remaining peers close1001 at requested finalization; exact opened/closed10, active0"
+    ],
+    "whole_input_inventory": {"count": 45, "equal": 45, "record": "data/aethyr-ch11-2026-11-02/render-idle-websocket-port/source-join.json"},
+    "actual_receipt": "data/aethyr-ch11-2026-11-02/render-idle-websocket-port/actual-receipt.json"
+  },
+  "epochs": {
+    "actual_cap8": {
+      "observer_image_sha256": "ddef044f0664cc80a9cd320e708cf4cae8057d70a564b47b5a86d196fade9b59",
+      "policy_sha256": "d82fa73f88535650c0257504720df70cc3ff4a897b3640ce3170bdbfad17c199",
+      "source_body": "evidence/epochs/cap8/render-test-websocket-policy.coax"
+    },
+    "final_pure_policy": {
+      "sha256": "c1f1463bd67e79c3aa67049ee2966df83555af3b25ccf58de1fa0700559f3948",
+      "changes": "Normalize missing-node and reserved-prefix guards without changing the admitted actual literal route. Add exact16/17 route-boundary controls; final38/38 mutation result. Reuse unchanged SDK observations on that same configuration; the earlier native image is not presented as emission from this later source."
+    },
+    "retained_red": "The initial sixteen-peer experiment exhausted the SDK handle table and could not finalize. Its source epoch, raw ledgers and failure receipt remain retained. Its overwritten executable body is not claimed to be retained. The passing cap8 executable and all45 input bodies are retained and joined."
+  },
+  "compiler": {
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "scope": "Explicit historical qualified compiler for observer tools; no matching-main compiler or product emission claim."
+  },
+  "shared_sources": {
+    "aethyr/tests/render-test-origin.coax": "a1722dd11877208910ce28d06ca0ea3bc893d3e33938606a58dbe1991a29ea30",
+    "aethyr/tests/render-test-websockets.coax": "5f26fd716a5e006f82e278e214e1996078cc241be3d4a303bbc577211c51d0d3",
+    "coax/lib/net/cdp.coax": "7a26a55ce438f269230abd9231270e4ebcf051023a44a16768e81020d21c18c2"
+  },
+  "cdp_addition": {
+    "api": "cdp_launch_background(c,width,height,prefix)",
+    "pure_checks": 123,
+    "behavior": "Preserves the legacy three background flags, always headless and muted, and omits Chrome window-size. Callers set their viewport with Emulation. Existing cdp_launch/default arguments remain unchanged.",
+    "actual_profile_observation": "The host port's exact combined legacy launch profile restores the injected80x120 physical viewport. No assertion isolates the background flags from omission of the former1x1 window-size, and no argv/performance identity is inferred for unrelated callers."
+  },
+  "retention": {
+    "archive": "data/aethyr-ch11-2026-11-02/render-idle-websocket-port/artifacts-and-reference.tar.xz",
+    "bytes": 3054364,
+    "sha256": "9a4d61e653bb7049ff7a1c9fb12009b3711766adc326d972a1b0205b4faf36ba",
+    "contents": "Complete actual attempts/empty logs/ledgers, immutable source epochs, complete imported source/native SDK bodies, explicit compiler and passing observer images, source-inventory checker source/image/results and pure/mutation logs.",
+    "readback": "Fresh stock tar extraction followed by diff -qr of the complete owned retention tree, including empty files: exit0."
+  }
+}

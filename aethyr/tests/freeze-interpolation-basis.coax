@@ -1,0 +1,12 @@
+// This tool accepts no GPU observation argument. It freezes hypotheses only.
+#load "interpolation-basis-fixtures.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 || fs_exists(args_at(a[..],0)) {return 2;}
+  bytes:[65536]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.interpolation-basis-heldout.v1");jo_key(o[..],"scope");jo_str(o[..],"Two frozen interpolation-coordinate hypotheses, independent of GPU observations: 8-bit-nearest coverage coordinates also used for interpolation, versus original framebuffer coordinates. All w=1 and authored clip values binary-exact; f64 plane evaluation then f32 nearest-even remains a diagnostic hypothesis, not an API guarantee.");jo_key(o[..],"cases");jo_arr(o[..]);
+  for index:0..<17 {c:=ib_case(index);jo_obj(o[..]);jo_key(o[..],"id");jo_int(o[..],index);jo_key(o[..],"width");jo_int(o[..],64);jo_key(o[..],"height");jo_int(o[..],64);jo_key(o[..],"vertices");jo_int(o[..],c.vertices);jo_key(o[..],"clip_words");jo_arr(o[..]);for v:0..<6 {for lane:0..<4 {jo_int(o[..],cast(int)f32_bits(c.clips[v][lane]));}}jo_end(o[..]);jo_key(o[..],"samples");jo_arr(o[..]);
+    for sample:0..<(ifx index<13 then 3 else 1) {jo_obj(o[..]);jo_key(o[..],"x");jo_int(o[..],ifx sample==1 then 32 else 18);jo_key(o[..],"y");jo_int(o[..],ifx sample==2 then 32 else 18);jo_key(o[..],"models");jo_arr(o[..]);for model:0..<2 {snapped:=model==0;winner:=ib_winner(c,snapped,sample);jo_obj(o[..]);jo_key(o[..],"model");jo_str(o[..],ifx snapped then "snapped-8" else "original");jo_key(o[..],"winner");jo_int(o[..],winner);jo_key(o[..],"depth_word");jo_int(o[..],cast(int)f32_bits(ib_depth(c,snapped,winner-1,sample)));jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);
+  }jo_end(o[..]);jo_end(o[..]);return ifx !o[0].bad && fs_write(args_at(a[..],0),jo_text(o[..])) then 0 else 1;
+}

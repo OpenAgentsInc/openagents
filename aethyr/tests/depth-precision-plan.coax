@@ -1,0 +1,8 @@
+#load "depth-precision-fixtures.coax";
+#load "../../coax/lib/json/json.coax";
+dp_plan :: (o:[]Jo) {
+  jo_obj(o);jo_key(o,"schema");jo_str(o,"aethyr.depth-precision-input-plan.v1");jo_key(o,"model_scope");jo_str(o,"Input-only hypotheses: global f64 division, f32 division, or f32 reciprocal then multiply; f64 left-associated exact-binary-weight interpolation then f32 nearest-even. Measured conditional device profiles only, not universal API guarantees.");
+  jo_key(o,"cases");jo_arr(o);for index:0..<23 {c:=dp_case(index);jo_obj(o);jo_key(o,"id");jo_int(o,index);jo_key(o,"width");jo_int(o,c.width);jo_key(o,"height");jo_int(o,c.height);jo_key(o,"vertices");jo_int(o,c.count);jo_key(o,"clip_words");jo_arr(o);for v:0..<6 {for lane:0..<4 {jo_int(o,cast(int)f32_bits(c.clips[v][lane]));}}jo_end(o);jo_key(o,"samples");jo_arr(o);
+    for sample:0..<(ifx index<15 then 3 else 1) {jo_obj(o);jo_key(o,"x");jo_int(o,ifx index<15 then dp_pixel(sample,0) else 0);jo_key(o,"y");jo_int(o,ifx index<15 then dp_pixel(sample,1) else 1);jo_key(o,"models");jo_arr(o);for model:0..<3 {winner:=dp_winner(c,model,sample);jo_obj(o);jo_key(o,"model");jo_int(o,model);jo_key(o,"winner");jo_int(o,winner);jo_key(o,"depth_word");jo_int(o,cast(int)f32_bits(dp_depth(c,model,winner-1,sample)));jo_end(o);}jo_end(o);jo_end(o);}jo_end(o);jo_end(o);
+  }jo_end(o);jo_end(o);
+}

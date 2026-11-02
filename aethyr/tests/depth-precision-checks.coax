@@ -1,0 +1,28 @@
+#test "depth fixture coordinates and non-power-of-two homogeneous inputs are binary exact" {
+  c:=dp_case(1);#assert c.valid && c.count==3 && c.width==64 && c.height==64;
+  #assert c.clips[0][0]== -2.578125 && c.clips[0][1]==2.578125 && c.clips[0][2]==2.5 && c.clips[0][3]==3;
+  #assert c.clips[1][0]==2.671875 && c.clips[2][1]== -2.671875;
+  #assert dp_case(2).clips[0][3]==5 && dp_case(3).clips[0][3]==7;
+  #assert !dp_case(-1).valid && !dp_case(23).valid;
+}
+#test "depth fixtures distinguish float divide from rounded reciprocal multiply" {
+  c:=dp_case(1);#assert dp_depth(c,0,0,0)==dp_depth(c,1,0,0);
+  #assert f32_bits(dp_depth(c,1,0,0))==0x3f555555 && f32_bits(dp_depth(c,2,0,0))==0x3f555556;
+  c=dp_case(2);#assert f32_bits(dp_depth(c,1,0,0))==0x3f666666 && f32_bits(dp_depth(c,2,0,0))==0x3f666667;
+  c=dp_case(3);#assert f32_bits(dp_depth(c,1,0,0))==0x3f5b6db7 && f32_bits(dp_depth(c,2,0,0))==0x3f5b6db8;
+}
+#test "depth fixture interior samples have exact binary barycentric weights" {
+  for sample:0..<3 {sum:=0.0;for vertex:0..<3 {weight:=dp_weight(sample,vertex);#assert weight==(ifx sample==vertex then 0.5 else 0.25);sum+=weight;}#assert sum==1.0;}
+  #assert dp_pixel(0,0)==18 && dp_pixel(0,1)==18 && dp_pixel(1,0)==32 && dp_pixel(1,1)==18 && dp_pixel(2,0)==18 && dp_pixel(2,1)==32;
+}
+#test "LESS controls preserve earlier exact ties and distinguish separated depths" {
+  for model:0..<3 {#assert dp_winner(dp_case(15),model,0)==2 && dp_winner(dp_case(16),model,0)==1 && dp_winner(dp_case(17),model,0)==2 && dp_winner(dp_case(18),model,0)==1;}
+  c:=dp_case(15);#assert c.count==6 && c.width==2 && c.height==2;
+  #assert c.clips[0][2]==0.500000059604644775390625 && c.clips[2][2]==0.5 && c.clips[5][2]==0.500000059604644775390625;
+  #assert dp_depth(c,0,0,0)==0.500000059604644775390625 && dp_depth(c,0,1,0)==0.5;
+}
+#test "all authored depth fixtures are finite unclipped and keep declared triangle counts" {
+  for index:0..<23 {c:=dp_case(index);#assert c.valid && c.count==(ifx index<15 then 3 else 6);for vertex:0..<c.count {v:=c.clips[vertex];#assert v[3]>0 && v[2]>0 && v[2]<v[3] && v[0]>= -v[3] && v[0]<=v[3] && v[1]>= -v[3] && v[1]<=v[3];}
+    for model:0..<3 {for sample:0..<(ifx index<15 then 3 else 1) {#assert dp_winner(c,model,sample)>=1 && dp_winner(c,model,sample)<=2;}}
+  }
+}

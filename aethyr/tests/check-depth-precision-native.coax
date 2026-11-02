@@ -1,0 +1,49 @@
+// Offscreen fixed-function Vulkan probes. Coax owns every path, command,
+// transfer, source fence and cleanup; no shell decision loops or GPU math.
+#load "native-gpu-transport.coax";
+dn_ssh :: (host:string,argv:[]string,deadline:int,work:string,label:string,out:[]u8,err:[]u8)->ProcRun {
+  left:=proc_left(deadline,proc_now_ms());r:=ng_ssh(host,argv,ifx left<240000 then left else 240000,out,err);if !rtq_record_run(work,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {r.cut=true;}return r;
+}
+dn_sdk :: (host:string,remote:string,argv:[]string,deadline:int,work:string,label:string,out:[]u8,err:[]u8)->ProcRun {
+  text:[65536]u8;command:=ng_command(argv,text[..]);args:=[12]string.["env","-C",remote,"nix-shell","-p","gcc","vulkan-headers","vulkan-loader","vulkan-validation-layers","spirv-tools","--run",command];return dn_ssh(host,args[..],deadline,work,label,out,err);
+}
+dn_transfer :: (host:string,local:string,remote:string,download:bool,deadline:int,work:string,label:string)->bool {
+  out:[65536]u8;err:[65536]u8;r:=ng_scp(host,local,remote,download,ifx proc_left(deadline,proc_now_ms())<120000 then proc_left(deadline,proc_now_ms()) else 120000,out[..],err[..]);args:=[3]string.[ifx download then "download" else "upload",local,remote];return rtq_record_run(work,label,args[..],r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) && rtq_ok(r);
+}
+dn_hash :: (host:string,path:string,want:string,deadline:int,work:string,label:string)->bool {
+  out:[65536]u8;err:[65536]u8;args:=[2]string.["sha256sum",path];r:=dn_ssh(host,args[..],deadline,work,label,out[..],err[..]);return rtq_ok(r) && rtq_word(cast(string)out[0..<r.out_n],0)==want;
+}
+dn_get :: (host:string,remote:string,local:string,deadline:int,work:string,label:string)->bool {
+  tag:[256]u8;o:[1]Jo;jo_start(o[..],tag[..]);jo_put(o[..],label);jo_put(o[..],"-hash-before");out:[65536]u8;err:[65536]u8;args:=[2]string.["sha256sum",remote];r:=dn_ssh(host,args[..],deadline,work,jo_text(o[..]),out[..],err[..]);if !rtq_ok(r) {return false;}word:=rtq_word(cast(string)out[0..<r.out_n],0);want:[64]u8;if word.count!=64 {return false;}for k:0..<64 {want[k]=word[k];}
+  jo_start(o[..],tag[..]);jo_put(o[..],label);jo_put(o[..],"-transfer");if !dn_transfer(host,local,remote,true,deadline,work,jo_text(o[..])) {return false;}got:[64]u8;
+  jo_start(o[..],tag[..]);jo_put(o[..],label);jo_put(o[..],"-hash-after");return rtq_hash_file(local,got[..]) && cast(string)got[..]==cast(string)want[..] && dn_hash(host,remote,cast(string)want[..],deadline,work,jo_text(o[..]));
+}
+dn_label :: (prefix:string,index:int,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],prefix);jo_int(o[..],index);return jo_text(o[..]);}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}host:=args_value(a[..],"--host","");work:=args_value(a[..],"--work-dir","");emitted:=args_value(a[..],"--emitted","");bridge:=args_value(a[..],"--bridge","");compiler:=args_value(a[..],"--coax","");reuse_worker:=args_value(a[..],"--reuse-worker","");
+  if !ng_host(host) || work=="" || emitted=="" || bridge=="" || compiler=="" || fs_exists(work) || !fs_mkdir(work) {return 2;}
+  worker_source:=args_value(a[..],"--worker-source","aethyr/tests/depth-precision-native.coax");input_plan:=args_value(a[..],"--input-plan","");
+  deadline:=proc_deadline(810000,proc_now_ms());paths:[12][4096]u8;payload:=fs_join(work,"payload",paths[0][..]);if !fs_mkdir(payload) {return 1;}out:[1048576]u8;err:[65536]u8;inputs:[1]RtqInputs;
+  if (input_plan!="" && !rtq_input_add(inputs[..],input_plan)) || !rtq_input_add(inputs[..],compiler) || !rtq_deps(inputs[..],compiler,worker_source,deadline,work,"worker-deps") || !rtq_deps(inputs[..],compiler,"aethyr/tests/check-depth-precision-native.coax",deadline,work,"controller-deps") {return 1;}
+  all_names:=[18]string.["worker.c","probe.spv","RenderCaps.c","RenderCaps.h","native-gpu-effects.c","tool-native.c","tool-native.h","process-native.c","process-native.h","store-file-native.c","store-file-native.h","read-file-native.c","read-file-native.h","vks.c","vks.h","vkc.c","vkc.h","worker"];names:=all_names[0..<(ifx reuse_worker=="" then 17 else 18)];
+  hashes:[18][64]u8;for name,index:names {root:=ifx index<2 then emitted else ifx index<4 then bridge else ifx index==4 then "aethyr/tests" else ifx index<13 then "coax/platform" else "verse/gpu";source:=ifx index==17 then reuse_worker else fs_join(root,name,paths[1][..]);destination:=fs_join(payload,name,paths[2][..]);n:=fs_size(source);if n<0 || n>out.count || !rtq_input_add(inputs[..],source) || fs_read_at(source,0,out[0..<n])!=n || !fs_write(destination,cast(string)out[0..<n]) || !rtq_hash_file(destination,hashes[index][..]) {return 1;}}
+  probe:=[3]string.["uname","-s","-m"];r:=dn_ssh(host,probe[..],deadline,work,"remote-availability",out[..],err[..]);if !rtq_ok(r) {return 1;}
+  token:[4096]u8;temp:=fs_temp("aethyr-depth-transport-",token[..]);if temp=="" {return 1;}digest:[64]u8;if !S_hex(S_hash(temp),digest[..]) {return 1;}removed:=fs_remove(temp);remote_text:[256]u8;o:[1]Jo;jo_start(o[..],remote_text[..]);jo_put(o[..],"/tmp/aethyr-native-gpu-");jo_put(o[..],cast(string)digest[0..<24]);remote:=jo_text(o[..]);mk:=[3]string.["mkdir","--",remote];r=dn_ssh(host,mk[..],deadline,work,"remote-mkdir",out[..],err[..]);if !rtq_ok(r) {return 1;}
+  good:=true;label:[128]u8;
+  for name,index:names {if good {good=dn_transfer(host,fs_realpath(fs_join(payload,name,paths[1][..]),paths[2][..]),fs_join(remote,name,paths[3][..]),false,deadline,work,dn_label("upload-",index,label[..]));}}
+  for name,index:names {if good {good=dn_hash(host,fs_join(remote,name,paths[1][..]),cast(string)hashes[index][..],deadline,work,dn_label("before-",index,label[..]));}}
+  for which:[2]string.["gcc","spirv-val"] {if good {args:=[2]string.["which",which];r=dn_sdk(host,remote,args[..],deadline,work,which,out[..],err[..]);good=rtq_ok(r);if good {chosen:=rtq_trim(cast(string)out[0..<r.out_n]);chosen_copy:[4096]u8;count:=chosen.count;for k:0..<count {chosen_copy[k]=chosen[k];}hash_argv:=[2]string.["sha256sum",cast(string)chosen_copy[0..<count]];r=dn_ssh(host,hash_argv[..],deadline,work,dn_label("sdk-hash-",ifx which=="gcc" then 0 else 1,label[..]),out[..],err[..]);good=rtq_ok(r);}}}
+  if good {args:=[2]string.["gcc","--version"];r=dn_sdk(host,remote,args[..],deadline,work,"gcc-version",out[..],err[..]);good=rtq_ok(r);}
+  layer:[4096]u8;ln:=0;if good {args:=[8]string.["find","/nix/store","-maxdepth","6","-name","VkLayer_khronos_validation.json","-path","*validation-layers*"];r=dn_ssh(host,args[..],deadline,work,"validation-paths",out[..],err[..]);good=rtq_ok(r);if good {path:=fs_dir(rtq_word(cast(string)out[0..<r.out_n],0));ln=path.count;good=ln>12 && ln<layer.count && path[0..<11]=="/nix/store/";if good {for k:0..<ln {layer[k]=path[k];}}}}
+  if good && reuse_worker=="" {args:=[24]string.["gcc","-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unknown-pragmas","-I.","worker.c","native-gpu-effects.c","tool-native.c","process-native.c","store-file-native.c","read-file-native.c","vks.c","vkc.c","RenderCaps.c","-lvulkan","-lm","-pthread","-D_DEFAULT_SOURCE","-o","worker","-Wno-unused-function","-Wno-unused-variable"];r=dn_sdk(host,remote,args[..],deadline,work,"build",out[..],err[..]);good=rtq_ok(r);}
+  if good && reuse_worker!="" {args:=[6]string.["env","-C",remote,"chmod","u+x","worker"];r=dn_ssh(host,args[..],deadline,work,"worker-executable",out[..],err[..]);good=rtq_ok(r);}
+  if good {args:=[4]string.["spirv-val","--target-env","vulkan1.1","probe.spv"];r=dn_sdk(host,remote,args[..],deadline,work,"spirv-validation",out[..],err[..]);good=rtq_ok(r);}
+  if good {good=dn_get(host,fs_join(remote,"worker",paths[1][..]),fs_join(work,"worker",paths[2][..]),deadline,work,"worker-before");}
+  worker_hash:[64]u8;if good {good=rtq_hash_file(fs_join(work,"worker",paths[1][..]),worker_hash[..]);}
+  if good {env_text:[8192]u8;e:[1]Jo;jo_start(e[..],env_text[..]);jo_put(e[..],"VK_ADD_LAYER_PATH=");jo_put(e[..],cast(string)layer[0..<ln]);args:=[10]string.["env","VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json",jo_text(e[..]),"VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation","timeout","240","./worker","probe.spv","result.json",""];r=dn_sdk(host,remote,args[0..<9],deadline,work,"gpu-execution",out[..],err[..]);good=rtq_ok(r);}
+  if good {good=dn_get(host,fs_join(remote,"result.json",paths[1][..]),fs_join(work,"result.json",paths[2][..]),deadline,work,"result");}
+  if good {good=dn_hash(host,fs_join(remote,"worker",paths[1][..]),cast(string)worker_hash[..],deadline,work,"worker-after");}
+  for name,index:names {if good {good=dn_hash(host,fs_join(remote,name,paths[1][..]),cast(string)hashes[index][..],deadline,work,dn_label("after-",index,label[..]));}}
+  cleanup:=[4]string.["rm","-rf","--",remote];r=dn_ssh(host,cleanup[..],deadline,work,"cleanup",out[..],err[..]);good=rtq_ok(r) && good;stable:=rtq_inputs_match(inputs[..]);good=good && stable;
+  record:[131072]u8;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.depth-precision-native-controller.v1");jo_key(o[..],"status");jo_str(o[..],ifx good then "passed" else "failed");jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],stable);jo_key(o[..],"worker_sha256");jo_str(o[..],cast(string)worker_hash[..]);jo_key(o[..],"remote");jo_str(o[..],remote);jo_key(o[..],"sources");rtq_inputs_json(o[..],inputs[..],".");jo_end(o[..]);if o[0].bad || !fs_write(fs_join(work,"controller.json",paths[1][..]),jo_text(o[..])) {return 1;}return ifx good then 0 else 1;
+}

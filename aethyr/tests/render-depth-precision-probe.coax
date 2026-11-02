@@ -1,0 +1,10 @@
+// Exact authored clip words pass directly to fixed-function rasterization.
+// Shader arithmetic does not approximate the perspective divide or depth.
+#load "../../verse/gpu/shader.coax";
+DepthPrecisionProbe :: struct {position:V4;tag:f32 #flat;}
+#test "depth precision probe transports clips and a complete triangle identity" {
+  u:=[24]f32.[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24];
+  a:=render_depth_precision_probe_vs(0,0,u[..]);b:=render_depth_precision_probe_vs(5,0,u[..]);#assert a.position.x==1 && a.position.z==3 && a.tag==1 && b.position.x==21 && b.position.w==24 && b.tag==2;
+}
+render_depth_precision_probe_vs :: (vertex:u32,instance:u32,u:[]f32)->DepthPrecisionProbe {at:=cast(int)vertex*4;return DepthPrecisionProbe.{position=v4(u[at],u[at+1],u[at+2],u[at+3]),tag=ifx vertex<3 then 1.0f32 else 2.0f32};}
+render_depth_precision_probe_fs :: (v:DepthPrecisionProbe)->V4 {return v4(v.position.z,v.position.w,v.tag,1);}

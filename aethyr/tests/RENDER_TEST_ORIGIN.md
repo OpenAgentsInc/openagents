@@ -156,3 +156,27 @@ served hashes and finalization. The pure path/framing/byte-control decisions
 are mutation checked in `render-test-origin-policy.coax`.
 The additive sink decisions and actual binary/refusal/storage controls are in
 `render-test-sink-policy.coax` and `render-test-sink-tool-checks.coax`.
+
+An optional `idle_websockets: ["/coaxial/live"]` enables literal, unique
+idle WebSocket routes. At most 16 routes and eight simultaneous peers are
+admitted. Eight leaves room for the listener, HTTP requests and finalization
+under the socket SDK's existing 16-handle limit. Without this field, the
+existing GET and POST behavior remains in effect.
+
+The existing Coax RFC 6455 implementation admits the handshake and computes
+the accept digest. Masked ping receives an exact pong; close receives a
+close, malformed frames close with 1002, and application data closes with
+1003 because these fixtures only need an idle connection. Each peer stays
+bounded by the origin's declared lifetime. Finalization sends 1001 and
+closes every owned socket before the normal source/output gate. A failed
+socket ledger or cleanup fails that gate. `ready.json` names the configured
+routes and capacity; `websockets.jsonl` and `websockets-final.json` retain
+actual ownership and cleanup facts. The controls are in
+`render-test-websocket-tool-checks.coax` and the mutation-checked admission
+in `render-test-websocket-policy.coax`.
+
+For observers which previously used the three explicit background flags,
+`cdp_launch_background(c, width, height, prefix)` preserves that profile:
+always headless and muted, with no Chrome `--window-size` override. The caller
+still sets its actual viewport through `Emulation.setDeviceMetricsOverride`.
+The existing `cdp_launch` arguments and behavior are unchanged.
