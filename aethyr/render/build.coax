@@ -7,7 +7,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
-#load "../../coax/lib/crypto/sha256-kernel.coax";
+#load "../../coax/lib/crypto/sha256.coax";   // streaming, for the compiler (it loads the kernel)
 #load "build-policy.coax";
 #load "interface.coax";
 #load "catalog.coax";
@@ -19,6 +19,27 @@
 #load "asset-profile.coax";
 
 RB_FILE :: 4194304;
+RB_CHUNK :: 1048576;        // the compiler is hashed a chunk at a time
+RB_COMPILER :: 268435456;   // and may be up to 256 MiB: a Linux build is about 24 MiB, a macOS one smaller
+
+// The SHA-256 of a whole file of at most `limit` bytes, read in chunks, as 64 hex digits.
+// False for a missing, empty or larger file, or one that changes size while it is read.
+rb_file_sha :: (path:string,limit:int,hex:[]u8)->bool {
+  size:=fs_size(path);if size<1 || size>limit || hex.count<64 {return false;}
+  state:[SHA_STATE_BYTES]u8;if sha256_init(state[..])!=SHA_OK {return false;}
+  chunk:[RB_CHUNK]u8;at:=0;
+  while at<size {
+    want:=ifx size-at<RB_CHUNK then size-at else RB_CHUNK;
+    got:=fs_read_at(path,at,chunk[0..<want]);if got!=want {return false;}
+    if sha256_update_checked(state[..],chunk[0..<got],false)!=SHA_OK {return false;}
+    at+=got;
+  }
+  if fs_size(path)!=size {return false;}
+  digest:[32]u8;if sha256_final_checked(state[..],digest[..],false)!=SHA_OK {return false;}
+  digits:="0123456789abcdef";
+  for i:0..<32 {hex[i*2]=digits[cast(int)(digest[i]>>4)];hex[i*2+1]=digits[cast(int)(digest[i]&15)];}
+  return true;
+}
 RB_PACKAGE :: 262144;
 RB_DEADLINE_MS :: 830000;
 RenderBuildProduct :: struct {ok:bool;name:[96]u8;name_count:int;hash:[64]u8;}
@@ -256,8 +277,8 @@ tool_main :: ()->int #export_c {
   compiler:=args_value(args[..],"--coax","coax/bin/coax");deadline:=proc_now_ms()+RB_DEADLINE_MS;
   if !fs_mkdir(outdir) {tool_errln("aethyr render build: cannot create output directory");return 1;}
   tb:[FS_PATH_MAX]u8;temp:=fs_temp("aethyr-render-",tb[..]);if temp.count==0 {return 1;}
-  bytes:[RB_FILE]u8;cn:=fs_read(compiler,bytes[..]);compiler_hash:[64]u8;
-  if cn<1 || !S_hex(S_hash(cast(string)bytes[0..<cn]),compiler_hash[..]) {tool_errln("aethyr render build: compiler exceeds the4MiB input bound");removed:=fs_remove(temp);return 1;}
+  compiler_hash:[64]u8;
+  if !rb_file_sha(compiler,RB_COMPILER,compiler_hash[..]) {tool_errln("aethyr render build: compiler missing, unreadable or past its 256 MiB bound");removed:=fs_remove(temp);return 1;}
   inputs:[1]RenderBuildInputs;
   if !rb_inputs(inputs[..],compiler,"aethyr/render/build.coax",temp,deadline) {tool_errln("aethyr render build: cannot snapshot builder inputs");removed:=fs_remove(temp);return 1;}
   for set:0..<3 {
@@ -266,8 +287,8 @@ tool_main :: ()->int #export_c {
     if source.count>0 && !rb_inputs(inputs[..],compiler,source,temp,deadline) {tool_errln("aethyr render build: cannot snapshot shader inputs");removed:=fs_remove(temp);return 1;}
   }
   if rb_cached(outdir,profile,cast(string)compiler_hash[..],inputs[..]) {
-    after:=fs_read(compiler,bytes[..]);again:[64]u8;
-    if after<1 || !S_hex(S_hash(cast(string)bytes[0..<after]),again[..]) || cast(string)again[..]!=cast(string)compiler_hash[..] || !rb_inputs_unchanged(inputs[..]) {
+    again:[64]u8;
+    if !rb_file_sha(compiler,RB_COMPILER,again[..]) || cast(string)again[..]!=cast(string)compiler_hash[..] || !rb_inputs_unchanged(inputs[..]) {
       tool_errln("aethyr render build: an input changed while checking cached products");removed:=fs_remove(temp);return 1;
     }
     print("aethyr render build: reused %/render.json\n",outdir);removed:=fs_remove(temp);return 0;
@@ -294,8 +315,8 @@ tool_main :: ()->int #export_c {
     if !rb_pipeline(o[..],compiler,profile,i,temp,outdir,deadline) {removed:=fs_remove(temp);return 1;}
   }}jo_end(o[..]);jo_end(o[..]);
   // A changed compiler cannot qualify the products it did not produce.
-  after:=fs_read(compiler,bytes[..]);again:[64]u8;
-  if after<1 || !S_hex(S_hash(cast(string)bytes[0..<after]),again[..]) || cast(string)again[..]!=cast(string)compiler_hash[..] || o[0].bad || !rb_inputs_unchanged(inputs[..]) {
+  again:[64]u8;
+  if !rb_file_sha(compiler,RB_COMPILER,again[..]) || cast(string)again[..]!=cast(string)compiler_hash[..] || o[0].bad || !rb_inputs_unchanged(inputs[..]) {
     tool_errln("aethyr render build: input changed or package exceeded its capacity");removed:=fs_remove(temp);return 1;
   }
   pending:=rb_product(outdir,"render-pending",".json",jo_text(o[..]));pp:[FS_PATH_MAX]u8;mp:[FS_PATH_MAX]u8;
