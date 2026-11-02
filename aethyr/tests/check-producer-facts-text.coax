@@ -1,0 +1,29 @@
+// Coax owns corpus construction, fences, byte comparisons and verdicts. The
+// existing Bun Buffer UTF-8 codec is invoked only as an independent oracle.
+#load "producer-facts-text-policy.coax";
+#load "../render/tests/qualification-files.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}work:=args_value(a[..],"--work-dir","");receipt:=args_value(a[..],"--receipt","");bun:=args_value(a[..],"--bun","");
+  if work=="" || receipt=="" || bun=="" || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
+  inputs:[1]RtqInputs;for file:[3]string.[bun,"aethyr/tests/producer-facts-text-policy.coax","aethyr/tests/producer-facts-text-checks.coax"] {if !rtq_input_add(inputs[..],file) {return 1;}}
+  corpus:[262144]u8;n:=0;for first:0..<256 {corpus[n]=cast(u8)first;corpus[n+1]=65;n+=2;}
+  for first:0..<256 {for second:0..<256 {corpus[n]=cast(u8)first;corpus[n+1]=cast(u8)second;corpus[n+2]=65;n+=3;}}
+  // Every lead/second-byte combination for 3/4-byte sequences, followed by
+  // authored valid, invalid and truncated suffixes, fenced by ASCII.
+  for lead:[9]u8.[224,225,237,239,240,241,243,244,245] {for second:0..<256 {for mode:0..<4 {
+    corpus[n]=lead;corpus[n+1]=cast(u8)second;n+=2;if mode>0 {corpus[n]=128;n+=1;}if mode>1 {corpus[n]=191;n+=1;}if mode==3 {corpus[n]=128;n+=1;}corpus[n]=65;n+=1;
+  }}}
+  tails:=[17]u8.[239,187,191,0,127,224,160,128,237,159,191,240,144,128,128,244,143];for byte:tails {corpus[n]=byte;n+=1;}
+  paths:[5][4096]u8;source:=fs_join(work,"input.bin",paths[0][..]);expected:=fs_join(work,"coax.bin",paths[1][..]);oracle:=fs_join(work,"bun.bin",paths[2][..]);
+  output:[786432]u8;wanted:=pft_measure(cast(string)corpus[0..<n]);written:=pft_write(cast(string)corpus[0..<n],output[..]);if written!=wanted || !fs_write(source,cast(string)corpus[0..<n]) || !fs_write(expected,cast(string)output[0..<written]) {return 1;}
+  if !rtq_input_add(inputs[..],source) || !rtq_input_add(inputs[..],expected) {return 1;}
+  script:="// Firm reason: 2 (independent Bun UTF-8 decode/encode codec oracle).\nconst fs=require('fs');process.stdout.write(Buffer.from(fs.readFileSync(process.argv[1],'utf8')));";
+  argv:=[4]string.[bun,"-e",script,source];observed:[786432]u8;errors:[65536]u8;env:[]string;r:=rtq_run_raw(argv[..],env,120000,observed[..],errors[..]);
+  if !rtq_record_run(work,"bun-codec",argv[..],r,cast(string)observed[0..<r.out_n],cast(string)errors[0..<r.err_n]) || !fs_write(oracle,cast(string)observed[0..<r.out_n]) {return 1;}
+  equal:=rtq_ok(r) && r.out_n==written && cast(string)observed[0..<r.out_n]==cast(string)output[0..<written];
+  // The refusal uses the real generated corpus and checks that its last byte
+  // and all prior bytes remain untouched, not just the positive return count.
+  for k:0..<output.count {output[k]=93;}refused:=pft_write(cast(string)corpus[0..<n],output[0..<written-1])== -1;for byte:output {refused=refused && byte==93;}
+  stable:=rtq_inputs_match(inputs[..]);json:[65536]u8;o:[1]Jo;jo_start(o[..],json[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.producer-facts-text.v1");jo_key(o[..],"status");jo_str(o[..],ifx equal && refused && stable then "passed" else "failed");jo_key(o[..],"single_byte_cases");jo_int(o[..],256);jo_key(o[..],"two_byte_cases");jo_int(o[..],65536);jo_key(o[..],"long_lead_suffix_cases");jo_int(o[..],9216);jo_key(o[..],"source_bytes");jo_int(o[..],n);jo_key(o[..],"normalized_bytes");jo_int(o[..],written);jo_key(o[..],"exact_bytes_equal");jo_bool(o[..],equal);jo_key(o[..],"capacity_refusal_preserves_output");jo_bool(o[..],refused);jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],stable);jo_key(o[..],"sources");rtq_inputs_json(o[..],inputs[..],".");jo_end(o[..]);
+  if o[0].bad || !fs_write(receipt,jo_text(o[..])) {return 1;}return ifx equal && refused && stable then 0 else 1;
+}

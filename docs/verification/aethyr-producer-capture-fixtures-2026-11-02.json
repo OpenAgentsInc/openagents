@@ -1,0 +1,114 @@
+{
+  "schema": "aethyr.producer-capture-fixture-qualification.v1",
+  "status": "passed_in_recorded_epochs",
+  "scope": "Independent tiny Coax producer and unchanged Bun observer versus immutable Coax capture observers. CPU-only Wasm execution and raw artifact/product-metadata parity; no renderer, realm, shader emission or GPU gate was repeated.",
+  "compiler": {
+    "path": "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "scope": "Explicit older exploratory compiler image; does not match current repository compiler sources. The same four fixture Wasms were reused throughout both observer epochs."
+  },
+  "sdk": {
+    "bun": "1.4.0",
+    "bun_sha256": "539598c775882420b9d8deb7dc14d845f20f7d26f5600c50ab067dde6ac3f3bf",
+    "wasi_clang": "Homebrew LLVM 23.1.4",
+    "wasi_clang_sha256": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a"
+  },
+  "authored_fixture_checks": { "producer": 4, "pack_inputs": 1, "passed": 5 },
+  "fixture_wasm_sha256": {
+    "versioned.wasm": "94bf1f9056baa2ff5a588a014e37938072113935b3248b961f381186b02e8911",
+    "unversioned.wasm": "932254c201f0cc29628d4fc49930a9ae778b8ad2d3a20a6750bfce68b1973323",
+    "no-key.wasm": "9afd2fb7f5dc5336ba21e43c100273518f7a752c0453753332bff2885e7085c3",
+    "minimal.wasm": "93657f2514b03167f9190d1a7f6159a672e265dfbbc4b26a6d0cfc3bb512de0b"
+  },
+  "review_fixes_exercised": [
+    "Initializer runs before heap/memory observations and scalar getters; getter order is vertex_floats, max_vertices, uniform_floats, state_size.",
+    "Initializer memory.grow(1) is included in actual memory/arena metadata, not a stale initial size.",
+    "Facts inbox admission is whole before chunked writes; a 200004-byte effective facts message exceeds the former single-upload limit without truncation.",
+    "Absent or empty --dump skips final draw-pointer reads and capture JSON while preserving ordinary frame/store observations.",
+    "The first missing required export stops later SDK calls; missing key response remains defined:false,value:null.",
+    "Every pack payload is validated before catalog/facts messages; malformed table preflight may refuse earlier with exit 2.",
+    "Canonicalize the fresh owned temporary path before comparing exact HTTP upload ACK filenames (/var versus /private/var)."
+  ],
+  "observer_epochs": [
+    {
+      "name": "reviewed",
+      "image_sha256": "c1f66e59ee9fc5de4ac243fa69c380b65276342521d5fc0fc81c1337a3d2f205",
+      "case_range_completed": [0, 11],
+      "positive_dump_cases": [0, 1, 2, 3, 4, 5, 6],
+      "expected_refusals": [7, 8, 9, 10, 11],
+      "raw_directory": "aethyr-producer-capture-fixture-run-20261102",
+      "source_snapshot": "aethyr-producer-capture-reviewed-source-20261102",
+      "snapshot_join": "Root verified the whole copied repository-source closure against the actual case-0 capture.json source_inputs before the canonical-temp-only edit; actual-case0-source-readback.log is retained.",
+      "terminal": "Stopped at case 12: old observer passed and new observer failed on the temporary-path alias. This epoch has no passing whole-run receipt. Its successful per-case capture/parity receipts and all refusal/failure streams are retained.",
+      "diagnostic": "Same frozen c1 image and existing fixture under TMPDIR=/private/tmp passed case 12 with stdout exactly equal to its unchanged old baseline. This diagnosed the alias; it is not relabelled as final fix proof."
+    },
+    {
+      "name": "canonical-temp",
+      "image_sha256": "7442e51531e1164b475feed270b1055e1671081e0dabe738af7414961dfa6fc6",
+      "case_range_completed": [12, 20],
+      "positive_dump_cases": [15, 16, 19, 20],
+      "positive_count_only_cases": [12, 13],
+      "expected_refusals": [14, 17, 18],
+      "raw_directory": "aethyr-producer-capture-fixture-resume-20261102",
+      "receipt": "aethyr-producer-capture-fixture-resume-20261102.json",
+      "source_and_input_fence": "unchanged",
+      "reuse": "Started at case 12 with the first epoch's four Wasms, packs, facts and override files. No fixture or product re-emission; no earlier passing case repeated."
+    }
+  ],
+  "cases": [
+    { "id": 0, "purpose": "Versioned stores, zero update, shrink, unchanged-version skip, signed-i64 version string and particle retained bytes", "result": "raw_and_product_metadata_equal" },
+    { "id": 1, "purpose": "Unversioned store observations", "result": "raw_and_product_metadata_equal" },
+    { "id": 2, "purpose": "Pack, facts, appended fact, extras, hash, key down/up, fractional pointer, golden, and all overrides", "result": "raw_and_product_metadata_equal" },
+    { "id": 3, "purpose": "Full inputs with unversioned stores", "result": "raw_and_product_metadata_equal" },
+    { "id": 4, "purpose": "Pack-only first empty mesh/index entries win over later nonempty duplicates", "result": "raw_and_product_metadata_equal" },
+    { "id": 5, "purpose": "First empty catalog wins over duplicate catalog", "result": "raw_and_product_metadata_equal" },
+    { "id": 6, "purpose": "200004-byte effective facts inbox; exact sum and post-init getter order", "result": "raw_and_product_metadata_equal" },
+    { "id": 7, "purpose": "HUD count beyond max vertices", "result": "both_refuse" },
+    { "id": 8, "purpose": "Store update exceeds logical capacity", "result": "both_refuse" },
+    { "id": 9, "purpose": "Store pointer span exceeds memory", "result": "both_refuse" },
+    { "id": 10, "purpose": "Particle update exceeds capacity", "result": "both_refuse" },
+    { "id": 11, "purpose": "Bad draw pointer with dump", "result": "both_refuse" },
+    { "id": 12, "purpose": "Bad final draw pointer without dump is not observed", "result": "stdout_exactly_equal" },
+    { "id": 13, "purpose": "Empty --dump has count-only behavior", "result": "stdout_exactly_equal" },
+    { "id": 14, "purpose": "Missing key function when a key event is requested", "result": "both_refuse_and_no_later_sdk_call" },
+    { "id": 15, "purpose": "Missing key function without a key event", "result": "raw_and_product_metadata_equal" },
+    { "id": 16, "purpose": "Absent optional counters, stores, particle resources and hash export", "result": "raw_and_product_metadata_equal" },
+    { "id": 17, "purpose": "Malformed pack table", "result": "old_exit_1_new_exit_2_intentional_preflight" },
+    { "id": 18, "purpose": "Malformed pack payload", "result": "both_refuse" },
+    { "id": 19, "purpose": "Extras without a pack", "result": "raw_and_product_metadata_equal" },
+    { "id": 20, "purpose": "Fact flag without a facts file is ignored", "result": "raw_and_product_metadata_equal" }
+  ],
+  "facts_utf8_normalization": {
+    "module": "aethyr/tests/producer-facts-text-policy.coax",
+    "module_sha256": "4f070063a1c3b2ff4a683ac8d20420a584296d34659ed8749aae6b07f1ec95be",
+    "checks_sha256": "b383861f91bfdedd6f68730adc0f997a5a762ad8a8f0f78fd75fc930ec14e36d",
+    "semantics": "Existing Bun Buffer UTF-8 decoding followed by UTF-8 encoding: preserve valid scalar bytes including BOM/NUL; replace each maximal malformed subpart with EF BF BD. No valid-UTF8-only input narrowing.",
+    "api": "pft_measure(source) counts normalized bytes; pft_write(source,out) returns the count or -1 without changing output if short. Caller retains its bounded input admission.",
+    "checks": 4,
+    "mutation": { "scope": "root-only", "mutants": 118, "killed": 118, "survived": 0 },
+    "independent_oracle": "Existing Bun readFileSync(path,'utf8') and Buffer.from(text), invoked directly by the Coax-owned driver; no shared decoder implementation.",
+    "single_byte_cases": 256,
+    "two_byte_cases": 65536,
+    "long_lead_suffix_cases": 9216,
+    "source_bytes": 238609,
+    "normalized_bytes": 399197,
+    "exact_raw_bytes_equal": true,
+    "capacity_refusal_preserves_all_output_bytes": true,
+    "receipt": "aethyr-producer-facts-text-final-20261102.json",
+    "source_fence_unchanged": true,
+    "development": "Initial mutation exposed five surviving boundary mutations. Added explicit C0 continuation/F5 cases and made lead categories exclusive; final mutation has zero survivors. The final corpus was rerun only after that source change."
+  },
+  "limits": [
+    "These fixture epochs predate integration of the separate UTF-8 facts policy and leading-zero-i64 clock compatibility fix. They are not claims that the later capture-driver closure was executed here.",
+    "No numerical GPU agreement or realm rendering claim follows from CPU-only capture parity.",
+    "The first epoch stopped on its real failure; only its completed individual cases are admitted.",
+    "The unchanged Bun observer is retained inside source-current/aethyr/tests/capture-render-frame.ts even after live caller retirement."
+  ],
+  "retention": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/producer-capture-fixtures/artifacts.tar.gz",
+    "bytes": 1418268,
+    "sha256": "e335fb2bd3ad3d296eaa5b67a3faeb45595a4daf822decf1ee1f8b3eb94f9114",
+    "readback": "System tar extraction followed by complete payload/readback directory diff: exit 0, no differences, including empty stdout/stderr files.",
+    "contents": "Both raw fixture epochs, first failure and canonical-TMPDIR diagnostic, unchanged fixture Wasms and authored inputs, producer/pack checks and development logs, initial and resumed runner sources/images, c1 observer whole-source snapshot and verification log, both immutable observers, final UTF-8 corpus/raw codec output/receipt, current driver dependency sources/platform helpers, and observer/parity/fixture-runner images."
+  }
+}

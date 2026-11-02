@@ -1,0 +1,7 @@
+// A failed or unknown process observation never proves child cleanup.
+#authority;
+#test "only absent or zombie process facts prove cleanup" {
+ #assert rpo_dead(0,1,false,false,0,"");#assert rpo_dead(0,0,false,false,0,"Z");#assert rpo_dead(0,0,false,false,0,"Z+");
+ #assert !rpo_dead(-1,1,false,false,0,"");#assert !rpo_dead(1,1,false,false,0,"");#assert !rpo_dead(0,1,true,false,0,"");#assert !rpo_dead(0,1,false,true,0,"");#assert !rpo_dead(0,1,false,false,1,"");#assert !rpo_dead(0,1,false,false,-1,"");#assert !rpo_dead(0,0,false,false,0,"");#assert !rpo_dead(0,2,false,false,0,"");#assert !rpo_dead(0,0,false,false,0,"S");#assert !rpo_dead(0,0,false,false,0,"R");#assert !rpo_dead(0,1,false,false,0,"Z");
+}
+rpo_dead :: (started:int,status:int,timeout:bool,cut:bool,stderr_bytes:int,state:string)->bool {return started==0 && !timeout && !cut && stderr_bytes==0 && ((status==1 && state.count==0) || (status==0 && state.count>0 && state[0]=='Z'));}

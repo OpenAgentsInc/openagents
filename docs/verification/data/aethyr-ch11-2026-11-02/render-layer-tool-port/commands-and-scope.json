@@ -1,0 +1,73 @@
+{
+  "schema": "aethyr.render.layer-tool-port.commands.v1",
+  "date": "2026-11-02",
+  "status": "passed",
+  "scope": "Port check_render_layers.ts only. Coax owns control, VPK traversal, byte identities, upload ranges, finalization, native configuration and verdicts. Narrow reason1 JS performs browser SDK effects. No new realm/producer/shader emission or unchanged native/CPU renderer-math gate.",
+  "compiler": {"path":"/tmp/aethyr-authority-budget-qualified-1fac/coax","sha256":"1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa","scope":"Explicit previously qualified historical compiler; retained executable, not current-main compiler or product-emission qualification."},
+  "frozen_surface": "evidence/surface",
+  "frozen_inputs": {
+    "wasm": "evidence/inputs/host.wasm",
+    "wasm_sha256": "553950d7831765da50caa2543327ade6ea37f9bc54107235f152af233eb9d444",
+    "render_js_sha256": "c524e3f88b955c0721807e9b996c30c00d94c378682ca68fca64679b514b97d6",
+    "render_face_sha256": "d169fd4b7fd7ff62ccb6c590e043c4fc2ad03b5622f272c85561198158f6a51f",
+    "legacy_tool_sha256": "01c286a3017cfc99999a8830c85db989c9995582eb6a0e5cbe763dbf5838b146"
+  },
+  "commands": {
+    "policy": "/tmp/aethyr-authority-budget-qualified-1fac/coax test aethyr/tests/render-layer-policy.coax --library",
+    "mutation": "/tmp/aethyr-authority-budget-qualified-1fac/coax mutate aethyr/tests/render-layer-policy.coax --library --root-only --jobs 4",
+    "legacy_template": "bun /tmp/aethyr-layer-port-20261102/surface/aethyr/tests/check_render_layers.ts /tmp/aethyr-layer-port-20261102/inputs/host.wasm PACKAGE OUT PROFILE",
+    "coax_template": "COAX=/tmp/aethyr-authority-budget-qualified-1fac/coax coax/web/tool.sh aethyr/tests/check-render-layers.coax --wasm /tmp/aethyr-layer-port-20261102/inputs/host.wasm --package PACKAGE --surface-root /tmp/aethyr-layer-port-20261102/surface --work-dir NEW_OUT --profile PROFILE --reference LEGACY_RECEIPT",
+    "parity": "COAX=/tmp/aethyr-authority-budget-qualified-1fac/coax coax/web/tool.sh aethyr/tests/render-layer-tool-checks.coax LEGACY_RECEIPT COAX_RECEIPT LEGACY_SOURCE_COPY OUT_JSON",
+    "controls": "COAX=/tmp/aethyr-authority-budget-qualified-1fac/coax coax/web/tool.sh aethyr/tests/render-layer-control-checks.coax --work-dir /tmp/aethyr-layer-port-20261102/controls-qualified --surface-root /tmp/aethyr-layer-port-20261102/surface --wasm /tmp/aethyr-layer-port-20261102/inputs/host.wasm --package /tmp/aethyr-layer-port-20261102/inputs/fixture --bun /Users/christopherdavid/.bun/bin/bun --observer QUALIFIED_OBSERVER --positive /tmp/aethyr-layer-port-20261102/coax-packed-red",
+    "profile_recovery": "coax/web/tool.sh aethyr/tests/render-layer-recovery-check.coax /tmp/aethyr-layer-port-20261102/controls-qualified/wrong-profile/legacy/receipt.json /tmp/aethyr-layer-port-20261102/profile-parser-fixed/receipt.json /tmp/aethyr-layer-port-20261102/profile-recovery.json",
+    "source_controls": "coax/web/tool.sh aethyr/tests/render-layer-source-check.coax --work-dir NEW_OUT --surface-root /tmp/aethyr-layer-port-20261102/surface --wasm /tmp/aethyr-layer-port-20261102/inputs/host.wasm --package /tmp/aethyr-layer-port-20261102/inputs/fixture --observer QUALIFIED_OBSERVER [--after-post]"
+  },
+  "policy": {"checks":97,"passed":97,"mutants":319,"killed":319,"survivors":0,"waivers":0,"scope":"Root-only, owned policy procedures; dependency checks retained","logs":["evidence/policy-green-profile.log","evidence/policy-mutation-profile.log"]},
+  "positive_observations": [
+    {"name":"packed fixture","profile":7,"legacy":"evidence/legacy-packed","coax":"evidence/coax-packed-red","parity":"evidence/packed-parity.json","bytes":9861376,"layers":7,"mips":10,"sha256":"5c48f4d5e6b75b206dd5269d957f2547288f6970491c2ccd812a8de9bbe291c2","shared_sources":5,"observer_sha256":"3a198b7f2f8994da13b58ae5c5f372df9083828fe7039ad1dd766a1021cd3f53","actual_exit":0},
+    {"name":"individual images","profile":0,"legacy":"evidence/legacy-individual","coax":"evidence/coax-individual-qualified","parity":"evidence/individual-parity.json","bytes":67236864,"layers":12,"mips":11,"sha256":"22ac8348e4e62191704e6c049fab664e33a5cd601aa6d5147abbc56b6e0c7a14","shared_sources":16,"transport_parts":2,"observer_sha256":"daee03c89c17927c66148f51b3333bfb47f22ba15b4d721543a93b24c61f3800","actual_exit":0}
+  ],
+  "parity": {
+    "observer_sha256": "2d6028e31a6594e9078109a546294add6b19fe82f8c337b74a084de8c4b0088f",
+    "status_browser_source_equal": true,
+    "every_raw_byte_equal": true,
+    "all_raw_hashes_match_receipts": true,
+    "configs": "Byte-identical after the single owned raw-file path is canonicalized and replaced with a declared marker. The initial /tmp versus /private/tmp config-path refusal is retained separately.",
+    "masks": 0,
+    "tolerances": 0,
+    "source_fences": "Original before/after source gates and exact observing tool/source/native/SDK hashes remain separately bound to each epoch."
+  },
+  "refusal_composition": {
+    "distinct_cases": 11,
+    "closed": 11,
+    "initial_matrix": "evidence/controls-qualified/qualification.json",
+    "initial_matrix_result": "8/9; retained failed wrong-profile comparison was a real nine-digit CLI parser limit, not ignored or reclassified.",
+    "passing_originals_reused": "All six other original/new pack/image refusals and both damaged transport assembly controls are unchanged. No passing original observer was rerun.",
+    "profile_fix": "A canonical int32 parser is checked/mutated. The changed Coax side exits1 through actual package admission for2147483647. evidence/profile-recovery.json joins it to the original unchanged exit1, exact browser and four shared source identities.",
+    "source_before_upload": "evidence/source-drift-qualified/qualification.json: controlled change after GPU observation, caught before POST publication; no sink output exists, failed receipt retained and final artifact absent.",
+    "source_after_ack": "evidence/source-finalization-qualified/qualification.json: one complete acknowledged POST, followed by a source change; final origin and controller refuse ownership, failed receipt retained and final layer artifact absent.",
+    "cases": ["VPK magic","VPK declared length","VPK table bound","unselected VPK row span","actual ImageBitmap decode failure","wrong package profile","empty selected layer part","short physical transport","corrupted physical transport","source change before upload","source change after upload ACK"]
+  },
+  "source_epochs": {
+    "current": "source-closure/",
+    "prior": "evidence/epochs/",
+    "method": "Own earlier source versions were recovered from the authored patches/current text. Exact SHA256 equality to each runtime receipt was required. This restores evidence bytes only; no earlier Coax code was executed or restored into the repository.",
+    "verified_join_logs": ["evidence/packed-source-join.log","evidence/individual-source-join.log","evidence/profile-source-join.log","evidence/parity-source-join.log","evidence/control-source-join.log","evidence/recovery-source-join.log","evidence/source-control-join.log","evidence/finalization-source-join.log"],
+    "checksums": "Adjacent .sha256 files retain every original input hash and its exact retained source/image equivalent; native shasum -c returned0 for each complete join.",
+    "reuse_boundary": "Packed/individual actual GPU observations predate the tested profile-parser/failed-receipt cleanup repairs. Their exact Wasm/renderer/package/image closures and every raw byte remain unchanged. Final policy replays the same capture descriptors; historical tool images are not presented as final-source emissions."
+  },
+  "retention": {
+    "archive_format": "tar.xz with the existing local xz SDK,256MiB dictionary,fast preset,single thread; lossless byte preservation and complete readback required",
+    "original_tree_copy_diff": "source-copy-readback.log",
+    "original_tree_copy_diff_exit": 0,
+    "hardlinks": "Only already-equal full raw captures are hardlinked inside the owned archive copy to avoid duplicate storage. All logical file bytes and the complete original directory inventory still compare equal. Truncated/corrupted controls remain distinct."
+  },
+  "limits": {
+    "resource_gate": "Production layer resources only; no whole-realm frame, new GPU numerical coverage or new native/CPU texture result.",
+    "bounds": "Input images/packs use existing64MiB file fences; captured bytes preserve the256MiB envelope through at most4declared64MiB sinks. Current repository packs fit the existing file fence.",
+    "deadlines": "Original180s browser observation and30s CDP calls, RTO body/total limits unchanged, bounded12min control matrix. All actual commands stay below15min.",
+    "shared_helpers": "RTO/session/production renderer sources were not changed. Prior qualified POST policy/transport controls are reused.",
+    "diagnostics": "Legacy layer receipts had no raw CDP event array. Lifecycle v2 window/CDP diagnostic boundaries are unchanged. No volatile stack-string or request-order identity claim for refusals.",
+    "browser": "Muted headless Chrome only; no visible browser or owner audio."
+  }
+}

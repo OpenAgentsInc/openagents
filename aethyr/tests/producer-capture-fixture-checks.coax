@@ -1,0 +1,31 @@
+#test "capture fixture records scalar query order after initialization" {
+  trace:[1]PfxTrace;#assert pfx_initialize(trace[..])==1;
+  #assert pfx_scalar(trace[..],1,999)==4 && pfx_scalar(trace[..],2,999)==4 && pfx_scalar(trace[..],3,999)==24 && pfx_scalar(trace[..],4,999)==999;
+  state:[1]PfxState;pfx_init(state[..],trace[..]);#assert state[0].scalar_order==1234 && state[0].initialized==1;
+}
+#test "capture fixture schedules zero shrink unchanged-version and unversioned observations" {
+  state:[1]PfxState;
+  sizes:=[4]int.[8,0,4,8];for frame:1..<5 {state[0].frame=frame;#assert pfx_store_bytes(state[..],0)==sizes[frame-1];#assert pfx_version(state[..],0)==(ifx frame==1 then 100 else 101);}
+  #assert pfx_capacity(0)==12 && pfx_capacity(1)==5 && pfx_capacity(-1)==0;
+  #assert pfx_version(state[..],1)==9223372036854775807;
+  #assert pfx_store_count()==2 && pfx_vertex_words()==16 && pfx_uniform_words()==24;
+  state[0].mode=2;#assert pfx_store_bytes(state[..],0)==13;
+  state[0].mode=3;#assert pfx_store_pointer(state[..],0,123,456)==67108863;
+  state[0].mode=0;#assert pfx_store_pointer(state[..],1,123,456)==456;
+}
+#test "capture fixture handles facts hash ready and ordered keyboard pointer actions" {
+  state:[1]PfxState;for byte,k:"A\nB" {state[0].inbox[0][k]=byte;}pfx_message(state[..],600,3);#assert state[0].facts_sum==141 && state[0].action==600;
+  pfx_done(state[..]);#assert state[0].action==0 && state[0].acks==1;
+  pfx_ready(state[..],0,3);pfx_ready(state[..],1,0);pfx_ready(state[..],4,7);#assert state[0].ready[0]==3 && state[0].ready[1]==0 && state[0].ready[4]==7;
+  for byte,k:"bad-hud" {state[0].inbox[0][k]=byte;}pfx_hash(state[..],7);#assert state[0].mode==1;
+  for byte,k:"bad-draw-span" {state[0].inbox[0][k]=byte;}pfx_hash(state[..],13);#assert state[0].mode==4 && pfx_draw_pointer(state[..],123)==67108863;
+  pfx_key(state[..],32,true);pfx_key(state[..],32,false);pfx_pointer(state[..],1.5,-3.25,0);pfx_pointer(state[..],1.5,-3.25,2);#assert state[0].key_down==1 && state[0].key_up==1 && state[0].pointers==2;
+}
+#test "capture fixture writes exact finite outputs and retains its authored clock observations" {
+  state:[1]PfxState;vertices:[16]f32;uniforms:[24]f32;state[0].scalar_order=1234;
+  #assert pfx_frame_values(state[..],vertices[..],uniforms[..],32,24,1.0,1234567,1234,134)==2;
+  #assert uniforms[0]==1234.0 && uniforms[1]==1.0 && uniforms[18]==134.0 && vertices[0]==1.0;
+  #assert state[0].stores[0][0]==17 && state[0].stores[0][1]==0 && state[0].stores[0][2]==255 && state[0].stores[0][3]==128;
+  state[0].mode=1;#assert pfx_frame_values(state[..],vertices[..],uniforms[..],32,24,1.0,0,0,134)==5;
+  state[0].mode=5;#assert pfx_particle_bytes(state[..])==8;
+}

@@ -1,0 +1,29 @@
+nr_test_reuse :: (count:int,bad:int,compiler:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"compiler_sha256");jo_str(o[..],compiler);jo_key(o[..],"source_inputs");jo_raw(o[..],"{\"/source.coax\":\"source\"}");jo_key(o[..],"commands");jo_arr(o[..]);for i:0..<count {jo_obj(o[..]);jo_key(o[..],"command");jo_raw(o[..],ifx i==count-1 then "[\"coax\",\"c\"]" else "[\"coax\",\"spirv\"]");jo_key(o[..],"exit_code");jo_int(o[..],ifx i==bad then 71 else 0);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
+}
+#test "reuse keeps the original compiler closure and successful-emission identity gates" {
+  text:[8192]u8;nodes:[256]JvNode;d:[1]Jv;keys:=[1]string.["/source.coax"];hashes:=[1]string.["source"];
+  #assert jv_parse(d[..],nr_test_reuse(7,-1,"compiler",text[..]),nodes[..]) && nr_reuse(0,d[0],"compiler",keys[..],hashes[..]);
+  #assert !nr_reuse(0,d[0],"different",keys[..],hashes[..]);hashes[0]="changed";#assert !nr_reuse(0,d[0],"compiler",keys[..],hashes[..]);hashes[0]="source";keys[0]="/missing";#assert !nr_reuse(0,d[0],"compiler",keys[..],hashes[..]);keys[0]="/source.coax";
+  #assert !nr_reuse(0,d[0],"compiler",keys[0..<0],hashes[0..<0]) && !nr_reuse(0,d[0],"compiler",keys[..],hashes[0..<0]);
+  #assert !nr_reuse(-1,d[0],"compiler",keys[..],hashes[..]) && !nr_reuse(2,d[0],"compiler",keys[..],hashes[..]);
+  for count:[4]int.[0,6,8,3] {#assert jv_parse(d[..],nr_test_reuse(count,-1,"compiler",text[..]),nodes[..]) && !nr_reuse(0,d[0],"compiler",keys[..],hashes[..]);}
+  #assert jv_parse(d[..],nr_test_reuse(3,-1,"compiler",text[..]),nodes[..]) && nr_reuse(1,d[0],"compiler",keys[..],hashes[..]);
+  for bad:0..<7 {#assert jv_parse(d[..],nr_test_reuse(7,bad,"compiler",text[..]),nodes[..]) && !nr_reuse(0,d[0],"compiler",keys[..],hashes[..]);}
+}
+nr_test_replace :: (source:string,needle:string,replacement:string,out:[]u8)->string {
+  at:=rtq_find(source,needle,0);if at<0 {return "";}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],source[0..<at]);jo_put(o[..],replacement);jo_put(o[..],source[at+needle.count..<source.count]);return jo_text(o[..]);
+}
+#test "reuse refuses missing typed facts and unknown empty profiles" {
+  text:[8192]u8;changed:[8192]u8;nodes:[256]JvNode;d:[1]Jv;keys:=[1]string.["/source.coax"];hashes:=[1]string.["source"];
+  #assert jv_parse(d[..],nr_test_reuse(0,-1,"compiler",text[..]),nodes[..]) && !nr_reuse(-1,d[0],"compiler",keys[..],hashes[..]) && !nr_reuse(2,d[0],"compiler",keys[..],hashes[..]);
+  baseline:=nr_test_reuse(7,-1,"compiler",text[..]);
+  for key:[3]string.["source_inputs","commands","exit_code"] {
+    needle:[128]u8;w:[1]Jo;jo_start(w[..],needle[..]);jo_str(w[..],key);replacement:="\"missing\"";
+    bad:=nr_test_replace(baseline,jo_text(w[..]),replacement,changed[..]);#assert jv_parse(d[..],bad,nodes[..]) && !nr_reuse(0,d[0],"compiler",keys[..],hashes[..]);
+  }
+}
+#forall "fresh reuse and historical modes select exactly one explicit source" historical:0..<2,fresh:0..<2,reuse:0..<2 {
+  expected:=(historical==1 && fresh==0 && reuse==0) || (historical==0 && fresh==1 && reuse==0) || (historical==0 && fresh==0 && reuse==1);
+  #assert nr_mode(historical==1,fresh==1,reuse==1)==expected;
+}

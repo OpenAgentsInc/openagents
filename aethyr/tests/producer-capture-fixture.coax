@@ -1,0 +1,58 @@
+// Independent authored producer for capture-tool parity. This is a CPU-only
+// WebAssembly fixture, not a renderer or a production realm.
+#load "producer-capture-fixture-checks.coax";
+PfxTrace :: struct {initialized:int;count:int;calls:[8]int;}
+PfxState :: struct {
+  frame:int;scalar_order:int;initialized:int;mode:int;action:int;acks:int;
+  golden:int;page:int;facts_sum:int;hash_sum:int;catalog_sum:int;event_sum:int;
+  key_down:int;key_up:int;pointers:int;store_calls:int;version_calls:int;ready:[8]int;
+  inbox:[4][65536]u8;catalog:[32]u8;stores:[2][16]u8;puffs:[7]u8;draws:[4]u32;
+}
+pfx_initialize :: (trace:[]PfxTrace)->int #export_c {trace[0].initialized=1;return 1;}
+pfx_scalar :: (trace:[]PfxTrace,kind:int,abi_size:int)->int #export_c {
+  if trace[0].count<8 {trace[0].calls[trace[0].count]=kind;trace[0].count+=1;}
+  return ifx kind==1 || kind==2 then 4 else ifx kind==3 then 24 else abi_size;
+}
+pfx_init :: (s:[]PfxState,trace:[]PfxTrace) #export_c {
+  s[0]=PfxState.{};s[0].initialized=trace[0].initialized;
+  for k:0..<trace[0].count {s[0].scalar_order=s[0].scalar_order*10+trace[0].calls[k];}
+}
+pfx_inbox_sum :: (s:[]PfxState,n:int)->int {sum:=0;for k:0..<n {sum=(sum+cast(int)s[0].inbox[k/65536][k%65536])%65521;}return sum;}
+pfx_golden :: (s:[]PfxState,n:int) #export_c {s[0].golden=n;}
+pfx_page :: (s:[]PfxState,n:int) #export_c {s[0].page=n;}
+pfx_message :: (s:[]PfxState,kind:int,n:int) #export_c {
+  if n<0 || n>262144 {return;}value:=pfx_inbox_sum(s,n);if kind==600 {s[0].facts_sum=value;}s[0].event_sum=(s[0].event_sum*3+kind+value)%65521;s[0].action=kind;
+}
+pfx_ready :: (s:[]PfxState,index:int,n:int) #export_c {if index>=0 && index<8 {s[0].ready[index]=n;}s[0].event_sum=(s[0].event_sum*3+index+n)%65521;}
+pfx_asset :: (s:[]PfxState,n:int,base:int)->int #export_c {return ifx n>=0 && n<=32 then base else 67108863;}
+pfx_hash :: (s:[]PfxState,n:int) #export_c {
+  if n<0 || n>262144 {return;}s[0].hash_sum=pfx_inbox_sum(s,n);text:[64]u8;for k:0..<(ifx n<64 then n else 64) {text[k]=s[0].inbox[k/65536][k%65536];}
+  word:=cast(string)text[0..<(ifx n<64 then n else 64)];s[0].mode=ifx word=="bad-hud" then 1 else ifx word=="bad-store" then 2 else ifx word=="bad-span" then 3 else ifx word=="bad-draw-span" then 4 else ifx word=="bad-particles" then 5 else 0;s[0].action=900;
+}
+pfx_action :: (s:[]PfxState)->int #export_c {return s[0].action;}
+pfx_done :: (s:[]PfxState) #export_c {s[0].action=0;s[0].acks+=1;}
+pfx_key :: (s:[]PfxState,key:int,down:bool) #export_c {if down {s[0].key_down+=1;}else {s[0].key_up+=1;}s[0].event_sum=(s[0].event_sum*3+key+(ifx down then 1 else 2))%65521;s[0].action=400;}
+pfx_pointer :: (s:[]PfxState,x:f64,y:f64,phase:int) #export_c {s[0].pointers+=1;s[0].event_sum=(s[0].event_sum*3+cast(int)(x*4.0)+cast(int)(y*4.0)+phase)%65521;s[0].action=500;}
+pfx_capacity :: (index:int)->int #export_c {return ifx index==0 then 12 else ifx index==1 then 5 else 0;}
+pfx_store_count :: ()->int #export_c {return 2;}
+pfx_vertex_words :: ()->int #export_c {return 16;}
+pfx_uniform_words :: ()->int #export_c {return 24;}
+pfx_version :: (s:[]PfxState,index:int)->int #export_c {s[0].version_calls+=1;return ifx index==1 then 9223372036854775807 else ifx s[0].frame==1 then 100 else 101;}
+pfx_store_bytes :: (s:[]PfxState,index:int)->int #export_c {
+  s[0].store_calls+=1;if s[0].mode==2 && index==0 {return 13;}if s[0].frame==2 {return 0;}if index==1 {return ifx s[0].frame==3 then 1 else 5;}return ifx s[0].frame==3 then 4 else 8;
+}
+pfx_store_pointer :: (s:[]PfxState,index:int,first:int,second:int)->int #export_c {return ifx s[0].mode==3 then 67108863 else ifx index==0 then first else second;}
+pfx_particle_bytes :: (s:[]PfxState)->int #export_c {return ifx s[0].mode==5 then 8 else ifx s[0].frame==1 then 7 else ifx s[0].frame==3 then 3 else 0;}
+pfx_draw_pointer :: (s:[]PfxState,base:int)->int #export_c {return ifx s[0].mode==4 then 67108863 else base;}
+pfx_count :: (kind:int)->int #export_c {values:=[7]int.[1,2,3,1,4,5,6];return values[kind];}
+pfx_frame_values :: (s:[]PfxState,vertices:[]f32,uniforms:[]f32,width:int,height:int,scale:f32,ms:int,seconds:int,pages:int)->int {
+  s[0].frame+=1;for index:0..<2 {for k:0..<16 {s[0].stores[index][k]=cast(u8)((s[0].frame*17+index*31+k)%256);}s[0].stores[index][1]=0;s[0].stores[index][2]=255;s[0].stores[index][3]=128;}
+  for k:0..<7 {s[0].puffs[k]=cast(u8)((s[0].frame*29+k)%256);}s[0].draws=[4]u32.[0,1,0,1];
+  s[0].catalog_sum=0;for k:0..<s[0].ready[0] {s[0].catalog_sum+=cast(int)s[0].catalog[k];}
+  values:=[24]int.[s[0].scalar_order,s[0].frame,s[0].golden,s[0].page,s[0].facts_sum,s[0].hash_sum,s[0].ready[0],s[0].ready[1],s[0].ready[2],s[0].ready[3],s[0].ready[4],s[0].ready[5],s[0].event_sum,s[0].acks,s[0].catalog_sum,ms%65521,s[0].store_calls,s[0].version_calls,pages,s[0].key_down,s[0].key_up,s[0].initialized,s[0].pointers,seconds%65521];
+  for k:0..<24 {uniforms[k]=cast(f32)values[k];}for k:0..<16 {vertices[k]=cast(f32)(s[0].frame+k);}s[0].action=700;return ifx s[0].mode==1 then 5 else 2;
+}
+pfx_clock_ms :: ()->int #foreign;
+pfx_clock_seconds :: ()->int #foreign;
+pfx_memory_pages :: ()->int #foreign;
+pfx_frame :: (s:[]PfxState,vertices:[]f32,uniforms:[]f32,width:int,height:int,scale:f32)->int #export_c {ms:=pfx_clock_ms();seconds:=pfx_clock_seconds();pages:=pfx_memory_pages();return pfx_frame_values(s,vertices,uniforms,width,height,scale,ms,seconds,pages);}

@@ -1,0 +1,110 @@
+{
+  "schema": "aethyr.native-gpu-fresh-port.v1",
+  "status": "passed-local-orchestration-port",
+  "scope": "Fresh emission, distinct fault construction, exact compiler/source/artifact reuse and controller mode/exit behavior in Coax; no new GPU arithmetic qualification",
+  "preceding_checkpoint": "72e037b416",
+  "preceding_real_gpu_record": "docs/verification/aethyr-native-gpu-port-2026-11-02.json",
+  "retired_live_drivers": ["aethyr/tests/check_render_sampling_gpu.py", "aethyr/tests/check_render_helper_gpu.sh"],
+  "frozen_c_references_kept": ["aethyr/tests/render-sampling-gpu.c", "aethyr/tests/render-helper-gpu.c"],
+  "implementation": {
+    "controller": "aethyr/tests/check-render-native-gpu.coax",
+    "controller_sha256": "36fb5c32e38694bb5e88122832893f5192f2f97dfb086ca6f27947760fbe1c70",
+    "local_emitter": "aethyr/tests/emit-native-gpu.coax",
+    "emission_module": "aethyr/tests/native-gpu-emissions.coax",
+    "modes": ["historical-emissions", "fresh-emissions", "reuse-emissions"],
+    "one_mode_only": true,
+    "emissions_only_stops_before_remote_creation": true,
+    "shader_and_worker_compilers_are_separate_explicit_inputs": true,
+    "reuse_contract": "Exact selected compiler bytes and every current emission dependency hash; seven sampling or three helper successful compiler calls; all 18/six artifact hashes. Successful emissions remain reusable after a failed overall GPU run, matching the original Python contract.",
+    "first_failure_prefix_preserved": true,
+    "unchanged_gpu_worker_body": "aethyr/tests/native-gpu-worker.coax",
+    "unchanged_vulkan_effect_body": "aethyr/tests/native-gpu-effects.c"
+  },
+  "compiler_scope": {
+    "coax_version": "coax0 0.47.0",
+    "coax_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "qualified_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "matches_current_compiler_sources": false,
+    "label": "explicit older exploratory tool compiler; no default compiler replaced",
+    "fixture_compiler_image_sha256": "689e067bd454b9e4e605326bbe4db704bc86cc45cd46d2a995d2a6a28e57253f",
+    "fixture_ssh_image_sha256": "bc6dd80586af34214e0da8d615b241b00ba64113996dd0b79193d916f55d60ed",
+    "local_emitter_image_sha256": "99aa29f547a6ccaba742b0ff1296a75c62dae98e3de424f8cd7d1c6d513f198d",
+    "final_controller_image_sha256": "b54c636bb667562add0a2fb124d4ee6b49c77a9e1d4706a6369a13c26524e321",
+    "fixture_output": "Deliberately non-SPIR-V artifact bytes and non-linkable C/header stubs. Never submitted to Vulkan. Dependency queries alone delegate to the qualified Coax image."
+  },
+  "authored_checks": {
+    "emission_plan_and_fault_policy": {"root_mutants": 99, "killed": 99, "survivors": 0, "sha256": "946db68698760cbbb328f4c678ecf28cb9b994e1133ba0c01302cd62adc3eeb8"},
+    "reuse_and_mode_policy": {"root_mutants": 51, "killed": 51, "survivors": 0, "sha256": "cdd4d0fcc2ec7cfa2579fae1b5fb3ac036f77ef80cbd0dda72213ba3b02a6c13"},
+    "archived_reference_identity_policy": {"root_mutants": 2, "killed": 2, "survivors": 0, "sha256": "4b80e6e158c9958e5116e354234515920bf9976aca449ef882f63221bc5df042"},
+    "new_owned_root_mutants": 152,
+    "equivalent_waivers": 0,
+    "release_emission_reuse_closure": {"passed": 85, "failed": 0},
+    "release_reference_identity": {"passed": 1, "failed": 0}
+  },
+  "same_input_reference_parity": {
+    "qualifier": "aethyr/tests/check-native-gpu-emissions.coax",
+    "final_receipt_in_archive": "runs/aethyr-native-gpu-fresh-archived-20261102.json",
+    "scenarios_passed": 12,
+    "positive_local_emission_prefixes": 2,
+    "compiler_failure_prefixes": 10,
+    "sampling_compiler_calls": 7,
+    "helper_compiler_calls": 3,
+    "sampling_artifact_bytes_and_existence_equal": 18,
+    "helper_artifact_bytes_and_existence_equal": 6,
+    "literal_emission_argv_and_source_hashes_equal": true,
+    "positive_reference_network_boundary": "Both original drivers complete their local emissions, then the owned Coax SSH fixture records argv and refuses with 89; no SSH or remote script executes.",
+    "reference_archive": "docs/verification/data/aethyr-ch11-2026-11-02/native-gpu-port/artifacts.tar.gz",
+    "reference_archive_sha256": "b098e3115f00e3d8fa095d7d0927835b9fa2e22a327fda69f29e467ac6b74409",
+    "original_python_sha256": "806eb0403790a78045380e69560c3a50320d6665fd772b5de1cd16048be65d00",
+    "original_shell_sha256": "a1d74b80f0e2f8ae88e48640d32a0c9dfd5e21763214e7de8b30c4776caf1e25",
+    "reference_adaptation": "Coax restores and hash-checks the original bytes, binds their repository root, and redirects Python's self-inventory path to the bound reference file. Compiler argv, fault construction, output logic and exits are unchanged. Exact originals and adapted programs are both retained. The maintained qualifier no longer requires either deleted live driver."
+  },
+  "final_controller_modes": {
+    "qualifier": "aethyr/tests/check-native-gpu-modes.coax",
+    "receipt_in_archive": "runs/aethyr-native-gpu-modes-final-20261102.json",
+    "fresh_positive_flows": 2,
+    "reuse_positive_flows": 2,
+    "all_reused_artifact_bytes_equal": true,
+    "sampling_refusals": 22,
+    "helper_refusals": 10,
+    "refusals": "Per profile: wrong compiler identity, changed current Coax source dependency, failed emission, incomplete emission prefix; plus every one of the 18/six artifact bytes individually corrupted.",
+    "network_or_gpu_calls": 0,
+    "source_epoch": "Final controller image after mode selection was moved to its authority policy. An earlier prototype 36-case result is retained separately; it is not substituted for this final-image run."
+  },
+  "entry_boundaries": {
+    "qualifier": "aethyr/tests/check-native-gpu-entry-boundaries.coax",
+    "receipt_in_archive": "runs/aethyr-native-gpu-entry-second-20261102.json",
+    "passed": 7,
+    "sampling_bridge_compiler_failure_exit": 1,
+    "helper_bridge_compiler_failure_exit": 71,
+    "invalid_input_exits": [2,2,2,2,2],
+    "invalid_inputs": ["no emission mode", "fresh plus historical", "fresh plus reuse", "unknown profile", "missing exploratory acknowledgement"],
+    "no_user_receipt_or_remote_creation_on_refusal": true,
+    "child_prefixes_match_original_counts": true
+  },
+  "historical_reproduction": {
+    "offline_qualifier": "aethyr/tests/check-native-gpu-parity.coax",
+    "retained_complete_closure_fallback": true,
+    "sampling_raw_words_re_admitted_offline": 192,
+    "new_gpu_run": false,
+    "shared_helper_epoch": "qualification-files.coax now preserves leading slash when root is empty; SHA a2767400d5a25e59de2cbc073e6fc4eaf858f2778f590f4b482d335f9acbbe6a. Historical qualification retains its exact old helper; current offline reproduction resolves that saved closure.",
+    "historical_eof_delta": "native-gpu-checks.coax qualified snapshot SHA 1ee62f3493529b984bc5960ef9e99f688aa7f69e9c39237867ec30a65e986ca8 versus current SHA c346ff0888026085695b2ac87de2a6e77459dfd17aa4fb8a41e20b0aaa404296. Only the final empty line was removed; no arithmetic or GPU gate repeated for this whitespace-only normalization."
+  },
+  "limitations": [
+    "The only real GPU arithmetic evidence remains the preceding explicit 308/693 historical profiles. Fresh current-compiler/SDK GPU output has not been newly qualified here.",
+    "The fresh qualification uses explicitly non-GPU local fixtures to check orchestration and refusals. Passing these does not qualify a shader compiler or a production realm.",
+    "The earlier actual worker shader-file fences, pre-execution-only native-image hashes and absence of an exact uploaded-buffer hash retain their previously stated limits.",
+    "Chapter 11 remains partial; this closes the two non-Coax orchestration drivers, not the complete renderer/book."
+  ],
+  "retained_development_failures": "Initial deps --library refusal was fixed using the original main-carrier inventory. An initial source-loss fixture changed only the separately checked compiler's optional source-map entry and was correctly admitted; the fixture now changes an actual Coax dependency. A boundary recorder filename collision was fixed in a fresh directory. Initial surviving-mutant reports and all failed attempts are retained without waivers.",
+  "retention": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/native-gpu-fresh-port/artifacts.tar.gz",
+    "bytes": 1248624,
+    "sha256": "af47d31fa673f906fe136e119e5e16b11e203610e4e42bf4d47c924bd955b22a",
+    "regular_payload_hashes_verified": 6086,
+    "regular_files_including_manifest": 6087,
+    "owned_fixture_symlinks_recorded_and_diff_verified": 8,
+    "whole_directory_diff_exit": 0,
+    "contents": "Complete raw stdout/stderr including empty streams, reference and new outputs, fault prefixes, all changed-artifact cases, original and bound reference sources, final Coax source closure, final host executable images, prototype/failure history, mutation/release logs, historical offline replay receipt and exact symlink-target inventory. Historical GPU raw data and the older compiler image remain in the preceding hash-pinned archive."
+  }
+}

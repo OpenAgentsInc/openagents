@@ -1,0 +1,36 @@
+// Same-input local fresh-branch parity against the frozen original drivers.
+// Both sides use an explicitly non-GPU Coax compiler fixture. SSH is replaced
+// by an owned Coax executable that records argv and refuses without a network.
+#load "native-gpu-emissions.coax";
+#load "native-gpu-reference-tools.coax";
+ngq_add_env :: (key:string,value:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],key);jo_put(o[..],"=");jo_put(o[..],value);return jo_text(o[..]);}
+ngq_same_file :: (a:string,b:string)->bool {if fs_exists(a)!=fs_exists(b) {return false;}if !fs_exists(a) {return true;}x:[64]u8;y:[64]u8;return rtq_hash_file(a,x[..]) && rtq_hash_file(b,y[..]) && cast(string)x[..]==cast(string)y[..];}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}work:=args_value(a[..],"--work-dir","");emitter:=args_value(a[..],"--emitter","");fixture:=args_value(a[..],"--fixture-compiler","");ssh_fixture:=args_value(a[..],"--fixture-ssh","");real:=args_value(a[..],"--real-coax","");receipt:=args_value(a[..],"--receipt","");
+  if work=="" || emitter=="" || fixture=="" || ssh_fixture=="" || real=="" || receipt=="" || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
+  paths:[12][4096]u8;root_buf:[4096]u8;root:=fs_cwd(root_buf[..]);deadline:=proc_deadline(810000,proc_now_ms());out:[1048576]u8;err:[65536]u8;none:[]string;inputs:[1]RtqInputs;
+  for path:[4]string.[emitter,fixture,ssh_fixture,real] {if !rtq_input_add(inputs[..],path) {return 1;}}
+  reference_paths:[2][4096]u8;if !nref_restore(root,work,deadline,inputs[..],reference_paths[0][..],reference_paths[1][..]) {return 1;}
+  reference_dir:=fs_join(work,"legacy-reference",paths[10][..]);python_reference:=fs_join(reference_dir,"reference-sampling.py",reference_paths[0][..]);shell_reference:=fs_join(reference_dir,"reference-helper.sh",reference_paths[1][..]);
+  bin:=fs_join(work,"bin",paths[0][..]);if !fs_mkdir(bin) {return 1;}link:=fs_join(bin,"ssh",paths[1][..]);ln:=[4]string.["ln","-s",ssh_fixture,link];r:=rtq_command(ln[..],none,deadline,work,"link-no-network-ssh",out[..],err[..]);resolved:[4096]u8;if !rtq_ok(r) || fs_realpath(link,resolved[..])!=ssh_fixture {return 1;}
+  bytes:[1048576]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.native-gpu-fresh-parity.v1");jo_key(o[..],"gpu_execution");jo_bool(o[..],false);jo_key(o[..],"cases");jo_arr(o[..]);
+  for profile:0..<2 {for scenario:0..<ne_count(profile)+1 {
+    label:[128]u8;w:[1]Jo;jo_start(w[..],label[..]);jo_put(w[..],ifx profile==0 then "sampling-" else "helper-");jo_int(w[..],scenario);case_dir:=fs_join(work,jo_text(w[..]),paths[2][..]);if !fs_mkdir(case_dir) {return 1;}
+    candidate:=fs_join(case_dir,"candidate",paths[3][..]);saved:=fs_join(case_dir,"reference",paths[4][..]);reference_calls:=fs_join(case_dir,"reference-calls.jsonl",paths[5][..]);fresh_calls:=fs_join(case_dir,"fresh-calls.jsonl",paths[6][..]);ssh_calls:=fs_join(case_dir,"ssh-calls.jsonl",paths[7][..]);fresh_receipt:=fs_join(case_dir,"fresh-receipt.json",paths[8][..]);
+    fail:=ifx scenario==0 then "" else ne_file(profile,scenario-1);environment:[6]string;env_bytes:[6][4096]u8;
+    environment[0]=ngq_add_env("AETHYR_FRESH_REAL_COAX",real,env_bytes[0][..]);environment[1]=ngq_add_env("AETHYR_FRESH_CALLS",reference_calls,env_bytes[1][..]);environment[2]=ngq_add_env("AETHYR_FRESH_FAIL",fail,env_bytes[2][..]);environment[3]=ngq_add_env("AETHYR_FRESH_SSH_CALLS",ssh_calls,env_bytes[3][..]);environment[4]=ngq_add_env("COAX",fixture,env_bytes[4][..]);path_value:[4096]u8;p:[1]Jo;jo_start(p[..],path_value[..]);jo_put(p[..],bin);jo_put(p[..],":/usr/bin:/bin");environment[5]=ngq_add_env("PATH",jo_text(p[..]),env_bytes[5][..]);
+    argv:[8]string;count:=0;
+    if profile==0 {for arg:[6]string.["/usr/bin/python3",python_reference,"local-no-network",candidate,"--coax",fixture] {argv[count]=arg;count+=1;}}
+    else {for arg:[4]string.["/bin/bash",shell_reference,"local-no-network",candidate] {argv[count]=arg;count+=1;}}
+    reference_run:=rtq_command(argv[0..<count],environment[..],deadline,case_dir,"legacy",out[..],err[..]);expected_reference:=ifx profile==0 then 1 else ifx scenario==0 then 89 else 71;
+    if reference_run.started!=0 || reference_run.timed_out || reference_run.cut || reference_run.status!=expected_reference || !fs_exists(candidate) || !fs_rename(candidate,saved) {return 1;}
+    if fs_exists(ssh_calls)!=(scenario==0) {return 1;}environment[1]=ngq_add_env("AETHYR_FRESH_CALLS",fresh_calls,env_bytes[1][..]);
+    fresh_argv:=[9]string.[emitter,"--profile",ifx profile==0 then "sampling" else "helper","--out-dir",candidate,"--receipt",fresh_receipt,"--coax",fixture];fresh_run:=rtq_command(fresh_argv[..],environment[..],deadline,case_dir,"fresh",out[..],err[..]);expected_fresh:=ifx scenario==0 then 0 else ifx profile==0 then 1 else 71;
+    if fresh_run.started!=0 || fresh_run.timed_out || fresh_run.cut || fresh_run.status!=expected_fresh || !ngq_same_file(reference_calls,fresh_calls) {tool_errln("fresh compiler prefix/argv parity failed");return 1;}
+    file_paths:[2][4096]u8;
+    if profile==0 {for name:[18]string.["filtered.spv","invalid.spv","array.spv","invalid-array.spv","fault.spv","fault-array.spv","filtered.reflection","invalid.reflection","array.reflection","invalid-array.reflection","fault.reflection","fault-array.reflection","RenderCaps.c","RenderCaps.h","sampling-fault.coax","fault-source.coax","sampling-fault-array.coax","fault-array-source.coax"] {if !ngq_same_file(fs_join(saved,name,file_paths[0][..]),fs_join(candidate,name,file_paths[1][..])) {tool_err("fresh artifact parity failed: ");tool_errln(name);return 1;}}}
+    else {for name:[6]string.["helper.spv","range.spv","helper.reflection","range.reflection","RenderCaps.c","RenderCaps.h"] {if !ngq_same_file(fs_join(saved,name,file_paths[0][..]),fs_join(candidate,name,file_paths[1][..])) {return 1;}}}
+    doc_bytes:[1048576]u8;nodes:[16384]JvNode;d:[1]Jv;if !rtq_json_file(fresh_receipt,doc_bytes[..],nodes[..],d[..]) || jv_int(d[0],rtq_member(d[0],0,"completed"),-1)!=(ifx scenario==0 then ne_count(profile) else scenario-1) || jv_int(d[0],rtq_member(d[0],0,"failed_index"),-2)!=(ifx scenario==0 then -1 else scenario-1) {return 1;}
+    jo_obj(o[..]);jo_key(o[..],"profile");jo_str(o[..],ifx profile==0 then "sampling" else "helper");jo_key(o[..],"compiler_failure");jo_str(o[..],fail);jo_key(o[..],"legacy_exit");jo_int(o[..],reference_run.status);jo_key(o[..],"fresh_exit");jo_int(o[..],fresh_run.status);jo_key(o[..],"compiler_calls_equal");jo_bool(o[..],true);jo_key(o[..],"artifact_bytes_equal");jo_bool(o[..],true);jo_key(o[..],"network_boundary_refused");jo_bool(o[..],scenario==0);jo_end(o[..]);
+  }}jo_end(o[..]);jo_key(o[..],"status");jo_str(o[..],"passed");jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],root);jo_end(o[..]);if !rtq_inputs_match(inputs[..]) || o[0].bad || !fs_write(receipt,jo_text(o[..])) {return 1;}return 0;
+}

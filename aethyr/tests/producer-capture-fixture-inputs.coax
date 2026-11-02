@@ -1,0 +1,17 @@
+// Authored binary inputs independent of the capture implementation.
+#test "capture pack fixture includes duplicate empty mesh/index and ordered image entries" {
+  bytes:[1024]u8;n:=pfi_pack(false,bytes[..]);#assert n==491 && bytes[4]==9 && bytes[16]==32;
+  #assert bytes[32]==1 && bytes[40]==3 && bytes[80]==1 && bytes[88]==7;
+  #assert bytes[128]==2 && bytes[136]==0 && bytes[176]==2 && bytes[184]==4;
+  #assert bytes[224]==3 && bytes[232]==0 && bytes[272]==3 && bytes[280]==4;
+  #assert bytes[320]==4 && bytes[368]==4 && bytes[416]==9;
+  #assert bytes[464]=='C' && bytes[465]=='A' && bytes[466]=='T' && bytes[482]==0 && bytes[483]==255 && bytes[484]==128 && bytes[485]==13;
+  n=pfi_pack(true,bytes[..]);#assert n==488 && bytes[40]==0 && bytes[479]==0 && bytes[480]==255;
+}
+pfi_u32 :: (bytes:[]u8,at:int,value:int) {for k:0..<4 {bytes[at+k]=cast(u8)((cast(u64)value>>(k*8))&255);}}
+pfi_pack :: (empty_catalog:bool,out:[]u8)->int {
+  kinds:=[9]int.[1,1,2,2,3,3,4,4,9];lengths:=[9]int.[ifx empty_catalog then 0 else 3,7,0,4,0,4,4,3,2];
+  payload:=[27]u8.[67,65,84,105,103,110,111,114,101,100,77,69,83,72,73,78,68,88,0,255,128,13,7,0,9,5,6];
+  for k:0..<512 {out[k]=0;}pfi_u32(out,4,9);pfi_u32(out,16,32);cursor:=464;source:=ifx empty_catalog then 3 else 0;
+  for i:0..<9 {at:=32+i*48;out[at]=cast(u8)kinds[i];pfi_u32(out,at+4,cursor);pfi_u32(out,at+8,lengths[i]);for k:0..<lengths[i] {out[cursor+k]=payload[source+k];}cursor+=lengths[i];source+=lengths[i];}return cursor;
+}

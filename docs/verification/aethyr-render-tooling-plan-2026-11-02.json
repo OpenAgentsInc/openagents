@@ -4,7 +4,7 @@
   "rule": "coax/tools-in-coax.md",
   "baseline_gate": "/tmp/aethyr-tools-compliance-initial-20261102.log",
   "scope": "Maintained aethyr/render/tests Python tools only. Historical proof sources and browser drivers belong to the root; native package/staging tools are another agent's scope.",
-  "status": "in_progress",
+  "status": "complete_for_scoped_python_inventory",
   "tools": [
     {
       "path": "aethyr/render/tests/analyze_depth_plane.py",
@@ -65,10 +65,11 @@
     {
       "path": "aethyr/render/tests/check_filter_native.py",
       "original_sha256": "7455aef60dfff8c642b52ea9e8818dc0470feab1544ab1b5fd7c117406131c96",
-      "action": "port_to_coax",
+      "action": "ported_to_coax",
       "reason": null,
       "scope": "Compares retained GPU observations; does not independently recompute the filter and is not an independent-oracle exception.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "note": "Coax owns all filter qualification orchestration and unchanged finite inclusive1e-7 verdict. Policy111/111 root mutants killed;3native modes each58positive/232channels,72refusals,7losses. Final C/header and8fixture files exactly match original;174positive records match exact IEEE64 words.12 unchanged-old-function boundary controls, actual default mismatch refusal and8cache controls pass. Existing IEEE codec unchanged and narrowly supplies numbers only. Original archive-readback verified before retirement. Evidence: data/aethyr-ch11-2026-11-02/filter-tool-port/qualification.json.",
+      "replacement": "aethyr/render/tests/check-filter-native.coax"
     },
     {
       "path": "aethyr/render/tests/check_frame.py",
@@ -237,26 +238,29 @@
     {
       "path": "aethyr/render/tests/test_geometry_tooling.py",
       "original_sha256": "f06b6856286b93899398c37ce0594a1d65b0d12ea375613f962c33bc43f163a4",
-      "action": "port_to_coax",
+      "action": "ported_to_coax",
       "reason": null,
       "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "note": "All original small unit methods passed first. Coax owns ABI/JSON/word-loss fixtures and verdicts, invoking the unchanged independent interval/pixel oracle only for reference facts. Geometry includes all7 wire losses, atomic publication and actual stale-compiler ordering; pipeline catches144 pixel words,5 counters,2 exact-work losses and15 ABI losses. No full geometry/renderer gate. Archive-readback verified before retirement. Evidence: data/aethyr-ch11-2026-11-02/oracle-tooling-port/qualification.json.",
+      "replacement": "aethyr/render/tests/check-geometry-tooling.coax"
     },
     {
       "path": "aethyr/render/tests/test_pipeline_tool.py",
       "original_sha256": "8331beb2f7d2c0e0f803339e85b1da45c20409355c872e0463200a80e5e80c40",
-      "action": "port_to_coax",
-      "reason": null,
-      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "action": "split_oracle_and_coax",
+      "reason": 2,
+      "scope": "Only unchanged hand-pinned depth/target binary32 words and helper masks remain as an independent arithmetic oracle. All child lifecycle, signals, deadlines and verdict orchestration are Coax.",
+      "note": "All4 original methods passed first. Actual Coax worker exit7,200ms timeout,SIGINT andSIGTERM controls passed with both owned child PIDs dead/zombie and no success marker; unknown process observations refuse. New policy23/23 root mutants killed. Default current-source mismatch refuses before worker emission. Original source archive-readback verified; retained math method byte-identical. Evidence: data/aethyr-ch11-2026-11-02/pipeline-process-tool-port/qualification.json.",
+      "replacement": "aethyr/render/tests/check-pipeline-processes.coax"
     },
     {
       "path": "aethyr/render/tests/test_pipeline_tooling.py",
       "original_sha256": "75579fb85f4978573822519c26979dc9cf99737c087cf88be25f2e007497aa57",
-      "action": "port_to_coax",
+      "action": "ported_to_coax",
       "reason": null,
       "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "note": "All original small unit methods passed first. Coax owns ABI/JSON/word-loss fixtures and verdicts, invoking the unchanged independent interval/pixel oracle only for reference facts. Geometry includes all7 wire losses, atomic publication and actual stale-compiler ordering; pipeline catches144 pixel words,5 counters,2 exact-work losses and15 ABI losses. No full geometry/renderer gate. Archive-readback verified before retirement. Evidence: data/aethyr-ch11-2026-11-02/oracle-tooling-port/qualification.json.",
+      "replacement": "aethyr/render/tests/check-pipeline-tooling.coax"
     },
     {
       "path": "aethyr/render/tests/test_reference_frame_tool.py",
@@ -285,5 +289,6 @@
     }
   ],
   "first_port": "compare_frames.py and test_compare_frames.py -> Coax policy, CLI and checks; preserve the finite all-channel no-mask contract, input hashes and receipt schema.",
-  "completed_port": "compare-frames policy/CLI/checks;22parity cases,233/233zero; generic file range/realpath effects qualify in three native profiles."
+  "completed_port": "compare-frames policy/CLI/checks;22parity cases,233/233zero; generic file range/realpath effects qualify in three native profiles.",
+  "scope_limit": "All listed maintained aethyr/render/tests Python rows classified/ported/split; this is not the repository-wide tools gate, current-compiler release qualification or completed renderer/book."
 }

@@ -1,0 +1,17 @@
+// Explicit local emission entry. It never connects to a GPU host.
+#load "native-gpu-emissions.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}profile_name:=args_value(a[..],"--profile","");profile:=ifx profile_name=="sampling" then 0 else ifx profile_name=="helper" then 1 else -1;out_arg:=args_value(a[..],"--out-dir","");receipt:=args_value(a[..],"--receipt","");compiler:=args_value(a[..],"--coax","");
+  if profile<0 || out_arg=="" || compiler=="" || receipt=="" || fs_exists(out_arg) || fs_exists(receipt) || !fs_mkdir(out_arg) {return 2;}
+  paths:[8][4096]u8;root:=fs_cwd(paths[0][..]);out:=fs_realpath(out_arg,paths[1][..]);if root=="" || out=="" {return 2;}
+  deadline:=proc_deadline(810000,proc_now_ms());inputs:[1]RtqInputs;compiler_hash:[64]u8;if !rtq_input_add(inputs[..],compiler) || !rtq_hash_file(compiler,compiler_hash[..]) {return 1;}
+  shader_source:=ifx profile==0 then "aethyr/tests/render-sampling-shader.coax" else "aethyr/render/tests/pipeline-shader.coax";
+  if !ne_inventory(inputs[..],compiler,root,shader_source,deadline,out,"shader-deps") || !ne_inventory(inputs[..],compiler,root,"aethyr/tests/render-capabilities-bridge.coax",deadline,out,"bridge-deps") {return 1;}
+  if profile==1 && !ne_inventory(inputs[..],compiler,root,"aethyr/tests/render-binding-shader.coax",deadline,out,"range-deps") {return 1;}
+  bytes:[1048576]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.native-gpu-emissions.v1");jo_key(o[..],"profile");jo_str(o[..],profile_name);jo_key(o[..],"compiler_sha256");jo_str(o[..],cast(string)compiler_hash[..]);jo_key(o[..],"commands");jo_arr(o[..]);result:=ne_emit(profile,compiler,root,out,deadline,inputs[..],o[..]);jo_end(o[..]);
+  ok:=result.failed==-1 && rtq_inputs_match(inputs[..]);jo_key(o[..],"status");jo_str(o[..],ifx ok then "passed" else "failed");jo_key(o[..],"completed");jo_int(o[..],result.completed);jo_key(o[..],"failed_index");jo_int(o[..],result.failed);jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],"");jo_key(o[..],"artifacts");jo_obj(o[..]);
+  if ok {names:=[18]string.["filtered.spv","invalid.spv","array.spv","invalid-array.spv","fault.spv","fault-array.spv","filtered.reflection","invalid.reflection","array.reflection","invalid-array.reflection","fault.reflection","fault-array.reflection","RenderCaps.c","RenderCaps.h","sampling-fault.coax","fault-source.coax","sampling-fault-array.coax","fault-array-source.coax"];
+    if profile==0 {for name:names {hash:[64]u8;if !rtq_hash_file(fs_join(out,name,paths[2][..]),hash[..]) {return 1;}jo_key(o[..],name);jo_str(o[..],cast(string)hash[..]);}}
+    else {for name:[6]string.["helper.spv","range.spv","helper.reflection","range.reflection","RenderCaps.c","RenderCaps.h"] {hash:[64]u8;if !rtq_hash_file(fs_join(out,name,paths[2][..]),hash[..]) {return 1;}jo_key(o[..],name);jo_str(o[..],cast(string)hash[..]);}}
+  }jo_end(o[..]);jo_end(o[..]);if o[0].bad || !fs_write(receipt,jo_text(o[..])) {return 1;}return ifx ok then 0 else ifx profile==1 then result.status else 1;
+}

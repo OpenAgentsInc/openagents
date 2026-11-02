@@ -1,0 +1,21 @@
+// Restore the exact original reference programs from their qualified archive.
+// Only repo-root binding and Python's self-inventory path are adapted; compiler
+// calls, fault construction, output decisions and exit behavior stay frozen.
+#load "native-gpu-reference.coax";
+#load "native-gpu-reference-tools-policy.coax";
+#load "native-gpu-transport-policy.coax";
+nref_restore :: (root:string,work:string,deadline:int,inputs:[]RtqInputs,python_out:[]u8,shell_out:[]u8)->bool {
+  paths:[7][4096]u8;archive:=fs_join(root,"docs/verification/data/aethyr-ch11-2026-11-02/native-gpu-port/artifacts.tar.gz",paths[0][..]);hash:[64]u8;if !rtq_hash_file(archive,hash[..]) || cast(string)hash[..]!="b098e3115f00e3d8fa095d7d0927835b9fa2e22a327fda69f29e467ac6b74409" || !rtq_input_add(inputs,archive) {return false;}
+  restored:=fs_join(work,"legacy-reference",paths[1][..]);if !fs_mkdir(restored) {return false;}
+  members:=[2]string.["aethyr-native-gpu-port-20261102/executed-source/check_render_sampling_gpu.py","aethyr-native-gpu-port-20261102/executed-source/check_render_helper_gpu.sh"];argv:=[7]string.["tar","-xzf",archive,"-C",restored,members[0],members[1]];out:[65536]u8;err:[65536]u8;env:[]string;r:=rtq_command(argv[..],env,deadline,work,"restore-legacy-reference",out[..],err[..]);if !rtq_ok(r) {return false;}
+  python:=fs_join(restored,members[0],paths[2][..]);shell:=fs_join(restored,members[1],paths[3][..]);python_hash:[64]u8;shell_hash:[64]u8;
+  if !rtq_hash_file(python,python_hash[..]) || !rtq_hash_file(shell,shell_hash[..]) || !nref_identity(cast(string)hash[..],cast(string)python_hash[..],cast(string)shell_hash[..]) || !rtq_input_add(inputs,python) || !rtq_input_add(inputs,shell) {return false;}
+  bound_python:=fs_join(restored,"reference-sampling.py",python_out);bound_shell:=fs_join(restored,"reference-helper.sh",shell_out);
+  source:[65536]u8;a:[65536]u8;b:[65536]u8;replacement:[8192]u8;w:[1]Jo;n:=fs_read(python,source[..]);if n<0 {return false;}
+  jo_start(w[..],replacement[..]);jo_put(w[..],"ROOT = Path(");jo_str(w[..],root);jo_put(w[..],")");text:=nr_replace(cast(string)source[0..<n],"ROOT = Path(__file__).resolve().parents[2]",jo_text(w[..]),a[..]);if text=="" {return false;}
+  jo_start(w[..],replacement[..]);jo_str(w[..],bound_python);text=nr_replace(text,"\"aethyr/tests/check_render_sampling_gpu.py\"",jo_text(w[..]),b[..]);if text=="" {return false;}
+  if !fs_write(bound_python,"# Firm reason: 3 (frozen legacy reference; Coax binds only root and self-inventory).\n") || !fs_append(bound_python,text) || !rtq_input_add(inputs,bound_python) {return false;}
+  n=fs_read(shell,source[..]);if n<0 {return false;}quoted:[8192]u8;value:=ng_quote(root,quoted[..]);if value=="" {return false;}jo_start(w[..],replacement[..]);jo_put(w[..],"root=");jo_put(w[..],value);
+  text=nr_replace(cast(string)source[0..<n],"root=\"$(cd \"$(dirname \"$0\")/../..\" && pwd -P)\"",jo_text(w[..]),a[..]);
+  return text!="" && fs_write(bound_shell,"# Firm reason: 3 (frozen legacy reference; Coax binds only the repository root).\n") && fs_append(bound_shell,text) && rtq_input_add(inputs,bound_shell);
+}

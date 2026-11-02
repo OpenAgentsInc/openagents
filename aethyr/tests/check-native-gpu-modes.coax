@@ -1,0 +1,43 @@
+// Full controller fresh/reuse local modes and refusal gates. All artifacts are
+// explicit non-GPU fixture bytes; an owned SSH stand-in forbids network effects.
+#load "native-gpu-emissions.coax";
+#load "native-gpu-reuse-policy.coax";
+mo_env :: (key:string,value:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],key);jo_put(o[..],"=");jo_put(o[..],value);return jo_text(o[..]);}
+mo_name :: (prefix:string,index:int,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],prefix);jo_int(o[..],index);return jo_text(o[..]);}
+mo_same :: (a:string,b:string)->bool {x:[64]u8;y:[64]u8;return rtq_hash_file(a,x[..]) && rtq_hash_file(b,y[..]) && cast(string)x[..]==cast(string)y[..];}
+mo_rewrite :: (d:Jv,kind:int,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);node:=d.nodes[0].first;changed:=false;
+  while node!=-1 {key:=jv_key(d,node);jo_key(o[..],key);
+    if kind==0 && key=="compiler_sha256" {jo_str(o[..],"different compiler image");changed=true;}
+    else if kind==1 && key=="source_inputs" {jo_obj(o[..]);child:=d.nodes[node].first;while child!=-1 {jo_key(o[..],jv_key(d,child));label:=jv_key(d,child);if !changed && label.count>=5 && label[label.count-5..<label.count]==".coax" {jo_str(o[..],"different source hash");changed=true;}else {jv_write(d,child,o[..]);}child=d.nodes[child].next;}jo_end(o[..]);}
+    else if (kind==2 || kind==3) && key=="commands" {jo_arr(o[..]);n:=jv_len(d,node);for i:0..<n {row:=jv_at(d,node,i);if kind==3 && i==n-1 {changed=true;continue;}if kind==2 && i==n-1 {jo_obj(o[..]);child:=d.nodes[row].first;while child!=-1 {label:=jv_key(d,child);jo_key(o[..],label);if label=="exit_code" {jo_int(o[..],71);changed=true;}else {jv_write(d,child,o[..]);}child=d.nodes[child].next;}jo_end(o[..]);}else {jv_write(d,row,o[..]);}}jo_end(o[..]);}
+    else {jv_write(d,node,o[..]);}node=d.nodes[node].next;
+  }jo_end(o[..]);return ifx changed && !o[0].bad then jo_text(o[..]) else "";
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}work:=args_value(a[..],"--work-dir","");controller:=args_value(a[..],"--controller","");fixture:=args_value(a[..],"--fixture-compiler","");ssh_fixture:=args_value(a[..],"--fixture-ssh","");real:=args_value(a[..],"--real-coax","");receipt:=args_value(a[..],"--receipt","");
+  if work=="" || controller=="" || fixture=="" || ssh_fixture=="" || real=="" || receipt=="" || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
+  deadline:=proc_deadline(810000,proc_now_ms());paths:[20][4096]u8;out:[1048576]u8;err:[65536]u8;none:[]string;bin:=fs_join(work,"bin",paths[0][..]);if !fs_mkdir(bin) {return 1;}link:=fs_join(bin,"ssh",paths[1][..]);ln:=[4]string.["ln","-s",ssh_fixture,link];r:=rtq_command(ln[..],none,deadline,work,"no-network-link",out[..],err[..]);if !rtq_ok(r) {return 1;}
+  ssh_calls:=fs_join(work,"unexpected-ssh.jsonl",paths[2][..]);compiler_calls:=fs_join(work,"compiler-calls.jsonl",paths[3][..]);env_bytes:[6][4096]u8;environment:[6]string;
+  environment[0]=mo_env("AETHYR_FRESH_REAL_COAX",real,env_bytes[0][..]);environment[1]=mo_env("AETHYR_FRESH_CALLS",compiler_calls,env_bytes[1][..]);environment[2]=mo_env("AETHYR_FRESH_FAIL","",env_bytes[2][..]);environment[3]=mo_env("AETHYR_FRESH_SSH_CALLS",ssh_calls,env_bytes[3][..]);p:[1]Jo;path_value:[4096]u8;jo_start(p[..],path_value[..]);jo_put(p[..],bin);jo_put(p[..],":/usr/bin:/bin");environment[4]=mo_env("PATH",jo_text(p[..]),env_bytes[4][..]);environment[5]=mo_env("COAX",real,env_bytes[5][..]);
+  result:[1048576]u8;o:[1]Jo;jo_start(o[..],result[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.native-gpu-local-modes.v1");jo_key(o[..],"gpu_execution");jo_bool(o[..],false);jo_key(o[..],"profiles");jo_arr(o[..]);
+  inputs:[1]RtqInputs;for file:[4]string.[controller,fixture,ssh_fixture,real] {if !rtq_input_add(inputs[..],file) {return 1;}}
+  for profile:0..<2 {
+    prefix:=ifx profile==0 then "sampling-" else "helper-";label:[128]u8;name:[128]u8;w:[1]Jo;jo_start(w[..],name[..]);jo_put(w[..],prefix);jo_put(w[..],"fresh");fresh_work:=fs_join(work,jo_text(w[..]),paths[4][..]);jo_put(w[..],".json");fresh_receipt:=fs_join(work,jo_text(w[..]),paths[5][..]);
+    argv:=[14]string.[controller,"--profile",ifx profile==0 then "sampling" else "helper","--fresh-emissions","--emissions-only","--work-dir",fresh_work,"--receipt",fresh_receipt,"--coax",fixture,"--worker-coax",real,"--explore-stale-compiler"];
+    r=rtq_command(argv[..],environment[..],deadline,work,mo_name("fresh-",profile,label[..]),out[..],err[..]);if !rtq_ok(r) || fs_exists(ssh_calls) || fs_exists(fs_join(fresh_work,"remote-mkdir.json",paths[6][..])) {return 1;}payload:=fs_join(fresh_work,"payload",paths[6][..]);
+    jo_start(w[..],name[..]);jo_put(w[..],prefix);jo_put(w[..],"reuse");reuse_work:=fs_join(work,jo_text(w[..]),paths[7][..]);jo_put(w[..],".json");reuse_receipt:=fs_join(work,jo_text(w[..]),paths[8][..]);reuse:=[15]string.[controller,"--profile",ifx profile==0 then "sampling" else "helper","--reuse-emissions",payload,"--emissions-only","--work-dir",reuse_work,"--receipt",reuse_receipt,"--coax",fixture,"--worker-coax",real,"--explore-stale-compiler"];
+    r=rtq_command(reuse[..],environment[..],deadline,work,mo_name("reuse-",profile,label[..]),out[..],err[..]);if !rtq_ok(r) || !mo_same(fresh_receipt,reuse_receipt) || fs_exists(ssh_calls) || fs_exists(fs_join(reuse_work,"remote-mkdir.json",paths[9][..])) {return 1;}
+    jo_obj(o[..]);jo_key(o[..],"profile");jo_str(o[..],ifx profile==0 then "sampling" else "helper");jo_key(o[..],"fresh_and_reuse_passed");jo_bool(o[..],true);jo_key(o[..],"losses");jo_arr(o[..]);
+    artifact_names:=[18]string.["filtered.spv","invalid.spv","array.spv","invalid-array.spv","fault.spv","fault-array.spv","filtered.reflection","invalid.reflection","array.reflection","invalid-array.reflection","fault.reflection","fault-array.reflection","RenderCaps.c","RenderCaps.h","sampling-fault.coax","fault-source.coax","sampling-fault-array.coax","fault-array-source.coax"];helper_names:=[6]string.["helper.spv","range.spv","helper.reflection","range.reflection","RenderCaps.c","RenderCaps.h"];artifacts:=ifx profile==0 then 18 else 6;
+    for i:0..<artifacts {file:=ifx profile==0 then artifact_names[i] else helper_names[i];reuse_payload:=fs_join(reuse_work,"payload",paths[9][..]);if !mo_same(fs_join(payload,file,paths[10][..]),fs_join(reuse_payload,file,paths[11][..])) {return 1;}}
+    for loss:0..<artifacts+4 {
+      jo_start(w[..],name[..]);jo_put(w[..],prefix);jo_put(w[..],"loss-");jo_int(w[..],loss);case_dir:=fs_join(work,jo_text(w[..]),paths[9][..]);if !fs_mkdir(case_dir) {return 1;}clone:=fs_join(case_dir,"inputs",paths[10][..]);copy:=[4]string.["cp","-R",payload,clone];r=rtq_command(copy[..],none,deadline,case_dir,"copy",out[..],err[..]);if !rtq_ok(r) {return 1;}
+      if loss<4 {path:=fs_join(clone,"qualification.json",paths[11][..]);b:[1048576]u8;nodes:[16384]JvNode;d:[1]Jv;changed:[1048576]u8;if !rtq_json_file(path,b[..],nodes[..],d[..]) {return 1;}text:=mo_rewrite(d[0],loss,changed[..]);if text=="" || !fs_write(path,text) {return 1;}}
+      else {file:=ifx profile==0 then artifact_names[loss-4] else helper_names[loss-4];path:=fs_join(clone,file,paths[11][..]);b:[1048576]u8;n:=fs_read(path,b[..]);if n<1 {return 1;}b[0]^=1;if !fs_write(path,cast(string)b[0..<n]) {return 1;}}
+      output:=fs_join(case_dir,"work",paths[12][..]);case_receipt:=fs_join(case_dir,"receipt.json",paths[13][..]);loss_argv:=[15]string.[controller,"--profile",ifx profile==0 then "sampling" else "helper","--reuse-emissions",clone,"--emissions-only","--work-dir",output,"--receipt",case_receipt,"--coax",fixture,"--worker-coax",real,"--explore-stale-compiler"];
+      r=rtq_command(loss_argv[..],environment[..],deadline,case_dir,"refusal",out[..],err[..]);if r.started!=0 || r.status!=1 || r.timed_out || r.cut || fs_exists(ssh_calls) || fs_exists(case_receipt) || fs_exists(fs_join(output,"remote-mkdir.json",paths[14][..])) {return 1;}
+      jo_obj(o[..]);jo_key(o[..],"loss");if loss<4 {jo_int(o[..],loss);}else {jo_str(o[..],ifx profile==0 then artifact_names[loss-4] else helper_names[loss-4]);}jo_key(o[..],"exit");jo_int(o[..],r.status);jo_key(o[..],"before_network");jo_bool(o[..],true);jo_end(o[..]);
+    }jo_end(o[..]);jo_end(o[..]);
+  }jo_end(o[..]);jo_key(o[..],"status");jo_str(o[..],"passed");jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);if !rtq_inputs_match(inputs[..]) || o[0].bad || !fs_write(receipt,jo_text(o[..])) {return 1;}return 0;
+}

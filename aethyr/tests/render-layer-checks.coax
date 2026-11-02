@@ -1,0 +1,85 @@
+rlay_test_word :: (out:[]u8,at:int,n:int) {for k:0..<4 {out[at+k]=cast,trunc(u8)(n>>(k*8));}}
+#test "layer pack framing and each selected span stay inside the declared original bytes" {
+  h:[32]u8;for c,k:"VPK1" {h[k]=c;}rlay_test_word(h[..],4,2);rlay_test_word(h[..],8,128);rlay_test_word(h[..],16,32);
+  r:=rlay_pack(h[..],128);#assert r.valid && r.count==2 && r.table==32;
+  #assert !rlay_pack(h[0..<31],128).valid && !rlay_pack(h[..],127).valid;
+  h[0]='X';#assert !rlay_pack(h[..],128).valid;h[0]='V';rlay_test_word(h[..],16,129);#assert !rlay_pack(h[..],128).valid;
+  rlay_test_word(h[..],16,33);#assert !rlay_pack(h[..],128).valid;rlay_test_word(h[..],16,32);rlay_test_word(h[..],4,3);#assert !rlay_pack(h[..],128).valid;
+  #assert rlay_span(0,0,128) && rlay_span(128,0,128) && rlay_span(1,127,128) && !rlay_span(-1,1,128) && !rlay_span(0,-1,128) && !rlay_span(129,0,128) && !rlay_span(128,1,128);
+}
+#test "layer word pack size and count framing include exact lexical capacity boundaries" {
+  bytes:=[5]u8.[1,2,3,4,255];#assert rlay_u32(bytes[..],0)==67305985 && rlay_u32(bytes[..],1)==4278452994 && rlay_u32(bytes[..],-1)== -1 && rlay_u32(bytes[..],2)== -1 && rlay_u32(bytes[0..<3],0)== -1;
+  h:[32]u8;for c,k:"VPK1" {h[k]=c;}rlay_test_word(h[..],8,32);rlay_test_word(h[..],16,32);#assert rlay_pack(h[..],32).valid;rlay_test_word(h[..],8,31);#assert !rlay_pack(h[..],31).valid;
+  for n:[3]int.[128,268435456,268435457] {rlay_test_word(h[..],8,n);rlay_test_word(h[..],16,n);#assert rlay_pack(h[..],n).valid==(n<=268435456);rlay_test_word(h[..],16,n+1);#assert !rlay_pack(h[..],n).valid;}
+}
+#test "layer capture byte capacity and SHA spellings include every boundary" {
+  #assert rlay_capacity(0,0) && rlay_capacity(268435456,0) && rlay_capacity(0,268435456) && rlay_capacity(1,268435455);
+  #assert !rlay_capacity(-1,0) && !rlay_capacity(0,-1) && !rlay_capacity(0,268435457) && !rlay_capacity(1,268435456) && !rlay_capacity(268435457,0);
+  #assert rlay_hash("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !rlay_hash("") && !rlay_hash("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde") && !rlay_hash("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0");
+  for c:[8]u8.['/',':','`','g','A',0,127,255] {text:[64]u8;for k:0..<64 {text[k]='a';}text[10]=c;#assert !rlay_hash(cast(string)text[..]);}
+}
+rlay_test_mips :: (w:int,h:int,layers:int,levels:int)->int {
+  bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],"layers");jo_key(o[..],"format");jo_str(o[..],"rgba8unorm-srgb");jo_key(o[..],"layers");jo_int(o[..],layers);jo_key(o[..],"sha256");jo_str(o[..],"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");jo_key(o[..],"levels");jo_arr(o[..]);x:=w;y:=h;at:=0;
+  for k:0..<levels {pitch:=((x*4+255)/256)*256;jo_obj(o[..]);jo_key(o[..],"width");jo_int(o[..],x);jo_key(o[..],"height");jo_int(o[..],y);jo_key(o[..],"offset");jo_int(o[..],at);jo_key(o[..],"row_bytes");jo_int(o[..],pitch);jo_key(o[..],"layer_bytes");jo_int(o[..],pitch*y);jo_end(o[..]);at+=pitch*y*layers;x=ifx x/2<1 then 1 else x/2;y=ifx y/2<1 then 1 else y/2;}jo_end(o[..]);jo_end(o[..]);d:[1]Jv;nodes:[2048]JvNode;if o[0].bad || !jv_parse(d[..],jo_text(o[..]),nodes[..]) {return -2;}return rlay_size(d[0],0);
+}
+#test "layer mip chains keep rectangular axes full endpoints and exact layer limits" {
+  #assert rlay_test_mips(1,1,1,1)==256 && rlay_test_mips(1,4,1,3)==1792 && rlay_test_mips(4,1,1,3)==768;
+  #assert rlay_test_mips(1,1,2048,1)==524288 && rlay_test_mips(16384,1,1,15)>0 && rlay_test_mips(1,16384,1,15)>0;
+  #assert rlay_test_mips(1,1,1,0)== -1 && rlay_test_mips(1,1,1,2)== -1 && rlay_test_mips(2,1,1,1)== -1 && rlay_test_mips(1,2,1,1)== -1;
+  #assert rlay_test_mips(0,1,1,1)== -1 && rlay_test_mips(1,0,1,1)== -1 && rlay_test_mips(16385,1,1,15)== -1 && rlay_test_mips(1,16385,1,15)== -1 && rlay_test_mips(1,1,2049,1)== -1 && rlay_test_mips(1024,1024,2048,11)== -1;
+  d:[1]Jv;nodes:[8]JvNode;#assert jv_parse(d[..],"{}",nodes[..]);#assert rlay_size(d[0],0)== -1 && !rlay_match(d[0],0,-1,"");#assert jv_parse(d[..],"[]",nodes[..]);#assert rlay_size(d[0],0)== -1;
+}
+#test "layer transport parts are declared bounded ranges through the original 256MiB ceiling" {
+  #assert rlay_parts(0)==0 && rlay_parts(1)==1 && rlay_parts(67108864)==1 && rlay_parts(67108865)==2 && rlay_parts(268435456)==4 && rlay_parts(-1)== -1 && rlay_parts(268435457)== -1;
+  #assert rlay_chunk(67108865,0)==67108864 && rlay_chunk(67108865,1)==1 && rlay_chunk(268435456,3)==67108864 && rlay_chunk(1,0)==1;
+  #assert rlay_chunk(0,0)== -1 && rlay_chunk(1,-1)== -1 && rlay_chunk(1,1)== -1 && rlay_chunk(268435457,0)== -1;
+}
+RLAY_TEST_CAPTURE :: "{\"name\":\"layers\",\"format\":\"rgba8unorm-srgb\",\"layers\":1,\"levels\":[{\"width\":2,\"height\":2,\"offset\":0,\"row_bytes\":256,\"layer_bytes\":512},{\"width\":1,\"height\":1,\"offset\":512,\"row_bytes\":256,\"layer_bytes\":256}],\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}";
+#test "layer receipt pitches offsets mip extent layer count and transport hash are exact" {
+  d:[1]Jv;nodes:[256]JvNode;#assert jv_parse(d[..],RLAY_TEST_CAPTURE,nodes[..]);#assert rlay_size(d[0],0)==768 && rlay_match(d[0],0,768,"0000000000000000000000000000000000000000000000000000000000000000");
+  #assert !rlay_match(d[0],0,767,"0000000000000000000000000000000000000000000000000000000000000000") && !rlay_match(d[0],0,768,"1000000000000000000000000000000000000000000000000000000000000000");
+  needles:=[12]string.["\"layers\":1","\"layers\":1","\"name\":\"layers\"","\"format\":\"rgba8unorm-srgb\"","\"width\":2","\"height\":2","\"offset\":0","\"row_bytes\":256,\"layer_bytes\":512","\"layer_bytes\":512","\"width\":1,\"height\":1","\"offset\":512","0000000000000000000000000000000000000000000000000000000000000000"];
+  replacements:=[12]string.["\"layers\":0","\"layers\":2049","\"name\":\"\"","\"format\":\"rgba8unorm\"","\"width\":0","\"height\":16385","\"offset\":1","\"row_bytes\":255,\"layer_bytes\":512","\"layer_bytes\":513","\"width\":2,\"height\":1","\"offset\":513","G000000000000000000000000000000000000000000000000000000000000000"];
+  for needle,k:needles {out:[4096]u8;n:=rto_replace(RLAY_TEST_CAPTURE,needle,replacements[k],out[..]);#assert n>0;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);#assert rlay_size(d[0],0)== -1;}
+}
+#test "layer effect setup requires exact source bytes Coax package admission and one compiled layer owner" {
+  text:="{\"wasm_bytes\":3,\"wasm_sha256\":\"aaa\",\"package_bytes\":4,\"package_sha256\":\"bbb\",\"admitted\":0,\"prepared\":0,\"layer_kind\":4,\"texture_kind\":7,\"assets\":[{\"kindId\":2},{\"kindId\":4,\"packed\":true,\"pack_part\":3,\"urls\":[\"/pack\"]}],\"bindings\":[{\"resource\":1,\"kind\":7},{\"resource\":2,\"kind\":1}],\"adapter\":{}}";
+  d:[1]Jv;nodes:[512]JvNode;#assert jv_parse(d[..],text,nodes[..]);#assert rlay_init(d[0],"aaa",3,"bbb",4);#assert rlay_asset(d[0])==1 && rlay_binding(d[0])==1;
+  #assert !rlay_init(d[0],"aab",3,"bbb",4) && !rlay_init(d[0],"aaa",2,"bbb",4) && !rlay_init(d[0],"aaa",3,"bbc",4) && !rlay_init(d[0],"aaa",3,"bbb",5);
+  for needle,k:[4]string.["\"admitted\":0","\"prepared\":0","\"kindId\":2","\"kind\":7"] {out:[2048]u8;replacement:=ifx k==2 then "\"kindId\":4" else ifx k==3 then "\"kind\":8" else ifx k==0 then "\"admitted\":1" else "\"prepared\":1";n:=rto_replace(text,needle,replacement,out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);#assert !rlay_init(d[0],"aaa",3,"bbb",4);}
+}
+#test "layer JSON integers are canonical bounded nonnegative observations" {
+  for value:[13]string.["0","9","268435456","268435457","-1","1.0","1e0","null","false","\"0\"","[]","{}","99999999999999999999999999999"] {bytes:[512]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_put(o[..],"{\"n\":");jo_put(o[..],value);jo_put(o[..],"}");d:[1]Jv;nodes:[16]JvNode;#assert jv_parse(d[..],jo_text(o[..]),nodes[..]);expected:=ifx value=="0" then 0 else ifx value=="9" then 9 else ifx value=="268435456" then 268435456 else -1;#assert rlay_int(d[0],0,"n")==expected && rlay_int(d[0],0,"missing")== -1;}
+  #assert rlay_dimension(1) && rlay_dimension(16384) && !rlay_dimension(0) && !rlay_dimension(16385) && !rlay_dimension(-1);
+}
+#test "layer ownership selectors preserve zero last binding missing types and duplicate asset refusal" {
+  d:[1]Jv;nodes:[512]JvNode;
+  zero:="{\"admitted\":0,\"prepared\":0,\"wasm_bytes\":3,\"wasm_sha256\":\"aaa\",\"package_bytes\":4,\"package_sha256\":\"bbb\",\"layer_kind\":0,\"assets\":[{\"kindId\":0}],\"texture_kind\":0,\"bindings\":[{\"resource\":0,\"kind\":0}]}";
+  #assert jv_parse(d[..],zero,nodes[..]) && rlay_asset(d[0])==0 && rlay_binding(d[0])==0 && rlay_init(d[0],"aaa",3,"bbb",4);
+  for key:[4]string.["admitted","prepared","wasm_bytes","package_bytes"] {needle:[128]u8;nw:[1]Jo;jo_start(nw[..],needle[..]);jo_put(nw[..],"\"");jo_put(nw[..],key);jo_put(nw[..],"\"");bytes:[2048]u8;n:=rto_replace(zero,jo_text(nw[..]),"\"missing\"",bytes[..]);#assert n>0 && jv_parse(d[..],cast(string)bytes[0..<n],nodes[..]) && !rlay_init(d[0],"aaa",3,"bbb",4);}
+  for text:[6]string.["{}","{\"layer_kind\":-1,\"assets\":[{}],\"texture_kind\":-1,\"bindings\":[{}]}","{\"layer_kind\":0,\"assets\":{},\"texture_kind\":0,\"bindings\":{}}","{\"layer_kind\":0,\"assets\":[],\"texture_kind\":0,\"bindings\":[]}","{\"layer_kind\":0,\"assets\":[{}],\"texture_kind\":0,\"bindings\":[{}]}","{\"layer_kind\":0,\"assets\":[{\"kindId\":0},{\"kindId\":0}],\"texture_kind\":0,\"bindings\":[{\"kind\":0}]}"] {#assert jv_parse(d[..],text,nodes[..]);#assert rlay_asset(d[0])== -1 && rlay_binding(d[0])== -1;}
+  #assert jv_parse(d[..],"{\"texture_kind\":0,\"bindings\":[{\"kind\":0,\"resource\":0},{\"kind\":0,\"resource\":1}]}",nodes[..]) && rlay_binding(d[0])==1;
+  #assert jv_parse(d[..],"{\"layer_kind\":0,\"assets\":{\"x\":{\"kindId\":0}},\"texture_kind\":0,\"bindings\":{\"x\":{\"kind\":0,\"resource\":1}}}",nodes[..]) && rlay_asset(d[0])== -1 && rlay_binding(d[0])== -1;
+}
+#test "layer intermediate dimensions cannot rejoin a later valid mip after an incorrect axis" {
+  width_bad:="{\"name\":\"layers\",\"format\":\"rgba8unorm-srgb\",\"layers\":1,\"levels\":[{\"width\":4,\"height\":4,\"offset\":0,\"row_bytes\":256,\"layer_bytes\":1024},{\"width\":3,\"height\":2,\"offset\":1024,\"row_bytes\":256,\"layer_bytes\":512},{\"width\":1,\"height\":1,\"offset\":1536,\"row_bytes\":256,\"layer_bytes\":256}],\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}";
+  height_bad:="{\"name\":\"layers\",\"format\":\"rgba8unorm-srgb\",\"layers\":1,\"levels\":[{\"width\":4,\"height\":4,\"offset\":0,\"row_bytes\":256,\"layer_bytes\":1024},{\"width\":2,\"height\":3,\"offset\":1024,\"row_bytes\":256,\"layer_bytes\":768},{\"width\":1,\"height\":1,\"offset\":1792,\"row_bytes\":256,\"layer_bytes\":256}],\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}";
+  d:[1]Jv;nodes:[512]JvNode;#assert jv_parse(d[..],width_bad,nodes[..]) && rlay_size(d[0],0)== -1;#assert jv_parse(d[..],height_bad,nodes[..]) && rlay_size(d[0],0)== -1;
+  out:[4096]u8;n:=rto_replace(RLAY_TEST_CAPTURE,"\"name\":\"layers\"","\"name\":123",out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && rlay_size(d[0],0)== -1;
+  object_levels:="{\"name\":\"layers\",\"format\":\"rgba8unorm-srgb\",\"layers\":1,\"levels\":{\"x\":{\"width\":1,\"height\":1,\"offset\":0,\"row_bytes\":256,\"layer_bytes\":256}},\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}";#assert jv_parse(d[..],object_levels,nodes[..]) && rlay_size(d[0],0)== -1;
+}
+#test "layer decode and POST acknowledgments bind every independent physical byte identity" {
+  decoded:="{\"status\":200,\"url\":\"/image\",\"bytes\":3,\"sha256\":\"abc\"}";
+  ack:="{\"status\":200,\"ack\":{\"schema\":\"aethyr.render-test-origin.post.v1\",\"status\":200,\"published\":true,\"path\":\"/capture/part-0.bin\",\"file\":\"/owned/part-0.bin\",\"declared_bytes\":3,\"received_bytes\":3,\"stored_bytes\":3,\"sha256\":\"abc\",\"staging_removed\":true}}";
+  d:[1]Jv;nodes:[512]JvNode;#assert jv_parse(d[..],decoded,nodes[..]) && rlay_decoded(d[0],0,"/image",3,"abc");#assert !rlay_decoded(d[0],0,"/wrong",3,"abc") && !rlay_decoded(d[0],0,"/image",4,"abc") && !rlay_decoded(d[0],0,"/image",3,"abd");
+  for needle:[4]string.["\"status\":200","\"url\":\"/image\"","\"bytes\":3","\"sha256\":\"abc\""] {out:[1024]u8;n:=rto_replace(decoded,needle,"\"missing\":null",out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && !rlay_decoded(d[0],0,"/image",3,"abc");}
+  #assert jv_parse(d[..],ack,nodes[..]) && rlay_ack(d[0],"/capture/part-0.bin","/owned/part-0.bin",3,"abc");
+  for needle:[9]string.["\"schema\":\"aethyr.render-test-origin.post.v1\"","\"published\":true","\"path\":\"/capture/part-0.bin\"","\"file\":\"/owned/part-0.bin\"","\"declared_bytes\":3","\"received_bytes\":3","\"stored_bytes\":3","\"sha256\":\"abc\"","\"staging_removed\":true"] {out:[2048]u8;n:=rto_replace(ack,needle,"\"missing\":null",out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && !rlay_ack(d[0],"/capture/part-0.bin","/owned/part-0.bin",3,"abc");}
+  for text:[2]string.["{\"status\":201,\"ack\":{\"status\":200}}","{\"status\":200,\"ack\":{\"status\":201}}"] {#assert jv_parse(d[..],text,nodes[..]) && !rlay_ack(d[0],"/capture/part-0.bin","/owned/part-0.bin",3,"abc");}
+  for needle,k:[2]string.["{\"status\":200,\"ack\"","\"status\":200,\"published\""] {out:[2048]u8;n:=rto_replace(ack,needle,ifx k==0 then "{\"status\":201,\"ack\"" else "\"status\":201,\"published\"",out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && !rlay_ack(d[0],"/capture/part-0.bin","/owned/part-0.bin",3,"abc");}
+}
+#test "layer CLI profiles preserve the full nonnegative int32 range rather than a nine-digit helper limit" {
+  #assert rlay_profile("0")==0 && rlay_profile("7")==7 && rlay_profile("2147483647")==2147483647 && rlay_profile("00000000001")==1;
+  #assert rlay_profile("")== -1 && rlay_profile("2147483648")== -1 && rlay_profile("-1")== -1 && rlay_profile("1.0")== -1 && rlay_profile("1e0")== -1 && rlay_profile("a")== -1 && rlay_profile("999999999999999999999")== -1;
+}

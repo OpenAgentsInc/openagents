@@ -1,0 +1,47 @@
+// Layer-check fixture framing, capture metadata and exact byte-transport verdicts.
+#load "render-test-origin-policy.coax";
+#authority;
+#load "render-layer-checks.coax";
+RlayPack :: struct {valid:bool;count:int;table:int;}
+rlay_u32 :: (bytes:[]u8,at:int)->int {if at<0 || at>bytes.count-4 {return -1;}n:=0;for k:0..<4 {n=n|(cast(int)bytes[at+k]<<(8*k));}return n;}
+rlay_span :: (from:int,n:int,total:int)->bool {return from>=0 && n>=0 && from<=total && n<=total-from;}
+rlay_pack :: (head:[]u8,total:int)->RlayPack {
+  r:RlayPack;if head.count<32 || total<32 || rlay_parts(total)== -1 || cast(string)head[0..<4]!="VPK1" || rlay_u32(head,8)!=total {return r;}
+  r.count=rlay_u32(head,4);r.table=rlay_u32(head,16);r.valid=r.table<=total && r.count<=(total-r.table)/48;return r;
+}
+rlay_parts :: (n:int)->int {if n<0 || n>268435456 {return -1;}return (n+67108863)/67108864;}
+rlay_chunk :: (n:int,index:int)->int {parts:=rlay_parts(n);if index<0 || index>=parts {return -1;}return ifx index+1<parts then 67108864 else n-index*67108864;}
+rlay_hash :: (text:string)->bool {if text.count!=64 {return false;}for c:text {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+rlay_capacity :: (span:int,total:int)->bool {return span>=0 && total>=0 && span<=268435456-total;}
+rlay_int :: (d:Jv,parent:int,key:string)->int {
+  node:=jv_get(d,parent,key);if jv_kind(d,node)!=JV_NUMBER {return -1;}text:=jv_raw(d,node);n:=0;for c,i:text {digit:=rtq_find("0123456789",text[i..<i+1],0);if digit<0 {return -1;}n=n*10+digit;if n>268435456 {return -1;}}return n;
+}
+rlay_dimension :: (n:int)->bool {return n>=1 && n<=16384;}
+rlay_size :: (d:Jv,capture:int)->int {
+  if jv_kind(d,jv_get(d,capture,"name"))!=JV_STRING || jv_raw(d,jv_get(d,capture,"name"))=="" || jv_raw(d,jv_get(d,capture,"format"))!="rgba8unorm-srgb" || !rlay_hash(jv_raw(d,jv_get(d,capture,"sha256"))) {return -1;}
+  layers:=rlay_int(d,capture,"layers");levels:=jv_get(d,capture,"levels");count:=jv_len(d,levels);if layers<1 || layers>2048 || jv_kind(d,levels)!=JV_ARRAY || count<1 {return -1;}
+  first:=jv_at(d,levels,0);want_w:=rlay_int(d,first,"width");want_h:=rlay_int(d,first,"height");if !rlay_dimension(want_w) || !rlay_dimension(want_h) {return -1;}total:=0;
+  for k:0..<count {row:=jv_at(d,levels,k);w:=rlay_int(d,row,"width");h:=rlay_int(d,row,"height");pitch:=rlay_int(d,row,"row_bytes");layer:=rlay_int(d,row,"layer_bytes");
+    span:=layer*layers;if w!=want_w || h!=want_h || pitch!=((w*4+255)/256)*256 || layer!=pitch*h || rlay_int(d,row,"offset")!=total || !rlay_capacity(span,total) {return -1;}
+    total+=span;if w==1 && h==1 && k+1<count {return -1;}want_w=ifx w==1 then 1 else w/2;want_h=ifx h==1 then 1 else h/2;
+  }last:=jv_at(d,levels,count-1);return ifx rlay_int(d,last,"width")==1 && rlay_int(d,last,"height")==1 then total else -1;
+}
+rlay_match :: (d:Jv,capture:int,n:int,hash:string)->bool {size:=rlay_size(d,capture);return size!= -1 && size==n && jv_raw(d,jv_get(d,capture,"sha256"))==hash;}
+rlay_asset :: (d:Jv)->int {
+  assets:=jv_get(d,0,"assets");kind:=rlay_int(d,0,"layer_kind");if jv_kind(d,assets)!=JV_ARRAY || kind<0 {return -1;}found:=-1;
+  for k:0..<jv_len(d,assets) {if rlay_int(d,jv_at(d,assets,k),"kindId")==kind {if found>=0 {return -1;}found=k;}}return found;
+}
+rlay_binding :: (d:Jv)->int {
+  bindings:=jv_get(d,0,"bindings");kind:=rlay_int(d,0,"texture_kind");if jv_kind(d,bindings)!=JV_ARRAY || kind<0 {return -1;}found:=-1;
+  for k:0..<jv_len(d,bindings) {row:=jv_at(d,bindings,k);if rlay_int(d,row,"kind")==kind {found=rlay_int(d,row,"resource");}}return found;
+}
+rlay_init :: (d:Jv,wasm_hash:string,wasm_n:int,package_hash:string,package_n:int)->bool {
+  return rlay_int(d,0,"admitted")==0 && rlay_int(d,0,"prepared")==0 && rlay_int(d,0,"wasm_bytes")==wasm_n && jv_raw(d,jv_get(d,0,"wasm_sha256"))==wasm_hash && rlay_int(d,0,"package_bytes")==package_n && jv_raw(d,jv_get(d,0,"package_sha256"))==package_hash && rlay_asset(d)>=0 && rlay_binding(d)>=0;
+}
+rlay_decoded :: (d:Jv,row:int,url:string,n:int,hash:string)->bool {return rlay_int(d,row,"status")==200 && jv_raw(d,jv_get(d,row,"url"))==url && rlay_int(d,row,"bytes")==n && jv_raw(d,jv_get(d,row,"sha256"))==hash;}
+rlay_ack :: (d:Jv,url:string,file:string,n:int,hash:string)->bool {
+  a:=jv_get(d,0,"ack");return rlay_int(d,0,"status")==200 && rlay_int(d,a,"status")==200 && jv_raw(d,jv_get(d,a,"schema"))=="aethyr.render-test-origin.post.v1" && jv_kind(d,jv_get(d,a,"published"))==JV_TRUE && jv_kind(d,jv_get(d,a,"staging_removed"))==JV_TRUE && jv_raw(d,jv_get(d,a,"path"))==url && jv_raw(d,jv_get(d,a,"file"))==file && rlay_int(d,a,"declared_bytes")==n && rlay_int(d,a,"received_bytes")==n && rlay_int(d,a,"stored_bytes")==n && jv_raw(d,jv_get(d,a,"sha256"))==hash;
+}
+rlay_profile :: (text:string)->int {
+  if text.count==0 {return -1;}n:=0;for c,i:text {digit:=rtq_find("0123456789",text[i..<i+1],0);if digit<0 {return -1;}n=n*10+digit;if n>2147483647 {return -1;}}return n;
+}

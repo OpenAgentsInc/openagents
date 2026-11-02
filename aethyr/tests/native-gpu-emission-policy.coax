@@ -1,0 +1,37 @@
+// The exact legacy compiler-call plan and two independently planted controls.
+#load "../render/tests/tooling-policy.coax";
+#authority;
+#load "native-gpu-emission-checks.coax";
+ne_count :: (profile:int)->int {return ifx profile==0 then 7 else ifx profile==1 then 3 else 0;}
+ne_file :: (profile:int,index:int)->string {
+  if profile==1 {files:=[3]string.["helper.spv","range.spv","RenderCaps.c"];return files[index];}
+  files:=[7]string.["filtered.spv","invalid.spv","array.spv","invalid-array.spv","fault.spv","fault-array.spv","RenderCaps.c"];return files[index];
+}
+ne_vertex :: (profile:int,index:int)->string {
+  if index==ne_count(profile)-1 {return "";}if profile==0 {return "render_sampling_vs";}return ifx index==0 then "rp_vertex" else "render_range_vs";
+}
+ne_fragment :: (profile:int,index:int)->string {
+  if profile==1 {names:=[3]string.["rp_helper_fragment","render_range_fs",""];return names[index];}
+  names:=[7]string.["render_sampling_fs","render_sampling_invalid_fs","render_sampling_array_fs","render_sampling_invalid_array_fs","render_sampling_invalid_fs","render_sampling_invalid_array_fs",""];return names[index];
+}
+ne_source :: (profile:int,index:int)->string {
+  if index==ne_count(profile)-1 {return "aethyr/tests/render-capabilities-bridge.coax";}
+  if profile==0 {return ifx index==4 then "fault-source.coax" else ifx index==5 then "fault-array-source.coax" else "aethyr/tests/render-sampling-shader.coax";}
+  return ifx index==0 then "aethyr/render/tests/pipeline-shader.coax" else "aethyr/tests/render-binding-shader.coax";
+}
+ne_fault :: (source:string,variant:int,core:string,out:[]u8)->string {
+  if variant!=1 && variant!=2 {return "";}guard:="if !rs_result.valid {gpu_demote_helper();}";load:="#load \"sampling-core.coax\";";
+  first:=rtq_find(source,guard,0);if first<0 {return "";}second:=rtq_find(source,guard,first+guard.count);if second==-1 || rtq_find(source,guard,second+guard.count)!=-1 {return "";}
+  at:=rtq_find(source,load,0);if at<0 || rtq_find(source,load,at+load.count)!=-1 {return "";}
+  target:=ifx variant==1 then first else second;o:[1]Jo;jo_start(o[..],out);cursor:=0;
+  for i:0..<source.count {
+    if i<cursor {continue;}
+    if i==at {jo_put(o[..],"#load ");jo_str(o[..],core);jo_put(o[..],";");cursor=i+load.count;}
+    else if i==target {jo_put(o[..],"if !rs_result.valid {}");cursor=i+guard.count;}
+    else {jo_byte(o[..],source[i]);}
+  }return ifx o[0].bad then "" else jo_text(o[..]);
+}
+ne_carrier :: (source:string,adapter:string,out:[]u8)->string {
+  needle:="#load \"../render/sampling.coax\";";at:=rtq_find(source,needle,0);if at<0 || rtq_find(source,needle,at+needle.count)!=-1 {return "";}
+  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],source[0..<at]);jo_put(o[..],"#load ");jo_str(o[..],adapter);jo_put(o[..],";");jo_put(o[..],source[at+needle.count..<source.count]);return ifx o[0].bad then "" else jo_text(o[..]);
+}

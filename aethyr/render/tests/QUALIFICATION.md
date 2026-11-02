@@ -210,3 +210,27 @@ relative paths, signed-integer refusal and unparsed media bytes containing NUL.
 It preserves the original C probe and parser header. The same explicit compiler
 selection and exploratory limits apply. Its verified reference/evidence archive
 is `docs/verification/data/aethyr-ch11-2026-11-02/frame-input-tool-port/`.
+The bounded filter qualifier is
+`coax/web/tool.sh aethyr/render/tests/check-filter-native.coax --out OUT`.
+It preserves all three native modes, each with 58 positive observations,
+232 compared channels, 72 refusals and seven producer-loss controls. Every
+channel must be finite and within the original inclusive absolute bound
+`1e-7` of the retained independent device observation. The existing IEEE codec
+only decodes exact number words; Coax owns the comparisons and every verdict.
+
+`--reuse-emission` requires the tool's exact compiler, source, C, header and
+profile admission. `--prepare-only` observes emission admission without running
+native filters. Corrupt admissions refuse before native compilation. The
+default current-source gate and explicit exploratory limits apply; an existing
+qualified output is retained instead of repeated. The evidence and original
+reference bytes are in
+`docs/verification/data/aethyr-ch11-2026-11-02/filter-tool-port/`.
+
+The former geometry and pipeline tooling tests run as
+`check-geometry-tooling.coax` and `check-pipeline-tooling.coax`. They construct
+the same small ABI, interval, publication and pixel-word loss controls, calling
+the unchanged independent equations for reference facts. They execute no full
+producer or renderer gate. `check-pipeline-processes.coax --out OUT` separately
+checks actual nonzero exits, bounded child-tree timeout, SIGINT and SIGTERM;
+only observed absent or zombie processes count as cleaned up. The narrow
+hand-pinned depth equation test remains an independent Python oracle.

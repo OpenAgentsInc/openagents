@@ -1,6 +1,7 @@
 {
   "schema": 1,
-  "objective": "Implement the Aethyr book in chapter order, including production Coax, checks, independent verification and teaching text; push passing deliveries to main.",
+  "objective": "Finish Aethyr chapter 11 with its code, checks, independent verification and teaching text; merge/push it to main, then stop with a handoff document.",
+  "latest_scope_instruction": "Owner: get chapter 11 done and merged to main then stop. The earlier whole-book continuation is superseded; chapter 12 remains untouched.",
   "started_utc": "2026-11-01 06:40 UTC",
   "base_commit": "7bc7ec0c77c682fa8dd572396922956ef105a8c7",
   "initial_status": {
@@ -11,8 +12,9 @@
   "current_chapter": 11,
   "status": "active_chapter_11_reconciliation_and_grid_route",
   "resumed_2026_11_02": {
-    "latest_main_integrated": "8ed49c9b6a7f23c25b4f516993073441082b30b1",
-    "integration_checkpoint": "dbbfe6bf70360b6500a62a9a60213a6ce7ee725c",
+    "latest_main_integrated": "681cf6ba2cbcd62e0648b6b0039df8934a18975c",
+    "integration_checkpoint": "72e037b416",
+    "latest_issue_assessment": "docs/verification/aethyr-open-issues-assessment-2026-11-02.md",
     "frame_api_qualification": "docs/verification/aethyr-frame-reconciliation-2026-11-02.json",
     "tooling_plan": "docs/verification/aethyr-render-tooling-plan-2026-11-02.json",
     "historical_tool_sources": "docs/verification/data/aethyr-ch11-2026-11-01/historical-tool-sources.md",
@@ -183,8 +185,8 @@
   },
   "current_status": {
     "implemented": 13,
-    "partly_implemented": 3,
-    "design_draft": 70
+    "partly_implemented": 5,
+    "design_draft": 68
   },
   "chapter_8": {
     "status": "qualified",
@@ -362,7 +364,7 @@
     "Qualify live Coax shader profiles on CPU, WGSL and SPIR-V with explicit backend mappings, integer noise, validation and affected goldens; retain bounded per-command gates."
   ],
   "chapter_9_ready_to_push_utc": "2026-11-01T13:08:21.594115+00:00",
-  "continuation_rule": "Continue the active whole-book objective chapter by chapter and push each qualified chapter to main. Keep each command under fifteen minutes and retain unchanged passing evidence. The updated AGENTS.md on current main removes the earlier per-task two-hour cap.",
+  "continuation_rule": "Finish and push chapter 11, write a handoff document, then stop. Do not start chapter 12. Keep each command under fifteen minutes and retain unchanged passing evidence.",
   "chapter_9_rebased_on": "2c18d4ccdf6bc786447b40be976ceff6bf542c4b",
   "historical_original_deadline_utc": "2026-11-01 08:40 UTC (owner two-hour task limit)",
   "chapter_11_started_utc": "2026-11-01T13:09:00Z",

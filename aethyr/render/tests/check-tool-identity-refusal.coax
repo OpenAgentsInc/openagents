@@ -1,0 +1,7 @@
+// Reusable actual stale-compiler ordering control for --out based tools.
+#import "Basic";
+#load "qualification-files.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 {tool_errln("OUT IMAGE COMPILER SOURCE_RECORD [OUT_FLAG]");return 2;}out:=args_at(a[..],0);image:=args_at(a[..],1);compiler:=args_at(a[..],2);digest:=args_at(a[..],3);flag:=args_at(a[..],4);if flag.count==0 {flag="--out";}if !fs_mkdir(out) {return 1;}paths:[3][4096]u8;work:=fs_join(out,"refused",paths[0][..]);argv:=[7]string.[image,flag,work,"--coax",compiler,"--compiler-source-digest",digest];stdout:[65536]u8;stderr:[65536]u8;env:[]string;r:=rtq_command(argv[..],env,proc_deadline(810000,proc_now_ms()),out,"default-refusal",stdout[..],stderr[..]);list:[1]FsList;if r.started!=0 || r.timed_out || r.cut || r.status==0 || fs_list(work,list[..])!=6 {return 1;}for i:0..<list[0].n {name:=fs_entry(list[..],i);if rtq_find(name,"compiler-version.",0)!=0 && rtq_find(name,"compiler-current-source.",0)!=0 {return 1;}}
+ hash:[64]u8;if !rtq_hash_file(image,hash[..]) {return 1;}record:[4096]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"status");jo_str(o[..],"pass");jo_key(o[..],"image_sha256");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"identity_files_only");jo_int(o[..],6);jo_key(o[..],"exit_status");jo_int(o[..],r.status);jo_end(o[..]);if o[0].bad || !fs_write(fs_join(out,"qualification.json",paths[1][..]),jo_text(o[..])) {return 1;}print("default source refusal: six identity files only, before emission\n");return 0;
+}

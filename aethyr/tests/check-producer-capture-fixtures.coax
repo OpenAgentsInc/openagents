@@ -1,0 +1,67 @@
+// Independent tiny producer qualification for the capture port. No realm,
+// renderer or GPU gate runs here. Both observers receive identical Wasm and
+// authored inputs; the root-owned checker compares raw artifacts and metadata.
+#load "producer-capture-fixture-inputs.coax";
+#load "../render/tests/qualification-files.coax";
+pf_name :: (prefix:string,index:int,suffix:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],prefix);jo_int(o[..],index);jo_put(o[..],suffix);return jo_text(o[..]);}
+pf_env :: (key:string,value:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],key);jo_put(o[..],"=");jo_put(o[..],value);return jo_text(o[..]);}
+pf_run :: (argv:[]string,env:[]string,deadline:int,work:string,label:string,out:[]u8,err:[]u8)->ProcRun {
+  left:=proc_left(deadline,proc_now_ms());r:=rtq_run_raw(argv,env,ifx left<120000 then left else 120000,out,err);if !rtq_record_run(work,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {r.cut=true;}return r;
+}
+pf_build :: (clang:string,sysroot:string,resources:string,build:string,macro:string,name:string,deadline:int,work:string,env:[]string)->bool {
+  paths:[4][4096]u8;header:[4096]u8;o:[1]Jo;jo_start(o[..],header[..]);jo_put(o[..],"-I");jo_put(o[..],build);sys:[4096]u8;w:[1]Jo;jo_start(w[..],sys[..]);jo_put(w[..],"--sysroot=");jo_put(w[..],sysroot);
+  argv:[30]string;n:=0;for arg:[15]string.[clang,"--target=wasm32-wasip1",jo_text(w[..]),"-resource-dir",resources,"-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable",jo_text(o[..]),fs_join(build,"ProducerFixture.c",paths[0][..]),"aethyr/tests/producer-capture-fixture-face.c","-mexec-model=reactor"] {argv[n]=arg;n+=1;}
+  if macro!="" {argv[n]=macro;n+=1;}argv[n]="-Wl,--import-memory,--max-memory=67108864,-z,stack-size=1048576,--export=__heap_base,--gc-sections,--strip-debug";argv[n+1]="-o";argv[n+2]=fs_join(build,name,paths[1][..]);n+=3;
+  out:[1048576]u8;err:[65536]u8;r:=pf_run(argv[0..<n],env,deadline,work,name,out[..],err[..]);return rtq_ok(r);
+}
+pf_missing_stopped :: (path:string)->bool {
+  bytes:[1048576]u8;nodes:[16384]JvNode;d:[1]Jv;if !rtq_json_file(path,bytes[..],nodes[..],d[..]) {return false;}
+  for i:0..<d[0].count {if jv_kind(d[0],i)==JV_OBJECT && jv_kind(d[0],rtq_member(d[0],i,"defined"))==JV_FALSE && jv_kind(d[0],rtq_member(d[0],i,"value"))==JV_NULL {return true;}}return false;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}work:=args_value(a[..],"--work-dir","");receipt:=args_value(a[..],"--receipt","");observer:=args_value(a[..],"--observer","");observer_expected:=args_value(a[..],"--observer-sha256","");bun:=args_value(a[..],"--bun","");parity:=args_value(a[..],"--parity","");compiler:=args_value(a[..],"--coax","");
+  clang:=args_value(a[..],"--clang","/opt/homebrew/opt/llvm/bin/clang");sysroot:=args_value(a[..],"--sysroot","/opt/homebrew/opt/wasi-libc/share/wasi-sysroot");resources:=args_value(a[..],"--resources","/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes");
+  start_case:=args_whole(args_value(a[..],"--start-case","0"));end_case:=args_whole(args_value(a[..],"--end-case","21"));reuse_inputs:=args_value(a[..],"--reuse-inputs","");
+  if start_case<0 || end_case>21 || start_case>=end_case || work=="" || receipt=="" || observer=="" || observer_expected=="" || bun=="" || parity=="" || compiler=="" || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
+  expected:[64]u8;if !rtq_hash_file(observer,expected[..]) || cast(string)expected[..]!=observer_expected {return 2;}
+  deadline:=proc_deadline(810000,proc_now_ms());paths:[24][4096]u8;input_root:=ifx reuse_inputs=="" then work else reuse_inputs;build:=fs_join(input_root,"build",paths[0][..]);if reuse_inputs=="" && !fs_mkdir(build) {return 1;}
+  inputs:[1]RtqInputs;for file:[10]string.[observer,bun,parity,compiler,clang,"aethyr/tests/capture-render-frame.ts","aethyr/tests/producer-capture-fixture.coax","aethyr/tests/producer-capture-fixture-checks.coax","aethyr/tests/producer-capture-fixture-face.c","aethyr/tests/producer-capture-fixture-inputs.coax"] {if !rtq_input_add(inputs[..],file) {return 1;}}
+  env_buffer:[4096]u8;environment:=[1]string.[pf_env("COAX",compiler,env_buffer[..])];out:[1048576]u8;err:[65536]u8;
+  macros:=[4]string.["","-DPFX_NO_VERSION","-DPFX_NO_KEY","-DPFX_MINIMAL"];wasm_names:=[4]string.["versioned.wasm","unversioned.wasm","no-key.wasm","minimal.wasm"];
+  if reuse_inputs=="" {
+    emit:=[6]string.[compiler,"c","aethyr/tests/producer-capture-fixture.coax","--library","--header",fs_join(build,"ProducerFixture.h",paths[1][..])];r:=pf_run(emit[..],environment[..],deadline,work,"fixture-emission",out[..],err[..]);if !rtq_ok(r) || !fs_write(fs_join(build,"ProducerFixture.c",paths[1][..]),cast(string)out[0..<r.out_n]) {return 1;}
+    for name,k:wasm_names {if !pf_build(clang,sysroot,resources,build,macros[k],name,deadline,work,environment[..]) {return 1;}}
+  }
+  for name:wasm_names {if !rtq_input_add(inputs[..],fs_join(build,name,paths[1][..])) {return 1;}}
+  pack_path:=fs_join(input_root,"fixture.pack",paths[2][..]);zero_pack:=fs_join(input_root,"zero-catalog.pack",paths[3][..]);table_pack:=fs_join(input_root,"bad-table.pack",paths[4][..]);payload_pack:=fs_join(input_root,"bad-payload.pack",paths[5][..]);small_facts:=fs_join(input_root,"facts.txt",paths[6][..]);large_facts:=fs_join(input_root,"large-facts.txt",paths[7][..]);index_file:=fs_join(input_root,"override-index.bin",paths[8][..]);vertices_file:=fs_join(input_root,"override-vertices.bin",paths[9][..]);mesh_file:=fs_join(input_root,"override-mesh.bin",paths[10][..]);
+  if reuse_inputs=="" {
+    pack:[1024]u8;pn:=pfi_pack(false,pack[..]);if !fs_write(pack_path,cast(string)pack[0..<pn]) {return 1;}
+    zn:=pfi_pack(true,pack[..]);if !fs_write(zero_pack,cast(string)pack[0..<zn]) {return 1;}
+    pn=pfi_pack(false,pack[..]);pfi_u32(pack[..],16,pn);if !fs_write(table_pack,cast(string)pack[0..<pn]) {return 1;}
+    pn=pfi_pack(false,pack[..]);pfi_u32(pack[..],40,pn-464+1);if !fs_write(payload_pack,cast(string)pack[0..<pn]) {return 1;}
+    large:[200002]u8;for k:0..<200000 {large[k]='A';}large[200000]='\n';large[200001]='\n';if !fs_write(small_facts,"A\nB\n\n") || !fs_write(large_facts,cast(string)large[..]) {return 1;}
+    override:=[9]u8.[0,255,128,13,10,7,6,5,4];if !fs_write(index_file,cast(string)override[0..<4]) || !fs_write(vertices_file,cast(string)override[..]) || !fs_write(mesh_file,cast(string)override[0..<5]) {return 1;}
+  }
+  for file:[9]string.[pack_path,zero_pack,table_pack,payload_pack,small_facts,large_facts,index_file,vertices_file,mesh_file] {if !rtq_input_add(inputs[..],file) {return 1;}}
+  result:[1048576]u8;o:[1]Jo;jo_start(o[..],result[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.producer-capture-fixtures.v1");jo_key(o[..],"observer_sha256");jo_str(o[..],observer_expected);jo_key(o[..],"gpu_execution");jo_bool(o[..],false);jo_key(o[..],"start_case");jo_int(o[..],start_case);jo_key(o[..],"end_case");jo_int(o[..],end_case);jo_key(o[..],"reused_fixture_inputs");jo_str(o[..],reuse_inputs);jo_key(o[..],"cases");jo_arr(o[..]);
+  for index:start_case..<end_case {
+    label:[128]u8;case_dir:=fs_join(work,pf_name("case-",index,"",label[..]),paths[11][..]);if !fs_mkdir(case_dir) {return 1;}old_dump:=fs_join(case_dir,"old",paths[12][..]);new_dump:=fs_join(case_dir,"new",paths[13][..]);image:=ifx index==1 || index==3 then 1 else ifx index==14 || index==15 then 2 else ifx index==16 then 3 else 0;wasm:=fs_join(build,wasm_names[image],paths[14][..]);
+    common:[48]string;n:=0;for arg:[12]string.["--frames","4","--every","1","--size","32x24","--scale","1.5","--clock","-9223372036854775808","--page","-2"] {common[n]=arg;n+=1;}
+    if index==2 || index==3 {for arg:[17]string.["--pack",pack_path,"--facts",small_facts,"--fact","B=2","--extra","7,9","--hash","ok","--keys","1:32:1,2:32:0","--pointer","3:1.5:-3.25","--golden","--index",index_file] {common[n]=arg;n+=1;}for arg:[4]string.["--vertices",vertices_file,"--mesh",mesh_file] {common[n]=arg;n+=1;}}
+    if index==4 || index==5 || index==17 || index==18 {common[n]="--pack";common[n+1]=ifx index==4 then pack_path else ifx index==5 then zero_pack else ifx index==17 then table_pack else payload_pack;n+=2;}
+    if index==6 {for arg:[4]string.["--facts",large_facts,"--fact","B=2"] {common[n]=arg;n+=1;}}
+    if index>=7 && index<=13 {faults:=[7]string.["bad-hud","bad-store","bad-span","bad-particles","bad-draw-span","bad-draw-span","bad-draw-span"];common[n]="--hash";common[n+1]=faults[index-7];n+=2;}
+    if index==19 {common[n]="--extra";common[n+1]="7,9";n+=2;}if index==20 {common[n]="--fact";common[n+1]="ignored-without-facts=1";n+=2;}
+    if index==14 {common[n]="--keys";common[n+1]="1:32:1";n+=2;}if index==16 {common[n]="--hash";common[n+1]="ignored-if-absent";n+=2;}
+    dumped:=index!=12 && index!=13;old_args:[56]string;new_args:[56]string;on:=3;nn:=2;old_args[0]=bun;old_args[1]="aethyr/tests/capture-render-frame.ts";old_args[2]=wasm;new_args[0]=observer;new_args[1]=wasm;
+    for arg:common[0..<n] {old_args[on]=arg;on+=1;new_args[nn]=arg;nn+=1;}
+    if dumped || index==13 {old_args[on]="--dump";old_args[on+1]=ifx dumped then old_dump else "";on+=2;new_args[nn]="--dump";new_args[nn+1]=ifx dumped then new_dump else "";nn+=2;}
+    old:=pf_run(old_args[0..<on],environment[..],deadline,case_dir,"old-observer",out[..],err[..]);old_stdout:[1048576]u8;old_n:=old.out_n;for k:0..<old_n {old_stdout[k]=out[k];}
+    fresh:=pf_run(new_args[0..<nn],environment[..],deadline,case_dir,"new-observer",out[..],err[..]);positive:=index<7 || index==12 || index==13 || index==15 || index==16 || index==19 || index==20;
+    if old.started!=0 || fresh.started!=0 || old.timed_out || fresh.timed_out || old.cut || fresh.cut || (positive && (old.status!=0 || fresh.status!=0)) || (!positive && (old.status==0 || fresh.status==0)) {tool_err("producer fixture status mismatch case ");tool_errln(pf_name("",index,"",label[..]));return 1;}
+    parity_ok:=false;if positive && dumped {parity_file:=fs_join(case_dir,"parity.json",paths[15][..]);argv:=[4]string.[parity,old_dump,new_dump,parity_file];checked:=pf_run(argv[..],environment[..],deadline,case_dir,"parity-check",out[..],err[..]);if !rtq_ok(checked) {tool_err("producer fixture product parity mismatch case ");tool_errln(pf_name("",index,"",label[..]));return 1;}parity_ok=true;}
+    if positive && !dumped {if old_n!=fresh.out_n || cast(string)old_stdout[0..<old_n]!=cast(string)out[0..<fresh.out_n] {return 1;}parity_ok=true;}
+    stopped:=true;if index==14 {stopped=pf_missing_stopped(fs_join(new_dump,"last-sdk-response.json",paths[15][..]));if !stopped {return 1;}}
+    jo_obj(o[..]);jo_key(o[..],"case");jo_int(o[..],index);jo_key(o[..],"image");jo_str(o[..],wasm_names[image]);jo_key(o[..],"positive");jo_bool(o[..],positive);jo_key(o[..],"dumped");jo_bool(o[..],dumped);jo_key(o[..],"old_exit");jo_int(o[..],old.status);jo_key(o[..],"new_exit");jo_int(o[..],fresh.status);jo_key(o[..],"raw_and_product_metadata_equal");jo_bool(o[..],parity_ok);jo_key(o[..],"first_missing_call_stopped");jo_bool(o[..],stopped);jo_end(o[..]);
+  }jo_end(o[..]);stable:=rtq_inputs_match(inputs[..]);jo_key(o[..],"status");jo_str(o[..],ifx stable then "passed" else "failed");jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],stable);jo_key(o[..],"sources");rtq_inputs_json(o[..],inputs[..],".");jo_end(o[..]);if !stable || o[0].bad || !fs_write(receipt,jo_text(o[..])) {return 1;}return 0;
+}

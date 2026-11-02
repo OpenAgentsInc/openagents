@@ -1,0 +1,39 @@
+// Local fresh emission effects. The authored plan and fault construction are
+// pure authority; this module stages exact bytes and executes each compiler
+// argv in order, preserving the first failed prefix and raw command streams.
+#load "native-gpu-emission-policy.coax";
+#load "../render/tests/qualification-files.coax";
+NeRun :: struct {completed:int;failed:int=-1;status:int;}
+ne_inventory :: (inputs:[]RtqInputs,compiler:string,root:string,source:string,deadline:int,out:string,label:string)->bool {
+  paths:[3][4096]u8;absolute:=fs_join(root,source,paths[0][..]);name:[128]u8;w:[1]Jo;jo_start(w[..],name[..]);jo_put(w[..],label);jo_put(w[..],"-inputs.coax");carrier:=fs_join(out,jo_text(w[..]),paths[1][..]);text:[8192]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],"#load ");jo_str(o[..],absolute);jo_put(o[..],";\nmain :: () {}\n");if o[0].bad || !fs_write(carrier,jo_text(o[..])) {return false;}
+  stdout:[1048576]u8;stderr:[65536]u8;env:[]string;argv:=[3]string.[compiler,"deps",carrier];r:=rtq_command(argv[..],env,deadline,out,label,stdout[..],stderr[..]);if !rtq_ok(r) {return false;}
+  nodes:[8192]JvNode;d:[1]Jv;if !jv_parse(d[..],cast(string)stdout[0..<r.out_n],nodes[..]) {return false;}
+  for key:[2]string.["sources","descriptors"] {rows:=jv_get(d[0],0,key);if jv_kind(d[0],rows)!=JV_ARRAY {return false;}for i:0..<jv_len(d[0],rows) {path:[4096]u8;n:=jv_str(d[0],jv_at(d[0],rows,i),path[..]);if n<1 {return false;}value:=cast(string)path[0..<n];if value!=carrier && !rtq_input_add(inputs,value) {return false;}}}return true;
+}
+ne_fault_files :: (root:string,out:string,variant:int,inputs:[]RtqInputs)->bool {
+  paths:[6][4096]u8;adapter:=fs_join(root,"aethyr/render/sampling.coax",paths[0][..]);fixture:=fs_join(root,"aethyr/tests/render-sampling-shader.coax",paths[1][..]);core:=fs_join(root,"aethyr/render/sampling-core.coax",paths[2][..]);
+  source:[1048576]u8;carrier:[1048576]u8;fault:[1048576]u8;changed:[1048576]u8;
+  n:=fs_read(adapter,source[..]);k:=fs_read(fixture,carrier[..]);if n<0 || k<0 || !rtq_input_add(inputs,adapter) || !rtq_input_add(inputs,fixture) || !rtq_input_add(inputs,core) {return false;}
+  name:=ifx variant==1 then "sampling-fault.coax" else "sampling-fault-array.coax";fault_path:=fs_join(out,name,paths[3][..]);text:=ne_fault(cast(string)source[0..<n],variant,core,fault[..]);
+  if text=="" || !fs_write(fault_path,text) {return false;}text=ne_carrier(cast(string)carrier[0..<k],fault_path,changed[..]);
+  return text!="" && fs_write(fs_join(out,ifx variant==1 then "fault-source.coax" else "fault-array-source.coax",paths[4][..]),text);
+}
+ne_emit :: (profile:int,compiler:string,root:string,out:string,deadline:int,inputs:[]RtqInputs,commands:[]Jo)->NeRun {
+  result:NeRun;count:=ne_count(profile);if count==0 {result.failed=0;result.status=2;return result;}
+  stdout:[RTQ_FILE]u8;stderr:[65536]u8;env:[]string;
+  for index:0..<count {
+    paths:[6][4096]u8;source:=ne_source(profile,index);c_emit:=index==count-1;
+    if profile==0 && index>=4 && index<6 {if !ne_fault_files(root,out,index-3,inputs) {result.failed=index;result.status=2;return result;}source=fs_join(out,source,paths[0][..]);}
+    else if profile==0 && !c_emit {source=fs_join(root,source,paths[0][..]);}
+    output:=fs_join(out,ne_file(profile,index),paths[1][..]);argv:[10]string;n:=0;argv[n]=compiler;n+=1;
+    if c_emit {for arg:[5]string.["c",source,"--library","--header",fs_join(out,"RenderCaps.h",paths[2][..])] {argv[n]=arg;n+=1;}}
+    else {for arg:[8]string.["spirv",source,"--vertex",ne_vertex(profile,index),"--fragment",ne_fragment(profile,index),"-o",output] {argv[n]=arg;n+=1;}}
+    r:=rtq_run(argv[0..<n],env,deadline,stdout[..],stderr[..]);
+    label:[128]u8;o:[1]Jo;jo_start(o[..],label[..]);jo_put(o[..],"emission-");jo_int(o[..],index);
+    if !rtq_record_run(out,jo_text(o[..]),argv[0..<n],r,cast(string)stdout[0..<r.out_n],cast(string)stderr[0..<r.err_n]) {result.failed=index;result.status=2;return result;}
+    jo_obj(commands);jo_key(commands,"command");jo_arr(commands);for arg:argv[0..<n] {jo_str(commands,arg);}jo_end(commands);jo_key(commands,"exit_code");jo_int(commands,r.status);jo_key(commands,"started");jo_int(commands,r.started);jo_key(commands,"timed_out");jo_bool(commands,r.timed_out);jo_key(commands,"cut");jo_bool(commands,r.cut);jo_end(commands);
+    if c_emit {if !fs_write(output,cast(string)stdout[0..<r.out_n]) {result.failed=index;result.status=2;return result;}}
+    else {name:[128]u8;jo_start(o[..],name[..]);file:=ne_file(profile,index);jo_put(o[..],file[0..<file.count-4]);jo_put(o[..],".reflection");if !fs_write(fs_join(out,jo_text(o[..]),paths[3][..]),cast(string)stderr[0..<r.err_n]) {result.failed=index;result.status=2;return result;}}
+    if !rtq_ok(r) {result.failed=index;result.status=ifx r.status!=0 then r.status else 2;return result;}result.completed+=1;
+  }return result;
+}

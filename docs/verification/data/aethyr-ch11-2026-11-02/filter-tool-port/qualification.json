@@ -1,0 +1,101 @@
+{
+  "schema": "aethyr.render.native-filter-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "pass",
+  "release_qualification": false,
+  "scope": "Coax owns fixture selection/packing, mode and case planning, source/current-compiler gate, emission/cache identity, compilation, exact retained observations, tolerance/count/verdict logic and all child deadlines. Existing IEEE codec supplies only exact number words; no new GPU execution.",
+  "checks_first": {
+    "original_selected_pin_reference_pass_seconds": 9.62634183303453,
+    "stub_log": "trials/aethyr-filter-tool-policy-stubs-20261102.log"
+  },
+  "authority": {
+    "root_mutants": 111,
+    "killed": 111,
+    "survivors": 0,
+    "waivers": 0,
+    "prior_round": {
+      "total": 104,
+      "killed": 100,
+      "survived": 4
+    },
+    "log": "trials/aethyr-filter-tool-policy-mutation-second-20261102.log"
+  },
+  "compiler": {
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "current_sources_match": false,
+    "explicit_exploration": true,
+    "qualifier_executable_sha256": "7bc13b1bbee5c8e7365aa215d12f2e367edc567930e384a7e0f7f88ebe97c7a4"
+  },
+  "native": {
+    "modes": [
+      "debug",
+      "release",
+      "sanitized"
+    ],
+    "per_mode": {
+      "positive_observations": 58,
+      "compared_channels": 232,
+      "refusals": 72,
+      "producer_loss_controls": 7
+    },
+    "elapsed_seconds": 10.444,
+    "c_sha256": "c160903defbca0220822b64270b8928b1e0206af76c9439a4f3fe5992be31f36",
+    "header_sha256": "e4f093888b18ec416a591709c72971833bac20155096a6403e26f14af37ae884",
+    "driver_sha256": "d7c01c0ea7349e3b348a5e47f06dddbbdf7da813b807fd3789873ae29b31bb62",
+    "unchanged_rule": "All RGBA finite; absolute error<=1e-7, inclusive. No mask or tolerance changes."
+  },
+  "same_input_parity": {
+    "exact_generated_c_header_bytes": true,
+    "exact_fixture_bytes_and_levels_files": 8,
+    "exact_decoded_binary64_positive_records": 174,
+    "includes_metadata_coordinates_lod_and_all_actual_expected_channels": true,
+    "old_matches_function_sha256": "a0aeed1a048668915e3348a3ffe100d908747a60ef863ea634e65840d9eedf1a",
+    "native_old_function_controls": 12,
+    "control_scope": "Inclusive1e-7, adjacent larger binary64 error, both signs, nonfinite values and decoded/sampled status failures.",
+    "format_note": "JSON number spelling is not normalized to fake byte parity; exact IEEE binary64 observations are compared through the unchanged independent codec."
+  },
+  "cache_controls": {
+    "reuse_preparation_success": 1,
+    "refusals": 7,
+    "refusal_scopes": [
+      "C corruption",
+      "header corruption",
+      "profile corruption",
+      "compiler identity",
+      "source identity",
+      "schema identity",
+      "already-qualified output"
+    ],
+    "all_stop_before_native_compile": true,
+    "cache_scope": "Exact owned admission integrity, including compiler/C/header/profile/source map; not authentication of hostile forged filesystem receipts."
+  },
+  "default_current_source_gate": {
+    "real_older_pin_refused": true,
+    "identity_files_only": 6,
+    "before_emission_or_cache_admission": true
+  },
+  "source_path_correction": "First new image passed arithmetic but used a relative entry, changing generated source provenance strings. It was corrected to the original absolute entry and the changed image requalified; final C/header bytes are identical. Earlier receipts/artifacts/logs remain retained without claiming that old overwritten observer image is current.",
+  "original_sha256": "7455aef60dfff8c642b52ea9e8818dc0470feab1544ab1b5fd7c117406131c96",
+  "source_sha256": {
+    "aethyr/render/tests/filter-tool-policy.coax": "aa4221fc90eb2ccc2ddf515410ea4455a67c5496da566337f8de8af789423371",
+    "aethyr/render/tests/filter-tool-files.coax": "f4f83d036d454766d673e5f1bd09830173c1529d226120e92596836946e0d67e",
+    "aethyr/render/tests/check-filter-native.coax": "32da932e20cd60b34d08ce7f677da44a7a0dc53be1b6245afc96487b8628b735",
+    "aethyr/render/tests/check-filter-tooling.coax": "c79709c9c28a2d263596e207871081b9bb71427b3977e3096eeda3af84ff2f0f"
+  },
+  "ieee_oracle": {
+    "path": "aethyr/tests/raw_float_oracle.py",
+    "sha256": "20dcb80ab721b46f887111235036cdef87aeed6ff6043403521fa790054617dc",
+    "body_unchanged": true,
+    "role": "numeric_words JSON/struct conversion only; no case selection, budgets, tolerances or driver verdicts."
+  },
+  "archive": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-02/filter-tool-port/artifacts-and-reference.tar.gz",
+    "sha256": "c97fe82c5911dc2c03cccdf560335dca88b9d8b533b18b43c71fa1718721d782",
+    "bytes": 2268279,
+    "original_readback_verified": true
+  },
+  "limitations": [
+    "Only bounded58/72/7 filter fixtures per native mode; no new device observation, universal precision, Grid/raster/geometry or model gate.",
+    "The selected older compiler remains explicitly exploratory; final current-source compiler and release qualification remain pending."
+  ]
+}

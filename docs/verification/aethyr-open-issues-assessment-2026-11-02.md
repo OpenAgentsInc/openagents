@@ -10,7 +10,9 @@ This review fetched `origin/main` through `167b6abe57` and read all 17 open
 GitHub issues on 2026-11-02. The current private integration checkpoint is
 `88a89f8ddf`, based on main through `681cf6ba2c`; subsequent tooling changes
 are staged or in progress. Fetching main is not a completed integration or
-publication claim.
+publication claim. The subsequent completed tooling checkpoint is now committed
+locally as `72e037b416`. It has not been pushed; remaining ports continue in
+this worktree, and the tools gate has not passed yet.
 
 ## What changes the approach
 

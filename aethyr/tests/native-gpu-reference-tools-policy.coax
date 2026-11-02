@@ -1,0 +1,5 @@
+#authority;
+#load "native-gpu-reference-tools-checks.coax";
+nref_identity :: (archive:string,python:string,shell:string)->bool {
+  return archive=="b098e3115f00e3d8fa095d7d0927835b9fa2e22a327fda69f29e467ac6b74409" && python=="806eb0403790a78045380e69560c3a50320d6665fd772b5de1cd16048be65d00" && shell=="a1d74b80f0e2f8ae88e48640d32a0c9dfd5e21763214e7de8b30c4776caf1e25";
+}

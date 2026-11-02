@@ -1,0 +1,17 @@
+// Local orchestration fixture only. It emits deliberately non-GPU artifact
+// bytes, records literal compiler argv, and delegates only dependency queries.
+// Never send these artifacts to Vulkan or treat this image as a real compiler.
+#import "Basic";
+#load "../render/tests/qualification-files.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}config:[3][4096]u8;real:=proc_getenv("AETHYR_FRESH_REAL_COAX",config[0][..]);calls_path:=proc_getenv("AETHYR_FRESH_CALLS",config[1][..]);fail:=proc_getenv("AETHYR_FRESH_FAIL",config[2][..]);kind:=args_at(a[..],0);
+  if real=="" || calls_path=="" || args_count(a[..])<1 {return 2;}
+  if kind!="spirv" && kind!="c" {
+    argv:[256]string;argv[0]=real;if args_count(a[..])>255 {return 2;}for i:0..<args_count(a[..]) {argv[i+1]=args_at(a[..],i);}out:[1048576]u8;err:[65536]u8;env:[]string;r:=rtq_run_raw(argv[0..<args_count(a[..])+1],env,30000,out[..],err[..]);if r.started!=0 || r.timed_out || r.cut {return 30;}print("%",cast(string)out[0..<r.out_n]);tool_err(cast(string)err[0..<r.err_n]);return r.status;
+  }
+  source:=args_at(a[..],1);hash:[64]u8;if !rtq_hash_file(source,hash[..]) {return 31;}bytes:[65536]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"argv");jo_arr(o[..]);for i:0..<args_count(a[..]) {jo_str(o[..],args_at(a[..],i));}jo_end(o[..]);jo_key(o[..],"source_sha256");jo_str(o[..],cast(string)hash[..]);jo_end(o[..]);if o[0].bad || !fs_append(calls_path,jo_text(o[..])) || !fs_append(calls_path,"\n") {return 32;}
+  file:=ifx kind=="c" then "RenderCaps.c" else fs_base(args_value(a[..],"-o",""));if fail==file {tool_err("deliberate local fixture compiler refusal: ");tool_errln(file);return 71;}
+  if kind=="spirv" {target:=args_value(a[..],"-o","");if target=="" || !fs_write(target,"AETHYR LOCAL EMISSION FIXTURE; NOT SPIR-V\n") || !fs_append(target,jo_text(o[..])) {return 33;}tool_err("LOCAL MOCK REFLECTION ");tool_err(cast(string)hash[..]);tool_err("\n");return 0;}
+  header:=args_value(a[..],"--header","");if header=="" || !fs_write(header,"/* LOCAL MOCK HEADER; NEVER LINK */\n") || !fs_append(header,jo_text(o[..])) {return 34;}
+  print("/* LOCAL MOCK C; NEVER LINK */\n%",jo_text(o[..]));return 0;
+}

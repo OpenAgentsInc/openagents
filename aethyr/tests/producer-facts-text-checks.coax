@@ -1,0 +1,44 @@
+pft_expect :: (source:[]u8,wanted:[]u8)->bool {
+  out:[64]u8;for k:0..<out.count {out[k]=90;}
+  if pft_measure(cast(string)source)!=wanted.count || pft_write(cast(string)source,out[..])!=wanted.count {return false;}
+  for byte,k:wanted {if out[k]!=byte {return false;}}
+  for k:wanted.count..<out.count {if out[k]!=90 {return false;}}
+  return true;
+}
+#test "facts UTF8 normalization preserves ASCII NUL BOM and complete scalar boundaries" {
+  valid:=[31]u8.[0,65,127,194,128,223,191,224,160,128,225,128,128,237,159,191,239,187,191,239,191,191,240,144,128,128,244,143,191,191,10];
+  #assert pft_expect(valid[..],valid[..]);
+  empty:[]u8;#assert pft_measure("")==0 && pft_write("",empty)==0;
+}
+#test "facts UTF8 normalization uses maximal subparts at truncation and interrupted sequences" {
+  replacement:=[3]u8.[239,191,189];
+  for source:[8][3]u8.[[3]u8.[194,0,0],[3]u8.[224,160,0],[3]u8.[225,128,0],[3]u8.[240,144,128],[3]u8.[241,128,128],[3]u8.[244,143,191],[3]u8.[226,130,0],[3]u8.[239,191,0]] {
+    n:=ifx source[1]==0 then 1 else ifx source[2]==0 then 2 else 3;row:=source;
+    #assert pft_expect(row[0..<n],replacement[..]);
+  }
+  interrupted:=[4]u8.[225,128,65,66];wanted:=[5]u8.[239,191,189,65,66];#assert pft_expect(interrupted[..],wanted[..]);
+  interrupted4:=[4]u8.[240,144,128,65];wanted4:=[4]u8.[239,191,189,65];#assert pft_expect(interrupted4[..],wanted4[..]);
+}
+#test "facts UTF8 normalization refuses overlong surrogate out-of-range and stray bytes individually" {
+  replacement:=[3]u8.[239,191,189];
+  for byte:[9]u8.[128,129,191,192,193,245,246,254,255] {one:=[1]u8.[byte];#assert pft_expect(one[..],replacement[..]);}
+  twice:=[6]u8.[239,191,189,239,191,189];thrice:=[9]u8.[239,191,189,239,191,189,239,191,189];four:=[12]u8.[239,191,189,239,191,189,239,191,189,239,191,189];
+  bad2:=[2]u8.[192,175];#assert pft_expect(bad2[..],twice[..]);
+  bad3:=[3]u8.[224,159,191];#assert pft_expect(bad3[..],thrice[..]);
+  surrogate:=[3]u8.[237,160,128];#assert pft_expect(surrogate[..],thrice[..]);
+  too_high:=[4]u8.[244,144,128,128];#assert pft_expect(too_high[..],four[..]);
+  overlong4:=[4]u8.[240,143,191,191];#assert pft_expect(overlong4[..],four[..]);
+  invalid5:=[4]u8.[245,128,128,128];#assert pft_expect(invalid5[..],four[..]);
+  wrong_second:=[2]u8.[194,192];#assert pft_expect(wrong_second[..],twice[..]);
+  wrong_third:=[3]u8.[225,128,192];#assert pft_expect(wrong_third[..],twice[..]);
+}
+#test "facts UTF8 capacity refusal counts first and preserves every output byte" {
+  invalid:=[2]u8.[255,65];out:[8]u8;for k:0..<out.count {out[k]=91;}
+  #assert pft_measure(cast(string)invalid[..])==4;
+  #assert pft_write(cast(string)invalid[..],out[0..<3])== -1;
+  for byte:out {#assert byte==91;}
+  #assert pft_write(cast(string)invalid[..],out[0..<4])==4;
+  #assert out[0]==239 && out[1]==191 && out[2]==189 && out[3]==65 && out[4]==91;
+  valid:=[2]u8.[194,128];#assert pft_write(cast(string)valid[..],out[0..<1])== -1;
+  #assert pft_part("",0).bytes==0 && pft_part("x",-1).bytes==0 && pft_part("x",1).bytes==0;
+}

@@ -1,0 +1,62 @@
+{
+  "schema": "aethyr.render.oracle-tooling-port.v1",
+  "date": "2026-11-02",
+  "status": "pass",
+  "release_qualification": false,
+  "scope": "Coax constructs all own-code JSON/header/word/publication/process-identity controls and owns every verdict. Existing independently authored Python interval and pixel equations are invoked only as reference-oracle functions, not their full product gates.",
+  "checks_first": {
+    "geometry_original_methods": 4,
+    "pipeline_original_methods": 3,
+    "logs": [
+      "aethyr-geometry-tooling-original-20261102.log",
+      "aethyr-pipeline-tooling-original-20261102.log"
+    ]
+  },
+  "geometry": {
+    "wire_positive": 1,
+    "wire_refusals": 7,
+    "atomic_refusal_outcomes": 2,
+    "abi_outcomes": 3,
+    "actual_stale_identity_calls": [
+      "version",
+      "source-digest"
+    ],
+    "stale_work_empty": true,
+    "stale_receipt_absent": true,
+    "negative_exception_types": "AssertionError for oracle and ABI losses; RuntimeError/source digests differ for stale gate.",
+    "source_fence_epochs": "Initial small fixture run was extended with a complete observer/compiler/mock/source fence, then final exception-type controls were tightened; each changed source image is retained through receipt hashes and logs."
+  },
+  "pipeline": {
+    "pixel_word_losses": 144,
+    "counter_losses": 5,
+    "exact_work_boundary_and_short_view_losses": 2,
+    "abi_omissions": 13,
+    "abi_addition_reorder_losses": 2,
+    "positive_cases": 4,
+    "negative_exception_type": "Every loss must be an actual AssertionError, not any process failure.",
+    "total_observation_cases": 170
+  },
+  "observer_compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "source_sha256": {
+    "aethyr/render/tests/check-geometry-tooling.coax": "08666d1cbe5d43d6bb7d671f0ba36635628065d25eb30d8e78696eb31ce72a31",
+    "aethyr/render/tests/geometry-identity-fixture.coax": "4c565b61abeb77970c098c62e2e7782342e859403484b493f070be9930c435ee",
+    "aethyr/render/tests/check-pipeline-tooling.coax": "6a8ba8cbb7aaa5baa005ab05319a1477606ca7db13a97f155496d7b3a1fd47ce",
+    "aethyr/render/tests/check_geometry.py": "c7eea69bfc2dece286109f4f94c98bb9a2f232c814e53950b330267f68dbded5",
+    "aethyr/render/tests/check_pipeline.py": "3b7c89684947dcd08a53fc725ef31180e9db20f7bfff0a8223aea12b1497cc71"
+  },
+  "original_sha256": {
+    "test_geometry_tooling.py": "f06b6856286b93899398c37ce0594a1d65b0d12ea375613f962c33bc43f163a4",
+    "test_pipeline_tooling.py": "75579fb85f4978573822519c26979dc9cf99737c087cf88be25f2e007497aa57"
+  },
+  "archive": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-02/oracle-tooling-port/artifacts-and-reference.tar.gz",
+    "sha256": "5fd2b864a74f7eb420b10836d26a98cefc3bacc2e06fdfb341c5818fece69506",
+    "bytes": 2447433,
+    "original_readback_verified": true
+  },
+  "limitations": [
+    "Only identical bounded unit fixtures and independent-oracle controls; no producer geometry, Grid CPU/raster, device or model run.",
+    "Selected older observer compiler is not current-source or release qualification.",
+    "No equations, tolerances, expected fixtures or original oracle implementations were changed."
+  ]
+}

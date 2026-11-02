@@ -1,0 +1,28 @@
+{
+  "schema": "aethyr.render.layer-tool-port.retention.v1",
+  "status": "passed",
+  "archive": "artifacts-and-reference.tar.xz",
+  "sha256": "f89941387a7f7c32396dd360cb0b982486526cd5bb5cef1259f24f2c19ccc6b2",
+  "bytes": 15664432,
+  "readback": {
+    "status": "passed",
+    "extract_exit": 0,
+    "whole_directory_diff_exit": 0,
+    "empty_files_included": true,
+    "log": "readback.log",
+    "command": "diff -qr /tmp/aethyr-layer-retention-20261102 /tmp/aethyr-layer-retention-xz-readback-20261102/aethyr-layer-retention-20261102"
+  },
+  "original_observation_tree_copy": {"whole_directory_diff_exit":0,"log":"source-copy-readback.log"},
+  "inventory": "archive-members.txt",
+  "contents": [
+    "Original and Coax packed/individual observations, exact native images, raw physical readbacks, mip configurations, all origin ledgers and source fences",
+    "Every-byte independent comparison and complete shared original-source/status/browser parity receipts",
+    "Malformed/input/profile/transport refusal controls and targeted profile recovery reusing the passing original observation",
+    "Separate source changes before upload and after ACK, retaining failed receipts and no qualified output",
+    "Complete current dependency/native source closure, immutable legacy source, explicit historical compiler and exact earlier source epochs restored by checksum identity",
+    "All red/green/mutation/command/source-join logs, including the retained CLI/config-path failures"
+  ],
+  "logical_bytes_preserved": "Equal complete raw files are hardlinked only inside the owned retention tree. Every logical file matches the original observation inventory; the complete extracted tree matches the retained tree, including empty files.",
+  "commands_and_scope": "commands-and-scope.json",
+  "claim": "Layer resource observer port, current policy and exact raw-byte transport parity. No current-main compiler/product emission, whole-realm frame or repeated native/CPU texture-math qualification."
+}

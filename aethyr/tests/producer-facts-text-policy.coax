@@ -1,0 +1,33 @@
+// Buffer.readFileSync(...,"utf8") followed by UTF-8 encoding: valid scalar
+// sequences are unchanged; each maximal malformed subpart becomes U+FFFD.
+// The caller bounds source bytes before passing a view (capture: 64 MiB).
+#authority;
+#load "producer-facts-text-checks.coax";
+PftPart :: struct {bytes:int;valid:bool;}
+pft_part :: (source:string,start:int)->PftPart {
+  r:PftPart;if start<0 || start>=source.count {return r;}
+  lead:=source[start];r.bytes=1;
+  if lead<128 {r.valid=true;return r;}
+  length:=0;lower:=128;upper:=191;
+  if lead>=194 && lead<=223 {length=2;}
+  else if lead>=224 && lead<=239 {length=3;if lead==224 {lower=160;}if lead==237 {upper=159;}}
+  else if lead>=240 && lead<=244 {length=4;if lead==240 {lower=144;}if lead==244 {upper=143;}}
+  if length==0 {return r;}
+  for k:1..<length {
+    if start+k==source.count {return r;}
+    byte:=cast(int)source[start+k];if byte<lower || byte>upper {return r;}
+    r.bytes+=1;lower=128;upper=191;
+  }
+  r.valid=true;return r;
+}
+pft_measure :: (source:string)->int {
+  count:=0;at:=0;while at<source.count {part:=pft_part(source,at);count+=ifx part.valid then part.bytes else 3;at+=part.bytes;}return count;
+}
+pft_write :: (source:string,out:[]u8)->int {
+  count:=pft_measure(source);if count>out.count {return -1;}
+  at:=0;used:=0;while at<source.count {part:=pft_part(source,at);
+    if part.valid {for k:0..<part.bytes {out[used+k]=source[at+k];}used+=part.bytes;}
+    else {out[used]=239;out[used+1]=191;out[used+2]=189;used+=3;}
+    at+=part.bytes;
+  }return used;
+}

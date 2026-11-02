@@ -1,0 +1,84 @@
+{
+  "schema": "aethyr.render.pipeline-process-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "pass",
+  "release_qualification": false,
+  "scope": "Coax owns fixture modes, native worker compilation, child deadlines/signals, process-state admission and success-marker verdicts. The only added host effect is an unchanged-semantics raw fork() in the existing process group.",
+  "checks_first": {
+    "original_test_methods": 4,
+    "original_log": "trials/aethyr-pipeline-process-original-20261102.log",
+    "new_policy_stub_failed": "trials/aethyr-process-observation-stub-20261102.log"
+  },
+  "policy": {
+    "root_mutants": 23,
+    "killed": 23,
+    "survivors": 0,
+    "waivers": 0,
+    "rule": "Only an actual absent PID or zombie state with a successful/non-error observation proves cleanup; timeout, cut, stderr, failed spawn and unknown states never do."
+  },
+  "actual_controls": {
+    "nonzero_exit_status": 7,
+    "timeout_ms": 200,
+    "timeout_owned_pids": [
+      84438,
+      84439
+    ],
+    "signals": [
+      {
+        "signal": 2,
+        "wrapper_pid": 84442,
+        "status": 130,
+        "owned_pids": [
+          84443,
+          84444
+        ],
+        "passed_marker_absent": true,
+        "all_owned_processes_dead_or_zombie": true
+      },
+      {
+        "signal": 15,
+        "wrapper_pid": 84447,
+        "status": 143,
+        "owned_pids": [
+          84448,
+          84449
+        ],
+        "passed_marker_absent": true,
+        "all_owned_processes_dead_or_zombie": true
+      }
+    ],
+    "success_marker_absent": true,
+    "default_mismatch_identity_files_only": 6,
+    "before_worker_emission_refusal": true
+  },
+  "compiler": {
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "current_sources_match": false,
+    "explicit_exploration": true
+  },
+  "oracle_split": {
+    "original_sha256": "8331beb2f7d2c0e0f803339e85b1da45c20409355c872e0463200a80e5e80c40",
+    "current_sha256": "3759f2c41cd2cdfecb3a7bb79197094814aa26f742c5b84ddc32b17af724fdb8",
+    "unchanged_math_method_sha256": "b104f480902fe4aad525c5f0fcccd74cda3f363ca6af3581520b8a1288825c2f",
+    "retained_scope": "Exact original hand-pinned depth/target binary32 words and helper masks only; no child lifecycle/process orchestration.",
+    "remaining_math_gate": "Not rerun after import/header-only split; the unchanged method passed in original4-method epoch."
+  },
+  "source_sha256": {
+    "aethyr/render/tests/check-pipeline-processes.coax": "81a4021b3600aba86b3d550ad46bdbd7a411d840abc2e85e5ab30bac18fb0780",
+    "aethyr/render/tests/pipeline-process-worker.coax": "15b0471a6affa73173064bf8c6b06308316a2c6bba8068a3fd1fca2a207d95e7",
+    "aethyr/render/tests/process-fork-native.c": "ba9668efb9c4b6c032229a66d6880e95e4daccb6a28cfe6d8a5e1b0fdc9c5c33",
+    "aethyr/render/tests/process-observation-policy.coax": "04b6c338b49384ac949502dce2e44d957f964177895d381053e7888cbb0d7a81",
+    "aethyr/render/tests/check-tool-identity-refusal.coax": "a820be89582c31a16f41bb80b54b1cabbddd930a801ab89a1c349460b5358899"
+  },
+  "archive": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-02/pipeline-process-tool-port/artifacts-and-reference.tar.gz",
+    "sha256": "d66b62ef829539d7c17e4bcbeff3b58413db9f7fd43e0476c8eaa4165d54e4f8",
+    "bytes": 1230390,
+    "original_readback_verified": true
+  },
+  "limitations": [
+    "PID values and language-specific signal statuses are observations, not byte-parity claims between Python and Coax. The exact same exit/deadline/signal contracts passed.",
+    "No product renderer, Grid, geometry, GPU or model gate was executed.",
+    "The older compiler remains explicit exploration; current-source compiler/release qualification remains pending."
+  ]
+}

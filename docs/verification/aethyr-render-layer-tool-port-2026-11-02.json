@@ -1,0 +1,50 @@
+{
+  "schema": "aethyr.render.layer-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "passed",
+  "change": "The production layer resource observer runs in Coax. Coax owns VPK framing/traversal, source and decoded-image byte identity, compiled-owner selection, upload ranges, metadata/hash admission, finalization and textures.config. Browser JavaScript is narrow reason1 SDK effects.",
+  "entrypoint": "aethyr/tests/check-render-layers.coax",
+  "API": "aethyr/tests/RENDER_LAYERS.md",
+  "legacy_tool_removed_after_parity": "aethyr/tests/check_render_layers.ts",
+  "qualification": {
+    "policy_checks": 97,
+    "passed": 97,
+    "root_mutants": 319,
+    "killed": 319,
+    "survivors": 0,
+    "waivers": 0,
+    "scope": "Owned policy root procedures; existing dependency checks retained.",
+    "packed": {"profile":7,"layers":7,"mips":10,"bytes":9861376,"sha256":"5c48f4d5e6b75b206dd5269d957f2547288f6970491c2ccd812a8de9bbe291c2","shared_sources":5},
+    "individual": {"profile":0,"layers":12,"mips":11,"bytes":67236864,"sha256":"22ac8348e4e62191704e6c049fab664e33a5cd601aa6d5147abbc56b6e0c7a14","shared_sources":16,"declared_transport_parts":2},
+    "parity": "All stable resource status/browser fields and every original shared-source hash agree. Native cmp checks every raw byte; Coax independently checks complete hashes and exact mip layout. Texture configurations are byte-identical after canonicalizing only the declared owned raw-file path.",
+    "masks": 0,
+    "tolerances": 0,
+    "refusal_boundaries_closed": 11,
+    "refusals": "VPK magic/length/table/unselected-span, actual ImageBitmap decode failure, wrong profile, empty selected layer part, short/corrupt physical transport, and source changes both before upload and after ACK.",
+    "retained_red": "Original matrix8/9 is retained: the ten-digit int32 profile was incorrectly rejected by a nine-digit helper before package admission. A tested canonical int32 parser repairs it; only the changed Coax side was rerun and joined to the unchanged original exit1. Initial /tmp versus /private/tmp texture-config refusal is also retained.",
+    "source_failure": "Both controlled source changes retain structured failed receipts and publish no qualified layer artifact. The after-ACK case records one complete POST followed by failed final source ownership."
+  },
+  "provenance": {
+    "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "compiler_scope": "Explicit qualified historical compiler; actual image and source inputs retained. No current-main compiler or new product-emission claim.",
+    "catalogue_wasm_sha256": "553950d7831765da50caa2543327ade6ea37f9bc54107235f152af233eb9d444",
+    "production_render_js_sha256": "c524e3f88b955c0721807e9b996c30c00d94c378682ca68fca64679b514b97d6",
+    "packed_observer_sha256": "3a198b7f2f8994da13b58ae5c5f372df9083828fe7039ad1dd766a1021cd3f53",
+    "individual_observer_sha256": "daee03c89c17927c66148f51b3333bfb47f22ba15b4d721543a93b24c61f3800",
+    "parity_observer_sha256": "2d6028e31a6594e9078109a546294add6b19fe82f8c337b74a084de8c4b0088f",
+    "source_epochs": "Exact earlier source bytes are recovered by authored inverse changes and required to match stamped source SHA256 values. Complete native shasum-c joins pass for all observing epochs; no historical source was executed or restored into the repository.",
+    "reused_gpu_scope": "Packed/individual observations precede the narrow CLI/failed-receipt repairs. Their exact Wasm, production renderer, package/image inputs and every captured byte remain unchanged and are replayed through the final policy. Actual historical tool images are kept distinct from final-source emission."
+  },
+  "limits": [
+    "Layer resource conformance only; no whole-realm frame, new shader/producer build or new native/CPU numerical result.",
+    "Existing64MiB input file fences remain. The original256MiB capture envelope uses up to4explicit64MiB POST sinks and Coax assembly/hash; shared RTO policy was not enlarged or changed.",
+    "Canonical decimal int32 profiles are explicit; incidental JavaScript Number coercions are not part of the new CLI contract.",
+    "Original180s browser/30s CDP limits remain, with muted headless Chrome only. Volatile refusal stacks/request ordering are not asserted equal.",
+    "Shared origin/session/production-renderer sources and prior POST/renderer-math gates remain unchanged and are reused."
+  ],
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-02/render-layer-tool-port/qualification.json",
+  "archive_sha256": "f89941387a7f7c32396dd360cb0b982486526cd5bb5cef1259f24f2c19ccc6b2",
+  "archive_bytes": 15664432,
+  "archive_original_tree_copy": "passed",
+  "archive_whole_directory_readback": "passed"
+}

@@ -21,6 +21,7 @@ tool_main :: ()->int #export_c {
   if !jv_parse(d[..],text,nodes[..]) {text=nr_replace(original_text,needle,replacement,normalized[..]);repaired=true;if text=="" || !jv_parse(d[..],text,nodes[..]) {return 1;}}
   if !np_text(d[0],rtq_member(d[0],0,"schema"),"aethyr.native-gpu-tool.v1") || !np_text(d[0],rtq_member(d[0],0,"profile"),ifx profile==0 then "sampling" else "helper") || !np_text(d[0],rtq_member(d[0],0,"status"),"passed") || !np_text(d[0],rtq_member(d[0],0,"shader_compiler_sha256"),expected) || jv_kind(d[0],rtq_member(d[0],0,"cleanup"))!=JV_TRUE {return 1;}
   inputs:[1]RtqInputs;if !rtq_input_add(inputs[..],run_receipt) {return 1;}paths:[8][4096]u8;
+  closure_path:[4096]u8;closure:=args_value(a[..],"--executed-closure",fs_join(fs_dir(executed),"final-source",closure_path[..]));
   map:=rtq_member(d[0],0,"source_inputs");if jv_kind(d[0],map)!=JV_OBJECT {return 1;}child:=d[0].nodes[map].first;
   while child!=-1 {
     label:=jv_key(d[0],child);hash:[64]u8;n:=jv_str(d[0],child,hash[..]);if n!=64 {return 1;}
@@ -28,6 +29,7 @@ tool_main :: ()->int #export_c {
     // The exact executed controller/policy/worker source epoch was copied
     // before the final policy extraction and JSON-format fix.
     saved:=fs_join(executed,fs_base(label),paths[1][..]);if fs_kind(saved)==FS_FILE && label.count>13 && label[0..<13]=="aethyr/tests/" {source=saved;}
+    else if label.count>0 && label[0]!='/' {saved=fs_join(closure,label,paths[1][..]);if fs_kind(saved)==FS_FILE {source=saved;}}
     if !nc_hash(source,cast(string)hash[..],inputs[..]) {tool_err("executed source mismatch: ");tool_errln(source);return 1;}child=d[0].nodes[child].next;
   }
   transferred:=rtq_member(d[0],0,"transferred_inputs");if jv_kind(d[0],transferred)!=JV_OBJECT {return 1;}child=d[0].nodes[transferred].first;i:=0;payload:=fs_join(work,"payload",paths[2][..]);

@@ -1,0 +1,17 @@
+// The original reuse boundary: exact compiler bytes, every current source
+// dependency hash, and seven/three successful compiler emissions. Overall GPU
+// outcome is separate; a failed GPU run does not invalidate successful emits.
+#load "native-gpu-emission-policy.coax";
+#authority;
+#load "native-gpu-reuse-checks.coax";
+nr_mode :: (historical:bool,fresh:bool,reuse:bool)->bool {return (ifx historical then 1 else 0)+(ifx fresh then 1 else 0)+(ifx reuse then 1 else 0)==1;}
+nr_text :: (d:Jv,node:int,want:string)->bool {b:[4096]u8;n:=jv_str(d,node,b[..]);return n==want.count && cast(string)b[0..<n]==want;}
+nr_reuse :: (profile:int,d:Jv,compiler:string,keys:[]string,hashes:[]string)->bool {
+  count:=ne_count(profile);if count==0 || keys.count==0 || hashes.count!=keys.count || !nr_text(d,rtq_member(d,0,"compiler_sha256"),compiler) {return false;}
+  source_inputs:=rtq_member(d,0,"source_inputs");if jv_kind(d,source_inputs)!=JV_OBJECT {return false;}
+  for i:0..<keys.count {if !nr_text(d,rtq_member(d,source_inputs,keys[i]),hashes[i]) {return false;}}
+  commands:=rtq_member(d,0,"commands");if jv_kind(d,commands)!=JV_ARRAY {return false;}emissions:=0;
+  for i:0..<jv_len(d,commands) {row:=jv_at(d,commands,i);argv:=rtq_member(d,row,"command");op:=jv_at(d,argv,1);
+    if nr_text(d,op,"spirv") || nr_text(d,op,"c") {if jv_int(d,rtq_member(d,row,"exit_code"),-1)!=0 {return false;}emissions+=1;}
+  }return emissions==count;
+}

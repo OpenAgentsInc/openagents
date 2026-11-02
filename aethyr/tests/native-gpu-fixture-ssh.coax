@@ -1,0 +1,6 @@
+// A local network boundary fixture. Record argv and refuse; no SSH/network
+// implementation, remote script or GPU execution is ever invoked.
+#load "../render/tests/qualification-files.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}path:[4096]u8;calls_path:=proc_getenv("AETHYR_FRESH_SSH_CALLS",path[..]);if calls_path=="" {return 2;}bytes:[65536]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_arr(o[..]);for i:0..<args_count(a[..]) {jo_str(o[..],args_at(a[..],i));}jo_end(o[..]);if o[0].bad || !fs_append(calls_path,jo_text(o[..])) || !fs_append(calls_path,"\n") {return 30;}tool_errln("deliberate local SSH boundary refusal; no network");return 89;
+}

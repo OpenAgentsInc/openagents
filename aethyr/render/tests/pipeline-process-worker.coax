@@ -1,0 +1,12 @@
+// Deliberately long owned child tree for deadline and interrupt controls.
+#import "Basic";
+#load "qualification-files.coax";
+rpt_fork :: ()->int #foreign;
+cxproc_self_pid :: ()->int #foreign;
+cxproc_pid_signal :: (pid:int,signal_number:int)->int #foreign;
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) {return 2;}mode:=args_at(a[..],0);if mode=="exit7" {return 7;}pid_file:=args_at(a[..],1);if pid_file.count==0 {return 2;}
+ if mode=="tree" {child:=rpt_fork();if child<0 {return 3;}if child>0 {bytes:[256]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_arr(o[..]);jo_int(o[..],cxproc_self_pid());jo_int(o[..],child);jo_end(o[..]);if !fs_write(pid_file,jo_text(o[..])) {k:=cxproc_pid_signal(child,9);return 4;}}proc_sleep(60000);return 0;}
+ if mode=="wrapper" {path:[4096]u8;n:=cxproc_self_path(path[..]);if n<1 || n>path.count {return 2;}argv:=[3]string.[cast(string)path[0..<n],"tree",pid_file];stdout:[4096]u8;stderr:[4096]u8;env:[]string;r:=rtq_run_raw(argv[..],env,10000,stdout[..],stderr[..]);if !rtq_ok(r) {return 5;}passed:=args_at(a[..],2);return ifx passed.count>0 && fs_write(passed,"passed") then 0 else 6;}
+ return 2;
+}

@@ -1,0 +1,35 @@
+#test "fresh native emission plans preserve all authored calls and closed profiles" {
+  #assert ne_count(0)==7 && ne_count(1)==3 && ne_count(-1)==0 && ne_count(2)==0;
+  sampling:=[7]string.["render_sampling_fs","render_sampling_invalid_fs","render_sampling_array_fs","render_sampling_invalid_array_fs","render_sampling_invalid_fs","render_sampling_invalid_array_fs",""];
+  files:=[7]string.["filtered.spv","invalid.spv","array.spv","invalid-array.spv","fault.spv","fault-array.spv","RenderCaps.c"];
+  for i:0..<7 {#assert ne_fragment(0,i)==sampling[i] && ne_file(0,i)==files[i] && ne_vertex(0,i)==(ifx i==6 then "" else "render_sampling_vs");}
+  #assert ne_file(1,0)=="helper.spv" && ne_file(1,1)=="range.spv" && ne_file(1,2)=="RenderCaps.c";
+  #assert ne_fragment(1,0)=="rp_helper_fragment" && ne_vertex(1,0)=="rp_vertex" && ne_fragment(1,1)=="render_range_fs" && ne_vertex(1,1)=="render_range_vs" && ne_vertex(1,2)=="" && ne_fragment(1,2)=="";
+  #assert ne_source(0,0)=="aethyr/tests/render-sampling-shader.coax" && ne_source(0,3)=="aethyr/tests/render-sampling-shader.coax" && ne_source(0,4)=="fault-source.coax" && ne_source(0,5)=="fault-array-source.coax" && ne_source(0,6)=="aethyr/tests/render-capabilities-bridge.coax";
+  #assert ne_source(1,0)=="aethyr/render/tests/pipeline-shader.coax" && ne_source(1,1)=="aethyr/tests/render-binding-shader.coax" && ne_source(1,2)=="aethyr/tests/render-capabilities-bridge.coax";
+}
+#test "fresh planted controls remove exactly one of two distinct demotion guards" {
+  out:[8192]u8;source:="#load \"sampling-core.coax\";\nfirst if !rs_result.valid {gpu_demote_helper();}\nsecond if !rs_result.valid {gpu_demote_helper();}\n";
+  first:="#load \"/root/sampling-core.coax\";\nfirst if !rs_result.valid {}\nsecond if !rs_result.valid {gpu_demote_helper();}\n";
+  second:="#load \"/root/sampling-core.coax\";\nfirst if !rs_result.valid {gpu_demote_helper();}\nsecond if !rs_result.valid {}\n";
+  #assert ne_fault(source,1,"/root/sampling-core.coax",out[..])==first && ne_fault(source,2,"/root/sampling-core.coax",out[..])==second;
+  #assert ne_fault(source,0,"/root/sampling-core.coax",out[..])=="" && ne_fault(source,3,"/root/sampling-core.coax",out[..])=="";
+  #assert ne_fault("if !rs_result.valid {gpu_demote_helper();}",1,"/root/core",out[..])=="";
+  #assert ne_fault(source,1,"/root/core",out[0..<8])=="";
+}
+#test "fresh carrier remapping preserves all remaining shader bytes" {
+  out:[1024]u8;source:="before\n#load \"../render/sampling.coax\";\nafter\n";
+  #assert ne_carrier(source,"/tmp/fault.coax",out[..])=="before\n#load \"/tmp/fault.coax\";\nafter\n";
+  #assert ne_carrier("missing","/tmp/fault.coax",out[..])=="" && ne_carrier(source,"/tmp/fault.coax",out[0..<4])=="";
+  #assert ne_carrier("#load \"../render/sampling.coax\";x","/tmp/fault.coax",out[..])=="#load \"/tmp/fault.coax\";x";
+  #assert ne_carrier("#load \"../render/sampling.coax\";#load \"../render/sampling.coax\";","/tmp/fault.coax",out[..])=="";
+}
+#test "fresh fault construction handles the guard at byte zero and rejects changed source shape" {
+  out:[8192]u8;
+  source:="if !rs_result.valid {gpu_demote_helper();}\nif !rs_result.valid {gpu_demote_helper();}\n#load \"sampling-core.coax\";";
+  #assert ne_fault(source,1,"/core",out[..])=="if !rs_result.valid {}\nif !rs_result.valid {gpu_demote_helper();}\n#load \"/core\";";
+  #assert ne_fault("#load \"sampling-core.coax\";if !rs_result.valid {gpu_demote_helper();}",1,"/core",out[..])=="";
+  #assert ne_fault("if !rs_result.valid {gpu_demote_helper();}if !rs_result.valid {gpu_demote_helper();}",1,"/core",out[..])=="";
+  #assert ne_fault("#load \"sampling-core.coax\";if !rs_result.valid {gpu_demote_helper();}if !rs_result.valid {gpu_demote_helper();}if !rs_result.valid {gpu_demote_helper();}",1,"/core",out[..])=="";
+  #assert ne_fault("#load \"sampling-core.coax\";#load \"sampling-core.coax\";if !rs_result.valid {gpu_demote_helper();}if !rs_result.valid {gpu_demote_helper();}",1,"/core",out[..])=="";
+}
