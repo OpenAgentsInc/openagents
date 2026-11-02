@@ -17,7 +17,7 @@ One key (the default engine, with the reason in the log).
 
 Test-only harness; the program under test is Coax.
 """
-import json, os, pty, re, select, signal, struct, subprocess, sys, tempfile, time, fcntl, termios
+import queue, threading, json, os, pty, re, select, signal, struct, subprocess, sys, tempfile, time, fcntl, termios
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STYLE = re.compile(rb"\x1b\[[0-9;?<>]*[@-~]")
@@ -336,17 +336,19 @@ def verbs(check):
         acp = subprocess.Popen([coder, "acp", "--engine", "echo"], cwd=REPO, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
         def acp_send(o):
             acp.stdin.write(json.dumps(o) + "\n"); acp.stdin.flush()
+        # a reader thread, not select: select on a buffered text pipe misses lines that arrive together
+        acp_q = queue.Queue()
+        threading.Thread(target=lambda: [acp_q.put(l) for l in iter(acp.stdout.readline, "")] and None, daemon=True).start()
         def acp_until(rid, secs=60):
             got, end = [], time.time() + secs
             while time.time() < end:
-                r, _, _ = select.select([acp.stdout], [], [], 0.2)
-                if r:
-                    line = acp.stdout.readline()
-                    if not line:
-                        break
-                    got.append(json.loads(line))
-                    if got[-1].get("id") == rid:
-                        break
+                try:
+                    line = acp_q.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                got.append(json.loads(line))
+                if got[-1].get("id") == rid:
+                    break
             return got
         acp_send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}})
         init = acp_until(1)
@@ -893,6 +895,22 @@ def verbs(check):
         check("recall: an event naming a session gets it and its parent inline, hop by hop, and the Router logs the walk",
               ("Session %s" % qsb) in qc and ("forked from session %s" % qsa) in qc and "fix the parser bug" in qc and "fixed-parser" in qc
               and ("coder log %s" % qsb) in qc and qrec.get("sessions") == 1 and qrec.get("hops") == 2 and qrec.get("bytes", 0) > 0)
+        # recall through Triggers and Threads (chapter 17): an event that names a Trigger's ID gets the Worker it started,
+        # and one that names thread:NAME gets that Thread's Worker, each with its chain
+        qtid = next((l.get("id", "") for l in qr if l.get("thread") == "qx" and "new worker" in l.get("fate", "")), "")
+        xq("trigger", "follow up on %s and on thread:tx." % qtid, "--source", "team", "--author", "kim", "--thread", "qy", "--to-agent")
+        qr2 = []
+        for _ in range(60):
+            qr2 += [json.loads(l) for l in xq("router", "--once", "--json").stdout.splitlines() if l.startswith("{")]
+            if any(l.get("thread") == "qy" and l.get("fate") == "reply written to the outbox" for l in qr2):
+                break
+            time.sleep(0.3)
+        qw2 = next((l.get("session", "") for l in qr2 if l.get("thread") == "qy" and l.get("session")), "")
+        qc2 = open(os.path.join(xdir, "router", "context", qw2)).read() if qw2 and os.path.exists(os.path.join(xdir, "router", "context", qw2)) else ""
+        qrec2 = next((l for l in qr2 if l.get("kind") == "recall"), {})
+        check("recall: an event naming a Trigger gets the Worker it started, and thread:NAME gets that Thread's Worker",
+              qtid and ("Trigger %s started session %s" % (qtid, qw)) in qc2 and "Thread tx's Worker, session" in qc2 and "trusted-ran" in qc2
+              and qrec2.get("sessions") == 2)
         # mail (chapter 20): a mail source's reply is a Gmail draft through gws, sent only with --send; a Router killed
         # right after mailing doesn't mail again; --to takes one plain address
         gws = os.path.join(xhome, "gws")

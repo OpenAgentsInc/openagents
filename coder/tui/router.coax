@@ -993,7 +993,7 @@ rt_context_file :: (p: [] RtPaths, t: RtTrigger, sid: string, issue_too: bool, j
   if sid.count == 0 { return ""; }
   tb: [9000] u8; n := 0;
   if issue_too { n = rt_issue_context(t, tb[..]); }
-  hops: [2] int; rn := rt_recall(t.text, tb[..], n, hops[..]);
+  hops: [2] int; rn := rt_recall(p, t.text, tb[..], n, hops[..]);
   if rn > n {
     // the reference graph's walk, for chapter 17's recall measurement
     lb: [512] u8;
@@ -1024,48 +1024,121 @@ rt_is_sid :: (s: string) -> bool {
   return true;
 }
 
-// Chain of recall (chapter 17): for each session the event names (at most
-// 3), its task, how it ended and the start of its result, then the same
-// for the session it was forked from, hop by hop (at most 4 a session).
-// Appended to out at n0; the new length. hops[0] sessions named, hops[1]
-// logs read.
-rt_recall :: (text: string, out: [] u8, n0: int, hops: [] int) -> int {
+// The session a Trigger started, from the Router's log: "" when the ID
+// isn't a Trigger's or it started no Worker.
+rt_trigger_session :: (p: [] RtPaths, id: string, out: [] u8) -> string {
+  b: [1300] u8; lb: [4194304] u8;
+  ln := fs_read(rt_path(p, "/router/log.jsonl", b[..]), lb[..]);
+  if ln <= 0 { return ""; }
+  logt := cast(string) lb[0..<ln];
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  at := 0; on := 0;
+  while at < logt.count {
+    e := at; while e < logt.count && logt[e] != 10 { e += 1; }
+    line := cast(string) logt[at..<e]; at = e + 1;
+    ar[0].at = 0; ar[0].full = false;
+    if cl_str(ar[..], line, "id") != id { continue; }
+    sid := cl_str(ar[..], line, "session");
+    if sid.count > 0 && sid != id { on = cd_cat(out, 0, sid); }
+  }
+  return cast(string) out[0..<on];
+}
+
+// The session a Thread's Worker is, from router/threads (its last line).
+rt_thread_session :: (p: [] RtPaths, thread: string, out: [] u8) -> string {
+  b: [1300] u8; tb: [262144] u8;
+  tn := fs_read(rt_path(p, "/router/threads", b[..]), tb[..]);
+  if tn <= 0 { return ""; }
+  tt := cast(string) tb[0..<tn];
+  at := 0; on := 0;
+  while at < tt.count {
+    e := at; while e < tt.count && tt[e] != 10 { e += 1; }
+    line := cast(string) tt[at..<e]; at = e + 1;
+    t1 := 0; while t1 < line.count && line[t1] != 9 { t1 += 1; }
+    if t1 >= line.count || cast(string) line[0..<t1] != thread { continue; }
+    t2 := t1 + 1; while t2 < line.count && line[t2] != 9 { t2 += 1; }
+    on = cd_cat(out, 0, cast(string) line[t1 + 1..<t2]);
+  }
+  return cast(string) out[0..<on];
+}
+
+// One chain: the session, then the sessions it was forked from, hop by hop
+// (at most 4). head introduces it. The new length; hops[1] counts logs read.
+rt_recall_chain :: (sid: string, head: string, out: [] u8, n0: int, hops: [] int) -> int {
+  n := n0;
+  fb: [4194304] u8; ib: [128] u8; tb: [24] u8;
+  cur: [32] u8; nc := cd_cat(cur[..], 0, sid);
+  first := true;
+  for hop: 0..<4 {
+    if nc == 0 { break; }
+    slog := cd_session_file(cast(string) cur[0..<nc], fb[..], ib[..]);
+    if slog.count == 0 { break; }
+    hops[1] += 1;
+    ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    sm: [1] CsSummary; cs_read(slog, sm[..], ar[..]);
+    rb: [8192] u8; res := rt_last_turn(slog, ar[..], rb[..]);
+    if n == 0 { n = cd_cat(out, n, "Related to this task:\n"); }
+    if first { n = cd_cat(out, n, "\n"); n = cd_cat(out, n, head); n = cd_cat(out, n, "ession "); }
+    else { n = cd_cat(out, n, "  forked from session "); }
+    n = cd_cat(out, n, cast(string) cur[0..<nc]);
+    n = cd_cat(out, n, ": \""); n = cd_cat(out, n, cast(string) sm[0].task[0..<ifx sm[0].ntask > 200 then 200 else sm[0].ntask]);
+    n = cd_cat(out, n, "\", "); n = cd_cat(out, n, cast(string) sm[0].ending[0..<sm[0].nending]);
+    n = cd_cat(out, n, " after "); n = cd_cat(out, n, cd_itoa(sm[0].turns, tb[..])); n = cd_cat(out, n, ifx sm[0].turns == 1 then " turn" else " turns");
+    if res.count > 0 { n = cd_cat(out, n, ". Result: "); n = cd_cat(out, n, cast(string) res[0..<ifx res.count > 300 then 300 else res.count]); }
+    n = cd_cat(out, n, "\n");
+    e := 0; while e < slog.count && slog[e] != 10 { e += 1; }
+    ar[0].at = 0; ar[0].full = false;
+    nc = cd_cat(cur[..], 0, cl_str(ar[..], cast(string) slog[0..<e], "parent"));
+    first = false;
+  }
+  if !first { n = cd_cat(out, n, "  The rest: coder log "); n = cd_cat(out, n, sid); n = cd_cat(out, n, "\n"); hops[0] += 1; }
+  return n;
+}
+
+// A Thread name after "thread:": letters, digits and - _ . / : #.
+rt_thread_char :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '/' || c == ':' || c == '#';
+}
+
+// Chain of recall (chapter 17): the event's references, at most 3, each
+// resolved to a session and walked by rt_recall_chain. A reference is a
+// session ID; a Trigger ID (the same shape), whose Worker the Router's log
+// names; or thread:NAME, whose Worker router/threads names. All three are
+// exact IDs, not intent. Appended to out at n0; the new length. hops[0]
+// references followed, hops[1] logs read (a Trigger or Thread lookup counts).
+rt_recall :: (p: [] RtPaths, text: string, out: [] u8, n0: int, hops: [] int) -> int {
   hops[0] = 0; hops[1] = 0;
   n := n0;
   seen: [3] [32] u8; nseen := 0;
-  fb: [4194304] u8; ib: [128] u8; tb: [24] u8;
+  fb: [4194304] u8; ib: [128] u8;
   i := 0;
-  while i + 19 <= text.count && nseen < 3 {
-    cand := cast(string) text[i..<i + 19];
-    edge := (i == 0 || text[i - 1] < '0' || text[i - 1] > '9') && (i + 19 == text.count || text[i + 19] < '0' || text[i + 19] > '9');
-    if !edge || !rt_is_sid(cand) { i += 1; continue; }
-    dup := false; for k: 0..<nseen { if cast(string) seen[k][0..<19] == cand { dup = true; } }
-    i += 19;
-    if dup { continue; }
-    x := cd_cat(seen[nseen][..], 0, cand); nseen += 1;
-    cur: [32] u8; nc := cd_cat(cur[..], 0, cand);
-    first := true;
-    for hop: 0..<4 {
-      if nc == 0 { break; }
-      slog := cd_session_file(cast(string) cur[0..<nc], fb[..], ib[..]);
-      if slog.count == 0 { break; }
+  while i < text.count && nseen < 3 {
+    sb: [32] u8; sid := ""; hb: [400] u8; hn := 0;
+    if i + 7 < text.count && cast(string) text[i..<i + 7] == "thread:" && (i == 0 || !rt_thread_char(text[i - 1])) {
+      e := i + 7; while e < text.count && rt_thread_char(text[e]) { e += 1; }
+      while e > i + 7 && (text[e - 1] == '.' || text[e - 1] == ':') { e -= 1; }     // the sentence's own punctuation
+      name := cast(string) text[i + 7..<e];
+      i = e;
+      if name.count == 0 { continue; }
+      sid = rt_thread_session(p, name, sb[..]);
       hops[1] += 1;
-      ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-      sm: [1] CsSummary; cs_read(slog, sm[..], ar[..]);
-      rb: [8192] u8; res := rt_last_turn(slog, ar[..], rb[..]);
-      if n == 0 { n = cd_cat(out, n, "Related to this task:\n"); }
-      n = cd_cat(out, n, ifx first then "\nSession " else "  forked from session "); n = cd_cat(out, n, cast(string) cur[0..<nc]);
-      n = cd_cat(out, n, ": \""); n = cd_cat(out, n, cast(string) sm[0].task[0..<ifx sm[0].ntask > 200 then 200 else sm[0].ntask]);
-      n = cd_cat(out, n, "\", "); n = cd_cat(out, n, cast(string) sm[0].ending[0..<sm[0].nending]);
-      n = cd_cat(out, n, " after "); n = cd_cat(out, n, cd_itoa(sm[0].turns, tb[..])); n = cd_cat(out, n, ifx sm[0].turns == 1 then " turn" else " turns");
-      if res.count > 0 { n = cd_cat(out, n, ". Result: "); n = cd_cat(out, n, cast(string) res[0..<ifx res.count > 300 then 300 else res.count]); }
-      n = cd_cat(out, n, "\n");
-      e := 0; while e < slog.count && slog[e] != 10 { e += 1; }
-      ar[0].at = 0; ar[0].full = false;
-      nc = cd_cat(cur[..], 0, cl_str(ar[..], cast(string) slog[0..<e], "parent"));
-      first = false;
-    }
-    if !first { n = cd_cat(out, n, "  The rest: coder log "); n = cd_cat(out, n, cand); n = cd_cat(out, n, "\n"); hops[0] += 1; }
+      hn = cd_cat(hb[..], 0, "Thread "); hn = cd_cat(hb[..], hn, name); hn = cd_cat(hb[..], hn, "'s Worker, s");
+    } else if i + 19 <= text.count && rt_is_sid(cast(string) text[i..<i + 19])
+              && (i == 0 || text[i - 1] < '0' || text[i - 1] > '9') && (i + 19 == text.count || text[i + 19] < '0' || text[i + 19] > '9') {
+      cand := cast(string) text[i..<i + 19];
+      i += 19;
+      if cd_session_file(cand, fb[..], ib[..]).count > 0 { sid = cast(string) sb[0..<cd_cat(sb[..], 0, cand)]; hn = cd_cat(hb[..], 0, "S"); }
+      else {
+        sid = rt_trigger_session(p, cand, sb[..]);
+        hops[1] += 1;
+        hn = cd_cat(hb[..], 0, "Trigger "); hn = cd_cat(hb[..], hn, cand); hn = cd_cat(hb[..], hn, " started s");
+      }
+    } else { i += 1; continue; }
+    if sid.count == 0 { continue; }
+    dup := false; for k: 0..<nseen { if cast(string) seen[k][0..<sid.count] == sid { dup = true; } }
+    if dup { continue; }
+    x := cd_cat(seen[nseen][..], 0, sid); nseen += 1;
+    n = rt_recall_chain(sid, cast(string) hb[0..<hn], out, n, hops);
   }
   return n;
 }

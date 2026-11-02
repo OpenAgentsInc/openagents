@@ -11,11 +11,11 @@
 > cover it. The candidates of one pass are decided together, in one System
 > One request, and a reply cut to fit points to the rest. A Worker started
 > from a GitHub issue gets the issue and its newest comments inline in its
-> first message, and an event that names an earlier session gets that
-> session's chain inline. Still to come:
+> first message, and an event that names an earlier session, Trigger or
+> Thread gets that work's chain inline. A labelled stream of 100 events
+> measures the two filtering paths. Still to come:
 > chat sources, a Router model for replies that need more than the Worker's
-> result, recall through Threads and Triggers as well as sessions,
-> acting ahead, many-to-many subscriptions, and the ablation.
+> result, acting ahead, many-to-many subscriptions, and the ablation.
 
 Chapters1–19 build one session well. A person can follow only three to
 five active sessions at once, so past that point the limit is their attention,
@@ -280,12 +280,18 @@ shell without a model, so it doesn't use the context.
 
 ### Chain of recall
 
-An event can name an earlier session by its ID, from any channel. Before
-the Router starts or forks a Worker for it, it follows those references:
+An event can name earlier work from any channel: a session, a Trigger or
+a Thread. Before the Router starts or forks a Worker for it, it follows
+those references:
 
-- It finds up to three session IDs in the event's text. A session ID has a
-  fixed shape (`20261102-113548-264`), so this is parsing a bounded field,
-  not matching intent.
+- It finds up to three references in the event's text. A session ID and a
+  Trigger ID have the same fixed shape (`20261102-113548-264`), and a
+  Thread is written `thread:NAME`. Each is an exact ID, so this is parsing
+  bounded fields, not matching intent.
+- An ID with no session log is looked up as a Trigger in the Router's log,
+  which names the Worker it started. A Thread is looked up in
+  `router/threads`, which names its current Worker. Each lookup counts as
+  a hop.
 - For each one, it reads that session's log and inlines the task, how it
   ended, its turn count and the first 300 characters of its result.
 - It then reads the `parent` in that log's first line and does the same
@@ -304,7 +310,11 @@ the Router logs it as `{"kind":"recall","sessions":1,"hops":2,"bytes":…}`,
 the numbers the recall measurement in [Done means](#done-means) reports.
 The smoke runs a task, forks it, then sends an event from another source
 that names the fork. The Worker's context holds both sessions, and the log
-line reports one session, two hops.
+line reports one session, two hops. A second event names the first
+event's Trigger ID and `thread:tx`, a Thread on another source. Its context
+starts with "Trigger … started session …" and "Thread tx's Worker,
+session …", with each Worker's result, and the log line reports two
+references.
 
 ## Checks
 
@@ -372,9 +382,12 @@ line reports one session, two hops.
 - [x] **Filtering.** On a labelled event stream, report the fraction the fast path
   drops, the slow path's misses and false starts, and model calls per hundred
   events. Measured by `coder/tui/filter_eval.py` (see [Filtering](#filtering)).
-- **Recall.** A follow-up about a task that left the Router's window long ago,
+- [x] **Recall.** A follow-up about a task that left the Router's window long ago,
   sent from a different channel, recovers the task through the reference
-  graph. Report hops and tokens read.
+  graph. Report hops and tokens read. The Router keeps no window: recall
+  reads the logs on disk, however old. The smoke's follow-ups from another
+  source recover a forked task in 2 hops and a Trigger's and a Thread's
+  Workers in 4, and the `recall` log line reports the bytes read.
 - **Acting ahead.** Report delivered and discarded speculative runs and their
   token cost. No speculative run posts anything before its result is
   confirmed.
