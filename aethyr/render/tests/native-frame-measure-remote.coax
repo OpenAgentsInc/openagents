@@ -1,0 +1,32 @@
+// Bounded SSH/SCP and owned remote effects. Every branch remains in Coax.
+#load "native-frame-measure-files.coax";
+nfm_ssh :: (host:string,argv:[]string,deadline:int,work:string,label:string,out:[]u8,err:[]u8)->ProcRun {
+ left:=proc_left(deadline,proc_now_ms());r:=ng_ssh(host,argv,ifx left<360000 then left else 360000,out,err);if !rtq_record_run(work,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {r.cut=true;}return r;
+}
+nfm_transfer :: (host:string,local:string,remote:string,download:bool,deadline:int,work:string,label:string)->bool {
+ out:[65536]u8;err:[65536]u8;left:=proc_left(deadline,proc_now_ms());r:=ng_scp(host,local,remote,download,ifx left<360000 then left else 360000,out[..],err[..]);argv:=[4]string.[ifx download then "download" else "upload",host,local,remote];return rtq_record_run(work,label,argv[..],r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) && rtq_ok(r);
+}
+nfm_remote_hash :: (host:string,path:string,deadline:int,work:string,label:string,out:[]u8)->bool {
+ stdout:[65536]u8;stderr:[65536]u8;argv:=[3]string.["sha256sum","--",path];r:=nfm_ssh(host,argv[..],deadline,work,label,stdout[..],stderr[..]);hash:=rtq_word(cast(string)stdout[0..<r.out_n],0);if !rtq_ok(r) || hash.count!=64 || out.count<64 {return false;}for i:0..<64 {out[i]=hash[i];}return true;
+}
+nfm_get :: (host:string,remote:string,local:string,deadline:int,work:string,label:string)->bool {
+ hash:[64]u8;again:[64]u8;actual:[64]u8;name:[256]u8;o:[1]Jo;jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],"-hash-before");if !nfm_remote_hash(host,remote,deadline,work,jo_text(o[..]),hash[..]) {return false;}
+ stdout:[65536]u8;stderr:[65536]u8;size_args:=[4]string.["stat","-c","%s",remote];jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],"-size");size_run:=nfm_ssh(host,size_args[..],deadline,work,jo_text(o[..]),stdout[..],stderr[..]);size:=rfr_number(rtq_trim(cast(string)stdout[0..<size_run.out_n]));if !rtq_ok(size_run) || !size.ok || size.value<0 || size.value>1073741824 || !nfm_transfer(host,local,remote,true,deadline,work,label) || fs_size(local)!=size.value || !nfm_hash_large(local,actual[..]) || cast(string)hash[..]!=cast(string)actual[..] {return false;}
+ jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],"-hash-after");return nfm_remote_hash(host,remote,deadline,work,jo_text(o[..]),again[..]) && cast(string)again[..]==cast(string)hash[..];
+}
+nfm_sdk :: (host:string,remote:string,argv:[]string,log_label:string,deadline:int,work:string,label:string,out:[]u8,err:[]u8)->ProcRun {
+ command:[65536]u8;text:=ifx log_label=="" then ng_command(argv,command[..]) else nfm_exec(argv,log_label,command[..]);if text=="" {return ProcRun.{started=PROC_ERROR};}args:=[15]string.["timeout","-k","5","350","env","-C",remote,"nix-shell","-p","gcc","vulkan-headers","vulkan-loader","vulkan-validation-layers","--run",text];return nfm_ssh(host,args[..],deadline,work,label,out,err);
+}
+nfm_remote_inputs :: (host:string,remote:string,manifest_hash:string,deadline:int,work:string,label:string)->bool {
+ path:[4096]u8;hash:[64]u8;name:[256]u8;o:[1]Jo;jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],"-manifest");if !nfm_remote_hash(host,fs_join(remote,"INPUTS.sha256",path[..]),deadline,work,jo_text(o[..]),hash[..]) || cast(string)hash[..]!=manifest_hash {return false;}
+ stdout:[1048576]u8;stderr:[65536]u8;args:=[7]string.["env","-C",remote,"sha256sum","--check","--strict","INPUTS.sha256"];return rtq_ok(nfm_ssh(host,args[..],deadline,work,label,stdout[..],stderr[..]));
+}
+nfm_remote_exists :: (host:string,path:string,deadline:int,work:string,label:string)->int {
+ out:[65536]u8;err:[65536]u8;argv:=[3]string.["test","-f",path];r:=nfm_ssh(host,argv[..],deadline,work,label,out[..],err[..]);return ifx r.started==0 && !r.timed_out && !r.cut && (r.status==0 || r.status==1) then r.status else -1;
+}
+nfm_copy_metadata :: (host:string,source:string,remote:string,name:string,deadline:int,work:string,label:string)->bool {
+ path:[4096]u8;dest:=fs_join(remote,name,path[..]);out:[65536]u8;err:[65536]u8;before:[64]u8;after:[64]u8;if !nfm_remote_hash(host,source,deadline,work,label,before[..]) {return false;}tag:[256]u8;o:[1]Jo;jo_start(o[..],tag[..]);jo_put(o[..],label);jo_put(o[..],"-copy");argv:=[4]string.["cp","--",source,dest];r:=nfm_ssh(host,argv[..],deadline,work,jo_text(o[..]),out[..],err[..]);jo_start(o[..],tag[..]);jo_put(o[..],label);jo_put(o[..],"-copied-hash");return rtq_ok(r) && nfm_remote_hash(host,dest,deadline,work,jo_text(o[..]),after[..]) && cast(string)before[..]==cast(string)after[..];
+}
+nfm_log_clean :: (file:string)->bool {
+ n:=fs_size(file);if n<0 || n>1073741824 {return false;}bytes:[65568]u8;at:=0;carry:=0;while at<n {take:=ifx n-at<65536 then n-at else 65536;if fs_read_at(file,at,bytes[carry..<carry+take])!=take {return false;}span:=carry+take;if !nfm_validation_clean(cast(string)bytes[0..<span]) {return false;}carry=ifx span<16 then span else 16;for i:0..<carry {bytes[i]=bytes[span-carry+i];}at+=take;}return true;
+}

@@ -1,0 +1,168 @@
+{
+  "schema": "aethyr.render.native-frame-controller-qualification.v1",
+  "date": "2026-11-02",
+  "status": "qualified_raw_measurement_and_local_controls",
+  "scope": "A bounded Coax controller stages the complete immutable Everglade RFI and source-joined pre-emitted native backends, compiles through Vulkan platform effects, retains raw output and closes its owned remote namespace. It makes no CPU/browser colour-comparison verdict.",
+  "entry": "aethyr/render/tests/measure-native-frame.coax",
+  "documentation": "aethyr/render/tests/NATIVE_FRAME_MEASUREMENT.md",
+  "compiler": {
+    "version": "coax0 0.48.0",
+    "sha256": "e8c68d778d103e22d7b8d8af8350a7b31d742447b6ce61fa09397dcbcf5c2a22",
+    "recorded_source_digest": "b6bda9bc453f58602bb64e5e2ec599e1dd4d4f1eff8c6318aba9771c46a28643",
+    "current_source_digest_at_execution": "b6bda9bc453f58602bb64e5e2ec599e1dd4d4f1eff8c6318aba9771c46a28643",
+    "matching": true,
+    "publication_claim": false
+  },
+  "executed_controller": {
+    "sha256": "c54034a5f9d4696aef3e79b13716ed7a9f8a64f1b805e494c4d46a152a97abde",
+    "retained": "epochs/final-prepare/controller"
+  },
+  "input": {
+    "corrected_rfi_sha256": "08207a08c57809162ff1ca44e68fef5ea415b21662b31fc8872e2c3047876c23",
+    "corrected_rfi_retained": "epochs/final-prepare/payload/inputs/original-frame.config",
+    "relative_staged_rfi_sha256": "71bdabeb1e3c8c2a5351f21903ac9828f4affc103984d142cdc666a3849399ca",
+    "package_manifest_sha256": "9376144faac5c8e27968103d918d279e8ecb52c21b6bec9e333625a90c7b1c6d",
+    "source_draw_count": 190,
+    "draw_packet_bytes": 3040,
+    "physical_textures": 8,
+    "largest_texture_bytes": 50715648,
+    "atlas_layers": 36,
+    "atlas_mips": 10,
+    "stage_files": 190,
+    "stage_bytes": 65233218,
+    "source_input_identities": 164,
+    "archive_bytes": 17729493,
+    "archive_sha256": "0b66fcabdd0d8b36af862328ec40e96d03736ae160848332a6e6cded3cf8ef4e",
+    "prepared_receipt_sha256": "ac49f9a599f5ad25562c9ef9fa46e0888004a23ed96c2814ee41104b541e9073"
+  },
+  "backend": {
+    "generated_pairs": "RenderHost.c/h and RenderTexture.c/h; uppercase generated names remain distinct from hyphenated native effects",
+    "RenderHost_c": "aeca6269871346b9adaf680767c3427802fe42b2498ed0c1649a4fcf095d9d4d",
+    "RenderHost_h": "d62284eadfbeb9432091d67e580f302cb43cf6425b386478f559fd42c0b9cc04",
+    "RenderTexture_c": "7a9c0b4b56e155c3ff6e9f8fb431921922387f818da2745b579bd1f50ec128ff",
+    "RenderTexture_h": "6157bf60dfe663961cedd0fddba785132e980f8c4eaa59f7e04da2fb3129d4b1",
+    "generated_sources_reemitted": false,
+    "spirv_validation_repeated": false,
+    "emission_profiles_and_complete_sources": "epochs/final-prepare/payload; source files copied at their executed identities before later shared-helper changes"
+  },
+  "measurement": {
+    "receipt": "epochs/final-measure/measurement.json",
+    "receipt_sha256": "5004b866102663de87b9115c836b677b83c9485b81340e6a165a433966f7dd1b",
+    "host": "coderos-4080",
+    "device": "NVIDIA GeForce RTX 4080",
+    "elapsed_ms": 44813,
+    "compile_exit": 0,
+    "execution_exit": 0,
+    "profile": 2,
+    "resource": 1,
+    "width": 320,
+    "height": 180,
+    "format": "rgba16f",
+    "bytes": 460800,
+    "draw_commands": 152,
+    "subpixel_precision_bits": 8,
+    "validation_errors": 0,
+    "validation_warnings": 0,
+    "complete_compile_and_execution_logs_empty": true,
+    "raw_sha256": "2fc99a6684ad778bf315f25c3ff21d170caf6af3b9d58f3d9ef7d43ca68fe56e",
+    "raw": "epochs/final-measure/screen.raw",
+    "native_record_sha256": "0db4519a5228bce6b386d03a4928947bccb72f924f94d7fc53504690b534e3c3",
+    "local_inputs_unchanged": true,
+    "remote_inputs_unchanged": true,
+    "sdk_inputs_unchanged": true,
+    "complete_available_outputs_retained": true,
+    "owned_cleanup": true
+  },
+  "checks": {
+    "policy": {
+      "command": "COAX_MUTATE_JOBS=4 /tmp/aethyr-current-main-compiler-6bd-20261102/coax mutate aethyr/render/tests/native-frame-measure-policy.coax --library --root-only --jobs 4",
+      "mutants": 100,
+      "killed": 100,
+      "survived": 0,
+      "log": "logs/aethyr-native-frame-policy-mutation-draw-span-20261102.log",
+      "log_sha256": "078b5e7ec2e8cbdfaa6a44d80d37bf3789a96e5e7302e3adf95964554fc8f1b6"
+    },
+    "metadata": {
+      "passed": 7,
+      "total": 7,
+      "cases": [
+        "complete retained 86,550B installed manifest",
+        "short library output refusal",
+        "missing library field refusal",
+        "wrong library type refusal",
+        "truncated JSON refusal",
+        "131,072B valid metadata accepted",
+        "131,073B metadata refused"
+      ],
+      "log": "logs/aethyr-native-frame-metadata-controls-20261102.log",
+      "sha256": "08de97b42607cac1dd49ed7a8c4950ade6234a91443d43f49000c8e383681516"
+    },
+    "prepared": {
+      "passed": 5,
+      "total": 5,
+      "receipt": "controls/prepared/qualification.json",
+      "sha256": "a35271b7207c0a579c20d6162aa14f824b460076fec789e98533ac3e2c4e3c17",
+      "cases": [
+        "complete snapshot admitted",
+        "archive corruption refused",
+        "manifest corruption refused",
+        "generated header corruption refused",
+        "wrong compiler source digest refused"
+      ],
+      "source_fence_unchanged": true
+    },
+    "source_draw_span": {
+      "expected_exit": 1,
+      "actual_exit": 1,
+      "passed": true,
+      "input": "The retained original RFI declares 67 rows against the complete 190-row packet.",
+      "diagnostic": "native frame source draw count does not cover the complete retained draw packet",
+      "log": "logs/aethyr-native-frame-draw-span-control-20261102.log",
+      "gpu_executed": false
+    }
+  },
+  "retained_failures": [
+    {
+      "epoch": "epochs/first-measure",
+      "elapsed_ms": 21535,
+      "compile_started": false,
+      "measurement_started": false,
+      "reason": "Installed Vulkan layer JSON was 86,550 B, exceeding the original 65,536 B JSON capacity.",
+      "complete_available_outputs_retained": true,
+      "owned_cleanup": true
+    },
+    {
+      "epoch": "logs/aethyr-native-frame-metadata-first-red-20261102.log",
+      "reason": "Focused installed-metadata regression failed before the bounded parser capacity repair. The final parser accepts up to 131,072 B and 4,096 nodes; larger input still refuses.",
+      "failed_runner_image_claim": false
+    },
+    {
+      "epoch": "logs/aethyr-native-frame-prepared-controls-20261102.log",
+      "reason": "Initial new local harness had an accidental '+nfp_load' declaration join; compiler refused before any control work. Corrected final harness passes all 5 controls."
+    }
+  ],
+  "limits": {
+    "per_input_bytes": 67108864,
+    "stage_and_archive_bytes": 1073741824,
+    "stage_files": 384,
+    "raw_image_bytes": 67108864,
+    "metadata_bytes": 131072,
+    "metadata_nodes": 4096,
+    "work_deadline_ms": 780000,
+    "cleanup_deadline_ms": 810000,
+    "transport": "Complete created logs are downloaded and hashed; a bounded transport tail remains if an SDK dies before creating its owned logs. Incomplete output retention preserves the remote namespace.",
+    "receipt_trust": "An immutable local snapshot with source/hash admission, not an authenticated artifact from another party; concurrent writers excluded."
+  },
+  "archive": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-02/native-frame-measurement/artifacts-and-source.tar.gz",
+    "sha256": "70a27206da7074f0c9c7b7c3264888c8fb93df36f2df0d772b76bd4ac0566968",
+    "bytes": 54862901,
+    "contains": "Both complete preparation/measurement epochs, prepared/metadata/draw-span controls, policy/failure logs, selected compiler, executed tool images, generated backend pairs, complete RFI/package bytes and executed source snapshots.",
+    "source_copy_readbacks": 7,
+    "source_copy_readbacks_passed": true,
+    "extraction_byte_readback": true,
+    "hardlink_readback": true,
+    "hardlink_note": "Identical retained files share archive-internal hardlinks; unpack as immutable evidence. Fresh control runs create independent copies."
+  },
+  "image_gate": "A raw native measurement is qualified here. CPU/browser numerical comparison remains separate and is not inferred from successful native execution."
+}

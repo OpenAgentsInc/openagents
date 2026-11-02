@@ -1,0 +1,53 @@
+// Owned staging and complete byte identities for a native frame observation.
+#load "../../tests/native-gpu-transport.coax";
+#load "reference-frame-tool-files.coax";
+#load "native-frame-measure-policy.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+NFM_FILES :: 384;
+NfmFile :: struct {name:[4096]u8;n:int;hash:[64]u8;bytes:int;}
+NfmFiles :: struct {rows:[NFM_FILES]NfmFile;count:int;bytes:int;}
+NfmPrepared :: struct {profile:int;width:int;height:int;format:int;package_path:[4096]u8;package_n:int;archive_hash:[64]u8;manifest_hash:[64]u8;compiler:[1]RtnCompiler;}
+nfm_layer_library :: (file:string,out:[]u8)->int {
+ bytes:[131072]u8;nodes:[4096]JvNode;d:[1]Jv;if !rtq_json_file(file,bytes[..],nodes[..],d[..]) {return -1;}return jv_str(d[0],jv_path(d[0],0,"layer.library_path"),out);
+}
+nfm_format :: (p:[]NfmPrepared)->string {return ifx p[0].format==1 then "rgba8" else ifx p[0].format==2 then "rgba16f" else "";}
+nfm_hash_large :: (file:string,out:[]u8)->bool {
+ n:=fs_size(file);if n<0 || n>1073741824 {return false;}state:[112]u8;raw:[32]u8;bytes:[65536]u8;if sha256_init(state[..])!=SHA_OK {return false;}at:=0;
+ while at<n {take:=ifx n-at<bytes.count then n-at else bytes.count;if fs_read_at(file,at,bytes[0..<take])!=take || sha256_update_checked(state[..],bytes[0..<take],false)!=SHA_OK {return false;}at+=take;}if sha256_final_checked(state[..],raw[..],false)!=SHA_OK {return false;}digest:S_Digest;for k:0..<8 {digest.words[k]=cb_load_be32(raw[..],4*k).value;}return S_hex(digest,out);
+}
+nfm_name :: (files:[]NfmFiles,index:int)->string {row:=files[0].rows[index];return cast(string)files[0].rows[index].name[0..<row.n];}
+nfm_add_existing :: (files:[]NfmFiles,stage:string,name:string)->bool {
+ if !nfm_relative(name) {return false;}path:[4096]u8;canonical:[4096]u8;file:=fs_join(stage,name,path[..]);if fs_realpath(file,canonical[..])!=file || fs_kind(file)!=FS_FILE {return false;}hash:[64]u8;if !rtq_hash_file(file,hash[..]) {return false;}bytes:=fs_size(file);
+ for i:0..<files[0].count {if nfm_name(files,i)==name {row:=files[0].rows[i];return row.bytes==bytes && cast(string)row.hash[..]==cast(string)hash[..];}}
+ if files[0].count==NFM_FILES || !nfm_capacity(files[0].bytes,bytes) {return false;}row:NfmFile;row.n=rtn_text(row.name[..],name);row.bytes=bytes;row.hash=hash;if row.n<1 {return false;}files[0].rows[files[0].count]=row;files[0].count+=1;files[0].bytes+=bytes;return true;
+}
+nfm_copy_input :: (source:string,stage:string,name:string,held:[]RtqInputs,files:[]NfmFiles)->bool {
+ if !nfm_relative(name) || !nfm_input_bytes(fs_size(source)) || !rtq_input_add(held,source) {return false;}source_hash:[64]u8;if !rtq_hash_file(source,source_hash[..]) {return false;}path:[4096]u8;dest:=fs_join(stage,name,path[..]);exists:=fs_exists(dest);old:[64]u8;if exists && !rtq_hash_file(dest,old[..]) {return false;}
+ if !nfm_collision(exists,ifx exists then cast(string)old[..] else "",cast(string)source_hash[..]) {return false;}if !exists && !rff_copy(source,dest) {return false;}return nfm_add_existing(files,stage,name);
+}
+nfm_stable :: (files:[]NfmFiles,stage:string)->bool {path:[4096]u8;canonical:[4096]u8;hash:[64]u8;for i:0..<files[0].count {file:=fs_join(stage,nfm_name(files,i),path[..]);row:=files[0].rows[i];if fs_realpath(file,canonical[..])!=file || fs_size(file)!=row.bytes || !rtq_hash_file(file,hash[..]) || cast(string)hash[..]!=cast(string)row.hash[..] {return false;}}return true;}
+nfm_manifest_text :: (files:[]NfmFiles,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);for i:0..<files[0].count {jo_put(o[..],cast(string)files[0].rows[i].hash[..]);jo_put(o[..],"  ");jo_put(o[..],nfm_name(files,i));jo_put(o[..],"\n");}return ifx o[0].bad then "" else jo_text(o[..]);}
+nfm_manifest :: (files:[]NfmFiles,stage:string)->bool {path:[4096]u8;data:[2097152]u8;text:=nfm_manifest_text(files,data[..]);return text!="" && fs_write(fs_join(stage,"INPUTS.sha256",path[..]),text);}
+nfm_files_json :: (files:[]NfmFiles,o:[]Jo) {jo_arr(o);for i:0..<files[0].count {row:=files[0].rows[i];jo_obj(o);jo_key(o,"path");jo_str(o,nfm_name(files,i));jo_key(o,"bytes");jo_int(o,row.bytes);jo_key(o,"sha256");jo_str(o,cast(string)row.hash[..]);jo_end(o);}jo_end(o);}
+nfm_tree :: (root:string,directory:string,relative:string,depth:int,stage:string,held:[]RtqInputs,files:[]NfmFiles)->bool {
+ if depth>16 {return false;}names:[1]FsList;count:=fs_list(directory,names[..]);if count<0 {return false;}paths:[3][4096]u8;
+ for i:0..<count {entry:=fs_entry(names[..],i);if !ng_segment(entry) {return false;}source:=fs_join(directory,entry,paths[0][..]);canonical:=fs_realpath(source,paths[1][..]);dest:=fs_join(relative,entry,paths[2][..]);if canonical=="" || !nfm_within(canonical,root) {return false;}kind:=fs_kind(source);if kind==FS_DIR {if !nfm_tree(root,canonical,dest,depth+1,stage,held,files) {return false;}}else if kind==FS_FILE {if !nfm_copy_input(canonical,stage,dest,held,files) {return false;}}else {return false;}}
+ return true;
+}
+nfm_source :: (source:string,stage:string,held:[]RtqInputs,files:[]NfmFiles)->bool {hash:[64]u8;if !rtq_hash_file(source,hash[..]) {return false;}name:[8192]u8;o:[1]Jo;jo_start(o[..],name[..]);jo_put(o[..],"source/");jo_put(o[..],cast(string)hash[0..<16]);jo_put(o[..],"-");jo_put(o[..],fs_base(source));return !o[0].bad && nfm_copy_input(source,stage,jo_text(o[..]),held,files);}
+nfm_emission :: (directory:string,label:string,c_name:string,h_name:string,compiler_version:string,root:string,stage:string,held:[]RtqInputs,files:[]NfmFiles)->bool {
+ paths:[4][4096]u8;profile:=fs_join(directory,label,paths[0][..]);c_file:=fs_join(directory,c_name,paths[1][..]);h_file:=fs_join(directory,h_name,paths[2][..]);bytes:[1048576]u8;nodes:[8192]JvNode;d:[1]Jv;hash:[64]u8;
+ if !rtq_json_file(profile,bytes[..],nodes[..],d[..]) || jv_int(d[0],jv_get(d[0],0,"schema_version"),-1)!=1 || jv_raw(d[0],jv_get(d[0],0,"compiler"))!=compiler_version || jv_raw(d[0],jv_get(d[0],0,"command"))!="c" || jv_raw(d[0],jv_get(d[0],0,"backend"))!="c11" || jv_kind(d[0],jv_get(d[0],0,"success"))!=JV_TRUE || jv_int(d[0],jv_get(d[0],0,"exit_status"),-1)!=0 || !rtq_hash_file(c_file,hash[..]) || jv_raw(d[0],jv_get(d[0],0,"artifact_sha256"))!=cast(string)hash[..] || jv_raw(d[0],jv_get(d[0],0,"emitted_sha256"))!=cast(string)hash[..] {return false;}
+ for key:[2]string.["sources","descriptors"] {rows:=jv_get(d[0],0,key);if jv_kind(d[0],rows)!=JV_ARRAY || (key=="sources" && jv_len(d[0],rows)==0) {return false;}for i:0..<jv_len(d[0],rows) {row:=jv_at(d[0],rows,i);source_buf:[4096]u8;canonical:[4096]u8;n:=jv_str(d[0],jv_get(d[0],row,"path"),source_buf[..]);if n<1 {return false;}source:=fs_realpath(cast(string)source_buf[0..<n],canonical[..]);if !nfm_within(source,root) || !rtq_hash_file(source,hash[..]) || jv_raw(d[0],jv_get(d[0],row,"sha256"))!=cast(string)hash[..] || !nfm_source(source,stage,held,files) {return false;}}}
+ return nfm_copy_input(profile,stage,label,held,files) && nfm_copy_input(c_file,stage,c_name,held,files) && nfm_copy_input(h_file,stage,h_name,held,files);
+}
+nfm_snapshot :: (frame:string,package:string,capture_root:string,stage:string,held:[]RtqInputs,files:[]NfmFiles,p:[]NfmPrepared)->bool {
+ paths:[4][4096]u8;inputs:=fs_join(stage,"inputs",paths[0][..]);config:=fs_join(stage,"frame.config",paths[1][..]);manifest:=fs_join(package,"render.json",paths[2][..]);text:[4194304]u8;rfi:[1]RfrConfig;copies:[1]RffCopies;
+ preflight:=fs_read(frame,text[..]);if preflight<1 || !rfr_parse(cast(string)text[0..<preflight],rfi[..]) || nfm_raw_bytes(rfi[0].counts[1],rfi[0].counts[2],nfm_format(p))<0 || rfi[0].counts[0]<0 {return false;}frame_root:=fs_dir(frame);
+ declared_bytes:=0;for i:0..<rfi[0].ref_count {ref:=rfi[0].refs[i];token:=rfr_token(rfi[..],ref.row,ref.column);if token=="-" {continue;}source_buf:[4096]u8;source:=rff_path(frame_root,token,source_buf[..]);bytes:=fs_size(source);if source=="" || (!nfm_within(source,capture_root) && !nfm_within(source,package)) || !nfm_input_bytes(bytes) || !nfm_capacity(declared_bytes,bytes) {tool_err("native frame input unavailable, outside capture/package roots or over the64MiB/file1GiB/declaration bounds: ");tool_errln(token);return false;}declared_bytes+=bytes;}
+ draw_token:=rfr_token(rfi[..],3,0);draw_path:[4096]u8;draw_bytes:=ifx draw_token=="-" then 0 else fs_size(rff_path(frame_root,draw_token,draw_path[..]));if !nfm_draw_span(rfi[0].counts[5],draw_bytes) {tool_errln("native frame source draw count does not cover the complete retained draw packet");return false;}
+ if !rtq_input_add(held,frame) || !rff_snapshot_config(frame,manifest,inputs,config,text[..],rfi[..],copies[..]) {return false;}if !rff_copies_stable(copies[..]) {return false;}
+ for i:0..<copies[0].count {row:=copies[0].rows[i];source:=cast(string)row.path[0..<row.path_count];absolute:=cast(string)row.dest[0..<row.dest_count];relative:[4096]u8;name:=fs_join("inputs",fs_base(absolute),relative[..]);if !rtq_input_add(held,source) || !nfm_add_existing(files,stage,name) {return false;}copies[0].rows[i].dest_count=rtn_text(copies[0].rows[i].dest[..],name);if copies[0].rows[i].dest_count<1 {return false;}}
+ if !nfm_add_existing(files,stage,"inputs/original-frame.config") || !rff_write_snapshot(rfi[..],copies[..],config) {return false;}n:=fs_read(config,text[..]);if n<1 || !rfr_parse(cast(string)text[0..<n],rfi[..]) {return false;}for i:0..<rfi[0].ref_count {ref:=rfi[0].refs[i];token:=rfr_token(rfi[..],ref.row,ref.column);if token!="-" && !nfm_relative(token) {return false;}}
+ p[0].profile=rfi[0].counts[0];p[0].width=rfi[0].counts[1];p[0].height=rfi[0].counts[2];p[0].package_n=rtn_text(p[0].package_path[..],rfr_token(rfi[..],5,0));return p[0].package_n>0 && nfm_raw_bytes(p[0].width,p[0].height,nfm_format(p))>0 && nfm_add_existing(files,stage,"frame.config") && nfm_tree(package,package,"inputs",0,stage,held,files);
+}

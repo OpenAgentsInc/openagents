@@ -1,0 +1,19 @@
+// Raw native-frame measurement admission; image/parity verdicts live outside.
+#load "../../tests/native-gpu-transport-policy.coax";
+#load "tooling-policy.coax";
+#authority;
+#load "native-frame-measure-checks.coax";
+nfm_bpp :: (format:string)->int #export_c {if format=="rgba8" {return 4;}if format=="rgba16f" {return 8;}return -1;}
+nfm_raw_bytes :: (width:int,height:int,format:string)->int {if width<1 || height<1 || width>16384 || height>16384 {return -1;}bytes:=width*height*nfm_bpp(format);return ifx nfm_input_bytes(bytes) then bytes else -1;}
+nfm_relative :: (path:string)->bool {if path.count>4096 {return false;}start:=0;for c,i:path {if c=='/' {if !ng_segment(path[start..<i]) {return false;}start=i+1;}}return ng_segment(path[start..<path.count]);}
+nfm_within :: (path:string,root:string)->bool {if root=="" {return false;}return path.count>root.count && path[0..<root.count]==root && path[root.count]=='/';}
+nfm_collision :: (exists:bool,old_hash:string,new_hash:string)->bool {return !exists || old_hash==new_hash;}
+nfm_number :: (d:Jv,key:string,wanted:int)->bool {node:=jv_get(d,0,key);out:[64]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_int(o[..],wanted);return jv_kind(d,node)==JV_NUMBER && jv_raw(d,node)==jo_text(o[..]);}
+nfm_observation :: (d:Jv,profile:int,resource:int,width:int,height:int,format:string,bytes:int)->bool {
+ return jv_raw(d,jv_get(d,0,"status"))=="rendered" && jv_raw(d,jv_get(d,0,"format"))==format && nfm_number(d,"profile",profile) && nfm_number(d,"resource",resource) && nfm_number(d,"width",width) && nfm_number(d,"height",height) && nfm_number(d,"bytes",bytes) && nfm_number(d,"validation_errors",0) && nfm_number(d,"validation_warnings",0);
+}
+nfm_exec :: (argv:[]string,label:string,out:[]u8)->string {if label!="compile" && label!="measure" {return "";}command:[65536]u8;text:=ng_command(argv,command[..]);if text=="" {return "";}quoted:[2][128]u8;stdout:=ng_quote(ifx label=="compile" then "compile.stdout" else "measure.stdout",quoted[0][..]);stderr:=ng_quote(ifx label=="compile" then "compile.stderr" else "measure.stderr",quoted[1][..]);o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"exec ");jo_put(o[..],text);jo_put(o[..]," >");jo_put(o[..],stdout);jo_put(o[..]," 2>");jo_put(o[..],stderr);return ifx o[0].bad then "" else jo_text(o[..]);}
+nfm_validation_clean :: (text:string)->bool {return rtq_find(text,"vkc: validation:",0)== -1;}
+nfm_input_bytes :: (bytes:int)->bool {return bytes>=0 && bytes<=67108864;}
+nfm_capacity :: (used:int,next:int)->bool {return used>=0 && next>=0 && next<=1073741824-used;}
+nfm_draw_span :: (draws:int,bytes:int)->bool {return nfm_input_bytes(bytes) && bytes%16==0 && draws==bytes/16;}
