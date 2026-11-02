@@ -851,6 +851,25 @@ def verbs(check):
               and "trusted-ran" in xt.get("note", "") and xf and xf[0].get("ceiling") == "read"
               and any("I didn't run the command" in l.get("text", "") for l in xf) and "widened" not in "".join(l.get("text", "") for l in xf if l.get("kind") != "user")
               and xleak == [])
+        # chain of recall (chapter 17): an event from another channel that names a session gets that session and the
+        # one it was forked from inline, hop by hop, with the hops and bytes in the Router's log
+        qa = [json.loads(l) for l in xq("run", "fix the parser bug", "--engine", "echo", "--json").stdout.splitlines() if l.startswith("{")]
+        qsa = qa[0]["id"] if qa else ""
+        qb = [json.loads(l) for l in xq("fork", qsa, "$ echo fixed-parser", "--json").stdout.splitlines() if l.startswith("{")]
+        qsb = qb[0]["id"] if qb else ""
+        xq("trigger", "what happened with %s?" % qsb, "--source", "team", "--author", "kim", "--thread", "qx", "--to-agent")
+        qr = []
+        for _ in range(60):
+            qr += [json.loads(l) for l in xq("router", "--once", "--json").stdout.splitlines() if l.startswith("{")]
+            if any(l.get("thread") == "qx" and l.get("fate") == "reply written to the outbox" for l in qr):
+                break
+            time.sleep(0.3)
+        qw = next((l.get("session", "") for l in qr if l.get("thread") == "qx" and l.get("session")), "")
+        qc = open(os.path.join(xdir, "router", "context", qw)).read() if qw and os.path.exists(os.path.join(xdir, "router", "context", qw)) else ""
+        qrec = next((l for l in qr if l.get("kind") == "recall"), {})
+        check("recall: an event naming a session gets it and its parent inline, hop by hop, and the Router logs the walk",
+              ("Session %s" % qsb) in qc and ("forked from session %s" % qsa) in qc and "fix the parser bug" in qc and "fixed-parser" in qc
+              and ("coder log %s" % qsb) in qc and qrec.get("sessions") == 1 and qrec.get("hops") == 2 and qrec.get("bytes", 0) > 0)
         # a log cut at any byte (chapter 2): readers read the complete lines and report the rest; a line appended after a crash starts clean
         cr = subprocess.run([coder, "run", "$ echo cut-é-check", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         cid = next(json.loads(l)["id"] for l in cr.stdout.splitlines() if l.startswith('{"kind":"session"'))

@@ -698,6 +698,10 @@ RtBatch :: struct {
   ms: int;
 }
 
+#test "router: session IDs as Coder writes them" {
+  #assert rt_is_sid("20261102-113548-264") && !rt_is_sid("20261102-113548-26") && !rt_is_sid("20261102x113548-264") && !rt_is_sid("2026110a-113548-264");
+}
+
 // One candidate into the batch's state: {"n":K,"event":{...},"policy":P}.
 rt_batch_add :: (sb: [] u8, n0: int, k: int, t: RtTrigger, policy: string) -> int {
   n := json_raw(sb, n0, ifx k > 0 then ",{\"n\":" else "{\"n\":"); n = json_write_int(sb, n, k);
@@ -905,8 +909,8 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
       nlast = cd_cat(lastb[..], 0, sid);
       args[na] = "--session"; args[na + 1] = sid; na += 2;
       xb: [1400] u8;
-      if fate == RT_START {          // a new Worker: the objects next to its event, inlined (chapter 17)
-        cx := rt_context_file(p, t, sid, xb[..]);
+      {                              // the objects next to its event, inlined (chapter 17)
+        cx := rt_context_file(p, t, sid, fate == RT_START, json, xb[..]);
         if cx.count > 0 { args[na] = "--context"; args[na + 1] = cx; na += 2; }
       }
       idb: [256] u8; id := sid;
@@ -943,9 +947,91 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
 // first 600 characters) and its 3 newest comments (300 characters each),
 // with the command that reads the rest. Written to router/context/SID;
 // "" when there is nothing to inline.
-rt_context_file :: (p: [] RtPaths, t: RtTrigger, sid: string, out: [] u8) -> string {
+rt_context_file :: (p: [] RtPaths, t: RtTrigger, sid: string, issue_too: bool, json: bool, out: [] u8) -> string {
+  if sid.count == 0 { return ""; }
+  tb: [9000] u8; n := 0;
+  if issue_too { n = rt_issue_context(t, tb[..]); }
+  hops: [2] int; rn := rt_recall(t.text, tb[..], n, hops[..]);
+  if rn > n {
+    // the reference graph's walk, for chapter 17's recall measurement
+    lb: [512] u8;
+    k := json_raw(lb[..], 0, "{\"kind\":\"recall\",\"id\":"); k = json_write_string(lb[..], k, t.id);
+    k = json_raw(lb[..], k, ",\"sessions\":"); k = json_write_int(lb[..], k, hops[0]);
+    k = json_raw(lb[..], k, ",\"hops\":"); k = json_write_int(lb[..], k, hops[1]);
+    k = json_raw(lb[..], k, ",\"bytes\":"); k = json_write_int(lb[..], k, rn - n);
+    k = json_raw(lb[..], k, "}\n");
+    rb: [1300] u8; y := fs_append(rt_path(p, "/router/log.jsonl", rb[..]), cast(string) lb[0..<k]);
+    if json { cd_out(cast(string) lb[0..<k]); }
+  }
+  n = rn;
+  if n == 0 { return ""; }
+  b: [1300] u8; x := fs_mkdir(rt_path(p, "/router/context", b[..]));
+  k := cd_cat(out, 0, rt_path(p, "/router/context/", b[..])); k = cd_cat(out, k, sid);
+  if !fs_write(cast(string) out[0..<k], cast(string) tb[0..<n]) { return ""; }
+  return cast(string) out[0..<k];
+}
+
+// A session ID as Coder writes them: YYYYMMDD-HHMMSS-mmm.
+rt_is_sid :: (s: string) -> bool {
+  if s.count != 19 { return false; }
+  for i: 0..<19 {
+    c := s[i];
+    if i == 8 || i == 15 { if c != '-' { return false; } }
+    else if c < '0' || c > '9' { return false; }
+  }
+  return true;
+}
+
+// Chain of recall (chapter 17): for each session the event names (at most
+// 3), its task, how it ended and the start of its result, then the same
+// for the session it was forked from, hop by hop (at most 4 a session).
+// Appended to out at n0; the new length. hops[0] sessions named, hops[1]
+// logs read.
+rt_recall :: (text: string, out: [] u8, n0: int, hops: [] int) -> int {
+  hops[0] = 0; hops[1] = 0;
+  n := n0;
+  seen: [3] [32] u8; nseen := 0;
+  fb: [4194304] u8; ib: [128] u8; tb: [24] u8;
+  i := 0;
+  while i + 19 <= text.count && nseen < 3 {
+    cand := cast(string) text[i..<i + 19];
+    edge := (i == 0 || text[i - 1] < '0' || text[i - 1] > '9') && (i + 19 == text.count || text[i + 19] < '0' || text[i + 19] > '9');
+    if !edge || !rt_is_sid(cand) { i += 1; continue; }
+    dup := false; for k: 0..<nseen { if cast(string) seen[k][0..<19] == cand { dup = true; } }
+    i += 19;
+    if dup { continue; }
+    x := cd_cat(seen[nseen][..], 0, cand); nseen += 1;
+    cur: [32] u8; nc := cd_cat(cur[..], 0, cand);
+    first := true;
+    for hop: 0..<4 {
+      if nc == 0 { break; }
+      slog := cd_session_file(cast(string) cur[0..<nc], fb[..], ib[..]);
+      if slog.count == 0 { break; }
+      hops[1] += 1;
+      ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+      sm: [1] CsSummary; cs_read(slog, sm[..], ar[..]);
+      rb: [8192] u8; res := rt_last_turn(slog, ar[..], rb[..]);
+      if n == 0 { n = cd_cat(out, n, "Related to this task:\n"); }
+      n = cd_cat(out, n, ifx first then "\nSession " else "  forked from session "); n = cd_cat(out, n, cast(string) cur[0..<nc]);
+      n = cd_cat(out, n, ": \""); n = cd_cat(out, n, cast(string) sm[0].task[0..<ifx sm[0].ntask > 200 then 200 else sm[0].ntask]);
+      n = cd_cat(out, n, "\", "); n = cd_cat(out, n, cast(string) sm[0].ending[0..<sm[0].nending]);
+      n = cd_cat(out, n, " after "); n = cd_cat(out, n, cd_itoa(sm[0].turns, tb[..])); n = cd_cat(out, n, ifx sm[0].turns == 1 then " turn" else " turns");
+      if res.count > 0 { n = cd_cat(out, n, ". Result: "); n = cd_cat(out, n, cast(string) res[0..<ifx res.count > 300 then 300 else res.count]); }
+      n = cd_cat(out, n, "\n");
+      e := 0; while e < slog.count && slog[e] != 10 { e += 1; }
+      ar[0].at = 0; ar[0].full = false;
+      nc = cd_cat(cur[..], 0, cl_str(ar[..], cast(string) slog[0..<e], "parent"));
+      first = false;
+    }
+    if !first { n = cd_cat(out, n, "  The rest: coder log "); n = cd_cat(out, n, cand); n = cd_cat(out, n, "\n"); hops[0] += 1; }
+  }
+  return n;
+}
+
+// The GitHub issue an event is on: its title and body start, its newest comments, and the command for the rest.
+rt_issue_context :: (t: RtTrigger, tb: [] u8) -> int {
   repo := rt_github_repo(t.source); num := rt_github_number(t.thread);
-  if repo.count == 0 || num.count == 0 || sid.count == 0 { return ""; }
+  if repo.count == 0 || num.count == 0 { return 0; }
   ub: [600] u8; un := cd_cat(ub[..], 0, "repos/"); un = cd_cat(ub[..], un, repo); un = cd_cat(ub[..], un, "/issues/"); un = cd_cat(ub[..], un, num);
   ok: [1] bool; ghb: [1024] u8; gh := rt_gh(ghb[..]);
   ib: [4096] u8;
@@ -957,16 +1043,12 @@ rt_context_file :: (p: [] RtPaths, t: RtTrigger, sid: string, out: [] u8) -> str
   cv := [5] string.[gh, "api", cast(string) ub[0..<cn], "--jq", ".[-3:][] | \"- \\(.user.login): \\((.body // \"\")[0:300] | gsub(\"\\n\"; \" \"))\""];
   comments := rt_run(cv[..], cb[..], ok[..]);
   if !ok[0] { comments = ""; }
-  if issue.count == 0 && comments.count == 0 { return ""; }
-  tb: [9000] u8;
-  n := cd_cat(tb[..], 0, "Related to this task, from "); n = cd_cat(tb[..], n, t.source); n = cd_cat(tb[..], n, " (event "); n = cd_cat(tb[..], n, t.id); n = cd_cat(tb[..], n, "):\n");
+  if issue.count == 0 && comments.count == 0 { return 0; }
+  n := cd_cat(tb, 0, "Related to this task, from "); n = cd_cat(tb[..], n, t.source); n = cd_cat(tb[..], n, " (event "); n = cd_cat(tb[..], n, t.id); n = cd_cat(tb[..], n, "):\n");
   if issue.count > 0 { n = cd_cat(tb[..], n, "\nIssue "); n = cd_cat(tb[..], n, issue); n = cd_cat(tb[..], n, "\n"); }
   if comments.count > 0 { n = cd_cat(tb[..], n, "\nNewest comments:\n"); n = cd_cat(tb[..], n, comments); n = cd_cat(tb[..], n, "\n"); }
-  n = cd_cat(tb[..], n, "\nThe rest: gh issue view "); n = cd_cat(tb[..], n, num); n = cd_cat(tb[..], n, " -R "); n = cd_cat(tb[..], n, repo); n = cd_cat(tb[..], n, " --comments");
-  b: [1300] u8; x := fs_mkdir(rt_path(p, "/router/context", b[..]));
-  k := cd_cat(out, 0, rt_path(p, "/router/context/", b[..])); k = cd_cat(out, k, sid);
-  if !fs_write(cast(string) out[0..<k], cast(string) tb[0..<n]) { return ""; }
-  return cast(string) out[0..<k];
+  n = cd_cat(tb, n, "\nThe rest: gh issue view "); n = cd_cat(tb, n, num); n = cd_cat(tb, n, " -R "); n = cd_cat(tb, n, repo); n = cd_cat(tb, n, " --comments\n");
+  return n;
 }
 
 // The reply for a Worker that ended: into the outbox, and to GitHub when the source delivers.

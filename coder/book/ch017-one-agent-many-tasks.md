@@ -11,9 +11,10 @@
 > cover it. The candidates of one pass are decided together, in one System
 > One request, and a reply cut to fit points to the rest. A Worker started
 > from a GitHub issue gets the issue and its newest comments inline in its
-> first message. Still to come:
+> first message, and an event that names an earlier session gets that
+> session's chain inline. Still to come:
 > chat sources, a Router model for replies that need more than the Worker's
-> result, chain of recall,
+> result, recall through Threads and Triggers as well as sessions,
 > acting ahead, many-to-many subscriptions, and the ablation.
 
 Chapters1–19 build one session well. A person can follow only three to
@@ -248,6 +249,34 @@ message from the log, so a resumed Worker sees what it saw the first time.
 Any caller can pass `--context` to `coder run`. A `$ COMMAND` task runs in the
 shell without a model, so it doesn't use the context.
 
+### Chain of recall
+
+An event can name an earlier session by its ID, from any channel. Before
+the Router starts or forks a Worker for it, it follows those references:
+
+- It finds up to three session IDs in the event's text. A session ID has a
+  fixed shape (`20261102-113548-264`), so this is parsing a bounded field,
+  not matching intent.
+- For each one, it reads that session's log and inlines the task, how it
+  ended, its turn count and the first 300 characters of its result.
+- It then reads the `parent` in that log's first line and does the same
+  for the session it was forked from, up to four hops.
+- It ends each chain with the command that reads the rest:
+  `coder log ID`.
+
+```text
+Session 20261102-114928-992: "$ echo fixed-parser", finished after 1 turn. Result: fixed-parser
+  forked from session 20261102-114927-355: "fix the parser bug", finished after 1 turn. Result: …
+  The rest: coder log 20261102-114928-992
+```
+
+The walk goes into the Worker's context file with the issue context, and
+the Router logs it as `{"kind":"recall","sessions":1,"hops":2,"bytes":…}`,
+the numbers the recall measurement in [Done means](#done-means) reports.
+The smoke runs a task, forks it, then sends an event from another source
+that names the fork. The Worker's context holds both sessions, and the log
+line reports one session, two hops.
+
 ## Checks
 
 - `coax test coder/tui/coder.coax`: the fast path on every combination of
@@ -262,6 +291,8 @@ shell without a model, so it doesn't use the context.
   - Against a stand-in `gh`: the first poll only sets the cursor; the next
     turns a labelled issue into a Worker; the Worker's reply is posted on the
     issue in the issue format; the Router's own comment is not an event.
+  - An event from another source that names a forked session gets both
+    sessions inline, and the Router logs one session, two hops.
   - A Worker started from an issue gets a context file with the issue, its
     newest comment and the command for the rest. A task run with that file
     logs it as a `context` line, and `coder replay` rebuilds the same bytes.
