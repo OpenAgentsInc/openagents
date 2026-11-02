@@ -1,3 +1,4 @@
+// Firm reason: 2 (independent oracle: OpenSSL's chacha20-poly1305 through Node's crypto seals the vectors; it also loads the wasm module and compares its outputs)
 // Two modes for coax/tests/bitcoin/chacha20_poly1305.py.
 //   oracle FIXTURE: seal each request with OpenSSL's chacha20-poly1305 through
 //     Node's crypto and print the sealed boxes as JSON.

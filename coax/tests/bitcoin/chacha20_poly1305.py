@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: RFC 8439, Wycheproof and OpenSSL check the Coax AEAD)
 """Poly1305 and ChaCha20-Poly1305 against RFC 8439, Wycheproof and OpenSSL, natively and in Wasm.
 
 Bitcoin From Scratch, chapter 12. Reads every Poly1305 and AEAD example of
