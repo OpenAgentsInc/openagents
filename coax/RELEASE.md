@@ -177,10 +177,17 @@ machine downloads it.
   is a checked build of a committed tree with no surviving mutant, and
   uploads it only when the name is not taken (published builds are
   immutable). `coax/publish-host.sh --every 600` runs on each release host as
-  a service and publishes `origin/main`'s compiler whenever its sources change:
-  CoderOS for Linux, with GCC for musl from nixpkgs and `COAX_LDFLAGS=-static`
-  so one build runs on any Linux of its architecture; the Mac for macOS, with
-  the system's clang and `MACOSX_DEPLOYMENT_TARGET=13.0`. No GitHub Actions.
+  a service on the owner's Mac (launchd, `com.openagents.coax-publish`) and
+  publishes `origin/main`'s compiler for `darwin-arm64` whenever its sources
+  change, with the system's clang and `MACOSX_DEPLOYMENT_TARGET=13.0`. When it
+  sees a change it also starts the Linux release VM `coax-publish-linux`
+  (`COAX_PUBLISH_LINUX_VM=us-central1-a/coax-publish-linux`, n2d-standard-16,
+  off between builds). The VM's startup script, `coax/publish-vm-startup.sh`,
+  publishes `linux-x86_64` with GCC for musl from nixpkgs and
+  `COAX_LDFLAGS=-static`, so one build runs on any Linux of its architecture,
+  then powers off. It runs as the automation service account, so no key is
+  copied to it. Its log is `/var/log/coax-publish.log` on the VM. No GitHub
+  Actions.
 - **Who installs.** `coax/build.sh`, when its cache has no build for this
   tree, tries the published one before bootstrapping: it checks the download
   against its checksum, the manifest's source fingerprint and platform against
@@ -196,7 +203,7 @@ machine downloads it.
   not the publisher. A tree whose compiler sources differ from every published
   build always bootstraps.
 
-Setting up a release host (the Mac's launchd agent, CoderOS's systemd service): `coax/published-builds-handoff.md`.
+Setting up the release hosts again: `coax/published-builds-handoff.md`.
 
 Check: `coax/tests/published-build.sh` (a build's manifest, names and hashes
 are checked, and a wrong source, platform, hash or extra file is refused).

@@ -13,6 +13,8 @@
 #          build runs on any Linux of its architecture.
 #   macOS: the system's clang with MACOSX_DEPLOYMENT_TARGET=13.0.
 # Uploads need write access to the bucket (CLOUDSDK_CONFIG on the release hosts).
+# COAX_PUBLISH_LINUX_VM=ZONE/NAME (the Mac sets us-central1-a/coax-publish-linux)
+# starts the Linux release VM whenever this host sees a compiler change.
 # No GitHub Actions: release hosts are our own machines.
 set -euo pipefail
 every=0
@@ -30,6 +32,13 @@ once() {
   url="${COAX_PUBLISHED_URL:-https://storage.googleapis.com/openagentsgemini-cli-releases/coax/builds}/$name.tar.gz.sha256"
   if curl -fsS -o /dev/null "$url" 2> /dev/null; then log "${name:0:12} $(basename "$name") is published"; return 0; fi
   log "building ${name:0:12} for $(basename "$name") from $(git -C "$clone" rev-parse --short HEAD)"
+  # The compiler changed: wake the Linux release VM too (publish-vm-startup.sh
+  # builds linux-x86_64 if it is missing, then powers off). ZONE/NAME, opt-in.
+  if [[ -n "${COAX_PUBLISH_LINUX_VM:-}" ]]; then
+    gcloud compute instances start "${COAX_PUBLISH_LINUX_VM#*/}" --zone "${COAX_PUBLISH_LINUX_VM%%/*}" \
+      --project "${COAX_PUBLISH_PROJECT:-openagentsgemini}" --async --quiet > /dev/null 2>&1 \
+      && log "started the Linux release VM ${COAX_PUBLISH_LINUX_VM}" || log "could not start ${COAX_PUBLISH_LINUX_VM}"
+  fi
   case "$(uname -s)" in
     Linux)
       # The musl toolchain's compilers by name, inside a nix shell that provides them.
