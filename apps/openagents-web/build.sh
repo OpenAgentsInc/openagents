@@ -15,6 +15,10 @@ python3 "$here/../../coax/web/tests/wasm_isolation.py"
 # The realm host's table (realms.json): the galaxy's worlds into realms.coax
 # and each realm's page (docs/verse/realm-host.md).
 bun "$here/../../coax/web/realms.ts"
+# wasm.sh keys its cache of each unit's C and object by the unit's #load closure
+# (coax/web/tool.sh wasm-size sources): build that tool once here, before the
+# modules below start side by side, so they don't each build it.
+(cd "$here/../.." && coax/web/tool.sh wasm-size sources apps/openagents-web/fixture.coax > /dev/null)
 # The HUD bar's light, the same function the iOS stages draw (verse/light.coax).
 # (splash.wgsl loads verse/light.coax in its Coax: gpu/splash.coax.)
 "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &

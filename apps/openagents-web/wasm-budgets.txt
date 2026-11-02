@@ -1,0 +1,5 @@
+# Each module's most bytes, as coax/web/wasm.sh builds it for a release (-Os, then
+# wasm-opt -O2; raw bytes, not gzipped). A module over its budget stops the build,
+# and wasm.sh names its biggest functions. A module growing on purpose raises its
+# line in the same commit, with the reason in the commit message. One module a line:
+#   NAME BYTES

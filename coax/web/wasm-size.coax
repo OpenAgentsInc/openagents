@@ -1,0 +1,265 @@
+// Two readings for coax/web/wasm.sh, which builds each page's and realm's module:
+//   coax/web/tool.sh wasm-size sources UNIT.coax...   (from the repo root)
+//     every file in the units' #load closure, one path a line, as the compiler
+//     resolves them (relative to the loading file). wasm.sh hashes them into the
+//     key of its C cache, so a unit whose closure is unchanged isn't compiled
+//     again. Exit 3 when a unit has an #import_proto (its descriptors are inputs
+//     this doesn't follow: no cache), 1 when a file can't be read.
+//   coax/web/tool.sh wasm-size report FILE.wasm [N]
+//     the module's sections by size and its N biggest functions (default 25),
+//     by name when the module has a name section: what wasm.sh prints when a
+//     module is over its budget (apps/openagents-web/wasm-budgets.txt).
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/args.coax";
+
+WS_PATHS :: 4096;          // files in one closure (the compiler admits 4096 units)
+WS_ARENA :: 1048576;       // their paths, together
+WS_FILE :: 33554432;       // one source file or module
+WS_FUNCS :: 131072;        // functions in a module
+
+Closure :: struct {
+  arena: [WS_ARENA] u8; used: int;
+  at: [WS_PATHS] int; len: [WS_PATHS] int; n: int;
+  proto: bool;             // an #import_proto: descriptors this doesn't follow
+  full: bool;              // more paths than it holds
+}
+
+// dir/rel with "." and ".." parts taken out, into out; "" when it doesn't fit.
+// An absolute rel stands alone; ".." past the start of a relative path stays.
+ws_resolve :: (dir: string, rel: string, out: [] u8) -> string {
+  joined: [8192] u8; j := 0;
+  if rel.count > 0 && rel[0] == '/' {
+    if rel.count > joined.count { return ""; }
+    for c: rel { joined[j] = c; j += 1; }
+  } else {
+    if dir.count + 1 + rel.count > joined.count { return ""; }
+    for c: dir { joined[j] = c; j += 1; }
+    joined[j] = '/'; j += 1;
+    for c: rel { joined[j] = c; j += 1; }
+  }
+  path := cast(string) joined[0..<j];
+  absolute := path[0] == '/';
+  starts: [1024] int; parts := 0;   // where each kept part starts in out
+  n := 0;
+  if absolute { if out.count < 1 { return ""; } out[0] = '/'; n = 1; }
+  i := 0;
+  while i < path.count {
+    if path[i] == '/' { i += 1; continue; }
+    e := i;
+    while e < path.count && path[e] != '/' { e += 1; }
+    part := path[i..<e]; i = e;
+    if part == "." { continue; }
+    if part == ".." && parts > 0 && cast(string) out[starts[parts - 1]..<n] != ".." {
+      parts -= 1; n = starts[parts];
+      if n > 0 && out[n - 1] == '/' && !(absolute && n == 1) { n -= 1; }
+      continue;
+    }
+    if parts >= starts.count { return ""; }
+    if n > 0 && out[n - 1] != '/' { if n >= out.count { return ""; } out[n] = '/'; n += 1; }
+    if n + part.count > out.count { return ""; }
+    starts[parts] = n; parts += 1;
+    for c: part { out[n] = c; n += 1; }
+  }
+  if n == 0 { if out.count < 1 { return ""; } out[0] = '.'; n = 1; }
+  return cast(string) out[0..<n];
+}
+#test "paths resolve as the compiler's #load does" {
+  o: [256] u8;
+  #assert ws_resolve("apps/openagents-web", "../../verse/player.coax", o[..]) == "verse/player.coax";
+  #assert ws_resolve("verse/everglade", "plan.coax", o[..]) == "verse/everglade/plan.coax";
+  #assert ws_resolve("verse/everglade", "./../style.coax", o[..]) == "verse/style.coax";
+  #assert ws_resolve("a", "../../b.coax", o[..]) == "../b.coax";
+  #assert ws_resolve(".", "x.coax", o[..]) == "x.coax";
+  #assert ws_resolve("a/b", "/abs/c/../d.coax", o[..]) == "/abs/d.coax";
+  #assert ws_resolve("/r/a", "../b.coax", o[..]) == "/r/b.coax";
+  small: [4] u8;
+  #assert ws_resolve("abc", "def", small[..]) == "";
+}
+
+ws_path :: (c: [] Closure, i: int) -> string { return cast(string) c[0].arena[c[0].at[i]..<c[0].at[i] + c[0].len[i]]; }
+// Adds path once; false only when the closure is full.
+ws_add :: (c: [] Closure, path: string) -> bool {
+  for i: 0..<c[0].n { if ws_path(c, i) == path { return true; } }
+  if c[0].n >= WS_PATHS || c[0].used + path.count > WS_ARENA { c[0].full = true; return false; }
+  at := c[0].used;
+  for k: 0..<path.count { c[0].arena[at + k] = path[k]; }
+  c[0].at[c[0].n] = at; c[0].len[c[0].n] = path.count; c[0].n += 1; c[0].used = at + path.count;
+  return true;
+}
+// The #load paths of one unit's text (a directive starts its line), resolved
+// beside the unit, into the closure; an #import_proto marks it.
+ws_scan :: (c: [] Closure, unit: string, text: string) -> bool {
+  dir := fs_dir(unit);
+  o: [8192] u8;
+  i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    s := i;
+    while s < e && (text[s] == ' ' || text[s] == '\t') { s += 1; }
+    line := text[s..<e]; i = e + 1;
+    if line.count >= 13 && line[0..<13] == "#import_proto" { c[0].proto = true; continue; }
+    if line.count < 7 || line[0..<7] != "#load \"" { continue; }
+    q := 7;
+    while q < line.count && line[q] != '"' { q += 1; }
+    if q >= line.count { continue; }
+    path := ws_resolve(dir, line[7..<q], o[..]);
+    if path.count == 0 || !ws_add(c, path) { return false; }
+  }
+  return true;
+}
+#test "a unit's loads, once each, beside it" {
+  c: [1] Closure;
+  #assert ws_add(c[..], "apps/w/a.coax");
+  t := "#import \"Basic\";\n#load \"b.coax\";\n  #load \"../../verse/c.coax\" as c;\n// #load \"no.coax\";\nx := \"#load \\\"no\\\"\";\n#load \"b.coax\";";
+  #assert ws_scan(c[..], "apps/w/a.coax", t) && c[0].n == 3 && !c[0].proto;
+  #assert ws_path(c[..], 1) == "apps/w/b.coax" && ws_path(c[..], 2) == "verse/c.coax";
+  #assert ws_scan(c[..], "apps/w/b.coax", "#import_proto \"x.proto\";\n") && c[0].proto && c[0].n == 3;
+}
+
+ws_sources :: (a: [] Args) -> int {
+  c: [1] Closure;
+  for k: 1..<args_count(a) { if !ws_add(c[..], args_at(a, k)) { tool_errln("wasm-size: too many units"); return 2; } }
+  body: [WS_FILE] u8;
+  i := 0;
+  while i < c[0].n {
+    unit := ws_path(c[..], i);
+    n := fs_read(unit, body[..]);
+    if n < 0 { tool_err("wasm-size: can't read "); tool_errln(unit); return 1; }
+    if !ws_scan(c[..], unit, cast(string) body[0..<n]) { tool_errln("wasm-size: the closure is too large"); return 2; }
+    i += 1;
+  }
+  for k: 0..<c[0].n { print("%\n", ws_path(c[..], k)); }
+  return ifx c[0].proto then 3 else 0;
+}
+
+// An unsigned LEB128 at at[0] in m, moving at[0] past it; -1 when it runs off the end.
+ws_leb :: (m: string, at: [] int) -> int {
+  v := 0; shift := 0;
+  while at[0] < m.count && shift < 63 {
+    b := cast(int) m[at[0]]; at[0] += 1;
+    v += (b & 127) << shift;
+    if b < 128 { return v; }
+    shift += 7;
+  }
+  return -1;
+}
+#test "LEB128 reads and stops at the end" {
+  at: [1] int;
+  one := [1] u8.[2]; three := [3] u8.[0xe5, 0x8e, 0x26]; cut := [1] u8.[0x80];
+  #assert ws_leb(cast(string) one[..], at[..]) == 2 && at[0] == 1;
+  at[0] = 0;
+  #assert ws_leb(cast(string) three[..], at[..]) == 624485 && at[0] == 3;
+  at[0] = 0;
+  #assert ws_leb(cast(string) cut[..], at[..]) == -1;
+}
+SECTION_NAMES :: [13] string.["custom", "type", "import", "function", "table", "memory", "global", "export", "start", "element", "code", "data", "datacount"];
+
+ws_report :: (a: [] Args) -> int {
+  m: [WS_FILE] u8;
+  file := args_at(a, 1);
+  mn := fs_read(file, m[..]);
+  if mn < 8 { tool_err("wasm-size: can't read the module "); tool_errln(file); return 1; }
+  w := cast(string) m[0..<mn];
+  if w[0] != 0 || w[1..<4] != "asm" { tool_err("wasm-size: not a wasm module: "); tool_errln(file); return 1; }
+  top := 25;
+  if args_count(a) > 2 {
+    t := args_at(a, 2); top = 0;
+    for ch: t { if ch >= '0' && ch <= '9' { top = top * 10 + cast(int) (ch - '0'); } }
+  }
+  size: [WS_FUNCS] int; name_at: [WS_FUNCS] int; name_len: [WS_FUNCS] int;
+  imported := 0; bodies := 0; code_bytes := 0; data_bytes := 0; segments := 0;
+  print("%: % bytes\n", file, mn);
+  at: [1] int; at[0] = 8;
+  while at[0] < mn {
+    id := cast(int) w[at[0]]; at[0] += 1;
+    slen := ws_leb(w, at[..]);
+    if slen < 0 || at[0] + slen > mn { tool_errln("wasm-size: a section runs past the end"); return 1; }
+    start := at[0]; end := start + slen;
+    p: [1] int; p[0] = start;
+    if id == 0 {
+      nl := ws_leb(w, p[..]);
+      label := w[p[0]..<p[0] + nl]; p[0] += nl;
+      print("  %  custom \"%\"\n", slen, label);
+      if label == "name" {
+        while p[0] < end {
+          sub := cast(int) w[p[0]]; p[0] += 1;
+          sl := ws_leb(w, p[..]); se := p[0] + sl;
+          if sub == 1 {
+            count := ws_leb(w, p[..]);
+            for k: 0..<count {
+              idx := ws_leb(w, p[..]); l := ws_leb(w, p[..]);
+              if idx >= 0 && idx < WS_FUNCS { name_at[idx] = p[0]; name_len[idx] = l; }
+              p[0] += l;
+            }
+          }
+          p[0] = se;
+        }
+      }
+    } else {
+      print("  %  %\n", slen, ifx id < 13 then SECTION_NAMES[id] else "unknown");
+    }
+    if id == 2 {
+      count := ws_leb(w, p[..]);
+      for k: 0..<count {
+        l := ws_leb(w, p[..]); p[0] += l;
+        l = ws_leb(w, p[..]); p[0] += l;
+        kind := cast(int) w[p[0]]; p[0] += 1;
+        if kind == 0 { t := ws_leb(w, p[..]); imported += 1; }
+        else if kind == 1 { p[0] += 1; flags := ws_leb(w, p[..]); lo := ws_leb(w, p[..]); if (flags & 1) != 0 { hi := ws_leb(w, p[..]); } }
+        else if kind == 2 { flags := ws_leb(w, p[..]); lo := ws_leb(w, p[..]); if (flags & 1) != 0 { hi := ws_leb(w, p[..]); } }
+        else if kind == 3 { p[0] += 2; }
+        else { p[0] += 1; t := ws_leb(w, p[..]); }
+      }
+    }
+    if id == 10 {
+      count := ws_leb(w, p[..]);
+      for k: 0..<count {
+        l := ws_leb(w, p[..]);
+        if bodies < WS_FUNCS { size[bodies] = l; bodies += 1; }
+        code_bytes += l; p[0] += l;
+      }
+    }
+    if id == 11 {
+      count := ws_leb(w, p[..]);
+      for k: 0..<count {
+        flag := ws_leb(w, p[..]);
+        if flag == 2 { mem := ws_leb(w, p[..]); }
+        if flag != 1 {   // the offset expression, up to its end (0x0b)
+          while p[0] < end && cast(int) w[p[0]] != 11 {
+            op := cast(int) w[p[0]]; p[0] += 1;
+            if op == 0x41 || op == 0x42 || op == 0x23 { while p[0] < end && cast(int) w[p[0]] >= 128 { p[0] += 1; } p[0] += 1; }
+          }
+          p[0] += 1;
+        }
+        l := ws_leb(w, p[..]); p[0] += l; data_bytes += l; segments += 1;
+      }
+    }
+    at[0] = end;
+  }
+  print("% functions, % bytes of code; % data segments, % bytes\n", bodies, code_bytes, segments, data_bytes);
+  print("the % biggest functions:\n", top);
+  taken: [WS_FUNCS] bool;
+  for r: 0..<top {
+    best := -1;
+    for k: 0..<bodies { if !taken[k] && (best < 0 || size[k] > size[best]) { best = k; } }
+    if best < 0 { break; }
+    taken[best] = true;
+    idx := imported + best;
+    label := ifx name_len[idx] > 0 then w[name_at[idx]..<name_at[idx] + name_len[idx]] else "(no name section)";
+    print("  %  %\n", size[best], label);
+  }
+  return 0;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  verb := args_at(a[..], 0);
+  if ok && verb == "sources" && args_count(a[..]) >= 2 { return ws_sources(a[..]); }
+  if ok && verb == "report" && args_count(a[..]) >= 2 { return ws_report(a[..]); }
+  tool_errln("usage: wasm-size sources UNIT.coax... | wasm-size report FILE.wasm [N]");
+  return 2;
+}
