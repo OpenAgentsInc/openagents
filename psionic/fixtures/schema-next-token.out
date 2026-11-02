@@ -1,0 +1,31 @@
+integer -5..120: 8 states, 37 edges
+  0 -> state 3 (complete)
+  1 -> state 4 (complete)
+  2 -> state 5 (complete)
+  10 -> state 5 (complete)
+  11 -> state 5 (complete)
+  12 -> state 6 (complete)
+  13 -> state 7 (complete)
+  120 -> state 7 (complete)
+  - -> state 1 (not complete)
+  -3 -> state 2 (complete)
+  121 -> -1, 05 -> -1, -0 -> -1
+schema: 56 states, 100 edges
+  {"city":"oslo","year":1905,"open":true} -> true
+  {"city":"","year":2100,"open":false} -> true
+  {"city":"new york city","year":1950,"open":true} -> false
+vocabulary: 584 Tekken tokens, trie of 645 nodes
+table: 56 rows, 2466 offers, 17087 trie nodes visited (token walks would read up to 74032 bytes)
+rows equal to token-by-token walks: 56 of 56
+after '', offered 1: '{'=1123
+after '{"city":"new', offered 240: ' '=1032 '  '=1256 '   '=1293 ' c'=1272 ' ca'=7887 ' cap'=2735
+after '{"city":"oslo","year":19', offered 10: '0'=1048 '2'=1050 '5'=1053 '1'=1049 '3'=1051 '4'=1052
+seed 1: {"city":"airanceealir","year":2100,"open":false} (38 tokens, stop_token, parses: true, validates: true)
+seed 2: {"city":"ailingommeem","year":2100,"open":true} (38 tokens, stop_token, parses: true, validates: true)
+seed 3: {"city":"tabommopilin","year":1969,"open":true} (38 tokens, stop_token, parses: true, validates: true)
+seed 4: {"city":" thefordmbis","year":1999,"open":true} (39 tokens, stop_token, parses: true, validates: true)
+seed 5: {"city":"lding stothe","year":2005,"open":false} (39 tokens, stop_token, parses: true, validates: true)
+refused {"type":"string","format":"date"}: keyword, keyword 'format'
+refused {"type":"object","properties":{"a":{"type":"null"}},"required":[]}: value, keyword 'required'
+refused {"type":"number"}: type, keyword 'type'
+refused {"type":"string","pattern":"^[a-z]+$"}: value, keyword 'pattern'

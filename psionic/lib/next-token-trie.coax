@@ -1,0 +1,249 @@
+// Chapter 53: vocabulary masks from a token trie. The tokens' byte strings
+// are stored once as a trie; one walk of the trie beside the grammar's
+// automaton finds every token that keeps a parse possible from a state,
+// skipping a whole subtree as soon as its prefix leaves the grammar. The
+// result is the mask nx_mask computes token by token, for a vocabulary of any
+// size, and a table of masks, one row per state, built once per grammar.
+// Profile next-token-trie-v1: up to 262,144 tokens, nodes and stack in the
+// caller's buffers. The checks use a real vocabulary: Tekken v13 (Ministral 3)
+// restricted to chapter 81's fixture strings, plus its 256 single-byte tokens.
+#load "next-token-schema.coax";
+#load "../fixtures/ministral-tekken.coax";
+#load "../tests/next-token-trie-checks.coax";
+#authority;
+
+// byte[k] is the byte that leads into node k (node 0 is the root); child[k]
+// its first child and sibling[k] the next child of its parent, or -1.
+// first[k] is the first token whose piece ends at k and after[t] the next
+// token with the same piece, or -1. Empty pieces hang at the root, which
+// is never offered.
+NtTrie :: struct {nodes:int;byte:[]u8;child:[]int;sibling:[]int;first:[]int;after:[]int;}
+NtBuilt :: struct {status:NxStatus;cause:int=-1;trie:NtTrie;}
+
+// The fixture vocabulary: chapter 81's 417 Tekken entries, then the
+// single-byte tokens they lack (Tekken's ranks 0 to 255 are the bytes
+// themselves), then </s>. ids[k] is the real Tekken id: rank + 1000, and 2
+// for </s>. Returns the count.
+NT_TEKKEN :: 417+166+1;
+NT_END_ID :: 2;
+// store holds the fixture's bytes and then every byte value once, NT_STORE in all.
+NT_STORE :: MS_TEKKEN_DATA_BYTES+256;
+nt_tekken :: (pieces:[]string,ids:[]int,store:[]u8)->int {
+    n:=0;have:[256]bool;
+    for i:0..<MS_TEKKEN_DATA_BYTES {store[i]=MS_TEKKEN_DATA[i];}
+    for c:0..<256 {store[MS_TEKKEN_DATA_BYTES+255-c]=cast(u8)(255-c);}
+    for k:0..<MS_TEKKEN_ENTRIES {
+        a:=MS_TEKKEN_ENDS[k];b:=MS_TEKKEN_ENDS[k+1];
+        pieces[n]=cast(string)store[a..<b];ids[n]=MS_TEKKEN_RANKS[k]+NT_SPECIALS;n+=1;
+        if b-a==1 {have[cast(int)store[a]]=true;}
+    }
+    for c:0..<256 {if !have[c] {x:=MS_TEKKEN_DATA_BYTES+c;pieces[n]=cast(string)store[x..<x+1];ids[n]=c+NT_SPECIALS;n+=1;}}
+    pieces[n]="</s>";ids[n]=NT_END_ID;return n+1;
+}
+NT_SPECIALS :: 1000;
+NtRig :: struct {pieces:[NT_TEKKEN]string;ids:[NT_TEKKEN]int;store:[NT_STORE]u8;byte:[4096]u8;child:[4096]int;sibling:[4096]int;first:[4096]int;after:[NT_TEKKEN]int;}
+
+#test "the fixture vocabulary is real Tekken: single bytes are their own ranks" {
+    pieces:[NT_TEKKEN]string;ids:[NT_TEKKEN]int;store:[NT_STORE]u8;
+    #assert nt_tekken(pieces[..],ids[..],store[..])==NT_TEKKEN;
+    singles:=0;
+    for k:0..<MS_TEKKEN_ENTRIES {if pieces[k].count==1 {singles+=1;#assert ids[k]==cast(int)pieces[k][0]+1000;}}
+    #assert singles==90 && pieces[0]=="\t" && ids[0]==1009 && pieces[416].count>0 && ids[NT_TEKKEN-1]==2 && pieces[NT_TEKKEN-1]=="</s>";
+    seen:[256]int;for k:0..<NT_TEKKEN-1 {if pieces[k].count==1 {seen[cast(int)pieces[k][0]]+=1;}}
+    for c:0..<256 {#assert seen[c]==1;}
+    #assert pieces[417].count==1 && pieces[417][0]==0 && ids[417]==1000 && ids[NT_TEKKEN-2]==1255;
+    // Tekken's encoding of "Hello, world!" uses fixture pieces.
+    #assert MS_TEKKEN_IDS[0]==22177;found:=false;for k:0..<MS_TEKKEN_ENTRIES {if ids[k]==22177 {found=pieces[k]=="Hello";}}#assert found;
+}
+#test "the trie stores each piece once and finds it again" {
+    pieces:=[6]string.["ab","a","abc","b","","ab"];byte:[16]u8;child:[16]int;sibling:[16]int;first:[16]int;after:[6]int;
+    r:=nt_build(pieces[..],byte[..],child[..],sibling[..],first[..],after[..]);
+    #assert r.status==NxStatus.ok && r.trie.nodes==5 && r.trie.after.count==6;
+    t:=r.trie;#assert t.first[0]==4 && t.after[4]== -1;
+    a:=t.child[0];#assert t.byte[a]=='b' && t.first[a]==3 && t.sibling[a]>=0;a=t.sibling[a];#assert t.byte[a]=='a' && t.first[a]==1 && t.sibling[a]== -1;
+    ab:=t.child[a];#assert t.byte[ab]=='b' && t.first[ab]==5 && t.after[5]==0 && t.after[0]== -1 && t.byte[t.child[ab]]=='c' && t.first[t.child[ab]]==2;
+    #assert nt_build(pieces[..],byte[0..<5],child[..],sibling[..],first[..],after[..]).status==NxStatus.ok;
+    c:=nt_build(pieces[..],byte[0..<4],child[..],sibling[..],first[..],after[..]);#assert c.status==NxStatus.capacity && c.cause==3;
+    #assert nt_build(pieces[..],byte[..],child[0..<4],sibling[..],first[..],after[..]).status==NxStatus.capacity;
+    #assert nt_build(pieces[..],byte[..],child[..],sibling[0..<4],first[..],after[..]).status==NxStatus.capacity;
+    #assert nt_build(pieces[..],byte[..],child[..],sibling[..],first[0..<4],after[..]).status==NxStatus.capacity;
+    #assert nt_build(pieces[..],byte[..],child[..],sibling[..],first[..],after[0..<5]).status==NxStatus.capacity;
+    #assert nt_build(pieces[0..<0],byte[..],child[..],sibling[..],first[..],after[..]).status==NxStatus.shape;
+    // Byte 0 is an ordinary byte: its node is a child of the root, not the root.
+    nb:=[1]u8.[0];nul:=[2]string.[cast(string)nb[..],"a"];
+    z:=nt_build(nul[..],byte[..],child[..],sibling[..],first[..],after[..]).trie;
+    #assert z.nodes==3 && z.byte[z.child[0]]=='a' && z.first[z.child[0]]==1;nz:=z.sibling[z.child[0]];#assert z.byte[nz]==0 && z.first[nz]==0 && z.sibling[nz]== -1 && z.child[nz]== -1;
+    zl:=[1]NxEdge.[NxEdge.{from=0,low=0,high=0,to=1}];fin:=[1]int.[1];zn:[512]int;za:[2]u8;zv:[2]u8;
+    zg:=nx_compile(2,0,zl[..],fin[..],zn[..],za[..],zv[..],false).grammar;zo:=[2]u8.[1,1];zs:[8]int;
+    zm:=nt_mask(z,zg,0,1,zo[..],zs[..],false);#assert zm.status==NxStatus.ok && zm.kept==1 && zm.passes==2 && zo[0]==1 && zo[1]==0;
+    // A trie of empty pieces only: nothing to walk.
+    blank:=[2]string.["",""];e2:=nt_build(blank[..],byte[..],child[..],sibling[..],first[..],after[..]).trie;#assert e2.child[0]== -1;
+    em:=nt_mask(e2,zg,1,1,zo[..],zs[..],false);#assert em.status==NxStatus.ok && em.kept==1 && em.passes==0 && zo[0]==0 && zo[1]==1;
+    one:=[1]string.[""];#assert nt_build(one[..],byte[0..<1],child[0..<1],sibling[0..<1],first[0..<1],after[0..<1]).trie.nodes==1;
+    #assert nt_build(one[..],byte[0..<0],child[0..<1],sibling[0..<1],first[0..<1],after[0..<1]).status==NxStatus.capacity;
+}
+#test "masks over the Tekken fixture match token-by-token walks in every state" #steps 2000000000 {
+    v:NtRig;n:=nt_tekken(v.pieces[..],v.ids[..],v.store[..]);end:=n-1;
+    r:=nt_build(v.pieces[..],v.byte[..],v.child[..],v.sibling[..],v.first[..],v.after[..]);#assert r.status==NxStatus.ok && r.trie.nodes==645;
+    edges:=nx_list_edges();acc:=[1]int.[5];next:[1536]int;a:[6]u8;l:[6]u8;
+    c:=nx_compile(6,0,edges[..],acc[..],next[..],a[..],l[..],false);#assert nt_same(c.grammar,r.trie,v.pieces[..],end)==6;
+    nodes:[256]RsNode;arena:[2048]u8;e:[4096]NxEdge;ends:[64]int;accepting:[64]int;nx:[131072]int;accept:[512]u8;live:[512]u8;w:=ns_work(nodes[..],arena[..],e[..],ends[..],accepting[..],nx[..],accept[..],live[..]);
+    s:=nx_schema(NT_SCHEMA,w);#assert s.why==NsWhy.none && nt_same(s.grammar,r.trie,v.pieces[..],end)==s.states;
+    s=nx_schema("{\"type\":\"string\"}",w);#assert nt_same(s.grammar,r.trie,v.pieces[..],end)==3;
+}
+#forall "random schemas: trie masks match token-by-token walks" seed:0..<24 #steps 4000000000 {
+    v:NtRig;n:=nt_tekken(v.pieces[..],v.ids[..],v.store[..]);
+    r:=nt_build(v.pieces[..],v.byte[..],v.child[..],v.sibling[..],v.first[..],v.after[..]);
+    b:[2048]u8;t:=[1]OsText.[OsText.{data=b[..]}];#assert os_schema(cast(u64)seed,t[..],0,0)>0;
+    nodes:[256]RsNode;arena:[2048]u8;e:[4096]NxEdge;ends:[64]int;accepting:[64]int;nx:[131072]int;accept:[512]u8;live:[512]u8;w:=ns_work(nodes[..],arena[..],e[..],ends[..],accepting[..],nx[..],accept[..],live[..]);
+    s:=nx_schema(cast(string)b[0..<t[0].at],w);#assert s.why==NsWhy.none;
+    // Every state of a schema's automaton is live, and the end token may sit anywhere.
+    #assert nt_same(s.grammar,r.trie,v.pieces[..],n-1)==s.states && nt_same(s.grammar,r.trie,v.pieces[..],seed)==s.states;
+}
+NT_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\",\"pattern\":\"^[a-z ]*$\",\"maxLength\":12},\"year\":{\"type\":\"integer\",\"minimum\":1900,\"maximum\":2100},\"open\":{\"type\":\"boolean\"}},\"required\":[\"city\",\"year\",\"open\"]}";
+#test "the mask refuses what it cannot answer and counts its walk" {
+    v:NtRig;n:=nt_tekken(v.pieces[..],v.ids[..],v.store[..]);end:=n-1;
+    r:=nt_build(v.pieces[..],v.byte[..],v.child[..],v.sibling[..],v.first[..],v.after[..]);t:=r.trie;
+    edges:=nx_list_edges();acc:=[1]int.[5];next:[1792]int;a:[7]u8;l:[7]u8;
+    g:=nx_compile(7,0,edges[..],acc[..],next[..],a[..],l[..],false).grammar;
+    out:[NT_TEKKEN]u8;stack:[64]int;
+    m:=nt_mask(t,g,1,end,out[..],stack[..],false);
+    // After '[': the ten digits as single bytes and the fixture's "2025"-style digit pieces are offered.
+    #assert m.status==NxStatus.ok && m.written==NT_TEKKEN && m.passes==256 && out[end]==0;
+    for i:0..<NT_TEKKEN {out[i]=1;}
+    m=nt_mask(t,g,5,end,out[..],stack[..],false);#assert out[0]==0;#assert m.kept==1 && out[end]==1 && m.passes==256;
+    #assert nt_mask(t,g,6,end,out[..],stack[..],false).status==NxStatus.state && nt_mask(t,g,7,end,out[..],stack[..],false).status==NxStatus.state && nt_mask(t,g,-1,end,out[..],stack[..],false).status==NxStatus.state;
+    #assert nt_mask(t,g,1,end,out[0..<NT_TEKKEN-1],stack[..],false).status==NxStatus.capacity;
+    #assert nt_mask(t,g,1,end,out[..],stack[0..<1],false).status==NxStatus.capacity;
+    #assert nt_mask(t,g,1,end,out[..],stack[0..<2],false).status==NxStatus.ok;
+    #assert nt_mask(t,g,2,end,out[..],stack[0..<2],false).status==NxStatus.ok;
+    #assert nt_mask(t,g,1,end,out[..],stack[..],true).status==NxStatus.alias;
+    #assert nt_mask(t,g,1,NT_TEKKEN,out[..],stack[..],false).status==NxStatus.shape && nt_mask(t,g,1,-1,out[..],stack[..],false).status==NxStatus.shape;
+    h:=g;h.next=next[0..<1791];#assert nt_mask(t,h,1,end,out[..],stack[..],false).status==NxStatus.capacity;
+    h=g;h.accepting=a[0..<6];#assert nt_mask(t,h,1,end,out[..],stack[..],false).status==NxStatus.capacity;
+    h=g;h.live=l[0..<6];#assert nt_mask(t,h,1,end,out[..],stack[..],false).status==NxStatus.capacity;
+    u:=t;u.after=t.after[0..<0];#assert nt_mask(u,g,1,0,out[..],stack[..],false).status==NxStatus.shape;
+    // A deep piece needs a deep stack: the schema's string state walks "Hello"'s path.
+    nodes:[256]RsNode;arena:[2048]u8;e:[4096]NxEdge;ends:[64]int;accepting:[64]int;nx:[131072]int;accept:[512]u8;live:[512]u8;w:=ns_work(nodes[..],arena[..],e[..],ends[..],accepting[..],nx[..],accept[..],live[..]);
+    s:=nx_schema("{\"type\":\"string\"}",w);q:=nx_walk(s.grammar,s.grammar.start,"\"");
+    m=nt_mask(t,s.grammar,q,end,out[..],stack[0..<6],false);#assert m.status==NxStatus.capacity;
+    deep:=0;d:=2;while deep==0 {d+=2;if nt_mask(t,s.grammar,q,end,out[..],stack[0..<d],false).status==NxStatus.ok {deep=d;}}
+    #assert deep==8 && nt_depth(t)==9;
+}
+#test "masked sampling over real Tekken tokens: every run parses and validates" #steps 4000000000 {
+    v:NtRig;n:=nt_tekken(v.pieces[..],v.ids[..],v.store[..]);end:=n-1;
+    r:=nt_build(v.pieces[..],v.byte[..],v.child[..],v.sibling[..],v.first[..],v.after[..]);
+    nodes:[256]RsNode;arena:[2048]u8;e:[4096]NxEdge;ends:[64]int;accepting:[64]int;nx:[131072]int;accept:[512]u8;live:[512]u8;w:=ns_work(nodes[..],arena[..],e[..],ends[..],accepting[..],nx[..],accept[..],live[..]);
+    s:=nx_schema(NT_SCHEMA,w);g:=s.grammar;
+    masks:[64*NT_TEKKEN]u8;stack:[64]int;tm:=nt_table(r.trie,g,end,masks[..],stack[..]);#assert tm.status==NxStatus.ok && tm.written==s.states*NT_TEKKEN && tm.kept==2466 && tm.passes==17087;
+    tree:[256]RsNode;words:[2048]u8;#assert rs_json(NT_SCHEMA,tree[..],words[..]).ok;
+    logits:[NT_TEKKEN]f32;p:[NT_TEKKEN]f64;st:[NT_TEKKEN]f64;o:[NT_TEKKEN]int;tp:[NT_TEKKEN]int;wk:=NxWork.{stage=st[..],order=o[..],temporary=tp[..]};
+    for seed:0..<20 {
+        for k:0..<n {logits[k]=cast(f32)(4*cr_draw(CrSeed.{seed=cast(u64)(900+seed),counter=cast(u64)k}).value);}
+        run:=NxRun.{limit=64,random=CrSeed.{seed=cast(u64)seed}};state:=g.start;text:[256]u8;size:=0;
+        while run.stop==NxStop.running {
+            x:=nt_guided(logits[..],g,state,v.pieces[..],end,masks[..],NxOptions.{},run,false,p[..],wk,false);
+            #assert x.status==NxStatus.ok && masks[state*NT_TEKKEN+x.token]==1;
+            if x.token!=end {for c:v.pieces[x.token] {text[size]=c;size+=1;}}
+            run=x.run;state=x.state;
+        }
+        #assert run.stop==NxStop.stop_token && nx_accepts(g,cast(string)text[0..<size]) && os_accepts(tree[..],cast(string)text[0..<size]);
+    }
+    // Refusals: a short table, a state outside it, logits of the wrong length; cancellation keeps the state.
+    run:=NxRun.{limit=4};
+    #assert nt_guided(logits[..],g,g.start,v.pieces[..],end,masks[0..<s.states*NT_TEKKEN-1],NxOptions.{},run,false,p[..],wk,false).status==NxStatus.shape;
+    #assert nt_guided(logits[..],g,s.states,v.pieces[..],end,masks[..],NxOptions.{},run,false,p[..],wk,false).status==NxStatus.shape;
+    #assert nt_guided(logits[..],g,-1,v.pieces[..],end,masks[..],NxOptions.{},run,false,p[..],wk,false).status==NxStatus.shape;
+    #assert nt_guided(logits[0..<n-1],g,g.start,v.pieces[..],end,masks[..],NxOptions.{},run,false,p[..],wk,false).status==NxStatus.shape;
+    c:=nt_guided(logits[..],g,3,v.pieces[..],end,masks[..],NxOptions.{},run,true,p[..],wk,false);#assert c.status==NxStatus.ok && c.token== -1 && c.state==3 && c.run.stop==NxStop.cancelled;
+    f:=nt_guided(logits[..],g,3,v.pieces[..],end,masks[..],NxOptions.{temperature=-1},run,false,p[..],wk,false);#assert f.status==NxStatus.shape && f.state==3;
+    // The table refuses buffers it cannot fill and states the trie cannot walk.
+    #assert nt_table(r.trie,g,end,masks[0..<s.states*NT_TEKKEN-1],stack[..]).status==NxStatus.capacity;
+    #assert nt_table(r.trie,g,end,masks[..],stack[0..<2]).status==NxStatus.capacity;
+    tm=nt_table(r.trie,g,end,masks[0..<s.states*NT_TEKKEN],stack[..]);#assert tm.status==NxStatus.ok && tm.kept==2466 && tm.passes==17087;
+    #assert nt_guided(logits[..],g,g.start,v.pieces[..],end,masks[0..<s.states*NT_TEKKEN],NxOptions.{},run,false,p[..],wk,false).status==NxStatus.ok;
+    // A dead state gets an empty row.
+    edges:=nx_list_edges();acc:=[1]int.[5];next:[1792]int;a:[7]u8;l:[7]u8;h:=nx_compile(7,0,edges[..],acc[..],next[..],a[..],l[..],false).grammar;
+    for i:0..<NT_TEKKEN {masks[6*NT_TEKKEN+i]=1;}
+    tm=nt_table(r.trie,h,end,masks[..],stack[..]);#assert tm.status==NxStatus.ok;for i:0..<NT_TEKKEN {#assert masks[6*NT_TEKKEN+i]==0;}
+}
+
+// book:begin trie
+nt_build :: (pieces:[]string,byte:[]u8,child:[]int,sibling:[]int,first:[]int,after:[]int)->NtBuilt #export_c {
+    if !nx_vocab(pieces.count) {return NtBuilt.{status=NxStatus.shape};}
+    room:=nx_min(nx_min(byte.count,child.count),nx_min(sibling.count,first.count));
+    if room<1 || after.count<pieces.count {return NtBuilt.{status=NxStatus.capacity};}
+    // The root has no siblings; its sibling entry is never read.
+    child[0]=-1;first[0]=-1;n:=1;
+    for piece,t:pieces {
+        at:=0;
+        for c:piece {
+            k:=child[at];while k!= -1 && byte[k]!=c {k=sibling[k];}
+            if k== -1 {
+                if n==room {return NtBuilt.{status=NxStatus.capacity,cause=t};}
+                k=n;n+=1;byte[k]=c;child[k]=-1;first[k]=-1;sibling[k]=child[at];child[at]=k;
+            }
+            at=k;
+        }
+        after[t]=first[at];first[at]=t;
+    }
+    return NtBuilt.{trie=NtTrie.{nodes=n,byte=byte[0..<n],child=child[0..<n],sibling=sibling[0..<n],first=first[0..<n],after=after[0..<pieces.count]}};
+}
+// book:end trie
+
+// book:begin mask
+// The trie walked beside the automaton from state. The stack holds pairs
+// (node, the state before its byte); a node whose byte leaves the grammar or
+// reaches a dead state is skipped with all its descendants. passes counts the
+// nodes visited.
+nt_mask :: (t:NtTrie,g:NxGrammar,state:int,end_token:int,out:[]u8,stack:[]int,overlap:bool)->NxResult #export_c {
+    v:=t.after.count;
+    if !nx_vocab(v) || end_token<0 || end_token>=v {return NxResult.{status=NxStatus.shape};}
+    if g.next.count<g.states*256 || g.accepting.count<g.states || g.live.count<g.states || out.count<v || stack.count<2 {return NxResult.{status=NxStatus.capacity};}
+    if state<0 || state>=g.states || g.live[state]!=1 {return NxResult.{status=NxStatus.state};}
+    if overlap {return NxResult.{status=NxStatus.alias};}
+    for i:0..<v {out[i]=0;}
+    stack[0]=t.child[0];stack[1]=state;top:=ifx t.child[0]!= -1 then 2 else 0;visited:=0;allowed:=0;
+    while top!=0 {
+        top-=2;k:=stack[top];s:=stack[top+1];visited+=1;
+        // The next sibling takes this slot; its state is the same s, already there.
+        if t.sibling[k]!= -1 {stack[top]=t.sibling[k];top+=2;}
+        q:=g.next[s*256+cast(int)t.byte[k]];
+        if q!= -1 && g.live[q]==1 {
+            x:=t.first[k];while x!= -1 {out[x]=1;allowed+=1;x=t.after[x];}
+            if t.child[k]!= -1 {
+                if top+2>stack.count {return NxResult.{status=NxStatus.capacity};}
+                stack[top]=t.child[k];stack[top+1]=q;top+=2;
+            }
+        }
+    }
+    allowed+=cast(int)g.accepting[state]-cast(int)out[end_token];out[end_token]=g.accepting[state];
+    return NxResult.{written=v,kept=allowed,passes=visited};
+}
+// One row per state: masks[s*V..<(s+1)*V]. Dead states get an empty row.
+nt_table :: (t:NtTrie,g:NxGrammar,end_token:int,masks:[]u8,stack:[]int)->NxResult #export_c {
+    v:=t.after.count;total:=NxResult.{};
+    if masks.count<g.states*v {return NxResult.{status=NxStatus.capacity};}
+    for s:0..<g.states {
+        row:=masks[s*v..<s*v+v];
+        if g.live[s]==1 {
+            m:=nt_mask(t,g,s,end_token,row,stack,false);if m.status!=NxStatus.ok {return NxResult.{status=m.status};}
+            total.kept+=m.kept;total.passes+=m.passes;
+        } else {for i:0..<v {row[i]=0;}}
+    }
+    total.written=g.states*v;return total;
+}
+// book:end mask
+
+// book:begin guided
+// nx_guided with the mask read from the table instead of walked per token.
+nt_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,masks:[]u8,options:NxOptions,run:NxRun,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c {
+    v:=pieces.count;
+    if logits.count!=v || state<0 || state>=g.states || masks.count<g.states*v {return NxGuided.{status=NxStatus.shape,state=state};}
+    stops:=[1]int.[end_token];
+    e:=nx_step(logits,masks[state*v..<state*v+v],options,run,stops[..],cancel,out,work,overlap);
+    if e.status!=NxStatus.ok {return NxGuided.{status=e.status,state=state};}
+    after:=state;if e.token!= -1 && e.token!=end_token {after=nx_walk(g,state,pieces[e.token]);}
+    return NxGuided.{token=e.token,run=e.run,state=after};
+}
+// book:end guided

@@ -1,0 +1,466 @@
+// Chapter 53: a bounded JSON Schema subset compiled into the byte automaton
+// of next-token.coax, so a sampler can be held to a schema's JSON.
+// Profile next-token-schema-v1. The language is canonical JSON: no
+// whitespace, an object's keys in the order its properties are written,
+// every property required, strings of printable ASCII without " or \,
+// integers without leading zeros or -0. The subset: type object
+// (properties, required listing every property once, additionalProperties
+// false), array (items, maxItems up to 8, minItems), string (enum of up to 16
+// words, or minLength, maxLength up to 64 and a pattern ^[...]*$ of bytes and
+// ranges), integer (minimum and maximum, both within +-999,999,999), boolean
+// and null; title, description and $schema as strings; nesting up to depth 4.
+// Anything else is refused with the keyword named.
+#load "next-token.coax";
+#load "responses/json.coax";
+#load "../tests/next-token-schema-oracle.coax";
+#authority;
+
+// keyword: a key outside the subset or the type. type: no type, or a type
+// outside the subset. value: a keyword whose value has the wrong shape or is
+// missing. range: a number outside the subset's bounds, or a lower bound above
+// an upper one. depth: nested deeper than NS_DEPTH. capacity: the caller's
+// buffers, or 4,096 states, are too small for the automaton.
+NsWhy :: enum u8 {none;json;keyword;type;value;range;depth;capacity;}
+NsWork :: struct {nodes:[]RsNode;arena:[]u8;edges:[]NxEdge;ends:[]int;accepting:[]int;next:[]int;accept:[]u8;live:[]u8;}
+NsSchema :: struct {why:NsWhy;keyword:string;node:int=-1;states:int;edges:int;grammar:NxGrammar;}
+NsBuild :: struct {states:int;edges:int;why:NsWhy;keyword:string;node:int;}
+NsNumber :: struct {why:NsWhy;value:int;}
+
+NS_DEPTH :: 4;
+NS_ITEMS_MAX :: 8;
+NS_LENGTH_MAX :: 64;
+NS_WORDS_MAX :: 16;
+NS_WORD_MAX :: 32;
+NS_SIGNS :: 128;
+// No value has more end states than this: an integer has at most a few per digit count and sign.
+NS_ENDS :: 64;
+NS_ASCII :: 127;
+
+ns_work :: (nodes:[]RsNode,arena:[]u8,edges:[]NxEdge,ends:[]int,accepting:[]int,next:[]int,accept:[]u8,live:[]u8)->NsWork {
+    return NsWork.{nodes=nodes,arena=arena,edges=edges,ends=ends,accepting=accepting,next=next,accept=accept,live=live};
+}
+#test "a hand schema compiles to the table worked in the chapter" {
+    nodes:[256]RsNode;arena:[2048]u8;edges:[4096]NxEdge;ends:[64]int;accepting:[64]int;next:[131072]int;accept:[512]u8;live:[512]u8;w:=ns_work(nodes[..],arena[..],edges[..],ends[..],accepting[..],next[..],accept[..],live[..]);
+    s:=nx_schema("{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"enum\":[\"ann\",\"al\"]},\"age\":{\"type\":\"integer\",\"minimum\":-5,\"maximum\":120},\"ok\":{\"type\":\"boolean\"}},\"required\":[\"name\",\"age\",\"ok\"]}",w);
+    #assert s.why==NsWhy.none && s.node== -1 && s.states==45 && s.edges==81;
+    g:=s.grammar;
+    #assert nx_accepts(g,"{\"name\":\"al\",\"age\":7,\"ok\":true}") && nx_accepts(g,"{\"name\":\"ann\",\"age\":-5,\"ok\":false}");
+    #assert nx_accepts(g,"{\"name\":\"al\",\"age\":120,\"ok\":true}") && nx_accepts(g,"{\"name\":\"al\",\"age\":0,\"ok\":true}") && nx_accepts(g,"{\"name\":\"al\",\"age\":-1,\"ok\":true}");
+    #assert !nx_accepts(g,"{\"name\":\"al\",\"age\":121,\"ok\":true}") && !nx_accepts(g,"{\"name\":\"al\",\"age\":-6,\"ok\":true}") && !nx_accepts(g,"{\"name\":\"al\",\"age\":-0,\"ok\":true}");
+    #assert !nx_accepts(g,"{\"name\":\"al\",\"age\":07,\"ok\":true}") && !nx_accepts(g,"{\"name\":\"an\",\"age\":7,\"ok\":true}") && !nx_accepts(g,"{\"age\":7,\"name\":\"al\",\"ok\":true}");
+    #assert !nx_accepts(g,"{\"name\":\"al\", \"age\":7,\"ok\":true}") && !nx_accepts(g,"{\"name\":\"al\",\"age\":7}");
+    // The integer part, worked in the chapter: 0 alone; 1; 2-9 with 10 and 11; 12; and one terminal state for 13-99 and 100-120.
+    a:=nx_walk(g,g.start,"{\"name\":\"al\",\"age\":");#assert a>=0 && g.live[a]==1 && g.accepting[a]==0;
+    #assert nx_walk(g,a,"10")==nx_walk(g,a,"2") && nx_walk(g,a,"13")==nx_walk(g,a,"99") && nx_walk(g,a,"120")==nx_walk(g,a,"99") && nx_walk(g,a,"0")!=nx_walk(g,a,"99") && nx_walk(g,a,"5")!=nx_walk(g,a,"99") && nx_walk(g,a,"12")!=nx_walk(g,a,"11") && nx_walk(g,a,"1")!=nx_walk(g,a,"2") && nx_walk(g,a,"2")==nx_walk(g,a,"9");
+    #assert nx_walk(g,a,"0")!=nx_walk(g,a,"3") && nx_walk(g,a,"-1")==nx_walk(g,a,"-5") && nx_walk(g,a,"00")== -1 && nx_walk(g,a,"-6")== -1 && nx_walk(g,a,"130")== -1;
+    // A string with a class and lengths, an array, null.
+    s=nx_schema("{\"type\":\"array\",\"items\":{\"type\":\"string\",\"pattern\":\"^[a-c_]*$\",\"minLength\":1,\"maxLength\":2},\"minItems\":1,\"maxItems\":2,\"title\":\"t\"}",w);
+    #assert s.why==NsWhy.none && s.states==12 && s.edges==18;g=s.grammar;
+    #assert nx_accepts(g,"[\"a\"]") && nx_accepts(g,"[\"c_\",\"b\"]") && !nx_accepts(g,"[]") && !nx_accepts(g,"[\"\"]") && !nx_accepts(g,"[\"abc\"]") && !nx_accepts(g,"[\"d\"]") && !nx_accepts(g,"[\"a\",\"a\",\"a\"]");
+    high:=[3]u8.['"',195,'"'];del:=[3]u8.['"',127,'"'];s=nx_schema("{\"type\":\"string\"}",w);#assert s.why==NsWhy.none && s.states==3 && s.edges==5;
+    #assert nx_accepts(s.grammar,"\"\"") && nx_accepts(s.grammar,"\"~ !#[]\"") && !nx_accepts(s.grammar,"\"a\\\"") && !nx_accepts(s.grammar,"\"\t\"") && !nx_accepts(s.grammar,cast(string)high[..]) && !nx_accepts(s.grammar,cast(string)del[..]) && nx_accepts(s.grammar,"\"~\"");
+    s=nx_schema("{\"type\":\"null\",\"description\":\"d\",\"$schema\":\"x\"}",w);#assert s.why==NsWhy.none && s.states==5 && nx_accepts(s.grammar,"null");
+    s=nx_schema("{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"maxItems\":0}",w);#assert s.why==NsWhy.none && nx_accepts(s.grammar,"[]") && !nx_accepts(s.grammar,"[null]");
+    s=nx_schema("{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}",w);#assert s.why==NsWhy.none && s.states==3 && nx_accepts(s.grammar,"{}");
+    s=nx_schema("{\"type\":\"string\",\"enum\":[\"\",\"b\",\"ba\"]}",w);#assert s.why==NsWhy.none && s.states==5 && s.edges==6 && nx_accepts(s.grammar,"\"\"") && nx_accepts(s.grammar,"\"ba\"") && !nx_accepts(s.grammar,"\"a\"");
+    s=nx_schema("{\"type\":\"string\",\"minLength\":2}",w);#assert s.why==NsWhy.none && s.states==5 && s.edges==11 && !nx_accepts(s.grammar,"\"a\"") && nx_accepts(s.grammar,"\"abcdef\"");
+}
+#test "integer ranges: every bound, both signs, by brute force" {
+    nodes:[256]RsNode;arena:[2048]u8;edges:[4096]NxEdge;ends:[64]int;accepting:[64]int;next:[131072]int;accept:[512]u8;live:[512]u8;w:=ns_work(nodes[..],arena[..],edges[..],ends[..],accepting[..],next[..],accept[..],live[..]);
+    bounds:=[14]int.[0,0,7,7,0,9,10,10,0,10,-1,-1,-120,-3];
+    more:=[16]int.[3,57,-57,-3,99,100,-100,1,-9,9,-10,10,123,999,-999999999,999999999];
+    for k:0..<7 {check_range(w,bounds[2*k],bounds[2*k+1]);}
+    for k:0..<8 {check_range(w,more[2*k],more[2*k+1]);}
+    check_range(w,-1000,1000);check_range(w,5,1234);check_range(w,-1234,-5);
+    // Wide ranges stay small: the states depend on the digits, not the span.
+    s:=nx_schema("{\"type\":\"integer\",\"minimum\":-999999999,\"maximum\":999999999}",w);#assert s.why==NsWhy.none && s.states==21 && s.edges==180;
+    s=nx_schema("{\"type\":\"integer\",\"minimum\":-5,\"maximum\":120}",w);#assert s.states==8 && s.edges==37;
+    s=nx_schema("{\"type\":\"integer\",\"minimum\":10,\"maximum\":10}",w);#assert s.states==3 && s.edges==2;
+    s=nx_schema("{\"type\":\"integer\",\"minimum\":0,\"maximum\":9}",w);#assert s.states==3 && s.edges==10;
+    s=nx_schema("{\"type\":\"integer\",\"minimum\":-9,\"maximum\":0}",w);#assert s.states==4 && s.edges==11;
+}
+#test "schemas outside the subset are refused, naming the keyword" #steps 400000000 {
+    nodes:[256]RsNode;arena:[2048]u8;edges:[4096]NxEdge;ends:[64]int;accepting:[64]int;next:[131072]int;accept:[512]u8;live:[512]u8;w:=ns_work(nodes[..],arena[..],edges[..],ends[..],accepting[..],next[..],accept[..],live[..]);
+    ns_refuse(w,"{\"type\":\"string\",\"format\":\"date\"}",NsWhy.keyword,"format",0);
+    ns_refuse(w,"{\"type\":\"integer\",\"minimum\":0,\"maximum\":3,\"multipleOf\":2}",NsWhy.keyword,"multipleOf",0);
+    ns_refuse(w,"{\"anyOf\":[]}",NsWhy.keyword,"anyOf",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{},\"required\":[],\"minProperties\":1}",NsWhy.keyword,"minProperties",0);
+    ns_refuse(w,"{\"type\":\"boolean\",\"enum\":[true]}",NsWhy.keyword,"enum",0);
+    ns_refuse(w,"{\"type\":\"null\",\"maximum\":1}",NsWhy.keyword,"maximum",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"$ref\":\"#\"}},\"required\":[\"a\"]}",NsWhy.keyword,"$ref",3);
+    ns_refuse(w,"{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"maxItems\":1,\"uniqueItems\":true}",NsWhy.keyword,"uniqueItems",0);
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":[\"a\"],\"maxLength\":3}",NsWhy.keyword,"maxLength",0);
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":[\"a\"],\"minLength\":0}",NsWhy.keyword,"minLength",0);
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":[\"a\"],\"pattern\":\"^[a]*$\"}",NsWhy.keyword,"pattern",0);
+    ns_refuse(w,"{\"type\":\"number\"}",NsWhy.type,"type",0);
+    ns_refuse(w,"{\"type\":[\"string\",\"null\"]}",NsWhy.type,"type",0);
+    ns_refuse(w,"{\"enum\":[\"a\"]}",NsWhy.keyword,"enum",0);
+    ns_refuse(w,"{\"title\":\"x\"}",NsWhy.type,"type",0);
+    ns_refuse(w,"[]",NsWhy.value,"",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"a\":true},\"required\":[\"a\"]}",NsWhy.value,"a",3);
+    ns_refuse(w,"{\"type\":\"null\",\"title\":3}",NsWhy.value,"title",0);
+    ns_refuse(w,"{\"type\":\"null\",\"description\":null}",NsWhy.value,"description",0);
+    ns_refuse(w,"{\"type\":\"null\",\"$schema\":[]}",NsWhy.value,"$schema",0);
+    // Objects: every property required once, nothing else.
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"null\"}}}",NsWhy.value,"required",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"null\"}},\"required\":[]}",NsWhy.value,"required",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"null\"}},\"required\":[\"a\",\"a\"]}",NsWhy.value,"required",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"null\"}},\"required\":[\"b\"]}",NsWhy.value,"required",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"null\"}},\"required\":[1]}",NsWhy.value,"required",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"null\"}},\"required\":\"a\"}",NsWhy.value,"required",0);
+    ns_refuse(w,"{\"type\":\"object\",\"required\":[]}",NsWhy.value,"properties",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":[],\"required\":[]}",NsWhy.value,"properties",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":true}",NsWhy.value,"additionalProperties",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"a\\\"\":{\"type\":\"null\"}},\"required\":[\"a\\\"\"]}",NsWhy.value,"properties",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"\":{\"type\":\"null\"}},\"required\":[\"\"]}",NsWhy.value,"properties",0);
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"abcdefghijklmnopqrstuvwxyzabcdefg\":{\"type\":\"null\"}},\"required\":[\"abcdefghijklmnopqrstuvwxyzabcdefg\"]}",NsWhy.value,"properties",0);
+    #assert nx_schema("{\"type\":\"object\",\"properties\":{\"abcdefghijklmnopqrstuvwxyzabcdef\":{\"type\":\"null\"}},\"required\":[\"abcdefghijklmnopqrstuvwxyzabcdef\"]}",w).why==NsWhy.none;
+    // Arrays.
+    ns_refuse(w,"{\"type\":\"array\",\"maxItems\":1}",NsWhy.value,"items",0);
+    ns_refuse(w,"{\"type\":\"array\",\"items\":{\"type\":\"null\"}}",NsWhy.value,"maxItems",0);
+    ns_refuse(w,"{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"maxItems\":9}",NsWhy.range,"maxItems",0);
+    #assert nx_schema("{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"maxItems\":8}",w).why==NsWhy.none;
+    ns_refuse(w,"{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"maxItems\":2,\"minItems\":3}",NsWhy.range,"minItems",0);
+    ns_refuse(w,"{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"maxItems\":-1}",NsWhy.range,"maxItems",0);
+    ns_refuse(w,"{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"maxItems\":1.5}",NsWhy.value,"maxItems",0);
+    ns_refuse(w,"{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"maxItems\":1e1}",NsWhy.value,"maxItems",0);
+    ns_refuse(w,"{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"maxItems\":\"1\"}",NsWhy.value,"maxItems",0);
+    // Strings.
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":[]}",NsWhy.value,"enum",0);
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":\"a\"}",NsWhy.value,"enum",0);
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":[\"a\",\"a\"]}",NsWhy.value,"enum",0);
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":[\"a\",1]}",NsWhy.value,"enum",0);
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":[\"a\\n\"]}",NsWhy.value,"enum",0);
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":[\"a\\u007f\"]}",NsWhy.value,"enum",0);
+    #assert nx_schema("{\"type\":\"string\",\"enum\":[\"a~\"]}",w).why==NsWhy.none;
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":[\"abcdefghijklmnopqrstuvwxyzabcdefg\"]}",NsWhy.value,"enum",0);
+    #assert nx_schema("{\"type\":\"string\",\"enum\":[\"abcdefghijklmnopqrstuvwxyzabcdef\"]}",w).why==NsWhy.none;
+    ns_refuse(w,"{\"type\":\"string\",\"enum\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\",\"q\"]}",NsWhy.value,"enum",0);
+    #assert nx_schema("{\"type\":\"string\",\"enum\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\"]}",w).why==NsWhy.none;
+    ns_refuse(w,"{\"type\":\"string\",\"maxLength\":65}",NsWhy.range,"maxLength",0);
+    #assert nx_schema("{\"type\":\"string\",\"maxLength\":64}",w).why==NsWhy.none;
+    ns_refuse(w,"{\"type\":\"string\",\"minLength\":65}",NsWhy.range,"minLength",0);
+    ns_refuse(w,"{\"type\":\"string\",\"minLength\":3,\"maxLength\":2}",NsWhy.range,"minLength",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"[a-z]*\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[a-z]+$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[a-z]*\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[z-a]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[\\\\d]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[a\\\"]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[^a]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[a]b]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[a-]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[-a]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":3}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[a-]]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[a-^]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[a--]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[!-\\\"]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[\\\"-a]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[^]*$\"}",NsWhy.value,"pattern",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[a]*$\",\"minLength\":1,\"maxLength\":0}",NsWhy.range,"minLength",0);
+    ns_refuse(w,"{\"type\":\"string\",\"pattern\":\"^[a]*$\",\"maxLength\":1.5}",NsWhy.value,"maxLength",0);
+    ns_refuse(w,"{\"type\":\"string\",\"maxLength\":1E1}",NsWhy.value,"maxLength",0);
+    ns_refuse(w,"{\"type\":\"string\",\"maxLength\":1234567890}",NsWhy.range,"maxLength",0);
+    ns_refuse(w,"{\"type\":\"string\",\"minLength\":-1}",NsWhy.range,"minLength",0);
+    sp:=nx_schema("{\"type\":\"string\",\"pattern\":\"^[a]*$\"}",w);#assert sp.why==NsWhy.none && nx_accepts(sp.grammar,"\"aa\"") && !nx_accepts(sp.grammar,"\" \"") && !nx_accepts(sp.grammar,"\"~\"");
+    sp=nx_schema("{\"type\":\"string\",\"pattern\":\"^[[}-~]*$\",\"maxLength\":1}",w);#assert sp.why==NsWhy.none && sp.edges==5 && nx_accepts(sp.grammar,"\"[\"") && nx_accepts(sp.grammar,"\"~\"") && !nx_accepts(sp.grammar,"\"|\"");
+    sp=nx_schema("{\"type\":\"string\",\"pattern\":\"^[ ]*$\",\"minLength\":0,\"maxLength\":0}",w);#assert sp.why==NsWhy.none && sp.states==3 && nx_accepts(sp.grammar,"\"\"") && !nx_accepts(sp.grammar,"\" \"");
+    sp=nx_schema("{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"minItems\":0,\"maxItems\":1}",w);#assert nx_accepts(sp.grammar,"[]") && nx_accepts(sp.grammar,"[null]");
+    sp=nx_schema("{\"type\":\"array\",\"items\":{\"type\":\"null\"},\"minItems\":2,\"maxItems\":2}",w);#assert !nx_accepts(sp.grammar,"[]") && !nx_accepts(sp.grammar,"[null]") && nx_accepts(sp.grammar,"[null,null]");
+    ns_refuse(w,"{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"null\"}},\"required\":[\"a\"]}},\"required\":[\"a\"]}},\"required\":[\"a\"]}},\"required\":[\"a\"]}",NsWhy.depth,"a",12);
+    w.ends=ends[0..<63];#assert nx_schema("{\"type\":\"null\"}",w).why==NsWhy.capacity;w.ends=ends[..];
+    #assert nx_schema("{\"type\":\"string\",\"pattern\":\"^[ ~]*$\"}",w).why==NsWhy.none && nx_schema("{\"type\":\"string\",\"pattern\":\"^[a-aa]*$\"}",w).why==NsWhy.none;
+    // Integers.
+    ns_refuse(w,"{\"type\":\"integer\",\"maximum\":3}",NsWhy.value,"minimum",0);
+    ns_refuse(w,"{\"type\":\"integer\",\"minimum\":3}",NsWhy.value,"maximum",0);
+    ns_refuse(w,"{\"type\":\"integer\",\"minimum\":4,\"maximum\":3}",NsWhy.range,"minimum",0);
+    ns_refuse(w,"{\"type\":\"integer\",\"minimum\":-1000000000,\"maximum\":3}",NsWhy.range,"minimum",0);
+    ns_refuse(w,"{\"type\":\"integer\",\"minimum\":0,\"maximum\":1000000000}",NsWhy.range,"maximum",0);
+    ns_refuse(w,"{\"type\":\"integer\",\"minimum\":0,\"maximum\":-}",NsWhy.json,"",-1);
+    ns_refuse(w,"{\"type\":\"integer\",\"minimum\":0.5,\"maximum\":3}",NsWhy.value,"minimum",0);
+    // Depth, JSON, capacity.
+    deep:="{\"type\":\"array\",\"maxItems\":1,\"items\":{\"type\":\"array\",\"maxItems\":1,\"items\":{\"type\":\"array\",\"maxItems\":1,\"items\":{\"type\":\"array\",\"maxItems\":1,\"items\":{\"type\":\"null\"}}}}}";
+    ns_refuse(w,deep,NsWhy.depth,"items",12);
+    #assert nx_schema("{\"type\":\"array\",\"maxItems\":1,\"items\":{\"type\":\"array\",\"maxItems\":1,\"items\":{\"type\":\"array\",\"maxItems\":1,\"items\":{\"type\":\"null\"}}}}",w).why==NsWhy.none;
+    ns_refuse(w,"{\"type\":",NsWhy.json,"",-1);
+    w.edges=edges[0..<9];#assert nx_schema("{\"type\":\"boolean\"}",w).why==NsWhy.none;
+    w.edges=edges[0..<8];s:=nx_schema("{\"type\":\"boolean\"}",w);#assert s.why==NsWhy.capacity && s.states==0;
+    w=ns_work(nodes[..],arena[..],edges[..],ends[..],accepting[..],next[..],accept[..],live[..]);w.accepting=accepting[0..<1];s=nx_schema("{\"type\":\"boolean\"}",w);#assert s.why==NsWhy.capacity;
+    w.accepting=accepting[0..<2];#assert nx_schema("{\"type\":\"boolean\"}",w).why==NsWhy.none;
+    w=ns_work(nodes[..],arena[..],edges[..],ends[..],accepting[..],next[..],accept[..],live[..]);w.next=next[0..<100];#assert nx_schema("{\"type\":\"boolean\"}",w).why==NsWhy.capacity;
+    w=ns_work(nodes[..],arena[..],edges[..],ends[..],accepting[..],next[..],accept[..],live[..]);w.nodes=nodes[0..<1];#assert nx_schema("{\"type\":\"boolean\"}",w).why==NsWhy.json;w=ns_work(nodes[..],arena[..],edges[..],ends[..],accepting[..],next[..],accept[..],live[..]);
+    // Eight arrays of eight strings of 64 bytes pass 4,096 states.
+    ns_refuse(w,"{\"type\":\"array\",\"maxItems\":8,\"items\":{\"type\":\"array\",\"maxItems\":8,\"items\":{\"type\":\"string\",\"maxLength\":64}}}",NsWhy.capacity,"",-1);
+    // More integer end states than NS_ENDS: 0, 1-9, 10-99 ... in each sign stay few, but a 9-digit
+    // range accepts in 9 states per sign, and an array of such ends joins only after each item.
+    #assert nx_schema("{\"type\":\"array\",\"maxItems\":2,\"items\":{\"type\":\"integer\",\"minimum\":-999999999,\"maximum\":999999999}}",w).why==NsWhy.none;
+}
+#forall "compiled schemas accept exactly the texts the validator accepts" seed:0..<120 #steps 2000000000 {
+    sd:=cast(u64)seed;nodes:[256]RsNode;arena:[2048]u8;edges:[4096]NxEdge;ends:[64]int;accepting:[64]int;next:[131072]int;accept:[512]u8;live:[512]u8;b:[2048]u8;t:=[1]OsText.[OsText.{data=b[..]}];#assert os_schema(sd,t[..],0,0)>0;text:=cast(string)b[0..<t[0].at];
+    s:=nx_schema(text,ns_work(nodes[..],arena[..],edges[..],ends[..],accepting[..],next[..],accept[..],live[..]));#assert s.why==NsWhy.none;
+    tree:[256]RsNode;words:[2048]u8;#assert rs_json(text,tree[..],words[..]).ok;
+    // The longest length whose texts number at most 1,000 in all.
+    want:[49]int;os_count(tree[..],0,want[..]);L:=0;sum:=0;
+    for n:0..<48 {sum=os_add(sum,want[n]);if sum<=1000 {L=n;}}
+    have:[49]int;os_table(s.grammar,have[..]);for n:0..<L+1 {#assert have[n]==want[n];}
+    // Every text the table accepts up to L bytes is one the validator accepts; with equal counts the sets are equal.
+    found:[1000*48]u8;size:[1000]int;walk:=[1]OsWalk.[OsWalk.{found=found[..],size=size[..]}];x:[64]u8;
+    bytes:[512*16]u8;lists:[513]int;os_lists(s.grammar,bytes[..],lists[..]);
+    os_walk(s.grammar,bytes[..],lists[..],s.grammar.start,x[..],0,L,tree[..],walk[..]);
+    all:=0;for n:0..<L+1 {all+=want[n];}#assert walk[0].bad==0 && walk[0].count==all;
+    // One-byte edits of accepted texts: the table and the validator agree.
+    if all>0 {for k:0..<40 {
+        pick:=os_bits(sd,3000+k,all);one:=cast(string)found[pick*48..<pick*48+size[pick]];
+        y:[66]u8;e:=os_edit(sd,k,one,y[..]);#assert nx_accepts(s.grammar,cast(string)y[0..<e])==os_accepts(tree[..],cast(string)y[0..<e]);
+    }}
+}
+
+// book:begin build
+// States are numbered as they are made. Edges past the caller's buffer are
+// counted, not kept; nx_schema then refuses the schema for capacity.
+ns_state :: (b:[]NsBuild)->int {s:=b[0].states;b[0].states+=1;return s;}
+ns_edge :: (b:[]NsBuild,w:NsWork,from:int,low:u8,high:u8,to:int) {
+    if b[0].edges<w.edges.count {w.edges[b[0].edges]=NxEdge.{from=from,low=low,high=high,to=to};}
+    b[0].edges+=1;
+}
+// One byte from every state in ends to one new state.
+ns_join :: (b:[]NsBuild,w:NsWork,ends:[]int,c:u8)->int {s:=ns_state(b);for e:ends {ns_edge(b,w,e,c,c,s);}return s;}
+// A fresh chain of states spelling text after s.
+ns_bytes :: (b:[]NsBuild,w:NsWork,s:int,text:string)->int {x:=s;for c:text {one:=[1]int.[x];x=ns_join(b,w,one[..],c);}return x;}
+ns_fail :: (b:[]NsBuild,why:NsWhy,keyword:string,node:int)->int {b[0].why=why;b[0].keyword=keyword;b[0].node=node;return -1;}
+// book:end build
+
+// book:begin read
+ns_plain :: (c:u8)->bool {return c>=32 && c<=126 && c!='"' && c!='\\';}
+// A key or a word: 0 to 32 printable bytes without " or \.
+ns_word :: (s:string)->bool {if s.count>NS_WORD_MAX {return false;}for c:s {if !ns_plain(c) {return false;}}return true;}
+// An integer keyword: a JSON number with no fraction or exponent and at most
+// nine digits (more is range).
+ns_number :: (w:NsWork,i:int)->NsNumber {
+    if !rs_kind(w.nodes,i,JSON_NUMBER) {return NsNumber.{why=NsWhy.value};}
+    t:=w.nodes[i].text;neg:=t[0]=='-';digits:=t[ifx neg then 1 else 0..<t.count];
+    for c:digits {if c=='.' || c=='e' || c=='E' {return NsNumber.{why=NsWhy.value};}}
+    if digits.count>9 {return NsNumber.{why=NsWhy.range};}
+    v:=0;for c:digits {v=v*10+cast(int)(c-'0');}
+    return NsNumber.{value=ifx neg then -v else v};
+}
+// Every key of schema i is in allowed or an annotation; annotations are
+// strings. Returns whether it refused.
+ns_keys :: (b:[]NsBuild,w:NsWork,i:int,allowed:[]string)->bool {
+    k:=i+1;notes:=[4]string.["type","title","description","$schema"];
+    while k<w.nodes[i].next {
+        key:=w.nodes[k].key;known:=false;
+        for a:allowed {if a==key {known=true;}}
+        for a,j:notes {if a==key {known=true;if j>0 && !rs_kind(w.nodes,k,JSON_STRING) {return ns_fail(b,NsWhy.value,key,i)== -1;}}}
+        if !known {return ns_fail(b,NsWhy.keyword,key,i)== -1;}
+        k=w.nodes[k].next;
+    }
+    return false;
+}
+// A count keyword: -1 when absent and missing allows it, else 0 to most;
+// -2 refused.
+ns_count :: (b:[]NsBuild,w:NsWork,i:int,key:string,missing:bool,most:int)->int {
+    x:=rs_get(w.nodes,i,key);
+    if x== -1 {return ifx missing then -1 else ns_fail(b,NsWhy.value,key,i)-1;}
+    n:=ns_number(w,x);if n.why!=NsWhy.none {return ns_fail(b,n.why,key,i)-1;}
+    if n.value<0 || n.value>most {return ns_fail(b,NsWhy.range,key,i)-1;}
+    return n.value;
+}
+// book:end read
+
+// book:begin integer
+// The completions of a digit prefix with value x: for each suffix length j,
+// the suffixes s (0 <= s < 10^j) with lo <= x*10^j+s <= hi, an interval
+// from a to z, empty when a > z. Returns whether any is not empty. A live
+// prefix is complete when a is 0 for j = 0: it is not below lo, and being
+// live it is not above hi.
+ns_sign :: (x:int,lo:int,hi:int,d:int,out:[]int)->bool {
+    p:=1;any:=false;
+    for j:0..<d {
+        a:=-nx_min(x*p-lo,0);z:=nx_min(hi-x*p,p-1);
+        out[2*j]=a;out[2*j+1]=z;any=any || a<=z;p*=10;
+    }
+    return any;
+}
+// Two prefixes with the same completions are the same state: every interval
+// equal, or empty in both.
+ns_same :: (a:[]int,b:[]int,d:int)->bool {
+    for j:0..<d {
+        empty:=a[2*j]>a[2*j+1];
+        if empty!=(b[2*j]>b[2*j+1]) || (!empty && (a[2*j]!=b[2*j] || a[2*j+1]!=b[2*j+1])) {return false;}
+    }
+    return true;
+}
+// Decimal digits for lo..hi (0 <= lo <= hi) after s, states found breadth
+// first; end states are added to ends from at. "0" is its own end state and
+// takes no more digits; every other prefix starts with 1 to 9. Returns the
+// new end count.
+ns_digits :: (b:[]NsBuild,w:NsWork,s:int,lo:int,hi:int,ends:[]int,at:int)->int {
+    d:=1;p:=10;while p<=hi {d+=1;p*=10;}
+    signs:[NS_SIGNS][18]int;values:[NS_SIGNS]int;ids:[NS_SIGNS]int;sign:[18]int;n:=at;
+    if lo==0 {z:=ns_state(b);ns_edge(b,w,s,'0','0',z);ends[n]=z;n+=1;}
+    ids[0]=s;count:=1;k:=0;
+    while k<count {
+        from:=ifx k==0 then 1 else 0;
+        for c:from..<10 {
+            x:=values[k]*10+c;
+            if ns_sign(x,lo,hi,d,sign[..]) {
+                found:=count;
+                for m:1..<count {if ns_same(signs[m][..],sign[..],d) {found=m;}}
+                if found==count {
+                    count+=1;values[found]=x;ids[found]=ns_state(b);signs[found]=sign;
+                    if sign[0]==0 {ends[n]=ids[found];n+=1;}
+                }
+                ns_edge(b,w,ids[k],cast(u8)('0'+c),cast(u8)('0'+c),ids[found]);
+            }
+        }
+        k+=1;
+    }
+    return n;
+}
+// minimum..maximum: the non-negative part after s, the negative part after '-'.
+ns_integer :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int {
+    x:=rs_get(w.nodes,i,"minimum");y:=rs_get(w.nodes,i,"maximum");
+    lo:=ns_number(w,x);hi:=ns_number(w,y);
+    if lo.why!=NsWhy.none {return ns_fail(b,lo.why,"minimum",i);}
+    if hi.why!=NsWhy.none {return ns_fail(b,hi.why,"maximum",i);}
+    if lo.value>hi.value {return ns_fail(b,NsWhy.range,"minimum",i);}
+    n:=0;
+    if lo.value<0 {m:=ns_state(b);ns_edge(b,w,s,'-','-',m);n=ns_digits(b,w,m,-nx_min(-1,hi.value),-lo.value,ends,0);}
+    if hi.value>=0 {n=ns_digits(b,w,s,-nx_min(0,-lo.value),hi.value,ends,n);}
+    return n;
+}
+// book:end integer
+
+// book:begin string
+// A byte a class may name: printable, not " or \, and not ] ^ or -.
+ns_class :: (c:u8)->bool {return ns_plain(c) && c!=']' && c!='^' && c!='-';}
+// enum: the quoted words, sharing states along common prefixes. Otherwise
+// minLength to maxLength bytes of the class, looping at minLength when there
+// is no maxLength.
+ns_string :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int {
+    e:=rs_get(w.nodes,i,"enum");q:=ns_bytes(b,w,s,"\"");
+    if e!= -1 {
+        others:=[3]string.["minLength","maxLength","pattern"];for o:others {if rs_get(w.nodes,i,o)!= -1 {return ns_fail(b,NsWhy.keyword,o,i);}}
+        if !rs_kind(w.nodes,e,JSON_ARRAY) || w.nodes[e].next-e-1<1 || w.nodes[e].next-e-1>NS_WORDS_MAX {return ns_fail(b,NsWhy.value,"enum",i);}
+        // at[k*33+L] is the state after the first L bytes of word k.
+        words:[NS_WORDS_MAX]string;at:[NS_WORDS_MAX*33]int;last:[NS_WORDS_MAX]int;n:=0;k:=e+1;
+        while k<w.nodes[e].next {
+            word:=w.nodes[k].text;twice:=false;for j:0..<n {if words[j]==word {twice=true;}}
+            if !rs_kind(w.nodes,k,JSON_STRING) || !ns_word(word) || twice {return ns_fail(b,NsWhy.value,"enum",i);}
+            x:=q;
+            for L:1..<word.count+1 {
+                shared:=-1;for j:0..<n {if words[j].count>=L && words[j][0..<L]==word[0..<L] {shared=at[j*33+L];}}
+                if shared== -1 {one:=[1]int.[x];shared=ns_join(b,w,one[..],word[L-1]);}
+                at[n*33+L]=shared;x=shared;
+            }
+            words[n]=word;last[n]=x;n+=1;k=w.nodes[k].next;
+        }
+        ends[0]=ns_join(b,w,last[0..<n],'"');return 1;
+    }
+    most:=ns_count(b,w,i,"maxLength",true,NS_LENGTH_MAX);if most== -2 {return -1;}
+    least:=ns_count(b,w,i,"minLength",true,ifx most== -1 then NS_LENGTH_MAX else most);if least== -2 {return -1;}
+    allow:[NS_ASCII]bool;for c:32..<NS_ASCII {allow[c]=ns_plain(cast(u8)c);}
+    pat:=rs_get(w.nodes,i,"pattern");
+    if pat!= -1 {
+        t:=w.nodes[pat].text;
+        if !rs_kind(w.nodes,pat,JSON_STRING) || t.count<6 || t[0..<2]!="^[" || t[t.count-3..<t.count]!="]*$" {return ns_fail(b,NsWhy.value,"pattern",i);}
+        for c:32..<NS_ASCII {allow[c]=false;}
+        body:=t[2..<t.count-3];k:=0;
+        while k<body.count {
+            low:=body[k];high:=low;
+            if k+2<body.count && body[k+1]=='-' {high=body[k+2];k+=2;}
+            if !ns_class(low) || !ns_class(high) || low>high {return ns_fail(b,NsWhy.value,"pattern",i);}
+            for c:cast(int)low..<cast(int)high+1 {allow[c]=true;}
+            k+=1;
+        }
+    }
+    end:=ns_state(b);cur:=q;n:=0;
+    while true {
+        if n>=least {ns_edge(b,w,cur,'"','"',end);}
+        if n==most {break;}
+        to:=cur;if most!= -1 || n<least {to=ns_state(b);}
+        // The class as runs of allowed bytes.
+        c:=32;while c<NS_ASCII {if allow[c] {r:=c;while r+1<NS_ASCII && allow[r+1] {r+=1;}ns_edge(b,w,cur,cast(u8)c,cast(u8)r,to);c=r;}c+=1;}
+        if to==cur {break;}
+        cur=to;n+=1;
+    }
+    ends[0]=end;return 1;
+}
+// book:end string
+
+// book:begin value
+// Schema node i as a value starting in state s. Its end states go to ends:
+// after them the next byte is the parent's , ] or }. Returns how many, or -1.
+ns_value :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+    if depth>NS_DEPTH {return ns_fail(b,NsWhy.depth,w.nodes[i].key,i);}
+    if !rs_kind(w.nodes,i,JSON_OBJECT) {return ns_fail(b,NsWhy.value,w.nodes[i].key,i);}
+    kind:=rs_string(w.nodes,rs_get(w.nodes,i,"type"));none:=[1]string.["type"];
+    if kind=="integer" {keys:=[2]string.["minimum","maximum"];if ns_keys(b,w,i,keys[..]) {return -1;}return ns_integer(b,w,i,s,ends);}
+    if kind=="string" {keys:=[4]string.["enum","minLength","maxLength","pattern"];if ns_keys(b,w,i,keys[..]) {return -1;}return ns_string(b,w,i,s,ends);}
+    if kind=="boolean" {if ns_keys(b,w,i,none[..]) {return -1;}ends[0]=ns_bytes(b,w,s,"true");ends[1]=ns_bytes(b,w,s,"false");return 2;}
+    if kind=="null" {if ns_keys(b,w,i,none[..]) {return -1;}ends[0]=ns_bytes(b,w,s,"null");return 1;}
+    if kind=="array" {keys:=[3]string.["items","minItems","maxItems"];if ns_keys(b,w,i,keys[..]) {return -1;}return ns_array(b,w,i,s,depth,ends);}
+    if kind=="object" {keys:=[3]string.["properties","required","additionalProperties"];if ns_keys(b,w,i,keys[..]) {return -1;}return ns_object(b,w,i,s,depth,ends);}
+    // Unknown keys are named before a missing or unsupported type.
+    if ns_keys(b,w,i,none[..]) {return -1;}
+    return ns_fail(b,NsWhy.type,"type",i);
+}
+// [ item , item ... ]: maxItems copies of the item, ] after each from minItems on.
+ns_array :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+    items:=rs_get(w.nodes,i,"items");if items== -1 {return ns_fail(b,NsWhy.value,"items",i);}
+    most:=ns_count(b,w,i,"maxItems",false,NS_ITEMS_MAX);if most== -2 {return -1;}
+    least:=ns_count(b,w,i,"minItems",true,most);if least== -2 {return -1;}
+    open:=ns_bytes(b,w,s,"[");close:=ns_state(b);
+    if least<=0 {ns_edge(b,w,open,']',']',close);}
+    if most==0 {ends[0]=close;return 1;}
+    inner:=depth+1;n:=ns_value(b,w,items,open,inner,ends);if n== -1 {return -1;}
+    // Every later item is the same schema, which has just compiled.
+    for k:1..<most+1 {
+        if k>=least {for e:ends[0..<n] {ns_edge(b,w,e,']',']',close);}}
+        if k<most {n=ns_value(b,w,items,ns_join(b,w,ends[0..<n],','),inner,ends);}
+    }
+    ends[0]=close;return 1;
+}
+// { "key":value , ... }: the properties in the order they are written, each required once.
+ns_object :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+    p:=rs_get(w.nodes,i,"properties");q:=rs_get(w.nodes,i,"required");more:=rs_get(w.nodes,i,"additionalProperties");
+    if !rs_kind(w.nodes,p,JSON_OBJECT) {return ns_fail(b,NsWhy.value,"properties",i);}
+    if more!= -1 && !rs_kind(w.nodes,more,JSON_FALSE) {return ns_fail(b,NsWhy.value,"additionalProperties",i);}
+    if !rs_kind(w.nodes,q,JSON_ARRAY) {return ns_fail(b,NsWhy.value,"required",i);}
+    count:=0;k:=p+1;
+    while k<w.nodes[p].next {
+        name:=w.nodes[k].key;listed:=0;j:=q+1;while j<w.nodes[q].next {if rs_string(w.nodes,j)==name {listed+=1;}j=w.nodes[j].next;}
+        if name.count==0 || !ns_word(name) {return ns_fail(b,NsWhy.value,"properties",i);}
+        if listed!=1 {return ns_fail(b,NsWhy.value,"required",i);}
+        count+=1;k=w.nodes[k].next;
+    }
+    if w.nodes[q].next-q-1!=count {return ns_fail(b,NsWhy.value,"required",i);}
+    ends[0]=ns_bytes(b,w,s,"{");n:=1;k=p+1;first:=true;
+    while k<w.nodes[p].next {
+        x:=ns_join(b,w,ends[0..<n],ifx first then '"' else ',');if !first {x=ns_bytes(b,w,x,"\"");}
+        x=ns_bytes(b,w,ns_bytes(b,w,x,w.nodes[k].key),"\":");
+        n=ns_value(b,w,k,x,depth+1,ends);if n== -1 {return -1;}
+        first=false;k=w.nodes[k].next;
+    }
+    ends[0]=ns_join(b,w,ends[0..<n],'}');return 1;
+}
+// book:end value
+
+// book:begin schema
+// A schema's JSON text to a compiled grammar in the caller's buffers.
+nx_schema :: (text:string,w:NsWork)->NsSchema #export_c {
+    if !rs_json(text,w.nodes,w.arena).ok {return NsSchema.{why=NsWhy.json};}
+    if w.ends.count<NS_ENDS {return NsSchema.{why=NsWhy.capacity};}
+    b:[1]NsBuild;start:=ns_state(b[..]);
+    n:=ns_value(b[..],w,0,start,1,w.ends);
+    if n== -1 {return NsSchema.{why=b[0].why,keyword=b[0].keyword,node=b[0].node};}
+    if b[0].edges>w.edges.count || n>w.accepting.count {return NsSchema.{why=NsWhy.capacity};}
+    for e,k:w.ends[0..<n] {w.accepting[k]=e;}
+    c:=nx_compile(b[0].states,start,w.edges[0..<b[0].edges],w.accepting[0..<n],w.next,w.accept,w.live,false);
+    if c.status!=NxStatus.ok {return NsSchema.{why=NsWhy.capacity};}
+    return NsSchema.{states=b[0].states,edges=b[0].edges,grammar=c.grammar};
+}
+// book:end schema

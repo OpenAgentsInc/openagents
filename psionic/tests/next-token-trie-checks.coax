@@ -1,0 +1,20 @@
+// Chapter 53's checks for psionic/lib/next-token-trie.coax: the trie's masks
+// against nx_mask's token-by-token walks, and the longest piece counted
+// from the trie's own links.
+// Every live state of g: the trie's mask equals nx_mask's, token for token.
+nt_same :: (g:NxGrammar,t:NtTrie,pieces:[]string,end:int)->int {
+    a:[NT_TEKKEN]u8;b:[NT_TEKKEN]u8;stack:[256]int;checked:=0;
+    for s:0..<g.states {if g.live[s]==1 {
+        x:=nx_mask(g,s,pieces,end,a[..],false);y:=nt_mask(t,g,s,end,b[..],stack[..],false);
+        #assert x.status==NxStatus.ok && y.status==NxStatus.ok && x.kept==y.kept && y.written==pieces.count;
+        for i:0..<pieces.count {#assert a[i]==b[i];}
+        checked+=1;
+    }}
+    return checked;
+}
+// The longest piece in the trie, by a separate count over the pieces' nodes.
+nt_depth :: (t:NtTrie)->int {
+    depth:[4096]int;most:=0;
+    for k:0..<t.nodes {c:=t.child[k];while c>=0 {depth[c]=depth[k]+1;if depth[c]>most {most=depth[c];}c=t.sibling[c];}}
+    return most;
+}

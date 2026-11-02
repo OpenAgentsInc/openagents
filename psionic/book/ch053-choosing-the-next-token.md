@@ -1,10 +1,11 @@
 # 53. Choosing the next token
 
 > **Status: partly implemented.** The sampler, its counter RNG, stop
-> conditions, cancellation and a byte-level grammar mask run on the CPU.
-> Compiling a JSON schema into a grammar, masking a real tokenizer's
-> vocabulary from chapter 9's tables, and a recorded run on a second host
-> are not built yet.
+> conditions, cancellation, a byte-level grammar mask, a compiler from a
+> bounded JSON Schema subset to that grammar, and trie-walk masks over a
+> real Tekken vocabulary subset run on the CPU. Masks over the whole
+> 131,072-token vocabulary read from `tekken.json`, and a recorded run on a
+> second machine, are not done yet.
 
 A model ends each step with one logit per token. Something has to turn those
 numbers into one token ID, and that rule decides whether a run can be
@@ -21,6 +22,9 @@ call:
 - a grammar, written as a finite-state automaton over bytes, that masks the
   vocabulary before every draw, so a token that would break the parse is
   never offered.
+- a compiler from a bounded subset of JSON Schema to that automaton;
+- masks for a real tokenizer's vocabulary, found in one walk of a trie of
+  its tokens instead of one walk per token.
 
 [Chapter 64](ch064-execute-gpt-oss-20b.md) needed sampling before this
 chapter existed and built its own copy inside the gpt-oss unit
@@ -34,8 +38,11 @@ it.
 
 ```shell
 coax/bin/coax run psionic/examples/choose-next-token.coax
+coax/bin/coax run psionic/examples/schema-next-token.coax
 coax/bin/coax test psionic/lib/next-token.coax
-psionic/check.sh --only next-token
+coax/bin/coax test psionic/lib/next-token-schema.coax
+coax/bin/coax test psionic/lib/next-token-trie.coax
+psionic/check.sh --only next-token next-token-schema next-token-trie
 python3 -I psionic/tests/next_token_oracle.py
 ```
 
@@ -388,6 +395,425 @@ no counter is consumed. A grammar used with a vocabulary should be checked
 for this, for example by making sure every byte the grammar uses is also a
 token.
 
+## A JSON schema as an automaton
+
+A tool call or a structured answer is usually described by a JSON Schema,
+not by a list of edges. [`next-token-schema.coax`](../lib/next-token-schema.coax)
+compiles a bounded subset of JSON Schema into the edges above, so the same
+mask holds a model to the schema.
+
+The automaton accepts one spelling of each value, the canonical one: no
+whitespace, an object's keys in the order its `properties` are written,
+every property present, strings of printable ASCII without `"` or `\`, and
+integers without leading zeros or `-0`. A model held to the schema can only
+write that spelling, and a reader can compare outputs byte for byte.
+
+The subset is:
+
+| Type | Keywords |
+| --- | --- |
+| `object` | `properties`; `required`, listing every property once; `additionalProperties: false` |
+| `array` | `items`; `maxItems` (0 to 8, required); `minItems` |
+| `string` | `enum` (1 to 16 words of up to 32 bytes), or `minLength`, `maxLength` (up to 64) and `pattern` of the form `^[...]*$` |
+| `integer` | `minimum` and `maximum`, both required, within ±999,999,999 |
+| `boolean`, `null` | none |
+
+`title`, `description` and `$schema` are allowed as strings on any schema,
+and schemas nest at most four deep. Any other keyword is refused, and the
+refusal names it: `format`, `anyOf`, `$ref`, `multipleOf`, an optional
+property, `pattern` with `+`. The compiler never guesses at a keyword it
+doesn't implement.
+
+### An integer range, by hand
+
+Integers are the only part that needs thought. Take `minimum` −5 and
+`maximum` 120. Negative numbers are a `-` followed by a magnitude from 1
+to 5; the rest are 0 to 120. Each part is built from its digits, left to
+right.
+
+A state is a set of possible endings. After reading a digit prefix with
+value x, the endings with j more digits are the suffixes s, 0 ≤ s < 10^j,
+with lo ≤ x·10^j + s ≤ hi. For a range from 0 to 120 that set is one
+interval for each j:
+
+| Prefix | j = 0 | j = 1 | j = 2 | State |
+| --- | --- | --- | --- | --- |
+| `1` | 0 to 0 | 0 to 9 (10–19) | 0 to 20 (100–120) | 4 |
+| `2` … `9` | 0 to 0 | 0 to 9 | empty | 5 |
+| `10`, `11` | 0 to 0 | 0 to 9 (100–109, 110–119) | empty | 5 |
+| `12` | 0 to 0 | 0 to 0 (120) | empty | 6 |
+| `13` … `99`, `100` … `120` | 0 to 0 | empty | empty | 7 |
+
+Two prefixes with the same intervals have the same future, so they are the
+same state. `2` and `10` both mean "this is a complete number, and exactly
+one more digit of any value may follow", so they share state 5. Every
+prefix whose j = 0 interval holds 0 is a complete number. A prefix whose
+intervals are all empty, such as `13` followed by another digit, is never
+made. `0` is a complete number that takes no more digits, so it gets its
+own state, 3. The magnitude 1 to 5 after `-` has one state, 2, since each
+of its prefixes is complete and takes no more digits.
+
+That gives eight states: the start, `-`, the negative end, `0`, and states
+4 to 7. Counting edges: the start has `-` and ten digits (11), `-` has
+`1`–`5` (5), states 4 and 5 have all ten digits (20), and state 6 has `0`
+(1), so 37 in all. The example prints the same table:
+
+```text
+integer -5..120: 8 states, 37 edges
+  0 -> state 3 (complete)
+  1 -> state 4 (complete)
+  2 -> state 5 (complete)
+  10 -> state 5 (complete)
+  11 -> state 5 (complete)
+  12 -> state 6 (complete)
+  13 -> state 7 (complete)
+  120 -> state 7 (complete)
+  - -> state 1 (not complete)
+  -3 -> state 2 (complete)
+  121 -> -1, 05 -> -1, -0 -> -1
+```
+
+The number of states depends on the number of digits, not on the size of
+the range. The range −999,999,999 to 999,999,999 takes 21 states.
+
+<!-- source: psionic/lib/next-token-schema.coax integer -->
+```jai
+// The completions of a digit prefix with value x: for each suffix length j,
+// the suffixes s (0 <= s < 10^j) with lo <= x*10^j+s <= hi, an interval
+// from a to z, empty when a > z. Returns whether any is not empty. A live
+// prefix is complete when a is 0 for j = 0: it is not below lo, and being
+// live it is not above hi.
+ns_sign :: (x:int,lo:int,hi:int,d:int,out:[]int)->bool {
+    p:=1;any:=false;
+    for j:0..<d {
+        a:=-nx_min(x*p-lo,0);z:=nx_min(hi-x*p,p-1);
+        out[2*j]=a;out[2*j+1]=z;any=any || a<=z;p*=10;
+    }
+    return any;
+}
+// Two prefixes with the same completions are the same state: every interval
+// equal, or empty in both.
+ns_same :: (a:[]int,b:[]int,d:int)->bool {
+    for j:0..<d {
+        empty:=a[2*j]>a[2*j+1];
+        if empty!=(b[2*j]>b[2*j+1]) || (!empty && (a[2*j]!=b[2*j] || a[2*j+1]!=b[2*j+1])) {return false;}
+    }
+    return true;
+}
+// Decimal digits for lo..hi (0 <= lo <= hi) after s, states found breadth
+// first; end states are added to ends from at. "0" is its own end state and
+// takes no more digits; every other prefix starts with 1 to 9. Returns the
+// new end count.
+ns_digits :: (b:[]NsBuild,w:NsWork,s:int,lo:int,hi:int,ends:[]int,at:int)->int {
+    d:=1;p:=10;while p<=hi {d+=1;p*=10;}
+    signs:[NS_SIGNS][18]int;values:[NS_SIGNS]int;ids:[NS_SIGNS]int;sign:[18]int;n:=at;
+    if lo==0 {z:=ns_state(b);ns_edge(b,w,s,'0','0',z);ends[n]=z;n+=1;}
+    ids[0]=s;count:=1;k:=0;
+    while k<count {
+        from:=ifx k==0 then 1 else 0;
+        for c:from..<10 {
+            x:=values[k]*10+c;
+            if ns_sign(x,lo,hi,d,sign[..]) {
+                found:=count;
+                for m:1..<count {if ns_same(signs[m][..],sign[..],d) {found=m;}}
+                if found==count {
+                    count+=1;values[found]=x;ids[found]=ns_state(b);signs[found]=sign;
+                    if sign[0]==0 {ends[n]=ids[found];n+=1;}
+                }
+                ns_edge(b,w,ids[k],cast(u8)('0'+c),cast(u8)('0'+c),ids[found]);
+            }
+        }
+        k+=1;
+    }
+    return n;
+}
+// minimum..maximum: the non-negative part after s, the negative part after '-'.
+ns_integer :: (b:[]NsBuild,w:NsWork,i:int,s:int,ends:[]int)->int {
+    x:=rs_get(w.nodes,i,"minimum");y:=rs_get(w.nodes,i,"maximum");
+    lo:=ns_number(w,x);hi:=ns_number(w,y);
+    if lo.why!=NsWhy.none {return ns_fail(b,lo.why,"minimum",i);}
+    if hi.why!=NsWhy.none {return ns_fail(b,hi.why,"maximum",i);}
+    if lo.value>hi.value {return ns_fail(b,NsWhy.range,"minimum",i);}
+    n:=0;
+    if lo.value<0 {m:=ns_state(b);ns_edge(b,w,s,'-','-',m);n=ns_digits(b,w,m,-nx_min(-1,hi.value),-lo.value,ends,0);}
+    if hi.value>=0 {n=ns_digits(b,w,s,-nx_min(0,-lo.value),hi.value,ends,n);}
+    return n;
+}
+```
+
+### Values, objects and arrays
+
+Every value is compiled from a start state and returns its end states. The
+caller then adds the next byte, `,`, `]` or `}`, from each end state. An
+integer can have several end states, because `12` is complete and can also
+continue. Every other value ends on one closing byte.
+
+<!-- source: psionic/lib/next-token-schema.coax value -->
+```jai
+// Schema node i as a value starting in state s. Its end states go to ends:
+// after them the next byte is the parent's , ] or }. Returns how many, or -1.
+ns_value :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+    if depth>NS_DEPTH {return ns_fail(b,NsWhy.depth,w.nodes[i].key,i);}
+    if !rs_kind(w.nodes,i,JSON_OBJECT) {return ns_fail(b,NsWhy.value,w.nodes[i].key,i);}
+    kind:=rs_string(w.nodes,rs_get(w.nodes,i,"type"));none:=[1]string.["type"];
+    if kind=="integer" {keys:=[2]string.["minimum","maximum"];if ns_keys(b,w,i,keys[..]) {return -1;}return ns_integer(b,w,i,s,ends);}
+    if kind=="string" {keys:=[4]string.["enum","minLength","maxLength","pattern"];if ns_keys(b,w,i,keys[..]) {return -1;}return ns_string(b,w,i,s,ends);}
+    if kind=="boolean" {if ns_keys(b,w,i,none[..]) {return -1;}ends[0]=ns_bytes(b,w,s,"true");ends[1]=ns_bytes(b,w,s,"false");return 2;}
+    if kind=="null" {if ns_keys(b,w,i,none[..]) {return -1;}ends[0]=ns_bytes(b,w,s,"null");return 1;}
+    if kind=="array" {keys:=[3]string.["items","minItems","maxItems"];if ns_keys(b,w,i,keys[..]) {return -1;}return ns_array(b,w,i,s,depth,ends);}
+    if kind=="object" {keys:=[3]string.["properties","required","additionalProperties"];if ns_keys(b,w,i,keys[..]) {return -1;}return ns_object(b,w,i,s,depth,ends);}
+    // Unknown keys are named before a missing or unsupported type.
+    if ns_keys(b,w,i,none[..]) {return -1;}
+    return ns_fail(b,NsWhy.type,"type",i);
+}
+// [ item , item ... ]: maxItems copies of the item, ] after each from minItems on.
+ns_array :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+    items:=rs_get(w.nodes,i,"items");if items== -1 {return ns_fail(b,NsWhy.value,"items",i);}
+    most:=ns_count(b,w,i,"maxItems",false,NS_ITEMS_MAX);if most== -2 {return -1;}
+    least:=ns_count(b,w,i,"minItems",true,most);if least== -2 {return -1;}
+    open:=ns_bytes(b,w,s,"[");close:=ns_state(b);
+    if least<=0 {ns_edge(b,w,open,']',']',close);}
+    if most==0 {ends[0]=close;return 1;}
+    inner:=depth+1;n:=ns_value(b,w,items,open,inner,ends);if n== -1 {return -1;}
+    // Every later item is the same schema, which has just compiled.
+    for k:1..<most+1 {
+        if k>=least {for e:ends[0..<n] {ns_edge(b,w,e,']',']',close);}}
+        if k<most {n=ns_value(b,w,items,ns_join(b,w,ends[0..<n],','),inner,ends);}
+    }
+    ends[0]=close;return 1;
+}
+// { "key":value , ... }: the properties in the order they are written, each required once.
+ns_object :: (b:[]NsBuild,w:NsWork,i:int,s:int,depth:int,ends:[]int)->int {
+    p:=rs_get(w.nodes,i,"properties");q:=rs_get(w.nodes,i,"required");more:=rs_get(w.nodes,i,"additionalProperties");
+    if !rs_kind(w.nodes,p,JSON_OBJECT) {return ns_fail(b,NsWhy.value,"properties",i);}
+    if more!= -1 && !rs_kind(w.nodes,more,JSON_FALSE) {return ns_fail(b,NsWhy.value,"additionalProperties",i);}
+    if !rs_kind(w.nodes,q,JSON_ARRAY) {return ns_fail(b,NsWhy.value,"required",i);}
+    count:=0;k:=p+1;
+    while k<w.nodes[p].next {
+        name:=w.nodes[k].key;listed:=0;j:=q+1;while j<w.nodes[q].next {if rs_string(w.nodes,j)==name {listed+=1;}j=w.nodes[j].next;}
+        if name.count==0 || !ns_word(name) {return ns_fail(b,NsWhy.value,"properties",i);}
+        if listed!=1 {return ns_fail(b,NsWhy.value,"required",i);}
+        count+=1;k=w.nodes[k].next;
+    }
+    if w.nodes[q].next-q-1!=count {return ns_fail(b,NsWhy.value,"required",i);}
+    ends[0]=ns_bytes(b,w,s,"{");n:=1;k=p+1;first:=true;
+    while k<w.nodes[p].next {
+        x:=ns_join(b,w,ends[0..<n],ifx first then '"' else ',');if !first {x=ns_bytes(b,w,x,"\"");}
+        x=ns_bytes(b,w,ns_bytes(b,w,x,w.nodes[k].key),"\":");
+        n=ns_value(b,w,k,x,depth+1,ends);if n== -1 {return -1;}
+        first=false;k=w.nodes[k].next;
+    }
+    ends[0]=ns_join(b,w,ends[0..<n],'}');return 1;
+}
+```
+
+An array with `maxItems` n is n copies of its item, so a long array of
+large items can pass 4,096 states. That schema is refused with `capacity`.
+An `enum` shares states along common prefixes, so `"al"` and `"ann"` both
+start with the same `"a` states.
+
+<!-- source: psionic/lib/next-token-schema.coax schema -->
+```jai
+// A schema's JSON text to a compiled grammar in the caller's buffers.
+nx_schema :: (text:string,w:NsWork)->NsSchema #export_c {
+    if !rs_json(text,w.nodes,w.arena).ok {return NsSchema.{why=NsWhy.json};}
+    if w.ends.count<NS_ENDS {return NsSchema.{why=NsWhy.capacity};}
+    b:[1]NsBuild;start:=ns_state(b[..]);
+    n:=ns_value(b[..],w,0,start,1,w.ends);
+    if n== -1 {return NsSchema.{why=b[0].why,keyword=b[0].keyword,node=b[0].node};}
+    if b[0].edges>w.edges.count || n>w.accepting.count {return NsSchema.{why=NsWhy.capacity};}
+    for e,k:w.ends[0..<n] {w.accepting[k]=e;}
+    c:=nx_compile(b[0].states,start,w.edges[0..<b[0].edges],w.accepting[0..<n],w.next,w.accept,w.live,false);
+    if c.status!=NxStatus.ok {return NsSchema.{why=NsWhy.capacity};}
+    return NsSchema.{states=b[0].states,edges=b[0].edges,grammar=c.grammar};
+}
+```
+
+## Masks for a real vocabulary
+
+`nx_mask` walks every token's bytes through the automaton. A real
+vocabulary has 130,000 tokens or more, and most of them share prefixes:
+`c`, `ca`, `cap`, `capital`. [`next-token-trie.coax`](../lib/next-token-trie.coax)
+stores the tokens' bytes once, as a trie, and walks it beside the automaton.
+When a prefix leaves the grammar, or reaches a state from which no complete
+text can be reached, the walk skips that whole subtree.
+
+A small trace. The pieces are `a`, `ab`, `abc` and `b`, and the grammar is
+the string enum `"a"`, `"ab"`, in the state just after the opening quote.
+The trie's root has two children, `a` and `b`. The walk reads `a`: the
+grammar allows it, so token `a` is offered and the walk goes down. `ab` is
+allowed and offered. `abc` leaves the grammar, so it is skipped with any
+tokens below it. Back at the root, `b` leaves the grammar too. Two tokens
+are offered after visiting four trie nodes. A token-by-token walk would have
+read seven bytes.
+
+<!-- source: psionic/lib/next-token-trie.coax trie -->
+```jai
+nt_build :: (pieces:[]string,byte:[]u8,child:[]int,sibling:[]int,first:[]int,after:[]int)->NtBuilt #export_c {
+    if !nx_vocab(pieces.count) {return NtBuilt.{status=NxStatus.shape};}
+    room:=nx_min(nx_min(byte.count,child.count),nx_min(sibling.count,first.count));
+    if room<1 || after.count<pieces.count {return NtBuilt.{status=NxStatus.capacity};}
+    // The root has no siblings; its sibling entry is never read.
+    child[0]=-1;first[0]=-1;n:=1;
+    for piece,t:pieces {
+        at:=0;
+        for c:piece {
+            k:=child[at];while k!= -1 && byte[k]!=c {k=sibling[k];}
+            if k== -1 {
+                if n==room {return NtBuilt.{status=NxStatus.capacity,cause=t};}
+                k=n;n+=1;byte[k]=c;child[k]=-1;first[k]=-1;sibling[k]=child[at];child[at]=k;
+            }
+            at=k;
+        }
+        after[t]=first[at];first[at]=t;
+    }
+    return NtBuilt.{trie=NtTrie.{nodes=n,byte=byte[0..<n],child=child[0..<n],sibling=sibling[0..<n],first=first[0..<n],after=after[0..<pieces.count]}};
+}
+```
+<!-- source: psionic/lib/next-token-trie.coax mask -->
+```jai
+// The trie walked beside the automaton from state. The stack holds pairs
+// (node, the state before its byte); a node whose byte leaves the grammar or
+// reaches a dead state is skipped with all its descendants. passes counts the
+// nodes visited.
+nt_mask :: (t:NtTrie,g:NxGrammar,state:int,end_token:int,out:[]u8,stack:[]int,overlap:bool)->NxResult #export_c {
+    v:=t.after.count;
+    if !nx_vocab(v) || end_token<0 || end_token>=v {return NxResult.{status=NxStatus.shape};}
+    if g.next.count<g.states*256 || g.accepting.count<g.states || g.live.count<g.states || out.count<v || stack.count<2 {return NxResult.{status=NxStatus.capacity};}
+    if state<0 || state>=g.states || g.live[state]!=1 {return NxResult.{status=NxStatus.state};}
+    if overlap {return NxResult.{status=NxStatus.alias};}
+    for i:0..<v {out[i]=0;}
+    stack[0]=t.child[0];stack[1]=state;top:=ifx t.child[0]!= -1 then 2 else 0;visited:=0;allowed:=0;
+    while top!=0 {
+        top-=2;k:=stack[top];s:=stack[top+1];visited+=1;
+        // The next sibling takes this slot; its state is the same s, already there.
+        if t.sibling[k]!= -1 {stack[top]=t.sibling[k];top+=2;}
+        q:=g.next[s*256+cast(int)t.byte[k]];
+        if q!= -1 && g.live[q]==1 {
+            x:=t.first[k];while x!= -1 {out[x]=1;allowed+=1;x=t.after[x];}
+            if t.child[k]!= -1 {
+                if top+2>stack.count {return NxResult.{status=NxStatus.capacity};}
+                stack[top]=t.child[k];stack[top+1]=q;top+=2;
+            }
+        }
+    }
+    allowed+=cast(int)g.accepting[state]-cast(int)out[end_token];out[end_token]=g.accepting[state];
+    return NxResult.{written=v,kept=allowed,passes=visited};
+}
+// One row per state: masks[s*V..<(s+1)*V]. Dead states get an empty row.
+nt_table :: (t:NtTrie,g:NxGrammar,end_token:int,masks:[]u8,stack:[]int)->NxResult #export_c {
+    v:=t.after.count;total:=NxResult.{};
+    if masks.count<g.states*v {return NxResult.{status=NxStatus.capacity};}
+    for s:0..<g.states {
+        row:=masks[s*v..<s*v+v];
+        if g.live[s]==1 {
+            m:=nt_mask(t,g,s,end_token,row,stack,false);if m.status!=NxStatus.ok {return NxResult.{status=m.status};}
+            total.kept+=m.kept;total.passes+=m.passes;
+        } else {for i:0..<v {row[i]=0;}}
+    }
+    total.written=g.states*v;return total;
+}
+```
+
+`nt_table` builds one mask row per state, once per grammar. `nt_guided` is
+`nx_guided` with its mask read from that table. Every check compares the
+trie's rows with `nx_mask`'s.
+
+<!-- source: psionic/lib/next-token-trie.coax guided -->
+```jai
+// nx_guided with the mask read from the table instead of walked per token.
+nt_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,masks:[]u8,options:NxOptions,run:NxRun,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c {
+    v:=pieces.count;
+    if logits.count!=v || state<0 || state>=g.states || masks.count<g.states*v {return NxGuided.{status=NxStatus.shape,state=state};}
+    stops:=[1]int.[end_token];
+    e:=nx_step(logits,masks[state*v..<state*v+v],options,run,stops[..],cancel,out,work,overlap);
+    if e.status!=NxStatus.ok {return NxGuided.{status=e.status,state=state};}
+    after:=state;if e.token!= -1 && e.token!=end_token {after=nx_walk(g,state,pieces[e.token]);}
+    return NxGuided.{token=e.token,run=e.run,state=after};
+}
+```
+
+### Tekken
+
+The vocabulary in the checks and the example is real: Tekken v13, the
+tokenizer of Ministral 3 ([chapter 81](ch081-execute-ministral-4.md)), restricted
+to chapter 81's fixture strings. That is 417 tokens, plus the 166
+single-byte tokens the fixture lacks, plus `</s>`, 584 in all, with their
+real ids. In Tekken, ranks 0 to 255 are the 256 single bytes, ids 1000 to
+1255. The checks confirm this for the 90 single-byte tokens in the fixture,
+and it was confirmed against the whole of the pinned `tekken.json`. The
+single bytes are what let the vocabulary spell every schema.
+
+The example compiles a schema with a city name of up to 12 lowercase
+letters and spaces, a year from 1900 to 2100, and a boolean, and masks the
+vocabulary in all of its 56 states:
+
+```text
+schema: 56 states, 100 edges
+vocabulary: 584 Tekken tokens, trie of 645 nodes
+table: 56 rows, 2466 offers, 17087 trie nodes visited (token walks would read up to 74032 bytes)
+rows equal to token-by-token walks: 56 of 56
+```
+
+Then it samples. Each seed draws a random logit for every token and samples
+at temperature 1, through the masks, until `</s>`:
+
+```text
+seed 1: {"city":"airanceealir","year":2100,"open":false} (38 tokens, stop_token, parses: true, validates: true)
+```
+
+The tokens are real Tekken pieces such as ` ca` (id 7887). Because only
+offered tokens can be drawn, every run ends in a complete parse, and the
+independent validator accepts it.
+
+## The second example
+
+The [second example](../examples/schema-next-token.coax) runs everything in
+this part of the chapter and prints the transcript below, identically in
+debug and release builds.
+
+```shell
+coax/bin/coax run psionic/examples/schema-next-token.coax
+```
+
+```text
+integer -5..120: 8 states, 37 edges
+  0 -> state 3 (complete)
+  1 -> state 4 (complete)
+  2 -> state 5 (complete)
+  10 -> state 5 (complete)
+  11 -> state 5 (complete)
+  12 -> state 6 (complete)
+  13 -> state 7 (complete)
+  120 -> state 7 (complete)
+  - -> state 1 (not complete)
+  -3 -> state 2 (complete)
+  121 -> -1, 05 -> -1, -0 -> -1
+schema: 56 states, 100 edges
+  {"city":"oslo","year":1905,"open":true} -> true
+  {"city":"","year":2100,"open":false} -> true
+  {"city":"new york city","year":1950,"open":true} -> false
+vocabulary: 584 Tekken tokens, trie of 645 nodes
+table: 56 rows, 2466 offers, 17087 trie nodes visited (token walks would read up to 74032 bytes)
+rows equal to token-by-token walks: 56 of 56
+after '', offered 1: '{'=1123
+after '{"city":"new', offered 240: ' '=1032 '  '=1256 '   '=1293 ' c'=1272 ' ca'=7887 ' cap'=2735
+after '{"city":"oslo","year":19', offered 10: '0'=1048 '2'=1050 '5'=1053 '1'=1049 '3'=1051 '4'=1052
+seed 1: {"city":"airanceealir","year":2100,"open":false} (38 tokens, stop_token, parses: true, validates: true)
+seed 2: {"city":"ailingommeem","year":2100,"open":true} (38 tokens, stop_token, parses: true, validates: true)
+seed 3: {"city":"tabommopilin","year":1969,"open":true} (38 tokens, stop_token, parses: true, validates: true)
+seed 4: {"city":" thefordmbis","year":1999,"open":true} (39 tokens, stop_token, parses: true, validates: true)
+seed 5: {"city":"lding stothe","year":2005,"open":false} (39 tokens, stop_token, parses: true, validates: true)
+refused {"type":"string","format":"date"}: keyword, keyword 'format'
+refused {"type":"object","properties":{"a":{"type":"null"}},"required":[]}: value, keyword 'required'
+refused {"type":"number"}: type, keyword 'type'
+refused {"type":"string","pattern":"^[a-z]+$"}: value, keyword 'pattern'
+```
+
+The last four lines are the broken schemas: a `format` keyword, an
+optional property, a `number`, and a pattern with `+`. Each one is refused
+before any state is built, and the refusal names the keyword.
+
 ## Refusals
 
 The end of the transcript shows three broken inputs and their exact results:
@@ -424,22 +850,42 @@ the caller's output.
   live and equals a fresh walk of the text so far; all 288 runs that stop at
   the end token are accepted by the grammar, and the other 12 stop at the
   limit.
-- **Mutation.** `coax mutate psionic/lib/next-token.coax` leaves no
-  surviving mutant.
+- **Schemas against a separate validator.**
+  [`next-token-schema-oracle.coax`](../tests/next-token-schema-oracle.coax)
+  generates random small schemas. It has its own validator, which reads a
+  schema and a text, and its own counter of how many valid texts a schema
+  has at each length. It shares no code with the compiler. For 120 random
+  schemas, the compiled automaton's count of accepted strings equals the
+  counter's at every length up to the largest length with at most 1,000
+  texts. Every string the automaton accepts up to that length is accepted by
+  the validator, so the two sets are equal. Forty one-byte edits of accepted
+  texts per schema are accepted by the automaton exactly when the validator
+  accepts them.
+- **Integer ranges by brute force.** Eighteen ranges, from a single value
+  to ±999,999,999, are checked at both bounds, one past them, and every
+  value within 20 of a narrow range.
+- **Refusals.** More than 80 broken schemas, each refused with the
+  expected reason, keyword and node.
+- **Trie masks.** In every live state of the list grammar, the hand schema
+  and 24 random schemas, the trie's mask over the 584 Tekken tokens equals
+  `nx_mask`'s, token for token. Twenty seeded runs through the table all
+  stop at `</s>`, parse, and pass the validator.
+- **Mutation.** `coax mutate` leaves no surviving mutant in
+  `next-token.coax`, `next-token-schema.coax` or `next-token-trie.coax`.
 
 The transcript is compared exactly in debug and release builds.
 
 ## What remains
 
-- **JSON schemas.** The draft promised masks compiled from a JSON schema.
-  Chapter 77 masks a finite set of complete JSON objects; a compiler from a
-  general schema to this unit's automaton is not written.
-- **A real tokenizer.** The masks here take token pieces as byte strings.
-  Building those pieces from chapter 9's tokenizer tables, and masking a
-  full vocabulary of 150,000 or more tokens per step without walking every
-  piece, is not done.
+- **The whole vocabulary.** The trie and its masks are checked on a
+  584-token subset of Tekken. Reading all 131,072 tokens from
+  `tekken.json` (chapter 81's reader does this) and recording the table's
+  size and time over the whole vocabulary is not done yet.
+- **More of JSON Schema.** Optional properties, `number`, `anyOf`, `$ref`,
+  `format`, escapes and non-ASCII text in strings, and whitespace between
+  tokens are refused, not compiled.
 - **Two hosts.** The output is a pure function of the seed, the counter and
-  IEEE binary64 arithmetic, and the transcript matches in debug and release
+  IEEE binary64 arithmetic, and the transcripts match in debug and release
   builds. No run on a second machine has been recorded yet.
 
 ## What later chapters use
@@ -454,3 +900,8 @@ The transcript is compared exactly in debug and release builds.
 | `nx_mask(...)`, `nx_walk`, `nx_accepts` | per-state vocabulary masks and parsing |
 | `nx_guided(...)` | mask, step and advance the grammar in one call |
 | `CrSeed`, `cr_draw` | the counter RNG, from `counter-rng.coax` |
+| `nx_schema(text, work)`, `NsWork`, `ns_work(...)` | a bounded JSON Schema to a compiled grammar, or a refusal naming the keyword |
+| `nt_build(...)`, `NtTrie` | a trie of a vocabulary's pieces |
+| `nt_mask(...)`, `nt_table(...)` | one state's mask, or one row per state, by walking the trie |
+| `nt_guided(...)` | `nx_guided` reading its mask from the table |
+| `nt_tekken(...)` | the 584-token Tekken subset with real ids |

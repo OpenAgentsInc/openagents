@@ -152,6 +152,16 @@
       ]
     },
     {
+      "source": "psionic/examples/schema-next-token.coax",
+      "chapter": "psionic/book/ch053-choosing-the-next-token.md",
+      "stdout": "psionic/fixtures/schema-next-token.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/spectral-features.coax",
       "chapter": "psionic/book/ch151-waveforms-and-spectral-features.md",
       "stdout": "psionic/fixtures/spectral-features.out",
