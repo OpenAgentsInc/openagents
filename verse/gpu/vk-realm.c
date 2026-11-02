@@ -120,6 +120,7 @@ static char *online_facts(char *text, size_t *n, const char *dir) {
     else { memcpy(out + k, line, len); k += len; out[k++] = '\n'; }
     line += len + 1;
   }
+  explicit_bzero(text, *n);   // the facts may be secret (--facts-once): no copy left behind
   free(text);
   *n = k;
   return out;
@@ -283,14 +284,14 @@ static void press_keys(const char *keys, int frame) {
 int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden] [--seconds N] [--demo] [--shot OUT.ppm] [--net DIR] [--origin HOST[:PORT]] [--name NAME] "
-                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...] [--window] [--fullscreen] [--leave-to VT]\n");
+                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...] [--window] [--fullscreen] [--leave-to VT] [--facts-once FILE]\n");
     return 2;
   }
   const char *dir = argv[1], *pack = argv[2], *facts = NULL, *extra = "", *shot = NULL, *out = NULL,*raw_out=NULL;
   double seconds = 60, shot_at = 4;
   float scale = 1;
   uint32_t w = 0, h = 0;
-  int golden = 0, headless = 0, demo = 0, windowed = 0, fullscreen = 0, leave_to = 0;
+  int golden = 0, headless = 0, demo = 0, windowed = 0, fullscreen = 0, leave_to = 0, facts_once = 0;
   const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade", *go = NULL, *keys = "";
   int page = 0;
   for (int i = 3; i < argc; i++) {
@@ -301,6 +302,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--fullscreen")) windowed = fullscreen = 1;
     else if (!val) { fprintf(stderr, "vk-realm: %s wants a value\n", a); return 2; }
     else if (!strcmp(a, "--facts")) facts = val, i++;
+    else if (!strcmp(a, "--facts-once")) facts = val, facts_once = 1, i++;   // read, then removed: facts that must not stay on disk
     else if (!strcmp(a, "--net")) net_dir = val, i++;
     else if (!strcmp(a, "--origin")) origin = val, i++;
     else if (!strcmp(a, "--name")) name = val, i++;
@@ -335,9 +337,12 @@ int main(int argc, char **argv) {
   if (facts) {
     size_t n;
     char *text = slurp(facts, &n);
+    if (facts_once) unlink(facts);
     if (!text) { fprintf(stderr, "vk-realm: cannot read %s\n", facts); return 1; }
     if (net_dir) text = online_facts(text, &n, net_dir);
     rh_send(&H, RH_PAGE_KIND, text, n);
+    // secret facts: the realm has taken what it keeps; the host's copy and the inbox are wiped
+    if (facts_once) { explicit_bzero(text, n); explicit_bzero(rh_ptr(coaxial_inbox(H.state)), n < coaxial_inbox_cap() ? n : coaxial_inbox_cap()); }
     free(text);
   }
   rh_send(&H, RH_VIEWER_KIND, "", 0);

@@ -55,6 +55,17 @@ GPU (the GPU process dies), and with SwiftShader the realm page reports
 Mac or the staging runner. `realm use build THING` still needs a staging
 realm with BUILD on; no listed staging realm has it.
 
+## Verse OS V2: which Spark wallet runs on Linux (2026-11-02)
+
+Verse OS makes your Nostr identity in the Grid (docs/os/2026-11-02-verse-os.md,
+"Status"), and Spark takes the same 12 words. But Breez's Spark SDK runs only
+inside the iOS app today (`Wallet/SparkHost.swift`). A wallet on the Linux
+session needs one of: Breez's Rust SDK through its C/UniFFI bindings linked
+into the C host (a new non-C SDK, AGENTS.md firm reason 6), a small wallet
+daemon on the machine that the session talks to over a socket, or waiting
+for a Coax Spark client. Say which; until then the boot line reads WALLET
+not set up.
+
 ## Verse OS V0: the Verse on tty3 of coderos-4080 (2026-11-02)
 
 The boot session is built (docs/os/2026-11-02-verse-os.md, "Status"):

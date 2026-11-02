@@ -5,6 +5,13 @@
 // another, each with READY or FAILED, and then the world fades in under them as they go. A failed
 // line stays red and says why. With no boot facts (the website, every check) nothing changes.
 // Loaded by newland.coax; the face calls coaxial_land_boot_frame after either page's frame.
+//
+// Your identity (V2): when the IDENTITY line is WAITING, the Grid says so once the sequence is over,
+// and N asks the session to make one (it navigates to /realms/verse-os-identity, which
+// os/verse-session.coax answers with `openagents nostr new`). The session opens the Grid again with
+// the 12 words as `seed=` and the key as `npub=` facts, from a file in the user's runtime directory
+// that vk-realm removes as it reads it (--facts-once). The words are shown once, over a dimmed
+// world, behind a warning; Enter says they are written down and wipes them from memory.
 
 BOOT_LINES :: 10;
 BOOT_LABEL :: 24; BOOT_VALUE :: 96;
@@ -20,7 +27,11 @@ LandBoot :: struct {
   label: [BOOT_LINES][BOOT_LABEL] u8; label_n: [BOOT_LINES] int;
   value: [BOOT_LINES][BOOT_VALUE] u8; value_n: [BOOT_LINES] int;
   state: [BOOT_LINES] int;
+  seed: [256] u8; seed_n: int;   // the 12 words, while they are shown (then wiped)
+  npub: [80] u8; npub_n: int;
+  asked: bool;                   // N was pressed: the session is making the identity
 }
+BOOT_IDENTITY_URL :: "/realms/verse-os-identity";
 
 // One boot= line's fields into slot k: whether it was well formed.
 boot_line :: (b: [] LandBoot, k: int, line: string) -> bool {
@@ -50,6 +61,50 @@ boot_facts :: (b: [] LandBoot, facts: string) {
     i = e + 1;
   }
   if any { b[0].n = n; }
+  i = 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > 5 && facts[i..<i + 5] == "seed=" && e - i - 5 <= 256 { m := e - i - 5; for k: 0..<m { b[0].seed[k] = facts[i + 5 + k]; } b[0].seed_n = m; }
+    if e - i > 5 && facts[i..<i + 5] == "npub=" && e - i - 5 <= 80 { m := e - i - 5; for k: 0..<m { b[0].npub[k] = facts[i + 5 + k]; } b[0].npub_n = m; }
+    i = e + 1;
+  }
+}
+// The IDENTITY line, or -1.
+boot_identity_line :: (b: [] LandBoot) -> int {
+  for k: 0..<b[0].n { if cast(string) b[0].label[k][0..<b[0].label_n[k]] == "IDENTITY" { return k; } }
+  return -1;
+}
+// Whether the machine has no identity yet and nothing is making one: the Grid offers N.
+boot_offers_identity :: (b: [] LandBoot) -> bool {
+  k := boot_identity_line(b);
+  return k >= 0 && b[0].state[k] == BOOT_WAITING && b[0].seed_n == 0 && !b[0].asked;
+}
+// The words shown, wiped: every byte zeroed, the IDENTITY line READY with the key.
+boot_words_written :: (b: [] LandBoot) {
+  for k: 0..<256 { b[0].seed[k] = 0; }
+  b[0].seed_n = 0;
+  k := boot_identity_line(b);
+  if k >= 0 {
+    b[0].state[k] = BOOT_READY;
+    n := lo_int(b[0].npub_n, BOOT_VALUE);
+    for i: 0..<n { b[0].value[k][i] = b[0].npub[i]; }
+    b[0].value_n[k] = n;
+  }
+}
+#test "identity: offered when waiting, the words held until Enter, then wiped" {
+  b: [1] LandBoot;
+  boot_facts(b[..], "boot=GPU|x|1\nboot=IDENTITY|none yet|2\n");
+  #assert boot_offers_identity(b[..]) && boot_identity_line(b[..]) == 1;
+  b[0].asked = true;
+  #assert !boot_offers_identity(b[..]);
+  c: [1] LandBoot;
+  boot_facts(c[..], "boot=IDENTITY|made|1\nseed=one two three\nnpub=npub1abc\n");
+  #assert c[0].seed_n == 13 && c[0].npub_n == 8 && !boot_offers_identity(c[..]);
+  boot_words_written(c[..]);
+  #assert c[0].seed_n == 0 && c[0].seed[0] == 0 && c[0].seed[12] == 0 && cast(string) c[0].value[0][0..<c[0].value_n[0]] == "npub1abc";
+  d: [1] LandBoot;
+  boot_facts(d[..], "boot=IDENTITY|Nostr key on this machine|1\n");
+  #assert !boot_offers_identity(d[..]);
 }
 #test "boot facts: well-formed lines in order, the rest left alone" {
   b: [1] LandBoot;
@@ -98,6 +153,7 @@ boot_shown :: (n: int, t: f32) -> int {
 // new count. Nothing at all when the session sent no boot lines.
 boot_frame :: (out: [] f32, n: int, uniforms: [] f32, b: [] LandBoot, t: f32, width: f32, height: f32, dpr: f32) -> int {
   if b.count != 1 || b[0].n <= 0 { return n; }
+  if b[0].seed_n > 0 { return boot_words(out, n, uniforms, b, t, width, height, dpr); }
   world := boot_world(b[0].n, t);
   if world < 1 {
     for q: 0..<n { out[q * VERTEX_FLOATS + 6] *= world; }
@@ -105,7 +161,7 @@ boot_frame :: (out: [] f32, n: int, uniforms: [] f32, b: [] LandBoot, t: f32, wi
     for k: 0..<PANELS + EDIT_PANELS { o := 8 + k * 8 + 5; if o < uniforms.count { uniforms[o] *= world; } }
   }
   light := boot_light(b[0].n, t);
-  if light <= 0 { return n; }
+  if light <= 0 { return boot_offer(out, n, b, t, width, height, dpr); }
   d := hi(dpr, 1);
   p := Pen.{d = d, fade = 1, time = t, still = false, phone = width < height};
   cx := width * 0.5; cy := height * 0.5;
@@ -164,4 +220,73 @@ boot_frame :: (out: [] f32, n: int, uniforms: [] f32, b: [] LandBoot, t: f32, wi
 coaxial_land_boot_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, n: int, width: f32, height: f32, dpr: f32) -> int #export_c {
   if s.count < 1 || n < 0 { return n; }
   return boot_frame(out, n, uniforms, s[0].boot[..], s[0].time, width, height, dpr);
+}
+
+// After the sequence, while there is no identity: one line at the foot of the screen.
+boot_offer :: (out: [] f32, n: int, b: [] LandBoot, t: f32, width: f32, height: f32, dpr: f32) -> int {
+  if !boot_offers_identity(b) { return n; }
+  d := hi(dpr, 1);
+  p := Pen.{d = d, fade = 1, time = t, still = false, phone = width < height};
+  pulse := 0.75 + 0.25 * sin(t * 3);
+  text := "NO IDENTITY ON THIS MACHINE  ·  PRESS N TO MAKE ONE";
+  k := dimmed(chrome(ink(p, INK_BLUE)), pulse);
+  return put_centred(out, n, text, width * 0.5, height - 64 * d, 8 * d, k);
+}
+// The 12 words, over a world dimmed almost away: a warning, the words in three columns, and Enter.
+boot_words :: (out: [] f32, n: int, uniforms: [] f32, b: [] LandBoot, t: f32, width: f32, height: f32, dpr: f32) -> int {
+  for q: 0..<n { out[q * VERTEX_FLOATS + 6] *= 0.12; }
+  for k: 0..<PANELS + EDIT_PANELS { o := 8 + k * 8 + 5; if o < uniforms.count { uniforms[o] *= 0.12; } }
+  d := hi(dpr, 1);
+  p := Pen.{d = d, fade = 1, time = t, still = false, phone = width < height};
+  cx := width * 0.5; cy := height * 0.5;
+  w := lo(620 * d, width - 48 * d); h := 300 * d;
+  x0 := cx - w * 0.5; x1 := cx + w * 0.5; y0 := cy - h * 0.5; y1 := cy + h * 0.5;
+  bright := ink(p, INK_BRIGHT); warn := ink(p, INK_BRIGHT); warn.red = 1.0; warn.green = 0.55; warn.blue = 0.3;
+  v := n; arm := 28 * d;
+  v = rule(out, v, x0, y0, x0 + arm, y0, bright, 1); v = rule(out, v, x0, y0, x0, y0 + arm * 0.6, bright, 1);
+  v = rule(out, v, x1, y1, x1 - arm, y1, bright, 1); v = rule(out, v, x1, y1, x1, y1 - arm * 0.6, bright, 1);
+  v = put(out, v, "YOUR IDENTITY", x0 + 18 * d, y0 + 28 * d, 9 * d, chrome(bright));
+  v = put_fit(out, v, "These 12 words are your Nostr key and your wallet. They are shown once.", x0 + 18 * d, y0 + 52 * d, 7 * d, warn, w - 36 * d);
+  v = put_fit(out, v, "Write them down. Anyone with them is you; without them a lost key is gone.", x0 + 18 * d, y0 + 70 * d, 7 * d, ink(p, INK_PALE), w - 36 * d);
+  // the words: numbered, three columns of four
+  words: [12] string; seed := cast(string) b[0].seed[0..<b[0].seed_n];
+  c := 0; i := 0;
+  while i < seed.count && c < 12 {
+    while i < seed.count && seed[i] == ' ' { i += 1; }
+    s0 := i; while i < seed.count && seed[i] != ' ' { i += 1; }
+    if i > s0 { words[c] = seed[s0..<i]; c += 1; }
+  }
+  col := (w - 36 * d) / 3;
+  for k: 0..<c {
+    x := x0 + 18 * d + cast(f32) (k / 4) * col; y := y0 + (110 + cast(f32) (k % 4) * 30) * d;
+    nb: [4] u8; nn := number(k + 1, nb[..]);
+    v = put(out, v, cast(string) nb[0..<nn], x, y, 7 * d, ink(p, INK_DIM));
+    v = put(out, v, words[k], x + 26 * d, y, 9 * d, chrome(bright));
+  }
+  v = put_fit(out, v, cast(string) b[0].npub[0..<b[0].npub_n], x0 + 18 * d, y1 - 46 * d, 7 * d, ink(p, INK_DIM), w - 36 * d);
+  return put(out, v, "PRESS ENTER WHEN THEY ARE WRITTEN DOWN", x0 + 18 * d, y1 - 22 * d, 8 * d, dimmed(chrome(ink(p, INK_BLUE)), 0.75 + 0.25 * sin(t * 3)));
+}
+// The boot layer's keys, ahead of the page's: N asks for an identity, Enter puts the words away.
+coaxial_land_boot_key :: (s: [] LandState, key: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  b := s[0].boot[..];
+  if b[0].seed_n > 0 { if key == KEY_ENTER { boot_words_written(b); return true; } return true; }   // nothing else while the words show
+  if (key == 'n' || key == 'N') && boot_offers_identity(b) && boot_light(b[0].n, s[0].time) <= 0 {
+    b[0].asked = true; go(s, BOOT_IDENTITY_URL); return true;
+  }
+  return false;
+}
+#test "N and Enter" {
+  s: [1] LandState;
+  coaxial_land_message(s[..], 600, "boot=IDENTITY|none yet|2\n");
+  #assert !coaxial_land_boot_key(s[..], 'n');   // the sequence is still on
+  s[0].time = 60;
+  #assert !coaxial_land_boot_key(s[..], 'x') && coaxial_land_boot_key(s[..], 'n');
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == BOOT_IDENTITY_URL;
+  #assert !coaxial_land_boot_key(s[..], 'n');
+  w: [1] LandState;
+  coaxial_land_message(w[..], 600, "boot=IDENTITY|made|1\nseed=a b c d e f g h i j k l\nnpub=npub1x\n");
+  #assert coaxial_land_boot_key(w[..], 'w') && w[0].boot[0].seed_n > 0;
+  #assert coaxial_land_boot_key(w[..], KEY_ENTER) && w[0].boot[0].seed_n == 0;
+  #assert !coaxial_land_boot_key(w[..], KEY_ENTER);
 }

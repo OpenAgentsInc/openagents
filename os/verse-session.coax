@@ -9,6 +9,10 @@
 //   verse-session --print-boot [--root DIR]     the boot lines (os/verse-boot.coax), and nothing run
 // The first realm of a session gets the boot lines as page facts (--facts), and the Grid draws them
 // as the boot sequence; a realm reached by travel does not.
+// Identity (V2): the Grid's N navigates to /realms/verse-os-identity. The session runs
+// `CLI nostr new` (--cli PATH, default DIR/openagents), keeps its words and npub in memory, writes
+// them with the boot lines to a file in $XDG_RUNTIME_DIR (memory, the user's alone), and opens the
+// same realm again with `--facts-once`: vk-realm reads the file, removes it, and wipes its copies.
 // DIR is what `verse/gpu/realm.sh HOST install DIR` keeps: a directory per realm (its vk-realm,
 // drawdir and given) and the travel file (slug:module pairs). --tty N waits for ttyN to show
 // first (default: start at once); --leave-to VT is the VT shown on leaving (default 1); --state
@@ -135,6 +139,70 @@ vs_wait_for :: (n: int) {
 }
 
 // One realm on the screen: its exit status, its lines passed through to this program's stdout.
+VS_IDENTITY :: "verse-os-identity";
+
+// The words and npub from `openagents nostr new`'s report ("words W1 ... W12", "npub npub1..."),
+// as facts: their length, 0 when the report has no twelve words or no npub.
+vs_identity_facts :: (report: string, out: [] u8) -> int {
+  words := ""; npub := "";
+  i := 0;
+  while i < report.count {
+    e := i; while e < report.count && report[e] != '\n' { e += 1; }
+    line := report[i..<e];
+    if line.count > 6 && line[0..<6] == "words " { words = line[6..<line.count]; }
+    if line.count > 5 && line[0..<5] == "npub " { npub = line[5..<line.count]; }
+    i = e + 1;
+  }
+  w: [16] string;
+  if vs_words(words, w[..]) != 12 || npub.count < 8 || npub[0..<5] != "npub1" { return 0; }
+  n := 0;
+  for c: "seed=" { out[n] = c; n += 1; } for c: words { if n < out.count { out[n] = c; n += 1; } } if n < out.count { out[n] = '\n'; n += 1; }
+  for c: "npub=" { if n < out.count { out[n] = c; n += 1; } } for c: npub { if n < out.count { out[n] = c; n += 1; } } if n < out.count { out[n] = '\n'; n += 1; }
+  return n;
+}
+#test "identity facts from the CLI's report" {
+  b: [512] u8;
+  r := "words a b c d e f g h i j k l\nnpub npub1qqqq\npubkey 00\nprofile default\nstore file\n";
+  n := vs_identity_facts(r, b[..]);
+  #assert cast(string) b[0..<n] == "seed=a b c d e f g h i j k l\nnpub=npub1qqqq\n";
+  #assert vs_identity_facts("words a b c\nnpub npub1qqqq\n", b[..]) == 0 && vs_identity_facts("words a b c d e f g h i j k l\n", b[..]) == 0;
+  #assert vs_identity_facts("", b[..]) == 0;
+}
+vs_is_secret :: (facts: string) -> bool {
+  tail := "/verse-identity.facts";
+  return facts.count > tail.count && facts[facts.count - tail.count..<facts.count] == tail;
+}
+#test "which facts are secret" { #assert vs_is_secret("/run/user/1000/verse-identity.facts") && !vs_is_secret("/d/boot.facts") && !vs_is_secret("/verse-identity.facts"); }
+vs_wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
+
+// Makes the identity and writes the facts for the realm to read once: whether it did.
+vs_identity :: (cli: string, facts: string, home: string) -> bool {
+  h := proc_new(); if h < 0 { return false; }
+  ok := proc_arg(h, cli) && proc_arg(h, "nostr") && proc_arg(h, "new");
+  if !ok || proc_start(h) != 0 { d := proc_release(h); print("verse-session: % did not start\n", cli); return false; }
+  c := proc_close_stdin(h);
+  report: [4096] u8; rn := 0; line: [1024] u8;
+  while true {
+    n := proc_line(h, 60000, line[..]);
+    if n < 0 && n != PROC_TOO_LONG { break; }
+    if n >= 0 && rn + n + 1 <= 4096 { for i: 0..<n { report[rn] = line[i]; rn += 1; } report[rn] = '\n'; rn += 1; }
+  }
+  vs_wipe(line[..]);
+  status := proc_wait(h, 10000);
+  e: [2048] u8; t := proc_stderr(h, e[..]);
+  if status != 0 && t.count > 0 { tool_errln(t); }
+  d := proc_release(h);
+  out: [8192] u8;
+  bo: [1] VbOut; vb_lines(bo[..], "", home);   // the boot lines again: IDENTITY is READY now
+  n := 0; for i: 0..<bo[0].n { out[n] = bo[0].b[i]; n += 1; }
+  m := vs_identity_facts(cast(string) report[0..<rn], out[n..<8192]);
+  vs_wipe(report[..]);
+  wrote := status == 0 && m > 0 && fs_write(facts, cast(string) out[0..<n + m]);
+  vs_wipe(out[..]);
+  if status == 0 && m == 0 { print("verse-session: % nostr new gave no words\n", cli); }
+  return wrote;
+}
+
 vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: string, window: string, facts: string) -> int {
   b: [6] [4096] u8;
   rdir := fs_join(dir, realm, b[0][..]);
@@ -150,7 +218,8 @@ vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: stri
   for i: 0..<ndw { ok = ok && proc_arg(h, dw[i]); }
   for i: 0..<ngw { ok = ok && proc_arg(h, gw[i]); }
   ok = ok && proc_arg(h, "--name") && proc_arg(h, realm) && proc_arg(h, "--go") && proc_arg(h, go);
-  if facts.count > 0 { ok = ok && proc_arg(h, "--facts") && proc_arg(h, facts); }
+  // a file in the runtime directory holds secrets: read once, then removed (vk-realm --facts-once)
+  if facts.count > 0 { ok = ok && proc_arg(h, ifx vs_is_secret(facts) then "--facts-once" else "--facts") && proc_arg(h, facts); }
   if window.count > 0 { ok = ok && proc_arg(h, window); }
   else { ok = ok && proc_arg(h, "--leave-to") && proc_arg(h, leave_to); }
   ok = ok && proc_arg(h, "--seconds");
@@ -211,15 +280,25 @@ tool_main :: () -> int #export_c {
   boot := fs_join(dir, "boot.facts", b[3][..]);
   bo: [1] VbOut; vb_lines(bo[..], "", home);
   first_run := fs_write(boot, cast(string) bo[0].b[0..<bo[0].n]);
+  cli_b: [4096] u8; cli := args_value(a[..], "--cli", fs_join(dir, "openagents", cli_b[..]));
+  rt_b: [1024] u8; rt := proc_getenv("XDG_RUNTIME_DIR", rt_b[..]);
+  sec_b: [1200] u8; secret := vs_cat(sec_b[..], rt, "/verse-identity.facts");
+  secret_next := false;
   while true {
     if window.count == 0 { vs_wait_for(tty); }
     r := fs_remove(go);
     if state.count > 0 { r = fs_mkdir(state); kept_ok := fs_write(realm_file, cur); }
-    status := vs_run(dir, cur, leave_to, state, go, window, ifx first_run then boot else "");
-    first_run = false;
+    status := vs_run(dir, cur, leave_to, state, go, window, ifx secret_next then secret else ifx first_run then boot else "");
+    first_run = false; secret_next = false;
     slug_b: [256] u8; ns := fs_read(go, slug_b[..]);
     slug := ifx ns > 0 then cast(string) slug_b[0..<ns] else "";
     w: [2] string; if vs_words(slug, w[..]) == 1 { slug = w[0]; } else { slug = ""; }
+    // the Grid asked for an identity: make it, and open the realm again to show its words once
+    if status == VS_TRAVELLED && slug == VS_IDENTITY {
+      if rt.count > 0 && vs_identity(cli, secret, home) { print("verse-session: identity made; showing its words once\n"); secret_next = true; }
+      else { print("verse-session: no identity made\n"); }
+      continue;
+    }
     m := vs_module_of(travel, slug);
     next := vs_after(status, m, m.count > 0 && vs_has_realm(dir, m));
     if next.count > 0 {

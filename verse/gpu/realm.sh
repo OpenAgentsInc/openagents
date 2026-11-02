@@ -315,6 +315,13 @@ echo \"realm.sh: back on VT \$from (\$(sudo -n fgconsole))\"
 [ -f shot.ppm ] && sudo -n cp shot.ppm /tmp/verse-realm-shot.ppm && sudo -n chmod 644 /tmp/verse-realm-shot.ppm
 exit \${status:-0}
 "
+# the openagents CLI beside verse-session, which runs `openagents nostr new` for the Grid's identity
+# (os/verse-session.coax --cli); build it first with apps/openagents-cli/build.sh
+if [[ "$mode" == install && ( "$host" == local || "$host" == localhost ) ]]; then
+  cli="$root/apps/openagents-cli/build/openagents"
+  if [[ -x "$cli" ]]; then cp "$cli" "$dest/openagents.new" && mv "$dest/openagents.new" "$dest/openagents"; echo "realm.sh: the CLI is in $dest/openagents"
+  else echo "realm.sh: no $cli (apps/openagents-cli/build.sh); the Grid cannot make an identity"; fi
+fi
 if [[ "$mode" == screen ]]; then
   scp -q "$host:/tmp/verse-realm-shot.ppm" realm-shot.ppm 2>/dev/null && echo "realm.sh: the presented image is in realm-shot.ppm" || true
 fi
