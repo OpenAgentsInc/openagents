@@ -61,7 +61,7 @@ STAGE_SECONDS :: [20] f32.[4.0, 6.86, 3.05, 4.82, 8.98, 6.72, 12.18, 8.51, 8.10,
 STAGE_SUBJECT :: [80] f32.[
   78, 700, 642, 180,   170, 462, 1004, 126,   412, 202, 520, 96,   MAP_X - 92, MAP_Y - 34, 184, 68,
   560, 474, 228, 112,  640, 380, 300, 250,  90, 460, 212, 120,  552, 408, 240, 240,
-  522, 460, 300, 110,  540, 428, 264, 124,  249, 234, 843, 102,  885, 384, 252, 82,
+  522, 460, 300, 110,  540, 428, 264, 124,  249, 234, 843, 102,  858, 384, 404, 82,
   850, 470, 300, 250,  312, 394, 720, 240,  MAP_X - 92, MAP_Y - 34, 184, 68,  616, 250, 134, 480,
   0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0];
 
@@ -812,13 +812,15 @@ st_open :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
 }
 
 // The axis reaches each mark as it appears (the marks' times are the voice's).
-MARK_YEAR :: [4] int.[2011, 2021, 2023, 2025];
+// OpenAgents started in 2023, openagents.com and the C Corp the same year: one
+// 2023 mark whose second line arrives with "openagents.com and the C Corp".
+MARK_YEAR :: [3] int.[2011, 2021, 2023];
 MARK_AT :: [4] f32.[2.4, 4.3, 7.6, 10.5];
 axis_share :: (t: f32) -> f32 {
-  ts := [6] f32.[0.3, 2.4, 4.3, 7.6, 10.5, 12.5];
-  us := [6] f32.[0, 1.0 / 16, 11.0 / 16, 13.0 / 16, 15.0 / 16, 1];
+  ts := [5] f32.[0.3, 2.4, 4.3, 7.6, 12.5];
+  us := [5] f32.[0, 1.0 / 16, 11.0 / 16, 13.0 / 16, 1];
   if t <= ts[0] { return 0; }
-  for i: 1..<6 {
+  for i: 1..<5 {
     if t <= ts[i] { return us[i - 1] + (us[i] - us[i - 1]) * ease((t - ts[i - 1]) / (ts[i] - ts[i - 1])); }
   }
   return 1;
@@ -835,14 +837,15 @@ st_timeline :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
     v = sr_line(s, out, v, xm, y - 6, xm, y + 6, T_MID, rmp(t, 0.4, 0.5), 1);
     if yr % 2 == 0 { v = sr_text(s, out, v, year_text(yr, yb[..]), xm, y + 24, 13, T_DIM, rmp(t, 0.5, 0.5), A_CENTRE, 1); }
   }
-  titles := [4] string.["BITCOIN", "NOSTR", "OPENAGENTS", "OPENAGENTS.COM"];
-  notes := [4] string.["CLASS OF 2011", "CLASS OF 2021", "STARTED 2023", "C CORP"];
-  tones := [4] int.[T_ORANGE, T_WHITE, T_CYAN, T_WHITE];
-  boxes := [4] f32.[210, 860, 1011, 1129];   // the boxes' middles, clear of each other
-  widths := [4] f32.[250, 250, 250, 270];
-  for i: 0..<4 {
+  titles := [3] string.["BITCOIN", "NOSTR", "OPENAGENTS · STARTED 2023"];
+  notes := [3] string.["CLASS OF 2011", "CLASS OF 2021", "OPENAGENTS.COM · C CORP"];
+  tones := [3] int.[T_ORANGE, T_WHITE, T_CYAN];
+  boxes := [3] f32.[210, 860, 1060];   // the boxes' middles, clear of each other
+  widths := [3] f32.[250, 250, 400];
+  for i: 0..<3 {
     xm := x0 + (x1 - x0) * f32(MARK_YEAR[i] - 2010) / 16;
     p := rmp(t, MARK_AT[i], 0.7);
+    pn := ifx i == 2 then rmp(t, MARK_AT[3], 0.7) else clamp01((p - 0.2) / 0.7);
     up := i % 2 == 0;
     by := ifx up then y - 150 else y + 150;
     edge := ifx up then by + 40 else by - 40;
@@ -851,7 +854,7 @@ st_timeline :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
     v = sr_square(s, out, v, xm, y, 12, col, p);
     v = sr_frame(s, out, v, SrBox.{x = boxes[i] - widths[i] * 0.5, y = by - 40, width = widths[i], height = 80}, p, 10, ifx col == T_WHITE then -1 else col, 0.8, 12);
     v = sr_label(s, out, v, titles[i], boxes[i], by - 10, fit_cap(titles[i], 19, 2, widths[i] - 24), col, clamp01(p / 0.85), 20 + i, A_CENTRE, 2);
-    v = sr_label(s, out, v, notes[i], boxes[i], by + 18, 13, T_MID, clamp01((p - 0.2) / 0.7), 30 + i, A_CENTRE, 2);
+    v = sr_label(s, out, v, notes[i], boxes[i], by + 18, ifx i == 2 then 14.0f32 else 13.0f32, ifx i == 2 then T_LIGHT else T_MID, pn, 30 + i, A_CENTRE, 2);
   }
   return v;
 }
