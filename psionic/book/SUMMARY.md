@@ -82,7 +82,7 @@
 - [73. Execute gpt-oss-120b](ch073-execute-gpt-oss-120b.md)
 - [74. Fit 120b on the right device](ch074-fit-120b-on-the-right-device.md) — design draft
 - [75. Let the small model guess](ch075-let-the-small-model-guess.md)
-- [76. Verify a draft block in parallel](ch076-verify-a-draft-block-in-parallel.md) — design draft
+- [76. Verify a draft block in parallel](ch076-verify-a-draft-block-in-parallel.md) — partly implemented
 - [77. Call a tool](ch077-call-a-tool.md)
 - [78. Device generation calls a tool](ch078-device-generation-calls-a-tool.md) — partly implemented
 - [79. Serve Responses](ch079-serve-responses.md)
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75, 77–82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–153, 156–159, 161–163, 165, 167–173, 175–183, 186–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75–82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–153, 156–159, 161–163, 165, 167–173, 175–183, 186–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

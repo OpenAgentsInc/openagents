@@ -1,0 +1,7 @@
+drafts after 5 6 7 8 9 5 6 7: 8 9 5 (3)
+picks 8 9 4: accepted 2, committed 8 9 4, keep 3 of 4 rows, next pending ID 4
+position 6, 4 rows: 3 copies saved, 2 put back; cache equals never having drafted: true
+RTX 4080, k=4: target-only mean 4213698938.6 ns, speculative mean 7733227629.8 ns (280 IDs a run)
+tokens/s: target-only 66.44993011603954, speculative 36.207391454639165
+acceptance: 90 of 360 drafts; saving -0.8352586984701291 of the target-only time, se 6328556.535801797 ns
+speculation: off (none); enabled: false

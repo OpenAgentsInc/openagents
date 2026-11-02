@@ -1,0 +1,20 @@
+// Chapter 76's receipt: psionic/tests/check_device_verify.sh on coderos-4080,
+// 2026-11-02, original gpt-oss-20b, chapter 66's decoder with chapter 70's
+// replay against prompt n-gram drafts (width 3, k=4) verified in chapter
+// 67's batched f32 prefill. Each run generates both fixture prompts greedily
+// (24 and 256 IDs) on both paths. One warm-up and five timed runs. Copied
+// from the harness log in docs/verification/psionic-ch076-device-verify-2026-11-02.md.
+SG_R1_BUILD :: "coax-18b90dec5d4e-cuda-72df8e2ef7ee4f53-host-acb383a95b409815";
+SG_R1_COMMIT :: "70615f1710+uncommitted";
+SG_R1_MACHINE :: "coderos-4080 Linux 6.18.49 driver 595.71.05";
+SG_R1_DEVICE :: "NVIDIA GeForce RTX 4080 sm_89 16711352320 bytes";
+SG_R1_K :: 4;
+SG_R1_IDS :: 280;
+// Greedy IDs equal on both prompts, and the cache after six rollbacks past
+// the sliding window equal byte for byte to the target-only cache.
+SG_R1_SAME :: true;
+// Drafts proposed and accepted over both prompts, per run.
+SG_R1_DRAFTED :: 360;
+SG_R1_ACCEPTED :: 90;
+SG_R1_BASE :: [5]int.[4207729177,4208397202,4216995015,4217715324,4217657975];
+SG_R1_SPEC :: [5]int.[7719235490,7718488468,7743290363,7744302239,7740821589];

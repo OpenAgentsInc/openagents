@@ -1,0 +1,34 @@
+// Chapter 76: blocks, rollbacks and measurements that are refused, each
+// with its typed reason, before anything is committed or turned on.
+#import "Basic";
+#load "../lib/gptoss/device-verify.coax";
+#load "../lib/speculation-gate.coax";
+
+STATUS_NAMES :: [10]string.["ok","shape","capacity","alias","number","arithmetic","budget","token","weights","state"];
+show :: (label:string,s:GStatus) {n:=STATUS_NAMES;print("%: %\n",label,n[cast(int)s]);}
+rule :: (label:string,same:bool,b:[]int,s:[]int) {d:=sg_decide(same,b,s);print("%: % (%)\n",label,sg_verdict_name(d.verdict),sg_reason_name(d.reason));}
+// book:begin refuse
+main :: () {
+    o:=g_original_shape(0,2048);large:=G20_ARTIFACTS;p:=gd_plan(o,large[..],17179869184,17179869184);
+    show("20b, k=4",gv_admit(o,p,4));
+    show("20b, k=17 drafts",gv_admit(o,p,17));
+    pins:=GOWN_ARTIFACTS;t:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);
+    show("tiny model, k=2 with a window of 2",gv_admit(GT_SHAPE,t,2));
+    draft:=[3]int.[7,8,9];picks:=[3]int.[7,8,4];out:[4]int;
+    show("rows 7 8 4 against drafts 7 8 9",gv_commit(16,draft[..],picks[..],3,1,100,out[..]).status);
+    late:=[3]int.[7,5,4];show("a third row read after the second mismatched",gv_commit(16,draft[..],late[..],3,1,100,out[..]).status);
+    wide:=[3]int.[7,8,16];show("a draft ID outside the vocabulary",gv_commit(16,wide[..],picks[..],3,1,100,out[..]).status);
+    low:=[3]int.[7,8,-1];show("a pick outside the vocabulary",gv_commit(16,draft[..],low[..],3,1,100,out[..]).status);
+    ops:[192]GDOp;args:[4608]GDArg;u:=gv_with_undo(t,GT_SHAPE,1);
+    show("restore keeping no rows",gv_restore(GT_SHAPE,u,3,2,0,ops[..],args[..]).status);
+    show("save past the end of the context",gv_save(GT_SHAPE,u,7,2,ops[..],args[..]).status);
+    control:=[8]int.[5,0,9,1,0,0,0,0];b:=GVBlock.{accepted=1,written=2,kept=2,token=4};
+    show("control words after a flagged readout",gv_control(control[..],9,b,1));
+    base:=[5]int.[100,102,98,101,99];spec:=[5]int.[90,92,88,91,89];
+    rule("measured 10% faster",true,base[..],spec[..]);
+    rule("speculative outputs changed",false,base[..],spec[..]);
+    rule("five target-only runs, four speculative",true,base[..],spec[0..<4]);
+    rule("four runs each",true,base[0..<4],spec[0..<4]);
+    z:=spec;z[1]=0;rule("a speculative run of 0 ns",true,base[..],z[..]);
+}
+// book:end refuse

@@ -1,0 +1,7 @@
+// Chapter 76: the GPT-OSS device host plus device verification of draft
+// blocks and the speculation rule, as one native library for
+// psionic/tests/gptoss_verify.c.
+#load "../lib/gptoss/device-host.coax";
+#load "../lib/gptoss/device-verify.coax";
+#load "../lib/speculation-gate.coax";
+#load "../lib/throughput-gate.coax";  // tg_word, for the output words

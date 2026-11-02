@@ -2332,6 +2332,26 @@
       ]
     },
     {
+      "source": "psionic/examples/device-verify.coax",
+      "chapter": "psionic/book/ch076-verify-a-draft-block-in-parallel.md",
+      "stdout": "psionic/fixtures/device-verify/device-verify.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/device-verify-refuse.coax",
+      "chapter": "psionic/book/ch076-verify-a-draft-block-in-parallel.md",
+      "stdout": "psionic/fixtures/device-verify/device-verify-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/tiny-train.coax",
       "chapter": "psionic/book/ch115-train-the-whole-tiny-decoder.md",
       "stdout": "psionic/fixtures/tiny-train.out",

@@ -23,6 +23,12 @@ PcStatus pg_prefill_poll(PgSession *session,const int64_t *tokens,int64_t count,
 PcStatus pg_prefill(PgSession *session,const int64_t *tokens,int64_t count,int64_t position,int choose,int64_t limit,int64_t control[8]);
 PcStatus pg_read(PgSession *session,int slot,void *out,size_t bytes);
 
+/* Chapter 76 (CUDA engine only): execute a program Coax built for this session's plan; adopt a
+   plan Coax derived from it (gv_with_undo), allocating its new upload slots;
+   upload words Coax decided into a workspace slot. */
+PcStatus pg_run(PgSession *session,const coax_t_GDOp *ops,const coax_t_GDArg *args,coax_t_GDProgram program);
+PcStatus pg_adopt(PgSession *session,coax_t_GDPlan plan);
+PcStatus pg_write(PgSession *session,int slot,const void *data,size_t bytes);
 PcStatus pg_wait(PgSession *session);
 void pg_close(PgSession *session);
 coax_t_GDPlan pg_plan(const PgSession *session);

@@ -1,0 +1,108 @@
+// Chapter 76: speculation is turned on only by a measured net gain. The same
+// greedy generations are timed with and without device verification of
+// prompt n-gram drafts; chapter 34's warm-run statistics decide. Speculation
+// is on only when the time saved, less two standard errors of the
+// difference, is at least a frozen share of the target-only time, and the
+// speculative outputs equal the target-only outputs token for token.
+// Anything else leaves it off.
+// Profile sg-ngram-v1: run times as positive integer nanoseconds.
+#authority;
+#load "comparator.coax";
+
+SG_PROFILE :: "sg-ngram-v1";
+// book:begin threshold
+// Frozen before any measurement: speculation must save at least 5% of the
+// target-only time, beyond two standard errors of the difference.
+SG_GAIN_PERCENT :: 5;
+// book:end threshold
+
+SgVerdict :: enum u8 {refused;on;off;noisy;}
+SgReason :: enum u8 {none;outputs;pairs;stats;spread;close;}
+// The verdict and why, both sides' statistics, the measured saving as a
+// share of the target-only mean, and the standard error of the difference
+// of the means.
+SgDecision :: struct {verdict:SgVerdict;reason:SgReason;base:CmStats;spec:CmStats;gain:f64;se:f64;}
+
+// book:begin decide
+// Refusals first: changed outputs, unpaired runs, refused timings. A spread
+// over a tenth of either mean decides nothing (chapter 34's rule). Then on
+// when saving - 2 se >= 5% of the base mean, off when saving + 2 se < 5% of
+// it, and too close to call between the two.
+sg_decide :: (same_outputs:bool,base:[]int,spec:[]int)->SgDecision #export_c {
+    d:=SgDecision.{verdict=SgVerdict.refused,reason=SgReason.outputs};
+    if !same_outputs {return d;}
+    d.reason=SgReason.pairs;if base.count!=spec.count {return d;}
+    d.base=cm_welford(base);d.spec=cm_welford(spec);d.reason=SgReason.stats;
+    if d.base.status!=CmStatus.ok || d.spec.status!=CmStatus.ok {return d;}
+    n:=cast(f64)d.base.n;d.se=sqrt((d.base.sd*d.base.sd+d.spec.sd*d.spec.sd)/n);
+    saving:=d.base.mean-d.spec.mean;d.gain=saving/d.base.mean;
+    d.verdict=SgVerdict.noisy;d.reason=SgReason.spread;
+    if d.base.sd*10>d.base.mean || d.spec.sd*10>d.spec.mean {return d;}
+    need:=d.base.mean*cast(f64)SG_GAIN_PERCENT/100;d.reason=SgReason.none;
+    if saving-2*d.se>=need {d.verdict=SgVerdict.on;return d;}
+    if saving+2*d.se<need {d.verdict=SgVerdict.off;return d;}
+    d.reason=SgReason.close;return d;
+}
+// Only an "on" verdict turns speculation on.
+sg_enabled :: (d:SgDecision)->bool #export_c {return d.verdict==SgVerdict.on;}
+// book:end decide
+
+sg_verdict_name :: (v:SgVerdict)->string #export_c {
+    names:=[4]string.["refused","on","off","too noisy"];return names[cast(int)v];
+}
+sg_reason_name :: (r:SgReason)->string #export_c {
+    names:=[6]string.["none","speculative outputs differ from the target-only outputs","run counts differ","the timings were refused",
+        "a spread over a tenth of the mean","within two standard errors of the threshold"];
+    return names[cast(int)r];
+}
+
+#test "the rule by hand: on, off, too close, too noisy" {
+    // Base runs 100, 102, 98, 101, 99: mean 100, squares 0+4+4+1+1 = 10,
+    // variance 2.5. Spec runs 90, 92, 88, 91, 89: mean 90, variance 2.5.
+    // se = sqrt((2.5 + 2.5) / 5) = 1; saving 10; need 5: 10 - 2 = 8 >= 5: on.
+    b:=[5]int.[100,102,98,101,99];s:=[5]int.[90,92,88,91,89];
+    d:=sg_decide(true,b[..],s[..]);#assert d.verdict==SgVerdict.on && d.reason==SgReason.none && d.se==1 && d.gain==0.1 && d.base.mean==100 && d.spec.mean==90 && sg_enabled(d);
+    // Saving 7: 7 - 2 = 5 >= 5, still on, exactly at the threshold.
+    for i:0..<5 {s[i]+=3;}d=sg_decide(true,b[..],s[..]);#assert d.verdict==SgVerdict.on && d.gain==0.07;
+    // Saving 6: 6 - 2 = 4 < 5 and 6 + 2 = 8 >= 5: too close to call.
+    for i:0..<5 {s[i]+=1;}d=sg_decide(true,b[..],s[..]);#assert d.verdict==SgVerdict.noisy && d.reason==SgReason.close && !sg_enabled(d);
+    // Saving 3: 3 + 2 = 5 is not < 5: still too close. Saving 2.9 is off.
+    for i:0..<5 {s[i]+=3;}d=sg_decide(true,b[..],s[..]);#assert d.verdict==SgVerdict.noisy && d.reason==SgReason.close;
+    x:=[5]int.[1000,1020,980,1010,990];y:=[5]int.[971,991,951,981,961];d=sg_decide(true,x[..],y[..]);
+    #assert d.verdict==SgVerdict.off && d.reason==SgReason.none && d.se==10 && !sg_enabled(d);
+    // Slower with speculation: off, with a negative gain.
+    d=sg_decide(true,s[..],b[..]);#assert d.verdict==SgVerdict.off && d.gain<0;
+    // A spread over a tenth of a mean decides nothing, on either side.
+    w:=[5]int.[70,130,100,100,100];d=sg_decide(true,b[..],w[..]);#assert d.verdict==SgVerdict.noisy && d.reason==SgReason.spread;
+    d=sg_decide(true,w[..],b[..]);#assert d.verdict==SgVerdict.noisy && d.reason==SgReason.spread;
+    // sd exactly a tenth of the mean still decides: runs 100, 90, 110, 90, 110.
+    e:=[5]int.[100,90,110,90,110];f:=[5]int.[50,45,55,45,55];d=sg_decide(true,e[..],f[..]);#assert d.base.sd==10 && d.spec.sd==5 && d.verdict==SgVerdict.on;
+    d=sg_decide(true,f[..],e[..]);#assert d.verdict==SgVerdict.off;
+}
+#test "refusals come first, in order" {
+    b:=[5]int.[100,102,98,101,99];s:=[5]int.[90,92,88,91,89];
+    d:=sg_decide(false,b[..],s[..]);#assert d.verdict==SgVerdict.refused && d.reason==SgReason.outputs && !sg_enabled(d);
+    d=sg_decide(false,b[..],s[0..<4]);#assert d.reason==SgReason.outputs;
+    d=sg_decide(true,b[..],s[0..<4]);#assert d.verdict==SgVerdict.refused && d.reason==SgReason.pairs;
+    d=sg_decide(true,b[0..<4],s[0..<4]);#assert d.verdict==SgVerdict.refused && d.reason==SgReason.stats && d.base.status==CmStatus.few;
+    z:=s;z[2]=0;d=sg_decide(true,b[..],z[..]);#assert d.verdict==SgVerdict.refused && d.reason==SgReason.stats && d.spec.status==CmStatus.sample && d.base.status==CmStatus.ok;
+    z=b;z[2]=0;d=sg_decide(true,z[..],s[..]);#assert d.verdict==SgVerdict.refused && d.reason==SgReason.stats;
+    #assert sg_verdict_name(SgVerdict.refused)=="refused" && sg_verdict_name(SgVerdict.on)=="on" && sg_verdict_name(SgVerdict.off)=="off" && sg_verdict_name(SgVerdict.noisy)=="too noisy";
+    #assert sg_reason_name(SgReason.none)=="none" && sg_reason_name(SgReason.outputs)=="speculative outputs differ from the target-only outputs" && sg_reason_name(SgReason.pairs)=="run counts differ";
+    #assert sg_reason_name(SgReason.stats)=="the timings were refused" && sg_reason_name(SgReason.spread)=="a spread over a tenth of the mean" && sg_reason_name(SgReason.close)=="within two standard errors of the threshold";
+}
+// Independent check: the verdict agrees with the exact integer variances
+// (chapter 34's cm_exact_var) at every shift of the speculative runs.
+#forall "the rule agrees with exact variances" n:5..<10,seed:0..<8 {
+    x:[10]int;y:[10]int;h:=(seed*2654435761+n)%2147483648;
+    for i:0..<n {h=(h*1103515245+12345)%2147483648;x[i]=1000000+h%20000;h=(h*1103515245+12345)%2147483648;y[i]=900000+h%20000;}
+    for shift:0..<12 {
+        z:[10]int;for i:0..<n {z[i]=y[i]+shift*10000;}
+        sx:=0;sz:=0;for i:0..<n {sx+=x[i];sz+=z[i];}
+        mx:=cast(f64)sx/cast(f64)n;mz:=cast(f64)sz/cast(f64)n;se:=sqrt((cm_exact_var(x[0..<n])+cm_exact_var(z[0..<n]))/cast(f64)n);need:=mx*0.05;
+        d:=sg_decide(true,x[0..<n],z[0..<n]);#assert d.reason!=SgReason.spread && d.verdict!=SgVerdict.refused;
+        if mx-mz-2*se>need+0.001 {#assert d.verdict==SgVerdict.on;}
+        if mx-mz+2*se<need-0.001 {#assert d.verdict==SgVerdict.off;}
+        if mx-mz-2*se<need-0.001 && mx-mz+2*se>need+0.001 {#assert d.verdict==SgVerdict.noisy && d.reason==SgReason.close;}
+    }
+}

@@ -1,0 +1,36 @@
+// Chapter 76: one draft block by hand, its rollback on host arrays, and the
+// speculation rule applied to the RTX 4080 receipt.
+#import "Basic";
+#load "../lib/gptoss/device-verify.coax";
+#load "../lib/speculation-gate.coax";
+#load "../fixtures/device-verify/rtx4080.coax";
+
+// book:begin example
+main :: () {
+    // Draft: the history ends 5 6 7, which also starts it.
+    history:=[8]int.[5,6,7,8,9,5,6,7];scratch:[12]int;draft:[3]int;
+    n:=gv_draft(history[..],3,3,scratch[..],draft[..]);
+    print("drafts after 5 6 7 8 9 5 6 7: % % % (%)\n",draft[0],draft[1],draft[2],n);
+    // Verify: rows 0, 1 and 2 pick 8, 9, 4. The third draft (5) is wrong.
+    picks:=[3]int.[8,9,4];out:[4]int;
+    b:=gv_commit(201088,draft[..],picks[..],3,10,256,out[..]);
+    print("picks 8 9 4: accepted %, committed % % %, keep % of 4 rows, next pending ID %\n",b.accepted,out[0],out[1],out[2],b.kept,b.token);
+    // Roll back on host arrays: a ring of 4 slots and a full layer of 16.
+    s:=GT_SHAPE;s.window=4;s.capacity=16;pins:=GOWN_ARTIFACTS;p:=gv_with_undo(gd_plan(s,pins[..],1000000000,1000000000),s,3);
+    spec:[2560]f32;never:[2560]f32;undo:[1024]f32;ops:[192]GDOp;args:[4608]GDArg;
+    before:=[6]int.[1,2,3,4,5,6];block:=[4]int.[7,8,9,5];
+    gv_write_rows(s,spec[..],0,before[..]);gv_write_rows(s,never[..],0,before[..]);
+    saved:=gv_save(s,p,6,4,ops[..],args[..]);gv_run_copies(ops[..],args[..],saved.ops,spec[..],undo[..]);
+    gv_write_rows(s,spec[..],6,block[..]);
+    put:=gv_restore(s,p,6,4,b.kept,ops[..],args[..]);gv_run_copies(ops[..],args[..],put.ops,spec[..],undo[..]);
+    gv_write_rows(s,never[..],6,block[0..<b.kept]);
+    same:=true;for i:0..<2560 {if spec[i]!=never[i] {same=false;}}
+    print("position 6, 4 rows: % copies saved, % put back; cache equals never having drafted: %\n",saved.ops,put.ops,same);
+    // The measured rule on the RTX 4080.
+    base:=SG_R1_BASE;spec_runs:=SG_R1_SPEC;d:=sg_decide(SG_R1_SAME,base[..],spec_runs[..]);
+    print("RTX 4080, k=%: target-only mean % ns, speculative mean % ns (% IDs a run)\n",SG_R1_K,d.base.mean,d.spec.mean,SG_R1_IDS);
+    print("tokens/s: target-only %, speculative %\n",cast(f64)SG_R1_IDS*1000000000/d.base.mean,cast(f64)SG_R1_IDS*1000000000/d.spec.mean);
+    print("acceptance: % of % drafts; saving % of the target-only time, se % ns\n",SG_R1_ACCEPTED,SG_R1_DRAFTED,d.gain,d.se);
+    print("speculation: % (%); enabled: %\n",sg_verdict_name(d.verdict),sg_reason_name(d.reason),sg_enabled(d));
+}
+// book:end example

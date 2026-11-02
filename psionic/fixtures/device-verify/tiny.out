@@ -1,0 +1,11 @@
+tiny model, CPU: window 2, so k=2 is refused (k + 1 > window)
+prompt 1 3, n-gram drafts: ids 1 5 10 7 5 10; blocks=2 accepted=1; same as target-only: yes; caches after rollback equal target-only: 1 of 1
+prompt 1 3, oracle drafts: ids 1 5 10 7 5 10; blocks=3 accepted=3; same as target-only: yes; caches after rollback equal target-only: 0 of 0
+prompt 1 3, wrong drafts: ids 1 5 10 7 5 10; blocks=5 accepted=0; same as target-only: yes; caches after rollback equal target-only: 4 of 4
+prompt 7 2, n-gram drafts: ids 15 8 0 15 8 0; blocks=1 accepted=1; same as target-only: yes; caches after rollback equal target-only: 0 of 0
+prompt 7 2, oracle drafts: ids 15 8 0 15 8 0; blocks=3 accepted=3; same as target-only: yes; caches after rollback equal target-only: 0 of 0
+prompt 7 2, wrong drafts: ids 15 8 0 15 8 0; blocks=5 accepted=0; same as target-only: yes; caches after rollback equal target-only: 4 of 4
+prompt 3 3, n-gram drafts: ids 1 5 10 7 5 10; blocks=1 accepted=1; same as target-only: yes; caches after rollback equal target-only: 0 of 0
+prompt 3 3, oracle drafts: ids 1 5 10 7 5 10; blocks=3 accepted=3; same as target-only: yes; caches after rollback equal target-only: 0 of 0
+prompt 3 3, wrong drafts: ids 1 5 10 7 5 10; blocks=5 accepted=0; same as target-only: yes; caches after rollback equal target-only: 4 of 4
+tiny verification checks pass

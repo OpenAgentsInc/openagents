@@ -167,6 +167,23 @@ PcStatus pg_mma(PgSession *s,const char *source,size_t bytes,int64_t slices,coax
         for(int64_t i=gd_kernel_count();i<gd_kinds();i++){coax_string name=gd_kernel_name(i);char label[128];if(name.count<1 || name.count>=127)return PC_ARGUMENT;memcpy(label,name.data,(size_t)name.count);label[name.count]=0;code=pc_kernel(s->mma_module,label,&s->mma_kernels[i-gd_kernel_count()]);if(code)return code;}}
     s->plan=p;return PC_OK;
 }
+/* Chapter 76: speculative verification. Coax builds every program (copies
+   between the cache and the undo store, one-row readouts) and decides every
+   control word; these three calls only execute, allocate and upload. */
+PcStatus pg_run(PgSession *s,const coax_t_GDOp *ops,const coax_t_GDArg *args,coax_t_GDProgram p){
+    if(s->poisoned)return PC_DRIVER;if(p.status || p.ops<0 || p.ops>s->plan.max_ops || p.args<0 || p.args>s->plan.max_args)return PC_ARGUMENT;
+    memcpy(s->ops,ops,(size_t)p.ops*sizeof *s->ops);memcpy(s->args,args,(size_t)p.args*sizeof *s->args);return pg_execute(s,p);
+}
+PcStatus pg_adopt(PgSession *s,coax_t_GDPlan plan){
+    if(s->poisoned)return PC_DRIVER;if(plan.status || plan.upload.e[0]!=s->plan.upload.e[0])return PC_ARGUMENT;
+    for(int i=1;i<16;i++){if(s->buffers[i] && plan.upload.e[i]!=s->plan.upload.e[i])return PC_ARGUMENT;}
+    for(int i=1;i<16;i++){if(!s->buffers[i] && plan.upload.e[i]>0){PcStatus code=pg_allocate(s,i,(size_t)plan.upload.e[i]);if(code)return code;}}
+    s->plan=plan;return PC_OK;
+}
+PcStatus pg_write(PgSession *s,int slot,const void *data,size_t bytes){
+    if(s->poisoned)return PC_DRIVER;if(slot<0 || slot>=gd_buffer_count() || bytes>(size_t)(s->plan.counts.e[slot]*s->plan.width.e[slot]))return PC_ARGUMENT;
+    PcStatus code=pg_upload(s,s->buffers[16+slot],data,bytes);if(code){s->poisoned=1;return code;}return pg_wait(s);
+}
 coax_t_GDPlan pg_plan(const PgSession *s){return s->plan;}
 coax_t_GShape pg_shape(const PgSession *s){return s->shape;}
 const char *pg_error(const PgSession *s){return s->error;}

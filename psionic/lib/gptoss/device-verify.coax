@@ -1,0 +1,319 @@
+// Chapter 76: verify a draft block in one batched device pass. The pending
+// token and k drafted IDs go through chapter 67's batched prefill on the
+// existing cache; one readout per row gives the target's greedy choice there;
+// the longest matching prefix plus one correction (or bonus) is committed;
+// only the speculative cache slots are put back. The host executes these
+// programs and uploads what Coax decides; it decides nothing itself.
+#load "device-prefill.coax";
+#load "speculation.coax";
+#load "../../tests/device-verify-checks.coax";  // the checks' host-array cache
+#authority;
+
+// At most 16 drafts (chapter 75's block limit), so at most 17 rows.
+GV_DRAFTS :: 16;
+// A block's outcome: drafts accepted, IDs committed (written), cache
+// positions kept, the last committed ID (the next pending token) and the stop
+// code gk_choose would have set for it (0 none, 1 return, 2 call, 3 limit).
+GVBlock :: struct {status:GStatus;accepted:int;written:int;kept:int;token:int;stop:int;}
+
+// book:begin admit
+// A block of k drafts feeds k + 1 rows in one prefill chunk. Every row must
+// still be in the sliding ring afterwards, so k + 1 may not exceed the window:
+// otherwise an accepted row's keys would already be overwritten by a later,
+// rejected row of the same chunk.
+gv_admit :: (s:GShape,p:GDPlan,k:int)->GStatus #export_c {
+    if p.status!=GStatus.ok || !g_shape(s) {return GStatus.shape;}
+    if k<1 || k>GV_DRAFTS || k+1>s.window || k+1>p.batch {return GStatus.shape;}
+    return GStatus.ok;
+}
+// The undo store: one slot of keys and values per layer per row, in upload
+// slot 1. A refusal keeps the caller's plan unusable rather than half set.
+gv_with_undo :: (p:GDPlan,s:GShape,k:int)->GDPlan #export_c {
+    if p.status!=GStatus.ok {return GDPlan.{status=p.status};}
+    st:=gv_admit(s,p,k);if st!=GStatus.ok {return GDPlan.{status=st};}
+    r:=p;r.upload[1]=s.layers*(k+1)*2*s.kv_heads*64*4;return r;
+}
+// book:end admit
+gv_rows :: (p:GDPlan,s:GShape)->int {return p.upload[1]/(s.layers*2*s.kv_heads*64*4);}
+
+#test "admission: k from 1 to 16 and k + 1 within the sliding window" {
+    o:=g_original_shape(0,2048);large:=G20_ARTIFACTS;p:=gd_plan(o,large[..],17179869184,17179869184);
+    #assert gv_admit(o,p,1)==GStatus.ok && gv_admit(o,p,16)==GStatus.ok && gv_admit(o,p,0)==GStatus.shape && gv_admit(o,p,17)==GStatus.shape;
+    // 24 layers, 5 rows, 1,024 floats a row: 491,520 bytes.
+    u:=gv_with_undo(p,o,4);#assert u.status==GStatus.ok && u.upload[1]==24*5*1024*4 && u.upload[0]==p.upload[0] && gv_rows(u,o)==5;
+    #assert gv_with_undo(p,o,17).status==GStatus.shape && gv_with_undo(GDPlan.{status=GStatus.budget},o,4).status==GStatus.budget;
+    // The tiny model's window is 2: one draft at most.
+    pins:=GOWN_ARTIFACTS;t:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);
+    #assert gv_admit(GT_SHAPE,t,1)==GStatus.ok && gv_admit(GT_SHAPE,t,2)==GStatus.shape;
+    // The chunk bound: a 16-position context has a batch of 16, so 15 drafts
+    // pass the window of 16 but 16 do not fit the chunk.
+    w:=GT_SHAPE;w.window=32;w.capacity=16;b:=gd_plan(w,pins[..],1000000000,1000000000);#assert b.batch==16;
+    #assert gv_admit(w,b,15)==GStatus.ok && gv_admit(w,b,16)==GStatus.shape;
+    bad:=GT_SHAPE;bad.layers=0;#assert gv_admit(bad,t,1)==GStatus.shape;
+}
+
+// book:begin draft
+// Chapter 75's prompt n-gram draft, extended to a block: guess one ID, append
+// it to a scratch copy of the history, guess again. It stops at k IDs or when
+// no suffix matches. Returns the number drafted, or -1 when refused.
+gv_draft :: (history:[]int,width:int,k:int,scratch:[]int,out:[]int)->int #export_c {
+    if !gx_history_size(history.count,width) || k<1 || k>GV_DRAFTS || out.count<k || scratch.count<history.count+k {return -1;}
+    for i:0..<history.count {scratch[i]=history[i];}
+    n:=0;while n<k {next:=gx_ngram(scratch[0..<history.count+n],width);if next<0 {break;}scratch[history.count+n]=next;out[n]=next;n+=1;}
+    return n;
+}
+// Drafts that fit: the block's k + 1 rows must end inside the context.
+gv_room :: (s:GShape,position:int,k:int)->int #export_c {
+    r:=0;while r<k && position+r+1<s.capacity {r+=1;}return r;
+}
+// book:end draft
+
+#test "a block draft copies the continuation of the longest recent match" {
+    h:=[8]int.[5,6,7,8,9,5,6,7];scratch:[12]int;out:[4]int;
+    // Suffix 5 6 7 matched at 0; the continuation is 8 9 5 6, then 7 8...
+    #assert gv_draft(h[..],3,4,scratch[..],out[..])==4 && out[0]==8 && out[1]==9 && out[2]==5 && out[3]==6;
+    n:=[3]int.[1,2,3];#assert gv_draft(n[..],2,3,scratch[..],out[..])==0;
+    // Suffix 4 1 matches at 0, then 1 4 at 1, then 4 1 at 2.
+    m:=[4]int.[4,1,4,1];#assert gv_draft(m[..],2,3,scratch[..],out[..])==3 && out[0]==4 && out[1]==1 && out[2]==4;
+    #assert gv_draft(h[..],3,0,scratch[..],out[..])== -1 && gv_draft(h[..],3,5,scratch[..],out[..])== -1 && gv_draft(h[..],3,4,scratch[0..<11],out[..])== -1;
+    #assert gv_draft(h[0..<1],3,1,scratch[..],out[..])== -1 && gv_draft(h[..],3,17,scratch[..],out[..])== -1;
+    // Exact edges: one draft, sixteen drafts, a match only at the first ID, a draft of ID 0.
+    f:[32]int;a:=[3]int.[3,9,3];#assert gv_draft(a[..],2,1,f[..],out[..])==1 && out[0]==9;
+    z:=[3]int.[5,0,5];#assert gv_draft(z[..],1,2,f[..],out[..])==2 && out[0]==0 && out[1]==5;
+    sixteen:[16]int;#assert gv_draft(h[..],3,16,f[0..<24],sixteen[..])==16 && sixteen[15]==8 && gv_draft(h[..],3,17,f[0..<25],f[0..<17])== -1;
+    // Capacity 8: at position 5 two more rows fit, so at most two drafts.
+    #assert gv_room(GT_SHAPE,5,4)==2 && gv_room(GT_SHAPE,2,3)==3 && gv_room(GT_SHAPE,4,4)==3 && gv_room(GT_SHAPE,2,4)==4 && gv_room(GT_SHAPE,3,4)==4 && gv_room(GT_SHAPE,7,4)==0 && gv_room(GT_SHAPE,8,4)==0;
+}
+
+// book:begin commit
+// Rows were read 0..rows-1: row i's pick is the target's greedy ID after the
+// pending token and drafts 0..i-1. Drafts 0..a-1 matched; the committed IDs
+// are those drafts and then pick a (a correction, or the bonus when all k
+// matched). Commitment stops at the first stop ID or the limit, exactly as
+// gk_choose decides one ID at a time. `count` IDs were committed before.
+gv_commit :: (vocab:int,draft:[]int,picks:[]int,rows:int,count:int,limit:int,out:[]int)->GVBlock #export_c {
+    k:=draft.count;if k<1 || k>GV_DRAFTS || vocab<1 || count<1 || count>=limit {return GVBlock.{status=GStatus.shape};}
+    if picks.count<rows || out.count<k+1 {return GVBlock.{status=GStatus.capacity};}
+    for d:draft {if d<0 || d>=vocab {return GVBlock.{status=GStatus.token};}}
+    a:=0;while a<k && a<rows && draft[a]==picks[a] {a+=1;}
+    if rows!=a+1 {return GVBlock.{status=GStatus.state};}
+    for i:0..<rows {if picks[i]<0 || picks[i]>=vocab {return GVBlock.{status=GStatus.token};}}
+    b:=GVBlock.{accepted=a};total:=count;
+    for i:0..<a+1 {
+        id:=ifx i<a then draft[i] else picks[a];
+        out[i]=id;b.written+=1;total+=1;b.token=id;
+        if id==200002 {b.stop=1;}else if id==200012 {b.stop=2;}else if total>=limit {b.stop=3;}
+        if b.stop!=0 {break;}
+    }
+    b.kept=b.written;return b;
+}
+// More rows to read: row `row` matched its draft and a later row exists.
+gv_more :: (draft:[]int,picks:[]int,row:int)->bool #export_c {return row>=0 && row<draft.count && draft[row]==picks[row];}
+// book:end commit
+
+#test "a block commits the matching prefix and one target ID, by hand" {
+    d:=[4]int.[7,8,9,10];out:[5]int;
+    // Rows 0 and 1 match, row 2 picks 4: commit 7 8 4, keep 3 rows.
+    p:=[3]int.[7,8,4];b:=gv_commit(16,d[..],p[..],3,1,100,out[..]);
+    #assert b.status==GStatus.ok && b.accepted==2 && b.written==3 && b.kept==3 && b.token==4 && b.stop==0 && out[0]==7 && out[1]==8 && out[2]==4;
+    // All four match: the fifth row's pick is the bonus.
+    q:=[5]int.[7,8,9,10,11];b=gv_commit(16,d[..],q[..],5,1,100,out[..]);#assert b.accepted==4 && b.written==5 && out[4]==11 && b.token==11;
+    // The first draft is wrong: commit only the correction, keep one row.
+    r:=[1]int.[3];b=gv_commit(16,d[..],r[..],1,1,100,out[..]);#assert b.accepted==0 && b.written==1 && b.kept==1 && out[0]==3;
+    // The limit: 98 committed, limit 100: two more, and the second stops.
+    b=gv_commit(16,d[..],q[..],5,98,100,out[..]);#assert b.written==2 && b.stop==3 && b.token==8 && b.kept==2;
+    b=gv_commit(16,d[..],q[..],5,98,99,out[..]);#assert b.written==1 && b.stop==3;
+    // Stop IDs end the block where they are committed.
+    s:=[3]int.[5,200002,6];t:=[3]int.[5,200002,6];big:[4]int;b=gv_commit(201088,s[..],t[..],3,1,100,big[..]);
+    #assert b.status==GStatus.state;
+    u:=[4]int.[5,200002,6,1];b=gv_commit(201088,s[..],u[..],4,1,100,big[..]);#assert b.written==2 && b.stop==1 && b.token==200002 && b.kept==2;
+    v:=[2]int.[5,200012];b=gv_commit(201088,s[..],v[..],2,1,100,big[..]);#assert b.written==2 && b.stop==2 && b.accepted==1;
+    // Refusals: rows that do not end at the first mismatch, bad IDs, sizes.
+    #assert gv_commit(16,d[..],p[..],2,1,100,out[..]).status==GStatus.state;
+    #assert gv_commit(16,d[..],q[..],4,1,100,out[..]).status==GStatus.state;
+    w:=[3]int.[7,8,16];#assert gv_commit(16,d[..],w[..],3,1,100,out[..]).status==GStatus.token;
+    w[2]= -1;#assert gv_commit(16,d[..],w[..],3,1,100,out[..]).status==GStatus.token;
+    e:=[4]int.[7,8,9,16];#assert gv_commit(16,e[..],p[..],3,1,100,out[..]).status==GStatus.token;e[3]= -1;#assert gv_commit(16,e[..],p[..],3,1,100,out[..]).status==GStatus.token;
+    #assert gv_commit(16,d[0..<0],p[..],1,1,100,out[..]).status==GStatus.shape && gv_commit(0,d[..],p[..],3,1,100,out[..]).status==GStatus.shape;
+    #assert gv_commit(16,d[..],p[..],3,0,100,out[..]).status==GStatus.shape && gv_commit(16,d[..],p[..],3,100,100,out[..]).status==GStatus.shape && gv_commit(16,d[..],p[..],3,1,0,out[..]).status==GStatus.shape;
+    #assert gv_commit(16,d[..],p[..],3,1,100,out[0..<4]).status==GStatus.capacity && gv_commit(16,d[..],p[0..<2],3,1,100,out[..]).status==GStatus.capacity;
+    many:[17]int;#assert gv_commit(16,many[..],many[..],1,1,100,many[..]).status==GStatus.shape;
+    // Exact edges: a two-row read with exactly two picks, a bad correction,
+    // one draft, a vocabulary of one, one ID committed so far, a limit of two.
+    #assert gv_commit(16,d[..],p[0..<2],2,1,100,out[..]).status==GStatus.state;
+    bad:=[1]int.[16];#assert gv_commit(16,d[..],bad[..],1,1,100,out[..]).status==GStatus.token;
+    one:=[1]int.[3];two:=[2]int.[3,5];b=gv_commit(16,one[..],two[..],2,1,100,out[..]);#assert b.status==GStatus.ok && b.written==2 && out[1]==5;
+    zero:=[2]int.[0,0];b=gv_commit(1,zero[0..<1],zero[..],2,1,100,out[..]);#assert b.status==GStatus.ok && b.written==2;
+    b=gv_commit(16,one[..],two[..],2,1,2,out[..]);#assert b.status==GStatus.ok && b.written==1 && b.stop==3;
+    #assert gv_commit(16,many[0..<16],many[..],17,1,100,many[..]).status==GStatus.ok;
+    #assert gv_more(d[..],p[..],0) && gv_more(d[..],p[..],1) && !gv_more(d[..],p[..],2) && !gv_more(d[..],q[..],4) && !gv_more(d[..],q[..],-1) && gv_more(d[..],q[..],3);
+}
+// The independent check: chapter 75's block verifier in greedy mode, on
+// one-hot target rows whose maxima are the picks, commits the same IDs.
+#forall "greedy block commits equal chapter 75's gx_block" k:1..<6,seed:0..<40 {
+    vocab:=5;h:=seed*7919+k;draft:[5]int;picks:[6]int;
+    for i:0..<k {h=(h*1103515245+12345)%2147483648;draft[i]=h/65536%vocab;}
+    for i:0..<k+1 {h=(h*1103515245+12345)%2147483648;picks[i]=ifx h/65536%3==0 then (draft[i%k]+1)%vocab else draft[i%k];}
+    picks[k]=h/131072%vocab;
+    target:[30]f64;q:[25]f64;u:[11]f64;
+    for i:0..<k+1 {target[i*vocab+picks[i]]=1;}for i:0..<k {q[i*vocab+draft[i]]=1;}
+    out:[6]int;stage:[6]int;res:[5]f64;scr:[5]f64;
+    g:=gx_block(vocab,target[0..<(k+1)*vocab],q[0..<k*vocab],draft[0..<k],u[0..<2*k+1],true,out[..],stage[..],res[..],scr[..],false);
+    rows:=0;while rows<k && gv_more(draft[0..<k],picks[..],rows) {rows+=1;}rows+=1;
+    mine:[6]int;b:=gv_commit(vocab,draft[0..<k],picks[..],rows,1,1000,mine[..]);
+    #assert g.status==GStatus.ok && b.status==GStatus.ok && g.accepted==b.accepted && g.written==b.written && g.bonus==(b.accepted==k);
+    for i:0..<b.written {#assert out[i]==mine[i];}
+}
+
+// book:begin undo
+// Copy rows of keys and values between the cache (plan buffer 16) and the
+// undo store (upload slot 1) with gk_copy (kind 39). Row i of the block sits
+// at cache slot (position + i) mod capacity of each layer; the rows wrap at
+// most once, so each layer needs at most two copies. `back` copies undo to
+// cache for rows first..<last; otherwise cache to undo.
+gv_copies :: (s:GShape,p:GDPlan,position:int,first:int,last:int,back:bool,ops:[]GDOp,args:[]GDArg)->GDProgram {
+    u:=gv_rows(p,s);
+    if p.status!=GStatus.ok || u<2 {return GDProgram.{status=GStatus.shape};}
+    if position<0 || first<0 || first>last || last>u || position+last>s.capacity {return GDProgram.{status=GStatus.state};}
+    w:=GDWriter.{plan=p,ops=ops,args=args};row:=2*s.kv_heads*64;
+    for layer:0..<s.layers {
+        cap:=g_layer_capacity(s,layer);i:=first;
+        while i<last {
+            slot:=(position+i)%cap;n:=1;while i+n<last && slot+n<cap {n+=1;}
+            cache:=gd_slice(p,16,g_cache_base(s,layer)+slot*row,n*row);undo:=GDRef.{buffer=1,offset=(layer*u+i)*row*4,count=n*row,elem=4};
+            if back {w=gd_emit(w,39,n*row,0,2,GDScalars.{},GDViews.{a=undo,b=cache});}else {w=gd_emit(w,39,n*row,0,2,GDScalars.{},GDViews.{a=cache,b=undo});}
+            i+=n;
+        }
+    }
+    return w.result;
+}
+// Before the block: save the slots its rows will overwrite.
+gv_save :: (s:GShape,p:GDPlan,position:int,rows:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    if rows<1 {return GDProgram.{status=GStatus.state};}return gv_copies(s,p,position,0,rows,false,ops,args);
+}
+// After it: put back only the rows past the kept ones. Committed rows stay.
+gv_restore :: (s:GShape,p:GDPlan,position:int,rows:int,kept:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    if kept<1 || kept>rows {return GDProgram.{status=GStatus.state};}return gv_copies(s,p,position,kept,rows,true,ops,args);
+}
+// book:end undo
+
+// book:begin readout
+// Row `row` of the last prefill chunk: final norm, unembedding, the guarded
+// flags and the greedy choice into control[1], the same launches as the tail
+// of gd_batch_program for its last row, without publishing or advancing.
+gv_readout :: (s:GShape,p:GDPlan,params:[]GDParam,row:int,rows:int,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    if p.status!=GStatus.ok || !g_shape(s) {return GDProgram.{status=GStatus.shape};}
+    if rows<1 || rows>p.batch || row<0 || row>=rows || limit<1 || limit>s.capacity {return GDProgram.{status=GStatus.state};}
+    if params.count!=3+15*s.layers || ops.count<p.max_ops || args.count<p.max_args {return GDProgram.{status=GStatus.capacity};}
+    w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;control:=gd_all(p,24);
+    w=gd_emit(w,1,p.flags,0,1,GDScalars.{},GDViews.{a=gd_all(p,22)});
+    w=gd_norm(w,d,gd_weight(params,1,2),gd_slice(p,28,row*d,d),gd_all(p,1));
+    w=gd_bf(w,s.vocab,d,gd_weight(params,2,8),GDRef.{elem=2},gd_all(p,1),gd_all(p,17));
+    summaries:=(w.result.flags+255)/256;
+    w=gd_emit(w,18,summaries,0,2,GDScalars.{},GDViews.{a=gd_slice(p,22,0,w.result.flags),b=gd_slice(p,23,0,summaries)});
+    w=gd_emit(w,19,1,0,2,GDScalars.{},GDViews.{a=gd_slice(p,23,0,summaries),b=control});
+    w=gd_emit(w,22,p.counts[27],0,2,GDScalars.{},GDViews.{a=gd_all(p,17),b=gd_all(p,27)});
+    return gd_emit(w,23,1,1,3,GDScalars.{a=limit},GDViews.{a=gd_all(p,17),b=gd_all(p,27),c=control}).result;
+}
+// book:end readout
+
+// book:begin control
+// After a block: the device's control words say what a target-only run
+// would say after committing the same IDs. Refused while control reports a
+// failure, which then stays visible.
+gv_control :: (control:[]int,position:int,b:GVBlock,count:int)->GStatus #export_c {
+    if control.count<8 || b.status!=GStatus.ok || b.written<1 || position<0 || count<1 {return GStatus.shape;}
+    if control[0]!=0 {return GStatus.state;}
+    control[1]=b.token;control[2]=position+b.kept;control[3]=count+b.written;control[4]=b.stop;return GStatus.ok;
+}
+// book:end control
+
+#test "control words after a block" {
+    c:=[8]int.[0,9,45,3,0,0,0,0];b:=GVBlock.{accepted=2,written=3,kept=3,token=4};
+    #assert gv_control(c[..],40,b,2)==GStatus.ok && c[1]==4 && c[2]==43 && c[3]==5 && c[4]==0;
+    b.stop=3;#assert gv_control(c[..],40,b,2)==GStatus.ok && c[4]==3;
+    c[0]=5;#assert gv_control(c[..],40,b,2)==GStatus.state && c[2]==43;c[0]=0;
+    #assert gv_control(c[0..<7],40,b,2)==GStatus.shape && gv_control(c[..],-1,b,2)==GStatus.shape && gv_control(c[..],40,b,0)==GStatus.shape;
+    one:=GVBlock.{written=1,kept=1,token=2};#assert gv_control(c[..],0,one,1)==GStatus.ok && c[2]==1 && c[3]==2 && c[1]==2;
+    b.written=0;#assert gv_control(c[..],40,b,2)==GStatus.shape;b.written=3;b.status=GStatus.state;#assert gv_control(c[..],40,b,2)==GStatus.shape;
+}
+
+#test "the copy programs, worked by hand on the tiny shape" {
+    pins:=GOWN_ARTIFACTS;s:=GT_SHAPE;s.window=4;p:=gv_with_undo(gd_plan(s,pins[..],1000000000,1000000000),s,3);#assert p.status==GStatus.ok && gv_rows(p,s)==4;
+    ops:[192]GDOp;args:[4608]GDArg;
+    // Position 6, four rows: layer 0 (ring of 4) slots 2,3 then 0,1; layer 1
+    // (capacity 8) slots 6,7 then 0,1 would pass the end of context: refused.
+    #assert gv_save(s,p,6,4,ops[..],args[..]).status==GStatus.state;
+    r:=gv_save(s,p,3,4,ops[..],args[..]);#assert r.status==GStatus.ok && r.ops==3;
+    // Layer 0: slots 3, then 0..2. Layer 1: slots 3..6 in one copy.
+    #assert ops[0].items==128 && ops[1].items==384 && ops[2].items==512 && ops[0].kind==39;
+    #assert args[ops[0].first].ref.offset==3*128*4 && args[ops[0].first+1].ref.buffer==1 && args[ops[0].first+1].ref.offset==0;
+    #assert args[ops[1].first].ref.offset==0 && args[ops[1].first+1].ref.offset==128*4;
+    #assert args[ops[2].first].ref.offset==(512+3*128)*4 && args[ops[2].first+1].ref.offset==4*128*4 && args[ops[2].first].ref.buffer==32;
+    // Restore rows 2 and 3 only: layer 0 slots 1,2; layer 1 slots 5,6.
+    r=gv_restore(s,p,3,4,2,ops[..],args[..]);#assert r.status==GStatus.ok && r.ops==2 && ops[0].items==256 && ops[1].items==256;
+    #assert args[ops[0].first].ref.buffer==1 && args[ops[0].first].ref.offset==2*128*4 && args[ops[0].first+1].ref.offset==128*4;
+    #assert args[ops[1].first].ref.offset==(4+2)*128*4 && args[ops[1].first+1].ref.offset==(512+5*128)*4;
+    #assert gv_restore(s,p,3,4,4,ops[..],args[..]).ops==0 && gv_restore(s,p,3,4,0,ops[..],args[..]).status==GStatus.state && gv_restore(s,p,3,4,5,ops[..],args[..]).status==GStatus.state;
+    #assert gv_save(s,p,3,5,ops[..],args[..]).status==GStatus.state && gv_save(s,p,3,0,ops[..],args[..]).status==GStatus.state && gv_save(s,p,-1,2,ops[..],args[..]).status==GStatus.state;
+    #assert gv_save(s,gd_plan(s,pins[..],1000000000,1000000000),3,2,ops[..],args[..]).status==GStatus.shape;
+    #assert gv_save(s,GDPlan.{status=GStatus.budget},3,2,ops[..],args[..]).status==GStatus.shape;
+    r=gv_save(s,p,4,1,ops[..],args[..]);#assert r.status==GStatus.ok && r.ops==2 && ops[0].items==128;
+    #assert gv_save(s,p,4,4,ops[..],args[..]).status==GStatus.ok && gv_save(s,p,3,4,ops[0..<2],args[..]).status==GStatus.capacity;
+}
+// The rollback claim on host arrays: save, write a whole block, restore the
+// rows past `kept`. The cache then equals a cache that only ever received
+// the kept rows, byte for byte, including ring slots the block overwrote.
+#forall "rollback equals never having drafted" position:0..<12,k:1..<4,kept:1..<5 #steps 400000000 {
+    if kept<=k+1 {
+        pins:=GOWN_ARTIFACTS;s:=GT_SHAPE;s.window=4;s.capacity=16;p:=gv_with_undo(gd_plan(s,pins[..],1000000000,1000000000),s,k);
+        n:=g_cache_base(s,s.layers);spec:[2560]f32;never:[2560]f32;undo:[1024]f32;#assert n==2560;
+        history:[16]int;for i:0..<position {history[i]=(i*5+3)%16;}
+        gv_write_rows(s,spec[..],0,history[0..<position]);gv_write_rows(s,never[..],0,history[0..<position]);
+        block:[5]int;for i:0..<k+1 {block[i]=(position+i)*3%16;}
+        ops:[192]GDOp;args:[4608]GDArg;
+        r:=gv_save(s,p,position,k+1,ops[..],args[..]);#assert r.status==GStatus.ok;gv_run_copies(ops[..],args[..],r.ops,spec[..],undo[..]);
+        gv_write_rows(s,spec[..],position,block[0..<k+1]);
+        r=gv_restore(s,p,position,k+1,kept,ops[..],args[..]);#assert r.status==GStatus.ok;gv_run_copies(ops[..],args[..],r.ops,spec[..],undo[..]);
+        gv_write_rows(s,never[..],position,block[0..<kept]);
+        for i:0..<n {#assert spec[i]==never[i];}
+        // Restoring nothing would leave a ring slot the window still needs
+        // changed whenever a rejected row wrapped onto a live one.
+        if kept<k+1 && position+k>=4 {
+            bad:[2560]f32;gv_write_rows(s,bad[..],0,history[0..<position]);gv_write_rows(s,bad[..],position,block[0..<k+1]);
+            same:=true;for i:0..<4*128 {if bad[i]!=never[i] {same=false;}}#assert !same;
+        }
+    }
+}
+
+#test "a readout program reads one row and chooses into control" {
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);ops:[192]GDOp;args:[4608]GDArg;
+    r:=gv_readout(GT_SHAPE,p,params[..],1,2,4,ops[..],args[..]);#assert r.status==GStatus.ok && r.ops==9 && r.flags==32+16;
+    kinds:=[9]int.[1,3,4,5,6,18,19,22,23];for i:0..<9 {#assert ops[i].kind==kinds[i] && ops[i].block==gd_block(ops[i].kind);for j:0..<ops[i].count {a:=args[ops[i].first+j];if a.view {#assert gd_ref_fits(p,a.ref);}}}
+    // The norm reads row 1 of the chunk's residual (plan buffer 28).
+    #assert gd_same_ref(args[ops[1].first+1].ref,gd_slice(p,28,32,32)) && args[ops[8].first].value==4 && ops[5].items==1 && ops[3].items==16*16;
+    #assert gd_same_ref(args[ops[8].first+3].ref,gd_all(p,24)) && gd_same_ref(args[ops[7].first+1].ref,gd_all(p,27)) && gd_same_ref(args[ops[7].first].ref,gd_all(p,17));
+    #assert gd_same_ref(args[ops[5].first].ref,gd_slice(p,22,0,48)) && gd_same_ref(args[ops[6].first+1].ref,gd_all(p,24)) && ops[0].items==p.flags;
+    #assert gv_readout(GT_SHAPE,p,params[..],2,2,4,ops[..],args[..]).status==GStatus.state && gv_readout(GT_SHAPE,p,params[..],-1,2,4,ops[..],args[..]).status==GStatus.state;
+    #assert gv_readout(GT_SHAPE,p,params[..],0,9,4,ops[..],args[..]).status==GStatus.state && gv_readout(GT_SHAPE,p,params[..],0,0,4,ops[..],args[..]).status==GStatus.state;
+    #assert gv_readout(GT_SHAPE,p,params[..],0,1,0,ops[..],args[..]).status==GStatus.state && gv_readout(GT_SHAPE,p,params[..],0,1,9,ops[..],args[..]).status==GStatus.state;
+    #assert gv_readout(GT_SHAPE,p,params[..],0,8,8,ops[..],args[..]).status==GStatus.ok && gv_readout(GT_SHAPE,p,params[..],0,1,1,ops[..],args[..]).status==GStatus.ok;
+    // The flag summaries round up: 32 + 224 = 256 flags make one summary,
+    // 32 + 481 = 513 make three.
+    for v:0..<2 {wide:=GT_SHAPE;wide.vocab=ifx v==0 then 224 else 481;q:=gd_plan(wide,pins[..],1000000000,1000000000);#assert q.status==GStatus.ok;
+        r=gv_readout(wide,q,params[..],0,1,4,ops[..],args[..]);#assert r.status==GStatus.ok && ops[5].kind==18 && ops[5].items==ifx v==0 then 1 else 3;}
+    // Independent check: the last row's readout is gd_batch_program's own
+    // tail (clear, norm, unembedding, flags, argmax, choose), less its publish
+    // and advance, and with the choice made from the unpublished logits
+    // (buffer 17) instead of the published copy (buffer 18).
+    full:[192]GDOp;fa:[4608]GDArg;f:=gd_batch_program(GT_SHAPE,p,params[..],1,0,3,true,4,full[..],fa[..]);#assert f.status==GStatus.ok;
+    r=gv_readout(GT_SHAPE,p,params[..],2,3,4,ops[..],args[..]);#assert r.status==GStatus.ok && r.ops==9;
+    tail:=f.ops-11;#assert full[tail].kind==1 && full[tail+7].kind==41 && full[tail+8].kind==42;
+    for i:0..<9 {j:=tail+i;if i>=7 {j+=2;}o:=ops[i];e:=full[j];#assert o.kind==e.kind && o.items==e.items && o.count==e.count && o.block==e.block;
+        for x:0..<o.count {a:=args[o.first+x];want:=fa[e.first+x];#assert a.view==want.view && a.value==want.value;
+            if a.view {if gd_same_ref(want.ref,gd_all(p,18)) {#assert gd_same_ref(a.ref,gd_all(p,17));}else {#assert gd_same_ref(a.ref,want.ref);}}}}
+    #assert gv_readout(GT_SHAPE,p,params[0..<32],0,1,4,ops[..],args[..]).status==GStatus.capacity && gv_readout(GT_SHAPE,p,params[..],0,1,4,ops[0..<191],args[..]).status==GStatus.capacity && gv_readout(GT_SHAPE,p,params[..],0,1,4,ops[..],args[0..<4607]).status==GStatus.capacity;
+    #assert gv_readout(GT_SHAPE,GDPlan.{status=GStatus.budget},params[..],0,1,4,ops[..],args[..]).status==GStatus.shape;
+    bad:=GT_SHAPE;bad.layers=0;#assert gv_readout(bad,p,params[..],0,1,4,ops[..],args[..]).status==GStatus.shape;
+}

@@ -1,0 +1,20 @@
+// Chapter 76's check helpers, loaded by psionic/lib/gptoss/device-verify.coax
+// and owned by its checks: the copy programs executed on host arrays, and
+// what a prefill chunk writes into the cache.
+
+// Execute copy programs on host arrays: buffer 1 is `undo`, buffer 16 is
+// `cache` (offsets in bytes, four per float), the way gk_copy runs per item.
+gv_run_copies :: (ops:[]GDOp,args:[]GDArg,n:int,cache:[]f32,undo:[]f32) {
+    for o:0..<n {op:=ops[o];a:=args[op.first].ref;b:=args[op.first+1].ref;#assert op.kind==39 && op.count==2 && a.count==op.items && b.count==op.items;
+        for item:0..<op.items {
+            v:=ifx a.buffer==1 then undo[a.offset/4+item] else cache[a.offset/4+item];
+            if b.buffer==1 {undo[b.offset/4+item]=v;}else {cache[b.offset/4+item]=v;}
+        }
+    }
+}
+// What a prefill chunk writes: row i's keys and values at slot
+// (position + i) mod capacity, the last `capacity` rows surviving.
+gv_write_rows :: (s:GShape,cache:[]f32,position:int,ids:[]int) {
+    row:=2*s.kv_heads*64;
+    for layer:0..<s.layers {cap:=g_layer_capacity(s,layer);for i:0..<ids.count {slot:=(position+i)%cap;for j:0..<row {cache[g_cache_base(s,layer)+slot*row+j]=cast(f32)(ids[i]*1000+(position+i)*10+layer)+cast(f32)j/256;}}}
+}

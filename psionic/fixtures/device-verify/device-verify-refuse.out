@@ -1,0 +1,15 @@
+20b, k=4: ok
+20b, k=17 drafts: shape
+tiny model, k=2 with a window of 2: shape
+rows 7 8 4 against drafts 7 8 9: ok
+a third row read after the second mismatched: state
+a draft ID outside the vocabulary: token
+a pick outside the vocabulary: token
+restore keeping no rows: state
+save past the end of the context: state
+control words after a flagged readout: state
+measured 10% faster: on (none)
+speculative outputs changed: refused (speculative outputs differ from the target-only outputs)
+five target-only runs, four speculative: refused (run counts differ)
+four runs each: refused (the timings were refused)
+a speculative run of 0 ns: refused (the timings were refused)
