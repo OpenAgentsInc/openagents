@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm, build/gridcrowd.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -110,6 +110,10 @@ watchtower=$!
 "$here/../../coax/web/wasm.sh" "$here/gridcrowd.coax" "$here/gridcrowd-face.c" "$here/build/gridcrowd.wasm" \
   "$m/cast.coax" &
 gridcrowd=$!
+# /demos/speedrun-hud: the Speedrun video's HUD diagrams over the Grid floor, one staged scene each
+# (?stage=ident ... ?stage=end, docs/verse/clips.md), drawn at twice its pixels for clips.
+"$here/../../coax/web/wasm.sh" "$here/speedrunhud.coax" "$here/speedrunhud-face.c" "$here/build/speedrunhud.wasm" &
+speedrunhud=$!
 # /realms/belt-2200: the solar-system strategy game over the engine's orbits (verse/orbit.coax, verse/spacecam.coax; verse/stars.coax in gpu/belt.coax).
 "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
@@ -219,6 +223,7 @@ wait "$deadgears"
 wait "$stair"
 wait "$watchtower"
 wait "$gridcrowd"
+wait "$speedrunhud"
 wait "$belt"
 wait "$orbitleague"
 wait "$everglade"

@@ -60,6 +60,18 @@ realm, a feature being shown off, or a moment a player really had.
   coax/web/tool.sh clip "http://127.0.0.1:8800/demos/grid-crowd?stage=crowd" ~/Desktop/verse-crowd-portal.mp4 --size 1920x1080 --seconds 18 --skip 2
   ```
 
+- **Speedrun HUD** (`/demos/speedrun-hud?stage=NAME`, `apps/openagents-web/speedrunhud.coax`):
+  14 animated HUD diagrams over a dim Grid floor, one for each beat of the
+  speedrun pitch video (`ident`, `years`, `coax`, `wallet`, `compute`, `cost`,
+  `pipeline`, `hub`, `realms`, `identity`, `open`, `timeline`, `rules`,
+  `end`). Frames draw in, labels decipher and settle, and packets travel the
+  links. Everything stays above y=900 so captions fit underneath. Stepped on
+  whole ticks, so the frames are the same every time.
+
+  ```shell
+  coax/web/tool.sh clip "http://127.0.0.1:8800/demos/speedrun-hud?stage=hub" ~/Desktop/hud_hub.mp4 --size 1344x1080 --seconds 8.51
+  ```
+
 ## Next
 
 - Inputs on a timeline in `clip.coax` (key and pointer events at frame

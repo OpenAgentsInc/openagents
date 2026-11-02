@@ -1,0 +1,3 @@
+--vertices speedrunhud_bg_vs,speedrunhud_fx_vs
+--fragments speedrunhud_bg_fs,speedrunhud_fx_fs
+--bindings apps/openagents-web/gpu/speedrunhud.bindings --strip speedrunhud_
