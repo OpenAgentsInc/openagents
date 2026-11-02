@@ -202,6 +202,26 @@
       ]
     },
     {
+      "source": "psionic/examples/minitron.coax",
+      "chapter": "psionic/book/ch058-continue-a-passage.md",
+      "stdout": "psionic/fixtures/minitron.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/minitron-refuse.coax",
+      "chapter": "psionic/book/ch058-continue-a-passage.md",
+      "stdout": "psionic/fixtures/minitron-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/ministral-refuse.coax",
       "chapter": "psionic/book/ch081-execute-ministral-4.md",
       "stdout": "psionic/fixtures/ministral-refuse.out",

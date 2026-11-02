@@ -1,0 +1,42 @@
+// Chapter 58: the pinned Llama-3.1-Minitron-4B-Width-Base inventory, the
+// Llama 3 tokenizer on the prompt, llama3 rotary frequencies, and the
+// two-layer synthetic model run through the key-value cache: full against
+// cached logits, greedy continuation and seeded continuation.
+#import "Basic";
+#load "../lib/minitron.coax";
+
+// book:begin run
+main :: () {
+    r:=lm_inventory(LM_4B,LM_PINNED_MANIFEST);
+    print("checkpoint %: % tensors, % parameters: %\n",cast(string)LM_PINNED_REVISION[0..<8],LM_PINNED_TENSORS,r.written,r.status);
+
+    tb:=LM_TOKEN_BYTES;tr:=LM_TOKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
+    p:=lm_prompt(t,"The capital of France is",ids[..]);print("prompt (% tokens):",p.written);
+    for i:0..<p.written {print(" %",ids[i]);}print("\n");
+    e:=lm_encode(t,"I'll say it: DON'T stop, they're HERE.",ids[..]);print("contractions:");
+    for i:0..<e.written {print(" %",ids[i]);}print("\n");
+
+    f:[64]f64;lm_rope_frequencies(128,f[..]);
+    print("llama3: f28 % (kept) f29 % (blended) f35*8 % (divided)\n",f[28],f[29],f[35]*8);
+
+    s:=ms_tiny();g:LmTinyRig;m:=lm_tiny_model(g.bytes[..],g.head[..],g.layers[..]);c:=lm_tiny_cache(g.keys[..],g.values[..]);
+    tokens:=LM_TINY_TOKENS;hidden:[256]f32;work:[256]f32;full:[16]f32;step:[16]f32;worst:=0.0;
+    for k:0..<10 {
+        d:=lm_decode(s,m,c,k,tokens[k..<k+1],hidden[..],step[..],work[..]);if d.status!=MsStatus.ok {print("refused %\n",d);return;}
+        for i:0..<16 {x:=abs(f64(step[i])-LM_TINY_LOGITS[k*16+i]);if x>worst {worst=x;}}
+    }
+    d:=lm_decode(s,m,c,0,tokens[..],hidden[..],full[..],work[..]);same:=d.status==MsStatus.ok;
+    for i:0..<16 {if full[i]!=step[i] {same=false;}}
+    print("tiny: 10 cached steps against one full pass: identical bits %, within 2e-6 of float64 %\n",same,worst<2e-6);
+
+    st:[16]f64;o:[16]int;tm:[16]int;probs:[16]f64;nostop:[1]int;out:[8]int;
+    k:=LmSampler.{options=NxOptions.{temperature=0},stops=nostop[0..<0],probabilities=probs[..],work=nx_work(st[..],o[..],tm[..])};
+    for run:0..<4 {
+        if run==1 {k.options=NxOptions.{temperature=1};k.seed=CrSeed.{seed=58};}
+        if run==3 {k.seed=CrSeed.{seed=59};}
+        n:=lm_continue(s,m,c,tokens[0..<3],8,k,out[..],hidden[..],step[..],work[..]);
+        print("tiny 1 3 7, temperature % seed %:",k.options.temperature,k.seed.seed);
+        for i:0..<n.written {print(" %",out[i]);}print("\n");
+    }
+}
+// book:end run

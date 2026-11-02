@@ -1,0 +1,554 @@
+// Chapter 58: Llama-3.1-Minitron-4B-Width-Base on the CPU. The pinned
+// checkpoint's inventory, the Llama 3 byte-pair encoding of ASCII text over
+// original ranks, llama3 rotary frequencies with rotate-half pairs, a
+// key-value cache, and greedy and seeded continuation through chapter 53's
+// sampler. The decoder's norm, projections, embedding gather and readout
+// chunk are chapter 81's (ministral.coax); Minitron changes the rotary rule,
+// the pair layout, the untied head and the tokenizer.
+#load "ministral.coax";
+#load "next-token.coax";
+#load "../fixtures/minitron-manifest.coax";
+#load "../fixtures/minitron-tokens.coax";
+#load "../fixtures/minitron-tiny.coax";
+
+// book:begin shape
+// Llama-3.1-Minitron-4B-Width-Base, from config.json: 32 layers of width
+// 3072, 32 query heads and 8 key-value heads of head_dim 128 (read from the
+// config, not 3072 / 32 = 96), a SwiGLU block of 9216 and a 128,256-entry
+// vocabulary with a separate output head.
+LM_4B :: MsShape.{width=3072,layers=32,heads=32,kv_heads=8,head_dim=128,hidden=9216,vocab=128256};
+LM_THETA :: 500000.0;
+LM_FACTOR :: 8.0;
+LM_LOW_FACTOR :: 1.0;
+LM_HIGH_FACTOR :: 4.0;
+LM_ORIGINAL :: 8192.0;
+LM_BOS :: 128000;
+LM_EOS :: 128001;
+LM_POSITIONS_MAX :: 64;
+// book:end shape
+
+// ---- the checkpoint --------------------------------------------------------
+
+// book:begin inventory
+// The expected tensors: e in 0..<3+9*layers, Hugging Face's Llama names.
+LM_LAYER_NAMES :: [9]string.[".input_layernorm.weight",".mlp.down_proj.weight",".mlp.gate_proj.weight",".mlp.up_proj.weight",
+    ".post_attention_layernorm.weight",".self_attn.k_proj.weight",".self_attn.o_proj.weight",".self_attn.q_proj.weight",".self_attn.v_proj.weight"];
+lm_expected :: (s:MsShape,e:int)->MsTensor {
+    if e==0 {return MsTensor.{name="lm_head.weight",layer=-1,rank=2,rows=s.vocab,cols=s.width};}
+    if e==1 {return MsTensor.{name="model.embed_tokens.weight",layer=-1,rank=2,rows=s.vocab,cols=s.width};}
+    if e==2 {return MsTensor.{name="model.norm.weight",layer=-1,rank=1,rows=s.width};}
+    k:=(e-3)%9;t:=MsTensor.{name=LM_LAYER_NAMES[k],layer=(e-3)/9,rank=2,rows=s.width,cols=s.width};
+    kv:=s.kv_heads*s.head_dim;q:=s.heads*s.head_dim;
+    if k==0 || k==4 {t.rank=1;}
+    if k==1 {t.cols=s.hidden;}
+    if k==2 || k==3 {t.rows=s.hidden;}
+    if k==5 || k==8 {t.rows=kv;}
+    if k==6 {t.cols=q;}
+    if k==7 {t.rows=q;}
+    return t;
+}
+// "model.layers.L.name BF16 rows[,cols]".
+lm_line :: (t:MsTensor,out:[]u8)->int {
+    n:=0;if t.layer>=0 {n=ms_put(out,n,"model.layers.");n=ms_put_int(out,n,t.layer);}
+    n=ms_put(out,n,t.name);n=ms_put(out,n," BF16 ");n=ms_put_int(out,n,t.rows);
+    if t.rank==2 {n=ms_put(out,n,",");n=ms_put_int(out,n,t.cols);}
+    return n;
+}
+// The manifest matches s when it has exactly the expected lines, each once.
+// cause names the first expected tensor missing or repeated, or is -1 - lines
+// when the line count differs. written counts the parameters.
+lm_inventory :: (s:MsShape,manifest:string)->MsResult {
+    if !ms_shape_valid(s) {return MsResult.{status=MsStatus.shape};}
+    ends:[513]int;lines:=0;ends[0]=-1;
+    for i:0..<manifest.count {if manifest[i]=='\n' {
+        if lines==512 {return MsResult.{status=MsStatus.checkpoint,cause=-1-lines};}
+        lines+=1;ends[lines]=i;
+    }}
+    buf:[160]u8;parameters:=0;expected:=3+9*s.layers;
+    for e:0..<expected {
+        t:=lm_expected(s,e);n:=lm_line(t,buf[..]);line:=cast(string)buf[0..<n];found:=0;
+        for k:0..<lines {from:=ends[k]+1;if ends[k+1]-from==n && manifest[from..<ends[k+1]]==line {found+=1;}}
+        if found!=1 {return MsResult.{status=MsStatus.checkpoint,cause=e};}
+        size:=t.rows;if t.rank==2 {size*=t.cols;}parameters+=size;
+    }
+    if expected!=lines {return MsResult.{status=MsStatus.checkpoint,cause=-1-lines};}
+    return MsResult.{written=parameters};
+}
+// book:end inventory
+
+#test "the pinned checkpoint is exactly the 4B decoder" {
+    r:=lm_inventory(LM_4B,LM_PINNED_MANIFEST);
+    #assert r.status==MsStatus.ok && LM_PINNED_TENSORS==291;
+    #assert r.written==4512746496 && r.written==2*128256*3072+3072+32*(2*3072+2*4096*3072+2*1024*3072+3*9216*3072);
+    d:=LM_4B;d.head_dim=96;r=lm_inventory(d,LM_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==8;
+    d=LM_4B;d.kv_heads=4;r=lm_inventory(d,LM_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==8;
+    d=LM_4B;d.heads=16;r=lm_inventory(d,LM_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==9;
+    d=LM_4B;d.layers=33;r=lm_inventory(d,LM_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==291;
+    d=LM_4B;d.layers=31;r=lm_inventory(d,LM_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause== -292;
+    d=LM_4B;d.hidden=9215;r=lm_inventory(d,LM_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==4;
+    d=LM_4B;d.vocab=131072;r=lm_inventory(d,LM_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==0;
+    d=LM_4B;d.width=3071;r=lm_inventory(d,LM_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==0;
+    d=LM_4B;d.heads=31;#assert lm_inventory(d,LM_PINNED_MANIFEST).status==MsStatus.shape;
+    buf:[28000]u8;n:=ms_put(buf[..],0,LM_PINNED_MANIFEST);
+    m:=ms_put(buf[..],n,"model.norm.weight BF16 3072\n");r=lm_inventory(LM_4B,cast(string)buf[0..<m]);#assert r.status==MsStatus.checkpoint && r.cause==2;
+    m=ms_put(buf[..],n,"extra BF16 1\n");r=lm_inventory(LM_4B,cast(string)buf[0..<m]);#assert r.status==MsStatus.checkpoint && r.cause== -293;
+    many:[600]u8;for i:0..<600 {many[i]='\n';}
+    r=lm_inventory(LM_4B,cast(string)many[0..<512]);#assert r.status==MsStatus.checkpoint && r.cause==0;
+    r=lm_inventory(LM_4B,cast(string)many[0..<513]);#assert r.status==MsStatus.checkpoint && r.cause== -513;
+    // Each layer role's line, by hand.
+    want:=[9]string.["model.layers.0.input_layernorm.weight BF16 3072","model.layers.0.mlp.down_proj.weight BF16 3072,9216",
+        "model.layers.0.mlp.gate_proj.weight BF16 9216,3072","model.layers.0.mlp.up_proj.weight BF16 9216,3072",
+        "model.layers.0.post_attention_layernorm.weight BF16 3072","model.layers.0.self_attn.k_proj.weight BF16 1024,3072",
+        "model.layers.0.self_attn.o_proj.weight BF16 3072,4096","model.layers.0.self_attn.q_proj.weight BF16 4096,3072",
+        "model.layers.0.self_attn.v_proj.weight BF16 1024,3072"];
+    for k:0..<9 {n=lm_line(lm_expected(LM_4B,3+k),buf[..]);#assert cast(string)buf[0..<n]==want[k];}
+    n=lm_line(lm_expected(LM_4B,3+9*31+6),buf[..]);#assert cast(string)buf[0..<n]=="model.layers.31.self_attn.o_proj.weight BF16 3072,4096";
+    n=lm_line(lm_expected(LM_4B,2),buf[..]);#assert cast(string)buf[0..<n]=="model.norm.weight BF16 3072";
+}
+
+// ---- the tokenizer ---------------------------------------------------------
+
+// book:begin pieces
+// The Llama 3 split pattern on ASCII text, alternatives in order:
+//   (?i:'s|'t|'re|'ve|'m|'ll|'d)   a contraction, any case
+//   [^\r\n\p{L}\p{N}]?\p{L}+       one optional non-letter, non-digit,
+//                                  non-newline, then letters
+//   \p{N}{1,3}                     one to three digits
+//   " ?[^\s\p{L}\p{N}]+[\r\n]*"     punctuation, then newlines
+//   \s*[\r\n]+ | \s+(?!\S) | \s+   whitespace, as in chapter 81
+lm_letter :: (c:u8)->bool {k:=ms_class(c);return k==MS_UPPER || k==MS_LOWER;}
+lm_letters :: (s:string,at:int)->int {p:=at;while p<s.count && lm_letter(s[p]) {p+=1;}return p;}
+lm_lower :: (c:u8)->u8 {if ms_class(c)==MS_UPPER {return c+32;}return c;}
+LM_CONTRACTIONS :: [7]string.["s","t","re","ve","m","ll","d"];
+lm_contraction :: (s:string,at:int)->int {
+    if s[at]!='\'' {return at;}
+    for c:LM_CONTRACTIONS {
+        if at+c.count<s.count {
+            same:=true;for i:0..<c.count {if lm_lower(s[at+1+i])!=c[i] {same=false;}}
+            if same {return at+1+c.count;}
+        }
+    }
+    return at;
+}
+lm_piece :: (s:string,at:int)->int {
+    end:=lm_contraction(s,at);if end>at {return end;}
+    c:=ms_class(s[at]);p:=at;
+    if c==MS_OTHER || (c==MS_SPACE && !ms_newline(s[at])) {p+=1;}
+    end=lm_letters(s,p);if end>p {return end;}
+    if c==MS_DIGIT {return nx_min(ms_run(s,at,MS_DIGIT),at+3);}
+    p=at;if s[p]==' ' {p+=1;}
+    end=ms_run(s,p,MS_OTHER);
+    if end>p {while end<s.count && ms_newline(s[end]) {end+=1;}return end;}
+    run:=ms_run(s,at,MS_SPACE);last:=at;
+    for i:at..<run {if ms_newline(s[i]) {last=i+1;}}
+    if last>at {return last;}
+    if run==s.count || run-at==1 {return run;}
+    return run-1;
+}
+// book:end pieces
+
+// book:begin encode
+// ASCII text to ids: split into pieces, then chapter 81's tiktoken rule over
+// original ranks. Llama 3's ids are its ranks, so chapter 81's offset of 1000
+// special ids comes off. lm_prompt puts <|begin_of_text|> first, as the
+// tokenizer's template does.
+lm_encode :: (t:MsTable,text:string,out:[]int)->MsResult {
+    for i:0..<text.count {if text[i]>=128 {return MsResult.{status=MsStatus.unsupported,cause=i};}}
+    at:=0;n:=0;
+    while at<text.count {
+        end:=lm_piece(text,at);
+        r:=ms_bpe(t,text[at..<end],out[n..<out.count]);
+        if r.status!=MsStatus.ok {r.cause+=at;return r;}
+        for i:n..<n+r.written {out[i]-=MS_SPECIALS;}
+        n+=r.written;at=end;
+    }
+    return MsResult.{written=n};
+}
+lm_prompt :: (t:MsTable,text:string,out:[]int)->MsResult {
+    if out.count<1 {return MsResult.{status=MsStatus.capacity};}
+    out[0]=LM_BOS;r:=lm_encode(t,text,out[1..<out.count]);
+    if r.status==MsStatus.ok {r.written+=1;}
+    return r;
+}
+// book:end encode
+
+#test "Llama 3 ids match the merge-list rule over the full vocabulary on every fixture string" {
+    tb:=LM_TOKEN_BYTES;tr:=LM_TOKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};out:[64]int;
+    for k:0..<LM_TOKEN_TEXTS.count {
+        r:=lm_encode(t,LM_TOKEN_TEXTS[k],out[..]);from:=LM_TOKEN_STARTS[k];
+        #assert r.status==MsStatus.ok && r.written==LM_TOKEN_STARTS[k+1]-from;
+        for i:0..<r.written {#assert out[i]==LM_TOKEN_IDS[from+i];}
+    }
+    r:=lm_prompt(t,"The capital of France is",out[..]);
+    #assert r.status==MsStatus.ok && r.written==6 && out[0]==128000 && out[1]==791 && out[5]==374;
+    r=lm_prompt(t,"",out[0..<1]);#assert r.status==MsStatus.ok && r.written==1 && out[0]==128000;
+    #assert lm_prompt(t,"",out[0..<0]).status==MsStatus.capacity;
+    r=lm_prompt(t,"Hello",out[0..<1]);#assert r.status==MsStatus.capacity;
+    bad:=[3]u8.[0x41,0xc3,0xa9];r=lm_prompt(t,cast(string)bad[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==1;
+    edge:=[2]u8.[128,0x41];r=lm_encode(t,cast(string)edge[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==0;
+    edge[0]=127;r=lm_encode(t,cast(string)edge[0..<1],out[..]);#assert r.status==MsStatus.range && r.cause==0;
+    r=lm_encode(t,"is ~",out[..]);#assert r.status==MsStatus.range && r.cause==3;
+}
+#test "pieces follow the Llama 3 pattern's alternatives in order" {
+    #assert lm_piece("'s",0)==2 && lm_piece("'S x",0)==2 && lm_piece("'re",0)==3 && lm_piece("'RE",0)==3 && lm_piece("'Ve",0)==3;
+    #assert lm_piece("'ll",0)==3 && lm_piece("'LLx",0)==3 && lm_piece("'d",0)==2 && lm_piece("'m",0)==2 && lm_piece("'t",0)==2;
+    #assert lm_piece("'r",0)==2 && lm_piece("'x",0)==2 && lm_piece("'",0)==1 && lm_piece("''",0)==2 && lm_piece("'l",0)==2;
+    #assert lm_piece("Hello",0)==5 && lm_piece("CamelCase",0)==9 && lm_piece(" world",0)==6 && lm_piece("\tand",0)==4 && lm_piece(",x",0)==2;
+    #assert lm_piece("\nand",0)==1 && lm_piece("1234567",0)==3 && lm_piece("12",0)==2 && lm_piece("1234",0)==3 && lm_piece("123",0)==3 && lm_piece("1",0)==1 && lm_piece("12a",0)==2;
+    #assert lm_piece(" 5",0)==1 && lm_piece("!!x",0)==2 && lm_piece(" //c",0)==3 && lm_piece("?\n\nA",0)==3 && lm_piece("./x",0)==2;
+    #assert lm_piece("   x",0)==2 && lm_piece("  ",0)==2 && lm_piece(" \n x",0)==2 && lm_piece("\t",0)==1 && lm_piece("  \n",0)==3;
+    #assert lm_piece("!\n/x",0)==2 && lm_piece("a b",1)==3 && lm_piece("ab",1)==2 && lm_piece("Zz",0)==2 && lm_piece("aZ",0)==2;
+    #assert lm_lower('A')=='a' && lm_lower('Z')=='z' && lm_lower('a')=='a' && lm_lower('@')=='@' && lm_lower('[')=='[';
+    #assert lm_letter('a') && lm_letter('Z') && !lm_letter('0') && !lm_letter(' ') && !lm_letter('\'');
+    #assert lm_letters("ab1",0)==2 && lm_letters("ab",0)==2 && lm_letters("1",0)==0;
+}
+
+// ---- the decoder -----------------------------------------------------------
+
+// book:begin rope
+// llama3 scaling of f = theta^(-2i/d): a wavelength 2 pi / f shorter than
+// 8192 / 4 = 2048 positions keeps its frequency, one longer than 8192 / 1
+// divides it by 8, and one between blends the two by
+// smooth = (8192 / wavelength - 1) / (4 - 1). Clamping smooth to [0, 1]
+// gives all three bands from one formula: (1 - smooth) f / 8 + smooth f is
+// exactly f at 1 and exactly f / 8 at 0. min(a, b) = (a + b - |a - b|) / 2
+// and max(a, 0) = (a + |a|) / 2 do the clamping without a branch.
+lm_rope_frequencies :: (d:int,out:[]f64) {
+    for i:0..<d/2 {
+        f:=exp(-log(LM_THETA)*f64(2*i)/f64(d));wavelength:=2*3.141592653589793/f;
+        smooth:=(LM_ORIGINAL/wavelength-LM_LOW_FACTOR)/(LM_HIGH_FACTOR-LM_LOW_FACTOR);
+        below:=(smooth+1-abs(smooth-1))/2;clamped:=(below+abs(below))/2;
+        out[i]=(1-clamped)*f/LM_FACTOR+clamped*f;
+    }
+}
+// Hugging Face's Llama layout pairs element i of a head with element i + d/2
+// (rotate-half), where chapter 81's Mistral layout pairs 2i with 2i + 1.
+lm_rotate :: (v:[]f32,heads:int,d:int,position:int,freqs:[]f64) {
+    half:=d/2;
+    for h:0..<heads {for i:0..<half {
+        a:=f64(v[h*d+i]);b:=f64(v[h*d+half+i]);angle:=f64(position)*freqs[i];c:=cos(angle);n:=sin(angle);
+        v[h*d+i]=f32(a*c-b*n);v[h*d+half+i]=f32(b*c+a*n);
+    }}
+}
+// book:end rope
+
+#test "llama3 frequencies match the float64 reference in all three bands" {
+    f:[64]f64;lm_rope_frequencies(128,f[..]);
+    for k:0..<LM_ROPE_PICKS.count {#assert abs(f[LM_ROPE_PICKS[k]]-LM_ROPE_FREQS[k])<=1e-14*LM_ROPE_FREQS[k];}
+    // By hand: f_i = 500000^(-i/64), wavelength 2 pi 500000^(i/64). Index 28
+    // has 1,956 positions (kept), 29 has 2,402 and 34 has 6,695 (blended), 35
+    // has 8,219 (divided by 8).
+    #assert abs(2*3.141592653589793/exp(-log(LM_THETA)*56/128)-1956.5)<0.1 && abs(2*3.141592653589793/exp(-log(LM_THETA)*70/128)-8218.7)<0.1;
+    #assert f[28]==exp(-log(LM_THETA)*56/128) && f[35]==exp(-log(LM_THETA)*70/128)/8 && f[0]==1 && f[63]==exp(-log(LM_THETA)*126/128)/8;
+    for i:29..<35 {e:=exp(-log(LM_THETA)*f64(2*i)/128);#assert f[i]<e && f[i]>e/8;}
+    // At 29 the blend leans to the kept end: smooth = (8192/2401.7 - 1)/3 = 0.804.
+    e:=exp(-log(LM_THETA)*58/128);#assert abs((f[29]-e/8)/(e-e/8)-0.8036)<0.001;
+    two:[2]f64;lm_rope_frequencies(4,two[..]);#assert two[0]==LM_TINY_FREQS[0] && abs(two[1]-LM_TINY_FREQS[1])<=1e-18;
+    v:=[8]f32.[1,2,3,4,5,6,7,8];g:=[2]f64.[1.5707963267948966,0];lm_rotate(v[..],2,4,1,g[..]);
+    // Head 0: (1,3) turns a quarter to (-3,1); (2,4) does not turn.
+    #assert abs(v[0]+3)<1e-6 && v[1]==2 && abs(v[2]-1)<1e-6 && v[3]==4 && abs(v[4]+7)<1e-6 && abs(v[6]-5)<1e-6 && v[7]==8 && v[5]==6;
+}
+
+// book:begin cache
+// The key-value cache: for every layer, `capacity` positions of rotated keys
+// and of values, kv_heads * head_dim each. Position p of layer l starts at
+// (l * capacity + p) * kv_heads * head_dim. The caller keeps the length.
+LmCache :: struct {keys:[]f32;values:[]f32;capacity:int;}
+lm_cache_size :: (s:MsShape,capacity:int)->int #export_c {return s.layers*capacity*s.kv_heads*s.head_dim;}
+lm_cache_fits :: (s:MsShape,c:LmCache)->bool {
+    n:=lm_cache_size(s,c.capacity);
+    return c.capacity>=1 && c.capacity<=LM_POSITIONS_MAX && c.keys.count==n && c.values.count==n;
+}
+// book:end cache
+
+// book:begin step
+// One decoder layer over n new tokens at positions start..<start+n. Their
+// keys and values go into the cache first; each new token then attends over
+// every cached position up to its own. Prefilling a prompt is one call with
+// start 0; each generated token is a call with n 1. Both run the same
+// arithmetic in the same order, so their outputs agree bit for bit.
+//   h = norm(x); q, k, v = wq h, wk h, wv h; rotate q and k at their positions
+//   a = softmax(q k / sqrt(d)) v, query head j reading key-value head
+//       j / (heads / kv_heads); scores are shifted by their maximum,
+//       max(a, b) = (a + b + |a - b|) / 2, before exponentiating, since
+//       layer 1 of the real model has scores that overflow exp unshifted
+//   x += wo a; x += w2 (silu(w1 norm(x)) * w3 norm(x))
+lm_layer_step :: (s:MsShape,w:MsLayer,c:LmCache,layer:int,start:int,x:[]f32,n:int,out:[]f32,work:[]f32)->MsResult #export_c {
+    if !ms_shape_valid(s) || !ms_layer_sizes(s,w) || !lm_cache_fits(s,c) || layer<0 || layer>=s.layers || n<1 || start<0 || start+n>c.capacity {return MsResult.{status=MsStatus.shape};}
+    d:=s.width;hd:=s.head_dim;q:=s.heads*hd;kv:=s.kv_heads*hd;group:=s.heads/s.kv_heads;base:=layer*c.capacity*kv;
+    if x.count!=n*d || out.count<n*d || work.count<n*q {return MsResult.{status=MsStatus.capacity};}
+    freqs:[128]f64;lm_rope_frequencies(hd,freqs[..]);
+    hb:[8192]f32;ob:[8192]f32;ab:[16384]f32;gb:[32768]f32;ub:[32768]f32;sb:[64]f64;sg:[32768]f32;stage:=sg[..];
+    h:=hb[0..<d];o:=ob[0..<d];a:=ab[0..<q];gate:=gb[0..<s.hidden];up:=ub[0..<s.hidden];
+    for t:0..<n {
+        p:=start+t;qs:=work[t*q..<(t+1)*q];ks:=c.keys[base+p*kv..<base+(p+1)*kv];vs:=c.values[base+p*kv..<base+(p+1)*kv];
+        if ms_norm(x[t*d..<(t+1)*d],w.attention_norm,h)!=MsStatus.ok {return MsResult.{status=MsStatus.number,cause=1};}
+        r:=ms_project(w.wq,q,d,h,qs,stage);if r.status!=MsStatus.ok {return r;}
+        r=ms_project(w.wk,kv,d,h,ks,stage);if r.status!=MsStatus.ok {return r;}
+        r=ms_project(w.wv,kv,d,h,vs,stage);if r.status!=MsStatus.ok {return r;}
+        lm_rotate(qs,s.heads,hd,p,freqs[..]);lm_rotate(ks,s.kv_heads,hd,p,freqs[..]);
+    }
+    for t:0..<n {
+        p:=start+t;
+        for head:0..<s.heads {
+            g:=head/group;top:=0.0;
+            for u:0..<p+1 {
+                acc:PsionicAccumulator;for j:0..<hd {acc=psionic_ops_accumulate(acc,f64(work[t*q+head*hd+j])*f64(c.keys[base+u*kv+g*hd+j]));}
+                sb[u]=psionic_ops_total(acc)/sqrt(f64(hd));top=ifx u==0 then sb[u] else (top+sb[u]+abs(top-sb[u]))/2;
+            }
+            z:PsionicAccumulator;for u:0..<p+1 {sb[u]=exp(sb[u]-top);z=psionic_ops_accumulate(z,sb[u]);}
+            total:=psionic_ops_total(z);
+            for j:0..<hd {
+                acc:PsionicAccumulator;for u:0..<p+1 {acc=psionic_ops_accumulate(acc,sb[u]/total*f64(c.values[base+u*kv+g*hd+j]));}
+                a[head*hd+j]=f32(psionic_ops_total(acc));
+            }
+        }
+        r:=ms_project(w.wo,d,q,a,o,stage);if r.status!=MsStatus.ok {return r;}
+        for i:0..<d {out[t*d+i]=f32(f64(x[t*d+i])+f64(o[i]));}
+        if ms_norm(out[t*d..<(t+1)*d],w.ffn_norm,h)!=MsStatus.ok {return MsResult.{status=MsStatus.number,cause=2};}
+        r=ms_project(w.w1,s.hidden,d,h,gate,stage);if r.status!=MsStatus.ok {return r;}
+        r=ms_project(w.w3,s.hidden,d,h,up,stage);if r.status!=MsStatus.ok {return r;}
+        for i:0..<s.hidden {gv:=f64(gate[i]);gate[i]=f32(gv/(1+exp(-gv))*f64(up[i]));}
+        r=ms_project(w.w2,d,s.hidden,gate,o,stage);if r.status!=MsStatus.ok {return r;}
+        for i:0..<d {out[t*d+i]=f32(f64(out[t*d+i])+f64(o[i]));}
+    }
+    return MsResult.{written=n*d};
+}
+// book:end step
+
+// book:begin readout
+// Chapter 7's projection takes at most 32,768 rows, so the 128,256-row head
+// is read in chunks of `rows`, at most that limit: three of 32,768 and one
+// of 29,952. cause names the first row of a refused chunk.
+LM_READOUT_ROWS :: 32768;
+lm_readout :: (s:MsShape,head:[]u8,norm:[]u8,hidden:[]f32,logits:[]f32,work:[]f32,rows:int)->MsResult {
+    if !qm_valid(1,rows,s.width) || head.count!=2*s.vocab*s.width || logits.count<s.vocab {return MsResult.{status=MsStatus.shape};}
+    first:=0;
+    while first<s.vocab {
+        n:=nx_min(rows,s.vocab-first);
+        r:=ms_readout(s,head[2*first*s.width..<2*(first+n)*s.width],n,norm,hidden,logits[first..<first+n],work);
+        if r.status!=MsStatus.ok {r.cause=first;return r;}
+        first+=n;
+    }
+    return MsResult.{written=s.vocab};
+}
+// book:end readout
+
+// book:begin decode
+// The whole decoder over new tokens at positions start..<start+tokens.count,
+// and the logits of the last one through the final norm and the untied head.
+// hidden holds two residual buffers of count x width; work is lm_work.
+LmModel :: struct {embed:[]u8;norm:[]u8;head:[]u8;layers:[]MsLayer;}
+lm_work :: (s:MsShape,count:int)->int #export_c {
+    a:=count*s.heads*s.head_dim;b:=s.width+s.vocab;return a+b-nx_min(a,b);
+}
+lm_decode :: (s:MsShape,m:LmModel,c:LmCache,start:int,tokens:[]int,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c {
+    n:=tokens.count*s.width;
+    if m.layers.count!=s.layers {return MsResult.{status=MsStatus.shape};}
+    if hidden.count<2*n || work.count<lm_work(s,tokens.count) {return MsResult.{status=MsStatus.capacity};}
+    r:=ms_embed(s,m.embed,tokens,hidden[0..<n]);if r.status!=MsStatus.ok {return r;}
+    from:=0;
+    for l:0..<s.layers {
+        to:=n-from;r=lm_layer_step(s,m.layers[l],c,l,start,hidden[from..<from+n],tokens.count,hidden[to..<to+n],work);
+        if r.status!=MsStatus.ok {r.cause=l;return r;}
+        from=to;
+    }
+    r=lm_readout(s,m.head,m.norm,hidden[from+n-s.width..<from+n],logits,work,LM_READOUT_ROWS);
+    if r.status!=MsStatus.ok {return r;}
+    return MsResult.{written=start+tokens.count};
+}
+// book:end decode
+
+// book:begin continue
+// Prefill the prompt, then emit up to `steps` tokens with chapter 53's
+// nx_step: temperature 0 is greedy, anything else draws one counter of the
+// seed per token. Each emitted token is decoded at the next position unless
+// the run has stopped. out receives the emitted ids; written is their count
+// and cause the final cache length.
+LmSampler :: struct {options:NxOptions;seed:CrSeed;stops:[]int;probabilities:[]f64;work:NxWork;}
+lm_continue :: (s:MsShape,m:LmModel,c:LmCache,prompt:[]int,steps:int,k:LmSampler,out:[]int,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c {
+    if steps<1 || out.count<steps || prompt.count+steps-1>c.capacity {return MsResult.{status=MsStatus.capacity,cause=prompt.count+steps-1};}
+    r:=lm_decode(s,m,c,0,prompt,hidden,logits,work);if r.status!=MsStatus.ok {return r;}
+    length:=r.written;run:=NxRun.{random=k.seed,limit=steps};
+    while run.stop==NxStop.running {
+        none:[1]u8;e:=nx_step(logits[0..<s.vocab],none[0..<0],k.options,run,k.stops,false,k.probabilities,k.work,false);
+        if e.status!=NxStatus.ok {return MsResult.{status=MsStatus.number,written=run.emitted,cause=cast(int)e.status};}
+        out[run.emitted]=e.token;run=e.run;
+        if run.stop==NxStop.running {
+            one:=out[run.emitted-1..<run.emitted];
+            r=lm_decode(s,m,c,length,one,hidden,logits,work);if r.status!=MsStatus.ok {r.written=run.emitted;return r;}
+            length=r.written;
+        }
+    }
+    return MsResult.{written=run.emitted,cause=length};
+}
+// book:end continue
+
+// ---- the synthetic model -----------------------------------------------------
+
+// book:begin tiny
+// Chapter 81's tiny model (width 8, 4 query heads over 2 key-value heads of
+// 4, SwiGLU of 12, 16 tokens, 2 layers, the same weight formula) with an
+// untied head from formula 98. At head_dim 4 its two frequencies, 1 and
+// 500000^(-1/2) (wavelength 4,443), fall in the kept and the blended band.
+LM_TINY_HEAD_BYTES :: 2*16*8;
+lm_tiny_model :: (bytes:[]u8,head:[]u8,layers:[]MsLayer)->LmModel {
+    t:=ms_tiny_weights(bytes);filled:=ms_tiny_fill(head,0,16*8,98,false);#assert filled==LM_TINY_HEAD_BYTES;
+    layers[0]=t.layers[0];layers[1]=t.layers[1];
+    return LmModel.{embed=t.embed,norm=t.norm,head=head,layers=layers};
+}
+// book:end tiny
+
+// A tiny model, its cache and its buffers, for the checks below.
+LmTinyRig :: struct {bytes:[MS_TINY_BYTES]u8;head:[LM_TINY_HEAD_BYTES]u8;layers:[2]MsLayer;keys:[2*16*8]f32;values:[2*16*8]f32;}
+lm_tiny_cache :: (keys:[]f32,values:[]f32)->LmCache {return LmCache.{keys=keys,values=values,capacity=16};}
+
+#test "cached steps give the full recompute's logits bit for bit, and both match the float64 reference" {
+    s:=ms_tiny();g:LmTinyRig;m:=lm_tiny_model(g.bytes[..],g.head[..],g.layers[..]);c:=lm_tiny_cache(g.keys[..],g.values[..]);
+    tokens:=LM_TINY_TOKENS;hidden:[160]f32;work:[160]f32;full:[16]f32;step:[16]f32;
+    #assert lm_cache_fits(s,c) && lm_cache_size(s,16)==256 && lm_work(s,1)==24 && lm_work(s,10)==160;
+    // Every position, one token at a time: the logits at position t are the
+    // reference's row t.
+    worst:=0.0;
+    for t:0..<10 {
+        r:=lm_decode(s,m,c,t,tokens[t..<t+1],hidden[..],step[..],work[..]);#assert r.status==MsStatus.ok && r.written==t+1;
+        for i:0..<16 {e:=abs(f64(step[i])-LM_TINY_LOGITS[t*16+i]);if e>worst {worst=e;}}
+    }
+    #assert worst<2e-6;
+    // The full recompute over all ten in one call.
+    r:=lm_decode(s,m,c,0,tokens[..],hidden[..],full[..],work[..]);#assert r.status==MsStatus.ok && r.written==10;
+    for i:0..<16 {#assert full[i]==step[i];}
+    // A prefill of four, then three, then single steps: the same bits.
+    #assert lm_decode(s,m,c,0,tokens[0..<4],hidden[..],step[..],work[..]).status==MsStatus.ok;
+    #assert lm_decode(s,m,c,4,tokens[4..<7],hidden[..],step[..],work[..]).status==MsStatus.ok;
+    for t:7..<10 {#assert lm_decode(s,m,c,t,tokens[t..<t+1],hidden[..],step[..],work[..]).status==MsStatus.ok;}
+    for i:0..<16 {#assert full[i]==step[i];}
+    // A cache holding another sequence's keys is overwritten position by position.
+    for i:0..<g.keys.count {g.keys[i]=7;g.values[i]=-7;}
+    #assert lm_decode(s,m,c,0,tokens[..],hidden[..],step[..],work[..]).status==MsStatus.ok;
+    for i:0..<16 {#assert full[i]==step[i];}
+    // The layer step against chapter 81's layer: same weights, but rotate-half
+    // pairs and llama3 frequencies change every position after the first.
+    x:[80]f32;ours:[80]f32;theirs:[80]f32;w81:[400]f32;
+    #assert ms_embed(s,m.embed,tokens[..],x[..]).status==MsStatus.ok;
+    r=lm_layer_step(s,m.layers[0],c,0,0,x[..],10,ours[..],work[..]);#assert r.status==MsStatus.ok && r.written==80;
+    #assert ms_layer(s,m.layers[0],x[..],10,theirs[..],w81[..]).status==MsStatus.ok;
+    for i:0..<8 {#assert abs(ours[i]-theirs[i])<1e-6;}
+    differ:=0;for i:8..<80 {if abs(ours[i]-theirs[i])>1e-4 {differ+=1;}}#assert differ>8;
+    // Attention gains of 256 multiply every score by 65,536: thousands apart,
+    // they overflow exp unless shifted by the row's maximum.
+    big:=g;bm:=lm_tiny_model(big.bytes[..],big.head[..],big.layers[..]);
+    for i:0..<8 {bm.layers[0].attention_norm[2*i]=0x80;bm.layers[0].attention_norm[2*i+1]=0x43;}
+    r=lm_layer_step(s,bm.layers[0],c,0,0,x[..],10,ours[..],work[..]);#assert r.status==MsStatus.ok;
+    for i:0..<80 {#assert abs(ours[i])<100000;}
+    for t:0..<10 {#assert lm_layer_step(s,bm.layers[0],c,0,t,x[t*8..<(t+1)*8],1,theirs[t*8..<(t+1)*8],work[..]).status==MsStatus.ok;}
+    for i:0..<80 {#assert ours[i]==theirs[i];}
+}
+#test "the head is read in chunks the projection admits, with the same bits" {
+    s:=ms_tiny();g:LmTinyRig;m:=lm_tiny_model(g.bytes[..],g.head[..],g.layers[..]);
+    #assert qm_valid(1,LM_READOUT_ROWS,1) && !qm_valid(1,LM_READOUT_ROWS+1,1);
+    h:=[8]f32.[1,-2,3,0.5,-1,2,0.25,-3];whole:[16]f32;part:[16]f32;work:[32]f32;
+    r:=lm_readout(s,m.head,m.norm,h[..],whole[..],work[..],16);#assert r.status==MsStatus.ok && r.written==16;
+    for rows:1..<17 {
+        for i:0..<16 {part[i]=99;}
+        r=lm_readout(s,m.head,m.norm,h[..],part[..],work[..],rows);#assert r.status==MsStatus.ok && r.written==16;
+        for i:0..<16 {#assert part[i]==whole[i];}
+    }
+    r=lm_readout(s,m.head,m.norm,h[..],part[..],work[..],40);#assert r.status==MsStatus.ok;
+    #assert lm_readout(s,m.head,m.norm,h[..],part[..],work[..],0).status==MsStatus.shape && lm_readout(s,m.head,m.norm,h[..],part[..],work[..],LM_READOUT_ROWS+1).status==MsStatus.shape;
+    #assert lm_readout(s,m.head,m.norm,h[..],part[..],work[..],LM_READOUT_ROWS).status==MsStatus.ok;
+    #assert lm_readout(s,m.head[0..<254],m.norm,h[..],part[..],work[..],5).status==MsStatus.shape;
+    #assert lm_readout(s,m.head,m.norm,h[..],part[0..<15],work[..],5).status==MsStatus.shape;
+    copy:=g;cm:=lm_tiny_model(copy.bytes[..],copy.head[..],copy.layers[..]);cm.head[2*11*8]=0xc0;cm.head[2*11*8+1]=0x7f;
+    r=lm_readout(s,cm.head,cm.norm,h[..],part[..],work[..],5);#assert r.status==MsStatus.number && r.cause==10;
+    r=lm_readout(s,cm.head,cm.norm,h[..],part[..],work[..],4);#assert r.status==MsStatus.number && r.cause==8;
+}
+#test "decoder and cache refusals name the input" {
+    s:=ms_tiny();g:LmTinyRig;m:=lm_tiny_model(g.bytes[..],g.head[..],g.layers[..]);c:=lm_tiny_cache(g.keys[..],g.values[..]);
+    tokens:=LM_TINY_TOKENS;hidden:[160]f32;work:[160]f32;logits:[16]f32;x:[80]f32;out:[80]f32;w:=m.layers[0];
+    #assert ms_embed(s,m.embed,tokens[..],x[..]).status==MsStatus.ok;
+    #assert lm_layer_step(s,w,c,1,6,x[0..<80],10,out[..],work[..]).status==MsStatus.ok;
+    #assert lm_layer_step(s,w,c,1,7,x[0..<80],10,out[..],work[..]).status==MsStatus.shape;
+    #assert lm_layer_step(s,w,c,2,0,x[0..<8],1,out[..],work[..]).status==MsStatus.shape;
+    #assert lm_layer_step(s,w,c,-1,0,x[0..<8],1,out[..],work[..]).status==MsStatus.shape;
+    #assert lm_layer_step(s,w,c,0,-1,x[0..<8],1,out[..],work[..]).status==MsStatus.shape;
+    #assert lm_layer_step(s,w,c,0,0,x[0..<0],0,out[..],work[..]).status==MsStatus.shape;
+    #assert lm_layer_step(s,w,c,0,15,x[0..<8],1,out[..],work[..]).status==MsStatus.ok;
+    #assert lm_layer_step(s,w,c,0,0,x[0..<16],2,out[..],work[0..<31]).status==MsStatus.capacity;
+    #assert lm_layer_step(s,w,c,0,0,x[0..<16],2,out[..],work[0..<32]).status==MsStatus.ok;
+    #assert lm_layer_step(s,w,c,0,0,x[0..<16],2,out[0..<15],work[..]).status==MsStatus.capacity;
+    #assert lm_layer_step(s,w,c,0,0,x[0..<15],2,out[..],work[..]).status==MsStatus.capacity;
+    bad:=s;bad.head_dim=3;#assert lm_layer_step(bad,w,c,0,0,x[0..<8],1,out[..],work[..]).status==MsStatus.shape;
+    short:=w;short.wq=w.wq[0..<62];#assert lm_layer_step(s,short,c,0,0,x[0..<8],1,out[..],work[..]).status==MsStatus.shape;
+    small:=c;small.keys=g.keys[0..<255];#assert !lm_cache_fits(s,small) && lm_layer_step(s,w,small,0,0,x[0..<8],1,out[..],work[..]).status==MsStatus.shape;
+    small=c;small.values=g.values[0..<255];#assert !lm_cache_fits(s,small);
+    small=c;small.capacity=0;small.keys=g.keys[0..<0];small.values=g.values[0..<0];#assert !lm_cache_fits(s,small);
+    big:[2*65*8]f32;bigv:[2*65*8]f32;wide:=LmCache.{keys=big[..],values=bigv[..],capacity=65};#assert !lm_cache_fits(s,wide);
+    wide=LmCache.{keys=big[0..<2*64*8],values=bigv[0..<2*64*8],capacity=64};#assert lm_cache_fits(s,wide);
+    one:=LmCache.{keys=big[0..<16],values=bigv[0..<16],capacity=1};#assert lm_cache_fits(s,one);
+    // A NaN weight in each place a token passes is refused with where it sat.
+    for k:0..<9 {
+        copy:=g;v:=lm_tiny_model(copy.bytes[..],copy.head[..],copy.layers[..]).layers[0];hit:[]u8;
+        if k==0 {hit=v.attention_norm;}if k==1 {hit=v.wq;}if k==2 {hit=v.wk;}if k==3 {hit=v.wv;}if k==4 {hit=v.wo;}
+        if k==5 {hit=v.ffn_norm;}if k==6 {hit=v.w1;}if k==7 {hit=v.w3;}if k==8 {hit=v.w2;}
+        hit[hit.count-1]=0x7f;hit[hit.count-2]=0xc0;
+        r:=lm_layer_step(s,v,c,0,0,x[0..<8],1,out[..],work[..]);#assert r.status==MsStatus.number;
+        if k==0 {#assert r.cause==1;}if k==5 {#assert r.cause==2;}
+    }
+    layers:=g.layers;mm:=m;mm.layers=layers[0..<1];
+    #assert lm_decode(s,mm,c,0,tokens[..],hidden[..],logits[..],work[..]).status==MsStatus.shape;
+    #assert lm_decode(s,m,c,0,tokens[..],hidden[0..<159],logits[..],work[..]).status==MsStatus.capacity;
+    #assert lm_decode(s,m,c,0,tokens[..],hidden[..],logits[..],work[0..<159]).status==MsStatus.capacity;
+    bt:=[2]int.[3,16];r:=lm_decode(s,m,c,0,bt[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.range && r.cause==1;
+    r=lm_decode(s,m,c,15,tokens[0..<2],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.shape && r.cause==0;
+    copy:=g;cm:=lm_tiny_model(copy.bytes[..],copy.head[..],copy.layers[..]);cm.layers[1].w2[0]=0xc0;cm.layers[1].w2[1]=0x7f;
+    r=lm_decode(s,cm,c,0,tokens[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.number && r.cause==1;
+    copy=g;cm=lm_tiny_model(copy.bytes[..],copy.head[..],copy.layers[..]);cm.head[0]=0xc0;cm.head[1]=0x7f;
+    #assert lm_decode(s,cm,c,0,tokens[..],hidden[..],logits[..],work[..]).status==MsStatus.number;
+    #assert lm_decode(s,m,c,0,tokens[..],hidden[..],logits[0..<15],work[..]).status==MsStatus.shape;
+}
+#test "greedy continuation is the argmax chain; seeded continuation repeats with its seed" #steps 200000000 {
+    s:=ms_tiny();g:LmTinyRig;m:=lm_tiny_model(g.bytes[..],g.head[..],g.layers[..]);c:=lm_tiny_cache(g.keys[..],g.values[..]);
+    tokens:=LM_TINY_TOKENS;hidden:[256]f32;work:[256]f32;logits:[16]f32;st:[16]f64;o:[16]int;tm:[16]int;probs:[16]f64;
+    nostop:[1]int;k:=LmSampler.{options=NxOptions.{temperature=0},stops=nostop[0..<0],probabilities=probs[..],work=nx_work(st[..],o[..],tm[..])};
+    out:[12]int;r:=lm_continue(s,m,c,tokens[0..<4],12,k,out[..],hidden[..],logits[..],work[..]);
+    #assert r.status==MsStatus.ok && r.written==12 && r.cause==15;
+    // The same chain by full recomputes: argmax of the last logits each time.
+    chain:[16]int;for i:0..<4 {chain[i]=tokens[i];}
+    for i:0..<12 {
+        #assert lm_decode(s,m,c,0,chain[0..<4+i],hidden[..],logits[..],work[..]).status==MsStatus.ok;
+        chain[4+i]=ms_argmax(logits[..]);#assert out[i]==chain[4+i];
+    }
+    // Seeded: the same seed and counter give the same tokens; another seed differs somewhere.
+    k.options=NxOptions.{temperature=1};k.seed=CrSeed.{seed=58};a:[12]int;b:[12]int;e:[12]int;
+    #assert lm_continue(s,m,c,tokens[0..<4],12,k,a[..],hidden[..],logits[..],work[..]).written==12;
+    #assert lm_continue(s,m,c,tokens[0..<4],12,k,b[..],hidden[..],logits[..],work[..]).written==12;
+    k.seed=CrSeed.{seed=59};#assert lm_continue(s,m,c,tokens[0..<4],12,k,e[..],hidden[..],logits[..],work[..]).written==12;
+    same:=0;for i:0..<12 {#assert a[i]==b[i];if a[i]==e[i] {same+=1;}}#assert same<12;
+    // Starting at counter 1 is the seed-58 run shifted by one draw.
+    k.seed=CrSeed.{seed=58,counter=1};#assert lm_continue(s,m,c,tokens[0..<4],12,k,e[..],hidden[..],logits[..],work[..]).written==12;
+    shifted:=0;for i:0..<12 {if a[i]!=e[i] {shifted+=1;}}#assert shifted>0;
+    // A stop token ends the run where it is emitted; it is not decoded.
+    k.seed=CrSeed.{seed=58};stop:=[1]int.[a[2]];k.stops=stop[..];
+    r=lm_continue(s,m,c,tokens[0..<4],12,k,e[..],hidden[..],logits[..],work[..]);
+    first:=0;while a[first]!=a[2] {first+=1;}
+    #assert r.status==MsStatus.ok && r.written==first+1 && r.cause==4+first && e[first]==a[2];
+    // Refusals: no room, no steps, a cache too short, a bad stop id.
+    k.stops=nostop[0..<0];
+    r=lm_continue(s,m,c,tokens[0..<4],13,k,out[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.capacity;
+    big:[14]int;r=lm_continue(s,m,c,tokens[0..<4],13,k,big[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.ok && r.written==13 && r.cause==16;
+    r=lm_continue(s,m,c,tokens[0..<4],14,k,big[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.capacity && r.cause==17;
+    r=lm_continue(s,m,c,tokens[0..<6],12,k,out[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.capacity && r.cause==17;
+    r=lm_continue(s,m,c,tokens[0..<4],0,k,out[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.capacity;
+    r=lm_continue(s,m,c,tokens[0..<4],1,k,out[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.ok && r.written==1 && r.cause==4;
+    bad:=[1]int.[16];k.stops=bad[..];r=lm_continue(s,m,c,tokens[0..<4],2,k,out[..],hidden[..],logits[..],work[..]);
+    #assert r.status==MsStatus.number && r.written==0 && r.cause==cast(int)NxStatus.shape;
+    k.stops=nostop[0..<0];bt:=[1]int.[16];
+    #assert lm_continue(s,m,c,bt[..],2,k,out[..],hidden[..],logits[..],work[..]).status==MsStatus.range;
+    copy:=g;cm:=lm_tiny_model(copy.bytes[..],copy.head[..],copy.layers[..]);
+    // A NaN in the embedding row of the first emitted token (4, not in the
+    // prompt 1 3 7) fails the first decode after the prefill.
+    k.options=NxOptions.{temperature=0};#assert lm_continue(s,m,c,tokens[0..<3],2,k,out[..],hidden[..],logits[..],work[..]).written==2 && out[0]==4;
+    cm.embed[2*4*8]=0xc0;cm.embed[2*4*8+1]=0x7f;
+    r=lm_continue(s,cm,c,tokens[0..<3],2,k,out[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.number && r.written==1 && out[0]==4;
+}

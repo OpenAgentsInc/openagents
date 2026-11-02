@@ -1,0 +1,8 @@
+head_dim 3072/32 = 96: checkpoint, first missing: model.layers.0.self_attn.k_proj.weight BF16 768,3072
+26 layers: MsResult.{status = checkpoint, written = 0, cause = -292}
+non-ASCII text: MsResult.{status = unsupported, written = 0, cause = 3}
+a byte outside the fixture table: MsResult.{status = range, written = 0, cause = 3}
+2 tokens at position 15 of a 16-position cache: MsResult.{status = shape, written = 0, cause = 0}
+token 16 of 16: MsResult.{status = range, written = 0, cause = 1}
+6 prompt tokens and 12 steps in 16 positions: MsResult.{status = capacity, written = 0, cause = 17}
+temperature -1: MsResult.{status = number, written = 0, cause = 1}

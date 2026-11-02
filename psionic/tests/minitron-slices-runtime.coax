@@ -1,0 +1,7 @@
+// Chapter 58's original-weight entry: the Minitron decoder (the layer step
+// with its cache, the whole decode, continuation through chapter 53's
+// sampler) and the safetensors inventory reader, exported for
+// psionic/tests/minitron_run.c. C maps the files and moves bytes; all
+// arithmetic is psionic/lib/minitron.coax.
+#load "../lib/minitron.coax";
+#load "../lib/model-io/access.coax";
