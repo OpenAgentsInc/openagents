@@ -1,0 +1,8 @@
+// Chapter 214's long comparison with the brute-force model, kept out of the
+// store's own checks so that the examples, which run those checks, stay
+// fast. psionic/check.sh runs it beside harness/memory.
+#load "../lib/harness/memory.coax";
+
+#forall "the store agrees with a brute-force model on random remember, revise, forget and edit sequences" seed: 6..<206 #steps 4000000000 {
+  tally: [32] int; mc_random(seed, tally[..]);
+}

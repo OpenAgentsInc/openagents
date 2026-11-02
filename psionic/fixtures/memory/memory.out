@@ -1,0 +1,38 @@
+README.md#Build#0, before: "Run coax/build.sh test. It takes ten minutes."
+1. remember project build, quoting README bytes 0..<23: ok
+2. remember user editor = vim, said in event a1: ok
+3. remember user editor = helix, said in event a2: ok
+look user editor at tick 3: conflict, version 2
+4. revise user editor = helix, reason resolve: ok
+4. revise user editor = helix again: same
+read at tick 4 (session 3, user 1, project 7), facts served: 2
+  project 7 build v1 "Run coax/build.sh test." from README.md#Build#0 bytes 0..<23 (7eb39f18) [current]
+  user 1 editor v3 "helix" said in event a3a3a3a3 [current, reason resolve]
+README.md#Build#0, after: "Run coax/build.sh test --fast. It takes ten minutes."
+look project build at tick 5: stale (changed: the cited passage has a new revision; ask again), version 1
+read at tick 5 (session 3, user 1, project 7), facts served: 1
+  user 1 editor v3 "helix" said in event a3a3a3a3 [current, reason resolve]
+5. revise project build from the old bytes: source
+5. revise project build, quoting new bytes 0..<30, reason update: ok
+6. remember session deadline = ship Friday, ticks 0..<10: ok
+read at tick 6 (session 3, user 1, project 7), facts served: 3
+  user 1 editor v3 "helix" said in event a3a3a3a3 [current, reason resolve]
+  project 7 build v2 "Run coax/build.sh test --fast." from README.md#Build#0 bytes 0..<30 (37d203d8) [current, reason update]
+  session 3 deadline v1 "ship Friday" said in event a4a4a4a4 [current]
+look session deadline at tick 10: expired, version 1
+7. forget user editor: ok
+look user editor at tick 7: forgotten
+read at tick 7 (session 3, user 1, project 7), facts served: 2
+  project 7 build v2 "Run coax/build.sh test --fast." from README.md#Build#0 bytes 0..<30 (37d203d8) [current, reason update]
+  session 3 deadline v1 "ship Friday" said in event a4a4a4a4 [current]
+every version:
+  project 7 build v1 "Run coax/build.sh test." from README.md#Build#0 bytes 0..<23 (7eb39f18) [superseded, ended by event 4]
+  user 1 editor v1 "" said in event a1a1a1a1 [forgotten, ended by event 3]
+  user 1 editor v2 "" said in event a2a2a2a2 [forgotten, ended by event 3]
+  user 1 editor v3 "" said in event a3a3a3a3 [forgotten, ended by event 6, reason resolve]
+  project 7 build v2 "Run coax/build.sh test --fast." from README.md#Build#0 bytes 0..<30 (37d203d8) [current, reason update]
+  session 3 deadline v1 "ship Friday" said in event a4a4a4a4 [current]
+log bytes hold "vim": false, "helix": false, "ship Friday": true
+verify: ok after 7 events, 153 bytes; head b35b81ecdf2ae833
+replay: ok, 6 versions, same table: true
+read at tick 7 (session 4, user 2, project 8), facts served: 0

@@ -1,0 +1,267 @@
+// Chapter 214: remember a fact, then revise it. An agent's memory is a log
+// of write events, hash-chained like chapter 201's log, and a table of fact
+// versions folded from the log. A fact has a key, a scope (a session, a user
+// or a project) and its owner's id, a text, a provenance (the digest of the
+// event it was said in, or a chapter 57 citation whose quoted bytes are the
+// text) and a validity window of ticks. Every change is an event: remember,
+// revise (with an explicit reason) and forget. A revision supersedes the
+// versions it replaces and names them; nothing is overwritten in place. Two
+// remembered texts for one key are a conflict, and neither is served until a
+// revision settles it. A read serves only current versions inside their
+// window whose citation still checks current; a forget overwrites every
+// version's text bytes in the log, keeps their content digests so the chain
+// still verifies, and the verifier refuses a log in which a forgotten text is
+// still readable.
+// Profile mm-memory-v1: SHA-256 over little-endian u64 fields, one in-process
+// log of caller-owned events and bytes, ticks are caller integers.
+#authority;
+#load "../book-search/answer.coax";
+#load "../../tests/harness-memory-checks.coax";
+
+// book:begin types
+MmScope :: enum u8 { session; user; project; }
+MmOp :: enum u8 { remember; revise; forget; }
+MmReason :: enum u8 { none; correction; update; resolve; }
+MmSource :: enum u8 { event; cite; }
+MmState :: enum u8 { current; conflict; superseded; forgotten; }
+MmStatus :: enum u8 { ok; capacity; shape; reason; source; same; missing; sequence; link; content; digest; redacted; exposed; }
+MmServe :: enum u8 { served; missing; forgotten; conflict; early; expired; stale; }
+// A write as the caller asks for it. origin: for an event source, the
+// digest of the event the fact was said in; a cite source carries cite, and
+// text must be its quoted bytes. The fact is valid at ticks start..<until.
+MmWrite :: struct { key: string; scope: MmScope; owner: int; text: string; source: MmSource; origin: [32] u8; cite: AnCite; start: int; until: int; }
+// One logged event. Its bytes follow the earlier events' bytes in the log:
+// keys bytes of key, texts bytes of text, ids bytes of the cite's id. from
+// and to are the cite's span. content covers those bytes; digest covers
+// every field but redacted, and the previous event's digest. A key is
+// never empty.
+MmEvent :: struct { sequence: int; op: MmOp; scope: MmScope; owner: int; reason: MmReason; source: MmSource; origin: [32] u8; from: int; to: int; start: int; until: int; keys: int; texts: int; ids: int; redacted: bool; content: [32] u8; previous: [32] u8; digest: [32] u8; }
+MmLog :: struct { events: [] MmEvent; bytes: [] u8; count: int; used: int; }
+// One version of a fact, folded from the event that wrote it. by: the event
+// that superseded or forgot it, -1 while it is live. reason: why this
+// version was written (none for a first remember).
+MmFact :: struct { event: int; key: string; scope: MmScope; owner: int; version: int; text: string; source: MmSource; origin: [32] u8; cite: AnCite; start: int; until: int; state: MmState; by: int; reason: MmReason; }
+MmTable :: struct { facts: [] MmFact; count: int; }
+// The current passages, as chapter 57's an_check takes them.
+MmPassages :: struct { ids: [] string; heads: [] string; texts: [] string; }
+// Who is reading: the session, user and project ids it may see.
+MmContext :: struct { session: int; user: int; project: int; }
+MmRead :: struct { serve: MmServe; fact: int; check: AnCheck; }
+MmCheck :: struct { status: MmStatus; index: int; }
+// book:end types
+// A forgotten text's bytes are overwritten with this byte.
+MM_HIDDEN :: cast(u8) 0;
+
+// book:begin encode
+mm_u64 :: (b: [] u8, at: int, x: int) -> int {
+  v := cast,trunc(u64) x;
+  for i: 0..<8 { b[at + i] = cast(u8) (v & 255); v = v >> 8; }
+  return at + 8;
+}
+mm_sha :: (b: [] u8) -> [32] u8 {
+  s: [112] u8; out: [32] u8;
+  r := sha256_init(s[..]);
+  an_feed(s[..], cast(string) b);
+  r = sha256_final_checked(s[..], out[..], false);
+  return out;
+}
+// The content digest covers the three lengths and the bytes.
+mm_content :: (e: MmEvent, bytes: [] u8) -> [32] u8 {
+  b: [24] u8; s: [112] u8; out: [32] u8;
+  at := mm_u64(b[..], mm_u64(b[..], mm_u64(b[..], 0, e.keys), e.texts), e.ids);
+  r := sha256_init(s[..]);
+  r = sha256_update_checked(s[..], b[0..<at], false);
+  an_feed(s[..], cast(string) bytes);
+  r = sha256_final_checked(s[..], out[..], false);
+  return out;
+}
+// The event digest covers every field except redacted.
+mm_digest :: (e: MmEvent) -> [32] u8 {
+  b: [256] u8;
+  at := mm_u64(b[..], 0, e.sequence);
+  for i: 0..<32 { b[at + i] = e.previous[i]; b[at + 32 + i] = e.origin[i]; b[at + 64 + i] = e.content[i]; }
+  at += 96;
+  f := [11] int.[cast(int) e.op, cast(int) e.scope, e.owner, cast(int) e.reason, cast(int) e.source, e.from, e.to, e.start, e.until, e.keys, e.texts];
+  for x: f { at = mm_u64(b[..], at, x); }
+  return mm_sha(b[0..<mm_u64(b[..], at, e.ids)]);
+}
+// book:end encode
+
+// book:begin fold
+mm_slot :: (f: MmFact, key: string, scope: MmScope, owner: int) -> bool { return f.key == key && f.scope == scope && f.owner == owner; }
+mm_live :: (f: MmFact) -> bool { return f.state == MmState.current || f.state == MmState.conflict; }
+// May this event apply to the table? A revise needs a live version and a
+// reason, a forget needs a live version, and a remember or revise that
+// would only repeat a live text is refused as the same.
+mm_admit :: (t: MmTable, op: MmOp, reason: MmReason, key: string, scope: MmScope, owner: int, text: string) -> MmStatus {
+  if (op == MmOp.revise) != (reason != MmReason.none) { return MmStatus.reason; }
+  live := false; same := false;
+  for f: t.facts[0..<t.count] {
+    if !mm_slot(f, key, scope, owner) || !mm_live(f) { continue; }
+    live = true;
+    if f.text == text && (op == MmOp.remember || f.state == MmState.current) { same = true; }
+  }
+  if !live && op != MmOp.remember { return MmStatus.missing; }
+  if same && op != MmOp.forget { return MmStatus.same; }
+  if op != MmOp.forget && t.count == t.facts.count { return MmStatus.capacity; }
+  return MmStatus.ok;
+}
+// Fold event index of the log into the table. A remember next to a live
+// version makes both conflict; a revise supersedes every live version; a
+// forget marks every version of the key forgotten and drops its text.
+mm_apply :: (t: [] MmTable, l: MmLog, index: int) {
+  e := l.events[index]; at := mm_at(l, index);
+  key := cast(string) l.bytes[at..<at + e.keys];
+  text := cast(string) l.bytes[at + e.keys..<at + e.keys + e.texts];
+  g := t[0]; version := 1; live := false;
+  for f, i: g.facts[0..<g.count] {
+    if !mm_slot(f, key, e.scope, e.owner) { continue; }
+    version = f.version + 1;
+    if e.op == MmOp.forget {
+      if mm_live(f) { g.facts[i].by = index; }
+      g.facts[i].state = MmState.forgotten; g.facts[i].text = ""; continue;
+    }
+    if !mm_live(f) { continue; }
+    live = true;
+    if e.op == MmOp.revise { g.facts[i].state = MmState.superseded; g.facts[i].by = index; }
+    else { g.facts[i].state = MmState.conflict; }
+  }
+  if e.op == MmOp.forget { return; }
+  c := AnCite.{id = cast(string) l.bytes[at + e.keys + e.texts..<at + e.keys + e.texts + e.ids], from = e.from, to = e.to, digest = e.origin};
+  state := ifx live && e.op == MmOp.remember then MmState.conflict else MmState.current;
+  g.facts[g.count] = MmFact.{event = index, key = key, scope = e.scope, owner = e.owner, version = version, text = text, source = e.source, origin = e.origin, cite = c, start = e.start, until = e.until, state = state, by = -1, reason = e.reason};
+  t[0].count = g.count + 1;
+}
+mm_at :: (l: MmLog, index: int) -> int { at := 0; for e: l.events[0..<index] { at += e.keys + e.texts + e.ids; } return at; }
+// book:end fold
+
+// book:begin write
+// The only way to change memory: check the write, append its event, fold it.
+mm_write :: (l: [] MmLog, t: [] MmTable, op: MmOp, reason: MmReason, w: MmWrite, p: MmPassages) -> MmStatus {
+  g := l[0];
+  if w.key.count == 0 || w.owner < 0 || w.start < 0 || w.until <= w.start || (op == MmOp.forget) != (w.text.count == 0) { return MmStatus.shape; }
+  if op != MmOp.forget && w.source == MmSource.cite && an_check(w.cite, w.text, p.ids, p.heads, p.texts) != AnCheck.current { return MmStatus.source; }
+  id := ifx w.source == MmSource.cite then w.cite.id else "";
+  s := mm_admit(t[0], op, reason, w.key, w.scope, w.owner, w.text);
+  if s != MmStatus.ok { return s; }
+  n := w.key.count + w.text.count + id.count;
+  if g.count == g.events.count || n > g.bytes.count - g.used { return MmStatus.capacity; }
+  end := an_put(g.bytes, an_put(g.bytes, an_put(g.bytes, g.used, w.key), w.text), id);
+  e := MmEvent.{sequence = g.count, op = op, scope = w.scope, owner = w.owner, reason = reason, source = w.source, origin = w.origin, start = w.start, until = w.until, keys = w.key.count, texts = w.text.count, ids = id.count};
+  if w.source == MmSource.cite { e.origin = w.cite.digest; e.from = w.cite.from; e.to = w.cite.to; }
+  if g.count > 0 { e.previous = g.events[g.count - 1].digest; }
+  e.content = mm_content(e, g.bytes[g.used..<g.used + n]);
+  e.digest = mm_digest(e);
+  g.events[g.count] = e; l[0].count = g.count + 1; l[0].used = g.used + n;
+  mm_apply(t, l[0], g.count);
+  if op == MmOp.forget { mm_redact(l[0], w.key, w.scope, w.owner); }
+  return MmStatus.ok;
+}
+mm_remember :: (l: [] MmLog, t: [] MmTable, w: MmWrite, p: MmPassages) -> MmStatus { return mm_write(l, t, MmOp.remember, MmReason.none, w, p); }
+mm_revise :: (l: [] MmLog, t: [] MmTable, w: MmWrite, reason: MmReason, p: MmPassages) -> MmStatus { return mm_write(l, t, MmOp.revise, reason, w, p); }
+// A forget names the key, its scope and owner, and nothing else.
+mm_forget :: (l: [] MmLog, t: [] MmTable, key: string, scope: MmScope, owner: int, p: MmPassages) -> MmStatus {
+  return mm_write(l, t, MmOp.forget, MmReason.none, MmWrite.{key = key, scope = scope, owner = owner, until = 1}, p);
+}
+// Overwrite the text bytes of every write of the key and mark it redacted.
+mm_redact :: (g: MmLog, key: string, scope: MmScope, owner: int) {
+  for e, i: g.events[0..<g.count] {
+    at := mm_at(g, i);
+    if e.op == MmOp.forget || cast(string) g.bytes[at..<at + e.keys] != key || e.scope != scope || e.owner != owner { continue; }
+    for k: at + e.keys..<at + e.keys + e.texts { g.bytes[k] = MM_HIDDEN; }
+    g.events[i].redacted = true;
+  }
+}
+// book:end write
+
+// book:begin read
+mm_owner :: (c: MmContext, s: MmScope) -> int {
+  if s == MmScope.session { return c.session; }
+  if s == MmScope.user { return c.user; }
+  return c.project;
+}
+// What a read of one key in one scope gets at tick now: the current version
+// when it is in its window and its citation is current, or why not.
+mm_look :: (t: MmTable, key: string, scope: MmScope, c: MmContext, now: int, p: MmPassages) -> MmRead {
+  r := MmRead.{serve = MmServe.missing, fact = -1, check = AnCheck.current};
+  for f, i: t.facts[0..<t.count] {
+    if !mm_slot(f, key, scope, mm_owner(c, scope)) { continue; }
+    if f.state == MmState.forgotten { r.serve = MmServe.forgotten; }
+    if f.state == MmState.conflict { r = MmRead.{serve = MmServe.conflict, fact = i}; }
+    if f.state == MmState.current { r = mm_serve(f, i, now, p); }
+  }
+  return r;
+}
+mm_serve :: (f: MmFact, i: int, now: int, p: MmPassages) -> MmRead {
+  r := MmRead.{serve = MmServe.served, fact = i, check = AnCheck.current};
+  if now < f.start { r.serve = MmServe.early; }
+  else if now >= f.until { r.serve = MmServe.expired; }
+  else if f.source == MmSource.cite {
+    r.check = an_check(f.cite, f.text, p.ids, p.heads, p.texts);
+    if r.check != AnCheck.current { r.serve = MmServe.stale; }
+  }
+  return r;
+}
+// Every fact the reader may be shown, in write order: current, in a scope
+// the context names, and served. Their indexes go to out; -1 when out is
+// too small.
+mm_read :: (t: MmTable, c: MmContext, now: int, p: MmPassages, out: [] int) -> int {
+  n := 0;
+  for f, i: t.facts[0..<t.count] {
+    if f.state != MmState.current || f.owner != mm_owner(c, f.scope) || mm_serve(f, i, now, p).serve != MmServe.served { continue; }
+    if n == out.count { return -1; }
+    out[n] = i; n += 1;
+  }
+  return n;
+}
+// book:end read
+
+// book:begin verify
+// Rebuild the chain and check every event: sequence, link, content (unless
+// redacted), digest; a redacted event must be a write whose text is all
+// hidden bytes and whose key a later event forgot; a write whose key a later
+// event forgot must be redacted.
+mm_verify :: (g: MmLog) -> MmCheck {
+  at := 0; previous: [32] u8;
+  for e, i: g.events[0..<g.count] {
+    n := e.keys + e.texts + e.ids;
+    if e.keys < 1 || e.texts < 0 || e.ids < 0 || n > g.used - at { return MmCheck.{status = MmStatus.shape, index = i}; }
+    if e.sequence != i { return MmCheck.{status = MmStatus.sequence, index = i}; }
+    if !an_same_digest(e.previous, previous) { return MmCheck.{status = MmStatus.link, index = i}; }
+    gone := mm_forgotten(g, i, at);
+    if e.redacted != gone { return MmCheck.{status = ifx gone then MmStatus.exposed else MmStatus.redacted, index = i}; }
+    if gone { for k: at + e.keys..<at + e.keys + e.texts { if g.bytes[k] != MM_HIDDEN { return MmCheck.{status = MmStatus.exposed, index = i}; } } }
+    else if !an_same_digest(e.content, mm_content(e, g.bytes[at..<at + n])) { return MmCheck.{status = MmStatus.content, index = i}; }
+    if !an_same_digest(e.digest, mm_digest(e)) { return MmCheck.{status = MmStatus.digest, index = i}; }
+    previous = e.digest; at += n;
+  }
+  if at != g.used { return MmCheck.{status = MmStatus.shape, index = g.count}; }
+  return MmCheck.{status = MmStatus.ok, index = g.count};
+}
+// Is event i, at byte at, a write whose key a later forget names?
+mm_forgotten :: (g: MmLog, i: int, at: int) -> bool {
+  e := g.events[i];
+  if e.op == MmOp.forget { return false; }
+  key := cast(string) g.bytes[at..<at + e.keys]; b := at;
+  for k: i..<g.count {
+    f := g.events[k];
+    if f.op == MmOp.forget && f.scope == e.scope && f.owner == e.owner && cast(string) g.bytes[b..<b + f.keys] == key { return true; }
+    b += f.keys + f.texts + f.ids;
+  }
+  return false;
+}
+// Rebuild a table from the log alone: verify it, then admit and fold every
+// event in order.
+mm_replay :: (g: MmLog, t: [] MmTable) -> MmCheck {
+  v := mm_verify(g);
+  if v.status != MmStatus.ok { return v; }
+  t[0].count = 0;
+  for e, i: g.events[0..<g.count] {
+    at := mm_at(g, i);
+    s := mm_admit(t[0], e.op, e.reason, cast(string) g.bytes[at..<at + e.keys], e.scope, e.owner, cast(string) g.bytes[at + e.keys..<at + e.keys + e.texts]);
+    if s != MmStatus.ok && !e.redacted { return MmCheck.{status = s, index = i}; }
+    mm_apply(t, g, i);
+  }
+  return v;
+}
+// book:end verify

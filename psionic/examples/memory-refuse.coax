@@ -1,0 +1,35 @@
+// Chapter 214's broken inputs: writes the store refuses, reads it will not
+// serve, and logs the verifier refuses. Each prints its reason.
+#import "Basic";
+#load "../lib/harness/memory.coax";
+
+NAMES :: [13] string.["ok", "capacity", "shape", "reason", "source", "same", "missing", "sequence", "link", "content", "digest", "redacted", "exposed"];
+name :: (s: MmStatus) -> string { names := NAMES; return names[cast(int) s]; }
+
+// book:begin refuse
+main :: () {
+  ev: [16] MmEvent; by: [512] u8; fs: [16] MmFact;
+  l := [1] MmLog.[MmLog.{events = ev[..], bytes = by[..]}]; t := [1] MmTable.[MmTable.{facts = fs[..]}];
+  ids := MC_IDS; hd := MC_HEADS; old := MC_OLD; new := MC_NEW;
+  p := mc_passages(ids[..], hd[..], old[..]); q := mc_passages(ids[..], hd[..], new[..]);
+  w := mc_event("editor", MmScope.user, 1, "vim", 161, 0, 1000);
+  print("revise a fact never remembered: %\n", name(mm_revise(l[..], t[..], w, MmReason.correction, p)));
+  print("forget a fact never remembered: %\n", name(mm_forget(l[..], t[..], "editor", MmScope.user, 1, p)));
+  print("remember with an empty window: %\n", name(mm_remember(l[..], t[..], mc_event("editor", MmScope.user, 1, "vim", 161, 5, 5), p)));
+  print("remember a quote the README does not hold: %\n", name(mm_remember(l[..], t[..], mc_cite(new[0], 0, 30), p)));
+  print("remember: %, then the same text again: %\n", name(mm_remember(l[..], t[..], w, p)), name(mm_remember(l[..], t[..], w, p)));
+  print("revise with no reason: %\n", name(mm_revise(l[..], t[..], mc_event("editor", MmScope.user, 1, "helix", 162, 0, 1000), MmReason.none, p)));
+  print("events logged: % (the one remember)\n", l[0].count);
+  // The hand trace in a new store, then its log edited after the fact.
+  l[0] = MmLog.{events = ev[..], bytes = by[..]}; t[0].count = 0;
+  mc_trace(l[..], t[..]);
+  e2 := ev; b2 := by; g := MmLog.{events = e2[..], bytes = b2[..], count = l[0].count, used = l[0].used};
+  b2[6] = 'r'; print("one byte of the build quote edited: %\n", name(mm_verify(g).status));
+  b2 = by; e2[5].redacted = true; print("the deadline hidden with no forget: %\n", name(mm_verify(g).status));
+  e2 = ev; e2[2].redacted = false; print("a forgotten version marked readable: %\n", name(mm_verify(g).status));
+  e2 = ev; g.count -= 1; g.used -= 6; print("the forget event cut off: %\n", name(mm_verify(g).status));
+  g = l[0]; e2 = ev; e2[4].reason = MmReason.none; g.events = e2[..]; g.bytes = b2[..]; mc_rechain(g);
+  gs: [16] MmFact; u := [1] MmTable.[MmTable.{facts = gs[..]}];
+  print("a revision's reason removed and the chain rewritten: verify %, replay %\n", name(mm_verify(g).status), name(mm_replay(g, u[..]).status));
+}
+// book:end refuse

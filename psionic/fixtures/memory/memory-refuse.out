@@ -1,0 +1,12 @@
+revise a fact never remembered: missing
+forget a fact never remembered: missing
+remember with an empty window: shape
+remember a quote the README does not hold: source
+remember: ok, then the same text again: same
+revise with no reason: reason
+events logged: 1 (the one remember)
+one byte of the build quote edited: content
+the deadline hidden with no forget: redacted
+a forgotten version marked readable: exposed
+the forget event cut off: redacted
+a revision's reason removed and the chain rewritten: verify ok, replay reason

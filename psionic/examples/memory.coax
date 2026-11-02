@@ -1,0 +1,89 @@
+// Chapter 214: the hand trace. Remember a build command quoted from a
+// README, an editor from two sessions that disagree, settle the conflict,
+// watch the README change under the build fact, revise it, let a deadline
+// expire, forget the editor, verify the log, and rebuild the store from it.
+#import "Basic";
+#load "../lib/harness/memory.coax";
+
+status_name :: (s: MmStatus) -> string {
+  names := [13] string.["ok", "capacity", "shape", "reason", "source", "same", "missing", "sequence", "link", "content", "digest", "redacted", "exposed"];
+  return names[cast(int) s];
+}
+serve_name :: (s: MmServe) -> string {
+  names := [7] string.["served", "missing", "forgotten", "conflict", "early", "expired", "stale"];
+  return names[cast(int) s];
+}
+state_name :: (s: MmState) -> string {
+  names := [4] string.["current", "conflict", "superseded", "forgotten"];
+  return names[cast(int) s];
+}
+scope_name :: (s: MmScope) -> string {
+  names := [3] string.["session", "user", "project"];
+  return names[cast(int) s];
+}
+reason_name :: (r: MmReason) -> string {
+  names := [4] string.["none", "correction", "update", "resolve"];
+  return names[cast(int) r];
+}
+// A fact's provenance: the cited passage, span and digest prefix, or the
+// digest prefix of the event it was said in.
+show_fact :: (f: MmFact) {
+  x: [8] u8;
+  print("  % % % v% \"%\"", scope_name(f.scope), f.owner, f.key, f.version, f.text);
+  if f.source == MmSource.cite { print(" from % bytes %..<% (%)", f.cite.id, f.cite.from, f.cite.to, an_hex(f.cite.digest, 4, x[..])); }
+  else { print(" said in event %", an_hex(f.origin, 4, x[..])); }
+  print(" [%", state_name(f.state));
+  if f.by >= 0 { print(", ended by event %", f.by); }
+  if f.reason != MmReason.none { print(", reason %", reason_name(f.reason)); }
+  print("]\n");
+}
+show_read :: (t: MmTable, c: MmContext, now: int, p: MmPassages) {
+  out: [8] int; n := mm_read(t, c, now, p, out[..]);
+  print("read at tick % (session %, user %, project %), facts served: %\n", now, c.session, c.user, c.project, n);
+  for i: 0..<n { show_fact(t.facts[out[i]]); }
+}
+show_look :: (t: MmTable, key: string, scope: MmScope, c: MmContext, now: int, p: MmPassages) {
+  r := mm_look(t, key, scope, c, now, p);
+  print("look % % at tick %: %", scope_name(scope), key, now, serve_name(r.serve));
+  if r.serve == MmServe.stale { print(" (%)", an_check_name(r.check)); }
+  if r.fact >= 0 { print(", version %", t.facts[r.fact].version); }
+  print("\n");
+}
+step :: (n: int, what: string, s: MmStatus) { print("%. %: %\n", n, what, status_name(s)); }
+
+main :: () {
+  ev: [16] MmEvent; by: [512] u8; fs: [16] MmFact;
+  l := [1] MmLog.[MmLog.{events = ev[..], bytes = by[..]}]; t := [1] MmTable.[MmTable.{facts = fs[..]}];
+  ids := MC_IDS; hd := MC_HEADS; old := MC_OLD; new := MC_NEW;
+  p := mc_passages(ids[..], hd[..], old[..]); q := mc_passages(ids[..], hd[..], new[..]);
+  me := MC_ME;
+  print("README.md#Build#0, before: \"%\"\n", old[0]);
+  step(1, "remember project build, quoting README bytes 0..<23", mm_remember(l[..], t[..], mc_cite(old[0], 0, 23), p));
+  step(2, "remember user editor = vim, said in event a1", mm_remember(l[..], t[..], mc_event("editor", MmScope.user, 1, "vim", 161, 0, 1000), p));
+  step(3, "remember user editor = helix, said in event a2", mm_remember(l[..], t[..], mc_event("editor", MmScope.user, 1, "helix", 162, 0, 1000), p));
+  show_look(t[0], "editor", MmScope.user, me, 3, p);
+  step(4, "revise user editor = helix, reason resolve", mm_revise(l[..], t[..], mc_event("editor", MmScope.user, 1, "helix", 163, 0, 1000), MmReason.resolve, p));
+  step(4, "revise user editor = helix again", mm_revise(l[..], t[..], mc_event("editor", MmScope.user, 1, "helix", 163, 0, 1000), MmReason.correction, p));
+  show_read(t[0], me, 4, p);
+  print("README.md#Build#0, after: \"%\"\n", new[0]);
+  show_look(t[0], "build", MmScope.project, me, 5, q);
+  show_read(t[0], me, 5, q);
+  step(5, "revise project build from the old bytes", mm_revise(l[..], t[..], mc_cite(old[0], 0, 23), MmReason.update, q));
+  step(5, "revise project build, quoting new bytes 0..<30, reason update", mm_revise(l[..], t[..], mc_cite(new[0], 0, 30), MmReason.update, q));
+  step(6, "remember session deadline = ship Friday, ticks 0..<10", mm_remember(l[..], t[..], mc_event("deadline", MmScope.session, 3, "ship Friday", 164, 0, 10), q));
+  show_read(t[0], me, 6, q);
+  show_look(t[0], "deadline", MmScope.session, me, 10, q);
+  step(7, "forget user editor", mm_forget(l[..], t[..], "editor", MmScope.user, 1, q));
+  show_look(t[0], "editor", MmScope.user, me, 7, q);
+  show_read(t[0], me, 7, q);
+  print("every version:\n");
+  for f: fs[0..<t[0].count] { show_fact(f); }
+  print("log bytes hold \"vim\": %, \"helix\": %, \"ship Friday\": %\n", mc_holds(l[0], "vim"), mc_holds(l[0], "helix"), mc_holds(l[0], "ship Friday"));
+  x: [64] u8;
+  v := mm_verify(l[0]);
+  print("verify: % after % events, % bytes; head %\n", status_name(v.status), v.index, l[0].used, an_hex(ev[l[0].count - 1].digest, 8, x[..]));
+  gs: [16] MmFact; u := [1] MmTable.[MmTable.{facts = gs[..]}];
+  v = mm_replay(l[0], u[..]);
+  print("replay: %, % versions, same table: %\n", status_name(v.status), u[0].count, mc_same_table(t[0], u[0]));
+  show_read(t[0], MmContext.{session = 4, user = 2, project = 8}, 7, q);
+}

@@ -1,0 +1,368 @@
+// Chapter 214's checks, kept apart from psionic/lib/harness/memory.coax: the
+// hand trace (remember, conflict, resolve, stale, revise, expire, forget),
+// every refusal, forged logs, the encoding against digests written outside
+// Coax, and a brute-force model that keeps its own list of live texts per
+// key, compared with the store on random operation sequences. Nothing here
+// is used by the store itself.
+
+// The hand trace's passage: one README section, before and after an edit.
+MC_IDS :: [1] string.["README.md#Build#0"];
+MC_HEADS :: [1] string.["Build"];
+MC_OLD :: [1] string.["Run coax/build.sh test. It takes ten minutes."];
+MC_NEW :: [1] string.["Run coax/build.sh test --fast. It takes ten minutes."];
+MC_ME :: MmContext.{session = 3, user = 1, project = 7};
+mc_passages :: (ids: [] string, heads: [] string, texts: [] string) -> MmPassages { return MmPassages.{ids = ids, heads = heads, texts = texts}; }
+// The digest of the session event a fact was said in: here a stand-in, the
+// byte d repeated.
+mc_said :: (d: u8) -> [32] u8 { o: [32] u8; for i: 0..<32 { o[i] = d; } return o; }
+mc_event :: (key: string, scope: MmScope, owner: int, text: string, d: u8, start: int, until: int) -> MmWrite {
+  return MmWrite.{key = key, scope = scope, owner = owner, text = text, source = MmSource.event, origin = mc_said(d), start = start, until = until};
+}
+mc_cite :: (text: string, from: int, to: int) -> MmWrite {
+  return MmWrite.{key = "build", scope = MmScope.project, owner = 7, text = text[from..<to], source = MmSource.cite, cite = AnCite.{id = MC_IDS[0], from = from, to = to, digest = an_digest(MC_HEADS[0], text)}, until = 1000};
+}
+// Does text occur anywhere in the log's bytes?
+mc_holds :: (g: MmLog, text: string) -> bool {
+  for a: 0..<g.used - text.count + 1 { if cast(string) g.bytes[a..<a + text.count] == text { return true; } }
+  return false;
+}
+mc_same_fact :: (a: MmFact, b: MmFact) -> bool {
+  return a.event == b.event && a.key == b.key && a.scope == b.scope && a.owner == b.owner && a.version == b.version && a.text == b.text && a.source == b.source && an_same_digest(a.origin, b.origin)
+    && a.cite.id == b.cite.id && a.cite.from == b.cite.from && a.cite.to == b.cite.to && an_same_digest(a.cite.digest, b.cite.digest) && a.start == b.start && a.until == b.until && a.state == b.state && a.by == b.by && a.reason == b.reason;
+}
+mc_same_table :: (a: MmTable, b: MmTable) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if !mc_same_fact(a.facts[i], b.facts[i]) { return false; } }
+  return true;
+}
+
+// The hand trace, step by step; the chapter works each line out before it
+// runs. Ticks: 1, 2, ... one per step.
+mc_trace :: (l: [] MmLog, t: [] MmTable) {
+  ids := MC_IDS; hd := MC_HEADS; old := MC_OLD; new := MC_NEW; p := mc_passages(ids[..], hd[..], old[..]); q := mc_passages(ids[..], hd[..], new[..]);
+  // 1. The build command, quoted from README bytes 0..<23.
+  #assert mm_remember(l, t, mc_cite(old[0], 0, 23), p) == MmStatus.ok;
+  // 2. The editor, said in session event 0xA1; 3. a second editor from 0xA2.
+  #assert mm_remember(l, t, mc_event("editor", MmScope.user, 1, "vim", 161, 0, 1000), p) == MmStatus.ok;
+  #assert mm_remember(l, t, mc_event("editor", MmScope.user, 1, "helix", 162, 0, 1000), p) == MmStatus.ok;
+  // 4. The user settles it: helix, as a resolve.
+  #assert mm_revise(l, t, mc_event("editor", MmScope.user, 1, "helix", 163, 0, 1000), MmReason.resolve, p) == MmStatus.ok;
+  // 5. The README changes; 6. the build fact is revised from the new bytes 0..<30.
+  #assert mm_revise(l, t, mc_cite(new[0], 0, 30), MmReason.update, q) == MmStatus.ok;
+  // 7. A session deadline, valid at ticks 0..<10.
+  #assert mm_remember(l, t, mc_event("deadline", MmScope.session, 3, "ship Friday", 164, 0, 10), q) == MmStatus.ok;
+  // 8. The user asks to forget the editor.
+  #assert mm_forget(l, t, "editor", MmScope.user, 1, q) == MmStatus.ok;
+}
+
+#test "the hand trace: remember, conflict, resolve, stale, revise, expire, forget" #steps 400000000 {
+  ev: [16] MmEvent; by: [512] u8; fs: [16] MmFact;
+  l := [1] MmLog.[MmLog.{events = ev[..], bytes = by[..]}]; t := [1] MmTable.[MmTable.{facts = fs[..]}];
+  ids := MC_IDS; hd := MC_HEADS; old := MC_OLD; new := MC_NEW; p := mc_passages(ids[..], hd[..], old[..]); q := mc_passages(ids[..], hd[..], new[..]);
+  out: [8] int;
+  #assert mm_remember(l[..], t[..], mc_cite(old[0], 0, 23), p) == MmStatus.ok;
+  #assert t[0].count == 1 && fs[0].version == 1 && fs[0].text == "Run coax/build.sh test." && fs[0].state == MmState.current && fs[0].by == -1 && fs[0].cite.id == "README.md#Build#0";
+  #assert mm_look(t[0], "build", MmScope.project, MC_ME, 1, p).serve == MmServe.served;
+  #assert mm_remember(l[..], t[..], mc_event("editor", MmScope.user, 1, "vim", 161, 0, 1000), p) == MmStatus.ok;
+  #assert mm_remember(l[..], t[..], mc_event("editor", MmScope.user, 1, "helix", 162, 0, 1000), p) == MmStatus.ok;
+  // Two sources disagree: both versions are flagged, neither is served.
+  #assert fs[1].state == MmState.conflict && fs[2].state == MmState.conflict && fs[2].version == 2;
+  r := mm_look(t[0], "editor", MmScope.user, MC_ME, 3, p);
+  #assert r.serve == MmServe.conflict && r.fact == 2;
+  #assert mm_read(t[0], MC_ME, 3, p, out[..]) == 1 && out[0] == 0;
+  #assert mm_revise(l[..], t[..], mc_event("editor", MmScope.user, 1, "helix", 163, 0, 1000), MmReason.resolve, p) == MmStatus.ok;
+  #assert fs[1].state == MmState.superseded && fs[1].by == 3 && fs[2].state == MmState.superseded && fs[2].by == 3;
+  #assert fs[3].state == MmState.current && fs[3].version == 3 && fs[3].reason == MmReason.resolve && fs[3].origin[0] == 163;
+  #assert mm_read(t[0], MC_ME, 4, p, out[..]) == 2 && out[0] == 0 && out[1] == 3;
+  // The README's first sentence changes: the build fact is stale and not served.
+  r = mm_look(t[0], "build", MmScope.project, MC_ME, 5, q);
+  #assert r.serve == MmServe.stale && r.check == AnCheck.changed && r.fact == 0;
+  #assert mm_read(t[0], MC_ME, 5, q, out[..]) == 1 && out[0] == 3;
+  // A revision from the old bytes is refused; from the new bytes it is version 2.
+  #assert mm_revise(l[..], t[..], mc_cite(old[0], 0, 23), MmReason.update, q) == MmStatus.source;
+  #assert mm_revise(l[..], t[..], mc_cite(new[0], 0, 30), MmReason.update, q) == MmStatus.ok;
+  #assert fs[0].state == MmState.superseded && fs[0].by == 4 && fs[4].version == 2 && fs[4].text == "Run coax/build.sh test --fast." && fs[4].cite.to == 30;
+  #assert mm_remember(l[..], t[..], mc_event("deadline", MmScope.session, 3, "ship Friday", 164, 0, 10), q) == MmStatus.ok;
+  #assert mm_read(t[0], MC_ME, 6, q, out[..]) == 3 && out[0] == 3 && out[1] == 4 && out[2] == 5;
+  #assert mm_look(t[0], "deadline", MmScope.session, MC_ME, 10, q).serve == MmServe.expired;
+  #assert mm_read(t[0], MC_ME, 10, q, out[..]) == 2 && out[1] == 4;
+  // Forget: every editor version is forgotten, their bytes are gone, and the chain still verifies.
+  #assert mc_holds(l[0], "helix") && mc_holds(l[0], "vim");
+  #assert mm_forget(l[..], t[..], "editor", MmScope.user, 1, q) == MmStatus.ok;
+  #assert fs[1].state == MmState.forgotten && fs[1].by == 3 && fs[3].state == MmState.forgotten && fs[3].by == 6 && fs[0].state == MmState.superseded;
+  #assert !mc_holds(l[0], "helix") && !mc_holds(l[0], "vim") && mc_holds(l[0], "ship Friday") && mc_holds(l[0], "editor");
+  #assert ev[6].op == MmOp.forget && ev[6].start == 0 && ev[6].until == 1 && ev[6].texts == 0 && ev[6].ids == 0;
+  #assert ev[1].redacted && ev[2].redacted && ev[3].redacted && !ev[0].redacted && !ev[4].redacted && !ev[5].redacted && !ev[6].redacted;
+  #assert mm_look(t[0], "editor", MmScope.user, MC_ME, 7, q).serve == MmServe.forgotten && mm_look(t[0], "editor", MmScope.user, MC_ME, 7, q).fact == -1;
+  #assert mm_read(t[0], MC_ME, 7, q, out[..]) == 2 && out[0] == 4 && out[1] == 5;
+  #assert fs[1].text == "" && fs[2].text == "" && fs[3].text == "" && fs[0].text == "Run coax/build.sh test.";
+  v := mm_verify(l[0]); #assert v.status == MmStatus.ok && v.index == 7;
+  // Remembered again, the editor is version 4 and current.
+  #assert mm_remember(l[..], t[..], mc_event("editor", MmScope.user, 1, "nano", 165, 0, 1000), q) == MmStatus.ok;
+  #assert fs[6].version == 4 && fs[6].state == MmState.current && mm_look(t[0], "editor", MmScope.user, MC_ME, 8, q).fact == 6;
+  // Replay rebuilds the same table from the log alone.
+  gs: [16] MmFact; u := [1] MmTable.[MmTable.{facts = gs[..]}];
+  v = mm_replay(l[0], u[..]); #assert v.status == MmStatus.ok; #assert v.index == 8; #assert u[0].count == t[0].count; for i: 0..<7 { #assert mc_same_fact(fs[i], gs[i]); }
+  // Another project and another user see none of it; another session sees the project's fact.
+  other := MmContext.{session = 4, user = 2, project = 8};
+  #assert mm_read(t[0], other, 8, q, out[..]) == 0;
+  #assert mm_look(t[0], "build", MmScope.project, other, 8, q).serve == MmServe.missing;
+  #assert mm_read(t[0], MmContext.{session = 4, user = 2, project = 7}, 8, q, out[..]) == 1 && out[0] == 4;
+  #assert mm_read(t[0], MC_ME, 8, q, out[0..<2]) == -1 && mm_read(t[0], MC_ME, 8, q, out[0..<3]) == 3;
+}
+
+#test "the hand trace as the chapter and example run it" #steps 400000000 {
+  ev: [16] MmEvent; by: [512] u8; fs: [16] MmFact;
+  l := [1] MmLog.[MmLog.{events = ev[..], bytes = by[..]}]; t := [1] MmTable.[MmTable.{facts = fs[..]}];
+  mc_trace(l[..], t[..]);
+  #assert l[0].count == 7 && t[0].count == 6 && l[0].used == (5 + 23 + 17) + (6 + 3) + (6 + 5) + (6 + 5) + (5 + 30 + 17) + (8 + 11) + 6;
+}
+
+#test "every refusal, and nothing is logged by one" #steps 400000000 {
+  ev: [4] MmEvent; by: [64] u8; fs: [3] MmFact;
+  l := [1] MmLog.[MmLog.{events = ev[..], bytes = by[..]}]; t := [1] MmTable.[MmTable.{facts = fs[..]}];
+  ids := MC_IDS; hd := MC_HEADS; old := MC_OLD; p := mc_passages(ids[..], hd[..], old[..]); none := mc_passages(ids[0..<0], hd[0..<0], old[0..<0]);
+  w := mc_event("k", MmScope.project, 7, "v", 1, 0, 5);
+  bad := w; bad.key = ""; #assert mm_remember(l[..], t[..], bad, p) == MmStatus.shape;
+  bad = w; bad.owner = -1; #assert mm_remember(l[..], t[..], bad, p) == MmStatus.shape;
+  bad = w; bad.owner = 0; bad.start = -1; #assert mm_remember(l[..], t[..], bad, p) == MmStatus.shape;
+  bad = w; bad.until = 0; #assert mm_remember(l[..], t[..], bad, p) == MmStatus.shape;
+  bad = w; bad.text = ""; #assert mm_remember(l[..], t[..], bad, p) == MmStatus.shape;
+  #assert mm_write(l[..], t[..], MmOp.forget, MmReason.none, w, p) == MmStatus.shape;
+  #assert mm_revise(l[..], t[..], w, MmReason.none, p) == MmStatus.reason;
+  #assert mm_write(l[..], t[..], MmOp.remember, MmReason.correction, w, p) == MmStatus.reason;
+  #assert mm_revise(l[..], t[..], w, MmReason.correction, p) == MmStatus.missing;
+  #assert mm_forget(l[..], t[..], "k", MmScope.project, 7, p) == MmStatus.missing;
+  c := mc_cite(old[0], 0, 23);
+  #assert mm_remember(l[..], t[..], c, none) == MmStatus.source;
+  bad = c; bad.text = "Run coax/build.sh test!"; #assert mm_remember(l[..], t[..], bad, p) == MmStatus.source;
+  #assert l[0].count == 0 && l[0].used == 0 && t[0].count == 0;
+  // An event source needs no passage; a one-tick window is valid.
+  bad = w; bad.start = 4; #assert mm_remember(l[..], t[..], bad, none) == MmStatus.ok;
+  #assert mm_look(t[0], "k", MmScope.project, MC_ME, 3, p).serve == MmServe.early && mm_look(t[0], "k", MmScope.project, MC_ME, 4, p).serve == MmServe.served;
+  #assert mm_look(t[0], "k", MmScope.project, MC_ME, 5, p).serve == MmServe.expired;
+  #assert mm_remember(l[..], t[..], w, p) == MmStatus.same && mm_revise(l[..], t[..], w, MmReason.correction, p) == MmStatus.same;
+  w2 := w; w2.text = "u";
+  #assert mm_remember(l[..], t[..], w2, p) == MmStatus.ok && mm_remember(l[..], t[..], w2, p) == MmStatus.same && mm_remember(l[..], t[..], w, p) == MmStatus.same;
+  // In a conflict a revise to either text is a resolution, not the same.
+  #assert mm_remember(l[..], t[..], c, p) == MmStatus.ok && t[0].count == 3;
+  #assert mm_revise(l[..], t[..], w2, MmReason.resolve, p) == MmStatus.capacity && l[0].count == 3;
+  // The log's events and bytes are bounded too.
+  gs: [8] MmFact; big := [1] MmTable.[MmTable.{facts = gs[..]}];
+  #assert mm_replay(l[0], big[..]).status == MmStatus.ok && big[0].count == 3;
+  #assert mm_revise(l[..], big[..], w2, MmReason.resolve, p) == MmStatus.ok && l[0].count == 4 && big[0].count == 4;
+  #assert mm_forget(l[..], big[..], "k", MmScope.project, 7, p) == MmStatus.capacity;
+  ev2: [4] MmEvent; by2: [3] u8; fs2: [4] MmFact;
+  m := [1] MmLog.[MmLog.{events = ev2[..], bytes = by2[..]}]; u := [1] MmTable.[MmTable.{facts = fs2[..]}];
+  #assert mm_remember(m[..], u[..], w, p) == MmStatus.ok && m[0].used == 2;
+  bad = w; bad.key = "kk"; #assert mm_remember(m[..], u[..], bad, p) == MmStatus.capacity;
+  #assert mm_forget(m[..], u[..], "k", MmScope.project, 7, p) == MmStatus.ok && m[0].used == 3;
+  // A smaller table refuses a replay at the event that does not fit.
+  small := [1] MmTable.[MmTable.{facts = fs[0..<1]}];
+  v := mm_replay(l[0], small[..]); #assert v.status == MmStatus.capacity && v.index == 1;
+}
+
+#test "scopes and owners keep facts apart" #steps 200000000 {
+  ev: [8] MmEvent; by: [256] u8; fs: [8] MmFact;
+  l := [1] MmLog.[MmLog.{events = ev[..], bytes = by[..]}]; t := [1] MmTable.[MmTable.{facts = fs[..]}];
+  ids := MC_IDS; hd := MC_HEADS; old := MC_OLD; p := mc_passages(ids[..], hd[..], old[..]); out: [8] int;
+  #assert mm_remember(l[..], t[..], mc_event("k", MmScope.session, 3, "s", 1, 0, 5), p) == MmStatus.ok;
+  #assert mm_remember(l[..], t[..], mc_event("k", MmScope.user, 3, "u", 1, 0, 5), p) == MmStatus.ok;
+  #assert mm_remember(l[..], t[..], mc_event("k", MmScope.project, 3, "p", 1, 0, 5), p) == MmStatus.ok;
+  #assert mm_remember(l[..], t[..], mc_event("k", MmScope.project, 7, "q", 1, 0, 5), p) == MmStatus.ok;
+  #assert t[0].count == 4 && fs[3].state == MmState.current && fs[3].version == 1 && fs[0].state == MmState.current;
+  c := MmContext.{session = 3, user = 9, project = 7};
+  #assert mm_read(t[0], c, 0, p, out[..]) == 2 && out[0] == 0 && out[1] == 3;
+  c = MmContext.{session = 9, user = 3, project = 9};
+  #assert mm_read(t[0], c, 0, p, out[..]) == 1 && out[0] == 1;
+  c = MmContext.{session = 9, user = 9, project = 3};
+  #assert mm_read(t[0], c, 0, p, out[..]) == 1 && out[0] == 2 && mm_look(t[0], "k", MmScope.project, c, 0, p).fact == 2;
+  #assert mm_owner(c, MmScope.session) == 9 && mm_owner(MC_ME, MmScope.user) == 1 && mm_owner(MC_ME, MmScope.project) == 7;
+  #assert mm_forget(l[..], t[..], "k", MmScope.project, 3, p) == MmStatus.ok;
+  #assert fs[2].state == MmState.forgotten && fs[3].state == MmState.current && fs[0].state == MmState.current && fs[1].state == MmState.current;
+  #assert ev[2].redacted && !ev[3].redacted && !ev[0].redacted && mm_verify(l[0]).status == MmStatus.ok;
+  // Owner 0 is an owner; a quote may start anywhere in its passage.
+  #assert mm_remember(l[..], t[..], mc_event("k", MmScope.user, 0, "z", 1, 0, 5), p) == MmStatus.ok && fs[4].owner == 0;
+  c2 := mc_cite(old[0], 24, 45);
+  #assert c2.text == "It takes ten minutes." && mm_remember(l[..], t[..], c2, p) == MmStatus.ok && fs[5].cite.from == 24 && fs[5].cite.to == 45;
+  #assert mm_look(t[0], "build", MmScope.project, MC_ME, 0, p).serve == MmServe.served && mm_verify(l[0]).status == MmStatus.ok;
+  // A different key in the same scope is a different fact.
+  #assert mm_remember(l[..], t[..], mc_event("j", MmScope.project, 7, "q", 1, 0, 5), p) == MmStatus.ok && fs[6].version == 1 && fs[3].state == MmState.current;
+}
+
+#test "the encoding, against digests written outside Coax" {
+  // Python: hashlib.sha256(struct.pack('<3Q', 1, 2, 0) + b'kvv').hexdigest()
+  x: [64] u8; b := [3] u8.['k', 'v', 'v'];
+  e := MmEvent.{keys = 1, texts = 2};
+  #assert an_hex(mm_content(e, b[..]), 32, x[..]) == "21ed4f33ea7151c0c334b7f5c43f910fcd136ea4a982fa62e9b7af6eeef4feec";
+  w: [16] u8;
+  #assert mm_u64(w[..], 3, 258) == 11 && w[3] == 2 && w[4] == 1 && w[5] == 0 && w[10] == 0;
+  #assert mm_u64(w[..], 0, -1) == 8 && w[0] == 255 && w[7] == 255;
+  // Python: hashlib.sha256(bytes(200)).hexdigest(), and for every field set:
+  // hashlib.sha256(struct.pack('<Q', 5) + b'\x01' * 32 + b'\x02' * 32 + b'\x03' * 32
+  //   + struct.pack('<12Q', 1, 2, 7, 3, 1, 4, 9, 10, 20, 6, 11, 17)).hexdigest()
+  #assert an_hex(mm_digest(MmEvent.{}), 32, x[..]) == "6d9c54dee5660c46886f32d80e57e9dd0ffa57ee0cd2a762b036d9c8e0c3a33a";
+  f := MmEvent.{sequence = 5, op = MmOp.revise, scope = MmScope.project, owner = 7, reason = MmReason.resolve, source = MmSource.cite, from = 4, to = 9, start = 10, until = 20, keys = 6, texts = 11, ids = 17, redacted = true};
+  for i: 0..<32 { f.previous[i] = 1; f.origin[i] = 2; f.content[i] = 3; }
+  #assert an_hex(mm_digest(f), 32, x[..]) == "96ac02112f0b4dca42b0f961a0b31ee21fb7e2a0ec7499d996b89a7dd7d848a0";
+}
+
+// The brute-force model: per key, the live texts in write order (more than
+// one is a conflict), where each came from (a passage, or -1 for an event)
+// and its version, how many versions were written, and whether the key was
+// ever forgotten. It knows nothing of events, digests or the table.
+McSlot :: struct { n: int; live: int; text: [16] string; cite: [16] int; version: [16] int; gone: bool; }
+MC_KEYS :: [4] string.["a", "b", "a", "a"];
+MC_SCOPES :: [4] MmScope.[MmScope.project, MmScope.project, MmScope.project, MmScope.session];
+MC_OWNERS :: [4] int.[7, 7, 8, 3];
+MC_SAID :: [3] string.["xray", "yolk", "zinc"];
+MC_PASSAGE_IDS :: [2] string.["p0#H#0", "p1#H#0"];
+// Each passage's four revisions; the fourth of p0 restores its first text,
+// so a citation made then is current again.
+MC_PASSAGE_TEXTS :: [8] string.["Alpha one.", "Alpha two.", "Alpha three.", "Alpha one.", "Beta one.", "Beta two.", "Beta three.", "Beta four."];
+// A small LCG: every product fits in 62 bits.
+mc_draw :: (g: [] int, n: int) -> int { g[0] = (g[0] * 1103515245 + 12345) % 2147483648; return (g[0] >> 8) % n; }
+// The model's verdict for one write, and its new state.
+mc_model :: (m: [] McSlot, op: MmOp, text: string, cite: int, present: bool) -> MmStatus {
+  s := m[0];
+  if op != MmOp.forget && cite >= 0 && !present { return MmStatus.source; }
+  if op != MmOp.remember && s.live == 0 { return MmStatus.missing; }
+  if op == MmOp.forget { m[0].live = 0; m[0].gone = true; return MmStatus.ok; }
+  for k: 0..<s.live { if s.text[k] == text && (op == MmOp.remember || s.live == 1) { return MmStatus.same; } }
+  if op == MmOp.revise { s.live = 0; }
+  s.n += 1; s.text[s.live] = text; s.cite[s.live] = cite; s.version[s.live] = s.n; s.live += 1;
+  m[0] = s; return MmStatus.ok;
+}
+// What the model says a read of the slot gets.
+mc_expect :: (s: McSlot, ptext: [] string, present: [] bool) -> MmServe {
+  if s.live == 0 { return ifx s.gone then MmServe.forgotten else MmServe.missing; }
+  if s.live > 1 { return MmServe.conflict; }
+  c := s.cite[0];
+  if c >= 0 && (!present[c] || ptext[c] != s.text[0]) { return MmServe.stale; }
+  return MmServe.served;
+}
+// The passages present now, in the store's form.
+mc_present :: (ids: [] string, heads: [] string, texts: [] string, present: [] bool, pi: [] string, ph: [] string, pt: [] string) -> int {
+  n := 0;
+  for k: 0..<present.count { if present[k] { pi[n] = ids[k]; ph[n] = heads[k]; pt[n] = texts[k]; n += 1; } }
+  return n;
+}
+
+// One random sequence from seed, checked against the model step by step.
+// tally counts each write status at its value and each read outcome at 16
+// plus its value.
+mc_random :: (seed: int, tally: [] int) {
+  ev: [32] MmEvent; by: [1024] u8; fs: [32] MmFact;
+  l := [1] MmLog.[MmLog.{events = ev[..], bytes = by[..]}]; t := [1] MmTable.[MmTable.{facts = fs[..]}];
+  model: [4] McSlot; g := [1] int.[seed * 7919 + 1];
+  version := [2] int.[0, 0]; present := [2] bool.[true, true]; ptext := [2] string.["Alpha one.", "Beta one."];
+  ids := MC_PASSAGE_IDS; hd := [2] string.["H", "H"]; keys := MC_KEYS; scopes := MC_SCOPES; owners := MC_OWNERS; said := MC_SAID; all := MC_PASSAGE_TEXTS;
+  a := MmContext.{session = 3, user = 1, project = 7}; b := MmContext.{session = 3, user = 1, project = 8};
+  pi: [2] string; ph: [2] string; pt: [2] string;
+  steps := 6 + mc_draw(g[..], 10);
+  for j: 0..<steps {
+    np := mc_present(ids[..], hd[..], ptext[..], present[..], pi[..], ph[..], pt[..]);
+    p := MmPassages.{ids = pi[0..<np], heads = ph[0..<np], texts = pt[0..<np]};
+    kind := mc_draw(g[..], 8); x := mc_draw(g[..], 4); src := mc_draw(g[..], 5);
+    if kind >= 6 {
+      k := x % 2;
+      if kind == 6 { version[k] = (version[k] + 1) % 4; ptext[k] = all[4 * k + version[k]]; }
+      else { present[k] = !present[k]; }
+    } else {
+      op := ifx kind < 3 then MmOp.remember else ifx kind < 5 then MmOp.revise else MmOp.forget;
+      cite := ifx src >= 3 then src - 3 else -1;
+      text := ifx cite >= 0 then ptext[cite] else said[src];
+      w := MmWrite.{key = keys[x], scope = scopes[x], owner = owners[x], text = text, source = MmSource.event, origin = mc_said(cast(u8) j), until = 1000};
+      if cite >= 0 { w.source = MmSource.cite; w.cite = AnCite.{id = ids[cite], from = 0, to = text.count, digest = an_digest("H", text)}; }
+      one := [1] McSlot.[model[x]];
+      want := mc_model(one[..], op, text, cite, present[ifx cite >= 0 then cite else 0]);
+      model[x] = one[0];
+      got := MmStatus.ok;
+      if op == MmOp.forget { got = mm_forget(l[..], t[..], keys[x], scopes[x], owners[x], p); }
+      else { got = mm_write(l[..], t[..], op, ifx op == MmOp.revise then MmReason.correction else MmReason.none, w, p); }
+      #assert got == want; tally[cast(int) got] += 1;
+    }
+    // Every key reads as the model says, and the listing is the model's served set.
+    np = mc_present(ids[..], hd[..], ptext[..], present[..], pi[..], ph[..], pt[..]);
+    p = MmPassages.{ids = pi[0..<np], heads = ph[0..<np], texts = pt[0..<np]};
+    served := 0;
+    for s: 0..<4 {
+      c := ifx s == 2 then b else a;
+      r := mm_look(t[0], keys[s], scopes[s], c, 5, p); e := mc_expect(model[s], ptext[..], present[..]);
+      #assert r.serve == e; tally[16 + cast(int) e] += 1;
+      if model[s].live == 0 { #assert r.fact == -1; }
+      else { f := fs[r.fact]; z := model[s].live - 1; #assert f.text == model[s].text[z] && f.version == model[s].version[z]; }
+      if e == MmServe.served && s != 2 { served += 1; }
+    }
+    out: [4] int; n := mm_read(t[0], a, 5, p, out[..]);
+    #assert n == served;
+    for i: 0..<n {
+      f := fs[out[i]]; s := ifx f.scope == MmScope.session then 3 else ifx f.key == "a" then 0 else 1;
+      #assert f.state == MmState.current && f.owner == owners[s] && mc_expect(model[s], ptext[..], present[..]) == MmServe.served && f.version == model[s].version[0];
+    }
+  }
+  // The log verifies, every forgotten version is hidden, and replay rebuilds the table.
+  #assert mm_verify(l[0]).status == MmStatus.ok;
+  for f: fs[0..<t[0].count] { if f.state == MmState.forgotten { #assert f.text == "" && ev[f.event].redacted; } }
+  gs: [32] MmFact; u := [1] MmTable.[MmTable.{facts = gs[..]}];
+  #assert mm_replay(l[0], u[..]).status == MmStatus.ok && mc_same_table(t[0], u[0]);
+}
+
+// Six sequences here, which reach every outcome; psionic/tests/harness-memory-model.coax
+// runs 200 more.
+#test "the store agrees with the model on random sequences that reach every outcome" #steps 4000000000 {
+  tally: [32] int;
+  for seed: 0..<6 { mc_random(seed, tally[..]); }
+  for s: [4] MmStatus.[MmStatus.ok, MmStatus.source, MmStatus.same, MmStatus.missing] { #assert tally[cast(int) s] > 0; }
+  for r: [5] MmServe.[MmServe.served, MmServe.missing, MmServe.forgotten, MmServe.conflict, MmServe.stale] { #assert tally[16 + cast(int) r] > 0; }
+}
+
+// Rewrite content digests (of events not redacted), links and digests in
+// order, as someone who can write the whole log would after editing it.
+mc_rechain :: (g: MmLog) {
+  at := 0; previous: [32] u8;
+  for e, i: g.events[0..<g.count] {
+    n := e.keys + e.texts + e.ids;
+    if !e.redacted { g.events[i].content = mm_content(e, g.bytes[at..<at + n]); }
+    g.events[i].previous = previous; g.events[i].digest = mm_digest(g.events[i]); previous = g.events[i].digest; at += n;
+  }
+}
+#test "the verifier refuses an edited, cut, unredacted or silently redacted log" #steps 1000000000 {
+  ev: [16] MmEvent; by: [512] u8; fs: [16] MmFact;
+  l := [1] MmLog.[MmLog.{events = ev[..], bytes = by[..]}]; t := [1] MmTable.[MmTable.{facts = fs[..]}];
+  mc_trace(l[..], t[..]);
+  #assert l[0].used == 153 && mm_verify(l[0]).status == MmStatus.ok;
+  e2 := ev; b2 := by; g := MmLog.{events = e2[..], bytes = b2[..], count = 7, used = 153};
+  e2[2].sequence = 5; v := mm_verify(g); #assert v.status == MmStatus.sequence && v.index == 2;
+  e2 = ev; e2[2].previous[31] = e2[2].previous[31] ^ 1; v = mm_verify(g); #assert v.status == MmStatus.link && v.index == 2;
+  e2 = ev; b2[6] = 'r'; v = mm_verify(g); #assert v.status == MmStatus.content && v.index == 0;
+  b2 = by; e2[4].start = 1; v = mm_verify(g); #assert v.status == MmStatus.digest && v.index == 4;
+  e2 = ev; e2[6].owner = 2; v = mm_verify(g); #assert v.status == MmStatus.redacted && v.index == 1;
+  // A silent redaction: the deadline's bytes hidden with no forget.
+  e2 = ev; e2[5].redacted = true; v = mm_verify(g); #assert v.status == MmStatus.redacted && v.index == 5;
+  // A forgotten text left readable, by its flag or by one byte.
+  e2 = ev; e2[1].redacted = false; v = mm_verify(g); #assert v.status == MmStatus.exposed && v.index == 1;
+  e2 = ev; b2[60] = 'h'; v = mm_verify(g); #assert v.status == MmStatus.exposed && v.index == 2;
+  b2 = by; b2[64] = 'x'; v = mm_verify(g); #assert v.status == MmStatus.exposed && v.index == 2;
+  // The bytes around it are keys: an edited key no longer names the forget.
+  b2 = by; b2[59] = 'x'; v = mm_verify(g); #assert v.status == MmStatus.redacted && v.index == 2;
+  b2 = by; b2[65] = 'x'; v = mm_verify(g); #assert v.status == MmStatus.redacted && v.index == 3;
+  // Cutting the forget off leaves its redactions unexplained.
+  b2 = by; g.count = 6; g.used = 147; v = mm_verify(g); #assert v.status == MmStatus.redacted && v.index == 1;
+  g.count = 7; g.used = 154; v = mm_verify(g); #assert v.status == MmStatus.shape && v.index == 7;
+  g.used = 152; v = mm_verify(g); #assert v.status == MmStatus.shape && v.index == 6;
+  g.used = 153; e2[0].keys = 0; v = mm_verify(g); #assert v.status == MmStatus.shape && v.index == 0;
+  e2 = ev; e2[0].texts = -1; v = mm_verify(g); #assert v.status == MmStatus.shape && v.index == 0;
+  e2 = ev; e2[0].ids = -1; v = mm_verify(g); #assert v.status == MmStatus.shape && v.index == 0;
+  e2 = ev; v = mm_verify(g); #assert v.status == MmStatus.ok && v.index == 7;
+  // A forger who rechains after editing: the chain holds, replay refuses the
+  // revision with no reason and the remember with one, and verify still
+  // refuses the forget-less redaction.
+  gs: [16] MmFact; u := [1] MmTable.[MmTable.{facts = gs[..]}];
+  e2[4].reason = MmReason.none; mc_rechain(g); v = mm_replay(g, u[..]); #assert v.status == MmStatus.reason && v.index == 4;
+  e2 = ev; e2[5].reason = MmReason.update; mc_rechain(g); v = mm_replay(g, u[..]); #assert v.status == MmStatus.reason && v.index == 5;
+  e2 = ev; e2[4].op = MmOp.remember; e2[4].reason = MmReason.none; mc_rechain(g); v = mm_replay(g, u[..]); #assert v.status == MmStatus.ok && gs[0].state == MmState.conflict;
+  e2 = ev; e2[1].op = MmOp.revise; e2[1].reason = MmReason.update; mc_rechain(g); v = mm_replay(g, u[..]); #assert v.status == MmStatus.ok;
+  e2 = ev; e2[6].scope = MmScope.project; mc_rechain(g); v = mm_replay(g, u[..]); #assert v.status == MmStatus.redacted && v.index == 1;
+  e2 = ev; v = mm_replay(g, u[..]); #assert v.status == MmStatus.ok && mc_same_table(t[0], u[0]);
+}

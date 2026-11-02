@@ -307,7 +307,7 @@ run examples directly without the check command.
 | [211. Measure the harness](ch211-measure-the-harness.md) | Unimplemented: design draft | Benchmarks for the harness and end-to-end task suites, each change measured alone against the simplest loop and reported through chapters 239–241. |
 | [212. Generate candidates, then check them](ch212-generate-candidates-then-check-them.md) | Partly implemented: cpu-int-candidates-v1, bounded CPU (real model candidates through chapter 200's loop, candidates run in chapter 204's sandbox, the repair strategy, a learned verifier, and wall-clock and execution cost remain) | Seeded candidates for chapter 242's tasks, checked cheapest first (a length screen, then a visible or exact check, each with a cost), choosing the first that passes, never past a budget and never unverified; the unbiased pass@k estimator against brute force, Wilson intervals, and one candidate against best of 2, 4 and 8 on 60 held-out tasks, with any right, chosen right and chosen wrong reported apart; every run replays from its seeds. |
 | [213. Consent before sharing](ch213-consent-before-sharing.md) | Unimplemented: design draft | No session content leaves the machine without a per-session, revocable opt-in, and attribution metadata is explicit and inspectable. |
-| [214. Remember a fact, then revise it](ch214-remember-a-fact-then-revise-it.md) | Unimplemented: design draft | A source-linked memory store where every fact names its source and project scope, and corrected or deleted facts never return in their old form. |
+| [214. Remember a fact, then revise it](ch214-remember-a-fact-then-revise-it.md) | Partly implemented: mm-memory-v1, bounded CPU, SHA-256 hash-chained memory events (not yet: event sources checked against chapter 201's log, a store on disk, ranked retrieval) | A source-linked memory store where every fact names its source and project scope, and corrected or deleted facts never return in their old form. |
 | [251. One agent, many tasks](ch251-one-agent-many-tasks.md) | Unimplemented: design draft | A Router that talks and dispatches and Workers that execute, event Triggers filtered fast then slow, Thread subscriptions with pass-through, batched Router steps, inline-and-spill context with a chain of recall, and speculative work delivered only when confirmed. |
 | [252. An agent that stays online](ch252-an-agent-that-stays-online.md) | Unimplemented: design draft | A full-duplex loop with start/stop jobs, per-channel reply rules, stateless compute over a durable log, stateless daemons on each machine, a scheduled watchdog, and credentials the model never sees. |
 | [215. Fit our own calibration, and refuse a stale one](ch215-fit-our-own-calibration.md) | Runnable: cpu-f64-calibrate-v1, synthetic probabilities | Fit per-question temperature, binned and isotonic maps on one split, keep one only if it lowers calibration error and log loss on a frozen gate split, report it once on a test split, and refuse it for any other model version or question set. |
@@ -366,7 +366,10 @@ Chapter 206 condenses the logged history when a request would not fit: two
 logged events name what a summary replaces, and the stable prefix may
 break only there. Chapter 207 lets the model write one checked program of
 tool calls instead of one call per request, run through chapter 204's
-sandbox. The table and registry, rather than an unlisted-chapter rule, determine
+sandbox. Chapter 214 gives the agent a memory: versioned facts written
+only through logged events, revised with a reason, refused when their
+cited passage changes, and forgotten with proof that the text is gone.
+The table and registry, rather than an unlisted-chapter rule, determine
 which chapters are implemented, partial or drafts.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
