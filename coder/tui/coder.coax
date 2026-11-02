@@ -55,6 +55,7 @@ SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "�
 
 App :: struct {
   plain: bool;                   // --print: no TUI, plain lines
+  hist: [262144] u8; nhist: int; // the transcript as committed, newest last, for /find (chapter 36)
   pre: string;                   // a fork's earlier turns, sent ahead of its first message
   vt: [1] Vt;                    // reads a tool's output as a terminal would show it (chapter 37)
   pl: [] PlRegistry;             // plugins: their commands and hooks (chapter 15)
@@ -123,9 +124,65 @@ cd_flush :: (a: [] App) {
 
 // Finished text into the scrollback (or stdout, plain).
 cd_commit :: (a: [] App, style: int, s: string) {
+  cd_hist_add(a, s);
   if a[0].log[0].json { return; }          // coder run --json: the log's lines are the output
   if a[0].plain { tui_put(a[0].o[..], s); tui_put(a[0].o[..], "\n"); cd_flush(a); return; }
   tui_live_commit(a[0].o[..], a[0].lv[..], style, s);
+}
+
+// Keeps committed text for /find; when full, the oldest half goes.
+cd_hist_add :: (a: [] App, s: string) {
+  h := a[0].hist[..];
+  if s.count + 1 > h.count { return; }
+  if a[0].nhist + s.count + 1 > h.count {
+    cut := a[0].nhist / 2; while cut < a[0].nhist && h[cut] != 10 { cut += 1; }
+    if cut < a[0].nhist { cut += 1; }
+    for i: cut..<a[0].nhist { h[i - cut] = h[i]; }
+    a[0].nhist -= cut;
+  }
+  for c: s { h[a[0].nhist] = c; a[0].nhist += 1; }
+  h[a[0].nhist] = 10; a[0].nhist += 1;
+}
+
+cd_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+
+// Whether line holds q, ignoring ASCII case.
+cd_holds :: (line: string, q: string) -> bool {
+  if q.count == 0 || q.count > line.count { return false; }
+  for i: 0..<line.count - q.count + 1 {
+    same := true;
+    for j: 0..<q.count { if cd_lower(line[i + j]) != cd_lower(q[j]) { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+
+// /find TEXT: the transcript's lines that hold TEXT, the last CD_FIND_MAX of them, without the mouse.
+CD_FIND_MAX :: 20;
+cd_find :: (a: [] App, q: string) {
+  h := cast(string) a[0].hist[0..<a[0].nhist];
+  starts: [CD_FIND_MAX] int; ends: [CD_FIND_MAX] int; found := 0;
+  at := 0;
+  while at < h.count {
+    e := at; while e < h.count && h[e] != 10 { e += 1; }
+    line := cast(string) h[at..<e];
+    earlier := rt_has_prefix(line, "› /find ") || rt_has_prefix(line, "  ⌕ ");
+    if cd_holds(line, q) && !earlier {
+      k := found % CD_FIND_MAX; starts[k] = at; ends[k] = e; found += 1;
+    }
+    at = e + 1;
+  }
+  tb: [24] u8;
+  if found == 0 { cd_commit(a, TUI_FAINT, "  Not in the transcript."); return; }
+  first := ifx found > CD_FIND_MAX then found - CD_FIND_MAX else 0;
+  for i: first..<found {
+    k := i % CD_FIND_MAX;
+    lb: [1200] u8; ln := cd_cat(lb[..], 0, "  ⌕ "); ln = cd_cat(lb[..], ln, cast(string) h[starts[k]..<ifx ends[k] - starts[k] > 1000 then starts[k] + 1000 else ends[k]]);
+    cd_commit(a, TUI_DIM, cast(string) lb[0..<ln]);
+  }
+  sb: [96] u8; sn := cd_cat(sb[..], 0, "  "); sn = cd_cat(sb[..], sn, cd_itoa(found, tb[..])); sn = cd_cat(sb[..], sn, ifx found == 1 then " line" else " lines");
+  if found > CD_FIND_MAX { sn = cd_cat(sb[..], sn, ", the last "); sn = cd_cat(sb[..], sn, cd_itoa(CD_FIND_MAX, tb[..])); sn = cd_cat(sb[..], sn, " shown"); }
+  cd_commit(a, TUI_FAINT, cast(string) sb[0..<sn]);
 }
 
 // Text under a prefix, continued lines indented to match.
@@ -629,7 +686,7 @@ cd_poll :: (a: [] App) -> bool {
 
 // ---------------------------------------------------------------- input
 
-HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine) or echo (offline)\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
+HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine) or echo (offline)\n/find TEXT the transcript's lines that hold TEXT\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
 
 cd_submit :: (a: [] App) {
   text := tui_ed_text(a[0].ed[..]);
@@ -659,6 +716,7 @@ cd_submit :: (a: [] App) {
     if msg == "/engine microcoder" { cd_switch(a, ENGINE_MICRO); return; }
     if msg == "/engine psionic" { cd_switch(a, ENGINE_PSIONIC); return; }
     if msg == "/plugins" { cd_plugins_show(a); return; }
+    if msg.count > 6 && cast(string) msg[0..<6] == "/find " { cd_find(a, cast(string) msg[6..<msg.count]); return; }
     if msg.count > 16 && (cast(string) msg[0..<16] == "/plugin disable " || cast(string) msg[0..<15] == "/plugin enable ") { cd_plugin_toggle(a, msg); return; }
     // a plugin's command: /NAME [ARGS] runs its command with ARGS, as a "$ " command
     w := 1; while w < msg.count && msg[w] != ' ' { w += 1; }

@@ -395,6 +395,15 @@ def main():
     while out.count("└ finished".encode()) < 4 and time.time() < end:
         read_until("\x00never", 0.2)
     check("paste turn ended", out.count("└ finished".encode()) >= 4)
+    send(b"/find SMOKE-ok\r")          # search the transcript, any case
+    check("/find shows the transcript's matching lines", read_until("⌕     smoke-ok", 5) and read_until("3 lines", 5))
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 60, 0, 0))   # the kernel sends SIGWINCH
+    mark = len(out)
+    rule = re.compile("(?<!─)(?:─){55,60}(?!─)".encode())
+    end = time.time() + 5
+    while time.time() < end and not rule.search(shown(out[mark:])):
+        read_until("\x00never", 0.2)
+    check("resize: the composer redraws at the new width", bool(rule.search(shown(out[mark:]))))
     send(b"\x1b[Z")                    # Shift-Tab, legacy
     check("Shift-Tab to Claude Code", read_until("Agent: Claude Code", 5))
     send(b"\x1b[9;2u")                 # Shift-Tab, kitty

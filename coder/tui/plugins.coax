@@ -83,7 +83,7 @@ pl_find_cmd :: (r: [] PlRegistry, name: string) -> int {
   return -1;
 }
 
-PL_BUILTIN :: [6] string.["help", "clear", "engine", "quit", "exit", "plugins"];
+PL_BUILTIN :: [7] string.["help", "clear", "engine", "quit", "exit", "plugins", "find"];
 
 pl_name_ok :: (s: string) -> bool {
   if s.count == 0 || s.count > 31 { return false; }
