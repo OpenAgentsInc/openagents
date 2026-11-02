@@ -119,6 +119,16 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
      to 64 groups in memory; NIP-11 lists 29 (`rr_nip11_nip`). No relay
      key, so no 39000 to 39003 events. `relay_route.coax` root-only 890 of
      890.
+   - The NIP-86 policy and the NIP-29 groups survive a restart with
+     `--store FILE`: a policy change is appended to `FILE.nip86` (chapter
+     35's framing) and synced before it is kept and answered, and replayed
+     on start through `n86_dispatch`, with `store_recover.coax` cutting a
+     torn last frame and refusing other damage (`rr_admin_saves`); the
+     groups are rebuilt from the store file's events after its replay,
+     each through the live step (`rr_group_keep`). `relay_route.coax`
+     root-only 914 of 914. `relay_session.py` (ASan/UBSan) bans a key,
+     disallows a kind and makes a group, restarts and finds all three; a
+     torn last journal frame is cut, and a whole bad one refuses to start.
    - Still not wired: `nip43`. It needs a relay key (a secret key file,
      `self` in NIP-11, the relay signing 13534, 8000 and 8001), which is
      not built.

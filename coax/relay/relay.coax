@@ -64,13 +64,19 @@
 // NIP-98 auth naming the relay URL, then the methods nip86.coax builds.
 // Every EVENT is put to n86_admit after its signature and the rate limit,
 // so a banned key or event, or a kind or key the lists keep out, is
-// refused. The lists are in memory; NIP-11 then lists 86.
+// refused. NIP-11 then lists 86. With --store a change is appended to
+// FILE.nip86 and synced before it is kept and answered (ry_journal_save;
+// relay_route.coax's rr_admin_saves says which), and a restart replays it
+// (ry_journal_replay: a torn last append is cut, other damage refuses to
+// start); without --store the lists are in memory.
 //
 // NIP-29 (chapter 59, nip29.coax): with --groups every EVENT is put to
 // g29_admit after n86_admit; an event with an h tag needs its group's
 // consent, and the group's state changes only once the store takes the
 // event (relay_route.coax's rr_group_slot picks the slot). Up to RR_GROUPS
-// groups, in memory; the relay signs no 39000 to 39003 events.
+// groups; the relay signs no 39000 to 39003 events. With --store a restart
+// rebuilds them from the stored events, as it does the tombstones
+// (ry_groups_replay); without it they are in memory.
 //
 // Routing (which reply goes to which connection and subscription) is
 // relay_route.coax's (#authority); this file moves bytes and calls it.
@@ -138,6 +144,13 @@ ry_host_admin_count :: () -> int #foreign;
 ry_host_groups :: () -> int #foreign;
 ry_host_admin_len :: (k: int) -> int #foreign;
 ry_host_admin_byte :: (k: int, i: int) -> int #foreign;
+// FILE.nip86, the policy journal (relay-host.c; store-file-native.c's effects
+// for a second file, created at the first change).
+ry_journal_load :: () -> int #foreign;
+ry_journal_byte :: (i: int) -> int #foreign;
+ry_journal_put :: (b: int) -> int #foreign;
+ry_journal_commit :: () -> int #foreign;
+ry_journal_truncate :: (n: int) -> int #foreign;
 
 // RY_IN holds one partial frame (at most RS_MAX_MESSAGE + 14 bytes) plus one
 // transport read (socket-server-native.h's CXSRV_MAX_IN, 65536), so a client
@@ -181,6 +194,7 @@ RyWork :: struct {
   url: [512] u8; url_n: int;       // the relay URL, which a NIP-98 u tag names
   http: [N86_OUT] u8;              // one NIP-86 reply body
   groups_on: bool;                 // --groups
+  journal: bool;                   // --store: policy changes go to FILE.nip86
   groups: [RR_GROUPS] G29Group;    // NIP-29 groups (exists marks a live slot)
 }
 
@@ -231,7 +245,7 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
   r := rs_admit_read(event, cxsrv_now_s(), rr_writes_need_auth(true), rr_authed(c[0].auth[..]), w[0].scratch[..]);
   if r.reason == RS_BAD_EVENT { ok := ry_notice(c, w, RS_BAD_EVENT); return; }
   id := r.e.id;
-  gi := -1; gt: [1] G29Group;      // the event's group slot, and its state if the store takes it
+  gs: RyGroup; gt: [1] G29Group;   // the event's group step, and its state if the store takes it
   if r.reason == RS_ACCEPT && w[0].pow > 0 {
     a := nip13_admit(event, w[0].pow, w[0].scratch[..], false);
     if a.error != N13_OK { ry_ok_reason(c, w, id[..], cast(string) w[0].out[0..<nip13_reason(a, w[0].out[..])]); return; }
@@ -244,15 +258,8 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
     a := n86_admit(w[0].admin[0], key, id, r.e.kind);
     if a != N86_ADMIT_OK { ok := ry_text(c, w, ms_write_ok(id[..], false, rr_admin_prefix(a), rr_admin_text(a), w[0].body[..])); return; }
     if w[0].groups_on {
-      gr := g29_read(r.e);
-      if gr.status == G29_OK && gr.has_h {
-        live: [RR_GROUPS] bool; same: [RR_GROUPS] bool;
-        for i: 0..<RR_GROUPS { live[i] = w[0].groups[i].exists; same[i] = live[i] && g29_same(w[0].groups[i].id, gr.h); }
-        gi = rr_group_slot(live[..], same[..], r.e.kind == G29_CREATE_GROUP);
-        if gi >= 0 && live[gi] { gt[0] = w[0].groups[gi]; }
-      }
-      relay: [32] u8;   // the relay has no key: no event is the relay's
-      g := ifx gi == -2 then RR_G29_FULL else g29_admit(gt[..], r.e, relay);
+      gs = ry_group(w, r.e, gt[..]);
+      g := gs.g;
       if g != G29_OK && g != G29_PASS { ok := ry_text(c, w, ms_write_ok(id[..], false, rr_group_prefix(g), rr_group_text(g), w[0].body[..])); return; }
     }
     p := nip70_admit(event, true, c[0].auth[..], w[0].scratch[..]);
@@ -265,8 +272,54 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
   prefix := ifx rr_store_extra(reason) then rr_store_prefix(reason) else rs_prefix(reason);
   why := ifx rr_store_extra(reason) then rr_store_text(reason) else rs_text(reason);
   ok := ry_text(c, w, ms_write_ok(id[..], rs_accepted(reason), prefix, why, w[0].body[..]));
-  if rr_fanout(reason) && gi >= 0 { w[0].groups[gi] = gt[0]; }
+  if rr_group_keep(gs.g, gs.slot, rr_fanout(reason)) { w[0].groups[gs.slot] = gt[0]; }
   if rr_fanout(reason) { ry_fanout(conns, w, r.e); }
+}
+// One event's NIP-29 step over w.groups: g29_admit's answer (RR_G29_FULL
+// when a create finds no free slot) and the group's slot (rr_group_slot's,
+// -1 without an h tag); gt (zeroed by the caller) holds the group's state
+// after the event, which the caller keeps only when rr_group_keep says so.
+RyGroup :: struct { g: int; slot: int = -1; }
+ry_group :: (w: [] RyWork, e: NostrEvent, gt: [] G29Group) -> RyGroup {
+  gi := -1;
+  gr := g29_read(e);
+  if gr.status == G29_OK && gr.has_h {
+    live: [RR_GROUPS] bool; same: [RR_GROUPS] bool;
+    for i: 0..<RR_GROUPS { live[i] = w[0].groups[i].exists; same[i] = live[i] && g29_same(w[0].groups[i].id, gr.h); }
+    gi = rr_group_slot(live[..], same[..], e.kind == G29_CREATE_GROUP);
+    if gi >= 0 && live[gi] { gt[0] = w[0].groups[gi]; }
+  }
+  relay: [32] u8;   // the relay has no key: no event is the relay's
+  return RyGroup.{g = ifx gi == -2 then RR_G29_FULL else g29_admit(gt, e, relay), slot = gi};
+}
+// The groups rebuilt from the --store file after the store's replay: every
+// stored event with an h tag, in file order, through the same step as a
+// live EVENT (each was stored, so each counts as taken). text holds one
+// original. How many group events were read and how many changed a group.
+RyGroups :: struct { events: int; kept: int; }
+ry_groups_replay :: (w: [] RyWork, now: int, text: [] u8) -> RyGroups {
+  out: RyGroups;
+  total := cxstore_load();
+  at := 0;
+  while total > 0 {
+    head: [4] u8; k := 0;
+    while k < 4 && at + k < total { head[k] = cast(u8) cxstore_byte(at + k); k += 1; }
+    f := ns_file_next(head[0..<k], at, total);
+    if f.status != NSF_OK || f.to - f.from > text.count { break; }
+    for i: f.from..<f.to { text[i - f.from] = cast(u8) cxstore_byte(i); }
+    r := rsd_replay_read(cast(string) text[0..<f.to - f.from], now, w[0].scratch[..]);
+    if r.reason == RS_ACCEPT && g29_read(r.e).has_h {
+      r = rs_admit_verified(r, ne_signed_fast(r.e));
+      if r.reason == RS_ACCEPT {
+        gt: [1] G29Group;
+        gs := ry_group(w, r.e, gt[..]);
+        out.events += 1;
+        if rr_group_keep(gs.g, gs.slot, true) { w[0].groups[gs.slot] = gt[0]; out.kept += 1; }
+      }
+    }
+    at = f.to;
+  }
+  return out;
 }
 // OK false with reason, "prefix: text" (nip13_reason's form).
 ry_ok_reason :: (c: [] RyConn, w: [] RyWork, id: [] u8, reason: string) {
@@ -422,6 +475,10 @@ ry_challenge :: (c: [] RyConn, w: [] RyWork) -> bool {
 }
 // A NIP-86 POST (rr_post's RR_P_OK, BAD or BIG): n86_serve's answer, or
 // 400 or 413; then the connection is closed.
+// n86_serve answers on a copy of the policy; with --store a change
+// rr_admin_saves names is appended to FILE.nip86 first, and the copy is kept
+// only once it is there (else only the used NIP-98 ids are, and the answer
+// is a 500).
 ry_admin :: (c: [] RyConn, w: [] RyWork, p: RrPost) {
   b := cast(string) c[0].inb[0..<c[0].used];
   now := cxsrv_now_s(); n := -1;
@@ -429,16 +486,75 @@ ry_admin :: (c: [] RyConn, w: [] RyWork, p: RrPost) {
     pol := w[0].admin[..];
     if rr_admin_forget(pol[0].seen_n, w[0].admin_last, now) { pol[0].seen_n = 0; }
     before := pol[0].seen_n;
-    r := n86_serve(pol, "POST", b[p.type_from..<p.type_to], b[p.auth_from..<p.auth_to], cast(string) w[0].url[0..<w[0].url_n],
+    q: [1] N86Policy; q[0] = pol[0];
+    body := b[p.body_from..<p.body_to];
+    r := n86_serve(q[..], "POST", b[p.type_from..<p.type_to], b[p.auth_from..<p.auth_to], cast(string) w[0].url[0..<w[0].url_n],
       c[0].inb[p.body_from..<p.body_to], now, w[0].http[..]);
-    if pol[0].seen_n > before { w[0].admin_last = now; }
-    n = wss_http_write(rr_http_status(r.http), N86_TYPE, cast(string) w[0].http[0..<r.n], w[0].out[..]);
+    if q[0].seen_n > before { w[0].admin_last = now; }
+    rq := n86_request(body);
+    shape := ifx r.code == N86_OK && rq.error == N86_OK then N86_SHAPES[rq.method] else 0;
+    if !w[0].journal || !rr_admin_saves(shape, r.code, body) || ry_journal_save(body) {
+      pol[0] = q[0];
+      n = wss_http_write(rr_http_status(r.http), N86_TYPE, cast(string) w[0].http[0..<r.n], w[0].out[..]);
+    } else {
+      pol[0].seen = q[0].seen; pol[0].seen_n = q[0].seen_n;
+      n = wss_http_write(rr_http_status(500), N86_TYPE, "{\"result\":null,\"error\":\"the change could not be saved\"}", w[0].out[..]);
+    }
   } else {
     big := p.status == RR_P_BIG;
     n = wss_http_write(rr_http_status(ifx big then 413 else 400), "text/plain", ifx big then "The request is too large." else "Bad request.", w[0].out[..]);
   }
   if n > 0 { ok := ry_send_raw(c, cast(string) w[0].out[0..<n]); }
   ry_shut(c);
+}
+// Appends body's frame (store_file.coax's framing) to FILE.nip86 and syncs
+// it: whether it is there.
+ry_journal_save :: (body: string) -> bool {
+  head: [4] u8;
+  if !ns_file_header(body.count, head[..]) { return false; }
+  for i: 0..<4 { if ry_journal_put(cast(int) head[i]) != 0 { return false; } }
+  for x: body { if ry_journal_put(cast(int) x) != 0 { return false; } }
+  return ry_journal_commit() == 0;
+}
+// The policy rebuilt from FILE.nip86: each frame's fate is store_recover.coax's
+// (a crash's partial last append is cut; other damage refuses), and a whole
+// frame is applied with n86_dispatch and continues only when it is one the
+// relay would have saved (rr_admin_saves). body holds one frame, out one
+// reply. ok is false when the file cannot be read or cut, or is refused (at
+// the frame's offset).
+RyJournal :: struct { ok: bool; frames: int; cut: bool; refused: bool; at: int; }
+ry_journal_replay :: (pol: [] N86Policy, body: [] u8, out: [] u8) -> RyJournal {
+  j: RyJournal;
+  total := ry_journal_load();
+  if total < 0 { return j; }
+  at := 0;
+  while true {
+    head: [4] u8; k := 0;
+    while k < 4 && at + k < total { head[k] = cast(u8) ry_journal_byte(at + k); k += 1; }
+    f := ns_file_next(head[0..<k], at, total);
+    to := ifx f.status == NSF_OK then f.to else at;
+    p := nsr_region(f.status, at, f.from, to, total);
+    zero := p; while zero < total && ry_journal_byte(zero) != 0 { zero += 1; }
+    nonzero := zero; while nonzero < total && ry_journal_byte(nonzero) == 0 { nonzero += 1; }
+    d := nsr_frame(NsrFrame.{status = f.status, at = at, from = f.from, to = to, total = total, zero = zero, nonzero = nonzero});
+    if d == NSR_DONE { break; }
+    if d == NSR_CUT {
+      j.cut = true;
+      if ry_journal_truncate(at) != 0 { return j; }
+      break;
+    }
+    if d != NSR_NEXT || f.to - f.from > body.count { j.refused = true; j.at = at; return j; }
+    for i: f.from..<f.to { body[i - f.from] = cast(u8) ry_journal_byte(i); }
+    t := cast(string) body[0..<f.to - f.from];
+    rq := n86_request(t);
+    r := n86_dispatch(pol, rq, out);
+    shape := ifx rq.error == N86_OK then N86_SHAPES[rq.method] else 0;
+    if !rr_admin_saves(shape, r.code, t) { j.refused = true; j.at = at; return j; }
+    j.frames += 1;
+    at = f.to;
+  }
+  j.ok = true;
+  return j;
 }
 ry_http :: (c: [] RyConn, w: [] RyWork) {
   if w[0].admin[0].admins_n > 0 {
@@ -581,12 +697,22 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
   store: [1] RdStore;
   rd_init(store[..], arena, recs, by_id, by_ak, by_time, tag_key, tag_rec, tombs[..], work[..], cast(string) url[0..<u], ry_host_store() == 1);
   w[0].count[0].big_out = count_out; w[0].count[0].big_seen = count_seen;
+  w[0].groups_on = ry_host_groups() == 1;
   if ry_host_store() == 1 {
     text: [NS_FRAME_MAX_ORIGINAL] u8;
     rp := rd_replay(store[..], cxsrv_now_s(), text[..], w[0].scratch[..]);
     if rp.refused { print("relay: refusing to start: the --store file is damaged at byte % (reason %); it was not changed\n", rp.at, rp.reason); return; }
     if !rp.ok { print("relay: cannot open, lock or read the --store file\n"); return; }
     print("relay: replayed % saved events: % stored, % duplicates or replaced%\n", rp.frames, rp.stored, rp.kept, ifx rp.cut then ", a partial last write cut" else "");
+    w[0].journal = true;
+    jp := ry_journal_replay(w[0].admin[..], text[0..<RR_POST_BODY], w[0].http[..]);
+    if jp.refused { print("relay: refusing to start: the --store file's .nip86 policy journal is damaged at byte %; it was not changed\n", jp.at); return; }
+    if !jp.ok { print("relay: cannot open, lock or read the --store file's .nip86 policy journal\n"); return; }
+    if jp.frames > 0 || jp.cut { print("relay: replayed % policy changes%\n", jp.frames, ifx jp.cut then ", a partial last write cut" else ""); }
+    if w[0].groups_on {
+      gp := ry_groups_replay(w[..], cxsrv_now_s(), text[..]);
+      print("relay: rebuilt groups from % stored group events (% changed a group)\n", gp.events, gp.kept);
+    }
   }
   w[0].rate = ry_rate();
   for i: 0..<u { w[0].url[i] = url[i]; }
@@ -604,7 +730,6 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
   if b < 0 { print("relay: --rate needs three limits from 1 to %\n", RT_LIMIT_MAX); return; }
   w[0].pow = rr_pow(ry_host_pow());
   if w[0].pow < 0 { print("relay: --pow needs 0 to % bits\n", RR_POW_MAX); return; }
-  w[0].groups_on = ry_host_groups() == 1;
   powed: [4096] u8;
   pn := rr_nip11_pow(cast(string) base[0..<b], w[0].pow, powed[..]);
   w[0].nip11_n = pn;

@@ -932,17 +932,42 @@ own URL:
   t + 120: the relay forgets them all once 121 seconds pass after the last
   one was added (`rr_admin_forget`). Until then a ninth call is a `503`.
 - Without `--admin`, a `POST` is a `400`, as before.
+- With `--store FILE` the policy survives a restart. A call that changes
+  it (answered `N86_OK` by a method that takes params, `N86_SHAPES` above
+  0) has its body appended to `FILE.nip86` and synced before the change
+  is kept and answered: `ry_admin` runs `n86_serve` on a copy of the
+  policy and keeps the copy only once the frame is on disk, and
+  `relay_route.coax`'s `rr_admin_saves` (`#authority`) says which calls
+  are saved. The frames are chapter 35's: a 4-byte big-endian length,
+  then the bytes. A failed append keeps only the used NIP-98 IDs and
+  answers `500`. A listing is never saved, nor is a body holding a zero
+  byte. The file is created, mode 0600, at the first change.
+- On start, `ry_journal_replay` applies each frame in order with
+  `n86_dispatch`, without NIP-98: each call was authorized when it was
+  made. `store_recover.coax` decides each frame's fate, as it does for
+  the store file: a crash's partial last append is cut, and any other
+  damage stops the relay before it listens, leaving the file as it was.
+  A whole frame continues only when it is one the relay would have saved,
+  so a frame holding an unknown method also refuses to start.
 
 Root-only mutation of `relay_route.coax` on 2026-11-01: 824 of 824
-killed. `relay_session.py` (ASan and UBSan) checks each refusal, a
+killed, and 914 of 914 after `rr_admin_saves` and `rr_group_keep`
+(chapter 59) were added. `relay_session.py` (ASan and UBSan) checks each refusal, a
 replayed event, `banpubkey` and its effect on a connected publisher,
 `listbannedpubkeys`, `disallowkind`, `unbanpubkey` and `allowpubkey`
-against a running relay.
+against a running relay. Its restart check bans a key and disallows a
+kind with `--store`, restarts, and finds both still refused and the ban
+listed; it then appends half a frame to `FILE.nip86`, and the next start
+cuts it back to the last whole frame with the ban intact; a whole frame
+with an unknown method refuses to start and leaves the file unchanged.
 
 ### Not built
 
-- The relay keeps the policy in memory: a restart starts with empty lists.
-  `changerelayname` changes the policy's name, not the served NIP-11
+- Without `--store` the relay keeps the policy in memory: a restart
+  starts with empty lists. `FILE.nip86` only grows: every change stays in
+  it, and nothing compacts it. Not trusted freshness: an older copy of
+  the file replays as an older policy, and the journal is not signed, so
+  anyone who can write it can change the policy. `changerelayname` changes the policy's name, not the served NIP-11
   document. Banning a key or event doesn't remove what is already stored.
 - NIP-86: `allowevent`, `unallowevent`, `listallowedevents`,
   `listeventsneedingmoderation`, roles, claims, IP blocks,

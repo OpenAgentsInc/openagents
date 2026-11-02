@@ -45,6 +45,14 @@ Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
    `b01de252f7`), then re-pin the OpenAgents NIP folder digest in
    `coax/tests/nostr/profiles.py` (now `fb7563e7…`, pinned `2fb1f51f…`).
    Its pin test fails until then.
+4. **May the Coax relay hold a signing key?** NIP-43 (13534, 8000, 8001)
+   and NIP-29's relay-signed group state (39000 to 39003) need the relay
+   to sign with its own key, loaded from a file. This is the same question
+   as "Real Pylon keys: your sign-off" below: the signer audit is not
+   approval to hold a real key, and safe key-file reading isn't built.
+   Until you decide, the relay has no key, signs nothing, and refuses
+   every 39000 to 39005 event. Say yes or no here; nothing is built until
+   then.
 
 ## Nostr chapter 103: export, shadow period, cutover and rollback rehearsal for relay.openagents.com (2026-11-01)
 

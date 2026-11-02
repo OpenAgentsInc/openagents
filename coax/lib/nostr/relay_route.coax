@@ -756,7 +756,8 @@ rr_neg_records :: (k: int) -> int { return ifx k == RR_NE_BIG then RR_NEG_MAX el
 // limit: a banned key or event, a key off a non-empty allow list, a
 // disallowed kind or one off a non-empty allowed-kinds list is refused.
 // Without --admin a POST is a 400, as before, and NIP-11 doesn't list 86.
-// The policy is in memory: a restart starts with empty lists.
+// Without --store the policy is in memory: a restart starts with empty
+// lists (with it, see rr_admin_saves).
 //
 // nip86.coax remembers RR_SEEN NIP-98 event ids so none is used twice; an
 // event is good for 60 s either side of its created_at, so one accepted at
@@ -935,6 +936,36 @@ rr_admin_key :: (hex: string, out: [] u8) -> bool {
 // Whether the n used ids, the last added at last, may all be forgotten at now.
 rr_admin_forget :: (n: int, last: int, now: int) -> bool { return n > 0 && now - last > RR_ADMIN_FORGET_S; }
 
+// With --store the policy survives a restart: every management request that
+// changes it (n86_serve answered N86_OK, and its method takes params:
+// nip86.coax's N86_SHAPES above 0) has its body appended to FILE.nip86 and
+// synced before the change is kept and answered, framed as the store file
+// is (store_file.coax: a 4-byte big-endian length, then the bytes). On
+// start the relay replays FILE.nip86 in order through n86_dispatch, without
+// NIP-98 (each request was authorized when it was made); store_recover.coax
+// decides each frame's fate, so a crash's partial last append is cut and
+// other damage refuses to start. A replayed frame continues only when it is
+// one the relay would have saved. A body that holds a zero byte is never
+// saved (recovery reads zeros as a crash's unwritten tail), nor is one over
+// RR_POST_BODY. When the append fails the change is not kept, and the answer
+// is a 500.
+#test "a management request's body is saved only when it changed the policy" {
+  #assert rr_admin_saves(1, 0, "{\"method\":\"banpubkey\"}") && rr_admin_saves(3, 0, "x") && rr_admin_saves(2, 0, "x");
+  #assert !rr_admin_saves(0, 0, "{\"method\":\"listbannedpubkeys\"}") && !rr_admin_saves(1, 11, "x") && !rr_admin_saves(1, 1, "x");
+  #assert !rr_admin_saves(1, -1, "x") && !rr_admin_saves(-1, 0, "x");
+  #assert !rr_admin_saves(1, 0, "") && !rr_admin_saves(1, 0, "a\0b") && !rr_admin_saves(1, 0, "\0") && !rr_admin_saves(1, 0, "ab\0");
+  big: [RR_POST_BODY + 1] u8; for i: 0..<big.count { big[i] = 'a'; }
+  #assert rr_admin_saves(1, 0, cast(string) big[0..<RR_POST_BODY]) && !rr_admin_saves(1, 0, cast(string) big[..]);
+}
+// Whether a management request with params of shape (N86_SHAPES of its
+// method), answered code, and body is saved; on replay, whether a frame
+// continues.
+rr_admin_saves :: (shape: int, code: int, body: string) -> bool {
+  if code != RR_N86_OK || shape <= 0 || body.count == 0 || body.count > RR_POST_BODY { return false; }
+  for b: body { if b == 0 { return false; } }
+  return true;
+}
+
 #test "NIP-86 answers: an HTTP status line, and the OK texts of admission" {
   #assert rr_http_status(200) == "200 OK" && rr_http_status(400) == "400 Bad Request" && rr_http_status(401) == "401 Unauthorized";
   #assert rr_http_status(403) == "403 Forbidden" && rr_http_status(405) == "405 Method Not Allowed" && rr_http_status(413) == "413 Content Too Large";
@@ -988,8 +1019,8 @@ rr_nip11_base :: (admin: bool) -> string { return ifx admin then RR_NIP11_ADMIN 
 // when the store then takes the event. A create-group (9007) takes a free
 // slot; the RR_GROUPS + 1st is refused. The relay has no key of its own, so
 // it publishes no 39000 to 39003 events, and any such event (signed by
-// anyone but the relay) is refused. The groups are in memory: a restart
-// starts with none. Without --groups the relay doesn't look at h tags, and
+// anyone but the relay) is refused. Without --store the groups are in
+// memory and a restart starts with none (with it, see rr_group_keep). Without --groups the relay doesn't look at h tags, and
 // NIP-11 doesn't list 29.
 RR_GROUPS :: 64;
 // g29_admit's answers, mirrored (tied to nip29.coax in relay.coax), and
@@ -1020,6 +1051,19 @@ rr_group_slot :: (live: [] bool, same: [] bool, create: bool) -> int {
   for i: 0..<live.count { if !live[i] { return i; } }
   return -2;
 }
+
+// With --store the groups survive a restart the way deletions do: the
+// moderation events are in the store file, so after the store's replay the
+// relay reads the file again in order and puts each event with an h tag
+// through the same steps as a live EVENT (rr_group_slot, g29_admit), keeping
+// the state each admitted. Every event in the file was stored, so each
+// counts as taken.
+#test "a group keeps an event's change only when the group admitted it and the store took it" {
+  #assert rr_group_keep(RR_G29_OK, 0, true) && rr_group_keep(RR_G29_OK, RR_GROUPS - 1, true);
+  #assert !rr_group_keep(RR_G29_OK, 0, false) && !rr_group_keep(RR_G29_OK, -1, true) && !rr_group_keep(RR_G29_OK, -2, true);
+  #assert !rr_group_keep(RR_G29_PASS, 0, true) && !rr_group_keep(RR_G29_FULL, 0, true) && !rr_group_keep(5, 3, true) && !rr_group_keep(1, 0, true);
+}
+rr_group_keep :: (g: int, slot: int, stored: bool) -> bool { return stored && slot >= 0 && g == RR_G29_OK; }
 
 #test "group refusals: a NIP-01 prefix and a text for each" {
   #assert rr_group_prefix(RR_G29_OK) == "" && rr_group_text(RR_G29_OK) == "" && rr_group_prefix(RR_G29_PASS) == "" && rr_group_text(RR_G29_PASS) == "";

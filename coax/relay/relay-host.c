@@ -20,17 +20,24 @@
    difficulty an EVENT needs (0, off, without it); relay.coax checks both
    values. --admin PUBKEY (64 hex digits, up to 4 times) turns on NIP-86
    management for those keys; relay.coax checks each. --groups turns on
-   NIP-29 groups. Effects only; every relay decision is Coax. */
+   NIP-29 groups. With --store FILE the NIP-86 policy's changes go to
+   FILE.nip86 (ry_journal_*: the same effects as store-file-native.c's,
+   for a second file, created only at the first change); relay.coax frames
+   and replays it. Effects only; every relay decision is Coax. */
 #define _DEFAULT_SOURCE /* getentropy */
 #include "socket-server-native.h"
 #include "store-file-native.h"
 #include "tls-native.h"
 #include "relay.h"
+#include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <sys/random.h>
@@ -68,6 +75,103 @@ int64_t ry_host_admin_count(void) { return admin_n; }
 int64_t ry_host_groups(void) { return groups; }
 int64_t ry_host_admin_len(int64_t k) { return k >= 0 && k < admin_n ? (int64_t)strlen(admins[k]) : -1; }
 int64_t ry_host_admin_byte(int64_t k, int64_t i) { return k >= 0 && k < admin_n && i >= 0 && i < (int64_t)strlen(admins[k]) ? (unsigned char)admins[k][i] : -1; }
+/* ---- FILE.nip86, the policy journal (relay.coax's ry_journal_*) ---- */
+static char journal_path[4200];
+static int journal_fd = -1, journal_broken = 0;
+static unsigned char *journal_loaded;
+static int64_t journal_loaded_n;
+#define RY_JOURNAL_PENDING (4 + 8192)
+static unsigned char journal_pending[RY_JOURNAL_PENDING];
+static int64_t journal_pending_n;
+
+/* fsyncs the directory that holds the journal: 0, or -1. */
+static int journal_sync_parent(void) {
+  char dir[sizeof journal_path];
+  memcpy(dir, journal_path, sizeof dir);
+  char *slash = strrchr(dir, '/');
+  if (!slash) { dir[0] = '.'; dir[1] = 0; }
+  else if (slash == dir) dir[1] = 0;
+  else *slash = 0;
+  int d = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (d < 0) return -1;
+  int r = fsync(d);
+  close(d);
+  return r;
+}
+/* Opens and exclusively locks the journal, creating it (0600, directory
+   synced) only when create is set: 0, 1 when it doesn't exist and create
+   is not set, or -1. */
+static int journal_open(int create) {
+  if (journal_fd >= 0) return 0;
+  if (!journal_path[0]) return -1;
+  int made = 0;
+  journal_fd = open(journal_path, O_RDWR | O_CLOEXEC);
+  if (journal_fd < 0 && errno == ENOENT) {
+    if (!create) return 1;
+    journal_fd = open(journal_path, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    made = 1;
+  }
+  if (journal_fd < 0) return -1;
+  if (flock(journal_fd, LOCK_EX | LOCK_NB) != 0 || (made && journal_sync_parent() != 0)) { close(journal_fd); journal_fd = -1; return -1; }
+  return 0;
+}
+/* Reads the journal whole: its size (0 when it doesn't exist), or -1. */
+int64_t ry_journal_load(void) {
+  int o = journal_open(0);
+  free(journal_loaded); journal_loaded = NULL; journal_loaded_n = 0;
+  if (o == 1) return 0;
+  if (o != 0) return -1;
+  struct stat st;
+  if (fstat(journal_fd, &st) != 0 || st.st_size < 0) return -1;
+  if (st.st_size > 0) {
+    journal_loaded = malloc((size_t)st.st_size);
+    if (!journal_loaded) return -1;
+    int64_t got = 0;
+    while (got < st.st_size) {
+      ssize_t r = pread(journal_fd, journal_loaded + got, (size_t)(st.st_size - got), got);
+      if (r < 0 && errno == EINTR) continue;
+      if (r <= 0) { free(journal_loaded); journal_loaded = NULL; return -1; }
+      got += r;
+    }
+  }
+  journal_loaded_n = st.st_size;
+  return journal_loaded_n;
+}
+/* Byte i of what ry_journal_load read, or -1. */
+int64_t ry_journal_byte(int64_t i) { return i >= 0 && i < journal_loaded_n ? journal_loaded[i] : -1; }
+/* Buffers one byte for the next commit: 0, or -1. */
+int64_t ry_journal_put(int64_t b) {
+  if (b < 0 || b > 255 || journal_pending_n >= RY_JOURNAL_PENDING) return -1;
+  journal_pending[journal_pending_n++] = (unsigned char)b;
+  return 0;
+}
+/* Appends the buffered bytes and fsyncs: 0, or -1 after cutting the
+   append back (if that fails, every later commit fails). */
+int64_t ry_journal_commit(void) {
+  int64_t n = journal_pending_n;
+  journal_pending_n = 0;
+  if (journal_broken || journal_open(1) != 0) return -1;
+  off_t end = lseek(journal_fd, 0, SEEK_END);
+  if (end < 0) return -1;
+  int64_t done = 0;
+  while (done < n) {
+    ssize_t w = pwrite(journal_fd, journal_pending + done, (size_t)(n - done), end + done);
+    if (w < 0 && errno == EINTR) continue;
+    if (w <= 0) break;
+    done += w;
+  }
+  if (done == n && fsync(journal_fd) == 0) return 0;
+  if (ftruncate(journal_fd, end) != 0 || fsync(journal_fd) != 0) journal_broken = 1;
+  return -1;
+}
+/* Cuts the journal to n bytes and fsyncs: 0, or -1. */
+int64_t ry_journal_truncate(int64_t n) {
+  if (journal_fd < 0 || n < 0) return -1;
+  if (ftruncate(journal_fd, (off_t)n) != 0 || fsync(journal_fd) != 0) return -1;
+  if (n < journal_loaded_n) journal_loaded_n = n;
+  return 0;
+}
+
 int64_t ry_host_random(void) {
   unsigned char b;
   return getentropy(&b, 1) == 0 ? b : -1;
@@ -115,7 +219,9 @@ int main(int argc, char **argv) {
       if (sscanf(argv[++i], "%lld%c", &capacity, &tail) != 1) { fprintf(stderr, "relay: --store-capacity takes a number of events\n"); return 2; }
     }
     else if (!strcmp(argv[i], "--store") && i + 1 < argc) {
-      if (cxstore_set_path(argv[++i]) != 0) { fprintf(stderr, "relay: bad --store path\n"); return 2; }
+      const char *sp = argv[++i];
+      if (cxstore_set_path(sp) != 0 || strlen(sp) + 7 > sizeof journal_path) { fprintf(stderr, "relay: bad --store path\n"); return 2; }
+      snprintf(journal_path, sizeof journal_path, "%s.nip86", sp);
       store = 1;
     }
     else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups]\n"); return 2; }

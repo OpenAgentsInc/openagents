@@ -12,7 +12,11 @@ created_at limit, subscription/filter/frame limits, ping, a restart with
 NIP-42: a challenge on every connection, AUTH answers (right, wrong
 challenge, relay, time, kind, tags, signature, id), writes refused until
 AUTH, kind 22242 never stored or delivered, and a new challenge after a
-reconnect; NIP-77 syncs against negentropy_ref.py as the client. Tooling only; nothing here ships. Never points at a public relay.
+reconnect; NIP-77 syncs against negentropy_ref.py as the client; NIP-86
+and NIP-29 against --admin and --groups, and with --store a ban and a group
+surviving a restart (FILE.nip86 and the rebuilt groups), a torn last
+FILE.nip86 frame cut and a bad one refused. Tooling only; nothing here
+ships. Never points at a public relay.
 
 With --tls every session above runs over wss:// (and NIP-11 over https://)
 against the relay started with --tls-cert/--tls-key, with a one-day test CA
@@ -160,13 +164,18 @@ class Ws:
         self.s.close()
 
 
-def start(exe, log, store=None, rate='1000,1000,1000'):
-    args = [str(exe), '--listen', '127.0.0.1', '--port', '0'] + (['--rate', rate] if rate else []) + (['--store', str(store)] if store else []) + TLS_ARGS
+STARTED = []        # the lines the last start() read before 'listening'
+
+
+def start(exe, log, store=None, rate='1000,1000,1000', extra=()):
+    args = [str(exe), '--listen', '127.0.0.1', '--port', '0'] + (['--rate', rate] if rate else []) + (['--store', str(store)] if store else []) + list(extra) + TLS_ARGS
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=log, text=True,
                          env={**os.environ, 'ASAN_OPTIONS': 'abort_on_error=0:halt_on_error=1:detect_leaks=0',
                               'UBSAN_OPTIONS': 'print_stacktrace=1:halt_on_error=1'})
+    STARTED.clear()
     line = p.stdout.readline()
-    if store and line.startswith('relay: replayed'):
+    while store and (line.startswith('relay: replayed') or line.startswith('relay: rebuilt')):
+        STARTED.append(line.strip())
         line = p.stdout.readline()
     if 'listening on port' not in line:
         raise SystemExit('relay did not start: %r' % line)
@@ -697,6 +706,78 @@ def groups(exe, log):
         p.terminate(); p.wait(10)
 
 
+def persistence(exe, log, d):
+    """With --store, NIP-86 changes (FILE.nip86) and NIP-29 groups (rebuilt from the stored events) survive a restart; a torn
+    last journal record is cut, and other journal damage refuses to start."""
+    store = d / 'persist.log'
+    journal = d / 'persist.log.nip86'
+    me = sign([{"kind": 1, "created_at": 1, "tags": [], "content": ""}])[0]['pubkey']
+    other_key = 'coax relay r1 second test key'
+    third_key = 'coax relay r1 third test key'
+    other = sign([{"kind": 1, "created_at": 1, "tags": [], "content": ""}], other_key)[0]['pubkey']
+    extra = ['--admin', me, '--groups']
+    now = int(time.time())
+    mine = sign([{"kind": 9007, "created_at": now - 20, "tags": [["h", "kept"]], "content": ""},
+                 {"kind": 9, "created_at": now - 19, "tags": [["h", "kept"]], "content": "before the restart"},
+                 {"kind": 9007, "created_at": now - 18, "tags": [["h", "kept"]], "content": "again"},
+                 {"kind": 9, "created_at": now - 17, "tags": [["h", "kept"]], "content": "after the restart"},
+                 {"kind": 7, "created_at": now - 17, "tags": [], "content": "+"}])
+    theirs = sign([{"kind": 1, "created_at": now - 16, "tags": [], "content": "banned"}], other_key)
+    third = sign([{"kind": 9021, "created_at": now - 15, "tags": [["h", "kept"]], "content": ""},
+                  {"kind": 9021, "created_at": now - 14, "tags": [["h", "kept"]], "content": "twice"},
+                  {"kind": 9, "created_at": now - 14, "tags": [["h", "kept"]], "content": "a member after the restart"}], third_key)
+    p, port = start(exe, log, store, extra=extra)
+    try:
+        check(not journal.exists(), 'persistence: no FILE.nip86 before the first policy change')
+        ban = '{"method":"banpubkey","params":["%s","spam"]}' % other
+        dis = '{"method":"disallowkind","params":[7]}'
+        lst = '{"method":"listbannedpubkeys","params":[]}'
+        check(post(port, ban, nip98(port, ban)) == (200, {'result': True}) and post(port, dis, nip98(port, dis))[0] == 200,
+              'persistence: banpubkey and disallowkind')
+        size = journal.stat().st_size if journal.exists() else -1
+        check(size == 8 + len(ban) + len(dis) and journal.stat().st_mode & 0o777 == 0o600,
+              'persistence: both changes are framed in FILE.nip86 (0600), %d bytes' % size)
+        check(post(port, lst, nip98(port, lst))[0] == 200 and journal.stat().st_size == size, 'persistence: a listing is not saved')
+        w = Ws(port)
+        check(w.auth()[2] is True and publish(w, mine[0])[2] is True and publish(w, mine[1])[2] is True and publish(w, third[0])[2] is True,
+              'persistence: a group is created, posted to and joined')
+        w.close()
+    finally:
+        p.terminate(); p.wait(10)
+    p, port = start(exe, log, store, extra=extra)
+    try:
+        check('relay: replayed 2 policy changes' in STARTED and 'relay: rebuilt groups from 3 stored group events (3 changed a group)' in STARTED,
+              'persistence: the restart replays the journal and rebuilds the groups (%r)' % STARTED)
+        check(post(port, lst, nip98(port, lst)) == (200, {'result': [{'pubkey': other, 'reason': 'spam'}]}), 'persistence: the ban survives the restart')
+        w = Ws(port)
+        check(w.auth()[2] is True and publish(w, theirs[0])[3] == 'blocked: this key is banned on this relay', 'persistence: the banned key is still refused')
+        check(publish(w, mine[4])[3] == 'blocked: this relay does not accept this kind', 'persistence: the disallowed kind is still refused')
+        check(publish(w, mine[2])[3] == 'duplicate: the group already exists', 'persistence: the group survives: a second create is refused')
+        check(publish(w, third[1])[3] == 'duplicate: already a member', 'persistence: its member survives')
+        check(publish(w, third[2])[2] is True and publish(w, mine[3])[2] is True, 'persistence: the member and the creator post after the restart')
+        w.close()
+    finally:
+        p.terminate(); p.wait(10)
+    whole = journal.read_bytes()
+    with open(journal, 'ab') as f:
+        f.write(struct.pack('>I', 100) + b'{"method":"ban')
+    p, port = start(exe, log, store, extra=extra)
+    try:
+        check('relay: replayed 2 policy changes, a partial last write cut' in STARTED and journal.read_bytes() == whole,
+              'persistence: a torn last journal record is cut (%r)' % STARTED)
+        check(post(port, lst, nip98(port, lst)) == (200, {'result': [{'pubkey': other, 'reason': 'spam'}]}), 'persistence: the ban survives the cut')
+    finally:
+        p.terminate(); p.wait(10)
+    bad = b'{"method":"nosuchmethod","params":[]}'
+    with open(journal, 'ab') as f:
+        f.write(struct.pack('>I', len(bad)) + bad)
+    out = subprocess.run([str(exe), '--listen', '127.0.0.1', '--port', '0', '--store', str(store)] + extra + TLS_ARGS,
+                         capture_output=True, text=True, timeout=60, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
+    check('policy journal is damaged at byte %d' % len(whole) in out.stdout and 'listening' not in out.stdout
+          and journal.read_bytes() == whole + struct.pack('>I', len(bad)) + bad,
+          'persistence: a whole journal record the relay would not have saved refuses to start, the file unchanged')
+
+
 def proof_of_work(exe, log):
     """NIP-13 (nip13.coax): --pow 8 asks for 8 leading zero bits and a nonce committing to 8."""
     refused_start(exe, ['--pow', '257'], 'a difficulty over 256', '0 to 256')
@@ -929,6 +1010,7 @@ def main():
             proof_of_work(exe, log)
             admin(exe, log)
             groups(exe, log)
+            persistence(exe, log, d)
             if tls:
                 tls_cases(exe, d, log, store, client)
         err = (d / 'relay.err').read_text()

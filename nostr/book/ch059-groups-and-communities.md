@@ -912,19 +912,34 @@ limit and NIP-86's `n86_admit`:
 - An event without an `h` tag is not the groups' business (`G29_PASS`),
   except kinds 39000 to 39005, which only the relay may sign.
 - NIP-11 lists 29 only with `--groups` (`rr_nip11_nip`).
+- With `--store FILE` the groups survive a restart the way chapter 39's
+  tombstones do: the moderation events are in the store file, so after
+  the store's replay `ry_groups_replay` reads the file again in order and
+  puts each stored event with an `h` tag through the same step as a live
+  `EVENT` (`ry_group`: `rr_group_slot`, then `g29_admit`), keeping the
+  state when `relay_route.coax`'s `rr_group_keep` (`#authority`) says the
+  group admitted it. Every event in the file was stored, so each counts as
+  taken. Nothing new is written: the store file is the record. Without
+  `--store` the groups are in memory.
 
 Root-only mutation of `relay_route.coax` on 2026-11-01: 890 of 890
-killed. `relay_session.py` (ASan and UBSan) creates a group, posts to it,
+killed, and 914 of 914 after `rr_group_keep` and `rr_admin_saves`
+(chapter 67) were added. `relay_session.py` (ASan and UBSan) creates a group, posts to it,
 joins it from a second key, and checks the refusals for a second create,
 a 39000, a group that doesn't exist, a second join and a member putting a
-user.
+user. Its restart check creates a group with `--store`, posts to it and
+joins it, restarts, and finds the group whole: a second create is
+`duplicate: the group already exists`, the member's second join
+`duplicate: already a member`, and both post.
 
 ### Not built
 
 - In the relay: the relay has no key of its own, so it publishes no 39000
   to 39003 events, and no admin or moderation event can be the relay's.
-  The groups are kept in memory: a restart starts with none, though the
-  events stay in the store. A 9005 drops the event from the group's
+  Without `--store` the groups are kept in memory and a restart starts
+  with none. The rebuild replays every stored group event, so it costs a
+  second read of the file and a signature check for each event with an
+  `h` tag. A 9005 drops the event from the group's
   `previous` window but not from the store.
 - Kind 9010 `update-pin-list` and 39005 pinned events, 39004 LiveKit
   participants and the LiveKit token endpoint, subgroups (`parent` and
