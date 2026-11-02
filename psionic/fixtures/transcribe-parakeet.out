@@ -1,0 +1,14 @@
+encoder array 609373186 values, decoder array 18128518; 627057286 checkpoint values placed, 24 step counters skipped
+tensor 51, encoder.layers.0.self_attn.k_proj.weight: encoder array at 13782016, 1048576 values
+20.47 s of audio: 2048 feature frames, 256 encoded; work 295040 binary64 and 36354950 f32 values
+vocabulary: ok, 4 pieces in 16 bytes: ▁now ▁o h ▁no
+normalized: "concord returned to its place amidst the tents"
+against "... the tent.": word errors 1 of 8, character errors 1 of 46
+seeded toy model, 0.1 s: ok, 11 frames, 2 encoded, 2 tokens: "no no"
+  against "no oh": word errors 1 of 2, character errors 2 of 5
+8 kHz audio: audio
+3 pieces for 4 tokens: shape
+work one f32 short: capacity
+room for 4 text bytes: text
+an id used twice: vocabulary
+no model.vocab: vocabulary

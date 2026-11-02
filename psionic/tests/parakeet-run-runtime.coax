@@ -1,0 +1,56 @@
+// Chapter 153's original-weight run: the C harness (psionic/tests/parakeet_run.c)
+// maps the checkpoint, moves bytes and times; where each tensor goes, the
+// vocabulary, the features, the encoder, the decoder, the text and its error
+// rates are all chapter 153's Coax (psionic/lib/parakeet.coax).
+#load "../lib/parakeet.coax";
+
+// The evaluation's thresholds, frozen on 2026-11-02 before the first run on
+// the real weights: over the clips in psionic/fixtures/parakeet/clips.txt
+// together, at most 5 word errors per 100 reference words and 3 character
+// errors per 100 reference characters, after pk_normalize.
+PKR_WORD_PERCENT :: 5;
+PKR_CHAR_PERCENT :: 3;
+
+pkr_tensors :: ()->int #export_c {return tdt_expected_count(tdt_parakeet());}
+pkr_name :: (i:int,out:[]u8)->int #export_c {return pk_name(tdt_parakeet(),i,out);}
+pkr_part :: (i:int)->int #export_c {return pk_slot(tdt_parakeet(),i).part;}
+pkr_at :: (i:int)->int #export_c {return pk_slot(tdt_parakeet(),i).at;}
+pkr_count :: (i:int)->int #export_c {return pk_slot(tdt_parakeet(),i).count;}
+pkr_encoder_weights :: ()->int #export_c {return cf_weight_count(pk_encoder(tdt_parakeet()));}
+pkr_decoder_weights :: ()->int #export_c {return tdt_plan(pk_decoder(tdt_parakeet()),1).weights;}
+pkr_work_f64 :: (samples:int)->int #export_c {return pk_work(tdt_parakeet(),samples).f64;}
+pkr_work_f32 :: (samples:int)->int #export_c {return pk_work(tdt_parakeet(),samples).f32;}
+pkr_within :: (word_errors:int,words:int,char_errors:int,chars:int)->bool #export_c {
+    return 100*word_errors<=PKR_WORD_PERCENT*words && 100*char_errors<=PKR_CHAR_PERCENT*chars;
+}
+
+pkr_audio :: (pcm:[]s16,samples:[]f64)->SfAudio {
+    #assert sf_from_pcm16(pcm,samples)==SfStatus.ok;
+    return SfAudio.{rate=16000,channels=1,samples=samples[0..<pcm.count]};
+}
+// One clip: stats gets frames, encoded frames, tokens, text bytes, words,
+// word errors, characters, character errors. The status as a number.
+pkr_transcribe :: (ew:[]f32,dw:[]f32,json:[]u8,nodes:[]JvNode,pcm:[]s16,reference:[]u8,samples:[]f64,w64:[]f64,w32:[]f32,text:[]u8,stats:[]int)->int #export_c {
+    c:=tdt_parakeet();pieces:[TDT_VOCAB_MAX]string;bytes:[262144]u8;
+    v:=pk_vocab(cast(string)json,c.vocab,nodes,bytes[..],pieces[..]);if v.status!=PkStatus.ok {return 100+cast(int)v.status;}
+    r:=pk_transcribe(c,ew,dw,pieces[0..<c.vocab],pkr_audio(pcm,samples),cast(string)reference,w64,w32,text);
+    s:=[8]int.[r.frames,r.encoded,r.tokens,r.text,r.words,r.word_errors,r.chars,r.char_errors];
+    for i:0..<8 {stats[i]=s[i];}
+    return cast(int)r.status;
+}
+// The oracle's slices of one clip: the f32 features (mels, frames), the
+// subsampled frames and the frames after encoder layers 0 and 1. The
+// encoded frame count.
+pkr_stages :: (ew:[]f32,pcm:[]s16,samples:[]f64,w64:[]f64,w32:[]f32,x:[]f32,sub:[]f32,l0:[]f32,l1:[]f32)->int #export_c {
+    c:=tdt_parakeet();e:=pk_encoder(c);a:=pkr_audio(pcm,samples);k:=pk_work(c,pcm.count);s:=pk_spec(c);
+    nf:=c.mels*k.frames;bank:=w64[nf..<k.f64];
+    #assert sf_mel_bank(s,bank).status==SfStatus.ok && sf_features(a,s,bank,w64[0..<nf]).status==SfStatus.ok;
+    for i:0..<nf {x[i]=f32(w64[i]);}
+    lengths:=[1]int.[k.frames];p:=cf_plan(e,1,k.frames);
+    cf_subsample(e,ew,x[0..<nf],lengths[..],1,k.frames,w32[0..<p.work],sub);
+    n:=k.encoded*c.enc;for i:0..<n {l0[i]=sub[i];}
+    cf_layer(e,ew,cf_layer_at(e,cf_layer_base(e,0)),l0[0..<n],k.encoded,w32[p.at_layer..<p.at_output]);
+    for i:0..<n {l1[i]=l0[i];}
+    cf_layer(e,ew,cf_layer_at(e,cf_layer_base(e,1)),l1[0..<n],k.encoded,w32[p.at_layer..<p.at_output]);
+    return k.encoded;
+}

@@ -1,0 +1,344 @@
+// Chapter 153: Parakeet end to end. The pieces of chapters 151 to 153 joined
+// into one transcription: 16 kHz audio to NeMo's log-mel features (chapter
+// 151), chapter 152's FastConformer encoder at Parakeet's size, chapter
+// 153's TDT decoder, pieces to text, and word and character error rates
+// against a reference after a stated normalization. Around it: where each
+// checkpoint tensor goes in the two flat weight arrays, and a bounded reader
+// for the vocabulary in tokenizer.json.
+// Profile: chapter 151's binary64 features rounded once
+// to f32, then the profiles of chapters 152 (psionic-conformer-v1) and 153
+// (psionic-tdt-v1).
+#load "conformer.coax";
+#load "tdt.coax";
+#load "../../coax/lib/json/json.coax";
+
+// book:begin types
+PkStatus :: enum u8 {ok;shape;audio;features;encoder;decoder;capacity;text;vocabulary;}
+// Where one checkpoint tensor goes: part 0 is the encoder's array (chapter
+// 152's layout), part 1 the decoder's (chapter 153's), part -1 nowhere (batch
+// norm's step counter). count values start at at.
+PkSlot :: struct {part:int;at:int;count:int;}
+// A transcription: the samples, feature frames, encoded frames and tokens,
+// the text's bytes, and the reference's words and characters with the
+// fewest edits that turn them into the text's, after pk_normalize.
+PkRun :: struct {status:PkStatus;samples:int;frames:int;encoded:int;tokens:int;text:int;
+    words:int;word_errors:int;chars:int;char_errors:int;}
+PkScore :: struct {words:int;word_errors:int;chars:int;char_errors:int;}
+// The work one transcription of a sample count needs: feature and encoded
+// frames, then binary64 and f32 values.
+PkWork :: struct {status:PkStatus;frames:int;encoded:int;f64:int;f32:int;}
+PkVocab :: struct {status:PkStatus;count:int;bytes:int;}
+// book:end types
+
+// book:begin bounds
+PK_TOKENS_MAX :: 2560;      // 256 encoded frames x 10 symbols
+PK_TEXT_MAX :: 8192;        // bytes of text and of the reference
+// book:end bounds
+
+// book:begin shapes
+// The encoder and decoder shapes a checkpoint configuration implies. The
+// encoder's layers have no biases (they load as zeros) and there is no CTC
+// head (one token and the blank, zeros).
+pk_encoder :: (c:TdtConfig)->CfShape {
+    return CfShape.{mels=c.mels,channels=c.channels,dim=c.enc,heads=c.heads,hidden=c.hidden,kernel=c.kernel,layers=c.layers,vocab=1};
+}
+pk_decoder :: (c:TdtConfig)->TdtShape {
+    return tdt_durations(TdtShape.{vocab=c.vocab,enc=c.enc,pred=c.pred,layers=c.pred_layers,joint=c.joint,max_symbols=TDT_SYMBOLS_MAX},c.durations);
+}
+// book:end shapes
+
+// Checks precede the implementation.
+pk_tiny :: ()->TdtConfig {
+    return TdtConfig.{mels=16,channels=3,enc=8,heads=2,hidden=16,kernel=3,layers=1,vocab=4,pred=4,pred_layers=1,joint=4,durations=3};
+}
+#test "shapes from the configuration" {
+    e:=pk_encoder(tdt_parakeet());#assert cf_shape_check(e)==CfStatus.ok && e.dim==1024 && e.channels==256 && e.layers==24 && e.vocab==1 && !e.xscale;
+    #assert e.mels==128 && e.heads==8 && e.hidden==4096 && e.kernel==9;
+    d:=pk_decoder(tdt_parakeet());#assert tdt_shape_check(d)==TdtStatus.ok && d.vocab==8192 && d.enc==1024 && d.pred==640 && d.layers==2;
+    #assert d.joint==640 && d.durations==5 && d.dur[4]==4 && d.max_symbols==10;
+    t:=pk_decoder(pk_tiny());#assert t.durations==3 && t.dur[2]==2 && t.layers==1 && t.vocab==4 && t.enc==8 && t.pred==4 && t.joint==4;
+}
+#test "every checkpoint tensor has one place, and the places tile both arrays" #steps 400000000 {
+    c:=tdt_parakeet();e:=pk_encoder(c);d:=pk_decoder(c);p:=tdt_plan(d,1);
+    // Encoder: the layout's weights less 442,368 layer biases and the
+    // head's 2,050, which stay zero; decoder: every weight.
+    enc:=0;dec:=0;skipped:=0;
+    for i:0..<tdt_expected_count(c) {
+        s:=pk_slot(c,i);t:=tdt_expected(c,i);size:=1;for k:0..<t.rank {size*=t.dims[k];}
+        if s.part<0 {skipped+=1;#assert t.dtype=="I64";continue;}
+        #assert s.count==size && s.at>=0;
+        if s.part==0 {enc+=s.count;#assert s.at+s.count<=cf_weight_count(e);} else {dec+=s.count;#assert s.part==1 && s.at+s.count<=p.weights;}
+    }
+    #assert skipped==24 && enc==608928768 && dec==p.weights && dec==18128518;
+    // By hand: the decoder's pieces and a layer's in chapter 152's layout.
+    #assert pk_slot(c,2).part==1 && pk_slot(c,2).at==0 && pk_slot(c,1).at==p.dec && pk_slot(c,0).at==p.dec+640*640;
+    #assert pk_slot(c,3).at==p.lstm+8*640*640+4*640 && pk_slot(c,4).at==p.lstm+8*640*640 && pk_slot(c,5).at==p.lstm+4*640*640 && pk_slot(c,6).at==p.lstm;
+    #assert pk_slot(c,7).at==p.lstm+16*640*640+8*640+4*640 && pk_slot(c,10).at==p.lstm+8*640*640+8*640;
+    #assert pk_slot(c,11).at==p.enc+640*1024 && pk_slot(c,12).at==p.enc && pk_slot(c,13).at==p.head+8198*640 && pk_slot(c,14).at==p.head;
+    sub:=cf_sub_at(e);
+    #assert pk_slot(c,15).at==256*9 && pk_slot(c,16).at==0 && pk_slot(c,17).at==sub.dw1+256*9 && pk_slot(c,18).at==sub.dw1;
+    #assert pk_slot(c,19).at==sub.pw1+256*256 && pk_slot(c,20).at==sub.pw1 && pk_slot(c,21).at==sub.dw2+256*9 && pk_slot(c,22).at==sub.dw2;
+    #assert pk_slot(c,23).at==sub.pw2+256*256 && pk_slot(c,24).at==sub.pw2 && pk_slot(c,25).at==sub.out+1024*4096 && pk_slot(c,26).at==sub.out;
+    layers:=[3]int.[0,1,23];
+    for n:layers {
+        l:=cf_layer_at(e,cf_layer_base(e,n));first:=27+29*n;
+        want:=[29]int.[l.conv.dw,l.conv.bn+3*1024,-1,l.conv.bn,l.conv.bn+1024,l.conv.bn+2*1024,l.conv.pw1,l.conv.pw2,
+            l.ff1.w1,l.ff1.w2,l.ff2.w1,l.ff2.w2,l.conv.norm+1024,l.conv.norm,l.ff1.norm+1024,l.ff1.norm,l.ff2.norm+1024,l.ff2.norm,
+            l.out+1024,l.out,l.att.norm+1024,l.att.norm,l.att.u,l.att.bias_v,l.att.k,l.att.o,l.att.q,l.att.pos,l.att.v];
+        for k:0..<29 {s:=pk_slot(c,first+k);if k==2 {#assert s.part==-1;} else {#assert s.part==0 && s.at==want[k];}}
+    }
+    at:=27+29;
+    // The names, as the manifest writes them.
+    buf:[160]u8;#assert cast(string)buf[0..<pk_name(c,at+24,buf[..])]=="encoder.layers.1.self_attn.k_proj.weight";
+    #assert cast(string)buf[0..<pk_name(c,0,buf[..])]=="decoder.decoder_projector.bias";
+    #assert cast(string)buf[0..<pk_name(c,3,buf[..])]=="decoder.lstm.bias_hh_l0" && cast(string)buf[0..<pk_name(c,27,buf[..])]=="encoder.layers.0.conv.depthwise_conv.weight";
+    #assert cast(string)buf[0..<pk_name(c,26,buf[..])]=="encoder.subsampling.linear.weight";
+    #assert pk_name(c,26,buf[0..<32])==-1 && pk_name(c,26,buf[0..<33])==33 && pk_name(c,-1,buf[..])==-1 && pk_name(c,723,buf[..])==-1;
+    #assert pk_slot(c,-1).part==-1 && pk_slot(c,723).part==-1 && pk_slot(c,723).count==0 && pk_slot(c,722).part==0;
+}
+#test "the vocabulary reader by hand" {
+    pieces:[4]string;bytes:[64]u8;nodes:[64]JvNode;
+    j:="{\"added_tokens\":[{\"id\":0,\"content\":\"x}\"}],\"model\":{\"type\":\"BPE\",\"merges\":[[\"a\",\"b\"]],\"vocab\":{\"<unk>\":0,\"\\u2581now\":3,\"h\\\"\\\\\":2,\"\\u2581o\":1}},\"vocab\":{\"z\":0}}";
+    r:=pk_vocab(j,4,nodes[..],bytes[..],pieces[..]);
+    #assert r.status==PkStatus.ok && r.count==4 && pieces[0]=="<unk>" && pieces[1]=="▁o" && pieces[2]=="h\"\\" && pieces[3]=="▁now" && r.bytes==5+4+3+6;
+    // Refusals: not JSON, no model.vocab, vocab not an object, a repeated
+    // id, an id past the count, a negative or fractional id, too few or too many ids.
+    bad:=[10]string.["{\"model\":{\"vocab\":{\"a\":0,\"b\":1}","{\"model\":{\"vocabulary\":{\"a\":0,\"b\":1}}}","{\"model\":{\"vocab\":[\"a\",\"b\"]}}",
+        "{\"model\":{\"vocab\":{\"a\":0,\"b\":0}}}","{\"model\":{\"vocab\":{\"a\":0,\"b\":2}}}","{\"model\":{\"vocab\":{\"a\":-1,\"b\":1}}}",
+        "{\"model\":{\"vocab\":{\"a\":1.5,\"b\":1}}}","{\"model\":{\"vocab\":{\"a\":0}}}","{\"model\":{\"vocab\":{\"a\":0,\"b\":1,\"c\":2}}}","[1,2]"];
+    for b:bad {#assert pk_vocab(b,2,nodes[..],bytes[..],pieces[..]).status==PkStatus.vocabulary;}
+    // Too few nodes for the text is refused too.
+    ok:="{\"model\":{\"vocab\":{\"ab\":0,\"c\":1}}}";
+    #assert pk_vocab(ok,2,nodes[0..<4],bytes[..],pieces[..]).status==PkStatus.vocabulary && pk_vocab(ok,2,nodes[0..<5],bytes[..],pieces[..]).status==PkStatus.ok;
+    #assert pk_vocab(ok,2,nodes[..],bytes[0..<2],pieces[..]).status==PkStatus.capacity && pk_vocab(ok,2,nodes[..],bytes[..],pieces[0..<1]).status==PkStatus.capacity;
+    r=pk_vocab(ok,2,nodes[..],bytes[0..<3],pieces[..]);#assert r.status==PkStatus.ok && r.bytes==3 && pieces[0]=="ab" && pieces[1]=="c";
+    #assert pk_vocab(ok,0,nodes[..],bytes[..],pieces[..]).status==PkStatus.shape && pk_vocab(ok,TDT_VOCAB_MAX+1,nodes[..],bytes[..],pieces[..]).status==PkStatus.shape;
+    #assert pk_vocab(ok,TDT_VOCAB_MAX,nodes[..],bytes[..],pieces[..]).status==PkStatus.capacity;
+    // One piece; an empty piece.
+    r=pk_vocab("{\"model\":{\"vocab\":{\"a\":0}}}",1,nodes[..],bytes[..],pieces[..]);#assert r.status==PkStatus.ok && pieces[0]=="a";
+    r=pk_vocab("{\"model\":{\"vocab\":{\"\":0,\"b\":1}}}",2,nodes[..],bytes[..],pieces[..]);#assert r.status==PkStatus.ok && pieces[0]=="" && pieces[1]=="b";
+    // A refusal leaves pieces alone.
+    pieces[0]="kept";#assert pk_vocab(bad[3],2,nodes[..],bytes[..],pieces[..]).status==PkStatus.vocabulary && pieces[0]=="kept";
+}
+#test "normalization by hand" {
+    out:[64]u8;
+    #assert cast(string)out[0..<pk_normalize("Concord returned to its place, amidst the tents.",out[..])]=="concord returned to its place amidst the tents";
+    #assert cast(string)out[0..<pk_normalize("  I'm   HERE--now!  ",out[..])]=="i'm here now";
+    #assert cast(string)out[0..<pk_normalize("Été 42",out[..])]=="Été 42" && pk_normalize("...",out[..])==0;
+    // The edges of each kept range; 0x7f is dropped, 0x80 and above kept.
+    #assert cast(string)out[0..<pk_normalize("AZ@[`{az09/:'",out[..])]=="az az09 '";
+    #assert cast(string)out[0..<pk_normalize("Q^_q~",out[..])]=="q q";
+    raw:=[4]u8.[0x41,0x7f,0x80,0x2f];#assert pk_normalize(cast(string)raw[..],out[..])==3 && out[0]=='a' && out[1]==' ' && out[2]==0x80;
+    #assert pk_normalize("abcdef",out[0..<5])==-1 && pk_normalize("abcde",out[0..<5])==5 && pk_normalize("ab cd",out[0..<4])==-1;
+    #assert pk_normalize("ab cd",out[0..<5])==5 && pk_normalize("ab cd",out[0..<2])==-1;
+}
+#test "error rates by hand" {
+    r:=pk_score("oh now","ohh now");#assert r.words==2 && r.word_errors==1 && r.chars==6 && r.char_errors==1;
+    r=pk_score("CONCORD RETURNED","Concord returned.");#assert r.words==2 && r.word_errors==0 && r.chars==16 && r.char_errors==0;
+    // Words a b c to a c d e: b out, d and e in. Characters: two in, two changed.
+    r=pk_score("A B C","a c d e");#assert r.words==3 && r.word_errors==3 && r.chars==5 && r.char_errors==4;
+}
+#test "work sizes by hand" {
+    c:=tdt_parakeet();p:=pk_work(c,TDT_SAMPLES_MAX);
+    // 2,048 frames: features and the mel bank in binary64; the f32 features,
+    // the encoder's work and output and the decoder's work in f32.
+    #assert p.status==PkStatus.ok && p.frames==2048 && p.encoded==256;
+    #assert p.f64==128*2048+128*257 && p.f32==128*2048+cf_plan(pk_encoder(c),1,2048).work+256*1024+tdt_plan(pk_decoder(c),256).work;
+    #assert pk_work(c,TDT_SAMPLES_MAX+1).status==PkStatus.audio && pk_work(c,0).status==PkStatus.audio && pk_work(c,1).frames==1;
+    t:=pk_work(pk_tiny(),1600);#assert t.f64==16*11+16*257 && t.frames==11 && t.encoded==2;
+    #assert t.f32==16*11+cf_plan(pk_encoder(pk_tiny()),1,11).work+2*8+tdt_plan(pk_decoder(pk_tiny()),2).work;
+}
+#test "a seeded transcription equals its steps one by one" #steps 2000000000 {
+    c:=pk_tiny();e:=pk_encoder(c);d:=pk_decoder(c);ew:[2000]f32;dw:[300]f32;
+    ne:=cf_weight_count(e);nd:=tdt_plan(d,1).weights;
+    #assert cf_init(e,ew[0..<ne],5)==CfStatus.ok && tdt_init(d,dw[0..<nd],31)==TdtStatus.ok;
+    x:[3200]f64;sf_test_signal(x[..]);a:=SfAudio.{rate=16000,channels=1,samples=x[0..<1600]};
+    pieces:=[4]string.["▁now","▁o","h","▁no"];
+    w32:[20000]f32;w64:[5000]f64;text:[256]u8;
+    pw:=pk_work(c,1600);#assert pw.status==PkStatus.ok && pw.f32<=w32.count && pw.f64<=w64.count;
+    r:=pk_transcribe(c,ew[0..<ne],dw[0..<nd],pieces[..],a,"no oh",w64[0..<pw.f64],w32[0..<pw.f32],text[..]);
+    // Seed 31's decoder writes "no no": one word and two characters wrong.
+    #assert r.status==PkStatus.ok && r.samples==1600 && r.frames==11 && r.encoded==2 && r.tokens==2 && cast(string)text[0..<r.text]=="no no";
+    #assert r.word_errors==1 && r.char_errors==2;
+    // The same steps by hand.
+    spec:=sf_nemo_spec();spec.mels=16;bank:[16*257]f64;f:[16*11]f64;#assert sf_mel_bank(spec,bank[..]).status==SfStatus.ok;
+    #assert sf_features(a,spec,bank[..],f[..]).frames==11;
+    fx:[16*11]f32;for i:0..<176 {fx[i]=f32(f[i]);}
+    cw:[4000]f32;enc:[16]f32;n:[1]int;one:=[1]int.[11];
+    #assert cf_encode(e,ew[0..<ne],fx[..],one[..],1,11,cw[..],enc[..],n[..],false).status==CfStatus.ok && n[0]==2;
+    tw:[200]f32;tok:[20]int;at:[20]int;t:=tdt_decode(d,dw[0..<nd],enc[..],2,tw[..],tok[..],at[..]);
+    #assert t.status==TdtStatus.ok && r.tokens==t.written;
+    // The work array holds the features, the encoded frames and the decoder's work, bit for bit.
+    at2:=176+cf_plan(e,1,11).work;#assert px_same(w32[0..<176],fx[..]) && px_same(w32[at2..<at2+16],enc[..]) && px_same(w32[at2+16..<at2+16+52],tw[0..<52]);
+    mine:[256]u8;m:=tdt_text(pieces[..],tok[0..<t.written],mine[..]);
+    #assert m==r.text && cast(string)mine[0..<m]==cast(string)text[0..<r.text];
+    s:=pk_score("no oh",cast(string)text[0..<r.text]);
+    #assert s.words==r.words && s.word_errors==r.word_errors && s.chars==r.chars && s.char_errors==r.char_errors && r.words==2 && r.chars==5;
+    // Refusals, each before the text is written.
+    for i:0..<256 {text[i]=7;}
+    b:=a;b.rate=8000;#assert pk_transcribe(c,ew[0..<ne],dw[0..<nd],pieces[..],b,"no",w64[..],w32[..],text[..]).status==PkStatus.audio;
+    #assert pk_transcribe(c,ew[0..<ne-1],dw[0..<nd],pieces[..],a,"no",w64[..],w32[..],text[..]).status==PkStatus.shape;
+    #assert pk_transcribe(c,ew[0..<ne],dw[0..<nd-1],pieces[..],a,"no",w64[..],w32[..],text[..]).status==PkStatus.shape;
+    #assert pk_transcribe(c,ew[0..<ne],dw[0..<nd],pieces[0..<3],a,"no",w64[..],w32[..],text[..]).status==PkStatus.shape;
+    #assert pk_transcribe(c,ew[0..<ne],dw[0..<nd],pieces[..],a,"no",w64[0..<pw.f64-1],w32[..],text[..]).status==PkStatus.capacity;
+    #assert pk_transcribe(c,ew[0..<ne],dw[0..<nd],pieces[..],a,"no",w64[..],w32[0..<pw.f32-1],text[..]).status==PkStatus.capacity;
+    big:=c;big.layers=25;#assert pk_transcribe(big,ew[0..<ne],dw[0..<nd],pieces[..],a,"no",w64[..],w32[..],text[..]).status==PkStatus.shape;
+    big=c;big.heads=3;#assert pk_transcribe(big,ew[0..<ne],dw[0..<nd],pieces[..],a,"no",w64[..],w32[..],text[..]).status==PkStatus.shape;
+    big=c;big.pred_layers=3;#assert pk_transcribe(big,ew[0..<ne],dw[0..<nd],pieces[..],a,"no",w64[..],w32[..],text[..]).status==PkStatus.shape;
+    v:=ew;v[3]=cf_nan();#assert pk_transcribe(c,v[0..<ne],dw[0..<nd],pieces[..],a,"no",w64[..],w32[..],text[..]).status==PkStatus.encoder;
+    u:=dw;u[nd-1]=2000;#assert pk_transcribe(c,ew[0..<ne],u[0..<nd],pieces[..],a,"no",w64[..],w32[..],text[..]).status==PkStatus.decoder;
+    // 159 samples make one frame, too few to normalize.
+    #assert pk_transcribe(c,ew[0..<ne],dw[0..<nd],pieces[..],SfAudio.{rate=16000,channels=1,samples=x[0..<159]},"no",w64[..],w32[..],text[..]).status==PkStatus.features;
+    // Seed 6's decoder writes nothing: an empty text is still a text.
+    blank:=dw;#assert tdt_init(d,blank[0..<nd],6)==TdtStatus.ok;
+    e0:=pk_transcribe(c,ew[0..<ne],blank[0..<nd],pieces[..],a,"no",w64[..],w32[..],text[0..<0]);
+    #assert e0.status==PkStatus.ok && e0.tokens==0 && e0.text==0 && e0.word_errors==1;
+    // Too little room for the text, or a reference past the bound.
+    #assert pk_transcribe(c,ew[0..<ne],dw[0..<nd],pieces[..],a,"no",w64[..],w32[..],text[0..<r.text-1]).status==PkStatus.text;
+    long:[PK_TEXT_MAX+1]u8;for i:0..<long.count {long[i]='a';}
+    #assert pk_transcribe(c,ew[0..<ne],dw[0..<nd],pieces[..],a,cast(string)long[..],w64[..],w32[..],text[..]).status==PkStatus.text;
+    for i:0..<256 {#assert text[i]==7;}
+    #assert pk_transcribe(c,ew[0..<ne],dw[0..<nd],pieces[..],a,cast(string)long[0..<PK_TEXT_MAX],w64[..],w32[..],text[0..<r.text]).status==PkStatus.ok;
+}
+
+// book:begin slots
+// Tensor i of the checkpoint (tdt_expected's order) and its place: the
+// decoder's in chapter 153's layout, the encoder's in chapter 152's, where a
+// layer's tensors follow TDT_LAYER_NAMES.
+pk_slot :: (c:TdtConfig,i:int)->PkSlot {
+    if i<0 || i>=tdt_expected_count(c) {return PkSlot.{part=-1};}
+    t:=tdt_expected(c,i);n:=1;for k:0..<t.rank {n*=t.dims[k];}
+    p:=tdt_plan(pk_decoder(c),TDT_FRAMES_MAX);g:=4*c.pred*c.pred;
+    if i<3 {at:=[3]int.[p.dec+c.joint*c.pred,p.dec,0];return PkSlot.{part=1,at=at[i],count=n};}
+    j:=i-3;
+    if j<4*c.pred_layers {
+        // bias_hh, bias_ih, weight_hh, weight_ih of layer j / 4.
+        at:=[4]int.[2*g+4*c.pred,2*g,g,0];
+        return PkSlot.{part=1,at=p.lstm+j/4*(2*g+8*c.pred)+at[j%4],count=n};
+    }
+    j-=4*c.pred_layers;
+    if j<4 {at:=[4]int.[p.enc+c.joint*c.enc,p.enc,p.head+p.outputs*c.joint,p.head];return PkSlot.{part=1,at=at[j],count=n};}
+    j-=4;e:=pk_encoder(c);sub:=cf_sub_at(e);
+    if j<10 {
+        // Each convolution's kernel, then its bias; the inventory lists the bias first.
+        stage:=[5]int.[sub.conv0,sub.dw1,sub.pw1,sub.dw2,sub.pw2];kernel:=[5]int.[9,9,c.channels,9,c.channels];
+        at:=stage[j/2];if j%2==0 {at+=c.channels*kernel[j/2];}
+        return PkSlot.{part=0,at=at,count=n};
+    }
+    if j<12 {at:=sub.out;if j==10 {at+=c.enc*c.channels*cf_length(c.mels);}return PkSlot.{part=0,at=at,count=n};}
+    j-=12;l:=cf_layer_at(e,cf_layer_base(e,j/TDT_LAYER_TENSORS));m:=c.enc;
+    // Batch norm's step counter, tensor 2, is not loaded.
+    if j%TDT_LAYER_TENSORS==2 {return PkSlot.{part=-1};}
+    at:=[29]int.[l.conv.dw,l.conv.bn+3*m,l.conv.bn,l.conv.bn,l.conv.bn+m,l.conv.bn+2*m,l.conv.pw1,l.conv.pw2,
+        l.ff1.w1,l.ff1.w2,l.ff2.w1,l.ff2.w2,l.conv.norm+m,l.conv.norm,l.ff1.norm+m,l.ff1.norm,l.ff2.norm+m,l.ff2.norm,
+        l.out+m,l.out,l.att.norm+m,l.att.norm,l.att.u,l.att.bias_v,l.att.k,l.att.o,l.att.q,l.att.pos,l.att.v];
+    return PkSlot.{part=0,at=at[j%TDT_LAYER_TENSORS],count=n};
+}
+// Tensor i's name, as the safetensors header writes it; the byte count, or
+// -1 for an index past the inventory or too small an out.
+pk_name :: (c:TdtConfig,i:int,out:[]u8)->int {
+    if i<0 || i>=tdt_expected_count(c) {return -1;}
+    t:=tdt_expected(c,i);full:[160]u8;k:=tdt_put(full[..],0,t.prefix);
+    if t.layer>=0 {k=tdt_put_int(full[..],k,t.layer);}
+    k=tdt_put(full[..],k,t.suffix);
+    if k>out.count {return -1;}
+    for j:0..<k {out[j]=full[j];}
+    return k;
+}
+// book:end slots
+
+// book:begin vocab
+// tokenizer.json's model.vocab, read with coax/lib/json: an object of
+// "piece": id members with ids 0 to count - 1, each once. Each piece is
+// unescaped into bytes and pieces[id] views it. nodes holds the parsed
+// tree (the pinned file needs 50,878). Nothing is written to pieces on
+// refusal.
+pk_vocab :: (j:string,count:int,nodes:[]JvNode,bytes:[]u8,pieces:[]string)->PkVocab {
+    if count<1 || count>TDT_VOCAB_MAX {return PkVocab.{status=PkStatus.shape};}
+    if pieces.count<count {return PkVocab.{status=PkStatus.capacity};}
+    d:[1]Jv;if !jv_parse(d[..],j,nodes) {return PkVocab.{status=PkStatus.vocabulary};}
+    v:=jv_path(d[0],0,"model.vocab");
+    if jv_kind(d[0],v)!=JV_OBJECT || jv_len(d[0],v)!=count {return PkVocab.{status=PkStatus.vocabulary};}
+    from:[TDT_VOCAB_MAX]int;to:[TDT_VOCAB_MAX]int;seen:[TDT_VOCAB_MAX]bool;used:=0;m:=jv_at(d[0],v,0);
+    for i:0..<count {
+        id:=jv_int(d[0],m,-1);if id<0 || id>=count || seen[id] {return PkVocab.{status=PkStatus.vocabulary};}
+        // The parser checked every escape, so only room can run out.
+        n:=jv_unescape(jv_key(d[0],m),bytes[used..<bytes.count]);if n<0 {return PkVocab.{status=PkStatus.capacity};}
+        seen[id]=true;from[id]=used;used+=n;to[id]=used;m=d[0].nodes[m].next;
+    }
+    for i:0..<count {pieces[i]=cast(string)bytes[from[i]..<to[i]];}
+    return PkVocab.{count=count,bytes=used};
+}
+// book:end vocab
+
+// book:begin normalize
+// For scoring: ASCII letters lowercased; letters, digits, the apostrophe and
+// every byte from 0x80 kept; anything else separates words; one space
+// between words. The byte count, or -1 when out is too small.
+pk_normalize :: (text:string,out:[]u8)->int {
+    n:=0;gap:=false;
+    for b:text {
+        // Setting bit 0x20 lowercases an ASCII letter.
+        l:=b|0x20;letter:=l>='a' && l<='z';x:=ifx letter then l else b;
+        keep:=letter || (x>='0' && x<='9') || x=='\'' || x>=0x80;
+        if !keep {gap=n>0;continue;}
+        if gap {if n==out.count {return -1;}out[n]=' ';n+=1;gap=false;}
+        if n==out.count {return -1;}
+        out[n]=x;n+=1;
+    }
+    return n;
+}
+// Word and character errors of hypothesis against reference, both
+// normalized; each at most PK_TEXT_MAX bytes.
+pk_score :: (reference:string,hypothesis:string)->PkScore {
+    a:[PK_TEXT_MAX]u8;b:[PK_TEXT_MAX]u8;
+    ref:=cast(string)a[0..<pk_normalize(reference,a[..])];hyp:=cast(string)b[0..<pk_normalize(hypothesis,b[..])];
+    ru:[PK_TEXT_MAX]string;hu:[PK_TEXT_MAX]string;row:[PK_TEXT_MAX+1]int;r:PkScore;
+    r.words=tdt_words(ref,ru[..]);h:=tdt_words(hyp,hu[..]);r.word_errors=tdt_distance(ru[0..<r.words],hu[0..<h],row[..]);
+    r.chars=tdt_chars(ref,ru[..]);h=tdt_chars(hyp,hu[..]);r.char_errors=tdt_distance(ru[0..<r.chars],hu[0..<h],row[..]);
+    return r;
+}
+// book:end normalize
+
+// book:begin transcribe
+// NeMo's features at the configuration's mel count.
+pk_spec :: (c:TdtConfig)->SfSpec {s:=sf_nemo_spec();s.mels=c.mels;return s;}
+pk_work :: (c:TdtConfig,samples:int)->PkWork {
+    if samples<1 || samples>TDT_SAMPLES_MAX {return PkWork.{status=PkStatus.audio};}
+    s:=pk_spec(c);frames:=sf_frames(samples,s);encoded:=cf_length(frames);
+    w:=PkWork.{frames=frames,encoded=encoded,f64=c.mels*frames+c.mels*(s.n_fft/2+1)};
+    w.f32=c.mels*frames+cf_plan(pk_encoder(c),1,frames).work+encoded*c.enc+tdt_plan(pk_decoder(c),encoded).work;
+    return w;
+}
+// Audio to text: features in binary64 (w64 holds them and the mel bank),
+// rounded to f32 for the encoder; the encoder and the decoder work in w32;
+// the decoder's tokens become text through pieces (one per token), which is
+// then scored against reference. The text is written last, so a refusal
+// leaves it untouched.
+pk_transcribe :: (c:TdtConfig,ew:[]f32,dw:[]f32,pieces:[]string,a:SfAudio,reference:string,w64:[]f64,w32:[]f32,text:[]u8)->PkRun {
+    e:=pk_encoder(c);d:=pk_decoder(c);
+    if cf_shape_check(e)!=CfStatus.ok || tdt_shape_check(d)!=TdtStatus.ok {return PkRun.{status=PkStatus.shape};}
+    if ew.count!=cf_weight_count(e) || dw.count!=tdt_plan(d,TDT_FRAMES_MAX).weights || pieces.count!=c.vocab {return PkRun.{status=PkStatus.shape};}
+    if tdt_admit(a)!=TdtStatus.ok {return PkRun.{status=PkStatus.audio};}
+    if reference.count>PK_TEXT_MAX {return PkRun.{status=PkStatus.text};}
+    k:=pk_work(c,a.samples.count);
+    if w64.count<k.f64 || w32.count<k.f32 {return PkRun.{status=PkStatus.capacity};}
+    s:=pk_spec(c);nf:=c.mels*k.frames;bank:=w64[nf..<k.f64];
+    if sf_mel_bank(s,bank).status!=SfStatus.ok || sf_features(a,s,bank,w64[0..<nf]).status!=SfStatus.ok {return PkRun.{status=PkStatus.features};}
+    for i:0..<nf {w32[i]=f32(w64[i]);}
+    work:=cf_plan(e,1,k.frames).work;at:=nf+work;size:=k.encoded*c.enc;
+    lengths:=[1]int.[k.frames];got:[1]int;
+    if cf_encode(e,ew,w32[0..<nf],lengths[..],1,k.frames,w32[nf..<at],w32[at..<at+size],got[..],false).status!=CfStatus.ok {
+        return PkRun.{status=PkStatus.encoder};
+    }
+    tokens:[PK_TOKENS_MAX]int;frames:[PK_TOKENS_MAX]int;
+    t:=tdt_decode(d,dw,w32[at..<at+size],k.encoded,w32[at+size..<k.f32],tokens[..],frames[..]);
+    if t.status!=TdtStatus.ok {return PkRun.{status=PkStatus.decoder};}
+    out:[PK_TEXT_MAX]u8;n:=tdt_text(pieces,tokens[0..<t.written],out[..]);
+    if n<0 || n>text.count {return PkRun.{status=PkStatus.text};}
+    for i:0..<n {text[i]=out[i];}
+    r:=pk_score(reference,cast(string)text[0..<n]);
+    return PkRun.{samples=a.samples.count,frames=k.frames,encoded=k.encoded,tokens=t.written,text=n,
+        words=r.words,word_errors=r.word_errors,chars=r.chars,char_errors=r.char_errors};
+}
+// book:end transcribe

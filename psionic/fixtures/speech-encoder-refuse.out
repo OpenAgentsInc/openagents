@@ -3,7 +3,7 @@ an even kernel: shape
 129 mels: limit
 2,049 frames: limit
 9 items: limit
-64 channels on 2,048 frames of 128 mels: limit
+257 subsampling channels: limit
 143 features for 16 mels x 9 frames: shape
 a length of 10 in 9 frames: length
 a length of 0: length

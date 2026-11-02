@@ -242,6 +242,16 @@
       ]
     },
     {
+      "source": "psionic/examples/transcribe-parakeet.coax",
+      "chapter": "psionic/book/ch153-transcribe-with-parakeet.md",
+      "stdout": "psionic/fixtures/transcribe-parakeet.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/listen.coax",
       "chapter": "psionic/book/ch154-transcribe-while-someone-speaks.md",
       "stdout": "psionic/fixtures/listen.out",

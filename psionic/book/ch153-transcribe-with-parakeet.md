@@ -1,17 +1,16 @@
 # 153. Transcribe with Parakeet
 
 > **Status: partly implemented.** The pinned `parakeet-tdt-0.6b-v3`
-> checkpoint's 723 tensors are checked against the architecture, name by
-> name and shape by shape, and the token-and-duration (TDT) decoder runs on
-> the CPU: the prediction network, the joint network and greedy decoding with
-> fixed rules for blanks, durations and the most symbols a frame, then pieces
-> to text and word and character error rates. Each matches an independent
-> reference. The weights the decoder runs here are hand-set or seeded. Still
-> to do: running chapter 152's encoder at Parakeet's size on the
-> checkpoint's 627 million weights, comparing features, encoder outputs and
-> token sequences with recorded reference tensors, reading the
-> SentencePiece vocabulary from `tokenizer.json`, and WER and CER on a fixed,
-> versioned test set per language slice.
+> checkpoint transcribes speech on the CPU: its 627 million weights load into
+> chapter 152's encoder and this chapter's token-and-duration (TDT) decoder,
+> the vocabulary is read from its `tokenizer.json`, and four LibriSpeech
+> test-clean clips come out with no word or character errors against
+> thresholds frozen before the run. An independent Python oracle matches the
+> log-mel features, the subsampling and encoder layers 0 and 1 on the real
+> weights. The decoder's pieces each match an independent reference on
+> hand-set and seeded weights. Still to do: comparing with tensors and tokens
+> recorded from NeMo's own model, and WER and CER per language slice of a
+> versioned test set (here one English set of four clips).
 
 [Chapter 152](ch152-a-speech-encoder.md) built NVIDIA NeMo's FastConformer
 encoder: it turns 100 log-mel frames a second into 12.5 encoded frames a
@@ -28,12 +27,17 @@ skip of 0 means "stay on this frame and emit another token"; a skip above 0
 lets the decoder pass over frames that hold nothing new, which is most of
 what makes TDT decoding fast.
 
-This chapter has two parts, in [`tdt.coax`](../lib/tdt.coax):
+This chapter has three parts:
 
-- **the checkpoint**: the tensor inventory of the pinned file, compared line
-  for line with what the architecture says it must hold;
-- **the decoder**: the prediction network, the joint network, the greedy
-  decoding rules, pieces to text and error rates.
+- **the checkpoint** ([`tdt.coax`](../lib/tdt.coax)): the tensor inventory of
+  the pinned file, compared line for line with what the architecture says it
+  must hold;
+- **the decoder** (`tdt.coax`): the prediction network, the joint network,
+  the greedy decoding rules, pieces to text and error rates;
+- **end to end** ([`parakeet.coax`](../lib/parakeet.coax)): where each
+  checkpoint tensor goes, the vocabulary from `tokenizer.json`, and audio to
+  scored text through chapters 151, 152 and this one, run on the real
+  weights.
 
 Everything stores f32 and sums in binary64 with chapter 4's compensated
 accumulator, rounding once to f32 per stored value. That is the profile
@@ -96,16 +100,23 @@ tdt_parakeet_shape :: ()->TdtShape {
 
 ## Run it
 
-The programs are [`transcribe-tdt.coax`](../examples/transcribe-tdt.coax)
-and [`transcribe-tdt-refuse.coax`](../examples/transcribe-tdt-refuse.coax);
-the checks' references are in [`tdt-checks.coax`](../tests/tdt-checks.coax).
+The programs are [`transcribe-tdt.coax`](../examples/transcribe-tdt.coax),
+[`transcribe-tdt-refuse.coax`](../examples/transcribe-tdt-refuse.coax) and
+[`transcribe-parakeet.coax`](../examples/transcribe-parakeet.coax); the
+checks' references are in [`tdt-checks.coax`](../tests/tdt-checks.coax). The
+last command needs the downloaded checkpoint; it is the run on the real
+weights, described in [the end-to-end section](#end-to-end-on-the-real-weights).
 
 ```shell
 coax/bin/coax run psionic/examples/transcribe-tdt.coax
 coax/bin/coax run psionic/examples/transcribe-tdt-refuse.coax
+coax/bin/coax run psionic/examples/transcribe-parakeet.coax
 coax/bin/coax test psionic/lib/tdt.coax
+coax/bin/coax test psionic/lib/parakeet.coax
 coax/bin/coax mutate psionic/lib/tdt.coax --root-only
+coax/bin/coax mutate psionic/lib/parakeet.coax --root-only
 python3 -I psionic/tests/parakeet_manifest.py ~/models/parakeet-tdt-0.6b-v3-541d1f99
+COAX_CC=gcc psionic/tests/check_parakeet.sh ~/models/parakeet-tdt-0.6b-v3-541d1f99
 ```
 
 ```text
@@ -168,11 +179,11 @@ The decoder's parameters, matrix by matrix:
 The sum is 18,128,518, the second line's first number. The whole file holds
 627,057,286 F32 values; the encoder is the other 608,928,768.
 
-The inventory shows one thing chapter 152 must change before it can load
-these weights: in the checkpoint, the Conformer layers' linear maps and
-convolutions have no biases (`attention_bias` and `convolution_bias` are
-false in `config.json`). Chapter 152's layout gives each of them a bias, so
-loading would set those to zero, or the layout needs a bias-free form. The
+The inventory shows one difference from chapter 152's layout: in the
+checkpoint, the Conformer layers' linear maps and convolutions have no
+biases (`attention_bias` and `convolution_bias` are false in
+`config.json`). Chapter 152's layout gives each of them a bias; loading
+leaves those at zero, which adds exactly nothing to each sum. The
 subsampling convolutions do have biases, as chapter 152 assumes.
 
 `tdt_expected` gives the tensor the architecture requires at each position,
@@ -721,6 +732,372 @@ outputs fill, the decoder keeps the 3 tokens it has and says `capacity`.
 Durations must rise strictly, so 0 0 2 is refused as `shape`. The program
 exits with status 0 after printing every refusal.
 
+## End to end on the real weights
+
+The checkpoint, chapter 152's encoder and the decoder above are enough to
+transcribe speech. [`parakeet.coax`](../lib/parakeet.coax) joins them. The
+same configuration gives both shapes: the encoder's, with a CTC head of one
+token that Parakeet does not have (it stays zero), and the decoder's.
+
+<!-- source: psionic/lib/parakeet.coax shapes -->
+```jai
+// The encoder and decoder shapes a checkpoint configuration implies. The
+// encoder's layers have no biases (they load as zeros) and there is no CTC
+// head (one token and the blank, zeros).
+pk_encoder :: (c:TdtConfig)->CfShape {
+    return CfShape.{mels=c.mels,channels=c.channels,dim=c.enc,heads=c.heads,hidden=c.hidden,kernel=c.kernel,layers=c.layers,vocab=1};
+}
+pk_decoder :: (c:TdtConfig)->TdtShape {
+    return tdt_durations(TdtShape.{vocab=c.vocab,enc=c.enc,pred=c.pred,layers=c.pred_layers,joint=c.joint,max_symbols=TDT_SYMBOLS_MAX},c.durations);
+}
+```
+
+### Where the weights go, by hand
+
+The encoder array is chapter 152's layout at Parakeet's size. The
+subsampling holds 2,560 + 2,560 + 65,792 + 2,560 + 65,792 values for its
+five convolutions (kernel and bias each) and 1,024 × 4,096 + 1,024 =
+4,195,328 for the linear map: 4,334,592. One layer holds two feed-forward
+modules of 8,395,776, attention of 5,251,072, the convolution module of
+3,165,184 and the final norm of 2,048: 25,209,856. Then 24 layers and the
+head of 2 × 1,025:
+
+4,334,592 + 24 × 25,209,856 + 2,050 = 609,373,186.
+
+The checkpoint's encoder has 608,928,768 values. The difference is the
+layers' 24 × 18,432 = 442,368 biases and the head's 2,050, which stay zero.
+
+Tensor 51 is the 25th of layer 0 in the inventory's order, `k_proj`. Its
+place is the subsampling (4,334,592), then the first feed-forward module
+(8,395,776), the attention norm (2,048) and the query map with its bias
+(1,048,576 + 1,024): 13,782,016, which the example prints. `pk_slot` gives
+every tensor its place; batch norm's step counters are not loaded.
+
+<!-- source: psionic/lib/parakeet.coax slots -->
+```jai
+// Tensor i of the checkpoint (tdt_expected's order) and its place: the
+// decoder's in chapter 153's layout, the encoder's in chapter 152's, where a
+// layer's tensors follow TDT_LAYER_NAMES.
+pk_slot :: (c:TdtConfig,i:int)->PkSlot {
+    if i<0 || i>=tdt_expected_count(c) {return PkSlot.{part=-1};}
+    t:=tdt_expected(c,i);n:=1;for k:0..<t.rank {n*=t.dims[k];}
+    p:=tdt_plan(pk_decoder(c),TDT_FRAMES_MAX);g:=4*c.pred*c.pred;
+    if i<3 {at:=[3]int.[p.dec+c.joint*c.pred,p.dec,0];return PkSlot.{part=1,at=at[i],count=n};}
+    j:=i-3;
+    if j<4*c.pred_layers {
+        // bias_hh, bias_ih, weight_hh, weight_ih of layer j / 4.
+        at:=[4]int.[2*g+4*c.pred,2*g,g,0];
+        return PkSlot.{part=1,at=p.lstm+j/4*(2*g+8*c.pred)+at[j%4],count=n};
+    }
+    j-=4*c.pred_layers;
+    if j<4 {at:=[4]int.[p.enc+c.joint*c.enc,p.enc,p.head+p.outputs*c.joint,p.head];return PkSlot.{part=1,at=at[j],count=n};}
+    j-=4;e:=pk_encoder(c);sub:=cf_sub_at(e);
+    if j<10 {
+        // Each convolution's kernel, then its bias; the inventory lists the bias first.
+        stage:=[5]int.[sub.conv0,sub.dw1,sub.pw1,sub.dw2,sub.pw2];kernel:=[5]int.[9,9,c.channels,9,c.channels];
+        at:=stage[j/2];if j%2==0 {at+=c.channels*kernel[j/2];}
+        return PkSlot.{part=0,at=at,count=n};
+    }
+    if j<12 {at:=sub.out;if j==10 {at+=c.enc*c.channels*cf_length(c.mels);}return PkSlot.{part=0,at=at,count=n};}
+    j-=12;l:=cf_layer_at(e,cf_layer_base(e,j/TDT_LAYER_TENSORS));m:=c.enc;
+    // Batch norm's step counter, tensor 2, is not loaded.
+    if j%TDT_LAYER_TENSORS==2 {return PkSlot.{part=-1};}
+    at:=[29]int.[l.conv.dw,l.conv.bn+3*m,l.conv.bn,l.conv.bn,l.conv.bn+m,l.conv.bn+2*m,l.conv.pw1,l.conv.pw2,
+        l.ff1.w1,l.ff1.w2,l.ff2.w1,l.ff2.w2,l.conv.norm+m,l.conv.norm,l.ff1.norm+m,l.ff1.norm,l.ff2.norm+m,l.ff2.norm,
+        l.out+m,l.out,l.att.norm+m,l.att.norm,l.att.u,l.att.bias_v,l.att.k,l.att.o,l.att.q,l.att.pos,l.att.v];
+    return PkSlot.{part=0,at=at[j%TDT_LAYER_TENSORS],count=n};
+}
+// Tensor i's name, as the safetensors header writes it; the byte count, or
+// -1 for an index past the inventory or too small an out.
+pk_name :: (c:TdtConfig,i:int,out:[]u8)->int {
+    if i<0 || i>=tdt_expected_count(c) {return -1;}
+    t:=tdt_expected(c,i);full:[160]u8;k:=tdt_put(full[..],0,t.prefix);
+    if t.layer>=0 {k=tdt_put_int(full[..],k,t.layer);}
+    k=tdt_put(full[..],k,t.suffix);
+    if k>out.count {return -1;}
+    for j:0..<k {out[j]=full[j];}
+    return k;
+}
+```
+
+A check places all 723 tensors and requires the encoder's to add up to
+608,928,768 values, the decoder's to fill its 18,128,518 exactly, every
+place to lie inside its array, and layers 0, 1 and 23 to match the layout
+tensor by tensor.
+
+### The vocabulary
+
+`tokenizer.json` is 1.16 MB of JSON. Its `model.vocab` object maps each of
+the 8,192 pieces to its token id. `pk_vocab` parses the file with the
+repository's JSON reader ([`coax/lib/json`](../../coax/lib/json/json.coax)),
+which writes a tree of nodes into a caller's array (the pinned file needs
+50,878), and requires ids 0 to 8,191, each once. Each piece is unescaped
+into one byte array; the pinned file's pieces take 45,886 bytes. None of
+them is a byte-fallback piece such as `<0x0A>`, so the text is the pieces
+joined, as `tdt_text` does.
+
+<!-- source: psionic/lib/parakeet.coax vocab -->
+```jai
+// tokenizer.json's model.vocab, read with coax/lib/json: an object of
+// "piece": id members with ids 0 to count - 1, each once. Each piece is
+// unescaped into bytes and pieces[id] views it. nodes holds the parsed
+// tree (the pinned file needs 50,878). Nothing is written to pieces on
+// refusal.
+pk_vocab :: (j:string,count:int,nodes:[]JvNode,bytes:[]u8,pieces:[]string)->PkVocab {
+    if count<1 || count>TDT_VOCAB_MAX {return PkVocab.{status=PkStatus.shape};}
+    if pieces.count<count {return PkVocab.{status=PkStatus.capacity};}
+    d:[1]Jv;if !jv_parse(d[..],j,nodes) {return PkVocab.{status=PkStatus.vocabulary};}
+    v:=jv_path(d[0],0,"model.vocab");
+    if jv_kind(d[0],v)!=JV_OBJECT || jv_len(d[0],v)!=count {return PkVocab.{status=PkStatus.vocabulary};}
+    from:[TDT_VOCAB_MAX]int;to:[TDT_VOCAB_MAX]int;seen:[TDT_VOCAB_MAX]bool;used:=0;m:=jv_at(d[0],v,0);
+    for i:0..<count {
+        id:=jv_int(d[0],m,-1);if id<0 || id>=count || seen[id] {return PkVocab.{status=PkStatus.vocabulary};}
+        // The parser checked every escape, so only room can run out.
+        n:=jv_unescape(jv_key(d[0],m),bytes[used..<bytes.count]);if n<0 {return PkVocab.{status=PkStatus.capacity};}
+        seen[id]=true;from[id]=used;used+=n;to[id]=used;m=d[0].nodes[m].next;
+    }
+    for i:0..<count {pieces[i]=cast(string)bytes[from[i]..<to[i]];}
+    return PkVocab.{count=count,bytes=used};
+}
+```
+
+### Scoring
+
+LibriSpeech's references are upper case without punctuation; Parakeet
+writes cased, punctuated text. Before counting errors, both are normalized
+the same way: ASCII letters lowercased, letters, digits and the apostrophe
+kept, every other ASCII byte a word break, and bytes from 0x80 kept, so
+other scripts pass through unchanged.
+
+"Concord returned to its place, amidst the tents." becomes "concord
+returned to its place amidst the tents": 8 words and 46 characters with the
+spaces. Against "Concord returned to its place amidst the tent.", one word
+changes ("tents" to "tent") and one character is deleted: 1 of 8 and 1 of 46.
+
+<!-- source: psionic/lib/parakeet.coax normalize -->
+```jai
+// For scoring: ASCII letters lowercased; letters, digits, the apostrophe and
+// every byte from 0x80 kept; anything else separates words; one space
+// between words. The byte count, or -1 when out is too small.
+pk_normalize :: (text:string,out:[]u8)->int {
+    n:=0;gap:=false;
+    for b:text {
+        // Setting bit 0x20 lowercases an ASCII letter.
+        l:=b|0x20;letter:=l>='a' && l<='z';x:=ifx letter then l else b;
+        keep:=letter || (x>='0' && x<='9') || x=='\'' || x>=0x80;
+        if !keep {gap=n>0;continue;}
+        if gap {if n==out.count {return -1;}out[n]=' ';n+=1;gap=false;}
+        if n==out.count {return -1;}
+        out[n]=x;n+=1;
+    }
+    return n;
+}
+// Word and character errors of hypothesis against reference, both
+// normalized; each at most PK_TEXT_MAX bytes.
+pk_score :: (reference:string,hypothesis:string)->PkScore {
+    a:[PK_TEXT_MAX]u8;b:[PK_TEXT_MAX]u8;
+    ref:=cast(string)a[0..<pk_normalize(reference,a[..])];hyp:=cast(string)b[0..<pk_normalize(hypothesis,b[..])];
+    ru:[PK_TEXT_MAX]string;hu:[PK_TEXT_MAX]string;row:[PK_TEXT_MAX+1]int;r:PkScore;
+    r.words=tdt_words(ref,ru[..]);h:=tdt_words(hyp,hu[..]);r.word_errors=tdt_distance(ru[0..<r.words],hu[0..<h],row[..]);
+    r.chars=tdt_chars(ref,ru[..]);h=tdt_chars(hyp,hu[..]);r.char_errors=tdt_distance(ru[0..<r.chars],hu[0..<h],row[..]);
+    return r;
+}
+```
+
+### Audio to text
+
+`pk_transcribe` computes NeMo's features in binary64 (chapter 151's
+`sf_nemo_spec`), rounds them to f32 for chapter 152's `cf_encode`, decodes
+the encoded frames with `tdt_decode`, turns the tokens into text and scores
+it. Work is two caller arrays. For the longest utterance admitted, 327,520
+samples: 2,048 feature frames and 256 encoded. The binary64 array holds the
+features (128 × 2,048 = 262,144) and the mel bank (128 × 257 = 32,896):
+295,040. The f32 array holds the features again (262,144), the encoder's
+work (35,651,584, of which two copies of the first convolution's output,
+256 × 1,024 × 64 each, are almost all), the encoded frames (262,144) and the
+decoder's work (179,078): 36,354,950, about 145 MB.
+
+<!-- source: psionic/lib/parakeet.coax transcribe -->
+```jai
+// NeMo's features at the configuration's mel count.
+pk_spec :: (c:TdtConfig)->SfSpec {s:=sf_nemo_spec();s.mels=c.mels;return s;}
+pk_work :: (c:TdtConfig,samples:int)->PkWork {
+    if samples<1 || samples>TDT_SAMPLES_MAX {return PkWork.{status=PkStatus.audio};}
+    s:=pk_spec(c);frames:=sf_frames(samples,s);encoded:=cf_length(frames);
+    w:=PkWork.{frames=frames,encoded=encoded,f64=c.mels*frames+c.mels*(s.n_fft/2+1)};
+    w.f32=c.mels*frames+cf_plan(pk_encoder(c),1,frames).work+encoded*c.enc+tdt_plan(pk_decoder(c),encoded).work;
+    return w;
+}
+// Audio to text: features in binary64 (w64 holds them and the mel bank),
+// rounded to f32 for the encoder; the encoder and the decoder work in w32;
+// the decoder's tokens become text through pieces (one per token), which is
+// then scored against reference. The text is written last, so a refusal
+// leaves it untouched.
+pk_transcribe :: (c:TdtConfig,ew:[]f32,dw:[]f32,pieces:[]string,a:SfAudio,reference:string,w64:[]f64,w32:[]f32,text:[]u8)->PkRun {
+    e:=pk_encoder(c);d:=pk_decoder(c);
+    if cf_shape_check(e)!=CfStatus.ok || tdt_shape_check(d)!=TdtStatus.ok {return PkRun.{status=PkStatus.shape};}
+    if ew.count!=cf_weight_count(e) || dw.count!=tdt_plan(d,TDT_FRAMES_MAX).weights || pieces.count!=c.vocab {return PkRun.{status=PkStatus.shape};}
+    if tdt_admit(a)!=TdtStatus.ok {return PkRun.{status=PkStatus.audio};}
+    if reference.count>PK_TEXT_MAX {return PkRun.{status=PkStatus.text};}
+    k:=pk_work(c,a.samples.count);
+    if w64.count<k.f64 || w32.count<k.f32 {return PkRun.{status=PkStatus.capacity};}
+    s:=pk_spec(c);nf:=c.mels*k.frames;bank:=w64[nf..<k.f64];
+    if sf_mel_bank(s,bank).status!=SfStatus.ok || sf_features(a,s,bank,w64[0..<nf]).status!=SfStatus.ok {return PkRun.{status=PkStatus.features};}
+    for i:0..<nf {w32[i]=f32(w64[i]);}
+    work:=cf_plan(e,1,k.frames).work;at:=nf+work;size:=k.encoded*c.enc;
+    lengths:=[1]int.[k.frames];got:[1]int;
+    if cf_encode(e,ew,w32[0..<nf],lengths[..],1,k.frames,w32[nf..<at],w32[at..<at+size],got[..],false).status!=CfStatus.ok {
+        return PkRun.{status=PkStatus.encoder};
+    }
+    tokens:[PK_TOKENS_MAX]int;frames:[PK_TOKENS_MAX]int;
+    t:=tdt_decode(d,dw,w32[at..<at+size],k.encoded,w32[at+size..<k.f32],tokens[..],frames[..]);
+    if t.status!=TdtStatus.ok {return PkRun.{status=PkStatus.decoder};}
+    out:[PK_TEXT_MAX]u8;n:=tdt_text(pieces,tokens[0..<t.written],out[..]);
+    if n<0 || n>text.count {return PkRun.{status=PkStatus.text};}
+    for i:0..<n {text[i]=out[i];}
+    r:=pk_score(reference,cast(string)text[0..<n]);
+    return PkRun.{samples=a.samples.count,frames=k.frames,encoded=k.encoded,tokens=t.written,text=n,
+        words=r.words,word_errors=r.word_errors,chars=r.chars,char_errors=r.char_errors};
+}
+```
+
+At toy size, with chapter 152's seeded encoder (width 8) and a seeded
+decoder of 4 tokens, the test signal of 0.1 seconds gives 11 feature frames,
+2 encoded frames and the text "no no". A check runs the same steps one call
+at a time and requires the same features, encoded frames, decoder work and
+text, bit for bit.
+
+The example prints these numbers and the refusals:
+
+<!-- source: psionic/examples/transcribe-parakeet.coax run -->
+```jai
+main :: () {
+    c:=tdt_parakeet();e:=pk_encoder(c);d:=pk_decoder(c);
+    loaded:=0;skipped:=0;
+    for i:0..<tdt_expected_count(c) {s:=pk_slot(c,i);if s.part<0 {skipped+=1;} else {loaded+=s.count;}}
+    print("encoder array % values, decoder array %; % checkpoint values placed, % step counters skipped\n",
+        cf_weight_count(e),tdt_plan(d,TDT_FRAMES_MAX).weights,loaded,skipped);
+    buf:[160]u8;s:=pk_slot(c,51);
+    print("tensor 51, %: encoder array at %, % values\n",cast(string)buf[0..<pk_name(c,51,buf[..])],s.at,s.count);
+    w:=pk_work(c,TDT_SAMPLES_MAX);
+    print("20.47 s of audio: % feature frames, % encoded; work % binary64 and % f32 values\n",w.frames,w.encoded,w.f64,w.f32);
+
+    nodes:[64]JvNode;bytes:[64]u8;pieces:[4]string;
+    j:="{\"model\":{\"vocab\":{\"▁now\":0,\"\\u2581o\":1,\"h\":2,\"▁no\":3}}}";
+    v:=pk_vocab(j,4,nodes[..],bytes[..],pieces[..]);
+    print("vocabulary: %, % pieces in % bytes: % % % %\n",v.status,v.count,v.bytes,pieces[0],pieces[1],pieces[2],pieces[3]);
+    out:[64]u8;n:=pk_normalize("Concord returned to its place, amidst the tents.",out[..]);
+    print("normalized: \"%\"\n",cast(string)out[0..<n]);
+    r:=pk_score("CONCORD RETURNED TO ITS PLACE AMIDST THE TENTS","Concord returned to its place amidst the tent.");
+    print("against \"... the tent.\": word errors % of %, character errors % of %\n",r.word_errors,r.words,r.char_errors,r.chars);
+
+    t:=pk_tiny();te:=pk_encoder(t);td:=pk_decoder(t);ew:[1476]f32;dw:[276]f32;
+    q:=cf_init(te,ew[..],5);u:=tdt_init(td,dw[..],31);
+    x:[1600]f64;sf_test_signal(x[..]);a:=SfAudio.{rate=16000,channels=1,samples=x[..]};
+    w32:[2000]f32;w64:[5000]f64;text:[64]u8;
+    k:=pk_transcribe(t,ew[..],dw[..],pieces[..],a,"no oh",w64[..],w32[..],text[..]);
+    print("seeded toy model, 0.1 s: %, % frames, % encoded, % tokens: \"%\"\n",k.status,k.frames,k.encoded,k.tokens,cast(string)text[0..<k.text]);
+    print("  against \"no oh\": word errors % of %, character errors % of %\n",k.word_errors,k.words,k.char_errors,k.chars);
+
+    b:=a;b.rate=8000;print("8 kHz audio: %\n",pk_transcribe(t,ew[..],dw[..],pieces[..],b,"no",w64[..],w32[..],text[..]).status);
+    print("3 pieces for 4 tokens: %\n",pk_transcribe(t,ew[..],dw[..],pieces[0..<3],a,"no",w64[..],w32[..],text[..]).status);
+    print("work one f32 short: %\n",pk_transcribe(t,ew[..],dw[..],pieces[..],a,"no",w64[..],w32[0..<pk_work(t,1600).f32-1],text[..]).status);
+    print("room for 4 text bytes: %\n",pk_transcribe(t,ew[..],dw[..],pieces[..],a,"no",w64[..],w32[..],text[0..<4]).status);
+    print("an id used twice: %\n",pk_vocab("{\"model\":{\"vocab\":{\"a\":0,\"b\":0}}}",2,nodes[..],bytes[..],pieces[..]).status);
+    print("no model.vocab: %\n",pk_vocab("{\"vocab\":{\"a\":0,\"b\":1}}",2,nodes[..],bytes[..],pieces[..]).status);
+}
+```
+
+```text
+encoder array 609373186 values, decoder array 18128518; 627057286 checkpoint values placed, 24 step counters skipped
+tensor 51, encoder.layers.0.self_attn.k_proj.weight: encoder array at 13782016, 1048576 values
+20.47 s of audio: 2048 feature frames, 256 encoded; work 295040 binary64 and 36354950 f32 values
+vocabulary: ok, 4 pieces in 16 bytes: ▁now ▁o h ▁no
+normalized: "concord returned to its place amidst the tents"
+against "... the tent.": word errors 1 of 8, character errors 1 of 46
+seeded toy model, 0.1 s: ok, 11 frames, 2 encoded, 2 tokens: "no no"
+  against "no oh": word errors 1 of 2, character errors 2 of 5
+8 kHz audio: audio
+3 pieces for 4 tokens: shape
+work one f32 short: capacity
+room for 4 text bytes: text
+an id used twice: vocabulary
+no model.vocab: vocabulary
+```
+
+### The clips
+
+The evaluation set, `parakeet-clips-v1`, is four utterances of LibriSpeech
+test-clean (speaker 6930, chapter 75918), licence CC BY 4.0, listed with
+their source, hashes and references in
+[`clips.txt`](../fixtures/parakeet/clips.txt). They were fetched as FLAC and
+converted losslessly to 16-bit PCM at 16 kHz; the PCM files are in the
+repository, 17.6 seconds in all.
+
+The thresholds were frozen before the first run: over the four clips
+together, at most 5 word errors per 100 reference words and 3 character
+errors per 100 reference characters. The model card reports a LibriSpeech
+test-clean word error rate of about 2%, so a correct implementation should
+pass easily and a broken one should not.
+
+### The run
+
+[`check_parakeet.sh`](../tests/check_parakeet.sh) hashes the checkpoint and
+checks its inventory, compiles
+[`parakeet-run-runtime.coax`](../tests/parakeet-run-runtime.coax) and the C
+harness [`parakeet_run.c`](../tests/parakeet_run.c), which maps the file and
+copies each tensor's bytes to the place `pk_slot` names, then transcribes
+each clip in its own process. Every decision above the bytes is Coax.
+
+```text
+loaded 627057286 weights in 0.8 s: encoder array 609373186, decoder array 18128518
+slices of 6930-75918-0011: 320 feature frames, 40 encoded frames, layers 0 and 1, 2.5 s
+6930-75918-0000, 3.50 s of audio, 351 feature frames, 44 encoded, 15 tokens, 26 s:
+  "Concord returned to its place amidst the tents,"
+  word errors 0 of 8, character errors 0 of 46
+6930-75918-0002, 5.03 s of audio, 503 feature frames, 63 encoded, 26 tokens, 37 s:
+  "Congratulations were poured in upon the Princess everywhere during her journey."
+  word errors 0 of 11, character errors 0 of 78
+6930-75918-0006, 5.85 s of audio, 586 feature frames, 74 encoded, 32 tokens, 44 s:
+  "This has indeed been a harassing day, continued the young man, his eyes fixed upon his friend,"
+  word errors 0 of 17, character errors 0 of 91
+6930-75918-0011, 3.19 s of audio, 320 feature frames, 40 encoded, 15 tokens, 24 s:
+  "I am convinced of what I say, said the Count."
+  word errors 0 of 10, character errors 0 of 43
+all 4 clips: word errors 0 of 46, character errors 0 of 258: within the frozen thresholds; 44 s
+```
+
+All 46 words come out right. The punctuation and capitals are the model's;
+normalization removes them before scoring. Each clip takes about 7.5
+seconds per second of audio on one core, almost all of it the encoder's
+compensated sums; the clips run side by side. The slices line is the
+oracle's input, written by a fifth process.
+
+### The independent check
+
+[`parakeet_oracle.py`](../tests/parakeet_oracle.py) is written from NeMo's
+published preprocessor and FastConformer encoder in plain Python with
+binary64 numbers, and shares no code with the Coax: it computes the power
+spectrum with a direct DFT, builds the Slaney mel filters as librosa defines
+them, convolves with explicit loops, and computes relative-position
+attention from the position i − j of each pair, with no shift. For the
+shortest clip it recomputes the features from the PCM samples, the
+subsampling from the Coax features, and layers 0 and 1 from the Coax output
+of the stage before, so a difference would point at one stage. The
+tolerance was frozen before the first comparison: 10⁻⁴ × (1 + the largest
+value of the slice).
+
+```text
+log-mel features, 320 frames: largest difference 2.01e-07, limit 0.00059, within
+subsampling, 40 frames: largest difference 0.000247, limit 0.534, within
+encoder layer 0: largest difference 3.5e-05, limit 0.0195, within
+encoder layer 1: largest difference 1.47e-05, limit 0.0206, within
+```
+
+The subsampling's outputs reach about 5,300, so its limit is 0.53; the
+largest difference is 2.5 × 10⁻⁴. The layers' outputs are layer-normed, and
+differ from the oracle by at most 3.5 × 10⁻⁵.
+
 ## The checks
 
 [`tdt-checks.coax`](../tests/tdt-checks.coax) holds references that share
@@ -741,6 +1118,14 @@ They also check the rules case by case, the layout's offsets and the
 real decoder's size by hand, every bound of the shape, audio admission, and
 that every refusal leaves the outputs untouched.
 
+The end-to-end unit, [`parakeet.coax`](../lib/parakeet.coax), checks every
+tensor's place, the vocabulary reader on hand-written JSON (escapes, a
+repeated id, an id past the count, a fractional id, too few nodes or bytes),
+normalization and scoring by hand, the work sizes by hand, and the seeded
+transcription against its steps run one by one, with each refusal leaving
+the text untouched. `coax mutate psionic/lib/parakeet.coax --root-only`
+makes 318 mutants; the checks kill all 318.
+
 The tests also recompute every seeded weight, compare the prediction
 network's h, c and projection and the joint network's outputs with the
 reference after each of four steps (within 10⁻⁶ and 10⁻⁵), check that the
@@ -755,21 +1140,17 @@ bit of a - b, and tanh and the logistic function share one formula.
 
 ## What remains
 
-- **The encoder at Parakeet's size.** Chapter 152's encoder is bounded at
-  width 128, 8 layers and 1,024 tokens; Parakeet needs width 1,024, 24
-  layers, 4,096 hidden and 8 heads, without the layer biases chapter 152's
-  layout has. Then the 627 million weights must be read from the
-  safetensors file into that layout.
-- **Recorded references.** Comparing log-mel features (dither and
-  normalization details beyond the six constants above are not yet
-  checked), encoder outputs and token sequences for fixed utterances with
-  tensors recorded from NeMo's own decoder. In particular, whether NeMo's
-  decoders apply the same rule at the symbol cap has not been compared.
-- **The tokenizer.** Reading the 8,192 pieces from `tokenizer.json`; here the
-  pieces are a table the caller supplies, and byte-fallback pieces are not
-  handled.
-- **Evaluation.** WER and CER on a fixed, versioned test set per language
-  slice, with the set's identity in the result.
+- **Recorded references.** Comparing features, encoder outputs and token
+  sequences with tensors recorded from NeMo's own model on fixed utterances.
+  The oracle here is written from the published architecture, not run from
+  NeMo's code; in particular, whether NeMo's decoder applies the same rule
+  at the symbol cap has not been compared, and the four clips never reach
+  the cap.
+- **Evaluation per language.** Parakeet v3 covers 25 European languages.
+  Here one English set of four clips is scored; WER and CER on a fixed,
+  versioned test set per language slice are not measured.
+- **Speed.** The CPU path is exact and slow, about 7.5 seconds per second of
+  audio on one core.
 
 Offline transcription does not establish streaming latency;
 [chapter 154](ch154-transcribe-while-someone-speaks.md) measures that.
@@ -782,7 +1163,8 @@ Offline transcription does not establish streaming latency;
 - [Chapter 151](ch151-waveforms-and-spectral-features.md): audio admission and
   the NeMo front end.
 - [Chapter 152](ch152-a-speech-encoder.md): the FastConformer encoder and its
-  80 ms frames.
+  80 ms frames, here at Parakeet's size on its weights.
+- [`coax/lib/json`](../../coax/lib/json/json.coax): the JSON reader.
 
 ## Sources
 
@@ -791,3 +1173,5 @@ Offline transcription does not establish streaming latency;
   Granary dataset note.
 - The model card and `config.json` of `nvidia/parakeet-tdt-0.6b-v3` at the
   pinned revision.
+- LibriSpeech (Panayotov, Chen, Povey and Khudanpur, 2015), test-clean,
+  CC BY 4.0.

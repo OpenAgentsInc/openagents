@@ -8,8 +8,8 @@
 // and no frame past an item's length is read.
 // Profile psionic-conformer-v1: f32 storage, binary64 compensated sums
 // (chapter 4's accumulator), one rounding to f32 per stored value; at most
-// 8 items, 2,048 input frames, 128 mels, 64 channels, width 128, 512 hidden,
-// 8 layers, 31 taps and 1,024 tokens.
+// 8 items, 2,048 input frames, 128 mels, 256 channels, width 1,024, 4,096
+// hidden, 24 layers, 31 taps and 1,024 tokens: Parakeet's encoder fits.
 #load "pixels.coax";
 #load "counter-rng.coax";
 #load "../tests/conformer-checks.coax";   // the checks' references
@@ -23,7 +23,7 @@ CfStatus :: enum u8 {ok;shape;limit;length;capacity;alias;number;}
 CfShape :: struct {mels:int;channels:int;dim:int;heads:int;hidden:int;kernel:int;layers:int;vocab:int;xscale:bool;}
 // Sizes for a batch padded to a frame count: t1..t3 and f1..f3 are time and
 // frequency after each stride-2 stage. Counts are f32 values. The work array
-// holds the masked input, chapter 142's scratch, the convolution stages, one
+// holds the masked input, the convolutions' scratch, the convolution stages, one
 // item's layer work and the encoded frames, at the offsets given.
 CfPlan :: struct {status:CfStatus;t1:int;t2:int;t3:int;f1:int;f2:int;f3:int;weights:int;input:int;output:int;logits:int;
     conv:int;layer:int;at_scratch:int;at_conv:int;at_layer:int;at_output:int;work:int;}
@@ -32,22 +32,22 @@ CfResult :: struct {status:CfStatus;written:int;}
 
 // book:begin bounds
 CF_MELS_MAX :: 128;
-CF_CHANNELS_MAX :: 64;
-CF_DIM_MAX :: 128;
-CF_HIDDEN_MAX :: 512;
+CF_CHANNELS_MAX :: 256;
+CF_DIM_MAX :: 1024;
+CF_HIDDEN_MAX :: 4096;
 CF_KERNEL_MAX :: 31;
-CF_LAYERS_MAX :: 8;
+CF_LAYERS_MAX :: 24;
 CF_VOCAB_MAX :: 1024;
 CF_FRAMES_MAX :: 2048;
 CF_BATCH_MAX :: 8;
 CF_TOKENS_MAX :: 256;      // CF_FRAMES_MAX / 8
-CF_FEATURES_MAX :: 1024;   // CF_CHANNELS_MAX * 16, the width of 128 mels after three halvings
+CF_FEATURES_MAX :: 4096;   // CF_CHANNELS_MAX * 16, the width of 128 mels after three halvings
 CF_EPSILON :: 0.00001;     // layer and batch norm
 // Admitted magnitudes. With them no stored value can pass f32: the largest,
-// after the subsampling, is under 4e32 at every bound above.
+// after the subsampling, is under 7e34 at every bound above.
 CF_FEATURE_MAX :: 10000.0;
 CF_WEIGHT_MAX :: 1000.0;   // batch norm variances: any finite value >= 0
-CF_FRAME_MAX :: 100000.0;  // what the CTC head reads; a layer norm gives at most 12,300
+CF_FRAME_MAX :: 100000.0;  // what the CTC head reads; a layer norm gives at most 33,000
 // book:end bounds
 
 // book:begin layout
@@ -92,6 +92,10 @@ cf_weight_count :: (s:CfShape)->int {return cf_head_at(s)+(s.vocab+1)*(s.dim+1);
 // Checks precede the implementation. Expected values are worked by hand in
 // chapter 152, or come from the references in psionic/tests/conformer-checks.coax.
 cf_tiny :: ()->CfShape {return CfShape.{mels=16,channels=3,dim=8,heads=2,hidden=16,kernel=3,layers=1,vocab=3,xscale=true};}
+// nvidia/parakeet-tdt-0.6b-v3's encoder (chapter 153): its layers have no
+// biases, which load as zeros, and it has no CTC head, so the head here is
+// one token and the blank, also zeros. Its config sets scale_input false.
+cf_parakeet :: ()->CfShape {return CfShape.{mels=128,channels=256,dim=1024,heads=8,hidden=4096,kernel=9,layers=24,vocab=1};}
 
 #test "lengths by hand" {
     #assert cf_stage(1)==1 && cf_stage(2)==1 && cf_stage(3)==2 && cf_stage(101)==51 && cf_stage(51)==26 && cf_stage(26)==13;
@@ -102,6 +106,10 @@ cf_tiny :: ()->CfShape {return CfShape.{mels=16,channels=3,dim=8,heads=2,hidden=
     #assert cf_length(frames)==(frames+7)/8;
     p:=cf_plan(cf_tiny(),1,frames);
     #assert p.status==CfStatus.ok && p.t1==cf_stage(frames) && p.t2==cf_stage(p.t1) && p.t3==cf_length(frames) && p.f3==2;
+    // Chapter 142's planner, with its own formula, agrees.
+    c0:=px_conv_plan(cf_conv0(cf_tiny(),1,frames));d1:=px_conv_plan(cf_depthwise(cf_tiny(),1,c0.out_h,c0.out_w));
+    d2:=px_conv_plan(cf_depthwise(cf_tiny(),1,d1.out_h,d1.out_w));
+    #assert c0.out_h==p.t1 && c0.out_w==p.f1 && d1.out_h==p.t2 && d2.out_h==p.t3 && d2.out_w==p.f3 && p.conv==c0.y;
 }
 #test "the relative shift by hand" {
     // Rows of positions 1, 0, -1 for queries 0 and 1: pad a zero column, read
@@ -166,11 +174,14 @@ cf_tiny :: ()->CfShape {return CfShape.{mels=16,channels=3,dim=8,heads=2,hidden=
     b=s;b.hidden=0;#assert cf_shape_check(b)==CfStatus.shape;b=s;b.kernel=0;#assert cf_shape_check(b)==CfStatus.shape;
     b=s;b.layers=0;#assert cf_shape_check(b)==CfStatus.shape;b=s;b.vocab=0;#assert cf_shape_check(b)==CfStatus.shape;
     b=s;b.mels=128;#assert cf_shape_check(b)==CfStatus.ok;b.mels=129;#assert cf_shape_check(b)==CfStatus.limit;
-    b=s;b.channels=64;#assert cf_shape_check(b)==CfStatus.ok;b.channels=65;#assert cf_shape_check(b)==CfStatus.limit;
-    b=s;b.dim=128;#assert cf_shape_check(b)==CfStatus.ok;b.dim=129;#assert cf_shape_check(b)==CfStatus.limit;
-    b=s;b.hidden=512;#assert cf_shape_check(b)==CfStatus.ok;b.hidden=513;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.channels=256;#assert cf_shape_check(b)==CfStatus.ok;b.channels=257;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.dim=1024;#assert cf_shape_check(b)==CfStatus.ok;b.dim=1025;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.hidden=4096;#assert cf_shape_check(b)==CfStatus.ok;b.hidden=4097;#assert cf_shape_check(b)==CfStatus.limit;
     b=s;b.kernel=31;#assert cf_shape_check(b)==CfStatus.ok;b.kernel=32;#assert cf_shape_check(b)==CfStatus.limit;
-    b=s;b.layers=8;#assert cf_shape_check(b)==CfStatus.ok;b.layers=9;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.layers=24;#assert cf_shape_check(b)==CfStatus.ok;b.layers=25;#assert cf_shape_check(b)==CfStatus.limit;
+    // Parakeet's encoder, with a CTC head of one token that it does not use.
+    // 608,928,768 checkpoint values, 442,368 zero layer biases and the head's 2,050.
+    #assert cf_shape_check(cf_parakeet())==CfStatus.ok && cf_weight_count(cf_parakeet())==609373186;
     b=s;b.vocab=1024;#assert cf_shape_check(b)==CfStatus.ok;b.vocab=1025;#assert cf_shape_check(b)==CfStatus.limit;
     b=s;b.heads=3;#assert cf_shape_check(b)==CfStatus.shape;b=s;b.heads=8;#assert cf_shape_check(b)==CfStatus.ok;
     b=s;b.dim=6;b.heads=6;#assert cf_shape_check(b)==CfStatus.ok;b.dim=5;b.heads=5;#assert cf_shape_check(b)==CfStatus.shape;
@@ -187,8 +198,11 @@ cf_tiny :: ()->CfShape {return CfShape.{mels=16,channels=3,dim=8,heads=2,hidden=
     #assert cf_plan(s,0,20).status==CfStatus.shape && cf_plan(s,9,20).status==CfStatus.limit && cf_plan(s,8,20).status==CfStatus.ok;
     #assert cf_plan(s,1,0).status==CfStatus.shape && cf_plan(s,1,2049).status==CfStatus.limit && cf_plan(s,1,2048).status==CfStatus.ok;
     b:=s;b.heads=3;#assert cf_plan(b,1,20).status==CfStatus.shape;
-    // 64 channels on 2,048 frames of 128 mels is more than chapter 142 admits.
-    big:=s;big.mels=128;big.channels=64;#assert cf_plan(big,1,2048).status==CfStatus.limit;
+    // Parakeet's sizes on 2,048 frames: past chapter 142's bounds, which the
+    // encoder's own convolution loop does not need.
+    big:=cf_plan(cf_parakeet(),1,2048);
+    #assert big.status==CfStatus.ok && big.t1==1024 && big.f1==64 && big.t3==256 && big.f3==16 && big.conv==256*1024*64;
+    #assert big.layer==6*256*1024 && big.work==128*2048+2*big.conv+big.layer+256*1024;
 }
 #test "weights are seeded, pinned and in range" #steps 40000000 {
     s:=cf_tiny();w:[1494]f32;v:[1494]f32;for i:0..<1494 {w[i]=-9;}
@@ -211,12 +225,24 @@ cf_tiny :: ()->CfShape {return CfShape.{mels=16,channels=3,dim=8,heads=2,hidden=
     u=keep;u[2781]=1000.0625;#assert !cf_weights_ok(s,u[..]);
     u=keep;u[bn+9]=cf_nan();#assert !cf_weights_ok(s,u[..]);
 }
-#test "one convolution through chapter 142" {
+#test "one convolution, bit for bit chapter 142's" #steps 20000000 {
     s:=cf_tiny();c:=cf_conv0(s,1,2);x:[32]f32;w:[30]f32;y:[24]f32;scratch:[24]f32;
-    x[3]=cf_nan();#assert cf_conv(c,x[..],w[..],0,y[..],scratch[..])==PxStatus.number;
     // One weight 1 at the centre tap of filter 1, its bias 0.5: output (1, 0, j) reads x[0][2j].
-    x[3]=0;x[0]=2;x[2]=3;w[13]=1;w[28]=0.5;#assert cf_conv(c,x[..],w[..],0,y[..],scratch[..])==PxStatus.ok;
+    x[0]=2;x[2]=3;w[13]=1;w[28]=0.5;cf_conv(c,x[..],w[..],0,y[..],scratch[..]);
     #assert y[0]==0 && y[8]==2.5 && y[9]==3.5 && y[10]==0.5 && y[16]==0;
+    // Seeded stages of every kind against chapter 142's admitted convolution.
+    g:=[1]u64.[3];a:[2*3*7*6]f32;k:[3*3*9+3]f32;for i:0..<a.count {a[i]=f32(cf_draw(g[..])*4-2);}for i:0..<k.count {k[i]=f32(cf_draw(g[..])*2-1);}
+    convs:=[3]PxConv.[cf_conv0(s,2,7),cf_depthwise(s,2,7,6),cf_pointwise(s,2,7,6)];
+    for v:convs {
+        q:=px_conv_plan(v);n:=q.y;mine:[2*3*7*8]f32;ref:[2*3*7*8]f32;sc:[2*3*7*8]f32;each:=v.filters*v.channels/v.groups*v.kernel_h*v.kernel_w;
+        cf_conv(v,a[0..<q.x],k[..],0,mine[0..<n],sc[0..<n]);
+        #assert px_conv_direct(v,a[0..<q.x],k[0..<each],k[each..<each+3],ref[0..<n],sc[0..<n],false).status==PxStatus.ok;
+        #assert q.status==PxStatus.ok && px_same(mine[0..<n],ref[0..<n]);
+    }
+    // In place: y is x.
+    b:=a;r:[24*3]f32;sc2:[24*3]f32;cf_conv(convs[1],b[0..<252],k[..],0,b[0..<72],sc2[..]);
+    #assert px_conv_direct(convs[1],a[0..<252],k[0..<27],k[27..<30],r[0..<72],sc2[0..<72],false).status==PxStatus.ok;
+    #assert px_same(b[0..<72],r[0..<72]);
 }
 #test "each piece against its reference" #steps 400000000 {
     s:=cf_tiny();w:[1494]f32;#assert cf_init(s,w[..],3)==CfStatus.ok;l:=cf_layer_at(s,cf_layer_base(s,0));
@@ -412,18 +438,15 @@ cf_pointwise :: (s:CfShape,batch:int,t:int,f:int)->PxConv {
 }
 cf_plan :: (s:CfShape,batch:int,frames:int)->CfPlan {
     status:=cf_shape_check(s);if status!=CfStatus.ok {return CfPlan.{status=status};}
+    if batch<1 || frames<1 {return CfPlan.{status=CfStatus.shape};}
     if batch>CF_BATCH_MAX || frames>CF_FRAMES_MAX {return CfPlan.{status=CfStatus.limit};}
-    // Chapter 142 refuses a batch or frame count below 1, and work past its bounds.
-    c0:=px_conv_plan(cf_conv0(s,batch,frames));
-    if c0.status==PxStatus.limit {return CfPlan.{status=CfStatus.limit};}
-    if c0.status!=PxStatus.ok {return CfPlan.{status=CfStatus.shape};}
-    d1:=px_conv_plan(cf_depthwise(s,batch,c0.out_h,c0.out_w));
-    d2:=px_conv_plan(cf_depthwise(s,batch,d1.out_h,d1.out_w));
-    p:=CfPlan.{t1=c0.out_h,f1=c0.out_w,t2=d1.out_h,f2=d1.out_w,t3=d2.out_h,f3=d2.out_w};
+    // Each stride-2 stage halves time and frequency, rounding up.
+    p:=CfPlan.{t1=cf_stage(frames),f1=cf_stage(s.mels)};
+    p.t2=cf_stage(p.t1);p.f2=cf_stage(p.f1);p.t3=cf_stage(p.t2);p.f3=cf_stage(p.f2);
     p.weights=cf_weight_count(s);
     p.input=batch*s.mels*frames;p.output=batch*p.t3*s.dim;p.logits=batch*p.t3*(s.vocab+1);
     // The first convolution's output is the largest; later stages reuse it.
-    p.conv=c0.y;p.layer=6*p.t3*s.dim;
+    p.conv=batch*s.channels*p.t1*p.f1;p.layer=6*p.t3*s.dim;
     p.at_scratch=p.input;p.at_conv=p.at_scratch+p.conv;p.at_layer=p.at_conv+p.conv;p.at_output=p.at_layer+p.layer;
     p.work=p.at_output+p.output;
     return p;
@@ -659,12 +682,16 @@ cf_layer :: (s:CfShape,w:[]f32,l:CfLayer,h:[]f32,count:int,work:[]f32) {
 // book:end layer
 
 // book:begin subsample
-// One convolution through chapter 142 with the kernel at w[at] and its bias
-// after it. y may be x: chapter 142 finishes every output in scratch before
-// it copies. Admission (cf_encode) rules out every refusal.
-cf_conv :: (c:PxConv,x:[]f32,w:[]f32,at:int,y:[]f32,scratch:[]f32)->PxStatus {
-    k:=c.filters*c.channels/c.groups*c.kernel_h*c.kernel_w;
-    return px_conv_direct(c,x,w[at..<at+k],w[at+k..<at+k+c.filters],y,scratch,false).status;
+// One convolution with the kernel at w[at] and its bias after it: every
+// output is chapter 142's px_conv_value, the sum px_conv_direct computes,
+// without chapter 142's size bounds (Parakeet's stages pass them).
+// Admission (cf_encode) keeps every value finite and within f32. y may be x:
+// every output is finished in scratch before any is copied.
+cf_conv :: (c:PxConv,x:[]f32,w:[]f32,at:int,y:[]f32,scratch:[]f32) {
+    p:=PxConvPlan.{out_h=(c.height+2*c.pad_h-c.kernel_h)/c.stride_h+1,out_w=(c.width+2*c.pad_w-c.kernel_w)/c.stride_w+1};
+    k:=c.filters*c.channels/c.groups*c.kernel_h*c.kernel_w;n:=c.batch*c.filters*p.out_h*p.out_w;
+    for i:0..<n {scratch[i]=f32(px_conv_value(c,p,x,w[at..<at+k],w[at+k..<at+k+c.filters],i));}
+    for i:0..<n {y[i]=scratch[i];}
 }
 // ReLU, and zero every frame of a (batch, channels, time, freq) tensor at or
 // past each item's valid length after the given number of stages.
@@ -686,12 +713,12 @@ cf_subsample :: (s:CfShape,w:[]f32,x:[]f32,lengths:[]int,batch:int,frames:int,wo
         v:f32=0;if t<lengths[i] {v=x[(i*m+f)*frames+t];}a[(i*frames+t)*m+f]=v;
     }}}
     n2:=batch*c*p.t2*p.f2;n3:=batch*c*p.t3*p.f3;
-    #assert cf_conv(cf_conv0(s,batch,frames),a,w,sub.conv0,y,scratch)==PxStatus.ok;cf_mask(y,batch,c,p.t1,p.f1,lengths,1);
-    #assert cf_conv(cf_depthwise(s,batch,p.t1,p.f1),y,w,sub.dw1,y[0..<n2],scratch[0..<n2])==PxStatus.ok;
-    #assert cf_conv(cf_pointwise(s,batch,p.t2,p.f2),y[0..<n2],w,sub.pw1,y[0..<n2],scratch[0..<n2])==PxStatus.ok;
+    cf_conv(cf_conv0(s,batch,frames),a,w,sub.conv0,y,scratch);cf_mask(y,batch,c,p.t1,p.f1,lengths,1);
+    cf_conv(cf_depthwise(s,batch,p.t1,p.f1),y,w,sub.dw1,y[0..<n2],scratch[0..<n2]);
+    cf_conv(cf_pointwise(s,batch,p.t2,p.f2),y[0..<n2],w,sub.pw1,y[0..<n2],scratch[0..<n2]);
     cf_mask(y,batch,c,p.t2,p.f2,lengths,2);
-    #assert cf_conv(cf_depthwise(s,batch,p.t2,p.f2),y[0..<n2],w,sub.dw2,y[0..<n3],scratch[0..<n3])==PxStatus.ok;
-    #assert cf_conv(cf_pointwise(s,batch,p.t3,p.f3),y[0..<n3],w,sub.pw2,y[0..<n3],scratch[0..<n3])==PxStatus.ok;
+    cf_conv(cf_depthwise(s,batch,p.t2,p.f2),y[0..<n2],w,sub.dw2,y[0..<n3],scratch[0..<n3]);
+    cf_conv(cf_pointwise(s,batch,p.t3,p.f3),y[0..<n3],w,sub.pw2,y[0..<n3],scratch[0..<n3]);
     cf_mask(y,batch,c,p.t3,p.f3,lengths,3);
     // Each frame's channels and frequencies, channel-major, map to the width.
     k:=1.0;if s.xscale {k=sqrt(f64(s.dim));}

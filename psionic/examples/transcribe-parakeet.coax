@@ -1,0 +1,44 @@
+// Chapter 153: Parakeet end to end. Where the checkpoint's tensors go, the
+// work a 20-second utterance needs, the vocabulary reader, normalization and
+// error rates, a seeded transcription at toy size, and refusals. The real
+// checkpoint runs in psionic/tests/check_parakeet.sh.
+#import "Basic";
+#load "../lib/parakeet.coax";
+
+// book:begin run
+main :: () {
+    c:=tdt_parakeet();e:=pk_encoder(c);d:=pk_decoder(c);
+    loaded:=0;skipped:=0;
+    for i:0..<tdt_expected_count(c) {s:=pk_slot(c,i);if s.part<0 {skipped+=1;} else {loaded+=s.count;}}
+    print("encoder array % values, decoder array %; % checkpoint values placed, % step counters skipped\n",
+        cf_weight_count(e),tdt_plan(d,TDT_FRAMES_MAX).weights,loaded,skipped);
+    buf:[160]u8;s:=pk_slot(c,51);
+    print("tensor 51, %: encoder array at %, % values\n",cast(string)buf[0..<pk_name(c,51,buf[..])],s.at,s.count);
+    w:=pk_work(c,TDT_SAMPLES_MAX);
+    print("20.47 s of audio: % feature frames, % encoded; work % binary64 and % f32 values\n",w.frames,w.encoded,w.f64,w.f32);
+
+    nodes:[64]JvNode;bytes:[64]u8;pieces:[4]string;
+    j:="{\"model\":{\"vocab\":{\"▁now\":0,\"\\u2581o\":1,\"h\":2,\"▁no\":3}}}";
+    v:=pk_vocab(j,4,nodes[..],bytes[..],pieces[..]);
+    print("vocabulary: %, % pieces in % bytes: % % % %\n",v.status,v.count,v.bytes,pieces[0],pieces[1],pieces[2],pieces[3]);
+    out:[64]u8;n:=pk_normalize("Concord returned to its place, amidst the tents.",out[..]);
+    print("normalized: \"%\"\n",cast(string)out[0..<n]);
+    r:=pk_score("CONCORD RETURNED TO ITS PLACE AMIDST THE TENTS","Concord returned to its place amidst the tent.");
+    print("against \"... the tent.\": word errors % of %, character errors % of %\n",r.word_errors,r.words,r.char_errors,r.chars);
+
+    t:=pk_tiny();te:=pk_encoder(t);td:=pk_decoder(t);ew:[1476]f32;dw:[276]f32;
+    q:=cf_init(te,ew[..],5);u:=tdt_init(td,dw[..],31);
+    x:[1600]f64;sf_test_signal(x[..]);a:=SfAudio.{rate=16000,channels=1,samples=x[..]};
+    w32:[2000]f32;w64:[5000]f64;text:[64]u8;
+    k:=pk_transcribe(t,ew[..],dw[..],pieces[..],a,"no oh",w64[..],w32[..],text[..]);
+    print("seeded toy model, 0.1 s: %, % frames, % encoded, % tokens: \"%\"\n",k.status,k.frames,k.encoded,k.tokens,cast(string)text[0..<k.text]);
+    print("  against \"no oh\": word errors % of %, character errors % of %\n",k.word_errors,k.words,k.char_errors,k.chars);
+
+    b:=a;b.rate=8000;print("8 kHz audio: %\n",pk_transcribe(t,ew[..],dw[..],pieces[..],b,"no",w64[..],w32[..],text[..]).status);
+    print("3 pieces for 4 tokens: %\n",pk_transcribe(t,ew[..],dw[..],pieces[0..<3],a,"no",w64[..],w32[..],text[..]).status);
+    print("work one f32 short: %\n",pk_transcribe(t,ew[..],dw[..],pieces[..],a,"no",w64[..],w32[0..<pk_work(t,1600).f32-1],text[..]).status);
+    print("room for 4 text bytes: %\n",pk_transcribe(t,ew[..],dw[..],pieces[..],a,"no",w64[..],w32[..],text[0..<4]).status);
+    print("an id used twice: %\n",pk_vocab("{\"model\":{\"vocab\":{\"a\":0,\"b\":0}}}",2,nodes[..],bytes[..],pieces[..]).status);
+    print("no model.vocab: %\n",pk_vocab("{\"vocab\":{\"a\":0,\"b\":1}}",2,nodes[..],bytes[..],pieces[..]).status);
+}
+// book:end run

@@ -1,12 +1,15 @@
 # 152. A speech encoder
 
-> **Status: partly implemented.** The FastConformer encoder runs on the CPU
-> with seeded weights: subsampling, lengths and masks, Conformer layers with
-> relative-position attention and the convolution module, a CTC head and
-> greedy decoding. Each piece matches an independent binary64 reference, and
-> a padded batch matches each item run alone bit for bit. Comparing against
-> intermediate tensors recorded from the pinned Parakeet checkpoint needs that
-> checkpoint, which is chapter 153's job, and is not done yet.
+> **Status: partly implemented.** The FastConformer encoder runs on the CPU:
+> subsampling, lengths and masks, Conformer layers with relative-position
+> attention and the convolution module, a CTC head and greedy decoding. Each
+> piece matches an independent binary64 reference on seeded weights, and a
+> padded batch matches each item run alone bit for bit. The bounds admit
+> Parakeet's encoder (width 1,024, 24 layers), which chapter 153 runs on the
+> pinned checkpoint, where the subsampling and layers 0 and 1 match an
+> independent Python oracle. Still to do: comparing with intermediate tensors
+> recorded from NeMo's own encoder, including whether NeMo zeroes padded
+> frames between subsampling stages in a padded batch.
 
 [Chapter 151](ch151-waveforms-and-spectral-features.md) turned audio into
 log-mel features: 128 numbers every 10 ms. A speech recognizer's encoder
@@ -31,18 +34,21 @@ NeMo's FastConformer. This chapter builds its architecture in
 The weights here are seeded random numbers, not Parakeet's. They are enough
 to check that every operation computes what its definition says; they are
 not enough to recognize speech, so the tokens the example decodes mean
-nothing. Loading the 0.6-billion-parameter checkpoint and comparing with its
-recorded tensors is [chapter 153](ch153-transcribe-with-parakeet.md)'s work.
+nothing. Loading the 0.6-billion-parameter checkpoint into this encoder and
+transcribing speech with it is [chapter
+153](ch153-transcribe-with-parakeet.md)'s work.
 
 Everything stores f32 values and sums in binary64 with chapter 4's
 compensated accumulator, rounding once to f32 per stored value. That is the
 profile `psionic-conformer-v1`. A batch has at most 8 items of at most 2,048
 input frames (20 seconds at a 10 ms hop) of at most 128 mels; the subsampling
-has at most 64 channels; the model is at most 128 wide with a 512-wide
-feed-forward, 8 layers and 31 depthwise taps; the head has at most 1,024
-tokens and the blank. The convolutions are [chapter
-142](ch142-pixels-convolutions-and-patches.md)'s `px_conv_direct`, which also
-bounds each convolution at 2^20 values and 2^24 multiply-adds.
+has at most 256 channels; the model is at most 1,024 wide with a 4,096-wide
+feed-forward, 24 layers and 31 depthwise taps; the head has at most 1,024
+tokens and the blank. Those are Parakeet's sizes. Every convolution output is
+[chapter 142](ch142-pixels-convolutions-and-patches.md)'s sum,
+`px_conv_value`, called directly: chapter 142's `px_conv_direct` would bound
+each convolution at 2^20 values and 2^24 multiply-adds, and Parakeet's first
+stage alone writes 256 × 1,024 × 64 values for 20 seconds.
 
 ## Run it
 
@@ -92,7 +98,7 @@ CfStatus :: enum u8 {ok;shape;limit;length;capacity;alias;number;}
 CfShape :: struct {mels:int;channels:int;dim:int;heads:int;hidden:int;kernel:int;layers:int;vocab:int;xscale:bool;}
 // Sizes for a batch padded to a frame count: t1..t3 and f1..f3 are time and
 // frequency after each stride-2 stage. Counts are f32 values. The work array
-// holds the masked input, chapter 142's scratch, the convolution stages, one
+// holds the masked input, the convolutions' scratch, the convolution stages, one
 // item's layer work and the encoded frames, at the offsets given.
 CfPlan :: struct {status:CfStatus;t1:int;t2:int;t3:int;f1:int;f2:int;f3:int;weights:int;input:int;output:int;logits:int;
     conv:int;layer:int;at_scratch:int;at_conv:int;at_layer:int;at_output:int;work:int;}
@@ -102,22 +108,22 @@ CfResult :: struct {status:CfStatus;written:int;}
 <!-- source: psionic/lib/conformer.coax bounds -->
 ```jai
 CF_MELS_MAX :: 128;
-CF_CHANNELS_MAX :: 64;
-CF_DIM_MAX :: 128;
-CF_HIDDEN_MAX :: 512;
+CF_CHANNELS_MAX :: 256;
+CF_DIM_MAX :: 1024;
+CF_HIDDEN_MAX :: 4096;
 CF_KERNEL_MAX :: 31;
-CF_LAYERS_MAX :: 8;
+CF_LAYERS_MAX :: 24;
 CF_VOCAB_MAX :: 1024;
 CF_FRAMES_MAX :: 2048;
 CF_BATCH_MAX :: 8;
 CF_TOKENS_MAX :: 256;      // CF_FRAMES_MAX / 8
-CF_FEATURES_MAX :: 1024;   // CF_CHANNELS_MAX * 16, the width of 128 mels after three halvings
+CF_FEATURES_MAX :: 4096;   // CF_CHANNELS_MAX * 16, the width of 128 mels after three halvings
 CF_EPSILON :: 0.00001;     // layer and batch norm
 // Admitted magnitudes. With them no stored value can pass f32: the largest,
-// after the subsampling, is under 4e32 at every bound above.
+// after the subsampling, is under 7e34 at every bound above.
 CF_FEATURE_MAX :: 10000.0;
 CF_WEIGHT_MAX :: 1000.0;   // batch norm variances: any finite value >= 0
-CF_FRAME_MAX :: 100000.0;  // what the CTC head reads; a layer norm gives at most 12,300
+CF_FRAME_MAX :: 100000.0;  // what the CTC head reads; a layer norm gives at most 33,000
 ```
 
 ## Lengths, by hand
@@ -148,17 +154,17 @@ cf_length :: (frames:int)->int {return cf_stage(cf_stage(cf_stage(frames)));}
 ```
 
 A `#forall` check runs every frame count from 1 to 2,048 and requires
-`cf_length` to equal (n + 7) / 8 and also to equal the output height that
-chapter 142's convolution planner computes for the three stages, which uses
-its own formula with the dilated kernel span.
+`cf_length` to equal (n + 7) / 8, and the plan's sizes to equal the output
+heights and widths that chapter 142's convolution planner computes for the
+three stages, which uses its own formula with the dilated kernel span.
 
 ## Planning a batch
 
 The plan describes the three convolutions in chapter 142's terms (time is the
-image's height and frequency its width), asks its planner for each output
-size, and lays out one work array: the masked input, chapter 142's scratch,
-the stage outputs (the first convolution's output is the largest, and later
-stages reuse it), one item's layer work, and the encoded frames.
+image's height and frequency its width), halves time and frequency three
+times, and lays out one work array: the masked input, the convolutions'
+scratch, the stage outputs (the first convolution's output is the largest,
+and later stages reuse it), one item's layer work, and the encoded frames.
 
 <!-- source: psionic/lib/conformer.coax plan -->
 ```jai
@@ -176,18 +182,15 @@ cf_pointwise :: (s:CfShape,batch:int,t:int,f:int)->PxConv {
 }
 cf_plan :: (s:CfShape,batch:int,frames:int)->CfPlan {
     status:=cf_shape_check(s);if status!=CfStatus.ok {return CfPlan.{status=status};}
+    if batch<1 || frames<1 {return CfPlan.{status=CfStatus.shape};}
     if batch>CF_BATCH_MAX || frames>CF_FRAMES_MAX {return CfPlan.{status=CfStatus.limit};}
-    // Chapter 142 refuses a batch or frame count below 1, and work past its bounds.
-    c0:=px_conv_plan(cf_conv0(s,batch,frames));
-    if c0.status==PxStatus.limit {return CfPlan.{status=CfStatus.limit};}
-    if c0.status!=PxStatus.ok {return CfPlan.{status=CfStatus.shape};}
-    d1:=px_conv_plan(cf_depthwise(s,batch,c0.out_h,c0.out_w));
-    d2:=px_conv_plan(cf_depthwise(s,batch,d1.out_h,d1.out_w));
-    p:=CfPlan.{t1=c0.out_h,f1=c0.out_w,t2=d1.out_h,f2=d1.out_w,t3=d2.out_h,f3=d2.out_w};
+    // Each stride-2 stage halves time and frequency, rounding up.
+    p:=CfPlan.{t1=cf_stage(frames),f1=cf_stage(s.mels)};
+    p.t2=cf_stage(p.t1);p.f2=cf_stage(p.f1);p.t3=cf_stage(p.t2);p.f3=cf_stage(p.f2);
     p.weights=cf_weight_count(s);
     p.input=batch*s.mels*frames;p.output=batch*p.t3*s.dim;p.logits=batch*p.t3*(s.vocab+1);
     // The first convolution's output is the largest; later stages reuse it.
-    p.conv=c0.y;p.layer=6*p.t3*s.dim;
+    p.conv=batch*s.channels*p.t1*p.f1;p.layer=6*p.t3*s.dim;
     p.at_scratch=p.input;p.at_conv=p.at_scratch+p.conv;p.at_layer=p.at_conv+p.conv;p.at_output=p.at_layer+p.layer;
     p.work=p.at_output+p.output;
     return p;
@@ -294,19 +297,19 @@ The encoder admits features within ±10,000 and weights within ±1,000, except
 batch norm variances, which need only be finite and not negative. Then no
 stored value can pass the f32 range, 3.4 × 10^38, and the code needs no
 overflow checks. The largest values come out of the subsampling at the
-bounds (64 channels, 128 mels):
+bounds (256 channels, 128 mels):
 
 - first convolution: 9 taps × 1,000 × 10,000 ≈ 9.0 × 10^7
 - depthwise: 9 × 1,000 × 9.0 × 10^7 ≈ 8.1 × 10^11
-- pointwise over 64 channels: ≈ 5.2 × 10^16
-- depthwise, then pointwise: ≈ 4.7 × 10^20, then ≈ 3.0 × 10^25
-- the linear map over 64 × 16 = 1,024 inputs: ≈ 3.1 × 10^31, times
-  √128 ≈ 11.3: ≈ 3.5 × 10^32
+- pointwise over 256 channels: ≈ 2.1 × 10^17
+- depthwise, then pointwise: ≈ 1.9 × 10^21, then ≈ 4.8 × 10^26
+- the linear map over 256 × 16 = 4,096 inputs: ≈ 2.0 × 10^33, times
+  √1,024 = 32: ≈ 6.3 × 10^34
 
 Inside a layer, everything starts from a layer norm, whose output is at most
-√127 × 1,000 + 1,000 ≈ 12,300. The largest value in a layer is in the
+√1,023 × 1,000 + 1,000 ≈ 33,000. The largest value in a layer is in the
 convolution module, where batch norm can divide by √(10⁻⁵) ≈ 316: about
-2 × 10^24. The head reads encoded frames within ±100,000.
+3 × 10^26. The head reads encoded frames within ±100,000.
 
 <!-- source: psionic/lib/conformer.coax admit -->
 ```jai
@@ -592,8 +595,8 @@ cf_layer :: (s:CfShape,w:[]f32,l:CfLayer,h:[]f32,count:int,work:[]f32) {
 
 ## Subsampling and masks
 
-The subsampling runs over the whole padded batch at once, through chapter
-142's convolution. Before the first convolution, every frame past an item's
+The subsampling runs over the whole padded batch at once, with chapter 142's
+convolution sum. Before the first convolution, every frame past an item's
 length is replaced by zero, whatever it held. After each ReLU stage, every
 frame at or past the item's length at that stage is zeroed again. Without
 that, a padded frame would hold the bias, and the next stage's kernel, which
@@ -601,21 +604,27 @@ reaches one frame past the end when a length is odd, would read it. With it,
 each stage sees exactly the zeros it would see if the item ran alone.
 
 NeMo's subsampling may not zero frames between stages; this chapter does, so
-that a padded batch gives each item's result alone. Chapter 153 compares the
-two on recorded tensors.
+that a padded batch gives each item's result alone. For one item, as chapter
+153 runs Parakeet, the two agree: nothing is padded.
 
 The depthwise and pointwise stages write their output over their input:
-chapter 142 finishes every output value in its scratch array before it
-copies, so this is safe, and the stages need only one buffer between them.
+`cf_conv` finishes every output value in its scratch array before it copies,
+so this is safe, and the stages need only one buffer between them. A check
+compares `cf_conv` with chapter 142's admitted `px_conv_direct` bit for bit
+on seeded stages of all three kinds, in place and not.
 
 <!-- source: psionic/lib/conformer.coax subsample -->
 ```jai
-// One convolution through chapter 142 with the kernel at w[at] and its bias
-// after it. y may be x: chapter 142 finishes every output in scratch before
-// it copies. Admission (cf_encode) rules out every refusal.
-cf_conv :: (c:PxConv,x:[]f32,w:[]f32,at:int,y:[]f32,scratch:[]f32)->PxStatus {
-    k:=c.filters*c.channels/c.groups*c.kernel_h*c.kernel_w;
-    return px_conv_direct(c,x,w[at..<at+k],w[at+k..<at+k+c.filters],y,scratch,false).status;
+// One convolution with the kernel at w[at] and its bias after it: every
+// output is chapter 142's px_conv_value, the sum px_conv_direct computes,
+// without chapter 142's size bounds (Parakeet's stages pass them).
+// Admission (cf_encode) keeps every value finite and within f32. y may be x:
+// every output is finished in scratch before any is copied.
+cf_conv :: (c:PxConv,x:[]f32,w:[]f32,at:int,y:[]f32,scratch:[]f32) {
+    p:=PxConvPlan.{out_h=(c.height+2*c.pad_h-c.kernel_h)/c.stride_h+1,out_w=(c.width+2*c.pad_w-c.kernel_w)/c.stride_w+1};
+    k:=c.filters*c.channels/c.groups*c.kernel_h*c.kernel_w;n:=c.batch*c.filters*p.out_h*p.out_w;
+    for i:0..<n {scratch[i]=f32(px_conv_value(c,p,x,w[at..<at+k],w[at+k..<at+k+c.filters],i));}
+    for i:0..<n {y[i]=scratch[i];}
 }
 // ReLU, and zero every frame of a (batch, channels, time, freq) tensor at or
 // past each item's valid length after the given number of stages.
@@ -637,12 +646,12 @@ cf_subsample :: (s:CfShape,w:[]f32,x:[]f32,lengths:[]int,batch:int,frames:int,wo
         v:f32=0;if t<lengths[i] {v=x[(i*m+f)*frames+t];}a[(i*frames+t)*m+f]=v;
     }}}
     n2:=batch*c*p.t2*p.f2;n3:=batch*c*p.t3*p.f3;
-    #assert cf_conv(cf_conv0(s,batch,frames),a,w,sub.conv0,y,scratch)==PxStatus.ok;cf_mask(y,batch,c,p.t1,p.f1,lengths,1);
-    #assert cf_conv(cf_depthwise(s,batch,p.t1,p.f1),y,w,sub.dw1,y[0..<n2],scratch[0..<n2])==PxStatus.ok;
-    #assert cf_conv(cf_pointwise(s,batch,p.t2,p.f2),y[0..<n2],w,sub.pw1,y[0..<n2],scratch[0..<n2])==PxStatus.ok;
+    cf_conv(cf_conv0(s,batch,frames),a,w,sub.conv0,y,scratch);cf_mask(y,batch,c,p.t1,p.f1,lengths,1);
+    cf_conv(cf_depthwise(s,batch,p.t1,p.f1),y,w,sub.dw1,y[0..<n2],scratch[0..<n2]);
+    cf_conv(cf_pointwise(s,batch,p.t2,p.f2),y[0..<n2],w,sub.pw1,y[0..<n2],scratch[0..<n2]);
     cf_mask(y,batch,c,p.t2,p.f2,lengths,2);
-    #assert cf_conv(cf_depthwise(s,batch,p.t2,p.f2),y[0..<n2],w,sub.dw2,y[0..<n3],scratch[0..<n3])==PxStatus.ok;
-    #assert cf_conv(cf_pointwise(s,batch,p.t3,p.f3),y[0..<n3],w,sub.pw2,y[0..<n3],scratch[0..<n3])==PxStatus.ok;
+    cf_conv(cf_depthwise(s,batch,p.t2,p.f2),y[0..<n2],w,sub.dw2,y[0..<n3],scratch[0..<n3]);
+    cf_conv(cf_pointwise(s,batch,p.t3,p.f3),y[0..<n3],w,sub.pw2,y[0..<n3],scratch[0..<n3]);
     cf_mask(y,batch,c,p.t3,p.f3,lengths,3);
     // Each frame's channels and frequencies, channel-major, map to the width.
     k:=1.0;if s.xscale {k=sqrt(f64(s.dim));}
@@ -793,7 +802,7 @@ main :: () {
     b=s;b.mels=129;print("129 mels: %\n",cf_shape_check(b));
     print("2,049 frames: %\n",cf_plan(s,1,2049).status);
     print("9 items: %\n",cf_plan(s,9,20).status);
-    big:=s;big.mels=128;big.channels=64;print("64 channels on 2,048 frames of 128 mels: %\n",cf_plan(big,1,2048).status);
+    b=s;b.channels=257;print("257 subsampling channels: %\n",cf_shape_check(b));
 
     T:=9;x:[144]f32;cf_fixture_features(x[..],16,T,1);work:[496]f32;out:[16]f32;n:=[1]int.[-7];lens:=[1]int.[9];
     for i:0..<16 {out[i]=-7;}
@@ -819,7 +828,7 @@ an even kernel: shape
 129 mels: limit
 2,049 frames: limit
 9 items: limit
-64 channels on 2,048 frames of 128 mels: limit
+257 subsampling channels: limit
 143 features for 16 mels x 9 frames: shape
 a length of 10 in 9 frames: length
 a length of 0: length
@@ -854,25 +863,28 @@ before the first comparison:
   frames exactly 0;
 - lengths: every frame count from 1 to 2,048 against (n + 7) / 8 and chapter
   142's planner; the shift for every length from 1 to 32;
+- each convolution against chapter 142's `px_conv_direct`, bit for bit;
+- Parakeet's shape admitted, with 609,373,186 weights in this layout;
 - the softmax, the head's log-softmax and greedy decoding by hand, including
   scores of ±1,000 that would overflow without the subtracted maximum;
 - the weight layout by hand, and every seeded weight recomputed.
 
-`coax mutate psionic/lib/conformer.coax --root-only` makes 804 mutants of the
-unit's own code; the checks kill all 804.
+`coax mutate psionic/lib/conformer.coax --root-only` makes 841 mutants of the
+unit's own code; the checks kill all 841.
 
 ## What this chapter does not do
 
-- It does not load Parakeet's weights or compare with tensors recorded from
-  NeMo. Matching those, including whether NeMo zeroes padded frames between
-  subsampling stages, is chapter 153's job.
+- It does not load Parakeet's weights; chapter 153 does, and checks the
+  first layers against an independent oracle. Neither chapter compares with
+  tensors recorded from NeMo itself, including whether NeMo zeroes padded
+  frames between subsampling stages.
 - It does not stream. The attention sees the whole utterance and the
   depthwise convolution is centred; chunked, cached inference is
   [chapter 154](ch154-transcribe-while-someone-speaks.md)'s.
 - It does not train. The weights are seeded, so the decoded tokens are
   arbitrary.
 - It does not measure speed. Everything runs on one CPU core in a fixed
-  order.
+  order; at Parakeet's size, a second of audio takes about 7.5 seconds.
 
 ## Dependencies
 

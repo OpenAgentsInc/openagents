@@ -1,0 +1,20 @@
+# Chapter 153's evaluation clips, set parakeet-clips-v1: four utterances of
+# LibriSpeech test-clean (Panayotov et al., openslr.org/12), licence CC BY 4.0,
+# speaker 6930, chapter 75918. Fetched 2026-11-02 as FLAC from the Hugging Face
+# datasets server (dataset openslr/librispeech_asr, config clean, split test,
+# revision 71cacbfb7e2354c4226d01e70d77d5fca3d04ba1, rows 0, 2, 6 and 11) and
+# converted losslessly to raw 16-bit little-endian mono PCM at 16 kHz with
+# ffmpeg (tooling only; the samples are the FLAC's own).
+#   FLAC SHA-256                                                      PCM SHA-256
+#   0000 9ce35224156f071ab58eb7feb8a5ceae600f6f9f353da2a6cbf797b6b1ac8a23 9afaada0c1b445dae8a3baae5bbaffdcedbd2c09eb66b86720b8045c854feefc
+#   0002 74ecfd628f49dca71995972c075fcc9904df804d49a4eb5b11fb712b3584f789 c1dc485dadd09765e336fc5d29a99f97a81aa2de6678ae86bc191b873cf05828
+#   0006 4bed112ebfdba58ec061abd3fe013f89946863e9c51e8a83b50a5eb7afb9ce65 b42c73c3425642f28f09d347a8bba3456efcb228bb374670cdd9411ce1c26e3f
+#   0011 20e49ab7c5b418f379e775f2966616d1bd60fa6ef5d1ffc6d99de5b075e75284 caded890c7f34459729f8597df2d9fe575f199b465894b3dae852e9262b41a62
+# Thresholds, frozen before the first run (parakeet-run-runtime.coax): over
+# all four, at most 5 word errors per 100 reference words and 3 character
+# errors per 100 reference characters, after pk_normalize.
+# One line per clip: the PCM file's name without .pcm, then the reference.
+6930-75918-0000 CONCORD RETURNED TO ITS PLACE AMIDST THE TENTS
+6930-75918-0002 CONGRATULATIONS WERE POURED IN UPON THE PRINCESS EVERYWHERE DURING HER JOURNEY
+6930-75918-0006 THIS HAS INDEED BEEN A HARASSING DAY CONTINUED THE YOUNG MAN HIS EYES FIXED UPON HIS FRIEND
+6930-75918-0011 I AM CONVINCED OF WHAT I SAY SAID THE COUNT

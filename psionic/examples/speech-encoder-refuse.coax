@@ -11,7 +11,7 @@ main :: () {
     b=s;b.mels=129;print("129 mels: %\n",cf_shape_check(b));
     print("2,049 frames: %\n",cf_plan(s,1,2049).status);
     print("9 items: %\n",cf_plan(s,9,20).status);
-    big:=s;big.mels=128;big.channels=64;print("64 channels on 2,048 frames of 128 mels: %\n",cf_plan(big,1,2048).status);
+    b=s;b.channels=257;print("257 subsampling channels: %\n",cf_shape_check(b));
 
     T:=9;x:[144]f32;cf_fixture_features(x[..],16,T,1);work:[496]f32;out:[16]f32;n:=[1]int.[-7];lens:=[1]int.[9];
     for i:0..<16 {out[i]=-7;}

@@ -152,7 +152,7 @@ LS_TEST_FRAMES :: 75;   // 10 encoded frames; 0.75 s
     #assert ls_push(st[..],w[..],work[..],buf[..],16,0,0,false,tokens[..]).status==LsStatus.closed;
     // Opening.
     b:=s;b.heads=3;#assert ls_open(b,c,w[..],work[..],st[..])==LsStatus.shape;
-    b=s;b.dim=130;#assert ls_open(b,c,w[..],work[..],st[..])==LsStatus.limit;
+    b=s;b.dim=1026;#assert ls_open(b,c,w[..],work[..],st[..])==LsStatus.limit;
     #assert ls_open(s,LsContext.{chunk=0,left=0},w[..],work[..],st[..])==LsStatus.shape;
     #assert ls_open(s,LsContext.{chunk=1,left=-1},w[..],work[..],st[..])==LsStatus.shape;
     #assert ls_plan(s,LsContext.{chunk=255,left=0}).status==LsStatus.ok && ls_plan(s,LsContext.{chunk=256,left=0}).status==LsStatus.limit;
