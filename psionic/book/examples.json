@@ -2417,6 +2417,18 @@
       "stack_kib": 65536
     },
     {
+      "source": "psionic/examples/harness-loop.coax",
+      "chapter": "psionic/book/ch200-the-simplest-loop.md",
+      "stdout": "psionic/fixtures/harness-loop.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300,
+      "stack_kib": 65536
+    },
+    {
       "source": "psionic/examples/start-fast.coax",
       "chapter": "psionic/book/ch178-start-fast.md",
       "stdout": "psionic/fixtures/start-fast.out",

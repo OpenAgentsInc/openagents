@@ -1,0 +1,79 @@
+// Chapter 200's checks: random scripted replies and a brute-force model of
+// the loop that reasons over each reply's kind and length, not its tokens.
+// It is written apart from psionic/lib/harness/loop.coax and shares none of
+// its code; only the tokenizer, which says how long a tool output is.
+// Kinds: 0 answers after text tokens; 1 calls a+b after text-1 tokens;
+// 2 makes a call the tool refuses; 3 rambles past any limit; 4 draws <|bos|>.
+HoReply :: struct {kind:int;text:int;a:int;b:int;}
+HoTurn :: struct {stop:HlStop;steps:int;at:int;tokens:int;ticks:int;tools:int;}
+HO_RAMBLE :: 64;
+ho_reply :: (seed:u64,k:int)->HoReply {
+    x:=cr_bits(seed,cast(u64)(1000+k));
+    return HoReply.{kind=cast(int)(x%5),text=1+cast(int)((x>>8)%3),a=cast(int)((x>>16)%100),b=cast(int)((x>>24)%100)};
+}
+ho_digits :: (v:int)->int {return ifx v<10 then 1 else 2;}
+// Draws until the reply stops on its own, and tokens it leaves in the transcript.
+ho_draws :: (r:HoReply)->int {
+    if r.kind==0 {return r.text+1;}
+    if r.kind==1 {return r.text+2+ho_digits(r.a)+ho_digits(r.b);}
+    if r.kind==2 {return 4;}
+    if r.kind==3 {return HO_RAMBLE+1;}
+    return r.text;
+}
+// The reply's tokens, written for the scripted model.
+ho_put_number :: (v:int,out:[]int,at:int)->int {if v>=10 {out[at]=48+v/10;out[at+1]=48+v%10;return at+2;}out[at]=48+v;return at+1;}
+ho_tokens :: (r:HoReply,out:[]int)->int {
+    n:=0;
+    if r.kind==3 {for i:0..<HO_RAMBLE {out[i]=121;}return HO_RAMBLE;}
+    if r.kind==2 {out[0]=325;out[1]=ifx r.text==1 then 321 else 49;out[2]=43;out[3]=326;return 4;}
+    lead:=ifx r.kind==0 then r.text else r.text-1;
+    for i:0..<lead {out[n]=120;n+=1;}
+    if r.kind==0 {out[n]=324;return n+1;}
+    if r.kind==4 {out[n]=320;return n+1;}
+    out[n]=325;n=ho_put_number(r.a,out,n+1);out[n]=43;n=ho_put_number(r.b,out,n+1);out[n]=326;return n+1;
+}
+// Replies 0..<count as a script.
+ho_script :: (seed:u64,count:int,script:[]int,starts:[]int) {
+    starts[0]=0;for k:0..<count {starts[k+1]=starts[k]+ho_tokens(ho_reply(seed,k),script[starts[k]..<script.count]);}
+}
+ho_output :: (table:[]u8,v:int)->int {
+    b:[4]u8;n:=0;if v>=100 {b[n]='0'+cast(u8)(v/100);n+=1;}if v>=10 {b[n]='0'+cast(u8)(v/10%10);n+=1;}b[n]='0'+cast(u8)(v%10);n+=1;
+    return bt_encode(table,cast(string)b[0..<n]).written;
+}
+ho_least :: (a:int,b:int)->int {return ifx a<b then a else b;}
+ho_loop :: (seed:u64,count:int,b:HlBudget,prompt:int,context:int,table:[]u8)->HoTurn {
+    t:=HoTurn.{at=prompt};k:=0;
+    while true {
+        if b.cancel==2*k {t.stop=HlStop.cancelled;return t;}
+        if k==b.steps {t.stop=HlStop.steps;return t;}
+        left:=b.tokens-t.tokens;time:=b.deadline-t.ticks-t.at+1;room:=context-t.at;
+        if left<1 {t.stop=HlStop.tokens;return t;}
+        if time<1 {t.stop=HlStop.deadline;return t;}
+        if room<1 {t.stop=HlStop.window;return t;}
+        if k==count {t.stop=HlStop.model;return t;}
+        lim:=ho_least(ho_least(b.reply,left),ho_least(time,room));
+        r:=ho_reply(seed,k);need:=ho_draws(r);t.steps+=1;
+        if need>lim {
+            t.tokens+=lim;t.ticks+=t.at+lim-1;t.at+=lim;
+            if lim==left {t.stop=HlStop.tokens;}else if lim==time {t.stop=HlStop.deadline;}else if lim==room {t.stop=HlStop.window;}else {t.stop=HlStop.length;}
+            return t;
+        }
+        t.tokens+=need;t.ticks+=t.at+need-1;
+        if r.kind==0 {t.at+=need-1;t.stop=HlStop.answer;return t;}
+        if r.kind==4 {t.at+=need-1;t.stop=HlStop.malformed;return t;}
+        t.at+=need;
+        // The cancel and the clock are checked before the call is read.
+        if b.cancel==2*k+1 {t.stop=HlStop.cancelled;return t;}
+        if t.ticks+b.tool>b.deadline {t.stop=HlStop.deadline;return t;}
+        if r.kind==2 {t.stop=HlStop.malformed;return t;}
+        m:=ho_output(table,r.a+r.b);
+        if t.at+m+2>context {t.stop=HlStop.window;return t;}
+        t.at+=m+2;t.ticks+=b.tool;t.tools+=1;k+=1;
+    }
+    return t;
+}
+// A budget drawn from the seed: each limit somewhere near where it binds.
+ho_budget :: (seed:u64)->HlBudget {
+    x:=cr_bits(seed,7);
+    return HlBudget.{steps=cast(int)(x%6),tokens=4+cast(int)((x>>8)%40),deadline=cast(int)((x>>16)%400),reply=1+cast(int)((x>>24)%12),tool=cast(int)((x>>32)%5),cancel=cast(int)((x>>40)%16)-4};
+}

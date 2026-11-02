@@ -1,0 +1,59 @@
+#import "Basic";
+#load "../lib/harness/loop.coax";
+// Chapter 200's example: the hand-traced turn, each budget at its limit and
+// one past it, cancellation, chapter 126's engine in the loop, replay from
+// seeds, and the refusals. Every number is exact for the named build.
+hl_show_text :: (table:[]u8,ids:[]int) {o:[2048]u8;r:=ne_text(table,ids,o[..]);print("%",cast(string)o[0..<r.written]);}
+hl_show_turn :: (label:string,t:HlTurn) {
+    if label.count>0 {print("%: ",label);}
+    print("stop %, steps %, transcript % tokens, drawn %, clock %, tool calls %\n",t.stop,t.steps,t.at,t.tokens,t.ticks,t.tools);
+}
+// A label with one number, then the turn on the same line.
+hl_show_label :: (label:string,v:int) {print("% %: ",label,v);}
+hl_show_steps :: (table:[]u8,ids:[]int,t:HlTurn,steps:[]HlStep) {
+    for k:0..<t.steps {s:=steps[k];
+        print("  step %: saw % tokens, limit %, drew % (% kept), stop %, % positions read",k,s.seen,s.limit,s.draws,s.written,s.stop,s.positions);
+        if s.output>0 {print(", tool value %, % tokens appended",s.value,s.output);}
+        print("\n    reply: ");hl_show_text(table,ids[s.seen..<s.seen+s.written]);print("\n");}
+}
+// book:begin example
+main :: () {
+    tb:=NC_LEARNED;tr:=HL_TRACE;ts:=HL_TRACE_STARTS;ids:[64]int;steps:[4]HlStep;scratch:[64]int;
+    m:=hl_scripted(tb[..],tr[..],ts[..],48);
+    // The hand trace: two calls and an answer.
+    t:=hl_trace(tb[..],HL_TRACE_BUDGET,48,ids[..],steps[..]);
+    hl_show_turn("hand trace",t);hl_show_steps(tb[..],ids[..],t,steps[..]);
+    print("  the third request saw: ");hl_show_text(tb[..],ids[0..<steps[2].seen]);print("\n");
+    print("  replays from seed 7: %; from seed 8: %\n",hl_replay(m,7,5,ids[..],t,steps[..],scratch[..]),hl_replay(m,8,5,ids[..],t,steps[..],scratch[..]));
+    // Each budget at its limit, then one past it.
+    b:=HL_TRACE_BUDGET;
+    for v:[2]int.[3,2] {b.steps=v;hl_show_label("steps",v);hl_show_turn("",hl_trace(tb[..],b,48,ids[..],steps[..]));}
+    b=HL_TRACE_BUDGET;for v:[2]int.[17,16] {b.tokens=v;hl_show_label("tokens",v);hl_show_turn("",hl_trace(tb[..],b,48,ids[..],steps[..]));}
+    b=HL_TRACE_BUDGET;for v:[4]int.[68,67,38,37] {b.deadline=v;hl_show_label("deadline",v);hl_show_turn("",hl_trace(tb[..],b,48,ids[..],steps[..]));}
+    b=HL_TRACE_BUDGET;for v:[2]int.[7,6] {b.reply=v;hl_show_label("reply cap",v);hl_show_turn("",hl_trace(tb[..],b,48,ids[..],steps[..]));}
+    for v:[4]int.[31,30,27,26] {hl_show_label("window",v);hl_show_turn("",hl_trace(tb[..],HL_TRACE_BUDGET,v,ids[..],steps[..]));}
+    b=HL_TRACE_BUDGET;for v:[4]int.[0,1,2,3] {b.cancel=v;hl_show_label("cancel at boundary",v);hl_show_turn("",hl_trace(tb[..],b,48,ids[..],steps[..]));}
+    // Chapter 126's engine: chapter 136's programmed bigram weights.
+    c:=SF_TEST;w:[29416]f64;cache:[8000]f64;work:[12000]f64;logits:[21056]f64;last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;
+    ww:=ne_buffers(c,64,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);pairs:=HL_PAIRS;sf_program(c,pairs[..],w[..]);
+    e:=HlModel.{engine=true,c=c,base=320,table=tb[..],w=w[..],options=NxOptions.{temperature=0},work=ww};
+    n:=hl_ask(e,"What is 1+2?",ids[..]);eb:=HlBudget.{steps=4,tokens=40,deadline=1000,reply=16,tool=0};
+    t=hl_run(e,eb,5,n,ids[..],steps[..]);hl_show_turn("engine, greedy",t);hl_show_steps(tb[..],ids[..],t,steps[..]);
+    print("  transcript: ");hl_show_text(tb[..],ids[0..<t.at]);print("\n");
+    e.options=NxOptions.{temperature=5,top_k=2};p:=ids;
+    for seed:0..<4 {a:=p;u:=hl_run(e,eb,cast(u64)seed,n,a[..],steps[..]);hl_show_label("engine, sampled, seed",seed);hl_show_turn("",u);
+        print("  replays from its seed: %, from the next: %\n",hl_replay(e,cast(u64)seed,n,a[..],u,steps[..],scratch[..]),hl_replay(e,cast(u64)seed+1,n,a[..],u,steps[..],scratch[..]));}
+    // Refusals: each runs nothing it should not.
+    bad:=tr;bad[3]=47;t=hl_trace_script(tb[..],bad[..],ts[..],ids[..],steps[..]);
+    hl_show_turn("a call 37/48",t);print("  reply: ");hl_show_text(tb[..],ids[5..<t.at]);print(", tool value %, appended %\n",steps[0].value,steps[0].output);
+    bad=tr;bad[4]=HL_OUT;t=hl_trace_script(tb[..],bad[..],ts[..],ids[..],steps[..]);hl_show_turn("a special token inside the call",t);
+    bad=tr;bad[13]=HL_BOS;t=hl_trace_script(tb[..],bad[..],ts[..],ids[..],steps[..]);hl_show_turn("a reply that draws <|bos|>",t);
+    short:=[3]int.[0,7,13];t=hl_trace_script(tb[..],tr[..],short[..],ids[..],steps[..]);hl_show_turn("a model with no third reply",t);
+    b=HL_TRACE_BUDGET;b.steps= -1;hl_show_turn("a budget of -1 steps",hl_trace(tb[..],b,48,ids[..],steps[..]));
+    b=HL_TRACE_BUDGET;b.reply=0;hl_show_turn("a reply cap of 0",hl_trace(tb[..],b,48,ids[..],steps[..]));
+    b=HL_TRACE_BUDGET;b.steps=5;hl_show_turn("4 step records for a 5-step budget",hl_trace(tb[..],b,48,ids[..],steps[..]));
+}
+// book:end example
+hl_trace_script :: (tb:[]u8,script:[]int,starts:[]int,ids:[]int,steps:[]HlStep)->HlTurn {
+    for i:0..<5 {ids[i]=HL_PROMPT[i];}return hl_run(hl_scripted(tb,script,starts,48),HL_TRACE_BUDGET,7,5,ids,steps);
+}

@@ -1,0 +1,49 @@
+hand trace: stop answer, steps 3, transcript 30 tokens, drawn 17, clock 68, tool calls 2
+  step 0: saw 5 tokens, limit 8, drew 7 (7 kept), stop tool, 11 positions read, tool value 85, 4 tokens appended
+    reply: <|python_start|>37+48<|python_end|>
+  step 1: saw 16 tokens, limit 8, drew 6 (6 kept), stop tool, 21 positions read, tool value 170, 5 tokens appended
+    reply: <|python_start|>85*2<|python_end|>
+  step 2: saw 27 tokens, limit 4, drew 4 (3 kept), stop assistant_end, 30 positions read
+    reply: 170
+  the third request saw: <|bos|><|user_start|>?<|user_end|><|assistant_start|><|python_start|>37+48<|python_end|><|output_start|>85<|output_end|><|python_start|>85*2<|python_end|><|output_start|>170<|output_end|>
+  replays from seed 7: true; from seed 8: false
+steps 3: stop answer, steps 3, transcript 30 tokens, drawn 17, clock 68, tool calls 2
+steps 2: stop steps, steps 2, transcript 27 tokens, drawn 13, clock 38, tool calls 2
+tokens 17: stop answer, steps 3, transcript 30 tokens, drawn 17, clock 68, tool calls 2
+tokens 16: stop tokens, steps 3, transcript 30 tokens, drawn 16, clock 67, tool calls 2
+deadline 68: stop answer, steps 3, transcript 30 tokens, drawn 17, clock 68, tool calls 2
+deadline 67: stop deadline, steps 3, transcript 30 tokens, drawn 16, clock 67, tool calls 2
+deadline 38: stop deadline, steps 2, transcript 27 tokens, drawn 13, clock 38, tool calls 2
+deadline 37: stop deadline, steps 2, transcript 22 tokens, drawn 13, clock 35, tool calls 1
+reply cap 7: stop answer, steps 3, transcript 30 tokens, drawn 17, clock 68, tool calls 2
+reply cap 6: stop length, steps 1, transcript 11 tokens, drawn 6, clock 10, tool calls 0
+window 31: stop answer, steps 3, transcript 30 tokens, drawn 17, clock 68, tool calls 2
+window 30: stop window, steps 3, transcript 30 tokens, drawn 16, clock 67, tool calls 2
+window 27: stop window, steps 2, transcript 27 tokens, drawn 13, clock 38, tool calls 2
+window 26: stop window, steps 2, transcript 22 tokens, drawn 13, clock 35, tool calls 1
+cancel at boundary 0: stop cancelled, steps 0, transcript 5 tokens, drawn 0, clock 0, tool calls 0
+cancel at boundary 1: stop cancelled, steps 1, transcript 12 tokens, drawn 7, clock 11, tool calls 0
+cancel at boundary 2: stop cancelled, steps 1, transcript 16 tokens, drawn 7, clock 14, tool calls 1
+cancel at boundary 3: stop cancelled, steps 2, transcript 22 tokens, drawn 13, clock 35, tool calls 1
+engine, greedy: stop answer, steps 2, transcript 24 tokens, drawn 7, clock 43, tool calls 1
+  step 0: saw 15 tokens, limit 16, drew 5 (5 kept), stop tool, 19 positions read, tool value 3, 3 tokens appended
+    reply: <|python_start|>1+2<|python_end|>
+  step 1: saw 23 tokens, limit 16, drew 2 (1 kept), stop assistant_end, 24 positions read
+    reply: 3
+  transcript: <|bos|><|user_start|>What is 1+2?<|user_end|><|assistant_start|><|python_start|>1+2<|python_end|><|output_start|>3<|output_end|>3
+engine, sampled, seed 0: stop answer, steps 2, transcript 24 tokens, drawn 7, clock 43, tool calls 1
+  replays from its seed: true, from the next: false
+engine, sampled, seed 1: stop length, steps 1, transcript 31 tokens, drawn 16, clock 30, tool calls 0
+  replays from its seed: true, from the next: false
+engine, sampled, seed 2: stop length, steps 1, transcript 31 tokens, drawn 16, clock 30, tool calls 0
+  replays from its seed: true, from the next: false
+engine, sampled, seed 3: stop answer, steps 2, transcript 24 tokens, drawn 7, clock 43, tool calls 1
+  replays from its seed: true, from the next: false
+a call 37/48: stop malformed, steps 1, transcript 12 tokens, drawn 7, clock 11, tool calls 0
+  reply: <|python_start|>37/48<|python_end|>, tool value 0, appended 0
+a special token inside the call: stop malformed, steps 1, transcript 12 tokens, drawn 7, clock 11, tool calls 0
+a reply that draws <|bos|>: stop malformed, steps 3, transcript 27 tokens, drawn 14, clock 65, tool calls 2
+a model with no third reply: stop model, steps 2, transcript 27 tokens, drawn 13, clock 38, tool calls 2
+a budget of -1 steps: stop shape, steps 0, transcript 5 tokens, drawn 0, clock 0, tool calls 0
+a reply cap of 0: stop shape, steps 0, transcript 5 tokens, drawn 0, clock 0, tool calls 0
+4 step records for a 5-step budget: stop shape, steps 0, transcript 5 tokens, drawn 0, clock 0, tool calls 0

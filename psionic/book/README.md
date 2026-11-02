@@ -293,7 +293,7 @@ run examples directly without the check command.
 | [197. DeepSeek V4.1 Flash across stages](ch197-deepseek-v41-flash-across-stages.md) | Unimplemented: design draft | DeepSeek V4.1 Flash in contiguous layer stages with BF16 boundaries carrying residual streams, shared state and Engram history, matched to chapter 100. |
 | [198. Mistral Large 4 across a mesh](ch198-mistral-large-4-across-a-mesh.md) | Unimplemented: design draft | Mistral Large 3 (675B, 681.5 GB) placed across machines with latent attention and expert routing, matched to a whole-model reference on selected layers. |
 | [199. Le Chonk across a mesh](ch199-le-chonk-across-a-mesh.md) | Unimplemented: design draft | Mistral Large 4 (1,060.6 GB of FP8 originals) across machines with sparse attention, shared layers and the draft head; serving others needs a licence. |
-| [200. The simplest loop](ch200-the-simplest-loop.md) | Unimplemented: design draft | One agent loop over Psionic's API with exact turn and step boundaries, a deadline per turn and cancellation that stops the model and the tools together. |
+| [200. The simplest loop](ch200-the-simplest-loop.md) | Partly implemented: cpu-harness-loop-v1, bounded CPU (a model served through chapters 20, 22 and 79, a wall-clock deadline, and cancelling a running stream and running tools, remain) | The minimal agent loop on chapter 126's engine and chapter 136's calculator: model turn, typed tool call, result appended, repeat, with typed stops for the answer and for each budget (steps, drawn tokens, a logical-clock deadline, the window, the reply cap), cancellation at each boundary, malformed calls refused before anything runs, a transcript of exactly what each request saw, and replay of every step from its seed. |
 | [201. Model-visible means logged](ch201-model-visible-means-logged.md) | Unimplemented: design draft | An append-only, versioned session log from which every model request is rebuilt byte for byte and replayed. |
 | [202. Keep the prefix stable](ch202-keep-the-prefix-stable.md) | Unimplemented: design draft | Prompt assembly in a fixed order so each turn only appends, with metadata kept outside the model input, measured against chapter 176's prefix cache. |
 | [203. Tools as typed capabilities](ch203-tools-as-typed-capabilities.md) | Unimplemented: design draft | A registry of tools with schemas in proto/, a guarded before/run/after pipeline, structured errors and arguments constrained during generation. |
@@ -351,7 +351,8 @@ Their status rows distinguish bounded CPU implementations, actual device
 training and the remaining generality/performance work. Chapter 218 checks a
 Pylon before advertisement; chapters 215–225 and 239–249 supply calibrated,
 measured decision/evaluation components with their stated real or simulated
-inputs. The table and registry, rather than an unlisted-chapter rule, determine
+inputs. Chapter 200 starts the agent harness with the smallest loop: a model
+turn, a tool call and its result, until an answer or a budget stops it. The table and registry, rather than an unlisted-chapter rule, determine
 which chapters are implemented, partial or drafts.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
