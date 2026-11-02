@@ -184,6 +184,25 @@ PcStatus pg_write(PgSession *s,int slot,const void *data,size_t bytes){
     if(s->poisoned)return PC_DRIVER;if(slot<0 || slot>=gd_buffer_count() || bytes>(size_t)(s->plan.counts.e[slot]*s->plan.width.e[slot]))return PC_ARGUMENT;
     PcStatus code=pg_upload(s,s->buffers[16+slot],data,bytes);if(code){s->poisoned=1;return code;}return pg_wait(s);
 }
+/* Chapter 99: record a Coax-built program once as one device graph and
+   launch it once per token. Kinds past gd_kernel_count() are named by the
+   caller (from Coax) and come from the session's module. Neither call
+   waits for the device. */
+PcStatus pg_record(PgSession *s,const coax_t_GDOp *ops,const coax_t_GDArg *args,coax_t_GDProgram p,const coax_string *names,int64_t first,int64_t count,PcProgram *out){
+    *out=NULL;if(s->poisoned)return PC_DRIVER;if(s->cpu || p.status || p.ops<1 || p.ops>s->plan.max_ops || p.args<0 || p.args>s->plan.max_args || count<0 || count>16 || first<gd_kernel_count())return PC_ARGUMENT;
+    PcKernel extra[16];PcStatus code;
+    for(int64_t i=0;i<count;i++){char label[128];if(names[i].count<1 || names[i].count>=127)return PC_ARGUMENT;memcpy(label,names[i].data,(size_t)names[i].count);label[names[i].count]=0;code=pc_kernel(s->module,label,&extra[i]);if(code)return code;}
+    PcProgram graph=NULL;code=pc_program_create((size_t)p.ops,&graph);if(code)return code;
+    for(int64_t i=0;i<p.ops;i++){coax_t_GDOp op=ops[i];const coax_t_GDArg *a=args+op.first;PcArg arguments[24];PcKernel kernel;
+        if(op.first<0 || op.count<0 || op.count>24 || op.first+op.count>p.args){code=PC_ARGUMENT;goto failed;}
+        if(op.kind>=0 && op.kind<gd_kernel_count())kernel=s->kernels[op.kind];else if(op.kind>=first && op.kind<first+count)kernel=extra[op.kind-first];else {code=PC_ARGUMENT;goto failed;}
+        for(int64_t k=0;k<op.count;k++)arguments[k]=(PcArg){.kind=a[k].view?PC_ARG_VIEW:PC_ARG_INT,.i=a[k].value,.data=a[k].view?(PcBuffer)(uintptr_t)pg_address(s,a[k].ref):0,.count=a[k].ref.count};
+        code=pc_program_add(graph,kernel,op.items,(int)op.block,arguments,(int)op.count);if(code)goto failed;
+    }
+    code=pc_program_ready(graph);if(code)goto failed;*out=graph;return PC_OK;
+failed:pc_program_free(graph);return code;
+}
+PcStatus pg_launch(PgSession *s,PcProgram program){if(s->poisoned)return PC_DRIVER;PcStatus code=pc_program_replay(program,s->stream);if(code)s->poisoned=1;return code;}
 coax_t_GDPlan pg_plan(const PgSession *s){return s->plan;}
 coax_t_GShape pg_shape(const PgSession *s){return s->shape;}
 const char *pg_error(const PgSession *s){return s->error;}

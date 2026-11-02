@@ -1,0 +1,5 @@
+// Chapter 99: the GPT-OSS device host plus the recorded decode step and
+// chapter 53's CPU sampler, as one native library for psionic/tests/gptoss_step.c.
+#load "../lib/gptoss/device-host.coax";
+#load "../lib/gptoss/device-step.coax";
+#load "../lib/throughput-gate.coax";  // tg_word, and chapter 34's cm_two_pass

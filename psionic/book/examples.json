@@ -2472,6 +2472,26 @@
       ]
     },
     {
+      "source": "psionic/examples/device-step.coax",
+      "chapter": "psionic/book/ch099-a-decode-step-with-no-host-waits.md",
+      "stdout": "psionic/fixtures/device-step/device-step.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/device-step-refuse.coax",
+      "chapter": "psionic/book/ch099-a-decode-step-with-no-host-waits.md",
+      "stdout": "psionic/fixtures/device-step/device-step-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/device-verify-refuse.coax",
       "chapter": "psionic/book/ch076-verify-a-draft-block-in-parallel.md",
       "stdout": "psionic/fixtures/device-verify/device-verify-refuse.out",

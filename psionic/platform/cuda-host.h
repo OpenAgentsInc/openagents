@@ -85,6 +85,8 @@ PcStatus pc_wait(PcStream stream, PcEvent event);
 PcStatus pc_event_seconds(PcEvent start, PcEvent end, double *seconds);
 PcStatus pc_sync_stream(PcStream stream);
 PcStatus pc_sync(void);
+/* Chapter 99: how many times pc_sync_stream and pc_sync have blocked the host. */
+uint64_t pc_waits(void);
 
 /* items work items in blocks of block threads (1..1024). */
 PcStatus pc_launch(PcKernel kernel, int64_t items, int block, const PcArg *args, int count, PcStream stream);

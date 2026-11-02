@@ -1,0 +1,235 @@
+// Chapter 99: admission and the recorded decode-step program. Coax builds
+// one program that serves every step: positions and input tokens come from
+// the control words on the device, routes stay on the device (chapter 70's
+// gk_route), and the next token is drawn on the device by chapter 53's rules.
+// The host records it once and launches it once per token.
+#load "device-plan.coax";
+#load "device-sample.coax";
+#load "../next-token.coax";
+#load "../../tests/device-step-checks.coax";  // the checks' launch comparisons
+#authority;
+
+GS_PART :: 256;   // logits one list item reads
+GS_TOPK :: 64;    // the largest top-k the device sampler admits
+GS_KINDS :: 57;   // kinds 48 to 56 are this file's kernels
+GS_NAMES :: [9]string.["gs_begin","gs_rotate","gs_scores","gs_prepare","gs_divide","gs_context","gs_top_part","gs_top_merge","gs_pick"];
+// The sampler's lists live in slot 40, prefill scratch that decode never
+// reads. Emitted IDs go to slot 26, which holds prompt IDs only during prefill.
+GS_SCRATCH :: 40;
+GS_EMITTED :: 26;
+GSLayout :: struct {status:GStatus;lists:int;final:int;ids:GDRef;counts:GDRef;flags:GDRef;weights:GDRef;sorted:GDRef;by_id:GDRef;}
+
+// book:begin admit
+// Chapter 53's options, with top-k bounded so one item can rank the kept IDs.
+// Temperature 0 is greedy and needs a list of one.
+gs_options :: (o:NxOptions,seed:u64,vocab:int)->GStatus #export_c {
+    if !nx_options(o,vocab) || (o.temperature!=0 && (o.top_k<1 || o.top_k>GS_TOPK)) || seed>>63!=0 {return GStatus.shape;}
+    return GStatus.ok;
+}
+gs_k :: (o:NxOptions)->int {if o.temperature==0 {return 1;}return o.top_k;}
+gs_layout :: (p:GDPlan,vocab:int,k:int)->GSLayout #export_c {
+    n:=gs_lists(vocab,GS_PART);total:=n;m:=n;
+    while m>1 {m=gs_up(m);total+=m;}
+    b:=16+GS_SCRATCH;r:=GSLayout.{lists=total,final=total-1};
+    r.ids=GDRef.{buffer=b,count=total*k,elem=8};r.counts=GDRef.{buffer=b,offset=8*total*k,count=total,elem=8};
+    r.weights=GDRef.{buffer=b,offset=8*(total*k+total),count=k,elem=8};r.sorted=GDRef.{buffer=b,offset=8*(total*k+total+k),count=k,elem=8};
+    r.by_id=GDRef.{buffer=b,offset=8*(total*k+total+2*k),count=k,elem=8};r.flags=GDRef.{buffer=b,offset=8*(total*k+total+3*k),count=total,elem=1};
+    if !gd_ref_fits(p,r.flags) {r.status=GStatus.capacity;}
+    return r;
+}
+// The control words a sampled request starts from: the last prompt ID at
+// its position, nothing emitted. Written once, before the first step.
+gs_control :: (s:GShape,token:int,position:int,out:[]int)->GResult #export_c {
+    if token<0 || token>=s.vocab || position<0 || position>=s.capacity {return GResult.{status=GStatus.state};}
+    if out.count<8 {return GResult.{status=GStatus.capacity};}
+    for i:0..<8 {out[i]=0;}out[1]=token;out[2]=position;return GResult.{written=8};
+}
+// book:end admit
+gs_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+gs_kernel_name :: (kind:int)->string #export_c {if kind<GD_KINDS || kind>=GS_KINDS {return "";}return GS_NAMES[kind-GD_KINDS];}
+gs_kinds :: ()->int #export_c {return GS_KINDS;}
+gs_emit :: (w:GDWriter,kind:int,items:int,ni:int,nv:int,ints:GDScalars,views:GDViews)->GDWriter {
+    result:=w;if result.result.status!=GStatus.ok {return result;}
+    if kind<GD_KINDS || kind>=GS_KINDS || items<1 || items>4294967295 {result.result.status=GStatus.shape;return result;}
+    if result.result.ops>=w.ops.count || ni+nv>w.args.count-result.result.args {result.result.status=GStatus.capacity;return result;}
+    scalars:=[8]int.[ints.a,ints.b,ints.c,ints.d,ints.e,ints.f,ints.g,ints.h];refs:=[16]GDRef.[views.a,views.b,views.c,views.d,views.e,views.f,views.g,views.h,views.i,views.j,views.k,views.l,views.m,views.n,views.o,views.p];
+    for i:0..<nv {if !gd_ref_fits(w.plan,refs[i]) {result.result.status=GStatus.capacity;return result;}}
+    first:=result.result.args;for i:0..<ni {w.args[first+i]=GDArg.{value=scalars[i]};}for i:0..<nv {w.args[first+ni+i]=GDArg.{view=true,ref=refs[i]};}
+    w.ops[result.result.ops]=GDOp.{kind=kind,items=items,first=first,count=ni+nv,block=256};result.result.ops+=1;result.result.args+=ni+nv;return result;
+}
+
+// book:begin program
+// gd_program's step with every position-dependent launch replaced: the same
+// kernels run through gs_* wrappers that read control[2], launched over the
+// largest span, and gk_argmax_part/gk_choose replaced by the sampler.
+gs_program :: (s:GShape,p:GDPlan,params:[]GDParam,o:NxOptions,seed:u64,limit:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    if p.status!=GStatus.ok || !g_shape(s) || s.capacity>4096 || gs_options(o,seed,s.vocab)!=GStatus.ok {return GDProgram.{status=GStatus.shape};}
+    if limit<1 || limit>s.capacity {return GDProgram.{status=GStatus.state};}
+    k:=gs_k(o);lay:=gs_layout(p,s.vocab,k);
+    if params.count!=3+15*s.layers || ops.count<p.max_ops || args.count<p.max_args || lay.status!=GStatus.ok {return GDProgram.{status=GStatus.capacity};}
+    w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;q:=s.heads*64;k2:=s.kv_heads*64*2;h:=s.hidden;z:=s.selected;
+    control:=gd_all(p,24);x:=gd_all(p,0);normal:=gd_all(p,1);qkv:=gd_all(p,2);attention:=gd_all(p,3);projected:=gd_all(p,4);router:=gd_all(p,5);up:=gd_all(p,6);activated:=gd_all(p,7);down:=gd_all(p,8);
+    w=gs_emit(w,48,1,2,1,GDScalars.{a=s.vocab,b=s.capacity},GDViews.{a=control});w=gd_emit(w,1,p.flags,0,1,GDScalars.{},GDViews.{a=gd_all(p,22)});
+    w=gd_emit(w,2,d,1,4,GDScalars.{a=d},GDViews.{a=gd_weight(params,0,2),b=control,c=x,d=gd_flags(w,d)});w.result.flags+=d;
+    for layer:0..<s.layers {base:=3+15*layer;ids:=gd_slice(p,14,layer*z,z);weights:=gd_slice(p,15,layer*z,z);pending:=gd_slice(p,12,layer*k2,k2);trace:=gd_slice(p,13,layer*2*d,d);cache:=gd_slice(p,16,g_cache_base(s,layer),k2*g_layer_capacity(s,layer));
+        w=gd_norm(w,d,gd_weight(params,base,2),x,normal);
+        w=gd_bf(w,q+k2,d,gd_weight(params,base+4,8),gd_weight(params,base+3,2),normal,qkv);
+        rotations:=(s.heads+s.kv_heads)*32;w=gs_emit(w,49,rotations,2,5,GDScalars.{a=s.heads,b=s.kv_heads},GDViews.{a=qkv,b=gd_all(p,25),c=pending,d=gd_flags(w,rotations),e=control});w.result.flags+=rotations;
+        window:=0;span:=s.capacity;if layer%2==0 {window=s.window;span=gs_min(s.window,s.capacity);}cap:=g_layer_capacity(s,layer);
+        w=gs_emit(w,50,s.heads*span,5,5,GDScalars.{a=s.heads,b=s.kv_heads,c=window,d=cap,e=s.capacity},GDViews.{a=qkv,b=cache,c=pending,d=gd_all(p,11),e=control});
+        w=gs_emit(w,51,s.heads,2,5,GDScalars.{a=window,b=s.capacity},GDViews.{a=gd_weight(params,base+5,2),b=gd_all(p,11),c=gd_all(p,10),d=gd_flags(w,s.heads),e=control});w.result.flags+=s.heads;
+        w=gs_emit(w,52,s.heads*span,3,3,GDScalars.{a=s.heads,b=window,c=s.capacity},GDViews.{a=gd_all(p,10),b=gd_all(p,11),c=control});
+        w=gs_emit(w,53,q*8,6,5,GDScalars.{a=s.heads,b=s.kv_heads,c=window,d=cap,e=s.capacity,f=8},GDViews.{a=gd_all(p,11),b=cache,c=pending,d=gd_all(p,9),e=control});
+        w=gd_emit(w,17,q,2,3,GDScalars.{a=q,b=8},GDViews.{a=gd_all(p,9),b=attention,c=gd_flags(w,q)});w.result.flags+=q;
+        w=gd_bf(w,d,q,gd_weight(params,base+2,8),gd_weight(params,base+1,2),attention,projected);
+        w=gd_emit(w,9,d,0,4,GDScalars.{},GDViews.{a=x,b=projected,c=trace,d=gd_flags(w,d)});w.result.flags+=d;
+        w=gd_norm(w,d,gd_weight(params,base+10,2),x,normal);
+        w=gd_bf(w,s.experts,d,gd_weight(params,base+7,8),gd_weight(params,base+6,2),normal,router);
+        w=gd_emit(w,11,1,1,4,GDScalars.{a=z},GDViews.{a=router,b=ids,c=weights,d=gd_flags(w,1)});w.result.flags+=1;
+        w=gd_mx(w,2*h,d,z,0,gd_weight(params,base+11,8),gd_weight(params,base+12,1),gd_weight(params,base+8,2),ids,normal,up);
+        w=gd_emit(w,10,z*h,1,3,GDScalars.{a=h},GDViews.{a=up,b=activated,c=gd_flags(w,z*h)});w.result.flags+=z*h;
+        w=gd_mx(w,d,h,z,h,gd_weight(params,base+13,8),gd_weight(params,base+14,1),gd_weight(params,base+9,2),ids,activated,down);
+        w=gd_emit(w,12,d,2,5,GDScalars.{a=d,b=z},GDViews.{a=x,b=down,c=weights,d=gd_slice(p,13,(2*layer+1)*d,d),e=gd_flags(w,d)});w.result.flags+=d;
+    }
+    w=gd_norm(w,d,gd_weight(params,1,2),x,normal);
+    w=gd_bf(w,s.vocab,d,gd_weight(params,2,8),GDRef.{elem=2},normal,gd_all(p,17));
+    summaries:=gs_lists(w.result.flags,256);w=gd_emit(w,18,summaries,0,2,GDScalars.{},GDViews.{a=gd_slice(p,22,0,w.result.flags),b=gd_slice(p,23,0,summaries)});
+    w=gd_emit(w,19,1,0,2,GDScalars.{},GDViews.{a=gd_slice(p,23,0,summaries),b=control});
+    items:=gs_max(gs_max(s.vocab,p.counts[12]),p.counts[13]);
+    w=gd_emit(w,20,items,5,11,GDScalars.{a=s.layers,b=d,c=s.kv_heads,d=s.window,e=s.capacity},GDViews.{a=control,b=gd_all(p,12),c=gd_all(p,17),d=gd_all(p,13),e=gd_all(p,14),f=gd_all(p,15),g=gd_all(p,16),h=gd_all(p,18),i=gd_all(p,19),j=gd_all(p,20),k=gd_all(p,21)});
+    w=gd_emit(w,21,1,0,1,GDScalars.{},GDViews.{a=control});
+    logits:=gd_all(p,18);n:=gs_lists(s.vocab,GS_PART);
+    w=gs_emit(w,54,n,2,4,GDScalars.{a=GS_PART,b=k},GDViews.{a=logits,b=lay.ids,c=lay.counts,d=lay.flags});
+    from:=0;while n>1 {m:=gs_up(n);w=gs_emit(w,55,m,4,4,GDScalars.{a=from,b=n,c=from+n,d=k},GDViews.{a=logits,b=lay.ids,c=lay.counts,d=lay.flags});from+=n;n=m;}
+    w=gs_emit(w,56,1,6,9,GDScalars.{a=from,b=k,c=cast(int)f64_bits(o.temperature),d=cast(int)f64_bits(o.top_p),e=cast(int)seed,f=limit},GDViews.{a=logits,b=lay.ids,c=lay.counts,d=lay.flags,e=lay.weights,f=lay.sorted,g=lay.by_id,h=control,i=gd_all(p,GS_EMITTED)});
+    if w.result.flags>p.flags {return GDProgram.{status=GStatus.capacity};}return w.result;
+}
+// book:end program
+
+#test "the program has no launch argument that changes between steps" {
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);ops:[192]GDOp;args:[4608]GDArg;
+    o:=NxOptions.{temperature=0.7,top_k=8,top_p=0.9};r:=gs_program(GT_SHAPE,p,params[..],o,45001,4,ops[..],args[..]);
+    g:=gd_program(GT_SHAPE,p,params[..],3,-1,true,4,ops[..],args[..]);#assert g.status==GStatus.ok;
+    r=gs_program(GT_SHAPE,p,params[..],o,45001,4,ops[..],args[..]);#assert r.status==GStatus.ok && r.ops==g.ops && r.flags==g.flags;
+    seen:[57]int;for i:0..<r.ops {op:=ops[i];seen[op.kind]+=1;#assert op.items>0 && op.block==256 || op.kind==7;for j:0..<op.count {a:=args[op.first+j];if a.view {#assert gd_ref_fits(p,a.ref);}}}
+    // No chapter 70 launch that takes a position, and no host-chosen token.
+    for kind:[8]int.[0,13,14,16,22,23,43,44] {#assert seen[kind]==0;}
+    for kind:48..<57 {#assert seen[kind]>0 || kind==55;}#assert seen[49]==GT_SHAPE.layers && seen[54]==1 && seen[56]==1;
+    // Sliding layers launch heads x window score items; full layers heads x capacity.
+    found:=0;for i:0..<r.ops {if ops[i].kind==50 {a:=ops[i].first;w:=args[a+2].value;#assert ops[i].items==ifx w>0 then 2 else 8;found+=1;}}#assert found==2;
+    // The pick reads the options bits, the seed and the limit as built.
+    last:=ops[r.ops-1];a:=last.first;#assert last.kind==56 && args[a+2].value==cast(int)f64_bits(0.7) && args[a+3].value==cast(int)f64_bits(0.9) && args[a+4].value==45001 && args[a+5].value==4 && args[a+1].value==8;
+    #assert args[last.first+14].ref.buffer==16+GS_EMITTED && args[last.first+13].ref.buffer==16+24;
+}
+#test "the original 20b vocabulary merges 786 lists in two levels" {
+    o:=g_original_shape(0,2048);large:=G20_ARTIFACTS;q:=gd_plan(o,large[..],17179869184,17179869184);
+    l:=gs_layout(q,o.vocab,64);#assert l.status==GStatus.ok && l.lists==786+25+1 && l.final==811 && l.flags.offset==8*(812*64+812+3*64);
+    #assert gs_layout(q,o.vocab,1).lists==812;
+    small:=q;small.counts[GS_SCRATCH]=(8*(812*64+812+3*64)+811)/4;#assert gs_layout(small,o.vocab,64).status==GStatus.capacity;
+    small.counts[GS_SCRATCH]+=1;#assert gs_layout(small,o.vocab,64).status==GStatus.ok;
+    #assert l.ids.buffer==16+GS_SCRATCH && l.ids.offset==0 && l.ids.count==812*64 && l.ids.elem==8 && l.counts.count==812 && l.flags.elem==1;
+    t:=gs_layout(q,16,4);#assert t.lists==1 && t.final==0 && t.counts.offset==32 && t.weights.offset==40 && t.sorted.offset==72 && t.by_id.offset==104 && t.flags.count==1;
+}
+#test "admission refuses what the device sampler cannot reproduce" {
+    #assert gs_options(NxOptions.{},0,100)==GStatus.shape && gs_options(NxOptions.{top_k=64},0,100)==GStatus.ok && gs_options(NxOptions.{top_k=65},0,100)==GStatus.shape;
+    #assert gs_options(NxOptions.{temperature=0},0,100)==GStatus.ok && gs_options(NxOptions.{top_k=1},(cast(u64)1)<<63,100)==GStatus.shape && gs_options(NxOptions.{top_k=1},((cast(u64)1)<<63)-1,100)==GStatus.ok;
+    #assert gs_options(NxOptions.{top_k=1,top_p=0},0,100)==GStatus.shape && gs_options(NxOptions.{top_k=101},0,100)==GStatus.shape && gs_options(NxOptions.{temperature=0,top_k=101},0,100)==GStatus.shape;
+    #assert gs_k(NxOptions.{temperature=0,top_k=5})==1 && gs_k(NxOptions.{top_k=5})==5;
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);ops:[192]GDOp;args:[4608]GDArg;o:=NxOptions.{top_k=4};
+    #assert gs_program(GT_SHAPE,p,params[..],NxOptions.{},1,4,ops[..],args[..]).status==GStatus.shape;
+    #assert gs_program(GT_SHAPE,p,params[..],o,1,0,ops[..],args[..]).status==GStatus.state && gs_program(GT_SHAPE,p,params[..],o,1,9,ops[..],args[..]).status==GStatus.state;
+    #assert gs_program(GT_SHAPE,p,params[..],o,1,8,ops[..],args[..]).status==GStatus.ok && gs_program(GT_SHAPE,p,params[..],o,1,1,ops[..],args[..]).status==GStatus.ok;
+    // Capacity 4096 is a shape the builder accepts; this plan has no room for it.
+    wide:=GT_SHAPE;wide.capacity=4096;#assert gs_program(wide,p,params[..],o,1,4,ops[..],args[..]).status==GStatus.capacity;
+    #assert gs_program(GT_SHAPE,p,params[0..<32],o,1,4,ops[..],args[..]).status==GStatus.capacity && gs_program(GT_SHAPE,p,params[..],o,1,4,ops[0..<p.max_ops-1],args[..]).status==GStatus.capacity;
+    #assert gs_program(GT_SHAPE,p,params[..],o,1,4,ops[..],args[0..<p.max_args-1]).status==GStatus.capacity;
+    tight:=p;tight.counts[GS_SCRATCH]=1;#assert gs_program(GT_SHAPE,tight,params[..],o,1,4,ops[..],args[..]).status==GStatus.capacity;
+    bad:=p;bad.status=GStatus.budget;#assert gs_program(GT_SHAPE,bad,params[..],o,1,4,ops[..],args[..]).status==GStatus.shape;
+    big:=GT_SHAPE;big.capacity=4097;#assert gs_program(big,p,params[..],o,1,4,ops[..],args[..]).status==GStatus.shape;
+    exact:=p;exact.flags=gs_program(GT_SHAPE,p,params[..],o,1,4,ops[..],args[..]).flags;#assert gs_program(GT_SHAPE,exact,params[..],o,1,4,ops[..],args[..]).status==GStatus.ok;
+    few:=p;few.flags=1;#assert gs_program(GT_SHAPE,few,params[..],o,1,4,ops[..],args[..]).status==GStatus.capacity;
+    out:[8]int;for i:0..<8 {out[i]=5;}
+    #assert gs_control(GT_SHAPE,15,7,out[..]).written==8 && out[0]==0 && out[1]==15 && out[2]==7 && out[3]==0 && out[7]==0;
+    #assert gs_control(GT_SHAPE,16,0,out[..]).status==GStatus.state && gs_control(GT_SHAPE,-1,0,out[..]).status==GStatus.state && gs_control(GT_SHAPE,0,8,out[..]).status==GStatus.state && gs_control(GT_SHAPE,0,-1,out[..]).status==GStatus.state;
+    #assert gs_control(GT_SHAPE,0,0,out[0..<7]).status==GStatus.capacity;
+    #assert gs_kernel_name(47)=="" && gs_kernel_name(48)=="gs_begin" && gs_kernel_name(56)=="gs_pick" && gs_kernel_name(57)=="" && gs_kinds()==57;
+}
+#test "kinds outside this file's range are refused by its emitter" {
+    pins:=GOWN_ARTIFACTS;p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);ops:[2]GDOp;args:[4]GDArg;w:=GDWriter.{plan=p,ops=ops[..],args=args[..]};
+    #assert gs_emit(w,47,1,1,0,GDScalars.{},GDViews.{}).result.status==GStatus.shape && gs_emit(w,57,1,1,0,GDScalars.{},GDViews.{}).result.status==GStatus.shape;
+    #assert gs_emit(w,48,0,1,0,GDScalars.{},GDViews.{}).result.status==GStatus.shape && gs_emit(w,48,4294967296,1,0,GDScalars.{},GDViews.{}).result.status==GStatus.shape;
+    r:=gs_emit(w,56,4294967295,1,1,GDScalars.{a=3},GDViews.{a=gd_all(p,24)});#assert r.result.status==GStatus.ok && ops[0].kind==56 && ops[0].count==2 && args[0].value==3 && args[1].view && ops[0].block==256;
+    #assert gs_emit(r,48,1,1,1,GDScalars.{},GDViews.{a=gd_all(p,24)}).result.status==GStatus.ok && gs_emit(r,48,1,1,2,GDScalars.{},GDViews.{}).result.status==GStatus.capacity && gs_emit(r,48,1,1,1,GDScalars.{},GDViews.{a=GDRef.{buffer=99}}).result.status==GStatus.capacity;
+    one:=GDWriter.{plan=p,ops=ops[0..<1],args=args[..]};#assert gs_emit(gs_emit(one,48,1,0,0,GDScalars.{},GDViews.{}),48,1,0,0,GDScalars.{},GDViews.{}).result.status==GStatus.capacity;
+    stop:=w;stop.result.status=GStatus.state;#assert gs_emit(stop,48,1,0,0,GDScalars.{},GDViews.{}).result.status==GStatus.state;
+}
+#forall "the device sampler equals chapter 53's nx_step: order, token, counter and weight bits" seed:0..<48 #steps 400000000 {
+    n:=20+seed*3;x:[200]f32;
+    for i:0..<n {x[i]=f32(cast(int)(gs_bits(cast(u64)seed,cast(u64)i)%cast(u64)9))*0.75f32-3;}
+    temperatures:=[4]f64.[0,0.5,1,1.7];tops:=[4]f64.[1,0.9,0.5,0.3];parts:=[4]int.[1,3,7,256];
+    o:=NxOptions.{temperature=temperatures[seed%4],top_k=1+seed*5%nx_min(n,64),top_p=tops[seed/4%4]};part:=parts[seed/16%4];k:=o.top_k;
+    sa_:[13000]int;sb_:[300]int;sf_:[300]u8;sw_:[64]f64;so_:[64]int;sy_:[64]f64;s2:=GsScratch.{ids=sa_[..],counts=sb_[..],flags=sf_[..],weights=sw_[..],sorted=so_[..],by_id=sy_[..]};control:[8]int;emitted:[4]int;
+    p:[200]f64;s:[200]f64;ord:[200]int;tmp:[200]int;none:[1]u8;stops:[1]int;
+    run:=NxRun.{random=CrSeed.{seed=cast(u64)seed},limit=3};
+    for step:0..<3 {
+        e:=nx_step(x[0..<n],none[0..<0],o,run,stops[0..<0],false,p[..],nx_work(s[..],ord[..],tmp[..]),false);#assert e.status==NxStatus.ok;
+        at:=gs_run(x[0..<n],part,k,o.temperature,o.top_p,seed,3,s2,control[..],emitted[..]);
+        #assert control[0]==0 && control[1]==e.token && control[3]==cast(int)e.run.random.counter && control[3]==e.run.emitted && emitted[step]==e.token;
+        #assert (control[4]==3)==(e.run.stop==NxStop.limit) && s2.counts[at]==k;
+        d:=nx_distribution(x[0..<n],none[0..<0],o,p[..],nx_work(s[..],ord[..],tmp[..]),false);
+        for i:0..<k {#assert s2.ids[at*k+i]==ord[i];}
+        if o.temperature!=0 {for i:0..<d.kept {#assert f64_bits(s2.weights[i])==f64_bits(p[s2.ids[at*k+i]]);}}
+        run=e.run;
+    }
+}
+#test "each launch equals gd_program's at a position past the window, except where the position was" {
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);a:[192]GDOp;aa:[4608]GDArg;b:[192]GDOp;bb:[4608]GDArg;sh:=GT_SHAPE;
+    // Trace rows past the cache rows: the publish launch covers the larger.
+    p.counts[13]=300;
+    g:=gd_program(sh,p,params[..],5,-1,true,6,a[..],aa[..]);r:=gs_program(sh,p,params[..],NxOptions.{temperature=0},9,6,b[..],bb[..]);#assert g.status==GStatus.ok && r.status==GStatus.ok;
+    #assert r.ops==g.ops && b[r.ops-2].kind==54 && b[r.ops-1].kind==56 && a[g.ops-2].kind==22 && a[g.ops-1].kind==23;
+    for i:0..<g.ops-2 {x:=a[i];y:=b[i];xa:=aa[x.first..<x.first+x.count];ya:=bb[y.first..<y.first+y.count];
+        if x.kind==y.kind {#assert x.items==y.items && x.count==y.count && x.block==y.block && gso_args(xa,ya);continue;}
+        // The position-free launch ends with the control words.
+        #assert ya[y.count-1].view && ya[y.count-1].ref.buffer==16+24 && y.block==256;
+        if x.kind==0 {#assert y.kind==48 && y.count==3 && y.items==1 && ya[0].value==xa[2].value && ya[1].value==sh.capacity;}
+        else if x.kind==13 {#assert y.kind==49 && y.count==7 && x.items==y.items && ya[0].value==xa[0].value && ya[1].value==xa[1].value;for j:0..<4 {#assert gso_ref(ya[2+j].ref,xa[3+j].ref);}}
+        else if x.kind==14 {window:=0;if xa[3].value>0 {window=6-xa[3].value;}span:=sh.capacity;if window>0 {span=window;}
+            #assert y.kind==50 && y.count==10 && y.items==sh.heads*span && ya[0].value==xa[0].value && ya[1].value==xa[1].value && ya[2].value==window && ya[3].value==xa[4].value && ya[4].value==xa[5].value;for j:0..<4 {#assert gso_ref(ya[5+j].ref,xa[6+j].ref);}}
+        else if x.kind==43 {#assert y.kind==51 && y.count==7 && x.items==y.items && ya[1].value==xa[1].value;for j:0..<4 {#assert gso_ref(ya[2+j].ref,xa[2+j].ref);}}
+        else if x.kind==44 {#assert y.kind==52 && y.count==6 && y.items==b[i-2].items && ya[0].value==sh.heads && ya[2].value==xa[1].value;for j:0..<2 {#assert gso_ref(ya[3+j].ref,xa[2+j].ref);}}
+        else {#assert x.kind==16 && y.kind==53 && y.count==11 && x.items==y.items && ya[0].value==xa[0].value && ya[1].value==xa[1].value && ya[3].value==xa[4].value && ya[4].value==xa[5].value && ya[5].value==xa[6].value;
+            window:=0;if xa[3].value>0 {window=6-xa[3].value;}#assert ya[2].value==window;for j:0..<4 {#assert gso_ref(ya[6+j].ref,xa[7+j].ref);}}
+    }
+    // With the plan's own rows the cache rows (256) are the larger.
+    p.counts[13]=128;g=gd_program(sh,p,params[..],5,-1,true,6,a[..],aa[..]);r=gs_program(sh,p,params[..],NxOptions.{temperature=0},9,6,b[..],bb[..]);
+    #assert a[g.ops-4].kind==20 && b[r.ops-4].kind==20 && a[g.ops-4].items==256 && b[r.ops-4].items==256;
+    // Window layers pass their window, full layers 0, and the window
+    // layers' prepare and divide agree with their scores.
+    w:=0;for i:0..<r.ops {if b[i].kind==50 {w=bb[b[i].first+2].value;}if b[i].kind==51 || b[i].kind==52 {#assert bb[b[i].first+ifx b[i].kind==51 then 0 else 1].value==w;}}
+}
+#test "the 20b vocabulary's sampler: 786 lists, two merges, one pick" #steps 400000000 {
+    // Four of the 20b's 24 layers keep the arrays small; the vocabulary is whole.
+    o:=g_original_shape(0,2048);o.layers=4;large:=G20_ARTIFACTS;q:=gd_plan(o,large[..],17179869184,17179869184);params:[63]GDParam;
+    ops:[352]GDOp;args:[8448]GDArg;r:=gs_program(o,q,params[..],NxOptions.{top_k=64,top_p=0.95},45001,256,ops[..],args[..]);#assert r.status==GStatus.ok;
+    l:=gs_layout(q,o.vocab,64);t:=r.ops-4;
+    #assert ops[t].kind==54 && ops[t].items==786 && args[ops[t].first].value==GS_PART && args[ops[t].first+1].value==64 && gso_ref(args[ops[t].first+2].ref,gd_all(q,18)) && gso_ref(args[ops[t].first+3].ref,l.ids) && gso_ref(args[ops[t].first+4].ref,l.counts) && gso_ref(args[ops[t].first+5].ref,l.flags);
+    m:=ops[t+1];#assert m.kind==55 && m.items==25 && args[m.first].value==0 && args[m.first+1].value==786 && args[m.first+2].value==786 && args[m.first+3].value==64;
+    for j:0..<4 {#assert gso_ref(args[m.first+4+j].ref,args[ops[t].first+2+j].ref);}
+    m=ops[t+2];#assert m.kind==55 && m.items==1 && args[m.first].value==786 && args[m.first+1].value==25 && args[m.first+2].value==811;
+    for j:0..<4 {#assert gso_ref(args[m.first+4+j].ref,args[ops[t].first+2+j].ref);}
+    k:=ops[t+3];a:=k.first;#assert k.kind==56 && k.items==1 && args[a].value==811 && args[a+1].value==64;
+    for j:0..<4 {#assert gso_ref(args[a+6+j].ref,args[ops[t].first+2+j].ref);}#assert gso_ref(args[a+10].ref,l.weights) && gso_ref(args[a+11].ref,l.sorted) && gso_ref(args[a+12].ref,l.by_id);
+    #assert ops[t-1].kind==21 && ops[t-2].kind==20 && ops[t].count==6 && ops[t+1].count==8 && ops[t+2].count==8 && k.count==15;
+    // Sliding and full layers alternate, starting with a sliding one.
+    seen:=0;for i:0..<r.ops {if ops[i].kind==50 {#assert args[ops[i].first+2].value==ifx seen%2==0 then 128 else 0;#assert ops[i].items==ifx seen%2==0 then 64*128 else 64*2048;seen+=1;}}#assert seen==4;
+    // The whole program equals gd_program's outside the replaced launches.
+    gops:[352]GDOp;gargs:[8448]GDArg;g:=gd_program(o,q,params[..],200,-1,true,256,gops[..],gargs[..]);#assert g.status==GStatus.ok && g.flags==r.flags;
+    for i:0..<t {if gops[i].kind==ops[i].kind {#assert gops[i].items==ops[i].items && gso_args(gargs[gops[i].first..<gops[i].first+gops[i].count],args[ops[i].first..<ops[i].first+ops[i].count]);}}
+    // A vocabulary of 257 makes two lists and one merge.
+    v:=o;v.vocab=257;#assert gs_layout(q,257,1).lists==3;r=gs_program(v,q,params[..],NxOptions.{temperature=0},1,8,ops[..],args[..]);#assert r.status==GStatus.ok && ops[r.ops-3].items==2 && ops[r.ops-2].kind==55 && ops[r.ops-2].items==1 && args[ops[r.ops-1].first].value==2;
+    #assert gs_max(3,5)==5 && gs_max(5,3)==5;
+}

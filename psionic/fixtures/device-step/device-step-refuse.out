@@ -1,0 +1,11 @@
+temperature 1, top-k 64, top-p 0.95: ok
+temperature 1, top-k off: shape
+temperature 1, top-k 65: shape
+greedy, top-k off: ok
+a seed of 2^63: shape
+a limit of 9 in a context of 8: state
+no room for the lists in slot 40: capacity
+start words for ID 16 of 16: state
+start words at position 8 of 8: state
+a logit of 1e33: list 0 flagged 1, status 11 token 3 emitted 0
+a step after a limit stop: status 10 token 5 position 9 emitted 4

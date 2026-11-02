@@ -1,0 +1,30 @@
+// Chapter 99: options, programs and steps that are refused, each with its
+// typed reason, before a launch is recorded or a token is published.
+#import "Basic";
+#load "../lib/gptoss/device-step.coax";
+
+STATUS_NAMES :: [10]string.["ok","shape","capacity","alias","number","arithmetic","budget","token","weights","state"];
+show :: (label:string,s:GStatus) {n:=STATUS_NAMES;print("%: %\n",label,n[cast(int)s]);}
+// book:begin refuse
+main :: () {
+    v:=201088;
+    show("temperature 1, top-k 64, top-p 0.95",gs_options(NxOptions.{top_k=64,top_p=0.95},45001,v));
+    show("temperature 1, top-k off",gs_options(NxOptions.{},45001,v));
+    show("temperature 1, top-k 65",gs_options(NxOptions.{top_k=65},45001,v));
+    show("greedy, top-k off",gs_options(NxOptions.{temperature=0},45001,v));
+    show("a seed of 2^63",gs_options(NxOptions.{top_k=8},(cast(u64)1)<<63,v));
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;r:=gd_params(profile,params[..]);
+    p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);ops:[192]GDOp;args:[4608]GDArg;o:=NxOptions.{top_k=4};
+    show("a limit of 9 in a context of 8",gs_program(GT_SHAPE,p,params[..],o,1,9,ops[..],args[..]).status);
+    tight:=p;tight.counts[GS_SCRATCH]=1;show("no room for the lists in slot 40",gs_program(GT_SHAPE,tight,params[..],o,1,4,ops[..],args[..]).status);
+    words:[8]int;show("start words for ID 16 of 16",gs_control(GT_SHAPE,16,7,words[..]).status);
+    show("start words at position 8 of 8",gs_control(GT_SHAPE,3,8,words[..]).status);
+    // A logit past 10^30: the pick sets status 11 and publishes nothing.
+    x:=[4]f32.[1,2,1000000000000000000000000000000000.0,0];ids:[8]int;counts:[2]int;flags:[2]u8;w:[2]f64;so:[2]int;by:[2]f64;control:=[8]int.[0,3,9,0,0,0,0,0];emitted:[4]int;
+    from:=gs_sample_cpu(x[..],4,2,1,1,7,4,ids[..],counts[..],flags[..],w[..],so[..],by[..],control[..],emitted[..]);
+    print("a logit of 1e33: list % flagged %, status % token % emitted %\n",from,flags[from],control[0],control[1],control[3]);
+    // A step after a stop changes nothing; its status says so.
+    control=[8]int.[0,5,9,4,3,0,0,0];gs_begin(0,16,8,control[..]);
+    print("a step after a limit stop: status % token % position % emitted %\n",control[0],control[1],control[2],control[3]);
+}
+// book:end refuse

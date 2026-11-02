@@ -1,0 +1,9 @@
+draw 0 (counter 0): uniform 0.3923734995272653, token 1, final list 3 of 5: 0 2 1 3 4
+draw 1 (counter 1): uniform 0.2934748440629037, token 0, final list 3 of 5: 0 2 1 3 4
+draw 2 (counter 2): uniform 0.022896472815722047, token 0, final list 3 of 5: 0 2 1 3 4
+weights in list order: 0.39169576881208695 0.39169576881208695 0.14409682053980902 0.05301025781476656 0.019501384021250404
+control words: status 0 token 0 position 0 emitted 3 stop 3
+emitted: 1 0 0
+tiny step: 61 launches, 376 arguments; position launches of chapter 70: 0; step kernels: gs_begin=1 gs_rotate=2 gs_scores=2 gs_prepare=2 gs_divide=2 gs_context=2 gs_top_part=1 gs_top_merge=0 gs_pick=1
+20b vocabulary sampler: gs_top_partx786 gs_top_mergex25 gs_top_mergex1 gs_pickx1
+lists 812 (final 811), scratch bytes in slot 40: 424588

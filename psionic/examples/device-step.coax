@@ -1,0 +1,32 @@
+// Chapter 99: the device sampler's launches replayed on the CPU for chapter
+// 53's worked example, and the recorded decode step that Coax builds.
+#import "Basic";
+#load "../lib/gptoss/device-step.coax";
+
+// book:begin example
+main :: () {
+    // Three draws from logits 2 1 2 0 -1, temperature 1, top-k 5, top-p 1,
+    // seed 45001, limit 3. Lists of two logits, so three lists and a merge.
+    x:=[5]f32.[2,1,2,0,-1];ids:[40]int;counts:[8]int;flags:[8]u8;weights:[5]f64;sorted:[5]int;by_id:[5]f64;control:[8]int;emitted:[3]int;
+    for step:0..<3 {
+        from:=gs_sample_cpu(x[..],2,5,1,1,45001,3,ids[..],counts[..],flags[..],weights[..],sorted[..],by_id[..],control[..],emitted[..]);
+        print("draw % (counter %): uniform %, token %, final list % of %:",step,step,f64(gs_bits(45001,cast(u64)step)>>11)/9007199254740992.0,control[1],from,counts[from]);
+        for i:0..<counts[from] {print(" %",ids[from*5+i]);}print("\n");
+    }
+    print("weights in list order:");for w:weights {print(" %",w);}print("\n");
+    print("control words: status % token % position % emitted % stop %\n",control[0],control[1],control[2],control[3],control[4]);
+    print("emitted: % % %\n",emitted[0],emitted[1],emitted[2]);
+    // The recorded step for the tiny two-layer model, and the sampler tail
+    // for the 20b vocabulary (four of its layers).
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;r:=gd_params(profile,params[..]);
+    p:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);ops:[192]GDOp;args:[4608]GDArg;
+    g:=gs_program(GT_SHAPE,p,params[..],NxOptions.{temperature=0.7,top_k=8,top_p=0.9},45001,8,ops[..],args[..]);
+    seen:[57]int;for i:0..<g.ops {seen[ops[i].kind]+=1;}
+    print("tiny step: % launches, % arguments; position launches of chapter 70: %; step kernels:",g.ops,g.args,seen[0]+seen[13]+seen[14]+seen[16]+seen[43]+seen[44]);
+    for kind:48..<57 {print(" %=%",gs_kernel_name(kind),seen[kind]);}print("\n");
+    o:=g_original_shape(0,2048);o.layers=4;large:=G20_ARTIFACTS;q:=gd_plan(o,large[..],17179869184,17179869184);big:[63]GDParam;bops:[352]GDOp;bargs:[8448]GDArg;
+    b:=gs_program(o,q,big[..],NxOptions.{top_k=64,top_p=0.95},45001,256,bops[..],bargs[..]);
+    print("20b vocabulary sampler:");for i:b.ops-4..<b.ops {print(" %x%",gs_kernel_name(bops[i].kind),bops[i].items);}print("\n");
+    l:=gs_layout(q,o.vocab,64);print("lists % (final %), scratch bytes in slot 40: %\n",l.lists,l.final,l.flags.offset+l.flags.count);
+}
+// book:end example

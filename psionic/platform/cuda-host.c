@@ -275,8 +275,12 @@ PcStatus pc_event_seconds(PcEvent start, PcEvent end, double *seconds) {
     if (seconds) *seconds = ms / 1000.0;
     return s;
 }
-PcStatus pc_sync_stream(PcStream stream) { return g.ready ? check(g.cuStreamSynchronize(stream), "cuStreamSynchronize") : PC_ABSENT; }
-PcStatus pc_sync(void) { return g.ready ? check(g.cuCtxSynchronize(), "cuCtxSynchronize") : PC_ABSENT; }
+/* Chapter 99 counts every host wait on the device: these two calls are the
+   only ones in this file that block the host until device work completes. */
+static uint64_t host_waits;
+uint64_t pc_waits(void) { return host_waits; }
+PcStatus pc_sync_stream(PcStream stream) { host_waits++; return g.ready ? check(g.cuStreamSynchronize(stream), "cuStreamSynchronize") : PC_ABSENT; }
+PcStatus pc_sync(void) { host_waits++; return g.ready ? check(g.cuCtxSynchronize(), "cuCtxSynchronize") : PC_ABSENT; }
 
 static PcStatus pack(int64_t items,const PcArg *args,int count,PcSlot *slot,void **pointers){
     slot[0].i = items;

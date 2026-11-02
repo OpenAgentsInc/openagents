@@ -1,0 +1,266 @@
+// Chapter 99: the device half of a decode step with no host waits. These
+// kernels read the position and the input token from the control words that
+// the previous step left on the device, so one recorded program serves every
+// step, and they choose the next token on the device by chapter 53's rules.
+// Profile gptoss-step-cuda-v1: the step kernels call chapter 70's kernels
+// with the same arguments; the sampler keeps chapter 53's order, tie rule,
+// f64 weights and splitmix64-top53-v1 draw.
+#load "device-kernels.coax";
+#load "../../tests/device-sample-oracle.coax";  // the checks' independent sampler
+#authority;
+
+// Control words (slot 24): 0 status, 1 token, 2 position, 3 emitted, 4 stop.
+GS_STOPPED :: 10;  // status of a step that ran after a stop: it changed nothing
+GS_NUMBER :: 11;   // a logit outside ±10^30: chapter 53 refuses the distribution
+GS_LOGIT_LAST :: 0x7149f2c9;  // the largest f32 within 10^30
+GS_RETURN :: 200002;  // <|return|>, as gk_choose
+GS_CALL :: 200012;    // <|call|>, as gk_choose
+GS_FAN :: 32;         // lists one merge item reads
+
+
+// book:begin order
+// Chapter 53's order: higher logit first; equal logits go to the lower ID.
+gs_before :: (logits:[]f32,a:int,b:int)->bool {return logits[a]>logits[b] || (logits[a]==logits[b] && a<b);}
+// Insert an ID into a list kept in that order, at most list.count long.
+// Returns the new length. A full list drops its last entry when the new ID
+// goes before it.
+gs_insert :: (logits:[]f32,id:int,list:[]int,count:int)->int {
+    k:=list.count;
+    if count==k && !gs_before(logits,id,list[k-1]) {return count;}
+    at:=count;if count==k {at=k-1;}
+    start:=at;for step:0..<start {if !gs_before(logits,id,list[at-1]) {break;}list[at]=list[at-1];at-=1;}
+    list[at]=id;if count<k {return count+1;}return count;
+}
+// Lists live in one buffer: list L holds ids[L*k ..< L*k+k] and counts[L].
+// One item keeps the first k IDs of its `part` logits in order and flags a
+// logit chapter 53 would refuse.
+gs_top_part :: (item:int,part:int,k:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8) #export_c {
+    count:=0;bad:u8=0;first:=item*part;
+    for j:0..<part {i:=first+j;if i<logits.count {if (f32_bits(logits[i])&0x7fffffff)>GS_LOGIT_LAST {bad=1;}count=gs_insert(logits,i,ids[item*k..<item*k+k],count);}}
+    counts[item]=count;flags[item]=bad;
+}
+gs_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+// One item merges up to GS_FAN of the `lists` lists that start at list
+// `from` into the first k of their union, written as list `to` + item.
+gs_top_merge :: (item:int,from:int,lists:int,to:int,k:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8) #export_c {
+    heads:[GS_FAN]int;base:=from+item*GS_FAN;n:=gs_min(lists-item*GS_FAN,GS_FAN);bad:u8=0;
+    for j:0..<n {bad|=flags[base+j];}
+    count:=0;
+    for slot:0..<k {
+        best:=-1;
+        for j:0..<n {if heads[j]<counts[base+j] {if best<0 || gs_before(logits,ids[(base+j)*k+heads[j]],ids[(base+best)*k+heads[best]]) {best=j;}}}
+        if best<0 {break;}
+        ids[(to+item)*k+slot]=ids[(base+best)*k+heads[best]];heads[best]+=1;count+=1;
+    }
+    counts[to+item]=count;flags[to+item]=bad;
+}
+// book:end order
+
+// book:begin pick
+// splitmix64-top53-v1 (chapter 64), the same words as cr_bits.
+gs_bits :: (seed:u64,counter:u64)->u64 {
+    z:=add_wrap(seed,mul_wrap((cast(u64)0x9e3779b97f4a7c15),add_wrap(counter,(cast(u64)1))));
+    z=mul_wrap(z^(z>>30),(cast(u64)0xbf58476d1ce4e5b9));z=mul_wrap(z^(z>>27),(cast(u64)0x94d049bb133111eb));return z^(z>>31);
+}
+// nx_pick on the kept IDs in ascending ID order: the first whose running
+// mass exceeds the uniform, else the last with positive mass.
+gs_choose :: (uniform:f64,ids:[]int,mass:[]f64,take:int)->int {
+    running:=0.0;
+    for i:0..<take {running+=mass[i];if uniform<running {return ids[i];}}
+    for step:0..<take {i:=take-1-step;if mass[i]>0 {return ids[i];}}
+    return -1;
+}
+// One item: weights, top-p, the draw, then the control words. The final
+// list is list `from`. The draw's counter is the emitted count, control[3].
+gs_pick :: (item:int,from:int,k:int,temperature_bits:int,top_p_bits:int,seed:int,limit:int,logits:[]f32,ids:[]int,counts:[]int,flags:[]u8,weights:[]f64,sorted:[]int,by_id:[]f64,control:[]int,emitted_ids:[]int) #export_c {
+    // One item decides; any other item of the launch does nothing.
+    if item!=0 || control[0]!=0 {return;}
+    if flags[from]!=0 {control[0]=GS_NUMBER;return;}
+    temperature:=f64_from_bits(cast(u64)temperature_bits);top_p:=f64_from_bits(cast(u64)top_p_bits);
+    uniform:=f64(gs_bits(cast(u64)seed,cast(u64)control[3])>>11)/9007199254740992.0;
+    first:=from*k;token:=ids[first];
+    if temperature!=0 {
+        kept:=counts[from];top:=f64(logits[token]);total:=0.0;
+        for i:0..<kept {v:=exp((f64(logits[ids[first+i]])-top)/temperature);weights[i]=v;total+=v;}
+        mass:=0.0;take:=0;
+        for i:0..<kept {if !(mass<top_p*total) {break;}mass+=weights[i];take+=1;}
+        // Rank each kept ID among the kept IDs to walk them in ID order.
+        for i:0..<take {rank:=0;for j:0..<take {if ids[first+j]<ids[first+i] {rank+=1;}}weights[i]/=mass;sorted[rank]=ids[first+i];by_id[rank]=weights[i];}
+        token=gs_choose(uniform,sorted,by_id,take);
+    }
+    emitted:=control[3]+1;control[1]=token;control[3]=emitted;if emitted-1<emitted_ids.count {emitted_ids[emitted-1]=token;}
+    stop:=0;if token==GS_RETURN {stop=1;}else if token==GS_CALL {stop=2;}else if emitted>=limit {stop=3;}control[4]=stop;
+}
+// book:end pick
+
+// book:begin position
+// A step after a stop, or after a refused step, keeps the refusal and runs
+// nothing that reads the position.
+gs_begin :: (item:int,vocab:int,capacity:int,control:[]int) #export_c {
+    if control[0]!=0 {return;}
+    if control[4]!=0 {control[0]=GS_STOPPED;return;}
+    if control[2]<0 || control[2]>=capacity {control[0]=9;}
+    if control[1]<0 || control[1]>=vocab {control[0]=7;control[1]=0;}
+}
+// Sliding layers pass their window; full layers pass 0.
+gs_first :: (position:int,window:int)->int {if window>0 && position>=window {return position+1-window;}return 0;}
+gs_rotate :: (item:int,heads:int,kv_heads:int,qkv:[]f32,rope:[]f32,pending:[]f32,flags:[]u8,control:[]int) #export_c {
+    if control[0]!=0 {return;}gk_rotate(item,heads,kv_heads,control[2],qkv,rope,pending,flags);
+}
+// Launched over heads × the largest visible span; items past the span return.
+gs_scores :: (item:int,heads:int,kv_heads:int,window:int,capacity:int,stride:int,qkv:[]f32,cache:[]f32,pending:[]f32,scores:[]f32,control:[]int) #export_c {
+    if control[0]!=0 {return;}position:=control[2];first:=gs_first(position,window);
+    if item>=heads*(position-first+1) {return;}gk_scores(item,heads,kv_heads,position,first,capacity,stride,qkv,cache,pending,scores);
+}
+gs_prepare :: (item:int,window:int,stride:int,sinks:[]u16,scores:[]f32,denominators:[]f64,flags:[]u8,control:[]int) #export_c {
+    if control[0]!=0 {return;}position:=control[2];gk_softmax_prepare(item,position-gs_first(position,window)+1,stride,sinks,scores,denominators,flags);
+}
+gs_divide :: (item:int,heads:int,window:int,stride:int,denominators:[]f64,scores:[]f32,control:[]int) #export_c {
+    if control[0]!=0 {return;}position:=control[2];visible:=position-gs_first(position,window)+1;
+    if item>=heads*visible {return;}gk_softmax_divide(item,visible,stride,denominators,scores);
+}
+gs_context :: (item:int,heads:int,kv_heads:int,window:int,capacity:int,stride:int,lanes:int,scores:[]f32,cache:[]f32,pending:[]f32,partial:[]f32,control:[]int) #export_c {
+    if control[0]!=0 {return;}position:=control[2];
+    gk_context_part(item,heads,kv_heads,position,gs_first(position,window),capacity,stride,lanes,scores,cache,pending,partial);
+}
+// book:end position
+
+// book:begin replay
+gs_lists :: (n:int,part:int)->int {return (n+part-1)/part;}
+gs_up :: (lists:int)->int {return (lists+GS_FAN-1)/GS_FAN;}
+// The sampler's launches replayed on the CPU, item by item: one list per
+// `part` logits, merges of GS_FAN lists until one remains, then the pick.
+// Returns the final list.
+gs_sample_cpu :: (logits:[]f32,part:int,k:int,temperature:f64,top_p:f64,seed:int,limit:int,ids:[]int,counts:[]int,flags:[]u8,weights:[]f64,sorted:[]int,by_id:[]f64,control:[]int,emitted:[]int)->int {
+    n:=gs_lists(logits.count,part);from:=0;
+    for i:0..<n {gs_top_part(i,part,k,logits,ids,counts,flags);}
+    while n>1 {m:=gs_up(n);for i:0..<m {gs_top_merge(i,from,n,from+n,k,logits,ids,counts,flags);}from+=n;n=m;}
+    gs_pick(0,from,k,cast(int)f64_bits(temperature),cast(int)f64_bits(top_p),seed,limit,logits,ids,counts,flags,weights,sorted,by_id,control,emitted);
+    return from;
+}
+// book:end replay
+
+GsScratch :: struct {ids:[]int;counts:[]int;flags:[]u8;weights:[]f64;sorted:[]int;by_id:[]f64;}
+gs_run :: (x:[]f32,part:int,k:int,temperature:f64,top_p:f64,seed:int,limit:int,s:GsScratch,control:[]int,emitted:[]int)->int {
+    return gs_sample_cpu(x,part,k,temperature,top_p,seed,limit,s.ids,s.counts,s.flags,s.weights,s.sorted,s.by_id,control,emitted);
+}
+
+#test "chapter 53's worked example: three draws from seed 45001" {
+    x:=[5]f32.[2,1,2,0,-1];sa_:[13000]int;sb_:[300]int;sf_:[300]u8;sw_:[64]f64;so_:[64]int;sy_:[64]f64;s:=GsScratch.{ids=sa_[..],counts=sb_[..],flags=sf_[..],weights=sw_[..],sorted=so_[..],by_id=sy_[..]};control:[8]int;emitted:[4]int;tokens:=[3]int.[1,0,0];
+    for step:0..<3 {#assert gs_run(x[..],5,5,1,1,45001,3,s,control[..],emitted[..])==0 && control[1]==tokens[step] && emitted[step]==tokens[step];}
+    #assert control[0]==0 && control[3]==3 && control[4]==3 && emitted[3]==0;
+    #assert s.ids[0]==0 && s.ids[1]==2 && s.ids[2]==1 && s.ids[3]==3 && s.ids[4]==4;
+    // The weights of the last draw are 1, 1, e^-1, e^-2 and e^-3 over 2.55301.
+    #assert s.weights[0]==s.weights[1] && abs(s.weights[0]-0.39169)<0.00001 && abs(s.weights[2]-0.14410)<0.00001 && abs(s.weights[3]-0.05301)<0.00001 && abs(s.weights[4]-0.01950)<0.00001;
+    // A fourth step on a stopped run is refused by gs_begin, not by the pick.
+    gs_begin(0,5,8,control[..]);#assert control[0]==GS_STOPPED && control[3]==3;
+}
+#forall "the device sampler equals the selection-sort oracle: order, token, counter and weight bits" seed:0..<48 #steps 400000000 {
+    n:=20+seed*3;x:[200]f32;
+    for i:0..<n {x[i]=f32(cast(int)(gs_bits(cast(u64)seed,cast(u64)i)%cast(u64)9))*0.75f32-3;}
+    temperatures:=[4]f64.[0,0.5,1,1.7];tops:=[4]f64.[1,0.9,0.5,0.3];parts:=[4]int.[1,3,7,256];
+    k:=1+seed*5%gs_min(n,64);t:=temperatures[seed%4];top_p:=tops[seed/4%4];part:=parts[seed/16%4];
+    sa_:[13000]int;sb_:[300]int;sf_:[300]u8;sw_:[64]f64;so_:[64]int;sy_:[64]f64;s:=GsScratch.{ids=sa_[..],counts=sb_[..],flags=sf_[..],weights=sw_[..],sorted=so_[..],by_id=sy_[..]};control:[8]int;emitted:[4]int;order:[200]int;p:[200]f64;
+    for step:0..<3 {
+        token:=gso_sample(x[0..<n],k,t,top_p,gso_uniform(cast(u64)seed,cast(u64)step),order[..],p[..]);
+        from:=gs_run(x[0..<n],part,k,t,top_p,seed,3,s,control[..],emitted[..]);
+        #assert control[0]==0 && control[1]==token && control[3]==step+1 && emitted[step]==token && (control[4]==3)==(step==2) && s.counts[from]==k;
+        for i:0..<k {#assert s.ids[from*k+i]==order[i];}
+        if t!=0 {for i:0..<k {if p[order[i]]!=0 {#assert f64_bits(s.weights[i])==f64_bits(p[order[i]]);}}}
+    }
+}
+#test "refusals: a logit past 10^30, a refused or stopped step, stop tokens" {
+    x:=[4]f32.[1,2,1000000000000000000000000000000000.0,0];sa_:[13000]int;sb_:[300]int;sf_:[300]u8;sw_:[64]f64;so_:[64]int;sy_:[64]f64;s:=GsScratch.{ids=sa_[..],counts=sb_[..],flags=sf_[..],weights=sw_[..],sorted=so_[..],by_id=sy_[..]};control:=[8]int.[0,3,9,0,0,0,0,0];emitted:[4]int;
+    #assert gs_run(x[..],4,2,1,1,7,4,s,control[..],emitted[..])==0 && control[0]==GS_NUMBER && control[1]==3 && control[3]==0 && s.flags[0]==1;
+    x[2]=f32_from_bits(GS_LOGIT_LAST+1);control[0]=0;#assert gs_run(x[..],4,2,1,1,7,4,s,control[..],emitted[..])==0 && control[0]==GS_NUMBER;
+    x[2]= -f32_from_bits(GS_LOGIT_LAST+1);control[0]=0;#assert gs_run(x[..],4,2,1,1,7,4,s,control[..],emitted[..])==0 && control[0]==GS_NUMBER;
+    x[2]=f32_from_bits(GS_LOGIT_LAST);control[0]=0;#assert gs_run(x[..],4,2,0,1,7,4,s,control[..],emitted[..])==0 && control[0]==0 && control[1]==2 && s.flags[0]==0;
+    x[2]= -f32_from_bits(GS_LOGIT_LAST);control[3]=0;#assert gs_run(x[..],4,2,0,1,7,4,s,control[..],emitted[..])==0 && control[0]==0 && control[1]==1;
+    control[0]=5;control[1]=3;#assert gs_run(x[..],4,2,0,1,7,4,s,control[..],emitted[..])==0 && control[0]==5 && control[1]==3 && control[3]==1;
+    // A refusal in a merged list reaches the pick.
+    y:=[5]f32.[1,2,3,1000000000000000000000000000000000.0,0];control[0]=0;#assert gs_run(y[..],2,1,1,1,7,4,s,control[..],emitted[..])==3 && control[0]==GS_NUMBER;
+    // Stop tokens win over the limit, as in nx_step; the limit stops at emitted == limit.
+    big:=[1]int.[GS_RETURN];one:=[1]int.[1];ok:=[1]u8.[0];c:=[8]int.[0,0,0,1,0,0,0,0];ids:[2]int;
+    gs_pick(0,0,1,0,cast(int)f64_bits(1),0,2,x[..],big[..],one[..],ok[..],s.weights,s.sorted,s.by_id,c[..],ids[..]);#assert c[1]==GS_RETURN && c[4]==1 && c[3]==2 && ids[1]==GS_RETURN;
+    big[0]=GS_CALL;c[3]=0;gs_pick(0,0,1,0,cast(int)f64_bits(1),0,2,x[..],big[..],one[..],ok[..],s.weights,s.sorted,s.by_id,c[..],ids[..]);#assert c[4]==2 && ids[0]==GS_CALL;
+    big[0]=GS_CALL+1;c[3]=0;gs_pick(0,0,1,0,cast(int)f64_bits(1),0,2,x[..],big[..],one[..],ok[..],s.weights,s.sorted,s.by_id,c[..],ids[..]);#assert c[4]==0;
+    c[3]=1;gs_pick(0,0,1,0,cast(int)f64_bits(1),0,2,x[..],big[..],one[..],ok[..],s.weights,s.sorted,s.by_id,c[..],ids[..]);#assert c[4]==3 && c[3]==2;
+    // An emission past the output list is kept in the control words only.
+    c[3]=1;c[4]=0;gs_pick(1,0,1,0,cast(int)f64_bits(1),0,9,x[..],big[..],one[..],ok[..],s.weights,s.sorted,s.by_id,c[..],ids[..]);#assert c[3]==1 && c[4]==0;
+    c[3]=2;c[4]=0;gs_pick(0,0,1,0,cast(int)f64_bits(1),0,9,x[..],big[..],one[..],ok[..],s.weights,s.sorted,s.by_id,c[..],ids[..]);#assert c[3]==3 && c[1]==GS_CALL+1;
+}
+#test "top-p stops as soon as the kept mass reaches its share" {
+    // Two equal weights, top-p 0.5: the first alone reaches half of 2, so the
+    // second is never drawn, even by a uniform of 0.88.
+    x:=[2]f32.[0,0];sa_:[13000]int;sb_:[300]int;sf_:[300]u8;sw_:[64]f64;so_:[64]int;sy_:[64]f64;s:=GsScratch.{ids=sa_[..],counts=sb_[..],flags=sf_[..],weights=sw_[..],sorted=so_[..],by_id=sy_[..]};control:[8]int;emitted:[1]int;
+    #assert gso_uniform(0,0)>0.5 && gs_run(x[..],2,2,1,0.5,0,4,s,control[..],emitted[..])==0 && control[1]==0 && s.weights[0]==1;
+    control[3]=0;#assert gs_run(x[..],2,2,1,1,0,4,s,control[..],emitted[..])==0 && control[1]==1 && s.weights[1]==0.5;
+}
+#test "the choice walks IDs in order, with the rounding fallback" {
+    ids:=[3]int.[4,7,9];mass:=[3]f64.[0.25,0.5,0.25];
+    #assert gs_choose(0,ids[..],mass[..],3)==4 && gs_choose(0.25,ids[..],mass[..],3)==7 && gs_choose(0.75,ids[..],mass[..],3)==9 && gs_choose(0.75,ids[..],mass[..],2)==7;
+    low:=[3]f64.[0.25,0.5,0.2];#assert gs_choose(0.99,ids[..],low[..],3)==9;
+    tail:=[3]f64.[0.25,0.5,0];#assert gs_choose(0.99,ids[..],tail[..],3)==7;
+    first:=[3]f64.[0.5,0,0];#assert gs_choose(0.99,ids[..],first[..],3)==4;
+    none:=[3]f64.[0,0,0];#assert gs_choose(0.5,ids[..],none[..],3)== -1;
+    // splitmix64's published words, as chapter 64 lists them.
+    #assert gs_bits(0,0)==(cast(u64)0xe220a8397b1dcdaf) && gs_bits(0,1)==(cast(u64)0x6e789e6aa1b965f4) && gs_bits(1,0)==(cast(u64)0x910a2dec89025cc1);
+}
+#test "insertion keeps the first k in order and drops the last of a full list" {
+    x:=[5]f32.[1,3,2,3,0];list:=[3]int.[-1,-1,-1];n:=0;
+    for i:0..<5 {n=gs_insert(x[..],i,list[..],n);}#assert n==3 && list[0]==1 && list[1]==3 && list[2]==2;
+    #assert gs_before(x[..],1,3) && !gs_before(x[..],3,1) && gs_before(x[..],3,2) && !gs_before(x[..],2,2);
+    one:=[1]int.[4];#assert gs_insert(x[..],0,one[..],1)==1 && one[0]==0;#assert gs_insert(x[..],4,one[..],1)==1 && one[0]==0;
+    two:=[2]int.[0,0];#assert gs_insert(x[..],4,two[..],0)==1 && gs_insert(x[..],1,two[..],1)==2 && two[0]==1 && two[1]==4;
+}
+#test "a merge reads at most GS_FAN lists and stops at k or when they run out" {
+    // 40 lists of capacity 2 from list 1 on: list 1+i holds i (and i+40 when
+    // i < 4); list 34 is empty. Logits are i % 5, so ties go to lower IDs.
+    x:[44]f32;for i:0..<44 {x[i]=f32(i%5);}
+    ids:[100]int;counts:[50]int;flags:[50]u8;
+    for i:0..<40 {ids[(1+i)*2]=i;counts[1+i]=1;}for i:0..<4 {ids[(1+i)*2+1]=40+i;counts[1+i]=2;}
+    x[0]=9;flags[33]=1;counts[34]=0;
+    gs_top_merge(0,1,40,45,2,x[..],ids[..],counts[..],flags[..]);#assert counts[45]==2 && ids[90]==0 && ids[91]==4 && flags[45]==0;
+    gs_top_merge(1,1,40,45,2,x[..],ids[..],counts[..],flags[..]);#assert counts[46]==2 && ids[92]==34 && ids[93]==39 && flags[46]==1;
+    // The second entry of list 1 comes next once x[40] is 8.
+    x[40]=8;gs_top_merge(0,1,40,45,2,x[..],ids[..],counts[..],flags[..]);#assert ids[90]==0 && ids[91]==40;
+    flags[33]=0;flags[1]=1;gs_top_merge(0,1,40,45,2,x[..],ids[..],counts[..],flags[..]);#assert flags[45]==1;
+    gs_top_merge(1,1,40,45,2,x[..],ids[..],counts[..],flags[..]);#assert flags[46]==0;
+    for i:32..<40 {counts[1+i]=0;}gs_top_merge(1,1,40,45,2,x[..],ids[..],counts[..],flags[..]);#assert counts[46]==0;
+    #assert gs_lists(9,4)==3 && gs_lists(8,4)==2 && gs_up(32)==1 && gs_up(33)==2 && gs_min(3,5)==3 && gs_min(5,3)==3;
+}
+#test "step kernels read the position from the control words" {
+    control:=[8]int.[0,3,2,0,0,0,0,0];
+    gs_begin(0,4,8,control[..]);#assert control[0]==0 && control[1]==3;
+    control[1]=4;gs_begin(0,4,8,control[..]);#assert control[0]==7 && control[1]==0;
+    control[0]=0;control[1]= -1;gs_begin(0,4,8,control[..]);#assert control[0]==7;
+    control[0]=0;control[1]=3;control[2]=8;gs_begin(0,4,8,control[..]);#assert control[0]==9;
+    control[0]=0;control[2]= -1;gs_begin(0,4,8,control[..]);#assert control[0]==9;
+    control[0]=0;control[2]=7;gs_begin(0,4,8,control[..]);#assert control[0]==0;
+    control[0]=6;control[4]=1;gs_begin(0,4,8,control[..]);#assert control[0]==6;
+    control[0]=0;control[1]=0;control[2]=0;control[4]=0;gs_begin(0,4,8,control[..]);#assert control[0]==0;
+    #assert gs_first(3,1)==3 && gs_first(5,0)==0 && gs_first(5,2)==4 && gs_first(2,2)==1 && gs_first(1,2)==0;
+    // One head of 64 lanes, three positions cached: the wrappers equal
+    // chapter 70's kernels called with the position.
+    qkv:[192]f32;rope:[512]f32;cache:[2048]f32;for i:0..<192 {qkv[i]=f32(i%7)-3;}for i:0..<512 {rope[i]=f32(i%5)*0.25f32;}for i:0..<2048 {cache[i]=f32(i%11)-5;}
+    a:=qkv;b:=qkv;pa:[128]f32;pb:[128]f32;fa:[64]u8;fb:[64]u8;c:=[8]int.[0,1,3,0,0,0,0,0];
+    for i:0..<64 {gs_rotate(i,1,1,a[..],rope[..],pa[..],fa[..],c[..]);gk_rotate(i,1,1,3,b[..],rope[..],pb[..],fb[..]);}
+    for i:0..<192 {#assert a[i]==b[i];}for i:0..<128 {#assert pa[i]==pb[i];}
+    for window:0..<4 {
+        first:=gs_first(3,window);visible:=4-first;sa:[8]f32;sb:[8]f32;for i:0..<8 {sa[i]=7;sb[i]=7;}
+        for i:0..<8 {gs_scores(i,1,1,window,8,8,a[..],cache[..],pa[..],sa[..],c[..]);}for i:0..<visible {gk_scores(i,1,1,3,first,8,8,b[..],cache[..],pb[..],sb[..]);}
+        for i:0..<8 {#assert sa[i]==sb[i];}
+        sinks:=[1]u16.[0x3f80];da:[1]f64;db:[1]f64;
+        gs_prepare(0,window,8,sinks[..],sa[..],da[..],fa[..],c[..]);gk_softmax_prepare(0,visible,8,sinks[..],sb[..],db[..],fb[..]);#assert da[0]==db[0];
+        for i:0..<8 {gs_divide(i,1,window,8,da[..],sa[..],c[..]);}for i:0..<visible {gk_softmax_divide(i,visible,8,db[..],sb[..]);}
+        for i:0..<8 {#assert sa[i]==sb[i];}
+        xa:[512]f32;xb:[512]f32;
+        for i:0..<512 {gs_context(i,1,1,window,8,8,8,sa[..],cache[..],pa[..],xa[..],c[..]);gk_context_part(i,1,1,3,first,8,8,8,sb[..],cache[..],pb[..],xb[..]);}
+        for i:0..<512 {#assert xa[i]==xb[i];}
+    }
+    // A refused step runs none of them.
+    c[0]=10;z:[8]f32;zz:[512]f32;d:=[1]f64.[2];none:[1]u16;
+    for i:0..<8 {gs_scores(i,1,1,0,8,8,a[..],cache[..],pa[..],z[..],c[..]);gs_divide(i,1,0,8,d[..],z[..],c[..]);}gs_prepare(0,0,8,none[..],z[..],d[..],fa[..],c[..]);
+    for i:0..<64 {gs_rotate(i,1,1,z[0..<0],rope[..],z[0..<0],fa[..],c[..]);}for i:0..<512 {gs_context(i,1,1,0,8,8,8,z[..],cache[..],pa[..],zz[..],c[..]);}
+    for v:z {#assert v==0;}for v:zz {#assert v==0;}#assert d[0]==2;
+}

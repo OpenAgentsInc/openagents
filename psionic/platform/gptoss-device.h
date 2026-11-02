@@ -30,6 +30,11 @@ PcStatus pg_run(PgSession *session,const coax_t_GDOp *ops,const coax_t_GDArg *ar
 PcStatus pg_adopt(PgSession *session,coax_t_GDPlan plan);
 PcStatus pg_write(PgSession *session,int slot,const void *data,size_t bytes);
 PcStatus pg_wait(PgSession *session);
+/* Chapter 99 (CUDA engine only): record a program Coax built for this
+   session's plan as one device graph; kinds first..first+count-1 are the
+   named kernels of the session's module. Then launch it, without a wait. */
+PcStatus pg_record(PgSession *session,const coax_t_GDOp *ops,const coax_t_GDArg *args,coax_t_GDProgram program,const coax_string *names,int64_t first,int64_t count,PcProgram *out);
+PcStatus pg_launch(PgSession *session,PcProgram program);
 void pg_close(PgSession *session);
 coax_t_GDPlan pg_plan(const PgSession *session);
 coax_t_GShape pg_shape(const PgSession *session);

@@ -1,0 +1,7 @@
+// Chapter 99's program checks (gptoss/device-step.coax) compare launches field by field.
+gso_ref :: (a:GDRef,b:GDRef)->bool {return a.buffer==b.buffer && a.offset==b.offset && a.count==b.count && a.elem==b.elem;}
+gso_args :: (x:[]GDArg,y:[]GDArg)->bool {
+    if x.count!=y.count {return false;}
+    for i:0..<x.count {if x[i].view!=y[i].view || x[i].value!=y[i].value || (x[i].view && !gso_ref(x[i].ref,y[i].ref)) {return false;}}
+    return true;
+}
