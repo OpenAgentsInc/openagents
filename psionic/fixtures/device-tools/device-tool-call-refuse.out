@@ -1,0 +1,12 @@
+no CUDA device: device: no CUDA device; no CPU fallback
+weights not resident: resident: the weights are not resident on the device
+a vocabulary of 201,089: shape: a count or size outside its bounds
+a 804,351-byte transfer limit: transfer: logits bytes over the limit, or not one download per masked choice
+functions.add not granted: ungranted: the host did not grant this tool
+only functions.mul declared: unknown: the recipient is not a declared tool
+the call on the analysis channel: call: the handoff is not a well-formed call
+run before the grant: state: out of order for this phase or these device steps
+a new request before release: state: out of order for this phase or these device steps
+cancel with nothing running: state: out of order for this phase or these device steps
+one extra transferred byte: transfer: logits bytes over the limit, or not one download per masked choice
+more masked choices than device logits: state: out of order for this phase or these device steps

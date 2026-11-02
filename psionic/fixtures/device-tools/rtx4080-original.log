@@ -1,0 +1,26 @@
+load average before: 22.50 27.04 27.75
+device: NVIDIA GeForce RTX 4080 sm_89 16711352320 bytes
+original 20b authenticated and resident in 41.762 s
+route: device; logits transfer 804352 bytes per masked choice; no CPU route exists
+call: functions.add arguments={"a":2,"b":2} granted=yes result=4 effects=1
+call: 54 prompt + 10 generated IDs equal the CPU reference
+answer: 72 prompt + 5 generated IDs equal the CPU reference
+final: 4
+receipt: prefills=2 device_steps=13 masked=10 transferred=8043520 bytes transfer_ns=930054 round_trip_ns=636350980 audit=pass
+ungranted: refused (ungranted: the host did not grant this tool); effects=1
+undeclared: refused (unknown: the recipient is not a declared tool); effects=1
+seed=1 temperature=1 argument_ids=10 arguments={"a":2,"b":2} granted=yes final=4
+seed=2 temperature=1 argument_ids=10 arguments={"a":2,"b":2} granted=yes final=4
+seed=3 temperature=1 argument_ids=10 arguments={"a":2,"b":2} granted=yes final=4
+seed=4 temperature=1 argument_ids=10 arguments={"a":2,"b":2} granted=yes final=4
+seed=5 temperature=1 argument_ids=10 arguments={"a":2,"b":2} granted=yes final=4
+seed=6 temperature=1 argument_ids=10 arguments={"a":2,"b":2} granted=yes final=4
+seed=7 temperature=1 argument_ids=10 arguments={"a":2,"b":2} granted=yes final=4
+seed=8 temperature=1 argument_ids=10 arguments={"a":2,"b":2} granted=yes final=4
+cancel at prefill: cancelled in phase argument, tool effects 0; device state released; next request identical
+cancel at argument token 3: cancelled in phase argument, tool effects 0; device state released; next request identical
+cancel at call parsed, before the grant: cancelled in phase called, tool effects 0; device state released; next request identical
+cancel at answer token 2: cancelled in phase answer, tool effects 1; device state released; next request identical
+device bytes in use=14783086592 of 16711352320
+device tool round trips pass
+load average after: 13.61 23.96 26.66

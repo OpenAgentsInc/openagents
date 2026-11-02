@@ -1,0 +1,20 @@
+route: device, 804352 logits bytes per masked choice; no CPU route
+choice 1: 1 allowed of 8, chose {" (evil: mass 0.0)
+choice 2: 1 allowed of 8, chose a (evil: mass 0.0)
+choice 3: 1 allowed of 8, chose ": (evil: mass 0.0)
+choice 4: 1 allowed of 8, chose 2 (evil: mass 0.0)
+choice 5: 1 allowed of 8, chose ," (evil: mass 0.0)
+choice 6: 1 allowed of 8, chose b (evil: mass 0.0)
+choice 7: 1 allowed of 8, chose ": (evil: mass 0.0)
+choice 8: 1 allowed of 8, chose 2 (evil: mass 0.0)
+choice 9: 1 allowed of 8, chose } (evil: mass 0.0)
+argument body: {"a":2,"b":2}
+grant: none (tool 0, choice 0)
+done -> release device state
+round trip: tool effects 1, back to idle
+cancel in argument: tool effects 0, release true
+cancel in called: tool effects 0, release true
+cancel in granted: tool effects 0, release true
+cancel in ran: tool effects 1, release true
+cancel in answer: tool effects 1, release true
+receipt: 8043520 bytes transferred, audit none

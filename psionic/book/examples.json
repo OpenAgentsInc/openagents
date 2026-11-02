@@ -332,6 +332,26 @@
       ]
     },
     {
+      "source": "psionic/examples/device-tool-call.coax",
+      "chapter": "psionic/book/ch078-device-generation-calls-a-tool.md",
+      "stdout": "psionic/fixtures/device-tools/device-tool-call.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/device-tool-call-refuse.coax",
+      "chapter": "psionic/book/ch078-device-generation-calls-a-tool.md",
+      "stdout": "psionic/fixtures/device-tools/device-tool-call-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/device-matvec.coax",
       "chapter": "psionic/book/ch037-a-coax-compute-subset.md",
       "stdout": "psionic/fixtures/device-matvec.out",

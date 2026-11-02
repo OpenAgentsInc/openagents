@@ -1,0 +1,185 @@
+// Chapter 78: device generation calls a tool. Profile
+// gpt-oss-cuda-tools-v1: the resident CUDA engine (chapters 65-71) runs every
+// model layer; after each device step the host downloads the f32 logits in
+// one explicit, counted transfer, and Coax masks them with chapter 77's
+// finite enum grammar before it samples. Coax decides the route (device or a
+// typed refusal; there is no CPU route), the grant, the request phases
+// (cancellation, the one tool effect, when device state must be released)
+// and the receipt audit. C only moves bytes and launches the device program.
+#load "gptoss/tools.coax";
+#load "gptoss/generation.coax";
+#authority;
+DX_VOCAB :: 201088;
+DX_TRANSFER_LIMIT :: 1048576;
+DX_TOOLS_MAX :: 8;
+DxWhy :: enum u8 {none;device;resident;shape;transfer;unknown;ungranted;call;state;}
+DxDevice :: struct {present:bool;resident:bool;vocab:int;limit:int;}
+DxRoute :: struct {why:DxWhy;transfer:int;}
+DxGrant :: struct {why:DxWhy;status:GStatus;tool:int=-1;choice:int=-1;}
+DxPhase :: enum u8 {idle;argument;called;granted;ran;answer;done;cancelled;refused;}
+DxEvent :: enum u8 {begin;token;call;grant;refuse;run;resume;turn;cancel;release;}
+DxStep :: struct {why:DxWhy;phase:DxPhase;effect:bool;release:bool;}
+DxReceipt :: struct {prefills:int;steps:int;masked:int;transferred:int;}
+
+// book:begin route
+dx_route :: (d:DxDevice)->DxRoute #export_c {
+    if !d.present {return DxRoute.{why=DxWhy.device};}
+    if !d.resident {return DxRoute.{why=DxWhy.resident};}
+    if d.vocab<1 || d.vocab>DX_VOCAB || d.limit<0 {return DxRoute.{why=DxWhy.shape};}
+    bytes:=d.vocab*4;if bytes>d.limit {return DxRoute.{why=DxWhy.transfer};}
+    return DxRoute.{transfer=bytes};
+}
+// book:end route
+dx_limit :: ()->int #export_c {return DX_TRANSFER_LIMIT;}
+#test "the route is the device or a typed refusal, never a CPU path" {
+    d:=DxDevice.{present=true,resident=true,vocab=DX_VOCAB,limit=DX_TRANSFER_LIMIT};
+    r:=dx_route(d);#assert r.why==DxWhy.none && r.transfer==804352;
+    x:=d;x.present=false;#assert dx_route(x).why==DxWhy.device && dx_route(x).transfer==0;
+    x=d;x.resident=false;#assert dx_route(x).why==DxWhy.resident;
+    x=d;x.vocab=0;#assert dx_route(x).why==DxWhy.shape;x.vocab=1;#assert dx_route(x).transfer==4;
+    x.vocab=DX_VOCAB+1;#assert dx_route(x).why==DxWhy.shape;
+    x=d;x.limit=-1;#assert dx_route(x).why==DxWhy.shape;x.limit=0;#assert dx_route(x).why==DxWhy.transfer;
+    #assert dx_limit()==1048576;x.limit=804351;#assert dx_route(x).why==DxWhy.transfer;x.limit=804352;#assert dx_route(x).why==DxWhy.none;
+}
+
+// book:begin choose
+dx_choose :: (alternatives:[]string,prefix:string,pieces:[]string,logits:[]f32,mask:[]u8,stage:[]u8,options:GSampling,state:GGeneration,cancel:bool,probabilities:[]f64,work:GSampleWork)->GEmission #export_c {
+    if logits.count!=pieces.count {return GEmission.{status=GStatus.capacity};}
+    masked:=gt_mask(alternatives,prefix,pieces,mask,stage,false);if masked.status!=GStatus.ok {return GEmission.{status=masked.status};}
+    return gg_emit(logits,mask[0..<logits.count],options,state,cancel,probabilities,work,false);
+}
+// book:end choose
+#test "the grammar mask is applied before the choice, greedy or sampled" {
+    a:=[1]string.["{\"a\":2}"];pieces:=[5]string.["{\"a\":","2","}","evil","{"];logits:=[5]f32.[1,3,2,50,4];
+    mask:[5]u8;stage:[5]u8;p:[5]f64;s:[5]f64;o:[5]int;t:[5]int;w:=GSampleWork.{stage=s[..],order=o[..],temporary=t[..]};
+    g:=GGeneration.{remaining=8};
+    r:=dx_choose(a[..],"",pieces[..],logits[..],mask[..],stage[..],GSampling.{temperature=0},g,false,p[..],w);
+    #assert r.status==GStatus.ok && r.token==4 && p[3]==0 && r.state.remaining==7;
+    // After "{" only "\"a\":2}" can follow, and no piece spells it: refused, not widened.
+    #assert dx_choose(a[..],"{",pieces[..],logits[..],mask[..],stage[..],GSampling.{temperature=0},g,false,p[..],w).status==GStatus.token;
+    r=dx_choose(a[..],"{\"a\":",pieces[..],logits[..],mask[..],stage[..],GSampling.{temperature=0},g,false,p[..],w);#assert r.token==1;
+    for seed:0..<16 {x:=GGeneration.{remaining=8,random=GSeed.{seed=cast(u64)seed}};
+        y:=dx_choose(a[..],"{\"a\":2",pieces[..],logits[..],mask[..],stage[..],GSampling.{},x,false,p[..],w);#assert y.status==GStatus.ok && y.token==2 && p[3]==0;}
+    c:=dx_choose(a[..],"",pieces[..],logits[..],mask[..],stage[..],GSampling.{},g,true,p[..],w);#assert c.status==GStatus.ok && c.state.stop==GStop.cancelled && c.state.random.counter==0;
+    #assert dx_choose(a[..],"",pieces[..],logits[0..<4],mask[..],stage[..],GSampling.{},g,false,p[..],w).status==GStatus.capacity;
+    #assert dx_choose(a[..],"",pieces[..],logits[..],mask[0..<4],stage[..],GSampling.{},g,false,p[..],w).status==GStatus.capacity;
+    bad:=[1]string.["[]"];#assert dx_choose(bad[..],"",pieces[..],logits[..],mask[..],stage[..],GSampling.{},g,false,p[..],w).status==GStatus.weights;
+    // No piece continues "{\"a\":2}x": the masked distribution is empty, so the choice refuses.
+    #assert dx_choose(a[..],"{\"a\":2}",pieces[..],logits[..],mask[..],stage[..],GSampling.{},g,false,p[..],w).status==GStatus.token;
+}
+
+// book:begin grant
+dx_grant :: (tools:[]GTool,granted:[]bool,record:HmRecord,bytes:string)->DxGrant #export_c {
+    if tools.count<1 || tools.count>DX_TOOLS_MAX || granted.count!=tools.count {return DxGrant.{why=DxWhy.shape};}
+    if !gt_interval(record.recipient_begin,record.recipient_end,bytes.count) {return DxGrant.{why=DxWhy.call,status=GStatus.capacity};}
+    name:=bytes[record.recipient_begin..<record.recipient_end];
+    for i:0..<tools.count {if tools[i].name==name {
+        if !granted[i] {return DxGrant.{why=DxWhy.ungranted,tool=i};}
+        c:=gt_authorize(tools[i],record,bytes,true);if c.status!=GStatus.ok {return DxGrant.{why=DxWhy.call,status=c.status,tool=i};}
+        return DxGrant.{tool=i,choice=c.choice};
+    }}
+    return DxGrant.{why=DxWhy.unknown};
+}
+// book:end grant
+#test "a call runs only when its recipient is declared, granted and well formed" {
+    a:=[1]string.["{\"a\":2,\"b\":2}"];m:=[1]string.["{\"a\":3}"];
+    tools:=[2]GTool.[GTool.{name="functions.mul",arguments=m[..]},GTool.{name="functions.add",arguments=a[..]}];granted:=[2]bool.[true,true];
+    text:="functions.add{\"a\":2,\"b\":2}";
+    r:=HmRecord.{role=HmRole.assistant,channel=HmChannel.commentary,ending=HmEnd.call,recipient_begin=0,recipient_end=13,body_begin=13,body_end=text.count};
+    g:=dx_grant(tools[..],granted[..],r,text);#assert g.why==DxWhy.none && g.tool==1 && g.choice==0 && g.status==GStatus.ok;
+    granted[1]=false;g=dx_grant(tools[..],granted[..],r,text);#assert g.why==DxWhy.ungranted && g.tool==1 && g.choice==-1;granted[1]=true;
+    first:=dx_grant(tools[1..<2],granted[1..<2],r,text);#assert first.why==DxWhy.none && first.tool==0;
+    #assert dx_grant(tools[0..<1],granted[0..<1],r,text).why==DxWhy.unknown && dx_grant(tools[0..<1],granted[0..<1],r,text).tool==-1;
+    r.channel=HmChannel.analysis;g=dx_grant(tools[..],granted[..],r,text);#assert g.why==DxWhy.call && g.status==GStatus.state && g.tool==1;r.channel=HmChannel.commentary;
+    r.body_end-=1;#assert dx_grant(tools[..],granted[..],r,text).status==GStatus.token;r.body_end=text.count;
+    r.recipient_end=text.count+1;g=dx_grant(tools[..],granted[..],r,text);#assert g.why==DxWhy.call && g.status==GStatus.capacity;r.recipient_end=13;
+    #assert dx_grant(tools[0..<0],granted[0..<0],r,text).why==DxWhy.shape && dx_grant(tools[..],granted[0..<1],r,text).why==DxWhy.shape;
+    many:[9]GTool;yes:[9]bool;for i:0..<9 {many[i]=tools[1];yes[i]=true;}
+    #assert dx_grant(many[0..<8],yes[0..<8],r,text).why==DxWhy.none && dx_grant(many[..],yes[..],r,text).why==DxWhy.shape;
+}
+
+// book:begin next
+dx_next :: (phase:DxPhase,event:DxEvent)->DxStep #export_c {
+    live:=phase!=DxPhase.idle && phase!=DxPhase.done && phase!=DxPhase.cancelled && phase!=DxPhase.refused;
+    if event==DxEvent.cancel && live {return DxStep.{phase=DxPhase.cancelled,release=true};}
+    if event==DxEvent.release && phase!=DxPhase.idle && !live {return DxStep.{phase=DxPhase.idle};}
+    if phase==DxPhase.idle && event==DxEvent.begin {return DxStep.{phase=DxPhase.argument};}
+    if (phase==DxPhase.argument || phase==DxPhase.answer) && event==DxEvent.token {return DxStep.{phase=phase};}
+    if phase==DxPhase.argument && event==DxEvent.call {return DxStep.{phase=DxPhase.called};}
+    if phase==DxPhase.called && event==DxEvent.grant {return DxStep.{phase=DxPhase.granted};}
+    if phase==DxPhase.called && event==DxEvent.refuse {return DxStep.{phase=DxPhase.refused,release=true};}
+    if phase==DxPhase.granted && event==DxEvent.run {return DxStep.{phase=DxPhase.ran,effect=true};}
+    if phase==DxPhase.ran && event==DxEvent.resume {return DxStep.{phase=DxPhase.answer};}
+    if phase==DxPhase.answer && event==DxEvent.turn {return DxStep.{phase=DxPhase.done,release=true};}
+    return DxStep.{why=DxWhy.state,phase=phase};
+}
+// book:end next
+// The oracle: every (phase, event) pair written out by hand, as the next
+// phase (9 = refused with the phase unchanged), one row of 10 events per phase.
+DX_TABLE :: [90]int.[
+    1,9,9,9,9,9,9,9,9,9,
+    9,1,2,9,9,9,9,9,7,9,
+    9,9,9,3,8,9,9,9,7,9,
+    9,9,9,9,9,4,9,9,7,9,
+    9,9,9,9,9,9,5,9,7,9,
+    9,5,9,9,9,9,9,6,7,9,
+    9,9,9,9,9,9,9,9,9,0,
+    9,9,9,9,9,9,9,9,9,0,
+    9,9,9,9,9,9,9,9,9,0];
+#test "every phase and event agrees with the hand-written table" {
+    for p:0..<9 {for e:0..<10 {s:=dx_next(cast(DxPhase)p,cast(DxEvent)e);want:=DX_TABLE[10*p+e];
+        if want==9 {#assert s.why==DxWhy.state && cast(int)s.phase==p && !s.effect && !s.release;}
+        else {#assert s.why==DxWhy.none && cast(int)s.phase==want;
+            #assert s.effect==(p==3 && e==5);
+            #assert s.release==(want==6 || want==7 || want==8);}
+    }}
+}
+#test "a cancelled request never runs the tool and must release before reuse" {
+    script:=[16]DxEvent.[DxEvent.begin,DxEvent.token,DxEvent.token,DxEvent.call,DxEvent.grant,DxEvent.run,DxEvent.resume,DxEvent.token,DxEvent.turn,DxEvent.release,DxEvent.begin,DxEvent.token,DxEvent.call,DxEvent.grant,DxEvent.run,DxEvent.resume];
+    for at:1..<9 {phase:=DxPhase.idle;effects:=0;
+        for i:0..<at {s:=dx_next(phase,script[i]);#assert s.why==DxWhy.none;phase=s.phase;if s.effect {effects+=1;}}
+        before:=effects;s:=dx_next(phase,DxEvent.cancel);#assert s.phase==DxPhase.cancelled && s.release && !s.effect;phase=s.phase;
+        #assert dx_next(phase,DxEvent.begin).why==DxWhy.state && dx_next(phase,DxEvent.run).why==DxWhy.state;
+        phase=dx_next(phase,DxEvent.release).phase;#assert phase==DxPhase.idle && effects==before && effects==(ifx at>5 then 1 else 0);
+    }
+}
+
+// book:begin audit
+dx_audit :: (r:DxReceipt,route:DxRoute)->DxWhy #export_c {
+    if route.why!=DxWhy.none {return route.why;}
+    if r.prefills<0 || r.steps<0 || r.masked<0 || r.transferred<0 {return DxWhy.shape;}
+    if r.masked>r.prefills+r.steps {return DxWhy.state;}
+    if r.transferred!=r.masked*route.transfer {return DxWhy.transfer;}
+    return DxWhy.none;
+}
+// book:end audit
+#test "a receipt counts one logits transfer per masked choice and no more" {
+    route:=DxRoute.{transfer=804352};r:=DxReceipt.{prefills=1,steps=9,masked=10,transferred=8043520};
+    #assert dx_audit(r,route)==DxWhy.none;
+    x:=r;x.transferred+=1;#assert dx_audit(x,route)==DxWhy.transfer;x=r;x.transferred-=804352;#assert dx_audit(x,route)==DxWhy.transfer;
+    x=r;x.steps=8;#assert dx_audit(x,route)==DxWhy.state;x.masked=9;x.transferred=9*804352;#assert dx_audit(x,route)==DxWhy.none;
+    x=r;x.prefills=-1;#assert dx_audit(x,route)==DxWhy.shape;x=r;x.steps=-1;#assert dx_audit(x,route)==DxWhy.shape;
+    x=r;x.masked=-1;#assert dx_audit(x,route)==DxWhy.shape;x=r;x.transferred=-1;#assert dx_audit(x,route)==DxWhy.shape;
+    #assert dx_audit(r,DxRoute.{why=DxWhy.device})==DxWhy.device;
+    #assert dx_audit(DxReceipt.{},route)==DxWhy.none;
+}
+
+dx_first_difference :: (a:[]int,b:[]int)->int #export_c {
+    for i:0..<a.count {if i>=b.count || a[i]!=b[i] {return i;}}
+    if a.count!=b.count {return a.count;}return -1;
+}
+#test "token comparison names the first differing position" {
+    a:=[3]int.[1,2,3];b:=[3]int.[1,2,4];
+    #assert dx_first_difference(a[..],a[..])==-1 && dx_first_difference(a[..],b[..])==2 && dx_first_difference(a[..],a[0..<2])==2 && dx_first_difference(a[0..<1],a[..])==1;
+    #assert dx_first_difference(a[0..<0],a[0..<0])==-1 && dx_first_difference(b[..],a[..])==2 && dx_first_difference(a[1..<3],b[..])==0;
+}
+dx_why_name :: (w:DxWhy)->string #export_c {
+    names:=[9]string.["none","device: no CUDA device; no CPU fallback","resident: the weights are not resident on the device","shape: a count or size outside its bounds",
+        "transfer: logits bytes over the limit, or not one download per masked choice","unknown: the recipient is not a declared tool","ungranted: the host did not grant this tool",
+        "call: the handoff is not a well-formed call","state: out of order for this phase or these device steps"];
+    return names[cast(int)w];
+}
+#test "every refusal has a distinct printed name" {
+    for i:0..<9 {for j:0..<9 {#assert (dx_why_name(cast(DxWhy)i)==dx_why_name(cast(DxWhy)j))==(i==j);}}
+    #assert dx_why_name(DxWhy.none)=="none" && dx_why_name(DxWhy.state)=="state: out of order for this phase or these device steps";
+}

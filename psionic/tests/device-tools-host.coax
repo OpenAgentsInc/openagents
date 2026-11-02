@@ -1,0 +1,10 @@
+// Chapter 78: the GPT-OSS device host plus the device tool-call decisions, as
+// one native library for psionic/tests/gptoss_device_tools.c. Unlike
+// gptoss/device-host.coax it leaves out the kernels' C copies
+// (device-kernels.coax, device-mma.coax): the model's arithmetic exists in
+// this binary only as the CUDA module it loads.
+#load "../lib/gptoss/device-prefill.coax";
+#load "../lib/gptoss/device-replay.coax";
+#load "../lib/gptoss-math.coax";
+#load "../lib/harmony.coax";
+#load "../lib/device-tools.coax";

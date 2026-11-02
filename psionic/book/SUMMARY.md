@@ -84,7 +84,7 @@
 - [75. Let the small model guess](ch075-let-the-small-model-guess.md)
 - [76. Verify a draft block in parallel](ch076-verify-a-draft-block-in-parallel.md) — design draft
 - [77. Call a tool](ch077-call-a-tool.md)
-- [78. Device generation calls a tool](ch078-device-generation-calls-a-tool.md) — design draft
+- [78. Device generation calls a tool](ch078-device-generation-calls-a-tool.md) — partly implemented
 - [79. Serve Responses](ch079-serve-responses.md)
 - [80. Two models, one card](ch080-two-models-one-card.md)
 
@@ -235,8 +235,6 @@
 - [212. Generate candidates, then check them](ch212-generate-candidates-then-check-them.md) — design draft
 - [213. Consent before sharing](ch213-consent-before-sharing.md) — design draft
 - [214. Remember a fact, then revise it](ch214-remember-a-fact-then-revise-it.md) — design draft
-- [251. One agent, many tasks](ch251-one-agent-many-tasks.md) — design draft
-- [252. An agent that stays online](ch252-an-agent-that-stays-online.md) — design draft
 
 - [215. Fit our own calibration, and refuse a stale one](ch215-fit-our-own-calibration.md)
 - [216. Thresholds from written costs](ch216-thresholds-from-written-costs.md)
@@ -276,13 +274,15 @@
 - [248. Is the loop improving?](ch248-is-the-loop-improving.md)
 - [249. An agent optimizes a Psionic kernel](ch249-an-agent-optimizes-a-psionic-kernel.md)
 - [250. Can someone use Psionic instead of PyTorch?](ch250-can-someone-use-psionic-instead-of-pytorch.md) — design draft
+- [251. One agent, many tasks](ch251-one-agent-many-tasks.md) — design draft
+- [252. An agent that stays online](ch252-an-agent-that-stays-online.md) — design draft
 
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200, 201, 203, 215–237, 239–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200, 201, 203, 215–237, 239–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

@@ -1,0 +1,49 @@
+// Chapter 78: the decisions of a device tool call, without a GPU. The route,
+// the masked choices on a small vocabulary, the grant, the phases with a
+// cancellation at each point, and the receipt audit for the recorded
+// original run's counts.
+#import "Basic";
+#load "../lib/device-tools.coax";
+
+PHASES :: [9]string.["idle","argument","called","granted","ran","answer","done","cancelled","refused"];
+// book:begin example
+main :: () {
+    route:=dx_route(DxDevice.{present=true,resident=true,vocab=201088,limit=dx_limit()});
+    print("route: device, % logits bytes per masked choice; no CPU route\n",route.transfer);
+
+    // The argument body, one masked choice at a time. "evil" has the highest logit.
+    a:=[1]string.["{\"a\":2,\"b\":2}"];
+    pieces:=[8]string.["{\"","a","\":","2",",\"","b","}","evil"];logits:=[8]f32.[1,1,1,1,1,1,1,50];
+    mask:[8]u8;stage:[8]u8;p:[8]f64;s:[8]f64;o:[8]int;t:[8]int;w:=GSampleWork.{stage=s[..],order=o[..],temporary=t[..]};
+    body:[32]u8;n:=0;g:=GGeneration.{remaining=16};
+    while n<a[0].count {
+        e:=dx_choose(a[..],cast(string)body[0..<n],pieces[..],logits[..],mask[..],stage[..],GSampling.{temperature=0},g,false,p[..],w);
+        #assert e.status==GStatus.ok;g=e.state;allowed:=0;for m:mask {allowed+=cast(int)m;}
+        for c:pieces[e.token] {body[n]=c;n+=1;}
+        print("choice %: % allowed of 8, chose % (evil: mass %)\n",g.random.counter,allowed,pieces[e.token],p[7]);
+    }
+    print("argument body: %\n",cast(string)body[0..<n]);
+
+    // The grant, checked on the parsed call before anything runs.
+    tools:=[1]GTool.[GTool.{name="functions.add",arguments=a[..]}];granted:=[1]bool.[true];
+    text:="functions.add{\"a\":2,\"b\":2}";
+    r:=HmRecord.{role=HmRole.assistant,channel=HmChannel.commentary,ending=HmEnd.call,recipient_begin=0,recipient_end=13,body_begin=13,body_end=text.count};
+    grant:=dx_grant(tools[..],granted[..],r,text);print("grant: % (tool %, choice %)\n",dx_why_name(grant.why),grant.tool,grant.choice);
+
+    // The whole request, then a cancellation arriving at each phase.
+    script:=[9]DxEvent.[DxEvent.begin,DxEvent.token,DxEvent.call,DxEvent.grant,DxEvent.run,DxEvent.resume,DxEvent.token,DxEvent.turn,DxEvent.release];
+    phase:=DxPhase.idle;effects:=0;
+    for e:script {step:=dx_next(phase,e);#assert step.why==DxWhy.none;phase=step.phase;if step.effect {effects+=1;}if step.release {print("% -> release device state\n",PHASES[cast(int)phase]);}}
+    print("round trip: tool effects %, back to %\n",effects,PHASES[cast(int)phase]);
+    points:=[5]int.[1,3,4,5,6];
+    for at:points {phase=DxPhase.idle;effects=0;
+        for i:0..<at {step:=dx_next(phase,script[i]);phase=step.phase;if step.effect {effects+=1;}}
+        cancelled:=dx_next(phase,DxEvent.cancel);
+        print("cancel in %: tool effects %, release %\n",PHASES[cast(int)phase],effects,cancelled.release);
+    }
+
+    // The recorded original run: 2 prefills, 13 device steps, 10 masked choices.
+    receipt:=DxReceipt.{prefills=2,steps=13,masked=10,transferred=10*route.transfer};
+    print("receipt: % bytes transferred, audit %\n",receipt.transferred,dx_why_name(dx_audit(receipt,route)));
+}
+// book:end example

@@ -1,0 +1,31 @@
+// Chapter 78: what the device tool path refuses, each with its typed reason,
+// before any tool runs and without falling back to the CPU.
+#import "Basic";
+#load "../lib/device-tools.coax";
+
+say :: (label:string,why:DxWhy) {print("%: %\n",label,dx_why_name(why));}
+// book:begin refuse
+main :: () {
+    d:=DxDevice.{present=true,resident=true,vocab=201088,limit=dx_limit()};
+    x:=d;x.present=false;say("no CUDA device",dx_route(x).why);
+    x=d;x.resident=false;say("weights not resident",dx_route(x).why);
+    x=d;x.vocab=201089;say("a vocabulary of 201,089",dx_route(x).why);
+    x=d;x.limit=804351;say("a 804,351-byte transfer limit",dx_route(x).why);
+
+    a:=[1]string.["{\"a\":2,\"b\":2}"];m:=[1]string.["{\"a\":3}"];
+    tools:=[2]GTool.[GTool.{name="functions.add",arguments=a[..]},GTool.{name="functions.mul",arguments=m[..]}];
+    text:="functions.add{\"a\":2,\"b\":2}";
+    r:=HmRecord.{role=HmRole.assistant,channel=HmChannel.commentary,ending=HmEnd.call,recipient_begin=0,recipient_end=13,body_begin=13,body_end=text.count};
+    no:=[2]bool.[false,true];say("functions.add not granted",dx_grant(tools[..],no[..],r,text).why);
+    yes:=[1]bool.[true];say("only functions.mul declared",dx_grant(tools[1..<2],yes[..],r,text).why);
+    r.channel=HmChannel.analysis;both:=[2]bool.[true,true];say("the call on the analysis channel",dx_grant(tools[..],both[..],r,text).why);
+
+    say("run before the grant",dx_next(DxPhase.called,DxEvent.run).why);
+    say("a new request before release",dx_next(DxPhase.cancelled,DxEvent.begin).why);
+    say("cancel with nothing running",dx_next(DxPhase.idle,DxEvent.cancel).why);
+
+    route:=dx_route(d);
+    say("one extra transferred byte",dx_audit(DxReceipt.{prefills=2,steps=13,masked=10,transferred=10*route.transfer+1},route));
+    say("more masked choices than device logits",dx_audit(DxReceipt.{prefills=1,steps=0,masked=2,transferred=2*route.transfer},route));
+}
+// book:end refuse
