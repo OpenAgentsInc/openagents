@@ -21,3 +21,5 @@ scripts/check-nips-pin.sh --offline                          # the pinned NIP fi
 python3 psionic/tests/book.py --book nostr                   # the book's structure and registry
 python3 psionic/tests/book.py --book nostr --coax coax/bin/coax   # also run its examples
 ```
+
+The state of the work, what is open and how to check it: [HANDOFF.md](HANDOFF.md).
