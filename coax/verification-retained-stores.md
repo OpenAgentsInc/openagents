@@ -33,6 +33,47 @@ python3 coax/tests/retained_borrows_native.py --compiler /absolute/path/to/coax
 
 These drivers also run in the ordinary compiler test chain. They are maintenance tooling and introduce no runtime dependency.
 
+## Helper-write continuation
+
+The bounded [helper-write return slice](verification-return-borrows.md#helper-writes-into-returned-carriers)
+composes selected checked writes through formal views into local carriers and
+their returned descriptor fields. Its write-only query excludes incoming
+descriptors; caller defaults and all possible writes join separately. Nested
+helpers, aliases, actual formal positions, local witnesses and incomplete
+recursive alternatives remain distinct. Unrelated reads add no returned
+origins, and later safe writes cannot erase earlier may-effects.
+
+This precise composition applies to raw return queries. Retained-store-only
+misses keep B1's manual helper boundary, while already complete raw facts can
+serve source-class queries. The fallback supplies no write-free proof. The
+opacity scan can only add incompleteness, so an independently incomplete
+retained fact skips it; complete retained facts still require the scan.
+
+The actual [`so_post`](lib/systemone/transport.coax) chain selects caller `out`
+for `body`, caller `err` for `stderr`, static messages for `problem`, and scalars
+for `usage`, with modeled default-empty alternatives. Selected return facts do
+not discharge incomplete foreign-retention or host-entry outlives obligations.
+The existing eight-step paths, depth 32, 64-origin sets and shared
+1,048,576-work budget are unchanged.
+
+The [early-exit record](../docs/verification/coax-b2-early-exit-2026-11-01/README.md)
+binds the changed guard's focused proof and matching-image full compiler cost:
+**1,044,325 / 1,048,576 steps; 4,251 spare (0.41%, owner accepted)**. The
+[failed candidate record](../docs/verification/coax-helper-write-returns-2026-11-01/README.md)
+retains 220/220 killed helper-entry mutants, 63 native `CK_run` observations and
+138 actual `so_post` buffer observations with their original producer and
+continuity limits. These retained receipts are not fresh full-checker mutation
+or normal release/bootstrap qualification. The B1 qualification above keeps
+its own source and producer identity; a full desktop build remains separate.
+
 ## Remaining boundary
 
-B2 local-carrier helper writes followed by returned-field reads, including precise actual SoPost composition, remain separate. B3 request defaults, active-owner admission, completion/cancellation, all result uses and backing-buffer reclamation remain separate. Host-entry outlives obligations are not automatically discharged. Foreign retention, ownership transfer, nested-block/loop lifetimes and copied handles have no general proof. This bounded diagnostic is not general ownership safety.
+By-value carriers containing mutable views, broader context/getter cases and
+recursive fixed points remain manual beyond the slice above. B3 has
+[construction, admission and offline lifecycle prerequisites](../docs/books/coax-outcomes-request-ownership.md#delivered-prerequisite-slice),
+but its full asynchronous consumer, all borrowed result uses and backing-buffer
+lifetime obligations remain separate. Host-entry outlives duties are not
+automatically discharged. Foreign retention, ownership transfer,
+nested-block/loop lifetimes and copied handles have no general proof. Full
+desktop settings/Lab checking retains its recorded eight-step path refusal
+E0381. This bounded diagnostic is not general ownership safety; #12625 stays open.

@@ -1,4 +1,17 @@
-# B2 early-exit correction — tested, not published
+# B2 early-exit correction
+
+**Publication follow-up:** the owner explicitly accepted the measured **4,251
+spare steps (0.41%)** and authorized rebasing and pushing the tested fix. The
+checker and recorded compiler inputs remain unchanged after rebase. The budget
+remains **1,048,576**. See [publication.json](publication.json) for the accepted
+margin and rebase continuity; the original measurements below are retained
+without relabeling them as newly executed checks or a normal bootstrap.
+
+The bounded raw return-origin implementation, its canonical seed and scoped
+capability documentation are included in this publication. Retained-only manual,
+foreign-retention, B3 and normal release/bootstrap boundaries remain explicit.
+
+## Original pre-approval stopping-point report
 
 The retained-only fallback now preserves its original short circuit: once a
 result is already incomplete, the opacity-only scan is skipped. Complete
@@ -12,7 +25,7 @@ continuation set a publication requirement of at least **10,486 spare steps
 (1%)**. It misses that margin by **6,235 steps**, so **nothing was pushed** and
 no further optimization pass was started.
 
-## Focused evidence
+### Focused evidence
 
 - A new paired-graph regression fails before the fix on the extra work, then
   passes both cases after the fix. The complete/default case requires opacity
@@ -46,7 +59,7 @@ benchmark. The final source SHA is
 outcome. The earlier failed candidate and its immutable history remain in
 [the preceding record](../coax-helper-write-returns-2026-11-01/README.md).
 
-## Local handoff
+### Local handoff
 
 The fix, checks and canonical generated seed are in this private candidate
 working copy. No main branch, GitHub issue, public release or historical

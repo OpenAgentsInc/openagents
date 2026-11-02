@@ -25,7 +25,7 @@ tracks; the CNN work does not wait for all compiler or relay work to finish.
 | Priority and issue | Independently reviewable tasks | Exit |
 | --- | --- | --- |
 | Delivered infrastructure: [Supported reader routes and delivery evidence, #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) | Give each book a clean-checkout entry command and observable application exit; bind evidence to source/compiler/target; run quick metadata checks; record published revision. | A reader can reproduce a named supported route, and a changed dependency invalidates only its affected evidence. |
-| P1: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Reuse existing result-language, analysis-cost, B2 and B3 task identities; qualify a synchronous fallible adapter, then the real polling/cancel lifecycle; teach the resulting contract. | Handled outcomes, cleanup and buffer lifetime survive success, refusal and cancellation within measured analysis bounds. |
+| P1: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Preserve owner/polling prerequisites and the [bounded B2 helper continuation](../verification/coax-b2-early-exit-2026-11-01/README.md), whose matching-image cost gate is **1,044,325 / 1,048,576 steps; 4,251 spare (0.41%, owner accepted)**. Integrate external R2, qualify normal release/bootstrap and complete the actual typed asynchronous consumer. | Handled outcomes, cleanup and buffer lifetime survive success, refusal and cancellation within measured analysis bounds. Raw helper return facts, retained-only manual fallback and development-stage production do not close #12625. |
 | P1: [Psionic public models, #12626](https://github.com/OpenAgentsInc/openagents/issues/12626) | Connect convolution to IR/autodiff/modules; train and reload a frozen CNN; add residual-model and unfamiliar-consumer acceptance; publish operator/backend limits. A same-shape residual block and frozen CPU trial now pass; independent artifact-reader checks are recorded, with fresh training still open. | Ordinary models use reusable APIs, with independent gradients, held-out quality and saved artifacts. The tiny CNN is a step toward ResNet/CIFAR, not that project's completion. |
 | P2: [Useful single-GPU training, #12627](https://github.com/OpenAgentsInc/openagents/issues/12627) | Cooperative backward and resident whole-step state, precision/overflow/resume, then a frozen 10–50M decoder with independent baseline. | Quality, tokens/s, memory and startup are measured together on the 4080. Distributed scaling follows this useful baseline. |
 | P1: [Aethyr shared rendering and playable route, #12628](https://github.com/OpenAgentsInc/openagents/issues/12628) | Common frame/pass/binding admission; migrate the Grid, then catalogue subsystems; qualify independent render profiles and resource refusals. | One playable route uses shared engine contracts on its declared native/browser targets; remaining private paths stay visible. |
@@ -53,7 +53,9 @@ R2, analysis-cost, B2 and B3 identities, preserving the separate agent's active
 language work and the independent R0 owner/reviewer gates. Its first
 [owner prerequisite slice](../verification/coax-request-owner-2026-11-01/README.md)
 now fixes default construction, active-start admission and the Lab entry, with
-scoped native and actual offline process checks. Full R2/B2/B3 remains open.
+scoped native and actual offline process checks. The bounded raw helper-return
+continuation preserves retained-only manual fallback; broader R2/B2/B3 remains
+open. See the execution map for the current cost gate and separate evidence.
 
 This ordering preserves completed work. B1 ownership qualification, generated
 realm shaders, API NIP-98 verification and the relay's wired operations already
@@ -73,7 +75,7 @@ flattening them into a single chapter-count queue.
 
 The [2026-11-01 stopping-point handoff](handoff-2026-11-01-12625-12628.md)
 records the delivered polling, residual-model, dense-GPU and Grid-admission
-slices, the unmerged B2 compiler cost blocker, and the untouched remaining
+slices, the earlier unmerged B2 compiler cost blocker, and the untouched remaining
 queue. All agents in that team have stopped; Coder's chapter move is preserved.
 
 ## What completion means
@@ -110,9 +112,11 @@ depend on its future consumer. A forward reading reference is allowed.
 | 5. Finish the remaining toolchain and distribution route | 44–47 | A clean-machine real-application bootstrap, supported artifacts and reload/inspection behavior pass their declared gates. |
 
 The retained-store B1 qualification is complete within its recorded boundary.
-Do not reopen it based on an older stopping-point report. B2 helper-write
-composition, B3 asynchronous request ownership and broader lifetimes remain;
-the [current boundary](../../coax/verification-retained-stores.md) records them.
+Do not reopen it based on an older stopping-point report. B2's selected raw
+helper-write composition preserves retained-only manual fallback and does not
+discharge foreign retention or host lifetimes. Broader B2, B3 asynchronous
+request ownership and general lifetimes remain; the
+[current boundary](../../coax/verification-retained-stores.md) records them.
 
 ## Psionic: one complete model workflow
 

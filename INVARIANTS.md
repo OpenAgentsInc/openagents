@@ -2331,8 +2331,29 @@ After crossing a view, LOCAL/STATIC ELEMENT wildcards describe frame ownership
 only; they provide no exact element/field alias or strong-update proof.
 Recursive and foreign/intrinsic effects, unsupported helper writes and local
 region ordering remain explicit incomplete/manual facts. Known bad alternatives
-survive those incomplete alternatives. B2 local-carrier read-after-write return
-composition, B3 request ownership and general lifetime safety remain work.
+survive those incomplete alternatives.
+
+B2 raw return-origin queries compose selected checked helper writes through
+formal views into local carriers and their returned descriptor fields.
+Retained-store-only misses keep the manual helper boundary; complete raw facts
+can serve source-class queries. Neither missing raw facts nor manual fallback
+prove write-free behavior. Write-only queries exclude incoming descriptors;
+caller defaults and possible writes join separately. Unrelated reads add no
+origins, and a later safe write cannot erase a local witness. Callee-local
+external stores retain their original RHS diagnostic. Active recursion stays
+incomplete. An already incomplete retained fact skips the opacity scan that
+could only add incompleteness; complete facts still require that scan. Calls
+and arguments retain admitted-prefix checks and the existing depth-32,
+eight-step path, 64-origin and shared 1,048,576-work limits. Actual `so_post`
+return fields select caller out/err, static problems or modeled default empty;
+foreign retention stays incomplete. By-value carriers containing mutable views,
+unmodeled addressed getters, broader context lifetimes, B3 and recursive fixed
+points remain manual. The [early-exit record](docs/verification/coax-b2-early-exit-2026-11-01/README.md)
+binds the changed guard and actual-compiler cost: **1,044,325 / 1,048,576 steps; 4,251 spare (0.41%, owner accepted)**. The
+[failed candidate](docs/verification/coax-helper-write-returns-2026-11-01/README.md)
+keeps its own evidence identity. Neither focused checks nor development-stage
+compiler production establish normal release/bootstrap qualification, a full
+desktop application or general lifetime safety.
 
 B1 source-only queries canonicalize STATIC lifetime classes while keeping LOCAL
 and PARAMETER identities, descriptor types and roles. Their memo keys include

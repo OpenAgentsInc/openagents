@@ -467,6 +467,36 @@ scratch but returns only the caller's output buffer does not make that output
 borrow the scratch. Copying a record copies its view descriptors; it does not
 rebase a view that still points into the old local record.
 
+For example, a helper can write a caller's output view into a local carrier:
+
+```jai
+Carrier :: struct { selected: []u8; other: []u8; }
+fill :: (c: []Carrier, out: []u8, scratch: []u8) {
+  n := scratch.count;
+  c[0].selected = out;
+}
+through :: (out: []u8) -> []u8 {
+  c: [1]Carrier; scratch: [4]u8;
+  fill(c[..], out, scratch[..]);
+  return c[0].selected;
+}
+```
+
+The returned descriptor still points into the caller's `out`. Reading
+`scratch.count` adds no scratch origin, and the carrier does not become the
+descriptor's pointee. If `through` instead passes a local array as `out`, the
+returned field is E0383: the helper has not extended that array's lifetime.
+The [caller-field](https://github.com/OpenAgentsInc/openagents/blob/main/coax/tests/b2-helper-composition/caller-field.coax)
+and [local-field](https://github.com/OpenAgentsInc/openagents/blob/main/coax/tests/b2-helper-composition/local-field.coax)
+fixtures check both forms. A modeled default-empty descriptor is complete
+empty; a recursive or unmodeled write remains unknown. A later good write
+cannot erase an earlier possible local write.
+
+This selected helper composition applies to raw return-origin queries.
+Retained-store-only queries keep the manual helper boundary unless a complete
+raw fact is already available for reuse. Manual means unproved; it supplies no
+write-free or lifetime guarantee.
+
 Recursive queries and unsupported helper writes remain incomplete/manual.
 Acceptance of those paths is not proof of safe lifetimes; a known local origin
 still causes E0383 when another arm is unknown. Direct views of immutable
@@ -480,12 +510,23 @@ Local inline copies remain distinct from contained views, and a later safe
 write cannot erase an earlier forbidden may-store. Unknown, recursive and
 same-frame local ordering remain explicit manual relations.
 
-Local-carrier helper writes followed by returned-field reads,
-completion/cancellation ownership, general fixed points and shorter
-nested-block regions remain separate work. The
+System One's actual `so_start`/`so_step`/`so_fail_call`/`so_post` chain uses this
+composition: `body` selects caller output, `stderr` selects caller error
+storage, `problem` selects static messages and modeled empty fields stay
+distinct from unknown. These return facts do not prove that a foreign process
+or host has stopped retaining borrowed buffers.
+
+By-value carriers containing mutable views, unmodeled addressed getters,
+completion/cancellation ownership, general context lifetimes, recursive fixed
+points and shorter nested-block regions remain manual. Analysis still shares
+eight-step paths, depth 32 and 1,048,576 work steps. The
 [recorded return-summary boundary](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-return-borrows.md)
 and [retained-store boundary](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-retained-stores.md) do not claim
-general lifetime safety.
+general lifetime safety. The
+[early-exit record](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-b2-early-exit-2026-11-01/README.md)
+binds the changed guard and matching compiler cost. The owner accepted the
+measured 4,251-step margin (0.41%); the 1,048,576-step budget is unchanged. Its focused checks do not establish normal release/bootstrap
+qualification or a full desktop application build.
 
 The fix is to decide who owns the storage. If the result is small and fixed,
 return the array itself, `-> [4] int`, which copies it out. If the caller
@@ -913,7 +954,7 @@ changes that. Here is what's actually checked.
 | A view is only taken of a writable array variable | Enforced (`E0366`) |
 | A view can't escape compile time | Enforced (`E0409`) |
 | Integer overflow traps in development builds | Enforced (wraps in `--release`) |
-| Known local borrows returned directly, through supported helpers or inside aggregates | Rejected (`E0383`); recursive/helper-write summaries can remain manual, and general lifetime safety is not established |
+| Known local borrows returned directly, through supported helpers or inside aggregates | Rejected (`E0383`), including selected helper writes into local carriers; recursive and unsupported helper-write summaries remain manual |
 | Known callee-local descriptor backing retained in caller/static storage, directly or through checked calls | Rejected (`E0383`) in the bounded store profile; pending caller obligations and unsupported relations are separate |
 | Handles with generation checks for long-lived references | Planned |
 | Explicit owners and reset points; debug poisoning of freed memory | Planned |

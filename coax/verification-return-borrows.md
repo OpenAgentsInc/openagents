@@ -29,6 +29,48 @@ fields retain the existing E0366 immutable-parameter refusal. The checker
 does not widen parameter mutability to change that diagnostic. Copying such a
 value into a local and returning a view of the copy is E0383.
 
+## Helper writes into returned carriers
+
+Raw return-origin queries follow selected descriptor writes through checked
+view parameters into a caller's local carrier, then read those facts when the
+caller returns the selected field. Only referenced formal paths are
+substituted through actual arguments. Scratch merely read by a helper adds no
+returned origin. Nested checked helpers and local aliases use the same
+may-origin join, so a later caller-backed write cannot erase an earlier local
+witness.
+
+The write-only query excludes the destination's incoming descriptor. The
+caller's initial/default fact joins separately with possible writes. A modeled
+default-empty descriptor is complete empty; active recursion remains incomplete,
+and known local backing survives unknown alternatives. A callee-local descriptor
+written through an external parameter still reports E0383 at the original RHS.
+A caller returning its own local backing through a helper is rejected at the
+original return expression.
+
+Retained-store-only queries without an already complete raw fact keep the
+manual helper boundary. They do not expand helper writes on demand; complete
+raw facts can still supply source-class queries. This fallback proves neither
+write-free behavior nor a safe lifetime. Once a retained fact is independently
+incomplete, the opacity scan can only preserve that status and is skipped;
+complete facts still run the scan. This avoids redundant work without changing
+the shared budget or turning an unknown fact into complete empty.
+
+The actual [`so_post`](lib/systemone/transport.coax) chain populates a local
+`SoCall` through `so_start`, `so_step` and `so_fail_call`:
+
+| Returned field | Possible backing within this slice |
+| --- | --- |
+| `body` | Caller `out` (formal 2), or modeled default empty |
+| `stderr` | Caller `err` (formal 3), or modeled default empty |
+| `problem` | Static messages, including static arguments to `so_fail_call` |
+| `usage` | Scalars without borrowed descriptors |
+
+The local carrier, timeout scratch, client fields and request-body reads add no
+unrelated returned byte origins. A selected `body` excludes an unrelated local
+error buffer; selected `stderr` excludes an unrelated local output buffer.
+Returning a selected field backed by the caller's own local array is E0383.
+These facts do not discharge foreign retention or a host-entry outlives duty.
+
 ## Incomplete summaries remain manual
 
 The internal procedure status distinguishes complete analysis from
@@ -38,13 +80,11 @@ Known local origins still produce E0383 when another part of the returned
 value is unknown, including when a conditional is passed through an identity
 helper. Unknown-only source acceptance is not a lifetime-safety verdict.
 
-System One's `so_post` is an important boundary. Its local `SoCall` array
-contains result descriptors that borrow the caller's output/error buffers.
-The containing array's local storage is not automatically the result's
-pointee. Writes through `so_start`/`so_step` remain a manual summary boundary
-until the separate helper-write/retained-request work is implemented. Preserving
-the API and observing its native returned buffers does not establish complete
-request-buffer lifetime safety.
+By-value carriers containing mutable views, unmodeled addressed getters and
+general context/region lifetimes remain outside the supported composition.
+The selected returned-field facts of `so_post` coexist with incomplete
+foreign-retention facts. Observing native returned buffers does not establish
+complete request-buffer lifetime safety.
 
 `CK_text` has a different, supported shape: it reads locally assembled parts,
 copies their bytes into the caller's `c.bytes`, and returns only that output
@@ -55,9 +95,10 @@ The analysis uses durable declaration identities, so reused names in sibling
 blocks do not merge distinct locals. Its may-origin joins do not prove that
 a later overwrite removed an earlier borrow. General recursive fixed points,
 shorter nested-block regions, ownership transfer and foreign retention remain
-outside this extension. Stores into longer-lived caller state and completion,
-cancellation and late-callback lifetimes remain the next linked child; the
-borrow-summary umbrella stays open.
+outside this extension. The separate [retained-store profile](verification-retained-stores.md)
+checks bounded stores into longer-lived caller state. Completion, cancellation
+and late-callback lifetimes remain separate work; the borrow-summary umbrella
+stays open.
 
 ## Storage behind a view parameter
 
@@ -96,6 +137,11 @@ expression nodes create no memo work.
 These memo links and workspace tails are internal scratch, not a published
 summary format. The query, origin and work limits are unchanged.
 
+Helper-write descent shares the existing depth-32 guard, eight-step paths,
+64-origin sets and 1,048,576 work counter. Calls and arguments stay within the
+checked graph's admitted used prefixes. No parser allocation ordering is
+assumed. Resource exhaustion remains E0381, with no public summary ABI change.
+
 The source gate is maintenance tooling:
 
 ```sh
@@ -114,9 +160,23 @@ The separate work regression checks a whole file containing 1,000 independent
 caller-string-return procedures under the normal limits. It requires successful
 compilation, without inspecting memo ordering or increasing the work budget.
 
-The integrating qualification separately binds the actual compiler, checker
+The original integrating qualification separately binds the actual compiler, checker
 source and generated seeds; runs the affected Coax authority/mutation gates;
 reproduces both bootstrap fixed points; and observes native caller-buffer
 returns under the named optimization/sanitizer profiles. Historical producer
 results remain historical. Finite checks, reproducible seeds and source
 acceptance do not establish general memory safety.
+
+The [early-exit record](../docs/verification/coax-b2-early-exit-2026-11-01/README.md)
+binds the changed guard, its focused proof and the matching full compiler input.
+Actual-compiler cost under the unchanged budget: **1,044,325 / 1,048,576 steps; 4,251 spare (0.41%, owner accepted)**. The owner accepted this
+measured margin for publication; the budget is unchanged. The
+[failed helper-write candidate](../docs/verification/coax-helper-write-returns-2026-11-01/README.md)
+remains historical: it reached work 1,048,577 against 1,048,576 and supplies
+retained receipts for 220/220 killed helper-entry mutants, 63 native `CK_run`
+observations and 138 actual `so_post` buffer observations. Their original
+producer identities and continuity limits remain in that record; they are not
+fresh qualification of every declaration in the changed compiler.
+
+Focused guard checks and matching-image cost do not establish normal release
+qualification, bootstrap fixed points or a full desktop application build.

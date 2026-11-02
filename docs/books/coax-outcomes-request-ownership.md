@@ -12,7 +12,7 @@ identities; it creates no replacement language or ownership milestone. Snapshot:
 | [`book30-analysis-cost`](../../apps/openagents-web/projects/coax/work/book30-clocks.json) | Delivered wide retained-store streaming; [H qualification](../verification/coax-wide-retained-stores-2026-11-01/README.md) and [machine record](../verification/coax-wide-retained-stores-2026-11-01/record.json). The matching source/image used 1,035,932 of 1,048,576 work ticks, leaving 12,644. | Measure any changed compiler input on its matching image. Preserve the failed page goldens and earlier cost candidates. Do not rerun unchanged passing compiler qualification. |
 | [`book30-result-language`](../../apps/openagents-web/projects/coax/work/book30-clocks.json) | R2 child: tagged results/unions/optionals, exhaustive handling, propagation, ordered cleanup, sum-aware borrows and a real synchronous resource adapter. A separate agent's local integration is in progress. | Publish the final qualified compiler, source/native/ABI/authority/bootstrap evidence and teaching contract. A private implementation or lower cost measurement is not delivery on main. |
 | [`r2a-results`](../../apps/openagents-web/projects/coax/work/coax.json) | Original language umbrella; its first child does not remove the original asynchronous adapter or remaining procedure scope. | Integrate the actual asynchronous request with handled success/refusal/cancellation/unknown outcomes and cleanup. Preserve idempotency/reconciliation rules; unknown outcomes cannot imply safe retry. |
-| [`r3a-retain-helper-composition`](../../apps/openagents-web/projects/coax/work/retained-borrow-subtasks.json) (B2) | Precise retained helper writes followed by returned-field reads; [current B1 boundary](../../coax/verification-retained-stores.md#remaining-boundary). | Actual `so_post` body origins select caller output, stderr selects caller error storage, and static problems/default empty values remain distinct from unknown. Reject local backing through the real helper chain; qualify compiler changes separately. |
+| [`r3a-retain-helper-composition`](../../apps/openagents-web/projects/coax/work/retained-borrow-subtasks.json) (B2) | [Bounded raw return-origin helper composition](../verification/coax-b2-early-exit-2026-11-01/README.md) follows the actual `so_start`/`so_step`/`so_fail_call`/`so_post` chain. Caller output/error, static messages and default empty stay distinct; known local backing is rejected. Cost gate: **1,044,325 / 1,048,576 steps; 4,251 spare (0.41%, owner accepted)**. | Preserve retained-only manual fallback and broader context/getter/recursive and foreign-retention boundaries. Integrate external R2 and qualify normal release/bootstrap separately; the full B2/B3 milestones remain open. |
 | [`r3a-retain-request-owner`](../../apps/openagents-web/projects/coax/work/retained-borrow-subtasks.json) (B3) | Actual System One transport and desktop owner, following B2. Existing [caller-buffer harness](../../coax/tests/borrow_summary_systemone.py) qualifies only digits/stderr returns. | Generated owner defaults, single active request, terminal/cancel/poll traces, all borrowed result uses and process-slot reclamation. Caller storage remains alive independently of process release. |
 
 These are stable project slugs. The hexadecimal aliases shown by the Nostr
@@ -31,9 +31,11 @@ and partial qualification are deliberately not promoted here.
 2. Let the current R2 owner finish the compiler and synchronous adapter. Avoid
    parallel changes to its checker, parser, evaluator, emitters, seeds, spec,
    grammar or teaching examples. Reuse only exactly matching passing inputs.
-3. Finish B2's actual helper composition on that integrated compiler. Keep
-   complete origin/effect inventory separate from discharged host lifetimes;
-   an unknown recursive dependency cannot become safe-empty.
+3. Preserve B2's bounded selected helper composition during integration. Raw
+   returned-field facts and retained-only manual fallback have separate scope.
+   Keep complete origin/effect inventory separate from discharged host
+   lifetimes; an unknown recursive dependency cannot become safe-empty. Broader
+   context/getter and by-value mutable-view cases need separate evidence.
 4. Finish B3 on the real polling API. A platform construction fix can proceed
    independently as a prerequisite: after successful root allocation, call the
    actual generated Coax default constructor once before attachment. Never
@@ -50,7 +52,7 @@ and partial qualification are deliberately not promoted here.
    chapter marker, registry, contents and README/plan together, only for the
    profile actually delivered.
 
-The construction and admission slices do not by themselves finish B2/B3,
+The construction, admission and bounded helper slices do not finish B2/B3,
 async Result integration, compiler ownership safety or #12625. In particular,
 the desktop's selected request pool lives for the application: there is no
 new pool-free or copied-active-handle ownership-transfer claim.
@@ -81,8 +83,8 @@ policy mutation killed both mutants; native O0/O2/sanitizer checks pass within
 their declared boundaries. The full desktop unit and new full Lab check group
 refused with E0381 on the observed images before the application checks ran;
 exact source subsets qualify the changed boundaries without calling the full
-application passed. B2, typed async outcomes and the full B3 milestone remain
-open; those application exits are not inferred from these prerequisites.
+application passed. Broader B2, typed async outcomes and the full B3 milestone
+remain open; those exits are not inferred from these prerequisites.
 
 
 The [nonblocking EOF follow-up](../verification/coax-request-polling-2026-11-01/README.md)
@@ -91,14 +93,38 @@ native delayed-completion/cancel checks and sharp policy mutation. Its frozen
 full-desktop diagnosis identifies the eight-step borrow-path refusal; it does
 not call a source subset a successful full application build.
 
-## 2026-11-01 stopping point
+## Bounded helper-write continuation
+
+The [early-exit record](../verification/coax-b2-early-exit-2026-11-01/README.md)
+binds the changed guard, focused proof and matching full compiler input.
+Actual-compiler cost under the unchanged 1,048,576-work budget:
+**1,044,325 / 1,048,576 steps; 4,251 spare (0.41%, owner accepted)**. The owner accepted this measured margin for publication; the budget is unchanged.
+The guard skips retained opacity discovery only when an independent fact is
+already incomplete; complete facts still run that scan. Missing raw facts
+never certify write-free behavior.
+
+Precise helper-write composition applies to raw return-origin queries.
+Retained-store-only misses keep the existing manual boundary, while complete
+raw facts remain reusable for source-class queries. The write-only query joins
+selected helper effects with caller defaults, without treating incoming
+descriptors as writes or unrelated reads as returned origins. Existing
+admitted-prefix checks, depth 32, eight-step paths, 64-origin sets and the
+shared work budget remain. `body` derives from caller `out`, `stderr` from
+caller `err`, `problem` from static messages and `usage` from scalars, with
+modeled empty alternatives. Foreign retention remains incomplete, and host
+outlives duties are not automatically discharged.
+
+The [failed candidate](../verification/coax-helper-write-returns-2026-11-01/README.md)
+reached work 1,048,577 against the unchanged bound. Its retained receipts keep
+220/220 killed helper-entry mutants, 63 native `CK_run` observations and 138
+actual `so_post` buffer observations with their original producer identities
+and continuity limits. They are not fresh full-checker mutation or qualification
+of every declaration in the changed compiler. Normal release/bootstrap and
+full application qualification remain separate. Broader B2 context/getter and
+recursive cases, external R2, full B3 and typed async teaching remain open;
+settings/Lab retains its recorded eight-step path refusal.
 
 The [polling fix](../verification/coax-request-polling-2026-11-01/README.md)
-is delivered on main. The new [B2 candidate](../verification/coax-helper-write-returns-2026-11-01/README.md)
-is unmerged: focused checks pass, but its final development image reaches
-work 1,048,577 against the unchanged 1,048,576 self-compilation bound. Portable
-source/test and proposed-doc patches preserve the work without changing main's
-compiler/seed or claiming B2 capability. Coordinate the existing R2 cost owner
-before rebasing and qualifying it. Broader B3 and typed async teaching remain
-open. The [team handoff](handoff-2026-11-01-12625-12628.md) records the exact
-measurements, accepted slices and stopped working copies.
+remains delivered. The [stopping-point handoff](handoff-2026-11-01-12625-12628.md)
+preserves the earlier failed B2 candidate and the separately delivered polling,
+model, GPU and Grid slices. This continuation does not close #12625.
