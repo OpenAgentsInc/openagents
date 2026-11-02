@@ -1,0 +1,232 @@
+// Chapter 41 on the device: online-softmax attention in tiles as a group
+// kernel of chapter 37's compute subset (chapter 68's rules). One group of
+// 64 threads per (query block, head): thread t owns query row block*64 + t,
+// keeps its query, running maximum, denominator and value sums in
+// registers, and the group loads each tile of 32 keys and values into
+// shared memory once for all 64 rows.
+// Profile tiled-attention-cuda-f32-v1: f32 everywhere; a score is the f32
+// dot product in dimension order times 0.125 (head width 64); inside a tile
+// the visible scores' maximum, then exp(score - maximum) in key order; the
+// running state is rescaled once per tile by exp(old maximum - new
+// maximum); each output is divided once at the end. A sink starts the state
+// at (sink, 1, 0). --fmad=false, so only exp differs between the device and
+// the C build of this file.
+
+// book:begin shape
+TD_THREADS :: 64;   // query rows per group, one per thread
+TD_TILE :: 32;      // keys per shared tile
+TD_DIM :: 64;       // head width; the scale is 1/sqrt(64) = 0.125
+TD_EMPTY :: -1000000000000000000000000000000.0;  // the maximum before any key, -1e30
+TD_HIDDEN :: -300000000000000000000000000000000000000.0;  // a hidden key's score, -3e38
+// Mask kinds as chapter 41's TaMaskKind: 0 causal, 1 window, 2 decision.
+td_sees :: (kind:int,window:int,block:int,query:int,key:int)->bool {
+    if kind==2 {return query>=block || key<block;}
+    if key>query {return false;}
+    return kind!=1 || key>query-window;
+}
+// book:end shape
+
+// book:begin kernel
+// Group `item` is query block item/heads of head item%heads. Rows r of the
+// call are positions start + r, r < rows; q row r of head h is
+// q[r*q_stride + h*64 ...]. Key t of key/value head g is
+// kv[t*kv_stride + g*64 ...] and its value is v_offset further on. out row r
+// of head h is out[(r*heads + h)*64 ...], and its final running maximum
+// and denominator are state[(r*heads + h)*2 ...], what a later merge of
+// split keys would need. sinks is empty or one per head. tiles[item]
+// receives the number of tiles the group loaded.
+td_attend :: (item:int,heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind:int,window:int,block:int,
+    q_stride:int,kv_stride:int,v_offset:int,q:[]f32,kv:[]f32,sinks:[]f32,out:[]f32,state:[]f32,tiles:[]int) #export_c {
+    qr:[4096]f32;acc:[4096]f32;sc:[2048]f32;mx:[64]f32;den:[64]f32;kt:[2048]f32;vt:[2048]f32;
+    head:=item%heads;kh:=head/(heads/kv_heads);r0:=item/heads*TD_THREADS;
+    last:=r0+TD_THREADS-1;if last>=rows {last=rows-1;}
+    // The tiles holding keys some row of the group can see: from tile lo
+    // to the tile of key end - 1.
+    lo:=0;end:=start+last+1;
+    reach:=start+r0-window+1;
+    if kind==1 && reach>=TD_TILE {lo=reach/TD_TILE;}
+    if kind==2 {end=ifx start+last<block then block else tokens;}
+    for thread:0..<TD_THREADS {
+        r:=r0+thread;
+        for i:0..<TD_DIM {v:f32=0;if r<rows {v=q[r*q_stride+head*TD_DIM+i];}qr[thread*TD_DIM+i]=v;}
+        m:f32=TD_EMPTY;l:f32=0;
+        if sinks.count>0 {m=sinks[head];l=1;}
+        mx[thread]=m;den[thread]=l;
+    }
+    loaded:=0;
+    for t:lo..<(end+TD_TILE-1)/TD_TILE {
+        t0:=t*TD_TILE;loaded+=1;
+        // Each thread copies half of one key row and half of its value row.
+        for thread:0..<TD_THREADS {
+            key:=t0+thread/2;d0:=thread%2*32;
+            for c:0..<32 {
+                k:f32=0;v:f32=0;
+                if key<tokens {at:=key*kv_stride+kh*TD_DIM+d0+c;k=kv[at];v=kv[at+v_offset];}
+                kt[thread*32+c]=k;vt[thread*32+c]=v;
+            }
+        }
+        // Threads past the last row compute on zero queries; their results
+        // are never written.
+        for thread:0..<TD_THREADS {
+            query:=start+r0+thread;
+            {
+                // A hidden key keeps the score TD_HIDDEN, whose exp is 0.
+                old:=mx[thread];m:=old;
+                for j:0..<TD_TILE {
+                    s:f32=TD_HIDDEN;
+                    if t0+j<tokens && td_sees(kind,window,block,query,t0+j) {
+                        dot:f32=0;
+                        for i:0..<TD_DIM {dot+=qr[thread*TD_DIM+i]*kt[j*TD_DIM+i];}
+                        s=dot*0.125f32;
+                    }
+                    sc[thread*TD_TILE+j]=s;
+                    if s>m {m=s;}
+                }
+                rescale:=exp(old-m);sum:f32=0;
+                for j:0..<TD_TILE {p:=exp(sc[thread*TD_TILE+j]-m);sc[thread*TD_TILE+j]=p;sum+=p;}
+                den[thread]=den[thread]*rescale+sum;mx[thread]=m;
+                for i:0..<TD_DIM {
+                    a:=acc[thread*TD_DIM+i]*rescale;
+                    for j:0..<TD_TILE {a+=sc[thread*TD_TILE+j]*vt[j*TD_DIM+i];}
+                    acc[thread*TD_DIM+i]=a;
+                }
+            }
+        }
+    }
+    for thread:0..<TD_THREADS {
+        r:=r0+thread;
+        if r<rows {
+            l:=den[thread];at:=r*heads+head;
+            for i:0..<TD_DIM {out[at*TD_DIM+i]=acc[thread*TD_DIM+i]/l;}
+            state[2*at]=mx[thread];state[2*at+1]=l;
+        }
+        // Every thread writes the same count.
+        tiles[item]=loaded;
+    }
+}
+// gpt-oss stores its sinks as BF16; the kernel reads f32.
+td_sinks :: (item:int,bits:[]u16,out:[]f32) #export_c {out[item]=f32_from_bits(cast(u32)bits[item]<<16);}
+// book:end kernel
+
+
+// ---- Checks, against the binary64 oracle and hand-derived values.
+#load "../../tests/tiled-attention-device-oracle.coax";
+
+#test "the hand trace: two tiles, the maximum moves once" {
+    // Query 33 of 34 keys; q = 8 in dimension 0, so a score is k[0]. Keys
+    // 0 and 1 score 1 and 0, keys 2..31 score -1000 (exp is 0 in f32), keys
+    // 32 and 33 score 3. Values in dimension 0: 2, 4, 1000..., 6, 8.
+    q:[64]f32;q[0]=8;kv:[4352]f32;
+    for t:0..<34 {
+        k:f32=-1000;v:f32=1000;
+        if t==0 {k=1;v=2;}
+        if t==1 {k=0;v=4;}
+        if t==32 {k=3;v=6;}
+        if t==33 {k=3;v=8;}
+        kv[t*128]=k;kv[t*128+64]=v;
+    }
+    out:[64]f32;for i:0..<64 {out[i]=-7;}state:[2]f32;tiles:[1]int;
+    td_attend(0,1,1,33,1,34,0,0,0,64,128,64,q[..],kv[..],q[0..<0],out[..],state[..],tiles[..]);
+    // Tile 1: maximum 1, denominator 1 + e^-1, sums 2 + 4 e^-1. Tile 2:
+    // rescale by e^-2, then add 1 + 1 and 6 + 8.
+    e:=exp(-1.0f32);r:=exp(-2.0f32);
+    l:=(1+e)*r+2;a:=(2+e*4)*r+6+8;
+    #assert out[0]==a/l && state[0]==3 && state[1]==l && tiles[0]==2;
+    #assert abs(f64(out[0])-6.621971913526893)<0.000001;
+    for i:1..<64 {#assert out[i]==0;}
+}
+#test "every mask, with and without sinks, against the binary64 oracle" #steps 400000000 {
+    // 2 query heads share 1 key/value head; 70 rows in blocks of 64 and 6;
+    // 70 keys in tiles of 32, 32 and 6. q rows are padded to 160 values and
+    // keys and values interleave as gpt-oss stores them.
+    q:[11200]f32;kv:[8960]f32;for i:0..<11200 {q[i]=td_value(i+3)*0.5;}for i:0..<8960 {kv[i]=td_value(2*i+1);}
+    sinks:=[2]f32.[0.5,-1];out:[8960]f32;exact:[8960]f64;tiles:[4]int;
+    kinds:=[4]int.[0,1,1,2];windows:=[4]int.[0,5,40,0];
+    // Causal and window 40 without sinks, window 5 and decision with them.
+    for m:0..<4 {
+        s:=sinks[0..<2*(m%2)];
+        td_run(2,1,0,70,70,kinds[m],windows[m],37,160,128,64,q[..],kv[..],s,out[..],tiles[..]);
+        td_oracle(2,1,0,70,70,kinds[m],windows[m],37,160,128,64,q[..],kv[..],s,exact[..]);
+        worst:=0.0;for i:0..<8960 {d:=abs(f64(out[i])-exact[i]);if d>worst {worst=d;}}
+        #assert worst<=TD_TOLERANCE*(1+1.375) && worst<0.000001;
+    }
+}
+#test "each query head reads its own key/value head" {
+    // 4 heads over 2 key/value heads, one row: heads 0 and 1 read key/value
+    // head 0, heads 2 and 3 read head 1.
+    q:[256]f32;kv:[1280]f32;for i:0..<256 {q[i]=td_value(i+7);}for i:0..<1280 {kv[i]=td_value(3*i+4);}
+    out:[256]f32;state:[8]f32;tiles:[4]int;exact:[256]f64;
+    for h:0..<4 {td_attend(h,4,2,4,1,5,0,0,0,256,256,128,q[..],kv[..],q[0..<0],out[..],state[..],tiles[..]);}
+    td_oracle(4,2,4,1,5,0,0,0,256,256,128,q[..],kv[..],q[0..<0],exact[..]);
+    for i:0..<256 {#assert abs(f64(out[i])-exact[i])<0.000001;}
+}
+#test "a group loads only the tiles some row can see" #steps 400000000 {
+    // One head: items are query blocks.
+    q:[4480]f32;kv:[8960]f32;sinks:[1]f32;out:[4480]f32;tiles:[2]int;
+    // Causal: rows 0..63 need keys 0..63 (2 tiles), rows 64..69 all 3.
+    td_run(1,1,0,70,70,0,0,0,64,128,64,q[..],kv[..],sinks[..],out[..],tiles[..]);
+    #assert tiles[0]==2 && tiles[1]==3;
+    // Rows 1..64 need key 64; rows 1..63 do not.
+    td_run(1,1,1,64,65,0,0,0,64,128,64,q[0..<4096],kv[0..<8320],sinks[..],out[..],tiles[..]);#assert tiles[0]==3;
+    td_run(1,1,1,63,64,0,0,0,64,128,64,q[0..<4032],kv[0..<8192],sinks[..],out[..],tiles[..]);#assert tiles[0]==2;
+    // Window 5: rows 64..69 see keys 60..69, tiles 1 and 2.
+    td_run(1,1,0,70,70,1,5,0,64,128,64,q[..],kv[..],sinks[..],out[..],tiles[..]);
+    #assert tiles[0]==2 && tiles[1]==2;
+    // Window 33 from row 64: keys 32 on, so tile 0 is skipped exactly at
+    // the edge; window 34 reaches key 31.
+    td_run(1,1,64,6,70,1,33,0,64,128,64,q[0..<384],kv[..],sinks[..],out[..],tiles[..]);#assert tiles[0]==2;
+    td_run(1,1,64,6,70,1,34,0,64,128,64,q[0..<384],kv[..],sinks[..],out[..],tiles[..]);#assert tiles[0]==3;
+    // Decision block 37: a block of rows that reaches it needs every key; a
+    // prefix-only call of rows 0..31 needs keys 0..36 (2 tiles); with block
+    // 32, one tile; rows 32..35 of block 37 still only the prefix; a block
+    // whose last row is the block's first needs every key.
+    td_run(1,1,32,6,70,2,0,37,64,128,64,q[0..<384],kv[..],sinks[..],out[..],tiles[..]);#assert tiles[0]==3;
+    td_run(1,1,0,32,70,2,0,37,64,128,64,q[0..<2048],kv[..],sinks[..],out[..],tiles[..]);#assert tiles[0]==2;
+    td_run(1,1,0,32,70,2,0,32,64,128,64,q[0..<2048],kv[..],sinks[..],out[..],tiles[..]);#assert tiles[0]==1;
+    td_run(1,1,32,4,70,2,0,37,64,128,64,q[0..<256],kv[..],sinks[..],out[..],tiles[..]);#assert tiles[0]==2;
+    td_run(1,1,0,37,70,2,0,36,64,128,64,q[0..<2368],kv[..],sinks[..],out[..],tiles[..]);#assert tiles[0]==3;
+}
+#test "a chunk equals the whole prefill bit for bit" #steps 400000000 {
+    // One head; window 40 and the decision block, with a sink.
+    q:[4480]f32;kv:[8960]f32;for i:0..<4480 {q[i]=td_value(i+5);}for i:0..<8960 {kv[i]=td_value(3*i+2);}
+    sinks:=[1]f32.[1.5];whole:[4480]f32;part:[1920]f32;tiles:[2]int;
+    for m:1..<3 {
+        td_run(1,1,0,70,70,m,40,37,64,128,64,q[..],kv[..],sinks[..],whole[..],tiles[..]);
+        td_run(1,1,40,30,70,m,40,37,64,128,64,q[2560..<4480],kv[..],sinks[..],part[..],tiles[..]);
+        for i:0..<1920 {#assert f32_bits(part[i])==f32_bits(whole[2560+i]);}
+    }
+}
+#test "hidden keys and values can hold any finite value" {
+    // Row 69 with a window of 5 sees keys 65..69 only.
+    q:[160]f32;kv:[8960]f32;for i:0..<160 {q[i]=td_value(i);}for i:0..<8960 {kv[i]=td_value(5*i+1);}
+    a:[128]f32;b:[128]f32;state:[4]f32;tiles:[1]int;
+    td_attend(0,2,1,69,1,70,1,5,0,160,128,64,q[..],kv[..],q[0..<0],a[..],state[..],tiles[..]);
+    for t:0..<65 {for i:0..<128 {kv[t*128+i]=ifx (t+i)%2==0 then 1000000000000000000000000000000.0 else -1000;}}
+    td_attend(0,2,1,69,1,70,1,5,0,160,128,64,q[..],kv[..],q[0..<0],b[..],state[..],tiles[..]);
+    for i:0..<128 {#assert f32_bits(a[i])==f32_bits(b[i]);}
+}
+#test "scores far below zero, and a sink above them" {
+    // Every score is -200 (exp(-200) is 0 in f32), so only the running
+    // maximum keeps the denominator positive: the output is the mean value.
+    // A sink of 0 takes all the weight instead.
+    q:[64]f32;q[0]=8;kv:[512]f32;
+    for t:0..<4 {kv[t*128]=-200;kv[t*128+64]=f32(t);}
+    out:[64]f32;state:[2]f32;tiles:[1]int;sink:=[1]f32.[0];
+    td_attend(0,1,1,3,1,4,0,0,0,64,128,64,q[..],kv[..],q[0..<0],out[..],state[..],tiles[..]);
+    #assert out[0]==1.5 && state[0]== -200 && state[1]==4;
+    td_attend(0,1,1,3,1,4,0,0,0,64,128,64,q[..],kv[..],sink[..],out[..],state[..],tiles[..]);
+    #assert out[0]==0 && state[0]==0 && state[1]==1;
+}
+#test "a tie with the running maximum keeps it" {
+    // A sink of -0 and one key scoring exactly +0: the maximum stays the
+    // sink's -0, so ties never move it.
+    q:[64]f32;kv:[128]f32;kv[64]=3;sink:=[1]f32.[f32_from_bits(0x80000000)];
+    out:[64]f32;state:[2]f32;tiles:[1]int;
+    td_attend(0,1,1,0,1,1,0,0,0,64,128,64,q[..],kv[..],sink[..],out[..],state[..],tiles[..]);
+    #assert f32_bits(state[0])==0x80000000 && state[1]==2 && out[0]==1.5;
+}
+#test "gpt-oss sinks decode from BF16" {
+    bits:=[3]u16.[0x3f80,0xc000,0xbf80];out:[3]f32;
+    for i:0..<3 {td_sinks(i,bits[..],out[..]);}
+    #assert out[0]==1 && out[1]== -2 && out[2]== -1;
+}

@@ -1,0 +1,48 @@
+// Chapter 41's device checks: the binary64 dense oracle and helpers,
+// loaded by psionic/lib/device/tiled-attention-kernels.coax. The oracle is
+// written separately from the kernel: a dense binary64 softmax over each
+// row's visible keys, with the mask rule spelled as the range of keys each
+// query may see.
+
+// Profile tiled-attention-cuda-f32-v1, frozen before any comparison: an
+// output may differ from the binary64 dense oracle, from chapter 41's CPU
+// profile or from another f32 attention by at most
+// TD_TOLERANCE * (1 + the largest |value|).
+// book:begin tolerance
+TD_TOLERANCE :: 0.001;
+// book:end tolerance
+
+// The first key query `query` sees and the key after its last.
+td_oracle_range :: (kind:int,window:int,block:int,tokens:int,query:int,lo:[]int) {
+    lo[0]=0;lo[1]=query+1;
+    if kind==1 {lo[0]=query+1-window;if lo[0]<0 {lo[0]=0;}}
+    if kind==2 {lo[1]=block;if query>=block {lo[1]=tokens;}}
+}
+// out[(r*heads+h)*64 + i] for rows r of the call, from the same layouts as
+// the kernel.
+td_oracle :: (heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind:int,window:int,block:int,
+    q_stride:int,kv_stride:int,v_offset:int,q:[]f32,kv:[]f32,sinks:[]f32,out:[]f64) {
+    for r:0..<rows {for h:0..<heads {
+        g:=h*kv_heads/heads;lo:[2]int;td_oracle_range(kind,window,block,tokens,start+r,lo[..]);
+        maximum:=-1000000.0;if sinks.count>0 {maximum=f64(sinks[h]);}
+        for t:lo[0]..<lo[1] {
+            dot:=0.0;for i:0..<64 {dot+=f64(q[r*q_stride+h*64+i])*f64(kv[t*kv_stride+g*64+i]);}
+            if dot/8>maximum {maximum=dot/8;}
+        }
+        total:=0.0;if sinks.count>0 {total=exp(f64(sinks[h])-maximum);}
+        sums:[64]f64;
+        for t:lo[0]..<lo[1] {
+            dot:=0.0;for i:0..<64 {dot+=f64(q[r*q_stride+h*64+i])*f64(kv[t*kv_stride+g*64+i]);}
+            p:=exp(dot/8-maximum);total+=p;
+            for i:0..<64 {sums[i]+=p*f64(kv[t*kv_stride+v_offset+g*64+i]);}
+        }
+        for i:0..<64 {out[(r*heads+h)*64+i]=sums[i]/total;}
+    }}
+}
+td_value :: (i:int)->f32 {return f32((i*37+11)%23-11)/8;}
+// Every group of a call, last group first: order between groups is free.
+td_run :: (heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind:int,window:int,block:int,
+    q_stride:int,kv_stride:int,v_offset:int,q:[]f32,kv:[]f32,sinks:[]f32,out:[]f32,tiles:[]int) {
+    state:[8960]f32;groups:=(rows+63)/64*heads;
+    for g:0..<groups {td_attend(groups-1-g,heads,kv_heads,start,rows,tokens,kind,window,block,q_stride,kv_stride,v_offset,q,kv,sinks,out,state[0..<rows*heads*2],tiles);}
+}

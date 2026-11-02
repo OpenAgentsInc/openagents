@@ -1,0 +1,196 @@
+// Chapter 41 on the device: what the host may launch. tdp_check refuses a
+// td_attend launch whose shape, mask, rows or views do not fit, before any
+// byte moves; tdp_admit decides whether the device the host reports can run
+// the group kernel at all (chapter 68's da_admit). The host only reports and
+// obeys. The CPU profile (tiled-attention-cpu-f64-v1), the binary64 dense
+// oracle and the rotary table are exported here so the device harness can
+// compare against them.
+#authority;
+#load "admit.coax";
+#load "tiled-attention-kernels.coax";
+#load "../tiled-attention.coax";
+
+// book:begin plan
+// What td_attend needs: 64 threads, two shared tiles of 32 x 64 f32.
+TDP_NEEDS :: DaNeeds.{threads=64,shared=16384,mma=false};
+tdp_admit :: (major:int,minor:int,max_threads:int,max_shared:int)->DaStatus #export_c {
+    return da_admit(TDP_NEEDS,DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=max_shared});
+}
+// Groups of a launch: one per block of 64 rows and head.
+tdp_groups :: (heads:int,rows:int)->int {return (rows+63)/64*heads;}
+// The checks a launch must pass, in order. counts: q, kv, sinks, out,
+// state and tiles view lengths.
+tdp_check :: (heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind:int,window:int,block:int,
+    q_stride:int,kv_stride:int,v_offset:int,q:int,kv:int,sinks:int,out:int,state:int,tiles:int)->TaStatus #export_c {
+    if heads<1 || heads>64 || kv_heads<1 || kv_heads>8 || heads%kv_heads!=0 {return TaStatus.shape;}
+    if tokens<1 || tokens>131072 || rows<1 || start<0 || start+rows>tokens {return TaStatus.range;}
+    if kind<0 || kind>2 || (kind==1)!=(window>0) || window<0 || (kind==2)!=(block>0) || block>=tokens {return TaStatus.mask;}
+    width:=heads*64;kw:=kv_heads*64;
+    if q_stride<width || kv_stride<kw+v_offset || v_offset<kw {return TaStatus.capacity;}
+    if q!=(rows-1)*q_stride+width || kv!=(tokens-1)*kv_stride+v_offset+kw {return TaStatus.capacity;}
+    if (sinks!=0 && sinks!=heads) || out!=rows*width || state!=2*rows*heads || tiles!=tdp_groups(heads,rows) {return TaStatus.capacity;}
+    return TaStatus.ok;
+}
+// book:end plan
+
+// The CPU profile over the kernel's layouts, one row per ta_attend call:
+// packs q, keys and values into `packed`, tdp_cpu_packed(...) f32 elements;
+// work is ta_attend's, tdp_cpu_work(...) f64 elements.
+tdp_cpu_packed :: (heads:int,kv_heads:int,tokens:int)->int #export_c {return (heads+2*tokens*kv_heads)*64;}
+tdp_cpu_work :: (heads:int,kv_heads:int,tokens:int)->int #export_c {
+    return ta_plan(TaShape.{heads=heads,kv_heads=kv_heads,head_dim=64,tile=32},1,tokens,0).work;
+}
+tdp_cpu :: (heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind:int,window:int,block:int,
+    q_stride:int,kv_stride:int,v_offset:int,q:[]f32,kv:[]f32,sinks:[]f32,out:[]f32,packed:[]f32,work:[]f64)->TaStatus #export_c {
+    s:=TaShape.{heads=heads,kv_heads=kv_heads,head_dim=64,tile=32};
+    m:=TaMask.{kind=cast(TaMaskKind)kind,window=window,block=block};
+    kw:=kv_heads*64;width:=heads*64;
+    keys:=packed[0..<tokens*kw];values:=packed[tokens*kw..<2*tokens*kw];
+    for t:0..<tokens {for i:0..<kw {keys[t*kw+i]=kv[t*kv_stride+i];values[t*kw+i]=kv[t*kv_stride+v_offset+i];}}
+    qs:=packed[2*tokens*kw..<2*tokens*kw+width];
+    for r:0..<rows {
+        for i:0..<width {qs[i]=q[r*q_stride+i];}
+        res:=ta_attend(s,m,start+r,1,tokens,qs,keys,values,sinks,out[r*width..<(r+1)*width],work,false);
+        if res.status!=TaStatus.ok {return res.status;}
+    }
+    return TaStatus.ok;
+}
+// Where |a - b| is largest (the first such index), and the frozen
+// tolerance's verdict on a difference: within TD_TOLERANCE * (1 + |v|) for
+// the largest |v| of the values.
+tdp_worst :: (a:[]f32,b:[]f32)->int #export_c {
+    at:=0;for i:1..<a.count {if abs(f64(a[i])-f64(b[i]))>abs(f64(a[at])-f64(b[at])) {at=i;}}return at;
+}
+tdp_worst64 :: (a:[]f32,b:[]f64)->int #export_c {
+    at:=0;for i:1..<a.count {if abs(f64(a[i])-b[i])>abs(f64(a[at])-b[at]) {at=i;}}return at;
+}
+tdp_within :: (worst:f64,values:[]f32)->bool #export_c {
+    if worst<=TD_TOLERANCE {return true;}
+    for v:values {if worst<=TD_TOLERANCE*(1+abs(f64(v))) {return true;}}
+    return false;
+}
+// The binary64 dense oracle of the kernel's checks.
+tdp_dense :: (heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind:int,window:int,block:int,
+    q_stride:int,kv_stride:int,v_offset:int,q:[]f32,kv:[]f32,sinks:[]f32,out:[]f64) #export_c {
+    td_oracle(heads,kv_heads,start,rows,tokens,kind,window,block,q_stride,kv_stride,v_offset,q,kv,sinks,out);
+}
+// gpt-oss's rotary table for positions 0 ..< count, as chapter 66 builds it.
+tdp_rope :: (count:int,out:[]f32)->bool #export_c {
+    // One position per call: go_yarn computes each position on its own.
+    if out.count!=count*64 {return false;}
+    written:=0;
+    for p:0..<count {written+=go_yarn(p,1,out[p*64..<p*64+64]).written;}
+    return written==count*64;
+}
+
+#test "the device report decides admission" {
+    #assert tdp_admit(8,9,1024,49152)==DaStatus.ok;
+    #assert tdp_admit(7,5,1024,16384)==DaStatus.ok;
+    #assert tdp_admit(8,9,1024,16383)==DaStatus.shared;
+    #assert tdp_admit(8,9,31,49152)==DaStatus.report;
+    #assert tdp_admit(8,9,63,49152)==DaStatus.threads;
+    #assert tdp_admit(8,9,32,49152)==DaStatus.threads;
+}
+#test "gpt-oss-20b's prefill shapes pass" {
+    // 64 heads over 8 key/value heads; q rows inside the fused 5120-wide
+    // projection; keys then values in 1024-wide cache rows.
+    for tokens:[4]int.[512,1024,2048,4096] {
+        #assert tdp_check(64,8,0,tokens,tokens,0,0,0,5120,1024,512,(tokens-1)*5120+4096,(tokens-1)*1024+1024,64,tokens*4096,tokens*128,tokens)==TaStatus.ok;
+        #assert tdp_check(64,8,0,tokens,tokens,1,128,0,5120,1024,512,(tokens-1)*5120+4096,(tokens-1)*1024+1024,64,tokens*4096,tokens*128,tokens)==TaStatus.ok;
+    }
+    #assert tdp_groups(64,4096)==4096 && tdp_groups(64,65)==128 && tdp_groups(1,64)==1;
+}
+// A launch that passes everything: 2 heads, 1 key/value head, 70 rows.
+// The state view is always its exact length here; its own check follows.
+tdp_try :: (heads:int,kv_heads:int,start:int,rows:int,tokens:int,kind:int,window:int,block:int,q_stride:int,kv_stride:int,v_offset:int,q:int,kv:int,sinks:int,out:int,tiles:int)->TaStatus {
+    return tdp_check(heads,kv_heads,start,rows,tokens,kind,window,block,q_stride,kv_stride,v_offset,q,kv,sinks,out,2*rows*heads,tiles);
+}
+#test "each refusal names its cause, endpoints included" {
+    ok:=TaStatus.ok;
+    #assert tdp_try(2,1,0,70,70,0,0,0,160,128,64,69*160+128,69*128+128,2,8960,4)==ok;
+    #assert tdp_try(64,8,0,1,1,0,0,0,4096,1024,512,4096,1024,0,4096,64)==ok;
+    #assert tdp_try(1,1,131071,1,131072,0,0,0,64,128,64,64,131071*128+128,0,64,1)==ok;
+    // shape
+    #assert tdp_try(0,1,0,1,1,0,0,0,64,128,64,64,128,0,0,0)==TaStatus.shape;
+    #assert tdp_try(65,1,0,1,1,0,0,0,4160,128,64,4160,128,0,4160,65)==TaStatus.shape;
+    #assert tdp_try(2,0,0,1,1,0,0,0,128,128,64,128,128,0,128,2)==TaStatus.shape;
+    #assert tdp_try(9,9,0,1,1,0,0,0,576,1152,576,576,1152,0,576,9)==TaStatus.shape;
+    #assert tdp_try(3,2,0,1,1,0,0,0,192,256,128,192,256,0,192,3)==TaStatus.shape;
+    // range
+    #assert tdp_try(1,1,0,1,0,0,0,0,64,128,64,64,128,0,64,1)==TaStatus.range;
+    #assert tdp_try(1,1,0,1,131073,0,0,0,64,128,64,64,131072*128+128,0,64,1)==TaStatus.range;
+    #assert tdp_try(1,1,0,0,4,0,0,0,64,128,64,0,512,0,0,0)==TaStatus.range;
+    #assert tdp_try(1,1,-1,1,4,0,0,0,64,128,64,64,512,0,64,1)==TaStatus.range;
+    #assert tdp_try(1,1,3,2,4,0,0,0,64,128,64,128,512,0,128,1)==TaStatus.range;
+    #assert tdp_try(1,1,3,1,4,0,0,0,64,128,64,64,3*128+128,0,64,1)==ok;
+    // mask
+    #assert tdp_try(1,1,0,1,4,3,0,0,64,128,64,64,512,0,64,1)==TaStatus.mask;
+    #assert tdp_try(1,1,0,1,4,-1,0,0,64,128,64,64,512,0,64,1)==TaStatus.mask;
+    #assert tdp_try(1,1,0,1,4,1,0,0,64,128,64,64,512,0,64,1)==TaStatus.mask;
+    #assert tdp_try(1,1,0,1,4,0,2,0,64,128,64,64,512,0,64,1)==TaStatus.mask;
+    #assert tdp_try(1,1,0,1,4,1,1,0,64,128,64,64,512,0,64,1)==ok;
+    #assert tdp_try(1,1,0,1,4,2,0,0,64,128,64,64,512,0,64,1)==TaStatus.mask;
+    #assert tdp_try(1,1,0,1,4,0,0,2,64,128,64,64,512,0,64,1)==TaStatus.mask;
+    #assert tdp_try(1,1,0,1,4,2,0,4,64,128,64,64,512,0,64,1)==TaStatus.mask;
+    #assert tdp_try(1,1,0,1,4,2,0,3,64,128,64,64,512,0,64,1)==ok;
+    #assert tdp_try(1,1,0,1,4,2,0,1,64,128,64,64,512,0,64,1)==ok;
+    #assert tdp_try(1,1,0,1,4,1,-1,0,64,128,64,64,512,0,64,1)==TaStatus.mask;
+    // capacity: strides, then each view by one element
+    #assert tdp_try(1,1,0,1,4,0,0,0,63,128,64,63,512,0,64,1)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,127,64,64,3*127+128,0,64,1)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,128,63,64,3*128+127,0,64,1)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,128,64,63,512,0,64,1)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,128,64,65,512,0,64,1)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,128,64,64,511,0,64,1)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,128,64,64,513,0,64,1)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,128,64,64,512,1,64,1)==ok;
+    #assert tdp_try(2,1,0,1,4,0,0,0,128,128,64,128,512,1,128,2)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,128,64,64,512,0,63,1)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,128,64,64,512,0,65,1)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,128,64,64,512,0,64,0)==TaStatus.capacity;
+    #assert tdp_try(1,1,0,1,4,0,0,0,64,128,64,64,512,0,64,2)==TaStatus.capacity;
+    #assert tdp_check(1,1,0,1,4,0,0,0,64,128,64,64,512,0,64,1,1)==TaStatus.capacity;
+    #assert tdp_check(1,1,0,1,4,0,0,0,64,128,64,64,512,0,64,3,1)==TaStatus.capacity;
+}
+#test "the CPU profile, over the kernel's layouts, agrees with the kernel" #steps 400000000 {
+    // Chapter 41's ta_attend in calls of 64 rows, 2 heads over 1, 70 rows,
+    // every mask, with sinks.
+    q:[11200]f32;kv:[8960]f32;for i:0..<11200 {q[i]=td_value(i+3)*0.5;}for i:0..<8960 {kv[i]=td_value(2*i+1);}
+    sinks:=[2]f32.[0.5,-1];device:[8960]f32;cpu:[8960]f32;tiles:[4]int;
+    packed:[9088]f32;work:[30000]f64;w:=tdp_cpu_work(2,1,70);
+    #assert tdp_cpu_packed(2,1,70)==9088 && w==ta_plan(TaShape.{heads=2,kv_heads=1,head_dim=64,tile=32},1,70,0).work;
+    kinds:=[3]int.[0,1,2];windows:=[3]int.[0,5,0];blocks:=[3]int.[0,0,37];
+    for m:0..<3 {
+        td_run(2,1,0,70,70,kinds[m],windows[m],blocks[m],160,128,64,q[..],kv[..],sinks[..],device[..],tiles[..]);
+        #assert tdp_cpu(2,1,0,70,70,kinds[m],windows[m],blocks[m],160,128,64,q[..],kv[..],sinks[..],cpu[..],packed[..],work[0..<w])==TaStatus.ok;
+        worst:=0.0;for i:0..<8960 {d:=abs(f64(device[i])-f64(cpu[i]));if d>worst {worst=d;}}
+        #assert worst<=TD_TOLERANCE*(1+1.375) && worst<0.000001;
+    }
+    // A refusal from the CPU profile comes back as it is.
+    #assert tdp_cpu(2,1,0,70,70,2,0,71,160,128,64,q[..],kv[..],sinks[..],cpu[..],packed[..],work[0..<w])==TaStatus.mask;
+    dense:[8960]f64;tdp_dense(2,1,0,2,70,2,0,37,160,128,64,q[..],kv[..],sinks[..],dense[..]);
+    #assert abs(dense[0]-f64(device[0]))<0.000001;
+}
+#test "differences and the tolerance verdict" {
+    // The first largest difference wins a tie.
+    a:=[4]f32.[1,-2,3,0];b:=[4]f32.[1,-2.5,3.25,0.5];c:=[4]f64.[1.5,-2,3,0.5];
+    #assert tdp_worst(a[..],b[..])==1 && tdp_worst(b[..],a[..])==1 && tdp_worst64(a[..],c[..])==0;
+    #assert tdp_worst(a[2..<4],b[2..<4])==1 && tdp_worst64(a[1..<4],c[1..<4])==2 && tdp_worst(a[0..<1],b[0..<1])==0;
+    x:=[2]f32.[0,1];y:=[2]f64.[0,0];#assert tdp_worst64(x[..],y[..])==1;
+    t:=[2]f32.[1,1];u:=[2]f32.[2,2];w:=[2]f64.[2,2];#assert tdp_worst(t[..],u[..])==0 && tdp_worst64(t[..],w[..])==0;
+    // Largest |value| 3: the bound is 0.001 * 4, endpoint included.
+    #assert tdp_within(TD_TOLERANCE*4,a[..]) && !tdp_within(0.0041,a[..]);
+    v:=[2]f32.[1,-3];#assert tdp_within(TD_TOLERANCE*4,v[..]) && !tdp_within(0.0041,v[..]);
+    #assert tdp_within(TD_TOLERANCE,a[0..<0]) && !tdp_within(0.0011,a[0..<0]) && tdp_within(0.0011,a[0..<1]);
+}
+#test "the rotary table matches chapter 62's, past one batch" {
+    table:[8320]f32;one:[64]f32;
+    #assert tdp_rope(130,table[..]);
+    #assert go_yarn(129,1,one[..]).status==GoStatus.ok;
+    for i:0..<64 {#assert table[129*64+i]==one[i];}
+    #assert go_yarn(0,1,one[..]).status==GoStatus.ok;
+    for i:0..<64 {#assert table[i]==one[i];}
+    #assert !tdp_rope(130,table[0..<8000]) && !tdp_rope(129,table[..]);
+    batch:[8192]f32;#assert go_yarn(0,128,batch[..]).status==GoStatus.ok;
+    for i:0..<8192 {#assert f32_bits(table[i])==f32_bits(batch[i]);}
+}
