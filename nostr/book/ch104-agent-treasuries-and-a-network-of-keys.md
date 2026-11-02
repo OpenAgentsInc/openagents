@@ -887,7 +887,7 @@ amount and scriptPubKey, so a signer can't be lied to about any of them.
 bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) {
   #assert ss_key(key,w[0].key[..],false) && sp_base(w[0].key[0].safe,w[0].point[..]) && sp_x(w[0].point[..],w[0].internal[..]);
   m:[64]u8;n:=bt_put(m[..],0,w[0].internal[..]);
-  bt_tagged("TapTweak",m[0..<bt_put(m[..],n,merkle)],th);
+  bt_tagged(BH_TAPTWEAK,m[0..<bt_put(m[..],n,merkle)],th);
 }
 // The tweaked key d' + t into w.tweaked, where d' is d or n - d so that P
 // has an even y and t is the tweak hash th; false when t >= n. valid is
