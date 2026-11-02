@@ -5,7 +5,8 @@ working directory and a Bash command, and records each answer.
 
 CLAUDE_STUB_OUT names the file the answers go to, one JSON line each.
 CLAUDE_STUB_MODE=mcp calls Coder's in-process coder_ls tool instead, and
-CLAUDE_STUB_MODE=mcprun starts a child session with coder_run."""
+CLAUDE_STUB_MODE=mcprun starts a child session with coder_run, and
+CLAUDE_STUB_MODE=hook sends two Bash calls through the PreToolUse hook."""
 import json, os, sys
 
 out = os.environ.get("CLAUDE_STUB_OUT", "/dev/null")
@@ -32,15 +33,31 @@ asks = [
     ("Write", {"file_path": "/etc/stub-outside.txt", "content": "hi"}),
     ("Bash", {"command": "touch b.txt"}),
 ]
+hook_id = None
 while True:
     m = read()
     if m.get("type") == "control_request" and m["request"].get("subtype") == "initialize":
+        pre = (m["request"].get("hooks") or {}).get("PreToolUse") or []
+        if pre and pre[0].get("hookCallbackIds"):
+            hook_id = pre[0]["hookCallbackIds"][0]
         send({"type": "control_response", "response": {"subtype": "success", "request_id": m["request_id"], "response": {"commands": [], "models": []}}})
         continue
     if m.get("type") == "user":
         break
 send({"type": "system", "subtype": "init", "session_id": "stub", "cwd": cwd, "tools": [], "model": "stub"})
 mode = os.environ.get("CLAUDE_STUB_MODE", "")
+if mode == "hook":
+    # two tool calls through the host's PreToolUse hook; record each decision
+    with open(out, "a") as f:
+        for i, cmd in enumerate(["ls", "rm -rf build"]):
+            send({"type": "control_request", "request_id": "stub-hook-%d" % i, "request": {"subtype": "hook_callback", "callback_id": hook_id or "none",
+                  "input": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": cmd}}, "tool_use_id": "toolu_h%d" % i}})
+            r = read()
+            while r.get("type") != "control_response":
+                r = read()
+            got = r["response"].get("response", {}) or {}
+            f.write(json.dumps({"command": cmd, "decision": (got.get("hookSpecificOutput") or {}).get("permissionDecision", "allow"), "hook_id": hook_id}) + "\n")
+    asks = []
 if mode in ("mcp", "mcprun"):
     # call Coder's in-process MCP server: coder_ls, or coder_run of a child task; record the answer
     call = {"name": "coder_ls", "arguments": {}} if mode == "mcp" else {"name": "coder_run", "arguments": {"task": "child task", "engine": "echo"}}

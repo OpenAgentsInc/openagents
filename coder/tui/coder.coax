@@ -454,9 +454,10 @@ cd_claude_reset :: (q: [] ClQuery) { fresh: ClQuery; q[0] = fresh; }
 
 // Partial messages so the reply streams; the person's Claude Code login,
 // never an API key from the environment.
-cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool, effort: string, coder_tools: bool) {
+cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool, effort: string, coder_tools: bool, tool_hooks: bool) {
   o: [1] ClOptions;
   o[0].include_partial_messages = true;
+  if tool_hooks { cl_add_hook(o[..], "PreToolUse", "", 60.0); }    // every tool call first passes the plugins' tool_call hooks
   if coder_tools { cd_claude_coder_server(o[..]); }
   if effort.count > 0 { o[0].effort = effort; }
   // Tools run without asking, as with claude --dangerously-skip-permissions;
@@ -477,7 +478,7 @@ cd_claude_send :: (a: [] App, msg: string) {
   }
   cd_claude_reset(a[0].q);
   cl_init(a[0].q, a[0].qline, a[0].qarena, a[0].qout);
-  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a), a[0].coder_tools);
+  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a), a[0].coder_tools, cd_has_hook(a, "tool_call"));
   a[0].npending = cd_cat(a[0].pending[..], 0, msg);
   problem := cl_start(a[0].q, a[0].p, "", true, a[0].scratch);
   if problem.count > 0 { cd_finish(a, END_FAILED, problem); return; }
@@ -648,7 +649,7 @@ cd_claude_poll :: (a: [] App) -> bool {
       return true;      // no more polls until answered: a poll would refuse the request
     }
     if ev.kind == ClEventKind.tool_call { cd_claude_tool_call(a, ev); continue; }
-    if ev.kind == ClEventKind.hook { cl_hook_answer(q, "{}"); continue; }
+    if ev.kind == ClEventKind.hook { cd_claude_pre_tool(a, ev); continue; }
     if ev.kind == ClEventKind.message { cd_claude_message(a, ev.message); }
     if !a[0].live { return true; }
   }
@@ -789,36 +790,80 @@ cd_plugins_show :: (a: [] App) {
 // CODER_ENDING. Each hook's output shows as rows and is logged as a "hook"
 // line. A hook runs for at most PL_HOOK_SECONDS.
 PL_HOOK_SECONDS :: 30;
-cd_hooks :: (a: [] App, event: string, ending: string) {
+cd_hooks :: (a: [] App, event: string, ending: string) { wb: [8] u8; x := cd_hooks_run(a, event, ending, "", "", wb[..]); }
+
+// Runs the active plugins' hooks on event. For tool_call, CODER_TOOL and
+// CODER_TOOL_INPUT name the call, and a hook that exits non-zero refuses it:
+// the result is false and why holds the hook's output (chapter 15).
+cd_hooks_run :: (a: [] App, event: string, ending: string, tool: string, input: string, why: [] u8) -> bool {
   r := a[0].pl;
-  if r.count == 0 { return; }
+  if r.count == 0 { return true; }
+  all_ok := true;
   for i: 0..<r[0].nhooks {
     h := r[0].hooks[i..<i + 1];
     if cast(string) h[0].on[0..<h[0].non] != event || r[0].p[h[0].owner].state != PL_ACTIVE { continue; }
     run := cast(string) h[0].run[0..<h[0].nrun];
     owner := pl_name(r, h[0].owner);
-    eb: [4] [1200] u8; env: [4] string;
+    eb: [6] [4200] u8; env: [6] string;
     env[0] = cast(string) eb[0][0..<cd_cat(eb[0][..], cd_cat(eb[0][..], 0, "CODER_EVENT="), event)];
     env[1] = cast(string) eb[1][0..<cd_cat(eb[1][..], cd_cat(eb[1][..], 0, "CODER_SESSION="), cs_id(a[0].log))];
     env[2] = cast(string) eb[2][0..<cd_cat(eb[2][..], cd_cat(eb[2][..], 0, "CODER_ENGINE="), cd_engine_name(a[0].engine))];
     env[3] = cast(string) eb[3][0..<cd_cat(eb[3][..], cd_cat(eb[3][..], 0, "CODER_ENDING="), ending)];
+    env[4] = cast(string) eb[4][0..<cd_cat(eb[4][..], cd_cat(eb[4][..], 0, "CODER_TOOL="), tool)];
+    env[5] = cast(string) eb[5][0..<cd_cat(eb[5][..], cd_cat(eb[5][..], 0, "CODER_TOOL_INPUT="), cast(string) input[0..<ifx input.count > 4000 then 4000 else input.count])];
     cb: [1100] u8; cn := cd_cat(cb[..], cd_cat(cb[..], 0, run), " 2>&1");
     argv := [3] string.["/bin/sh", "-c", cast(string) cb[0..<cn]];
     ob: [65536] u8; ok: [1] bool;
     out := rt_run_in(argv[..], env[..], a[0].cwd, PL_HOOK_SECONDS, ob[..], ok[..]);
-    hb: [1200] u8; hn := cd_cat(hb[..], 0, "Hook("); hn = cd_cat(hb[..], hn, owner); hn = cd_cat(hb[..], hn, ": ");
-    hn = cd_cat(hb[..], hn, run); hn = cd_cat(hb[..], hn, ")");
-    cd_commit(a, TUI_DIM, cast(string) hb[0..<hn]);
-    if out.count > 0 { cd_commit_prefixed(a, ifx ok[0] then TUI_FAINT else TUI_RED, "  ⎿ ", "    ", cast(string) out[0..<ifx out.count > 2000 then 2000 else out.count]); }
+    if !ok[0] && all_ok && event == "tool_call" {
+      all_ok = false;
+      wn := cd_cat(why, 0, owner); wn = cd_cat(why, wn, ": ");
+      wn = cd_cat(why, wn, ifx out.count > 0 then cast(string) out[0..<ifx out.count > 300 then 300 else out.count] else "refused");
+      while wn > 0 && (why[wn - 1] == 10 || why[wn - 1] == ' ') { wn -= 1; }
+      if wn < why.count { why[wn] = 0; }
+    }
+    // a tool_call hook that says nothing and allows shows nothing: one row per call would bury the transcript
+    if event != "tool_call" || !ok[0] || out.count > 0 {
+      hb: [1200] u8; hn := cd_cat(hb[..], 0, "Hook("); hn = cd_cat(hb[..], hn, owner); hn = cd_cat(hb[..], hn, ": ");
+      hn = cd_cat(hb[..], hn, run); hn = cd_cat(hb[..], hn, ")");
+      cd_commit(a, TUI_DIM, cast(string) hb[0..<hn]);
+      if out.count > 0 { cd_commit_prefixed(a, ifx ok[0] then TUI_FAINT else TUI_RED, "  ⎿ ", "    ", cast(string) out[0..<ifx out.count > 2000 then 2000 else out.count]); }
+    }
     o := a[0].log[0].line[..];
     n := json_raw(o, 0, "{\"kind\":\"hook\",\"on\":"); n = json_write_string(o, n, event);
     n = json_raw(o, n, ",\"plugin\":"); n = json_write_string(o, n, owner);
     n = json_raw(o, n, ",\"run\":"); n = json_write_string(o, n, run);
+    if tool.count > 0 { n = json_raw(o, n, ",\"tool\":"); n = json_write_string(o, n, tool); }
     n = json_raw(o, n, ifx ok[0] then ",\"ok\":true" else ",\"ok\":false");
     n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, cast(string) out[0..<ifx out.count > 4000 then 4000 else out.count]);
     n = json_raw(o, n, "}");
     if n > 0 { cs_put(a, n); }
   }
+  return all_ok;
+}
+
+// Whether an active plugin has a hook on event.
+cd_has_hook :: (a: [] App, event: string) -> bool {
+  r := a[0].pl;
+  if r.count == 0 { return false; }
+  for i: 0..<r[0].nhooks { if cast(string) r[0].hooks[i].on[0..<r[0].hooks[i].non] == event && r[0].p[r[0].hooks[i].owner].state == PL_ACTIVE { return true; } }
+  return false;
+}
+
+// Claude Code's PreToolUse hook: the plugins' tool_call hooks may refuse the call.
+cd_claude_pre_tool :: (a: [] App, ev: ClEvent) {
+  q := a[0].q;
+  tool := cl_str(q[0].ar[..], ev.arguments, "tool_name");
+  input := cl_raw(ev.arguments, "tool_input");
+  lb: [1024] u8; label := cd_tool_label(a, tool, input, lb[..]);
+  wb: [400] u8; for i: 0..<wb.count { wb[i] = 0; }
+  if cd_hooks_run(a, "tool_call", "", label, input, wb[..]) { cl_hook_answer(q, "{}"); return; }
+  k := 0; while k < wb.count && wb[k] != 0 { k += 1; }
+  ob: [1200] u8;
+  n := json_raw(ob[..], 0, "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":");
+  rb: [600] u8; rn := cd_cat(rb[..], 0, "A Coder plugin refused this. "); rn = cd_cat(rb[..], rn, cast(string) wb[0..<k]);
+  n = json_write_string(ob[..], n, cast(string) rb[0..<rn]); n = json_raw(ob[..], n, "}}");
+  cl_hook_answer(q, ifx n > 0 then cast(string) ob[0..<n] else "{}");
 }
 
 // /plugin enable NAME, /plugin disable NAME: the disabled list on disk follows.

@@ -13,7 +13,7 @@ cd_codex_settings :: (a: [] App) -> CxSettings {
   st.cwd = a[0].cwd;
   if a[0].model_engine == ENGINE_CODEX { st.model = a[0].model; }
   st.effort = cd_effort(a);       // low, medium or high: the same words Codex takes
-  if a[0].ask_first || a[0].pol[0].on { st.approval_policy = "untrusted"; st.sandbox = "workspace-write"; st.ask_person = true; }
+  if a[0].ask_first || a[0].pol[0].on || cd_has_hook(a, "tool_call") { st.approval_policy = "untrusted"; st.sandbox = "workspace-write"; st.ask_person = true; }
   else { st.approval_policy = "never"; st.sandbox = "danger-full-access"; }
   return st;
 }
@@ -159,6 +159,9 @@ cd_codex_poll :: (a: [] App) -> bool {
         gr := cd_cx_str(a, ev.params, "grantRoot");
         if gr.count > 0 { inside = cd_inside(a[0].pol[..], a[0].cwd, gr); }
       }
+      hw: [400] u8; for i: 0..<hw.count { hw[i] = 0; }
+      if !cd_hooks_run(a, "tool_call", "", what, ev.params, hw[..]) { cx_approve(a[0].cx, false); continue; }
+      if !a[0].pol[0].on && !a[0].ask_first { cx_approve(a[0].cx, true); continue; }   // asked only for the hooks
       if a[0].pol[0].on {
         pw: [256] u8;
         verdict := cd_policy_decide(a[0].pol[..], effect, inside, pw[..]);

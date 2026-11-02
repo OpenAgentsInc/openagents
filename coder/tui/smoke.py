@@ -175,6 +175,14 @@ def verbs(check):
             head = next((json.loads(l) for l in klog.splitlines() if '"kind":"session"' in l), {})
         check("a subagent keeps its parent's policy and no more time, and reports back",
               head.get("report_to") == psid and head.get("allow") == "write" and head.get("ceiling") == "write" and 0 < head.get("deadline_s", 0) <= 60)
+        hook_home = tempfile.mkdtemp(prefix="coder-hook-"); os.makedirs(os.path.join(hook_home, ".openagents/coder/plugins"))
+        with open(os.path.join(hook_home, ".openagents/coder/plugins/guard.json"), "w") as f:
+            f.write(json.dumps({"name": "guard", "hooks": [{"on": "tool_call", "run": "case \"$CODER_TOOL\" in *rm*) echo no rm here; exit 1;; esac"}]}))
+        hook_out = os.path.join(hook_home, "answers")
+        subprocess.run([coder, "run", "go", "--engine", "claude", "--cwd", work, "--json"], cwd=REPO,
+                       env=dict(env, HOME=hook_home, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=hook_out, CLAUDE_STUB_MODE="hook"), capture_output=True, text=True, timeout=120)
+        hooked = [json.loads(x) for x in open(hook_out)] if os.path.exists(hook_out) else []
+        check("a tool_call hook refuses rm and lets ls run", [(h["command"], h["decision"]) for h in hooked] == [("ls", "allow"), ("rm -rf build", "deny")])
         badp = subprocess.run([coder, "run", "hi", "--allow", "run", "--ceiling", "write"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("policy: --allow can't pass --ceiling", badp.returncode == 2 and "--allow can't be above --ceiling" in badp.stderr)
         # deadlines and reports (chapter 14): a job past its deadline expires; a job's result reaches the session that started it

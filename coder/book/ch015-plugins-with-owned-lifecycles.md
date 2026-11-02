@@ -4,10 +4,10 @@
 > `~/.openagents/coder/plugins`: each one's commands become slash commands,
 > its states are visible, and disabling it removes everything it
 > registered. A signed plugin installs only when its Nostr signature
-> verifies and its key is trusted. Hooks run on `session_start` and
-> `turn_end`. Still to come: profiles, capabilities with providers and
-> consumers, hooks on tool calls that can refuse them, the draining state,
-> and third-party plugins in bounded Wasm.
+> verifies and its key is trusted. Hooks run on `session_start`,
+> `turn_end` and `tool_call`, and a `tool_call` hook can refuse the call.
+> Still to come: profiles, capabilities with providers and consumers, the
+> draining state, and third-party plugins in bounded Wasm.
 
 Extensions to the harness need clear ownership. This chapter composes the
 harness from ordered profiles and plugins. Every registration belongs to the
@@ -65,6 +65,32 @@ COMMAND)` and goes into the session log as a `hook` line:
 A hook that runs longer than 30 seconds is ended and logged with `"ok":
 false`. Only an active plugin's hooks run, so a disabled plugin's hooks stop
 with its commands.
+
+### Hooks on tool calls
+
+A hook `on` `tool_call` runs before each tool call. `CODER_TOOL` holds the
+call as the transcript shows it, such as `Bash(rm -rf build)`, and
+`CODER_TOOL_INPUT` its input as JSON (up to 4,000 bytes). A hook that exits
+non-zero refuses the call, and its output is the reason the agent sees:
+
+```json
+{"name":"guard","hooks":[{"on":"tool_call","run":"case \"$CODER_TOOL\" in *rm*) echo no rm here; exit 1;; esac"}]}
+```
+
+```json
+{"kind":"hook","on":"tool_call","plugin":"guard","run":"…","tool":"Bash(rm -rf build)","ok":false,"text":"no rm here"}
+```
+
+- Claude Code: Coder registers a `PreToolUse` hook when an active plugin
+  has a `tool_call` hook, so every call passes through it, even with
+  permissions skipped. A refusal answers `permissionDecision: deny`.
+- Codex: Coder asks Codex for approvals (policy `untrusted`), and each one
+  passes the hooks first. Codex doesn't ask before commands it treats as
+  safe to read, so those skip the hooks.
+- Microcoder: not yet.
+
+A `tool_call` hook that allows a call and prints nothing adds no row to the
+transcript; the log still has its line.
 
 ### Owned registrations
 
