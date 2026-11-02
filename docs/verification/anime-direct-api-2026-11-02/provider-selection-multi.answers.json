@@ -1,0 +1,124 @@
+{
+  "answers": [
+    {
+      "selections": [
+        {
+          "field": "kind",
+          "value": "cast",
+          "probabilities": [
+            0.002,
+            0.001,
+            0.021,
+            0.002,
+            0.963,
+            0.005,
+            0.003,
+            0.001,
+            0.001,
+            0.001
+          ]
+        },
+        {
+          "field": "who",
+          "value": "heroine",
+          "probabilities": [
+            0.985,
+            0.005,
+            0.004,
+            0.003,
+            0.003
+          ]
+        },
+        {
+          "field": "spell",
+          "value": "fireball",
+          "probabilities": [
+            0.005,
+            0.985,
+            0.003,
+            0.003,
+            0.002,
+            0.002
+          ]
+        },
+        {
+          "field": "place",
+          "value": "gate",
+          "probabilities": [
+            0.895,
+            0.045,
+            0.015,
+            0.015,
+            0.01,
+            0.01,
+            0.005,
+            0.005
+          ]
+        },
+        {
+          "field": "timing",
+          "value": "now",
+          "probabilities": [
+            0.852,
+            0.118,
+            0.03
+          ]
+        }
+      ]
+    },
+    {
+      "selections": [
+        {
+          "field": "kind",
+          "value": "shot",
+          "probabilities": [
+            0.001,
+            0.001,
+            0.003,
+            0.002,
+            0.002,
+            0.002,
+            0.983,
+            0.003,
+            0.002,
+            0.001
+          ]
+        },
+        {
+          "field": "framing",
+          "value": "close-up",
+          "probabilities": [
+            0.015,
+            0.972,
+            0.004,
+            0.002,
+            0.001,
+            0.003,
+            0.002,
+            0.001
+          ]
+        },
+        {
+          "field": "who",
+          "value": "hero",
+          "probabilities": [
+            0.004,
+            0.987,
+            0.003,
+            0.003,
+            0.003
+          ]
+        },
+        {
+          "field": "timing",
+          "value": "after",
+          "probabilities": [
+            0.225,
+            0.743,
+            0.032
+          ]
+        }
+      ]
+    }
+  ]
+}

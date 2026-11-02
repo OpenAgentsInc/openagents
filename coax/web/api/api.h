@@ -54,6 +54,7 @@ bool realms_route(const request *q);      // realms.c: build your own realm
 bool makers_route(const request *q);      // makers.c: a realm's maker and their claim
 bool upgrades_route(const request *q);    // makers.c: listed fairy upgrades, bought with sats or credit
 bool mesh_route(const request *q);         // mesh.c: authenticated native SystemOne mesh
+bool anime_route(const request *q);        // anime.c: typed Anime Lab directions
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app
 // Our Spark wallet (inference.c, OA_SPARK_URL): POST path with json (GET with none); its status (0 unreached), its body into *out.
@@ -61,6 +62,7 @@ long api_spark(const char *path, const char *json, long timeout_s, char **out);
 // The model (npc.c): its generateContent answer into *body (malloc'd, or NULL), the HTTP status (0 unreached).
 long npc_ask_model(const char *url_env, const char *model, const char *request, char **body);
 long npc_ask_model_twice(const char *url_env, const char *model, const char *request, long timeout_ms, char **body);
+long npc_ask_model_twice_n(const char *url_env, const char *model, const char *request, long timeout_ms, char **body, size_t *body_n);
 // A page, list or file written into the site's bucket (drops.c, OA_SITE_BUCKET), no-cache.
 bool drops_site_write(const char *name, const char *type, const char *data);
 bool drops_site_delete(const char *name);   // gone already counts as done

@@ -1,0 +1,81 @@
+// Private model-wire checks. Public answers and history keep the canonical flat/map profile.
+AAP_TEST_ROWS :: "{\"selections\":[{\"field\":\"kind\",\"value\":\"cast\",\"probabilities\":[0,0,0,0,1,0,0,0,0,0]},{\"field\":\"who\",\"value\":\"heroine\",\"probabilities\":[0.9,0.1,0,0,0]},{\"field\":\"spell\",\"value\":\"fireball\",\"probabilities\":[0,1,0,0,0,0]},{\"field\":\"place\",\"value\":\"gate\",\"probabilities\":[1,0,0,0,0,0,0,0]},{\"field\":\"timing\",\"value\":\"now\",\"probabilities\":[1,0,0]}]}";
+aapt_rows :: (text:string,out:[]u8)->int {nodes:[2048]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) || !aap_unique(d[0]) {return AAP_MODEL;}return aap_rows(d[0],0,out);}
+
+#test "API anime private selections preserve flat values full maps and the public disposition" {
+  out:[65536]u8;n:=aapt_rows(AAP_TEST_ROWS,out[..]);#assert n>0;
+  nodes:[2048]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+  core:[2048]u8;held:=aap_direction(d[0],0,false,core[..]);#assert held.ok && held.p==900 && held.kind==AD_CAST && held.render_supported;
+  #assert jv_raw(d[0],jv_get(d[0],0,"who"))=="heroine" && jv_raw(d[0],jv_get(d[0],0,"place"))=="gate";
+  #assert jv_len(d[0],jv_path(d[0],0,"confidence.kind"))==10 && jv_raw(d[0],jv_path(d[0],0,"confidence.who.heroine"))=="0.900";
+  list:[16384]u8;n=aap_test_finish(aap_test_list(AAP_TEST_ROWS,AAP_TEST_ACT,list[..]),out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+  #assert jv_len(d[0],jv_get(d[0],0,"answers"))==2 && jv_raw(d[0],jv_path(d[0],0,"answers[0].decision"))=="play";
+}
+#test "API anime private row grammar rejects tags types duplicate fields and incomplete vectors atomically" {
+  out:[65536]u8;changed:[16384]u8;list:[32768]u8;for i:0..<out.count {out[i]=91;}
+  bad:=[9]string.["{\"selections\":{}}","{\"selections\":null}","{\"selections\":[],\"kind\":\"cast\"}","{\"selections\":[{}]}","{\"selections\":[{\"field\":1,\"value\":\"cast\",\"probabilities\":[]}]}","{\"selections\":[{\"field\":\"unknown\",\"value\":\"cast\",\"probabilities\":[]}]}","{\"selections\":[{\"field\":\"kind\",\"value\":1,\"probabilities\":[]}]}","{\"selections\":[{\"field\":\"what\",\"value\":\"ink\",\"probabilities\":{}}]}","{\"selections\":[{\"field\":\"what\",\"value\":\"ink\",\"probabilities\":[0]}]}"];
+  for x:bad {#assert aapt_rows(x,out[..])==AAP_MODEL;#assert aap_test_finish(aap_test_list(x,"",list[..]),out[..])==AAP_MODEL;}
+  from:=[9]string.["\"field\":\"who\"","\"field\":\"who\"","\"value\":\"heroine\"","\"probabilities\":[0.9,0.1,0,0,0]","\"probabilities\":[0.9,0.1,0,0,0]","\"probabilities\":[0.9,0.1,0,0,0]","\"value\":\"cast\"","\"value\":\"cast\"","\"field\":\"who\""];
+  to:=[9]string.["\"field\":\"kind\"","\"field\":\"\\u006b ind\"","\"value\":\"none\"","\"probabilities\":[0.9,0.1,0,0]","\"probabilities\":[0.9,0.1,0,0,0,0]","\"probabilities\":[0.9,0.1,0,0,true]","\"value\":\"set\"","\"value\":\"cast\",\"extra\":1","\"field\":\"who\",\"field\":\"who\""];
+  for i:0..<9 {x:=aap_test_replace(AAP_TEST_ROWS,from[i],to[i],changed[..]);#assert aapt_rows(x,out[..])==AAP_MODEL;}
+  #assert out[0]==91 && out[out.count-1]==91;
+  x:=aap_test_replace(AAP_TEST_ROWS,"[0.9,0.1,0,0,0]","[0.1,0.9,0,0,0]",changed[..]);#assert aap_test_finish(aap_test_list(x,"",list[..]),out[..])==AAP_MODEL;
+  x=aap_test_replace(AAP_TEST_ROWS,"[0.9,0.1,0,0,0]","[0.8,0.1,0,0,0]",changed[..]);#assert aap_test_finish(aap_test_list(x,"",list[..]),out[..])==AAP_MODEL;
+  x=aap_test_replace(AAP_TEST_ROWS,"[0.9,0.1,0,0,0]","[0.9,0.0999,0,0,0]",changed[..]);#assert aapt_rows(x,out[..])==AAP_MODEL;
+  tiny:=[2]u8.[7,8];#assert aapt_rows(AAP_TEST_ROWS,tiny[..])==AAP_MODEL && tiny[0]==7 && tiny[1]==8;
+  #assert aapt_rows(AAP_TEST_CAST,tiny[..])==AAP_MODEL && tiny[0]==7 && tiny[1]==8;
+}
+
+aapt_wire_answer :: (canonical:string,out:[]u8)->string {
+  nodes:[512]JvNode;d:[1]Jv;parsed:=jv_parse(d[..],canonical,nodes[..]);
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"selections");jo_arr(o[..]);
+  for i:0..<19 {
+    field:=aap_wire_name(i);value:=jv_get(d[0],0,field);if value==-1 {continue;}
+    jo_obj(o[..]);jo_key(o[..],"field");jo_str(o[..],field);jo_key(o[..],"value");
+    if field=="count" {jo_str(o[..],jv_raw(d[0],value));}else {jv_write(d[0],value,o[..]);}
+    jo_key(o[..],"probabilities");jo_arr(o[..]);
+    map:=jv_get(d[0],jv_get(d[0],0,"confidence"),field);
+    for k:0..<aap_choices(field) {jv_write(d[0],jv_get(d[0],map,aap_choice(field,k)),o[..]);}
+    jo_end(o[..]);jo_end(o[..]);
+  }jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
+}
+#test "API anime private rows preserve every optional field count and out of stock description" {
+  cores:=[8]string.[
+    "{\"kind\":\"enter\",\"archetype\":\"hooded\",\"how\":\"appears\",\"count\":1,\"place\":\"behind\",\"timing\":\"after\"}",
+    "{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":2,\"timing\":\"now\"}",
+    "{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":3,\"timing\":\"now\"}",
+    "{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"place\":\"wall\",\"timing\":\"with\"}",
+    "{\"kind\":\"emote\",\"who\":\"heroine\",\"emotion\":\"sad\",\"timing\":\"now\"}",
+    "{\"kind\":\"fx\",\"effect\":\"smoke\",\"size\":\"large\",\"timing\":\"now\"}",
+    "{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"hero\",\"move\":\"hold\",\"timing\":\"now\"}",
+    "{\"kind\":\"cut\",\"to\":\"hero\",\"transition\":\"flash\",\"timing\":\"now\"}"];
+  answer:[8192]u8;wire:[16384]u8;list:[32768]u8;out:[65536]u8;nodes:[2048]JvNode;d:[1]Jv;
+  for i:0..<cores.count {
+    rows:=aapt_wire_answer(aapt_vector_answer(cores[i],1000,answer[..]),wire[..]);n:=aap_test_finish(aap_test_list(rows,"",list[..]),out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+    at:=jv_at(d[0],jv_get(d[0],0,"answers"),0);
+    if i<3 {#assert jv_int(d[0],jv_get(d[0],at,"count"),0)==i+1;}
+    if i==3 {#assert jv_raw(d[0],jv_get(d[0],at,"what"))=="ink dragon" && !jv_bool(d[0],jv_get(d[0],at,"stock")) && jv_raw(d[0],jv_get(d[0],at,"decision"))=="heard";}
+  }
+}
+#test "API anime private decoded row tags are unique and every invalid selection refuses as a whole" {
+  row:="{\"field\":\"who\",\"value\":\"heroine\",\"probabilities\":[1,0,0,0,0]}";
+  escaped:="{\"field\":\"\\u0077ho\",\"value\":\"heroine\",\"probabilities\":[1,0,0,0,0]}";
+  input:[16384]u8;o:[1]Jo;out:[65536]u8;list:[32768]u8;
+  for second:[2]string.[row,escaped] {jo_start(o[..],input[..]);jo_obj(o[..]);jo_key(o[..],"selections");jo_arr(o[..]);jo_raw(o[..],row);jo_raw(o[..],second);jo_end(o[..]);jo_end(o[..]);#assert aapt_rows(jo_text(o[..]),out[..])==AAP_MODEL;}
+  changed:[16384]u8;
+  from:=[6]string.["\"field\":\"kind\"","\"field\":\"kind\"","[0.9,0.1,0,0,0]","[0.9,0.1,0,0,0]","\"value\":\"heroine\"","\"field\":\"who\""];
+  to:=[6]string.["\"field\":\"\\u006bind\"","\"field\":\"kind\",\"extra\":0","[-0.001,1.001,0,0,0]","[1.001,-0.001,0,0,0]","\"value\":\"creature\"","\"field\":\"how\""];
+  for i:0..<6 {x:=aap_test_replace(AAP_TEST_ROWS,from[i],to[i],changed[..]);n:=aap_test_finish(aap_test_list(x,"",list[..]),out[..]);#assert (n>0)==(i==0);}
+  for row_bad:[5]string.["{\"selections\":[]}","{\"selections\":[{\"field\":\"count\",\"value\":\"0\",\"probabilities\":[1,0,0]}]}","{\"selections\":[{\"field\":\"count\",\"value\":\"4\",\"probabilities\":[1,0,0]}]}","{\"selections\":[{\"field\":\"count\",\"value\":1,\"probabilities\":[1,0,0]}]}","{\"selections\":[{\"field\":\"what\",\"value\":3,\"probabilities\":[]}]}"] {#assert aap_test_finish(aap_test_list(row_bad,"",list[..]),out[..])==AAP_MODEL;}
+  for p:[3]int.[499,850,851] {
+    answer:[8192]u8;wire:[16384]u8;selected:=aapt_wire_answer(aapt_vector_answer("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"timing\":\"now\"}",p,answer[..]),wire[..]);n:=aap_test_finish(aap_test_list(selected,"",list[..]),out[..]);
+    nodes:[2048]JvNode;d:[1]Jv;#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);#assert jv_raw(d[0],jv_path(d[0],0,"answers[0].decision"))==(ifx p<500 then "heard" else ifx p>850 then "play" else "soft");
+  }
+}
+#test "API anime private tag lookup rejects wrong types and absent or unknown catalogue names" {
+  nodes:[32]JvNode;d:[1]Jv;
+  for bad:[8]string.["1","true","false","null","{}","[]","\"unknown\"","\"\""] {#assert jv_parse(d[..],bad,nodes[..]) && aap_row_field(d[0],0)==-1;}
+  #assert aap_row_field(d[0],-1)==-1;
+  b:[128]u8;o:[1]Jo;
+  for i:0..<19 {jo_start(o[..],b[..]);jo_str(o[..],aap_wire_name(i));#assert jv_parse(d[..],jo_text(o[..]),nodes[..]) && aap_row_field(d[0],0)==i;}
+}

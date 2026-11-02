@@ -1,0 +1,4 @@
+ok Origin refusal leaves the exact signature and quota unspent
+ok changing only Origin admits the exact request and v1 selector context
+ok after acceptance that same event is spent once
+3 anime API checks passed, 0 failed

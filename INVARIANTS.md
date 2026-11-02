@@ -42,6 +42,29 @@ answer. A key that is another account's, or owns realms, players or creator
 rows of its own, is refused. Checks: the `device` part of `cli_auth.coax`;
 `apps/openagents-web/private.coax` (page 7 approves only on the press).
 
+## Anime words become directions only through the catalogue holder
+
+`POST /api/playtest/labs/anime/direct` admits a site session with matching
+Origin or a fresh, payload-bound NIP-98 signature. A foreign Origin is refused
+before signature first use. Coax owns input bounds, the selector schema,
+catalogue holding, full probability maps, confidence dispositions and quota
+decisions (`coax/web/api/anime-director-policy.coax` and
+`anime-route-policy.coax`, both `#authority`). The host observes identity and
+ledger counts, reserves one call under advisory transaction lock 3073002, then
+commits before model work. No words or scene state enter `anime.calls`.
+
+One malformed answer refuses the whole selector result without publishing a
+prefix. Every selected finite field has a complete probability map on the
+0.001 grid summing to one, and its selected value is the catalogue's first
+maximum. The minimum selected score is `p`: above 0.85 plays, 0.5 through 0.85
+is soft, and lower scores are heard only. Out-of-stock or statically unsupported
+directions remain heard only, preserving their scores; these model-reported
+probabilities do not assert empirical calibration. The route returns timing
+intent but does not mutate a stage or schedule a take. Checks:
+`coax/web/api/tests/anime_direct.coax` against the native API and PostgreSQL,
+the two authorities' mutation gates, and the finite render-profile checks.
+Contract: `docs/verse/2026-11-02-anime-director-api.md`.
+
 ## A private realm is seen only by its owner and site admins
 
 A made realm's `visibility` (`coax/web/api/migrations/0099_realm_visibility.sql`)

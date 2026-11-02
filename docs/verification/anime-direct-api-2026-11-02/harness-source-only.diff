@@ -1,0 +1,14 @@
+--- docs/verification/anime-direct-api-2026-11-02/harness-executed.coax.txt	2026-11-02 10:37:10
++++ coax/web/api/tests/anime_direct.coax	2026-11-02 10:34:39
+@@ -1,5 +1,5 @@
+ // Actual C API + owned PostgreSQL + an owned Coax selector stand-in (#12632).
+-// No external selector, deployment, staging, owner identity or production data.
++// Default: owned fake; ANIME_ONLY=live uses the real provider through local API.
+ // API=http://127.0.0.1:57432 ORIGIN=http://127.0.0.1:57432 PGURL=... PSQL=...
+ // ANIME_PORT=51392 ANIME_ISOLATED_DB=oa_anime12632 coax/web/tool.sh FILE.coax
+ // ORIGIN may differ from the loopback transport API (the ordinary API test.sh).
+@@ -489,4 +489,3 @@
+   print("% anime API checks passed, % failed\n",t[0].pass,t[0].fail);
+   return ifx t[0].fail == 0 && removed then 0 else 1;
+ }
+-

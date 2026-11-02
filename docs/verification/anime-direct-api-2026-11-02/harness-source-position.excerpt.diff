@@ -1,0 +1,160 @@
+--- /tmp/anime-direct-harness-frozen.c	2026-11-02 10:32:10
++++ /tmp/anime-direct-harness-posttrim.c	2026-11-02 10:35:27
+@@ -2,59 +2,59 @@
+ static const char *coax_source_path = "coax/web/api/tests/anime_direct.coax";
+ struct coax_source_range { int first, last, base, fixed; const char *path; };
+ static const struct coax_source_range coax_source_ranges[] = {
+-  {1,492,1,0,"coax/web/api/tests/anime_direct.coax"},
+-  {493,527,1,0,"coax/lib/sys/tool.coax"},
+-  {528,697,1,0,"coax/lib/sys/args.coax"},
+-  {698,866,1,0,"coax/lib/sys/proc.coax"},
+-  {867,1025,1,0,"coax/lib/sys/fs.coax"},
+-  {1026,1773,1,0,"coax/lib/net/http.coax"},
+-  {1774,1787,1,0,"coax/lib/net/transport.coax"},
+-  {1788,1801,1,0,"coax/lib/net/socket_foreign.coax"},
+-  {1802,2539,1,0,"coax/lib/json/json.coax"},
+-  {2540,2734,1,0,"coax/lib/nostr/nip98_sign.coax"},
+-  {2735,2931,1,0,"coax/lib/nostr/event_sign.coax"},
+-  {2932,3208,1,0,"coax/lib/crypto/schnorr_sign.coax"},
+-  {3209,3249,1,0,"coax/lib/crypto/schnorr_prepare_workspace.coax"},
+-  {3250,3292,1,0,"coax/lib/crypto/schnorr_scalar_workspace.coax"},
+-  {3293,3483,1,0,"coax/lib/crypto/secp_scalar.coax"},
+-  {3484,3687,1,0,"coax/lib/crypto/bytes.coax"},
+-  {3688,3727,1,0,"coax/tests/nostr/scalar_fixtures.coax"},
+-  {3728,3773,1,0,"coax/lib/crypto/schnorr_point_workspace.coax"},
+-  {3774,3810,1,0,"coax/lib/crypto/secp_mult_base_web.coax"},
+-  {3811,3966,1,0,"coax/lib/crypto/secp_mult_base.coax"},
+-  {3967,4052,1,0,"coax/lib/crypto/secp_group32.coax"},
+-  {4053,4338,1,0,"coax/lib/crypto/secp_group.coax"},
+-  {4339,4905,1,0,"coax/lib/crypto/secp_field.coax"},
+-  {4906,4990,1,0,"coax/lib/crypto/secp_field32_total.coax"},
+-  {4991,5083,1,0,"coax/lib/crypto/secp_field32.coax"},
+-  {5084,5202,1,0,"coax/lib/crypto/ecdh_fast.coax"},
+-  {5203,5258,1,0,"coax/lib/crypto/schnorr_nonce_point.coax"},
+-  {5259,5308,1,0,"coax/lib/crypto/schnorr_nonce_workspace.coax"},
+-  {5309,5406,1,0,"coax/lib/crypto/sha256_workspace.coax"},
+-  {5407,5650,1,0,"coax/lib/crypto/sha256.coax"},
+-  {5651,5851,1,0,"coax/lib/crypto/sha256-kernel.coax"},
+-  {5852,5897,1,0,"coax/lib/crypto/schnorr_math_workspace.coax"},
+-  {5898,6034,1,0,"coax/lib/crypto/schnorr_fast.coax"},
+-  {6035,6098,1,0,"coax/lib/crypto/schnorr.coax"},
+-  {6099,6273,1,0,"coax/lib/crypto/secp_mult.coax"},
+-  {6274,6321,1,0,"coax/tests/nostr/schnorr_checks.coax"},
+-  {6322,6523,1,0,"coax/tests/nostr/schnorr_fixtures.coax"},
+-  {6524,6842,1,0,"coax/lib/crypto/schnorr_self_verify.coax"},
+-  {6843,7007,1,0,"coax/lib/crypto/secp_mult_const.coax"},
+-  {7008,7016,1,0,"coax/tests/nostr/schnorr_sign_vectors.coax"},
+-  {7017,7182,1,0,"coax/lib/nostr/event.coax"},
+-  {7183,7292,1,0,"coax/tests/nostr/event_fast_checks.coax"},
+-  {7293,7307,1,0,"coax/tests/nostr/event_fixtures.coax"},
+-  {7308,7396,1,0,"coax/lib/nostr/hex.coax"},
+-  {7397,7423,1,0,"coax/lib/nostr/codecs-common.coax"},
+-  {7424,7524,1,0,"coax/lib/nostr/adapters/json-admission.coax"},
+-  {7525,8282,1,0,"coax/lib/nostr/json.coax"},
+-  {8283,9110,1,0,"coax/lib/nostr/fixtures/json_suite.coax"},
+-  {9111,9114,1,0,"coax/lib/nostr/fixtures/coax_relay.coax"},
+-  {9115,9302,1,0,"coax/lib/nostr/adapters/json-policy.coax"},
+-  {9303,9344,1,0,"coax/tests/nostr/event_checks.coax"},
+-  {9345,9356,1,0,"coax/tests/nostr/event_sign_vectors.coax"},
+-  {9357,9505,1,0,"coax/lib/nostr/base64.coax"},
++  {1,491,1,0,"coax/web/api/tests/anime_direct.coax"},
++  {492,526,1,0,"coax/lib/sys/tool.coax"},
++  {527,696,1,0,"coax/lib/sys/args.coax"},
++  {697,865,1,0,"coax/lib/sys/proc.coax"},
++  {866,1024,1,0,"coax/lib/sys/fs.coax"},
++  {1025,1772,1,0,"coax/lib/net/http.coax"},
++  {1773,1786,1,0,"coax/lib/net/transport.coax"},
++  {1787,1800,1,0,"coax/lib/net/socket_foreign.coax"},
++  {1801,2538,1,0,"coax/lib/json/json.coax"},
++  {2539,2733,1,0,"coax/lib/nostr/nip98_sign.coax"},
++  {2734,2930,1,0,"coax/lib/nostr/event_sign.coax"},
++  {2931,3207,1,0,"coax/lib/crypto/schnorr_sign.coax"},
++  {3208,3248,1,0,"coax/lib/crypto/schnorr_prepare_workspace.coax"},
++  {3249,3291,1,0,"coax/lib/crypto/schnorr_scalar_workspace.coax"},
++  {3292,3482,1,0,"coax/lib/crypto/secp_scalar.coax"},
++  {3483,3686,1,0,"coax/lib/crypto/bytes.coax"},
++  {3687,3726,1,0,"coax/tests/nostr/scalar_fixtures.coax"},
++  {3727,3772,1,0,"coax/lib/crypto/schnorr_point_workspace.coax"},
++  {3773,3809,1,0,"coax/lib/crypto/secp_mult_base_web.coax"},
++  {3810,3965,1,0,"coax/lib/crypto/secp_mult_base.coax"},
++  {3966,4051,1,0,"coax/lib/crypto/secp_group32.coax"},
++  {4052,4337,1,0,"coax/lib/crypto/secp_group.coax"},
++  {4338,4904,1,0,"coax/lib/crypto/secp_field.coax"},
++  {4905,4989,1,0,"coax/lib/crypto/secp_field32_total.coax"},
++  {4990,5082,1,0,"coax/lib/crypto/secp_field32.coax"},
++  {5083,5201,1,0,"coax/lib/crypto/ecdh_fast.coax"},
++  {5202,5257,1,0,"coax/lib/crypto/schnorr_nonce_point.coax"},
++  {5258,5307,1,0,"coax/lib/crypto/schnorr_nonce_workspace.coax"},
++  {5308,5405,1,0,"coax/lib/crypto/sha256_workspace.coax"},
++  {5406,5649,1,0,"coax/lib/crypto/sha256.coax"},
++  {5650,5850,1,0,"coax/lib/crypto/sha256-kernel.coax"},
++  {5851,5896,1,0,"coax/lib/crypto/schnorr_math_workspace.coax"},
++  {5897,6033,1,0,"coax/lib/crypto/schnorr_fast.coax"},
++  {6034,6097,1,0,"coax/lib/crypto/schnorr.coax"},
++  {6098,6272,1,0,"coax/lib/crypto/secp_mult.coax"},
++  {6273,6320,1,0,"coax/tests/nostr/schnorr_checks.coax"},
++  {6321,6522,1,0,"coax/tests/nostr/schnorr_fixtures.coax"},
++  {6523,6841,1,0,"coax/lib/crypto/schnorr_self_verify.coax"},
++  {6842,7006,1,0,"coax/lib/crypto/secp_mult_const.coax"},
++  {7007,7015,1,0,"coax/tests/nostr/schnorr_sign_vectors.coax"},
++  {7016,7181,1,0,"coax/lib/nostr/event.coax"},
++  {7182,7291,1,0,"coax/tests/nostr/event_fast_checks.coax"},
++  {7292,7306,1,0,"coax/tests/nostr/event_fixtures.coax"},
++  {7307,7395,1,0,"coax/lib/nostr/hex.coax"},
++  {7396,7422,1,0,"coax/lib/nostr/codecs-common.coax"},
++  {7423,7523,1,0,"coax/lib/nostr/adapters/json-admission.coax"},
++  {7524,8281,1,0,"coax/lib/nostr/json.coax"},
++  {8282,9109,1,0,"coax/lib/nostr/fixtures/json_suite.coax"},
++  {9110,9113,1,0,"coax/lib/nostr/fixtures/coax_relay.coax"},
++  {9114,9301,1,0,"coax/lib/nostr/adapters/json-policy.coax"},
++  {9302,9343,1,0,"coax/tests/nostr/event_checks.coax"},
++  {9344,9355,1,0,"coax/tests/nostr/event_sign_vectors.coax"},
++  {9356,9504,1,0,"coax/lib/nostr/base64.coax"},
+ };
+ static const struct coax_source_range *coax_find_source(int line) {
+   for (unsigned i=0;i<sizeof(coax_source_ranges)/sizeof(coax_source_ranges[0]);i++) if (line>=coax_source_ranges[i].first && line<=coax_source_ranges[i].last) return &coax_source_ranges[i];
+@@ -3413,7 +3413,7 @@
+       int64_t l_k = cxargs_len(l_i);
+       if ((l_k < INT64_C(0)) || (l_k > INT64_C(131072)))
+       {
+-        ((*coax_elem_v_t_Args(l_a, INT64_C(0), 515))).full = 1;
++        ((*coax_elem_v_t_Args(l_a, INT64_C(0), 514))).full = 1;
+         return 0;
+       }
+       {
+@@ -3421,11 +3421,11 @@
+         int64_t coax_hi260 = l_k;
+         for (int64_t l_j = coax_lo260; l_j < coax_hi260; l_j++)
+         {
+-          coax_t261 = &((l_buf).e[coax_index(l_j, 131072, 516)]);
++          coax_t261 = &((l_buf).e[coax_index(l_j, 131072, 515)]);
+           *coax_t261 = ((uint8_t)(cxargs_byte(l_i, l_j)));
+         }
+       }
+-      if (!coax_p_args_add(l_a, coax_string_of_bytes(coax_mkview_v_u8((l_buf).e, 131072, (int64_t)(INT64_C(0)), (int64_t)(l_k), 517))))
++      if (!coax_p_args_add(l_a, coax_string_of_bytes(coax_mkview_v_u8((l_buf).e, 131072, (int64_t)(INT64_C(0)), (int64_t)(l_k), 516))))
+       {
+         return 0;
+       }
+@@ -3444,7 +3444,7 @@
+     for (int64_t coax_i262 = 0; coax_i262 < coax_c262.count; coax_i262++)
+     {
+       uint8_t l_c = (uint8_t)coax_c262.data[coax_i262];
+-      int64_t l_r = cxtool_err(((int64_t)coax_cast_us((uint64_t)(l_c), INT64_C(9223372036854775807), 524)));
++      int64_t l_r = cxtool_err(((int64_t)coax_cast_us((uint64_t)(l_c), INT64_C(9223372036854775807), 523)));
+     }
+   }
+   int64_t l_r = cxtool_err_flush();
+@@ -3465,48 +3465,48 @@
+   int64_t coax_t270;
+   coax_a131072_u8 * coax_t271;
+   int64_t coax_t272;
+-  if ((((*coax_elem_v_t_Args(l_a, INT64_C(0), 576))).n >= INT64_C(256)) || (coax_add_s64(((*coax_elem_v_t_Args(l_a, INT64_C(0), 576))).used, (l_s).count, 576) > INT64_C(131072)))
++  if ((((*coax_elem_v_t_Args(l_a, INT64_C(0), 575))).n >= INT64_C(256)) || (coax_add_s64(((*coax_elem_v_t_Args(l_a, INT64_C(0), 575))).used, (l_s).count, 575) > INT64_C(131072)))
+   {
+-    ((*coax_elem_v_t_Args(l_a, INT64_C(0), 576))).full = 1;
++    ((*coax_elem_v_t_Args(l_a, INT64_C(0), 575))).full = 1;
+     return 0;
+   }
+-  int64_t l_at = ((*coax_elem_v_t_Args(l_a, INT64_C(0), 577))).used;
++  int64_t l_at = ((*coax_elem_v_t_Args(l_a, INT64_C(0), 576))).used;

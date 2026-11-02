@@ -1,0 +1,156 @@
+// Anime director transport admission. The host supplies verified identity
+// observations and atomic ledger counts; Coax owns every admission decision.
+// No prompt, stage state, key or upstream body enters the quota ledger.
+#authority;
+
+#test "anime HTTP admission fixes method content type and complete byte limits" {
+  #assert aar_http("POST","application/json",1) == 200 && aar_http("POST","application/json",16384) == 200;
+  #assert aar_http("POST","application/json; charset=utf-8",1) == 200 && aar_http("POST","application/json;charset=utf-8",1) == 200;
+  #assert aar_http("GET","application/json",1) == 405 && aar_http("GET","text/plain",0) == 405;
+  #assert aar_http("POST","application/json",0) == 413 && aar_http("POST","application/json",-1) == 413 && aar_http("POST","application/json",16385) == 413;
+  #assert aar_http("POST","text/plain",0) == 413 && aar_http("POST","text/plain",1) == 415;
+  #assert aar_http("POST","application/jsonx",1) == 415 && aar_http("POST","application/json ",1) == 415;
+  #assert aar_http("POST","application/json; charset=latin-1",1) == 415 && aar_http("POST","",1) == 415;
+}
+
+#test "anime Origin gate precedes authentication effects without rejecting absent Origin" {
+  #assert aar_origin(false,false) == 200;
+  #assert aar_origin(false,true) == 200;
+  #assert aar_origin(true,false) == 403;
+  #assert aar_origin(true,true) == 200;
+}
+
+#test "anime auth exhausts cookie and body-bound signature observation combinations" {
+  expected := [64] int.[
+    401,403,401,401,401,403,401,401,401,403,401,401,401,403,401,200,
+    403,403,403,403,403,403,403,403,403,403,403,403,403,403,403,403,
+    401,403,401,401,401,403,401,401,401,403,401,401,401,403,401,200,
+    401,200,401,401,401,200,401,401,401,200,401,401,401,200,401,200
+  ];
+  for bits: 0..<64 {
+    #assert aar_auth((bits&1)!=0,(bits&2)!=0,(bits&4)!=0,(bits&8)!=0,(bits&16)!=0,(bits&32)!=0) == expected[bits];
+  }
+}
+
+#test "anime quotas consume only admitted atomic observations and refuse exhausted leases" {
+  #assert aar_budget(0,0,0,0,0) == 200 && aar_budget(11,119,1199,0,3) == 200;
+  #assert aar_budget(12,0,0,0,0) == 429 && aar_budget(13,0,0,0,0) == 429;
+  #assert aar_budget(0,120,0,0,0) == 429 && aar_budget(0,121,0,0,0) == 429;
+  #assert aar_budget(0,0,1200,0,0) == 429 && aar_budget(0,0,1201,0,0) == 429;
+  #assert aar_budget(0,0,0,1,0) == 429 && aar_budget(0,0,0,2,0) == 429;
+  #assert aar_budget(0,0,0,0,4) == 429 && aar_budget(0,0,0,0,5) == 429;
+  #assert aar_budget(-1,0,0,0,0) == 503 && aar_budget(0,-1,0,0,0) == 503 && aar_budget(0,0,-1,0,0) == 503;
+  #assert aar_budget(0,0,0,-1,0) == 503 && aar_budget(0,0,0,0,-1) == 503;
+  #assert aar_budget(12,-1,1200,4,4) == 503;
+  #assert aar_lease_ms() == 60000;
+}
+
+#test "anime selector timeout is a bounded decimal setting with one default" {
+  #assert aar_timeout("") == 8000 && aar_timeout("1") == 1 && aar_timeout("9") == 9 && aar_timeout("3500") == 3500 && aar_timeout("8000") == 8000 && aar_timeout("14999") == 14999 && aar_timeout("15000") == 15000;
+  #assert aar_timeout("00001") == 1 && aar_timeout("00000000000015000") == 15000;
+  #assert aar_timeout("0") == 0 && aar_timeout("000") == 0 && aar_timeout("15001") == 0 && aar_timeout("999999999999999999999") == 0;
+  #assert aar_timeout("-1") == 0 && aar_timeout("+1") == 0 && aar_timeout("1.0") == 0 && aar_timeout("1e3") == 0;
+  #assert aar_timeout(" 1") == 0 && aar_timeout("1 ") == 0 && aar_timeout("/") == 0 && aar_timeout(":") == 0;
+  #assert aar_timeout_digits("15000") == 15000 && aar_timeout_digits("15001") == -1 && aar_timeout_digits("x") == -1;
+}
+
+#test "anime upstream errors never become a successful direction response" {
+  #assert aar_upstream(200) == 200;
+  #assert aar_upstream(0) == 503 && aar_upstream(429) == 503;
+  #assert aar_upstream(199) == 502 && aar_upstream(201) == 502 && aar_upstream(400) == 502 && aar_upstream(500) == 502 && aar_upstream(-1) == 502;
+}
+
+#test "anime transport errors are versioned bounded JSON and refuse short output atomically" {
+  statuses := [12] int.[400,401,403,405,413,415,422,429,502,503,504,500];
+  words := [12] string.["invalid_input","authentication_required","cross_site","method_not_allowed","input_limit","application_json_required","unsupported_input","quota_exceeded","invalid_model","director_unavailable","director_timeout","internal_error"];
+  for i: 0..<statuses.count {
+    out: [128] u8; for j: 0..<out.count { out[j] = 77; }
+    n := aar_error(statuses[i],out[..]);
+    #assert n == words[i].count+18 && cast(string)out[0..<16] == "{\"v\":1,\"error\":\"";
+    #assert cast(string)out[16..<n-2] == words[i] && cast(string)out[n-2..<n] == "\"}" && out[n] == 77;
+    exact: [128] u8; #assert aar_error(statuses[i],exact[0..<n]) == n && cast(string)exact[0..<n] == cast(string)out[0..<n];
+    for j: 0..<out.count { out[j] = 99; }
+    #assert aar_error(statuses[i],out[0..<n-1]) == -1;
+    for c: out { #assert c == 99; }
+  }
+  #assert aar_error_word(0) == "internal_error" && aar_error_word(200) == "internal_error" && aar_error_word(-1) == "internal_error";
+}
+
+aar_http :: (method: string, content: string, bytes: int) -> int #export_c {
+  if method != "POST" { return 405; }
+  if bytes < 1 || bytes > 16384 { return 413; }
+  if content != "application/json" && content != "application/json; charset=utf-8" && content != "application/json;charset=utf-8" { return 415; }
+  return 200;
+}
+
+// Call before identity verification so a foreign Origin cannot consume a
+// signature's first use. Absence is valid for signed native callers; cookie
+// callers still need a matching Origin in aar_auth.
+aar_origin :: (has_origin: bool, same_origin: bool) -> int #export_c {
+  if has_origin && !same_origin { return 403; }
+  return 200;
+}
+
+aar_auth :: (authenticated: bool, signed: bool, payload: bool, unseen: bool, has_origin: bool, same_origin: bool) -> int #export_c {
+  origin_status := aar_origin(has_origin,same_origin);
+  if origin_status != 200 { return origin_status; }
+  if !authenticated { return 401; }
+  if signed { if !payload || !unseen { return 401; } }
+  else { if !has_origin || !same_origin { return 403; } }
+  return 200;
+}
+
+aar_budget :: (minute: int, userday: int, globalday: int, useractive: int, globalactive: int) -> int #export_c {
+  if minute < 0 || userday < 0 || globalday < 0 || useractive < 0 || globalactive < 0 { return 503; }
+  if minute >= 12 || userday >= 120 || globalday >= 1200 || useractive >= 1 || globalactive >= 4 { return 429; }
+  return 200;
+}
+
+// A bounded integer reader, including zero; -1 distinguishes invalid input.
+// It never multiplies a value above 15000, so arbitrary leading zeroes are
+// accepted without an overflow or an unbounded integer representation.
+aar_timeout_digits :: (raw: string) -> int {
+  value := 0;
+  for c: raw {
+    if c < '0' || c > '9' { return -1; }
+    value = value * 10 + cast(int)(c-'0');
+    if value > 15000 { return -1; }
+  }
+  return value;
+}
+aar_timeout :: (raw: string) -> int #export_c {
+  if raw == "" { return 8000; }
+  n := aar_timeout_digits(raw);
+  return ifx n < 1 then 0 else n;
+}
+
+aar_upstream :: (http: int) -> int #export_c {
+  if http == 200 { return 200; }
+  if http == 0 || http == 429 { return 503; }
+  return 502;
+}
+aar_lease_ms :: () -> int #export_c { return 60000; }
+
+aar_error_word :: (status: int) -> string {
+  if status == 400 { return "invalid_input"; }
+  if status == 401 { return "authentication_required"; }
+  if status == 403 { return "cross_site"; }
+  if status == 405 { return "method_not_allowed"; }
+  if status == 413 { return "input_limit"; }
+  if status == 415 { return "application_json_required"; }
+  if status == 422 { return "unsupported_input"; }
+  if status == 429 { return "quota_exceeded"; }
+  if status == 502 { return "invalid_model"; }
+  if status == 503 { return "director_unavailable"; }
+  if status == 504 { return "director_timeout"; }
+  return "internal_error";
+}
+aar_error :: (status: int, out: [] u8) -> int #export_c {
+  word := aar_error_word(status); prefix := "{\"v\":1,\"error\":\"";
+  n := prefix.count+word.count+2;
+  if n > out.count { return -1; }
+  for i: 0..<prefix.count { out[i] = prefix[i]; }
+  for i: 0..<word.count { out[prefix.count+i] = word[i]; }
+  out[n-2] = '"'; out[n-1] = '}';
+  return n;
+}

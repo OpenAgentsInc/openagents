@@ -3,30 +3,151 @@
   "repository": "OpenAgentsInc/openagents",
   "purpose": "Complete open issues sequentially without duplicating active chat ownership.",
   "active_owners": [
-    {"chat":"BOOKS2PSIONIC","thread":"01a18862-8cbf-7961-938a-5d8b593a6060","issues":[12625],"scope":"Compiler outcomes, request ownership, remaining cache/borrow mutation qualification and book handoff"},
-    {"chat":"AETHYR","thread":"01a19415-9b00-7fa0-933b-35c995a7dcfc","issues":[12628,12609],"scope":"Renderer reconciliation/tooling, actual playable Grid, resource refusal/recovery and broader adoption"},
-    {"chat":"Separate agent recorded in issue","issues":[12638],"scope":"Compiler mutation release blocker"}
+    {
+      "chat": "BOOKS2PSIONIC",
+      "thread": "01a18862-8cbf-7961-938a-5d8b593a6060",
+      "issues": [
+        12625
+      ],
+      "scope": "Compiler outcomes, request ownership, remaining cache/borrow mutation qualification and book handoff",
+      "status": "closed; handoff delivered; no compiler work duplicated",
+      "commit": "681cf6ba2c"
+    },
+    {
+      "chat": "AETHYR",
+      "thread": "01a19415-9b00-7fa0-933b-35c995a7dcfc",
+      "issues": [
+        12628,
+        12609
+      ],
+      "scope": "Renderer reconciliation/tooling, actual playable Grid, resource refusal/recovery and broader adoption",
+      "latest_scope": "Memory-policy/observer parity and Grid resource-refusal paths; renderer ownership retained"
+    },
+    {
+      "chat": "Separate agent recorded in issue",
+      "issues": [
+        12638
+      ],
+      "scope": "Compiler mutation release blocker"
+    },
+    {
+      "owner": "Separate Claude Code session recorded in issue comment",
+      "issues": [
+        12637
+      ],
+      "scope": "Realm seat design and made-realm scene probe; retain this lane with its current owner",
+      "evidence": "https://github.com/OpenAgentsInc/openagents/issues/12637#issuecomment-6582447726",
+      "latest_commit": "4760d18e03"
+    }
   ],
   "sequence": [
-    {"issue":12635,"scope":"CLI realm edits, command catalogue, atomic revision fences and actual CLI journeys","state":"implementation_and_verification"},
-    {"issue":12632,"scope":"Anime director API using existing server typed selector; no compiler/System One changes"},
-    {"issue":12633,"scope":"Bounded anime.v1 ingestion and deterministic timeline; preserve AETHYR renderer interfaces"},
-    {"issue":12634,"scope":"Anime catalogue/direct/play CLI","requires":[12632,12633]},
-    {"issue":12636,"scope":"MCP, generated skills and Coder integration from command rows","requires":[12635,12634]},
-    {"issue":12618,"scope":"Whisper short-context encoder and voice latency"},
-    {"issue":12619,"scope":"Remaining per-file decoder/search parity gaps"},
-    {"issue":12620,"scope":"Subtitle splitting and timestamp-boundary qualification"},
-    {"issue":12614,"scope":"Reconcile transcription epic against completed children","requires":[12618,12619,12620]},
-    {"issue":12626,"scope":"Reusable model workflow and fresh unfamiliar-reader training reproduction"},
-    {"issue":12627,"scope":"Useful resident single-GPU training and numerical/recovery acceptance evidence","requires":[12626]}
+    {
+      "issue": 12635,
+      "scope": "CLI realm edits, command catalogue, atomic revision fences and actual CLI journeys",
+      "state": "closed",
+      "commit": "a35ff41f85",
+      "api_rollout": "separate; new paths qualified locally"
+    },
+    {
+      "issue": 12632,
+      "scope": "Anime director API using existing server typed selector; no compiler/System One changes",
+      "state": "qualified; close after push",
+      "verification": {
+        "policy_checks": 146,
+        "mutants_killed": 1345,
+        "api_fixture_checks": 59,
+        "actual_vertex_cases": 3
+      }
+    },
+    {
+      "issue": 12633,
+      "scope": "Bounded anime.v1 ingestion and deterministic timeline; preserve AETHYR renderer interfaces"
+    },
+    {
+      "issue": 12634,
+      "scope": "Anime catalogue/direct/play CLI",
+      "requires": [
+        12632,
+        12633
+      ]
+    },
+    {
+      "issue": 12636,
+      "scope": "MCP, generated skills and Coder integration from command rows",
+      "requires": [
+        12635,
+        12634
+      ]
+    },
+    {
+      "issue": 12618,
+      "scope": "Whisper short-context encoder and voice latency"
+    },
+    {
+      "issue": 12619,
+      "scope": "Remaining per-file decoder/search parity gaps"
+    },
+    {
+      "issue": 12620,
+      "scope": "Subtitle splitting and timestamp-boundary qualification"
+    },
+    {
+      "issue": 12614,
+      "scope": "Reconcile transcription epic against completed children",
+      "requires": [
+        12618,
+        12619,
+        12620
+      ]
+    },
+    {
+      "issue": 12626,
+      "scope": "Reusable model workflow and fresh unfamiliar-reader training reproduction"
+    },
+    {
+      "issue": 12627,
+      "scope": "Useful resident single-GPU training and numerical/recovery acceptance evidence",
+      "requires": [
+        12626
+      ]
+    }
   ],
   "conditional_work": [
-    {"issue":12637,"scope":"Seat/action design first; implement shared-engine adapter after its boundary is released","requires":[12636],"coordinate_with":"AETHYR"},
-    {"issue":12629,"scope":"Reproducible engine/assets/document publication after playable-engine interfaces settle","coordinate_with":"AETHYR"},
-    {"issue":12630,"scope":"Independent consumer regressions/profiles; live qualification follows compiler and owner key/payment gates","requires":[12625],"owner_actions":"Existing NEEDS_OWNER.md entries"},
-    {"issue":12631,"scope":"Offline persistence/parity before approved production-data, shadow and cutover gates","owner_actions":"Existing NEEDS_OWNER.md entries; no production access or DNS authority inferred"},
-    {"issue":12610,"scope":"Reconcile book epic only from child acceptance evidence"},
-    {"issue":12612,"scope":"Reconcile Nostr teaching and production completion separately"}
+    {
+      "issue": 12637,
+      "scope": "Consume the existing owner's seat interfaces when wiring CLI/MCP; no parallel seat implementation",
+      "requires": [
+        12636
+      ],
+      "coordinate_with": "AETHYR",
+      "state": "claimed by another agent; do not duplicate"
+    },
+    {
+      "issue": 12629,
+      "scope": "Reproducible engine/assets/document publication after playable-engine interfaces settle",
+      "coordinate_with": "AETHYR"
+    },
+    {
+      "issue": 12630,
+      "scope": "Independent consumer regressions/profiles; live qualification follows compiler and owner key/payment gates",
+      "requires": [
+        12625
+      ],
+      "owner_actions": "Existing NEEDS_OWNER.md entries"
+    },
+    {
+      "issue": 12631,
+      "scope": "Offline persistence/parity before approved production-data, shadow and cutover gates",
+      "owner_actions": "Existing NEEDS_OWNER.md entries; no production access or DNS authority inferred"
+    },
+    {
+      "issue": 12610,
+      "scope": "Reconcile book epic only from child acceptance evidence"
+    },
+    {
+      "issue": 12612,
+      "scope": "Reconcile Nostr teaching and production completion separately"
+    }
   ],
   "execution_rules": [
     "Recheck compact status of both named chats before a new issue or shared area.",
@@ -34,5 +155,6 @@
     "Use a separate checkout, preserve unrelated changes, rebase and push task-owned files to main.",
     "Close an issue only after acceptance; record external release or owner gates explicitly.",
     "Do not repeat passing gates on unchanged closures or increase compiler/resource bounds."
-  ]
+  ],
+  "last_chat_snapshot": "2026-11-02T16:35:00Z"
 }

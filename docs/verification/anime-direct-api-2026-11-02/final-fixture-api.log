@@ -1,0 +1,8 @@
+api  admins: 0
+NOTICE:  relation "schema_migrations" already exists, skipping
+api  team: 0 kept; marked {"events": 0, "answers": 0, "devices": 0, "sessions": 0, "playtesters": 0}
+api  listening on 127.0.0.1:57434
+api  auth key 200 by 87d99849
+api  npc: gemini-3.8-flash answered 500, trying again
+api  npc: gemini-3.8-flash answered 429, trying again
+api  npc: gemini-3.8-flash answered 0, trying again

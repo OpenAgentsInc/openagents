@@ -1,0 +1,9 @@
+coax/web/api/anime-director-policy.coax:214:1: error[E0380]: 'aap_wire_name' is not exercised by any #test or #forall
+  aap_wire_name :: (at:int)->string {return ifx at==AAP_FIELDS.count then "what" else AAP_FIELDS[at];}
+  ^
+  fix: #authority files check every procedure: add a #test or #forall that calls it
+coax/web/api/anime-director-policy.coax:215:1: error[E0380]: 'aap_row_field' is not exercised by any #test or #forall
+  aap_row_field :: (d:Jv,at:int)->int {return -1;}
+  ^
+  fix: #authority files check every procedure: add a #test or #forall that calls it
+2 errors

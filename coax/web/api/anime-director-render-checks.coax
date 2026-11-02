@@ -1,0 +1,145 @@
+// Independent finite render-profile receipts. Loaded by anime-director-policy.coax.
+// The expected tables come from the current stage and drawing branches, not the
+// policy implementation: verse/anime/stage.coax sg_pose_of/anime_stage/sg_frame,
+// and apps/openagents-web/animelab.coax's spell/effect drawing. A fallback pose,
+// fireball substituted for another spell, or fallback camera is unsupported.
+
+#test "API anime render matrix covers every pose spell transition beat and absent implementation" {
+  // sg_pose_of has distinct raise, cast, hesitate, point and recoil poses.
+  // block/fall alias recoil, while run/kneel/turn/shout fall back to idle.
+  poses := [11]bool.[true,true,false,false,false,false,false,true,true,true,false];
+  slots := [5]int.[0,1,2,5,6];
+  for who:slots {for action:0..<11 {
+    d:=AnimeDirection.{kind=AD_ACT,who=who,option=action,p=1};
+    #assert anime_direction_ok(d) && aap_rendered(d)==poses[action];
+  }}
+  // Face drawing gives every emotion its own profile; all six catalogue spells
+  // currently use the fireball mesh, so only the fireball request is supported.
+  spells := [6]bool.[false,true,false,false,false,false];
+  for emotion:0..<10 {#assert aap_rendered(AnimeDirection.{kind=AD_EMOTE,who=0,option=emotion,p=1});}
+  for spell:0..<6 {#assert aap_rendered(AnimeDirection.{kind=AD_CAST,option=spell,place=0,p=1})==spells[spell];}
+  transitions := [5]bool.[true,true,true,false,false];
+  for transition:0..<5 {#assert aap_rendered(AnimeDirection.{kind=AD_CUT,to=0,option=transition,p=1})==transitions[transition];}
+  beats := [4]bool.[true,false,false,true];
+  for beat:0..<4 {#assert aap_rendered(AnimeDirection.{kind=AD_BEAT,option=beat,p=1})==beats[beat];}
+  // EXIT/SET/SAY have no stage branch. MAKE has a fixed demonstration creature,
+  // which does not constitute support for an arbitrary requested asset.
+  for kind:[4]int.[AD_EXIT,AD_SET,AD_SAY,AD_MAKE] {#assert !aap_rendered(AnimeDirection.{kind=kind,who=0,p=1});}
+}
+
+#test "API anime render matrix covers enter archetype count how and every place" {
+  // Each row is walks/runs/appears/lands, three counts per how. The stage can
+  // reveal one slot, reveal the three hooded slots, or walk the lord from smoke.
+  profiles := [5]string.["000000100000","000000100000","000000111000","100000100000","000000100000"];
+  archetypes := [5]int.[0,1,2,5,6];
+  // Places in order: absent, gate, courtyard, wall, sky, left, right, behind, above.
+  places := "100000010";
+  for a:0..<5 {for how:0..<4 {for count:1..<4 {for place:-1..<8 {
+    d:=AnimeDirection.{kind=AD_ENTER,option=archetypes[a],move=how,count=count,place=place,p=1};
+    #assert anime_direction_ok(d);
+    expected:=false;if profiles[a][how*3+count-1]=='1' {expected=places[place+1]=='1';}
+    #assert aap_rendered(d)==expected;
+  }}}}
+}
+
+#test "API anime render matrix covers framing subject place and all six camera moves" {
+  // A character close/extreme/medium/over/low shot implements hold/push/pull.
+  // Wide and establishing are place shots; high-angle and the other moves have
+  // no matching camera implementation. Each row is the six catalogue moves.
+  subjects := [8]string.["111000","111000","111000","000000","000000","111000","111000","000000"];
+  for who:[5]int.[0,1,2,5,6] {for frame:0..<8 {for move:0..<6 {
+    d:=AnimeDirection.{kind=AD_SHOT,who=who,option=frame,move=move,p=1};
+    #assert anime_direction_ok(d) && aap_rendered(d)==(subjects[frame][move]=='1');
+  }}}
+  // One row per place (gate/courtyard/wall/sky/left/right/behind/above),
+  // with six move positions. Unsupported place/frame combinations stay false.
+  wide := [8]string.["000000","100000","000000","000000","000000","000000","111000","000000"];
+  establishing := [8]string.["000000","111000","000000","000000","000000","000000","000000","000000"];
+  for frame:0..<8 {for place:0..<8 {for move:0..<6 {
+    d:=AnimeDirection.{kind=AD_SHOT,option=frame,place=place,move=move,p=1};
+    #assert anime_direction_ok(d);
+    expected:=false;
+    if frame==3 {expected=wide[place][move]=='1';}
+    if frame==4 {expected=establishing[place][move]=='1';}
+    #assert aap_rendered(d)==expected;
+  }}}
+}
+
+#test "API anime render matrix covers every effect place and explicit or absent size" {
+  // The stage has wall breach, courtyard rubble, screen flash and behind smoke.
+  // It supplies one fixed effect size, corresponding to absent or large.
+  // Columns: absent, gate, courtyard, wall, sky, left, right, behind, above.
+  profiles := [9]string.["000100000","101000000","100000000","100000010","000000000","000000000","000000000","000000000","000000000"];
+  sizes := "1010";
+  for effect:0..<9 {for place:-1..<8 {for size:-1..<3 {
+    d:=AnimeDirection.{kind=AD_FX,option=effect,place=place,size=size,p=1};
+    #assert anime_direction_ok(d);
+    expected:=false;if sizes[size+1]=='1' {expected=profiles[effect][place+1]=='1';}
+    #assert aap_rendered(d)==expected;
+  }}}
+}
+
+#test "API anime history round trips full vectors with derived support and exact disposition" {
+  cores := [5]string.[
+    "{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"timing\":\"now\"}",
+    "{\"kind\":\"act\",\"who\":\"heroine\",\"action\":\"hesitate\",\"timing\":\"after\"}",
+    "{\"kind\":\"shot\",\"framing\":\"wide\",\"place\":\"courtyard\",\"timing\":\"with\"}",
+    "{\"kind\":\"fx\",\"effect\":\"petals\",\"timing\":\"now\"}",
+    "{\"kind\":\"make\",\"what\":\"glass whale\",\"like\":\"creature\",\"timing\":\"now\"}"];
+  probabilities := [5]int.[851,850,499,1000,1000];
+  raw_p := [5]string.["0.851","0.850","0.499","1","1"];
+  stocks := [5]string.["true","true","true","true","false"];
+  renders := [5]string.["true","true","true","false","false"];
+  decisions := [5]string.["\"play\"","\"soft\"","\"heard\"","\"heard\"","\"heard\""];
+  answer:[8192]u8;history:[8192]u8;out:[2048]u8;
+  for i:0..<5 {
+    selected:=aapt_vector_answer(cores[i],probabilities[i],answer[..]);
+    h:=aapr_history_metadata(selected,raw_p[i],stocks[i],renders[i],decisions[i],history[..]);
+    held:=aapt_history(h,out[..]);
+    #assert held.ok && held.p==probabilities[i] && held.stock==(i!=4) && held.render_supported==(i<3);
+    #assert held.timing==[5]int.[0,1,2,0,0][i];
+    canonical:=anime_read(cast(string)out[0..<held.n]);
+    #assert anime_direction_ok(canonical) && canonical.kind==held.kind && canonical.p==cast(f32)probabilities[i]/1000;
+  }
+}
+
+#test "API anime history cannot assert false stock support disposition or scalar confidence" {
+  core:="{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"timing\":\"now\"}";
+  answer:[8192]u8;history:[8192]u8;out:[2048]u8;
+  selected:=aapt_vector_answer(core,850,answer[..]);
+  #assert aapt_history(aapr_history_metadata(selected,"0.85","true","true","\"soft\"",history[..]),out[..]).ok;
+  for wrong:[7]string.["false","0","1","null","{}","[]","\"true\""] {
+    #assert !aapt_history(aapr_history_metadata(selected,"0.85",wrong,"true","\"soft\"",history[..]),out[..]).ok;
+    #assert !aapt_history(aapr_history_metadata(selected,"0.85","true",wrong,"\"soft\"",history[..]),out[..]).ok;
+  }
+  for wrong:[10]string.["\"heard\"","\"play\"","\"unknown\"","true","false","0","1","null","{}","[]"] {
+    #assert !aapt_history(aapr_history_metadata(selected,"0.85","true","true",wrong,history[..]),out[..]).ok;
+  }
+  for wrong:[9]string.["0.849","0.851","-1","1.001","0.8501","true","null","{}","\"0.85\""] {
+    #assert !aapt_history(aapr_history_metadata(selected,wrong,"true","true","\"soft\"",history[..]),out[..]).ok;
+  }
+  // Removing scalar p is valid with vectors. Scalar-only history remains valid,
+  // and each metadata property is optional, but a present value must be exact.
+  #assert aapt_history(aapr_history_metadata(selected,"","","","",history[..]),out[..]).ok;
+  legacy:="{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\"}";
+  #assert aapt_history(aapr_history_metadata(legacy,"0.85","true","true","\"soft\"",history[..]),out[..]).ok;
+  unsupported:="{\"kind\":\"fx\",\"effect\":\"petals\"}";
+  #assert aapt_history(aapr_history_metadata(unsupported,"1","true","false","\"heard\"",history[..]),out[..]).ok;
+  #assert !aapt_history(aapr_history_metadata(unsupported,"1","true","true","\"heard\"",history[..]),out[..]).ok;
+  #assert !aapt_history(aapr_history_metadata(unsupported,"1","true","false","\"play\"",history[..]),out[..]).ok;
+  made:="{\"kind\":\"make\",\"what\":\"glass whale\",\"like\":\"creature\"}";
+  #assert aapt_history(aapr_history_metadata(made,"1","false","false","\"heard\"",history[..]),out[..]).ok;
+  #assert !aapt_history(aapr_history_metadata(made,"1","true","false","\"heard\"",history[..]),out[..]).ok;
+  #assert !aapt_history(aapr_history_metadata(made,"1","false","true","\"heard\"",history[..]),out[..]).ok;
+}
+
+// Test-only metadata constructor; each supplied value is raw JSON so checks can
+// exercise every wrong type without changing the valid direction or vectors.
+aapr_history_metadata :: (base:string,p:string,stock:string,rendered:string,decision:string,out:[]u8)->string {
+  nodes:[256]JvNode;d:[1]Jv;if !jv_parse(d[..],base,nodes[..]) {return "";}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);f:=d[0].nodes[0].first;
+  while f!=-1 {jo_key(o[..],jv_key(d[0],f));jv_write(d[0],f,o[..]);f=d[0].nodes[f].next;}
+  names:=[4]string.["p","stock","render_supported","decision"];values:=[4]string.[p,stock,rendered,decision];
+  for i:0..<4 {if values[i]!="" {jo_key(o[..],names[i]);jo_raw(o[..],values[i]);}}
+  jo_end(o[..]);return jo_text(o[..]);
+}

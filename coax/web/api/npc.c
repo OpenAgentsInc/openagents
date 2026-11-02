@@ -109,6 +109,13 @@ long npc_ask_model(const char *url_env, const char *model, const char *request, 
 // As npc_ask_model, each try cut off at timeout_ms; an unanswered or failed try (the slow tail) is tried
 // once more, as voice edits are.
 long npc_ask_model_twice(const char *url_env, const char *model, const char *request, long timeout_ms, char **body) {
+  size_t n = 0;
+  return npc_ask_model_twice_n(url_env, model, request, timeout_ms, body, &n);
+}
+
+// Length-preserving transport for Coax byte readers: malformed JSON with an
+// embedded NUL must not become a valid shorter prefix through strlen().
+long npc_ask_model_twice_n(const char *url_env, const char *model, const char *request, long timeout_ms, char **body, size_t *body_n) {
   buf b = {0};
   long status = ask_model_in(url_env, model, request, &b, timeout_ms);
   if (status == 0 || status == 429 || status >= 500) {
@@ -117,6 +124,7 @@ long npc_ask_model_twice(const char *url_env, const char *model, const char *req
     status = ask_model_in(url_env, model, request, &b, timeout_ms);
   }
   *body = b.p;
+  *body_n = b.n;
   return status;
 }
 

@@ -1,0 +1,87 @@
+{
+  "schema": "openagents.anime-direct-api.policy-native-profile.v1",
+  "date": "2026-11-02",
+  "base_commit": "a35ff41f8550f172e1e3fe84d1f69e09dd1becb3",
+  "status": "policy qualification complete; native API journeys recorded separately",
+  "compiler": {
+    "path": "coax/bin/coax",
+    "version": "coax0 0.47.0",
+    "sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+    "provenance": "producer-provenance.record",
+    "provenance_sha256": "9e74ae4fc52093e76f2f6a38b57bf552a473945e84b83866449cbd320f9554ea",
+    "compiler_inputs_and_host_toolchain_fingerprint": "4478591fbbd7b6a4ea86ce4581addde5b4977ecd76ab7a9f53dbc77d71c4c614",
+    "fingerprint_scope": "Combined compiler-input and host-toolchain fingerprint, not a source-only digest.",
+    "scope": "Pinned existing producer binary. This does not qualify a different compiler build from current main."
+  },
+  "policy": {
+    "source_sha256": "25967619dbcfc3462fb41ea943db692d2f63b4d3e300068473c81fcd19eb3f83",
+    "checks": {
+      "command": "coax/bin/coax test coax/web/api/anime-director-policy.coax --library",
+      "passed": 146,
+      "failed": 0,
+      "receipt": "policy-checks.log"
+    },
+    "mutation": {
+      "command": "coax/bin/coax mutate coax/web/api/anime-director-policy.coax --library --root-only --jobs 6",
+      "sites": 1193,
+      "killed": 1193,
+      "survived": 0,
+      "receipt": "policy-mutation.log",
+      "scope": "Entry-source procedures; all dependency checks retained. No equivalent waivers."
+    },
+    "source_manifest": "policy-sources.sha256",
+    "source_manifest_sha256": "7023f23f8bc740ed2e90e4b952d4f5787f55ac65aa1568b329be3f9dd7305c1f",
+    "sources": 10,
+    "deps": "policy-deps.json"
+  },
+  "route": {
+    "source_sha256": "f1ac64145f49d8c82d2855ec5e0959ef6c0c58b59f7a874f6190d9d44b2227fd",
+    "checks": 7,
+    "checks_included_in_combined_policy_total": true,
+    "mutants": 152,
+    "killed": 152,
+    "survived": 0,
+    "checks_receipt": "route-checks.log",
+    "mutation_receipt": "route-mutation.log",
+    "timeout_default_ms": 8000,
+    "timeout_cap_ms": 15000,
+    "lease_ms": 60000
+  },
+  "generated": {
+    "c_sha256": "db28e05e389130130886a47bff7b8083759dd67ef782decd8f26d78dae3082a7",
+    "header_sha256": "2fb4a1c16f447d2f393304b68c94736aba33bb5bec9184989ddba890a88582c5"
+  },
+  "native": {
+    "binary_sha256": "94bedb62529811f837860cd922655f9d6a8797ef87cc2b2ada03335eac72897b",
+    "c_compiler": "Apple clang 21.0.0 (clang-2100.1.1.101), arm64-apple-darwin25.4.0",
+    "flags": "-std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined",
+    "build_command": "/usr/bin/clang -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined -I/tmp/openagents-anime-api.zimEZ5 -Icoax/web/api -I/opt/homebrew/opt/postgresql@16/include -I/opt/homebrew/opt/secp256k1/include -I/opt/homebrew/opt/openssl@3/include -o /tmp/openagents-anime-api.zimEZ5/api-final coax/web/api/api.c coax/web/api/analytics.c coax/web/api/admin.c coax/web/api/player.c coax/web/api/npc.c coax/web/api/room.c coax/web/api/private.c coax/web/api/drops.c coax/web/api/villa.c coax/web/api/chat.c coax/web/api/realms.c coax/web/api/access.c coax/web/api/replies.c coax/web/api/makers.c coax/web/api/inference.c coax/web/api/mesh.c coax/web/api/mesh-policy.generated.c coax/web/api/caller-policy.generated.c coax/web/api/nip98.generated.c coax/web/api/anime.c coax/web/api/nostr.c coax/web/api/email.c coax/web/api/jobs.c coax/web/api/relay.c /tmp/openagents-anime-api.zimEZ5/anime-director-policy.generated.c -L/opt/homebrew/opt/postgresql@16/lib -lpq -L/opt/homebrew/opt/secp256k1/lib -lsecp256k1 -L/opt/homebrew/opt/openssl@3/lib -lssl -lcrypto -lcurl -lz -lm",
+    "inputs": "native-inputs.sha256",
+    "inputs_manifest_sha256": "dbfb35e67d57c58f25333e5873dc6786f654957baf57ed8d64aa4951050ad999",
+    "build_warnings": 0,
+    "scope": "Local Apple native profile. The Linux container and deployment are separate profiles."
+  },
+  "checks_first": {
+    "initial_policy": "Five assertion failures and one pass were observed against initial stubs in the tool output; there is no persisted filesystem receipt.",
+    "wire": "Tests were declared before the adapter; the retained stub run was refused by E0380 authority coverage, not by executed assertion failures.",
+    "wire_receipt": "policy-wire-authority-red.log",
+    "schema": "The new no-bounds-schema assertion failed before its corresponding implementation change.",
+    "schema_receipt": "policy-schema-red.log"
+  },
+  "tools_rule": {
+    "passed": true,
+    "receipt": "tools-check.log",
+    "resolved_upstream_commit": "8762b35a74",
+    "prior_failure": {
+      "receipt": "tools-check-before-rebase.log",
+      "reason": "Existing psionic/tests/check_deepseek_recipe.sh lacked a Firm reason header and was not on the port list. Its owner added the header upstream; no false exception was added in this task."
+    }
+  },
+  "boundaries": [
+    "No compiler limit or evaluator check budget was increased.",
+    "Every new tool/harness is Coax; C changes are HTTP, identity, byte transport and database effects.",
+    "Renderer, SystemOne and model-training code were not changed.",
+    "The full API test.sh legacy gate was not repeated; targeted new API journeys qualify this change.",
+    "Provider model-reported probabilities and a few semantic examples do not establish empirical calibration or general model accuracy."
+  ]
+}

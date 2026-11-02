@@ -1,0 +1,70 @@
+{
+  "answers": [
+    {
+      "selections": [
+        {
+          "field": "kind",
+          "value": "cast",
+          "probabilities": [
+            0.005,
+            0.005,
+            0.03,
+            0.01,
+            0.92,
+            0.01,
+            0.01,
+            0.005,
+            0.003,
+            0.002
+          ]
+        },
+        {
+          "field": "who",
+          "value": "heroine",
+          "probabilities": [
+            0.96,
+            0.02,
+            0.01,
+            0.005,
+            0.005
+          ]
+        },
+        {
+          "field": "spell",
+          "value": "fireball",
+          "probabilities": [
+            0.01,
+            0.97,
+            0.005,
+            0.005,
+            0.005,
+            0.005
+          ]
+        },
+        {
+          "field": "place",
+          "value": "courtyard",
+          "probabilities": [
+            0.05,
+            0.7,
+            0.05,
+            0.05,
+            0.05,
+            0.05,
+            0.025,
+            0.025
+          ]
+        },
+        {
+          "field": "timing",
+          "value": "now",
+          "probabilities": [
+            0.95,
+            0.03,
+            0.02
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "openagents.anime-direct-api.rebase-binding.v1",
+  "recorded_date": "2026-11-02",
+  "tested_base_commit": "a35ff41f8550f172e1e3fe84d1f69e09dd1becb3",
+  "result": "All qualified policy, native API, selector and harness dependency input identities preserved.",
+  "policy_sources": 10,
+  "native_api_input_files": 32,
+  "harness_sources": 53,
+  "selector_sources": 7,
+  "receipts": [
+    "rebase-policy-identities.log",
+    "rebase-native-identities.log",
+    "rebase-harness-identities.log",
+    "rebase-selector-identities.log",
+    "rebase-harness-native-identities.log"
+  ],
+  "harness_entry": "The identity comparison explicitly uses current source e9951c275bf807dad6897c9868160f3ac27e64d0a242460af1aa52971fa50733 for the one comment/EOF-only source change already qualified in the main record. The executed 8f5a... source snapshot and its artifact remain distinct; no execution of the regenerated client is claimed.",
+  "api_binary_sha256": "94bedb62529811f837860cd922655f9d6a8797ef87cc2b2ada03335eac72897b",
+  "generated_policy_c_sha256": "db28e05e389130130886a47bff7b8083759dd67ef782decd8f26d78dae3082a7",
+  "producer": "The same pinned compiler binary/provenance produced the qualified module. The updated compiler source on main is a different producer and is not substituted.",
+  "tests": "Passing policy/mutation/API/model gates were not repeated because their qualified product inputs are unchanged.",
+  "tools_rule": {
+    "passed": true,
+    "receipt": "tools-check.log",
+    "tracked_tools": 1463,
+    "unexplained_new_tools": 0,
+    "rechecked_because": "The prior failure was fixed upstream in 8762b35a74; tool inputs changed on rebase."
+  },
+  "initial_rebased_parent": "4760d18e03",
+  "final_rebased_parent": "f96fc2883695f21ab0ecc9fb491ec64874a17b1f",
+  "additional_rebase": "Psionic chapter 199 advanced main while the first push was attempted; exact qualified input hashes remain unchanged."
+}

@@ -1,0 +1,4 @@
+ok   #test anime API oracle checks exact confidence dispositions and refuses partial errors (1 case, 42612 steps, 1 ms)
+ok   #test anime API request and origin helpers preserve the typed stage and local transport bound (1 case, 25676 steps, 0 ms)
+2 of 426 checks (--only 'anime API'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

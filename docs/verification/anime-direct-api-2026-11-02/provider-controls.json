@@ -1,0 +1,97 @@
+{
+  "schema": "openagents.anime-direct-api.provider-controls.v1",
+  "status": "development isolation; final producer and native API live qualification tracked separately",
+  "date": "2026-11-02",
+  "project": "openagentsgemini",
+  "location": "global",
+  "model": "gemini-3.8-flash",
+  "controls": [
+    {
+      "profile": "schema-full",
+      "http_status": 400,
+      "seconds": 4.956,
+      "observation": "Original nested confidence schema rejected.",
+      "request_sha256": "c48d7323fcba0c85490a64d9e81f041fc77759e7983eb49e8104cf89d60b9ebe"
+    },
+    {
+      "profile": "exact-minimal-schema",
+      "http_status": 200,
+      "seconds": 4.716,
+      "observation": "Only responseSchema replaced; same auth, prompt, model and generation options accepted.",
+      "request_sha256": "6e28afd21e0f284994c57968aa6bbce8ecd35b9efdfb6a0d6ec3106da8c681ed",
+      "raw_response_sha256": "5bbabe55acb57e9ca8e2d88b6f18d7bc3d13b71a77651f598d446642ac26e326"
+    },
+    {
+      "profile": "schema-no-thinking",
+      "http_status": 400,
+      "seconds": 0.614,
+      "observation": "Removing thinkingConfig did not resolve rejection.",
+      "request_sha256": "ae60a0f6f849360c08ed44914637df82dc0ac4b2211cfc93dea12e478f3fec11",
+      "raw_response_sha256": "b01105ed229707571186fdc753a734401dcd3dca044538c55285824604725bd3"
+    },
+    {
+      "profile": "full-no-bounds",
+      "http_status": 200,
+      "seconds": 5.031025,
+      "observation": "Removing schema bounds accepted; omitted flat fields/maps still invalid to holder.",
+      "request_sha256": "a30519bb0b5c2d9ac8c4c020e9997eba529106c33991ff007e0893ff552a97a6",
+      "raw_response_sha256": "80b580c2c408a86ab8a923d7633c1530fcfb61239f99294b437c0002da837a1d"
+    },
+    {
+      "profile": "full-ordered",
+      "http_status": 200,
+      "seconds": 2.829585,
+      "observation": "Selected-field ordering emitted complete flat fields but omitted spell/place confidence maps.",
+      "request_sha256": "8fe7fe660bdd7c2fe8ff4700e32bba3650cfad7343fce453056565858ebbc723",
+      "raw_response_sha256": "243fdeb2bd04a97159c07dbe17a30ea669e09ad7361e5ce7ec9927d132f2a003"
+    },
+    {
+      "profile": "full-all-ordered",
+      "http_status": 200,
+      "seconds": 23.42724,
+      "observation": "Complete valid canonical maps; latency exceeded the allowed selector try cap.",
+      "request_sha256": "716b982e2a5e3d029325e70e109e913fa938aed34bd7ed5f3fc00da374653e5a",
+      "raw_response_sha256": "6bdc1097d0c49c4af28b70efc7eebb36145456e4772038fd53c3111ce45c8d9d"
+    },
+    {
+      "profile": "selection-no-bounds",
+      "http_status": 200,
+      "seconds": 2.96703,
+      "observation": "Compact typed private selection rows contained complete maps after normalization.",
+      "request_sha256": "65c0b687e00d1dbaf786298e7700e2e31a7f29d6ab112511617d1dc52541f35f",
+      "raw_response_sha256": "a3641ee2f2d5115605142e72c4a9f29fee24690a1af526f8bba10f863c3ea2e0"
+    },
+    {
+      "profile": "selection-multi",
+      "http_status": 200,
+      "seconds": 7.528353,
+      "observation": "Two ordered complete selection-row answers: cast then shot.",
+      "request_sha256": "7d7831ebaa21f555221bf775bdeeb003958825b368e5a4219bdc5348f65221a9",
+      "raw_response_sha256": "9479dfc71a18ec6ec62ea17154ddd52390c7c407c07b0c626f1ade3e5f6abfb9"
+    },
+    {
+      "profile": "selection-outstock",
+      "http_status": 200,
+      "seconds": 6.761335,
+      "observation": "Out-of-stock ink-dragon make plus an implied typed effect; all vectors complete.",
+      "request_sha256": "d34c85cdbd318f85af4a0f56faf7a532a1f62d0a88478e2e45e8102e0dc94a57",
+      "raw_response_sha256": "35b8a5f3c763c49d5f3c6a307507963a2ebd772bf6fe785cdb2866528233cdc7"
+    }
+  ],
+  "security": [
+    "Synthetic Draconia/Kai stage only. No owner words, keys, NIP-98 headers or session cookies are retained.",
+    "Access token was read in memory and supplied to curl over stdin headers. No token was printed, saved to an argument or written to disk.",
+    "Raw provider envelopes remain private temporary files and are represented here only by hashes. Retained answers exclude opaque provider metadata."
+  ],
+  "limits": [
+    "These controls isolate transport/schema behavior; they are not the final native route acceptance gate.",
+    "Observed latency and valid synthetic output do not establish empirical calibration, voice latency targets or general semantic accuracy.",
+    "The serialized provider schema omits numeric/array/string bounds because that profile was accepted; Coax still applies all public limits and exact vector checks before publishing an answer."
+  ],
+  "retained_files": [
+    "provider-selection-control.request.json",
+    "provider-selection-control.answers.json",
+    "provider-selection-multi.answers.json",
+    "provider-selection-outstock.answers.json"
+  ]
+}

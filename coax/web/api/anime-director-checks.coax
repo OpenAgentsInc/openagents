@@ -1,0 +1,297 @@
+// Additional independent boundary fixtures for anime-director-policy.coax. Loaded by that
+// authority entry. These constructors produce test JSON only and make no routing decisions.
+
+aapt_input :: (words:string,cast_json:string,shot:string,last:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"v");jo_int(o[..],1);jo_key(o[..],"words");jo_str(o[..],words);jo_key(o[..],"state");jo_obj(o[..]);
+  jo_key(o[..],"cast");jo_raw(o[..],cast_json);jo_key(o[..],"shot");jo_raw(o[..],shot);jo_key(o[..],"last");jo_raw(o[..],last);jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
+}
+aapt_vector_answer :: (core:string,soft_kind:int,out:[]u8)->string {
+  nodes:[64]JvNode;d:[1]Jv;ok:=jv_parse(d[..],core,nodes[..]);
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);f:=d[0].nodes[0].first;
+  while f>=0 {jo_key(o[..],jv_key(d[0],f));jv_write(d[0],f,o[..]);f=d[0].nodes[f].next;}
+  jo_key(o[..],"confidence");jo_obj(o[..]);fields:=AAP_FIELDS;
+  for field:fields {
+    v:=jv_get(d[0],0,field);if v<0 {continue;}
+    chosen:=ifx field=="count" then jv_int(d[0],v,0)-1 else aap_enum(d[0],v,field);
+    count:=aap_choices(field);p:=ifx field=="kind" then soft_kind else 1000;
+    rest:=1000-p;base:=rest/(count-1);extra:=rest%(count-1);
+    jo_key(o[..],field);jo_obj(o[..]);other:=0;
+    for i:0..<count {
+      score:=p;if i!=chosen {score=base+(ifx other<extra then 1 else 0);other+=1;}
+      jo_key(o[..],aap_choice(field,i));aap_prob_write(o[..],score);
+    }jo_end(o[..]);
+  }jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
+}
+aapt_history :: (core:string,out:[]u8)->AapDirection {
+  nodes:[128]JvNode;d:[1]Jv;if !jv_parse(d[..],core,nodes[..]) {return AapDirection.{};}
+  return aap_direction(d[0],0,true,out);
+}
+aapt_raw :: (input:string,model:string,out:[]u8)->int {
+  ib:[AAP_INPUT_MAX+1]u8;mb:[AAP_MODEL_MAX+1]u8;
+  for i:0..<input.count {ib[i]=input[i];}for i:0..<model.count {mb[i]=model[i];}
+  return aap_finish(ib[0..<input.count],mb[0..<model.count],out);
+}
+
+#test "API anime fixture constructors preserve exact spans and replacement failures" {
+  b:[64]u8;#assert aap_test_replace("abcabc","abc","Z",b[..])=="Zabc";
+  #assert aap_test_replace("abc","c","",b[..])=="ab" && aap_test_replace("abc","abcd","Z",b[..])=="";
+  #assert aap_test_replace("a-b-c","b","long",b[..])=="a-long-c" && aap_test_replace("abc","z","?",b[..])=="";
+  #assert aap_test_list("{}","{}",b[..])=="[{},{}]" && aap_test_list("{}","",b[..])=="[{}]";
+}
+#test "API anime provider grammar retains every finite option while holder owns exact bounds" {
+  names:=[18]string.["kind","who","to","archetype","action","emotion","spell","effect","framing","move","transition","beat","how","place","size","count","like","timing"];
+  counts:=[18]int.[10,5,5,5,11,10,6,9,8,6,5,4,4,8,3,3,5,3];
+  first:=[18]string.["enter","heroine","heroine","heroine","raise-wand","calm","bolt","explosion","extreme-close-up","hold","cut","hold","walks","gate","small","1","heroine","now"];
+  last:=[18]string.["make","creature","creature","creature","shout","hesitant","light","shockwave","high-angle","whip-pan","match","speed-lines","lands","above","huge","3","creature","with"];
+  for i:0..<18 {
+    #assert aap_choices(names[i])==counts[i] && aap_choice(names[i],0)==first[i] && aap_choice(names[i],counts[i]-1)==last[i];
+    #assert aap_choice(names[i],-1)=="" && aap_choice(names[i],counts[i])=="";
+  }
+  #assert aap_choices("unknown")==0 && aap_choice("unknown",0)=="";
+  out:[AAP_RESULT_MAX]u8;n:=aap_test_prepare(AAP_TEST_INPUT,out[..]);#assert n>0;
+  nodes:[2048]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+  props:=jv_path(d[0],0,"generationConfig.responseSchema.properties.answers.items.properties.selections.items.properties");
+  #assert jv_int(d[0],jv_path(d[0],0,"generationConfig.maxOutputTokens"),0)==8192;
+  #assert jv_int(d[0],jv_path(d[0],0,"generationConfig.temperature"),-1)==0;
+  // Vertex's schema constraint budget rejects this catalogue when redundant numeric
+  // and size bounds are included. Coax enforces each bound after decoding instead.
+  for at:0..<d[0].count {#assert !aap_in(jv_key(d[0],at),"minimum|maximum|minItems|maxItems|maxLength");}
+  #assert jv_raw(d[0],jv_get(d[0],jv_get(d[0],props,"value"),"type"))=="string";
+  #assert jv_raw(d[0],jv_path(d[0],jv_get(d[0],props,"probabilities"),"items.type"))=="number";
+  enum_:=jv_get(d[0],jv_get(d[0],props,"field"),"enum");#assert jv_len(d[0],enum_)==19;
+  for i:0..<19 {#assert jv_raw(d[0],jv_at(d[0],enum_,i))==aap_wire_name(i);}
+  prompt:[8192]u8;pn:=jv_str(d[0],jv_path(d[0],0,"systemInstruction.parts[0].text"),prompt[..]);prefix:=AAP_PROMPT.count+AAP_WIRE_PROMPT.count;
+  #assert pn>prefix && cast(string)prompt[0..<AAP_PROMPT.count]==AAP_PROMPT && cast(string)prompt[AAP_PROMPT.count..<prefix]==AAP_WIRE_PROMPT;
+  #assert jv_parse(d[..],cast(string)prompt[prefix..<pn],nodes[..]);
+  for i:0..<18 {
+    options_:=jv_get(d[0],0,names[i]);#assert jv_len(d[0],options_)==counts[i];
+    for k:0..<counts[i] {#assert jv_raw(d[0],jv_at(d[0],options_,k))==aap_choice(names[i],k);}
+  }
+}
+#test "API anime Unicode keys and text are checked before admission" {
+  #assert aap_utf8("A\tB\nC\rD",true) && !aap_utf8("A\tB",false) && !aap_utf8("A\nB",false) && !aap_utf8("A\rB",false);
+  #assert aap_utf8("😀",false) && aap_utf8("",false);
+  raw:=[2]u8.[0,255];#assert !aap_utf8(cast(string)raw[0..<1],true) && !aap_utf8(cast(string)raw[1..<2],true);
+  nodes:[32]JvNode;d:[1]Jv;
+  #assert jv_parse(d[..],"{\"\":0}",nodes[..]) && !aap_unique(d[0]);
+  #assert jv_parse(d[..],"{\"a\":0,\"\\u0061\":1}",nodes[..]) && !aap_unique(d[0]);
+  #assert jv_parse(d[..],"{\"a\":0,\"b\":{\"a\":1}}",nodes[..]) && aap_unique(d[0]);
+  #assert !aap_keys(d[0],-1,"a|b") && aap_keys(d[0],0,"a|b") && !aap_keys(d[0],0,"a");
+  #assert aap_in("a","a|b") && aap_in("b","a|b") && !aap_in("c","a|b");
+  #assert aap_enum(d[0],jv_get(d[0],0,"a"),"kind")==-1;
+}
+#test "API anime exact probability aliases and vector ties have an independent integer oracle" {
+  good:=[10]string.["0.001","1.0","0.010","10e-1","1E0","1e+0","0.1000","0e0","-0.0","0.999"];
+  expected:=[10]int.[1,1000,10,1000,1000,1000,100,0,0,999];for i:0..<10 {#assert aap_milli(good[i])==expected[i];}
+  bad:=[15]string.["-",".","1.",".1","0..1","0x1","2","1e","1e+","1e-","1e:0","1e/0","1e1","0.0001","1234567890123456789012345"];
+  for s:bad {#assert aap_milli(s)==-1;}
+  nodes:[64]JvNode;d:[1]Jv;
+  #assert jv_parse(d[..],"{\"now\":0.5,\"after\":0.5,\"with\":0}",nodes[..]);
+  #assert aap_vector(d[0],0,"timing",0)==500 && aap_vector(d[0],0,"timing",1)==-1;
+  #assert aap_vector(d[0],0,"timing",-1)==-1 && aap_vector(d[0],0,"timing",3)==-1 && aap_vector(d[0],0,"unknown",0)==-1;
+  #assert aap_vector(d[0],-1,"timing",0)==-1;
+  #assert jv_parse(d[..],"{\"now\":1,\"after\":0}",nodes[..]) && aap_vector(d[0],0,"timing",0)==-1;
+  #assert jv_parse(d[..],"{\"now\":1,\"after\":0,\"wrong\":0}",nodes[..]) && aap_vector(d[0],0,"timing",0)==-1;
+}
+#test "API anime every admitted kind and optional finite field has a canonical direction" {
+  cores:=[13]string.[
+    "{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":3,\"how\":\"appears\",\"place\":\"behind\",\"timing\":\"now\"}",
+    "{\"kind\":\"exit\",\"who\":\"hero\",\"how\":\"runs\",\"timing\":\"after\"}",
+    "{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"timing\":\"now\"}",
+    "{\"kind\":\"emote\",\"who\":\"heroine\",\"emotion\":\"sad\",\"timing\":\"now\"}",
+    "{\"kind\":\"cast\",\"spell\":\"fireball\",\"to\":\"hero\",\"size\":\"huge\",\"timing\":\"with\"}",
+    "{\"kind\":\"fx\",\"effect\":\"rubble-rain\",\"place\":\"courtyard\",\"size\":\"large\",\"timing\":\"now\"}",
+    "{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"hero\",\"move\":\"push-in\",\"timing\":\"now\"}",
+    "{\"kind\":\"cut\",\"to\":\"hero\",\"transition\":\"flash\",\"timing\":\"now\"}",
+    "{\"kind\":\"beat\",\"beat\":\"hold\",\"timing\":\"now\"}",
+    "{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"place\":\"wall\",\"timing\":\"now\"}",
+    "{\"kind\":\"shot\",\"framing\":\"wide\",\"place\":\"courtyard\",\"timing\":\"now\"}",
+    "{\"kind\":\"enter\",\"archetype\":\"dark-lord\",\"timing\":\"now\"}",
+    "{\"kind\":\"cut\",\"to\":\"heroine\",\"timing\":\"now\"}"];
+  model:[8192]u8;list:[16384]u8;out:[AAP_RESULT_MAX]u8;nodes:[2048]JvNode;d:[1]Jv;
+  kinds:=[13]string.["enter","exit","act","emote","cast","fx","shot","cut","beat","make","shot","enter","cut"];
+  for i:0..<cores.count {
+    answer:=aapt_vector_answer(cores[i],1000,model[..]);n:=aap_test_finish(aap_test_list(answer,"",list[..]),out[..]);#assert n>0;
+    #assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);v:=jv_at(d[0],jv_get(d[0],0,"answers"),0);
+    #assert jv_raw(d[0],jv_get(d[0],v,"kind"))==kinds[i];
+    if i==1 || i==9 {#assert jv_raw(d[0],jv_get(d[0],v,"decision"))=="heard";}
+  }
+  for p:[5]int.[499,500,850,851,1000] {
+    answer:=aapt_vector_answer(cores[2],p,model[..]);n:=aap_test_finish(aap_test_list(answer,"",list[..]),out[..]);#assert n>0;
+    #assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);v:=jv_at(d[0],jv_get(d[0],0,"answers"),0);
+    #assert jv_raw(d[0],jv_get(d[0],v,"decision"))==(ifx p<500 then "heard" else ifx p<=850 then "soft" else "play");
+  }
+}
+#test "API anime invalid directions cannot hide in kind defaults or metadata" {
+  out:[2048]u8;
+  bad:=[18]string.["[]","{\"kind\":\"set\",\"p\":1}","{\"kind\":\"say\",\"p\":1}","{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":4,\"p\":1}","{\"kind\":\"enter\",\"archetype\":\"hooded\",\"how\":true,\"p\":1}","{\"kind\":\"act\",\"who\":\"hero\",\"p\":1}","{\"kind\":\"cast\",\"spell\":\"fireball\",\"p\":1}","{\"kind\":\"cast\",\"spell\":\"fireball\",\"to\":\"hero\",\"place\":\"gate\",\"p\":1}","{\"kind\":\"shot\",\"framing\":\"close-up\",\"p\":1}","{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"hero\",\"move\":\"bad\",\"p\":1}","{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"timing\":3,\"p\":1}","{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":true}","{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":1,\"stock\":false}","{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":1,\"render_supported\":false}","{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":1,\"decision\":\"heard\"}","{\"kind\":\"make\",\"what\":\"bad\\\"quote\",\"like\":\"creature\",\"p\":1}","{\"kind\":\"make\",\"what\":\"bad\\\\slash\",\"like\":\"creature\",\"p\":1}","{\"kind\":\"make\",\"what\":\"\",\"like\":\"creature\",\"p\":1}"];
+  for x:bad {#assert !aapt_history(x,out[..]).ok;}
+  #assert aapt_history("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0,\"stock\":true,\"render_supported\":true,\"decision\":\"heard\"}",out[..]).ok;
+  #assert aapt_history("{\"kind\":\"make\",\"what\":\"ink\",\"like\":\"creature\",\"p\":1,\"stock\":false,\"render_supported\":false,\"decision\":\"heard\"}",out[..]).ok;
+  #assert !aapt_history("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\"}",out[..]).ok;
+}
+#test "API anime render support refuses aliases and preserves unsupported confidence as heard" {
+  for action:0..<ACTIONS {d:=AnimeDirection.{kind=AD_ACT,who=0,option=action,p=1};expected:=action==0 || action==1 || action==6+1 || action==8 || action==9;#assert aap_rendered(d)==expected;}
+  for spell:0..<SPELLS {#assert aap_rendered(AnimeDirection.{kind=AD_CAST,option=spell,place=0,p=1})==(spell==1);}
+  for tr:0..<TRANSITIONS {#assert aap_rendered(AnimeDirection.{kind=AD_CUT,option=tr,to=1,p=1})==(tr<=2);}
+  for beat:0..<BEATS {#assert aap_rendered(AnimeDirection.{kind=AD_BEAT,option=beat,p=1})==(beat==0 || beat==3);}
+  #assert aap_rendered(AnimeDirection.{kind=AD_EMOTE,who=1,option=EMO_SAD,p=1});
+  #assert !aap_rendered(AnimeDirection.{kind=AD_EXIT,who=1,p=1}) && !aap_rendered(AnimeDirection.{kind=AD_MAKE,p=1});
+  for stock:[2]bool.[false,true] {for supported:[2]bool.[false,true] {#assert aap_play_decision(900,stock,supported)==(ifx stock && supported then "play" else "heard");}}
+  for frame:0..<FRAMINGS {for move:0..<MOVES {
+    d:=AnimeDirection.{kind=AD_SHOT,who=1,option=frame,move=move,p=1};expected:=(frame==0 || frame==1 || frame==2 || frame==5 || frame==6) && move<=2;#assert aap_rendered(d)==expected;
+  }}
+  for how:0..<HOWS {for count:1..<4 {for archetype:[3]int.[0,2,5] {
+    d:=AnimeDirection.{kind=AD_ENTER,option=archetype,move=how,count=count,place=-1,p=1};expected:=(how==2 || (archetype==5 && how==0)) && (count==1 || archetype==2);#assert aap_rendered(d)==expected;
+  }}}
+}
+#test "API anime error bodies and exact output endpoints preserve caller storage" {
+  codes:=[5]int.[AAP_INVALID,AAP_LIMIT,AAP_MODEL,AAP_CAPACITY,-99];texts:=[5]string.["invalid_input","input_limit","invalid_model","output_capacity","internal_error"];
+  out:[128]u8;nodes:[16]JvNode;d:[1]Jv;
+  for i:0..<5 {n:=aap_error(codes[i],out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);#assert jv_int(d[0],jv_get(d[0],0,"v"),0)==1 && jv_raw(d[0],jv_get(d[0],0,"error"))==texts[i];#assert aap_error(codes[i],out[0..<n])==n;#assert aap_error(codes[i],out[0..<n-1])==AAP_CAPACITY;}
+  #assert aap_status(-99)==500;
+  exact:=[3]u8.[7,8,9];#assert aap_copy("abc",exact[..])==3 && cast(string)exact[..]=="abc";#assert aap_copy("abcd",exact[..])==AAP_CAPACITY && cast(string)exact[..]=="abc";
+  tiny:[1]u8;o:[1]Jo;jo_start(o[..],tiny[..]);jo_str(o[..],"too long");#assert aap_publish(o[..],exact[..])==AAP_CAPACITY && cast(string)exact[..]=="abc";
+  jo_start(o[..],tiny[..]);jo_int(o[..],1);#assert aap_publish(o[..],exact[..])==1 && exact[0]=='1';
+}
+
+#test "API anime request field bounds cover empty full and malformed state profiles" {
+  input:[16384]u8;out:[AAP_RESULT_MAX]u8;words:[601]u8;for i:0..<words.count {words[i]='x';}
+  shot:="{\"framing\":\"wide\",\"place\":\"courtyard\"}";
+  #assert aap_test_prepare(aapt_input("x","[]",shot,"[]",input[..]),out[..])>0;
+  #assert aap_test_prepare(aapt_input(cast(string)words[0..<600],"[]",shot,"[]",input[..]),out[..])>0;
+  #assert aap_test_prepare(aapt_input(cast(string)words[..],"[]",shot,"[]",input[..]),out[..])==AAP_INVALID;
+  for said:[4]string.[""," ","\t\n\r ","\0"] {#assert aap_test_prepare(aapt_input(said,"[]",shot,"[]",input[..]),out[..])==AAP_INVALID;}
+  #assert aap_test_prepare(aapt_input("\t\n\rX","[]",shot,"[]",input[..]),out[..])>0;
+  for bad_shot:[7]string.["[]","{}","{\"framing\":\"wide\"}","{\"framing\":\"wide\",\"place\":\"bad\"}","{\"framing\":\"wide\",\"who\":1}","{\"framing\":\"wide\",\"place\":\"courtyard\",\"move\":false}","{\"framing\":\"wide\",\"place\":\"courtyard\",\"extra\":1}"] {
+    #assert aap_test_prepare(aapt_input("x","[]",bad_shot,"[]",input[..]),out[..])==AAP_INVALID;
+  }
+  #assert aap_test_prepare(aapt_input("x","[]","{\"framing\":\"medium\",\"who\":\"hero\",\"place\":\"courtyard\",\"move\":\"hold\"}","[]",input[..]),out[..])>0;
+  #assert aap_test_prepare(aapt_input("x","{}",shot,"[]",input[..]),out[..])==AAP_INVALID;
+  actor:="{\"slot\":0,\"name\":\"A\",\"archetype\":\"heroine\",\"on\":false,\"place\":\"gate\",\"action\":\"point\",\"emotion\":\"calm\"}";
+  altered:[2048]u8;actors:[2048]u8;
+  from:=[12]string.["\"slot\":0","\"slot\":0","\"name\":\"A\"","\"name\":\"A\"","\"archetype\":\"heroine\"","\"on\":false","\"place\":\"gate\"","\"action\":\"point\"","\"emotion\":\"calm\"","\"name\":\"A\"","\"slot\":0","\"on\":false"];
+  to:=[12]string.["\"slot\":-1","\"slot\":7","\"name\":\"\"","\"name\":1","\"archetype\":\"none\"","\"on\":\"false\"","\"place\":null","\"action\":\"bad\"","\"emotion\":\"bad\"","\"name\":\"\\u0001\"","\"slot\":0.5","\"on\":false,\"extra\":0"];
+  #assert aap_test_prepare(aapt_input("x",aap_test_list(actor,"",actors[..]),shot,"[]",input[..]),out[..])>0;
+  for i:0..<12 {changed:=aap_test_replace(actor,from[i],to[i],altered[..]);#assert aap_test_prepare(aapt_input("x",aap_test_list(changed,"",actors[..]),shot,"[]",input[..]),out[..])==AAP_INVALID;}
+  all:[4096]u8;o:[1]Jo;jo_start(o[..],all[..]);jo_arr(o[..]);
+  slots:=[7]string.["heroine","hero","hooded","hooded","hooded","dark-lord","creature"];
+  for i:0..<7 {jo_obj(o[..]);jo_key(o[..],"slot");jo_int(o[..],i);jo_key(o[..],"name");jo_str(o[..],slots[i]);jo_key(o[..],"archetype");jo_str(o[..],slots[i]);jo_key(o[..],"on");jo_bool(o[..],true);jo_key(o[..],"place");jo_str(o[..],"courtyard");jo_end(o[..]);}jo_end(o[..]);
+  #assert aap_test_prepare(aapt_input("x",jo_text(o[..]),shot,"[]",input[..]),out[..])>0;
+  history:="{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.5}";
+  last:[8192]u8;j:[1]Jo;
+  for count:[2]int.[8,9] {jo_start(j[..],last[..]);jo_arr(j[..]);for i:0..<count {jo_raw(j[..],history);}jo_end(j[..]);#assert (aap_test_prepare(aapt_input("x","[]",shot,jo_text(j[..]),input[..]),out[..])>0)==(count==8);}
+  #assert aap_test_prepare(aapt_input("x","[]",shot,"{}",input[..]),out[..])==AAP_INVALID;
+  #assert aap_test_prepare(aapt_input("x","[]",shot,"[{}]",input[..]),out[..])==AAP_INVALID;
+}
+#test "API anime model envelope errors and byte limits cannot publish a partial result" {
+  out:[AAP_RESULT_MAX]u8;for i:0..<out.count {out[i]=37;}
+  bad:=[13]string.["{}","[]","{\"candidates\":{}}","{\"candidates\":[]}","{\"candidates\":[{},{}]}","{\"candidates\":[{\"finishReason\":\"MAX_TOKENS\"}]}","{\"candidates\":[{\"finishReason\":1}]}","{\"candidates\":[{\"content\":{\"parts\":[]}}]}","{\"candidates\":[{\"content\":{\"parts\":[{},{}]}}]}","{\"candidates\":[{\"content\":{\"parts\":[{\"thought\":true,\"text\":\"{}\"}]}}]}","{\"candidates\":[{\"content\":{\"parts\":[{\"thought\":null,\"text\":\"{}\"}]}}]}","{\"candidates\":[{\"content\":{\"parts\":[{\"text\":1}]}}]}","{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}]}}]}"];
+  for model:bad {#assert aapt_raw(AAP_TEST_INPUT,model,out[..])==AAP_MODEL;}
+  valid:="{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"thought\":false,\"text\":\"{\\\"answers\\\":[]}\"}]}}]}";
+  #assert aapt_raw("{}",valid,out[..])==AAP_INVALID;
+  #assert aapt_raw(AAP_TEST_INPUT,valid,out[..])>0;
+  input:[AAP_INPUT_MAX+1]u8;for i:0..<AAP_TEST_INPUT.count {input[i]=AAP_TEST_INPUT[i];}
+  model:[AAP_MODEL_MAX+1]u8;for i:0..<model.count {model[i]=' ';}for i:0..<valid.count {model[i]=valid[i];}
+  #assert aap_finish(input[0..<AAP_TEST_INPUT.count],model[0..<AAP_MODEL_MAX],out[..])>0;
+  #assert aap_finish(input[0..<AAP_TEST_INPUT.count],model[..],out[..])==AAP_MODEL;
+  #assert aap_finish(input[..],model[0..<valid.count],out[..])==AAP_LIMIT;
+  model[valid.count]=0;#assert aap_finish(input[0..<AAP_TEST_INPUT.count],model[0..<valid.count+1],out[..])==AAP_MODEL;
+  list:[16384]u8;pool:[16384]u8;o:[1]Jo;
+  for count:[2]int.[8,9] {jo_start(o[..],pool[..]);jo_arr(o[..]);for i:0..<count {jo_raw(o[..],AAP_TEST_ACT);}jo_end(o[..]);#assert (aap_test_finish(jo_text(o[..]),out[..])>0)==(count==8);}
+  #assert aap_test_finish("{}",out[..])==AAP_MODEL && aap_test_finish("[{}]",out[..])==AAP_MODEL;
+  before:=[3]u8.[37,37,37];#assert aap_test_finish(aap_test_list(AAP_TEST_ACT,"{}",list[..]),before[..])==AAP_MODEL;
+  #assert before[0]==37 && before[1]==37 && before[2]==37;
+}
+
+#test "API anime exact decimal probability writer round trips every grid value" {
+  b:[16]u8;o:[1]Jo;
+  for p:0..<1001 {
+    jo_start(o[..],b[..]);aap_prob_write(o[..],p);
+    #assert aap_milli(jo_text(o[..]))==p;
+    #assert ad_p(jo_text(o[..]))==cast(f32)p/1000;
+  }
+  good:=[9]string.["9e-3","1e-0003","1e+0000","0.000000001e6","100e-2","0e9999999999","1e-3","1e-6","0.009"];
+  values:=[9]int.[9,1,1000,1,1000,0,1,-1,9];for i:0..<9 {#assert aap_milli(good[i])==values[i];}
+  for bad:[11]string.["/","9","-0.001","1e1000","1e-1000","101e-2","0.0009","true","false","null","-1"] {#assert aap_milli(bad)==-1;}
+  for left:[8]int.[0,1,499,500,850,851,999,1000] {for right:[8]int.[0,1,499,500,850,851,999,1000] {#assert aap_lowest(left,right)==(ifx left<right then left else right);}}
+}
+#test "API anime map shape and chosen fields are held independently" {
+  nodes:[64]JvNode;d:[1]Jv;
+  for bad:[4]string.["{\"now\":true,\"after\":0,\"with\":0}","{\"now\":0.0001,\"after\":0.9999,\"with\":0}","{\"now\":0,\"after\":1,\"with\":0}","{\"now\":0,\"after\":0,\"with\":0}"] {
+    #assert jv_parse(d[..],bad,nodes[..]) && aap_vector(d[0],0,"timing",0)==-1;
+  }
+  #assert jv_parse(d[..],"{\"now\":1,\"after\":0,\"with\":0}",nodes[..]) && aap_vector(d[0],0,"timing",0)==1000;
+  #assert aap_vector(d[0],0,"timing",-1)==-1 && aap_vector(d[0],0,"timing",3)==-1;
+  #assert jv_parse(d[..],"[]",nodes[..]) && aap_vector(d[0],0,"timing",0)==-1;
+  #assert aap_in("a","a") && !aap_in("","a") && !aap_in("a","b") && aap_in("","|a");
+  #assert jv_parse(d[..],"{}",nodes[..]) && aap_keys(d[0],0,"");
+  #assert jv_parse(d[..],"{\"a\":0}",nodes[..]) && aap_keys(d[0],0,"a");
+}
+#test "API anime freeform asset and history scalar boundaries stay within flat reader semantics" {
+  out:[2048]u8;core:[8192]u8;
+  base:="{\"kind\":\"make\",\"what\":\"x\",\"like\":\"creature\",\"p\":1}";
+  chars:[41]u8;for i:0..<chars.count {chars[i]='x';}
+  text:[256]u8;o:[1]Jo;
+  for count:[2]int.[40,41] {jo_start(o[..],text[..]);jo_str(o[..],cast(string)chars[0..<count]);x:=aap_test_replace(base,"\"x\"",jo_text(o[..]),core[..]);#assert aapt_history(x,out[..]).ok==(count==40);}
+  for what:[4]string.["\"bad\\\"quote\"","\"bad\\\\slash\"","\"bad\\nnewline\"","1"] {x:=aap_test_replace(base,"\"x\"",what,core[..]);#assert !aapt_history(x,out[..]).ok;}
+  history:="{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":1}";
+  held:=aapt_history(history,out[..]);#assert held.ok && held.timing==0 && held.p==1000;
+  for p:[4]string.["-0.001","1.001","0.0001","\"0.5\""] {x:=aap_test_replace(history,"1",p,core[..]);#assert !aapt_history(x,out[..]).ok;}
+  tiny:[1]u8;#assert !aapt_history(history,tiny[..]).ok;
+}
+
+#test "API anime complete requests enforce independent keys slots and UTF8 at exact byte capacity" {
+  b:[AAP_INPUT_MAX+1]u8;out:[AAP_RESULT_MAX]u8;change:[16384]u8;
+  for i:0..<b.count {b[i]=' ';}for i:0..<AAP_TEST_INPUT.count {b[i]=AAP_TEST_INPUT[i];}
+  #assert aap_prepare(b[0..<AAP_INPUT_MAX],out[..])>0;
+  good:="{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"answers\\\":[]}\"}]}}]}";
+  model:[4096]u8;for i:0..<good.count {model[i]=good[i];}
+  #assert aap_finish(b[0..<AAP_INPUT_MAX],model[0..<good.count],out[..])>0;
+  b[AAP_TEST_INPUT.count]='\n';#assert aap_prepare(b[0..<AAP_TEST_INPUT.count+1],out[..])>0 && aap_finish(b[0..<AAP_TEST_INPUT.count+1],model[0..<good.count],out[..])>0;
+  from:=[5]string.["\"v\":1,","\"v\":1","\"last\":[]","\"state\":{","\"name\":\"Kai\""];
+  to:=[5]string.["","\"v\":1,\"extra\":1","\"last\":[],\"extra\":1","\"state\":{\"extra\":1,","\"name\":\"Kai\\t\""];
+  for i:0..<5 {x:=aap_test_replace(AAP_TEST_INPUT,from[i],to[i],change[..]);#assert aap_test_prepare(x,out[..])==AAP_INVALID && aapt_raw(x,good,out[..])==AAP_INVALID;}
+  actor:="{\"slot\":0,\"name\":\"A\",\"archetype\":\"heroine\",\"on\":true,\"place\":\"courtyard\"}";
+  actors:[1024]u8;input:[4096]u8;
+  #assert aap_test_prepare(aapt_input("x",aap_test_list(actor,actor,actors[..]),"{\"framing\":\"wide\",\"place\":\"courtyard\"}","[]",input[..]),out[..])==AAP_INVALID;
+  #assert aap_test_prepare(aapt_input("x","[]","{\"framing\":\"extreme-close-up\",\"who\":\"heroine\"}","[]",input[..]),out[..])>0;
+  nodes:[32]JvNode;d:[1]Jv;#assert jv_parse(d[..],"{\"\\t\":0}",nodes[..]) && !aap_unique(d[0]);
+  #assert jv_parse(d[..],"{\"\\u0000\":0}",nodes[..]) && !aap_unique(d[0]);
+}
+#test "API anime direction admission refuses scalar model metadata unused maps and absent exit subject" {
+  out:[AAP_RESULT_MAX]u8;change:[8192]u8;list:[16384]u8;
+  for suffix:[3]string.[",\"p\":0.9",",\"stock\":true",",\"unknown\":0"] {
+    x:=aap_test_replace(AAP_TEST_CAST,"{\"kind\"",ifx suffix==",\"p\":0.9" then "{\"p\":0.9,\"kind\"" else ifx suffix==",\"stock\":true" then "{\"stock\":true,\"kind\"" else "{\"unknown\":0,\"kind\"",change[..]);
+    #assert aap_test_finish(aap_test_list(x,"",list[..]),out[..])==AAP_MODEL;
+  }
+  history:[2048]u8;#assert !aapt_history("{\"kind\":\"exit\",\"p\":1}",history[..]).ok;
+  for count:[5]string.["0","4","1.5","true","\"1\""] {x:=aap_test_replace("{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":1,\"p\":1}","\"count\":1",aapt_count_field(count,history[..]),change[..]);#assert !aapt_history(x,history[..]).ok;}
+  held:=aapt_history("{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":1,\"p\":1}",history[..]);#assert held.ok && anime_read(cast(string)history[0..<held.n]).count==1;
+}
+aapt_count_field :: (value:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"count");jo_raw(o[..],value);jo_end(o[..]);return jo_text(o[..])[1..<o[0].n-1];}
+
+aapt_model :: (selected:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"candidates");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"content");jo_obj(o[..]);jo_key(o[..],"parts");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"text");jo_str(o[..],selected);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
+}
+#test "API anime selector envelope and decoded root shape are independently strict" {
+  out:[AAP_RESULT_MAX]u8;model:[65536]u8;change:[65536]u8;
+  for inner:[7]string.["{\"answers\":[],\"extra\":1}","{\"answers\":[],\"answers\":[]}","{\"answers\":[],\"\\u0061nswers\":[]}","{\"extra\":1}","[\"answers\"]","{\"answers\":[]","{\"answers\":null}"] {#assert aapt_raw(AAP_TEST_INPUT,aapt_model(inner,model[..]),out[..])==AAP_MODEL;}
+  valid:=aapt_model("{\"answers\":[]}",model[..]);n:=aapt_raw(AAP_TEST_INPUT,valid,out[..]);#assert n>0;
+  nodes:[64]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);#assert jv_int(d[0],jv_get(d[0],0,"v"),0)==1;
+  for envelope:[3]string.["{\"candidates\":{\"only\":0}}","{\"candidates\":[{\"finishReason\":\"DONE\",\"content\":{\"parts\":[{\"text\":\"{\\\"answers\\\":[]}\"}]}}]}","{\"candidates\":[{\"content\":{\"parts\":{\"only\":0}}}]}\n"] {#assert aapt_raw(AAP_TEST_INPUT,envelope,out[..])==AAP_MODEL;}
+  #assert aapt_raw(AAP_TEST_INPUT,aap_test_replace(valid,"{\"candidates\"","{\"duplicate\":0,\"duplicate\":0,\"candidates\"",change[..]),out[..])==AAP_MODEL;
+  for i:0..<valid.count {change[i]=valid[i];}change[valid.count]='\n';#assert aapt_raw(AAP_TEST_INPUT,cast(string)change[0..<valid.count+1],out[..])>0;
+  changed:=aap_test_replace(valid,"{\"candidates\"","{\"ignored\":\"X\",\"candidates\"",change[..]);for i:0..<changed.count {if change[i]=='X' {change[i]=255;break;}}
+  #assert aapt_raw(AAP_TEST_INPUT,changed,out[..])==AAP_MODEL;
+}
+#test "API anime canonical count projection preserves every selected number without reader defaults" {
+  core:[1024]u8;answer:[8192]u8;list:[16384]u8;out:[AAP_RESULT_MAX]u8;canonical:[2048]u8;nodes:[2048]JvNode;d:[1]Jv;
+  for count:1..<4 {
+    o:[1]Jo;jo_start(o[..],core[..]);jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],"enter");jo_key(o[..],"archetype");jo_str(o[..],"hooded");jo_key(o[..],"count");jo_int(o[..],count);jo_key(o[..],"timing");jo_str(o[..],"now");jo_end(o[..]);
+    selected:=aapt_vector_answer(jo_text(o[..]),1000,answer[..]);held:=aapt_history(selected,canonical[..]);#assert held.ok;
+    #assert jv_parse(d[..],cast(string)canonical[0..<held.n],nodes[..]) && jv_int(d[0],jv_get(d[0],0,"count"),0)==count;
+    n:=aap_test_finish(aap_test_list(selected,"",list[..]),out[..]);#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+    #assert jv_int(d[0],jv_get(d[0],jv_at(d[0],jv_get(d[0],0,"answers"),0),"count"),0)==count;
+  }
+}

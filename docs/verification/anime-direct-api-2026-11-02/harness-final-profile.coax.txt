@@ -1,0 +1,356 @@
+// Actual C API + owned PostgreSQL + an owned Coax selector stand-in (#12632).
+// No external selector, deployment, staging, owner identity or production data.
+// API=http://127.0.0.1:57432 ORIGIN=http://127.0.0.1:57432 PGURL=... PSQL=...
+// ANIME_PORT=51392 ANIME_ISOLATED_DB=oa_anime12632 coax/web/tool.sh FILE.coax
+// ORIGIN may differ from the loopback transport API (the ordinary API test.sh).
+// tool.sh: tls
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/sys/fs.coax";
+#load "../../../lib/net/http.coax";
+#load "../../../lib/json/json.coax";
+#load "../../../lib/nostr/nip98_sign.coax";
+
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+cxproc_wall_us :: () -> int #foreign;
+AI_ROUTE :: "/api/playtest/labs/anime/direct";
+AI_WORDS :: "Draconia casts a fireball.";
+AI_STATE :: "{\"cast\":[{\"slot\":0,\"name\":\"Draconia\",\"archetype\":\"heroine\",\"on\":true,\"place\":\"courtyard\"},{\"slot\":1,\"name\":\"Kai\",\"archetype\":\"hero\",\"on\":true,\"place\":\"gate\"}],\"shot\":{\"framing\":\"wide\",\"place\":\"courtyard\"},\"last\":[]}";
+
+#test "anime API oracle checks exact confidence dispositions and refuses partial errors" {
+  good := "{\"v\":1,\"heard\":\"Draconia casts a fireball.\",\"answers\":[{\"kind\":\"cast\",\"p\":0.85,\"decision\":\"soft\",\"render_supported\":true}]}";
+  #assert aid_response(good,1) && aid_answer(good,0,"cast","soft",850,true);
+  #assert !aid_answer(good,0,"cast","play",850,true) && !aid_answer(good,0,"cast","soft",851,true);
+  #assert aid_no_partial("{\"error\":\"model unavailable\"}") && !aid_no_partial(good) && !aid_no_partial("{\"error\":\"failed\",\"answers\":[]}");
+}
+#test "anime API request and origin helpers preserve the typed stage and local transport bound" {
+  bytes: [4096] u8; n := aid_request(AI_WORDS,bytes[..]); nodes: [128] JvNode; d: [1] Jv;
+  #assert n > 0 && jv_parse(d[..],cast(string)bytes[0..<n],nodes[..]);
+  #assert jv_int(d[0],jv_get(d[0],0,"v"),0) == 1 && jv_len(d[0],jv_path(d[0],0,"state.cast")) == 2;
+  #assert aid_loopback("http://127.0.0.1:57432") && !aid_loopback("https://staging.openagents.com") && !aid_loopback("http://127.0.0.1:5/path");
+}
+
+aid_response :: (s: string, count: int) -> bool {
+  return aid_response_words(s,AI_WORDS,count);
+}
+aid_response_words :: (s: string, words: string, count: int) -> bool {
+  nodes: [512] JvNode; d: [1] Jv; heard: [1024] u8;
+  if !jv_parse(d[..],s,nodes[..]) { return false; }
+  n := jv_str(d[0],jv_get(d[0],0,"heard"),heard[..]);
+  return jv_int(d[0],jv_get(d[0],0,"v"),0) == 1 && n == words.count && cast(string)heard[0..<n] == words && jv_len(d[0],jv_get(d[0],0,"answers")) == count;
+}
+aid_answer :: (s: string, at: int, kind: string, decision: string, milli: int, render: bool) -> bool {
+  nodes: [512] JvNode; d: [1] Jv;
+  if !jv_parse(d[..],s,nodes[..]) { return false; }
+  a := jv_at(d[0],jv_get(d[0],0,"answers"),at);
+  p := args_number(jv_raw(d[0],jv_get(d[0],a,"p")));
+  return jv_raw(d[0],jv_get(d[0],a,"kind")) == kind && jv_raw(d[0],jv_get(d[0],a,"decision")) == decision && p.ok && p.value == cast(f64)milli/1000.0 && jv_kind(d[0],jv_get(d[0],a,"render_supported")) == (ifx render then JV_TRUE else JV_FALSE);
+}
+aid_no_partial :: (s: string) -> bool {
+  nodes: [64] JvNode; d: [1] Jv;
+  return jv_parse(d[..],s,nodes[..]) && jv_kind(d[0],0) == JV_OBJECT && jv_kind(d[0],jv_get(d[0],0,"error")) == JV_STRING && jv_get(d[0],0,"answers") == -1 && jv_get(d[0],0,"heard") == -1;
+}
+aid_request :: (words: string, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..],out); jo_obj(o[..]); jo_key(o[..],"v"); jo_int(o[..],1);
+  jo_key(o[..],"words"); jo_str(o[..],words); jo_key(o[..],"state"); jo_raw(o[..],AI_STATE); jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+aid_loopback :: (s: string) -> bool {
+  prefix := "http://127.0.0.1:";
+  if s.count <= prefix.count || s[0..<prefix.count] != prefix { return false; }
+  port := args_whole(s[prefix.count..<s.count]); return port >= 1 && port <= 65535;
+}
+aid_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at+s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at+i] = s[i]; }
+  return at+s.count;
+}
+aid_join :: (a: string, b: string, out: [] u8) -> string {
+  n := aid_put(out,0,a); n = aid_put(out,n,b); return ifx n >= 0 then cast(string)out[0..<n] else "";
+}
+aid_trim :: (s: string) -> string {
+  n := s.count; while n > 0 && (s[n-1] == '\n' || s[n-1] == '\r') { n -= 1; } return s[0..<n];
+}
+aid_int :: (value: int, out: [] u8) -> string { o: [1] Jo; jo_start(o[..],out); jo_int(o[..],value); return jo_text(o[..]); }
+
+Aid :: struct {
+  api: string; origin: string; db: string; psql: string; isolated: string; control: string; receipts: string; end_ms: int;
+  secret: [32] u8; auth: [N98S_HEADER] u8; auth_n: int; cookie: [256] u8; cookie_n: int;
+  actor: [128] u8; actor_n: int; w: [1] HttpWork; out: [HTTP_BODY_MAX] u8; n: int; code: int;
+  pass: int; fail: int;
+}
+aid_body :: (t: [] Aid) -> string { return cast(string)t[0].out[0..<t[0].n]; }
+aid_check :: (t: [] Aid, name: string, ok: bool) {
+  if ok { t[0].pass += 1; print("ok %\n",name); }
+  else { t[0].fail += 1; print("FAIL % (HTTP %)\n",name,t[0].code); }
+}
+aid_timeout :: (t: [] Aid) -> int {
+  left := t[0].end_ms-proc_now_ms(); return ifx left < 1 then 1 else ifx left < 15000 then left else 15000;
+}
+aid_record :: (t: [] Aid, name: string, body: string) {
+  if t[0].receipts == "" { return; }
+  path: [4096] u8; done := fs_write(fs_join(t[0].receipts,name,path[..]),body);
+  if !done { t[0].fail += 1; tool_errln("anime API receipt write failed"); }
+}
+aid_sign :: (t: [] Aid, method: string, path: string, body: string, bound: bool) -> bool {
+  url: [2048] u8; bb: [32768] u8; aux: [32] u8; nonce: [16] u8;
+  target := aid_join(t[0].origin,path,url[..]);
+  if target == "" || body.count > bb.count || cxrand_draw(aux[..],32) != 0 || cxrand_draw(nonce[..],16) != 0 { return false; }
+  for i: 0..<body.count { bb[i] = body[i]; }
+  t[0].auth_n = n98s_header(t[0].secret[..],aux[..],nonce[..],cxproc_wall_us()/1000000,target,method,bb[0..<body.count],bound,t[0].auth[..]);
+  return t[0].auth_n > 0;
+}
+aid_call :: (t: [] Aid, method: string, path: string, body: string, auth: bool, cookie: bool, player: bool, origin: string, media: string) -> int {
+  url: [2048] u8; ah: [N98S_HEADER+32] u8; ch: [300] u8; oh: [512] u8; mb: [256] u8;
+  target := aid_join(t[0].api,path,url[..]); hs: [5] string; hn := 0;
+  if media != "" { hs[hn] = aid_join("Content-Type: ",media,mb[..]); hn += 1; }
+  if auth { an := aid_put(ah[..],0,"Authorization: "); an = aid_put(ah[..],an,cast(string)t[0].auth[0..<t[0].auth_n]); hs[hn] = cast(string)ah[0..<an]; hn += 1; }
+  if cookie { cn := aid_put(ch[..],0,"Cookie: "); cn = aid_put(ch[..],cn,cast(string)t[0].cookie[0..<t[0].cookie_n]); hs[hn] = cast(string)ch[0..<cn]; hn += 1; }
+  if player { hs[hn] = "X-Verse-Player: anime-fixture-guest-player-key"; hn += 1; }
+  if origin != "" { hs[hn] = aid_join("Origin: ",origin,oh[..]); hn += 1; }
+  if proc_now_ms() >= t[0].end_ms { t[0].n = 0; t[0].code = -98; return -98; }
+  got := http_do(t[0].w[..],method,target,hs[0..<hn],body,aid_timeout(t),0,t[0].out[..]);
+  t[0].n = got.n; t[0].code = ifx got.error == HTTP_OK then got.code else -got.error; return t[0].code;
+}
+aid_post :: (t: [] Aid, body: string) -> int {
+  if !aid_sign(t,"POST",AI_ROUTE,body,true) { t[0].code = -100; return -100; }
+  return aid_call(t,"POST",AI_ROUTE,body,true,false,false,"","application/json");
+}
+aid_sql :: (t: [] Aid, sql: string, out: [] u8) -> int {
+  a := [8] string.[t[0].psql,"-XAt","-v","ON_ERROR_STOP=1","--dbname",t[0].db,"-c",sql]; err: [8192] u8;
+  if proc_now_ms() >= t[0].end_ms { return -1; }
+  got := proc_run(a[..],aid_timeout(t),out,err[..]);
+  if got.status != 0 || got.timed_out || got.cut { tool_errln("anime API fixture SQL failed"); return -1; }
+  return got.out_n;
+}
+aid_count :: (t: [] Aid) -> int {
+  b: [64] u8; n := aid_sql(t,"SELECT count(*) FROM anime.calls",b[..]);
+  return ifx n >= 0 then args_whole(aid_trim(cast(string)b[0..<n])) else -1;
+}
+aid_reset :: (t: [] Aid) -> bool { out: [256] u8; return aid_sql(t,"TRUNCATE anime.calls RESTART IDENTITY",out[..]) >= 0; }
+aid_control :: (t: [] Aid, name: string, value: string) -> bool { path: [1024] u8; return fs_write(fs_join(t[0].control,name,path[..]),value); }
+aid_control_remove :: (t: [] Aid, name: string) -> bool { path: [1024] u8; return fs_remove(fs_join(t[0].control,name,path[..])); }
+aid_control_read :: (t: [] Aid, name: string, out: [] u8) -> int { path: [1024] u8; return fs_read(fs_join(t[0].control,name,path[..]),out); }
+aid_model_calls :: (t: [] Aid) -> int {
+  b: [32] u8; n := aid_control_read(t,"calls",b[..]); return ifx n > 0 then args_whole(aid_trim(cast(string)b[0..<n])) else -1;
+}
+aid_mode :: (t: [] Aid, mode: string) -> bool {
+  return aid_control_remove(t,"release") && aid_control_remove(t,"entered") && aid_control(t,"mode",mode);
+}
+aid_finished :: (t: [] Aid, status: int) -> bool {
+  sql: [256] u8; n := aid_put(sql[..],0,"SELECT count(*)=1 AND bool_and(finished AND status="); nb: [32] u8;
+  n = aid_put(sql[..],n,aid_int(status,nb[..])); n = aid_put(sql[..],n,") FROM anime.calls");
+  out: [64] u8; k := aid_sql(t,cast(string)sql[0..<n],out[..]); return k > 0 && out[0] == 't';
+}
+aid_model_payload :: (t: [] Aid) -> bool {
+  bytes: [131072] u8; n := aid_control_read(t,"request",bytes[..]); nodes: [4096] JvNode; d: [1] Jv; payload: [8192] u8;
+  if n < 0 || !jv_parse(d[..],cast(string)bytes[0..<n],nodes[..]) { return false; }
+  aid_record(t,"model-request.json",cast(string)bytes[0..<n]);
+  at := jv_path(d[0],0,"contents[0].parts[0].text"); k := jv_str(d[0],at,payload[..]);
+  expected: [4096] u8; expected_n := aid_request(AI_WORDS,expected[..]);
+  if jv_get(d[0],0,"systemInstruction") < 0 || k != expected_n || cast(string)payload[0..<k] != cast(string)expected[0..<expected_n] || !jv_parse(d[..],cast(string)payload[0..<k],nodes[..]) { return false; }
+  return jv_int(d[0],jv_get(d[0],0,"v"),0) == 1 && jv_raw(d[0],jv_get(d[0],0,"words")) == AI_WORDS && jv_len(d[0],jv_path(d[0],0,"state.cast")) == 2 && jv_raw(d[0],jv_path(d[0],0,"state.cast[0].name")) == "Draconia" && jv_raw(d[0],jv_path(d[0],0,"state.shot.framing")) == "wide" && jv_len(d[0],jv_path(d[0],0,"state.last")) == 0;
+}
+
+aid_auth_tests :: (t: [] Aid, body: string) {
+  reset := aid_reset(t) && aid_mode(t,"stock"); before := aid_model_calls(t);
+  aid_check(t,"no identity cannot spend selector quota",reset && aid_call(t,"POST",AI_ROUTE,body,false,false,false,"","application/json") == 401 && aid_count(t) == 0 && aid_model_calls(t) == before);
+  aid_check(t,"a guest player header is not a spending identity",aid_call(t,"POST",AI_ROUTE,body,false,false,true,"","application/json") == 401 && aid_count(t) == 0);
+  aid_check(t,"a bound fresh NIP-98 request works without Origin",aid_post(t,body) == 200 && aid_response(aid_body(t),1));
+  row: [128] u8; rn := aid_sql(t,"SELECT identity FROM anime.calls ORDER BY id LIMIT 1",row[..]);
+  if rn > 0 { actor := aid_trim(cast(string)row[0..<rn]); t[0].actor_n = aid_put(t[0].actor[..],0,actor); }
+  aid_check(t,"the same signed event is refused on replay",aid_call(t,"POST",AI_ROUTE,body,true,false,false,"","application/json") == 401 && aid_count(t) == 1);
+  signed := aid_sign(t,"POST",AI_ROUTE,body,false);
+  aid_check(t,"an unbound signed write is refused",signed && aid_call(t,"POST",AI_ROUTE,body,true,false,false,"","application/json") == 401);
+  signed = aid_sign(t,"POST",AI_ROUTE,body,true);
+  aid_check(t,"changed body cannot reuse a valid signature",signed && aid_call(t,"POST",AI_ROUTE,"{}",true,false,false,"","application/json") == 401);
+  signed = aid_sign(t,"POST","/api/playtest/labs/anime/direct?other=1",body,true);
+  aid_check(t,"a signature for another URL is refused",signed && aid_call(t,"POST",AI_ROUTE,body,true,false,false,"","application/json") == 401);
+  reset = aid_reset(t); signed = aid_sign(t,"POST",AI_ROUTE,body,true); before = aid_model_calls(t);
+  aid_check(t,"foreign Origin is refused before spending a good signature",reset && signed && aid_call(t,"POST",AI_ROUTE,body,true,false,false,"https://outside.invalid","application/json") == 403 && aid_count(t) == 0 && aid_model_calls(t) == before);
+  aid_check(t,"changing only Origin admits that exact unspent signature",aid_call(t,"POST",AI_ROUTE,body,true,false,false,t[0].origin,"application/json") == 200);
+  login := "{\"kind\":\"login\"}"; signed = aid_sign(t,"POST","/api/auth/key",login,true);
+  code := ifx signed then aid_call(t,"POST","/api/auth/key",login,true,false,false,t[0].origin,"application/json") else -1;
+  cookie := http_header(cast(string)t[0].w[0].head[0..<t[0].w[0].head_n],"Set-Cookie"); end := 0;
+  while end < cookie.count && cookie[end] != ';' { end += 1; }
+  if end > 11 && end <= t[0].cookie.count { t[0].cookie_n = aid_put(t[0].cookie[..],0,cookie[0..<end]); }
+  aid_check(t,"actual sign-in mints a throwaway session",code == 200 && t[0].cookie_n > 11);
+  reset = aid_reset(t);
+  aid_check(t,"cookie writes require the same-site Origin",reset && aid_call(t,"POST",AI_ROUTE,body,false,true,false,"","application/json") == 403 && aid_count(t) == 0);
+  aid_check(t,"a same-site session request reaches the selector",aid_call(t,"POST",AI_ROUTE,body,false,true,false,t[0].origin,"application/json") == 200 && aid_response(aid_body(t),1));
+  t[0].auth_n = aid_put(t[0].auth[..],0,"Nostr forged");
+  aid_check(t,"bad Authorization cannot fall back to a good cookie",aid_call(t,"POST",AI_ROUTE,body,true,true,false,t[0].origin,"application/json") == 401);
+  aid_check(t,"wrong Origin wins even without an identity",aid_call(t,"POST",AI_ROUTE,body,false,false,false,"https://outside.invalid","application/json") == 403);
+}
+aid_origin_tests :: (t: [] Aid, body: string) {
+  ready := aid_reset(t) && aid_mode(t,"stock") && aid_sign(t,"POST",AI_ROUTE,body,true); before := aid_model_calls(t);
+  aid_check(t,"Origin refusal leaves the exact signature and quota unspent",ready && aid_call(t,"POST",AI_ROUTE,body,true,false,false,"https://outside.invalid","application/json") == 403 && aid_count(t) == 0 && aid_model_calls(t) == before);
+  aid_check(t,"changing only Origin admits the exact request and v1 selector context",aid_call(t,"POST",AI_ROUTE,body,true,false,false,t[0].origin,"application/json") == 200 && aid_response(aid_body(t),1) && aid_count(t) == 1 && aid_model_calls(t) == before+1 && aid_model_payload(t));
+  aid_check(t,"after acceptance that same event is spent once",aid_call(t,"POST",AI_ROUTE,body,true,false,false,t[0].origin,"application/json") == 401 && aid_count(t) == 1 && aid_model_calls(t) == before+1);
+  aid_record(t,"origin-final.response.json",aid_body(t));
+}
+aid_model_tests :: (t: [] Aid, body: string) {
+  modes := [7] string.["stock","multi","out","exact-play","above-play","half","below-half"];
+  counts := [7] int.[1,2,1,1,1,1,1]; kind := [7] string.["cast","act","make","cast","cast","cast","cast"];
+  decisions := [7] string.["play","play","heard","soft","play","soft","heard"]; milli := [7] int.[940,930,900,850,851,500,499];
+  for i: 0..<modes.count {
+    words := ifx i == 1 then "Draconia raises her wand. Close-up on Kai." else ifx i == 2 then "An ink dragon lands by the wall." else AI_WORDS;
+    request: [4096] u8; rn := aid_request(words,request[..]);
+    ready := aid_reset(t) && aid_mode(t,modes[i]); code := ifx ready then aid_post(t,cast(string)request[0..<rn]) else -1;
+    ok := code == 200 && aid_response_words(aid_body(t),words,counts[i]) && aid_answer(aid_body(t),0,kind[i],decisions[i],milli[i],i != 2);
+    if i == 1 { ok = ok && aid_answer(aid_body(t),1,"shot","play",900,true); }
+    if i == 2 { nodes: [512] JvNode; d: [1] Jv; ok = ok && jv_parse(d[..],aid_body(t),nodes[..]) && jv_kind(d[0],jv_path(d[0],0,"answers[0].stock")) == JV_FALSE; }
+    aid_check(t,modes[i],ok && aid_finished(t,200));
+    name: [128] u8; aid_record(t,aid_join(modes[i],".response.json",name[..]),aid_body(t));
+    if i == 0 { aid_check(t,"selector receives exact words and typed stage context",aid_model_payload(t)); }
+  }
+  ready := aid_reset(t) && aid_mode(t,"empty");
+  aid_check(t,"empty answer list is heard-only success",ready && aid_post(t,body) == 200 && aid_response(aid_body(t),0));
+  bad := [10] string.["malformed","duplicate","bad-second","scalar-p","embedded-nul","overlong","missing-option","wrong-sum","not-argmax","bad-envelope"];
+  for mode: bad {
+    ready = aid_reset(t) && aid_mode(t,mode);
+    aid_check(t,mode,ready && aid_post(t,body) == 502 && aid_no_partial(aid_body(t)) && aid_finished(t,502));
+    name: [128] u8; aid_record(t,aid_join(mode,".response.json",name[..]),aid_body(t));
+  }
+  statuses := [2] int.[502,503]; upstream := [2] string.["status500","status429"];
+  for i: 0..<2 {
+    ready = aid_reset(t) && aid_mode(t,upstream[i]);
+    aid_check(t,upstream[i],ready && aid_post(t,body) == statuses[i] && aid_no_partial(aid_body(t)) && aid_finished(t,statuses[i]));
+  }
+}
+
+aid_invalid_one :: (t: [] Aid, name: string, body: string, status: int) {
+  ready := aid_reset(t) && aid_mode(t,"stock"); before := aid_model_calls(t);
+  aid_check(t,name,ready && aid_post(t,body) == status && aid_no_partial(aid_body(t)) && aid_count(t) == 0 && aid_model_calls(t) == before);
+}
+aid_invalid_tests :: (t: [] Aid, body: string) {
+  aid_invalid_one(t,"malformed input JSON","{",400);
+  aid_invalid_one(t,"missing input fields","{}",400);
+  prefixes := [6] string.["{\"v\":1,\"v\":1,\"words\":\"x\",\"state\":","{\"v\":1,\"words\":\"x\",\"words\":\"y\",\"state\":","{\"v\":2,\"words\":\"x\",\"state\":","{\"v\":1,\"words\":false,\"state\":","{\"v\":1,\"words\":\"x\",\"extra\":1,\"state\":","{\"v\":1,\"words\":\"x\",\"state\":"];
+  for i: 0..<prefixes.count {
+    b: [4096] u8; n := aid_put(b[..],0,prefixes[i]);
+    state := ifx i == 5 then "{\"cast\":[],\"shot\":{\"framing\":\"wide\",\"framing\":\"wide\",\"place\":\"courtyard\"},\"last\":[]}" else AI_STATE;
+    n = aid_put(b[..],n,state); n = aid_put(b[..],n,"}");
+    aid_invalid_one(t,"strict duplicate/version/type/unknown-field refusal",cast(string)b[0..<n],400);
+  }
+  b: [4096] u8; word: [601] u8; for i: 0..<word.count { word[i] = 'a'; }
+  n := aid_request(cast(string)word[..],b[..]); aid_invalid_one(t,"601-byte words refuse before quota/model",cast(string)b[0..<n],400);
+  oversized: [16385] u8;
+  for i: 0..<oversized.count { oversized[i] = ' '; }
+  for i: 0..<body.count { oversized[i] = body[i]; }
+  aid_invalid_one(t,"raw request cap refuses byte 16385",cast(string)oversized[..],413);
+  aid_invalid_one(t,"empty raw request refuses before model","",413);
+  ready := aid_reset(t); signed := aid_sign(t,"POST",AI_ROUTE,body,true); before := aid_model_calls(t);
+  aid_check(t,"wrong media is 415 without quota/model effects",ready && signed && aid_call(t,"POST",AI_ROUTE,body,true,false,false,"","text/plain") == 415 && aid_count(t) == 0 && aid_model_calls(t) == before);
+  aid_check(t,"wrong method is 405",aid_call(t,"GET",AI_ROUTE,"",false,false,false,"","application/json") == 405);
+}
+
+aid_quota_seed :: (t: [] Aid, mode: string) -> bool {
+  out: [256] u8;
+  if mode == "global-day" { return aid_sql(t,"INSERT INTO anime.calls(identity,started,lease_until,finished,status) SELECT 'anime-global-'||g,date_trunc('day',clock_timestamp())+interval '1 second',clock_timestamp()-interval '1 second',true,200 FROM generate_series(1,1200) g",out[..]) >= 0; }
+  if mode == "global-active" || mode == "global-three" {
+    sql := ifx mode == "global-active" then "INSERT INTO anime.calls(identity,started,lease_until) SELECT 'anime-active-'||g,clock_timestamp()-interval '2 minutes',clock_timestamp()+interval '1 minute' FROM generate_series(1,4) g" else "INSERT INTO anime.calls(identity,started,lease_until) SELECT 'anime-active-'||g,clock_timestamp()-interval '2 minutes',clock_timestamp()+interval '1 minute' FROM generate_series(1,3) g";
+    return aid_sql(t,sql,out[..]) >= 0;
+  }
+  actor := cast(string)t[0].actor[0..<t[0].actor_n];
+  if actor.count != 64 { return false; }
+  for c: actor { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  b: [2048] u8; n := aid_put(b[..],0,"INSERT INTO anime.calls(identity,started,lease_until,finished,status) SELECT '");
+  n = aid_put(b[..],n,actor); n = aid_put(b[..],n,"',");
+  tail := ifx mode == "minute" then "clock_timestamp(),clock_timestamp()-interval '1 second',true,200 FROM generate_series(1,12)" else ifx mode == "user-day" then "date_trunc('day',clock_timestamp())+interval '1 second',clock_timestamp()-interval '1 second',true,200 FROM generate_series(1,120)" else ifx mode == "user-active" then "clock_timestamp()-interval '2 minutes',clock_timestamp()+interval '1 minute',false,NULL" else "clock_timestamp()-interval '2 minutes',clock_timestamp()-interval '1 second',false,NULL";
+  n = aid_put(b[..],n,tail); return aid_sql(t,cast(string)b[0..<n],out[..]) >= 0;
+}
+aid_quota_tests :: (t: [] Aid, body: string) {
+  modes := [5] string.["minute","user-day","global-day","user-active","global-active"];
+  counts := [5] int.[12,120,1200,1,4];
+  for i: 0..<modes.count {
+    ready := aid_reset(t) && aid_mode(t,"stock") && aid_quota_seed(t,modes[i]); before := aid_model_calls(t);
+    aid_check(t,modes[i],ready && aid_post(t,body) == 429 && aid_count(t) == counts[i] && aid_model_calls(t) == before && aid_no_partial(aid_body(t)));
+  }
+  ready := aid_reset(t) && aid_mode(t,"stock") && aid_quota_seed(t,"expired"); before := aid_model_calls(t);
+  aid_check(t,"expired lease no longer occupies an active slot",ready && aid_post(t,body) == 200 && aid_count(t) == 2 && aid_model_calls(t) == before+1);
+}
+aid_self :: (out: [] u8) -> string {
+  n := cxargs_len(0); if n < 1 || n > out.count { return ""; }
+  for i: 0..<n { out[i] = cast,trunc(u8)cxargs_byte(0,i); } return cast(string)out[0..<n];
+}
+aid_overlap :: (t: [] Aid, self: string, body: string, global: bool) {
+  ready := aid_reset(t) && aid_mode(t,"hold");
+  if global { ready = aid_quota_seed(t,"global-three") && ready; }
+  previous := t[0].secret; env: [96] u8; n := aid_put(env[..],0,"ANIME_TEST_SECRET_HEX="); digits := "0123456789abcdef";
+  for i: 0..<32 { env[n] = digits[cast(int)(previous[i] >> 4)]; env[n+1] = digits[cast(int)(previous[i] & 15)]; n += 2; }
+  h := proc_new(); started := ready && h >= 0;
+  started = started && proc_arg(h,self) && proc_arg(h,"--single") && proc_env(h,cast(string)env[0..<n]) && proc_start(h) == 0;
+  for i: 0..<env.count { env[i] = 0; }
+  entered := false; until := proc_now_ms()+2000; seen: [32] u8;
+  while started && !entered && proc_now_ms() < until { entered = aid_control_read(t,"entered",seen[..]) > 0; if !entered { proc_sleep(5); } }
+  if global { entropy := cxrand_draw(t[0].secret[..],32); }
+  before := aid_model_calls(t); count := ifx global then 4 else 1;
+  refused := entered && aid_post(t,body) == 429 && aid_count(t) == count && aid_model_calls(t) == before;
+  t[0].secret = previous; released := aid_control(t,"release","yes");
+  for i: 0..<previous.count { previous[i] = 0; }
+  child_ok := false;
+  if h >= 0 {
+    line: [256] u8; ln := proc_line(h,5000,line[..]); child_ok = ln >= 0 && proc_wait(h,2000) == 0;
+    if !child_ok { killed := proc_kill(h,PROC_SIGKILL); } done := proc_release(h);
+  }
+  aid_check(t,ifx global then "overlapping global slot admission is atomic" else "overlapping same-user slot admission is atomic",started && refused && released && child_ok && aid_count(t) == count);
+}
+aid_timeout_test :: (t: [] Aid, body: string) {
+  ready := aid_reset(t) && aid_mode(t,"timeout");
+  aid_check(t,"model timeout finishes one charged lease with no partial answer",ready && aid_post(t,body) == 503 && aid_no_partial(aid_body(t)) && aid_finished(t,503));
+  aid_record(t,"timeout.response.json",aid_body(t));
+  released := aid_control(t,"release","yes"); proc_sleep(100);
+}
+aid_start_selector :: (t: [] Aid, binary: string, port: string) -> int {
+  h := proc_new(); if h < 0 { return -1; }
+  ok := ifx binary != "" then proc_arg(h,binary) else proc_arg(h,"coax/web/tool.sh") && proc_arg(h,"coax/web/api/tests/anime_direct_selector.coax");
+  ok = ok && proc_arg(h,"--port") && proc_arg(h,port) && proc_arg(h,"--control") && proc_arg(h,t[0].control);
+  if !ok || proc_start(h) != 0 { released := proc_release(h); return -1; }
+  ready := false; until := proc_now_ms()+30000; b: [32] u8;
+  while proc_now_ms() < until && !ready { ready = aid_control_read(t,"ready",b[..]) > 0; if !ready { proc_sleep(25); } }
+  if !ready { released := proc_release(h); return -1; }
+  return h;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  t: [1] Aid; t[0].end_ms = proc_now_ms()+780000;
+  api: [256] u8; origin: [256] u8; db: [1024] u8; psql: [1024] u8; isolated: [128] u8;
+  t[0].api = proc_getenv("API",api[..]); t[0].origin = proc_getenv("ORIGIN",origin[..]); if t[0].origin == "" { t[0].origin = t[0].api; }
+  if !aid_loopback(t[0].api) { tool_errln("anime API checks require a loopback API transport"); return 2; }
+  if args_has(a[..],"--single") {
+    key: [64] u8; hex := proc_getenv("ANIME_TEST_SECRET_HEX",key[..]); if hex.count != 64 { return 2; }
+    for i: 0..<32 { hi := jv_hex(hex[2*i]); low := jv_hex(hex[2*i+1]); if hi < 0 || low < 0 { return 2; } t[0].secret[i] = cast(u8)(16*hi+low); }
+    b: [4096] u8; n := aid_request(AI_WORDS,b[..]); code := aid_post(t[..],cast(string)b[0..<n]);
+    for i: 0..<32 { t[0].secret[i] = 0; } print("one owned API request status %\n",code); return ifx code == 200 then 0 else 1;
+  }
+  t[0].db = proc_getenv("PGURL",db[..]); t[0].psql = proc_getenv("PSQL",psql[..]); t[0].isolated = proc_getenv("ANIME_ISOLATED_DB",isolated[..]);
+  if t[0].db == "" || t[0].psql == "" || t[0].isolated == "" { tool_errln("set PGURL, PSQL and explicit ANIME_ISOLATED_DB for the owned database"); return 2; }
+  out: [256] u8; n := aid_sql(t[..],"SELECT current_database()",out[..]);
+  if n < 1 || aid_trim(cast(string)out[0..<n]) != t[0].isolated { tool_errln("database identity is not the explicitly owned fixture"); return 2; }
+  receipts: [4096] u8; t[0].receipts = proc_getenv("ANIME_RECEIPTS",receipts[..]);
+  if t[0].receipts != "" && !fs_mkdir(t[0].receipts) { return 1; }
+  control: [1024] u8; t[0].control = fs_temp("openagents-anime-selector-",control[..]);
+  port_buf: [32] u8; port := proc_getenv("ANIME_PORT",port_buf[..]); if port == "" { port = "51392"; }
+  binary_buf: [4096] u8; binary := proc_getenv("ANIME_SELECTOR_BIN",binary_buf[..]);
+  fake := aid_start_selector(t[..],binary,port);
+  if fake < 0 { removed := fs_remove(t[0].control); tool_errln("owned selector unavailable"); return 1; }
+  if cxrand_draw(t[0].secret[..],32) != 0 { done := proc_release(fake); removed := fs_remove(t[0].control); return 1; }
+  bytes: [4096] u8; bn := aid_request(AI_WORDS,bytes[..]); body := cast(string)bytes[0..<bn];
+  only_buf: [32] u8; only := proc_getenv("ANIME_ONLY",only_buf[..]);
+  if only == "origin" { aid_origin_tests(t[..],body); }
+  else {
+    aid_auth_tests(t[..],body); aid_invalid_tests(t[..],body); aid_model_tests(t[..],body); aid_quota_tests(t[..],body);
+    self_buf: [4096] u8; self := aid_self(self_buf[..]); aid_overlap(t[..],self,body,false); aid_overlap(t[..],self,body,true); aid_timeout_test(t[..],body);
+  }
+  ledger: [8192] u8; ln := aid_sql(t[..],"SELECT coalesce(json_agg(json_build_object('id',id,'started',started,'lease_until',lease_until,'finished',finished,'status',status)),'[]'::json) FROM anime.calls",ledger[..]);
+  if ln >= 0 { aid_record(t[..],ifx only == "origin" then "origin-ledger.json" else "timeout-ledger.json",cast(string)ledger[0..<ln]); }
+  stop := aid_control(t[..],"stop","yes"); released := aid_control(t[..],"release","yes");
+  status := proc_wait(fake,2000); if status == PROC_RUNNING { killed := proc_kill(fake,PROC_SIGTERM); } done := proc_release(fake);
+  removed := fs_remove(t[0].control);
+  for i: 0..<32 { t[0].secret[i] = 0; } for i: 0..<t[0].auth.count { t[0].auth[i] = 0; } for i: 0..<t[0].cookie.count { t[0].cookie[i] = 0; }
+  print("% anime API checks passed, % failed\n",t[0].pass,t[0].fail);
+  return ifx t[0].fail == 0 && removed then 0 else 1;
+}
+

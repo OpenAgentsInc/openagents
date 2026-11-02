@@ -1,0 +1,228 @@
+{
+  "schema": "openagents.anime-direct-api.verification.v1",
+  "issue": 12632,
+  "date": "2026-11-02",
+  "base_commit": "a35ff41f8550f172e1e3fe84d1f69e09dd1becb3",
+  "rebase_binding": "anime-direct-api-2026-11-02/rebase-binding.json",
+  "status": "frozen final native API: 59 fixture checks and 3 separate live-provider checks passed; development regression controls retained",
+  "environment": {
+    "api": "http://127.0.0.1:57434",
+    "origin": "http://127.0.0.1:57434",
+    "database": "oa_anime12632",
+    "selector": "owned loopback Coax process on port 51392",
+    "api_profile": "native C API with AddressSanitizer and UndefinedBehaviorSanitizer",
+    "harness_profile": "Coax-generated native C, clang C11 O2",
+    "compiler_version": "coax0 0.47.0",
+    "compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6"
+  },
+  "checks_first": [
+    "The two API-oracle groups failed against stub response/request readers before implementation, then passed.",
+    "The two selector-envelope groups failed against stub procedures before implementation, then passed.",
+    "The complete-vector contract's assertion failed against the earlier scalar fixture, then passed after conversion to complete probability maps.",
+    "The selector's additional independent property group verifies every emitted vector contains every named option and sums to exactly 1000 milli-probability units.",
+    "The reservation-lock, provider selection-row and live semantic oracle groups each failed against their corresponding stubs before implementation, then passed in separate narrow runs. These red assertions were observed in tool output; only the final pass receipts are retained."
+  ],
+  "pure_checks": [
+    {
+      "command": "coax/bin/coax test coax/web/api/tests/anime_direct.coax --library --run-steps 250000000 --only 'anime API'",
+      "checks": 2,
+      "passed": 2,
+      "source_sha256": "5ffd2dc0f07bf354046b5f255ac07e06d97f38ed6bbf72840af37a9d2eecb71f",
+      "scope": "Historical two-group profile: response/confidence/error oracles, typed request construction and loopback transport guard. Later additive groups have separate narrow receipts; imported cryptographic gates were not repeated."
+    },
+    {
+      "command": "coax/bin/coax test coax/web/api/tests/anime_direct_selector.coax --library --only 'anime fake'",
+      "checks": 3,
+      "passed": 3,
+      "source_sha256": "b5d939cf25634c2714e6e58403646f04456351e70f23d1621e995f8b80b266b3",
+      "scope": "Historical three-group profile: Gemini envelope, boundary/malformed fixtures, complete keys and exact probability sums for all seven valid fixture profiles."
+    },
+    {
+      "command": "coax/bin/coax test coax/web/api/tests/anime_direct.coax --library --run-steps 250000000 --only 'anime API reservation oracle'",
+      "checks": 1,
+      "passed": 1,
+      "receipt": "anime-direct-api-2026-11-02/lock-oracle.out",
+      "receipt_sha256": "167b2b019a1057ddd148d36197aa032e3328220ac54eacf70c119d531f9514d2",
+      "scope": "Requires actual lock waiting, zero pre-commit rows, exactly one committed row, unchanged selector count and a post-commit refusal."
+    },
+    {
+      "command": "coax/bin/coax test coax/web/api/tests/anime_direct_selector.coax --library --only 'anime fake selector private rows'",
+      "checks": 1,
+      "passed": 1,
+      "receipt": "anime-direct-api-2026-11-02/selection-row-oracle.out",
+      "receipt_sha256": "73ade4592028943a7d86535431dacbd7b7586458c6a4f18d6981cb1f47eea5c6",
+      "scope": "Independent provider-wire selection rows use complete ordered probability arrays and round-trip their selected fields."
+    },
+    {
+      "command": "coax/bin/coax test coax/web/api/tests/anime_direct.coax --library --run-steps 250000000 --only 'anime API live oracle'",
+      "checks": 1,
+      "passed": 1,
+      "receipt": "anime-direct-api-2026-11-02/live-oracle.out",
+      "receipt_sha256": "d05e1344a13f489ca19023fa8f7ace6d93128b854ced653b242e578b21d5fd86",
+      "scope": "Synthetic stock, ordered/reversed multi and out-of-stock answers check semantic and disposition oracles without prescribing a model probability."
+    }
+  ],
+  "development_profile": {
+    "api_sha256": "d9d3a91ad3321d187d56da9b22f11832b20f51fb043c3cae99d74222d0e4922a",
+    "harness_sha256": "dfe183f9f7260a7e792b0e815ce0aa0ebc21d6293c6ba59237af4323f8ccd160",
+    "selector_sha256": "084972daf2c526f404defe650d1025df1374557599454e3e2dac3a0d9cd08fea",
+    "harness_source_sha256": "5ffd2dc0f07bf354046b5f255ac07e06d97f38ed6bbf72840af37a9d2eecb71f",
+    "selector_source_sha256": "b5d939cf25634c2714e6e58403646f04456351e70f23d1621e995f8b80b266b3",
+    "checks": 57,
+    "passed": 56,
+    "failed": 1,
+    "exit": 1,
+    "failure": "A foreign-Origin 403 consumed the signed event before refusal. Changing only Origin and resending that exact header returned 401 rather than 200.",
+    "receipt": "anime-direct-api-2026-11-02/dev-regression.out",
+    "receipt_sha256": "5f6f56ce500155da2767a39a7373f57e7b82c510df1b6a9a7156683a1abdcaa5",
+    "api_log": "anime-direct-api-2026-11-02/dev-api.log",
+    "api_log_sha256": "b158c5bef401eda9aca27424f775f2f1db3dea0620f93383ffa39ba0e3759f1b",
+    "sanitizers": "No AddressSanitizer, UndefinedBehaviorSanitizer or LeakSanitizer diagnostic observed in the retained API log.",
+    "successful_profiles": [
+      "Fresh bound NIP-98, replay refusal, changed-body/unbound/wrong-URL refusal, no guest-header spending identity, actual session mint, same-site cookie admission, missing-Origin cookie refusal and no bad-Authorization cookie fallback.",
+      "Strict malformed/duplicate/version/type/unknown input refusal, 601-byte words, raw 16385-byte and empty bodies, media and method refusal; invalid inputs make no selector call and insert no quota row.",
+      "In-stock sentence; two ordered directions from a multi-direction sentence; out-of-stock make remains heard with stock=false/render_supported=false; exact 0.85, 0.851, 0.5 and 0.499 dispositions; empty answer success.",
+      "Malformed/duplicate/scalar-p/partial-prefix model bodies, incomplete maps, wrong sums and non-argmax selections, bad envelope, embedded NUL and 65537-byte raw model responses: 502 with no partial answer and a finished charged lease.",
+      "Upstream 500 maps to 502 and 429 maps to 503, without partial answers; accepted failures consume exactly one finished call.",
+      "Every minute/day/user-active/global-active cap refuses without inserting a row or calling the selector; expired leases release admission slots.",
+      "Genuinely overlapping held model requests verify active-slot refusal against an already committed reservation. They do not force contention while reservation counts are being observed. A separate later advisory-lock case covers that boundary. A selector timeout ends one charged lease with status 503 and no partial answer."
+    ]
+  },
+  "retained_source_profiles": {
+    "anime-direct-api-2026-11-02/harness-dev-profile.coax.txt": "5ffd2dc0f07bf354046b5f255ac07e06d97f38ed6bbf72840af37a9d2eecb71f",
+    "anime-direct-api-2026-11-02/harness-current.coax.txt": "e515396605182f13f0218997472d5f1172a2370082304e89ac0fc903b3e01492",
+    "anime-direct-api-2026-11-02/selector.coax.txt": "b5d939cf25634c2714e6e58403646f04456351e70f23d1621e995f8b80b266b3",
+    "anime-direct-api-2026-11-02/harness-frozen.coax.txt": "e9951c275bf807dad6897c9868160f3ac27e64d0a242460af1aa52971fa50733",
+    "anime-direct-api-2026-11-02/harness-executed.coax.txt": "8f5a031f97e93acf893eb129b953cef0b6b9f99c4abab0d5a46c98ca0cd43a6e",
+    "anime-direct-api-2026-11-02/selector-frozen.coax.txt": "4613c19d99fe3a175583aa51d44c78e727dc00789e8c3b0c0a59aa109a4f0ec3"
+  },
+  "development_origin_profile": {
+    "api_sha256": "9c5f43521813c3e24bafb96d9f91edad8b0d99d04c709490272422adfe12a33e",
+    "harness_sha256": "684d9f41702b3b31591378b48ab0240fdb07ca6e34e433b485a46dbb04426f3e",
+    "harness_source_sha256": "e515396605182f13f0218997472d5f1172a2370082304e89ac0fc903b3e01492",
+    "selector_sha256": "084972daf2c526f404defe650d1025df1374557599454e3e2dac3a0d9cd08fea",
+    "mode": "ANIME_ONLY=origin",
+    "checks": 3,
+    "passed": 3,
+    "failed": 0,
+    "exit": 0,
+    "receipt": "anime-direct-api-2026-11-02/dev2-origin.out",
+    "receipt_sha256": "863ca6492921bd35454b1c3ffe4b0473c78fdb79d353387acf62a91179747329",
+    "api_log": "anime-direct-api-2026-11-02/dev2-api.log",
+    "api_log_sha256": "dd5dad8ae13706bbd243980f9003b68054aa2e0b95f1d9bb18f8b6c9fc9c5c62",
+    "observations": [
+      "Foreign-Origin refusal leaves the exact signature, quota and selector counter unspent.",
+      "Changing only Origin admits that exact bound signed request and supplies the expected v1/words/state selector context.",
+      "After acceptance the same event is spent once; replay consumes no additional quota/model work."
+    ],
+    "sanitizers": "No ASan/UBSan/LSan diagnostic observed.",
+    "scope": "Development profile only. Provider-schema and final model-policy changes remain separately qualified; these three cases do not promote the earlier 56 successes into a new full target claim."
+  },
+  "final_native_profile": {
+    "api_sha256": "94bedb62529811f837860cd922655f9d6a8797ef87cc2b2ada03335eac72897b",
+    "policy_source_sha256": "25967619dbcfc3462fb41ea943db692d2f63b4d3e300068473c81fcd19eb3f83",
+    "policy_generated_c_sha256": "db28e05e389130130886a47bff7b8083759dd67ef782decd8f26d78dae3082a7",
+    "policy_qualification": "anime-direct-api-2026-11-02/policy-native-profile.json",
+    "harness_executed_source_sha256": "8f5a031f97e93acf893eb129b953cef0b6b9f99c4abab0d5a46c98ca0cd43a6e",
+    "harness_current_source_sha256": "e9951c275bf807dad6897c9868160f3ac27e64d0a242460af1aa52971fa50733",
+    "harness_generated_c_sha256": "4e88759990b53c76e057c89cc7c18428750dcbf43b82b2b3c79fb062ab63872f",
+    "harness_sha256": "28572836f3c353d444ad0dccc642911589269bbf49a6ea5f7f3dbd25c07cd49d",
+    "selector_source_sha256": "4613c19d99fe3a175583aa51d44c78e727dc00789e8c3b0c0a59aa109a4f0ec3",
+    "selector_generated_c_sha256": "91e4e1ac7ec66687c19ffb6af37bf75d72b7ef2de5bb3e15ec54cce931558301",
+    "selector_sha256": "ecf103e88cd98328bee1e994196138eddf0bd62c704301592ac16e7683dd4bab",
+    "harness_current_generated_c_sha256": "0d598345cf7b15a63c62686aec5879cff34119b52f95c2d1ddd8dd8735beca1e",
+    "harness_current_native_sha256": "2d60877a44bc080bfe8a15b515769feef36328984c29e6d6c9dc0ed078627afc",
+    "harness_current_native_executed": false,
+    "source_qualification": "The executed source snapshot is retained exactly. Current source changes only a descriptive comment and removes one blank EOF line. The comment-only emission was byte-identical. Removing EOF shifts concatenated dependency source ranges and runtime diagnostic line arguments by one, so current emitted C and native binary have different identities. The current source was emitted and linked successfully; no execution of that new client binary is claimed and no passing logic gate or paid call was repeated. The unchanged native API/policy producer remains the exact qualified artifact.",
+    "source_comparison": "anime-direct-api-2026-11-02/harness-source-only.diff",
+    "source_comparison_sha256": "2717b68768aadeca5ea5e70ad996fc0c73a526dbe28fc059378812e7c603d22f",
+    "generated_c_comparison": "anime-direct-api-2026-11-02/harness-source-position.diff.gz",
+    "generated_c_comparison_compressed_sha256": "2a7e42a3dc3b79f7722901e787b3017857ffe89513bda7c64845dec934543a6a",
+    "generated_c_comparison_uncompressed_sha256": "8659093d58ef9404885dfaf49e7d77c72d93dc1a4a0768f585af20da768f6880",
+    "generated_c_comparison_excerpt": "anime-direct-api-2026-11-02/harness-source-position.excerpt.diff",
+    "generated_c_comparison_excerpt_sha256": "caf8f4f6247c72bbf72a9b0c3121e5c9e9caa1aa48cd41ad21cdbf36e4ddc298",
+    "host_inputs": "anime-direct-api-2026-11-02/harness-native-inputs.sha256",
+    "host_inputs_sha256": "1d8135a6c2797ac429aba1737887458b33787661b033dc42bc96b9f79ff9e20e",
+    "harness_deps": "anime-direct-api-2026-11-02/harness-frozen-deps.json",
+    "harness_deps_sha256": "426466e4a8858b9d6de494a84225f0828867833a76d8ac8d41c36527139c9fff",
+    "harness_sources": "anime-direct-api-2026-11-02/harness-frozen-sources.sha256",
+    "harness_sources_sha256": "7b4583e370f6334141c15d626e3e7c43426fc2b263a7fe261de298f0819f7441",
+    "harness_sources_count": 53,
+    "selector_deps": "anime-direct-api-2026-11-02/selector-frozen-deps.json",
+    "selector_deps_sha256": "af96a4b21915672724eb13616b3e14506ecda045253c848d881244344b5310b6",
+    "selector_sources": "anime-direct-api-2026-11-02/selector-frozen-sources.sha256",
+    "selector_sources_sha256": "c4d485b84d4f4c6102c91e210f6f0a6b96b1c909afa464d156f51a4193c357f0",
+    "selector_sources_count": 7
+  },
+  "final_samples": {
+    "manifest": "anime-direct-api-2026-11-02/final-samples.sha256",
+    "manifest_sha256": "b5ffe0d5bd88dafaecbc093083e25d1065463f7f48f1a5cdd8cb8bcbf253347b",
+    "scope": "Synthetic fixture and real-provider request/response samples plus ledger projections; no credential, signature header, session cookie or full signing identity."
+  },
+  "unexecuted_intermediate_source": {
+    "path": "anime-direct-api-2026-11-02/harness-final-profile.coax.txt",
+    "sha256": "b75c047fd216c50c6997a5005b79d64e561b6f49450f1ef9db5c9910847d22fc",
+    "scope": "Historical source snapshot before the final lock/live/provider-row extensions. Despite its development filename, it is not the final executed client and makes no independent passing-run claim."
+  },
+  "final_fixture_profile": {
+    "api": "http://127.0.0.1:57434",
+    "origin": "http://127.0.0.1:57434",
+    "database": "oa_anime12632",
+    "mode": "ANIME_ONLY= (full suite)",
+    "model": "owned Coax loopback selector, timeout 500 ms per attempt",
+    "checks": 59,
+    "passed": 59,
+    "failed": 0,
+    "exit": 0,
+    "receipt": "anime-direct-api-2026-11-02/final-fixture.out",
+    "receipt_sha256": "33bd4975ad372ae42c2489a759c1e3433aa26084f25a63cdf183eba421a3360d",
+    "samples": "anime-direct-api-2026-11-02/final-fixture-samples/",
+    "api_log": "anime-direct-api-2026-11-02/final-fixture-api.log",
+    "api_log_sha256": "650307bfa5795bb17129d4aef9bcf39b71d3c5477052d14e55b683c0a14ae05c",
+    "sanitizers": "No AddressSanitizer, UndefinedBehaviorSanitizer or LeakSanitizer diagnostic observed in the retained API log.",
+    "coverage": [
+      "All auth, strict-input, catalogue/confidence, malformed-model, byte-boundary, quota, held-request and timeout cases named in the receipt executed against this frozen native API; earlier development successes were not substituted.",
+      "The exact foreign-Origin signature is unspent on 403, accepted when only Origin changes, then refused on replay. Selector context preserves the exact validated original v1 request bytes.",
+      "The provider's private selection-row format passes through the actual C API and strict Coax normalizer into the same public full-map answer.",
+      "A genuine pg_locks waiter is observed on advisory lock 3073002. Before commit: zero quota rows. After a competing active lease commits: caller 429, exactly one row, selector calls unchanged at 27."
+    ]
+  },
+  "final_live_profile": {
+    "api": "http://127.0.0.1:57433",
+    "origin": "http://127.0.0.1:57433",
+    "database": "oa_animelive12632",
+    "mode": "ANIME_ONLY=live",
+    "provider": "Actual Vertex Gemini 3.8 Flash; no fake selector override; provider credentials remain only in the parent-owned API process environment.",
+    "timeout_ms_per_attempt": 8000,
+    "caller_timeout_ms": 45000,
+    "checks": 3,
+    "passed": 3,
+    "failed": 0,
+    "exit": 0,
+    "quota_reset": false,
+    "finished_calls": 3,
+    "finished_status": 200,
+    "receipt": "anime-direct-api-2026-11-02/final-live.out",
+    "receipt_sha256": "c0a9a7aa9b831d8e84146b58a91bb467f387b22b7bc969ebde3790c579d15d97",
+    "samples": "anime-direct-api-2026-11-02/final-live-samples/",
+    "api_log": "anime-direct-api-2026-11-02/final-live-api.log",
+    "api_log_sha256": "4a0234ccd1967ea766d9f7b7029d25609718e737ff5fc0d759097d424241160e",
+    "sanitizers": "No ASan/UBSan/LSan diagnostic observed in the retained API log.",
+    "observations": [
+      "The in-stock sentence yields heroine/fireball/gate, p=0.900, play.",
+      "The two-direction sentence yields heroine/fireball/gate followed by hero/close-up, both p=0.982, play.",
+      "The out-of-stock sentence retains make what='ink dragon', p=0.700, stock=false, render_supported=false and heard. An additional rubble-rain at wall direction is retained heard at p=0.600 with render_supported=false."
+    ],
+    "scope": "Three synthetic semantic smoke cases through the actual authenticated native route. Numeric probabilities are observations, not prescribed oracle values or evidence of calibration. The suite starts no fake process and performs no database reset."
+  },
+  "boundaries": [
+    "In fixture profiles, the model is an independent protocol fixture selected through a private control file. It performs no keyword routing and does not establish live model semantic accuracy or calibration.",
+    "The actual C API, generated Coax admission/output policies, PostgreSQL quota transaction and NIP-98 verifier execute normally; there is no API route or database mock.",
+    "The harness verifies current_database() against ANIME_ISOLATED_DB before touching anime.calls. Only the dedicated fixture database is reset; no other agent's fixture or production data is touched.",
+    "Fresh signing secrets exist only in memory and the owned concurrency child's environment. No owner key, credential, signature header or session cookie is retained in the receipts.",
+    "Retained samples contain only synthetic director words, typed stage data, generated answers and a quota ledger projection with identity omitted.",
+    "The harness owns and stops its selector process group and removes its temporary control directory. The API/database remain under the parent agent's lifecycle.",
+    "The fixture and development-Origin profiles use only an owned loopback selector: no external provider call, staging/production write, deployment, visible browser, sound or payment. Separate real-provider profiles are named explicitly; provider-controls.json records the parent agent's synthetic development controls, not these fixture runs.",
+    "This record does not claim complete renderer, CLI, live voice, published realm or production readiness. Later source profiles must retain separate identities; unchanged passing gates are not rerun merely to confirm them."
+  ]
+}

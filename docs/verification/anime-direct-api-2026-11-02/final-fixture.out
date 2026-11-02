@@ -1,0 +1,60 @@
+ok no identity cannot spend selector quota
+ok a guest player header is not a spending identity
+ok a bound fresh NIP-98 request works without Origin
+ok the same signed event is refused on replay
+ok an unbound signed write is refused
+ok changed body cannot reuse a valid signature
+ok a signature for another URL is refused
+ok foreign Origin is refused before spending a good signature
+ok changing only Origin admits that exact unspent signature
+ok actual sign-in mints a throwaway session
+ok cookie writes require the same-site Origin
+ok a same-site session request reaches the selector
+ok bad Authorization cannot fall back to a good cookie
+ok wrong Origin wins even without an identity
+ok malformed input JSON
+ok missing input fields
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok strict duplicate/version/type/unknown-field refusal
+ok 601-byte words refuse before quota/model
+ok raw request cap refuses byte 16385
+ok empty raw request refuses before model
+ok wrong media is 415 without quota/model effects
+ok wrong method is 405
+ok stock
+ok selector receives exact words and typed stage context
+ok multi
+ok out
+ok exact-play
+ok above-play
+ok half
+ok below-half
+ok empty answer list is heard-only success
+ok private selection rows normalize to the same strict public answer
+ok malformed
+ok duplicate
+ok bad-second
+ok scalar-p
+ok embedded-nul
+ok overlong
+ok missing-option
+ok wrong-sum
+ok not-argmax
+ok bad-envelope
+ok status500
+ok status429
+ok minute
+ok user-day
+ok global-day
+ok user-active
+ok global-active
+ok expired lease no longer occupies an active slot
+ok reservation waits on the lock and refuses against the concurrently committed lease
+ok overlapping same-user slot admission is atomic
+ok overlapping global slot admission is atomic
+ok model timeout finishes one charged lease with no partial answer
+59 anime API checks passed, 0 failed

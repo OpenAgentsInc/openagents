@@ -10,6 +10,11 @@ here="$(cd "$(dirname "$0")" && pwd)"
 "$here/nip98.sh" --check-inputs
 # NIP-98 is Coax (nip98.coax): with a compiler here, its checks and its C cache.
 repo_root="$(cd "$here/../../.." && pwd)"
+cli_coax="${COAX:-$repo_root/coax/bin/coax}"
+if [[ ! -x "$cli_coax" ]]; then
+  common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  [[ -n "$common" ]] && cli_coax="$(dirname "$common")/coax/bin/coax"
+fi
 if [[ -x "$repo_root/coax/bin/coax" ]]; then
   "$here/nip98.sh" --check || echo 'nip98: the C cache differs from this compiler'"'"'s output (the image builds from source; regenerate with nip98.sh --generate)' >&2
   (cd "$repo_root" && coax/bin/coax test coax/web/api/nip98.coax --run-steps 250000000 | tail -1)
@@ -23,9 +28,10 @@ pg=/opt/homebrew/opt/postgresql@16
 work="$(mktemp -d)"; trap 'kill ${api_pid:-} 2>/dev/null || true; "$pg/bin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 cc=/usr/bin/clang
 secp="$(brew --prefix secp256k1 2>/dev/null || true)"
+"$cli_coax" c "$here/anime-director-policy.coax" --library --header "$work/anime-director-policy.generated.h" > "$work/anime-director-policy.generated.c"
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
-  -I"$pg/include" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" \
-  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/replies.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c \
+  -I"$work" -I"$pg/include" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" \
+  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/replies.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/anime.c "$work"/anime-director-policy.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c \
   -L"$pg/lib" -lpq ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lssl -lcrypto -lcurl -lz -lm
 # The Coax NIP-98 check against the former C check, on the corpus and seeded mutations.
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
@@ -76,6 +82,8 @@ export RESEND_PORT=$((48000 + RANDOM % 1000))
 export TOKENINFO_PORT=$((47000 + RANDOM % 1000))
 # /chat (test_zchat.py): its own runner on CHAT_PORT, a $1 daily cap.
 export CHAT_PORT=$((54000 + RANDOM % 1000))
+# Anime's checks own a separate Coax selector; it has no model credentials.
+export ANIME_PORT=$((46000 + RANDOM % 1000))
 OA_CHAT_RUNNER_URL="http://127.0.0.1:$CHAT_PORT" OA_CHAT_DAILY_USD=1 \
 OA_AGENT_PROJECTS=agent-proj OA_AGENT_WAKE_URL="http://127.0.0.1:$WAKE_PORT/wake" OA_AGENT_WAKE_TOKEN=test-wake \
 OA_PROJECT_KEK="$(openssl rand -hex 32)" OA_PUBLISH_RELAY="ws://127.0.0.1:$RELAY_PORT" OA_SITE_BUCKET=site-test \
@@ -86,6 +94,7 @@ OA_WORKOS_CLIENT_ID=client_test \
 OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=owner@example.com OA_EMAIL_BACKOFF_MS=10 \
 OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=jobs@example.iam.gserviceaccount.com OA_DEVICE_TTL_MS=4000 \
 OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAILY_CAP=5 OA_PIECE_URL="http://127.0.0.1:$PIECE_PORT/model" OA_PIECE_DAILY_CAP=40 OA_EDIT_URL="http://127.0.0.1:$PIECE_PORT/edit-model" OA_EDIT_TIMEOUT_MS=1500 OA_BUILDER_URL="http://127.0.0.1:$BUILDER_PORT/model" OA_BUILDER_TIMEOUT_MS=1200 OA_BUILDER_PER_DAY=6 \
+OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 \
   OA_BUILD_SHA=1111111111111111111111111111111111111111 OA_RELEASE_ID=123e4567-e89b-42d3-a456-426614174000 K_SERVICE=oa-api-staging K_REVISION=oa-api-staging-00002-new \
   OA_API_ORIGIN="http://127.0.0.1:$api_port" "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
 for _ in $(seq 50); do curl -s "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && break; sleep 0.1; done
@@ -93,13 +102,20 @@ API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE
 # The CLI as a caller (NIP-98 callers, realms/mine, visibility, admin keys, device login), in Coax: tests/cli_auth.coax.
 # The CLI-caller checks are a Coax program: they need a compiler. A deploy's
 # fresh worktree has none of its own, so take the main checkout's.
-cli_coax="${COAX:-$repo_root/coax/bin/coax}"
-if [[ ! -x "$cli_coax" ]]; then
-  common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-  [[ -n "$common" ]] && cli_coax="$(dirname "$common")/coax/bin/coax"
-fi
 if [[ -x "$cli_coax" ]]; then
   ADMIN_SECRET_HEX="$(tr -d '\n' < "$ADMIN_KEY")" COAX="$cli_coax" "$here/cli-auth-test.sh" "http://127.0.0.1:$api_port" || { cat "$work/api.log"; exit 1; }
+  # The shell only compiles platform entry points. Coax owns the selector,
+  # all requests/assertions, bounded subprocesses and fixture cleanup.
+  p="$repo_root/coax/platform"
+  "$cli_coax" c "$repo_root/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"
+  for unit in anime_direct anime_direct_selector; do
+    "$cli_coax" c "$here/tests/$unit.coax" --library --run-steps 250000000 > "$work/$unit.c"
+    "$cc" -std=c11 -O2 -fblocks -D_DARWIN_C_SOURCE -I"$work" -I"$p" -o "$work/$unit" "$work/$unit.c" \
+      "$p/tool-native.c" "$p/process-native.c" "$p/store-file-native.c" "$p/socket-native.c" "$p/tls-native.c" \
+      "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" -framework Network -framework Security -framework CoreFoundation -lm
+  done
+  API="http://127.0.0.1:$api_port" ORIGIN="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" \
+    ANIME_ONLY= ANIME_ISOLATED_DB=oa_analytics ANIME_SELECTOR_BIN="$work/anime_direct_selector" "$work/anime_direct" || { cat "$work/api.log"; exit 1; }
 else
   echo 'cli-auth: skipped, no Coax compiler (build coax/bin/coax, or set COAX)' >&2
 fi

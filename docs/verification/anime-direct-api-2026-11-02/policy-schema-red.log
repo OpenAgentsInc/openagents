@@ -1,0 +1,7 @@
+FAIL #test API anime provider grammar retains every finite option while holder owns exact bounds (29 ms)
+coax/web/api/anime-director-checks.coax:58:26: error[E0406]: assertion failed
+    for at:0..<d[0].count {#assert !aap_in(jv_key(d[0],at),"minimum|maximum|minItems|maxItems|maxLength");}
+                           ^
+  note: in #test API anime provider grammar retains every finite option while holder owns exact bounds
+1 of 141 checks (--only 'API anime provider grammar'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

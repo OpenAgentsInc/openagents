@@ -1,0 +1,3 @@
+ok   #test anime API reservation oracle requires lock waiting and post-commit refusal (1 case, 176 steps, 0 ms)
+1 of 427 checks (--only 'anime API reservation oracle'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

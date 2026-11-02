@@ -1,8 +1,9 @@
 # Anime Lab: direct an anime with your voice
 
-Status: spec, 2026-11-02. Nothing here is built yet. The demo
-([below](#the-demo)) and the anime style it draws in (art-styles.md, Anime)
-are in progress on branch `anime-lab` and not on `main`.
+Status, 2026-11-02: the recorded demo is on `main`. The authenticated
+[director API](2026-11-02-anime-director-api.md) is implemented and qualified
+for #12632. Arbitrary takes, the Anime CLI, live voice and asset generation
+remain distinct steps below. Source completion does not assert deployment.
 
 Owner request, 2026-11-02:
 
@@ -215,7 +216,8 @@ prop, a costume), never blocks the scene.
 
 ## The demo
 
-In progress, not yet built. `/realms/anime-lab?stage=direct` will play a simulated directing session: a
+`apps/openagents-web/animelab.coax` implements the recorded demo.
+`/realms/anime-lab?stage=direct` plays a simulated directing session: a
 recorded list of spoken lines, each arriving at the time a person would
 have said it (the voice is simulated; the words, their timing and the
 directions they become are what the live path produces). The bottom of

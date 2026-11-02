@@ -1,0 +1,8 @@
+ok   #test anime HTTP admission fixes method content type and complete byte limits (1 case, 410 steps, 0 ms)
+ok   #test anime Origin gate precedes authentication effects without rejecting absent Origin (1 case, 54 steps, 0 ms)
+ok   #test anime auth exhausts cookie and body-bound signature observation combinations (1 case, 3995 steps, 0 ms)
+ok   #test anime quotas consume only admitted atomic observations and refuse exhausted leases (1 case, 741 steps, 0 ms)
+ok   #test anime selector timeout is a bounded decimal setting with one default (1 case, 2232 steps, 0 ms)
+ok   #test anime upstream errors never become a successful direction response (1 case, 153 steps, 0 ms)
+ok   #test anime transport errors are versioned bounded JSON and refuse short output atomically (1 case, 40261 steps, 0 ms)
+7 checks, 7 passed, 0 failed

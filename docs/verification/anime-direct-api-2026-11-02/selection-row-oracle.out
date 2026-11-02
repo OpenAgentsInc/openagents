@@ -1,0 +1,3 @@
+ok   #test anime fake selector private rows retain finite vector catalogue ordering (1 case, 196960 steps, 3 ms)
+1 of 86 checks (--only 'anime fake selector private rows'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,271 @@
+// A private loopback Gemini stand-in for anime_direct.coax. The harness picks
+// prerecorded answers through CONTROL/mode, never by matching spoken words.
+//   coax/web/tool.sh coax/web/api/tests/anime_direct_selector.coax --port PORT --control DIR
+// All captured requests are synthetic test bodies; Authorization is discarded.
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/sys/fs.coax";
+#load "../../../lib/net/socket_foreign.coax";
+#load "../../../lib/json/json.coax";
+
+#test "anime fake selector wraps a typed answer in the actual Gemini envelope" {
+  out: [8192] u8; nodes: [64] JvNode; d: [1] Jv; inner: [4096] u8;
+  n := ads_body("stock",out[..]);
+  #assert n > 0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+  at := jv_path(d[0],0,"candidates[0].content.parts[0].text"); len_out := jv_str(d[0],at,inner[..]);
+  #assert len_out > 0 && jv_parse(d[..],cast(string)inner[0..<len_out],nodes[..]);
+  #assert jv_len(d[0],jv_get(d[0],0,"answers")) == 1;
+  #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].kind")) == "cast";
+  #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].confidence.who.heroine")) == "0.940";
+  #assert jv_len(d[0],jv_path(d[0],0,"answers[0].confidence.who")) == 5;
+}
+#test "anime fake selector has independent boundary and malformed completion fixtures" {
+  out: [8192] u8;
+  #assert ads_body("half",out[..]) > 0 && ads_answer("half") != ads_answer("below-half");
+  #assert ads_answer("exact-play") != ads_answer("above-play") && ads_answer("empty") == "{\"answers\":[]}";
+  #assert ads_answer("malformed") == "{" && ads_answer("unknown-mode") == "{";
+  #assert ads_body("bad-envelope",out[..]) > 0 && ads_body("stock",out[0..<3]) == -1;
+}
+#test "anime fake selector valid vectors contain every option and sum exactly one" {
+  for mode: [7] string.["stock","multi","out","exact-play","above-play","half","below-half"] {
+    out: [8192] u8; nodes: [512] JvNode; d: [1] Jv;
+    n := ads_vectors(ads_answer(mode),out[..],"");
+    #assert n > 0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+    answers := jv_get(d[0],0,"answers");
+    for i: 0..<jv_len(d[0],answers) {
+      answer := jv_at(d[0],answers,i); confidence := jv_get(d[0],answer,"confidence"); q := d[0].nodes[confidence].first;
+      while q != -1 {
+        options := ads_options(jv_key(d[0],q)); expected := 0; sum := 0;
+        while ads_field(options,expected) != "" {
+          value := jv_get(d[0],q,ads_field(options,expected)); #assert value >= 0;
+          sum += ads_milli(jv_raw(d[0],value)); expected += 1;
+        }
+        #assert jv_len(d[0],q) == expected && sum == 1000;
+        q = d[0].nodes[q].next;
+      }
+    }
+  }
+}
+#test "anime fake selector private rows retain finite vector catalogue ordering" {
+  out: [8192] u8; inner: [4096] u8; nodes: [128] JvNode; d: [1] Jv;
+  n := ads_body("selection-rows",out[..]);
+  #assert n > 0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+  k := jv_str(d[0],jv_path(d[0],0,"candidates[0].content.parts[0].text"),inner[..]);
+  #assert k > 0 && jv_parse(d[..],cast(string)inner[0..<k],nodes[..]);
+  #assert jv_len(d[0],jv_path(d[0],0,"answers[0].selections")) == 5;
+  #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].selections[0].field")) == "kind";
+  #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].selections[0].value")) == "cast";
+  #assert jv_len(d[0],jv_path(d[0],0,"answers[0].selections[0].probabilities")) == 10;
+  #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].selections[0].probabilities[4]")) == "0.990";
+}
+
+ADS_MODES :: [11] string.["stock","multi","out","exact-play","above-play","half","below-half","empty","duplicate","bad-second","scalar-p"];
+ADS_ANSWERS :: [11] string.[
+  "{\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"timing\":\"now\",\"confidence\":{\"kind\":0.99,\"who\":0.94,\"spell\":0.97,\"place\":0.96,\"timing\":0.99}}]}",
+  "{\"answers\":[{\"kind\":\"act\",\"who\":\"heroine\",\"action\":\"raise-wand\",\"timing\":\"now\",\"confidence\":{\"kind\":0.95,\"who\":0.94,\"action\":0.93,\"timing\":0.96}},{\"kind\":\"shot\",\"who\":\"hero\",\"framing\":\"close-up\",\"move\":\"hold\",\"timing\":\"after\",\"confidence\":{\"kind\":0.9,\"who\":0.9,\"framing\":0.9,\"move\":0.9,\"timing\":0.9}}]}",
+  "{\"answers\":[{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"place\":\"wall\",\"timing\":\"now\",\"confidence\":{\"kind\":0.9,\"what\":0.9,\"like\":0.9,\"place\":0.9,\"timing\":0.9}}]}",
+  "{\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"timing\":\"now\",\"confidence\":{\"kind\":0.85,\"who\":0.85,\"spell\":0.85,\"place\":0.85,\"timing\":0.85}}]}",
+  "{\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"timing\":\"now\",\"confidence\":{\"kind\":0.851,\"who\":0.851,\"spell\":0.851,\"place\":0.851,\"timing\":0.851}}]}",
+  "{\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"timing\":\"now\",\"confidence\":{\"kind\":0.5,\"who\":0.5,\"spell\":0.5,\"place\":0.5,\"timing\":0.5}}]}",
+  "{\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"timing\":\"now\",\"confidence\":{\"kind\":0.499,\"who\":0.499,\"spell\":0.499,\"place\":0.499,\"timing\":0.499}}]}",
+  "{\"answers\":[]}",
+  "{\"answers\":[],\"answers\":[{\"kind\":\"beat\",\"beat\":\"hold\",\"timing\":\"now\",\"confidence\":{\"kind\":0.9,\"beat\":0.9,\"timing\":0.9}}]}",
+  "{\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"timing\":\"now\",\"confidence\":{\"kind\":0.99,\"who\":0.94,\"spell\":0.97,\"place\":0.96,\"timing\":0.99}},{\"kind\":\"act\",\"p\":0.99}]}",
+  "{\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"timing\":\"now\",\"p\":0.99,\"confidence\":{\"kind\":0.99,\"who\":0.94,\"spell\":0.97,\"place\":0.96,\"timing\":0.99}}]}"
+];
+ads_answer :: (mode: string) -> string {
+  for i: 0..<ADS_MODES.count { if ADS_MODES[i] == mode { return ADS_ANSWERS[i]; } }
+  return "{";
+}
+ads_field :: (s: string, field: int) -> string {
+  at := 0; number := 0;
+  for i: 0..<s.count+1 { if i == s.count || s[i] == '|' { if number == field { return s[at..<i]; } number += 1; at = i+1; } }
+  return "";
+}
+ads_options :: (field: string) -> string {
+  if field == "kind" { return "enter|exit|act|emote|cast|fx|shot|cut|beat|make"; }
+  if field == "who" || field == "to" || field == "archetype" || field == "like" { return "heroine|hero|hooded|dark-lord|creature"; }
+  if field == "timing" { return "now|after|with"; }
+  if field == "action" { return "raise-wand|cast|block|run|fall|kneel|turn|point|hesitate|recoil|shout"; }
+  if field == "emotion" { return "calm|sad|angry|afraid|determined|smug|shocked|crying|laughing|hesitant"; }
+  if field == "spell" { return "bolt|fireball|shield|frost-ring|guardian|light"; }
+  if field == "effect" { return "explosion|rubble-rain|flash|smoke|embers|wind|lightning|petals|shockwave"; }
+  if field == "framing" { return "extreme-close-up|close-up|medium|wide|establishing|over-the-shoulder|low-angle|high-angle"; }
+  if field == "move" { return "hold|push-in|pull-out|orbit|shake|whip-pan"; }
+  if field == "transition" { return "cut|flash|smash|speed-line-wipe|match"; }
+  if field == "beat" { return "hold|slow-motion|freeze-frame|speed-lines"; }
+  if field == "how" { return "walks|runs|appears|lands"; }
+  if field == "place" { return "gate|courtyard|wall|sky|left|right|behind|above"; }
+  if field == "size" { return "small|large|huge"; }
+  if field == "count" { return "1|2|3"; }
+  return "";
+}
+ads_milli :: (s: string) -> int {
+  if s == "1" { return 1000; }
+  if s.count < 3 || s[0..<2] != "0." { return -1; }
+  value := args_whole(s[2..<s.count]); if value < 0 { return -1; }
+  for i: s.count..<5 { value *= 10; }
+  return value;
+}
+ads_probability :: (o: [] Jo, milli: int) {
+  if milli == 1000 { jo_raw(o,"1"); return; }
+  b: [5] u8; b[0] = '0'; b[1] = '.';
+  b[2] = cast(u8)('0'+milli/100); b[3] = cast(u8)('0'+(milli/10)%10); b[4] = cast(u8)('0'+milli%10);
+  jo_raw(o,cast(string)b[..]);
+}
+ads_vector :: (o: [] Jo, field: string, selected: string, milli_value: int, defect: string) {
+  milli := ifx field == "who" && defect == "not-argmax" then 100 else milli_value;
+  options := ads_options(field); count := 0;
+  while ads_field(options,count) != "" { count += 1; }
+  other := 0; remaining := 1000-milli; jo_obj(o);
+  for i: 0..<count {
+    option := ads_field(options,i);
+    if field == "who" && defect == "missing-option" && option == "hero" { continue; }
+    jo_key(o,option);
+    if option == selected { ads_probability(o,milli); }
+    else { value := remaining/(count-1)+(ifx other < remaining%(count-1) then 1 else 0); if field == "who" && defect == "wrong-sum" && other == 0 { value += 1; } ads_probability(o,value); other += 1; }
+  }
+  jo_end(o);
+}
+// Fixture probabilities are independent, complete, exact milli-probability
+// vectors. The response is selected by a test control file, never by words.
+ads_vectors :: (source: string, out: [] u8, defect: string) -> int {
+  nodes: [256] JvNode; d: [1] Jv; o: [1] Jo;
+  if !jv_parse(d[..],source,nodes[..]) { return -1; }
+  answers := jv_get(d[0],0,"answers"); if jv_kind(d[0],answers) != JV_ARRAY { return -1; }
+  jo_start(o[..],out); jo_obj(o[..]); jo_key(o[..],"answers"); jo_arr(o[..]);
+  for i: 0..<jv_len(d[0],answers) {
+    answer := jv_at(d[0],answers,i); jo_obj(o[..]); c := d[0].nodes[answer].first;
+    while c != -1 {
+      key := jv_key(d[0],c);
+      if key == "confidence" {
+        jo_key(o[..],key); jo_obj(o[..]); question := d[0].nodes[c].first;
+        while question != -1 {
+          field := jv_key(d[0],question);
+          if ads_options(field) != "" {
+            selected := jv_raw(d[0],jv_get(d[0],answer,field));
+            jo_key(o[..],field); ads_vector(o[..],field,selected,ads_milli(jv_raw(d[0],question)),defect);
+          }
+          question = d[0].nodes[question].next;
+        }
+        jo_end(o[..]);
+      } else { jo_key(o[..],key); jv_write(d[0],c,o[..]); }
+      c = d[0].nodes[c].next;
+    }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]); return ifx o[0].bad then -1 else o[0].n;
+}
+ads_selection_rows :: (source: string, out: [] u8) -> int {
+  nodes: [256] JvNode; d: [1] Jv; o: [1] Jo;
+  if !jv_parse(d[..],source,nodes[..]) { return -1; }
+  answers := jv_get(d[0],0,"answers"); jo_start(o[..],out); jo_obj(o[..]); jo_key(o[..],"answers"); jo_arr(o[..]);
+  for i: 0..<jv_len(d[0],answers) {
+    answer := jv_at(d[0],answers,i); confidence := jv_get(d[0],answer,"confidence");
+    jo_obj(o[..]); jo_key(o[..],"selections"); jo_arr(o[..]); c := d[0].nodes[answer].first;
+    while c != -1 {
+      field := jv_key(d[0],c);
+      if field != "confidence" {
+        selected := jv_raw(d[0],c); milli := ads_milli(jv_raw(d[0],jv_get(d[0],confidence,field)));
+        jo_obj(o[..]); jo_key(o[..],"field"); jo_str(o[..],field); jo_key(o[..],"value"); jo_str(o[..],selected); jo_key(o[..],"probabilities"); jo_arr(o[..]);
+        options := ads_options(field); count := 0; while ads_field(options,count) != "" { count += 1; }
+        other := 0; remaining := 1000-milli;
+        for j: 0..<count {
+          if ads_field(options,j) == selected { ads_probability(o[..],milli); }
+          else { ads_probability(o[..],remaining/(count-1)+(ifx other < remaining%(count-1) then 1 else 0)); other += 1; }
+        }
+        jo_end(o[..]); jo_end(o[..]);
+      }
+      c = d[0].nodes[c].next;
+    }
+    jo_end(o[..]); jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]); return ifx o[0].bad then -1 else o[0].n;
+}
+ads_body :: (mode: string, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..],out); jo_obj(o[..]); jo_key(o[..],"candidates"); jo_arr(o[..]);
+  if mode != "bad-envelope" {
+    jo_obj(o[..]); jo_key(o[..],"content"); jo_obj(o[..]); jo_key(o[..],"parts"); jo_arr(o[..]); jo_obj(o[..]);
+    source := ads_answer(ifx mode == "hold" || mode == "selection-rows" || mode == "missing-option" || mode == "wrong-sum" || mode == "not-argmax" then "stock" else mode);
+    converted: [8192] u8; n := ifx mode == "duplicate" then -1 else ifx mode == "selection-rows" then ads_selection_rows(source,converted[..]) else ads_vectors(source,converted[..],mode);
+    jo_key(o[..],"text"); jo_str(o[..],ifx n >= 0 then cast(string)converted[0..<n] else source);
+    jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]); return ifx o[0].bad then -1 else o[0].n;
+}
+ads_int :: (n: int, out: [] u8) -> string { o: [1] Jo; jo_start(o[..],out); jo_int(o[..],n); return jo_text(o[..]); }
+ads_path :: (dir: string, name: string, out: [] u8) -> string { return fs_join(dir,name,out); }
+ads_write :: (dir: string, name: string, value: string) -> bool { path: [1024] u8; return fs_write(ads_path(dir,name,path[..]),value); }
+ads_exists :: (dir: string, name: string) -> bool { path: [1024] u8; return fs_exists(ads_path(dir,name,path[..])); }
+ads_mode :: (dir: string, out: [] u8) -> string {
+  path: [1024] u8; n := fs_read(ads_path(dir,"mode",path[..]),out);
+  if n < 0 { return "malformed"; }
+  while n > 0 && (out[n-1] == '\n' || out[n-1] == '\r') { n -= 1; }
+  return cast(string)out[0..<n];
+}
+ads_head_end :: (s: string) -> int { for i: 0..<s.count-3 { if s[i..<i+4] == "\r\n\r\n" { return i+4; } } return -1; }
+ads_length :: (head: string) -> int {
+  keys := [2] string.["Content-Length:","content-length:"];
+  for key: keys {
+    for i: 0..<head.count-key.count+1 {
+      if head[i..<i+key.count] != key { continue; }
+      at := i+key.count; while at < head.count && head[at] == ' ' { at += 1; }
+      end := at; while end < head.count && head[end] >= '0' && head[end] <= '9' { end += 1; }
+      return args_whole(head[at..<end]);
+    }
+  }
+  return -1;
+}
+ads_request :: (h: int, out: [] u8) -> int {
+  used := 0; total := -1; end := -1; deadline := proc_now_ms()+5000;
+  while proc_now_ms() < deadline && (total < 0 || used < total) {
+    n := cxsock_read(h,100); if n < 0 { return -1; }
+    if used+n > out.count { return -1; }
+    for i: 0..<n { out[used+i] = cast,trunc(u8)cxsock_byte(h,i); } used += n;
+    if end < 0 { end = ads_head_end(cast(string)out[0..<used]); }
+    if end > 0 && total < 0 { length := ads_length(cast(string)out[0..<end]); if length < 0 || end+length > out.count { return -1; } total = end+length; }
+  }
+  if total != used { return -1; }
+  body_n := used-end;
+  for i: 0..<body_n { out[i] = out[end+i]; }
+  return body_n;
+}
+ads_send :: (h: int, code: int, body: string) -> bool {
+  head: [256] u8; b: [32] u8; o: [1] Jo; jo_start(o[..],head[..]);
+  jo_put(o[..],"HTTP/1.1 "); jo_put(o[..],ads_int(code,b[..])); jo_put(o[..]," Fixture\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ");
+  jo_put(o[..],ads_int(body.count,b[..])); jo_put(o[..],"\r\n\r\n");
+  for c: jo_text(o[..]) { if cxsock_write(h,cast(int)c) != 0 { return false; } }
+  for c: body { if cxsock_write(h,cast(int)c) != 0 { return false; } }
+  return cxsock_flush(h,2000) == 0;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  dir := args_value(a[..],"--control",""); port := args_whole(args_value(a[..],"--port",""));
+  if dir == "" || port < 1 || port > 65535 { tool_errln("anime selector fixture: --control DIR --port PORT (owned loopback only)"); return 2; }
+  listener := cxsock_listen(port); if listener < 0 { return 1; }
+  num: [32] u8;
+  if !ads_write(dir,"ready",ads_int(port,num[..])) || !ads_write(dir,"calls","0") { return 1; }
+  calls := 0; deadline := proc_now_ms()+840000;
+  while proc_now_ms() < deadline && !ads_exists(dir,"stop") {
+    h := cxsock_accept(listener,100); if h < 0 { continue; }
+    request: [131072] u8; n := ads_request(h,request[..]);
+    if n < 0 { sent := ads_send(h,400,"{}"); closed := cxsock_close(h); continue; }
+    calls += 1; written := ads_write(dir,"calls",ads_int(calls,num[..]));
+    written = ads_write(dir,"request",cast(string)request[0..<n]) && written;
+    written = ads_write(dir,"entered",ads_int(calls,num[..])) && written;
+    mode_buf: [128] u8; mode := ads_mode(dir,mode_buf[..]);
+    if mode == "hold" || mode == "timeout" {
+      until := proc_now_ms()+5000;
+      while proc_now_ms() < until && !ads_exists(dir,"release") { proc_sleep(10); }
+    }
+    if mode != "timeout" {
+      body: [65537] u8; count := ads_body(ifx mode == "embedded-nul" || mode == "overlong" then "stock" else mode,body[..]);
+      if mode == "embedded-nul" && count >= 0 { body[count] = 0; body[count+1] = 'x'; count += 2; }
+      if mode == "overlong" && count >= 0 { for i: count..<body.count { body[i] = ' '; } count = body.count; }
+      sent := ads_send(h,ifx mode == "status500" then 500 else ifx mode == "status429" then 429 else 200,ifx count >= 0 then cast(string)body[0..<count] else "{}");
+    }
+    closed := cxsock_close(h);
+  }
+  closed := cxsock_close(listener); print("anime selector fixture served % model requests\n",calls); return 0;
+}

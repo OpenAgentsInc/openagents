@@ -1,0 +1,9 @@
+coax/platform/tool-native.c: OK
+coax/platform/process-native.c: OK
+coax/platform/store-file-native.c: OK
+coax/platform/socket-native.c: OK
+coax/platform/entropy-native.c: OK
+coax/platform/entropy-foreign.c: OK
+coax/platform/tls-native.c: OK
+/tmp/anime-direct-tools.IhUkmA/entropy.c: OK
+/tmp/anime-direct-tools.IhUkmA/entropy-policy.h: OK

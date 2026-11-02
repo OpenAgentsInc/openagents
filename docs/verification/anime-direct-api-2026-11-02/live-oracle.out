@@ -1,0 +1,3 @@
+ok   #test anime API live oracle checks semantics without prescribing model confidence (1 case, 139204 steps, 5 ms)
+1 of 428 checks (--only 'anime API live oracle'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
