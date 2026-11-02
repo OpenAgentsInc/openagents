@@ -80,10 +80,10 @@ grow together:
 
 | Chapter | What we build and check |
 | --- | --- |
-| [9. Microcoder](ch009-microcoder.md) — design draft | Our own loop: state, one structured call per step, run the commands, repeat. Gateways to any model we can reach, and the endings it reports. |
-| [10. Drive Claude Code](ch010-drive-claude-code.md) — design draft | The `claude` CLI's stream-json protocol as a Coax state machine: queries, control frames, in-process MCP servers and approvals, checked against recorded fixtures. |
-| [11. Drive Codex](ch011-drive-codex.md) — design draft | `codex app-server` over JSON-RPC as a pull-based client: requests, server requests, approvals and recorded sessions replayed byte for byte. |
-| [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) — design draft | Microcoder's loop on a model Psionic serves on this machine or a Pylon, with the prefix-cache and constrained-tool gains measured against a hosted model. |
+| [9. Microcoder](ch009-microcoder.md) — partly implemented | Our own loop: state, one structured call per step, run the commands, repeat. Gateways to any model we can reach, and the endings it reports. |
+| [10. Drive Claude Code](ch010-drive-claude-code.md) — partly implemented | The `claude` CLI's stream-json protocol as a Coax state machine: queries, control frames, in-process MCP servers and approvals, checked against recorded fixtures. |
+| [11. Drive Codex](ch011-drive-codex.md) — partly implemented | `codex app-server` over JSON-RPC as a pull-based client: requests, server requests, approvals and recorded sessions replayed byte for byte. |
+| [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) — partly implemented | Microcoder's loop on a model Psionic serves on this machine or a Pylon, with the prefix-cache and constrained-tool gains measured against a hosted model. |
 | [13. Choose an engine](ch013-choose-an-engine.md) — design draft | A System One decision picks the engine, model and effort for each task from the request and the machine, with a labelled set split into tuning and held-out halves. |
 
 ## III. Many tasks
@@ -114,7 +114,7 @@ grow together:
 
 | Chapter | What we build and check |
 | --- | --- |
-| [23. `openagents coder`](ch023-openagents-coder.md) — design draft | The `coder` domain of the CLI: every verb above in the one command table, `--json` on all of them, exit codes, and the same verbs as MCP tools so another agent can drive Coder. |
+| [23. `openagents coder`](ch023-openagents-coder.md) — partly implemented | The `coder` domain of the CLI: every verb above in the one command table, `--json` on all of them, exit codes, and the same verbs as MCP tools so another agent can drive Coder. |
 
 ## VII. What other coding agents teach
 
@@ -144,7 +144,7 @@ testing, the chapter names the chapter in Parts I–V that measures it.
 
 | Chapter | What we build and check |
 | --- | --- |
-| [36. A terminal UI](ch036-a-terminal-ui.md) — planned | Coder inline in the person's terminal, as Claude Code and Codex run: a live region for status, the streaming reply and the composer, and finished turns committed to scrollback. Raw keys, a key decoder with bracketed paste, display width, a composer with history, and a pseudo-terminal smoke test. Code: `coax/lib/tui/tui.coax` and `coder/tui/`. |
+| [36. A terminal UI](ch036-a-terminal-ui.md) — partly implemented | Coder inline in the person's terminal, as Claude Code and Codex run: a live region for status, the streaming reply and the composer, and finished turns committed to scrollback. Raw keys, a key decoder with bracketed paste, display width, a composer with history, and a pseudo-terminal smoke test. Code: `coax/lib/tui/tui.coax` and `coder/tui/`. |
 | [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) — planned | A VT emulator in Coax so Coder can run programs that draw to a terminal and read the screen as text, checked against libghostty as an oracle and never linked to it. |
 
 ## What stays in Psionic

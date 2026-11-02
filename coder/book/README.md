@@ -28,8 +28,9 @@ built. The [plan](PLAN.md#the-cli-is-the-spine) lists them.
 
 ## Status
 
-Written 2026-11-01. Of the 37 chapters, 13 are partly implemented, 10 are
-design drafts and 14 are planned; none is fully implemented yet. Chapters 1–8
+Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 19 are
+partly implemented, 12 are written surveys, 5 are design drafts and 1 is
+planned; none is fully implemented yet. Chapters 1–8
 and 14–22 moved here from Part XXI of the Psionic book on 2026-11-01. Their
 code is still under `psionic/lib/harness/`, and the [registry](chapters.json)
 names it.
@@ -38,6 +39,7 @@ names it.
 | --- | --- |
 | implemented | The chapter's examples run and its done criteria pass on a named host. |
 | partly implemented | Some examples run; the chapter says what remains. |
+| written | A survey chapter: its claims cite files in another project at a pinned revision. |
 | design draft | The chapter says what will be built and how it will be checked. Code it names may already exist. |
 | planned | A title and a scope only. |
 
@@ -53,10 +55,10 @@ names it.
 | [6. A document tries to become the system prompt](ch006-a-document-tries-to-become-the-system-prompt.md) | Partly implemented: ij-inject-v1, bounded CPU, deterministic stand-in agent |
 | [7. Condense the history](ch007-condense-the-history.md) | Partly implemented: cd-condense-v1, bounded CPU |
 | [8. Programs as tool calls](ch008-programs-as-tool-calls.md) | Partly implemented: cpu-harness-program-v1, bounded CPU |
-| [9. Microcoder](ch009-microcoder.md) | Unimplemented: design draft |
-| [10. Drive Claude Code](ch010-drive-claude-code.md) | Unimplemented: design draft |
-| [11. Drive Codex](ch011-drive-codex.md) | Unimplemented: design draft |
-| [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) | Unimplemented: design draft |
+| [9. Microcoder](ch009-microcoder.md) | Partly implemented: `coder run --engine micro`, Vertex, Gemini API and OpenRouter |
+| [10. Drive Claude Code](ch010-drive-claude-code.md) | Partly implemented: Claude Code 2.1.316 on the person's login |
+| [11. Drive Codex](ch011-drive-codex.md) | Partly implemented: codex-cli 0.163.0 app-server |
+| [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) | Partly implemented: `--engine psionic` on a local Chat Completions server |
 | [13. Choose an engine](ch013-choose-an-engine.md) | Unimplemented: design draft |
 | [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) | Unimplemented: design draft |
 | [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) | Unimplemented: design draft |
@@ -67,7 +69,7 @@ names it.
 | [20. An agent that stays online](ch020-an-agent-that-stays-online.md) | Unimplemented: design draft |
 | [21. Measure the harness](ch021-measure-the-harness.md) | Partly implemented: cpu-harness-bench-v1, bounded CPU |
 | [22. Generate candidates, then check them](ch022-generate-candidates-then-check-them.md) | Partly implemented: cpu-int-candidates-v1, bounded CPU |
-| [23. `openagents coder`](ch023-openagents-coder.md) | Unimplemented: design draft |
+| [23. `openagents coder`](ch023-openagents-coder.md) | Partly implemented: `run`, `ls`, `status`, `log` |
 | [24. DeepSeek Harness](ch024-deepseek-harness.md) | Written: deepseek-ai/deepseek-harness@ce7073d |
 | [25. Claude Code](ch025-claude-code.md) | Written: AtlantisPleb/cc@abcc009 |
 | [26. Codex](ch026-codex.md) | Written: openai/codex@a098129 |
@@ -80,7 +82,7 @@ names it.
 | [33. Toad](ch033-toad.md) | Written: batrachianai/toad@dd4f90e |
 | [34. Background Agents](ch034-background-agents.md) | Written: ColeMurray/background-agents@80426f4 |
 | [35. Flue and Agent OS](ch035-flue-and-agent-os.md) | Written: withastro/flue@deee93b, rivet-dev/agent-os@c746292 |
-| [36. A terminal UI](ch036-a-terminal-ui.md) | Planned |
+| [36. A terminal UI](ch036-a-terminal-ui.md) | Partly implemented: three agents inline, macOS terminal |
 | [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) | Planned |
 
 ## Contents

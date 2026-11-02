@@ -16,10 +16,10 @@
 
 ## II. Engines
 
-- [9. Microcoder](ch009-microcoder.md) — design draft
-- [10. Drive Claude Code](ch010-drive-claude-code.md) — design draft
-- [11. Drive Codex](ch011-drive-codex.md) — design draft
-- [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) — design draft
+- [9. Microcoder](ch009-microcoder.md) — partly implemented
+- [10. Drive Claude Code](ch010-drive-claude-code.md) — partly implemented
+- [11. Drive Codex](ch011-drive-codex.md) — partly implemented
+- [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) — partly implemented
 - [13. Choose an engine](ch013-choose-an-engine.md) — design draft
 
 ## III. Many tasks
@@ -42,7 +42,7 @@
 
 ## VI. The command line
 
-- [23. `openagents coder`](ch023-openagents-coder.md) — design draft
+- [23. `openagents coder`](ch023-openagents-coder.md) — partly implemented
 
 ## VII. What other coding agents teach
 
@@ -61,5 +61,5 @@
 
 ## VIII. The terminal
 
-- [36. A terminal UI](ch036-a-terminal-ui.md) — planned
+- [36. A terminal UI](ch036-a-terminal-ui.md) — partly implemented
 - [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) — planned

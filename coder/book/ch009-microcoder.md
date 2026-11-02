@@ -1,28 +1,101 @@
 # 9. Microcoder
 
-> **Status: unimplemented — design draft.** The chapter text and its checks aren't written yet. The
-> loop it describes exists in `coax/lib/microcoder/` and is specified in
-> [docs/coder/microcoder.md](../../docs/coder/microcoder.md).
+> **Status: partly implemented.** The loop runs in Coder: `coder run
+> "TASK" --engine micro` and the terminal UI's third agent both drive
+> `coax/lib/microcoder/` through a gateway plan of Vertex Gemini Flash, the
+> Gemini API and OpenRouter. Its checks cover every ending, the state's
+> caps and the reply streaming out of a partial action. Still to come:
+> recorded gateway streams replayed through the loop with byte-identical
+> logs, and the endings reached through `coder run` fixtures as well as
+> unit checks.
 
 Microcoder is Coder's own engine: a small loop that runs on any model we can
-reach and needs no other agent installed. It is the engine for plain questions,
-small jobs and machines without Claude Code or Codex.
+reach and needs no other agent installed. It is the engine for plain
+questions, small jobs and machines without Claude Code or Codex.
 
-## What this chapter covers
+## The loop
 
-- The state: environment facts, the task, the routing decision, the last 12
-  actions with output heads and tails, the files asked for and the loop's own
-  notes.
-- One structured call per step. The model returns a rationale, commands,
-  files to view, `finished`, a reply and whether to ask a question.
-- Commands run in the working directory with a timeout and capped output;
-  `view` reads capped files under it. Writes go through commands, so they show
-  in the transcript.
-- The endings it reports: `finished`, `asked`, `bad_replies`, `no_capacity`,
-  `stopped` and `idle`. The person sets limits; the loop adds none beyond
-  output caps.
-- Gateways: one interface and one file per model provider, with fallback before
-  the first token.
+Each step makes one structured call. The request is the state, rendered as
+one JSON object ([state.coax](../../coax/lib/microcoder/state.coax)):
+
+- the environment facts (the operating system, the app and the working
+  directory) and, in Coder, the earlier turns of the conversation;
+- the task and the routing decision;
+- the last 12 actions, each command with its exit status and the first and
+  last 6,000 bytes of its output;
+- the files the model asked to view, and the loop's own notes.
+
+The model returns `next_action`
+([action.coax](../../coax/lib/microcoder/action.coax)): a rationale for
+the log, commands to run in order, files to view, `finished`, the reply and
+whether it asks a question. A gateway that can't hold a strict JSON schema
+answers in prose, and
+[text_action.coax](../../coax/lib/microcoder/text_action.coax) reads the
+action out of the text: a fenced object after prose, a leaked reasoning
+block, a command written as a string or an object.
+
+Commands run in the working directory with a timeout and capped output, and
+`view` reads capped files under it
+([tools.coax](../../coax/lib/microcoder/tools.coax)). Writes go through
+commands, so every change shows in the transcript.
+
+## Endings
+
+A run ends one way, and the run reports which
+([loop.coax](../../coax/lib/microcoder/loop.coax)):
+
+| Ending | When |
+| --- | --- |
+| `finished` | the model set `finished` and gave a reply |
+| `asked` | the model asked the person a question |
+| `bad_replies` | three replies in a row failed the schema or its meaning |
+| `no_capacity` | no gateway in the plan answered |
+| `stopped` | the person pressed Esc or sent STOP |
+| `idle` | the model gave nothing to do and no reply |
+
+The person sets limits; the loop adds none beyond the output caps. A good
+reply between bad ones resets the count, and each refusal is written into
+the next step's notes so the model can correct itself.
+
+## In Coder
+
+[run.coax](../../coax/lib/microcoder/run.coax) makes the loop pollable:
+`mc_run_start`, then `mc_run_poll` returns events (an attempt, more reply
+text, a command and its output, a file viewed, the ending), and
+`mc_run_stop` ends it. The reply streams out of the `reply` member of a
+partial action as the bytes arrive.
+
+Coder runs the loop in a worker process of its own,
+[coder/tui/mcworker.coax](../../coder/tui/mcworker.coax), and talks to it in
+JSON lines the way it talks to the Claude Code and Codex CLIs. The worker
+keeps the conversation (the last six turns, each cut to 1,200 bytes, passed
+as `conversation` in the facts) and owns the credentials.
+[microcoder_keys.coax](../../coder/tui/microcoder_keys.coax) reads them as
+the desktop Lab does: files under `~/work/.secrets` go into curl's child
+environment only, and Vertex's token is minted by gcloud from a
+service-account key file with a gcloud config of its own. The plan is every
+gateway with a credential, Vertex first; when Vertex is skipped, the worker
+says why once on stderr.
+
+```sh
+coder/tui/coder.sh run "What is 2+2? Reply with only the number." --engine micro
+```
+
+```text
+› What is 2+2? Reply with only the number.
+  session 20261102-065728-986
+● 4
+  └ finished · 6.4s
+```
+
+## Checks
+
+```sh
+coax test coax/lib/microcoder/run.coax --library   # the loop, state, actions, tools and gateways: 83 checks
+coax/lib/microcoder/tools_smoke.sh           # commands and views in a real directory
+coax/lib/microcoder/live.sh                  # one live run on the plan
+python3 coder/tui/smoke.py --live microcoder # two turns in the terminal UI; the second needs the first
+```
 
 ## Dependencies
 
@@ -32,13 +105,18 @@ small jobs and machines without Claude Code or Codex.
 
 ## Done means
 
-- `openagents coder run --engine micro "TASK"` runs the loop in the current
+- [x] `coder run --engine micro "TASK"` runs the loop in the current
   directory and prints each step and the ending.
-- Recorded gateway streams replay through the loop with byte-identical logs.
-- Each ending is reached by a scripted fixture.
+- [ ] Recorded gateway streams replay through the loop with byte-identical
+  logs.
+- [x] Each ending is reached by a scripted check
+  (`loop.coax`: "asked, no_capacity, idle and stopped", "three replies in
+  a row that fail the schema").
 
 ## Sources
 
 - `coax/lib/microcoder/` (`loop.coax`, `state.coax`, `action.coax`,
-  `tools.coax`, `run.coax`).
+  `text_action.coax`, `tools.coax`, `run.coax`).
+- `coder/tui/mcworker.coax`, `coder/tui/microcoder_keys.coax`,
+  `coder/tui/microcoder.coax`.
 - [Microcoder in Coax, and the inference gateways](../../docs/coder/microcoder.md).
