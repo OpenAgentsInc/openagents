@@ -1,0 +1,21 @@
+// Chapter 102's refusals: each input broken one way, and what the rule says.
+#import "Basic";
+#load "../lib/draft-length-run.coax";
+
+// book:begin example
+main :: () {
+    a:=[3]f64.[0.75,0.5,0.5];c:=[4]f64.[10,16,20,24];
+    print("a valid choice: % (k=%)\n",dl_status_name(dl_choose(a[..],c[..]).status),dl_choose(a[..],c[..]).k);
+    print("three drafts, three costs: %\n",dl_status_name(dl_choose(a[..],c[0..<3]).status));
+    a[1]=1.5;print("acceptance 1.5: %\n",dl_status_name(dl_choose(a[..],c[..]).status));a[1]=0.5;
+    c[2]=0;print("a block that costs 0: %\n",dl_status_name(dl_choose(a[..],c[..]).status));c[2]=20;
+    one:=[1]f64.[48];print("a cost line from one length: %\n",dl_status_name(dl_fit(one[..]).status));
+    falling:=[2]f64.[50,20];out:[4]f64;
+    print("a line that falls below zero by k=3: %\n",dl_status_name(dl_costs(10,dl_fit(falling[..]),out[..])));
+    reached:=[2]int.[10,4];kept:=[2]int.[4,5];acc:[2]f64;
+    print("5 kept of 4 reached: %\n",dl_status_name(dl_calibrate(reached[..],kept[..],acc[..])));
+    x:=dl_pair(1,0.5);t:=DhCell.{vocab=8,width=4,recur=x.recur[..],embed=x.embed[..],out=x.out[..]};
+    prompt:=[3]int.[1,2,3];o:[48]int;
+    print("a fixed length of 5 with 4 drafted: %\n",dl_status_name(dl_run(t,t,prompt[..],48,4,5,c[0..<4],o[..]).status));
+}
+// book:end example

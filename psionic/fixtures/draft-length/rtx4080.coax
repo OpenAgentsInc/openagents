@@ -1,0 +1,27 @@
+// Chapter 102's receipt: psionic/tests/gptoss_draft_length.c on
+// coderos-4080, 2026-11-02, original gpt-oss-20b, chapter 76's device
+// verification with chapter 75's prompt n-gram drafts (width 3). Each run
+// generates both fixture prompts greedily (24 and 256 IDs) on six paths.
+// Copied from the harness log in
+// docs/verification/psionic-ch102-draft-length-2026-11-02.md.
+DL_R1_BUILD :: "coax-18b90dec5d4e-cuda-72df8e2ef7ee4f53-host-97f2cab12cb0a7a1";
+DL_R1_COMMIT :: "0bd2a85348+uncommitted";
+DL_R1_MACHINE :: "coderos-4080 Linux 6.18.49 driver 595.71.05";
+DL_R1_DEVICE :: "NVIDIA GeForce RTX 4080 sm_89 16711352320 bytes";
+DL_R1_IDS :: 280;
+// Greedy IDs on every path equal the target-only IDs on both prompts.
+DL_R1_SAME :: true;
+// Calibration pass: the mean plain decode step (278 steps), the mean block
+// of k = 1..4 drafts (95, 93, 91 and 90 blocks), and at k = 4 the blocks
+// that reached and kept each draft position.
+DL_R1_STEP_NS :: 15099352.0;
+DL_R1_BLOCK_NS :: [4]f64.[48322876,60628348,65637344,69278701];
+DL_R1_REACHED :: [4]int.[90,81,4,3];
+DL_R1_KEPT :: [4]int.[81,4,3,2];
+// Five timed runs; each row is target only, fixed k = 1, 2, 3, 4, adaptive.
+DL_R1_RUNS :: [30]int.[
+    4221840032,6126076490,7165800511,7610999395,7765579155,4246908245,
+    4325675566,6219898313,7302406215,7496150677,7834808286,4414761124,
+    4467447756,6200588885,7244798739,7554519394,7841503814,4264759923,
+    4286282669,6168827885,7151910299,7516430463,7866060167,4467152221,
+    4218739776,6109674494,7149490964,7481949330,7752338315,4221930985];

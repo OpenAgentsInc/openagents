@@ -1,0 +1,196 @@
+// Chapter 102: choose how many drafts to verify by expected gain. A block of
+// k drafts commits the accepted prefix plus one more token (the correction,
+// or the bonus when all k pass), so with a[i] the probability that draft i
+// is accepted given drafts 0..i-1 were, the expected tokens are
+// E(k) = 1 + a[0] + a[0]a[1] + ... + a[0]...a[k-1]. Verifying k drafts costs
+// c(k), measured; k = 0 is an ordinary decode step that commits one token
+// for c(0). The rule takes the k with the most expected tokens per unit of
+// time, the shortest such k on a tie, so k = 0 wins unless drafting pays.
+// Profile dl-gain-v1: binary64, probabilities in [0, 1], positive finite
+// costs in any one time unit, at most DL_MAX drafts.
+#authority;
+#load "../tests/draft-length-oracle.coax";  // the checks' brute force and exact enumeration
+
+// book:begin types
+DL_MAX :: 16;
+DlStatus :: enum u8 {ok;shape;probability;cost;count;}
+// The chosen length, its expected tokens and cost, and their ratio.
+DlChoice :: struct {status:DlStatus;k:int;expected:f64;cost:f64;rate:f64;}
+// A cost line fitted to measured block times: c(k) = base + slope * k.
+DlLine :: struct {status:DlStatus;base:f64;slope:f64;}
+// book:end types
+
+dl_probability :: (a:f64)->bool {return a>=0 && a<=1;}
+// Finite and positive: infinity minus itself is NaN, and NaN fails ==.
+dl_time :: (c:f64)->bool {return c-c==0 && c>0;}
+
+// book:begin expected
+// E(k): one token always (correction or bonus), plus the chance that each
+// of the first k drafts survives with all those before it.
+dl_expected :: (accept:[]f64,k:int)->f64 #export_c {
+    total:=1.0;alive:=1.0;
+    for i:0..<k {alive*=accept[i];total+=alive;}
+    return total;
+}
+// Chapter 75's sampled acceptance for one position whose target and draft
+// distributions do not depend on earlier drafts: the overlap sum min(p, q).
+dl_overlap :: (target:[]f64,draft:[]f64)->f64 #export_c {
+    s:=0.0;for i:0..<target.count {s+=(target[i]+draft[i]-abs(target[i]-draft[i]))/2;}return s;
+}
+// book:end expected
+
+// book:begin choose
+// accept[i] for drafts 0..n-1 and cost[k] for k = 0..n: the k in 0..n with
+// the highest E(k) / c(k). Only a strictly higher rate moves the choice, so
+// ties go to the shorter block and k = 0 is kept unless drafting gains.
+dl_choose :: (accept:[]f64,cost:[]f64)->DlChoice #export_c {
+    n:=accept.count;
+    if n>DL_MAX || cost.count!=n+1 {return DlChoice.{status=DlStatus.shape};}
+    for a:accept {if !dl_probability(a) {return DlChoice.{status=DlStatus.probability};}}
+    for c:cost {if !dl_time(c) {return DlChoice.{status=DlStatus.cost};}}
+    best:=DlChoice.{expected=1,cost=cost[0],rate=1/cost[0]};
+    for k:1..<n+1 {
+        e:=dl_expected(accept,k);r:=e/cost[k];
+        if r>best.rate {best=DlChoice.{k=k,expected=e,cost=cost[k],rate=r};}
+    }
+    return best;
+}
+// When every block costs at least as much as k + 1 decode steps, no
+// acceptance can pay: E(k) <= k + 1, so E(k) / c(k) <= 1 / c(0).
+dl_never :: (cost:[]f64)->bool #export_c {
+    for k:1..<cost.count {if cost[k]<cast(f64)(k+1)*cost[0] {return false;}}return true;
+}
+// book:end choose
+
+// book:begin fit
+// The measured inputs. mean[k-1] is the mean time of a k-draft block, for
+// k = 1..n; a least-squares line through those n points. At least two.
+dl_fit :: (mean:[]f64)->DlLine #export_c {
+    n:=mean.count;if n<2 || n>DL_MAX {return DlLine.{status=DlStatus.shape};}
+    for m:mean {if !dl_time(m) {return DlLine.{status=DlStatus.cost};}}
+    sx:=0.0;sy:=0.0;for i:0..<n {sx+=cast(f64)(i+1);sy+=mean[i];}
+    mx:=sx/cast(f64)n;my:=sy/cast(f64)n;sxy:=0.0;sxx:=0.0;
+    for i:0..<n {dx:=cast(f64)(i+1)-mx;sxy+=dx*mean[i];sxx+=dx*dx;}
+    slope:=sxy/sxx;return DlLine.{base=my-slope*mx,slope=slope};
+}
+// cost[0] is the measured decode step; cost[k] = base + slope * k. Refused
+// when the line gives a time that is not positive.
+dl_costs :: (step:f64,line:DlLine,cost:[]f64)->DlStatus #export_c {
+    if line.status!=DlStatus.ok || cost.count<1 || cost.count>DL_MAX+1 {return DlStatus.shape;}
+    if !dl_time(step) {return DlStatus.cost;}
+    cost[0]=step;
+    for k:1..<cost.count {c:=line.base+line.slope*cast(f64)k;if !dl_time(c) {return DlStatus.cost;}cost[k]=c;}
+    return DlStatus.ok;
+}
+// Acceptance per position from counted blocks: reached[i] blocks proposed a
+// draft i after drafts 0..i-1 were accepted, and accepted[i] of them kept it.
+// Laplace's rule, (accepted + 1) / (reached + 2), so a position never seen
+// is a coin flip rather than certain.
+dl_calibrate :: (reached:[]int,accepted:[]int,accept:[]f64)->DlStatus #export_c {
+    n:=reached.count;if n>DL_MAX || accepted.count!=n || accept.count<n {return DlStatus.shape;}
+    for i:0..<n {if accepted[i]<0 || accepted[i]>reached[i] {return DlStatus.count;}}
+    for i:0..<n {accept[i]=cast(f64)(accepted[i]+1)/cast(f64)(reached[i]+2);}
+    return DlStatus.ok;
+}
+// book:end fit
+
+dl_status_name :: (s:DlStatus)->string #export_c {
+    names:=[5]string.["ok","shape","probability outside [0, 1]","cost not positive and finite","accepted count outside 0..reached"];
+    return names[cast(int)s];
+}
+
+#test "the chapter's example by hand" {
+    // a = 0.75, 0.5, 0.5, 0.25; step 10, blocks 12 + 4k.
+    // E = 1, 1.75, 2.125, 2.3125, 2.359375; rates 0.1, 0.109375, 0.10625,
+    // 0.09635..., 0.08426...: k = 1.
+    a:=[4]f64.[0.75,0.5,0.5,0.25];c:=[5]f64.[10,16,20,24,28];
+    #assert dl_expected(a[..],0)==1 && dl_expected(a[..],1)==1.75 && dl_expected(a[..],2)==2.125 && dl_expected(a[..],3)==2.3125 && dl_expected(a[..],4)==2.359375;
+    d:=dl_choose(a[..],c[..]);#assert d.status==DlStatus.ok && d.k==1 && d.expected==1.75 && d.cost==16 && d.rate==0.109375;
+    // A surer draft (0.875 first) and blocks of 10 + 2k: k = 3.
+    a[0]=0.875;a[1]=0.875;a[2]=0.875;c=[5]f64.[10,12,14,16,18];
+    d=dl_choose(a[..],c[..]);#assert d.k==3 && d.expected==1+0.875+0.765625+0.669921875 && d.cost==16;
+    // Chapter 76's RTX 4080 numbers: a block of 4 drafts costs about 69 ms
+    // against a 15.2 ms step (shorter blocks here: 32, 48, 64 ms). Certain
+    // drafts would pay at k = 4: 5 / 69 = 0.0725 > 1 / 15.2 = 0.0658. Drafts
+    // accepted half the time do not: E(4) = 1.9375, and 1.9375 / 69 < 1 / 15.2.
+    one:=[4]f64.[1,1,1,1];g:=[5]f64.[15.2,32,48,64,69];
+    d=dl_choose(one[..],g[..]);#assert d.k==4 && d.expected==5 && d.cost==69 && !dl_never(g[..]);
+    half:=[4]f64.[0.5,0.5,0.5,0.5];d=dl_choose(half[..],g[..]);#assert d.k==0 && d.expected==1 && d.cost==15.2;
+    g[4]=76;#assert dl_never(g[..]) && dl_choose(one[..],g[..]).k==0;
+    // No drafts at all: k = 0.
+    d=dl_choose(one[0..<0],g[0..<1]);#assert d.status==DlStatus.ok && d.k==0 && d.rate==1/15.2;
+}
+#test "ties keep the shorter block; dl_never at its edge" {
+    // Certain drafts and blocks of exactly (k + 1) steps: every rate is 1/10.
+    one:=[3]f64.[1,1,1];c:=[4]f64.[10,20,30,40];
+    #assert dl_choose(one[..],c[..]).k==0 && dl_never(c[..]);
+    c[3]=39.5;#assert dl_choose(one[..],c[..]).k==3 && !dl_never(c[..]);
+    c[3]=40;c[2]=29.5;#assert dl_choose(one[..],c[..]).k==2 && !dl_never(c[..]);
+    c[2]=30;c[1]=19.5;#assert dl_choose(one[..],c[..]).k==1 && !dl_never(c[..]);
+    // Two lengths with the same rate: the first wins. a = 1, 0: E(1) = E(2) = 2.
+    h:=[2]f64.[1,0];e:=[3]f64.[10,15,15];#assert dl_choose(h[..],e[..]).k==1;
+    #assert dl_never(c[0..<1]);
+}
+#test "refusals" {
+    a:=[2]f64.[0.5,0.5];c:=[3]f64.[1,2,3];
+    #assert dl_choose(a[..],c[0..<2]).status==DlStatus.shape && dl_choose(a[0..<1],c[..]).status==DlStatus.shape;
+    big:[17]f64;bc:[18]f64;for i:0..<18 {bc[i]=1;}
+    #assert dl_choose(big[..],bc[..]).status==DlStatus.shape && dl_choose(big[0..<16],bc[0..<17]).status==DlStatus.ok;
+    a[1]=1.0000001;#assert dl_choose(a[..],c[..]).status==DlStatus.probability;
+    a[1]=-0.0000001;#assert dl_choose(a[..],c[..]).status==DlStatus.probability;
+    a[1]=0;#assert dl_choose(a[..],c[..]).status==DlStatus.ok;a[1]=1;#assert dl_choose(a[..],c[..]).status==DlStatus.ok;
+    zero:=0.0;a[1]=zero/zero;#assert dl_choose(a[..],c[..]).status==DlStatus.probability;a[1]=0.5;
+    c[2]=0;#assert dl_choose(a[..],c[..]).status==DlStatus.cost;
+    c[2]=-1;#assert dl_choose(a[..],c[..]).status==DlStatus.cost;
+    c[2]=1/zero;#assert dl_choose(a[..],c[..]).status==DlStatus.cost;
+    c[2]=zero/zero;#assert dl_choose(a[..],c[..]).status==DlStatus.cost;
+    c[2]=3;c[0]=0;#assert dl_choose(a[..],c[..]).status==DlStatus.cost;
+    #assert dl_status_name(DlStatus.ok)=="ok" && dl_status_name(DlStatus.shape)=="shape" && dl_status_name(DlStatus.probability)=="probability outside [0, 1]";
+    #assert dl_status_name(DlStatus.cost)=="cost not positive and finite" && dl_status_name(DlStatus.count)=="accepted count outside 0..reached";
+}
+#test "fit, costs and calibration by hand" {
+    // Points (1, 30), (2, 40), (3, 56): mean x 2, mean y 42; dx = -1, 0, 1;
+    // sxy = -1 * 30 + 0 * 40 + 1 * 56 = 26; sxx = 2; slope 13, base 42 - 13 * 2 = 16.
+    m:=[3]f64.[30,40,56];l:=dl_fit(m[..]);#assert l.status==DlStatus.ok && l.slope==13 && l.base==16;
+    c:[4]f64;#assert dl_costs(10,l,c[..])==DlStatus.ok && c[0]==10 && c[1]==29 && c[2]==42 && c[3]==55;
+    two:=[2]f64.[50,40];l=dl_fit(two[..]);#assert l.status==DlStatus.ok && l.slope== -10 && l.base==60;
+    #assert dl_costs(10,l,c[..])==DlStatus.ok && c[3]==30;
+    short:[7]f64;#assert dl_costs(10,l,short[..])==DlStatus.cost && dl_costs(10,l,short[0..<6])==DlStatus.ok && short[5]==10;
+    #assert dl_costs(10,l,short[0..<1])==DlStatus.ok && short[0]==10;
+    #assert dl_fit(m[0..<1]).status==DlStatus.shape && dl_fit(m[0..<0]).status==DlStatus.shape;
+    many:[17]f64;for i:0..<17 {many[i]=cast(f64)(i+1);}#assert dl_fit(many[..]).status==DlStatus.shape && dl_fit(many[0..<16]).status==DlStatus.ok && dl_fit(many[0..<16]).slope==1;
+    m[1]=0;#assert dl_fit(m[..]).status==DlStatus.cost;m[1]=40;
+    #assert dl_costs(0,dl_fit(m[..]),c[..])==DlStatus.cost && dl_costs(10,DlLine.{status=DlStatus.cost},c[..])==DlStatus.shape && dl_costs(10,dl_fit(m[..]),c[0..<0])==DlStatus.shape;
+    huge:[18]f64;#assert dl_costs(10,dl_fit(m[..]),huge[..])==DlStatus.shape && dl_costs(10,dl_fit(m[..]),huge[0..<17])==DlStatus.ok;
+    r:=[3]int.[10,4,0];k:=[3]int.[4,1,0];a:[3]f64;
+    #assert dl_calibrate(r[..],k[..],a[..])==DlStatus.ok && a[0]==5.0/12.0 && a[1]==2.0/6.0 && a[2]==0.5;
+    k[2]=1;#assert dl_calibrate(r[..],k[..],a[..])==DlStatus.count;k[2]=0;
+    k[0]=11;#assert dl_calibrate(r[..],k[..],a[..])==DlStatus.count;k[0]=4;
+    k[1]=-1;#assert dl_calibrate(r[..],k[..],a[..])==DlStatus.count;k[1]=4;#assert dl_calibrate(r[..],k[..],a[..])==DlStatus.ok && a[1]==5.0/6.0;
+    #assert dl_calibrate(r[..],k[0..<2],a[..])==DlStatus.shape && dl_calibrate(r[..],k[..],a[0..<2])==DlStatus.shape;
+    rr:[17]int;kk:[17]int;aa:[17]f64;#assert dl_calibrate(rr[..],kk[..],aa[..])==DlStatus.shape && dl_calibrate(rr[0..<16],kk[0..<16],aa[..])==DlStatus.ok && aa[15]==0.5;
+}
+// Independent check: the rule's k equals the brute-force argmax over every
+// length, with E(k) summed from the distribution of the accepted count
+// rather than from survival products. Probabilities are multiples of 1/8
+// and costs integers, so both sums are exact and ties are real ties.
+#forall "chosen k is the brute-force argmax" n:0..<7,seed:0..<40 {
+    a:[6]f64;c:[7]f64;h:=(seed*2654435761+n*97+1)%2147483648;
+    for i:0..<n {h=(h*1103515245+12345)%2147483648;a[i]=cast(f64)(h/65536%9)/8;}
+    for k:0..<n+1 {h=(h*1103515245+12345)%2147483648;c[k]=cast(f64)(1+h/65536%48);}
+    d:=dl_choose(a[0..<n],c[0..<n+1]);b:=dlo_argmax(a[0..<n],c[0..<n+1]);
+    #assert d.status==DlStatus.ok && d.k==b && d.expected==dlo_expected(a[0..<n],b) && d.cost==c[b] && d.rate==d.expected/c[b];
+    for k:0..<n+1 {#assert dl_expected(a[0..<n],k)==dlo_expected(a[0..<n],k);}
+    if dl_never(c[0..<n+1]) {#assert d.k==0;}
+}
+// Independent check: on tiny vocabularies, E(k) from the overlap sums equals
+// the expectation over every draft sequence, weighted by its draft
+// probability, of the tokens chapter 75's rule commits, using gx_decide's
+// own acceptance min(1, p/q) at each position.
+#forall "expected tokens equal exact enumeration" vocab:2..<5,k:1..<4,seed:0..<6 {
+    p:[12]f64;q:[12]f64;h:=(seed*40503+vocab*7+k)%2147483648;
+    for i:0..<k {dlo_row(h+i*31,p[i*vocab..<(i+1)*vocab]);dlo_row(h+i*31+17,q[i*vocab..<(i+1)*vocab]);}
+    a:[3]f64;for i:0..<k {a[i]=dl_overlap(p[i*vocab..<(i+1)*vocab],q[i*vocab..<(i+1)*vocab]);#assert a[i]>0 && a[i]<=1;}
+    exact:=dlo_enumerate(vocab,p[0..<k*vocab],q[0..<k*vocab],k);
+    #assert abs(dl_expected(a[0..<k],k)-exact)<=0.000000000001;
+}

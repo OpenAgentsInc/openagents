@@ -1,0 +1,8 @@
+a valid choice: ok (k=1)
+three drafts, three costs: shape
+acceptance 1.5: probability outside [0, 1]
+a block that costs 0: cost not positive and finite
+a cost line from one length: shape
+a line that falls below zero by k=3: cost not positive and finite
+5 kept of 4 reached: accepted count outside 0..reached
+a fixed length of 5 with 4 drafted: shape

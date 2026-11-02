@@ -2452,6 +2452,26 @@
       ]
     },
     {
+      "source": "psionic/examples/draft-length.coax",
+      "chapter": "psionic/book/ch102-verify-drafts-by-expected-gain.md",
+      "stdout": "psionic/fixtures/draft-length/draft-length.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/draft-length-refuse.coax",
+      "chapter": "psionic/book/ch102-verify-drafts-by-expected-gain.md",
+      "stdout": "psionic/fixtures/draft-length/draft-length-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/draft-head-refuse.coax",
       "chapter": "psionic/book/ch087-the-models-own-draft-head.md",
       "stdout": "psionic/fixtures/draft-head-refuse.out",

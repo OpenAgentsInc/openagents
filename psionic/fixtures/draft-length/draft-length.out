@@ -1,0 +1,37 @@
+k=0: E=1.0 cost=10.0 rate=0.1
+k=1: E=1.75 cost=16.0 rate=0.109375
+k=2: E=2.125 cost=20.0 rate=0.10625
+k=3: E=2.3125 cost=24.0 rate=0.09635416666666667
+k=4: E=2.359375 cost=28.0 rate=0.08426339285714286
+chosen: k=1
+RTX 4080 cost line: c(k) = 43997699.5 + 6787647.1 k ns (ok); in steps: 1.0 3.3634123239195963 3.812944668089068 4.262477012258539 4.712009356428012
+acceptance model (ok): 81/90 -> 0.8913043478260869 4/81 -> 0.060240963855421686 3/4 -> 0.6666666666666666 2/3 -> 0.6
+chosen with all four drafts: k=0; with certain drafts: k=4
+blocks of 1.2 + 0.2k steps (48 steps alone):
+  adaptive: 23.200000000000003 steps of time, same true, accepted 34/41, lengths 0 1 6 4 4
+  fixed k=0: 48.0 steps of time, same true, accepted 0/0, lengths 48 0 0 0 0
+  fixed k=1: 34.8 steps of time, same true, accepted 20/29, lengths 0 29 0 0 0
+  fixed k=2: 29.399999999999988 steps of time, same true, accepted 29/42, lengths 0 0 21 0 0
+  fixed k=3: 30.40000000000001 steps of time, same true, accepted 32/57, lengths 0 0 0 19 0
+  fixed k=4: 23.400000000000006 steps of time, same true, accepted 39/52, lengths 0 0 0 0 13
+the RTX 4080 line (48 steps alone):
+  adaptive: 48.0 steps of time, same true, accepted 0/0, lengths 48 0 0 0 0
+  fixed k=0: 48.0 steps of time, same true, accepted 0/0, lengths 48 0 0 0 0
+  fixed k=1: 97.53895739366824 steps of time, same true, accepted 20/29, lengths 0 29 0 0 0
+  fixed k=2: 80.07183802987043 steps of time, same true, accepted 29/42, lengths 0 0 21 0 0
+  fixed k=3: 80.98706323291223 steps of time, same true, accepted 32/57, lengths 0 0 0 19 0
+  fixed k=4: 61.256121633564156 steps of time, same true, accepted 39/52, lengths 0 0 0 0 13
+blocks of 1 + 0.1k steps (48 steps alone):
+  adaptive: 17.8 steps of time, same true, accepted 39/48, lengths 0 0 1 2 10
+  fixed k=0: 48.0 steps of time, same true, accepted 0/0, lengths 48 0 0 0 0
+  fixed k=1: 31.900000000000016 steps of time, same true, accepted 20/29, lengths 0 29 0 0 0
+  fixed k=2: 25.199999999999992 steps of time, same true, accepted 29/42, lengths 0 0 21 0 0
+  fixed k=3: 24.700000000000006 steps of time, same true, accepted 32/57, lengths 0 0 0 19 0
+  fixed k=4: 18.2 steps of time, same true, accepted 39/52, lengths 0 0 0 0 13
+RTX 4080 target only: 65.055805011965 tokens/s
+RTX 4080 fixed k=1: 45.417583110998756 tokens/s, saving -0.43239249109692207 against target only: off
+RTX 4080 fixed k=2: 38.87333229097862 tokens/s, saving -0.6735330155131205 against target only: off
+RTX 4080 fixed k=3: 37.17467256539575 tokens/s, saving -0.750003443810358 against target only: off
+RTX 4080 fixed k=4: 35.84202803989559 tokens/s, saving -0.8150704234579498 against target only: off
+RTX 4080 adaptive: 64.76830008677965 tokens/s, saving -0.004438975931129096 against target only: off
+RTX 4080 adaptive against fixed k=1, the fastest fixed length: saving 0.29876833188232327, on

@@ -1,0 +1,46 @@
+// Chapter 102's check oracle, loaded by psionic/lib/draft-length.coax and
+// written separately from it. The expected tokens of a block from the
+// distribution of the accepted count; the best length by trying every one;
+// and, for tiny vocabularies, the expected tokens of chapter 75's rule by
+// enumerating every draft sequence with gx_decide's own acceptance.
+#load "../lib/gptoss/speculation.coax";
+
+// E(k) = sum over m = 0..k of (m + 1) * P(exactly m drafts accepted).
+dlo_expected :: (accept:[]f64,k:int)->f64 {
+    total:=0.0;
+    for m:0..<k+1 {
+        chance:=1.0;for i:0..<m {chance*=accept[i];}
+        if m<k {chance*=1-accept[m];}
+        total+=cast(f64)(m+1)*chance;
+    }
+    return total;
+}
+// The first length with the highest expected tokens per unit of cost.
+dlo_argmax :: (accept:[]f64,cost:[]f64)->int {
+    rates:[17]f64;for k:0..<cost.count {rates[k]=dlo_expected(accept,k)/cost[k];}
+    best:=0;for k:0..<cost.count {if rates[k]>rates[best] {best=k;}}
+    return best;
+}
+// A distribution with every entry positive: weights 1..8 from a recurrence.
+dlo_row :: (seed:int,out:[]f64) {
+    x:=seed%2147483648;total:=0.0;
+    for i:0..<out.count {x=(x*1103515245+12345)%2147483648;out[i]=cast(f64)(1+x/65536%8);total+=out[i];}
+    for i:0..<out.count {out[i]/=total;}
+}
+// Every draft sequence d of length k, weighted by prod q_i(d_i); a block
+// commits the accepted prefix plus one token, and draft i survives with
+// prod over j <= i of gx_decide's acceptance min(1, p_j(d_j) / q_j(d_j)).
+dlo_enumerate :: (vocab:int,p:[]f64,q:[]f64,k:int)->f64 {
+    count:=1;for i:0..<k {count*=vocab;}
+    r:[8]f64;s:[8]f64;total:=0.0;
+    for code:0..<count {
+        c:=code;weight:=1.0;alive:=1.0;tokens:=1.0;
+        for i:0..<k {
+            d:=c%vocab;c/=vocab;row:=p[i*vocab..<(i+1)*vocab];draft:=q[i*vocab..<(i+1)*vocab];
+            g:=gx_decide(row,draft,d,0,0,false,r[0..<vocab],s[0..<vocab],false);#assert g.status==GStatus.ok;
+            weight*=draft[d];alive*=g.acceptance;tokens+=alive;
+        }
+        total+=weight*tokens;
+    }
+    return total;
+}

@@ -1,0 +1,8 @@
+// Chapter 102: the GPT-OSS device host plus device verification of draft
+// blocks, the draft-length rule and the speculation rule, as one native
+// library for psionic/tests/gptoss_draft_length.c.
+#load "../lib/gptoss/device-host.coax";
+#load "../lib/gptoss/device-verify.coax";
+#load "../lib/speculation-gate.coax";
+#load "../lib/draft-length.coax";
+#load "../lib/throughput-gate.coax";  // tg_word, for the output words
