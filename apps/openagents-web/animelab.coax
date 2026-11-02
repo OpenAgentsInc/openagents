@@ -34,6 +34,7 @@
 MAX_VERTICES :: 36000;     // the overlay's quads
 VERTEX_FLOATS :: 12;       // a stroke's or a sans glyph's corner, as aethyr/ui/draw.coax and font.coax lay them out
 HOST_FACTS :: 600;
+START_AT :: 701;            // coaxial.send(701, "SECONDS"): play on from that moment (a clip recorded in parts)
 PIN_MOMENT :: 700;          // a page script's coaxial.send(700, "SECONDS"): hold that moment (shots; "-1" lets it run)
 LOAD_TAKE :: 701;           // raw bounded anime.v1 JSON, copied into owned take storage
 TAKE_LOADED :: 1; TAKE_REFUSED :: -1; TAKE_RETAINED :: -2;
@@ -681,6 +682,7 @@ decimal :: (t: string) -> f32 {
 }
 animelab_message :: (s: [] Animelab, kind: int, body: string) #export_c {
   if !s[0].started { animelab_reset(s); }
+  if kind == START_AT { k := decimal(body); if k >= 0 { s[0].pinned = -1; s[0].time = k; } return; }
   if kind == PIN_MOMENT { k := decimal(body); s[0].pinned = k; if k < 0 { s[0].time = 0; } return; }
   if kind == LOAD_TAKE { loaded := animelab_load(s,body); return; }
   if kind != HOST_FACTS || s[0].facts { return; }
