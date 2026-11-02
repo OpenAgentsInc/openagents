@@ -174,7 +174,13 @@ def verbs(check):
             pa.stdin.write(json.dumps(o) + "\n"); pa.stdin.flush()
         pa_send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}})
         pa_send({"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": work, "mcpServers": []}})
-        pa_send({"jsonrpc": "2.0", "id": 3, "method": "session/prompt", "params": {"sessionId": "s1", "prompt": [{"type": "text", "text": "go"}]}})
+        psid = ""
+        for _ in range(20):
+            pm = json.loads(pa.stdout.readline() or "{}")
+            if pm.get("id") == 2:
+                psid = pm.get("result", {}).get("sessionId", "")
+                break
+        pa_send({"jsonrpc": "2.0", "id": 3, "method": "session/prompt", "params": {"sessionId": psid, "prompt": [{"type": "text", "text": "go"}]}})
         pgot, pend_t = [], time.time() + 90
         while time.time() < pend_t:
             r, _, _ = select.select([pa.stdout], [], [], 0.2)
@@ -193,7 +199,7 @@ def verbs(check):
         preqs = [m for m in pgot if m.get("method") == "session/request_permission"]
         psent = [json.loads(x)["behavior"] for x in open(acp_answers)] if os.path.exists(acp_answers) else []
         check("acp: an ask goes to the editor as session/request_permission, and its allow reaches Claude Code",
-              len(preqs) == 1 and preqs[0]["params"]["sessionId"] == "s1" and "stub-outside" in preqs[0]["params"]["toolCall"]["title"]
+              len(preqs) == 1 and preqs[0]["params"]["sessionId"] == psid and psid.startswith("acp-") and "stub-outside" in preqs[0]["params"]["toolCall"]["title"]
               and [o["kind"] for o in preqs[0]["params"]["options"]] == ["allow_once", "allow_always", "reject_once"]
               and psent == ["allow", "allow", "deny"] and pgot and pgot[-1].get("result") == {"stopReason": "end_turn"})
         mcp_out = os.path.join(home, "mcp-answers")
@@ -337,11 +343,41 @@ def verbs(check):
         except subprocess.TimeoutExpired:
             acp.kill()
         ups = lambda g: [m["params"]["update"] for m in g if m.get("method") == "session/update"]
-        check("acp: initialize and session/new", init and init[-1].get("result", {}).get("protocolVersion") == 1 and sess == "s1")
+        check("acp: initialize and session/new", init and init[-1].get("result", {}).get("protocolVersion") == 1 and sess.startswith("acp-")
+              and init[-1]["result"]["agentCapabilities"]["loadSession"] is True)
         check("acp: a prompt streams the reply and ends the turn", any(u["sessionUpdate"] == "agent_message_chunk" and "hello acp" in u["content"]["text"] for u in ups(g3))
               and g3[-1].get("result") == {"stopReason": "end_turn"})
         check("acp: a command is a tool call, then its update", [u["sessionUpdate"] for u in ups(g4)] == ["tool_call", "tool_call_update"] and ups(g4)[0]["kind"] == "execute")
         check("acp: session/cancel ends the turn as cancelled", g5 and g5[-1].get("result") == {"stopReason": "cancelled"} and acp.returncode == 0)
+        # a new editor process reopens the conversation: session/load replays it, oldest turn first, and a prompt continues it
+        acp = subprocess.Popen([coder, "acp", "--engine", "echo"], cwd=REPO, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+        def acp_until(rid, secs=60):     # a replay writes many lines at once: read them as they come, without select
+            got = []
+            for line in iter(acp.stdout.readline, ""):
+                got.append(json.loads(line))
+                if got[-1].get("id") == rid:
+                    break
+            return got
+        acp_send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}})
+        acp_until(1)
+        acp_send({"jsonrpc": "2.0", "id": 2, "method": "session/load", "params": {"sessionId": sess, "cwd": REPO, "mcpServers": []}})
+        l2 = acp_until(2)
+        acp_send({"jsonrpc": "2.0", "id": 3, "method": "session/load", "params": {"sessionId": "acp-0", "cwd": REPO, "mcpServers": []}})
+        l3 = acp_until(3)
+        acp_send({"jsonrpc": "2.0", "id": 4, "method": "session/prompt", "params": {"sessionId": sess, "prompt": [{"type": "text", "text": "$ echo after-load"}]}})
+        l4 = acp_until(4)
+        acp.stdin.close()
+        try:
+            acp.wait(15)
+        except subprocess.TimeoutExpired:
+            acp.kill()
+        lu = ups(l2)
+        check("acp: session/load in a new process replays the conversation oldest first, refuses an unknown ID, and a prompt continues it",
+              [u["content"]["text"] for u in lu if u["sessionUpdate"] == "user_message_chunk"] == ["hello acp", "$ echo second", "$ sleep 30"]
+              and any(u["sessionUpdate"] == "agent_message_chunk" and "hello acp" in u["content"]["text"] for u in lu)
+              and any(u["sessionUpdate"] == "tool_call" for u in lu) and l2[-1].get("result", "missing") is None
+              and l3 and "error" in l3[-1] and l4 and l4[-1].get("result") == {"stopReason": "end_turn"}
+              and any(u["sessionUpdate"] == "tool_call_update" and "after-load" in json.dumps(u) for u in ups(l4)))
         # a progress bar and colors read back as a terminal shows them (chapter 37)
         bar = subprocess.run([coder, "run", "$ printf '10%%\\r100%%\\n\\033[32mok\\033[0m\\n'", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         res = [json.loads(l) for l in bar.stdout.splitlines() if '"kind":"result"' in l]

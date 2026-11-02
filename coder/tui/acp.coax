@@ -4,8 +4,12 @@
 // folder and sends prompts; Coder runs each prompt as a Coder session and
 // streams it back as session/update notifications.
 //
-//   initialize      → protocol version 1, no session loading, text prompts
-//   session/new     → a session ID for the folder (cwd)
+//   initialize      → protocol version 1, session loading, text prompts
+//   session/new     → a session ID for the folder (cwd): acp-MICROSECONDS,
+//                     kept in sessions/ID.acp as the conversation's last
+//                     Coder session, so it outlives this process
+//   session/load    → the conversation replayed as session/update
+//                     notifications, oldest turn first, then null
 //   session/prompt  → the first runs `coder run TEXT --json`; later ones
 //                     `coder fork LAST TEXT --json`, which carries the
 //                     conversation. The reply is {"stopReason":...} at the
@@ -19,7 +23,7 @@
 CD_ACP_SESSIONS :: 8;
 
 CdAcpSession :: struct {
-  id: [16] u8; nid: int;            // "s1", "s2", …
+  id: [64] u8; nid: int;            // "acp-1793619348264820"
   cwd: [1024] u8; ncwd: int;
   last: [32] u8; nlast: int;        // the Coder session the conversation is in
   h: int;                           // the running turn's process, or -1
@@ -85,7 +89,11 @@ cd_acp_line :: (s: [] CdAcpSession, line: string, ar: [] ClArena) {
   ar[0].at = 0; ar[0].full = false;
   kind := cl_str(ar, line, "kind");
   tb: [24] u8;
-  if kind == "session" { s[0].nlast = cd_cat(s[0].last[..], 0, cl_str(ar, line, "id")); return; }
+  if kind == "session" {
+    s[0].nlast = cd_cat(s[0].last[..], 0, cl_str(ar, line, "id"));
+    pb: [1300] u8; x := fs_write(cd_sibling(cast(string) s[0].id[0..<s[0].nid], ".acp", pb[..]), cast(string) s[0].last[0..<s[0].nlast]);
+    return;
+  }
   if kind == "reply" { cd_acp_text_update(s, "agent_message_chunk", cl_str(ar, line, "text")); return; }
   if kind == "tool" {
     s[0].tools += 1;
@@ -137,6 +145,39 @@ cd_acp_stop_reason :: (s: [] CdAcpSession) -> string {
   e := cast(string) s[0].ending[0..<s[0].nending];
   if e == "stopped" { return "cancelled"; }
   return "end_turn";
+}
+
+// session/load: the conversation that ends in Coder session last, oldest
+// turn first. Each turn of an ACP conversation is a fork of the one before,
+// so the chain of parents holds it all. Asks are not asked again.
+cd_acp_replay :: (s: [] CdAcpSession, last: string) {
+  chain: [64] [32] u8; nchain: [64] int; n := 0;
+  cur: [32] u8; nc := cd_cat(cur[..], 0, last);
+  fb: [4194304] u8; ib: [128] u8;
+  ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  while nc > 0 && n < 64 {
+    nchain[n] = cd_cat(chain[n][..], 0, cast(string) cur[0..<nc]); n += 1;
+    text := cd_session_file(cast(string) cur[0..<nc], fb[..], ib[..]);
+    e := 0; while e < text.count && text[e] != 10 { e += 1; }
+    ar[0].at = 0; ar[0].full = false;
+    nc = cd_cat(cur[..], 0, cl_str(ar[..], cast(string) text[0..<e], "parent"));
+  }
+  k := n - 1;
+  while k >= 0 {
+    text := cd_session_file(cast(string) chain[k][0..<nchain[k]], fb[..], ib[..]);
+    at := 0;
+    while at < text.count {
+      e := at; while e < text.count && text[e] != 10 { e += 1; }
+      line := cast(string) text[at..<e];
+      at = e + 1;
+      ar[0].at = 0; ar[0].full = false;
+      kind := cl_str(ar[..], line, "kind");
+      if kind == "user" { cd_acp_text_update(s, "user_message_chunk", cl_str(ar[..], line, "text")); }
+      else if kind != "ask" && kind != "session" { cd_acp_line(s, line, ar[..]); }
+    }
+    k -= 1;
+  }
+  s[0].nlast = cd_cat(s[0].last[..], 0, last);
 }
 
 // Starts a turn: run for the first prompt, fork after.
@@ -235,7 +276,7 @@ cd_acp_message :: (a: [] CdAcp, msg: string) {
   if id.count == 0 { return; }                                  // another notification
   if method.count == 0 { cd_acp_answer(a, ar[..], msg); return; }  // a response to a request of ours
   if method == "initialize" {
-    cd_acp_result(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":false,\"promptCapabilities\":{\"image\":false,\"audio\":false,\"embeddedContext\":true}},\"authMethods\":[]}");
+    cd_acp_result(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"promptCapabilities\":{\"image\":false,\"audio\":false,\"embeddedContext\":true}},\"authMethods\":[]}");
     return;
   }
   if method == "authenticate" { cd_acp_result(id, "{}"); return; }
@@ -243,11 +284,27 @@ cd_acp_message :: (a: [] CdAcp, msg: string) {
     if a[0].n == CD_ACP_SESSIONS { cd_acp_error(id, -32000, "Too many sessions."); return; }
     s := a[0].s[a[0].n..<a[0].n + 1];
     s[0] = CdAcpSession.{}; s[0].h = -1;
-    tb: [24] u8; s[0].nid = cd_cat(s[0].id[..], cd_cat(s[0].id[..], 0, "s"), cd_itoa(a[0].n + 1, tb[..]));
+    tb: [24] u8; s[0].nid = cd_cat(s[0].id[..], cd_cat(s[0].id[..], 0, "acp-"), cd_itoa(cxproc_wall_us() + a[0].n, tb[..]));
     s[0].ncwd = cd_cat(s[0].cwd[..], 0, cl_str(ar[..], params, "cwd"));
     a[0].n += 1;
     rb: [128] u8; rn := json_raw(rb[..], 0, "{\"sessionId\":"); rn = json_write_string(rb[..], rn, cast(string) s[0].id[0..<s[0].nid]); rn = json_raw(rb[..], rn, "}");
     cd_acp_result(id, cast(string) rb[0..<rn]);
+    return;
+  }
+  if method == "session/load" {
+    sid := cl_str(ar[..], params, "sessionId");
+    if a[0].n == CD_ACP_SESSIONS { cd_acp_error(id, -32000, "Too many sessions."); return; }
+    if cd_acp_find(a, sid) >= 0 { cd_acp_error(id, -32000, "That session is already open."); return; }
+    lb: [128] u8; pb: [1300] u8;
+    ln := ifx sid.count > 0 && sid.count < 60 && rt_has_prefix(sid, "acp-") then fs_read(cd_sibling(sid, ".acp", pb[..]), lb[..]) else -1;
+    if ln <= 0 { cd_acp_error(id, -32602, "No such session."); return; }
+    s := a[0].s[a[0].n..<a[0].n + 1];
+    s[0] = CdAcpSession.{}; s[0].h = -1;
+    s[0].nid = cd_cat(s[0].id[..], 0, sid);
+    s[0].ncwd = cd_cat(s[0].cwd[..], 0, cl_str(ar[..], params, "cwd"));
+    a[0].n += 1;
+    cd_acp_replay(s, cast(string) lb[0..<ln]);
+    cd_acp_result(id, "null");
     return;
   }
   if method == "session/prompt" {

@@ -680,8 +680,9 @@ editors start their agents. [acp.coax](../../coder/tui/acp.coax) answers:
 
 | Method | Coder does |
 | --- | --- |
-| `initialize` | Protocol version 1; no session loading; text prompts and embedded resources. |
-| `session/new` | Keeps the folder (`cwd`) and returns a session ID. |
+| `initialize` | Protocol version 1; session loading; text prompts and embedded resources. |
+| `session/new` | Keeps the folder (`cwd`) and returns a session ID, `acp-` and the time in microseconds. |
+| `session/load` | Replays the conversation as `session/update` notifications, oldest turn first, then answers `null`. A later prompt continues it. |
 | `session/prompt` | The first runs `coder run TEXT --json` in the folder; each later one `coder fork LAST TEXT --json`, which carries the conversation. It answers `{"stopReason":"end_turn"}` when the turn ends. |
 | `session/cancel` | Leaves the running Coder session's stop file; the turn answers `{"stopReason":"cancelled"}`. |
 
@@ -692,6 +693,16 @@ exact name), and its result a `tool_call_update` that is `completed` or
 `failed`. `--engine` picks the engine for every turn; without it, System One
 picks (chapter 13). An editor's settings entry is the command
 `openagents coder acp`.
+
+An ACP session outlives the `coder acp` process. Each time a turn starts
+a Coder session, `sessions/ID.acp` records it as the conversation's
+latest. Each turn is a fork of the one before, so `session/load` walks the
+`parent` field of each log's first line back to the first turn and replays
+every log from there. What you typed becomes `user_message_chunk`, and the
+rest is the same updates a live turn sends. Asks aren't asked again. The
+smoke closes the editor's process, starts a new one, and loads the
+three-turn conversation: the three prompts come back in order, then a new
+prompt continues the conversation. An unknown ID is refused.
 
 ### Permission from the editor
 
@@ -849,8 +860,8 @@ The smoke posts an `initialize`, a notification, a `coder_status` call, a
 - **Chapter5's sandbox itself.** Remote calls go through this chapter's
   policy, not `sb_call`, whose approvals, pattern grants, simulated clock
   and replay are bound to chapter4's four built-in bodies.
-- **ACP beyond the basics.** `coder acp` doesn't load past sessions, read
-  files through the editor, or send diffs as ACP diff content. No editor
+- **ACP beyond the basics.** `coder acp` doesn't read files through the
+  editor or send diffs as ACP diff content. No editor
   has driven it yet; the smoke drives it as one would.
 - **OpenAgents wire contracts.** This chapter speaks third-party protocols
   only. A protocol OpenAgents publishes starts in `proto/` and
