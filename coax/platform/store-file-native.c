@@ -178,13 +178,26 @@ int64_t cxfs_put(int64_t byte) {
   fs_out[fs_out_n++] = (unsigned char)byte;
   return 0;
 }
-int64_t cxfs_write(int64_t append) {
+/* Flushes f to the storage itself: F_FULLFSYNC on macOS, where fsync leaves
+   the data in the drive's cache; fsync elsewhere. */
+static int full_sync(int f) {
+#if defined(F_FULLFSYNC)
+  if (fcntl(f, F_FULLFSYNC) == 0) return 0;
+#endif
+  return fsync(f);
+}
+
+/* mode 0 replaces, 1 appends; 2 and 3 do the same and return only once the
+   data, and for a file that was empty or new its folder entry, are on storage. */
+int64_t cxfs_write(int64_t mode) {
   const char *p = take_path();
   size_t n = fs_out_n;
   fs_out_n = 0;
   if (!p) return -1;
+  int append = mode == 1 || mode == 3, durable = mode >= 2;
   int f = open(p, O_WRONLY | O_CREAT | O_CLOEXEC | (append ? O_APPEND : O_TRUNC), 0644);
   if (f < 0) return -1;
+  off_t was = durable ? lseek(f, 0, SEEK_END) : 1;
   size_t done = 0;
   while (done < n) {
     ssize_t w = write(f, fs_out + done, n - done);
@@ -192,7 +205,20 @@ int64_t cxfs_write(int64_t append) {
     if (w <= 0) { close(f); return -1; }
     done += (size_t)w;
   }
-  return close(f) == 0 ? 0 : -1;
+  if (durable && full_sync(f) != 0) { close(f); return -1; }
+  if (close(f) != 0) return -1;
+  if (durable && was <= 0) {
+    char dir[CXFS_PATH_MAX + 1];
+    size_t k = strlen(p); if (k > CXFS_PATH_MAX) return -1;
+    memcpy(dir, p, k + 1);
+    char *slash = strrchr(dir, '/');
+    if (!slash) { dir[0] = '.'; dir[1] = 0; } else if (slash == dir) dir[1] = 0; else *slash = 0;
+    int d = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (d < 0) return -1;
+    int r = fsync(d); close(d);
+    if (r != 0) return -1;
+  }
+  return 0;
 }
 
 /* rename(2) in two steps: cxfs_hold keeps the pushed path as the source, then the next pushed path

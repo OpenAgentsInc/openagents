@@ -13,7 +13,7 @@ cxfs_path_push :: (byte: int) -> int #foreign;
 cxfs_read :: () -> int #foreign;
 cxfs_byte :: (i: int) -> int #foreign;
 cxfs_put :: (byte: int) -> int #foreign;
-cxfs_write :: (append: int) -> int #foreign;
+cxfs_write :: (mode: int) -> int #foreign;
 cxfs_kind :: () -> int #foreign;
 cxfs_size :: () -> int #foreign;
 cxfs_mkdir :: () -> int #foreign;
@@ -98,6 +98,13 @@ fs_append :: (path: string, data: string) -> bool {
   ok := fs_put_all(data);
   if !fs_push(path) { r := cxfs_write(1); return false; }
   return cxfs_write(1) == 0 && ok;
+}
+// fs_append that returns only once the data is on storage (and a new file's
+// name in its folder), so a crash or power loss after it keeps the line.
+fs_append_durable :: (path: string, data: string) -> bool {
+  ok := fs_put_all(data);
+  if !fs_push(path) { r := cxfs_write(3); return false; }
+  return cxfs_write(3) == 0 && ok;
 }
 // FS_NONE, FS_FILE, FS_DIR or FS_OTHER; -1 when the path cannot be asked about.
 fs_kind :: (path: string) -> int { return ifx fs_push(path) then cxfs_kind() else -1; }

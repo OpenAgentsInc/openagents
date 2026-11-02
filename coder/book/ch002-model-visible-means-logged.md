@@ -9,8 +9,9 @@
 > replays through chapter1's `hl_replay`. Still to come: the event
 > schemas in `proto/`, a byte format on disk with readers kept for older
 > versions, and a write that is durable before its effect is reported.
-> Coder's session logs recover from a cut at any byte offset (see
-> [In Coder](#in-coder)); this chapter's hash-chained log does not yet.
+> Coder's session logs recover from a cut at any byte offset, and each line
+> is on storage before it is printed (see [In Coder](#in-coder)); this
+> chapter's hash-chained log does neither yet.
 
 The model sees only what the harness sends it. Chapter1's loop already
 keeps that small: step `k`'s request is a prefix of one token array. This
@@ -635,8 +636,19 @@ cuts the log inside its end line, leaves a dead process ID, and checks that
 the watchdog's `lost` line follows the last complete line and the cut bytes
 are in `ID.jsonl.cut`.
 
-Durability is still open in Coder too: an append is not followed by
-`fsync`, so a power loss can lose lines the session already reported.
+- **A line is on storage before anyone sees it.** Each session line is
+  written with `fs_append_durable` ([fs.coax](../../coax/lib/sys/fs.coax)),
+  which returns only after the bytes are on storage: `F_FULLFSYNC` on
+  macOS, where plain `fsync` leaves data in the drive's cache, and `fsync`
+  elsewhere, plus a sync of the folder when the file is new. Only then does
+  `--json` print the line, so a line a reader saw survives a crash or power
+  loss. On an Apple-silicon Mac this costs about 3 ms a line: a five-line
+  `coder run` went from 26 ms to 42 ms.
+
+What this does not give: Claude Code and Codex run their own tools and
+report them afterward, so a tool line is durable before Coder reports it,
+not before the tool's effect happens. Microcoder and `$ ` commands are
+logged when their results come back for the same reason.
 
 ## What remains
 
@@ -648,8 +660,10 @@ Durability is still open in Coder too: an append is not followed by
   to its last complete event, with the truncation reported. Here a log can
   be cut only between events, where it verifies with its last turn open.
   Coder's session logs already do this (see [In Coder](#in-coder)).
-- Durability: each event written to storage before its effect is reported,
-  so a crash leaves a log that ends at a known boundary.
+- Durability for this chapter's log: each event written to storage before
+  its effect is reported, so a crash leaves a log that ends at a known
+  boundary. Coder's session log does the first half (see
+  [In Coder](#in-coder)).
 - Text added inside a turn (a user interjecting, or context injected
   between steps). Here text comes only between turns.
 

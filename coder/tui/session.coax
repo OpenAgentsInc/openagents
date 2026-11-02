@@ -164,7 +164,7 @@ cs_put :: (a: [] App, n0: int) {
   n := cs_hide(l, l[0].line[0..<l[0].line.count - 1], n0);
   l[0].line[n] = 10;
   line := cast(string) l[0].line[0..<n + 1];
-  if l[0].on { x := fs_append(cast(string) l[0].path[0..<l[0].npath], line); }
+  if l[0].on { x := fs_append_durable(cast(string) l[0].path[0..<l[0].npath], line); }   // on storage before the line is printed or its effect reported (chapter 2)
   if l[0].json { r := cxterm_write(l[0].line[0..<n + 1]); }
 }
 
@@ -241,7 +241,7 @@ cs_append_after :: (path: string, line: string) -> bool {
     x := fs_append(cast(string) cb[0..<cn], cast(string) fb[k..<m]); y := fs_append(cast(string) cb[0..<cn], "\n");
     if !fs_write(cast(string) nb[0..<nn], cast(string) fb[0..<k]) || !fs_rename(cast(string) nb[0..<nn], path) { return false; }
   }
-  return fs_append(path, line);
+  return fs_append_durable(path, line);
 }
 
 cs_text :: (a: [] App, kind: string, key: string, text: string) {
