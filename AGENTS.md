@@ -125,9 +125,14 @@ tests for what you touched, not everything.
 ## Git
 
 - Work on `main`. Commit only the files you changed, and push to `main`.
-- Other agents work in this checkout at the same time. Never stash, reset
-  or check out over their uncommitted work. If the tree is dirty, use a
-  fresh worktree from `origin/main`.
+- **Never edit files in the main checkout**
+  (`/Users/christopherdavid/work/openagents`). It stays clean on `main` so
+  anyone can `git pull --ff-only` it. Do every edit, build and test in your
+  own worktree: `git worktree add ../oa-<topic> origin/main`, then push
+  `HEAD:main` from there and remove the worktree when you finish.
+- If you find uncommitted changes in the main checkout, they are another
+  agent's. Never stash, reset or check out over them; ask that agent to
+  move them to a worktree.
 - Rebase on `origin/main` before pushing. When you change something that
   another change also touched (a version number, error codes, the grammar),
   merge both changes; don't overwrite theirs.
