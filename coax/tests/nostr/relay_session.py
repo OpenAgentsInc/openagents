@@ -565,6 +565,101 @@ def negentropy(port):
     w.close(); w2.close()
 
 
+def post(port, body, auth, ctype='application/nostr+json+rpc', head=None):
+    """One HTTP POST to the relay; (status, parsed JSON or raw body)."""
+    s = connect(port)
+    data = body.encode() if isinstance(body, str) else body
+    h = head if head is not None else ('POST / HTTP/1.1\r\nHost: x\r\nContent-Type: %s\r\nAuthorization: %s\r\nContent-Length: %d\r\n\r\n'
+                                      % (ctype, auth, len(data)))
+    s.sendall(h.encode() + data)
+    got = b''
+    while True:
+        c = s.recv(65536)
+        if not c:
+            break
+        got += c
+    s.close()
+    head_, _, rest = got.partition(b'\r\n\r\n')
+    code = int(head_.split(b' ')[1]) if head_ else 0
+    try:
+        return code, json.loads(rest)
+    except ValueError:
+        return code, rest
+
+
+def nip98(port, body, label=None, url=None, method='POST', payload=True, at=None):
+    """A NIP-98 Authorization header for a POST of body to the relay's URL."""
+    tags = [["u", url or '%s://127.0.0.1:%d' % (SCHEME, port)], ["method", method]]
+    if payload:
+        tags.append(["payload", hashlib.sha256(body.encode()).hexdigest()])
+    e = sign([{"kind": 27235, "created_at": at or int(time.time()), "tags": tags, "content": ""}], label)[0]
+    return 'Nostr ' + base64.b64encode(json.dumps(e, separators=(',', ':')).encode()).decode()
+
+
+def admin(exe, log):
+    """NIP-86 (nip86.coax through relay.coax's ry_admin): --admin KEY, NIP-98 auth, lists that admission consults."""
+    refused_start(exe, ['--admin', 'abc'], 'a short --admin key', '64-digit hex')
+    refused_start(exe, ['--admin', 'g' * 64], 'a non-hex --admin key', '64-digit hex')
+    me = sign([{"kind": 1, "created_at": 1, "tags": [], "content": ""}])[0]['pubkey']
+    other_key = 'coax relay r1 second test key'
+    other = sign([{"kind": 1, "created_at": 1, "tags": [], "content": ""}], other_key)[0]['pubkey']
+    p, port = start(exe, log)
+    try:
+        code, _ = post(port, '{"method":"supportedmethods","params":[]}', 'Nostr x')
+        check(code == 400 and 86 not in info(port)['supported_nips'], 'NIP-86: without --admin a POST is a 400 and NIP-11 lists no 86')
+    finally:
+        p.terminate(); p.wait(10)
+    p = subprocess.Popen([str(exe), '--listen', '127.0.0.1', '--port', '0', '--rate', '1000,1000,1000', '--admin', me] + TLS_ARGS,
+                         stdout=subprocess.PIPE, stderr=log, text=True, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
+    try:
+        port = int(p.stdout.readline().split()[-1])
+        check(info(port)['supported_nips'] == [1, 9, 11, 40, 42, 45, 50, 62, 70, 77, 86], 'NIP-86: with --admin NIP-11 lists 86')
+        body = '{"method":"supportedmethods","params":[]}'
+        code, r = post(port, body, nip98(port, body))
+        check(code == 200 and 'banpubkey' in r['result'] and 'supportedmethods' not in r['result'], 'NIP-86: supportedmethods from the admin key')
+        code, r = post(port, body, nip98(port, body, label=other_key))
+        check(code == 403 and r['error'] == 'not an admin key', 'NIP-86: another key is 403')
+        code, r = post(port, body, nip98(port, body, url='ws://elsewhere:1'))
+        check(code == 401 and r['error'].startswith('unauthorized: '), 'NIP-86: a NIP-98 event for another URL is 401 (%r)' % (r,))
+        code, r = post(port, body, nip98(port, body, payload=False))
+        check(code == 401 and r['error'] == 'the NIP-98 event has no payload tag', 'NIP-86: no payload tag is 401')
+        code, r = post(port, body, nip98(port, body), ctype='application/json')
+        check(code == 415, 'NIP-86: another Content-Type is 415')
+        auth = nip98(port, body)
+        check(post(port, body, auth)[0] == 200 and post(port, body, auth) == (401, {'result': None, 'error': 'event id already used'}),
+              'NIP-86: a NIP-98 event is good once')
+        code, _ = post(port, 'x' * 4097, 'Nostr x')
+        check(code == 413, 'NIP-86: a body over 4096 bytes is 413')
+        code, _ = post(port, '', '', head='POST / HTTP/1.1\r\nContent-Length: 1x\r\n\r\n')
+        check(code == 400, 'NIP-86: a bad Content-Length is 400')
+        now = int(time.time())
+        theirs = sign([{"kind": 1, "created_at": now - 5, "tags": [], "content": "before the ban"},
+                       {"kind": 1, "created_at": now - 4, "tags": [], "content": "after the ban"}], other_key)
+        mine = sign([{"kind": 1, "created_at": now - 5, "tags": [], "content": "mine"},
+                     {"kind": 7, "created_at": now - 5, "tags": [], "content": "+"}])
+        w = Ws(port)
+        check(w.auth()[2] is True and publish(w, theirs[0])[2] is True, 'NIP-86: the other key publishes before any ban')
+        ban = '{"method":"banpubkey","params":["%s","spam"]}' % other
+        check(post(port, ban, nip98(port, ban)) == (200, {'result': True}), 'NIP-86: banpubkey')
+        check(publish(w, theirs[1]) == ['OK', theirs[1]['id'], False, 'blocked: this key is banned on this relay'], 'NIP-86: a banned key is refused')
+        lst = '{"method":"listbannedpubkeys","params":[]}'
+        check(post(port, lst, nip98(port, lst)) == (200, {'result': [{'pubkey': other, 'reason': 'spam'}]}), 'NIP-86: listbannedpubkeys')
+        dis = '{"method":"disallowkind","params":[7]}'
+        check(post(port, dis, nip98(port, dis))[0] == 200 and publish(w, mine[1])[3] == 'blocked: this relay does not accept this kind'
+              and publish(w, mine[0])[2] is True, 'NIP-86: a disallowed kind is refused, others pass')
+        unban = '{"method":"unbanpubkey","params":["%s"]}' % other
+        check(post(port, unban, nip98(port, unban))[0] == 200 and publish(w, theirs[1])[2] is True, 'NIP-86: after unbanpubkey the key publishes again')
+        allow = '{"method":"allowpubkey","params":["%s"]}' % other
+        later = sign([{"kind": 1, "created_at": now - 3, "tags": [], "content": "allow list"}])[0]
+        check(post(port, allow, nip98(port, allow))[0] == 200 and publish(w, later) == ['OK', later['id'], False, "restricted: this key is not on this relay's allow list"],
+              'NIP-86: with an allow list only its keys publish')
+        bad = '{"method":"nosuchmethod","params":[]}'
+        check(post(port, bad, nip98(port, bad)) == (400, {'result': None, 'error': 'unknown method'}), 'NIP-86: an unknown method is 400')
+        w.close()
+    finally:
+        p.terminate(); p.wait(10)
+
+
 def proof_of_work(exe, log):
     """NIP-13 (nip13.coax): --pow 8 asks for 8 leading zero bits and a nonce committing to 8."""
     refused_start(exe, ['--pow', '257'], 'a difficulty over 256', '0 to 256')
@@ -795,6 +890,7 @@ def main():
                 p.terminate(); p.wait(10)
             rate_limits(exe, log)
             proof_of_work(exe, log)
+            admin(exe, log)
             if tls:
                 tls_cases(exe, d, log, store, client)
         err = (d / 'relay.err').read_text()

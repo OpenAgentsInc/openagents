@@ -742,3 +742,237 @@ rr_neg_text :: (k: int) -> string {
 }
 // The NEG-ERR's fourth element (NIP-77's record limit), or -1 for none.
 rr_neg_records :: (k: int) -> int { return ifx k == RR_NE_BIG then RR_NEG_MAX else -1; }
+
+// ---- NIP-86 management (chapter 67) -------------------------------------------
+//
+// With --admin KEY (a 64-digit hex public key; the flag may repeat, up to
+// RR_ADMINS keys) the relay answers NIP-86 on its own URL: a POST that
+// rr_post reads goes to nip86.coax's n86_serve, which checks the NIP-98
+// Authorization (u is the relay URL, the NIP-42 one; the payload tag is
+// required) and that the signer is an admin key, then changes the policy.
+// Every EVENT is then put to n86_admit after its signature and the rate
+// limit: a banned key or event, a key off a non-empty allow list, a
+// disallowed kind or one off a non-empty allowed-kinds list is refused.
+// Without --admin a POST is a 400, as before, and NIP-11 doesn't list 86.
+// The policy is in memory: a restart starts with empty lists.
+//
+// nip86.coax remembers RR_SEEN NIP-98 event ids so none is used twice; an
+// event is good for 60 s either side of its created_at, so one accepted at
+// time t is dead by t + 120. rr_admin_forget empties the list once
+// RR_ADMIN_FORGET_S seconds have passed since the last id was added; until
+// then a ninth request is a 503.
+RR_ADMINS :: 4; RR_SEEN :: 8; RR_ADMIN_FORGET_S :: 121;
+RR_POST_HEAD :: 8192; RR_POST_BODY :: 4096;
+RR_P_WAIT :: 0; RR_P_OK :: 1; RR_P_BAD :: 2; RR_P_BIG :: 3; RR_P_NOT :: 4;
+// n86_admit's answers, mirrored (tied to nip86.coax in relay.coax).
+RR_N86_OK :: 0; RR_N86_BANNED :: 1; RR_N86_NOT_ALLOWED :: 2; RR_N86_EVENT :: 3; RR_N86_KIND :: 4; RR_N86_KIND_NOT_ALLOWED :: 5;
+RR_N86_ANSWERS :: 6;
+
+// One POST as read: the spans of its Content-Type and Authorization values
+// and of its body, in the bytes given (from = to = 0 when a header is absent).
+RrPost :: struct { status: int; type_from: int; type_to: int; auth_from: int; auth_to: int; body_from: int; body_to: int; }
+
+#test "a POST: read whole, waited for, or refused" {
+  T := "POST / HTTP/1.1\r\nHost: h\r\nContent-Type: application/nostr+json+rpc\r\nAuthorization: Nostr abc=\r\nContent-Length: 5\r\n\r\nhello";
+  p := rr_post(T);
+  #assert p.status == RR_P_OK && T[p.type_from..<p.type_to] == "application/nostr+json+rpc" && T[p.auth_from..<p.auth_to] == "Nostr abc=";
+  #assert T[p.body_from..<p.body_to] == "hello" && p.body_to == T.count;
+  // bytes past the body are not part of it; names in any case; spaces and tabs trimmed
+  q := "POST /x HTTP/1.1\r\ncontent-length:  2 \r\nAUTHORIZATION:\tN \t\r\n\r\nabcd";
+  p = rr_post(q); #assert p.status == RR_P_OK && q[p.body_from..<p.body_to] == "ab" && q[p.auth_from..<p.auth_to] == "N" && p.type_from == 0 && p.type_to == 0;
+  q = "POST /x HTTP/1.1\r\nContent-Length:2\r\nContent-Type:t\r\nAuthorization:   \r\n\r\nab";
+  p = rr_post(q); #assert p.status == RR_P_OK && q[p.type_from..<p.type_to] == "t" && p.auth_from == p.auth_to && p.auth_to == q.count - 6;
+  // a body of nothing
+  p = rr_post("POST / HTTP/1.1\r\nContent-Length: 0\r\n\r\n"); #assert p.status == RR_P_OK && p.body_from == p.body_to && p.body_to == 38;
+  // waiting: for the start, the head, the body
+  #assert rr_post("").status == RR_P_WAIT && rr_post("P").status == RR_P_WAIT && rr_post("POST").status == RR_P_WAIT;
+  #assert rr_post("POST / HTTP/1.1\r\nContent-Length: 5\r\n\r").status == RR_P_WAIT && rr_post("POST / HTTP/1.1").status == RR_P_WAIT;
+  #assert rr_post(T[0..<T.count - 1]).status == RR_P_WAIT && rr_post("POST / HTTP/1.1\r\nContent-Length: 4096\r\n\r\n").status == RR_P_WAIT;
+  // not a POST: the WebSocket and NIP-11 path takes it
+  #assert rr_post("GET / HTTP/1.1\r\n\r\n").status == RR_P_NOT && rr_post("G").status == RR_P_NOT && rr_post("POS ").status == RR_P_NOT;
+  #assert rr_post("PUT / HTTP/1.1\r\n\r\n").status == RR_P_NOT && rr_post("post / HTTP/1.1\r\n\r\n").status == RR_P_NOT;
+  // refused: the request line, a header line, the length
+  bad := [22] string.["POST / HTTP/1.0\r\nContent-Length: 0\r\n\r\n", "POST  HTTP/1.1\r\nContent-Length: 0\r\n\r\n",
+    "POST /a b HTTP/1.1\r\nContent-Length: 0\r\n\r\n", "POST / HTTP/1.1 \r\nContent-Length: 0\r\n\r\n",
+    "POST / HTTP/1.1\r\n\r\n", "POST / HTTP/1.1\r\nContent-Length: \r\n\r\n", "POST / HTTP/1.1\r\nContent-Length: 1x\r\n\r\nab",
+    "POST / HTTP/1.1\r\nContent-Length: -1\r\n\r\n", "POST / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 1\r\n\r\na",
+    "POST / HTTP/1.1\r\nContent-Length: 0\r\nContent-Length: 0\r\n\r\n", "POST / HTTP/1.1\r\nContent-Length: 1:\r\n\r\na",
+    "POST / HTTP/1.1\r\nContent-Length: /\r\n\r\na",
+    "POST / HTTP/1.1\r\nnocolon\r\nContent-Length: 0\r\n\r\n", "POST / HTTP/1.1\r\n: v\r\nContent-Length: 0\r\n\r\n",
+    "POST / HTTP/1.1\r\nContent-Type: a\r\nContent-Type: b\r\nContent-Length: 0\r\n\r\n",
+    "POST / HTTP/1.1\r\nAuthorization: a\r\nAuthorization: b\r\nContent-Length: 0\r\n\r\n",
+    "POST /\r\nContent-Length: 0\r\n\r\n", "POST / HTTP/1.1\r\nContent-Length: 1 2\r\n\r\nab", "POST / HTTP/1.1\nContent-Length: 0\r\n\r\n",
+    "POST \r\n\r\n", "POST / HTTP/1.1\r\nContent-Length: 0\n\r\n", "POST / HTTP/1.1\r\nX: a\nContent-Length: 0\r\n\r\n"];
+  for b: bad { #assert rr_post(b).status == RR_P_BAD; }
+  // too big: a body over RR_POST_BODY, a line past RR_POST_HEAD bytes
+  #assert rr_post("POST / HTTP/1.1\r\nContent-Length: 4097\r\n\r\n").status == RR_P_BIG && rr_post("POST / HTTP/1.1\r\nContent-Length: 40960\r\n\r\n").status == RR_P_BIG;
+  #assert rr_post("POST / HTTP/1.1\r\nContent-Length: 99999999999999999999\r\n\r\n").status == RR_P_BIG;
+  long: [RR_POST_HEAD + 4] u8; pre := "POST / HTTP/1.1\r\nX: ";
+  for i: 0..<long.count { long[i] = ifx i < pre.count then pre[i] else 'a'; }
+  #assert rr_post(cast(string) long[0..<RR_POST_HEAD - 1]).status == RR_P_WAIT && rr_post(cast(string) long[0..<RR_POST_HEAD]).status == RR_P_BIG;
+  #assert rr_post(cast(string) long[0..<RR_POST_HEAD + 1]).status == RR_P_BIG;
+  // a head whose last newline is the last of RR_POST_HEAD bytes is read; one byte later is too big
+  for i: 0..<4 { long[RR_POST_HEAD - 4 + i] = "\r\n\r\n"[i]; }
+  #assert rr_post(cast(string) long[0..<RR_POST_HEAD]).status == RR_P_BAD;
+  long[RR_POST_HEAD - 4] = 'a'; for i: 0..<4 { long[RR_POST_HEAD - 3 + i] = "\r\n\r\n"[i]; }
+  #assert rr_post(cast(string) long[0..<RR_POST_HEAD + 1]).status == RR_P_BIG;
+  #assert rr_same_fold("Content-Length", "content-length") && !rr_same_fold("Content-Lengt", "content-length") && !rr_same_fold("content-lengtx", "content-length");
+  #assert rr_same_fold("AZ", "az") && !rr_same_fold("@", "`") && !rr_same_fold("[", "{") && rr_same_fold("", "") && !rr_same_fold("az", "AZ");
+}
+// a, ASCII case folded, is b (lowercase).
+rr_same_fold :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    x := a[i];
+    if x >= 'A' && x <= 'Z' { x += 32; }
+    if x != b[i] { return false; }
+  }
+  return true;
+}
+// The request line POST TARGET HTTP/1.1, TARGET without spaces.
+rr_post_line :: (line: string) -> bool {
+  pre := "POST "; tail := " HTTP/1.1";
+  if line.count < pre.count + 1 + tail.count || line[line.count - tail.count..<line.count] != tail { return false; }
+  for k: pre.count..<line.count - tail.count { if line[k] == ' ' { return false; } }
+  return true;
+}
+// The HTTP request in b, when it is a POST: RR_P_OK with its spans once the
+// head (lines ending CRLF, then a blank line, all within RR_POST_HEAD
+// bytes) and the body (exactly Content-Length bytes, at most RR_POST_BODY)
+// are in; RR_P_WAIT until then; RR_P_BAD for a request line other than
+// POST TARGET HTTP/1.1, a line ending in a bare LF, a header line without a
+// name and a colon, a missing, repeated or non-digit Content-Length, or a
+// repeated Content-Type or Authorization; RR_P_BIG; and RR_P_NOT for
+// anything that isn't a POST.
+rr_post :: (b: string) -> RrPost {
+  p: RrPost;
+  pre := "POST ";
+  for i: 0..<pre.count { if i < b.count && b[i] != pre[i] { p.status = RR_P_NOT; return p; } }
+  length := 0; has_length := false; has_type := false; has_auth := false; at := 0;
+  while true {
+    e := at;
+    while e < b.count && e < RR_POST_HEAD && b[e] != '\n' { e += 1; }
+    if e == RR_POST_HEAD { p.status = RR_P_BIG; return p; }
+    if e == b.count { p.status = RR_P_WAIT; return p; }
+    p.status = RR_P_BAD;
+    if b[e - 1] != '\r' { return p; }
+    ls := at; le := e - 1; at = e + 1;
+    if le == ls { break; }
+    if ls == 0 {
+      if !rr_post_line(b[0..<le]) { return p; }
+      continue;
+    }
+    colon := ls;
+    while colon < le && b[colon] != ':' { colon += 1; }
+    if colon == ls || colon == le { return p; }
+    from := colon + 1; to := le;
+    while b[from] == ' ' || b[from] == '\t' { from += 1; }
+    while to > from && (b[to - 1] == ' ' || b[to - 1] == '\t') { to -= 1; }
+    name := b[ls..<colon];
+    if rr_same_fold(name, "content-length") {
+      if has_length || from == to { return p; }
+      has_length = true;
+      for k: from..<to {
+        if b[k] < '0' || b[k] > '9' { return p; }
+        length = length * 10 + cast(int) (b[k] - '0');
+        if length > RR_POST_BODY { p.status = RR_P_BIG; return p; }
+      }
+    } else if rr_same_fold(name, "content-type") {
+      if has_type { return p; }
+      has_type = true; p.type_from = from; p.type_to = to;
+    } else if rr_same_fold(name, "authorization") {
+      if has_auth { return p; }
+      has_auth = true; p.auth_from = from; p.auth_to = to;
+    }
+  }
+  if !has_length { return p; }
+  p.body_from = at; p.body_to = at + length;
+  p.status = ifx b.count < p.body_to then RR_P_WAIT else RR_P_OK;
+  return p;
+}
+
+#test "an admin key: 64 hex digits, either case" {
+  k: [32] u8;
+  #assert rr_admin_key("00ff9A0fa0000000000000000000000000000000000000000000000000000001", k[..]);
+  #assert k[0] == 0 && k[1] == 0xff && k[2] == 0x9a && k[3] == 0x0f && k[4] == 0xa0 && k[31] == 1;
+  #assert !rr_admin_key("00ff9a0fa000000000000000000000000000000000000000000000000000000", k[..]);
+  #assert !rr_admin_key("00ff9a0fa00000000000000000000000000000000000000000000000000000011", k[..]);
+  #assert !rr_admin_key("g0ff9a0fa0000000000000000000000000000000000000000000000000000001", k[..]);
+  #assert !rr_admin_key("00ff9a0fa000000000000000000000000000000000000000000000000000000G", k[..]);
+  #assert !rr_admin_key("/0ff9a0fa0000000000000000000000000000000000000000000000000000001", k[..]);
+  #assert !rr_admin_key(":0ff9a0fa0000000000000000000000000000000000000000000000000000001", k[..]);
+  #assert !rr_admin_key("@0ff9a0fa0000000000000000000000000000000000000000000000000000001", k[..]);
+  #assert !rr_admin_key("`0ff9a0fa0000000000000000000000000000000000000000000000000000001", k[..]);
+  #assert rr_admin_key("AFaf000000000000000000000000000000000000000000000000000000000000", k[..]) && k[0] == 0xaf && k[1] == 0xaf && k[2] == 0;
+  #assert !rr_admin_key("00ff9a0fa0000000000000000000000000000000000000000000000000000001", k[0..<31]);
+  #assert rr_nibble('0') == 0 && rr_nibble('9') == 9 && rr_nibble('a') == 10 && rr_nibble('f') == 15 && rr_nibble('A') == 10 && rr_nibble('F') == 15;
+  #assert rr_nibble('g') == -1 && rr_nibble('G') == -1 && rr_nibble('/') == -1 && rr_nibble(':') == -1 && rr_nibble('@') == -1 && rr_nibble('`') == -1;
+}
+rr_nibble :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
+  return -1;
+}
+// --admin's value as 32 bytes into out: whether it is 64 hex digits.
+rr_admin_key :: (hex: string, out: [] u8) -> bool {
+  if hex.count != 64 || out.count != 32 { return false; }
+  for i: 0..<32 {
+    hi := rr_nibble(hex[2 * i]); lo := rr_nibble(hex[2 * i + 1]);
+    if hi < 0 || lo < 0 { return false; }
+    out[i] = cast(u8) (hi * 16 + lo);
+  }
+  return true;
+}
+
+#test "used NIP-98 ids are forgotten only once every one of them is dead" {
+  #assert !rr_admin_forget(0, 0, 1000000);
+  #assert !rr_admin_forget(3, 1000, 1121) && rr_admin_forget(3, 1000, 1122) && rr_admin_forget(1, 1000, 5000);
+  #assert !rr_admin_forget(8, 1000, 1000) && !rr_admin_forget(8, 1000, 900);
+}
+// Whether the n used ids, the last added at last, may all be forgotten at now.
+rr_admin_forget :: (n: int, last: int, now: int) -> bool { return n > 0 && now - last > RR_ADMIN_FORGET_S; }
+
+#test "NIP-86 answers: an HTTP status line, and the OK texts of admission" {
+  #assert rr_http_status(200) == "200 OK" && rr_http_status(400) == "400 Bad Request" && rr_http_status(401) == "401 Unauthorized";
+  #assert rr_http_status(403) == "403 Forbidden" && rr_http_status(405) == "405 Method Not Allowed" && rr_http_status(413) == "413 Content Too Large";
+  #assert rr_http_status(415) == "415 Unsupported Media Type" && rr_http_status(503) == "503 Service Unavailable";
+  #assert rr_http_status(500) == "500 Internal Server Error" && rr_http_status(201) == "500 Internal Server Error" && rr_http_status(0) == "500 Internal Server Error";
+  for k: 0..<RR_N86_ANSWERS { #assert (k == RR_N86_OK) == (rr_admin_prefix(k).count == 0) && (k == RR_N86_OK) == (rr_admin_text(k).count == 0); }
+  #assert rr_admin_prefix(RR_N86_BANNED) == "blocked" && rr_admin_text(RR_N86_BANNED) == "this key is banned on this relay";
+  #assert rr_admin_prefix(RR_N86_NOT_ALLOWED) == "restricted" && rr_admin_text(RR_N86_NOT_ALLOWED) == "this key is not on this relay's allow list";
+  #assert rr_admin_prefix(RR_N86_EVENT) == "blocked" && rr_admin_text(RR_N86_EVENT) == "this event is banned on this relay";
+  #assert rr_admin_prefix(RR_N86_KIND) == "blocked" && rr_admin_text(RR_N86_KIND) == "this relay does not accept this kind";
+  #assert rr_admin_prefix(RR_N86_KIND_NOT_ALLOWED) == "restricted" && rr_admin_text(RR_N86_KIND_NOT_ALLOWED) == "this kind is not on this relay's allowed list";
+  #assert rr_admin_prefix(-1) == "error" && rr_admin_prefix(RR_N86_ANSWERS) == "error";
+  #assert rr_admin_text(-1) == "refused by this relay's policy" && rr_admin_text(RR_N86_ANSWERS) == "refused by this relay's policy";
+}
+rr_http_status :: (code: int) -> string {
+  codes := [8] int.[200, 400, 401, 403, 405, 413, 415, 503];
+  lines := [8] string.["200 OK", "400 Bad Request", "401 Unauthorized", "403 Forbidden", "405 Method Not Allowed",
+    "413 Content Too Large", "415 Unsupported Media Type", "503 Service Unavailable"];
+  for i: 0..<8 { if codes[i] == code { return lines[i]; } }
+  return "500 Internal Server Error";
+}
+rr_admin_prefix :: (k: int) -> string {
+  p := [6] string.["", "blocked", "restricted", "blocked", "blocked", "restricted"];
+  if k < 0 || k >= RR_N86_ANSWERS { return "error"; }
+  return p[k];
+}
+rr_admin_text :: (k: int) -> string {
+  t := [6] string.["", "this key is banned on this relay", "this key is not on this relay's allow list",
+    "this event is banned on this relay", "this relay does not accept this kind", "this kind is not on this relay's allowed list"];
+  if k < 0 || k >= RR_N86_ANSWERS { return "refused by this relay's policy"; }
+  return t[k];
+}
+
+// The served document with --admin: RR_NIP11 with 86 after 77.
+RR_NIP11_ADMIN :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,50,62,70,77,86],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+#test "with --admin the document lists 86 after 77, and nothing else changes" {
+  #assert rr_nip11_base(false) == RR_NIP11 && rr_nip11_base(true) == RR_NIP11_ADMIN;
+  at := 0; while RR_NIP11[at..<at + 4] != ",77]" { at += 1; }
+  #assert RR_NIP11_ADMIN.count == RR_NIP11.count + 3 && RR_NIP11_ADMIN[0..<at + 3] == RR_NIP11[0..<at + 3];
+  #assert RR_NIP11_ADMIN[at + 3..<at + 6] == ",86" && RR_NIP11_ADMIN[at + 6..<RR_NIP11_ADMIN.count] == RR_NIP11[at + 3..<RR_NIP11.count];
+}
+// The document before rt_nip11 and rr_nip11_pow: with 86 when admin keys are set.
+rr_nip11_base :: (admin: bool) -> string { return ifx admin then RR_NIP11_ADMIN else RR_NIP11; }

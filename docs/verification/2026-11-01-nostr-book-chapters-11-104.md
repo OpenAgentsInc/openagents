@@ -107,7 +107,14 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
      `relay_store.coax`. NIP-11 lists 77; `relay_server.coax` (only
      `RS_NIP11` changed) 347 of 347. `relay_session.py` under ASan/UBSan
      syncs against `negentropy_ref.py`.
-   - Still not wired: `nip86`, `nip43`, `nip29`.
+   - `nip86` wired behind `--admin PUBKEY`: `rr_post` (`relay_route.coax`)
+     reads the POST, `ry_admin` answers with `n86_serve` (NIP-98 `u` the
+     relay URL), `ry_event` calls `n86_admit`; used NIP-98 ids are
+     forgotten 121 s after the last (`rr_admin_forget`); NIP-11 lists 86
+     only with `--admin`. `relay_route.coax` root-only 824 of 824;
+     `relay_session.py` (ASan/UBSan) drives ban, list, disallow, unban and
+     allow against a running relay.
+   - Still not wired: `nip43`, `nip29`.
    - The store's size is now `--store-capacity EVENTS` (128 to 1,048,576
      records, 2 KiB of arena each; default 2,048 and 4 MiB). relay-host.c
      allocates the arrays and calls `#export_c ry_main`; `relay_route.coax`

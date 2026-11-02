@@ -175,12 +175,16 @@ The list names what the relay does, not what its libraries could do:
 | 70 | an event with the `"-"` tag only from a connection authenticated as its author | `nip70.coax`'s `nip70_admit` (chapter 42) |
 | 77 | `NEG-OPEN`, `NEG-MSG` and `NEG-CLOSE`: Negentropy over the stored events matching a filter, up to 4 syncs per connection | `rr_neg_route` and `rr_neg_*` in `relay_route.coax`, `rd_neg_items` in `relay_store.coax`, over `nip77.coax` (chapter 43) |
 
-One NIP is listed only when it is turned on:
+Two NIPs are listed only when they are turned on:
 
 - NIP-13, proof of work: off by default. With `--pow BITS` the relay asks
   each `EVENT` for that many leading zero bits (chapter 56), and
   `rr_nip11_pow` puts 13 into `supported_nips` before the first larger
   NIP and `min_pow_difficulty` at the end of `limitation`.
+- NIP-86, relay management: off by default. With `--admin PUBKEY` the
+  relay answers NIP-86 calls from that key (chapter 67) and serves
+  `RR_NIP11_ADMIN`, the same document with 86 after 77
+  (`rr_nip11_base`).
 
 `relay_server.coax`'s `rs_req` still refuses a filter with `search`
 (`CLOSED` with `invalid: malformed filter`); the relay's `REQ` path calls

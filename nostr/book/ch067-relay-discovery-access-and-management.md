@@ -46,8 +46,9 @@ requests (28934, 28936).
 The helpers and data for each file's checks are in
 `coax/tests/nostr/nip86_fixtures.coax`, `nip66_fixtures.coax` and
 `nip43_fixtures.coax`, so that mutation changes the library and not the
-checks. Wiring these into the relay's sockets (chapter 34) and storing the
-policy are the relay's, and out of scope here.
+checks. `coax/relay/relay.coax` serves NIP-86 with `--admin` (see
+[The relay's endpoint](#the-relays-endpoint)); NIP-66 and NIP-43 are not
+wired into it.
 
 ## The management endpoint (NIP-86)
 
@@ -906,8 +907,43 @@ mutation, and mutation of the example and its checks, were not run.
 Chapter 49's mutation and differential records for `nip98.coax` were not
 rerun.
 
+### The relay's endpoint
+
+Since chapter 103's wiring, `coax/relay/relay.coax` started with
+`--admin PUBKEY` (64 hex digits; up to 4 keys) serves this endpoint on its
+own URL:
+
+- `relay_route.coax`'s `rr_post` (`#authority`) reads the request: the
+  line `POST TARGET HTTP/1.1`, header lines ending in CRLF within 8,192
+  bytes, exactly one `Content-Length` of at most 4,096 bytes, and at most
+  one `Content-Type` and one `Authorization`. A request it refuses is a
+  `400`, or a `413` when too large.
+- `n86_serve` answers with the relay URL (the one NIP-42 answers name) as
+  the `u` the NIP-98 event must carry, and the reply goes back as
+  `application/nostr+json+rpc`; then the connection closes.
+- Every `EVENT` goes through `n86_admit` after its signature and the rate
+  limit: a banned key is `blocked: this key is banned on this relay`, a
+  key off a non-empty allow list `restricted: this key is not on this
+  relay's allow list`, and likewise for a banned event, a disallowed kind
+  and a kind off the allowed-kinds list.
+- NIP-11 lists 86 only with `--admin` (`rr_nip11_base`).
+- `n86_serve` remembers 8 used NIP-98 IDs. An event is good for 60 seconds
+  either side of its `created_at`, so one accepted at time t is dead by
+  t + 120: the relay forgets them all once 121 seconds pass after the last
+  one was added (`rr_admin_forget`). Until then a ninth call is a `503`.
+- Without `--admin`, a `POST` is a `400`, as before.
+
+Root-only mutation of `relay_route.coax` on 2026-11-01: 824 of 824
+killed. `relay_session.py` (ASan and UBSan) checks each refusal, a
+replayed event, `banpubkey` and its effect on a connected publisher,
+`listbannedpubkeys`, `disallowkind`, `unbanpubkey` and `allowpubkey`
+against a running relay.
+
 ### Not built
 
+- The relay keeps the policy in memory: a restart starts with empty lists.
+  `changerelayname` changes the policy's name, not the served NIP-11
+  document. Banning a key or event doesn't remove what is already stored.
 - NIP-86: `allowevent`, `unallowevent`, `listallowedevents`,
   `listeventsneedingmoderation`, roles, claims, IP blocks,
   `changerelaydescription` and `changerelayicon`.
@@ -915,8 +951,6 @@ rerun.
   the content.
 - NIP-43: role definitions (33534), invites (28935), checking claims, and
   the member's own kind 10010 list.
-- Serving the endpoint on the relay's socket, storing the policy, and
-  calling `n86_admit` from the relay's `EVENT` path.
 
 ## Summary
 

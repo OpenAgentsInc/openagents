@@ -59,6 +59,13 @@
 // RR_NEG_MAX items, too many syncs, a client message over RR_NEG_IN bytes or
 // RR_NEG_IDLE_S seconds without a message: NEG-ERR, and the session is gone.
 //
+// NIP-86 (chapter 67, nip86.coax): with --admin KEY the relay answers a
+// POST on its URL (relay_route.coax's rr_post reads it) with n86_serve:
+// NIP-98 auth naming the relay URL, then the methods nip86.coax builds.
+// Every EVENT is put to n86_admit after its signature and the rate limit,
+// so a banned key or event, or a kind or key the lists keep out, is
+// refused. The lists are in memory; NIP-11 then lists 86.
+//
 // Routing (which reply goes to which connection and subscription) is
 // relay_route.coax's (#authority); this file moves bytes and calls it.
 // NIP-42: every WebSocket gets a challenge after the 101 (nip42_issue, 32
@@ -74,6 +81,7 @@
 #load "../lib/nostr/relay_rate.coax";
 #load "../lib/nostr/nip70.coax";
 #load "../lib/nostr/nip13.coax";
+#load "../lib/nostr/nip86.coax";
 // message_server.coax's frames agree with message.coax's (#6015).
 #load "../lib/nostr/message_agree.coax";
 
@@ -91,6 +99,9 @@
 #assert RR_NSD_DELETED == NSD_DELETED && RR_NSD_NO_ROOM == NSD_NO_ROOM;
 #assert RR_N77_OK == N77_OK && RR_N77_VERB == N77_VERB && RR_N77_SUB == N77_SUB && RR_N77_FRAME == N77_FRAME;
 #assert RR_N77_OPEN == N77_OPEN && RR_N77_MSG == N77_MSG && RR_N77_CLOSE == N77_CLOSE && RR_N77_ERR == N77_ERR;
+#assert RR_N86_OK == N86_ADMIT_OK && RR_N86_BANNED == N86_ADMIT_BANNED && RR_N86_NOT_ALLOWED == N86_ADMIT_NOT_ALLOWED;
+#assert RR_N86_EVENT == N86_ADMIT_EVENT && RR_N86_KIND == N86_ADMIT_KIND && RR_N86_KIND_NOT_ALLOWED == N86_ADMIT_KIND_NOT_ALLOWED;
+#assert RR_ADMINS == N86_MAX_ADMINS && RR_SEEN == N86_SEEN && RR_POST_HEAD + RR_POST_BODY <= RY_IN;
 #assert RR_NEG_FRAME >= NEG_FRAME_MIN && 2 * (RR_NEG_FRAME + RY_NEG_SLACK) + 2 * 256 + 32 <= RY_OUT - 14;
 #assert RR_NEG_IN * 2 == JSON_MAX_STRING && RR_NEG_FRAME * 2 <= JSON_MAX_STRING;
 #assert RY_SENT <= 2032;
@@ -115,6 +126,9 @@ ry_host_store :: () -> int #foreign;
 ry_host_tls :: () -> int #foreign;
 ry_host_rate :: (i: int) -> int #foreign;
 ry_host_pow :: () -> int #foreign;
+ry_host_admin_count :: () -> int #foreign;
+ry_host_admin_len :: (k: int) -> int #foreign;
+ry_host_admin_byte :: (k: int, i: int) -> int #foreign;
 
 // RY_IN holds one partial frame (at most RS_MAX_MESSAGE + 14 bytes) plus one
 // transport read (socket-server-native.h's CXSRV_MAX_IN, 65536), so a client
@@ -153,6 +167,10 @@ RyWork :: struct {
   neg_items: [RR_NEG_MAX] NegItem; // one sync's items (rd_neg_items)
   neg_in: [RR_NEG_IN] u8;          // one NEG-OPEN or NEG-MSG message, decoded
   neg_out: [RR_NEG_FRAME + RY_NEG_SLACK] u8;  // the relay's answer
+  admin: [1] N86Policy;            // --admin keys and the lists n86_admit reads
+  admin_last: int;                 // when a NIP-98 id was last remembered
+  url: [512] u8; url_n: int;       // the relay URL, which a NIP-98 u tag names
+  http: [N86_OUT] u8;              // one NIP-86 reply body
 }
 
 ry_send_raw :: (c: [] RyConn, bytes: string) -> bool {
@@ -211,6 +229,8 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
     key := r.e.public_key;
     rt := rt_event(c[0].rt[..], w[0].keys[..], w[0].rate, key[..], cxsrv_now_s());
     if rt != RT_OK { ok := ry_text(c, w, ms_write_ok(id[..], false, rt_prefix(rt), rt_text(rt), w[0].body[..])); return; }
+    a := n86_admit(w[0].admin[0], key, id, r.e.kind);
+    if a != N86_ADMIT_OK { ok := ry_text(c, w, ms_write_ok(id[..], false, rr_admin_prefix(a), rr_admin_text(a), w[0].body[..])); return; }
     p := nip70_admit(event, true, c[0].auth[..], w[0].scratch[..]);
     if p.decision != N70_ACCEPT { ok := ry_text(c, w, ms_write_ok(id[..], false, nip70_prefix(p.decision), nip70_text(p.decision), w[0].body[..])); return; }
   }
@@ -375,7 +395,32 @@ ry_challenge :: (c: [] RyConn, w: [] RyWork) -> bool {
   if f.error != N42_OK { return false; }
   return ry_text(c, w, f.written);
 }
+// A NIP-86 POST (rr_post's RR_P_OK, BAD or BIG): n86_serve's answer, or
+// 400 or 413; then the connection is closed.
+ry_admin :: (c: [] RyConn, w: [] RyWork, p: RrPost) {
+  b := cast(string) c[0].inb[0..<c[0].used];
+  now := cxsrv_now_s(); n := -1;
+  if p.status == RR_P_OK {
+    pol := w[0].admin[..];
+    if rr_admin_forget(pol[0].seen_n, w[0].admin_last, now) { pol[0].seen_n = 0; }
+    before := pol[0].seen_n;
+    r := n86_serve(pol, "POST", b[p.type_from..<p.type_to], b[p.auth_from..<p.auth_to], cast(string) w[0].url[0..<w[0].url_n],
+      c[0].inb[p.body_from..<p.body_to], now, w[0].http[..]);
+    if pol[0].seen_n > before { w[0].admin_last = now; }
+    n = wss_http_write(rr_http_status(r.http), N86_TYPE, cast(string) w[0].http[0..<r.n], w[0].out[..]);
+  } else {
+    big := p.status == RR_P_BIG;
+    n = wss_http_write(rr_http_status(ifx big then 413 else 400), "text/plain", ifx big then "The request is too large." else "Bad request.", w[0].out[..]);
+  }
+  if n > 0 { ok := ry_send_raw(c, cast(string) w[0].out[0..<n]); }
+  ry_shut(c);
+}
 ry_http :: (c: [] RyConn, w: [] RyWork) {
+  if w[0].admin[0].admins_n > 0 {
+    p := rr_post(cast(string) c[0].inb[0..<c[0].used]);
+    if p.status == RR_P_WAIT { return; }
+    if p.status != RR_P_NOT { ry_admin(c, w, p); return; }
+  }
   h := wss_request(cast(string) c[0].inb[0..<c[0].used]);
   a := rr_http(h.status);
   if a == RR_H_WAIT { return; }
@@ -519,8 +564,18 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
     print("relay: replayed % saved events: % stored, % duplicates or replaced%\n", rp.frames, rp.stored, rp.kept, ifx rp.cut then ", a partial last write cut" else "");
   }
   w[0].rate = ry_rate();
+  for i: 0..<u { w[0].url[i] = url[i]; }
+  w[0].url_n = u;
+  na := ry_host_admin_count();
+  if na > RR_ADMINS { print("relay: at most % --admin keys\n", RR_ADMINS); return; }
+  for k: 0..<na {
+    hex: [64] u8; ok := ry_host_admin_len(k) == 64;
+    for i: 0..<64 { if ok { hex[i] = cast(u8) ry_host_admin_byte(k, i); } }
+    if !ok || !rr_admin_key(cast(string) hex[..], w[0].admin[0].admins[k][..]) { print("relay: --admin needs a 64-digit hex public key\n"); return; }
+  }
+  w[0].admin[0].admins_n = na;
   base: [4096] u8;
-  b := rt_nip11(RR_NIP11, w[0].rate, base[..]);
+  b := rt_nip11(rr_nip11_base(na > 0), w[0].rate, base[..]);
   if b < 0 { print("relay: --rate needs three limits from 1 to %\n", RT_LIMIT_MAX); return; }
   w[0].pow = rr_pow(ry_host_pow());
   if w[0].pow < 0 { print("relay: --pow needs 0 to % bits\n", RR_POW_MAX); return; }
