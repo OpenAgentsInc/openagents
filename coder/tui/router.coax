@@ -80,6 +80,14 @@ rt_author_ok :: (ar: [] ClArena, policy: string, author: string) -> bool {
   return false;
 }
 
+// Whether the policy names author itself, not only through "*": an event
+// from anyone else is untrusted, and its Worker runs under a read ceiling.
+rt_author_named :: (ar: [] ClArena, policy: string, author: string) -> bool {
+  list := cl_raw(policy, "authors");
+  for i: 0..<cl_count(list) { if cl_text(ar, list, cl_item(list, i)) == author { return true; } }
+  return false;
+}
+
 rt_has_prefix :: (s: string, p: string) -> bool { return s.count >= p.count && cast(string) s[0..<p.count] == p; }
 
 // Whether text, as lines, holds the line key.
@@ -156,6 +164,7 @@ rt_last_turn :: (text: string, ar: [] ClArena, out: [] u8) -> string {
     if kind == "user" { n = 0; rn = 0; }
     else if kind == "reply" { if n > 0 { n = cd_cat(out, n, "\n"); } n = cd_cat(out, n, cl_str(ar, line, "text")); }
     else if kind == "result" { rn = cd_cat(rb[..], 0, cl_str(ar, line, "text")); }
+    else if kind == "end" && rn == 0 { rn = cd_cat(rb[..], 0, cl_str(ar, line, "text")); }    // why a turn with no reply ended
   }
   if n == 0 { n = cd_cat(out, 0, cast(string) rb[0..<rn]); }
   while n > 0 && (out[n - 1] == 10 || out[n - 1] == ' ') { n -= 1; }
@@ -441,7 +450,7 @@ rt_coder_env :: (args: [] string, env: [] string, id_out: [] u8) -> string {
   rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
   if repo.count == 0 { return ""; }
   sb: [4200] u8; sn := cd_cat(sb[..], cd_cat(sb[..], 0, repo), "/coder/tui/coder.sh");
-  argv: [12] string; argv[0] = cast(string) sb[0..<sn];
+  argv: [14] string; argv[0] = cast(string) sb[0..<sn];
   for i: 0..<args.count { argv[i + 1] = args[i]; }
   argv[args.count + 1] = "--detach";
   ok: [1] bool;
@@ -883,10 +892,14 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
       else { fate = RT_START; decided = true; }
     }
     if fate == RT_START || fate == RT_TO_THREAD {
-      args: [10] string; na := 0;
+      args: [12] string; na := 0;
       if fate == RT_TO_THREAD { args[0] = "fork"; args[1] = cast(string) th[0].session[k][0..<th[0].nsession[k]]; args[2] = t.text; na = 3; }
       else { args[0] = "run"; args[1] = t.text; na = 2; }
       if engine.count > 0 { args[na] = "--engine"; args[na + 1] = engine; na += 2; }
+      // containment (chapter 20): the source's ceiling, and read for an author the policy doesn't name
+      ceiling := ifx policy.count > 0 then cl_str(ar[..], policy, "ceiling") else "";
+      if ceiling.count == 0 && t.source != "local" && !(policy.count > 0 && rt_author_named(ar[..], policy, t.author)) { ceiling = "read"; }
+      if ceiling.count > 0 { args[na] = "--ceiling"; args[na + 1] = ceiling; na += 2; }
       cb: [32] u8; was: [1] bool;
       sid := rt_claim(p, name, cast(string) lastb[0..<nlast], cb[..], was[..]);
       nlast = cd_cat(lastb[..], 0, sid);
@@ -1394,6 +1407,7 @@ cd_cmd_watch :: (thread: string, stop: bool, list: bool) -> int {
   first := "{\"kind\":\"user\",\"text\":\"one\"}\n{\"kind\":\"reply\",\"text\":\"old\"}\n{\"kind\":\"user\",\"text\":\"two\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls)\"}\n{\"kind\":\"result\",\"text\":\"a.txt\\n\"}\n";
   #assert rt_last_turn(first, ar[..], ob[..]) == "a.txt";
   #assert rt_last_turn("{\"kind\":\"user\",\"text\":\"x\"}\n{\"kind\":\"reply\",\"text\":\"fixed\"}\n{\"kind\":\"reply\",\"text\":\"tests pass\"}\n", ar[..], ob[..]) == "fixed\ntests pass";
+  #assert rt_last_turn("{\"kind\":\"user\",\"text\":\"$ ls\"}\n{\"kind\":\"end\",\"ending\":\"failed\",\"text\":\"I didn't run the command\"}\n", ar[..], ob[..]) == "I didn't run the command";
   loop := "{\"kind\":\"user\",\"text\":\"x\"}\n{\"kind\":\"tool\",\"label\":\"Bash(make)\"}\n{\"kind\":\"result\",\"text\":\"err\"}\n{\"kind\":\"tool\",\"label\":\"Bash(make)\"}\n{\"kind\":\"tool\",\"label\":\"Bash(make)\"}\n";
   #assert rt_repeats(loop, ar[..]) == 3 && rt_repeats(first, ar[..]) == 1;
 }

@@ -386,7 +386,16 @@ cd_start :: (a: [] App, msg: string) {
   a[0].nrep = 0; a[0].rep_done = 0; a[0].rep_lines = 0;
   a[0].md[0].in_code = false;
   a[0].turns += 1;
-  if msg.count > 2 && msg[0] == '$' && msg[1] == ' ' { cd_command_start(a, cast(string) msg[2..<msg.count]); return; }
+  if msg.count > 2 && msg[0] == '$' && msg[1] == ' ' {
+    // a shell command is the run effect: a ceiling below it refuses it, as it refuses an engine's Bash (chapters 11 and 20)
+    if a[0].pol[0].on && CD_EFFECT_RUN > a[0].pol[0].ceiling {
+      effects := CD_EFFECTS; rb: [200] u8;
+      rn := cd_cat(rb[..], 0, "I didn't run the command: run is above this session's ceiling, "); rn = cd_cat(rb[..], rn, effects[a[0].pol[0].ceiling]); rn = cd_cat(rb[..], rn, ".");
+      cd_finish(a, END_FAILED, cast(string) rb[0..<rn]);
+      return;
+    }
+    cd_command_start(a, cast(string) msg[2..<msg.count]); return;
+  }
   sent := msg;
   fb: [40000] u8;
   if a[0].pre.count > 0 {        // a fork's first message carries the conversation it was forked from
@@ -1904,6 +1913,14 @@ tool_main :: () -> int #export_c {
     a[0].pre = cast(string) pre_b[0..<pn[0]];
     a[0].log[0].nparent = cd_cat(a[0].log[0].parent[..], 0, cast(string) ib[0..<k]);
     a[0].log[0].at = kept;
+    // never wider than the parent: its ceiling holds unless --ceiling is lower (chapter 20's containment)
+    hl := parent; nl := 0; while nl < hl.count && hl[nl] != 10 { nl += 1; }
+    har: [8192] u8; ha: [1] ClArena; ha[0] = ClArena.{buf = har[..]};
+    pc := cd_effect_index(cl_str(ha[..], cast(string) hl[0..<nl], "ceiling"));
+    if pc >= 0 && (!a[0].pol[0].on || pc < a[0].pol[0].ceiling) {
+      a[0].pol[0].on = true; a[0].pol[0].ceiling = pc;
+      if a[0].pol[0].allow > pc { a[0].pol[0].allow = pc; }
+    }
     // the parent's engine unless --engine
     if want.count == 0 {
       s: [1] CsSummary; sar: [65536] u8; sa: [1] ClArena; sa[0] = ClArena.{buf = sar[..]};

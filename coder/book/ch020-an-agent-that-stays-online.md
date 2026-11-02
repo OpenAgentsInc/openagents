@@ -17,7 +17,9 @@
 > handle, and the session log shows `[credential]` in place of the value.
 > A Worker whose model provider didn't answer waits, with a doubling
 > backoff, and then continues in a fork the Thread follows. Mail and
-> document replies have their own structure. Still open: sending mail
+> document replies have their own structure. A Worker for an event from an
+> author its source's policy doesn't name runs under a read ceiling, and
+> its forks keep it. Still open: sending mail
 > (replies wait in the outbox) and following a project's own templates.
 
 Chapter17's agent is only useful if it keeps working while a laptop sleeps,
@@ -362,6 +364,32 @@ recorded the value itself as `[credential]`. The same job under a daemon
 without the grant was refused: "a credential it names is outside this
 machine's grant".
 
+### Containment
+
+Every event the Router reads is untrusted input (chapter 6). A source's
+policy names the authors it acts for. `"authors": ["*"]` lets anyone's
+event start a Worker, so the Router limits what that Worker can do:
+
+- A Worker for an event whose author the policy doesn't name starts with
+  `--ceiling read`. A source can set its own ceiling with `"ceiling"` in
+  its policy. Events from the `local` source, which you type, get none.
+- A `$ COMMAND` task is the `run` effect. Under a lower ceiling, Coder
+  doesn't run it and the session ends failed: "I didn't run the command:
+  run is above this session's ceiling, read." An engine's Bash, edits and
+  web tools are held to the same ceiling.
+- A fork is never wider than its parent. The parent's logged ceiling holds
+  unless the fork asks for a lower one, so a follow-up or a provider
+  recheck can't lift it.
+- Router Workers get no credentials. Only a job you queue with
+  `--credential` on a daemon granted the handle does.
+
+The smoke stores a credential, then sends two events: `$ cat` of the
+credential file and `env` from an author the policy doesn't name, and
+`$ echo` from one it names. The first Worker's header has `"ceiling":"read"`,
+its reply says it didn't run the command, and a fork of it still refuses.
+The second runs. No file under `~/.openagents/coder` outside the
+credentials folder holds the secret.
+
 ## Checks
 
 - `python3 coder/tui/smoke.py`, offline: each check runs `coder router
@@ -430,7 +458,9 @@ machine's grant".
   and the time to recovery depends on the provider.
 - **Containment.** In chapter6's lab, extended to Triggers, a hostile event
   produces no admitted command outside a daemon's grant and no secret in
-  model context, the log or outbound messages.
+  model context, the log or outbound messages. Checked in Coder by the
+  smoke's hostile event (see [Containment](#containment)); still to do:
+  chapter 6's corpus driven through the Router against a live engine.
 - Each mechanism passes chapter21 against the simpler design on tasks it was
   not built from, or it is removed.
 

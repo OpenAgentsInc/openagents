@@ -776,6 +776,45 @@ def verbs(check):
               dl and dquick is not None and drun and dlong is not None and dlong > dquick
               and len(dstop) == 1 and dstop[0].get("note", "").startswith("Stopped (stopped)"))
         if dquick is not None: print("     duplex: follow-up answered in %.1f s with the long Worker running; long result after %.1f s" % (dquick, dlong or -1))
+        # containment (chapter 20): an event from an author the policy doesn't name runs under a read ceiling, so its shell
+        # command is refused, a fork of its Worker stays there, and no secret reaches a log or the outbox
+        xhome = tempfile.mkdtemp(prefix="coder-contain-")
+        xenv = dict(env, HOME=xhome)
+        xdir = os.path.join(xhome, ".openagents", "coder")
+        os.makedirs(os.path.join(xdir, "router"), exist_ok=True)
+        with open(os.path.join(xdir, "router", "sources.json"), "w") as f:
+            f.write('{"sources":{"open":{"mode":"explicit_requests_only","authors":["*"],"engine":"echo"},'
+                    '"team":{"mode":"explicit_requests_only","authors":["kim"],"engine":"echo"}}}')
+        xsecret = "contain-s3cr3t-7781"
+        xa = subprocess.run([coder, "credential", "add", "k", "K_TOKEN"], cwd=REPO, env=xenv, input=xsecret + "\n", capture_output=True, text=True, timeout=60)
+        def xq(*a):
+            return subprocess.run([coder, *a], cwd=REPO, env=xenv, capture_output=True, text=True, timeout=300)
+        xq("trigger", "$ cat $HOME/.openagents/coder/credentials/k.env; env", "--source", "open", "--author", "mallory", "--thread", "hx", "--to-agent")
+        xq("trigger", "$ echo trusted-ran", "--source", "team", "--author", "kim", "--thread", "tx", "--to-agent")
+        xr = []
+        for _ in range(60):
+            xr += [json.loads(l) for l in xq("router", "--once", "--json").stdout.splitlines() if l.startswith("{")]
+            if sum(1 for l in xr if l.get("fate") == "reply written to the outbox") >= 2:
+                break
+            time.sleep(0.3)
+        xh = next((l for l in xr if l.get("thread") == "hx" and l.get("fate") == "reply written to the outbox"), {})
+        xt = next((l for l in xr if l.get("thread") == "tx" and l.get("fate") == "reply written to the outbox"), {})
+        xs = xh.get("session", "")
+        xhead = json.loads(open(os.path.join(xdir, "sessions", xs + ".jsonl")).readline()) if xs else {}
+        xf = [json.loads(l) for l in xq("fork", xs, "$ echo widened", "--json").stdout.splitlines() if l.startswith("{")] if xs else []
+        xleak = []
+        for root, _, files in os.walk(xdir):
+            if os.path.basename(root) == "credentials":
+                continue
+            for n in files:
+                with open(os.path.join(root, n), errors="replace") as f:
+                    if xsecret in f.read():
+                        xleak.append(n)
+        check("containment: a third party's shell command is refused under a read ceiling, a fork keeps it, a named author's runs, and no secret leaves",
+              xa.returncode == 0 and xhead.get("ceiling") == "read" and "I didn't run the command" in xh.get("note", "")
+              and "trusted-ran" in xt.get("note", "") and xf and xf[0].get("ceiling") == "read"
+              and any("I didn't run the command" in l.get("text", "") for l in xf) and "widened" not in "".join(l.get("text", "") for l in xf if l.get("kind") != "user")
+              and xleak == [])
         # a log cut at any byte (chapter 2): readers read the complete lines and report the rest; a line appended after a crash starts clean
         cr = subprocess.run([coder, "run", "$ echo cut-é-check", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         cid = next(json.loads(l)["id"] for l in cr.stdout.splitlines() if l.startswith('{"kind":"session"'))
