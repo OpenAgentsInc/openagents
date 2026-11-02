@@ -3,8 +3,9 @@
 Status, 2026-11-02: the recorded demo is on `main`. The authenticated
 [director API](2026-11-02-anime-director-api.md) is implemented and qualified
 for #12632. [Recorded takes](anime-takes-v1.md) load and render through the
-page for #12633. The Anime CLI, live voice and asset generation remain distinct
-steps below. Source completion does not assert deployment.
+page for #12633. The [Anime CLI](../cli/2026-11-01-openagents-labs.md#labs-anime)
+adds catalogue, direct and play for #12634. Live voice and asset generation
+remain distinct steps below. Source completion does not assert deployment.
 
 Owner request, 2026-11-02:
 
@@ -271,7 +272,7 @@ Built (A2), November 2:
 | --- | --- | --- |
 | A1 | The anime style (art-styles.md, Anime) | The style's checks pass; a realm can name `anime` |
 | A2 | The stage, cast and effects in the anime style; `?stage=direct` with the simulated session | The demo plays and records with `coax/web/tool.sh clip` |
-| A3 | `anime.v1` documents, `?take=`, and `openagents labs anime render` | A take renders the same frames twice |
+| A3 | `anime.v1` documents, `?take64=`, and `openagents labs anime play` | A take renders the same frames twice |
 | A4 | Live voice: DIRECT, the voice host on Psionic, the server's typed selector over the catalogue | A spoken session directs the stage, about a second per line |
 | A5 | Partial words and corrections; the decision model on Psionic; calibrated thresholds | Under 0.5 s from a clause's end to its direction |
 | A6 | Draw-in: sketch, kit and procedural makers; then generated assets | "An ink dragon crashes through the wall" draws in and joins the library |

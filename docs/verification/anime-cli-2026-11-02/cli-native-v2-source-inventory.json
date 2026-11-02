@@ -1,0 +1,307 @@
+{
+  "schema": "openagents.anime-cli.source-inventory.v2",
+  "entries": [
+    "apps/openagents-cli/main.coax"
+  ],
+  "capture": {
+    "state": "Root-reported final CLI build is in progress; no completed-build or native-journey claim at capture",
+    "time_utc": "2026-11-02 19:45:45 UTC",
+    "commit": "9cc6c890beebbd487179c20409c8ddbd12fdfed6",
+    "reported_parent": "329da2c61e",
+    "product_sources_changed_by_this_task": false
+  },
+  "method": "Conservative existing v1 recursive literal #load inventory (144 files), rehashed at the current checkout; compiler-provided Basic is outside this repository list. Separately emitted entropy, direct C translation units, repository headers/includes and build wrappers are included below. Root's pinned compiler-resolved 144-source dependency list now matches this conservative entry inventory exactly; see cli-native-v2-deps-comparison.json.",
+  "source_count": 144,
+  "files": [
+    "aethyr/forge/edit.coax",
+    "apps/openagents-cli/account.coax",
+    "apps/openagents-cli/account_rules.coax",
+    "apps/openagents-cli/admin.coax",
+    "apps/openagents-cli/anime-args-checks.coax",
+    "apps/openagents-cli/anime-args.coax",
+    "apps/openagents-cli/anime-checks.coax",
+    "apps/openagents-cli/anime-rules.coax",
+    "apps/openagents-cli/coder.coax",
+    "apps/openagents-cli/commands.coax",
+    "apps/openagents-cli/labs-anime.coax",
+    "apps/openagents-cli/labs-rules.coax",
+    "apps/openagents-cli/labs.coax",
+    "apps/openagents-cli/main.coax",
+    "apps/openagents-cli/mcp.coax",
+    "apps/openagents-cli/nostr.coax",
+    "apps/openagents-cli/out.coax",
+    "apps/openagents-cli/project-data.coax",
+    "apps/openagents-cli/project-landing.coax",
+    "apps/openagents-cli/project-page.coax",
+    "apps/openagents-cli/project-plan-rules.coax",
+    "apps/openagents-cli/project-publish.coax",
+    "apps/openagents-cli/project-review.coax",
+    "apps/openagents-cli/project-rules.coax",
+    "apps/openagents-cli/project-write.coax",
+    "apps/openagents-cli/project.coax",
+    "apps/openagents-cli/pylon.coax",
+    "apps/openagents-cli/realm.coax",
+    "apps/openagents-cli/relay.coax",
+    "apps/openagents-cli/review-rules.coax",
+    "apps/openagents-cli/rules.coax",
+    "apps/openagents-cli/skill.coax",
+    "apps/openagents-cli/transcribe-rules.coax",
+    "apps/openagents-cli/transcribe.coax",
+    "apps/openagents-web/font.coax",
+    "apps/openagents-web/home-capacity.coax",
+    "apps/openagents-web/project-fold.coax",
+    "apps/openagents-web/project-links.coax",
+    "apps/openagents-web/project-names.coax",
+    "coax/lib/crypto/bip32.coax",
+    "coax/lib/crypto/bip39.coax",
+    "coax/lib/crypto/bytes.coax",
+    "coax/lib/crypto/ecdh_fast.coax",
+    "coax/lib/crypto/rand_foreign.coax",
+    "coax/lib/crypto/schnorr.coax",
+    "coax/lib/crypto/schnorr_fast.coax",
+    "coax/lib/crypto/schnorr_math_workspace.coax",
+    "coax/lib/crypto/schnorr_nonce_point.coax",
+    "coax/lib/crypto/schnorr_nonce_workspace.coax",
+    "coax/lib/crypto/schnorr_point_workspace.coax",
+    "coax/lib/crypto/schnorr_prepare_workspace.coax",
+    "coax/lib/crypto/schnorr_scalar_workspace.coax",
+    "coax/lib/crypto/schnorr_self_verify.coax",
+    "coax/lib/crypto/schnorr_sign.coax",
+    "coax/lib/crypto/secp_field.coax",
+    "coax/lib/crypto/secp_field32.coax",
+    "coax/lib/crypto/secp_field32_total.coax",
+    "coax/lib/crypto/secp_group.coax",
+    "coax/lib/crypto/secp_group32.coax",
+    "coax/lib/crypto/secp_mult.coax",
+    "coax/lib/crypto/secp_mult_base.coax",
+    "coax/lib/crypto/secp_mult_base_web.coax",
+    "coax/lib/crypto/secp_mult_const.coax",
+    "coax/lib/crypto/secp_scalar.coax",
+    "coax/lib/crypto/sha1.coax",
+    "coax/lib/crypto/sha256-kernel.coax",
+    "coax/lib/crypto/sha256.coax",
+    "coax/lib/crypto/sha256_workspace.coax",
+    "coax/lib/crypto/sha512.coax",
+    "coax/lib/json/json.coax",
+    "coax/lib/media/media.coax",
+    "coax/lib/net/cdp.coax",
+    "coax/lib/net/http.coax",
+    "coax/lib/net/relay_conn.coax",
+    "coax/lib/net/relay_conn_rules.coax",
+    "coax/lib/net/relay_poll_budget.coax",
+    "coax/lib/net/relay_uri.coax",
+    "coax/lib/net/socket_foreign.coax",
+    "coax/lib/net/transport.coax",
+    "coax/lib/net/uri.coax",
+    "coax/lib/net/ws.coax",
+    "coax/lib/nostr/adapters/json-admission.coax",
+    "coax/lib/nostr/adapters/json-policy.coax",
+    "coax/lib/nostr/base64.coax",
+    "coax/lib/nostr/bech32-core.coax",
+    "coax/lib/nostr/codecs-common.coax",
+    "coax/lib/nostr/event.coax",
+    "coax/lib/nostr/event_sign.coax",
+    "coax/lib/nostr/filter.coax",
+    "coax/lib/nostr/filter_read.coax",
+    "coax/lib/nostr/fixtures/coax_relay.coax",
+    "coax/lib/nostr/fixtures/coax_relay_tables.coax",
+    "coax/lib/nostr/fixtures/json_suite.coax",
+    "coax/lib/nostr/fixtures/links.coax",
+    "coax/lib/nostr/fixtures/nip42_events.coax",
+    "coax/lib/nostr/hex.coax",
+    "coax/lib/nostr/json.coax",
+    "coax/lib/nostr/message.coax",
+    "coax/lib/nostr/nip06.coax",
+    "coax/lib/nostr/nip19-core.coax",
+    "coax/lib/nostr/nip22.coax",
+    "coax/lib/nostr/nip34.coax",
+    "coax/lib/nostr/nip42.coax",
+    "coax/lib/nostr/nip98_sign.coax",
+    "coax/lib/nostr/relay.coax",
+    "coax/lib/nostr/relay_read.coax",
+    "coax/lib/nostr/xp_keys.coax",
+    "coax/lib/qr/profile.coax",
+    "coax/lib/qr/qr-memory.coax",
+    "coax/lib/qr/qr.coax",
+    "coax/lib/sys/args.coax",
+    "coax/lib/sys/fs.coax",
+    "coax/lib/sys/proc.coax",
+    "coax/lib/sys/tool.coax",
+    "coax/lib/text/base64.coax",
+    "coax/tests/nostr/event_checks.coax",
+    "coax/tests/nostr/event_fast_checks.coax",
+    "coax/tests/nostr/event_fixtures.coax",
+    "coax/tests/nostr/event_sign_vectors.coax",
+    "coax/tests/nostr/relay_read_fixtures.coax",
+    "coax/tests/nostr/scalar_fixtures.coax",
+    "coax/tests/nostr/schnorr_checks.coax",
+    "coax/tests/nostr/schnorr_fixtures.coax",
+    "coax/tests/nostr/schnorr_sign_vectors.coax",
+    "coax/web/api/anime-director-checks.coax",
+    "coax/web/api/anime-director-policy.coax",
+    "coax/web/api/anime-director-render-checks.coax",
+    "coax/web/api/anime-director-wire-checks.coax",
+    "coax/web/api/anime-route-policy.coax",
+    "coax/web/project/landing-browser.coax",
+    "coax/web/project/landing-cache.coax",
+    "coax/web/project/landing-fold.coax",
+    "coax/web/project/landing-nostr.coax",
+    "coax/web/project/landing-xp.coax",
+    "psionic/lib/pylon/beacon.coax",
+    "psionic/lib/pylon/template.coax",
+    "psionic/lib/whisper/score.coax",
+    "psionic/lib/whisper/segments.coax",
+    "verse/anime/director.coax",
+    "verse/anime/render-profile.coax",
+    "verse/anime/take-checks.coax",
+    "verse/anime/take.coax",
+    "verse/icecream/rules.coax",
+    "verse/icecream/tuning.coax"
+  ],
+  "additional_inputs": {
+    "entropy_policy": [
+      {
+        "path": "coax/lib/crypto/entropy.coax",
+        "sha256": "efbe909c032939134e83db8ceb296d4da04baac37cd5a291f4276aad955e84fe"
+      }
+    ],
+    "host_sources": [
+      {
+        "path": "apps/openagents-cli/cli-native.c",
+        "sha256": "9e842ae0faf688f5340e3aa99b8feb91c31bc9f80df0e84e492ac0e2d3762cdc"
+      },
+      {
+        "path": "coax/platform/tool-native.c",
+        "sha256": "c8db7d6e4e7f0c6e3c91a37c7e4c8931637d5deb051e62c4e437cc86476dcb03"
+      },
+      {
+        "path": "coax/platform/process-native.c",
+        "sha256": "3c2e5ac2febb9e4ab2042363e0a15adfe0432eaee0e840056ccdd3827275528f"
+      },
+      {
+        "path": "coax/platform/store-file-native.c",
+        "sha256": "1c343f7579c18cbde8d81e4f6f3df435a9ad3ba5875c5921027813cff85391c2"
+      },
+      {
+        "path": "coax/platform/entropy-native.c",
+        "sha256": "c24f1fb976094e1a41bb3b5c72d50d2a2013e7cc188a5769d26caa448db40af0"
+      },
+      {
+        "path": "coax/platform/entropy-foreign.c",
+        "sha256": "0718319242b28767b5f319e076e3ef9b927e313e402d173fbb5eb45e8a25aa6a"
+      },
+      {
+        "path": "coax/platform/socket-native.c",
+        "sha256": "2cc8a7b3c75eebed225fbba8016c06f9009f8c0b8781ee33b3ed45677c98940b"
+      },
+      {
+        "path": "coax/platform/tls-native.c",
+        "sha256": "1f9d58076acda10391b7fd16450ba2ee5b3e1c26966763517eae726b48e32dae"
+      }
+    ],
+    "host_headers": [
+      {
+        "path": "coax/platform/tool-native.h",
+        "sha256": "71beb32196e55dd06b498f5978303c639eb7eed2217c61c0695816a502b795e5"
+      },
+      {
+        "path": "coax/platform/process-native.h",
+        "sha256": "b4fac09b341a274b46dfaed525c85e889808da2892f377f815deac58845e2d3e"
+      },
+      {
+        "path": "coax/platform/store-file-native.h",
+        "sha256": "9297c83928df023297950dd1ca471470c77dfa23e9732284ec1a2afe03f7cf11"
+      },
+      {
+        "path": "coax/platform/entropy-native.h",
+        "sha256": "0dc938532bc0fc5d2dcd3600886523c63c0ca06d69cbf1aa3852976b05f20109"
+      },
+      {
+        "path": "coax/platform/entropy-foreign.h",
+        "sha256": "95898457f3cf8f142617f92a87a9020e95302d6f4fe21aae37f4a87d63752bab"
+      },
+      {
+        "path": "coax/platform/socket-native.h",
+        "sha256": "496d48c787d2fde2fca0cbaa23315e0e055ecee15598f4ce0ecb5b42800cd014"
+      },
+      {
+        "path": "coax/platform/tls-native.h",
+        "sha256": "07988aab83b80bbe4756dce800651e174434c411156cb13c1fa9391fd77e5df8"
+      }
+    ],
+    "host_include": [
+      {
+        "path": "coax/platform/tls-apple.inc",
+        "sha256": "a8a728170c0472790266ed8ce22afc9eda7c2cebbc567eeb1a1894dc8909001e"
+      }
+    ],
+    "build_wrappers": [
+      {
+        "path": "apps/openagents-cli/build.sh",
+        "sha256": "5ee3de4da3d5cc77283216b34080d5834830eb135e9aa486d930436b8b57781b"
+      },
+      {
+        "path": "coax/platform/tls-env.sh",
+        "sha256": "13e0014d42a71fdd3bfc6b058c82ef81584202034a7eeb7a883f7f5aaa0748d9"
+      }
+    ]
+  },
+  "manifest": {
+    "path": "cli-native-v2-sources.sha256",
+    "total_files": 163,
+    "coax_entry_files": 144,
+    "separate_entropy_files": 1,
+    "host_c_files": 8,
+    "host_header_files": 7,
+    "host_include_files": 1,
+    "build_wrapper_files": 2
+  },
+  "compiler": {
+    "version": "0.48.0",
+    "immutable_cache_entry": "6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e",
+    "sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "record": "policy-final-v4/compiler-provenance.record",
+    "invoked_by_this_task": false
+  },
+  "build": {
+    "status": "completed; binary identity verified",
+    "binary_sha256": "a055b555b407539a599ba2d14114421b092027fea2676f11acfd3ba6fbf57e29",
+    "binary_mtime_unix": 1793648694,
+    "build_log": "native-v2-cli-build.log",
+    "compiler_resolved_dependencies_comparison": "exact 144-path set equality",
+    "dependency_receipt": "native-v2-cli-deps.json",
+    "comparison_receipt": "cli-native-v2-deps-comparison.json",
+    "all_sources_predate_build_start": null,
+    "build_start_provenance": "Retained CLI build log contains the output path only; no C-generation start timestamp is asserted from binary mtime.",
+    "all_163_inputs_precede_binary_mtime": true,
+    "latest_input_mtime_unix": 1793648604,
+    "source_hash_receipt": "cli-native-v2-source-hashes-verified.log",
+    "source_mtime_receipt": "cli-native-v2-source-mtimes.txt",
+    "generated_entropy_header": "CLI output/header not separately retained here; generated from the recorded entropy policy and pinned producer.",
+    "system_headers_libraries": "Repository source inventory only; platform SDK/framework/link choices follow the archived root build wrapper."
+  },
+  "continuity": {
+    "page": {
+      "count": 23,
+      "status": "all recorded SHA-256 hashes match current checkout",
+      "manifest": "page-sources.sha256",
+      "receipt": "page-continuity-v2.log"
+    },
+    "policy": {
+      "count": 18,
+      "status": "all recorded SHA-256 hashes match current checkout",
+      "manifest": "policy-final-v4/source-closure.sha256",
+      "receipt": "policy-continuity-v2.log",
+      "qualification_reused": "policy-final-qualification.json"
+    },
+    "compiler_checks_builds_browsers_run_by_this_task": 0
+  },
+  "changed_prior_entry_sources": [
+    {
+      "path": "apps/openagents-cli/labs-anime.coax",
+      "prior_sha256": "f5c8efce9dbe3e11c9b2250bf5d535c31a5ea9662876f3fb1d5e944399ba880c",
+      "current_sha256": "6dbed2d3f67dcbd9be0dbfd6fa8a64c9b03b57b55a2106a6ee3b0894a8c9dd8d"
+    }
+  ],
+  "boundary": "Metadata finalization only: no source file modified and no compiler, check, browser or qualification rerun by this task. Root's already-generated dependency receipt establishes exact144-path equality;163 current repository input hashes match. Binarymtime proves only that the current inputs have earlier mtimes than the output, not that all predate code-generation start."
+}

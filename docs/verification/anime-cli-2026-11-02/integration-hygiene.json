@@ -1,0 +1,9 @@
+{
+  "schema": "openagents.anime-cli.integration-hygiene.v1",
+  "test_source": "coax/web/api/anime-director-checks.coax",
+  "old_sha256": "497bdaf00a4d244d8e59f36a4c7b8647463691d345ed8435fc22ddbc0f844c18",
+  "new_sha256": "c35fb59e5e0d755a37ecccc4a129ef072189b19c9dabade5b40e8f8ef27a14a6",
+  "operation": "Only 13 identifier tokens change -> aapt_change, after exact whole-file substitution equality. The local name collided with the existing Ice Cream global change procedure when both consumers were loaded.",
+  "runtime_api_policy": "Byte-identical to #12633 commit ca0a4541fa; no runtime API policy/route/host change.",
+  "qualification": "Imported API checks run in the new CLI policy baseline. Earlier native API profiles retain their exact original source/artifact identity."
+}

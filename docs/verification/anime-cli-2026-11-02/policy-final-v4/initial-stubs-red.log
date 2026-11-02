@@ -1,0 +1,12 @@
+FAIL #test CLI anime catalogue request append and URL share the published recorded profile (1 ms)
+apps/openagents-cli/anime-checks.coax:9:3: error[E0406]: assertion failed
+    #assert cn>0 && rn>0 && tn>0 && un>0;
+    ^
+  note: in #test CLI anime catalogue request append and URL share the published recorded profile
+FAIL #test CLI anime new versus existing bytes and refused replies never publish a partial append (2 ms)
+apps/openagents-cli/anime-checks.coax:20:3: error[E0406]: assertion failed
+    #assert anime_direct_append(old[0..<0],false,"Point.",an_test_reply("{\"v\":1,\"heard\":\"Other.\",\"answers\":[]}",reply[..]),out[..])==ANIME_CLI_REPLY;
+    ^
+  note: in #test CLI anime new versus existing bytes and refused replies never publish a partial append
+2 of 210 checks (--only 'CLI anime'), 0 passed, 2 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

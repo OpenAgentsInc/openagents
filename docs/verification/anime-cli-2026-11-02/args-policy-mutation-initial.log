@@ -1,0 +1,116 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-cli/anime-args.coax:19:19: mutant survived: 223 became 224
+    if c>=194 && c<=223 {n=2;}
+                    ^
+apps/openagents-cli/anime-args.coax:20:17: mutant survived: '<=' became '<'
+    if c>=224 && c<=239 {n=3;}
+                  ^
+apps/openagents-cli/anime-args.coax:20:19: mutant survived: 239 became 240
+    if c>=224 && c<=239 {n=3;}
+                    ^
+apps/openagents-cli/anime-args.coax:25:30: mutant survived: 0 became 1
+    if c==224 && b<160 {return 0;}
+                               ^
+apps/openagents-cli/anime-args.coax:26:30: mutant survived: 0 became 1
+    if c==237 && b>159 {return 0;}
+                               ^
+apps/openagents-cli/anime-args.coax:27:17: mutant survived: '<' became '<='
+    if c==240 && b<144 {return 0;}
+                  ^
+apps/openagents-cli/anime-args.coax:27:18: mutant survived: 144 became 145
+    if c==240 && b<144 {return 0;}
+                   ^
+apps/openagents-cli/anime-args.coax:27:30: mutant survived: 0 became 1
+    if c==240 && b<144 {return 0;}
+                               ^
+apps/openagents-cli/anime-args.coax:28:30: mutant survived: 0 became 1
+    if c==244 && b>143 {return 0;}
+                               ^
+apps/openagents-cli/anime-args.coax:39:13: mutant survived: '<' became '<='
+    if s.count<1 || s.count>600 || !aa_text_ok(s,true) {return false;}
+              ^
+apps/openagents-cli/anime-args.coax:39:14: mutant survived: 1 became 2
+    if s.count<1 || s.count>600 || !aa_text_ok(s,true) {return false;}
+               ^
+apps/openagents-cli/anime-args.coax:44:75: mutant survived: '>' became '>='
+    if maximum_seconds<0 || maximum_seconds>3600 || raw.count<1 || raw.count>16 {return -1;}
+                                                                            ^
+apps/openagents-cli/anime-args.coax:44:76: mutant survived: 16 became 17
+    if maximum_seconds<0 || maximum_seconds>3600 || raw.count<1 || raw.count>16 {return -1;}
+                                                                             ^
+apps/openagents-cli/anime-args.coax:45:28: mutant survived: '>' became '>='
+    for c:raw {if (c<'0' || c>'9') && c!='.' {return -1;}}
+                             ^
+apps/openagents-cli/anime-args.coax:45:29: mutant survived: 57 became 58
+    for c:raw {if (c<'0' || c>'9') && c!='.' {return -1;}}
+                              ^
+apps/openagents-cli/anime-args.coax:52:47: mutant survived: '<=' became '<'
+    return skip_ms>=0 && seconds_ms>0 && skip_ms<=length_ms && seconds_ms<=length_ms-skip_ms;
+                                                ^
+apps/openagents-cli/anime-args.coax:66:31: mutant survived: 0 became 1
+      if !literal && text.count>0 && text[0]=='-' {
+                                ^
+apps/openagents-cli/anime-args.coax:72:13: mutant survived: '>=' became '>'
+          if i>=a[0].n {r.err="missing option value";return r;}
+              ^
+apps/openagents-cli/anime-args.coax:87:14: mutant survived: the if condition was negated
+        if flag==12 {r.card=true;}
+               ^
+apps/openagents-cli/anime-args.coax:87:14: mutant survived: '==' became '!='
+        if flag==12 {r.card=true;}
+               ^
+apps/openagents-cli/anime-args.coax:91:14: mutant survived: the if condition was negated
+        if flag==16 {r.fresh=true;}
+               ^
+apps/openagents-cli/anime-args.coax:91:14: mutant survived: '==' became '!='
+        if flag==16 {r.fresh=true;}
+               ^
+apps/openagents-cli/anime-args.coax:107:20: mutant survived: the assignment was removed
+    if pos==2 {r.help=true;return r;}
+                     ^
+apps/openagents-cli/anime-args.coax:107:21: mutant survived: true became false
+    if pos==2 {r.help=true;return r;}
+                      ^
+apps/openagents-cli/anime-args.coax:115:13: mutant survived: 4 became 5
+      if seen[4] && !aa_file_ok(r.take) {r.err="invalid take path";return r;}
+              ^
+apps/openagents-cli/anime-args.coax:115:45: mutant survived: the assignment was removed
+      if seen[4] && !aa_file_ok(r.take) {r.err="invalid take path";return r;}
+                                              ^
+apps/openagents-cli/anime-args.coax:119:11: mutant survived: '>=' became '>'
+      if pos>=4 && !aa_file_ok(r.take) {r.err="invalid take path";return r;}
+            ^
+apps/openagents-cli/anime-args.coax:119:13: mutant survived: 4 became 5
+      if pos>=4 && !aa_file_ok(r.take) {r.err="invalid take path";return r;}
+              ^
+apps/openagents-cli/anime-args.coax:119:44: mutant survived: the assignment was removed
+      if pos>=4 && !aa_file_ok(r.take) {r.err="invalid take path";return r;}
+                                             ^
+apps/openagents-cli/anime-args.coax:120:11: mutant survived: '>=' became '>'
+      if pos>=5 && !aa_file_ok(r.out) {r.err="invalid output path";return r;}
+            ^
+apps/openagents-cli/anime-args.coax:120:13: mutant survived: 5 became 6
+      if pos>=5 && !aa_file_ok(r.out) {r.err="invalid output path";return r;}
+              ^
+apps/openagents-cli/anime-args.coax:120:43: mutant survived: the assignment was removed
+      if pos>=5 && !aa_file_ok(r.out) {r.err="invalid output path";return r;}
+                                            ^
+apps/openagents-cli/anime-args.coax:121:31: mutant survived: the assignment was removed
+      if !r.help && pos<5 {r.err="play needs take and output";return r;}
+                                ^
+apps/openagents-cli/anime-args.coax:134:23: mutant survived: '>=' became '>'
+        png:=r.out.count>=4 && r.out[r.out.count-4..<r.out.count]==".png";
+                        ^
+apps/openagents-cli/anime-args.coax:134:25: mutant survived: 4 became 5
+        png:=r.out.count>=4 && r.out[r.out.count-4..<r.out.count]==".png";
+                          ^
+apps/openagents-cli/anime-args.coax:135:23: mutant survived: '>=' became '>'
+        mp4:=r.out.count>=4 && r.out[r.out.count-4..<r.out.count]==".mp4";
+                        ^
+apps/openagents-cli/anime-args.coax:135:25: mutant survived: 4 became 5
+        mp4:=r.out.count>=4 && r.out[r.out.count-4..<r.out.count]==".mp4";
+                          ^
+apps/openagents-cli/anime-args.coax:140:46: mutant survived: 2 became 3
+          if seen[5] && (dims.w%2!=0 || dims.h%2!=0) {r.err="odd MP4 dimensions";return r;}
+                                               ^
+532 mutants, 494 killed, 38 survived

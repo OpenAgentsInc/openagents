@@ -1,0 +1,3 @@
+ok   #test CLI anime context projects admitted fields after large opaque confidence metadata (1 case, 2000413 steps, 28 ms)
+1 of 182 checks (--only 'large opaque'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

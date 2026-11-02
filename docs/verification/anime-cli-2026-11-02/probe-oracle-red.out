@@ -1,0 +1,17 @@
+FAIL #test anime CLI catalogue oracle requires finite choices and the missing body boundary (0 ms)
+coax/web/anime-cli-probe.coax:10:3: error[E0406]: assertion failed
+    #assert acp_catalogue("{\"v\":1,\"schema\":\"anime.catalogue.v1\",\"stage\":\"courtyard\",\"cast\":[{\"slot\":0,\"body_drawn\":true},{\"slot\":1,\"body_drawn\":true},{\"slot\":2,\"body_drawn\":true},{\"slot\":3,\"body_drawn\":true},{\"slot\":4,\"body_drawn\":true},{\"slot\":5,\"body_drawn\":true},{\"slot\":6,\"body_drawn\":false}],\"questions\":{\"kind\":[\"enter\",\"exit\",\"act\",\"emote\",\"cast\",\"fx\",\"shot\",\"cut\",\"beat\",\"make\"]}}");
+    ^
+  note: in #test anime CLI catalogue oracle requires finite choices and the missing body boundary
+FAIL #test anime CLI take oracle counts multianswers and preserves heard-only makeup (0 ms)
+coax/web/anime-cli-probe.coax:15:3: error[E0406]: assertion failed
+    #assert acp_take(take,3,4,true) && !acp_take(take,2,4,true) && !acp_take(take,3,3,true);
+    ^
+  note: in #test anime CLI take oracle counts multianswers and preserves heard-only makeup
+FAIL #test anime CLI request context oracle requires previous executable user answers (0 ms)
+coax/web/anime-cli-probe.coax:20:3: error[E0406]: assertion failed
+    #assert acp_context(good,"next",1) && !acp_context(good,"different",1) && !acp_context(good,"next",0);
+    ^
+  note: in #test anime CLI request context oracle requires previous executable user answers
+3 of 85 checks (--only 'anime CLI'), 0 passed, 3 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

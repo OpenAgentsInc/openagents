@@ -1,0 +1,37 @@
+{
+  "schema": "openagents.anime-cli.completion.v1",
+  "date": "2026-11-02",
+  "issue": 12634,
+  "implementation": "openagents labs anime catalogue, direct WORDS --take FILE, and play FILE OUT.png|OUT.mp4",
+  "behavior": [
+    "Catalogue comes from the checked Anime vocabulary. Direct uses payload-bound NIP-98, validates the complete public reply, preserves answer metadata, and atomically appends one bounded written line under a cooperating-writer lock.",
+    "Play uses the existing headless muted shot/clip engine, requires the page to acknowledge the accepted take before capture, and protects take/output aliases. Relative ffmpeg paths are literal; requested frame directories must be new or empty and are regenerated even when the video was cached."
+  ],
+  "qualification": {
+    "policy": {"checks": 207, "mutants_killed": 420, "survivors": 0, "waived": 0, "profile": "anime-cli-2026-11-02/policy-final-qualification.json"},
+    "arguments": {"baseline_checks": 19, "mutants_killed": 547, "survivors": 0, "waived": 0, "profile": "anime-cli-2026-11-02/args-current-qualification.json"},
+    "native": {"passed": 36, "failed": 0, "attempts": 1, "profile": "anime-cli-2026-11-02/native-v2-profile.json"},
+    "page": {"focused_checks": 10, "receipt": "anime-cli-2026-11-02/current-page-checks.log", "source_manifest": "anime-cli-2026-11-02/page-sources.sha256"},
+    "tools_check": {"tracked_files": 1472, "new_without_reason": 0, "receipt": "anime-cli-2026-11-02/final-tools-check.log"}
+  },
+  "native_scope": "The built CLI signs with a fresh in-memory identity against the actual local director API and a synthetic selector. Independent negative HTTP fixtures cover client refusals. PNG pixels and all twelve clip frames match equivalent shot/clip captures; ffprobe verifies silent H264 output. The changed producer separately qualifies colon filenames, requested frame regeneration and video-only cache reuse.",
+  "producers": {
+    "cli_and_authority_compiler": "0.48.0 immutable cached artifact; identities in the linked profiles",
+    "probe_and_page_compiler": "0.47.0; separate producer identities retained",
+    "cli_sources": "anime-cli-2026-11-02/cli-native-v2-source-inventory.json",
+    "final_integration": "anime-cli-2026-11-02/final-integration.json",
+    "probe_sources": "anime-cli-2026-11-02/native-v2-source-host-manifest.json",
+    "api": "The frozen corrected #12633 API artifact; no runtime API policy change. The only imported API-check change renames a colliding local identifier, recorded in anime-cli-2026-11-02/integration-hygiene.json."
+  },
+  "history": {
+    "native_v1": "anime-cli-2026-11-02/native-v1-profile.json is a separate intermediate 34-case pass; it is not qualification of the final adapter.",
+    "policy_diagnostic": "anime-cli-2026-11-02/policy-diagnostic-v3/ preserves the earlier 437/424/13 result and cleanup boundary; only the current 420/420/0 profile qualifies the final policy.",
+    "arguments_prior": "anime-cli-2026-11-02/args-policy-qualification.json is superseded by args-current-qualification.json."
+  },
+  "limits": [
+    "Local source completion only; no production/staging deployment or new paid-provider call is claimed.",
+    "Live voice, asset generation and empirical confidence calibration remain separate work.",
+    "After the owner-reported lockup, heavy work ran sequentially at nice15, with one mutation worker and a 900-second command limit. Recovery and paused LaunchAgents are recorded in NEEDS_OWNER.md and anime-cli-2026-11-02/resource-recovery/event.json.",
+    "The owner instructed this chat to finish #12634 and stop. All later issues remain deferred."
+  ]
+}

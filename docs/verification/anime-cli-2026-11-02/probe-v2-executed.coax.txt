@@ -1,0 +1,451 @@
+// #12634: independent journey through the built CLI, real local API and page.
+// Test identities stay in memory/child environment, never argv or receipts.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/json/json.coax";
+#load "../lib/text/base64.coax";
+#load "../lib/image/png.coax";
+#load "cli-journey-fixture.coax";
+
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+cxproc_self_path :: (out: [] u8) -> int #foreign;
+
+#test "anime CLI catalogue oracle requires finite choices and the missing body boundary" {
+  #assert acp_catalogue("{\"v\":1,\"schema\":\"anime.catalogue.v1\",\"stage\":\"courtyard\",\"cast\":[{\"slot\":0,\"body_drawn\":true},{\"slot\":1,\"body_drawn\":true},{\"slot\":2,\"body_drawn\":true},{\"slot\":3,\"body_drawn\":true},{\"slot\":4,\"body_drawn\":true},{\"slot\":5,\"body_drawn\":true},{\"slot\":6,\"body_drawn\":false}],\"questions\":{\"kind\":[\"enter\",\"exit\",\"act\",\"emote\",\"cast\",\"fx\",\"shot\",\"cut\",\"beat\",\"make\"]}}");
+  #assert !acp_catalogue("{}") && !acp_catalogue("{\"schema\":\"anime.catalogue.v1\",\"cast\":[]}");
+}
+#test "anime CLI take oracle counts multianswers and preserves heard-only makeup" {
+  take := "{\"schema\":\"anime.v1\",\"auto\":true,\"lines\":[{\"said\":0,\"done\":0,\"words\":\"one\",\"answers\":[{\"kind\":\"cast\",\"p\":0.94}]},{\"said\":3,\"done\":3,\"words\":\"two\",\"answers\":[{\"kind\":\"act\",\"p\":0.93},{\"kind\":\"shot\",\"p\":0.9}]},{\"said\":6,\"done\":6,\"words\":\"dragon\",\"answers\":[{\"kind\":\"make\",\"what\":\"ink dragon\",\"p\":0.9,\"stock\":false,\"render_supported\":false,\"decision\":\"heard\"}]}]}";
+  #assert acp_take(take,3,4,true) && !acp_take(take,2,4,true) && !acp_take(take,3,3,true);
+  #assert !acp_take("{}",0,0,false);
+}
+#test "anime CLI request context oracle requires previous executable user answers" {
+  good := "{\"v\":1,\"words\":\"next\",\"state\":{\"cast\":[{\"slot\":0,\"name\":\"Draconia\",\"archetype\":\"heroine\",\"on\":true,\"place\":\"courtyard\"}],\"shot\":{\"framing\":\"wide\",\"place\":\"courtyard\"},\"last\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"p\":0.94}]}}";
+  #assert acp_context(good,"next",1) && !acp_context(good,"different",1) && !acp_context(good,"next",0);
+  #assert !acp_context("{}","next",1);
+}
+#test "anime CLI direct report must match the saved last line and cumulative counts" {
+  take := "{\"lines\":[{\"answers\":[{\"kind\":\"cast\",\"p\":0.94}]}]}";
+  reply := "{\"heard\":\"one\",\"lines\":1,\"answer_count\":1,\"answers\":[{\"kind\":\"cast\",\"p\":0.94}]}";
+  #assert acp_report(reply,take,"one",1,1,1) && !acp_report(reply,take,"two",1,1,1) && !acp_report(reply,take,"one",1,2,1);
+  #assert acp_preserved(take,"{\"lines\":[{\"answers\":[{\"kind\":\"cast\",\"p\":0.94}]},{\"answers\":[]}]}") && !acp_preserved(take,"{\"lines\":[{\"answers\":[]}]}");
+}
+acp_catalogue :: (s: string) -> bool {
+  nodes: [512] JvNode; d: [1] Jv;
+  if !jv_parse(d[..],s,nodes[..]) || jv_int(d[0],jv_get(d[0],0,"v"),0) != 1 || jv_raw(d[0],jv_get(d[0],0,"schema")) != "anime.catalogue.v1" || jv_raw(d[0],jv_get(d[0],0,"stage")) != "courtyard" { return false; }
+  cast_list := jv_get(d[0],0,"cast"); kinds := jv_path(d[0],0,"questions.kind");
+  if jv_kind(d[0],cast_list) != JV_ARRAY || jv_len(d[0],cast_list) != 7 || jv_kind(d[0],kinds) != JV_ARRAY || jv_len(d[0],kinds) != 10 { return false; }
+  expected := [10] string.["enter","exit","act","emote","cast","fx","shot","cut","beat","make"];
+  for i: 0..<10 { if jv_raw(d[0],jv_at(d[0],kinds,i)) != expected[i] { return false; } }
+  for i: 0..<7 { row := jv_at(d[0],cast_list,i); if jv_int(d[0],jv_get(d[0],row,"slot"),-1) != i || jv_kind(d[0],jv_get(d[0],row,"body_drawn")) != (ifx i == 6 then JV_FALSE else JV_TRUE) { return false; } }
+  return true;
+}
+acp_take :: (s: string, lines: int, answers: int, makeup: bool) -> bool {
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..],s,nodes[..]) || jv_raw(d[0],jv_get(d[0],0,"schema")) != "anime.v1" { return false; }
+  list := jv_get(d[0],0,"lines"); if jv_kind(d[0],list) != JV_ARRAY || jv_len(d[0],list) != lines { return false; }
+  total := 0; made := false; previous := -1.0;
+  for i: 0..<lines {
+    line := jv_at(d[0],list,i); said := args_number(jv_raw(d[0],jv_get(d[0],line,"said"))); done := args_number(jv_raw(d[0],jv_get(d[0],line,"done")));
+    if !said.ok || !done.ok || said.value != done.value || said.value < 0.0 || said.value < previous || (i == 0 && said.value != 0.0) { return false; }
+    previous = done.value; a := jv_get(d[0],line,"answers"); if jv_kind(d[0],a) != JV_ARRAY { return false; }
+    total += jv_len(d[0],a);
+    for k: 0..<jv_len(d[0],a) {
+      at := jv_at(d[0],a,k); p := args_number(jv_raw(d[0],jv_get(d[0],at,"p")));
+      if !p.ok || p.value < 0.0 || p.value > 1.0 || jv_get(d[0],at,"made") >= 0 { return false; }
+      if jv_raw(d[0],jv_get(d[0],at,"kind")) == "make" {
+        if jv_kind(d[0],jv_get(d[0],at,"stock")) != JV_FALSE || jv_kind(d[0],jv_get(d[0],at,"render_supported")) != JV_FALSE || jv_raw(d[0],jv_get(d[0],at,"decision")) != "heard" { return false; }
+        made = true;
+      }
+    }
+  }
+  return total == answers && made == makeup;
+}
+acp_context :: (s: string, words: string, last: int) -> bool {
+  nodes: [2048] JvNode; d: [1] Jv; decoded: [601] u8;
+  if !jv_parse(d[..],s,nodes[..]) || jv_int(d[0],jv_get(d[0],0,"v"),0) != 1 { return false; }
+  n := jv_str(d[0],jv_get(d[0],0,"words"),decoded[..]); if n != words.count || cast(string)decoded[0..<n] != words { return false; }
+  cast_list := jv_path(d[0],0,"state.cast"); shot := jv_path(d[0],0,"state.shot"); history := jv_path(d[0],0,"state.last");
+  if jv_kind(d[0],cast_list) != JV_ARRAY || jv_len(d[0],cast_list) < 1 || jv_len(d[0],cast_list) > 7 || jv_kind(d[0],shot) != JV_OBJECT || jv_kind(d[0],history) != JV_ARRAY || jv_len(d[0],history) != last { return false; }
+  for i: 0..<last { item := jv_at(d[0],history,i); if jv_raw(d[0],jv_get(d[0],item,"kind")) == "make" || jv_get(d[0],item,"confidence") >= 0 || jv_get(d[0],item,"decision") >= 0 { return false; } }
+  return true;
+}
+acp_report :: (reply: string, take: string, words: string, lines: int, total: int, count: int) -> bool {
+  rn: [4096] JvNode; tn: [4096] JvNode; r: [1] Jv; d: [1] Jv; heard: [601] u8;
+  if !jv_parse(r[..],reply,rn[..]) || !jv_parse(d[..],take,tn[..]) { return false; }
+  n := jv_str(r[0],jv_get(r[0],0,"heard"),heard[..]);
+  if n != words.count || n < 0 || cast(string)heard[0..<n] != words || jv_int(r[0],jv_get(r[0],0,"lines"),-1) != lines || jv_int(r[0],jv_get(r[0],0,"answer_count"),-1) != total { return false; }
+  reports := jv_get(r[0],0,"answers"); last := jv_at(d[0],jv_get(d[0],0,"lines"),lines-1); saved := jv_get(d[0],last,"answers");
+  if jv_kind(r[0],reports) != JV_ARRAY || jv_len(r[0],reports) != count || jv_kind(d[0],saved) != JV_ARRAY || jv_len(d[0],saved) != count { return false; }
+  return jv_raw(r[0],reports) == jv_raw(d[0],saved);
+}
+acp_preserved :: (before: string, after: string) -> bool {
+  bn: [4096] JvNode; an: [4096] JvNode; b: [1] Jv; a: [1] Jv;
+  if !jv_parse(b[..],before,bn[..]) || !jv_parse(a[..],after,an[..]) { return false; }
+  old := jv_get(b[0],0,"lines"); next := jv_get(a[0],0,"lines");
+  if jv_kind(b[0],old) != JV_ARRAY || jv_kind(a[0],next) != JV_ARRAY || jv_len(a[0],next) < jv_len(b[0],old) { return false; }
+  for i: 0..<jv_len(b[0],old) { if jv_raw(b[0],jv_at(b[0],old,i)) != jv_raw(a[0],jv_at(a[0],next,i)) { return false; } }
+  return true;
+}
+
+// Native cases written before effects are implemented. The completed journey
+// will replace this initial catalogue-only red entry after the red is retained.
+acp_initial_red :: () -> int {
+  cli: [4096] u8; dir: [4096] u8;
+  binary := proc_getenv("ANIME_CLI_BIN",cli[..]); record := proc_getenv("ANIME_CLI_RECORD",dir[..]);
+  if binary == "" || record == "" || !fs_mkdir(record) { return 2; }
+  h := proc_new(); args := [10] string.[binary,"--json","--profile","anime-probe-red","--origin","http://127.0.0.1:57435","labs","anime","catalogue","--help"];
+  ok := h >= 0;
+  for arg: args[0..<9] { ok = proc_arg(h,arg) && ok; }
+  ok = proc_env(h,"OPENAGENTS_KEYCHAIN=0") && proc_env(h,"OPENAGENTS_NSEC=invalid-test-key") && ok;
+  if !ok || proc_start(h) != 0 { return 2; }
+  out: [65536] u8; n := proc_line(h,30000,out[..]); status := proc_wait(h,2000); done := proc_release(h);
+  path: [4096] u8; wrote := fs_write(fs_join(record,"catalogue-red.cli.json",path[..]),ifx n > 0 then cast(string)out[0..<n] else "{}");
+  if status != 0 || n < 1 { print("FAIL built CLI exposes labs anime catalogue (exit %)\n",status); return 1; }
+  nodes: [256] JvNode; d: [1] Jv; value: [8192] u8; o: [1] Jo;
+  if !jv_parse(d[..],cast(string)out[0..<n],nodes[..]) { return 1; }
+  jo_start(o[..],value[..]); jv_write(d[0],jv_get(d[0],0,"catalogue"),o[..]);
+  return ifx wrote && acp_catalogue(jo_text(o[..])) then 0 else 1;
+}
+
+Acp :: struct {
+  cli: string; api: string; page: string; dir: string; control: string; profile: string; origin: string;
+  key: [96] u8; key_n: int; bad_key: bool; out: [131072] u8; n: int; status: int; end_ms: int;
+  pass: int; fail: int; listener: int = -1; fixture_mode: int; fixture_reply: [32768] u8; fixture_n: int;
+  fixture_calls: int; fixture_auth: bool; race_path: string; race_body: [32769] u8; race_n: int; race_done: bool;
+  chrome_sentinel: [4096] u8; chrome_n: int;
+}
+acp_put :: (out: [] u8, n: int, s: string) -> int {
+  if n < 0 || n+s.count > out.count { return -1; } for i: 0..<s.count { out[n+i] = s[i]; } return n+s.count;
+}
+acp_path :: (t: [] Acp, name: string, out: [] u8) -> string { return fs_join(t[0].dir,name,out); }
+acp_body :: (t: [] Acp) -> string { return cast(string)t[0].out[0..<t[0].n]; }
+acp_chrome_sentinel :: (t: [] Acp) -> string { return cast(string)t[0].chrome_sentinel[0..<t[0].chrome_n]; }
+acp_has :: (s: string, needle: string) -> bool { return cjf_find(s,needle) >= 0; }
+acp_check :: (t: [] Acp, name: string, ok: bool) -> bool {
+  if ok { t[0].pass += 1; print("ok %\n",name); } else { t[0].fail += 1; print("FAIL % (CLI exit %)\n",name,t[0].status); } return ok;
+}
+acp_note :: (t: [] Acp, name: string, ok: bool) { checked := acp_check(t,name,ok); }
+acp_record :: (t: [] Acp, name: string, data: string) -> bool { p: [4096] u8; return fs_write(acp_path(t,name,p[..]),data); }
+acp_control :: (t: [] Acp, name: string, data: string) -> bool { p: [4096] u8; return fs_write(fs_join(t[0].control,name,p[..]),data); }
+acp_control_read :: (t: [] Acp, name: string, out: [] u8) -> int { p: [4096] u8; return fs_read(fs_join(t[0].control,name,p[..]),out); }
+acp_mode :: (t: [] Acp, mode: string) -> bool {
+  p: [4096] u8; removed := fs_remove(fs_join(t[0].control,"entered",p[..])); removed = fs_remove(fs_join(t[0].control,"release",p[..]));
+  return acp_control(t,"mode",mode);
+}
+acp_calls :: (t: [] Acp) -> int { b: [32] u8; n := acp_control_read(t,"calls",b[..]); return ifx n > 0 then args_whole(cast(string)b[0..<n]) else -1; }
+acp_same :: (path: string, expected: string) -> bool {
+  b: [32769] u8; n := fs_read(path,b[..]); return n == expected.count && n >= 0 && cast(string)b[0..<n] == expected;
+}
+acp_model_context :: (t: [] Acp, words: string, last: int, name: string) -> bool {
+  model: [65536] u8; input: [16384] u8; nodes: [2048] JvNode; d: [1] Jv;
+  n := acp_control_read(t,"request",model[..]); if n < 1 || !jv_parse(d[..],cast(string)model[0..<n],nodes[..]) { return false; }
+  k := jv_str(d[0],jv_path(d[0],0,"contents[0].parts[0].text"),input[..]);
+  return k > 0 && acp_record(t,name,cast(string)input[0..<k]) && acp_context(cast(string)input[0..<k],words,last);
+}
+acp_http_reply :: (h: int, code: int, content: string, body: string) -> bool {
+  bytes: [256] u8; o: [1] Jo; number: [32] u8; no: [1] Jo; jo_start(o[..],bytes[..]);
+  jo_start(no[..],number[..]); jo_int(no[..],code); jo_put(o[..],"HTTP/1.1 "); jo_put(o[..],jo_text(no[..])); jo_put(o[..]," Fixture\r\nContent-Type: "); jo_put(o[..],content);
+  jo_put(o[..],"\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: "); jo_start(no[..],number[..]); jo_int(no[..],body.count); jo_put(o[..],jo_text(no[..])); jo_put(o[..],"\r\n\r\n");
+  for c: jo_text(o[..]) { if cxsock_write(h,cast(int)c) != 0 { return false; } }
+  for c: body { if cxsock_write(h,cast(int)c) != 0 { return false; } }
+  return cxsock_flush(h,2000) == 0;
+}
+// Browser-only glue representing an old page: readiness and a fixed-step hook
+// exist, while the take capability is absent. The Coax caller decides refusal.
+ACP_OLD_PAGE :: "<!doctype html><canvas width='640' height='360'></canvas><script>globalThis.coaxial={ready:true,sceneReady:true,send:()=>{},probe:()=>0,guardProbe:()=>0};globalThis.coaxialClipStep=async()=>1;</script>";
+acp_serve :: (t: [] Acp) {
+  if t[0].listener < 0 { return; } h := cxsock_accept(t[0].listener,1); if h < 0 { return; }
+  raw: [65536] u8; used := 0; until := proc_now_ms()+2000; complete := false;
+  while used < raw.count && proc_now_ms() < until {
+    got := cxsock_read(h,50); if got < 0 { break; }
+    for i: 0..<got { if used >= raw.count { break; } raw[used] = cast(u8)cxsock_byte(h,i); used += 1; }
+    head := cjf_find(cast(string)raw[0..<used],"\r\n\r\n");
+    if head >= 0 { length := cjf_header(cast(string)raw[0..<used],"content-length"); want := ifx length == "" then 0 else args_whole(length); if want >= 0 && used == head+4+want { complete = true; break; } }
+  }
+  request := cjf_request(cast(string)raw[0..<used]);
+  if complete && request.ok && request.method == "POST" && request.path == "/api/playtest/labs/anime/direct" {
+    t[0].fixture_calls += 1; t[0].fixture_auth = request.has_auth;
+    written := acp_record(t,"fixture-request.json",request.body);
+    code := ifx t[0].fixture_mode == 0 then 200 else t[0].fixture_mode;
+    sent := acp_http_reply(h,code,"application/json",ifx code == 200 then cast(string)t[0].fixture_reply[0..<t[0].fixture_n] else "{\"v\":1,\"error\":\"fixture refusal\"}");
+  } else if complete && request.ok && request.method == "GET" { sent := acp_http_reply(h,200,"text/html",ACP_OLD_PAGE); }
+  else { sent := acp_http_reply(h,400,"application/json","{}"); }
+  closed := cxsock_close(h);
+}
+acp_cli :: (t: [] Acp, words: [] string, expected: int, text: bool, name: string) -> bool {
+  t[0].n = 0; t[0].status = -1; t[0].race_done = false;
+  if proc_now_ms() >= t[0].end_ms { return false; }
+  h := proc_new(); if h < 0 { return false; }
+  ok := proc_cwd(h,t[0].dir) && proc_arg(h,t[0].cli) && proc_arg(h,"--profile") && proc_arg(h,t[0].profile) && proc_arg(h,"--origin") && proc_arg(h,t[0].origin);
+  if !text { ok = proc_arg(h,"--json") && ok; }
+  for word: words { ok = proc_arg(h,word) && ok; }
+  direct := words.count >= 3 && words[0] == "labs" && words[1] == "anime" && words[2] == "direct";
+  ok = proc_env(h,"OPENAGENTS_KEYCHAIN=0") && proc_env(h,ifx t[0].bad_key || !direct then "OPENAGENTS_NSEC=invalid-test-key" else cast(string)t[0].key[0..<t[0].key_n]) && ok;
+  if t[0].chrome_n > 0 {
+    self: [4096] u8; sn := cxproc_self_path(self[..]); env: [8192] u8;
+    en := acp_put(env[..],0,"CHROME="); en = acp_put(env[..],en,cast(string)self[0..<(ifx sn > 0 then sn else 0)]);
+    ok = sn > 0 && proc_env(h,cast(string)env[0..<en]) && ok;
+    en = acp_put(env[..],0,"ANIME_CLI_CHROME_SENTINEL="); en = acp_put(env[..],en,acp_chrome_sentinel(t)); ok = proc_env(h,cast(string)env[0..<en]) && ok;
+  }
+  if !ok || proc_start(h) != 0 { done := proc_release(h); return false; }
+  until := proc_now_ms()+120000; if t[0].end_ms < until { until = t[0].end_ms; }
+  line: [65536] u8; ended := false; cut := false;
+  while proc_now_ms() < until {
+    acp_serve(t);
+    if t[0].race_path != "" && !t[0].race_done {
+      entered: [32] u8;
+      if acp_control_read(t,"entered",entered[..]) > 0 { t[0].race_done = fs_write(t[0].race_path,cast(string)t[0].race_body[0..<t[0].race_n]) && acp_control(t,"release","yes"); }
+    }
+    n := proc_line(h,10,line[..]); if n == PROC_EOF { ended = true; break; } if n == PROC_TIMEOUT { continue; } if n < 0 { cut = true; break; }
+    if t[0].n > 0 { if t[0].n >= t[0].out.count { cut = true; break; } t[0].out[t[0].n] = '\n'; t[0].n += 1; }
+    if t[0].n+n > t[0].out.count { cut = true; break; }
+    for i: 0..<n { t[0].out[t[0].n+i] = line[i]; } t[0].n += n;
+  }
+  if !ended { killed := proc_kill(h,PROC_SIGKILL); }
+  t[0].status = proc_wait(h,2000); done := proc_release(h);
+  file: [128] u8; fn := acp_put(file[..],0,name); fn = acp_put(file[..],fn,ifx text then ".txt" else ".json");
+  written := fn > 0 && acp_record(t,cast(string)file[0..<fn],acp_body(t));
+  if !written || !ended || cut || t[0].status != expected { return false; }
+  if text { return true; }
+  nodes: [2048] JvNode; d: [1] Jv;
+  return jv_parse(d[..],acp_body(t),nodes[..]) && jv_kind(d[0],jv_get(d[0],0,"ok")) == (ifx expected == 0 then JV_TRUE else JV_FALSE);
+}
+acp_direct :: (t: [] Acp, words: string, take: string, expect: int, text: bool, name: string) -> bool {
+  a := [6] string.["labs","anime","direct",words,"--take",take]; return acp_cli(t,a[..],expect,text,name);
+}
+acp_start_selector :: (t: [] Acp, binary: string) -> int {
+  h := proc_new(); if h < 0 { return -1; }
+  ok := proc_arg(h,binary) && proc_arg(h,"--port") && proc_arg(h,"51392") && proc_arg(h,"--control") && proc_arg(h,t[0].control) && proc_unset(h,"OPENAGENTS_NSEC") && proc_env(h,"OPENAGENTS_KEYCHAIN=0") && proc_start(h) == 0;
+  if !ok { done := proc_release(h); return -1; }
+  ready: [32] u8; until := proc_now_ms()+3000;
+  while proc_now_ms() < until { if acp_control_read(t,"ready",ready[..]) > 0 { return h; } proc_sleep(10); }
+  killed := proc_kill(h,PROC_SIGKILL); done := proc_release(h); return -1;
+}
+acp_with_length :: (s: string, out: [] u8) -> int {
+  nodes: [4096] JvNode; d: [1] Jv; o: [1] Jo; if !jv_parse(d[..],s,nodes[..]) { return -1; }
+  jo_start(o[..],out); jo_obj(o[..]); c := d[0].nodes[0].first;
+  while c != -1 { key := jv_key(d[0],c); if key != "length" { jo_key(o[..],key); jv_write(d[0],c,o[..]); } c = d[0].nodes[c].next; }
+  jo_key(o[..],"length"); jo_int(o[..],7); jo_end(o[..]); return ifx o[0].bad then -1 else o[0].n;
+}
+acp_at_seven :: (s: string) -> bool {
+  nodes: [4096] JvNode; d: [1] Jv; if !jv_parse(d[..],s,nodes[..]) { return false; }
+  said := args_number(jv_raw(d[0],jv_path(d[0],0,"lines[1].said"))); done := args_number(jv_raw(d[0],jv_path(d[0],0,"lines[1].done")));
+  return said.ok && done.ok && said.value == 7.0 && done.value == 7.0;
+}
+// Clone one complete real answer, changing only its finite kind. The fixture
+// therefore tests held-response validation, with all public vectors/metadata.
+acp_bad_reply :: (t: [] Acp, s: string) -> bool {
+  nodes: [4096] JvNode; d: [1] Jv; o: [1] Jo; if !jv_parse(d[..],s,nodes[..]) { return false; }
+  first := jv_path(d[0],0,"lines[0].answers[0]"); if first < 0 { return false; }
+  jo_start(o[..],t[0].fixture_reply[..]); jo_obj(o[..]); jo_key(o[..],"v"); jo_int(o[..],1); jo_key(o[..],"heard"); jo_str(o[..],"Invalid held answer."); jo_key(o[..],"answers"); jo_arr(o[..]); jo_obj(o[..]); c := d[0].nodes[first].first;
+  while c != -1 { key := jv_key(d[0],c); jo_key(o[..],key); if key == "kind" { jo_str(o[..],"gesture"); } else { jv_write(d[0],c,o[..]); } c = d[0].nodes[c].next; }
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); t[0].fixture_n = o[0].n;
+  return !o[0].bad && acp_record(t,"invalid-public-reply.json",jo_text(o[..]));
+}
+acp_catalogue_cases :: (t: [] Acp) -> bool {
+  words := [3] string.["labs","anime","catalogue"];
+  called := acp_cli(t,words[..],0,false,"catalogue.cli");
+  nodes: [4096] JvNode; d: [1] Jv; body: [16384] u8; o: [1] Jo;
+  good := called && jv_parse(d[..],acp_body(t),nodes[..]);
+  if good { jo_start(o[..],body[..]); jv_write(d[0],jv_get(d[0],0,"catalogue"),o[..]); good = !o[0].bad && acp_catalogue(jo_text(o[..])); }
+  if !acp_check(t,"catalogue JSON exposes finite kinds and absent creature body",good) { return false; }
+  good = jv_len(d[0],jv_path(d[0],0,"catalogue.questions")) == 18 && jv_len(d[0],jv_path(d[0],0,"catalogue.questions.spell")) == 6 && jv_len(d[0],jv_path(d[0],0,"catalogue.questions.framing")) == 8;
+  acp_note(t,"catalogue includes all finite question families",good);
+  called = acp_cli(t,words[..],0,true,"catalogue-text"); prefix := "catalogue "; n := t[0].n; while n > 0 && (t[0].out[n-1] == '\n' || t[0].out[n-1] == '\r') { n -= 1; }
+  acp_note(t,"text catalogue retains the same typed catalogue",called && n > prefix.count && cast(string)t[0].out[0..<prefix.count] == prefix && acp_catalogue(cast(string)t[0].out[prefix.count..<n]));
+  return true;
+}
+acp_direct_cases :: (t: [] Acp, take: string, fixture_origin: string) -> bool {
+  t[0].origin = t[0].api; ready := acp_mode(t,"stock");
+  good := ready && acp_direct(t,"Draconia casts a fireball.",take,0,true,"direct-first-text");
+  data: [32768] u8; n := fs_read(take,data[..]); good = good && n > 0 && acp_take(cast(string)data[0..<n],1,1,false) && acp_has(acp_body(t),"fireball") && acp_has(acp_body(t),"0.940") && acp_has(acp_body(t),"PLAY");
+  if !acp_check(t,"real signed direct creates first line and a confidence caption",good) { return false; }
+  acp_note(t,"first route receives words and empty executable history",acp_model_context(t,"Draconia casts a fireball.",0,"context-first.json"));
+  explicit_length: [32768] u8; en := acp_with_length(cast(string)data[0..<n],explicit_length[..]);
+  ready = en > 0 && fs_write(take,cast(string)explicit_length[0..<en]) && acp_mode(t,"multi");
+  good = ready && acp_direct(t,"Draconia raises her wand. Close-up on Kai.",take,0,false,"direct-multi.cli");
+  n = fs_read(take,data[..]); good = good && n > 0 && acp_take(cast(string)data[0..<n],2,3,false) && acp_at_seven(cast(string)data[0..<n]) && acp_preserved(cast(string)explicit_length[0..<en],cast(string)data[0..<n]) && acp_report(acp_body(t),cast(string)data[0..<n],"Draconia raises her wand. Close-up on Kai.",2,3,2);
+  if !acp_check(t,"multianswer append begins at explicit prior length seven",good) { return false; }
+  acp_note(t,"append request retains executable user context",acp_model_context(t,"Draconia raises her wand. Close-up on Kai.",1,"context-multi.json"));
+  previous: [32768] u8; old_n := acp_put(previous[..],0,cast(string)data[0..<n]);
+  ready = acp_mode(t,"out"); good = ready && acp_direct(t,"An ink dragon lands by the wall.",take,0,false,"direct-make.cli");
+  n = fs_read(take,data[..]); good = good && n > 0 && acp_take(cast(string)data[0..<n],3,4,true) && acp_preserved(cast(string)previous[0..<old_n],cast(string)data[0..<n]) && acp_report(acp_body(t),cast(string)data[0..<n],"An ink dragon lands by the wall.",3,4,1);
+  if !acp_check(t,"unavailable make is preserved heard-only without a generated asset",good) { return false; }
+  saved := cast(string)data[0..<n]; wrote := acp_record(t,"accepted.take",saved);
+  ready = acp_mode(t,"malformed");
+  acp_note(t,"real API model refusal leaves accepted take byte-exact",ready && acp_direct(t,"Refuse this completion.",take,1,false,"model-refusal.cli") && acp_same(take,saved));
+  acp_note(t,"request history excludes heard make and automatic camera answers",acp_model_context(t,"Refuse this completion.",3,"context-after-make.json"));
+  ready = acp_mode(t,"status500");
+  acp_note(t,"real upstream failure leaves accepted take byte-exact",ready && acp_direct(t,"Upstream refusal.",take,1,false,"upstream-refusal.cli") && acp_same(take,saved));
+  before := acp_calls(t); long: [601] u8; for i: 0..<long.count { long[i] = 'x'; }
+  acp_note(t,"empty words refuse usage2 without selector effects",acp_direct(t,"",take,2,false,"empty-words.cli") && acp_same(take,saved) && acp_calls(t) == before);
+  acp_note(t,"601-byte words refuse usage2 without selector effects",acp_direct(t,cast(string)long[..],take,2,false,"long-words.cli") && acp_same(take,saved) && acp_calls(t) == before);
+  bad_path: [4096] u8; invalid := acp_path(t,"invalid.take",bad_path[..]); wrote = fs_write(invalid,"{");
+  acp_note(t,"invalid existing take is never replaced or sent",wrote && acp_direct(t,"Do not replace invalid bytes.",invalid,2,false,"invalid-take.cli") && acp_same(invalid,"{") && acp_calls(t) == before);
+  t[0].bad_key = true;
+  acp_note(t,"missing valid test identity is auth3 without default-profile fallback",acp_direct(t,"Authentication required.",take,3,false,"auth-refusal.cli") && acp_same(take,saved) && acp_calls(t) == before);
+  t[0].bad_key = false; t[0].origin = fixture_origin; t[0].fixture_mode = 0;
+  ready = acp_bad_reply(t,saved); prior := t[0].fixture_calls;
+  acp_note(t,"200 invalid held public answer is rejected before replacement",ready && acp_direct(t,"Invalid held answer.",take,1,false,"invalid-public.cli") && acp_same(take,saved) && t[0].fixture_calls == prior+1 && t[0].fixture_auth);
+  codes := [3] int.[401,403,429]; exits := [3] int.[3,4,7]; names := [3] string.["http401.cli","http403.cli","http429.cli"];
+  for i: 0..<3 {
+    t[0].fixture_mode = codes[i]; prior = t[0].fixture_calls;
+    acp_note(t,names[i],acp_direct(t,"Fixture refusal.",take,exits[i],false,names[i]) && acp_same(take,saved) && t[0].fixture_calls == prior+1 && t[0].fixture_auth);
+  }
+  t[0].origin = t[0].api; lock_buf: [4200] u8; ln := acp_put(lock_buf[..],0,take); ln = acp_put(lock_buf[..],ln,".anime.lock"); lock := cast(string)lock_buf[0..<ln];
+  ready = fs_mkdir(lock) && acp_mode(t,"stock");
+  acp_note(t,"held sibling lock exits5 with old take unchanged",ready && acp_direct(t,"A locked append.",take,5,false,"locked.cli") && acp_same(take,saved));
+  removed := fs_remove(lock);
+  t[0].race_n = acp_put(t[0].race_body[..],0,saved); t[0].race_n = acp_put(t[0].race_body[..],t[0].race_n,"\n");
+  t[0].race_path = take; ready = t[0].race_n > 0 && acp_mode(t,"hold");
+  good = ready && acp_direct(t,"A concurrent append.",take,5,false,"changed.cli") && t[0].race_done && acp_same(take,cast(string)t[0].race_body[0..<t[0].race_n]);
+  acp_note(t,"concurrent external byte change wins over stale append",good);
+  t[0].race_path = ""; t[0].race_n = 0; return good;
+}
+acp_join :: (a: string, b: string, out: [] u8) -> string { n := acp_put(out,0,a); n = acp_put(out,n,b); return ifx n >= 0 then cast(string)out[0..<n] else ""; }
+acp_url :: (origin: string, source: string, suffix: string, out: [] u8) -> string {
+  encoded: [43696] u8; n := b64_encode(source,encoded[..]); if n < 0 { return ""; }
+  for i: 0..<n { if encoded[i] == '+' { encoded[i] = '-'; } else if encoded[i] == '/' { encoded[i] = '_'; } }
+  while n > 0 && encoded[n-1] == '=' { n -= 1; }
+  k := acp_put(out,0,origin); k = acp_put(out,k,"/realms/anime-lab?take64="); k = acp_put(out,k,cast(string)encoded[0..<n]); k = acp_put(out,k,suffix);
+  return ifx k >= 0 then cast(string)out[0..<k] else "";
+}
+// PNG decoding and the 12fps track oracle retain the independently qualified
+// media-probe method; this journey tests the new command wiring only.
+acp_pixels :: (path: string, out: [] u8) -> bool {
+  bytes: [1048576] u8; work: [2097152] u8; n := fs_read(path,bytes[..]); if n < 1 { return false; }
+  p := png_info(bytes[0..<n]); return p.status == PNG_OK && p.w == 640 && p.h == 360 && p.work <= work.count && png_decode(bytes[0..<n],work[..],out) == PNG_OK;
+}
+acp_pixel_pair :: (left: string, right: string) -> bool {
+  a: [640*360*4] u8; b: [640*360*4] u8;
+  if !acp_pixels(left,a[..]) || !acp_pixels(right,b[..]) { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } } return true;
+}
+acp_video :: (s: string) -> bool {
+  nodes: [512] JvNode; d: [1] Jv; if !jv_parse(d[..],s,nodes[..]) { return false; }
+  list := jv_get(d[0],0,"streams"); if jv_kind(d[0],list) != JV_ARRAY || jv_len(d[0],list) != 1 { return false; }
+  v := jv_at(d[0],list,0); seconds := args_number(jv_raw(d[0],jv_path(d[0],0,"format.duration")));
+  return jv_raw(d[0],jv_get(d[0],v,"codec_name")) == "h264" && jv_raw(d[0],jv_get(d[0],v,"pix_fmt")) == "yuv420p" && jv_int(d[0],jv_get(d[0],v,"width"),0) == 640 && jv_int(d[0],jv_get(d[0],v,"height"),0) == 360 && jv_raw(d[0],jv_get(d[0],v,"r_frame_rate")) == "12/1" && args_whole(jv_raw(d[0],jv_get(d[0],v,"nb_read_frames"))) == 12 && seconds.ok && seconds.value > 0.999 && seconds.value < 1.001;
+}
+acp_frame_pairs :: (t: [] Acp, name: string) -> bool {
+  left_dir: [4096] u8; right_dir: [4096] u8; left: [4096] u8; right: [4096] u8;
+  digits := "0123456789";
+  for i: 0..<12 {
+    frame: [16] u8; n := acp_put(frame[..],0,"f000"); frame[n] = digits[i/10]; frame[n+1] = digits[i%10]; n += 2; n = acp_put(frame[..],n,".png");
+    a := fs_join(acp_path(t,name,left_dir[..]),cast(string)frame[0..<n],left[..]);
+    b := fs_join(acp_path(t,"reference-frames",right_dir[..]),cast(string)frame[0..<n],right[..]);
+    if !acp_pixel_pair(a,b) { return false; }
+  }
+  return true;
+}
+acp_play_alias_cases :: (t: [] Acp, take: string) {
+  t[0].origin = t[0].page; bytes: [32768] u8; n := fs_read(take,bytes[..]); if n < 1 { t[0].fail += 1; return; } saved := cast(string)bytes[0..<n];
+  missing_b: [4096] u8; out_b: [4096] u8;
+  missing := acp_path(t,"absent.take",missing_b[..]); output := acp_path(t,"absent.png",out_b[..]);
+  absent := [5] string.["labs","anime","play",missing,output];
+  acp_note(t,"missing play input exits6 without output",acp_cli(t,absent[..],6,false,"missing-play.cli") && !fs_exists(output));
+  alias_b: [4096] u8; dotted_b: [4096] u8; alias := acp_path(t,"same.png",alias_b[..]); dotted := acp_path(t,"./same.png",dotted_b[..]); ready := fs_write(alias,saved);
+  same := [5] string.["labs","anime","play",alias,dotted];
+  acp_note(t,"dot path alias cannot overwrite the take",ready && acp_cli(t,same[..],2,false,"dot-alias.cli") && acp_same(alias,saved));
+  symlink_b: [4096] u8; symlink := acp_path(t,"symlink.png",symlink_b[..]); so: [4096] u8; se: [4096] u8;
+  link := [4] string.["ln","-s",take,symlink]; linked := proc_run(link[..],5000,so[..],se[..]);
+  symlink_play := [5] string.["labs","anime","play",take,symlink];
+  acp_note(t,"symlink output cannot overwrite the take",linked.status == 0 && acp_cli(t,symlink_play[..],2,false,"symlink-alias.cli") && acp_same(take,saved));
+  label_out_b: [4096] u8; label_b: [4096] u8; label_out := acp_path(t,"label-alias.png",label_out_b[..]); label := acp_join(label_out,".json",label_b[..]);
+  label_link := [4] string.["ln","-s",take,label]; linked = proc_run(label_link[..],5000,so[..],se[..]);
+  label_play := [5] string.["labs","anime","play",take,label_out];
+  acp_note(t,"output label alias cannot overwrite the take",linked.status == 0 && acp_cli(t,label_play[..],2,false,"label-alias.cli") && acp_same(take,saved) && !fs_exists(label_out));
+  frames_b: [4096] u8; frame_b: [4096] u8; movie_b: [4096] u8; frames := acp_path(t,"alias-frames",frames_b[..]); frame := fs_join(frames,"f00000.png",frame_b[..]); movie := acp_path(t,"frame-alias.mp4",movie_b[..]);
+  ready = fs_mkdir(frames) && fs_write(frame,saved);
+  frame_play := [11] string.["labs","anime","play",frame,movie,"--seconds","1","--fps","12","--frames",frames];
+  acp_note(t,"generated frame alias refuses before changing input",ready && acp_cli(t,frame_play[..],2,false,"frame-alias.cli") && acp_same(frame,saved) && !fs_exists(movie));
+  zero_b: [4096] u8; zero := acp_path(t,"zero-frames.mp4",zero_b[..]); t[0].chrome_n = acp_path(t,"unexpected-chrome.txt",t[0].chrome_sentinel[..]).count;
+  low_fps := [9] string.["labs","anime","play",take,zero,"--seconds","1","--fps","9"];
+  low_refused := acp_cli(t,low_fps[..],2,false,"low-fps.cli") && !fs_exists(zero) && !fs_exists(acp_chrome_sentinel(t)) && acp_same(take,saved);
+  zero_play := [9] string.["labs","anime","play",take,zero,"--seconds",".001","--fps","30"];
+  acp_note(t,"slow fps and zero captured frames refuse usage2 before Chrome",low_refused && acp_cli(t,zero_play[..],2,false,"zero-frames.cli") && !fs_exists(zero) && !fs_exists(acp_chrome_sentinel(t)) && acp_same(take,saved));
+  t[0].chrome_n = 0;
+}
+acp_old_page_cases :: (t: [] Acp, take: string, origin: string) {
+  t[0].origin = origin; old := "previous output bytes\n"; png_b: [4096] u8; movie_b: [4096] u8; frame_b: [4096] u8;
+  png := acp_path(t,"old-page.png",png_b[..]); movie := acp_path(t,"old-page.mp4",movie_b[..]); frames := acp_path(t,"old-page-frames",frame_b[..]);
+  ready := fs_write(png,old); shot := [12] string.["labs","anime","play",take,png,"--at","0.5","--size","640x360","--wait","100","--fresh"];
+  acp_note(t,"old page PNG guard refuses and preserves existing output",ready && acp_cli(t,shot[..],1,false,"old-page-png.cli") && acp_has(acp_body(t),"page did not accept the recorded take") && acp_same(png,old));
+  ready = fs_write(movie,old); clip := [15] string.["labs","anime","play",take,movie,"--seconds","1","--fps","12","--size","640x360","--frames",frames,"--fresh","--card"];
+  called := ready && acp_cli(t,clip[..],1,false,"old-page-mp4.cli"); list: [1] FsList;
+  empty := fs_kind(frames) == FS_NONE || fs_list(frames,list[..]) == 0;
+  acp_note(t,"old page MP4 guard refuses before output or frames",called && acp_has(acp_body(t),"page did not accept the recorded take") && acp_same(movie,old) && empty);
+}
+acp_play_cases :: (t: [] Acp, take: string) {
+  t[0].origin = t[0].page; source: [32768] u8; n := fs_read(take,source[..]); if n < 1 { t[0].fail += 1; return; }
+  png_b: [4096] u8; ref_b: [4096] u8; url_b: [49152] u8;
+  png := acp_path(t,"play.png",png_b[..]); reference := acp_path(t,"reference.png",ref_b[..]);
+  play := [13] string.["labs","anime","play",take,png,"--at","0.5","--size","640x360","--wait","5000","--card","--fresh"];
+  acp_note(t,"anime play writes the supplied PNG",acp_cli(t,play[..],0,false,"play-png.cli"));
+  url := acp_url(t[0].page,cast(string)source[0..<n],"&t=0.5&card=1",url_b[..]);
+  shot := [9] string.["labs","shot",url,reference,"--size","640x360","--wait","5000","--fresh"];
+  called := acp_cli(t,shot[..],0,false,"reference-png.cli");
+  acp_note(t,"play PNG agrees with equivalent labs shot decoded pixels",called && acp_pixel_pair(png,reference));
+  movie_b: [4096] u8; rm_b: [4096] u8; frames_b: [4096] u8; rf_b: [4096] u8;
+  movie := acp_path(t,"capture:play.mp4",movie_b[..]); ref_movie := acp_path(t,"reference.mp4",rm_b[..]); frames := acp_path(t,"frames:literal",frames_b[..]); ref_frames := acp_path(t,"reference-frames",rf_b[..]);
+  clip := [16] string.["labs","anime","play",take,"--seconds","1","--fps","12","--size","640x360","--frames","frames:literal","--card","--fresh","--","capture:play.mp4"];
+  played := acp_cli(t,clip[..],0,false,"play-mp4.cli") && fs_kind(frames) == FS_DIR;
+  label_path: [4096] u8; label: [65536] u8; label_n := fs_read(acp_join(movie,".json",label_path[..]),label[..]); nodes: [512] JvNode; d: [1] Jv;
+  metadata := played && label_n > 0 && jv_parse(d[..],cast(string)label[0..<label_n],nodes[..]);
+  if metadata {
+    duration := args_number(jv_raw(d[0],jv_get(d[0],0,"seconds"))); skip := args_number(jv_raw(d[0],jv_get(d[0],0,"skip")));
+    metadata = jv_raw(d[0],jv_get(d[0],0,"kind")) == "clip" && jv_raw(d[0],jv_get(d[0],0,"source")) == "staged" && jv_raw(d[0],jv_get(d[0],0,"size")) == "640x360" && jv_int(d[0],jv_get(d[0],0,"fps"),0) == 12 && jv_int(d[0],jv_get(d[0],0,"frames"),0) == 12 && duration.ok && duration.value == 1.0 && skip.ok && skip.value == 0.0;
+  }
+  acp_note(t,"anime play writes supplied MP4 with staged clip metadata",played && metadata);
+  url = acp_url(t[0].page,cast(string)source[0..<n],"&card=1",url_b[..]);
+  reference_clip := [17] string.["labs","clip",url,ref_movie,"--seconds","1","--fps","12","--size","640x360","--frames",ref_frames,"--eval","coaxial.send(700, '-1')","--skip","0","--fresh"];
+  called = acp_cli(t,reference_clip[..],0,false,"reference-mp4.cli");
+  acp_note(t,"all twelve play frames agree with equivalent labs clip",called && acp_frame_pairs(t,"frames:literal"));
+  so: [65536] u8; se: [4096] u8; probe := [9] string.["ffprobe","-v","error","-count_frames","-show_streams","-show_format","-of","json",movie];
+  result := proc_run(probe[..],15000,so[..],se[..]); written := acp_record(t,"play-ffprobe.json",cast(string)so[0..<result.out_n]);
+  acp_note(t,"play MP4 has twelve H264 frames and no audio",written && result.status == 0 && acp_video(cast(string)so[0..<result.out_n]));
+  refresh_b: [4096] u8; refreshed := acp_path(t,"frames:refresh",refresh_b[..]); ready := fs_mkdir(refreshed);
+  again := [15] string.["labs","anime","play",take,"--seconds","1","--fps","12","--size","640x360","--frames","frames:refresh","--card","--","capture:play.mp4"];
+  called = ready && acp_cli(t,again[..],0,false,"frames-refresh.cli");
+  cache: [1] Jv; cn: [512] JvNode; list: [1] FsList;
+  regenerated := called && jv_parse(cache[..],acp_body(t),cn[..]) && jv_kind(cache[0],jv_get(cache[0],0,"cached")) == JV_FALSE && fs_list(refreshed,list[..]) == 12 && acp_frame_pairs(t,"frames:refresh");
+  acp_note(t,"empty requested frames regenerate twelve matching frames despite cached video",regenerated);
+  t[0].chrome_n = acp_path(t,"unexpected-cached-chrome.txt",t[0].chrome_sentinel[..]).count;
+  cached_clip := [13] string.["labs","anime","play",take,"--seconds","1","--fps","12","--size","640x360","--card","--","capture:play.mp4"];
+  called = acp_cli(t,cached_clip[..],0,false,"cached-mp4.cli");
+  cached := called && jv_parse(cache[..],acp_body(t),cn[..]) && jv_kind(cache[0],jv_get(cache[0],0,"cached")) == JV_TRUE && !fs_exists(acp_chrome_sentinel(t));
+  acp_note(t,"omitting frames reuses the valid cached video without Chrome",cached);
+  t[0].chrome_n = 0;
+}
+acp_loopback :: (s: string) -> bool {
+  p := "http://127.0.0.1:"; if s.count <= p.count || s[0..<p.count] != p { return false; } port := args_whole(s[p.count..<s.count]); return port > 0 && port <= 65535;
+}
+tool_main :: () -> int #export_c {
+  sentinel_b: [4096] u8; sentinel := proc_getenv("ANIME_CLI_CHROME_SENTINEL",sentinel_b[..]);
+  if sentinel != "" { wrote := fs_write(sentinel,"Unexpected Chrome launch before preflight refusal.\n"); return 99; }
+  red_b: [8] u8; if proc_getenv("ANIME_CLI_INITIAL_RED",red_b[..]) == "1" { return acp_initial_red(); }
+  t: [1] Acp; cli_b: [4096] u8; api_b: [512] u8; page_b: [512] u8; dir_b: [4096] u8; selector_b: [4096] u8;
+  t[0].cli = proc_getenv("ANIME_CLI_BIN",cli_b[..]); t[0].api = proc_getenv("ANIME_CLI_API",api_b[..]); t[0].page = proc_getenv("ANIME_CLI_PAGE",page_b[..]); t[0].dir = proc_getenv("ANIME_CLI_RECORD",dir_b[..]);
+  selector := proc_getenv("ANIME_SELECTOR_BIN",selector_b[..]);
+  if t[0].cli == "" || selector == "" || !acp_loopback(t[0].api) || !acp_loopback(t[0].page) || !cjf_starts(t[0].dir,"/tmp/openagents-anime-cli.") || acp_has(t[0].dir,"/..") { tool_errln("set CLI, loopback API/PAGE, prebuilt selector and owned /tmp/openagents-anime-cli.* record directory"); return 2; }
+  if !fs_mkdir(t[0].dir) { return 1; } t[0].end_ms = proc_now_ms()+780000; t[0].origin = t[0].api;
+  tag: [4] u8; secret: [32] u8; profile_b: [32] u8; digits := "0123456789abcdef";
+  if cxrand_draw(tag[..],4) != 0 || cxrand_draw(secret[..],32) != 0 { return 1; }
+  pn := acp_put(profile_b[..],0,"anime-probe-"); for i: 0..<4 { profile_b[pn] = digits[cast(int)(tag[i]>>4)]; profile_b[pn+1] = digits[cast(int)(tag[i]&15)]; pn += 2; } t[0].profile = cast(string)profile_b[0..<pn];
+  t[0].key_n = acp_put(t[0].key[..],0,"OPENAGENTS_NSEC=");
+  for i: 0..<32 { t[0].key[t[0].key_n] = digits[cast(int)(secret[i]>>4)]; t[0].key[t[0].key_n+1] = digits[cast(int)(secret[i]&15)]; t[0].key_n += 2; secret[i] = 0; }
+  control_b: [4096] u8; t[0].control = fs_temp("openagents-anime-cli-selector-",control_b[..]);
+  t[0].listener = cxsock_listen(0); fake := ifx t[0].control != "" && t[0].listener >= 0 then acp_start_selector(t[..],selector) else -1;
+  if fake < 0 { if t[0].listener >= 0 { closed := cxsock_close(t[0].listener); } removed := fs_remove(t[0].control); return 1; }
+  port_b: [16] u8; po: [1] Jo; jo_start(po[..],port_b[..]); jo_int(po[..],cxsock_port(t[0].listener)); fixture_b: [512] u8; fixture_origin := acp_join("http://127.0.0.1:",jo_text(po[..]),fixture_b[..]);
+  take_b: [4096] u8; take := acp_path(t[..],"scene.take",take_b[..]);
+  good := acp_catalogue_cases(t[..]); if good { good = acp_direct_cases(t[..],take,fixture_origin); }
+  if good { acp_play_alias_cases(t[..],take); acp_old_page_cases(t[..],take,fixture_origin); acp_play_cases(t[..],take); }
+  released := acp_control(t[..],"release","yes"); stopped := acp_control(t[..],"stop","yes"); status := proc_wait(fake,2000);
+  if status == PROC_RUNNING { killed := proc_kill(fake,PROC_SIGKILL); } done := proc_release(fake); closed := cxsock_close(t[0].listener); removed := fs_remove(t[0].control);
+  for i: 0..<t[0].key.count { t[0].key[i] = 0; }
+  print("% anime CLI checks passed, % failed\n",t[0].pass,t[0].fail); return ifx good && t[0].fail == 0 then 0 else 1;
+}

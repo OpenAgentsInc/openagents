@@ -1,0 +1,7 @@
+FAIL #test anime args report JSON sees actual flags past errors but never consumed values (2 ms)
+apps/openagents-cli/anime-args-checks.coax:197:3: error[E0406]: assertion failed
+    #assert aa_report_json(a[..]) && aa_parse(a[..]).json && aa_parse(a[..]).err!="";
+    ^
+  note: in #test anime args report JSON sees actual flags past errors but never consumed values
+1 of 19 checks (--only 'report JSON'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

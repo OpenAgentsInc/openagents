@@ -1,0 +1,14 @@
+{
+  "scope": "Task-owned local services only; stopped after the final 36-case native pass",
+  "terminated_after_verifying_executable": [
+    {"pid": 11677, "executable": "/tmp/openagents-rev-fences.CdiOIB/api-old"},
+    {"pid": 16775, "executable": "/tmp/openagents-rev-fences.CdiOIB/api-v1-publish"},
+    {"pid": 93167, "executable": "/tmp/openagents-anime-api.zimEZ5/api-envelope-fix"},
+    {"pid": 93446, "executable": "coax/web/build/serve", "owned_port": 8832},
+    {"pid": 97927, "executable": "/tmp/openagents-anime-api.zimEZ5/api-profile-final"}
+  ],
+  "postgres": {"data": "/tmp/openagents-rev-fences.CdiOIB/db", "pid": 66888, "port": 56391, "action": "pg_ctl stop -m fast -w -t 30", "result": "server stopped; data retained"},
+  "probe": "Exited zero and cleaned its selector, listener, control directory and sequential Chrome children; no mutation workers remain from this task",
+  "launchagents": "The three services in resource-recovery/event.json remain unloaded, with plist files unchanged. Restoration and bounded-concurrency review are in NEEDS_OWNER.md.",
+  "stop_boundary": "Finish #12634, then stop; no later issue started"
+}

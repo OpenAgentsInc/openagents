@@ -1,0 +1,5 @@
+take /tmp/openagents-anime-cli.tOrdsu/final-native/scene.take
+heard Draconia casts a fireball.
+lines 1
+answer_count 1
+CAST Draconia · fireball → gate · 0.940 · PLAY

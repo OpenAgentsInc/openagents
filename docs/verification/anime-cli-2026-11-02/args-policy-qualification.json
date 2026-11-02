@@ -1,0 +1,42 @@
+{
+  "schema": "openagents.anime-cli-args-policy.v1",
+  "date": "2026-11-02",
+  "base_commit": "ca0a4541fa843ddc8547c4f11f0de8c14ce2183d",
+  "sources": [
+    {
+      "path": "apps/openagents-cli/anime-args.coax",
+      "sha256": "a587d8540fb49bc72cda62fd8a08f7db36b7761a8b9692dab79a5e08457c7dcb"
+    },
+    {
+      "path": "apps/openagents-cli/anime-args-checks.coax",
+      "sha256": "184c226905e7ffb96d3805344cd13fa6128aa11b27ffc0016424ccbccedbd162"
+    },
+    {
+      "path": "coax/lib/sys/args.coax",
+      "sha256": "9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3"
+    },
+    {
+      "path": "coax/bin/coax",
+      "sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6"
+    }
+  ],
+  "checks": {
+    "command": "coax/bin/coax test apps/openagents-cli/anime-args.coax --library",
+    "count": 19,
+    "passed": 19,
+    "log": "args-policy-checks.log"
+  },
+  "mutation": {
+    "command": "coax/bin/coax mutate apps/openagents-cli/anime-args.coax --library --root-only --jobs 4",
+    "total": 547,
+    "killed": 547,
+    "survived": 0,
+    "log": "args-policy-mutation-final.log",
+    "scope": "Entry-source policy only; imported Args checks ran as baseline. No equivalence waivers."
+  },
+  "claims": [
+    "Pure source qualification only. This receipt makes no native CLI or browser execution claim.",
+    "Arguments are token-aware; every known value flag consumes the next token literally, including --json, --help and --.",
+    "Error report JSON is scanned independently without promoting consumed values or post-delimiter operands to flags."
+  ]
+}

@@ -1,0 +1,41 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-cli/anime-rules.coax:24:56: mutant survived: -4 became -3
+  an_emit :: (o:[]Jo,out:[]u8)->int {if o[0].bad {return ANIME_CLI_CAPACITY;}return aap_copy(jo_text(o),out);}
+                                                         ^
+apps/openagents-cli/anime-rules.coax:42:141: mutant survived: '>=' became '>'
+      if d.kind==AD_ENTER {count:=ifx d.option==AS_HOODED then d.count else 1;for k:0..<count {slot:=d.option+k;state.on[slot]=true;if d.place>=0 {state.places[slot]=d.place;}}}
+                                                                                                                                              ^
+apps/openagents-cli/anime-rules.coax:42:143: mutant survived: 0 became 1
+      if d.kind==AD_ENTER {count:=ifx d.option==AS_HOODED then d.count else 1;for k:0..<count {slot:=d.option+k;state.on[slot]=true;if d.place>=0 {state.places[slot]=d.place;}}}
+                                                                                                                                                ^
+apps/openagents-cli/anime-rules.coax:46:37: mutant survived: the assignment was removed
+      if d.kind==AD_CUT {state.framing=ad_frames(d,state.framing);state.subject=d.to;state.shot_place=PL_COURTYARD;state.shot_move=MOVE_PUSH;}
+                                      ^
+apps/openagents-cli/anime-rules.coax:59:24: mutant survived: '>=' became '>'
+      if state.actions[i]>=0 {jo_key(o,"action");jo_str(o,ACTION_WORDS[state.actions[i]]);}jo_key(o,"emotion");jo_str(o,EMOTION_WORDS[state.emotions[i]]);jo_end(o);
+                         ^
+apps/openagents-cli/anime-rules.coax:59:26: mutant survived: 0 became 1
+      if state.actions[i]>=0 {jo_key(o,"action");jo_str(o,ACTION_WORDS[state.actions[i]]);}jo_key(o,"emotion");jo_str(o,EMOTION_WORDS[state.emotions[i]]);jo_end(o);
+                           ^
+apps/openagents-cli/anime-rules.coax:91:55: mutant survived: true became false
+    if reply.count>65536 || !aap_utf8(cast(string)reply,true) {return ANIME_CLI_REPLY;}
+                                                        ^
+apps/openagents-cli/anime-rules.coax:93:53: mutant survived: '+' became '-'
+    answers:=jv_get(d[0],0,"answers");if t[0].answer_n+jv_len(d[0],answers)>16 {return ANIME_CLI_LIMIT;}
+                                                      ^
+apps/openagents-cli/anime-rules.coax:93:75: mutant survived: 16 became 17
+    answers:=jv_get(d[0],0,"answers");if t[0].answer_n+jv_len(d[0],answers)>16 {return ANIME_CLI_LIMIT;}
+                                                                            ^
+apps/openagents-cli/anime-rules.coax:102:50: mutant survived: 600000 became 600001
+    if !ar_origin_ok(origin) || at_ms< -1 || at_ms>600000 {return ANIME_CLI_INVALID;}
+                                                   ^
+apps/openagents-cli/anime-rules.coax:104:11: mutant survived: '>=' became '>'
+    if at_ms>=0 && cast(f32)at_ms/1000>t[0].length {return ANIME_CLI_INVALID;}
+            ^
+apps/openagents-cli/anime-rules.coax:104:13: mutant survived: 0 became 1
+    if at_ms>=0 && cast(f32)at_ms/1000>t[0].length {return ANIME_CLI_INVALID;}
+              ^
+apps/openagents-cli/anime-rules.coax:105:114: mutant survived: -2 became -1
+    encoded:[43696]u8;code:=base64_encode_checked(cast(string)take,encoded[..],false);if code.error!=NC_OK {return ANIME_CLI_LIMIT;}
+                                                                                                                   ^
+437 mutants, 424 killed, 13 survived

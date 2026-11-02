@@ -1,0 +1,66 @@
+coax-mutation-shard v1
+shard 8/8
+file 3bf4e6c9b5692344 mutants 437 shards 8 scheduling full borrowed 1 strings 1 unstable 0 scope root-only
+outcome 7 182 183 0
+outcome 15 182 183 0
+outcome 23 181 182 0
+outcome 31 185 186 0
+outcome 39 185 186 0
+outcome 47 185 186 0
+outcome 55 185 186 0
+outcome 63 184 185 0
+outcome 71 186 187 0
+outcome 79 196 197 0
+outcome 87 183 184 0
+outcome 95 186 187 0
+outcome 103 186 187 0
+outcome 111 186 187 0
+outcome 119 186 187 0
+outcome 127 181 182 0
+outcome 135 181 182 0
+outcome 143 181 182 0
+outcome 151 181 182 0
+outcome 159 181 182 0
+outcome 167 181 182 0
+outcome 175 181 182 0
+outcome 183 -1 203 0
+outcome 191 181 182 0
+outcome 199 185 186 0
+outcome 207 181 182 0
+outcome 215 186 187 0
+outcome 223 183 184 0
+outcome 231 183 184 0
+outcome 239 181 182 0
+outcome 247 181 182 0
+outcome 255 187 188 0
+outcome 263 182 183 0
+outcome 271 187 188 0
+outcome 279 187 188 0
+outcome 287 181 182 0
+outcome 295 188 189 0
+outcome 303 188 189 0
+outcome 311 188 189 0
+outcome 319 194 195 0
+outcome 327 182 183 0
+outcome 335 -1 203 0
+outcome 343 181 182 0
+outcome 351 181 182 0
+outcome 359 188 189 0
+outcome 367 181 182 0
+outcome 375 181 182 0
+outcome 383 181 182 0
+outcome 391 181 182 0
+outcome 399 181 182 0
+outcome 407 181 182 0
+outcome 415 191 192 0
+outcome 423 195 196 0
+outcome 431 195 196 0
+end 54
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-cli/anime-rules.coax:59:26: mutant survived: 0 became 1
+      if state.actions[i]>=0 {jo_key(o,"action");jo_str(o,ACTION_WORDS[state.actions[i]]);}jo_key(o,"emotion");jo_str(o,EMOTION_WORDS[state.emotions[i]]);jo_end(o);
+                           ^
+apps/openagents-cli/anime-rules.coax:93:75: mutant survived: 16 became 17
+    answers:=jv_get(d[0],0,"answers");if t[0].answer_n+jv_len(d[0],answers)>16 {return ANIME_CLI_LIMIT;}
+                                                                            ^
+shard 8/8: 54 of 437 mutants, 52 killed, 2 survived

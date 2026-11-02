@@ -1,0 +1,66 @@
+coax-mutation-shard v1
+shard 7/8
+file 3bf4e6c9b5692344 mutants 437 shards 8 scheduling full borrowed 1 strings 1 unstable 0 scope root-only
+outcome 6 181 182 0
+outcome 14 185 186 0
+outcome 22 185 186 0
+outcome 30 181 182 0
+outcome 38 181 182 0
+outcome 46 181 182 0
+outcome 54 189 190 0
+outcome 62 184 185 0
+outcome 70 196 197 0
+outcome 78 196 197 0
+outcome 86 183 184 0
+outcome 94 186 187 0
+outcome 102 186 187 0
+outcome 110 193 194 0
+outcome 118 -1 203 0
+outcome 126 181 182 0
+outcome 134 181 182 0
+outcome 142 181 182 0
+outcome 150 181 182 0
+outcome 158 181 182 0
+outcome 166 181 182 0
+outcome 174 181 182 0
+outcome 182 -1 203 0
+outcome 190 181 182 0
+outcome 198 186 187 0
+outcome 206 181 182 0
+outcome 214 186 187 0
+outcome 222 183 184 0
+outcome 230 183 184 0
+outcome 238 181 182 0
+outcome 246 181 182 0
+outcome 254 181 182 0
+outcome 262 181 182 0
+outcome 270 189 190 0
+outcome 278 181 182 0
+outcome 286 188 189 0
+outcome 294 188 189 0
+outcome 302 188 189 0
+outcome 310 188 189 0
+outcome 318 181 182 0
+outcome 326 181 182 0
+outcome 334 181 182 0
+outcome 342 181 182 0
+outcome 350 181 182 0
+outcome 358 181 182 0
+outcome 366 181 182 0
+outcome 374 181 182 0
+outcome 382 181 182 0
+outcome 390 181 182 0
+outcome 398 191 192 0
+outcome 406 191 192 0
+outcome 414 191 192 0
+outcome 422 191 192 0
+outcome 430 191 192 0
+end 54
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-cli/anime-rules.coax:46:37: mutant survived: the assignment was removed
+      if d.kind==AD_CUT {state.framing=ad_frames(d,state.framing);state.subject=d.to;state.shot_place=PL_COURTYARD;state.shot_move=MOVE_PUSH;}
+                                      ^
+apps/openagents-cli/anime-rules.coax:59:24: mutant survived: '>=' became '>'
+      if state.actions[i]>=0 {jo_key(o,"action");jo_str(o,ACTION_WORDS[state.actions[i]]);}jo_key(o,"emotion");jo_str(o,EMOTION_WORDS[state.emotions[i]]);jo_end(o);
+                         ^
+shard 7/8: 54 of 437 mutants, 52 killed, 2 survived

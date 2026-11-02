@@ -1,0 +1,39 @@
+{
+  "schema": "openagents.anime-cli.compiler-dependency-comparison.v2",
+  "status": "matched",
+  "compiler_deps_receipt": "native-v2-cli-deps.json",
+  "compiler_deps_sha256": "494f8469d58ed4a6fc2d700310d6be9b7993cbea081b791084fb62a94ca069b1",
+  "compiler_dependency_count": 144,
+  "conservative_inventory_count": 144,
+  "compiler_unique_count": 144,
+  "set_equal": true,
+  "missing_from_compiler": [],
+  "extra_in_compiler": [],
+  "comparison": "Exact normalized repository-relative path-set equality. Compiler order is retained in the raw receipt; conservative order is retained in the inventory.",
+  "hash_continuity": {
+    "files": 163,
+    "all_match": true,
+    "receipt": "cli-native-v2-source-hashes-verified.log"
+  },
+  "mtime_observation": {
+    "files": 163,
+    "receipt": "cli-native-v2-source-mtimes.txt",
+    "latest_input_mtime_unix": 1793648604,
+    "binary_mtime_unix": 1793648694,
+    "all_inputs_strictly_precede_binary_mtime": true,
+    "build_start_inference": "None. Binary output mtime does not establish when C generation started.",
+    "all_inputs_predate_codegen_start": null
+  },
+  "binary": {
+    "path": "apps/openagents-cli/build/openagents",
+    "sha256": "a055b555b407539a599ba2d14114421b092027fea2676f11acfd3ba6fbf57e29",
+    "receipt": "cli-native-v2-binary.sha256",
+    "build_log": "native-v2-cli-build.log"
+  },
+  "top_index_json": {
+    "path": "../anime-cli-2026-11-02.json",
+    "sha256": "9c891a634612f488eb80e999d2cf317bde21622457061bb5c21f8dfa4e59b614",
+    "valid_json": true,
+    "validation": "JSON.parse syntax validation only; no compiler, check or browser invocation"
+  }
+}

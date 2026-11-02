@@ -1,0 +1,64 @@
+coax-mutation-shard v1
+shard 5/8
+file 3bf4e6c9b5692344 mutants 437 shards 8 scheduling full borrowed 1 strings 1 unstable 0 scope root-only
+outcome 4 181 182 0
+outcome 12 182 183 0
+outcome 20 185 186 0
+outcome 28 185 186 0
+outcome 36 181 182 0
+outcome 44 181 182 0
+outcome 52 189 190 0
+outcome 60 184 185 0
+outcome 68 186 187 0
+outcome 76 196 197 0
+outcome 84 186 187 0
+outcome 92 186 187 0
+outcome 100 186 187 0
+outcome 108 183 184 0
+outcome 116 186 187 0
+outcome 124 181 182 0
+outcome 132 181 182 0
+outcome 140 181 182 0
+outcome 148 181 182 0
+outcome 156 181 182 0
+outcome 164 181 182 0
+outcome 172 181 182 0
+outcome 180 181 182 0
+outcome 188 181 182 0
+outcome 196 186 187 0
+outcome 204 181 182 0
+outcome 212 186 187 0
+outcome 220 183 184 0
+outcome 228 186 187 0
+outcome 236 181 182 0
+outcome 244 181 182 0
+outcome 252 181 182 0
+outcome 260 182 183 0
+outcome 268 181 182 0
+outcome 276 187 188 0
+outcome 284 189 190 0
+outcome 292 192 193 0
+outcome 300 188 189 0
+outcome 308 191 192 0
+outcome 316 181 182 0
+outcome 324 181 182 0
+outcome 332 -1 203 0
+outcome 340 188 189 0
+outcome 348 181 182 0
+outcome 356 181 182 0
+outcome 364 188 189 0
+outcome 372 181 182 0
+outcome 380 202 203 0
+outcome 388 191 192 0
+outcome 396 181 182 0
+outcome 404 191 192 0
+outcome 412 181 182 0
+outcome 420 191 192 0
+outcome 428 191 192 0
+outcome 436 191 192 0
+end 55
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-cli/anime-rules.coax:93:53: mutant survived: '+' became '-'
+    answers:=jv_get(d[0],0,"answers");if t[0].answer_n+jv_len(d[0],answers)>16 {return ANIME_CLI_LIMIT;}
+                                                      ^
+shard 5/8: 55 of 437 mutants, 54 killed, 1 survived

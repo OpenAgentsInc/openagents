@@ -1,0 +1,37 @@
+ok catalogue JSON exposes finite kinds and absent creature body
+ok catalogue includes all finite question families
+ok text catalogue retains the same typed catalogue
+ok real signed direct creates first line and a confidence caption
+ok first route receives words and empty executable history
+ok multianswer append begins at explicit prior length seven
+ok append request retains executable user context
+ok unavailable make is preserved heard-only without a generated asset
+ok real API model refusal leaves accepted take byte-exact
+ok request history excludes heard make and automatic camera answers
+ok real upstream failure leaves accepted take byte-exact
+ok empty words refuse usage2 without selector effects
+ok 601-byte words refuse usage2 without selector effects
+ok invalid existing take is never replaced or sent
+ok missing valid test identity is auth3 without default-profile fallback
+ok 200 invalid held public answer is rejected before replacement
+ok http401.cli
+ok http403.cli
+ok http429.cli
+ok held sibling lock exits5 with old take unchanged
+ok concurrent external byte change wins over stale append
+ok missing play input exits6 without output
+ok dot path alias cannot overwrite the take
+ok symlink output cannot overwrite the take
+ok output label alias cannot overwrite the take
+ok generated frame alias refuses before changing input
+ok slow fps and zero captured frames refuse usage2 before Chrome
+ok old page PNG guard refuses and preserves existing output
+ok old page MP4 guard refuses before output or frames
+ok anime play writes the supplied PNG
+ok play PNG agrees with equivalent labs shot decoded pixels
+ok anime play writes supplied MP4 with staged clip metadata
+ok all twelve play frames agree with equivalent labs clip
+ok play MP4 has twelve H264 frames and no audio
+ok empty requested frames regenerate twelve matching frames despite cached video
+ok omitting frames reuses the valid cached video without Chrome
+36 anime CLI checks passed, 0 failed

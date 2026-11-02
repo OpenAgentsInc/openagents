@@ -1,0 +1,17 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-cli/anime-args.coax:45:29: mutant survived: 57 became 58
+    for c:raw {if (c<'0' || c>'9') && c!='.' {return -1;}}
+                              ^
+apps/openagents-cli/anime-args.coax:119:11: mutant survived: '>=' became '>'
+      if pos>=4 && !aa_file_ok(r.take) {r.err="invalid take path";return r;}
+            ^
+apps/openagents-cli/anime-args.coax:119:13: mutant survived: 4 became 5
+      if pos>=4 && !aa_file_ok(r.take) {r.err="invalid take path";return r;}
+              ^
+apps/openagents-cli/anime-args.coax:120:11: mutant survived: '>=' became '>'
+      if pos>=5 && !aa_file_ok(r.out) {r.err="invalid output path";return r;}
+            ^
+apps/openagents-cli/anime-args.coax:120:13: mutant survived: 5 became 6
+      if pos>=5 && !aa_file_ok(r.out) {r.err="invalid output path";return r;}
+              ^
+517 mutants, 512 killed, 5 survived

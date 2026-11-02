@@ -1,0 +1,59 @@
+coax-mutation-shard v1
+shard 1/8
+file 28f0165cf6d2557b mutants 420 shards 8 scheduling full borrowed 1 strings 1 unstable 0 scope root-only
+outcome 0 181 182 0
+outcome 8 182 183 0
+outcome 16 182 183 0
+outcome 24 185 186 0
+outcome 32 185 186 0
+outcome 40 181 182 0
+outcome 48 189 190 0
+outcome 56 181 182 0
+outcome 64 184 185 0
+outcome 72 186 187 0
+outcome 80 186 187 0
+outcome 88 186 187 0
+outcome 96 193 194 0
+outcome 104 186 187 0
+outcome 112 193 194 0
+outcome 120 186 187 0
+outcome 128 184 185 0
+outcome 136 181 182 0
+outcome 144 181 182 0
+outcome 152 181 182 0
+outcome 160 184 185 0
+outcome 168 186 187 0
+outcome 176 181 182 0
+outcome 184 183 184 0
+outcome 192 181 182 0
+outcome 200 185 186 0
+outcome 208 181 182 0
+outcome 216 186 187 0
+outcome 224 186 187 0
+outcome 232 183 184 0
+outcome 240 181 182 0
+outcome 248 181 182 0
+outcome 256 181 182 0
+outcome 264 181 182 0
+outcome 272 187 188 0
+outcome 280 181 182 0
+outcome 288 181 182 0
+outcome 296 188 189 0
+outcome 304 188 189 0
+outcome 312 188 189 0
+outcome 320 194 195 0
+outcome 328 181 182 0
+outcome 336 181 182 0
+outcome 344 181 182 0
+outcome 352 188 189 0
+outcome 360 181 182 0
+outcome 368 181 182 0
+outcome 376 181 182 0
+outcome 384 191 192 0
+outcome 392 181 182 0
+outcome 400 191 192 0
+outcome 408 191 192 0
+outcome 416 191 192 0
+end 53
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+shard 1/8: 53 of 420 mutants, 53 killed, 0 survived

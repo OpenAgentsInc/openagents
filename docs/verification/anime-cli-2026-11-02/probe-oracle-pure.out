@@ -1,0 +1,5 @@
+ok   #test anime CLI catalogue oracle requires finite choices and the missing body boundary (1 case, 31412 steps, 0 ms)
+ok   #test anime CLI take oracle counts multianswers and preserves heard-only makeup (1 case, 96710 steps, 2 ms)
+ok   #test anime CLI request context oracle requires previous executable user answers (1 case, 54160 steps, 1 ms)
+3 of 85 checks (--only 'anime CLI'), 3 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -22,10 +22,11 @@
 
 MEDIA_PNG :: 25165824;   // the largest screenshot, 24 MiB
 
-MediaShotOptions :: struct { wait: int = 4000; script: string; dark: bool; ready_ms: int = MEDIA_READY_MS; }
+MediaShotOptions :: struct { wait: int = 4000; script: string; dark: bool; ready_ms: int = MEDIA_READY_MS; guard: string; }
 // status 0 when the PNG was written, 1 when Chrome failed (cdp_error says
 // why), 2 for a URL too long, 3 when the file could not be written, 4 when
-// the page was not ready in time, 5 when its loading card says it failed.
+// the page was not ready in time, 5 when its loading card says it failed,
+// 6 when an optional consumer guard refuses before the PNG is written.
 // value_n: bytes of the script's value (-1 when none); with status 5 it is
 // the bytes of the card's words in value.
 MediaShot :: struct { status: int; value_n: int = -1; build_n: int; waited_ms: int; }
@@ -125,6 +126,10 @@ media_shot :: (c: [] Cdp, url: string, out: string, wh: ArgsSize, o: MediaShotOp
     proc_sleep(MEDIA_POLL_MS);
   }
   proc_sleep(o.wait);
+  if o.guard.count > 0 {
+    v := cdp_evaluate(c, o.guard);
+    if jv_kind(cdp_doc(c),v) != JV_TRUE { s.status = 6; return s; }
+  }
   if o.script.count > 0 {
     s.value_n = media_value(c, o.script, value);
     proc_sleep(500);
@@ -152,6 +157,11 @@ media_shot :: (c: [] Cdp, url: string, out: string, wh: ArgsSize, o: MediaShotOp
 // Loads the page in clip mode, waits until it draws, runs the script and the
 // skip, and writes each frame as a PNG. "" when it worked, else what failed.
 media_record :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, fr: string, skip: f64, script: string, frames: string) -> string {
+  return media_record_guarded(c,url,wh,seconds,fps,fr,skip,script,frames,"");
+}
+// A typed consumer can require a page capability before it records any frames.
+// Existing media callers retain their original unguarded interface.
+media_record_guarded :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, fr: string, skip: f64, script: string, frames: string, guard: string) -> string {
   params: [65536] u8; o: [1] Jo;
   if !media_size(c, wh) { return cdp_error(c); }
   if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return cdp_error(c); }
@@ -173,6 +183,10 @@ media_record :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, f
     if jv_kind(cdp_doc(c), v) == JV_TRUE { up = true; break; }
   }
   if !up { return "the page never finished loading (no WebGPU, or the engine failed)"; }
+  if guard.count > 0 {
+    v := cdp_evaluate(c,guard);
+    if jv_kind(cdp_doc(c),v) != JV_TRUE { return "the page did not accept the recorded take"; }
+  }
   if script.count > 0 { v := cdp_evaluate(c, script); }
   expr: [128] u8;
   left := clip_round(skip * fps);

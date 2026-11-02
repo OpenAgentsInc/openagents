@@ -1,0 +1,165 @@
+// Anime commands: effects around the checked request/take policy. Selector
+// calls use this profile's payload-bound NIP-98 key; play uses the same muted,
+// headless capture engine as labs shot/clip, with a required take capability.
+#load "anime-rules.coax";
+#load "anime-args.coax";
+
+cxcli_mkdir_exclusive :: (path:[]u8)->int #foreign;
+cxcli_same_file :: (left:[]u8,right:[]u8)->int #foreign;
+LA_HTTP_MS :: 45000; // two capped 15s selector tries, signing and HTTP overhead
+
+labs_anime :: (a:[]Args,r:[]Rep,profile:string)->int {
+  parsed:=aa_parse(a);
+  if parsed.err!="" {return fail(r,EXIT_USAGE,parsed.err);}
+  if parsed.verb=="catalogue" {
+    out:[16384]u8;n:=anime_catalogue(out[..]);
+    if n<0 {return fail(r,EXIT_FAIL,"could not write the Anime catalogue");}
+    rep_raw(r,"catalogue",cast(string)out[0..<n]);return rep_done(r,EXIT_OK);
+  }
+  if parsed.verb=="direct" {return la_direct(parsed,r,profile);}
+  return la_play(parsed,r,profile);
+}
+
+// A deliberately small Args for origin lookup. Literal words/file names never
+// become flags for account helpers or the media commands.
+la_origin :: (p:AnimeArgs,profile:string,out:[]u8)->string {
+  a:[1]Args;
+  ok:=args_add(a[..],"labs") && args_add(a[..],"anime");
+  if p.origin!="" {ok=ok && args_add(a[..],"--origin") && args_add(a[..],p.origin);}
+  if !ok {return "";}
+  value:=acct_origin(a[..],profile,out);n:=copy(value,out);
+  if n<0 {return "";}return cast(string)out[0..<n];
+}
+
+// Require the identity before network work; never fall back to an anonymous
+// POST. Signing/HTTP are the existing account primitives, without retries.
+la_request :: (profile:string,origin:string,body:string,out:[]u8)->ApiAnswer {
+  res:ApiAnswer;k:[1]Key;res.origin_n=copy(origin,res.origin[..]);
+  if !load_key(profile,k[..]) {res.status=401;return res;}
+  res.keyed=true;url:[2400]u8;
+  n:=copy(origin,url[..]);m:=copy("/api/playtest/labs/anime/direct",url[n..<url.count]);
+  if n<0 || m<0 {wipe(k[0].secret[..]);res.error=HTTP_E_URL;return res;}
+  auth:[12000]u8;an:=api_auth(k[0].secret[..],cast(string)url[0..<n+m],"POST",body,auth[..]);
+  wipe(k[0].secret[..]);
+  if an<0 {res.error=API_E_SIGN;return res;}
+  hs:=[2]string.[cast(string)auth[0..<an],"Content-Type: application/json"];
+  w:[1]HttpWork;
+  response:=http_do(w[..],"POST",cast(string)url[0..<n+m],hs[..],body,LA_HTTP_MS,0,out);
+  wipe(auth[..]);res.error=response.error;res.status=response.code;res.n=response.n;return res;
+}
+
+// Co-operating direct writers acquire one exclusive sibling directory, then
+// compare the original bytes again. The complete checked replacement is
+// written in that directory and renamed on the same filesystem. A reader
+// sees the old or new take; an API failure never reaches this operation.
+la_commit :: (path:string,old:string,existed:bool,next:string)->int {
+  lockbuf:[4096]u8;n:=copy(path,lockbuf[..]);m:=copy(".anime.lock",lockbuf[n..<lockbuf.count]);
+  if n<0 || m<0 {return EXIT_USAGE;}lock:=cast(string)lockbuf[0..<n+m];
+  locked:=cxcli_mkdir_exclusive(lockbuf[0..<n+m]);
+  if locked==1 {return EXIT_CONFLICT;}if locked!=0 {return EXIT_FAIL;}
+  code:=EXIT_OK;kind:=fs_kind(path);current:[ANIME_TAKE_BYTES]u8;
+  if existed {
+    count:=ifx kind==FS_FILE then fs_read(path,current[..]) else -1;
+    if count<0 || count!=old.count {code=EXIT_CONFLICT;}
+    else if cast(string)current[0..<count]!=old {code=EXIT_CONFLICT;}
+  } else if kind!=FS_NONE {code=EXIT_CONFLICT;}
+  tmpbuf:[4096]u8;tmp:=fs_join(lock,"next.take",tmpbuf[..]);
+  if code==EXIT_OK {
+    if tmp=="" || !fs_write(tmp,next) || !fs_rename(tmp,path) {code=EXIT_FAIL;}
+  }
+  removed:=fs_remove(lock);return code;
+}
+
+la_direct :: (p:AnimeArgs,r:[]Rep,profile:string)->int {
+  old:[ANIME_TAKE_BYTES]u8;kind:=fs_kind(p.take);exists:=kind==FS_FILE;
+  if kind!=FS_NONE && !exists {return fail(r,EXIT_USAGE,"--take is an existing file or a new file path");}
+  parent:=fs_dir(p.take);
+  if parent!="" && fs_kind(parent)!=FS_DIR {return fail(r,EXIT_USAGE,"the take's parent directory must exist");}
+  n:=0;if exists {n=fs_read(p.take,old[..]);if n<0 {return fail(r,EXIT_USAGE,"the take cannot be read or exceeds 32768 bytes");}}
+  request:[16384]u8;rn:=anime_direct_request(old[0..<n],exists,p.words,request[..]);
+  if rn<0 {return fail(r,EXIT_USAGE,"words or existing take are invalid, full, or exceed the Anime bounds");}
+  ob:[300]u8;origin:=la_origin(p,profile,ob[..]);
+  if origin=="" {return fail(r,EXIT_USAGE,"--origin is https://HOST[:PORT], or http://127.0.0.1:PORT");}
+  reply:[65536]u8;res:=la_request(profile,origin,cast(string)request[0..<rn],reply[..]);
+  if !api_ok(res) {return api_fail(r,res,cast(string)reply[0..<res.n]);}
+  next:[ANIME_TAKE_BYTES]u8;nn:=anime_direct_append(old[0..<n],exists,p.words,reply[0..<res.n],next[..]);
+  if nn<0 {return fail(r,EXIT_FAIL,"the director response or appended take failed the catalogue checks; take unchanged");}
+  accepted:[1]AnimeTake;
+  if anime_take_load(next[0..<nn],accepted[..])<0 {return fail(r,EXIT_FAIL,"the rebuilt take failed its checks; take unchanged");}
+  code:=la_commit(p.take,cast(string)old[0..<n],exists,cast(string)next[0..<nn]);
+  if code!=EXIT_OK {return fail(r,code,ifx code==EXIT_CONFLICT then "take changed or another direct writer holds its lock; retry from the latest take" else "could not replace the take");}
+  line:=accepted[0].lines[accepted[0].line_n-1];
+  rep_str(r,"take",p.take);rep_str(r,"heard",p.words);rep_int(r,"lines",accepted[0].line_n);rep_int(r,"answer_count",accepted[0].answer_n);
+  answers:[32768]u8;o:[1]Jo;jo_start(o[..],answers[..]);jo_arr(o[..]);
+  raw:[ANIME_TAKE_BYTES]u8;
+  for i:0..<line.count {an:=anime_take_answer_json(accepted[..],line.first+i,raw[..]);jo_raw(o[..],cast(string)raw[0..<an]);}
+  jo_end(o[..]);if r[0].json {rep_raw(r,"answers",jo_text(o[..]));}
+  if !r[0].json {
+    for i:0..<line.count {
+      index:=line.first+i;record:=accepted[0].answers[index];d:=anime_take_answer(accepted[..],index);
+      // what is a transient caption view, never retained state.
+      an:=anime_take_answer_json(accepted[..],index,raw[..]);nodes:[512]JvNode;j:[1]Jv;what:[40]u8;
+      if d.kind==AD_MAKE && jv_parse(j[..],cast(string)raw[0..<an],nodes[..]) {wn:=jv_str(j[0],jv_get(j[0],0,"what"),what[..]);if wn>=0 {d.what=cast(string)what[0..<wn];}}
+      caption:[600]u8;prob:[16]u8;po:[1]Jo;jo_start(po[..],prob[..]);at_prob(po[..],record.milli);
+      rep_put(r,AD_KIND_LABELS[d.kind]);rep_put(r," ");rep_put(r,anime_says(d,caption[..]));rep_put(r," · ");rep_put(r,jo_text(po[..]));
+      if record.heard {
+        rep_put(r," · HEARD ONLY");
+        if !d.stock {rep_put(r," · NOT IN STOCK");}
+        else if !anime_render_supported(d) {rep_put(r," · NOT RENDERED");}
+        rep_put(r,"\n");
+      } else {rep_put(r,ifx record.milli<=850 then " · DID YOU MEAN\n" else " · PLAY\n");}
+    }
+  }
+  return rep_done(r,EXIT_OK);
+}
+
+la_play :: (p:AnimeArgs,r:[]Rep,profile:string)->int {
+  tb:[4096]u8;ob_alias:[4096]u8;tn:=copy(p.take,tb[..]);on:=copy(p.out,ob_alias[..]);
+  if p.take==p.out || cxcli_same_file(tb[0..<tn],ob_alias[0..<on])!=0 {return fail(r,EXIT_USAGE,"take and output must be different files");}
+  label_alias:[4200]u8;label:=lb_label_path(p.out,label_alias[..]);
+  if label==p.take || cxcli_same_file(tb[0..<tn],label_alias[0..<label.count])!=0 {return fail(r,EXIT_USAGE,"the output label must not replace the take");}
+  source:[ANIME_TAKE_BYTES]u8;n:=fs_read(p.take,source[..]);
+  if n<0 {return fail(r,EXIT_NOT_FOUND,"could not read the take (at most 32768 bytes)");}
+  take:[1]AnimeTake;if anime_take_load(source[0..<n],take[..])<0 {return fail(r,EXIT_USAGE,"invalid anime.v1 take");}
+  ob:[300]u8;origin:=la_origin(p,profile,ob[..]);if origin=="" {return fail(r,EXIT_USAGE,"invalid --origin");}
+  png:=lb_ends(p.out,".png");length_ms:=cast(int)floor(cast(f64)take[0].length*1000+0.5);
+  at:=ifx p.at=="" then 0 else aa_time_ms(p.at,600);
+  skip:=ifx p.skip=="" then 0 else aa_time_ms(p.skip,3600);
+  seconds:=ifx p.seconds=="" then length_ms-skip else aa_time_ms(p.seconds,600);
+  if !aa_media_interval(at,skip,seconds,length_ms,png) {return fail(r,EXIT_USAGE,"the requested moment or clip must fit inside the take");}
+  fps:=ifx p.fps=="" then 30 else args_whole(p.fps);
+  if !png && (seconds*fps+500)/1000<1 {return fail(r,EXIT_USAGE,"the clip must contain at least one frame");}
+  ub:[LB_CAPTURE_URL_BYTES]u8;un:=anime_take_url(origin,source[0..<n],ifx png then at else -1,p.card,false,ub[..]);
+  if un<0 {return fail(r,EXIT_USAGE,"take URL exceeds the capture bounds");}url:=cast(string)ub[0..<un];
+  size:=lb_size(p.size,p.phone,p.square,p.vertical,ifx png then LB_DESKTOP else ArgsSize.{ok=true,w=1280,h=720});
+  code:=lb_need_chrome(r);if code!=EXIT_OK {return code;}
+  guardbuf:[512]u8;w:[1]LbW;w[0].buf=guardbuf[..];
+  lbw_put(w[..],"typeof coaxial==='object' && coaxial.ready && coaxial.sceneReady && typeof coaxial.guardProbe==='function' && coaxial.guardProbe(0)===1 && coaxial.guardProbe(6)===");lbw_int(w[..],n);guard:=lbw_text(w[..]);
+  why:[2048]u8;cached:=false;
+  if png {
+    wait:=ifx p.wait=="" then 4000 else args_whole(p.wait);ch:[1]DkChrome;value:[256]u8;
+    sj:=LbShotJob.{url=url,out=p.out,size=size,wait=wait,fresh=p.fresh,guard=guard};
+    done:=lb_shot_one(r,ch[..],sj,value[..],why[..]);if ch[0].up {cdp_close(ch[0].c[..]);}
+    if done.code!=EXIT_OK {return fail(r,done.code,lb_cstr(why[..]));}cached=done.cached;
+  } else {
+    code=lb_need_ffmpeg(r);if code!=EXIT_OK {return code;}
+    if p.frames!="" {
+      frame_name:[16]u8;frame_path:[4096]u8;total:=(seconds*fps+500)/1000;
+      for i:0..<total {
+        candidate:=fs_join(p.frames,clip_frame_name(i,frame_name[..]),frame_path[..]);
+        if candidate=="" || candidate==p.take || cxcli_same_file(tb[0..<tn],frame_path[0..<candidate.count])!=0 {return fail(r,EXIT_USAGE,"a recorded frame must not replace the take");}
+      }
+    }
+    // PIN700 resets the page to exactly zero after its readiness step; clip
+    // stepping then owns time. No wall-clock loading time enters the take.
+    // ffmpeg treats a leading dash as an option even after our own --.
+    // Prefix a relative output so the encoder receives a literal file path.
+    output_buf:[4096]u8;la_output:=p.out;
+    if p.out[0]=='-' {la_output=fs_join(".",p.out,output_buf[..]);}
+    done:=lb_clip_guarded(url,la_output,size,seconds,fps,skip,"coaxial.send(700, '-1')",p.frames,p.fresh,"staged",guard,why[..]);
+    if done.code!=EXIT_OK {return fail(r,done.code,lb_cstr(why[..]));}cached=done.cached;rep_int(r,"frames",done.frames);
+  }
+  lp:[4200]u8;sz:[32]u8;
+  rep_str(r,"take",p.take);rep_str(r,"out",p.out);rep_str(r,"size",lb_size_text(size,sz[..]));rep_bool(r,"cached",cached);rep_str(r,"label",lb_label_path(p.out,lp[..]));
+  return rep_done(r,EXIT_OK);
+}

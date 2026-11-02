@@ -1,0 +1,154 @@
+// Strict token-aware argv policy for `labs anime`. Borrowed result strings
+// remain valid only while the caller's Args storage is alive and unchanged.
+#load "../../coax/lib/sys/args.coax";
+#load "anime-args-checks.coax";
+#authority;
+
+AnimeArgs :: struct {
+  verb:string;words:string;take:string;out:string;
+  json:bool;help:bool;profile:string;origin:string;
+  size:string;at:string;seconds:string;fps:string;skip:string;wait:string;frames:string;
+  card:bool;phone:bool;square:bool;vertical:bool;fresh:bool;
+  err:string;
+}
+
+// Returns a strict UTF-8 scalar width at an existing byte, or zero.
+aa_scalar :: (s:string,i:int)->int {
+  c:=s[i];if c<128 {return 1;}
+  if c<194 {return 0;}
+  n:=2;
+  if c>223 {n=3;}
+  if c>239 {n=4;}
+  if c>244 || i+n>s.count {return 0;}
+  for j:1..<n {if s[i+j]<128 || s[i+j]>191 {return 0;}}
+  b:=s[i+1];
+  if c==224 && b<160 {return 0;}
+  if c==237 && b>159 {return 0;}
+  if c==240 && b<144 {return 0;}
+  if c==244 && b>143 {return 0;}
+  return n;
+}
+aa_text_ok :: (s:string,lines:bool)->bool {
+  i:=0;while i<s.count {
+    c:=s[i];if c<32 {if !lines || (c!=9 && c!=10 && c!=13) {return false;}}
+    n:=aa_scalar(s,i);if n==0 {return false;}i+=n;
+  }return true;
+}
+aa_file_ok :: (path:string)->bool {return path.count>=1 && path.count<=4000 && aa_text_ok(path,false);}
+aa_words_ok :: (s:string)->bool {
+  if s.count>600 || !aa_text_ok(s,true) {return false;}
+  for c:s {if c!=' ' && c!=9 && c!=10 && c!=13 {return true;}}return false;
+}
+// Plain unsigned seconds. The argument is bounded before conversion to ms.
+aa_time_ms :: (raw:string,maximum_seconds:int)->int {
+  if maximum_seconds<0 || maximum_seconds>3600 || raw.count<1 || raw.count>16 {return -1;}
+  for c:raw {if c=='+' || c=='-' || c=='e' || c=='E' || c==' ' {return -1;}}
+  v:=args_number(raw);if !v.ok || v.value>cast(f64)maximum_seconds {return -1;}
+  return cast(int)(v.value*1000.0+0.5);
+}
+aa_media_interval :: (at_ms:int,skip_ms:int,seconds_ms:int,length_ms:int,png:bool)->bool {
+  if length_ms<0 || length_ms>600000 {return false;}
+  if png {return at_ms>=0 && at_ms<=length_ms;}
+  return skip_ms>=0 && seconds_ms>0 && seconds_ms<=length_ms-skip_ms;
+}
+AA_FLAGS :: [17]string.["--json","--help","--profile","--origin","--take","--size","--at","--seconds","--fps","--skip","--wait","--frames","--card","--phone","--square","--vertical","--fresh"];
+aa_flag :: (name:string)->int {
+  if name=="-h" {return 1;}
+  for text,i:AA_FLAGS {if name==text {return i;}}return -1;
+}
+// Reporting survives a later syntax refusal, without reinterpreting values.
+aa_report_json :: (a:[]Args)->bool {
+  if a.count==0 {return false;}
+  i:=0;while i<a[0].n {
+    token:=a[0].v[i];i+=1;if token=="--" {return false;}
+    flag:=aa_flag(token);if flag==0 {return true;}
+    if flag>=2 && flag<=11 {i+=1;}
+  }return false;
+}
+aa_parse :: (a:[]Args)->AnimeArgs {
+  r:AnimeArgs;r.json=aa_report_json(a);if a.count==0 {r.err="missing arguments";return r;}
+  if a[0].full {r.err="argument capacity";return r;}
+  seen:[17]bool;pos:=0;literal:=false;i:=0;
+  while i<a[0].n {
+    text:=a[0].v[i];i+=1;
+    if !literal && text=="--" {literal=true;continue;}
+    if !literal && text.count>0 && text[0]=='-' {
+      flag:=aa_flag(text);if flag<0 {r.err="unknown option";return r;}
+      if seen[flag] {r.err="duplicate option";return r;}seen[flag]=true;
+      if flag>=4 && pos<3 {r.err="option before verb";return r;}
+      value:="";
+      if flag>=2 && flag<=11 {
+        if i==a[0].n {r.err="missing option value";return r;}
+        value=a[0].v[i];i+=1;if value.count==0 {r.err="empty option value";return r;}
+      }
+      if flag==1 {r.help=true;}
+      if flag==2 {r.profile=value;}
+      if flag==3 {r.origin=value;}
+      if flag==4 {r.take=value;}
+      if flag==5 {r.size=value;}
+      if flag==6 {r.at=value;}
+      if flag==7 {r.seconds=value;}
+      if flag==8 {r.fps=value;}
+      if flag==9 {r.skip=value;}
+      if flag==10 {r.wait=value;}
+      if flag==11 {r.frames=value;}
+      if flag==12 {r.card=true;}
+      if flag==13 {r.phone=true;}
+      if flag==14 {r.square=true;}
+      if flag==15 {r.vertical=true;}
+      if flag==16 {r.fresh=true;}
+    } else {
+      if pos==0 && text!="labs" {r.err="expected labs";return r;}
+      if pos==1 && text!="anime" {r.err="expected anime";return r;}
+      if pos==2 {
+        r.verb=text;if text!="catalogue" && text!="direct" && text!="play" {r.err="unknown anime verb";return r;}
+      }
+      if pos==3 {
+        if r.verb=="direct" {r.words=text;}
+        else {if r.verb=="play" {r.take=text;}else {r.err="extra operand";return r;}}
+      }
+      if pos==4 {if r.verb!="play" {r.err="extra operand";return r;}r.out=text;}
+      if pos>4 {r.err="extra operand";return r;}pos+=1;
+    }
+  }
+  if pos<2 {r.err="expected labs anime";return r;}
+  if pos==2 {r.help=true;return r;}
+  for flag:4..<AA_FLAGS.count {
+    if seen[flag] {
+      if r.verb=="catalogue" || (r.verb=="direct" && flag!=4) || (r.verb=="play" && flag==4) {r.err="option for another verb";return r;}
+    }
+  }
+  if r.verb=="direct" {
+    if pos>=4 && !aa_words_ok(r.words) {r.err="invalid words";return r;}
+    if seen[4] && !aa_file_ok(r.take) {r.err="invalid take path";return r;}
+    if !r.help && (pos<4 || !seen[4]) {r.err="direct needs words and take";return r;}
+  }
+  if r.verb=="play" {
+    if pos>=4 && !aa_file_ok(r.take) {r.err="invalid take path";return r;}
+    if pos>=5 && !aa_file_ok(r.out) {r.err="invalid output path";return r;}
+    if !r.help && pos<5 {r.err="play needs take and output";return r;}
+    if seen[11] && !aa_file_ok(r.frames) {r.err="invalid frames path";return r;}
+    presets:=0;for selected:[4]bool.[seen[5],r.phone,r.square,r.vertical] {if selected {presets+=1;}}
+    if presets>1 {r.err="conflicting size options";return r;}
+    dims:=args_size(r.size);
+    if seen[5] {if !dims.ok || dims.w<16 || dims.h<16 || dims.w>7680 || dims.h>7680 {r.err="invalid size";return r;}}
+    if seen[6] && aa_time_ms(r.at,600)<0 {r.err="invalid at";return r;}
+    if seen[7] && aa_time_ms(r.seconds,600)<=0 {r.err="invalid seconds";return r;}
+    if seen[9] && aa_time_ms(r.skip,3600)<0 {r.err="invalid skip";return r;}
+    // The Anime page caps each draw at 0.1 seconds, so a clip needs at least 10 fps.
+    if seen[8] {n:=args_whole(r.fps);if n<10 || n>120 {r.err="Anime --fps is a whole number from 10 to 120";return r;}}
+    if seen[10] {n:=args_whole(r.wait);if n<0 || n>120000 {r.err="invalid wait";return r;}}
+    if pos>=5 {
+      if r.take==r.out {r.err="take equals output";return r;}
+      png:=r.out.count>=4 && r.out[r.out.count-4..<r.out.count]==".png";
+      mp4:=r.out.count>=4 && r.out[r.out.count-4..<r.out.count]==".mp4";
+      if !png && !mp4 {r.err="output needs png or mp4 extension";return r;}
+      if png && (seen[7] || seen[8] || seen[9] || seen[11]) {r.err="clip option for PNG";return r;}
+      if mp4 {
+        if seen[6] || seen[10] {r.err="shot option for MP4";return r;}
+        if seen[5] && (dims.w%2!=0 || dims.h%2!=0) {r.err="odd MP4 dimensions";return r;}
+      }
+    }
+  }
+  return r;
+}

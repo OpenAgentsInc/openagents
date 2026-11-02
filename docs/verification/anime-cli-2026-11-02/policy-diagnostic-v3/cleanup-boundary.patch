@@ -1,0 +1,91 @@
+--- apps/openagents-cli/anime-rules.coax	2026-11-02 12:32:58
++++ /tmp/anime-rules-cleanup-candidate.coax	2026-11-02 13:04:27
+@@ -9,6 +9,7 @@
+ 
+ ANIME_CLI_INVALID :: -1; ANIME_CLI_LIMIT :: -2; ANIME_CLI_REPLY :: -3; ANIME_CLI_CAPACITY :: -4;
+ ANIME_CLI_URL_BYTES :: 49152;
++ANIME_CLI_B64_BYTES :: ((ANIME_TAKE_BYTES+2)/3)*4;
+ AnimeCommand :: struct {verb:string;arguments:string;flags:string;method:string;help:string;}
+ ANIME_COMMANDS :: [3]AnimeCommand.[
+   AnimeCommand.{verb="catalogue",method="LOCAL",help="the finite Anime catalogue and stock boundaries"},
+@@ -39,7 +40,7 @@
+   for i:0..<7 {state.actions[i]=-1;}
+   events:[32]AnimeEvent;n:=anime_take_events(t,events[..]);
+   for i:0..<n {d:=events[i].d;
+-    if d.kind==AD_ENTER {count:=ifx d.option==AS_HOODED then d.count else 1;for k:0..<count {slot:=d.option+k;state.on[slot]=true;if d.place>=0 {state.places[slot]=d.place;}}}
++    if d.kind==AD_ENTER {count:=ifx d.option==AS_HOODED then d.count else 1;for k:0..<count {slot:=d.option+k;state.on[slot]=true;if d.place!=-1 {state.places[slot]=d.place;}}}
+     if d.kind==AD_ACT {state.actions[d.who]=d.option;}
+     if d.kind==AD_EMOTE {state.emotions[d.who]=d.option;}
+     if d.kind==AD_SHOT {state.framing=d.option;state.subject=d.who;state.shot_place=d.place;state.shot_move=d.move;}
+@@ -80,8 +81,8 @@
+     if !aap_direction(d,at,true,core[..]).ok {return false;}
+   }return true;
+ }
+-// A finite nonnegative time written on a nanosecond decimal grid. Derived F32
+-// lengths round upward by at most one nanosecond; explicit lengths keep their value.
++// A finite nonnegative time written on a nanosecond decimal grid. Both derived
++// and explicit endpoints round upward onto the grid, preserving interval order.
+ an_seconds :: (o:[]Jo,ns:int) {
+   b:[32]u8;w:[1]Jo;jo_start(w[..],b[..]);jo_int(w[..],ns/1000000000);fraction:=ns%1000000000;
+   if fraction!=0 {jo_byte(w[..],'.');digits:[9]u8;divisor:=100000000;for i:0..<9 {digits[i]=cast(u8)('0'+fraction/divisor%10);divisor/=10;}last:=8;while digits[last]=='0' {last-=1;}jo_put(w[..],cast(string)digits[0..<last+1]);}jo_raw(o,jo_text(w[..]));
+@@ -90,7 +91,7 @@
+   t:[1]AnimeTake;code:=an_ready(old,exists,words,t[..]);if code!=0 {return code;}
+   if reply.count>65536 || !aap_utf8(cast(string)reply,true) {return ANIME_CLI_REPLY;}
+   nodes:[2048]JvNode;d:[1]Jv;if !jv_parse(d[..],cast(string)reply,nodes[..]) || !an_reply(d[0],words) {return ANIME_CLI_REPLY;}
+-  answers:=jv_get(d[0],0,"answers");if t[0].answer_n+jv_len(d[0],answers)>16 {return ANIME_CLI_LIMIT;}
++  answers:=jv_get(d[0],0,"answers");
+   old_nodes:[4096]JvNode;old_doc:[1]Jv;if exists {parsed:=jv_parse(old_doc[..],cast(string)old,old_nodes[..]);}
+   start:=cast(f64)t[0].length;length_node:=jv_get(old_doc[0],0,"length");if length_node!=-1 {start=at_time(old_doc[0],length_node);}ns:=cast(int)(-floor(-start*1000000000));
+   buf:[32768]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anime.v1");jo_key(o[..],"stage");jo_str(o[..],"courtyard");jo_key(o[..],"auto");jo_bool(o[..],t[0].auto_camera);jo_key(o[..],"lines");jo_arr(o[..]);
+@@ -99,10 +100,10 @@
+   if o[0].bad {return ANIME_CLI_LIMIT;}candidate:[1]AnimeTake;valid:=anime_take_load(buf[0..<o[0].n],candidate[..]);if valid!=0 {return ANIME_CLI_LIMIT;}return an_emit(o[..],out);
+ }
+ anime_take_url :: (origin:string,take:[]u8,at_ms:int,card:bool,film:bool,out:[]u8)->int {
+-  if !ar_origin_ok(origin) || at_ms< -1 || at_ms>600000 {return ANIME_CLI_INVALID;}
++  if !ar_origin_ok(origin) || at_ms< -1 {return ANIME_CLI_INVALID;}
+   t:[1]AnimeTake;if anime_take_load(take,t[..])!=0 {return ANIME_CLI_INVALID;}
+-  if at_ms>=0 && cast(f32)at_ms/1000>t[0].length {return ANIME_CLI_INVALID;}
+-  encoded:[43696]u8;code:=base64_encode_checked(cast(string)take,encoded[..],false);if code.error!=NC_OK {return ANIME_CLI_LIMIT;}
++  if cast(f32)at_ms/1000>t[0].length {return ANIME_CLI_INVALID;}
++  encoded:[ANIME_CLI_B64_BYTES]u8;code:=base64_encode_checked(cast(string)take,encoded[..],false);
+   buf:[ANIME_CLI_URL_BYTES]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],origin);jo_put(o[..],"/realms/anime-lab?stage=");jo_put(o[..],ifx film then "film" else "direct");jo_put(o[..],"&take64=");
+   for i:0..<code.written {c:=encoded[i];if c=='=' {break;}jo_byte(o[..],ifx c=='+' then cast(u8)'-' else ifx c=='/' then cast(u8)'_' else c);}
+   if card {jo_put(o[..],"&card=1");}if at_ms>=0 {jo_put(o[..],"&t=");an_seconds(o[..],at_ms*1000000);}return an_emit(o[..],out);
+--- apps/openagents-cli/anime-checks.coax	2026-11-02 12:34:12
++++ /tmp/anime-checks-cleanup-candidate.coax	2026-11-02 13:04:27
+@@ -205,6 +205,7 @@
+ }
+ 
+ #test "CLI anime full32768byte take travels as complete unpadded base64url" {
++  #assert ANIME_CLI_B64_BYTES==43692;
+   raw:[32768]u8;take:=an_test_padded_take(32768,raw[..]);held:[1]AnimeTake;#assert anime_take_load(take,held[..])==0 && held[0].source_n==32768 && held[0].answer_n==1;
+   url:[49152]u8;n:=anime_take_url("https://example",take,-1,false,false,url[..]);prefix:="https://example/realms/anime-lab?stage=direct&take64=";#assert n==prefix.count+43691 && ar_starts(cast(string)url[0..<n],prefix);
+   encoded:[43692]u8;for i:prefix.count..<n {c:=url[i];#assert c!='=' && c!='+' && c!='/';encoded[i-prefix.count]=ifx c=='-' then cast(u8)'+' else ifx c=='_' then cast(u8)'/' else c;}encoded[43691]='=';
+@@ -214,3 +215,27 @@
+   raw:[32768]u8;take:=an_test_padded_take(32768,raw[..]);held:[1]AnimeTake;#assert anime_take_load(take,held[..])==0 && held[0].source_n==32768 && held[0].answer_n==1;
+   out:[32768]u8;reply:[65536]u8;for i:0..<out.count {out[i]=91;}#assert anime_direct_append(take,true,"Point.",an_test_reply(AN_TEST_REPLY,reply[..]),out[..])==ANIME_CLI_LIMIT;for c:out {#assert c==91;}
+ }
++
++#test "CLI anime bad JSON writer refuses capacity without publishing buffered bytes" {
++  empty:[1]u8;o:[1]Jo;jo_start(o[..],empty[0..<0]);jo_str(o[..],"x");#assert o[0].bad;
++  out:=[4]u8.[41,42,43,44];#assert an_emit(o[..],out[..])==ANIME_CLI_CAPACITY && out[0]==41 && out[1]==42 && out[2]==43 && out[3]==44;
++}
++
++#test "CLI anime public reply accepts actual JSON line tab and carriage return whitespace" {
++  pretty:="{\n\t\"v\":1,\r\"heard\":\"Pretty.\",\n\"answers\":[]\n}";reply:[65536]u8;out:[32768]u8;empty:[1]u8;
++  n:=anime_direct_append(empty[0..<0],false,"Pretty.",an_test_reply(pretty,reply[..]),out[..]);held:[1]AnimeTake;
++  #assert n>0 && anime_take_load(out[0..<n],held[..])==0 && held[0].line_n==1 && held[0].answer_n==0 && held[0].length==3;
++}
++
++#test "CLI anime first catalogue action and cut framing survive context projection" {
++  old:[32768]u8;take:=an_test_take("[{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"raise-wand\",\"p\":1},{\"kind\":\"cut\",\"to\":\"heroine\",\"transition\":\"cut\",\"p\":1}]",false,"8",old[..]);
++  held:[1]AnimeTake;#assert anime_take_load(take,held[..])==0;state:=an_summary(held[..]);#assert state.actions[1]==ACT_RAISE && state.framing==FR_MEDIUM && state.subject==AS_HEROINE;
++  request:[16384]u8;n:=anime_direct_request(take,true,"Next.",request[..]);nodes:[1024]JvNode;d:[1]Jv;#assert n>0 && jv_parse(d[..],cast(string)request[0..<n],nodes[..]);
++  #assert jv_raw(d[0],jv_path(d[0],0,"state.cast[1].action"))=="raise-wand" && jv_raw(d[0],jv_path(d[0],0,"state.shot.framing"))=="medium" && jv_raw(d[0],jv_path(d[0],0,"state.shot.who"))=="heroine";
++}
++
++#test "CLI anime URL endpoint comparison retains the recorded F32 decimal identity" {
++  raw:[32768]u8;take:=an_test_take("[]",false,"2.103",raw[..]);out:[49152]u8;n:=anime_take_url("https://example",take,2103,false,false,out[..]);
++  #assert n>0 && cast(string)out[n-8..<n]=="&t=2.103";
++  for i:0..<out.count {out[i]=87;}#assert anime_take_url("https://example",take,2104,false,false,out[..])==ANIME_CLI_INVALID;for c:out {#assert c==87;}
++}

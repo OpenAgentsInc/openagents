@@ -1,0 +1,53 @@
+{
+  "schema": "openagents.anime-cli-args-policy.v2",
+  "date": "2026-11-02",
+  "base_commit": "33424e275d454afe0d347b6e37a365995260350d",
+  "status": "current parser root mutation passed",
+  "compiler": {
+    "version": "0.48.0",
+    "sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "prior_consistency_record": "../anime-take-2026-11-02/cli-v048-provenance-verification.json"
+  },
+  "sources": [
+    {
+      "path": "apps/openagents-cli/anime-args.coax",
+      "sha256": "8ac3563c0e23205c77ca254ee7246e7c1840c58604c21c4952c591419c806c26"
+    },
+    {
+      "path": "apps/openagents-cli/anime-args-checks.coax",
+      "sha256": "b2a7aa8345be665e4d1c16743bae351797f0f0b5ffa3cb278afac30f59100694"
+    },
+    {
+      "path": "coax/lib/sys/args.coax",
+      "sha256": "9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3"
+    }
+  ],
+  "final_gate": {
+    "command": "timeout 900 nice -n 15 /Users/christopherdavid/.cache/coax-release/6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e/coax mutate apps/openagents-cli/anime-args.coax --library --root-only --jobs 1",
+    "baseline_checks": 19,
+    "mutants": 547,
+    "killed": 547,
+    "survivors": 0,
+    "receipt": "args-current-mutation.log",
+    "meaning": "Mutation executes all baseline checks before its entry-source mutations; no independent repeat was needed after the final assertion change."
+  },
+  "earlier_current_parser_check": {
+    "passed": 19,
+    "receipt": "args-current-initial-checks.log",
+    "checks_sha256": "cadfd9192a4ea0d0a89c54590df38bd69bd9c2bd954793ffb49cfad47f333f4c",
+    "note": "One PNG mode test still used now-invalid fps1, masking its mode-specific refusal; the final matrix uses valid fps10. Invalid1/9 boundaries remain separately asserted."
+  },
+  "diagnostic": {
+    "mutants": 547,
+    "killed": 546,
+    "survivors": 1,
+    "receipt": "args-current-diagnostic-mutation.log"
+  },
+  "supersedes": "args-policy-qualification.json",
+  "reason": "Anime clips admit10..120fps, default30: this page caps a frame step at100ms. Generic labs/renderer unchanged. Literal/error JSON flag handling and all other bounds retain their prior semantics.",
+  "boundaries": [
+    "Original0.47/547 profile is preserved as an earlier exact-source result.",
+    "No compiler/resource budget increase or mutant equivalence waiver.",
+    "Native CLI/API/media execution is separately recorded."
+  ]
+}

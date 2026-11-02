@@ -1,0 +1,12 @@
+{
+  "schema": "openagents.anime-cli.native-boundary.v1",
+  "prior_profile": "native-journey-profile.json",
+  "prior_cli_sha256": "72499212b029ead1bb2cae1f09678fce259505b746474d539099fd4ae2da9220",
+  "prior_cli_copy": "/tmp/openagents-anime-cli.tOrdsu/openagents-native-v1",
+  "prior_adapter_source": "labs-anime-native-v1.coax.txt",
+  "prior_source_manifest": "cli-native-v1-sources.sha256",
+  "status": "34/34 passed once on that exact earlier source; not promoted to the later adapter.",
+  "next_source_change": "Normalize every nonabsolute MP4 output to a ./ path; the previous adapter normalized only leading-dash outputs. This also keeps protocol-like relative filenames local.",
+  "planned_validation": "Same34 cases, existing positive MP4 uses capture:play.mp4; a new native artifact/profile will be recorded after final build.",
+  "policy_mutation": "The frozen d01b/2e190 pure policy source closure is unchanged by this effect-only correction."
+}

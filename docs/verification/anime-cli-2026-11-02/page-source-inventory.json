@@ -1,0 +1,35 @@
+{
+  "entries": [
+    "apps/openagents-web/animelab.coax",
+    "apps/openagents-web/animelab-style.coax"
+  ],
+  "method": "Post-run conservative recursive literal #load inventory. All source mtimes precede the actual recorded build start; builtin Basic belongs to the pinned compiler. Compiler-resolved CLI list comparison remains pending.",
+  "source_count": 23,
+  "build_log": "current-page-build.log",
+  "all_sources_predate_build": true,
+  "files": [
+    "aethyr/budget.coax",
+    "apps/openagents-web/animelab-cast.coax",
+    "apps/openagents-web/animelab-mesh.coax",
+    "apps/openagents-web/animelab-style.coax",
+    "apps/openagents-web/animelab-take-checks.coax",
+    "apps/openagents-web/animelab-world.coax",
+    "apps/openagents-web/animelab.coax",
+    "apps/openagents-web/font.coax",
+    "coax/lib/json/json.coax",
+    "coax/lib/nostr/block/fi-base64url.coax",
+    "coax/lib/nostr/codecs-common.coax",
+    "coax/lib/nostr/fixtures/coax_relay.coax",
+    "coax/lib/nostr/fixtures/json_suite.coax",
+    "coax/lib/nostr/json.coax",
+    "verse/anime/director.coax",
+    "verse/anime/render-profile.coax",
+    "verse/anime/stage.coax",
+    "verse/anime/take-checks.coax",
+    "verse/anime/take.coax",
+    "verse/cinematic.coax",
+    "verse/space.coax",
+    "verse/style-preset.coax",
+    "verse/style.coax"
+  ]
+}

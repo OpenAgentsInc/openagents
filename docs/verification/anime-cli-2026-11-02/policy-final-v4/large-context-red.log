@@ -1,0 +1,7 @@
+FAIL #test CLI anime context projects admitted fields after large opaque confidence metadata (27 ms)
+apps/openagents-cli/anime-checks.coax:33:3: error[E0406]: assertion failed
+    #assert jv_raw(d[0],jv_get(d[0],answer,"kind"))=="act" && jv_raw(d[0],jv_get(d[0],answer,"action"))=="point";
+    ^
+  note: in #test CLI anime context projects admitted fields after large opaque confidence metadata
+1 of 182 checks (--only 'large opaque'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

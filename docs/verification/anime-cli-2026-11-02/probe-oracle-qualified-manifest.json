@@ -1,0 +1,47 @@
+{
+  "schema": "openagents.anime-cli.probe-source-host-manifest.v1",
+  "state": "Probe frozen; final native journey not yet run.",
+  "closure_method": "Read-only recursive inspection of every #load in the twelve entry-source units. Basic is compiler-provided. Entropy is a separately emitted/linkable policy under tool.sh. No compiler/deps invocation occurred while preparing this manifest.",
+  "compiler": {"version": "0.47.0", "path": "coax/bin/coax", "sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6"},
+  "native": {"path": "coax/web/build/tools/anime-cli-probe", "sha256": "3efab136fca698a6a4de9b6226d15fb78cd3026a5cedb456ceb65f0edb3bc882", "build_owner": "root", "build_method": "Existing coax/web/tool.sh: compiler C11 emission, clang -O2, existing platform effects and Security framework, no TLS host requested.", "generated_c_retained": false},
+  "entry_sources_sha256": {
+    "coax/web/anime-cli-probe.coax": "a4289dd8d0350d6a02025aa8e3084ebe83c75bb6151a5ce7a72a9745b85744f6",
+    "coax/web/cli-journey-fixture.coax": "0d57f8041c2677c98368b771a866a3e90dc1af0f4d8735e68a470ad8c34b958b",
+    "coax/lib/sys/tool.coax": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70",
+    "coax/lib/sys/args.coax": "9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3",
+    "coax/lib/sys/proc.coax": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b",
+    "coax/lib/sys/fs.coax": "05bb842cd742f8f22da6ab55ad119aea90159cba4eee81dbedaa134d6d65a3ea",
+    "coax/lib/json/json.coax": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1",
+    "coax/lib/text/base64.coax": "6ff3171d8b01b7ac9fc05c0229c2328b57defb0535cc4f7f0edbd77e99ae86d9",
+    "coax/lib/image/png.coax": "5377d3f5ec8781f1d63d86c24cb7a0a96ca0103e0c83d1e518be145a2e169a1b",
+    "coax/lib/image/inflate.coax": "9151e5113ecb6ca43a0c14abfb62a13105e7b4921dfc7039b3ca1356a4e44a20",
+    "coax/lib/net/socket_foreign.coax": "c3f903c63605595d6f2cbc09d703e6ce536cdf9e3b85401e3ac3f0ccdf624384",
+    "coax/lib/crypto/sha256-kernel.coax": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926"
+  },
+  "entropy_policy_sha256": {"coax/lib/crypto/entropy.coax": "efbe909c032939134e83db8ceb296d4da04baac37cd5a291f4276aad955e84fe"},
+  "host_sources_sha256": {
+    "coax/platform/tool-native.c": "c8db7d6e4e7f0c6e3c91a37c7e4c8931637d5deb051e62c4e437cc86476dcb03",
+    "coax/platform/process-native.c": "3c2e5ac2febb9e4ab2042363e0a15adfe0432eaee0e840056ccdd3827275528f",
+    "coax/platform/store-file-native.c": "1c343f7579c18cbde8d81e4f6f3df435a9ad3ba5875c5921027813cff85391c2",
+    "coax/platform/read-file-native.c": "31e69b66eab2b28baaca50d3e168a209fc8c27e3640ac623c20b6562ca81cbdc",
+    "coax/platform/socket-native.c": "2cc8a7b3c75eebed225fbba8016c06f9009f8c0b8781ee33b3ed45677c98940b",
+    "coax/platform/entropy-native.c": "c24f1fb976094e1a41bb3b5c72d50d2a2013e7cc188a5769d26caa448db40af0",
+    "coax/platform/entropy-foreign.c": "0718319242b28767b5f319e076e3ef9b927e313e402d173fbb5eb45e8a25aa6a"
+  },
+  "host_headers_sha256": {
+    "coax/platform/tool-native.h": "71beb32196e55dd06b498f5978303c639eb7eed2217c61c0695816a502b795e5",
+    "coax/platform/process-native.h": "b4fac09b341a274b46dfaed525c85e889808da2892f377f815deac58845e2d3e",
+    "coax/platform/store-file-native.h": "9297c83928df023297950dd1ca471470c77dfa23e9732284ec1a2afe03f7cf11",
+    "coax/platform/read-file-native.h": "02a295b9791f4b3070cab1770482dec47292bd43ee4c871946589a9a39a860c8",
+    "coax/platform/socket-native.h": "496d48c787d2fde2fca0cbaa23315e0e055ecee15598f4ce0ecb5b42800cd014",
+    "coax/platform/entropy-native.h": "0dc938532bc0fc5d2dcd3600886523c63c0ca06d69cbf1aa3852976b05f20109",
+    "coax/platform/entropy-foreign.h": "95898457f3cf8f142617f92a87a9020e95302d6f4fe21aae37f4a87d63752bab"
+  },
+  "build_wrapper_sha256": {"coax/web/tool.sh": "ea80ca615906e63a81b2878c7d58b78c5eb67182b0847ed033eff9a172fb6ee0"},
+  "owned_oracles": {"result": "4 passed, 0 failed; 4 of 120 checks selected with --only anime CLI; imported authority coverage explicitly not claimed", "receipt": "probe-final-oracles-v2.log", "sha256": "14d2609a1a0c588971fa2fd61bc50d24f3ce5d11e1cd42819ec3b70f785369f1"},
+  "native_build_boundary": {"result": "Expected usage exit2 with target environment empty; no API/browser launched", "receipt": "probe-native-build.log", "sha256": "5d27162b6a6bbab1e61aba4e16489c158f9cd482e18762263cedfc1007da6115"},
+  "retained_compile_refusals": [
+    {"source_sha256": "decec3493b422f19efa6ccddcd11f48a39fe81e6811e6189b38fe930ece8e93a", "receipt": "probe-owned-race-build-refusal.log", "result": "E0383: helper-local race bytes could be retained; corrected by owned Acp array."},
+    {"source_sha256": "9a4a2da387454aff0c3f6296aa8faf426fcf1eddef71097dba84730e5bf3f644", "receipt": "probe-owned-sentinel-build-refusal.log", "result": "E0383: helper-local sentinel path could be retained; corrected by owned Acp array."}
+  ]
+}

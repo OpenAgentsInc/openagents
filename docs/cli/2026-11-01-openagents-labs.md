@@ -145,6 +145,65 @@ Labs adds one exit code to the CLI's table:
 | --- | --- |
 | 8 | a program Labs needs is missing: Chrome, ffmpeg, or the transcribe backend. The message names it and the one command that installs it, for example `brew install ffmpeg` |
 
+### `labs anime`
+
+```sh
+openagents labs anime catalogue --json
+openagents labs anime direct "Draconia casts a fireball. Close up on Kai." --take scene.take
+openagents labs anime play scene.take out.png --at 1.5 --card
+openagents labs anime play scene.take out.mp4 --size 640x360 --fps 12
+```
+
+`catalogue` lists the fixed cast and every finite selector field. Catalogue
+membership does not promise that a particular direction has a rendered effect;
+slot 6 has no stock body and arbitrary `make` answers remain heard only.
+
+`direct` signs one request to `/api/playtest/labs/anime/direct` with the
+selected profile's NIP-98 identity. It sends the written words and a finite
+context summary of the previous take's admitted events: cast visibility and
+places, last directed action/emotion, camera framing, and up to eight recent
+executable user answers. This is selector context, not a physical observation
+of a running page. The complete public answer passes the same catalogue,
+probability and render-support holders as the API before it can enter the
+[recorded take](../verse/anime-takes-v1.md). The CLI prints the words, held
+answers and their confidence dispositions. It performs no word matching,
+speech recognition or asset generation.
+
+`--take FILE` creates a take or appends one written line. A written line is
+instantaneous: `said == done`, at zero for the first line and at the preceding
+take's length for later lines. This records an editing sequence, without
+inventing speech duration. Existing lines and answer metadata are retained;
+the rebuilt take receives a new tail for playback. The 32 KiB, 16-line,
+16-answer and 600-second take bounds still apply. Invalid input, a failed
+request or an invalid answer leaves the take unchanged. Concurrent CLI writers
+use an exclusive `FILE.anime.lock` directory and compare the original bytes
+before a complete replacement is renamed into place. A held lock or changed
+take exits 5. After an interrupted writer, inspect that lock before removing
+it; the CLI never deletes a lock it did not acquire.
+
+`play` validates the take locally, encodes it in the page's `take64` input,
+and requires the page to report that it accepted the complete document before
+writing media. PNG defaults to `--at 0`; MP4 defaults to the remaining take
+duration at 30 fps. Anime playback accepts 10–120 fps so each encoded frame
+fits the page's maximum 100 ms time step; lower rates refuse before capture.
+`--at`, or `--skip` plus `--seconds`, must fit inside the
+take. `--card` hides captions. Size presets, `--size`, PNG `--wait`, MP4
+`--fps`/`--frames`, and `--fresh` work as for shot/clip. Chrome stays headless
+and muted; captures retain the existing cache and sidecar behavior. The take,
+output, output label and any generated frame must be different files.
+The report names the files and label; the label retains the complete encoded
+take URL and capture inputs.
+`--frames` needs a new or empty directory and regenerates the frame collection
+even when the video is cached. This keeps old frame files out of a new clip.
+
+All three commands support `--json`, `--profile` and `--origin`. Unknown,
+duplicate, missing-value and irrelevant flags are usage errors. `--` makes
+later words literal operands; a flag-shaped option value stays a value.
+Exit codes follow the CLI table: 2 usage, 3 missing identity, 4 forbidden,
+5 conflict, 6 missing take, 7 quota, 8 missing media program, and 1 other
+failures. API and page deployment are separate from source qualification;
+`--origin` selects the API for `direct` and the page for `play`.
+
 ### `labs shot`
 
 ```text

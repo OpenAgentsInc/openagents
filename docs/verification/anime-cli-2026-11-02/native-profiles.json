@@ -1,0 +1,7 @@
+{
+  "schema": "openagents.anime-cli.native-profiles.v1",
+  "current": "version2",
+  "version1": {"status": "intermediate exact pass", "profile": "native-v1-profile.json", "original_profile_untouched": "native-journey-profile.json", "run_plan": "native-v1-run-plan.json", "source_host_manifest": "native-v1-source-host-manifest.json", "artifacts": "final-native/", "result": "34/34 once on CLI724992/probef823bd; original files and hashes remain unchanged."},
+  "version2": {"status": "qualified exact native producer", "profile": "native-v2-profile.json", "run_plan": "native-v2-run-plan.json", "source_host_manifest": "native-v2-source-host-manifest.json", "artifacts": "native-v2/", "result": "36/36 once on CLIa055b555/probea244aa; seven sequential browser commands. All producer identities matched before/after. Pinned to the executed host/page, without promoting later unused-host-branch changes."},
+  "why_versioned": "After version1 passed, source review found ffmpeg treats colon-containing relative output/frame names as protocols and cached videos could omit newly requested frames or encode stale extras. Root changed only the new Anime adapter's relative path normalization, frame-directory admission and frame-request regeneration. Version2 uses capture:play.mp4/frames:literal and adds explicit empty-frame regeneration/cached-no-frame checks for the changed producer. No old pass is relabeled."
+}

@@ -1,0 +1,45 @@
+FAIL #test anime args catalogue globals and help do not consume operands (2 ms)
+apps/openagents-cli/anime-args-checks.coax:27:22: error[E0406]: assertion failed
+    r:=aa_parse(a[..]);#assert r.err=="" && r.verb=="catalogue" && r.json && r.help && r.profile=="work" && r.origin=="http://127.0.0.1:8801";
+                       ^
+  note: in #test anime args catalogue globals and help do not consume operands
+FAIL #test anime args direct holds words paths and flag looking values literally (1 ms)
+apps/openagents-cli/anime-args-checks.coax:34:22: error[E0406]: assertion failed
+    r:=aa_parse(a[..]);#assert r.err=="" && r.words=="Kai points." && r.take=="--json" && !r.json && !r.help;
+                       ^
+  note: in #test anime args direct holds words paths and flag looking values literally
+FAIL #test anime args play stores every allowed media flag and delimiter files (1 ms)
+apps/openagents-cli/anime-args-checks.coax:42:22: error[E0406]: assertion failed
+    r:=aa_parse(a[..]);#assert r.err=="" && r.verb=="play" && r.take=="scene.take" && r.out=="out.mp4" && r.size=="1280x720";
+                       ^
+  note: in #test anime args play stores every allowed media flag and delimiter files
+ok   #test anime args refuses missing unknown duplicate misplaced and extra tokens (1 case, 2903231 steps, 33 ms)
+ok   #test anime args duplicates are actual flags and every value flag needs data (1 case, 2259594 steps, 25 ms)
+ok   #test anime args options obey verb and PNG MP4 scopes even with help (1 case, 2643281 steps, 30 ms)
+FAIL #test anime args sizes and preset conflicts match bounded shot clip profiles (1 ms)
+apps/openagents-cli/anime-args-checks.coax:97:104: error[E0406]: assertion failed
+      a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.png","--size",size],a[..]);#assert aa_parse(a[..]).err=="";
+                                                                                                         ^
+  note: in #test anime args sizes and preset conflicts match bounded shot clip profiles
+FAIL #test anime args time rate and wait flags hold both ends of each bound (1 ms)
+apps/openagents-cli/anime-args-checks.coax:109:3: error[E0406]: assertion failed
+    #assert aat_ok_7([7]string.["labs","anime","play","in","out.png","--at","0"]);
+    ^
+  note: in #test anime args time rate and wait flags hold both ends of each bound
+FAIL #test anime args paths and words validate exact byte limits and UTF8 (0 ms)
+apps/openagents-cli/anime-args-checks.coax:128:3: error[E0406]: assertion failed
+    #assert aa_file_ok("--json") && aa_file_ok("a b/😀.take") && aa_file_ok(cast(string)path[0..<4000]);
+    ^
+  note: in #test anime args paths and words validate exact byte limits and UTF8
+FAIL #test anime args media interval admits still zero length and safe clip sums (0 ms)
+apps/openagents-cli/anime-args-checks.coax:143:3: error[E0406]: assertion failed
+    #assert aa_media_interval(0,0,0,0,true) && aa_media_interval(600000,0,0,600000,true);
+    ^
+  note: in #test anime args media interval admits still zero length and safe clip sums
+FAIL #test anime args UTF8 file paths cover scalar range boundaries without controls (0 ms)
+apps/openagents-cli/anime-args-checks.coax:160:15: error[E0406]: assertion failed
+    for p:good {#assert aa_file_ok(p);}
+                ^
+  note: in #test anime args UTF8 file paths cover scalar range boundaries without controls
+11 of 16 checks (--only 'anime args'), 3 passed, 8 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -87,6 +87,15 @@ Checks: `verse/anime/take-checks.coax`, the two authorities' mutation gates,
 `apps/openagents-web/animelab-take-checks.coax`, and the headless
 `coax/web/anime-take-probe.coax`. Format: `docs/verse/anime-takes-v1.md`.
 
+The Anime CLI holds a complete director reply before appending a written line.
+It reuses the API's probability holder and the take's catalogue gate; one bad
+answer refuses the whole append. Cooperating writers compare the original
+take under an exclusive sibling lock, then rename one complete checked file.
+`play` requires the loaded page to report an accepted take before screenshots
+or recorded frames are written. Literal arguments cannot become profile,
+origin or report flags. Policies: `apps/openagents-cli/anime-rules.coax` and
+`anime-args.coax`; native journey: `coax/web/anime-cli-probe.coax`.
+
 ## A private realm is seen only by its owner and site admins
 
 A made realm's `visibility` (`coax/web/api/migrations/0099_realm_visibility.sql`)

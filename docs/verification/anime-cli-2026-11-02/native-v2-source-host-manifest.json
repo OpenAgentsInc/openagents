@@ -1,0 +1,50 @@
+{
+  "schema": "openagents.anime-cli.probe-source-host-manifest.v1",
+  "state": "Version2 passed36/36 once on its frozen CLI/probe. Version1 remains an exact separate34/34 intermediate pass.",
+  "closure_method": "Root's ordered build resolved all12 entry-source units in native-v2-build/deps.json; read-only hashes match the independently enumerated closure. Basic is compiler-provided. Entropy is emitted separately. This lane launched no compiler/deps process.",
+  "compiler": {"version": "0.47.0", "path": "coax/bin/coax", "sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6"},
+  "native": {"path": "coax/web/build/tools/anime-cli-probe", "sha256": "a244aa226a766918c25a7f8ce7d385c9f3a6639ee9d37212aa22a8bbaa62bbcc", "build_owner": "root", "build_method": "Root executed ordered manual entropy emission -> probe C generation -> deps resolution -> clang with the existing tool.sh C generation/link inputs, including existing host effects/Security framework. No parallel background deps/compiler. Shared tool.sh was not invoked or changed by this lane; it is a reference only.", "generated_c_retained": true},
+  "native_v2_build": {"probe_c": "native-v2-build/anime-cli-probe.c.txt", "probe_c_sha256": "a5d3795d33c033ce3851db47ed82ee08923c847303e1190685a901160f298987", "entropy_c": "native-v2-build/entropy.c.txt", "entropy_c_sha256": "84534bdf473210290e76e752aa2f7f0aaf132067d4f761aaf82bca5130fcd2da", "entropy_header": "native-v2-build/entropy-policy.h.txt", "entropy_header_sha256": "338a1f156103d7b35000969f7544e894c0165e2c8785d7f2fc86fe707cde414d", "deps": "native-v2-build/deps.json", "deps_sha256": "0a3f96a95f23718af8f4db7c59966e569edf31c17987ca8406b187b8521013f8", "source_count": 12, "empty_env_boundary": "Expected usage exit2; no API/browser", "receipt": "native-v2-build/build-boundary.log", "receipt_sha256": "5d27162b6a6bbab1e61aba4e16489c158f9cd482e18762263cedfc1007da6115"},
+  "source_update": {"prior_source_sha256": "528790657d4786c4e6baac0b27d326e877d6faf5edfcf140f844e149cc6daab0", "prior_native_sha256": "f823bd30543b13e43856f8f018ba90b48f37b4a44020c5a9dae8433b4ac080c0", "prior_source_snapshot": "probe-executed.coax.txt", "prior_manifest": "native-v1-source-host-manifest.json", "prior_profile": "native-v1-profile.json", "prior_native_snapshot": "/tmp/openagents-anime-cli.tOrdsu/probe-executed", "unbuilt_output_only_source_sha256": "27e9c64d58889f5ba2b81db131456040cbe22093ca912115b46cf9c6417eff65", "change": "Existing positive MP4 uses relative capture:play.mp4 after -- and relative --frames frames:literal, both resolved to absolute expected artifacts under the owned cwd. Root normalizes every nonabsolute output/frame directory with ./ to prevent ffmpeg protocol interpretation, requires requested frame directories new/empty and forces frame regeneration. Existing nonempty frame-alias refusal retains source-preservation coverage. Two new checks request a new empty frames:refresh directory despite valid cached OUT (cachedfalse/twelve decoded frame pairs match), then omit --frames and require cachedtrue without the Chrome sentinel. Version2 requires a separate36-case/seven-sequential-browser run on changed producers; no added API call. Four pure oracle bodies and their pure helpers remain unchanged and are not rerun."},
+  "entry_sources_sha256": {
+    "coax/web/anime-cli-probe.coax": "008b796da1bcae7f0bfa6fde63370647df23a4f8bb149c03525f17e1a670c2dc",
+    "coax/web/cli-journey-fixture.coax": "0d57f8041c2677c98368b771a866a3e90dc1af0f4d8735e68a470ad8c34b958b",
+    "coax/lib/sys/tool.coax": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70",
+    "coax/lib/sys/args.coax": "9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3",
+    "coax/lib/sys/proc.coax": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b",
+    "coax/lib/sys/fs.coax": "05bb842cd742f8f22da6ab55ad119aea90159cba4eee81dbedaa134d6d65a3ea",
+    "coax/lib/json/json.coax": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1",
+    "coax/lib/text/base64.coax": "6ff3171d8b01b7ac9fc05c0229c2328b57defb0535cc4f7f0edbd77e99ae86d9",
+    "coax/lib/image/png.coax": "5377d3f5ec8781f1d63d86c24cb7a0a96ca0103e0c83d1e518be145a2e169a1b",
+    "coax/lib/image/inflate.coax": "9151e5113ecb6ca43a0c14abfb62a13105e7b4921dfc7039b3ca1356a4e44a20",
+    "coax/lib/net/socket_foreign.coax": "c3f903c63605595d6f2cbc09d703e6ce536cdf9e3b85401e3ac3f0ccdf624384",
+    "coax/lib/crypto/sha256-kernel.coax": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926"
+  },
+  "entropy_policy_sha256": {"coax/lib/crypto/entropy.coax": "efbe909c032939134e83db8ceb296d4da04baac37cd5a291f4276aad955e84fe"},
+  "host_sources_sha256": {
+    "coax/platform/tool-native.c": "c8db7d6e4e7f0c6e3c91a37c7e4c8931637d5deb051e62c4e437cc86476dcb03",
+    "coax/platform/process-native.c": "3c2e5ac2febb9e4ab2042363e0a15adfe0432eaee0e840056ccdd3827275528f",
+    "coax/platform/store-file-native.c": "1c343f7579c18cbde8d81e4f6f3df435a9ad3ba5875c5921027813cff85391c2",
+    "coax/platform/read-file-native.c": "31e69b66eab2b28baaca50d3e168a209fc8c27e3640ac623c20b6562ca81cbdc",
+    "coax/platform/socket-native.c": "2cc8a7b3c75eebed225fbba8016c06f9009f8c0b8781ee33b3ed45677c98940b",
+    "coax/platform/entropy-native.c": "c24f1fb976094e1a41bb3b5c72d50d2a2013e7cc188a5769d26caa448db40af0",
+    "coax/platform/entropy-foreign.c": "0718319242b28767b5f319e076e3ef9b927e313e402d173fbb5eb45e8a25aa6a"
+  },
+  "host_headers_sha256": {
+    "coax/platform/tool-native.h": "71beb32196e55dd06b498f5978303c639eb7eed2217c61c0695816a502b795e5",
+    "coax/platform/process-native.h": "b4fac09b341a274b46dfaed525c85e889808da2892f377f815deac58845e2d3e",
+    "coax/platform/store-file-native.h": "9297c83928df023297950dd1ca471470c77dfa23e9732284ec1a2afe03f7cf11",
+    "coax/platform/read-file-native.h": "02a295b9791f4b3070cab1770482dec47292bd43ee4c871946589a9a39a860c8",
+    "coax/platform/socket-native.h": "496d48c787d2fde2fca0cbaa23315e0e055ecee15598f4ce0ecb5b42800cd014",
+    "coax/platform/entropy-native.h": "0dc938532bc0fc5d2dcd3600886523c63c0ca06d69cbf1aa3852976b05f20109",
+    "coax/platform/entropy-foreign.h": "95898457f3cf8f142617f92a87a9020e95302d6f4fe21aae37f4a87d63752bab"
+  },
+  "build_wrapper_sha256": {"coax/web/tool.sh": "8aad150e404ab7a702595b0d885b26c1f3fc1281c8012106d30ab957ddb84664"},
+  "build_wrapper_role": "Reference only: upstream wrapper changed from v1's ea80ca checksum to8aad150 during rebase; root reused its C/link inputs in ordered manual calls to avoid concurrent deps/compiler. All other listed entry/entropy/host hashes remain exact.",
+  "owned_oracles": {"source_sha256": "a4289dd8d0350d6a02025aa8e3084ebe83c75bb6151a5ce7a72a9745b85744f6", "result": "4 passed, 0 failed; 4 of 120 checks selected with --only anime CLI; imported authority coverage explicitly not claimed; unchanged oracle bodies/helpers reused", "receipt": "probe-final-oracles-v2.log", "sha256": "14d2609a1a0c588971fa2fd61bc50d24f3ce5d11e1cd42819ec3b70f785369f1"},
+  "native_build_boundary": {"source_sha256": "a4289dd8d0350d6a02025aa8e3084ebe83c75bb6151a5ce7a72a9745b85744f6", "result": "Earlier native only: expected usage exit2 with target environment empty; no API/browser launched", "receipt": "probe-native-build.log", "sha256": "5d27162b6a6bbab1e61aba4e16489c158f9cd482e18762263cedfc1007da6115"},
+  "retained_compile_refusals": [
+    {"source_sha256": "decec3493b422f19efa6ccddcd11f48a39fe81e6811e6189b38fe930ece8e93a", "receipt": "probe-owned-race-build-refusal.log", "result": "E0383: helper-local race bytes could be retained; corrected by owned Acp array."},
+    {"source_sha256": "9a4a2da387454aff0c3f6296aa8faf426fcf1eddef71097dba84730e5bf3f644", "receipt": "probe-owned-sentinel-build-refusal.log", "result": "E0383: helper-local sentinel path could be retained; corrected by owned Acp array."}
+  ]
+}

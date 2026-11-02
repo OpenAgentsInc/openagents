@@ -1,0 +1,109 @@
+// Pure catalogue, director/public reply and recorded-take append policy. Effects
+// keep the old bytes across the request and compare/rename under their file lock.
+#load "../../verse/anime/take.coax";
+#load "../../coax/web/api/anime-director-policy.coax";
+#load "../../coax/lib/nostr/base64.coax";
+#load "account_rules.coax";
+#load "anime-checks.coax";
+#authority;
+
+ANIME_CLI_INVALID :: -1; ANIME_CLI_LIMIT :: -2; ANIME_CLI_REPLY :: -3; ANIME_CLI_CAPACITY :: -4;
+ANIME_CLI_URL_BYTES :: 49152;
+AnimeCommand :: struct {verb:string;arguments:string;flags:string;method:string;help:string;}
+ANIME_COMMANDS :: [3]AnimeCommand.[
+  AnimeCommand.{verb="catalogue",method="LOCAL",help="the finite Anime catalogue and stock boundaries"},
+  AnimeCommand.{verb="direct",method="POST",arguments="words",flags="--take:file",help="direct words and append every held answer to a recorded take"},
+  AnimeCommand.{verb="play",method="LOCAL",arguments="take|out",flags="--at:time|--seconds:time|--fps:fps|--skip:time|--size:size|--phone:bool|--square:bool|--vertical:bool|--wait:waitms|--frames:file|--card:bool|--fresh:bool",help="render the recorded take through the existing muted headless media engine"}
+];
+
+// The context is a summary of admitted directions, not a physical-stage observation.
+AnimeContext :: struct {
+  on:[7]bool;places:[7]int;actions:[7]int;emotions:[7]int;
+  framing:int=FR_ESTABLISHING;subject:int=-1;shot_place:int=PL_COURTYARD;shot_move:int=MOVE_PUSH;
+}
+an_emit :: (o:[]Jo,out:[]u8)->int {if o[0].bad {return ANIME_CLI_CAPACITY;}return aap_copy(jo_text(o),out);}
+an_base :: (old:[]u8,exists:bool,t:[]AnimeTake)->int {
+  if !exists {return ifx old.count==0 then 0 else ANIME_CLI_INVALID;}
+  code:=anime_take_load(old,t);if code==0 {return 0;}return ifx code==ANIME_TAKE_LIMIT then ANIME_CLI_LIMIT else ANIME_CLI_INVALID;
+}
+an_ready :: (old:[]u8,exists:bool,words:string,t:[]AnimeTake)->int {
+  code:=an_base(old,exists,t);if code!=0 {return code;}
+  if words.count>600 {return ANIME_CLI_LIMIT;}if words.count<1 || !aap_utf8(words,true) {return ANIME_CLI_INVALID;}
+  spoken:=false;for c:words {if c!=' ' && c!=9 && c!=10 && c!=13 {spoken=true;}}if !spoken {return ANIME_CLI_INVALID;}
+  if t[0].line_n>=16 || t[0].answer_n>=16 || t[0].length>597 {return ANIME_CLI_LIMIT;}return 0;
+}
+an_slot_word :: (slot:int)->string {if slot==3 || slot==4 {return "hooded";}return AS_ARCHETYPE_WORDS[ad_archetype(slot)];}
+an_summary :: (t:[]AnimeTake)->AnimeContext {
+  state:AnimeContext;state.on=[7]bool.[true,true,false,false,false,false,false];
+  state.places=[7]int.[PL_COURTYARD,PL_COURTYARD,PL_BEHIND,PL_BEHIND,PL_BEHIND,PL_BEHIND,PL_WALL];
+  for i:0..<7 {state.actions[i]=-1;}
+  events:[32]AnimeEvent;n:=anime_take_events(t,events[..]);
+  for i:0..<n {d:=events[i].d;
+    if d.kind==AD_ENTER {count:=ifx d.option==AS_HOODED then d.count else 1;for k:0..<count {slot:=d.option+k;state.on[slot]=true;if d.place>=0 {state.places[slot]=d.place;}}}
+    if d.kind==AD_ACT {state.actions[d.who]=d.option;}
+    if d.kind==AD_EMOTE {state.emotions[d.who]=d.option;}
+    if d.kind==AD_SHOT {state.framing=d.option;state.subject=d.who;state.shot_place=d.place;state.shot_move=d.move;}
+    if d.kind==AD_CUT {state.framing=ad_frames(d,state.framing);state.subject=d.to;state.shot_place=PL_COURTYARD;state.shot_move=MOVE_PUSH;}
+  }return state;
+}
+anime_catalogue :: (out:[]u8)->int {
+  buf:[16384]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"v");jo_int(o[..],1);jo_key(o[..],"schema");jo_str(o[..],"anime.catalogue.v1");jo_key(o[..],"stage");jo_str(o[..],"courtyard");
+  jo_key(o[..],"cast");jo_arr(o[..]);for i:0..<7 {jo_obj(o[..]);jo_key(o[..],"slot");jo_int(o[..],i);jo_key(o[..],"name");jo_str(o[..],CAST_NAMES[i]);jo_key(o[..],"archetype");jo_str(o[..],an_slot_word(i));jo_key(o[..],"body_drawn");jo_bool(o[..],i<AS_MADE);jo_end(o[..]);}jo_end(o[..]);
+  jo_key(o[..],"questions");jo_obj(o[..]);for field:AAP_FIELDS {jo_key(o[..],field);jo_arr(o[..]);for i:0..<aap_choices(field) {jo_str(o[..],aap_choice(field,i));}jo_end(o[..]);}jo_end(o[..]);
+  jo_key(o[..],"notes");jo_arr(o[..]);jo_str(o[..],"Catalogue membership does not promise render support: each held direction is checked against the shared static profile.");jo_str(o[..],"Probabilities are model-reported, not an empirical calibration result.");jo_str(o[..],"make is out of stock and heard only; no asset is generated.");jo_end(o[..]);jo_end(o[..]);return an_emit(o[..],out);
+}
+
+an_context :: (t:[]AnimeTake,o:[]Jo) {
+  state:=an_summary(t);jo_obj(o);jo_key(o,"cast");jo_arr(o);
+  for i:0..<7 {jo_obj(o);jo_key(o,"slot");jo_int(o,i);jo_key(o,"name");jo_str(o,CAST_NAMES[i]);jo_key(o,"archetype");jo_str(o,an_slot_word(i));jo_key(o,"on");jo_bool(o,state.on[i]);jo_key(o,"place");jo_str(o,PLACE_WORDS[state.places[i]]);
+    if state.actions[i]>=0 {jo_key(o,"action");jo_str(o,ACTION_WORDS[state.actions[i]]);}jo_key(o,"emotion");jo_str(o,EMOTION_WORDS[state.emotions[i]]);jo_end(o);
+  }jo_end(o);jo_key(o,"shot");jo_obj(o);jo_key(o,"framing");jo_str(o,FRAMING_WORDS[state.framing]);
+  if state.subject>=0 {jo_key(o,"who");jo_str(o,an_slot_word(state.subject));}if state.shot_place!=-1 {jo_key(o,"place");jo_str(o,PLACE_WORDS[state.shot_place]);}jo_key(o,"move");jo_str(o,MOVE_WORDS[state.shot_move]);jo_end(o);
+  jo_key(o,"last");jo_arr(o);eligible:=0;for i:0..<t[0].answer_n {if !t[0].answers[i].heard {eligible+=1;}}
+  skip:=eligible-8;seen:=0;raw:[32768]u8;
+  for i:0..<t[0].answer_n {if t[0].answers[i].heard {continue;}seen+=1;if seen<=skip {continue;}
+    rn:=anime_take_answer_json(t,i,raw[..]);nodes:[4096]JvNode;doc:[1]Jv;parsed:=jv_parse(doc[..],cast(string)raw[0..<rn],nodes[..]);core:[512]u8;
+    held:=at_flat(doc[0],0,t[0].answers[i].milli,core[..]);writer:=[1]Jo.[held.writer];jo_raw(o,jo_text(writer[..]));
+  }jo_end(o);jo_end(o);
+}
+anime_direct_request :: (old:[]u8,exists:bool,words:string,out:[]u8)->int {
+  t:[1]AnimeTake;code:=an_ready(old,exists,words,t[..]);if code!=0 {return code;}
+  buf:[16384]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"v");jo_int(o[..],1);jo_key(o[..],"words");jo_str(o[..],words);jo_key(o[..],"state");an_context(t[..],o[..]);jo_end(o[..]);return an_emit(o[..],out);
+}
+
+an_reply :: (d:Jv,words:string)->bool {
+  if !aap_unique(d) || !aap_keys(d,0,"v|heard|answers") || jv_int(d,jv_get(d,0,"v"),0)!=1 {return false;}
+  heard:=jv_get(d,0,"heard");if jv_kind(d,heard)!=JV_STRING || !jv_raw_eq(jv_raw(d,heard),words) {return false;}
+  answers:=jv_get(d,0,"answers");if jv_kind(d,answers)!=JV_ARRAY || jv_len(d,answers)>8 {return false;}
+  core:[2048]u8;
+  for i:0..<jv_len(d,answers) {at:=jv_at(d,answers,i);for key:[6]string.["p","timing","confidence","stock","render_supported","decision"] {if jv_get(d,at,key)==-1 {return false;}}
+    if !aap_direction(d,at,true,core[..]).ok {return false;}
+  }return true;
+}
+// A finite nonnegative time written on a nanosecond decimal grid. Derived F32
+// lengths round upward by at most one nanosecond; explicit lengths keep their value.
+an_seconds :: (o:[]Jo,ns:int) {
+  b:[32]u8;w:[1]Jo;jo_start(w[..],b[..]);jo_int(w[..],ns/1000000000);fraction:=ns%1000000000;
+  if fraction!=0 {jo_byte(w[..],'.');digits:[9]u8;divisor:=100000000;for i:0..<9 {digits[i]=cast(u8)('0'+fraction/divisor%10);divisor/=10;}last:=8;while digits[last]=='0' {last-=1;}jo_put(w[..],cast(string)digits[0..<last+1]);}jo_raw(o,jo_text(w[..]));
+}
+anime_direct_append :: (old:[]u8,exists:bool,words:string,reply:[]u8,out:[]u8)->int {
+  t:[1]AnimeTake;code:=an_ready(old,exists,words,t[..]);if code!=0 {return code;}
+  if reply.count>65536 || !aap_utf8(cast(string)reply,true) {return ANIME_CLI_REPLY;}
+  nodes:[2048]JvNode;d:[1]Jv;if !jv_parse(d[..],cast(string)reply,nodes[..]) || !an_reply(d[0],words) {return ANIME_CLI_REPLY;}
+  answers:=jv_get(d[0],0,"answers");if t[0].answer_n+jv_len(d[0],answers)>16 {return ANIME_CLI_LIMIT;}
+  old_nodes:[4096]JvNode;old_doc:[1]Jv;if exists {parsed:=jv_parse(old_doc[..],cast(string)old,old_nodes[..]);}
+  start:=cast(f64)t[0].length;length_node:=jv_get(old_doc[0],0,"length");if length_node!=-1 {start=at_time(old_doc[0],length_node);}ns:=cast(int)(-floor(-start*1000000000));
+  buf:[32768]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anime.v1");jo_key(o[..],"stage");jo_str(o[..],"courtyard");jo_key(o[..],"auto");jo_bool(o[..],t[0].auto_camera);jo_key(o[..],"lines");jo_arr(o[..]);
+  old_lines:=jv_get(old_doc[0],0,"lines");for i:0..<t[0].line_n {jv_write(old_doc[0],jv_at(old_doc[0],old_lines,i),o[..]);}
+  jo_obj(o[..]);jo_key(o[..],"said");an_seconds(o[..],ns);jo_key(o[..],"done");an_seconds(o[..],ns);jo_key(o[..],"words");jo_str(o[..],words);jo_key(o[..],"answers");jv_write(d[0],answers,o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);
+  if o[0].bad {return ANIME_CLI_LIMIT;}candidate:[1]AnimeTake;valid:=anime_take_load(buf[0..<o[0].n],candidate[..]);if valid!=0 {return ANIME_CLI_LIMIT;}return an_emit(o[..],out);
+}
+anime_take_url :: (origin:string,take:[]u8,at_ms:int,card:bool,film:bool,out:[]u8)->int {
+  if !ar_origin_ok(origin) || at_ms< -1 || at_ms>600000 {return ANIME_CLI_INVALID;}
+  t:[1]AnimeTake;if anime_take_load(take,t[..])!=0 {return ANIME_CLI_INVALID;}
+  if at_ms>=0 && cast(f32)at_ms/1000>t[0].length {return ANIME_CLI_INVALID;}
+  encoded:[43696]u8;code:=base64_encode_checked(cast(string)take,encoded[..],false);if code.error!=NC_OK {return ANIME_CLI_LIMIT;}
+  buf:[ANIME_CLI_URL_BYTES]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],origin);jo_put(o[..],"/realms/anime-lab?stage=");jo_put(o[..],ifx film then "film" else "direct");jo_put(o[..],"&take64=");
+  for i:0..<code.written {c:=encoded[i];if c=='=' {break;}jo_byte(o[..],ifx c=='+' then cast(u8)'-' else ifx c=='/' then cast(u8)'_' else c);}
+  if card {jo_put(o[..],"&card=1");}if at_ms>=0 {jo_put(o[..],"&t=");an_seconds(o[..],at_ms*1000000);}return an_emit(o[..],out);
+}

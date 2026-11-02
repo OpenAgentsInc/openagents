@@ -1,0 +1,5 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-cli/anime-args.coax:146:34: mutant survived: 8 became 9
+        if png && (seen[7] || seen[8] || seen[9] || seen[11]) {r.err="clip option for PNG";return r;}
+                                   ^
+547 mutants, 546 killed, 1 survived

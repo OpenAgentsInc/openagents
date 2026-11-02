@@ -1,0 +1,216 @@
+// CLI-boundary fixtures. Expected names, timestamps, ownership and envelope
+// refusals are independent of the effect dispatcher and platform files.
+AN_TEST_REPLY :: "{\"v\":1,\"heard\":\"Point.\",\"answers\":[{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.9,\"timing\":\"after\",\"confidence\":{\"kind\":{\"enter\":0,\"exit\":0,\"act\":1,\"emote\":0,\"cast\":0,\"fx\":0,\"shot\":0,\"cut\":0,\"beat\":0,\"make\":0},\"who\":{\"heroine\":0.1,\"hero\":0.9,\"hooded\":0,\"dark-lord\":0,\"creature\":0},\"action\":{\"raise-wand\":0,\"cast\":0,\"block\":0,\"run\":0,\"fall\":0,\"kneel\":0,\"turn\":0,\"point\":1,\"hesitate\":0,\"recoil\":0,\"shout\":0},\"timing\":{\"now\":0,\"after\":1,\"with\":0}},\"stock\":true,\"render_supported\":true,\"decision\":\"play\"}]}";
+an_test_reply :: (text:string,out:[]u8)->[]u8 {for i:0..<text.count {out[i]=text[i];}return out[0..<text.count];}
+an_test_take :: (answers:string,automatic:bool,tail:string,out:[]u8)->[]u8 {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anime.v1");jo_key(o[..],"auto");jo_bool(o[..],automatic);
+  if tail!="" {jo_key(o[..],"length");jo_raw(o[..],tail);}jo_key(o[..],"lines");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"said");jo_int(o[..],0);jo_key(o[..],"done");jo_int(o[..],0);jo_key(o[..],"words");jo_str(o[..],"Earlier.");jo_key(o[..],"answers");jo_raw(o[..],answers);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return out[0..<o[0].n];
+}
+an_test_public :: (answers:string,words:string,out:[]u8)->[]u8 {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"v");jo_int(o[..],1);jo_key(o[..],"heard");jo_str(o[..],words);jo_key(o[..],"answers");jo_raw(o[..],answers);jo_end(o[..]);return out[0..<o[0].n];}
+an_test_many :: (answer:string,n:int,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);for i:0..<n {jo_raw(o[..],answer);}jo_end(o[..]);return jo_text(o[..]);}
+an_test_answer :: (out:[]u8)->string {nodes:[256]JvNode;d:[1]Jv;ok:=jv_parse(d[..],AN_TEST_REPLY,nodes[..]);o:[1]Jo;jo_start(o[..],out);jv_write(d[0],jv_at(d[0],jv_get(d[0],0,"answers"),0),o[..]);return jo_text(o[..]);}
+
+#test "CLI anime catalogue request append and URL share the published recorded profile" {
+  empty:[1]u8;catalogue:[65536]u8;request:[16384]u8;reply:[65536]u8;take:[32768]u8;url:[49152]u8;
+  cn:=anime_catalogue(catalogue[..]);rn:=anime_direct_request(empty[0..<0],false,"Point.",request[..]);tn:=anime_direct_append(empty[0..<0],false,"Point.",an_test_reply(AN_TEST_REPLY,reply[..]),take[..]);un:=anime_take_url("http://127.0.0.1:8800",take[0..<(ifx tn>0 then tn else 0)],-1,true,true,url[..]);
+  #assert cn>0 && rn>0 && tn>0 && un>0;
+  nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)catalogue[0..<cn],nodes[..]) && jv_raw(d[0],jv_get(d[0],0,"schema"))=="anime.catalogue.v1";
+  #assert jv_len(d[0],jv_get(d[0],0,"cast"))==7 && jv_len(d[0],jv_path(d[0],0,"questions.kind"))==10;
+  #assert jv_parse(d[..],cast(string)request[0..<rn],nodes[..]) && jv_raw(d[0],jv_get(d[0],0,"words"))=="Point." && jv_len(d[0],jv_path(d[0],0,"state.last"))==0;
+  held:[1]AnimeTake;#assert anime_take_load(take[0..<tn],held[..])==0 && held[0].line_n==1 && held[0].answer_n==1 && held[0].lines[0].said==0 && held[0].lines[0].done==0 && held[0].length==3;
+  #assert held[0].answers[0].p==0.9 && held[0].answers[0].timing==1;
+}
+#test "CLI anime new versus existing bytes and refused replies never publish a partial append" {
+  old:[1]u8;out:[32768]u8;reply:[65536]u8;for i:0..<out.count {out[i]=71;}
+  #assert anime_direct_request(old[0..<0],true,"Point.",out[..])==ANIME_CLI_INVALID;
+  #assert anime_direct_request(old[..],false,"Point.",out[..])==ANIME_CLI_INVALID;
+  #assert anime_direct_append(old[0..<0],false,"Point.",an_test_reply("{\"v\":1,\"heard\":\"Other.\",\"answers\":[]}",reply[..]),out[..])==ANIME_CLI_REPLY;
+  #assert out[0]==71 && out[out.count-1]==71;
+}
+#test "CLI anime context projects admitted fields after large opaque confidence metadata" {
+  raw:[16384]u8;o:[1]Jo;jo_start(o[..],raw[..]);jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"confidence");jo_obj(o[..]);jo_key(o[..],"opaque");jo_arr(o[..]);for i:0..<600 {jo_int(o[..],i);}jo_end(o[..]);jo_end(o[..]);jo_key(o[..],"kind");jo_str(o[..],"act");jo_key(o[..],"who");jo_str(o[..],"hero");jo_key(o[..],"action");jo_str(o[..],"point");jo_key(o[..],"p");jo_raw(o[..],"0.97");jo_end(o[..]);jo_end(o[..]);
+  old:[32768]u8;take:=an_test_take(jo_text(o[..]),false,"4",old[..]);held:[1]AnimeTake;#assert anime_take_load(take,held[..])==0;
+  request:[16384]u8;n:=anime_direct_request(take,true,"Next.",request[..]);#assert n>0;
+  nodes:[1024]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)request[0..<n],nodes[..]);
+  last:=jv_path(d[0],0,"state.last");#assert jv_len(d[0],last)==1;answer:=jv_at(d[0],last,0);
+  #assert jv_raw(d[0],jv_get(d[0],answer,"kind"))=="act" && jv_raw(d[0],jv_get(d[0],answer,"action"))=="point";
+  #assert jv_raw(d[0],jv_get(d[0],answer,"p"))=="0.970" && jv_get(d[0],answer,"confidence")==-1;
+}
+#test "CLI anime catalogue is the complete finite option table with explicit stock body boundary" {
+  out:[16384]u8;n:=anime_catalogue(out[..]);nodes:[1024]JvNode;d:[1]Jv;#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+  #assert jv_int(d[0],jv_get(d[0],0,"v"),0)==1 && jv_raw(d[0],jv_get(d[0],0,"stage"))=="courtyard" && jv_len(d[0],jv_get(d[0],0,"notes"))==3;
+  cast_node:=jv_get(d[0],0,"cast");names:=[7]string.["Draconia","Kai","hooded","hooded","hooded","dark lord","ink dragon"];archetypes:=[7]string.["heroine","hero","hooded","hooded","hooded","dark-lord","creature"];
+  for i:0..<7 {entry:=jv_at(d[0],cast_node,i);#assert jv_int(d[0],jv_get(d[0],entry,"slot"),-1)==i && jv_raw(d[0],jv_get(d[0],entry,"name"))==names[i] && jv_raw(d[0],jv_get(d[0],entry,"archetype"))==archetypes[i] && jv_bool(d[0],jv_get(d[0],entry,"body_drawn"))==(i<6);}
+  questions:=jv_get(d[0],0,"questions");#assert jv_len(d[0],questions)==18;
+  for field:AAP_FIELDS {options:=jv_get(d[0],questions,field);#assert jv_kind(d[0],options)==JV_ARRAY && jv_len(d[0],options)==aap_choices(field);for i:0..<aap_choices(field) {#assert jv_raw(d[0],jv_at(d[0],options,i))==aap_choice(field,i);}}
+  #assert ANIME_COMMANDS[0].verb=="catalogue" && ANIME_COMMANDS[0].method=="LOCAL" && ANIME_COMMANDS[1].verb=="direct" && ANIME_COMMANDS[1].arguments=="words" && ANIME_COMMANDS[1].flags=="--take:file" && ANIME_COMMANDS[1].method=="POST" && ANIME_COMMANDS[2].verb=="play" && ANIME_COMMANDS[2].arguments=="take|out" && ANIME_COMMANDS[2].method=="LOCAL";
+  tiny:=[2]u8.[71,72];#assert anime_catalogue(tiny[..])==ANIME_CLI_CAPACITY && tiny[0]==71 && tiny[1]==72;
+}
+#test "CLI anime request preserves literal words and refuses invalid UTF8 empty words and preflight limits" {
+  empty:[1]u8;out:[16384]u8;words:[601]u8;for i:0..<601 {words[i]='x';}
+  #assert anime_direct_request(empty[0..<0],false,cast(string)words[0..<600],out[..])>0;
+  #assert anime_direct_request(empty[0..<0],false,cast(string)words[..],out[..])==ANIME_CLI_LIMIT;
+  for bad:[3]string.[""," \t\n\r","\0"] {#assert anime_direct_request(empty[0..<0],false,bad,out[..])==ANIME_CLI_INVALID;}invalid:=[2]u8.[192,128];#assert anime_direct_request(empty[0..<0],false,cast(string)invalid[..],out[..])==ANIME_CLI_INVALID;
+  literal:="\"hero\" \\ 字\n--profile";n:=anime_direct_request(empty[0..<0],false,literal,out[..]);nodes:[512]JvNode;d:[1]Jv;#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && jv_raw_eq(jv_raw(d[0],jv_get(d[0],0,"words")),literal);
+  upstream:[65536]u8;#assert aap_prepare(out[0..<n],upstream[..])>0;
+  old:[32768]u8;#assert anime_direct_request(an_test_take("[]",true,"597",old[..]),true,"Next.",out[..])>0;
+  #assert anime_direct_request(an_test_take("[]",true,"597.001",old[..]),true,"Next.",out[..])==ANIME_CLI_LIMIT;
+  tiny:=[2]u8.[7,8];#assert anime_direct_request(empty[0..<0],false,"X",tiny[..])==ANIME_CLI_CAPACITY && tiny[0]==7 && tiny[1]==8;
+  #assert anime_direct_request(an_test_reply("{}",old[..]),true,"Next.",out[..])==ANIME_CLI_INVALID;
+  huge:[32769]u8;#assert anime_direct_request(huge[..],true,"Next.",out[..])==ANIME_CLI_LIMIT;
+}
+#test "CLI anime context summarizes admitted events and keeps only the last eight executable answers" {
+  answer_buf:[4096]u8;o:[1]Jo;jo_start(o[..],answer_buf[..]);jo_arr(o[..]);
+  for i:0..<10 {jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],"beat");jo_key(o[..],"beat");jo_str(o[..],ifx i==2 then "hold" else "speed-lines");jo_key(o[..],"p");jo_raw(o[..],"1.0");jo_end(o[..]);}jo_end(o[..]);
+  old:[32768]u8;request:[16384]u8;take:=an_test_take(jo_text(o[..]),false,"8",old[..]);n:=anime_direct_request(take,true,"Next.",request[..]);#assert n>0;
+  nodes:[1024]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)request[0..<n],nodes[..]);last:=jv_path(d[0],0,"state.last");#assert jv_len(d[0],last)==8 && jv_raw(d[0],jv_get(d[0],jv_at(d[0],last,0),"beat"))=="hold";
+  for i:1..<8 {#assert jv_raw(d[0],jv_get(d[0],jv_at(d[0],last,i),"beat"))=="speed-lines";}
+  held:[1]AnimeTake;#assert anime_take_load(take,held[..])==0;state:=an_summary(held[..]);#assert state.on[0] && state.on[1] && !state.on[2] && !state.on[6] && state.places[6]==PL_WALL && state.actions[0]==-1 && state.emotions[1]==0;
+  changes:="[{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":3,\"place\":\"behind\",\"how\":\"appears\",\"p\":1},{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":1},{\"kind\":\"emote\",\"who\":\"hero\",\"emotion\":\"afraid\",\"p\":1},{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"hero\",\"move\":\"hold\",\"p\":1},{\"kind\":\"cut\",\"to\":\"heroine\",\"transition\":\"flash\",\"p\":1},{\"kind\":\"make\",\"what\":\"paper whale\",\"like\":\"creature\",\"place\":\"sky\",\"p\":1}]";
+  take=an_test_take(changes,false,"10",old[..]);#assert anime_take_load(take,held[..])==0;state=an_summary(held[..]);#assert state.on[2] && state.on[3] && state.on[4] && !state.on[5] && state.places[2]==PL_BEHIND && state.places[4]==PL_BEHIND && state.actions[1]==ACT_POINT && state.emotions[1]==EMO_AFRAID && state.framing==FR_CLOSE && state.subject==0 && state.shot_place==PL_COURTYARD && state.shot_move==MOVE_PUSH;
+  n=anime_direct_request(take,true,"Next.",request[..]);#assert n>0 && jv_parse(d[..],cast(string)request[0..<n],nodes[..]);#assert jv_len(d[0],jv_path(d[0],0,"state.last"))==5 && jv_raw(d[0],jv_path(d[0],0,"state.cast[1].action"))=="point" && jv_raw(d[0],jv_path(d[0],0,"state.cast[1].emotion"))=="afraid" && jv_raw(d[0],jv_path(d[0],0,"state.shot.who"))=="heroine";
+  upstream:[65536]u8;#assert aap_prepare(request[0..<n],upstream[..])>0;
+}
+#test "CLI anime response holding rejects malformed envelopes missing public facts and any bad suffix" {
+  empty:[1]u8;out:[32768]u8;reply:[65537]u8;for i:0..<out.count {out[i]=37;}
+  bad:=[13]string.["", "[]", "{}", "{\"v\":1,\"heard\":\"Point.\",\"answers\":{}}", "{\"v\":true,\"heard\":\"Point.\",\"answers\":[]}", "{\"v\":1.0,\"heard\":\"Point.\",\"answers\":[]}", "{\"v\":2,\"heard\":\"Point.\",\"answers\":[]}", "{\"v\":1,\"heard\":3,\"answers\":[]}", "{\"v\":1,\"heard\":\"Point.\",\"answers\":[],\"extra\":0}", "{\"v\":1,\"v\":1,\"heard\":\"Point.\",\"answers\":[]}", "{\"v\":1,\"\\u0076\":1,\"heard\":\"Point.\",\"answers\":[]}", "{\"v\":1,\"heard\":\"Point.\",\"answers\":[]}x", "{\"v\":1,\"heard\":\"Point.\",\"answers\":[{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.9}]}" ];
+  for text:bad {#assert anime_direct_append(empty[0..<0],false,"Point.",an_test_reply(text,reply[..]),out[..])==ANIME_CLI_REPLY;}
+  changed:[8192]u8;for key:[6]string.["p","timing","confidence","stock","render_supported","decision"] {nodes:[256]JvNode;d:[1]Jv;#assert jv_parse(d[..],AN_TEST_REPLY,nodes[..]);o:[1]Jo;jo_start(o[..],changed[..]);jo_obj(o[..]);jo_key(o[..],"v");jo_int(o[..],1);jo_key(o[..],"heard");jo_str(o[..],"Point.");jo_key(o[..],"answers");jo_arr(o[..]);answer:=jv_at(d[0],jv_get(d[0],0,"answers"),0);jo_obj(o[..]);k:=d[0].nodes[answer].first;while k!=-1 {if !jv_raw_eq(jv_key(d[0],k),key) {jo_key(o[..],jv_key(d[0],k));jv_write(d[0],k,o[..]);}k=d[0].nodes[k].next;}jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);#assert anime_direct_append(empty[0..<0],false,"Point.",changed[0..<o[0].n],out[..])==ANIME_CLI_REPLY;}
+  x:=aap_test_replace(AN_TEST_REPLY,"\"point\":1","\"point\":0.999",changed[..]);#assert anime_direct_append(empty[0..<0],false,"Point.",an_test_reply(x,reply[..]),out[..])==ANIME_CLI_REPLY;
+  x=aap_test_replace(AN_TEST_REPLY,"\"answers\":[","\"answers\":[{},",changed[..]);#assert anime_direct_append(empty[0..<0],false,"Point.",an_test_reply(x,reply[..]),out[..])==ANIME_CLI_REPLY;
+  #assert anime_direct_append(empty[0..<0],false,"Point.",reply[..],out[..])==ANIME_CLI_REPLY;
+  zero:=[1]u8.[0];#assert anime_direct_append(empty[0..<0],false,"Point.",zero[..],out[..])==ANIME_CLI_REPLY;
+  for c:out {#assert c==37;}
+}
+#test "CLI anime append preserves old metadata auto and time then admits the complete new line atomically" {
+  old:[32768]u8;next:[32768]u8;reply:[65536]u8;out:[32768]u8;
+  take:=an_test_take("[{\"confidence\":{\"kind\":{\"shadow\":1}},\"kind\":\"act\",\"who\":\"heroine\",\"action\":\"point\",\"p\":0.85,\"timing\":\"with\"}]",false,"10.123456789",old[..]);n:=anime_direct_append(take,true,"Point.",an_test_reply(AN_TEST_REPLY,reply[..]),out[..]);#assert n>0;
+  held:[1]AnimeTake;#assert anime_take_load(out[0..<n],held[..])==0 && !held[0].auto_camera && held[0].line_n==2 && held[0].answer_n==2 && held[0].answers[0].milli==850 && held[0].answers[0].timing==2 && held[0].answers[1].timing==1 && held[0].length>13.12 && held[0].length<13.13;
+  nodes:[2048]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);#assert jv_raw(d[0],jv_path(d[0],0,"lines[1].said"))=="10.123456789" && jv_raw(d[0],jv_path(d[0],0,"lines[1].done"))=="10.123456789" && jv_int(d[0],jv_path(d[0],0,"lines[0].answers[0].confidence.kind.shadow"),0)==1 && jv_len(d[0],jv_path(d[0],0,"lines[1].answers[0].confidence.kind"))==10;
+  nn:=anime_direct_append(out[0..<n],true,"Nothing.",an_test_public("[]","Nothing.",reply[..]),next[..]);#assert nn>0 && anime_take_load(next[0..<nn],held[..])==0 && held[0].line_n==3 && held[0].answer_n==2 && held[0].lines[2].said==13.123457f32 && held[0].length>16;
+  tiny:=[2]u8.[41,42];empty:[1]u8;#assert anime_direct_append(empty[0..<0],false,"Point.",an_test_reply(AN_TEST_REPLY,reply[..]),tiny[..])==ANIME_CLI_CAPACITY && tiny[0]==41 && tiny[1]==42;
+}
+#test "CLI anime whole-take budgets refuse before or after the model without retaining a prefix" {
+  raw:[16384]u8;reply:[65536]u8;old:[32768]u8;out:[32768]u8;for i:0..<out.count {out[i]=89;}
+  answer:="{\"kind\":\"beat\",\"beat\":\"hold\",\"p\":1}";take:=an_test_take(an_test_many(answer,16,raw[..]),false,"8",old[..]);#assert anime_direct_request(take,true,"Next.",out[..])==ANIME_CLI_LIMIT;
+  take=an_test_take(an_test_many(answer,15,raw[..]),false,"8",old[..]);single:[2048]u8;public:=an_test_many(an_test_answer(single[..]),2,raw[..]);#assert anime_direct_append(take,true,"Point.",an_test_public(public,"Point.",reply[..]),out[..])==ANIME_CLI_LIMIT;
+  empty:[1]u8;public=an_test_many(an_test_answer(single[..]),9,raw[..]);#assert anime_direct_append(empty[0..<0],false,"Point.",an_test_public(public,"Point.",reply[..]),out[..])==ANIME_CLI_REPLY;
+  o:[1]Jo;jo_start(o[..],old[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anime.v1");jo_key(o[..],"lines");jo_arr(o[..]);for i:0..<16 {jo_obj(o[..]);jo_key(o[..],"said");jo_int(o[..],i);jo_key(o[..],"done");jo_int(o[..],i);jo_key(o[..],"words");jo_str(o[..],"x");jo_key(o[..],"answers");jo_arr(o[..]);jo_end(o[..]);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);#assert anime_direct_request(old[0..<o[0].n],true,"Next.",out[..])==ANIME_CLI_LIMIT;
+  take=an_test_take("[]",false,"597",old[..]);public=an_test_many(an_test_answer(single[..]),8,raw[..]);#assert anime_direct_append(take,true,"Point.",an_test_public(public,"Point.",reply[..]),out[..])==ANIME_CLI_LIMIT;
+  for c:out {#assert c==89;}
+}
+#test "CLI anime heard out-of-stock answers retain all public facts and never execute" {
+  list:[8192]u8;provider:[65536]u8;n:=aap_test_finish(aap_test_list(AAP_TEST_MAKE,AAP_TEST_ACT,list[..]),provider[..]);#assert n>0;
+  nodes:[2048]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)provider[0..<n],nodes[..]);reply:[65536]u8;o:[1]Jo;jo_start(o[..],reply[..]);jv_write(d[0],jv_get(d[0],0,"answers"),o[..]);arr:[32768]u8;for i:0..<o[0].n {arr[i]=reply[i];}rn:=an_test_public(cast(string)arr[0..<o[0].n],"Out.",reply[..]);empty:[1]u8;take:[32768]u8;tn:=anime_direct_append(empty[0..<0],false,"Out.",rn,take[..]);#assert tn>0;
+  held:[1]AnimeTake;#assert anime_take_load(take[0..<tn],held[..])==0 && held[0].answer_n==2 && held[0].answers[0].heard && held[0].answers[0].milli==900 && !held[0].answers[1].heard && held[0].answers[1].milli==850;
+  for i:0..<held[0].event_n {#assert held[0].events[i].value.kind!=AD_MAKE;}
+  request:[16384]u8;q:=anime_direct_request(take[0..<tn],true,"Next.",request[..]);#assert q>0 && jv_parse(d[..],cast(string)request[0..<q],nodes[..]) && jv_len(d[0],jv_path(d[0],0,"state.last"))==1;
+}
+#test "CLI anime URLs carry canonical complete base64url and exact display options or refuse atomically" {
+  raw:[32768]u8;take:=an_test_take("[]",false,"8",raw[..]);url:[49152]u8;n:=anime_take_url("https://stage.example:8443",take,1250,true,true,url[..]);#assert n>0;
+  text:=cast(string)url[0..<n];prefix:="https://stage.example:8443/realms/anime-lab?stage=film&take64=";#assert ar_starts(text,prefix) && text[n-14..<n]=="&card=1&t=1.25";
+  encoded:[43696]u8;count:=0;for i:prefix.count..<n {c:=text[i];if c=='&' {break;}#assert c!='+' && c!='/' && c!='=';encoded[count]=ifx c=='-' then cast(u8)'+' else ifx c=='_' then cast(u8)'/' else c;count+=1;}while count%4!=0 {encoded[count]='=';count+=1;}back:[32768]u8;decoded:=base64_decode_checked(cast(string)encoded[0..<count],back[..],false);#assert decoded.error==NC_OK && decoded.written==take.count && cast(string)back[0..<decoded.written]==cast(string)take;
+  n=anime_take_url("http://localhost:8800",take,-1,false,false,url[..]);#assert n>0 && ar_starts(cast(string)url[0..<n],"http://localhost:8800/realms/anime-lab?stage=direct&take64=");
+  for i:0..<url.count {url[i]=73;}for bad:[4]string.["http://evil.example","https://example/","https://example?x","https://example#x"] {#assert anime_take_url(bad,take,0,false,false,url[..])==ANIME_CLI_INVALID;}
+  #assert anime_take_url("https://example",take,-2,false,false,url[..])==ANIME_CLI_INVALID && anime_take_url("https://example",take,8001,false,false,url[..])==ANIME_CLI_INVALID && anime_take_url("https://example",take,600001,false,false,url[..])==ANIME_CLI_INVALID;
+  #assert anime_take_url("https://example",raw[0..<1],0,false,false,url[..])==ANIME_CLI_INVALID;for c:url {#assert c==73;}
+  tiny:=[1]u8.[17];#assert anime_take_url("https://example",take,8000,false,false,tiny[..])==ANIME_CLI_CAPACITY && tiny[0]==17;
+}
+#test "CLI anime decimal writer retains finite nanosecond timestamps without redundant zeros" {
+  values:=[10]int.[0,1,10,100000000,1200000000,1000000000,999999999,100000000001,597000000000,600000000000];expected:=[10]string.["0","0.000000001","0.00000001","0.1","1.2","1","0.999999999","100.000000001","597","600"];
+  buf:[64]u8;o:[1]Jo;for i:0..<values.count {jo_start(o[..],buf[..]);an_seconds(o[..],values[i]);#assert jo_text(o[..])==expected[i];}
+}
+// Additional exact-boundary and independent round-trip assertions for #12634.
+
+#test "CLI anime context keeps an executable entrance place and a standalone subject shot" {
+  old:[32768]u8;raw:="[{\"kind\":\"enter\",\"archetype\":\"hero\",\"how\":\"appears\",\"place\":\"behind\",\"p\":1},{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"hero\",\"move\":\"pull-out\",\"p\":1}]";
+  take:=an_test_take(raw,false,"6",old[..]);held:[1]AnimeTake;#assert anime_take_load(take,held[..])==0;
+  state:=an_summary(held[..]);#assert state.on[1] && state.places[1]==PL_BEHIND && state.framing==FR_CLOSE && state.subject==AS_HERO && state.shot_place==-1 && state.shot_move==MOVE_PULL;
+  request:[16384]u8;n:=anime_direct_request(take,true,"Next.",request[..]);nodes:[1024]JvNode;d:[1]Jv;
+  #assert n>0 && jv_parse(d[..],cast(string)request[0..<n],nodes[..]);
+  #assert jv_raw(d[0],jv_path(d[0],0,"state.cast[1].place"))=="behind" && jv_raw(d[0],jv_path(d[0],0,"state.shot.who"))=="hero" && jv_get(d[0],jv_path(d[0],0,"state.shot"),"place")==-1;
+}
+
+#test "CLI anime reply cap admits exactly65536 bytes and refuses the next valid whitespace byte" {
+  empty:[1]u8;padded:[65537]u8;out:[32768]u8;prefix:="{\"v\":1,\"heard\":\"Empty.\",\"answers\":[]}";
+  for i:0..<padded.count {padded[i]=' ';}for i:0..<prefix.count {padded[i]=prefix[i];}
+  n:=anime_direct_append(empty[0..<0],false,"Empty.",padded[0..<65536],out[..]);held:[1]AnimeTake;
+  #assert n>0 && anime_take_load(out[0..<n],held[..])==0 && held[0].line_n==1 && held[0].answer_n==0 && held[0].length==3;
+  for i:0..<out.count {out[i]=83;}#assert anime_direct_append(empty[0..<0],false,"Empty.",padded[..],out[..])==ANIME_CLI_REPLY;
+  for c:out {#assert c==83;}
+}
+
+#test "CLI anime URL preserves both base64url substitutions and the zero and600second pins" {
+  original:[32768]u8;changed:[32768]u8;old:=an_test_take("[]",false,"600",original[..]);text:=aap_test_replace(cast(string)old,"Earlier.",">>>???",changed[..]);
+  take:=an_test_reply(text,original[..]);url:[49152]u8;n:=anime_take_url("https://example",take,600000,false,false,url[..]);#assert n>0;
+  full:=cast(string)url[0..<n];#assert full[n-6..<n]=="&t=600";
+  prefix:="https://example/realms/anime-lab?stage=direct&take64=";#assert ar_starts(full,prefix);
+  encoded:[43696]u8;count:=0;dash:=false;under:=false;
+  for i:prefix.count..<n {c:=full[i];if c=='&' {break;}#assert c!='+' && c!='/' && c!='=';dash=dash || c=='-';under=under || c=='_';encoded[count]=ifx c=='-' then cast(u8)'+' else ifx c=='_' then cast(u8)'/' else c;count+=1;}
+  #assert dash && under;while count%4!=0 {encoded[count]='=';count+=1;}back:[32768]u8;decoded:=base64_decode_checked(cast(string)encoded[0..<count],back[..],false);
+  #assert decoded.error==NC_OK && decoded.written==take.count && cast(string)back[0..<decoded.written]==cast(string)take;
+  n=anime_take_url("https://example",take,0,false,false,url[..]);#assert n>0 && cast(string)url[n-4..<n]=="&t=0";
+}
+// The synthetic document writer is independent of product helpers.
+an_test_padded_take :: (bytes:int,out:[]u8)->[]u8 {
+  prefix:="{\"schema\":\"anime.v1\",\"auto\":false,\"length\":8,\"lines\":[{\"said\":0,\"done\":0,\"words\":\"Earlier.\",\"answers\":[{\"confidence\":{\"opaque\":\"";
+  suffix:="\"},\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":1}]}]}";
+  for i:0..<prefix.count {out[i]=prefix[i];}for i:prefix.count..<bytes-suffix.count {out[i]='x';}for i:0..<suffix.count {out[bytes-suffix.count+i]=suffix[i];}return out[0..<bytes];
+}
+
+#test "CLI anime fresh context reports all default cast facts and initial camera without omitted state" {
+  empty:[1]u8;out:[16384]u8;n:=anime_direct_request(empty[0..<0],false,"Next.",out[..]);nodes:[1024]JvNode;d:[1]Jv;#assert n>0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+  cast_node:=jv_path(d[0],0,"state.cast");#assert jv_len(d[0],cast_node)==7;
+  names:=[7]string.["Draconia","Kai","hooded","hooded","hooded","dark lord","ink dragon"];
+  archetypes:=[7]string.["heroine","hero","hooded","hooded","hooded","dark-lord","creature"];
+  places:=[7]string.["courtyard","courtyard","behind","behind","behind","behind","wall"];
+  for i:0..<7 {entry:=jv_at(d[0],cast_node,i);#assert jv_int(d[0],jv_get(d[0],entry,"slot"),-1)==i && jv_raw(d[0],jv_get(d[0],entry,"name"))==names[i] && jv_raw(d[0],jv_get(d[0],entry,"archetype"))==archetypes[i];
+    #assert jv_bool(d[0],jv_get(d[0],entry,"on"))==(i<2) && jv_raw(d[0],jv_get(d[0],entry,"place"))==places[i] && jv_raw(d[0],jv_get(d[0],entry,"emotion"))=="calm" && jv_get(d[0],entry,"action")==-1;
+  }
+  shot:=jv_path(d[0],0,"state.shot");#assert jv_raw(d[0],jv_get(d[0],shot,"framing"))=="establishing" && jv_raw(d[0],jv_get(d[0],shot,"place"))=="courtyard" && jv_raw(d[0],jv_get(d[0],shot,"move"))=="push-in" && jv_get(d[0],shot,"who")==-1 && jv_len(d[0],jv_path(d[0],0,"state.last"))==0;
+}
+
+#test "CLI anime admitted entrance count and absent place retain the declared marks" {
+  raw:[2048]u8;old:[32768]u8;request:[16384]u8;held:[1]AnimeTake;nodes:[1024]JvNode;d:[1]Jv;
+  for count:1..<4 {o:[1]Jo;jo_start(o[..],raw[..]);jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],"enter");jo_key(o[..],"archetype");jo_str(o[..],"hooded");jo_key(o[..],"how");jo_str(o[..],"appears");jo_key(o[..],"count");jo_int(o[..],count);jo_key(o[..],"p");jo_raw(o[..],"1.0");jo_end(o[..]);jo_end(o[..]);
+    take:=an_test_take(jo_text(o[..]),false,"8",old[..]);#assert anime_take_load(take,held[..])==0;
+    state:=an_summary(held[..]);for slot:2..<5 {#assert state.on[slot]==(slot<2+count) && state.places[slot]==PL_BEHIND;}#assert !state.on[5] && !state.on[6];
+    n:=anime_direct_request(take,true,"Next.",request[..]);#assert n>0 && jv_parse(d[..],cast(string)request[0..<n],nodes[..]);
+    for slot:2..<5 {entry:=jv_at(d[0],jv_path(d[0],0,"state.cast"),slot);#assert jv_bool(d[0],jv_get(d[0],entry,"on"))==(slot<2+count) && jv_raw(d[0],jv_get(d[0],entry,"place"))=="behind";}
+  }
+  take:=an_test_take("[{\"kind\":\"enter\",\"archetype\":\"dark-lord\",\"how\":\"walks\",\"p\":1}]",false,"8",old[..]);#assert anime_take_load(take,held[..])==0;state:=an_summary(held[..]);#assert state.on[5] && !state.on[2] && !state.on[3] && !state.on[4] && !state.on[6] && state.places[5]==PL_BEHIND;
+}
+
+#test "CLI anime automatic framing informs context while heard unsupported exits do not invent removal" {
+  old:[32768]u8;take:=an_test_take("[{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":1},{\"kind\":\"exit\",\"who\":\"hero\",\"p\":1}]",true,"8",old[..]);held:[1]AnimeTake;#assert anime_take_load(take,held[..])==0 && held[0].answers[1].heard;
+  state:=an_summary(held[..]);#assert state.on[1] && state.actions[1]==ACT_POINT && state.framing==FR_MEDIUM && state.subject==AS_HERO && state.shot_place==-1 && state.shot_move==MOVE_PUSH;
+  request:[16384]u8;n:=anime_direct_request(take,true,"Next.",request[..]);nodes:[1024]JvNode;d:[1]Jv;#assert n>0 && jv_parse(d[..],cast(string)request[0..<n],nodes[..]);
+  #assert jv_len(d[0],jv_path(d[0],0,"state.last"))==1 && jv_raw(d[0],jv_path(d[0],0,"state.last[0].kind"))=="act" && jv_raw(d[0],jv_path(d[0],0,"state.shot.framing"))=="medium";
+}
+
+#test "CLI anime exact answer and duration limits accept the last complete append" {
+  old:[32768]u8;raw:[8192]u8;reply:[65536]u8;out:[32768]u8;answer:="{\"kind\":\"beat\",\"beat\":\"hold\",\"p\":1}";
+  take:=an_test_take(an_test_many(answer,15,raw[..]),false,"8",old[..]);n:=anime_direct_append(take,true,"Point.",an_test_reply(AN_TEST_REPLY,reply[..]),out[..]);held:[1]AnimeTake;
+  #assert n>0 && anime_take_load(out[0..<n],held[..])==0 && held[0].answer_n==16 && held[0].line_n==2 && held[0].answers[15].milli==900;
+  request:[16384]u8;#assert anime_direct_request(out[0..<n],true,"Next.",request[..])==ANIME_CLI_LIMIT;
+  take=an_test_take("[]",false,"597",old[..]);n=anime_direct_append(take,true,"Empty.",an_test_public("[]","Empty.",reply[..]),out[..]);#assert n>0 && anime_take_load(out[0..<n],held[..])==0 && held[0].length==600 && held[0].line_n==2 && held[0].lines[1].said==597 && held[0].lines[1].done==597;
+}
+
+#test "CLI anime every successful writer accepts exact capacity and refuses one byte less atomically" {
+  empty:[1]u8;expected:[65536]u8;out:[65536]u8;reply:[65536]u8;take:[32768]u8;
+  n:=anime_catalogue(expected[..]);#assert n>0 && anime_catalogue(out[0..<n])==n && cast(string)out[0..<n]==cast(string)expected[0..<n];for i:0..<out.count {out[i]=47;}#assert anime_catalogue(out[0..<n-1])==ANIME_CLI_CAPACITY;for c:out {#assert c==47;}
+  n=anime_direct_request(empty[0..<0],false,"Point.",expected[..]);#assert n>0 && anime_direct_request(empty[0..<0],false,"Point.",out[0..<n])==n && cast(string)out[0..<n]==cast(string)expected[0..<n];for i:0..<out.count {out[i]=47;}#assert anime_direct_request(empty[0..<0],false,"Point.",out[0..<n-1])==ANIME_CLI_CAPACITY;for c:out {#assert c==47;}
+  n=anime_direct_append(empty[0..<0],false,"Point.",an_test_reply(AN_TEST_REPLY,reply[..]),expected[..]);#assert n>0 && anime_direct_append(empty[0..<0],false,"Point.",reply[0..<AN_TEST_REPLY.count],out[0..<n])==n && cast(string)out[0..<n]==cast(string)expected[0..<n];for i:0..<out.count {out[i]=47;}#assert anime_direct_append(empty[0..<0],false,"Point.",reply[0..<AN_TEST_REPLY.count],out[0..<n-1])==ANIME_CLI_CAPACITY;for c:out {#assert c==47;}
+  for i:0..<n {take[i]=expected[i];}tn:=n;n=anime_take_url("https://example",take[0..<tn],0,true,true,expected[..]);#assert n>0 && anime_take_url("https://example",take[0..<tn],0,true,true,out[0..<n])==n && cast(string)out[0..<n]==cast(string)expected[0..<n];for i:0..<out.count {out[i]=47;}#assert anime_take_url("https://example",take[0..<tn],0,true,true,out[0..<n-1])==ANIME_CLI_CAPACITY;for c:out {#assert c==47;}
+}
+
+#test "CLI anime full32768byte take travels as complete unpadded base64url" {
+  raw:[32768]u8;take:=an_test_padded_take(32768,raw[..]);held:[1]AnimeTake;#assert anime_take_load(take,held[..])==0 && held[0].source_n==32768 && held[0].answer_n==1;
+  url:[49152]u8;n:=anime_take_url("https://example",take,-1,false,false,url[..]);prefix:="https://example/realms/anime-lab?stage=direct&take64=";#assert n==prefix.count+43691 && ar_starts(cast(string)url[0..<n],prefix);
+  encoded:[43692]u8;for i:prefix.count..<n {c:=url[i];#assert c!='=' && c!='+' && c!='/';encoded[i-prefix.count]=ifx c=='-' then cast(u8)'+' else ifx c=='_' then cast(u8)'/' else c;}encoded[43691]='=';
+  back:[32768]u8;decoded:=base64_decode_checked(cast(string)encoded[..],back[..],false);#assert decoded.error==NC_OK && decoded.written==32768 && cast(string)back[..]==cast(string)take;
+}
+#test "CLI anime full32768byte take refuses overfull append atomically" {
+  raw:[32768]u8;take:=an_test_padded_take(32768,raw[..]);held:[1]AnimeTake;#assert anime_take_load(take,held[..])==0 && held[0].source_n==32768 && held[0].answer_n==1;
+  out:[32768]u8;reply:[65536]u8;for i:0..<out.count {out[i]=91;}#assert anime_direct_append(take,true,"Point.",an_test_reply(AN_TEST_REPLY,reply[..]),out[..])==ANIME_CLI_LIMIT;for c:out {#assert c==91;}
+}

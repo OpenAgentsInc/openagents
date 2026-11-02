@@ -43,6 +43,21 @@ static int cstr(coax_v_u8 v, char *out, size_t cap) {
 
 int64_t cxcli_now_s(void) { return (int64_t)time(NULL); }
 
+/* One exclusive mkdir, without the recursive/idempotent fs_mkdir behavior.
+   Coax chooses the lock name and owns comparison, replacement and cleanup. */
+int64_t cxcli_mkdir_exclusive(coax_v_u8 path) {
+  char p[CLI_PATH_MAX];
+  if (cstr(path, p, sizeof p) != 0) return -1;
+  if (mkdir(p, 0700) == 0) return 0;
+  return errno == EEXIST ? 1 : -1;
+}
+
+int64_t cxcli_same_file(coax_v_u8 left, coax_v_u8 right) {
+  char a[CLI_PATH_MAX], b[CLI_PATH_MAX]; struct stat x, y;
+  if (cstr(left, a, sizeof a) != 0 || cstr(right, b, sizeof b) != 0) return 0;
+  return stat(a, &x) == 0 && stat(b, &y) == 0 && x.st_dev == y.st_dev && x.st_ino == y.st_ino;
+}
+
 /* This computer's name (gethostname), for the machine a login names: its length, or -1. */
 int64_t cxcli_hostname(coax_v_u8 out) {
   char name[256];

@@ -1,0 +1,14 @@
+{
+  "base_commit": "3a676bebc64ed6cd3899367ae2d4d02d267806d1",
+  "result": "Rebased cleanly; source contents of the qualified CLI, pure policy and page closures are unchanged",
+  "continuity": [
+    {"files": 163, "receipt": "final-cli-source-continuity.log"},
+    {"files": 23, "receipt": "final-page-source-continuity.log"},
+    {"files": 18, "receipt": "final-policy-source-continuity.log"}
+  ],
+  "native_boundary": "The native-v2 profile retains its exact executed page/host/API identities. Upstream335fce adds an optional HTTPflag32 frame-image path; Anime take playback does not use that request flag. Its diff was reviewed, retained, and is not represented as executed by the earlier pinned native image. No renderer, GPU or browser host change was made by this issue.",
+  "tooling": "coax/web/tool.sh tools-check passed after final rebase: 1472 tracked files, zero new without a reason",
+  "checks_reused": "No passing mutation, page or native gate was repeated for a content-identical closure",
+  "cleanup": "cleanup.json",
+  "owner_stop_boundary": "Publish and close #12634, then stop. No later issue started."
+}

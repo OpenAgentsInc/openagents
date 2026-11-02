@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.anime-cli.final-run-plan.v1",
+  "admission": "Root explicitly granted the sole journey slot after final CLI/probe builds. The plan was executed once:34/34 passed; see native-journey-profile.json. Heavy slot returned immediately after completion.",
+  "runner": "Execute the prebuilt coax/web/build/tools/anime-cli-probe directly. Do not use tool.sh, which could rebuild from unrelated newer source timestamps.",
+  "environment": {
+    "ANIME_CLI_BIN": "/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/apps/openagents-cli/build/openagents",
+    "ANIME_CLI_API": "http://127.0.0.1:57435",
+    "ANIME_CLI_PAGE": "http://127.0.0.1:8832",
+    "ANIME_CLI_RECORD": "/tmp/openagents-anime-cli.tOrdsu/final-native",
+    "ANIME_SELECTOR_BIN": "/tmp/anime-direct-tools.IhUkmA/anime_direct_selector-63-point"
+  },
+  "frozen_dependencies": {
+    "probe_source_sha256": "528790657d4786c4e6baac0b27d326e877d6faf5edfcf140f844e149cc6daab0",
+    "probe_binary_sha256": "f823bd30543b13e43856f8f018ba90b48f37b4a44020c5a9dae8433b4ac080c0",
+    "probe_compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+    "selector_binary_sha256": "b2b40d7500ef8a9a64dfb0491b59b72dad2ae231e8fd96d177b671e3bb974356",
+    "selector_source_sha256": "7ef7467242ae37a3a7303faf2d63c103c8f005108b7f1e3e948849e6fa0bc0ed",
+    "api_binary_sha256": "c8de55c9f4a60ad12a0d80d5624bd8b3a2f2dfbec5a4be5c4d789e915b1afabc",
+    "current_page_wasm_sha256": "521b2fae471c5e46cf2da5ba35ba1bf0936962155cf9f3e233f07627321b42fa",
+    "final_cli_sha256": "72499212b029ead1bb2cae1f09678fce259505b746474d539099fd4ae2da9220"
+  },
+  "setup_boundary": "Read-only process inspection found root-owned API PID97927 and static server PID93446 running; no selector or headless Chrome was running. Root confirms fake model endpoint51392/500ms and final service configuration before granting the slot. This probe owns only its selector child, private control directory, ephemeral negative HTTP listener, and sequential CLI children.",
+  "work": "34 native checks; six browser commands executed strictly sequentially, with headless/mute effects inherited from the existing capture engine. Every CLI child has cwd set to the owned record directory. Real route success qualifies signing/auth; the independent negative HTTP fixture only qualifies client response validation/status mapping. PNG decoded equality and twelve MP4 frame equalities reuse the earlier independent oracle method without rerunning its old 19-case gate. The positive MP4 case passes literal relative -play.mp4 after -- and checks its sidecar is a staged clip with fps12/frames12/seconds1/skip0/640x360. The existing zero-frame preflight case includes one additional CLI child refusing fps9 before Chrome, because Anime's100ms page dt clamp requires fps10..120.",
+  "identity": "Generate a fresh private key in memory and a separate unique test profile. Keychain is disabled; only signed direct children receive the key in their environment. Non-direct/auth-negative children get an invalid nonempty key to prevent disk fallback. Keys and Authorization headers are never recorded.",
+  "database": "Use the root-owned isolated oa_anime12632 database through the existing API. No PG connection, fixture reset or SQL mutation is performed by this probe. A fresh identity stays below the12/min route cap; accepted failures remain counted by the route.",
+  "limits_cleanup": "Global780000ms deadline, CLI child120000ms maximum, no command longer than15minutes. Stop/release and reap only the owned selector; close the owned listener and remove its private control directory. Parent API/static services stay under root ownership.",
+  "evidence": "Retain exact stdout/status receipts, synthetic model context and accepted take, negative-fixture request body without headers, PNG/MP4/labels/frames, independent ffprobe output, artifact/source hashes, and any genuine failure as a separate exact profile. No paid provider calls, API63 rerun, or old media19 rerun. Stop after completing #12634."
+}

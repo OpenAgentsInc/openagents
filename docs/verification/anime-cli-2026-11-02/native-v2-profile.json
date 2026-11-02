@@ -1,0 +1,38 @@
+{
+  "schema": "openagents.anime-cli.native-journey-profile.v2",
+  "issue": "https://github.com/OpenAgentsInc/openagents/issues/12634",
+  "result": {"passed": 36, "failed": 0, "exit_code": 0, "attempts": 1, "receipt": "native-v2/journey.out", "receipt_sha256": "25a45d9ab1f95d24d6621591fd3b3d2fe74c8a3f1f4efe053f5d5764b1da121b"},
+  "bounds": {"launch": "timeout900 nice15 prebuilt probe", "internal_deadline_ms": 780000, "per_cli_child_ms": 120000, "log_birth": "2026-11-02T13:45:37-06:00", "log_final_mtime": "2026-11-02T13:46:00-06:00", "approx_elapsed_seconds": 23, "browser_commands": 7, "owned_browser_concurrency": 1},
+  "why_version2": "After v1's exact34/34 pass, root fixed only the new Anime adapter's literal relative output/frame paths and requested-frame admission/regeneration. ffmpeg must receive ./ prefixes for colon filenames, new/empty frame directories, and actual frames even when video is cached. Root also rebased product changes onto upstream329da2. These changed producers justified one new36-case run; no v1 success was relabeled.",
+  "producers_observed_before_and_after": {
+    "cli": {"path": "apps/openagents-cli/build/openagents", "sha256": "a055b555b407539a599ba2d14114421b092027fea2676f11acfd3ba6fbf57e29", "compiler_version": "0.48.0", "compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8", "source_provenance": "Root-owned merged CLI build/source closure; upstream329da2 basis."},
+    "probe": {"source": "coax/web/anime-cli-probe.coax", "source_sha256": "008b796da1bcae7f0bfa6fde63370647df23a4f8bb149c03525f17e1a670c2dc", "native_sha256": "a244aa226a766918c25a7f8ce7d385c9f3a6639ee9d37212aa22a8bbaa62bbcc", "compiler_version": "0.47.0", "compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6", "snapshot": "probe-v2-executed.coax.txt", "source_host_build_manifest": "native-v2-source-host-manifest.json"},
+    "page": {"origin": "http://127.0.0.1:8832", "wasm_sha256": "521b2fae471c5e46cf2da5ba35ba1bf0936962155cf9f3e233f07627321b42fa", "host_js_sha256": "8ca494dd6bb2bd59c837a1ead1f6b89bcac0dd2c386f7ae201d667e80f20a584", "host_snapshot": "native-v2-build/page-host.js.txt", "qualification_boundary": "Pinned to this exact executed page/host. A later upstream335fce unused HTTPflag32 screen-snapshot branch is outside this native image; no automatic promotion to that host."},
+    "api": {"origin": "http://127.0.0.1:57435", "sha256": "c8de55c9f4a60ad12a0d80d5624bd8b3a2f2dfbec5a4be5c4d789e915b1afabc", "database": "root-owned isolated oa_anime12632", "basis": "Existing qualified image; no API63 gate or paid-model repeat."},
+    "selector": {"port": 51392, "sha256": "b2b40d7500ef8a9a64dfb0491b59b72dad2ae231e8fd96d177b671e3bb974356", "source_sha256": "7ef7467242ae37a3a7303faf2d63c103c8f005108b7f1e3e948849e6fa0bc0ed", "mode": "Synthetic source-Coax selector, no external provider request."},
+    "after_receipt": "native-v2/producers-after.sha256",
+    "before_basis": "All six producer identities read and matched root's frozen notice immediately before the only invocation, then read unchanged after exit0; before values transcribed here from that tool output."
+  },
+  "checks": {
+    "inherited_matrix": "Version1's34 categories run on the changed v2 producer: finite catalogue/text/JSON; real payload-bound signed direct; first instant0; multianswer append at explicit7; prior-line/metadata preservation and executable-only context; heard-only unavailable make; exact-byte failures/auth/status/lock/race; missing/alias/fps/zero-frame preflights; genuine missing-take guard refusals; native PNG/MP4 equivalent-engine agreement and independent ffprobe.",
+    "literal_paths": "Positive MP4 is relative capture:play.mp4 after --, with options before it and relative --frames frames:literal. Artifacts and sidecar remain literal local files under the owned child cwd. Sidecar is clip/staged/640x360/fps12/frames12/seconds1/skip0.",
+    "requested_frames": "With valid cached OUT and an independently created empty frames:refresh directory, --frames without --fresh returns cachedfalse and exactly12 decoded frames matching the equivalent labs clip. This is one extra sequential browser call.",
+    "video_cache": "Omitting --frames for the same OUT returns cachedtrue, preserves the existing literal report/label paths and does not invoke the Chrome sentinel. This is one extra CLI call, no browser.",
+    "agreement": "Play/reference PNGs equal after independent PNG decoding; both literal and regenerated frame sets match all12 reference decoded frames. MP4 ffprobe: one H264/yuv420p video stream,640x360,12fps,12frames,1second, no audio. Play/reference PNG and MP4 files are also byte-identical."
+  },
+  "artifacts": {
+    "png": {"path": "native-v2/play.png", "reference": "native-v2/reference.png", "both_sha256": "e9a1f1fbf3aeb61166f634511c98df3c5974ceaf78f723746bbceaa871983bc0"},
+    "mp4": {"path": "native-v2/capture:play.mp4", "reference": "native-v2/reference.mp4", "both_sha256": "7b89c5dd9883a642e9b6151d0144e3ee30ae40033e61475b52ac80d362651dc7"},
+    "label": {"path": "native-v2/capture:play.mp4.json", "sha256": "518f468ba51c3e2025cfcdeb511297975fff81e74accb0bbbfa1afbb7f935e6d"},
+    "ffprobe": {"path": "native-v2/play-ffprobe.json", "sha256": "f5bdb16c03b850ad99ed8e89694ad1fda95f2cf3d7f473f6da1b4afbcb4d0328"},
+    "regenerated_frames_receipt": {"path": "native-v2/frames-refresh.cli.json", "sha256": "e64c566cd0476db2081e23cc9c02ca91c5e18765a7f7f4b52715bc9aaba503e8"},
+    "cached_receipt": {"path": "native-v2/cached-mp4.cli.json", "sha256": "a52bfe1ea39e349c55aaa1bd4abb7f70599056153a5a3ab02a9e2489f1a2401a"},
+    "all36_capture_frame_file_hashes": "native-v2/frame-files.sha256",
+    "representative_frame": "native-v2/frame-zero.png",
+    "artifact_hash_index": "native-v2-artifacts.sha256",
+    "generated_build_inputs": "native-v2-build/"
+  },
+  "reused_qualification": "Four unchanged pure oracle bodies/helpers retain their exact earlier a428 source/4-of120 passing receipt, without rerunning. API/take/render/page/parser/policy zero gates are root-owned and retain their separate producer identities; old media19/API63/paid provider gates were not repeated by this lane.",
+  "effects_boundary": "Loopback synthetic journey only. Fresh private key in memory/child environment, unique test profile, Keychain disabled, no owner/default keys or retained authorization headers. Probe performs no SQL reset or direct database access. Independent negative HTTP fixture qualifies client mapping only; the real API success qualifies signing/auth. No production/staging writes or paid model call.",
+  "cleanup": "Unified session45354 returned exit0 without a remaining session. Owned selector/listener/private control directory and sequential CLI/Chrome children cleaned; post-exit inspection found no owned processes. Slot explicitly returned to root before its CLI deps work. Only file copies/hashes/metadata followed. This lane stops after #12634; no further journey or gate is needed."
+}

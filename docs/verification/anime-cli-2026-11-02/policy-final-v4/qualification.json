@@ -1,0 +1,54 @@
+{
+  "status": "passed",
+  "scope": "entry-source root-only mutation; all dependency baseline checks retained",
+  "entry": {
+    "path": "apps/openagents-cli/anime-rules.coax",
+    "snapshot": "anime-rules.coax.txt",
+    "sha256": "d01b320917048708fbffe8f44475de96c919f9664dfd39d50f5bd4395ee89e53"
+  },
+  "checks": {
+    "path": "apps/openagents-cli/anime-checks.coax",
+    "snapshot": "anime-checks.coax.txt",
+    "sha256": "2e1906b26dfd83764e8402c23e68c57410cefed326ec89e164c41a659de32a24",
+    "owned_groups": 26,
+    "full_baseline_passed": 207,
+    "full_baseline_failed": 0,
+    "receipt": "checks.log"
+  },
+  "producer": {
+    "version": "0.48",
+    "immutable_cache_entry": "6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e",
+    "artifact_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "artifact_manifest": "compiler-artifacts.sha256",
+    "build_provenance": "compiler-provenance.record",
+    "refresh_or_budget_increase": false
+  },
+  "mutation": {
+    "total": 420,
+    "killed": 420,
+    "survived": 0,
+    "waived": 0,
+    "merge_exit": 0,
+    "receipt": "mutation-merged.log",
+    "compiler_closure_fingerprint": "28f0165cf6d2557b",
+    "workers": 1,
+    "nice": 15,
+    "timeout_seconds_per_command": 900,
+    "run_steps": 250000000,
+    "execution": "eight sequential shards; no concurrent team checks, builds, API or browser journeys",
+    "shards": [
+      {"index": 1, "mutants": 53, "killed": 53, "survived": 0, "elapsed_seconds": 130},
+      {"index": 2, "mutants": 53, "killed": 53, "survived": 0, "elapsed_seconds": 138},
+      {"index": 3, "mutants": 53, "killed": 53, "survived": 0, "elapsed_seconds": 241},
+      {"index": 4, "mutants": 53, "killed": 53, "survived": 0, "elapsed_seconds": 150},
+      {"index": 5, "mutants": 52, "killed": 52, "survived": 0, "elapsed_seconds": 119},
+      {"index": 6, "mutants": 52, "killed": 52, "survived": 0, "elapsed_seconds": 121},
+      {"index": 7, "mutants": 52, "killed": 52, "survived": 0, "elapsed_seconds": 122},
+      {"index": 8, "mutants": 52, "killed": 52, "survived": 0, "elapsed_seconds": 153}
+    ]
+  },
+  "prior_diagnostic": "../policy-diagnostic-v3/README.md",
+  "dependency_manifest": "source-closure.sha256",
+  "source_closure_files": 18,
+  "native_cli_qualification": "separate effect/API/media producer profile, recorded by the root agent"
+}

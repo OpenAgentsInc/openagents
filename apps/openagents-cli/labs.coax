@@ -11,6 +11,7 @@
 // this file runs Chrome (coax/lib/media/) and ffmpeg and prints.
 #load "labs-rules.coax";
 #load "../../coax/lib/media/media.coax";
+#load "labs-anime.coax";
 
 LB_CAPTURE_URL_BYTES :: 49152; // a full 32 KiB take64 document plus page/options
 
@@ -25,12 +26,14 @@ labs_usage :: () {
   print("%\n", "  labs frames VIDEO OUTDIR --at T[,T...] | --every S | --strip N");
   print("%\n", "  labs compare A B [OUT.png|OUT.mp4] [--at T]           what differs, and side by side");
   print("%\n", "  labs board FILE.board OUTDIR [--fresh]                every page at each size and theme");
+  print("%\n", "  labs anime catalogue | direct WORDS --take FILE | play FILE OUT.png|OUT.mp4 [--at T]");
   print("%\n", "  labs playtest icecream [--set NAME=VALUE ...] [--seeds N] [--from SEED] [--against FILE.json] | --tunables");
   print("%\n", "                                    URL may be a path (/realms/SLUG), joined to --origin (https://openagents.com)");
   print("%\n", "");
 }
 
 labs_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "anime" { return labs_anime(a,r,profile); }
   if verb == "shot" { return labs_shot(a, r, profile); }
   if verb == "clip" { return labs_clip(a, r, profile); }
   if verb == "deck" { return labs_deck(a, r); }
@@ -41,7 +44,7 @@ labs_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   if verb == "playtest" { return labs_playtest(a, r); }
   if verb == "suite" { return fail(r, EXIT_USAGE, "labs suite is not built yet (phase 4 of docs/cli/2026-11-01-openagents-labs.md)"); }
   if verb == "" { labs_usage(); return EXIT_USAGE; }
-  return fail(r, EXIT_USAGE, "labs: shot, clip, deck, cut, frames, compare, board or playtest (openagents help)");
+  return fail(r, EXIT_USAGE, "labs: shot, clip, deck, cut, frames, compare, board, playtest or anime (openagents help)");
 }
 
 // ---- programs ------------------------------------------------------------------
@@ -221,7 +224,7 @@ lb_flag_ms :: (a: [] Args, flag: string, fallback: string) -> int { return lb_ms
 
 // ---- labs shot ------------------------------------------------------------------
 
-LbShotJob :: struct { url: string; out: string; size: ArgsSize; wait: int; script: string; dark: bool; fresh: bool; }
+LbShotJob :: struct { url: string; out: string; size: ArgsSize; wait: int; script: string; dark: bool; fresh: bool; guard: string; }
 LbShotDone :: struct { code: int; cached: bool; value_n: int = -1; }
 // Takes one shot with its label (Chrome launched by the caller when c is up; launched here when not).
 lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] u8) -> LbShotDone {
@@ -234,6 +237,7 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
   // Taken only once the page reports it is ready (media_ready_step): a label from before that rule
   // may sit beside a loading screen, so it never matches.
   lbi(w[..], "ready", "scene");
+  if j.guard.count > 0 { lbi(w[..],"guard",j.guard); }
   if w[0].full { done.code = EXIT_USAGE; lb_say("capture inputs are too long",why); return done; }
   inb: [80] u8; input := lb_input(w[..], inb[..]);
   if !j.fresh && lb_cached(j.out, label, input) { done.cached = true; return done; }
@@ -241,7 +245,7 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
     if !cdp_launch(ch[0].c[..], j.size.w, j.size.h, "openagents-labs-") { done.code = 1; lb_say(cdp_error(ch[0].c[..]), why); return done; }
     ch[0].up = true;
   }
-  o: MediaShotOptions; o.wait = j.wait; o.script = j.script; o.dark = j.dark;
+  o: MediaShotOptions; o.wait = j.wait; o.script = j.script; o.dark = j.dark; o.guard = j.guard;
   build: [256] u8;
   s := media_shot(ch[0].c[..], j.url, j.out, j.size, o, value, build[..]);
   if s.status != 0 {
@@ -249,7 +253,8 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
     done.code = ifx s.status == 2 then EXIT_USAGE else EXIT_FAIL;
     msg := ifx s.status == 1 then cdp_error(ch[0].c[..]) else ifx s.status == 2 then "the URL is too long"
            else ifx s.status == 4 then "the page never reported its scene ready (still loading after 180 s: a slow machine, or no WebGPU); no shot taken"
-           else ifx s.status == 5 then "the page failed to load; no shot taken: " else "could not write the picture";
+           else ifx s.status == 5 then "the page failed to load; no shot taken: "
+           else ifx s.status == 6 then "the page did not accept the recorded take" else "could not write the picture";
     n := copy(msg, why); if n < 0 { lb_say("Chrome failed", why); }
     if s.status == 5 && n >= 0 && s.value_n > 0 { m := copy(cast(string) value[0..<s.value_n], why[n..<why.count]); }
     return done;
@@ -357,6 +362,9 @@ labs_clip :: (a: [] Args, r: [] Rep, profile: string) -> int {
 LbClipDone :: struct { code: int; cached: bool; frames: int; }
 // Records url into out (an MP4) with its label; frames_dir keeps the PNGs when given.
 lb_clip_one :: (url: string, out: string, size: ArgsSize, seconds: int, fps: int, skip: int, script: string, frames_dir: string, fresh: bool, source: string, why: [] u8) -> LbClipDone {
+  return lb_clip_guarded(url,out,size,seconds,fps,skip,script,frames_dir,fresh,source,"",why);
+}
+lb_clip_guarded :: (url: string, out: string, size: ArgsSize, seconds: int, fps: int, skip: int, script: string, frames_dir: string, fresh: bool, source: string, guard: string, why: [] u8) -> LbClipDone {
   done: LbClipDone;
   for i: 0..<why.count { why[i] = 0; }
   done.frames = (seconds * fps + 500) / 1000;
@@ -365,6 +373,7 @@ lb_clip_one :: (url: string, out: string, size: ArgsSize, seconds: int, fps: int
   ib: [65536] u8; w: [1] LbW; w[0].buf = ib[..]; sz: [32] u8;
   lbi(w[..], "kind", "clip"); lbi(w[..], "url", url); lbi(w[..], "size", lb_size_text(size, sz[..])); lbi_int(w[..], "fps", fps);
   lbi_int(w[..], "seconds_ms", seconds); lbi_int(w[..], "skip_ms", skip); lbi(w[..], "eval", script); lbi(w[..], "page", page);
+  if guard.count > 0 { lbi(w[..],"guard",guard); }
   if w[0].full { done.code = EXIT_USAGE; lb_say("capture inputs are too long",why); return done; }
   inb: [80] u8; input := lb_input(w[..], inb[..]);
   if !fresh && lb_cached(out, label, input) { done.cached = true; return done; }
@@ -378,7 +387,7 @@ lb_clip_one :: (url: string, out: string, size: ArgsSize, seconds: int, fps: int
   build: [256] u8; bn := 0;
   if !cdp_launch(ch[0].c[..], size.w, size.h, "openagents-labs-") { failed = cdp_error(ch[0].c[..]); }
   else {
-    failed = media_record(ch[0].c[..], url, size, cast(f64) seconds / 1000.0, cast(f64) fps, fr, cast(f64) skip / 1000.0, script, frames);
+    failed = media_record_guarded(ch[0].c[..], url, size, cast(f64) seconds / 1000.0, cast(f64) fps, fr, cast(f64) skip / 1000.0, script, frames,guard);
     if failed.count == 0 { k := media_value(ch[0].c[..], MEDIA_BUILD_JS, build[..]); bn = ifx k > 0 then k else 0; }
   }
   if failed.count > 0 { lb_say(failed, why); cdp_close(ch[0].c[..]); done.code = EXIT_FAIL; if frames_dir.count == 0 { g := fs_remove(frames); } return done; }

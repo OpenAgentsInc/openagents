@@ -1,0 +1,36 @@
+{
+  "schema": "openagents.anime-cli.native-journey-profile.v1",
+  "issue": "https://github.com/OpenAgentsInc/openagents/issues/12634",
+  "result": {"passed": 34, "failed": 0, "exit_code": 0, "attempts": 1, "receipt": "final-native/journey.out", "receipt_sha256": "35eddda34c328d80b8a91d4c7542f4de7c45fe5458561fdf0c7a47bcf96fe5cf"},
+  "bounds": {"command": "timeout900 nice15 prebuilt native probe", "internal_deadline_ms": 780000, "per_cli_child_ms": 120000, "log_birth_time": "2026-11-02T13:18:56-06:00", "log_final_mtime": "2026-11-02T13:19:15-06:00", "approx_elapsed_seconds": 19, "browser_commands": 6, "browser_concurrency_owned": 1},
+  "producers_observed_before_and_after": {
+    "cli": {"path": "apps/openagents-cli/build/openagents", "sha256": "72499212b029ead1bb2cae1f09678fce259505b746474d539099fd4ae2da9220", "compiler_version": "0.48.0", "compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8", "build_owner": "root", "build_start_reported": "2026-11-02T13:14:56-06:00", "product_source_before_build": "Root confirmed every product source predates build start; labs-anime.coax last edit13:14:03."},
+    "probe": {"source": "coax/web/anime-cli-probe.coax", "source_sha256": "528790657d4786c4e6baac0b27d326e877d6faf5edfcf140f844e149cc6daab0", "native_sha256": "f823bd30543b13e43856f8f018ba90b48f37b4a44020c5a9dae8433b4ac080c0", "compiler_version": "0.47.0", "compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6", "source_host_closure": "probe-source-host-manifest.json", "source_snapshot": "probe-executed.coax.txt"},
+    "page": {"origin": "http://127.0.0.1:8832", "wasm_sha256": "521b2fae471c5e46cf2da5ba35ba1bf0936962155cf9f3e233f07627321b42fa", "basis": "Fresh current page after upstream33424e275d; START_AT702 and LOAD_TAKE701 preserved; root's10take checks already passed and were not rerun here."},
+    "api": {"origin": "http://127.0.0.1:57435", "binary": "/tmp/openagents-anime-api.zimEZ5/api-profile-final", "sha256": "c8de55c9f4a60ad12a0d80d5624bd8b3a2f2dfbec5a4be5c4d789e915b1afabc", "database": "isolated root-owned oa_anime12632", "basis": "Existing qualified API63 image; full API gate and paid provider checks were not repeated."},
+    "selector": {"binary": "/tmp/anime-direct-tools.IhUkmA/anime_direct_selector-63-point", "sha256": "b2b40d7500ef8a9a64dfb0491b59b72dad2ae231e8fd96d177b671e3bb974356", "source": "coax/web/api/tests/anime_direct_selector.coax", "source_sha256": "7ef7467242ae37a3a7303faf2d63c103c8f005108b7f1e3e948849e6fa0bc0ed", "port": 51392, "basis": "Prebuilt source-Coax fixture, full valid vectors; no external provider request."},
+    "after_hash_receipt": "final-native/producers-after.sha256",
+    "before_hash_basis": "All six identities were read and matched the frozen notice immediately before the single invocation; same identities re-read after exit0. Before values retained in this profile from that tool output."
+  },
+  "checks": {
+    "catalogue": "JSON/text expose identical finite catalogue, eighteen question families, ten exact kinds and seven cast slots with body_drawn false only slot6.",
+    "direct": "Real local API accepts payload-bound NIP-98 from a fresh in-memory identity. First take said=done0, multianswer append at explicit prior length7, prior lines preserved, returned answers/counts match saved last line. Request history contains only executable user answers, excluding heard make/automatic camera and confidence/disposition fields. Complete vectors/p/disposition retained.",
+    "failure_preservation": "Malformed model/upstream500/invalid held200 response, empty/601-byte words, invalid prior take, invalid test identity,401/403/429, held sibling lock and genuine external byte race all produce declared exits with prior bytes or externally changed bytes exact. Negative HTTP fixture establishes status/response mapping only; real route success establishes authentication.",
+    "makeup": "Unavailable ink dragon remains a caption answer with stock=false/render_supported=false/decision=heard; no generated asset or made field.",
+    "play_preflight": "Missing input6; dot/symlink/label/generated-frame aliases2; fps9 and zero captured frames2 before Chrome sentinel. CLI cwd is the owned record directory.",
+    "page_guard": "Independent minimal ready page lacks the accepted-take capability. Both PNG/MP4 refuse1 with explicit guard message, preserve pre-existing outputs, and leave no recorded frames.",
+    "media": "PNG at0.5/card equals equivalent labs shot after independent PNG decoding. Literal relative -- -play.mp4 succeeds; all twelve decoded capture-frame pairs equal equivalent labs clip. Sidecar is kind clip/source staged,640x360,12fps,12frames,1second,skip0. Independent ffprobe confirms one H264/yuv420p video stream,12frames/12fps/1second and no audio."
+  },
+  "artifacts": {
+    "play_png": {"path": "final-native/play.png", "sha256": "e9a1f1fbf3aeb61166f634511c98df3c5974ceaf78f723746bbceaa871983bc0", "reference": "final-native/reference.png", "reference_sha256": "e9a1f1fbf3aeb61166f634511c98df3c5974ceaf78f723746bbceaa871983bc0"},
+    "play_mp4": {"path": "final-native/-play.mp4", "sha256": "7b89c5dd9883a642e9b6151d0144e3ee30ae40033e61475b52ac80d362651dc7", "reference": "final-native/reference.mp4", "reference_sha256": "7b89c5dd9883a642e9b6151d0144e3ee30ae40033e61475b52ac80d362651dc7"},
+    "ffprobe": {"path": "final-native/play-ffprobe.json", "sha256": "a1328f63c7d0288d43305cf1090471cf3ccdb7817351b7118cbd22951b6cde0f"},
+    "all_capture_frame_hashes": "final-native/frame-files.sha256",
+    "representative_frame": "final-native/frame-zero.png",
+    "all_retained_file_hashes": "native-artifacts.sha256",
+    "visual_review": "Agent opened retained play.png: visible courtyard/fireball scene at supplied0.5s, no loading overlay; no browser launched for this review."
+  },
+  "boundary": "One local synthetic-selector journey, no production/staging writes, no paid model request, no owner/default key access, no SQL reset or database access by the probe. Existing API/take/render/page and four unchanged pure-oracle passing receipts retain their own exact identities. This profile does not promote them to a new producer or claim full production qualification.",
+  "cleanup": "Probe exited0; owned selector82138, listener/private control directory and CLI/Chrome children were cleaned. Post-exit process inspection found none of those owned processes. Root API/static services remain root-owned. Slot returned to root immediately; no later compiler/browser run by this lane. Unrelated Aethyr headless processes observed outside the owned tree were reported to root and untouched.",
+  "remaining": "Root's final cleaned-policy zero mutation, source provenance, commit/rebase/push and issue closure are owned by root. This lane stops after #12634."
+}

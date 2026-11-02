@@ -1,0 +1,1 @@
+{"status":401,"origin":"http://127.0.0.1:57435","error":"no Nostr key for this profile: run `openagents nostr new` or `openagents nostr import`","ok":false}

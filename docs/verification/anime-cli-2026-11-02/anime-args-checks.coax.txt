@@ -1,0 +1,212 @@
+// Independent argv examples: every token after a value flag is literal data.
+aat_fill :: (tokens:[]string,a:[]Args)->bool {
+  a[0].n=0;a[0].used=0;a[0].full=false;
+  for token:tokens {if !args_add(a,token) {return false;}}return true;
+}
+aat_ok :: (tokens:[]string)->bool {a:[1]Args;if !aat_fill(tokens,a[..]) {return false;}return aa_parse(a[..]).err=="";}
+
+aat_fill_3 :: (tokens:[3]string,a:[]Args)->bool {aat_tokens_copy:=tokens;return aat_fill(aat_tokens_copy[..],a);}
+aat_fill_5 :: (tokens:[5]string,a:[]Args)->bool {aat_tokens_copy:=tokens;return aat_fill(aat_tokens_copy[..],a);}
+aat_fill_6 :: (tokens:[6]string,a:[]Args)->bool {aat_tokens_copy:=tokens;return aat_fill(aat_tokens_copy[..],a);}
+aat_fill_7 :: (tokens:[7]string,a:[]Args)->bool {aat_tokens_copy:=tokens;return aat_fill(aat_tokens_copy[..],a);}
+aat_fill_8 :: (tokens:[8]string,a:[]Args)->bool {aat_tokens_copy:=tokens;return aat_fill(aat_tokens_copy[..],a);}
+aat_fill_9 :: (tokens:[9]string,a:[]Args)->bool {aat_tokens_copy:=tokens;return aat_fill(aat_tokens_copy[..],a);}
+aat_fill_12 :: (tokens:[12]string,a:[]Args)->bool {aat_tokens_copy:=tokens;return aat_fill(aat_tokens_copy[..],a);}
+aat_fill_24 :: (tokens:[24]string,a:[]Args)->bool {aat_tokens_copy:=tokens;return aat_fill(aat_tokens_copy[..],a);}
+aat_ok_1 :: (tokens:[1]string)->bool {aat_tokens_copy:=tokens;return aat_ok(aat_tokens_copy[..]);}
+aat_ok_2 :: (tokens:[2]string)->bool {aat_tokens_copy:=tokens;return aat_ok(aat_tokens_copy[..]);}
+aat_ok_3 :: (tokens:[3]string)->bool {aat_tokens_copy:=tokens;return aat_ok(aat_tokens_copy[..]);}
+aat_ok_4 :: (tokens:[4]string)->bool {aat_tokens_copy:=tokens;return aat_ok(aat_tokens_copy[..]);}
+aat_ok_5 :: (tokens:[5]string)->bool {aat_tokens_copy:=tokens;return aat_ok(aat_tokens_copy[..]);}
+aat_ok_6 :: (tokens:[6]string)->bool {aat_tokens_copy:=tokens;return aat_ok(aat_tokens_copy[..]);}
+aat_ok_7 :: (tokens:[7]string)->bool {aat_tokens_copy:=tokens;return aat_ok(aat_tokens_copy[..]);}
+aat_ok_8 :: (tokens:[8]string)->bool {aat_tokens_copy:=tokens;return aat_ok(aat_tokens_copy[..]);}
+
+#test "anime args catalogue globals and help do not consume operands" {
+  a:[1]Args;#assert aat_fill_9([9]string.["--profile","work","labs","--json","anime","catalogue","--origin","http://127.0.0.1:8801","--help"],a[..]);
+  r:=aa_parse(a[..]);#assert r.err=="" && r.verb=="catalogue" && r.json && r.help && r.profile=="work" && r.origin=="http://127.0.0.1:8801";
+  #assert r.words=="" && r.take=="" && r.out=="";
+  #assert aat_ok_2([2]string.["labs","anime"]) && aat_ok_3([3]string.["labs","anime","--help"]);
+  #assert aat_ok_4([4]string.["labs","anime","direct","-h"]) && aat_ok_4([4]string.["labs","anime","play","--help"]);
+}
+#test "anime args direct holds words paths and flag looking values literally" {
+  a:[1]Args;#assert aat_fill_6([6]string.["labs","anime","direct","Kai points.","--take","--json"],a[..]);
+  r:=aa_parse(a[..]);#assert r.err=="" && r.words=="Kai points." && r.take=="--json" && !r.json && !r.help;
+  #assert aat_fill_8([8]string.["--json","labs","anime","direct","--take","--help","--","--origin"],a[..]);
+  r=aa_parse(a[..]);#assert r.err=="" && r.json && !r.help && r.words=="--origin" && r.take=="--help" && r.origin=="";
+  #assert aat_fill_8([8]string.["labs","anime","direct","Hello","--take","--take","--profile","p"],a[..]);
+  r=aa_parse(a[..]);#assert r.err=="" && r.take=="--take" && r.profile=="p";
+}
+#test "anime args play stores every allowed media flag and delimiter files" {
+  a:[1]Args;#assert aat_fill_24([24]string.["labs","anime","play","scene.take","out.mp4","--size","1280x720","--seconds","2.5","--fps","24","--skip","1","--frames","frames","--card","--fresh","--json","--profile","p","--origin","http://127.0.0.1:8801","--help","--"],a[..]);
+  r:=aa_parse(a[..]);#assert r.err=="" && r.verb=="play" && r.take=="scene.take" && r.out=="out.mp4" && r.size=="1280x720";
+  #assert r.seconds=="2.5" && r.fps=="24" && r.skip=="1" && r.frames=="frames" && r.card && r.fresh && r.json && r.help;
+  #assert !r.phone && !r.square && !r.vertical && r.at=="" && r.wait=="";
+  #assert aat_fill_12([12]string.["labs","anime","play","--phone","--at","1.25","--wait","0","--card","--","--json","--help.png"],a[..]);
+  r=aa_parse(a[..]);#assert r.err=="" && r.phone && r.card && r.at=="1.25" && r.wait=="0" && r.take=="--json" && r.out=="--help.png" && !r.json && !r.help;
+  #assert aat_ok_6([6]string.["labs","anime","play","in","out.png","--square"]);
+  #assert aat_ok_6([6]string.["labs","anime","play","in","out.mp4","--vertical"]);
+}
+#test "anime args refuses missing unknown duplicate misplaced and extra tokens" {
+  #assert !aat_ok_1([1]string.[""]) && !aat_ok_1([1]string.["labs"]) && !aat_ok_2([2]string.["other","anime"]);
+  #assert !aat_ok_3([3]string.["labs","other","catalogue"]) && !aat_ok_3([3]string.["labs","anime","unknown"]);
+  #assert !aat_ok_4([4]string.["labs","anime","catalogue","extra"]) && !aat_ok_3([3]string.["labs","anime","direct"]);
+  #assert !aat_ok_4([4]string.["labs","anime","direct","Hello"]) && !aat_ok_5([5]string.["labs","anime","play","in","out.jpeg"]);
+  #assert !aat_ok_5([5]string.["labs","anime","direct","Hello","--take"]);
+  #assert !aat_ok_6([6]string.["labs","anime","direct","Hello","--take",""]);
+  #assert !aat_ok_7([7]string.["labs","anime","direct","Hello","--take","file","extra"]);
+  #assert !aat_ok_6([6]string.["labs","anime","play","in","out.png","extra"]);
+  #assert !aat_ok_4([4]string.["labs","anime","catalogue","--unknown"]) && !aat_ok_4([4]string.["labs","anime","catalogue","-q"]);
+  #assert !aat_ok_5([5]string.["labs","anime","catalogue","--help","-h"]);
+  #assert !aat_ok_5([5]string.["--json","labs","anime","catalogue","--json"]);
+  #assert !aat_ok_5([5]string.["labs","anime","--take","file","direct"]);
+  #assert !aat_ok_6([6]string.["labs","anime","--take","file","direct","Hello"]);
+  #assert !aat_ok_4([4]string.["labs","anime","catalogue","--json=true"]);
+  #assert !aat_ok_6([6]string.["labs","anime","direct","--json","--take","f"]);
+  a:[1]Args;#assert aat_fill_3([3]string.["labs","anime","catalogue"],a[..]);a[0].full=true;#assert aa_parse(a[..]).err!="";
+  #assert aa_parse(a[0..<0]).err!="";
+}
+#test "anime args duplicates are actual flags and every value flag needs data" {
+  flags:=[10]string.["--profile","--origin","--take","--size","--at","--seconds","--fps","--skip","--wait","--frames"];
+  for flag:flags {
+    a:[1]Args;#assert aat_fill_6([6]string.["labs","anime","play","in","out.mp4",flag],a[..]);#assert aa_parse(a[..]).err!="";
+    #assert aat_fill_9([9]string.["labs","anime","play","in","out.mp4",flag,"x",flag,"y"],a[..]);#assert aa_parse(a[..]).err!="";
+  }
+  #assert !aat_ok_4([4]string.["labs","anime","catalogue","--profile"]);
+  #assert !aat_ok_5([5]string.["labs","anime","catalogue","--origin",""]);
+  for flag:[5]string.["--card","--phone","--square","--vertical","--fresh"] {
+    a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.png",flag,flag],a[..]);#assert aa_parse(a[..]).err!="";
+  }
+}
+#test "anime args options obey verb and PNG MP4 scopes even with help" {
+  for flag:[11]string.["--size","--at","--seconds","--fps","--skip","--wait","--frames","--phone","--card","--fresh","--take"] {
+    a:[1]Args;#assert aat_fill_5([5]string.["labs","anime","catalogue",flag,"x"],a[..]);#assert aa_parse(a[..]).err!="";
+  }
+  #assert !aat_ok_8([8]string.["labs","anime","direct","Hello","--take","f","--size","64x64"]);
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.png","--take","f"]);
+  for flag:[4]string.["--seconds","--fps","--skip","--frames"] {
+    a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.png",flag,"1"],a[..]);#assert aa_parse(a[..]).err!="";
+  }
+  for flag:[2]string.["--at","--wait"] {
+    a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.mp4",flag,"1"],a[..]);#assert aa_parse(a[..]).err!="";
+  }
+  #assert !aat_ok_6([6]string.["labs","anime","catalogue","--card","--help","x"]);
+}
+#test "anime args sizes and preset conflicts match bounded shot clip profiles" {
+  for size:[4]string.["16x16","7680x7680","1280x720","17x19"] {
+    a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.png","--size",size],a[..]);#assert aa_parse(a[..]).err=="";
+  }
+  for size:[8]string.["15x16","16x15","7681x16","16x7681","0x0","16","16x16x16","x16"] {
+    a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.png","--size",size],a[..]);#assert aa_parse(a[..]).err!="";
+  }
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--size","17x18"]);
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--size","18x17"]);
+  #assert !aat_ok_8([8]string.["labs","anime","play","in","out.png","--size","16x16","--phone"]);
+  for flag:[2]string.["--square","--vertical"] {a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.png","--phone",flag],a[..]);#assert aa_parse(a[..]).err!="";}
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.png","--square","--vertical"]);
+}
+#test "anime args time rate and wait flags hold both ends of each bound" {
+  #assert aat_ok_7([7]string.["labs","anime","play","in","out.png","--at","0"]);
+  #assert aat_ok_7([7]string.["labs","anime","play","in","out.png","--at","600"]);
+  #assert aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--seconds","0.001"]);
+  #assert aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--seconds","600"]);
+  #assert aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--skip","0"]);
+  #assert aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--skip","3600"]);
+  for fps:[2]string.["1","120"] {a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.mp4","--fps",fps],a[..]);#assert aa_parse(a[..]).err=="";}
+  for ms:[2]string.["0","120000"] {a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.png","--wait",ms],a[..]);#assert aa_parse(a[..]).err=="";}
+  for bad:[8]string.["-1","+1","1e1","NaN","1x"," 1","1 ","."] {a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.png","--at",bad],a[..]);#assert aa_parse(a[..]).err!="";}
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.png","--at","600.001"]);
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--seconds","0"]);
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--seconds","0.0004"]);
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--seconds","600.001"]);
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--skip","3600.001"]);
+  for fps:[4]string.["0","121","1.0","-1"] {a:[1]Args;#assert aat_fill_7([7]string.["labs","anime","play","in","out.mp4","--fps",fps],a[..]);#assert aa_parse(a[..]).err!="";}
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.png","--wait","120001"]);
+}
+#test "anime args paths and words validate exact byte limits and UTF8" {
+  path:[4001]u8;for i:0..<path.count {path[i]='x';}
+  #assert aa_file_ok("--json") && aa_file_ok("a b/😀.take") && aa_file_ok(cast(string)path[0..<4000]);
+  #assert !aa_file_ok("") && !aa_file_ok(cast(string)path[..]) && !aa_file_ok("a\nb") && !aa_file_ok("a\tb");
+  bad:=[8]u8.[0,31,192,128,237,160,128,255];
+  for i:0..<4 {#assert !aa_file_ok(cast(string)bad[i..<i+1]);}
+  #assert !aa_file_ok(cast(string)bad[4..<7]) && !aa_file_ok(cast(string)bad[7..<8]);
+  words:[601]u8;for i:0..<words.count {words[i]='x';}
+  a:[1]Args;#assert aat_fill_6([6]string.["labs","anime","direct",cast(string)words[0..<600],"--take","f"],a[..]);#assert aa_parse(a[..]).err=="";
+  #assert aat_fill_6([6]string.["labs","anime","direct",cast(string)words[..],"--take","f"],a[..]);#assert aa_parse(a[..]).err!="";
+  for word:[4]string.[""," \t\n\r","bad\0word",cast(string)bad[2..<4]] {#assert aat_fill_6([6]string.["labs","anime","direct",word,"--take","f"],a[..]);#assert aa_parse(a[..]).err!="";}
+  #assert aat_ok_6([6]string.["labs","anime","direct","😀\tHello\nthere","--take","😀.take"]);
+  #assert aat_ok_6([6]string.["labs","anime","direct","X\rY","--take","f"]);
+  #assert !aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--frames","bad\nfolder"]);
+}
+
+#test "anime args media interval admits still zero length and safe clip sums" {
+  #assert aa_media_interval(0,0,0,0,true) && aa_media_interval(600000,0,0,600000,true);
+  #assert !aa_media_interval(-1,0,0,0,true) && !aa_media_interval(1,0,0,0,true);
+  #assert !aa_media_interval(0,0,0,-1,true) && !aa_media_interval(0,0,0,600001,true);
+  #assert aa_media_interval(0,0,1,1,false) && aa_media_interval(0,1,599999,600000,false);
+  #assert !aa_media_interval(0,-1,1,600000,false) && !aa_media_interval(0,0,0,600000,false);
+  #assert !aa_media_interval(0,0,-1,600000,false) && !aa_media_interval(0,600001,1,600000,false);
+  #assert !aa_media_interval(0,600000,1,600000,false) && !aa_media_interval(0,1,600000,600000,false);
+  #assert !aa_media_interval(0,9223372036854775807,9223372036854775807,600000,false);
+  #assert aa_time_ms("0",0)==0 && aa_time_ms("3600",3600)==3600000 && aa_time_ms(".5",600)==500 && aa_time_ms("1.",600)==1000;
+  #assert aa_time_ms("0.0005",600)==1 && aa_time_ms("0.0004",600)==0;
+  #assert aa_time_ms("1",-1)==-1 && aa_time_ms("1",3601)==-1 && aa_time_ms("",600)==-1;
+  #assert aa_time_ms("12345678901234567",600)==-1 && aa_time_ms("1..2",600)==-1;
+  #assert !aat_ok_5([5]string.["labs","anime","play","same.png","same.png"]);
+}
+
+#test "anime args UTF8 file paths cover scalar range boundaries without controls" {
+  good:=[8]string.["A","","","߿","ࠀ","퟿","","􏿿"];
+  for p:good {#assert aa_file_ok(p);}
+  invalid:=[10][4]u8.[[4]u8.[0xc2,0,0,0],[4]u8.[0xe0,0xa0,0,0],[4]u8.[0xf0,0x90,0x80,0],[4]u8.[0xc2,0x7f,0,0],[4]u8.[0xc2,0xc0,0,0],[4]u8.[0xe0,0x9f,0x80,0],[4]u8.[0xed,0xa0,0x80,0],[4]u8.[0xf0,0x8f,0xbf,0xbf],[4]u8.[0xf4,0x90,0x80,0x80],[4]u8.[0xf5,0x80,0x80,0x80]];
+  sizes:=[10]int.[1,2,3,2,2,3,3,4,4,4];
+  for i:0..<invalid.count {#assert !aa_file_ok(cast(string)invalid[i][0..<sizes[i]]);}
+}
+
+#test "anime args exact help empty paths literal dash and independent option booleans" {
+  a:[1]Args;#assert aat_fill_3([3]string.["labs","anime","--json"],a[..]);
+  r:=aa_parse(a[..]);#assert r.help && r.json && r.verb=="";
+  #assert aat_fill_5([5]string.["labs","anime","play","in","out.png"],a[..]);
+  r=aa_parse(a[..]);#assert r.err=="" && !r.card && !r.fresh && !r.json && !r.help && !r.phone && !r.square && !r.vertical;
+  #assert aat_fill_6([6]string.["labs","anime","play","in","out.png","--card"],a[..]);r=aa_parse(a[..]);#assert r.err=="" && r.card && !r.fresh;
+  #assert aat_fill_6([6]string.["labs","anime","play","in","out.png","--fresh"],a[..]);r=aa_parse(a[..]);#assert r.err=="" && !r.card && r.fresh;
+  #assert aat_ok_6([6]string.["labs","anime","direct","X","--take","f"]);
+  #assert !aat_ok_6([6]string.["labs","anime","direct","-","--take","f"]);
+  #assert aat_ok_7([7]string.["labs","anime","direct","--take","f","--","-"]);
+  #assert !aat_ok_6([6]string.["labs","anime","direct","Hello","--take","bad\nfile"]);
+  #assert !aat_ok_5([5]string.["labs","anime","play","","out.png"]);
+  #assert !aat_ok_4([4]string.["labs","anime","play",""]);
+  #assert !aat_ok_5([5]string.["labs","anime","play","in",""]);
+  #assert !aat_ok_4([4]string.["labs","anime","play","in"]);
+  #assert aat_ok_5([5]string.["labs","anime","play","in",".png"]) && aat_ok_5([5]string.["labs","anime","play","in",".mp4"]);
+  #assert aat_ok_7([7]string.["labs","anime","play","in","out.mp4","--size","16x16"]);
+  #assert aa_time_ms("0000000000000001",600)==1000 && aa_time_ms("00000000000000001",600)==-1;
+  #assert aa_time_ms("9",600)==9000 && aa_time_ms(":",600)==-1;
+}
+#test "anime args UTF8 scalar width independently refuses forbidden encodings" {
+  good:=[10]string.["A","é","߿","ࠀ","퟿","","￿","𐀀","😀","􏿿"];
+  widths:=[10]int.[1,2,2,3,3,3,3,4,4,4];
+  for text,i:good {#assert aa_scalar(text,0)==widths[i];}
+  bad:=[6][4]u8.[[4]u8.[193,128,0,0],[4]u8.[224,159,128,0],[4]u8.[237,160,128,0],[4]u8.[240,143,191,191],[4]u8.[244,144,128,128],[4]u8.[245,128,128,128]];
+  sizes:=[6]int.[2,3,3,4,4,4];
+  for i:0..<bad.count {#assert aa_scalar(cast(string)bad[i][0..<sizes[i]],0)==0;}
+}
+
+#test "anime args report JSON sees actual flags past errors but never consumed values" {
+  a:[1]Args;#assert aat_fill_5([5]string.["labs","anime","catalogue","--bad","--json"],a[..]);
+  #assert aa_report_json(a[..]) && aa_parse(a[..]).json && aa_parse(a[..]).err!="";
+  #assert aat_fill_6([6]string.["labs","anime","catalogue","--help","--bad","--json"],a[..]);
+  #assert aa_parse(a[..]).help && aa_parse(a[..]).json && aa_parse(a[..]).err!="";
+  #assert aat_fill_6([6]string.["labs","anime","direct","Hello","--take","--json"],a[..]);#assert !aa_report_json(a[..]);
+  for flag:[10]string.["--profile","--origin","--take","--size","--at","--seconds","--fps","--skip","--wait","--frames"] {
+    #assert aat_fill_6([6]string.["labs","anime","direct","Hello",flag,"--json"],a[..]);#assert !aa_report_json(a[..]);
+    #assert args_add(a[..],"--json") && aa_report_json(a[..]);
+  }
+  #assert aat_fill_6([6]string.["labs","anime","direct","--take","file","--"],a[..]);
+  #assert args_add(a[..],"--json") && !aa_report_json(a[..]);
+  #assert aat_fill_3([3]string.["labs","anime","--take"],a[..]);#assert !aa_report_json(a[..]);
+  #assert !aa_report_json(a[0..<0]);
+  #assert !aat_ok_5([5]string.["labs","anime","play","","--help"]);
+  #assert !aat_ok_5([5]string.["labs","anime","play","in","bad\n.png"]);
+  #assert aa_time_ms("1E0",600)==-1;
+}

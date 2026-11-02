@@ -1,0 +1,70 @@
+coax-mutation-shard v1
+shard 2/8
+file 3bf4e6c9b5692344 mutants 437 shards 8 scheduling full borrowed 1 strings 1 unstable 0 scope root-only
+outcome 1 181 182 0
+outcome 9 182 183 0
+outcome 17 182 183 0
+outcome 25 185 186 0
+outcome 33 185 186 0
+outcome 41 185 186 0
+outcome 49 189 190 0
+outcome 57 185 186 0
+outcome 65 186 187 0
+outcome 73 186 187 0
+outcome 81 186 187 0
+outcome 89 186 187 0
+outcome 97 -1 203 0
+outcome 105 186 187 0
+outcome 113 193 194 0
+outcome 121 186 187 0
+outcome 129 181 182 0
+outcome 137 181 182 0
+outcome 145 181 182 0
+outcome 153 181 182 0
+outcome 161 184 185 0
+outcome 169 181 182 0
+outcome 177 181 182 0
+outcome 185 183 184 0
+outcome 193 181 182 0
+outcome 201 190 191 0
+outcome 209 186 187 0
+outcome 217 183 184 0
+outcome 225 186 187 0
+outcome 233 183 184 0
+outcome 241 181 182 0
+outcome 249 181 182 0
+outcome 257 187 188 0
+outcome 265 181 182 0
+outcome 273 181 182 0
+outcome 281 181 182 0
+outcome 289 181 182 0
+outcome 297 188 189 0
+outcome 305 188 189 0
+outcome 313 188 189 0
+outcome 321 194 195 0
+outcome 329 181 182 0
+outcome 337 188 189 0
+outcome 345 188 189 0
+outcome 353 181 182 0
+outcome 361 181 182 0
+outcome 369 181 182 0
+outcome 377 181 182 0
+outcome 385 181 182 0
+outcome 393 -1 203 0
+outcome 401 -1 203 0
+outcome 409 181 182 0
+outcome 417 191 192 0
+outcome 425 191 192 0
+outcome 433 191 192 0
+end 55
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-cli/anime-rules.coax:42:141: mutant survived: '>=' became '>'
+      if d.kind==AD_ENTER {count:=ifx d.option==AS_HOODED then d.count else 1;for k:0..<count {slot:=d.option+k;state.on[slot]=true;if d.place>=0 {state.places[slot]=d.place;}}}
+                                                                                                                                              ^
+apps/openagents-cli/anime-rules.coax:102:50: mutant survived: 600000 became 600001
+    if !ar_origin_ok(origin) || at_ms< -1 || at_ms>600000 {return ANIME_CLI_INVALID;}
+                                                   ^
+apps/openagents-cli/anime-rules.coax:104:11: mutant survived: '>=' became '>'
+    if at_ms>=0 && cast(f32)at_ms/1000>t[0].length {return ANIME_CLI_INVALID;}
+            ^
+shard 2/8: 55 of 437 mutants, 52 killed, 3 survived

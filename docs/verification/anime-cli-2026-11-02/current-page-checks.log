@@ -1,0 +1,12 @@
+ok   #test custom take page owns message bytes and uses loaded caption lines (1 case, 589798 steps, 12 ms)
+ok   #test custom take F changes presentation while preserving time and timeline (1 case, 566111 steps, 11 ms)
+ok   #test custom take initial refusal cannot fall back to demo or hide behind film card (1 case, 491050 steps, 8 ms)
+ok   #test custom take invalid replacement preserves accepted document events and time atomically (1 case, 935984 steps, 21 ms)
+ok   #test custom take oversized raw replacement preserves the accepted source and timeline (1 case, 796219 steps, 13 ms)
+ok   #test custom take URL transport distinguishes absence empty duplicates and canonical data (1 case, 3384189 steps, 54 ms)
+ok   #test custom take caption never claims arbitrary make is drawing or made and .85 remains soft (1 case, 44622 steps, 1 ms)
+ok   #test custom take paints heard-only answers even when no executable events exist (1 case, 1552236 steps, 33 ms)
+ok   #test custom take page probe exposes accepted retained and refused take facts (1 case, 1111214 steps, 22 ms)
+ok   #test custom take URL fragments do not open a query or change presentation (1 case, 809586 steps, 13 ms)
+10 of 186 checks (--only 'custom take'), 10 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

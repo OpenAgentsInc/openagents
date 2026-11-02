@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "profile": "policy-final-v4/qualification.json",
+  "entry_sha256": "d01b320917048708fbffe8f44475de96c919f9664dfd39d50f5bd4395ee89e53",
+  "checks_sha256": "2e1906b26dfd83764e8402c23e68c57410cefed326ec89e164c41a659de32a24",
+  "baseline": {"passed": 207, "failed": 0, "receipt": "policy-final-v4/checks.log"},
+  "mutation": {"scope": "root-only", "total": 420, "killed": 420, "survived": 0, "waived": 0, "receipt": "policy-final-v4/mutation-merged.log"},
+  "dependency_manifest": "policy-final-v4/source-closure.sha256",
+  "compiler_manifest": "policy-final-v4/compiler-artifacts.sha256",
+  "artifacts_manifest": "policy-final-v4/SHA256SUMS",
+  "pre_cleanup_diagnostic": "policy-diagnostic-v3/README.md",
+  "native_effect_api_media": "separate root-owned producer qualification"
+}

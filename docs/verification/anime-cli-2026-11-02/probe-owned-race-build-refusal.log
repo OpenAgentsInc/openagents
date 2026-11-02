@@ -1,0 +1,5 @@
+coax/web/anime-cli-probe.coax:301:43: error[E0383]: retained borrow may refer to callee-local inline storage
+    t[0].race_path = take; t[0].race_body = cast(string)race[0..<rn]; ready = acp_mode(t,"hold");
+                                            ^
+  fix: keep retained backing in the caller and satisfy its outlives obligation
+1 error

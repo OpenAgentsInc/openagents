@@ -1,0 +1,27 @@
+{
+  "schema": "openagents.anime-cli.native-run-plan.v2",
+  "state": "Executed once after root's final builds and explicit sole heavy-slot grant:36/36 passed, exit0; see native-v2-profile.json. Slot returned on completion.",
+  "supersedes_current_target": "native-v1-profile.json is an intermediate exact34/34 pass on CLI724992/probef823bd; all original profile/artifacts remain untouched. It is not promoted to the changed version2 producer.",
+  "producer_change": "The new Anime adapter prefixes every nonabsolute ffmpeg output/frame directory with ./, including capture:play.mp4 and frames:literal; this prevents protocol interpretation and preserves the earlier leading-dash behavior. It also requires requested frame directories new/empty and regenerates requested frames despite a cached OUT, preventing stale extra frames or missing requested frames. Generic media engine, page, renderer, host and pure policy are unchanged by these adapter fixes.",
+  "runner": "Run the prebuilt native probe directly under timeout900 nice15, after root grants the slot. Do not invoke tool.sh or any compiler in this lane.",
+  "environment": {
+    "ANIME_CLI_BIN": "/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/apps/openagents-cli/build/openagents",
+    "ANIME_CLI_API": "http://127.0.0.1:57435",
+    "ANIME_CLI_PAGE": "http://127.0.0.1:8832",
+    "ANIME_CLI_RECORD": "/tmp/openagents-anime-cli.tOrdsu/native-v2",
+    "ANIME_SELECTOR_BIN": "/tmp/anime-direct-tools.IhUkmA/anime_direct_selector-63-point"
+  },
+  "frozen_dependencies": {
+    "probe_source_sha256": "008b796da1bcae7f0bfa6fde63370647df23a4f8bb149c03525f17e1a670c2dc",
+    "probe_binary_sha256": "a244aa226a766918c25a7f8ce7d385c9f3a6639ee9d37212aa22a8bbaa62bbcc",
+    "probe_compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+    "cli_sha256": "a055b555b407539a599ba2d14114421b092027fea2676f11acfd3ba6fbf57e29",
+    "cli_compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "selector_binary_sha256": "b2b40d7500ef8a9a64dfb0491b59b72dad2ae231e8fd96d177b671e3bb974356",
+    "api_binary_sha256": "c8de55c9f4a60ad12a0d80d5624bd8b3a2f2dfbec5a4be5c4d789e915b1afabc",
+    "page_wasm_sha256": "521b2fae471c5e46cf2da5ba35ba1bf0936962155cf9f3e233f07627321b42fa"
+  },
+  "matrix": "36 cases and seven strictly sequential browser commands: version1's34 cases plus two frame/cache checks. Existing positive MP4 uses capture:play.mp4 after -- and relative --frames frames:literal; expected paths are absolute under native-v2/ with CLI cwd there. First added check creates an empty frames:refresh directory and requests the same valid cached OUT without --fresh, requiring cachedfalse and exactly12 decoded frames matching the reference (one extra browser). Second omits --frames, requiring cachedtrue and no Chrome sentinel (one extra CLI only). Existing nonempty frame-alias refusal preserves source bytes. Four unchanged pure oracle groups reuse their exact earlier passing receipt; no added API call, API63/old media19/paid-provider repeat.",
+  "identity_effects": "Fresh key in memory and child environment only; no owner/default profile, Keychain or auth headers retained. Real local route qualifies signing/auth; independent negative HTTP fixture only validates client refusals/status mapping. No PG connection/reset by this probe. Root owns existing API/static services; probe owns only selector, control directory, ephemeral fixture listener and sequential CLI children.",
+  "limits": "780000ms global internal deadline;120000ms per CLI child;900s external timeout. Stop and report concrete failure without silently rerunning/editing product. Return heavy slot on exit; preserve exact producers before/after and versioned artifacts."
+}

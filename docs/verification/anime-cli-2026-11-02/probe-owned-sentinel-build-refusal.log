@@ -1,0 +1,5 @@
+coax/web/anime-cli-probe.coax:363:118: error[E0383]: retained borrow may refer to callee-local inline storage
+    zero_b: [4096] u8; sentinel_b: [4096] u8; zero := acp_path(t,"zero-frames.mp4",zero_b[..]); t[0].chrome_sentinel = acp_path(t,"unexpected-chrome.txt",sentinel_b[..]);
+                                                                                                                       ^
+  fix: keep retained backing in the caller and satisfy its outlives obligation
+1 error

@@ -85,18 +85,21 @@ tool_main :: () -> int #export_c {
   domain := positional(a[..], 0);
   verb := positional(a[..], 1);
   realm_command := domain == "realm" && rc_find(verb) >= 0;
-  r[0].json = ifx realm_command then rc_has(a[..],verb,"--json") else args_has(a[..],"--json");
-  profile := ifx realm_command then rc_option(a[..],verb,"--profile","") else args_value(a[..],"--profile","");
+  anime_command := domain == "labs" && verb == "anime";
+  anime_args := aa_parse(a[..]);
+  r[0].json = ifx realm_command then rc_has(a[..],verb,"--json") else ifx anime_command then anime_args.json else args_has(a[..],"--json");
+  profile := ifx realm_command then rc_option(a[..],verb,"--profile","") else ifx anime_command then anime_args.profile else args_value(a[..],"--profile","");
+  if anime_command && anime_args.err!="" {return fail(r[..],EXIT_USAGE,anime_args.err);}
   env: [64] u8;
   if profile == "" { profile = proc_getenv("OPENAGENTS_PROFILE", env[..]); }
   if profile == "" { profile = "default"; }
   if !cli_profile_ok(profile) { return fail(r[..], EXIT_USAGE, "--profile is 1 to 32 of a-z, 0-9, - and _"); }
-  help := ifx realm_command then rc_has(a[..],verb,"--help") else args_has(a[..],"--help");
+  help := ifx realm_command then rc_has(a[..],verb,"--help") else ifx anime_command then anime_args.help else args_has(a[..],"--help");
   if domain == "" || domain == "help" || help || domain == "-h" { usage(); return ifx domain == "" && !help then EXIT_USAGE else EXIT_OK; }
   if domain == "version" { rep_str(r[..], "openagents", CLI_VERSION); return rep_done(r[..], EXIT_OK); }
   code := cli_dispatch(a[..], r[..], profile, domain, verb);
   // A profile with no origin of its own keeps an explicit --origin that worked, as login does.
-  acct_keep_origin(a[..], profile, domain, code);
+  if !anime_command {acct_keep_origin(a[..], profile, domain, code);}
   return code;
 }
 

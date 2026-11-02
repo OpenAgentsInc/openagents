@@ -242,7 +242,7 @@ aapt_raw :: (input:string,model:string,out:[]u8)->int {
 }
 
 #test "API anime complete requests enforce independent keys slots and UTF8 at exact byte capacity" {
-  b:[AAP_INPUT_MAX+1]u8;out:[AAP_RESULT_MAX]u8;change:[16384]u8;
+  b:[AAP_INPUT_MAX+1]u8;out:[AAP_RESULT_MAX]u8;aapt_change:[16384]u8;
   for i:0..<b.count {b[i]=' ';}for i:0..<AAP_TEST_INPUT.count {b[i]=AAP_TEST_INPUT[i];}
   #assert aap_prepare(b[0..<AAP_INPUT_MAX],out[..])>0;
   good:="{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"answers\\\":[]}\"}]}}]}";
@@ -251,7 +251,7 @@ aapt_raw :: (input:string,model:string,out:[]u8)->int {
   b[AAP_TEST_INPUT.count]='\n';#assert aap_prepare(b[0..<AAP_TEST_INPUT.count+1],out[..])>0 && aap_finish(b[0..<AAP_TEST_INPUT.count+1],model[0..<good.count],out[..])>0;
   from:=[5]string.["\"v\":1,","\"v\":1","\"last\":[]","\"state\":{","\"name\":\"Kai\""];
   to:=[5]string.["","\"v\":1,\"extra\":1","\"last\":[],\"extra\":1","\"state\":{\"extra\":1,","\"name\":\"Kai\\t\""];
-  for i:0..<5 {x:=aap_test_replace(AAP_TEST_INPUT,from[i],to[i],change[..]);#assert aap_test_prepare(x,out[..])==AAP_INVALID && aapt_raw(x,good,out[..])==AAP_INVALID;}
+  for i:0..<5 {x:=aap_test_replace(AAP_TEST_INPUT,from[i],to[i],aapt_change[..]);#assert aap_test_prepare(x,out[..])==AAP_INVALID && aapt_raw(x,good,out[..])==AAP_INVALID;}
   actor:="{\"slot\":0,\"name\":\"A\",\"archetype\":\"heroine\",\"on\":true,\"place\":\"courtyard\"}";
   actors:[1024]u8;input:[4096]u8;
   #assert aap_test_prepare(aapt_input("x",aap_test_list(actor,actor,actors[..]),"{\"framing\":\"wide\",\"place\":\"courtyard\"}","[]",input[..]),out[..])==AAP_INVALID;
@@ -260,13 +260,13 @@ aapt_raw :: (input:string,model:string,out:[]u8)->int {
   #assert jv_parse(d[..],"{\"\\u0000\":0}",nodes[..]) && !aap_unique(d[0]);
 }
 #test "API anime direction admission refuses scalar model metadata unused maps and absent exit subject" {
-  out:[AAP_RESULT_MAX]u8;change:[8192]u8;list:[16384]u8;
+  out:[AAP_RESULT_MAX]u8;aapt_change:[8192]u8;list:[16384]u8;
   for suffix:[3]string.[",\"p\":0.9",",\"stock\":true",",\"unknown\":0"] {
-    x:=aap_test_replace(AAP_TEST_CAST,"{\"kind\"",ifx suffix==",\"p\":0.9" then "{\"p\":0.9,\"kind\"" else ifx suffix==",\"stock\":true" then "{\"stock\":true,\"kind\"" else "{\"unknown\":0,\"kind\"",change[..]);
+    x:=aap_test_replace(AAP_TEST_CAST,"{\"kind\"",ifx suffix==",\"p\":0.9" then "{\"p\":0.9,\"kind\"" else ifx suffix==",\"stock\":true" then "{\"stock\":true,\"kind\"" else "{\"unknown\":0,\"kind\"",aapt_change[..]);
     #assert aap_test_finish(aap_test_list(x,"",list[..]),out[..])==AAP_MODEL;
   }
   history:[2048]u8;#assert !aapt_history("{\"kind\":\"exit\",\"p\":1}",history[..]).ok;
-  for count:[5]string.["0","4","1.5","true","\"1\""] {x:=aap_test_replace("{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":1,\"p\":1}","\"count\":1",aapt_count_field(count,history[..]),change[..]);#assert !aapt_history(x,history[..]).ok;}
+  for count:[5]string.["0","4","1.5","true","\"1\""] {x:=aap_test_replace("{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":1,\"p\":1}","\"count\":1",aapt_count_field(count,history[..]),aapt_change[..]);#assert !aapt_history(x,history[..]).ok;}
   held:=aapt_history("{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":1,\"p\":1}",history[..]);#assert held.ok && anime_read(cast(string)history[0..<held.n]).count==1;
 }
 aapt_count_field :: (value:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"count");jo_raw(o[..],value);jo_end(o[..]);return jo_text(o[..])[1..<o[0].n-1];}
@@ -275,14 +275,14 @@ aapt_model :: (selected:string,out:[]u8)->string {
   o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"candidates");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"content");jo_obj(o[..]);jo_key(o[..],"parts");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"text");jo_str(o[..],selected);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
 }
 #test "API anime selector envelope and decoded root shape are independently strict" {
-  out:[AAP_RESULT_MAX]u8;model:[65536]u8;change:[65536]u8;
+  out:[AAP_RESULT_MAX]u8;model:[65536]u8;aapt_change:[65536]u8;
   for inner:[7]string.["{\"answers\":[],\"extra\":1}","{\"answers\":[],\"answers\":[]}","{\"answers\":[],\"\\u0061nswers\":[]}","{\"extra\":1}","[\"answers\"]","{\"answers\":[]","{\"answers\":null}"] {#assert aapt_raw(AAP_TEST_INPUT,aapt_model(inner,model[..]),out[..])==AAP_MODEL;}
   valid:=aapt_model("{\"answers\":[]}",model[..]);n:=aapt_raw(AAP_TEST_INPUT,valid,out[..]);#assert n>0;
   nodes:[64]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);#assert jv_int(d[0],jv_get(d[0],0,"v"),0)==1;
   for envelope:[3]string.["{\"candidates\":{\"only\":0}}","{\"candidates\":[{\"finishReason\":\"DONE\",\"content\":{\"parts\":[{\"text\":\"{\\\"answers\\\":[]}\"}]}}]}","{\"candidates\":[{\"content\":{\"parts\":{\"only\":0}}}]}\n"] {#assert aapt_raw(AAP_TEST_INPUT,envelope,out[..])==AAP_MODEL;}
-  #assert aapt_raw(AAP_TEST_INPUT,aap_test_replace(valid,"{\"candidates\"","{\"duplicate\":0,\"duplicate\":0,\"candidates\"",change[..]),out[..])==AAP_MODEL;
-  for i:0..<valid.count {change[i]=valid[i];}change[valid.count]='\n';#assert aapt_raw(AAP_TEST_INPUT,cast(string)change[0..<valid.count+1],out[..])>0;
-  changed:=aap_test_replace(valid,"{\"candidates\"","{\"ignored\":\"X\",\"candidates\"",change[..]);for i:0..<changed.count {if change[i]=='X' {change[i]=255;break;}}
+  #assert aapt_raw(AAP_TEST_INPUT,aap_test_replace(valid,"{\"candidates\"","{\"duplicate\":0,\"duplicate\":0,\"candidates\"",aapt_change[..]),out[..])==AAP_MODEL;
+  for i:0..<valid.count {aapt_change[i]=valid[i];}aapt_change[valid.count]='\n';#assert aapt_raw(AAP_TEST_INPUT,cast(string)aapt_change[0..<valid.count+1],out[..])>0;
+  changed:=aap_test_replace(valid,"{\"candidates\"","{\"ignored\":\"X\",\"candidates\"",aapt_change[..]);for i:0..<changed.count {if aapt_change[i]=='X' {aapt_change[i]=255;break;}}
   #assert aapt_raw(AAP_TEST_INPUT,changed,out[..])==AAP_MODEL;
 }
 #test "API anime canonical count projection preserves every selected number without reader defaults" {
