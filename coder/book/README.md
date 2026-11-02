@@ -28,8 +28,8 @@ built. The [plan](PLAN.md#the-cli-is-the-spine) lists them.
 
 ## Status
 
-Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 25 are
-partly implemented and 12 are written surveys; none is fully implemented yet. Chapters 1–8
+Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 4 are
+implemented, 21 are partly implemented and 12 are written surveys. Chapters 1–8
 and 14–22 moved here from Part XXI of the Psionic book on 2026-11-01. Their
 code is still under `psionic/lib/harness/`, and the [registry](chapters.json)
 names it.

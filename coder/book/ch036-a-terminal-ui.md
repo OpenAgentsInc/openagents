@@ -101,7 +101,7 @@ window closest to its limit, and the percent, such as `◕ Week 84%`. It
 turns amber at 80% and red at 95%. `/usage` and `coder usage [--json]`
 list every window with a bar and its reset time:
 
-```
+```text
   Claude Code · Claude Max · read just now
     Week     ████████░░  84%  resets in 4d 17h
 ```

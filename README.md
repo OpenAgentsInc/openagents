@@ -32,7 +32,7 @@ release builds on:
 
 ## Books
 
-Read our four books on GitBook:
+Read our five books on GitBook:
 
 - [**The Coax Programming Language**](https://openagents.gitbook.io/the-coax-programming-language):
   the language.
@@ -43,6 +43,9 @@ Read our four books on GitBook:
 - [**Nostr From Scratch**](https://openagents.gitbook.io/nostr-from-scratch):
   a complete Nostr implementation in Coax, from SHA-256 and secp256k1 to a
   client, a relay and every NIP.
+- [**Coder: Coding Agents From Scratch**](https://openagents.gitbook.io/coder-coding-agents-from-scratch):
+  OpenAgents' coding agent, built in Coax, and what we learn from every coding
+  agent we can read.
 
 To choose a route through them (write current Coax, build a playable realm,
 run an original model, train a small model or sign and verify a Nostr event), see

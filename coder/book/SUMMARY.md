@@ -16,7 +16,7 @@
 
 ## II. Engines
 
-- [9. Microcoder](ch009-microcoder.md) — partly implemented
+- [9. Microcoder](ch009-microcoder.md) — implemented
 - [10. Drive Claude Code](ch010-drive-claude-code.md) — implemented
 - [11. Drive Codex](ch011-drive-codex.md) — partly implemented
 - [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) — partly implemented
@@ -25,7 +25,7 @@
 ## III. Many tasks
 
 - [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) — partly implemented
-- [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) — partly implemented
+- [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) — implemented
 - [16. Speak the protocols](ch016-speak-the-protocols.md) — partly implemented
 - [17. One agent, many tasks](ch017-one-agent-many-tasks.md) — partly implemented
 - [18. Consent before sharing](ch018-consent-before-sharing.md) — partly implemented
@@ -46,18 +46,18 @@
 
 ## VII. What other coding agents teach
 
-- [24. DeepSeek Harness](ch024-deepseek-harness.md) — planned
-- [25. Claude Code](ch025-claude-code.md) — planned
-- [26. Codex](ch026-codex.md) — planned
-- [27. OpenCode](ch027-opencode.md) — planned
-- [28. Goose](ch028-goose.md) — planned
-- [29. Aider](ch029-aider.md) — planned
-- [30. mini-SWE-agent](ch030-mini-swe-agent.md) — planned
-- [31. OpenHands Software Agent SDK](ch031-openhands-sdk.md) — planned
-- [32. Hermes Agent](ch032-hermes-agent.md) — planned
-- [33. Toad](ch033-toad.md) — planned
-- [34. Background Agents](ch034-background-agents.md) — planned
-- [35. Flue and Agent OS](ch035-flue-and-agent-os.md) — planned
+- [24. DeepSeek Harness](ch024-deepseek-harness.md) — written
+- [25. Claude Code](ch025-claude-code.md) — written
+- [26. Codex](ch026-codex.md) — written
+- [27. OpenCode](ch027-opencode.md) — written
+- [28. Goose](ch028-goose.md) — written
+- [29. Aider](ch029-aider.md) — written
+- [30. mini-SWE-agent](ch030-mini-swe-agent.md) — written
+- [31. OpenHands Software Agent SDK](ch031-openhands-sdk.md) — written
+- [32. Hermes Agent](ch032-hermes-agent.md) — written
+- [33. Toad](ch033-toad.md) — written
+- [34. Background Agents](ch034-background-agents.md) — written
+- [35. Flue and Agent OS](ch035-flue-and-agent-os.md) — written
 
 ## VIII. The terminal
 

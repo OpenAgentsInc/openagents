@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Book tooling: closed example inventory, exact source listings, links and runs.
 
-One checker serves the Psionic, Aethyr and Nostr books (`--book psionic|aethyr|nostr`).
-Each book keeps chapters as chNNN-slug.md, an examples.json inventory of its
-examples/*.coax programs, and a status marker on every design draft.
+One checker serves the Psionic, Aethyr, Nostr and Coder books
+(`--book psionic|aethyr|nostr|coder`). Each book keeps chapters as
+chNNN-slug.md, an examples.json inventory of its examples/*.coax programs, and
+a status marker on every design draft. Coder has no example programs of its
+own yet: the programs its chapters run are inventoried by another book.
 Native-only library examples have a separate closed inventory with their
 host consumer and retained evidence; --coax replays runnable examples only.
 """
@@ -24,7 +26,13 @@ BOOKS = {
     "psionic": ("psionic/book", "psionic/examples", "psionic/README.md", 3),
     "aethyr": ("aethyr/book", "aethyr/examples", "aethyr/README.md", 0),
     "nostr": ("nostr/book", "nostr/examples", "nostr/README.md", 0),
+    "coder": ("coder/book", None, None, 1),
 }
+# Coder's chapters 1-22 moved from Psionic; their programs stay in Psionic's
+# inventory (and its closed-inventory check) until their code moves.
+BORROWED = {"coder": "psionic"}
+# Fences a book may use besides jai, shell and text.
+FENCES = {"coder": ("```json", "```sh")}
 # Aethyr's engine-core tasks each own one chapter, named in its status block.
 TASKS = {"aethyr": "apps/openagents-web/projects/verse/work/engine-core.json"}
 DRAFT = "> **Status: unimplemented — design draft.**"
@@ -92,14 +100,20 @@ def check(name="psionic"):
         spec.loader.exec_module(matrix)
         errors = matrix.problems()
         assert not errors, "chapter 250 capability matrix: " + "; ".join(errors)
-    manifest = json.loads(path(f"{book}/examples.json").read_text())
-    assert manifest["schema"] == 1
-    actual = {str(p.relative_to(ROOT)) for p in (ROOT / programs).glob("*.coax")}
-    examples, libraries = example_inventory(manifest, actual)
-    assert examples or least == 0, "empty example inventory"
+    if name in BORROWED:
+        owner = BORROWED[name]
+        manifest = json.loads(path(f"{BOOKS[owner][0]}/examples.json").read_text())
+        examples = [item for item in manifest["examples"] if item["chapter"].startswith(book + "/")]
+        libraries = [item for item in manifest.get("libraries", []) if item["chapter"].startswith(book + "/")]
+    else:
+        manifest = json.loads(path(f"{book}/examples.json").read_text())
+        assert manifest["schema"] == 1
+        actual = {str(p.relative_to(ROOT)) for p in (ROOT / programs).glob("*.coax")}
+        examples, libraries = example_inventory(manifest, actual)
+        assert examples or least == 0, "empty example inventory"
     linked = set()
     listings = 0
-    docs = [ROOT / readme, *sorted((ROOT / book).glob("*.md"))]
+    docs = ([ROOT / readme] if readme else []) + sorted((ROOT / book).glob("*.md"))
     # Chapters that moved to another book (the harness, now Coder chapters
     # 1-22) keep their examples here until their code moves; check them too.
     docs += sorted({ROOT / item["chapter"] for item in examples
@@ -115,6 +129,7 @@ def check(name="psionic"):
                 if not in_block:
                     # A project README may also use plain sh fences.
                     fences = ("```jai", "```shell", "```text") + (("```sh",) if doc.name == "README.md" and doc.parent.name != "book" else ())
+                    fences += FENCES.get(name, ()) if doc.is_relative_to(ROOT / book) else ()
                     assert line in fences, f"book fence must be jai, shell or text: {doc}: {line}"
                 else:
                     assert line == "```", f"bad closing fence: {doc}: {line}"

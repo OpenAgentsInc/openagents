@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish a clean, pushed book written in Coax (`--book coax|psionic|aethyr|nostr`) through its GitBook space's draft API.
+"""Publish a clean, pushed book written in Coax (`--book coax|psionic|aethyr|nostr|coder`) through its GitBook space's draft API.
 
 Standard-library maintenance tooling, never part of a compiler or app build.
 Existing pages keep their IDs/URLs. New SUMMARY sections become overview pages.
@@ -61,6 +61,8 @@ BOOKS = {
                "https://openagents.gitbook.io/building-aethyr-world-engine", book_gate("aethyr"), True),
     "nostr": ("nostr/book", "FJJZf8YunJx2R1toVsuv", "Nostr From Scratch",
               "https://openagents.gitbook.io/nostr-from-scratch", book_gate("nostr"), True),
+    "coder": ("coder/book", "lS8V6TGnz1ifNhKVV3hN", "Coder: Coding Agents From Scratch",
+              "https://openagents.gitbook.io/coder-coding-agents-from-scratch", book_gate("coder"), True),
 }
 # Coax keeps its original constants for callers and tests.
 SPACE = BOOKS["coax"][1]

@@ -61,26 +61,36 @@ def problems(root):
 # evidence for the chapter's profile, such as cpu, cuda, metal or wasm; a
 # target with no recorded run is not listed) and `adopted_by` (files outside
 # the book that use the chapter's code today). `psionic/tests/book.py` runs
-# the same checks for Psionic, Aethyr and Nostr.
+# the same checks for Psionic, Aethyr, Nostr and Coder.
 BOOKS = {"coax": "coax/book", "psionic": "psionic/book", "aethyr": "aethyr/book", "nostr": "nostr/book",
          "coder": "coder/book"}
 # A moved chapter keeps its number so the numbering stays 1..N; its title names
 # where it went and it has no file here.
-STATUSES = ("implemented", "partly implemented", "design draft", "planned", "moved")
+# A written chapter (Coder's Part VII) surveys another project: its profile
+# names the pinned revision it read and its source cites that project's files
+# as `owner/repo:path`; it builds nothing, so it has no target or adoption.
+STATUSES = ("implemented", "partly implemented", "design draft", "planned", "moved", "written")
 TARGETS = ("cpu", "cuda", "metal", "wasm")
+# Coder's chapters run as programs on a person's machine; a book may qualify
+# its own extra targets.
+BOOK_TARGETS = {"coder": ("macos-arm64",)}
+EXTERNAL = re.compile(r"[\w.-]+/[\w.-]+:[^\s:]+")
 DRAFT = "> **Status: unimplemented — design draft.**"
 PARTLY = "> **Status: partly implemented.**"
 PLANNED = "> Note: This feature is planned and not available in `coax0`."
 # Books other than Coax mark a planned chapter with this line instead.
 PLANNED_OTHER = "> **Status: planned.**"
+WRITTEN = "> **Status: written.**"
 SUMMARY_LABEL = {"design draft": " — design draft", "partly implemented": " — partly implemented",
-                 "planned": " — planned"}
+                 "planned": " — planned", "written": " — written"}
 
 
-def readme_label(status, profile):
-    """The README status cell for a Psionic, Aethyr or Nostr chapter, before any `(...)` note."""
-    return {"implemented": f"Runnable: {profile}", "partly implemented": f"Partly implemented: {profile}",
-            "design draft": "Unimplemented: design draft", "planned": "Planned"}[status]
+def readme_label(status, profile, book=None):
+    """The README status cell for a Psionic, Aethyr, Nostr or Coder chapter, before any `(...)` note."""
+    implemented = "Implemented" if book == "coder" else "Runnable"
+    return {"implemented": f"{implemented}: {profile}", "partly implemented": f"Partly implemented: {profile}",
+            "design draft": "Unimplemented: design draft", "planned": "Planned",
+            "written": f"Written: {profile}"}[status]
 
 
 def registry_load(book, root=REPO):
@@ -186,8 +196,9 @@ def registry_problems(book, root=REPO):
         else:
             by_file[name] = c
         running = status in ("implemented", "partly implemented")
-        if running != (isinstance(c["profile"], str) and bool(c["profile"].strip())):
-            errors.append(f"{label}: an implemented or partly implemented chapter, and only one, names its profile")
+        written = status == "written"
+        if (running or written) != (isinstance(c["profile"], str) and bool(c["profile"].strip())):
+            errors.append(f"{label}: an implemented, partly implemented or written chapter, and only one, names its profile")
         for dep in c["depends_on"]:
             if isinstance(dep, int):
                 if dep == n or dep not in numbers:
@@ -197,12 +208,16 @@ def registry_problems(book, root=REPO):
                 errors.append(f"{label}: unknown dependency {dep!r} (use N or book:N)")
         for field in ("source", "adopted_by"):
             for item in c[field]:
-                if not isinstance(item, str) or not (root / item).is_file():
+                cited = written and field == "source" and isinstance(item, str) and EXTERNAL.fullmatch(item)
+                if not cited and (not isinstance(item, str) or not (root / item).is_file()):
                     errors.append(f"{label}: {field} names a missing file {item!r}")
         errors.extend(f"{label}: {error}" for error in adoption_problems(c["adopted_by"], root))
-        if any(t not in TARGETS for t in c["qualified_targets"]) or len(set(c["qualified_targets"])) != len(c["qualified_targets"]):
-            errors.append(f"{label}: qualified_targets must be distinct names from {', '.join(TARGETS)}")
-        if not running and (c["source"] or c["qualified_targets"] or c["adopted_by"]):
+        targets = TARGETS + BOOK_TARGETS.get(book, ())
+        if any(t not in targets for t in c["qualified_targets"]) or len(set(c["qualified_targets"])) != len(c["qualified_targets"]):
+            errors.append(f"{label}: qualified_targets must be distinct names from {', '.join(targets)}")
+        if written and (c["qualified_targets"] or c["adopted_by"]):
+            errors.append(f"{label}: a written chapter has no qualified target or adoption")
+        elif not running and not written and (c["source"] or c["qualified_targets"] or c["adopted_by"]):
             errors.append(f"{label}: a {status} chapter has no implemented source, qualified target or adoption")
         if running and not c["qualified_targets"]:
             errors.append(f"{label}: an implemented chapter names at least one qualified target")
@@ -218,13 +233,14 @@ def registry_problems(book, root=REPO):
         if not heading or int(heading.group(1)) != c["number"] or heading.group(2) != c["title"]:
             errors.append(f"{name}: heading must be '# {c['number']}. {c['title']}' from the registry")
         third = lines[2] if len(lines) > 2 else ""
-        want = {"design draft": DRAFT, "partly implemented": PARTLY,
+        want = {"design draft": DRAFT, "partly implemented": PARTLY, "written": WRITTEN,
                 "planned": PLANNED if book == "coax" else PLANNED_OTHER}.get(c["status"])
         if want and not third.startswith(want):
             errors.append(f"{name}: registry status is {c['status']}; line 3 must start with {want}")
         # A chapter may quote another status's marker in its prose or code; only its opening block counts.
         opening = "\n".join(lines[:12])
-        for status, marker in (("design draft", DRAFT), ("partly implemented", PARTLY), ("planned", PLANNED)):
+        for status, marker in (("design draft", DRAFT), ("partly implemented", PARTLY), ("planned", PLANNED),
+                               ("written", WRITTEN)):
             if c["status"] != status and marker in opening:
                 errors.append(f"{name}: has the {status} marker but the registry says {c['status']}")
         # Every example and source listing the chapter shows is implemented source.
@@ -279,7 +295,7 @@ def registry_problems(book, root=REPO):
             if len(cells.get(name, [])) != 1:
                 errors.append(f"README.md: {name} needs exactly one status-table row of its own")
                 continue
-            cell, want = cells[name][0], readme_label(c["status"], c["profile"])
+            cell, want = cells[name][0], readme_label(c["status"], c["profile"], book)
             if cell != want and not cell.startswith(want + " ("):
                 errors.append(f"README.md: {name} status must be '{want}' (optionally followed by ' (...)'), not '{cell}'")
     if book == "psionic":
@@ -295,7 +311,7 @@ def registry_problems(book, root=REPO):
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--registry"]:
-        # Check all four registries and print their status counts.
+        # Check every registry and print its status counts.
         failed = False
         for book in sorted(BOOKS):
             errors = registry_problems(book)
