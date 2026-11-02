@@ -1560,7 +1560,7 @@ on_canvas :: (out: [] f32, n: int, w: f32, h: f32, d: f32) -> bool {
   #assert layout(1440, 900, 1).wide && !layout(320 * 3, 568 * 3, 3).wide;
 }
 
-#test "a frame draws inside the canvas at desktop and phone sizes, within the vertex budget" {
+#test "a frame draws inside the canvas at desktop and phone sizes, within the vertex budget" #steps 400000000 {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   uniforms: [UNIFORM_FLOATS] f32;
   sizes := [6] f32.[1440, 900, 768, 1024, 320, 568];
