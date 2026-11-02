@@ -1,0 +1,36 @@
+// Chapter 181: what the fault simulation and the ledger refuse. A refused
+// run serves nothing; a refused settlement leaves the ledger as it was.
+#import "Basic";
+#load "../lib/serve-fault.coax";
+
+sim :: (what:string,r:SfRun,reqs:[]SfRequest) {print("%: %\n",what,sf_status_name(sf_sim(r,reqs).status));}
+settle :: (what:string,t:SfSettle) {
+    print("%: ",what);
+    if t.cause==SfCharge.none {print("settled, % msat; ",t.charge);} else {print("refused, %; ",sf_charge_name(t.cause));}
+    print("% keys, % msat charged\n",t.ledger.n,t.ledger.usage.charged);
+}
+
+// book:begin main
+main :: () {
+    w:=sfx_hand();q:=w.req[0..<w.n];
+    sim("the hand trace",w.run,q);
+    r:=w.run;r.policy.tries=5;sim("5 tries per request",r,q);
+    r=w.run;r.policy.min_up=3;sim("keep 3 of 2 replicas healthy",r,q);
+    r=w.run;r.policy.budget_pct=101;sim("a retry budget of 101 percent",r,q);
+    r=w.run;r.nfaults=2;r.faults[1]=SfSpan.{replica=0,kind=SfFault.crash,from=399999,until=500000};sim("a second crash of replica 0 before its restart",r,q);
+    r=w.run;r.faults[0].replica=2;sim("a crash on replica 2 of 2",r,q);
+    r=w.run;r.nfaults=2;r.faults[1]=SfSpan.{replica=1,kind=SfFault.slow,until=100000,pct=99};sim("a replica slow at 99 percent",r,q);
+    x:=w.req;x[1].output=0;sim("a request for 0 output tokens",w.run,x[0..<w.n]);
+    x=w.req;x[3].arrive=99999;sim("request 3 before request 2",w.run,x[0..<w.n]);
+    r=w.run;r.events=13;sim("13 event times for a run that needs 14",r,q);
+
+    s:=bl_test_schedule();ev:=um_test_evidence();l:=SfLedger.{account=BlAccount.{budget=100000}};
+    qt:=bl_quote(s,8,2,300000);l.account=bl_admit(l.account,qt).account;
+    u:=BlUse.{status=BlStatus.answered,tokens_in=8,tokens_out=2,device_us=45799};
+    t:=sf_settle(l,ev,s,7,qt,u,45799);settle("settle key 7",t);
+    settle("settle key 7 again",sf_settle(t.ledger,ev,s,7,qt,u,45799));
+    settle("settle key 8 against a quote never held",sf_settle(t.ledger,ev,s,8,qt,u,45799));
+    bad:=ev;bad.digest="0";
+    settle("settle key 8 under a malformed weights digest",sf_settle(t.ledger,bad,s,8,BlPrice.{},u,45799));
+}
+// book:end main

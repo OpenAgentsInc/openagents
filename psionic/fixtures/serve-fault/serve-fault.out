@@ -1,0 +1,29 @@
+hand trace (sf-fault-v1): replica 0 crashed from 120,000 to 400,000 us
+  attempt 0: request 0 first to replica 0, sent 0, ran 0 to 45799: ok at 45799
+  attempt 1: request 1 first to replica 1, sent 10000, ran 10000 to 55799: ok at 55799
+  attempt 2: request 2 first to replica 0, sent 100000, ran 100000 to 145799: crashed at 120000
+  attempt 3: request 2 retry to replica 1, sent 120000, ran 120000 to 165799: ok at 165799
+  attempt 4: request 3 first to replica 0, sent 130000: down at 130000
+  attempt 5: probe to replica 0, sent 200000: down at 200000
+  attempt 6: request 4 first to replica 1, sent 200000, ran 200000 to 245799: ok at 245799
+  attempt 7: probe to replica 0, sent 400000, ran 400000 to 417792: ok at 417792
+  attempt 8: request 5 first to replica 1, sent 400000, ran 400000 to 445799: ok at 445799
+  request 0 (key 0): answered at 45799, 1 tries, quote 16032 msat, charge 3322 msat
+  request 1 (key 1): answered at 55799, 1 tries, quote 16032 msat, charge 3322 msat
+  request 2 (key 2): answered at 165799, 2 tries, quote 16032 msat, charge 3322 msat
+  request 3 (key 3): failed at 130000, 1 tries, quote 16032 msat, charge 0 msat
+  request 4 (key 4): answered at 245799, 1 tries, quote 16032 msat, charge 3322 msat
+  request 5 (key 5): answered at 445799, 1 tries, quote 16032 msat, charge 3322 msat
+  request 6 (key 2): duplicate at 410000, 0 tries, quote 0 msat, charge 0 msat
+  ledger: 6 usage records, 16610 msat charged, 0 msat held
+fence: replica 0 three times slow, cut off from 20,000 to 100,000 us; hedge after 30,000 us
+  attempt 0: request 0 first to replica 0, sent 0, ran 0 to 137397: cancelled at 75799; its answer came at 137397 and was fenced
+  attempt 1: request 0 hedge to replica 1, sent 30000, ran 30000 to 75799: ok at 75799
+  request 0 (key 0): answered at 75799, 2 tries, quote 16032 msat, charge 3322 msat
+  ledger: 1 usage records, 3322 msat charged, 0 msat held
+fault mix, 3 tries, hedge after 60,000 us: 64 keys, 64 answered, 0 failed, 0 expired, 0 refused; P95 105799 us
+  74 request attempts, 10 of them retries or hedges, 0 denied by the budget; 1 ejected, 1 readmitted; 0 answers fenced; 212608 msat charged
+fault mix, 1 try, no hedge: 64 keys, 58 answered, 6 failed, 0 expired, 0 refused; P95 45799 us
+  64 request attempts, 0 of them retries or hedges, 0 denied by the budget; 2 ejected, 2 readmitted; 0 answers fenced; 201836 msat charged
+no faults, 3 tries, hedge after 60,000 us: 64 keys, 64 answered, 0 failed, 0 expired, 0 refused; P95 45799 us
+  64 request attempts, 0 of them retries or hedges, 0 denied by the budget; 0 ejected, 0 readmitted; 0 answers fenced; 212608 msat charged

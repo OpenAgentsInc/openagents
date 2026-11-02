@@ -1,0 +1,232 @@
+// Chapter 181's check helpers, loaded by psionic/lib/serve-fault.coax and
+// owned by its checks: the hand-traced run, a brute-force health checker
+// replayed from its whole history, random fault schedules, the frozen
+// fault mix, and the invariants a finished run must keep, recomputed from
+// its requests, its faults and chapter 180's prices alone.
+
+// Two failures eject; one probe success readmits; at least one replica
+// stays up; a 10 percent budget plus 1; 3 tries.
+sfx_next :: (h:int)->int {return (h*1103515245+12345)%2147483648;}
+
+sfx_policy :: ()->SfPolicy {return SfPolicy.{attempt_us=200000,tries=3,budget_pct=10,reserve=1,fails=2,min_up=1,probe_us=200000,oks=2};}
+sfx_same :: (a:SfHealth,b:SfHealth)->bool {return a.up==b.up && a.fails==b.fails && a.oks==b.oks;}
+sfx_att :: (x:SfAttempt,req:int,k:int,kind:SfKind,sent:int,start:int,finish:int,res:SfResult)->bool {
+    return x.req==req && x.replica==k && x.kind==kind && x.sent==sent && x.start==start && x.finish==finish && x.result==res;
+}
+sfx_ledger_same :: (a:SfLedger,b:SfLedger)->bool {
+    if a.n!=b.n || a.account.budget!=b.account.budget || a.account.held!=b.account.held || a.account.spent!=b.account.spent {return false;}
+    for i:0..<a.n {if a.keys[i]!=b.keys[i] {return false;}}
+    return a.usage.requests==b.usage.requests && a.usage.charged==b.usage.charged && a.usage.quoted==b.usage.quoted;
+}
+
+SfxWorld :: struct {run:SfRun;n:int;req:[64]SfRequest;}
+// The hand trace: two replicas; replica 0 crashes at 120 ms and is serving
+// again at 400 ms. Two tries, no hedge, one probe success readmits. Seven
+// requests of 8 prompt tokens and 2 output tokens with a 300 ms deadline;
+// the last resends request 2's key.
+sfx_hand :: ()->SfxWorld {
+    w:SfxWorld;p:=sfx_policy();p.tries=2;p.oks=1;
+    w.run=SfRun.{replicas=2,policy=p,price=bl_test_schedule(),budget=1000000,evidence=um_test_evidence(),nfaults=1,events=SF_EVENTS};
+    w.run.faults[0]=SfSpan.{replica=0,kind=SfFault.crash,from=120000,until=400000};
+    at:=[7]int.[0,10000,100000,130000,200000,400000,410000];w.n=7;
+    for i:0..<7 {w.req[i]=SfRequest.{key=i,arrive=at[i],prompt=8,output=2,deadline=300000};}
+    w.req[6].key=2;
+    return w;
+}
+
+// The fence: replica 0 runs three times slow and is cut off from 20 ms to
+// 100 ms; one request, hedged after 30 ms.
+sfx_fence :: ()->SfxWorld {
+    w:=sfx_hand();w.n=1;w.run.policy.hedge_us=30000;w.run.nfaults=2;
+    w.run.faults[0]=SfSpan.{replica=0,kind=SfFault.slow,from=0,until=200000,pct=300};
+    w.run.faults[1]=SfSpan.{replica=0,kind=SfFault.partition,from=20000,until=100000};
+    return w;
+}
+
+// The brute-force health checker: replay the whole history from the start
+// at every step, counting trailing runs instead of keeping counters.
+SfxEvent :: struct {ok:bool;probe:bool;ups:int;}
+sfx_replay :: (p:SfPolicy,hist:[]SfxEvent)->SfHealth {
+    up:=true;since:=0;  // the index where the current up or out stretch began
+    for i:0..<hist.count {
+        e:=hist[i];
+        if up && !e.probe && !e.ok {
+            // Passive failures since the stretch began or the last passive success.
+            trail:=0;
+            for j:since..<i+1 {if !hist[j].probe {if hist[j].ok {trail=0;} else {trail+=1;}}}
+            if trail>=p.fails && e.ups>p.min_up {up=false;since=i+1;}
+        } else if !up && e.probe && e.ok {
+            trail:=0;
+            for j:since..<i+1 {if hist[j].probe {if hist[j].ok {trail+=1;} else {trail=0;}}}
+            if trail==p.oks {up=true;since=i+1;}
+        }
+    }
+    h:=SfHealth.{up=up};
+    if !up {h.fails=p.fails;}
+    for j:since..<hist.count {
+        if up && !hist[j].probe {h.fails=ifx hist[j].ok then 0 else h.fails+1;}
+        if !up && hist[j].probe {h.oks=ifx hist[j].ok then h.oks+1 else 0;}
+    }
+    if h.fails>p.fails {h.fails=p.fails;}
+    return h;
+}
+sfx_health_walk :: (seed:int) {
+    hh:=sfx_next(seed*69621+7);
+    p:=sfx_policy();p.fails=1+hh/65536%3;hh=sfx_next(hh);p.oks=1+hh/65536%3;hh=sfx_next(hh);p.min_up=1+hh/65536%3;hh=sfx_next(hh);
+    hist:[24]SfxEvent;h:=SfHealth.{up=true};
+    for t:0..<24 {
+        e:=SfxEvent.{ok=hh/65536%3==0,probe=hh/65536/3%2==0,ups=1+hh/65536/7%4};hh=sfx_next(hh);
+        hist[t]=e;h=sf_health(p,h,e.ok,e.probe,e.ups);
+        b:=sfx_replay(p,hist[0..<t+1]);
+        #assert sfx_same(h,b);
+        #assert h.fails>=0 && h.fails<=p.fails && h.oks>=0 && h.oks<p.oks;
+        if !h.up {#assert h.fails==p.fails;}
+    }
+}
+
+// Random runs: 2 to 5 replicas, 8 to 40 requests, some keys resent, up to
+// 8 fault spans of every kind, random policies and budgets.
+sfx_random :: (seed:int)->SfxWorld {
+    w:SfxWorld;h:=sfx_next(seed*7919+101);
+    p:SfPolicy;
+    n:=2+h/65536%4;h=sfx_next(h);
+    p.attempt_us=100000+h/65536%400000;h=sfx_next(h);p.tries=1+h/65536%4;h=sfx_next(h);
+    p.hedge_us=ifx h/65536%3==0 then 0 else 20000+h/65536/3%200000;h=sfx_next(h);
+    p.budget_pct=h/65536%60;h=sfx_next(h);p.reserve=h/65536%4;h=sfx_next(h);p.fails=1+h/65536%3;h=sfx_next(h);
+    p.min_up=1+h/65536%n;h=sfx_next(h);p.probe_us=50000+h/65536%250000;h=sfx_next(h);p.oks=1+h/65536%3;h=sfx_next(h);
+    w.run=SfRun.{replicas=n,policy=p,price=bl_test_schedule(),evidence=um_test_evidence(),events=SF_EVENTS};
+    w.run.budget=ifx h/65536%4==0 then 30000+h/65536/4%120000 else 100000000;h=sfx_next(h);
+    w.run.nfaults=h/65536%9;h=sfx_next(h);
+    for j:0..<w.run.nfaults {
+        f:SfSpan;f.replica=h/65536%n;h=sfx_next(h);f.kind=cast(SfFault)cast(u8)(1+h/65536%5);h=sfx_next(h);
+        f.from=h/65536%1500000;h=sfx_next(h);f.until=f.from+1+h/65536%600000;h=sfx_next(h);f.pct=100+h/65536%500;h=sfx_next(h);
+        // Crashes only on replica j, so one replica's crashes never overlap.
+        if f.kind==SfFault.crash {f.replica=j%n;}
+        // A partition lands on the replica the span before it slowed or hung, so late answers happen.
+        if f.kind==SfFault.partition && j>0 {f.replica=w.run.faults[j-1].replica;f.from=w.run.faults[j-1].from+f.pct*100;f.until=f.from+50000+f.pct*200;}
+        for i:0..<j {if f.kind==SfFault.crash && w.run.faults[i].kind==SfFault.crash && w.run.faults[i].replica==f.replica {f.kind=SfFault.hang;}}
+        w.run.faults[j]=f;
+    }
+    w.n=8+h/65536%33;h=sfx_next(h);at:=0;
+    for i:0..<w.n {
+        at+=h/65536%80000;h=sfx_next(h);
+        q:=SfRequest.{key=i,arrive=at,prompt=1+h/65536%32,output=1+h/65536/32%4,deadline=100000+h/65536/7%600000};h=sfx_next(h);
+        if i>0 && h/65536%10==0 {q.key=h/65536/10%i;}
+        h=sfx_next(h);
+        w.req[i]=q;
+    }
+    return w;
+}
+
+// What a finished run must keep, recomputed from its requests, its faults
+// and chapter 180's prices.
+sfx_check :: (s:SfSim,r:SfRun,reqs:[]SfRequest) {
+    #assert s.status==SfStatus.ok && s.n==reqs.count;
+    p:=r.policy;firsts:=0;extras:=0;fenced:=0;keys:=0;charged:=0;
+    for j:0..<s.na {
+        x:=s.att[j];
+        #assert x.result!=SfResult.pending && x.ended>=x.sent;
+        // What a replica still holds at the end: an attempt hung where no cancel reached it, or one queued behind it.
+        if x.live {
+            stuck:=x.finish==SF_NEVER;
+            for i:0..<s.na {if s.att[i].live && s.att[i].replica==x.replica && s.att[i].finish==SF_NEVER && x.start<0 {stuck=true;}}
+            #assert stuck;
+        }
+        if x.late {fenced+=1;}
+        // Budget: every retry and hedge, counted in the order sent, fits the first attempts sent before it.
+        if x.kind==SfKind.first {firsts+=1;}
+        if x.kind==SfKind.retry || x.kind==SfKind.hedge {extras+=1;#assert extras*100<=p.budget_pct*firsts+p.reserve*100;}
+        // The faults decide each attempt: recomputed from the spans alone.
+        k:=x.replica;
+        // A fenced answer: the client had closed the attempt while a partition swallowed its cancel; the answer came after.
+        if x.late {#assert (x.result==SfResult.cancelled || x.result==SfResult.timeout) && x.finish>x.ended && x.finish<SF_NEVER && !sf_in(r,k,SfFault.partition,x.finish) && sf_in(r,k,SfFault.partition,x.ended);}
+        cost:=ifx x.req<0 then SF_PROBE_US else (17792472+(reqs[x.req].prompt-1)*1459182+(reqs[x.req].output-1)*17792472)/1000;
+        if x.start>=0 {
+            #assert x.start>=x.sent && !sf_in(r,k,SfFault.crash,x.start) && !sf_in(r,k,SfFault.partition,x.sent);
+            if sf_in(r,k,SfFault.hang,x.start) {#assert x.finish==SF_NEVER;}
+            else {#assert x.finish==x.start+cost*sf_pct(r,k,x.start)/100;}
+            if x.req>=0 {#assert x.start+cost<=reqs[x.req].arrive+reqs[x.req].deadline;}
+        }
+        due:=x.sent+p.attempt_us;
+        if x.req>=0 {due=cb_min(due,reqs[x.req].arrive+reqs[x.req].deadline);}
+        if x.result==SfResult.ok || x.result==SfResult.corrupt {
+            #assert x.ended==x.finish && x.ended<=due && !sf_in(r,k,SfFault.partition,x.finish);
+            #assert sf_in(r,k,SfFault.corrupt,x.finish)==(x.result==SfResult.corrupt);
+        }
+        if x.result==SfResult.ok || x.result==SfResult.corrupt {
+            // No crash began while it ran.
+            for f:0..<r.nfaults {g:=r.faults[f];if g.replica==k && g.kind==SfFault.crash {#assert g.from<=x.start || g.from>x.finish;}}
+        }
+        if x.result==SfResult.down {#assert sf_in(r,k,SfFault.crash,x.sent) && x.ended==x.sent && x.start<0;}
+        if x.result==SfResult.crashed {#assert sf_in(r,k,SfFault.crash,x.ended) && !sf_in(r,k,SfFault.crash,x.ended-1);}
+        if x.result==SfResult.timeout {#assert x.ended==due;}
+        if x.result==SfResult.deadline {#assert x.start<0 && x.ended+cost>reqs[x.req].arrive+reqs[x.req].deadline;}
+        if x.result==SfResult.cancelled {#assert x.req>=0 && s.out[x.req].end==SfEnd.answered;}
+    }
+    #assert firsts==s.firsts && extras==s.extras && fenced==s.fenced;
+    answered:=0;refused:=0;lost:=0;slowest:=0;
+    for i:0..<reqs.count {
+        o:=s.out[i];q:=reqs[i];
+        #assert o.end!=SfEnd.pending && o.at>=q.arrive && o.open==0;
+        if o.end==SfEnd.answered {answered+=1;}
+        if o.end==SfEnd.refused {refused+=1;}
+        if o.end==SfEnd.failed || o.end==SfEnd.expired {lost+=1;}
+        if o.end!=SfEnd.duplicate {slowest=cb_max(slowest,o.at-q.arrive);}
+        // Never past the deadline.
+        #assert o.at<=q.arrive+q.deadline;
+        seen:=false;for j:0..<i {if reqs[j].key==q.key {seen=true;}}
+        #assert seen==(o.end==SfEnd.duplicate);
+        // Each request answered at most once: one attempt that answered, the winner.
+        tries:=0;oks:=0;hedges:=0;mask:=0;
+        for j:0..<s.na {
+            x:=s.att[j];
+            if x.req==i {
+                tries+=1;hedges+=ifx x.kind==SfKind.hedge then 1 else 0;
+                #assert (mask>>x.replica)%2==0 && x.ended<=o.at;
+                mask+=1<<x.replica;
+                if tries==1 {#assert x.kind==SfKind.first && x.sent==q.arrive;} else {#assert x.kind!=SfKind.first;}
+                if x.result==SfResult.ok {oks+=1;#assert j==o.winner && x.ended==o.at;}
+            }
+        }
+        #assert tries==o.tries && tries<=p.tries && hedges<=1 && oks==ifx o.end==SfEnd.answered then 1 else 0;
+        if o.end==SfEnd.duplicate || o.end==SfEnd.refused {#assert tries==0 && o.charge==0;}
+        if o.end!=SfEnd.duplicate {keys+=1;}
+        // Charged at most once, exactly the price of the answer it gave, capped by its quote.
+        if o.end==SfEnd.answered {
+            w:=s.att[o.winner];quote:=bl_quote(r.price,q.prompt,q.output,q.deadline).msat;
+            price:=bl_price(r.price,BlUse.{status=BlStatus.answered,tokens_in=q.prompt,tokens_out=q.output,device_us=w.finish-w.start}).msat;
+            #assert o.quote==quote && o.charge==cb_min(price,quote);
+        } else {#assert o.charge==0;}
+        charged+=o.charge;
+    }
+    // One usage record per key, with its status and its latency.
+    u:=s.ledger.usage;
+    #assert u.status[1]==answered && u.status[2]==refused && u.status[3]==lost && u.status[4]==0 && (keys==0 || u.latency_most==slowest);
+    #assert s.ledger.n==keys && s.ledger.usage.requests==keys && s.ledger.usage.charged==charged && s.ledger.account.spent==charged && s.ledger.account.held==0;
+    for i:0..<s.ledger.n {for j:0..<i {#assert s.ledger.keys[i]!=s.ledger.keys[j];}}
+}
+
+// The frozen fault mix: four replicas, 64 requests 30 ms apart of 8 prompt
+// tokens and 2 output tokens with a 300 ms deadline. One fault at a time:
+// replica 0 crashes at 100 ms and serves again at 600 ms; replica 1 hangs
+// from 700 to 900 ms; replica 2 runs three times slow from 1,000 to
+// 1,400 ms; replica 3 is cut off from 1,500 to 1,700 ms; replica 1 answers
+// corrupt from 1,800 to 1,900 ms.
+sfx_mix :: (p:SfPolicy)->SfxWorld {
+    w:SfxWorld;w.n=64;
+    w.run=SfRun.{replicas=4,policy=p,price=bl_test_schedule(),budget=100000000,evidence=um_test_evidence(),nfaults=5,events=SF_EVENTS};
+    w.run.faults[0]=SfSpan.{replica=0,kind=SfFault.crash,from=100000,until=600000};
+    w.run.faults[1]=SfSpan.{replica=1,kind=SfFault.hang,from=700000,until=900000};
+    w.run.faults[2]=SfSpan.{replica=2,kind=SfFault.slow,from=1000000,until=1400000,pct=300};
+    w.run.faults[3]=SfSpan.{replica=3,kind=SfFault.partition,from=1500000,until=1700000};
+    w.run.faults[4]=SfSpan.{replica=1,kind=SfFault.corrupt,from=1800000,until=1900000};
+    for i:0..<64 {w.req[i]=SfRequest.{key=i,arrive=i*30000,prompt=8,output=2,deadline=300000};}
+    return w;
+}
+// Retries, a hedge and health checks; and the baseline: one try, no hedge, the same health checks.
+sfx_resilient :: ()->SfPolicy {return SfPolicy.{attempt_us=150000,tries=3,hedge_us=60000,budget_pct=20,reserve=3,fails=2,min_up=1,probe_us=100000,oks=2};}
+sfx_baseline :: ()->SfPolicy {p:=sfx_resilient();p.tries=1;p.hedge_us=0;return p;}
+sfx_frozen :: (s:SfSim,reqs:[]SfRequest,answered:int,failed:int,expired:int,p95:int,charged:int,attempts:int)->bool {
+    p:=sf_report(s,reqs);
+    return s.status==SfStatus.ok && p.keys==reqs.count && p.answered==answered && p.failed==failed && p.expired==expired && p.p95_us==p95 && p.charged==charged && p.attempts==attempts;
+}

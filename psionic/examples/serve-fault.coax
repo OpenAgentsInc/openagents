@@ -1,0 +1,50 @@
+// Chapter 181: the hand-traced crash, ejection, retry and probe; a hedge
+// that wins during a partition, whose loser's late answer is fenced; then a
+// fixed mix of five faults over four replicas, served with retries, a
+// hedge and health checks, and again with one try and no hedge. Times are
+// in microseconds.
+#import "Basic";
+#load "../lib/serve-fault.coax";
+
+list_attempts :: (s:SfSim) {
+    for j:0..<s.na {
+        x:=s.att[j];
+        if x.req<0 {print("  attempt %: probe to replica %, sent %",j,x.replica,x.sent);}
+        else {print("  attempt %: request % % to replica %, sent %",j,x.req,sf_kind_name(x.kind),x.replica,x.sent);}
+        if x.start>=0 {print(", ran % to ",x.start);if x.finish==SF_NEVER {print("never");} else {print("%",x.finish);}}
+        print(": % at %",sf_result_name(x.result),x.ended);
+        if x.late {print("; its answer came at % and was fenced",x.finish);}
+        print("\n");
+    }
+}
+list_requests :: (s:SfSim,q:[]SfRequest) {
+    for i:0..<s.n {
+        o:=s.out[i];
+        print("  request % (key %): % at %, % tries, quote % msat, charge % msat\n",i,q[i].key,sf_end_name(o.end),o.at,o.tries,o.quote,o.charge);
+    }
+    print("  ledger: % usage records, % msat charged, % msat held\n",s.ledger.n,s.ledger.usage.charged,s.ledger.account.held);
+}
+show :: (name:string,s:SfSim,reqs:[]SfRequest) {
+    p:=sf_report(s,reqs);
+    print("%: % keys, % answered, % failed, % expired, % refused; P95 % us\n",name,p.keys,p.answered,p.failed,p.expired,p.refused,p.p95_us);
+    print("  % request attempts, % of them retries or hedges, % denied by the budget; % ejected, % readmitted; % answers fenced; % msat charged\n",p.attempts,s.extras,s.denied,s.ejects,s.readmits,s.fenced,p.charged);
+}
+
+// book:begin main
+main :: () {
+    w:=sfx_hand();q:=w.req[0..<w.n];s:=sf_sim(w.run,q);
+    print("hand trace (%): replica 0 crashed from 120,000 to 400,000 us\n",SF_PROFILE);
+    list_attempts(s);list_requests(s,q);
+
+    f:=sfx_fence();s=sf_sim(f.run,f.req[0..<f.n]);
+    print("fence: replica 0 three times slow, cut off from 20,000 to 100,000 us; hedge after 30,000 us\n");
+    list_attempts(s);list_requests(s,f.req[0..<f.n]);
+
+    m:=sfx_mix(sfx_resilient());
+    show("fault mix, 3 tries, hedge after 60,000 us",sf_sim(m.run,m.req[0..<m.n]),m.req[0..<m.n]);
+    m=sfx_mix(sfx_baseline());
+    show("fault mix, 1 try, no hedge",sf_sim(m.run,m.req[0..<m.n]),m.req[0..<m.n]);
+    m=sfx_mix(sfx_resilient());m.run.nfaults=0;
+    show("no faults, 3 tries, hedge after 60,000 us",sf_sim(m.run,m.req[0..<m.n]),m.req[0..<m.n]);
+}
+// book:end main

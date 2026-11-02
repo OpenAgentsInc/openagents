@@ -2447,6 +2447,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/serve-fault.coax",
+      "chapter": "psionic/book/ch181-survive-failures.md",
+      "stdout": "psionic/fixtures/serve-fault/serve-fault.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/serve-fault-refuse.coax",
+      "chapter": "psionic/book/ch181-survive-failures.md",
+      "stdout": "psionic/fixtures/serve-fault/serve-fault-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

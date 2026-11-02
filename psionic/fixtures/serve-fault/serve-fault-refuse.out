@@ -1,0 +1,14 @@
+the hand trace: ok
+5 tries per request: config
+keep 3 of 2 replicas healthy: config
+a retry budget of 101 percent: config
+a second crash of replica 0 before its restart: config
+a crash on replica 2 of 2: config
+a replica slow at 99 percent: config
+a request for 0 output tokens: config
+request 3 before request 2: order
+13 event times for a run that needs 14: events
+settle key 7: settled, 3322 msat; 1 keys, 3322 msat charged
+settle key 7 again: refused, twice; 1 keys, 3322 msat charged
+settle key 8 against a quote never held: refused, bill; 1 keys, 3322 msat charged
+settle key 8 under a malformed weights digest: refused, meter; 1 keys, 3322 msat charged
