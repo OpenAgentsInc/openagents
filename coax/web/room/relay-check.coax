@@ -1,0 +1,97 @@
+// The relay's check (room-relay.coax): two sockets in one relay room. Each
+// hears its seat, the other's join and the other's frames (a short one and
+// a 3000-byte one), 200 frames from one reach the other, and the other's
+// leave reaches the first.
+//   coax/web/tool.sh coax/web/room/relay-check.coax [ws://localhost:8830]
+//   (deploy.sh runs it through wss://openagents.com)
+// Prints one JSON line (the first three frames each heard, how many of the
+// 200 arrived, in how many ms), then "relays" and exits 0, or "fails" and 1.
+#load "room-socket.coax";
+
+RK_N :: 200;
+RK_KEEP :: 3;                 // frames kept from each socket
+RK_FRAME :: 3100;             // the longest kept frame
+// What one socket heard.
+RkHeard :: struct { first: [RK_KEEP * RK_FRAME] u8; first_n: [RK_KEEP] int; count: int; relayed: int; left: bool; }
+
+rk_kept :: (h: [] RkHeard, k: int) -> string {
+  return ifx k < h[0].count && k < RK_KEEP then cast(string) h[0].first[k * RK_FRAME..<k * RK_FRAME + h[0].first_n[k]] else "";
+}
+rk_hear :: (h: [] RkHeard, t: string) {
+  if h[0].count < RK_KEEP {
+    n := ifx t.count < RK_FRAME then t.count else RK_FRAME;
+    for i: 0..<n { h[0].first[h[0].count * RK_FRAME + i] = t[i]; }
+    h[0].first_n[h[0].count] = n;
+  }
+  h[0].count += 1;
+  if rs_starts(t, "m 0 u ") { h[0].relayed += 1; }
+  if t == "l 1" { h[0].left = true; }
+}
+// Every frame both sockets get for ms.
+rk_drain :: (c: [] RelayConn, h: [] RkHeard, ms: int) {
+  until := rs_now() + ms;
+  while true {
+    quiet := true;
+    for i: 0..<2 {
+      if c[i].h < 0 { continue; }
+      r := relay_conn_poll(c[i..<i + 1], 0);
+      if r == RC_TEXT { rk_hear(h[i..<i + 1], cast(string) c[i].text[0..<c[i].text_n]); quiet = false; }
+    }
+    if rs_now() >= until { return; }
+    if quiet { proc_sleep(1); }
+  }
+}
+rk_json_first :: (o: [] Jo, h: [] RkHeard) {
+  jo_arr(o);
+  for k: 0..<RK_KEEP {
+    if k >= h[0].count { break; }
+    t := rk_kept(h, k);
+    jo_str(o, ifx t.count > 20 then t[0..<20] else t);
+  }
+  jo_end(o);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("relay-check: bad arguments"); return 2; }
+  b: [512] u8;
+  base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/check/", "t", rs_stamp());
+  c: [2] RelayConn; h: [2] RkHeard;
+  if url.count == 0 || !relay_conn_open(c[0..<1], url) { tool_err("relay-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
+  rk_drain(c[..], h[..], 300);
+  if !relay_conn_open(c[1..<2], url) { tool_err("relay-check: can't open a second socket to "); tool_errln(url); print("fails\n"); return 1; }
+  rk_drain(c[..], h[..], 300);
+  big: [3000] u8;
+  for i: 0..<big.count { big[i] = 'x'; }
+  sent := relay_conn_send(c[0..<1], "hello from a") && relay_conn_send(c[1..<2], cast(string) big[..]);
+  rk_drain(c[..], h[..], 600);
+  t0 := rs_now();
+  m: [32] u8;
+  for i: 0..<RK_N {
+    k := rs_int(m[..], rs_put(m[..], 0, "u "), i);
+    if !relay_conn_send(c[0..<1], cast(string) m[0..<k]) { sent = false; }
+  }
+  while h[1].relayed < RK_N && rs_now() - t0 < 5000 { rk_drain(c[..], h[..], 20); }
+  ms := rs_now() - t0;
+  closed := relay_conn_close(c[1..<2], 1000);
+  rk_drain(c[..], h[..], 500);
+  want_big: [3004] u8;
+  wb := rs_put(want_big[..], rs_put(want_big[..], 0, "m 1 "), cast(string) big[..]);
+  ok := sent && rk_kept(h[0..<1], 0) == "y 0 0" && rk_kept(h[0..<1], 1) == "j 1" && rk_kept(h[1..<2], 0) == "y 1 1" &&
+        rk_kept(h[1..<2], 1) == "j 0" && rk_kept(h[1..<2], 2) == "m 0 hello from a" &&
+        rk_kept(h[0..<1], 2) == cast(string) want_big[0..<wb] && h[1].relayed == RK_N && h[0].left;
+  out: [4096] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "a"); rk_json_first(o[..], h[0..<1]);
+  jo_key(o[..], "b"); rk_json_first(o[..], h[1..<2]);
+  jo_key(o[..], "relayed"); jo_int(o[..], h[1].relayed);
+  jo_key(o[..], "ms"); jo_int(o[..], ms);
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  print("%\n", ifx ok then "relays" else "fails");
+  r := relay_conn_close(c[0..<1], 1000);
+  return ifx ok then 0 else 1;
+}

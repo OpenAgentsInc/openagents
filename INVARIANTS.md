@@ -245,7 +245,7 @@ C library, and macOS's libm and wasi-libc round some inputs differently (a
 recorded walk parted after 105 steps). Drawing may use either. Random draws
 in a step come from `aethyr/rand.coax` (seed, stream, counter). Checks:
 `aethyr/math.coax` (within 2 ulps of the C library, f64 kernels against
-Python's `math`; mutation 0 survivors) and `coax/web/replay-hosts.test.ts`
+Python's `math`; mutation 0 survivors) and `coax/web/replay-hosts.coax`
 (the recorded walk's session digests, and the recorded Grid session's digest
 at every step, are equal natively and in wasm). Both sessions must stay
 sharp: each steers while turning through angles where the two C libraries
@@ -403,7 +403,7 @@ leaves. Checks:
 every step", "a record full of frames starts a new one", "a blur starts a
 new record from the state it leaves, and that one replays", "the keyboard and
 the touch stick drive the same session to the same digests"; mutation 0
-survivors) and `coax/web/replay-hosts.test.ts` (a recorded Grid session
+survivors) and `coax/web/replay-hosts.coax` (a recorded Grid session
 gives the same digest at every step natively and in wasm).
 
 ## Simulation steps and supplied wall clocks keep their domains
@@ -3142,7 +3142,7 @@ longer exists.
 Checks: `coax/tests/state_defaults.py` (in-place defaults over 0xab bytes
 match native `coax_init`, natively and in WebAssembly; two libraries sharing
 a defaulted type link; a program emits none) and
-`coax/web/state-defaults.test.ts`, which boots every engine
+`coax/web/state-defaults.coax`, which boots every engine
 `apps/openagents-web/build.sh` makes from zeroed memory, compares each
 defaulted state with native `coax_init` byte for byte, compares every face
 global of a defaulted type natively, and fails when a zeroed state would

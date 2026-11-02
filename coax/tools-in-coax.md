@@ -97,12 +97,35 @@ the same inputs, then deletes it in the same commit that switches callers.
   byte for byte, as `clip.ts` before it was deleted. `Firm reason:` headers
   are on the browser host, the oracles and vector generators, and the seed
   scripts; everything else is on `coax/tools-port.txt`.
-  `coax/web/tool.sh tools-check` checks the rule below (not yet in release.sh).
+  `coax/web/tool.sh tools-check` checks the rule below.
 
-## Keeping it this way (to build)
+- 2026-11-02: the six TypeScript tools written after the rule are Coax:
+  the room checks (`coax/web/room/relay-check.coax`, `load.coax`, over
+  `net/relay_conn.coax`, so `wss://` too), the replay and struct-default
+  checks (`coax/web/replay-hosts.coax`, `state-defaults.coax`) and Verse's
+  `verse/native/wasm-run.coax`. The three that run a page's wasm do it in
+  headless Chrome through `coax/web/wasm-chrome.coax`; the page's side is
+  `coax/web/wasm-host.js` (reason 1), which keeps files, instantiates, calls
+  exports and moves memory bytes. Every step, hash, parse and comparison is
+  Coax. Each matched the old tool on the same inputs before it was deleted:
+  `wasm-run.coax` wrote the same lines and the same 48 dump files, byte for
+  byte, as `wasm-run.ts` on Everglade's pack; `state-defaults.coax` checked
+  the same states and face globals; the room checks gave the same results
+  against a local room server. `coax/web/write-changed.ts` had no callers
+  and went. `tool.sh` links `tls-native.c` for a tool with a
+  `// tool.sh: tls` line.
 
-- A check in `coax/web/release.sh` (and later the Coax release tool) lists
-  every tracked `.ts`, `.py`, `.js`, `.sh` and `.cjs` file. A new one that has
-  no `Firm reason:` line and isn't on the port list fails the check.
-- The port list lives in `coax/tools-port.txt`: one path a line, removed as
-  each tool is ported. It only shrinks.
+## Keeping it this way
+
+- `coax/web/release.sh` runs `coax/web/tool.sh tools-check` on the release
+  tree after the compiler step, before staging changes. A failure stops the
+  release. Every tracked `.ts`, `.py`, `.js`, `.sh` and `.cjs` file must
+  either start one of its first 60 lines (after comment marks) with
+  `Firm reason:`, or be on the port list.
+- The port list is `coax/tools-port.txt`: one path a line, removed as each
+  tool is ported. It only shrinks. Its header names the commit it was taken
+  at (`# base: HASH`), and a listed path that wasn't tracked there fails the
+  check, so a tool written since can't wait on the list.
+- The list holds 1,243 paths (2026-11-02). 488 of them were added that day:
+  files the first enforced run found with neither a reason nor a place on
+  the list.

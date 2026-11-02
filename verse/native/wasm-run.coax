@@ -1,0 +1,407 @@
+// wasm-run: realm-run.c's frames from the browser's wasm instead, the same
+// host steps in the same order (coax/web/host.js loadEngine, unpack and
+// deliver, without the GPU), so the two can be compared line for line. The
+// wasm runs in headless Chrome (coax/web/wasm-chrome.coax); every step, hash
+// and file is this tool's.
+//   coax/web/tool.sh verse/native/wasm-run.coax REALM.wasm [realm-run options]   (from the repo root)
+//   options: --frames N (120) --every N (30) --size WxH (1280x720) --scale S (1) --page N (0)
+//            --golden --pack FILE --facts FILE --fact K=V --extra N,N.. --hash PLACE
+//            --keys F:KEY:DOWN,.. --pointer F:X:Y,.. --dump DIR
+// Network imports are refused as realm-host.c refuses them;
+// VERSE_NATIVE_CLOCK_MS fixes the clock for both.
+#load "../../coax/web/wasm-chrome.coax";
+
+WR_BIG :: 67108864;          // the most bytes one memory read or file holds
+WR_OPTS :: 16;
+WrOpt :: struct { name: string; value: string; }
+// The module's optional exports, asked once.
+WrHas :: struct {
+  state_init: bool; golden: bool; page: bool; action: bool; hash: bool; draw_count: bool; water: bool; grass: bool;
+  particle_instances: bool; stores: bool; particles: bool; surface: bool; caster_v: bool; caster_i: bool; asset_ready: bool;
+}
+
+#test "the pages a module's memory import declares" {
+  // magic, version; a type section (skipped); an import section with one memory import, min 300
+  m := [24] u8.[0, 97, 115, 109, 1, 0, 0, 0, 1, 1, 0, 2, 12, 1, 3, 'e', 'n', 'v', 1, 'm', 2, 0, 172, 2];
+  #assert wr_memory_pages(cast(string) m[..]) == 300;
+  #assert wr_memory_pages(cast(string) m[0..<9]) == 0;
+  // a function import before it (kind 0, type index), then a memory with a maximum (flag 1)
+  f := [30] u8.[0, 97, 115, 109, 1, 0, 0, 0, 2, 20, 2, 1, 'e', 1, 'f', 0, 5, 1, 'e', 1, 'm', 2, 1, 128, 1, 128, 8, 0, 0, 0];
+  #assert wr_memory_pages(cast(string) f[..]) == 128;
+}
+#test "FNV-1a 64 in hex" {
+  h: [16] u8;
+  #assert wr_fnv(h[..], "") == "cbf29ce484222325" && wr_fnv(h[..], "a") == "af63dc4c8601ec8c";
+}
+#test "options and lists" {
+  #assert wr_list_count("10:-2:1,11:-2:0") == 2 && wr_list_count("") == 0;
+  #assert wr_list_item("10:-2:1,11:-2:0", 1) == "11:-2:0" && wr_list_item("7,8", 0) == "7";
+  #assert wr_part("10:-2:1", 1) == -2 && wr_part("10:-2:1", 2) == 1 && wr_part("5", 0) == 5;
+}
+
+// The initial pages of the first memory import (host.js grows its memory to them), 0 when none.
+wr_memory_pages :: (b: string) -> int {
+  i := 8;
+  while i < b.count {
+    id := cast(int) b[i]; i += 1;
+    size := wr_leb(b, i); i = size.next;
+    end := i + size.value;
+    if id == 2 {
+      n := wr_leb(b, i); i = n.next;
+      for k: 0..<n.value {
+        for name: 0..<2 { l := wr_leb(b, i); i = l.next + l.value; }
+        if i >= b.count { return 0; }
+        kind := cast(int) b[i]; i += 1;
+        if kind == 0 { i = wr_leb(b, i).next; }
+        else if kind == 1 { i += 1; fl := wr_leb(b, i); i = fl.next; i = wr_leb(b, i).next; if (fl.value & 1) != 0 { i = wr_leb(b, i).next; } }
+        else if kind == 2 { i = wr_leb(b, i).next; return wr_leb(b, i).value; }
+        else if kind == 3 { i += 2; }
+        else { return 0; }
+      }
+      return 0;
+    }
+    i = end;
+  }
+  return 0;
+}
+WrLeb :: struct { value: int; next: int; }
+wr_leb :: (b: string, at: int) -> WrLeb {
+  v := 0; shift := 0; i := at;
+  while i < b.count && shift < 63 {
+    c := cast(int) b[i]; i += 1;
+    v += (c & 127) << shift; shift += 7;
+    if (c & 128) == 0 { break; }
+  }
+  return WrLeb.{value = v, next = i};
+}
+WR_HEX :: "0123456789abcdef";
+wr_fnv_u64 :: (b: string) -> u64 {
+  h: u64 = 14695981039346656037;
+  for c: b { h = mul_wrap(h ^ cast(u64) c, cast(u64) 1099511628211); }
+  return h;
+}
+wr_fnv :: (out: [] u8, b: string) -> string {
+  h := wr_fnv_u64(b);
+  for i: 0..<16 { out[15 - i] = WR_HEX[cast(int) (h & 15)]; h = h >> 4; }
+  return cast(string) out[0..<16];
+}
+wr_list_count :: (s: string) -> int {
+  if s.count == 0 { return 0; }
+  n := 1;
+  for c: s { if c == ',' { n += 1; } }
+  return n;
+}
+wr_list_item :: (s: string, k: int) -> string {
+  i := 0; f := 0;
+  while i <= s.count {
+    j := i;
+    while j < s.count && s[j] != ',' { j += 1; }
+    if f == k { return s[i..<j]; }
+    f += 1; i = j + 1;
+  }
+  return "";
+}
+// The k-th ':'-separated number of item.
+wr_part :: (item: string, k: int) -> int {
+  i := 0; f := 0;
+  while i <= item.count {
+    j := i;
+    while j < item.count && item[j] != ':' { j += 1; }
+    if f == k { return wc_parse(item[i..<j]); }
+    f += 1; i = j + 1;
+  }
+  return 0;
+}
+wr_u32 :: (b: string, at: int) -> int {
+  if at < 0 || at + 4 > b.count { return 0; }
+  return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24);
+}
+// An unsigned 32-bit result (JavaScript's >>> 0).
+wr_u :: (v: int) -> int { return v & 4294967295; }
+
+WrRun :: struct {
+  c: [1] Cdp;
+  has: WrHas;
+  state: int; vertices: int; uniforms: int; inbox_cap: int;
+}
+// "S" or "S,A,B" as an export's arguments.
+wr_args :: (out: [] u8, a: [] int) -> string {
+  n := 0; d: [24] u8;
+  for v, i: a {
+    if i > 0 { out[n] = ','; n += 1; }
+    s := wc_dec(d[..], v);
+    for k: 0..<s.count { out[n + k] = s[k]; }
+    n += s.count;
+  }
+  return cast(string) out[0..<n];
+}
+wr_call :: (r: [] WrRun, f: string, a: [] int) -> int {
+  x: [512] u8;
+  return wc_int(r[0].c[..], f, wr_args(x[..], a));
+}
+wr_s :: (r: [] WrRun, f: string) -> int { a := [1] int.[r[0].state]; return wr_call(r, f, a[..]); }
+wr_bytes :: (r: [] WrRun, at: int, n: int, out: [] u8) -> string {
+  if n <= 0 { return ""; }
+  k := wc_read(r[0].c[..], at, n, out);
+  return ifx k == n then cast(string) out[0..<n] else "";
+}
+wr_after :: (r: [] WrRun) {
+  if r[0].has.action && wr_s(r, "coaxial_action") != 0 { v := wr_s(r, "coaxial_action_done"); }
+}
+wr_say_after :: (r: [] WrRun) {
+  if !r[0].has.action { return; }
+  a := wr_s(r, "coaxial_action");
+  if a == 0 { return; }
+  span := wr_s(r, "coaxial_outbox_len");
+  at := wr_s(r, "coaxial_outbox");
+  b: [200] u8;
+  t := wr_bytes(r, at, ifx span < 200 then span else 200, b[..]);
+  print("realm-host: action %: %\n", a, t);
+  v := wr_s(r, "coaxial_action_done");
+}
+wr_send :: (r: [] WrRun, kind: int, text: string) {
+  b := ifx text.count > r[0].inbox_cap then text[0..<r[0].inbox_cap] else text;
+  ok := wc_write(r[0].c[..], wr_s(r, "coaxial_inbox"), b);
+  a := [3] int.[r[0].state, kind, b.count];
+  v := wr_call(r, "coaxial_message", a[..]);
+  wr_after(r);
+}
+wr_opt :: (o: [] WrOpt, n: int, name: string, fallback: string) -> string {
+  for i: 0..<n { if o[i].name == name { return o[i].value; } }
+  return fallback;
+}
+wr_write :: (dir: string, name: string, data: string) -> bool {
+  p: [4096] u8;
+  return fs_write(fs_join(dir, name, p[..]), data);
+}
+wr_fail :: (r: [] WrRun, what: string) -> int {
+  tool_err("wasm-run: "); tool_err(what); tool_err(": "); tool_errln(cdp_error(r[0].c[..]));
+  cdp_close(r[0].c[..]);
+  return 1;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh verse/native/wasm-run.coax REALM.wasm [realm-run options]"); return 2; }
+  wasm_path := args_at(a[..], 0);
+  o: [WR_OPTS] WrOpt; on := 0; golden := false;
+  i := 1;
+  while i < args_count(a[..]) {
+    s := args_at(a[..], i);
+    if s == "--golden" { golden = true; }
+    else if s.count > 2 && on < WR_OPTS { o[on] = WrOpt.{name = s[2..<s.count], value = args_at(a[..], i + 1)}; on += 1; i += 1; }
+    i += 1;
+  }
+  frames := wc_parse(wr_opt(o[..], on, "frames", "120")); every := wc_parse(wr_opt(o[..], on, "every", "30"));
+  wh := args_size(wr_opt(o[..], on, "size", "1280x720"));
+  scale := wr_opt(o[..], on, "scale", "1");
+  sn := args_number(scale);
+  if !wh.ok || !sn.ok || every < 1 { tool_errln("wasm-run: --size is WxH, --scale a number and --every at least 1"); return 2; }
+
+  module: [WR_BIG] u8;
+  mn := fs_read(wasm_path, module[..]);
+  if mn < 0 { tool_err("wasm-run: can't read "); tool_errln(wasm_path); return 1; }
+  bytes := cast(string) module[0..<mn];
+  r: [1] WrRun;
+  if !wc_open(r[0].c[..]) { return wr_fail(r[..], "Chrome"); }
+  cb: [64] u8;
+  clock := proc_getenv("VERSE_NATIVE_CLOCK_MS", cb[..]);
+  spec: [2048] u8;
+  clock_part := ifx clock.count > 0 then ",\"clock\":" else "";
+  parts := [3] string.["{\"fixed\":{\"env.coaxial_now_ms\":\"clock\",\"env.coaxial_now_seconds\":\"clock_s\",\"env.coaxial_http\":-1,\"env.coaxial_http_bounded\":-1,\"env.coaxial_http_cancel\":0,\"env.host_line\":\"void\",\"env.host_dot\":\"void\",\"env.host_slot\":\"void\",\"env.coaxial_socket_open\":-1,\"env.coaxial_socket_send\":\"void\",\"env.coaxial_socket_close\":\"void\",\"env.coaxial_storage_put\":2,\"env.coaxial_storage_get\":2,\"env.coaxial_storage_delete\":2,\"env.coaxial_storage_cancel\":0,\"wasi_snapshot_preview1.fd_fdstat_get\":52,\"wasi_snapshot_preview1.fd_seek\":52,\"wasi_snapshot_preview1.fd_close\":52,\"wasi_snapshot_preview1.clock_time_get\":52,\"wasi_snapshot_preview1.fd_write\":0}", clock_part, ""];
+  head := wc_cat(spec[..], parts[..]);
+  sp: [2200] u8;
+  tail := [3] string.[head, clock, "}"];
+  spec_json := wc_cat(sp[..], tail[..]);
+  // As host.js: 128 pages, grown to the initial pages the module's memory import declares.
+  declared := wr_memory_pages(bytes);
+  pages := ifx declared > 128 then declared else 128;
+  if !wc_file(r[0].c[..], "realm", bytes) { return wr_fail(r[..], "sending the module"); }
+  loaded := wc_load(r[0].c[..], "realm", pages, spec_json, WC_THROW);
+  if loaded != "ok" { return wr_fail(r[..], ifx loaded == "link" then "the module wants more memory" else "instantiating"); }
+  c := r[0].c[..];
+  r[0].has = WrHas.{
+    state_init = wc_has(c, "coaxial_state_init"), golden = wc_has(c, "coaxial_golden"), page = wc_has(c, "coaxial_page"),
+    action = wc_has(c, "coaxial_action"), hash = wc_has(c, "coaxial_hash"), draw_count = wc_has(c, "coaxial_draw_count"),
+    water = wc_has(c, "coaxial_water_draws"), grass = wc_has(c, "coaxial_grass_instances"), particle_instances = wc_has(c, "coaxial_particle_instances"),
+    stores = wc_has(c, "coaxial_stores"), particles = wc_has(c, "coaxial_particles"), surface = wc_has(c, "coaxial_surface_vertices"),
+    caster_v = wc_has(c, "coaxial_caster_vertices"), caster_i = wc_has(c, "coaxial_caster_instances"), asset_ready = wc_has(c, "coaxial_asset_ready")};
+  heap := wc_global(c, "__heap_base");
+  floats := wc_int(c, "coaxial_vertex_floats", ""); max_vertices := wc_int(c, "coaxial_max_vertices", ""); uniform_floats := wc_int(c, "coaxial_uniform_floats", "");
+  size := wc_size(c);
+  base := ((ifx heap > size then heap else size) + 65535) / 65536 * 65536;
+  ss := wc_int(c, "coaxial_state_size", "");
+  state_cap := ((ifx ss > 1024 then ss else 1024) + 15) / 16 * 16;
+  total := base + state_cap + max_vertices * floats * 4 + uniform_floats * 4 + 64;
+  if total > size { g := wc_grow(c, (total - size + 65535) / 65536); }
+  r[0].state = base; r[0].vertices = base + state_cap; r[0].uniforms = r[0].vertices + max_vertices * floats * 4;
+  r[0].inbox_cap = wc_int(c, "coaxial_inbox_cap", "");
+  if r[0].has.state_init { v := wr_s(r[..], "coaxial_state_init"); }   // struct defaults, as the browser host applies them
+  if golden && r[0].has.golden { one := [1] int.[1]; v := wr_call(r[..], "coaxial_golden", one[..]); }
+  if r[0].has.page { pa := [2] int.[r[0].state, wc_parse(wr_opt(o[..], on, "page", "0"))]; v := wr_call(r[..], "coaxial_page", pa[..]); }
+
+  // The pack, as realm-host.c rh_pack reads it (none without --pack, as a page that names none).
+  pack_store: [WR_BIG] u8;
+  pack_path := wr_opt(o[..], on, "pack", "");
+  pn := 32;
+  if pack_path.count > 0 { pn = fs_read(pack_path, pack_store[..]); if pn < 0 { tool_err("wasm-run: can't read "); tool_errln(pack_path); cdp_close(c); return 1; } }
+  else { for k: 0..<32 { pack_store[k] = 0; } }
+  pack := cast(string) pack_store[0..<pn];
+  count := wr_u32(pack, 4); table := wr_u32(pack, 16);
+  layers := 0;
+  for k: 0..<count { if pack[table + k * 48] == 4 { layers += 1; } }
+  facts_path := wr_opt(o[..], on, "facts", "");
+  if facts_path.count > 0 {
+    fb: [1048576] u8;
+    fn := fs_read(facts_path, fb[..]);
+    if fn < 0 { tool_err("wasm-run: can't read "); tool_errln(facts_path); cdp_close(c); return 1; }
+    while fn > 0 && fb[fn - 1] == '\n' { fn -= 1; }
+    fact := wr_opt(o[..], on, "fact", "");
+    if fact.count > 0 { fb[fn] = '\n'; fn += 1; for k: 0..<fact.count { fb[fn + k] = fact[k]; } fn += fact.count; }
+    wr_send(r[..], 600, cast(string) fb[0..<fn]);
+  }
+  wr_send(r[..], 606, "");
+  first := ifx pack_path.count > 0 then 4 else 0;
+  if pack_path.count > 0 {
+    lb: [64] u8; d: [24] u8;
+    lens := [3] string.[wc_dec(d[..], pn), " ", ""];
+    l1 := wc_cat(lb[..], lens[..]);
+    lb2: [64] u8; both := [2] string.[l1, wc_dec(d[..], pn)];
+    wr_send(r[..], 605, wc_cat(lb2[..], both[..]));
+    sizes: [4] int; sizes[3] = layers;
+    cat_at := -1; cat_n := 0;
+    for k: 0..<count {
+      at := table + k * 48; kind := cast(int) pack[at];
+      if kind >= 1 && kind <= 3 && sizes[kind - 1] == 0 {
+        sizes[kind - 1] = wr_u32(pack, at + 8);
+        if kind == 1 { cat_at = wr_u32(pack, at + 4); cat_n = sizes[0]; }
+      }
+    }
+    if cat_at < 0 { tool_errln("wasm-run: the pack has no catalog"); cdp_close(c); return 1; }
+    aa := [3] int.[r[0].state, 0, cat_n];
+    at := wr_call(r[..], "coaxial_asset", aa[..]);
+    if at != 0 { ok := wc_write(c, at, pack[cat_at..<cat_at + cat_n]); }
+    for k: 0..<4 { ar := [3] int.[r[0].state, k, sizes[k]]; v := wr_call(r[..], "coaxial_asset_ready", ar[..]); }
+  }
+  extra := wr_opt(o[..], on, "extra", "");
+  if r[0].has.asset_ready { for k: 0..<wr_list_count(extra) { ar := [3] int.[r[0].state, first + k, wc_parse(wr_list_item(extra, k))]; v := wr_call(r[..], "coaxial_asset_ready", ar[..]); } }
+  print("realm-run: % entries in the pack (% layers), % floats a vertex, % uniforms\n", count, layers, floats, uniform_floats);
+  // --hash PLACE: the page's location hash, as host.js sendHash delivers it once the engine is up
+  place := wr_opt(o[..], on, "hash", "");
+  if place.count > 0 && r[0].has.hash {
+    b := ifx place.count > r[0].inbox_cap then place[0..<r[0].inbox_cap] else place;
+    ok := wc_write(c, wr_s(r[..], "coaxial_inbox"), b);
+    ha := [2] int.[r[0].state, b.count];
+    v := wr_call(r[..], "coaxial_hash", ha[..]);
+    wr_after(r[..]);
+  }
+
+  keys := wr_opt(o[..], on, "keys", ""); clicks := wr_opt(o[..], on, "pointer", "");
+  buf: [WR_BIG] u8; hx: [16] u8;
+  hud := 0;
+  args_buf: [512] u8;
+  for f: 1..<frames + 1 {
+    for k: 0..<wr_list_count(keys) {
+      item := wr_list_item(keys, k);
+      if wr_part(item, 0) != f { continue; }
+      ka := [3] int.[r[0].state, wr_part(item, 1), 0];
+      v := wr_call(r[..], ifx wr_part(item, 2) != 0 then "coaxial_key" else "coaxial_key_up", ka[..]);
+      wr_say_after(r[..]);
+    }
+    for k: 0..<wr_list_count(clicks) {
+      item := wr_list_item(clicks, k);
+      if wr_part(item, 0) != f { continue; }
+      for ph: 0..<2 {
+        pa := [6] int.[r[0].state, wr_part(item, 1), wr_part(item, 2), ph * 2, 0, 1];
+        v := wr_call(r[..], "coaxial_pointer", pa[..]);
+        wr_say_after(r[..]);
+      }
+    }
+    fa := [5] int.[r[0].state, r[0].vertices, r[0].uniforms, wh.w, wh.h];
+    fargs := wr_args(args_buf[..], fa[..]);
+    fx: [600] u8; fp := [4] string.[fargs, ",", scale, ",1/60,0"];
+    n := wr_u(wc_int(c, "coaxial_frame", wc_cat(fx[..], fp[..])));
+    if n > max_vertices { n = max_vertices; }
+    hud = n;
+    wr_say_after(r[..]);
+    if f % every != 0 && f != frames { continue; }
+    draws := ifx r[0].has.draw_count then wr_u(wr_s(r[..], "coaxial_draw_count")) else 0;
+    water := ifx r[0].has.water then wr_u(wr_s(r[..], "coaxial_water_draws")) else 0;
+    grass := ifx r[0].has.grass then wr_u(wr_s(r[..], "coaxial_grass_instances")) else 0;
+    sparks := ifx r[0].has.particle_instances then wr_u(wr_s(r[..], "coaxial_particle_instances")) else 0;
+    print("frame %: % vertices % draws (% water) % blades % sparks", f, n, draws, water, grass, sparks);
+    print(" v %", wr_fnv(hx[..], wr_bytes(r[..], r[0].vertices, n * floats * 4, buf[..])));
+    print(" u %", wr_fnv(hx[..], wr_bytes(r[..], r[0].uniforms, uniform_floats * 4, buf[..])));
+    print(" d %", wr_fnv(hx[..], ifx draws > 0 then wr_bytes(r[..], wr_s(r[..], "coaxial_draws"), draws * 16, buf[..]) else ""));
+    stores := ifx r[0].has.stores then wc_int(c, "coaxial_stores", "") else 0;
+    for k: 0..<stores {
+      sa := [2] int.[r[0].state, k];
+      sb := wr_u(wr_call(r[..], "coaxial_store_bytes", sa[..])) & 4294967292;
+      print(" s% % %", k, sb, wr_fnv(hx[..], wr_bytes(r[..], wr_call(r[..], "coaxial_store", sa[..]), sb, buf[..])));
+    }
+    pb := ifx r[0].has.particles then wr_u(wr_s(r[..], "coaxial_particle_bytes")) & 4294967292 else 0;
+    print(" p %\n", wr_fnv(hx[..], ifx r[0].has.particles then wr_bytes(r[..], wr_s(r[..], "coaxial_particles"), pb, buf[..]) else ""));
+  }
+  dump := wr_opt(o[..], on, "dump", "");
+  if dump.count > 0 {
+    ok := wr_write(dump, "u.bin", wr_bytes(r[..], r[0].uniforms, uniform_floats * 4, buf[..]));
+    stores := ifx r[0].has.stores then wc_int(c, "coaxial_stores", "") else 0;
+    for k: 0..<(ifx stores < 4 then stores else 4) {
+      sa := [2] int.[r[0].state, k];
+      sb := wr_u(wr_call(r[..], "coaxial_store_bytes", sa[..])) & 4294967292;
+      nm: [16] u8; d: [24] u8; np := [3] string.["s", wc_dec(d[..], k), ".bin"];
+      ok = wr_write(dump, wc_cat(nm[..], np[..]), wr_bytes(r[..], wr_call(r[..], "coaxial_store", sa[..]), sb, buf[..])) && ok;
+    }
+    // what a pass check draws the scene from (verse/gpu/everglade-pass.coax): the draw list, how many of its
+    // last draws are water, the grass's blades, the particles' quads, the frame's vertices and their floats, the surface's vertices,
+    // the casters' vertices and instances, the pack's storage (vertices) and index buffers, and its layer images in order
+    draws := ifx r[0].has.draw_count then wr_u(wr_s(r[..], "coaxial_draw_count")) else 0;
+    zero16: [16] u8;
+    ok = wr_write(dump, "draws.bin", ifx draws > 0 then wr_bytes(r[..], wr_s(r[..], "coaxial_draws"), draws * 16, buf[..]) else cast(string) zero16[..]) && ok;
+    water := ifx r[0].has.water then wr_u(wr_s(r[..], "coaxial_water_draws")) else 0;
+    if water > draws { water = draws; }
+    t: [512] u8; tn := 0; d: [24] u8;
+    vals := [9] int.[draws, water, ifx r[0].has.grass then wr_u(wr_s(r[..], "coaxial_grass_instances")) else 0,
+      ifx r[0].has.particle_instances then wr_u(wr_s(r[..], "coaxial_particle_instances")) else 0, hud, floats,
+      ifx r[0].has.surface then wr_u(wr_s(r[..], "coaxial_surface_vertices")) else 0,
+      ifx r[0].has.caster_v then wr_u(wr_s(r[..], "coaxial_caster_vertices")) else 0,
+      ifx r[0].has.caster_i then wr_u(wr_s(r[..], "coaxial_caster_instances")) else 0];
+    for v, k: vals {
+      s := wc_dec(d[..], v);
+      if k > 0 { t[tn] = ' '; tn += 1; }
+      for j: 0..<s.count { t[tn + j] = s[j]; }
+      tn += s.count;
+    }
+    t[tn] = '\n'; tn += 1;
+    ok = wr_write(dump, "draws.txt", cast(string) t[0..<tn]) && ok;
+    // the frame's own vertices (the HUD, host.js's fx pipeline after post), at least 16 bytes
+    hb := hud * floats * 4;
+    if hb < 16 { for k: 0..<16 { buf[k] = 0; } k := wc_read(c, r[0].vertices, hb, buf[..]); hb = 16; }
+    else { k := wc_read(c, r[0].vertices, hb, buf[..]); }
+    ok = wr_write(dump, "hud.bin", cast(string) buf[0..<hb]) && ok;
+    // the particles' puffs (host.js writes coaxial_particle_bytes of them each frame)
+    if r[0].has.particles {
+      pb := wr_u(wr_s(r[..], "coaxial_particle_bytes")) & 4294967292;
+      ok = wr_write(dump, "puffs.bin", wr_bytes(r[..], wr_s(r[..], "coaxial_particles"), ifx pb > 16 then pb else 16, buf[..])) && ok;
+    }
+    vdone := false; idone := false; li := 0;
+    list: [65536] u8; ln := 0;
+    for k: 0..<count {
+      at := table + k * 48; kind := cast(int) pack[at];
+      from := wr_u32(pack, at + 4); span := wr_u32(pack, at + 8);
+      if kind == 2 && !vdone { ok = wr_write(dump, "vertices.bin", pack[from..<from + span]) && ok; vdone = true; }
+      if kind == 3 && !idone { ok = wr_write(dump, "index.bin", pack[from..<from + span]) && ok; idone = true; }
+      if kind == 4 {
+        nm: [32] u8; np := [3] string.["layer-", wc_dec(d[..], li), ".img"];
+        name := wc_cat(nm[..], np[..]);
+        ok = wr_write(dump, name, pack[from..<from + span]) && ok;
+        for j: 0..<name.count { list[ln + j] = name[j]; }
+        ln += name.count; list[ln] = '\n'; ln += 1; li += 1;
+      }
+    }
+    ok = wr_write(dump, "layers.bin.list", cast(string) list[0..<ln]) && ok;
+    if !ok { tool_err("wasm-run: could not write the dump in "); tool_errln(dump); cdp_close(c); return 1; }
+  }
+  cdp_close(c);
+  return 0;
+}

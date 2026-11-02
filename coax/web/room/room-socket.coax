@@ -1,0 +1,100 @@
+// What the room checks share (relay-check.coax, load.coax): text into a
+// byte buffer, numbers out of a frame's space-separated fields, the room's
+// socket URL, and the clock. The sockets are coax/lib/net/relay_conn.coax
+// (ws:// and wss://, TLS through tls-native.c), so tool.sh links TLS for
+// these tools (the "tool.sh: tls" line below).
+// tool.sh: tls
+#import "Basic";
+#load "../../lib/net/relay_conn.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/proc.coax";
+
+cxproc_wall_us :: () -> int #foreign;
+
+#test "text and numbers into a buffer" {
+  b: [64] u8;
+  n := rs_put(b[..], 0, "u ");
+  n = rs_int(b[..], n, 199);
+  #assert cast(string) b[0..<n] == "u 199";
+  n = rs_int(b[..], 0, -20000);
+  #assert cast(string) b[0..<n] == "-20000";
+  n = rs_int(b[..], 0, 0);
+  #assert cast(string) b[0..<n] == "0";
+  #assert rs_put(b[0..<2], 0, "abc") == -1 && rs_int(b[..], -1, 5) == -1;
+}
+#test "a frame's fields" {
+  f := "s 12 3 a -40 x";
+  #assert rs_field(f, 0) == "s" && rs_field(f, 1) == "12" && rs_field(f, 4) == "-40" && rs_field(f, 6) == "";
+  #assert rs_num(rs_field(f, 1)) == 12 && rs_num(rs_field(f, 4)) == -40 && rs_num("") == 0 && rs_num("7z") == 7;
+  #assert rs_starts("m 0 u 5", "m 0 u ") && !rs_starts("m 0", "m 0 u ");
+}
+#test "the room's socket URL" {
+  u: [256] u8;
+  #assert rs_url(u[..], "ws://localhost:8830", "/api/room/relay/check/", "t", 42) == "ws://localhost:8830/api/room/relay/check/t42";
+  #assert rs_url(u[..], "wss://openagents.com/", "/api/room/orbit-league/", "load-", 7) == "wss://openagents.com/api/room/orbit-league/load-7";
+}
+
+// s into out at at: the end, or -1 when it doesn't fit.
+rs_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+// v in decimal into out at at: the end, or -1.
+rs_int :: (out: [] u8, at: int, v: int) -> int {
+  if at < 0 { return -1; }
+  tmp: [24] u8; k := 0; x := v; neg := v < 0;
+  while true {
+    d := x % 10; if d < 0 { d = -d; }
+    tmp[k] = cast(u8) ('0' + d); k += 1; x /= 10;
+    if x == 0 { break; }
+  }
+  n := at;
+  if neg { n = rs_put(out, n, "-"); if n < 0 { return -1; } }
+  if n + k > out.count { return -1; }
+  for i: 0..<k { out[n + i] = tmp[k - 1 - i]; }
+  return n + k;
+}
+rs_starts :: (s: string, head: string) -> bool { return s.count >= head.count && s[0..<head.count] == head; }
+// The k-th space-separated field of s ("" past the last).
+rs_field :: (s: string, k: int) -> string {
+  i := 0; f := 0;
+  while i <= s.count {
+    j := i;
+    while j < s.count && s[j] != ' ' { j += 1; }
+    if f == k { return s[i..<j]; }
+    f += 1; i = j + 1;
+  }
+  return "";
+}
+// A signed decimal's value, read up to its first other byte.
+rs_num :: (s: string) -> int {
+  i := 0; neg := false; v := 0;
+  if s.count > 0 && s[0] == '-' { neg = true; i = 1; }
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) (s[i] - '0'); i += 1; }
+  return ifx neg then -v else v;
+}
+// base (no trailing slash needed) + path + name + n.
+rs_url :: (out: [] u8, base: string, path: string, name: string, n: int) -> string {
+  b := base;
+  if b.count > 0 && b[b.count - 1] == '/' { b = b[0..<b.count - 1]; }
+  k := rs_put(out, 0, b); k = rs_put(out, k, path); k = rs_put(out, k, name); k = rs_int(out, k, n);
+  return ifx k < 0 then "" else cast(string) out[0..<k];
+}
+// The base a check was given: a URL's 127.0.0.1 becomes localhost, because
+// relay_uri.coax takes DNS names only (the server listens on 127.0.0.1).
+rs_base :: (given: string, out: [] u8) -> string {
+  ip := "127.0.0.1";
+  for i: 0..<given.count {
+    if i + ip.count <= given.count && given[i..<i + ip.count] == ip {
+      k := rs_put(out, 0, given[0..<i]); k = rs_put(out, k, "localhost"); k = rs_put(out, k, given[i + ip.count..<given.count]);
+      return ifx k < 0 then given else cast(string) out[0..<k];
+    }
+  }
+  return given;
+}
+rs_now :: () -> int { return proc_now_ms(); }
+// A name that differs from run to run (the wall clock), below 100000.
+rs_stamp :: () -> int { return (cxproc_wall_us() / 1000) % 100000; }

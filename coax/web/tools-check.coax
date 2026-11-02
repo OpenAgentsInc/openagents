@@ -1,6 +1,7 @@
 // The tools-in-Coax rule (coax/tools-in-coax.md), checked: every tracked
 // .ts, .py, .js, .sh and .cjs file either says why it stays non-Coax in a
-// line starting "Firm reason:" or is on coax/tools-port.txt. A new file that
+// header line starting "Firm reason:" (one of its first 60 lines, after
+// comment marks) or is on coax/tools-port.txt. A new file that
 // is neither fails. Entries on the list that are gone, or now carry a
 // header, are reported so the list keeps shrinking.
 //   coax/web/tool.sh tools-check            (from the repo root)
@@ -20,6 +21,51 @@ FINGERPRINTED :: [3] string.["coax/build.sh", "coax/bootstrap-build.sh", "coax/p
   #assert !tc_covered("x.coax") && !tc_covered("x.mjs") && !tc_covered("ts") && !tc_covered("x.tsx");
   #assert tc_listed("a\nb/c.ts\n# x.ts\n", "b/c.ts") && !tc_listed("a\nb/c.ts\n", "c.ts") && !tc_listed("# x.ts\n", "x.ts") && tc_listed("a", "a");
   #assert tc_has("x\n# Firm reason: 5 (...)\n", "Firm reason:") && !tc_has("Firm reason", "Firm reason:");
+}
+#test "the reason is a header line, not the words anywhere" {
+  #assert tc_header("#!/bin/sh\n# Firm reason: 5 (a wrapper)\n") && tc_header("// Firm reason: 1 (glue)\n") && tc_header("\"\"\"Firm reason: 2 (oracle)\n");
+  #assert tc_header(" * Firm reason: 3\n") && tc_header("Firm reason: 4\n") && tc_header("x\n  #  Firm reason: 2\n");
+  #assert !tc_header("echo \"no Firm reason: here\"\n") && !tc_header("# a tool without a \"Firm reason:\" line\n") && !tc_header("");
+  deep: [4096] u8; n := 0;
+  for i: 0..<TC_HEADER_LINES { deep[n] = 'x'; deep[n + 1] = '\n'; n += 2; }
+  tail := "# Firm reason: 5\n";
+  for c: tail { deep[n] = c; n += 1; }
+  #assert !tc_header(cast(string) deep[0..<n]) && tc_header(cast(string) deep[2..<n]);
+}
+TC_HEADER_LINES :: 60;
+// Whether one of the first TC_HEADER_LINES lines starts, after spaces and
+// comment marks (# // /* * """ ''' -- ;), with "Firm reason:".
+tc_header :: (body: string) -> bool {
+  mark := "Firm reason:";
+  i := 0; line := 0;
+  while i < body.count && line < TC_HEADER_LINES {
+    j := i;
+    while j < body.count && (body[j] == ' ' || body[j] == '\t' || body[j] == '#' || body[j] == '/' || body[j] == '*' || body[j] == '"' || body[j] == '\'' || body[j] == '-' || body[j] == ';') { j += 1; }
+    if j + mark.count <= body.count && body[j..<j + mark.count] == mark { return true; }
+    while i < body.count && body[i] != '\n' { i += 1; }
+    i += 1; line += 1;
+  }
+  return false;
+}
+#test "the list's base commit" {
+  #assert tc_base("# x\n# base: 0123abcd\na.py\n") == "0123abcd" && tc_base("a.py\n") == "" && tc_base("# base: \n") == "";
+  #assert tc_base("# base: 12 34\n") == "";
+}
+// The commit named by the list's "# base: HASH" line, or "".
+tc_base :: (list: string) -> string {
+  head := "# base: ";
+  i := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    line := list[i..<j]; i = j + 1;
+    if line.count > head.count && line[0..<head.count] == head {
+      h := line[head.count..<line.count];
+      for c: h { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return ""; } }
+      return h;
+    }
+  }
+  return "";
 }
 tc_ends :: (s: string, tail: string) -> bool { return s.count > tail.count && s[s.count - tail.count..<s.count] == tail; }
 tc_covered :: (path: string) -> bool {
@@ -65,11 +111,31 @@ tool_main :: () -> int #export_c {
     for f: FINGERPRINTED { if f == path { skip = true; } }
     if skip { continue; }
     n := fs_read(path, body[..]);
-    header := n >= 0 && tc_has(cast(string) body[0..<n], "Firm reason:");
+    header := n >= 0 && tc_header(cast(string) body[0..<n]);
     listed := tc_listed(text, path);
     if !header && !listed { print("new non-Coax tool with no Firm reason: line and not on the port list: %\n", path); bad += 1; }
     if header && listed { print("on the port list but carries a Firm reason: line (take it off the list): %\n", path); }
   }
+  // Every listed path was tracked at the list's base commit.
+  base := tc_base(text);
+  if base.count < 7 { tool_errln("tools-check: coax/tools-port.txt has no \"# base: COMMIT\" line"); return 2; }
+  tree: [4194304] u8;
+  lt := [6] string.["git", "ls-tree", "-r", "--name-only", base, ""];
+  t := proc_run(lt[0..<5], 60000, tree[..], err[..]);
+  if t.started != 0 || t.status != 0 || t.cut { print("tools-check: git ls-tree % failed (is the base commit fetched?)\n", base); return 2; }
+  // only the covered paths, so each lookup scans less
+  at_base: [1048576] u8; bn := 0;
+  q := 0;
+  while q < t.out_n {
+    e := q;
+    while e < t.out_n && tree[e] != '\n' { e += 1; }
+    if tc_covered(cast(string) tree[q..<e]) && bn + e - q + 1 <= at_base.count {
+      for x: q..<e { at_base[bn] = tree[x]; bn += 1; }
+      at_base[bn] = '\n'; bn += 1;
+    }
+    q = e + 1;
+  }
+  base_paths := cast(string) at_base[0..<bn];
   // Entries whose file is gone: the port landed, so the line goes.
   k := 0;
   while k < text.count {
@@ -77,7 +143,8 @@ tool_main :: () -> int #export_c {
     while e < text.count && text[e] != '\n' { e += 1; }
     line := text[k..<e]; k = e + 1;
     if line.count == 0 || line[0] == '#' { continue; }
-    if !tc_listed(all, line) { print("on the port list but not tracked (ported? take it off): %\n", line); }
+    if !tc_listed(all, line) { print("on the port list but not tracked (ported? take it off): %\n", line); continue; }
+    if !tc_listed(base_paths, line) { print("on the port list but added after its base commit (write it in Coax, or give it a Firm reason: line): %\n", line); bad += 1; }
   }
   print("tools-check: % tracked tool files, % new without a reason\n", tracked, bad);
   return ifx bad == 0 then 0 else 1;

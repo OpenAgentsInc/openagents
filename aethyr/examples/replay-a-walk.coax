@@ -3,7 +3,7 @@
 #import "Basic";
 
 // A recorded walk of 240 uneven frames, its replay, and a replay with a fault planted at
-// step 150. The browser runs the same file (coax/web/replay-hosts.test.ts).
+// step 150. The browser runs the same file (coax/web/replay-hosts.coax).
 main :: () {
   refused := replay_walk(3);
   print("refused: % duplicate, % stale, % unknown\n", refused / 1000000, refused / 1000 % 1000, refused % 1000);

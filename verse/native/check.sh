@@ -71,7 +71,7 @@ else "$root/coax/web/wasm.sh" "$web/$module.coax" "$web/$module-face.c" "$work/$
 "$here/build.sh" "$module" "$work/c"
 cp "$here/everglade.facts" "$here/build.sh" "$here/musl-math.sh" ${pack:+"$pack"} "$work/c/"
 mkdir -p "$work/c/wasm"
-VERSE_NATIVE_CLOCK_MS=0 bun "$here/wasm-run.ts" "$work/$realm.wasm" ${given[@]+"${given[@]}"} "${steps[@]}" --dump "$work/c/wasm" > "$work/wasm.txt"
+(cd "$root" && VERSE_NATIVE_CLOCK_MS=0 coax/web/tool.sh verse/native/wasm-run.coax "$work/$realm.wasm" ${given[@]+"${given[@]}"} "${steps[@]}" --dump "$work/c/wasm") > "$work/wasm.txt"
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$work/c" -cf - . | ssh -o BatchMode=yes "$host" "set -e
 d=\$(mktemp -d); trap 'rm -rf \$d' EXIT; cd \$d; tar -xf - 2>/dev/null
 mkdir -p verse/native; cp build.sh musl-math.sh verse/native/

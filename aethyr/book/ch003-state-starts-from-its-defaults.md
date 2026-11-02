@@ -4,7 +4,7 @@
 > `ax-state-construction` (#12611), the compiler writes the browser path:
 > each library header declares `coax_default_T`, and each page's C face
 > calls it. The check is
-> [coax/web/state-defaults.test.ts](../../coax/web/state-defaults.test.ts),
+> [coax/web/state-defaults.coax](../../coax/web/state-defaults.coax),
 > and [aethyr/loop.coax](../loop.coax)'s clock is safe when it was never
 > constructed.
 
@@ -168,9 +168,9 @@ a 3 s stall on the zeroed clock: steps 8, overlong 1
 
 ## The check
 
-`coax/web/state-defaults.test.ts` starts every engine that
-`apps/openagents-web/build.sh` builds, plus the Grid, the same way the
-browser does. It allocates a zeroed state and calls `coaxial_state_init`.
+`coax/web/state-defaults.coax` starts every engine that
+`apps/openagents-web/build.sh` builds, plus the Grid, in headless Chrome,
+the same way the browser does. It allocates a zeroed state and calls `coaxial_state_init`.
 Then, for each defaulted state, it compares the bytes with the output of the
 native `coax_init` for that type, compiled as a separate C program. If the
 bytes differ, the test reports the realm, type, field, and first differing
@@ -190,7 +190,7 @@ default, so a realm or a global that skips its defaults fails.
 
 ```shell
 apps/openagents-web/build.sh
-bun test coax/web/state-defaults.test.ts
+coax/web/tool.sh state-defaults
 ```
 
 | What | Result (2026-10-31) |

@@ -1,5 +1,5 @@
 /* The browser side of the Grid's host check: verse/tests/grid-session.coax's session, played
-   once, and its step digests, for coax/web/replay-hosts.test.ts. */
+   once, and its step digests, for coax/web/replay-hosts.coax. */
 #include "grid-session.h"
 #include <stdint.h>
 #define EXPORT(name) __attribute__((export_name(name)))

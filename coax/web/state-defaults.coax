@@ -1,0 +1,693 @@
+// Every browser engine boots from zeroed memory, as the host gives it, and
+// must end with the struct defaults native gives `s: [1] T` (Orbit League ran
+// without gravity for a day: spin_g = 1.0 read 0 in the browser). The
+// compiler declares coax_default_T in a unit's header for each of its types
+// with declared defaults; the face calls it for a new state
+// (coaxial_state_init) and for its own globals. For each engine build.sh
+// makes, this runs the built module's coaxial_state_init on a zeroed state
+// in headless Chrome (coax/web/wasm-chrome.coax) and compares the state,
+// byte for byte, with the native coax_init of its type. It also builds the
+// face natively and compares every face global of a defaulted type with that
+// type's native coax_init. Needs apps/openagents-web/build.sh first.
+//   coax/web/tool.sh state-defaults            (from the repo root: every engine)
+//   coax/web/tool.sh state-defaults NAME...    (only those engines; skips the Orbit League and Grid expectations)
+#load "wasm-chrome.coax";
+
+SD_ENGINES :: 64; SD_LIBS :: 16; SD_UNITS :: SD_LIBS + 1;
+SD_TYPES :: 64; SD_GLOBALS :: 64; SD_STATE :: 32;
+SD_TEXT :: 4194304;
+SD_TYPE_MAX :: 1048576;        // the largest default compared
+SD_PAR :: 6;                   // engines generated at once, as the old harness did
+
+Engine :: struct { name: string; coax: string; face: string; wasm: string; libs: [SD_LIBS] string; nlibs: int; steps: string; }
+// Text kept for the whole run: paths, names, file contents.
+Arena :: struct { b: [] u8; n: int; }
+// What a face must default: its state (its own coax type, or the coax
+// members of a face struct), its coax globals, each of a defaulted type, and
+// the unit whose C defines each type's coax_init.
+Plan :: struct {
+  name: string;
+  state_member: [SD_STATE] string; state_type: [SD_STATE] string; nstate: int;
+  g_type: [SD_GLOBALS] string; g_name: [SD_GLOBALS] string; g_array: [SD_GLOBALS] string; nglobals: int;
+  t_type: [SD_TYPES] string; t_unit: [SD_TYPES] string; ntypes: int;
+}
+// A list of findings: one per line.
+Lines :: struct { b: [1048576] u8; n: int; count: int; }
+
+#test "identifiers and finding" {
+  #assert sd_find("abcabc", "ca", 0) == 2 && sd_find("abc", "x", 0) == -1 && sd_find("abcabc", "abc", 1) == 3;
+  #assert sd_ident_end("coax_t_A9 x", 0) == 9 && sd_ident_end(" x", 0) == 0;
+  #assert sd_base("a/b/c.wasm", ".wasm") == "c" && sd_base("x.coax", ".coax") == "x" && sd_dir("a/b/c.c") == "a/b";
+}
+#test "build.sh's wasm.sh lines, continuations joined" {
+  store: [8192] u8; ar: [1] Arena; ar[0].b = store[..]; es: [4] Engine;
+  t := "x\n\"$here/../../coax/web/wasm.sh\" \"$here/a.coax\" \"$here/a-face.c\" \"$here/build/a.wasm\" \\\n   \"$m/p.coax\" &\nCOAXIAL_RUN_STEPS=9 \"$here/../../coax/web/wasm.sh\" \"$here/b.coax\" \"$here/f.c\" \"$here/build/b.wasm\"\n";
+  n := sd_engines(t, "/r", ar[..], es[..]);
+  #assert n == 2 && es[0].name == "a" && es[0].coax == "/r/apps/openagents-web/a.coax" && es[0].face == "/r/apps/openagents-web/a-face.c";
+  #assert es[0].wasm == "/r/apps/openagents-web/build/a.wasm" && es[0].nlibs == 1 && es[0].libs[0] == "/r/verse/p.coax" && es[0].steps == "";
+  #assert es[1].name == "b" && es[1].steps == "9" && es[1].nlibs == 0;
+}
+#test "a face's plan" {
+  p: [1] Plan;
+  h := "void coax_default_T(coax_t_T *p);\nvoid coax_default_U(coax_t_U *p);\n";
+  face := "typedef struct { coax_t_T a; int k; coax_t_V b; coax_t_U c ; } Face;\nEXPORT(\"coaxial_state_size\") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(Face); }\nstatic coax_t_U walk;\nstatic coax_t_T many[4];\nstatic coax_t_V other;\n";
+  sd_plan(face, h, "u.c", p[..]);
+  #assert p[0].name == "Face" && p[0].nstate == 2 && p[0].state_member[0] == "a" && p[0].state_type[0] == "coax_t_T" && p[0].state_member[1] == "c";
+  #assert p[0].nglobals == 2 && p[0].g_name[0] == "walk" && p[0].g_array[0] == "" && p[0].g_name[1] == "many" && p[0].g_array[1] == "[4]";
+  #assert p[0].ntypes == 2;
+  f2 := "EXPORT(\"coaxial_state_size\") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_T); }\n";
+  sd_plan(f2, h, "u.c", p[..]);
+  #assert p[0].name == "coax_t_T" && p[0].nstate == 1 && p[0].state_member[0] == "" && p[0].nglobals == 0;
+}
+#test "hex lines" {
+  b: [8] u8;
+  #assert sd_unhex("00ff10", b[..]) == 3 && b[1] == 255 && b[2] == 16 && sd_unhex("0", b[..]) == -1;
+}
+
+sd_find :: (s: string, pat: string, from: int) -> int {
+  if pat.count == 0 { return from; }
+  i := from;
+  while i + pat.count <= s.count {
+    if s[i] == pat[0] && s[i..<i + pat.count] == pat { return i; }
+    i += 1;
+  }
+  return -1;
+}
+sd_ident :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+sd_ident_end :: (s: string, i: int) -> int { j := i; while j < s.count && sd_ident(s[j]) { j += 1; } return j; }
+sd_space :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
+sd_skip :: (s: string, i: int) -> int { j := i; while j < s.count && sd_space(s[j]) { j += 1; } return j; }
+sd_starts :: (s: string, i: int, head: string) -> bool { return i >= 0 && i + head.count <= s.count && s[i..<i + head.count] == head; }
+sd_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
+sd_base :: (path: string, ext: string) -> string {
+  i := path.count;
+  while i > 0 && path[i - 1] != '/' { i -= 1; }
+  b := path[i..<path.count];
+  return ifx sd_ends(b, ext) then b[0..<b.count - ext.count] else b;
+}
+sd_dir :: (path: string) -> string {
+  i := path.count;
+  while i > 0 && path[i - 1] != '/' { i -= 1; }
+  return ifx i > 0 then path[0..<i - 1] else ".";
+}
+ar_cat :: (a: [] Arena, parts: [] string) -> string {
+  from := a[0].n;
+  for p: parts {
+    if a[0].n + p.count > a[0].b.count { return ""; }
+    for i: 0..<p.count { a[0].b[a[0].n + i] = p[i]; }
+    a[0].n += p.count;
+  }
+  return cast(string) a[0].b[from..<a[0].n];
+}
+ar_one :: (a: [] Arena, s: string) -> string { p := [1] string.[s]; return ar_cat(a, p[..]); }
+ar2 :: (a: [] Arena, x: string, y: string) -> string { p := [2] string.[x, y]; return ar_cat(a, p[..]); }
+ar3 :: (a: [] Arena, x: string, y: string, z: string) -> string { p := [3] string.[x, y, z]; return ar_cat(a, p[..]); }
+li2 :: (l: [] Lines, x: string, y: string) { p := [2] string.[x, y]; li_add(l, p[..]); }
+li3 :: (l: [] Lines, x: string, y: string, z: string) { p := [3] string.[x, y, z]; li_add(l, p[..]); }
+ar_dec :: (a: [] Arena, v: int) -> string { d: [24] u8; return ar_one(a, wc_dec(d[..], v)); }
+li_add :: (l: [] Lines, parts: [] string) {
+  for p: parts { for c: p { if l[0].n < l[0].b.count { l[0].b[l[0].n] = c; l[0].n += 1; } } }
+  if l[0].n < l[0].b.count { l[0].b[l[0].n] = '\n'; l[0].n += 1; }
+  l[0].count += 1;
+}
+li_has_prefix :: (l: [] Lines, head: string) -> bool {
+  t := cast(string) l[0].b[0..<l[0].n];
+  i := 0;
+  while i < t.count {
+    if sd_starts(t, i, head) { return true; }
+    while i < t.count && t[i] != '\n' { i += 1; }
+    i += 1;
+  }
+  return false;
+}
+
+// A build.sh word as a path: quotes dropped, $here/../.. the repo, $here
+// the web app, $m Verse.
+sd_here :: (a: [] Arena, w: string, root: string) -> string {
+  q: [4096] u8; n := 0;
+  for c: w { if c != '"' && n < q.count { q[n] = c; n += 1; } }
+  s := cast(string) q[0..<n];
+  if sd_starts(s, 0, "$here/../..") { p := [2] string.[root, s[11..<s.count]]; return ar_cat(a, p[..]); }
+  if sd_starts(s, 0, "$here") { p := [3] string.[root, "/apps/openagents-web", s[5..<s.count]]; return ar_cat(a, p[..]); }
+  if sd_starts(s, 0, "$m") { p := [3] string.[root, "/verse", s[2..<s.count]]; return ar_cat(a, p[..]); }
+  return ar_one(a, s);
+}
+// build.sh's wasm.sh lines (with their continuations): the engines, into es.
+sd_engines :: (text: string, root: string, a: [] Arena, es: [] Engine) -> int {
+  // Continuations joined: a backslash, a newline and the indent become one space.
+  joined_from := a[0].n;
+  i := 0;
+  while i < text.count {
+    if text[i] == '\\' && i + 1 < text.count && text[i + 1] == '\n' {
+      i += 2;
+      while i < text.count && (text[i] == ' ' || text[i] == '\t' || text[i] == '\n' || text[i] == '\r') { i += 1; }
+      sp := ar_one(a, " ");
+      continue;
+    }
+    ch: [1] u8; ch[0] = text[i]; one := ar_one(a, cast(string) ch[..]);
+    i += 1;
+  }
+  t := cast(string) a[0].b[joined_from..<a[0].n];
+  n := 0; mark := "coax/web/wasm.sh\" ";
+  i = 0;
+  while i < t.count && n < es.count {
+    e := i;
+    while e < t.count && t[e] != '\n' { e += 1; }
+    line := t[i..<e]; i = e + 1;
+    at := sd_find(line, mark, 0);
+    if at < 0 { continue; }
+    rest := line[at + mark.count..<line.count];
+    amp := sd_find(rest, "&", 0);
+    if amp >= 0 { rest = rest[0..<amp]; }
+    words: [SD_LIBS + 3] string; nw := 0; k := 0;
+    while k < rest.count {
+      k = sd_skip(rest, k);
+      if k >= rest.count { break; }
+      j := k;
+      while j < rest.count && !sd_space(rest[j]) { j += 1; }
+      if nw < words.count { words[nw] = sd_here(a, rest[k..<j], root); nw += 1; }
+      k = j;
+    }
+    if nw < 3 { continue; }
+    es[n] = Engine.{name = sd_base(words[2], ".wasm"), coax = words[0], face = words[1], wasm = words[2]};
+    for w: 3..<nw { es[n].libs[w - 3] = words[w]; }
+    es[n].nlibs = nw - 3;
+    st := sd_find(line, "COAXIAL_RUN_STEPS=", 0);
+    if st >= 0 { d := st + 18; de := d; while de < line.count && line[de] >= '0' && line[de] <= '9' { de += 1; } es[n].steps = line[d..<de]; }
+    n += 1;
+  }
+  return n;
+}
+
+// The plan for face text, given its units' headers (the text of each,
+// joined; unit_of names the unit each header belongs to, one per header in
+// order: headers is "unit\theader-text\f" records).
+sd_plan_add_type :: (p: [] Plan, type: string, unit: string) {
+  for k: 0..<p[0].ntypes { if p[0].t_type[k] == type { return; } }
+  if p[0].ntypes < SD_TYPES { p[0].t_type[p[0].ntypes] = type; p[0].t_unit[p[0].ntypes] = unit; p[0].ntypes += 1; }
+}
+// The unit whose header declares coax_default_T for type, or "".
+sd_defaulted :: (headers: string, units: string, type: string) -> string {
+  // headers and units: records split by NUL, the k-th header belongs to the k-th unit.
+  hi := 0; ui := 0;
+  while hi < headers.count && ui <= units.count {
+    he := hi; while he < headers.count && headers[he] != cast(u8) 0 { he += 1; }
+    ue := ui; while ue < units.count && units[ue] != cast(u8) 0 { ue += 1; }
+    h := headers[hi..<he];
+    // a line "void coax_default_X(TYPE *p);"
+    li := 0;
+    while li < h.count {
+      le := li; while le < h.count && h[le] != '\n' { le += 1; }
+      line := h[li..<le]; li = le + 1;
+      if !sd_starts(line, 0, "void coax_default_") { continue; }
+      x := sd_ident_end(line, 18);
+      if x == 18 || x >= line.count || line[x] != '(' { continue; }
+      ts := x + 1; te := sd_ident_end(line, ts);
+      if !sd_starts(line, ts, "coax_") || line[te..<line.count] != " *p);" { continue; }
+      if line[ts..<te] == type { return units[ui..<ue]; }
+    }
+    hi = he + 1; ui = ue + 1;
+  }
+  return "";
+}
+sd_plan :: (face: string, headers: string, units: string, p: [] Plan) {
+  p[0] = Plan.{};
+  // sizeof(NAME) in coaxial_state_size's body
+  name := "";
+  at := sd_find(face, "\"coaxial_state_size\")", 0);
+  if at >= 0 {
+    b := at; while b < face.count && face[b] != '{' { b += 1; }
+    e := b; while e < face.count && face[e] != '}' { e += 1; }
+    so := sd_find(face[0..<e], "sizeof", b);
+    if b < face.count && so >= 0 {
+      k := sd_skip(face, so + 6);
+      if k < face.count && face[k] == '(' { k = sd_skip(face, k + 1); }
+      name = face[k..<sd_ident_end(face, k)];
+    }
+  }
+  p[0].name = name;
+  if sd_starts(name, 0, "coax_") {
+    if sd_defaulted(headers, units, name).count > 0 { p[0].state_member[0] = ""; p[0].state_type[0] = name; p[0].nstate = 1; }
+  } else if name.count > 0 {
+    // typedef struct { ... } NAME;
+    i := 0;
+    while true {
+      t := sd_find(face, "typedef struct", i);
+      if t < 0 { break; }
+      ob := sd_skip(face, t + 14);
+      i = t + 14;
+      if ob >= face.count || face[ob] != '{' { continue; }
+      cb := ob; while cb < face.count && face[cb] != '}' { cb += 1; }
+      after := sd_skip(face, cb + 1);
+      ne := sd_ident_end(face, after);
+      if face[after..<ne] != name || sd_skip(face, ne) >= face.count || face[sd_skip(face, ne)] != ';' { continue; }
+      body := face[ob + 1..<cb];
+      k := 0;
+      while k < body.count {
+        tt := sd_find(body, "coax_", k);
+        if tt < 0 { break; }
+        if tt > 0 && sd_ident(body[tt - 1]) { k = tt + 5; continue; }
+        te := sd_ident_end(body, tt);
+        ms := sd_skip(body, te);
+        me := sd_ident_end(body, ms);
+        semi := sd_skip(body, me);
+        if ms > te && me > ms && semi < body.count && body[semi] == ';' {
+          type := body[tt..<te];
+          if sd_defaulted(headers, units, type).count > 0 && p[0].nstate < SD_STATE {
+            p[0].state_member[p[0].nstate] = body[ms..<me]; p[0].state_type[p[0].nstate] = type; p[0].nstate += 1;
+          }
+        }
+        k = te;
+      }
+      break;
+    }
+  }
+  // static coax_T NAME[...]; at the start of a line
+  li := 0;
+  while li < face.count {
+    le := li; while le < face.count && face[le] != '\n' { le += 1; }
+    line := face[li..<le]; li = le + 1;
+    if !sd_starts(line, 0, "static coax_") { continue; }
+    te := sd_ident_end(line, 7);
+    if te >= line.count || line[te] != ' ' { continue; }
+    ne := sd_ident_end(line, te + 1);
+    if ne == te + 1 || ne >= line.count { continue; }
+    arr := "";
+    k := ne;
+    if line[k] == '[' { c := k + 1; while c < line.count && line[c] != ']' { c += 1; } if c >= line.count || c == k + 1 { continue; } arr = line[k..<c + 1]; k = c + 1; }
+    if k >= line.count || line[k] != ';' { continue; }
+    type := line[7..<te];
+    if sd_defaulted(headers, units, type).count > 0 && p[0].nglobals < SD_GLOBALS {
+      p[0].g_type[p[0].nglobals] = type; p[0].g_name[p[0].nglobals] = line[te + 1..<ne]; p[0].g_array[p[0].nglobals] = arr; p[0].nglobals += 1;
+    }
+  }
+  for k: 0..<p[0].nstate { sd_plan_add_type(p, p[0].state_type[k], sd_defaulted(headers, units, p[0].state_type[k])); }
+  for k: 0..<p[0].nglobals { sd_plan_add_type(p, p[0].g_type[k], sd_defaulted(headers, units, p[0].g_type[k])); }
+}
+
+sd_unhex :: (s: string, out: [] u8) -> int {
+  if s.count % 2 != 0 || s.count / 2 > out.count { return -1; }
+  for i: 0..<s.count / 2 {
+    hi := jv_hex(s[2 * i]); lo := jv_hex(s[2 * i + 1]);
+    if hi < 0 || lo < 0 { return -1; }
+    out[i] = cast(u8) (hi * 16 + lo);
+  }
+  return s.count / 2;
+}
+
+// Runs argv; its stdout in out (n), or -1 with the error's end in why.
+sd_run :: (argv: [] string, out: [] u8, why: [] Lines, what: string) -> int {
+  err: [4096] u8;
+  r := proc_run(argv, 600000, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.cut {
+    e := cast(string) err[0..<r.err_n];
+    p := [3] string.[what, ": ", ifx e.count > 600 then e[0..<600] else e];
+    li_add(why, p[..]);
+    return -1;
+  }
+  return r.out_n;
+}
+SD_CC :: "cc";
+sd_loose :: () -> string { return ifx tool_os() == TOOL_MAC then "-Wl,-undefined,dynamic_lookup" else "-Wl,--unresolved-symbols=ignore-all"; }
+
+// The native default of a type: its unit's coax_init, as bytes (hex printed by a small program).
+sd_native :: (a: [] Arena, work: string, unit: string, type: string, out: [] u8, why: [] Lines) -> int {
+  dp := [5] string.[work, "/native-", sd_base(unit, ".c"), "-", type];
+  dir := ar_cat(a, dp[..]);
+  if !fs_mkdir(dir) { return -1; }
+  init: [256] u8; ni := 0;
+  // coax_t_X -> coax_init_t_X
+  pre := "coax_init_t_";
+  for c: pre { init[ni] = c; ni += 1; }
+  for c: type[7..<type.count] { init[ni] = c; ni += 1; }
+  main_parts := [9] string.["#include \"", unit, "\"\n#include <stdio.h>\nstatic ", type, " v;\nint main(void) { v = ", cast(string) init[0..<ni],
+    "(); const unsigned char *b = (const unsigned char *)&v; for (size_t i = 0; i < sizeof v; i++) { printf(\"%02x\", b[i]); if (i % 16384 == 16383) printf(\"\\n\"); } printf(\"\\n\"); return 0; }\n", "", ""];
+  main_c := ar_cat(a, main_parts[..]);
+  mp := [2] string.[dir, "/main.c"]; mainf := ar_cat(a, mp[..]);
+  bp := [2] string.[dir, "/main"]; bin := ar_cat(a, bp[..]);
+  if !fs_write(mainf, main_c) { return -1; }
+  ip := [2] string.["-I", sd_dir(unit)];
+  argv := [13] string.[SD_CC, "-std=c11", "-O1", "-w", "-ffp-contract=off", ar_cat(a, ip[..]), mainf, "-o", bin, "-lm", sd_loose(), "", ""];
+  hex: [4194304] u8;
+  if sd_run(argv[0..<11], hex[..], why, ar2(a, "cc ", unit)) < 0 { return -1; }
+  run := [1] string.[bin];
+  n := sd_run(run[..], hex[..], why, bin);
+  if n < 0 { return -1; }
+  k := 0;
+  for i: 0..<n { if hex[i] != '\n' { hex[k] = hex[i]; k += 1; } }
+  return sd_unhex(cast(string) hex[0..<k], out);
+}
+
+// A "char NAME[16];" stand-in for a missing symbol, once.
+sd_missing :: (m: [] u8, n: int, name: string) -> int {
+  if name.count == 0 { return n; }
+  key: [512] u8; k := 0;
+  for c: "char " { key[k] = c; k += 1; }
+  for c: name { if k < 500 { key[k] = c; k += 1; } }
+  key[k] = '['; k += 1;
+  if sd_find(cast(string) m[0..<n], cast(string) key[0..<k], 0) >= 0 { return n; }
+  if n + k + 5 > m.count { return n; }
+  at := n;
+  for i: 0..<k { m[at + i] = key[i]; }
+  at += k;
+  for c: "16];\n" { m[at] = c; at += 1; }
+  return at;
+}
+// The symbols a failed link names: _NAME", referenced from (Apple ld) or
+// undefined reference to `NAME' (GNU ld), as stand-in lines in m: the length.
+sd_missing_all :: (text: string, m: [] u8) -> int {
+  n := 0; i := 0;
+  while i < text.count {
+    ap := sd_find(text, "\", referenced from", i);
+    gp := sd_find(text, "undefined reference to `", i);
+    if ap < 0 && gp < 0 { break; }
+    if ap >= 0 && (gp < 0 || ap < gp) {
+      s := ap; while s > 0 && text[s - 1] != '"' { s -= 1; }
+      nm := text[s..<ap];
+      if nm.count > 1 && nm[0] == '_' { n = sd_missing(m, n, nm[1..<nm.count]); }
+      i = ap + 18;
+    } else {
+      s := gp + 24; t := s; while t < text.count && text[t] != '\'' { t += 1; }
+      n = sd_missing(m, n, text[s..<t]);
+      i = t;
+    }
+  }
+  return n;
+}
+#test "missing symbols from either linker" {
+  m: [256] u8;
+  n := sd_missing_all("  \"_host_line\", referenced from:\n  \"_host_line\", referenced from:\n \"_x9\", referenced from", m[..]);
+  #assert cast(string) m[0..<n] == "char host_line[16];\nchar x9[16];\n";
+  n = sd_missing_all("a.c:(.text+0x1): undefined reference to `coaxial_http'\n", m[..]);
+  #assert cast(string) m[0..<n] == "char coaxial_http[16];\n";
+}
+
+// The face built natively with its units: where each defaulted member of a
+// face-struct state sits, and every defaulted global's bytes after the
+// face's constructors ran (as _initialize runs them in the browser), with
+// each global's reference: its type's coax_default_T in this same process,
+// so string defaults (pointers into the unit's data) compare equal;
+// coax/tests/state_defaults.py checks that coax_default_T writes what
+// native coax_init gives. Prints lines "offset M N", "NAME HEX" and
+// "ref:NAME HEX" into out: the length, or -1.
+sd_face_native :: (a: [] Arena, work: string, e: [] Engine, units: [] string, p: [] Plan, out: [] u8, why: [] Lines) -> int {
+  dir := ar2(a, ar_one(a, work), ar2(a, "/face-", e[0].name));
+  if !fs_mkdir(dir) { return -1; }
+  from := a[0].n;
+  x := ar3(a, "#include \"", e[0].face, "\"\n#include <stdio.h>\n#include <string.h>\n#include <stddef.h>\n");
+  x = ar_one(a, "static void coaxial_hex(const char *n, const void *p, size_t k) { printf(\"%s \", n); for (size_t i = 0; i < k; i++) { printf(\"%02x\", ((const unsigned char *)p)[i]); if (i % 16384 == 16383 && i + 1 < k) printf(\"\\n%s \", n); } printf(\"\\n\"); }\nint main(void) {\n");
+  for k: 0..<p[0].nstate {
+    m := p[0].state_member[k];
+    if m.count == 0 { continue; }
+    x = ar3(a, "  printf(\"offset ", m, " %zu\\n\", offsetof(");
+    x = ar3(a, p[0].name, ", ", m); x = ar_one(a, "));\n");
+  }
+  for k: 0..<p[0].nglobals {
+    type := p[0].g_type[k]; name := p[0].g_name[k];
+    x = ar3(a, "  { static ", type, " ref; memset(&ref, 0xab, sizeof ref); coax_default_");
+    x = ar3(a, type[5..<type.count], "(&ref); coaxial_hex(\"ref:", name);
+    x = ar3(a, "\", &ref, sizeof ref); (void)sizeof ", name, ifx p[0].g_array[k].count > 0 then "[0]; }\n" else "; }\n");
+    x = ar3(a, "  coaxial_hex(\"", name, "\", &"); x = ar3(a, name, ", sizeof ", name); x = ar_one(a, ");\n");
+  }
+  x = ar_one(a, "  return 0;\n}\n");
+  main_c := cast(string) a[0].b[from..<a[0].n];
+  mainf := ar2(a, dir, "/main.c"); bin := ar2(a, dir, "/main");
+  if !fs_write(mainf, main_c) { return -1; }
+  // The host's imports (and the other faces' data) aren't here. The harness never calls
+  // them, so each missing symbol gets an unused stand-in, found by a first link.
+  argv: [SD_UNITS + 16] string; n := 0;
+  argv[0] = SD_CC; argv[1] = "-std=gnu11"; argv[2] = "-O0"; argv[3] = "-w"; argv[4] = "-ffp-contract=off";
+  argv[5] = ar2(a, "-I", sd_dir(units[0])); argv[6] = ar2(a, "-I", sd_dir(e[0].face)); argv[7] = mainf; n = 8;
+  for u: units { argv[n] = u; n += 1; }
+  mark := n;
+  argv[n] = "-o"; argv[n + 1] = bin; argv[n + 2] = "-lm"; n += 3;
+  err: [262144] u8; sink: [65536] u8;
+  r := proc_run(argv[0..<n], 600000, sink[..], err[..]);
+  if r.started != 0 { li2(why, "can't run cc for ", e[0].face); return -1; }
+  if r.status != 0 {
+    text := cast(string) err[0..<r.err_n];
+    miss: [262144] u8;
+    mn := sd_missing_all(text, miss[..]);
+    if mn == 0 { li3(why, e[0].name, ": cc failed: ", ifx text.count > 600 then text[0..<600] else text); return -1; }
+    missing := ar2(a, dir, "/missing.c");
+    if !fs_write(missing, cast(string) miss[0..<mn]) { return -1; }
+    argv[mark] = missing; argv[mark + 1] = "-o"; argv[mark + 2] = bin; argv[mark + 3] = "-lm";
+    if sd_run(argv[0..<mark + 4], sink[..], why, ar2(a, "cc ", e[0].face)) < 0 { return -1; }
+  }
+  run := [1] string.[bin];
+  return sd_run(run[..], out, why, bin);
+}
+// Reads the face program's lines: the offset of member (-1 if none), and
+// the bytes of NAME (or "ref:NAME") into o (-1 if none).
+sd_face_offset :: (t: string, member: string) -> int {
+  i := 0;
+  while i < t.count {
+    e := i; while e < t.count && t[e] != '\n' { e += 1; }
+    l := t[i..<e]; i = e + 1;
+    if sd_starts(l, 0, "offset ") && sd_starts(l, 7, member) && l.count > 7 + member.count && l[7 + member.count] == ' ' { return wc_parse(l[8 + member.count..<l.count]); }
+  }
+  return -1;
+}
+// (a long value comes in several lines with the same key, in order)
+sd_face_bytes :: (t: string, key: string, o: [] u8) -> int {
+  i := 0; n := 0; found := false;
+  while i < t.count {
+    e := i; while e < t.count && t[e] != '\n' { e += 1; }
+    l := t[i..<e]; i = e + 1;
+    if sd_starts(l, 0, key) && l.count > key.count && l[key.count] == ' ' {
+      k := sd_unhex(l[key.count + 1..<l.count], o[n..<o.count]);
+      if k < 0 { return -1; }
+      n += k; found = true;
+    }
+  }
+  return ifx found then n else -1;
+}
+
+// coax c for every unit of e (the main file, then its libraries), into dir:
+// NAME.c and NAME.h (a library's NAME capitalized, as wasm.sh names them).
+// Up to SD_PAR at once across engines: spawned here, waited by sd_wait.
+SdJob :: struct { h: int = -1; what: string; }
+sd_unit_name :: (a: [] Arena, file: string, main: bool) -> string {
+  b := sd_base(file, ".coax");
+  if main || b.count == 0 { return b; }
+  c: [1] u8; c[0] = ifx b[0] >= 'a' && b[0] <= 'z' then cast(u8) (b[0] - 32) else b[0];
+  return ar2(a, cast(string) c[..], b[1..<b.count]);
+}
+SD_SH :: "exec \"$0\" c \"$1\" --library --header \"$2\" ${4:+--run-steps \"$4\"} > \"$3\"";
+sd_spawn :: (coax: string, file: string, header: string, c_out: string, steps: string) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, SD_SH) && proc_arg(h, coax) && proc_arg(h, file) && proc_arg(h, header) && proc_arg(h, c_out) && proc_arg(h, steps);
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return -1; }
+  return h;
+}
+
+// The browser's boot of e's module: a zeroed state above the module's data,
+// then (when init) coaxial_state_init. The state's address, or -1.
+sd_boot :: (c: [] Cdp, init: bool, why: [] Lines, name: string) -> int {
+  // The host's memory: 128 pages, more when the module declares more (the Grid's stack).
+  pages := 128; loaded := "";
+  while pages <= 1024 {
+    loaded = wc_load(c, "m", pages, "{}", WC_ZERO);
+    if loaded != "link" { break; }
+    pages *= 2;
+  }
+  if loaded != "ok" { li3(why, name, ": the module did not instantiate: ", cdp_error(c)); return -1; }
+  size := wc_int(c, "coaxial_state_size", "");
+  heap := wc_global(c, "__heap_base"); have := wc_size(c);
+  base := ((ifx heap > have then heap else have) + 65535) / 65536 * 65536;
+  need := base + size + 65536;
+  if need > have { g := wc_grow(c, (need - have + 65535) / 65536); }
+  if !wc_fill(c, base, size, 0) { li2(why, name, ": could not zero the state"); return -1; }
+  if init { d: [24] u8; v := wc_call(c, "coaxial_state_init", wc_dec(d[..], base)); }
+  return base;
+}
+// The first byte where have differs from ref (have shorter counts), or -1.
+sd_differs :: (have: string, ref: string) -> int {
+  for b: 0..<ref.count { if b >= have.count || have[b] != ref[b] { return b; } }
+  return ifx have.count == ref.count then -1 else ref.count;
+}
+#test "first differing byte" {
+  #assert sd_differs("abc", "abc") == -1 && sd_differs("abd", "abc") == 2 && sd_differs("ab", "abc") == 2 && sd_differs("abcd", "abc") == 3;
+}
+
+Work :: struct {
+  es: [SD_ENGINES] Engine; ne: int;
+  units: [SD_ENGINES * SD_UNITS] string; nunits: [SD_ENGINES] int;
+  jobs: [SD_ENGINES * SD_UNITS] SdJob;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  store: [33554432] u8; ar: [1] Arena; ar[0].b = store[..]; fails: [1] Lines; checked: [1] Lines; globals: [1] Lines; sharp: [1] Lines;
+  cwd: [4096] u8;
+  root := ar_one(ar[..], fs_cwd(cwd[..]));
+  if !fs_exists("apps/openagents-web/build.sh") { tool_errln("state-defaults: run from the repo root"); return 2; }
+  w: [1] Work;
+  build: [1048576] u8;
+  bn := fs_read("apps/openagents-web/build.sh", build[..]);
+  w[0].ne = sd_engines(cast(string) build[0..<bn], root, ar[..], w[0].es[..]);
+  web := ar2(ar[..], root, "/apps/openagents-web");
+  // The Grid's module (newland) also links the homepage reader's face, whose globals have defaults too.
+  nl := w[0].ne;
+  w[0].es[nl] = Engine.{name = "newland", coax = ar2(ar[..], web, "/newland.coax"), face = ar2(ar[..], web, "/newland-face.c"), wasm = ar2(ar[..], web, "/build/newland.wasm"), nlibs = 3};
+  w[0].es[nl].libs[0] = ar2(ar[..], root, "/coax/web/project/landing-browser.coax");
+  w[0].es[nl].libs[1] = ar2(ar[..], root, "/coax/web/project/landing-fold.coax");
+  w[0].es[nl].libs[2] = ar2(ar[..], root, "/verse/gridwalk.coax");
+  w[0].es[nl + 1] = Engine.{name = "landing-reader", coax = ar2(ar[..], root, "/coax/web/project/landing-browser.coax"),
+    face = ar2(ar[..], root, "/coax/web/project/landing-reader-face.c"), wasm = ar2(ar[..], web, "/build/newland.wasm")};
+  w[0].ne += 2;
+  // NAME... picks engines
+  picked := args_count(a[..]) > 0;
+  if !picked && w[0].ne <= 20 { tool_errln("state-defaults: build.sh names 20 engines or fewer"); return 1; }
+  tmp: [1024] u8;
+  work := ar_one(ar[..], fs_temp("coax-state-defaults-", tmp[..]));
+  if work.count == 0 { tool_errln("state-defaults: no temporary directory"); return 1; }
+  coax := ar2(ar[..], root, "/coax/bin/coax");
+  use: [SD_ENGINES] bool;
+  for i: 0..<w[0].ne {
+    use[i] = !picked;
+    for k: 0..<args_count(a[..]) { if args_at(a[..], k) == w[0].es[i].name { use[i] = true; } }
+    if use[i] && !fs_exists(w[0].es[i].wasm) { li3(fails[..], w[0].es[i].name, ": no ", ar2(ar[..], w[0].es[i].wasm, " (run apps/openagents-web/build.sh)")); use[i] = false; }
+  }
+  // Generate every unit, SD_PAR processes at once.
+  running := 0; failed_gen: [SD_ENGINES] bool;
+  for i: 0..<w[0].ne {
+    if !use[i] { continue; }
+    e := w[0].es[i..<i + 1];
+    dir := ar3(ar[..], work, "/", e[0].name);
+    if !fs_mkdir(dir) { li2(fails[..], e[0].name, ": can't make its directory"); use[i] = false; continue; }
+    for u: 0..<e[0].nlibs + 1 {
+      file := ifx u == 0 then e[0].coax else e[0].libs[u - 1];
+      name := sd_unit_name(ar[..], file, u == 0);
+      c_out := ar3(ar[..], dir, "/", ar2(ar[..], name, ".c"));
+      header := ar3(ar[..], dir, "/", ar2(ar[..], name, ".h"));
+      w[0].units[i * SD_UNITS + u] = c_out;
+      j := i * SD_UNITS + u;
+      while running >= SD_PAR {
+        for q: 0..<w[0].jobs.count {
+          if w[0].jobs[q].h < 0 { continue; }
+          st := proc_wait(w[0].jobs[q].h, 0);
+          if st == PROC_RUNNING { continue; }
+          if st != 0 { eb: [2048] u8; li3(fails[..], "coax c ", w[0].jobs[q].what, ar2(ar[..], ": ", proc_stderr(w[0].jobs[q].h, eb[..]))); failed_gen[q / SD_UNITS] = true; }
+          r := proc_release(w[0].jobs[q].h); w[0].jobs[q].h = -1; running -= 1;
+        }
+        if running >= SD_PAR { proc_sleep(20); }
+      }
+      w[0].jobs[j] = SdJob.{h = sd_spawn(coax, file, header, c_out, e[0].steps), what = file};
+      if w[0].jobs[j].h < 0 { li2(fails[..], "can't run coax c ", file); failed_gen[i] = true; } else { running += 1; }
+    }
+    w[0].nunits[i] = e[0].nlibs + 1;
+  }
+  for q: 0..<w[0].jobs.count {
+    if w[0].jobs[q].h < 0 { continue; }
+    st := proc_wait(w[0].jobs[q].h, 600000);
+    if st != 0 { eb: [2048] u8; li3(fails[..], "coax c ", w[0].jobs[q].what, ar2(ar[..], ": ", proc_stderr(w[0].jobs[q].h, eb[..]))); failed_gen[q / SD_UNITS] = true; }
+    r := proc_release(w[0].jobs[q].h); w[0].jobs[q].h = -1;
+  }
+
+  c: [1] Cdp;
+  if !wc_open(c[..]) { tool_err("state-defaults: "); tool_errln(cdp_error(c[..])); return 1; }
+  headers: [SD_TEXT] u8; facetext: [SD_TEXT] u8; faceout: [SD_TEXT] u8; module: [33554432] u8;
+  ref: [SD_TYPE_MAX] u8; have: [SD_TYPE_MAX * 4] u8; zeroed: [SD_TYPE_MAX] u8;
+  refs_at: [SD_TYPES] int; refs_n: [SD_TYPES] int; refbuf: [SD_TYPE_MAX * 4] u8;
+  for i: 0..<w[0].ne {
+    if !use[i] || failed_gen[i] { continue; }
+    e := w[0].es[i..<i + 1];
+    units := w[0].units[i * SD_UNITS..<i * SD_UNITS + w[0].nunits[i]];
+    // the units' headers, each record ended by a form feed, and the unit names the same way
+    hn := 0; names: [65536] u8; nn := 0;
+    for u: units {
+      hb: [4096] u8;
+      hparts := [2] string.[u[0..<u.count - 2], ".h"];
+      hp := wc_cat(hb[..], hparts[..]);
+      n := fs_read(hp, headers[hn..<headers.count]);
+      if n < 0 { n = 0; }
+      hn += n; headers[hn] = 0; hn += 1;
+      for ch: u { names[nn] = ch; nn += 1; }
+      names[nn] = 0; nn += 1;
+    }
+    unit_names := ar_one(ar[..], cast(string) names[0..<nn]);
+    fn := fs_read(e[0].face, facetext[..]);
+    if fn < 0 { li2(fails[..], e[0].name, ": can't read its face"); continue; }
+    p: [1] Plan;
+    sd_plan(cast(string) facetext[0..<fn], cast(string) headers[0..<hn], unit_names, p[..]);
+    if p[0].nstate == 0 && p[0].nglobals == 0 { continue; }
+    // the native default of each type
+    rn := 0;
+    for k: 0..<p[0].ntypes {
+      n := sd_native(ar[..], work, p[0].t_unit[k], p[0].t_type[k], refbuf[rn..<refbuf.count], fails[..]);
+      refs_at[k] = rn; refs_n[k] = ifx n < 0 then 0 else n;
+      if n < 0 { continue; }
+      // Sharp: every defaulted type has a non-zero default, or a zeroed value would pass.
+      allzero := true;
+      for b: 0..<n { if refbuf[rn + b] != 0 { allzero = false; } }
+      if allzero { li3(fails[..], e[0].name, ": ", ar2(ar[..], p[0].t_type[k], "'s default is all zeros, so the comparison can't tell it from zeroed memory")); }
+      rn += n;
+    }
+    fo := sd_face_native(ar[..], work, e, units, p[..], faceout[..], fails[..]);
+    if fo < 0 { continue; }
+    ft := cast(string) faceout[0..<fo];
+    for g: 0..<p[0].nglobals {
+      type := p[0].g_type[g]; name := p[0].g_name[g]; arr := p[0].g_array[g];
+      tk := -1; for k: 0..<p[0].ntypes { if p[0].t_type[k] == type { tk = k; } }
+      rf := sd_face_bytes(ft, ar2(ar[..], "ref:", name), ref[..]);
+      hv := sd_face_bytes(ft, name, have[..]);
+      if rf >= 0 && tk >= 0 && rf != refs_n[tk] { li3(fails[..], e[0].name, ": ", ar3(ar[..], type, " has a different size in the face than natively", "")); }
+      if rf < 0 { li3(fails[..], e[0].name, ": no reference for ", name); continue; }
+      if hv < 0 { li3(fails[..], e[0].name, ": global was not read: ", name); continue; }
+      count := ifx arr.count > 0 then hv / rf else 1;
+      bad := -1;
+      for k: 0..<count { if bad < 0 && sd_differs(cast(string) have[k * rf..<(k + 1) * rf], cast(string) ref[0..<rf]) >= 0 { bad = k; } }
+      if hv != count * rf || bad >= 0 { li3(fails[..], e[0].name, ": global differs from native: ", ar3(ar[..], name, arr, ar2(ar[..], " ", type))); }
+      else { li3(globals[..], e[0].name, " ", ar2(ar[..], name, arr)); }
+    }
+    if p[0].nstate == 0 { continue; }
+    mn := fs_read(e[0].wasm, module[..]);
+    if mn < 0 || !wc_file(c[..], "m", cast(string) module[0..<mn]) { li2(fails[..], e[0].name, ": could not send its module"); continue; }
+    base := sd_boot(c[..], true, fails[..], e[0].name);
+    if base < 0 { continue; }
+    if !wc_has(c[..], "coaxial_state_init") { li2(fails[..], e[0].name, ": no coaxial_state_init export (the face must call coax_default_T on a new state)"); continue; }
+    // the same state as the browser boots it, then left zeroed, as the host hands it
+    skipped := true;
+    for k: 0..<p[0].nstate {
+      member := p[0].state_member[k]; type := p[0].state_type[k];
+      at := ifx member.count > 0 then sd_face_offset(ft, member) else 0;
+      tk := -1; for q: 0..<p[0].ntypes { if p[0].t_type[q] == type { tk = q; } }
+      if at < 0 { li3(fails[..], e[0].name, ": no offset for ", member); continue; }
+      if tk < 0 || refs_n[tk] == 0 { li3(fails[..], e[0].name, ": no native default for ", type); continue; }
+      rs := cast(string) refbuf[refs_at[tk]..<refs_at[tk] + refs_n[tk]];
+      n := wc_read(c[..], base + at, rs.count, have[..]);
+      bad := ifx n == rs.count then sd_differs(cast(string) have[0..<n], rs) else 0;
+      if bad >= 0 { d: [24] u8; li3(fails[..], e[0].name, ": ", ar3(ar[..], type, ar2(ar[..], " ", member), ar2(ar[..], " differs from native at byte ", wc_dec(d[..], bad)))); }
+      else { li3(checked[..], e[0].name, " ", type); }
+    }
+    zbase := sd_boot(c[..], false, fails[..], e[0].name);
+    if zbase < 0 { continue; }
+    for k: 0..<p[0].nstate {
+      member := p[0].state_member[k]; type := p[0].state_type[k];
+      at := ifx member.count > 0 then sd_face_offset(ft, member) else 0;
+      tk := -1; for q: 0..<p[0].ntypes { if p[0].t_type[q] == type { tk = q; } }
+      if at < 0 || tk < 0 { continue; }
+      rs := cast(string) refbuf[refs_at[tk]..<refs_at[tk] + refs_n[tk]];
+      n := wc_read(c[..], zbase + at, rs.count, zeroed[..]);
+      if n != rs.count || sd_differs(cast(string) zeroed[0..<n], rs) >= 0 { skipped = false; }
+    }
+    if skipped { li2(fails[..], e[0].name, ": a zeroed state passes the comparison"); }
+    else { li2(sharp[..], e[0].name, ""); }
+  }
+  cdp_close(c[..]);
+  print("states with defaults (%):\n%", checked[0].count, cast(string) checked[0].b[0..<checked[0].n]);
+  print("face globals with defaults (%):\n%", globals[0].count, cast(string) globals[0].b[0..<globals[0].n]);
+  if !picked {
+    // Orbit League's gravity is the case that shipped broken; it must be among them.
+    if !li_has_prefix(checked[..], "orbitleague ") { li2(fails[..], "orbitleague's state was not checked", ""); }
+    if !li_has_prefix(sharp[..], "orbitleague\n") && !li_has_prefix(sharp[..], "orbitleague ") { li2(fails[..], "orbitleague's comparison is not sharp", ""); }
+    if !li_has_prefix(globals[..], "newland walk") { li2(fails[..], "newland's walk global was not checked", ""); }
+  }
+  r := fs_remove(work);
+  if fails[0].count > 0 { print("FAIL (%):\n%", fails[0].count, cast(string) fails[0].b[0..<fails[0].n]); return 1; }
+  print("pass every engine boots from zeroed memory with native's struct defaults\n");
+  return 0;
+}

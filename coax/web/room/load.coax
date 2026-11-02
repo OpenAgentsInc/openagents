@@ -1,0 +1,140 @@
+// The room's load test (ol-room): PLAYERS sockets join one Orbit League
+// room, each reports a car at 60 Hz, and each counts the states it hears.
+// Passes when every socket opened, every player hears >= 59 states a second
+// and all hear the same ball (even seats as sent, odd seats turned round: x
+// and z negated) within 2 mm.
+//   coax/web/tool.sh coax/web/room/load.coax [ws://localhost:8830] [players=4] [seconds=10]
+// Prints one JSON line, then "holds" and exits 0, or "fails" and 1.
+#load "room-socket.coax";
+
+LD_MAX :: 16;                 // players at most
+LD_BALLS :: 64;               // recent ticks whose ball each player keeps
+LdPlayer :: struct { heard: int; seat: int = -1; tick: int; gaps: int; ball_tick: [LD_BALLS] int; ball: [LD_BALLS * 3] int; }
+
+#test "a state frame updates its player" {
+  p: [1] LdPlayer;
+  ld_hear(p[..], "s 5 1 0 0 0 0 0 0 0 11 -22 33 9");
+  ld_hear(p[..], "s 7 1 0 0 0 0 0 0 0 1 2 3");
+  ld_hear(p[..], "y 0 0");
+  #assert p[0].heard == 2 && p[0].tick == 7 && p[0].seat == 1 && p[0].gaps == 1;
+  b: [3] int;
+  #assert ld_ball(p[..], 5, b[..]) && b[0] == 11 && b[1] == -22 && b[2] == 33 && !ld_ball(p[..], 6, b[..]);
+}
+#test "tenths, as toFixed(1) then Number prints them" {
+  o: [64] u8;
+  #assert ld_tenths(o[..], 600) == "60" && ld_tenths(o[..], 598) == "59.8" && ld_tenths(o[..], 5) == "0.5" && ld_tenths(o[..], -15) == "-1.5";
+}
+
+ld_hear :: (p: [] LdPlayer, t: string) {
+  if rs_field(t, 0) != "s" { return; }
+  tick := rs_num(rs_field(t, 1));
+  if p[0].tick != 0 && tick != p[0].tick + 1 { p[0].gaps += 1; }
+  p[0].tick = tick; p[0].seat = rs_num(rs_field(t, 2)); p[0].heard += 1;
+  k := ((tick % LD_BALLS) + LD_BALLS) % LD_BALLS;
+  p[0].ball_tick[k] = tick;
+  for j: 0..<3 { p[0].ball[k * 3 + j] = rs_num(rs_field(t, 10 + j)); }
+}
+// The ball this player heard at tick, if it still has it.
+ld_ball :: (p: [] LdPlayer, tick: int, out: [] int) -> bool {
+  k := ((tick % LD_BALLS) + LD_BALLS) % LD_BALLS;
+  if p[0].ball_tick[k] != tick || tick == 0 { return false; }
+  for j: 0..<3 { out[j] = p[0].ball[k * 3 + j]; }
+  return true;
+}
+// v/10 with one decimal, the decimal dropped when it is 0.
+ld_tenths :: (out: [] u8, v: int) -> string {
+  a := ifx v < 0 then -v else v;
+  n := ifx v < 0 then rs_put(out, 0, "-") else 0;
+  n = rs_int(out, n, a / 10);
+  if a % 10 != 0 { n = rs_int(out, rs_put(out, n, "."), a % 10); }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+ld_poll :: (c: [] RelayConn, p: [] LdPlayer, n: int) -> bool {
+  got := false;
+  for i: 0..<n {
+    if c[i].h < 0 { continue; }
+    while relay_conn_poll(c[i..<i + 1], 0) == RC_TEXT { ld_hear(p[i..<i + 1], cast(string) c[i].text[0..<c[i].text_n]); got = true; }
+  }
+  return got;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("load: bad arguments"); return 2; }
+  b: [512] u8;
+  base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
+  players := ifx args_count(a[..]) > 1 then rs_num(args_at(a[..], 1)) else 4;
+  seconds := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else 10;
+  if players < 1 || players > LD_MAX || seconds < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/load.coax [URL] [players 1..16] [seconds]"); return 2; }
+  stamp := rs_stamp();
+  u: [1024] u8; nm: [32] u8;
+  url := rs_url(u[..], base, "/api/room/orbit-league/", "load-", stamp);
+  room := cast(string) nm[0..<rs_int(nm[..], rs_put(nm[..], 0, "load-"), stamp)];
+  c: [LD_MAX] RelayConn; p: [LD_MAX] LdPlayer;
+  open := 0;
+  for i: 0..<players {
+    // a cold service or a fresh edge can take a few seconds
+    up := false;
+    for attempt: 0..<3 { if !up && relay_conn_open(c[i..<i + 1], url) { up = true; } }
+    if up { open += 1; }
+  }
+  start: [LD_MAX] int;
+  for i: 0..<players { start[i] = p[i].heard; }
+  msg: [128] u8;
+  t0 := rs_now(); until := t0 + seconds * 1000;
+  t := 0;
+  while true {
+    now := rs_now();
+    if now >= until { break; }
+    // tick t is due at t0 + t * 1000/60 ms
+    if (now - t0) * 60 >= (t + 1) * 1000 {
+      t += 1;
+      z := -20000 + ((t * 300) % 40000);
+      for i: 0..<players {
+        if c[i].h < 0 { continue; }
+        k := rs_put(msg[..], 0, "c "); k = rs_int(msg[..], k, i * 3000); k = rs_put(msg[..], k, " 900 "); k = rs_int(msg[..], k, z);
+        k = rs_put(msg[..], k, " 0 0 0 10000 0 0 18000 0 0 0");
+        r := relay_conn_send(c[i..<i + 1], cast(string) msg[0..<k]);
+      }
+    }
+    if !ld_poll(c[..], p[..], players) { proc_sleep(1); }
+  }
+  dt := rs_now() - t0;
+  // rates in tenths of a state a second
+  rates: [LD_MAX] int; fast := true;
+  for i: 0..<players {
+    rates[i] = cast(int) ((cast(f64) (p[i].heard - start[i]) * 10000.0 / cast(f64) dt) + 0.5);
+    if rates[i] < 590 { fast = false; }
+  }
+  // the same ball at the same tick
+  tick := p[0].tick;
+  for i: 0..<players { if p[i].tick < tick { tick = p[i].tick; } }
+  tick -= 1;
+  spread := 0.0; have := true;
+  b0: [3] f64; bi: [3] int;
+  for i: 0..<players {
+    if !ld_ball(p[i..<i + 1], tick, bi[..]) { have = false; continue; }
+    v: [3] f64;
+    for j: 0..<3 { v[j] = cast(f64) bi[j]; }
+    if p[i].seat % 2 != 0 { v[0] = -v[0]; v[2] = -v[2]; }
+    if i == 0 { for j: 0..<3 { b0[j] = v[j]; } }
+    d := sqrt((v[0] - b0[0]) * (v[0] - b0[0]) + (v[1] - b0[1]) * (v[1] - b0[1]) + (v[2] - b0[2]) * (v[2] - b0[2]));
+    if d > spread { spread = d; }
+  }
+  out: [4096] u8; o: [1] Jo; tx: [32] u8;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "room"); jo_str(o[..], room);
+  jo_key(o[..], "open"); jo_int(o[..], open);
+  jo_key(o[..], "seats"); jo_arr(o[..]); for i: 0..<players { jo_int(o[..], p[i].seat); } jo_end(o[..]);
+  jo_key(o[..], "rates"); jo_arr(o[..]); for i: 0..<players { jo_raw(o[..], ld_tenths(tx[..], rates[i])); } jo_end(o[..]);
+  jo_key(o[..], "gaps"); jo_arr(o[..]); for i: 0..<players { jo_int(o[..], p[i].gaps); } jo_end(o[..]);
+  jo_key(o[..], "ball_spread_mm");
+  if have { jo_raw(o[..], ld_tenths(tx[..], cast(int) (spread * 10.0 + 0.5))); } else { jo_null(o[..]); }
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  ok := open == players && fast && have && spread < 2.0;
+  print("%\n", ifx ok then "holds" else "fails");
+  for i: 0..<players { if c[i].h >= 0 { r := relay_conn_close(c[i..<i + 1], 1000); } }
+  return ifx ok then 0 else 1;
+}

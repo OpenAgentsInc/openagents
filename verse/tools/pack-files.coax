@@ -2,7 +2,7 @@
 // Haunted House and the sandbox name their data, storage, index and layers as separate files
 // (realms.json), which a page loads as the four assets a pack stands for (docs/verse/realm-host.md,
 // "Asset packs": 0 the data, 1 the storage, 2 the indices, 3 the layers). A native host and
-// verse/native/wasm-run.ts read packs (--pack), so this writes those files as one, in their
+// verse/native/wasm-run.coax read packs (--pack), so this writes those files as one, in their
 // order: the catalog entry the data's bytes, then the vertices, the indices and each layer.
 // Offline tooling for the native checks; never shipped or run by a page.
 //   coax/web/tool.sh verse/tools/pack-files.coax SLUG OUT     (from the repository's root)

@@ -1,7 +1,7 @@
 // A flat realm's passes against the browser (docs/verse/native-gpu.md, realms-native): a realm
 // with no scene (no pack, no scene_fs), drawn as host.js draws one: bg_fs over the screen, then
 // the frame's own vertices (the strokes) through fx_vs and fx_fs, the larger of each colour
-// kept (blend max). Its frame comes from the browser's wasm (verse/native/wasm-run.ts: golden,
+// kept (blend max). Its frame comes from the browser's wasm (verse/native/wasm-run.coax: golden,
 // clock 0, the 90th frame at 320x180), its entries from apps/openagents-web/gpu/REALM.coax as
 // `coax spirv` lowers them, and the browser draws REALM.wgsl, the module `coax wgsl` writes
 // from the same Coax (apps/openagents-web/build.sh). verse/gpu/pass-check.coax draws the spec
@@ -62,7 +62,7 @@ fp_run :: (host: string, realm: string, work: string, allow: string, keep: strin
   build := [4] string.["coax/web/wasm.sh", app, face, wasm];
   home := [2] string.["coax/web/project/build-home.sh", wasm];
   if fp_step("the wasm", ifx realm == "newland" then home[..] else build[..], o[..]) < 0 { return 1; }
-  frame := [16] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--size", "320x180", "--frames", "90", "--every", "90", "--golden", "--page", fp_page(realm), "--dump", dir];
+  frame := [16] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "coax/web/tool.sh", "verse/native/wasm-run.coax", wasm, "--size", "320x180", "--frames", "90", "--every", "90", "--golden", "--page", fp_page(realm), "--dump", dir];
   if fp_step("the frame", frame[..], o[..]) < 0 { return 1; }
   // the module the browser draws, and the entries lowered
   gb: [1024] u8; wb: [1024] u8;

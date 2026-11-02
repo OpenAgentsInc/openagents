@@ -1,0 +1,160 @@
+// A WebAssembly module run in headless Chrome, driven from a Coax tool: the
+// checks that compare a page's wasm with its native build (replay-hosts,
+// state-defaults, verse/native/wasm-run) run the wasm in the browser's own
+// engine and do everything else here. The page holds one small glue object,
+// W (coax/web/wasm-host.js): it keeps files sent to it, instantiates a module with an imported
+// memory and stub imports, calls exports, and reads and writes memory. What
+// to call, in what order, and what the answers mean is the tool's.
+//   c: [1] Cdp;
+//   if !wc_open(c[..]) { ... cdp_error(c[..]) ... }
+//   wc_file(c[..], "m", wasm_bytes); wc_load(c[..], "m", 256, "{}", WC_ZERO) == "ok"
+//   wc_int(c[..], "replay_walk", "3n");          // an export's result
+//   n := wc_read(c[..], ptr, size, out[..]);      // memory bytes
+//   cdp_close(c[..]);
+// Effects: coax/lib/net/cdp.coax (Chrome, its socket, its profile).
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+// The imports a module gets that its spec does not name: every function
+// returns 0 (WC_ZERO), or throws "wasm-run: M.N is not provided" (WC_THROW).
+WC_ZERO :: "zero"; WC_THROW :: "throw";
+WC_CHUNK :: 600000;                 // file bytes per message (base64 within CDP_REQ)
+WC_EXPR :: 4096;
+
+// The page's side is coax/web/wasm-host.js, read from the repo root.
+WC_HOST_FILE :: "coax/web/wasm-host.js";
+
+// a then b ... into out, or "" when they don't fit.
+wc_cat :: (out: [] u8, parts: [] string) -> string {
+  n := 0;
+  for p: parts {
+    if n + p.count > out.count { return ""; }
+    for i: 0..<p.count { out[n + i] = p[i]; }
+    n += p.count;
+  }
+  return cast(string) out[0..<n];
+}
+wc_dec :: (out: [] u8, v: int) -> string {
+  tmp: [24] u8; k := 0; x := v; neg := v < 0;
+  while true { d := x % 10; if d < 0 { d = -d; } tmp[k] = cast(u8) ('0' + d); k += 1; x /= 10; if x == 0 { break; } }
+  n := 0;
+  if neg { out[0] = '-'; n = 1; }
+  for i: 0..<k { out[n + i] = tmp[k - 1 - i]; }
+  return cast(string) out[0..<n + k];
+}
+// A decimal's value (an export's String(result)): its digits up to the first other byte.
+wc_parse :: (s: string) -> int {
+  i := 0; neg := false; v := 0;
+  if s.count > 0 && s[0] == '-' { neg = true; i = 1; }
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) (s[i] - '0'); i += 1; }
+  return ifx neg then -v else v;
+}
+
+#test "expressions and numbers" {
+  o: [64] u8; d: [24] u8;
+  parts1 := [3] string.["W.call(\"", "f", "\")"];
+  #assert wc_cat(o[..], parts1[..]) == "W.call(\"f\")";
+  parts2 := [2] string.["ab", "cd"];
+  #assert wc_cat(o[0..<3], parts2[..]) == "";
+  #assert wc_dec(d[..], -123) == "-123" && wc_dec(d[..], 0) == "0";
+  #assert wc_parse("-9007199254740993") == -9007199254740993 && wc_parse("42") == 42 && wc_parse("") == 0;
+}
+
+// The value an expression gives, as text (a string's contents, or the raw
+// JSON of anything else); "" with cdp_error set on failure.
+wc_eval :: (c: [] Cdp, expr: string) -> string {
+  v := cdp_evaluate(c, expr);
+  if v < 0 { if c[0].err_n == 0 { e := cdp_fail(c, "the page threw, or gave nothing, for ", ifx expr.count > 120 then expr[0..<120] else expr); } return ""; }
+  return jv_raw(c[0].doc[0], v);
+}
+// Chrome, with WC_HOST in its blank page.
+wc_open :: (c: [] Cdp) -> bool {
+  host: [65536] u8;
+  hn := fs_read(WC_HOST_FILE, host[..]);
+  if hn < 0 { return cdp_fail(c, "run from the repo root (no ", WC_HOST_FILE); }
+  if !cdp_launch(c, 64, 64, "coax-wasm-") { return false; }
+  if wc_eval(c, cast(string) host[0..<hn]) != "ready" { e := cdp_fail(c, "the wasm host did not start", ""); return false; }
+  return true;
+}
+// bytes kept in the page as name.
+wc_file :: (c: [] Cdp, name: string, bytes: string) -> bool {
+  b: [WC_CHUNK / 3 * 4 + 8] u8; x: [WC_CHUNK / 3 * 4 + 256] u8;
+  at := 0;
+  while at < bytes.count || at == 0 {
+    end := ifx at + WC_CHUNK < bytes.count then at + WC_CHUNK else bytes.count;
+    n := b64_encode(bytes[at..<end], b[..]);
+    parts3 := [5] string.["W.put(\"", name, "\",\"", cast(string) b[0..<n], "\")"];
+    e := wc_cat(x[..], parts3[..]);
+    if e.count == 0 || wc_eval(c, e) != "1" { return false; }
+    at = end;
+    if bytes.count == 0 { break; }
+  }
+  d: [24] u8;
+  parts4 := [3] string.["W.done(\"", name, "\")"];
+  return wc_eval(c, wc_cat(x[..], parts4[..])) == wc_dec(d[..], bytes.count);
+}
+// Instantiates file name with a memory of pages: "ok", "link" (the module
+// wants more memory than that), or "" on any other failure.
+wc_load :: (c: [] Cdp, name: string, pages: int, spec: string, missing: string) -> string {
+  x: [WC_EXPR + 8192] u8; d: [24] u8;
+  parts5 := [9] string.["W.load(\"", name, "\",", wc_dec(d[..], pages), ",", spec, ",\"", missing, "\")"];
+  return wc_eval(c, wc_cat(x[..], parts5[..]));
+}
+wc_has :: (c: [] Cdp, f: string) -> bool {
+  x: [WC_EXPR] u8;
+  parts6 := [3] string.["W.has(\"", f, "\")"];
+  return wc_eval(c, wc_cat(x[..], parts6[..])) == "1";
+}
+// An export's result for args (JavaScript argument text: "3n" for an i64,
+// "7" for an i32) as text.
+wc_call :: (c: [] Cdp, f: string, args: string) -> string {
+  x: [WC_EXPR] u8;
+  parts7 := [5] string.["W.call(\"", f, ifx args.count > 0 then "\"," else "\"", args, ")"];
+  e := wc_cat(x[..], parts7[..]);
+  v := wc_eval(c, e);
+  // a string comes back without its quotes
+  return v;
+}
+wc_int :: (c: [] Cdp, f: string, args: string) -> int { return wc_parse(wc_call(c, f, args)); }
+// A global's value (__heap_base), 0 when the module has none.
+wc_global :: (c: [] Cdp, g: string) -> int {
+  x: [WC_EXPR] u8;
+  parts8 := [3] string.["W.glob(\"", g, "\")"];
+  return wc_parse(wc_eval(c, wc_cat(x[..], parts8[..])));
+}
+wc_size :: (c: [] Cdp) -> int { return wc_parse(wc_eval(c, "W.size()")); }
+wc_grow :: (c: [] Cdp, pages: int) -> int {
+  x: [128] u8; d: [24] u8;
+  parts9 := [3] string.["W.grow(", wc_dec(d[..], pages), ")"];
+  return wc_parse(wc_eval(c, wc_cat(x[..], parts9[..])));
+}
+wc_fill :: (c: [] Cdp, at: int, n: int, v: int) -> bool {
+  x: [256] u8; d0: [24] u8; d1: [24] u8; d2: [24] u8;
+  parts10 := [7] string.["W.fill(", wc_dec(d0[..], at), ",", wc_dec(d1[..], n), ",", wc_dec(d2[..], v), ")"];
+  return wc_eval(c, wc_cat(x[..], parts10[..])) == "1";
+}
+// Memory at..<at+n into out: n, or -1. Large reads go in pieces, each
+// message within cdp.coax's CDP_MSG_MAX.
+WC_READ :: 16777216;
+wc_read :: (c: [] Cdp, at: int, n: int, out: [] u8) -> int {
+  if n == 0 { return 0; }
+  if n > out.count { e := cdp_fail(c, "a memory read is larger than its buffer", ""); return -1; }
+  done := 0;
+  while done < n {
+    k := ifx n - done < WC_READ then n - done else WC_READ;
+    x: [256] u8; d0: [24] u8; d1: [24] u8;
+    parts := [5] string.["W.read(", wc_dec(d0[..], at + done), ",", wc_dec(d1[..], k), ")"];
+    v := wc_eval(c, wc_cat(x[..], parts[..]));
+    if b64_decode(v, out[done..<done + k]) != k { return -1; }
+    done += k;
+  }
+  return n;
+}
+// bytes into memory at at (through a file named "w").
+wc_write :: (c: [] Cdp, at: int, bytes: string) -> bool {
+  if bytes.count == 0 { return true; }
+  if !wc_file(c, "w", bytes) { return false; }
+  x: [256] u8; d0: [24] u8; d1: [24] u8;
+  parts12 := [3] string.["W.write(", wc_dec(d0[..], at), ",\"w\")"];
+  return wc_eval(c, wc_cat(x[..], parts12[..])) == wc_dec(d1[..], bytes.count);
+}

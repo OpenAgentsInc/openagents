@@ -138,7 +138,7 @@ int main(void) {{
 }}
 ''')
     # Unused host imports are not called by these pure frame probes. Keep the
-    # same native-link allowance as state-defaults.test.ts; a called missing
+    # same native-link allowance as state-defaults.coax; a called missing
     # effect still fails the executable rather than receiving a fake value.
     loose = "-Wl,-undefined,dynamic_lookup" if sys.platform == "darwin" else "-Wl,--unresolved-symbols=ignore-all"
     sanitizers = ["-g", "-fno-omit-frame-pointer", "-fsanitize=address,undefined", "-fno-sanitize-recover=all"] if sanitize else []

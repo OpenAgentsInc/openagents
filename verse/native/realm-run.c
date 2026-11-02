@@ -1,6 +1,6 @@
 // realm-run: a realm natively with no GPU, printing what each frame hands
 // the GPU, so a native build can be held to the browser's wasm
-// (verse/native/wasm-run.ts prints the same lines from the wasm).
+// (verse/native/wasm-run.coax prints the same lines from the wasm).
 //   realm-run [--pack FILE] [--facts FILE] [--frames N] [--size WxH] [--scale K]
 //             [--keys F:KEY:DOWN,...] [--extra BYTES,...] [--golden] [--every K] [--against DIR] [--page N]
 // Each frame steps 1/60 s. --keys holds or lets go of a key (host.js KEYS:
@@ -9,7 +9,7 @@
 // (and the last) it prints the frame, the vertex count, the draw count and
 // FNV-1a hashes of the vertices, uniforms, draw list and each store.
 // --against DIR compares the last frame's uniforms and stores with the
-// wasm's (wasm-run.ts --dump DIR) and fails past libm's rounding.
+// wasm's (wasm-run.coax --dump DIR) and fails past libm's rounding.
 #include "face.h"
 #include "realm-host.h"
 #include <math.h>
@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
     uint32_t pb = coaxial_particle_bytes(h.state) & ~3u;
     printf(" p %016llx\n", (unsigned long long)fnv(FNV0, rh_ptr(coaxial_particles(h.state)), pb));
   }
-  // The last frame's uniforms and stores against the wasm's (wasm-run.ts --dump DIR): the same
+  // The last frame's uniforms and stores against the wasm's (wasm-run.coax --dump DIR): the same
   // words, or within libm's rounding (glibc's sinf and wasi-libc's differ in the last bits).
   int far = 0;
   if (against) {

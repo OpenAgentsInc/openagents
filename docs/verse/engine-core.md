@@ -72,7 +72,7 @@ a world one, E0325 a local point stored as a world one, E0822 metres plus
 grid units), against a control that must compile. Mutation: 78 of 78 killed
 (`space.coax`), 47 of 47 (`refusals.coax`).
 
-## State (`coax_default_T`, `coax/web/state-defaults.test.ts`)
+## State (`coax_default_T`, `coax/web/state-defaults.coax`)
 
 Every realm's state gets its declared field defaults by construction, natively
 (`s: [1] T`) and in the browser, where the host hands an engine zeroed memory:
@@ -182,7 +182,7 @@ powers from exact IEEE operations: with the C library's, a recorded walk
 parted natively and in wasm after 105 steps; `verse/player.coax`'s step uses
 them now. Checks: live sessions with late, repeated and out-of-order
 answers and updates replay to the same digest at every step with no request
-sent; a planted fault is found at its step; `coax/web/replay-hosts.test.ts`
+sent; a planted fault is found at its step; `coax/web/replay-hosts.coax`
 gives the same session digests for a recorded walk natively and in wasm.
 Mutation: 321 of 321 (`replay.coax`), 50 of 50 (`rand.coax`), 154 of 154
 (`math.coax`).
@@ -301,7 +301,7 @@ Checks: `verse/gridwalk.coax` (the keyboard and the touch stick give the
 same digests; a tap in a frame with no step jumps on the next; look and zoom
 total the same at 30, 60 and 144 FPS; a recorded session replays to the same
 digest at every step and a changed frame is found at its step; full records
-start new ones that replay), and `coax/web/replay-hosts.test.ts`: a 1,000-frame
+start new ones that replay), and `coax/web/replay-hosts.coax`: a 1,000-frame
 Grid session (keys, Shift, Space, arrows, a drag, the wheel, the stick, a
 full push, a look finger, a pinch and taps, at 60, 120 and 144 FPS with a
 stall) gives the same digest at every one of its 673 steps natively and in

@@ -228,7 +228,7 @@ tasks (native-gpu.json) come after the port.
   mapped below 4 GB (`rh_off` refuses anything higher). The network imports
   are refused, as on a page that is offline. `check.sh HOST` runs both builds
   through 240 frames (the clock fixed, golden mode, a walk, a turn and a
-  jump). `wasm-run.ts` runs the browser's wasm through the same steps. Every
+  jump). `wasm-run.coax` runs the browser's wasm through the same steps. Every
   frame's 1,230-1,824 vertices, 190 draws, 104,576 grass blades and 126
   particles are the same bytes. Of the uniforms and stores, 206 of 238,394
   words differ, all within libm's rounding (largest 4.8e-7): glibc's

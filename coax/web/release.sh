@@ -313,6 +313,17 @@ if [[ -s "$tree/coax/bin/mutation-survivors" ]]; then
   echo "  mutation   $(wc -l < "$tree/coax/bin/mutation-survivors" | tr -d ' ') surviving mutant(s) that no change since production caused: reported in releases/<time>/MUTATION, not gating"
 fi
 compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-release.sh" --check --binary "$tree/coax/bin/coax"
+# The tools-in-Coax rule (coax/tools-in-coax.md): a non-Coax tool without its reason
+# line, or one put on coax/tools-port.txt after the list's base commit, stops the release
+# here, before staging changes. Every release since 2026-11-02 has passed this check, so a
+# failure is a file this release adds.
+t=$(now)
+if ! (cd "$tree" && bounded 300 coax/web/tool.sh tools-check) > "$tree/../tools-check.txt" 2>&1; then
+  grep -v '^tools-check:' "$tree/../tools-check.txt" | sed 's/^/  /' >&2
+  echo "release $commit: $(tail -1 "$tree/../tools-check.txt"); write the tool in Coax, or give it its reason line (coax/tools-in-coax.md)" >&2
+  exit 1
+fi
+lap tools "$t"
 
 base_dir=$(mktemp -d)
 live_via=""

@@ -1,4 +1,4 @@
-// A recorded Grid session for the host check (coax/web/replay-hosts.test.ts): the Grid's own
+// A recorded Grid session for the host check (coax/web/replay-hosts.coax): the Grid's own
 // session code (verse/gridwalk.coax) driven the way the page drives it, through 1,000 frames
 // at 60, 120 and 144 FPS with a stall: you walk with the keys, turn with the arrows and a drag,
 // walk instead of run with Shift, jump with Space, zoom with the wheel, then on a phone push

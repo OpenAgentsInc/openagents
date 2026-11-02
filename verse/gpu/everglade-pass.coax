@@ -1,6 +1,6 @@
 // One of Everglade's passes, ported to Coax, against the browser (G5,
 // docs/verse/native-gpu.md). A frame comes from the browser's wasm
-// (verse/native/wasm-run.ts: the pack, page facts, golden mode, clock 0, 90
+// (verse/native/wasm-run.coax: the pack, page facts, golden mode, clock 0, 90
 // frames): its uniforms, stores and draw list, with the pack's vertices,
 // indices and layer images. Everglade's Coax (verse/everglade/gpu.coax) and
 // verse/style.coax get one integer hash for their sin hashes (verse/gpu/int-hash.coax:
@@ -91,7 +91,7 @@ run :: (host: string, p: EpPass, work: string, live: bool, keep: string, native:
   build := [8] string.["coax/web/wasm.sh", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-face.c", wasm,
     "verse/player.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax"];
   if step("the wasm", build[..], o[..]) < 0 { return 1; }
-  base := [15] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--pack", EP_PACK, "--facts", "verse/native/everglade.facts",
+  base := [15] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "coax/web/tool.sh", "verse/native/wasm-run.coax", wasm, "--pack", EP_PACK, "--facts", "verse/native/everglade.facts",
     "--extra", "9000", "--size", "320x180", "--dump", frame_dir];
   frame: [48] string; fn := 0;
   for w: base { frame[fn] = w; fn += 1; }

@@ -71,7 +71,7 @@ g compute url-maps validate --global --source "$tmp" --format 'value(result.load
 g compute url-maps import "$map" --global --source "$tmp" 2>&1 | grep -E "ERROR" && exit 1
 # Through the site's address (the rule takes a minute or two to reach every edge).
 for try in 1 2 3 4 5 6 7 8 9 10; do
-  bun "$here/load.ts" wss://openagents.com 4 10 && bun "$here/relay-check.ts" wss://openagents.com && { echo "room: deployed $image behind wss://openagents.com/api/room/"; exit 0; }
+  "$here/../tool.sh" "$here/load.coax" wss://openagents.com 4 10 && "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com && { echo "room: deployed $image behind wss://openagents.com/api/room/"; exit 0; }
   sleep 30
 done
 echo "room: the load test through openagents.com failed" >&2; exit 1

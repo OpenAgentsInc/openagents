@@ -1,6 +1,6 @@
 // A scene realm's frame against the browser (docs/verse/native-gpu.md, realms-native): a realm
 // whose module draws a scene (coaxial_draws: Dead Gears, Ice Cream Man, Hecate's Cemetery), drawn
-// as host.js draws one. Its frame comes from the browser's wasm (verse/native/wasm-run.ts: golden,
+// as host.js draws one. Its frame comes from the browser's wasm (verse/native/wasm-run.coax: golden,
 // clock 0, the 90th frame at 320x180), built with the libraries the site's build links it with
 // (verse/native/build.sh --libraries); its entries from apps/openagents-web/gpu/REALM.coax as
 // `coax spirv` lowers them, and the browser draws REALM.wgsl, the module `coax wgsl` writes from
@@ -106,7 +106,7 @@ sc_run :: (host: string, name: string, work: string, allow: string, keep: string
   if fp_step_into("the wasm", build[0..<bn], o[..]) < 0 { return 1; }
   // the frame, with the page's facts when given (the fixture's ?style=painterly: its casters and grass)
   frame: [18] string; fc := 14;
-  head := [14] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--size", "320x180", "--frames", "90", "--every", "90", "--golden", "--dump", dir];
+  head := [14] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "coax/web/tool.sh", "verse/native/wasm-run.coax", wasm, "--size", "320x180", "--frames", "90", "--every", "90", "--golden", "--dump", dir];
   for k: 0..<14 { frame[k] = head[k]; }
   if pack.count > 0 { frame[fc] = "--pack"; frame[fc + 1] = pack; fc += 2; }
   if facts.count > 0 { frame[fc] = "--facts"; frame[fc + 1] = facts; fc += 2; }

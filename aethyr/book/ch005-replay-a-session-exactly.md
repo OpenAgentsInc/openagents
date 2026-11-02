@@ -469,7 +469,7 @@ the walk's state and step are in
 #import "Basic";
 
 // A recorded walk of 240 uneven frames, its replay, and a replay with a fault planted at
-// step 150. The browser runs the same file (coax/web/replay-hosts.test.ts).
+// step 150. The browser runs the same file (coax/web/replay-hosts.coax).
 main :: () {
   refused := replay_walk(3);
   print("refused: % duplicate, % stale, % unknown\n", refused / 1000000, refused / 1000 % 1000, refused % 1000);
@@ -562,7 +562,7 @@ coax/bin/coax mutate aethyr/replay.coax --library --root-only
 coax/bin/coax test aethyr/rand.coax --library
 coax/bin/coax test aethyr/math.coax --library
 python3 aethyr/tests/rand_oracle.py
-bun test coax/web/replay-hosts.test.ts
+coax/web/tool.sh replay-hosts
 ```
 
 | What | Result (2026-10-31) |
@@ -573,10 +573,10 @@ bun test coax/web/replay-hosts.test.ts
 | Recorded walk, native and wasm session digests | equal (662099296) |
 | Same walk with the host's `sin`, `cos` and `pow` | parts at step 105 |
 
-`coax/web/replay-hosts.test.ts` builds `aethyr/tests/replay-walk.coax` to
+`coax/web/replay-hosts.coax` builds `aethyr/tests/replay-walk.coax` to
 wasm the way pages are built (`coax/web/wasm.sh`: `-O2`, no fast math, no
-contraction). It runs the module as the browser does, and compares every
-number with the native run of the example.
+contraction). It runs the module in headless Chrome, the browser's own
+engine, and compares every number with the native run of the example.
 
 ## Still to do
 

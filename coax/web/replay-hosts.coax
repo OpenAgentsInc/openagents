@@ -1,0 +1,164 @@
+// A recorded session replays bit for bit natively and in the browser
+// (aethyr/replay.coax, Aethyr book chapter 5). aethyr/tests/replay-walk.coax
+// records a walk, replays it and plants a fault; this builds it to wasm the
+// way pages are built (coax/web/wasm.sh: -O2, no fast math, no
+// contraction), runs it in headless Chrome (coax/web/wasm-chrome.coax), and
+// compares every number with the native run of
+// aethyr/examples/replay-a-walk.coax. The second check does the same for a
+// recorded Grid session (verse/tests/grid-session.coax: the Grid's own
+// session code, verse/gridwalk.coax, with keys, a drag, the wheel, the touch
+// stick, a pinch and taps) and compares the digest of every step. Both
+// sessions turn while they walk through angles where the hosts' sinf and
+// cosf round differently, so either check fails if a step calls the C
+// library's sin or cos.
+//   coax/web/tool.sh replay-hosts [walk|grid]     (from the repo root; both by default)
+// Prints "pass"/"FAIL" per check and exits 0 only when every check passes.
+#load "wasm-chrome.coax";
+
+RH_OUT :: 1048576;
+RH_NUMS :: 4096;
+
+#test "the numbers in a text, in order" {
+  n: [8] int;
+  #assert rh_numbers("refused 1 2 3\nrecorded -45 x7y", n[..]) == 5 && n[0] == 1 && n[3] == -45 && n[4] == 7;
+  k := rh_numbers("a-1 b22 -3", n[..]);
+  #assert k == 3 && n[0] == -1 && n[1] == 22 && n[2] == -3;
+  #assert rh_numbers("none", n[..]) == 0;
+}
+#test "lines" {
+  t := "a\nbb\n\nc";
+  #assert rh_line(t, 0) == "a" && rh_line(t, 1) == "bb" && rh_line(t, 2) == "" && rh_line(t, 3) == "c" && rh_line(t, 4) == "";
+  #assert rh_session("session 123") && !rh_session("session ") && !rh_session("session 1x") && !rh_session("sessions 1");
+}
+
+// Every -?\d+ in text into out, as JavaScript's matchAll reads them: the count.
+rh_numbers :: (text: string, out: [] int) -> int {
+  k := 0; i := 0;
+  while i < text.count && k < out.count {
+    neg := text[i] == '-' && i + 1 < text.count && text[i + 1] >= '0' && text[i + 1] <= '9';
+    if neg || (text[i] >= '0' && text[i] <= '9') {
+      j := ifx neg then i + 1 else i; v := 0;
+      while j < text.count && text[j] >= '0' && text[j] <= '9' { v = v * 10 + cast(int) (text[j] - '0'); j += 1; }
+      out[k] = ifx neg then -v else v; k += 1; i = j;
+    } else { i += 1; }
+  }
+  return k;
+}
+rh_line :: (text: string, k: int) -> string {
+  i := 0; l := 0;
+  while i <= text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    if l == k { return text[i..<j]; }
+    if j >= text.count { return ""; }
+    l += 1; i = j + 1;
+  }
+  return "";
+}
+rh_session :: (s: string) -> bool {
+  h := "session ";
+  if s.count <= h.count || s[0..<h.count] != h { return false; }
+  for i: h.count..<s.count { if s[i] < '0' || s[i] > '9' { return false; } }
+  return true;
+}
+rh_run :: (argv: [] string, out: [] u8) -> int {
+  err: [8192] u8;
+  r := proc_run(argv, 600000, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.cut {
+    tool_err("replay-hosts: "); tool_err(argv[0]); tool_err(" "); tool_err(argv[1]); tool_err(" "); tool_err(argv[2]); tool_err(" failed: ");
+    tool_errln(cast(string) err[0..<r.err_n]);
+    return -1;
+  }
+  return r.out_n;
+}
+rh_check :: (ok: bool, what: string) -> bool {
+  if !ok { tool_err("replay-hosts: "); tool_errln(what); }
+  return ok;
+}
+// The wasm build of coax_file + face, instantiated in c.
+rh_wasm :: (c: [] Cdp, coax_file: string, face: string, pages: int) -> bool {
+  tmp: [1024] u8; path: [1100] u8; out: [4096] u8;
+  dir := fs_temp("replay-hosts-", tmp[..]);
+  if dir.count == 0 { return rh_check(false, "no temporary directory"); }
+  wasm := fs_join(dir, "m.wasm", path[..]);
+  argv := [4] string.["coax/web/wasm.sh", coax_file, face, wasm];
+  if rh_run(argv[..], out[..]) < 0 { r := fs_remove(dir); return false; }
+  bytes: [16777216] u8;
+  n := fs_read(wasm, bytes[..]);
+  r := fs_remove(dir);
+  if n < 0 { return rh_check(false, "the wasm build wrote nothing"); }
+  return rh_check(wc_file(c, "m", cast(string) bytes[0..<n]) && wc_load(c, "m", pages, "{}", WC_ZERO) == "ok", cdp_error(c));
+}
+
+// A recorded walk gives the same digests natively and in wasm.
+rh_walk :: (c: [] Cdp) -> bool {
+  out: [RH_OUT] u8;
+  argv := [3] string.["coax/bin/coax", "run", "aethyr/examples/replay-a-walk.coax"];
+  n := rh_run(argv[..], out[..]);
+  if n < 0 { return false; }
+  native: [16] int;
+  k := rh_numbers(cast(string) out[0..<n], native[..]);
+  if !rh_check(k == 7, "replay-a-walk printed other than 7 numbers") { return false; }
+  if !rh_wasm(c, "aethyr/tests/replay-walk.coax", "aethyr/tests/replay-walk-face.c", 256) { return false; }
+  refused := wc_int(c, "replay_walk", "3n");
+  browser := [7] int.[refused / 1000000, refused / 1000 % 1000, refused % 1000, wc_int(c, "replay_walk", "0n"), wc_int(c, "replay_walk", "1n"), 150, wc_int(c, "replay_walk", "2n")];
+  same := true;
+  for i: 0..<7 { if browser[i] != native[i] { same = false; print("  number %: browser % native %\n", i, browser[i], native[i]); } }
+  // the native output: refused (3 numbers), recorded, replayed, "step 150", first divergent step
+  return rh_check(same, "the browser's numbers differ from native") && rh_check(native[3] == native[4], "the replay did not match the recording") &&
+         rh_check(native[3] > 0, "the recording's digest is 0") && rh_check(native[6] == 150, "the planted fault was not found where it starts");
+}
+
+// A recorded Grid session gives the same digest at every step natively and in wasm.
+rh_grid :: (c: [] Cdp) -> bool {
+  out: [RH_OUT] u8;
+  argv := [3] string.["coax/bin/coax", "run", "verse/tests/grid-session.coax"];
+  n := rh_run(argv[..], out[..]);
+  if n < 0 { return false; }
+  text := cast(string) out[0..<n];
+  head: [4] int;
+  if !rh_check(rh_numbers(rh_line(text, 0), head[..]) >= 2, "grid-session's first line has no record and step counts") { return false; }
+  records := head[0]; steps := head[1];
+  if !rh_check(records == 1, "the session is not one record") || !rh_check(steps > 600 && steps < 100000, "the session has too few steps") { return false; }
+  session := rh_line(text, 1 + steps);
+  if !rh_check(rh_session(session), "no session line after the steps") || !rh_check(rh_line(text, 2 + steps) == "replayed true", "the session did not replay") { return false; }
+  if !rh_wasm(c, "verse/tests/grid-session.coax", "verse/tests/grid-session-face.c", 256) { return false; }
+  if !rh_check(wc_int(c, "grid_play", "") == steps, "the browser played another number of steps") { return false; }
+  if !rh_check(wc_int(c, "grid_records", "") == 1, "the browser's session is not one record") { return false; }
+  first := -1; d: [24] u8; arg: [32] u8;
+  for k: 0..<steps {
+    parts1 := [2] string.[wc_dec(d[..], k), "n"];
+    a := wc_cat(arg[..], parts1[..]);
+    if wc_int(c, "grid_mark", a) != wc_parse(rh_line(text, 1 + k)) { first = k; break; }
+  }
+  if first >= 0 { print("  step % is the first that differs\n", first); }
+  parts2 := [2] string.[wc_dec(d[..], steps), "n"];
+  last := wc_cat(arg[..], parts2[..]);
+  sb: [64] u8;
+  parts3 := [2] string.["session ", wc_call(c, "grid_session", "")];
+  browser_session := wc_cat(sb[..], parts3[..]);
+  return rh_check(first < 0, "a step differs") && rh_check(wc_int(c, "grid_mark", last) == -1, "a mark past the last step") &&
+         rh_check(browser_session == session, "the browser's session digest differs") && rh_check(wc_int(c, "grid_replayed", "") == 1, "the browser did not replay");
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  only := ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "";
+  if only != "" && only != "walk" && only != "grid" { tool_errln("usage: coax/web/tool.sh replay-hosts [walk|grid]"); return 2; }
+  c: [1] Cdp;
+  if !wc_open(c[..]) { tool_err("replay-hosts: "); tool_errln(cdp_error(c[..])); return 1; }
+  failed := 0;
+  if only != "grid" {
+    ok := rh_walk(c[..]);
+    print("% a recorded walk gives the same digests natively and in wasm\n", ifx ok then "pass" else "FAIL");
+    if !ok { failed += 1; }
+  }
+  if only != "walk" {
+    ok := rh_grid(c[..]);
+    print("% a recorded Grid session gives the same digest at every step natively and in wasm\n", ifx ok then "pass" else "FAIL");
+    if !ok { failed += 1; }
+  }
+  cdp_close(c[..]);
+  return ifx failed == 0 then 0 else 1;
+}
