@@ -68,6 +68,7 @@ Stage :: struct {
   speed: f32;                   // speed lines, 0 to 1
   shake: f32;                   // the camera's shake, m
   hold_at: f32 = -1;            // a beat's hold, from
+  white_at: f32 = -1;           // an FX flash: the frame whitening out, from
 }
 
 // Limbs: what the body does, as the realm draws it. Angles in radians; an arm's pitch 0 hangs down,
@@ -237,7 +238,7 @@ anime_stage :: (events: [] AnimeEvent, n: int, t: f32, make_speed: f32) -> Stage
       }
       if d.option == FX_RUBBLE { sg_fx(s, StageFx.{kind = FXK_RUBBLE, at = e.at, to = anime_place(PL_COURTYARD), size = 1}); }
       if d.option == FX_EXPLOSION && d.place == PL_WALL { s[0].breach_at = e.at; sg_fx(s, StageFx.{kind = FXK_BREACH, at = e.at, to = anime_place(PL_WALL), size = 1}); }
-      if d.option == FX_FLASH { s[0].hold_at = e.at; }
+      if d.option == FX_FLASH { s[0].white_at = e.at; }
     }
     if d.kind == AD_MAKE {
       s[0].make_at = e.at;
@@ -284,6 +285,7 @@ anime_stage :: (events: [] AnimeEvent, n: int, t: f32, make_speed: f32) -> Stage
     }
     if f.kind == FXK_RUBBLE { s[0].shake = hi(s[0].shake, 0.05 * (1 - sg_sat((a - 2.5) / 1.0))); }
   }
+  if s[0].white_at >= 0 && t >= s[0].white_at { s[0].flash = hi(s[0].flash, sg_sat((t - s[0].white_at) / 0.35)); }
   if s[0].hold_at >= 0 && s[0].speed > 0 && t - s[0].hold_at > 2 { s[0].speed = 0; }
   return s[0];
 }

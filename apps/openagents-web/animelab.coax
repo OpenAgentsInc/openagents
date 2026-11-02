@@ -76,7 +76,7 @@ animelab_take :: (s: [] Animelab, mode: int) {
   if mode == STAGE_FILM {
     lines := FILM_LINES; answers := FILM_ANSWERS;
     s[0].n = anime_timeline(lines[..], answers[..], false, s[0].events[..]);
-    s[0].length = FILM_LENGTH; s[0].speed = 2.6;
+    s[0].length = FILM_LENGTH; s[0].speed = 3.5;
   } else {
     lines := DEMO_LINES; answers := DEMO_ANSWERS;
     s[0].n = anime_timeline(lines[..], answers[..], true, s[0].events[..]);
@@ -351,15 +351,17 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
     panel(s, u, w - m - sw - 22 * S, m, w - m, m + 28 * S, 0.02, 0.02, 0.06, 0.55);
     n = label(out, n, sim, w - m - sw - 11 * S, m + 19 * S, sim_cap, ink_of(1.0, 0.78, 0.45, 1));
   } else {
-    n = label(out, n, sim, m, m + 64 * S, sim_cap, ink_of(1.0, 0.78, 0.45, 1));
+    panel(s, u, m, m + 56 * S, m + sw + 22 * S, m + 82 * S, 0.02, 0.02, 0.06, 0.55);
+    n = label(out, n, sim, m + 11 * S, m + 74 * S, sim_cap, ink_of(1.0, 0.78, 0.45, 1));
   }
   // the bottom bar: the line as heard, then what the director made of it
   li := line_at(t);
   lines := DEMO_LINES;
-  words_cap := (ifx portrait then 30.0f32 else 25.0f32) * S;
-  chip_cap := (ifx portrait then 17.0f32 else 14.5f32) * S;
-  chip_h := chip_cap * 2.05;
-  bar_h := words_cap * 2.2 + chip_h * (ifx portrait then 3.3f32 else 1.55f32) + 22 * S;
+  words_cap := (ifx portrait then 25.0f32 else 25.0f32) * S;
+  chip_cap := (ifx portrait then 16.0f32 else 14.5f32) * S;
+  // on a phone a chip's verdict goes on a second row under its words, and the words wrap to two lines
+  chip_h := chip_cap * (ifx portrait then 3.3f32 else 2.05f32);
+  bar_h := words_cap * (ifx portrait then 3.4f32 else 2.2f32) + (chip_h + 6 * S) * (ifx portrait then 3.0f32 else 1.5f32) + 22 * S;
   y0 := h - m - bar_h;
   panel(s, u, m, y0, w - m, h - m, 0.015, 0.012, 0.04, 0.72);
   // the mic: a dot, and rings while the words come
@@ -392,7 +394,17 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
     nb = 0;
     if heard > 0 { nb = tput(buf[..], 0, "“"); nb = tput(buf[..], nb, l.words[0..<heard]); }
     if final { nb = tput(buf[..], nb, "”"); } else { nb = tput(buf[..], nb, ifx heard > 0 then " …" else "…"); }
-    n = label(out, n, cast(string) buf[0..<nb], wx, wy, words_cap, ifx final then white else grey);
+    said := cast(string) buf[0..<nb];
+    wk := ifx final then white else grey;
+    if portrait {
+      next := [1] int.[0];
+      e1 := wrap_ink(said, 0, w - m - 14 * S - wx, words_cap, 0.22, 0.72, wk, next[..]);
+      n = label(out, n, said[0..<e1], wx, wy, words_cap, wk);
+      if next[0] < said.count { n = label(out, n, said[next[0]..<said.count], wx, wy + words_cap * 1.3, words_cap, wk); }
+      wy += words_cap * 1.3;
+    } else {
+      n = label(out, n, said, wx, wy, words_cap, wk);
+    }
     lab := ifx final then "HEARD" else "HEARING";
     lc := 8.5 * S;
     n = label(out, n, lab, mx - text_w(lab, lc) * 0.5, my + mr + 15 * S, lc, ifx final then ink_of(0.6, 1.0, 0.7, 1) else ink_of(1.0, 0.55, 0.5, 1));
@@ -424,19 +436,21 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
         else { nt = tput(tail[..], nt, "IN STOCK"); }
       }
       kw := text_w(kl, chip_cap); dw := text_w(sd, chip_cap); tw2 := text_w(cast(string) tail[0..<nt], chip_cap * 0.78);
-      cw := kw + dw + tw2 + 46 * S;
+      cw := ifx portrait then hi(kw + dw + 22 * S, tw2 + 24 * S) else kw + dw + tw2 + 46 * S;
       if cx + cw > w - m - 10 * S && cx > wx { cx = wx; cy += chip_h + 6 * S; }
       kr := kind_r(d.kind); kg := kind_g(d.kind); kb := kind_b(d.kind);
       fade := ifx d.engine_framed then 0.55f32 else 1.0f32;
       panel(s, u, cx, cy, cx + cw, cy + chip_h, kr * 0.22, kg * 0.22, kb * 0.22, 0.85 * a);
-      bx := cx + 12 * S; by := cy + chip_h * 0.66;
+      bx := cx + 12 * S; by := cy + (ifx portrait then chip_h * 0.45f32 else chip_h * 0.66f32);
       n = label(out, n, kl, bx, by, chip_cap, ink_of(kr, kg, kb, a * fade));
       n = label(out, n, sd, bx + kw + 10 * S, by, chip_cap, ink_of(1, 1, 1, a * fade));
       stock_r := 0.55f32; stock_g := 0.95f32; stock_b := 0.6f32;
       if !d.stock && !din.made { stock_r = 1.0; stock_g = 0.76; stock_b = 0.28; }
       if d.p < P_PLAY && !d.engine_framed && age < 2.4 { stock_r = 1.0; stock_g = 0.8; stock_b = 0.4; }
       if d.engine_framed { stock_r = 0.6; stock_g = 0.62; stock_b = 0.7; }
-      n = label(out, n, cast(string) tail[0..<nt], bx + kw + dw + 24 * S, by, chip_cap * 0.78, ink_of(stock_r, stock_g, stock_b, a * fade));
+      tx := ifx portrait then bx else bx + kw + dw + 24 * S;
+      ty := ifx portrait then by + chip_cap * 1.35 else by;
+      n = label(out, n, cast(string) tail[0..<nt], tx, ty, chip_cap * 0.78, ink_of(stock_r, stock_g, stock_b, a * fade));
       cx += cw + 8 * S;
     }
   }

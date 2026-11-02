@@ -333,7 +333,7 @@ FILM_ANSWERS :: [FILM_ANSWERS_N] string.[
   "{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"size\":\"large\",\"p\":1}",
   "{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"heroine\",\"move\":\"push-in\",\"p\":1}",
   "{\"kind\":\"emote\",\"who\":\"heroine\",\"emotion\":\"determined\",\"p\":1}",
-  "{\"kind\":\"cut\",\"transition\":\"smash\",\"to\":\"creature\",\"p\":1}",
+  "{\"kind\":\"shot\",\"framing\":\"wide\",\"place\":\"wall\",\"move\":\"pull-out\",\"p\":1}",
   "{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"place\":\"wall\",\"p\":1}",
   "{\"kind\":\"fx\",\"effect\":\"explosion\",\"place\":\"wall\",\"p\":1}",
   "{\"kind\":\"beat\",\"beat\":\"speed-lines\",\"p\":1}",

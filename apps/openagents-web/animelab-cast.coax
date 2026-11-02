@@ -298,10 +298,5 @@ hair :: (buf: [] u32, p: [] Pen, h: Frame, body: Frame, r: f32, look: Look, slot
       sf := frame_turn(frame_turn(frame_move(h, fp(h, sin(a) * 0.07 * k, (0.05 + up) * k, (cos(a) * 0.03 - 0.02 - (ifx i >= 5 then 0.05f32 else 0.0f32)) * k)), 2, -a * 0.9), 0, -0.6 - (ifx i >= 5 then 0.9f32 else 0.0f32));
       tube(buf, p, sf, 0.13 * k, 0.04 * k, 0.03 * k, 0.0, 0.0, 6, false);
     }
-    for i: 0..<3 {
-      x := (-0.04 + 0.04 * cast(f32) i) * k;
-      ff := frame_turn(frame_turn(frame_move(h, fp(h, x, 0.075 * k, 0.07 * k)), 0, 3.14159265 - 0.6), 2, x * 5.0);
-      tube(buf, p, ff, 0.055 * k, 0.018 * k, 0.012 * k, 0.0, 0.0, 6, false);
-    }
   }
 }
