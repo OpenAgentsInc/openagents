@@ -1372,7 +1372,7 @@ def main():
     pid, fd = pty.fork()
     if pid == 0:
         os.chdir(REPO)
-        env = dict(os.environ, TERM="xterm-256color", OPENAGENTS_SECRETS="/nonexistent", CODER_APPLE_FM_BRIDGE=AFM_STUB,
+        env = dict(os.environ, TERM="xterm-256color", OPENAGENTS_SECRETS="/nonexistent", CODER_APPLE_FM_BRIDGE=AFM_STUB, CODER_RECAPS="1",
                    CODER_HOME=tempfile.mkdtemp(prefix="coder-smoke-tui-"), CODER_USAGE_KEYCHAIN="0")      # its sessions stay out of the person's own
         for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):
             env.pop(k, None)

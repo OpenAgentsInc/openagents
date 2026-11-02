@@ -159,8 +159,12 @@ composer.
 
 ### Recaps
 
-On a Mac with Apple Intelligence, the status bar says in a few words what
-the agent is doing, in place of "Working":
+Recaps are off unless you set `CODER_RECAPS=1`. A guessed line can read as
+the agent's answer (asked "whats this", it showed "I'm a coding agent, here to
+help you with your coding tasks"), so by default the status bar shows only
+facts: the step, the time and the tool running now. With `CODER_RECAPS=1` on
+a Mac with Apple Intelligence, the status bar says in a few words what the
+agent is doing, in place of "Working":
 
 ```text
 ⠸ Running tests for calc.py · step 3 · 9.4s · Esc to stop · Bash(python3 test_calc.py)
@@ -175,8 +179,8 @@ marks and a final period. The request and its answer run in the
 background (`afm_ask`, `afm_poll`), so the UI never waits for the model. A
 recap that arrives after its turn ended is dropped.
 
-Recaps start when the bridge is built (`psionic/apple-fm/build.sh`) and the
-model is available. On any other machine the status bar says "Working" as
+With `CODER_RECAPS=1`, recaps start when the bridge is built
+(`psionic/apple-fm/build.sh`) and the model is available. On any other machine the status bar says "Working" as
 before. `CODER_APPLE_FM=0` turns recaps off. `coder apple-fm` says whether
 they can run, and `coder apple-fm "PROMPT"` prints the model's answer. The smoke points Coder
 at a stand-in bridge whose every answer is `"Waiting on the sleep

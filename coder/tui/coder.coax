@@ -529,8 +529,10 @@ cd_command_event :: (a: [] App, cmd: string, exit: int, timed_out: bool, output_
 // Recaps (chapter 36): on a Mac with Apple's on-device model, the status bar
 // says in a few words what the agent is doing, from the task, its latest
 // steps and the reply so far. The model runs on the Mac through
-// psionic/apple-fm's bridge; the UI never waits for it. CODER_APPLE_FM=0
-// turns recaps off; CODER_APPLE_FM_BRIDGE names another bridge.
+// psionic/apple-fm's bridge; the UI never waits for it. They are off unless
+// CODER_RECAPS=1: a guessed line read as the agent's answer (owner,
+// 2026-11-02), so by default the status row shows only facts.
+// CODER_APPLE_FM=0 turns them off too; CODER_APPLE_FM_BRIDGE names another bridge.
 CD_RECAP_MS :: 4000;            // at most one recap request this often
 CD_RECAP_MAX :: 80;             // bytes of recap shown
 CD_RECAP_INSTRUCTIONS :: "You write the status line of a coding agent at work. In 3 to 8 words, present tense, say what it is doing right now, like Running the parser tests or Fixing an off-by-one in the range check. Plain words only: no quotes, no markdown, no final period.";
@@ -547,6 +549,7 @@ cd_recap_bridge :: (out: [] u8) -> string {
 cd_recap_open :: (a: [] App) {
   if a[0].plain { return; }
   eb: [8] u8; if cl_getenv("CODER_APPLE_FM", eb[..]) == "0" { return; }
+  ob: [8] u8; if cl_getenv("CODER_RECAPS", ob[..]) != "1" { return; }
   pb: [4200] u8; path := cd_recap_bridge(pb[..]);
   if path.count == 0 || !fs_exists(path) { return; }       // not a Mac, or the bridge isn't built
   x := afm_start(a[0].afm[..], path);
