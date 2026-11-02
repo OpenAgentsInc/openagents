@@ -643,7 +643,7 @@ redit_answer :: (e: [] RealmEdit, text: string) {
 // ---- in from the host: true when it was this layer's
 
 redit_message :: (e: [] RealmEdit, kind: int, text: string) -> bool #export_c {
-  if kind == REDIT_FACTS { e[0].voice = fact_of(text, "voice").count > 0; rc_facts(e[0].pc[..], fact_of(text, "ua")); return false; }
+  if kind == REDIT_FACTS { e[0].voice = fact_of(text, "voice").count > 0; rc_facts(e[0].pc[..], fact_of(text, "ua"), fact_of(text, "url")); return false; }
   if kind >= HTTP_KIND && kind < HTTP_KIND + 8 && e[0].req_id >= 0 && kind - HTTP_KIND == e[0].req_id { redit_answer(e, text); return true; }
   if kind == REDIT_MSG_TEXT && e[0].typing && e[0].field > 0 {
     f := e[0].field - 1; cap := redit_field_cap(f);
@@ -881,6 +881,14 @@ redit_text :: (e: [] RealmEdit, out: [] f32, at: int, text: string, x: f32, base
   c := cap; w := redit_width(text, c);
   if room > 0 && w > room { c = c * room / w; }
   return draw_text(out, at, text, floor(x), floor(base), c, REDIT_GAP, REDIT_SPACE, k, false, false);
+}
+// Text at its size, cut with "..." where it runs past room (a step or a request can be long).
+redit_clip :: (e: [] RealmEdit, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink, room: f32) -> int {
+  if redit_width(text, cap) <= room { return redit_text(e, out, at, text, x, base, cap, k, room); }
+  p_cut: [204] u8;
+  p_m := redit_put(p_cut[..], 0, text[0..<redit_fit(text, 0, cap, room - redit_width("...", cap))]);
+  p_m = redit_put(p_cut[..], redit_least(p_m, 200), "...");
+  return redit_text(e, out, at, cast(string) p_cut[0..<p_m], x, base, cap, k, room);
 }
 redit_button :: (e: [] RealmEdit, out: [] f32, at: int, b: int, p_box: RBox, label: string, on: bool) -> int {
   k := e[0].dpr;
@@ -1262,7 +1270,7 @@ redit_outline :: (e: [] RealmEdit, out: [] f32, at: int, b: int, p_box: RBox, la
 // A line of the pane's words; returns where the next line starts.
 redit_cline :: (e: [] RealmEdit, out: [] f32, at: [] int, text: string, x: f32, y: f32, room: f32, p_bright: f32) -> f32 {
   k := e[0].dpr;
-  at[0] = redit_text(e, out, at[0], text, x, y + 10 * k, 7.5 * k, redit_parch(k, p_bright), room);
+  at[0] = redit_clip(e, out, at[0], text, x, y + 10 * k, 7.5 * k, redit_parch(k, p_bright), room);
   return y + 20 * k;
 }
 // The command to run on the computer, in a box, with COPY.
@@ -1296,7 +1304,7 @@ redit_csteps :: (e: [] RealmEdit, out: [] f32, at: [] int, x: f32, y: f32, room:
   yy := y;
   for i: p_first..<c[0].step_n {
     if lit(out, at[0], x + 2 * k, yy + 8 * k, x + 3.5 * k, yy + 8 * k, 1.4 * k, 0.9, 1.0 * k, 0.80, 0.64, 0.36, 0) { at[0] += 6; }
-    at[0] = redit_text(e, out, at[0], rc_step(c, i), x + 10 * k, yy + 11 * k, 6.5 * k, redit_parch(k, ifx i == c[0].step_n - 1 then 0.95f32 else 0.7f32), room - 10 * k);
+    at[0] = redit_clip(e, out, at[0], rc_step(c, i), x + 10 * k, yy + 11 * k, 6.5 * k, redit_parch(k, ifx i == c[0].step_n - 1 then 0.95f32 else 0.7f32), room - 10 * k);
     yy += 16 * k;
   }
   return yy;
@@ -1389,4 +1397,17 @@ redit_computer_pane :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, r
   }
   if c[0].why_n > 0 && v != RV_FAILED { n[0] = redit_text(e, out, n[0], rc_why(c), x, yy + 8 * k, 7 * k, redit_parch(k, 0.9), room); }
   return n[0];
+}
+
+// What a headless check reads (a realm's probe passes f - its base): 4 * b + 0..3 the button b's box
+// in device pixels (-1 while it isn't shown), 96 the pane open, 97 YOUR COMPUTER's view (RV_*), 98 typing.
+redit_probe :: (e: [] RealmEdit, f: int) -> int {
+  if f == 96 { return e[0].pane; }
+  if f == 97 { return rc_view(e[0].pc[..]); }
+  if f == 98 { return ifx e[0].typing then 1 else 0; }
+  b := f / 4; side := f % 4;
+  if f < 0 || b >= RB_N || !e[0].shown[b] { return -1; }
+  bx := e[0].boxes[b];
+  v := ifx side == 0 then bx.x0 else ifx side == 1 then bx.y0 else ifx side == 2 then bx.x1 else bx.y1;
+  return cast(int) v;
 }

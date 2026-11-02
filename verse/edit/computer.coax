@@ -58,7 +58,7 @@ RealmComputer :: struct {
   op_out: int; op_at: f32; last_poll: f32;
   pair_due: bool; forget_due: bool; stop_due: bool; keep_due: bool; new_key_due: bool;
   // the job
-  run_state: int; run_due: bool; ask: [RC_ASK] u8; ask_n: int; realm: [64] u8; realm_n: int;
+  run_state: int; run_due: bool; ask: [RC_ASK] u8; ask_n: int; realm: [64] u8; realm_n: int; relay: [32] u8; relay_n: int;
   thread: [RC_ID] u8; thread_n: int; cursor: int;
   step_n: int; step_seq: [RC_STEPS] int; step_text: [RC_STEPS * RC_STEP] u8; step_text_n: [RC_STEPS] int;
   why: [RC_WHY] u8; why_n: int;
@@ -114,7 +114,17 @@ rc_label_of :: (p_ua: string, p_buf: [] u8) -> int {
   if m.count > 0 { n = redit_put(p_buf, n, " on "); n = redit_put(p_buf, n, m); }
   return n;
 }
-rc_facts :: (c: [] RealmComputer, p_ua: string) { c[0].label_n = rc_label_of(p_ua, c[0].label[..]); }
+rc_facts :: (c: [] RealmComputer, p_ua: string, p_url: string) {
+  c[0].label_n = rc_label_of(p_ua, c[0].label[..]);
+  // a test relay the page's address names (?relay=ws://localhost:PORT); the wire takes only that form
+  c[0].relay_n = 0;
+  for i: 0..<p_url.count {
+    if (p_url[i] == '?' || p_url[i] == '&') && i + 7 <= p_url.count && p_url[i + 1..<i + 7] == "relay=" {
+      e := i + 7; while e < p_url.count && p_url[e] != '&' && p_url[e] != '#' { e += 1; }
+      c[0].relay_n = redit_copy(c[0].relay[..], p_url[i + 7..<e]);
+    }
+  }
+}
 rc_start :: (c: [] RealmComputer, slug: string) { c[0].realm_n = redit_copy(c[0].realm[..], slug); }
 
 // The record this browser kept (the wire keeps its key beside it): "host KEY", "request ID",

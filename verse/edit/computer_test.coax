@@ -196,6 +196,11 @@ keep_is :: (c: [] RealmComputer, text: string) -> bool { b: [512] u8; m := rc_ke
   #assert cast(string) b[0..<rc_label_of(UA_MAC, b[..])] == "Chrome on Mac";
   #assert cast(string) b[0..<rc_label_of(UA_IPHONE, b[..])] == "Safari on iPhone";
   #assert cast(string) b[0..<rc_label_of("", b[..])] == "A browser";
+  c: [1] RealmComputer;
+  rc_facts(c[..], UA_MAC, "http://golden.localhost:8080/realms/pine-forest?relay=ws://localhost:7777&x=1");
+  #assert cast(string) c[0].relay[0..<c[0].relay_n] == "ws://localhost:7777";
+  rc_facts(c[..], UA_MAC, "https://openagents.com/realms/pine-forest");
+  #assert c[0].relay_n == 0;
 }
 
 // ---- the pane, through the edit layer

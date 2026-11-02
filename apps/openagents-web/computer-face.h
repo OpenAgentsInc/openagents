@@ -77,7 +77,8 @@ static inline void computer_face_drain(coax_v_t_RealmEdit e) {
   bool wanted = x->pane == 6 || c->pair != 0;   // REDIT_COMPUTER_PANE, or paired (RP_UNPAIRED is 0)
   if (wanted && cf_sock < 0 && cw_wants_socket(cf_w()) && now - cf_tried >= 5) {
     cf_tried = now;
-    coax_string url = cw_socket_url();
+    cw_set_relay(cf_w(), cf_str(c->relay.e, c->relay_n));   // a test relay on this machine, or the default
+    coax_string url = cw_socket_url(cf_w());
     cf_sock = coaxial_socket_open((uint32_t)(uintptr_t)url.data, (int32_t)url.count);
   }
   int64_t op = rc_next_op(cf_pc(e));

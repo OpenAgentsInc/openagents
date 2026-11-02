@@ -223,3 +223,15 @@ at the computer allows a browser; the browser never makes a code. A request unan
 means the computer isn't answering. A refusal that says the browser's grant is gone (revoked,
 stale, expired) pairs again.
 
+
+To try it against a computer on this machine, open the realm with `?relay=ws://localhost:PORT`. The
+wire takes only that form; any other `relay=` keeps `wss://relay.openagents.com`. The headless check
+plays the whole flow in Chrome (no window opens) at 1440×900 and 390×844: pair, allow, a job's steps,
+a reload, and FORGET. It reads the pane through `coaxial.guardProbe(2400 + f)` (`redit_probe`: the
+buttons' boxes, the pane, the view):
+
+    coax/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
+    OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine echo
+    COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c \
+      /tmp/myrealm.wasm verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
+    CODER_HOME=/tmp/host-home bun coax/web/api/computer-flow.ts ws://localhost:7777 /tmp/myrealm.wasm

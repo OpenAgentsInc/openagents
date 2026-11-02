@@ -22,6 +22,7 @@
 #load "../../coax/lib/nostr/nip19-core.coax";
 
 CW_RELAY :: "wss://relay.openagents.com";
+CW_LOCAL :: "ws://localhost:";   // a test relay on this machine (cw_set_relay), never another host
 // the pane's ops (computer.coax RO_*)
 CW_PAIR :: 1; CW_STATUS :: 2; CW_CHECK :: 3; CW_RUN :: 4; CW_READ :: 5; CW_STOP :: 6; CW_FORGET :: 7;
 // cw_op's answer
@@ -32,6 +33,7 @@ CW_AUTH_WAIT_S :: 2; // a relay that asks for AUTH asks at once
 
 ComputerWire :: struct {
   w: [1] HbWork; body: [HB_BODY_MAX] u8; arena: [65536] u8;
+  relay: [32] u8; relay_n: int;   // "" the default, CW_RELAY
   secret: [32] u8; pub: [32] u8; pub_hex: [64] u8; has_key: bool;
   host: [32] u8; host_hex: [64] u8; has_host: bool;
   grant: [64] u8; grant_n: int; epoch: int; grant_expires: int;
@@ -144,14 +146,23 @@ cw_set_host :: (w: [] ComputerWire, text: string) -> bool #export_c {
 
 // ---- the socket
 
-cw_socket_url :: () -> string #export_c { return CW_RELAY; }
+// The relay: CW_RELAY, or a test relay on this machine (ws://localhost:PORT) a page asked for.
+cw_relay :: (w: [] ComputerWire) -> string { return ifx w[0].relay_n > 0 then cast(string) w[0].relay[0..<w[0].relay_n] else CW_RELAY; }
+cw_set_relay :: (w: [] ComputerWire, text: string) -> bool #export_c {
+  if text.count == 0 { w[0].relay_n = 0; return true; }
+  if text.count <= CW_LOCAL.count || text.count > CW_LOCAL.count + 5 || text[0..<CW_LOCAL.count] != CW_LOCAL { return false; }
+  for ch: text[CW_LOCAL.count..<text.count] { if ch < '0' || ch > '9' { return false; } }
+  for i: 0..<text.count { w[0].relay[i] = text[i]; } w[0].relay_n = text.count;
+  return true;
+}
+cw_socket_url :: (w: [] ComputerWire) -> string #export_c { return cw_relay(w); }
 cw_wants_socket :: (w: [] ComputerWire) -> bool #export_c { return !w[0].open && w[0].has_key; }
 cw_ready :: (w: [] ComputerWire, now: int) -> bool { return w[0].open && (w[0].authed || (w[0].challenge_n == 0 && now - w[0].opened_at >= CW_AUTH_WAIT_S)); }
 
 // NIP-42: kind 22242 with the relay and the challenge, signed with this browser's key.
 cw_auth :: (w: [] ComputerWire, aux: [] u8, now: int) {
   tags: [512] u8;
-  n := cw_put(tags[..], 0, "[[\"relay\",\""); n = cw_put(tags[..], n, CW_RELAY); n = cw_put(tags[..], n, "\"],[\"challenge\",");
+  n := cw_put(tags[..], 0, "[[\"relay\",\""); n = cw_put(tags[..], n, cw_relay(w)); n = cw_put(tags[..], n, "\"],[\"challenge\",");
   jo: [1] Jo; q: [300] u8; jo_start(jo[..], q[..]); jo_str(jo[..], cast(string) w[0].challenge[0..<w[0].challenge_n]);
   if jo[0].bad { return; }
   n = cw_put(tags[..], n, jo_text(jo[..])); n = cw_put(tags[..], n, "]]");
@@ -230,7 +241,7 @@ cw_op :: (w: [] ComputerWire, op: int, host: string, arg: string, realm: string,
   cw_close_sub(w);
   rq: [64] u8; if !hb_hex(random[0..<32], rq[..]) { return CW_REFUSED; }
   q: HbRequest;
-  q.request = cast(string) rq[..]; q.host = cast(string) w[0].host_hex[..]; q.relay = CW_RELAY;
+  q.request = cast(string) rq[..]; q.host = cast(string) w[0].host_hex[..]; q.relay = cw_relay(w);
   q.issued_at = now; q.expires_at = now + HB_WINDOW; q.op = hop;
   if hb_op_right(hop) >= 0 { q.grant = cast(string) w[0].grant[..]; q.epoch = w[0].epoch; }
   lab: [HB_LABEL_MAX] u8; ln := 0;
@@ -395,6 +406,10 @@ cwt_ok :: (outcome: int) -> HbReply { r: HbReply; r.ok = true; r.outcome = outco
   r: [96] u8; cwt_random(1, r[..]);
   #assert cw_op(cw[..], CW_PAIR, "bad", "", "moonlit-marsh", 0, "x", r[..], CWT_T0) == CW_BADKEY;
   l: [512] u8; #assert cwt_lines(cw[..], l[..]) == "key bad\n";
+  // a test relay only on this machine
+  #assert cw_set_relay(cw[..], "ws://localhost:7777") && cw_socket_url(cw[..]) == "ws://localhost:7777";
+  #assert !cw_set_relay(cw[..], "ws://localhost.evil.com:7777") && !cw_set_relay(cw[..], "wss://relay.example.com") && !cw_set_relay(cw[..], "ws://localhost:");
+  #assert cw_set_relay(cw[..], "") && cw_socket_url(cw[..]) == CW_RELAY;
 }
 #test "wire: pair, and allowed with a grant" #steps 4000000000 {
   cw: [1] ComputerWire; h: [1] CwtHost; aux: [32] u8; l: [4096] u8;

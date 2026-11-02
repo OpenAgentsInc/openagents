@@ -2100,6 +2100,7 @@ realm_probe :: (s: [] MyRealm, f: int) -> int #export_c {
   if f == 17 { return cast(int) (s[0].yaw * 18000.0f32 / PI + (ifx s[0].yaw < 0 then -0.5f32 else 0.5f32)); }
   if f == 18 { return s[0].camera; }
   if f == 19 { return cast(int) (s[0].pitch * 18000.0f32 / PI + (ifx s[0].pitch < 0 then -0.5f32 else 0.5f32)); }
+  if f >= 2400 && f < 2500 { return redit_probe(s[0].ed[..], f - 2400); }   // the edit layer (verse/edit/edit.coax)
   if f == 64 { return ifx s[0].laid then s[0].ent_n else 0; }
   if f == 65 { return s[0].people; }
   if f == 66 { return s[0].talk_p; }
