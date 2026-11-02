@@ -131,10 +131,10 @@ testing, the chapter names the chapter in Parts I–V that measures it.
 | [25. Claude Code](ch025-claude-code.md) — planned | Tools, permissions, hooks, skills, subagents, plugins and memory files. |
 | [26. Codex](ch026-codex.md) — planned | The Rust agent: sandboxing, approvals, the app-server protocol and non-interactive runs. |
 | [27. OpenCode](ch027-opencode.md) — planned | A provider-agnostic engine with a local HTTP control plane and several clients. |
-| [28. Goose](ch028-goose.md) — planned | Extensions over MCP, recipes, and testing across desktop and CLI. |
-| [29. Aider](ch029-aider.md) — planned | Repository maps, edit formats and a benchmark culture. |
-| [30. mini-SWE-agent](ch030-mini-swe-agent.md) — planned | The smallest honest baseline: a linear loop and independent commands. |
-| [31. OpenHands Software Agent SDK](ch031-openhands-sdk.md) — planned | An agent SDK with a clean split between fast tests and evaluation. |
+| [28. Goose](ch028-goose.md) — written | Extensions over MCP, recipes, and testing across desktop and CLI. |
+| [29. Aider](ch029-aider.md) — written | Repository maps, edit formats and a benchmark culture. |
+| [30. mini-SWE-agent](ch030-mini-swe-agent.md) — written | The smallest honest baseline: a linear loop and independent commands. |
+| [31. OpenHands Software Agent SDK](ch031-openhands-sdk.md) — written | An agent SDK with a clean split between fast tests and evaluation. |
 | [32. Hermes Agent](ch032-hermes-agent.md) — planned | Nous Research's agent runtime and its training-facing environments. |
 | [33. Toad](ch033-toad.md) — planned | A terminal host for agents over ACP, with an embedded shell. |
 | [34. Background Agents](ch034-background-agents.md) — planned | Durable remote sessions, prepared worktrees, a branch per task and pull-request delivery. |

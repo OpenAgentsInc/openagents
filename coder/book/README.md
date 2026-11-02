@@ -72,10 +72,10 @@ names it.
 | [25. Claude Code](ch025-claude-code.md) | Planned |
 | [26. Codex](ch026-codex.md) | Planned |
 | [27. OpenCode](ch027-opencode.md) | Planned |
-| [28. Goose](ch028-goose.md) | Planned |
-| [29. Aider](ch029-aider.md) | Planned |
-| [30. mini-SWE-agent](ch030-mini-swe-agent.md) | Planned |
-| [31. OpenHands Software Agent SDK](ch031-openhands-sdk.md) | Planned |
+| [28. Goose](ch028-goose.md) | Written: block/goose@0909288 |
+| [29. Aider](ch029-aider.md) | Written: Aider-AI/aider@5dc9490 |
+| [30. mini-SWE-agent](ch030-mini-swe-agent.md) | Written: SWE-agent/mini-swe-agent@04d809c |
+| [31. OpenHands Software Agent SDK](ch031-openhands-sdk.md) | Written: OpenHands/software-agent-sdk@9884945 |
 | [32. Hermes Agent](ch032-hermes-agent.md) | Planned |
 | [33. Toad](ch033-toad.md) | Planned |
 | [34. Background Agents](ch034-background-agents.md) | Planned |
