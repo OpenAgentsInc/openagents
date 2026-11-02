@@ -10,6 +10,8 @@ DF_SHOWN :: 40;            // rows shown before "… N more lines"
 DF_CONTEXT :: 3;
 DF_ADD_BG :: ";48;2;28;66;36";
 DF_DEL_BG :: ";48;2;92;30;34";
+DF_ADD_BG_LIGHT :: ";48;2;218;245;222";        // the same on a light background
+DF_DEL_BG_LIGHT :: ";48;2;252;224;226";
 
 // A tool call waiting for its result: Edit (old -> new) or Write (new only).
 DfPending :: struct {
@@ -44,17 +46,22 @@ DfRow :: struct { o: [1] TuiOut; b: [8192] u8; }
 
 df_row :: (a: [] App, num: int, sign: u8, code: string, lang: int, hl: [] TuiHl) {
   r_b: [1] DfRow; r := r_b[..]; o := r[0].o[..]; o[0].b = r[0].b[..];
-  bg := ifx sign == '+' then DF_ADD_BG else ifx sign == '-' then DF_DEL_BG else "";
+  th := a[0].o[0].theme; o[0].theme = th;
+  light := th == TUI_THEME_LIGHT; none := th == TUI_THEME_NONE;
+  bg := ifx none then "" else ifx sign == '+' then (ifx light then DF_ADD_BG_LIGHT else DF_ADD_BG) else ifx sign == '-' then (ifx light then DF_DEL_BG_LIGHT else DF_DEL_BG) else "";
+  add_fg := ifx none then "[0;1" else ifx light then "[0;38;2;30;130;60" else "[0;38;2;120;210;140";
+  del_fg := ifx none then "[0;1" else ifx light then "[0;38;2;190;40;40" else "[0;38;2;235;110;110";
+  ctx_fg := ifx none then "[0" else ifx light then "[0;38;2;140;141;147" else "[0;38;2;110;118;129";
   tui_put(o, "      ");
   // the number in the row's color on a changed line, grey on context
   tui_byte(o, 27);
-  tui_put(o, ifx sign == '+' then "[0;38;2;120;210;140" else ifx sign == '-' then "[0;38;2;235;110;110" else "[0;38;2;110;118;129");
+  tui_put(o, ifx sign == '+' then add_fg else ifx sign == '-' then del_fg else ctx_fg);
   tui_put(o, bg); tui_put(o, "m");
   nb: [16] u8; ns := ifx num > 0 then cd_itoa(num, nb[..]) else "";
   for i: ns.count..<5 { tui_put(o, " "); }
   tui_put(o, ns); tui_put(o, " ");
-  if sign == '+' { tui_byte(o, 27); tui_put(o, "[0;38;2;120;210;140"); tui_put(o, bg); tui_put(o, "m+"); }
-  else if sign == '-' { tui_byte(o, 27); tui_put(o, "[0;38;2;235;110;110"); tui_put(o, bg); tui_put(o, "m-"); }
+  if sign == '+' { tui_byte(o, 27); tui_put(o, add_fg); tui_put(o, bg); tui_put(o, "m+"); }
+  else if sign == '-' { tui_byte(o, 27); tui_put(o, del_fg); tui_put(o, bg); tui_put(o, "m-"); }
   else { tui_put(o, " "); }
   tui_hl_line(hl, lang, code, o, bg);
   row := tui_text(o);

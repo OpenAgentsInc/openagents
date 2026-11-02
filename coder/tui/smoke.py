@@ -523,6 +523,18 @@ def main():
         read_until("\x00never", 0.2)
     send(b"/find SMOKE-ok\r")          # search the transcript, any case
     check("/find shows the transcript's matching lines", read_until("⌕     smoke-ok", 5) and read_until("3 lines", 5))
+    send(b"/theme light\r")           # a light palette: the brightest text is near black
+    mark = len(out)
+    check("/theme light", read_until("Theme: light.", 5))
+    end = time.time() + 3
+    while time.time() < end and b"38;2;20;20;20" not in out[mark:]:
+        read_until("\x00never", 0.2)
+    check("/theme light draws dark text", b"38;2;20;20;20" in out[mark:])
+    send(b"/theme dark\r")
+    check("/theme dark", read_until("Theme: dark.", 5))
+    # a background job shows in the hint line while it runs
+    send(("$ " + os.path.join(HERE, "coder.sh") + " run '$ sleep 8' --engine echo --detach\r").encode())
+    check("a running job shows in the hint line", read_until("running · Enter send", 15))
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 60, 0, 0))   # the kernel sends SIGWINCH
     mark = len(out)
     rule = re.compile("(?<!─)(?:─){55,60}(?!─)".encode())
@@ -534,9 +546,9 @@ def main():
     check("Shift-Tab to Claude Code", read_until("Agent: Claude Code", 5))
     send(b"\x1b[9;2u")                 # Shift-Tab, kitty
     check("Shift-Tab to Codex", read_until("Agent: Codex", 5))
-    check("hint names the agent", read_until("codex · Enter send", 5))
+    check("hint names the agent", read_until("codex · ", 5))
     send(b"\x1b[Z")
-    check("Shift-Tab to Microcoder", read_until("Agent: Microcoder", 5) and read_until("microcoder · Enter send", 5))
+    check("Shift-Tab to Microcoder", read_until("Agent: Microcoder", 5) and read_until("microcoder · ", 5))
     send(b"\x1b[A")
     time.sleep(0.3)
     send(b"\x03")            # clears the recalled entry

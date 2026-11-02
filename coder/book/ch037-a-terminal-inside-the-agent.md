@@ -119,7 +119,7 @@ pseudo-terminal that reports its working directory after each command, so
 ## Checks
 
 ```sh
-coax test coax/lib/tui/vt.coax --library    # 18 checks: tui.coax's 10 and vt.coax's 8
+coax test coax/lib/tui/vt.coax --library    # 19 checks: tui.coax's 11 and vt.coax's 8
 python3 coder/tui/smoke.py                  # output as the screen shows it; a command on a terminal; typed input
 ```
 

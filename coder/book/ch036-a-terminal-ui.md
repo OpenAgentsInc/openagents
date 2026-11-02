@@ -1,12 +1,12 @@
 # 36. A terminal UI
 
-> **Status: partly implemented.** Coder runs inline in the terminal with
-> three agents behind one composer: `coder/tui/coder.sh`, or `openagents
-> coder`. The rendering library has 10 checks. A pseudo-terminal smoke
-> types, pastes, runs a command, searches the transcript with `/find`,
-> resizes the window, switches agent and quits, then runs the verbs without
-> a terminal. Still to come: mouse support, a status line for long-running
-> work, and themes beyond the default palette.
+> **Status: implemented.** Coder runs inline in the terminal with three
+> agents behind one composer: `coder/tui/coder.sh`, or `openagents coder`.
+> The rendering library has 11 checks. A pseudo-terminal smoke types,
+> pastes, runs a command, searches the transcript with `/find`, switches
+> theme, shows a running background job, resizes the window, switches agent
+> and quits, then runs the verbs without a terminal. The mouse stays with
+> the terminal; see [The mouse](#the-mouse).
 
 Coder in a terminal the person already has open, the way Claude Code and
 Codex run: an inline live region at the bottom (status, the streaming reply,
@@ -20,6 +20,7 @@ takeover and no widget toolkit. The rendering library is
 ```sh
 coder/tui/coder.sh                       # Claude Code by default
 coder/tui/coder.sh --engine microcoder   # or codex, psionic, echo (offline)
+coder/tui/coder.sh --theme light         # for a light background; or CODER_THEME=light, or NO_COLOR=1 for none
 python3 coder/tui/smoke.py               # the offline smoke, in a pseudo-terminal and then without one
 ```
 
@@ -80,6 +81,42 @@ backgrounds for removed and added lines.
 **Search.** Coder keeps the last 256 KB of committed transcript text.
 `/find TEXT` lists the lines that hold it, ignoring case, the last 20 of
 them, with a count. It runs without a mouse and never leaves the composer.
+
+**Status.** While a turn runs, the row above the composer shows a spinner,
+the step number, the time so far, how to stop, and the step running now:
+
+```text
+⠙ Working · step 3 · 42s · Esc to stop · Bash(cargo test -q)
+```
+
+The hint line under the composer counts the background jobs running on this
+machine (`coder run --detach`, chapter 14), checked every 2 seconds:
+
+```text
+claude · 2 jobs running · Enter send · Shift-Enter newline · Shift-Tab agent · …
+```
+
+**Themes.** `TuiOut.theme` picks the palette that `tui_style`,
+`tui_md_sgr` and `tui_hl_sgr` use:
+
+| Theme | For |
+| --- | --- |
+| `dark` | The default: white text on a dark background. |
+| `light` | A light background: near-black text, darker code colors, pale diff backgrounds. |
+| `none` | No colors: bold, italic and underline only. |
+
+`--theme dark|light|none` picks one at start, then `CODER_THEME`. With
+neither set and `NO_COLOR` set, the theme is `none`. `/theme NAME` switches
+while Coder runs.
+
+### The mouse
+
+Coder doesn't turn on mouse reporting. In an inline UI, the transcript
+lives in the terminal's own scrollback, and the terminal already scrolls it
+with the wheel and selects, copies and searches it with the mouse. Mouse
+reporting would take those away from the person to give Coder clicks it has
+no use for: every control is a key, and `/find` searches without leaving the
+composer.
 
 ## What this chapter covers
 

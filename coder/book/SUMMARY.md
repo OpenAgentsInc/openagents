@@ -61,5 +61,5 @@
 
 ## VIII. The terminal
 
-- [36. A terminal UI](ch036-a-terminal-ui.md) — partly implemented
+- [36. A terminal UI](ch036-a-terminal-ui.md) — implemented
 - [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) — partly implemented
