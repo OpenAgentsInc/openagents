@@ -17,6 +17,9 @@ class WasmIsolation(unittest.TestCase):
             (repo / 'coax/web').mkdir(parents=True); (repo / 'coax/bin').mkdir()
             shutil.copy2(SCRIPT, repo / 'coax/web/wasm.sh')
             shutil.copy2(SCRIPT.parent / 'toolchain.sh', repo / 'coax/web/toolchain.sh')
+            # wasm.sh asks coax/web/tool.sh (wasm-size) for each unit's sources and for
+            # #export_c symbols two units share; the fixture's units share none.
+            tool = repo / 'coax/web/tool.sh'; tool.write_text('#!/bin/sh\nexit 0\n'); tool.chmod(0o755)
             compiler = repo / 'coax/bin/coax'
             compiler.write_text('''#!/usr/bin/env python3
 import os, pathlib, sys
