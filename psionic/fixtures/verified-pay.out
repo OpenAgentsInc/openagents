@@ -1,0 +1,42 @@
+cap 6000 msat for the period, payout cap 1100 msat, unsampled work trusted: false
+quote per job: 1052 msat (1 token in, none out, 1 ms deadline)
+job 1 (alpha, request 0, stage-f32-seq-v1): receipt 87519f1a334a..., price 1012 msat
+  hold: held; escrow 1052 msat, owed 0 msat
+  checked: agree exact
+  verdict: paid; escrow 0 msat, owed 1012 msat
+job 2 (beta, request 1, stage-f32-pair-v1): receipt 863b0ede4c0a..., price 1013 msat
+  hold: held; escrow 1052 msat, owed 1012 msat
+  checked: agree within
+  verdict: paid; escrow 0 msat, owed 2025 msat
+job 3 (gamma, request 2, stage-f32-seq-v1): receipt c782a5b45845..., price 1013 msat
+  hold: held; escrow 1052 msat, owed 2025 msat
+  checked: disagree bits
+  verdict: withheld; escrow 0 msat, owed 2025 msat
+job 4 (delta, request 3, stage-f32-gpu-v1): receipt 113017998b58..., price 1014 msat
+  hold: held; escrow 1052 msat, owed 2025 msat
+  checked: unverifiable profile
+  verdict: review; escrow 1052 msat, owed 2025 msat
+job 5 (alpha, request 4, stage-f32-seq-v1): receipt 217cbdd6b712..., price 1014 msat
+  hold: held; escrow 2104 msat, owed 2025 msat
+  not sampled
+  verdict: review; escrow 2104 msat, owed 2025 msat
+job 6 (beta, request 5, stage-f32-pair-v1): receipt de4d0148665e..., price 1015 msat
+  hold: held; escrow 3156 msat, owed 2025 msat
+owner review:
+  job 4, unverifiable, withhold: withheld; escrow 2104 msat, owed 2025 msat
+  job 5, not sampled, pay: paid; escrow 1052 msat, owed 3039 msat
+ledger: 6 jobs, escrow 1052 msat, owed 3039 msat, withheld 2027 msat, cap left 1909 msat
+payment intents (not executed):
+  87519f1a334a 1012 msat to alpha: lightning invoice for 1012 msat; spark fraction
+  863b0ede4c0a 1013 msat to beta: lightning invoice for 1013 msat; spark fraction
+  217cbdd6b712 1014 msat to alpha: lightning invoice for 1014 msat; spark fraction
+refusals:
+  a verdict for a receipt never held: unknown
+  job 1 released again: settled
+  job 6 for 1053 msat on a 1052 msat quote: amount
+  a hold in usdt: unit
+  a hold past the cap: budget
+  job 1's intent on an EVM rail: rail
+ledger after the refusals: owed 3039 msat, 3 intents
+recount of 13 events: none, escrow 1052 msat, owed 3039 msat, withheld 2027 msat, 3 intents
+a log that releases job 1 twice: settled, at event 13

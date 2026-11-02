@@ -260,7 +260,7 @@
 - [235. Can gradient descent learn exact execution?](ch235-can-gradient-descent-learn-exact-execution.md)
 - [236. A frozen exact core with a learned interface](ch236-a-frozen-exact-core-with-a-learned-interface.md)
 - [237. Composable weight modules](ch237-composable-weight-modules.md)
-- [238. Pay for verified work](ch238-pay-for-verified-work.md) — design draft
+- [238. Pay for verified work](ch238-pay-for-verified-work.md) — partly implemented
 
 - [239. A suite is three digests](ch239-a-suite-is-three-digests.md)
 - [240. How far a metric moves by itself](ch240-how-far-a-metric-moves-by-itself.md)
@@ -282,7 +282,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–57, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200–207, 210–237, 239–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–57, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200–207, 210–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

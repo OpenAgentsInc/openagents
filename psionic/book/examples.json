@@ -1892,6 +1892,16 @@
       ]
     },
     {
+      "source": "psionic/examples/verified-pay.coax",
+      "chapter": "psionic/book/ch238-pay-for-verified-work.md",
+      "stdout": "psionic/fixtures/verified-pay.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/serve-capability.coax",
       "chapter": "psionic/book/ch173-serve-a-model-with-an-honest-capability.md",
       "stdout": "psionic/fixtures/serve-capability/serve-capability.out",

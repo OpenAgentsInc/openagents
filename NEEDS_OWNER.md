@@ -1,5 +1,14 @@
 # Owner actions
 
+## Psionic chapter 238: paying verified work (2026-11-01)
+
+`psionic/lib/peer/pay.coax` now emits payment intents (msat, keyed by the
+receipt digest) for work chapter 195's checker verified; it pays nothing.
+Before any real payment: choose the period cap and the payout cap, decide
+whether unsampled work is trusted, and decide whether intents may be executed
+through the Breez Spark wallet. Each job held for review (unverifiable, not
+sampled, or above the payout cap) also waits for your pay or withhold.
+
 ## ARWES Coax HUD extension: visual review (2026-11-01)
 
 At `http://127.0.0.1:8815/`, press **6** for the ARWES collection. Its four

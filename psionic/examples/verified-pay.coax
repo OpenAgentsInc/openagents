@@ -1,0 +1,89 @@
+// Chapter 238: pay for verified work. Four peers run chapter 195's stage.
+// The buyer holds each job's quote in escrow, the checker re-executes the
+// sampled jobs and compares, and the ledger pays, withholds or holds each
+// job for the owner. Every payment becomes one intent keyed by its receipt
+// digest; the wallet adapter shows what a Lightning or Spark wallet would be
+// asked to pay. Nothing is paid: executing an intent is an owner action.
+// Then the refusals, and a reader who recounts the ledger from its log.
+#import "Basic";
+#load "../lib/peer/audit-run.coax";
+#load "../lib/peer/pay.coax";
+
+ExJob :: struct {peer:string;k:int;backend:PjBackend;profile:string;lazy:bool;sampled:bool;}
+ExRun :: struct {ledger:VpLedger;policy:VpPolicy;log:[16]VpEvent;n:int;}
+
+ex_short :: (d:string)->string {return d[0..<12];}
+
+// Apply one step; keep it in the log when it was accepted.
+ex_step :: (runs:[]ExRun,e:VpEvent,what:string) {
+    t:=vp_apply(runs[0].ledger,runs[0].policy,e);
+    if t.refuse!=VpRefuse.none {print("  %: refused, %\n",what,vp_refuse_name(t.refuse));return;}
+    runs[0].ledger=t.ledger;runs[0].log[runs[0].n]=e;runs[0].n+=1;
+    print("  %: %; escrow % msat, owed % msat\n",what,vp_state_name(t.state),t.ledger.account.held,t.ledger.account.spent);
+}
+
+main :: () {
+    s:=bl_test_schedule();
+    quote:=bl_quote(s,1,0,1000).msat;
+    runs:[1]ExRun;runs[0].ledger=VpLedger.{account=BlAccount.{budget=6000}};runs[0].policy=VpPolicy.{trust_unsampled=false,payout_cap=1100};
+    run:=runs[0];
+    print("cap % msat for the period, payout cap % msat, unsampled work trusted: %\n",run.ledger.account.budget,run.policy.payout_cap,run.policy.trust_unsampled);
+    print("quote per job: % msat (1 token in, none out, 1 ms deadline)\n",quote);
+    profiles:=[2]PkProfile.[PkProfile.{name="stage-f32-seq-v1",exact=true},PkProfile.{name="stage-f32-pair-v1",tolerance_ppb=40000}];
+    jobs:=[6]ExJob.[
+        ExJob.{peer="alpha",k=0,backend=PjBackend.seq,profile="stage-f32-seq-v1",sampled=true},
+        ExJob.{peer="beta",k=1,backend=PjBackend.pair,profile="stage-f32-pair-v1",sampled=true},
+        ExJob.{peer="gamma",k=2,backend=PjBackend.seq,profile="stage-f32-seq-v1",lazy=true,sampled=true},
+        ExJob.{peer="delta",k=3,backend=PjBackend.seq,profile="stage-f32-gpu-v1",sampled=true},
+        ExJob.{peer="alpha",k=4,backend=PjBackend.seq,profile="stage-f32-seq-v1"},
+        ExJob.{peer="beta",k=5,backend=PjBackend.pair,profile="stage-f32-pair-v1"}];
+    md:[64]u8;model:=pj_model_digest(md[..]);
+    hex:[6][4][64]u8;keys:[6]string;
+    for j:0..<6 {
+        jb:=jobs[j];
+        x:[PJ_IN]f32;out:[PJ_OUT]f32;pj_input(jb.k,x[..]);
+        if jb.lazy {half:[PJ_IN]f32;for i:0..<PJ_IN/2 {half[i]=x[i];}pj_stage(half[..],out[..],jb.backend);}
+        else {pj_stage(x[..],out[..],jb.backend);}
+        t:[16]u8;n:=pj_put(t[..],0,"request");n=pj_put_int(t[..],n,jb.k);
+        r:=PkReceipt.{peer=jb.peer,seq=1,request=pj_text_digest(t[0..<n],hex[j][0][..]),stage=1,model=model,profile=jb.profile,
+            input=pj_values_digest(x[..],hex[j][1][..]),output=pj_values_digest(out[..],hex[j][2][..]),
+            use=BlUse.{status=BlStatus.answered,tokens_in=1,device_us=200+10*jb.k}};
+        keys[j]=pj_receipt_digest(r,hex[j][3][..]);
+        price:=bl_price(s,r.use).msat;
+        print("job % (%, request %, %): receipt %..., price % msat\n",j+1,jb.peer,jb.k,jb.profile,ex_short(keys[j]),price);
+        ex_step(runs[..],VpEvent.{kind=VpKind.hold,receipt=keys[j],payee=jb.peer,msat=quote},"hold");
+        if j==5 {continue;}
+        c:=PkCompare.{};
+        if jb.sampled {
+            ref:[PJ_OUT]f32;pj_stage(x[..],ref[..],PjBackend.seq);
+            c=pk_compare(profiles[..],r.profile,out[..],ref[..],true);
+            print("  checked: % %\n",c.verdict,c.reason);
+        } else {print("  not sampled\n");}
+        ex_step(runs[..],VpEvent.{kind=VpKind.decide,receipt=keys[j],msat=price,sampled=jb.sampled,verdict=c.verdict},"verdict");
+    }
+    // The owner's decisions, recorded as they would arrive from NEEDS_OWNER.md.
+    print("owner review:\n");
+    ex_step(runs[..],VpEvent.{kind=VpKind.review,receipt=keys[3],pay=false},"job 4, unverifiable, withhold");
+    ex_step(runs[..],VpEvent.{kind=VpKind.review,receipt=keys[4],pay=true},"job 5, not sampled, pay");
+    run=runs[0];l:=run.ledger;
+    print("ledger: % jobs, escrow % msat, owed % msat, withheld % msat, cap left % msat\n",l.n,l.account.held,l.account.spent,l.withheld,l.account.budget-l.account.held-l.account.spent);
+    print("payment intents (not executed):\n");
+    for i:0..<l.m {
+        t:=l.intents[i];ln:=vp_invoice(l,t.key,"lightning");sp:=vp_invoice(l,t.key,"spark");
+        print("  % % msat to %: lightning invoice for % msat; spark %\n",ex_short(t.key),t.msat,t.payee,ln.msat,vp_refuse_name(sp.refuse));
+    }
+    print("refusals:\n");
+    other:=VPT_C;
+    print("  a verdict for a receipt never held: %\n",vp_refuse_name(vp_decide(l,run.policy,other,1012,true,PkCompare.{verdict=PkVerdict.agree}).refuse));
+    print("  job 1 released again: %\n",vp_refuse_name(vp_decide(l,run.policy,keys[0],1012,true,PkCompare.{verdict=PkVerdict.agree}).refuse));
+    print("  job 6 for % msat on a % msat quote: %\n",quote+1,quote,vp_refuse_name(vp_decide(l,run.policy,keys[5],quote+1,true,PkCompare.{verdict=PkVerdict.agree}).refuse));
+    print("  a hold in usdt: %\n",vp_refuse_name(vp_hold(l,other,"alpha",1052,"usdt").refuse));
+    print("  a hold past the cap: %\n",vp_refuse_name(vp_hold(l,other,"alpha",l.account.budget-l.account.held-l.account.spent+1,"msat").refuse));
+    print("  job 1's intent on an EVM rail: %\n",vp_refuse_name(vp_invoice(l,keys[0],"evm-usdc").refuse));
+    print("ledger after the refusals: owed % msat, % intents\n",l.account.spent,l.m);
+    c:=vp_recount(6000,run.policy,run.log[0..<run.n]);
+    print("recount of % events: %, escrow % msat, owed % msat, withheld % msat, % intents\n",run.n,vp_refuse_name(c.refuse),c.ledger.account.held,c.ledger.account.spent,c.ledger.withheld,c.ledger.m);
+    bad:=run.log;bad[run.n]=bad[1];
+    c=vp_recount(6000,run.policy,bad[0..<run.n+1]);
+    print("a log that releases job 1 twice: %, at event %\n",vp_refuse_name(c.refuse),c.at);
+}

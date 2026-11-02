@@ -1,0 +1,410 @@
+// Chapter 238: pay for verified work. A buyer holds each job's quote in
+// escrow before the work runs, then releases, withholds or holds it for the
+// owner once chapter 195's checker has a verdict. Every release is one
+// payment intent keyed by the receipt digest, so a receipt is paid at most
+// once. A reader recounts the ledger from its event log. The adapter at the
+// bottom turns an intent into what a Bitcoin wallet would be asked to pay;
+// nothing here executes a payment, holds a key or talks to a network.
+// Amounts are whole millisatoshis, bounded by chapter 180's BL_MSAT_MOST.
+//   coax/bin/coax test psionic/lib/peer/pay.coax
+//   coax/bin/coax mutate psionic/lib/peer/pay.coax --root-only
+#load "audit.coax";
+#authority;
+
+// book:begin types
+VP_JOBS :: 16;
+VpState :: enum u8 {none;held;paid;withheld;review;}
+// One job: the receipt digest that names it, who is paid, the quote held
+// for it and, once decided, the amount owed.
+VpJob :: struct {receipt:string;payee:string;quote:int;amount:int;state:VpState;}
+// What a wallet is asked to pay, keyed by the receipt digest.
+VpIntent :: struct {key:string;payee:string;msat:int;}
+// trust_unsampled: work the checker did not sample is paid without review.
+// payout_cap: a single payment above it waits for the owner.
+VpPolicy :: struct {trust_unsampled:bool;payout_cap:int;}
+// account.budget is the owner's cap for the period; account.held is escrow;
+// account.spent is what intents ask for. withheld counts what was refused.
+VpLedger :: struct {account:BlAccount;n:int;jobs:[VP_JOBS]VpJob;m:int;intents:[VP_JOBS]VpIntent;withheld:int;}
+VpRefuse :: enum u8 {none;receipt;payee;unit;quote;twice;full;budget;policy;unknown;settled;amount;verdict;total;rail;fraction;}
+VpStep :: struct {refuse:VpRefuse;state:VpState;ledger:VpLedger;}
+// book:end types
+
+// book:begin hold
+// A receipt digest is 64 lowercase hex digits, as audit-run.coax writes it.
+vp_digest_ok :: (s:string)->bool {
+    if s.count!=64 {return false;}
+    for i:0..<64 {
+        c:=s[i];
+        if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}
+    }
+    return true;
+}
+vp_find :: (l:VpLedger,receipt:string)->int {
+    for i:0..<l.n {if l.jobs[i].receipt==receipt {return i;}}
+    return -1;
+}
+// Hold a quote before the work runs. unit is "msat" or "sat"; anything else
+// is not a Bitcoin amount and is refused. The hold must fit the owner's cap.
+vp_hold :: (l:VpLedger,receipt:string,payee:string,quote:int,unit:string)->VpStep #export_c {
+    r:=VpStep.{refuse=VpRefuse.receipt,ledger=l};
+    if !vp_digest_ok(receipt) {return r;}
+    r.refuse=VpRefuse.payee;
+    if payee.count==0 {return r;}
+    r.refuse=VpRefuse.unit;
+    if unit!="msat" && unit!="sat" {return r;}
+    most:=BL_MSAT_MOST;scale:=1;
+    if unit=="sat" {most=BL_MSAT_MOST/1000;scale=1000;}
+    r.refuse=VpRefuse.quote;
+    if quote<1 || quote>most {return r;}
+    q:=quote*scale;
+    r.refuse=VpRefuse.twice;
+    if vp_find(l,receipt)>=0 {return r;}
+    r.refuse=VpRefuse.full;
+    if l.n==VP_JOBS {return r;}
+    a:=bl_admit(l.account,BlPrice.{msat=q});
+    r.refuse=VpRefuse.budget;
+    if a.cause!=BlCause.none {return r;}
+    n:=l;n.jobs[n.n]=VpJob.{receipt=receipt,payee=payee,quote=q,state=VpState.held};n.n+=1;n.account=a.account;
+    return VpStep.{state=VpState.held,ledger=n};
+}
+// book:end hold
+
+// book:begin decide
+vp_policy_valid :: (p:VpPolicy)->bool {return bl_in(p.payout_cap,BL_MSAT_MOST);}
+// Move job k to its end state. Review keeps the quote in escrow. Paid and
+// withheld release it; paid adds one intent, withheld adds to the refused
+// total, which never passes 21 million bitcoin.
+vp_end :: (l:VpLedger,k:int,amount:int,to:VpState)->VpStep {
+    n:=l;n.jobs[k].amount=amount;n.jobs[k].state=to;
+    if to==VpState.review {return VpStep.{state=to,ledger=n};}
+    n.account.held-=l.jobs[k].quote;
+    if to==VpState.withheld {
+        if !bl_in(amount,BL_MSAT_MOST-l.withheld) {return VpStep.{refuse=VpRefuse.total,ledger=l};}
+        n.withheld+=amount;return VpStep.{state=to,ledger=n};
+    }
+    n.account.spent+=amount;
+    n.intents[n.m]=VpIntent.{key=l.jobs[k].receipt,payee=l.jobs[k].payee,msat=amount};n.m+=1;
+    return VpStep.{state=to,ledger=n};
+}
+// The checker's verdict on a held job. amount is the work's actual price,
+// at least 1 msat and at most the quote. A sampled job needs a verdict and
+// an unsampled one must not have one, as in pk_settle. Disagree withholds.
+// Unverifiable work, untrusted unsampled work and a payment above the cap
+// wait for the owner. Everything else is paid.
+vp_decide :: (l:VpLedger,p:VpPolicy,receipt:string,amount:int,sampled:bool,c:PkCompare)->VpStep #export_c {
+    r:=VpStep.{refuse=VpRefuse.policy,ledger=l};
+    if !vp_policy_valid(p) {return r;}
+    k:=vp_find(l,receipt);
+    r.refuse=VpRefuse.unknown;
+    if k<0 {return r;}
+    r.refuse=VpRefuse.settled;
+    if l.jobs[k].state!=VpState.held {return r;}
+    r.refuse=VpRefuse.amount;
+    if amount<1 || amount>l.jobs[k].quote {return r;}
+    r.refuse=VpRefuse.verdict;
+    if sampled==(c.verdict==PkVerdict.none) {return r;}
+    if c.verdict==PkVerdict.disagree {return vp_end(l,k,amount,VpState.withheld);}
+    if c.verdict==PkVerdict.unverifiable || (!sampled && !p.trust_unsampled) || amount>p.payout_cap {return vp_end(l,k,amount,VpState.review);}
+    return vp_end(l,k,amount,VpState.paid);
+}
+// The owner's decision on a job held for review: pay it or withhold it.
+vp_review :: (l:VpLedger,receipt:string,pay:bool)->VpStep #export_c {
+    k:=vp_find(l,receipt);
+    r:=VpStep.{refuse=VpRefuse.unknown,ledger=l};
+    if k<0 {return r;}
+    r.refuse=VpRefuse.settled;
+    if l.jobs[k].state!=VpState.review {return r;}
+    return vp_end(l,k,l.jobs[k].amount,ifx pay then VpState.paid else VpState.withheld);
+}
+// book:end decide
+
+// book:begin recount
+// The log a buyer publishes: every accepted hold, verdict and owner
+// decision, in order. msat is the quote for a hold and the amount for a
+// verdict.
+VpKind :: enum u8 {hold;decide;review;}
+VpEvent :: struct {kind:VpKind;receipt:string;payee:string;msat:int;sampled:bool;verdict:PkVerdict;pay:bool;}
+VpRecount :: struct {refuse:VpRefuse;at:int=-1;ledger:VpLedger;}
+
+vp_apply :: (l:VpLedger,p:VpPolicy,e:VpEvent)->VpStep {
+    if e.kind==VpKind.hold {return vp_hold(l,e.receipt,e.payee,e.msat,"msat");}
+    if e.kind==VpKind.decide {return vp_decide(l,p,e.receipt,e.msat,e.sampled,PkCompare.{verdict=e.verdict});}
+    return vp_review(l,e.receipt,e.pay);
+}
+vp_recount :: (budget:int,p:VpPolicy,events:[]VpEvent)->VpRecount #export_c {
+    l:=VpLedger.{account=BlAccount.{budget=budget}};
+    for i:0..<events.count {
+        t:=vp_apply(l,p,events[i]);
+        if t.refuse!=VpRefuse.none {return VpRecount.{refuse=t.refuse,at=i,ledger=l};}
+        l=t.ledger;
+    }
+    return VpRecount.{ledger=l};
+}
+// book:end recount
+
+// book:begin invoice
+// The wallet boundary. A Lightning invoice names its amount in msat; a Spark
+// transfer moves whole sats, so an amount with a fraction of a sat is
+// refused for Spark rather than rounded. Any other rail is refused. key is
+// the idempotency key the wallet records, so a retried intent pays once.
+VpRail :: enum u8 {lightning;spark;}
+VpInvoice :: struct {refuse:VpRefuse;rail:VpRail;msat:int;sat:int;key:string;payee:string;}
+
+vp_invoice :: (l:VpLedger,key:string,rail:string)->VpInvoice #export_c {
+    k:=-1;
+    for i:0..<l.m {if l.intents[i].key==key {k=i;}}
+    r:=VpInvoice.{refuse=VpRefuse.unknown};
+    if k<0 {return r;}
+    t:=l.intents[k];
+    if rail=="lightning" {return VpInvoice.{rail=VpRail.lightning,msat=t.msat,key=t.key,payee=t.payee};}
+    r.refuse=VpRefuse.rail;
+    if rail!="spark" {return r;}
+    r.refuse=VpRefuse.fraction;
+    if t.msat%1000!=0 {return r;}
+    return VpInvoice.{rail=VpRail.spark,msat=t.msat,sat=t.msat/1000,key=t.key,payee=t.payee};
+}
+// book:end invoice
+
+vp_refuse_name :: (r:VpRefuse)->string {
+    names:=[16]string.["none","receipt","payee","unit","quote","twice","full","budget","policy","unknown","settled","amount","verdict","total","rail","fraction"];
+    return names[cast(int)r];
+}
+vp_state_name :: (s:VpState)->string {names:=[5]string.["none","held","paid","withheld","review"];return names[cast(int)s];}
+
+// ---- Checks. The values in them are worked by hand in chapter 238. ----
+
+VPT_A :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+VPT_B :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+VPT_C :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+vpt_agree :: ()->PkCompare {return PkCompare.{verdict=PkVerdict.agree,reason=PkReason.exact};}
+vpt_verdict :: (v:PkVerdict)->PkCompare {return PkCompare.{verdict=v};}
+// Two ledgers are the same when every counted field is.
+vpt_same :: (a:VpLedger,b:VpLedger)->bool {
+    if a.account.budget!=b.account.budget || a.account.held!=b.account.held || a.account.spent!=b.account.spent {return false;}
+    if a.n!=b.n || a.m!=b.m || a.withheld!=b.withheld {return false;}
+    for i:0..<a.n {
+        x:=a.jobs[i];y:=b.jobs[i];
+        if x.receipt!=y.receipt || x.payee!=y.payee || x.quote!=y.quote || x.amount!=y.amount || x.state!=y.state {return false;}
+    }
+    for i:0..<a.m {x:=a.intents[i];y:=b.intents[i];if x.key!=y.key || x.payee!=y.payee || x.msat!=y.msat {return false;}}
+    return true;
+}
+
+// book:begin check-trace
+#test "hold, verify, pay or withhold, worked by hand" {
+    // Chapter 180's quote for 37 input tokens, 16 output and 20 ms: 2202 msat.
+    // Each job's actual price is 1732 msat. The owner's cap is 10000 msat.
+    p:=VpPolicy.{trust_unsampled=true,payout_cap=5000};
+    l:=VpLedger.{account=BlAccount.{budget=10000}};
+    for d:[3]string.[VPT_A,VPT_B,VPT_C] {t:=vp_hold(l,d,"alpha",2202,"msat");#assert t.refuse==VpRefuse.none && t.state==VpState.held;l=t.ledger;}
+    #assert l.account.held==6606 && l.account.spent==0 && l.n==3;
+    // A fourth 2202 msat hold needs 8808 <= 10000: it fits; a fifth would not.
+    // The checker agrees with A: 2202 leaves escrow, 1732 is owed, one intent.
+    t:=vp_decide(l,p,VPT_A,1732,true,vpt_agree());
+    #assert t.refuse==VpRefuse.none && t.state==VpState.paid && t.ledger.account.held==4404 && t.ledger.account.spent==1732;
+    #assert t.ledger.m==1 && t.ledger.intents[0].key==VPT_A && t.ledger.intents[0].msat==1732 && t.ledger.intents[0].payee=="alpha";
+    // B disagrees: its hold is released and nothing is owed.
+    t=vp_decide(t.ledger,p,VPT_B,1732,true,vpt_verdict(PkVerdict.disagree));
+    #assert t.state==VpState.withheld && t.ledger.account.held==2202 && t.ledger.account.spent==1732 && t.ledger.withheld==1732 && t.ledger.m==1;
+    // C could not be verified: it stays in escrow for the owner.
+    t=vp_decide(t.ledger,p,VPT_C,1732,true,vpt_verdict(PkVerdict.unverifiable));
+    #assert t.state==VpState.review && t.ledger.account.held==2202 && t.ledger.jobs[2].amount==1732 && t.ledger.m==1;
+    // The owner pays C.
+    t=vp_review(t.ledger,VPT_C,true);
+    #assert t.state==VpState.paid && t.ledger.account.held==0 && t.ledger.account.spent==3464 && t.ledger.m==2 && t.ledger.intents[1].key==VPT_C;
+    // The wallet boundary: 1732 msat is a Lightning amount, not a whole sat.
+    i:=vp_invoice(t.ledger,VPT_A,"lightning");
+    #assert i.refuse==VpRefuse.none && i.rail==VpRail.lightning && i.msat==1732 && i.sat==0 && i.key==VPT_A && i.payee=="alpha";
+    #assert vp_invoice(t.ledger,VPT_A,"spark").refuse==VpRefuse.fraction;
+}
+// book:end check-trace
+
+// book:begin check-refuse
+#test "refusals change nothing" {
+    p:=VpPolicy.{trust_unsampled=true,payout_cap=5000};
+    l:=vp_hold(VpLedger.{account=BlAccount.{budget=10000}},VPT_A,"alpha",2202,"msat").ledger;
+    t:=vp_decide(l,p,VPT_B,1732,true,vpt_agree());#assert t.refuse==VpRefuse.unknown && vpt_same(t.ledger,l);      // never held
+    t=vp_decide(l,p,VPT_A,2203,true,vpt_agree());#assert t.refuse==VpRefuse.amount && vpt_same(t.ledger,l);        // above the quote
+    t=vp_hold(l,VPT_B,"alpha",2202,"usdt");#assert t.refuse==VpRefuse.unit && vpt_same(t.ledger,l);                 // not Bitcoin
+    paid:=vp_decide(l,p,VPT_A,1732,true,vpt_agree()).ledger;
+    t=vp_decide(paid,p,VPT_A,1732,true,vpt_agree());#assert t.refuse==VpRefuse.settled && vpt_same(t.ledger,paid);  // released twice
+    t=vp_review(paid,VPT_A,true);#assert t.refuse==VpRefuse.settled && vpt_same(t.ledger,paid);                     // paid, not in review
+    t=vp_hold(paid,VPT_A,"alpha",2202,"msat");#assert t.refuse==VpRefuse.twice && vpt_same(t.ledger,paid);          // the same receipt again
+    #assert vp_invoice(paid,VPT_A,"usdc").refuse==VpRefuse.rail && vp_invoice(paid,VPT_B,"lightning").refuse==VpRefuse.unknown;
+}
+// book:end check-refuse
+
+#test "each hold refusal, in order" {
+    l:=VpLedger.{account=BlAccount.{budget=10000}};
+    #assert vp_hold(l,"",VPT_A,1,"msat").refuse==VpRefuse.receipt;
+    #assert vp_hold(l,VPT_A,"",1,"usdt").refuse==VpRefuse.payee;
+    #assert vp_hold(l,VPT_A,"x",-1,"usdt").refuse==VpRefuse.unit;
+    for u:[4]string.["MSAT","sats","",  "btc"] {#assert vp_hold(l,VPT_A,"x",1,u).refuse==VpRefuse.unit;}
+    #assert vp_hold(l,VPT_A,"x",0,"msat").refuse==VpRefuse.quote && vp_hold(l,VPT_A,"x",0,"sat").refuse==VpRefuse.quote;
+    #assert vp_hold(l,VPT_A,"x",1,"msat").refuse==VpRefuse.none;
+    // A sat is 1000 msat.
+    t:=vp_hold(l,VPT_A,"x",3,"sat");#assert t.refuse==VpRefuse.none && t.ledger.jobs[0].quote==3000 && t.ledger.account.held==3000;
+    #assert vp_hold(l,VPT_A,"x",11,"sat").refuse==VpRefuse.budget && vp_hold(l,VPT_A,"x",10,"sat").refuse==VpRefuse.none;
+    #assert vp_hold(l,VPT_A,"x",10001,"msat").refuse==VpRefuse.budget && vp_hold(l,VPT_A,"x",10000,"msat").refuse==VpRefuse.none;
+    // Escrow and spending both count against the cap.
+    l=t.ledger;#assert vp_hold(l,VPT_B,"x",7001,"msat").refuse==VpRefuse.budget && vp_hold(l,VPT_B,"x",7000,"msat").refuse==VpRefuse.none;
+    l=vp_decide(l,VpPolicy.{trust_unsampled=true,payout_cap=5000},VPT_A,3000,false,PkCompare.{}).ledger;
+    #assert l.account.spent==3000 && l.account.held==0 && vp_hold(l,VPT_B,"x",7001,"msat").refuse==VpRefuse.budget;
+    // 16 jobs fill the ledger.
+    f:=VpLedger.{account=BlAccount.{budget=100}};
+    d:[64]u8;for i:0..<64 {d[i]='0';}
+    for k:0..<VP_JOBS {d[0]=cast(u8)(97+k%6);d[1]=cast(u8)(48+k/6);t=vp_hold(f,cast(string)d[..],"x",1,"msat");#assert t.refuse==VpRefuse.none;f=t.ledger;}
+    #assert f.n==16 && vp_hold(f,VPT_A,"x",1,"msat").refuse==VpRefuse.full;
+    #assert vp_hold(f,cast(string)d[..],"x",1,"msat").refuse==VpRefuse.twice;
+}
+#test "a receipt digest is 64 lowercase hex digits" {
+    #assert vp_digest_ok(VPT_A) && vp_digest_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !vp_digest_ok("") && !vp_digest_ok("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    #assert !vp_digest_ok("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    d:[64]u8;for i:0..<64 {d[i]='9';}
+    good:=[4]u8.['0','9','a','f'];bad:=[5]u8.['/',':','`','g','A'];
+    for at:[2]int.[0,63] {
+        for c:good {e:=d;e[at]=c;#assert vp_digest_ok(cast(string)e[..]);}
+        for c:bad {e:=d;e[at]=c;#assert !vp_digest_ok(cast(string)e[..]);}
+    }
+}
+#test "verdict, policy and cap rules" {
+    l:=vp_hold(VpLedger.{account=BlAccount.{budget=10000}},VPT_A,"alpha",2202,"msat").ledger;
+    trust:=VpPolicy.{trust_unsampled=true,payout_cap=1732};wary:=VpPolicy.{payout_cap=1732};
+    #assert vp_decide(l,trust,VPT_A,1732,false,PkCompare.{}).state==VpState.paid;
+    #assert vp_decide(l,wary,VPT_A,1732,false,PkCompare.{}).state==VpState.review;
+    #assert vp_decide(l,wary,VPT_A,1732,true,vpt_agree()).state==VpState.paid;
+    #assert vp_decide(l,trust,VPT_A,1733,true,vpt_agree()).state==VpState.review;   // above the payout cap
+    #assert vp_decide(l,trust,VPT_A,1,true,vpt_agree()).state==VpState.paid && vp_decide(l,trust,VPT_A,0,true,vpt_agree()).refuse==VpRefuse.amount;
+    #assert vp_decide(l,trust,VPT_A,1733,true,vpt_verdict(PkVerdict.disagree)).state==VpState.withheld;
+    #assert vp_decide(l,trust,VPT_A,1732,true,PkCompare.{}).refuse==VpRefuse.verdict && vp_decide(l,trust,VPT_A,1732,false,vpt_agree()).refuse==VpRefuse.verdict;
+    #assert vp_decide(l,trust,VPT_A,2202,true,vpt_verdict(PkVerdict.unverifiable)).state==VpState.review;
+    for cap:[2]int.[-1,BL_MSAT_MOST+1] {#assert vp_decide(l,VpPolicy.{payout_cap=cap},VPT_A,1,true,vpt_agree()).refuse==VpRefuse.policy;}
+    #assert vp_decide(l,VpPolicy.{payout_cap=BL_MSAT_MOST},VPT_A,2202,true,vpt_agree()).state==VpState.paid;
+    #assert vp_decide(l,VpPolicy.{payout_cap=0},VPT_A,1,true,vpt_agree()).state==VpState.review;
+    // An owner's withhold releases escrow and counts the amount as withheld.
+    r:=vp_decide(l,wary,VPT_A,1700,false,PkCompare.{}).ledger;
+    #assert vp_review(r,VPT_B,true).refuse==VpRefuse.unknown;
+    t:=vp_review(r,VPT_A,false);#assert t.state==VpState.withheld && t.ledger.withheld==1700 && t.ledger.account.held==0 && t.ledger.m==0;
+    #assert vp_review(t.ledger,VPT_A,false).refuse==VpRefuse.settled;
+    t=vp_review(r,VPT_A,true);#assert t.ledger.account.spent==1700 && t.ledger.intents[0].msat==1700;
+}
+#test "amounts at the top stay inside 21 million bitcoin" {
+    top:=VpLedger.{account=BlAccount.{budget=BL_MSAT_MOST}};
+    t:=vp_hold(top,VPT_A,"x",BL_MSAT_MOST,"msat");#assert t.refuse==VpRefuse.none && t.ledger.account.held==BL_MSAT_MOST;
+    #assert vp_hold(top,VPT_A,"x",BL_MSAT_MOST+1,"msat").refuse==VpRefuse.quote;
+    #assert vp_hold(top,VPT_A,"x",BL_MSAT_MOST/1000,"sat").ledger.account.held==BL_MSAT_MOST;
+    #assert vp_hold(top,VPT_A,"x",BL_MSAT_MOST/1000+1,"sat").refuse==VpRefuse.quote;
+    #assert vp_hold(top,VPT_A,"x",-1,"sat").refuse==VpRefuse.quote;
+    p:=VpPolicy.{trust_unsampled=true,payout_cap=BL_MSAT_MOST};
+    u:=vp_decide(t.ledger,p,VPT_A,BL_MSAT_MOST,true,vpt_agree());#assert u.ledger.account.spent==BL_MSAT_MOST && u.ledger.account.held==0;
+    i:=vp_invoice(u.ledger,VPT_A,"spark");#assert i.refuse==VpRefuse.none && i.sat==BL_MSAT_MOST/1000 && i.msat==BL_MSAT_MOST && i.rail==VpRail.spark;
+    // The withheld total stops at 21 million bitcoin.
+    w:=t.ledger;w.withheld=BL_MSAT_MOST-5;
+    #assert vp_decide(w,p,VPT_A,5,true,vpt_verdict(PkVerdict.disagree)).ledger.withheld==BL_MSAT_MOST;
+    x:=vp_decide(w,p,VPT_A,6,true,vpt_verdict(PkVerdict.disagree));#assert x.refuse==VpRefuse.total && vpt_same(x.ledger,w);
+    r:=vp_decide(w,VpPolicy.{payout_cap=0},VPT_A,6,true,vpt_agree()).ledger;
+    #assert vp_review(r,VPT_A,false).refuse==VpRefuse.total && vp_review(r,VPT_A,true).refuse==VpRefuse.none;
+}
+#test "the wallet boundary" {
+    l:=VpLedger.{account=BlAccount.{budget=100000}};p:=VpPolicy.{trust_unsampled=true,payout_cap=100000};
+    l=vp_hold(l,VPT_A,"alpha",5000,"msat").ledger;l=vp_hold(l,VPT_B,"beta",5000,"msat").ledger;
+    l=vp_decide(l,p,VPT_A,3000,true,vpt_agree()).ledger;l=vp_decide(l,p,VPT_B,2999,true,vpt_agree()).ledger;
+    i:=vp_invoice(l,VPT_A,"spark");#assert i.refuse==VpRefuse.none && i.sat==3 && i.msat==3000 && i.key==VPT_A && i.payee=="alpha";
+    i=vp_invoice(l,VPT_B,"spark");#assert i.refuse==VpRefuse.fraction && i.sat==0;
+    i=vp_invoice(l,VPT_B,"lightning");#assert i.msat==2999 && i.key==VPT_B && i.payee=="beta" && i.rail==VpRail.lightning;
+    for r:[4]string.["Lightning","onchain-usdt","cashu",""] {#assert vp_invoice(l,VPT_A,r).refuse==VpRefuse.rail;}
+}
+#test "a reader recounts the ledger from its log" {
+    p:=VpPolicy.{trust_unsampled=true,payout_cap=5000};
+    ev:[7]VpEvent;
+    ev[0]=VpEvent.{kind=VpKind.hold,receipt=VPT_A,payee="alpha",msat=2202};
+    ev[1]=VpEvent.{kind=VpKind.hold,receipt=VPT_B,payee="beta",msat=2202};
+    ev[2]=VpEvent.{kind=VpKind.decide,receipt=VPT_A,msat=1732,sampled=true,verdict=PkVerdict.agree};
+    ev[3]=VpEvent.{kind=VpKind.decide,receipt=VPT_B,msat=1732,sampled=true,verdict=PkVerdict.unverifiable};
+    ev[4]=VpEvent.{kind=VpKind.review,receipt=VPT_B,pay=false};
+    ev[5]=ev[2];ev[6]=ev[4];
+    r:=vp_recount(10000,p,ev[0..<5]);
+    #assert r.refuse==VpRefuse.none && r.at==-1 && r.ledger.account.spent==1732 && r.ledger.withheld==1732 && r.ledger.account.held==0 && r.ledger.m==1;
+    r=vp_recount(10000,p,ev[0..<6]);#assert r.refuse==VpRefuse.settled && r.at==5 && r.ledger.account.spent==1732;  // paid twice
+    ev[4].pay=true;r=vp_recount(10000,p,ev[0..<5]);#assert r.ledger.account.spent==3464 && r.ledger.m==2 && r.ledger.withheld==0;
+    r=vp_recount(4000,p,ev[0..<5]);#assert r.refuse==VpRefuse.budget && r.at==1 && r.ledger.n==1;
+    r=vp_recount(10000,VpPolicy.{payout_cap=-1},ev[0..<5]);#assert r.refuse==VpRefuse.policy && r.at==2;
+    r=vp_recount(10000,p,ev[0..<0]);#assert r.refuse==VpRefuse.none && r.ledger.n==0 && r.ledger.account.budget==10000;
+}
+#test "the test ledger comparison notices every field" {
+    l:=VpLedger.{account=BlAccount.{budget=10000}};p:=VpPolicy.{trust_unsampled=true,payout_cap=5000};
+    l=vp_hold(l,VPT_A,"alpha",3000,"msat").ledger;l=vp_hold(l,VPT_B,"beta",3000,"msat").ledger;
+    l=vp_decide(l,p,VPT_A,2000,true,vpt_agree()).ledger;l=vp_decide(l,p,VPT_B,2500,true,vpt_agree()).ledger;
+    #assert vpt_same(l,l);
+    for f:0..<17 {
+        x:=l;
+        if f==0 {x.account.budget=1;}if f==1 {x.account.held=1;}if f==2 {x.account.spent=1;}if f==3 {x.n=1;}if f==4 {x.m=1;}if f==5 {x.withheld=1;}
+        if f==6 {x.jobs[0].receipt=VPT_C;}if f==7 {x.jobs[0].payee="z";}if f==8 {x.jobs[0].quote=1;}if f==9 {x.jobs[0].amount=1;}if f==10 {x.jobs[0].state=VpState.held;}
+        if f==11 {x.jobs[1].receipt=VPT_C;}if f==12 {x.intents[0].key=VPT_C;}if f==13 {x.intents[0].payee="z";}if f==14 {x.intents[0].msat=1;}
+        if f==15 {x.intents[1].msat=1;}if f==16 {x.jobs[2].quote=1;x.intents[2].msat=1;}
+        #assert vpt_same(x,l)==(f==16);
+    }
+}
+#test "names" {
+    s:=[5]string.["none","held","paid","withheld","review"];for k:0..<5 {#assert vp_state_name(cast(VpState)k)==s[k];}
+    #assert vp_refuse_name(VpRefuse.none)=="none" && vp_refuse_name(VpRefuse.settled)=="settled" && vp_refuse_name(VpRefuse.fraction)=="fraction";
+}
+
+// book:begin check-oracle
+// A brute-force ledger: two receipts, A quoted 300 msat and owed 200, B
+// quoted 500 and owed 500, under a 750 msat cap and a 400 msat payout cap.
+// Three operations from seven kinds on either receipt: hold, agree,
+// disagree, unverifiable, unsampled, owner pays, owner withholds. The
+// oracle tracks each receipt's state and three sums by hand; the ledger
+// must match it after every step, conserve the cap, never pay a receipt
+// twice, leave itself unchanged on a refusal, and recount to the same sums.
+#forall "the ledger against a brute-force oracle" o1: 0..<14, o2: 0..<14, o3: 0..<14, trust: bool {
+    quote:=[2]int.[300,500];owe:=[2]int.[200,500];key:=[2]string.[VPT_A,VPT_B];
+    p:=VpPolicy.{trust_unsampled=trust,payout_cap=400};
+    l:=VpLedger.{account=BlAccount.{budget=750}};
+    st:=[2]VpState.[VpState.none,VpState.none];held:=0;spent:=0;withheld:=0;
+    ev:[3]VpEvent;ne:=0;
+    for op:[3]int.[o1,o2,o3] {
+        r:=op%2;kind:=op/2;
+        e:=VpEvent.{kind=VpKind.decide,receipt=key[r],msat=owe[r],sampled=true};
+        want:=VpRefuse.none;to:=st[r];
+        if kind==0 {
+            e=VpEvent.{kind=VpKind.hold,receipt=key[r],payee="p",msat=quote[r]};
+            if st[r]!=VpState.none {want=VpRefuse.twice;}
+            else if held+spent+quote[r]>750 {want=VpRefuse.budget;}
+            else {to=VpState.held;}
+        } else if kind<=4 {
+            v:=[5]PkVerdict.[PkVerdict.none,PkVerdict.agree,PkVerdict.disagree,PkVerdict.unverifiable,PkVerdict.none];
+            e.verdict=v[kind];e.sampled=kind<4;
+            if st[r]==VpState.none {want=VpRefuse.unknown;}
+            else if st[r]!=VpState.held {want=VpRefuse.settled;}
+            else if kind==2 {to=VpState.withheld;}
+            else if kind==3 || (kind==4 && !trust) || owe[r]>400 {to=VpState.review;}
+            else {to=VpState.paid;}
+        } else {
+            e=VpEvent.{kind=VpKind.review,receipt=key[r],pay=kind==5};
+            if st[r]==VpState.none {want=VpRefuse.unknown;}
+            else if st[r]!=VpState.review {want=VpRefuse.settled;}
+            else {to=ifx kind==5 then VpState.paid else VpState.withheld;}
+        }
+        t:=vp_apply(l,p,e);
+        #assert t.refuse==want;
+        if want!=VpRefuse.none {#assert vpt_same(t.ledger,l);continue;}
+        if to==VpState.held {held+=quote[r];}
+        if to==VpState.paid {held-=quote[r];spent+=owe[r];}
+        if to==VpState.withheld {held-=quote[r];withheld+=owe[r];}
+        st[r]=to;l=t.ledger;ev[ne]=e;ne+=1;
+        #assert t.state==to;
+    }
+    #assert l.account.held==held && l.account.spent==spent && l.withheld==withheld && held+spent<=750;
+    // Conservation: escrow is the quotes of jobs held or in review; spending
+    // is the sum of the intents; each receipt has at most one intent.
+    esc:=0;sum:=0;
+    for j:0..<l.n {if l.jobs[j].state==VpState.held || l.jobs[j].state==VpState.review {esc+=l.jobs[j].quote;}}
+    for i:0..<l.m {sum+=l.intents[i].msat;for k:0..<i {#assert l.intents[k].key!=l.intents[i].key;}}
+    #assert esc==held && sum==spent;
+    for r:0..<2 {k:=vp_find(l,key[r]);#assert (k<0)==(st[r]==VpState.none) && (k<0 || l.jobs[k].state==st[r]);}
+    c:=vp_recount(750,p,ev[0..<ne]);#assert c.refuse==VpRefuse.none && vpt_same(c.ledger,l);
+}
+// book:end check-oracle
