@@ -2,17 +2,19 @@
 // text, SRT, WebVTT or JSON. Design: psionic/docs/transcribe.md.
 //   openagents transcribe FILE [--model tiny|base|small|medium|large-v3|large-v3-turbo]
 //                              [--language en|auto|CODE] [--text|--srt|--vtt|--json]
-//                              [--backend whispercpp|psionic] [--threads N]
+//                              [--backend psionic|whispercpp] [--threads N]
 //                              [--words Psionic,Coax,...] [--prompt TEXT]   (psionic)
 //   openagents transcribe models          the cached models
 //   openagents transcribe fetch MODEL     downloads one to ~/.cache/openagents/models/whisper
 // Backends, on the same ggml model files:
-// - psionic: Psionic's own Whisper (psionic/lib/whisper/), the psionic-whisper
-//   host built from this checkout on first use (psionic/platform/whisper-build.sh).
-//   Beam search, temperature fallback and language detection, as whisper.cpp;
-//   the encoder runs on the GPU where there is Metal.
-// - whispercpp: the interim default, whisper.cpp's whisper-cli (Homebrew:
-//   brew install whisper-cpp), until Psionic is also faster (#12623).
+// - psionic: the default, Psionic's own Whisper (psionic/lib/whisper/), the
+//   psionic-whisper host built from this checkout on first use
+//   (psionic/platform/whisper-build.sh). Beam search, temperature fallback and
+//   language detection, as whisper.cpp; the encoder and decoder run on the GPU
+//   where there is Metal. It is faster than whisper.cpp on the CPU and the GPU
+//   (#12623).
+// - whispercpp: whisper.cpp's whisper-cli (Homebrew: brew install
+//   whisper-cpp), on request only; compare uses it as the reference.
 // Decoding: Psionic reads WAV files itself (psionic/lib/whisper/wav.coax).
 // ffmpeg turns any other audio or video into 16 kHz mono 16-bit WAV.
 // Firm reason: 6 (no Coax decoder for compressed audio and video
@@ -30,7 +32,7 @@ TR_ENGINE_SOURCES :: [12] string.["psionic/lib/whisper/search.coax", "psionic/li
 transcribe_usage :: () {
   print("%\n", "Transcribe (speech to text, on this computer):");
   print("%\n", "  transcribe FILE [--model tiny|base|small|medium|large-v3|large-v3-turbo] [--language en|auto|CODE]");
-  print("%\n", "                  [--text|--srt|--vtt|--json] [--backend whispercpp|psionic] [--threads N]");
+  print("%\n", "                  [--text|--srt|--vtt|--json] [--backend psionic|whispercpp] [--threads N]");
   print("%\n", "                  [--words Psionic,Coax] [--prompt TEXT]   names to spell right (psionic)");
   print("%\n", "                                     audio or video; base and English by default");
   print("%\n", "  transcribe models                  the models in ~/.cache/openagents/models/whisper");
@@ -158,7 +160,7 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if name == "" { return fail(r, EXIT_USAGE, "--model is tiny, base, small, medium, large-v3 or large-v3-turbo; SIZE.en only with --language en"); }
   format := tr_format(args_has(a, "--text"), args_has(a, "--srt"), args_has(a, "--vtt"), r[0].json);
   if format < 0 { return fail(r, EXIT_USAGE, "pick one of --text, --srt, --vtt and --json"); }
-  backend := args_value(a, "--backend", "whispercpp");
+  backend := args_value(a, "--backend", "psionic");
   if backend != "whispercpp" && backend != "psionic" { return fail(r, EXIT_USAGE, "--backend is whispercpp or psionic"); }
   eb: [1100] u8; engine := "";
   if backend == "psionic" {
@@ -246,7 +248,7 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   print("%", cast(string) run[0].text[0..<w[0].n]);
   if format != cast(int) TrFormat.json {
     sec: [24] u8;
-    tool_err("transcribe: "); tool_err(name); tool_err(" on whisper.cpp (interim backend), ");
+    tool_err("transcribe: "); tool_err(name); tool_err(" on whisper.cpp, ");
     tool_err(int_text(ms, sec[..])); tool_errln(" ms");
   }
   return EXIT_OK;
@@ -270,7 +272,7 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
 // fallback); Psionic with its own. --device cpu (the default) runs
 // whisper.cpp with -ng, so both run on the CPU; --device gpu lets whisper.cpp
 // use Metal and passes --gpu to Psionic. This is the only place the whisper.cpp
-// backend stays once Psionic is the default (#12623).
+// reference runs by default; transcribe runs it only on --backend whispercpp.
 
 // ---- the generated corpus ----------------------------------------------------
 

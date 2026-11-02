@@ -1,15 +1,15 @@
 # Transcription: Whisper in Psionic
 
 Status, 2026-11-01: Psionic's Whisper transcribes end to end
-(`openagents transcribe FILE --backend psionic`), with beam search,
+and is the CLI's default (`openagents transcribe FILE`), with beam search,
 temperature fallback, language detection and a vocabulary bias
 (`--words`). On the comparison corpus its word error rate is at or below
 whisper.cpp's in total for `tiny.en` and `base.en`. On the CPU it is
 faster than whisper.cpp: 0.92× its time on `tiny.en` and 0.83× on
 `base.en`. On the GPU, where both the encoder and the decoder run on Metal,
-it takes about 2× whisper.cpp's Metal time. The in-game voice host uses it
-(`voice-host --provider psionic`). The default CLI backend stays
-whisper.cpp until Psionic is also faster on the GPU (#12623). Tracking issue:
+it takes about 0.55× whisper.cpp's Metal time. The in-game voice host uses
+it (`voice-host --provider psionic`). Psionic became the default CLI
+backend once it was faster on both devices (#12623). Tracking issue:
 [#12614](https://github.com/OpenAgentsInc/openagents/issues/12614).
 
 Speech to text is a primitive of the stack. You call it the same way
@@ -179,15 +179,15 @@ openagents transcribe fetch MODEL
 
 **Backends.** Both read the same cached ggml file.
 
-- `--backend psionic` runs `psionic-whisper`, which the CLI builds from its
+- `--backend psionic`, the default, runs `psionic-whisper`, which the CLI builds from its
   checkout on first use, and again when a source is newer. It reads WAV
   files itself and other files through ffmpeg, runs the encoder on the GPU
   when there is one, and takes `--language auto`, `--prompt TEXT` and
   `--words A,B,C`.
-- `--backend whispercpp` is the interim default. It runs whisper.cpp's
-  `whisper-cli`, and is labelled interim in the status line and the JSON.
-  It is removed in the change that makes Psionic the default, once Psionic
-  is also faster (issue
+- `--backend whispercpp` runs whisper.cpp's `whisper-cli` on request.
+  `openagents transcribe compare` uses it as the reference. Psionic became
+  the default once it was faster on the CPU and the GPU with the same or
+  lower word error rate, except one word on `tiny.en` on the GPU (issue
   [#12623](https://github.com/OpenAgentsInc/openagents/issues/12623)).
 
 ## Engine API for in-game voice
@@ -404,6 +404,21 @@ held the CPU (load average about 50), which slows both backends; on a
 quiet machine Psionic's `base.en` run of `gettysburg.wav` takes 1.5 s
 (2.3 s before the decoder moved to the GPU).
 
+After the GPU decoder work, 2026-11-01 (a 32-bit integer body for Coax
+Metal kernels whose values fit, row views in the device kernels, the beam
+rules and top k in less group memory with a parallel join), both on the
+GPU, totals over the same corpus. Other jobs held the CPU (load average
+70 to 150), which slows both backends:
+
+| Device | Model | Psionic WER | whisper.cpp WER | Psionic | whisper.cpp |
+| --- | --- | ---: | ---: | ---: | ---: |
+| GPU | `tiny.en` | 6.15% | 6.08% | 5352 ms | 9731 ms |
+| GPU | `base.en` | 4.15% | 4.46% | 6391 ms | 11585 ms |
+
+Psionic takes 0.55× whisper.cpp's time on both models. A `base.en` decoder
+step takes about 1.5 ms of GPU time, down from about 2.1 ms. Psionic's
+word error rate is the same on both devices.
+
 What the numbers say:
 
 - Accuracy. In total, Psionic's word error rate is below whisper.cpp's in
@@ -427,7 +442,8 @@ What the numbers say:
   whose indexes are affine check each range once and run without
   per-element checks, so the four-lane kernels compile to NEON fused
   multiply-adds.
-- Speed on the GPU. Psionic takes about 2× whisper.cpp's time. A decoder
+- Speed on the GPU, before the GPU decoder work. Psionic took about 2×
+  whisper.cpp's time. A decoder
   step is one command buffer of about 130 launches and takes about 2.1 ms
   on `base.en`; the beam products are most of it. Each product launch is
   short, so its fixed cost (group start, the partial sums in threadgroup
@@ -477,4 +493,4 @@ The work is in the openagents tracker and as tasks in
 | Timestamps, seek and SRT | [#12620](https://github.com/OpenAgentsInc/openagents/issues/12620) |
 | Parity tests against whisper.cpp | [#12621](https://github.com/OpenAgentsInc/openagents/issues/12621) |
 | Engine binding for in-game voice | [#12622](https://github.com/OpenAgentsInc/openagents/issues/12622) |
-| CLI: the Psionic backend; remove whisper.cpp | [#12623](https://github.com/OpenAgentsInc/openagents/issues/12623) |
+| CLI: Psionic the default backend | [#12623](https://github.com/OpenAgentsInc/openagents/issues/12623) |

@@ -4,7 +4,7 @@
   "initiative": {
     "slug": "psionic-transcribe",
     "title": "Speech to text as a Psionic primitive",
-    "body": "Whisper (MIT) in Psionic, read from whisper.cpp's ggml files so whisper.cpp is an exact oracle on the same bytes. One primitive for `openagents transcribe FILE` and for in-game voice in the Verse. CPU first, then Metal. Until it runs end to end, the CLI uses a labelled interim whisper.cpp backend. Epic: GitHub #12614.",
+    "body": "Whisper (MIT) in Psionic, read from whisper.cpp's ggml files so whisper.cpp is an exact oracle on the same bytes. One primitive for `openagents transcribe FILE` and for in-game voice in the Verse. CPU first, then Metal. The CLI uses it by default. Epic: GitHub #12614.",
     "spec": "psionic/docs/transcribe.md",
     "labels": ["psionic", "speech", "transcribe"]
   },
@@ -143,16 +143,17 @@
     {
       "slug": "transcribe-cli-psionic",
       "parent": "transcribe-surfaces",
-      "title": "openagents transcribe on Psionic; remove the whisper.cpp backend",
+      "title": "openagents transcribe on Psionic by default",
       "size": "S",
       "labels": ["speech", "cli"],
-      "body": "GitHub #12623. Add --backend psionic (psionic-whisper built from the checkout, the same cached ggml file). When Psionic wins on both WER and wall time for tiny.en and base.en in the compare harness, make it the default and remove --backend from the user-facing command; whisper.cpp stays only as the compare harness's reference. Read WAV directly.",
+      "body": "GitHub #12623. Add --backend psionic (psionic-whisper built from the checkout, the same cached ggml file). When Psionic wins on both WER and wall time for tiny.en and base.en in the compare harness, make it the default; whisper.cpp stays as the compare harness's reference and runs in transcribe only on --backend whispercpp. Read WAV directly. Done 2026-11-01: Psionic wins on time on both devices and on WER except one word on tiny.en on the GPU (6.15% against 6.08%), which the owner accepted.",
       "files": ["apps/openagents-cli/transcribe.coax", "apps/openagents-cli/transcribe-rules.coax", "apps/openagents-cli/README.md", "psionic/docs/transcribe.md"],
       "acceptance": [
-        "openagents transcribe psionic/fixtures/whisper/jfk.wav --json prints \"backend\":\"psionic\" and the reference text.",
-        "whisper-cli is run only by openagents transcribe compare."
+        "openagents transcribe /opt/homebrew/share/whisper-cpp/jfk.wav --json prints \"backend\":\"psionic\" and the reference text.",
+        "whisper-cli runs only in openagents transcribe compare or on --backend whispercpp."
       ],
-      "blocked_by": ["transcribe-timestamps", "transcribe-parity-harness", "transcribe-audio-decode"]
+      "blocked_by": ["transcribe-timestamps", "transcribe-parity-harness", "transcribe-audio-decode"],
+      "status": "resolved"
     }
   ]
 }

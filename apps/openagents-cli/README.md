@@ -244,12 +244,11 @@ openagents transcribe fetch medium                # downloads one; transcribe al
 - Models are whisper.cpp's ggml files from Hugging Face, kept in
   `~/.cache/openagents/models/whisper` (`OPENAGENTS_MODEL_CACHE` moves it),
   never in the checkout.
-- `--backend psionic` runs Psionic's own Whisper (`psionic/lib/whisper/`),
-  built from this checkout on first use. It decodes greedily, so name the
-  language (`--language de`); there is no `auto` yet.
-- The default backend is whisper.cpp's `whisper-cli` (`brew install
-  whisper-cpp ffmpeg`), labelled interim. It goes when Psionic's beam search
-  matches it; the plan and the measurements are in
+- The default backend, `--backend psionic`, runs Psionic's own Whisper
+  (`psionic/lib/whisper/`), built from this checkout on first use, with
+  beam search and `--language auto`.
+- `--backend whispercpp` runs whisper.cpp's `whisper-cli` (`brew install
+  whisper-cpp ffmpeg`) on request. The measurements are in
   [psionic/docs/transcribe.md](../../psionic/docs/transcribe.md).
 - A status line (model, backend, milliseconds) goes to stderr; the
   transcript is the only thing on stdout.
