@@ -166,6 +166,30 @@ def verbs(check):
               verdicts == [("Write(a.txt)", "run"), ("Write(/etc/stub-outside.txt)", "ask"), ("Bash(touch b.txt)", "refuse")])
         sent = [json.loads(x)["behavior"] for x in open(answers)] if os.path.exists(answers) else []
         check("policy: Claude Code gets allow, then deny with no one to ask, then deny", sent == ["allow", "deny", "deny"] and '"ending":"finished"' in pol.stdout)
+        # a fork of a whole Claude Code conversation resumes its session on the server (chapter 14): --resume and
+        # --fork-session, no earlier turns as text, and replay agrees; with no session file on this machine, text as before
+        fwork = os.path.realpath(tempfile.mkdtemp(prefix="coder-resume-"))
+        fargv = os.path.join(home, "fork-argv")
+        fenv = dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_MODE="calls", CLAUDE_STUB_CALLS="[]", CLAUDE_STUB_ARGV=fargv)
+        def fq(*a):
+            r = subprocess.run([coder, *a, "--engine", "claude", "--cwd", fwork, "--json"], cwd=REPO, env=fenv, capture_output=True, text=True, timeout=120)
+            return [json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")]
+        fp = fq("run", "first turn")
+        fpid = fp[0]["id"] if fp else ""
+        fproj = os.path.join(home, ".claude", "projects", fwork.replace("/", "-").replace(".", "-"))
+        os.makedirs(fproj, exist_ok=True)
+        open(os.path.join(fproj, "stub.jsonl"), "w").write("{}\n")
+        ff = fq("fork", fpid, "second turn")
+        frep = subprocess.run([coder, "replay", ff[0]["id"] if ff else "none"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        os.remove(os.path.join(fproj, "stub.jsonl"))
+        ft = fq("fork", fpid, "third turn")
+        fargs = [json.loads(x) for x in open(fargv)] if os.path.exists(fargv) else []
+        check("fork: a whole Claude Code conversation resumes on the server, replays, and falls back to text without its session file",
+              any(l["kind"] == "engine_session" and l.get("id") == "stub" for l in fp)
+              and ff and ff[0].get("resume") == "stub" and any(l["kind"] == "request" and l["bytes"] == len("second turn") for l in ff)
+              and len(fargs) == 3 and "--resume=stub" in fargs[1] and "--fork-session" in fargs[1]
+              and not any(x.startswith("--resume") for x in fargs[0] + fargs[2]) and "1 of 1 requests rebuilt with the same bytes" in frep.stdout
+              and ft and "resume" not in ft[0] and any(l["kind"] == "request" and l["bytes"] > len("third turn") for l in ft))
         # the same asks through coder acp (chapter 16): the editor is asked with session/request_permission, and its answer reaches Claude Code
         acp_answers = os.path.join(home, "acp-answers")
         pa = subprocess.Popen([coder, "acp", "--engine", "claude", "--allow", "write", "--ceiling", "write"], cwd=REPO, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,

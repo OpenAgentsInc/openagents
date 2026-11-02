@@ -110,6 +110,7 @@ cs_open :: (a: [] App) {
   }
   if l[0].pid > 0 { n = json_raw(o, n, ",\"pid\":"); n = json_write_int(o, n, l[0].pid); }
   if l[0].nreport > 0 { n = json_raw(o, n, ",\"report_to\":"); n = json_write_string(o, n, cast(string) l[0].report[0..<l[0].nreport]); }
+  if a[0].nresume > 0 { n = json_raw(o, n, ",\"resume\":"); n = json_write_string(o, n, cast(string) a[0].resume[0..<a[0].nresume]); }
   if a[0].pol[0].on {
     effects := CD_EFFECTS;
     n = json_raw(o, n, ",\"allow\":"); n = json_write_string(o, n, effects[a[0].pol[0].allow]);
@@ -289,6 +290,14 @@ cs_result :: (a: [] App, text: string, bad: bool) {
 CS_DIFF_TEXT :: 8192;     // an edit's old and new text go in its diff line up to this many bytes each
 
 // texts: whether old and next are the edit's own text (an Edit's old and new, a Write's new); they are logged when both fit.
+// The engine's own session ID: {"kind":"engine_session","engine":"claude","id":ID}.
+cs_engine_session :: (a: [] App, engine: string, id: string) {
+  o := a[0].log[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"engine_session\",\"engine\":"); n = json_write_string(o, n, engine);
+  n = json_raw(o, n, ",\"id\":"); n = json_write_string(o, n, id); n = json_raw(o, n, "}");
+  cs_put(a, n);
+}
+
 cs_diff :: (a: [] App, path: string, adds: int, dels: int, texts: bool, old: string, next: string) {
   o := a[0].log[0].line[..];
   n := json_raw(o, 0, "{\"kind\":\"diff\",\"path\":"); n = json_write_string(o, n, path);

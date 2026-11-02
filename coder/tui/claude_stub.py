@@ -9,11 +9,15 @@ CLAUDE_STUB_OUT names the file the answers go to, one JSON line each.
 CLAUDE_STUB_MODE=mcp calls Coder's in-process coder_ls tool instead, and
 CLAUDE_STUB_MODE=mcprun starts a child session with coder_run, and
 CLAUDE_STUB_MODE=hook sends two Bash calls through the PreToolUse hook, and
-CLAUDE_STUB_MODE=calls makes the tool calls listed in CLAUDE_STUB_CALLS."""
+CLAUDE_STUB_MODE=calls makes the tool calls listed in CLAUDE_STUB_CALLS.
+CLAUDE_STUB_ARGV names a file each run's arguments are appended to."""
 import json, os, sys
 
 out = os.environ.get("CLAUDE_STUB_OUT", "/dev/null")
 cwd = os.getcwd()
+if os.environ.get("CLAUDE_STUB_ARGV"):
+    with open(os.environ["CLAUDE_STUB_ARGV"], "a") as f:
+        f.write(json.dumps(sys.argv[1:]) + "\n")
 
 
 def send(obj):

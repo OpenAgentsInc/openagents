@@ -80,6 +80,8 @@ App :: struct {
   model_engine: int;             // --model is for the engine it came with
   ask_first: bool;               // --ask: permission prompts instead of skipping them
   no_memory: bool;               // --no-memory: the first message goes without the facts from `coder remember`
+  engine_sid: [128] u8; nengine_sid: int;   // Claude Code's own session ID, logged once (chapter 14)
+  resume: [128] u8; nresume: int;           // a fork that resumes the parent's Claude Code session on the server
   context: string;               // --context FILE: related objects the Router inlined, in front of the first message (chapter 17)
   deadline_ms: int;              // --deadline: when the job expires (0: never)
   expiring: bool;
@@ -539,6 +541,7 @@ cd_claude_send :: (a: [] App, msg: string) {
   cd_claude_reset(a[0].q);
   cl_init(a[0].q, a[0].qline, a[0].qarena, a[0].qout);
   cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a), a[0].coder_tools, cd_has_hook(a, "tool_call"));
+  if a[0].nresume > 0 { a[0].q[0].options.resume = cast(string) a[0].resume[0..<a[0].nresume]; a[0].q[0].options.fork_session = true; }
   a[0].npending = cd_cat(a[0].pending[..], 0, msg);
   problem := cl_start(a[0].q, a[0].p, "", true, a[0].scratch);
   if problem.count > 0 { cd_finish(a, END_FAILED, problem); return; }
@@ -585,6 +588,10 @@ cd_label :: (a: [] App, name: string, arg_in: string, out: [] u8) -> string {
 cd_claude_message :: (a: [] App, m: ClMessage) {
   q := a[0].q;
   if m.parent_tool_use_id.count > 0 { return; }       // a subagent's own traffic
+  if a[0].nengine_sid == 0 && m.session_id.count > 0 && m.session_id.count < 128 {
+    a[0].nengine_sid = cd_cat(a[0].engine_sid[..], 0, m.session_id);
+    cs_engine_session(a, "claude", m.session_id);
+  }
   if m.kind == ClKind.stream_event {
     t := cl_str(q[0].ar[..], m.line, "event.type");
     if t == "content_block_delta" && cl_str(q[0].ar[..], m.line, "event.delta.type") == "text_delta" {
@@ -1517,6 +1524,33 @@ cd_rebuild :: (user: string, parent: string, at: int, first: bool, out: [] u8) -
   return cast(string) out[0..<n];
 }
 
+// The last session ID engine logged in a session's text, or "".
+cd_engine_session_of :: (text: string, engine: string, ar: [] ClArena) -> string {
+  found := "";
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    if !rt_has_prefix(line, "{\"kind\":\"engine_session\"") { continue; }
+    ar[0].at = 0; ar[0].full = false;
+    if cl_str(ar, line, "engine") == engine { found = cl_str(ar, line, "id"); }
+  }
+  return found;
+}
+
+// Whether Claude Code keeps session id for folder cwd on this machine:
+// ~/.claude/projects/CWD/ID.jsonl, with each / and . of CWD as -.
+cd_claude_has_session :: (cwd: string, id: string) -> bool {
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 || cwd.count == 0 { return false; }
+  for c: id { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-') { return false; } }
+  pb: [2400] u8; n := cd_cat(pb[..], 0, home); n = cd_cat(pb[..], n, "/.claude/projects/");
+  for c: cwd { if n < pb.count { pb[n] = ifx c == '/' || c == '.' then '-' else c; n += 1; } }
+  n = cd_cat(pb[..], n, "/"); n = cd_cat(pb[..], n, id); n = cd_cat(pb[..], n, ".jsonl");
+  return fs_exists(cast(string) pb[0..<n]);
+}
+
 // coder replay ID: rebuilds every request the session sent from its log and
 // compares each one's bytes, by SHA-256 and length, with what was logged.
 cd_cmd_replay :: (id: string, json: bool) -> int {
@@ -1538,6 +1572,7 @@ cd_cmd_replay :: (id: string, json: bool) -> int {
     kind := cl_str(ar[..], line, "kind");
     if kind == "session" {
       pn = cd_cat(pb[..], 0, cl_str(ar[..], line, "parent"));
+      if cl_str(ar[..], line, "resume").count > 0 { pn = 0; }     // a resumed fork sent no earlier turns as text
       a2 := cl_int(line, "at"); at = ifx a2.ok then a2.value else 0;
     } else if kind == "user" {
       un = cd_cat(ub[..], 0, cl_str(ar[..], line, "text")); have_user = true; users += 1;
@@ -1911,6 +1946,12 @@ tool_main :: () -> int #export_c {
     kept := cs_turns_text(parent, at, fa[..], pre_b[..], pn[..]);
     if at > kept { tool_err("coder fork: the session has "); tb: [16] u8; tool_err(cd_itoa(kept, tb[..])); tool_errln(" turns"); return 2; }
     a[0].pre = cast(string) pre_b[0..<pn[0]];
+    // the whole conversation of a Claude Code parent: resume its session on the server, whose cache holds the prefix (chapter 14)
+    rsid := cd_engine_session_of(parent, "claude", fa[..]);
+    if (at == 0 || at == kept) && rsid.count > 0 && rsid.count < 128 && (want.count == 0 || want == "claude") && cd_claude_has_session(a[0].cwd, rsid) {
+      a[0].nresume = cd_cat(a[0].resume[..], 0, rsid);
+      a[0].pre = "";
+    }
     a[0].log[0].nparent = cd_cat(a[0].log[0].parent[..], 0, cast(string) ib[0..<k]);
     a[0].log[0].at = kept;
     // never wider than the parent: its ceiling holds unless --ceiling is lower (chapter 20's containment)

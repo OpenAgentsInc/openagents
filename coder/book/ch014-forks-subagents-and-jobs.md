@@ -6,9 +6,11 @@
 > and `--report-to`), and a subagent that a Claude Code session starts with
 > `--coder-tools`, held to its parent's policy and time. The offline smoke
 > checks all three. A goal (`--goal CHECK`) keeps a session working, turn
-> after turn, until its check passes. Still to come: a fork that reuses the
-> parent's cached prefix on the server instead of resending the turns as
-> text, and the measured gains chapter 21 asks for.
+> after turn, until its check passes. A fork of a whole Claude Code
+> conversation resumes the parent's Claude Code session, so the server's
+> cache holds the earlier turns instead of Coder resending them as text.
+> Still to come: the same for the psionic engine, and the measured gains
+> chapter 21 asks for.
 
 An agent sometimes needs a second line of work. This chapter adds four kinds:
 a fork of a session at a turn boundary, a subagent with its own scope and
@@ -62,9 +64,34 @@ The log records only the new task as the `user` line. The turns it
 carried are in the parent's file.
 
 Resending the turns as text costs prefill every time. The fork the chapter
-asks for reuses the parent's cached prefix state on the server (Psionic
-chapter 176). That needs an engine whose server we run, the psionic engine
-of chapter 12, and isn't built yet.
+asks for reuses the parent's cached prefix state on the server.
+
+Claude Code keeps its own sessions, and Coder logs each one's ID when Claude
+Code starts:
+
+```json
+{"kind":"engine_session","engine":"claude","id":"1341c45f-a27b-466f-af3e-413b341f8c10"}
+```
+
+A fork of a Claude Code parent that keeps every turn (no `--at`, or
+`--at` the last turn) and stays on Claude Code starts Claude Code with
+`--resume ID --fork-session`. Claude Code continues the parent's
+conversation in a new session of its own, and the fork's first message is
+only the new task. The fork's header records `"resume":ID`, and `coder
+replay` rebuilds that message without the earlier turns. Coder does this
+only when Claude Code's session file is on this machine
+(`~/.claude/projects/FOLDER/ID.jsonl`, the folder with each `/` and `.` as
+`-`). Otherwise it sends the turns as text, as before.
+
+In a live run on 2026-11-02, the parent was "Remember the word heliotrope.
+Reply with just OK." The fork asked "What word did I ask you to remember?"
+in a 63-byte message and got "heliotrope". Its first request read 13,537
+tokens from the cache against the parent's 11,268, so the parent's turn
+came from the server's cache instead of being resent.
+
+The psionic engine (chapter 12) runs on a server we run, so its fork has
+to come from Psionic chapter 176's prefix cache. Psionic's GPUs are off,
+so that isn't built yet.
 
 ### Background jobs
 
@@ -148,7 +175,8 @@ ran the check itself; the goal was met on turn 2.
 
 ```sh
 coax test coder/tui/coder.coax    # cs_turns_text: a fork's turns up to a boundary
-python3 coder/tui/smoke.py        # fork carries the turns; --detach runs; stop ends it as stopped;
+python3 coder/tui/smoke.py        # fork carries the turns; a Claude Code fork resumes (--resume, --fork-session),
+                                  # replays, and falls back to text without the session file; --detach runs; stop ends it as stopped;
                                   # a goal met on its second turn, and one capped unmet at two
 ```
 
@@ -166,7 +194,8 @@ python3 coder/tui/smoke.py        # fork carries the turns; --detach runs; stop 
 - [x] A background job runs outside the turn that started it, and `coder
   stop` ends it as stopped.
 - [ ] A fork's first request reuses the parent's prefix, measured as prefill tokens
-  saved on the server.
+  saved on the server. Done for Claude Code (13,537 cached tokens read on
+  the live fork above); the psionic engine remains.
 - [x] A subagent cannot exceed its parent's grant or budget: it gets the
   parent's policy and remaining deadline, and the smoke checks its header.
 - [x] A background job that finishes after its turn appends its result, and a job
