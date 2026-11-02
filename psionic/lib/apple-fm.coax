@@ -1,0 +1,226 @@
+// Apple's on-device foundation model, through the bridge in psionic/apple-fm
+// (Swift, since FoundationModels has only a Swift API): one JSON request a
+// line on its stdin, one response a line on its stdout. The bridge is
+// local; nothing leaves the Mac.
+//
+// The client never blocks a UI: afm_ask writes a request and returns,
+// afm_poll takes an answer if one is ready. One request is in flight at a
+// time. The host loads the cxproc_* declarations first
+// (coax/lib/sys/proc.coax or the Claude SDK's transport.coax).
+//
+//   c: [1] AfmClient;
+//   if afm_start(c[..], bridge_path) { ... }         // asks for availability
+//   if afm_poll(c[..]) == AFM_GOT_TEXT { afm_text(c[..]) }
+//   if afm_ready(c[..]) { x := afm_ask(c[..], instructions, prompt, 40); }
+//   afm_stop(c[..]);
+
+AFM_OFF :: 0;        // not started
+AFM_CHECKING :: 1;   // started, availability asked
+AFM_READY :: 2;      // available, no request in flight
+AFM_BUSY :: 3;       // a request in flight
+AFM_DOWN :: 4;       // unavailable or the bridge ended; why says which
+
+AFM_NOTHING :: 0; AFM_GOT_TEXT :: 1; AFM_CHANGED :: 2;   // what afm_poll saw
+
+AFM_LINE_MAX :: 16384;
+AFM_WAIT_MS :: 30000;   // a request unanswered this long is dropped
+
+AfmClient :: struct {
+  handle: int = -1;
+  state: int;
+  next: int;                         // the next request's id
+  sent_ms: int;                      // when the request in flight was sent
+  line: [16384] u8;
+  text: [2048] u8; ntext: int;       // the last answer
+  why: [256] u8; nwhy: int;          // why the model is down
+}
+
+afm_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+// s as a JSON string's contents: quotes, backslashes and control bytes escaped.
+afm_escape :: (out: [] u8, n0: int, s: string) -> int {
+  n := n0; hex := "0123456789abcdef";
+  for c: s {
+    if c == '"' || c == '\\' { n = afm_cat(out, n, "\\"); if n < out.count { out[n] = c; n += 1; } }
+    else if c == 10 { n = afm_cat(out, n, "\\n"); }
+    else if c == 13 { n = afm_cat(out, n, "\\r"); }
+    else if c == 9 { n = afm_cat(out, n, "\\t"); }
+    else if c < 32 { n = afm_cat(out, n, "\\u00"); if n + 1 < out.count { out[n] = hex[c / 16]; out[n + 1] = hex[c % 16]; n += 2; } }
+    else if n < out.count { out[n] = c; n += 1; }
+  }
+  return n;
+}
+
+// One request line, without the newline.
+afm_request :: (out: [] u8, id: int, op: string, instructions: string, prompt: string, max_tokens: int) -> string {
+  ib: [24] u8; k := 0; v := id; db: [24] u8;
+  if v == 0 { db[0] = '0'; k = 1; }
+  while v > 0 && k < 24 { db[k] = cast,trunc(u8) ('0' + v % 10); v = v / 10; k += 1; }
+  for i: 0..<k { ib[i] = db[k - 1 - i]; }
+  n := afm_cat(out, 0, "{\"id\":\""); n = afm_cat(out, n, cast(string) ib[0..<k]);
+  n = afm_cat(out, n, "\",\"op\":\""); n = afm_cat(out, n, op); n = afm_cat(out, n, "\"");
+  if instructions.count > 0 { n = afm_cat(out, n, ",\"instructions\":\""); n = afm_escape(out, n, instructions); n = afm_cat(out, n, "\""); }
+  if prompt.count > 0 { n = afm_cat(out, n, ",\"prompt\":\""); n = afm_escape(out, n, prompt); n = afm_cat(out, n, "\""); }
+  if max_tokens > 0 {
+    tb: [24] u8; tk := 0; t := max_tokens; tr: [24] u8;
+    while t > 0 && tk < 24 { tr[tk] = cast,trunc(u8) ('0' + t % 10); t = t / 10; tk += 1; }
+    for i: 0..<tk { tb[i] = tr[tk - 1 - i]; }
+    n = afm_cat(out, n, ",\"maxTokens\":"); n = afm_cat(out, n, cast(string) tb[0..<tk]);
+  }
+  n = afm_cat(out, n, "}");
+  return cast(string) out[0..<n];
+}
+
+// The string value of a top-level key in a response line, unescaped; "" when
+// absent. \uXXXX becomes UTF-8 (a surrogate pair's halves become U+FFFD).
+afm_field :: (line: string, key: string, out: [] u8) -> string {
+  at := 0; n := 0;
+  while at + key.count + 3 <= line.count {
+    if line[at] == '"' && cast(string) line[at + 1..<at + 1 + key.count] == key && line[at + 1 + key.count] == '"' {
+      j := at + key.count + 2;
+      while j < line.count && line[j] == ' ' { j += 1; }
+      if j < line.count && line[j] == ':' {
+        j += 1; while j < line.count && line[j] == ' ' { j += 1; }
+        if j >= line.count || line[j] != '"' { return ""; }
+        j += 1;
+        while j < line.count && line[j] != '"' {
+          c := line[j];
+          if c == '\\' && j + 1 < line.count {
+            e := line[j + 1]; j += 2;
+            if e == 'n' { n = afm_cat(out, n, "\n"); }
+            else if e == 't' { n = afm_cat(out, n, "\t"); }
+            else if e == 'r' { n = afm_cat(out, n, "\r"); }
+            else if e == 'u' && j + 4 <= line.count {
+              cp := 0;
+              for h: 0..<4 {
+                d := cast(int) line[j + h];
+                cp = cp * 16 + (ifx d >= '0' && d <= '9' then d - '0' else ifx d >= 'a' && d <= 'f' then d - 'a' + 10 else ifx d >= 'A' && d <= 'F' then d - 'A' + 10 else 0);
+              }
+              j += 4;
+              if cp >= 0xd800 && cp <= 0xdfff { cp = 0xfffd; }
+              if cp < 0x80 { if n < out.count { out[n] = cast,trunc(u8) cp; n += 1; } }
+              else if cp < 0x800 { if n + 1 < out.count { out[n] = cast,trunc(u8) (0xc0 | (cp >> 6)); out[n + 1] = cast,trunc(u8) (0x80 | (cp & 63)); n += 2; } }
+              else if n + 2 < out.count { out[n] = cast,trunc(u8) (0xe0 | (cp >> 12)); out[n + 1] = cast,trunc(u8) (0x80 | ((cp >> 6) & 63)); out[n + 2] = cast,trunc(u8) (0x80 | (cp & 63)); n += 3; }
+            }
+            else if n < out.count { out[n] = e; n += 1; }
+            continue;
+          }
+          if n < out.count { out[n] = c; n += 1; }
+          j += 1;
+        }
+        return cast(string) out[0..<n];
+      }
+    }
+    at += 1;
+  }
+  return "";
+}
+
+// Whether a response line says "ok": true (spaces allowed, as JSON allows).
+afm_ok :: (line: string) -> bool {
+  key := "\"ok\"";
+  for i: 0..<line.count - key.count + 1 {
+    if cast(string) line[i..<i + key.count] == key {
+      j := i + key.count;
+      while j < line.count && line[j] == ' ' { j += 1; }
+      if j >= line.count || line[j] != ':' { continue; }
+      j += 1; while j < line.count && line[j] == ' ' { j += 1; }
+      return j + 4 <= line.count && cast(string) line[j..<j + 4] == "true";
+    }
+  }
+  return false;
+}
+
+afm_send :: (c: [] AfmClient, s: string) -> bool {
+  for b: s { if cxproc_write(c[0].handle, cast(int) b) != 0 { return false; } }
+  if cxproc_write(c[0].handle, 10) != 0 { return false; }
+  return cxproc_flush(c[0].handle) == 0;
+}
+
+afm_down :: (c: [] AfmClient, why: string) {
+  c[0].state = AFM_DOWN; c[0].nwhy = afm_cat(c[0].why[..], 0, why);
+}
+
+// Starts the bridge at path and asks whether the model is available. False
+// when it could not start (then afm_why says why).
+afm_start :: (c: [] AfmClient, path: string) -> bool {
+  c[0].state = AFM_OFF; c[0].ntext = 0; c[0].nwhy = 0;
+  h := cxproc_new();
+  if h < 0 { afm_down(c, "no process slot is free"); return false; }
+  ok := true;
+  for b: path { if b == 0 || cxproc_push(h, 0, cast(int) b) != 0 { ok = false; } }
+  ok = ok && cxproc_end(h, 0) == 0;
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); afm_down(c, "the bridge did not start"); return false; }
+  c[0].handle = h; c[0].state = AFM_CHECKING; c[0].next = 1;
+  rb: [128] u8;
+  if !afm_send(c, afm_request(rb[..], 0, "availability", "", "", 0)) { afm_stop(c); afm_down(c, "the bridge did not start"); return false; }
+  c[0].sent_ms = cxproc_now_ms();
+  return true;
+}
+
+afm_ready :: (c: [] AfmClient) -> bool { return c[0].state == AFM_READY; }
+afm_text :: (c: [] AfmClient) -> string { return cast(string) c[0].text[0..<c[0].ntext]; }
+afm_why :: (c: [] AfmClient) -> string { return cast(string) c[0].why[0..<c[0].nwhy]; }
+
+// Sends a generate request; false when the model isn't ready or a request is in flight.
+afm_ask :: (c: [] AfmClient, instructions: string, prompt: string, max_tokens: int) -> bool {
+  if c[0].state != AFM_READY { return false; }
+  rb: [16384] u8;
+  if !afm_send(c, afm_request(rb[..], c[0].next, "generate", instructions, prompt, max_tokens)) { afm_stop(c); afm_down(c, "the bridge ended"); return false; }
+  c[0].next += 1; c[0].state = AFM_BUSY; c[0].sent_ms = cxproc_now_ms();
+  return true;
+}
+
+// What arrived since the last call, without waiting (wait_ms 0) or for up
+// to wait_ms: AFM_GOT_TEXT for an answer (afm_text), AFM_CHANGED when the
+// state changed (ready, down), else AFM_NOTHING.
+afm_poll :: (c: [] AfmClient, wait_ms: int) -> int {
+  if c[0].handle < 0 || (c[0].state != AFM_CHECKING && c[0].state != AFM_BUSY) { return AFM_NOTHING; }
+  n := cxproc_read_line(c[0].handle, wait_ms);
+  if n == -2 {
+    if cxproc_now_ms() - c[0].sent_ms > AFM_WAIT_MS {
+      if c[0].state == AFM_BUSY { c[0].state = AFM_READY; return AFM_CHANGED; }   // that answer is dropped; ask again later
+      afm_stop(c); afm_down(c, "the bridge did not answer"); return AFM_CHANGED;
+    }
+    return AFM_NOTHING;
+  }
+  if n < 0 { afm_stop(c); afm_down(c, "the bridge ended"); return AFM_CHANGED; }
+  k := ifx n > AFM_LINE_MAX then AFM_LINE_MAX else n;
+  for i: 0..<k { c[0].line[i] = cast,trunc(u8) cxproc_line_byte(c[0].handle, i); }
+  line := cast(string) c[0].line[0..<k];
+  if c[0].state == AFM_CHECKING {
+    sb: [64] u8;
+    if afm_field(line, "status", sb[..]) == "available" { c[0].state = AFM_READY; return AFM_CHANGED; }
+    wb: [128] u8; why := afm_field(line, "reason", wb[..]);
+    afm_stop(c);
+    afm_down(c, ifx why == "apple_intelligence_not_enabled" then "Apple Intelligence is off" else ifx why == "device_not_eligible" then "this Mac can't run Apple's model"
+               else ifx why == "model_not_ready" then "Apple's model is still downloading" else "Apple's model is unavailable");
+    return AFM_CHANGED;
+  }
+  c[0].state = AFM_READY;
+  if !afm_ok(line) { return AFM_CHANGED; }
+  c[0].ntext = afm_field(line, "text", c[0].text[..]).count;
+  return AFM_GOT_TEXT;
+}
+
+afm_stop :: (c: [] AfmClient) {
+  if c[0].handle < 0 { return; }
+  x := cxproc_close_stdin(c[0].handle);
+  y := cxproc_kill(c[0].handle, 15);
+  z := cxproc_wait(c[0].handle, 1000);
+  r := cxproc_release(c[0].handle);
+  c[0].handle = -1;
+  if c[0].state != AFM_DOWN { c[0].state = AFM_OFF; }
+}
+
+#test "apple fm: request lines escape their text; response fields unescape" {
+  b: [512] u8;
+  #assert afm_request(b[..], 0, "availability", "", "", 0) == "{\"id\":\"0\",\"op\":\"availability\"}";
+  #assert afm_request(b[..], 12, "generate", "Say \"hi\"", "a\nb\\c", 30) == "{\"id\":\"12\",\"op\":\"generate\",\"instructions\":\"Say \\\"hi\\\"\",\"prompt\":\"a\\nb\\\\c\",\"maxTokens\":30}";
+  o: [256] u8;
+  r := "{\"id\":\"2\",\"latencyMs\":1463,\"ok\":true,\"text\":\"Fixing \\\"it\\\" \\u00e9\\nnow\"}";
+  #assert afm_field(r, "text", o[..]) == "Fixing \"it\" é\nnow";
+  #assert afm_field(r, "id", o[..]) == "2" && afm_field(r, "missing", o[..]) == "" && afm_field(r, "latencyMs", o[..]) == "";
+  #assert afm_field("{\"id\":\"1\",\"ok\":true,\"status\":\"unavailable\",\"reason\":\"model_not_ready\"}", "reason", o[..]) == "model_not_ready";
+  #assert afm_ok(r) && afm_ok("{\"id\": \"1\", \"ok\": true}") && !afm_ok("{\"ok\":false}") && !afm_ok("{\"text\":\"ok\"}");
+}

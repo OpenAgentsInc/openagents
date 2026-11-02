@@ -27,6 +27,7 @@
 #load "../../coax/lib/tui/tui.coax";
 #load "../../coax/lib/tui/vt.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
+#load "../../psionic/lib/apple-fm.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "diff.coax";
 #load "codex.coax";
@@ -68,6 +69,11 @@ SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "�
 
 App :: struct {
   plain: bool;                   // --print: no TUI, plain lines
+  // recaps (chapter 36): on a Mac with Apple's on-device model, the status bar says what the agent is doing
+  afm: [1] AfmClient;
+  recap: [256] u8; nrecap: int; recap_ms: int; recap_seen: int; recap_turn: int;
+  recap_task: [600] u8; nrecap_task: int;
+  recent: [6] [160] u8; nrecent: [6] int; recent_at: int;
   hist: [262144] u8; nhist: int; // the transcript as committed, newest last, for /find (chapter 36)
   effort_b: [16] u8; neffort: int; // the effort for the engine: --effort, or System One's (chapter 13); none leaves the engine's
   auto_engine: bool;                  // --engine auto: System One picks the engine at each conversation's first message
@@ -261,7 +267,8 @@ cd_draw :: (a: [] App) {
     sb: [512] u8; n := 0;
     spin := SPIN;
     n = cd_cat(sb[..], n, spin[(cd_now(a) / 100) % 10]);
-    n = cd_cat(sb[..], n, ifx a[0].ask then " Waiting for you" else " Working");
+    n = cd_cat(sb[..], n, ifx a[0].ask then " Waiting for you" else ifx a[0].nrecap > 0 then " " else " Working");
+    if !a[0].ask && a[0].nrecap > 0 { n = cd_cat(sb[..], n, cast(string) a[0].recap[0..<a[0].nrecap]); }
     if a[0].steps > 0 { tb: [16] u8; n = cd_cat(sb[..], n, " · step "); n = cd_cat(sb[..], n, cd_itoa(a[0].steps + 1, tb[..])); }
     tb2: [32] u8; n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_seconds_text(cd_now(a) - a[0].started_ms, tb2[..]));
     n = cd_cat(sb[..], n, " · Esc to stop");
@@ -401,12 +408,116 @@ cd_command_event :: (a: [] App, cmd: string, exit: int, timed_out: bool, output_
   if total > shown { mb: [64] u8; mn := cd_cat(mb[..], 0, "    … "); mn = cd_cat(mb[..], mn, cd_itoa(total - shown, tb[..])); mn = cd_cat(mb[..], mn, " more lines"); cd_commit(a, TUI_FAINT, cast(string) mb[0..<mn]); }
 }
 
+// ---------------------------------------------------------------- recaps
+
+// Recaps (chapter 36): on a Mac with Apple's on-device model, the status bar
+// says in a few words what the agent is doing, from the task, its latest
+// steps and the reply so far. The model runs on the Mac through
+// psionic/apple-fm's bridge; the UI never waits for it. CODER_APPLE_FM=0
+// turns recaps off; CODER_APPLE_FM_BRIDGE names another bridge.
+CD_RECAP_MS :: 4000;            // at most one recap request this often
+CD_RECAP_MAX :: 80;             // bytes of recap shown
+CD_RECAP_INSTRUCTIONS :: "You write the status line of a coding agent at work. In 3 to 8 words, present tense, say what it is doing right now, like Running the parser tests or Fixing an off-by-one in the range check. Plain words only: no quotes, no markdown, no final period.";
+
+cd_recap_bridge :: (out: [] u8) -> string {
+  b := cl_getenv("CODER_APPLE_FM_BRIDGE", out);
+  if b.count > 0 { return b; }
+  rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+  if repo.count == 0 { return ""; }
+  n := cd_cat(out, 0, repo); n = cd_cat(out, n, "/psionic/apple-fm/.build/release/apple-fm-bridge");
+  return cast(string) out[0..<n];
+}
+
+cd_recap_open :: (a: [] App) {
+  if a[0].plain { return; }
+  eb: [8] u8; if cl_getenv("CODER_APPLE_FM", eb[..]) == "0" { return; }
+  pb: [4200] u8; path := cd_recap_bridge(pb[..]);
+  if path.count == 0 || !fs_exists(path) { return; }       // not a Mac, or the bridge isn't built
+  x := afm_start(a[0].afm[..], path);
+}
+
+// A step for the next recap's prompt: the last six, oldest first.
+cd_recap_note :: (a: [] App, label: string) {
+  k := a[0].recent_at % 6;
+  a[0].nrecent[k] = cd_cat(a[0].recent[k][..], 0, cast(string) label[0..<ifx label.count > 160 then 160 else label.count]);
+  a[0].recent_at += 1;
+}
+
+// A model's recap as one short line: its first line, without quotes,
+// markdown marks or a final period, cut at CD_RECAP_MAX on a character.
+cd_recap_clean :: (t: string, out: [] u8) -> string {
+  s := 0; while s < t.count && (t[s] == ' ' || t[s] == '"' || t[s] == '*' || t[s] == '`' || t[s] == 10) { s += 1; }
+  e := s; while e < t.count && t[e] != 10 { e += 1; }
+  while e > s && (t[e - 1] == ' ' || t[e - 1] == '.' || t[e - 1] == '"' || t[e - 1] == '*' || t[e - 1] == '`' || t[e - 1] == 13) { e -= 1; }
+  if e - s > CD_RECAP_MAX { e = s + CD_RECAP_MAX; while e > s && (t[e] & 192) == 128 { e -= 1; } }
+  n := cd_cat(out, 0, cast(string) t[s..<e]);
+  return cast(string) out[0..<n];
+}
+
+cd_recap_prompt :: (a: [] App, out: [] u8) -> string {
+  n := cd_cat(out, 0, "Task: "); n = cd_cat(out, n, cast(string) a[0].recap_task[0..<a[0].nrecap_task]);
+  if a[0].recent_at > 0 {
+    n = cd_cat(out, n, "\nSteps so far, newest last:");
+    first := ifx a[0].recent_at > 6 then a[0].recent_at - 6 else 0;
+    for i: first..<a[0].recent_at { k := i % 6; n = cd_cat(out, n, "\n- "); n = cd_cat(out, n, cast(string) a[0].recent[k][0..<a[0].nrecent[k]]); }
+  }
+  if a[0].nrep > 0 {
+    st := ifx a[0].nrep > 400 then a[0].nrep - 400 else 0;
+    while st < a[0].nrep && (a[0].rep[st] & 192) == 128 { st += 1; }
+    n = cd_cat(out, n, "\nIts latest words: "); n = cd_cat(out, n, cast(string) a[0].rep[st..<a[0].nrep]);
+  }
+  return cast(string) out[0..<n];
+}
+
+// Takes a recap that arrived and asks for the next when there is news. True when the status bar changed.
+cd_recap_tick :: (a: [] App) -> bool {
+  c := a[0].afm[..];
+  if c[0].state == AFM_OFF || c[0].state == AFM_DOWN { return false; }
+  changed := false;
+  got := afm_poll(c, 0);
+  if got == AFM_GOT_TEXT && a[0].running && a[0].recap_turn == a[0].turns {
+    rb: [256] u8; r := cd_recap_clean(afm_text(c), rb[..]);
+    if r.count > 0 { a[0].nrecap = cd_cat(a[0].recap[..], 0, r); changed = true; }
+  }
+  now := cd_now(a);
+  seen := a[0].recent_at * 1000003 + a[0].nrep;
+  if a[0].running && afm_ready(c) && now - a[0].recap_ms >= CD_RECAP_MS && seen != a[0].recap_seen {
+    pb: [4096] u8;
+    if afm_ask(c, CD_RECAP_INSTRUCTIONS, cd_recap_prompt(a, pb[..]), 40) {
+      a[0].recap_seen = seen; a[0].recap_ms = now; a[0].recap_turn = a[0].turns;
+    }
+  }
+  return changed;
+}
+
+// coder apple-fm ["PROMPT"]: whether recaps can run here, and the model's answer to PROMPT.
+cd_cmd_apple_fm :: (prompt: string) -> int {
+  pb: [4200] u8; path := cd_recap_bridge(pb[..]);
+  if path.count == 0 || !fs_exists(path) {
+    tool_errln("coder apple-fm: the bridge isn't built. On a Mac with macOS 26: psionic/apple-fm/build.sh");
+    return 1;
+  }
+  c: [1] AfmClient;
+  if !afm_start(c[..], path) { tool_err("coder apple-fm: "); tool_errln(afm_why(c[..])); return 1; }
+  x := afm_poll(c[..], 15000);
+  if !afm_ready(c[..]) { tool_err("coder apple-fm: "); tool_errln(ifx c[0].nwhy > 0 then afm_why(c[..]) else "no answer"); afm_stop(c[..]); return 1; }
+  if prompt.count == 0 { cd_outln("Apple's on-device model is available; the status bar shows recaps."); afm_stop(c[..]); return 0; }
+  ok := afm_ask(c[..], "", prompt, 0);
+  got := ifx ok then afm_poll(c[..], 60000) else AFM_NOTHING;
+  if got != AFM_GOT_TEXT { tool_errln("coder apple-fm: the model gave no answer"); afm_stop(c[..]); return 1; }
+  cd_outln(afm_text(c[..]));
+  afm_stop(c[..]);
+  return 0;
+}
+
 // ---------------------------------------------------------------- engines
 
 CD_CONTEXT_MAX :: 8192;
 
 cd_start :: (a: [] App, msg: string) {
   a[0].running = true; a[0].started_ms = cd_now(a); a[0].steps = 0;
+  a[0].nrecap = 0; a[0].recap_ms = cd_now(a); a[0].recap_seen = -1; a[0].recent_at = 0;
+  a[0].nrecap_task = cd_cat(a[0].recap_task[..], 0, cast(string) msg[0..<ifx msg.count > 600 then 600 else msg.count]);
   a[0].nrep = 0; a[0].rep_done = 0; a[0].rep_lines = 0;
   a[0].md[0].in_code = false;
   a[0].turns += 1;
@@ -1114,7 +1225,7 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n                 [--context FILE]                 related objects (an issue, its comments) ahead of the first message\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--credentials A,B] [--once]   attach this machine: start queued jobs within its grant\n       coder credential add NAME VAR < file | ls | rm NAME   a secret kept here; jobs name it, never see it in their logs\n       coder queue \"TASK\" [--engine E] [--cwd DIR] [--credential A,B]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue|pr|mail|doc] [--deliver] [--to ADDR [--send]] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E] [--allow E] [--ceiling E] [--root D] [--ask]   Coder as an agent for editors (Agent Client Protocol on stdio); asks go to the editor\n       coder remember KEY \"TEXT\" [--project] [--days N]   a fact Coder keeps across sessions (yours, or with --project this folder's)\n                 [--session ID [--at LINE]]       where it was said: that line of the session's log (the last one typed), checked on every read\n       coder revise KEY \"TEXT\" [--reason correction|update|resolve]   a new version that supersedes the old\n       coder forget KEY [--project]              the fact's text is hidden in every earlier event\n       coder recall [\"QUERY\"] [--top N] [--json]   the facts, ranked by embedding similarity to QUERY\n       coder consent [grant ENGINE|all --classes user,project [--days N] | revoke N] [--json]   which engines may receive remembered facts\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --no-memory (no remembered facts in the first message)  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n                 [--context FILE]                 related objects (an issue, its comments) ahead of the first message\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--credentials A,B] [--once]   attach this machine: start queued jobs within its grant\n       coder credential add NAME VAR < file | ls | rm NAME   a secret kept here; jobs name it, never see it in their logs\n       coder queue \"TASK\" [--engine E] [--cwd DIR] [--credential A,B]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue|pr|mail|doc] [--deliver] [--to ADDR [--send]] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder apple-fm [\"PROMPT\"]                  whether Apple's on-device model answers here (the status bar's recaps), and its answer to PROMPT\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E] [--allow E] [--ceiling E] [--root D] [--ask]   Coder as an agent for editors (Agent Client Protocol on stdio); asks go to the editor\n       coder remember KEY \"TEXT\" [--project] [--days N]   a fact Coder keeps across sessions (yours, or with --project this folder's)\n                 [--session ID [--at LINE]]       where it was said: that line of the session's log (the last one typed), checked on every read\n       coder revise KEY \"TEXT\" [--reason correction|update|resolve]   a new version that supersedes the old\n       coder forget KEY [--project]              the fact's text is hidden in every earlier event\n       coder recall [\"QUERY\"] [--top N] [--json]   the facts, ranked by embedding similarity to QUERY\n       coder consent [grant ENGINE|all --classes user,project [--days N] | revoke N] [--json]   which engines may receive remembered facts\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --no-memory (no remembered facts in the first message)  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
 
 // Flags that take a value: their value is not a positional argument.
 CD_VALUE_FLAGS :: [41] string.["--to", "--goal", "--goal-turns", "--http", "--name", "--engines", "--remote-repo", "--profile", "--options", "--state", "--theme", "--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop", "--days", "--reason", "--top", "--classes", "--credentials", "--credential", "--context"];
@@ -1862,6 +1973,7 @@ tool_main :: () -> int #export_c {
     if json || dok[0] { cd_outln(d); } else { tool_err("coder decide: "); tool_errln(cl_str(dar[..], d, "error")); }
     return ifx dok[0] then 0 else 1;
   }
+  if verb == "apple-fm" { return cd_cmd_apple_fm(cd_positional(args, 1)); }
   if verb == "stop" { return cd_cmd_stop(cd_positional(args, 1), json); }
   if verb == "mcp" { hp := args_value(args, "--http", ""); if hp.count > 0 { return cd_cmd_mcp_http(cd_atoi(hp)); } return cd_cmd_mcp(); }
   if verb == "acp" {
@@ -2110,6 +2222,7 @@ tool_main :: () -> int #export_c {
   hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, a[0].cwd);
   cd_commit(a, TUI_BRIGHT, cast(string) hb[0..<hn]);
   cd_commit(a, TUI_FAINT, "/help for commands.");
+  cd_recap_open(a);
   cd_draw(a);
   last_draw := 0;
   while !a[0].quit {
@@ -2134,16 +2247,24 @@ tool_main :: () -> int #export_c {
       if im.count > 0 { tui_ed_set(a[0].ed[..], im); cd_submit(a); dirty = true; }
     }
     if cd_poll(a) { dirty = true; }
+    if cd_recap_tick(a) { dirty = true; }
     now := cd_now(a);
     if a[0].running && now - last_draw >= 100 { dirty = true; }
     if dirty { cd_draw(a); last_draw = now; }
   }
   if a[0].running { cd_stop(a); }
-  cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
+  cd_claude_close(a); cd_codex_close(a); cd_micro_close(a); afm_stop(a[0].afm[..]);
   tui_live_erase(a[0].o[..], a[0].lv[..]);
   tui_csi(a[0].o[..], TUI_KEYS_OFF);
   tui_csi(a[0].o[..], "?2004l"); tui_csi(a[0].o[..], "?25h"); tui_csi(a[0].o[..], "0m");
   cd_flush(a);
   x = cxterm_keys(0);
   return 0;
+}
+
+#test "recaps: a model's line cleaned to one short status" {
+  b: [256] u8;
+  #assert cd_recap_clean("\"Fixing off-by-one error in parser.coax.\"\n", b[..]) == "Fixing off-by-one error in parser.coax";
+  #assert cd_recap_clean("  **Running tests**\nand more", b[..]) == "Running tests";
+  #assert cd_recap_clean("", b[..]) == "";
 }

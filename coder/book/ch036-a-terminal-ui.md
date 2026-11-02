@@ -123,6 +123,36 @@ reporting would take those away from the person to give Coder clicks it has
 no use for: every control is a key, and `/find` searches without leaving the
 composer.
 
+### Recaps
+
+On a Mac with Apple Intelligence, the status bar says in a few words what
+the agent is doing, in place of "Working":
+
+```text
+⠸ Running tests for calc.py · step 3 · 9.4s · Esc to stop · Bash(python3 test_calc.py)
+```
+
+Apple's on-device model writes the line through the bridge in
+[psionic/apple-fm](../../psionic/apple-fm/README.md), so nothing leaves the
+Mac. Every 4 seconds while the agent works, if something changed, Coder
+sends the task, the last six steps and the last 400 bytes of the reply. It
+asks for 3 to 8 words in the present tense, then strips quotes, Markdown
+marks and a final period. The request and its answer run in the
+background (`afm_ask`, `afm_poll`), so the UI never waits for the model. A
+recap that arrives after its turn ended is dropped.
+
+Recaps start when the bridge is built (`psionic/apple-fm/build.sh`) and the
+model is available. On any other machine the status bar says "Working" as
+before. `CODER_APPLE_FM=0` turns recaps off. `coder apple-fm` says whether
+they can run, and `coder apple-fm "PROMPT"` prints the model's answer. The smoke points Coder
+at a stand-in bridge whose every answer is `"Waiting on the sleep
+command."`, runs `$ sleep 7`, and checks that the status bar shows
+`Waiting on the sleep command ·`.
+
+Live, with Claude Code fixing a bug in `calc.py`, the bar said "Running
+pytest -q to find and fix bugs in calc.py" 4 seconds in, then "Running
+tests for calc.py". The first recap took about 1.5 seconds.
+
 ## What this chapter covers
 
 - Raw keys without signals: Ctrl-C and Esc arrive as bytes, and the program

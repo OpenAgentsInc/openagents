@@ -1255,13 +1255,24 @@ def verbs(check):
         server.kill()
 
 
+# A stand-in for psionic/apple-fm's bridge: available, and every recap is the same line.
+AFM_STUB = os.path.join(tempfile.mkdtemp(prefix="coder-afm-"), "apple-fm-bridge")
+with open(AFM_STUB, "w") as f:
+    f.write("#!" + sys.executable + "\nimport json, sys\nfor l in sys.stdin:\n    q = json.loads(l)\n"
+            "    r = {'id': q['id'], 'ok': True}\n"
+            "    if q['op'] == 'availability': r['status'] = 'available'\n"
+            "    else: r['text'] = '\"Waiting on the sleep command.\"'\n"
+            "    print(json.dumps(r), flush=True)\n")
+os.chmod(AFM_STUB, 0o755)
+
+
 def main():
     if sys.argv[1:2] == ["--live"]:
         return live(sys.argv[2] if len(sys.argv) > 2 else "claude")
     pid, fd = pty.fork()
     if pid == 0:
         os.chdir(REPO)
-        env = dict(os.environ, TERM="xterm-256color", OPENAGENTS_SECRETS="/nonexistent")
+        env = dict(os.environ, TERM="xterm-256color", OPENAGENTS_SECRETS="/nonexistent", CODER_APPLE_FM_BRIDGE=AFM_STUB)
         for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):
             env.pop(k, None)
         os.execve(os.path.join(HERE, "coder.sh"), [os.path.join(HERE, "coder.sh"), "--engine", "echo"], env)
@@ -1334,6 +1345,12 @@ def main():
     check("/theme light draws dark text", b"38;2;20;20;20" in out[mark:])
     send(b"/theme dark\r")
     check("/theme dark", read_until("Theme: dark.", 5))
+    # recaps (chapter 36): with a bridge to Apple's on-device model, the status bar says what the agent is doing
+    for ch in "$ sleep 7":
+        send(ch.encode()); time.sleep(0.01)
+    send(b"\r")
+    check("recap: the status bar shows the model's line, cleaned", read_until("Waiting on the sleep command ·", 12))
+    read_until("$ sleep 7 · exit 0", 10)
     # a background job shows in the hint line while it runs
     send(("$ " + os.path.join(HERE, "coder.sh") + " run '$ sleep 8' --engine echo --detach\r").encode())
     check("a running job shows in the hint line", read_until("running · Enter send", 15))
