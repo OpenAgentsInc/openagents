@@ -68,10 +68,10 @@ names it.
 | [21. Measure the harness](ch021-measure-the-harness.md) | Partly implemented: cpu-harness-bench-v1, bounded CPU |
 | [22. Generate candidates, then check them](ch022-generate-candidates-then-check-them.md) | Partly implemented: cpu-int-candidates-v1, bounded CPU |
 | [23. `openagents coder`](ch023-openagents-coder.md) | Unimplemented: design draft |
-| [24. DeepSeek Harness](ch024-deepseek-harness.md) | Planned |
-| [25. Claude Code](ch025-claude-code.md) | Planned |
-| [26. Codex](ch026-codex.md) | Planned |
-| [27. OpenCode](ch027-opencode.md) | Planned |
+| [24. DeepSeek Harness](ch024-deepseek-harness.md) | Written: deepseek-ai/deepseek-harness@ce7073d |
+| [25. Claude Code](ch025-claude-code.md) | Written: AtlantisPleb/cc@abcc009 |
+| [26. Codex](ch026-codex.md) | Written: openai/codex@a098129 |
+| [27. OpenCode](ch027-opencode.md) | Written: anomalyco/opencode@ff90ed9 |
 | [28. Goose](ch028-goose.md) | Written: block/goose@0909288 |
 | [29. Aider](ch029-aider.md) | Written: Aider-AI/aider@5dc9490 |
 | [30. mini-SWE-agent](ch030-mini-swe-agent.md) | Written: SWE-agent/mini-swe-agent@04d809c |

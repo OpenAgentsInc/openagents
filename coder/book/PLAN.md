@@ -127,10 +127,10 @@ testing, the chapter names the chapter in Parts I–V that measures it.
 
 | Chapter | Agent |
 | --- | --- |
-| [24. DeepSeek Harness](ch024-deepseek-harness.md) — planned | The harness behind Parts I–IV: the session log, wire extensions outside the prefix, plugins, and the Super-agent design. |
-| [25. Claude Code](ch025-claude-code.md) — planned | Tools, permissions, hooks, skills, subagents, plugins and memory files. |
-| [26. Codex](ch026-codex.md) — planned | The Rust agent: sandboxing, approvals, the app-server protocol and non-interactive runs. |
-| [27. OpenCode](ch027-opencode.md) — planned | A provider-agnostic engine with a local HTTP control plane and several clients. |
+| [24. DeepSeek Harness](ch024-deepseek-harness.md) — written | The harness behind Parts I–IV: the session log, wire extensions outside the prefix, plugins, and the Super-agent design. |
+| [25. Claude Code](ch025-claude-code.md) — written | Tools, permissions, hooks, skills, subagents, plugins and memory files. |
+| [26. Codex](ch026-codex.md) — written | The Rust agent: sandboxing, approvals, the app-server protocol and non-interactive runs. |
+| [27. OpenCode](ch027-opencode.md) — written | A provider-agnostic engine with a local HTTP control plane and several clients. |
 | [28. Goose](ch028-goose.md) — written | Extensions over MCP, recipes, and testing across desktop and CLI. |
 | [29. Aider](ch029-aider.md) — written | Repository maps, edit formats and a benchmark culture. |
 | [30. mini-SWE-agent](ch030-mini-swe-agent.md) — written | The smallest honest baseline: a linear loop and independent commands. |
