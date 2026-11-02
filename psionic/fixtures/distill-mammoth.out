@@ -1,0 +1,12 @@
+targets: 72 requests, 48 training (families 0-15), 24 held out (families 16-23): ok
+teacher mammoth-1 4570fecb199493c2... on cuda; features from elephant-1 4744758962cc73b7...
+recorded time per decision on the RTX 4080: Mammoth 1543.2 ms, Elephant 227.0 ms (medians)
+student before: ab8ddec85f16bd9c... (base 192443657adaf5ec...)
+training KL to Mammoth: 0.021 before, 0.0201 after 400 AdamW steps: ok
+student after: 595f1c3da87eef4a...
+held out, 24 requests (against Mammoth: agree, mean KL; against gold: right, Brier, ECE):
+  Elephant      : agree 24 of 24, KL 0.0131, right 24 of 24, Brier 0.0017, ECE 0.0182
+  student before: agree 24 of 24, KL 0.012, right 24 of 24, Brier 0.0018, ECE 0.0192
+  student after : agree 24 of 24, KL 0.0127, right 24 of 24, Brier 0.0031, ECE 0.0262
+  Mammoth       : agree 24 of 24, KL 0.0, right 24 of 24, Brier 0.0011, ECE 0.0166
+verdict: not promoted (no closer to Mammoth)

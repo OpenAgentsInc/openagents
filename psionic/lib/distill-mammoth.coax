@@ -1,0 +1,460 @@
+// Chapter 141: distill Mammoth into an Elephant adapter. Mammoth's yes
+// probabilities on a 72-request corpus, recorded on the RTX 4080 through
+// chapter 46's CUDA path, are soft targets. The student is chapter 140's
+// frozen stand-in decoder reading Elephant's own recorded answer to the same
+// request (its yes logit over 16, its slot mass, the logit's size and a
+// constant 1), with a rank-2 adapter on the hidden layer trained by AdamW
+// on the mean binary KL divergence to Mammoth. A target is admitted only
+// when it names Mammoth's pinned identity and the CUDA profile, and only
+// when no request family has rows in both splits. A card compares Elephant,
+// the student before and after training, and Mammoth on the held-out
+// families, against Mammoth and against the gold labels (chapter 16's
+// measure), and a rule frozen before the held-out rows were read decides.
+// Profile cpu-f64-distill-v1: binary64, sums in row order, chapter 140's
+// forward and gradient, chapter 124's AdamW.
+#load "post-train.coax";        // chapter 140: the base, adapter, forward, gradient and digest
+#load "decision-quality.coax";  // chapter 16: accuracy, Brier score, calibration error
+#load "../fixtures/distill-mammoth/records.coax";  // both models' recorded CUDA answers
+#authority;
+
+// book:begin frozen
+// Frozen before the held-out families were read.
+DM_HELD_FIRST :: 16;     // families 16 to 23 are held out
+DM_FAMILIES :: 24;
+DM_RANK :: 2;
+DM_ALPHA :: 2.0;
+DM_SEED :: 141;
+DM_STEPS :: 400;
+DM_LR :: 0.02;
+DM_BRIER_SLACK :: 0.02;  // the student may lose at most this much Brier score against gold
+// book:end frozen
+
+// book:begin types
+DmStatus :: enum u8 {ok;shape;number;teacher;profile;leak;empty;base;}
+DmProfile :: enum u8 {cpu;cuda;}
+// One target: the teacher's yes probability for one request, who produced
+// it and how, the student's features, the gold label and the split.
+DmRow :: struct {item:int;family:int;held:bool;teacher:[32]u8;profile:DmProfile;p:f64;x:[4]f64;gold:int;}
+DmAdmit :: struct {status:DmStatus;row:int;train:int;heldout:int;}
+DmTrain :: struct {status:DmStatus;trainer:PtTrainer;kl:f64;}
+// One model on the held-out rows: agreement with Mammoth and mean KL from
+// Mammoth's answer, then right answers, Brier score and calibration error
+// against gold.
+DmScore :: struct {agree:int;kl:f64;right:int;brier:f64;ece:f64;}
+DmCard :: struct {status:DmStatus;n:int;elephant:DmScore;before:DmScore;after:DmScore;mammoth:DmScore;}
+DmReason :: enum u8 {none;card;kl;agreement;brier;}
+DmVerdict :: struct {promoted:bool;reason:DmReason;}
+// book:end types
+
+// Checks precede the implementation.
+
+#test "features and the frozen base by hand" {
+    x:=dm_features(0.5,0.25);#assert x[0]==0 && x[1]==0.25 && x[2]==0 && x[3]==1;
+    x=dm_features(0.75,0.5);#assert x[0]==log(3.0)/16 && x[2]==x[0] && x[1]==0.5 && x[3]==1;
+    x=dm_features(0.25,0.5);#assert abs(x[0]+log(3.0)/16)<1e-16 && x[2]==-x[0];
+    // The base reads only x0: z = 16 tanh(x0), so it keeps Elephant's answer.
+    b:=dm_base();none:PtAdapter;q:=pt_forward(b,none,dm_features(0.8,0.5));
+    #assert q.z==16*tb_tanh(log(4.0)/16) && abs(q.p-0.8)<0.002 && q.p<0.8;
+    #assert q.h[1]==0 && q.h[2]==0 && q.h[3]==0;
+    q=pt_forward(b,none,dm_features(0.5,0.9));#assert q.z==0 && q.p==0.5;
+    // A certain answer has no logit; neither does a number outside (0, 1).
+    #assert dm_finite(dm_features(1,0.5)[0])==false && dm_finite(dm_features(0,0.5)[0])==false;
+    #assert dm_finite(dm_features(0.999999999,0.5)[0]);
+}
+
+#test "binary KL by hand" {
+    #assert dm_kl(0.5,0.5)==0 && dm_kl(0.25,0.25)==0;
+    #assert dm_kl(1,0.5)==log(2.0) && dm_kl(0,0.5)==log(2.0);
+    #assert dm_kl(0.75,0.5)==0.75*log(1.5)+0.25*log(0.5);
+    #assert dm_kl(0.5,0.75)==0.5*log(0.5/0.75)+0.5*log(0.5/0.25);
+    #assert dm_kl(1,0.25)==log(4.0) && dm_kl(0,0.25)==log(4.0/3);
+}
+
+#test "one target by hand: Elephant 0.75, Mammoth 0.6" {
+    // x0 = ln 3 / 16 = 0.0686633, z = 16 tanh(x0) = 1.0968890, q = 0.7496767.
+    // KL(0.6 || q) = 0.0538571; dKL/dz = q - 0.6 = 0.1496767; through tanh,
+    // g0 = 16 (1 - h0^2)(q - 0.6) = 2.3835726. With B = 0 only B's row for
+    // unit 0 has a gradient: s g0 (A_k . x), s = alpha / rank = 1.
+    b:=dm_base();none:PtAdapter;rows:[1]DmRow;
+    rows[0]=DmRow.{teacher=DM_MAMMOTH_ID,profile=DmProfile.cuda,p=0.6,x=dm_features(0.75,0.5),gold=1};
+    q:=pt_forward(b,none,rows[0].x);
+    #assert abs(rows[0].x[0]-0.0686633)<1e-7 && abs(q.z-1.0968890)<1e-7 && abs(q.p-0.7496767)<1e-7;
+    #assert abs(dm_loss(b,none,rows[..],false)-0.0538571)<1e-7;
+    a:=pt_new(b,PtRegion.hidden,DM_RANK,DM_ALPHA,DM_SEED).adapter;
+    pt:[1]PtRow;#assert dm_targets(rows[..],false,pt[..])==1;
+    g:[16]f64;_:=pt_gradient(b,a,pt[..],0,g[..]);
+    g0:=16*(1-q.h[0]*q.h[0])*(q.p-0.6);#assert abs(g0-2.3835726)<1e-7;
+    for k:0..<2 {
+        ax:=0.0;for i:0..<4 {ax+=a.p[k*4+i]*rows[0].x[i];}
+        #assert abs(g[8+k]-g0*ax)<1e-15;
+    }
+    for k:0..<8 {#assert g[k]==0;}
+    for k:10..<16 {#assert g[k]==0;}
+    // One AdamW step from there moves each of the two by the rate.
+    r:=dm_train(b,pt_trainer(a),DM_MAMMOTH_ID,DmProfile.cuda,rows[..],1);
+    #assert r.status==DmStatus.ok && abs(abs(r.trainer.adapter.p[8])-DM_LR)<1e-9 && abs(abs(r.trainer.adapter.p[9])-DM_LR)<1e-9;
+    #assert r.kl<dm_loss(b,a,rows[..],false);
+}
+
+#forall "the soft-target gradient is the gradient of the mean KL" i:0..<8 {
+    b:=dm_base();rows:[72]DmRow;#assert dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[..])==72;
+    a:=pt_new(b,PtRegion.hidden,DM_RANK,DM_ALPHA,DM_SEED+cast(u64)i).adapter;
+    for k:8..<16 {a.p[k]=0.3*tb_uniform(7,cast(u64)(i*16+k))-0.15;}
+    pt:[72]PtRow;n:=dm_targets(rows[..],false,pt[..]);#assert n==48;
+    g:[16]f64;l:=pt_gradient(b,a,pt[0..<n],0,g[..]);
+    // Cross-entropy is KL plus the teacher's entropy, which no weight moves.
+    #assert abs(l-dm_loss(b,a,rows[..],false)-dm_entropy(rows[..],false))<1e-12;
+    for k:0..<16 {
+        h:=0.000001;up:=a;up.p[k]+=h;down:=a;down.p[k]-=h;
+        d:=(dm_loss(b,up,rows[..],false)-dm_loss(b,down,rows[..],false))/(2*h);
+        #assert abs(d-g[k])<1e-7*(1+abs(d));
+    }
+}
+
+#test "the corpus's rows by hand" {
+    rows:[72]DmRow;#assert dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[..])==72;
+    for r,k:rows {
+        #assert r.item==k && r.family==k/3 && r.held==(k>=48) && r.gold==DM_GOLD[k] && r.p==DM_MAMMOTH_P[k];
+        #assert pt_same(r.teacher,DM_MAMMOTH_ID) && r.profile==DmProfile.cuda;
+        x:=dm_features(DM_ELEPHANT_P[k],DM_ELEPHANT_MASS[k]);for j:0..<4 {#assert r.x[j]==x[j];}
+    }
+    #assert dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[0..<71])==-1;
+    a:=dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    #assert a.status==DmStatus.ok && a.train==48 && a.heldout==24 && a.row==-1;
+    pt:[72]PtRow;#assert dm_targets(rows[..],true,pt[..])==24 && pt[0].y==DM_MAMMOTH_P[48] && pt[23].x[1]==rows[71].x[1];
+    #assert pt_same(pt[5].model,DM_MAMMOTH_ID) && pt[5].group==17 && pt[5].task==0;
+}
+
+#test "admission refuses another teacher, another profile and a leaked family" {
+    rows:[72]DmRow;n:=dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    // Elephant's answers named as targets.
+    bad:=rows;bad[5].teacher=DM_ELEPHANT_ID;
+    a:=dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);#assert a.status==DmStatus.teacher && a.row==5 && a.train==0;
+    for i:0..<32 {bad=rows;bad[70].teacher[i]^=1;a=dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);#assert a.status==DmStatus.teacher && a.row==70;}
+    // Mammoth on the CPU is another target set.
+    bad=rows;bad[9].profile=DmProfile.cpu;a=dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);#assert a.status==DmStatus.profile && a.row==9;
+    cpu:=rows;for k:0..<72 {cpu[k].profile=DmProfile.cpu;}
+    #assert dm_admit(DM_MAMMOTH_ID,DmProfile.cpu,cpu[..]).status==DmStatus.ok && dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,cpu[..]).row==0;
+    // A family with a row on each side: the later row is named.
+    bad=rows;bad[47].held=true;a=dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);#assert a.status==DmStatus.leak && a.row==47;
+    bad=rows;bad[48].held=false;a=dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);#assert a.status==DmStatus.leak && a.row==49;
+    bad=rows;bad[45].held=true;a=dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);#assert a.status==DmStatus.leak && a.row==46;
+    // Numbers.
+    bad=rows;bad[3].p=0.0/0.0;a=dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);#assert a.status==DmStatus.number && a.row==3;
+    bad=rows;bad[3].p=-0.001;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.number;
+    bad=rows;bad[3].p=1.001;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.number;
+    bad=rows;bad[3].p=0;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.ok;
+    bad=rows;bad[3].p=1;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.ok;
+    bad=rows;bad[3].gold=2;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.number;
+    bad=rows;bad[3].gold=-1;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.number;
+    bad=rows;bad[3].family=-1;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.number;
+    bad=rows;bad[71].family=DM_FAMILIES;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.number;
+    bad=rows;bad[3].x[1]=0.0/0.0;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.number;
+    bad=rows;bad[3].x[0]=PT_BIG*2;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.number;
+    bad=rows;bad[3].x[3]=PT_BIG;#assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.ok;
+    // Shapes.
+    a=dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,rows[0..<0]);#assert a.status==DmStatus.shape && a.row==-1;
+    #assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,rows[0..<1]).status==DmStatus.ok;
+    big:[PT_ROWS_MAX+1]DmRow;for k:0..<big.count {big[k]=rows[k%48];}
+    #assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,big[0..<PT_ROWS_MAX]).status==DmStatus.ok;
+    #assert dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,big[..]).status==DmStatus.shape;
+}
+
+#test "training moves only the adapter, lowers KL, and resumes exactly" {
+    b:=dm_base();d:=pt_digest(b);rows:[72]DmRow;n:=dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    a:=pt_new(b,PtRegion.hidden,DM_RANK,DM_ALPHA,DM_SEED).adapter;t:=pt_trainer(a);
+    r:=dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],30);
+    #assert r.status==DmStatus.ok && r.trainer.state.step==30 && pt_same(pt_digest(b),d) && pt_same(r.trainer.adapter.base,d);
+    #assert r.kl==dm_loss(b,r.trainer.adapter,rows[..],false) && r.kl<dm_loss(b,a,rows[..],false);
+    // B's rows for the three units the base ignores get no gradient.
+    for k:10..<16 {#assert r.trainer.adapter.p[k]==0 && r.trainer.m[k]==0;}
+    // 12 steps, a checkpoint, 18 more: the same bits.
+    h:=dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],12);
+    s:=dm_train(b,h.trainer,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],18);
+    #assert pt_t_same(s.trainer.adapter.p[..],r.trainer.adapter.p[..]) && pt_t_same(s.trainer.v[..],r.trainer.v[..]) && s.kl==r.kl;
+    // Held-out targets never move the adapter; a training target does.
+    other:=rows;other[60].p=1-other[60].p;
+    u:=dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,other[..],30);#assert pt_t_same(u.trainer.adapter.p[..],r.trainer.adapter.p[..]);
+    other=rows;other[20].p=1-other[20].p;
+    u=dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,other[..],30);#assert !pt_t_same(u.trainer.adapter.p[..],r.trainer.adapter.p[..]);
+    // Zero steps: unchanged, with the KL before any step.
+    z:=dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],0);
+    #assert z.status==DmStatus.ok && pt_t_same(z.trainer.adapter.p[..],a.p[..]) && z.kl==dm_loss(b,a,rows[..],false);
+}
+
+#test "training refusals change nothing" {
+    b:=dm_base();rows:[72]DmRow;n:=dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    t:=pt_trainer(pt_new(b,PtRegion.hidden,DM_RANK,DM_ALPHA,DM_SEED).adapter);
+    bad:=rows;bad[0].teacher=DM_ELEPHANT_ID;
+    r:=dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,bad[..],5);#assert r.status==DmStatus.teacher && r.trainer.state.step==0 && pt_t_same(r.trainer.adapter.p[..],t.adapter.p[..]);
+    #assert dm_train(b,t,DM_ELEPHANT_ID,DmProfile.cuda,rows[..],5).status==DmStatus.teacher;
+    #assert dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cpu,rows[..],5).status==DmStatus.profile;
+    bad=rows;bad[50].held=false;#assert dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,bad[..],5).status==DmStatus.leak;
+    // No training rows.
+    #assert dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[48..<72],5).status==DmStatus.empty;
+    #assert dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[47..<72],5).status==DmStatus.ok;
+    // Another base.
+    c:=b;c.c2=0.5;#assert dm_train(c,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.base;
+    // Steps and adapter.
+    #assert dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],-1).status==DmStatus.shape;
+    #assert dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],PT_STEPS_MAX+1).status==DmStatus.shape;
+    none:=pt_trainer(PtAdapter.{});#assert dm_train(b,none,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.shape;
+    nan:=t;nan.adapter.p[0]=0.0/0.0;#assert dm_train(b,nan,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.number;
+    nan=t;nan.m[0]=0.0/0.0;#assert dm_train(b,nan,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.number;
+    nan=t;nan.v[0]=-1;#assert dm_train(b,nan,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.number;
+    nan=t;nan.state.step=-1;#assert dm_train(b,nan,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.number;
+    // Rank 1 uses 8 parameters; moments past them must be zero.
+    one:=pt_trainer(pt_new(b,PtRegion.hidden,1,DM_ALPHA,DM_SEED).adapter);
+    nan=one;nan.m[8]=1;#assert dm_train(b,nan,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.shape;
+    nan=one;nan.v[8]=1;#assert dm_train(b,nan,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.shape;
+    nan=one;nan.m[7]=1;nan.v[7]=1;#assert dm_train(b,nan,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.ok;
+    nan=one;nan.adapter.p[8]=1;#assert dm_train(b,nan,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.shape;
+    nan=t;nan.adapter.alpha=0;#assert dm_train(b,nan,DM_MAMMOTH_ID,DmProfile.cuda,rows[..],5).status==DmStatus.number;
+}
+
+#test "the most steps a call may take" #steps 400000000 {
+    b:=dm_base();rows:[72]DmRow;n:=dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    t:=pt_trainer(pt_new(b,PtRegion.hidden,DM_RANK,DM_ALPHA,DM_SEED).adapter);
+    r:=dm_train(b,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[47..<48],PT_STEPS_MAX);
+    #assert r.status==DmStatus.ok && r.trainer.state.step==PT_STEPS_MAX;
+}
+
+#test "the recorded models' held-out scores match the Python oracle" {
+    rows:[72]DmRow;n:=dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    p:[24]f64;for k:0..<24 {p[k]=DM_ELEPHANT_P[48+k];}
+    e:=dm_score(rows[48..<72],p[..]);
+    #assert e.agree==DM_ORACLE_AGREE && e.right==DM_ORACLE_ELEPHANT_RIGHT && abs(e.kl-DM_ORACLE_KL)<1e-12;
+    #assert abs(e.brier-DM_ORACLE_ELEPHANT_BRIER)<1e-12 && abs(e.ece-DM_ORACLE_ELEPHANT_ECE)<1e-12;
+    for k:0..<24 {p[k]=DM_MAMMOTH_P[48+k];}
+    m:=dm_score(rows[48..<72],p[..]);
+    #assert m.agree==24 && m.kl==0 && m.right==DM_ORACLE_MAMMOTH_RIGHT;
+    #assert abs(m.brier-DM_ORACLE_MAMMOTH_BRIER)<1e-12 && abs(m.ece-DM_ORACLE_MAMMOTH_ECE)<1e-12;
+}
+
+#test "a score by hand" {
+    // Two rows: Mammoth 0.9 and 0.2, gold yes and yes; the model 0.6 and 0.6.
+    rows:[2]DmRow;rows[0].p=0.9;rows[0].gold=1;rows[1].p=0.2;rows[1].gold=1;
+    p:=[2]f64.[0.6,0.6];s:=dm_score(rows[..],p[..]);
+    #assert s.agree==1 && s.right==2 && abs(s.kl-(dm_kl(0.9,0.6)+dm_kl(0.2,0.6))/2)<1e-15;
+    #assert abs(s.brier-2*0.16)<1e-15;
+    // Both at confidence 0.6, bin 8 (8/15, 9/15]: |1.2 - 2| / 2.
+    #assert abs(s.ece-0.4)<1e-15;
+    // An exact half answers yes; gold no.
+    rows[1].gold=0;p[1]=0.5;s=dm_score(rows[..],p[..]);#assert s.right==1 && s.agree==1;
+    rows[1].p=0.5;s=dm_score(rows[..],p[..]);#assert s.agree==2;
+    rows[1].p=0.4999;s=dm_score(rows[..],p[..]);#assert s.agree==1;
+}
+
+#test "the card and the frozen rule" {
+    b:=dm_base();rows:[72]DmRow;n:=dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    a:=pt_new(b,PtRegion.hidden,DM_RANK,DM_ALPHA,DM_SEED).adapter;
+    c:=dm_card(b,a,DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    #assert c.status==DmStatus.ok && c.n==24 && c.mammoth.agree==24 && c.mammoth.kl==0;
+    // An untrained adapter (B = 0) is the base.
+    #assert c.after.kl==c.before.kl && c.after.agree==c.before.agree && c.after.brier==c.before.brier;
+    #assert c.elephant.agree==DM_ORACLE_AGREE && c.elephant.right==DM_ORACLE_ELEPHANT_RIGHT;
+    v:=dm_gate(c);#assert !v.promoted && v.reason==DmReason.kl;
+    good:=c;good.after.kl=c.before.kl-0.001;v=dm_gate(good);#assert v.promoted && v.reason==DmReason.none;
+    w:=good;w.after.agree=c.before.agree-1;#assert dm_gate(w).reason==DmReason.agreement;
+    w=good;w.after.brier=c.before.brier+DM_BRIER_SLACK+0.0001;#assert dm_gate(w).reason==DmReason.brier;
+    w=good;w.after.brier=c.before.brier+DM_BRIER_SLACK;#assert dm_gate(w).promoted;
+    w=good;w.status=DmStatus.teacher;#assert dm_gate(w).reason==DmReason.card;
+    w=good;w.n=0;#assert dm_gate(w).reason==DmReason.card;
+    w=good;w.n=1;#assert dm_gate(w).promoted;
+    // The card refuses what training refuses.
+    bad:=rows;bad[60].teacher=DM_ELEPHANT_ID;#assert dm_card(b,a,DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status==DmStatus.teacher;
+    c2:=b;c2.w2[0]=8;#assert dm_card(c2,a,DM_MAMMOTH_ID,DmProfile.cuda,rows[..]).status==DmStatus.base;
+    #assert dm_card(b,a,DM_MAMMOTH_ID,DmProfile.cuda,rows[0..<48]).status==DmStatus.empty;
+}
+
+#test "the student has its own identity" {
+    b:=dm_base();a:=pt_new(b,PtRegion.hidden,DM_RANK,DM_ALPHA,DM_SEED).adapter;
+    s:=dm_student(b,a);#assert !pt_same(s,pt_digest(b)) && !pt_same(s,DM_MAMMOTH_ID) && !pt_same(s,DM_ELEPHANT_ID) && pt_same(s,dm_student(b,a));
+    for k:0..<16 {c:=a;c.p[k]+=0.5;#assert !pt_same(dm_student(b,c),s);}
+    c:=a;c.alpha=3;#assert !pt_same(dm_student(b,c),s);
+    c=a;c.rank=1;#assert !pt_same(dm_student(b,c),s);
+    c=a;c.region=PtRegion.readout;#assert !pt_same(dm_student(b,c),s);
+    e:=b;e.c2=1;#assert !pt_same(dm_student(e,a),s);
+}
+
+// book:begin features
+// Elephant's recorded answer to a request, as the student's input: its yes
+// logit over 16, its slot mass, the logit's size, and 1. A certain answer
+// has no logit: its x0 is not a number, which admission refuses.
+dm_features :: (p:f64,mass:f64)->[4]f64 {
+    if !(p>0 && p<1) {return [4]f64.[0.0/0.0,mass,0,1];}
+    z:=log(p/(1-p))/16;
+    return [4]f64.[z,mass,abs(z),1];
+}
+// The frozen base: unit 0 is tanh(x0) and the yes logit 16 h0, which keeps
+// Elephant's own logit to within its saturation.
+dm_base :: ()->PtBase {b:PtBase;b.w1[0]=1;b.w2[0]=16;return b;}
+// book:end features
+
+dm_finite :: (v:f64)->bool {return tb_in(v,-PT_BIG,PT_BIG);}
+
+// The rows of the recorded corpus: Mammoth's answers as targets under the
+// given identity and profile, Elephant's as features.
+dm_rows :: (teacher:[32]u8,profile:DmProfile,rows:[]DmRow)->int {
+    if rows.count!=DM_N {return -1;}
+    for k:0..<DM_N {
+        rows[k]=DmRow.{item=k,family=DM_FAMILY[k],held=DM_FAMILY[k]>=DM_HELD_FIRST,teacher=teacher,profile=profile,p=DM_MAMMOTH_P[k],
+            x=dm_features(DM_ELEPHANT_P[k],DM_ELEPHANT_MASS[k]),gold=DM_GOLD[k]};
+    }
+    return DM_N;
+}
+
+// book:begin kl
+// KL(t || s) for one yes-or-no answer, with 0 log 0 = 0.
+dm_kl :: (t:f64,s:f64)->f64 {
+    k:=0.0;
+    if t>0 {k+=t*log(t/s);}
+    if t<1 {k+=(1-t)*log((1-t)/(1-s));}
+    return k;
+}
+// book:end kl
+
+// book:begin admit
+// Every target must name this teacher and profile, carry a probability, a
+// 0 or 1 gold label, a family in range and finite features; a family may
+// not have rows on both sides of the split, and the refusal names the later
+// row of the pair.
+dm_admit :: (teacher:[32]u8,profile:DmProfile,rows:[]DmRow)->DmAdmit {
+    if rows.count<1 || rows.count>PT_ROWS_MAX {return DmAdmit.{status=DmStatus.shape,row=-1};}
+    sides:[DM_FAMILIES]u8;a:=DmAdmit.{row=-1};
+    for r,i:rows {
+        if !pt_same(r.teacher,teacher) {return DmAdmit.{status=DmStatus.teacher,row=i};}
+        if r.profile!=profile {return DmAdmit.{status=DmStatus.profile,row=i};}
+        ok:=tb_in(r.p,0,1) && (r.gold==0 || r.gold==1) && r.family>=0 && r.family<DM_FAMILIES;
+        for v:r.x {if !dm_finite(v) {ok=false;}}
+        if !ok {return DmAdmit.{status=DmStatus.number,row=i};}
+        // Bit 1: held out; bit 2: training.
+        if r.held {a.heldout+=1;} else {a.train+=1;}
+        sides[r.family]|=ifx r.held then cast(u8)1 else cast(u8)2;
+        if sides[r.family]==3 {return DmAdmit.{status=DmStatus.leak,row=i};}
+    }
+    return a;
+}
+// book:end admit
+
+// The rows of one side as chapter 140's rows, the teacher's probability as
+// a soft label.
+dm_targets :: (rows:[]DmRow,held:bool,out:[]PtRow)->int {
+    n:=0;
+    for r:rows {if r.held==held {out[n]=PtRow.{group=r.family,time=r.item,model=r.teacher,x=r.x,y=r.p};n+=1;}}
+    return n;
+}
+
+// book:begin loss
+// The mean KL from the teacher over one side's rows. Chapter 140's
+// cross-entropy with the teacher's probability as the label is this plus
+// the teacher's entropy, so its gradient is this loss's gradient.
+dm_loss :: (b:PtBase,a:PtAdapter,rows:[]DmRow,held:bool)->f64 {
+    total:=0.0;n:=0;
+    for r:rows {if r.held==held {total+=dm_kl(r.p,pt_forward(b,a,r.x).p);n+=1;}}
+    return total/f64(n);
+}
+dm_entropy :: (rows:[]DmRow,held:bool)->f64 {
+    total:=0.0;n:=0;
+    for r:rows {if r.held==held {total+=dm_kl(r.p,0.5)-log(2.0);n+=1;}}
+    return -total/f64(n);
+}
+// book:end loss
+
+// book:begin train
+// Full-batch AdamW on the training families only. Everything is admitted
+// before the first step; a refusal returns the trainer unchanged.
+dm_train :: (b:PtBase,t:PtTrainer,teacher:[32]u8,profile:DmProfile,rows:[]DmRow,steps:int)->DmTrain {
+    r:=DmTrain.{trainer=t};
+    if steps<0 || steps>PT_STEPS_MAX || t.adapter.rank==0 {r.status=DmStatus.shape;return r;}
+    ps:=pt_adapter_ok(t.adapter);
+    if ps!=PtStatus.ok {r.status=ifx ps==PtStatus.shape then DmStatus.shape else DmStatus.number;return r;}
+    if !pt_same(t.adapter.base,pt_digest(b)) {r.status=DmStatus.base;return r;}
+    admitted:=dm_admit(teacher,profile,rows);
+    if admitted.status!=DmStatus.ok {r.status=admitted.status;return r;}
+    if admitted.train==0 {r.status=DmStatus.empty;return r;}
+    n:=pt_count(t.adapter);
+    for k:n..<16 {if t.m[k]!=0 || t.v[k]!=0 {r.status=DmStatus.shape;return r;}}
+    group:=[1]AwGroup.[AwGroup.{first=0,count=n,lr=DM_LR,beta1=0.9,beta2=0.999,eps=1e-8,decay=0}];
+    if !aw_state(t.state) {r.status=DmStatus.number;return r;}
+    for k:0..<n {if !aw_finite(t.m[k]) || !tb_in(t.v[k],0,AW_F64_MAX) {r.status=DmStatus.number;return r;}}
+    train:[PT_ROWS_MAX]PtRow;count:=dm_targets(rows,false,train[..]);
+    g:[16]f64;none:[1]f32;
+    for step:0..<steps {
+        _:=pt_gradient(b,r.trainer.adapter,train[0..<count],0,g[..]);
+        w:=aw_step(group[..],AwPolicy.{},r.trainer.state,r.trainer.adapter.p[0..<n],g[0..<n],r.trainer.m[0..<n],r.trainer.v[0..<n],none[0..<0],false);
+        // Admission above leaves AdamW nothing to refuse.
+        #assert w.status==AwStatus.ok;
+        r.trainer.state=w.state;
+    }
+    r.kl=dm_loss(b,r.trainer.adapter,rows,false);
+    return r;
+}
+// book:end train
+
+// book:begin score
+// One model's yes probabilities p on rows, against the teacher and the gold
+// labels. An answer is yes when p is at least one half.
+dm_score :: (rows:[]DmRow,p:[]f64)->DmScore {
+    s:DmScore;probs:[2*PT_ROWS_MAX]f64;items:[PT_ROWS_MAX]PqItem;
+    for r,i:rows {
+        if (p[i]>=0.5)==(r.p>=0.5) {s.agree+=1;}
+        s.kl+=dm_kl(r.p,p[i]);
+        probs[2*i]=p[i];probs[2*i+1]=1-p[i];
+        items[i]=PqItem.{kind=QrKind.choice,count=2,start=2*i,gold=1-r.gold,abstain=-1};
+    }
+    m:=pq_measure(items[0..<rows.count],probs[..]);
+    // Every row is a valid, answered item (a refused measure answers none).
+    #assert m.answered==rows.count;
+    s.kl/=f64(rows.count);s.right=m.correct;s.brier=m.brier;s.ece=m.ece;
+    return s;
+}
+// book:end score
+
+// book:begin card
+// Elephant, the student before and after, and Mammoth on the held-out rows.
+dm_card :: (b:PtBase,a:PtAdapter,teacher:[32]u8,profile:DmProfile,rows:[]DmRow)->DmCard {
+    admitted:=dm_admit(teacher,profile,rows);
+    if admitted.status!=DmStatus.ok {return DmCard.{status=admitted.status};}
+    if admitted.heldout==0 {return DmCard.{status=DmStatus.empty};}
+    if !pt_same(a.base,pt_digest(b)) {return DmCard.{status=DmStatus.base};}
+    held:[PT_ROWS_MAX]DmRow;n:=0;
+    for r:rows {if r.held {held[n]=r;n+=1;}}
+    e:[PT_ROWS_MAX]f64;before:[PT_ROWS_MAX]f64;after:[PT_ROWS_MAX]f64;m:[PT_ROWS_MAX]f64;none:PtAdapter;
+    for r,i:held[0..<n] {
+        e[i]=DM_ELEPHANT_P[r.item];m[i]=r.p;
+        before[i]=pt_forward(b,none,r.x).p;after[i]=pt_forward(b,a,r.x).p;
+    }
+    c:=DmCard.{n=n};
+    c.elephant=dm_score(held[0..<n],e[0..<n]);c.before=dm_score(held[0..<n],before[0..<n]);
+    c.after=dm_score(held[0..<n],after[0..<n]);c.mammoth=dm_score(held[0..<n],m[0..<n]);
+    return c;
+}
+// book:end card
+
+// book:begin gate
+// The frozen rule: closer to Mammoth than the undistilled student, agreeing
+// with it at least as often, and no more than DM_BRIER_SLACK worse against
+// gold.
+dm_gate :: (c:DmCard)->DmVerdict {
+    if c.status!=DmStatus.ok || c.n<1 {return DmVerdict.{reason=DmReason.card};}
+    if c.after.kl>=c.before.kl {return DmVerdict.{reason=DmReason.kl};}
+    if c.after.agree<c.before.agree {return DmVerdict.{reason=DmReason.agreement};}
+    if c.after.brier>c.before.brier+DM_BRIER_SLACK {return DmVerdict.{reason=DmReason.brier};}
+    return DmVerdict.{promoted=true};
+}
+// book:end gate
+
+// book:begin student
+// The student's identity: SHA-256 over the base's digest, the adapter's
+// region, rank and scale, and its 16 parameter words. No result of either
+// parent is reused for it.
+dm_student :: (b:PtBase,a:PtAdapter)->[32]u8 {
+    buf:[170]u8;d:=pt_digest(b);
+    for v,i:d {buf[i]=v;}
+    buf[32]=cast(u8)a.region;buf[33]=cast(u8)a.rank;n:=pt_put(buf[..],34,a.alpha);
+    for v:a.p {n=pt_put(buf[..],n,v);}
+    s:[32]u8;#assert sha256_hash_checked(buf[..],s[..],false)==SHA_OK;
+    return s;
+}
+// book:end student

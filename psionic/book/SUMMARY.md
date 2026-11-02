@@ -152,7 +152,7 @@
 - [138. Preferences and reward models](ch138-preferences-and-reward-models.md) — partly implemented
 - [139. Learn from rollouts](ch139-learn-from-rollouts.md) — partly implemented
 - [140. Post-train a decision model](ch140-post-train-a-decision-model.md) — partly implemented
-- [141. Distill Mammoth into Elephant](ch141-distill-mammoth-into-elephant.md) — design draft
+- [141. Distill Mammoth into Elephant](ch141-distill-mammoth-into-elephant.md) — partly implemented
 
 - [142. Pixels, convolutions and patches](ch142-pixels-convolutions-and-patches.md) — partly implemented
 - [143. Elephant and Mammoth see](ch143-elephant-and-mammoth-see.md) — design draft
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75–82, 83, 84, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–159, 161–164, 165, 167–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75–82, 83, 84, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–142, 145–148, 151–159, 161–164, 165, 167–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

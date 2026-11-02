@@ -1,0 +1,47 @@
+// Chapter 141: distill Mammoth's recorded CUDA answers into an adapter on a
+// stand-in student that reads Elephant's recorded answers, and decide by a
+// rule frozen before the held-out families were read.
+#import "Basic";
+#load "../lib/distill-mammoth.coax";
+
+k4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+REASONS :: [5]string.["none","no card","no closer to Mammoth","agrees less often","worse against gold"];
+ex_hex :: (d:[32]u8)->[16]u8 {
+    text:[16]u8;digits:="0123456789abcdef";
+    for i:0..<8 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    return text;
+}
+ex_median :: (v:[72]f64)->f64 {
+    s:=v;for i:1..<72 {j:=i;while j>0 && s[j-1]>s[j] {t:=s[j];s[j]=s[j-1];s[j-1]=t;j-=1;}}
+    return (s[35]+s[36])/2;
+}
+ex_row :: (name:string,s:DmScore) {
+    print("  %: agree % of 24, KL %, right % of 24, Brier %, ECE %\n",name,s.agree,k4(s.kl),s.right,k4(s.brier),k4(s.ece));
+}
+
+// book:begin example
+main :: () {
+    rows:[72]DmRow;#assert dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[..])==72;
+    a:=dm_admit(DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    print("targets: % requests, % training (families 0-15), % held out (families 16-23): %\n",DM_N,a.train,a.heldout,a.status);
+    m:=ex_hex(DM_MAMMOTH_ID);e:=ex_hex(DM_ELEPHANT_ID);
+    print("teacher mammoth-1 %... on cuda; features from elephant-1 %...\n",cast(string)m[..],cast(string)e[..]);
+    print("recorded time per decision on the RTX 4080: Mammoth % ms, Elephant % ms (medians)\n",ex_median(DM_MAMMOTH_MS),ex_median(DM_ELEPHANT_MS));
+
+    b:=dm_base();start:=pt_new(b,PtRegion.hidden,DM_RANK,DM_ALPHA,DM_SEED).adapter;
+    s:=ex_hex(dm_student(b,start));d:=ex_hex(pt_digest(b));
+    print("student before: %... (base %...)\n",cast(string)s[..],cast(string)d[..]);
+    r:=dm_train(b,pt_trainer(start),DM_MAMMOTH_ID,DmProfile.cuda,rows[..],DM_STEPS);
+    print("training KL to Mammoth: % before, % after % AdamW steps: %\n",k4(dm_loss(b,start,rows[..],false)),k4(r.kl),r.trainer.state.step,r.status);
+    s=ex_hex(dm_student(b,r.trainer.adapter));print("student after: %...\n",cast(string)s[..]);
+
+    c:=dm_card(b,r.trainer.adapter,DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    print("held out, % requests (against Mammoth: agree, mean KL; against gold: right, Brier, ECE):\n",c.n);
+    ex_row("Elephant      ",c.elephant);
+    ex_row("student before",c.before);
+    ex_row("student after ",c.after);
+    ex_row("Mammoth       ",c.mammoth);
+    v:=dm_gate(c);
+    print("verdict: % (%)\n",ifx v.promoted then "promoted" else "not promoted",REASONS[cast(int)v.reason]);
+}
+// book:end example

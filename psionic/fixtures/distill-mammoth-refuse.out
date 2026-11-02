@@ -1,0 +1,8 @@
+Elephant's answer as a target: teacher (admission row 5); trainer at step 0
+one target from Mammoth on the CPU: profile (admission row 9); trainer at step 0
+training for Elephant as the teacher: teacher (admission row 0); trainer at step 0
+family 16 on both sides: leak (admission row 49); trainer at step 0
+Elephant certain, with no logit: number (admission row 3); trainer at step 0
+only held-out rows: empty (admission row -1); trainer at step 0
+the adapter on another base: base (admission row -1); trainer at step 0
+a card over Elephant's answer: teacher

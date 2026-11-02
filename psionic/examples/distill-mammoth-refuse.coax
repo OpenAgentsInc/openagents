@@ -1,0 +1,31 @@
+// Chapter 141: targets from the wrong teacher or profile, a leaked family, a
+// certain answer and an adapter for another base, each refused before any
+// step, with the trainer unchanged.
+#import "Basic";
+#load "../lib/distill-mammoth.coax";
+
+ex_try :: (name:string,b:PtBase,t:PtTrainer,teacher:[32]u8,profile:DmProfile,rows:[]DmRow) {
+    a:=dm_admit(teacher,profile,rows);r:=dm_train(b,t,teacher,profile,rows,DM_STEPS);
+    print("%: % (admission row %); trainer at step %\n",name,r.status,a.row,r.trainer.state.step);
+}
+
+// book:begin refuse
+main :: () {
+    rows:[72]DmRow;#assert dm_rows(DM_MAMMOTH_ID,DmProfile.cuda,rows[..])==72;
+    b:=dm_base();t:=pt_trainer(pt_new(b,PtRegion.hidden,DM_RANK,DM_ALPHA,DM_SEED).adapter);
+    bad:=rows;bad[5].teacher=DM_ELEPHANT_ID;
+    ex_try("Elephant's answer as a target",b,t,DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);
+    bad=rows;bad[9].profile=DmProfile.cpu;
+    ex_try("one target from Mammoth on the CPU",b,t,DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);
+    ex_try("training for Elephant as the teacher",b,t,DM_ELEPHANT_ID,DmProfile.cuda,rows[..]);
+    bad=rows;bad[48].held=false;
+    ex_try("family 16 on both sides",b,t,DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);
+    bad=rows;bad[3].x=dm_features(1,0.5);
+    ex_try("Elephant certain, with no logit",b,t,DM_MAMMOTH_ID,DmProfile.cuda,bad[..]);
+    ex_try("only held-out rows",b,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[48..<72]);
+    c:=b;c.w2[0]=8;
+    ex_try("the adapter on another base",c,t,DM_MAMMOTH_ID,DmProfile.cuda,rows[..]);
+    bad=rows;bad[60].teacher=DM_ELEPHANT_ID;
+    print("a card over Elephant's answer: %\n",dm_card(b,t.adapter,DM_MAMMOTH_ID,DmProfile.cuda,bad[..]).status);
+}
+// book:end refuse

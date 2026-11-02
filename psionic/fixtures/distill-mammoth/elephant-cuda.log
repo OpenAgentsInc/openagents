@@ -1,0 +1,86 @@
+device: NVIDIA GeForce RTX 4080, compute 8.9, 15.18 of 15.56 GiB free
+compiled 21 generated kernels with NVRTC in 1.122 s
+authenticating original Elephant
+a verified-file record named the checkpoint; its hash was skipped
+plan: 1104 operations; workspace 235.8 MiB, resident 14.41 GiB, streamed 0.38 GiB in 4 copies through 2 slots of 96.0 MiB (budget 14.85 GiB)
+session: authenticated in 0.1 s; uploaded 14.41 GiB resident in 1.26 s (12.2 GB/s); pinned 0.38 GiB for streaming
+run 1: time to response 139.4 ms (device 137.5 ms, input upload 0.07 ms)
+forked decision (prefix 49, suffix 37 tokens): prefix pass and suffix 229.0 ms, suffix alone 114.4 ms (1 prefix passes); 0 of 496640 logits differ from the whole decision (largest 0); p_yes 0.757202773 ok
+distill item=0 tokens=94 ms=227.6 p_yes=0.936302412 p_no=0.063697588 slot_mass=0.308553073
+distill item=1 tokens=92 ms=226.8 p_yes=0.026092801 p_no=0.973907199 slot_mass=0.595916113
+distill item=2 tokens=95 ms=227.5 p_yes=0.000332008 p_no=0.999667992 slot_mass=0.948174542
+distill item=3 tokens=93 ms=225.5 p_yes=0.999698218 p_no=0.000301782 slot_mass=0.985928559
+distill item=4 tokens=92 ms=225.9 p_yes=0.000105362 p_no=0.999894638 slot_mass=0.980653626
+distill item=5 tokens=91 ms=225.5 p_yes=0.999900289 p_no=0.000099711 slot_mass=0.990895993
+distill item=6 tokens=100 ms=232.1 p_yes=0.026622945 p_no=0.973377055 slot_mass=0.653249155
+distill item=7 tokens=95 ms=226.8 p_yes=0.978222872 p_no=0.021777128 slot_mass=0.657147506
+distill item=8 tokens=94 ms=227.0 p_yes=0.019375839 p_no=0.980624161 slot_mass=0.644964176
+distill item=9 tokens=89 ms=224.8 p_yes=0.999593038 p_no=0.000406962 slot_mass=0.971219986
+distill item=10 tokens=89 ms=224.7 p_yes=0.006956713 p_no=0.993043287 slot_mass=0.672956234
+distill item=11 tokens=89 ms=225.4 p_yes=0.997733727 p_no=0.002266273 slot_mass=0.896616309
+distill item=12 tokens=94 ms=226.3 p_yes=0.001304369 p_no=0.998695631 slot_mass=0.904152719
+distill item=13 tokens=94 ms=227.0 p_yes=0.997871262 p_no=0.002128738 slot_mass=0.848994812
+distill item=14 tokens=94 ms=226.3 p_yes=0.000483880 p_no=0.999516120 slot_mass=0.954920240
+distill item=15 tokens=96 ms=227.7 p_yes=0.999724187 p_no=0.000275813 slot_mass=0.921807764
+distill item=16 tokens=96 ms=226.9 p_yes=0.000073587 p_no=0.999926413 slot_mass=0.975274376
+distill item=17 tokens=95 ms=227.4 p_yes=0.999784575 p_no=0.000215425 slot_mass=0.975072881
+distill item=18 tokens=92 ms=225.2 p_yes=0.002925452 p_no=0.997074548 slot_mass=0.848516593
+distill item=19 tokens=93 ms=225.3 p_yes=0.989798517 p_no=0.010201483 slot_mass=0.810263180
+distill item=20 tokens=94 ms=226.1 p_yes=0.197962552 p_no=0.802037448 slot_mass=0.182908745
+distill item=21 tokens=100 ms=231.8 p_yes=0.999793277 p_no=0.000206723 slot_mass=0.979542132
+distill item=22 tokens=97 ms=229.5 p_yes=0.995810262 p_no=0.004189738 slot_mass=0.917746734
+distill item=23 tokens=100 ms=230.9 p_yes=0.000090946 p_no=0.999909054 slot_mass=0.985356914
+distill item=24 tokens=91 ms=225.0 p_yes=0.007146956 p_no=0.992853044 slot_mass=0.877617416
+distill item=25 tokens=90 ms=224.4 p_yes=0.998313467 p_no=0.001686533 slot_mass=0.933709518
+distill item=26 tokens=90 ms=225.7 p_yes=0.971508321 p_no=0.028491679 slot_mass=0.730649321
+distill item=27 tokens=100 ms=232.0 p_yes=0.963530537 p_no=0.036469463 slot_mass=0.482338158
+distill item=28 tokens=100 ms=231.0 p_yes=0.004983788 p_no=0.995016212 slot_mass=0.734962469
+distill item=29 tokens=100 ms=231.2 p_yes=0.000387409 p_no=0.999612591 slot_mass=0.946828608
+distill item=30 tokens=94 ms=227.5 p_yes=0.995491444 p_no=0.004508556 slot_mass=0.809329680
+distill item=31 tokens=96 ms=226.4 p_yes=0.000414926 p_no=0.999585074 slot_mass=0.964336049
+distill item=32 tokens=94 ms=226.4 p_yes=0.000392923 p_no=0.999607077 slot_mass=0.923603244
+distill item=33 tokens=103 ms=233.5 p_yes=0.003169989 p_no=0.996830011 slot_mass=0.913216893
+distill item=34 tokens=100 ms=232.0 p_yes=0.917241071 p_no=0.082758929 slot_mass=0.525363216
+distill item=35 tokens=100 ms=232.7 p_yes=0.000370544 p_no=0.999629456 slot_mass=0.939707141
+distill item=36 tokens=95 ms=227.0 p_yes=0.984743973 p_no=0.015256027 slot_mass=0.638562799
+distill item=37 tokens=95 ms=227.1 p_yes=0.005538081 p_no=0.994461919 slot_mass=0.715466753
+distill item=38 tokens=95 ms=228.1 p_yes=0.017815817 p_no=0.982184183 slot_mass=0.636429417
+distill item=39 tokens=97 ms=230.5 p_yes=0.972967707 p_no=0.027032293 slot_mass=0.596607601
+distill item=40 tokens=94 ms=226.5 p_yes=0.006950177 p_no=0.993049823 slot_mass=0.826080820
+distill item=41 tokens=96 ms=227.4 p_yes=0.033459203 p_no=0.966540797 slot_mass=0.588568810
+distill item=42 tokens=101 ms=232.7 p_yes=0.995406982 p_no=0.004593018 slot_mass=0.662180111
+distill item=43 tokens=100 ms=232.1 p_yes=0.005608185 p_no=0.994391815 slot_mass=0.746779085
+distill item=44 tokens=99 ms=230.6 p_yes=0.953705573 p_no=0.046294427 slot_mass=0.459381142
+distill item=45 tokens=97 ms=229.1 p_yes=0.001651639 p_no=0.998348361 slot_mass=0.831373319
+distill item=46 tokens=95 ms=227.0 p_yes=0.998026188 p_no=0.001973812 slot_mass=0.919063118
+distill item=47 tokens=95 ms=227.5 p_yes=0.000144439 p_no=0.999855561 slot_mass=0.972908545
+distill item=48 tokens=91 ms=226.1 p_yes=0.980810019 p_no=0.019189981 slot_mass=0.676211455
+distill item=49 tokens=92 ms=225.6 p_yes=0.008017813 p_no=0.991982187 slot_mass=0.739119811
+distill item=50 tokens=94 ms=226.4 p_yes=0.018011283 p_no=0.981988717 slot_mass=0.635217177
+distill item=51 tokens=93 ms=225.6 p_yes=0.003136483 p_no=0.996863517 slot_mass=0.746908383
+distill item=52 tokens=94 ms=227.3 p_yes=0.995509275 p_no=0.004490725 slot_mass=0.831177539
+distill item=53 tokens=93 ms=226.6 p_yes=0.006694481 p_no=0.993305519 slot_mass=0.759675839
+distill item=54 tokens=95 ms=226.9 p_yes=0.998928778 p_no=0.001071222 slot_mass=0.960642066
+distill item=55 tokens=95 ms=227.1 p_yes=0.000715331 p_no=0.999284669 slot_mass=0.915986975
+distill item=56 tokens=97 ms=229.8 p_yes=0.997928361 p_no=0.002071639 slot_mass=0.938210963
+distill item=57 tokens=101 ms=232.7 p_yes=0.046562197 p_no=0.953437803 slot_mass=0.340748412
+distill item=58 tokens=98 ms=229.4 p_yes=0.975580398 p_no=0.024419602 slot_mass=0.367717605
+distill item=59 tokens=100 ms=232.4 p_yes=0.973343163 p_no=0.026656837 slot_mass=0.514412389
+distill item=60 tokens=92 ms=225.7 p_yes=0.914520879 p_no=0.085479121 slot_mass=0.321378682
+distill item=61 tokens=92 ms=227.3 p_yes=0.024458267 p_no=0.975541733 slot_mass=0.545467482
+distill item=62 tokens=92 ms=226.5 p_yes=0.945879289 p_no=0.054120711 slot_mass=0.417979781
+distill item=63 tokens=90 ms=224.4 p_yes=0.000187934 p_no=0.999812066 slot_mass=0.966022462
+distill item=64 tokens=94 ms=227.6 p_yes=0.999942906 p_no=0.000057094 slot_mass=0.994246719
+distill item=65 tokens=91 ms=225.9 p_yes=0.003779639 p_no=0.996220361 slot_mass=0.807230431
+distill item=66 tokens=105 ms=234.8 p_yes=0.994100277 p_no=0.005899723 slot_mass=0.718993581
+distill item=67 tokens=105 ms=234.8 p_yes=0.004666538 p_no=0.995333462 slot_mass=0.625636249
+distill item=68 tokens=104 ms=233.1 p_yes=0.929999387 p_no=0.070000613 slot_mass=0.374762865
+distill item=69 tokens=88 ms=139.1 p_yes=0.019140538 p_no=0.980859462 slot_mass=0.690511778
+distill item=70 tokens=90 ms=225.4 p_yes=0.995360381 p_no=0.004639619 slot_mass=0.880324415
+distill item=71 tokens=90 ms=225.4 p_yes=0.002294532 p_no=0.997705468 slot_mass=0.818690996
+distill rows=72
+device memory in use by this process: about 14.91 GiB; 0.27 GiB left free
+choice=yes p_yes=0.757202773 p_no=0.242797227 slot_mass=0.228238784 confidence=0.514405545
+first decision after process start: 19.7 s (compile, authenticate, upload, run)
+original decision agrees with independent CPU reference within 0.0005
+decision agrees with the recorded CPU reference result within 0.0005

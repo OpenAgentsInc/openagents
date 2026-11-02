@@ -1,0 +1,74 @@
+# Chapter 141's request corpus. Written, with every gold label, before any model run.
+# Columns: item, family, gold (1 yes, 0 no), message, question. Every question offers the options yes and no.
+0	0	1	The kettle was switched off an hour ago.	Has the water had time to cool?
+1	0	0	The kettle was switched off an hour ago.	Is the kettle still boiling?
+2	0	0	The kettle was switched off an hour ago.	Was the kettle switched off a minute ago?
+3	1	1	Maya paid for the tickets in cash.	Did Maya pay for the tickets?
+4	1	0	Maya paid for the tickets in cash.	Did Maya pay by card?
+5	1	1	Maya paid for the tickets in cash.	Did Maya use money?
+6	2	0	The meeting moved from room 101 this morning.	Is the meeting in room 101 now?
+7	2	1	The meeting moved from room 101 this morning.	Did the meeting change rooms?
+8	2	0	The meeting moved from room 101 this morning.	Was the meeting cancelled?
+9	3	1	Seven plus five is twelve.	Is twelve more than seven?
+10	3	0	Seven plus five is twelve.	Is seven plus five thirteen?
+11	3	1	Seven plus five is twelve.	Is twelve an even number?
+12	4	0	The store closes at six and it is now eight.	Is the store open now?
+13	4	1	The store closes at six and it is now eight.	Is it after closing time?
+14	4	0	The store closes at six and it is now eight.	Is it earlier than six?
+15	5	1	Tom is taller than Ann, and Ann is taller than Bo.	Is Tom taller than Bo?
+16	5	0	Tom is taller than Ann, and Ann is taller than Bo.	Is Bo taller than Ann?
+17	5	1	Tom is taller than Ann, and Ann is taller than Bo.	Is Bo the shortest?
+18	6	0	The test suite passed except for one failing check.	Did every check pass?
+19	6	1	The test suite passed except for one failing check.	Is there a failing check?
+20	6	0	The test suite passed except for one failing check.	Is the build ready to ship?
+21	7	1	The invoice is for 40 dollars and Lee paid 50.	Did Lee pay more than the invoice?
+22	7	1	The invoice is for 40 dollars and Lee paid 50.	Is Lee owed change?
+23	7	0	The invoice is for 40 dollars and Lee paid 50.	Did Lee pay less than he owed?
+24	8	0	No one has read the report yet.	Has anyone read the report?
+25	8	1	No one has read the report yet.	Is the report unread?
+26	8	1	No one has read the report yet.	Does a report exist?
+27	9	1	The train leaves at 9:15 and the trip takes two hours.	Does the train arrive after eleven?
+28	9	0	The train leaves at 9:15 and the trip takes two hours.	Does the train arrive before ten?
+29	9	0	The train leaves at 9:15 and the trip takes two hours.	Does the trip take three hours?
+30	10	1	The patch fixes the crash but makes startup slower.	Does the patch have a cost?
+31	10	0	The patch fixes the crash but makes startup slower.	Does the crash still happen with the patch?
+32	10	0	The patch fixes the crash but makes startup slower.	Is startup faster with the patch?
+33	11	0	Every bird in the cage is a parrot, and none can talk.	Can one of the parrots in the cage talk?
+34	11	1	Every bird in the cage is a parrot, and none can talk.	Are there parrots in the cage?
+35	11	0	Every bird in the cage is a parrot, and none can talk.	Is there a crow in the cage?
+36	12	1	The door was locked, and only Sam has a key.	Could Sam open the door?
+37	12	0	The door was locked, and only Sam has a key.	Was the door left open?
+38	12	0	The door was locked, and only Sam has a key.	Does everyone have a key?
+39	13	1	It rained all day, so the match was postponed.	Was the match moved to another day?
+40	13	0	It rained all day, so the match was postponed.	Was the day dry?
+41	13	0	It rained all day, so the match was postponed.	Was the match played as planned?
+42	14	1	The server answered in 30 ms; the limit is 50 ms.	Was the server within the limit?
+43	14	0	The server answered in 30 ms; the limit is 50 ms.	Was the server too slow?
+44	14	1	The server answered in 30 ms; the limit is 50 ms.	Did the server answer?
+45	15	0	Half of the ten apples are green and the rest are red.	Are most of the apples green?
+46	15	1	Half of the ten apples are green and the rest are red.	Are five apples red?
+47	15	0	Half of the ten apples are green and the rest are red.	Are there twelve apples?
+48	16	1	The package was signed for by a neighbor.	Was the package delivered?
+49	16	0	The package was signed for by a neighbor.	Did the package get lost?
+50	16	0	The package was signed for by a neighbor.	Did the owner sign for the package?
+51	17	0	The light is off, and the bulb is new.	Is the light on?
+52	17	1	The light is off, and the bulb is new.	Could the switch be off?
+53	17	0	The light is off, and the bulb is new.	Is the bulb old?
+54	18	1	Ravi finished the race third out of eight runners.	Did Ravi finish the race?
+55	18	0	Ravi finished the race third out of eight runners.	Did Ravi win the race?
+56	18	1	Ravi finished the race third out of eight runners.	Did two runners finish ahead of Ravi?
+57	19	0	The file is 3 MB and the upload limit is 2 MB.	Can the file be uploaded as it is?
+58	19	1	The file is 3 MB and the upload limit is 2 MB.	Is the file too large?
+59	19	1	The file is 3 MB and the upload limit is 2 MB.	Would a 1 MB file fit?
+60	20	1	The bridge is closed for repairs until Friday.	Is the bridge closed today?
+61	20	0	The bridge is closed for repairs until Friday.	Is the bridge closed forever?
+62	20	1	The bridge is closed for repairs until Friday.	Is the bridge being repaired?
+63	21	0	Nina has never been to Spain.	Has Nina visited Madrid?
+64	21	1	Nina has never been to Spain.	Is Spain a place Nina has not been?
+65	21	0	Nina has never been to Spain.	Does Nina live in Spain?
+66	22	1	The sum of the two angles is 90 degrees, and one is 30.	Is the other angle 60 degrees?
+67	22	0	The sum of the two angles is 90 degrees, and one is 30.	Is the other angle 30 degrees?
+68	22	1	The sum of the two angles is 90 degrees, and one is 30.	Is one angle larger than the other?
+69	23	0	The milk expired last week.	Is the milk fresh?
+70	23	1	The milk expired last week.	Is the milk past its date?
+71	23	0	The milk expired last week.	Will the milk expire next week?

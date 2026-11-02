@@ -692,6 +692,26 @@
       ]
     },
     {
+      "source": "psionic/examples/distill-mammoth.coax",
+      "chapter": "psionic/book/ch141-distill-mammoth-into-elephant.md",
+      "stdout": "psionic/fixtures/distill-mammoth.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/distill-mammoth-refuse.coax",
+      "chapter": "psionic/book/ch141-distill-mammoth-into-elephant.md",
+      "stdout": "psionic/fixtures/distill-mammoth-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/post-train-decision.coax",
       "chapter": "psionic/book/ch140-post-train-a-decision-model.md",
       "stdout": "psionic/fixtures/post-train-decision.out",

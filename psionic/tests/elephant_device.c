@@ -11,6 +11,7 @@
 #include "elephant-inventory.h"
 #include "elephant-request.h"
 #include "lab_request.h"
+#include "distill_corpus.h"
 #include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
@@ -48,6 +49,22 @@ static int lab_read(const float *logits, double *p_yes, int *best) {
     coax_t_QrResult a = qr_read(COAX_QrKind_choice, 1, (coax_v_f32){(float *)logits, EG_VOCAB}, (coax_v_s64){slots, 2}, (coax_v_f64){probabilities, 2}, (coax_v_f64){work, 2}, 0);
     *p_yes = probabilities[0];
     *best = (int)a.best;
+    return a.status != 0;
+}
+/* Chapter 141: any message and question, read with the slot mass. */
+static int distill_prepare(const char *message, const char *question, int64_t *tokens, int64_t *written, int64_t *prefix) {
+    coax_t_PtEntry entry = {COAX_PtEntryKind_text, {message, (int64_t)strlen(message)}};
+    coax_t_PtQuestion q = {COAX_PtQuestionKind_choice, {COAX_PtEntryKind_text, {question, (int64_t)strlen(question)}}};
+    coax_t_PrResult r = psionic_prepare(lab_table, entry, q, (coax_v_t_PtOption){lab_opts, 2}, (coax_v_s64){tokens, EG_MAX_TOKENS}, lab_prep);
+    *written = r.written;
+    *prefix = r.prefix;
+    return r.status != 0;
+}
+static int distill_read(const float *logits, double *p, double *mass) {
+    double work[2];
+    int64_t slots[2] = {qr_pinned_slot(0), qr_pinned_slot(1)};
+    coax_t_QrResult a = qr_read(COAX_QrKind_choice, 1, (coax_v_f32){(float *)logits, DP_VOCAB}, (coax_v_s64){slots, 2}, (coax_v_f64){p, 2}, (coax_v_f64){work, 2}, 0);
+    *mass = a.mass;
     return a.status != 0;
 }
 static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + 1e-9 * (double)t.tv_nsec; }
@@ -332,7 +349,12 @@ int main(int argc, char **argv) {
         lab_prep = prep;
         lab_opts[0] = opts[0];
         lab_opts[1] = opts[1];
-        if (lab_request(e, lab_prepare, lab_read, 3)) return 1;
+        /* PSIONIC_DISTILL_CORPUS=FILE (chapter 141): one decision per corpus
+           request instead of the Lab request. */
+        const char *corpus = getenv("PSIONIC_DISTILL_CORPUS");
+        if (corpus && *corpus) {
+            if (distill_corpus(e, corpus, distill_prepare, distill_read)) return 1;
+        } else if (lab_request(e, lab_prepare, lab_read, 3)) return 1;
         if (eg_prepare(e, tokens, T, P)) return 1; /* the whole decision's plan again, for what follows */
         memcpy(logits, whole, sizeof whole);
     }
