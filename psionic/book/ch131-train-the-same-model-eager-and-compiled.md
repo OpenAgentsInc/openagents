@@ -204,7 +204,7 @@ tc_train :: (path:TcPath,m:MdlModel,seed:u64,c:TrConfig,prog:CbProgram,inputs:[]
         x:=tr_next(c,out.run,none[..],nothing[..],nothing[..]);
         if x.status!=TrStatus.ok {out.status=x.status;continue;}
         s:=tr_add(x,TrSum.{},tc_step(path,m,prog,out.run.revision,p,inputs,g[0..<n]),g[0..<n],total[0..<n]);
-        a:=tr_apply(c,out.run,x,s,p,pm,pv,total[0..<n],stage[0..<3*n],order[..]);out.status=a.status;
+        a:=tr_apply(c,out.run,x,s,p,pm,pv,total[0..<n],stage[..],order[..]);out.status=a.status;
         if a.status==TrStatus.ok {losses[out.steps]=a.loss;out.run=a.run;out.steps+=1;}
     }
     tm_module_move(m,p,inputs,true);
@@ -496,6 +496,14 @@ The checks in [train-compare.coax](../lib/train-compare.coax) and
   is refused before a step is taken.
 - **The whole step compiled:** chapter 114's program with its update on,
   against the trainer's SGD at chapter 117's f32 rate, bit for bit.
+- **Two small models the block cannot stand in for:** one whose first
+  entry is a trained parameter, which all three paths train to the same
+  bits, and one whose first tape step is its only 32-float node, which
+  sets eager's workspace. The block's program and configuration digests
+  are pinned.
+
+`coax mutate psionic/lib/trainer-compiled.coax --root-only` kills all 157
+mutants of this file's own code; `psionic/check.sh` runs it.
 
 The separately qualified [cooperative dense kernels](../lib/device/training-dense-kernels.coax)
 provide forward and both operand VJPs for a bounded FP32 matrix product.

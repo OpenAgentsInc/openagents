@@ -28,6 +28,6 @@ for mode in debug release;do
     done
 done
 if [[ $mutate == 1 ]];then
-    for unit in flash-manifest flash-plan flash flash-split;do "$coax" mutate "psionic/lib/deepseek/$unit.coax" --root-only --jobs "$jobs" --run-steps 40000000;done
+    for unit in flash-manifest flash-plan flash flash-split flash-stages;do "$coax" mutate "psionic/lib/deepseek/$unit.coax" --root-only --jobs "$jobs" --run-steps 40000000;done
 fi
 echo 'V4.1 Flash: manifest, host plan, composed stack against the composed oracle, and both transcripts pass'

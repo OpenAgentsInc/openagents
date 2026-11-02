@@ -307,11 +307,10 @@ dfs_pipeline :: (t:DfTiny,cut:[]int,model:[]u64,tokens:[]int,trace:DfTrace,arena
             v:=dst_check(g,DstExpect.{model=model[k],cut=cut[k],step=p},box);
             if v.refusal!=DstRefusal.none {run.status=DfsStatus.refused;run.refusal=v.refusal;run.part=v.part;return run;}
             carry[k]=dfs_unpack(layouts[k-1],box,x[k][..],hashes[k][..],caches[k]);}
-        s:=df_layers(t,p,cut[k],cut[k+1],x[k][..],carry[k],hashes[k][..],caches[k],trace,arena);
-        if s.result.status!=DfRun.ok {run.status=DfsStatus.piece;run.piece=s.result;return run;}
-        carry[k]=s.carry;
-        if k==n-1 {r:=df_head(p,t.layers,x[k][..],carry[k],trace.logits[p*DF_V..<(p+1)*DF_V]);if r.status!=DfRun.ok {run.status=DfsStatus.piece;run.piece=r;return run;}}
-        else {box:=wire[k*DFS_WORDS..<(k+1)*DFS_WORDS];size:=dst_frame(g,model[k],cut[k+1],p,box);
+        s:=df_layers(t,p,cut[k],cut[k+1],x[k][..],carry[k],hashes[k][..],caches[k],trace,arena);r:=s.result;
+        if r.status==DfRun.ok {carry[k]=s.carry;if k==n-1 {r=df_head(p,t.layers,x[k][..],carry[k],trace.logits[p*DF_V..<(p+1)*DF_V]);}}
+        if r.status!=DfRun.ok {run.status=DfsStatus.piece;run.piece=r;return run;}
+        if k<n-1 {box:=wire[k*DFS_WORDS..<(k+1)*DFS_WORDS];size:=dst_frame(g,model[k],cut[k+1],p,box);
             dfs_pack(layouts[k],p,x[k][..],carry[k],hashes[k][..],caches[k],box);dst_seal(box[0..<size]);
             if fault.stage==k && fault.step==p && fault.part>=0 {size=dfs_drop(layouts[k],fault.part,box);}
             if fault.stage==k && fault.step==p && fault.word>=0 {box[fault.word]^=1;}
@@ -462,6 +461,7 @@ no contiguous split fits (`split`).
 coax/bin/coax test psionic/lib/deepseek/flash-split.coax
 coax/bin/coax mutate psionic/lib/deepseek/flash-split.coax --root-only
 coax/bin/coax test psionic/lib/deepseek/flash-stages.coax --run-steps 40000000
+coax/bin/coax mutate psionic/lib/deepseek/flash-stages.coax --root-only --run-steps 40000000
 ```
 
 `flash-split.coax` is `#authority`: its mutation run kills all 455 mutants.
@@ -469,6 +469,13 @@ coax/bin/coax test psionic/lib/deepseek/flash-stages.coax --run-steps 40000000
 and 20 and a three-stage run of layers 20–24 over eight steps against
 chapter 100's composed oracle records, Engram ids crossing after layer 0,
 and every refusal; the example runs every cut of the whole stack natively.
+Its cheaper checks run first: a pack and unpack that must move exactly an
+owner's newest compressed row, index-key row, selection and mask into a
+receiver's caches and change no other byte, and the fault injector's
+dropped part against the message rebuilt without it. The mutation run
+kills all 462 mutants of the file's own code. With `--shard I/N` and
+`--merge` the run splits into parts that each finish in a few minutes;
+`psionic/tests/check_deepseek_flash.sh --mutate` runs it whole.
 
 ## Sources
 

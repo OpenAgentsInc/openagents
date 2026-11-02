@@ -34,6 +34,31 @@ tc_test_config :: (steps:int)->TrConfig {return tc_config(steps,0.01);}
     d:=c;d.beta1=0.8;#assert tc_identity(m,7,d).config!=i.config;d=c;d.beta2=0.99;#assert tc_identity(m,7,d).config!=i.config;
     d=c;d.eps=1e-6;#assert tc_identity(m,7,d).config!=i.config;d=c;d.decay=0.1;#assert tc_identity(m,7,d).config!=i.config;
     d=c;d.clip=1;#assert tc_identity(m,7,d).config!=i.config;d=c;d.optimizer=TrOptimizer.sgd;#assert tc_identity(m,7,d).config!=i.config;
+    // The recorded digests: every node, mode and entry field and every
+    // configuration field is mixed in, from FNV-1a's offset basis.
+    #assert i.program==14726996783963187339 && i.config==17649873284426780801;
+}
+// Two small models the block cannot stand in for. In tc_toy_first the first
+// entry is a trained parameter; in tc_toy_wide the tape's first step, x*x on
+// data, is its one 32-float node and needs no gradient rule.
+tc_toy_first :: ()->MdlModel {
+    m:=mdl_model();m=mdl_parameter(m,MDL_ROOT,"w",mdl_shape(2,4,4),MdlInit.uniform,0.5);w:=m.node;
+    m=mdl_data(m,"x",mdl_shape(2,4,4));x:=m.node;m=mdl_data(m,"target",mdl_shape(2,4,4));t:=m.node;
+    m=mdl_op(m,TiOp.multiply,w,x);return mdl_squared_error(m,MDL_ROOT,"loss",m.node,t);
+}
+tc_toy_wide :: ()->MdlModel {
+    m:=mdl_model();m=mdl_data(m,"x",mdl_shape(2,4,8));x:=m.node;m=mdl_op(m,TiOp.multiply,x,x);
+    m=mdl_linear(m,MDL_ROOT,"fc",m.node,2);y:=m.node;m=mdl_data(m,"target",mdl_shape(2,4,2));return mdl_squared_error(m,MDL_ROOT,"loss",y,m.node);
+}
+#test "a first entry that trains gets its gradient, and a wide first step sets eager's workspace" {
+    a:=tc_toy_first();#assert a.status==MdlStatus.ok && a.entries[0].kind==MdlKind.parameter && tm_module_floats(a)==16 && a.count==4 && a.top==49;
+    c:=tc_test_config(TC_TEST_STEPS);ep:[16]f64;el:[4]f64;
+    for k:0..<3 {path:=cast(TcPath)k;inputs:[64]f32;p:[16]f64;pm:[16]f64;pv:[16]f64;losses:[4]f64;
+        o:=tc_train(path,a,7,c,tc_program(path,a),inputs[..],p[..],pm[..],pv[..],losses[..]);#assert o.status==TrStatus.done && pm[0]!=0;
+        if k==0 {ep=p;el=losses;} else {#assert tr_same(p[..],ep[..]) && tr_same(losses[..],el[..]);}}
+    b:=tc_toy_wide();e:=tc_footprint(TcPath.eager,b,tc_program(TcPath.eager,b));
+    #assert e.flags==32 && e.values==56 && e.grads==26 && e.launches==14 && e.bytes==56*4+26*8+32 && mdl_find(b,"loss.neg")>=0;
+    #assert tc_path_name(TcPath.eager)=="eager" && tc_path_name(TcPath.compiled)=="compiled" && tc_path_name(TcPath.recompute)=="recomputing";
 }
 #test "each path's footprint: arenas, workspace and launches" {
     m:=mdl_test_block(128);
@@ -73,6 +98,9 @@ TC_TEST_STEPS :: 2;
     #assert tc_train(TcPath.compiled,m,7,one,tc_program(TcPath.eager,m),inputs[..],p[..],pm[..],pv[..],losses[..]).status==TrStatus.shape;
     #assert tc_train(TcPath.eager,m,7,one,tc_program(TcPath.eager,m),inputs[0..<152],p[..],pm[..],pv[..],losses[..]).status==TrStatus.shape;
     #assert tc_train(TcPath.eager,m,7,one,tc_program(TcPath.eager,m),inputs[..],p[0..<83],pm[..],pv[..],losses[..]).status==TrStatus.shape;
+    // The input buffer may be exactly the model's; a short moment buffer is the trainer's refusal.
+    #assert tc_train(TcPath.eager,m,7,one,tc_program(TcPath.eager,m),inputs[0..<153],p[..],pm[..],pv[..],losses[..]).status==TrStatus.done;
+    #assert tc_train(TcPath.eager,m,7,one,tc_program(TcPath.eager,m),inputs[..],p[..],pm[0..<83],pv[..],losses[..]).status==TrStatus.shape;
 }
 #test "the whole step compiled, update included, equals the trainer's SGD" {
     // Chapter 114's program with its update on is a whole training step. The
@@ -162,7 +190,7 @@ tc_train :: (path:TcPath,m:MdlModel,seed:u64,c:TrConfig,prog:CbProgram,inputs:[]
         x:=tr_next(c,out.run,none[..],nothing[..],nothing[..]);
         if x.status!=TrStatus.ok {out.status=x.status;continue;}
         s:=tr_add(x,TrSum.{},tc_step(path,m,prog,out.run.revision,p,inputs,g[0..<n]),g[0..<n],total[0..<n]);
-        a:=tr_apply(c,out.run,x,s,p,pm,pv,total[0..<n],stage[0..<3*n],order[..]);out.status=a.status;
+        a:=tr_apply(c,out.run,x,s,p,pm,pv,total[0..<n],stage[..],order[..]);out.status=a.status;
         if a.status==TrStatus.ok {losses[out.steps]=a.loss;out.run=a.run;out.steps+=1;}
     }
     tm_module_move(m,p,inputs,true);
