@@ -262,7 +262,7 @@ def realm_fork_checks():
           and b_call("POST", R + "forge-court/undo", {}, maker)[0] == 400)
     steps = int(line_map(b_call("GET", R + "forge-court", key=maker)[1])["undo"][0])
     st, u = b_call("POST", R + "forge-court/undo", {"rev": 5}, maker)
-    check("UNDO takes the save back as a new revision, with the moves before it", st == 200 and u == {"rev": 6, "undo": steps - 1}
+    check("UNDO takes the save back as a new revision, with the moves before it", st == 200 and u == {"rev": 6, "undo": steps - 1, "redo": 1}
           and b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["moved"] == d4["doc"]["moved"], (st, u, steps))
     st, pl = b_call("POST", R + "forge-court/place", {"thing": "crate", "x": 2, "z": -3, "yaw": 0}, maker)
     placed = b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["placed"]

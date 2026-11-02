@@ -178,7 +178,7 @@ fork by anyone but the owner are of that revision, and nothing but PUBLISH
 changes it. Every revision the owner's edits make is kept, and `POST
 .../<slug>/undo` restores an earlier one as a new revision, never rewriting
 history. Each undo step is the edit's per-slot inverses, the slots
-`aethyr/forge/edit.coax` names (`0110_realm_edit_log.sql`): undo puts each
+`aethyr/forge/edit.coax` names (`0111_realm_edit_log.sql`): undo puts each
 slot it changed back, newest first, and is refused (409, nothing changed) when
 a slot is no longer what the step left; `.../<slug>/redo` applies it again
 under the same rule, and a new edit drops what was undone. A made realm's lore

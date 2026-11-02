@@ -1,5 +1,5 @@
 // The built CLI against a real API (GitHub #12629): rotate, resize and remove, lore and quests, a
-// stale refusal, undo through the server's per-edit log (migrations/0110_realm_edit_log.sql),
+// stale refusal, undo through the server's per-edit log (migrations/0111_realm_edit_log.sql),
 // publish and a fork, every change read back from the database the API writes. Not a fixture:
 // the API is coax/web/api built from this checkout, on a throwaway PostgreSQL with every migration
 // applied. A fresh key is made for the run and passed only in the CLI's environment (never printed);

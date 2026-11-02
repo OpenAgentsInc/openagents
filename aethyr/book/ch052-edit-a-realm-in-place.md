@@ -10,7 +10,7 @@
 > (migration 0109); `openagents realm rotate|resize|remove` and `realm apply`
 > make them. The server keeps the same log: each undo step is the edit's
 > per-slot inverses, under the slot names this chapter uses, and lore and
-> quests are in the document (`0110_realm_edit_log.sql`). The page has no
+> quests are in the document (`0111_realm_edit_log.sql`). The page has no
 > hand gestures for turning, sizing or removing yet, and no REDO button; see
 > [Still to do](#still-to-do).
 
@@ -279,7 +279,7 @@ a reload of the same revision brings them back, still undoable. A save
 becomes one server step.
 
 The server keeps the undo steps (`made_realms.undo`, at most 64), and since
-migration 0110 each one is the edit's operations in this chapter's terms:
+migration 0111 each one is the edit's operations in this chapter's terms:
 `{to, card, ops}`, where every op is `{slot, before, after}` for one slot that
 changed. An entity (`trees:3`, `placed:0`) holds `{x, z}` when moved and
 `{yaw, scale, gone}` when shaped; the other slots are `set:FIELD`,
@@ -293,7 +293,7 @@ rewritten; it is refused with 409 and nothing changes when a slot is no
 longer what the step left, the same rule as `forge_apply`. `POST .../redo
 {rev}` applies the step last undone again under the same rule, and a card
 goes back to waiting and to settled with its step. A new edit drops what was
-undone. The spec gains `redo N` beside `undo N`. Steps kept before 0110 have
+undone. The spec gains `redo N` beside `undo N`. Steps kept before 0111 have
 no ops and still undo by their whole revision.
 
 Lore and quests were rows of their own (`0055_realm_panes.sql`), so an undo
@@ -338,7 +338,7 @@ shortened to PUT HERE.
   and a card accepted are one step each; undo walks back to each earlier
   state and redo forward again, cards with them; a new edit drops the redo; a
   step whose slot changed under it is refused whole; a declined card goes
-  back and forth; a step kept before 0110 undoes its whole revision; lore and
+  back and forth; a step kept before 0111 undoes its whole revision; lore and
   quests published, undone and forked with the document; lore moved in from
   the old rows as one revision, older hashes unchanged, visitors unchanged.
 - `coax/web/tool.sh coax/web/api/tests/realm_cli_api.coax`: the built CLI

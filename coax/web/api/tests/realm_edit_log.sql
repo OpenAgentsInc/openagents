@@ -1,4 +1,4 @@
--- The server's edit log (migrations/0110_realm_edit_log.sql, GitHub #12629): every change to a made
+-- The server's edit log (migrations/0111_realm_edit_log.sql, GitHub #12629): every change to a made
 -- realm is one step of per-slot inverses, UNDO and REDO walk them, lore and quests are in the
 -- document, and older steps and documents keep working. One transaction, rolled back. Each check
 -- raises on failure and prints an "ok" line; the last line is "done N". Run by realm_engine_pin.coax:
@@ -149,7 +149,7 @@ DECLARE
   before jsonb;
   r1 bigint;
 BEGIN
-  -- a step kept before 0110 (no ops) still undoes its whole revision, and redoes it
+  -- a step kept before 0111 (no ops) still undoes its whole revision, and redoes it
   r1 := pg_temp.rev('elog');
   UPDATE verse.made_realms SET ground = 'sand' WHERE slug = 'elog';
   before := pg_temp.now_doc('elog');
@@ -204,7 +204,7 @@ DECLARE
   rev_old bigint;
   pub bigint;
 BEGIN
-  -- a realm made before 0110 with lore and quests in 0055's tables, published as it is
+  -- a realm made before 0111 with lore and quests in 0055's tables, published as it is
   INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, visibility) VALUES ('elog-old', 'made-elog-old', 'Old', 'lowpoly', 'grass', 'day', '[]', '{}', 1, 'public');
   INSERT INTO verse.realm_lore (slug, who, text, ms) VALUES ('elog-old', 'bram', 'Bakes at dawn.', 1);
   INSERT INTO verse.realm_quests (slug, giver, ask, steps, reward, ms) VALUES ('elog-old', 'bram', 'Fetch flour', '{"Mill","Cart"}', 'Bread', 1);

@@ -223,7 +223,7 @@ BEGIN
     p := verse.realm_ops_apply(m, e->'ops', true);
     IF p.slug IS NULL THEN RETURN jsonb_build_object('status', 409, 'error', 'changed since', 'rev', m.rev); END IF;
     r := e;
-  ELSE   -- a step kept before 0110: its whole revision (one not kept: the step only goes)
+  ELSE   -- a step kept before 0111: its whole revision (one not kept: the step only goes)
     SELECT doc INTO d FROM verse.realm_revisions WHERE slug = s AND rev = (e->>'to')::bigint;
     p := CASE WHEN d IS NULL THEN m ELSE verse.realm_as_doc(m, d) END;
     r := jsonb_build_object('to', m.rev, 'card', e->'card');
