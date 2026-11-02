@@ -187,7 +187,7 @@ dm_send_held :: (p: [] RtPaths, json: bool) -> int {
     for j: 0..<cl_count(all) { if na < a.count { a[na] = cl_text(ar[..], all, cl_item(all, j)); na += 1; } }
     sid: [64] u8;
     st := cd_r2_run(r[..], a[0..<na], sid[..]);
-    if st == 255 { continue; }     // still not answering
+    if st == 255 { continue; }     // still not answering; any other ending is final: the job is sent, or failed there
     k := 0; while k < sid.count && sid[k] != 0 { k += 1; }
     o: [70000] u8;
     w := json_raw(o[..], 0, cast(string) rec[0..<rec.count - (ifx rec[rec.count - 1] == 10 then 2 else 1)]);
@@ -294,7 +294,9 @@ cd_cmd_jobs :: (json: bool) -> int {
       rjob := cl_str(ar[..], rec, "remote_job");
       refused := cl_str(ar[..], rec, "refused");
       dest := cl_str(ar[..], rec, "route.dest");
-      state := ifx s < 2 then states[s] else (ifx refused.count > 0 then "refused" else (ifx session.count > 0 then "started" else "sent"));
+      ex := cl_int(rec, "exit");
+      failed := ex.ok && ex.value != 0;
+      state := ifx s < 2 then states[s] else (ifx refused.count > 0 then "refused" else (ifx session.count > 0 then "started" else (ifx failed then "failed" else "sent")));
       if json {
         n = json_raw(o[..], n, ifx rows > 0 then "," else "");
         n = json_raw(o[..], n, "{\"job\":"); n = json_write_string(o[..], n, id);
@@ -304,12 +306,14 @@ cd_cmd_jobs :: (json: bool) -> int {
         if refused.count > 0 { n = json_raw(o[..], n, ",\"why\":"); n = json_write_string(o[..], n, refused); }
         if dest.count > 0 { n = json_raw(o[..], n, ",\"dest\":"); n = json_write_string(o[..], n, dest); }
         if rjob.count > 0 { n = json_raw(o[..], n, ",\"remote_job\":"); n = json_write_string(o[..], n, rjob); }
+        if failed { n = json_raw(o[..], n, ",\"exit\":"); n = json_write_int(o[..], n, ex.value); }
         n = json_raw(o[..], n, "}");
       } else {
         n = cd_cat(o[..], n, id); n = cd_cat(o[..], n, "  "); n = cd_cat(o[..], n, state);
         if session.count > 0 { n = cd_cat(o[..], n, " "); n = cd_cat(o[..], n, session); }
         if dest.count > 0 { n = cd_cat(o[..], n, " for "); n = cd_cat(o[..], n, dest); }
         if rjob.count > 0 { n = cd_cat(o[..], n, " as job "); n = cd_cat(o[..], n, rjob); }
+        if failed { eb: [24] u8; n = cd_cat(o[..], n, " (exit "); n = cd_cat(o[..], n, cd_itoa(ex.value, eb[..])); n = cd_cat(o[..], n, ")"); }
         if refused.count > 0 { n = cd_cat(o[..], n, " ("); n = cd_cat(o[..], n, refused); n = cd_cat(o[..], n, ")"); }
         n = cd_cat(o[..], n, "  "); n = cd_cat(o[..], n, cast(string) task[0..<ifx task.count > 60 then 60 else task.count]); n = cd_cat(o[..], n, "\n");
       }

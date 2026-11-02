@@ -162,8 +162,14 @@ With `--on ssh:DEST` the job goes into DEST's queue. When ssh can't reach
 DEST (exit 255), the job is held here in `daemon/held/` with its route, and
 this machine's daemon sends it once DEST answers. `coder jobs` shows the
 daemon's heartbeat (`up` when its last pass was within 10 seconds) and every
-job: `queued`, `held`, `started` with its session, `refused` with why, or
-`sent` with the job ID it got on the other machine.
+job: `queued`, `held`, `started` with its session, `refused` with why,
+`sent` with the job ID it got on the other machine, or `failed` with the
+exit status when the other machine answered but did not take it.
+
+In the live check, a job queued for coderos-4080 while `ssh` failed was
+held here. The next daemon pass sent it, and coderos-4080's own daemon,
+granted `/tmp` and `/home`, started it as a session that printed the host
+name and finished.
 
 ## Checks
 
