@@ -5,8 +5,16 @@ ggml (llama.cpp)
   Copied: the IQ4 non-uniform value table (kvalues_iq4nl) and the K-quant and
   IQ4 block layouts, including the K-quant scale packing, from
   ggml/src/ggml-common.h at llama.cpp 0893ec98f5eafad36a43a72cd1c3723d72b0d03a.
+  Also copied: the IQ2 and IQ3 lattice grids (iq2xxs_grid, iq2xs_grid,
+  iq2s_grid, iq3xxs_grid, iq3s_grid), the sign tables (ksigns_iq2xs,
+  kmask_iq2xs) and the IQ2_XXS, IQ2_XS, IQ2_S, IQ3_XXS and IQ3_S block
+  layouts, from ggml/src/ggml-common.h at llama.cpp
+  9b05354ec6fb58b4e665e9a39ebc40285c015638, with the decoding order of
+  dequantize_row_iq* in ggml/src/ggml-quants.c at the same commit. The tables
+  are in psionic/fixtures/iq-grids.coax with the SHA-256 of each.
   Used in: psionic/lib/kquant.coax, psionic/tests/kquant-checks.coax,
-  psionic/tests/kquant_oracle.py and psionic/book/ch051-k-quants-and-lattice-quants.md.
+  psionic/tests/kquant_oracle.py, psionic/fixtures/iq-grids.coax and
+  psionic/book/ch051-k-quants-and-lattice-quants.md.
 
   MIT License
 

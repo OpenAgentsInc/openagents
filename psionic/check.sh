@@ -550,7 +550,7 @@ for unit in "${selected_coax[@]+"${selected_coax[@]}"}"; do
     # fp8-file loads the shared JSON tokenizer and fp8, which gates itself.
     # int8-products loads chapter 4's product, gated as ops, and its checks' fixtures in psionic/tests.
     # quantized loads chapters 48's int8 products, 41's tiled attention, 16's decision quality and 49's GGUF reader, which gate themselves, and its checks' stand-in model in psionic/tests.
-    # kquant loads chapter 50's quantized unit (and through it 49's GGUF reader), which gates itself, and its checks' oracle vectors, quantizers and stand-in in psionic/tests.
+    # kquant loads chapter 50's quantized unit (and through it 49's GGUF reader), which gates itself, ggml's IQ grids in psionic/fixtures, and its checks' oracle vectors, quantizers, stand-in and SHA-256 (coax/lib/crypto) in psionic/tests.
     # tiled-attention loads chapters 12's and 62's attention as its checks' dense oracles; they gate themselves.
     # latent-attention loads chapter 90's MLA and YaRN units, gated by check_deepseek_v2_math.sh.
     # sparse-attention loads chapter 4's accumulator (ops) and chapter 82's fp8, which gate themselves, Large 4's pinned layer maps in psionic/fixtures and its checks' oracle in psionic/tests.

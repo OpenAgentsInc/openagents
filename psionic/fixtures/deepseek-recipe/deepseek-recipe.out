@@ -27,10 +27,10 @@ chapter 51's stand-in cards (declared: KL + 2 SE <= 0.01, agreement - 2 SE >= 0.
   Q6_K: agreement 0.96875 (low 0.9252518409153905), KL 0.002086438434421452 (high 0.0026257607518881446), promoted true
   Q2_K: agreement 0.578125 (low 0.454660307583757), KL 0.4218520012100292 (high 0.5204050973854987), promoted false
   Q3_K: agreement 0.8125 (low 0.714921906275025), KL 0.12899541365876996 (high 0.1644972986082705), promoted false
-  IQ2_XXS: kind
-  IQ2_S: kind
-  IQ3_XXS: kind
-  IQ3_S: kind
+  IQ2_XXS: agreement 0.625 (low 0.5039692704310182), KL 0.44785453935220393 (high 0.5665987293326521), promoted false
+  IQ2_S: agreement 0.5625 (low 0.4384804072938473), KL 0.3590652493940362 (high 0.4584122407740423), promoted false
+  IQ3_XXS: agreement 0.765625 (low 0.6597231116271409), KL 0.1281880105343791 (high 0.15547034577675153), promoted false
+  IQ3_S: agreement 0.703125 (low 0.58890475377177), KL 0.10044651668717734 (high 0.12224005832735196), promoted false
 traces ok ok ok ok: 384 tokens, 256 measured
 this host (RTX 4080): disk: the model and Engram files do not fit on the free disk
   each layer: 18 experts on the GPU, 286 in RAM, 80 from disk (720 of 15360 on the GPU)

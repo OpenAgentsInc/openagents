@@ -1,9 +1,34 @@
-// Chapter 51's check helpers: the oracle's decode vectors, simple reference
-// quantizers that write each block format, and a stand-in model with a
-// 256-wide first layer for the quality cards. The quantizers set the
-// sub-block scales so every value is covered, then round each value to its
-// nearest code; they are not llama.cpp's searches.
+// Chapter 51's check helpers: the oracle's decode vectors, the SHA-256 of
+// ggml's tables, simple reference quantizers that write each block format,
+// and a stand-in model with a 256-wide first layer for the quality cards.
+// The quantizers set the sub-block scales so every value is covered, then
+// round each value to its nearest code, or each group of 8 to its nearest
+// grid point; they are not llama.cpp's searches.
 #load "../fixtures/kquant-vectors.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+
+// A table's entries as little-endian bytes, hashed, against the digest the
+// oracle recorded when it extracted the table from ggml-common.h.
+kq_digest_ok :: (values:[]u64,width:int,want:[]u8)->bool {
+    bytes:[8192]u8;n:=values.count*width;
+    for i:0..<values.count {for j:0..<width {bytes[i*width+j]=cast(u8)((values[i]>>cast(u64)(8*j))&255);}}
+    out:[32]u8;
+    if sha256_hash_checked(bytes[0..<n],out[..],false)!=SHA_OK {return false;}
+    for i:0..<32 {if out[i]!=want[i] {return false;}}
+    return true;
+}
+kq_tables_ok :: ()->bool {
+    small:[128]u64;
+    {t:=KQ_KMASK;for i:0..<8 {small[i]=cast(u64)t[i];}h:=KQ_KMASK_SHA256;if !kq_digest_ok(small[0..<8],1,h[..]) {return false;}}
+    {t:=KQ_KSIGNS;for i:0..<128 {small[i]=cast(u64)t[i];}h:=KQ_KSIGNS_SHA256;if !kq_digest_ok(small[..],1,h[..]) {return false;}}
+    {t:=KQ_IQ2XXS_GRID;h:=KQ_IQ2XXS_GRID_SHA256;if !kq_digest_ok(t[..],8,h[..]) {return false;}}
+    {t:=KQ_IQ2XS_GRID;h:=KQ_IQ2XS_GRID_SHA256;if !kq_digest_ok(t[..],8,h[..]) {return false;}}
+    {t:=KQ_IQ2S_GRID;h:=KQ_IQ2S_GRID_SHA256;if !kq_digest_ok(t[..],8,h[..]) {return false;}}
+    wide:[512]u64;
+    {t:=KQ_IQ3XXS_GRID;for i:0..<256 {wide[i]=cast(u64)t[i];}h:=KQ_IQ3XXS_GRID_SHA256;if !kq_digest_ok(wide[0..<256],4,h[..]) {return false;}}
+    {t:=KQ_IQ3S_GRID;for i:0..<512 {wide[i]=cast(u64)t[i];}h:=KQ_IQ3S_GRID_SHA256;if !kq_digest_ok(wide[..],4,h[..]) {return false;}}
+    return true;
+}
 
 // Decode one oracle vector set and compare every f32 bit pattern.
 kq_vectors :: (kind:int,bytes:[]u8,bits:[]u32,y:[]f32)->bool {
@@ -20,7 +45,12 @@ kq_oracle :: (format:int,y:[]f32)->bool {
     if format==3 {a:=KQV_Q5K_BYTES;c:=KQV_Q5K_BITS;return kq_vectors(KQV_Q5K_KIND,a[..],c[..],y);}
     if format==4 {a:=KQV_Q6K_BYTES;c:=KQV_Q6K_BITS;return kq_vectors(KQV_Q6K_KIND,a[..],c[..],y);}
     if format==5 {a:=KQV_IQ4NL_BYTES;c:=KQV_IQ4NL_BITS;return kq_vectors(KQV_IQ4NL_KIND,a[..],c[..],y);}
-    a:=KQV_IQ4XS_BYTES;c:=KQV_IQ4XS_BITS;return kq_vectors(KQV_IQ4XS_KIND,a[..],c[..],y);
+    if format==6 {a:=KQV_IQ4XS_BYTES;c:=KQV_IQ4XS_BITS;return kq_vectors(KQV_IQ4XS_KIND,a[..],c[..],y);}
+    if format==7 {a:=KQV_IQ2XXS_BYTES;c:=KQV_IQ2XXS_BITS;return kq_vectors(KQV_IQ2XXS_KIND,a[..],c[..],y);}
+    if format==8 {a:=KQV_IQ2XS_BYTES;c:=KQV_IQ2XS_BITS;return kq_vectors(KQV_IQ2XS_KIND,a[..],c[..],y);}
+    if format==9 {a:=KQV_IQ2S_BYTES;c:=KQV_IQ2S_BITS;return kq_vectors(KQV_IQ2S_KIND,a[..],c[..],y);}
+    if format==10 {a:=KQV_IQ3XXS_BYTES;c:=KQV_IQ3XXS_BITS;return kq_vectors(KQV_IQ3XXS_KIND,a[..],c[..],y);}
+    a:=KQV_IQ3S_BYTES;c:=KQV_IQ3S_BITS;return kq_vectors(KQV_IQ3S_KIND,a[..],c[..],y);
 }
 kq_put :: (b:[]u8,at:int,v:int) {b[at]=cast(u8)(cast(int)b[at]|v);}
 kq_half_put :: (b:[]u8,at:int,bits:int) {b[at]=cast(u8)(bits&255);b[at+1]=cast(u8)(bits>>8);}
@@ -74,8 +104,82 @@ kq_nearest_iq4 :: (t:f64)->int {
     for i:1..<16 {if abs(t-f64(KQ_IQ4[i]))<abs(t-f64(KQ_IQ4[best])) {best=i;}}
     return best;
 }
+// The lattice formats' reference quantizer. Each sub-block's scale code is
+// the smallest whose step reaches the sub-block's largest magnitude at the
+// grid's top level (d rounded up so code 15 reaches the block's largest);
+// each group of 8 takes the signs of its values, flipping the smallest one
+// where the format's 7 sign bits need an even count of minus signs, and the
+// grid entry (or two 4-value entries) nearest the magnitudes, by brute force.
+kq_lattice_top :: (kind:int)->int {return ifx kind==KQ_IQ3_XXS then 62 else ifx kind==KQ_IQ3_S then 15 else 43;}
+kq_lattice_step :: (kind:int,s:int)->f64 {return f64(2*s+1)/(ifx kind==KQ_IQ3_S then 1.0 else ifx kind==KQ_IQ3_XXS then 4.0 else 8.0);}
+kq_lattice_sub :: (kind:int)->int {return ifx kind==KQ_IQ2_XS || kind==KQ_IQ2_S then 16 else 32;}
+kq_lattice_width :: (kind:int)->int {return ifx kind==KQ_IQ3_XXS || kind==KQ_IQ3_S then 4 else 8;}
+kq_entries :: (kind:int)->int {return ifx kind==KQ_IQ2_S then 1024 else ifx kind==KQ_IQ2_XS || kind==KQ_IQ3_S then 512 else 256;}
+kq_entry :: (kind:int,e:int)->u64 {
+    if kind==KQ_IQ2_XXS {return KQ_IQ2XXS_GRID[e];}
+    if kind==KQ_IQ2_XS {return KQ_IQ2XS_GRID[e];}
+    if kind==KQ_IQ2_S {return KQ_IQ2S_GRID[e];}
+    if kind==KQ_IQ3_XXS {return cast(u64)KQ_IQ3XXS_GRID[e];}
+    return cast(u64)KQ_IQ3S_GRID[e];
+}
+kq_nearest_entry :: (kind:int,t:[]f64)->int {
+    best:=0;least:=1e300;
+    for e:0..<kq_entries(kind) {
+        g:=kq_entry(kind,e);dist:=0.0;
+        for j:0..<t.count {diff:=f64(kq_grid_byte(g,j))-t[j];dist+=diff*diff;if dist>=least {break;}}
+        if dist<least {best=e;least=dist;}
+    }
+    return best;
+}
+kq_put_word :: (b:[]u8,at:int,v:int) {for i:0..<4 {kq_put(b,at+i,(v>>(8*i))&255);}}
+// One lattice block from x[at..] into b; r[0..256] gets the values it decodes to.
+kq_lattice_block :: (kind:int,x:[]f32,at:int,b:[]u8,r:[]f32) {
+    for i:0..<b.count {b[i]=0;}
+    sub:=kq_lattice_sub(kind);top:=f64(kq_lattice_top(kind));w:=kq_lattice_width(kind);
+    needs:[16]f64;most:=0.0;
+    for s:0..<256/sub {
+        big:=0.0;for k:0..<sub {big=qz_larger(big,abs(f64(x[at+s*sub+k])));}
+        needs[s]=big/top;most=qz_larger(most,needs[s]);
+    }
+    dbits:=qz_half_up(most/kq_lattice_step(kind,15));d:=qz_half(dbits);kq_half_put(b,0,dbits);
+    codes:[16]int;
+    for s:0..<256/sub {c:=0;while c<15 && d*kq_lattice_step(kind,c)<needs[s] {c+=1;}codes[s]=c;}
+    for group:0..<32 {
+        ib:=group/4;l:=group%4;base:=at+8*group;c:=codes[(8*group)/sub];db:=d*kq_lattice_step(kind,c);
+        signs:=0;ones:=0;low:=0;
+        for j:0..<8 {
+            if x[base+j]<0 {signs|=1<<j;ones+=1;}
+            if abs(x[base+j])<abs(x[base+low]) {low=j;}
+        }
+        if (ones&1)==1 && kind!=KQ_IQ2_S && kind!=KQ_IQ3_S {signs^=1<<low;}
+        t:[8]f64;for j:0..<8 {t[j]=ifx db==0 then 0.0 else abs(f64(x[base+j]))/db;}
+        e0:=kq_nearest_entry(kind,t[0..<w]);e1:=ifx w==4 then kq_nearest_entry(kind,t[4..<8]) else 0;
+        for j:0..<8 {
+            g:=kq_grid_byte(kq_entry(kind,ifx j<w then e0 else e1),j%w);
+            r[8*group+j]=f32(f64(ifx ((signs>>j)&1)==1 then -g else g)*db);
+        }
+        if kind==KQ_IQ2_XXS {
+            b[2+8*ib+l]=cast(u8)e0;kq_put_word(b,6+8*ib,(signs&127)<<(7*l));
+            if l==0 {kq_put_word(b,6+8*ib,c<<28);}
+        } else if kind==KQ_IQ2_XS {
+            v:=e0|((signs&127)<<9);kq_put(b,2+8*ib+2*l,v&255);kq_put(b,3+8*ib+2*l,v>>8);
+            if l%2==0 {kq_put(b,66+ib,c<<(4*(l/2)));}
+        } else if kind==KQ_IQ2_S {
+            b[2+4*ib+l]=cast(u8)(e0&255);kq_put(b,66+ib,(e0>>8)<<(2*l));b[34+4*ib+l]=cast(u8)signs;
+            if l%2==0 {kq_put(b,74+ib,c<<(4*(l/2)));}
+        } else if kind==KQ_IQ3_XXS {
+            b[2+8*ib+2*l]=cast(u8)e0;b[3+8*ib+2*l]=cast(u8)e1;kq_put_word(b,66+4*ib,(signs&127)<<(7*l));
+            if l==0 {kq_put_word(b,66+4*ib,c<<28);}
+        } else {
+            b[2+8*ib+2*l]=cast(u8)(e0&255);b[3+8*ib+2*l]=cast(u8)(e1&255);
+            kq_put(b,66+ib,((e0>>8)<<(2*l))|((e1>>8)<<(2*l+1)));b[74+4*ib+l]=cast(u8)signs;
+            if l==0 {kq_put(b,106+ib/2,c<<(4*(ib%2)));}
+        }
+    }
+}
 // One block of PG_BLOCKS[kind] values from x[at..] into b (zeroed first).
 kq_quantize_block :: (kind:int,x:[]f32,at:int,b:[]u8) {
+    if kq_lattice_kind(kind) {r:[256]f32;kq_lattice_block(kind,x,at,b,r[..]);return;}
     for i:0..<b.count {b[i]=0;}
     n:=PG_BLOCKS[kind];sub:=kq_sub(kind);subs:=n/sub;top:=kq_scale_top(kind);qt:=kq_code_top(kind);
     if kind==KQ_IQ4_NL {
@@ -143,9 +247,9 @@ KQ_IN :: 256;
 KQ_HIDDEN :: 32;
 KQ_OPTIONS :: 16;
 KQ_ITEMS :: 64;
-KQ_PROFILES :: 9;
-KQ_PROFILE_KINDS :: [9]int.[8,2,10,11,12,13,14,20,23];
-KQ_PROFILE_NAMES :: [9]string.["Q8_0","Q4_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ4_NL","IQ4_XS"];
+KQ_PROFILES :: 14;
+KQ_PROFILE_KINDS :: [14]int.[8,2,10,11,12,13,14,20,23,16,17,22,18,21];
+KQ_PROFILE_NAMES :: [14]string.["Q8_0","Q4_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ4_NL","IQ4_XS","IQ2_XXS","IQ2_XS","IQ2_S","IQ3_XXS","IQ3_S"];
 kq_standin_weights :: (w1:[]f32,w2:[]f32) {
     state:=91;
     for i:0..<KQ_HIDDEN*KQ_IN {state=qz_next(state);w1[i]=f32(qz_unit(state)/16*f64(ifx i%13==0 then 6 else 1));}
@@ -178,10 +282,15 @@ kq_standin_layer :: (kind:int,w:[]f32,out:[]f32)->int {
     #assert kq_decode(kind,KQ_HIDDEN,KQ_IN,bytes[0..<p.bytes],out).status==QzStatus.ok;
     return p.bytes;
 }
-kq_standin_card :: (profile:int)->QzCard {
+kq_standin_card :: (profile:int)->QzCard {error:[1]f64;return kq_standin_measure(profile,error[..]);}
+// The card, and in error[0] the first layer's squared error relative to its squared weights.
+kq_standin_measure :: (profile:int,error:[]f64)->QzCard {
     w1:[KQ_HIDDEN*KQ_IN]f32;w2:[KQ_OPTIONS*KQ_HIDDEN]f32;q1:[KQ_HIDDEN*KQ_IN]f32;
     kq_standin_weights(w1[..],w2[..]);
     bytes:=kq_standin_layer(KQ_PROFILE_KINDS[profile],w1[..],q1[..]);
+    lost:=0.0;total:=0.0;
+    for i:0..<KQ_HIDDEN*KQ_IN {d:=f64(w1[i])-f64(q1[i]);lost+=d*d;total+=f64(w1[i])*f64(w1[i]);}
+    error[0]=lost/total;
     a:[KQ_ITEMS*KQ_OPTIONS]f64;b:[KQ_ITEMS*KQ_OPTIONS]f64;items:[KQ_ITEMS]PqItem;x:[KQ_IN]f32;
     state:=17;
     for i:0..<KQ_ITEMS {

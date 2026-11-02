@@ -1,12 +1,15 @@
-// Chapter 51: K-quants and IQ4.
+// Chapter 51: K-quants, IQ4 and the IQ3 and IQ2 lattice quants.
 // Profiles: gguf-k-quant-v1, the 2- to 6-bit K-quant super-blocks (GGUF
 // types 10 to 14: Q2_K, Q3_K, Q4_K, Q5_K, Q6_K, 256 values with packed
-// sub-block scales), and gguf-iq4-v1, the non-uniform 4-bit IQ4_NL (type 20,
-// 32 values) and IQ4_XS (type 23, 256 values). Byte layouts follow ggml's
-// block structs in ggml-common.h; the IQ4 value table is copied from it
-// (MIT, see psionic/NOTICE). Every decoded value is an exact integer number
-// of 2^-24 units, rounded once to f32.
+// sub-block scales); gguf-iq4-v1, the non-uniform 4-bit IQ4_NL (type 20,
+// 32 values) and IQ4_XS (type 23, 256 values); and gguf-iq-lattice-v1,
+// IQ2_XXS, IQ2_XS, IQ3_XXS, IQ3_S and IQ2_S (types 16, 17, 18, 21, 22, 256
+// values), whose codes index ggml's grids. Byte layouts follow ggml's block
+// structs in ggml-common.h; the IQ4 value table and the grids are copied from
+// it (MIT, see psionic/NOTICE). Every decoded value is an exact integer
+// number of 2^-24 units (2^-27 for the lattice formats), rounded once to f32.
 #load "quantized.coax";             // chapter 50: halves, plans, the quality card; chapter 49's reader
+#load "../fixtures/iq-grids.coax";  // ggml's sign tables and lattice grids, with their SHA-256
 #load "../tests/kquant-checks.coax";  // the oracle's vectors, reference quantizers, the stand-in
 #authority;
 
@@ -15,7 +18,12 @@ KQ_Q3_K :: 11;
 KQ_Q4_K :: 12;
 KQ_Q5_K :: 13;
 KQ_Q6_K :: 14;
+KQ_IQ2_XXS :: 16;
+KQ_IQ2_XS :: 17;
+KQ_IQ3_XXS :: 18;
 KQ_IQ4_NL :: 20;
+KQ_IQ3_S :: 21;
+KQ_IQ2_S :: 22;
 KQ_IQ4_XS :: 23;
 KQ_GROUPS_MAX :: 32768;  // groups of 32 values: 1,048,576 values
 // book:begin table
@@ -36,10 +44,13 @@ KQ_IQ4 :: [16]int.[-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113];
     #assert p.status==QzStatus.ok && p.blocks==4 && p.bytes==336 && p.values==1024 && p.block_bytes==84;
     sizes:=[7]int.[84,110,144,176,210,18,136];kinds:=[7]int.[10,11,12,13,14,20,23];
     for i:0..<7 {p=kq_plan(kinds[i],1,256);#assert p.status==QzStatus.ok && p.block_bytes==sizes[i] && p.bytes==sizes[i]*(ifx i==5 then 8 else 1);}
+    // The lattice formats, from their structs: IQ2_XXS, IQ2_XS, IQ3_XXS, IQ3_S, IQ2_S.
+    lattice:=[5]int.[16,17,18,21,22];lsizes:=[5]int.[66,74,98,110,82];
+    for i:0..<5 {p=kq_plan(lattice[i],1,256);#assert p.status==QzStatus.ok && p.block_bytes==lsizes[i] && p.bytes==lsizes[i] && p.blocks==1;}
     #assert kq_plan(KQ_Q4_K,1,1048576).status==QzStatus.ok && kq_plan(KQ_Q4_K,4096,256).status==QzStatus.ok;
     #assert kq_plan(KQ_Q4_K,4097,256).status==QzStatus.limit && kq_plan(KQ_IQ4_NL,32768,32).status==QzStatus.ok && kq_plan(KQ_IQ4_NL,32769,32).status==QzStatus.limit;
     #assert kq_plan(KQ_Q6_K,1,128).status==QzStatus.partial && kq_plan(KQ_IQ4_XS,1,32).status==QzStatus.partial && kq_plan(KQ_IQ4_NL,1,48).status==QzStatus.partial;
-    for kind:[14]int.[-1,0,2,8,9,15,16,17,18,19,21,22,24,44] {#assert kq_plan(kind,1,256).status==QzStatus.kind;}
+    for kind:[10]int.[-1,0,2,8,9,15,19,24,29,44] {#assert kq_plan(kind,1,256).status==QzStatus.kind;}
     #assert kq_plan(KQ_Q2_K,1,1).status==QzStatus.partial && kq_plan(KQ_IQ4_NL,1,1).status==QzStatus.partial;
     for bad:[2]int.[0,-256] {#assert kq_plan(KQ_Q2_K,bad,256).status==QzStatus.shape && kq_plan(KQ_Q2_K,1,bad).status==QzStatus.shape;}
 }
@@ -92,6 +103,36 @@ KQ_IQ4 :: [16]int.[-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113];
     #assert y[0]==113 && y[16]==1 && y[32]==4064;
 }
 // book:end hand-tests
+// book:begin grid-tests
+#test "IQ2_XXS and IQ3_S by hand: grid entries, sign masks and 4-bit scales" {
+    // IQ2_XXS, d = 1. Sub-block 0: index bytes 1, 0, 0, 0; then 0x83 0x00 0x00 0x30.
+    b:[66]u8;b[0]=0x00;b[1]=0x3c;b[2]=1;b[6]=0x83;b[9]=0x30;
+    y:[256]f32;
+    #assert kq_decode(KQ_IQ2_XXS,1,256,b[..],y[..]).status==QzStatus.ok;
+    // Scale 3: (0.5 + 3) / 4 = 7/8. Group 0: entry 1 = 43, 8, ..., 8; signs index 3 -> 0x03.
+    #assert y[0]==-37.625 && y[1]==-7 && y[2]==7 && y[7]==7;
+    // Group 1: entry 0 = eight 8s; signs index 1 -> 0x81, the parity bit flips element 15.
+    #assert y[8]==-7 && y[9]==7 && y[14]==7 && y[15]==-7;
+    // Sub-block 1 is all zero bytes: scale 0, (0.5 + 0) / 4 times 8.
+    #assert y[32]==1;
+    // IQ3_S, d = 0.5. Index byte 1 with qh bit 0 -> entry 257 = 5, 7, 9, 5; index 0 -> 1, 1, 1, 1.
+    c:[110]u8;c[0]=0x00;c[1]=0x38;c[2]=0x01;c[66]=0x01;c[74]=0x92;c[106]=0x21;
+    #assert kq_decode(KQ_IQ3_S,1,256,c[..],y[..]).status==QzStatus.ok;
+    // Scale nibble 1: 0.5 (1 + 2) = 1.5. Sign byte 0x92 flips elements 1, 4 and 7.
+    #assert y[0]==7.5 && y[1]==-10.5 && y[2]==13.5 && y[3]==7.5 && y[4]==-1.5 && y[5]==1.5 && y[7]==-1.5;
+    // Sub-block 1 takes the high nibble, 2: 0.5 (1 + 4) = 2.5 times entry 0.
+    #assert y[32]==2.5;
+}
+// book:end grid-tests
+#test "ggml's tables: the SHA-256 recorded at extraction, and the sign rule they follow" {
+    #assert kq_tables_ok();
+    // ksigns_iq2xs: seven sign bits, and an eighth that makes the count of minus signs even.
+    for i:0..<128 {
+        ones:=0;for j:0..<7 {ones+=(i>>j)&1;}
+        #assert cast(int)KQ_KSIGNS[i]==(i|((ones&1)<<7));
+    }
+    for j:0..<8 {#assert cast(int)KQ_KMASK[j]==1<<j;}
+}
 #test "every format matches the independent oracle's vectors bit for bit" {
     y:[512]f32;
     {a:=KQV_Q2K_BYTES;c:=KQV_Q2K_BITS;#assert kq_vectors(KQV_Q2K_KIND,a[..],c[..],y[..]);}
@@ -101,6 +142,7 @@ KQ_IQ4 :: [16]int.[-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113];
     {a:=KQV_Q6K_BYTES;c:=KQV_Q6K_BITS;#assert kq_vectors(KQV_Q6K_KIND,a[..],c[..],y[..]);}
     {a:=KQV_IQ4NL_BYTES;c:=KQV_IQ4NL_BITS;#assert kq_vectors(KQV_IQ4NL_KIND,a[..],c[..],y[..]);}
     {a:=KQV_IQ4XS_BYTES;c:=KQV_IQ4XS_BITS;#assert kq_vectors(KQV_IQ4XS_KIND,a[..],c[..],y[..]);}
+    for format:7..<12 {#assert kq_oracle(format,y[..]);}
 }
 #test "decoding refuses wrong types, partial rows, truncated blocks and bad scales, leaving the output alone" {
     y:[512]f32;for i:0..<512 {y[i]=-7;}
@@ -116,9 +158,11 @@ KQ_IQ4 :: [16]int.[-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113];
             #assert kq_decode(KQ_Q2_K,2,256,c[..],y[..]).status==QzStatus.scale;
         }
     }
+    #assert kq_decode(KQ_IQ2_S,1,256,bytes[0..<81],y[..]).status==QzStatus.storage && kq_decode(KQ_IQ3_S,1,256,bytes[0..<111],y[..]).status==QzStatus.storage;
+    #assert kq_decode(19,1,256,bytes[0..<50],y[..]).status==QzStatus.kind && kq_decode(KQ_IQ2_XXS,1,32,bytes[0..<66],y[..]).status==QzStatus.partial;
     for i:0..<512 {#assert y[i]==-7;}
-    kinds:=[7]int.[10,11,12,13,14,20,23];mins:=[7]int.[82,108,2,2,208,0,0];ds:=[7]int.[80,108,0,0,208,0,0];
-    for i:0..<7 {
+    kinds:=[12]int.[10,11,12,13,14,20,23,16,17,22,18,21];mins:=[12]int.[82,108,2,2,208,0,0,0,0,0,0,0];ds:=[12]int.[80,108,0,0,208,0,0,0,0,0,0,0];
+    for i:0..<12 {
         kind:=kinds[i];n:=PG_WIDTHS[kind];b:[210]u8;at:=mins[i];d:=ds[i];
         b[at+1]=0x7c;#assert kq_decode(kind,1,PG_BLOCKS[kind],b[0..<n],y[..]).status==QzStatus.scale;
         b[at+1]=0x7b;#assert kq_decode(kind,1,PG_BLOCKS[kind],b[0..<n],y[..]).status==QzStatus.ok;
@@ -141,6 +185,18 @@ KQ_IQ4 :: [16]int.[-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113];
     for i:0..<512 {worst=qz_larger(worst,abs(f64(x[i])-f64(y[i])));amax=qz_larger(amax,abs(f64(x[i])));}
     limits:=[7]f64.[1.0/3,1.0/4,1.0/15,1.0/31,1.0/32,14.0/127,14.0/127];
     #assert worst<=amax*limits[format]*(1+1.0/16) && worst>0;
+}
+#forall "a lattice block decodes to exactly the grid points the reference quantizer chose" seed:0..<1,spread:0..<3,format:0..<5 #steps 400000000 {
+    kinds:=[5]int.[16,17,22,18,21];kind:=kinds[format];
+    x:[512]f32;b:[220]u8;r:[256]f32;y:[256]f32;
+    qz_fill(x[..],seed+3*format,spread);
+    size:=kq_plan(kind,1,256).block_bytes;
+    for blk:0..<2 {
+        c:=b[blk*size..<(blk+1)*size];
+        kq_lattice_block(kind,x[..],256*blk,c,r[..]);
+        #assert kq_decode(kind,1,256,c,y[..]).status==QzStatus.ok;
+        for i:0..<256 {#assert f32_bits(y[i])==f32_bits(r[i]);}
+    }
 }
 #test "a tensor read by chapter 49 decodes through one entry for every format" {
     bytes:=PG_OWNED;m:[15]PgMeta;ms:[15]PgMeta;t:[2]PgTensor;ts:[2]PgTensor;
@@ -170,7 +226,7 @@ KQ_IQ4 :: [16]int.[-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113];
 }
 #test "the stand-in model: the declared bound promotes Q8_0, Q6_K and Q5_K and refuses every 4-bit and smaller format" #steps 400000000 {
     cards:[KQ_PROFILES]QzCard;
-    for i:0..<KQ_PROFILES {cards[i]=kq_standin_card(i);#assert cards[i].status==QzStatus.ok && cards[i].items==KQ_ITEMS;}
+    for i:0..<9 {cards[i]=kq_standin_card(i);#assert cards[i].status==QzStatus.ok && cards[i].items==KQ_ITEMS;}
     #assert cards[2].bytes==2688 && cards[3].bytes==3520 && cards[4].bytes==4608 && cards[5].bytes==5632 && cards[6].bytes==6720;
     #assert cards[7].bytes==4608 && cards[8].bytes==4352 && cards[0].bytes==8704 && cards[1].bytes==4608;
     #assert cards[0].promoted && cards[5].promoted && cards[6].promoted;
@@ -179,6 +235,19 @@ KQ_IQ4 :: [16]int.[-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113];
     #assert cards[8].kl<cards[4].kl && cards[4].kl<cards[1].kl;
     // More bits, less loss, through the K-quant ladder.
     #assert cards[2].kl>cards[3].kl && cards[3].kl>cards[4].kl && cards[4].kl>cards[5].kl && cards[5].kl>cards[6].kl;
+}
+#test "the stand-in model: no lattice format is promoted; IQ3_S beats Q3_K at the same size, IQ2_XS beats Q2_K in fewer bytes" #steps 900000000 {
+    cards:[KQ_PROFILES]QzCard;errors:[KQ_PROFILES]f64;
+    for i:[7]int.[2,3,9,10,11,12,13] {
+        cards[i]=kq_standin_measure(i,errors[i..<i+1]);
+        #assert cards[i].status==QzStatus.ok && cards[i].items==KQ_ITEMS && !cards[i].promoted;
+    }
+    #assert cards[9].bytes==2112 && cards[10].bytes==2368 && cards[11].bytes==2624 && cards[12].bytes==3136 && cards[13].bytes==3520;
+    // More bits, less weight error, through the lattice ladder.
+    #assert errors[9]>errors[10] && errors[10]>errors[11] && errors[11]>errors[12] && errors[12]>errors[13];
+    // IQ3_S and Q3_K are both 110 bytes a block; IQ2_XS is 74 to Q2_K's 84.
+    #assert errors[13]<errors[3] && cards[13].kl<cards[3].kl && cards[13].bytes==cards[3].bytes;
+    #assert errors[10]<errors[2] && cards[10].kl<cards[2].kl && cards[10].bytes<cards[2].bytes;
 }
 
 // book:begin units
@@ -195,7 +264,8 @@ kq_half_units :: (b:[]u8,at:int)->int {return kq_units(kq_half_bits(b,at));}
 // book:end units
 
 // book:begin plan
-kq_kind :: (kind:int)->bool {return (kind>=KQ_Q2_K && kind<=KQ_Q6_K) || kind==KQ_IQ4_NL || kind==KQ_IQ4_XS;}
+kq_lattice_kind :: (kind:int)->bool {return (kind>=KQ_IQ2_XXS && kind<=KQ_IQ3_XXS) || kind==KQ_IQ3_S || kind==KQ_IQ2_S;}
+kq_kind :: (kind:int)->bool {return (kind>=KQ_Q2_K && kind<=KQ_Q6_K) || kind==KQ_IQ4_NL || kind==KQ_IQ4_XS || kq_lattice_kind(kind);}
 // Chapter 49's table gives each type's values and bytes per block.
 kq_plan :: (kind:int,rows:int,width:int)->QzPlan #export_c {
     if !kq_kind(kind) {return QzPlan.{status=QzStatus.kind};}
@@ -256,6 +326,47 @@ kq_iq4 :: (kind:int,b:[]u8,k:int)->int {
 }
 // book:end iq4
 
+// book:begin lattice
+// Byte j of a grid entry, in memory order on a little-endian host, as ggml
+// reads it, and the sign of position j in an 8-bit sign mask.
+kq_grid_byte :: (entry:u64,j:int)->int {return cast(int)((entry>>cast(u64)(8*j))&255);}
+kq_sign :: (signs:int,j:int)->int {return ifx (signs&cast(int)KQ_KMASK[j])!=0 then -1 else 1;}
+kq_word :: (b:[]u8,at:int)->int {return kq_half_bits(b,at)|(kq_half_bits(b,at+2)<<16);}
+// Element k of a lattice block in 2^-27 units: sub-block ib of 32, group l
+// of 8, position j. ggml's scale is d (0.5 + s) / 4 for IQ2, d (0.5 + s) / 2
+// for IQ3_XXS and d (1 + 2 s) for IQ3_S, so d (2 s + 1) times 1, 2 or 8.
+kq_lattice :: (kind:int,b:[]u8,k:int)->int {
+    ib:=k/32;l:=(k%32)/8;j:=k%8;d:=kq_half_units(b,0);
+    if kind==KQ_IQ2_XXS {
+        // Eight bytes a sub-block: four grid indices, then 4 x 7 sign bits and a 4-bit scale.
+        aux:=kq_word(b,6+8*ib);
+        g:=kq_grid_byte(KQ_IQ2XXS_GRID[kq_byte(b,2+8*ib+l)],j);
+        return kq_sign(cast(int)KQ_KSIGNS[(aux>>(7*l))&127],j)*d*(2*(aux>>28)+1)*g;
+    }
+    if kind==KQ_IQ3_XXS {
+        // Two 4-value grid indices a group; the signs and scale words follow all 64 indices.
+        aux:=kq_word(b,66+4*ib);
+        g:=kq_grid_byte(cast(u64)KQ_IQ3XXS_GRID[kq_byte(b,2+8*ib+2*l+j/4)],j%4);
+        return kq_sign(cast(int)KQ_KSIGNS[(aux>>(7*l))&127],j)*d*(2*(aux>>28)+1)*2*g;
+    }
+    if kind==KQ_IQ3_S {
+        // A ninth index bit from qh for each half group, a full sign byte, two scales a byte.
+        e:=kq_byte(b,2+8*ib+2*l+j/4)|(((kq_byte(b,66+ib)>>(2*l+j/4))&1)<<8);
+        s:=(kq_byte(b,106+ib/2)>>(4*(ib%2)))&15;
+        return kq_sign(kq_byte(b,74+4*ib+l),j)*d*(2*s+1)*8*kq_grid_byte(cast(u64)KQ_IQ3S_GRID[e],j%4);
+    }
+    // IQ2_XS and IQ2_S: a 4-bit scale for each 16 values.
+    if kind==KQ_IQ2_XS {
+        // A 16-bit code a group: a 9-bit grid index and 7 sign bits.
+        q:=kq_half_bits(b,2+8*ib+2*l);s:=(kq_byte(b,66+ib)>>(4*(l/2)))&15;
+        return kq_sign(cast(int)KQ_KSIGNS[q>>9],j)*d*(2*s+1)*kq_grid_byte(KQ_IQ2XS_GRID[q&511],j);
+    }
+    // IQ2_S: a byte of index, two more bits from qh, and a full sign byte.
+    e:=kq_byte(b,2+4*ib+l)|(((kq_byte(b,66+ib)>>(2*l))&3)<<8);s:=(kq_byte(b,74+ib)>>(4*(l/2)))&15;
+    return kq_sign(kq_byte(b,34+4*ib+l),j)*d*(2*s+1)*kq_grid_byte(KQ_IQ2S_GRID[e],j);
+}
+// book:end lattice
+
 // book:begin decode
 kq_decode :: (kind:int,rows:int,width:int,bytes:[]u8,out:[]f32)->QzResult #export_c {
     p:=kq_plan(kind,rows,width);
@@ -269,9 +380,9 @@ kq_decode :: (kind:int,rows:int,width:int,bytes:[]u8,out:[]f32)->QzResult #expor
     }
     for i:0..<p.values {
         b:=bytes[(i/n)*size..<(i/n+1)*size];
-        units:=ifx kind<KQ_IQ4_NL then kq_value(kind,b,i%n) else kq_iq4(kind,b,i%n);
         // |units| < 2^53, so the f64 is exact and f32 rounds once.
-        out[i]=f32(f64(units)/16777216);
+        if kq_lattice_kind(kind) {out[i]=f32(f64(kq_lattice(kind,b,i%n))/134217728);}
+        else {out[i]=f32(f64(ifx kind==KQ_IQ4_NL || kind==KQ_IQ4_XS then kq_iq4(kind,b,i%n) else kq_value(kind,b,i%n))/16777216);}
     }
     return QzResult.{written=p.values};
 }

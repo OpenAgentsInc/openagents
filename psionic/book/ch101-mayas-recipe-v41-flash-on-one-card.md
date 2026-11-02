@@ -11,8 +11,10 @@
 > the layers that keep state, places each layer's experts across a 16 GB GPU,
 > RAM and NVMe disk, replays a routing trace through chapter 191's cache
 > simulator, and refuses this host because the 339.5 GB of files do not fit
-> on its 37.6 GB of free disk. Still to build: the IQ2 and IQ3 codecs and
-> their quality cards, the importance-weighted GPTQ rounding, the requantized
+> on its 37.6 GB of free disk. Still to build: quality cards for the IQ2 and
+> IQ3 expert formats as the recipe writes them (chapter 51 decodes them and
+> cards them only with a plain nearest-grid-point quantizer on its stand-in),
+> the importance-weighted GPTQ rounding, the requantized
 > files themselves, real routing traces, the same-logits check of the prompt
 > skip, and the measured quality card against chapter 100's reference. All
 > of them need the 501 GB of original weights.
@@ -430,12 +432,10 @@ main :: () {
     print("prompt skip: the last state layer is %, % layers after it, % prompt positions need them\n",k.last,k.after,k.tokens);
 
     print("chapter 51's stand-in cards (declared: KL + 2 SE <= 0.01, agreement - 2 SE >= 0.9):\n");
-    for profile:[4]int.[0,6,2,3] {
+    // Q8_0, Q6_K, Q2_K, Q3_K, then the expert formats IQ2_XXS, IQ2_S, IQ3_XXS and IQ3_S.
+    for profile:[8]int.[0,6,2,3,9,11,12,13] {
         c:=kq_standin_card(profile);
         print("  %: agreement % (low %), KL % (high %), promoted %\n",KQ_PROFILE_NAMES[profile],c.agreement,c.agreement_low,c.kl,c.kl_high,c.promoted);
-    }
-    for f:[4]MrFormat.[MrFormat.iq2_xxs,MrFormat.iq2_s,MrFormat.iq3_xxs,MrFormat.iq3_s] {
-        i:=cast(int)f;print("  %: %\n",names[i],kq_plan(MR_GGUF[i],1,256).status);
     }
 
     a:[RC_TOKENS*40*3]int;c:[RC_TOKENS*40*3]int;pa:[RC_TOKENS*40*3]int;pc:[RC_TOKENS*40*3]int;gate:[40*RC_HALF*XS_WIDTH]f32;f:[RC_HALF]f64;
@@ -478,10 +478,10 @@ chapter 51's stand-in cards (declared: KL + 2 SE <= 0.01, agreement - 2 SE >= 0.
   Q6_K: agreement 0.96875 (low 0.9252518409153905), KL 0.002086438434421452 (high 0.0026257607518881446), promoted true
   Q2_K: agreement 0.578125 (low 0.454660307583757), KL 0.4218520012100292 (high 0.5204050973854987), promoted false
   Q3_K: agreement 0.8125 (low 0.714921906275025), KL 0.12899541365876996 (high 0.1644972986082705), promoted false
-  IQ2_XXS: kind
-  IQ2_S: kind
-  IQ3_XXS: kind
-  IQ3_S: kind
+  IQ2_XXS: agreement 0.625 (low 0.5039692704310182), KL 0.44785453935220393 (high 0.5665987293326521), promoted false
+  IQ2_S: agreement 0.5625 (low 0.4384804072938473), KL 0.3590652493940362 (high 0.4584122407740423), promoted false
+  IQ3_XXS: agreement 0.765625 (low 0.6597231116271409), KL 0.1281880105343791 (high 0.15547034577675153), promoted false
+  IQ3_S: agreement 0.703125 (low 0.58890475377177), KL 0.10044651668717734 (high 0.12224005832735196), promoted false
 traces ok ok ok ok: 384 tokens, 256 measured
 this host (RTX 4080): disk: the model and Engram files do not fit on the free disk
   each layer: 18 experts on the GPU, 286 in RAM, 80 from disk (720 of 15360 on the GPU)
@@ -523,9 +523,10 @@ What the run shows:
   does not model.
 - **Chapter 51's stand-in cards.** Q8_0 and Q6_K, the recipe's formats for
   the dense layers and the Engram tables, pass chapter 50's declared bound on
-  the stand-in. Psionic has no IQ2 or IQ3 codec yet (`kind`), so the expert
-  formats have no card. Q2_K and Q3_K, plain rounding at nearby rates, fail
-  the bound on the stand-in (agreement 0.578 and 0.813), which is why Maya's
+  the stand-in. Q2_K and Q3_K, plain rounding at nearby rates, fail it
+  (agreement 0.578 and 0.813), and so do the four expert formats, IQ2_XXS,
+  IQ2_S, IQ3_XXS and IQ3_S, written by chapter 51's nearest-grid-point
+  quantizer (agreement 0.625, 0.563, 0.766 and 0.703). That is why Maya's
   recipe adds per-expert importance and GPTQ error feedback. Whether that
   closes the gap is the quality card this chapter cannot run yet.
 
@@ -597,8 +598,10 @@ transcripts in debug and release.
 Running the recipe needs the original weights (501 GB; this host has 37.6 GB
 free):
 
-- **IQ2_XXS, IQ2_S, IQ3_XXS and IQ3_S codecs** in Psionic, with their lattice
-  tables, and stand-in quality cards for them by chapter 50's method.
+- **The expert formats as the recipe writes them.** Chapter 51 decodes
+  IQ2_XXS, IQ2_S, IQ3_XXS and IQ3_S exactly and cards them on its stand-in,
+  but only with a plain nearest-grid-point quantizer, not llama.cpp's
+  importance-weighted searches.
 - **Importance-weighted GPTQ** from calibration activations of the original
   model, and the requantized files with their digests.
 - **The quality card against chapter 100's reference**: top-1 agreement, mean

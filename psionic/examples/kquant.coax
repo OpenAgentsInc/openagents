@@ -1,5 +1,5 @@
-// Chapter 51: K-quant and IQ4 blocks decoded by hand, against the oracle's
-// vectors and through chapter 49's descriptors; quality cards; refusals.
+// Chapter 51: K-quant, IQ4, IQ3 and IQ2 blocks decoded by hand, against the
+// oracle's vectors and through chapter 49's descriptors; quality cards; refusals.
 #import "Basic";
 #load "../lib/kquant.coax";
 
@@ -21,10 +21,20 @@ main :: () {
     #assert kq_decode(KQ_IQ4_NL,1,32,nl[..],y[..]).status==QzStatus.ok;
     print("IQ4 levels % ... %; IQ4_NL elements 0 and 16: % %\n",KQ_IQ4[0],KQ_IQ4[15],y[0],y[16]);
 
+    // IQ2_XXS: grid entry 1 = 43, 8, ..., 8 at scale (0.5 + 3) / 4; signs index 3 flips elements 0 and 1.
+    x2:[66]u8;x2[1]=0x3c;x2[2]=1;x2[6]=0x83;x2[9]=0x30;
+    #assert kq_decode(KQ_IQ2_XXS,1,256,x2[..],y[..]).status==QzStatus.ok;
+    print("IQ2_XXS elements 0 to 2, 8, 15 and 32: % % % % % %\n",y[0],y[1],y[2],y[8],y[15],y[32]);
+    // IQ3_S: entry 257 = 5, 7, 9, 5 at 0.5 (1 + 2); sign byte 0x92 flips elements 1, 4 and 7.
+    x3:[110]u8;x3[1]=0x38;x3[2]=0x01;x3[66]=0x01;x3[74]=0x92;x3[106]=0x21;
+    #assert kq_decode(KQ_IQ3_S,1,256,x3[..],y[..]).status==QzStatus.ok;
+    print("IQ3_S elements 0 to 7 and 32: % % % % % % % % %\n",y[0],y[1],y[2],y[3],y[4],y[5],y[6],y[7],y[32]);
+    print("ggml's sign and grid tables match the SHA-256 recorded at extraction: %\n",kq_tables_ok());
+
     // The independent oracle's blocks, compared bit for bit.
-    names:=[7]string.["Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ4_NL","IQ4_XS"];
-    kinds:=[7]int.[10,11,12,13,14,20,23];
-    for i:0..<7 {
+    names:=[12]string.["Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ4_NL","IQ4_XS","IQ2_XXS","IQ2_XS","IQ2_S","IQ3_XXS","IQ3_S"];
+    kinds:=[12]int.[10,11,12,13,14,20,23,16,17,22,18,21];
+    for i:0..<12 {
         p:=kq_plan(kinds[i],1,256);
         print("% (GGUF type %): % bytes per 256 values (% bits each), oracle vectors match: %\n",
             names[i],kinds[i],p.bytes,f64(p.bytes*8)/256,kq_oracle(i,y[..]));
@@ -42,17 +52,19 @@ main :: () {
     // Quality cards: the stand-in's 32 x 256 first layer in each format.
     print("declared: KL + 2 SE <= %, agreement - 2 SE >= %; the f32 layer: % bytes\n",qz_declared().kl,qz_declared().agreement,KQ_HIDDEN*KQ_IN*4);
     for i:0..<KQ_PROFILES {
-        c:=kq_standin_card(i);
-        print("%: % bytes, agreement % (low %), KL % (high %), perplexity % -> %, promoted %\n",
-            KQ_PROFILE_NAMES[i],c.bytes,c.agreement,c.agreement_low,c.kl,c.kl_high,c.perplexity_original,c.perplexity_quantized,c.promoted);
+        error:[1]f64;c:=kq_standin_measure(i,error[..]);
+        print("%: % bytes, weight error %, agreement % (low %), KL % (high %), perplexity % -> %, promoted %\n",
+            KQ_PROFILE_NAMES[i],c.bytes,error[0],c.agreement,c.agreement_low,c.kl,c.kl_high,c.perplexity_original,c.perplexity_quantized,c.promoted);
     }
 
     // Refusals, each typed; none writes its output.
     y[0]=-7;
-    print("GGUF type 16 (IQ2_XXS): %\n",kq_decode(16,1,256,q2[..],y[..]).status);
+    print("GGUF type 19 (IQ1_S): %\n",kq_decode(19,1,256,q2[0..<50],y[..]).status);
     print("a Q2_K block one byte short: %\n",kq_decode(KQ_Q2_K,1,256,q2[0..<83],y[..]).status);
     print("a Q4_K row of 128 values: %\n",kq_decode(KQ_Q4_K,1,128,q4[..],y[..]).status);
     q2[82]=0x00;q2[83]=0x7e;print("a Q2_K block whose dmin is NaN: %\n",kq_decode(KQ_Q2_K,1,256,q2[..],y[..]).status);
+    print("an IQ2_XXS block one byte short: %\n",kq_decode(KQ_IQ2_XXS,1,256,x2[0..<65],y[..]).status);
+    x3[1]=0x7c;print("an IQ3_S block whose d is infinite: %\n",kq_decode(KQ_IQ3_S,1,256,x3[..],y[..]).status);
     print("output left unchanged: %\n",y[0]);
 }
 // book:end example
