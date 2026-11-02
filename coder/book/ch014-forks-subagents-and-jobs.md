@@ -9,6 +9,8 @@
 > after turn, until its check passes. A fork of a whole Claude Code
 > conversation resumes the parent's Claude Code session, so the server's
 > cache holds the earlier turns instead of Coder resending them as text.
+> `coder resume` and `/resume` continue a session in the terminal UI, and
+> `coder import claude` brings in a Claude Code session of the folder.
 > Still to come: the same for the psionic engine, and the measured gains
 > chapter 21 asks for.
 
@@ -92,6 +94,38 @@ came from the server's cache instead of being resent.
 The psionic engine (chapter 12) runs on a server we run, so its fork has
 to come from Psionic chapter 176's prefix cache. Psionic's GPUs are off,
 so that isn't built yet.
+
+### Resume and import
+
+`coder resume [ID]` opens the terminal UI on a session (by default, the
+newest one started in this folder). It draws the session's messages,
+replies, tool calls and endings as they were, and the next message
+continues it as a fork of every turn: a new session whose header names the
+parent, on the parent's engine and ceiling. A Claude Code parent continues
+on its own Claude Code session, as above. In the terminal UI, `/resume`
+lists this folder's sessions and `/resume ID` continues one.
+
+Claude Code keeps each session in
+`~/.claude/projects/FOLDER/ID.jsonl`. `coder import claude [ID]` turns one
+of this folder's (by default, the most recently written) into a Coder
+session log: each message typed, each reply, each tool call as a label,
+each result (its first 1,000 bytes), an end line per turn with its time
+and steps, and the Claude Code session ID. It leaves out a subagent's own
+traffic, Claude Code's own notices and command echoes, and any line over
+1 MB. The session's ID comes from its first timestamp, so importing again
+refreshes the same session. A log that holds more than a Coder log keeps
+its latest turns and says how many it left out. `coder resume claude
+[ID]` and `/resume claude` import and then resume.
+
+The importer reads the Claude Code file in place, a byte at a time, so its
+size is not limited by a buffer: a 517 MB log of 1,527 turns imported in
+2.2 seconds, keeping its latest 416.
+
+In a live run on 2026-11-02, a three-turn Claude Code session of 45
+minutes and 139 tool calls was imported, then forked with a 141-byte
+question: "what did I ask you to convert earlier in this conversation, and
+which three commits did you push?" It resumed on the Claude Code session
+and named the task and all three commit hashes in 4 seconds.
 
 ### Background jobs
 
@@ -177,7 +211,9 @@ ran the check itself; the goal was met on turn 2.
 coax test coder/tui/coder.coax    # cs_turns_text: a fork's turns up to a boundary
 python3 coder/tui/smoke.py        # fork carries the turns; a Claude Code fork resumes (--resume, --fork-session),
                                   # replays, and falls back to text without the session file; --detach runs; stop ends it as stopped;
-                                  # a goal met on its second turn, and one capped unmet at two
+                                  # a goal met on its second turn, and one capped unmet at two; import claude keeps a turn,
+                                  # its tool and reply and leaves out subagent, meta and long lines; resume claude shows the
+                                  # turn in the terminal UI and resumes Claude Code's session; /resume lists the folder's sessions
 ```
 
 ## Dependencies
@@ -207,6 +243,7 @@ python3 coder/tui/smoke.py        # fork carries the turns; a Claude Code fork r
 
 ## Sources
 
+- `coder/tui/import.coax` (`ci_import_claude`, `ci_walk`, `ci_line`), `coder/tui/coder.coax` (`cd_fork_setup`, `cd_resume_cmd`, `cd_show_past`)
 - `coder/tui/session.coax` (`cs_turns_text`, `cs_sibling`), `coder/tui/coder.coax`
   (`cd_detach`, `cd_cmd_stop`, `cd_report_job`, the fork in `tool_main`),
   `coder/tui/mcp.coax` (`cd_claude_tool_call`), `coder/tui/smoke.py`.

@@ -21,6 +21,7 @@ takeover and no widget toolkit. The rendering library is
 coder/tui/coder.sh                       # Claude Code by default
 coder/tui/coder.sh --engine microcoder   # or codex, psionic, echo (offline)
 coder/tui/coder.sh --theme light         # for a light background; or CODER_THEME=light, or NO_COLOR=1 for none
+coder/tui/coder.sh resume                # this folder's newest session, to continue it; resume claude for Claude Code's
 python3 coder/tui/smoke.py               # the offline smoke, in a pseudo-terminal and then without one
 ```
 
@@ -86,6 +87,13 @@ backgrounds for removed and added lines.
 **Search.** Coder keeps the last 256 KB of committed transcript text.
 `/find TEXT` lists the lines that hold it, ignoring case, the last 20 of
 them, with a count. It runs without a mouse and never leaves the composer.
+
+**Resume.** `coder resume [ID]` starts the UI on an earlier session, drawn
+as it was (messages, Markdown replies, tool rows, endings), and the next
+message continues it. `/resume` lists this folder's sessions; `/resume ID`
+continues one, and `/resume claude` this folder's newest Claude Code
+session, imported first. [Chapter 14](ch014-forks-subagents-and-jobs.md#resume-and-import)
+covers what a resume carries.
 
 **Status.** While a turn runs, the row above the composer shows a spinner,
 the step number, the time so far, how to stop, and the step running now:

@@ -42,6 +42,7 @@
 #load "acp.coax";
 #load "remote.coax";
 #load "daemon.coax";
+#load "import.coax";
 #load "mcp_http.coax";
 #load "memory.coax";
 #load "gate.coax";
@@ -78,6 +79,7 @@ App :: struct {
   effort_b: [16] u8; neffort: int; // the effort for the engine: --effort, or System One's (chapter 13); none leaves the engine's
   auto_engine: bool;                  // --engine auto: System One picks the engine at each conversation's first message
   pre: string;                   // a fork's earlier turns, sent ahead of its first message
+  pre_b: [32768] u8;             // where pre's text is kept
   vt: [1] Vt;                    // reads a tool's output as a terminal would show it (chapter 37)
   pl: [] PlRegistry;             // plugins: their commands and hooks (chapter 15)
   vt_out: [131072] u8;
@@ -799,6 +801,10 @@ cd_tool_row :: (a: [] App, label: string) {
 cd_result_line :: (a: [] App, text_raw: string, bad: bool) {
   text := cd_screen(a, text_raw);
   cs_result(a, text, bad);
+  cd_result_show(a, text, bad);
+}
+
+cd_result_show :: (a: [] App, text: string, bad: bool) {
   lines := 0; for c: text { if c == 10 { lines += 1; } }
   if text.count > 0 && text[text.count - 1] == 10 { lines -= 1; }
   e := 0; while e < text.count && text[e] != 10 { e += 1; }
@@ -929,7 +935,7 @@ cd_poll :: (a: [] App) -> bool {
 
 // ---------------------------------------------------------------- input
 
-HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine), echo (offline) or auto (System One picks at the first message)\n/find TEXT the transcript's lines that hold TEXT\n/theme T   dark, light (for a light background) or none (no colors)\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
+HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine), echo (offline) or auto (System One picks at the first message)\n/find TEXT the transcript's lines that hold TEXT\n/resume    this folder's sessions; /resume ID continues one, /resume claude this folder's newest Claude Code session\n/theme T   dark, light (for a light background) or none (no colors)\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
 
 cd_submit :: (a: [] App) {
   text := tui_ed_text(a[0].ed[..]);
@@ -953,6 +959,8 @@ cd_submit :: (a: [] App) {
       cd_commit(a, TUI_FAINT, "  The conversation is cleared; the next message starts a new session.");
       return;
     }
+    if msg == "/resume" { cd_resume_cmd(a, ""); return; }
+    if rt_has_prefix(msg, "/resume ") { cd_resume_cmd(a, cast(string) msg[8..<msg.count]); return; }
     if msg == "/engine echo" { cd_claude_close(a); cd_codex_close(a); cd_micro_close(a); a[0].engine = ENGINE_ECHO; cd_commit(a, TUI_DIM, "  Engine: echo (offline)."); return; }
     if msg == "/engine claude" { cd_switch(a, ENGINE_CLAUDE); return; }
     if msg == "/engine codex" { cd_switch(a, ENGINE_CODEX); return; }
@@ -992,6 +1000,123 @@ cd_submit :: (a: [] App) {
   else if a[0].log[0].nid == 0 { cs_open(a); cd_hooks(a, "session_start", ""); }
   cs_user(a, msg);
   cd_start(a, msg);
+}
+
+// The newest session started in folder cwd, "" when none.
+cd_latest_here :: (cwd: string, out: [] u8) -> string {
+  ids: [8] [64] u8; nids: [8] int;
+  k := cd_sessions_here(cwd, ids[..], nids[..]);
+  if k == 0 { return ""; }
+  n := cd_cat(out, 0, cast(string) ids[0][0..<nids[0]]);
+  return cast(string) out[0..<n];
+}
+
+// Up to ids.count sessions started in folder cwd, newest first.
+cd_sessions_here :: (cwd: string, ids: [] [64] u8, nids: [] int) -> int {
+  db: [1100] u8; dir := cs_dir(db[..]);
+  if dir.count == 0 { return 0; }
+  l_b: [1] FsList; l := l_b[..];
+  n := fs_list(dir, l);
+  fb: [4194304] u8; s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  k := 0; i := n - 1;
+  while i >= 0 && k < ids.count {
+    name := fs_entry(l, i);
+    i -= 1;
+    if name.count < 7 || name.count > 70 || cast(string) name[name.count - 6..<name.count] != ".jsonl" { continue; }
+    pb: [1400] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, name);
+    m := fs_read(cast(string) pb[0..<pn], fb[..]);
+    if m < 0 { continue; }
+    cs_read(cast(string) fb[0..<m], s[..], ar[..]);
+    if !s[0].ok || s[0].turns == 0 || cast(string) s[0].cwd[0..<s[0].ncwd] != cwd { continue; }
+    nids[k] = cd_cat(ids[k][..], 0, cast(string) name[0..<name.count - 6]);
+    k += 1;
+  }
+  return k;
+}
+
+// A session's earlier turns on screen, drawn as they were: messages, replies, tool calls and endings.
+cd_show_past :: (a: [] App, text: string) {
+  ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    ar[0].at = 0; ar[0].full = false;
+    kind := cl_str(ar[..], line, "kind");
+    if kind == "user" { cd_commit_prefixed(a, TUI_BRIGHT, "› ", "  ", cl_str(ar[..], line, "text")); }
+    else if kind == "reply" {
+      a[0].nrep = 0; a[0].rep_done = 0; a[0].rep_lines = 0; a[0].md[0] = TuiMd.{};
+      cd_reply_add(a, cl_str(ar[..], line, "text"));
+      cd_reply_commit(a, true);
+      a[0].nrep = 0; a[0].rep_done = 0; a[0].rep_lines = 0;
+    }
+    else if kind == "tool" { cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", cl_str(ar[..], line, "label")); }
+    else if kind == "result" { bad := cl_bool(line, "error"); cd_result_show(a, cl_str(ar[..], line, "text"), bad.ok && bad.value); }
+    else if kind == "end" {
+      sb: [256] u8; tb: [32] u8;
+      ending := cl_str(ar[..], line, "ending"); ms := cl_int(line, "ms"); st := cl_int(line, "steps");
+      n := cd_cat(sb[..], 0, "  └ "); n = cd_cat(sb[..], n, ending);
+      n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_seconds_text(ms.value, tb[..]));
+      if st.value > 0 { n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_itoa(st.value, tb[..])); n = cd_cat(sb[..], n, ifx st.value == 1 then " step" else " steps"); }
+      cd_commit(a, ifx ending == "finished" then TUI_FAINT else TUI_RED, cast(string) sb[0..<n]);
+    }
+  }
+}
+
+// After a resume: which session continues and how.
+cd_resumed_note :: (a: [] App, turns: int) {
+  nb: [400] u8; tb: [16] u8;
+  n := cd_cat(nb[..], 0, "  Resumed "); n = cd_cat(nb[..], n, cast(string) a[0].log[0].parent[0..<a[0].log[0].nparent]);
+  n = cd_cat(nb[..], n, " ("); n = cd_cat(nb[..], n, cd_itoa(turns, tb[..])); n = cd_cat(nb[..], n, ifx turns == 1 then " turn" else " turns");
+  n = cd_cat(nb[..], n, ifx a[0].nresume > 0 then ", on its Claude Code session). " else "). ");
+  n = cd_cat(nb[..], n, "Your next message continues it as a new session.");
+  cd_commit(a, TUI_FAINT, cast(string) nb[0..<n]);
+}
+
+// /resume [ID | claude [ID]]: lists this folder's sessions, or continues one.
+cd_resume_cmd :: (a: [] App, arg_in: string) {
+  if a[0].running { cd_commit(a, TUI_RED, "  A turn is running; /resume once it ends."); return; }
+  arg := arg_in;
+  if arg.count == 0 {
+    ids: [8] [64] u8; nids: [8] int;
+    k := cd_sessions_here(a[0].cwd, ids[..], nids[..]);
+    fb: [4194304] u8; s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    for i: 0..<k {
+      ib: [128] u8; t := cd_session_file(cast(string) ids[i][0..<nids[i]], fb[..], ib[..]);
+      cs_read(t, s[..], ar[..]);
+      ob: [400] u8; tb: [16] u8;
+      n := cd_cat(ob[..], 0, "  "); n = cd_cat(ob[..], n, cast(string) ids[i][0..<nids[i]]);
+      n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cast(string) s[0].engine[0..<s[0].nengine]);
+      n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cd_itoa(s[0].turns, tb[..])); n = cd_cat(ob[..], n, ifx s[0].turns == 1 then " turn · " else " turns · ");
+      task := cast(string) s[0].task[0..<s[0].ntask];
+      e := 0; while e < task.count && task[e] != 10 { e += 1; }
+      n = cd_cat(ob[..], n, cast(string) task[0..<tui_fit(cast(string) task[0..<e], 60)]);
+      cd_commit(a, TUI_DIM, cast(string) ob[0..<n]);
+    }
+    lb: [128] u8; latest := ci_claude_latest(a[0].cwd, lb[..]);
+    if k == 0 && latest.count == 0 { cd_commit(a, TUI_FAINT, "  No sessions in this folder yet."); return; }
+    cd_commit(a, TUI_FAINT, ifx k > 0 then "  /resume ID continues one." else "  No Coder sessions in this folder yet.");
+    if latest.count > 0 { hb: [300] u8; hn := cd_cat(hb[..], 0, "  /resume claude continues this folder's newest Claude Code session, "); hn = cd_cat(hb[..], hn, latest); hn = cd_cat(hb[..], hn, "."); cd_commit(a, TUI_FAINT, cast(string) hb[0..<hn]); }
+    return;
+  }
+  rb: [64] u8;
+  if arg == "claude" || rt_has_prefix(arg, "claude ") {
+    wb: [200] u8; wn: [1] int; rn: [1] int;
+    t := ci_import_claude(a[0].cwd, ifx arg.count > 7 then cast(string) arg[7..<arg.count] else "", rb[..], rn[..], wb[..], wn[..]);
+    if t < 0 { eb: [260] u8; en := cd_cat(eb[..], 0, "  "); en = cd_cat(eb[..], en, cast(string) wb[0..<wn[0]]); en = cd_cat(eb[..], en, "."); cd_commit(a, TUI_RED, cast(string) eb[0..<en]); return; }
+    if wn[0] > 0 { eb: [260] u8; en := cd_cat(eb[..], 0, "  "); en = cd_cat(eb[..], en, cast(string) wb[0..<wn[0]]); en = cd_cat(eb[..], en, "."); cd_commit(a, TUI_FAINT, cast(string) eb[0..<en]); }
+    arg = cast(string) rb[0..<rn[0]];
+  }
+  fb: [4194304] u8; ib: [128] u8;
+  parent := cd_session_file(arg, fb[..], ib[..]);
+  if parent.count == 0 { eb: [200] u8; en := cd_cat(eb[..], 0, "  No session "); en = cd_cat(eb[..], en, cast(string) arg[0..<tui_fit(arg, 80)]); en = cd_cat(eb[..], en, ". /resume lists this folder's."); cd_commit(a, TUI_RED, cast(string) eb[0..<en]); return; }
+  k := 0; while k < ib.count && ib[k] != 0 { k += 1; }
+  cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
+  a[0].log[0].nid = 0; a[0].log[0].on = false;     // the next message opens the new session's file
+  kept := cd_fork_setup(a, parent, cast(string) ib[0..<k], 0, "");
+  cd_show_past(a, parent);
+  cd_resumed_note(a, kept);
 }
 
 cd_plugins_show :: (a: [] App) {
@@ -1225,7 +1350,7 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n                 [--context FILE]                 related objects (an issue, its comments) ahead of the first message\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--credentials A,B] [--once]   attach this machine: start queued jobs within its grant\n       coder credential add NAME VAR < file | ls | rm NAME   a secret kept here; jobs name it, never see it in their logs\n       coder queue \"TASK\" [--engine E] [--cwd DIR] [--credential A,B]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue|pr|mail|doc] [--deliver] [--to ADDR [--send]] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder apple-fm [\"PROMPT\"]                  whether Apple's on-device model answers here (the status bar's recaps), and its answer to PROMPT\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E] [--allow E] [--ceiling E] [--root D] [--ask]   Coder as an agent for editors (Agent Client Protocol on stdio); asks go to the editor\n       coder remember KEY \"TEXT\" [--project] [--days N]   a fact Coder keeps across sessions (yours, or with --project this folder's)\n                 [--session ID [--at LINE]]       where it was said: that line of the session's log (the last one typed), checked on every read\n       coder revise KEY \"TEXT\" [--reason correction|update|resolve]   a new version that supersedes the old\n       coder forget KEY [--project]              the fact's text is hidden in every earlier event\n       coder recall [\"QUERY\"] [--top N] [--json]   the facts, ranked by embedding similarity to QUERY\n       coder consent [grant ENGINE|all --classes user,project [--days N] | revoke N] [--json]   which engines may receive remembered facts\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --no-memory (no remembered facts in the first message)  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n                 [--context FILE]                 related objects (an issue, its comments) ahead of the first message\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder resume [ID]                         the terminal UI on session ID (this folder's newest by default), to continue it\n       coder resume claude [ID]                  the same for a Claude Code session of this folder (its newest by default), imported first\n       coder import claude [ID]                  a Claude Code session of this folder as a Coder session; prints its ID\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--credentials A,B] [--once]   attach this machine: start queued jobs within its grant\n       coder credential add NAME VAR < file | ls | rm NAME   a secret kept here; jobs name it, never see it in their logs\n       coder queue \"TASK\" [--engine E] [--cwd DIR] [--credential A,B]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue|pr|mail|doc] [--deliver] [--to ADDR [--send]] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder apple-fm [\"PROMPT\"]                  whether Apple's on-device model answers here (the status bar's recaps), and its answer to PROMPT\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E] [--allow E] [--ceiling E] [--root D] [--ask]   Coder as an agent for editors (Agent Client Protocol on stdio); asks go to the editor\n       coder remember KEY \"TEXT\" [--project] [--days N]   a fact Coder keeps across sessions (yours, or with --project this folder's)\n                 [--session ID [--at LINE]]       where it was said: that line of the session's log (the last one typed), checked on every read\n       coder revise KEY \"TEXT\" [--reason correction|update|resolve]   a new version that supersedes the old\n       coder forget KEY [--project]              the fact's text is hidden in every earlier event\n       coder recall [\"QUERY\"] [--top N] [--json]   the facts, ranked by embedding similarity to QUERY\n       coder consent [grant ENGINE|all --classes user,project [--days N] | revoke N] [--json]   which engines may receive remembered facts\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --no-memory (no remembered facts in the first message)  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
 
 // Flags that take a value: their value is not a positional argument.
 CD_VALUE_FLAGS :: [41] string.["--to", "--goal", "--goal-turns", "--http", "--name", "--engines", "--remote-repo", "--profile", "--options", "--state", "--theme", "--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop", "--days", "--reason", "--top", "--classes", "--credentials", "--credential", "--context"];
@@ -1352,6 +1477,27 @@ cd_cmd_ls :: (json: bool) -> int {
     shown += 1;
   }
   if json { cd_outln("]"); }
+  return 0;
+}
+
+// coder import claude [ID]: a Claude Code session of this folder as a Coder session.
+cd_cmd_import :: (args: [] Args, json: bool) -> int {
+  if cd_positional(args, 1) != "claude" { tool_errln("coder import: coder import claude [ID]"); return 2; }
+  cb: [1024] u8; cwd := args_value(args, "--cwd", cl_getenv("PWD", cb[..]));
+  rb: [64] u8; rn: [1] int; wb: [200] u8; wn: [1] int;
+  t := ci_import_claude(cwd, cd_positional(args, 2), rb[..], rn[..], wb[..], wn[..]);
+  if t < 0 { tool_err("coder import: "); tool_errln(cast(string) wb[0..<wn[0]]); return 6; }
+  if wn[0] > 0 { tool_err("coder import: "); tool_errln(cast(string) wb[0..<wn[0]]); }
+  id := cast(string) rb[0..<rn[0]];
+  ob: [300] u8; tb: [16] u8;
+  if json {
+    n := json_raw(ob[..], 0, "{\"id\":"); n = json_write_string(ob[..], n, id);
+    n = json_raw(ob[..], n, ",\"turns\":"); n = json_write_int(ob[..], n, t); n = json_raw(ob[..], n, "}");
+    cd_outln(cast(string) ob[0..<n]); return 0;
+  }
+  n := cd_cat(ob[..], 0, id); n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cd_itoa(t, tb[..])); n = cd_cat(ob[..], n, ifx t == 1 then " turn" else " turns");
+  n = cd_cat(ob[..], n, " · coder resume "); n = cd_cat(ob[..], n, id);
+  cd_outln(cast(string) ob[0..<n]);
   return 0;
 }
 
@@ -1697,6 +1843,44 @@ cd_claude_has_session :: (cwd: string, id: string) -> bool {
   return fs_exists(cast(string) pb[0..<n]);
 }
 
+// A new session that carries parent's first `at` turns (all when 0): coder fork,
+// coder resume and /resume (chapter 14). pid is the parent's full ID; want the
+// --engine asked for, "" for the parent's. Returns the parent's turns kept;
+// more than that asked for changes nothing.
+cd_fork_setup :: (a: [] App, parent: string, pid: string, at: int, want: string) -> int {
+  far: [262144] u8; fa: [1] ClArena; fa[0] = ClArena.{buf = far[..]};
+  pn: [1] int;
+  kept := cs_turns_text(parent, at, fa[..], a[0].pre_b[..], pn[..]);
+  if at > kept { return kept; }
+  a[0].pre = cast(string) a[0].pre_b[0..<pn[0]];
+  a[0].nresume = 0;
+  // the whole conversation of a Claude Code parent: resume its session on the server, whose cache holds the prefix (chapter 14)
+  rsid := cd_engine_session_of(parent, "claude", fa[..]);
+  if (at == 0 || at == kept) && rsid.count > 0 && rsid.count < 128 && (want.count == 0 || want == "claude") && cd_claude_has_session(a[0].cwd, rsid) {
+    a[0].nresume = cd_cat(a[0].resume[..], 0, rsid);
+    a[0].pre = "";
+  }
+  a[0].log[0].nparent = cd_cat(a[0].log[0].parent[..], 0, pid);
+  a[0].log[0].at = kept;
+  // never wider than the parent: its ceiling holds unless --ceiling is lower (chapter 20's containment)
+  hl := parent; nl := 0; while nl < hl.count && hl[nl] != 10 { nl += 1; }
+  har: [8192] u8; ha: [1] ClArena; ha[0] = ClArena.{buf = har[..]};
+  pc := cd_effect_index(cl_str(ha[..], cast(string) hl[0..<nl], "ceiling"));
+  if pc >= 0 && (!a[0].pol[0].on || pc < a[0].pol[0].ceiling) {
+    a[0].pol[0].on = true; a[0].pol[0].ceiling = pc;
+    if a[0].pol[0].allow > pc { a[0].pol[0].allow = pc; }
+  }
+  // the parent's engine unless --engine
+  if want.count == 0 {
+    s: [1] CsSummary; sar: [65536] u8; sa: [1] ClArena; sa[0] = ClArena.{buf = sar[..]};
+    cs_read(parent, s[..], sa[..]);
+    pe := cast(string) s[0].engine[0..<s[0].nengine];
+    a[0].engine = ifx pe == "codex" then ENGINE_CODEX else ifx pe == "microcoder" then ENGINE_MICRO else ifx pe == "psionic" then ENGINE_PSIONIC else ifx pe == "echo" then ENGINE_ECHO else ENGINE_CLAUDE;
+    a[0].model_engine = a[0].engine;
+  }
+  return kept;
+}
+
 // coder replay ID: rebuilds every request the session sent from its log and
 // compares each one's bytes, by SHA-256 and length, with what was logged.
 cd_cmd_replay :: (id: string, json: bool) -> int {
@@ -1963,6 +2147,7 @@ tool_main :: () -> int #export_c {
     if rv >= 0 { return rv; }
   }
   if verb == "ls" { return cd_cmd_ls(json); }
+  if verb == "import" { return cd_cmd_import(args, json); }
   if verb == "status" { return cd_cmd_status(cd_positional(args, 1), json); }
   if verb == "log" { return cd_cmd_log(cd_positional(args, 1), json); }
   if verb == "route" { return cd_cmd_route(cd_positional(args, 1), json); }
@@ -2013,7 +2198,7 @@ tool_main :: () -> int #export_c {
   if pwhy.count > 0 { tool_err("coder: "); tool_errln(pwhy); return 2; }
   if verb == "plugins" { return cd_cmd_plugins(pl_b[..], json); }
   if (verb == "run" || verb == "fork") && args_has(args, "--detach") { return cd_detach(args, json); }
-  if verb.count > 0 && verb != "run" && verb != "fork" { tool_err("coder: unknown verb "); tool_errln(verb); tool_errln(USAGE); return 2; }
+  if verb.count > 0 && verb != "run" && verb != "fork" && verb != "resume" { tool_err("coder: unknown verb "); tool_errln(verb); tool_errln(USAGE); return 2; }
   a_b: [1] App; a := a_b[..];
   q: [1] ClQuery; p: [1] ClProcess;
   dft: [1] DfTable; a[0].df_table = dft[..];
@@ -2079,45 +2264,33 @@ tool_main :: () -> int #export_c {
   task := args_value(args, "--print", "");
   if verb == "run" { task = cd_positional(args, 1); }
   // fork ID "TASK": the parent's turns ride ahead of the first message (chapter 14)
-  fork_text: [4194304] u8; pre_b: [32768] u8;
-  if verb == "fork" {
-    pid := cd_positional(args, 1); task = cd_positional(args, 2);
-    if task.count == 0 { tool_errln("coder fork: coder fork ID \"TASK\" [--at TURN]"); return 2; }
+  fork_text: [4194304] u8;
+  past := ""; past_turns := 0;
+  if verb == "fork" || verb == "resume" {
+    pid := cd_positional(args, 1);
+    if verb == "fork" { task = cd_positional(args, 2); }
+    if verb == "fork" && task.count == 0 { tool_errln("coder fork: coder fork ID \"TASK\" [--at TURN]"); return 2; }
+    // coder resume: this folder's newest session; coder resume claude [ID]: a Claude Code session, imported first
+    rb: [64] u8;
+    if verb == "resume" && pid == "claude" {
+      wb: [200] u8; wn: [1] int; rn: [1] int;
+      t := ci_import_claude(a[0].cwd, cd_positional(args, 2), rb[..], rn[..], wb[..], wn[..]);
+      if t < 0 { tool_err("coder resume: "); tool_errln(cast(string) wb[0..<wn[0]]); return 6; }
+      if wn[0] > 0 { tool_err("coder resume: "); tool_errln(cast(string) wb[0..<wn[0]]); }
+      pid = cast(string) rb[0..<rn[0]];
+    } else if verb == "resume" && pid.count == 0 {
+      pid = cd_latest_here(a[0].cwd, rb[..]);
+      if pid.count == 0 { tool_errln("coder resume: no sessions in this folder yet; coder resume claude continues a Claude Code one"); return 6; }
+    }
     ib: [128] u8;
     parent := cd_session_file(pid, fork_text[..], ib[..]);
     if parent.count == 0 { tool_err("coder: no session "); tool_errln(pid); return 6; }
     k := 0; while k < ib.count && ib[k] != 0 { k += 1; }
-    at := cd_atoi(args_value(args, "--at", "0"));
-    far: [262144] u8; fa: [1] ClArena; fa[0] = ClArena.{buf = far[..]};
-    pn: [1] int;
-    kept := cs_turns_text(parent, at, fa[..], pre_b[..], pn[..]);
+    at := ifx verb == "fork" then cd_atoi(args_value(args, "--at", "0")) else 0;
+    kept := cd_fork_setup(a, parent, cast(string) ib[0..<k], at, want);
     if at > kept { tool_err("coder fork: the session has "); tb: [16] u8; tool_err(cd_itoa(kept, tb[..])); tool_errln(" turns"); return 2; }
-    a[0].pre = cast(string) pre_b[0..<pn[0]];
-    // the whole conversation of a Claude Code parent: resume its session on the server, whose cache holds the prefix (chapter 14)
-    rsid := cd_engine_session_of(parent, "claude", fa[..]);
-    if (at == 0 || at == kept) && rsid.count > 0 && rsid.count < 128 && (want.count == 0 || want == "claude") && cd_claude_has_session(a[0].cwd, rsid) {
-      a[0].nresume = cd_cat(a[0].resume[..], 0, rsid);
-      a[0].pre = "";
-    }
-    a[0].log[0].nparent = cd_cat(a[0].log[0].parent[..], 0, cast(string) ib[0..<k]);
-    a[0].log[0].at = kept;
-    // never wider than the parent: its ceiling holds unless --ceiling is lower (chapter 20's containment)
-    hl := parent; nl := 0; while nl < hl.count && hl[nl] != 10 { nl += 1; }
-    har: [8192] u8; ha: [1] ClArena; ha[0] = ClArena.{buf = har[..]};
-    pc := cd_effect_index(cl_str(ha[..], cast(string) hl[0..<nl], "ceiling"));
-    if pc >= 0 && (!a[0].pol[0].on || pc < a[0].pol[0].ceiling) {
-      a[0].pol[0].on = true; a[0].pol[0].ceiling = pc;
-      if a[0].pol[0].allow > pc { a[0].pol[0].allow = pc; }
-    }
-    // the parent's engine unless --engine
-    if want.count == 0 {
-      s: [1] CsSummary; sar: [65536] u8; sa: [1] ClArena; sa[0] = ClArena.{buf = sar[..]};
-      cs_read(parent, s[..], sa[..]);
-      pe := cast(string) s[0].engine[0..<s[0].nengine];
-      a[0].engine = ifx pe == "codex" then ENGINE_CODEX else ifx pe == "microcoder" then ENGINE_MICRO else ifx pe == "psionic" then ENGINE_PSIONIC else ifx pe == "echo" then ENGINE_ECHO else ENGINE_CLAUDE;
-      a[0].model_engine = a[0].engine;
-      want = pe;
-    }
+    if want.count == 0 { want = cd_engine_name(a[0].engine); }
+    if verb == "resume" { past = parent; past_turns = kept; }
   }
   sess := args_value(args, "--session", "");
   if sess.count > 0 { a[0].log[0].nwant = cd_cat(a[0].log[0].want[..], 0, sess); }
@@ -2222,6 +2395,7 @@ tool_main :: () -> int #export_c {
   hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, a[0].cwd);
   cd_commit(a, TUI_BRIGHT, cast(string) hb[0..<hn]);
   cd_commit(a, TUI_FAINT, "/help for commands.");
+  if past.count > 0 { cd_show_past(a, past); cd_resumed_note(a, past_turns); }
   cd_recap_open(a);
   cd_draw(a);
   last_draw := 0;

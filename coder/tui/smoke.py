@@ -190,6 +190,69 @@ def verbs(check):
               and len(fargs) == 3 and "--resume=stub" in fargs[1] and "--fork-session" in fargs[1]
               and not any(x.startswith("--resume") for x in fargs[0] + fargs[2]) and "1 of 1 requests rebuilt with the same bytes" in frep.stdout
               and ft and "resume" not in ft[0] and any(l["kind"] == "request" and l["bytes"] > len("third turn") for l in ft))
+        # coder import claude, then coder resume (chapter 14): a Claude Code log of this folder becomes a Coder
+        # session; the terminal UI shows its turns, and the next message continues it on Claude Code's own session
+        iwork = os.path.realpath(tempfile.mkdtemp(prefix="coder-import-"))
+        iproj = os.path.join(home, ".claude", "projects", iwork.replace("/", "-").replace(".", "-"))
+        os.makedirs(iproj, exist_ok=True)
+        ilines = [
+            {"type": "user", "sessionId": "abc-123", "cwd": iwork, "timestamp": "2026-11-02T12:00:00.000Z", "message": {"role": "user", "content": "list the files"}},
+            {"type": "attachment", "timestamp": "2026-11-02T12:00:00.100Z", "attachment": {"type": "date"}},
+            {"type": "assistant", "timestamp": "2026-11-02T12:00:01.000Z", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": iwork + "/notes/a.txt"}}]}},
+            {"type": "user", "timestamp": "2026-11-02T12:00:02.000Z", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "first line\nsecond line", "is_error": False}]}},
+            {"type": "user", "isSidechain": True, "message": {"content": "a subagent's prompt"}},
+            {"type": "user", "isMeta": True, "message": {"content": "a reminder"}},
+            {"type": "api-request-blob", "message": {"content": "x" * 1200000}},
+            {"type": "assistant", "timestamp": "2026-11-02T12:00:05.000Z", "message": {"content": [{"type": "text", "text": "Two files."}]}},
+        ]
+        with open(os.path.join(iproj, "abc-123.jsonl"), "w") as f:
+            f.write("".join(json.dumps(l) + "\n" for l in ilines))
+        imp = subprocess.run([coder, "import", "claude", "--cwd", iwork, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        irow = json.loads(imp.stdout) if imp.returncode == 0 and imp.stdout.startswith("{") else {}
+        ilog = subprocess.run([coder, "log", irow.get("id", "none")], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("import claude: the newest Claude Code session, its turn, tool and reply; a subagent's, meta and long lines left out",
+              irow.get("turns") == 1 and "› list the files" in ilog.stdout and "⏺ Read(notes/a.txt)" in ilog.stdout and "└ first line" in ilog.stdout
+              and "● Two files" in ilog.stdout and "└ finished · 5.0s · 1 step" in ilog.stdout and "subagent" not in ilog.stdout and "reminder" not in ilog.stdout)
+        rargv = os.path.join(home, "resume-argv")
+        rpid, rfd = pty.fork()
+        if rpid == 0:
+            os.chdir(iwork)
+            os.execve(coder, [coder, "resume", "claude"], dict(fenv, TERM="xterm-256color", PWD=iwork, CLAUDE_STUB_ARGV=rargv))
+        fcntl.ioctl(rfd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+        rout = bytearray()
+        def rread(needle, seconds):
+            end = time.time() + seconds
+            while time.time() < end and needle.encode() not in shown(rout):
+                r, _, _ = select.select([rfd], [], [], 0.1)
+                if r:
+                    try:
+                        rout.extend(os.read(rfd, 65536))
+                    except OSError:
+                        break
+            return needle.encode() in shown(rout)
+        shown_turn = rread("Your next message continues it", 120) and b"list the files" in shown(rout) and b"Two files" in shown(rout)
+        check("resume claude: the terminal UI shows the turn and continues on its Claude Code session", shown_turn and b"on its Claude Code session" in shown(rout))
+        rdone0 = shown(rout).count(b"finished")       # the shown turn's own ending is on screen already
+        os.write(rfd, b"and now?\r")
+        rend = time.time() + 60
+        while time.time() < rend and shown(rout).count(b"finished") <= rdone0:
+            rread("\x00never", 0.2)
+        rargs = [json.loads(x) for x in open(rargv)] if os.path.exists(rargv) else []
+        check("resume claude: the next message resumes Claude Code's session abc-123", len(rargs) == 1 and "--resume=abc-123" in rargs[0] and "--fork-session" in rargs[0])
+        os.write(rfd, b"/resume\r")
+        check("/resume lists this folder's sessions", rread("/resume ID continues one.", 10) and rread(irow.get("id", "none") + " · claude · 1 turn", 2))
+        os.write(rfd, b"\x03"); time.sleep(0.2); os.write(rfd, b"\x03")
+        rend = time.time() + 5; rdone = False
+        while time.time() < rend and not rdone:
+            try:
+                rdone = os.waitpid(rpid, os.WNOHANG)[0] == rpid
+            except ChildProcessError:
+                rdone = True
+            rread("\x00never", 0.1)
+        if not rdone:
+            os.kill(rpid, signal.SIGKILL); os.waitpid(rpid, 0)
+        check("resume: Ctrl-C leaves the resumed terminal UI", rdone)
+        os.close(rfd)
         # the same asks through coder acp (chapter 16): the editor is asked with session/request_permission, and its answer reaches Claude Code
         acp_answers = os.path.join(home, "acp-answers")
         pa = subprocess.Popen([coder, "acp", "--engine", "claude", "--allow", "write", "--ceiling", "write"], cwd=REPO, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,
@@ -1272,7 +1335,8 @@ def main():
     pid, fd = pty.fork()
     if pid == 0:
         os.chdir(REPO)
-        env = dict(os.environ, TERM="xterm-256color", OPENAGENTS_SECRETS="/nonexistent", CODER_APPLE_FM_BRIDGE=AFM_STUB)
+        env = dict(os.environ, TERM="xterm-256color", OPENAGENTS_SECRETS="/nonexistent", CODER_APPLE_FM_BRIDGE=AFM_STUB,
+                   CODER_HOME=tempfile.mkdtemp(prefix="coder-smoke-tui-"))      # its sessions stay out of the person's own
         for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):
             env.pop(k, None)
         os.execve(os.path.join(HERE, "coder.sh"), [os.path.join(HERE, "coder.sh"), "--engine", "echo"], env)

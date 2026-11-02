@@ -1,0 +1,308 @@
+// Coder book chapter 14: a Claude Code session as a Coder session.
+//
+// `coder import claude [ID]` reads ~/.claude/projects/FOLDER/ID.jsonl (the
+// newest one for this folder by default) and writes a Coder session log with
+// its messages, replies, tool calls and results, one end line per turn, and
+// the Claude Code session ID, so `coder resume` shows it and continues it on
+// Claude Code's server-side session. The Claude Code file is read in place,
+// a byte at a time, so a log of hundreds of megabytes imports.
+
+CI_TEXT_MAX :: 16000;      // bytes of each message and reply kept
+CI_RESULT_MAX :: 1000;     // bytes of each tool result kept
+CI_LINE_MAX :: 1048576;    // a Claude Code line longer than this (a big tool result, an image) is skipped
+
+// Claude Code's folder for cwd: ~/.claude/projects/CWD, each / and . of CWD as -.
+ci_claude_dir :: (cwd: string, out: [] u8) -> string {
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 || cwd.count == 0 { return ""; }
+  n := cd_cat(out, 0, home); n = cd_cat(out, n, "/.claude/projects/");
+  for c: cwd { if n < out.count { out[n] = ifx c == '/' || c == '.' then '-' else c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+// Whether s is a Claude Code session ID: letters, digits and dashes.
+ci_is_id :: (s: string) -> bool {
+  if s.count == 0 || s.count > 100 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-') { return false; } }
+  return true;
+}
+
+// The ID of the most recently written Claude Code session for cwd, "" when none.
+ci_claude_latest :: (cwd: string, out: [] u8) -> string {
+  db: [2400] u8; dir := ci_claude_dir(cwd, db[..]);
+  if dir.count == 0 { return ""; }
+  l_b: [1] FsList; l := l_b[..];
+  n := fs_list(dir, l);
+  best := -1; best_t := 0;
+  for i: 0..<n {
+    name := fs_entry(l, i);
+    if name.count < 7 || cast(string) name[name.count - 6..<name.count] != ".jsonl" { continue; }
+    pb: [2600] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, name);
+    t := fs_mtime_ns(cast(string) pb[0..<pn]);
+    if best < 0 || t > best_t { best = i; best_t = t; }
+  }
+  if best < 0 { return ""; }
+  name := fs_entry(l, best);
+  k := cd_cat(out, 0, cast(string) name[0..<name.count - 6]);
+  return cast(string) out[0..<k];
+}
+
+// Days from 1970-01-01 to a civil date (the inverse of cs_civil).
+ci_days :: (y_in: int, m: int, d: int) -> int {
+  y := ifx m <= 2 then y_in - 1 else y_in;
+  era := (ifx y >= 0 then y else y - 399) / 400;
+  yoe := y - era * 400;
+  doy := (153 * (ifx m > 2 then m - 3 else m + 9) + 2) / 5 + d - 1;
+  doe := yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + doe - 719468;
+}
+
+ci_num :: (s: string, at: int, k: int) -> int {
+  v := 0;
+  for i: at..<at + k { if i >= s.count || s[i] < '0' || s[i] > '9' { return -1; } v = v * 10 + cast(int) (s[i] - '0'); }
+  return v;
+}
+
+// An ISO 8601 UTC time (2026-11-02T12:59:56.078Z) as microseconds since the epoch; 0 when it is not one.
+ci_iso_us :: (t: string) -> int {
+  if t.count < 19 { return 0; }
+  y := ci_num(t, 0, 4); mo := ci_num(t, 5, 2); d := ci_num(t, 8, 2);
+  h := ci_num(t, 11, 2); mi := ci_num(t, 14, 2); s := ci_num(t, 17, 2);
+  if y < 0 || mo < 1 || d < 1 || h < 0 || mi < 0 || s < 0 { return 0; }
+  ms := 0;
+  if t.count >= 23 && t[19] == '.' { v := ci_num(t, 20, 3); if v > 0 { ms = v; } }
+  return ((ci_days(y, mo, d) * 86400 + h * 3600 + mi * 60 + s) * 1000 + ms) * 1000;
+}
+
+// The first bytes of s, at most max, not cutting a UTF-8 character.
+ci_cut :: (s: string, max: int) -> string {
+  if s.count <= max { return s; }
+  k := max; while k > 0 && (s[k] & 0xC0) == 0x80 { k -= 1; }
+  return cast(string) s[0..<k];
+}
+
+// Text Claude Code writes as a user message that the person did not type:
+// slash-command echoes, local command output, its own notices.
+ci_not_typed :: (t: string) -> bool {
+  if t.count == 0 { return true; }
+  return t[0] == '<' || rt_has_prefix(t, "Caveat: ") || rt_has_prefix(t, "[Request interrupted");
+}
+
+// A tool call's label as Coder logs it: Name(first line of its argument), the path relative to cwd.
+ci_label :: (ar: [] ClArena, cwd: string, name: string, input: string, out: [] u8) -> string {
+  arg := cl_str(ar, input, "command");
+  if arg.count == 0 { arg = cl_str(ar, input, "file_path"); }
+  if arg.count == 0 { arg = cl_str(ar, input, "pattern"); }
+  if arg.count == 0 { arg = cl_str(ar, input, "url"); }
+  if arg.count == 0 { arg = cl_str(ar, input, "description"); }
+  if cwd.count > 0 && arg.count > cwd.count + 1 && cast(string) arg[0..<cwd.count] == cwd && arg[cwd.count] == '/' { arg = cast(string) arg[cwd.count + 1..<arg.count]; }
+  n := cd_cat(out, 0, name);
+  if arg.count > 0 {
+    e := 0; while e < arg.count && arg[e] != 10 { e += 1; }
+    shown := cast(string) arg[0..<e];
+    k := tui_fit(shown, 100);
+    n = cd_cat(out, n, "("); n = cd_cat(out, n, cast(string) shown[0..<k]);
+    if k < shown.count || e < arg.count { n = cd_cat(out, n, "…"); }
+    n = cd_cat(out, n, ")");
+  }
+  return cast(string) out[0..<n];
+}
+
+// What the importer keeps between lines.
+CiState :: struct {
+  out: [] u8; n: int;
+  full: bool;           // out could not hold every turn
+  need: int;            // the bytes every turn would take
+  skip: int;            // the first turns left out, so the latest fit
+  starts: [] int;       // need where each turn began (1-based)
+  cwd: [1024] u8; ncwd: int;
+  sid: [128] u8; nsid: int;
+  first_us: int; last_us: int; turn_us: int;
+  in_turn: bool; steps: int; turns: int;
+}
+
+// Appends one log line, or marks the log full.
+ci_put :: (st: [] CiState, rec: [] u8, n: int) {
+  if n < 0 { return; }
+  st[0].need += n + 1;
+  if st[0].turns <= st[0].skip { return; }
+  if st[0].n + n + 1 > st[0].out.count - 256 { st[0].full = true; return; }
+  for i: 0..<n { st[0].out[st[0].n + i] = rec[i]; }
+  st[0].n += n; st[0].out[st[0].n] = 10; st[0].n += 1;
+}
+
+ci_text_line :: (st: [] CiState, kind: string, key: string, text: string) {
+  rec: [CI_TEXT_MAX * 6 + 64] u8;
+  n := json_raw(rec[..], 0, "{\"kind\":"); n = json_write_string(rec[..], n, kind);
+  n = json_raw(rec[..], n, ",\""); n = json_raw(rec[..], n, key); n = json_raw(rec[..], n, "\":");
+  n = json_write_string(rec[..], n, text); n = json_raw(rec[..], n, "}");
+  ci_put(st, rec[..], n);
+}
+
+ci_end_turn :: (st: [] CiState) {
+  if !st[0].in_turn { return; }
+  rec: [256] u8;
+  ms := ifx st[0].last_us > st[0].turn_us then (st[0].last_us - st[0].turn_us) / 1000 else 0;
+  n := json_raw(rec[..], 0, "{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":"); n = json_write_int(rec[..], n, ms);
+  n = json_raw(rec[..], n, ",\"steps\":"); n = json_write_int(rec[..], n, st[0].steps); n = json_raw(rec[..], n, "}");
+  ci_put(st, rec[..], n);
+  st[0].in_turn = false;
+}
+
+// A message the person typed starts a turn.
+ci_turn :: (st: [] CiState, us: int) {
+  ci_end_turn(st);
+  st[0].turns += 1;
+  if st[0].turns < st[0].starts.count { st[0].starts[st[0].turns] = st[0].need; }
+  st[0].in_turn = true; st[0].steps = 0; st[0].turn_us = us;
+}
+
+// One line of a Claude Code session log.
+ci_line :: (st: [] CiState, ar: [] ClArena, line: string) {
+  ar[0].at = 0; ar[0].full = false;
+  kind := cl_str(ar, line, "type");
+  if kind != "user" && kind != "assistant" { return; }
+  side := cl_bool(line, "isSidechain"); if side.ok && side.value { return; }       // a subagent's own traffic
+  meta := cl_bool(line, "isMeta"); if meta.ok && meta.value { return; }
+  if st[0].nsid == 0 { s := cl_str(ar, line, "sessionId"); if s.count < 128 { st[0].nsid = cd_cat(st[0].sid[..], 0, s); } }
+  if st[0].ncwd == 0 { c := cl_str(ar, line, "cwd"); if c.count < 1024 { st[0].ncwd = cd_cat(st[0].cwd[..], 0, c); } }
+  us := ci_iso_us(cl_str(ar, line, "timestamp"));
+  if us > 0 { if st[0].first_us == 0 { st[0].first_us = us; } st[0].last_us = us; }
+  content := cl_raw(line, "message.content");
+  if kind == "user" && content.count > 0 && content[0] == '"' {
+    t := cl_str(ar, line, "message.content");
+    if ci_not_typed(t) { return; }
+    ci_turn(st, us);
+    ci_text_line(st, "user", "text", ci_cut(t, CI_TEXT_MAX));
+    return;
+  }
+  count := cl_count(content);
+  for i: 0..<count {
+    item := cl_json(content, cl_item(content, i));
+    ar[0].at = 0; ar[0].full = false;
+    t := cl_str(ar, item, "type");
+    if kind == "user" && t == "text" {
+      text := cl_str(ar, item, "text");
+      if ci_not_typed(text) { continue; }
+      ci_turn(st, us);
+      ci_text_line(st, "user", "text", ci_cut(text, CI_TEXT_MAX));
+    } else if !st[0].in_turn {
+      continue;
+    } else if kind == "user" && t == "tool_result" {
+      text := cl_str(ar, item, "content");
+      if text.count == 0 { text = cl_str(ar, item, "content.0.text"); }
+      bad := cl_bool(item, "is_error");
+      rec: [CI_RESULT_MAX * 6 + 128] u8;
+      shown := ci_cut(text, CI_RESULT_MAX);
+      n := json_raw(rec[..], 0, "{\"kind\":\"result\",\"text\":"); n = json_write_string(rec[..], n, shown);
+      n = json_raw(rec[..], n, ifx bad.ok && bad.value then ",\"error\":true" else ",\"error\":false");
+      if shown.count < text.count { n = json_raw(rec[..], n, ",\"bytes\":"); n = json_write_int(rec[..], n, text.count); }
+      n = json_raw(rec[..], n, "}");
+      ci_put(st, rec[..], n);
+    } else if kind == "assistant" && t == "text" {
+      text := cl_str(ar, item, "text");
+      if text.count > 0 { ci_text_line(st, "reply", "text", ci_cut(text, CI_TEXT_MAX)); }
+    } else if kind == "assistant" && t == "tool_use" {
+      lb: [1200] u8;
+      label := ci_label(ar, cast(string) st[0].cwd[0..<st[0].ncwd], cl_str(ar, item, "name"), cl_raw(item, "input"), lb[..]);
+      ci_text_line(st, "tool", "label", label);
+      st[0].steps += 1;
+    }
+  }
+}
+
+// Turns the Claude Code log held by the fs native (size bytes) into a Coder log in st.
+ci_walk :: (st: [] CiState, size: int) {
+  lb: [CI_LINE_MAX] u8; ln := 0; long := false;
+  ab: [2 * CI_LINE_MAX] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  for i: 0..<size {
+    c := cxfs_byte(i);
+    if c == 10 {
+      if !long && ln > 0 { ci_line(st, ar[..], cast(string) lb[0..<ln]); }
+      ln = 0; long = false;
+      continue;
+    }
+    if ln < lb.count { lb[ln] = cast(u8) c; ln += 1; } else { long = true; }
+  }
+  if !long && ln > 0 { ci_line(st, ar[..], cast(string) lb[0..<ln]); }
+  ci_end_turn(st);
+}
+
+// coder import claude [ID]: writes the Coder session; its ID goes in idout.
+// Returns the turns imported, or -1 with why in why_out.
+ci_import_claude :: (cwd: string, sid_in: string, idout: [] u8, nid_out: [] int, why_out: [] u8, nwhy: [] int) -> int {
+  nid_out[0] = 0; nwhy[0] = 0;
+  lb: [128] u8;
+  sid := ifx sid_in.count == 0 || sid_in == "latest" then ci_claude_latest(cwd, lb[..]) else sid_in;
+  if sid.count == 0 { nwhy[0] = cd_cat(why_out, 0, "no Claude Code sessions for this folder"); return -1; }
+  if !ci_is_id(sid) { nwhy[0] = cd_cat(why_out, 0, "not a Claude Code session ID"); return -1; }
+  db: [2400] u8; dir := ci_claude_dir(cwd, db[..]);
+  pb: [2600] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, sid); pn = cd_cat(pb[..], pn, ".jsonl");
+  if !fs_push(cast(string) pb[0..<pn]) { nwhy[0] = cd_cat(why_out, 0, "no such Claude Code session for this folder"); return -1; }
+  size := cxfs_read();
+  if size < 0 { k := cd_cat(why_out, 0, "no Claude Code session "); k = cd_cat(why_out, k, sid); nwhy[0] = cd_cat(why_out, k, " for this folder"); return -1; }
+  ob: [4194304] u8; sb0: [65536] int;
+  st: [1] CiState; st[0] = CiState.{out = ob[..], starts = sb0[..]};
+  ci_walk(st[..], size);
+  if st[0].turns == 0 { nwhy[0] = cd_cat(why_out, 0, "the Claude Code session has no messages"); return -1; }
+  // too long for one log: walk again, leaving out the first turns, so the latest ones fit
+  if st[0].full {
+    room := ob.count - 512; total := st[0].need; turns := st[0].turns; skip := 0;     // turns after skip take total - starts[skip + 1]
+    while skip + 1 < turns && skip + 2 < sb0.count && total - sb0[skip + 1] > room { skip += 1; }
+    st[0] = CiState.{out = ob[..], starts = sb0[..], skip = skip};
+    ci_walk(st[..], size);
+  }
+  // the header and the engine's session go first
+  ib: [32] u8; id := cs_make_id(ifx st[0].first_us > 0 then st[0].first_us else cxproc_wall_us(), ib[..]);
+  nid_out[0] = cd_cat(idout, 0, id);
+  hb: [3000] u8;
+  hn := json_raw(hb[..], 0, "{\"kind\":\"session\",\"id\":"); hn = json_write_string(hb[..], hn, id);
+  hn = json_raw(hb[..], hn, ",\"version\":"); hn = json_write_string(hb[..], hn, CODER_VERSION);
+  hn = json_raw(hb[..], hn, ",\"engine\":\"claude\",\"cwd\":"); hn = json_write_string(hb[..], hn, ifx st[0].ncwd > 0 then cast(string) st[0].cwd[0..<st[0].ncwd] else cwd);
+  hn = json_raw(hb[..], hn, ",\"started_us\":"); hn = json_write_int(hb[..], hn, st[0].first_us);
+  hn = json_raw(hb[..], hn, ",\"imported\":\"claude\"}\n{\"kind\":\"engine_session\",\"engine\":\"claude\",\"id\":"); hn = json_write_string(hb[..], hn, sid);
+  hn = json_raw(hb[..], hn, "}\n");
+  sb: [1100] u8; sdir := cs_dir(sb[..]);
+  if sdir.count == 0 { nwhy[0] = cd_cat(why_out, 0, "no $HOME"); return -1; }
+  fp: [1400] u8; fn := cd_cat(fp[..], 0, sdir); fn = cd_cat(fp[..], fn, "/"); fn = cd_cat(fp[..], fn, id); fn = cd_cat(fp[..], fn, ".jsonl");
+  tp: [1400] u8; tn := cd_cat(tp[..], 0, cast(string) fp[0..<fn]); tn = cd_cat(tp[..], tn, ".new");
+  if !fs_write(cast(string) tp[0..<tn], cast(string) hb[0..<hn]) || !fs_append(cast(string) tp[0..<tn], cast(string) ob[0..<st[0].n]) || !fs_rename(cast(string) tp[0..<tn], cast(string) fp[0..<fn]) {
+    nwhy[0] = cd_cat(why_out, 0, "could not write the session file"); return -1;
+  }
+  if st[0].skip > 0 {
+    tb: [16] u8; k := cd_cat(why_out, 0, "the session was longer than a Coder log holds; it has the latest ");
+    k = cd_cat(why_out, k, cd_itoa(st[0].turns - st[0].skip, tb[..])); k = cd_cat(why_out, k, " of its "); k = cd_cat(why_out, k, cd_itoa(st[0].turns, tb[..]));
+    nwhy[0] = cd_cat(why_out, k, " turns");
+  }
+  return st[0].turns - st[0].skip;
+}
+
+#test "import: dates, cuts and what was not typed" {
+  #assert ci_days(1970, 1, 1) == 0;
+  #assert ci_days(2026, 11, 2) == 20759;
+  #assert cs_civil(ci_days(2024, 2, 29)) == 20240229;
+  #assert ci_iso_us("1970-01-01T00:00:01.500Z") == 1500000;
+  #assert ci_iso_us("nope") == 0;
+  #assert ci_cut("héllo", 2) == "h";
+  #assert ci_not_typed("<command-name>/clear</command-name>");
+  #assert !ci_not_typed("why is this slow");
+  #assert ci_is_id("00729a50-295f-4dcd-b0ff-64cc1956bded");
+  #assert !ci_is_id("../x");
+}
+
+#test "import: a Claude Code turn as Coder log lines" {
+  ob: [65536] u8; sb0: [8] int;
+  st: [1] CiState; st[0] = CiState.{out = ob[..], starts = sb0[..]};
+  ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  ci_line(st[..], ar[..], "{\"type\":\"user\",\"sessionId\":\"abc\",\"cwd\":\"/w\",\"timestamp\":\"2026-11-02T12:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"list files\"}}");
+  ci_line(st[..], ar[..], "{\"type\":\"assistant\",\"timestamp\":\"2026-11-02T12:00:01.000Z\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"Bash\",\"input\":{\"command\":\"ls\\n-la\"}}]}}");
+  ci_line(st[..], ar[..], "{\"type\":\"user\",\"timestamp\":\"2026-11-02T12:00:02.000Z\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t1\",\"content\":\"a\\nb\",\"is_error\":false}]}}");
+  ci_line(st[..], ar[..], "{\"type\":\"user\",\"isSidechain\":true,\"message\":{\"content\":\"subagent\"}}");
+  ci_line(st[..], ar[..], "{\"type\":\"assistant\",\"timestamp\":\"2026-11-02T12:00:04.000Z\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Two files.\"}]}}");
+  ci_line(st[..], ar[..], "{\"type\":\"user\",\"message\":{\"content\":\"<local-command-stdout></local-command-stdout>\"}}");
+  ci_end_turn(st[..]);
+  want := "{\"kind\":\"user\",\"text\":\"list files\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls…)\"}\n{\"kind\":\"result\",\"text\":\"a\\nb\",\"error\":false}\n{\"kind\":\"reply\",\"text\":\"Two files.\"}\n{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":4000,\"steps\":1}\n";
+  #assert cast(string) ob[0..<st[0].n] == want;
+  #assert st[0].turns == 1;
+  #assert cast(string) st[0].sid[0..<st[0].nsid] == "abc";
+}
