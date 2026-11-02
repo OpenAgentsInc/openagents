@@ -1,0 +1,38 @@
+inventory: ok, 79 lines, 56563 tensors, 1060548427328 bytes (pinned 56563 and 1060548427328), draft head 4199938048 bytes
+layer 0: attention 120348928 indexer 27163264 dense 453095424 norms 25600, 600633216 in all
+layer 1: attention 120348928 indexer 27163264 experts 14499053568 shared 113273856 router 1572864 norms 25600, 14761438080 in all
+layer 3: attention 123756800 indexer 27163264 experts 14499053568 shared 113273856 router 1572864 norms 25600, 14764845952 in all
+layer 17: attention 120348928 experts 14499053568 shared 113273856 router 1572864 norms 25600, 14734274816 in all
+layer 39: attention 117465344 indexer 27163264 experts 14499053568 shared 113273856 router 1572864 norms 24576, 14758553472 in all
+72 layers 1047906874880 bytes; embedding 2516582400, readout and norm 2516594688, vision 3408437248, lerope 64; one routed expert 113273856 bytes
+mesh: 256 GB peers reading 400,000 MB/s; 20 us and 12,500 MB/s inside a group, 500 us and 1,250 MB/s between (assumed); 32,768 positions
+  5 x 1 = 5 peers: layers 0-14 15-29 30-44 45-59 60-71
+    leaders (GB) 210.127 221.553 221.507 221.446 179.694; other peers (GB) 202.986
+    sends (bytes) 24612 32840 34924 26696 4; expert exchange a layer 0 ns
+    a token: 136.1 ms; full pipeline, one token every 27.4 ms
+  3 x 2 = 6 peers: layers 0-24 25-50 51-71
+    leaders (GB) 183.862 195.409 160.323; other peers (GB) 173.988
+    sends (bytes) 32840 26696 4; expert exchange a layer 49833 ns
+    a token: 98.4 ms; full pipeline, one token every 32.8 ms
+  2 x 4 = 8 peers: layers 0-38 39-71
+    leaders (GB) 151.364 130.872; other peers (GB) 137.741
+    sends (bytes) 26696 4; expert exchange a layer 45900 ns
+    a token: 77.5 ms; full pipeline, one token every 39.1 ms
+  1 x 8 = 8 peers: layers 0-71
+    leaders (GB) 153.541; other peers (GB) 128.679
+    sends (bytes) 4; expert exchange a layer 43934 ns
+    a token: 76.3 ms; full pipeline, one token every 76.3 ms
+smallest mesh of 256.000 GB peers: 5 stages x 1 peers, a token 136.1 ms
+smallest mesh of 150.000 GB peers: 2 stages x 4 peers, a token 77.5 ms
+small model, seed 0, stages at 4, 1 expert peers: whole true, split true, equal bit for bit true, 528 bytes sent (counted 528)
+small model, seed 0, stages at 4, 3 expert peers: whole true, split true, equal bit for bit true, 528 bytes sent (counted 528)
+small model, seed 0, stages at 1 4, 1 expert peers: whole true, split true, equal bit for bit true, 800 bytes sent (counted 800)
+small model, seed 0, stages at 1 4, 3 expert peers: whole true, split true, equal bit for bit true, 800 bytes sent (counted 800)
+small model, seed 1, stages at 5, 1 expert peers: whole true, split true, equal bit for bit true, 528 bytes sent (counted 528)
+small model, seed 1, stages at 5, 3 expert peers: whole true, split true, equal bit for bit true, 528 bytes sent (counted 528)
+small model, seed 1, stages at 3 5, 1 expert peers: whole true, split true, equal bit for bit true, 1056 bytes sent (counted 1056)
+small model, seed 1, stages at 3 5, 3 expert peers: whole true, split true, equal bit for bit true, 1056 bytes sent (counted 1056)
+small model, seed 2, stages at 4, 1 expert peers: whole true, split true, equal bit for bit true, 528 bytes sent (counted 528)
+small model, seed 2, stages at 4, 3 expert peers: whole true, split true, equal bit for bit true, 528 bytes sent (counted 528)
+small model, seed 2, stages at 2 3, 1 expert peers: whole true, split true, equal bit for bit true, 1056 bytes sent (counted 1056)
+small model, seed 2, stages at 2 3, 3 expert peers: whole true, split true, equal bit for bit true, 1056 bytes sent (counted 1056)

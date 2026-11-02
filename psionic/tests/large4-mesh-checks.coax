@@ -1,0 +1,101 @@
+// Chapter 198's check helpers, loaded by psionic/lib/large4-mesh.coax and
+// owned by its checks: a brute-force cutter that tries every split of the
+// layers into two or three stages, the hand-worked mesh, and a small model
+// in Large 4's pattern built from chapter 85's oracle weights.
+
+// The best slowest stage over every split into n (1 to 3) stages: the
+// earliest cuts on a tie, as the plan breaks it; cut[0] -1 when none fits.
+L4cCut :: struct {cut:[4]int;slowest:int;}
+l4c_cuts :: (c:L4Config,m:L4Mesh,n:int)->L4cCut {
+    y:[128]L4Layer;l4_all(c,y[..]);t:=l4_top(c);x:=l4_exchange(c,m);L:=c.layers;
+    best:=L4cCut.{slowest=-1};best.cut[0]=-1;
+    hi:=ifx n>=2 then L else 2;lo:=ifx n==1 then 3 else ifx n==2 then L+1 else L;
+    for u:1..<hi {for v:u+1..<lo {
+        cut:=[4]int.[0,u,v,L];
+        if n==1 {cut[1]=L;}
+        if n==2 {if v!=u+1 {continue;}cut[2]=L;}
+        slowest:=0;fits:=true;
+        for i:0..<n {
+            s:=l4_stage(c,m,y[..],t,cut[i],cut[i+1],i,n);
+            if s.leader>m.budget {fits=false;break;}
+            k:=plc_ns(s.read,m.read)+s.mixture*x;if k>slowest {slowest=k;}
+        }
+        if !fits {continue;}
+        // A later cut wins only when strictly faster, compared from the last stage back.
+        if best.slowest<0 || slowest<best.slowest {best.slowest=slowest;best.cut=cut;}
+    }}
+    return best;
+}
+// The hand-worked mesh: peers of 256 GB reading 400,000 MB/s; links of
+// 20 us and 12,500 MB/s inside a group, 500 us and 1,250 MB/s between;
+// 32,768 positions at one byte a cached value.
+l4c_mesh :: (stages:int,width:int)->L4Mesh {
+    return L4Mesh.{stages=stages,width=width,budget=256000000000,read=400000,lat_in=20000,bw_in=12500,lat_out=500000,bw_out=1250,context=32768,kv=1};
+}
+
+// The small model's weights: for each of up to 8 layers, chapter 85's
+// oracle attention (20 values, 214 codes) and mixture (61 values, 432
+// codes) for seed + layer.
+l4c_fill :: (seed:int,layers:int,f:[]f32,c:[]u8) {
+    for l:0..<layers {
+        a:=m4o_attn_weights(seed+l);m:=m4o_moe_weights(seed+3*l+1);
+        for i:0..<20 {f[l*L4_F+i]=a.f[i];}for i:0..<61 {f[l*L4_F+20+i]=m.f[i];}
+        for i:0..<214 {c[l*L4_C+i]=a.c[i];}for i:0..<432 {c[l*L4_C+214+i]=m.c[i];}
+    }
+}
+l4c_toy :: (layers:int,src:[]int,f:[]f32,c:[]u8)->L4Toy {
+    t:=L4Toy.{layers=layers,f=f,c=c};for l:0..<layers {t.src[l]=src[l];}return t;
+}
+// A seeded split of `layers` into n stages: cut[0] = 0, cut[n] = layers.
+l4c_cut :: (seed:int,layers:int,n:int,cut:[]int) {
+    x:=seed*2654435761%1000003+7;cut[0]=0;cut[n]=layers;
+    for i:1..<n {x=xmc_next(x);room:=layers-(n-i)-cut[i-1];cut[i]=cut[i-1]+1+x%room;}
+}
+// The small model run whole (one stage, every expert on one peer, chapter
+// 85's m4_moe) and split at a seeded cut over `width` expert peers, from the
+// same hidden rows. same: every final row equal bit for bit; sent: the
+// split's boundary bytes; want: the bytes counted here per boundary (the
+// hidden row, and one row of each cache a later layer reads from before
+// the cut, as chapter 186's messages).
+L4cRun :: struct {whole:bool;split:L4Run;same:bool;want:int;cut:[9]int;reference:bool;}
+// bad: -1, or 2 l + 0 to make layer l's attention overflow (its q_a scale
+// 3e38), 2 l + 1 its shared expert. reference: the whole run equals a
+// plain loop over tokens and layers written here.
+l4c_run :: (seed:int,layers:int,src:[]int,n:int,width:int,tokens:int,tamper:int,bad:int)->L4cRun {
+    s:=m4o_shape();h:=s.hidden;row:=m4_row(s);
+    f:[8*L4_F]f32;c:[8*L4_C]u8;l4c_fill(seed,layers,f[..],c[..]);
+    if bad>=0 {f[bad/2*L4_F+ifx bad%2==0 then 15 else 20+58]=3e38;}
+    t:=l4c_toy(layers,src,f[..],c[..]);
+    one:[64]f32;m4o_values(seed+5,one[0..<tokens*h],0);two:=one;
+    r:L4cRun;cut:[9]int;l4c_cut(seed,layers,n,cut[..]);r.cut=cut;
+    // Whole: one stage, one peer.
+    cw:[8][64*7]f32;cv:[8][]f32;for l:0..<8 {cv[l]=cw[l][0..<tokens*row];}
+    copies:[72][64*7]f32;kv:[72][]f32;for i:0..<72 {kv[i]=copies[i][0..<tokens*row];}
+    work:[7*8*6+64]f32;fwork:[80]f64;wire:[64]u32;
+    single:[8][1]XmPeer;sv:[8][]XmPeer;ones:[8][5]int;ov:[8][]int;for l:0..<8 {sv[l]=single[l][..];ov[l]=ones[l][..];}
+    whole:=[2]int.[0,layers];
+    r.whole=l4_split(s,t,whole[..],tokens,one[0..<tokens*h],cv[..],kv[..],sv[..],ov[..],work[..],fwork[..],wire[..],-1).ok;
+    // Split: stages at cut, experts contiguous over width peers.
+    cs:[8][64*7]f32;cx:[8][]f32;for l:0..<8 {cx[l]=cs[l][0..<tokens*row];}
+    store:[8][40]XmExpert;peers:[8][8]XmPeer;owner:[8][5]int;pv:[8][]XmPeer;oq:[8][]int;
+    for l:0..<layers {
+        xs:=xm_contiguous(5,width,owner[l][..]);
+        xmc_peers(s,l4_moe(t,l),owner[l][..],store[l][..],peers[l][0..<width]);pv[l]=peers[l][0..<width];oq[l]=owner[l][..];
+    }
+    r.split=l4_split(s,t,cut[0..<n+1],tokens,two[0..<tokens*h],cx[..],kv[..],pv[..],oq[..],work[..],fwork[..],wire[..],tamper);
+    r.same=xmc_same(one[0..<tokens*h],two[0..<tokens*h]);
+    // The plain loop, from the same rows, on fresh caches.
+    three:[64]f32;m4o_values(seed+5,three[0..<tokens*h],0);rc:[8][64*7]f32;r.reference=true;
+    for p:0..<tokens {for l:0..<layers {
+        x:=three[p*h..<(p+1)*h];routes:[1]M4Route;
+        if src[l]==l {r.reference=r.reference && m4_attention(s,m4_attn_view(f[l*L4_F..<l*L4_F+20],c[l*L4_C..<l*L4_C+214]),1,p,x,rc[l][0..<tokens*row],work[..],fwork[..]).status==M4Status.ok;}
+        else {r.reference=r.reference && l4_read(s,m4_attn_view(f[l*L4_F..<l*L4_F+20],c[l*L4_C..<l*L4_C+214]),p,x,rc[src[l]][0..<tokens*row],work[..],fwork[..]);}
+        r.reference=r.reference && m4_moe(s,m4_moe_view(f[l*L4_F+20..<(l+1)*L4_F],c[l*L4_C+214..<(l+1)*L4_C]),1,x,routes[..],work[..],fwork[..]).status==M4Status.ok;
+    }}
+    r.reference=r.reference && xmc_same(one[0..<tokens*h],three[0..<tokens*h]);
+    for i:1..<n {
+        b:=cut[i];r.want+=tokens*stg_message_bytes(1,h);
+        for x:0..<b {for l:b..<layers {if src[l]==x && l!=x {r.want+=tokens*stg_message_bytes(1,row);break;}}}
+    }
+    return r;
+}

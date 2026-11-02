@@ -1,0 +1,711 @@
+// Chapter 198: Mistral Large 4 across a mesh. This file checks the pinned
+// checkpoint's inventory (written from its 54 safetensors headers by
+// psionic/tests/large4_manifest.py) against the shapes params.json gives,
+// counts each layer's bytes by kind, and plans the model over a mesh: a
+// pipeline of stages over layers, each stage a group of peers that split its
+// routed experts (chapter 191). Layers 39, 43, .. 71 read layer 35's latent
+// cache and the "shared" indexer layers reuse the nearest earlier full
+// layer's selection, so a cut between a source and its reader costs a cache
+// copy and extra boundary bytes, counted exactly. Chapter 189's solver places
+// the stages on groups; chapter 191 prices each layer's expert exchange.
+// Finally a small model in the same pattern (a later layer reading an
+// earlier layer's cache, routed experts) runs whole and across simulated
+// stages and expert peers, and the two must agree bit for bit.
+// Profile large4-mesh-v1: bytes exact; times modeled from assumed rates in
+// nanoseconds, rounded up; decode memory-bound (chapter 33's roofline with
+// the reads alone); the run's arithmetic is chapter 85's
+// mistral-small-cpu-f64-v1, unchanged.
+#authority;
+#load "expert-mesh.coax";
+#load "place.coax";
+#load "../fixtures/mistral-large4-layers.coax";
+#load "../fixtures/mistral-large4-manifest.coax";
+#load "../tests/large4-mesh-checks.coax";  // the checks' brute-force cutter, hand-worked mesh and small model
+
+L4Status :: enum u8 {ok;input;manifest;total;width;memory;split;place;}
+
+// book:begin config
+// params.json's numbers for the text model and the vision encoder. nope and
+// rope: a rotary layer's per-head query split; a NoPE layer's query is all
+// non-rotary (nope + rope wide) and its cache row is the latent alone.
+L4Config :: struct {
+    dim:int;layers:int;heads:int;nope:int;rope:int;value:int;kv_rank:int;vocab:int;
+    experts:int;top_k:int;expert_mlp:int;dense_mlp:int;dense_layers:int;
+    index_heads:int;index_dim:int;index_topk:int;block:int;
+    vision_dim:int;vision_mlp:int;vision_layers:int;patch:int;channels:int;merge:int;
+}
+l4_large4 :: ()->L4Config {
+    return L4Config.{dim=6144,layers=72,heads=64,nope=64,rope=64,value=128,kv_rank=512,vocab=204800,
+        experts=128,top_k=4,expert_mlp=6144,dense_mlp=24576,dense_layers=1,index_heads=32,index_dim=128,index_topk=2048,block=128,
+        vision_dim=2048,vision_mlp=6144,vision_layers=30,patch=14,channels=3,merge=2};
+}
+// book:end config
+
+// book:begin kinds
+// One tensor kind: where it lives (0 a text layer, 1 a vision layer, 2 the
+// top level), which layers hold it, its name after the layer, its dtype
+// (0 BF16, 1 F32, 2 F8_E4M3), its dimensions, and the part of a layer it
+// belongs to. Layer sets: 0 every layer, 1 full indexer, 2 own rotary
+// cache, 3 own NoPE cache, 4 own cache, 5 rotary, 6 NoPE, 7 dense, 8 mixture.
+L4_ATTN :: 0;L4_INDEX :: 1;L4_EXPERT :: 2;L4_SHARED :: 3;L4_GATE :: 4;L4_DENSE :: 5;L4_NORM :: 6;L4_PARTS :: 7;
+L4Kind :: struct {where:int;set:int;name:string;dtype:int;rank:int;dims:[4]int;part:int;}
+L4_KINDS :: 61;
+l4_k :: (where:int,set:int,name:string,dtype:int,part:int,a:int,b:int)->L4Kind {
+    k:=L4Kind.{where=where,set=set,name=name,dtype=dtype,part=part,rank=ifx b==0 then 1 else 2};k.dims[0]=a;k.dims[1]=b;return k;
+}
+l4_kinds :: (c:L4Config,out:[]L4Kind) {
+    d:=c.dim;B:=c.block;q:=c.heads*(c.nope+c.rope);o:=c.heads*c.value;iq:=c.index_heads*c.index_dim;v:=c.vision_dim;
+    k:=[L4_KINDS]L4Kind.[
+        l4_k(0,1,"attention.indexer.k_norm.bias",0,L4_INDEX,c.index_dim,0),l4_k(0,1,"attention.indexer.k_norm.weight",0,L4_INDEX,c.index_dim,0),
+        l4_k(0,1,"attention.indexer.q_input_norm.bias",0,L4_INDEX,d,0),l4_k(0,1,"attention.indexer.q_input_norm.weight",0,L4_INDEX,d,0),
+        l4_k(0,1,"attention.indexer.ssmax_scaling.b",0,L4_INDEX,c.index_heads,0),l4_k(0,1,"attention.indexer.ssmax_scaling.s",0,L4_INDEX,c.index_heads,0),
+        l4_k(0,1,"attention.indexer.weights_proj.weight",0,L4_INDEX,c.index_heads,d),l4_k(0,1,"attention.indexer.wk.weight",0,L4_INDEX,c.index_dim,d),
+        l4_k(0,1,"attention.indexer.wq_b.qscale_weight",1,L4_INDEX,iq/B,d/B),l4_k(0,1,"attention.indexer.wq_b.weight",2,L4_INDEX,iq,d),
+        l4_k(0,2,"attention.wkv_a_with_mqa.weight",0,L4_ATTN,c.kv_rank+c.rope,d),l4_k(0,3,"attention.wkv_a_with_mqa.weight",0,L4_ATTN,c.kv_rank,d),
+        l4_k(0,5,"attention.wkv_b.weight",0,L4_ATTN,c.heads*(c.nope+c.value),c.kv_rank),l4_k(0,6,"attention.wkv_b.weight",0,L4_ATTN,c.heads*(c.nope+c.rope+c.value),c.kv_rank),
+        l4_k(0,4,"attention.kv_a_norm.weight",0,L4_NORM,c.kv_rank,0),
+        l4_k(0,0,"attention.ssmax_scaling.b",0,L4_ATTN,c.heads,0),l4_k(0,0,"attention.ssmax_scaling.s",0,L4_ATTN,c.heads,0),
+        l4_k(0,0,"attention.wo.qscale_weight",1,L4_ATTN,d/B,o/B),l4_k(0,0,"attention.wo.weight",2,L4_ATTN,d,o),
+        l4_k(0,0,"attention.wq.qscale_weight",1,L4_ATTN,q/B,d/B),l4_k(0,0,"attention.wq.weight",2,L4_ATTN,q,d),
+        l4_k(0,0,"attention_norm.weight",0,L4_NORM,d,0),l4_k(0,0,"ffn_norm.weight",0,L4_NORM,d,0),
+        // The feed-forward blocks: w1 and w3 are wide x dim, w2 dim x wide.
+        l4_k(0,7,"feed_forward.w1.qscale_weight",1,L4_DENSE,c.dense_mlp/B,d/B),l4_k(0,7,"feed_forward.w1.weight",2,L4_DENSE,c.dense_mlp,d),
+        l4_k(0,7,"feed_forward.w2.qscale_weight",1,L4_DENSE,d/B,c.dense_mlp/B),l4_k(0,7,"feed_forward.w2.weight",2,L4_DENSE,d,c.dense_mlp),
+        l4_k(0,7,"feed_forward.w3.qscale_weight",1,L4_DENSE,c.dense_mlp/B,d/B),l4_k(0,7,"feed_forward.w3.weight",2,L4_DENSE,c.dense_mlp,d),
+        l4_k(0,8,"w1.qscale_weight",1,L4_EXPERT,c.expert_mlp/B,d/B),l4_k(0,8,"w1.weight",2,L4_EXPERT,c.expert_mlp,d),
+        l4_k(0,8,"w2.qscale_weight",1,L4_EXPERT,d/B,c.expert_mlp/B),l4_k(0,8,"w2.weight",2,L4_EXPERT,d,c.expert_mlp),
+        l4_k(0,8,"w3.qscale_weight",1,L4_EXPERT,c.expert_mlp/B,d/B),l4_k(0,8,"w3.weight",2,L4_EXPERT,c.expert_mlp,d),
+        l4_k(0,8,"shared_experts.w1.qscale_weight",1,L4_SHARED,c.expert_mlp/B,d/B),l4_k(0,8,"shared_experts.w1.weight",2,L4_SHARED,c.expert_mlp,d),
+        l4_k(0,8,"shared_experts.w2.qscale_weight",1,L4_SHARED,d/B,c.expert_mlp/B),l4_k(0,8,"shared_experts.w2.weight",2,L4_SHARED,d,c.expert_mlp),
+        l4_k(0,8,"shared_experts.w3.qscale_weight",1,L4_SHARED,c.expert_mlp/B,d/B),l4_k(0,8,"shared_experts.w3.weight",2,L4_SHARED,c.expert_mlp,d),
+        l4_k(0,8,"gate.weight",0,L4_GATE,c.experts,d),
+        l4_k(2,0,"norm.weight",0,0,d,0),l4_k(2,0,"output.weight",0,0,c.vocab,d),l4_k(2,0,"tok_embeddings.weight",0,0,c.vocab,d),
+        l4_k(2,0,"lerope.alpha",0,0,c.rope/2,0),
+        l4_k(2,0,"vision_encoder.ln_pre.weight",0,1,v,0),l4_k(2,0,"vision_encoder.patch_conv.weight",0,1,v,c.channels),
+        l4_k(1,0,"attention.wk.weight",0,1,v,v),l4_k(1,0,"attention.wo.weight",0,1,v,v),l4_k(1,0,"attention.wq.weight",0,1,v,v),l4_k(1,0,"attention.wv.weight",0,1,v,v),
+        l4_k(1,0,"attention_norm.weight",0,1,v,0),l4_k(1,0,"ffn_norm.weight",0,1,v,0),
+        l4_k(1,0,"feed_forward.w1.weight",0,1,c.vision_mlp,v),l4_k(1,0,"feed_forward.w2.weight",0,1,v,c.vision_mlp),l4_k(1,0,"feed_forward.w3.weight",0,1,c.vision_mlp,v),
+        l4_k(2,0,"patch_merger.merging_layer.weight",0,1,v,v*c.merge*c.merge),l4_k(2,0,"pre_mm_projector_norm.weight",0,1,v,0),
+        l4_k(2,0,"vision_language_adapter.w_in.weight",0,1,d,v),l4_k(2,0,"vision_language_adapter.w_out.weight",0,1,d,d)];
+    // The patch convolution is the one four-dimensional kind.
+    k[47].rank=4;k[47].dims[2]=c.patch;k[47].dims[3]=c.patch;
+    for i:0..<L4_KINDS {out[i]=k[i];}
+}
+// Does layer l hold a kind of set `set`? src is the cache map, rotary 1 for
+// a rotary layer, full 1 for a layer with its own indexer.
+l4_in :: (c:L4Config,set:int,l:int)->bool {
+    own:=ML4_KV_SOURCE[l]==l;rot:=ML4_ROTARY[l]==1;
+    sets:=[9]bool.[true,ML4_INDEXER_FULL[l]==1,own && rot,own && !rot,own,rot,!rot,l<c.dense_layers,l>=c.dense_layers];
+    return sets[set];
+}
+L4_DTYPES :: [3]string.["BF16","F32","F8_E4M3"];
+L4_SIZE :: [3]int.[2,4,1];
+// The values of one tensor of a kind.
+l4_values :: (k:L4Kind)->int {v:=1;for i:0..<k.rank {v*=k.dims[i];}return v;}
+// book:end kinds
+
+// book:begin line
+// The manifest line for kind k: the name with its layers as ranges (and
+// experts 0-127 for a routed expert), the dtype and the dimensions.
+l4_line :: (c:L4Config,k:L4Kind,out:[]u8)->int {
+    n:=0;
+    if k.where==2 {return l4_tail(k,out,m4_put(out,0,k.name));}
+    if k.where==1 {n=m4_put(out,n,"vision_encoder.transformer.layers.0-");n=m4_put_int(out,n,c.vision_layers-1);}
+    else {
+        n=m4_put(out,n,"layers.");first:=true;
+        // Each run of held layers starts where the layer before is not held.
+        for l:0..<c.layers {
+            if !l4_in(c,k.set,l) || (l>0 && l4_in(c,k.set,l-1)) {continue;}
+            e:=l;while e+1<c.layers && l4_in(c,k.set,e+1) {e+=1;}
+            if !first {n=m4_put(out,n,",");}
+            first=false;n=m4_put_int(out,n,l);
+            if e>l {n=m4_put(out,n,"-");n=m4_put_int(out,n,e);}
+        }
+    }
+    n=m4_put(out,n,".");
+    if k.part==L4_EXPERT {n=m4_put(out,n,"experts.0-");n=m4_put_int(out,n,c.experts-1);n=m4_put(out,n,".");}
+    return l4_tail(k,out,m4_put(out,n,k.name));
+}
+l4_tail :: (k:L4Kind,out:[]u8,at:int)->int {
+    n:=m4_put(out,m4_put(out,at," "),L4_DTYPES[k.dtype]);n=m4_put(out,n," ");
+    for i:0..<k.rank {if i>0 {n=m4_put(out,n,",");}n=m4_put_int(out,n,k.dims[i]);}
+    return n;
+}
+// book:end line
+
+// book:begin inventory
+// Read a manifest line: how many tensors it stands for (layers in its
+// ranges times experts in its ranges) and their bytes. -1 tensors when the
+// line does not parse.
+L4Line :: struct {tensors:int;bytes:int;draft:bool;}
+// A decimal number at s[at..]: its value, where it ends, and whether it
+// has a digit at all.
+L4Num :: struct {value:int;end:int;ok:bool;}
+l4_digit :: (c:u8)->bool {return c>='0' && c<='9';}
+l4_num :: (s:string,at:int)->L4Num {
+    r:=L4Num.{end=at};
+    while r.end<s.count && l4_digit(s[r.end]) {r.value=r.value*10+cast(int)(s[r.end]-'0');r.end+=1;r.ok=true;}
+    return r;
+}
+// The numbers in ranges such as "0-16,19-20,23": 0 when it does not parse.
+l4_count :: (s:string)->int {
+    n:=0;at:=0;
+    while true {
+        a:=l4_num(s,at);
+        if !a.ok {return 0;}
+        b:=a;
+        if a.end<s.count && s[a.end]=='-' {b=l4_num(s,a.end+1);if !b.ok || b.value<=a.value {return 0;}}
+        n+=b.value-a.value+1;
+        if b.end<s.count {if s[b.end]!=',' {return 0;}at=b.end+1;continue;}
+        return n;
+    }
+    return n;
+}
+l4_parse :: (line:string)->L4Line {
+    r:=L4Line.{tensors=-1};sp:[2]int;spaces:=0;
+    for i:0..<line.count {if line[i]==' ' {if spaces<2 {sp[spaces]=i;}spaces+=1;}}
+    if spaces!=2 {return r;}
+    name:=line[0..<sp[0]];dtype:=line[sp[0]+1..<sp[1]];dims:=line[sp[1]+1..<line.count];
+    size:=0;for t:0..<3 {if dtype==L4_DTYPES[t] {size=L4_SIZE[t];}}
+    if size==0 {return r;}
+    // Dimensions: numbers joined by commas, each at least 1.
+    values:=1;at:=0;
+    while true {
+        x:=l4_num(dims,at);
+        if !x.ok || x.value<1 {return r;}
+        values*=x.value;
+        if x.end<dims.count {if dims[x.end]!=',' {return r;}at=x.end+1;continue;}
+        break;
+    }
+    // Ranges follow "layers." and "experts."; a name without them is one tensor.
+    tensors:=1;start:=0;
+    for i:0..<name.count+1 {
+        if i<name.count && name[i]!='.' {continue;}
+        part:=name[start..<i];start=i+1;
+        if l4_num(part,0).ok {c:=l4_count(part);if c==0 {return r;}tensors*=c;}
+    }
+    r.tensors=tensors;r.bytes=tensors*values*size;r.draft=name.count>11 && name[0..<11]=="mtp_dspark.";
+    return r;
+}
+// The inventory: every derived line found exactly once, every line parsed,
+// and the totals equal to the pins. bad names the first derived kind missing
+// or repeated (-1: none), line the first line that does not parse.
+L4Inventory :: struct {status:L4Status;lines:int;tensors:int;bytes:int;draft:int;bad:int=-1;line:int=-1;}
+L4_LINES_MAX :: 128;
+l4_inventory :: (c:L4Config,manifest:string)->L4Inventory {
+    r:L4Inventory;ends:[129]int;ends[0]=-1;
+    for i:0..<manifest.count {if manifest[i]=='\n' {
+        if r.lines==L4_LINES_MAX {r.status=L4Status.manifest;return r;}
+        r.lines+=1;ends[r.lines]=i;
+    }}
+    for k:0..<r.lines {
+        p:=l4_parse(manifest[ends[k]+1..<ends[k+1]]);
+        if p.tensors<1 {r.status=L4Status.manifest;r.line=k;return r;}
+        r.tensors+=p.tensors;r.bytes+=p.bytes;if p.draft {r.draft+=p.bytes;}
+    }
+    kinds:[L4_KINDS]L4Kind;l4_kinds(c,kinds[..]);buf:[512]u8;
+    for e:0..<L4_KINDS {
+        n:=l4_line(c,kinds[e],buf[..]);line:=cast(string)buf[0..<n];found:=0;
+        for k:0..<r.lines {from:=ends[k]+1;if ends[k+1]-from==n && manifest[from..<ends[k+1]]==line {found+=1;}}
+        if found!=1 {r.status=L4Status.manifest;r.bad=e;return r;}
+    }
+    if r.tensors!=L4_PINNED_TENSORS || r.bytes!=L4_PINNED_TENSOR_BYTES {r.status=L4Status.total;}
+    return r;
+}
+// book:end inventory
+
+
+#test "the inventory: every derived line once, and the pinned totals" #steps 2000000000 {
+    c:=l4_large4();r:=l4_inventory(c,L4_PINNED_MANIFEST);
+    #assert r.status==L4Status.ok && r.lines==79 && r.tensors==56563 && r.bytes==1060548427328 && r.draft==4199938048 && r.bad== -1 && r.line== -1;
+    buf:[512]u8;kinds:[L4_KINDS]L4Kind;l4_kinds(c,kinds[..]);
+    n:=l4_line(c,kinds[10],buf[..]);
+    #assert cast(string)buf[0..<n]=="layers.0-2,4-6,8-10,12-14,16-18,20-22,24-26,28-30,32-34,36-38,40-42,44-46,48-50,52-54,56-58,60-62,64-66,68-70.attention.wkv_a_with_mqa.weight BF16 576,6144";
+    n=l4_line(c,kinds[29],buf[..]);#assert cast(string)buf[0..<n]=="layers.1-71.experts.0-127.w1.qscale_weight F32 48,48";
+    n=l4_line(c,kinds[47],buf[..]);#assert cast(string)buf[0..<n]=="vision_encoder.patch_conv.weight BF16 2048,3,14,14";
+    n=l4_line(c,kinds[48],buf[..]);#assert cast(string)buf[0..<n]=="vision_encoder.transformer.layers.0-29.attention.wk.weight BF16 2048,2048";
+    for k:kinds {if k.where!=0 {#assert k.set==0;}}
+    n=l4_line(c,kinds[11],buf[..]);#assert cast(string)buf[0..<n]=="layers.3,7,11,15,19,23,27,31,35.attention.wkv_a_with_mqa.weight BF16 512,6144";
+}
+#test "each layer's bytes by part, as the headers sum them" #steps 2000000000 {
+    c:=l4_large4();
+    y:=l4_layer(c,0);#assert y.part[L4_ATTN]==120348928 && y.part[L4_INDEX]==27163264 && y.part[L4_DENSE]==453095424 && y.part[L4_NORM]==25600 && y.one==0;
+    #assert y.part[L4_EXPERT]==0 && y.part[L4_SHARED]==0 && y.part[L4_GATE]==0;
+    y=l4_layer(c,1);#assert y.one==113273856 && y.part[L4_EXPERT]==14499053568 && y.part[L4_SHARED]==113273856 && y.part[L4_GATE]==1572864 && y.part[L4_DENSE]==0;
+    y=l4_layer(c,3);#assert y.part[L4_ATTN]==123756800 && y.part[L4_INDEX]==27163264;
+    y=l4_layer(c,17);#assert y.part[L4_INDEX]==0 && y.part[L4_ATTN]==120348928;
+    y=l4_layer(c,39);#assert y.part[L4_ATTN]==117465344 && y.part[L4_NORM]==24576 && y.part[L4_INDEX]==27163264;
+    all:=0;for l:0..<72 {x:=l4_layer(c,l);for p:0..<L4_PARTS {all+=x.part[p];}}
+    #assert all==1047906874880;
+    t:=l4_top(c);#assert t.embed==2516582400 && t.head==2516594688 && t.vision==3408437248 && t.rope==64;
+    #assert all+t.embed+t.head+t.vision+t.rope+4199938048==L4_PINNED_TENSOR_BYTES;
+    #assert l4_row(c,0)==576 && l4_row(c,3)==512 && l4_row(c,39)==0 && l4_indexer(18)==16 && l4_indexer(19)==19 && l4_indexer(71)==71;
+}
+#test "manifest refusals: a line that does not parse, a missing line, wrong totals" #steps 2000000000 {
+    c:=l4_large4();
+    for bad:[10]string.["x BF16","x Q8 1\n","x BF16 0\n","x BF16 1,\n","x BF16 a\n","layers.3-2.x BF16 1\n","layers.-.x BF16 1\n","layers.1;2.x BF16 1\n","a b c d\n","layers.1-.x BF16 1\n"] {
+        r:=l4_inventory(c,bad);#assert r.status==(ifx bad.count==6 then L4Status.manifest else L4Status.manifest);
+    }
+    #assert l4_inventory(c,"x Q8 1\n").line==0 && l4_inventory(c,"norm.weight BF16 6144\nx BF16 0\n").line==1;
+    #assert l4_parse("layers.0-2,5.experts.0-3.w BF16 2,3").tensors==16 && l4_parse("layers.0-2,5.experts.0-3.w BF16 2,3").bytes==192;
+    #assert l4_parse("a F32 7").bytes==28 && l4_parse("a F8_E4M3 7").bytes==7 && !l4_parse("a F8_E4M3 7").draft && l4_parse("mtp_dspark.x BF16 3").draft;
+    #assert l4_parse("mtp_dspark. BF16 3").draft==false && l4_parse("layers.12.x BF16 1").tensors==1 && l4_parse("layers.9-12.x BF16 1").tensors==4;
+    #assert l4_count("0-1,4")==3 && l4_count("")==0 && l4_count("1,")==0 && l4_count("2-2")==0 && l4_count("3-")==0 && l4_count("1;2")==0;
+    #assert l4_count("10-12")==3 && l4_count("12")==1 && l4_count("7,9")==2 && l4_count("-1")==0;
+    #assert l4_digit('0') && l4_digit('9') && !l4_digit('/') && !l4_digit(':');
+    #assert l4_parse("layers.0-2.experts.1;2.w BF16 1").tensors== -1 && l4_parse("a b c d").tensors== -1 && l4_parse("x BF16").tensors== -1;
+    #assert l4_parse("x BF16 1,0").tensors== -1 && l4_parse("x BF16 2;3").tensors== -1 && l4_parse("x BF16 12,3").bytes==72 && l4_parse("x BF16 1").bytes==2;
+    #assert l4_parse(" x BF16 1").tensors== -1 && l4_parse("x.3-5 BF16 1").tensors==3 && l4_parse("10-12.x BF16 1").tensors==3 && l4_parse(".3-5.x BF16 1").tensors==3;
+    #assert l4_parse("a..b BF16 1").tensors==1 && l4_parse("layers.:.x BF16 1").tensors==1;
+    #assert l4_inventory(c,"\nnorm.weight BF16 6144\n").line==0;
+    // One tensor's bytes changed, the count kept: still refused.
+    big:[8192]u8;pm:=L4_PINNED_MANIFEST;b:=m4_put(big[..],0,pm);
+    for k:0..<pm.count-28 {if pm[k..<k+28]=="target_norm.weight BF16 6144" {big[k+27]='5';}}
+    lr:=l4_inventory(c,cast(string)big[0..<b]);#assert lr.status==L4Status.total && lr.tensors==56563 && lr.bytes==1060548427330;
+    // Drop one derived line: the inventory names it.
+    m:=L4_PINNED_MANIFEST;cut:=0;for i:0..<m.count {if m[i]=='\n' {cut=i+1;break;}}
+    r:=l4_inventory(c,m[cut..<m.count]);#assert r.status==L4Status.manifest && r.bad==0 && r.lines==78;
+    // A tensor more than the pins.
+    extra:[8192]u8;n:=m4_put(extra[..],0,m);n=m4_put(extra[..],n,"extra BF16 1\n");
+    r=l4_inventory(c,cast(string)extra[0..<n]);#assert r.status==L4Status.total && r.tensors==56564 && r.bytes==1060548427330;
+    many:[1400]u8;k:=0;for i:0..<129 {k=m4_put(many[..],k,"a BF16 1\n");}
+    #assert l4_inventory(c,cast(string)many[0..<k]).status==L4Status.manifest && l4_inventory(c,cast(string)many[0..<k-9]).bad==0;
+    #assert l4_inventory(c,cast(string)many[0..<k-9]).lines==128;
+}
+
+// book:begin layers
+// Layer l's bytes by part, from the derived kinds; one is a single routed
+// expert's three matrices and their scales.
+L4Layer :: struct {part:[7]int;one:int;}
+l4_layer :: (c:L4Config,l:int)->L4Layer {
+    kinds:[L4_KINDS]L4Kind;l4_kinds(c,kinds[..]);r:L4Layer;
+    for k:kinds {
+        if k.where!=0 || !l4_in(c,k.set,l) {continue;}
+        b:=l4_values(k)*L4_SIZE[k.dtype];
+        if k.part==L4_EXPERT {r.one+=b;b*=c.experts;}
+        r.part[k.part]+=b;
+    }
+    return r;
+}
+// The top level's bytes: embedding, readout with the final norm, vision.
+L4Top :: struct {embed:int;head:int;vision:int;rope:int;}
+l4_top :: (c:L4Config)->L4Top {
+    kinds:[L4_KINDS]L4Kind;l4_kinds(c,kinds[..]);t:L4Top;
+    for k:kinds {
+        b:=l4_values(k)*L4_SIZE[k.dtype]*(ifx k.where==1 then c.vision_layers else 1);
+        if k.where==0 {continue;}
+        if k.part==1 {t.vision+=b;}
+        else if k.name=="tok_embeddings.weight" {t.embed=b;}
+        else if k.name=="lerope.alpha" {t.rope=b;}
+        else {t.head+=b;}
+    }
+    return t;
+}
+// book:end layers
+
+// book:begin mesh
+// The mesh: `stages` groups of `width` peers each. Every peer has `budget`
+// bytes and reads memory at `read` MB/s. Within a group links have latency
+// lat_in ns and bandwidth bw_in MB/s; between groups lat_out and bw_out.
+// context: the positions the cache holds. kv: bytes a cached value (1:
+// params.json's fp8_kv_cache and fp8_indexer).
+L4Mesh :: struct {stages:int;width:int;budget:int;read:int;lat_in:int;bw_in:int;lat_out:int;bw_out:int;context:int;kv:int;}
+// A stage of layers a..<b in pipeline position i of n. leader: the group's
+// first peer, which holds the attention, indexers, router, shared expert,
+// the dense block, its share of the experts, the caches, a copy of any
+// cache it reads from an earlier stage, and the embedding (first) or the
+// readout (last). peer: any other peer, its share of the experts. read:
+// the leader's bytes read for one decode token: every non-routed weight,
+// ceil(top_k / width) experts a mixture layer, the selected cache rows
+// (index_topk at most) and every index key. imported: the bytes of copied
+// caches.
+L4Stage :: struct {leader:int;peer:int;read:int;imported:int;mixture:int;}
+// The latent row a position of layer l keeps: rotary layers the latent and
+// the rotary key, NoPE layers the latent; 0 for a layer reading another's.
+l4_min :: (a:int,b:int)->int {return a+b-stg_max(a,b);}
+l4_row :: (c:L4Config,l:int)->int {
+    if ML4_KV_SOURCE[l]!=l {return 0;}
+    return ifx ML4_ROTARY[l]==1 then c.kv_rank+c.rope else c.kv_rank;
+}
+// The nearest full indexer layer at or before l.
+l4_indexer :: (l:int)->int {j:=l;while ML4_INDEXER_FULL[j]==0 {j-=1;}return j;}
+// y: every layer's bytes (l4_layer), t: the top level's (l4_top).
+// Layer l added to a stage whose first layer is a. A layer reading a
+// cache from before a imports it, once per stage: only its first reader in
+// the stage counts it.
+l4_add :: (c:L4Config,m:L4Mesh,y:[]L4Layer,given:L4Stage,a:int,l:int)->L4Stage {
+    s:=given;share:=c.experts/m.width;active:=(c.top_k+m.width-1)/m.width;
+    sel:=l4_min(m.context,c.index_topk);
+    base:=0;for p:0..<L4_PARTS {if p!=L4_EXPERT {base+=y[l].part[p];}}
+    s.leader+=base+share*y[l].one;s.peer+=share*y[l].one;s.read+=base+active*y[l].one;
+    if l4_in(c,8,l) {s.mixture+=1;}
+    src:=ML4_KV_SOURCE[l];row:=l4_row(c,src);first:=src<a;
+    for k:a..<l {if ML4_KV_SOURCE[k]==src {first=false;}}
+    if first {s.imported+=row*m.context*m.kv;s.leader+=row*m.context*m.kv;}
+    s.leader+=l4_row(c,l)*m.context*m.kv;s.read+=row*sel*m.kv;
+    if ML4_INDEXER_FULL[l]==1 {s.leader+=c.index_dim*m.context*m.kv;s.read+=c.index_dim*m.context*m.kv;}
+    return s;
+}
+// The top level's share: the embedding on the first stage (and one row of
+// it read a token), the readout and final norm on the last.
+l4_ends :: (c:L4Config,t:L4Top,given:L4Stage,i:int,n:int)->L4Stage {
+    s:=given;
+    if i==0 {s.leader+=t.embed+t.rope;s.read+=2*c.dim;}
+    if i==n-1 {s.leader+=t.head;s.read+=t.head;}
+    return s;
+}
+l4_stage :: (c:L4Config,m:L4Mesh,y:[]L4Layer,t:L4Top,a:int,b:int,i:int,n:int)->L4Stage {
+    s:L4Stage;for l:a..<b {s=l4_add(c,m,y,s,a,l);}
+    return l4_ends(c,t,s,i,n);
+}
+// Every layer's bytes, once.
+l4_all :: (c:L4Config,y:[]L4Layer) {for l:0..<c.layers {y[l]=l4_layer(c,l);}}
+// The bytes stage i sends stage i + 1 for one decode token, as chapter
+// 186's f32 messages: the hidden row, each cache row a later stage reads
+// from a layer at or before this cut, and each indexer selection (32-bit
+// ids) a later shared-indexer layer reuses from this side of the cut.
+l4_boundary :: (c:L4Config,m:L4Mesh,cut:int)->int {
+    bytes:=stg_message_bytes(1,c.dim);
+    sel:=l4_min(m.context,c.index_topk);
+    rows:[128]bool;ids:[128]bool;
+    for l:cut..<c.layers {
+        src:=ML4_KV_SOURCE[l];
+        if src<cut && !rows[src] {rows[src]=true;bytes+=stg_message_bytes(1,l4_row(c,src));}
+        j:=l4_indexer(l);
+        if j<cut && !ids[j] {ids[j]=true;bytes+=stg_message_bytes(1,sel);}
+    }
+    return bytes;
+}
+// One mixture layer's expert exchange for a decode token on the leader: the
+// token's top_k experts on distinct peers other than the leader where there
+// are enough (the spread the plan assumes), priced by chapter 191.
+l4_exchange :: (c:L4Config,m:L4Mesh)->int {
+    if m.width==1 {return 0;}
+    // Chapter 191's contiguous split; -1 when it refuses the width.
+    owner:[256]int;o:=owner[0..<c.experts];
+    if xm_contiguous(c.experts,m.width,o)!=XmStatus.ok {return -1;}
+    r:=M4Route.{count=c.top_k};share:=c.experts/m.width;
+    // Slot k takes expert k of peer 1 + k mod (width - 1).
+    for k:0..<c.top_k {r.ids[k]=share*(1+k%(m.width-1))+k;}
+    routes:=[1]M4Route.[r];home:=[1]int.[0];
+    b:=xm_bytes(routes[..],1,home[..],o,m.width,c.dim);
+    lat:[8][8]int;bw:[8][8]int;for x:0..<8 {for y:0..<8 {lat[x][y]=m.lat_in;bw[x][y]=m.bw_in;}}
+    return xm_exchange(b,m.width,lat,bw);
+}
+// book:end mesh
+
+// book:begin plan
+// The plan: cut[i]..<cut[i+1] are stage i's layers, chosen so every leader
+// fits and the slowest stage (its reads at the peer's rate plus its expert
+// exchange) is as fast as it can be; the earlier cut wins a tie. Chapter
+// 189's solver then places the stages on the groups for the lowest latency.
+// latency: one token through every stage, hop and exchange; period: the
+// busiest stage with its send, the time between tokens when the pipeline
+// is full. On memory: the one-layer stage that fits nowhere (stage, layer)
+// and its excess (gap); on split: no cut fits every stage.
+L4Plan :: struct {status:L4Status;stages:int;width:int;cut:[9]int;stage:[8]L4Stage;send:[8]int;time:[8]int;exchange:[8]int;latency:int;period:int;layer:int=-1;gap:int;placed:PlcPlacement;}
+L4_STAGES_MAX :: 8;
+l4_valid :: (c:L4Config,m:L4Mesh)->bool {
+    if !plc_in(m.stages,1,L4_STAGES_MAX) || !plc_in(m.budget,1,PLC_AMOUNT_MAX) || !plc_in(m.read,1,PLC_RATE_MAX) || !plc_in(m.context,1,STG_CONTEXT_MAX) || !plc_in(m.kv,1,4) || c.experts%8!=0 {return false;}
+    return plc_in(m.lat_in,0,PLC_AMOUNT_MAX) && plc_in(m.bw_in,1,PLC_RATE_MAX) && plc_in(m.lat_out,0,PLC_AMOUNT_MAX) && plc_in(m.bw_out,0,PLC_RATE_MAX) && c.layers==ML4_LAYERS;
+}
+l4_cost :: (c:L4Config,m:L4Mesh,s:L4Stage,exchange:int)->int {return plc_ns(s.read,m.read)+s.mixture*exchange;}
+l4_plan :: (c:L4Config,m:L4Mesh)->L4Plan {
+    p:=L4Plan.{stages=m.stages,width=m.width};n:=m.stages;L:=c.layers;
+    if !l4_valid(c,m) {p.status=L4Status.input;return p;}
+    if m.width!=1 && m.width!=2 && m.width!=4 && m.width!=8 {p.status=L4Status.width;return p;}
+    x:=l4_exchange(c,m);y:[128]L4Layer;l4_all(c,y[..]);t:=l4_top(c);
+    // A layer alone in the middle must fit (it is the least any stage holds).
+    // Checked from the last layer down; the first that does not fit is named.
+    for k:0..<L {
+        l:=L-1-k;empty:L4Stage;need:=l4_add(c,m,y[..],empty,l,l).leader;
+        if need>m.budget {p.status=L4Status.memory;p.layer=l;p.gap=need-m.budget;return p;}
+    }
+    // best[i][b]: the slowest stage over stages 0..i when stage i ends
+    // before layer b (-1: none fits); start[i][b]: where stage i begins.
+    // Each stage grows one layer at a time from each start a.
+    best:[8][73]int;start:[8][73]int;seen:[8][73]bool;
+    for i:0..<n {
+        for a:i..<L {
+            if (i==0 && a!=0) || (i>0 && !seen[i-1][a]) {continue;}
+            s:L4Stage;
+            for b:a+1..<L+1 {
+                s=l4_add(c,m,y[..],s,a,b-1);e:=l4_ends(c,t,s,i,n);
+                if e.leader>m.budget {continue;}
+                k:=l4_cost(c,m,e,x);
+                if i>0 {k=stg_max(k,best[i-1][a]);}
+                if !seen[i][b] || k<best[i][b] {best[i][b]=k;start[i][b]=a;seen[i][b]=true;}
+            }
+        }
+    }
+    if !seen[n-1][L] {p.status=L4Status.split;return p;}
+    p.cut[n]=L;
+    for k:0..<n {i:=n-1-k;p.cut[i]=start[i][p.cut[i+1]];}
+    j:=PlcJob.{stages=n};f:=PlcFleet.{peers=n,deadline=PLC_AMOUNT_MAX};
+    for i:0..<n {
+        p.stage[i]=l4_stage(c,m,y[..],t,p.cut[i],p.cut[i+1],i,n);p.exchange[i]=p.stage[i].mixture*x;
+        p.send[i]=ifx i==n-1 then 4 else l4_boundary(c,m,p.cut[i+1]);
+        j.stage[i]=PlcStage.{bytes=p.stage[i].leader,read=p.stage[i].read,out=p.send[i]};
+        f.peer[i]=PlcPeer.{live=true,budget=m.budget,macs=m.read,read=m.read,fetch=m.read,verify=m.read};
+        for g:0..<n {f.lat[i][g]=m.lat_out;f.bw[i][g]=m.bw_out;}
+    }
+    zero:[1]int;p.placed=plc_place(j,f,PlcGoal.latency,zero[0..<0]);
+    if p.placed.status!=PlcStatus.ok {p.status=L4Status.place;return p;}
+    p.latency=p.placed.latency;
+    for i:0..<n {
+        p.time[i]=p.placed.compute[i]+p.exchange[i];p.latency+=p.exchange[i];
+        p.period=stg_max(p.period,p.time[i]+p.placed.hop[i+1]);
+    }
+    return p;
+}
+// The smallest mesh of identical peers that admits the model: the fewest
+// peers (stages x width), and among as many peers the widest expert split
+// (which reads the fewest experts a token), then the fewest stages. status
+// split when no mesh up to 8 x 8 does.
+l4_smallest :: (c:L4Config,m:L4Mesh)->L4Plan {
+    best:=L4Plan.{status=L4Status.split};
+    for w:[4]int.[8,4,2,1] {
+        // One stage more each time, until the plan refuses the count.
+        g:=m;g.width=w;g.stages=1;p:=l4_plan(c,g);
+        while p.status!=L4Status.input {
+            if p.status==L4Status.ok && (best.status!=L4Status.ok || g.stages*w<best.stages*best.width) {best=p;}
+            g.stages+=1;p=l4_plan(c,g);
+        }
+    }
+    return best;
+}
+// book:end plan
+
+#test "the hand-worked mesh: five stages of one peer" #steps 2000000000 {
+    c:=l4_large4();m:=l4c_mesh(5,1);p:=l4_plan(c,m);
+    #assert p.status==L4Status.ok && p.cut[1]==15 && p.cut[2]==30 && p.cut[3]==45 && p.cut[4]==60 && p.cut[5]==72;
+    #assert p.stage[0].leader==210127311040 && p.send[0]==24612 && p.send[4]==4;
+    #assert p.latency==136164207 && p.period==27424123;
+    #assert l4_exchange(c,l4c_mesh(1,16))== -1 && l4_exchange(c,l4c_mesh(1,1))==0 && l4_exchange(c,l4c_mesh(1,8))==43934 && l4_exchange(c,l4c_mesh(1,2))==49833 && l4_exchange(c,l4c_mesh(1,4))==45900;
+    // Cuts that cross the cache map and the indexer sharing.
+    #assert l4_boundary(c,m,39)==24612+2084 && l4_boundary(c,m,25)==24612+8228 && l4_boundary(c,m,18)==24612+8228 && l4_boundary(c,m,36)==24612+2084;
+    #assert l4_boundary(c,m,17)==24612+8228 && l4_boundary(c,m,16)==24612 && l4_boundary(c,m,71)==24612+2084 && l4_boundary(c,m,40)==24612+2084;
+    short:=m;short.context=1000;#assert l4_boundary(c,short,25)==24612+4036;
+    y:[128]L4Layer;l4_all(c,y[..]);t:=l4_top(c);
+    s:=l4_stage(c,m,y[..],t,39,40,1,3);#assert s.imported==512*32768 && s.mixture==1 && s.peer==128*113273856;
+    s=l4_stage(c,m,y[..],t,35,44,1,3);#assert s.imported==0;
+    s=l4_stage(c,m,y[..],t,39,48,1,3);#assert s.imported==16777216 && s.mixture==9;
+    #assert l4_cost(c,m,s,100)==plc_ns(s.read,m.read)+900 && l4_cost(c,m,s,0)==plc_ns(s.read,m.read);
+    s=l4_stage(c,m,y[..],t,40,44,1,3);#assert s.imported==16777216;
+    s=l4_stage(c,m,y[..],t,39,40,1,3);#assert s.leader==14779524992 && s.read==259499904+113273856*4+512*2048+128*32768;
+    s=l4_stage(c,m,y[..],t,17,18,1,3);#assert s.leader==14734274816+576*32768 && s.imported==0;
+    s=l4_stage(c,m,y[..],t,0,1,0,1);#assert s.leader==600633216+(576+128)*32768+2516582400+64+2516594688 && s.read==600633216+576*2048+128*32768+2*6144+2516594688 && s.mixture==0;
+}
+#test "the hand-worked meshes with expert groups" #steps 2000000000 {
+    c:=l4_large4();
+    p:=l4_plan(c,l4c_mesh(3,2));#assert p.status==L4Status.ok && p.cut[1]==25 && p.cut[2]==51 && p.latency==98442500 && p.period==32851360 && p.send[0]==32840;
+    p=l4_plan(c,l4c_mesh(2,4));#assert p.status==L4Status.ok && p.cut[1]==39 && p.latency==77530875 && p.period==39111677 && p.exchange[0]==1744200;
+    p=l4_plan(c,l4c_mesh(1,8));#assert p.status==L4Status.ok && p.latency==76369932 && p.period==76369932 && p.exchange[0]==71*43934;
+    p=l4_plan(c,l4c_mesh(8,4));#assert p.status==L4Status.ok && p.cut[1]==9 && p.cut[4]==39 && p.cut[7]==69 && p.period==10364095;
+    // A budget equal to the largest leader keeps the plan.
+    q:=l4_plan(c,l4c_mesh(5,1));m:=l4c_mesh(5,1);m.budget=0;for i:0..<5 {m.budget=stg_max(m.budget,q.stage[i].leader);}
+    r:=l4_plan(c,m);#assert r.status==L4Status.ok;for i:0..<6 {#assert r.cut[i]==q.cut[i];}
+}
+#forall "the plan's slowest stage is the brute force's, over every split into 1 to 3 stages" n:1..<4,w:0..<4 #steps 2000000000 {
+    c:=l4_large4();widths:=[4]int.[1,2,4,8];m:=l4c_mesh(n,widths[w]);m.budget=m.budget*(5-n)/2;
+    p:=l4_plan(c,m);b:=l4c_cuts(c,m,n);
+    #assert (p.status==L4Status.ok)==(b.cut[0]==0);
+    if p.status==L4Status.ok {
+        k:=0;for i:0..<n {k=stg_max(k,p.time[i]);}
+        #assert k==b.slowest;
+    }
+}
+#test "refusals: experts, inputs, the cache map, memory, no split, no link" #steps 4000000000 {
+    c:=l4_large4();
+    m:=l4c_mesh(2,3);#assert l4_plan(c,m).status==L4Status.width;
+    m=l4c_mesh(2,16);#assert l4_plan(c,m).status==L4Status.width;
+    m=l4c_mesh(2,0);#assert l4_plan(c,m).status==L4Status.width;
+    m=l4c_mesh(2,8);#assert l4_plan(c,m).status==L4Status.ok;m=l4c_mesh(3,2);#assert l4_plan(c,m).status==L4Status.ok;
+    few:=c;few.experts=100;#assert l4_plan(few,l4c_mesh(2,4)).status==L4Status.input;
+    m=l4c_mesh(2,1);m.budget=1;#assert l4_plan(c,m).status==L4Status.memory;
+    for bad:0..<9 {
+        m=l4c_mesh(2,1);
+        if bad==0 {m.stages=0;} if bad==1 {m.stages=9;} if bad==2 {m.budget=0;} if bad==3 {m.read=0;} if bad==4 {m.context=0;}
+        if bad==5 {m.kv=5;} if bad==6 {m.bw_in=0;} if bad==7 {m.lat_in= -1;} if bad==8 {m.lat_out= -1;}
+        #assert l4_plan(c,m).status==L4Status.input;
+    }
+    m=l4c_mesh(2,1);m.kv=0;#assert l4_plan(c,m).status==L4Status.input;m.kv=4;#assert l4_plan(c,m).status!=L4Status.input;
+    m.kv=1;m.context=STG_CONTEXT_MAX+1;#assert l4_plan(c,m).status==L4Status.input;
+    m.context=1;m.bw_out=PLC_RATE_MAX+1;#assert l4_plan(c,m).status==L4Status.input;
+    m.bw_out=1;m.bw_in=PLC_RATE_MAX+1;#assert l4_plan(c,m).status==L4Status.input;
+    m.bw_in=1;m.read=PLC_RATE_MAX+1;#assert l4_plan(c,m).status==L4Status.input;
+    m.read=1;m.budget=PLC_AMOUNT_MAX+1;#assert l4_plan(c,m).status==L4Status.input;
+    m.budget=PLC_AMOUNT_MAX;m.lat_in=PLC_AMOUNT_MAX+1;#assert l4_plan(c,m).status==L4Status.input;
+    m.lat_in=0;m.lat_out=PLC_AMOUNT_MAX+1;#assert l4_plan(c,m).status==L4Status.input;
+    m.lat_out=0;#assert l4_plan(c,m).status==L4Status.ok;
+    odd:=c;odd.layers=71;#assert l4_plan(odd,l4c_mesh(2,1)).status==L4Status.input;
+}
+#test "refusals: memory, no split, no link" #steps 4000000000 {
+    c:=l4_large4();m:=l4c_mesh(4,1);m.budget=1000000000;p:=l4_plan(c,m);
+    #assert p.status==L4Status.memory && p.layer==71 && p.gap==14779524992-1000000000;
+    m.budget=14779524991;p=l4_plan(c,m);#assert p.status==L4Status.memory && p.layer==71 && p.gap==1;
+    m.budget=14779524992;p=l4_plan(c,m);#assert p.status==L4Status.memory && p.layer==68 && p.gap==4981760;
+    m.budget=14784506752;p=l4_plan(c,m);#assert p.status==L4Status.memory && p.layer==35 && p.gap==1310720;
+    m.budget=14785817472;#assert l4_plan(c,m).status==L4Status.split;
+    m.budget=20000000000;#assert l4_plan(c,m).status==L4Status.split;
+    m=l4c_mesh(2,4);m.bw_out=0;p=l4_plan(c,m);#assert p.status==L4Status.place && p.placed.status==PlcStatus.link;
+    m=l4c_mesh(1,8);m.bw_out=0;#assert l4_plan(c,m).status==L4Status.ok;
+}
+#test "the smallest mesh" #steps 4000000000 {
+    c:=l4_large4();m:=l4c_mesh(1,1);m.budget=10000000000;#assert l4_smallest(c,m).status==L4Status.split;
+}
+#test "the smallest mesh of 256 GB peers, and of 150 GB peers" #steps 4000000000 {
+    c:=l4_large4();m:=l4c_mesh(1,1);
+    m.budget=256000000000;b:=l4_smallest(c,m);#assert b.status==L4Status.ok && b.stages==5 && b.width==1;
+}
+#test "the smallest mesh of 150 GB peers" #steps 4000000000 {
+    c:=l4_large4();m:=l4c_mesh(1,1);
+    m.budget=150000000000;b:=l4_smallest(c,m);#assert b.status==L4Status.ok && b.stages==2 && b.width==4;
+}
+#test "the smallest mesh of 160 GB and 200 GB peers" #steps 4000000000 {
+    c:=l4_large4();m:=l4c_mesh(3,1);
+    m.budget=160000000000;b:=l4_smallest(c,m);#assert b.status==L4Status.ok && b.stages==1 && b.width==8;
+}
+#test "the smallest mesh of 200 GB peers" #steps 4000000000 {
+    c:=l4_large4();m:=l4c_mesh(1,1);
+    m.budget=200000000000;b:=l4_smallest(c,m);#assert b.status==L4Status.ok && b.stages==3 && b.width==2;
+}
+#test "the smallest mesh of 125 GB peers, and the status names" #steps 4000000000 {
+    c:=l4_large4();m:=l4c_mesh(1,1);
+    m.budget=125000000000;b:=l4_smallest(c,m);#assert b.status==L4Status.ok && b.stages==5 && b.width==2;
+    for k:0..<8 {#assert l4_status_name(cast(L4Status)k).count>1;}
+    #assert l4_status_name(L4Status.ok)=="ok" && l4_status_name(L4Status.place)=="placement refused";
+}
+#test "a reader's attention is chapter 85's when it reads its own row" {
+    s:=m4o_shape();a:=m4o_attn_weights(3);w:=m4_attn_view(a.f[..],a.c[..]);
+    hidden:[32]f32;m4o_values(4,hidden[..],0);cache:[28]f32;work:[48]f32;fwork:[8]f64;
+    // Layer A writes rows 0..3; a reader with A's weights at each position
+    // equals A itself, reading A's rows.
+    own:=hidden;#assert m4_attention(s,w,4,0,own[..],cache[..],work[..],fwork[..]).written==4;
+    for p:0..<4 {
+        mine:[8]f32;for i:0..<8 {mine[i]=hidden[p*8+i];}
+        #assert l4_read(s,w,p,mine[..],cache[..],work[..],fwork[..]);
+        for i:0..<8 {#assert f32_bits(mine[i])==f32_bits(own[p*8+i]);}
+    }
+    bad:=a;bad.f[15]=3e38;x:[8]f32;for i:0..<8 {x[i]=1;}#assert !l4_read(s,m4_attn_view(bad.f[..],bad.c[..]),0,x[..],cache[..],work[..],fwork[..]);
+}
+#forall "the model split over stages and expert peers equals it whole, bit for bit" seed:0..<6,n:1..<4,width:1..<4 #steps 2000000000 {
+    src:=[6]int.[0,1,2,1,4,1];
+    r:=l4c_run(seed,6,src[..],n,width,4,-1,-1);
+    #assert r.whole && r.split.ok && r.same && r.reference && r.split.sent==r.want && r.split.refusal==StgRefusal.none;
+}
+#test "ties go to the earliest stage start" #steps 2000000000 {
+    c:=l4_large4();
+    m:=l4c_mesh(3,8);m.read=PLC_RATE_MAX;m.lat_in=0;m.bw_in=PLC_RATE_MAX;p:=l4_plan(c,m);#assert p.cut[1]==25 && p.cut[2]==49 && p.time[0]==57 && p.time[2]==56;
+    m.stages=4;p=l4_plan(c,m);#assert p.cut[1]==19 && p.cut[2]==37 && p.cut[3]==55 && p.time[1]==43;
+    m.stages=2;p=l4_plan(c,m);#assert p.cut[1]==37 && p.time[0]==85;
+    // Layers 0-36 | 37-71 and 0-37 | 38-71 both take 25 ns at the slowest stage.
+    m=l4c_mesh(2,1);m.read=PLC_RATE_MAX;m.budget=PLC_AMOUNT_MAX;p=l4_plan(c,m);#assert p.cut[1]==37 && stg_max(p.time[0],p.time[1])==25;
+}
+#test "the small model's layers are the weights it was given" {
+    src:=[2]int.[0,1];f:[2*L4_F]f32;c:[2*L4_C]u8;for i:0..<2*L4_F {f[i]=f32(i);}for i:0..<2*L4_C {c[i]=cast(u8)(i%251);}
+    t:=l4c_toy(2,src[..],f[..],c[..]);a:=l4_attn(t,1);m:=l4_moe(t,1);
+    #assert a.norm[0]==81 && a.norm.count==8 && a.o.scale==100 && a.q_a.codes[0]==cast(u8)(646%251) && a.o.codes[47]==cast(u8)((646+213)%251);
+    #assert m.norm[0]==101 && m.shared_down.scale==161 && m.up[0]==cast(u8)(860%251) && m.shared_down.codes[23]==cast(u8)(1291%251);
+}
+#test "a changed bit on the wire is refused, and the run stops" #steps 2000000000 {
+    src:=[4]int.[0,1,2,1];
+    six:=[6]int.[0,1,2,1,4,1];
+    r:=l4c_run(0,6,six[..],2,1,4,9,-1);#assert !r.split.ok && r.split.refusal==StgRefusal.checksum && r.split.sent==68 && r.whole && r.cut[1]==4;
+    r=l4c_run(0,6,six[..],2,1,4,0,-1);#assert !r.split.ok && r.split.refusal==StgRefusal.version && r.split.sent==68;
+    r=l4c_run(0,6,six[..],2,1,4,64+4,-1);#assert !r.split.ok && r.split.refusal==StgRefusal.position && r.split.sent==132;
+    r=l4c_run(0,6,six[..],2,1,4,2*64+3,-1);#assert !r.split.ok && r.split.refusal==StgRefusal.layer && r.split.sent==200;
+    r=l4c_run(0,6,six[..],2,1,4,64,-1);#assert !r.split.ok && r.split.refusal==StgRefusal.version && r.split.sent==132;
+    r=l4c_run(0,6,six[..],2,1,4,5,-1);#assert !r.split.ok && r.split.refusal==StgRefusal.count && r.split.sent==68;
+    r=l4c_run(0,6,six[..],2,1,4,-1,-1);#assert r.split.ok && r.same && r.split.sent==528 && r.split.refusal==StgRefusal.none;
+    two:=[4]int.[0,1,0,0];r=l4c_run(2,4,two[..],3,1,2,-1,-1);#assert r.split.ok && r.same && r.reference && r.split.sent==r.want;
+}
+#test "a layer that overflows stops the run, whole and split" #steps 2000000000 {
+    six:=[6]int.[0,1,2,1,4,1];
+    for bad:[3]int.[0,6,1] {for w:[2]int.[1,2] {
+        r:=l4c_run(0,6,six[..],2,w,2,-1,bad);#assert !r.whole && !r.split.ok && !r.reference && r.split.refusal==StgRefusal.none;
+    }}
+    r:=l4c_run(0,6,six[..],2,2,2,-1,10);#assert !r.whole && !r.split.ok && r.split.sent==132;
+}
+
+// book:begin run
+// A small model in Large 4's pattern: chapter 85's latent attention and
+// mixture layers at its checks' shape, where layer l reads the cache of
+// layer src[l] (src[l] < l for a reader, which keeps no cache of its own).
+// Layer l's weights are f[81 l ..] (attention's 20 values, then the
+// mixture's 61) and c[646 l ..] (214 codes, then 432).
+L4Toy :: struct {layers:int;src:[8]int;f:[]f32;c:[]u8;}
+L4_F :: 81;L4_C :: 646;
+l4_attn :: (t:L4Toy,l:int)->M4Attn {return m4_attn_view(t.f[l*L4_F..<t.f.count],t.c[l*L4_C..<t.c.count]);}
+l4_moe :: (t:L4Toy,l:int)->M4Moe {return m4_moe_view(t.f[l*L4_F+20..<(l+1)*L4_F],t.c[l*L4_C+214..<(l+1)*L4_C]);}
+// A reader's attention: chapter 85's m4_attention for one token at position
+// p, except the cache is the source layer's, read and never written.
+l4_read :: (s:M4Shape,w:M4Attn,p:int,x:[]f32,cache:[]f32,work:[]f32,fwork:[]f64)->bool {
+    at:=m4_layout(s);kv:=work[0..<s.rope];normed:=work[at[1]..<at[2]];qa:=work[at[2]..<at[3]];q:=work[at[3]..<at[4]];
+    latent:=work[at[4]..<at[5]];attended:=work[at[5]..<at[6]];out:=work[at[6]..<at[7]];
+    ok:=m4_norm(x,w.norm,normed) && m4_linear(w.q_a,normed,qa) && m4_norm(qa,w.q_norm,qa) && m4_linear(w.q_b,qa,q);
+    for head:0..<s.heads {
+        r:=q[head*(s.nope+s.rope)+s.nope..<(head+1)*(s.nope+s.rope)];
+        ok=ok && m4_rotate(r,p,kv[0..<s.rope]);
+        for j:0..<s.rope {r[j]=kv[j];}
+    }
+    ok=ok && m4_latent(s,w.kv_b,q,cache,p,m4_softmax_scale(s)*m4_position_scale(p),latent,attended,fwork);
+    return ok && m4_linear(w.o,attended,out) && m4_residual(x,out);
+}
+// One token through layers a..<b at position p. caches[l] is layer l's
+// cache (a reader's source cache may be a stage's copy); peers and owner
+// split each layer's experts (one peer: chapter 85's m4_moe).
+l4_layers :: (s:M4Shape,t:L4Toy,a:int,b:int,p:int,x:[]f32,caches:[][]f32,peers:[][]XmPeer,owner:[][]int,work:[]f32,fwork:[]f64)->bool {
+    for l:a..<b {
+        if t.src[l]==l {if m4_attention(s,l4_attn(t,l),1,p,x,caches[l],work,fwork).status!=M4Status.ok {return false;}}
+        else if !l4_read(s,l4_attn(t,l),p,x,caches[t.src[l]],work,fwork) {return false;}
+        routes:[1]M4Route;home:[1]int;
+        if peers[l].count==1 {if m4_moe(s,l4_moe(t,l),1,x,routes[..],work,fwork).status!=M4Status.ok {return false;}}
+        else if xm_moe(s,l4_moe(t,l),peers[l],owner[l],1,home[..],x,routes[..],work,fwork).status!=XmStatus.ok {return false;}
+    }
+    return true;
+}
+// The model split at cut (stages of layers cut[i]..<cut[i+1]), token by
+// token. Each stage owns the caches of its layers and a copy of each cache
+// it reads from an earlier stage; between stages the hidden row and each
+// such cache row travel as chapter 186's messages, checked on receipt.
+// sent counts their bytes; refusal is the first receipt refused. tamper
+// (a check's hook; -1: none) flips bit 0 of word tamper % 64 of message
+// tamper / 64, counting from 0 in the order sent.
+L4Run :: struct {ok:bool;sent:int;refusal:StgRefusal;}
+L4_TOY_DIGEST :: 0x4c34;
+l4_tamper :: (wire:[]u32,tamper:int,sent:int) {if tamper>=0 && tamper/64==sent {wire[tamper%64]^=1;}}
+l4_split :: (s:M4Shape,t:L4Toy,cut:[]int,tokens:int,hidden:[]f32,caches:[][]f32,copies:[][]f32,peers:[][]XmPeer,owner:[][]int,work:[]f32,fwork:[]f64,wire:[]u32,tamper:int)->L4Run {
+    r:=L4Run.{ok=true};h:=s.hidden;row:=m4_row(s);n:=cut.count-1;sent:=0;
+    for p:0..<tokens {
+        x:=hidden[p*h..<(p+1)*h];
+        for i:0..<n {
+            a:=cut[i];b:=cut[i+1];
+            // This stage's view of the caches: its own, then its copies.
+            view:[8][]f32;for l:0..<t.layers {view[l]=ifx l>=a then caches[l] else copies[i*8+l];}
+            if !l4_layers(s,t,a,b,p,x,view[0..<t.layers],peers,owner,work,fwork) {r.ok=false;return r;}
+            if i==n-1 {continue;}
+            // To stage i + 1: the hidden row, then each source row it reads.
+            k:=stg_pack(L4_TOY_DIGEST,b,p,h,x,wire);r.sent+=4*k;
+            l4_tamper(wire,tamper,sent);sent+=1;
+            got:=stg_receive(StgExpect.{model=L4_TOY_DIGEST,layer=b,start=p,width=h},wire[0..<k],x);
+            if got.refusal!=StgRefusal.none {r.ok=false;r.refusal=got.refusal;return r;}
+            for src:0..<b {
+                needed:=false;for l:b..<t.layers {if t.src[l]==src && l!=src {needed=true;}}
+                if !needed {continue;}
+                from:=ifx src>=a then caches[src] else copies[i*8+src];
+                k=stg_pack(L4_TOY_DIGEST+1+cast(u64)src,b,p,row,from[p*row..<(p+1)*row],wire);r.sent+=4*k;
+                l4_tamper(wire,tamper,sent);sent+=1;
+                got=stg_receive(StgExpect.{model=L4_TOY_DIGEST+1+cast(u64)src,layer=b,start=p,width=row},wire[0..<k],copies[(i+1)*8+src][p*row..<(p+1)*row]);
+                if got.refusal!=StgRefusal.none {r.ok=false;r.refusal=got.refusal;return r;}
+            }
+        }
+    }
+    return r;
+}
+// book:end run
+
+l4_status_name :: (s:L4Status)->string {
+    names:=[8]string.["ok","input","manifest line","totals differ from the pins","width is not 1, 2, 4 or 8","a layer fits on no peer","no split fits","placement refused"];
+    return names[cast(int)s];
+}

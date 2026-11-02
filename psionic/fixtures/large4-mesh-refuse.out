@@ -1,0 +1,9 @@
+first line dropped: manifest line, derived kind 0 missing, 78 lines
+one tensor added: totals differ from the pins, 56564 tensors and 1060548427330 bytes
+a backwards range: manifest line, line 0
+3 expert peers a stage: width is not 1, 2, 4 or 8
+1 GB peers: a layer fits on no peer, layer 71 needs 13779524992 bytes more
+4 stages of one 200 GB peer: no split fits
+2 groups with no link between them: placement refused, no linked chain of peers
+smallest mesh of 10 GB peers: no split fits
+one bit changed in the first boundary message: run stopped true, refused: checksum

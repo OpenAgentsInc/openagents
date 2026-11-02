@@ -1,0 +1,26 @@
+// Chapter 198: inventories and meshes that are refused, each with what
+// was wrong, and a boundary message changed on the wire.
+#import "Basic";
+#load "../lib/large4-mesh.coax";
+
+// book:begin refuse
+main :: () {
+    c:=l4_large4();
+    m:=L4_PINNED_MANIFEST;first:=0;for i:0..<m.count {if m[i]=='\n' {first=i+1;break;}}
+    r:=l4_inventory(c,m[first..<m.count]);
+    print("first line dropped: %, derived kind % missing, % lines\n",l4_status_name(r.status),r.bad,r.lines);
+    extra:[8192]u8;n:=m4_put(extra[..],0,m);n=m4_put(extra[..],n,"extra BF16 1\n");
+    r=l4_inventory(c,cast(string)extra[0..<n]);
+    print("one tensor added: %, % tensors and % bytes\n",l4_status_name(r.status),r.tensors,r.bytes);
+    r=l4_inventory(c,"layers.3-2.attention.wq.weight F8_E4M3 8192,6144\n");
+    print("a backwards range: %, line %\n",l4_status_name(r.status),r.line);
+    p:=l4_plan(c,l4c_mesh(2,3));print("3 expert peers a stage: %\n",l4_status_name(p.status));
+    g:=l4c_mesh(4,1);g.budget=1000000000;p=l4_plan(c,g);
+    print("1 GB peers: %, layer % needs % bytes more\n",l4_status_name(p.status),p.layer,p.gap);
+    g.budget=200000000000;p=l4_plan(c,g);print("4 stages of one 200 GB peer: %\n",l4_status_name(p.status));
+    g=l4c_mesh(2,4);g.bw_out=0;p=l4_plan(c,g);print("2 groups with no link between them: %, %\n",l4_status_name(p.status),plc_status_name(p.placed.status));
+    g=l4c_mesh(1,1);g.budget=10000000000;print("smallest mesh of 10 GB peers: %\n",l4_status_name(l4_smallest(c,g).status));
+    src:=[4]int.[0,1,2,1];s:=l4c_run(1,4,src[..],2,2,3,9,-1);
+    print("one bit changed in the first boundary message: run stopped %, refused: %\n",!s.split.ok,stg_refusal_name(s.split.refusal));
+}
+// book:end refuse
