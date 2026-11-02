@@ -25,6 +25,15 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 
 ## Rules
 
+- **Tools are Coax too** (owner, 2026-10-30; [coax/tools-in-coax.md](coax/tools-in-coax.md)).
+  A build script, check, test harness, recorder or CLI you write is Coax,
+  run with `coax/web/tool.sh FILE.coax`. A new `.ts`, `.py`, `.js`, `.sh` or
+  `.cjs` file needs a header line `Firm reason: N (...)` naming one of the
+  six reasons in that doc: browser glue, an independent oracle, a reference
+  implementation, the bootstrap, a thin wrapper with no logic, or a
+  Swift-only or other non-C SDK. "Faster in TypeScript" is not one.
+  `coax/web/release.sh` runs `coax/web/tool.sh tools-check` and stops on a
+  file with neither; run it yourself before you push.
 - **Coax first.** New product logic goes in Coax. The host language (Swift,
   C) does platform effects only: lifecycle, Keychain, network, GPU
   bindings. Avoid toolchains outside Coax and the host C compiler. Python
