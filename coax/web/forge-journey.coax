@@ -247,7 +247,10 @@ went_to :: (r: [] Run, c: [] Cdp, from: string, out: [] u8, ms: int) -> int {
 
 generate :: (r: [] Run, c: [] Cdp, stamp: string) -> bool {
   if !wait_probe(c, 0, PH_SETUP, 60000) && probe(c, 0) != PH_ASK { return why_n(r, "the builder never started", probe(c, 0)); }
-  for i: 0..<8 { if probe(c, 0) != PH_SETUP { break; } if !tap(r, c, B_SKIP) { return false; } }
+  // SKIP is ignored while the page is busy (a pick on its way), so tap, give the page a moment, and
+  // go on until the setup ends, rather than a fixed number of taps
+  skip_until := proc_now_ms() + 20000;
+  while probe(c, 0) == PH_SETUP && proc_now_ms() < skip_until { if !tap(r, c, B_SKIP) { return false; } proc_sleep(400); }
   if !wait_probe(c, 0, PH_ASK, 5000) { return why_n(r, "the setup never ended", probe(c, 0)); }
   if !tap(r, c, B_TYPE) || !wait_probe(c, 5, 1, 5000) { return why(r, "TYPE gave no field"); }
   s: [1] Buf;

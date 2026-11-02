@@ -28,6 +28,9 @@
 # named and nothing is promoted. Then Everglade's frame rate (perf.ts): at
 # dpr 1 and 2 it walks four places and casts, and must hold 60 FPS (p95 at
 # most 17.5 ms, no frame over 33 ms), or nothing is promoted.
+# Then the maker journey (forge-journey.coax, #12639) at desktop and phone size:
+# make, move, undo, save, publish and fork a realm; it stops the promote only
+# when the same walk passes on production.
 #
 # Production, after the promote, in one of two modes (owner decision, 2026-10-29):
 #   FAST (the default)  smoke.sh's HTTP checks plus a brief check that each
@@ -403,6 +406,25 @@ if $stage; then
   (( rc != 1 )) || { echo "release $commit: Everglade misses 60 FPS on staging (perf.ts above); production is untouched" >&2; exit 1; }
   lap perf "$t"
   fi
+  # The maker journey (#12639, forge-journey.coax): make a realm from a sentence, move, undo, save,
+  # publish and fork it, at 1440x900 and as a phone. Its realms are unlisted and automation-marked.
+  # A failure stops the promote only when the same walk passes on production, and production is
+  # walked only then, so a passing release writes no test realms there. While production's realm
+  # invites are on, a fresh browser can't make a realm there, so a failure here is reported.
+  t=$(now)
+  for size in desktop phone; do
+    phone=(); [[ "$size" == phone ]] && phone=(--phone)
+    rc=0; journey=$(cd "$tree" && browser_check "the maker journey ($size)" bounded 600 coax/web/tool.sh forge-journey https://staging.openagents.com ${phone[@]+"${phone[@]}"} 2>&1) || rc=$?
+    step=$(grep -E '^(ok|FAIL) ' <<< "$journey" | tail -1)
+    echo "  journey    $size: ${step:-did not run}"
+    (( rc == 1 )) || continue
+    if [[ -z "$live_via" ]] && (cd "$tree" && bounded 600 coax/web/tool.sh forge-journey https://openagents.com ${phone[@]+"${phone[@]}"}) > "$base_dir/journey-$size" 2>&1; then
+      echo "release $commit: the maker journey ($size) fails on staging where production passes; production is untouched: $step" >&2
+      exit 1
+    fi
+    already "the maker journey ($size)" "$step"
+  done
+  lap journey "$t"
 fi
 $prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s${held_names:+; would hold back $held_names}"; exit 0; }
 if ! $stage; then
