@@ -6,7 +6,7 @@ relay's statement that a pubkey is retired there (NIP-IA), and a private
 reminder that becomes due at a time (NIP-ER). This chapter builds the
 relay's and the client's decisions for all three in Coax.
 
-Part X, Every NIP. Result: NIP-AR channel artifacts (45010) with
+Part VI, Every NIP. Result: NIP-AR channel artifacts (45010) with
 compare-and-swap revisions, NIP-IA identity archival with consent, and
 NIP-ER event reminders (30300). What is not built is listed under
 [What is not built](#what-is-not-built).

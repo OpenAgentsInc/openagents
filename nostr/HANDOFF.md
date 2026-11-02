@@ -25,7 +25,7 @@ open, and how to check it.
     record, with findings, postponed checks and rewritten plan lines.
   - `docs/verification/2026-11-01-libsecp-crosscheck.md`: libsecp256k1
     agrees with Coax on 10,000 Coax signatures, 300 Coax-signed events,
-    chapter 11's verifier and chapter 14's ECDH.
+    Bitcoin chapter 23's verifier and chapter 14's ECDH.
 
 ## Code the book added or changed
 
@@ -105,7 +105,7 @@ open, and how to check it.
   15 minutes on this machine under load.
 - **Twenty published NIP examples don't check out.** The record lists them.
   None has been reported upstream.
-- **Mac and iOS entropy runs** (chapter 12) can only run on Apple hardware.
+- **Mac and iOS entropy runs** (Bitcoin chapter 18) can only run on Apple hardware.
 
 ## How to check
 

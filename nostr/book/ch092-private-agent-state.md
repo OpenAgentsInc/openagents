@@ -12,7 +12,7 @@ reads both versions and refuses a replayed old one, and a canary written
 into one record and one frame shows up in what the owner decrypts and
 nowhere in the relay's snapshot or audit log.
 
-Part X, Every NIP. Result: NIP-AE engrams (30174) sealed, opened, chosen
+Part VI, Every NIP. Result: NIP-AE engrams (30174) sealed, opened, chosen
 by head selection and protected from rollback; NIP-AO observer frames
 (24200) admitted by the relay only between an owned agent and owner, fanned
 out in memory, never stored or logged, and read by the client; the
@@ -59,7 +59,7 @@ stores. The checks came first, and a root-only mutation run kills every
 mutant (see [How the code is checked](#how-the-code-is-checked)).
 `nipae.coax` reuses chapter 20's NIP-44 (`nip44_encrypt_checked`,
 `nip44_decrypt_checked`, `nip44_conversation_key_from_keys_checked`),
-chapter 5's HMAC-SHA256, chapter 21's event reader and signer, and the
+Bitcoin chapter 8's HMAC-SHA256, chapter 21's event reader and signer, and the
 JSON admission adapter that refuses repeated member names. `nipao.coax`
 adds `store_admit.coax`'s `ns_admit_one`, which frames one verified
 event for the store's snapshot.

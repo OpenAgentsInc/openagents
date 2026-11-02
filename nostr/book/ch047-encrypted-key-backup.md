@@ -34,7 +34,7 @@ is bounded before any memory is set aside for scrypt.
 | [xchacha20_poly1305.coax](../../coax/lib/crypto/xchacha20_poly1305.coax) | `xcp_seal`, `xcp_open` | the AEAD; `xcp_open` writes nothing unless the tag matches |
 | [poly1305.coax](../../coax/lib/crypto/poly1305.coax) | `poly1305_checked(key, msg, out)` | the one-time MAC, in five 26-bit limbs |
 | [nfkc.coax](../../coax/lib/text/nfkc.coax) | `un_nfkc(input, scratch, out)` | Unicode 18.0.0 NFKC, tables generated from the UCD |
-| [bech32-core.coax](../../coax/lib/nostr/bech32-core.coax) | `bech32_decode_checked` | chapter 15's Bech32, with the extended length that 162 characters need |
+| [bech32-core.coax](../../coax/lib/nostr/bech32-core.coax) | `bech32_decode_checked` | Bitcoin chapter 27's Bech32, with the extended length that 162 characters need |
 
 The library has no `ncryptsec` import yet. The example assembles it from
 these pieces in three procedures, `ncs_decode`, `ncs_parse` and `ncs_open`,
@@ -54,7 +54,7 @@ with the password `nostr`.
 
 The string has 162 characters: the HRP `ncryptsec`, the separator `1`, 146
 data characters and 6 checksum characters. 162 is more than the 90
-characters that BIP-173 allows, so the decoder runs in chapter 15's extended
+characters that BIP-173 allows, so the decoder runs in Bitcoin chapter 27's extended
 mode.
 
 146 words of 5 bits are 730 bits: 91 bytes and 2 bits left over, which must
@@ -204,7 +204,7 @@ library's.
 
 ## XChaCha20-Poly1305
 
-ChaCha20 (chapter 18) takes a 12-byte nonce. XChaCha20 takes 24: HChaCha20
+ChaCha20 (Bitcoin chapter 11) takes a 12-byte nonce. XChaCha20 takes 24: HChaCha20
 mixes the key with the first 16 nonce bytes into a subkey, and ChaCha20 runs
 under the subkey with the last 8 nonce bytes. A random 24-byte nonce is
 safe to pick without a counter.
@@ -707,9 +707,9 @@ keys.
 
 ## Dependencies
 
-- [18. ChaCha20](ch018-chacha20.md)
-- [5. HMAC-SHA256](ch005-hmac-sha256.md)
-- [15. Bech32](ch015-bech32.md)
+- [Bitcoin chapter 11. ChaCha20](../../bitcoin/book/ch011-chacha20.md)
+- [Bitcoin chapter 8. HMAC-SHA256](../../bitcoin/book/ch008-hmac-sha256.md)
+- [Bitcoin chapter 27. Bech32](../../bitcoin/book/ch027-bech32.md)
 
 ## Sources
 

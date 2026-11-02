@@ -3,14 +3,16 @@
 Building Nostr in [Coax](../../coax/book/README.md).
 
 This book builds Nostr in Coax, from protocol primitives to client and relay
-programs. It starts with bytes and big integers, builds SHA-256, HMAC, HKDF,
-secp256k1, BIP-340 Schnorr signatures, Bech32, ChaCha20 and NIP-44 from their
-specifications, and then builds the event model, a WebSocket transport, a
-client and a relay on them. Part X examines the NIP families in
+programs. Nostr's cryptography is Bitcoin's: SHA-256, HMAC, HKDF, ChaCha20,
+secp256k1, BIP-340 Schnorr signatures and Bech32 are built in its companion,
+[Bitcoin From Scratch](../../bitcoin/book/README.md). This book starts from
+there with x-only ECDH, NIP-19, the JSON that an event ID hashes and NIP-44,
+and then builds the event model, a WebSocket transport, a client and a relay
+on them. Part VI examines the NIP families in
 [`nostr/nips/`](../nips/README.md): the official set, the OpenAgents set and
 Block's Buzz set. Chapter 104 adds NIP-KEYS; its source-pin review remains
-pending. Part XI checks the stack against published vectors and
-other implementations, and Part XII separates OpenAgents' current consumers
+pending. Part VII checks the stack against published vectors and
+other implementations, and Part VIII separates OpenAgents' current consumers
 from offline integration examples and future deployments. Completing the full
 protocol and production scope is the destination; the chapter labels below
 describe the teaching profiles that exist today.
@@ -22,15 +24,17 @@ Money follows the repository's Bitcoin-only rule: Lightning and on-chain
 Bitcoin are built; Cashu and Fedimint are recognized and never built
 ([chapter 74](ch074-cashu-and-fedimint-are-excluded.md)).
 
-You need the Coax language (its book's Parts I–III). The
+You need the Coax language (its book's Parts I–III) and Parts I–V of
+[Bitcoin From Scratch](../../bitcoin/book/README.md). Chapters 1–13, 15 and
+18 moved there; they keep their numbers here, marked moved. The
 [plan](PLAN.md) gives the order and each chapter's dependencies, done
 criteria and spec files. The [contents](SUMMARY.md) list every chapter.
 The work to implement every chapter is tracked in [issue #12612](https://github.com/OpenAgentsInc/openagents/issues/12612).
 
 ## Status
 
-Of the 104 chapters, 102 are implemented and 2 are partly implemented.
-All 104 have runnable examples. Chapters 103 and 104 have teaching text and
+Of the 89 chapters in this book, 87 are implemented and 2 are partly
+implemented; 15 more numbers are marked moved. All 89 have runnable examples. Chapters 103 and 104 have teaching text and
 checked components, but their stated exits still require the relay migration
 and actual treasury signing and recovery, respectively.
 
@@ -43,8 +47,8 @@ The [completion route](COMPLETION.md) keeps those exits separate.
 
 The code is under `coax/lib/crypto/`, `coax/lib/nostr/` and `coax/lib/net/`,
 with checks and dated evidence in `docs/verification/`. The registry claims
-native CPU qualification for all 104 chapters and Wasm qualification for 21;
-83 remain native-only. These are claims about each chapter's stated profile,
+native CPU qualification for all 89 chapters and Wasm qualification for 8;
+81 remain native-only. These are claims about each chapter's stated profile,
 not about a complete client, relay or application running on both targets.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -104,7 +108,7 @@ places: the chapter's status marker, its entry in [chapters.json](chapters.json)
 its label in the [contents](SUMMARY.md) and its row in the table below. The
 registry check fails when they disagree.
 
-To find a route through the four books, see
+To find a route through the books, see
 [Paths through the books](../../docs/books/paths.md) and the shared
 [completion milestones](../../docs/books/completion.md).
 
@@ -141,67 +145,29 @@ commands use `shell`.
 
 ## Chapters
 
-### Part I. Foundations (chapters 1–3)
+### Moved to Bitcoin From Scratch (chapters 1–13, 15 and 18)
 
-Bytes in fixed buffers, hex and base64, big integers in fixed limbs, and the
-constant-time rules every later chapter follows.
+Bytes, big integers, constant time, SHA-256, HMAC, HKDF, ChaCha20, secp256k1,
+BIP-340 and Bech32 are now chapters of
+[Bitcoin From Scratch](../../bitcoin/book/README.md). The
+[plan](PLAN.md#moved-to-bitcoin-from-scratch) maps each number here to its
+Bitcoin chapter.
 
-| Chapter | Status | Result |
-| --- | --- | --- |
-| [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) | Runnable: native C | Caller-owned byte views, big- and little-endian loads and stores, strict lowercase hex and canonical padded base64, with every decoder refusing bad input instead of guessing. |
-| [2. Big integers in fixed limbs](ch002-big-integers-in-fixed-limbs.md) | Runnable: native C and wasm | 256-bit numbers as ten 26-bit limbs in `u64` and as eight 32-bit limbs, with carry schedules that never overflow and an independent big-integer oracle. |
-| [3. Constant-time rules and secrets](ch003-constant-time-rules.md) | Runnable: native C and wasm | The rules for secret data: no branch, index or variable-time call on a secret, explicit erasure, value barriers, and timing measurements that are evidence, not proof. |
+### Part I. Shared secrets, encodings and encryption (chapters 14, 16, 17, 19 and 20)
 
-### Part II. Hashes and MACs (chapters 4–6)
-
-SHA-256, HMAC-SHA256 and HKDF-SHA256, each checked against its published
-vectors.
+x-only ECDH for NIP-44 conversation keys, NIP-19 and `nostr:` URIs, the exact
+JSON that a Nostr event ID hashes, the retired NIP-04 scheme and its
+weaknesses, and NIP-44 v2 checked against its official vectors.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [4. SHA-256](ch004-sha-256.md) | Runnable: native C and wasm | Streaming SHA-256 over caller-owned state, checked against every NIST CAVS ShortMsg and LongMsg vector, with split-stream and padding-boundary checks, plus BIP-340 tagged hashes. |
-| [5. HMAC-SHA256](ch005-hmac-sha256.md) | Runnable: native C and wasm | HMAC-SHA256 with keys longer than a block hashed first, checked against RFC 4231 cases 1–7 including the truncated case. |
-| [6. HKDF](ch006-hkdf.md) | Runnable: native C and wasm | HKDF-SHA256 extract and expand with output bounds, checked against RFC 5869 cases 1–3, and the exact NIP-44 v2 use: extract with salt `nip44-v2`, expand to 76 bytes. |
-
-### Part III. Elliptic curves (chapters 7–14)
-
-secp256k1 from field arithmetic to BIP-340 verification checked against the 19
-official vectors, keys from host randomness, signing, and x-only ECDH.
-
-| Chapter | Status | Result |
-| --- | --- | --- |
-| [7. Field arithmetic mod p](ch007-field-arithmetic-mod-p.md) | Runnable: native C and wasm | Addition, multiplication, squaring, inversion and square roots in F_p for p = 2^256 − 2^32 − 977, with canonical outputs and exact addition chains for inverse and root. |
-| [8. Scalars mod n](ch008-scalars-mod-n.md) | Runnable: native C and wasm | Scalars mod the group order n: reduction of 32-byte inputs, addition, multiplication and negation, with the s < n and key-range checks BIP-340 needs. |
-| [9. The secp256k1 group law](ch009-the-secp256k1-group-law.md) | Runnable: native C and wasm | Points on y² = x³ + 7 in affine and Jacobian coordinates, doubling and complete addition with the point at infinity and the P + (−P) case handled. |
-| [10. Scalar multiplication](ch010-scalar-multiplication.md) | Runnable: native C and wasm | Three multiplications: a variable-time public path for verification, a fixed-base table for k·G, and a constant-time variable-base path for ECDH, each checked against an oracle. |
-| [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md) | Runnable: native C and wasm | BIP-340 verification over byte-view messages, checked against all 19 rows of the official `test-vectors.csv`, including messages of 0, 1, 17 and 100 bytes, with a Nostr wrapper that requires 32-byte event IDs. |
-| [12. Keys and randomness](ch012-keys-and-randomness.md) | Runnable: native C and wasm | Private keys from host entropy with rejection of 0 and values at least n, the entropy contract per host, and one signer-request contract for a local key, a NIP-07 browser signer and a phone over NIP-46. |
-| [13. Sign with Schnorr](ch013-sign-with-schnorr.md) | Runnable: native C and wasm | BIP-340 signing with auxiliary randomness, a nonce that never repeats for different messages, and fixed-work self-verification before a signature is released. |
 | [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md) | Runnable: native C and wasm | x-only ECDH that validates the peer key and returns the raw shared x, checked against labelled Wycheproof secp256k1 inputs, for NIP-44 conversation keys. |
-
-### Part IV. Encodings (chapters 15–17)
-
-Bech32, NIP-19 and `nostr:` URIs, and the exact JSON that a Nostr event ID
-hashes.
-
-| Chapter | Status | Result |
-| --- | --- | --- |
-| [15. Bech32](ch015-bech32.md) | Runnable: native C | BIP-173 Bech32 (checksum constant 1, never Bech32m) with the pinned vectors and canonical lowercase re-encoding. |
 | [16. NIP-19 entities and nostr: URIs](ch016-nip-19-entities-and-nostr-uris.md) | Runnable: native C | `npub`, `nsec` and `note`, and the TLV forms `nprofile`, `nevent` and `naddr` with relay hints, plus the `nostr:` URI scheme of NIP-21. |
 | [17. JSON you can sign](ch017-json-you-can-sign.md) | Runnable: native C | A bounded JSON reader and writer that keep original bytes, and the exact NIP-01 serialization `[0, pubkey, created_at, kind, tags, content]` with its escape rules, distinct from RFC 8785 JCS. |
-
-### Part V. Encryption (chapters 18–20)
-
-ChaCha20, the retired NIP-04 scheme and its weaknesses, and NIP-44 v2 checked
-against its official vectors.
-
-| Chapter | Status | Result |
-| --- | --- | --- |
-| [18. ChaCha20](ch018-chacha20.md) | Runnable: native C and wasm | RFC 8439 ChaCha20 with caller-supplied nonce and counter, counter exhaustion refused, and HChaCha20 for NIP-49's XChaCha20. |
 | [19. NIP-04 and why it is retired](ch019-nip-04-and-why-it-is-retired.md) | Runnable: native C | NIP-04's AES-256-CBC with the shared x as key and its `?iv=` suffix, its weaknesses (no authentication, metadata in the clear, the key used as is), and a decrypt-only reader checked against FIPS-197, SP 800-38A and OpenSSL that refuses to encrypt. |
 | [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md) | Runnable: native C | NIP-44 version 2: conversation keys, padding, ChaCha20, HMAC over nonce‖ciphertext checked before decryption, and every valid and invalid vector in `nip44.vectors.json`. |
 
-### Part VI. The event model (chapters 21–25)
+### Part II. The event model (chapters 21–25)
 
 NIP-01 events, IDs and signatures, kinds and tags, filters, the relay messages
 that carry them, and NIP-59 gift wrap built on all of them.
@@ -214,7 +180,7 @@ that carry them, and NIP-59 gift wrap built on all of them.
 | [24. Relay messages](ch024-relay-messages.md) | Runnable: native C | Client frames `EVENT`, `REQ`, `CLOSE`, `AUTH` and `COUNT`, relay frames `EVENT`, `OK`, `EOSE`, `CLOSED`, `NOTICE` and `AUTH`, and the `OK`/`CLOSED` reason prefixes NIP-20 introduced. |
 | [25. Gift wrap](ch025-gift-wrap.md) | Runnable: native C | NIP-59 rumors, kind-13 seals and kind-1059 gift wraps from one-time keys, with randomized timestamps, checked in both directions against an independent implementation. |
 
-### Part VII. Transport (chapters 26–28)
+### Part III. Transport (chapters 26–28)
 
 WebSocket framing as a client and a server in Coax, over the host's socket and
 TLS.
@@ -225,7 +191,7 @@ TLS.
 | [27. A WebSocket server](ch027-a-websocket-server.md) | Runnable: native C | The server side of RFC 6455: accept the upgrade, refuse unmasked client frames, write unmasked frames, enforce frame and message limits and close cleanly. |
 | [28. Sockets, TLS and relay URLs](ch028-sockets-tls-and-relay-urls.md) | Runnable: native C | The host boundary: the C host opens sockets and does TLS only; Coax parses `ws://` and `wss://` URLs, decides every frame and owns every protocol decision above the socket. |
 
-### Part VIII. A client (chapters 29–33)
+### Part IV. A client (chapters 29–33)
 
 A relay connection with generations and backoff, subscriptions and EOSE,
 publishing with acknowledgements, the outbox model and a client that survives
@@ -239,7 +205,7 @@ restarts.
 | [32. Many relays and the outbox model](ch032-many-relays-and-the-outbox-model.md) | Runnable: native C | NIP-65 relay lists (kind 10002 with `r` tags marked `read` or `write`), reading from an author's write relays, writing to your write relays and the tagged users' read relays. |
 | [33. A client that survives restarts](ch033-a-client-that-survives-restarts.md) | Runnable: native C | A durable client journal that stores verified originals, an offline outbox that sends each event again after a restart without a second copy anywhere, subscriptions that resume with `since`, and deletions that are never resurrected on reconnect. |
 
-### Part IX. A relay (chapters 34–44)
+### Part V. A relay (chapters 34–44)
 
 Admission, durable storage, filter matching with indexes, NIP-11, NIP-42,
 deletion and expiration, NIP-45 counts, NIP-50 search, NIP-70, NIP-77
@@ -259,7 +225,7 @@ negentropy, and limits.
 | [43. Negentropy sync](ch043-negentropy-sync.md) | Runnable: native C | NIP-77's `NEG-OPEN`, `NEG-MSG`, `NEG-CLOSE` and `NEG-ERR`, and Negentropy protocol V1: range-based set reconciliation over `(created_at, id)` with fingerprints. |
 | [44. Limits, policy and floods](ch044-limits-policy-and-floods.md) | Runnable: native C | Per-connection and global limits, rate limits with `rate-limited:` reasons, storage caps, slowloris timeouts and a write policy that is declared, not implicit. |
 
-### Part X. Every NIP (chapters 45–92)
+### Part VI. Every NIP (chapters 45–92)
 
 Every other official NIP pinned in `nostr/nips/official/`, every OpenAgents
 NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
@@ -315,7 +281,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [91. Git signing, projects, leases and read state](ch091-git-signing-projects-leases-and-read-state.md) | Runnable: native C | NIP-GS signing hashes, signatures and armor reproducing both published vectors; the NIP-MP ingest rules and fold over all 31 ingest and 12 fold fixtures; the NIP-PL expiration window and replacement order; the NIP-RS max-merge and ciphertext vector; and the four envelope projections. The signing program, lease plaintexts and the read-state override layer are not built. |
 | [92. Private agent state](ch092-private-agent-state.md) | Runnable: native C | NIP-AE engrams (30174) sealed, opened by the agent or the owner only, chosen by head selection and protected from rollback; NIP-AO observer frames (24200) admitted only between an owned pair, fanned out in memory and never stored or logged, checked by a canary; the NIP-PMA reservation (30179) refused. NIP-AP personas and NIP-AM turn metrics are not built. |
 
-### Part XI. Interop and verification (chapters 93–97)
+### Part VII. Interop and verification (chapters 93–97)
 
 Pinned vectors, differential tests against reference implementations, fuzzing,
 formal properties and a conformance report.
@@ -328,7 +294,7 @@ formal properties and a conformance report.
 | [96. Formal properties](ch096-formal-properties.md) | Runnable: native C | Five properties checked on every case of small domains, each with a planted bug its check finds: filter matching is AND across fields and OR within lists, a subscription is a union, replacement is order-independent, the index equals the scan, and verification refuses every one-bit change. |
 | [97. A conformance report](ch097-a-conformance-report.md) | Runnable: native C | A machine-readable support matrix per profile (`core-read`, `core-write`, `phone-signer`, `openagents-host`, `block-identity`, `block-channel`, `agent-private`, `key-backup`) that refuses to advertise a NIP whose runtime gate is missing. |
 
-### Part XII. Nostr in OpenAgents (chapters 98–104)
+### Part VIII. Nostr in OpenAgents (chapters 98–104)
 
 Where projects, the website, Pylons, the Verse, the wallet and agents use the
 stack, and the cutover of relay.openagents.com.

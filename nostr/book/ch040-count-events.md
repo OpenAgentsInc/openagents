@@ -4,7 +4,7 @@ Some clients need a number, not the events. This chapter adds NIP-45 counts
 to chapter 36's indexed store: an exact count for any filters, and a
 HyperLogLog sketch that clients can merge across relays.
 
-Part IX, A relay. Result: NIP-45 `COUNT` requests and responses, `approximate`
+Part V, A relay. Result: NIP-45 `COUNT` requests and responses, `approximate`
 counts, and HyperLogLog with 256 registers whose offset comes from the filter.
 
 ## What this chapter teaches

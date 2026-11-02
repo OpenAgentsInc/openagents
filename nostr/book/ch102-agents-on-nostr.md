@@ -79,7 +79,7 @@ Only in this book, today:
   orders, NIP-COORD claims and NIP-RUN journals: no program outside the
   book's examples and the units' own checks loads `cj/result.coax`,
   `mkt/order.coax`, `coord/claim.coax` or `run/journal.coax`.
-- The hosted runner moving its signing to chapter 13's signer, publishing
+- The hosted runner moving its signing to Bitcoin chapter 24's signer, publishing
   through a relay with chapter 29's client, and a rehearsed rollback to the
   C path. That migration needs a staging deployment, and it is not done.
 
@@ -288,7 +288,7 @@ hex_of :: (bytes: [] u8, out: [] u8) -> string {
   #assert r.error == NC_OK;
   return cast(string) out[0..<r.written];
 }
-// One event signed with a test key by chapter 13's signer (event_sign.coax).
+// One event signed with a test key by Bitcoin chapter 24's signer (event_sign.coax).
 sign :: (secret: string, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
   key := bytes_of(secret); aux := bytes_of(AUX);
   work: [1] NostrSignWork; scratch: [16384] u8; k := EVENT_MORE;
@@ -697,7 +697,7 @@ equivalent:
 
 ## What is not built yet
 
-- The hosted runner on this stack: chapter 13's signer behind the
+- The hosted runner on this stack: Bitcoin chapter 24's signer behind the
   signer-boundary gate in place of libsecp256k1, publishing through chapter
   29's client, the same identities and history in staging, and a rehearsed
   rollback to the C path.
@@ -730,7 +730,7 @@ equivalent:
 
 - [79. Agents, skills and automation](ch079-agents-skills-and-automation.md)
 - [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md)
-- [13. Sign with Schnorr](ch013-sign-with-schnorr.md)
+- [Bitcoin chapter 24. Sign with Schnorr](../../bitcoin/book/ch024-sign-with-schnorr.md)
 - [87. Owner attestation and agent
   authentication](ch087-owner-attestation-and-agent-authentication.md)
 - [78. Runs, sessions, terminals and

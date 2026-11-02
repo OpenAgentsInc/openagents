@@ -7,7 +7,7 @@ existed by the time a Bitcoin block was mined. This chapter reads the tags
 and the proof that say these things, and says exactly what each one proves
 and what it does not.
 
-Part X, Every NIP. Result: NIP-48 `proxy` tags for bridged events, NIP-73
+Part VI, Every NIP. Result: NIP-48 `proxy` tags for bridged events, NIP-73
 `i` and `k` tags for external content IDs (URLs, ISBNs, podcasts,
 geohashes), and NIP-03 kind 1040 OpenTimestamps attestations.
 
@@ -33,8 +33,8 @@ geohashes), and NIP-03 kind 1040 OpenTimestamps attestations.
 | --- | --- | --- |
 | [nip32.coax](../../coax/lib/nostr/nip32.coax) | `n32_tag(e, i)` | Reads a tag of any name: the name and its first two values (chapter 55) |
 | [tags.coax](../../coax/lib/nostr/tags.coax) | `nostr_tag(e, i)` | Reads and checks an `e` tag (chapter 22) |
-| [sha256.coax](../../coax/lib/crypto/sha256.coax) | `sha256_hash_checked` | SHA-256 (chapter 4) |
-| [base64.coax](../../coax/lib/nostr/base64.coax) | `base64_decode_checked` | Base64 (chapter 1) |
+| [sha256.coax](../../coax/lib/crypto/sha256.coax) | `sha256_hash_checked` | SHA-256 (Bitcoin chapter 4) |
+| [base64.coax](../../coax/lib/nostr/base64.coax) | `base64_decode_checked` | Base64 (Bitcoin chapter 1) |
 | [nip73.coax](../../coax/lib/nostr/nip73.coax) | `n73_type(s)`, `n73_normalize(raw)` | An identifier's type, and its normal form |
 | [nip73.coax](../../coax/lib/nostr/nip73.coax) | `n73_tags(e)` | An event's `i` and `k` tags |
 | [nip48.coax](../../coax/lib/nostr/nip48.coax) | `n48_id_ok(protocol, id)`, `n48_read(e)` | A proxy id's form, and an event's proxy tags |
@@ -1126,7 +1126,7 @@ of the example were not run.
 - Reading a pending attestation's calendar URL, or upgrading a pending
   proof by asking the calendar. Pending attestations are counted.
 - Litecoin and Ethereum attestation types. They read as unknown.
-- Bitcoin address checksums (chapter 15 has bech32), ISAN check
+- Bitcoin address checksums (Bitcoin chapter 27 has bech32), ISAN check
   characters, URL percent-encoding and default ports, and lower case
   beyond ASCII in hashtags.
 - Fetching a proxy tag's source post.
@@ -1154,7 +1154,7 @@ of the example were not run.
 ## Dependencies
 
 - [22. Kinds and tags](ch022-kinds-and-tags.md)
-- [4. SHA-256](ch004-sha-256.md)
+- [4. SHA-256](../../bitcoin/book/ch004-sha-256.md)
 
 ## Sources
 

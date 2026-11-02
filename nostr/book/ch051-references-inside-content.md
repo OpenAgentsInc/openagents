@@ -4,7 +4,7 @@ Content can mention people and events inline. This chapter finds those
 references by byte range, writes the tags they name, and matches each one
 to its tag for display without trusting it.
 
-Part X, Every NIP. Result: NIP-27 `nostr:` references in content, the
+Part VI, Every NIP. Result: NIP-27 `nostr:` references in content, the
 deprecated NIP-08 `#[index]` mentions, NIP-30 `:shortcode:` custom emoji
 with `emoji` tags, and hashtags with lowercase `t` tags.
 

@@ -1,6 +1,6 @@
 // The checks of schnorr-sign.coax. They live apart so that running the
 // example doesn't also run them.
-// Checks: coax test nostr/examples/checks/schnorr-sign.coax --run-steps 250000000
+// Checks: coax test bitcoin/examples/checks/schnorr-sign.coax --run-steps 250000000
 #load "../schnorr-sign.coax";
 
 // book:begin check

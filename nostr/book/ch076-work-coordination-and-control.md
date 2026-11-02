@@ -11,7 +11,7 @@ decides. This chapter builds the two decisions that must never be wrong: a
 coordinator's claim, with the fencing token that stops an old worker's
 writes, and a controller's admission of a client's command.
 
-Part X, Every NIP. Result: NIP-COORD atomic claims, lease renewal, release
+Part VI, Every NIP. Result: NIP-COORD atomic claims, lease renewal, release
 and cancel, and the dispatcher's epoch and token fence; NIP-CTRL pairing,
 revocation and ordered command admission with the SHA-256 JCS command
 fingerprint. NIP-WORK items and revisions and NIP-CTX frames and context

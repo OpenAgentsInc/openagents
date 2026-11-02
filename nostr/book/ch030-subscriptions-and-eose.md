@@ -4,7 +4,7 @@ A subscription returns stored events, then `EOSE`, then live events. This
 chapter builds subscription bookkeeping and the rules for what `EOSE` does and
 does not mean.
 
-Part VIII, A client. Result: Subscription IDs that name a slot and its serial,
+Part IV, A client. Result: Subscription IDs that name a slot and its serial,
 EOSE as the end of stored events and never a completeness claim, NIP-67
 completeness hints, and paginated catch-up.
 

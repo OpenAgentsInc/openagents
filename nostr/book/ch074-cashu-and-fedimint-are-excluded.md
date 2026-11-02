@@ -10,7 +10,7 @@ chapter builds a recognizer: a table of the nine kinds, a classifier that
 marks those events and ecash payment values as excluded, and a book check
 that fails if any other Coax file starts to name them.
 
-Part X, Every NIP. Result: NIP-60 Cashu wallets, NIP-61 nutzaps and NIP-87
+Part VI, Every NIP. Result: NIP-60 Cashu wallets, NIP-61 nutzaps and NIP-87
 mint discovery, recognized and never built: a classifier marks their nine
 kinds, references to them and ecash payment values as excluded, and the
 book check fails if another file names them.

@@ -1,13 +1,14 @@
 # 1. Bytes, hex and base64
 
-Every Nostr value starts as bytes:
+Every Bitcoin and Nostr value starts as bytes:
 
-- A public key and an event ID are 32 bytes.
-- A signature is 64 bytes.
-- A NIP-44 nonce is 32 bytes, and a ChaCha20 nonce is 12 bytes.
+- A hash, a txid and an x-only public key are 32 bytes.
+- A BIP-340 signature is 64 bytes.
+- A ChaCha20 nonce is 12 bytes.
 
-Nostr writes these values as text. Events and filters use lowercase hex, and
-NIP-44 payloads and NIP-98 headers use base64. This chapter shows how Coax
+Transactions store integers little-endian; hashes and keys are written as
+lowercase hex. Nostr writes the same values as text too: events and filters
+use lowercase hex, and NIP-44 payloads and NIP-98 headers use base64. This chapter shows how Coax
 holds bytes, and how it reads and writes them as hex and base64. Every later
 chapter uses these functions.
 
@@ -145,11 +146,11 @@ The decoder refuses these inputs:
 ## The example
 
 The example is
-[nostr/examples/bytes-hex-base64.coax](../examples/bytes-hex-base64.coax). It decodes the key, reads its first word both ways, encodes it
+[bitcoin/examples/bytes-hex-base64.coax](../examples/bytes-hex-base64.coax). It decodes the key, reads its first word both ways, encodes it
 again, and shows the refusals. Then it prints the RFC 4648 base64 vectors
 and decodes four non-canonical strings.
 
-<!-- source: nostr/examples/bytes-hex-base64.coax example -->
+<!-- source: bitcoin/examples/bytes-hex-base64.coax example -->
 ```jai
 #load "../../coax/lib/crypto/bytes.coax";
 #load "../../coax/lib/nostr/hex.coax";
@@ -206,7 +207,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/bytes-hex-base64.coax
+coax/bin/coax run bitcoin/examples/bytes-hex-base64.coax
 ```
 
 The output matches the values worked out by hand above, and the base64
@@ -237,7 +238,7 @@ decode "Z g=": invalid
 
 The book's checks run this program in debug and release builds and compare
 the output with
-[nostr/fixtures/bytes-hex-base64.out](../fixtures/bytes-hex-base64.out).
+[bitcoin/fixtures/bytes-hex-base64.out](../fixtures/bytes-hex-base64.out).
 
 ## How the code is checked
 
@@ -257,7 +258,7 @@ The codec files carry their own checks:
 
 The example adds a round-trip check over every length from 0 to 256 bytes:
 
-<!-- source: nostr/examples/bytes-hex-base64.coax roundtrip -->
+<!-- source: bitcoin/examples/bytes-hex-base64.coax roundtrip -->
 ```jai
 // Round trips for every length from 0 to 256 bytes. Each byte depends on the
 // length and its position, so no two lengths share a pattern.
@@ -285,7 +286,7 @@ and refuse one byte more.
 To run all the checks:
 
 ```shell
-coax/bin/coax test nostr/examples/bytes-hex-base64.coax
+coax/bin/coax test bitcoin/examples/bytes-hex-base64.coax
 coax/bin/coax mutate coax/lib/nostr/hex.coax
 coax/bin/coax mutate coax/lib/nostr/base64.coax
 ```
@@ -315,7 +316,7 @@ survivor. The codec files have zero survivors.
 ## Sources
 
 - [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648), sections 4, 8 and 10.
-- [NIP-01](../nips/official/01.md), the event fields `id`, `pubkey` and `sig`.
-- [NIP-44](../nips/official/44.md) and [NIP-98](../nips/official/98.md), which use base64.
+- [NIP-01](../../nostr/nips/official/01.md), the event fields `id`, `pubkey` and `sig`.
+- [NIP-44](../../nostr/nips/official/44.md) and [NIP-98](../../nostr/nips/official/98.md), which use base64.
 - The pinned vector sources:
   [coax/tests/vectors/SOURCES.md](../../coax/tests/vectors/SOURCES.md).

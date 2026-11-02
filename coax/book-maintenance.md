@@ -41,7 +41,7 @@ source, qualified targets and adoption. The registry check in
 status marker, the contents labels, the README's list or status table and, for
 Psionic, the plan.
 `check-structure.py` and `psionic/tests/book.py` run that comparison, so a
-status change must update all of them in one commit. To check all five
+status change must update all of them in one commit. To check all six
 registries and print their status counts:
 
 ```sh
@@ -53,7 +53,7 @@ teaching chapter: a worked calculation or trace, runnable source, a broken
 case with its diagnostic, and an independent check.
 
 `depends_on` records the minimum teaching prerequisites needed to follow the
-chapter. Each complete book graph must be acyclic; validate all five together.
+chapter. Each complete book graph must be acyclic; validate all six together.
 An integration chapter's references back to a library or future consumer
 belong in prose when they are not teaching prerequisites; do not create dependency cycles to
 describe those relationships. The registry regression checks are:
@@ -112,7 +112,7 @@ book's structure/claim gate before reading credentials or contacting GitBook.
 
 ## Publish the books
 
-One publisher serves the five books written in Coax. Each book has its own
+One publisher serves the six books written in Coax. Each book has its own
 GitBook space and site under openagents.gitbook.io:
 
 | `--book` | Source | Space | Public book | Gate |
@@ -122,6 +122,7 @@ GitBook space and site under openagents.gitbook.io:
 | `aethyr` | `aethyr/book/` | `QxVdkZGgQYnLsXWZlkTh` | <https://openagents.gitbook.io/building-aethyr-world-engine> | `psionic/tests/book.py --book aethyr` |
 | `nostr` | `nostr/book/` | `FJJZf8YunJx2R1toVsuv` | <https://openagents.gitbook.io/nostr-from-scratch> | `psionic/tests/book.py --book nostr` |
 | `coder` | `coder/book/` | `lS8V6TGnz1ifNhKVV3hN` | <https://openagents.gitbook.io/coder-coding-agents-from-scratch> | `psionic/tests/book.py --book coder` |
+| `bitcoin` | `bitcoin/book/` | `wmf6C6tD4ovtQQqoeMmP` | <https://openagents.gitbook.io/bitcoin-from-scratch> | `psionic/tests/book.py --book bitcoin` |
 
 Commit the reviewed changes, rebase on `origin/main`, run any checks affected
 by the rebase and push. The existing GitBook space can import the pushed
@@ -133,6 +134,7 @@ python3 scripts/publish-coax-book.py --book psionic --token-file /absolute/path/
 python3 scripts/publish-coax-book.py --book aethyr --token-file /absolute/path/to/gitbook.env
 python3 scripts/publish-coax-book.py --book nostr --token-file /absolute/path/to/gitbook.env
 python3 scripts/publish-coax-book.py --book coder --token-file /absolute/path/to/gitbook.env
+python3 scripts/publish-coax-book.py --book bitcoin --token-file /absolute/path/to/gitbook.env
 ```
 
 Alternatively set `GITBOOK_TOKEN` in the process environment. Never commit a

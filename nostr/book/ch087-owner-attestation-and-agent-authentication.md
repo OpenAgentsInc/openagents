@@ -5,7 +5,7 @@ two Block NIPs that say so: NIP-OA, a tag by which an owner key authorizes
 an agent key, and NIP-AA, which lets a relay admit that agent because its
 owner is a member.
 
-Part X, Every NIP. Result: Block's NIP-OA `auth` tag by which an owner key
+Part VI, Every NIP. Result: Block's NIP-OA `auth` tag by which an owner key
 authorizes an agent key, and NIP-AA agent authentication to relays with
 virtual member privileges and revocation.
 
@@ -564,7 +564,7 @@ public_x :: (secret: [] u8) -> [32] u8 {
   #assert sf_store(a.x, b[..]);
   return b;
 }
-// BIP-340 signing of a 32-byte message with chapter 13's signer.
+// BIP-340 signing of a 32-byte message with Bitcoin chapter 24's signer.
 sign_hash :: (key: [] u8, aux: [] u8, message: [] u8, out: [] u8) {
   work: [1] SignWork; status := SIGN_MORE;
   while status == SIGN_MORE { status = schnorr_sign_step(key, aux, message, work[..], out, false); }

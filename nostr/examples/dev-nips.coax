@@ -33,7 +33,7 @@ public_x :: (secret: [] u8) -> [32] u8 {
   #assert sf_store(a.x, b[..]);
   return b;
 }
-// BIP-340 signing with chapter 13's signer, run until it stops asking for more.
+// BIP-340 signing with Bitcoin chapter 24's signer, run until it stops asking for more.
 sign :: (key: [] u8, aux: [] u8, message: [] u8, out: [] u8) -> bool {
   work: [1] SignWork;
   status := SIGN_MORE;

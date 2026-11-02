@@ -9,7 +9,7 @@ domain for each from a tiny alphabet of ids, authors, kinds, times and
 tags, checks every case, and plants a bug for each property to show that
 the check finds it. Each counterexample becomes a regression test.
 
-Part XI, Interop and verification. Chapter 94 compares two implementations
+Part VII, Interop and verification. Chapter 94 compares two implementations
 on generated inputs, and chapter 95 feeds readers random hostile bytes.
 Both sample. This chapter enumerates: every case of a stated domain, with
 a count you can work out by hand.
@@ -44,8 +44,8 @@ a count you can work out by hand.
 | [coax/lib/nostr/relay_server.coax](../../coax/lib/nostr/relay_server.coax) | `rs_sub_open` and `rs_sub_matches`: a subscription's filters |
 | [coax/lib/nostr/store_core.coax](../../coax/lib/nostr/store_core.coax) | `ns_store_admit`: replacement (chapter 35) |
 | [coax/lib/nostr/store.coax](../../coax/lib/nostr/store.coax), [store_index.coax](../../coax/lib/nostr/store_index.coax) | `rsd_query`, the scan, and `nsi_query`, the indexed query (chapter 36) |
-| [coax/lib/crypto/schnorr.coax](../../coax/lib/crypto/schnorr.coax) | `nostr_verify_vartime` (chapter 11) |
-| [coax/lib/nostr/event_sign.coax](../../coax/lib/nostr/event_sign.coax) | `nostr_event_sign_step` and the event reader's verification (chapter 13) |
+| [coax/lib/crypto/schnorr.coax](../../coax/lib/crypto/schnorr.coax) | `nostr_verify_vartime` (Bitcoin chapter 23) |
+| [coax/lib/nostr/event_sign.coax](../../coax/lib/nostr/event_sign.coax) | `nostr_event_sign_step` and the event reader's verification (Bitcoin chapter 24) |
 
 The properties, domains and planted bugs are in the example. The library
 is unchanged: every property held on the first run.
@@ -884,10 +884,10 @@ gives the fixture in debug and release.
 | Replacement is a function of `(created_at, id)`, in any order | Exhaustive, native | 4096 triples × 6 orders: 24,576 cases |
 | Indexed query = scan, with order and `limit` | Exhaustive, native; sampled in chapter 36 | Stores of at most 2 events: 270,592 queries; chapter 36's 500 generated stores of 4 to 14 events |
 | Verification refuses a changed id, key or signature | Exhaustive over one-bit changes of one signature | 1025 cases; not multi-bit changes or other signatures |
-| Verify accepts exactly what BIP-340 accepts | Sampled | The 19 published vectors (chapter 11) and the one-hour fuzz record cited in chapter 95 |
-| Sign then verify succeeds | Sampled | 8 events here; chapter 13's vectors |
+| Verify accepts exactly what BIP-340 accepts | Sampled | The 19 published vectors (Bitcoin chapter 23) and the one-hour fuzz record cited in chapter 95 |
+| Sign then verify succeeds | Sampled | 8 events here; Bitcoin chapter 24's vectors |
 | Any property on larger inputs: more events, longer lists, other kinds, other tag letters | Not proven | The small domains assume the code treats a third author or a fourth event like the first two. That is an argument about the code, not a check |
-| Constant-time signing | Not proven | Timing measurements in chapter 3 are evidence, not proof |
+| Constant-time signing | Not proven | Timing measurements in Bitcoin chapter 3 are evidence, not proof |
 
 A small-domain check is complete for its domain and says nothing outside
 it. Its strength is the argument that the domain keeps every distinction
@@ -912,7 +912,7 @@ each one is caught inside the domain.
 
 ## Dependencies
 
-- [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md)
+- [Bitcoin chapter 23. Verify a Schnorr signature](../../bitcoin/book/ch023-verify-a-schnorr-signature.md)
 - [23. Filters](ch023-filters.md)
 - [36. Match filters with indexes](ch036-match-filters-with-indexes.md)
 - [94. Differential tests](ch094-differential-tests.md) and

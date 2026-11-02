@@ -6,7 +6,7 @@ owner, in its content. This chapter reads both, checks every item against
 the tags its kind may hold, writes private items with NIP-44, and answers
 whether a mute list mutes a pubkey, an event, a hashtag or a word.
 
-Part X, Every NIP. Result: NIP-51 standard lists (10000 mutes, 10001 pins,
+Part VI, Every NIP. Result: NIP-51 standard lists (10000 mutes, 10001 pins,
 10003 bookmarks and the rest of its table) and sets (30000 follow sets and
 the rest), with public tags and private items encrypted to self, and NIP-B0
 kind 39701 web bookmarks.

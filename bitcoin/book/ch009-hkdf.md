@@ -1,6 +1,6 @@
-# 6. HKDF
+# 9. HKDF
 
-A shared secret is not a key yet. An ECDH secret (chapter 14) is 32 bytes
+A shared secret is not a key yet. An ECDH secret (Nostr chapter 14) is 32 bytes
 of a curve point's x-coordinate, and its bits are not uniformly random. You
 also need more than one key from it. HKDF, the HMAC-based key derivation
 function of RFC 5869, solves both problems in two steps:
@@ -11,8 +11,8 @@ function of RFC 5869, solves both problems in two steps:
   to 8,160, bound to a context string called `info`.
 
 NIP-44 v2 uses both halves. Extract makes the conversation key between two
-people, and expand makes three keys for every message (chapter 20). This
-chapter builds HKDF from the HMAC of chapter 5, works out the first output
+people, and expand makes three keys for every message (Nostr chapter 20). This
+chapter builds HKDF from the HMAC of chapter 8, works out the first output
 blocks of RFC 5869 test case 1 by hand, and checks the NIP-44 split against
 a published vector.
 
@@ -56,7 +56,7 @@ protocol's HKDF keys from the same secret.
 
 RFC 5869 says that a missing salt means 32 zero bytes. You don't need a
 special case for that. HMAC pads a short key with zeros to 64 bytes
-(chapter 5), so an empty key and a 32-byte zero key make the same padded
+(chapter 8), so an empty key and a 32-byte zero key make the same padded
 block and the same PRK. `hkdf_extract_checked` passes the salt to HMAC as
 it is.
 
@@ -135,13 +135,13 @@ are done (chapter 3).
 
 ## The example
 
-The example is [nostr/examples/hkdf.coax](../examples/hkdf.coax). It counts
+The example is [bitcoin/examples/hkdf.coax](../examples/hkdf.coax). It counts
 blocks, runs RFC 5869 test case 1 and builds its two expand blocks by hand,
 shows that an empty salt equals 32 zero bytes, expands the NIP-44
 conversation key from the official vector into its three keys, and shows
 five refusals.
 
-<!-- source: nostr/examples/hkdf.coax example -->
+<!-- source: bitcoin/examples/hkdf.coax example -->
 ```jai
 #load "../../coax/lib/crypto/hkdf.coax";
 #load "../../coax/lib/nostr/hex.coax";
@@ -247,7 +247,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/hkdf.coax
+coax/bin/coax run bitcoin/examples/hkdf.coax
 ```
 
 The output matches the block count worked out by hand, the PRK and output
@@ -289,7 +289,7 @@ overlaps the PRK. Each returns its status before it writes anything, so
 the output still holds its `0xa5` fill.
 
 The book's checks run this program in debug and release builds and compare
-the output with [nostr/fixtures/hkdf.out](../fixtures/hkdf.out).
+the output with [bitcoin/fixtures/hkdf.out](../fixtures/hkdf.out).
 
 ## How the code is checked
 
@@ -323,7 +323,7 @@ python3 coax/tests/nostr/hmac_hkdf.py
   for lengths on both sides of 32 and 64 bytes, and that a shorter output
   is a prefix of a longer one:
 
-<!-- source: nostr/examples/hkdf.coax check -->
+<!-- source: bitcoin/examples/hkdf.coax check -->
 ```jai
 // The library's expand equals the block-by-block construction for lengths
 // around the block size, and a shorter output is a prefix of a longer one.
@@ -351,7 +351,7 @@ python3 coax/tests/nostr/hmac_hkdf.py
 To run all the checks:
 
 ```shell
-coax/bin/coax test nostr/examples/hkdf.coax
+coax/bin/coax test bitcoin/examples/hkdf.coax
 coax/bin/coax mutate coax/lib/crypto/hkdf.coax
 ```
 
@@ -371,12 +371,12 @@ on the example runs 61 checks.
 
 ## Dependencies
 
-- [5. HMAC-SHA256](ch005-hmac-sha256.md)
+- [8. HMAC-SHA256](ch008-hmac-sha256.md)
 
 ## Sources
 
 - [RFC 5869](https://www.rfc-editor.org/rfc/rfc5869), sections 2.2, 2.3
   and appendix A, pinned in
   [coax/tests/vectors/SOURCES.md](../../coax/tests/vectors/SOURCES.md).
-- [NIP-44](../nips/official/44.md), which derives its conversation key and
+- [NIP-44](../../nostr/nips/official/44.md), which derives its conversation key and
   message keys with HKDF.

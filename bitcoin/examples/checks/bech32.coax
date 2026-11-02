@@ -1,6 +1,6 @@
 // The checks of bech32.coax. They live apart so that running the example
 // doesn't also run them.
-// Checks: coax test nostr/examples/checks/bech32.coax
+// Checks: coax test bitcoin/examples/checks/bech32.coax
 #load "../bech32.coax";
 
 // book:begin check

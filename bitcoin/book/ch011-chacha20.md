@@ -1,12 +1,14 @@
-# 18. ChaCha20
+# 11. ChaCha20
 
-NIP-44 encrypts with ChaCha20, and NIP-49's XChaCha20 starts from it. This
+Bitcoin's v2 P2P transport (BIP-324, chapter 55) and Lightning's Noise
+handshake and onions (chapters 68 and 74) encrypt with ChaCha20. NIP-44
+encrypts with it too, and NIP-49's XChaCha20 starts from it. This
 chapter builds the quarter round, the block function and the stream, and
 the rules about nonces and counters that keep it safe. Every operation is a
 32-bit addition, an exclusive or or a rotation, so the code has no tables
 and no branches on the key or the data.
 
-Part V, Encryption. Result: RFC 8439 ChaCha20 with caller-supplied nonce and
+Part II, Hashes, MACs and ciphers. Result: RFC 8439 ChaCha20 with caller-supplied nonce and
 counter, counter exhaustion refused, and HChaCha20 for NIP-49's XChaCha20.
 
 ## What this chapter teaches
@@ -224,7 +226,7 @@ plaintexts: no key needed. So:
 
 - Never use one key and nonce twice, unless the counter ranges don't
   overlap. NIP-44 derives a fresh key and nonce for every message from a
-  random 32-byte value (chapter 20).
+  random 32-byte value (Nostr chapter 20).
 - The counter must not wrap. At `ffffffff` the next counter would be 0, the
   block that started the stream. RFC 8439 says the counter must not carry
   into the nonce either.
@@ -263,7 +265,7 @@ ChaCha20 hides the plaintext but doesn't protect it. Flip a bit of the
 ciphertext and decryption still succeeds, with the same bit flipped in the
 plaintext; the receiver can't tell. An attacker who knows or guesses part of
 a message can change it to anything of the same length. NIP-44 therefore
-adds an HMAC-SHA256 over the nonce and ciphertext (chapter 5), and checks it
+adds an HMAC-SHA256 over the nonce and ciphertext (chapter 8), and checks it
 before decrypting. NIP-49 uses XChaCha20-Poly1305, whose Poly1305 tag does
 the same job.
 
@@ -275,7 +277,7 @@ first 16 nonce bytes in the state (the first nonce word where the counter
 goes), runs the 20 rounds, and outputs words 0 to 3 and 12 to 15 as a
 32-byte subkey. It has no final addition: `hchacha20_checked` subtracts the
 starting state back out of `cc_block_words`' result. XChaCha20 then runs
-ordinary ChaCha20 with the subkey and the last 8 nonce bytes. Chapter 47
+ordinary ChaCha20 with the subkey and the last 8 nonce bytes. Nostr chapter 47
 uses it for NIP-49 key backups.
 
 <!-- source: coax/lib/crypto/hchacha20.coax hchacha20_checked -->
@@ -296,13 +298,13 @@ hchacha20_checked :: (key:[]u8,nonce:[]u8,out:[]u8,overlap:bool)->ChaChaResult #
 
 ## The example
 
-The example is [nostr/examples/chacha20.coax](../examples/chacha20.coax).
+The example is [bitcoin/examples/chacha20.coax](../examples/chacha20.coax).
 It runs the section 2.1.1 quarter round, sets up and runs the section 2.3.2
 block, encrypts and decrypts the section 2.4.2 sentence, shows that a
 flipped ciphertext bit goes undetected, derives the HChaCha20 test subkey,
 and shows the counter and size refusals.
 
-<!-- source: nostr/examples/chacha20.coax example -->
+<!-- source: bitcoin/examples/chacha20.coax example -->
 ```jai
 #load "../../coax/lib/crypto/chacha20.coax";
 #load "../../coax/lib/crypto/hchacha20.coax";
@@ -427,7 +429,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/chacha20.coax
+coax/bin/coax run bitcoin/examples/chacha20.coax
 ```
 
 The output matches the values worked out by hand: the quarter round
@@ -478,7 +480,7 @@ The refusals:
   (`CC_OUTPUT`).
 
 The book's checks run this program in debug and release builds and compare
-the output with [nostr/fixtures/chacha20.out](../fixtures/chacha20.out).
+the output with [bitcoin/fixtures/chacha20.out](../fixtures/chacha20.out).
 
 ## How the code is checked
 
@@ -494,7 +496,7 @@ length from 0 to 65, every short capacity and overlap, the counter endpoints
 ### Checks in the example
 
 The checks in
-[nostr/examples/checks/chacha20.coax](../examples/checks/chacha20.coax)
+[bitcoin/examples/checks/chacha20.coax](../examples/checks/chacha20.coax)
 load the example and compare it with bytes copied from the pinned RFC 8439
 text, [rfc8439.txt](../../coax/tests/vectors/upstream/rfc/rfc8439.txt):
 
@@ -509,7 +511,7 @@ text, [rfc8439.txt](../../coax/tests/vectors/upstream/rfc/rfc8439.txt):
   before `2^32`, against `ceil(n / 64) <= left`;
 - every key length 0 to 39 and nonce length 0 to 19.
 
-<!-- source: nostr/examples/checks/chacha20.coax check -->
+<!-- source: bitcoin/examples/checks/chacha20.coax check -->
 ```jai
 // Byte strings copied from the pinned RFC 8439 text
 // (coax/tests/vectors/upstream/rfc/rfc8439.txt) by its hex dumps.
@@ -597,8 +599,8 @@ A23_CIPHER :: "62e6347f95ed87a45ffae7426f27a1df5fb69110044c0d73118effa95b01e5cf1
 To run them:
 
 ```shell
-coax/bin/coax test nostr/examples/checks/chacha20.coax
-coax/bin/coax mutate nostr/examples/checks/chacha20.coax
+coax/bin/coax test bitcoin/examples/checks/chacha20.coax
+coax/bin/coax mutate bitcoin/examples/checks/chacha20.coax
 ```
 
 `coax test` runs 31 checks, including the loaded files' own checks, in under a second. `coax mutate` without `--root-only` mutates the example and every loaded file, ChaCha20 and HChaCha20 included: on 2026-11-01 it killed 493 of 493 mutants. The checks file has no procedures of its own, so `--root-only` finds no mutation sites.

@@ -5,9 +5,9 @@ kind 27235 event, base64 encoded, in the `Authorization` header. The server
 checks that the event names this exact URL, method and body, that it is
 recent, that its signature verifies, and that its ID has not been used
 before. OpenAgents uses it for API calls and for sign-in. This chapter
-builds both sides on chapter 21's events and chapter 4's SHA-256.
+builds both sides on chapter 21's events and Bitcoin chapter 4's SHA-256.
 
-Part X, Every NIP. Result: NIP-98 kind 27235 events in `Authorization: Nostr
+Part VI, Every NIP. Result: NIP-98 kind 27235 events in `Authorization: Nostr
 <base64>`, binding the exact URL, method and payload hash within 60 seconds,
 with single-use event IDs.
 
@@ -61,7 +61,7 @@ signed write whose event has no `payload`.
 
 The `Authorization` value is the scheme `Nostr`, one space, and the base64
 of the event's JSON bytes. Base64 writes every 3 bytes as 4 characters
-(chapter 1). A final group of 1 or 2 bytes becomes 4 characters with 2 or 1
+(Bitcoin chapter 1). A final group of 1 or 2 bytes becomes 4 characters with 2 or 1
 `=`. So `n` event bytes give `4·⌈n/3⌉` characters with padding.
 
 The reader in `nip98.coax` takes the standard and the URL-safe alphabets,
@@ -618,7 +618,7 @@ today.
 ## Dependencies
 
 - [21. Events, IDs and signatures](ch021-events-ids-and-signatures.md)
-- [4. SHA-256](ch004-sha-256.md)
+- [4. SHA-256](../../bitcoin/book/ch004-sha-256.md)
 
 ## Sources
 

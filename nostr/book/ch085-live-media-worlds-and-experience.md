@@ -7,7 +7,7 @@ in what order, and which awards a reader counts. It describes the
 live-media session NIP that binds voice, camera and screen to a task, and
 builds none of it.
 
-Part X, Every NIP. Result: NIP-MV world definitions (33300), entity states
+Part VI, Every NIP. Result: NIP-MV world definitions (33300), entity states
 (33301) and pose frames (23300) read and admitted, a receiver's ordering
 and presence rules under a fixed clock, and the NIP-XP quests (30193),
 awards (3193) and revocations (3194) folded into a derived ledger. NIP-LIVE

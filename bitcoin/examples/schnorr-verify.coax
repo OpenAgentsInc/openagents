@@ -48,7 +48,7 @@ equation :: (s: u32, e: u32, p: SgPoint, r: SgPoint) -> bool {
   prepared.point = p; prepared.r = sg_to_affine(r).value.x; prepared.ready = true;
   return sv_prepared_matches_vartime(prepared);
 }
-// k·G by repeated addition, with chapter 9's group law.
+// k·G by repeated addition, with chapter 15's group law.
 times :: (k: int) -> SgPoint {
   r := sg_infinity();
   for i: 0..<k { r = sg_add(r, sg_generator()).value; }

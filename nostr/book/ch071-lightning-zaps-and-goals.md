@@ -7,7 +7,7 @@ paid, the server publishes a zap receipt. This chapter writes the request,
 checks the receipt the way a client must, and adds up receipts toward a
 fundraising goal, under the Bitcoin-only rule.
 
-Part X, Every NIP. Result: NIP-57 zap requests (9734) sent to an LNURL server
+Part VI, Every NIP. Result: NIP-57 zap requests (9734) sent to an LNURL server
 and zap receipts (9735) whose bolt11 description hash commits to the request,
 and NIP-75 zap goals (9041).
 
@@ -36,7 +36,7 @@ and NIP-75 zap goals (9041).
 | File | Procedure | What it does |
 | --- | --- | --- |
 | [settle.coax](../../coax/lib/x402/settle.coax) | `x402_bolt11_msat`, `x402_preimage_matches` | An invoice's amount; a preimage against a payment hash (chapter 86) |
-| [bech32-core.coax](../../coax/lib/nostr/bech32-core.coax) | `bech32_decode_checked`, `bech32_encode_checked` | Bech32 (chapter 15) |
+| [bech32-core.coax](../../coax/lib/nostr/bech32-core.coax) | `bech32_decode_checked`, `bech32_encode_checked` | Bech32 (Bitcoin chapter 27) |
 | [tags.coax](../../coax/lib/nostr/tags.coax), [nip32.coax](../../coax/lib/nostr/nip32.coax) | `nostr_tag`, `n32_tag` | Read `p`, `e`, `a` and other tags (chapters 22 and 55) |
 | [event.coax](../../coax/lib/nostr/event.coax) | `nostr_event_verify_vartime` | Read an event and check its id and signature (chapter 21) |
 | [nip57.coax](../../coax/lib/nostr/nip57.coax) | `n57_lnurlp`, `n57_lnurl` | A lightning address's LNURL-pay URL, and that URL as an `lnurl` |

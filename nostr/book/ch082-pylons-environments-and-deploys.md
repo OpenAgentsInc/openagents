@@ -8,7 +8,7 @@ admits or refuses the body, judges the beacon's freshness by the reader's
 own clock, and decides what a beacon adds to a pool and which beacon a
 receipt counts for.
 
-Part X, Every NIP. Result: NIP-PYLON beacons (kind 30200) and service
+Part VI, Every NIP. Result: NIP-PYLON beacons (kind 30200) and service
 receipts (kind 3201) read and verified, the freshness rule that keeps an
 expired beacon out of a pool's capacity, and the rule that ties a receipt to
 the beacon it credits. NIP-ENV and NIP-DEPLOY are described, not built; see
@@ -34,7 +34,7 @@ the beacon it credits. NIP-ENV and NIP-DEPLOY are described, not built; see
 | [host.coax](../../psionic/lib/pylon/host.coax) | `ph_digest`, `ph_beacon`, `ph_read_beacon` | The same calls with the real SHA-256 of the content |
 | [receipt.coax](../../psionic/lib/mesh/receipt.coax) | `mr_body`, `mr_tags`, `mr_read`, `mr_check_tags`, `mr_check_read` | The receipt's bytes and admission, and NIP-32 check labels. `#authority` |
 | [totals.coax](../../psionic/lib/mesh/totals.coax) | `mt_recompute` | A pool aggregate's totals from admitted beacons, receipts and labels. `#authority` |
-| [event.coax](../../coax/lib/nostr/event.coax) | `nostr_event_verify_vartime` | The event's id and BIP-340 signature (chapters 11 and 21) |
+| [event.coax](../../coax/lib/nostr/event.coax) | `nostr_event_verify_vartime` | The event's id and BIP-340 signature (Bitcoin chapter 23 and chapter 21) |
 
 None of the Pylon readers verifies a signature. Each takes the signer as an
 argument and expects the caller to have verified the whole event first, as
@@ -104,7 +104,7 @@ scalar 3. Check it before the program runs:
    `5e8c454542809f9066eb59e6f944b697b6a57008230eefb3b70812bc6a4a057f`.
 8. The signature's first 32 bytes are `r = c9c6479c...0e32cb`. BIP-340
    accepts it when `s·G - e·P` has x-coordinate `r` and an even y, with
-   `e` the tagged hash `BIP0340/challenge` of `r || P || id` (chapter 11).
+   `e` the tagged hash `BIP0340/challenge` of `r || P || id` (Bitcoin chapter 23).
 
 ### Freshness
 

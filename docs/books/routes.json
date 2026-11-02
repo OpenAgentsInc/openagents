@@ -268,8 +268,8 @@
         "network": false
       },
       "chapters": [
-        "nostr/book/ch011-verify-a-schnorr-signature.md",
-        "nostr/book/ch013-sign-with-schnorr.md",
+        "bitcoin/book/ch023-verify-a-schnorr-signature.md",
+        "bitcoin/book/ch024-sign-with-schnorr.md",
         "nostr/book/ch017-json-you-can-sign.md",
         "nostr/book/ch021-events-ids-and-signatures.md",
         "nostr/book/ch024-relay-messages.md",

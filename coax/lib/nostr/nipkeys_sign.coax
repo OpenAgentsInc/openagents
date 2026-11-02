@@ -12,7 +12,7 @@
 // The account key and every child key are secrets: they live in the
 // caller's workspace, which is cleared on every return, and decide no
 // branch or index. Their public points come from the fixed-base comb k*G
-// (chapter 10).
+// (Bitcoin chapter 16).
 #load "nipkeys.coax";
 #load "../bitcoin/sighash.coax";
 #load "../../tests/nostr/keys_sign_fixtures.coax";

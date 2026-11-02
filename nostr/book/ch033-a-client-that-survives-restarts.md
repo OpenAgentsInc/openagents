@@ -7,7 +7,7 @@ stopped on each relay, the events it has already shown, and the deletions it
 must keep honoring. All of it is one append-only journal over a byte buffer,
 replayed after a crash.
 
-Part VIII, A client. Result: A durable client journal that stores verified
+Part IV, A client. Result: A durable client journal that stores verified
 originals, an offline outbox that sends each event again after a restart
 without a second copy anywhere, subscriptions that resume with `since`, and
 deletions that are never resurrected on reconnect.
@@ -44,7 +44,7 @@ in, and the host writes the journal's new bytes to a file and syncs it.
 | | `cj_since(j, sub, r)`, `cj_live(j, k)`, `cj_find(j, id)` | what a restart asks with `since`; whether a stored event is shown; the store index of an ID |
 | | `cj_apply`, `cj_same` | applies one record (the writers and replay share it); compares two states |
 | [outbox.coax](../../coax/lib/nostr/outbox.coax) | `ob_relay`, `ob_is` | chapter 32's relay pool, which numbers the journal's relays |
-| [sha256.coax](../../coax/lib/crypto/sha256.coax) | `sha256_hash_checked` | chapter 4's SHA-256, for each record's check |
+| [sha256.coax](../../coax/lib/crypto/sha256.coax) | `sha256_hash_checked` | Bitcoin chapter 4's SHA-256, for each record's check |
 
 The new file carries `#authority;`. It decides which events reach the
 application, which publishes are sent again, and which deletions hide an

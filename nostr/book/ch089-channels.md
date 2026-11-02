@@ -7,7 +7,7 @@ the viewer can hide without leaving, and an icon for the whole workspace.
 This chapter builds the relay's and the client's decisions for all four in
 Coax, on top of `nip29.coax`.
 
-Part X, Every NIP. Result: NIP-CL channel identity and discovery (the
+Part VI, Every NIP. Result: NIP-CL channel identity and discovery (the
 identity tags on 39000 to 39002, labels, the oldest-channel rule, system
 channels and the legacy-type listing rule, including 44100 and 44101
 notices), NIP-CW channel and thread windows with composite cursors and

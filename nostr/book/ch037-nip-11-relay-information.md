@@ -4,7 +4,7 @@ Clients learn a relay's limits from its NIP-11 document. This chapter serves
 the document and checks that each advertised limit is the one the relay
 enforces.
 
-Part IX, A relay. Result: The relay information document served on `Accept:
+Part V, A relay. Result: The relay information document served on `Accept:
 application/nostr+json`: name, pubkey, `supported_nips`, software, version and
 `limitation` fields that match what the relay enforces.
 

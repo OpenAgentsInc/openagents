@@ -9,7 +9,7 @@ the client's half and the rules both sides share: the URI, the info event,
 the JSON of every request and response, NIP-44 encryption under the
 connection secret, response matching and a spending budget per connection.
 
-Part X, Every NIP. Result: NIP-47 Nostr Wallet Connect:
+Part VI, Every NIP. Result: NIP-47 Nostr Wallet Connect:
 `nostr+walletconnect://` URIs, info (13194), requests (23194) and responses
 (23195) encrypted with NIP-44, and the commands `pay_invoice`,
 `make_invoice`, `lookup_invoice`, `get_balance`, `get_info` and

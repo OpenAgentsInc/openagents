@@ -1,4 +1,4 @@
-# 7. Field arithmetic mod p
+# 13. Field arithmetic mod p
 
 Every point on secp256k1 has two coordinates, and each coordinate is an
 integer mod the prime:
@@ -8,7 +8,7 @@ p = 2^256 - 2^32 - 977
   = fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f
 ```
 
-Adding, subtracting, multiplying and dividing points (chapter 9) all come
+Adding, subtracting, multiplying and dividing points (chapter 15) all come
 down to arithmetic on these coordinates. This chapter builds that
 arithmetic on the ten 26-bit limbs of chapter 2: addition, negation,
 multiplication with a reduction that uses the special form of `p`,
@@ -184,7 +184,7 @@ non-square it is `-1`, and the candidate squares to `-a` instead.
 `sf_sqrt` computes the candidate, squares it and compares with `a`. If they
 differ, `ok` is false and the value is 0. If they match, it returns the
 even one of the two roots `y` and `p - y`. `p` is odd, so exactly one of
-them is even. BIP-340 uses the even root for every x-only key (chapter 11).
+them is even. BIP-340 uses the even root for every x-only key (chapter 23).
 
 ### Worked example: sqrt(9)
 
@@ -205,13 +205,13 @@ refused by both.
 ## The example
 
 The example is
-[nostr/examples/field-arithmetic.coax](../examples/field-arithmetic.coax).
+[bitcoin/examples/field-arithmetic.coax](../examples/field-arithmetic.coax).
 It prints `p`'s limbs, reduces `2^256 - 1` and `2^128 · 2^128`, wraps
 addition at `p`, inverts 2, prints the exponents the chains compute, takes
 square roots, lifts the generator's x-coordinate to its y-coordinate and
 shows four refusals.
 
-<!-- source: nostr/examples/field-arithmetic.coax example -->
+<!-- source: bitcoin/examples/field-arithmetic.coax example -->
 ```jai
 #load "../../coax/lib/crypto/secp_field.coax";
 #load "../../coax/lib/nostr/hex.coax";
@@ -316,7 +316,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/field-arithmetic.coax
+coax/bin/coax run bitcoin/examples/field-arithmetic.coax
 ```
 
 The output matches the values worked out by hand: `2^256 - 1` reduces to
@@ -368,7 +368,7 @@ The four refusals:
 
 The book's checks run this program in debug and release builds and compare
 the output with
-[nostr/fixtures/field-arithmetic.out](../fixtures/field-arithmetic.out).
+[bitcoin/fixtures/field-arithmetic.out](../fixtures/field-arithmetic.out).
 
 ## How the code is checked
 
@@ -425,7 +425,7 @@ the libsecp256k1 comparison. `secp_field_inv.py` runs its 6 tests in about
 - The example checks the field laws on twelve values near 0, near `p`,
   across limb boundaries and at the generator:
 
-<!-- source: nostr/examples/field-arithmetic.coax check -->
+<!-- source: bitcoin/examples/field-arithmetic.coax check -->
 ```jai
 // Field laws on values near 0, near p and across limb boundaries: the
 // inverse multiplies back to 1, a square's root squares back and is even,
@@ -466,7 +466,7 @@ two full exponentiation chains in the compile-time interpreter.
 To run all the checks:
 
 ```shell
-coax/bin/coax test nostr/examples/field-arithmetic.coax
+coax/bin/coax test bitcoin/examples/field-arithmetic.coax
 coax/bin/coax mutate coax/lib/crypto/secp_field.coax
 ```
 

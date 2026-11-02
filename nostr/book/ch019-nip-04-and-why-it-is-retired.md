@@ -6,7 +6,7 @@ states its weaknesses with the words of the pinned text, and builds what
 this stack does with it: a reader that decrypts old messages and refuses to
 make new ones.
 
-Part V, Encryption. Result: NIP-04's AES-256-CBC with the shared x as key and
+Part I, Shared secrets, encodings and encryption. Result: NIP-04's AES-256-CBC with the shared x as key and
 its `?iv=` suffix, its weaknesses (no authentication, metadata in the clear,
 the key used as is), and a decrypt-only reader checked against FIPS-197,
 NIST SP 800-38A and OpenSSL.
@@ -187,7 +187,7 @@ aes_inv_sbox :: (y_in:u32)->u32 {
 
 The intent is constant time; it isn't proven. The C compiler could, in
 principle, turn the masks back into branches, and no timing measurement
-(chapter 3's harness) has been run on this file. The caveat is recorded in
+(Bitcoin chapter 3's harness) has been run on this file. The caveat is recorded in
 the file's header.
 
 ### Worked by hand: S(53)
@@ -683,7 +683,7 @@ The refusals:
 - A 12-byte iv refuses with `bad iv` (`NIP04_IV`).
 - A 15-byte ciphertext, not a whole block, refuses with `bad length`
   (`NIP04_LENGTH`).
-- Base64 without its `==` refuses with `bad base64` (`NIP04_BASE64`); chapter
+- Base64 without its `==` refuses with `bad base64` (`NIP04_BASE64`); Bitcoin chapter
   1's decoder takes only canonical, padded base64.
 - A secret with one bit changed gives another x, and the padding check
   refuses. This key fails; about one wrong key in 256 would not.
@@ -834,7 +834,7 @@ OPENSSL_PLAIN :: [5] string.["", "fifteen bytes!!", "sixteen bytes!!!", "sevente
 ## Dependencies
 
 - [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md)
-- [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md)
+- [1. Bytes, hex and base64](../../bitcoin/book/ch001-bytes-hex-and-base64.md)
 
 ## Sources
 

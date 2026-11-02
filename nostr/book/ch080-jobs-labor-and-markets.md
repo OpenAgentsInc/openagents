@@ -12,7 +12,7 @@ delivery and acceptance. This chapter builds the decisions where a mistake
 costs money: who may answer a job, which quote an order may name, when an
 order is accepted, and what proof settles the payment.
 
-Part X, Every NIP. Result: NIP-CJ response admission (the signer must be
+Part VI, Every NIP. Result: NIP-CJ response admission (the signer must be
 the worker the request named); NIP-MKT negotiation (RFQ, quote, order and
 confirmation) and Lightning settlement (one obligation, an attempt
 persisted before the wallet, a preimage that hashes to the payment hash);

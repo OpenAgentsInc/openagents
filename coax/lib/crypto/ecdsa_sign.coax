@@ -1,8 +1,8 @@
 // ECDSA signing on secp256k1 for Bitcoin's segwit v0 spends (chapter 104):
 // RFC 6979 deterministic nonces (HMAC-SHA256), low-S (BIP-62/BIP-146), and
 // DER encoding (BIP-66). The key and the nonce are secrets: no branch and
-// no index depends on them (chapter 3). The nonce point is the fixed-base
-// comb k*G (chapter 10, sp_base); scalars are chapter 8's fixed-loop
+// no index depends on them (Bitcoin chapter 3). The nonce point is the fixed-base
+// comb k*G (Bitcoin chapter 16, sp_base); scalars are Bitcoin chapter 14's fixed-loop
 // arithmetic, with the inverse a fixed public exponent. Every secret lives
 // in the caller's workspace, which is cleared on every return.
 //

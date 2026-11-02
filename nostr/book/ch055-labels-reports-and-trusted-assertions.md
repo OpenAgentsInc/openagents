@@ -5,7 +5,7 @@ and scores that a service computes. This chapter reads each of them as a
 statement by its signer, never as a fact, and counts them only from the
 signers that you choose to trust.
 
-Part X, Every NIP. Result: NIP-32 kind 1985 labels in `L` namespaces, NIP-56
+Part VI, Every NIP. Result: NIP-32 kind 1985 labels in `L` namespaces, NIP-56
 kind 1984 reports with report types, and NIP-85 kinds 30382–30385 assertions
 from declared providers (kind 10040).
 

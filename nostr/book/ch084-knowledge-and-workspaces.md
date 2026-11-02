@@ -13,7 +13,7 @@ conditional document change. It runs them on one entry: two people edit
 its file at the same version, one edit is refused as stale and merged by
 hand, and the merged file is published, withdrawn and replaced.
 
-Part X, Every NIP. Result: NIP-KB entry versions (3190), heads (30190)
+Part VI, Every NIP. Result: NIP-KB entry versions (3190), heads (30190)
 and withdrawals (3191) read and checked, equivocation reported, the
 current version chosen without a withdrawn or conflicting version, and
 the reader's trust rule; NIP-WS conditional text replacements under the
@@ -59,7 +59,7 @@ whether a document changes. The checks came first, and a root-only
 mutation run kills every mutant (see
 [How the code is checked](#how-the-code-is-checked)). `entry.coax` reuses
 chapter 21's event reader (`nostr_event_verify_vartime`, which verifies
-with chapter 11's BIP-340), chapter 17's JSON parser and chapter 4's
+with Bitcoin chapter 23's BIP-340), chapter 17's JSON parser and Bitcoin chapter 4's
 SHA-256; the other two files load no crypto.
 
 ## Knowledge entries

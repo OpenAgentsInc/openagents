@@ -8,7 +8,7 @@ The example pins its rows to `73966b6359`; it does not read the current
 partial statuses and empty adoption lists. Use the current registry and
 [completion route](COMPLETION.md) for today's status and remaining exits.
 
-Part XI, Interop and verification. Result: A machine-readable support matrix
+Part VII, Interop and verification. Result: A machine-readable support matrix
 per profile (`core-read`, `core-write`, `phone-signer`, `openagents-host`,
 `block-identity`, `block-channel`, `agent-private`, `key-backup`) that refuses
 to advertise a NIP whose runtime gate is missing. The runnable report models

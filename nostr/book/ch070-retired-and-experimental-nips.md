@@ -8,7 +8,7 @@ classifier that names the retired forms an event uses, and covers the three
 that no other chapter does: NIP-26 delegation, NIP-31 `alt` tags and NIP-BE
 Bluetooth LE transport.
 
-Part X, Every NIP. Result: NIP-26 delegation tokens, the NIP-31 `alt` tag and
+Part VI, Every NIP. Result: NIP-26 delegation tokens, the NIP-31 `alt` tag and
 NIP-BE Bluetooth LE transport, each marked `unrecommended` in the pinned text,
 with what this stack reads and what it never builds.
 
@@ -102,7 +102,7 @@ What each one is, what marks it in an event, and where the book covers it:
 | EE | MLS group messages | kinds 443, 444, 445 and 10051 | 60 |
 
 Four NIPs merged into NIP-01 (12, 16, 20 and 33) say so in their own files
-but are not marked `unrecommended`; Part VI covers them.
+but are not marked `unrecommended`; Part II covers them.
 
 ## Recognizing a retired form
 
@@ -286,7 +286,7 @@ n26_conditions :: (text:string,kind:int,created_at:int)->int {
 `N26_NONE`, two refuse), requires exactly three values, decodes the
 delegator and the token as lowercase hex, unescapes the conditions and
 reads them. Then it builds the delegation string from the event's own
-signer, hashes it, and verifies the token with chapter 11's
+signer, hashes it, and verifies the token with Bitcoin chapter 23's
 `nostr_verify_vartime`. A token signed for another delegatee, other
 conditions or by another key doesn't verify. Only then are the conditions
 applied to the event's kind and `created_at`.
@@ -598,7 +598,7 @@ coax/bin/coax run nostr/examples/retired-nips.coax --run-steps 250000000
 ```
 
 The signer's fixed-base tables are built at compile time, so the program
-needs `--run-steps 250000000` (chapter 10). The output, which the book's
+needs `--run-steps 250000000` (Bitcoin chapter 16). The output, which the book's
 checks compare in debug and release builds, exit status 0:
 
 ```text

@@ -1,8 +1,10 @@
-# 11. Verify a Schnorr signature
+# 23. Verify a Schnorr signature
 
-A Nostr event is valid only if its `sig` is a BIP-340 Schnorr signature of
-its ID by its `pubkey`. This chapter builds verification exactly as BIP-340
-specifies it, from the field, scalar and point code of chapters 7 to 10, and
+A Taproot key-path spend is valid only if its witness holds a BIP-340
+Schnorr signature by the output key, and a Nostr event is valid only if its
+`sig` is a BIP-340 signature of its ID by its `pubkey`. This chapter builds
+verification exactly as BIP-340 specifies it, from the field, scalar and
+point code of chapters 13 to 16, and
 checks it against all 19 rows of the official test vectors before any event
 code uses it.
 
@@ -27,11 +29,11 @@ code uses it.
 | | `sv_prepare_vartime` | checks lengths, `r`, `s` and the key, and hashes `e` |
 | | `sv_prepared_matches_vartime` | computes `R` and makes the final comparison |
 | [schnorr_fast.coax](../../coax/lib/crypto/schnorr_fast.coax) | `schnorr_fast_verify_vartime`, `nostr_fast_verify_vartime` | the same checks, with a faster multiplication |
-| [schnorr_admission.coax](../../coax/lib/crypto/schnorr_admission.coax) | `sig_admit` | the host-memory admission for signing, used in chapter 13 |
+| [schnorr_admission.coax](../../coax/lib/crypto/schnorr_admission.coax) | `sig_admit` | the host-memory admission for signing, used in chapter 24 |
 
 All inputs are raw bytes. The public key is 32 bytes of x coordinate, the
 signature is 64 bytes, `r` then `s`. Decoding the hex of an event is the
-caller's job (chapters 1 and 21). Verification uses only public data, so
+caller's job (chapter 1 and Nostr chapter 21). Verification uses only public data, so
 every procedure runs in variable time and its name ends in `_vartime`
 (chapter 3).
 
@@ -46,7 +48,7 @@ signature `sig = r || s`:
 2. **Lift the key.** `P = lift_x(pk)`: read `x` as an integer, refuse it if
    `x ≥ p`, compute `c = x^3 + 7 mod p`, refuse if `c` has no square root,
    and take the root `y` that is even. `sg_lift_x_public` does this, and
-   chapter 7's `sf_sqrt` returns the even root.
+   chapter 13's `sf_sqrt` returns the even root.
 3. **Range checks.** Refuse unless `r < p` (`sf_load_strict`) and `s < n`
    (`sc_load`). Neither value is reduced: a signature has one encoding.
 4. **Challenge.** `e = int(SHA-256(t || t || r || pk || m)) mod n`, where
@@ -55,7 +57,7 @@ signature `sig = r || s`:
    compile time by `#run`; `sv_challenge_vartime` streams the five pieces
    through SHA-256 without copying them.
 5. **The equation.** `R = s·G - e·P`, which `ecmult_vartime(s, P, -e)` of
-   chapter 10 computes as one sum.
+   chapter 16 computes as one sum.
 6. **The comparison.** Refuse if `R` is infinity, if `y(R)` is odd, or if
    `x(R) ≠ r`. Otherwise accept.
 
@@ -74,12 +76,12 @@ s·G - e·P = (k + e·d)·G - e·d·G = k·G
 ```
 
 so `R` is the signer's nonce point, and its `x` is `r`. The signer chooses
-`d` and `k` so that `P` and `k·G` have even `y` (chapter 13); this lets a
+`d` and `k` so that `P` and `k·G` have even `y` (chapter 24); this lets a
 32-byte `x` stand for a whole point.
 
 ### Worked example: small numbers
 
-Use chapter 10's numbers: the secret key `d = 3`, so `P = 3G`, the nonce
+Use chapter 16's numbers: the secret key `d = 3`, so `P = 3G`, the nonce
 `k = 5`, and pretend the hash gave `e = 2`. Then:
 
 1. `s = k + e·d = 5 + 2·3 = 11`.
@@ -137,7 +139,7 @@ of 0, 1, 17 and 100 bytes. Each failing row targets one step:
 Rows 9 and 10 catch a verifier that gives infinity the coordinates
 `(0, y)` or `(1, y)` with an even `y`. In this library, infinity carries a
 nonzero flag through the affine conversion, and the comparison requires the
-flag to be zero (chapter 9). Row 3 has the message `ff...ff`, larger than
+flag to be zero (chapter 15). Row 3 has the message `ff...ff`, larger than
 `p` and `n`; it catches a verifier that reduces the message.
 
 ## Two paths
@@ -154,13 +156,13 @@ and on fresh signatures.
 
 ## The example
 
-The example is [nostr/examples/schnorr-verify.coax](../examples/schnorr-verify.coax).
+The example is [bitcoin/examples/schnorr-verify.coax](../examples/schnorr-verify.coax).
 It walks vector 0 one step at a time, runs the small-number equations, runs
 all 19 vectors on both paths and says where each refusal happens, and then
 shows six refusals. The vector table is at the end of the file, outside the
 listing.
 
-<!-- source: nostr/examples/schnorr-verify.coax example -->
+<!-- source: bitcoin/examples/schnorr-verify.coax example -->
 ```jai
 #load "../../coax/lib/crypto/schnorr.coax";
 #load "../../coax/lib/crypto/schnorr_fast.coax";
@@ -211,7 +213,7 @@ equation :: (s: u32, e: u32, p: SgPoint, r: SgPoint) -> bool {
   prepared.point = p; prepared.r = sg_to_affine(r).value.x; prepared.ready = true;
   return sv_prepared_matches_vartime(prepared);
 }
-// k·G by repeated addition, with chapter 9's group law.
+// k·G by repeated addition, with chapter 15's group law.
 times :: (k: int) -> SgPoint {
   r := sg_infinity();
   for i: 0..<k { r = sg_add(r, sg_generator()).value; }
@@ -296,7 +298,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/schnorr-verify.coax
+coax/bin/coax run bitcoin/examples/schnorr-verify.coax
 ```
 
 The output shows the values worked out by hand: `P.y`, the tag hash, `e`
@@ -371,14 +373,14 @@ The refusals:
   and the equation gives a different `R`.
 
 The book's checks run this program in debug and release builds and compare
-the output with [nostr/fixtures/schnorr-verify.out](../fixtures/schnorr-verify.out).
+the output with [bitcoin/fixtures/schnorr-verify.out](../fixtures/schnorr-verify.out).
 
 ## How the code is checked
 
 ### Checks in the example
 
 The checks are in
-[nostr/examples/checks/schnorr-verify.coax](../examples/checks/schnorr-verify.coax),
+[bitcoin/examples/checks/schnorr-verify.coax](../examples/checks/schnorr-verify.coax),
 which loads the example. They compare both paths with independent values:
 
 - all 19 rows of the pinned vectors;
@@ -391,7 +393,7 @@ which loads the example. They compare both paths with independent values:
   32-byte messages. The transcription reproduces the signatures of
   vectors 0 and 16.
 
-<!-- source: nostr/examples/checks/schnorr-verify.coax check -->
+<!-- source: bitcoin/examples/checks/schnorr-verify.coax check -->
 ```jai
 // Every row of the pinned test-vectors.csv gives its published result on
 // the reference path and on the fast path.
@@ -470,8 +472,8 @@ both :: (m: [] u8, key: [] u8, sig: [] u8, want: bool) {
 To run them:
 
 ```shell
-coax/bin/coax test nostr/examples/checks/schnorr-verify.coax
-coax/bin/coax mutate nostr/examples/checks/schnorr-verify.coax --root-only
+coax/bin/coax test bitcoin/examples/checks/schnorr-verify.coax
+coax/bin/coax mutate bitcoin/examples/checks/schnorr-verify.coax --root-only
 ```
 
 `coax test` runs 167 checks, including the loaded files' own checks, in
@@ -524,8 +526,8 @@ and [2026-10-29-schnorr-fast.md](../../docs/verification/2026-10-29-schnorr-fast
 ## Dependencies
 
 - [4. SHA-256](ch004-sha-256.md)
-- [8. Scalars mod n](ch008-scalars-mod-n.md)
-- [10. Scalar multiplication](ch010-scalar-multiplication.md)
+- [14. Scalars mod n](ch014-scalars-mod-n.md)
+- [16. Scalar multiplication](ch016-scalar-multiplication.md)
 
 ## Sources
 
@@ -533,7 +535,7 @@ and [2026-10-29-schnorr-fast.md](../../docs/verification/2026-10-29-schnorr-fast
   and its pinned
   [test-vectors.csv](../../coax/tests/vectors/upstream/bip340/test-vectors.csv),
   listed in [SOURCES.md](../../coax/tests/vectors/SOURCES.md).
-- [NIP-01](../nips/official/01.md), which requires the `sig` to be a
+- [NIP-01](../../nostr/nips/official/01.md), which requires the `sig` to be a
   BIP-340 signature of the event ID.
 - [libsecp256k1](https://github.com/bitcoin-core/secp256k1), release
   `v0.8.0`, pinned in

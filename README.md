@@ -32,7 +32,7 @@ release builds on:
 
 ## Books
 
-Read our five books on GitBook:
+Read our six books on GitBook:
 
 - [**The Coax Programming Language**](https://openagents.gitbook.io/the-coax-programming-language):
   the language.
@@ -40,9 +40,12 @@ Read our five books on GitBook:
   the machine-learning and execution engine, built in Coax.
 - [**Building Aethyr, World Engine**](https://openagents.gitbook.io/building-aethyr-world-engine):
   the game engine that runs the Verse's realms, built in Coax.
+- [**Bitcoin From Scratch**](https://openagents.gitbook.io/bitcoin-from-scratch):
+  Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to transactions,
+  script, Taproot, the network, wallets and Lightning channels.
 - [**Nostr From Scratch**](https://openagents.gitbook.io/nostr-from-scratch):
-  a complete Nostr implementation in Coax, from SHA-256 and secp256k1 to a
-  client, a relay and every NIP.
+  a complete Nostr implementation in Coax, from the event model to a client, a
+  relay and every NIP, on Bitcoin From Scratch's cryptography.
 - [**Coder: Coding Agents From Scratch**](https://openagents.gitbook.io/coder-coding-agents-from-scratch):
   OpenAgents' coding agent, built in Coax, and what we learn from every coding
   agent we can read.

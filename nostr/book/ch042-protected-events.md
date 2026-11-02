@@ -8,7 +8,7 @@ refused. This chapter reads the tag, builds the relay's admission rule and
 its `auth-required:` and `restricted:` answers, and gives the client a
 helper that adds the tag.
 
-Part IX, A relay. Result: Events tagged `["-"]` accepted only from their
+Part V, A relay. Result: Events tagged `["-"]` accepted only from their
 authenticated author, so a third party cannot republish them to this relay.
 
 ## What this chapter teaches
@@ -728,7 +728,7 @@ reason_of :: (frame: string) -> string {
 - Python's `hashlib` gives the ID of NIP-70's fields, `f017727a…b2e6`. The
   reader computes the same and refuses the claimed `cb8feca5…f6f2`.
 - Key 1's re-signed event has Python's ID, its public key is secp256k1's
-  generator x from SEC 2, and chapter 11's verifier accepts its signature.
+  generator x from SEC 2, and Bitcoin chapter 23's verifier accepts its signature.
   The unprotected and the edited variants also have Python's IDs.
 - The relay's first answer equals the text in NIP-70's example flow, byte
   for byte.

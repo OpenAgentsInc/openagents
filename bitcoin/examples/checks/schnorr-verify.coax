@@ -1,6 +1,6 @@
 // The checks of schnorr-verify.coax. They live apart so that running the
 // example doesn't also run them.
-// Checks: coax test nostr/examples/checks/schnorr-verify.coax
+// Checks: coax test bitcoin/examples/checks/schnorr-verify.coax
 #load "../schnorr-verify.coax";
 
 // book:begin check

@@ -6,7 +6,7 @@ reason. This chapter builds publishing that matches each `OK` to its publish,
 keeps a deadline for the answer, and says what the client knows when no
 answer comes.
 
-Part VIII, A client. Result: Publishing with acknowledgement deadlines, the
+Part IV, A client. Result: Publishing with acknowledgement deadlines, the
 distinction between published, acknowledged, refused and unknown, and requeue
 after AUTH.
 

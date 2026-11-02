@@ -5,7 +5,7 @@ it answers with `e` tags and who should see it with `p` tags. This chapter
 reads those tags into a thread, writes the tags of a new reply, and puts a
 set of notes back into a tree.
 
-Part X, Every NIP. Result: Kind 1 notes, NIP-10 marked `e` tags (`root`,
+Part VI, Every NIP. Result: Kind 1 notes, NIP-10 marked `e` tags (`root`,
 `reply`, `mention`) with the deprecated positional form, `p` tags for
 participants, NIP-14 `subject` and NIP-36 `content-warning`.
 

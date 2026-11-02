@@ -10,7 +10,7 @@ reads and writes the three event types, decides whether a result really
 answers a request, decides whether a customer pays the amount asked, and
 runs the customer's side of a job against a fixed clock.
 
-Part X, Every NIP. Result: NIP-90 job requests (5000–5999), results
+Part VI, Every NIP. Result: NIP-90 job requests (5000–5999), results
 (6000–6999) and feedback (7000), job chaining, and why the pinned text marks
 it `unrecommended`.
 

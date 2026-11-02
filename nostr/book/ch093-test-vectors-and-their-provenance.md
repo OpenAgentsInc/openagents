@@ -7,7 +7,7 @@ file it checks against: the source URL, an immutable revision, the license,
 the retrieval date, the byte count and the SHA-256 of the exact bytes. It
 then checks those records in Coax.
 
-Part XI, Interop and verification. Result: Every vector file pinned by source
+Part VII, Interop and verification. Result: Every vector file pinned by source
 URL, revision, license, retrieval date and SHA-256, with derived adapters
 labelled and their input hashes recorded.
 
@@ -48,19 +48,19 @@ All files sit under `coax/tests/vectors/upstream/`. All were retrieved on
 
 | Set | Files | Revision | Used by |
 | --- | --- | --- | --- |
-| NIST CAVS 11.0 SHA-256 | `nist/SHA256ShortMsg.rsp`, `nist/SHA256LongMsg.rsp`, `nist/Readme.txt` | archive `shabytetestvectors.zip`, SHA-256 `929ef80b...` | [4](ch004-sha-256.md) |
-| RFC 4231 | `rfc/rfc4231.txt` | RFC 4231 | [5](ch005-hmac-sha256.md) |
-| RFC 5869 | `rfc/rfc5869.txt` | RFC 5869 | [6](ch006-hkdf.md) |
+| NIST CAVS 11.0 SHA-256 | `nist/SHA256ShortMsg.rsp`, `nist/SHA256LongMsg.rsp`, `nist/Readme.txt` | archive `shabytetestvectors.zip`, SHA-256 `929ef80b...` | [4](../../bitcoin/book/ch004-sha-256.md) |
+| RFC 4231 | `rfc/rfc4231.txt` | RFC 4231 | [5](../../bitcoin/book/ch008-hmac-sha256.md) |
+| RFC 5869 | `rfc/rfc5869.txt` | RFC 5869 | [6](../../bitcoin/book/ch009-hkdf.md) |
 | RFC 7914 | `rfc/rfc7914.txt` | RFC 7914 | [47](ch047-encrypted-key-backup.md) (cited for scrypt; its section 11 PBKDF2 cases are not yet run) |
-| RFC 8439 | `rfc/rfc8439.txt` | RFC 8439 | [18](ch018-chacha20.md), [20](ch020-nip-44-encrypted-payloads.md) |
-| RFC 4648 | `rfc/rfc4648.txt` | RFC 4648 | [1](ch001-bytes-hex-and-base64.md) |
+| RFC 8439 | `rfc/rfc8439.txt` | RFC 8439 | [18](../../bitcoin/book/ch011-chacha20.md), [20](ch020-nip-44-encrypted-payloads.md) |
+| RFC 4648 | `rfc/rfc4648.txt` | RFC 4648 | [1](../../bitcoin/book/ch001-bytes-hex-and-base64.md) |
 | RFC 8785, RFC 8259 | `rfc/rfc8785.txt`, `rfc/rfc8259.txt` | RFC 8785, RFC 8259 | [17](ch017-json-you-can-sign.md) |
-| BIP-340 | `bip340/test-vectors.csv`, `bip340/LICENSE` | `git:5aadddb5...` (bitcoin/bips) | [10](ch010-scalar-multiplication.md), [11](ch011-verify-a-schnorr-signature.md), [12](ch012-keys-and-randomness.md), [13](ch013-sign-with-schnorr.md), [21](ch021-events-ids-and-signatures.md) |
-| BIP-173 | `bip173/bip-0173.mediawiki` | `git:5aadddb5...` (bitcoin/bips) | [15](ch015-bech32.md) |
-| NIP-44 | `nip44/nip44.vectors.json`, `nip44/LICENSE` | `git:671a1f04...` (paulmillr/nip44) | [6](ch006-hkdf.md), [14](ch014-shared-secrets-with-ecdh.md), [20](ch020-nip-44-encrypted-payloads.md) |
+| BIP-340 | `bip340/test-vectors.csv`, `bip340/LICENSE` | `git:5aadddb5...` (bitcoin/bips) | [10](../../bitcoin/book/ch016-scalar-multiplication.md), [11](../../bitcoin/book/ch023-verify-a-schnorr-signature.md), [12](../../bitcoin/book/ch018-keys-and-randomness.md), [13](../../bitcoin/book/ch024-sign-with-schnorr.md), [21](ch021-events-ids-and-signatures.md) |
+| BIP-173 | `bip173/bip-0173.mediawiki` | `git:5aadddb5...` (bitcoin/bips) | [15](../../bitcoin/book/ch027-bech32.md) |
+| NIP-44 | `nip44/nip44.vectors.json`, `nip44/LICENSE` | `git:671a1f04...` (paulmillr/nip44) | [6](../../bitcoin/book/ch009-hkdf.md), [14](ch014-shared-secrets-with-ecdh.md), [20](ch020-nip-44-encrypted-payloads.md) |
 | Wycheproof | `wycheproof/ecdh_secp256k1_test.json`, `wycheproof/LICENSE` | `git:d17cc89f...` (C2SP/wycheproof) | [14](ch014-shared-secrets-with-ecdh.md) |
 | JSONTestSuite | nine files in `json/`, `json/LICENSE` | `git:1ef36fa0...` (nst/JSONTestSuite) | [17](ch017-json-you-can-sign.md) |
-| NIP texts | `nips/01.md`, `nips/19.md`, `nips/44.md`, `nips/59.md` | `git:400d157c...` (nostr-protocol/nips) | [15](ch015-bech32.md), [16](ch016-nip-19-entities-and-nostr-uris.md), [20](ch020-nip-44-encrypted-payloads.md) |
+| NIP texts | `nips/01.md`, `nips/19.md`, `nips/44.md`, `nips/59.md` | `git:400d157c...` (nostr-protocol/nips) | [15](../../bitcoin/book/ch027-bech32.md), [16](ch016-nip-19-entities-and-nostr-uris.md), [20](ch020-nip-44-encrypted-payloads.md) |
 | Source index (derived) | `derived/catalog.json` | `adapter:source-index-v1` | this chapter |
 
 Some vectors live outside this corpus, in other pinned files:
@@ -75,7 +75,7 @@ Some vectors live outside this corpus, in other pinned files:
   [nostr/nips/block/](../nips/block/).
 - RFC 6455's example key (chapter [26](ch026-websocket-frames.md)) is one
   value quoted from the RFC, not a pinned file.
-- The seven BIP-350 Bech32m strings in chapter [15](ch015-bech32.md)'s
+- The seven BIP-350 Bech32m strings in chapter [15](../../bitcoin/book/ch027-bech32.md)'s
   checks are copied from BIP-350, which is not yet pinned in the corpus.
   That is a known gap: those strings have a citation but no recorded digest.
 
@@ -115,7 +115,7 @@ This is why the corpus never runs a formatter over `upstream/`.
 
 ### The digest
 
-SHA-256 (chapter 4) pads a message to a multiple of 64 bytes: the message,
+SHA-256 (Bitcoin chapter 4) pads a message to a multiple of 64 bytes: the message,
 one `0x80` byte, zero bytes, and the message length in bits as 8 big-endian
 bytes. Nine bytes is 72 bits, `0x48`. One block holds it:
 
@@ -126,7 +126,7 @@ bytes. Nine bytes is 72 bits, `0x48`. One block holds it:
 
 9 + 1 + 46 + 8 = 64. The 16 message words are `W0 = 0x7b226964`,
 `W1 = 0x223a302c`, `W2 = 0x7d800000`, `W3` to `W14` zero, and `W15 = 0x48`.
-Chapter 4 runs the 64 rounds on such a block. The result is:
+Bitcoin chapter 4 runs the 64 rounds on such a block. The result is:
 
 ```text
 60e04bc71fcc4c57abeef95a9604a96aa60f833881a2f028d27bd4f03e176603
@@ -241,7 +241,7 @@ REASON :: [11] string.["ok", "invalid corpus path", "invalid retrieved",
 
 The rules are split as the Python audit orders them. `check_record` looks at
 the path, date and digest spelling. `check_bytes` hashes the bytes with
-chapter 4's `sha256_hash_checked` and compares the digest, then the count.
+Bitcoin chapter 4's `sha256_hash_checked` and compares the digest, then the count.
 `check_source` checks the URL and revision. The commit search starts at
 position 7, the second slash of `https://`, because nothing before it can
 begin `/<commit>/`:
@@ -683,7 +683,7 @@ coax/bin/coax test nostr/examples/checks/vector-provenance.coax
 coax/bin/coax mutate nostr/examples/checks/vector-provenance.coax --root-only
 ```
 
-`coax test` runs 55 checks, including chapter 4's and chapter 1's, in about
+`coax test` runs 55 checks, including Bitcoin chapter 4's and Bitcoin chapter 1's, in about
 a second. Root-only mutation kills 3 of 3 mutants in the checks file. The
 example's own procedures were mutated by running the same command on a
 temporary file that joined the example and its checks: 222 mutants, 222
@@ -704,8 +704,8 @@ by a check.
 
 ## Dependencies
 
-- [4. SHA-256](ch004-sha-256.md)
-- [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md)
+- [4. SHA-256](../../bitcoin/book/ch004-sha-256.md)
+- [Bitcoin chapter 23. Verify a Schnorr signature](../../bitcoin/book/ch023-verify-a-schnorr-signature.md)
 - [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md)
 
 ## Sources

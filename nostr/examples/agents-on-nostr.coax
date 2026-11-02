@@ -50,7 +50,7 @@ hex_of :: (bytes: [] u8, out: [] u8) -> string {
   #assert r.error == NC_OK;
   return cast(string) out[0..<r.written];
 }
-// One event signed with a test key by chapter 13's signer (event_sign.coax).
+// One event signed with a test key by Bitcoin chapter 24's signer (event_sign.coax).
 sign :: (secret: string, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
   key := bytes_of(secret); aux := bytes_of(AUX);
   work: [1] NostrSignWork; scratch: [16384] u8; k := EVENT_MORE;

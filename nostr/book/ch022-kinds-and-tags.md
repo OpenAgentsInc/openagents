@@ -4,7 +4,7 @@ A kind says what an event means and how relays keep it. Tags point at other
 events, keys and addresses. This chapter reads the kind ranges, which NIP-16
 and NIP-33 first defined and NIP-01 now holds, and the standard tags.
 
-Part VI, The event model. Result: Kind ranges (regular, replaceable 0, 3 and
+Part II, The event model. Result: Kind ranges (regular, replaceable 0, 3 and
 10000–19999, ephemeral 20000–29999, addressable 30000–39999 by `d` tag) and
 the standard tags `e`, `p`, `a` and `d`.
 

@@ -4,7 +4,7 @@ Some relays require a client to prove it holds a key. This chapter builds
 NIP-42 on both sides and states what a successful AUTH does and does not
 grant.
 
-Part IX, A relay. Result: Challenges bound to one connection and one relay
+Part V, A relay. Result: Challenges bound to one connection and one relay
 URL, kind 22242 events with `relay` and `challenge` tags checked within a time
 window, and AUTH on both the client and the relay.
 

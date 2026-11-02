@@ -9,7 +9,7 @@ that fold, the gate that keeps a forged or out-of-scope event out of the
 verified view, and a check of the fold against tables recorded from a real
 relay capture.
 
-Part XII, Nostr in OpenAgents. Result: OpenAgents' project pages fold NIP-34
+Part VIII, Nostr in OpenAgents. Result: OpenAgents' project pages fold NIP-34
 repositories, issues and statuses and NIP-22 comments from the relay. The
 homepage's project rows verify each event's id and BIP-340 signature in Coax
 before the fold reads it, and a page replaces its tables only with a

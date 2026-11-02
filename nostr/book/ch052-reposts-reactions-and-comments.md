@@ -5,7 +5,7 @@ followers (a repost), they react to it with a like, a dislike or an emoji (a
 reaction), or they write about it (a comment). This chapter reads and writes
 each one, and counts the reactions to an event with one per person.
 
-Part X, Every NIP. Result: Kind 6 and 16 reposts, kind 7 reactions (`+`, `-`,
+Part VI, Every NIP. Result: Kind 6 and 16 reposts, kind 7 reactions (`+`, `-`,
 emoji) and kind 17 website reactions, and NIP-22 kind 1111 comments with
 uppercase root and lowercase parent scope tags.
 

@@ -8,7 +8,7 @@ checks after each run that the reader kept its promises. This chapter
 builds a small fuzzer in Coax, runs it on the book's parsers, and shows it
 finding and shrinking two bugs planted in a toy reader.
 
-Part XI, Interop and verification. Chapter 94 compares two implementations
+Part VII, Interop and verification. Chapter 94 compares two implementations
 on the same inputs; this chapter generates the hostile inputs, decides what
 counts as a finding, and turns each finding into a short regression input.
 

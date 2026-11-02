@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "examples": [
+    {
+      "source": "bitcoin/examples/bytes-hex-base64.coax",
+      "chapter": "bitcoin/book/ch001-bytes-hex-and-base64.md",
+      "stdout": "bitcoin/fixtures/bytes-hex-base64.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/big-integers-in-limbs.coax",
+      "chapter": "bitcoin/book/ch002-big-integers-in-fixed-limbs.md",
+      "stdout": "bitcoin/fixtures/big-integers-in-limbs.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/constant-time-rules.coax",
+      "chapter": "bitcoin/book/ch003-constant-time-rules.md",
+      "stdout": "bitcoin/fixtures/constant-time-rules.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/sha-256.coax",
+      "chapter": "bitcoin/book/ch004-sha-256.md",
+      "stdout": "bitcoin/fixtures/sha-256.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/hmac-sha256.coax",
+      "chapter": "bitcoin/book/ch008-hmac-sha256.md",
+      "stdout": "bitcoin/fixtures/hmac-sha256.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/hkdf.coax",
+      "chapter": "bitcoin/book/ch009-hkdf.md",
+      "stdout": "bitcoin/fixtures/hkdf.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/chacha20.coax",
+      "chapter": "bitcoin/book/ch011-chacha20.md",
+      "stdout": "bitcoin/fixtures/chacha20.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/field-arithmetic.coax",
+      "chapter": "bitcoin/book/ch013-field-arithmetic-mod-p.md",
+      "stdout": "bitcoin/fixtures/field-arithmetic.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/scalars.coax",
+      "chapter": "bitcoin/book/ch014-scalars-mod-n.md",
+      "stdout": "bitcoin/fixtures/scalars.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/group-law.coax",
+      "chapter": "bitcoin/book/ch015-the-secp256k1-group-law.md",
+      "stdout": "bitcoin/fixtures/group-law.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/scalar-mult.coax",
+      "chapter": "bitcoin/book/ch016-scalar-multiplication.md",
+      "stdout": "bitcoin/fixtures/scalar-mult.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
+    },
+    {
+      "source": "bitcoin/examples/keys.coax",
+      "chapter": "bitcoin/book/ch018-keys-and-randomness.md",
+      "stdout": "bitcoin/fixtures/keys.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
+    },
+    {
+      "source": "bitcoin/examples/schnorr-verify.coax",
+      "chapter": "bitcoin/book/ch023-verify-a-schnorr-signature.md",
+      "stdout": "bitcoin/fixtures/schnorr-verify.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "bitcoin/examples/schnorr-sign.coax",
+      "chapter": "bitcoin/book/ch024-sign-with-schnorr.md",
+      "stdout": "bitcoin/fixtures/schnorr-sign.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
+    },
+    {
+      "source": "bitcoin/examples/bech32.coax",
+      "chapter": "bitcoin/book/ch027-bech32.md",
+      "stdout": "bitcoin/fixtures/bech32.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    }
+  ]
+}

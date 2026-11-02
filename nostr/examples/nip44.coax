@@ -16,7 +16,7 @@ bytes_of :: (text: string) -> [32] u8 {
   #assert hex_decode_checked(text, b[..], false).error == 0;
   return b;
 }
-// The x-only public key of a secret: x(k·G) on the ladder of chapter 10.
+// The x-only public key of a secret: x(k·G) on the ladder of Bitcoin chapter 16.
 public_x :: (secret: [] u8) -> [32] u8 {
   k := sc_reduce_bytes(secret).value;
   a := sg_to_affine(smc_multiply(k, sg_generator()).value).value;

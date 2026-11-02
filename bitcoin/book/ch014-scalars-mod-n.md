@@ -1,4 +1,4 @@
-# 8. Scalars mod n
+# 14. Scalars mod n
 
 The points of secp256k1 form a group with a prime number of elements, the
 *group order*:
@@ -14,7 +14,7 @@ integers mod `n`. This chapter builds scalar arithmetic on eight 32-bit
 limbs, with Montgomery multiplication, and the range checks that BIP-340
 requires.
 
-`n` is not the field prime `p` of chapter 7. Both are just below 2^256,
+`n` is not the field prime `p` of chapter 13. Both are just below 2^256,
 but `n < p`: both start with 15 bytes of `ff`, and the 16th byte is `fe`
 in `n` and `ff` in `p`. Don't mix them up: a coordinate is reduced mod
 `p`, and a scalar mod `n`.
@@ -45,7 +45,7 @@ has the scalars. A `ScScalar` is eight little-endian `u32` limbs
 | `sc_add`, `sc_sub`, `sc_negate` | `a + b`, `a - b`, `-a` |
 | `sc_mul` | `a * b`, by Montgomery multiplication |
 | `sc_inverse` | `1 / a`; `ok` is false for 0 |
-| `sc_window` | 1 to 8 bits at a public position, for scalar multiplication (chapter 10) |
+| `sc_window` | 1 to 8 bits at a public position, for scalar multiplication (chapter 16) |
 | `sc_is_zero`, `sc_equal` | comparisons that read every limb |
 
 ## Reduction
@@ -129,7 +129,7 @@ sc_mul(a, b) = mont(mont(a, R^2), b)
 
 ## Inversion
 
-`n` is prime, so `a^-1 = a^(n-2)`, as in chapter 7. `sc_inverse` runs 256
+`n` is prime, so `a^-1 = a^(n-2)`, as in chapter 13. `sc_inverse` runs 256
 rounds of square-and-multiply over the bits of `n - 2`, from the top bit
 down. Each round squares, computes the product with `a` too, and keeps the
 product only when the exponent bit is 1. The exponent is a public
@@ -151,12 +151,12 @@ gives a number that ends in `...20a1`:
 
 ## The example
 
-The example is [nostr/examples/scalars.coax](../examples/scalars.coax). It
+The example is [bitcoin/examples/scalars.coax](../examples/scalars.coax). It
 prints `n`'s limbs, reduces `2^256 - 1`, wraps addition and multiplication
 at `n`, inverts 2, checks the Montgomery constants, admits four secret keys
 and shows three refusals.
 
-<!-- source: nostr/examples/scalars.coax example -->
+<!-- source: bitcoin/examples/scalars.coax example -->
 ```jai
 #load "../../coax/lib/crypto/secp_scalar.coax";
 #load "../../coax/lib/nostr/hex.coax";
@@ -234,7 +234,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/scalars.coax
+coax/bin/coax run bitcoin/examples/scalars.coax
 ```
 
 The output matches the values worked out by hand: `2^256 - 1` reduces to
@@ -276,7 +276,7 @@ The refusals:
 - The inverse of 0 is refused.
 
 The book's checks run this program in debug and release builds and compare
-the output with [nostr/fixtures/scalars.out](../fixtures/scalars.out).
+the output with [bitcoin/fixtures/scalars.out](../fixtures/scalars.out).
 
 ## How the code is checked
 
@@ -307,7 +307,7 @@ python3 coax/tests/nostr/scalar.py
   that multiplying by `k` equals `k` additions and that every edge value
   times its inverse is 1:
 
-<!-- source: nostr/examples/scalars.coax check -->
+<!-- source: bitcoin/examples/scalars.coax check -->
 ```jai
 // R^2 mod n by doubling only: start from R = 2^256 mod n and add it to
 // itself 256 times, which multiplies by 2^256. The result is the
@@ -353,7 +353,7 @@ EDGES :: [6] string.[
 To run all the checks:
 
 ```shell
-coax/bin/coax test nostr/examples/scalars.coax
+coax/bin/coax test bitcoin/examples/scalars.coax
 coax/bin/coax mutate coax/lib/crypto/secp_scalar.coax
 ```
 

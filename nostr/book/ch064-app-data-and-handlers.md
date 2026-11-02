@@ -7,7 +7,7 @@ kind your client doesn't know, fills that app's URL template with the
 event's NIP-19 entity, and refuses a site file whose hash differs from its
 manifest.
 
-Part X, Every NIP. Result: NIP-78 kind 30078 application data, NIP-89
+Part VI, Every NIP. Result: NIP-78 kind 30078 application data, NIP-89
 handler recommendations (31989) and announcements (31990), NIP-5A static
 websites (35128 and 15128 manifests), and NIP-CD slash commands (31992,
 10992), which are described and not built.

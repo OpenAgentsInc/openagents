@@ -4,9 +4,12 @@ The four books with routes here are [The Coax Programming Language](../../coax/b
 [Psionic: ML From Scratch](../../psionic/book/README.md),
 [Building Aethyr, World Engine](../../aethyr/book/README.md) and
 [Nostr From Scratch](../../nostr/book/README.md). Chapter numbers below are
-each book's own. A fifth book, [Coder: Coding Agents From Scratch](../../coder/book/README.md),
-started on 2026-11-01 and has no runnable route yet; its harness chapters are
-moving from Part XXI of the Psionic book.
+each book's own. Two more books have no runnable route yet:
+[Coder: Coding Agents From Scratch](../../coder/book/README.md), whose harness
+chapters moved from Part XXI of the Psionic book, and
+[Bitcoin From Scratch](../../bitcoin/book/README.md), Nostr's companion, which
+took over the cryptography chapters Nostr used (Nostr chapters 1–13, 15 and
+18).
 
 The [supported-route catalog](routes.json) declares four bounded CPU routes.
 The [delivery process](DELIVERY.md) explains clean-checkout execution, selective
@@ -234,8 +237,8 @@ timeout; the connection step has a 120-second timeout. No socket, relay,
 Keychain, user key or wallet is opened. The connection's bytes and clock are
 scripted in memory, and signing material is a committed public test vector.
 
-Read Coax chapters 1–4, 11 and 18, then Nostr chapters 1–4, 7–13, 17, 21–24 and
-29. The cryptographic and client components have actual consumers, including
+Read Coax chapters 1–4, 11 and 18, then Bitcoin chapters 1–4, 8, 13–16, 18, 23
+and 24, then Nostr chapters 17, 21–24 and 29. The cryptographic and client components have actual consumers, including
 [the Pylon](../../psionic/lib/pylon/run.coax), whose real transports and
 admission paths retain their own evidence. This offline route does not qualify
 native TLS, browser secret handling, durable storage, live interoperability or

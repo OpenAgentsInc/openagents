@@ -1,13 +1,14 @@
-# 5. HMAC-SHA256
+# 8. HMAC-SHA256
 
 A hash proves nothing about who made a message: anyone can hash anything.
 HMAC adds a key. Only someone who has the key can compute the tag, so a
 correct tag shows that the message came from a key holder and wasn't
-changed. Nostr uses HMAC-SHA256 in two places:
+changed. RFC 6979 ECDSA nonces (chapter 20) and BIP-32 keys (chapter 32,
+with SHA-512) are built on HMAC. Nostr uses HMAC-SHA256 in two places:
 
 - NIP-44 authenticates every encrypted payload with an HMAC-SHA256 tag
-  (chapter 20).
-- HKDF derives keys with HMAC-SHA256 (chapter 6).
+  (Nostr chapter 20).
+- HKDF derives keys with HMAC-SHA256 (chapter 9).
 
 This chapter builds HMAC from two SHA-256 hashes, works out its padded keys
 by hand, and checks it against the RFC 4231 test cases.
@@ -102,7 +103,7 @@ and returns a mask. A comparison that stops at the first difference tells an
 attacker how many leading bytes of a forged tag were right, and they can
 find a valid tag one byte at a time.
 
-NIP-44 checks the tag before it decrypts anything (chapter 20). A payload
+NIP-44 checks the tag before it decrypts anything (Nostr chapter 20). A payload
 with a wrong tag is refused without running ChaCha20 on it.
 
 ## Truncated tags
@@ -114,12 +115,12 @@ choice. NIP-44 uses the full 32 bytes.
 
 ## The example
 
-The example is [nostr/examples/hmac-sha256.coax](../examples/hmac-sha256.coax).
+The example is [bitcoin/examples/hmac-sha256.coax](../examples/hmac-sha256.coax).
 It builds the `Jefe` tag by hand from two SHA-256 hashes, computes it with
 the library, streams it in two updates, runs RFC 4231 test cases 5 and 6,
 refuses a tag with one flipped bit, and shows four refusals.
 
-<!-- source: nostr/examples/hmac-sha256.coax example -->
+<!-- source: bitcoin/examples/hmac-sha256.coax example -->
 ```jai
 #load "../../coax/lib/crypto/hmac.coax";
 #load "../../coax/lib/nostr/hex.coax";
@@ -219,7 +220,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/hmac-sha256.coax
+coax/bin/coax run bitcoin/examples/hmac-sha256.coax
 ```
 
 The output matches the pads worked out by hand and the RFC 4231 tags for
@@ -252,7 +253,7 @@ key of 1 MiB + 1 byte and a SHA-256 state passed as an HMAC state. Each
 returns its status before it writes anything.
 
 The book's checks run this program in debug and release builds and compare
-the output with [nostr/fixtures/hmac-sha256.out](../fixtures/hmac-sha256.out).
+the output with [bitcoin/fixtures/hmac-sha256.out](../fixtures/hmac-sha256.out).
 
 ## How the code is checked
 
@@ -278,7 +279,7 @@ python3 coax/tests/nostr/hmac_hkdf.py
 - The example checks the library against the construction built by hand from
   SHA-256, for key lengths on both sides of 32 and 64 bytes:
 
-<!-- source: nostr/examples/hmac-sha256.coax check -->
+<!-- source: bitcoin/examples/hmac-sha256.coax check -->
 ```jai
 // The tag built by hand from SHA-256 equals the library's tag for key
 // lengths on both sides of 32 and 64 bytes: short keys are padded, and keys
@@ -311,7 +312,7 @@ python3 coax/tests/nostr/hmac_hkdf.py
 To run all the checks:
 
 ```shell
-coax/bin/coax test nostr/examples/hmac-sha256.coax
+coax/bin/coax test bitcoin/examples/hmac-sha256.coax
 coax/bin/coax mutate coax/lib/crypto/hmac.coax
 ```
 
@@ -336,5 +337,5 @@ on the example runs 55 checks.
 - [RFC 2104](https://www.rfc-editor.org/rfc/rfc2104), section 2.
 - [RFC 4231](https://www.rfc-editor.org/rfc/rfc4231), section 4, pinned in
   [coax/tests/vectors/SOURCES.md](../../coax/tests/vectors/SOURCES.md).
-- [NIP-44](../nips/official/44.md), which authenticates payloads with
+- [NIP-44](../../nostr/nips/official/44.md), which authenticates payloads with
   HMAC-SHA256.

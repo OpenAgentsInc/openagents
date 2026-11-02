@@ -12,7 +12,7 @@ answers some other question set, a report about a suite the reader cannot
 see, an admission that leans on evidence the reader cannot count, and a
 study whose held-out cases leak into its search.
 
-Part X, Every NIP. Result: NIP-DEC body bounds and answer admission (an
+Part VI, Every NIP. Result: NIP-DEC body bounds and answer admission (an
 answer must match its request's question set exactly), NIP-EVAL reports
 as one reader sees them (verified, unverifiable or untrusted) and the
 admission that cites them, and NIP-OPT's data-plan isolation. NIP-PRG,

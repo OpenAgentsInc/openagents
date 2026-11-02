@@ -3,7 +3,7 @@
 A public relay is attacked. This chapter collects every limit and policy in
 one place and drives each past its bound.
 
-Part IX, A relay. Result: Per-connection and global limits, rate limits with
+Part V, A relay. Result: Per-connection and global limits, rate limits with
 `rate-limited:` reasons, storage caps, slowloris timeouts and a write policy
 that is declared, not implicit.
 

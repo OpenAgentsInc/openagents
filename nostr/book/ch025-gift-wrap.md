@@ -5,7 +5,7 @@ sealed by its author and wrapped by a one-time key. This chapter builds the
 three layers from chapter 21's events and chapter 20's encryption, works out
 one wrap by hand, and opens it again with every check NIP-59 asks for.
 
-Part VI, The event model. Result: NIP-59 rumors, kind-13 seals and kind-1059
+Part II, The event model. Result: NIP-59 rumors, kind-13 seals and kind-1059
 gift wraps from one-time keys, with randomized timestamps, checked in both
 directions against an independent implementation.
 
@@ -37,7 +37,7 @@ The wrapper never draws randomness itself. The caller passes one
 one-time secret key, a NIP-44 nonce for each layer, a BIP-340 aux value for
 each signature, and two 64-bit draws that choose how far back the seal and
 the wrap are dated. A real host fills it from the platform's random source
-(chapter 12). The example fills it with fixed bytes, so its output repeats
+(Bitcoin chapter 18). The example fills it with fixed bytes, so its output repeats
 and can be checked byte for byte. Every admitted return zeroes the record,
 the workspace (which holds the rumor and seal in plaintext) and, on a
 refusal, `out`.
@@ -638,7 +638,7 @@ verification record for them yet.
 
 - [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md)
 - [21. Events, IDs and signatures](ch021-events-ids-and-signatures.md)
-- [13. Sign with Schnorr](ch013-sign-with-schnorr.md)
+- [Bitcoin chapter 24. Sign with Schnorr](../../bitcoin/book/ch024-sign-with-schnorr.md)
 
 ## Sources
 

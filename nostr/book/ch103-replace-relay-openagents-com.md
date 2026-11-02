@@ -11,7 +11,7 @@ the relay's data and traffic to the Coax relay, and writes down the steps
 that use them. It doesn't touch production: every run in this chapter reads
 a recorded capture.
 
-Part XII, Nostr in OpenAgents. Result: An importer that checks every id and
+Part VIII, Nostr in OpenAgents. Result: An importer that checks every id and
 signature in an exported event stream again, an event-set equality check
 that names the exact difference, a shadow comparer that classifies every
 differing answer, and a runbook for the cutover and the rollback.
@@ -497,7 +497,7 @@ Nothing in this chapter has run any of them.
    signature. It took about 25 ms an event, which would have kept a
    50,000-event import from starting for about 20 minutes: the relay was
    built at -O1 and checked each event by reading its text a second time
-   for chapter 11's reference verifier. Replay and live admission now
+   for Bitcoin chapter 23's reference verifier. Replay and live admission now
    check admission's own read with the fast verifier (`ne_signed_fast`,
    `event_verify_fast.coax`) and build.sh compiles at -O2, keeping Coax's
    checked arithmetic. The first query after the replay then spent about
@@ -589,8 +589,8 @@ Nothing in this chapter has run any of them.
 
 `coax/relay/relay.coax` loads `relay_store.coax` (the store, `store_saved.coax`,
 with chapter 36's index beside it), `nip42-event.coax`, `relay_route.coax`
-and `message_agree.coax`. The table says which modules from Part IX and
-Part X are wired into it, and what the rest still need.
+and `message_agree.coax`. The table says which modules from Part V and
+Part VI are wired into it, and what the rest still need.
 
 | Module | Chapter | Status | What wiring it needs, or how it is wired |
 | --- | --- | --- | --- |

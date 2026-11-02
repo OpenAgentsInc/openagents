@@ -6,7 +6,7 @@ endpoint that a relay's operators call over HTTP, the NIP-66 records that
 monitors publish about relays, and the NIP-43 member lists that a relay
 signs with its own key.
 
-Part X, Every NIP. Result: the NIP-86 JSON-RPC management API over HTTP with
+Part VI, Every NIP. Result: the NIP-86 JSON-RPC management API over HTTP with
 NIP-98 auth, applied to a ban and allow policy that relay admission
 consults; NIP-66 relay discovery (30166) and monitor announcements (10166),
 with a median round-trip time over trusted monitors; and NIP-43 membership

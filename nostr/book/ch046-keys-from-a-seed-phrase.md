@@ -30,7 +30,7 @@ private key, its public key and its `npub`.
 | | `bip39_seed(phrase, out)`, `bip39_seed_with(phrase, passphrase, out)` | the 64-byte seed |
 | | `bip39_word(i)`, `bip39_index(w)` | the English list, checked against its published SHA-256 |
 | [sha512.coax](../../coax/lib/crypto/sha512.coax) | `sha512`, `hmac_sha512`, `pbkdf2_hmac_sha512` | the hash, the MAC and the one-block PBKDF2 that BIP-39 uses |
-| [bip32.coax](../../coax/lib/crypto/bip32.coax) | `bip32_master`, `bip32_child`, `bip32_path`, `bip32_public` | private derivation on chapter 10's constant-time multiplication |
+| [bip32.coax](../../coax/lib/crypto/bip32.coax) | `bip32_master`, `bip32_child`, `bip32_path`, `bip32_public` | private derivation on Bitcoin chapter 16's constant-time multiplication |
 | [nip06.coax](../../coax/lib/nostr/nip06.coax) | `nip06_key(phrase, key)`, `nip06_npub(key, out)` | the NIP-06 key of checked words, and its `npub` (chapter 16) |
 
 [pbkdf2.coax](../../coax/lib/crypto/pbkdf2.coax) is a different PBKDF2: a
@@ -150,7 +150,7 @@ and a 32-byte chain code `c`.
   - For a **hardened** index, `i ≥ 2^31`, the data is `0x00 ‖ k`: the
     parent's private key.
   - For a **normal** index, `i < 2^31`, the data is the 33-byte compressed
-    public key `k·G` (chapter 10's constant-time multiplication).
+    public key `k·G` (Bitcoin chapter 16's constant-time multiplication).
 
 `bip32_child` refuses an index below 0 or above `2^32 - 1`, an `I_L` that is
 `n` or more, and a child key of zero. `bip32_master` refuses a seed shorter
@@ -559,8 +559,8 @@ and unchanged.
 
 ## Dependencies
 
-- [13. Sign with Schnorr](ch013-sign-with-schnorr.md)
-- [5. HMAC-SHA256](ch005-hmac-sha256.md)
+- [Bitcoin chapter 24. Sign with Schnorr](../../bitcoin/book/ch024-sign-with-schnorr.md)
+- [Bitcoin chapter 8. HMAC-SHA256](../../bitcoin/book/ch008-hmac-sha256.md)
 
 ## Sources
 

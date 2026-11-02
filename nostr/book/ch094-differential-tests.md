@@ -9,7 +9,7 @@ classify every difference, and reduce a disagreement to the smallest input
 that still shows it. It then runs the method in Coax on the relay's query
 and cites the two relay differentials that use it against the Rust relay.
 
-Part XI, Interop and verification. Result: Running the same inputs through
+Part VII, Interop and verification. Result: Running the same inputs through
 Coax and a reference implementation: the Rust relay from history in a
 network-less sandbox, and independent libraries for signatures, NIP-44 and
 NIP-59.

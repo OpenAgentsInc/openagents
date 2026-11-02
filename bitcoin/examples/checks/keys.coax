@@ -1,6 +1,6 @@
 // The checks of keys.coax. They live apart so that running the example
 // doesn't also run them.
-// Checks: coax test nostr/examples/checks/keys.coax --run-steps 250000000
+// Checks: coax test bitcoin/examples/checks/keys.coax --run-steps 250000000
 #load "../keys.coax";
 
 // book:begin check

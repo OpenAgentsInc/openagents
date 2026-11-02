@@ -1,0 +1,1350 @@
+{
+ "schema": 1,
+ "book": "bitcoin",
+ "chapters": [
+  {
+   "number": 1,
+   "title": "Bytes, hex and base64",
+   "file": "ch001-bytes-hex-and-base64.md",
+   "status": "implemented",
+   "profile": "native C",
+   "depends_on": [
+    "coax:5",
+    "coax:6"
+   ],
+   "source": [
+    "coax/lib/crypto/bytes.coax",
+    "coax/lib/nostr/base64.coax",
+    "coax/lib/nostr/codecs-common.coax",
+    "coax/lib/nostr/hex.coax",
+    "bitcoin/examples/bytes-hex-base64.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": [
+    "apps/openagents-cli/main.coax",
+    "apps/openagents-web/project-names.coax"
+   ]
+  },
+  {
+   "number": 2,
+   "title": "Big integers in fixed limbs",
+   "file": "ch002-big-integers-in-fixed-limbs.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    1,
+    "coax:13"
+   ],
+   "source": [
+    "coax/lib/crypto/secp_field.coax",
+    "coax/lib/crypto/secp_scalar.coax",
+    "bitcoin/examples/big-integers-in-limbs.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/crypto/secp_group.coax",
+    "coax/lib/crypto/secp_mult_const.coax"
+   ]
+  },
+  {
+   "number": 3,
+   "title": "Constant-time rules and secrets",
+   "file": "ch003-constant-time-rules.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    1,
+    2,
+    "coax:23"
+   ],
+   "source": [
+    "coax/lib/crypto/bytes.coax",
+    "coax/lib/crypto/secret-flow.coax",
+    "coax/lib/crypto/secret-types.coax",
+    "coax/lib/crypto/zeroize.coax",
+    "bitcoin/examples/constant-time-rules.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 4,
+   "title": "SHA-256",
+   "file": "ch004-sha-256.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    1
+   ],
+   "source": [
+    "coax/lib/crypto/sha256-kernel.coax",
+    "coax/lib/crypto/sha256.coax",
+    "coax/lib/crypto/sha256_workspace.coax",
+    "bitcoin/examples/sha-256.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "psionic/lib/model-io/identity.coax",
+    "psionic/lib/pylon/host.coax"
+   ]
+  },
+  {
+   "number": 5,
+   "title": "SHA-256d and tagged hashes",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    4
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 6,
+   "title": "RIPEMD-160 and HASH160",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    1
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 7,
+   "title": "SHA-512",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    1
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 8,
+   "title": "HMAC-SHA256",
+   "file": "ch008-hmac-sha256.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    4
+   ],
+   "source": [
+    "coax/lib/crypto/hmac.coax",
+    "coax/lib/crypto/hmac_workspace.coax",
+    "bitcoin/examples/hmac-sha256.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/crypto/hkdf.coax"
+   ]
+  },
+  {
+   "number": 9,
+   "title": "HKDF",
+   "file": "ch009-hkdf.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    8
+   ],
+   "source": [
+    "coax/lib/crypto/hkdf.coax",
+    "bitcoin/examples/hkdf.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/nostr/nip44.coax"
+   ]
+  },
+  {
+   "number": 10,
+   "title": "SipHash-2-4",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    1
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 11,
+   "title": "ChaCha20",
+   "file": "ch011-chacha20.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    1
+   ],
+   "source": [
+    "coax/lib/crypto/chacha20.coax",
+    "coax/lib/crypto/hchacha20.coax",
+    "bitcoin/examples/chacha20.coax",
+    "bitcoin/examples/checks/chacha20.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/nostr/nip44.coax"
+   ]
+  },
+  {
+   "number": 12,
+   "title": "Poly1305 and ChaCha20-Poly1305",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    11,
+    3
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 13,
+   "title": "Field arithmetic mod p",
+   "file": "ch013-field-arithmetic-mod-p.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    2,
+    3
+   ],
+   "source": [
+    "coax/lib/crypto/secp_field.coax",
+    "coax/lib/crypto/secp_field32.coax",
+    "coax/lib/crypto/secp_field32_total.coax",
+    "bitcoin/examples/field-arithmetic.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/crypto/secp_group.coax",
+    "coax/lib/crypto/secp_group32.coax"
+   ]
+  },
+  {
+   "number": 14,
+   "title": "Scalars mod n",
+   "file": "ch014-scalars-mod-n.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    2,
+    3
+   ],
+   "source": [
+    "coax/lib/crypto/secp_scalar.coax",
+    "bitcoin/examples/scalars.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/crypto/secp_mult_const.coax"
+   ]
+  },
+  {
+   "number": 15,
+   "title": "The secp256k1 group law",
+   "file": "ch015-the-secp256k1-group-law.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    13
+   ],
+   "source": [
+    "coax/lib/crypto/secp_group.coax",
+    "coax/lib/crypto/secp_group32.coax",
+    "bitcoin/examples/group-law.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/crypto/secp_mult_const.coax"
+   ]
+  },
+  {
+   "number": 16,
+   "title": "Scalar multiplication",
+   "file": "ch016-scalar-multiplication.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    14,
+    15,
+    3
+   ],
+   "source": [
+    "coax/lib/crypto/secp_mult.coax",
+    "coax/lib/crypto/secp_mult_base.coax",
+    "coax/lib/crypto/secp_mult_const.coax",
+    "bitcoin/examples/scalar-mult.coax",
+    "bitcoin/examples/checks/scalar-mult.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/crypto/ecdh.coax"
+   ]
+  },
+  {
+   "number": 17,
+   "title": "Point encodings: compressed, uncompressed and x-only",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    15
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 18,
+   "title": "Keys and randomness",
+   "file": "ch018-keys-and-randomness.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    14,
+    3
+   ],
+   "source": [
+    "coax/lib/crypto/entropy.coax",
+    "coax/lib/nostr/keys.coax",
+    "bitcoin/examples/keys.coax",
+    "bitcoin/examples/checks/keys.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "psionic/lib/fleet/runtime.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
+  },
+  {
+   "number": 19,
+   "title": "Verify ECDSA",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    5,
+    14,
+    16,
+    17
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 20,
+   "title": "Sign with ECDSA",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    19,
+    8,
+    18,
+    3
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 21,
+   "title": "Strict DER",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    19
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 22,
+   "title": "Public key recovery and signed messages",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    19
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 23,
+   "title": "Verify a Schnorr signature",
+   "file": "ch023-verify-a-schnorr-signature.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    4,
+    14,
+    16
+   ],
+   "source": [
+    "coax/lib/crypto/schnorr.coax",
+    "coax/lib/crypto/schnorr_admission.coax",
+    "coax/lib/crypto/schnorr_fast.coax",
+    "bitcoin/examples/schnorr-verify.coax",
+    "bitcoin/examples/checks/schnorr-verify.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "apps/openagents-web/nip01-verify.coax",
+    "coax/web/api/nip98.coax",
+    "coax/web/project/landing-nostr.coax"
+   ]
+  },
+  {
+   "number": 24,
+   "title": "Sign with Schnorr",
+   "file": "ch024-sign-with-schnorr.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    23,
+    18,
+    3
+   ],
+   "source": [
+    "coax/lib/crypto/schnorr_self_verify.coax",
+    "coax/lib/crypto/schnorr_sign.coax",
+    "bitcoin/examples/schnorr-sign.coax",
+    "bitcoin/examples/checks/schnorr-sign.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/nostr/event_sign.coax"
+   ]
+  },
+  {
+   "number": 25,
+   "title": "Batch verification",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    23
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 26,
+   "title": "Base58Check",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    5
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 27,
+   "title": "Bech32",
+   "file": "ch027-bech32.md",
+   "status": "implemented",
+   "profile": "native C",
+   "depends_on": [
+    1
+   ],
+   "source": [
+    "coax/lib/nostr/bech32-core.coax",
+    "coax/lib/nostr/nip19-core.coax",
+    "bitcoin/examples/bech32.coax",
+    "bitcoin/examples/checks/bech32.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": [
+    "apps/openagents-web/project-names.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
+  },
+  {
+   "number": 28,
+   "title": "Bech32m",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    27
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 29,
+   "title": "Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    6,
+    17,
+    26,
+    28
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 30,
+   "title": "Output descriptors and their checksum",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    29,
+    32
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 31,
+   "title": "Seed phrases",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    4,
+    7,
+    8
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 32,
+   "title": "Hierarchical deterministic keys",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    6,
+    16,
+    31
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 33,
+   "title": "Derivation paths",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    29,
+    32
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 34,
+   "title": "Transactions and their serialization",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    1,
+    5
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 35,
+   "title": "Txids, wtxids and malleability",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    34
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 36,
+   "title": "The script interpreter",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    6,
+    19,
+    21,
+    34
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 37,
+   "title": "Legacy signature hashes",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    34,
+    36
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 38,
+   "title": "Segwit v0 signature hashes",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    5,
+    34
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 39,
+   "title": "Timelocks",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    36
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 40,
+   "title": "Weight, vsize and fees",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    34
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 41,
+   "title": "The key tweak and the key path",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    5,
+    24
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 42,
+   "title": "Script trees: tapleaves and tapbranches",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    41
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 43,
+   "title": "Taproot signature hashes",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    34,
+    41
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 44,
+   "title": "Tapscript",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    36,
+    43
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 45,
+   "title": "Control blocks and script-path spends",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    42,
+    44
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 46,
+   "title": "Merkle trees and the duplicate-leaf flaw",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    5
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 47,
+   "title": "Block headers and proof of work",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    2,
+    5
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 48,
+   "title": "Compact targets, retargeting and chainwork",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    47
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 49,
+   "title": "The witness commitment",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    35,
+    46
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 50,
+   "title": "Validate a block (bounded profile)",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    36,
+    39,
+    43,
+    46,
+    48,
+    49
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 51,
+   "title": "The UTXO set and MuHash3072",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    2,
+    11,
+    34
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 52,
+   "title": "Headers first and the most-work chain",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    48
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 53,
+   "title": "P2P messages and checksums",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    5,
+    34
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 54,
+   "title": "ElligatorSwift",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    15,
+    17
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 55,
+   "title": "The v2 encrypted transport",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    9,
+    12,
+    53,
+    54
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 56,
+   "title": "Compact blocks",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    10,
+    53
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 57,
+   "title": "Compact block filters",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    10,
+    46
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 58,
+   "title": "PSBT",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    34,
+    38,
+    43
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 59,
+   "title": "Coin selection and change",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    40,
+    58
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 60,
+   "title": "Message signing",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    36,
+    58
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 61,
+   "title": "Silent payments",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    16,
+    24,
+    29
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 62,
+   "title": "Miniscript",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    30,
+    36,
+    44
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 63,
+   "title": "Multisig",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    30,
+    36
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 64,
+   "title": "MuSig2",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    24,
+    41
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 65,
+   "title": "FROST threshold signatures",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    64
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 66,
+   "title": "Adaptor signatures",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    24
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 67,
+   "title": "Messages and TLVs",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    1
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 68,
+   "title": "The Noise handshake",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    9,
+    12,
+    16
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 69,
+   "title": "Commitment keys and revocation",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    4,
+    16
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 70,
+   "title": "Shachain",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    4
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 71,
+   "title": "Commitment and HTLC transactions",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    38,
+    63,
+    69
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 72,
+   "title": "Open, update and close a channel",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    67,
+    68,
+    70,
+    71
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 73,
+   "title": "Watch the chain",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    50,
+    72
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 74,
+   "title": "Onion routing and blinded paths",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    8,
+    11,
+    16
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 75,
+   "title": "Gossip and the channel graph",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    19,
+    67
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 76,
+   "title": "Find a route and pay",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    72,
+    74,
+    75
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 77,
+   "title": "Invoices",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    22,
+    27
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 78,
+   "title": "Offers",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    5,
+    24,
+    67
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 79,
+   "title": "Test vectors and their provenance",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 80,
+   "title": "Differential tests",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    24,
+    36,
+    43
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 81,
+   "title": "Fuzzing",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    34,
+    58,
+    77
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 82,
+   "title": "Formal properties",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    50
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 83,
+   "title": "One seed for Nostr and Bitcoin",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    31,
+    33
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 84,
+   "title": "Agent treasuries",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    58,
+    63,
+    64
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 85,
+   "title": "Paying for requests",
+   "file": null,
+   "status": "planned",
+   "profile": null,
+   "depends_on": [
+    76,
+    77
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  }
+ ]
+}

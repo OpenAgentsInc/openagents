@@ -12,4 +12,6 @@ python3 coax/book/check-structure.py
 python3 psionic/tests/book.py
 python3 psionic/tests/book.py --book aethyr
 python3 psionic/tests/book.py --book nostr
+python3 psionic/tests/book.py --book coder
+python3 psionic/tests/book.py --book bitcoin
 python3 scripts/book_routes.py --check

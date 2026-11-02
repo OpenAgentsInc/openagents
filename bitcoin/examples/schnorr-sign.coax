@@ -57,14 +57,14 @@ sign_to_end :: (key: [] u8, aux: [] u8, message: [] u8, work: [] SignWork, out: 
   return r;
 }
 
-// Small numbers. k·G by repeated addition, with chapter 9's group law.
+// Small numbers. k·G by repeated addition, with chapter 15's group law.
 times_g :: (k: int) -> SgPoint {
   r := sg_infinity();
   for i: 0..<k { r = sg_add(r, sg_generator()).value; }
   return r;
 }
 y_odd :: (p: SgPoint) -> u64 { return sg_to_affine(p).value.y.limb[0] & 1; }
-// Chapter 11's final equation with a stand-in challenge e: lift x(dG) to the
+// Chapter 23's final equation with a stand-in challenge e: lift x(dG) to the
 // even-y point P, as a verifier does, and test s·G - e·P against x(kG).
 verify_small :: (s: ScScalar, e: u32, d: int, k: int) -> bool {
   x: [32] u8;
@@ -131,7 +131,7 @@ main :: () {
   print("matches vector 0: %, workspace cleared: %\n", bytes_equal(out[..], v.signature[..]), work[0].stage == 0 && all_zero(work[0].sig[..]));
 
   // Vectors 0 to 3, byte for byte, then checked by the variable-time verifier
-  // of chapter 11, which shares no code with the self-check's equation.
+  // of chapter 23, which shares no code with the self-check's equation.
   print("BIP-340 signing vectors 0 to 3\n");
   for i: 0..<ROWS {
     t := sign_row(i); pk := ROW_PUBLIC[i]; w: [1] SignWork; sig: [64] u8;

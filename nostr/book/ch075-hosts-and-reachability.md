@@ -10,7 +10,7 @@ permission. This chapter opens a real grant event, admits and refuses
 requests against the host's record, and decides which presence and hints a
 device may use.
 
-Part X, Every NIP. Result: a NIP-HOST grant bound to the original
+Part VI, Every NIP. Result: a NIP-HOST grant bound to the original
 host-signed, device-encrypted 3188 envelope; the host's admission of a
 request (the request window, revocation, host-clock expiry, epochs, rights
 and retained replies); and NIP-REACH presence freshness, rollback refusal
@@ -65,7 +65,7 @@ NIP-HOST has three principals, each a different key:
 A grant always names three distinct keys. In this chapter's test vectors
 they are the secp256k1 scalars 1 (host), 2 (owner), 3 (device) and 7 (a
 second device): the x-coordinates of `1·G`, `2·G`, `3·G` and `7·G` from
-chapter 10.
+Bitcoin chapter 16.
 
 | Key | Scalar | x-only public key |
 | --- | --- | --- |

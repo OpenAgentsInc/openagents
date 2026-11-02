@@ -4,7 +4,7 @@ A subscription asks for events with filters. A relay and a client must agree
 exactly on what matches. This chapter builds filter parsing and matching,
 including the single-letter tag queries that NIP-12 introduced.
 
-Part VI, The event model. Result: NIP-01 filters: `ids`, `authors`, `kinds`,
+Part II, The event model. Result: NIP-01 filters: `ids`, `authors`, `kinds`,
 `#<letter>` tags, `since`, `until` and `limit`; AND across fields, OR within a
 list, inclusive times, and absent lists distinct from empty ones.
 

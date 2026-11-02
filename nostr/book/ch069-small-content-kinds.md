@@ -9,7 +9,7 @@ geocache find counts only with a proof signed by the cache's key, and a
 podcast's claimed author is shown only when that author claims the podcast
 back.
 
-Part X, Every NIP. Result: NIP-35 torrents (2003), NIP-64 chess games in PGN
+Part VI, Every NIP. Result: NIP-35 torrents (2003), NIP-64 chess games in PGN
 (64), NIP-CC geocaches (37516) and logs (7516, 7517), and NIP-F4 podcasts.
 
 ## What this chapter teaches

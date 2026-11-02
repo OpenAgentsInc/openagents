@@ -5,7 +5,7 @@ splits stored notes into words, indexes the words, and answers a search with
 the notes that hold every word, best match first. It also records where the
 answers differ from the old Rust relay's.
 
-Part IX, A relay. Result: NIP-50's `search` filter field, a word index over
+Part V, A relay. Result: NIP-50's `search` filter field, a word index over
 the store, results ordered by a word-count score, `include:spam`, and every
 other `key:value` extension ignored.
 

@@ -1,4 +1,4 @@
-# 9. The secp256k1 group law
+# 15. The secp256k1 group law
 
 A secp256k1 public key is a point on the curve
 
@@ -9,8 +9,8 @@ y^2 = x^3 + 7  over F_p,  p = 2^256 - 2^32 - 977
 The points, together with one extra point *O*, the *point at infinity*,
 form a group: you can add two points and get a third, `O` is the identity,
 and every point `P` has a negative `-P` with `P + (-P) = O`. This chapter
-builds that addition on the field of chapter 7. Scalar multiplication
-(chapter 10) and every signature and shared secret after it are repeated
+builds that addition on the field of chapter 13. Scalar multiplication
+(chapter 16) and every signature and shared secret after it are repeated
 additions.
 
 ## What this chapter teaches
@@ -27,7 +27,7 @@ additions.
 ## Where the code is
 
 [coax/lib/crypto/secp_group.coax](../../coax/lib/crypto/secp_group.coax)
-has the group. Its field elements are the `SecpField` values of chapter 7.
+has the group. Its field elements are the `SecpField` values of chapter 13.
 
 | Procedure | Result |
 | --- | --- |
@@ -39,11 +39,11 @@ has the group. Its field elements are the `SecpField` values of chapter 7.
 | `sg_to_affine`, `sg_from_affine` | conversion between `(X, Y, Z)` and `(x, y)` |
 | `sg_lift_x_public` | 32 bytes of x to the point with even `y`; refuses an x off the curve |
 | `sg_decode_public`, `sg_encode_public` | the 33-byte compressed form, prefix `02` or `03` |
-| `sg_pick` | one entry of a table of points, reading every entry (chapter 10) |
+| `sg_pick` | one entry of a table of points, reading every entry (chapter 16) |
 
 [coax/lib/crypto/secp_group32.coax](../../coax/lib/crypto/secp_group32.coax)
 has the same addition and doubling on eight 32-bit limbs. It is an
-experimental kernel that the scalar multiplications of chapter 10 and the
+experimental kernel that the scalar multiplications of chapter 16 and the
 fast ECDH path load; its checks compare it with `secp_group.coax`.
 
 ## The curve and its points
@@ -89,7 +89,7 @@ The rule breaks down in three cases:
   `O`.
 - `P = Q` with `y1 = 0`: the tangent is vertical, and `2P = O`. No point
   on secp256k1 has `y = 0`: such a point would have order 2, and the group
-  has an odd prime number of elements, `n` (chapter 8).
+  has an odd prime number of elements, `n` (chapter 14).
 - Either input is `O`: then the sum is the other input.
 
 ### Worked example: a small curve
@@ -121,7 +121,7 @@ the field code.
 ## Jacobian coordinates
 
 Each affine addition divides once, and a field inverse costs about 270
-multiplications (chapter 7). Jacobian coordinates remove the division. A
+multiplications (chapter 13). Jacobian coordinates remove the division. A
 point is a triple `(X, Y, Z)` that stands for the affine point
 `(X / Z^2, Y / Z^3)`. Many triples stand for the same point: `(X, Y, Z)`
 and `(X c^2, Y c^3, Z c)` are equal for every nonzero `c`. The curve
@@ -147,7 +147,7 @@ so it compares points, not triples.
 ### Worked example: G with Z = 2
 
 Take `c = 2`. The triple `(4 G.x, 8 G.y, 2)` is `G`. To find `4 G.x mod p`,
-multiply by 4 and fold the bit above 2^256 back in, as chapter 7 does:
+multiply by 4 and fold the bit above 2^256 back in, as chapter 13 does:
 `2^256 ≡ 2^32 + 977 = 1000003d1` in hex. `4 G.x` is
 `1e6f999f...6c5be05e60`, which is `2^256` plus `e6f999f...6c5be05e60`.
 Add `1000003d1` to the low part: `...c5be05e60 + 1000003d1 = ...d5be06231`.
@@ -193,7 +193,7 @@ fails when `x >= p` or when `x^3 + 7` is not a square.
 1. refuses a view that isn't 32 bytes;
 2. loads x, stores it back, and compares the bytes, so an x of `p` or more
    is refused rather than reduced;
-3. computes `x^3 + 7` and its even square root with `sf_sqrt` (chapter 7);
+3. computes `x^3 + 7` and its even square root with `sf_sqrt` (chapter 13);
 4. accepts only if the root squares back to `x^3 + 7`.
 
 `sg_decode_public` reads the 33-byte compressed form: `02` for even `y`,
@@ -220,11 +220,11 @@ small cases by hand.
 
 ## The example
 
-The example is [nostr/examples/group-law.coax](../examples/group-law.coax).
+The example is [bitcoin/examples/group-law.coax](../examples/group-law.coax).
 It negates, doubles and adds `G`, shows `G` with `Z = 2`, encodes `G`,
 lifts `x = 1` and shows five refusals.
 
-<!-- source: nostr/examples/group-law.coax example -->
+<!-- source: bitcoin/examples/group-law.coax example -->
 ```jai
 #load "../../coax/lib/crypto/secp_group.coax";
 #load "../../coax/lib/nostr/hex.coax";
@@ -319,7 +319,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/group-law.coax
+coax/bin/coax run bitcoin/examples/group-law.coax
 ```
 
 The output matches the values worked out by hand: `-G.y` ends in `...2777`,
@@ -373,7 +373,7 @@ The refusals:
   returns infinity with `ok` false.
 
 The book's checks run this program in debug and release builds and compare
-the output with [nostr/fixtures/group-law.out](../fixtures/group-law.out).
+the output with [bitcoin/fixtures/group-law.out](../fixtures/group-law.out).
 
 ## How the code is checked
 
@@ -398,7 +398,7 @@ formulas, and libsecp256k1, Bitcoin Core's secp256k1 library.
 
 The libsecp256k1 tests need the native oracle in
 `tools/coax-nostr/fuzz/.cache/`. Build it from the pinned `v0.8.0` archive
-as chapter 7 describes, then run:
+as chapter 13 describes, then run:
 
 ```shell
 cd coax/tests/nostr
@@ -421,7 +421,7 @@ All 7 tests pass in about 8 seconds.
   `(x^3 + 7)^((p-1)/2) = 1` holds. Euler's criterion is computed by
   square-and-multiply, not by the square-root chain:
 
-<!-- source: nostr/examples/group-law.coax check -->
+<!-- source: bitcoin/examples/group-law.coax check -->
 ```jai
 // Affine chord-and-tangent formulas, written from the curve equation with
 // one field inverse each. They share no code with the Jacobian kernels.
@@ -522,8 +522,8 @@ euler :: (a: SecpField) -> SecpField {
 To run all the checks:
 
 ```shell
-coax/bin/coax test nostr/examples/group-law.coax
-coax/bin/coax mutate nostr/examples/group-law.coax
+coax/bin/coax test bitcoin/examples/group-law.coax
+coax/bin/coax mutate bitcoin/examples/group-law.coax
 ```
 
 `coax mutate` on the example leaves zero survivors. The full run made 987
@@ -548,7 +548,7 @@ nothing. `euler` now reads the exponent from the low bit up, and a
 
 ## Dependencies
 
-- [7. Field arithmetic mod p](ch007-field-arithmetic-mod-p.md)
+- [13. Field arithmetic mod p](ch013-field-arithmetic-mod-p.md)
 
 ## Sources
 

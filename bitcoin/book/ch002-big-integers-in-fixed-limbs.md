@@ -10,10 +10,10 @@ Two representations are in use:
 
 - Field elements mod p, in ten limbs of 26 bits or less, in
   [coax/lib/crypto/secp_field.coax](../../coax/lib/crypto/secp_field.coax).
-  Chapter 7 builds the field arithmetic on them.
+  Chapter 13 builds the field arithmetic on them.
 - Scalars mod the group order n, in eight 32-bit limbs, in
   [coax/lib/crypto/secp_scalar.coax](../../coax/lib/crypto/secp_scalar.coax).
-  Chapter 8 builds the scalar arithmetic on them.
+  Chapter 14 builds the scalar arithmetic on them.
 
 ## What this chapter teaches
 
@@ -83,7 +83,7 @@ sf_carry :: (digits: [] u64) -> u64 {
 ```
 
 The carry out of limb 9 is the part of the number at bit 256 and above. The
-field reduction in chapter 7 folds it back in, using
+field reduction in chapter 13 folds it back in, using
 2^256 ≡ 2^32 + 977 (mod p).
 
 ### Worked example: 2^256 − 1
@@ -158,7 +158,7 @@ Scalars use a different representation:
 ScScalar :: struct {limbs:[8]u32;}
 ```
 
-Scalar arithmetic reduces mod n with Montgomery multiplication (chapter 8).
+Scalar arithmetic reduces mod n with Montgomery multiplication (chapter 14).
 Montgomery reduction works one machine word at a time, so it needs full words
 with no spare bits. Eight 32-bit limbs give exactly 256 bits.
 
@@ -180,11 +180,11 @@ a check in `secp_scalar.coax` confirms it equals 18,446,744,073,709,551,615.
 ## The example
 
 The example is
-[nostr/examples/big-integers-in-limbs.coax](../examples/big-integers-in-limbs.coax).
+[bitcoin/examples/big-integers-in-limbs.coax](../examples/big-integers-in-limbs.coax).
 It prints the limbs of the values worked out above, the bound certificate,
 the scalar bound, and four refusals.
 
-<!-- source: nostr/examples/big-integers-in-limbs.coax example -->
+<!-- source: bitcoin/examples/big-integers-in-limbs.coax example -->
 ```jai
 #load "../../coax/lib/crypto/secp_field.coax";
 #load "../../coax/lib/crypto/secp_scalar.coax";
@@ -269,7 +269,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/big-integers-in-limbs.coax
+coax/bin/coax run bitcoin/examples/big-integers-in-limbs.coax
 ```
 
 ```text
@@ -309,19 +309,19 @@ The output matches the values worked out by hand:
 The last four lines are refusals:
 
 - `sf_load_strict` refuses the bytes of p, because a strict load accepts only
-  canonical values less than p. `sf_load` would reduce them to 0. Chapter 11
+  canonical values less than p. `sf_load` would reduce them to 0. Chapter 23
   uses the strict load for public keys and signature values.
 - `sf_load` refuses a 31-byte input. It writes nothing and returns
   `ok = false`.
 - `sc_load` refuses the bytes of n and reports `overflow = true`. A secret
-  key or signature scalar must be less than n (chapter 12).
+  key or signature scalar must be less than n (chapter 18).
 - `sf_mul_bounds` refuses magnitude 9.
 
 ## How the code is checked
 
 The example adds two checks of its own:
 
-<!-- source: nostr/examples/big-integers-in-limbs.coax check -->
+<!-- source: bitcoin/examples/big-integers-in-limbs.coax check -->
 ```jai
 // The hand-derived values from the chapter, checked against the code.
 #test "hand-derived limbs match the code" {
@@ -381,7 +381,7 @@ reference is
 To run the checks:
 
 ```shell
-coax/bin/coax test nostr/examples/big-integers-in-limbs.coax
+coax/bin/coax test bitcoin/examples/big-integers-in-limbs.coax
 coax/bin/coax mutate coax/lib/crypto/secp_field.coax
 coax/bin/coax mutate coax/lib/crypto/secp_scalar.coax
 python3 coax/tests/nostr/secp_field.py
@@ -417,7 +417,7 @@ harnesses pass, and the native and wasm builds agree.
   which defines p and n for secp256k1.
 - [SEC 2](https://www.secg.org/sec2-v2.pdf), section 2.4.1, the secp256k1
   domain parameters.
-- [NIP-01](../nips/official/01.md), which uses BIP-340 Schnorr signatures on
+- [NIP-01](../../nostr/nips/official/01.md), which uses BIP-340 Schnorr signatures on
   secp256k1.
 - The verification records:
   [coax-secp-field-2026-10-28.md](../../docs/verification/coax-secp-field-2026-10-28.md)

@@ -8,7 +8,7 @@ payment against its own wallet's record and answers. This chapter builds the
 client's codec and the settlement rules in Coax, and follows one top-up
 through the whole exchange with fixture values.
 
-Part X, Every NIP. Result: NIP-X402: x402 v2 over HTTP with the three base64
+Part VI, Every NIP. Result: NIP-X402: x402 v2 over HTTP with the three base64
 JSON headers, Bitcoin mainnet Lightning with a bolt11 invoice in millisats,
 and the `openagents:spark-receiver:1` settlement profile.
 

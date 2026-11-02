@@ -1,9 +1,9 @@
-// An event already read checked with the fast verifier (chapters 11, 35).
+// An event already read checked with the fast verifier (Bitcoin chapter 23, Nostr chapter 35).
 // nostr_event_verify_vartime reads the text again (parse, serialize, hash)
 // and then runs the reference verifier; the relay has already read the same
 // text with nostr_event_read (rs_admit_read), so ne_signed_fast checks that
 // read's id, key and signature with schnorr_fast.coax's verifier, which
-// agrees with the reference on every input (chapter 11). The read must be
+// agrees with the reference on every input (Bitcoin chapter 23). The read must be
 // complete: error NE_OK and its id the one recomputed from the text. The
 // result goes to rs_admit_verified exactly like nostr_event_verify_vartime's.
 // Public data, variable time.

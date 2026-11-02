@@ -10,7 +10,7 @@
 //
 // What is checked: the prefix, the characters, the length, the case, and for
 // ISBNs the check digit. What is not: whether the thing exists, an ISAN's
-// check characters, a Bitcoin address's checksum (chapter 12 has bech32),
+// check characters, a Bitcoin address's checksum (Bitcoin chapter 27 has Bech32),
 // percent-encoding in URLs, and lower case beyond ASCII in hashtags.
 // Blockchain IDs other than Bitcoin's are refused (the repository is
 // Bitcoin-only), with their own status.

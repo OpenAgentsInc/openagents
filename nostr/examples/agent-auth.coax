@@ -24,7 +24,7 @@ public_x :: (secret: [] u8) -> [32] u8 {
   #assert sf_store(a.x, b[..]);
   return b;
 }
-// BIP-340 signing of a 32-byte message with chapter 13's signer.
+// BIP-340 signing of a 32-byte message with Bitcoin chapter 24's signer.
 sign_hash :: (key: [] u8, aux: [] u8, message: [] u8, out: [] u8) {
   work: [1] SignWork; status := SIGN_MORE;
   while status == SIGN_MORE { status = schnorr_sign_step(key, aux, message, work[..], out, false); }

@@ -6,7 +6,7 @@ serialization on a bounded JSON writer, reads JSON back with a bounded pull
 parser, and shows why RFC 8785 JCS is a different thing that never produces
 an event preimage.
 
-Part IV, Encodings. Result: A bounded JSON reader and writer that keep
+Part I, Shared secrets, encodings and encryption. Result: A bounded JSON reader and writer that keep
 original bytes, and the exact NIP-01 serialization `[0, pubkey, created_at,
 kind, tags, content]` with its escape rules, distinct from RFC 8785 JCS.
 
@@ -701,8 +701,8 @@ use.
 
 ## Dependencies
 
-- [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md)
-- [4. SHA-256](ch004-sha-256.md), for the ID in the example
+- [1. Bytes, hex and base64](../../bitcoin/book/ch001-bytes-hex-and-base64.md)
+- [4. SHA-256](../../bitcoin/book/ch004-sha-256.md), for the ID in the example
 - [Coax chapter 18, The protocol boundary](../../coax/book/ch18-protocol.md)
 
 ## Sources

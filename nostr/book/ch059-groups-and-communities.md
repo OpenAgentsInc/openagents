@@ -7,7 +7,7 @@ the group's state as events signed by its own key. This chapter builds
 that relay-side decision in Coax, then the one check a client needs for
 NIP-72's older moderated communities: whether a moderator approved a post.
 
-Part X, Every NIP. Result: the relay side of NIP-29 relay-based groups (the
+Part VI, Every NIP. Result: the relay side of NIP-29 relay-based groups (the
 `h` tag, moderation kinds 9000 to 9009, join and leave requests 9021 and
 9022, `previous` references, and the 39000 to 39003 state the relay
 publishes), and NIP-72's approval check. NIP-7D threads, NIP-C7 chats and

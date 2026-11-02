@@ -10,7 +10,7 @@ read it. NIP-54 wiki articles (kind 30818) are named by a normalized `d`
 tag, so that everyone who writes about "Proof of Work" lands on the same
 name, `proof-of-work`.
 
-Part X, Every NIP. Result: Kind 30023 articles and 30024 drafts in Markdown,
+Part VI, Every NIP. Result: Kind 30023 articles and 30024 drafts in Markdown,
 NIP-37 kind 31234 draft wraps encrypted with NIP-44, and NIP-54 kind 30818
 wiki articles with `d`-tag normalization.
 

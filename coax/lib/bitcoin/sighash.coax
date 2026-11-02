@@ -6,10 +6,10 @@
 // - the BIP-341 Taproot key-path signature hash (SIGHASH_DEFAULT and every
 //   other hash type; no annex, no script path);
 // - the BIP-341 key tweak and a key-path Schnorr signature, through
-//   chapter 13's schnorr_sign.coax.
+//   Bitcoin chapter 24's schnorr_sign.coax.
 //
 // Transactions and digests are public. The key, its tweak and the tweaked
-// key are secrets: they never decide a branch or an index (chapter 3), and
+// key are secrets: they never decide a branch or an index (Bitcoin chapter 3), and
 // the tweaked key lives only in the caller's workspace, cleared on return.
 #load "../crypto/ecdsa_sign.coax";
 #load "../crypto/schnorr_sign.coax";

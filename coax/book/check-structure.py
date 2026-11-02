@@ -61,9 +61,9 @@ def problems(root):
 # evidence for the chapter's profile, such as cpu, cuda, metal or wasm; a
 # target with no recorded run is not listed) and `adopted_by` (files outside
 # the book that use the chapter's code today). `psionic/tests/book.py` runs
-# the same checks for Psionic, Aethyr, Nostr and Coder.
+# the same checks for Psionic, Aethyr, Nostr, Coder and Bitcoin.
 BOOKS = {"coax": "coax/book", "psionic": "psionic/book", "aethyr": "aethyr/book", "nostr": "nostr/book",
-         "coder": "coder/book"}
+         "coder": "coder/book", "bitcoin": "bitcoin/book"}
 # A moved chapter keeps its number so the numbering stays 1..N; its title names
 # where it went and it has no file here.
 # A written chapter (Coder's Part VII) surveys another project: its profile
@@ -86,7 +86,7 @@ SUMMARY_LABEL = {"design draft": " â€” design draft", "partly implemented": " â€
 
 
 def readme_label(status, profile, book=None):
-    """The README status cell for a Psionic, Aethyr, Nostr or Coder chapter, before any `(...)` note."""
+    """The README status cell for a Psionic, Aethyr, Nostr, Coder or Bitcoin chapter, before any `(...)` note."""
     implemented = "Implemented" if book == "coder" else "Runnable"
     return {"implemented": f"{implemented}: {profile}", "partly implemented": f"Partly implemented: {profile}",
             "design draft": "Unimplemented: design draft", "planned": "Planned",
@@ -203,7 +203,7 @@ def registry_problems(book, root=REPO):
             if isinstance(dep, int):
                 if dep == n or dep not in numbers:
                     errors.append(f"{label}: unknown dependency {dep}")
-            elif not (isinstance(dep, str) and re.fullmatch(r"(coax|psionic|aethyr|nostr|coder):\d+", dep)
+            elif not (isinstance(dep, str) and re.fullmatch(r"(coax|psionic|aethyr|nostr|coder|bitcoin):\d+", dep)
                       and dep.split(":")[0] != book and int(dep.split(":")[1]) in others[dep.split(":")[0]]):
                 errors.append(f"{label}: unknown dependency {dep!r} (use N or book:N)")
         for field in ("source", "adopted_by"):

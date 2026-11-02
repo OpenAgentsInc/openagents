@@ -1,6 +1,6 @@
-# 12. Keys and randomness
+# 18. Keys and randomness
 
-A Nostr identity is a random scalar. This chapter defines where randomness
+A Bitcoin private key and a Nostr identity are each a random scalar. This chapter defines where randomness
 comes from on each host, how a key is drawn from it, and how the rest of the
 stack asks a signer for a signature without ever holding the key.
 
@@ -23,9 +23,9 @@ stack asks a signer for a signature without ever holding the key.
 | [entropy.coax](../../coax/lib/crypto/entropy.coax) | The request and completion policy every host runs: `entropy_admit`, `entropy_completed`, `entropy_finish` (`#authority`) |
 | [entropy-native.c](../../coax/platform/entropy-native.c) | The native host effect: `SecRandomCopyBytes` on Apple, `getrandom` on Linux |
 | [entropy.js](../../coax/web/entropy.js) and [entropy-wasm.c](../../coax/platform/entropy-wasm.c) | The browser host effect: WebCrypto `getRandomValues` in chunks of 65,536 bytes |
-| [secp_scalar.coax](../../coax/lib/crypto/secp_scalar.coax) | `sc_load`, which refuses 32 bytes that are `n` or more, and `sc_is_zero` (chapter 8) |
+| [secp_scalar.coax](../../coax/lib/crypto/secp_scalar.coax) | `sc_load`, which refuses 32 bytes that are `n` or more, and `sc_is_zero` (chapter 14) |
 | [keys.coax](../../coax/lib/nostr/keys.coax) | Signer requests: one lifecycle for the local slot, a NIP-07 browser signer and, later, a phone over NIP-46 (`#authority`) |
-| [nostr/examples/keys.coax](../examples/keys.coax) | This chapter's test host, `draw_key` and `derive_public_key` |
+| [bitcoin/examples/keys.coax](../examples/keys.coax) | This chapter's test host, `draw_key` and `derive_public_key` |
 
 The library has no `draw_key`: each app draws through its host and checks
 the result with `sc_load`, as the example does. The example's version shows
@@ -121,7 +121,7 @@ differs:
    zero, so it is a key.
 
 That comparison stops early, so its time depends on where the first
-difference is. `sc_overflow` (chapter 8) computes the same answer without
+difference is. `sc_overflow` (chapter 14) computes the same answer without
 stopping: it subtracts `n` limb by limb from limb 0 up, carrying a borrow,
 and looks only at the final borrow. Each step computes
 `2^32 + a[i] - n[i] - borrow`; the new borrow is 1 when that is below
@@ -152,11 +152,11 @@ decides both values, as it did by hand, but every limb is visited.
 
 ## The public key
 
-The public key is `P = k·G`, computed with the fixed-base comb of chapter 10.
+The public key is `P = k·G`, computed with the fixed-base comb of chapter 16.
 Nostr and BIP-340 publish only P's x coordinate, as 32 big-endian bytes: the
 x-only public key. Of the two points with that x, BIP-340 picks the one with
 even y, and a signer whose `P` has odd y signs with `n - k` instead
-(chapter 13). For the key `k = 3`, BIP-340 vector 0, the x-only public key is
+(chapter 24). For the key `k = 3`, BIP-340 vector 0, the x-only public key is
 
 ```jai
 f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
@@ -172,7 +172,7 @@ requested event, signed. The same request works for three signers:
   explicitly temporary use. It is never stored.
 - `SIGNER_NIP07`: a browser extension through `window.nostr.signEvent`. The
   host's `coaxial_nip07_sign` passes it `signer_template`'s JSON.
-- `SIGNER_PHONE`: a phone over NIP-46 (chapter 48).
+- `SIGNER_PHONE`: a phone over NIP-46 (Nostr chapter 48).
 
 A request names its target, its scope, the identity that must sign and the
 whole body: kind, `created_at`, tags and content. From those `signer_ask`
@@ -221,7 +221,7 @@ signer's.
 
 ## The example
 
-The example is [nostr/examples/keys.coax](../examples/keys.coax). It
+The example is [bitcoin/examples/keys.coax](../examples/keys.coax). It
 classifies five 32-byte values, draws a key from a test host whose first
 three draws are refused, derives its x-only public key, and shows three
 hosts that fail. It then asks for a signature for that identity, sends
@@ -232,7 +232,7 @@ The drawn key is BIP-340 test vector 1's secret, a published test key. The
 example prints whether the draw equals it, not the key itself. Real keys
 come from the host and are never printed.
 
-<!-- source: nostr/examples/keys.coax example -->
+<!-- source: bitcoin/examples/keys.coax example -->
 ```jai
 #load "../../coax/lib/crypto/entropy.coax";
 #load "../../coax/lib/crypto/secp_mult_base_native.coax";
@@ -483,13 +483,13 @@ BIP-340 signing is deterministic for a fixed key, message and auxiliary
 input.
 
 The book's checks run this program in debug and release builds and compare
-the output with [nostr/fixtures/keys.out](../fixtures/keys.out).
+the output with [bitcoin/fixtures/keys.out](../fixtures/keys.out).
 
 ## How the code is checked
 
 ### Checks in the example
 
-The checks are in [nostr/examples/checks/keys.coax](../examples/checks/keys.coax),
+The checks are in [bitcoin/examples/checks/keys.coax](../examples/checks/keys.coax),
 which loads the example, so running the example doesn't run them. They
 compare the key draw with independent values:
 
@@ -509,7 +509,7 @@ compare the key draw with independent values:
   produces a valid signature for the wrong key, which `signer_reply` refuses
   as `SR_IDENTITY`, wiping the output and leaving the request approved.
 
-<!-- source: nostr/examples/checks/keys.coax check -->
+<!-- source: bitcoin/examples/checks/keys.coax check -->
 ```jai
 // The BIP-340 test vectors 0 to 3 as (secret key, public key x). Each secret,
 // drawn from a test host, is accepted on the first draw and gives the
@@ -628,7 +628,7 @@ bytes_of :: (limbs: [8] u32, out: [] u8) {
 To run them:
 
 ```shell
-coax/bin/coax test nostr/examples/checks/keys.coax --run-steps 250000000
+coax/bin/coax test bitcoin/examples/checks/keys.coax --run-steps 250000000
 ```
 
 `coax test` runs 353 checks, including the loaded files' own checks, in
@@ -704,7 +704,7 @@ Safari, Firefox and a physical phone remain later checks.
 
 ## Dependencies
 
-- [8. Scalars mod n](ch008-scalars-mod-n.md)
+- [14. Scalars mod n](ch014-scalars-mod-n.md)
 - [3. Constant-time rules and secrets](ch003-constant-time-rules.md)
 
 ## Sources
@@ -713,8 +713,8 @@ Safari, Firefox and a physical phone remain later checks.
   and its pinned
   [test-vectors.csv](../../coax/tests/vectors/upstream/bip340/test-vectors.csv),
   for the keys and public keys.
-- [NIP-01](../nips/official/01.md), for the event ID, and
-  [NIP-07](../nips/official/07.md), for the browser signer.
+- [NIP-01](../../nostr/nips/official/01.md), for the event ID, and
+  [NIP-07](../../nostr/nips/official/07.md), for the browser signer.
 - [Linux getrandom](https://man7.org/linux/man-pages/man2/getrandom.2.html),
   [Apple SecRandomCopyBytes](https://developer.apple.com/documentation/security/secrandomcopybytes(_:_:_:))
   and [Web Cryptography getRandomValues](https://www.w3.org/TR/webcrypto/#Crypto-method-getRandomValues).

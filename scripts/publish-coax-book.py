@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Publish a clean, pushed book written in Coax (`--book coax|psionic|aethyr|nostr|coder`) through its GitBook space's draft API.
+"""Publish a clean, pushed book written in Coax (`--book coax|psionic|aethyr|nostr|coder|bitcoin`) through its GitBook space's draft API.
 
 Standard-library maintenance tooling, never part of a compiler or app build.
 Existing pages keep their IDs/URLs. New SUMMARY sections become overview pages.
 Pages that SUMMARY no longer lists are deleted, and their old URLs redirect to
-the current page with the same name, or to the book's first page.
+the current page with the same name, the same page in the book a chapter moved
+to (MOVED_TO), or the book's first page. A kept page whose URL changed (its
+section was renamed) redirects from its old URL.
 After the merge, the live page inventory must equal SUMMARY (`--check-live`
 runs that read-only comparison). A successful publication writes an atomic
 source/revision receipt. `--check-receipt` validates its local source provenance
@@ -63,7 +65,13 @@ BOOKS = {
               "https://openagents.gitbook.io/nostr-from-scratch", book_gate("nostr"), True),
     "coder": ("coder/book", "lS8V6TGnz1ifNhKVV3hN", "Coder: Coding Agents From Scratch",
               "https://openagents.gitbook.io/coder-coding-agents-from-scratch", book_gate("coder"), True),
+    "bitcoin": ("bitcoin/book", "wmf6C6tD4ovtQQqoeMmP", "Bitcoin From Scratch",
+                "https://openagents.gitbook.io/bitcoin-from-scratch", book_gate("bitcoin"), True),
 }
+# Chapters that moved to another book: a deleted page whose file name matches a
+# page there redirects to that book's page (Nostr chapters 1-13, 15 and 18
+# became Bitcoin chapters).
+MOVED_TO = {"nostr": "bitcoin"}
 # Coax keeps its original constants for callers and tests.
 SPACE = BOOKS["coax"][1]
 PUBLIC = BOOKS["coax"][3]
@@ -530,16 +538,32 @@ def main():
     if content["id"] != merged["revision"]:
         raise SystemExit("Published revision does not match the merge; inspect the space")
     print(f"Verified published revision {content['id']} from commit {commit}")
-    # Old URLs of deleted pages redirect to the current page with the same name.
+    # Old URLs of deleted pages redirect to the current page with the same name,
+    # or to the same page in the book it moved to. A kept page whose section
+    # was renamed or moved keeps working at its old URL too.
     current = list(pages(content["pages"]))
     first = next((p["path"] for p in current if p.get("path") is not None), "")
-    old_paths = [p["path"] for p in pages(live["pages"]) if p["id"] in deleted and p.get("path")]
-    if prune and old_paths:
+    now = {p.get("path") for p in current}
+    by_id = {p["id"]: p.get("path") for p in current}
+    elsewhere = []
+    if args.book in MOVED_TO:
+        other = BOOKS[MOVED_TO[args.book]]
+        elsewhere = list(pages(api(f"/spaces/{other[1]}/content")["pages"]))
+
+    def destination(page):
+        if page["id"] in by_id and by_id[page["id"]]:
+            return {"kind": "path", "spaceId": space_id, "path": by_id[page["id"]]}
+        target = redirect_target(page["path"], current)
+        moved = None if target else redirect_target(page["path"], elsewhere)
+        if moved:
+            return {"kind": "external", "url": other[3] + "/" + moved}
+        return {"kind": "path", "spaceId": space_id, "path": target or first}
+    old_pages = [p for p in pages(live["pages"]) if p.get("path") and p["path"] not in now
+                 and (p["id"] in by_id or (prune and p["id"] in deleted))]
+    if old_pages:
         site = find_site(api, space["organization"], public)
-        redirects = [{"source": "/" + old, "intent": "live", "permanent": True,
-                      "destination": {"kind": "path", "spaceId": space_id,
-                                      "path": redirect_target(old, current) or first}}
-                     for old in old_paths if old not in {p.get("path") for p in current}]
+        redirects = [{"source": "/" + p["path"], "intent": "live", "permanent": True,
+                      "destination": destination(p)} for p in old_pages]
         for start in range(0, len(redirects), 500):
             api(f"/orgs/{space['organization']}/sites/{site}/redirects", redirects[start:start + 500],
                 method="PUT")

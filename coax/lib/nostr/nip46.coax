@@ -17,7 +17,7 @@
 //
 // A reading of messages, not a signer: nothing here fetches an event,
 // verifies a signature or signs. The caller verifies events (chapter 21),
-// hands a sign_event result to chapter 12's signer_reply, and its signer
+// hands a sign_event result to Bitcoin chapter 18's signer_reply, and its signer
 // signs.
 //
 // Checks: coax test coax/lib/nostr/nip46.coax
@@ -402,7 +402,7 @@ n46_response_json :: (r:N46Reply,out:[]u8)->int {
   return json_raw(out,n,"}");
 }
 // sign_event's param for an event: kind, created_at, tags, content, the
-// order chapter 12's signer_template writes for NIP-07.
+// order Bitcoin chapter 18's signer_template writes for NIP-07.
 n46_sign_params :: (kind:int,created_at:int,tags:string,content:string,out:[]u8)->int {
   decoded:[N46_MAX_STR]u8;
   if kind<0 || kind>65535 || created_at<0 {return -1;}

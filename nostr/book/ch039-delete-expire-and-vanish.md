@@ -4,7 +4,7 @@ Authors can ask relays to forget their events. This chapter adds deletion
 and vanishing to chapter 35's store, next to the expiration it already
 enforces.
 
-Part IX, A relay. Result: NIP-40 `expiration` tags enforced at admission and
+Part V, A relay. Result: NIP-40 `expiration` tags enforced at admission and
 query, NIP-09 kind-5 deletion requests from the same author with tombstones
 that survive a restart, and NIP-62 kind-62 requests to vanish.
 

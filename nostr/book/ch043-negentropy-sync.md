@@ -6,7 +6,7 @@ range-based set reconciliation, as the appendix of NIP-77 specifies it, and
 the four NIP-77 frames that carry its messages: `NEG-OPEN`, `NEG-MSG`,
 `NEG-CLOSE` and `NEG-ERR`.
 
-Part IX, A relay. Result: NIP-77's `NEG-OPEN`, `NEG-MSG`, `NEG-CLOSE` and
+Part V, A relay. Result: NIP-77's `NEG-OPEN`, `NEG-MSG`, `NEG-CLOSE` and
 `NEG-ERR`, and Negentropy protocol V1: range-based set reconciliation over
 `(created_at, id)` with fingerprints.
 
@@ -41,7 +41,7 @@ Part IX, A relay. Result: NIP-77's `NEG-OPEN`, `NEG-MSG`, `NEG-CLOSE` and
 | [nip77_fixtures.coax](../../coax/tests/nostr/nip77_fixtures.coax) | | Items, whole syncs and the Python transcription's values, for the library's checks |
 | [negentropy_ref.py](../../coax/tests/nostr/negentropy_ref.py) | | A Python transcription of the protocol, the independent check |
 
-`nip77.coax` is new. It loads only `json.coax`, `hex.coax` and chapter 4's
+`nip77.coax` is new. It loads only `json.coax`, `hex.coax` and Bitcoin chapter 4's
 SHA-256, so it carries none of the relay's code. It decides neither money
 nor admission, so it is not `#authority`. Its checks were written first,
 and `coax mutate --root-only` on it kills 751 of 751 mutants.
@@ -1279,7 +1279,7 @@ record limit and the idle timeout, which `relay_route.coax`'s and
 ## Dependencies
 
 - [36. Match filters with indexes](ch036-match-filters-with-indexes.md)
-- [4. SHA-256](ch004-sha-256.md)
+- [4. SHA-256](../../bitcoin/book/ch004-sha-256.md)
 
 ## Sources
 

@@ -35,7 +35,7 @@ rules:
    process on the same machine can measure which line was loaded.
 3. **No variable-time routine on a secret.** Division, a variable shift, and
    any function whose name ends in `_vartime` take time that depends on
-   their inputs. The public verification path of chapter 10 uses such
+   their inputs. The public verification path of chapter 16 uses such
    routines on public data only.
 
 Lengths, counts and positions that are public may decide branches and
@@ -140,13 +140,13 @@ this reason.
 ## The example
 
 The example is
-[nostr/examples/constant-time-rules.coax](../examples/constant-time-rules.coax).
+[bitcoin/examples/constant-time-rules.coax](../examples/constant-time-rules.coax).
 It compares a 32-byte tag both ways, builds masks, selects, runs one
 erasure scope from registration to completion, and shows four refusals. It
 also defines `leaky_pick` and `masked_pick`, which the source audit checks
 below.
 
-<!-- source: nostr/examples/constant-time-rules.coax example -->
+<!-- source: bitcoin/examples/constant-time-rules.coax example -->
 ```jai
 #load "../../coax/lib/crypto/bytes.coax";
 #load "../../coax/lib/crypto/zeroize.coax";
@@ -220,7 +220,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/constant-time-rules.coax
+coax/bin/coax run bitcoin/examples/constant-time-rules.coax
 ```
 
 ```text
@@ -273,7 +273,7 @@ bit at any of the 256 bit positions makes the tags unequal, and the
 early-exit comparison reads exactly up to that byte. It also checks the
 selection worked out by hand:
 
-<!-- source: nostr/examples/constant-time-rules.coax check -->
+<!-- source: bitcoin/examples/constant-time-rules.coax check -->
 ```jai
 // cb_ct_equal against an independent model: a byte-by-byte comparison of the
 // whole slice. Every single-bit difference at every position is refused.
@@ -306,8 +306,8 @@ and refuses a secret branch, index, variable shift or `_vartime` call.
 Run it on the two functions in the example:
 
 ```shell
-python3 tools/coax-nostr/secret-check/check.py nostr/examples/constant-time-rules.coax --entry leaky_pick
-python3 tools/coax-nostr/secret-check/check.py nostr/examples/constant-time-rules.coax --entry masked_pick
+python3 tools/coax-nostr/secret-check/check.py bitcoin/examples/constant-time-rules.coax --entry leaky_pick
+python3 tools/coax-nostr/secret-check/check.py bitcoin/examples/constant-time-rules.coax --entry masked_pick
 ```
 
 The first command exits with status 1. Its JSON report says:
@@ -364,8 +364,8 @@ difference. It isn't a proof of constant time.
 To run the checks:
 
 ```shell
-coax/bin/coax test nostr/examples/constant-time-rules.coax
-coax/bin/coax mutate nostr/examples/constant-time-rules.coax
+coax/bin/coax test bitcoin/examples/constant-time-rules.coax
+coax/bin/coax mutate bitcoin/examples/constant-time-rules.coax
 coax/bin/coax mutate coax/lib/crypto/zeroize.coax
 python3 coax/tests/constant_time.py
 python3 tools/coax-nostr/secret-check/test_secret.py
@@ -411,7 +411,7 @@ files. `coax mutate` kills every mutant: 7 in the example, 145 in
 - [BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki),
   which mixes auxiliary random data into the signing nonce to protect
   against side-channel attacks.
-- [NIP-44](../nips/official/44.md), which requires a constant-time MAC
+- [NIP-44](../../nostr/nips/official/44.md), which requires a constant-time MAC
   comparison.
 - The Coax specification on `value_barrier`: [coax/spec.md](../../coax/spec.md).
 - The timing harness: [tools/coax-nostr/timing/README.md](../../tools/coax-nostr/timing/README.md).

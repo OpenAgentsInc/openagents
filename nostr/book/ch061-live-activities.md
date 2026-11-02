@@ -4,7 +4,7 @@ Live streams and meeting spaces announce themselves as addressable events.
 This chapter reads and writes them, decides at a given clock time whether a
 stream is still live, and binds live chat to the stream it belongs to.
 
-Part X, Every NIP. Result: NIP-53 kind 30311 live events with `streaming`,
+Part VI, Every NIP. Result: NIP-53 kind 30311 live events with `streaming`,
 `status` and participant roles, kind 1311 live chat, and kind 30312/30313
 meeting spaces and rooms with kind 10312 presence.
 
@@ -445,7 +445,7 @@ n53_chat_tags :: (author:[32]u8,d:string,relay:string,has_parent:bool,parent:[32
   (HLS, WebRTC or anything else) and doesn't run a meeting service.
 - **Proof verification.** The reader checks a proof's shape but doesn't
   verify the signature. Verifying it needs the SHA-256 of the `a` tag and
-  chapter 11's Schnorr verification; until it is built, every participant
+  Bitcoin chapter 23's Schnorr verification; until it is built, every participant
   shows as invited unless the caller verifies the proof itself.
 - **The other tags.** `summary`, `image`, `t`, `current_participants`,
   `total_participants`, `relays`, `pinned`, a space's `endpoint` and

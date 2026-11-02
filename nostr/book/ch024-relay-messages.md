@@ -3,7 +3,7 @@
 Clients and relays exchange JSON arrays over a WebSocket. This chapter reads
 and writes every NIP-01 frame and the machine-readable reason prefixes.
 
-Part VI, The event model. Result: Client frames `EVENT`, `REQ`, `CLOSE`,
+Part II, The event model. Result: Client frames `EVENT`, `REQ`, `CLOSE`,
 `AUTH` and `COUNT`, relay frames `EVENT`, `OK`, `EOSE`, `CLOSED`, `NOTICE` and
 `AUTH`, and the `OK`/`CLOSED` reason prefixes NIP-20 introduced.
 

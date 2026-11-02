@@ -10,7 +10,7 @@ registry. This chapter builds the host's dispatch decision, single-use
 approvals, and the client's decision to install a release, and runs them
 against signed release, revocation and checkpoint events.
 
-Part X, Every NIP. Result: NIP-CAP dispatch (definition, binding,
+Part VI, Every NIP. Result: NIP-CAP dispatch (definition, binding,
 presence, grant, effects, ceilings and an enforcement plan), NIP-POL
 approval consumption, and NIP-EXT installation (namespace, manifest
 agreement, unknown features and component kinds, equivocation, revocation,
@@ -49,7 +49,7 @@ policy, so each is an `#authority` file: the checks came first, and a
 mutation run kills every mutant. Like chapter 75's `admit.coax`, none of
 them loads the crypto. They take verified signers, event ids and the host's
 own record as plain fields, so their checks run in milliseconds. The
-example reads the signed events with chapter 21's reader and chapter 11's
+example reads the signed events with chapter 21's reader and Bitcoin chapter 23's
 BIP-340 verification before it calls them.
 
 ## Capabilities: description, binding, grant, presence

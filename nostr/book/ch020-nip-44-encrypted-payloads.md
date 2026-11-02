@@ -2,13 +2,13 @@
 
 NIP-44 version 2 is the encryption that NIP-17 private messages, NIP-59 gift
 wrap and many OpenAgents NIPs use. It joins four earlier chapters: the
-conversation key from ECDH (chapter 14) and HKDF (chapter 6), the ChaCha20
-stream (chapter 18) and an HMAC-SHA256 tag (chapter 5), all framed in base64
-(chapter 1). This chapter builds the padding, the message keys, the payload
+conversation key from ECDH (chapter 14) and HKDF (Bitcoin chapter 9), the ChaCha20
+stream (Bitcoin chapter 11) and an HMAC-SHA256 tag (Bitcoin chapter 8), all framed in base64
+(Bitcoin chapter 1). This chapter builds the padding, the message keys, the payload
 and the decryption order, and checks them against every entry of the
 official vector file.
 
-Part V, Encryption.
+Part I, Shared secrets, encodings and encryption.
 
 ## What this chapter teaches
 
@@ -39,7 +39,7 @@ Part V, Encryption.
 
 Both files are marked `#authority`: they decide whether a payload is
 admitted, so every mutation of them must be killed by a check. The caller
-supplies the nonce from a CSPRNG (`entropy.coax`, chapter 12). The code here
+supplies the nonce from a CSPRNG (`entropy.coax`, Bitcoin chapter 18). The code here
 takes the nonce as input, so the same nonce always gives the same payload,
 which is what lets the checks compare bytes with the published vectors.
 
@@ -71,7 +71,7 @@ chacha_nonce = keys[32..44]
 hmac_key     = keys[44..76]
 ```
 
-HKDF-expand (chapter 6) produces 32-byte blocks, `T(1) = HMAC(PRK, nonce ||
+HKDF-expand (Bitcoin chapter 9) produces 32-byte blocks, `T(1) = HMAC(PRK, nonce ||
 01)`, `T(2) = HMAC(PRK, T(1) || nonce || 02)` and `T(3) = HMAC(PRK, T(2) ||
 nonce || 03)`, and keeps the first 76 bytes of `T(1) || T(2) || T(3)`. So
 the three keys do not line up with the blocks:
@@ -101,8 +101,8 @@ The rest of `T(3)` is not used. These are the published `chacha_key`,
 
 Because every message has its own nonce, every message has its own ChaCha20
 key and HMAC key. A repeated nonce would repeat the ChaCha20 keystream, and
-the XOR of two ciphertexts would be the XOR of their plaintexts (chapter
-18). It would not reveal the conversation key.
+the XOR of two ciphertexts would be the XOR of their plaintexts (Bitcoin chapter
+11). It would not reveal the conversation key.
 
 ## Padding
 
@@ -247,7 +247,7 @@ one.
 5. **Version byte.** Anything but `0x02`: `NIP44_VERSION`.
 6. **MAC.** Derive the message keys, compute the MAC over nonce and
    ciphertext, and compare it with the last 32 bytes using `cb_ct_equal`
-   (chapter 3), which reads every byte whatever the first difference.
+   (Bitcoin chapter 3), which reads every byte whatever the first difference.
    A mismatch is `NIP44_MAC`, and nothing has been decrypted.
 7. **Decrypt** with ChaCha20 into `work`.
 8. **Padding.** `nip44_unpad_span` reads the prefix and checks that the
@@ -315,7 +315,7 @@ bytes_of :: (text: string) -> [32] u8 {
   #assert hex_decode_checked(text, b[..], false).error == 0;
   return b;
 }
-// The x-only public key of a secret: x(k·G) on the ladder of chapter 10.
+// The x-only public key of a secret: x(k·G) on the ladder of Bitcoin chapter 16.
 public_x :: (secret: [] u8) -> [32] u8 {
   k := sc_reduce_bytes(secret).value;
   a := sg_to_affine(smc_multiply(k, sg_generator()).value).value;
@@ -840,11 +840,11 @@ invalid) in chapter 14's checks and `nip44_key_vectors.coax`, and
 
 ## Dependencies
 
-- [6. HKDF](ch006-hkdf.md)
+- [Bitcoin chapter 9. HKDF](../../bitcoin/book/ch009-hkdf.md)
 - [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md)
-- [18. ChaCha20](ch018-chacha20.md)
-- [5. HMAC-SHA256](ch005-hmac-sha256.md)
-- [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md)
+- [Bitcoin chapter 11. ChaCha20](../../bitcoin/book/ch011-chacha20.md)
+- [Bitcoin chapter 8. HMAC-SHA256](../../bitcoin/book/ch008-hmac-sha256.md)
+- [1. Bytes, hex and base64](../../bitcoin/book/ch001-bytes-hex-and-base64.md)
 
 ## Sources
 

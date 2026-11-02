@@ -1,10 +1,10 @@
 # 21. Events, IDs and signatures
 
 The event is the only object in Nostr. This chapter reads an event, recomputes
-its ID from chapter 17's serialization, verifies its signature with chapter
-11, and builds new signed events with chapter 13.
+its ID from chapter 17's serialization, verifies its signature with Bitcoin chapter
+23, and builds new signed events with Bitcoin chapter 24.
 
-Part VI, The event model. Result: The NIP-01 event: `id`, `pubkey`,
+Part II, The event model. Result: The NIP-01 event: `id`, `pubkey`,
 `created_at`, `kind`, `tags`, `content`, `sig`; recomputing the ID, verifying
 the signature, and building signed events separately from reading them.
 
@@ -27,11 +27,11 @@ the signature, and building signed events separately from reading them.
 | | `nostr_event_verify_vartime(text, scratch, overlap)` | `nostr_event_read`, then the BIP-340 signature over the 32-byte ID; the only entry that sets `verified` |
 | | `ne_parse`, `ne_serialize` | The field reader and the preimage writer that the two entries share |
 | [event_sign.coax](../../coax/lib/nostr/event_sign.coax) | `nostr_event_sign_step(key, aux, created_at, kind, tags, content, work, scratch, out, overlap)` | Builds and signs one event in stages; `EVENT_MORE` until the event's length or `EVENT_REFUSED` (`#authority`) |
-| [schnorr.coax](../../coax/lib/crypto/schnorr.coax) | `nostr_verify_vartime` | Chapter 11's verifier over exactly 32 bytes of message |
-| [schnorr_sign.coax](../../coax/lib/crypto/schnorr_sign.coax) | `schnorr_sign_step` | Chapter 13's staged signer |
+| [schnorr.coax](../../coax/lib/crypto/schnorr.coax) | `nostr_verify_vartime` | Bitcoin chapter 23's verifier over exactly 32 bytes of message |
+| [schnorr_sign.coax](../../coax/lib/crypto/schnorr_sign.coax) | `schnorr_sign_step` | Bitcoin chapter 24's staged signer |
 
 `event.coax` loads the JSON reader and admission policy of chapter 17, the
-hex codec of chapter 1 and the verifier of chapter 11. It does not load the
+hex codec of Bitcoin chapter 1 and the verifier of Bitcoin chapter 23. It does not load the
 signer. `event_sign.coax` loads `event.coax` and the signer. A relay or a
 client that only reads events loads `event.coax` alone, so no code that
 touches a secret key is compiled into it.
@@ -79,7 +79,7 @@ seven is allowed and skipped: NIP-01 says later NIPs may add fields, and
 some relays add their own. It never enters the ID, so it can't change what
 was signed.
 
-Uppercase hex is refused even though the generic hex decoder of chapter 1
+Uppercase hex is refused even though the generic hex decoder of Bitcoin chapter 1
 accepts it. NIP-01 says lowercase, and two spellings of one ID would give one
 event two keys in a store. `ne_lower_hex` adds one test before the decoder:
 every lowercase hex digit (`0` to `9`, `a` to `f`) has ASCII bit 5 set, and
@@ -145,7 +145,7 @@ ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3
 
 ### Sign
 
-The signature is chapter 13's BIP-340 signature over the 32 bytes of the ID,
+The signature is Bitcoin chapter 24's BIP-340 signature over the 32 bytes of the ID,
 not over the preimage. Sign with BIP-340 vector 1's published secret key
 `b7e15162…5190cfef` and its auxiliary bytes `00…01`. These are test values
 from the BIP; a real key never appears in an example. A pure-Python BIP-340
@@ -213,7 +213,7 @@ too, and then the signature is over a different message and step 3 refuses.
 `nostr_event_sign_step` takes the same inputs on every call and keeps its
 progress in one `NostrSignWork`. One event takes eight calls:
 
-1. Stage 0, the key: run the signer's key stage (call 1 of chapter 13's six)
+1. Stage 0, the key: run the signer's key stage (call 1 of Bitcoin chapter 24's six)
    and keep the x-only public key.
 2. Stage 1, the ID: write the preimage into `scratch` with the same pieces as
    `ne_serialize`, and hash it.
@@ -232,7 +232,7 @@ Inputs are checked before stage 0: `created_at` from 0 to 2^53 - 1, `kind`
 from 0 to 65535, and `tags` one complete JSON value. Any refusal after that
 clears the workspace, which holds the signer's secret intermediates.
 
-The `aux` bytes must be 32 fresh random bytes from the host (chapter 12). The
+The `aux` bytes must be 32 fresh random bytes from the host (Bitcoin chapter 18). The
 example uses BIP-340's fixed test value so that its output can be compared
 byte for byte.
 
@@ -621,8 +621,8 @@ on events signed in Coax; the independent verifier so far is the Python one.
 
 ## Dependencies
 
-- [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md)
-- [13. Sign with Schnorr](ch013-sign-with-schnorr.md)
+- [Bitcoin chapter 23. Verify a Schnorr signature](../../bitcoin/book/ch023-verify-a-schnorr-signature.md)
+- [Bitcoin chapter 24. Sign with Schnorr](../../bitcoin/book/ch024-sign-with-schnorr.md)
 - [17. JSON you can sign](ch017-json-you-can-sign.md)
 - [Coax chapter 18, The protocol boundary](../../coax/book/ch18-protocol.md)
 

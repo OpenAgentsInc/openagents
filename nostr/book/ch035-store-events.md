@@ -4,7 +4,7 @@ A relay must keep what it acknowledged. This chapter builds the store:
 in-memory decisions, an append-only file, replacement rules and recovery after
 a crash.
 
-Part IX, A relay. Result: Verified originals with one copy per ID, replaceable
+Part V, A relay. Result: Verified originals with one copy per ID, replaceable
 and addressable replacement with the same-second lowest-ID rule, an fsync
 before `OK`, and crash recovery that cuts only a partial last write.
 
@@ -144,7 +144,7 @@ frame, reads the event as admission does, verifies its signature again and
 re-admits it. Nothing in the file is trusted. The signature check is
 `ne_signed_fast` ([event_verify_fast.coax](../../coax/lib/nostr/event_verify_fast.coax),
 `#authority`): it checks the read admission already made (its id
-recomputed from the text) with chapter 11's fast verifier instead of
+recomputed from the text) with Bitcoin chapter 23's fast verifier instead of
 reading the text a second time for the reference verifier. Built at -O2,
 the relay replays 50,000 events in about 20 s; at -O1 with the reference
 verifier it took about 22 ms an event, about 20 minutes. No shortcut was

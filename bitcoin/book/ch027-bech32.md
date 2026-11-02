@@ -1,11 +1,12 @@
-# 15. Bech32
+# 27. Bech32
 
-NIP-19 writes keys and references as Bech32 strings such as `npub1…`. This
+Segwit v0 addresses are Bech32 strings such as `bc1q…`, and NIP-19 writes
+Nostr keys and references as Bech32 strings such as `npub1…`. This
 chapter builds the BIP-173 encoding: the 5-bit conversion, the BCH checksum
-and the rules for case and length. Chapter 16 builds the NIP-19 entities on
-top of it.
+and the rules for case and length. Chapter 28 adds Bech32m for Taproot
+addresses, and Nostr chapter 16 builds the NIP-19 entities on top of it.
 
-Part IV, Encodings. Result: BIP-173 Bech32 (checksum constant 1, never
+Part V, Encodings and addresses. Result: BIP-173 Bech32 (checksum constant 1, never
 Bech32m) with the pinned vectors and canonical lowercase re-encoding.
 
 ## What this chapter teaches
@@ -239,12 +240,12 @@ without the checksum, to the caller's buffers.
 
 ## The example
 
-The example is [nostr/examples/bech32.coax](../examples/bech32.coax). It
+The example is [bitcoin/examples/bech32.coax](../examples/bech32.coax). It
 prints the polymod states for `a`, regroups `7e 7e`, encodes and decodes
 NIP-19's example npub, re-encodes an uppercase string, and shows six
 refusals.
 
-<!-- source: nostr/examples/bech32.coax example -->
+<!-- source: bitcoin/examples/bech32.coax example -->
 ```jai
 #load "../../coax/lib/nostr/nip19-core.coax";
 #load "../../coax/lib/nostr/hex.coax";
@@ -354,7 +355,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/bech32.coax
+coax/bin/coax run bitcoin/examples/bech32.coax
 ```
 
 The states and checksum words are the ones worked out by hand, and the npub
@@ -408,14 +409,14 @@ The refusals:
   spare bits is 1.
 
 The book's checks run this program in debug and release builds and compare
-the output with [nostr/fixtures/bech32.out](../fixtures/bech32.out).
+the output with [bitcoin/fixtures/bech32.out](../fixtures/bech32.out).
 
 ## How the code is checked
 
 ### Checks in the example
 
 The checks are in
-[nostr/examples/checks/bech32.coax](../examples/checks/bech32.coax), which
+[bitcoin/examples/checks/bech32.coax](../examples/checks/bech32.coax), which
 loads the example, so running the example doesn't run them. They compare
 the code with published and hand-derived values:
 
@@ -430,7 +431,7 @@ the code with published and hand-derived values:
 - NIP-19's two npub examples encode from their hex keys and decode back;
 - `7e 7e` regroups to 15, 25, 31, 0.
 
-<!-- source: nostr/examples/checks/bech32.coax check -->
+<!-- source: bitcoin/examples/checks/bech32.coax check -->
 ```jai
 // BIP-173's valid Bech32 strings, copied from the pinned
 // coax/tests/vectors/upstream/bip173/bip-0173.mediawiki. Each decodes, and
@@ -538,8 +539,8 @@ NPUBS :: [4] string.[
 To run them:
 
 ```shell
-coax/bin/coax test nostr/examples/checks/bech32.coax
-coax/bin/coax mutate nostr/examples/checks/bech32.coax --root-only
+coax/bin/coax test bitcoin/examples/checks/bech32.coax
+coax/bin/coax mutate bitcoin/examples/checks/bech32.coax --root-only
 ```
 
 `coax test` runs 19 checks, including the loaded files' own checks, in

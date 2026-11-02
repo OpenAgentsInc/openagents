@@ -7,7 +7,7 @@ enough zeros. This chapter measures difficulty, reads the `nonce` tag, mines
 a note with a test key and builds the relay's admission check with its
 `pow:` refusals.
 
-Part X, Every NIP. Result: NIP-13 difficulty as the number of leading zero
+Part VI, Every NIP. Result: NIP-13 difficulty as the number of leading zero
 bits of the event ID, the `nonce` tag with its target, and relay admission by
 `pow:` reason.
 
@@ -446,7 +446,7 @@ To run it:
 coax/bin/coax run nostr/examples/proof-of-work.coax --run-steps 250000000
 ```
 
-Signing loads chapter 10's comb tables, so the program compiles with
+Signing loads Bitcoin chapter 16's comb tables, so the program compiles with
 `--run-steps 250000000`. The output, which the book's checks compare in
 debug and release ([proof-of-work.out](../fixtures/proof-of-work.out)):
 
@@ -618,7 +618,7 @@ IDS_BITS :: [9] int.[0, 36, 10, 21, 0, 1, 256, 255, 16];
 - Python's IDs for the refused notes match `n13_preimage` and SHA-256, and
   their difficulties match the hand counts.
 - NIP-13's published note has Python's ID, 21 bits, and a signature that
-  chapter 11's verifier accepts.
+  Bitcoin chapter 23's verifier accepts.
 - NIP-13's JavaScript `countLeadingZeroes`, transcribed, counts nibbles
   instead of bytes; it agrees with `nip13_difficulty` and with the hand
   values on nine IDs.

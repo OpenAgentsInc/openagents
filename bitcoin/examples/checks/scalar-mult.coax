@@ -1,6 +1,6 @@
 // The checks of scalar-mult.coax. They live apart so that running the
 // example doesn't also run them.
-// Checks: coax test nostr/examples/checks/scalar-mult.coax --run-steps 250000000
+// Checks: coax test bitcoin/examples/checks/scalar-mult.coax --run-steps 250000000
 #load "../scalar-mult.coax";
 
 // book:begin check
@@ -56,7 +56,7 @@ BIP340 :: [8] string.[
   public := ecmult_vartime(k, sg_infinity(), sc_small(0));
   #assert public.ok && same_point(public.value, got);
 }
-// Repeated addition uses only the group law of chapter 9.
+// Repeated addition uses only the group law of chapter 15.
 times :: (k: int, p: SgPoint) -> SgPoint {
   r := sg_infinity();
   for i: 0..<k { r = sg_add(r, p).value; }

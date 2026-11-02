@@ -8,7 +8,7 @@ NIP-34 events, so the project pages read them with the code in this
 chapter. The chapter reads a repository announcement, an issue, a patch
 and status events, and works out which status decides an issue's state.
 
-Part X, Every NIP. Result: NIP-34 repository announcements (30617), issues
+Part VI, Every NIP. Result: NIP-34 repository announcements (30617), issues
 (1621), patches (1617) and statuses (1630 to 1633), read and checked, and
 the state of an issue or patch resolved from the newest status by its
 author or a maintainer. Repository state (30618), pull requests (1618,

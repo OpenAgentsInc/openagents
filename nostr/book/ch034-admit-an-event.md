@@ -4,7 +4,7 @@ A relay decides which events it accepts. This chapter follows one `EVENT`
 frame through the Coax relay's admission path, from the WebSocket frame to
 the `OK` reply, with the limits of the Rust relay it replaces.
 
-Part IX, A relay. Result: The relay's EVENT admission: verify ID and
+Part V, A relay. Result: The relay's EVENT admission: verify ID and
 signature, check size, tag and time limits, answer `OK` with the standard
 prefixes, and route each frame from one connection.
 
@@ -84,7 +84,7 @@ and passes it to `ry_message`. The steps:
    before it stores it, so `OK true` follows the write.
 
 The signature check is the slowest step: one BIP-340 verification is a
-variable-time multi-scalar multiplication (chapter 11). Every check before
+variable-time multi-scalar multiplication (Bitcoin chapter 23). Every check before
 it reads bytes and compares numbers. So a flood of events that fail the
 policy costs the relay no curve arithmetic, and an event that breaks two
 rules is answered with the first one in this order.
@@ -406,7 +406,7 @@ coax/bin/coax run nostr/examples/relay-admit.coax --run-steps 250000000
 ```
 
 `--run-steps` gives the compile-time tables of the signer and verifier
-(chapter 10's fixed-base table) the budget they need. The output:
+(Bitcoin chapter 16's fixed-base table) the budget they need. The output:
 
 ```text
 the wire: a WebSocket frame's length is checked before its payload

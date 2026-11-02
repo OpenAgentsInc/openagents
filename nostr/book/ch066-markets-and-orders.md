@@ -6,7 +6,7 @@ both under the repository's Bitcoin-only rule: any price is shown as it is
 written, but only a price in BTC or sats becomes an amount you pay, and
 only Bitcoin rails are ever offered or chosen for payment.
 
-Part X, Every NIP. Result: NIP-99 classified listings (30402 and 30403
+Part VI, Every NIP. Result: NIP-99 classified listings (30402 and 30403
 drafts) with `price` in a currency and frequency, NIP-69 peer-to-peer order
 events (38383), and the unrecommended NIP-15 marketplace: stalls (30017),
 products (30018), its three checkout messages and an order's total in sats.

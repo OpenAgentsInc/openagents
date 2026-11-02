@@ -8,7 +8,7 @@ offered. This chapter reads the list, checks Bitcoin addresses down to
 their checksums, and divides one payment between several recipients by
 weight.
 
-Part X, Every NIP. Result: NIP-A3 kind 10133 `payto` tags, with only the
+Part VI, Every NIP. Result: NIP-A3 kind 10133 `payto` tags, with only the
 Bitcoin and Lightning target types acted on under the repository rule.
 
 ## What this chapter teaches
@@ -33,8 +33,8 @@ Bitcoin and Lightning target types acted on under the repository rule.
 | File | Procedure | What it does |
 | --- | --- | --- |
 | [nip32.coax](../../coax/lib/nostr/nip32.coax) | `n32_tag(e, i)` | Reads a tag of any name: the name and its first two values (chapter 55) |
-| [bech32-core.coax](../../coax/lib/nostr/bech32-core.coax) | `b32_prefix`, `b32_step`, `b32_digit` | The Bech32 checksum polymod and alphabet (chapter 15) |
-| [sha256.coax](../../coax/lib/crypto/sha256.coax) | `sha256_hash_checked` | SHA-256 (chapter 4) |
+| [bech32-core.coax](../../coax/lib/nostr/bech32-core.coax) | `b32_prefix`, `b32_step`, `b32_digit` | The Bech32 checksum polymod and alphabet (Bitcoin chapter 27) |
+| [sha256.coax](../../coax/lib/crypto/sha256.coax) | `sha256_hash_checked` | SHA-256 (Bitcoin chapter 4) |
 | [nipa3.coax](../../coax/lib/nostr/nipa3.coax) | `a3_list(e)` | A kind 10133 event's `payto` targets, each with a status |
 | [nipa3.coax](../../coax/lib/nostr/nipa3.coax) | `a3_target(type, address)` | One target: its type sorted, its address checked |
 | [nipa3.coax](../../coax/lib/nostr/nipa3.coax) | `a3_segwit(s)`, `a3_base58(s)` | A Bitcoin address: version, program, form, network |
@@ -46,10 +46,10 @@ decides where money may go. It does not fetch anything, resolve a
 Lightning address's domain, or verify a signature. The caller verifies the
 event (chapter 21) and passes it in.
 
-Chapter 15's `bech32-core.coax` reads Bech32 only. This chapter does not
+Bitcoin chapter 27's `bech32-core.coax` reads Bech32 only. This chapter does not
 change it. `a3_segwit` calls its polymod (`b32_prefix`, `b32_step`) and
 compares the residue with both constants itself, so the library gains
-Bech32m without a new code path in chapter 15.
+Bech32m without a new code path in Bitcoin chapter 27.
 
 ## The record
 
@@ -154,7 +154,7 @@ a3_list :: (e:NostrEvent)->A3List {
 
 ## Segwit addresses
 
-A segwit address is Bech32 text (chapter 15): a human-readable part, the
+A segwit address is Bech32 text (Bitcoin chapter 27): a human-readable part, the
 separator `1`, data words of 5 bits each, and six checksum words. For a
 Bitcoin address:
 
@@ -206,7 +206,7 @@ never offered.
 The BIP-350 mainnet Taproot address
 `bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0`
 decodes the same way to version 1 and the 32 bytes `79be667e...16f81798`,
-the x coordinate of the generator `G` (chapter 9). That one is offered.
+the x coordinate of the generator `G` (Bitcoin chapter 15). That one is offered.
 
 <!-- source: coax/lib/nostr/nipa3.coax segwit -->
 ```jai
@@ -636,7 +636,7 @@ produce:
   program from the rest;
 - BIP-350's 15 invalid segwit addresses, each refused for the reason
   BIP-350 states;
-- BIP-350's 7 generic Bech32m strings, whose residue through chapter 15's
+- BIP-350's 7 generic Bech32m strings, whose residue through Bitcoin chapter 27's
   polymod is `0x2bc830a3`;
 - BIP-173's segwit vectors from the pinned
   `coax/tests/vectors/upstream/bip173/bip-0173.mediawiki`: its v0
@@ -701,7 +701,7 @@ BIP350_WHY :: [15] int.[A3_ADDRESS, A3_CHECKSUM, A3_CHECKSUM, A3_CHECKSUM, A3_CH
   #assert a3_try("bitcoin", BIP350_INVALID[i]).status == BIP350_WHY[i];
 }
 // BIP-350's generic Bech32m strings leave the residue 0x2bc830a3, through
-// chapter 15's polymod.
+// Bitcoin chapter 27's polymod.
 BECH32M_VALID :: [7] string.["A1LQFN3A", "a1lqfn3a",
   "an83characterlonghumanreadablepartthatcontainsthetheexcludedcharactersbioandnumber11sg7hg6",
   "abcdef1l7aum6echk45nj3s0wdvt2fg8x9yrzpqzd3ryx",
@@ -828,8 +828,8 @@ example were not run.
 ## Dependencies
 
 - [22. Kinds and tags](ch022-kinds-and-tags.md)
-- [15. Bech32](ch015-bech32.md)
-- [4. SHA-256](ch004-sha-256.md)
+- [Bitcoin chapter 27. Bech32](../../bitcoin/book/ch027-bech32.md)
+- [4. SHA-256](../../bitcoin/book/ch004-sha-256.md)
 
 ## Sources
 

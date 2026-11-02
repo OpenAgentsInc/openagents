@@ -1,6 +1,6 @@
 // The checks of chacha20.coax. They live apart so that running the example
 // doesn't also run them.
-// Checks: coax test nostr/examples/checks/chacha20.coax
+// Checks: coax test bitcoin/examples/checks/chacha20.coax
 #load "../chacha20.coax";
 
 // book:begin check

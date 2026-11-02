@@ -5,7 +5,7 @@ to them, polls and their votes, and highlighted passages of text. This
 chapter reads and writes each of them, checks dates and times, and counts a
 poll's votes exactly as NIP-88 says.
 
-Part X, Every NIP. Result: NIP-52 date (31922) and time (31923) events,
+Part VI, Every NIP. Result: NIP-52 date (31922) and time (31923) events,
 calendars (31924) and RSVPs (31925); NIP-88 polls (1068) and responses (1018);
 NIP-84 highlights (9802).
 

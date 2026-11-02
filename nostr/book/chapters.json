@@ -4,316 +4,146 @@
  "chapters": [
   {
    "number": 1,
-   "title": "Bytes, hex and base64",
-   "file": "ch001-bytes-hex-and-base64.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    "coax:5",
-    "coax:6"
-   ],
-   "source": [
-    "coax/lib/crypto/bytes.coax",
-    "coax/lib/nostr/base64.coax",
-    "coax/lib/nostr/codecs-common.coax",
-    "coax/lib/nostr/hex.coax",
-    "nostr/examples/bytes-hex-base64.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/main.coax",
-    "apps/openagents-web/project-names.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 1: Bytes, hex and base64",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 2,
-   "title": "Big integers in fixed limbs",
-   "file": "ch002-big-integers-in-fixed-limbs.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1,
-    "coax:13"
-   ],
-   "source": [
-    "coax/lib/crypto/secp_field.coax",
-    "coax/lib/crypto/secp_scalar.coax",
-    "nostr/examples/big-integers-in-limbs.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/secp_group.coax",
-    "coax/lib/crypto/secp_mult_const.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 2: Big integers in fixed limbs",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 3,
-   "title": "Constant-time rules and secrets",
-   "file": "ch003-constant-time-rules.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1,
-    2,
-    "coax:23"
-   ],
-   "source": [
-    "coax/lib/crypto/bytes.coax",
-    "coax/lib/crypto/secret-flow.coax",
-    "coax/lib/crypto/secret-types.coax",
-    "coax/lib/crypto/zeroize.coax",
-    "nostr/examples/constant-time-rules.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
+   "title": "Moved to Bitcoin chapter 3: Constant-time rules and secrets",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
    "adopted_by": []
   },
   {
    "number": 4,
-   "title": "SHA-256",
-   "file": "ch004-sha-256.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1
-   ],
-   "source": [
-    "coax/lib/crypto/sha256-kernel.coax",
-    "coax/lib/crypto/sha256.coax",
-    "coax/lib/crypto/sha256_workspace.coax",
-    "nostr/examples/sha-256.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "psionic/lib/model-io/identity.coax",
-    "psionic/lib/pylon/host.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 4: SHA-256",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 5,
-   "title": "HMAC-SHA256",
-   "file": "ch005-hmac-sha256.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    4
-   ],
-   "source": [
-    "coax/lib/crypto/hmac.coax",
-    "coax/lib/crypto/hmac_workspace.coax",
-    "nostr/examples/hmac-sha256.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/hkdf.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 8: HMAC-SHA256",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 6,
-   "title": "HKDF",
-   "file": "ch006-hkdf.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    5
-   ],
-   "source": [
-    "coax/lib/crypto/hkdf.coax",
-    "nostr/examples/hkdf.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/nostr/nip44.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 9: HKDF",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 7,
-   "title": "Field arithmetic mod p",
-   "file": "ch007-field-arithmetic-mod-p.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    2,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/secp_field.coax",
-    "coax/lib/crypto/secp_field32.coax",
-    "coax/lib/crypto/secp_field32_total.coax",
-    "nostr/examples/field-arithmetic.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/secp_group.coax",
-    "coax/lib/crypto/secp_group32.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 13: Field arithmetic mod p",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 8,
-   "title": "Scalars mod n",
-   "file": "ch008-scalars-mod-n.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    2,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/secp_scalar.coax",
-    "nostr/examples/scalars.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/secp_mult_const.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 14: Scalars mod n",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 9,
-   "title": "The secp256k1 group law",
-   "file": "ch009-the-secp256k1-group-law.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    7
-   ],
-   "source": [
-    "coax/lib/crypto/secp_group.coax",
-    "coax/lib/crypto/secp_group32.coax",
-    "nostr/examples/group-law.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/secp_mult_const.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 15: The secp256k1 group law",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 10,
-   "title": "Scalar multiplication",
-   "file": "ch010-scalar-multiplication.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    8,
-    9,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/secp_mult.coax",
-    "coax/lib/crypto/secp_mult_base.coax",
-    "coax/lib/crypto/secp_mult_const.coax",
-    "nostr/examples/scalar-mult.coax",
-    "nostr/examples/checks/scalar-mult.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/ecdh.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 16: Scalar multiplication",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 11,
-   "title": "Verify a Schnorr signature",
-   "file": "ch011-verify-a-schnorr-signature.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    4,
-    8,
-    10
-   ],
-   "source": [
-    "coax/lib/crypto/schnorr.coax",
-    "coax/lib/crypto/schnorr_admission.coax",
-    "coax/lib/crypto/schnorr_fast.coax",
-    "nostr/examples/schnorr-verify.coax",
-    "nostr/examples/checks/schnorr-verify.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "apps/openagents-web/nip01-verify.coax",
-    "coax/web/api/nip98.coax",
-    "coax/web/project/landing-nostr.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 23: Verify a Schnorr signature",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 12,
-   "title": "Keys and randomness",
-   "file": "ch012-keys-and-randomness.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    8,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/entropy.coax",
-    "coax/lib/nostr/keys.coax",
-    "nostr/examples/keys.coax",
-    "nostr/examples/checks/keys.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "psionic/lib/fleet/runtime.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 18: Keys and randomness",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 13,
-   "title": "Sign with Schnorr",
-   "file": "ch013-sign-with-schnorr.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    11,
-    12,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/schnorr_self_verify.coax",
-    "coax/lib/crypto/schnorr_sign.coax",
-    "nostr/examples/schnorr-sign.coax",
-    "nostr/examples/checks/schnorr-sign.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/nostr/event_sign.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 24: Sign with Schnorr",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 14,
@@ -322,8 +152,8 @@
    "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
-    10,
-    12
+    "bitcoin:16",
+    "bitcoin:18"
    ],
    "source": [
     "coax/lib/crypto/ecdh.coax",
@@ -342,26 +172,14 @@
   },
   {
    "number": 15,
-   "title": "Bech32",
-   "file": "ch015-bech32.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    1
-   ],
-   "source": [
-    "coax/lib/nostr/bech32-core.coax",
-    "coax/lib/nostr/nip19-core.coax",
-    "nostr/examples/bech32.coax",
-    "nostr/examples/checks/bech32.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-web/project-names.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 27: Bech32",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 16,
@@ -370,7 +188,7 @@
    "status": "implemented",
    "profile": "native C",
    "depends_on": [
-    15
+    "bitcoin:27"
    ],
    "source": [
     "coax/lib/nostr/nip19-core.coax",
@@ -392,8 +210,8 @@
    "status": "implemented",
    "profile": "native C",
    "depends_on": [
-    1,
-    4,
+    "bitcoin:1",
+    "bitcoin:4",
     "coax:18"
    ],
    "source": [
@@ -414,26 +232,14 @@
   },
   {
    "number": 18,
-   "title": "ChaCha20",
-   "file": "ch018-chacha20.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1
-   ],
-   "source": [
-    "coax/lib/crypto/chacha20.coax",
-    "coax/lib/crypto/hchacha20.coax",
-    "nostr/examples/chacha20.coax",
-    "nostr/examples/checks/chacha20.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/nostr/nip44.coax"
-   ]
+   "title": "Moved to Bitcoin chapter 11: ChaCha20",
+   "file": null,
+   "status": "moved",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   },
   {
    "number": 19,
@@ -443,7 +249,7 @@
    "profile": "native C",
    "depends_on": [
     14,
-    1
+    "bitcoin:1"
    ],
    "source": [
     "coax/lib/crypto/aes.coax",
@@ -463,11 +269,11 @@
    "status": "implemented",
    "profile": "native C",
    "depends_on": [
-    6,
+    "bitcoin:9",
     14,
-    18,
-    5,
-    1
+    "bitcoin:11",
+    "bitcoin:8",
+    "bitcoin:1"
    ],
    "source": [
     "coax/lib/nostr/nip44-key.coax",
@@ -491,8 +297,8 @@
    "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
-    11,
-    13,
+    "bitcoin:23",
+    "bitcoin:24",
     17,
     "coax:18"
    ],
@@ -590,7 +396,7 @@
    "depends_on": [
     20,
     21,
-    13
+    "bitcoin:24"
    ],
    "source": [
     "coax/lib/nostr/nip59.coax",
@@ -609,8 +415,8 @@
    "status": "implemented",
    "profile": "native C",
    "depends_on": [
-    4,
-    1
+    "bitcoin:4",
+    "bitcoin:1"
    ],
    "source": [
     "coax/lib/crypto/sha1.coax",
@@ -1014,7 +820,7 @@
    "profile": "native C",
    "depends_on": [
     36,
-    4
+    "bitcoin:4"
    ],
    "source": [
     "coax/lib/nostr/nip77.coax",
@@ -1084,8 +890,8 @@
    "status": "implemented",
    "profile": "native C",
    "depends_on": [
-    13,
-    5
+    "bitcoin:24",
+    "bitcoin:8"
    ],
    "source": [
     "coax/lib/crypto/bip32.coax",
@@ -1111,9 +917,9 @@
    "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
-    18,
-    5,
-    15
+    "bitcoin:11",
+    "bitcoin:8",
+    "bitcoin:27"
    ],
    "source": [
     "coax/lib/crypto/poly1305.coax",
@@ -1136,7 +942,7 @@
    "status": "implemented",
    "profile": "native C",
    "depends_on": [
-    12,
+    "bitcoin:18",
     20,
     31
    ],
@@ -1159,7 +965,7 @@
    "profile": "native C and wasm",
    "depends_on": [
     21,
-    4
+    "bitcoin:4"
    ],
    "source": [
     "coax/lib/nostr/nip98-observe.coax",
@@ -1572,7 +1378,7 @@
    "profile": "native C",
    "depends_on": [
     22,
-    4
+    "bitcoin:4"
    ],
    "source": [
     "coax/lib/nostr/nip73.coax",
@@ -1680,8 +1486,8 @@
    "profile": "native C",
    "depends_on": [
     22,
-    15,
-    4
+    "bitcoin:27",
+    "bitcoin:4"
    ],
    "source": [
     "coax/lib/nostr/nipa3.coax",
@@ -2015,7 +1821,7 @@
    "profile": "native C and wasm",
    "depends_on": [
     38,
-    1
+    "bitcoin:1"
    ],
    "source": [
     "coax/lib/crypto/rsa_verify.coax",
@@ -2092,7 +1898,7 @@
    "profile": "native C",
    "depends_on": [
     63,
-    13
+    "bitcoin:24"
    ],
    "source": [
     "coax/lib/nostr/adapters/gs-projection.coax",
@@ -2139,8 +1945,8 @@
    "status": "implemented",
    "profile": "native C",
    "depends_on": [
-    4,
-    11,
+    "bitcoin:4",
+    "bitcoin:23",
     20
    ],
    "source": [
@@ -2210,7 +2016,7 @@
    "status": "implemented",
    "profile": "native C",
    "depends_on": [
-    11,
+    "bitcoin:23",
     23,
     36
    ],
@@ -2364,7 +2170,7 @@
    "depends_on": [
     79,
     80,
-    13,
+    "bitcoin:24",
     87,
     78,
     76
@@ -2425,7 +2231,7 @@
    "status": "partly implemented",
    "profile": "native C",
    "depends_on": [
-    13,
+    "bitcoin:24",
     46,
     79,
     83

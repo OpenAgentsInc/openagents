@@ -8,7 +8,7 @@ plan, the send, the open and the room on top of chapter 25, works out
 Alice's message to Bob and Carol by hand, and checks it against an
 independent implementation and NIP-17's own example.
 
-Part X, Every NIP. Result: NIP-17 kind 14 chat messages sent as gift wraps
+Part VI, Every NIP. Result: NIP-17 kind 14 chat messages sent as gift wraps
 to every participant, kind 10050 DM relay lists that decide where each wrap
 goes (and that nothing goes to a user without one), rooms named by their
 member set and ordered by time, and kind 15 file messages checked for their

@@ -311,7 +311,7 @@ n94_check :: (f:N94File,bytes:[]u8,original:bool)->int {
   return N94_OK;
 }
 // The SHA-256 of bytes of any size, streamed in pieces of chunk bytes
-// (chapter 4's init, update and final); SHA_OK, or the hash's refusal.
+// (Bitcoin chapter 4's init, update and final); SHA_OK, or the hash's refusal.
 n94_digest :: (bytes:[]u8,chunk:int,out:[]u8)->u32 {
   if chunk<1 {return SHA_BAD_INPUT;}
   state:[112]u8;

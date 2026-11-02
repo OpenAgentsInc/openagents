@@ -11,7 +11,7 @@ the parts that decide or verify: the run journal's digest and replay with
 controller handoff, the trajectory chunk check, and the terminal client's
 frame order.
 
-Part X, Every NIP. Result: NIP-RUN record digests, journal replay that
+Part VI, Every NIP. Result: NIP-RUN record digests, journal replay that
 refuses gaps, forks, broken chains, forged digests, stale or unadmitted
 controllers and forbidden transitions, controller handoff with fencing, and
 the head-hint check; NIP-ATIF chunk verification that reports each missing

@@ -161,7 +161,7 @@ main :: () {
   print("  the user's key is the client's key: %; is the signer's key: %\n", n46_same(c[0].user, key_of(CLIENT)), n46_same(c[0].user, key_of(SIGNER)));
 
   print("\n== 3. sign_event, by hand and by the code\n");
-  // Chapter 12's contract first: the request fixes the event's id.
+  // Bitcoin chapter 18's contract first: the request fixes the event's id.
   t: [1] SignerTable; user := key_of(USER);
   ask := signer_ask(t[..], SIGNER_PHONE, SCOPE_EVENT, user[..], 1, T0, "[]", "hello from a bunker", T0, 60, scratch[..]);
   ok := signer_approve(t[..], ask.id, T0);

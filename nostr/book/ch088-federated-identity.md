@@ -10,7 +10,7 @@ the offline check: RSA signature verification with SHA-256, the compact JWS
 and JWKS formats, and the community, issuer, audience and clock rules, with
 one algorithm allowed and every other refused.
 
-Part X, Every NIP. Result: a local NIP-FI verifier for the selected profile
+Part VI, Every NIP. Result: a local NIP-FI verifier for the selected profile
 `fi-rs256-policy-v1`. It frames a compact JWS from its original bytes,
 projects a closed protected header (`RS256` only), selects the community from
 `Host` and the issuer from the community's allowlist, checks the token class,
@@ -764,7 +764,7 @@ public values) or a trace of a real provider.
 ## Dependencies
 
 - [38. NIP-42 authentication](ch038-nip-42-authentication.md)
-- [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md)
+- [1. Bytes, hex and base64](../../bitcoin/book/ch001-bytes-hex-and-base64.md)
 
 ## Sources
 

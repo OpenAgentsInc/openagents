@@ -8,42 +8,21 @@ Chapter labels describe the stated teaching profiles. They do not assert full
 implementation of every cited NIP or a production deployment; the completion
 route records those remaining exits.
 
-**I. Foundations**
+The cryptography Nostr uses is Bitcoin's. Chapters 1–13, 15 and 18 (bytes,
+big integers, constant-time rules, SHA-256, HMAC, HKDF, ChaCha20, secp256k1,
+BIP-340 Schnorr signatures and Bech32) moved to
+[Bitcoin From Scratch](../../bitcoin/book/README.md); read its Parts I–V
+first. Their numbers here are kept and marked moved.
 
-- [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) — implemented
-- [2. Big integers in fixed limbs](ch002-big-integers-in-fixed-limbs.md) — implemented
-- [3. Constant-time rules and secrets](ch003-constant-time-rules.md) — implemented
+**I. Shared secrets, encodings and encryption**
 
-**II. Hashes and MACs**
-
-- [4. SHA-256](ch004-sha-256.md) — implemented
-- [5. HMAC-SHA256](ch005-hmac-sha256.md) — implemented
-- [6. HKDF](ch006-hkdf.md) — implemented
-
-**III. Elliptic curves**
-
-- [7. Field arithmetic mod p](ch007-field-arithmetic-mod-p.md) — implemented
-- [8. Scalars mod n](ch008-scalars-mod-n.md) — implemented
-- [9. The secp256k1 group law](ch009-the-secp256k1-group-law.md) — implemented
-- [10. Scalar multiplication](ch010-scalar-multiplication.md) — implemented
-- [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md) — implemented
-- [12. Keys and randomness](ch012-keys-and-randomness.md) — implemented
-- [13. Sign with Schnorr](ch013-sign-with-schnorr.md) — implemented
 - [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md) — implemented
-
-**IV. Encodings**
-
-- [15. Bech32](ch015-bech32.md) — implemented
 - [16. NIP-19 entities and nostr: URIs](ch016-nip-19-entities-and-nostr-uris.md) — implemented
 - [17. JSON you can sign](ch017-json-you-can-sign.md) — implemented
-
-**V. Encryption**
-
-- [18. ChaCha20](ch018-chacha20.md) — implemented
 - [19. NIP-04 and why it is retired](ch019-nip-04-and-why-it-is-retired.md) — implemented
 - [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md) — implemented
 
-**VI. The event model**
+**II. The event model**
 
 - [21. Events, IDs and signatures](ch021-events-ids-and-signatures.md) — implemented
 - [22. Kinds and tags](ch022-kinds-and-tags.md) — implemented
@@ -51,13 +30,13 @@ route records those remaining exits.
 - [24. Relay messages](ch024-relay-messages.md) — implemented
 - [25. Gift wrap](ch025-gift-wrap.md) — implemented
 
-**VII. Transport**
+**III. Transport**
 
 - [26. WebSocket frames](ch026-websocket-frames.md) — implemented
 - [27. A WebSocket server](ch027-a-websocket-server.md) — implemented
 - [28. Sockets, TLS and relay URLs](ch028-sockets-tls-and-relay-urls.md) — implemented
 
-**VIII. A client**
+**IV. A client**
 
 - [29. A relay connection](ch029-a-relay-connection.md) — implemented
 - [30. Subscriptions and EOSE](ch030-subscriptions-and-eose.md) — implemented
@@ -65,7 +44,7 @@ route records those remaining exits.
 - [32. Many relays and the outbox model](ch032-many-relays-and-the-outbox-model.md) — implemented
 - [33. A client that survives restarts](ch033-a-client-that-survives-restarts.md) — implemented
 
-**IX. A relay**
+**V. A relay**
 
 - [34. Admit an event](ch034-admit-an-event.md) — implemented
 - [35. Store events](ch035-store-events.md) — implemented
@@ -79,7 +58,7 @@ route records those remaining exits.
 - [43. Negentropy sync](ch043-negentropy-sync.md) — implemented
 - [44. Limits, policy and floods](ch044-limits-policy-and-floods.md) — implemented
 
-**X. Every NIP**
+**VI. Every NIP**
 
 - [45. Profiles, follows and names](ch045-profiles-follows-and-names.md) — implemented
 - [46. Keys from a seed phrase](ch046-keys-from-a-seed-phrase.md) — implemented
@@ -130,7 +109,7 @@ route records those remaining exits.
 - [91. Git signing, projects, leases and read state](ch091-git-signing-projects-leases-and-read-state.md) — implemented
 - [92. Private agent state](ch092-private-agent-state.md) — implemented
 
-**XI. Interop and verification**
+**VII. Interop and verification**
 
 - [93. Test vectors and their provenance](ch093-test-vectors-and-their-provenance.md) — implemented
 - [94. Differential tests](ch094-differential-tests.md) — implemented
@@ -138,7 +117,7 @@ route records those remaining exits.
 - [96. Formal properties](ch096-formal-properties.md) — implemented
 - [97. A conformance report](ch097-a-conformance-report.md)
 
-**XII. Nostr in OpenAgents**
+**VIII. Nostr in OpenAgents**
 
 - [98. Projects on Nostr](ch098-projects-on-nostr.md) — implemented
 - [99. The website and sign-in](ch099-the-website-and-sign-in.md) — implemented

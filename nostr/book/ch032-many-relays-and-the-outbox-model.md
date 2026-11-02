@@ -7,7 +7,7 @@ mentions someone to the relays they read. This chapter reads NIP-65 relay
 lists, chooses relays from them, and merges what several relays send for
 one subscription.
 
-Part VIII, A client. Result: NIP-65 relay lists (kind 10002 with `r` tags
+Part IV, A client. Result: NIP-65 relay lists (kind 10002 with `r` tags
 marked `read` or `write`), reading from an author's write relays, writing to
 your write relays and the tagged users' read relays.
 

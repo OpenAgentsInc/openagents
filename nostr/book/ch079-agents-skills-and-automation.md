@@ -13,7 +13,7 @@ reader, its private carriage both ways, the host's pinned selection, and
 the automation controller's decision about what fires, and runs them
 against artifacts sealed by an independent implementation.
 
-Part X, Every NIP. Result: NIP-AGENT definitions (every field's contract),
+Part VI, Every NIP. Result: NIP-AGENT definitions (every field's contract),
 private carriage (seal and open of the 3188 artifact) and pinned
 selection, and NIP-AUTO scheduling (once, interval and source triggers,
 missed and occupied slots recorded once, one active occurrence, authority
@@ -61,7 +61,7 @@ scheduler decides what runs. The checks came first, and a root-only
 mutation run kills every mutant (see
 [How the code is checked](#how-the-code-is-checked)). The scheduler loads
 no crypto, so its checks run in milliseconds; the carriage reuses chapter
-21's event reader, chapter 11's BIP-340, chapter 20's NIP-44 v2 and the
+21's event reader, Bitcoin chapter 23's BIP-340, chapter 20's NIP-44 v2 and the
 shared artifact envelope (`envelope.coax`).
 
 ## Saved agents

@@ -1,9 +1,9 @@
-# 10. Scalar multiplication
+# 16. Scalar multiplication
 
 Signing, verifying and ECDH each multiply a point by a scalar: `k·P` is `P`
 added to itself `k` times. Verification works on public data and may run in
 variable time. Signing and ECDH use secrets and must not. This chapter
-builds three multiplications on the group law of chapter 9 and says which
+builds three multiplications on the group law of chapter 15 and says which
 later chapter uses each one.
 
 ## What this chapter teaches
@@ -19,14 +19,14 @@ later chapter uses each one.
 
 | File | Procedure | Inputs | Used by |
 | --- | --- | --- | --- |
-| [secp_mult.coax](../../coax/lib/crypto/secp_mult.coax) | `ecmult_vartime(a, P, b)` | public `a`, `b`, `P` | verification (chapter 11) |
-| [secp_mult_base.coax](../../coax/lib/crypto/secp_mult_base.coax) | `smb_comb` | secret `k` | key generation and signing (chapters 12 and 13) |
+| [secp_mult.coax](../../coax/lib/crypto/secp_mult.coax) | `ecmult_vartime(a, P, b)` | public `a`, `b`, `P` | verification (chapter 23) |
+| [secp_mult_base.coax](../../coax/lib/crypto/secp_mult_base.coax) | `smb_comb` | secret `k` | key generation and signing (chapters 18 and 24) |
 | [secp_mult_base_native.coax](../../coax/lib/crypto/secp_mult_base_native.coax) | `smb_multiply_native(k)` | 8 teeth, spacing 32, 256 entries | native builds |
 | [secp_mult_base_web.coax](../../coax/lib/crypto/secp_mult_base_web.coax) | `smb_multiply_web(k)` | 7 teeth, spacing 37, 128 entries | wasm builds |
-| [secp_mult_const.coax](../../coax/lib/crypto/secp_mult_const.coax) | `smc_multiply(k, P)` | secret `k`, public peer `P` | ECDH (chapter 14) |
+| [secp_mult_const.coax](../../coax/lib/crypto/secp_mult_const.coax) | `smc_multiply(k, P)` | secret `k`, public peer `P` | ECDH (Nostr chapter 14) |
 
 Every procedure returns canonical coordinates and the canonical infinity
-`(1, 1, 0)` of chapter 9. Each `_vartime` name marks code that branches and
+`(1, 1, 0)` of chapter 15. Each `_vartime` name marks code that branches and
 indexes on its inputs.
 
 ## Double-and-add
@@ -134,7 +134,7 @@ ECDH multiplies the peer's point, so no table can be precomputed.
 Every scalar runs 256 doublings and 65 additions and reads the same memory.
 The peer must be on the curve, with every coordinate limb inside the field
 code's bound; otherwise the result is `ok` false and infinity. Whether a
-peer is acceptable for ECDH is chapter 14's decision.
+peer is acceptable for ECDH is Nostr chapter 14's decision.
 
 ### Worked example: 200 in signed radix 16
 
@@ -149,12 +149,12 @@ more, stores `16 - value` as a negative digit and carries 1:
 
 ## The example
 
-The example is [nostr/examples/scalar-mult.coax](../examples/scalar-mult.coax).
+The example is [bitcoin/examples/scalar-mult.coax](../examples/scalar-mult.coax).
 It prints the three recodings of 200 and its comb rows, computes `k·G` for
 small and edge scalars by every route, computes `11G - 2(3G)`, multiplies
 the BIP-340 vector 1 secret key, and shows four refusals.
 
-<!-- source: nostr/examples/scalar-mult.coax example -->
+<!-- source: bitcoin/examples/scalar-mult.coax example -->
 ```jai
 #load "../../coax/lib/crypto/secp_mult.coax";
 #load "../../coax/lib/crypto/secp_mult_base_native.coax";
@@ -285,7 +285,7 @@ main :: () {
 Run it from the repository root:
 
 ```shell
-coax/bin/coax run nostr/examples/scalar-mult.coax --run-steps 250000000
+coax/bin/coax run bitcoin/examples/scalar-mult.coax --run-steps 250000000
 ```
 
 The output matches the values worked out by hand: the digits of 200, the
@@ -329,7 +329,7 @@ The refusals:
 - Window 6 is outside 2..5, so `sm_wnaf_vartime` returns `ok` false.
 
 The book's checks run this program in debug and release builds and compare
-the output with [nostr/fixtures/scalar-mult.out](../fixtures/scalar-mult.out).
+the output with [bitcoin/fixtures/scalar-mult.out](../fixtures/scalar-mult.out).
 
 ## Costs
 
@@ -359,7 +359,7 @@ admission verifying many signatures, needs the speed.
 ### Checks in the example
 
 The checks are in
-[nostr/examples/checks/scalar-mult.coax](../examples/checks/scalar-mult.coax),
+[bitcoin/examples/checks/scalar-mult.coax](../examples/checks/scalar-mult.coax),
 which loads the example, so running the example doesn't run them. They
 compare every route with independent values:
 
@@ -368,11 +368,11 @@ compare every route with independent values:
 - the BIP-340 vectors 0 to 3, whose secret keys must give the published x,
   for the native and web combs and the window-2 path;
 - `k·P` for `P = 7G` and `a·G + b·P` for `P = 5G` against repeated
-  addition, which uses only chapter 9's group law;
+  addition, which uses only chapter 15's group law;
 - `2^bit·G` against `bit` doublings, at the first and last rows of the
   teeth of both combs.
 
-<!-- source: nostr/examples/checks/scalar-mult.coax check -->
+<!-- source: bitcoin/examples/checks/scalar-mult.coax check -->
 ```jai
 // k·G for 10 scalars as (k, x, y) hex, computed with Python's
 // arbitrary-precision integers by affine double-and-add. They share no code
@@ -426,7 +426,7 @@ BIP340 :: [8] string.[
   public := ecmult_vartime(k, sg_infinity(), sc_small(0));
   #assert public.ok && same_point(public.value, got);
 }
-// Repeated addition uses only the group law of chapter 9.
+// Repeated addition uses only the group law of chapter 15.
 times :: (k: int, p: SgPoint) -> SgPoint {
   r := sg_infinity();
   for i: 0..<k { r = sg_add(r, p).value; }
@@ -464,8 +464,8 @@ BITS :: [10] int.[0, 31, 32, 36, 37, 63, 111, 222, 224, 255];
 To run them:
 
 ```shell
-coax/bin/coax test nostr/examples/checks/scalar-mult.coax --run-steps 250000000
-coax/bin/coax mutate nostr/examples/checks/scalar-mult.coax --root-only --run-steps 250000000
+coax/bin/coax test bitcoin/examples/checks/scalar-mult.coax --run-steps 250000000
+coax/bin/coax mutate bitcoin/examples/checks/scalar-mult.coax --root-only --run-steps 250000000
 ```
 
 `coax test` runs 130 checks, including the loaded files' own checks, in
@@ -479,7 +479,7 @@ about 90 seconds.
 path to C and wasm and compare it with libsecp256k1 `v0.8.0` on 100,000
 random scalars and the edge cases (0, 1, `n - 1`, `n`, powers of two),
 and the full comb tables entry by entry. They need the oracle built as
-chapter 7 describes. On 2026-11-01, with the oracle built from the pinned
+chapter 13 describes. On 2026-11-01, with the oracle built from the pinned
 archive, `secp_mult.py` passed its 6 tests in about 10 minutes and
 `secp_base.py` its 5 tests in about 5 minutes, on a loaded machine. The
 records are
@@ -522,8 +522,8 @@ time.
 
 ## Dependencies
 
-- [8. Scalars mod n](ch008-scalars-mod-n.md)
-- [9. The secp256k1 group law](ch009-the-secp256k1-group-law.md)
+- [14. Scalars mod n](ch014-scalars-mod-n.md)
+- [15. The secp256k1 group law](ch015-the-secp256k1-group-law.md)
 - [3. Constant-time rules and secrets](ch003-constant-time-rules.md)
 
 ## Sources

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Book tooling: closed example inventory, exact source listings, links and runs.
 
-One checker serves the Psionic, Aethyr, Nostr and Coder books
-(`--book psionic|aethyr|nostr|coder`). Each book keeps chapters as
+One checker serves the Psionic, Aethyr, Nostr, Coder and Bitcoin books
+(`--book psionic|aethyr|nostr|coder|bitcoin`). Each book keeps chapters as
 chNNN-slug.md, an examples.json inventory of its examples/*.coax programs, and
 a status marker on every design draft. Coder has no example programs of its
 own yet: the programs its chapters run are inventoried by another book.
@@ -27,6 +27,7 @@ BOOKS = {
     "aethyr": ("aethyr/book", "aethyr/examples", "aethyr/README.md", 0),
     "nostr": ("nostr/book", "nostr/examples", "nostr/README.md", 0),
     "coder": ("coder/book", None, None, 1),
+    "bitcoin": ("bitcoin/book", "bitcoin/examples", "bitcoin/README.md", 0),
 }
 # Coder's chapters 1-22 moved from Psionic; their programs stay in Psionic's
 # inventory (and its closed-inventory check) until their code moves.

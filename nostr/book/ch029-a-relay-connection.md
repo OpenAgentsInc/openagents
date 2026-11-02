@@ -4,7 +4,7 @@ A client keeps a connection to each relay it uses. This chapter builds the
 state machine that decides what to do when a connection opens, drops or
 misbehaves. It does no I/O itself: the host moves bytes and passes the time.
 
-Part VIII, A client. Result: The pure client state machine: OPEN, CONNECTING,
+Part IV, A client. Result: The pure client state machine: OPEN, CONNECTING,
 CLOSED and BACKOFF, connection generations that make stale reports harmless,
 and capped jittered backoff.
 

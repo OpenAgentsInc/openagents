@@ -6,7 +6,7 @@ request for `POST /api/auth/key`, and the API checks it with chapter 49's
 Coax verifier and answers with a 30-day session. Chapter 49 teaches the
 NIP-98 rules; this chapter teaches what the website adds around them.
 
-Part XII, Nostr in OpenAgents. Result: Logging in to openagents.com with a
+Part VIII, Nostr in OpenAgents. Result: Logging in to openagents.com with a
 NIP-98 signed request from a words account (NIP-06) or a browser signer
 (NIP-07), and the cutover of the C verifier to Coax.
 

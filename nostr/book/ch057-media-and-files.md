@@ -8,7 +8,7 @@ the client can check it. This chapter reads and writes that metadata,
 checks downloaded bytes against the hash, and builds the Blossom server's
 check of a signed upload authorization.
 
-Part X, Every NIP. Result: `imeta` tags (NIP-92) and kind 1063 file
+Part VI, Every NIP. Result: `imeta` tags (NIP-92) and kind 1063 file
 metadata (NIP-94) read, written and checked against downloaded bytes;
 Blossom blob addresses, kind 10063 server lists and kind 24242 upload
 authorizations (NIP-B7) checked with a fixed clock. Picture (NIP-68),
@@ -316,7 +316,7 @@ n94_write :: (f:N94File,out:[]u8,at:int,imeta:bool)->int {
 ## The hash check
 
 `n94_check` is the one decision in this file. It hashes the bytes with
-chapter 4's streaming SHA-256 and compares the result with `x`. Then, if the metadata
+Bitcoin chapter 4's streaming SHA-256 and compares the result with `x`. Then, if the metadata
 has a `size`, the byte count must equal it. With `original` set, the bytes
 must hash to `ox` instead: a server may resize or re-encode an upload, and
 `ox` names the file the author sent. `size` describes the served file, so
@@ -338,7 +338,7 @@ n94_check :: (f:N94File,bytes:[]u8,original:bool)->int {
   return N94_OK;
 }
 // The SHA-256 of bytes of any size, streamed in pieces of chunk bytes
-// (chapter 4's init, update and final); SHA_OK, or the hash's refusal.
+// (Bitcoin chapter 4's init, update and final); SHA_OK, or the hash's refusal.
 n94_digest :: (bytes:[]u8,chunk:int,out:[]u8)->u32 {
   if chunk<1 {return SHA_BAD_INPUT;}
   state:[112]u8;
@@ -358,7 +358,7 @@ wrong size means the metadata is wrong, not the file: two different byte
 strings with one SHA-256 aren't known to exist. So the size check comes
 second and names its own refusal.
 
-Chapter 4's one-shot `sha256_hash_checked` takes at most 1 MiB, and so
+Bitcoin chapter 4's one-shot `sha256_hash_checked` takes at most 1 MiB, and so
 does one `sha256_update_checked` call. `n94_digest` feeds the bytes to
 `sha256_init`, `sha256_update_checked` and `sha256_final_checked` in pieces
 of `chunk` bytes, so a file of any size verifies. `n94_check` uses 1 MiB

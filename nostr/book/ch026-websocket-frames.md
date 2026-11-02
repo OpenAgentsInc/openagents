@@ -84,7 +84,7 @@ be strong: the key is public, and the accept value only shows that the
 server is a WebSocket server that read this request, not an HTTP cache
 replaying an old answer. `sha1.coax` says so in its header, caps its input
 at 4096 bytes and has one caller. Event ids, signatures and encryption use
-SHA-256 (chapter 4) and never SHA-1.
+SHA-256 (Bitcoin chapter 4) and never SHA-1.
 
 ### Worked example: the RFC 6455 section 1.3 key
 
@@ -700,8 +700,8 @@ for this chapter. Chapter 27 is the server side in Coax.
 
 ## Dependencies
 
-- [4. SHA-256](ch004-sha-256.md)
-- [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md)
+- [4. SHA-256](../../bitcoin/book/ch004-sha-256.md)
+- [1. Bytes, hex and base64](../../bitcoin/book/ch001-bytes-hex-and-base64.md)
 
 ## Sources
 

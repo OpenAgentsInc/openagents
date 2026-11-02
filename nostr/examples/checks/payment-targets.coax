@@ -55,7 +55,7 @@ BIP350_WHY :: [15] int.[A3_ADDRESS, A3_CHECKSUM, A3_CHECKSUM, A3_CHECKSUM, A3_CH
   #assert a3_try("bitcoin", BIP350_INVALID[i]).status == BIP350_WHY[i];
 }
 // BIP-350's generic Bech32m strings leave the residue 0x2bc830a3, through
-// chapter 15's polymod.
+// Bitcoin chapter 27's polymod.
 BECH32M_VALID :: [7] string.["A1LQFN3A", "a1lqfn3a",
   "an83characterlonghumanreadablepartthatcontainsthetheexcludedcharactersbioandnumber11sg7hg6",
   "abcdef1l7aum6echk45nj3s0wdvt2fg8x9yrzpqzd3ryx",

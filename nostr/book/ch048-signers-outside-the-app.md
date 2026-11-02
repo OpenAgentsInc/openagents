@@ -8,7 +8,7 @@ signing in Coax: both connection URIs, the request and response messages,
 their NIP-44 encryption, the client's table of waiting requests, the
 connect secret, and the remote signer's permission check.
 
-Part X, Every NIP. Result: NIP-07's `window.nostr`, NIP-46 remote signing
+Part VI, Every NIP. Result: NIP-07's `window.nostr`, NIP-46 remote signing
 over kind 24133 with `bunker://` and `nostrconnect://` URIs, and NIP-55's
 Android signer intents.
 
@@ -39,7 +39,7 @@ Android signer intents.
 | [nip46.coax](../../coax/lib/nostr/nip46.coax) | `n46_tags`, `n46_event`, `n46_key`, `n46_seal`, `n46_open` | The `p` tag, the reading of an event, the conversation key, NIP-44 v2 encryption and decryption |
 | [nip46.coax](../../coax/lib/nostr/nip46.coax) | `n46_client`, `n46_ask`, `n46_take`, `n46_expire` | The client's state and its table of waiting requests |
 | [nip46.coax](../../coax/lib/nostr/nip46.coax) | `n46_admit`, `n46_accept`, `n46_session` | The remote signer's decision on each request, and the session of a pasted `nostrconnect://` URI |
-| [keys.coax](../../coax/lib/nostr/keys.coax) | `signer_ask`, `signer_approve`, `signer_reply` | Chapter 12's signer-request contract: the expected event id, and the check of a signer's reply |
+| [keys.coax](../../coax/lib/nostr/keys.coax) | `signer_ask`, `signer_approve`, `signer_reply` | Bitcoin chapter 18's signer-request contract: the expected event id, and the check of a signer's reply |
 | [nip44-key.coax](../../coax/lib/nostr/nip44-key.coax) | `nip44_conversation_key_from_keys_checked` | ECDH and HKDF-extract (chapter 20) |
 
 `nip46.coax` is new with this chapter. It is an `#authority` file, because
@@ -51,7 +51,7 @@ checks.
 
 Nothing in `nip46.coax` opens a socket, verifies a signature or signs. The
 caller publishes and subscribes (chapter 31), verifies events (chapter 21),
-hands a `sign_event` result to chapter 12's `signer_reply`, and its signer
+hands a `sign_event` result to Bitcoin chapter 18's `signer_reply`, and its signer
 signs.
 
 ## Three ways to reach a signer
@@ -62,7 +62,7 @@ the user's key. They differ in the transport.
 
 | Interface | Transport | Who builds it here |
 | --- | --- | --- |
-| NIP-07 | A JavaScript object, `window.nostr`, injected by a browser extension | The host: `coax/web/host.js` calls it; chapter 12's `signer_template` writes its input and `signer_reply` checks its output |
+| NIP-07 | A JavaScript object, `window.nostr`, injected by a browser extension | The host: `coax/web/host.js` calls it; Bitcoin chapter 18's `signer_template` writes its input and `signer_reply` checks its output |
 | NIP-55 | Android intents and content-resolver queries to a signer app | Not built. Described below |
 | NIP-46 | Encrypted kind 24133 events over relays | This chapter, in Coax |
 
@@ -81,7 +81,7 @@ async window.nostr.signEvent(event: {created_at, kind, tags, content}): Event
 `nip04` methods are deprecated; this stack doesn't call them.
 
 Calling a JavaScript object is a host effect, so the Coax side is only the
-contract. Chapter 12's `signer_template` writes the
+contract. Bitcoin chapter 18's `signer_template` writes the
 `{"kind","created_at","tags","content"}` object that
 `coaxial_nip07_sign` in `coax/web/host.js` passes to `signEvent`. When the
 extension answers, `signer_reply` accepts the event only if its id is the
@@ -462,7 +462,7 @@ n46_template :: (text:string)->N46Template {
 
 The writers emit the same bytes as Python's `json.dumps` with compact
 separators and the keys in the order shown. `n46_sign_params` writes the
-template in the order chapter 12's `signer_template` uses for NIP-07.
+template in the order Bitcoin chapter 18's `signer_template` uses for NIP-07.
 
 <!-- source: coax/lib/nostr/nip46.coax write -->
 ```jai
@@ -490,7 +490,7 @@ n46_response_json :: (r:N46Reply,out:[]u8)->int {
   return json_raw(out,n,"}");
 }
 // sign_event's param for an event: kind, created_at, tags, content, the
-// order chapter 12's signer_template writes for NIP-07.
+// order Bitcoin chapter 18's signer_template writes for NIP-07.
 n46_sign_params :: (kind:int,created_at:int,tags:string,content:string,out:[]u8)->int {
   decoded:[N46_MAX_STR]u8;
   if kind<0 || kind>65535 || created_at<0 {return -1;}
@@ -570,7 +570,7 @@ caller's clock plus a wait of 1 to 300 seconds. A response counts only if:
 Then an auth challenge keeps the request waiting, an error frees it, and a
 result frees it after a check per method: `connect` must return `"ack"` or
 the secret, `get_public_key` a 64-digit lowercase key, `ping` `"pong"`,
-and `logout` `"ack"`. A `sign_event` result is handed to chapter 12's
+and `logout` `"ack"`. A `sign_event` result is handed to Bitcoin chapter 18's
 `signer_reply`, which accepts it only if it is the requested event, signed
 by the user key.
 
@@ -842,7 +842,7 @@ neither the client's key nor the remote signer's.
 
 One `sign_event` round trip, at T0 = 1762000000:
 
-1. **Chapter 12 fixes the event.** `signer_ask` with target
+1. **Bitcoin chapter 18 fixes the event.** `signer_ask` with target
    `SIGNER_PHONE`, identity `f9308a01…`, kind 1, created_at T0, tags `[]`
    and content `hello from a bunker` hashes
    `[0,"f9308a01…",1762000000,1,[],"hello from a bunker"]`. The expected
@@ -1055,7 +1055,7 @@ main :: () {
   print("  the user's key is the client's key: %; is the signer's key: %\n", n46_same(c[0].user, key_of(CLIENT)), n46_same(c[0].user, key_of(SIGNER)));
 
   print("\n== 3. sign_event, by hand and by the code\n");
-  // Chapter 12's contract first: the request fixes the event's id.
+  // Bitcoin chapter 18's contract first: the request fixes the event's id.
   t: [1] SignerTable; user := key_of(USER);
   ask := signer_ask(t[..], SIGNER_PHONE, SCOPE_EVENT, user[..], 1, T0, "[]", "hello from a bunker", T0, 60, scratch[..]);
   ok := signer_approve(t[..], ask.id, T0);
@@ -1213,13 +1213,13 @@ Section 3 prints the values worked out by hand: the 133-byte plaintext,
 the conversation key, the 304-character payload, the request id, the
 signed event id inside the 406-byte response, and the response id. Section
 4 shows the Coax client accepting the Python bunker's response, and
-chapter 12 accepting the event inside it. Section 6 shows the deliberately
+Bitcoin chapter 18 accepting the event inside it. Section 6 shows the deliberately
 broken inputs and their refusals: tokens without a secret, without a
 relay, and with an uppercase key; a reused connect secret; a wrong secret;
 `sign_event` for kind 4, which the session doesn't allow, answered with an
 error that the client reports; a request from a key with no session;
 `nip04_encrypt`; a response to an unknown id, from another key, and after
-the deadline; a bunker that signs another content, which chapter 12 refuses
+the deadline; a bunker that signs another content, which Bitcoin chapter 18 refuses
 as `another body`; and a NIP-04 payload. The secrets never appear in the
 output: the `connect` request's plaintext is described, not printed.
 
@@ -1371,7 +1371,7 @@ nsecBunker or Amber.
 
 - The browser (NIP-07), Android (NIP-55) and remote (NIP-46) signers offer
   the same operations; only NIP-46 is protocol work, so only it is built in
-  Coax. All three hand a signed event to the same check in chapter 12.
+  Coax. All three hand a signed event to the same check in Bitcoin chapter 18.
 - A NIP-46 connection starts from a `bunker://` or `nostrconnect://` URI.
   Both carry a secret here; it is kept, never printed, and works once.
 - Requests and responses are small JSON objects inside NIP-44 v2 payloads
@@ -1380,13 +1380,13 @@ nsecBunker or Amber.
   remote signer key.
 - The bunker grants each session what its user offers and the client asked
   for, by method and kind, and refuses the NIP-04 methods.
-- Not built: the NIP-07 and NIP-55 hosts beyond chapter 12's contract,
+- Not built: the NIP-07 and NIP-55 hosts beyond Bitcoin chapter 18's contract,
   `switch_relays`' relay list (its result is passed through), the NIP-05
   and NIP-89 discovery of bunkers, and the relay session itself.
 
 ## Dependencies
 
-- [12. Keys and randomness](ch012-keys-and-randomness.md)
+- [Bitcoin chapter 18. Keys and randomness](../../bitcoin/book/ch018-keys-and-randomness.md)
 - [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md)
 - [31. Publish and wait for OK](ch031-publish-and-wait-for-ok.md)
 

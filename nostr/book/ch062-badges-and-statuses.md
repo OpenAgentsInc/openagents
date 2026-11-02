@@ -6,7 +6,7 @@ says what a user is doing now, and it can end. This chapter reads both. It
 shows a badge only when its award comes from the badge's issuer and names
 the profile's owner, and it shows a status only until it expires.
 
-Part X, Every NIP. Result: NIP-58 badge definitions (30009), awards (8) and
+Part VI, Every NIP. Result: NIP-58 badge definitions (30009), awards (8) and
 profile badges (10008, formerly 30008), and NIP-38 kind 30315 user statuses
 with `expiration`.
 

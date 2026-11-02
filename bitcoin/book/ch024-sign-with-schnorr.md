@@ -1,4 +1,4 @@
-# 13. Sign with Schnorr
+# 24. Sign with Schnorr
 
 Signing uses a private key and a nonce. A repeated or biased nonce reveals the
 key. This chapter builds BIP-340 signing with its nonce derivation, checks the
@@ -34,13 +34,13 @@ randomness `a`, and a message of 0 to 1,048,576 bytes. The caller owns one
 `SignWork`, a struct that holds every intermediate value between calls. The
 signer writes `out` only when it returns `SIGN_DONE`, and it clears the
 workspace whenever signing ends, refused or done. The auxiliary bytes come
-from the host's random source (chapter 12).
+from the host's random source (chapter 18).
 
 ## The algorithm
 
 BIP-340 signs a message `m` with the secret key `d0` and the auxiliary bytes
 `a`. `G` is the generator, `n` the group order, and `hash_tag(x)` is
-`SHA-256(SHA-256(tag) || SHA-256(tag) || x)`, as in chapter 11.
+`SHA-256(SHA-256(tag) || SHA-256(tag) || x)`, as in chapter 23.
 
 1. **The key.** Refuse unless `0 < d0 < n`. Compute `P = d0·G`. If `y(P)` is
    odd, sign with `d = n - d0`, otherwise `d = d0`. The public key is `x(P)`.
@@ -86,7 +86,7 @@ Chapter 3's rule is that nothing branches on a secret or indexes memory by
 one. The signer meets it this way:
 
 - `ss_key` loads `d0` by subtracting `n` and keeping the borrow, as
-  chapter 12's `sc_load` does, and ORs the limbs to test for zero. A bad key
+  chapter 18's `sc_load` does, and ORs the limbs to test for zero. A bad key
   becomes the scalar 1 for the rest of the work, and a validity bit records
   that it was bad.
 - `ss_even(scalar, odd)` is `sc_select(odd, sc_negate(scalar), scalar)`: it
@@ -95,7 +95,7 @@ one. The signer meets it this way:
 - `k0 = 0` is tested the same way: `snp_reduce` keeps a validity bit and
   uses 1 in its place. Finding an `a` that makes `rand` a multiple of `n` is
   as hard as breaking SHA-256, so no test vector reaches this case.
-- Both scalar multiplications by `G` use the fixed-base table of chapter 10,
+- Both scalar multiplications by `G` use the fixed-base table of chapter 16,
   which reads every entry.
 
 The signer reveals four facts, each through a procedure whose name ends in
@@ -122,7 +122,7 @@ against each call's message and fails for any other.
 
 ### Worked example: small numbers
 
-Use chapter 11's numbers: the key `d = 3`, the nonce `k = 5`, and a
+Use chapter 23's numbers: the key `d = 3`, the nonce `k = 5`, and a
 stand-in challenge `e = 2`, because a real `e` comes from the hash. The `y`
 parities are: `3G` even, `5G` even, `6G` odd.
 
@@ -156,7 +156,7 @@ reproduces all four signing rows.
    `n`, so `k0 = rand`.
 4. `R = k0·G` has `x(R) = e907831f...2dca8215` and an odd `y`, so the
    signer uses `k = n - k0`.
-5. `e = 6bb6b93a...bb5d86ce`, the value chapter 11's verifier computes for
+5. `e = 6bb6b93a...bb5d86ce`, the value chapter 23's verifier computes for
    this signature.
 6. `s = (n - k0) + 3e mod n = 25f66a4a...310536c0`.
 
@@ -172,14 +172,14 @@ signature does more harm than a refusal: a faulty `s'` next to the correct
 `s` for the same nonce can leak `d`. So the signer verifies its own
 signature and publishes it only if it is valid.
 
-The self-check can't use chapter 11's `schnorr_verify_vartime`. That
+The self-check can't use chapter 23's `schnorr_verify_vartime`. That
 verifier branches on `r` and `s`, and until the signature is released, `s`
 is secret: a refused candidate is never published, so its bits must not
 reach a branch or a memory address. `schnorr_self_verify.coax` computes the
 same equation, `R' = s·G - e·P`, with fixed work:
 
 - `s·G` with the fixed-base comb, and `(-e)·P` with the constant-time
-  multiplication of chapter 10;
+  multiplication of chapter 16;
 - six masks instead of six early returns: `r < p`, `s < n`, `R'` finite,
   `y(R')` even, `x(R') = r`, and a binding mask that holds when the key, the
   candidate and `e` are the same at every stage as when the check began;
@@ -191,15 +191,15 @@ as a publication. Only then does it copy the signature to `out`.
 
 ## The example
 
-The example is [nostr/examples/schnorr-sign.coax](../examples/schnorr-sign.coax).
+The example is [bitcoin/examples/schnorr-sign.coax](../examples/schnorr-sign.coax).
 It runs the small-number equations, signs vector 0 one call at a time and
 prints the workspace after each stage, signs vectors 0 to 3 byte for byte
-and checks each with chapter 11's verifier, and then shows eight refusals.
+and checks each with chapter 23's verifier, and then shows eight refusals.
 The vector table is at the end of the file, outside the listing. Its secret
 keys are BIP-340's published test keys; the example prints intermediate
 values only because of that.
 
-<!-- source: nostr/examples/schnorr-sign.coax example -->
+<!-- source: bitcoin/examples/schnorr-sign.coax example -->
 ```jai
 #load "../../coax/lib/crypto/schnorr_sign.coax";
 #load "../../coax/lib/nostr/hex.coax";
@@ -259,14 +259,14 @@ sign_to_end :: (key: [] u8, aux: [] u8, message: [] u8, work: [] SignWork, out: 
   return r;
 }
 
-// Small numbers. k·G by repeated addition, with chapter 9's group law.
+// Small numbers. k·G by repeated addition, with chapter 15's group law.
 times_g :: (k: int) -> SgPoint {
   r := sg_infinity();
   for i: 0..<k { r = sg_add(r, sg_generator()).value; }
   return r;
 }
 y_odd :: (p: SgPoint) -> u64 { return sg_to_affine(p).value.y.limb[0] & 1; }
-// Chapter 11's final equation with a stand-in challenge e: lift x(dG) to the
+// Chapter 23's final equation with a stand-in challenge e: lift x(dG) to the
 // even-y point P, as a verifier does, and test s·G - e·P against x(kG).
 verify_small :: (s: ScScalar, e: u32, d: int, k: int) -> bool {
   x: [32] u8;
@@ -333,7 +333,7 @@ main :: () {
   print("matches vector 0: %, workspace cleared: %\n", bytes_equal(out[..], v.signature[..]), work[0].stage == 0 && all_zero(work[0].sig[..]));
 
   // Vectors 0 to 3, byte for byte, then checked by the variable-time verifier
-  // of chapter 11, which shares no code with the self-check's equation.
+  // of chapter 23, which shares no code with the self-check's equation.
   print("BIP-340 signing vectors 0 to 3\n");
   for i: 0..<ROWS {
     t := sign_row(i); pk := ROW_PUBLIC[i]; w: [1] SignWork; sig: [64] u8;
@@ -394,7 +394,7 @@ Run it from the repository root. The signer's fixed-base tables are computed
 at compile time and need more than the default compile-time budget:
 
 ```shell
-coax/bin/coax run nostr/examples/schnorr-sign.coax --run-steps 250000000
+coax/bin/coax run bitcoin/examples/schnorr-sign.coax --run-steps 250000000
 ```
 
 The output shows the values worked out by hand: `s = 11`, `n - 7` and `6`
@@ -466,14 +466,14 @@ message, and it also verifies. BIP-340 signatures aren't unique; only the
 key and message are fixed.
 
 The book's checks run this program in debug and release builds and compare
-the output with [nostr/fixtures/schnorr-sign.out](../fixtures/schnorr-sign.out).
+the output with [bitcoin/fixtures/schnorr-sign.out](../fixtures/schnorr-sign.out).
 
 ## How the code is checked
 
 ### Checks in the example
 
 The checks are in
-[nostr/examples/checks/schnorr-sign.coax](../examples/checks/schnorr-sign.coax),
+[bitcoin/examples/checks/schnorr-sign.coax](../examples/checks/schnorr-sign.coax),
 which loads the example. They compare the signer with independent values:
 
 - the small-number signatures with the hand values above;
@@ -482,7 +482,7 @@ which loads the example. They compare the signer with independent values:
   with the Python transcription's values;
 - one whole signature in the interpreter, vector 3, whose key is negated.
 
-<!-- source: nostr/examples/checks/schnorr-sign.coax check -->
+<!-- source: bitcoin/examples/checks/schnorr-sign.coax check -->
 ```jai
 // The small-number equations against values worked by hand: 5 + 2·3 = 11,
 // 5 + 2·(n - 6) = n - 7, (n - 6) + 4·3 = 6, and (17 - 11) / (4 - 2) = 3.
@@ -540,8 +540,8 @@ matches_hex :: (bytes: [] u8, text: string) -> bool {
 To run them:
 
 ```shell
-coax/bin/coax test nostr/examples/checks/schnorr-sign.coax --run-steps 250000000
-coax/bin/coax mutate nostr/examples/checks/schnorr-sign.coax --root-only --run-steps 250000000
+coax/bin/coax test bitcoin/examples/checks/schnorr-sign.coax --run-steps 250000000
+coax/bin/coax mutate bitcoin/examples/checks/schnorr-sign.coax --root-only --run-steps 250000000
 ```
 
 On 2026-11-01, `coax test` ran 263 checks, including the loaded files' own
@@ -587,7 +587,7 @@ sharing no code with Coax. These runs were not repeated for this chapter.
 ### libsecp256k1 on the signer's output
 
 [schnorr_sign_libsecp.py](../../coax/tests/nostr/schnorr_sign_libsecp.py)
-sends the signer's output to libsecp256k1 `v0.8.0`, built as chapter 7
+sends the signer's output to libsecp256k1 `v0.8.0`, built as chapter 13
 describes. Each Coax signature must pass `secp256k1_schnorrsig_verify` and
 be byte-for-byte equal to libsecp256k1's own signature for the same key,
 message and aux. Each event id must also match an independent NIP-01
@@ -646,8 +646,8 @@ the owner approves real keys.
 
 ## Dependencies
 
-- [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md)
-- [12. Keys and randomness](ch012-keys-and-randomness.md)
+- [23. Verify a Schnorr signature](ch023-verify-a-schnorr-signature.md)
+- [18. Keys and randomness](ch018-keys-and-randomness.md)
 - [3. Constant-time rules and secrets](ch003-constant-time-rules.md)
 
 ## Sources
@@ -656,6 +656,6 @@ the owner approves real keys.
   its default signing algorithm, and its pinned
   [test-vectors.csv](../../coax/tests/vectors/upstream/bip340/test-vectors.csv),
   listed in [SOURCES.md](../../coax/tests/vectors/SOURCES.md).
-- [NIP-01](../nips/official/01.md), which requires the `sig` to be a
+- [NIP-01](../../nostr/nips/official/01.md), which requires the `sig` to be a
   BIP-340 signature of the event ID.
 - The Coax Nostr plan: [coax/nostr.md](../../coax/nostr.md).

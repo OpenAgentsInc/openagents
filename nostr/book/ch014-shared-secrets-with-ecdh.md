@@ -7,7 +7,7 @@ point, not a hash of it, which is not what libsecp256k1 returns by default.
 This chapter builds that ECDH, its checks on the peer's key and the secret,
 and the NIP-44 conversation key on top of it.
 
-Part III, Elliptic curves.
+Part I, Shared secrets, encodings and encryption.
 
 ## What this chapter teaches
 
@@ -47,7 +47,7 @@ a·B = a·(b·G) = (a·b)·G = (b·a)·G = b·(a·G) = b·A
 ```
 
 Someone who sees only `A` and `B` would have to recover `a` or `b` from a
-point, which is the discrete logarithm problem that chapter 9's group is
+point, which is the discrete logarithm problem that Bitcoin chapter 15's group is
 chosen to make hard.
 
 ### Worked example: a = 3, b = 5
@@ -55,9 +55,9 @@ chosen to make hard.
 Take `a = 3` and `b = 5`.
 
 1. Alice publishes `A = 3G`. Its x is
-   `f9308a01...bce036f9`, the BIP-340 vector 0 public key of chapter 10.
+   `f9308a01...bce036f9`, the BIP-340 vector 0 public key of Bitcoin chapter 16.
 2. Bob publishes `B = 5G`, with x `2f8bde4d...b240efe4`, the point
-   `11G - 2(3G)` of chapter 10.
+   `11G - 2(3G)` of Bitcoin chapter 16.
 3. Alice computes `3·B = 3·5G = 15G`.
 4. Bob computes `5·A = 5·3G = 15G`.
 5. Both keep only the x of `15G`, `d7924d4f...e27e080e`.
@@ -67,7 +67,7 @@ The example below computes each step and prints the same values.
 ### Only x is kept
 
 A Nostr public key is 32 bytes: the x of the point, with the y left out
-(BIP-340, chapter 11). An x names two points, `(x, y)` and `(x, p - y)`,
+(BIP-340, Bitcoin chapter 23). An x names two points, `(x, y)` and `(x, p - y)`,
 which are `P` and `-P`. BIP-340 picks the one with even y. ECDH does not
 need to know which one the peer meant, because
 
@@ -86,8 +86,8 @@ shared_x         = x(a·B), 32 bytes, big-endian
 conversation_key = HKDF-extract(salt = "nip44-v2", IKM = shared_x)
 ```
 
-HKDF-extract is one HMAC-SHA256 with the salt as the key (chapters 5
-and 6). libsecp256k1's `secp256k1_ecdh` instead returns, by default,
+HKDF-extract is one HMAC-SHA256 with the salt as the key (Bitcoin chapters 8
+and 9). libsecp256k1's `secp256k1_ecdh` instead returns, by default,
 `SHA-256(02 or 03 || x)`. For the NIP-44 test keys in the example, that is
 `dbeece7b...a719b359`, not the shared x `94da47d8...1f4f50a4`, and a
 conversation key built from it decrypts nothing. The code here never hashes
@@ -100,7 +100,7 @@ at the first failure:
 
 1. **Lengths.** `secret` and `peer` must be 32 bytes and `work` exactly one
    `EcdhScratch`. Otherwise `EC_LENGTH`.
-2. **The peer.** `sg_lift_x_public(peer)` (chapter 9) reads the 32 bytes as
+2. **The peer.** `sg_lift_x_public(peer)` (Bitcoin chapter 15) reads the 32 bytes as
    x. It refuses when `x ≥ p`, or when `x³ + 7` has no square root mod `p`,
    which means no point on the curve has that x. Otherwise `EC_PEER`. The
    peer is public, so this check may branch.
@@ -120,7 +120,7 @@ order 3, 13 and 3319 for this reason.
 
 ## The multiplication
 
-Once both inputs are admitted, `ecdh_multiply_admitted` runs chapter 10's
+Once both inputs are admitted, `ecdh_multiply_admitted` runs Bitcoin chapter 16's
 signed radix-16 ladder on the 32-bit-limb field code of `ecdh_fast.coax`:
 
 1. Build the table `0·P, 1·P, ..., 8·P` with seven additions.
@@ -179,7 +179,7 @@ bytes_of :: (text: string) -> [32] u8 {
   #assert hex_decode_checked(text, b[..], false).error == 0;
   return b;
 }
-// The x-only public key of a secret: x(k·G) on the ladder of chapter 10.
+// The x-only public key of a secret: x(k·G) on the ladder of Bitcoin chapter 16.
 public_x :: (secret: [] u8) -> [32] u8 {
   k := sc_reduce_bytes(secret).value;
   a := sg_to_affine(smc_multiply(k, sg_generator()).value).value;
@@ -554,7 +554,7 @@ uncompressed off-curve Wycheproof cases, 256 seeded random cases, four
 invalid secrets, one invalid peer and a fixture that tells libsecp256k1's
 default hashed output from the raw x. Each valid result is compared with
 libsecp256k1 `v0.8.0` and with a Python computation. It needs the oracle
-built as chapter 7 describes. On 2026-11-01 it was rerun with 783 of 783
+built as Bitcoin chapter 13 describes. On 2026-11-01 it was rerun with 783 of 783
 cases in all four builds
 ([2026-11-01-libsecp-crosscheck.md](../../docs/verification/2026-11-01-libsecp-crosscheck.md)).
 The first record is
@@ -578,9 +578,9 @@ production secrets.
 
 ## Dependencies
 
-- [10. Scalar multiplication](ch010-scalar-multiplication.md)
-- [12. Keys and randomness](ch012-keys-and-randomness.md)
-- [6. HKDF](ch006-hkdf.md)
+- [Bitcoin chapter 16. Scalar multiplication](../../bitcoin/book/ch016-scalar-multiplication.md)
+- [Bitcoin chapter 18. Keys and randomness](../../bitcoin/book/ch018-keys-and-randomness.md)
+- [Bitcoin chapter 9. HKDF](../../bitcoin/book/ch009-hkdf.md)
 
 ## Sources
 

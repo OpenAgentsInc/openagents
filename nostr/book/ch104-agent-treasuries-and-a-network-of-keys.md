@@ -24,7 +24,7 @@ move only when enough independent key agents sign, described by records
 that every party can rebuild and check alone, and the signatures that move
 them.
 
-Part XII, Nostr in OpenAgents. Result: NIP-KEYS wallet, enrollment,
+Part VIII, Nostr in OpenAgents. Result: NIP-KEYS wallet, enrollment,
 independence and signing-request bodies read under closed schemas; a
 wallet admitted by recomputing its BIP-380 descriptor and applying the
 four composition rules; the wallet's P2WSH scripts derived from public keys
@@ -53,7 +53,7 @@ checked, for the `tr` wallets that come next.
   input is the wallet's, compares every output with the request's
   statement, derives change from the descriptor and recomputes the fee.
 - Idempotency by `(agent, requester, nonce)` with the request digest.
-- ECDSA with RFC 6979's deterministic nonce and low-S, under chapter 3's
+- ECDSA with RFC 6979's deterministic nonce and low-S, under Bitcoin chapter 3's
   constant-time rules, and BIP-66's DER.
 - The BIP-143 and BIP-341 signature digests, and the Taproot key tweak.
 - A key agent's partial signatures (BIP-174 `PSBT_IN_PARTIAL_SIG`) and the
@@ -77,7 +77,7 @@ checked, for the `tr` wallets that come next.
 | [nostr/examples/checks/agent-treasury.coax](../examples/checks/agent-treasury.coax) | Its independent checks |
 
 The file reuses `json.coax` for parsing, `nipa3.coax` (chapter 73) to decode
-segwit addresses, `bip32.coax` and `secp_mult.coax` (chapters 10 and 46) for
+segwit addresses, `bip32.coax` and `secp_mult.coax` (Bitcoin chapter 16 and chapter 46) for
 the curve, and `sha256.coax` and `sha512.coax` for hashing.
 
 ## From an approval rule to a script
@@ -767,13 +767,13 @@ ec_candidates :: (key:[]u8,hash:[]u8,w:[]EcdsaWork) {
 }
 ```
 
-The key and the nonce are secrets, so chapter 3's rules apply. RFC 6979
+The key and the nonce are secrets, so Bitcoin chapter 3's rules apply. RFC 6979
 loops until a candidate is valid; a loop whose length depends on the key
 leaks a little about it. This signer always computes two candidates and
 picks the first valid one with a mask (`ec_pick`). A first candidate
 outside the range has probability below 2⁻¹²⁷, both below 2⁻²⁵⁴; then it
-refuses instead of looping. *k*G is the comb from chapter 10 (`sp_base`),
-the inverse is a fixed power of *k* (chapter 8), and BIP-146's low-S rule
+refuses instead of looping. *k*G is the comb from Bitcoin chapter 16 (`sp_base`),
+the inverse is a fixed power of *k* (Bitcoin chapter 14), and BIP-146's low-S rule
 replaces *s* by *n* − *s* with a mask when 2*s* ≥ *n*:
 
 <!-- source: coax/lib/crypto/ecdsa_sign.coax ecdsa -->
@@ -876,7 +876,7 @@ A Taproot output commits to a key Q = P + *t*G, where P is the internal
 key and *t* = H_TapTweak(P ‖ merkle root) (BIP-341). To spend by the key
 path, the signer tweaks its secret the same way: it negates *d* when P's
 y is odd (BIP-340 keys are x-only), adds *t*, and signs the BIP-341 digest
-with chapter 13's `schnorr_sign_step`. The digest is a tagged hash over
+with Bitcoin chapter 24's `schnorr_sign_step`. The digest is a tagged hash over
 the transaction's parts, and unlike BIP-143 it commits to every input's
 amount and scriptPubKey, so a signer can't be lied to about any of them.
 
@@ -1262,7 +1262,7 @@ every refusal of the key agent (another agent's key, a changed chain code,
 a witness script that doesn't hash to the input's program, a PSBT that
 isn't the one signed).
 
-The key and nonce code follows chapter 3's rules by construction (masks,
+The key and nonce code follows Bitcoin chapter 3's rules by construction (masks,
 fixed loops, the comb); the source audit's profile doesn't yet accept
 arrays and loops, so it was not run on these files.
 
@@ -1286,7 +1286,7 @@ compare the code with values it didn't produce:
 - BIP-341's `keyPathSpending` wallet vectors: the five intermediate
   hashes, all seven inputs' sighashes, internal keys, tweaks, tweaked keys
   and witness signatures;
-- libsecp256k1 v0.8.0, the pinned oracle of chapter 7:
+- libsecp256k1 v0.8.0, the pinned oracle of Bitcoin chapter 13:
   `coax/tests/bitcoin/ecdsa_sign_libsecp.py` sends it 1,200 Coax ECDSA
   signatures (release) and 200 more (checked build under ASan/UBSan), and
   every one parses as DER, is low-S, verifies, and equals libsecp256k1's own
@@ -1391,7 +1391,7 @@ it.
 
 ## Dependencies
 
-- [13. Sign with Schnorr](ch013-sign-with-schnorr.md)
+- [Bitcoin chapter 24. Sign with Schnorr](../../bitcoin/book/ch024-sign-with-schnorr.md)
 - [46. Keys from a seed phrase](ch046-keys-from-a-seed-phrase.md)
 - [79. Agents, skills and automation](ch079-agents-skills-and-automation.md)
 - [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md)

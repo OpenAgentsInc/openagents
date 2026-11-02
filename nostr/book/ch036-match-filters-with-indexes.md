@@ -4,7 +4,7 @@ A relay answers each filter from its store. A scan is correct but reads
 every record. This chapter adds indexes and proves they return exactly what
 a scan returns.
 
-Part IX, A relay. Result: Answering REQ from the store newest first with query
+Part V, A relay. Result: Answering REQ from the store newest first with query
 cost limits, then indexes by ID, author, kind and tag that never change which
 events match.
 

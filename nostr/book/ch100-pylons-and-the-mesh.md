@@ -29,7 +29,7 @@ source audit, host key custody and owner approval are separate facts. See the
 | --- | --- | --- |
 | [nip42.coax](../../coax/lib/nostr/nip42.coax), [nip42-event.coax](../../coax/lib/nostr/nip42-event.coax) | `nip42_template`, `nip42_admit` | the AUTH event a client signs, and whether a relay admits it (chapter 38) |
 | [nip44-key.coax](../../coax/lib/nostr/nip44-key.coax), [nip44.coax](../../coax/lib/nostr/nip44.coax) | `nip44_conversation_key_from_keys_checked`, `nip44_encrypt_checked`, `nip44_decrypt_checked` | the conversation key and NIP-44 v2 payloads (chapter 20) |
-| [event_sign.coax](../../coax/lib/nostr/event_sign.coax), [event.coax](../../coax/lib/nostr/event.coax) | `nostr_event_sign_step`, `nostr_event_verify_vartime` | signing and verifying events (chapters 13 and 21) |
+| [event_sign.coax](../../coax/lib/nostr/event_sign.coax), [event.coax](../../coax/lib/nostr/event.coax) | `nostr_event_sign_step`, `nostr_event_verify_vartime` | signing and verifying events (Bitcoin chapter 24 and chapter 21) |
 | [beacon.coax](../../psionic/lib/pylon/beacon.coax), [host.coax](../../psionic/lib/pylon/host.coax) | `ph_beacon`, `ph_read_beacon`, `pb_fresh`, `pb_routable` | the kind 30200 beacon, written and read |
 | [decision.coax](../../psionic/lib/pylon/decision.coax) | `pd_admit`, `pd_result`, `pd_status`, `pd_template` | whether a decrypted job is admitted, and the answer's body and template |
 | [queue.coax](../../psionic/lib/pylon/queue.coax) | `pq_route` | what the running Pylon does with one event |
@@ -75,7 +75,7 @@ The x-only public keys are the x coordinates of `3G`, `7G` and `5G`:
 | buyer, `7G` | `5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc` |
 | other, `5G` | `2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4` |
 
-`3G` and `5G` appear in chapter 10. The first two are `decision.coax`'s
+`3G` and `5G` appear in Bitcoin chapter 16. The first two are `decision.coax`'s
 `PD_WORKER` and `PD_CALLER`.
 
 ### The conversation key

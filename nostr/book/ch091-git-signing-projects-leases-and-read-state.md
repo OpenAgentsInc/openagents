@@ -7,7 +7,7 @@ keeps which messages you have read in step across your devices. This chapter
 builds the part of each that decides a result from bytes and numbers, and
 checks it against the NIPs' published vectors and fixtures.
 
-Part X, Every NIP. Result: NIP-GS signing hashes, signatures and armor that
+Part VI, Every NIP. Result: NIP-GS signing hashes, signatures and armor that
 reproduce both published vectors, with the status lines Git reads; the
 NIP-MP relay ingest rules and the client fold, which give the stated result
 for all 31 ingest fixtures and all 12 fold fixtures; the NIP-PL expiration
@@ -44,8 +44,8 @@ that check an envelope against its original. What is not built is listed in
 
 The four projections are `#authority` files with their own checks and
 mutation records (see [How the code is checked](#how-the-code-is-checked)).
-Signing and verification are chapter 13's and chapter 11's; SHA-256 is
-chapter 4's; the NIP-44 decryption is chapter 20's. The procedures in
+Signing and verification are Bitcoin chapter 24's and Bitcoin chapter 23's; SHA-256 is
+Bitcoin chapter 4's; the NIP-44 decryption is chapter 20's. The procedures in
 `dev-nips.coax` are this chapter's code: no program outside the book calls
 them, so they stay in the example rather than in `coax/lib/`. This chapter
 changes no library code.
@@ -116,7 +116,7 @@ The NIP-OA preimage is `17 + 64 + 1 + 0 = 82` bytes.
 
 The published signatures use auxiliary randomness of 32 zero bytes. BIP-340
 signing is deterministic for a fixed key, message and auxiliary input, so
-chapter 13's signer must reproduce them exactly.
+Bitcoin chapter 24's signer must reproduce them exactly.
 
 <!-- source: nostr/examples/dev-nips.coax gs -->
 ```jai
@@ -610,7 +610,7 @@ public_x :: (secret: [] u8) -> [32] u8 {
   #assert sf_store(a.x, b[..]);
   return b;
 }
-// BIP-340 signing with chapter 13's signer, run until it stops asking for more.
+// BIP-340 signing with Bitcoin chapter 24's signer, run until it stops asking for more.
 sign :: (key: [] u8, aux: [] u8, message: [] u8, out: [] u8) -> bool {
   work: [1] SignWork;
   status := SIGN_MORE;
@@ -905,7 +905,7 @@ The checks are in
 [nostr/examples/checks/dev-nips.coax](../examples/checks/dev-nips.coax),
 which loads the example. They compare with data that shares no code with it:
 
-- both NIP-GS vectors: the published signatures verify with chapter 11's
+- both NIP-GS vectors: the published signatures verify with Bitcoin chapter 23's
   verifier over `gs_hash`, and the armor `gs_armor` builds equals byte for
   byte the armor in the protoc-encoded fixtures `GS_FIX_OK` and
   `GS_FIX_OWNER`, which `generate_gs_signature_fixtures.py` builds from the
@@ -1143,7 +1143,7 @@ not been run for GS, PL or RS.
 
 - NIP-GS signs `SHA-256("nostr:git:v1:" || t || ":" || oa_binding ||
   payload)` with BIP-340, and the armored JSON has exactly one valid
-  spelling. Chapter 13's signer reproduces both published signatures.
+  spelling. Bitcoin chapter 24's signer reproduces both published signatures.
 - NIP-MP's relay refuses eight kinds of malformed project; the client fold
   lets only eligible, authorized projects claim a repository, so a stranger
   cannot remove it from where its owner expects it. Paging needs a composite
@@ -1159,7 +1159,7 @@ not been run for GS, PL or RS.
 ## Dependencies
 
 - [63. Git on Nostr](ch063-git-on-nostr.md)
-- [13. Sign with Schnorr](ch013-sign-with-schnorr.md)
+- [Bitcoin chapter 24. Sign with Schnorr](../../bitcoin/book/ch024-sign-with-schnorr.md)
 
 ## Sources
 

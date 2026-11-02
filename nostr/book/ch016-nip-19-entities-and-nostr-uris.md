@@ -4,7 +4,7 @@ People share Nostr keys and events as Bech32 strings, and NIP-21 puts them in
 `nostr:` URIs. This chapter builds every NIP-19 form, including the TLV
 records, and the NIP-21 rules about which forms a URI may carry.
 
-Part IV, Encodings. Result: `npub`, `nsec` and `note`, and the TLV forms
+Part I, Shared secrets, encodings and encryption. Result: `npub`, `nsec` and `note`, and the TLV forms
 `nprofile`, `nevent` and `naddr` with relay hints, plus the `nostr:` URI
 scheme of NIP-21.
 
@@ -28,7 +28,7 @@ scheme of NIP-21.
 | | `n19_validate(source, type)` | The rules for one form, applied before anything is written |
 | | `nip19_encode_checked`, `nip19_decode_checked` | Encode a payload, or decode a string, with caller buffers |
 | | `nip21_decode_checked` | Decode a `nostr:` URI; refuses `nsec` |
-| [bech32-core.coax](../../coax/lib/nostr/bech32-core.coax) | `b32_inspect`, `bech32_encode_checked` | Chapter 15's checks and encoder |
+| [bech32-core.coax](../../coax/lib/nostr/bech32-core.coax) | `b32_inspect`, `bech32_encode_checked` | Bitcoin chapter 27's checks and encoder |
 | [bech32-memory.coax](../../coax/lib/nostr/bech32-memory.coax) | `nip19_encode`, `nip19_decode` | The exported entry points; they add the buffer-overlap check |
 
 Every call takes caller-owned buffers. On an error it returns a code from
@@ -42,7 +42,7 @@ decoded payload re-encodes to the same string.
 ## The six forms
 
 NIP-19 names six forms by their HRP. All use Bech32 with constant 1, as in
-chapter 15, but NIP-19 raises the length limit from 90 to 5,000 characters,
+Bitcoin chapter 27, but NIP-19 raises the length limit from 90 to 5,000 characters,
 because a TLV form with several relays is longer than 90 characters.
 `b32_inspect(input, true)` applies the 5,000 limit, and
 `N19_MAX_BYTES` (3,120) is the largest payload that fits in it.
@@ -64,7 +64,7 @@ unknown HRP.
 These strings are for display and sharing only. NIP-19 says `npub` must not
 appear in events or in NIP-05 JSON, which use hex. A decoded `nevent` is a
 pointer: the client still has to fetch the event and check its ID and
-signature (chapters 11 and 21).
+signature (Bitcoin chapter 23 and chapter 21).
 
 ## TLV records
 
@@ -156,7 +156,7 @@ The HRP is `nprofile`. The data part is 122 characters; the last six are
 the checksum, so there are 116 data words. 116 words are 580 bits: 72
 bytes and 4 spare bits, which must be zero.
 
-The first eight characters are `qqsrhuxx`. In chapter 15's alphabet they
+The first eight characters are `qqsrhuxx`. In Bitcoin chapter 27's alphabet they
 are the words 0, 0, 16, 3, 23, 28, 6, 6. Written as 5-bit groups and
 regrouped into bytes:
 
@@ -223,7 +223,7 @@ nip19_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result
 
 In order, it:
 
-1. checks the Bech32 string with chapter 15's `b32_inspect`, with the
+1. checks the Bech32 string with Bitcoin chapter 27's `b32_inspect`, with the
    5,000-character limit;
 2. maps the HRP to a type, and refuses an unknown one;
 3. turns the word count into a byte count, refusing bad padding;
@@ -678,7 +678,7 @@ repeated.
 
 ## Dependencies
 
-- [15. Bech32](ch015-bech32.md)
+- [Bitcoin chapter 27. Bech32](../../bitcoin/book/ch027-bech32.md)
 
 ## Sources
 
