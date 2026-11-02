@@ -181,12 +181,8 @@ def verbs(check):
                 psid = pm.get("result", {}).get("sessionId", "")
                 break
         pa_send({"jsonrpc": "2.0", "id": 3, "method": "session/prompt", "params": {"sessionId": psid, "prompt": [{"type": "text", "text": "go"}]}})
-        pgot, pend_t = [], time.time() + 90
-        while time.time() < pend_t:
-            r, _, _ = select.select([pa.stdout], [], [], 0.2)
-            if not r: continue
-            line = pa.stdout.readline()
-            if not line: break
+        pgot = []
+        for line in iter(pa.stdout.readline, ""):      # lines can come several at once: no select over a buffered pipe
             m = json.loads(line); pgot.append(m)
             if m.get("method") == "session/request_permission":
                 pa_send({"jsonrpc": "2.0", "id": m["id"], "result": {"outcome": {"outcome": "selected", "optionId": "allow_once"}}})
@@ -202,6 +198,9 @@ def verbs(check):
               len(preqs) == 1 and preqs[0]["params"]["sessionId"] == psid and psid.startswith("acp-") and "stub-outside" in preqs[0]["params"]["toolCall"]["title"]
               and [o["kind"] for o in preqs[0]["params"]["options"]] == ["allow_once", "allow_always", "reject_once"]
               and psent == ["allow", "allow", "deny"] and pgot and pgot[-1].get("result") == {"stopReason": "end_turn"})
+        pdiffs = [c for m in pgot if m.get("method") == "session/update" for c in m["params"]["update"].get("content", []) if c.get("type") == "diff"]
+        check("acp: a Write reaches the editor as diff content with its new text",
+              any(c["path"].endswith("/a.txt") and c["oldText"] is None and c["newText"] == "hi" for c in pdiffs))
         mcp_out = os.path.join(home, "mcp-answers")
         subprocess.run([coder, "run", "go", "--engine", "claude", "--coder-tools", "--cwd", work, "--json"], cwd=REPO,
                        env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=mcp_out, CLAUDE_STUB_MODE="mcp"), capture_output=True, text=True, timeout=120)

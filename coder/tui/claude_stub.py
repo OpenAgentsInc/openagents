@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """A stand-in `claude` for the smoke: speaks enough of Claude Code's
-stream-json control protocol to ask for two permissions, a Write inside the
-working directory and a Bash command, and records each answer.
+stream-json control protocol to ask for permissions (a Write inside the
+working directory, one outside it and a Bash command) and records each
+answer. The Write inside streams as a tool_use and, once allowed, writes the
+file and streams its tool_result.
 
 CLAUDE_STUB_OUT names the file the answers go to, one JSON line each.
 CLAUDE_STUB_MODE=mcp calls Coder's in-process coder_ls tool instead, and
@@ -83,11 +85,21 @@ if mode in ("mcp", "mcprun"):
     asks = []
 with open(out, "a") as f:
     for i, (tool, inp) in enumerate(asks):
+        inside = tool == "Write" and inp["file_path"].startswith(cwd + "/")
+        if inside:
+            # the call as Claude Code streams it before asking: the Write's tool_use
+            send({"type": "assistant", "message": {"id": "m%d" % i, "role": "assistant", "content": [{"type": "tool_use", "id": "toolu_stub%d" % i, "name": tool, "input": inp}]},
+                  "parent_tool_use_id": None, "uuid": "u-tool%d" % i, "session_id": "stub"})
         send({"type": "control_request", "request_id": "stub-%d" % i, "request": {"subtype": "can_use_tool", "tool_name": tool, "input": inp, "tool_use_id": "toolu_stub%d" % i}})
         r = read()
         while r.get("type") != "control_response":
             r = read()
         f.write(json.dumps({"tool": tool, "behavior": r["response"].get("response", {}).get("behavior")}) + "\n")
+        if inside and r["response"].get("response", {}).get("behavior") == "allow":
+            with open(inp["file_path"], "w") as w:
+                w.write(inp["content"])
+            send({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_stub%d" % i, "content": "File created successfully at: " + inp["file_path"]}]},
+                  "parent_tool_use_id": None, "uuid": "u-result%d" % i, "session_id": "stub"})
 send({"type": "result", "subtype": "success", "is_error": False, "result": "stub-done", "uuid": "u-result", "session_id": "stub",
       "num_turns": 1, "duration_ms": 1, "duration_api_ms": 1, "total_cost_usd": 0.0,
       "usage": {"input_tokens": 1, "output_tokens": 1}, "modelUsage": {}, "permission_denials": []})

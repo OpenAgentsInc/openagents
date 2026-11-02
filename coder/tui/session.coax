@@ -10,7 +10,7 @@
 //   {"kind":"agent","engine":E}               the person switched agent
 //   {"kind":"tool","label":"Bash(ls)"}        a tool call, as the transcript shows it
 //   {"kind":"result","text":T,"error":B}      its result's first line and size
-//   {"kind":"diff","path":P,"adds":N,"dels":N}
+//   {"kind":"diff","path":P,"adds":N,"dels":N[,"old":T,"new":T]}   an edit's own text when both fit in 8 KiB
 //   {"kind":"reply","text":T}                 the turn's reply, whole
 //   {"kind":"end","ending":E,"ms":N,"steps":N,"text":T}   E: finished, stopped, failed or expired
 //   {"kind":"job","id":ID,"ending":E,"text":T}  a job this session started ended (--report-to)
@@ -286,11 +286,18 @@ cs_result :: (a: [] App, text: string, bad: bool) {
   cs_put(a, n);
 }
 
-cs_diff :: (a: [] App, path: string, adds: int, dels: int) {
+CS_DIFF_TEXT :: 8192;     // an edit's old and new text go in its diff line up to this many bytes each
+
+// texts: whether old and next are the edit's own text (an Edit's old and new, a Write's new); they are logged when both fit.
+cs_diff :: (a: [] App, path: string, adds: int, dels: int, texts: bool, old: string, next: string) {
   o := a[0].log[0].line[..];
   n := json_raw(o, 0, "{\"kind\":\"diff\",\"path\":"); n = json_write_string(o, n, path);
   n = json_raw(o, n, ",\"adds\":"); n = json_write_int(o, n, adds);
   n = json_raw(o, n, ",\"dels\":"); n = json_write_int(o, n, dels);
+  if texts && old.count <= CS_DIFF_TEXT && next.count <= CS_DIFF_TEXT {
+    n = json_raw(o, n, ",\"old\":"); n = json_write_string(o, n, old);
+    n = json_raw(o, n, ",\"new\":"); n = json_write_string(o, n, next);
+  }
   n = json_raw(o, n, "}");
   cs_put(a, n);
 }

@@ -17,7 +17,8 @@
 //   session/cancel  → stops the running turn (the Coder session's stop file)
 //
 // The log's lines become updates: a reply is an agent_message_chunk, a tool
-// call a tool_call, its result a tool_call_update. Nothing here holds a key:
+// call a tool_call, its result a tool_call_update, and an edit's text a
+// tool_call_update with diff content. Nothing here holds a key:
 // the engines run on the person's own logins, as with `coder run`.
 
 CD_ACP_SESSIONS :: 8;
@@ -115,6 +116,23 @@ cd_acp_line :: (s: [] CdAcpSession, line: string, ar: [] ClArena) {
     n = json_raw(ub[..], n, ifx bad.ok && bad.value then "\",\"status\":\"failed\"" else "\",\"status\":\"completed\"");
     n = json_raw(ub[..], n, ",\"content\":[{\"type\":\"content\",\"content\":{\"type\":\"text\",\"text\":");
     n = json_write_string(ub[..], n, cl_str(ar, line, "text")); n = json_raw(ub[..], n, "}}]}");
+    if n > 0 { cd_acp_update(s, cast(string) ub[0..<n]); }
+    return;
+  }
+  if kind == "diff" && s[0].tools > 0 {
+    // an edit's own text, as ACP diff content on the tool call that made it
+    nt := cl_raw(line, "new");
+    if nt.count == 0 { return; }
+    ot := cl_raw(line, "old");
+    old := cl_str(ar, line, "old");
+    ub: [40000] u8;
+    n := json_raw(ub[..], 0, "{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"t");
+    n = json_raw(ub[..], n, cd_itoa(s[0].tools, tb[..]));
+    n = json_raw(ub[..], n, "\",\"content\":[{\"type\":\"diff\",\"path\":"); n = json_write_string(ub[..], n, cl_str(ar, line, "path"));
+    n = json_raw(ub[..], n, ",\"oldText\":");
+    if ot.count == 0 || old.count == 0 { n = json_raw(ub[..], n, "null"); } else { n = json_write_string(ub[..], n, old); }
+    n = json_raw(ub[..], n, ",\"newText\":"); n = json_write_string(ub[..], n, cl_str(ar, line, "new"));
+    n = json_raw(ub[..], n, "}]}");
     if n > 0 { cd_acp_update(s, cast(string) ub[0..<n]); }
     return;
   }

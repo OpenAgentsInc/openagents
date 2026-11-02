@@ -690,7 +690,12 @@ While a turn runs, its log lines become `session/update` notifications: a
 reply is an `agent_message_chunk`, a tool call a `tool_call` with its kind
 (`execute`, `read`, `search`, `edit`, `fetch` or `other`, from the tool's
 exact name), and its result a `tool_call_update` that is `completed` or
-`failed`. `--engine` picks the engine for every turn; without it, System One
+`failed`. A Claude Code Edit or Write also gets a `tool_call_update` with
+`diff` content: the file's path, `oldText` (the text the Edit replaced, or
+`null` for a Write) and `newText`, so the editor can show the change. The
+log's `diff` line carries that text when both sides fit in 8 KiB. Codex
+reports a unified diff instead, which ACP has no content type for, so its
+edits arrive as counts only. `--engine` picks the engine for every turn; without it, System One
 picks (chapter 13). An editor's settings entry is the command
 `openagents coder acp`.
 
@@ -727,7 +732,8 @@ with the stand-in Claude Code from chapter 10. Of its three requests, the
 write inside the folder runs and the command above the ceiling is refused
 without asking. The write outside the folder reaches the "editor" as one
 `session/request_permission`, and its `allow_once` reaches Claude Code as
-`allow`.
+`allow`. The allowed Write inside the folder reaches the editor as `diff`
+content with `oldText` `null` and `newText` `hi`.
 
 ## System One as a tool
 
@@ -861,7 +867,7 @@ The smoke posts an `initialize`, a notification, a `coder_status` call, a
   policy, not `sb_call`, whose approvals, pattern grants, simulated clock
   and replay are bound to chapter4's four built-in bodies.
 - **ACP beyond the basics.** `coder acp` doesn't read files through the
-  editor or send diffs as ACP diff content. No editor
+  editor, and Codex's edits carry no diff content. No editor
   has driven it yet; the smoke drives it as one would.
 - **OpenAgents wire contracts.** This chapter speaks third-party protocols
   only. A protocol OpenAgents publishes starts in `proto/` and

@@ -143,7 +143,7 @@ df_show :: (a: [] App, p: [] DfPending) {
   }
   nl_b: [1] DfLines; nl := nl_b[..]; df_split(after, nl);
   if p[0].write {
-    cs_diff(a, path, nl[0].n, 0);
+    cs_diff(a, path, nl[0].n, 0, true, "", after);
     nb: [2048] u8; nn := cd_cat(nb[..], 0, "Wrote "); tb: [16] u8;
     nn = cd_cat(nb[..], nn, cd_itoa(nl[0].n, tb[..])); nn = cd_cat(nb[..], nn, ifx nl[0].n == 1 then " line to " else " lines to ");
     nn = cd_cat(nb[..], nn, rel);
@@ -172,7 +172,7 @@ df_show :: (a: [] App, p: [] DfPending) {
   start := df_find_line(file, after);
   fl_at := 0;    // file offset of line `start`
   if start > 0 { line := 1; while line < start && fl_at < file.count { if file[fl_at] == 10 { line += 1; } fl_at += 1; } }
-  cs_diff(a, path, adds, dels);
+  cs_diff(a, path, adds, dels, true, old, after);
   sb: [2048] u8; sn := cd_cat(sb[..], 0, "Updated "); tb: [16] u8;
   sn = cd_cat(sb[..], sn, rel); sn = cd_cat(sb[..], sn, " (+"); sn = cd_cat(sb[..], sn, cd_itoa(adds, tb[..]));
   sn = cd_cat(sb[..], sn, " -"); sn = cd_cat(sb[..], sn, cd_itoa(dels, tb[..])); sn = cd_cat(sb[..], sn, ")");
@@ -236,13 +236,13 @@ df_unified :: (a: [] App, path: string, kind: string, diff: string) {
   lang := tui_hl_lang(path);
   hl_b: [1] TuiHl; hl := hl_b[..];
   tb: [16] u8;
-  if kind == "delete" { cs_diff(a, path, 0, 0); nb: [2048] u8; nn := cd_cat(nb[..], 0, "Deleted "); nn = cd_cat(nb[..], nn, rel); df_note(a, cast(string) nb[0..<nn]); return; }
+  if kind == "delete" { cs_diff(a, path, 0, 0, false, "", ""); nb: [2048] u8; nn := cd_cat(nb[..], 0, "Deleted "); nn = cd_cat(nb[..], nn, rel); df_note(a, cast(string) nb[0..<nn]); return; }
   hunks := false;
   i := 0;
   while i < diff.count { if i + 3 <= diff.count && cast(string) diff[i..<i + 3] == "@@ " { hunks = true; break; } while i < diff.count && diff[i] != 10 { i += 1; } i += 1; }
   if kind == "add" || !hunks {
     nl_b: [1] DfLines; nl := nl_b[..]; df_split(diff, nl);
-    cs_diff(a, path, nl[0].n, 0);
+    cs_diff(a, path, nl[0].n, 0, kind == "add", "", diff);
     nb: [2048] u8; nn := cd_cat(nb[..], 0, "Wrote ");
     nn = cd_cat(nb[..], nn, cd_itoa(nl[0].n, tb[..])); nn = cd_cat(nb[..], nn, ifx nl[0].n == 1 then " line to " else " lines to ");
     nn = cd_cat(nb[..], nn, rel);
@@ -261,7 +261,7 @@ df_unified :: (a: [] App, path: string, kind: string, diff: string) {
     if line.count > 0 && line[0] == '-' && !(line.count >= 3 && cast(string) line[0..<3] == "---") { dels += 1; }
     at = e + 1;
   }
-  cs_diff(a, path, adds, dels);
+  cs_diff(a, path, adds, dels, false, "", "");
   sb: [2048] u8; sn := cd_cat(sb[..], 0, "Updated ");
   sn = cd_cat(sb[..], sn, rel); sn = cd_cat(sb[..], sn, " (+"); sn = cd_cat(sb[..], sn, cd_itoa(adds, tb[..]));
   sn = cd_cat(sb[..], sn, " -"); sn = cd_cat(sb[..], sn, cd_itoa(dels, tb[..])); sn = cd_cat(sb[..], sn, ")");
