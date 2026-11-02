@@ -1,0 +1,11 @@
+// Chapter 104: test helpers for coax/lib/nostr/nipkeys_sign.coax's checks.
+// Test keys only. Loaded by nipkeys_sign.coax.
+// Test helpers: agent a's account key || chain code, the fixture witness
+// scripts, and one signing by enrollment me with agent key's account.
+ks_account :: (a:int,out:[]u8) {bt_set(KY_ACCOUNT_KEY[a],out[0..<32]);bt_set(KY_ACCOUNT_CHAIN[a],out[32..<64]);}
+ks_witnesses :: ()->KyWitnesses {r:KyWitnesses;for k:0..<4 {r.n[k]=bt_unhex(KY_WITNESS[k],r.ws[k][..]).count;}return r;}
+ks_sign :: (me:int,psbt:string,request:string,key:int)->KySigned {
+  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();wd:=ky_bytes(KY_WALLET_DIGEST);sc:=ky_fixture_scripts();b:[512]u8;ps:=ky_unhex(psbt,b[..]);
+  l:[1]KyLedger;acct:[64]u8;ks_account(key,acct[..]);work:[1]KySignWork;e:=p.e;
+  return ky_sign(w,wd,sc,ks_witnesses(),e[..],me,ky_request_read(request),ps,1000,KY_T0,l[..],acct[..],work[..]);
+}

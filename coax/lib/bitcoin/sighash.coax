@@ -1,0 +1,340 @@
+// Bitcoin transaction digests and the two signatures a segwit key agent
+// produces (chapter 104):
+//
+// - an unsigned transaction reader (version, inputs, outputs, locktime);
+// - the BIP-143 segwit v0 signature hash, every hash type;
+// - the BIP-341 Taproot key-path signature hash (SIGHASH_DEFAULT and every
+//   other hash type; no annex, no script path);
+// - the BIP-341 key tweak and a key-path Schnorr signature, through
+//   chapter 13's schnorr_sign.coax.
+//
+// Transactions and digests are public. The key, its tweak and the tweaked
+// key are secrets: they never decide a branch or an index (chapter 3), and
+// the tweaked key lives only in the caller's workspace, cleared on return.
+#load "../crypto/ecdsa_sign.coax";
+#load "../crypto/schnorr_sign.coax";
+#load "../../tests/bitcoin/sighash_vectors.coax";
+#load "../../tests/bitcoin/support_tx.coax";
+#authority;
+
+BT_IO :: 16;          // inputs or outputs in one transaction
+BT_TX :: 4096;        // the longest unsigned transaction read
+BT_SPK :: 64;         // the longest spent scriptPubKey (Taproot's is 34)
+BT_ALL :: 1; BT_NONE :: 2; BT_SINGLE :: 3; BT_ANYONE :: 0x80; BT_DEFAULT :: 0;
+
+BtIn :: struct {prev:[36]u8;seq:[4]u8;}
+// A transaction's fields; each output is b[out_at[k]..<out_at[k]+out_n[k]]
+// of the bytes it was read from: the 8-byte value then the script with its
+// length.
+BtTx :: struct {ok:bool;version:[4]u8;locktime:[4]u8;nin:int;nout:int;inputs:[BT_IO]BtIn;out_at:[BT_IO]int;out_n:[BT_IO]int;}
+BtScript :: struct {n:int;b:[BT_SPK]u8;}
+BtVar :: struct {ok:bool;value:int;next:int;}
+BtTapWork :: struct {key:[1]SignScalar;point:[1]SignPoint;internal:[32]u8;tweaked:[32]u8;sign:[1]SignWork;valid:u64;}
+
+// ---- checks
+#test "the reader takes BIP-143's and BIP-341's unsigned transactions" {
+  b:[BT_TX]u8;
+  t:=bt_tx_read(bt_unhex(BT_V143[0].tx,b[..]));
+  #assert t.ok && t.nin==2 && t.nout==2 && t.version[0]==1 && t.locktime[0]==0x11 && t.inputs[0].seq[0]==0xee && t.inputs[1].prev[32]==1;
+  #assert t.out_n[0]==34 && b[t.out_at[0]]==0x20 && b[t.out_at[0]+8]==0x19 && t.out_at[1]==t.out_at[0]+34;
+  t=bt_tx_read(bt_unhex(BT_V341_TX,b[..]));
+  #assert t.ok && t.nin==9 && t.nout==2 && t.version[0]==2 && t.inputs[3].seq[0]==0xfe;
+}
+#test "malformed transactions refuse" {
+  b:[BT_TX]u8;s:=bt_unhex(BT_V143[1].tx,b[..]);
+  #assert bt_tx_read(s).ok && !bt_tx_read(s[0..<s.count-1]).ok;
+  c:[BT_TX+1]u8;for i:0..<s.count {c[i]=s[i];}
+  #assert !bt_tx_read(c[0..<s.count+1]).ok;                        // a trailing byte
+  c[4]=0;#assert !bt_tx_read(c[0..<s.count]).ok;                     // no inputs
+  c[4]=17;#assert !bt_tx_read(c[0..<s.count]).ok;                    // more than BT_IO
+  c[4]=1;c[41]=0xfc;#assert !bt_tx_read(c[0..<s.count]).ok;             // a scriptSig past the end
+  c[41]=0;c[46]=0;#assert !bt_tx_read(c[0..<s.count]).ok;            // no outputs
+  c[46]=17;#assert !bt_tx_read(c[0..<s.count]).ok;
+  c[46]=2;c[55]=0xfd;#assert !bt_tx_read(c[0..<s.count]).ok;         // a non-minimal length
+  c[55]=0x19;#assert bt_tx_read(c[0..<s.count]).ok;
+  // The limits: BT_IO inputs and outputs, and BT_TX bytes.
+  x:[BT_TX+1]u8;
+  #assert bt_tx_read(bt_build(x[..],16,16,1)).ok && !bt_tx_read(bt_build(x[..],17,1,1)).ok && !bt_tx_read(bt_build(x[..],1,17,1)).ok;
+  #assert bt_build(x[..],1,1,4034).count==BT_TX && bt_tx_read(bt_build(x[..],1,1,4034)).ok && !bt_tx_read(bt_build(x[..],1,1,4035)).ok;
+  y:=bt_build(x[..],2,3,0x101);t2:=bt_tx_read(y);
+  #assert t2.ok && t2.nin==2 && t2.nout==3 && t2.out_n[2]==8+3+0x101 && t2.out_at[1]==t2.out_at[0]+t2.out_n[0] && t2.locktime[0]==7 && t2.version[0]==2 && t2.inputs[1].prev[0]==1 && t2.inputs[1].seq[3]==0xee;
+  #assert !bt_tx_read(y[0..<y.count-1]).ok && !bt_tx_read(y[0..<20]).ok && !bt_tx_read(y[0..<45]).ok;
+  // A scriptSig is skipped: two bytes of it, then the sequence.
+  ss:=bt_unhex("020000000109090909090909090909090909090909090909090909090909090909090909090300000002abcdeeddccbb0100000000000000000007000000",x[..]);
+  t3:=bt_tx_read(ss);#assert t3.ok && t3.inputs[0].seq[0]==0xee && t3.inputs[0].seq[3]==0xbb && t3.inputs[0].prev[32]==3 && t3.out_at[0]==49;
+  w:=bt_unhex("0100000000010000",b[..]);#assert !bt_tx_read(w).ok;   // a witness marker
+  #assert !bt_tx_read(b[0..<0]).ok && !bt_tx_read(b[0..<4]).ok;
+}
+#test "compact sizes: the one-, three- and five-byte forms, minimal only" {
+  b:=[9]u8.[0xfc,0xfd,0xfd,0x00,0xfe,0x00,0x00,0x01,0x00];
+  v:=bt_var(b[..],0);#assert v.ok && v.value==0xfc && v.next==1;
+  v=bt_var(b[..],1);#assert v.ok && v.value==0xfd && v.next==4;
+  v=bt_var(b[..],4);#assert v.ok && v.value==0x10000 && v.next==9;
+  #assert !bt_var(b[..],9).ok && !bt_var(b[..],-1).ok && !bt_var(b[0..<3],1).ok && !bt_var(b[0..<8],4).ok;
+  #assert bt_var(b[0..<4],1).ok && bt_var(b[0..<3],1).next==4 && bt_var(b[0..<3],1).value==0;
+  f:=[9]u8.[0xff,0,0,1,0,0,0,0,0];#assert !bt_var(f[..],0).ok && bt_var(f[..],0).next==10;
+  o:[4]u8;#assert bt_var_put(o[..],0,0xfc)==1 && o[0]==0xfc;
+  #assert bt_var_put(o[..],1,0xfd)==4 && o[1]==0xfd && o[2]==0xfd && o[3]==0;
+  #assert bt_var_put(o[..],0,0x1234)==3 && o[0]==0xfd && o[1]==0x34 && o[2]==0x12;
+  c:=[5]u8.[0xfd,0xfc,0x00,0xff,0x00];#assert !bt_var(c[..],0).ok && !bt_var(c[..],3).ok;
+  d:=[5]u8.[0xfe,0xff,0xff,0x00,0x00];#assert !bt_var(d[..],0).ok;
+}
+#forall "BIP-143's published sighashes, every hash type" i:0..<8 {
+  v:=BT_V143[i];b:[BT_TX]u8;code:[512]u8;h:[32]u8;e:[32]u8;
+  s:=bt_unhex(v.tx,b[..]);t:=bt_tx_read(s);c:=bt_unhex(v.code,code[..]);
+  #assert t.ok && bt_sighash_v0(s,t,v.index,c[1..<c.count],v.amount,v.hashtype,h[..]);
+  #assert bt_same(h[..],bt_unhex(v.sighash,e[..]));
+}
+#forall "BIP-143's published signatures, from the published keys" i:0..<8 #steps 2000000000 {
+  v:=BT_V143[i];k:[32]u8;h:[32]u8;w:[1]EcdsaWork;sig:[64]u8;der:[72]u8;e:[80]u8;
+  #assert ecdsa_sign(bt_unhex(v.key,k[..]),bt_unhex(v.sighash,h[..]),w[..],sig[..],false);
+  n:=ecdsa_der(sig[..],der[..]);#assert n>0 && bt_same(der[0..<n],bt_unhex(v.sig,e[..]));
+}
+#test "BIP-143 refusals: an index past the inputs, a negative amount, a short output" {
+  v:=BT_V143[2];b:[BT_TX]u8;code:[512]u8;h:[33]u8;
+  s:=bt_unhex(v.tx,b[..]);t:=bt_tx_read(s);c:=bt_unhex(v.code,code[..]);
+  #assert !bt_sighash_v0(s,t,1,c[1..<c.count],v.amount,1,h[0..<32]) && !bt_sighash_v0(s,t,-1,c[1..<c.count],v.amount,1,h[0..<32]);
+  #assert !bt_sighash_v0(s,t,0,c[1..<c.count],-1,1,h[0..<32]) && !bt_sighash_v0(s,t,0,c[1..<c.count],v.amount,1,h[..]);
+  bad:=t;bad.ok=false;#assert !bt_sighash_v0(s,bad,0,c[1..<c.count],v.amount,1,h[0..<32]);
+  big:[BT_TX+1]u8;#assert !bt_sighash_v0(s,t,0,big[..],v.amount,1,h[0..<32]) && bt_sighash_v0(s,t,0,big[0..<BT_TX],0,1,h[0..<32]);
+  // SIGHASH_SINGLE past the outputs signs zero hashOutputs, as BIP-143 says.
+  one:=t;one.nout=0;#assert bt_sighash_v0(s,one,0,c[1..<c.count],v.amount,3,h[0..<32]);
+  e:[32]u8;for i:0..<32 {e[i]=h[i];}
+  one.out_at[0]+=1;#assert bt_sighash_v0(s,one,0,c[1..<c.count],v.amount,3,h[0..<32]) && bt_same(h[0..<32],e[..]);
+}
+#test "BIP-341's intermediate hashes" {
+  b:[BT_TX]u8;s:=bt_unhex(BT_V341_TX,b[..]);t:=bt_tx_read(s);
+  amounts:=BT_V341_AMOUNT;spk:[9]BtScript;for i:0..<9 {spk[i]=bt_script(BT_V341_SPK[i]);}
+  h:[5][32]u8;e:[32]u8;
+  #assert bt_tap_hashes(s,t,amounts[..],spk[..],h[..]);
+  for k:0..<5 {#assert bt_same(h[k][..],bt_unhex(BT_V341_HASHES[k],e[..]));}
+}
+#forall "BIP-341's key-path sighashes" i:0..<7 {
+  v:=BT_V341[i];b:[BT_TX]u8;s:=bt_unhex(BT_V341_TX,b[..]);t:=bt_tx_read(s);
+  amounts:=BT_V341_AMOUNT;spk:[9]BtScript;for k:0..<9 {spk[k]=bt_script(BT_V341_SPK[k]);}
+  h:[32]u8;e:[32]u8;
+  #assert bt_sighash_taproot(s,t,v.index,amounts[..],spk[..],v.hashtype,h[..]) && bt_same(h[..],bt_unhex(v.sighash,e[..]));
+}
+#forall "BIP-341's tweaks and key-path signatures" i:0..<7 #steps 4000000000 {
+  v:=BT_V341[i];k:[32]u8;m:[32]u8;h:[32]u8;aux:[32]u8;w:[1]BtTapWork;sig:[64]u8;e:[65]u8;
+  merkle:=bt_unhex(v.merkle,m[..]);
+  #assert bt_taproot_sign(bt_unhex(v.key,k[..]),merkle,bt_unhex(v.sighash,h[..]),aux[..],w[..],sig[..],false);
+  wit:=bt_unhex(v.witness,e[..]);
+  #assert bt_same(sig[..],wit[0..<64]) && (wit.count==64)==(v.hashtype==0) && (wit.count==64 || cast(int)wit[64]==v.hashtype);
+  #assert w[0].valid==0 && w[0].tweaked[0]==0 && w[0].sign[0].stage==0;
+}
+#test "the tweak and the tweaked key, BIP-341's intermediate values" #steps 2000000000 {
+  for i:0..<2 {
+    v:=BT_V341[i];k:[32]u8;m:[32]u8;w:[1]BtTapWork;e:[32]u8;
+    th:[32]u8;bt_internal(bt_unhex(v.key,k[..]),bt_unhex(v.merkle,m[..]),w[..],th[..]);
+    #assert bt_hex_is(th[..],v.tweak) && bt_tweak(th[..],w[..]) && w[0].valid==1;
+    #assert bt_same(w[0].internal[..],bt_unhex(v.internal,e[..])) && bt_same(w[0].tweaked[..],bt_unhex(v.tweaked,e[..]));
+  }
+}
+#test "BIP-341 refusals: an unknown hash type, SINGLE past the outputs, short views" {
+  b:[BT_TX]u8;s:=bt_unhex(BT_V341_TX,b[..]);t:=bt_tx_read(s);
+  amounts:=BT_V341_AMOUNT;spk:[9]BtScript;for k:0..<9 {spk[k]=bt_script(BT_V341_SPK[k]);}
+  h:[33]u8;
+  for ht:0..<256 {
+    ok:=bt_sighash_taproot(s,t,0,amounts[..],spk[..],ht,h[0..<32]);
+    #assert ok==(ht==0 || ht==1 || ht==2 || ht==3 || ht==0x81 || ht==0x82 || ht==0x83);
+  }
+  #assert !bt_sighash_taproot(s,t,2,amounts[..],spk[..],3,h[0..<32]) && bt_sighash_taproot(s,t,1,amounts[..],spk[..],3,h[0..<32]);
+  #assert !bt_sighash_taproot(s,t,9,amounts[..],spk[..],0,h[0..<32]) && !bt_sighash_taproot(s,t,-1,amounts[..],spk[..],0,h[0..<32]);
+  #assert !bt_sighash_taproot(s,t,0,amounts[0..<8],spk[..],0,h[0..<32]) && !bt_sighash_taproot(s,t,0,amounts[..],spk[0..<8],0,h[0..<32]);
+  #assert !bt_sighash_taproot(s,t,0,amounts[..],spk[..],0,h[..]);
+  bad:=t;bad.ok=false;#assert !bt_sighash_taproot(s,bad,0,amounts[..],spk[..],0,h[0..<32]);
+  #assert !bt_sighash_taproot(s,t,0,amounts[..],spk[..],-1,h[0..<32]) && !bt_sighash_taproot(s,t,0,amounts[..],spk[..],0x101,h[0..<32]);
+  amounts[4]=0;#assert bt_sighash_taproot(s,t,0,amounts[..],spk[..],0,h[0..<32]);
+  amounts[4]=-1;#assert !bt_sighash_taproot(s,t,0,amounts[..],spk[..],0,h[0..<32]);
+}
+#test "taproot signing refuses a zero key and bad views, and clears" #steps 2000000000 {
+  k:[32]u8;m:[33]u8;h:[32]u8;aux:[32]u8;w:[1]BtTapWork;sig:[65]u8;sig[0]=7;
+  #assert !bt_taproot_sign(k[..],m[0..<0],h[..],aux[..],w[..],sig[0..<64],false) && sig[0]==7 && w[0].tweaked[0]==0;
+  k[31]=1;
+  #assert !bt_taproot_sign(k[0..<31],m[0..<0],h[..],aux[..],w[..],sig[0..<64],false);
+  #assert !bt_taproot_sign(k[..],m[0..<31],h[..],aux[..],w[..],sig[0..<64],false);
+  #assert !bt_taproot_sign(k[..],m[0..<0],h[0..<31],aux[..],w[..],sig[0..<64],false);
+  #assert !bt_taproot_sign(k[..],m[0..<0],h[..],aux[0..<31],w[..],sig[0..<64],false);
+  #assert !bt_taproot_sign(k[..],m[0..<0],h[..],aux[..],w[..],sig[..],false);
+  #assert !bt_taproot_sign(k[..],m[0..<0],h[..],aux[..],w[..],sig[0..<64],true) && sig[0]==7;
+  two:[2]BtTapWork;#assert !bt_taproot_sign(k[..],m[0..<0],h[..],aux[..],two[..],sig[0..<64],false);
+  #assert bt_taproot_sign(k[..],m[0..<0],h[..],aux[..],w[..],sig[0..<64],false) && sig[0]!=7 && w[0].tweaked[31]==0;
+  // A merkle root whose tweak is n or more refuses: none is known, so the
+  // check is on the reader that decides it.
+  th:[32]u8;bt_internal(k[..],m[0..<0],w[..],th[..]);#assert bt_tweak(th[..],w[..]);
+  for i:0..<32 {th[i]=255;}#assert !bt_tweak(th[..],w[..]);
+}
+
+// ---- the unsigned transaction
+// A compact size at b[at]: the one-, three- and five-byte forms, minimal.
+// A malformed one is not ok, has value 0 and points past the end of b, so
+// a reader that goes on from it fails its final length check.
+bt_var :: (b:[]u8,at:int)->BtVar {
+  bad:=BtVar.{next=b.count+1};
+  if at<0 || at>=b.count {return bad;}
+  f:=cast(int)b[at];
+  if f<0xfd {return BtVar.{ok=true,value=f,next=at+1};}
+  if f==0xff {return bad;}
+  n:=ifx f==0xfd then 2 else 4;
+  if at+1+n>b.count {return bad;}
+  v:=0;for k:0..<n {v|=cast(int)b[at+1+k]<<(8*k);}
+  if v<(ifx n==2 then 0xfd else 0x10000) {return bad;}
+  return BtVar.{ok=true,value=v,next=at+1+n};
+}
+// book:begin tx
+// An unsigned transaction without witness data: version, 1 to BT_IO inputs
+// (outpoint, scriptSig, sequence), 1 to BT_IO outputs, locktime, and
+// nothing after. Positions are found first; the bytes are copied only
+// after the length check at the end shows they are all inside b.
+bt_tx_read :: (b:[]u8)->BtTx {
+  r:=[1]BtTx.[BtTx.{}];bad:BtTx;
+  if b.count>BT_TX {return bad;}
+  ni:=bt_var(b,4);
+  if ni.value<1 || ni.value>BT_IO {return bad;}      // 0: malformed, or the witness marker
+  i:=ni.next;at:[BT_IO]int;seq:[BT_IO]int;
+  for k:0..<ni.value {at[k]=i;s:=bt_var(b,i+36);seq[k]=s.next+s.value;i=seq[k]+4;}
+  no:=bt_var(b,i);
+  if no.value<1 || no.value>BT_IO {return bad;}
+  i=no.next;
+  for k:0..<no.value {s:=bt_var(b,i+8);r[0].out_at[k]=i;r[0].out_n[k]=s.next+s.value-i;i=s.next+s.value;}
+  if i+4!=b.count {return bad;}
+  for k:0..<4 {r[0].version[k]=b[k];r[0].locktime[k]=b[i+k];}
+  for k:0..<ni.value {
+    for j:0..<36 {r[0].inputs[k].prev[j]=b[at[k]+j];}
+    for j:0..<4 {r[0].inputs[k].seq[j]=b[seq[k]+j];}
+  }
+  r[0].nin=ni.value;r[0].nout=no.value;r[0].ok=true;
+  return r[0];
+}
+// book:end tx
+
+// ---- hashing helpers (public data)
+bt_put :: (out:[]u8,at:int,s:[]u8)->int {for k:0..<s.count {out[at+k]=s[k];}return at+s.count;}
+bt_le :: (out:[]u8,at:int,v:int,n:int)->int {for k:0..<n {out[at+k]=cast(u8)((v>>(8*k))&255);}return at+n;}
+// A compact size below 2^16.
+bt_var_put :: (out:[]u8,at:int,v:int)->int {
+  if v<0xfd {out[at]=cast(u8)v;return at+1;}
+  out[at]=0xfd;return bt_le(out,at+1,v,2);
+}
+// SHA-256 and double SHA-256 into a 32-byte out; lengths here are always valid.
+bt_sha :: (b:[]u8,out:[]u8) {#assert sha256_hash_checked(b,out,false)==SHA_OK;}
+bt_sha2 :: (b:[]u8,out:[]u8) {t:[32]u8;bt_sha(b,t[..]);bt_sha(t[..],out);}
+// SHA-256(SHA-256(tag) || SHA-256(tag) || b), b at most 256 bytes.
+bt_tagged :: (tag:string,b:[]u8,out:[]u8) {
+  tb:[16]u8;for k:0..<tag.count {tb[k]=tag[k];}
+  th:[32]u8;bt_sha(tb[0..<tag.count],th[..]);
+  m:[64+256]u8;for k:0..<32 {m[k]=th[k];m[32+k]=th[k];}
+  bt_sha(m[0..<bt_put(m[..],64,b)],out);
+}
+// The outpoints, the sequences and the outputs, serialized, into m; the length.
+bt_prevouts :: (tp:BtTx,m:[]u8)->int {t:=tp;n:=0;for k:0..<t.nin {n=bt_put(m,n,t.inputs[k].prev[..]);}return n;}
+bt_sequences :: (tp:BtTx,m:[]u8)->int {t:=tp;n:=0;for k:0..<t.nin {n=bt_put(m,n,t.inputs[k].seq[..]);}return n;}
+bt_outputs :: (b:[]u8,tp:BtTx,m:[]u8)->int {t:=tp;n:=0;for k:0..<t.nout {n=bt_put(m,n,b[t.out_at[k]..<t.out_at[k]+t.out_n[k]]);}return n;}
+
+// ---- BIP-143
+// book:begin bip143
+// The BIP-143 signature hash of input index, spending amount satoshis
+// under script code (for P2WSH the witness script, for P2WPKH the P2PKH
+// script of its key hash; at most BT_TX bytes), with hash type hashtype,
+// into out.
+bt_sighash_v0 :: (b:[]u8,tp:BtTx,index:int,code:[]u8,amount:int,hashtype:int,out:[]u8)->bool {t:=tp;
+  if !t.ok || index<0 || index>=t.nin || amount<0 || code.count>BT_TX || out.count!=32 {return false;}
+  anyone:=(hashtype&BT_ANYONE)!=0;base:=hashtype&0x1f;
+  m:[BT_TX+160]u8;hp:[32]u8;hs:[32]u8;ho:[32]u8;           // the hashes BIP-143 zeroes stay zero
+  if !anyone {bt_sha2(m[0..<bt_prevouts(t,m[..])],hp[..]);}
+  if !anyone && base!=BT_SINGLE && base!=BT_NONE {bt_sha2(m[0..<bt_sequences(t,m[..])],hs[..]);}
+  if base!=BT_SINGLE && base!=BT_NONE {bt_sha2(m[0..<bt_outputs(b,t,m[..])],ho[..]);}
+  else if base==BT_SINGLE && index<t.nout {bt_sha2(b[t.out_at[index]..<t.out_at[index]+t.out_n[index]],ho[..]);}
+  n:=bt_put(m[..],0,t.version[..]);n=bt_put(m[..],n,hp[..]);n=bt_put(m[..],n,hs[..]);
+  n=bt_put(m[..],n,t.inputs[index].prev[..]);
+  n=bt_var_put(m[..],n,code.count);n=bt_put(m[..],n,code);
+  n=bt_le(m[..],n,amount,8);n=bt_put(m[..],n,t.inputs[index].seq[..]);
+  n=bt_put(m[..],n,ho[..]);n=bt_put(m[..],n,t.locktime[..]);n=bt_le(m[..],n,hashtype,4);
+  bt_sha2(m[0..<n],out);
+  return true;
+}
+// book:end bip143
+
+// ---- BIP-341
+// sha_prevouts, sha_amounts, sha_scriptpubkeys, sha_sequences and
+// sha_outputs (single SHA-256), into h; false on a negative amount.
+bt_tap_hashes :: (b:[]u8,tp:BtTx,amounts:[]int,spk:[]BtScript,h:[][32]u8)->bool {t:=tp;
+  m:[BT_TX+BT_IO*(BT_SPK+1)]u8;
+  bt_sha(m[0..<bt_prevouts(t,m[..])],h[0][..]);
+  n:=0;for k:0..<t.nin {if amounts[k]<0 {return false;}n=bt_le(m[..],n,amounts[k],8);}
+  bt_sha(m[0..<n],h[1][..]);
+  n=0;for k:0..<t.nin {n=bt_var_put(m[..],n,spk[k].n);n=bt_put(m[..],n,spk[k].b[0..<spk[k].n]);}
+  bt_sha(m[0..<n],h[2][..]);
+  bt_sha(m[0..<bt_sequences(t,m[..])],h[3][..]);
+  bt_sha(m[0..<bt_outputs(b,t,m[..])],h[4][..]);
+  return true;
+}
+// book:begin bip341
+// The BIP-341 key-path signature hash of input index (no annex), given
+// every spent output's amount and scriptPubKey, into out. Hash types 0
+// (SIGHASH_DEFAULT), 1, 2, 3 and 0x81 to 0x83; SIGHASH_SINGLE needs an
+// output at index.
+bt_sighash_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,out:[]u8)->bool {t:=tp;
+  base:=hashtype&0x7f;anyone:=(hashtype&BT_ANYONE)!=0;
+  if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) {return false;}
+  if !t.ok || index<0 || index>=t.nin || amounts.count!=t.nin || spk.count!=t.nin || out.count!=32 {return false;}
+  if base==BT_SINGLE && index>=t.nout {return false;}
+  h:[5][32]u8;if !bt_tap_hashes(b,t,amounts,spk,h[..]) {return false;}
+  m:[256]u8;m[1]=cast(u8)hashtype;                           // m[0]: epoch 0
+  n:=bt_put(m[..],2,t.version[..]);n=bt_put(m[..],n,t.locktime[..]);
+  if !anyone {for k:0..<4 {n=bt_put(m[..],n,h[k][..]);}}
+  if base!=BT_SINGLE && base!=BT_NONE {n=bt_put(m[..],n,h[4][..]);}
+  n+=1;                                                       // spend type 0: key path, no annex
+  if anyone {
+    n=bt_put(m[..],n,t.inputs[index].prev[..]);n=bt_le(m[..],n,amounts[index],8);
+    n=bt_var_put(m[..],n,spk[index].n);n=bt_put(m[..],n,spk[index].b[0..<spk[index].n]);
+    n=bt_put(m[..],n,t.inputs[index].seq[..]);
+  } else {n=bt_le(m[..],n,index,4);}
+  if base==BT_SINGLE {
+    o:[32]u8;bt_sha(b[t.out_at[index]..<t.out_at[index]+t.out_n[index]],o[..]);
+    n=bt_put(m[..],n,o[..]);
+  }
+  bt_tagged("TapSighash",m[0..<n],out);
+  return true;
+}
+// book:end bip341
+
+// ---- the key tweak and the key-path signature
+// book:begin tweak
+// The internal key P = dG (public, into w.internal), then the tweak hash
+// TapTweak(P || merkle) into th.
+bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) {
+  #assert ss_key(key,w[0].key[..],false) && sp_base(w[0].key[0].safe,w[0].point[..]) && sp_x(w[0].point[..],w[0].internal[..]);
+  m:[64]u8;n:=bt_put(m[..],0,w[0].internal[..]);
+  bt_tagged("TapTweak",m[0..<bt_put(m[..],n,merkle)],th);
+}
+// The tweaked key d' + t into w.tweaked, where d' is d or n - d so that P
+// has an even y and t is the tweak hash th; false when t >= n. valid is
+// the masked result: d in [1, n-1] and d' + t not zero.
+bt_tweak :: (th:[]u8,w:[]BtTapWork)->bool {
+  t:=sc_load(th);                                       // public: from the public key
+  tweaked:=sc_add(ss_even(w[0].key[0].safe,w[0].point[0].odd&1),t.value);
+  #assert ss_write(tweaked,w[0].tweaked[..]);
+  w[0].valid=w[0].key[0].valid & w[0].point[0].finite & ec_nonzero(tweaked);
+  return t.ok;
+}
+// book:end tweak
+bt_tap_clear :: (w:[]BtTapWork)->bool {fresh:BtTapWork;w[0]=fresh;return false;}
+// book:begin taproot
+// The BIP-340 signature of a key-path sighash by the key tweaked with
+// merkle (empty for a key with no script tree, else 32 bytes), with aux
+// as BIP-340's auxiliary randomness, into out (64 bytes; a hash type other
+// than SIGHASH_DEFAULT is appended by the caller). Views are stable and
+// disjoint; the workspace is cleared on every return. schnorr_sign_step
+// takes exactly six calls to publish; a refusal clears its workspace, and
+// the calls left can't reach a signature.
+bt_taproot_sign :: (key:[]u8,merkle:[]u8,sighash:[]u8,aux:[]u8,w:[]BtTapWork,out:[]u8,overlap:bool)->bool {
+  if w.count!=1 || key.count!=32 || (merkle.count!=0 && merkle.count!=32) || sighash.count!=32 || aux.count!=32 || out.count!=64 || overlap {return false;}
+  th:[32]u8;bt_internal(key,merkle,w,th[..]);
+  if !bt_tweak(th[..],w) || !ec_declassify(w[0].valid) {return bt_tap_clear(w);}
+  status:=schnorr_sign_step(w[0].tweaked[..],aux,sighash,w[0].sign[..],out,false);
+  for k:1..<6 {status=schnorr_sign_step(w[0].tweaked[..],aux,sighash,w[0].sign[..],out,false);}
+  return bt_tap_clear(w) || status==SIGN_DONE;
+}
+// book:end taproot

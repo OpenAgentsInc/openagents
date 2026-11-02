@@ -44,4 +44,16 @@ a retired wallet, a request that is not its sweep: retired
 a compromised signer of a 2-of-3 sweep, one compromised: compromised
 1,000,001 sat over a 1,000,000 delay threshold, 3600 s after receipt of 86400: delay
 a 600,000 sat top-up onto 500,000,000 msat under a 1,000,000,000 msat ceiling: hot
-partial signatures: not built
+signatures (BIP-143 SIGHASH_ALL, RFC 6979 ECDSA, low-S)
+witness script at receive 0: 105 bytes, 2-of-3 CHECKMULTISIG
+alice: ok, 2 signatures; input 1 key 027ae41a7f786c8d...
+  sig 3045022100d49ed3818ca822... (72 bytes, hash type 1)
+keyco: ok, 2 signatures; input 1 key 0360ab78dedf6908...
+  sig 304502210090458259581594... (72 bytes, hash type 1)
+enclave: ok, 2 signatures; input 1 key 03e47364df38f1c8...
+  sig 304402202f487509db2e3d6a... (71 bytes, hash type 1)
+each equal to libsecp256k1's: true
+alice alone: -1
+alice and keyco: a 675 byte transaction, equal to Python's: true
+txid 101d9f23d34871c476143aa4d9f64cfd2ea71cada47c93ed4c654c0d58361347 (Python's: true)
+alice asked to sign the PSBT paying tb1qz5tpwxqe: outputs, 0 signatures

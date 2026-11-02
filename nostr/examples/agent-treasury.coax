@@ -7,9 +7,11 @@
 // every signer refuses it. The records are the fixtures in
 // coax/tests/nostr/keys_fixtures.coax, written by an independent Python
 // reference (keys from SHA-256("chapter 104 <name>"), TEST ONLY); a 3188
-// transport would hand them over decrypted. No signature is produced:
-// signing is not built.
-#load "../../coax/lib/nostr/nipkeys.coax";
+// transport would hand them over decrypted. alice and keyco then sign the
+// spend (BIP-143 sighashes, RFC 6979 ECDSA) and a coordinator combines
+// their partial signatures into the final transaction; the account keys
+// are the fixtures in coax/tests/nostr/keys_sign_fixtures.coax (TEST ONLY).
+#load "../../coax/lib/nostr/nipkeys_sign.coax";
 #import "Basic";
 
 // book:begin example
@@ -111,6 +113,35 @@ main :: () {
   print("a compromised signer of a 2-of-3 sweep, one compromised: %\n",kw(ky_sweep_signer(w.paths[0],1,true)));
   print("1,000,001 sat over a 1,000,000 delay threshold, 3600 s after receipt of 86400: %\n",kw(ky_delay(1000001,1000000,86400,0,3600,false)));
   print("a 600,000 sat top-up onto 500,000,000 msat under a 1,000,000,000 msat ceiling: %\n",kw(ky_topup(500000000,600000,1000000000)));
-  print("partial signatures: not built\n");
+
+  print("signatures (BIP-143 SIGHASH_ALL, RFC 6979 ECDSA, low-S)\n");
+  wit:=ky_witnesses(w,p.e[..]);
+  print("witness script at receive 0: % bytes, 2-of-3 CHECKMULTISIG\n",wit.n[0]);
+  signed:[3]KySigned;
+  for i:0..<3 {
+    acct:=account_of(i);
+    led:[1]KyLedger;work:[1]KySignWork;
+    signed[i]=ky_sign(w,wd,sc,wit,p.e[..],i,r,ps,CEILING[i],KY_T0,led[..],acct[..],work[..]);
+    s:=signed[i];
+    print("%: %, % signatures; input 1 key %...\n",NAMES[i],kw(s.code),s.nin,to_hex(s.p[0].pub[0..<8],h[..]));
+    print("  sig %... (% bytes, hash type %)\n",to_hex(s.p[0].sig[0..<12],h[..]),s.p[0].n,s.p[0].sig[s.p[0].n-1]);
+  }
+  print("each equal to libsecp256k1's: %\n",same_partials(signed[..]));
+  tx:[2048]u8;big:[4096]u8;
+  print("alice alone: %\n",ky_combine(w,sc,wit,ps,signed[0..<1],tx[..]));
+  m:=ky_combine(w,sc,wit,ps,signed[0..<2],tx[..]);
+  print("alice and keyco: a % byte transaction, equal to Python's: %\n",m,to_hex(tx[0..<m],big[..])==KY_FINAL_TX);
+  id:[32]u8;rev:[32]u8;bt_sha2(ky_unsigned(ps),id[..]);for k:0..<32 {rev[k]=id[31-k];}
+  print("txid % (Python's: %)\n",to_hex(rev[..],h[..]),to_hex(rev[..],h[..])==KY_TXID);
+  acct0:=account_of(0);work0:[1]KySignWork;
+  ex:=ky_sign(w,wd,sc,wit,p.e[..],0,ky_request_read(KY_REQUEST_EVIL),evil,CEILING[0],KY_T0,l[..],acct0[..],work0[..]);
+  print("alice asked to sign the PSBT paying %: %, % signatures\n",KY_EVIL_ADDRESS[0..<12],kw(ex.code),ex.nin);
+}
+// Agent a's account key and chain code (test fixtures).
+account_of :: (a:int)->[64]u8 {r:[64]u8;k:=ky_unhex(KY_ACCOUNT_KEY[a],r[0..<32]);c:=ky_unhex(KY_ACCOUNT_CHAIN[a],r[32..<64]);return r;}
+same_partials :: (s:[]KySigned)->bool {
+  h:[160]u8;
+  for a:0..<3 {for k:0..<2 {if to_hex(s[a].p[k].sig[0..<s[a].p[k].n],h[..])!=KY_PARTIAL[2*a+k] {return false;}}}
+  return true;
 }
 // book:end main

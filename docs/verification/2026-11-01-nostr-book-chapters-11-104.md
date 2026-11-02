@@ -12,9 +12,11 @@ work found outside the book.
   - **Chapter 103:** the importer, the equality check and the shadow
     comparer exist and are checked. The cutover and the rollback rehearsal
     need owner sign-off (`NEEDS_OWNER.md`).
-  - **Chapter 104:** NIP-KEYS signing (ECDSA/BIP-143, BIP-341, BIP-322) is
-    not built. Root-only mutation of `coax/lib/nostr/nipkeys.coax` finished
-    later at `a9ce49d714`: 1963 of 1963 mutants killed across 40 shards.
+  - **Chapter 104:** root-only mutation of `coax/lib/nostr/nipkeys.coax`
+    finished later at `a9ce49d714`: 1963 of 1963 mutants killed across 40
+    shards. Signing landed after this record (see "Fixed after this
+    record"); the relay round trip, signet and recovery with another wallet
+    are still not built, and BIP-322 proofs are read, not verified.
 - `python3 psionic/tests/book.py --book nostr` (the structure check) passes.
 
 ## Final example run
@@ -170,6 +172,20 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
   (chapter 14) timed out at the default 60 s under parallel load. Both now
   have a 240 s timeout (`e306f403b4`).
 - Finding 7 above, the hashing and phrase limits.
+- **Chapter 104 signing.** `coax/lib/crypto/ecdsa_sign.coax` (RFC 6979,
+  low-S, DER), `coax/lib/bitcoin/sighash.coax` (BIP-143, BIP-341, the
+  Taproot key path) and `coax/lib/nostr/nipkeys_sign.coax` (partial
+  signatures, the signed PSBT, the coordinator's transaction), all
+  `#authority`. Root-only mutation: 224 of 224 and 406 of 406 killed
+  for the first two; `nipkeys_sign.coax`'s first 16-shard pass left 9
+  survivors in shards 1 to 12 (all since killed) and shards 13 to 15 hit
+  the 14-minute limit, so its pass on the final file is still owed. BIP-143's eight published signatures and BIP-341's seven
+  key-path witnesses are reproduced byte for byte;
+  `coax/tests/bitcoin/ecdsa_sign_libsecp.py` sent 1,200 release and 200
+  ASan/UBSan signatures to libsecp256k1 v0.8.0: all verify, all low-S, all
+  equal to its own signatures. The 2-of-3 spend equals the bytes
+  `coax/tests/nostr/keys_sign_reference.py` builds and checks with
+  libsecp256k1. No Bitcoin node ran the transaction's script.
 
 ## Library changes the chapters made to existing code
 

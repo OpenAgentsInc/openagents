@@ -1,0 +1,17 @@
+// Test helper for coax/lib/bitcoin/sighash.coax: a scriptPubKey from hex.
+bt_script :: (h:string)->BtScript {r:BtScript;r.n=bt_unhex(h,r.b[..]).count;return r;}
+// An unsigned transaction: version 2, nin inputs (outpoint k k k..., an
+// empty scriptSig, sequence 0xeeeeeeee), nout outputs (value 0, a script
+// of n zero bytes), locktime 7.
+bt_build :: (out:[]u8,nin:int,nout:int,n:int)->[]u8 {
+  for i:0..<out.count {out[i]=0;}
+  out[0]=2;out[4]=cast(u8)nin;at:=5;
+  for k:0..<nin {for j:0..<36 {out[at+j]=cast(u8)k;}at+=37;for j:0..<4 {out[at+j]=0xee;}at+=4;}
+  out[at]=cast(u8)nout;at+=1;
+  for k:0..<nout {
+    at+=8;
+    if n<0xfd {out[at]=cast(u8)n;at+=1;} else {out[at]=0xfd;out[at+1]=cast(u8)(n&255);out[at+2]=cast(u8)(n>>8);at+=3;}
+    at+=n;
+  }
+  out[at]=7;return out[0..<at+4];
+}

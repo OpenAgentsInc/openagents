@@ -2432,7 +2432,15 @@
    ],
    "source": [
     "coax/lib/nostr/nipkeys.coax",
+    "coax/lib/nostr/nipkeys_sign.coax",
+    "coax/lib/crypto/ecdsa_sign.coax",
+    "coax/lib/bitcoin/sighash.coax",
     "coax/tests/nostr/keys_fixtures.coax",
+    "coax/tests/nostr/keys_sign_fixtures.coax",
+    "coax/tests/nostr/keys_sign_support.coax",
+    "coax/tests/bitcoin/support.coax",
+    "coax/tests/bitcoin/support_tx.coax",
+    "coax/tests/bitcoin/sighash_vectors.coax",
     "nostr/examples/agent-treasury.coax",
     "nostr/examples/checks/agent-treasury.coax"
    ],

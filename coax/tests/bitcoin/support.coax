@@ -1,0 +1,19 @@
+// Test helpers for coax/lib/crypto/ecdsa_sign.coax and
+// coax/lib/bitcoin/sighash.coax: lowercase hex into bytes, and byte
+// equality, a scriptPubKey from hex, and signing helpers. Test code only;
+// loaded by those files (through ecdsa_sign.coax).
+bt_unhex :: (h:string,out:[]u8)->[]u8 {
+  for i:0..<h.count/2 {out[i]=cast(u8)(bt_nib(h[2*i])*16+bt_nib(h[2*i+1]));}
+  return out[0..<h.count/2];
+}
+bt_nib :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+bt_same :: (a:[]u8,b:[]u8)->bool {if a.count!=b.count {return false;}for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;}
+bt_hex_is :: (a:[]u8,h:string)->bool {e:[2048]u8;return bt_same(a,bt_unhex(h,e[..]));}
+// ecdsa_sign over hex key and hash: is the signature sig (compact hex)?
+ec_signs :: (key:string,hash:string,sig:string)->bool {
+  w:[1]EcdsaWork;k:[32]u8;h:[32]u8;out:[64]u8;
+  if !ecdsa_sign(bt_unhex(key,k[..]),bt_unhex(hash,h[..]),w[..],out[..],false) {return false;}
+  return bt_hex_is(out[..],sig);
+}
+ec_scalar_is :: (s:ScScalar,h:string)->bool {b:[32]u8;#assert ss_write(s,b[..]);return bt_hex_is(b[..],h);}
+bt_set :: (h:string,out:[]u8) {d:=bt_unhex(h,out);}

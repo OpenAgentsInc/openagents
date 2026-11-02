@@ -1,11 +1,14 @@
 # 104. Agent treasuries and a network of keys
 
 > **Status: partly implemented.** The pure contracts (NIP-KEYS step 1) and
-> the signer's checks from step 2 run, with a worked example, a refusal
-> and independent checks. Producing signatures, the 3188 transport, the
-> signet round trip and recovery with an independent wallet tool are not
-> built, so the chapter's first two "Done means" lines don't hold yet. See
-> [Not built](#not-built).
+> the signing loop's local half (step 2) run: the signer's checks, ECDSA
+> partial signatures over BIP-143 digests, the PSBT with them, and the
+> coordinator's 2-of-3 transaction, with worked examples, refusals and
+> independent checks (BIP-143's and BIP-341's published vectors,
+> libsecp256k1, a Python reference). The 3188 transport over a Coax relay,
+> a spend broadcast on signet, and recovery with an independent wallet
+> tool are not built, so the chapter's "Done means" line doesn't hold yet.
+> See [Not built](#not-built).
 
 The chapter qualifies checking contracts on native CPU. It records no
 external treasury consumer and no Wasm qualification. Those claims stay
@@ -16,9 +19,10 @@ not approve a replacement digest.
 
 An agent that earns and spends bitcoin needs somewhere safe to keep it. One
 hot key on the agent, or one wallet host, is a single point of failure. This
-chapter builds the checking half of the alternative: a wallet whose coins
+chapter builds the alternative up to the network: a wallet whose coins
 move only when enough independent key agents sign, described by records
-that every party can rebuild and check alone.
+that every party can rebuild and check alone, and the signatures that move
+them.
 
 Part XII, Nostr in OpenAgents. Result: NIP-KEYS wallet, enrollment,
 independence and signing-request bodies read under closed schemas; a
@@ -27,7 +31,10 @@ four composition rules; the wallet's P2WSH scripts derived from public keys
 alone; and a signer that recomputes every output, the change and the fee
 from the PSBT before it would sign, with nonce idempotency, recovery
 timelocks, retired wallets, the attested co-signer's delay and the
-hot-balance ceiling.
+hot-balance ceiling; then ECDSA signatures with RFC 6979 nonces over
+BIP-143 digests, a PSBT carrying them, and the coordinator's final 2-of-3
+transaction. BIP-341 Taproot key-path digests and signatures are built and
+checked, for the `tr` wallets that come next.
 
 ## What this chapter teaches
 
@@ -46,15 +53,26 @@ hot-balance ceiling.
   input is the wallet's, compares every output with the request's
   statement, derives change from the descriptor and recomputes the fee.
 - Idempotency by `(agent, requester, nonce)` with the request digest.
-- What is not built, and why: signatures, BIP-322, Taproot, PSBT v2,
-  miniscript spends, the relay round trip and signet.
+- ECDSA with RFC 6979's deterministic nonce and low-S, under chapter 3's
+  constant-time rules, and BIP-66's DER.
+- The BIP-143 and BIP-341 signature digests, and the Taproot key tweak.
+- A key agent's partial signatures (BIP-174 `PSBT_IN_PARTIAL_SIG`) and the
+  coordinator's witness: an empty item, a threshold of signatures in key
+  order, the witness script.
+- What is not built, and why: BIP-322, `tr` wallets, PSBT v2, miniscript
+  spends, the relay round trip, signet and recovery with another wallet.
 
 ## Where the code is
 
 | File | What |
 | --- | --- |
 | [coax/lib/nostr/nipkeys.coax](../../coax/lib/nostr/nipkeys.coax) | NIP-KEYS: the checksum, the readers, xpub decoding and public derivation, admission, scripts, the PSBT reader and the signer's checks. `#authority` |
+| [coax/lib/nostr/nipkeys_sign.coax](../../coax/lib/nostr/nipkeys_sign.coax) | The key agent's signatures, its PSBT, and the coordinator's transaction. `#authority` |
+| [coax/lib/crypto/ecdsa_sign.coax](../../coax/lib/crypto/ecdsa_sign.coax) | ECDSA: RFC 6979, low-S, DER. `#authority` |
+| [coax/lib/bitcoin/sighash.coax](../../coax/lib/bitcoin/sighash.coax) | The transaction reader, the BIP-143 and BIP-341 digests, the Taproot key path. `#authority` |
 | [coax/tests/nostr/keys_fixtures.coax](../../coax/tests/nostr/keys_fixtures.coax) | The treasury's records, written by an independent Python reference |
+| [coax/tests/nostr/keys_sign_fixtures.coax](../../coax/tests/nostr/keys_sign_fixtures.coax) | The treasury's signed spend, written by [keys_sign_reference.py](../../coax/tests/nostr/keys_sign_reference.py) |
+| [coax/tests/bitcoin/sighash_vectors.coax](../../coax/tests/bitcoin/sighash_vectors.coax) | BIP-143's examples and BIP-341's wallet vectors, copied by [make_sighash_vectors.py](../../coax/tests/bitcoin/make_sighash_vectors.py) |
 | [nostr/examples/agent-treasury.coax](../examples/agent-treasury.coax) | The example |
 | [nostr/examples/checks/agent-treasury.coax](../examples/checks/agent-treasury.coax) | Its independent checks |
 
@@ -712,6 +730,265 @@ above the co-signer's `delay_above_sat` until `delay_seconds` after receipt
 and cancels it on a primary refusal; `ky_topup` refuses a `hot-topup` that
 would take the hot Lightning balance over `hot_ceiling_msat`.
 
+## Signatures
+
+A signer that accepted a request still has to sign. A `wsh` input is a
+segwit version 0 spend: its signature is ECDSA over the BIP-143 digest.
+A `tr` key-path input is a version 1 spend: a BIP-340 Schnorr signature
+over the BIP-341 digest, by a key tweaked with the output's script tree.
+The generic Bitcoin code is in two files: the signer in
+`coax/lib/crypto/ecdsa_sign.coax` and the digests, the transaction reader
+and the Taproot key path in `coax/lib/bitcoin/sighash.coax`. Both are
+`#authority`.
+
+### ECDSA with a deterministic nonce
+
+ECDSA signs a 32-byte hash *z* with key *d* by choosing a nonce *k*,
+taking *r* = x(*k*G) mod *n* and *s* = *k*⁻¹(*z* + *rd*) mod *n*. A nonce
+that repeats, or that an attacker can bias, gives the key away, so the
+nonce is not random: RFC 6979 derives it from the key and the hash with
+HMAC-SHA256. V starts as 32 bytes of 0x01 and K as 32 bytes of 0x00; two
+rounds mix in `x || h` (the key, and the hash reduced mod *n*); each later
+V = HMAC_K(V) is a candidate, kept when it lies in [1, *n*−1].
+
+<!-- source: coax/lib/crypto/ecdsa_sign.coax rfc6979 -->
+```jai
+// RFC 6979 section 3.2 for SHA-256 and secp256k1's 256-bit order: the
+// first two candidates for key and hash (bits2octets(h) is h mod n), into
+// w.first and w.second.
+ec_candidates :: (key:[]u8,hash:[]u8,w:[]EcdsaWork) {
+  z:=sc_reduce_bytes(hash);   // the message hash is public
+  for i:0..<32 {w[0].hv[i]=1;w[0].hk[i]=0;w[0].buf[33+i]=key[i];}
+  #assert ss_write(z.value,w[0].buf[65..<97]);
+  ec_step(w,0,97);ec_step(w,1,97);
+  ec_next(w);for i:0..<32 {w[0].first[i]=w[0].hv[i];}
+  ec_step(w,0,33);
+  ec_next(w);for i:0..<32 {w[0].second[i]=w[0].hv[i];}
+}
+```
+
+The key and the nonce are secrets, so chapter 3's rules apply. RFC 6979
+loops until a candidate is valid; a loop whose length depends on the key
+leaks a little about it. This signer always computes two candidates and
+picks the first valid one with a mask (`ec_pick`). A first candidate
+outside the range has probability below 2⁻¹²⁷, both below 2⁻²⁵⁴; then it
+refuses instead of looping. *k*G is the comb from chapter 10 (`sp_base`),
+the inverse is a fixed power of *k* (chapter 8), and BIP-146's low-S rule
+replaces *s* by *n* − *s* with a mask when 2*s* ≥ *n*:
+
+<!-- source: coax/lib/crypto/ecdsa_sign.coax ecdsa -->
+```jai
+// The low-S ECDSA signature r || s (32 bytes each) of a 32-byte message
+// hash under a 32-byte key, with RFC 6979's nonce. Views are stable and
+// disjoint (overlap is the host's truthful observation). out is written
+// only when the result is true; the workspace is cleared either way.
+ecdsa_sign :: (key:[]u8,hash:[]u8,w:[]EcdsaWork,out:[]u8,overlap:bool)->bool #export_c {
+  if !ec_views(key,hash,w,out,overlap) {return false;}
+  #assert ss_key(key,w[0].key[..],false);
+  ec_candidates(key,hash,w);ec_pick(w);
+  #assert sp_base(w[0].k,w[0].point[..]) && sp_x(w[0].point[..],w[0].x[..]);
+  w[0].r=sc_reduce_bytes(w[0].x[..]).value;              // r = x(kG) mod n
+  z:=sc_reduce_bytes(hash).value;
+  inverse:=sc_inverse(w[0].k);
+  w[0].s=ec_low(sc_mul(inverse.value,sc_add(z,sc_mul(w[0].r,w[0].key[0].safe))));
+  valid:=w[0].key[0].valid & w[0].valid & w[0].point[0].finite & ec_nonzero(w[0].r) & ec_nonzero(w[0].s);
+  if !ec_declassify(valid) {return ec_clear(w);}
+  for i:0..<8 {
+    #assert cb_store_be32(out,28-4*i,w[0].r.limbs[i]) && cb_store_be32(out,60-4*i,w[0].s.limbs[i]);
+  }
+  return !ec_clear(w);
+}
+```
+
+`ecdsa_der` writes BIP-66's DER: `30 len 02 len r 02 len s`, each integer
+without leading zeros and with a `00` in front when its top bit is set.
+
+### Worked example: RFC 6979 by hand
+
+Key 1 and the hash SHA-256("Satoshi Nakamoto") =
+`a0dc65ff…7704883e`. The two rounds and the first candidate give
+*k* = `8f8a276c…74f15d15`, in range, so it is the nonce (Python's `hmac`
+module gives the same value, and the second candidate `f15fb763…d771045e`).
+*k*G has x = `934b1ea1…210ee3d8` = *r*. Then *s* = *k*⁻¹(*z* + *r*) mod *n*
+is above *n*/2, so the signature carries *n* − *s* = `2442ce9d…2aafd9e5`.
+libsecp256k1 signs the same key and hash to the same 64 bytes.
+
+### The BIP-143 digest
+
+Before segwit, a signature hashed a copy of the whole transaction for each
+input, and signing cost grew with the square of the inputs. BIP-143 hashes
+the shared parts once: all outpoints (`hashPrevouts`), all sequences
+(`hashSequence`) and all outputs (`hashOutputs`), each a double SHA-256.
+The input's own outpoint, script code, amount and sequence follow. Signing
+the amount is what lets a hardware signer, or a key agent, trust the fee
+it computed: a lie about an input's value changes the digest.
+
+<!-- source: coax/lib/bitcoin/sighash.coax bip143 -->
+```jai
+// The BIP-143 signature hash of input index, spending amount satoshis
+// under script code (for P2WSH the witness script, for P2WPKH the P2PKH
+// script of its key hash; at most BT_TX bytes), with hash type hashtype,
+// into out.
+bt_sighash_v0 :: (b:[]u8,tp:BtTx,index:int,code:[]u8,amount:int,hashtype:int,out:[]u8)->bool {t:=tp;
+  if !t.ok || index<0 || index>=t.nin || amount<0 || code.count>BT_TX || out.count!=32 {return false;}
+  anyone:=(hashtype&BT_ANYONE)!=0;base:=hashtype&0x1f;
+  m:[BT_TX+160]u8;hp:[32]u8;hs:[32]u8;ho:[32]u8;           // the hashes BIP-143 zeroes stay zero
+  if !anyone {bt_sha2(m[0..<bt_prevouts(t,m[..])],hp[..]);}
+  if !anyone && base!=BT_SINGLE && base!=BT_NONE {bt_sha2(m[0..<bt_sequences(t,m[..])],hs[..]);}
+  if base!=BT_SINGLE && base!=BT_NONE {bt_sha2(m[0..<bt_outputs(b,t,m[..])],ho[..]);}
+  else if base==BT_SINGLE && index<t.nout {bt_sha2(b[t.out_at[index]..<t.out_at[index]+t.out_n[index]],ho[..]);}
+  n:=bt_put(m[..],0,t.version[..]);n=bt_put(m[..],n,hp[..]);n=bt_put(m[..],n,hs[..]);
+  n=bt_put(m[..],n,t.inputs[index].prev[..]);
+  n=bt_var_put(m[..],n,code.count);n=bt_put(m[..],n,code);
+  n=bt_le(m[..],n,amount,8);n=bt_put(m[..],n,t.inputs[index].seq[..]);
+  n=bt_put(m[..],n,ho[..]);n=bt_put(m[..],n,t.locktime[..]);n=bt_le(m[..],n,hashtype,4);
+  bt_sha2(m[0..<n],out);
+  return true;
+}
+```
+
+### Worked example: the treasury's first input
+
+The PSBT's transaction is version 2, two inputs
+(`1111…11:0` and `2222…22:1`, sequence `fdffffff`), two outputs, locktime
+0. For input 0, SIGHASH_ALL:
+
+```text
+nVersion      02000000
+hashPrevouts  7b3c2ebd5b19afa039feca8f9dd091e9091a054cef8430c8fcd2cc5a32f51fcd
+hashSequence  957879fdce4d8ab885e32ff307d54e75884da52522cc53d3c4fdb60edb69a098
+outpoint      1111111111111111111111111111111111111111111111111111111111111111 00000000
+scriptCode    69 52 21 027ae41a… 21 0360ab78… 21 03e47364… 53 ae   (the witness script)
+amount        60ea000000000000   (60,000 sat)
+nSequence     fdffffff
+hashOutputs   98652593c9090007703fe698b8f97d2ad0edc6dd8bcbd6f2892d77b9013e87c0
+nLockTime     00000000
+nHashType     01000000
+```
+
+Its double SHA-256 is `c5806db5…6c45c3be`. Python computes the same bytes
+from BIP-143's text, and the program computes them with
+`bt_sighash_v0`.
+
+### The Taproot key path
+
+A Taproot output commits to a key Q = P + *t*G, where P is the internal
+key and *t* = H_TapTweak(P ‖ merkle root) (BIP-341). To spend by the key
+path, the signer tweaks its secret the same way: it negates *d* when P's
+y is odd (BIP-340 keys are x-only), adds *t*, and signs the BIP-341 digest
+with chapter 13's `schnorr_sign_step`. The digest is a tagged hash over
+the transaction's parts, and unlike BIP-143 it commits to every input's
+amount and scriptPubKey, so a signer can't be lied to about any of them.
+
+<!-- source: coax/lib/bitcoin/sighash.coax tweak -->
+```jai
+// The internal key P = dG (public, into w.internal), then the tweak hash
+// TapTweak(P || merkle) into th.
+bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) {
+  #assert ss_key(key,w[0].key[..],false) && sp_base(w[0].key[0].safe,w[0].point[..]) && sp_x(w[0].point[..],w[0].internal[..]);
+  m:[64]u8;n:=bt_put(m[..],0,w[0].internal[..]);
+  bt_tagged("TapTweak",m[0..<bt_put(m[..],n,merkle)],th);
+}
+// The tweaked key d' + t into w.tweaked, where d' is d or n - d so that P
+// has an even y and t is the tweak hash th; false when t >= n. valid is
+// the masked result: d in [1, n-1] and d' + t not zero.
+bt_tweak :: (th:[]u8,w:[]BtTapWork)->bool {
+  t:=sc_load(th);                                       // public: from the public key
+  tweaked:=sc_add(ss_even(w[0].key[0].safe,w[0].point[0].odd&1),t.value);
+  #assert ss_write(tweaked,w[0].tweaked[..]);
+  w[0].valid=w[0].key[0].valid & w[0].point[0].finite & ec_nonzero(tweaked);
+  return t.ok;
+}
+```
+
+The wallets this chapter admits are `wsh`, so the signer doesn't use the
+Taproot key path yet; `tr(...)` descriptors still refuse as `not_built`.
+The key path is checked against BIP-341's published wallet vectors.
+
+### The key agent signs, and the coordinator combines
+
+`ky_sign` runs `ky_sign_check`, checks that the account key belongs to the
+agent's enrollment (its public key and chain code are the xpub's), records
+the outcome in the ledger, and only then signs each input. Each input's
+script is found among the wallet's, its witness script (derived from the
+xpubs at admission, `ky_witnesses`) must hash to the input's program, and
+the child key comes from BIP-32 private derivation on the comb
+(`ky_child_priv`):
+
+<!-- source: coax/lib/nostr/nipkeys_sign.coax ky_sign -->
+```jai
+// One key agent's answer to one request: the checks (ky_sign_check), the
+// account key against its enrollment me, the outcome recorded in the
+// ledger before any signature exists, then one SIGHASH_ALL ECDSA signature
+// per input. An exact retry signs again, to the same bytes (RFC 6979).
+// account is the agent's account private key and chain code (64 bytes);
+// wit the wallet's witness scripts (ky_witnesses).
+ky_sign :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,wit:KyWitnesses,e:[]KyEnrollment,me:int,r:KyRequest,psbt:[]u8,ceiling:int,now:int,l:[]KyLedger,account:[]u8,work:[]KySignWork)->KySigned {
+  code:=ky_sign_check(w,wallet_digest,all,r,psbt,ceiling,now);
+  if !ky_account_is(e,me,account,work) {return ky_refusal(work,KyCode.xpub,false);}
+  c:=ky_consume(l,e[me].agent,r,code);
+  if c.code!=KyCode.ok {return ky_refusal(work,c.code,c.retry);}
+  t:=ky_psbt_read(psbt);u:=ky_unsigned(psbt);tx:=bt_tx_read(u);x:=wit;
+  out:=[1]KySigned.[KySigned.{code=KyCode.ok,retry=c.retry,nin=t.nin}];
+  bt_sha(psbt,out[0].psbt[..]);
+  for k:0..<t.nin {
+    slot:=ky_slot(all,t.in_script[k]);         // ky_sign_check found every input among them
+    ws:=x.ws[slot][0..<x.n[slot]];h:[32]u8;
+    if !ky_ws_is(ws,t.in_script[k]) {return ky_refusal(work,KyCode.inputs,false);}
+    #assert bt_sighash_v0(u,tx,k,ws,t.in_value[k],BT_ALL,h[..]);
+    #assert ky_slot_key(account,slot,work);
+    #assert ecdsa_sign(work[0].k2[..],h[..],work[0].ec[..],work[0].sig[..],false) && ky_pub(work[0].k2[..],work);
+    d:=ecdsa_der(work[0].sig[..],out[0].p[k].sig[..]);
+    out[0].p[k].sig[d]=cast(u8)BT_ALL;out[0].p[k].n=d+1;out[0].p[k].pub=work[0].pub;
+  }
+  ky_sign_clear(work);
+  return out[0];
+}
+```
+
+The result goes into the agent's receipt as a PSBT with
+`PSBT_IN_PARTIAL_SIG` entries (`ky_psbt_signed`). An exact retry signs
+again; RFC 6979 makes the bytes identical, so a retry can't produce a
+second, different signature. The coordinator takes a threshold of
+signatures for the PSBT (matched by its digest) and writes each input's
+witness: an empty item (CHECKMULTISIG pops one extra), the signatures in
+the witness script's key order, then the witness script:
+
+<!-- source: coax/lib/nostr/nipkeys_sign.coax combine -->
+```jai
+// The coordinator: the final transaction from the signers' results for
+// this PSBT (matched by digest), with the wallet's scripts and witness
+// scripts. Each input's witness is 0, then a threshold of signatures in
+// the witness script's key order, then the witness script. Into out; the
+// length, or -1 when an input has fewer than a threshold of signatures.
+ky_combine :: (w:KyWallet,all:KyScripts,wit:KyWitnesses,psbt:[]u8,s:[]KySigned,out:[]u8)->int {
+  t:=ky_psbt_read(psbt);x:=wit;
+  if t.code!=KyCode.ok {return -1;}
+  d:[32]u8;bt_sha(psbt,d[..]);u:=ky_unsigned(psbt);
+  buf:[2048]u8;wn:=0;need:=w.paths[0].threshold;
+  for k:0..<t.nin {
+    slot:=ky_slot(all,t.in_script[k]);if slot<0 {return -1;}
+    ws:=x.ws[slot][0..<x.n[slot]];
+    if !ky_ws_is(ws,t.in_script[k]) {return -1;}
+    buf[wn]=cast(u8)(need+2);wn+=2;got:=0;               // the item count, then an empty item (buf is zeroed)
+    for j:0..<w.nenroll {
+      used:=false;
+      for xi:0..<s.count {
+        y:=s[xi];same:=y.code==KyCode.ok && ky_eq32(y.psbt,d) && got<need && !used;
+        for b:0..<33 {same=same && y.p[k].pub[b]==ws[2+34*j+b];}
+        if same {buf[wn]=cast(u8)y.p[k].n;wn=bt_put(buf[..],wn+1,y.p[k].sig[0..<y.p[k].n]);got+=1;used=true;}
+      }
+    }
+    if got<need {return -1;}
+    buf[wn]=cast(u8)ws.count;wn=bt_put(buf[..],wn+1,ws);
+  }
+  if out.count<u.count+2+wn {return -1;}
+  m:=bt_put(out,0,u[0..<4]);out[m]=0;out[m+1]=1;
+  m=bt_put(out,m+2,u[4..<u.count-4]);m=bt_put(out,m,buf[0..<wn]);
+  return bt_put(out,m,u[u.count-4..<u.count]);
+}
+```
+
 ## The example
 
 The example is
@@ -720,7 +997,10 @@ reads the three enrollments and the wallet, recomputes the descriptor,
 admits the wallet, tries the two broken declarations, derives receive 0
 and change 0, runs the request through all three signers, then the PSBT
 with a different payee, five broken requests, the ledger and the timelock,
-rotation, delay and hot-ceiling checks.
+rotation, delay and hot-ceiling checks. Then each agent signs the spend
+with its account key (test keys from `keys_sign_fixtures.coax`), the
+coordinator combines alice's and keyco's signatures, and alice is asked to
+sign the PSBT with the other payee.
 
 <!-- source: nostr/examples/agent-treasury.coax example -->
 ```jai
@@ -823,7 +1103,36 @@ main :: () {
   print("a compromised signer of a 2-of-3 sweep, one compromised: %\n",kw(ky_sweep_signer(w.paths[0],1,true)));
   print("1,000,001 sat over a 1,000,000 delay threshold, 3600 s after receipt of 86400: %\n",kw(ky_delay(1000001,1000000,86400,0,3600,false)));
   print("a 600,000 sat top-up onto 500,000,000 msat under a 1,000,000,000 msat ceiling: %\n",kw(ky_topup(500000000,600000,1000000000)));
-  print("partial signatures: not built\n");
+
+  print("signatures (BIP-143 SIGHASH_ALL, RFC 6979 ECDSA, low-S)\n");
+  wit:=ky_witnesses(w,p.e[..]);
+  print("witness script at receive 0: % bytes, 2-of-3 CHECKMULTISIG\n",wit.n[0]);
+  signed:[3]KySigned;
+  for i:0..<3 {
+    acct:=account_of(i);
+    led:[1]KyLedger;work:[1]KySignWork;
+    signed[i]=ky_sign(w,wd,sc,wit,p.e[..],i,r,ps,CEILING[i],KY_T0,led[..],acct[..],work[..]);
+    s:=signed[i];
+    print("%: %, % signatures; input 1 key %...\n",NAMES[i],kw(s.code),s.nin,to_hex(s.p[0].pub[0..<8],h[..]));
+    print("  sig %... (% bytes, hash type %)\n",to_hex(s.p[0].sig[0..<12],h[..]),s.p[0].n,s.p[0].sig[s.p[0].n-1]);
+  }
+  print("each equal to libsecp256k1's: %\n",same_partials(signed[..]));
+  tx:[2048]u8;big:[4096]u8;
+  print("alice alone: %\n",ky_combine(w,sc,wit,ps,signed[0..<1],tx[..]));
+  m:=ky_combine(w,sc,wit,ps,signed[0..<2],tx[..]);
+  print("alice and keyco: a % byte transaction, equal to Python's: %\n",m,to_hex(tx[0..<m],big[..])==KY_FINAL_TX);
+  id:[32]u8;rev:[32]u8;bt_sha2(ky_unsigned(ps),id[..]);for k:0..<32 {rev[k]=id[31-k];}
+  print("txid % (Python's: %)\n",to_hex(rev[..],h[..]),to_hex(rev[..],h[..])==KY_TXID);
+  acct0:=account_of(0);work0:[1]KySignWork;
+  ex:=ky_sign(w,wd,sc,wit,p.e[..],0,ky_request_read(KY_REQUEST_EVIL),evil,CEILING[0],KY_T0,l[..],acct0[..],work0[..]);
+  print("alice asked to sign the PSBT paying %: %, % signatures\n",KY_EVIL_ADDRESS[0..<12],kw(ex.code),ex.nin);
+}
+// Agent a's account key and chain code (test fixtures).
+account_of :: (a:int)->[64]u8 {r:[64]u8;k:=ky_unhex(KY_ACCOUNT_KEY[a],r[0..<32]);c:=ky_unhex(KY_ACCOUNT_CHAIN[a],r[32..<64]);return r;}
+same_partials :: (s:[]KySigned)->bool {
+  h:[160]u8;
+  for a:0..<3 {for k:0..<2 {if to_hex(s[a].p[k].sig[0..<s[a].p[k].n],h[..])!=KY_PARTIAL[2*a+k] {return false;}}}
+  return true;
 }
 ```
 
@@ -876,11 +1185,26 @@ a retired wallet, a request that is not its sweep: retired
 a compromised signer of a 2-of-3 sweep, one compromised: compromised
 1,000,001 sat over a 1,000,000 delay threshold, 3600 s after receipt of 86400: delay
 a 600,000 sat top-up onto 500,000,000 msat under a 1,000,000,000 msat ceiling: hot
-partial signatures: not built
+signatures (BIP-143 SIGHASH_ALL, RFC 6979 ECDSA, low-S)
+witness script at receive 0: 105 bytes, 2-of-3 CHECKMULTISIG
+alice: ok, 2 signatures; input 1 key 027ae41a7f786c8d...
+  sig 3045022100d49ed3818ca822... (72 bytes, hash type 1)
+keyco: ok, 2 signatures; input 1 key 0360ab78dedf6908...
+  sig 304502210090458259581594... (72 bytes, hash type 1)
+enclave: ok, 2 signatures; input 1 key 03e47364df38f1c8...
+  sig 304402202f487509db2e3d6a... (71 bytes, hash type 1)
+each equal to libsecp256k1's: true
+alice alone: -1
+alice and keyco: a 675 byte transaction, equal to Python's: true
+txid 101d9f23d34871c476143aa4d9f64cfd2ea71cada47c93ed4c654c0d58361347 (Python's: true)
+alice asked to sign the PSBT paying tb1qz5tpwxqe: outputs, 0 signatures
 ```
 
 The refusal to look at is the PSBT whose first output pays an address the
-request doesn't name: `outputs` from every signer.
+request doesn't name: `outputs` from every signer, and no signature when
+alice is asked to sign it. The signatures that follow are the ones
+libsecp256k1 makes for the same keys and digests, and alice's and keyco's
+combine into the 675-byte transaction Python built; alice alone can't.
 
 ## How the code is checked
 
@@ -904,6 +1228,31 @@ rule at its boundary, rule 4's successor approvals, the PSBT reader's
 malformed inputs, every signer refusal, the ledger, and the timelock,
 rotation, delay and hot-ceiling functions at their boundaries.
 
+The signing files are `#authority` too. On 2026-11-01 root-only mutation
+left zero survivors in `coax/lib/crypto/ecdsa_sign.coax` (224 mutants,
+153 checks) and `coax/lib/bitcoin/sighash.coax` (406 mutants, 287
+checks). `coax/lib/nostr/nipkeys_sign.coax` (about 330 mutants, 415
+checks with nipkeys.coax's) is not finished: its first full pass, in 16
+shards, left 9 survivors in shards 1 to 12, all killed since by sharper
+checks or by removing code with no effect, and shards 13 to 15 reached the
+14-minute limit; the pass on the file as it stands is still to run, split
+finer. The first runs left survivors
+that pointed at code with no effect: RFC 6979's second candidate wasn't
+checked (it now is, against Python), status results of hashes that can't
+fail were chained into `ok` flags (they are assertions now), and the
+transaction reader had guards the final length check already made; no
+mutant was marked equivalent. The checks hold each function at its
+boundaries: compact sizes in all three forms, 16 and 17 inputs and outputs,
+a 4,096-byte transaction and one byte more, every BIP-341 hash type from
+-1 to 256, DER lengths and sign bytes, the low-S boundary at *n*/2, and
+every refusal of the key agent (another agent's key, a changed chain code,
+a witness script that doesn't hash to the input's program, a PSBT that
+isn't the one signed).
+
+The key and nonce code follows chapter 3's rules by construction (masks,
+fixed loops, the comb); the source audit's profile doesn't yet accept
+arrays and loops, so it was not run on these files.
+
 ### Independent checks
 
 The checks in
@@ -917,6 +1266,28 @@ compare the code with values it didn't produce:
   and wallet digests, the descriptors' checksums and the PSBT digest, all
   written by an independent Python reference that uses Python integers for
   the curve and `hashlib` for hashing and shares no code with Coax.
+- BIP-143's published examples (native P2WPKH, P2SH-P2WPKH, and the
+  P2SH-P2WSH 6-of-6 with all six hash types): every sighash, and every
+  signature from the published private keys byte for byte (the published
+  signatures are RFC 6979 with low-S, so a correct signer reproduces them);
+- BIP-341's `keyPathSpending` wallet vectors: the five intermediate
+  hashes, all seven inputs' sighashes, internal keys, tweaks, tweaked keys
+  and witness signatures;
+- libsecp256k1 v0.8.0, the pinned oracle of chapter 7:
+  `coax/tests/bitcoin/ecdsa_sign_libsecp.py` sends it 1,200 Coax ECDSA
+  signatures (release) and 200 more (checked build under ASan/UBSan), and
+  every one parses as DER, is low-S, verifies, and equals libsecp256k1's own
+  `secp256k1_ecdsa_sign` byte for byte (0 failures, 2026-11-01);
+- the treasury's spend from `keys_sign_reference.py`: Python derives the
+  account and child keys, the witness scripts and the BIP-143 digests on
+  its own, libsecp256k1 signs, and Python assembles each signer's PSBT and
+  the final transaction and verifies every signature over its own digest
+  and in the witness script's key order. The Coax signatures, PSBTs and
+  transaction are equal to these bytes.
+
+RFC 6979 itself has no secp256k1 vectors (its appendix covers the NIST and
+binary curves), so the nonce is checked against an independent Python
+HMAC-DRBG and through the libsecp256k1 equality above.
 
 <!-- source: nostr/examples/checks/agent-treasury.coax check -->
 ```jai
@@ -953,23 +1324,30 @@ come from the Python reference.
 
 ## Not built
 
-- **Signatures.** No partial signature is produced: `wsh` spends need ECDSA
-  with BIP-143 sighashes, `tr` spends BIP-341 sighashes. Without them the
-  first "Done means" line (three key agents on signet sign a 2-of-3 spend
-  from requests carried over a Coax relay) doesn't hold. The second half of
-  that line holds in the checks: a PSBT whose outputs differ from its
-  request is refused by every signer.
+- **The network half of the "Done means" line.** Three key agents sign a
+  2-of-3 spend and a coordinator combines it, and a PSBT whose outputs
+  differ from its request gets no signature from any signer; but the
+  requests and receipts don't yet travel as 3188 artifacts over a Coax
+  relay, and no spend was broadcast or confirmed on signet (that needs a
+  funded signet coin and a node or explorer to broadcast to). The
+  transaction is checked locally instead: Python rebuilds it from its own
+  BIP-143 digests and libsecp256k1 verifies every signature, but no
+  Bitcoin node has run its script.
 - **Recovery with an independent wallet tool.** The scripts are derived
   from the descriptor alone and match the Python reference, but no
-  coordinator outage was recovered on signet.
+  coordinator outage was recovered, on signet or with another wallet
+  (none is installed on this machine).
 - **BIP-322 possession proofs** are read and not verified: `ky_admit`
   returns `proven: false`, and nothing here moves coins.
 - **Miniscript spends.** Wallets with a recovery path are admitted (their
   descriptor is recomputed), but the signer refuses their spends as
   `not_built`; three or more paths refuse at admission.
-- **Taproot** `tr(...)`, **PSBT v2**, MuSig2 and FROST.
+- **`tr(...)` wallets.** The BIP-341 digest, the key tweak and key-path
+  signatures are built and match BIP-341's vectors, but admission still
+  refuses `tr` descriptors and the signer signs only `wsh` inputs.
+- **PSBT v2**, MuSig2 and FROST.
 - **Receipts, liveness, rotation and agency-terms bodies**, the 3188
-  transport, the coordinator, and MKT settlement. The checks they decide
+  transport, a coordinator service (the combination step is built), and MKT settlement. The checks they decide
   (retired wallets, compromised sweeps, the delay, the hot ceiling) are
   pure functions here.
 - Showing the holder the attributes two keys in a quorum share
@@ -991,7 +1369,12 @@ it.
   ceiling.
 - A retry returns the retained outcome; a reused nonce with changed bytes
   refuses.
-- Signing and the signet round trip are the next step.
+- A key agent signs each input with ECDSA over its BIP-143 digest, its
+  nonce from RFC 6979 so a retry signs the same bytes, and records the
+  outcome before the signature exists; a coordinator needs a threshold of
+  signatures for the same PSBT to build the transaction.
+- The relay round trip, signet and recovery with another wallet are the
+  next step.
 
 ## Dependencies
 
@@ -1007,6 +1390,11 @@ it.
 - [OpenAgents NIP-SOV](../nips/openagents/NIP-SOV.md)
 - [OpenAgents NIP-ATT](../nips/openagents/NIP-ATT.md)
 - [BIP-32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki),
+  [BIP-66](https://github.com/bitcoin/bips/blob/master/bip-0066.mediawiki),
+  [BIP-143](https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki),
+  [BIP-146](https://github.com/bitcoin/bips/blob/master/bip-0146.mediawiki),
+  [BIP-341](https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki),
+  [RFC 6979](https://www.rfc-editor.org/rfc/rfc6979),
   [BIP-174](https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki),
   [BIP-380](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki)
   and [BIP-383](https://github.com/bitcoin/bips/blob/master/bip-0383.mediawiki).

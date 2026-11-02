@@ -1175,6 +1175,7 @@
         "debug",
         "release"
       ],
+      "run_steps": 250000000,
       "timeout": 600
     },
     {
