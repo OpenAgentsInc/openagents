@@ -402,7 +402,8 @@ def main():
         req = urllib.request.Request("https://api.gitbook.com/v1" + path, data=data, method=method,
             headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
         try:
-            with opener.open(req, timeout=45) as response:
+            # Creating hundreds of redirects in one PUT can take over a minute.
+            with opener.open(req, timeout=240 if method == "PUT" else 45) as response:
                 raw = response.read()
                 return json.loads(raw) if raw else None
         except urllib.error.HTTPError as exc:

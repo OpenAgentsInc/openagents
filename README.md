@@ -93,7 +93,13 @@ run an original model, train a small model or sign and verify a Nostr event), se
   - Coax reads selected descriptors with `#import_proto` and generates bounded
     codecs from them.
 - **Nostr** is the open transport. [`nostr/nips/`](nostr/nips/README.md) pins the
-  official and external NIPs we follow, next to our own.
+  official and external NIPs we follow, next to our own, and its
+  [book](nostr/book/README.md) builds the client, the relay and every NIP in Coax.
+- **Bitcoin** ([`bitcoin/`](bitcoin/README.md)): its
+  [book](bitcoin/book/README.md) builds Bitcoin and Lightning in Coax, from the
+  cryptography Nostr also uses to transactions, Taproot, wallets and channels.
+- **Coder** ([`coder/`](coder/)) is our coding agent; its
+  [book](coder/book/README.md) builds the harness in Coax.
 - **openagents.com** ([`apps/openagents-web/`](apps/openagents-web/README.md))
   runs on **Coaxial**, the Coax web framework ([design](coax/web.md),
   tools in [`coax/web/`](coax/web/)). Coax compiles to WebAssembly, a small

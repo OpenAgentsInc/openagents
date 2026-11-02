@@ -1,0 +1,440 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/OpenAgentsInc/openagents.git",
+  "book": "bitcoin",
+  "space_id": "wmf6C6tD4ovtQQqoeMmP",
+  "public_url": "https://openagents.gitbook.io/bitcoin-from-scratch",
+  "published_at": "2026-11-02T19:34:48Z",
+  "source": {
+    "commit": "329da2c61efb6167fa3ac3d71c9ea51a06817958",
+    "directory": "bitcoin/book",
+    "summary": {
+      "path": "bitcoin/book/SUMMARY.md",
+      "bytes": 1370,
+      "sha256": "be88be8f6c2b0d190abe3b4e4736b9b76930526660bc8007ca7f9e1f8764e71c"
+    },
+    "pages": [
+      {
+        "path": "bitcoin/book/README.md",
+        "bytes": 21500,
+        "sha256": "508b2d3b6bcbc5ba137c50b75a47508abf37ccb5ad021215f1ffeebf8118e010",
+        "file": "README.md",
+        "title": "Introduction",
+        "group": null
+      },
+      {
+        "path": "bitcoin/book/PLAN.md",
+        "bytes": 21029,
+        "sha256": "3d99792561c011a0d62868b39cc68e55e7f3aba04ee34006d60cf85fb9de4fb2",
+        "file": "PLAN.md",
+        "title": "Plan and prerequisites",
+        "group": null
+      },
+      {
+        "path": "bitcoin/book/ch001-bytes-hex-and-base64.md",
+        "bytes": 12820,
+        "sha256": "fa9876d356715061f63e726a5a82694ba58b8f93c30c46d2a06b899591dcc525",
+        "file": "ch001-bytes-hex-and-base64.md",
+        "title": "1. Bytes, hex and base64",
+        "group": "I. Foundations"
+      },
+      {
+        "path": "bitcoin/book/ch002-big-integers-in-fixed-limbs.md",
+        "bytes": 16511,
+        "sha256": "85c04df7c5cc76294aba8c4fbd4d03a7d7619cb3f234c3be56ae898ef9a31cfa",
+        "file": "ch002-big-integers-in-fixed-limbs.md",
+        "title": "2. Big integers in fixed limbs",
+        "group": "I. Foundations"
+      },
+      {
+        "path": "bitcoin/book/ch003-constant-time-rules.md",
+        "bytes": 17481,
+        "sha256": "e768fb798bd3cd7fc7c3e2ebab43e8da3898e7bfac660caddd44ef277a728a31",
+        "file": "ch003-constant-time-rules.md",
+        "title": "3. Constant-time rules and secrets",
+        "group": "I. Foundations"
+      },
+      {
+        "path": "bitcoin/book/ch004-sha-256.md",
+        "bytes": 26507,
+        "sha256": "c273bc8568f1013d8de3336880838743e4480499bbd9c35016b9ea3fb481ce60",
+        "file": "ch004-sha-256.md",
+        "title": "4. SHA-256",
+        "group": "II. Hashes, MACs and ciphers"
+      },
+      {
+        "path": "bitcoin/book/ch008-hmac-sha256.md",
+        "bytes": 14416,
+        "sha256": "0f648cb5ff174f943778a2e4b8cb8a99eab818994df7b45ba5413b5f16e70c98",
+        "file": "ch008-hmac-sha256.md",
+        "title": "8. HMAC-SHA256",
+        "group": "II. Hashes, MACs and ciphers"
+      },
+      {
+        "path": "bitcoin/book/ch009-hkdf.md",
+        "bytes": 16175,
+        "sha256": "473313ad6a07b0ecb353d0ba2ca34f9bb7be7d2ecd454a037336fdcc12ccb248",
+        "file": "ch009-hkdf.md",
+        "title": "9. HKDF",
+        "group": "II. Hashes, MACs and ciphers"
+      },
+      {
+        "path": "bitcoin/book/ch011-chacha20.md",
+        "bytes": 30708,
+        "sha256": "e54c3f2b3f15717f9f269331b0751c5363c31920288a5cb59d9d7a5d80b2f4e6",
+        "file": "ch011-chacha20.md",
+        "title": "11. ChaCha20",
+        "group": "II. Hashes, MACs and ciphers"
+      },
+      {
+        "path": "bitcoin/book/ch013-field-arithmetic-mod-p.md",
+        "bytes": 20930,
+        "sha256": "647bf555715208d659e81713b966d6854a771d378e66554d1269be5497800746",
+        "file": "ch013-field-arithmetic-mod-p.md",
+        "title": "13. Field arithmetic mod p",
+        "group": "III. secp256k1"
+      },
+      {
+        "path": "bitcoin/book/ch014-scalars-mod-n.md",
+        "bytes": 15214,
+        "sha256": "ceac015062a64a826f023165faabb44f8e9510d6acf30e21e68d3b6168373964",
+        "file": "ch014-scalars-mod-n.md",
+        "title": "14. Scalars mod n",
+        "group": "III. secp256k1"
+      },
+      {
+        "path": "bitcoin/book/ch015-the-secp256k1-group-law.md",
+        "bytes": 23447,
+        "sha256": "5d0149c2257fcd07429b8ff38bc8a362affe8388ff89b6d33aaa3c4543a10373",
+        "file": "ch015-the-secp256k1-group-law.md",
+        "title": "15. The secp256k1 group law",
+        "group": "III. secp256k1"
+      },
+      {
+        "path": "bitcoin/book/ch016-scalar-multiplication.md",
+        "bytes": 25026,
+        "sha256": "2787b2ba00151dd40f2b4004d57d409de7f141019bb71f831fca2dfe530c8efa",
+        "file": "ch016-scalar-multiplication.md",
+        "title": "16. Scalar multiplication",
+        "group": "III. secp256k1"
+      },
+      {
+        "path": "bitcoin/book/ch018-keys-and-randomness.md",
+        "bytes": 34663,
+        "sha256": "7637d4116eeaad325a6d2254e7ed6953f643217e0dd71f6ac4d0081fc34315f4",
+        "file": "ch018-keys-and-randomness.md",
+        "title": "18. Keys and randomness",
+        "group": "III. secp256k1"
+      },
+      {
+        "path": "bitcoin/book/ch023-verify-a-schnorr-signature.md",
+        "bytes": 28292,
+        "sha256": "8e4d2e0e381f26f6bed700cf4bd7c0c01b3330af714cf2753dd4093f55a06643",
+        "file": "ch023-verify-a-schnorr-signature.md",
+        "title": "23. Verify a Schnorr signature",
+        "group": "IV. Signatures"
+      },
+      {
+        "path": "bitcoin/book/ch024-sign-with-schnorr.md",
+        "bytes": 35426,
+        "sha256": "8f00fa5688be4bc5e499cc35447290179864af459b1a6bb3e11b9339491ea0bb",
+        "file": "ch024-sign-with-schnorr.md",
+        "title": "24. Sign with Schnorr",
+        "group": "IV. Signatures"
+      },
+      {
+        "path": "bitcoin/book/ch027-bech32.md",
+        "bytes": 25146,
+        "sha256": "7c8497a41544287bfaec0fe1ac83d63b5ac508c37dc141fb17de27213776892e",
+        "file": "ch027-bech32.md",
+        "title": "27. Bech32",
+        "group": "V. Encodings and addresses"
+      }
+    ],
+    "sha256": "923d54b1fa3159a44583d40ca660ba5c72e99c55e1301334691c6838c62cec32"
+  },
+  "change_request": "9oWQ9iE1yYVfucGcgVnl",
+  "submitted_markdown": [
+    {
+      "path": "README.md",
+      "bytes": 22074,
+      "sha256": "6a32b921c61adb8b5d3cafe29e8e15b38ead7db629cbc4471205ca03bafa2c73",
+      "file": "README.md",
+      "page_id": "besin3huF9gZExKRhXRI",
+      "title": "Introduction"
+    },
+    {
+      "path": "PLAN.md",
+      "bytes": 21086,
+      "sha256": "11e2ca3dd82f3d9f60180ced97ff093e61fd0a8fe2081ca7da0a5b41cb2d4e71",
+      "file": "PLAN.md",
+      "page_id": "DZPfGx9df4B3Up0QXp4C",
+      "title": "Plan and prerequisites"
+    },
+    {
+      "path": "ch001-bytes-hex-and-base64.md",
+      "bytes": 13990,
+      "sha256": "5259a1e5e74d9c77a9d439881e949db38a14f45cad589ba9be080c541276ec27",
+      "file": "ch001-bytes-hex-and-base64.md",
+      "page_id": "oI5FR70Ss9ZrRjz7xvrv",
+      "title": "1. Bytes, hex and base64"
+    },
+    {
+      "path": "ch002-big-integers-in-fixed-limbs.md",
+      "bytes": 17410,
+      "sha256": "444545fcb7caadf0fd3b397295cf87599dea56178af5706f8fcf956a12597ef8",
+      "file": "ch002-big-integers-in-fixed-limbs.md",
+      "page_id": "tMEU5eWcPSxTqqv6cDH9",
+      "title": "2. Big integers in fixed limbs"
+    },
+    {
+      "path": "ch003-constant-time-rules.md",
+      "bytes": 18619,
+      "sha256": "bf4c17aa793419f1946edfab6fd2f00ce729dac0617cf3fa4bc47f1de005ebec",
+      "file": "ch003-constant-time-rules.md",
+      "page_id": "X9jOjlQ7dLiKrcH6Qtwj",
+      "title": "3. Constant-time rules and secrets"
+    },
+    {
+      "path": "ch004-sha-256.md",
+      "bytes": 27269,
+      "sha256": "3d6ab31cf7358b471ff59665fb2aeeb51b90035f8e0222071f689c19460c1b59",
+      "file": "ch004-sha-256.md",
+      "page_id": "PBcXHtN1BUmDQKsdID1r",
+      "title": "4. SHA-256"
+    },
+    {
+      "path": "ch008-hmac-sha256.md",
+      "bytes": 15103,
+      "sha256": "3f27d817891a368547005371797f76946ed6e3550cf6b5c2d33780e1d72072dd",
+      "file": "ch008-hmac-sha256.md",
+      "page_id": "pfh2c7ZTr5vc83OKUhGs",
+      "title": "8. HMAC-SHA256"
+    },
+    {
+      "path": "ch009-hkdf.md",
+      "bytes": 16949,
+      "sha256": "e7c80114b250e9927c0f9e877430448a7bc0f5f861246bc4b9853c1ee3e374bc",
+      "file": "ch009-hkdf.md",
+      "page_id": "elBPoAhfRkdVL1YOMWDI",
+      "title": "9. HKDF"
+    },
+    {
+      "path": "ch011-chacha20.md",
+      "bytes": 31899,
+      "sha256": "bb41637808e90564d50812a0d1a0c4c0c50d90c56e3eb429737ec07703ef436b",
+      "file": "ch011-chacha20.md",
+      "page_id": "LJRGwU5TqQpMbkFVlrw5",
+      "title": "11. ChaCha20"
+    },
+    {
+      "path": "ch013-field-arithmetic-mod-p.md",
+      "bytes": 21836,
+      "sha256": "1df837c256ec65750a576245617020ab83bb92b8529861c80fdb79d0134d95b6",
+      "file": "ch013-field-arithmetic-mod-p.md",
+      "page_id": "uc1wu2poRB3mjZZcki32",
+      "title": "13. Field arithmetic mod p"
+    },
+    {
+      "path": "ch014-scalars-mod-n.md",
+      "bytes": 15625,
+      "sha256": "0afc7f365674f97cc1cba469359d59ead1af49642d3f0ff4f6af9e4bbb909596",
+      "file": "ch014-scalars-mod-n.md",
+      "page_id": "8YATOHqP4qiZRFXiZbto",
+      "title": "14. Scalars mod n"
+    },
+    {
+      "path": "ch015-the-secp256k1-group-law.md",
+      "bytes": 24022,
+      "sha256": "0ece8e57669a4a7450852743fc92b08c7cde03b6c8e8fe8697a34bbdc6162e89",
+      "file": "ch015-the-secp256k1-group-law.md",
+      "page_id": "Drk6DUUnSIZ0LqhIiFtd",
+      "title": "15. The secp256k1 group law"
+    },
+    {
+      "path": "ch016-scalar-multiplication.md",
+      "bytes": 26625,
+      "sha256": "486f6d867c934e34f93fd4ecd8401a20dbec5f06bfc461759d4456b579361958",
+      "file": "ch016-scalar-multiplication.md",
+      "page_id": "zsvbqeINypFqWc1UuzXf",
+      "title": "16. Scalar multiplication"
+    },
+    {
+      "path": "ch018-keys-and-randomness.md",
+      "bytes": 36364,
+      "sha256": "87e3d97d351542181c1b973e2be2375bb2911acc13f9624d580cc39f5bb49e96",
+      "file": "ch018-keys-and-randomness.md",
+      "page_id": "g3xOwvFhvloULuNsweFK",
+      "title": "18. Keys and randomness"
+    },
+    {
+      "path": "ch023-verify-a-schnorr-signature.md",
+      "bytes": 29984,
+      "sha256": "c9ef2ea6a75a6ec7468d3466bf9b8095e6ed8d4e425fba58cf8cda50704a8674",
+      "file": "ch023-verify-a-schnorr-signature.md",
+      "page_id": "kjsZpoSUh4NdmLIHwNlN",
+      "title": "23. Verify a Schnorr signature"
+    },
+    {
+      "path": "ch024-sign-with-schnorr.md",
+      "bytes": 37608,
+      "sha256": "beded2a6b2df5f7dd26a028b71f0ef0da9325fdc8923ef6beff9cc1225043a63",
+      "file": "ch024-sign-with-schnorr.md",
+      "page_id": "n5He1MU2puawbZX2dfVM",
+      "title": "24. Sign with Schnorr"
+    },
+    {
+      "path": "ch027-bech32.md",
+      "bytes": 26171,
+      "sha256": "5169084b59a2bac64a161b38e5a26d1ced83fae14453148e2819b07889bf7863",
+      "file": "ch027-bech32.md",
+      "page_id": "jph6n4hzR37G6fZzvz25",
+      "title": "27. Bech32"
+    }
+  ],
+  "submitted_markdown_sha256": "36128d525b1691bb42729919f2d1f2fbf59a9ebb7da36d7a16a634874c851c01",
+  "verified_live": {
+    "revision": "mh2Z0oK9QjzQRCLhG6ut",
+    "inventory": [
+      {
+        "id": "besin3huF9gZExKRhXRI",
+        "title": "Introduction",
+        "path": "readme",
+        "pages": []
+      },
+      {
+        "id": "DZPfGx9df4B3Up0QXp4C",
+        "title": "Plan and prerequisites",
+        "path": "plan",
+        "pages": []
+      },
+      {
+        "id": "AYskMBmnXt5OaYAeun7S",
+        "title": "I. Foundations",
+        "path": "i.-foundations",
+        "pages": [
+          {
+            "id": "oI5FR70Ss9ZrRjz7xvrv",
+            "title": "1. Bytes, hex and base64",
+            "path": "i.-foundations/ch001-bytes-hex-and-base64",
+            "pages": []
+          },
+          {
+            "id": "tMEU5eWcPSxTqqv6cDH9",
+            "title": "2. Big integers in fixed limbs",
+            "path": "i.-foundations/ch002-big-integers-in-fixed-limbs",
+            "pages": []
+          },
+          {
+            "id": "X9jOjlQ7dLiKrcH6Qtwj",
+            "title": "3. Constant-time rules and secrets",
+            "path": "i.-foundations/ch003-constant-time-rules",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "nE7Xn3V6IVkiGYUwHd5f",
+        "title": "II. Hashes, MACs and ciphers",
+        "path": "ii.-hashes-macs-and-ciphers",
+        "pages": [
+          {
+            "id": "PBcXHtN1BUmDQKsdID1r",
+            "title": "4. SHA-256",
+            "path": "ii.-hashes-macs-and-ciphers/ch004-sha-256",
+            "pages": []
+          },
+          {
+            "id": "pfh2c7ZTr5vc83OKUhGs",
+            "title": "8. HMAC-SHA256",
+            "path": "ii.-hashes-macs-and-ciphers/ch008-hmac-sha256",
+            "pages": []
+          },
+          {
+            "id": "elBPoAhfRkdVL1YOMWDI",
+            "title": "9. HKDF",
+            "path": "ii.-hashes-macs-and-ciphers/ch009-hkdf",
+            "pages": []
+          },
+          {
+            "id": "LJRGwU5TqQpMbkFVlrw5",
+            "title": "11. ChaCha20",
+            "path": "ii.-hashes-macs-and-ciphers/ch011-chacha20",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "Zz9NDmqHaML1sHDSX48r",
+        "title": "III. secp256k1",
+        "path": "iii.-secp256k1",
+        "pages": [
+          {
+            "id": "uc1wu2poRB3mjZZcki32",
+            "title": "13. Field arithmetic mod p",
+            "path": "iii.-secp256k1/ch013-field-arithmetic-mod-p",
+            "pages": []
+          },
+          {
+            "id": "8YATOHqP4qiZRFXiZbto",
+            "title": "14. Scalars mod n",
+            "path": "iii.-secp256k1/ch014-scalars-mod-n",
+            "pages": []
+          },
+          {
+            "id": "Drk6DUUnSIZ0LqhIiFtd",
+            "title": "15. The secp256k1 group law",
+            "path": "iii.-secp256k1/ch015-the-secp256k1-group-law",
+            "pages": []
+          },
+          {
+            "id": "zsvbqeINypFqWc1UuzXf",
+            "title": "16. Scalar multiplication",
+            "path": "iii.-secp256k1/ch016-scalar-multiplication",
+            "pages": []
+          },
+          {
+            "id": "g3xOwvFhvloULuNsweFK",
+            "title": "18. Keys and randomness",
+            "path": "iii.-secp256k1/ch018-keys-and-randomness",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "B0lTujn86LWtUNomPu26",
+        "title": "IV. Signatures",
+        "path": "iv.-signatures",
+        "pages": [
+          {
+            "id": "kjsZpoSUh4NdmLIHwNlN",
+            "title": "23. Verify a Schnorr signature",
+            "path": "iv.-signatures/ch023-verify-a-schnorr-signature",
+            "pages": []
+          },
+          {
+            "id": "n5He1MU2puawbZX2dfVM",
+            "title": "24. Sign with Schnorr",
+            "path": "iv.-signatures/ch024-sign-with-schnorr",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "Ih289spRZWOdzyRQ4ULb",
+        "title": "V. Encodings and addresses",
+        "path": "v.-encodings-and-addresses",
+        "pages": [
+          {
+            "id": "jph6n4hzR37G6fZzvz25",
+            "title": "27. Bech32",
+            "path": "v.-encodings-and-addresses/ch027-bech32",
+            "pages": []
+          }
+        ]
+      }
+    ],
+    "sha256": "d57c4fe32294393c459489f2404e76c9e21e98963567c0a40fbcd61459279cd9"
+  },
+  "verification_scope": "Source and submitted-markdown hashes record publication provenance; live revision and page inventory were checked, not live document-body parity."
+}
