@@ -8,15 +8,14 @@ the rules about nonces and counters that keep it safe. Every operation is a
 32-bit addition, an exclusive or or a rotation, so the code has no tables
 and no branches on the key or the data.
 
-Part II, Hashes, MACs and ciphers. Result: RFC 8439 ChaCha20 with caller-supplied nonce and
-counter, counter exhaustion refused, and HChaCha20 for NIP-49's XChaCha20.
 
 ## What this chapter teaches
 
 - The 4x4 state: constants, 256-bit key, 32-bit counter, 96-bit nonce.
 - The quarter round and 20 rounds; the block is the state plus the input.
 - Counter overflow refuses; a key and nonce pair is never reused.
-- ChaCha20 alone does not authenticate; NIP-44 adds HMAC.
+- ChaCha20 alone does not authenticate; Poly1305 (chapter 12) or an HMAC
+  must be added.
 
 ## Where the code is
 
@@ -264,10 +263,11 @@ in-place encryption is refused.
 ChaCha20 hides the plaintext but doesn't protect it. Flip a bit of the
 ciphertext and decryption still succeeds, with the same bit flipped in the
 plaintext; the receiver can't tell. An attacker who knows or guesses part of
-a message can change it to anything of the same length. NIP-44 therefore
-adds an HMAC-SHA256 over the nonce and ciphertext (chapter 8), and checks it
-before decrypting. NIP-49 uses XChaCha20-Poly1305, whose Poly1305 tag does
-the same job.
+a message can change it to anything of the same length. BIP-324 and BOLT 8
+therefore pair ChaCha20 with a Poly1305 tag (chapter 12), and BOLT 4 onions
+add an HMAC-SHA256 per hop (chapter 8). Each receiver checks the tag before it
+decrypts. NIP-44 adds an HMAC-SHA256 too, and NIP-49 uses
+XChaCha20-Poly1305.
 
 ## HChaCha20
 
@@ -646,4 +646,3 @@ unchanged since them.
 - [draft-irtf-cfrg-xchacha-03](https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03),
   section 2.2, for HChaCha20.
 - The primary sources are pinned in [coax/tests/vectors/SOURCES.md](../../coax/tests/vectors/SOURCES.md).
-- The Coax Nostr plan: [coax/nostr.md](../../coax/nostr.md).

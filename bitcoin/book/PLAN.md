@@ -111,7 +111,7 @@ there is a need.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) — implemented | coax:5, coax:6 | Every RFC 4648 test vector for base64 (`coax/tests/vectors/upstream/rfc/rfc4648.txt`) passes, and every non-canonical form refuses. Hex and base64 round trips hold for every length up to the profile limit in a `#forall` check. `coax mutate` leaves zero survivors on the codec files. | — |
+| [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) — implemented | coax:5, coax:6 | Every RFC 4648 test vector for base64 (`coax/tests/vectors/upstream/rfc/rfc4648.txt`) passes, and every non-canonical form refuses. Hex and base64 round trips hold for every length up to the profile limit in a `#forall` check. `coax mutate` leaves zero survivors on the codec files. | RFC 4648 |
 | [2. Big integers in fixed limbs](ch002-big-integers-in-fixed-limbs.md) — implemented | 1, coax:13 | Limb operations match the big-integer oracle on edge values: 0, 1, `p - 1`, `2^256 - 1` and values at each magnitude bound. A `#forall` check confirms no intermediate exceeds its declared bound. Native and wasm builds give the same bytes. | — |
 | [3. Constant-time rules and secrets](ch003-constant-time-rules.md) — implemented | 1, 2, coax:23 | A leaky branch fixture and a leaky index fixture are each detected by the timing harness. The constant-time checker refuses a seeded secret-dependent branch with its diagnostic. Every secret buffer in Parts II–V is erased on success and on every failure path. | — |
 
@@ -119,37 +119,37 @@ there is a need.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [4. SHA-256](ch004-sha-256.md) — implemented | 1 | Every NIST CAVS 11.0 vector in `coax/tests/vectors/upstream/nist/SHA256ShortMsg.rsp` and `SHA256LongMsg.rsp` passes. Every split of a 1,000-byte message gives the same digest. The compression kernel moves out of the compiler-fingerprint module without changing a digest. | — |
+| [4. SHA-256](ch004-sha-256.md) — implemented | 1 | Every NIST CAVS 11.0 vector in `coax/tests/vectors/upstream/nist/SHA256ShortMsg.rsp` and `SHA256LongMsg.rsp` passes. Every split of a 1,000-byte message gives the same digest. The compression kernel moves out of the compiler-fingerprint module without changing a digest. | FIPS 180-4 |
 | [5. SHA-256d and tagged hashes](ch005-sha-256d-and-tagged-hashes.md) — implemented | 4 | The txids of pinned mainnet transactions and the genesis block hash match their published values. The tag hashes for `BIP0340/challenge`, `TapLeaf`, `TapBranch`, `TapTweak` and `TapSighash` match the BIP texts. | BIP-340, BIP-341 |
 | [6. RIPEMD-160 and HASH160](ch006-ripemd-160-and-hash160.md) — implemented | 1, 4 | The test vectors in the RIPEMD-160 paper pass. HASH160 of BIP-32 vector 1's master public key gives its published fingerprint. | RIPEMD-160 (Dobbertin, Bosselaers and Preneel, 1996) |
 | [7. SHA-512](ch007-sha-512.md) — implemented | 1, 4 | Every NIST CAVS vector in `SHA512ShortMsg.rsp` and `SHA512LongMsg.rsp` passes. | FIPS 180-4 |
-| [8. HMAC-SHA256](ch008-hmac-sha256.md) — implemented | 4 | RFC 4231 SHA-256 cases 1–7 (`coax/tests/vectors/upstream/rfc/rfc4231.txt`) pass. A tag that differs in one bit is refused by the constant-time comparison. | — |
-| [9. HKDF](ch009-hkdf.md) — implemented | 8 | RFC 5869 SHA-256 cases 1–3 (`coax/tests/vectors/upstream/rfc/rfc5869.txt`) pass. An expand request of `255 * 32 + 1` bytes refuses. | — |
+| [8. HMAC-SHA256](ch008-hmac-sha256.md) — implemented | 4 | RFC 4231 SHA-256 cases 1–7 (`coax/tests/vectors/upstream/rfc/rfc4231.txt`) pass. A tag that differs in one bit is refused by the constant-time comparison. | RFC 2104, RFC 4231 |
+| [9. HKDF](ch009-hkdf.md) — implemented | 8 | RFC 5869 SHA-256 cases 1–3 (`coax/tests/vectors/upstream/rfc/rfc5869.txt`) pass. An expand request of `255 * 32 + 1` bytes refuses. | RFC 5869 |
 | [10. SipHash-2-4](ch010-siphash-2-4.md) — implemented | 1, 3, 5 | The 64 vectors of the SipHash reference implementation pass. | SipHash (Aumasson and Bernstein, 2012) |
-| [11. ChaCha20](ch011-chacha20.md) — implemented | 1 | RFC 8439 sections 2.3.2 and 2.4.2 vectors (`coax/tests/vectors/upstream/rfc/rfc8439.txt`) pass. A request that would pass counter `2^32 - 1` refuses. | — |
+| [11. ChaCha20](ch011-chacha20.md) — implemented | 1 | RFC 8439 sections 2.3.2 and 2.4.2 vectors (`coax/tests/vectors/upstream/rfc/rfc8439.txt`) pass. A request that would pass counter `2^32 - 1` refuses. | RFC 8439 |
 | [12. Poly1305 and ChaCha20-Poly1305](ch012-poly1305-and-chacha20-poly1305.md) — implemented | 11, 3 | RFC 8439 sections 2.5.2 and 2.8.2 vectors pass. A tag that differs in one bit refuses and releases no plaintext. | RFC 8439 |
 
 ### Part III. secp256k1
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [13. Field arithmetic mod p](ch013-field-arithmetic-mod-p.md) — implemented | 2, 3 | Every operation matches the big-integer oracle on edge and random values. Inverse and square root use fixed chains, checked by the constant-time harness. Zero mutation survivors in `secp_field.coax`. | — |
-| [14. Scalars mod n](ch014-scalars-mod-n.md) — implemented | 2, 3 | Scalar operations match the big-integer oracle. Out-of-range keys and `s` values refuse, each with its own status. | — |
-| [15. The secp256k1 group law](ch015-the-secp256k1-group-law.md) — implemented | 13 | Group laws hold on random points: associativity, `P + (-P) = O`, `2P = P + P`. `lift_x` refuses every x whose `x^3 + 7` is not a square. | — |
-| [16. Scalar multiplication](ch016-scalar-multiplication.md) — implemented | 14, 15, 3 | All three paths give the oracle's point for random and edge scalars (0, 1, `n - 1`). The constant-time paths pass the timing harness with leaky controls detected. | — |
+| [13. Field arithmetic mod p](ch013-field-arithmetic-mod-p.md) — implemented | 2, 3 | Every operation matches the big-integer oracle on edge and random values. Inverse and square root use fixed chains, checked by the constant-time harness. Zero mutation survivors in `secp_field.coax`. | SEC 2 |
+| [14. Scalars mod n](ch014-scalars-mod-n.md) — implemented | 2, 3 | Scalar operations match the big-integer oracle. Out-of-range keys and `s` values refuse, each with its own status. | SEC 2, BIP-340 |
+| [15. The secp256k1 group law](ch015-the-secp256k1-group-law.md) — implemented | 13 | Group laws hold on random points: associativity, `P + (-P) = O`, `2P = P + P`. `lift_x` refuses every x whose `x^3 + 7` is not a square. | SEC 1, SEC 2 |
+| [16. Scalar multiplication](ch016-scalar-multiplication.md) — implemented | 14, 15, 3 | All three paths give the oracle's point for random and edge scalars (0, 1, `n - 1`). The constant-time paths pass the timing harness with leaky controls detected. | SEC 2 |
 | [17. Point encodings: compressed, uncompressed and x-only](ch017-point-encodings-compressed-uncompressed-and-x-only.md) — implemented | 15 | Compressed, uncompressed and x-only encodings round-trip for random points. Hybrid encodings (`0x06`, `0x07`) and points off the curve refuse. | SEC 1, BIP-340 |
-| [18. Keys and randomness](ch018-keys-and-randomness.md) — implemented | 14, 3 | A key drawn on each host is a valid scalar, and a forced out-of-range draw is retried. A signer reply with the wrong ID, pubkey or body is refused. | — |
+| [18. Keys and randomness](ch018-keys-and-randomness.md) — implemented | 14, 3, 16 | A key drawn on each host is a valid scalar, and a forced out-of-range draw is retried. A signer reply with the wrong ID, pubkey or body is refused. | BIP-340 |
 
 ### Part IV. Signatures
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [19. Verify ECDSA](ch019-verify-ecdsa.md) — implemented | 5, 14, 16, 17 | Every case in Wycheproof's `ecdsa_secp256k1_sha256_bitcoin_test.json` gives its expected result. A high-S signature refuses under the low-S rule. | SEC 1, BIP-146 |
+| [19. Verify ECDSA](ch019-verify-ecdsa.md) — implemented | 5, 14, 16, 17 | Every case in Wycheproof's `ecdsa_secp256k1_sha256_bitcoin_test.json` gives its expected result. A high-S signature refuses under the low-S rule. | SEC 1, BIP-62, BIP-146 |
 | [20. Sign with ECDSA](ch020-sign-with-ecdsa.md) — implemented | 19, 8, 18, 3 | RFC 6979 nonces match published secp256k1 vectors. Every signature is low-S and verifies in an independent library. A secret-probe run finds no secret-dependent branch. | RFC 6979, BIP-62, BIP-146 |
 | 21. Strict DER — planned | 19 | Every DER case in Bitcoin Core's `script_tests.json` that BIP-66 decides gives its expected result. | BIP-66 |
 | 22. Public key recovery and signed messages — planned | 19 | Bitcoin Core `signmessage` signatures for pinned keys verify, and recovery returns the signing key. A recovery ID out of range refuses. | Bitcoin Core `signmessage` |
-| [23. Verify a Schnorr signature](ch023-verify-a-schnorr-signature.md) — implemented | 4, 14, 16 | All 19 BIP-340 vectors in `coax/tests/vectors/upstream/bip340/test-vectors.csv` give their expected result. Fast and reference paths agree on every vector and on random signatures. | — |
-| [24. Sign with Schnorr](ch024-sign-with-schnorr.md) — implemented | 23, 18, 3 | The BIP-340 signing rows (secret key, aux and message given) produce the expected signatures byte for byte. A secret-probe run finds no secret-dependent branch in the emitted signer. An independent library verifies 10,000 signatures from the Coax signer. | — |
+| [23. Verify a Schnorr signature](ch023-verify-a-schnorr-signature.md) — implemented | 4, 14, 16 | All 19 BIP-340 vectors in `coax/tests/vectors/upstream/bip340/test-vectors.csv` give their expected result. Fast and reference paths agree on every vector and on random signatures. | BIP-340 |
+| [24. Sign with Schnorr](ch024-sign-with-schnorr.md) — implemented | 23, 18, 3 | The BIP-340 signing rows (secret key, aux and message given) produce the expected signatures byte for byte. A secret-probe run finds no secret-dependent branch in the emitted signer. An independent library verifies 10,000 signatures from the Coax signer. | BIP-340 |
 | 25. Batch verification — planned | 23 | A batch of the valid BIP-340 vectors verifies; a batch with one invalid signature refuses. Batch and single verification agree on random batches. | BIP-340 |
 
 ### Part V. Encodings and addresses
@@ -157,7 +157,7 @@ there is a need.
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
 | 26. Base58Check — planned | 5 | BIP-32 extended keys and pinned P2PKH and P2SH addresses decode and re-encode exactly. A one-character change fails the checksum. | Bitcoin Core `base58.cpp` |
-| [27. Bech32](ch027-bech32.md) — implemented | 1 | Every valid and invalid BIP-173 Bech32 vector in `coax/tests/vectors/upstream/bip173/bip-0173.mediawiki` gives its expected result. A Bech32m string refuses (BIP-350's strings, not yet pinned in the corpus). | — |
+| [27. Bech32](ch027-bech32.md) — implemented | 1 | Every valid and invalid BIP-173 Bech32 vector in `coax/tests/vectors/upstream/bip173/bip-0173.mediawiki` gives its expected result. A Bech32m string refuses (BIP-350's strings, not yet pinned in the corpus). | BIP-173 |
 | 28. Bech32m — planned | 27 | Every valid and invalid BIP-350 vector gives its expected result, including the witness-version rules. | BIP-350 |
 | 29. Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR — planned | 6, 17, 26, 28 | Every BIP-173 and BIP-350 segwit address vector and pinned P2PKH and P2SH addresses map to their scriptPubKeys and back. | BIP-13, BIP-141, BIP-173, BIP-341, BIP-350 |
 | 30. Output descriptors and their checksum — planned | 29, 32 | The BIP-380 checksum vectors and the BIP-381–386 examples parse and give their stated scripts. | BIP-380 to BIP-386 |

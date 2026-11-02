@@ -156,7 +156,7 @@ Add `1000003d1` to the low part: `...c5be05e60 + 1000003d1 = ...d5be06231`.
 4 G.x mod p = e6f999fbe772eeb156818a573a1c2c1c0a6ff36cb738a36567ca056d5be06231
 ```
 
-## Complete addition with masks
+## Every addition case, selected with masks
 
 The generic addition formula computes `H = U2 - U1`, where `U1 = X1 Z2^2`
 and `U2 = X2 Z1^2`. `H` is zero exactly when the two points have the same
@@ -184,7 +184,8 @@ value infinity; the arithmetic still runs on it.
 
 ## Lifting an x-only key
 
-A Nostr public key is 32 bytes: the x of a point. BIP-340 defines
+A BIP-340 public key, as Taproot outputs and Nostr use it, is 32 bytes: the
+x of a point. BIP-340 defines
 `lift_x(x)`: the point `(x, y)` with `y^2 = x^3 + 7` and `y` even. It
 fails when `x >= p` or when `x^3 + 7` is not a square.
 
@@ -198,7 +199,7 @@ fails when `x >= p` or when `x^3 + 7` is not a square.
 
 `sg_decode_public` reads the 33-byte compressed form: `02` for even `y`,
 `03` for odd, and then x. The one byte `00` decodes as infinity, for
-general group tools; a Nostr public key must be finite.
+general group tools; a public key must be finite.
 
 ### Worked example: which x lift
 

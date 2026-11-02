@@ -124,14 +124,15 @@ In the native profile, row `r` reads bits `r, r + 32, ..., r + 224`.
 ECDH multiplies the peer's point, so no table can be precomputed.
 `smc_multiply(k, P)`:
 
-1. reduces `k` mod `n` and recodes it into 65 signed radix-16 digits in
-   `-8..8`, with the sign kept as a mask;
+1. reduces `k` mod `n` and recodes it into 65 signed radix-16 digits, the
+   low 64 in `-8..7` and the top one 0 or 1, with the sign kept as a mask;
 2. builds `0·P, 1·P, ..., 8·P` with seven additions;
 3. starts from the top digit, then for each of the 64 lower digits doubles
    four times, reads all nine table entries to pick `|d|·P`, negates it with
    a mask when `d` is negative, and adds.
 
-Every scalar runs 256 doublings and 65 additions and reads the same memory.
+Every scalar runs 256 doublings and 64 additions after the seven that build
+the table, and reads the same memory.
 The peer must be on the curve, with every coordinate limb inside the field
 code's bound; otherwise the result is `ok` false and infinity. Whether a
 peer is acceptable for ECDH is Nostr chapter 14's decision.
@@ -351,8 +352,8 @@ limbs. The two other levers are the ones libsecp256k1 uses:
 - **Larger tables.** A window-15 table for `G` in verification, as
   libsecp256k1 builds, costs about a megabyte.
 
-Neither is built. They wait until a measured consumer, such as relay
-admission verifying many signatures, needs the speed.
+Neither is built. They wait for chapter 77, where initial block download
+verifies hundreds of millions of signatures and measures the gain.
 
 ## How the code is checked
 
@@ -534,4 +535,3 @@ time.
 - [libsecp256k1](https://github.com/bitcoin-core/secp256k1), release
   `v0.8.0`, pinned in
   [UPSTREAM.json](../../tools/coax-nostr/fuzz/UPSTREAM.json).
-- The Coax Nostr plan: [coax/nostr.md](../../coax/nostr.md).

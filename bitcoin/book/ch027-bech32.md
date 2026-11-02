@@ -6,9 +6,6 @@ chapter builds the BIP-173 encoding: the 5-bit conversion, the BCH checksum
 and the rules for case and length. Chapter 28 adds Bech32m for Taproot
 addresses, and Nostr chapter 16 builds the NIP-19 entities on top of it.
 
-Part V, Encodings and addresses. Result: BIP-173 Bech32 (checksum constant 1, never
-Bech32m) with the pinned vectors and canonical lowercase re-encoding.
-
 ## What this chapter teaches
 
 - The human-readable part, the separator `1` and the data part.
@@ -39,7 +36,8 @@ characters; this chapter uses the BIP-173 limit.
 A Bech32 string has three parts:
 
 1. The human-readable part (HRP): 1 to 83 characters, each from `!` (33) to
-   `~` (126). For Nostr it names the type, such as `npub` or `nsec`.
+   `~` (126). It names the network or the type: `bc` for mainnet segwit
+   addresses, `tb` for testnet, and `npub` or `nsec` for Nostr keys.
 2. The separator: the last `1` in the string. The HRP may itself contain
    `1`, so the decoder takes the last one.
 3. The data part: characters from the 32-character alphabet
@@ -95,9 +93,11 @@ in the full key the next bits come from `9c`, not from padding.
 ### The padding rule on the way back
 
 Decoding goes the other way: 52 words are 260 bits, which is 32 bytes and 4
-spare bits. BIP-173 itself has no rule for the spare bits, because its
-checksum covers words, not bytes. The conversion back to bytes, which NIP-19
-uses, has two rules: there are at most 4 spare bits, and they are zero.
+spare bits. The checksum covers words, not bytes, so the spare bits are a
+rule of the conversion back to bytes. BIP-173 states it for segwit
+addresses, and NIP-19 uses the same conversion: there are at most 4 spare
+bits, and they are zero. BIP-173's invalid vectors include a string for
+each case.
 `n19_byte_count` applies them:
 
 <!-- source: coax/lib/nostr/nip19-core.coax padding -->
@@ -142,7 +142,8 @@ b32_prefix :: (hrp: string) -> u32 {
 
 The HRP goes in first, expanded to words: the high 3 bits of each
 character, a 0, then the low 5 bits of each character. This makes the
-checksum cover the HRP, so `npub` data can't pass as `nsec`.
+checksum cover the HRP, so a `tb` address can't pass as `bc`, and `npub`
+data can't pass as `nsec`.
 
 To encode, run the polymod over the expanded HRP, the data words and six
 zero words, then XOR the result with 1. The six 5-bit groups of that value,
@@ -191,7 +192,8 @@ data character is `p`, inserting or deleting `q` characters just before it
 can leave the checksum valid. Bitcoin uses Bech32m for SegWit version 1 and
 later addresses.
 
-NIP-19 says Bech32, so this code uses constant 1 only. A Bech32m string
+BIP-173 is Bech32 with constant 1, and so is NIP-19, so this code uses
+constant 1 only. Chapter 28 adds the other constant for Taproot addresses. A Bech32m string
 leaves the polymod at `0x2bc830a3`, not 1, and refuses as a bad checksum.
 There is no fallback that tries the other constant: one string has one
 meaning.

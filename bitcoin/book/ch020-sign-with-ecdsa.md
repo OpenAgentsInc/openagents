@@ -152,7 +152,7 @@ ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) {
 
 RFC 6979's step h is a loop whose length depends on the key: a candidate
 at least `n` sends it around again. A loop whose trip count depends on a
-secret breaks chapter 3's rules. For secp256k1, `n` is within `2^128` of
+secret breaks chapter 3's rules. For secp256k1, `n` is within `2^129` of
 `2^256`, so a candidate falls outside `[1, n-1]` with probability below
 `2^-127`.
 
@@ -181,8 +181,8 @@ one can find.
 ### Low-S
 
 Chapter 19 showed that `(r, n - s)` verifies whenever `(r, s)` does, and
-that BIP-146 makes the high half nonstandard: Bitcoin Core doesn't relay a
-transaction with a high-S signature. BIP-62 lists this malleability among
+that Bitcoin Core's policy makes the high half nonstandard: Core doesn't
+relay a transaction with a high-S signature. BIP-62 lists this malleability among
 others. So the signer always outputs the low half.
 
 For `s < n` and odd `n`, `s > (n - 1) / 2` exactly when `2s >= n`. `ec_low`

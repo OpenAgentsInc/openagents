@@ -179,6 +179,7 @@
    "source": [
     "coax/lib/crypto/hmac.coax",
     "coax/lib/crypto/hmac_workspace.coax",
+    "coax/lib/crypto/hmac-memory.coax",
     "bitcoin/examples/hmac-sha256.coax"
    ],
    "qualified_targets": [
@@ -200,6 +201,7 @@
    ],
    "source": [
     "coax/lib/crypto/hkdf.coax",
+    "coax/lib/crypto/hkdf-memory.coax",
     "bitcoin/examples/hkdf.coax"
    ],
    "qualified_targets": [
@@ -406,7 +408,8 @@
    "profile": "native C and wasm",
    "depends_on": [
     14,
-    3
+    3,
+    16
    ],
    "source": [
     "coax/lib/crypto/entropy.coax",

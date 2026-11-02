@@ -1,6 +1,6 @@
 # 18. Keys and randomness
 
-A Bitcoin private key and a Nostr identity are each a random scalar. This chapter defines where randomness
+A Bitcoin private key is a random scalar, and so is a Nostr identity. This chapter defines where randomness
 comes from on each host, how a key is drawn from it, and how the rest of the
 stack asks a signer for a signature without ever holding the key.
 
@@ -68,7 +68,7 @@ covers what Coax claims about secrets.
 
 A secp256k1 secret key is an integer `k` with `0 < k < n`, where
 
-```jai
+```text
 n = fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
 ```
 
@@ -88,8 +88,8 @@ The procedure:
 
 A draw is refused with probability
 
-```jai
-(2^256 - n + 1) / 2^256 = 432420386565659656852420866394968145601 / 2^256
+```text
+(2^256 - n + 1) / 2^256 = 432420386565659656852420866394968145600 / 2^256
                         ≈ 3.7 × 10^-39 ≈ 2^-127.65
 ```
 
@@ -158,7 +158,7 @@ x-only public key. Of the two points with that x, BIP-340 picks the one with
 even y, and a signer whose `P` has odd y signs with `n - k` instead
 (chapter 24). For the key `k = 3`, BIP-340 vector 0, the x-only public key is
 
-```jai
+```text
 f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
 ```
 
@@ -178,7 +178,7 @@ A request names its target, its scope, the identity that must sign and the
 whole body: kind, `created_at`, tags and content. From those `signer_ask`
 computes the NIP-01 event ID that the reply must have:
 
-```jai
+```text
 id = sha256([0, identity, created_at, kind, tags, content])
 ```
 
@@ -706,6 +706,11 @@ Safari, Firefox and a physical phone remain later checks.
 
 - [14. Scalars mod n](ch014-scalars-mod-n.md)
 - [3. Constant-time rules and secrets](ch003-constant-time-rules.md)
+- [16. Scalar multiplication](ch016-scalar-multiplication.md), for the
+  public key `k·G`
+
+The signer section also uses chapter 24's signer and chapter 23's verifier,
+and NIP-01's event serialization from the Nostr book.
 
 ## Sources
 
@@ -720,4 +725,3 @@ Safari, Firefox and a physical phone remain later checks.
   and [Web Cryptography getRandomValues](https://www.w3.org/TR/webcrypto/#Crypto-method-getRandomValues).
 - Primary sources are pinned in
   [coax/tests/vectors/SOURCES.md](../../coax/tests/vectors/SOURCES.md).
-- The Coax Nostr plan: [coax/nostr.md](../../coax/nostr.md).

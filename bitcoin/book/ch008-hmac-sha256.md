@@ -4,11 +4,14 @@ A hash proves nothing about who made a message: anyone can hash anything.
 HMAC adds a key. Only someone who has the key can compute the tag, so a
 correct tag shows that the message came from a key holder and wasn't
 changed. RFC 6979 ECDSA nonces (chapter 20) and BIP-32 keys (chapter 32,
-with SHA-512) are built on HMAC. Nostr uses HMAC-SHA256 in two places:
+with SHA-512) are built on HMAC. HMAC-SHA256 itself appears in more places:
 
+- HKDF derives keys with HMAC-SHA256 (chapter 9), and BIP-324's transport
+  and BOLT 8's Noise handshake derive theirs with HKDF (chapters 67
+  and 105).
+- BOLT 4 onions carry an HMAC-SHA256 per hop (chapter 111).
 - NIP-44 authenticates every encrypted payload with an HMAC-SHA256 tag
   (Nostr chapter 20).
-- HKDF derives keys with HMAC-SHA256 (chapter 9).
 
 This chapter builds HMAC from two SHA-256 hashes, works out its padded keys
 by hand, and checks it against the RFC 4231 test cases.

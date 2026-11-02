@@ -10,7 +10,7 @@ Bitcoin rarely uses SHA-256 once. It builds two constructions on top of it:
 
 This chapter builds both on [chapter 4](ch004-sha-256.md)'s SHA-256. It
 hashes the genesis block header by hand, shows why the published hash
-starts with zeros, and checks txids, the genesis block hash and the five
+starts with zeros, and checks txids, the genesis block hash, the tag hashes and the BIP-341
 tagged hashes against published bytes.
 
 ## What this chapter teaches
@@ -189,7 +189,8 @@ sha256_tagged_init :: (state: [] u8, tag: string) -> u32 {
 }
 ```
 
-Bitcoin uses seven tags. `hash.coax` names each with an ID:
+BIP-340 and BIP-341 use seven tags. BIP-324, BIP-327 and BIP-352 add their
+own (chapters 66, 100 and 97). `hash.coax` names the seven with an ID:
 
 | ID | Tag | What it hashes | Where |
 | --- | --- | --- | --- |
@@ -261,7 +262,7 @@ which `make_sha256d_vectors.py` copies from the pinned files. It hashes the
 genesis header in two steps, computes the genesis block hash and coinbase
 txid and three more txids, the empty-payload checksum, the tag hashes and
 one hash for each BIP-341 tag. It then checks BIP-340 vector 0 with a
-challenge this chapter computed, and shows seven refusals.
+challenge this chapter computed, and shows eight broken cases.
 
 <!-- source: bitcoin/examples/sha-256d.coax example -->
 ```jai

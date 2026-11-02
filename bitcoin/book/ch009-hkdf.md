@@ -10,8 +10,12 @@ function of RFC 5869, solves both problems in two steps:
 - **Expand** stretches a PRK into as many output bytes as you ask for, up
   to 8,160, bound to a context string called `info`.
 
-NIP-44 v2 uses both halves. Extract makes the conversation key between two
-people, and expand makes three keys for every message (Nostr chapter 20). This
+BIP-324 derives the v2 transport's keys with HKDF-SHA256: extract with the
+salt `bitcoin_v2_shared_secret` followed by the network's magic bytes, then
+one expand per key (chapter 67). BOLT 8's Noise handshake calls HKDF with the
+chaining key as salt and an empty `info`, taking 64 bytes (chapter 105).
+NIP-44 v2 uses both halves too. Extract makes the conversation key between
+two people, and expand makes three keys for every message (Nostr chapter 20). This
 chapter builds HKDF from the HMAC of chapter 8, works out the first output
 blocks of RFC 5869 test case 1 by hand, and checks the NIP-44 split against
 a published vector.

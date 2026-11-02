@@ -16,8 +16,7 @@ vectors.
 - Why a valid signature passes: the equation rebuilds the signer's nonce
   point `k·G`.
 - Why `(r, n - s)` also passes, how that let anyone change a transaction's
-  ID before segwit, and the low-S rule of BIP-146 that refuses the high
-  half.
+  ID before segwit, and the low-S policy rule that refuses the high half.
 - How to read a DER signature strictly, and where this chapter's reader
   stops and chapter 21's BIP-66 rules begin.
 - Which step refuses each failing Wycheproof case.
@@ -52,11 +51,13 @@ the signature was part of the data a txid hashes, so the change gave the
 same transaction a new txid (chapter 35). Wallets that tracked payments by
 txid could be fooled into paying twice.
 
-BIP-62 listed this and other sources of malleability. BIP-146 made the fix
-for this one a rule: a signature's `s` must be at most `(n - 1) / 2`, the
-low half. Bitcoin Core enforces it as policy (`SCRIPT_VERIFY_LOW_S`), so a
-high-S transaction does not relay; consensus still accepts high-S
-signatures in old outputs. The verifier takes a `low_s` argument for this:
+BIP-62 listed this and other sources of malleability. The fix for this one
+is the low-S rule: a signature's `s` must be at most `(n - 1) / 2`, the low
+half. Bitcoin Core has enforced it as policy (`SCRIPT_VERIFY_LOW_S`) since
+release 0.11.1 in 2015, so a high-S transaction does not relay. BIP-146
+proposed making it consensus, but it was never deployed and its status is
+Closed. Consensus still accepts high-S ECDSA signatures in every output
+type, segwit v0 included. The verifier takes a `low_s` argument for this:
 `true` applies the rule, `false` accepts both halves as consensus does.
 Wycheproof's Bitcoin variant requires the rule.
 

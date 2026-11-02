@@ -86,7 +86,7 @@ Chapter 3's rule is that nothing branches on a secret or indexes memory by
 one. The signer meets it this way:
 
 - `ss_key` loads `d0` by subtracting `n` and keeping the borrow, as
-  chapter 18's `sc_load` does, and ORs the limbs to test for zero. A bad key
+  chapter 14's `sc_load` does, and ORs the limbs to test for zero. A bad key
   becomes the scalar 1 for the rest of the work, and a validity bit records
   that it was bad.
 - `ss_even(scalar, odd)` is `sc_select(odd, sc_negate(scalar), scalar)`: it
@@ -147,7 +147,7 @@ parities are: `3G` even, `5G` even, `6G` odd.
 Vector 0 signs 32 zero bytes with `d0 = 3` and 32 zero bytes of `a`. The
 values below were computed with a Python transcription of BIP-340's signing
 algorithm, using `hashlib` and integers. It shares no code with Coax and
-reproduces all four signing rows.
+reproduces signing rows 0 to 3.
 
 1. `P = 3G` has an even `y`, so `d = 3` and `x(P) = f9308a01...bce036f9`.
 2. `hash_aux(a) = 54f169cf...270aa514`. XOR with `d = 00...03` changes only
@@ -160,10 +160,10 @@ reproduces all four signing rows.
    this signature.
 6. `s = (n - k0) + 3e mod n = 25f66a4a...310536c0`.
 
-The signature `x(R) || s` is vector 0's published signature. Of the four
-signing rows, vector 0 has the odd `R`, and vector 3 has the odd `P`: its key
+The signature `x(R) || s` is vector 0's published signature. Of signing
+rows 0 to 3, vector 0 has the odd `R`, and vector 3 has the odd `P`: its key
 `0b432b26...d2401710` is replaced by `n - d0 = f4bcd4d9...fdf62a31`.
-Vectors 1 and 2 negate neither, so the four rows cover both negations.
+Vectors 1 and 2 negate neither, so these four rows cover both negations.
 
 ## Self-verification with fixed work
 
@@ -658,4 +658,3 @@ the owner approves real keys.
   listed in [SOURCES.md](../../coax/tests/vectors/SOURCES.md).
 - [NIP-01](../../nostr/nips/official/01.md), which requires the `sig` to be a
   BIP-340 signature of the event ID.
-- The Coax Nostr plan: [coax/nostr.md](../../coax/nostr.md).

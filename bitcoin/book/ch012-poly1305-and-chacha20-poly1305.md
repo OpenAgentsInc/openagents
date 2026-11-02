@@ -183,8 +183,8 @@ poly_start :: (state:[]Poly1305State,key:[]u8) {
 ```
 
 For section 2.5.2, the limbs of `r` are `0bed685 3555502 047c036 1003949
-00806d5`. Limb 0 is the low 26 bits of `0x08bed685`, which drops the top
-two bits of the `0x08`.
+00806d5`. Limb 0 is the low 26 bits of `0x08bed685`. That drops bits 26 to
+31, so the one set bit among them, bit 27 (the `8` of `0x08`), is gone.
 
 ### Multiplying modulo 2^130 - 5
 
@@ -464,10 +464,10 @@ plaintext under a 32-byte key and a 12-byte nonce, with associated data
 
 Every key and nonce gives a different ChaCha20 block 0, so every message
 gets a fresh Poly1305 key, which is what Poly1305 requires. The lengths at
-the end stop bytes from moving between the AAD and the ciphertext: without
-them, `AAD = 01, ciphertext = 02 03` and `AAD = 01 02, ciphertext = 03` would
-MAC the same padded bytes only if the padding happened to line up, and the
-lengths rule it out for every pair.
+the end stop trailing zero bytes from hiding in the padding. Without them,
+`AAD = 01` and `AAD = 01 00`, each with an empty ciphertext, both pad to the
+same 16 bytes `01 00 … 00` and would get the same tag. The lengths 1 and 2
+make the MAC inputs differ.
 
 <!-- source: coax/lib/crypto/chacha20_poly1305.coax tag -->
 ```jai
@@ -598,7 +598,9 @@ short to pick at random for many messages, so the protocols count:
 - BIP-324 puts a packet counter in the nonce and rekeys every 224 packets
   (chapter 67).
 - BOLT 8's nonce is 4 zero bytes and a 64-bit little-endian message
-  counter, and each key rotates after 1,000 messages (chapter 105).
+  counter, and each key rotates after 1,000 encryptions or decryptions with it, which is
+  every 500 messages, because each message encrypts a length and a body
+  (chapter 105).
 - NIP-49 picks a random 24-byte nonce, long enough for random choice, and
   uses XChaCha20-Poly1305.
 

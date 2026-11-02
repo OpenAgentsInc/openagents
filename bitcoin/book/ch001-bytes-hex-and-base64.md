@@ -8,7 +8,9 @@ Every Bitcoin and Nostr value starts as bytes:
 
 Transactions store integers little-endian; hashes and keys are written as
 lowercase hex. Nostr writes the same values as text too: events and filters
-use lowercase hex, and NIP-44 payloads and NIP-98 headers use base64. This chapter shows how Coax
+use lowercase hex, and NIP-44 payloads and NIP-98 headers use base64. Bitcoin
+uses base64 too: PSBTs travel as base64 (chapter 94), and so do signed
+messages (chapter 22). This chapter shows how Coax
 holds bytes, and how it reads and writes them as hex and base64. Every later
 chapter uses these functions.
 

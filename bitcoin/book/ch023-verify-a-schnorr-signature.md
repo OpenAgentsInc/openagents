@@ -5,8 +5,8 @@ Schnorr signature by the output key, and a Nostr event is valid only if its
 `sig` is a BIP-340 signature of its ID by its `pubkey`. This chapter builds
 verification exactly as BIP-340 specifies it, from the field, scalar and
 point code of chapters 13 to 16, and
-checks it against all 19 rows of the official test vectors before any event
-code uses it.
+checks it against all 19 rows of the official test vectors before a Taproot
+spend or an event relies on it.
 
 ## What this chapter teaches
 
@@ -29,7 +29,7 @@ code uses it.
 | | `sv_prepare_vartime` | checks lengths, `r`, `s` and the key, and hashes `e` |
 | | `sv_prepared_matches_vartime` | computes `R` and makes the final comparison |
 | [schnorr_fast.coax](../../coax/lib/crypto/schnorr_fast.coax) | `schnorr_fast_verify_vartime`, `nostr_fast_verify_vartime` | the same checks, with a faster multiplication |
-| [schnorr_admission.coax](../../coax/lib/crypto/schnorr_admission.coax) | `sig_admit` | the host-memory admission for signing, used in chapter 24 |
+| [schnorr_admission.coax](../../coax/lib/crypto/schnorr_admission.coax) | `sig_admit` | the host-memory admission for a C caller's signing views |
 
 All inputs are raw bytes. The public key is 32 bytes of x coordinate, the
 signature is 64 bytes, `r` then `s`. Decoding the hex of an event is the
@@ -540,4 +540,3 @@ and [2026-10-29-schnorr-fast.md](../../docs/verification/2026-10-29-schnorr-fast
 - [libsecp256k1](https://github.com/bitcoin-core/secp256k1), release
   `v0.8.0`, pinned in
   [UPSTREAM.json](../../tools/coax-nostr/fuzz/UPSTREAM.json).
-- The Coax Nostr plan: [coax/nostr.md](../../coax/nostr.md).
