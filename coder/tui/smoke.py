@@ -89,6 +89,25 @@ def live(engine):
     sys.exit(0 if good else 1)
 
 
+GH_STUB = r"""
+import os, sys
+d = os.environ["GH_STUB_DIR"]
+a = sys.argv[1:]
+if a[:1] == ["api"]:
+    if "/issues/comments" in a[1]:
+        print('{"k":"comment:555","c":"555","n":7,"a":"alice","t":"thanks"}')
+        if os.path.exists(os.path.join(d, "gh-posted")):
+            print('{"k":"comment:999","c":"999","n":7,"a":"alice","t":"the posted reply"}')
+    else:
+        print('{"k":"issue:7","n":7,"a":"alice","t":"$ echo gh-ok"}')
+elif a[:2] == ["issue", "comment"]:
+    open(os.path.join(d, "gh-posted"), "w").write(" ".join(a))
+    print("https://github.com/o/r/issues/7#issuecomment-999")
+else:
+    sys.exit(1)
+"""
+
+
 def verbs(check):
     """run, ls, log and status, with no terminal, on the psionic engine."""
     home = tempfile.mkdtemp(prefix="coder-smoke-")
@@ -167,6 +186,11 @@ def verbs(check):
             if st.returncode == 0 and json.loads(st.stdout)["state"] == "finished":
                 break
             time.sleep(0.2)
+        r1b = router()
+        outbox = os.path.join(home, ".openagents", "coder", "outbox")
+        reply = json.load(open(os.path.join(outbox, w1 + ".json"))) if os.path.exists(os.path.join(outbox, w1 + ".json")) else {}
+        check("router: a finished worker's reply goes to the outbox under the chat rules", any(l["fate"] == "reply written to the outbox" for l in r1b)
+              and reply.get("channel") == "chat" and reply.get("text") == "first")
         trigger("$ sleep 60", "--thread", "ci")
         r2 = router()
         w2 = r2[0].get("session", "") if r2 else ""
@@ -191,6 +215,59 @@ def verbs(check):
         st = subprocess.run([coder, "status", w2, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("watchdog: a worker whose process died ends as lost", any(l["fate"] == "worker lost: ended" for l in r3)
               and st.returncode == 0 and json.loads(st.stdout)["state"] == "lost")
+        # the watchdog: a worker that repeats one step is stopped; a quiet one with no System One key is reported
+        sdir = os.path.join(home, ".openagents", "coder", "sessions")
+        nokey = dict(env)
+        nokey.pop("BASETEN_API_KEY", None)
+        sleeper = subprocess.Popen(["sleep", "60"])
+        try:
+            def fake(sid, lines, old):
+                with open(os.path.join(sdir, sid + ".jsonl"), "w") as f:
+                    f.write('{"kind":"session","id":"%s","engine":"echo","cwd":"/","started_us":1}\n{"kind":"user","text":"fix the build"}\n' % sid + lines)
+                with open(os.path.join(sdir, sid + ".pid"), "w") as f:
+                    f.write(str(sleeper.pid))
+                if old:
+                    os.utime(os.path.join(sdir, sid + ".jsonl"), (time.time() - 600, time.time() - 600))
+            fake("20261102-000000-001", '{"kind":"tool","label":"Bash(make)"}\n' * 5, False)
+            fake("20261102-000000-002", '{"kind":"tool","label":"Bash(ls)"}\n', True)
+            with open(os.path.join(rdir, "threads"), "a") as f:
+                f.write("loop\t20261102-000000-001\tlocal\nquiet\t20261102-000000-002\tlocal\n")
+            r = subprocess.run([coder, "router", "--once", "--json", "--stuck", "60"], cwd=REPO, env=nokey, capture_output=True, text=True, timeout=120)
+            rw = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+            check("watchdog: a worker repeating one step is stopped", any(l["fate"] == "worker stopped: looping" and l.get("session") == "20261102-000000-001" for l in rw)
+                  and os.path.exists(os.path.join(sdir, "20261102-000000-001.stop")))
+            check("watchdog: a quiet worker with no decision is reported as stuck", any(l["fate"] == "worker stuck" and "System One key" in l.get("note", "") for l in rw))
+        finally:
+            sleeper.kill()
+        # a GitHub source, against a stand-in gh: the first poll sets the cursor; a labelled issue starts a worker; its
+        # reply is posted as a comment; the Router's own comment does not come back as an event
+        stub = os.path.join(home, "gh")
+        with open(stub, "w") as f:
+            f.write("#!" + sys.executable + "\n" + GH_STUB)
+        os.chmod(stub, 0o755)
+        genv = dict(env, CODER_GH=stub, GH_STUB_DIR=home)
+        with open(os.path.join(rdir, "sources.json"), "w") as f:
+            f.write('{"sources":{"github:o/r":{"mode":"explicit_requests_only","authors":["alice"],"label":"coder","engine":"echo","deliver":true}}}')
+        def grouter():
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=genv, capture_output=True, text=True, timeout=300)
+            return [l for l in (json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")) if l.get("source") == "github:o/r"]
+        g1 = grouter()
+        g2 = grouter()
+        check("github: the first poll only sets the cursor; the next turns a labelled issue into a worker",
+              g1 == [] and sorted(l["fate"] for l in g2) == ["addressed to the agent: new worker", "dropped: not addressed to the agent"]
+              and any(l.get("thread") == "github:o/r#7" for l in g2))
+        gw = next((l.get("session", "") for l in g2 if l.get("session")), "")
+        g3 = []
+        for _ in range(50):
+            g3 += grouter()
+            if any(l["fate"].startswith("reply") for l in g3):
+                break
+            time.sleep(0.2)
+        posted = open(os.path.join(home, "gh-posted")).read() if os.path.exists(os.path.join(home, "gh-posted")) else ""
+        check("github: the worker's reply is posted on the issue, structured", any(l["fate"] == "reply posted to the issue" and l.get("session") == gw for l in g3)
+              and posted.startswith("issue comment 7 -R o/r --body **Coder** finished in") and "gh-ok" in posted)
+        g4 = grouter()
+        check("github: the Router's own comment is not an event", g4 == [])
         # no --engine and no System One key: the default engine, and the log says why
         bare = dict(env, PATH="/usr/bin:/bin")
         for k in ("BASETEN_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):

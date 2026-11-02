@@ -2,12 +2,14 @@
 
 > **Status: partly implemented.** `coder router` runs as a long-lived loop
 > that keeps its state in files and resumes from them after a restart. Its
-> watchdog ends Workers whose process died as `lost`, and reports Workers
-> that have made no progress for a set time. Long work already runs as
-> background jobs (chapter14). Still to come: channel rules, compute apart
-> from execution environments (machine daemons), a model-judged watchdog that
-> stops or redirects drifting Workers, and the fault-injection and restart
-> measurements.
+> watchdog ends Workers whose process died as `lost`, stops Workers that
+> repeat one step, and asks System One whether a quiet Worker is still making
+> progress, stopping it when it isn't. Replies follow per-channel rules: at
+> most 100 words for chat, structured for issues. Long work runs as
+> background jobs (chapter14). Still to come: compute apart from execution
+> environments (machine daemons and credential handles), a watchdog that
+> redirects a Worker instead of only stopping it, rules for pull requests,
+> mail and documents, and the restart and fault-injection measurements.
 
 Chapter17's agent is only useful if it keeps working while a laptop sleeps,
 answers while a long build runs, talks the way each channel expects and
@@ -99,24 +101,47 @@ Long work doesn't block the loop: each Worker is a background job
 
 ### The watchdog
 
-On each pass, the watchdog reads every subscribed Worker whose log has no
-end line:
+On each pass, the watchdog (`rt_tend`) reads every subscribed Worker whose
+log has no end line:
 
 - **Lost.** If the Worker's process is gone, the watchdog appends an end
-  line with the ending `lost` and logs `worker lost: ended`. The smoke kills
-  a running Worker's process and checks that `coder status` then reports
-  `lost`.
-- **Stuck.** If the Worker's log hasn't grown for `--stuck` minutes (30 by
-  default), the watchdog logs `worker stuck` once, with the minutes since
-  the last line. It doesn't stop the Worker; deciding whether a Worker
-  drifted needs the model-judged check this chapter still lacks.
+  line with the ending `lost` and logs `worker lost: ended`. On the next
+  pass the Thread gets a reply saying so.
+- **Looping.** If the last turn ran the same step five times in a row, the
+  watchdog stops the Worker (`worker stopped: looping`). This compares the
+  logged tool labels for equality; it doesn't read intent.
+- **Quiet.** If the Worker's log hasn't grown for `--stuck` seconds (1,800
+  by default), System One reads the task and the end of the log and answers
+  whether the Worker is still making real progress. If it isn't, the
+  watchdog stops it. If it is, the watchdog logs that once and leaves it.
+  With no System One key, it logs `worker stuck` with the reason.
+
+A Worker stops the same way as with `coder stop`: the watchdog writes the
+session's stop file, and the Worker ends its turn as `stopped`.
+
+### Channel rules
+
+The Router writes every reply; Workers never do. Each source has a channel,
+and the reply follows its rules (`rt_reply`):
+
+| Channel | Rules |
+| --- | --- |
+| `chat` | At most 100 words, cut with " …". Says how a Worker stopped if it didn't finish. |
+| `issue` | Structured: the ending, steps and session first, then the full result. |
 
 ## Checks
 
 - `python3 coder/tui/smoke.py`, offline: each check runs `coder router
   --once` as a fresh process, so every pass resumes from the files. The
   hand-off of a Thread to its Worker works across those restarts, and a
-  Worker whose process is killed ends as `lost`.
+  Worker whose process is killed ends as `lost`. A Worker that repeats one
+  step is stopped, and a quiet Worker with no System One key is reported as
+  stuck.
+- Unit checks: the chat cap of 100 words and the issue format.
+- Live: two quiet Workers with the same task, "fix the failing parser test".
+  System One judged the one that read, edited and tested the parser as still
+  making progress, and the one browsing news sites as not, and the watchdog
+  stopped only the second.
 
 ## Dependencies
 

@@ -5,7 +5,12 @@
 //   {"id":"t1","source":"local","thread":"fix-ci","author":"chris",
 //    "to_agent":true,"text":"the CI run on main fails; fix it"}
 //
-// The Router decides each one's fate in two stages:
+// `coder trigger` writes one, and the Router polls GitHub sources itself: a
+// source named "github:OWNER/REPO" turns new issues with its label into
+// events addressed to the agent, and new comments into events on the issue's
+// Thread.
+//
+// The Router decides each event's fate in two stages:
 //
 // - Fast path, in code, on bounded fields only: the source's mode from
 //   router/sources.json (explicit_requests_only, candidate or ignore) and its
@@ -18,18 +23,22 @@
 // A Worker is a Coder session run as a background job (chapter 14): `coder
 // run TEXT --detach`, and for a later event on its thread, `coder fork
 // SESSION TEXT --detach`, so it carries the thread's conversation. The thread
-// then subscribes to the new session. Workers don't talk to people; the
-// Router's log says what happened to every event.
+// then subscribes to the new session. Workers don't talk to people: when one
+// ends, the Router writes the reply, under its channel's rules, to
+// ~/.openagents/coder/outbox, and for a GitHub source with "deliver": true it
+// posts the reply as an issue comment.
 //
 // State lives in files, so a Router that restarts resumes where it was:
-// router/threads (thread and session, a line each), router/log.jsonl, and
-// inbox/done for the events it has decided. The watchdog (chapter 20) looks
-// at Workers on each pass: a Worker whose process is gone without an end
-// line is ended as lost, and one whose log hasn't grown for --stuck minutes
-// is reported once.
+// router/threads (thread, session and source, a line each), router/log.jsonl,
+// router/reported, the GitHub cursors and inbox/done for the events it has
+// decided. The watchdog (chapter 20) looks at Workers on each pass: a Worker
+// whose process is gone ends as lost, a Worker that repeats one step stops,
+// and a Worker whose log hasn't grown for --stuck seconds is judged by
+// System One, which stops it when it isn't making progress.
 
-RT_MODES :: [3] string.["explicit_requests_only", "candidate", "ignore"];
 RT_THREADS :: 256;
+RT_CHAT_WORDS :: 100;            // a chat reply's hard cap (chapter 20)
+RT_REPEATS :: 5;                 // the same step this many times in a row stops a Worker
 
 RtTrigger :: struct {
   id: string; source: string; thread: string; author: string; text: string;
@@ -71,18 +80,39 @@ rt_author_ok :: (ar: [] ClArena, policy: string, author: string) -> bool {
   return false;
 }
 
-// The thread table: "thread\tsession" lines.
-RtThreads :: struct { thread: [RT_THREADS] [128] u8; nthread: [RT_THREADS] int; session: [RT_THREADS] [32] u8; nsession: [RT_THREADS] int; n: int; }
+rt_has_prefix :: (s: string, p: string) -> bool { return s.count >= p.count && cast(string) s[0..<p.count] == p; }
+
+// Whether text, as lines, holds the line key.
+rt_has_line :: (text: string, key: string) -> bool {
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    if cast(string) text[at..<e] == key { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- threads
+
+// The thread table: "thread\tsession\tsource" lines.
+RtThreads :: struct {
+  thread: [RT_THREADS] [128] u8; nthread: [RT_THREADS] int;
+  session: [RT_THREADS] [32] u8; nsession: [RT_THREADS] int;
+  source: [RT_THREADS] [128] u8; nsource: [RT_THREADS] int;
+  n: int;
+}
 
 rt_thread_find :: (th: [] RtThreads, thread: string) -> int {
   for i: 0..<th[0].n { if cast(string) th[0].thread[i][0..<th[0].nthread[i]] == thread { return i; } }
   return -1;
 }
 
-rt_thread_set :: (th: [] RtThreads, thread: string, session: string) {
+rt_thread_set :: (th: [] RtThreads, thread: string, session: string, source: string) {
   i := rt_thread_find(th, thread);
   if i < 0 { if th[0].n == RT_THREADS { return; } i = th[0].n; th[0].n += 1; th[0].nthread[i] = cd_cat(th[0].thread[i][..], 0, thread); }
   th[0].nsession[i] = cd_cat(th[0].session[i][..], 0, session);
+  th[0].nsource[i] = cd_cat(th[0].source[i][..], 0, source);
 }
 
 rt_threads_read :: (th: [] RtThreads, text: string) {
@@ -92,9 +122,11 @@ rt_threads_read :: (th: [] RtThreads, text: string) {
     e := at; while e < text.count && text[e] != 10 { e += 1; }
     line := cast(string) text[at..<e];
     at = e + 1;
-    tab := 0; while tab < line.count && line[tab] != 9 { tab += 1; }
-    if tab == 0 || tab >= line.count - 1 { continue; }
-    rt_thread_set(th, cast(string) line[0..<tab], cast(string) line[tab + 1..<line.count]);
+    t1 := 0; while t1 < line.count && line[t1] != 9 { t1 += 1; }
+    if t1 == 0 || t1 >= line.count - 1 { continue; }
+    t2 := t1 + 1; while t2 < line.count && line[t2] != 9 { t2 += 1; }
+    src := ifx t2 < line.count then cast(string) line[t2 + 1..<line.count] else "";
+    rt_thread_set(th, cast(string) line[0..<t1], cast(string) line[t1 + 1..<t2], src);
   }
 }
 
@@ -102,12 +134,91 @@ rt_threads_text :: (th: [] RtThreads, out: [] u8) -> string {
   n := 0;
   for i: 0..<th[0].n {
     n = cd_cat(out, n, cast(string) th[0].thread[i][0..<th[0].nthread[i]]); n = cd_cat(out, n, "\t");
-    n = cd_cat(out, n, cast(string) th[0].session[i][0..<th[0].nsession[i]]); n = cd_cat(out, n, "\n");
+    n = cd_cat(out, n, cast(string) th[0].session[i][0..<th[0].nsession[i]]); n = cd_cat(out, n, "\t");
+    n = cd_cat(out, n, cast(string) th[0].source[i][0..<th[0].nsource[i]]); n = cd_cat(out, n, "\n");
   }
   return cast(string) out[0..<n];
 }
 
-// ---------------------------------------------------------------- the loop
+// ---------------------------------------------------------------- reading a Worker's log
+
+// The last turn's replies, joined; the last command output when the turn has no reply.
+rt_last_turn :: (text: string, ar: [] ClArena, out: [] u8) -> string {
+  n := 0; rb: [8192] u8; rn := 0;
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    if line.count == 0 { continue; }
+    ar[0].at = 0; ar[0].full = false;
+    kind := cl_str(ar, line, "kind");
+    if kind == "user" { n = 0; rn = 0; }
+    else if kind == "reply" { if n > 0 { n = cd_cat(out, n, "\n"); } n = cd_cat(out, n, cl_str(ar, line, "text")); }
+    else if kind == "result" { rn = cd_cat(rb[..], 0, cl_str(ar, line, "text")); }
+  }
+  if n == 0 { n = cd_cat(out, 0, cast(string) rb[0..<rn]); }
+  while n > 0 && (out[n - 1] == 10 || out[n - 1] == ' ') { n -= 1; }
+  return cast(string) out[0..<n];
+}
+
+// How many times in a row, at the end of the last turn, the Worker ran the same step.
+rt_repeats :: (text: string, ar: [] ClArena) -> int {
+  lb: [512] u8; ln := 0; run := 0;
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    if line.count == 0 { continue; }
+    ar[0].at = 0; ar[0].full = false;
+    kind := cl_str(ar, line, "kind");
+    if kind == "user" { run = 0; ln = 0; }
+    else if kind == "reply" { run = 0; }
+    else if kind == "tool" {
+      label := cl_str(ar, line, "label");
+      if run > 0 && label == cast(string) lb[0..<ln] { run += 1; } else { run = 1; ln = cd_cat(lb[..], 0, label); }
+    }
+  }
+  return run;
+}
+
+// At most max words of s, with "…" when cut.
+rt_words :: (s: string, max: int, out: [] u8) -> string {
+  words := 0; i := 0; inword := false;
+  while i < s.count {
+    space := s[i] == ' ' || s[i] == 10 || s[i] == 9 || s[i] == 13;
+    if !space && !inword { words += 1; if words > max { break; } }
+    inword = !space;
+    i += 1;
+  }
+  e := i; while e > 0 && (s[e - 1] == ' ' || s[e - 1] == 10) { e -= 1; }
+  n := cd_cat(out, 0, cast(string) s[0..<e]);
+  if i < s.count { n = cd_cat(out, n, " …"); }
+  return cast(string) out[0..<n];
+}
+
+// The reply under its channel's rules. chat: the result in at most 100
+// words. issue: structured and complete: what happened, then the result.
+rt_reply :: (channel: string, id: string, ending: string, steps: int, result: string, out: [] u8) -> string {
+  if channel == "issue" {
+    tb: [16] u8;
+    n := cd_cat(out, 0, "**Coder** ");
+    n = cd_cat(out, n, ifx ending == "finished" then "finished" else ending);
+    n = cd_cat(out, n, " in "); n = cd_cat(out, n, cd_itoa(steps, tb[..])); n = cd_cat(out, n, ifx steps == 1 then " step" else " steps");
+    n = cd_cat(out, n, " (session `"); n = cd_cat(out, n, id); n = cd_cat(out, n, "`).\n\n");
+    n = cd_cat(out, n, ifx result.count > 0 then cast(string) result[0..<ifx result.count > 6000 then 6000 else result.count] else "No result text.");
+    return cast(string) out[0..<n];
+  }
+  wb: [8192] u8;
+  body := rt_words(ifx result.count > 0 then result else (ifx ending == "finished" then "Done." else ending), RT_CHAT_WORDS, wb[..]);
+  n := 0;
+  if ending != "finished" { n = cd_cat(out, 0, "Stopped ("); n = cd_cat(out, n, ending); n = cd_cat(out, n, "): "); }
+  n = cd_cat(out, n, body);
+  return cast(string) out[0..<n];
+}
+
+// ---------------------------------------------------------------- files and processes
 
 RtPaths :: struct { root: [1100] u8; nroot: int; }
 
@@ -123,8 +234,34 @@ rt_init :: (p: [] RtPaths) -> bool {
   n = cd_cat(p[0].root[..], n, "/coder"); x = fs_mkdir(cast(string) p[0].root[0..<n]);
   p[0].nroot = n;
   b: [1300] u8;
-  x = fs_mkdir(rt_path(p, "/inbox", b[..])); x = fs_mkdir(rt_path(p, "/inbox/done", b[..])); x = fs_mkdir(rt_path(p, "/router", b[..]));
+  x = fs_mkdir(rt_path(p, "/inbox", b[..])); x = fs_mkdir(rt_path(p, "/inbox/done", b[..]));
+  x = fs_mkdir(rt_path(p, "/router", b[..])); x = fs_mkdir(rt_path(p, "/outbox", b[..]));
   return true;
+}
+
+// Runs argv and returns its output lines joined with LF ("" with ok false when it failed).
+rt_run :: (argv: [] string, out: [] u8, ok: [] bool) -> string {
+  ok[0] = false;
+  h := cxproc_new();
+  if h < 0 { return ""; }
+  good := true;
+  for v: argv { good = good && cl_push(h, CL_FIELD_ARG, v); }
+  if !good || cxproc_spawn(h) != 0 { r := cxproc_release(h); return ""; }
+  c := cxproc_close_stdin(h);
+  n := 0;
+  for guard: 0..<100000 {
+    m := cxproc_read_line(h, 1000);
+    if m == CL_TIMEOUT { if guard > 120 { break; } continue; }
+    if m == CL_TOO_LONG { continue; }
+    if m < 0 { break; }
+    if n + m + 1 > out.count { continue; }
+    for i: 0..<m { out[n] = cast,trunc(u8) cxproc_line_byte(h, i); n += 1; }
+    out[n] = 10; n += 1;
+  }
+  w := cxproc_wait(h, 30000); r := cxproc_release(h);
+  ok[0] = w == 0;
+  while n > 0 && out[n - 1] == 10 { n -= 1; }
+  return cast(string) out[0..<n];
 }
 
 // Runs `coder.sh ARGS... --detach`, which prints the new session's ID; "" when it failed.
@@ -132,29 +269,35 @@ rt_coder :: (args: [] string, id_out: [] u8) -> string {
   rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
   if repo.count == 0 { return ""; }
   sb: [4200] u8; sn := cd_cat(sb[..], cd_cat(sb[..], 0, repo), "/coder/tui/coder.sh");
-  h := cxproc_new();
-  if h < 0 { return ""; }
-  ok := cl_push(h, CL_FIELD_ARG, cast(string) sb[0..<sn]);
-  for v: args { ok = ok && cl_push(h, CL_FIELD_ARG, v); }
-  ok = ok && cl_push(h, CL_FIELD_ARG, "--detach");
-  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); return ""; }
-  c := cxproc_close_stdin(h);
-  n := 0;
-  for guard: 0..<600 {
-    m := cxproc_read_line(h, 1000);
-    if m == CL_TIMEOUT { continue; }
-    if m <= 0 { break; }
-    for i: 0..<m { if n < id_out.count { id_out[n] = cast,trunc(u8) cxproc_line_byte(h, i); n += 1; } }
-  }
-  w := cxproc_wait(h, 30000); r := cxproc_release(h);
-  return ifx w == 0 then cast(string) id_out[0..<n] else "";
+  argv: [12] string; argv[0] = cast(string) sb[0..<sn];
+  for i: 0..<args.count { argv[i + 1] = args[i]; }
+  argv[args.count + 1] = "--detach";
+  ok: [1] bool;
+  id := rt_run(argv[0..<args.count + 2], id_out, ok[..]);
+  return ifx ok[0] then id else "";
 }
 
-// Asks System One whether a candidate asks for work, under the source's written policy. 1 yes, 0 no, -1 no decision (why in why).
-rt_decide :: (t: RtTrigger, policy: string, why: [] u8, nwhy: [] int) -> int {
+// Asks System One a yes-or-no question about state. 1 yes, 0 no, -1 no decision (why in why).
+rt_ask :: (state: string, question: string, why: [] u8, nwhy: [] int) -> int {
   cb: [1] SoClient; kb: [512] u8;
   w := cd_so_keyed(cb[..], kb[..]);
   if w.count > 0 { nwhy[0] = cd_cat(why, 0, w); return -1; }
+  buf: [65536] u8; b: [1] SoBody;
+  so_begin(b[..], buf[..], SO_MAMMOTH, "");
+  so_state_json(b[..], state);
+  so_noul(b[..], "answer", question);
+  out: [65536] u8; err: [4096] u8;
+  res := so_decide(cb[0], b[..], out[..], err[..]);
+  for i: 0..<kb.count { kb[i] = 0; }
+  if res.problem.count > 0 { nwhy[0] = cd_cat(why, 0, ifx res.stderr.count > 0 then res.stderr else res.problem); return -1; }
+  p := so_noul_of(res.body, "answer");
+  if !p.ok { nwhy[0] = cd_cat(why, 0, "System One's answer has no value"); return -1; }
+  nwhy[0] = 0;
+  return ifx p.value >= 0.5 then 1 else 0;
+}
+
+// Whether a candidate asks for work, under the source's written policy.
+rt_decide :: (t: RtTrigger, policy: string, why: [] u8, nwhy: [] int) -> int {
   sb: [32768] u8;
   n := json_raw(sb[..], 0, "{\"event\":{\"source\":"); n = json_write_string(sb[..], n, t.source);
   n = json_raw(sb[..], n, ",\"thread\":"); n = json_write_string(sb[..], n, t.thread);
@@ -163,18 +306,18 @@ rt_decide :: (t: RtTrigger, policy: string, why: [] u8, nwhy: [] int) -> int {
   n = json_raw(sb[..], n, "},\"policy\":"); n = json_write_string(sb[..], n, policy);
   n = json_raw(sb[..], n, "}");
   if n < 0 { nwhy[0] = cd_cat(why, 0, "the event is too long to decide"); return -1; }
-  buf: [16384] u8; b: [1] SoBody;
-  so_begin(b[..], buf[..], SO_MAMMOTH, "");
-  so_state_json(b[..], cast(string) sb[0..<n]);
-  so_noul(b[..], "work", "Under the policy, does this event ask the coding agent to do work now (a change, a fix, a review, an answer only the agent can give)?");
-  out: [65536] u8; err: [4096] u8;
-  res := so_decide(cb[0], b[..], out[..], err[..]);
-  for i: 0..<kb.count { kb[i] = 0; }
-  if res.problem.count > 0 { nwhy[0] = cd_cat(why, 0, ifx res.stderr.count > 0 then res.stderr else res.problem); return -1; }
-  p := so_noul_of(res.body, "work");
-  if !p.ok { nwhy[0] = cd_cat(why, 0, "System One's answer has no work"); return -1; }
-  nwhy[0] = 0;
-  return ifx p.value >= 0.5 then 1 else 0;
+  return rt_ask(cast(string) sb[0..<n], "Under the policy, does this event ask the coding agent to do work now (a change, a fix, a review, an answer only the agent can give)?", why, nwhy);
+}
+
+// Whether a quiet Worker is still making progress toward its task, from the end of its log.
+rt_progress :: (task: string, wlog: string, why: [] u8, nwhy: [] int) -> int {
+  tail := ifx wlog.count > 12000 then cast(string) wlog[wlog.count - 12000..<wlog.count] else wlog;
+  sb: [32768] u8;
+  n := json_raw(sb[..], 0, "{\"task\":"); n = json_write_string(sb[..], n, task);
+  n = json_raw(sb[..], n, ",\"recent_log\":"); n = json_write_string(sb[..], n, tail);
+  n = json_raw(sb[..], n, "}");
+  if n < 0 { nwhy[0] = cd_cat(why, 0, "the log is too long to judge"); return -1; }
+  return rt_ask(cast(string) sb[0..<n], "The agent's log has not grown for a while. Judging by its recent steps, is it still making real progress toward its task (not looping, stalled or working on something else)?", why, nwhy);
 }
 
 rt_log :: (p: [] RtPaths, t: RtTrigger, fate: string, session: string, note: string, json: bool) {
@@ -184,25 +327,164 @@ rt_log :: (p: [] RtPaths, t: RtTrigger, fate: string, session: string, note: str
   n = json_raw(ob[..], n, ",\"thread\":"); n = json_write_string(ob[..], n, t.thread);
   n = json_raw(ob[..], n, ",\"fate\":"); n = json_write_string(ob[..], n, fate);
   if session.count > 0 { n = json_raw(ob[..], n, ",\"session\":"); n = json_write_string(ob[..], n, session); }
-  if note.count > 0 { n = json_raw(ob[..], n, ",\"note\":"); n = json_write_string(ob[..], n, note); }
+  if note.count > 0 { n = json_raw(ob[..], n, ",\"note\":"); n = json_write_string(ob[..], n, cast(string) note[0..<ifx note.count > 2000 then 2000 else note.count]); }
   n = json_raw(ob[..], n, ",\"at_us\":"); n = json_write_int(ob[..], n, cxproc_wall_us());
   n = json_raw(ob[..], n, "}\n");
   if n < 0 { return; }
   b: [1300] u8; x := fs_append(rt_path(p, "/router/log.jsonl", b[..]), cast(string) ob[0..<n]);
   if json { cd_out(cast(string) ob[0..<n]); }
   else {
-    lb: [1024] u8; ln := cd_cat(lb[..], 0, t.id); ln = cd_cat(lb[..], ln, "  "); ln = cd_cat(lb[..], ln, fate);
+    lb: [2400] u8; ln := cd_cat(lb[..], 0, t.id); ln = cd_cat(lb[..], ln, "  "); ln = cd_cat(lb[..], ln, fate);
     if session.count > 0 { ln = cd_cat(lb[..], ln, "  "); ln = cd_cat(lb[..], ln, session); }
-    if note.count > 0 { ln = cd_cat(lb[..], ln, "  ("); ln = cd_cat(lb[..], ln, note); ln = cd_cat(lb[..], ln, ")"); }
+    if note.count > 0 { ln = cd_cat(lb[..], ln, "  ("); ln = cd_cat(lb[..], ln, cast(string) note[0..<ifx note.count > 200 then 200 else note.count]); ln = cd_cat(lb[..], ln, ")"); }
     cd_outln(cast(string) lb[0..<ln]);
   }
 }
 
+// One event into the inbox as ID.json. Whether it was written.
+rt_write_trigger :: (p: [] RtPaths, id: string, source: string, thread: string, author: string, to_agent: bool, text: string) -> bool {
+  ob: [65536] u8;
+  n := json_raw(ob[..], 0, "{\"id\":"); n = json_write_string(ob[..], n, id);
+  n = json_raw(ob[..], n, ",\"source\":"); n = json_write_string(ob[..], n, source);
+  n = json_raw(ob[..], n, ",\"thread\":"); n = json_write_string(ob[..], n, thread);
+  n = json_raw(ob[..], n, ",\"author\":"); n = json_write_string(ob[..], n, author);
+  n = json_raw(ob[..], n, ifx to_agent then ",\"to_agent\":true" else ",\"to_agent\":false");
+  n = json_raw(ob[..], n, ",\"text\":"); n = json_write_string(ob[..], n, cast(string) text[0..<ifx text.count > 60000 then 60000 else text.count]);
+  n = json_raw(ob[..], n, "}\n");
+  if n < 0 { return false; }
+  b: [1300] u8; pb: [1400] u8; pn := cd_cat(pb[..], 0, rt_path(p, "/inbox/", b[..])); pn = cd_cat(pb[..], pn, id); pn = cd_cat(pb[..], pn, ".json");
+  return fs_write(cast(string) pb[0..<pn], cast(string) ob[0..<n]);
+}
+
+// ---------------------------------------------------------------- GitHub sources
+
+// "github:OWNER/REPO" -> "OWNER/REPO"; "" for other sources.
+rt_github_repo :: (source: string) -> string {
+  return ifx rt_has_prefix(source, "github:") && source.count > 7 then cast(string) source[7..<source.count] else "";
+}
+
+// The issue number in a thread "github:OWNER/REPO#N", or "".
+rt_github_number :: (thread: string) -> string {
+  i := thread.count;
+  while i > 0 && thread[i - 1] >= '0' && thread[i - 1] <= '9' { i -= 1; }
+  if i == thread.count || i == 0 || thread[i - 1] != '#' { return ""; }
+  return cast(string) thread[i..<thread.count];
+}
+
+// A file name part for a repo: OWNER_REPO.
+rt_repo_file :: (repo: string, out: [] u8) -> string {
+  n := 0;
+  for c: repo { if n < out.count { out[n] = ifx c == '/' then '_' else c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+// "20261102-073134-163" -> "2026-11-02T07:31:34Z".
+rt_iso :: (us: int, out: [] u8) -> string {
+  ib: [32] u8; id := cs_make_id(us, ib[..]);
+  n := cd_cat(out, 0, cast(string) id[0..<4]); n = cd_cat(out, n, "-"); n = cd_cat(out, n, cast(string) id[4..<6]); n = cd_cat(out, n, "-");
+  n = cd_cat(out, n, cast(string) id[6..<8]); n = cd_cat(out, n, "T"); n = cd_cat(out, n, cast(string) id[9..<11]); n = cd_cat(out, n, ":");
+  n = cd_cat(out, n, cast(string) id[11..<13]); n = cd_cat(out, n, ":"); n = cd_cat(out, n, cast(string) id[13..<15]); n = cd_cat(out, n, "Z");
+  return cast(string) out[0..<n];
+}
+
+// The gh program: $CODER_GH when set (the smoke's stand-in), else gh on PATH.
+rt_gh :: (out: [] u8) -> string {
+  g := cl_getenv("CODER_GH", out);
+  return ifx g.count > 0 then g else "gh";
+}
+
+// New labelled issues and new comments on a GitHub source, as inbox events.
+// The first poll records the time and takes nothing older. How many events.
+rt_poll_github :: (p: [] RtPaths, source: string, policy: string, json: bool) -> int {
+  repo := rt_github_repo(source);
+  if repo.count == 0 { return 0; }
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  label := cl_str(ar[..], policy, "label");
+  fb: [256] u8; rf := rt_repo_file(repo, fb[..]);
+  b: [1300] u8; sp: [1500] u8; spn := cd_cat(sp[..], 0, rt_path(p, "/router/since-", b[..])); spn = cd_cat(sp[..], spn, rf);
+  seenp: [1500] u8; sen := cd_cat(seenp[..], 0, rt_path(p, "/router/seen-", b[..])); sen = cd_cat(seenp[..], sen, rf);
+  postp: [1300] u8; posted_path := rt_path(p, "/router/posted", postp[..]);
+  since_b: [64] u8; sn := fs_read(cast(string) sp[0..<spn], since_b[..]);
+  if sn <= 0 {
+    ib: [64] u8; x := fs_write(cast(string) sp[0..<spn], rt_iso(cxproc_wall_us(), ib[..]));
+    return 0;
+  }
+  since := cast(string) since_b[0..<sn];
+  while since.count > 0 && since[since.count - 1] == 10 { since = cast(string) since[0..<since.count - 1]; }
+  seen_b: [262144] u8; seen_n := fs_read(cast(string) seenp[0..<sen], seen_b[..]);
+  seen := cast(string) seen_b[0..<ifx seen_n > 0 then seen_n else 0];
+  posted_b: [65536] u8; pn := fs_read(posted_path, posted_b[..]);
+  posted := cast(string) posted_b[0..<ifx pn > 0 then pn else 0];
+  ghb: [1024] u8; gh := rt_gh(ghb[..]);
+  count := 0;
+  for pass: 0..<2 {
+    if pass == 0 && label.count == 0 { continue; }
+    ub: [2048] u8;
+    un := cd_cat(ub[..], 0, "repos/"); un = cd_cat(ub[..], un, repo);
+    if pass == 0 { un = cd_cat(ub[..], un, "/issues?state=open&per_page=50&labels="); un = cd_cat(ub[..], un, label); }
+    else { un = cd_cat(ub[..], un, "/issues/comments?sort=updated&direction=asc&per_page=100"); }
+    un = cd_cat(ub[..], un, "&since="); un = cd_cat(ub[..], un, since);
+    jq := ifx pass == 0 then ".[] | {k:(\"issue:\"+(.number|tostring)), n:.number, a:.user.login, t:(.title+\"\\n\\n\"+(.body // \"\"))} | @json"
+                        else ".[] | {k:(\"comment:\"+(.id|tostring)), c:(.id|tostring), n:(.issue_url|split(\"/\")|last|tonumber), a:.user.login, t:(.body // \"\")} | @json";
+    argv := [5] string.[gh, "api", cast(string) ub[0..<un], "--jq", jq];
+    out: [1048576] u8; ok: [1] bool;
+    text := rt_run(argv[..], out[..], ok[..]);
+    if !ok[0] {
+      t: RtTrigger; t.id = "poll"; t.source = source;
+      rt_log(p, t, "poll failed", "", ifx text.count > 0 then text else "gh failed", json);
+      return count;
+    }
+    at := 0;
+    while at < text.count {
+      e := at; while e < text.count && text[e] != 10 { e += 1; }
+      line := cast(string) text[at..<e];
+      at = e + 1;
+      if line.count == 0 { continue; }
+      lb: [16384] u8; lar: [1] ClArena; lar[0] = ClArena.{buf = lb[..]};
+      key := cl_str(lar[..], line, "k");
+      if key.count == 0 || rt_has_line(seen, key) { continue; }
+      if pass == 1 && rt_has_line(posted, cl_str(lar[..], line, "c")) { continue; }   // a reply the Router posted
+      nn := cl_int(line, "n");
+      tb: [16] u8; thb: [512] u8;
+      thn := cd_cat(thb[..], 0, source); thn = cd_cat(thb[..], thn, "#"); thn = cd_cat(thb[..], thn, cd_itoa(nn.value, tb[..]));
+      idb: [128] u8; idn := cd_cat(idb[..], 0, "gh-"); idn = cd_cat(idb[..], idn, rf); idn = cd_cat(idb[..], idn, "-");
+      for c: key { if idn < idb.count { idb[idn] = ifx c == ':' then '-' else c; idn += 1; } }
+      // a labelled issue was addressed to the agent by whoever labelled it; a comment is an event on the issue's Thread
+      if rt_write_trigger(p, cast(string) idb[0..<idn], source, cast(string) thb[0..<thn], cl_str(lar[..], line, "a"), pass == 0, cl_str(lar[..], line, "t")) {
+        kb: [96] u8; kn := cd_cat(kb[..], 0, key); kn = cd_cat(kb[..], kn, "\n");
+        x := fs_append(cast(string) seenp[0..<sen], cast(string) kb[0..<kn]);
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+// Posts body as a comment on thread's issue; the new comment's ID ("" when it failed).
+rt_deliver_github :: (repo: string, number: string, body: string, out: [] u8) -> string {
+  ghb: [1024] u8;
+  argv := [7] string.[rt_gh(ghb[..]), "issue", "comment", number, "-R", repo, "--body"];
+  full: [8] string; for i: 0..<7 { full[i] = argv[i]; } full[7] = body;
+  ok: [1] bool; rb: [4096] u8;
+  url := rt_run(full[..], rb[..], ok[..]);
+  if !ok[0] { return ""; }
+  mark := "issuecomment-";
+  for i: 0..<url.count {
+    if i + mark.count <= url.count && cast(string) url[i..<i + mark.count] == mark {
+      e := i + mark.count; s := e;
+      while e < url.count && url[e] >= '0' && url[e] <= '9' { e += 1; }
+      on := cd_cat(out, 0, cast(string) url[s..<e]);
+      return cast(string) out[0..<on];
+    }
+  }
+  return "";
+}
+
+// ---------------------------------------------------------------- the loop
+
 // One pass over the inbox: every event's fate, oldest file first. How many events.
-rt_pass :: (p: [] RtPaths, th: [] RtThreads, json: bool) -> int {
-  b: [1300] u8; sb: [65536] u8;
-  sn := fs_read(rt_path(p, "/router/sources.json", b[..]), sb[..]);
-  sources := ifx sn > 0 then cast(string) sb[0..<sn] else "{}";
+rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int {
+  b: [1300] u8;
   l_b: [1] FsList; l := l_b[..];
   ib: [1300] u8; inbox := rt_path(p, "/inbox", ib[..]);
   n := fs_list(inbox, l);
@@ -241,11 +523,11 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, json: bool) -> int {
       if fate == RT_TO_THREAD { args[0] = "fork"; args[1] = cast(string) th[0].session[k][0..<th[0].nsession[k]]; args[2] = t.text; na = 3; }
       else { args[0] = "run"; args[1] = t.text; na = 2; }
       if engine.count > 0 { args[na] = "--engine"; args[na + 1] = engine; na += 2; }
-      idb: [64] u8; id := rt_coder(args[0..<na], idb[..]);
-      if id.count == 0 { rt_log(p, t, "failed: the worker did not start", "", "", json); }
+      idb: [256] u8; id := rt_coder(args[0..<na], idb[..]);
+      if id.count == 0 || id.count > 31 { rt_log(p, t, "failed: the worker did not start", "", id, json); }
       else {
         if t.thread.count > 0 {
-          rt_thread_set(th, t.thread, id);
+          rt_thread_set(th, t.thread, id, t.source);
           tt: [65536] u8; x := fs_write(rt_path(p, "/router/threads", b[..]), rt_threads_text(th, tt[..]));
         }
         rt_log(p, t, ifx decided then "System One said it asks for work: new worker" else fates[fate], id, "", json);
@@ -257,40 +539,103 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, json: bool) -> int {
   return done;
 }
 
-// The watchdog: each thread's Worker that is still running. A process that is
-// gone without an end line ends as lost; one whose log is older than stuck_min
-// minutes is reported once.
-rt_watch :: (p: [] RtPaths, th: [] RtThreads, stuck_min: int, warned: [] bool, json: bool) {
+// The reply for a Worker that ended: into the outbox, and to GitHub when the source delivers.
+rt_report :: (p: [] RtPaths, th: [] RtThreads, i: int, text: string, s: [] CsSummary, sources: string, json: bool) {
+  id := cast(string) th[0].session[i][0..<th[0].nsession[i]];
+  source := cast(string) th[0].source[i][0..<th[0].nsource[i]];
+  thread := cast(string) th[0].thread[i][0..<th[0].nthread[i]];
+  ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  policy := rt_source(ar[..], sources, source);
+  channel := ifx policy.count > 0 then cl_str(ar[..], policy, "channel") else "";
+  if channel.count == 0 { channel = ifx rt_github_repo(source).count > 0 then "issue" else "chat"; }
+  db := ifx policy.count > 0 then cl_bool(policy, "deliver") else ClBool.{};
+  lb: [65536] u8; lar: [1] ClArena; lar[0] = ClArena.{buf = lb[..]};
+  rb: [32768] u8; result := rt_last_turn(text, lar[..], rb[..]);
+  ob: [16384] u8;
+  body := rt_reply(channel, id, cast(string) s[0].ending[0..<s[0].nending], s[0].steps, result, ob[..]);
+  t: RtTrigger; t.id = id; t.source = source; t.thread = thread;
+  jb: [65536] u8;
+  n := json_raw(jb[..], 0, "{\"thread\":"); n = json_write_string(jb[..], n, thread);
+  n = json_raw(jb[..], n, ",\"source\":"); n = json_write_string(jb[..], n, source);
+  n = json_raw(jb[..], n, ",\"session\":"); n = json_write_string(jb[..], n, id);
+  n = json_raw(jb[..], n, ",\"channel\":"); n = json_write_string(jb[..], n, channel);
+  n = json_raw(jb[..], n, ",\"text\":"); n = json_write_string(jb[..], n, body);
+  n = json_raw(jb[..], n, "}\n");
+  b: [1300] u8; pb: [1400] u8; pn := cd_cat(pb[..], 0, rt_path(p, "/outbox/", b[..])); pn = cd_cat(pb[..], pn, id); pn = cd_cat(pb[..], pn, ".json");
+  if n > 0 { x := fs_write(cast(string) pb[0..<pn], cast(string) jb[0..<n]); }
+  fate := "reply written to the outbox";
+  repo := rt_github_repo(source); num := rt_github_number(thread);
+  if db.ok && db.value && repo.count > 0 && num.count > 0 {
+    cb: [64] u8; cid := rt_deliver_github(repo, num, body, cb[..]);
+    if cid.count > 0 {
+      kb: [80] u8; kn := cd_cat(kb[..], 0, cid); kn = cd_cat(kb[..], kn, "\n");
+      x := fs_append(rt_path(p, "/router/posted", b[..]), cast(string) kb[0..<kn]);
+      fate = "reply posted to the issue";
+    } else { fate = "reply written to the outbox; posting to the issue failed"; }
+  }
+  rk: [64] u8; rn := cd_cat(rk[..], 0, id); rn = cd_cat(rk[..], rn, "\n");
+  x := fs_append(rt_path(p, "/router/reported", b[..]), cast(string) rk[0..<rn]);
+  rt_log(p, t, fate, id, body, json);
+}
+
+// The watchdog, and replies for Workers that ended. For each thread's
+// Worker: one that ended gets its reply once; one whose process is gone ends
+// as lost; one that repeats a step RT_REPEATS times stops; one whose log is
+// older than stuck_s seconds is judged by System One and stopped when it
+// isn't making progress (reported once when there is no decision).
+rt_tend :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, warned: [] bool, json: bool) {
+  b: [1300] u8; rpb: [65536] u8;
+  rn := fs_read(rt_path(p, "/router/reported", b[..]), rpb[..]);
+  reported := cast(string) rpb[0..<ifx rn > 0 then rn else 0];
   for i: 0..<th[0].n {
     id := cast(string) th[0].session[i][0..<th[0].nsession[i]];
+    if rt_has_line(reported, id) { continue; }
     fb: [4194304] u8; ib: [128] u8;
     text := cd_session_file(id, fb[..], ib[..]);
     if text.count == 0 { continue; }
     s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
     cs_read(text, s[..], ar[..]);
-    if cast(string) s[0].ending[0..<s[0].nending] != "running" { continue; }
-    t: RtTrigger; t.id = "watchdog"; t.source = "watchdog"; t.thread = cast(string) th[0].thread[i][0..<th[0].nthread[i]];
+    t: RtTrigger; t.id = "watchdog"; t.source = cast(string) th[0].source[i][0..<th[0].nsource[i]]; t.thread = cast(string) th[0].thread[i][0..<th[0].nthread[i]];
+    if cast(string) s[0].ending[0..<s[0].nending] != "running" { rt_report(p, th, i, text, s[..], sources, json); continue; }
     pid := cd_job_pid(id);
+    pb: [1300] u8;
     if pid > 0 && cxproc_pid_alive(pid) == 0 {
-      pb: [1300] u8; lb: [256] u8;
+      lb: [256] u8;
       n := json_raw(lb[..], 0, "{\"kind\":\"end\",\"ending\":\"lost\",\"ms\":0,\"steps\":0,\"text\":\"the worker's process is gone\"}\n");
       x := fs_append(cd_sibling(id, ".jsonl", pb[..]), cast(string) lb[0..<n]);
       y := fs_remove(cd_sibling(id, ".pid", pb[..]));
       rt_log(p, t, "worker lost: ended", id, "", json);
       continue;
     }
-    sp: [1300] u8;
-    age := cxproc_wall_us() / 1000 - fs_mtime_ns(cd_sibling(id, ".jsonl", sp[..])) / 1000000;
-    if stuck_min > 0 && age > stuck_min * 60000 && i < warned.count && !warned[i] {
+    rar: [1] ClArena; rab: [16384] u8; rar[0] = ClArena.{buf = rab[..]};
+    reps := rt_repeats(text, rar[..]);
+    if reps >= RT_REPEATS {
+      x := fs_write(cd_sibling(id, ".stop", pb[..]), "stop\n");
+      tb: [16] u8; nb: [96] u8; nn := cd_cat(nb[..], 0, "the same step "); nn = cd_cat(nb[..], nn, cd_itoa(reps, tb[..])); nn = cd_cat(nb[..], nn, " times in a row");
+      rt_log(p, t, "worker stopped: looping", id, cast(string) nb[0..<nn], json);
+      continue;
+    }
+    age_s := (cxproc_wall_us() / 1000 - fs_mtime_ns(cd_sibling(id, ".jsonl", pb[..])) / 1000000) / 1000;
+    if stuck_s > 0 && age_s >= stuck_s && i < warned.count && !warned[i] {
       warned[i] = true;
-      tb: [16] u8; nb: [64] u8; nn := cd_cat(nb[..], 0, "no progress for "); nn = cd_cat(nb[..], nn, cd_itoa(age / 60000, tb[..])); nn = cd_cat(nb[..], nn, " minutes");
-      rt_log(p, t, "worker stuck", id, cast(string) nb[0..<nn], json);
+      wb: [1024] u8; nw: [1] int;
+      d := rt_progress(cast(string) s[0].task[0..<s[0].ntask], text, wb[..], nw[..]);
+      tb: [16] u8; nb: [1200] u8; nn := cd_cat(nb[..], 0, "no new log line for "); nn = cd_cat(nb[..], nn, cd_itoa(age_s, tb[..])); nn = cd_cat(nb[..], nn, " s");
+      if d == 0 {
+        x := fs_write(cd_sibling(id, ".stop", pb[..]), "stop\n");
+        rt_log(p, t, "worker stopped: System One judged it not making progress", id, cast(string) nb[0..<nn], json);
+      } else if d == 1 {
+        rt_log(p, t, "worker quiet: System One judged it still making progress", id, cast(string) nb[0..<nn], json);
+      } else {
+        nn = cd_cat(nb[..], nn, "; "); nn = cd_cat(nb[..], nn, cast(string) wb[0..<nw[0]]);
+        rt_log(p, t, "worker stuck", id, cast(string) nb[0..<nn], json);
+      }
     }
   }
 }
 
-// coder router [--once] [--stuck MIN] [--json]: the Router's loop.
-cd_cmd_router :: (once: bool, stuck_min: int, json: bool) -> int {
+// coder router [--once] [--stuck SECONDS] [--json]: the Router's loop.
+cd_cmd_router :: (once: bool, stuck_s: int, json: bool) -> int {
   p: [1] RtPaths;
   if !rt_init(p[..]) { tool_errln("coder router: no $HOME"); return 1; }
   th: [1] RtThreads; b: [1300] u8; tb: [65536] u8;
@@ -299,8 +644,18 @@ cd_cmd_router :: (once: bool, stuck_min: int, json: bool) -> int {
   warned: [RT_THREADS] bool;
   if !once && !json { cd_outln("Router: watching ~/.openagents/coder/inbox. Ctrl-C stops it; it resumes from its files."); }
   while true {
-    n := rt_pass(p[..], th[..], json);
-    rt_watch(p[..], th[..], stuck_min, warned[..], json);
+    sb: [65536] u8;
+    sn := fs_read(rt_path(p[..], "/router/sources.json", b[..]), sb[..]);
+    sources := ifx sn > 0 then cast(string) sb[0..<sn] else "{}";
+    all := cl_raw(sources, "sources");
+    ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    for i: 0..<cl_count(all) {
+      ar[0].at = 0; ar[0].full = false;
+      name := cl_text(ar[..], all, cl_key(all, i));
+      if rt_github_repo(name).count > 0 { x := rt_poll_github(p[..], name, cl_json(all, cl_item(all, i)), json); }
+    }
+    n := rt_pass(p[..], th[..], sources, json);
+    rt_tend(p[..], th[..], sources, stuck_s, warned[..], json);
     if once { return 0; }
     x := cxproc_sleep_ms(2000);
   }
@@ -313,17 +668,7 @@ cd_cmd_trigger :: (text: string, thread: string, source: string, author: string,
   p: [1] RtPaths;
   if !rt_init(p[..]) { tool_errln("coder trigger: no $HOME"); return 1; }
   ib: [32] u8; id := cs_make_id(cxproc_wall_us(), ib[..]);
-  ob: [65536] u8;
-  n := json_raw(ob[..], 0, "{\"id\":"); n = json_write_string(ob[..], n, id);
-  n = json_raw(ob[..], n, ",\"source\":"); n = json_write_string(ob[..], n, source);
-  n = json_raw(ob[..], n, ",\"thread\":"); n = json_write_string(ob[..], n, thread);
-  n = json_raw(ob[..], n, ",\"author\":"); n = json_write_string(ob[..], n, author);
-  n = json_raw(ob[..], n, ifx to_agent then ",\"to_agent\":true" else ",\"to_agent\":false");
-  n = json_raw(ob[..], n, ",\"text\":"); n = json_write_string(ob[..], n, text);
-  n = json_raw(ob[..], n, "}\n");
-  if n < 0 { tool_errln("coder trigger: the text is too long"); return 2; }
-  b: [1300] u8; pb: [1400] u8; pn := cd_cat(pb[..], 0, rt_path(p[..], "/inbox/", b[..])); pn = cd_cat(pb[..], pn, id); pn = cd_cat(pb[..], pn, ".json");
-  if !fs_write(cast(string) pb[0..<pn], cast(string) ob[0..<n]) { tool_errln("coder trigger: could not write the inbox"); return 1; }
+  if !rt_write_trigger(p[..], id, source, thread, author, to_agent, text) { tool_errln("coder trigger: could not write the inbox"); return 1; }
   cd_outln(id);
   return 0;
 }
@@ -346,8 +691,36 @@ cd_cmd_trigger :: (text: string, thread: string, source: string, author: string,
   #assert cl_str(ar[..], g, "mode") == "explicit_requests_only" && rt_author_ok(ar[..], g, "chris") && !rt_author_ok(ar[..], g, "bot");
   #assert rt_source(ar[..], src, "mail").count == 0 && rt_author_ok(ar[..], rt_source(ar[..], src, "local"), "anyone");
   th: [1] RtThreads; ob: [1024] u8;
-  rt_threads_read(th[..], "ci\t20261102-000000-001\nbad line\ndocs\t20261102-000000-002\n");
+  rt_threads_read(th[..], "ci\t20261102-000000-001\nbad line\ndocs\t20261102-000000-002\tlocal\n");
   #assert th[0].n == 2 && rt_thread_find(th[..], "docs") == 1;
-  rt_thread_set(th[..], "ci", "20261102-000000-003");
-  #assert rt_threads_text(th[..], ob[..]) == "ci\t20261102-000000-003\ndocs\t20261102-000000-002\n";
+  rt_thread_set(th[..], "ci", "20261102-000000-003", "github:o/r");
+  #assert rt_threads_text(th[..], ob[..]) == "ci\t20261102-000000-003\tgithub:o/r\ndocs\t20261102-000000-002\tlocal\n";
+}
+
+#test "a Worker's log: the last turn's result, and repeated steps" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  ob: [1024] u8;
+  first := "{\"kind\":\"user\",\"text\":\"one\"}\n{\"kind\":\"reply\",\"text\":\"old\"}\n{\"kind\":\"user\",\"text\":\"two\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls)\"}\n{\"kind\":\"result\",\"text\":\"a.txt\\n\"}\n";
+  #assert rt_last_turn(first, ar[..], ob[..]) == "a.txt";
+  #assert rt_last_turn("{\"kind\":\"user\",\"text\":\"x\"}\n{\"kind\":\"reply\",\"text\":\"fixed\"}\n{\"kind\":\"reply\",\"text\":\"tests pass\"}\n", ar[..], ob[..]) == "fixed\ntests pass";
+  loop := "{\"kind\":\"user\",\"text\":\"x\"}\n{\"kind\":\"tool\",\"label\":\"Bash(make)\"}\n{\"kind\":\"result\",\"text\":\"err\"}\n{\"kind\":\"tool\",\"label\":\"Bash(make)\"}\n{\"kind\":\"tool\",\"label\":\"Bash(make)\"}\n";
+  #assert rt_repeats(loop, ar[..]) == 3 && rt_repeats(first, ar[..]) == 1;
+}
+
+#test "channel rules: chat replies stay under 100 words, issue replies are structured" {
+  ob: [16384] u8; long: [2000] u8; n := 0;
+  for i: 0..<150 { n = cd_cat(long[..], n, "word "); }
+  chat := rt_reply("chat", "S1", "finished", 3, cast(string) long[0..<n], ob[..]);
+  words := 0; inword := false;
+  for c: chat { sp := c == ' '; if !sp && !inword { words += 1; } inword = !sp; }
+  #assert words == 101 && chat.count > 4 && cast(string) chat[chat.count - 4..<chat.count] == " …";
+  #assert rt_reply("chat", "S1", "lost", 0, "", ob[..]) == "Stopped (lost): lost";
+  #assert rt_reply("issue", "S1", "finished", 1, "Fixed the parser.", ob[..]) == "**Coder** finished in 1 step (session `S1`).\n\nFixed the parser.";
+}
+
+#test "GitHub sources: repo, issue number and cursor time" {
+  #assert rt_github_repo("github:OpenAgentsInc/openagents") == "OpenAgentsInc/openagents" && rt_github_repo("local") == "";
+  #assert rt_github_number("github:o/r#123") == "123" && rt_github_number("ci") == "" && rt_github_number("github:o/r#") == "";
+  ob: [64] u8;
+  #assert rt_iso(1793604694334529, ob[..]) == "2026-11-02T07:31:34Z";
 }

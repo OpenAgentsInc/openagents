@@ -1,14 +1,16 @@
 # 17. One agent, many tasks
 
-> **Status: partly implemented.** A local Router runs in Coder: `coder
-> trigger` writes typed Trigger records to an inbox, and `coder router`
-> decides each one's fate. The fast path runs in code on bounded fields, a
-> System One decision is the slow path, Workers are detached Coder sessions,
-> and a later event on a subscribed Thread passes straight to its Worker. The
-> offline smoke and a live System One check cover it. Still to come: real
-> sources (chat, issues, CI), a Router model that writes replies, batching,
-> inline and spill, chain of recall, acting ahead, many-to-many subscriptions,
-> and the ablation.
+> **Status: partly implemented.** A Router runs in Coder. Events come from
+> `coder trigger` and from GitHub sources (new labelled issues and new
+> comments). `coder router` decides each event's fate: first in code on
+> bounded fields, then by a System One decision. Workers are detached Coder
+> sessions, a later event on a subscribed Thread passes straight to its
+> Worker, and when a Worker ends the Router writes its reply to the outbox
+> and, for a GitHub source that asks for it, posts it on the issue. The
+> offline smoke, a live System One check and a live read-only GitHub poll
+> cover it. Still to come: chat and CI sources, a Router model for replies
+> that need more than the Worker's result, batching, inline and spill, chain
+> of recall, acting ahead, many-to-many subscriptions, and the ablation.
 
 Chapters1–19 build one session well. A person can follow only three to
 five active sessions at once, so past that point the limit is their attention,
@@ -94,6 +96,31 @@ receiver or a CI step. `to_agent` is a bounded field the source sets when
 the event is addressed to the agent, for example a mention or a direct
 message. The Router never guesses it from the text.
 
+### GitHub sources
+
+A source named `github:OWNER/REPO` is polled on every Router pass through
+`gh api` (`rt_poll_github`):
+
+```json
+"github:OpenAgentsInc/openagents":{"mode":"explicit_requests_only","authors":["AtlantisPleb"],
+  "label":"coder","engine":"claude","deliver":true}
+```
+
+- An open issue with the source's label becomes an event addressed to the
+  agent. The label is the bounded field: whoever added it asked for the work.
+- A new comment becomes an event on its issue's Thread,
+  `github:OWNER/REPO#N`. On a Thread with a Worker it goes to that Worker;
+  otherwise the source's mode decides.
+- The first poll records the time in `router/since-OWNER_REPO` and takes
+  nothing older. `router/seen-OWNER_REPO` keeps each issue and comment from
+  becoming an event twice.
+- Comments the Router posted itself are listed in `router/posted` and never
+  come back as events, so a reply can't start a loop.
+
+In the live check, the Router read six hours of comments on this repository
+and dropped each one with `dropped: author not allowed`, because that
+source's author list allowed no one. A second pass found nothing new.
+
 ### Sources and the fast path
 
 Each source has a policy in `~/.openagents/coder/router/sources.json`:
@@ -146,6 +173,28 @@ Worker never writes to people; the Router's log records each event's fate:
 
 Decided events move to `inbox/done/`, so each event is decided once.
 
+### Replies
+
+When a Thread's Worker ends, the Router writes the reply once
+(`rt_report`), under the source's channel (chapter20's channel rules):
+
+- `chat`, the default: the last turn's result in at most 100 words, cut with
+  " …". A Worker that didn't finish says how it stopped: `Stopped (lost): …`.
+- `issue`, the default for GitHub sources: structured, with what happened
+  first and then the full result:
+
+  ```text
+  **Coder** finished in 3 steps (session `20261102-073134-333`).
+
+  Fixed the parser test: …
+  ```
+
+The reply goes to `~/.openagents/coder/outbox/SESSION.json` with its Thread,
+source and channel, where any bridge can pick it up. A GitHub source with
+`"deliver": true` also posts it on the issue with `gh issue comment`; without
+it, nothing leaves the machine. `router/reported` keeps each Worker from
+replying twice.
+
 ## Checks
 
 - `coax test coder/tui/coder.coax`: the fast path on every combination of
@@ -156,7 +205,14 @@ Decided events move to `inbox/done/`, so each event is decided once.
   - An ignored source and an unaddressed event are dropped.
   - A later event on the Thread goes to its Worker as a fork whose header
     names the first Worker.
-- Live: the two `chat` events above, decided by System One.
+  - A finished Worker's reply goes to the outbox under the chat rules.
+  - Against a stand-in `gh`: the first poll only sets the cursor; the next
+    turns a labelled issue into a Worker; the Worker's reply is posted on the
+    issue in the issue format; the Router's own comment is not an event.
+- Unit checks for the last turn's result, the chat word cap and the issue
+  format, and GitHub thread and cursor parsing.
+- Live: the two `chat` events above, decided by System One, and the
+  read-only GitHub poll.
 
 ## Dependencies
 
