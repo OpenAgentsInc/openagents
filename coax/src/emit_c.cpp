@@ -1787,6 +1787,8 @@ struct Emitter {
           std::string n = local_name(s->name), c = c_type(s->type), T = std::to_string(g_warp.group_kernels.at(current));
           if (opts.metal_compute) line("threadgroup " + c + " &" + n + " = *coax_tg_" + n + ";");
           else { line("__shared__ " + c + " coax_tg_" + n + ";"); line(c + " &" + n + " = coax_tg_" + n + ";"); }
+          if (s->uninit) break;  // `---`: the kernel writes each element before it reads it
+
           // An f64 element on Metal is a float-float pair, which 0 does not convert to.
           std::string zero = opts.metal_compute && zero_value(s->type->elem) == "coax_ff_make(0.0f, 0.0f)" ? zero_value(s->type->elem) : "0";
           line(std::string(n32 ? "for (int32_t coax_z = (int32_t)coax_lane" : opts.metal_compute ? "for (int64_t coax_z = (int64_t)coax_lane" : "for (int64_t coax_z = (int64_t)threadIdx.x") + "; coax_z < " +

@@ -139,6 +139,15 @@ class MetalCompute(unittest.TestCase):
         r=self.run_metal(GROUP_F64);self.assertEqual(r.returncode,0,r.stderr)
         self.assertIn('.e[coax_z] = coax_ff_make(0.0f, 0.0f);',r.stdout)
         self.assertNotIn('.e[coax_z] = 0;',r.stdout)
+    def test_an_uninitialized_threadgroup_array_is_not_zeroed(self):
+        # `---`: the kernel writes each element before reading it, so the
+        # group skips the zeroing loop and its barrier
+        src=GROUP.replace('shared:[256]f32;','shared:[256]f32=---;')
+        for flags in ([],['--release']):
+            r=self.run_metal(src,*flags);self.assertEqual(r.returncode,0,r.stderr)
+            self.assertNotIn('l_shared.e[coax_z] = 0;',r.stdout)
+            r=self.run_metal(GROUP,*flags);self.assertEqual(r.returncode,0,r.stderr)
+            self.assertIn('l_shared.e[coax_z] = 0;',r.stdout)
     def test_apple_primitives_lower_to_matrix_units(self):
         r=self.run_metal(SIMDGROUP,'--release');self.assertEqual(r.returncode,0,r.stderr)
         out=r.stdout
@@ -174,7 +183,7 @@ class MetalCompute(unittest.TestCase):
     def test_generated_metal_compiles(self):
         if not metal_toolchain():self.skipTest('no Metal toolchain')
         for source,flags,std in ((KERNEL,[],'metal3.1'),(KERNEL,['--release'],'metal3.1'),(WARP,['--release'],'metal3.1'),(GROUP,[],'metal3.1'),
-                                 (GROUP,['--release'],'metal3.1'),(GROUP_PLACE,[],'metal3.1'),(GROUP_PLACE,['--release'],'metal3.1'),(GROUP_F64,[],'metal3.1'),(SIMDGROUP,[],'metal4.0'),(SIMDGROUP,['--release'],'metal4.0'),(NARROW,['--release'],'metal3.1'),(NARROW,[],'metal3.1')):
+                                 (GROUP,['--release'],'metal3.1'),(GROUP_PLACE,[],'metal3.1'),(GROUP_PLACE,['--release'],'metal3.1'),(GROUP_F64,[],'metal3.1'),(SIMDGROUP,[],'metal4.0'),(SIMDGROUP,['--release'],'metal4.0'),(NARROW,['--release'],'metal3.1'),(NARROW,[],'metal3.1'),(GROUP.replace('shared:[256]f32;','shared:[256]f32=---;'),[],'metal3.1')):
             r=self.run_metal(source,*flags);self.assertEqual(r.returncode,0,r.stderr)
             with tempfile.TemporaryDirectory() as d:
                 p=Path(d)/'k.metal';p.write_text(r.stdout)
