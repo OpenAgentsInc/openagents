@@ -1,5 +1,26 @@
 # Owner actions
 
+## Background jobs stopped after desktop lockups (2026-11-02)
+
+At the owner's request, the open-issues chat stopped its eight mutation
+workers, an 18-worker compiler mutation that had run for over two hours,
+and overlapping bootstrap/render builds. It temporarily unloaded these user
+LaunchAgents to prevent automatic restart; their plist files were not edited:
+
+- `com.openagents.coax-publish`
+- `com.openagents.disk-janitor`
+- `com.openagents.spotlight-skip-targets`
+
+CPU recovered to about 66% idle with 52 GB unused RAM. Our remaining local
+checks run one at a time, at low priority, with one mutation worker and a
+15-minute command limit. Interrupted runs do not count as passing evidence.
+
+Before resuming the background jobs, bound their concurrency and runtime so
+they cannot accumulate overlapping work again. To restore a service after
+that review, run `launchctl bootstrap gui/$(id -u)
+~/Library/LaunchAgents/LABEL.plist`, replacing `LABEL` with the names above.
+The compiler publisher's release work remains incomplete while it is stopped.
+
 ## Psionic chapter 74: run gpt-oss-120b on the Mac (2026-11-02)
 
 The chapter 74 planner (`psionic/lib/gptoss/device-choice.coax`) admits 120b

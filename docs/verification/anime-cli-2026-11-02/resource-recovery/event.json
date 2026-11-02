@@ -1,0 +1,25 @@
+{
+  "time_utc": "2026-11-02 18:26:45 UTC",
+  "trigger": "Owner reported desktop lockups and explicitly requested killing resource-heavy processes before continuing.",
+  "stopped": [
+    "own mutation parent3002 and8workers3019-3026",
+    "compiler mutation50072 and18workers50628-50646 after2h22m",
+    "bootstrap43469/clang14461/14888 after45m",
+    "overlapping realm build93090/95072/95722 (already gone at termination)"
+  ],
+  "temporarily_unloaded_launchagents": [
+    "com.openagents.coax-publish",
+    "com.openagents.disk-janitor",
+    "com.openagents.spotlight-skip-targets"
+  ],
+  "configuration_files_changed": false,
+  "post_stop_observation": {
+    "cpu_idle_percent": 65.97,
+    "unused_ram_gb": 52,
+    "swapins_during_sample": 0,
+    "swapouts_during_sample": 0
+  },
+  "task_controls": "One heavy job at a time; nice15; mutation jobs1 in sequential shards; timeout900 seconds per command. No concurrent browser capture.",
+  "mutation_result": "Interrupted, no qualification; unbuffered progress unavailable. Previous191/191 baseline retained.",
+  "restart_record": "NEEDS_OWNER.md"
+}
