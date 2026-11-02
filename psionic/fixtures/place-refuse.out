@@ -1,0 +1,6 @@
+the whole model: no peer has the memory: stage 0 misses peer 1 by 1932815360 bytes
+two stages, ready within 3 s: no peer is ready in time: stage 0 misses peer 0 by 1064452608 ns
+four stages: too few peers: stages in set 15 need 1 more peer(s)
+this machine with 4 GB, no link from 1 to 2: no linked chain of peers
+this machine gone: input
+peer 1 leaves, no time to load: no peer is ready in time: stage 0 misses peer 0 by 4064452608 ns

@@ -1,0 +1,36 @@
+// Chapter 189: fleets where Ministral 3 3B cannot be placed, each refused
+// with the binding constraint and the smallest change that would fit.
+#import "Basic";
+#load "../lib/stage-run.coax";
+#load "../lib/place.coax";
+
+place_link :: (given:PlcFleet,a:int,c:int,lat:int,bw:int)->PlcFleet {f:=given;f.lat[a][c]=lat;f.lat[c][a]=lat;f.bw[a][c]=bw;f.bw[c][a]=bw;return f;}
+place_fleet :: ()->PlcFleet {
+    f:PlcFleet;f.peers=3;f.deadline=60000000000;
+    f.peer[0]=PlcPeer.{live=true,budget=5000000000,macs=500000,read=100000,fetch=100,verify=1000,holds=3};
+    f.peer[1]=PlcPeer.{live=true,budget=6000000000,macs=20000000,read=400000,fetch=1000,verify=2000};
+    f.peer[2]=PlcPeer.{live=true,budget=4500000000,macs=1000000,read=200000,fetch=250,verify=500};
+    f=place_link(f,0,1,500000,125);f=place_link(f,0,2,2000000,25);f=place_link(f,1,2,250000,1250);
+    return f;
+}
+place_job :: (budget:[]int)->PlcJob {m:=stg_ministral(MS_3B);return plc_job(m,stg_plan(m,budget,4096),4096,MS_3B.width);}
+place_why :: (label:string,p:PlcPlacement) {
+    print("%: %",label,plc_status_name(p.status));
+    if p.status==PlcStatus.memory {print(": stage % misses peer % by % bytes",p.stage,p.who,p.gap);}
+    if p.status==PlcStatus.deadline {print(": stage % misses peer % by % ns",p.stage,p.who,p.gap);}
+    if p.status==PlcStatus.peers {print(": stages in set % need % more peer(s)",p.set,p.gap);}
+    print("\n");
+}
+
+// book:begin refuse
+main :: () {
+    zero:[1]int;none:=zero[0..<0];f:=place_fleet();
+    one:=[1]int.[8000000000];place_why("the whole model",plc_place(place_job(one[..]),f,PlcGoal.latency,none));
+    two:=[2]int.[6000000000,6000000000];j:=place_job(two[..]);
+    g:=f;g.deadline=3000000000;place_why("two stages, ready within 3 s",plc_place(j,g,PlcGoal.latency,none));
+    four:=[4]int.[3000000000,3000000000,3000000000,3000000000];place_why("four stages",plc_place(place_job(four[..]),f,PlcGoal.latency,none));
+    g=f;g.peer[0].budget=4000000000;g.bw[1][2]=0;place_why("this machine with 4 GB, no link from 1 to 2",plc_place(j,g,PlcGoal.latency,none));
+    g=f;g.peer[0].live=false;place_why("this machine gone",plc_place(j,g,PlcGoal.latency,none));
+    old:=[2]int.[1,2];g=f;g.peer[1].live=false;g.deadline=0;place_why("peer 1 leaves, no time to load",plc_place(j,g,PlcGoal.latency,old[..]));
+}
+// book:end refuse

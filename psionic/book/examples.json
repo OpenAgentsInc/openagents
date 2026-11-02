@@ -2889,6 +2889,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/place.coax",
+      "chapter": "psionic/book/ch189-place-the-model.md",
+      "stdout": "psionic/fixtures/place.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/place-refuse.coax",
+      "chapter": "psionic/book/ch189-place-the-model.md",
+      "stdout": "psionic/fixtures/place-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

@@ -1,0 +1,17 @@
+stage 0: 4735541248 bytes resident, 3728908288 read and 2099249152 multiply-adds a token, package 4064452608 bytes, sends 12324 bytes
+stage 1: 4203907072 bytes resident, 4001519616 read and 2202009600 multiply-adds a token, package 3598866432 bytes, sends 4 bytes
+(0, 1): latency 48391507 ns, period 37887675 ns, ready in 5398299648 ns
+(0, 2): latency 61789802 ns, period 39782043 ns, ready in 21593198592 ns
+(1, 0): latency 50436092 ns, period 40015197 ns, ready in 6096678912 ns
+(1, 2): latency 32089922 ns, period 22007759 ns, ready in 21593198592 ns
+(2, 0): does not fit
+(2, 1): does not fit
+fastest token: stages on peers 1 2, latency 32089922 ns, 0 moved, ready in 21593198592 ns
+most tokens a second: stages on peers 1 2, period 22007759 ns, 0 moved, ready in 21593198592 ns
+ready within 20 s: stages on peers 0 1, latency 48391507 ns, 0 moved, ready in 5398299648 ns
+whole, else split: job 1 of 2 (2 stages)
+peer 1 with 8 GB: stages on peers 1, latency 20326134 ns, 0 moved, ready in 10287019008 ns
+this machine with 8 GB too: stages on peers 0, latency 77304280 ns, 0 moved, ready in 6858012672 ns
+peer 1 leaves: stages on peers 0 2, latency 61789802 ns, 1 moved, ready in 4064452608 ns
+peer 2 leaves: stages on peers 1 0, latency 50436092 ns, 1 moved, ready in 3598866432 ns
+peer 2 leaves, planned afresh: stages on peers 0 1, latency 48391507 ns, 0 moved, ready in 5398299648 ns

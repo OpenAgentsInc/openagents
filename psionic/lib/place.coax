@@ -1,0 +1,426 @@
+// Chapter 189: place a split model's stages on peers. Each peer advertises
+// a memory budget and measured rates (multiply-adds and memory bytes a
+// second, chapter 33's roofline; download and hash bytes a second, chapter
+// 178's fetch and verify phases). Each ordered pair of peers has a measured
+// one-way latency and a bandwidth (chapter 188's pings). The solver assigns
+// each stage of chapter 186's plan to its own peer so that every stage's
+// bytes fit and every stage is ready by a deadline, and among those it
+// minimizes either one token's latency through the pipeline or the period
+// of its slowest step. It runs a dynamic program over the set of peers used
+// so far; ties go to the assignment that is first in peer order. When
+// nothing fits it names the binding constraint and the smallest change
+// that would remove it. When a peer leaves, it replans with the fewest
+// stages moved first, then the objective.
+// Profile place-v1: up to 8 peers and 8 stages; integer bytes, rates in
+// millions a second, times in nanoseconds rounded up.
+#authority;
+#load "stage-plan.coax";
+#load "../tests/place-checks.coax";  // the checks' hand-worked fleet, random fleets and brute-force placer
+
+PlcStatus :: enum u8 {ok;input;memory;deadline;peers;link;}
+PlcGoal :: enum u8 {latency;throughput;}
+
+// Bytes, multiply-adds and nanoseconds: at most 2^44.
+PLC_AMOUNT_MAX :: 17592186044416;
+// Rates in millions a second: at most 2^40.
+PLC_RATE_MAX :: 1099511627776;
+
+#test "Ministral 3 3B on three peers: the hand-worked times" {
+    j:=plcx_job();f:=plcx_fleet();
+    #assert j.stages==2 && j.entry==4 && j.stage[0].out==12324 && j.stage[1].out==4;
+    #assert j.stage[0].bytes==4735541248 && j.stage[1].bytes==4203907072;
+    #assert j.stage[0].read==3728908288 && j.stage[1].read==4001519616;
+    #assert j.stage[0].package==4064452608 && j.stage[1].package==3598866432;
+    // Stage 0 on this machine is memory-bound: 3,728,908,288 bytes at 100,000 MB/s.
+    #assert plc_ns(3728908288,100000)==37289083 && plc_ns(2099249152,500000)==4198499;
+    #assert plc_compute(j.stage[0],f.peer[0])==37289083 && plc_compute(j.stage[0],f.peer[1])==9322271;
+    #assert plc_compute(j.stage[1],f.peer[0])==40015197 && plc_compute(j.stage[1],f.peer[1])==10003800 && plc_compute(j.stage[1],f.peer[2])==20007599;
+    #assert plc_hop(f,0,1,12324)==598592 && plc_hop(f,1,2,12324)==259860 && plc_hop(f,2,0,4)==2000160 && plc_hop(f,0,1,4)==500032;
+    #assert plc_hop(f,1,1,12324)==0 && plc_hop(f,0,2,12324)==2492960;
+    // Packages: this machine holds both, so it only hashes them.
+    #assert plc_ready(j.stage[0],f.peer[0],0)==4064452608 && plc_ready(j.stage[0],f.peer[1],0)==6096678912;
+    #assert plc_ready(j.stage[1],f.peer[2],1)==21593198592 && plc_ready(j.stage[1],f.peer[1],1)==5398299648;
+    a:=[2]int.[0,1];e:=plc_eval(j,f,a[..]);#assert e.latency==48391507 && e.period==37887675;
+    a=[2]int.[0,2];e=plc_eval(j,f,a[..]);#assert e.latency==61789802 && e.period==39782043;
+    a=[2]int.[1,0];e=plc_eval(j,f,a[..]);#assert e.latency==50436092 && e.period==40015197;
+    a=[2]int.[1,2];e=plc_eval(j,f,a[..]);#assert e.latency==32089922 && e.period==22007759 && e.ready==21593198592;
+    #assert e.compute[0]==9322271 && e.compute[1]==20007599 && e.hop[0]==500032 && e.hop[1]==259860 && e.hop[2]==2000160;
+}
+#test "Ministral 3 3B: the placements, a tighter deadline, and replanning" {
+    j:=plcx_job();f:=plcx_fleet();zero:[1]int;none:=zero[0..<0];
+    p:=plc_place(j,f,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.ok && p.peer[0]==1 && p.peer[1]==2 && p.cost==32089922 && p.moves==0 && p.latency==32089922 && p.period==22007759;
+    #assert p.compute[0]==9322271 && p.compute[1]==20007599 && p.hop[0]==500032 && p.hop[1]==259860 && p.hop[2]==2000160 && p.ready==21593198592;
+    p=plc_place(j,f,PlcGoal.throughput,none);#assert p.status==PlcStatus.ok && p.peer[0]==1 && p.peer[1]==2 && p.cost==22007759;
+    // Ready within 20 s: stage 1 cannot fetch to peer 2 in time.
+    g:=f;g.deadline=20000000000;p=plc_place(j,g,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.ok && p.peer[0]==0 && p.peer[1]==1 && p.cost==48391507 && p.ready==5398299648;
+    p=plc_place(j,g,PlcGoal.throughput,none);#assert p.status==PlcStatus.ok && p.peer[0]==0 && p.peer[1]==1 && p.cost==37887675;
+    // Peer 1 leaves: stage 0 must move to this machine; stage 1 stays.
+    old:=[2]int.[1,2];g=f;g.peer[1].live=false;p=plc_place(j,g,PlcGoal.latency,old[..]);
+    #assert p.status==PlcStatus.ok && p.peer[0]==0 && p.peer[1]==2 && p.moves==1 && p.cost==61789802 && p.ready==4064452608;
+    // Peer 2 leaves: one move to (1, 0) beats the faster two-move (0, 1).
+    g=f;g.peer[2].live=false;p=plc_place(j,g,PlcGoal.latency,old[..]);
+    #assert p.status==PlcStatus.ok && p.peer[0]==1 && p.peer[1]==0 && p.moves==1 && p.cost==50436092 && p.ready==3598866432;
+    p=plc_place(j,g,PlcGoal.latency,none);#assert p.peer[0]==0 && p.peer[1]==1 && p.moves==0 && p.cost==48391507;
+    // A stage that stays is already loaded: no deadline applies to it.
+    g=f;g.peer[1].live=false;g.deadline=0;p=plc_place(j,g,PlcGoal.latency,old[..]);
+    #assert p.status==PlcStatus.deadline && p.stage==0 && p.who==0 && p.gap==4064452608;
+    a:=[2]int.[0,2];g.deadline=4064452608;p=plc_place(j,g,PlcGoal.latency,old[..]);#assert p.status==PlcStatus.ok && p.ready==4064452608;
+    p=plc_place(j,g,PlcGoal.latency,a[..]);#assert p.status==PlcStatus.ok && p.moves==0 && p.ready==0;
+}
+#test "refusals name the binding constraint and the smallest change" {
+    j:=plcx_job();f:=plcx_fleet();zero:[1]int;none:=zero[0..<0];
+    // Memory: the whole model, 7,932,815,360 bytes, against 6 GB at most.
+    w:=plcx_whole();p:=plc_place(w,f,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.memory && p.stage==0 && p.who==1 && p.gap==1932815360;
+    g:=f;g.peer[1].budget+=1932815360;p=plc_place(w,g,PlcGoal.latency,none);#assert p.status==PlcStatus.ok && p.peer[0]==1;
+    g.peer[1].budget-=1;p=plc_place(w,g,PlcGoal.latency,none);#assert p.status==PlcStatus.memory && p.gap==1;
+    // Ties among the closest peers go to the first.
+    g=f;g.peer[0].budget=6000000000;p=plc_place(w,g,PlcGoal.latency,none);#assert p.status==PlcStatus.memory && p.who==0;
+    g.peer[0].live=false;p=plc_place(w,g,PlcGoal.latency,none);#assert p.status==PlcStatus.input;
+    // A peer that has left is not a candidate, however close.
+    g=f;g.peer[2].budget=7900000000;g.peer[2].live=false;p=plc_place(w,g,PlcGoal.latency,none);#assert p.status==PlcStatus.memory && p.who==1;
+    g.peer[2].live=true;p=plc_place(w,g,PlcGoal.latency,none);#assert p.status==PlcStatus.memory && p.who==2 && p.gap==32815360;
+    // Deadline: within 3 s neither peer that holds stage 0's bytes has it ready.
+    g=f;g.deadline=3000000000;p=plc_place(j,g,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.deadline && p.stage==0 && p.who==0 && p.gap==1064452608;
+    // A peer with exactly the bytes is a candidate; one a byte short is not.
+    g.peer[0].budget=4735541248;p=plc_place(j,g,PlcGoal.latency,none);#assert p.status==PlcStatus.deadline && p.who==0;
+    g.peer[0].budget=4735541247;p=plc_place(j,g,PlcGoal.latency,none);#assert p.status==PlcStatus.deadline && p.who==1 && p.gap==3096678912;
+    // This machine holds only stage 0's package: stage 1 misses 5 s on peer 1 by 0.4 s.
+    g=f;g.peer[0].holds=1;g.deadline=5000000000;p=plc_place(j,g,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.deadline && p.stage==1 && p.who==1 && p.gap==398299648;
+    g=f;g.deadline=3000000000;
+    // 4.06 s: both stages are ready in time only on this machine.
+    g.deadline=4064452608;p=plc_place(j,g,PlcGoal.latency,none);#assert p.status==PlcStatus.peers && p.set==3 && p.gap==1;
+    g.deadline=4064452607;p=plc_place(j,g,PlcGoal.latency,none);#assert p.status==PlcStatus.deadline && p.gap==1;
+    g.deadline=5398299648;p=plc_place(j,g,PlcGoal.latency,none);#assert p.status==PlcStatus.ok && p.peer[0]==0 && p.peer[1]==1;
+    // Peers: four stages and three peers, short by one.
+    four:=plcx_four();p=plc_place(four,f,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.peers && p.set==15 && p.gap==1;
+    // Two stages that fit only on peer 1: the set {0, 1} is one peer short.
+    g=f;g.peer[0].budget=4000000000;g.peer[2].budget=4000000000;p=plc_place(j,g,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.peers && p.set==3 && p.gap==1;
+    // Two sets fall one peer short: all three stages, and stages 0 and 1. The search starts from all.
+    t:PlcJob;t.stages=3;for s:0..<3 {t.stage[s]=PlcStage.{bytes=5,read=1,macs=1,package=1,out=1};}t.stage[2].bytes=1;
+    g=plcx_eight().fleet;g.peers=3;g.peer[0].budget=1;g.peer[1].budget=5;g.peer[2].budget=0;
+    p=plc_place(t,g,PlcGoal.latency,none);#assert p.status==PlcStatus.peers && p.set==7 && p.gap==1;
+    // Stage 2 may go on peer 0 or 2: only stages 0 and 1 fall short.
+    g.peer[2].budget=1;p=plc_place(t,g,PlcGoal.latency,none);#assert p.status==PlcStatus.peers && p.set==3 && p.gap==1;
+    // Link: every stage has its own peer, but 1 -> 2 is the only way and it is cut.
+    g=f;g.peer[0].budget=4000000000;g.bw[1][2]=0;p=plc_place(j,g,PlcGoal.latency,none);#assert p.status==PlcStatus.link;
+    g.bw[1][2]=1;g.bw[2][0]=0;p=plc_place(j,g,PlcGoal.latency,none);#assert p.status==PlcStatus.link;
+    g.bw[2][0]=1;g.bw[0][1]=0;p=plc_place(j,g,PlcGoal.latency,none);#assert p.status==PlcStatus.link;
+    g.bw[0][1]=1;p=plc_place(j,g,PlcGoal.latency,none);#assert p.status==PlcStatus.ok && p.peer[0]==1 && p.peer[1]==2;
+    #assert plc_status_name(PlcStatus.link)=="no linked chain of peers" && plc_status_name(PlcStatus.ok)=="ok";
+    #assert plc_goal_name(PlcGoal.throughput)=="throughput" && plc_goal_name(PlcGoal.latency)=="latency";
+}
+#test "whole on this machine, then whole on a peer, then a split" {
+    j:=plcx_job();f:=plcx_fleet();w:=plcx_whole();
+    jobs:=[2]PlcJob.[w,j];c:=plc_choose(jobs[..],f,PlcGoal.latency);
+    #assert c.status==PlcStatus.ok && c.which==1 && c.placed.peer[0]==1 && c.placed.peer[1]==2;
+    // Peer 1 grows to 8 GB: the whole model goes there.
+    g:=f;g.peer[1].budget=8000000000;c=plc_choose(jobs[..],g,PlcGoal.latency);
+    #assert c.status==PlcStatus.ok && c.which==0 && c.placed.peer[0]==1 && c.placed.cost==500032+19326070+500032;
+    // This machine grows to 8 GB too: it keeps the model though peer 1 is faster.
+    g.peer[0].budget=8000000000;c=plc_choose(jobs[..],g,PlcGoal.latency);
+    #assert c.status==PlcStatus.ok && c.which==0 && c.placed.peer[0]==0 && c.placed.moves==0 && c.placed.cost==77304280 && c.placed.hop[0]==0;
+    // Ready within 6 s: neither has the whole model in time, so it splits.
+    g.deadline=6000000000;c=plc_choose(jobs[..],g,PlcGoal.latency);#assert c.status==PlcStatus.ok && c.which==1 && c.placed.peer[0]==0 && c.placed.peer[1]==1;
+    // A whole job that is not valid is refused, and the split is tried.
+    g.deadline=f.deadline;bad:=w;bad.entry=-1;jobs[0]=bad;c=plc_choose(jobs[..],g,PlcGoal.latency);
+    #assert c.status==PlcStatus.ok && c.which==1 && c.placed.peer[0]==1 && c.placed.peer[1]==2;
+    // Nothing places: the last job's refusal.
+    four:=plcx_four();more:=[2]PlcJob.[w,four];c=plc_choose(more[..],f,PlcGoal.latency);
+    #assert c.status==PlcStatus.peers && c.which==1 && c.placed.gap==1;
+    c=plc_choose(jobs[0..<0],f,PlcGoal.latency);#assert c.status==PlcStatus.input;
+}
+#test "the input's bounds" {
+    j:=plcx_job();f:=plcx_fleet();zero:[1]int;none:=zero[0..<0];
+    #assert plc_place(j,f,PlcGoal.latency,none).status==PlcStatus.ok;
+    for k:0..<6 {for v:0..<4 {
+        // Each stage field just inside and just outside its bounds.
+        s:=j;lo:=ifx k==0 then 1 else 0;xs:=[4]int.[lo,PLC_AMOUNT_MAX,lo-1,PLC_AMOUNT_MAX+1];x:=xs[v];
+        if k==0 {s.stage[1].bytes=x;}if k==1 {s.stage[1].read=x;}if k==2 {s.stage[1].macs=x;}
+        if k==3 {s.stage[1].package=x;}if k==4 {s.stage[1].out=x;}if k==5 {s.entry=x;}
+        g:=f;for i:0..<3 {g.peer[i].budget=PLC_AMOUNT_MAX;}g.deadline=PLC_AMOUNT_MAX;
+        got:=plc_place(s,g,PlcGoal.latency,none).status;#assert (got==PlcStatus.input)==(v>=2);
+    }}
+    for k:0..<7 {for v:0..<4 {
+        g:=f;lo:=ifx k==0 || k>=5 then 0 else 1;hi:=ifx k==0 || k==6 then PLC_AMOUNT_MAX else ifx k==5 then 255 else PLC_RATE_MAX;
+        xs:=[4]int.[lo,hi,lo-1,hi+1];x:=xs[v];
+        if k==0 {g.peer[2].budget=x;}if k==1 {g.peer[2].macs=x;}if k==2 {g.peer[2].read=x;}if k==3 {g.peer[2].fetch=x;}
+        if k==4 {g.peer[2].verify=x;}if k==5 {g.peer[2].holds=x;}if k==6 {g.lat[2][1]=x;}
+        got:=plc_place(j,g,PlcGoal.latency,none).status;#assert (got==PlcStatus.input)==(v>=2);
+        // A peer that has left is not checked.
+        g.peer[2].live=false;#assert plc_place(j,g,PlcGoal.latency,none).status!=PlcStatus.input;
+    }}
+    g:=f;g.bw[1][0]=-1;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.input;
+    g.bw[1][0]=PLC_RATE_MAX+1;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.input;
+    g.bw[1][0]=PLC_RATE_MAX;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.ok;
+    // The diagonal is never read.
+    g.bw[1][1]=-1;g.lat[1][1]=-1;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.ok;
+    g=f;g.deadline=-1;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.input;
+    g.deadline=PLC_AMOUNT_MAX+1;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.input;
+    g.deadline=PLC_AMOUNT_MAX;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.ok;
+    g=f;g.peers=0;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.input;
+    g.peers=9;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.input;
+    g.peers=8;for i:3..<8 {g.peer[i]=f.peer[2];g.peer[i].live=false;}#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.ok;
+    g.peers=1;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.peers;
+    s:=j;s.stage[0].bytes=0;#assert plc_place(s,f,PlcGoal.latency,none).status==PlcStatus.input;
+    g=f;g.peer[0].macs=0;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.input;
+    s=j;s.stages=0;#assert plc_place(s,f,PlcGoal.latency,none).status==PlcStatus.input;
+    s.stages=9;#assert plc_place(s,f,PlcGoal.latency,none).status==PlcStatus.input;
+    // Eight stages on eight peers.
+    e:=plcx_eight();p:=plc_place(e.work,e.fleet,PlcGoal.latency,none);#assert p.status==PlcStatus.ok && p.peer[7]==7 && p.peer[0]==0;
+    // The old assignment: none, or one peer a stage, each a peer of the fleet.
+    old:=[3]int.[1,2,0];#assert plc_place(j,f,PlcGoal.latency,old[0..<1]).status==PlcStatus.input;
+    #assert plc_place(j,f,PlcGoal.latency,old[0..<3]).status==PlcStatus.input;
+    old[1]=3;#assert plc_place(j,f,PlcGoal.latency,old[0..<2]).status==PlcStatus.input;
+    old[1]=-1;#assert plc_place(j,f,PlcGoal.latency,old[0..<2]).status==PlcStatus.input;
+    old[1]=2;#assert plc_place(j,f,PlcGoal.latency,old[0..<2]).status==PlcStatus.ok;
+}
+#forall "the solver's placement is the brute force's, on random fleets" seed:0..<300,n:1..<5 #steps 400000000 {
+    r:=plcx_random(seed,n);goal:=ifx seed%2==0 then PlcGoal.latency else PlcGoal.throughput;
+    old:[8]int;moved:=seed%3==0;
+    if moved {for s:0..<n {old[s]=plcx_pick(seed*13+s,r.fleet.peers);}}
+    o:=ifx moved then old[0..<n] else old[0..<0];
+    p:=plc_place(r.work,r.fleet,goal,o);b:=plcx_brute(r.work,r.fleet,goal,o);
+    #assert (p.status==PlcStatus.ok)==(b.cost>=0);
+    if b.cost>=0 {
+        #assert p.cost==b.cost && p.moves==b.moves;
+        for s:0..<n {#assert p.peer[s]==b.peer[s];}
+        e:=plcx_eval(r.work,r.fleet,b.peer[0..<n],o);
+        #assert p.latency==e.latency && p.period==e.period && p.ready==e.ready;
+    } else {
+        #assert p.status==plcx_refusal(r.work,r.fleet,o);
+    }
+}
+
+// book:begin model
+// One stage, as the solver sees it: the bytes it keeps resident, the bytes
+// it reads for each token (its layers' weights and cache, and the readout
+// on the last stage), its multiply-adds for each token, its package's
+// bytes, and the bytes it sends for each token: the boundary rows to the
+// next stage, or the sampled token back from the last.
+PlcStage :: struct {bytes:int;read:int;macs:int;package:int;out:int;}
+// A job: its stages in pipeline order, and the bytes this machine sends
+// the first stage for each token.
+PlcJob :: struct {stages:int;stage:[8]PlcStage;entry:int;}
+// A peer's advertisement: its memory budget, its rates in millions a second
+// (multiply-adds, memory bytes read, bytes downloaded, bytes hashed), and
+// a bit for each stage whose package it already holds.
+PlcPeer :: struct {live:bool;budget:int;macs:int;read:int;fetch:int;verify:int;holds:int;}
+// The fleet: peer 0 is this machine, where tokens enter and leave. lat is
+// the one-way latency from peer to peer in nanoseconds, bw the bandwidth
+// in MB/s (0: no link). deadline: a moved stage must be ready this soon.
+PlcFleet :: struct {peers:int;peer:[8]PlcPeer;lat:[8][8]int;bw:[8][8]int;deadline:int;}
+// Build the job for plan p of model m at `context` positions, with
+// boundary rows of `width` values and token ids of 4 bytes.
+plc_job :: (m:StgModel,p:StgPlan,context:int,width:int)->PlcJob {
+    j:=PlcJob.{stages=p.stages,entry=4};
+    for i:0..<p.stages {
+        a:=p.cut[i];b:=p.cut[i+1];last:=i==p.stages-1;
+        s:=PlcStage.{bytes=p.bytes[i],macs=p.macs[i],package=stg_bytes(m,a,b,i==0,last,0)};
+        for l:a..<b {s.read+=m.weight[l]+m.kv[l]*context;}
+        if last {s.read+=m.head+m.norm;s.package-=m.out;s.out=4;} else {s.out=stg_message_bytes(1,width);}
+        j.stage[i]=s;
+    }
+    return j;
+}
+// book:end model
+
+// book:begin cost
+// x units at `rate` millions a second, in nanoseconds rounded up.
+plc_ns :: (x:int,rate:int)->int {return (x*1000+rate-1)/rate;}
+// A stage's time for one token on a peer: the slower of its arithmetic and
+// its memory traffic (chapter 33's roofline).
+plc_compute :: (s:PlcStage,p:PlcPeer)->int {return stg_max(plc_ns(s.macs,p.macs),plc_ns(s.read,p.read));}
+// Sending b bytes over a link, or from peer a to peer c: nothing on one
+// peer, -1 with no link.
+plc_send :: (lat:int,bw:int,b:int)->int {
+    if bw==0 {return -1;}
+    return lat+plc_ns(b,bw);
+}
+plc_hop :: (f:PlcFleet,a:int,c:int,b:int)->int {return ifx a==c then 0 else plc_send(f.lat[a][c],f.bw[a][c],b);}
+// Time until stage `index` is ready on a peer: fetch its package unless the
+// peer holds it, then hash every byte.
+plc_ready :: (s:PlcStage,p:PlcPeer,index:int)->int {
+    t:=plc_ns(s.package,p.verify);
+    if (p.holds>>index)&1==0 {t+=plc_ns(s.package,p.fetch);}
+    return t;
+}
+// What an assignment costs. One token's latency: in to the first stage,
+// every stage and every hop, back out. The period: the busiest step, where
+// a stage's step is its compute and its send.
+PlcCost :: struct {latency:int;period:int;ready:int;compute:[8]int;hop:[9]int;}
+plc_eval :: (j:PlcJob,f:PlcFleet,peer:[]int)->PlcCost {
+    e:PlcCost;e.hop[0]=plc_hop(f,0,peer[0],j.entry);e.latency=e.hop[0];e.period=e.hop[0];
+    for s:0..<j.stages {
+        next:=ifx s==j.stages-1 then 0 else peer[s+1];
+        e.compute[s]=plc_compute(j.stage[s],f.peer[peer[s]]);e.hop[s+1]=plc_hop(f,peer[s],next,j.stage[s].out);
+        e.latency+=e.compute[s]+e.hop[s+1];e.period=stg_max(e.period,e.compute[s]+e.hop[s+1]);
+        e.ready=stg_max(e.ready,plc_ready(j.stage[s],f.peer[peer[s]],s));
+    }
+    return e;
+}
+// book:end cost
+
+plc_in :: (x:int,lo:int,hi:int)->bool {return x>=lo && x<=hi;}
+plc_valid :: (j:PlcJob,f:PlcFleet,old:[]int)->bool {
+    if !plc_in(j.stages,1,j.stage.count) || !plc_in(f.peers,1,f.peer.count) || !f.peer[0].live {return false;}
+    if !plc_in(j.entry,0,PLC_AMOUNT_MAX) || !plc_in(f.deadline,0,PLC_AMOUNT_MAX) {return false;}
+    if old.count!=0 && old.count!=j.stages {return false;}
+    for o:old {if !plc_in(o,0,f.peers-1) {return false;}}
+    for s:0..<j.stages {
+        t:=j.stage[s];
+        if !plc_in(t.bytes,1,PLC_AMOUNT_MAX) || !plc_in(t.read,0,PLC_AMOUNT_MAX) || !plc_in(t.macs,0,PLC_AMOUNT_MAX) ||
+            !plc_in(t.package,0,PLC_AMOUNT_MAX) || !plc_in(t.out,0,PLC_AMOUNT_MAX) {return false;}
+    }
+    for a:0..<f.peers {
+        p:=f.peer[a];
+        if !p.live {continue;}
+        if !plc_in(p.budget,0,PLC_AMOUNT_MAX) || !plc_in(p.macs,1,PLC_RATE_MAX) || !plc_in(p.read,1,PLC_RATE_MAX) ||
+            !plc_in(p.fetch,1,PLC_RATE_MAX) || !plc_in(p.verify,1,PLC_RATE_MAX) || !plc_in(p.holds,0,255) {return false;}
+        for c:0..<f.peers {
+            if c!=a && f.peer[c].live && (!plc_in(f.lat[a][c],0,PLC_AMOUNT_MAX) || !plc_in(f.bw[a][c],0,PLC_RATE_MAX)) {return false;}
+        }
+    }
+    return true;
+}
+
+// book:begin solve
+// The solver's answer. On ok: the peer of each stage, the objective's cost,
+// the stages moved from `old`, and the assignment's latency, period, the
+// time until its moved stages are ready, and its per-stage times. On a
+// refusal: the binding constraint and the smallest change. memory and
+// deadline: `stage` fits on no peer, and `who` is the peer it misses by the
+// least, by `gap` bytes or nanoseconds. peers: the stages in the bit set
+// `set` fit on `gap` fewer peers than they number. link: every stage has
+// a peer of its own, but no chain of them is linked.
+PlcPlacement :: struct {
+    status:PlcStatus;goal:PlcGoal;stages:int;peer:[8]int;cost:int;moves:int;
+    latency:int;period:int;ready:int;compute:[8]int;hop:[9]int;
+    stage:int;who:int;gap:int;set:int;
+}
+plc_count :: (mask:int)->int {n:=0;m:=mask;while m!=0 {n+=m&1;m=m>>1;}return n;}
+// May stage s run on peer a? It must be live and fit; unless it stays where
+// it was, it must be ready by the deadline.
+plc_fits :: (j:PlcJob,f:PlcFleet,old:[]int,s:int,a:int)->bool {
+    p:=f.peer[a];
+    if !p.live || j.stage[s].bytes>p.budget {return false;}
+    return (old.count>0 && old[s]==a) || plc_ready(j.stage[s],p,s)<=f.deadline;
+}
+// Is (m, c) better than the best so far (bm, bc)? Fewer moves, then lower
+// cost; an empty best (bc < 0) loses to anything.
+plc_better :: (m:int,c:int,bm:int,bc:int)->bool {return bc<0 || m<bm || (m==bm && c<bc);}
+plc_place :: (j:PlcJob,f:PlcFleet,goal:PlcGoal,old:[]int)->PlcPlacement {
+    r:=PlcPlacement.{goal=goal,stages=j.stages};n:=j.stages;P:=f.peers;
+    if !plc_valid(j,f,old) {r.status=PlcStatus.input;return r;}
+    // Each stage needs a peer it fits on; else name the closest miss.
+    hosts:[9]int;
+    for s:0..<n {
+        for a:0..<P {if plc_fits(j,f,old,s,a) {hosts[s]|=1<<a;}}
+        if hosts[s]!=0 {continue;}
+        // Memory binds unless some live peer has the bytes; then the deadline does.
+        room:=false;
+        for a:0..<P {if f.peer[a].live && j.stage[s].bytes<=f.peer[a].budget {room=true;}}
+        r.status=ifx room then PlcStatus.deadline else PlcStatus.memory;r.stage=s;r.who=-1;
+        for a:0..<P {
+            p:=f.peer[a];
+            if !p.live || (room && j.stage[s].bytes>p.budget) {continue;}
+            over:=ifx room then plc_ready(j.stage[s],p,s)-f.deadline else j.stage[s].bytes-p.budget;
+            if r.who<0 || over<r.gap {r.gap=over;r.who=a;}
+        }
+        return r;
+    }
+    // Hall's condition: every set of stages needs as many peers as stages.
+    // The set that falls shortest says how many peers to add; the search
+    // runs from the set of all stages down, and the first such set is kept.
+    for k:0..<(1<<n) {
+        set:=(1<<n)-1-k;
+        near:=0;for s:0..<n {if (set>>s)&1==1 {near|=hosts[s];}}
+        lack:=plc_count(set)-plc_count(near);
+        if lack>r.gap {r.gap=lack;r.set=set;}
+    }
+    if r.gap>0 {r.status=PlcStatus.peers;return r;}
+    // Each stage's time on each peer, and each hop's: hop 0 carries the
+    // token in, hop s + 1 what stage s sends.
+    own:[8][8]int;hop:[9][8][8]int;
+    for s:0..<n {for a:0..<P {if (hosts[s]>>a)&1==1 {own[s][a]=plc_compute(j.stage[s],f.peer[a]);}}}
+    for k:0..<n+1 {
+        sent:=ifx k==0 then j.entry else j.stage[k-1].out;
+        for a:0..<P {for c:0..<P {hop[k][a][c]=ifx a==c then 0 else plc_send(f.lat[a][c],f.bw[a][c],sent);}}
+    }
+    // bm[used][a] and bc[used][a]: the fewest moves, then the lowest cost,
+    // of stages s..<n when stage s runs on peer a and `used` holds the
+    // peers of stages 0..s (so s is one less than its count); bc is -1 when
+    // there is no way on. next: the peer of stage s + 1 on that best way.
+    // A larger `used` is filled first, so each entry reads finished ones.
+    bm:[256][8]int;bc:[256][8]int;next:[256][8]int;
+    for k:0..<(1<<P)-1 {
+        used:=(1<<P)-1-k;s:=plc_count(used)-1;
+        for a:0..<P {
+            bc[used][a]=-1;
+            // A stage past the last has no hosts. Entries for a peer outside
+            // `used` are never read.
+            if (hosts[s]>>a)&1==0 {continue;}
+            t:=own[s][a];dm:=ifx old.count>0 && old[s]!=a then 1 else 0;
+            if s==n-1 {
+                h:=hop[n][a][0];
+                if h>=0 {bm[used][a]=dm;bc[used][a]=t+h;}
+                continue;
+            }
+            for c:0..<P {
+                if (used>>c)&1==1 {continue;}
+                h:=hop[s+1][a][c];w:=used|(1<<c);
+                if h<0 || bc[w][c]<0 {continue;}
+                cost:=ifx goal==PlcGoal.latency then t+h+bc[w][c] else stg_max(t+h,bc[w][c]);
+                if plc_better(dm+bm[w][c],cost,bm[used][a],bc[used][a]) {bm[used][a]=dm+bm[w][c];bc[used][a]=cost;next[used][a]=c;}
+            }
+        }
+    }
+    r.cost=-1;first:int;
+    for a:0..<P {
+        h:=hop[0][0][a];
+        if h<0 || bc[1<<a][a]<0 {continue;}
+        cost:=ifx goal==PlcGoal.latency then h+bc[1<<a][a] else stg_max(h,bc[1<<a][a]);
+        if plc_better(bm[1<<a][a],cost,r.moves,r.cost) {r.moves=bm[1<<a][a];r.cost=cost;first=a;}
+    }
+    if r.cost<0 {r.status=PlcStatus.link;return r;}
+    used:=0;a:=first;
+    for s:0..<n {r.peer[s]=a;used|=1<<a;a=next[used][a];}
+    e:=plc_eval(j,f,r.peer[0..<n]);
+    r.latency=e.latency;r.period=e.period;r.compute=e.compute;r.hop=e.hop;
+    for s:0..<n {if old.count==0 || old[s]!=r.peer[s] {r.ready=stg_max(r.ready,plc_ready(j.stage[s],f.peer[r.peer[s]],s));}}
+    return r;
+}
+// book:end solve
+
+// book:begin choose
+// The order a mesh tries: the whole model on this machine, then the whole
+// model on a peer, then each split in turn. jobs[0] is the whole model when
+// it has one stage; later jobs split it into more. The first that places
+// wins; when none does, the last job's refusal says what to change.
+PlcChoice :: struct {status:PlcStatus;which:int;placed:PlcPlacement;}
+plc_choose :: (jobs:[]PlcJob,f:PlcFleet,goal:PlcGoal)->PlcChoice {
+    c:=PlcChoice.{status=PlcStatus.input};zero:[1]int;none:=zero[0..<0];
+    for k:0..<jobs.count {
+        j:=jobs[k];c.which=k;
+        if j.stages==1 && plc_valid(j,f,none) && plc_fits(j,f,none,0,0) {
+            self:=f;for a:1..<f.peers {self.peer[a].live=false;}
+            c.placed=plc_place(j,self,goal,none);c.status=c.placed.status;return c;
+        }
+        c.placed=plc_place(j,f,goal,none);c.status=c.placed.status;
+        if c.status==PlcStatus.ok {return c;}
+    }
+    return c;
+}
+// book:end choose
+
+plc_status_name :: (s:PlcStatus)->string {
+    names:=[6]string.["ok","input","no peer has the memory","no peer is ready in time","too few peers","no linked chain of peers"];
+    return names[cast(int)s];
+}
+plc_goal_name :: (g:PlcGoal)->string {names:=[2]string.["latency","throughput"];return names[cast(int)g];}

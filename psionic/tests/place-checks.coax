@@ -1,0 +1,170 @@
+// Chapter 189's check helpers, loaded by psionic/lib/place.coax and owned
+// by its checks: the hand-worked fleet of three peers, Ministral 3 3B's
+// jobs, random small fleets, and a brute-force placer that tries every
+// assignment of stages to distinct peers, with its own costs.
+
+// Ministral 3 3B at 4,096 positions, split 14 + 12 as chapter 186 splits
+// it for two budgets of 6 GB.
+plcx_split :: (budget:[]int)->PlcJob {m:=stgx_ministral();return plc_job(m,stg_plan(m,budget,4096),4096,3072);}
+plcx_job :: ()->PlcJob {b:=[2]int.[6000000000,6000000000];return plcx_split(b[..]);}
+plcx_whole :: ()->PlcJob {b:=[1]int.[8000000000];return plcx_split(b[..]);}
+plcx_four :: ()->PlcJob {b:=[4]int.[3000000000,3000000000,3000000000,3000000000];return plcx_split(b[..]);}
+plcx_link :: (given:PlcFleet,a:int,c:int,lat:int,bw:int)->PlcFleet {f:=given;f.lat[a][c]=lat;f.lat[c][a]=lat;f.bw[a][c]=bw;f.bw[c][a]=bw;return f;}
+// The chapter's three peers. 0, this machine: 5 GB, 0.5 T multiply-adds a
+// second, 100 GB/s of memory, holds both packages. 1: 6 GB, 20 T, 400 GB/s.
+// 2: 4.5 GB, 1 T, 200 GB/s. Links: 0-1 0.5 ms and 125 MB/s, 0-2 2 ms and
+// 25 MB/s, 1-2 0.25 ms and 1,250 MB/s. Ready within 60 s.
+plcx_fleet :: ()->PlcFleet {
+    f:PlcFleet;f.peers=3;f.deadline=60000000000;
+    f.peer[0]=PlcPeer.{live=true,budget=5000000000,macs=500000,read=100000,fetch=100,verify=1000,holds=3};
+    f.peer[1]=PlcPeer.{live=true,budget=6000000000,macs=20000000,read=400000,fetch=1000,verify=2000};
+    f.peer[2]=PlcPeer.{live=true,budget=4500000000,macs=1000000,read=200000,fetch=250,verify=500};
+    f=plcx_link(f,0,1,500000,125);f=plcx_link(f,0,2,2000000,25);f=plcx_link(f,1,2,250000,1250);
+    return f;
+}
+// Eight stages that fit only one way: stage s needs s + 1 bytes and peer a
+// has a + 1, so stage 7 goes on peer 7, stage 6 on peer 6, and so on.
+PlcxCase :: struct {work:PlcJob;fleet:PlcFleet;}
+plcx_eight :: ()->PlcxCase {
+    c:PlcxCase;c.work.stages=8;c.fleet.peers=8;
+    for s:0..<8 {
+        c.work.stage[s]=PlcStage.{bytes=s+1,read=1,macs=1,package=1,out=1};
+        c.fleet.peer[s]=PlcPeer.{live=true,budget=s+1,macs=1,read=1,fetch=1,verify=1};
+        for a:0..<8 {c.fleet.lat[s][a]=1;c.fleet.bw[s][a]=1;}
+    }
+    c.fleet.deadline=10000;return c;
+}
+plcx_next :: (x:int)->int {return (x*48271+11)%2147483647;}
+plcx_pick :: (seed:int,peers:int)->int {return plcx_next(plcx_next(seed+7))%peers;}
+// A small fleet from a seed: 1 to 5 peers, some gone, small budgets and
+// rates so that ties are common, links missing a quarter of the time.
+plcx_random :: (seed:int,n:int)->PlcxCase {
+    c:PlcxCase;x:=seed*2654435761%1000003+29;
+    x=plcx_next(x);c.fleet.peers=1+x%5;x=plcx_next(x);c.fleet.deadline=x%12000;
+    c.work.stages=n;x=plcx_next(x);c.work.entry=x%4;
+    for s:0..<n {
+        t:PlcStage;
+        x=plcx_next(x);t.bytes=1+x%6;x=plcx_next(x);t.read=x%6;x=plcx_next(x);t.macs=x%6;
+        x=plcx_next(x);t.package=x%6;x=plcx_next(x);t.out=x%6;
+        c.work.stage[s]=t;
+    }
+    for a:0..<c.fleet.peers {
+        p:PlcPeer;
+        x=plcx_next(x);p.live=a==0 || x%5!=0;
+        x=plcx_next(x);p.budget=x%10;x=plcx_next(x);p.macs=1+x%4;x=plcx_next(x);p.read=1+x%4;
+        x=plcx_next(x);p.fetch=1+x%3;x=plcx_next(x);p.verify=1+x%3;x=plcx_next(x);p.holds=x%16;
+        c.fleet.peer[a]=p;
+        for b:0..<c.fleet.peers {x=plcx_next(x);c.fleet.lat[a][b]=x%4;x=plcx_next(x);c.fleet.bw[a][b]=x%4;}
+    }
+    return c;
+}
+// The brute force's own arithmetic, written from the chapter's rules.
+plcx_ns :: (x:int,rate:int)->int {q:=x*1000/rate;if q*rate<x*1000 {q+=1;}return q;}
+plcx_hop :: (f:PlcFleet,a:int,c:int,b:int)->int {
+    if a==c {return 0;}
+    if f.bw[a][c]<1 {return -1;}
+    return f.lat[a][c]+plcx_ns(b,f.bw[a][c]);
+}
+plcx_ready :: (j:PlcJob,f:PlcFleet,s:int,a:int)->int {
+    held:=(f.peer[a].holds & (1<<s))!=0;fetch:=0;
+    if !held {fetch=plcx_ns(j.stage[s].package,f.peer[a].fetch);}
+    return fetch+plcx_ns(j.stage[s].package,f.peer[a].verify);
+}
+plcx_stays :: (old:[]int,s:int,a:int)->bool {return old.count>0 && old[s]==a;}
+plcx_fits :: (j:PlcJob,f:PlcFleet,old:[]int,s:int,a:int)->bool {
+    if !f.peer[a].live || f.peer[a].budget<j.stage[s].bytes {return false;}
+    if plcx_stays(old,s,a) {return true;}
+    return plcx_ready(j,f,s,a)<=f.deadline;
+}
+// latency and period: -1 when a hop has no link. ready: the moved stages'.
+PlcxCost :: struct {latency:int;period:int;ready:int;}
+plcx_eval :: (j:PlcJob,f:PlcFleet,peer:[]int,old:[]int)->PlcxCost {
+    e:PlcxCost;n:=j.stages;
+    route:[10]int;route[0]=0;for s:0..<n {route[s+1]=peer[s];}route[n+1]=0;
+    sent:[9]int;sent[0]=j.entry;for s:0..<n {sent[s+1]=j.stage[s].out;}
+    for k:0..<n+1 {
+        h:=plcx_hop(f,route[k],route[k+1],sent[k]);
+        if h<0 {e.latency=-1;e.period=-1;return e;}
+        step:=h;
+        if k<n {
+            s:=k;p:=f.peer[peer[s]];
+            ta:=plcx_ns(j.stage[s].macs,p.macs);tm:=plcx_ns(j.stage[s].read,p.read);
+            t:=tm;if ta>tm {t=ta;}
+            e.latency+=t;
+            if !plcx_stays(old,s,peer[s]) {r:=plcx_ready(j,f,s,peer[s]);if r>e.ready {e.ready=r;}}
+        }
+        e.latency+=h;
+        // Stage k-1 owns hop k; hop 0 is this machine's own step.
+        if k==0 {step=h;} else {pk:=f.peer[peer[k-1]];step=h;ta:=plcx_ns(j.stage[k-1].macs,pk.macs);tm:=plcx_ns(j.stage[k-1].read,pk.read);if ta>tm {step+=ta;} else {step+=tm;}}
+        if step>e.period {e.period=step;}
+    }
+    return e;
+}
+// Every assignment of the stages to distinct peers, in lexicographic order
+// of peers: the first with the fewest moves and then the lowest cost.
+PlcxBest :: struct {cost:int;moves:int;peer:[8]int;}
+plcx_brute :: (j:PlcJob,f:PlcFleet,goal:PlcGoal,old:[]int)->PlcxBest {
+    n:=j.stages;P:=f.peers;b:=PlcxBest.{cost=-1};digit:[8]int;
+    // Tables first, so each assignment reads numbers rather than copying the fleet.
+    fits:[8][8]bool;time:[8][8]int;hops:[9][8][8]int;
+    for s:0..<n {for a:0..<P {
+        fits[s][a]=plcx_fits(j,f,old,s,a);p:=f.peer[a];
+        ta:=plcx_ns(j.stage[s].macs,p.macs);tm:=plcx_ns(j.stage[s].read,p.read);
+        time[s][a]=tm;if ta>tm {time[s][a]=ta;}
+    }}
+    for k:0..<n+1 {
+        sent:=j.entry;if k>0 {sent=j.stage[k-1].out;}
+        for a:0..<P {for c:0..<P {hops[k][a][c]=plcx_hop(f,a,c,sent);}}
+    }
+    total:=1;for s:0..<n {total*=P;}
+    for code:0..<total {
+        x:=code;for k:0..<n {digit[n-1-k]=x%P;x/=P;}
+        ok:=true;moves:=0;
+        for s:0..<n {
+            if !fits[s][digit[s]] {ok=false;}
+            for t:0..<s {if digit[t]==digit[s] {ok=false;}}
+            if old.count>0 && old[s]!=digit[s] {moves+=1;}
+        }
+        if !ok {continue;}
+        // In from this machine, through every stage, back to it.
+        latency:=0;period:=0;at:=0;
+        for k:0..<n+1 {
+            to:=0;if k<n {to=digit[k];}
+            h:=hops[k][at][to];
+            if h<0 {ok=false;break;}
+            step:=h;if k>0 {step+=time[k-1][at];}
+            latency+=step;if step>period {period=step;}
+            at=to;
+        }
+        if !ok {continue;}
+        cost:=latency;if goal==PlcGoal.throughput {cost=period;}
+        if b.cost<0 || moves<b.moves || (moves==b.moves && cost<b.cost) {b.cost=cost;b.moves=moves;b.peer=digit;}
+    }
+    return b;
+}
+// Why nothing places, found by enumeration: a stage with no peer (memory if
+// no live peer has its bytes, else the deadline), no way to give each stage
+// its own peer, or else the links.
+plcx_refusal :: (j:PlcJob,f:PlcFleet,old:[]int)->PlcStatus {
+    n:=j.stages;P:=f.peers;fits:[8][8]bool;
+    for s:0..<n {
+        any:=false;bytes:=false;
+        for a:0..<P {
+            fits[s][a]=plcx_fits(j,f,old,s,a);
+            if fits[s][a] {any=true;}
+            if f.peer[a].live && f.peer[a].budget>=j.stage[s].bytes {bytes=true;}
+        }
+        if !any {return ifx bytes then PlcStatus.deadline else PlcStatus.memory;}
+    }
+    digit:[8]int;total:=1;for s:0..<n {total*=P;}
+    for code:0..<total {
+        x:=code;for k:0..<n {digit[k]=x%P;x/=P;}
+        ok:=true;
+        for s:0..<n {
+            if !fits[s][digit[s]] {ok=false;}
+            for t:0..<s {if digit[t]==digit[s] {ok=false;}}
+        }
+        if ok {return PlcStatus.link;}
+    }
+    return PlcStatus.peers;
+}

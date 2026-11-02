@@ -1,0 +1,60 @@
+// Chapter 189: place Ministral 3 3B's two stages on three simulated peers,
+// for latency and for throughput, under a deadline, and again when a peer
+// leaves.
+#import "Basic";
+#load "../lib/stage-run.coax";
+#load "../lib/place.coax";
+
+place_show :: (label:string,p:PlcPlacement) {
+    if p.status!=PlcStatus.ok {print("%: refused, %\n",label,plc_status_name(p.status));return;}
+    print("%: stages on peers",label);for s:0..<p.stages {print(" %",p.peer[s]);}
+    print(", % % ns, % moved, ready in % ns\n",ifx p.goal==PlcGoal.latency then "latency" else "period",p.cost,p.moves,p.ready);
+}
+
+// Set the link between peers a and c, the same both ways.
+place_link :: (given:PlcFleet,a:int,c:int,lat:int,bw:int)->PlcFleet {f:=given;f.lat[a][c]=lat;f.lat[c][a]=lat;f.bw[a][c]=bw;f.bw[c][a]=bw;return f;}
+
+// book:begin fleet
+// This machine and two peers, as they advertise themselves: memory budget,
+// rates in millions a second, and which stage packages they hold.
+place_fleet :: ()->PlcFleet {
+    f:PlcFleet;f.peers=3;f.deadline=60000000000;
+    f.peer[0]=PlcPeer.{live=true,budget=5000000000,macs=500000,read=100000,fetch=100,verify=1000,holds=3};
+    f.peer[1]=PlcPeer.{live=true,budget=6000000000,macs=20000000,read=400000,fetch=1000,verify=2000};
+    f.peer[2]=PlcPeer.{live=true,budget=4500000000,macs=1000000,read=200000,fetch=250,verify=500};
+    // One-way latency in nanoseconds and bandwidth in MB/s, both ways.
+    f=place_link(f,0,1,500000,125);f=place_link(f,0,2,2000000,25);f=place_link(f,1,2,250000,1250);
+    return f;
+}
+// book:end fleet
+
+// book:begin place-example
+main :: () {
+    m:=stg_ministral(MS_3B);C:=4096;
+    two:=[2]int.[6000000000,6000000000];j:=plc_job(m,stg_plan(m,two[..],C),C,MS_3B.width);
+    for s:0..<j.stages {
+        t:=j.stage[s];
+        print("stage %: % bytes resident, % read and % multiply-adds a token, package % bytes, sends % bytes\n",s,t.bytes,t.read,t.macs,t.package,t.out);
+    }
+    f:=place_fleet();
+    for a:0..<3 {for c:0..<3 {
+        if a==c {continue;}
+        if j.stage[0].bytes>f.peer[a].budget || j.stage[1].bytes>f.peer[c].budget {print("(%, %): does not fit\n",a,c);continue;}
+        pair:=[2]int.[a,c];e:=plc_eval(j,f,pair[..]);
+        print("(%, %): latency % ns, period % ns, ready in % ns\n",a,c,e.latency,e.period,e.ready);
+    }}
+    zero:[1]int;none:=zero[0..<0];
+    place_show("fastest token",plc_place(j,f,PlcGoal.latency,none));
+    place_show("most tokens a second",plc_place(j,f,PlcGoal.throughput,none));
+    g:=f;g.deadline=20000000000;place_show("ready within 20 s",plc_place(j,g,PlcGoal.latency,none));
+    one:=[1]int.[8000000000];w:=plc_job(m,stg_plan(m,one[..],C),C,MS_3B.width);
+    jobs:=[2]PlcJob.[w,j];c:=plc_choose(jobs[..],f,PlcGoal.latency);
+    print("whole, else split: job % of 2 (% stages)\n",c.which,jobs[c.which].stages);
+    g=f;g.peer[1].budget=8000000000;c=plc_choose(jobs[..],g,PlcGoal.latency);place_show("peer 1 with 8 GB",c.placed);
+    g.peer[0].budget=8000000000;c=plc_choose(jobs[..],g,PlcGoal.latency);place_show("this machine with 8 GB too",c.placed);
+    old:=[2]int.[1,2];
+    g=f;g.peer[1].live=false;place_show("peer 1 leaves",plc_place(j,g,PlcGoal.latency,old[..]));
+    g=f;g.peer[2].live=false;place_show("peer 2 leaves",plc_place(j,g,PlcGoal.latency,old[..]));
+    place_show("peer 2 leaves, planned afresh",plc_place(j,g,PlcGoal.latency,none));
+}
+// book:end place-example
