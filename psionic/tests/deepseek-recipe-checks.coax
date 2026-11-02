@@ -1,0 +1,47 @@
+// Chapter 101's checks: an independent byte count, tensor by tensor, and
+// the prompt skip's positions marked one by one. Loaded by
+// psionic/lib/deepseek/recipe.coax for its #test blocks only.
+// The oracle: every tensor of every row, one at a time, by its own format.
+mrc_tensor_bytes :: (name:string,dtype:int,values:int,layer:int)->int {
+    outer:=layer<4 || layer>=36;experts:=dv_has(name,".ffn.experts.");draft:=dv_starts(name,"mtp.");
+    if experts && draft {return -1;}
+    if dtype==DV_E8M0 {return 0;}
+    if experts && dv_has(name,".w2.") {return values/256*(ifx outer then 110 else 98);}
+    if experts {return values/256*(ifx outer then 82 else 66);}
+    if dtype==DV_F8 && dv_has(name,".engram.embed.") {return values/256*210;}
+    if dtype==DV_F8 || name=="embed.weight" || name=="head.weight" {return values/32*34;}
+    if dv_has(name,".ffn.gate.weight") {return values*4;}
+    return -1;
+}
+mrc_total :: (rows:[]DvRow,draft:bool,vision:bool)->int {
+    total:=0;
+    for r:rows {
+        if dv_starts(r.name,"mtp.")!=draft {continue;}
+        v:=dv_starts(r.name,"vision.") || dv_starts(r.name,"aligner.") || dv_starts(r.name,"image_");
+        if v!=vision {continue;}
+        n:=r.shape[0]*(ifx r.rank==2 then r.shape[1] else 1);
+        values:=ifx r.dtype==DV_I8 then 2*n else n;
+        for l:0..<64 {
+            if r.layers!=0 && ((r.layers>>u64(l))&1)==0 {continue;}
+            if r.layers==0 && l>0 {break;}
+            for e:0..<r.count {one:=mrc_tensor_bytes(r.name,r.dtype,values,l);total+=ifx one<0 then n*dv_size(r.dtype) else one;}
+        }
+    }
+    return total;
+}
+// The positions of the state layer's output that the later layers read, by
+// marking them layer by layer from the top: the last token for the logits;
+// below a layer, the window under each position it needs, and its last
+// window - 1 positions, whose keys and values the next token attends to.
+mrc_needed :: (tokens:int,after:int,window:int,need:[]bool)->int {
+    for p:0..<tokens {need[p]=p==tokens-1;}
+    for step:0..<after {
+        next:[4096]bool;
+        for p:0..<tokens {
+            if need[p] {for q:rp_max(0,p-window+1)..<p+1 {next[q]=true;}}
+            if p>=tokens-(window-1) {next[p]=true;}
+        }
+        for p:0..<tokens {need[p]=next[p];}
+    }
+    n:=0;for p:0..<tokens {if need[p] {n+=1;}}return n;
+}

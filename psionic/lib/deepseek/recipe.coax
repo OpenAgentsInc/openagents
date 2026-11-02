@@ -1,0 +1,305 @@
+// Chapter 101: Maya's recipe for V4.1 Flash on one card, as a plan you can
+// check. The recipe is Project Maya's Maya-S quant (mw00/project-maya at
+// 451f9cb6a2, MIT; quant repository peasantsmith/DeepSeek-V4.1-Flash-1017-
+// Maya-GGUF): one GGUF format for every tensor kind of the pinned
+// checkpoint. mr_requant rewrites chapter 100's header manifest with the
+// recipe's byte counts and mr_bytes sums the files it makes; mr_skip
+// derives the prompt-skip bound from the layers that keep per-position
+// state; mr_place splits each layer's experts across the GPU, RAM and disk;
+// mr_rate turns a cache replay's expert reads into the time of one token.
+// Profile deepseek-v41-recipe-v1: header facts only, no payload read; byte
+// counts exact; times in whole microseconds, each tier rounded up.
+#load "flash-plan.coax";
+#load "../../tests/deepseek-recipe-checks.coax";  // the checks' tensor-by-tensor byte count and position marking
+#authority;
+
+// book:begin formats
+// The formats a tensor can take. released keeps the checkpoint's bytes;
+// dropped is a scale tensor folded into the new blocks. The rest are ggml
+// block types: GGUF type number, values per block and bytes per block,
+// from ggml's block structs (block_q8_0, block_q6_K, block_iq2_xxs,
+// block_iq2_s, block_iq3_xxs, block_iq3_s).
+MrFormat :: enum u8 {released;dropped;f32;q8_0;q6_k;iq2_xxs;iq2_s;iq3_xxs;iq3_s;}
+MR_GGUF :: [9]int.[-1,-1,0,8,14,16,22,18,21];
+MR_SPAN :: [9]int.[1,1,1,32,256,256,256,256,256];
+MR_BLOCK :: [9]int.[1,0,4,34,210,66,82,98,110];
+// Layers 0-3 and 36-39 keep their experts at a higher rate.
+MR_OUTER :: 0xf00000000f;
+// book:end formats
+MrStatus :: enum u8 {ok;dtype;block;capacity;}
+
+// book:begin recipe
+// Maya-S, tensor kind by tensor kind:
+//   routed experts, gate and up (w1, w3): IQ2_XXS; IQ2_S in the outer layers
+//   routed experts, down (w2):            IQ3_XXS; IQ3_S in the outer layers
+//   the router (ffn.gate.weight):         F32
+//   every other FP8 tensor, the embedding and the output head: Q8_0
+//   the Engram tables:                    Q6_K
+//   the drafter's routed experts:         as released (FP4)
+//   norms, biases, mixing, sinks, BF16 compressor and indexer: as released
+// An FP8 or FP4 tensor's UE8M0 scales are folded into its new blocks.
+mr_format :: (name:string,dtype:int,outer:bool)->MrFormat {
+    experts:=dv_has(name,".ffn.experts.");
+    if experts && dv_starts(name,"mtp.") {return MrFormat.released;}
+    if dtype==DV_E8M0 {return MrFormat.dropped;}
+    if experts {
+        if dv_has(name,".w2.") {return ifx outer then MrFormat.iq3_s else MrFormat.iq3_xxs;}
+        return ifx outer then MrFormat.iq2_s else MrFormat.iq2_xxs;
+    }
+    if dtype==DV_F8 {return ifx dv_has(name,".engram.embed.") then MrFormat.q6_k else MrFormat.q8_0;}
+    if name=="embed.weight" || name=="head.weight" {return MrFormat.q8_0;}
+    if dv_has(name,".ffn.gate.weight") {return MrFormat.f32;}
+    return MrFormat.released;
+}
+// book:end recipe
+
+// Half-bytes a value takes, and the values in one row: the manifest gives
+// FP4 shapes in bytes, two values to a byte.
+mr_nibbles :: (dtype:int)->int {return ifx dtype==DV_I8 then 1 else 2*dv_size(dtype);}
+mr_width :: (r:DvRow)->int {w:=r.shape[r.rank-1];return ifx r.dtype==DV_I8 then 2*w else w;}
+
+// book:begin size
+// One tensor's bytes in format f, or -1 when a row's width is not a whole
+// number of the format's blocks.
+mr_size :: (f:MrFormat,r:DvRow,bytes:int)->int {
+    i:=cast(int)f;
+    if f==MrFormat.released {return bytes;}
+    if mr_width(r)%MR_SPAN[i]!=0 {return -1;}
+    return bytes*2/mr_nibbles(r.dtype)/MR_SPAN[i]*MR_BLOCK[i];
+}
+// book:end size
+
+// book:begin bytes
+// The recipe's bytes. inner and outer are one routed expert's bytes in an
+// inner and an outer layer; values counts the routed experts' weights;
+// model is the file without the Engram tables, the drafter and the vision
+// tower, files adds the Engram tables.
+MrBytes :: struct {status:MrStatus;bad:int=-1;split:DvBytes;inner:int;outer:int;values:int;model:int;files:int;}
+mr_requant :: (rows:[]DvRow,out:[]DvRow)->MrBytes #export_c {
+    b:MrBytes;
+    if out.count<rows.count {b.status=MrStatus.capacity;return b;}
+    for i:0..<rows.count {
+        r:=rows[i];
+        if r.dtype<0 || r.dtype>DV_I8 {b.status=MrStatus.dtype;b.bad=i;return b;}
+        tensors:=ifx r.layers==0 then r.count else r.count*dv_popcount(r.layers);outer:=r.count*dv_popcount(r.layers&MR_OUTER);
+        one:=r.bytes/tensors;
+        a:=mr_size(mr_format(r.name,r.dtype,false),r,one);z:=mr_size(mr_format(r.name,r.dtype,true),r,one);
+        if rp_min(a,z)<0 || one*tensors!=r.bytes {b.status=MrStatus.block;b.bad=i;return b;}
+        out[i]=r;out[i].bytes=(tensors-outer)*a+outer*z;
+        if dv_starts(r.name,"layers.") && dv_has(r.name,".ffn.experts.") {
+            b.inner+=a;b.outer+=z;if r.dtype==DV_I8 {b.values+=r.bytes*2;}
+        }
+    }
+    b.split=dv_bytes(out[0..<rows.count]);s:=b.split;
+    b.model=s.routed+s.shared+s.dense+s.embed;b.files=b.model+s.engram;
+    return b;
+}
+// book:end bytes
+
+// book:begin skip
+// The prompt skip. A layer after the last one that keeps per-position state
+// (a compressor or an indexer key projection) reads earlier tokens only
+// through that layer's state and its own window, so the state layer's output
+// is needed on the last (layers after it) * (window - 1) + 1 positions:
+// the last token, and window - 1 more for each layer it passes through.
+MrSkip :: struct {last:int;after:int;tokens:int;}
+mr_skip :: (rows:[]DvRow,c:DvConfig)->MrSkip #export_c {
+    s:=MrSkip.{last=-1};
+    for r:rows {
+        if dv_starts(r.name,"layers.") && (dv_has(r.name,".attn.compressor.") || dv_has(r.name,".indexer.wk.")) {
+            for l:0..<64 {if ((r.layers>>u64(l))&1)==1 {s.last=rp_max(s.last,l);}}
+        }
+    }
+    s.after=c.layers-1-s.last;s.tokens=s.after*(c.window-1)+1;
+    return s;
+}
+// book:end skip
+
+// book:begin place
+// Where the experts go. The GPU holds the dense weights, the cache and a
+// one-token step (chapter 100's budget, through chapter 33's admission with
+// one outer expert as the stream slot); the rest of it holds the same number
+// of experts in every layer. RAM, less the reserve, holds the same number
+// again; the rest of each layer's 384 are read from disk. The files must fit
+// on the free disk.
+MrPlace :: struct {status:DvVerdict;gpu:RpPlan;vectors:int;stride:int;vram:int;ram:int;disk:int;}
+mr_place :: (b:MrBytes,h:DvHost,context:int)->MrPlace #export_c {
+    s:=b.split;
+    if b.status!=MrStatus.ok || b.inner<1 || b.outer<1 || s.shared<1 || s.dense<1 || s.embed<1 || s.engram<1 {return MrPlace.{status=DvVerdict.bytes};}
+    if h.gpu<1 || h.ram<1 || h.reserve<0 || h.disk_free<0 || h.gpu_bw<1000000 || h.link_bw<1000000 || h.disk_bw<1000000 {return MrPlace.{status=DvVerdict.bytes};}
+    kv:=dk_flash_cache_budget(context,1,0,h.gpu,h.gpu);if kv.status!=DkStatus.ok {return MrPlace.{status=DvVerdict.cache};}
+    // One slot in every layer: 32 inner experts and 8 outer ones.
+    p:=MrPlace.{vectors=s.shared+s.dense+s.embed,stride=32*b.inner+8*b.outer};
+    w:=RpWeights.{total=b.model,vectors=p.vectors,slot=b.outer,embedding=s.embed,expert=b.outer};
+    p.gpu=rp_admit(w,kv.cache,kv.step,true,h.gpu);if p.gpu.status!=RpStatus.ok {p.status=DvVerdict.gpu;return p;}
+    // A GPU that holds the whole model holds exactly 384 slots a layer.
+    p.vram=(p.gpu.resident-p.vectors)/p.stride;
+    usable:=h.ram-h.reserve;if usable<p.stride {p.status=DvVerdict.ram;return p;}
+    p.ram=rp_min(384-p.vram,usable/p.stride);p.disk=384-p.vram-p.ram;
+    if h.disk_free<b.files {p.status=DvVerdict.disk;}
+    return p;
+}
+// book:end place
+
+mr_verdict_name :: (v:DvVerdict)->string {
+    names:=[6]string.["ok","bytes: a byte count is not positive, the recipe refused the manifest, or a host rate is under 1 MB/s",
+        "cache: the KV cache plan refused the context","gpu: the dense weights, cache, step and two expert slots exceed the GPU",
+        "ram: RAM past the reserve cannot hold one expert in every layer","disk: the model and Engram files do not fit on the free disk"];
+    return names[cast(int)v];
+}
+
+// book:begin rate
+// A replay's expert reads, by tier and by inner ([0]) or outer ([1]) layer.
+// Every token also reads the dense weights from the GPU. Each tier's bytes
+// take their time at the host's rate, rounded up to a microsecond.
+MrReads :: struct {tokens:int;gpu:[2]int;link:[2]int;disk:[2]int;}
+MrRate :: struct {status:DvVerdict;bytes_gpu:int;bytes_link:int;bytes_disk:int;micros:int;milli_tokens:int;}
+mr_us :: (bytes:int,rate:int)->int {per:=rate/1000000;return (bytes+per-1)/per;}
+mr_rate :: (b:MrBytes,h:DvHost,t:MrReads)->MrRate #export_c {
+    s:=b.split;
+    if t.tokens<1 || b.inner<1 || b.outer<1 || h.gpu_bw<1000000 || h.link_bw<1000000 || h.disk_bw<1000000 {return MrRate.{status=DvVerdict.bytes};}
+    for i:0..<2 {if t.gpu[i]<0 || t.link[i]<0 || t.disk[i]<0 {return MrRate.{status=DvVerdict.bytes};}}
+    r:MrRate;
+    r.bytes_gpu=t.tokens*(s.shared+s.dense+s.embed)+t.gpu[0]*b.inner+t.gpu[1]*b.outer;
+    r.bytes_link=t.link[0]*b.inner+t.link[1]*b.outer;r.bytes_disk=t.disk[0]*b.inner+t.disk[1]*b.outer;
+    total:=mr_us(r.bytes_gpu,h.gpu_bw)+mr_us(r.bytes_link,h.link_bw)+mr_us(r.bytes_disk,h.disk_bw);
+    r.micros=(total+t.tokens-1)/t.tokens;r.milli_tokens=t.tokens*1000000000/total;
+    return r;
+}
+// book:end rate
+
+// book:begin reference
+// The recipe's reference machine, as the old run recorded it: one RTX PRO
+// 6000 (96 GB, 1,792 GB/s), 176 GiB of RAM with 8 GiB kept for the system,
+// a 900 GB disk. Link and disk rates are Maya's own start-up timings there:
+// one 10,598,400-byte expert in 0.34 ms over PCIe and 5.3 ms from disk.
+mr_reference_host :: ()->DvHost #export_c {
+    return DvHost.{gpu=96000000000,ram=188978561024,reserve=8589934592,disk_free=900000000000,gpu_bw=1792000000000,link_bw=31171764705,disk_bw=1999698113};
+}
+// book:end reference
+
+// ---- Checks.
+#test "the recipe's files from the pinned headers, exactly" #steps 200000000 {
+    rows:=DV_MANIFEST;out:[DV_EXPECTED]DvRow;b:=mr_requant(rows[..],out[..]);s:=b.split;
+    #assert b.status==MrStatus.ok && b.bad==-1;
+    #assert s.routed==169019965440 && s.shared==1504051200 && s.dense==6272937408 && s.embed==1406576640;
+    #assert s.engram==161284798500 && s.draft==7971546504 && s.vision==970536960;
+    #assert b.model==178203530688 && b.files==339488329188 && b.inner==10598400 && b.outer==12625920 && b.values==543581798400;
+    #assert s.routed==384*(32*b.inner+8*b.outer) && s.total==b.files+s.draft+s.vision;
+    // The oracle agrees on every part.
+    #assert mrc_total(rows[..],false,false)==b.files && mrc_total(rows[..],true,false)==s.draft && mrc_total(rows[..],false,true)==s.vision;
+    // Thousandths of a bit per routed expert weight: 2.487.
+    #assert s.routed*8000/b.values==2487;
+    small:[DV_MANIFEST_ROWS-1]DvRow;#assert mr_requant(rows[..],small[..]).status==MrStatus.capacity;
+    exact:[DV_MANIFEST_ROWS]DvRow;#assert mr_requant(rows[..],exact[..]).status==MrStatus.ok;
+}
+#test "formats by tensor kind" {
+    #assert mr_format("layers.#.ffn.experts.*.w1.weight",DV_I8,false)==MrFormat.iq2_xxs && mr_format("layers.#.ffn.experts.*.w3.weight",DV_I8,true)==MrFormat.iq2_s;
+    #assert mr_format("layers.#.ffn.experts.*.w2.weight",DV_I8,false)==MrFormat.iq3_xxs && mr_format("layers.#.ffn.experts.*.w2.weight",DV_I8,true)==MrFormat.iq3_s;
+    #assert mr_format("layers.#.ffn.experts.*.w2.scale",DV_E8M0,false)==MrFormat.dropped && mr_format("mtp.#.ffn.experts.*.w2.scale",DV_E8M0,false)==MrFormat.released;
+    #assert mr_format("mtp.#.ffn.experts.*.w1.weight",DV_I8,true)==MrFormat.released && mr_format("mtp.#.attn.wkv.weight",DV_F8,false)==MrFormat.q8_0;
+    #assert mr_format("layers.#.engram.embed.weight",DV_F8,false)==MrFormat.q6_k && mr_format("layers.#.engram.embed.scale",DV_E8M0,false)==MrFormat.dropped;
+    #assert mr_format("layers.#.engram.wkv.weight",DV_F8,false)==MrFormat.q8_0 && mr_format("embed.weight",DV_BF16,false)==MrFormat.q8_0 && mr_format("head.weight",DV_BF16,false)==MrFormat.q8_0;
+    #assert mr_format("layers.#.ffn.gate.weight",DV_BF16,false)==MrFormat.f32 && mr_format("layers.#.ffn.gate.bias",DV_F32,false)==MrFormat.released;
+    #assert mr_format("norm.weight",DV_BF16,false)==MrFormat.released && mr_format("layers.#.attn.indexer.wk.weight",DV_BF16,false)==MrFormat.released;
+    #assert MR_GGUF[cast(int)MrFormat.iq2_xxs]==16 && MR_GGUF[cast(int)MrFormat.iq2_s]==22 && MR_GGUF[cast(int)MrFormat.iq3_xxs]==18 && MR_GGUF[cast(int)MrFormat.iq3_s]==21;
+    #assert MR_GGUF[cast(int)MrFormat.q8_0]==8 && MR_GGUF[cast(int)MrFormat.q6_k]==14 && MR_GGUF[cast(int)MrFormat.f32]==0;
+    // Bits a weight: 2.0625, 2.5625, 3.0625, 3.4375, 6.5625, 8.5.
+    for i:3..<9 {#assert MR_BLOCK[i]*8*10000/MR_SPAN[i]==[6]int.[85000,65625,20625,25625,30625,34375][i-3];}
+}
+#test "sizes by hand, and the refusals" {
+    // One inner expert's w2: 5,120 rows of 2,304 FP4 weights, 1,152 bytes a row.
+    r:=DvRow.{name="layers.#.ffn.experts.*.w2.weight",dtype=DV_I8,rank=2,shape=[4]int.[5120,1152,0,0]};
+    #assert mr_width(r)==2304 && mr_size(MrFormat.iq3_xxs,r,5898240)==4515840 && mr_size(MrFormat.iq3_s,r,5898240)==5068800;
+    #assert mr_size(MrFormat.released,r,5898240)==5898240 && mr_size(MrFormat.dropped,r,5898240)==0;
+    f:=DvRow.{dtype=DV_F8,rank=2,shape=[4]int.[512,5120,0,0]};#assert mr_size(MrFormat.q8_0,f,2621440)==2785280;
+    g:=DvRow.{dtype=DV_BF16,rank=1,shape=[4]int.[5120,0,0,0]};#assert mr_width(g)==5120 && mr_size(MrFormat.f32,g,10240)==20480 && mr_size(MrFormat.q8_0,g,10240)==5440;
+    e:=DvRow.{dtype=DV_F32,rank=1,shape=[4]int.[64,0,0,0]};#assert mr_width(e)==64 && mr_size(MrFormat.q6_k,e,256)==-1 && mr_size(MrFormat.q8_0,e,256)==68;
+    r.shape[1]=1151;#assert mr_size(MrFormat.iq3_xxs,r,5893120)==-1 && mr_size(MrFormat.released,r,5893120)==5893120;
+    rows:=DV_MANIFEST;out:[DV_EXPECTED]DvRow;at:=dv_find(rows[..],"layers.#.ffn.experts.*.w2.weight",dv_span(40));
+    rows[at].shape[1]=1151;b:=mr_requant(rows[..],out[..]);#assert b.status==MrStatus.block && b.bad==at && b.split.total==0;
+    rows=DV_MANIFEST;rows[at].bytes+=1;#assert mr_requant(rows[..],out[..]).status==MrStatus.block;
+    rows=DV_MANIFEST;rows[3].dtype=5;b=mr_requant(rows[..],out[..]);#assert b.status==MrStatus.dtype && b.bad==3;
+    rows[3].dtype=-1;#assert mr_requant(rows[..],out[..]).status==MrStatus.dtype;
+    rows=DV_MANIFEST;rows[3].dtype=DV_I8;#assert mr_requant(rows[..],out[..]).status==MrStatus.ok;
+    // A row without layers is one tensor per count: 3 bytes as released stay 3.
+    odd:=[1]DvRow.[DvRow.{name="norm.weight",dtype=DV_BF16,rank=1,shape=[4]int.[1,0,0,0],count=1,bytes=3}];
+    b=mr_requant(odd[..],out[..]);#assert b.status==MrStatus.ok && out[0].bytes==3 && b.split.embed==3;
+}
+#test "the prompt skip: 19 layers after layer 20, 2,414 positions" #steps 400000000 {
+    rows:=DV_MANIFEST;c:=dv_flash_config();s:=mr_skip(rows[..],c);
+    #assert s.last==20 && s.after==19 && s.tokens==2414 && s.tokens==19*127+1;
+    need:[4096]bool;#assert mrc_needed(3000,19,128,need[..])==2414 && !need[3000-2415] && need[3000-2414];
+    // Small cases by the oracle.
+    for after:0..<6 {for window:1..<6 {c.layers=after+3;c.window=window;
+        t:=mr_skip(rows[0..<0],c);#assert t.last==-1 && t.after==after+3 && t.tokens==(after+3)*(window-1)+1;
+        #assert mrc_needed(64,after,window,need[..])==after*(window-1)+1;}}
+    // Remove layer 20's state and the last state layer is 14; give layer 33 one and it is 33.
+    c=dv_flash_config();
+    for i:0..<rows.count {if dv_has(rows[i].name,".attn.compressor.") || dv_has(rows[i].name,".indexer.wk.") {rows[i].layers&=dv_span(40)^dv_bit(20);}}
+    s=mr_skip(rows[..],c);#assert s.last==14 && s.after==25 && s.tokens==25*127+1;
+    at:=dv_find(rows[..],"layers.#.attn.indexer.wk.weight",dv_bit(2)|dv_bit(8)|dv_bit(14));rows[at].layers|=dv_bit(33);
+    #assert mr_skip(rows[..],c).last==33;
+    // A state tensor's name outside the layers is not a layer.
+    one:=[1]DvRow.[DvRow.{name="mtp.#.attn.compressor.wkv.weight",layers=dv_bit(39)}];#assert mr_skip(one[..],c).last==-1;
+    one[0].name="layers.#.attn.compressor.wkv.weight";#assert mr_skip(one[..],c).last==39 && mr_skip(one[..],c).tokens==1;
+    one[0].layers=dv_bit(63);#assert mr_skip(one[..],c).last==63;
+    one[0].layers=dv_bit(0);#assert mr_skip(one[..],c).last==0;
+    one[0].name="layers.#.attn.indexer.wq_b.weight";#assert mr_skip(one[..],c).last==-1;
+}
+#test "placement on this host and on the reference machine" {
+    rows:=DV_MANIFEST;out:[DV_EXPECTED]DvRow;b:=mr_requant(rows[..],out[..]);
+    p:=mr_place(b,dv_this_host(),4096);
+    #assert p.status==DvVerdict.disk && p.vectors==9183565248 && p.stride==440156160 && p.gpu.mode==RpMode.streamed;
+    #assert p.gpu.resident==17171480576-6348800-28928-2*12625920 && p.vram==18 && p.ram==286 && p.disk==80;
+    h:=dv_this_host();h.disk_free=b.files;#assert mr_place(b,h,4096).status==DvVerdict.ok;h.disk_free=b.files-1;#assert mr_place(b,h,4096).status==DvVerdict.disk;
+    q:=mr_place(b,mr_reference_host(),4096);#assert q.status==DvVerdict.ok && q.vram==197 && q.ram==187 && q.disk==0;
+}
+#test "placement refusals and bounds" {
+    rows:=DV_MANIFEST;out:[DV_EXPECTED]DvRow;b:=mr_requant(rows[..],out[..]);h:=dv_this_host();h.disk_free=1000000000000;
+    g:=h;g.gpu=9000000000;#assert mr_place(b,g,4096).status==DvVerdict.gpu;
+    g=h;g.ram=h.reserve+440156159;#assert mr_place(b,g,4096).status==DvVerdict.ram;
+    g.ram+=1;p:=mr_place(b,g,4096);#assert p.status==DvVerdict.ok && p.ram==1 && p.disk==384-p.vram-1;
+    #assert mr_place(b,h,0).status==DvVerdict.cache;
+    big:=h;big.gpu=1000000000000;p=mr_place(b,big,4096);#assert p.status==DvVerdict.ok && p.gpu.mode==RpMode.resident && p.vram==384 && p.ram==0 && p.disk==0;
+    big=h;big.ram=1000000000000;p=mr_place(b,big,4096);#assert p.ram==384-p.vram && p.disk==0;
+    // Room for exactly one more slot in every layer.
+    edge:=h;edge.gpu=h.gpu+440156160-((h.gpu-6348800-28928-2*12625920-9183565248)%440156160);#assert mr_place(b,edge,4096).vram==19;
+    edge.gpu-=1;#assert mr_place(b,edge,4096).vram==18;
+    for field:0..<15 {c:=b;k:=h;
+        if field==0 {c.status=MrStatus.block;}else if field==1 {c.inner=0;}else if field==2 {c.outer=0;}else if field==3 {c.split.shared=0;}
+        else if field==4 {c.split.dense=0;}else if field==5 {c.split.embed=0;}else if field==6 {c.split.engram=0;}
+        else if field==7 {k.gpu=0;}else if field==8 {k.ram=0;}else if field==9 {k.reserve=-1;}else if field==10 {k.disk_free=-1;}
+        else if field==11 {k.gpu_bw=999999;}else if field==12 {k.link_bw=999999;}else if field==13 {k.disk_bw=999999;}else {k.ram=0;k.reserve=0;}
+        #assert mr_place(c,k,4096).status==DvVerdict.bytes;}
+    k:=h;k.gpu_bw=1000000;k.link_bw=1000000;k.disk_bw=1000000;k.reserve=0;k.disk_free=0;#assert mr_place(b,k,4096).status==DvVerdict.disk;
+    k=h;k.gpu=1;#assert mr_place(b,k,4096).status==DvVerdict.cache;k=h;k.ram=1;k.reserve=0;#assert mr_place(b,k,4096).status==DvVerdict.ram;
+    c:=b;c.inner=1;c.outer=1;c.split.shared=1;c.split.dense=1;c.split.embed=1;c.split.engram=1;#assert mr_place(c,k,4096).status!=DvVerdict.bytes;
+}
+#test "token time by hand" {
+    rows:=DV_MANIFEST;out:[DV_EXPECTED]DvRow;b:=mr_requant(rows[..],out[..]);h:=dv_this_host();
+    // Two tokens: 3 GPU hits and 1 in an outer layer, 5 RAM reads, 2 disk reads in outer layers.
+    t:=MrReads.{tokens=2,gpu=[2]int.[3,1],link=[2]int.[5,0],disk=[2]int.[0,2]};r:=mr_rate(b,h,t);
+    #assert r.status==DvVerdict.ok && r.bytes_gpu==2*9183565248+3*10598400+12625920 && r.bytes_link==5*10598400 && r.bytes_disk==2*12625920;
+    // 18,411,551,616 B at 716,800 B/us, 52,992,000 at 25,000, 25,251,840 at 6,447.
+    #assert r.micros==(25686+2120+3917+1)/2 && r.milli_tokens==2*1000000000/31723;
+    #assert mr_us(716800,716800000000)==1 && mr_us(716801,716800000000)==2 && mr_us(0,716800000000)==0;
+    one:=MrReads.{tokens=1};#assert mr_rate(b,h,one).micros==12812 && mr_rate(b,h,one).milli_tokens==78051;
+    for field:0..<11 {c:=b;k:=h;u:=t;
+        if field==0 {u.tokens=0;}else if field==1 {c.inner=0;}else if field==2 {c.outer=0;}else if field==3 {k.gpu_bw=999999;}
+        else if field==4 {k.link_bw=999999;}else if field==5 {k.disk_bw=999999;}else if field==6 {u.gpu[0]=-1;}else if field==7 {u.link[1]=-1;}
+        else if field==8 {u.disk[0]=-1;}else if field==9 {u.gpu[1]=-1;}else {u.disk[1]=-1;}
+        #assert mr_rate(c,k,u).status==DvVerdict.bytes;}
+    k:=h;k.gpu_bw=1000000;k.link_bw=1000000;k.disk_bw=1000000;r=mr_rate(b,k,t);#assert r.status==DvVerdict.ok && r.micros==(18411551616+52992000+25251840+1)/2;
+    c:=b;c.inner=1;c.outer=1;#assert mr_rate(c,h,t).status==DvVerdict.ok;
+    fast:=h;fast.gpu_bw=9183565248*1000000;#assert mr_rate(b,fast,one).milli_tokens==1000000000 && mr_rate(b,fast,one).micros==1;
+    u:=t;u.link[1]=1;u.disk[0]=1;#assert mr_rate(b,h,u).bytes_link==5*10598400+12625920 && mr_rate(b,h,u).bytes_disk==10598400+2*12625920;
+}
+#test "verdict names" {
+    #assert mr_verdict_name(DvVerdict.ok)=="ok" && mr_verdict_name(DvVerdict.disk)=="disk: the model and Engram files do not fit on the free disk";
+    #assert mr_verdict_name(DvVerdict.ram)=="ram: RAM past the reserve cannot hold one expert in every layer";
+}
+#test "the reference host's pins" {
+    r:=mr_reference_host();#assert r.gpu==96000000000 && r.ram==176*1073741824 && r.reserve==8*1073741824 && r.disk_free==900000000000;
+    #assert r.gpu_bw==1792000000000 && r.link_bw==31171764705 && r.disk_bw==1999698113 && r.link_bw/1000000==31171 && 10598400*1000000/r.link_bw==340 && 10598400*1000/(r.disk_bw/1000)==5300;
+}

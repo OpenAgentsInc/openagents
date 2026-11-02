@@ -3403,6 +3403,26 @@
       "run_steps": 40000000
     },
     {
+      "source": "psionic/examples/deepseek-recipe.coax",
+      "chapter": "psionic/book/ch101-mayas-recipe-v41-flash-on-one-card.md",
+      "stdout": "psionic/fixtures/deepseek-recipe/deepseek-recipe.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/deepseek-recipe-refuse.coax",
+      "chapter": "psionic/book/ch101-mayas-recipe-v41-flash-on-one-card.md",
+      "stdout": "psionic/fixtures/deepseek-recipe/deepseek-recipe-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/expert-mesh.coax",
       "chapter": "psionic/book/ch191-experts-across-machines-and-from-disk.md",
       "stdout": "psionic/fixtures/expert-mesh.out",

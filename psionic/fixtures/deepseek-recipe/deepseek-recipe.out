@@ -1,0 +1,45 @@
+Maya-S from the pinned headers (status ok):
+  IQ2_XXS (GGUF type 16): 66 bytes per 256 values
+  IQ2_S (GGUF type 22): 82 bytes per 256 values
+  IQ3_XXS (GGUF type 18): 98 bytes per 256 values
+  IQ3_S (GGUF type 21): 110 bytes per 256 values
+  Q6_K (GGUF type 14): 210 bytes per 256 values
+  routed experts 169019965440 bytes (169.0 GB), 543581798400 weights at 2.487 bits
+  one expert: 10598400 bytes in layers 4-35, 12625920 in layers 0-3 and 36-39
+  shared experts 1504051200, dense layers 6272937408, embedding and head 1406576640
+  model file 178203530688 (178.2 GB), Engram 161284798500 (161.3 GB), together 339488329188 (339.5 GB)
+  drafter 7971546504 (8.0 GB, its own file), vision tower 970536960 (not in the files)
+published figures against the arithmetic:
+  Maya-S model file 178.2 GB -> holds
+  Maya-S Engram 161.3 GB -> holds
+  Maya-S 339.5 GB in all -> holds
+  Maya's drafter 7.97 GB -> holds
+  one expert 10.6 MB -> holds
+  the draft's routed experts at about 2.6 bits would be 176664084480 bytes; with the rest, 185847649728 (185.8 GB)
+  routed experts at about 2.6 bits a weight make 178 GB -> does not hold
+  native: 289 GB of routed experts and 203 GB of Engram -> holds
+  beside a 16 GB card the quant's other experts and the reserve need 169687089152 bytes of RAM (169.7 GB)
+  the 178 GB quant fits only beside about 192 GB of RAM -> does not hold
+  reference machine: 7880 of 15360 experts on the GPU in this plan; Maya placed 7393
+prompt skip: the last state layer is 20, 19 layers after it, 2414 prompt positions need them
+chapter 51's stand-in cards (declared: KL + 2 SE <= 0.01, agreement - 2 SE >= 0.9):
+  Q8_0: agreement 1.0 (low 1.0), KL 0.00022960896719454973 (high 0.00028397003336496973), promoted true
+  Q6_K: agreement 0.96875 (low 0.9252518409153905), KL 0.002086438434421452 (high 0.0026257607518881446), promoted true
+  Q2_K: agreement 0.578125 (low 0.454660307583757), KL 0.4218520012100292 (high 0.5204050973854987), promoted false
+  Q3_K: agreement 0.8125 (low 0.714921906275025), KL 0.12899541365876996 (high 0.1644972986082705), promoted false
+  IQ2_XXS: kind
+  IQ2_S: kind
+  IQ3_XXS: kind
+  IQ3_S: kind
+traces ok ok ok ok: 384 tokens, 256 measured
+this host (RTX 4080): disk: the model and Engram files do not fit on the free disk
+  each layer: 18 experts on the GPU, 286 in RAM, 80 from disk (720 of 15360 on the GPU)
+  uniform routing: 177004 us a token, tokens/s 5.649
+  heat, profiled: of 61440 reads, 31053 GPU (50 percent), 28839 RAM, 1548 disk; 74636 us a token, tokens/s 13.398
+  lru: of 61440 reads, 38905 GPU (63 percent), 20987 RAM, 1548 disk; 61601 us a token, tokens/s 16.233
+reference (RTX PRO 6000): ok
+  each layer: 197 experts on the GPU, 187 in RAM, 0 from disk (7880 of 15360 on the GPU)
+  uniform routing: 47140 us a token, tokens/s 21.213
+  heat, profiled: of 61440 reads, 59892 GPU (97 percent), 1548 RAM, 0 disk; 8698 us a token, tokens/s 114.974
+  lru: of 61440 reads, 59892 GPU (97 percent), 1548 RAM, 0 disk; 8698 us a token, tokens/s 114.974
+chapter 100, native weights on this host: tokens/s 2.126

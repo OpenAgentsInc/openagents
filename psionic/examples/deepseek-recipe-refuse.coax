@@ -1,0 +1,27 @@
+// Chapter 101: inputs the recipe, the placement and the token time refuse,
+// each with its typed reason and, for a manifest row, where it was found.
+#import "Basic";
+#load "../lib/deepseek/recipe.coax";
+
+// book:begin refuse
+main :: () {
+    statuses:=[4]string.["ok","dtype","block","capacity"];out:[DV_EXPECTED]DvRow;
+    // Layer experts' down projections 2,302 weights wide: not whole 256-value blocks.
+    rows:=DV_MANIFEST;at:=dv_find(rows[..],"layers.#.ffn.experts.*.w2.weight",dv_span(40));
+    rows[at].shape[1]=1151;b:=mr_requant(rows[..],out[..]);
+    print("w2 rows of 2,302 weights: % at manifest row % (%)\n",statuses[cast(int)b.status],b.bad,rows[b.bad].name);
+    rows=DV_MANIFEST;rows[at].bytes+=1;b=mr_requant(rows[..],out[..]);
+    print("w2 one byte longer: % at manifest row %\n",statuses[cast(int)b.status],b.bad);
+    rows=DV_MANIFEST;rows[5].dtype=7;b=mr_requant(rows[..],out[..]);
+    print("dtype code 7: % at manifest row %\n",statuses[cast(int)b.status],b.bad);
+    rows=DV_MANIFEST;b=mr_requant(rows[..],out[0..<100]);print("room for 100 rows: %\n",statuses[cast(int)b.status]);
+    b=mr_requant(rows[..],out[..]);h:=dv_this_host();
+    print("this host: %\n",mr_verdict_name(mr_place(b,h,4096).status));
+    h.gpu=8000000000;print("an 8 GB GPU: %\n",mr_verdict_name(mr_place(b,h,4096).status));
+    h=dv_this_host();h.ram=h.reserve+400000000;print("400 MB of RAM past the reserve: %\n",mr_verdict_name(mr_place(b,h,4096).status));
+    h=dv_this_host();print("a 2M-token context: %\n",mr_verdict_name(mr_place(b,h,2000000).status));
+    h.disk_bw=999999;print("a disk rate under 1 MB/s: %\n",mr_verdict_name(mr_place(b,h,4096).status));
+    print("a replay of 0 tokens: %\n",mr_verdict_name(mr_rate(b,dv_this_host(),MrReads.{}).status));
+    h=dv_this_host();h.disk_free=b.files;print("this host with % bytes free: %\n",b.files,mr_verdict_name(mr_place(b,h,4096).status));
+}
+// book:end refuse

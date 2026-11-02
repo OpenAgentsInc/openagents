@@ -1,0 +1,112 @@
+// Chapter 101: Maya's recipe for V4.1 Flash, from the pinned headers: the
+// files it makes, its published figures checked against them, the prompt
+// skip, chapter 51's quality cards for the formats Psionic has, and the
+// plan, cache replay and token time on this host and the reference machine.
+#import "Basic";
+#load "../lib/deepseek/recipe.coax";
+#load "../lib/expert-stream.coax";
+#load "../lib/kquant.coax";
+
+// Bytes as gigabytes (10^9) to one decimal, rounded to nearest.
+gb :: (bytes:int) {t:=(bytes+50000000)/100000000;print("%.%",t/10,t%10);}
+// Thousandths as a decimal: 2487 prints 2.487.
+milli :: (m:int) {v:=m%1000;print("%.",m/1000);print("%",v/100);print("%",v/10%10);print("%",v%10);}
+claim :: (text:string,holds:bool) {print("  % -> %\n",text,ifx holds then "holds" else "does not hold");}
+
+RC_TOKENS :: 384;RC_WARM :: 128;RC_HALF :: 192;
+// book:begin replay
+// Routing traces shaped like V4.1's: 40 layers of 384 experts, 6 a token.
+// Chapter 85's router takes at most 256 experts, so each layer's 384 are two
+// halves of 192, and each half routes its own top 3 with its own gate (seeds
+// 1 and 2). Prompt 1 records the profile; prompt 2 is measured after 128
+// warm tokens. Each layer is its own cache (Maya's placement gives every
+// layer the same slots): the GPU tier replays with the plan's GPU slots, the
+// GPU and RAM tiers together with both; their misses are read from disk.
+rc_replay :: (p:MrPlace,a:[]int,b:[]int,pa:[]int,pb:[]int,policy:XsPolicy)->MrReads {
+    r:=MrReads.{tokens=RC_TOKENS-RC_WARM};local:[RC_TOKENS*6]int;profile:[384]int;work:[1536]int;
+    counted:=(RC_TOKENS-RC_WARM)*6;
+    for l:0..<40 {
+        for k:0..<384 {profile[k]=0;}
+        for t:0..<RC_TOKENS {for j:0..<3 {
+            at:=(t*40+l)*3+j;
+            local[t*6+j]=a[at]-l*RC_HALF;local[t*6+3+j]=b[at]-l*RC_HALF+RC_HALF;
+            profile[pa[at]-l*RC_HALF]+=1;profile[pb[at]-l*RC_HALF+RC_HALF]+=1;
+        }}
+        gpu:=0;disk:=0;
+        if p.vram>0 {gpu=xs_replay(policy,local[..],6,RC_WARM*6,p.vram,384,profile[..],work[..]).hits;}
+        if p.vram+p.ram<384 {disk=xs_replay(policy,local[..],6,RC_WARM*6,p.vram+p.ram,384,profile[..],work[..]).misses;}
+        side:=ifx l<4 || l>=36 then 1 else 0;
+        r.gpu[side]+=gpu;r.disk[side]+=disk;r.link[side]+=counted-gpu-disk;
+    }
+    return r;
+}
+// book:end replay
+// Every expert read split as the tiers hold experts: 384 tokens make it exact.
+rc_uniform :: (p:MrPlace)->MrReads {
+    return MrReads.{tokens=384,gpu=[2]int.[32*6*p.vram,8*6*p.vram],link=[2]int.[32*6*p.ram,8*6*p.ram],disk=[2]int.[32*6*p.disk,8*6*p.disk]};
+}
+rc_host :: (name:string,b:MrBytes,h:DvHost,a:[]int,c:[]int,pa:[]int,pc:[]int) {
+    p:=mr_place(b,h,4096);
+    print("%: %\n",name,mr_verdict_name(p.status));
+    print("  each layer: % experts on the GPU, % in RAM, % from disk (% of 15360 on the GPU)\n",p.vram,p.ram,p.disk,40*p.vram);
+    u:=mr_rate(b,h,rc_uniform(p));print("  uniform routing: % us a token, tokens/s ",u.micros);milli(u.milli_tokens);print("\n");
+    for policy:[2]XsPolicy.[XsPolicy.heat,XsPolicy.lru] {
+        reads:=rc_replay(p,a,c,pa,pc,policy);r:=mr_rate(b,h,reads);n:=reads.tokens;all:=n*240;
+        g:=reads.gpu[0]+reads.gpu[1];l:=reads.link[0]+reads.link[1];d:=reads.disk[0]+reads.disk[1];
+        label:=ifx policy==XsPolicy.heat then "heat, profiled" else "lru";
+        print("  %: of % reads, % GPU (% percent), % RAM, % disk; % us a token, tokens/s ",label,all,g,g*100/all,l,d,r.micros);milli(r.milli_tokens);print("\n");
+    }
+}
+
+// book:begin example
+main :: () {
+    rows:=DV_MANIFEST;out:[DV_EXPECTED]DvRow;b:=mr_requant(rows[..],out[..]);s:=b.split;native:=dv_bytes(rows[..]);
+    names:=[9]string.["as released","folded","F32","Q8_0","Q6_K","IQ2_XXS","IQ2_S","IQ3_XXS","IQ3_S"];
+    print("Maya-S from the pinned headers (status %):\n",b.status);
+    for f:[5]MrFormat.[MrFormat.iq2_xxs,MrFormat.iq2_s,MrFormat.iq3_xxs,MrFormat.iq3_s,MrFormat.q6_k] {
+        i:=cast(int)f;print("  % (GGUF type %): % bytes per % values\n",names[i],MR_GGUF[i],MR_BLOCK[i],MR_SPAN[i]);
+    }
+    print("  routed experts % bytes (",s.routed);gb(s.routed);print(" GB), % weights at ",b.values);milli(s.routed*8000/b.values);print(" bits\n");
+    print("  one expert: % bytes in layers 4-35, % in layers 0-3 and 36-39\n",b.inner,b.outer);
+    print("  shared experts %, dense layers %, embedding and head %\n",s.shared,s.dense,s.embed);
+    print("  model file % (",b.model);gb(b.model);print(" GB), Engram % (",s.engram);gb(s.engram);print(" GB), together % (",b.files);gb(b.files);print(" GB)\n");
+    print("  drafter % (",s.draft);gb(s.draft);print(" GB, its own file), vision tower % (not in the files)\n",s.vision);
+
+    print("published figures against the arithmetic:\n");
+    tenth:=(b.model+50000000)/100000000;
+    claim("Maya-S model file 178.2 GB",tenth==1782);
+    claim("Maya-S Engram 161.3 GB",(s.engram+50000000)/100000000==1613);
+    claim("Maya-S 339.5 GB in all",(b.files+50000000)/100000000==3395);
+    claim("Maya's drafter 7.97 GB",(s.draft+5000000)/10000000==797);
+    claim("one expert 10.6 MB",(b.inner+50000)/100000==106);
+    at26:=b.values*26/80;
+    print("  the draft's routed experts at about 2.6 bits would be % bytes; with the rest, % (",at26,at26+b.model-s.routed);gb(at26+b.model-s.routed);print(" GB)\n");
+    claim("routed experts at about 2.6 bits a weight make 178 GB",(at26+50000000)/1000000000==178);
+    claim("native: 289 GB of routed experts and 203 GB of Engram",(native.routed+500000000)/1000000000==289 && (native.engram+500000000)/1000000000==203);
+    p:=mr_place(b,dv_this_host(),4096);need:=(384-p.vram)*p.stride+dv_this_host().reserve;
+    print("  beside a 16 GB card the quant's other experts and the reserve need % bytes of RAM (",need);gb(need);print(" GB)\n");
+    claim("the 178 GB quant fits only beside about 192 GB of RAM",(need+5000000000)/10000000000==19);
+    q:=mr_place(b,mr_reference_host(),4096);
+    print("  reference machine: % of 15360 experts on the GPU in this plan; Maya placed 7393\n",40*q.vram);
+
+    k:=mr_skip(rows[..],dv_flash_config());
+    print("prompt skip: the last state layer is %, % layers after it, % prompt positions need them\n",k.last,k.after,k.tokens);
+
+    print("chapter 51's stand-in cards (declared: KL + 2 SE <= 0.01, agreement - 2 SE >= 0.9):\n");
+    for profile:[4]int.[0,6,2,3] {
+        c:=kq_standin_card(profile);
+        print("  %: agreement % (low %), KL % (high %), promoted %\n",KQ_PROFILE_NAMES[profile],c.agreement,c.agreement_low,c.kl,c.kl_high,c.promoted);
+    }
+    for f:[4]MrFormat.[MrFormat.iq2_xxs,MrFormat.iq2_s,MrFormat.iq3_xxs,MrFormat.iq3_s] {
+        i:=cast(int)f;print("  %: %\n",names[i],kq_plan(MR_GGUF[i],1,256).status);
+    }
+
+    a:[RC_TOKENS*40*3]int;c:[RC_TOKENS*40*3]int;pa:[RC_TOKENS*40*3]int;pc:[RC_TOKENS*40*3]int;gate:[40*RC_HALF*XS_WIDTH]f32;f:[RC_HALF]f64;
+    t1:=xs_trace(1,2,RC_TOKENS,40,RC_HALF,3,a[..],gate[..],f[..]);t2:=xs_trace(1,1,RC_TOKENS,40,RC_HALF,3,pa[..],gate[..],f[..]);
+    t3:=xs_trace(2,2,RC_TOKENS,40,RC_HALF,3,c[..],gate[..],f[..]);t4:=xs_trace(2,1,RC_TOKENS,40,RC_HALF,3,pc[..],gate[..],f[..]);
+    print("traces % % % %: % tokens, % measured\n",t1.status,t2.status,t3.status,t4.status,RC_TOKENS,RC_TOKENS-RC_WARM);
+    rc_host("this host (RTX 4080)",b,dv_this_host(),a[..],c[..],pa[..],pc[..]);
+    rc_host("reference (RTX PRO 6000)",b,mr_reference_host(),a[..],c[..],pa[..],pc[..]);
+    n:=dv_plan(native,dv_this_host(),4096);print("chapter 100, native weights on this host: tokens/s ");milli(n.milli_tokens);print("\n");
+}
+// book:end example

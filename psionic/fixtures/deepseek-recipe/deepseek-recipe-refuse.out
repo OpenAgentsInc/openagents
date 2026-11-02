@@ -1,0 +1,11 @@
+w2 rows of 2,302 weights: block at manifest row 42 (layers.#.ffn.experts.*.w2.weight)
+w2 one byte longer: block at manifest row 42
+dtype code 7: dtype at manifest row 5
+room for 100 rows: capacity
+this host: disk: the model and Engram files do not fit on the free disk
+an 8 GB GPU: gpu: the dense weights, cache, step and two expert slots exceed the GPU
+400 MB of RAM past the reserve: ram: RAM past the reserve cannot hold one expert in every layer
+a 2M-token context: cache: the KV cache plan refused the context
+a disk rate under 1 MB/s: bytes: a byte count is not positive, the recipe refused the manifest, or a host rate is under 1 MB/s
+a replay of 0 tokens: bytes: a byte count is not positive, the recipe refused the manifest, or a host rate is under 1 MB/s
+this host with 339488329188 bytes free: ok
