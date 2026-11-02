@@ -98,3 +98,12 @@ test('same-origin and bounded request effects refuse malformed arguments without
  expect(h.http.cancel(-1)).toBe(0);expect(h.http.cancel(8)).toBe(0);expect(h.http.cancel(0.5)).toBe(0)
  expect(h.http.request('/ok',null,4,1)).toBe(0);h.http.reset()
 })
+test('flag 32 adds the next frame to a JSON body as its image; no frame, the body is unchanged',async()=>{
+ const calls:any[]=[];const shots=['abc=',null]
+ const http=makeHttpRequests({origin:'https://example.test',fetch:(url:string,init:any)=>{calls.push(init);return Promise.resolve(new Response('ok'))},
+  emit:()=>{},frame:async()=>shots.shift()??null})
+ http.request('/api/look',bytes('{"question":"what is that"}'),1|4|32);await flush()
+ expect(JSON.parse(new TextDecoder().decode(calls[0].body))).toEqual({question:'what is that',image:'abc='})
+ http.request('/api/look',bytes('{"question":"again"}'),1|4|32);await flush()
+ expect(JSON.parse(new TextDecoder().decode(calls[1].body))).toEqual({question:'again'})
+})

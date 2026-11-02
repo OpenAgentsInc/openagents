@@ -159,7 +159,7 @@ check("voice edit: the words are the model's only input from the admin", sent["c
 schema = sent["generationConfig"]["responseSchema"]
 props = schema["properties"]
 check("voice edit: under the realm's catalogue as enums",
-      props["edit"]["enum"] == ["place", "remove", "move", "resize", "rotate", "restore", "list", "undo", "switch", "show", "none"]
+      props["edit"]["enum"] == ["place", "remove", "move", "resize", "rotate", "restore", "list", "undo", "switch", "show", "look", "none"]
       and props["row"]["enum"] == ["unnamed", "flock", "floats", "undergrowth", "daycycle", "guards", "invincible"]
       and props["panel"]["enum"] == ["unsaid", "edit", "settings", "ideas", "close"]
       and len(props["item"]["enum"]) == 38 and props["item"]["enum"][:5] == ["crate", "barrel", "bench", "fence", "stall"]
@@ -198,6 +198,22 @@ def held(sentence, answer, want, what):
 held("turn off the guards", dict(edit="switch", row="guards", on=False), {"edit": "switch", "row": "guards", "on": False}, "switch: one of the realm's rows, off")
 held("make me invincible", dict(edit="switch", row="invincible", on=True, item="crate"), {"edit": "switch", "row": "invincible", "on": True}, "switch: on, other fields dropped")
 held("open the edit panel", dict(edit="show", panel="edit"), {"edit": "show", "panel": "edit"}, "show: the editing screen's pane")
+held("what is that dark strip in the sky", dict(edit="look"), {"edit": "look"}, "look: a question about the screen, the verb alone")
+# ...then the page asks again at /look with the frame on screen (the host's flag 32), answered from the picture
+def look(question, image, cookie="9" * 64):
+    time.sleep(0.05)
+    s, raw, _ = call("POST", "/api/playtest/realm/everglade/look", json.dumps({"question": question, "image": image}).encode(),
+                     {"Content-Type": "application/json", "Cookie": "oa_session=" + cookie, "Origin": API})
+    return s, json.loads(raw)
+piece_mode["text"] = "That dark band is the far edge of the sky dome."
+s, a = look("what is that dark strip in the sky", "QUJD")
+sent = piece_seen[-1]["body"]
+check("look: the picture and the words go to the model; its answer comes back as a chat reply",
+      s == 200 and a == {"edit": "chat", "reply": "That dark band is the far edge of the sky dome.", **M}
+      and sent["contents"][0]["parts"] == [{"inlineData": {"mimeType": "image/jpeg", "data": "QUJD"}}, {"text": "what is that dark strip in the sky"}], (s, a))
+check("look: the picture is never kept", "QUJD" not in sql("select coalesce(string_agg(sentence || coalesce(edit::text, ''), ' '), '') from verse.voice_edits"))
+check("look: no picture is a 400, a picture not in base64 too", look("what is that", "")[0] == 400 and look("what is that", "not base64!")[0] == 400)
+check("look: admins only", look("what is that", "QUJD", cookie="8" * 64)[0] == 403)
 s, a = voice_edit("turn off the dragons", said(edit="switch", row="dragons", on=False))
 check("voice edit: a switch the realm doesn't have is no edit", s == 502, (s, a))
 held("a hundred crates", dict(edit="place", item="crate", count=100, turn=45, all=True, who="Marta"), {"edit": "place", "item": "crate", "count": 40}, "a count is held to 1..40, other edits' fields dropped")
@@ -254,5 +270,5 @@ check("voice edit: another site's page is refused", s == 403, (s, a))
 s, a = voice_edit("put a crate here", said(edit="place", item="crate"), realm="ice-cream-man")
 check("voice edit: a realm without voice edits says so", s == 400, (s, a))
 check("voice edit: every sentence is kept with the admin who said it",
-      sql("select count(*) from verse.voice_edits where pubkey = '" + admin_hex + "'") == "46" and sql("select count(*) from verse.voice_edits where pubkey <> '" + admin_hex + "'") == "0",
+      sql("select count(*) from verse.voice_edits where pubkey = '" + admin_hex + "'") == "52" and sql("select count(*) from verse.voice_edits where pubkey <> '" + admin_hex + "'") == "0",
       sql("select count(*) from verse.voice_edits"))

@@ -59,6 +59,7 @@ EditVoice :: struct {
   // Sentences said while one is with the server wait here, in order: none replaces another
   waiting: [EDIT_QUEUE * EDIT_SAID] u8; waiting_n: [EDIT_QUEUE] int; wait_at: int; wait_count: int;
   asking: [EDIT_SAID] u8; asking_n: int;   // the sentence with the server now (0 none)
+  look_due: bool;   // the ask waiting is a look: the same words, with the frame on screen (/look)
   shown: [EDIT_LINE] u8;              // the line on the screen, put together
   post: [EDIT_POST] u8; post_n: int;  // the list to publish, for the face
   say: [EDIT_LINE] u8; say_n: int;    // what to speak back
@@ -202,7 +203,9 @@ everglade_voice_actions :: (s: [] Everglade) {
 
 // The request to send (0 none): the face asks only when it has none out, and answers with everglade_edit_answer.
 everglade_edit_ask :: (s: [] Everglade) -> int #export_c { ev_next_ask(s); return s[0].ev.ask_n; }
-everglade_edit_ask_sent :: (s: [] Everglade) #export_c { s[0].ev.ask_n = 0; }
+everglade_edit_ask_sent :: (s: [] Everglade) #export_c { s[0].ev.ask_n = 0; s[0].ev.look_due = false; }
+// The ask waiting is a look: the face sends it to .../look with the next frame (the host's flag 32).
+everglade_edit_look :: (s: [] Everglade) -> bool #export_c { return s[0].ev.look_due; }
 everglade_edit_post :: (s: [] Everglade) -> int #export_c { return s[0].ev.post_n; }
 everglade_edit_post_sent :: (s: [] Everglade) #export_c { s[0].ev.post_n = 0; }
 // ORIGINAL: the face asks the server for the designed city (POST .../reset) once.
@@ -228,6 +231,7 @@ everglade_edit_saved :: (s: [] Everglade, status: int) #export_c {
 // The selector's answer ("STATUS\n" and its JSON): the edit, done in front of you.
 everglade_edit_answer :: (s: [] Everglade, answer: string) #export_c {
   ev_answered(s, answer);
+  if s[0].ev.look_due { return; }   // the same words go again, with the screen
   s[0].ev.asking_n = 0; s[0].ev.ask_n = 0;   // the next waiting sentence goes now
 }
 ev_answered :: (s: [] Everglade, answer: string) {
@@ -254,6 +258,14 @@ ev_answered :: (s: [] Everglade, answer: string) {
     reply := ev_field(body, "reply");
     if reply.count == 0 { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
     ev_line(s, reply); ev_say(s, reply);
+    return;
+  }
+  // a question about what's on screen: asked again with the frame, its answer a chat reply
+  if word == "look" {
+    n := ev_put(s[0].ev.ask[..], "{\"question\":\"");
+    n += ev_put(s[0].ev.ask[n..<EDIT_ASK], cast(string) s[0].ev.asking[0..<s[0].ev.asking_n]);
+    n += ev_put(s[0].ev.ask[n..<EDIT_ASK], "\"}");
+    s[0].ev.ask_n = n; s[0].ev.look_due = true;
     return;
   }
   if word == "undo" { edit_undo(s, true); return; }

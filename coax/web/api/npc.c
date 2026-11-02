@@ -272,10 +272,14 @@ bool piece_route(const request *q) {
 //   OA_EDIT_MODEL  the model (gemini-2.5-flash, its thinking off: migrations/0054_voice_edit_fast.sql)
 //   OA_EDIT_TIMEOUT_MS  how long one try may take (4000); an unanswered or failed try is tried once more
 //   OA_EDIT_DAILY_CAP  voice edits a day across the server (2000)
-static void voice_edit_answer(int fd, const char *asked, const char *request) {
+// POST /api/playtest/realm/<realm>/look (migrations/0105_voice_look.sql): {question, image} from the
+// same people, the image the frame on their screen (the host's flag 32), answered from the picture:
+//   -> 200 {edit: "chat", reply, model}; 400, 401/403, 413 too large, 429, 503
+//   OA_LOOK_TIMEOUT_MS  how long one try may take (12000)
+static void voice_edit_answer(int fd, const char *asked, const char *request, bool look) {
   const char *model = getenv("OA_EDIT_MODEL"); if (!model || !*model) model = "gemini-2.5-flash";
-  const char *limit = getenv("OA_EDIT_TIMEOUT_MS");
-  long timeout_ms = limit && atol(limit) > 0 ? atol(limit) : 4000;
+  const char *limit = getenv(look ? "OA_LOOK_TIMEOUT_MS" : "OA_EDIT_TIMEOUT_MS");
+  long timeout_ms = limit && atol(limit) > 0 ? atol(limit) : look ? 12000 : 4000;
   buf b = {0};
   double t0 = api_now_ms();
   long status = ask_model_in("OA_EDIT_URL", model, request, &b, timeout_ms);
@@ -289,7 +293,8 @@ static void voice_edit_answer(int fd, const char *asked, const char *request) {
   snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
   PGconn *db = api_db_new();
   const char *v[5] = {asked, http, b.p ? b.p : "", model, taken};
-  PGresult *r = db ? PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.voice_edit_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
+  PGresult *r = db ? PQexecParams(db, look ? "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.voice_look_answer($1::jsonb, $2::int, $3, $4, $5::int) x"
+                                         : "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.voice_edit_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
                                   5, NULL, v, NULL, NULL, 0) : NULL;
   if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   else { api_log("voice edit: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
@@ -303,7 +308,8 @@ bool voice_edit_route(const request *q) {
   static const char prefix[] = "/api/playtest/realm/";
   if (strncmp(q->path, prefix, sizeof prefix - 1)) return false;
   const char *realm = q->path + sizeof prefix - 1, *slash = strchr(realm, '/');
-  if (!slash || strcmp(slash, "/edit")) return false;
+  if (!slash || (strcmp(slash, "/edit") && strcmp(slash, "/look"))) return false;
+  bool look = !strcmp(slash, "/look");
   char name[49]; size_t n = (size_t)(slash - realm);   // a hand-built realm's slug, or a fork's (digits too)
   if (!n || n >= sizeof name) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
   for (size_t i = 0; i < n; i++) if (!((realm[i] >= 'a' && realm[i] <= 'z') || (realm[i] >= '0' && realm[i] <= '9') || realm[i] == '-')) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
@@ -340,8 +346,10 @@ bool voice_edit_route(const request *q) {
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *cap = getenv("OA_EDIT_DAILY_CAP");
   const char *v[4] = {name, body, who, cap && *cap ? cap : "2000"};
-  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id')::text "
-                                 "FROM verse.voice_edit_ask($1, $2::jsonb, $3, $4::int) x", 4, NULL, v, NULL, NULL, 0);
+  PGresult *r = PQexecParams(db, look ? "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id')::text "
+                                        "FROM verse.voice_look_ask($1, $2::jsonb, $3, $4::int) x"
+                                      : "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id')::text "
+                                        "FROM verse.voice_edit_ask($1, $2::jsonb, $3, $4::int) x", 4, NULL, v, NULL, NULL, 0);
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
@@ -362,7 +370,7 @@ bool voice_edit_route(const request *q) {
   PQclear(r);
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
-  if (pid == 0) { voice_edit_answer(q->fd, asked, request); _exit(0); }
+  if (pid == 0) { voice_edit_answer(q->fd, asked, request, look); _exit(0); }
   if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
   free(request); free(asked);
   return true;

@@ -49,12 +49,13 @@ static coax_t_EgSeen track_seen;   // what everglade_track saw last frame (everg
 #define PLAYER_URL "/api/playtest/player"
 static int32_t ask_id = -1, mint_id = -1;
 /* Everglade's world, or a fork's own (made-<slug>: everglade-fork.coax everglade_world_path) */
-static uint8_t world_url_buf[3][128];
+static uint8_t world_url_buf[4][128];
 static uint32_t world_path(uint32_t state, int what);
 static coax_t_EgFork fork_state;   /* FORK's state (everglade-fork.coax everglade_attach_fork) */
 #define WORLD_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[0], world_path(st, 0)
 #define RESET_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[1], world_path(st, 1)
 #define EDIT_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[2], world_path(st, 2)
+#define LOOK_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[3], world_path(st, 3)
 static int32_t world_id = -1, edit_id = -1, post_id = -1;
 // Reply with a realm (everglade-reply.coax): the reply, once the swarm has landed, with the player key.
 #define REPLY_URL "/api/playtest/replies"
@@ -398,7 +399,9 @@ static void edit_out(uint32_t state) {
   /* heard sentences go one at a time, in the order said: the next is taken only when none is out */
   int64_t n = edit_id < 0 ? everglade_edit_ask(at(state)) : 0;
   if (n > 0) {
-    edit_id = coaxial_http(EDIT_URL_OF(state), (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8);
+    /* a look goes to .../look with the next frame drawn (host flag 32) */
+    if (everglade_edit_look(at(state))) edit_id = coaxial_http(LOOK_URL_OF(state), (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8 | 32);
+    else edit_id = coaxial_http(EDIT_URL_OF(state), (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8);
     everglade_edit_ask_sent(at(state));
     if (edit_id < 0) { edit_id = -1; everglade_edit_answer(at(state), (coax_string){"0\n", 2}); }
   }

@@ -72,6 +72,14 @@ speak. Every realm with the layer gets it by handing the selector's answer there
 selector lists the realm's own rows from `verse.realm_rights`, so a new row is switchable by voice
 with no new migration.
 
+A question about what's on screen ("what's this dark strip along the sky?") is the selector's
+`look` (migration 0105). The page asks again at `POST /api/playtest/realm/<slug>/look` with the
+same words and HTTP flag 32 (`coax/web/HTTP.md`): the host adds the next frame drawn, as base64
+JPEG at most 1024 wide, to the body's `image`. Gemini answers from the picture in one to three
+spoken sentences, `200 {edit: "chat", reply}`, shown and spoken as any chat answer. Looks are paced
+and counted with voice edits; the picture is never stored. Any page can send flag 32 on a request
+of its own.
+
 EDIT opens one pane at a time (the panes rule, verse/fairy-forest/README.md "Making the world:
 panes"): FEATURES (the list below; HOLD TO TALK on a page with a voice, typing everywhere),
 SETTINGS (what visitors get; a realm whose code honours no visitor tool says so), and N WAITING

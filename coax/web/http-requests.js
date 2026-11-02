@@ -4,7 +4,7 @@
 export function makeHttpRequests({
   fetch: fetchEffect = globalThis.fetch.bind(globalThis), emit,
   capacity = () => 65536, player = () => null, sendBeacon,
-  origin = globalThis.location?.origin,
+  origin = globalThis.location?.origin, frame = async () => null,
   setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = id => clearTimeout(id),
 } = {}) {
   const slots = new Array(8).fill(null);
@@ -84,6 +84,16 @@ export function makeHttpRequests({
     // Promise scheduling keeps host callbacks outside the Wasm import itself.
     Promise.resolve().then(async () => {
       if (r && !owns(r)) return;
+      // flag 32: the next frame drawn goes with a JSON object body as its "image" (base64 JPEG), so a
+      // question about what's on screen carries the screen; no frame, the body goes as it is
+      if ((flags & 32) && post && body) {
+        const image = await frame();
+        if (r && !owns(r)) return;
+        if (typeof image === 'string' && image) {
+          const o = JSON.parse(new TextDecoder().decode(body));
+          if (o && typeof o === 'object' && !Array.isArray(o)) { o.image = image; body = new TextEncoder().encode(JSON.stringify(o)); }
+        }
+      }
       const response = await fetchEffect(url, {method: post ? 'POST' : 'GET', body: post ? body : undefined,
         credentials: 'same-origin', cache: 'no-store', keepalive: !wanted && originalLength < 60000,
         headers, ...(r ? {signal: r.controller.signal} : {})});

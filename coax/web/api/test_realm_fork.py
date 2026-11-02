@@ -128,7 +128,7 @@ def realm_fork_checks():
     sent = builder_seen[-1] if builder_seen else {}
     enum = sent.get("generationConfig", {}).get("responseSchema", {}).get("properties", {}).get("features", {}).get("items", {}).get("properties", {}).get("id", {}).get("enum", [])
     check("the model is asked under a schema of the fork's row ids, told what each does",
-          set(enum) == {"flock", "floats", "undergrowth", "daycycle", "night", "waves", "nodestroy", "lowgrav"}
+          set(enum) == {"flock", "floats", "undergrowth", "daycycle", "guards", "invincible", "night", "waves", "nodestroy", "lowgrav"}
           and "gravity is a third of normal" in sent["systemInstruction"]["parts"][0]["text"], (enum, sent.get("systemInstruction")))
     m = line_map(b_call("GET", R + "doomglade/fork")[1])
     check("its answer is the fork now: low gravity on, night off; a row it hasn't is ignored",

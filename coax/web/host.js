@@ -445,7 +445,7 @@ function answer(id, text) {
   send(HTTP_KIND + id, bytes.length > x.coaxial_inbox_cap() ? text.slice(0, text.indexOf("\n") + 1) : text);
 }
 const httpRequests = makeHttpRequests({emit: answer, capacity: () => engine?.exports.coaxial_inbox_cap() ?? 0,
-  player, origin: location.origin, sendBeacon: navigator.sendBeacon ? (url, body) => navigator.sendBeacon(url, body) : undefined});
+  player, origin: location.origin, frame: () => frameJpeg(), sendBeacon: navigator.sendBeacon ? (url, body) => navigator.sendBeacon(url, body) : undefined});
 function httpRequest(urlPtr, urlLen, bodyPtr, bodyLen, flags, timeoutMs) {
   return httpRequests.request(utf8(urlPtr, urlLen), bodyLen ? new Uint8Array(memory.buffer, bodyPtr, bodyLen) : null, flags, timeoutMs);
 }
@@ -1620,6 +1620,19 @@ if (script?.dataset.drops) startDrops({ send });
 if (script?.dataset.uploads) startUploads({ send, accept: script.dataset.uploads });
 // A design document for a realm's feature list or the builder (docs.js), on the app's action 31.
 startDocs({ send });
+// A request with flag 32 (http-requests.js): the next frame drawn, at most 1024 wide, as base64 JPEG.
+async function frameJpeg() {
+  try {
+    const shot = await snapshot();
+    if (!shot) return null;
+    const k = Math.min(1, 1024 / shot.width), c = new OffscreenCanvas(Math.round(shot.width * k), Math.round(shot.height * k));
+    c.getContext("2d").drawImage(shot, 0, 0, c.width, c.height);
+    const b = new Uint8Array(await (await c.convertToBlob({ type: "image/jpeg", quality: 0.75 })).arrayBuffer());
+    let s = "";
+    for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+    return btoa(s);
+  } catch { return null; }
+}
 // A page's own share card (card.js, docs/web/og-tags.md): the next frame drawn, copied in its own task.
 function snapshot() {
   return new Promise((resolve) => {

@@ -21,7 +21,9 @@ after browser URL normalization, and not begin with `//`.
 
 Flags retain their existing bits: 1 POST (otherwise GET), 2 beacon, 4 answer
 wanted, 8 `X-Verse-Player`, 16 first body line is `Authorization` and remaining
-bytes are the body. POST uses JSON content type. Requests include same-origin
+bytes are the body, 32 the next frame drawn goes with a JSON object body as
+its `image` field (base64 JPEG, at most 1024 wide; no frame, the body as it is).
+POST uses JSON content type. Requests include same-origin
 cookies. A guest playtest player header does not authenticate an account.
 
 Answer-bearing requests share eight slots, IDs 0–7. Refusal returns -1 without

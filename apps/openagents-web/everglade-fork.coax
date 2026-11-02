@@ -113,10 +113,10 @@ fork_rule :: (s: [] Everglade, r: int) -> bool {
 }
 
 // The face's world paths: Everglade's, or the fork's own world.
-//   what 0 the world, 1 its reset, 2 the voice edit
+//   what 0 the world, 1 its reset, 2 the voice edit, 3 a look (a question about the screen)
 everglade_world_path :: (s: [] Everglade, out: [] u8, what: int) -> int #export_c {
   n := 0;
-  if what == 2 { n = fk_put(out, 0, "/api/playtest/realm/"); n = fk_put(out, n, fk_slug(s)); return fk_put(out, n, "/edit"); }
+  if what == 2 || what == 3 { n = fk_put(out, 0, "/api/playtest/realm/"); n = fk_put(out, n, fk_slug(s)); return fk_put(out, n, ifx what == 3 then "/look" else "/edit"); }
   n = fk_put(out, 0, "/api/playtest/world/");
   if fk_is_fork(s) { n = fk_put(out, n, "made-"); }
   n = fk_put(out, n, fk_slug(s));
