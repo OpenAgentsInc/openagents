@@ -893,6 +893,73 @@ rt_redirect :: (p: [] RtPaths, id: string, msg: string) -> bool {
   return true;
 }
 
+// A Worker whose turn failed because the model provider did not answer
+// isn't reported as failed: the provider usually answers again. After a
+// wait that doubles from 30 seconds to at most 30 minutes, the watchdog
+// forks the Worker with a note to continue, and the Thread follows the new
+// Worker. router/rechecks holds "ID N": the Worker and how many rechecks led
+// to it. CODER_ROUTER_RECHECK_S sets the first wait.
+RT_RECHECK_FIRST :: 30;
+RT_RECHECK_MOST :: 1800;
+
+rt_recheck_tries :: (text: string, id: string) -> int {
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    sp := at; while sp < e && text[sp] != ' ' { sp += 1; }
+    if cast(string) text[at..<sp] == id && sp < e { return cd_atoi(cast(string) text[sp + 1..<e]); }
+    at = e + 1;
+  }
+  return 0;
+}
+
+rt_recheck_wait :: (tries: int, first: int) -> int {
+  w := first;
+  for k: 0..<tries { w *= 2; if w >= RT_RECHECK_MOST { return RT_RECHECK_MOST; } }
+  return ifx w > RT_RECHECK_MOST then RT_RECHECK_MOST else w;
+}
+
+rt_recheck :: (p: [] RtPaths, th: [] RtThreads, i: int, t: RtTrigger, json: bool) {
+  ob: [32] u8; id := cast(string) ob[0..<cd_cat(ob[..], 0, cast(string) th[0].session[i][0..<th[0].nsession[i]])];   // a copy: the Thread's slot changes below
+  b: [1300] u8; rb: [65536] u8;
+  rn := fs_read(rt_path(p, "/router/rechecks", b[..]), rb[..]);
+  tries := rt_recheck_tries(cast(string) rb[0..<ifx rn > 0 then rn else 0], id);
+  eb: [32] u8; fe := cl_getenv("CODER_ROUTER_RECHECK_S", eb[..]);
+  wait_s := rt_recheck_wait(tries, ifx fe.count > 0 then cd_atoi(fe) else RT_RECHECK_FIRST);
+  pb: [1300] u8;
+  age_s := (cxproc_wall_us() / 1000 - fs_mtime_ns(cd_sibling(id, ".jsonl", pb[..])) / 1000000) / 1000;
+  tb: [24] u8;
+  if age_s < wait_s {
+    wb: [65536] u8; wn := fs_read(rt_path(p, "/router/waiting", b[..]), wb[..]);
+    if wn > 0 && rt_has_line(cast(string) wb[0..<wn], id) { return; }
+    lb: [64] u8; ln := cd_cat(lb[..], cd_cat(lb[..], 0, id), "\n");
+    x := fs_append(rt_path(p, "/router/waiting", b[..]), cast(string) lb[0..<ln]);
+    db: [128] u8; dn := cd_cat(db[..], 0, "rechecking in "); dn = cd_cat(db[..], dn, cd_itoa(wait_s - age_s, tb[..])); dn = cd_cat(db[..], dn, " s");
+    rt_log(p, t, "worker waiting: the model provider did not answer", id, cast(string) db[0..<dn], json);
+    return;
+  }
+  nb: [96] u8; nn := cd_cat(nb[..], 0, "recheck-"); nn = cd_cat(nb[..], nn, id);
+  name := cast(string) nb[0..<nn];
+  cb: [32] u8; was: [1] bool;
+  sid := rt_claim(p, name, "", cb[..], was[..]);
+  args := [5] string.["fork", id, "The model provider didn't answer, so your last turn ended early. Continue the task from where you were.", "--session", sid];
+  idb: [256] u8; nid := sid;
+  if !was[0] { nid = rt_coder(args[..], idb[..]); }
+  if nid.count == 0 || nid.count > 31 { rt_unclaim(p, name); rt_log(p, t, "failed: the worker did not start", "", nid, json); return; }
+  rt_thread_set(th, t.thread, nid, t.source);
+  tt: [65536] u8; x := fs_write(rt_path(p, "/router/threads", b[..]), rt_threads_text(th, tt[..]));
+  lb: [96] u8; ln := cd_cat(lb[..], 0, nid); ln = cd_cat(lb[..], ln, " "); ln = cd_cat(lb[..], ln, cd_itoa(tries + 1, tb[..])); ln = cd_cat(lb[..], ln, "\n");
+  y := fs_append(rt_path(p, "/router/rechecks", b[..]), cast(string) lb[0..<ln]);
+  rt_unclaim(p, name);
+  db: [128] u8; dn := cd_cat(db[..], 0, "recheck "); dn = cd_cat(db[..], dn, cd_itoa(tries + 1, tb[..])); dn = cd_cat(db[..], dn, ", continuing "); dn = cd_cat(db[..], dn, id);
+  rt_log(p, t, "worker rechecked: the model provider did not answer", nid, cast(string) db[0..<dn], json);
+}
+
+#test "router: rechecks wait 30 s, doubling to at most 30 min" {
+  #assert rt_recheck_wait(0, 30) == 30 && rt_recheck_wait(1, 30) == 60 && rt_recheck_wait(5, 30) == 960 && rt_recheck_wait(6, 30) == 1800 && rt_recheck_wait(40, 30) == 1800;
+  #assert rt_recheck_tries("A 1\nB 3\n", "B") == 3 && rt_recheck_tries("A 1\n", "C") == 0;
+}
+
 rt_tend :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, warned: [] bool, json: bool) {
   b: [1300] u8; rpb: [65536] u8;
   rn := fs_read(rt_path(p, "/router/reported", b[..]), rpb[..]);
@@ -908,6 +975,7 @@ rt_tend :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, warn
     t: RtTrigger; t.id = "watchdog"; t.source = cast(string) th[0].source[i][0..<th[0].nsource[i]]; t.thread = cast(string) th[0].thread[i][0..<th[0].nthread[i]];
     ending := cast(string) s[0].ending[0..<s[0].nending];
     if ending == "redirected" { continue; }        // between the interrupted turn and the watchdog's message
+    if ending == "failed" && cast(string) s[0].cause[0..<s[0].ncause] == "provider" { rt_recheck(p, th, i, t, json); continue; }
     if ending != "running" { rt_report(p, th, i, text, s[..], sources, json); continue; }
     pid := cd_job_pid(id);
     pb: [1300] u8;

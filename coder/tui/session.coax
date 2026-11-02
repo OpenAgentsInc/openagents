@@ -293,6 +293,8 @@ cs_end :: (a: [] App, ending: string, ms: int, steps: int, text: string) {
   n = json_raw(o, n, ",\"ms\":"); n = json_write_int(o, n, ms);
   n = json_raw(o, n, ",\"steps\":"); n = json_write_int(o, n, steps);
   if text.count > 0 { n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text); }
+  if ending == "failed" && a[0].ncause > 0 { n = json_raw(o, n, ",\"cause\":"); n = json_write_string(o, n, cast(string) a[0].cause[0..<a[0].ncause]); }
+  a[0].ncause = 0;
   n = json_raw(o, n, "}");
   cs_put(a, n);
 }
@@ -310,6 +312,7 @@ CsSummary :: struct {
   steps: int;
   started_us: int;
   last: [512] u8; nlast: int;      // the last event's kind and text, for status
+  cause: [32] u8; ncause: int;     // the last end line's cause, "" when it gave none
 }
 
 cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
@@ -336,6 +339,7 @@ cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
     } else if kind == "end" {
       open = false;
       s[0].nending = cd_cat(s[0].ending[..], 0, cl_str(ar, line, "ending"));
+      s[0].ncause = cd_cat(s[0].cause[..], 0, cl_str(ar, line, "cause"));
       st := cl_int(line, "steps"); if st.ok { s[0].steps += st.value; }
     }
     if kind != "session" {

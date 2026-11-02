@@ -15,8 +15,9 @@
 > required sections. A job names credential handles, never secrets; the
 > daemon gives a job the handle's variable only when its grant lists the
 > handle, and the session log shows `[credential]` in place of the value.
-> Still to come: rules for mail and documents, and rechecking API errors
-> until they clear.
+> A Worker whose model provider didn't answer waits, with a doubling
+> backoff, and then continues in a fork the Thread follows. Still to come:
+> rules for mail and documents.
 
 Chapter17's agent is only useful if it keeps working while a laptop sleeps,
 answers while a long build runs, talks the way each channel expects and
@@ -159,6 +160,37 @@ log has no end line:
   whether the Worker is still making real progress. If it isn't, the
   watchdog redirects it. If it is, the watchdog logs that once and leaves
   it. With no System One key, it logs `worker stuck` with the reason.
+
+#### Provider errors
+
+A turn can fail because the model provider didn't answer: an overload, a
+rate or usage limit, a server error or a dropped connection. These clear on
+their own, so the watchdog rechecks instead of reporting a failure. Each
+engine says so in a typed field, never by reading error text:
+
+| Engine | Field | Values counted |
+| --- | --- | --- |
+| Claude Code | an assistant message's `error` | `rate_limit`, `server_error`, `overloaded_error` |
+| Codex | `turn.error.codexErrorInfo` | `serverOverloaded`, `usageLimitExceeded`, `internalServerError`, `httpConnectionFailed`, `responseStreamConnectionFailed`, `responseStreamDisconnected`, `responseTooManyFailedAttempts` |
+| Microcoder | the worker's ending | `no_capacity` |
+
+The session's end line then carries `"cause":"provider"`. When the
+watchdog finds a Worker that ended that way:
+
+1. It waits 30 seconds after the failure, doubling with each recheck of the
+   same task up to 30 minutes, and logs `worker waiting` once with the
+   time left.
+2. It forks the Worker with "The model provider didn't answer, so your last
+   turn ended early. Continue the task from where you were." The fork
+   carries every earlier turn.
+3. The Thread follows the fork, and `router/rechecks` records how many
+   rechecks led to it. The failed Worker is never reported.
+
+It rechecks until the provider answers; there is no cap. To end it, stop
+the Worker with `coder stop ID`. The fork goes through the same claim as a
+new Worker, so a Router killed between the fork and its record adopts the
+fork instead of starting another. `CODER_ROUTER_RECHECK_S` sets the first
+wait.
 
 #### Time to detection
 
@@ -326,6 +358,10 @@ machine's grant".
   checks that a daemon without the grant refuses a job that names it, and
   that a daemon with the grant starts it with the variable set and a log
   that holds `[credential]` but not the value.
+- The smoke ends a stand-in Worker with `"cause":"provider"`: the first
+  pass logs it as waiting, the next (with no wait) forks it, the Thread
+  follows the fork, the fork's reply is the one reported, and the failure
+  is not.
 - The smoke kills the Router with SIGKILL right after it starts a Worker and
   right after it posts a reply (see [A crash between two steps](#a-crash-between-two-steps)),
   and checks that the next pass repeats neither.
@@ -363,8 +399,10 @@ machine's grant".
   failing call, a Worker drifting off its goal) the watchdog detects each
   fault and the time to detection is reported. Measured for a killed, a
   looping and a quiet Worker offline, and for drifting Workers live (see
-  [Time to detection](#time-to-detection)). API errors that clear on their
-  own are not rechecked yet.
+  [Time to detection](#time-to-detection)). A Worker failed by its
+  provider is rechecked until it answers (see
+  [Provider errors](#provider-errors)); its time to detection is one pass,
+  and the time to recovery depends on the provider.
 - **Containment.** In chapter6's lab, extended to Triggers, a hostile event
   produces no admitted command outside a daemon's grant and no secret in
   model context, the log or outbound messages.

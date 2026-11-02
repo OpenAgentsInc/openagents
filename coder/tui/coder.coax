@@ -119,6 +119,7 @@ App :: struct {
   q: [] ClQuery; p: [] ClProcess; qline: [] u8; qarena: [] u8; qout: [] u8; scratch: [] u8;
   live: bool;                     // the CLI is running
   stopping: bool; stop_ms: int;   // an interrupt was sent
+  cause: [32] u8; ncause: int;    // why a failed turn failed, when the engine says: "provider" when the model provider did not answer (chapter 20)
   pending: [16384] u8; npending: int;   // the first message, sent once initialize is answered
   ask: bool;                      // a permission request waits for y, a or n
   ask_text: [1024] u8; nask: int;
@@ -570,6 +571,8 @@ cd_claude_message :: (a: [] App, m: ClMessage) {
     return;
   }
   if m.kind == ClKind.assistant {
+    ae := cl_str(q[0].ar[..], m.line, "error");
+    if ae == "rate_limit" || ae == "server_error" || ae == "overloaded_error" { a[0].ncause = cd_cat(a[0].cause[..], 0, "provider"); }
     content := cl_raw(m.line, "message.content");
     count := cl_count(content);
     for i: 0..<count {

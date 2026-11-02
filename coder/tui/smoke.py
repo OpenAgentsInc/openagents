@@ -673,6 +673,29 @@ def verbs(check):
             check("watchdog: a quiet worker with no decision is reported as stuck", any(l["fate"] == "worker stuck" and "System One key" in l.get("note", "") for l in rw))
         finally:
             sleeper.kill()
+        # rechecks (chapter 20): a Worker whose model provider did not answer waits, then continues in a fork the Thread follows
+        fsid = "20261102-000000-003"
+        with open(os.path.join(sdir, fsid + ".jsonl"), "w") as f:
+            f.write('{"kind":"session","id":"%s","engine":"echo","cwd":"/","started_us":1}\n{"kind":"user","text":"fix the build"}\n'
+                    '{"kind":"end","ending":"failed","ms":5,"steps":0,"text":"No model answered: overloaded","cause":"provider"}\n' % fsid)
+        with open(os.path.join(rdir, "threads"), "a") as f:
+            f.write("flaky\t%s\tlocal\n" % fsid)
+        def rpass2(first):
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=dict(nokey, CODER_ROUTER_RECHECK_S=first), capture_output=True, text=True, timeout=120)
+            return [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        rc1, rc2 = rpass2("600"), rpass2("0")
+        rk = [l for l in rc2 if l.get("fate") == "worker rechecked: the model provider did not answer"]
+        nsid = rk[0]["session"] if rk else ""
+        for _ in range(60):
+            if nsid and '"kind":"end"' in (open(os.path.join(sdir, nsid + ".jsonl")).read() if os.path.exists(os.path.join(sdir, nsid + ".jsonl")) else ""): break
+            time.sleep(0.5)
+        rc3 = rpass2("0")
+        tmap = dict(l.split("\t")[:2] for l in open(os.path.join(rdir, "threads")).read().splitlines() if "\t" in l)
+        check("rechecks: a Worker the model provider failed waits, then a fork continues it and the Thread follows; the failure is not reported",
+              any(l.get("fate") == "worker waiting: the model provider did not answer" and l.get("session") == fsid for l in rc1)
+              and len(rk) == 1 and tmap.get("flaky") == nsid and nsid != fsid
+              and not any(l.get("session") == fsid and "reply" in l.get("fate", "") for l in rc1 + rc2 + rc3)
+              and any(l.get("session") == nsid for l in rc3))
         # a GitHub source, against a stand-in gh: the first poll sets the cursor; a labelled issue starts a worker; its
         # reply is posted as a comment; the Router's own comment does not come back as an event
         stub = os.path.join(home, "gh")

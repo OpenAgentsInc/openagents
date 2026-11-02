@@ -45,6 +45,28 @@ cd_codex_close :: (a: [] App) {
 
 cd_cx_str :: (a: [] App, json: string, path: string) -> string { return cl_str(a[0].cx[0].ar[..], json, path); }
 
+// Whether Codex's codexErrorInfo names the model provider not answering: a
+// connection, a stream, a server error, an overload or a usage limit, all of
+// which clear on their own. The value is "name" or {"name":{...}}.
+CD_CX_PROVIDER :: [7] string.["usageLimitExceeded", "httpConnectionFailed", "responseStreamConnectionFailed", "internalServerError", "responseStreamDisconnected", "responseTooManyFailedAttempts", "serverOverloaded"];
+cd_cx_provider :: (info: string) -> bool {
+  at := 0;
+  while at < info.count && (info[at] == ' ' || info[at] == '{') { at += 1; }
+  if at >= info.count || info[at] != '"' { return false; }
+  e := at + 1; while e < info.count && info[e] != '"' { e += 1; }
+  name := cast(string) info[at + 1..<e];
+  for v: CD_CX_PROVIDER { if name == v { return true; } }
+  return false;
+}
+
+#test "codex: provider errors from codexErrorInfo" {
+  #assert cd_cx_provider("\"serverOverloaded\"");
+  #assert cd_cx_provider("{\"httpConnectionFailed\":{\"httpStatusCode\":502}}");
+  #assert !cd_cx_provider("\"contextWindowExceeded\"");
+  #assert !cd_cx_provider("{\"badRequest\":null}");
+  #assert !cd_cx_provider("");
+}
+
 // A command as the person would type it: the first command action's text,
 // else the command without its "/bin/zsh -lc" wrapper.
 cd_codex_command :: (a: [] App, item: string) -> string {
@@ -195,6 +217,7 @@ cd_codex_poll :: (a: [] App) -> bool {
       if st == "completed" { cd_finish(a, END_FINISHED, ""); }
       else if st == "interrupted" { cd_finish(a, END_STOPPED, ""); }
       else {
+        if cd_cx_provider(cl_raw(ev.params, "turn.error.codexErrorInfo")) { a[0].ncause = cd_cat(a[0].cause[..], 0, "provider"); }
         why := cd_cx_str(a, ev.params, "turn.error.message");
         if why.count == 0 && a[0].nerr > 0 { why = cast(string) a[0].err[0..<a[0].nerr]; }
         if why.count == 0 { why = "Codex ended the turn with an error."; }

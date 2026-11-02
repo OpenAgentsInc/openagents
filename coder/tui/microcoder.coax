@@ -125,7 +125,7 @@ cd_micro_line :: (a: [] App, line: string) {
     }
     if ending == "stopped" { cd_finish(a, END_STOPPED, ""); return; }
     wb: [1400] u8; wn := 0;
-    if ending == "no_capacity" { wn = cd_cat(wb[..], 0, "No model answered: "); wn = cd_cat(wb[..], wn, text); }
+    if ending == "no_capacity" { a[0].ncause = cd_cat(a[0].cause[..], 0, "provider"); wn = cd_cat(wb[..], 0, "No model answered: "); wn = cd_cat(wb[..], wn, text); }
     else if ending == "bad_replies" { wn = cd_cat(wb[..], 0, "The model's replies didn't fit Microcoder's schema three times in a row."); }
     else if ending == "idle" { wn = cd_cat(wb[..], 0, "The model gave nothing to do and no reply three times in a row."); }
     else { wn = cd_cat(wb[..], 0, "Microcoder ended: "); wn = cd_cat(wb[..], wn, ending); }
