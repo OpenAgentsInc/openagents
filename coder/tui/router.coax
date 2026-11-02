@@ -890,6 +890,16 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
       if id.count == 0 || id.count > 31 { rt_log(p, t, "failed: the worker did not start", "", id, json); }
       else {
         if t.thread.count > 0 {
+          // a follow-up forks the Thread's Worker; one still running keeps working, and its result still comes back
+          if fate == RT_TO_THREAD {
+            old := cast(string) th[0].session[k][0..<th[0].nsession[k]];
+            op := cd_job_pid(old);
+            if op > 0 && cxproc_pid_alive(op) == 1 {
+              ab2: [512] u8; an := cd_cat(ab2[..], 0, t.thread); an = cd_cat(ab2[..], an, "\t"); an = cd_cat(ab2[..], an, old);
+              an = cd_cat(ab2[..], an, "\t"); an = cd_cat(ab2[..], an, t.source); an = cd_cat(ab2[..], an, "\n");
+              y := fs_append(rt_path(p, "/router/also", b[..]), cast(string) ab2[0..<an]);
+            }
+          }
           rt_thread_set(th, t.thread, id, t.source);
           tt: [65536] u8; x := fs_write(rt_path(p, "/router/threads", b[..]), rt_threads_text(th, tt[..]));
         }
@@ -1044,7 +1054,34 @@ rt_recheck :: (p: [] RtPaths, th: [] RtThreads, i: int, t: RtTrigger, json: bool
   #assert rt_recheck_tries("A 1\nB 3\n", "B") == 3 && rt_recheck_tries("A 1\n", "C") == 0;
 }
 
+// Each Thread's Worker, then the Workers a follow-up left running
+// (router/also): they are watched for being lost or looping, and their
+// result goes to the Thread when they end. They are not rechecked.
 rt_tend :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, warned: [] bool, json: bool) {
+  rt_tend_set(p, th, sources, stuck_s, warned, json, false);
+  b: [1300] u8; ab: [65536] u8;
+  an := fs_read(rt_path(p, "/router/also", b[..]), ab[..]);
+  if an <= 0 { return; }
+  ax: [1] RtThreads;
+  text := cast(string) ab[0..<an];
+  at := 0;
+  while at < text.count && ax[0].n < RT_THREADS {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    t1 := 0; while t1 < line.count && line[t1] != 9 { t1 += 1; }
+    t2 := t1 + 1; while t2 < line.count && line[t2] != 9 { t2 += 1; }
+    if t1 == 0 || t2 >= line.count { continue; }
+    i := ax[0].n; ax[0].n += 1;
+    ax[0].nthread[i] = cd_cat(ax[0].thread[i][..], 0, cast(string) line[0..<t1]);
+    ax[0].nsession[i] = cd_cat(ax[0].session[i][..], 0, cast(string) line[t1 + 1..<t2]);
+    ax[0].nsource[i] = cd_cat(ax[0].source[i][..], 0, cast(string) line[t2 + 1..<line.count]);
+  }
+  none: [1] bool;
+  rt_tend_set(p, ax[..], sources, 0, none[0..<0], json, true);
+}
+
+rt_tend_set :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, warned: [] bool, json: bool, extra: bool) {
   b: [1300] u8; rpb: [65536] u8;
   rn := fs_read(rt_path(p, "/router/reported", b[..]), rpb[..]);
   reported := cast(string) rpb[0..<ifx rn > 0 then rn else 0];
@@ -1059,7 +1096,7 @@ rt_tend :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, warn
     t: RtTrigger; t.id = "watchdog"; t.source = cast(string) th[0].source[i][0..<th[0].nsource[i]]; t.thread = cast(string) th[0].thread[i][0..<th[0].nthread[i]];
     ending := cast(string) s[0].ending[0..<s[0].nending];
     if ending == "redirected" { continue; }        // between the interrupted turn and the watchdog's message
-    if ending == "failed" && cast(string) s[0].cause[0..<s[0].ncause] == "provider" { rt_recheck(p, th, i, t, json); continue; }
+    if !extra && ending == "failed" && cast(string) s[0].cause[0..<s[0].ncause] == "provider" { rt_recheck(p, th, i, t, json); continue; }
     if ending != "running" { rt_report(p, th, i, text, s[..], sources, json); continue; }
     pid := cd_job_pid(id);
     pb: [1300] u8;

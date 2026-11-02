@@ -98,6 +98,8 @@ needs is in files under `~/.openagents/coder`:
 | `inbox/done/*.json` | Events already decided |
 | `router/sources.json` | Source policies |
 | `router/threads` | Each Thread's Worker session |
+| `router/also` | Workers a follow-up left running, still tended and reported |
+| `router/rechecks`, `router/waiting` | Workers forked after a provider error, and those waiting for it |
 | `router/log.jsonl` | Each event's fate, and the watchdog's findings |
 | `sessions/ID.jsonl`, `ID.pid` | Each Worker's log and process |
 
@@ -144,6 +146,17 @@ for it.
 
 Long work doesn't block the loop: each Worker is a background job
 (chapter14), and the Router only starts it and records the session ID.
+
+A follow-up on a Thread whose Worker is still working forks that Worker
+with the new message, so the answer doesn't wait for the long work, and
+the Thread now follows the fork. The Worker that was running keeps going:
+the Router adds it to `router/also`, and the watchdog keeps watching it
+(lost or looping; it isn't rechecked) and posts its result to the same
+Thread when it ends. In the smoke, a Thread's Worker runs `sleep 8`; a
+follow-up a second later was answered in 0.8 seconds while that Worker
+was still running, and the long result arrived 7.4 seconds after the
+follow-up.
+Before `router/also`, the long result was never posted.
 
 ### The watchdog
 
@@ -387,9 +400,12 @@ machine's grant".
 
 ## Done means
 
-- **Duplex.** With a ten-minute job running, a new message gets a reply within
+- [x] **Duplex.** With a ten-minute job running, a new message gets a reply within
   one inference step, and the job's result arrives later as an event. A
-  stopped job reports as stopped, and an expired one as expired.
+  stopped job reports as stopped, and an expired one as expired. Checked
+  by the smoke with an 8-second Worker in place of a ten-minute one; a
+  stopped Worker's reply starts "Stopped (stopped)", and an expired job's
+  ending is checked by chapter14's `--deadline` smoke.
 - [x] **Channels.** Every chat reply in a replayed stream is 100 words or fewer,
   and every pull request body has its required sections. Checked by unit
   checks on `rt_reply`, `rt_reply_pr`, `rt_reply_mail` and `rt_reply_doc`,

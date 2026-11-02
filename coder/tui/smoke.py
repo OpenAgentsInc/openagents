@@ -673,6 +673,31 @@ def verbs(check):
             check("watchdog: a quiet worker with no decision is reported as stuck", any(l["fate"] == "worker stuck" and "System One key" in l.get("note", "") for l in rw))
         finally:
             sleeper.kill()
+        # duplex (chapter 20): a follow-up gets its reply while the Thread's long Worker runs; the long result comes later; a stopped one says so
+        trigger("$ sleep 8; echo long-done", "--thread", "dx", "--to-agent")
+        dl = next((l.get("session", "") for l in router() if l.get("thread") == "dx"), "")
+        time.sleep(1.0)
+        trigger("$ echo quick-dx", "--thread", "dx", "--to-agent")
+        d0 = time.time(); dquick = None; dlong = None; drun = False; dlog = []
+        for _ in range(80):
+            ls = router(); dlog += ls
+            for l in ls:
+                if l.get("thread") == "dx" and l.get("fate") == "reply written to the outbox":
+                    if l.get("note") == "quick-dx" and dquick is None:
+                        dquick = time.time() - d0
+                        drun = json.loads(subprocess.run([coder, "status", dl, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)["state"] == "running"
+                    if l.get("note") == "long-done": dlong = time.time() - d0
+            if dquick is not None and dlong is not None: break
+            time.sleep(0.5)
+        trigger("$ sleep 60", "--thread", "dy", "--to-agent")
+        ds = next((l.get("session", "") for l in router() if l.get("thread") == "dy"), "")
+        time.sleep(1.0)
+        subprocess.run([coder, "stop", ds], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        dstop = [l for l in router() if l.get("thread") == "dy" and l.get("fate") == "reply written to the outbox"]
+        check("duplex: a follow-up is answered while the Thread's long Worker runs, the long result arrives later, and a stopped Worker says so",
+              dl and dquick is not None and drun and dlong is not None and dlong > dquick
+              and len(dstop) == 1 and dstop[0].get("note", "").startswith("Stopped (stopped)"))
+        if dquick is not None: print("     duplex: follow-up answered in %.1f s with the long Worker running; long result after %.1f s" % (dquick, dlong or -1))
         # a log cut at any byte (chapter 2): readers read the complete lines and report the rest; a line appended after a crash starts clean
         cr = subprocess.run([coder, "run", "$ echo cut-é-check", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         cid = next(json.loads(l)["id"] for l in cr.stdout.splitlines() if l.startswith('{"kind":"session"'))
