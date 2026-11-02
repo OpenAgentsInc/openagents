@@ -1,0 +1,274 @@
+// Chapter 48: the launch plan and device admission for the int8-block-i32-v1
+// kernels in int8-kernels.coax, the input admission for device-sized
+// buffers, chapter 34's statistics for the throughput receipt, and the C
+// host's entries. The host reports the device, moves bytes, launches and
+// times; every decision here is Coax.
+#load "int8-kernels.coax";
+#load "admit.coax";
+#load "../int8-products.coax";
+#load "../comparator.coax";
+#load "../../tests/int8-device-plan-checks.coax";  // the checks' comparison with the CPU kernels
+#authority;
+
+// book:begin plan
+I8Status :: enum u8 {ok;shape;overflow;limit;tile;device;}
+I8Kernel :: enum u8 {row;mma;}
+// x_words: the activation words the kernels read; the tile reads tokens
+// rounded up to a multiple of 8.
+I8Plan :: struct {status:I8Status;admission:DaStatus;blocks:int;quantize_items:int;dot_items:int;mma_items:int;finish_items:int;dots:int;x_words:int;}
+I8_WORK_LIMIT :: 68719476736; // 2^36 multiply-adds in one product
+I8_MMA_STEPS_MAX :: 65;       // 65 steps of 16 codes: 1040 * 127 * 127 = 16,774,160 <= 2^24
+// The row kernels are plain threads (launched 256 to a block) with no
+// special instruction; i8_mma is one warp on the BF16 tensor cores.
+I8_ROW_NEEDS :: DaNeeds.{threads=256,shared=0,mma=false};
+I8_MMA_NEEDS :: DaNeeds.{threads=32,shared=0,mma=true};
+i8_plan :: (kernel:I8Kernel,rows:int,width:int,tokens:int,block:int,dev:DaDevice)->I8Plan {
+    if rows<1 || tokens<1 || block<4 || block%4!=0 {return I8Plan.{status=I8Status.shape};}
+    if !int8_block_fits(block) {return I8Plan.{status=I8Status.overflow};}
+    if width<block || width%block!=0 {return I8Plan.{status=I8Status.shape};}
+    if f64(rows)*f64(width)*f64(tokens)>f64(I8_WORK_LIMIT) {return I8Plan.{status=I8Status.limit};}
+    nb:=width/block;needs:=I8_ROW_NEEDS;
+    if kernel==I8Kernel.mma {
+        if rows%16!=0 || block%16!=0 || block/16>I8_MMA_STEPS_MAX {return I8Plan.{status=I8Status.tile};}
+        needs=I8_MMA_NEEDS;
+    }
+    admitted:=da_admit(needs,dev);
+    if admitted!=DaStatus.ok {return I8Plan.{status=I8Status.device,admission=admitted};}
+    p:=I8Plan.{blocks=nb,quantize_items=tokens*nb,dot_items=rows*tokens*nb,finish_items=rows*tokens,dots=rows*tokens*nb,x_words=tokens*width/4};
+    if kernel==I8Kernel.mma {p.dot_items=0;p.mma_items=(tokens+I8_TOKENS-1)/I8_TOKENS*(rows/16);p.finish_items=0;p.x_words=(tokens+7)/8*8*width/4;}
+    return p;
+}
+i8_text :: (p:I8Plan)->string {
+    if p.status==I8Status.ok {return "admitted";}
+    if p.status==I8Status.shape {return "refused: the block must be a positive multiple of 4 that divides the width";}
+    if p.status==I8Status.overflow {return "refused: a block that long could overflow s32";}
+    if p.status==I8Status.limit {return "refused: more than 2^36 multiply-adds";}
+    if p.status==I8Status.tile {return "refused: the tensor-core tile needs rows and the block in multiples of 16 and a block of at most 1040";}
+    return da_text(p.admission);
+}
+// book:end plan
+
+// book:begin inputs
+// What int8_admit checks of the codes, scales and sums, for buffers too large
+// for the CPU plan's work limit: no code -128, every scale finite and not
+// negative, every offset finite, every stored sum equal to its codes' sum.
+i8_inputs :: (rows:int,width:int,tokens:int,block:int,w:Int8Weights,x:Int8Activations)->Int8Status {
+    nb:=width/block;
+    if w.codes.count!=rows*width || w.scales.count!=rows*nb || w.offsets.count!=rows*nb {return Int8Status.storage;}
+    if x.codes.count!=tokens*width || x.scales.count!=tokens*nb || x.sums.count!=tokens*nb {return Int8Status.storage;}
+    for c:w.codes {if c<-INT8_CODE_MAX {return Int8Status.code;}}
+    for c:x.codes {if c<-INT8_CODE_MAX {return Int8Status.code;}}
+    for i:0..<rows*nb {if !int8_scale_ok(w.scales[i]) || !int8_finite(w.offsets[i]) {return Int8Status.scale;}}
+    for i:0..<tokens*nb {
+        if !int8_scale_ok(x.scales[i]) {return Int8Status.scale;}
+        s:=0;
+        for k:0..<block {s+=cast(int)x.codes[i*block+k];}
+        if s!=cast(int)x.sums[i] {return Int8Status.sum;}
+    }
+    return Int8Status.ok;
+}
+// book:end inputs
+
+// book:begin rank
+// Chapter 34's rule for two engines' warm run times on one shape: side a is
+// faster when its mean is lower by more than two standard errors, and a
+// spread over a tenth of either mean ranks nothing. cm_compare also demands
+// the same number formats; here the formats differ on purpose (int8 against
+// f32 or BF16), so the rule is applied to the times alone.
+i8_rank :: (a:CmStats,b:CmStats)->CmCall {
+    call:=CmCall.{verdict=CmVerdict.refused};
+    if a.status!=CmStatus.ok || b.status!=CmStatus.ok {call.reason=CmReason.stats;return call;}
+    call.ratio=b.mean/a.mean;
+    call.se=sqrt(a.sd*a.sd/f64(a.n)+b.sd*b.sd/f64(b.n));
+    if a.sd*10>a.mean || b.sd*10>b.mean {call.verdict=CmVerdict.noisy;return call;}
+    diff:=a.mean-b.mean;call.verdict=CmVerdict.same;
+    if diff< -2*call.se {call.verdict=CmVerdict.faster;}
+    if diff>2*call.se {call.verdict=CmVerdict.slower;}
+    return call;
+}
+// book:end rank
+
+// ---- The C host's entries.
+// The plan as numbers: out gets quantize, dot, mma and finish items, the
+// dot count and the activation words (the tile combines its own outputs, so
+// its finish items are 0); the result is the I8Status number plus 16 times the DaStatus.
+i8_plan_c :: (kernel:int,rows:int,width:int,tokens:int,block:int,major:int,minor:int,max_threads:int,max_shared:int,out:[]int)->int #export_c {
+    k:=I8Kernel.row;if kernel==1 {k=I8Kernel.mma;}
+    p:=i8_plan(k,rows,width,tokens,block,DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=max_shared});
+    if out.count<6 {return -1;}
+    out[0]=p.quantize_items;out[1]=p.dot_items;out[2]=p.mma_items;out[3]=p.finish_items;out[4]=p.dots;out[5]=p.x_words;
+    return cast(int)p.status+16*cast(int)p.admission;
+}
+i8_inputs_c :: (rows:int,width:int,tokens:int,block:int,wc:[]s8,ws:[]f32,wo:[]f32,xc:[]s8,xs:[]f32,xm:[]s32)->int #export_c {
+    return cast(int)i8_inputs(rows,width,tokens,block,Int8Weights.{codes=wc,scales=ws,offsets=wo},Int8Activations.{codes=xc,scales=xs,sums=xm});
+}
+// Chapter 48's CPU quantizer and kernels, for comparisons within their work
+// limit: tiled 1 interleaves the weights into scratch and runs int8_tiled.
+i8_cpu_quantize_c :: (rows:int,width:int,tokens:int,block:int,x:[]f32,codes:[]s8,scales:[]f32,sums:[]s32)->int #export_c {
+    r:=Int8Request.{rows=rows,width=width,tokens=tokens,block=block};
+    return cast(int)int8_quantize(r,x,Int8Activations.{codes=codes,scales=scales,sums=sums}).status;
+}
+i8_cpu_c :: (tiled:int,rows:int,width:int,tokens:int,block:int,wc:[]s8,ws:[]f32,wo:[]f32,xc:[]s8,xs:[]f32,xm:[]s32,scratch:[]s8,dots:[]s32,y:[]f64)->int #export_c {
+    r:=Int8Request.{rows=rows,width=width,tokens=tokens,block=block};x:=Int8Activations.{codes=xc,scales=xs,sums=xm};
+    if tiled==1 {
+        s:=int8_interleave(r,wc,scratch).status;
+        if s!=Int8Status.ok {return cast(int)s;}
+        return cast(int)int8_tiled(r,Int8Weights.{codes=scratch,scales=ws,offsets=wo},x,dots,y).status;
+    }
+    return cast(int)int8_row(r,Int8Weights.{codes=wc,scales=ws,offsets=wo},x,dots,y).status;
+}
+i8_naive_c :: (w:[]s8,x:[]s8,width:int,block:int,row:int,t:int,b:int)->int #export_c {return i8_naive(w,x,width,block,row,t,b);}
+// Warm run times in nanoseconds: out gets the two-pass mean and standard
+// deviation, then Welford's; the result is the CmStatus number.
+i8_stats_c :: (times:[]int,out:[]f64)->int #export_c {
+    a:=cm_two_pass(times);b:=cm_welford(times);
+    if out.count>=4 {out[0]=a.mean;out[1]=a.sd;out[2]=b.mean;out[3]=b.sd;}
+    return cast(int)a.status;
+}
+// i8_rank on two sides' times: the CmVerdict number; out gets the ratio
+// (b's mean over a's) and the standard error.
+i8_rank_c :: (a:[]int,b:[]int,out:[]f64)->int #export_c {
+    call:=i8_rank(cm_two_pass(a),cm_two_pass(b));
+    if out.count>=2 {out[0]=call.ratio;out[1]=call.se;}
+    return cast(int)call.verdict;
+}
+
+// ---- Checks.
+#test "the device kernels equal int8_quantize, int8_row and int8_tiled bit for bit" #steps 2000000000 {
+    // rows, width, tokens, block.
+    shapes:=[32]int.[1,4,1,4, 16,64,4,32, 16,32,1,16, 32,64,8,16, 8,96,3,48, 16,48,9,48, 4,128,4,32, 16,64,16,64];
+    for n:0..<8 {for seed:0..<2 {
+        #assert i8_same_as_cpu(shapes[4*n],shapes[4*n+1],shapes[4*n+2],shapes[4*n+3],seed+3*n);
+    }}
+}
+#test "the plan counts work items and refuses shapes, overflow, too much work and the tile's limits" {
+    d:=i8_4080();
+    p:=i8_plan(I8Kernel.row,8192,8192,1,32,d);
+    #assert p.status==I8Status.ok && p.blocks==256 && p.quantize_items==256 && p.dot_items==8192*256 && p.mma_items==0 && p.finish_items==8192 && p.dots==8192*256 && p.x_words==2048;
+    p=i8_plan(I8Kernel.mma,8192,8192,128,32,d);
+    #assert p.status==I8Status.ok && p.dot_items==0 && p.mma_items==4*512 && p.finish_items==0 && p.dots==8192*128*256 && p.quantize_items==128*256;
+    #assert p.x_words==128*2048 && i8_plan(I8Kernel.row,8192,8192,9,32,d).x_words==9*2048;
+    p=i8_plan(I8Kernel.mma,16,32,33,16,d);#assert p.mma_items==2 && p.x_words==40*8;
+    p=i8_plan(I8Kernel.mma,16,32,32,16,d);#assert p.mma_items==1 && p.x_words==32*8;
+    p=i8_plan(I8Kernel.mma,16,32,1,16,d);#assert p.mma_items==1 && p.x_words==8*8;
+    #assert i8_plan(I8Kernel.row,1,4,1,4,d).status==I8Status.ok;
+    for bad:[5]int.[0,-4,2,6,33] {#assert i8_plan(I8Kernel.row,1,96,1,bad,d).status==I8Status.shape;}
+    #assert i8_plan(I8Kernel.row,0,32,1,32,d).status==I8Status.shape && i8_plan(I8Kernel.row,1,32,0,32,d).status==I8Status.shape;
+    #assert i8_plan(I8Kernel.row,1,16,1,32,d).status==I8Status.shape && i8_plan(I8Kernel.row,1,48,1,32,d).status==I8Status.shape;
+    #assert i8_plan(I8Kernel.row,1,133148,1,133148,d).status==I8Status.overflow && i8_plan(I8Kernel.row,1,133144,1,133144,d).status==I8Status.ok;
+    // 2^36 multiply-adds exactly, and one row more.
+    #assert i8_plan(I8Kernel.row,4096,4096,4096,32,d).status==I8Status.ok;
+    #assert i8_plan(I8Kernel.row,4097,4096,4096,32,d).status==I8Status.limit && i8_plan(I8Kernel.row,4096,4096,4097,32,d).status==I8Status.limit;
+    #assert i8_plan(I8Kernel.row,4096,4128,4096,32,d).status==I8Status.limit;
+    // The tile: rows and the block in sixteens, the block at most 1040.
+    #assert i8_plan(I8Kernel.mma,8,32,1,32,d).status==I8Status.tile && i8_plan(I8Kernel.mma,24,32,1,32,d).status==I8Status.tile;
+    #assert i8_plan(I8Kernel.mma,16,40,1,40,d).status==I8Status.tile && i8_plan(I8Kernel.row,16,40,1,40,d).status==I8Status.ok;
+    #assert i8_plan(I8Kernel.mma,16,1040,1,1040,d).status==I8Status.ok && i8_plan(I8Kernel.mma,16,1056,1,1056,d).status==I8Status.tile;
+    #assert i8_plan(I8Kernel.mma,16,96,1,32,d).status==I8Status.ok && i8_plan(I8Kernel.mma,48,96,64,48,d).mma_items==6;
+}
+#test "the device: the tile needs the BF16 tensor cores, the row kernels a 256-thread block" {
+    old:=DaDevice.{major=7,minor=5,max_threads=1024,max_shared=49152};
+    p:=i8_plan(I8Kernel.mma,4096,4096,32,32,old);
+    #assert p.status==I8Status.device && p.admission==DaStatus.mma && p.mma_items==0 && p.finish_items==0;
+    #assert i8_plan(I8Kernel.row,4096,4096,32,32,old).status==I8Status.ok;
+    #assert i8_plan(I8Kernel.mma,16,32,1,32,DaDevice.{major=8,minor=0,max_threads=32,max_shared=0}).status==I8Status.ok;
+    small:=DaDevice.{major=8,minor=9,max_threads=128,max_shared=0};
+    #assert i8_plan(I8Kernel.row,16,32,1,32,small).admission==DaStatus.threads && i8_plan(I8Kernel.mma,16,32,1,32,small).status==I8Status.ok;
+    #assert i8_plan(I8Kernel.row,16,32,1,32,DaDevice.{major=8,minor=9,max_threads=256,max_shared=0}).status==I8Status.ok;
+    #assert i8_plan(I8Kernel.row,1,4,1,4,DaDevice.{major=0,minor=0,max_threads=1024,max_shared=0}).admission==DaStatus.report;
+    // Shape refusals come before the device.
+    #assert i8_plan(I8Kernel.mma,8,32,1,32,old).status==I8Status.tile;
+}
+#test "plan texts and the plan's C entry" {
+    d:=i8_4080();old:=DaDevice.{major=7,minor=5,max_threads=1024,max_shared=49152};
+    #assert i8_text(i8_plan(I8Kernel.row,1,4,1,4,d))=="admitted";
+    #assert i8_text(i8_plan(I8Kernel.row,1,4,1,6,d))=="refused: the block must be a positive multiple of 4 that divides the width";
+    #assert i8_text(i8_plan(I8Kernel.row,1,133148,1,133148,d))=="refused: a block that long could overflow s32";
+    #assert i8_text(i8_plan(I8Kernel.row,4097,4096,4096,32,d))=="refused: more than 2^36 multiply-adds";
+    #assert i8_text(i8_plan(I8Kernel.mma,8,32,1,32,d))=="refused: the tensor-core tile needs rows and the block in multiples of 16 and a block of at most 1040";
+    #assert i8_text(i8_plan(I8Kernel.mma,16,32,1,32,old))=="refused: cu_mma_bf16_16x8x16 needs compute capability 8.0 or later";
+    out:[6]int;short:[5]int;
+    #assert i8_plan_c(0,8192,8192,1,32,8,9,1024,49152,out[..])==0 && out[0]==256 && out[1]==8192*256 && out[2]==0 && out[3]==8192 && out[4]==8192*256 && out[5]==2048;
+    #assert i8_plan_c(1,8192,8192,128,32,8,9,1024,49152,out[..])==0 && out[1]==0 && out[2]==2048 && out[3]==0 && out[5]==128*2048;
+    #assert i8_plan_c(1,8192,8192,128,32,7,5,1024,49152,out[..])==5+16*5 && out[2]==0;
+    #assert i8_plan_c(0,8192,8192,128,32,7,5,1024,49152,out[..])==0;
+    #assert i8_plan_c(2,8192,8192,128,32,7,5,1024,49152,out[..])==0;
+    #assert i8_plan_c(0,1,4,1,6,8,9,1024,49152,out[..])==1 && i8_plan_c(0,1,4,1,4,8,9,1024,49152,short[..])==-1;
+}
+#test "input admission for device-sized buffers matches int8_admit" {
+    // One row of 32 codes and three tokens, blocks of 16.
+    wc:[64]s8;ws:[2]f32;wo:[2]f32;xc:[96]s8;xs:[6]f32;xm:[6]s32;
+    i8_fill(wc[..],2);i8_fill(xc[..],5);
+    wc[0]=-127;xc[0]=-127;
+    for i:0..<2 {ws[i]=0.5;wo[i]=-0.25;}
+    for i:0..<6 {xs[i]=0.125;s:=0;for k:0..<16 {s+=cast(int)xc[i*16+k];}xm[i]=cast(s32)s;}
+    w:=wc[0..<32];
+    #assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[..],xm[..])==0;
+    // The same inputs through int8_admit, which the CPU kernels use.
+    r:=Int8Request.{rows=1,width=32,tokens=3,block=16};dots:[6]s32;y:[3]f64;
+    #assert int8_admit(r,Int8Weights.{codes=w,scales=ws[..],offsets=wo[..]},Int8Activations.{codes=xc[..],scales=xs[..],sums=xm[..]},dots[..],y[..],false).status==Int8Status.ok;
+    #assert i8_inputs_c(2,32,3,16,wc[..],ws[..],wo[..],xc[..],xs[..],xm[..])==cast(int)Int8Status.storage;
+    #assert i8_inputs_c(1,32,3,16,wc[0..<31],ws[..],wo[..],xc[..],xs[..],xm[..])==cast(int)Int8Status.storage;
+    #assert i8_inputs_c(1,32,3,16,w,ws[0..<1],wo[..],xc[..],xs[..],xm[..])==cast(int)Int8Status.storage;
+    #assert i8_inputs_c(1,32,3,16,w,ws[..],wo[0..<1],xc[..],xs[..],xm[..])==cast(int)Int8Status.storage;
+    #assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[0..<95],xs[..],xm[..])==cast(int)Int8Status.storage;
+    #assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[0..<5],xm[..])==cast(int)Int8Status.storage;
+    #assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[..],xm[0..<5])==cast(int)Int8Status.storage;
+    save:=wc[31];wc[31]=-128;#assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[..],xm[..])==cast(int)Int8Status.code;wc[31]=save;
+    save=xc[95];xc[95]=-128;#assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[..],xm[..])==cast(int)Int8Status.code;xc[95]=save;
+    big:=f32_from_bits(0x7f7fffff);inf:=big*2;
+    for i:0..<2 {
+        ws[i]=-0.5;#assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[..],xm[..])==cast(int)Int8Status.scale;ws[i]=0.5;
+        ws[i]=inf;#assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[..],xm[..])==cast(int)Int8Status.scale;ws[i]=0.5;
+        wo[i]=-inf;#assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[..],xm[..])==cast(int)Int8Status.scale;wo[i]=-0.25;
+    }
+    for i:0..<6 {
+        xs[i]=-0.125;#assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[..],xm[..])==cast(int)Int8Status.scale;xs[i]=0.125;
+        xm[i]+=1;#assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[..],xm[..])==cast(int)Int8Status.sum;xm[i]-=1;
+    }
+    // A zero scale and a zero offset are allowed, as on the CPU.
+    ws[0]=0;wo[0]=0;xs[0]=0;#assert i8_inputs_c(1,32,3,16,w,ws[..],wo[..],xc[..],xs[..],xm[..])==0;
+}
+#test "statistics and the rank follow chapter 34" {
+    // Chapter 34's hand runs: mean 14, sd sqrt(10).
+    a:=[5]int.[10,12,14,16,18];out:[4]f64;short:[3]f64;
+    #assert i8_stats_c(a[..],out[..])==0 && out[0]==14 && out[1]==sqrt(10.0) && out[2]==14 && out[3]==sqrt(10.0);
+    out[0]=-1;#assert i8_stats_c(a[0..<4],short[..])==cast(int)CmStatus.few && out[0]==-1;
+    s:=[8]int.[38,42,38,42,38,42,38,42]; // mean 40, variance 4*8/7
+    f:=[8]int.[98,102,98,102,98,102,98,102];
+    r:[2]f64;
+    #assert i8_rank_c(s[..],f[..],r[..])==cast(int)CmVerdict.faster && r[0]==2.5;
+    #assert i8_rank_c(f[..],s[..],r[..])==cast(int)CmVerdict.slower && r[0]==0.4;
+    #assert i8_rank_c(s[..],s[..],r[..])==cast(int)CmVerdict.same && r[0]==1 && r[1]==sqrt(2*(32.0/7)/8);
+    // Two standard errors exactly is not a win.
+    sa:=CmStats.{n=8,mean=40,sd=4};sb:=CmStats.{n=8,mean=44,sd=4};
+    #assert i8_rank(sa,sb).verdict==CmVerdict.same && i8_rank(sa,sb).se==2;
+    #assert i8_rank(sb,sa).verdict==CmVerdict.same;
+    sb.mean=44.000001;#assert i8_rank(sa,sb).verdict==CmVerdict.faster && i8_rank(sb,sa).verdict==CmVerdict.slower;
+    // sd 8: se 4, so a difference of 7 is under two standard errors.
+    wide:=CmStats.{n=8,mean=100,sd=8};#assert i8_rank(CmStats.{n=8,mean=107,sd=8},wide).verdict==CmVerdict.same && i8_rank(wide,CmStats.{n=8,mean=107,sd=8}).verdict==CmVerdict.same;
+    #assert i8_rank(CmStats.{n=8,mean=109,sd=8},wide).verdict==CmVerdict.slower;
+    // A spread of exactly a tenth still ranks; more does not.
+    sc:=CmStats.{n=8,mean=100,sd=10};#assert i8_rank(sa,sc).verdict==CmVerdict.faster;
+    sc.sd=10.000001;#assert i8_rank(sa,sc).verdict==CmVerdict.noisy && i8_rank(sc,sa).verdict==CmVerdict.noisy;
+    sa.sd=4.000001;#assert i8_rank(sa,CmStats.{n=8,mean=100,sd=1}).verdict==CmVerdict.noisy;
+    bad:=CmStats.{status=CmStatus.few};
+    #assert i8_rank(bad,sb).verdict==CmVerdict.refused && i8_rank(bad,sb).reason==CmReason.stats && i8_rank(sb,bad).reason==CmReason.stats;
+    #assert i8_rank_c(a[0..<4],s[..],short[0..<1])==cast(int)CmVerdict.refused;
+}
+#test "the CPU entries run chapter 48's quantizer and kernels" {
+    x:=[4]f32.[1.984375,-0.5,0.1,0.0078125];qc:[4]s8;qs:[1]f32;qm:[1]s32;
+    #assert i8_cpu_quantize_c(1,4,1,4,x[..],qc[..],qs[..],qm[..])==0 && qc[0]==127 && qc[1]==-32 && qs[0]==0.015625 && qm[0]==102;
+    #assert i8_cpu_quantize_c(1,4,1,6,x[..],qc[..],qs[..],qm[..])==cast(int)Int8Status.shape;
+    wc:=[4]s8.[2,-1,0,3];ws:=[1]f32.[0.5];wo:=[1]f32.[0.25];scratch:[4]s8;dots:[1]s32;y:[1]f64;
+    #assert i8_cpu_c(0,1,4,1,4,wc[..],ws[..],wo[..],qc[..],qs[..],qm[..],scratch[..],dots[..],y[..])==0 && dots[0]==289 && y[0]==2.65625;
+    #assert i8_cpu_c(1,1,4,1,4,wc[..],ws[..],wo[..],qc[..],qs[..],qm[..],scratch[..],dots[..],y[..])==cast(int)Int8Status.tile;
+    // Four rows and four tokens through int8_tiled.
+    w4:[16]s8;i8_fill(w4[..],9);s4:=[4]f32.[0.5,0.25,1,2];o4:[4]f32;x4:[16]s8;i8_fill(x4[..],4);
+    xs4:=[4]f32.[1,1,1,1];xm4:[4]s32;for t:0..<4 {s:=0;for k:0..<4 {s+=cast(int)x4[4*t+k];}xm4[t]=cast(s32)s;}
+    sc4:[16]s8;d4:[16]s32;y4:[16]f64;d5:[16]s32;y5:[16]f64;
+    #assert i8_cpu_c(1,4,4,4,4,w4[..],s4[..],o4[..],x4[..],xs4[..],xm4[..],sc4[..],d4[..],y4[..])==0;
+    #assert i8_cpu_c(0,4,4,4,4,w4[..],s4[..],o4[..],x4[..],xs4[..],xm4[..],sc4[..],d5[..],y5[..])==0;
+    for i:0..<16 {#assert d4[i]==d5[i] && y4[i]==y5[i] && cast(int)d4[i]==i8_naive_c(w4[..],x4[..],4,4,i%4,i/4,0);}
+    #assert i8_cpu_c(1,4,4,4,4,w4[..],s4[..],o4[..],x4[..],xs4[..],xm4[..],sc4[0..<15],d4[..],y4[..])==cast(int)Int8Status.capacity;
+}

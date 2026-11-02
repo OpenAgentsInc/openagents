@@ -352,6 +352,16 @@
       ]
     },
     {
+      "source": "psionic/examples/int8-device.coax",
+      "chapter": "psionic/book/ch048-integer-matrix-products.md",
+      "stdout": "psionic/fixtures/int8-device.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/kquant.coax",
       "chapter": "psionic/book/ch051-k-quants-and-lattice-quants.md",
       "stdout": "psionic/fixtures/kquant.out",

@@ -1,0 +1,21 @@
+// Chapter 48's device check helpers: fixtures, packing and the naive oracle.
+// A small linear congruential stream of codes in [-127, 127].
+i8_fill :: (codes:[]s8,seed:int) {
+    state:=seed*7919+17;
+    for i:0..<codes.count {state=(state*1103515245+12345)%2147483648;codes[i]=cast(s8)((state>>9)%255-127);}
+}
+// Four codes to a word, byte k of word i is code 4i+k.
+i8_pack :: (codes:[]s8,words:[]u32) {
+    for i:0..<codes.count/4 {
+        word:u32=0;
+        for k:0..<4 {word|=(cast,trunc(u32)codes[4*i+k]&0xff)<<cast(u32)(8*k);}
+        words[i]=word;
+    }
+}
+// Naive oracle: block b of row `row` times block b of token t, one 64-bit
+// product at a time.
+i8_naive :: (w:[]s8,x:[]s8,width:int,block:int,row:int,t:int,b:int)->int {
+    total:=0;
+    for k:0..<block {total+=cast(int)w[row*width+b*block+k]*cast(int)x[t*width+b*block+k];}
+    return total;
+}

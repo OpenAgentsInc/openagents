@@ -1,0 +1,42 @@
+// Chapter 48: the device kernels of int8-block-i32-v1, run on the CPU
+// through their Coax meaning, against chapter 48's CPU kernels; then the
+// device plan's admissions and refusals. psionic/tests/check_int8_device.sh
+// runs the same kernels on the RTX 4080.
+#import "Basic";
+#load "../lib/device/int8-device.coax";
+
+// book:begin example
+main :: () {
+    // The hand block of chapter 48 through i8_quantize, i8_dots and i8_finish.
+    x:=[4]f32.[1.984375,-0.5,0.1,0.0078125];xw:[1]u32;xs:[1]f32;xm:[1]s32;
+    i8_quantize(0,4,x[..],xw[..],xs[..],xm[..]);
+    print("activation codes % % % %, scale %, sum %\n",i8_code(xw[0],0),i8_code(xw[0],1),i8_code(xw[0],2),i8_code(xw[0],3),xs[0],xm[0]);
+    ww:=[1]u32.[0x0300ff02]; // weight codes 2, -1, 0, 3
+    print("one dp4a step: %\n",i8_dp4a(ww[0],xw[0],0));
+    ws:=[1]f32.[0.5];wo:=[1]f32.[0.25];dots:[1]s32;y:[1]f64;
+    i8_dots(0,1,4,4,ww[..],xw[..],dots[..]);
+    i8_finish(0,1,1,ws[..],wo[..],xs[..],xm[..],dots[..],y[..]);
+    print("block sum %, product %\n",dots[0],y[0]);
+
+    // Every kernel against int8_quantize, int8_row and int8_tiled.
+    shapes:=[16]int.[16,64,4,32, 32,64,8,16, 16,48,9,48, 8,96,3,48];
+    for n:0..<4 {
+        rows:=shapes[4*n];width:=shapes[4*n+1];tokens:=shapes[4*n+2];block:=shapes[4*n+3];
+        print("% x % times % tokens, block %: device kernels equal the CPU kernels bit for bit: %\n",rows,width,tokens,block,i8_same_as_cpu(rows,width,tokens,block,n));
+    }
+
+    // The plan: shapes first, then the device.
+    rtx:=DaDevice.{major=8,minor=9,max_threads=1024,max_shared=49152};
+    old:=DaDevice.{major=7,minor=5,max_threads=1024,max_shared=49152};
+    print("tile, 8192 x 8192 times 128 tokens on sm_89: %\n",i8_text(i8_plan(I8Kernel.mma,8192,8192,128,32,rtx)));
+    print("tile on sm_75: %\n",i8_text(i8_plan(I8Kernel.mma,8192,8192,128,32,old)));
+    print("row kernels on sm_75: %\n",i8_text(i8_plan(I8Kernel.row,8192,8192,128,32,old)));
+    print("tile, block of 1056: %\n",i8_text(i8_plan(I8Kernel.mma,16,1056,1,1056,rtx)));
+    print("row kernels, block of 6: %\n",i8_text(i8_plan(I8Kernel.row,1,96,1,6,rtx)));
+    print("row kernels, 4097 x 4096 times 4096 tokens: %\n",i8_text(i8_plan(I8Kernel.row,4097,4096,4096,32,rtx)));
+
+    // A stored sum that does not match its codes.
+    codes:=[4]s8.[127,-32,6,1];sums:=[1]s32.[101];wc:=[4]s8.[2,-1,0,3];
+    print("stored sum 101 for codes summing to 102: %\n",i8_inputs(1,4,1,4,Int8Weights.{codes=wc[..],scales=ws[..],offsets=wo[..]},Int8Activations.{codes=codes[..],scales=xs[..],sums=sums[..]}));
+}
+// book:end example

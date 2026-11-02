@@ -1,0 +1,48 @@
+// Chapter 48's device plan checks: the comparison of every device kernel's
+// CPU meaning with chapter 48's CPU quantizer and kernels.
+i8_4080 :: ()->DaDevice {return DaDevice.{major=8,minor=9,max_threads=1024,max_shared=49152};}
+// Every kernel's CPU meaning against int8_quantize, int8_row and int8_tiled.
+// Returns false at the first difference in a code, a scale's bits, a sum, a
+// block sum or an output's bits.
+i8_same_as_cpu :: (rows:int,width:int,tokens:int,block:int,seed:int)->bool {
+    nb:=width/block;r:=Int8Request.{rows=rows,width=width,tokens=tokens,block=block};
+    wc:[2048]s8;wi:[2048]s8;ww:[512]u32;ws:[128]f32;wo:[128]f32;x:[1024]f32;
+    qc:[1024]s8;qs:[64]f32;qm:[64]s32;xw:[256]u32;ds:[64]f32;dm:[64]s32;
+    d1:[1024]s32;d2:[1024]s32;d3:[1024]s32;d4:[1024]s32;y1:[256]f64;y2:[256]f64;y3:[256]f64;y4:[256]f64;
+    i8_fill(wc[0..<rows*width],seed);i8_pack(wc[0..<rows*width],ww[..]);
+    for i:0..<rows*nb {ws[i]=f32(f64((i*29+seed)%97+1)/3000);wo[i]=f32(f64((i*13+seed)%9-4)/77);}
+    state:=seed*31+5;
+    for i:0..<tokens*width {state=(state*1103515245+12345)%2147483648;x[i]=f32(f64(state%200001-100000)/f64(1+(i/block)%5*7919));}
+    a:=Int8Activations.{codes=qc[0..<tokens*width],scales=qs[0..<tokens*nb],sums=qm[0..<tokens*nb]};
+    if int8_quantize(r,x[0..<tokens*width],a).status!=Int8Status.ok {return false;}
+    for i:0..<tokens*nb {i8_quantize(tokens*nb-1-i,block,x[0..<tokens*width],xw[..],ds[..],dm[..]);}
+    packed:[256]u32;i8_pack(qc[0..<tokens*width],packed[..]);
+    for i:0..<tokens*width/4 {if xw[i]!=packed[i] {return false;}}
+    for i:0..<tokens*nb {if f32_bits(ds[i])!=f32_bits(qs[i]) || dm[i]!=qm[i] {return false;}}
+    w:=Int8Weights.{codes=wc[0..<rows*width],scales=ws[0..<rows*nb],offsets=wo[0..<rows*nb]};
+    n:=rows*tokens*nb;
+    if int8_row(r,w,a,d1[0..<n],y1[0..<rows*tokens]).status!=Int8Status.ok {return false;}
+    tiled:=rows%INT8_TILE==0 && tokens%INT8_TILE==0;
+    if tiled {
+        if int8_interleave(r,wc[0..<rows*width],wi[0..<rows*width]).status!=Int8Status.ok {return false;}
+        if int8_tiled(r,Int8Weights.{codes=wi[0..<rows*width],scales=w.scales,offsets=w.offsets},a,d4[0..<n],y4[0..<rows*tokens]).status!=Int8Status.ok {return false;}
+    }
+    for i:0..<n {i8_dots(n-1-i,rows,width,block,ww[..],xw[..],d2[..]);}
+    for i:0..<rows*tokens {i8_finish(rows*tokens-1-i,rows,nb,ws[..],wo[..],ds[..],dm[..],d2[..],y2[..]);}
+    mma:=rows%16==0 && block%16==0;
+    if mma {
+        items:=(tokens+I8_TOKENS-1)/I8_TOKENS*(rows/16);
+        for i:0..<items {i8_mma(items-1-i,rows,width,tokens,block,ww[..],xw[..],ws[..],wo[..],ds[..],dm[..],1,d3[..],y3[..]);}
+    }
+    for i:0..<n {
+        if d2[i]!=d1[i] {return false;}
+        if mma && d3[i]!=d1[i] {return false;}
+        if tiled && d4[i]!=d1[i] {return false;}
+    }
+    for i:0..<rows*tokens {
+        if f64_bits(y2[i])!=f64_bits(y1[i]) {return false;}
+        if mma && f64_bits(y3[i])!=f64_bits(y1[i]) {return false;}
+        if tiled && f64_bits(y4[i])!=f64_bits(y1[i]) {return false;}
+    }
+    return true;
+}

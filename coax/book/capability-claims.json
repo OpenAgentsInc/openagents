@@ -182,7 +182,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "408e6cee5938a321fd3460dc26c3fc2ac9a2e53e18983cf36b9b6bf8b87b0f97"
+          "sha256": "25ae22f6df8dfcba97dd5d44566e5b0c11dc00c46791d36ee55b0e4c7694de3d"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -267,7 +267,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "408e6cee5938a321fd3460dc26c3fc2ac9a2e53e18983cf36b9b6bf8b87b0f97"
+          "sha256": "25ae22f6df8dfcba97dd5d44566e5b0c11dc00c46791d36ee55b0e4c7694de3d"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",

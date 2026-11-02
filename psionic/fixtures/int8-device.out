@@ -1,0 +1,14 @@
+activation codes 127 -32 6 1, scale 0.015625, sum 102
+one dp4a step: 289
+block sum 289, product 2.65625
+16 x 64 times 4 tokens, block 32: device kernels equal the CPU kernels bit for bit: true
+32 x 64 times 8 tokens, block 16: device kernels equal the CPU kernels bit for bit: true
+16 x 48 times 9 tokens, block 48: device kernels equal the CPU kernels bit for bit: true
+8 x 96 times 3 tokens, block 48: device kernels equal the CPU kernels bit for bit: true
+tile, 8192 x 8192 times 128 tokens on sm_89: admitted
+tile on sm_75: refused: cu_mma_bf16_16x8x16 needs compute capability 8.0 or later
+row kernels on sm_75: admitted
+tile, block of 1056: refused: the tensor-core tile needs rows and the block in multiples of 16 and a block of at most 1040
+row kernels, block of 6: refused: the block must be a positive multiple of 4 that divides the width
+row kernels, 4097 x 4096 times 4096 tokens: refused: more than 2^36 multiply-adds
+stored sum 101 for codes summing to 102: sum

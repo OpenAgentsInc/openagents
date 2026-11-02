@@ -1,0 +1,259 @@
+// Chapter 48: the int8-block-i32-v1 products as `coax cuda` kernels. Codes
+// travel four to a u32 word (byte k of a word is code 4i+k, as the bytes of
+// an s8 array lie in memory). i8_quantize quantizes activation blocks exactly
+// as int8_quantize does; i8_dots computes each block's s32 sum four codes at
+// a time, the work of one dp4a instruction; i8_mma computes the same sums on
+// the tensor cores with cu_mma_bf16_16x8x16; i8_finish combines the sums in
+// binary64 in block order, as int8_row does. The plan, device admission and
+// the comparison with the CPU kernels are in int8-device.coax: a kernel file
+// holds only what `coax cuda` accepts.
+#load "../../../coax/lib/compute/mma.coax";
+#load "../../tests/int8-device-checks.coax";  // the checks' fixtures and naive oracle
+#authority;
+
+// book:begin bytes
+// Code k (0..3) of a word, sign-extended.
+i8_code :: (word:u32,k:int)->s32 {return cast(s32)cast,trunc(s8)(word>>cast(u32)(8*k));}
+// What one dp4a instruction computes: acc plus four products of codes.
+i8_dp4a :: (a:u32,b:u32,acc:s32)->s32 {
+    return acc+i8_code(a,0)*i8_code(b,0)+i8_code(a,1)*i8_code(b,1)+i8_code(a,2)*i8_code(b,2)+i8_code(a,3)*i8_code(b,3);
+}
+// book:end bytes
+
+// book:begin quantize
+// int8_scale and int8_nearest of int8-products.coax, for the device.
+i8_scale :: (amax:f32)->f32 {
+    want:=f64(amax)/127;d:=f32(want);
+    if f64(d)<want {d=f32_from_bits(f32_bits(d)+1);}
+    return d;
+}
+// Item i: activation block i (token i/nb, block i%nb), quantized as
+// int8_quantize does, four codes to a word.
+i8_quantize :: (item:int,block:int,x:[]f32,codes:[]u32,scales:[]f32,sums:[]s32) #export_c {
+    at:=item*block;top:=0;
+    for k:0..<block {v:=cast(int)(f32_bits(x[at+k])&0x7fffffff);top=cast(int)((f64(top+v)+abs(f64(top-v)))/2);}
+    d:=i8_scale(f32_from_bits(cast(u32)top));sum:s32=0;
+    for g:0..<block/4 {
+        word:u32=0;
+        for k:0..<4 {
+            q:=0;
+            if top!=0 {q=int(floor(f64(x[at+4*g+k])/f64(d)+0.5));}
+            word|=(cast,trunc(u32)q&0xff)<<cast(u32)(8*k);sum+=cast(s32)q;
+        }
+        codes[at/4+g]=word;
+    }
+    scales[item]=d;sums[item]=sum;
+}
+// book:end quantize
+
+// book:begin dots
+// Decode shape. Item (t*rows+row)*nb+b: block b of weight row `row` times
+// block b of token t, one word (four codes) at a time. Neighbouring items
+// read neighbouring blocks of one row.
+i8_dots :: (item:int,rows:int,width:int,block:int,w:[]u32,x:[]u32,dots:[]s32) #export_c {
+    nb:=width/block;b:=item%nb;row:=item/nb%rows;t:=item/nb/rows;
+    wa:=(row*width+b*block)/4;xa:=(t*width+b*block)/4;acc:s32=0;
+    for g:0..<block/4 {acc=i8_dp4a(w[wa+g],x[xa+g],acc);}
+    dots[item]=acc;
+}
+// book:end dots
+
+// book:begin finish
+// Item t*rows+row: the block terms of int8_term added in binary64 in block
+// order, exactly as int8_row adds them.
+i8_finish :: (item:int,rows:int,nb:int,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,dots:[]s32,y:[]f64) #export_c {
+    row:=item%rows;t:=item/rows;acc:f64=0;
+    for b:0..<nb {
+        dx:=f64(xs[t*nb+b]);
+        acc+=f64(ws[row*nb+b])*dx*f64(dots[item*nb+b])+f64(wo[row*nb+b])*dx*f64(xm[t*nb+b]);
+    }
+    y[item]=acc;
+}
+// book:end finish
+
+// book:begin mma
+I8_TILES :: 4;   // token tiles of 8 per warp
+I8_TOKENS :: 32; // tokens per warp
+// Two codes of a word (half h: bytes 2h and 2h+1) as a BF16 pair. Every code
+// in [-127, 127] is exact in BF16.
+i8_bf16 :: (code:s32)->u32 {return f32_bits(f32(code))>>16;}
+i8_pair :: (word:u32,h:int)->u32 {return i8_bf16(i8_code(word,2*h))|(i8_bf16(i8_code(word,2*h+1))<<16);}
+// One warp: rows r0..r0+15 times tokens t0..t0+31, every block in order.
+// Work item group*(rows/16)+rowblock. x holds the tokens rounded up to a
+// multiple of 8: a ragged tile reads the padding, whatever it holds, and
+// writes nothing for it.
+// Every product of two codes and every partial sum of one block is an
+// integer of magnitude at most block*127*127, which the plan keeps at or
+// below 2^24, so the f32 accumulation is exact in any order and each block's
+// sum converts to s32 without loss. After each block the warp adds its terms
+// to binary64 totals, in block order, as i8_finish and int8_row do, and
+// writes y at the end. With record 1 it also writes every block sum to dots.
+i8_mma :: (item:int,rows:int,width:int,tokens:int,block:int,w:[]u32,x:[]u32,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,record:int,dots:[]s32,y:[]f64) #export_c {
+    blocks:=rows/16;r0:=item%blocks*16;t0:=item/blocks*I8_TOKENS;
+    nb:=width/block;q:=width/4;used:=(tokens-t0+7)/8;
+    fa:[128]u32;fb:[64]u32;fc:[128]f32;acc:[512]f32;total:[512]f64;
+    for b:0..<nb {
+        for lane:0..<32 {for j:0..<16 {acc[lane*16+j]=0;}}
+        for s:0..<block/16 {
+            c:=(b*block+s*16)/4; // the step's first word
+            for lane:0..<32 {
+                at:=(r0+lane/4)*q+c+lane%4/2;h:=lane%2;
+                fa[lane*4]=i8_pair(w[at],h);fa[lane*4+1]=i8_pair(w[at+8*q],h);
+                fa[lane*4+2]=i8_pair(w[at+2],h);fa[lane*4+3]=i8_pair(w[at+8*q+2],h);
+            }
+            for tile:0..<I8_TILES {
+                if tile<used {
+                    for lane:0..<32 {
+                        xa:=(t0+tile*8+lane/4)*q+c+lane%4/2;
+                        fb[lane*2]=i8_pair(x[xa],lane%2);fb[lane*2+1]=i8_pair(x[xa+2],lane%2);
+                        for j:0..<4 {fc[lane*4+j]=acc[lane*16+tile*4+j];}
+                    }
+                    cu_mma_bf16_16x8x16(fa[..],fb[..],fc[..]);
+                    for lane:0..<32 {for j:0..<4 {acc[lane*16+tile*4+j]=fc[lane*4+j];}}
+                }
+            }
+        }
+        for lane:0..<32 {
+            for tile:0..<I8_TILES {
+                for j:0..<4 {
+                    row:=r0+lane/4+8*(j/2);token:=t0+tile*8+2*(lane%4)+j%2;
+                    if token<tokens {
+                        dot:=cast(s32)acc[lane*16+tile*4+j];dx:=f64(xs[token*nb+b]);
+                        total[lane*16+tile*4+j]+=f64(ws[row*nb+b])*dx*f64(dot)+f64(wo[row*nb+b])*dx*f64(xm[token*nb+b]);
+                        if record!=0 {dots[(token*rows+row)*nb+b]=dot;}
+                    }
+                }
+            }
+        }
+    }
+    for lane:0..<32 {
+        for tile:0..<I8_TILES {
+            for j:0..<4 {
+                row:=r0+lane/4+8*(j/2);token:=t0+tile*8+2*(lane%4)+j%2;
+                if token<tokens {y[token*rows+row]=total[lane*16+tile*4+j];}
+            }
+        }
+    }
+}
+// book:end mma
+
+// ---- Checks of the kernels' pieces; the comparison with int8_row and
+// int8_tiled is in int8-device.coax.
+#test "codes come out of words sign-extended, byte 0 first" {
+    #assert i8_code(0x80ff017f,0)==127 && i8_code(0x80ff017f,1)==1 && i8_code(0x80ff017f,2)==-1 && i8_code(0x80ff017f,3)==-128;
+    #assert i8_code(0x00000081,0)==-127 && i8_code(0x00000081,1)==0;
+}
+#test "one dp4a step: the hand block of chapter 48" {
+    // Weights [2, -1, 0, 3] and activations [127, -32, 6, 1]: 254 + 32 + 0 + 3.
+    w:u32=0x0300ff02;x:u32=0x0106e07f;
+    #assert i8_dp4a(w,x,0)==289 && i8_dp4a(w,x,-289)==0 && i8_dp4a(x,w,11)==300;
+    // The extremes: 4 x 127 x 127 and 4 x 127 x -127.
+    #assert i8_dp4a(0x7f7f7f7f,0x7f7f7f7f,0)==64516 && i8_dp4a(0x7f7f7f7f,0x81818181,0)==-64516;
+}
+#test "BF16 pairs carry two codes exactly" {
+    #assert i8_bf16(1)==0x3f80 && i8_bf16(-2)==0xc000 && i8_bf16(0)==0 && i8_bf16(127)==0x42fe && i8_bf16(-127)==0xc2fe;
+    // Word 0x0300ff02: half 0 is codes 2 and -1, half 1 is 0 and 3.
+    #assert i8_pair(0x0300ff02,0)==(0x4000|(0xbf80<<16)) && i8_pair(0x0300ff02,1)==(0|(0x4040<<16));
+}
+#test "the scale is the smallest f32 at or above amax/127" {
+    #assert i8_scale(1.984375)==0.015625 && i8_scale(127)==1 && i8_scale(0)==0;
+    // 1/127 is not an f32: the scale rounds up past it.
+    d:=i8_scale(1);#assert f64(d)>=1.0/127 && f64(f32_from_bits(f32_bits(d)-1))<1.0/127;
+}
+#test "two blocks of eight quantize by hand" {
+    // Block 0: amax 127, scale 1. Block 1: amax 63.5, scale 0.5.
+    x:=[16]f32.[1.4,127,-2.5,3,0.5,-0.5,5.6,-127, 10,-63.5,0.24,0.25,1,-1,2.2,0];
+    codes:[4]u32;scales:[2]f32;sums:[2]s32;
+    for i:0..<2 {i8_quantize(1-i,8,x[..],codes[..],scales[..],sums[..]);}
+    // Ties go upward: -2.5 is -2, 0.5 is 1, -0.5 is 0.
+    #assert scales[0]==1 && codes[0]==0x03fe7f01 && codes[1]==0x81060001 && sums[0]==1+127-2+3+1+0+6-127;
+    // 0.25/0.5 is a tie: 1. 0.24/0.5 rounds to 0.
+    #assert scales[1]==0.5 && codes[2]==0x01008114 && codes[3]==0x0004fe02 && sums[1]==20-127+0+1+2-2+4+0;
+}
+#test "the hand block quantizes on the device path as on the CPU" {
+    x:=[8]f32.[1.984375,-0.5,0.1,0.0078125,0,0,0,0];codes:[2]u32;scales:[2]f32;sums:[2]s32;
+    codes[1]=7;scales[1]=7;sums[1]=7;
+    for i:0..<2 {i8_quantize(i,4,x[..],codes[..],scales[..],sums[..]);}
+    #assert codes[0]==0x0106e07f && scales[0]==0.015625 && sums[0]==102;
+    // An all-zero block: scale 0, codes 0, no division.
+    #assert codes[1]==0 && scales[1]==0 && sums[1]==0;
+    // Negative extreme: -127 is the code, never -128.
+    y:=[4]f32.[-3,1.5,0,0.75];
+    i8_quantize(0,4,y[..],codes[..],scales[..],sums[..]);
+    // 1.5/d is just under 63.5 because d is just over 3/127, so it rounds to 63.
+    #assert scales[0]==i8_scale(3) && f64(scales[0])>3.0/127;
+    #assert i8_code(codes[0],0)==-127 && i8_code(codes[0],1)==63 && i8_code(codes[0],2)==0 && i8_code(codes[0],3)==32 && sums[0]==-32;
+}
+#test "dp4a-shaped block sums and the binary64 combine against the naive oracle" #steps 100000000 {
+    // Shapes: rows, width, tokens, block.
+    shapes:=[20]int.[3,8,1,4, 5,96,2,32, 2,64,3,16, 4,48,1,48, 1,128,4,128];
+    wc:[640]s8;xc:[512]s8;ww:[160]u32;xw:[128]u32;ws:[60]f32;wo:[60]f32;xs:[16]f32;xm:[16]s32;dots:[64]s32;y:[20]f64;
+    for n:0..<5 {
+        rows:=shapes[4*n];width:=shapes[4*n+1];tokens:=shapes[4*n+2];block:=shapes[4*n+3];nb:=width/block;
+        i8_fill(wc[0..<rows*width],n);i8_fill(xc[0..<tokens*width],n+40);
+        i8_pack(wc[0..<rows*width],ww[..]);i8_pack(xc[0..<tokens*width],xw[..]);
+        for i:0..<rows*nb {ws[i]=f32(f64(i+1)/64);wo[i]=f32(f64(i%3-1)/8);}
+        for i:0..<tokens*nb {
+            xs[i]=f32(f64(i+3)/1024);s:=0;
+            for k:0..<block {s+=cast(int)xc[i*block+k];}
+            xm[i]=cast(s32)s;
+        }
+        for i:0..<rows*tokens*nb {dots[i]=7;}
+        for i:0..<rows*tokens*nb {i8_dots(rows*tokens*nb-1-i,rows,width,block,ww[..],xw[..],dots[..]);}
+        for i:0..<rows*tokens {i8_finish(rows*tokens-1-i,rows,nb,ws[..],wo[..],xs[..],xm[..],dots[..],y[..]);}
+        for t:0..<tokens {for row:0..<rows {
+            want:f64=0;
+            for b:0..<nb {
+                s:=i8_naive(wc[..],xc[..],width,block,row,t,b);
+                #assert cast(int)dots[(t*rows+row)*nb+b]==s;
+                // Power-of-two scales make every term and sum exact here.
+                want+=f64(ws[row*nb+b])*f64(xs[t*nb+b])*f64(s)+f64(wo[row*nb+b])*f64(xs[t*nb+b])*f64(xm[t*nb+b]);
+            }
+            #assert y[t*rows+row]==want;
+        }}
+    }
+}
+#test "tensor-core block sums and outputs equal the naive oracle for every row, token group and ragged tile" #steps 400000000 {
+    // rows, width, tokens, block.
+    shapes:=[28]int.[16,32,1,16, 16,64,7,32, 32,48,9,16, 16,32,33,32, 32,64,40,16, 16,96,8,48, 16,64,32,64];
+    wc:[2048]s8;xc:[2560]s8;ww:[512]u32;xw:[640]u32;dots:[5120]s32;ws:[128]f32;wo:[128]f32;xs:[160]f32;xm:[160]s32;y:[1280]f64;y2:[1280]f64;
+    for n:0..<7 {
+        rows:=shapes[4*n];width:=shapes[4*n+1];tokens:=shapes[4*n+2];block:=shapes[4*n+3];nb:=width/block;
+        i8_fill(wc[0..<rows*width],n+3);i8_fill(xc[0..<tokens*width],n+70);
+        i8_pack(wc[0..<rows*width],ww[..]);i8_pack(xc[0..<tokens*width],xw[..]);
+        for i:0..<rows*nb {ws[i]=f32(f64(i%5+1)/16);wo[i]=f32(f64(i%3-1)/4);}
+        for i:0..<tokens*nb {xs[i]=f32(f64(i%7+1)/64);xm[i]=cast(s32)(i%11-5);}
+        for i:0..<rows*tokens*nb {dots[i]=7;}
+        items:=(tokens+I8_TOKENS-1)/I8_TOKENS*(rows/16);padded:=(tokens+7)/8*8;
+        // The views are exactly as long as the plan says: a tile too many would trap.
+        for record:0..<2 {
+            out:=y[0..<rows*tokens];if record==1 {out=y2[0..<rows*tokens];}
+            for i:0..<items {
+                i8_mma(items-1-i,rows,width,tokens,block,ww[0..<rows*width/4],xw[0..<padded*width/4],ws[0..<rows*nb],wo[0..<rows*nb],
+                    xs[0..<tokens*nb],xm[0..<tokens*nb],record,dots[0..<rows*tokens*nb],out);
+            }
+            if record==0 {for i:0..<rows*tokens*nb {#assert dots[i]==7;}}
+        }
+        for t:0..<tokens {for row:0..<rows {
+            want:f64=0;
+            for b:0..<nb {
+                s:=i8_naive(wc[..],xc[..],width,block,row,t,b);
+                #assert cast(int)dots[(t*rows+row)*nb+b]==s;
+                // Small dyadic scales: every term and sum is exact here.
+                want+=f64(ws[row*nb+b])*f64(xs[t*nb+b])*f64(s)+f64(wo[row*nb+b])*f64(xs[t*nb+b])*f64(xm[t*nb+b]);
+            }
+            #assert y[t*rows+row]==want && y2[t*rows+row]==want;
+        }}
+    }
+}
+#test "the largest tensor-core block, 1040 codes of 127 times 127, is exact" #steps 400000000 {
+    // 1040 x 16129 = 16774160, just under 2^24 = 16777216.
+    wc:[16640]s8;xc:[1040]s8;ww:[4160]u32;xw:[2080]u32;dots:[16]s32;ws:[16]f32;wo:[16]f32;xs:=[1]f32.[1];xm:=[1]s32.[3];y:[16]f64;
+    for i:0..<16640 {wc[i]=127;}
+    for i:0..<1040 {xc[i]=127;}
+    for i:0..<16 {ws[i]=1;wo[i]=f32(i);}
+    xc[0]=-127;
+    i8_pack(wc[..],ww[..]);i8_pack(xc[..],xw[..]);
+    i8_mma(0,16,1040,1,1040,ww[..],xw[..],ws[..],wo[..],xs[..],xm[..],1,dots[..],y[..]);
+    for r:0..<16 {#assert dots[r]==16774160-2*16129 && y[r]==f64(16774160-2*16129+3*r);}
+}

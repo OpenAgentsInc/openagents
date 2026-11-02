@@ -1,0 +1,42 @@
+# Chapter 48 device receipt: psionic/tests/check_int8_device.sh on the RTX 4080 (sm_89, driver 595.71.05),
+# 2026-11-02, built by the cached coax release compiler 8925679b5e19. Times are microseconds of
+# CUDA events around each warm run; statistics by cm_two_pass, ranks by i8_rank (chapter 34's rule).
+device: NVIDIA GeForce RTX 4080 (sm_89): row kernels admitted, tensor-core tile admitted
+a reported sm_75: tile status 85 (5 + 16*5: needs compute capability 8.0), row kernels status 0
+against chapter 48's CPU kernels (int8_quantize, int8_row, int8_tiled), bit for bit:
+   256 x 4096 times   1 tokens, block   32: quantize equal; int8_tiled not applicable; i8_dots+i8_finish equal; i8_mma equal
+  1024 x 1024 times   1 tokens, block   32: quantize equal; int8_tiled not applicable; i8_dots+i8_finish equal; i8_mma equal
+    64 x  512 times  32 tokens, block   32: quantize equal; int8_tiled equals int8_row; i8_dots+i8_finish equal; i8_mma equal
+   128 x 1024 times   8 tokens, block   32: quantize equal; int8_tiled equals int8_row; i8_dots+i8_finish equal; i8_mma equal
+    32 x  512 times  37 tokens, block   64: quantize equal; int8_tiled not applicable; i8_dots+i8_finish equal; i8_mma equal
+    16 x 1040 times  12 tokens, block 1040: quantize equal; int8_tiled equals int8_row; i8_dots+i8_finish equal; i8_mma equal
+    12 x  960 times   5 tokens, block   48: quantize equal; int8_tiled not applicable; i8_dots+i8_finish equal; i8_mma not admitted
+throughput on the device (chapter 34 statistics: one warm-up, 20 timed runs per side):
+  decode: 8192 x 8192 weights, 1 token, block 32
+    int8 outputs: i8_mma equals i8_dots+i8_finish bit for bit: yes; activations pass input admission: yes; 2104 sampled block sums equal the naive oracle: yes
+    int8 i8_dots+i8_finish (dp4a-shaped)     331.9 us  sd    2.9  (n=20)     202 GB/s of weights      202 G multiply-adds/s
+    int8 i8_mma (BF16 tensor cores)        704.0 us  sd    3.9  (n=20)      95 GB/s of weights       95 G multiply-adds/s
+    f32 dv_matvec+dv_reduce (ch. 37/44)     243.5 us  sd    1.2  (n=20)     551 GB/s of weights      276 G multiply-adds/s
+    BF16-weight MMA dw_project (ch. 37)    1716.0 us  sd    7.5  (n=20)      78 GB/s of weights       39 G multiply-adds/s
+    int8 i8_dots+i8_finish (dp4a-shaped) against f32 dv_matvec+dv_reduce (ch. 37/44): 0.73x, slower
+    int8 i8_dots+i8_finish (dp4a-shaped) against BF16-weight MMA dw_project (ch. 37): 5.17x, faster
+    int8 i8_mma (BF16 tensor cores) against int8 i8_dots+i8_finish (dp4a-shaped): 0.47x, slower
+  prefill: 8192 x 8192 weights, 32 tokens, block 32
+    int8 outputs: i8_mma equals i8_dots+i8_finish bit for bit: yes; activations pass input admission: yes; 67311 sampled block sums equal the naive oracle: yes
+    int8 i8_dots+i8_finish (dp4a-shaped)    6674.5 us  sd   30.0  (n=20)      10 GB/s of weights      322 G multiply-adds/s
+    int8 i8_mma (BF16 tensor cores)       3625.5 us  sd    3.5  (n=20)      19 GB/s of weights      592 G multiply-adds/s
+    f32 dv_project (ch. 37/44)            3390.6 us  sd   45.2  (n=20)      40 GB/s of weights      633 G multiply-adds/s
+    BF16-weight MMA dw_project (ch. 37)    1652.4 us  sd    9.0  (n=20)      81 GB/s of weights     1300 G multiply-adds/s
+    int8 i8_mma (BF16 tensor cores) against f32 dv_project (ch. 37/44): 0.94x, slower
+    int8 i8_mma (BF16 tensor cores) against BF16-weight MMA dw_project (ch. 37): 0.46x, slower
+    int8 i8_mma (BF16 tensor cores) against int8 i8_dots+i8_finish (dp4a-shaped): 1.84x, faster
+  prefill: 8192 x 8192 weights, 128 tokens, block 32
+    int8 outputs: i8_mma equals i8_dots+i8_finish bit for bit: yes; activations pass input admission: yes; 269244 sampled block sums equal the naive oracle: yes
+    int8 i8_dots+i8_finish (dp4a-shaped)   25114.5 us  sd  119.7  (n=20)       3 GB/s of weights      342 G multiply-adds/s
+    int8 i8_mma (BF16 tensor cores)      13143.6 us  sd  237.3  (n=20)       5 GB/s of weights      654 G multiply-adds/s
+    f32 dv_project (ch. 37/44)            4204.4 us  sd  123.0  (n=20)      32 GB/s of weights     2043 G multiply-adds/s
+    BF16-weight MMA dw_project (ch. 37)    1974.6 us  sd    6.8  (n=20)      68 GB/s of weights     4350 G multiply-adds/s
+    int8 i8_mma (BF16 tensor cores) against f32 dv_project (ch. 37/44): 0.32x, slower
+    int8 i8_mma (BF16 tensor cores) against BF16-weight MMA dw_project (ch. 37): 0.15x, slower
+    int8 i8_mma (BF16 tensor cores) against int8 i8_dots+i8_finish (dp4a-shaped): 1.91x, faster
+chapter 48 on CUDA: every device block sum and output equals the CPU kernels bit for bit

@@ -1,9 +1,10 @@
 # 48. Integer matrix products
 
 > **Status: partly implemented.** The block format, the quantizer, the row
-> kernel, the tiled kernel and the error bound run on the CPU. The device
-> kernels (a dp4a row kernel and an int8 tensor-core tile) and a throughput
-> measurement on the RTX 4080 are not written yet.
+> kernel, the tiled kernel and the error bound run on the CPU. Their device
+> versions run on the RTX 4080 and equal the CPU kernels bit for bit, with a
+> throughput receipt. The `dp4a` and int8 tensor-core instructions, which
+> `coax cuda` cannot emit yet, and the speed they would bring, remain.
 
 Quantized weights save memory, but the products still need to be correct.
 This chapter quantizes activations to 8-bit blocks, multiplies them with
@@ -12,13 +13,15 @@ integer. Only then are the scales applied. Because the integer part is exact,
 two different kernels must agree on it exactly, and only the quantization and
 scaling steps need a tolerance.
 
-The profile is `int8-block-i32-v1`. Everything in it runs on the CPU, written
-in Coax.
+The profile is `int8-block-i32-v1`. It runs on the CPU and, through chapter
+37's compute subset, on an NVIDIA GPU, written in Coax.
 
 ```shell
 coax/bin/coax run psionic/examples/int8-products.coax
 coax/bin/coax test psionic/lib/int8-products.coax
 coax/bin/coax mutate psionic/lib/int8-products.coax --root-only
+coax/bin/coax run psionic/examples/int8-device.coax
+COAX_CC=gcc psionic/tests/check_int8_device.sh
 ```
 
 ## The block format
@@ -470,6 +473,486 @@ every output is within its bound; the largest error is about a quarter of its
 bound. The refusals each name their reason, and the last line shows that none
 of them touched the earlier output.
 
+## On the device
+
+The device kernels are `coax cuda` kernels (chapter 37): each `#export_c`
+procedure runs once per work item, and its integer, cast and bounds checks
+keep their meaning on the device. They are in
+[int8-kernels.coax](../lib/device/int8-kernels.coax). The launch plan, the
+admission and the comparisons with the CPU kernels are in
+[int8-device.coax](../lib/device/int8-device.coax).
+
+### Four codes to a word
+
+On the device, codes travel four to a `u32`: byte k of word i is code
+4i + k. That is how the bytes of an `s8` array already lie in memory, so the
+host uploads the same bytes it holds. The hand block's activation codes 127,
+−32, 6 and 1 are the bytes 0x7f, 0xe0, 0x06 and 0x01, so their word is
+0x0106e07f. The weight codes 2, −1, 0 and 3 make the word 0x0300ff02.
+
+`i8_dp4a` computes what one `dp4a` instruction computes: it sign-extends the
+four bytes of each word, multiplies them in pairs and adds the four products
+to an accumulator. For the two hand words that is
+
+```text
+0 + 2·127 + (−1)(−32) + 0·6 + 3·1 = 289
+```
+
+the same sum as the CPU's.
+
+<!-- source: psionic/lib/device/int8-kernels.coax bytes -->
+```jai
+// Code k (0..3) of a word, sign-extended.
+i8_code :: (word:u32,k:int)->s32 {return cast(s32)cast,trunc(s8)(word>>cast(u32)(8*k));}
+// What one dp4a instruction computes: acc plus four products of codes.
+i8_dp4a :: (a:u32,b:u32,acc:s32)->s32 {
+    return acc+i8_code(a,0)*i8_code(b,0)+i8_code(a,1)*i8_code(b,1)+i8_code(a,2)*i8_code(b,2)+i8_code(a,3)*i8_code(b,3);
+}
+```
+
+`coax cuda` has no `dp4a` primitive yet, so the device compiler sees the
+shifts, multiplies and adds of this body, not the single instruction. The sums
+are the same; the speed is not, as the receipt below shows.
+
+### The quantizer, the row kernels and the combine
+
+`i8_quantize` quantizes one activation block per work item with the
+arithmetic of `int8_quantize`: the same largest-magnitude search over the
+bits, the same scale rounded up, the same rounding of each code, written four
+codes to a word. A block of zeros gets scale 0 and codes 0 without a
+division.
+
+<!-- source: psionic/lib/device/int8-kernels.coax quantize -->
+```jai
+// int8_scale and int8_nearest of int8-products.coax, for the device.
+i8_scale :: (amax:f32)->f32 {
+    want:=f64(amax)/127;d:=f32(want);
+    if f64(d)<want {d=f32_from_bits(f32_bits(d)+1);}
+    return d;
+}
+// Item i: activation block i (token i/nb, block i%nb), quantized as
+// int8_quantize does, four codes to a word.
+i8_quantize :: (item:int,block:int,x:[]f32,codes:[]u32,scales:[]f32,sums:[]s32) #export_c {
+    at:=item*block;top:=0;
+    for k:0..<block {v:=cast(int)(f32_bits(x[at+k])&0x7fffffff);top=cast(int)((f64(top+v)+abs(f64(top-v)))/2);}
+    d:=i8_scale(f32_from_bits(cast(u32)top));sum:s32=0;
+    for g:0..<block/4 {
+        word:u32=0;
+        for k:0..<4 {
+            q:=0;
+            if top!=0 {q=int(floor(f64(x[at+4*g+k])/f64(d)+0.5));}
+            word|=(cast,trunc(u32)q&0xff)<<cast(u32)(8*k);sum+=cast(s32)q;
+        }
+        codes[at/4+g]=word;
+    }
+    scales[item]=d;sums[item]=sum;
+}
+```
+
+The decode shape uses two kernels. `i8_dots` computes one block's `s32` sum
+per work item, so neighbouring items read neighbouring blocks of one row.
+`i8_finish` then adds each output's block terms in binary64, in block order,
+with the expression `int8_term` uses. The device rounds each `f64` operation
+once, as the C build does (chapter 37), so the outputs equal `int8_row`'s bit
+for bit.
+
+<!-- source: psionic/lib/device/int8-kernels.coax dots -->
+```jai
+// Decode shape. Item (t*rows+row)*nb+b: block b of weight row `row` times
+// block b of token t, one word (four codes) at a time. Neighbouring items
+// read neighbouring blocks of one row.
+i8_dots :: (item:int,rows:int,width:int,block:int,w:[]u32,x:[]u32,dots:[]s32) #export_c {
+    nb:=width/block;b:=item%nb;row:=item/nb%rows;t:=item/nb/rows;
+    wa:=(row*width+b*block)/4;xa:=(t*width+b*block)/4;acc:s32=0;
+    for g:0..<block/4 {acc=i8_dp4a(w[wa+g],x[xa+g],acc);}
+    dots[item]=acc;
+}
+```
+
+<!-- source: psionic/lib/device/int8-kernels.coax finish -->
+```jai
+// Item t*rows+row: the block terms of int8_term added in binary64 in block
+// order, exactly as int8_row adds them.
+i8_finish :: (item:int,rows:int,nb:int,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,dots:[]s32,y:[]f64) #export_c {
+    row:=item%rows;t:=item/rows;acc:f64=0;
+    for b:0..<nb {
+        dx:=f64(xs[t*nb+b]);
+        acc+=f64(ws[row*nb+b])*dx*f64(dots[item*nb+b])+f64(wo[row*nb+b])*dx*f64(xm[t*nb+b]);
+    }
+    y[item]=acc;
+}
+```
+
+### The tensor-core tile
+
+Chapter 37's one tensor-core primitive, `cu_mma_bf16_16x8x16`, multiplies
+BF16 values and adds in f32. A code in [−127, 127] has at most 7 significant
+bits, so it is exact in BF16, and every product of two codes is an integer of
+magnitude at most 16,129. Every partial sum of one block is then an integer of
+magnitude at most `block` × 16,129. An f32 holds every integer up to
+2²⁴ = 16,777,216, so as long as
+
+```text
+block × 16,129 ≤ 16,777,216
+```
+
+every addition the tensor core makes is exact, in whatever order it makes
+them. The tile steps through a block 16 codes at a time, so the plan admits
+blocks that are a multiple of 16 and at most 65 steps long:
+
+```text
+1040 × 16,129 = 16,774,160 ≤ 16,777,216    admitted
+1056 × 16,129 = 17,032,224 > 16,777,216    refused
+```
+
+This is the difference from chapter 69's BF16 products, which round in the
+tensor core and need a tolerance: here nothing rounds before the block sum
+converts to `s32`, so the tile's block sums equal the row kernel's exactly.
+
+One warp computes 16 rows by 32 tokens (four tiles of 8 tokens). For each
+16-code step it converts the weight codes to a BF16 fragment once and uses it
+for all four token tiles. After each block it converts the f32 sums to `s32`,
+adds the block's terms to binary64 totals in block order, as `i8_finish`
+does, and with `record` set writes the block sums too. The activations are
+read for the tokens rounded up to a multiple of 8; a ragged tile reads the
+padding and writes nothing for it.
+
+<!-- source: psionic/lib/device/int8-kernels.coax mma -->
+```jai
+I8_TILES :: 4;   // token tiles of 8 per warp
+I8_TOKENS :: 32; // tokens per warp
+// Two codes of a word (half h: bytes 2h and 2h+1) as a BF16 pair. Every code
+// in [-127, 127] is exact in BF16.
+i8_bf16 :: (code:s32)->u32 {return f32_bits(f32(code))>>16;}
+i8_pair :: (word:u32,h:int)->u32 {return i8_bf16(i8_code(word,2*h))|(i8_bf16(i8_code(word,2*h+1))<<16);}
+// One warp: rows r0..r0+15 times tokens t0..t0+31, every block in order.
+// Work item group*(rows/16)+rowblock. x holds the tokens rounded up to a
+// multiple of 8: a ragged tile reads the padding, whatever it holds, and
+// writes nothing for it.
+// Every product of two codes and every partial sum of one block is an
+// integer of magnitude at most block*127*127, which the plan keeps at or
+// below 2^24, so the f32 accumulation is exact in any order and each block's
+// sum converts to s32 without loss. After each block the warp adds its terms
+// to binary64 totals, in block order, as i8_finish and int8_row do, and
+// writes y at the end. With record 1 it also writes every block sum to dots.
+i8_mma :: (item:int,rows:int,width:int,tokens:int,block:int,w:[]u32,x:[]u32,ws:[]f32,wo:[]f32,xs:[]f32,xm:[]s32,record:int,dots:[]s32,y:[]f64) #export_c {
+    blocks:=rows/16;r0:=item%blocks*16;t0:=item/blocks*I8_TOKENS;
+    nb:=width/block;q:=width/4;used:=(tokens-t0+7)/8;
+    fa:[128]u32;fb:[64]u32;fc:[128]f32;acc:[512]f32;total:[512]f64;
+    for b:0..<nb {
+        for lane:0..<32 {for j:0..<16 {acc[lane*16+j]=0;}}
+        for s:0..<block/16 {
+            c:=(b*block+s*16)/4; // the step's first word
+            for lane:0..<32 {
+                at:=(r0+lane/4)*q+c+lane%4/2;h:=lane%2;
+                fa[lane*4]=i8_pair(w[at],h);fa[lane*4+1]=i8_pair(w[at+8*q],h);
+                fa[lane*4+2]=i8_pair(w[at+2],h);fa[lane*4+3]=i8_pair(w[at+8*q+2],h);
+            }
+            for tile:0..<I8_TILES {
+                if tile<used {
+                    for lane:0..<32 {
+                        xa:=(t0+tile*8+lane/4)*q+c+lane%4/2;
+                        fb[lane*2]=i8_pair(x[xa],lane%2);fb[lane*2+1]=i8_pair(x[xa+2],lane%2);
+                        for j:0..<4 {fc[lane*4+j]=acc[lane*16+tile*4+j];}
+                    }
+                    cu_mma_bf16_16x8x16(fa[..],fb[..],fc[..]);
+                    for lane:0..<32 {for j:0..<4 {acc[lane*16+tile*4+j]=fc[lane*4+j];}}
+                }
+            }
+        }
+        for lane:0..<32 {
+            for tile:0..<I8_TILES {
+                for j:0..<4 {
+                    row:=r0+lane/4+8*(j/2);token:=t0+tile*8+2*(lane%4)+j%2;
+                    if token<tokens {
+                        dot:=cast(s32)acc[lane*16+tile*4+j];dx:=f64(xs[token*nb+b]);
+                        total[lane*16+tile*4+j]+=f64(ws[row*nb+b])*dx*f64(dot)+f64(wo[row*nb+b])*dx*f64(xm[token*nb+b]);
+                        if record!=0 {dots[(token*rows+row)*nb+b]=dot;}
+                    }
+                }
+            }
+        }
+    }
+    for lane:0..<32 {
+        for tile:0..<I8_TILES {
+            for j:0..<4 {
+                row:=r0+lane/4+8*(j/2);token:=t0+tile*8+2*(lane%4)+j%2;
+                if token<tokens {y[token*rows+row]=total[lane*16+tile*4+j];}
+            }
+        }
+    }
+}
+```
+
+### The plan
+
+The row kernels are plain threads, launched 256 to a block, and need no
+special instruction. The tile is one warp that calls the BF16 tensor-core
+instruction, so chapter 68's `da_admit` refuses it on a device before compute
+capability 8.0. Shape refusals come before the device, and the work limit is
+2³⁶ multiply-adds, enough for the 8192 × 8192 × 128 product below.
+
+For 8192 × 8192 weights, 128 tokens and blocks of 32, each row has 256
+blocks. The quantizer has 128 × 256 = 32,768 work items; the row kernels have
+8192 × 128 × 256 = 268,435,456 block sums and 8192 × 128 = 1,048,576 outputs;
+the tile has 8192 / 16 = 512 row blocks times 128 / 32 = 4 token groups, 2,048
+warps, and reads 128 × 8192 / 4 = 262,144 activation words.
+
+<!-- source: psionic/lib/device/int8-device.coax plan -->
+```jai
+I8Status :: enum u8 {ok;shape;overflow;limit;tile;device;}
+I8Kernel :: enum u8 {row;mma;}
+// x_words: the activation words the kernels read; the tile reads tokens
+// rounded up to a multiple of 8.
+I8Plan :: struct {status:I8Status;admission:DaStatus;blocks:int;quantize_items:int;dot_items:int;mma_items:int;finish_items:int;dots:int;x_words:int;}
+I8_WORK_LIMIT :: 68719476736; // 2^36 multiply-adds in one product
+I8_MMA_STEPS_MAX :: 65;       // 65 steps of 16 codes: 1040 * 127 * 127 = 16,774,160 <= 2^24
+// The row kernels are plain threads (launched 256 to a block) with no
+// special instruction; i8_mma is one warp on the BF16 tensor cores.
+I8_ROW_NEEDS :: DaNeeds.{threads=256,shared=0,mma=false};
+I8_MMA_NEEDS :: DaNeeds.{threads=32,shared=0,mma=true};
+i8_plan :: (kernel:I8Kernel,rows:int,width:int,tokens:int,block:int,dev:DaDevice)->I8Plan {
+    if rows<1 || tokens<1 || block<4 || block%4!=0 {return I8Plan.{status=I8Status.shape};}
+    if !int8_block_fits(block) {return I8Plan.{status=I8Status.overflow};}
+    if width<block || width%block!=0 {return I8Plan.{status=I8Status.shape};}
+    if f64(rows)*f64(width)*f64(tokens)>f64(I8_WORK_LIMIT) {return I8Plan.{status=I8Status.limit};}
+    nb:=width/block;needs:=I8_ROW_NEEDS;
+    if kernel==I8Kernel.mma {
+        if rows%16!=0 || block%16!=0 || block/16>I8_MMA_STEPS_MAX {return I8Plan.{status=I8Status.tile};}
+        needs=I8_MMA_NEEDS;
+    }
+    admitted:=da_admit(needs,dev);
+    if admitted!=DaStatus.ok {return I8Plan.{status=I8Status.device,admission=admitted};}
+    p:=I8Plan.{blocks=nb,quantize_items=tokens*nb,dot_items=rows*tokens*nb,finish_items=rows*tokens,dots=rows*tokens*nb,x_words=tokens*width/4};
+    if kernel==I8Kernel.mma {p.dot_items=0;p.mma_items=(tokens+I8_TOKENS-1)/I8_TOKENS*(rows/16);p.finish_items=0;p.x_words=(tokens+7)/8*8*width/4;}
+    return p;
+}
+i8_text :: (p:I8Plan)->string {
+    if p.status==I8Status.ok {return "admitted";}
+    if p.status==I8Status.shape {return "refused: the block must be a positive multiple of 4 that divides the width";}
+    if p.status==I8Status.overflow {return "refused: a block that long could overflow s32";}
+    if p.status==I8Status.limit {return "refused: more than 2^36 multiply-adds";}
+    if p.status==I8Status.tile {return "refused: the tensor-core tile needs rows and the block in multiples of 16 and a block of at most 1040";}
+    return da_text(p.admission);
+}
+```
+
+The CPU kernels check their inputs in `int8_admit`, under the CPU plan's work
+limit of 1,048,576 multiply-adds. `i8_inputs` makes the same checks for
+buffers of device size, so the harness can admit the inputs of the large
+products before it uploads them.
+
+<!-- source: psionic/lib/device/int8-device.coax inputs -->
+```jai
+// What int8_admit checks of the codes, scales and sums, for buffers too large
+// for the CPU plan's work limit: no code -128, every scale finite and not
+// negative, every offset finite, every stored sum equal to its codes' sum.
+i8_inputs :: (rows:int,width:int,tokens:int,block:int,w:Int8Weights,x:Int8Activations)->Int8Status {
+    nb:=width/block;
+    if w.codes.count!=rows*width || w.scales.count!=rows*nb || w.offsets.count!=rows*nb {return Int8Status.storage;}
+    if x.codes.count!=tokens*width || x.scales.count!=tokens*nb || x.sums.count!=tokens*nb {return Int8Status.storage;}
+    for c:w.codes {if c<-INT8_CODE_MAX {return Int8Status.code;}}
+    for c:x.codes {if c<-INT8_CODE_MAX {return Int8Status.code;}}
+    for i:0..<rows*nb {if !int8_scale_ok(w.scales[i]) || !int8_finite(w.offsets[i]) {return Int8Status.scale;}}
+    for i:0..<tokens*nb {
+        if !int8_scale_ok(x.scales[i]) {return Int8Status.scale;}
+        s:=0;
+        for k:0..<block {s+=cast(int)x.codes[i*block+k];}
+        if s!=cast(int)x.sums[i] {return Int8Status.sum;}
+    }
+    return Int8Status.ok;
+}
+```
+
+## Run the device kernels on the CPU
+
+The example, [int8-device.coax](../examples/int8-device.coax), runs the device
+kernels' Coax bodies on the CPU: the hand block, then four shapes against
+`int8_quantize`, `int8_row` and `int8_tiled`, then the plan's admissions and
+refusals, and a stored sum that does not match its codes.
+
+<!-- source: psionic/examples/int8-device.coax example -->
+```jai
+main :: () {
+    // The hand block of chapter 48 through i8_quantize, i8_dots and i8_finish.
+    x:=[4]f32.[1.984375,-0.5,0.1,0.0078125];xw:[1]u32;xs:[1]f32;xm:[1]s32;
+    i8_quantize(0,4,x[..],xw[..],xs[..],xm[..]);
+    print("activation codes % % % %, scale %, sum %\n",i8_code(xw[0],0),i8_code(xw[0],1),i8_code(xw[0],2),i8_code(xw[0],3),xs[0],xm[0]);
+    ww:=[1]u32.[0x0300ff02]; // weight codes 2, -1, 0, 3
+    print("one dp4a step: %\n",i8_dp4a(ww[0],xw[0],0));
+    ws:=[1]f32.[0.5];wo:=[1]f32.[0.25];dots:[1]s32;y:[1]f64;
+    i8_dots(0,1,4,4,ww[..],xw[..],dots[..]);
+    i8_finish(0,1,1,ws[..],wo[..],xs[..],xm[..],dots[..],y[..]);
+    print("block sum %, product %\n",dots[0],y[0]);
+
+    // Every kernel against int8_quantize, int8_row and int8_tiled.
+    shapes:=[16]int.[16,64,4,32, 32,64,8,16, 16,48,9,48, 8,96,3,48];
+    for n:0..<4 {
+        rows:=shapes[4*n];width:=shapes[4*n+1];tokens:=shapes[4*n+2];block:=shapes[4*n+3];
+        print("% x % times % tokens, block %: device kernels equal the CPU kernels bit for bit: %\n",rows,width,tokens,block,i8_same_as_cpu(rows,width,tokens,block,n));
+    }
+
+    // The plan: shapes first, then the device.
+    rtx:=DaDevice.{major=8,minor=9,max_threads=1024,max_shared=49152};
+    old:=DaDevice.{major=7,minor=5,max_threads=1024,max_shared=49152};
+    print("tile, 8192 x 8192 times 128 tokens on sm_89: %\n",i8_text(i8_plan(I8Kernel.mma,8192,8192,128,32,rtx)));
+    print("tile on sm_75: %\n",i8_text(i8_plan(I8Kernel.mma,8192,8192,128,32,old)));
+    print("row kernels on sm_75: %\n",i8_text(i8_plan(I8Kernel.row,8192,8192,128,32,old)));
+    print("tile, block of 1056: %\n",i8_text(i8_plan(I8Kernel.mma,16,1056,1,1056,rtx)));
+    print("row kernels, block of 6: %\n",i8_text(i8_plan(I8Kernel.row,1,96,1,6,rtx)));
+    print("row kernels, 4097 x 4096 times 4096 tokens: %\n",i8_text(i8_plan(I8Kernel.row,4097,4096,4096,32,rtx)));
+
+    // A stored sum that does not match its codes.
+    codes:=[4]s8.[127,-32,6,1];sums:=[1]s32.[101];wc:=[4]s8.[2,-1,0,3];
+    print("stored sum 101 for codes summing to 102: %\n",i8_inputs(1,4,1,4,Int8Weights.{codes=wc[..],scales=ws[..],offsets=wo[..]},Int8Activations.{codes=codes[..],scales=xs[..],sums=sums[..]}));
+}
+```
+
+Debug and release builds print the same transcript:
+
+```text
+activation codes 127 -32 6 1, scale 0.015625, sum 102
+one dp4a step: 289
+block sum 289, product 2.65625
+16 x 64 times 4 tokens, block 32: device kernels equal the CPU kernels bit for bit: true
+32 x 64 times 8 tokens, block 16: device kernels equal the CPU kernels bit for bit: true
+16 x 48 times 9 tokens, block 48: device kernels equal the CPU kernels bit for bit: true
+8 x 96 times 3 tokens, block 48: device kernels equal the CPU kernels bit for bit: true
+tile, 8192 x 8192 times 128 tokens on sm_89: admitted
+tile on sm_75: refused: cu_mma_bf16_16x8x16 needs compute capability 8.0 or later
+row kernels on sm_75: admitted
+tile, block of 1056: refused: the tensor-core tile needs rows and the block in multiples of 16 and a block of at most 1040
+row kernels, block of 6: refused: the block must be a positive multiple of 4 that divides the width
+row kernels, 4097 x 4096 times 4096 tokens: refused: more than 2^36 multiply-adds
+stored sum 101 for codes summing to 102: sum
+```
+
+The first three lines are the hand trace above. "Bit for bit" means every
+code, every scale's bits, every stored sum, every block sum and every output's
+bits; for the shapes with 4 rows and 4 tokens it includes `int8_tiled`, and
+for rows and blocks in sixteens it includes the tile. The refusals name their
+reasons: the tile on a compute capability 7.5 device, a block too long for
+exact f32 sums, a block that is not a multiple of 4, too much work, and a
+wrong stored sum.
+
+## Run it on the RTX 4080
+
+[check_int8_device.sh](../tests/check_int8_device.sh) runs the checks in
+debug and release, emits the CUDA, compares the example transcript, and runs
+the [C harness](../tests/int8_device.c) on the device. The harness reports the
+device, fills buffers, moves bytes, launches and times; the plan, the
+admission, the naive oracle and the statistics are Coax entries of
+`int8-device.coax`.
+
+```shell
+COAX_CC=gcc psionic/tests/check_int8_device.sh
+```
+
+The first part compares the device with the CPU kernels at seven shapes within
+the CPU's work limit, byte for byte with `memcmp`: the quantized codes, scales
+and sums, the block sums and the binary64 outputs. The second part times
+8192 × 8192 weights at decode (1 token) and prefill (32 and 128 tokens): the
+two int8 paths, including the quantization of the activations, against
+chapter 37's f32 kernels on BF16 weights (`dv_matvec` and `dv_reduce` at
+decode, `dv_project` at prefill, the kernels chapter 44 runs Elephant with)
+and chapter 37's BF16 tensor-core projection `dw_project`, the instruction
+chapter 69 uses. At the large shapes the two int8 paths are compared with each
+other bit for bit, the activations pass `i8_inputs`, and every 997th block sum
+is compared with the naive oracle.
+
+Each side runs once untimed, then 20 times, each timed alone with CUDA events.
+Chapter 34's `cm_two_pass` turns the times into a mean and a standard
+deviation. Chapter 34's `cm_compare` refuses to rank sides that compute in
+different number formats, and these do on purpose, so `i8_rank` applies the
+rest of its rule to the times alone: a side is faster only by more than two
+standard errors, and a spread over a tenth of either mean ranks nothing.
+
+<!-- source: psionic/lib/device/int8-device.coax rank -->
+```jai
+// Chapter 34's rule for two engines' warm run times on one shape: side a is
+// faster when its mean is lower by more than two standard errors, and a
+// spread over a tenth of either mean ranks nothing. cm_compare also demands
+// the same number formats; here the formats differ on purpose (int8 against
+// f32 or BF16), so the rule is applied to the times alone.
+i8_rank :: (a:CmStats,b:CmStats)->CmCall {
+    call:=CmCall.{verdict=CmVerdict.refused};
+    if a.status!=CmStatus.ok || b.status!=CmStatus.ok {call.reason=CmReason.stats;return call;}
+    call.ratio=b.mean/a.mean;
+    call.se=sqrt(a.sd*a.sd/f64(a.n)+b.sd*b.sd/f64(b.n));
+    if a.sd*10>a.mean || b.sd*10>b.mean {call.verdict=CmVerdict.noisy;return call;}
+    diff:=a.mean-b.mean;call.verdict=CmVerdict.same;
+    if diff< -2*call.se {call.verdict=CmVerdict.faster;}
+    if diff>2*call.se {call.verdict=CmVerdict.slower;}
+    return call;
+}
+```
+
+The receipt, [int8-device-receipt.txt](../fixtures/int8-device-receipt.txt),
+from one run on 2026-11-02:
+
+```text
+device: NVIDIA GeForce RTX 4080 (sm_89): row kernels admitted, tensor-core tile admitted
+a reported sm_75: tile status 85 (5 + 16*5: needs compute capability 8.0), row kernels status 0
+against chapter 48's CPU kernels (int8_quantize, int8_row, int8_tiled), bit for bit:
+   256 x 4096 times   1 tokens, block   32: quantize equal; int8_tiled not applicable; i8_dots+i8_finish equal; i8_mma equal
+  1024 x 1024 times   1 tokens, block   32: quantize equal; int8_tiled not applicable; i8_dots+i8_finish equal; i8_mma equal
+    64 x  512 times  32 tokens, block   32: quantize equal; int8_tiled equals int8_row; i8_dots+i8_finish equal; i8_mma equal
+   128 x 1024 times   8 tokens, block   32: quantize equal; int8_tiled equals int8_row; i8_dots+i8_finish equal; i8_mma equal
+    32 x  512 times  37 tokens, block   64: quantize equal; int8_tiled not applicable; i8_dots+i8_finish equal; i8_mma equal
+    16 x 1040 times  12 tokens, block 1040: quantize equal; int8_tiled equals int8_row; i8_dots+i8_finish equal; i8_mma equal
+    12 x  960 times   5 tokens, block   48: quantize equal; int8_tiled not applicable; i8_dots+i8_finish equal; i8_mma not admitted
+throughput on the device (chapter 34 statistics: one warm-up, 20 timed runs per side):
+  decode: 8192 x 8192 weights, 1 token, block 32
+    int8 outputs: i8_mma equals i8_dots+i8_finish bit for bit: yes; activations pass input admission: yes; 2104 sampled block sums equal the naive oracle: yes
+    int8 i8_dots+i8_finish (dp4a-shaped)     331.9 us  sd    2.9  (n=20)     202 GB/s of weights      202 G multiply-adds/s
+    int8 i8_mma (BF16 tensor cores)        704.0 us  sd    3.9  (n=20)      95 GB/s of weights       95 G multiply-adds/s
+    f32 dv_matvec+dv_reduce (ch. 37/44)     243.5 us  sd    1.2  (n=20)     551 GB/s of weights      276 G multiply-adds/s
+    BF16-weight MMA dw_project (ch. 37)    1716.0 us  sd    7.5  (n=20)      78 GB/s of weights       39 G multiply-adds/s
+    int8 i8_dots+i8_finish (dp4a-shaped) against f32 dv_matvec+dv_reduce (ch. 37/44): 0.73x, slower
+    int8 i8_dots+i8_finish (dp4a-shaped) against BF16-weight MMA dw_project (ch. 37): 5.17x, faster
+    int8 i8_mma (BF16 tensor cores) against int8 i8_dots+i8_finish (dp4a-shaped): 0.47x, slower
+  prefill: 8192 x 8192 weights, 32 tokens, block 32
+    int8 outputs: i8_mma equals i8_dots+i8_finish bit for bit: yes; activations pass input admission: yes; 67311 sampled block sums equal the naive oracle: yes
+    int8 i8_dots+i8_finish (dp4a-shaped)    6674.5 us  sd   30.0  (n=20)      10 GB/s of weights      322 G multiply-adds/s
+    int8 i8_mma (BF16 tensor cores)       3625.5 us  sd    3.5  (n=20)      19 GB/s of weights      592 G multiply-adds/s
+    f32 dv_project (ch. 37/44)            3390.6 us  sd   45.2  (n=20)      40 GB/s of weights      633 G multiply-adds/s
+    BF16-weight MMA dw_project (ch. 37)    1652.4 us  sd    9.0  (n=20)      81 GB/s of weights     1300 G multiply-adds/s
+    int8 i8_mma (BF16 tensor cores) against f32 dv_project (ch. 37/44): 0.94x, slower
+    int8 i8_mma (BF16 tensor cores) against BF16-weight MMA dw_project (ch. 37): 0.46x, slower
+    int8 i8_mma (BF16 tensor cores) against int8 i8_dots+i8_finish (dp4a-shaped): 1.84x, faster
+  prefill: 8192 x 8192 weights, 128 tokens, block 32
+    int8 outputs: i8_mma equals i8_dots+i8_finish bit for bit: yes; activations pass input admission: yes; 269244 sampled block sums equal the naive oracle: yes
+    int8 i8_dots+i8_finish (dp4a-shaped)   25114.5 us  sd  119.7  (n=20)       3 GB/s of weights      342 G multiply-adds/s
+    int8 i8_mma (BF16 tensor cores)      13143.6 us  sd  237.3  (n=20)       5 GB/s of weights      654 G multiply-adds/s
+    f32 dv_project (ch. 37/44)            4204.4 us  sd  123.0  (n=20)      32 GB/s of weights     2043 G multiply-adds/s
+    BF16-weight MMA dw_project (ch. 37)    1974.6 us  sd    6.8  (n=20)      68 GB/s of weights     4350 G multiply-adds/s
+    int8 i8_mma (BF16 tensor cores) against f32 dv_project (ch. 37/44): 0.32x, slower
+    int8 i8_mma (BF16 tensor cores) against BF16-weight MMA dw_project (ch. 37): 0.15x, slower
+    int8 i8_mma (BF16 tensor cores) against int8 i8_dots+i8_finish (dp4a-shaped): 1.91x, faster
+chapter 48 on CUDA: every device block sum and output equals the CPU kernels bit for bit
+```
+
+The integer contract holds on the device: every block sum and every output
+equals the CPU kernels, and the tile is refused on a compute capability 7.5
+report. The speed does not yet justify the format:
+
+- At decode, the int8 row kernels read 64 MB of weights in 332 µs (202 GB/s);
+  chapter 37's f32 kernels read 128 MB of BF16 weights in 244 µs (551 GB/s).
+  int8 is 0.73 times as fast, though it moves half the bytes.
+- At prefill, the tile is 1.84 times the row kernels at 32 tokens and 1.91
+  times at 128, but 0.94 and 0.32 times chapter 37's f32 `dv_project`, and
+  0.46 and 0.15 times its BF16 tensor-core `dw_project`. The 32-token
+  comparison with `dv_project` is close: a second run of the same check
+  measured 3,341 µs against 3,356 µs, the same within two standard errors.
+
+Three costs explain it. Without `dp4a`, each code is extracted, sign-extended
+and multiplied by ordinary instructions. Without an int8 tensor-core
+instruction, the tile converts every code to BF16 in its inner loop, and each
+BF16 instruction covers 16 codes of a row where the `s8` instruction
+(m16n8k32) covers 32. And both paths add every block's term in binary64, which the RTX 4080 runs at
+a small fraction of its f32 rate. These are measurements of these kernels on
+one card, not limits of the format.
+
 ## What the checks compare
 
 The checks in [int8-products.coax](../lib/int8-products.coax) were written
@@ -500,22 +983,46 @@ the code they check. The library is an `#authority` file. `coax mutate
 --root-only` (chapter 4's product checks itself) leaves zero survivors of 369
 mutants.
 
+The device kernels' checks in
+[int8-kernels.coax](../lib/device/int8-kernels.coax) compare byte extraction,
+one `dp4a` step and the BF16 pairs with hand values; two hand-quantized blocks
+of eight; the row kernels' block sums against a naive 64-bit loop and their
+outputs against an exact binary64 sum over five shapes; the tile's block sums
+and outputs against the same oracle over seven shapes, including ragged token
+tiles and two token groups, with views exactly as long as the plan says so a
+tile too many traps; and the largest admitted block, 1040 codes of ±127.
+The checks in [int8-device.coax](../lib/device/int8-device.coax) run every
+device kernel's Coax body against `int8_quantize`, `int8_row` and
+`int8_tiled`, bit for bit, over 8 shapes and 2 seeds each; every plan count
+and refusal; `i8_inputs` against `int8_admit` and each of its refusals; and
+the statistics and rank against chapter 34's hand values. The fixtures and the
+comparison live in [int8-device-checks.coax](../tests/int8-device-checks.coax)
+and [int8-device-plan-checks.coax](../tests/int8-device-plan-checks.coax).
+Both files are `#authority` files: `coax mutate --root-only` leaves zero
+survivors of 358 mutants in `int8-kernels.coax` and of 207 in
+`int8-device.coax`.
+
 ## What remains
 
-- A device row kernel using `dp4a`, and a tiled kernel using int8 tensor-core
-  instructions, through the compute subset of chapter 37 and the admission of
-  chapter 68, checked bit for bit against these CPU kernels on the integer
-  sums.
-- A throughput measurement on the RTX 4080 for both kernels. No speed is
-  claimed here.
+- `dp4a` (compute capability 6.1) and an int8 tensor-core instruction
+  (`mma.sync` m16n8k32 with `s8` inputs and `s32` accumulation, compute
+  capability 8.0) as device primitives of `coax cuda`, with their CPU meaning, in the way chapter 37 added
+  `cu_mma_bf16_16x8x16`. That is a compiler change. The row kernel and the
+  tile would then call them, and chapter 68's admission would state the
+  capability each needs.
+- Kernels that beat chapter 37's f32 kernels at decode and prefill on the
+  RTX 4080. No speedup is claimed here.
 - A quantized profile never inherits the original weights' evidence: a model
   run through these products needs its own qualification.
 
 ## Dependencies
 
 - [Chapter 4](ch004-numbers-and-matrices.md): the float reference product.
-- [Chapter 37](ch037-a-coax-compute-subset.md): the device compute subset the
-  remaining device kernels will use.
+- [Chapter 34](ch034-benchmark-against-llama-cpp-and-cublas.md): the warm-run
+  statistics and the rule for ranking two sides.
+- [Chapter 37](ch037-a-coax-compute-subset.md): the device compute subset,
+  the BF16 tensor-core primitive and the f32 and BF16 kernels timed here.
+- [Chapter 68](ch068-coax-kernels-cooperate.md): device capability admission.
 - [Chapter 50](ch050-quantized-weights-and-caches.md) uses this block format
   and these kernels for its weight formats; it builds on this chapter, not the
   other way round.
