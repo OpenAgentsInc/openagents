@@ -5,12 +5,20 @@
 // ---- the report: `key value` lines, or one JSON object with --json -------
 
 REP_BYTES :: 65536;
-Rep :: struct { json: bool; buf: [REP_BYTES] u8; n: int; pairs: int; }
+Rep :: struct { json: bool; buf: [REP_BYTES] u8; n: int; pairs: int; bad: bool; }
+
+#test "reports record capacity refusal instead of silently losing output bytes" {
+  r: [1] Rep;
+  r[0].n=REP_BYTES-1;
+  rep_put(r[..],"x"); #assert r[0].n == REP_BYTES && !r[0].bad;
+  rep_byte(r[..],'y'); #assert r[0].n == REP_BYTES && r[0].bad;
+  r[0].bad=false; rep_put(r[..],"z"); #assert r[0].bad;
+}
 
 rep_put :: (r: [] Rep, s: string) {
-  for c: s { if r[0].n < REP_BYTES { r[0].buf[r[0].n] = c; r[0].n += 1; } }
+  for c: s { if r[0].n < REP_BYTES { r[0].buf[r[0].n] = c; r[0].n += 1; } else { r[0].bad=true; } }
 }
-rep_byte :: (r: [] Rep, c: u8) { if r[0].n < REP_BYTES { r[0].buf[r[0].n] = c; r[0].n += 1; } }
+rep_byte :: (r: [] Rep, c: u8) { if r[0].n < REP_BYTES { r[0].buf[r[0].n] = c; r[0].n += 1; } else { r[0].bad=true; } }
 rep_quoted :: (r: [] Rep, s: string) {
   digits := "0123456789abcdef";
   rep_byte(r, '"');
@@ -53,6 +61,11 @@ rep_done :: (r: [] Rep, code: int) -> int {
     if r[0].pairs == 0 { rep_put(r, "{"); }
     rep_put(r, ifx code == EXIT_OK then ",\"ok\":true}\n" else ",\"ok\":false}\n");
     if r[0].pairs == 0 { r[0].buf[1] = ' '; }
+  }
+  if r[0].bad {
+    if r[0].json { print("%\n","{\"ok\":false,\"error\":\"command output exceeds its bounded report capacity\"}"); }
+    else { tool_errln("openagents: command output exceeds its bounded report capacity"); }
+    return EXIT_FAIL;
   }
   print("%", cast(string) r[0].buf[0..<r[0].n]);
   return code;
@@ -97,7 +110,7 @@ VALUE_FLAGS :: [70] string.["--profile",
   "--language", "--backend", "--threads", "--models", "--prompt", "--words",   // transcribe (--model is pylon's)
   "--size", "--eval", "--seconds", "--fps", "--skip", "--stage", "--frames",   // labs (--wait, --from above)
   "--quality", "--at", "--every", "--strip", "--set", "--seeds", "--against",   // labs
-  "", "", "", "", "", ""];
+  "--doc", "--yaw", "--tools", "--ask", "--step", "--reward"];
 takes_value :: (s: string) -> bool { for f: VALUE_FLAGS { if f.count > 0 && s == f { return true; } } return false; }
 // The k-th argument that is not a flag or a flag's value, or "".
 positional :: (a: [] Args, k: int) -> string {

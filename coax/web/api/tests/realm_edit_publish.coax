@@ -1,0 +1,59 @@
+// The older built-in-fork publication profile needs its own atomic, versioned route.
+// Local isolated new/old API pair only. No real identity, model or bucket is used.
+// API=http://127.0.0.1:PORT OLD_API=http://127.0.0.1:OLD PGURL=... PSQL=...
+//   coax/web/tool.sh coax/web/api/tests/realm_edit_publish.coax
+// tool.sh: tls
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/net/http.coax";
+#load "../../../lib/json/json.coax";
+
+rep_sql :: (db: string, psql: string, sql: string) -> bool {
+  a := [8] string.[psql,"-XAt","-v","ON_ERROR_STOP=1","--dbname",db,"-c",sql];
+  out: [4096] u8; err: [8192] u8; got := proc_run(a[..],15000,out[..],err[..]);
+  if got.status == 0 && !got.timed_out { return true; }
+  tool_err(cast(string) err[0..<got.err_n]); return false;
+}
+rep_call :: (api: string, slug: string, tail: string, body: string, status: int, rev: int) -> bool {
+  ub: [512] u8; n := 0;
+  for c: api { ub[n] = c; n += 1; }
+  for c: "/api/playtest/realms/" { ub[n] = c; n += 1; }
+  for c: slug { ub[n] = c; n += 1; }
+  for c: tail { ub[n] = c; n += 1; }
+  hs := [2] string.["X-Verse-Player: fence-publish-player-key-001","Content-Type: application/json"];
+  w: [1] HttpWork; out: [HTTP_BODY_MAX] u8;
+  got := http_do(w[..],"POST",cast(string) ub[0..<n],hs[..],body,10000,0,out[..]);
+  text := cast(string) out[0..<got.n]; nodes: [128] JvNode; d: [1] Jv;
+  ok := got.error == HTTP_OK && got.code == status;
+  if rev >= 1 { ok = ok && jv_parse(d[..],text,nodes[..]) && jv_int(d[0],jv_get(d[0],0,"rev"),-1) == rev; }
+  if ok { print("ok % % expected status %\n",slug,tail,status); }
+  else { print("FAIL % %: status %, %\n",slug,tail,got.code,text); }
+  return ok;
+}
+tool_main :: () -> int #export_c {
+  dbb: [1024] u8; pb: [1024] u8; ab: [256] u8; ob: [256] u8;
+  db := proc_getenv("PGURL",dbb[..]); psql := proc_getenv("PSQL",pb[..]);
+  api := proc_getenv("API",ab[..]); old := proc_getenv("OLD_API",ob[..]);
+  if db == "" || psql == "" || api.count < 18 || api[0..<17] != "http://127.0.0.1:" || old.count < 18 || old[0..<17] != "http://127.0.0.1:" {
+    tool_errln("set local API, OLD_API, PGURL and PSQL"); return 2;
+  }
+  seed := "INSERT INTO verse.players(id,key_sha256,created_ms) VALUES ('p-fence-publish',encode(sha256(convert_to('fence-publish-player-key-001','UTF8')),'hex'),1); INSERT INTO verse.worlds(id,owner_player,created_ms) VALUES ('made-fence-publish','p-fence-publish',1),('made-fence-publish-generated','p-fence-publish',1); INSERT INTO verse.made_realms(slug,world,name,style,ground,time,features,tools,made_ms,base,forked_from) VALUES ('fence-publish','made-fence-publish','Fence Publish','lowpoly','grass','day','[]','{}',1,'everglade','everglade'),('fence-publish-generated','made-fence-publish-generated','Fence Publish Generated','lowpoly','grass','day','[]','{}',1,NULL,NULL);";
+  if !rep_sql(db,psql,seed) { return 1; }
+  ok := rep_call(old,"fence-publish","/edit-v1/publish","{\"rev\":1}",404,-1);
+  ok = rep_call(api,"fence-publish","/edit-v1/publish","{\"rev\":999}",409,1) && ok;
+  ok = rep_call(api,"fence-publish","/edit-v1/publish","{}",400,-1) && ok;
+  ok = rep_call(api,"fence-publish","/edit-v1/publish","{",400,-1) && ok;
+  ok = rep_call(api,"fence-publish","/edit-v1/publish","{\"rev\":\"1\"}",400,-1) && ok;
+  ok = rep_call(api,"fence-publish","/edit-v1/publish","{\"rev\":1,\"published\":\"yes\"}",400,-1) && ok;
+  ok = rep_call(api,"fence-publish","/edit-v1/publish","{\"rev\":1,\"listed\":null}",400,-1) && ok;
+  guard := "DO $$ BEGIN IF EXISTS(SELECT 1 FROM verse.made_realms WHERE slug='fence-publish' AND (rev<>1 OR published_ms IS NOT NULL OR visibility<>'private' OR description IS NOT NULL OR jsonb_array_length(undo)<>0)) THEN RAISE EXCEPTION 'publication refusal had effects'; END IF; END $$;";
+  ok = rep_sql(db,psql,guard) && ok;
+  ok = rep_call(api,"fence-publish","/edit-v1/publish","{\"rev\":1}",200,1) && ok;
+  ok = rep_sql(db,psql,"DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM verse.made_realms WHERE slug='fence-publish' AND rev=1 AND published_ms IS NOT NULL AND visibility='public' AND jsonb_array_length(undo)=0) THEN RAISE EXCEPTION 'fresh fork publish missing or invented a revision'; END IF; END $$;") && ok;
+  ok = rep_call(api,"fence-publish-generated","/publish","{\"rev\":1}",200,1) && ok;
+  ok = rep_sql(db,psql,"DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM verse.made_realms WHERE slug='fence-publish-generated' AND rev=1 AND published_rev=1 AND jsonb_array_length(undo)=0) THEN RAISE EXCEPTION 'generated publication changed revision'; END IF; END $$;") && ok;
+  clean := rep_sql(db,psql,"DELETE FROM verse.made_realms WHERE slug IN('fence-publish','fence-publish-generated'); DELETE FROM verse.worlds WHERE id IN('made-fence-publish','made-fence-publish-generated'); DELETE FROM verse.players WHERE id='p-fence-publish';");
+  if ok && clean { print("ok stale/malformed publication preserves state; both profiles keep their published revision\n"); return 0; }
+  return 1;
+}

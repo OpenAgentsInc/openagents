@@ -1,0 +1,229 @@
+{
+  "schema": "openagents.realm-edit-fences.verification.v1",
+  "issue": 12635,
+  "date": "2026-11-02",
+  "recorded_at_utc": "2026-11-02T15:11:53Z",
+  "status": "server qualified locally; updated CLI integration and deployed staging journey remain root-owned gates",
+  "base_commit": "9a2ac3f855e1f6f7e1981f4e740b5a347ee1f4e7",
+  "workspace": "/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents",
+  "compiler": {
+    "version": "coax0 0.47.0",
+    "sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+    "origin": "Existing local build copied into task worktree; no compiler/seed changes or rebuild."
+  },
+  "host_compiler": {
+    "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "target": "arm64-apple-darwin25.4.0",
+    "sha256": "7def90dd8829726686213a747fc5bff1583df933dae5edc55d755479e0bfe00a"
+  },
+  "sha256": {
+    "coax/bin/coax": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+    "coax/web/api/realms.c": "f6b0a8224d80ea78291561e4ee404f6c5801c76efcdb9983149e9c2ee8486d62",
+    "coax/web/api/migrations/0102_realm_edit_fences.sql": "25ab64e36116b160ff65709a4922b82d4e6d94fe70ecf77931216f67bd478b61",
+    "coax/web/api/tests/realm_edit_fences.coax": "2ab50b26d3fa75ef572306befed04d89f02728f926ab7069f700d4c4b25f421f",
+    "coax/web/api/tests/realm_edit_async.coax": "9c8070b3551b394c0b45f397a2bb660f8f38129573c0101db7eb237251155879",
+    "coax/web/api/tests/realm_edit_http.coax": "f1549c57aecbbef51f3aeaa7e1c6902f95ac971d2068afa8223a8a0d7f21a5c2",
+    "coax/web/api/tests/realm_edit_model_race.coax": "de6cc9d188e08f14896bee6a372ad277693fef38e341266e6ecfc84b14786245",
+    "coax/web/tool.sh": "2e4462dd525a5079a466f071ef318a37286797dda554660e890cf758f9951639",
+    "coax/platform/tool-native.c": "c8db7d6e4e7f0c6e3c91a37c7e4c8931637d5deb051e62c4e437cc86476dcb03",
+    "coax/platform/process-native.c": "3c2e5ac2febb9e4ab2042363e0a15adfe0432eaee0e840056ccdd3827275528f",
+    "coax/platform/socket-native.c": "2cc8a7b3c75eebed225fbba8016c06f9009f8c0b8781ee33b3ed45677c98940b",
+    "coax/platform/tls-native.c": "1f9d58076acda10391b7fd16450ba2ee5b3e1c26966763517eae726b48e32dae",
+    "coax/web/api/api.c": "d568974d11d40b915a4f714699dfccee458d20bf0c0e9b687c3319ae6467eb34",
+    "coax/web/api/api.h": "7cd8da3694fea45c87ddff02b93c30c9181fd70b363532f73231b2a743481ef3",
+    "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang": "7def90dd8829726686213a747fc5bff1583df933dae5edc55d755479e0bfe00a",
+    "/tmp/openagents-rev-fences.CdiOIB/api-v1": "2c175149c7dda73f8227c06131d383efd6c2be39e4a3aa3fc21027c10200c900",
+    "/tmp/openagents-rev-fences.CdiOIB/api-old": "72ba120cc886f1e1407636ec9c3517f49802eb8c7852b60d5c5ce5045e8cdfd1",
+    "/tmp/openagents-rev-fences.CdiOIB/realms-old.c": "4106da301749bb072683cb53c017b2c60913dcda9f875ba4ff1963808e8538b1",
+    "coax/web/build/tools/realm_edit_fences": "beb4b7ad0344f3fd3a9c049261c7474ff387fe4ff7181db4fe4b2af594f713f1",
+    "coax/web/build/tools/realm_edit_async": "ec56cbc1bc861cb58e932748b02ad6f2fc7f2c3c60e1e14652f4f6bfc8841a37",
+    "coax/web/build/tools/realm_edit_http": "ff6e10323d51e93478b1a2bd92c19bce73822d9d8f6ab2ed96243f3a89f95e16",
+    "coax/web/build/tools/realm_edit_model_race": "3a66c9b4022094dfd20887e2821f3b234d4f4741a6936664df779b95d02bb248",
+    "coax/web/api/tests/realm_edit_publish.coax": "0f3bdd0abdf166b4b1a05c79c27216ba1508d89a2f39f299675540d4f23134a8",
+    "/tmp/openagents-rev-fences.CdiOIB/api-v1-publish": "b58d7eebbcd2e79b0deedd92348c5f253efd0128bfe5b74fd80ef2d8708b0e61",
+    "coax/web/build/tools/realm_edit_publish": "1c92f2c944b76cba7d2d3d4b218d35dac400d6e955869d57b8de871d7b9f64af"
+  },
+  "build": {
+    "command": "/usr/bin/clang -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined -Icoax/web/api -I/opt/homebrew/opt/postgresql@16/include -I/opt/homebrew/opt/secp256k1/include -I/opt/homebrew/opt/openssl@3/include -o /tmp/openagents-rev-fences.CdiOIB/api-v1-publish coax/web/api/api.c coax/web/api/analytics.c coax/web/api/admin.c coax/web/api/player.c coax/web/api/npc.c coax/web/api/room.c coax/web/api/private.c coax/web/api/drops.c coax/web/api/villa.c coax/web/api/chat.c coax/web/api/access.c coax/web/api/replies.c coax/web/api/makers.c coax/web/api/inference.c coax/web/api/mesh.c coax/web/api/mesh-policy.generated.c coax/web/api/caller-policy.generated.c coax/web/api/nip98.generated.c coax/web/api/nostr.c coax/web/api/email.c coax/web/api/jobs.c coax/web/api/relay.c coax/web/api/realms.c -L/opt/homebrew/opt/postgresql@16/lib -lpq -L/opt/homebrew/opt/secp256k1/lib -lsecp256k1 -L/opt/homebrew/opt/openssl@3/lib -lssl -lcrypto -lcurl -lz -lm",
+    "exit": 0,
+    "old_control": "Same compiler/flags/base sources, substituting /tmp/openagents-rev-fences.CdiOIB/realms-old.c for realms.c. The old source SHA-256 equals base-commit realms.c."
+  },
+  "checks_first": [
+    {
+      "phase": "initial SQL contract",
+      "exit": 1,
+      "result": "All three authored scenarios failed on missing realm_edit_call / realm_edit_start before migration application."
+    },
+    {
+      "phase": "additional built-in-fork publication profile",
+      "exit": 1,
+      "result": "The authored publication harness against the running pre-profile C API returned unknown-edit404 for edit-v1/publish and failed its fresh-publication state assertion. Old-C404 and generated legacy publish were positive controls."
+    }
+  ],
+  "checks": [
+    {
+      "command": "PGURL='host=/tmp/openagents-rev-fences.CdiOIB port=56391 user=postgres dbname=oa_fence_final' PSQL=/opt/homebrew/opt/postgresql@16/bin/psql coax/web/tool.sh coax/web/api/tests/realm_edit_fences.coax",
+      "exit": 0,
+      "result": "3/3 scenarios pass",
+      "scope": "Current migration applied from scratch with all previous migrations. Eleven sync operations; malformed revisions; refusal state preservation; fresh/replay; legacy response compatibility; lore revision; capability; stale revise/ask/document completion."
+    },
+    {
+      "command": "PGURL='host=/tmp/openagents-rev-fences.CdiOIB port=56391 user=postgres dbname=oa_fence_final' PSQL=/opt/homebrew/opt/postgresql@16/bin/psql coax/web/tool.sh coax/web/api/tests/realm_edit_async.coax",
+      "exit": 0,
+      "result": [
+        "fresh revise/ask/document completion, returned revisions and completion replay refusal pass",
+        "fenced decline remains one revision and one reversible undo step",
+        "second writer overlaps a first backend observed in PgSleep holding its row lock, then refuses the stale revision"
+      ],
+      "scope": "Actual PostgreSQL functions, independent synthetic model response, no external model."
+    },
+    {
+      "command": "API=http://127.0.0.1:57392 OLD_API=http://127.0.0.1:57393 PGURL='host=/tmp/openagents-rev-fences.CdiOIB port=56391 user=postgres dbname=oa_fence_v1' PSQL=/opt/homebrew/opt/postgresql@16/bin/psql coax/web/tool.sh coax/web/api/tests/realm_edit_http.coax",
+      "exit": 0,
+      "passed": 18,
+      "total": 18,
+      "scope": "Final C API with ASan/UBSan, old-C unknown-route/no-effect controls, capability, required revision, stale routes, extracted document including invalid null, fresh edits and legacy compatibility."
+    },
+    {
+      "commands": [
+        "MODEL_SERVER=1 PGURL='host=/tmp/openagents-rev-fences.CdiOIB port=56391 user=postgres dbname=oa_fence_v1' PSQL=/opt/homebrew/opt/postgresql@16/bin/psql coax/web/tool.sh coax/web/api/tests/realm_edit_model_race.coax",
+        "API=http://127.0.0.1:57392 PGURL='host=/tmp/openagents-rev-fences.CdiOIB port=56391 user=postgres dbname=oa_fence_v1' PSQL=/opt/homebrew/opt/postgresql@16/bin/psql coax/web/tool.sh coax/web/api/tests/realm_edit_model_race.coax"
+      ],
+      "exit": 0,
+      "passed": 3,
+      "total": 3,
+      "scope": "Coax fake model edits the realm between admission and completion. Actual C /edit-v1/revise, /edit-v1/asks and /edit-v1/asks/doc each retain the fence and return409 with current revision."
+    },
+    {
+      "command": "API=http://127.0.0.1:57392 OLD_API=http://127.0.0.1:57393 PGURL='host=/tmp/openagents-rev-fences.CdiOIB port=56391 user=postgres dbname=oa_fence_v1' PSQL=/opt/homebrew/opt/postgresql@16/bin/psql coax/web/tool.sh coax/web/api/tests/realm_edit_publish.coax",
+      "exit": 0,
+      "passed_http_cases": 9,
+      "scope": "Actual Everglade-base fork. Old-C404; stale409; missing/malformed/string revision and invalid boolean400; no effects on refused publication; fresh fork publishes at rev1 without inventing another revision or undo step; generated legacy publication stays at rev1."
+    },
+    {
+      "command": "/usr/bin/clang -std=c11 -Wall -Wextra -Werror -D_DEFAULT_SOURCE -I/opt/homebrew/opt/postgresql@16/include -fsyntax-only coax/web/api/realms.c",
+      "exit": 0
+    },
+    {
+      "command": "git diff --check",
+      "exit": 0
+    },
+    {
+      "command": "coax/web/tool.sh cli-journey --cli apps/openagents-cli/build/openagents --origin http://127.0.0.1:57392 --probe",
+      "exit": 0,
+      "passed": 2,
+      "total": 2,
+      "cli_sha256": "f83201c32f7e582c9ffb2b105355786d4a3dadfff526e8cb436f844b3dc2a34c",
+      "scope": "Actual signed whoami/access reads with a fresh random test key passed only in child environment. Readiness check, not complete new-CLI journey."
+    }
+  ],
+  "sanitizer": {
+    "profile": "AddressSanitizer + UndefinedBehaviorSanitizer",
+    "logs": [
+      "/tmp/openagents-rev-fences.CdiOIB/api-v1-publish.log",
+      "/tmp/openagents-rev-fences.CdiOIB/api-old.log"
+    ],
+    "result": "No sanitizer/runtime error in completed checks."
+  },
+  "local_fixture": {
+    "postgres": {
+      "directory": "/tmp/openagents-rev-fences.CdiOIB/db",
+      "socket_directory": "/tmp/openagents-rev-fences.CdiOIB",
+      "port": 56391,
+      "role": "postgres",
+      "authentication": "Local isolated trust fixture, no password",
+      "listen_addresses": "",
+      "http_database": "oa_fence_v1",
+      "fresh_migration_database": "oa_fence_final",
+      "migration": "0102_realm_edit_fences.sql"
+    },
+    "setup_commands": [
+      "/opt/homebrew/opt/postgresql@16/bin/initdb -D \"$FENCE_WORK/db\" -U postgres -A trust",
+      "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D \"$FENCE_WORK/db\" -o \"-p 56391 -k $FENCE_WORK -c listen_addresses=''\" -l \"$FENCE_WORK/pg.log\" -w start",
+      "/opt/homebrew/opt/postgresql@16/bin/createdb -h \"$FENCE_WORK\" -p56391 -U postgres oa_fence_final",
+      "for migration in coax/web/api/migrations/*.sql; do /opt/homebrew/opt/postgresql@16/bin/psql \"$PGURL\" -v ON_ERROR_STOP=1 -q -f \"$migration\"; done"
+    ],
+    "FENCE_WORK": "/tmp/openagents-rev-fences.CdiOIB",
+    "new_api": {
+      "origin": "http://127.0.0.1:57392",
+      "pid": 16775,
+      "binary": "/tmp/openagents-rev-fences.CdiOIB/api-v1-publish",
+      "arguments": [
+        "--listen",
+        "127.0.0.1:57392",
+        "--migrations",
+        "/tmp/openagents-rev-fences.CdiOIB/no-migrations"
+      ],
+      "builder_url": "http://127.0.0.1:51391/model",
+      "builder_timeout_ms": 1000
+    },
+    "old_api": {
+      "origin": "http://127.0.0.1:57393",
+      "pid": 11677,
+      "binary": "/tmp/openagents-rev-fences.CdiOIB/api-old"
+    },
+    "credentials": "No production credential, private key, Authorization header, token value or credential-bearing environment snapshot is retained. API fixture has only a throwaway local-model authorization setting; its value is omitted.",
+    "fake_model": "Loopback51391; serves three requests then exits.",
+    "cleanup": "After integration stop owned API PIDs16775/11677; pg_ctl -D /tmp/openagents-rev-fences.CdiOIB/db -m fast stop. Superseded APIs on57391 and prior57392 binary were stopped."
+  },
+  "contract": {
+    "family": "POST /api/playtest/realms/SLUG/edit-v1/OP",
+    "operations": [
+      "switch",
+      "settings",
+      "place",
+      "lore",
+      "quest",
+      "visibility",
+      "publish",
+      "revise",
+      "asks",
+      "asks/doc",
+      "asks/ID/delete",
+      "asks/ID/done",
+      "rows/ROW/delete",
+      "proposals/ID/accept",
+      "proposals/ID/decline"
+    ],
+    "capability": "edit_fence 1 is emitted only by the new C reader. The distinct route family is the downgrade protection: old instances return 404 instead of discarding a revision.",
+    "revision": "JSON number, mathematically integral,1..9223372036854775807. Required on edit-v1; optional on legacy equivalent edit paths. CLI retains narrower bounds.",
+    "stale": {
+      "http": 409,
+      "body": {
+        "error": "changed since",
+        "rev": "CURRENT"
+      }
+    },
+    "success": "Fenced JSON replies include rev; fenced ask/document lines append rev N. Side-table-only edit consumes a revision. Publication returns the published/current revision without adding a document revision.",
+    "async": "Server-produced slug/revision metadata is checked again under a row lock at completion, before any model result is applied.",
+    "publication": "Generated made realm (doc.base JSONnull) retains existing atomic /publish. Built-in fork (nonnull base) uses edit-v1/publish; old legacy built-in-fork publish remains unchanged for compatibility.",
+    "authority": "Existing identity, ownership/admin, visibility and creator rules remain in force."
+  },
+  "staging_read_only": {
+    "observed_at_utc": "2026-11-02T15:04:05Z",
+    "health_ok": true,
+    "origin": "https://staging.openagents.com",
+    "migration": "0101_realm_list.sql",
+    "service": "oa-api-staging",
+    "revision": "oa-api-staging-00121-zst",
+    "traffic_percent": 100,
+    "build": "a40dfd940a2890c7d50a3bf69e6c849c8715b8f0",
+    "command": "coax/web/api/deploy.sh --staging",
+    "prerequisites": "Committed API changes and clean coax/web/api. Builds detached HEAD and verifies immutable-digest rollout against routed health.",
+    "state": "No deployment attempted. No-argument deploy.sh also deploys production. Its Cloud Build timeout is7200s; bound/monitor stages under the15-minute command rule."
+  },
+  "findings": [
+    "psql stdout buffering initially serialized a supposed concurrency test. Explicit pg_stat_activity overlap assertion exposed it; final harness observes the sleeping lock holder before the second call.",
+    "Initial fake-model HTTP test lacked the isolated fixture authorization configuration and returned model-unreachable. Corrected fixture configuration only; final model race passes.",
+    "SQL-only capability discovery was insufficient for mixed old/new instances. Added versioned paths and old-C refusal controls.",
+    "Revision assignment initially risked a duplicate declined-card undo entry; final single-step undo check passes.",
+    "Client review found older built-in-fork publication ignores legacy rev. Added separately fenced edit-v1/publish rather than declaring that profile atomically safe."
+  ],
+  "boundaries": [
+    "No production writes, deployment, external models, real keys, visible browser or sound.",
+    "Server qualification does not close12635; integrated client and staging journey remain required.",
+    "No compiler or Coax product authority source changed in this lane. SQL transaction policy has PostgreSQL/HTTP evidence; no Coax mutation coverage of SQL is claimed.",
+    "Side-table revision ordering does not extend aethyr.realm v1 document identity or existing lore/quest/ask undo coverage.",
+    "Unchanged broad compiler/API/model checks were not repeated. Apple native evidence does not establish Linux/deployed qualification."
+  ]
+}

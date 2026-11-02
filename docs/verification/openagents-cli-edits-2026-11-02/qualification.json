@@ -1,0 +1,45 @@
+{
+  "schema":"openagents.cli-realm-edits.qualification.v1",
+  "issue":12635,
+  "date":"2026-11-02",
+  "base_commit":"9a2ac3f855e1f6f7e1981f4e740b5a347ee1f4e7",
+  "state":"implemented; local server and real staging CLI journey qualified; API rollout remains separate",
+  "final_cli_sha256":"6c9a73ef744e21f10f4cb01f119fe0f09579392e5e98fa7535850e6636d685c0",
+  "compiler_sha256":"69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+  "compiler_origin":"Pre-existing local coax0 0.47.0 copied into this checkout; no compiler or seed changes by this task",
+  "final_source_sha256":{
+    "apps/openagents-cli/commands.coax":"18f4db03b8d4ac3c269a251505f2e0287734db8970a4462789ab03cb5baa411f",
+    "apps/openagents-cli/realm.coax":"f6302b37b1852a2e769bcded59be6800c5dab8d2660bb63d8e242887a499329f",
+    "apps/openagents-cli/main.coax":"f4581a0f1b3f63696b99c9417e594fd7c4868fdef8ec264ea789d74a97885cfd",
+    "apps/openagents-cli/account.coax":"1d4e86f354ee97d00f25b41c769af9d5e05833e3110ba78670af1bf26f931e33",
+    "apps/openagents-cli/out.coax":"7d562cfc638d991089f31b90b5d51a72b2a410440c9a7de8676b6c7ee96a427f"
+  },
+  "implementation":{
+    "catalogue_rows":26,
+    "new_edit_and_read_commands":19,
+    "cli_source_units":128,
+    "source_inventory":"source-closure.json",
+    "source_limits_changed":false,
+    "composition":"Realm policies share commands.coax, edit effects share realm.coax, API transport shares account.coax. api.coax and realm_rules.coax remain compatibility entries. Existing Forge arithmetic is loaded once rather than copied.",
+    "batch_limits":{"bytes":65536,"operations":256,"line_bytes":8192},
+    "document_upload_bytes":368640
+  },
+  "checks":{
+    "authority":{"command":"coax/bin/coax mutate apps/openagents-cli/commands.coax --library --root-only --jobs 4","mutants":976,"killed":976,"survivors":0,"equivalent_waivers":0,"log":"openissues-commands-qualified-mutation.log"},
+    "previous_reply_coverage_failure":{"mutants":976,"survivors":4,"log":"openissues-commands-final-mutation.log","resolution":"Added exact maximum/minimum line and JSON cases and removed a redundant normalized fallback; no survivor waiver"},
+    "build":{"command":"apps/openagents-cli/build.sh","passed":true,"log":"openissues-cli-qualified-build.log"},
+    "bounded_report":{"passed":true,"authored_checks":1,"run_steps":250000000,"log":"openissues-cli-report-check.log","scope":"Focused check; the command does not claim whole-CLI authority coverage"},
+    "journey":{"record":"../openagents-cli-journey-2026-11-02.json","independent_fixture_observations":35,"real_staging_observations":26,"scope":"Exact earlier CLI producer pinned in that record; no production calls"},
+    "runtime_boundaries":{"record":"../openagents-cli-edit-boundaries-2026-11-02/manifest.json","transport_observations":7,"final_image_publication_observations":5,"scope":"Independent loopback effects; no NIP-98 verifier or deployed-server claim"},
+    "server":{"record":"../openagents-cli-edit-fences-2026-11-02.json","sql_scenarios":3,"http_observations":18,"publication_http_observations":9,"asynchronous_model_races":3,"actual_overlapping_writers":true,"sanitizers":"ASan/UBSan clean"},
+    "tools_rule":{"passed":false,"log":"openissues-tools-check.log","remaining":"Unrelated upstream psionic/tests/check_deepseek_recipe.sh has no Firm reason header and is not on the port list. All task-added tools are Coax."}
+  },
+  "boundaries":[
+    "The staging journey proves make/move/stale/undo/publish/fork and batch behavior; staging was still migration 0101. New edit-v1 routes were qualified against the actual local C/PostgreSQL API, including an old-server instance.",
+    "No API or website deployment, compiler publication or production action is claimed.",
+    "Built-in forks use edit-v1/publish; generated realms use their existing atomic publication after checking doc.base. Old instances refuse new paths without effects.",
+    "Side-table revision ordering does not expand the existing v1 document/undo contract; the broader invertible log belongs to #12629.",
+    "Earlier passing receipts keep their exact producers. They are not relabeled as tests of the final image.",
+    "The existing tools-rule failure and #12638 release work remain outside this task's ownership."
+  ]
+}

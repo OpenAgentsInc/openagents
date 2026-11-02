@@ -186,7 +186,42 @@ openagents realm new --from PLAN                   # make a plan you have
 openagents realm visibility SLUG private|unlisted|public
 openagents realm publish SLUG [--rev N]            # visitors see this revision
 openagents realm fork SLUG [--name NAME]           # a copy you own, private
+openagents realm doc SLUG                          # the versioned document and SHA-256
+openagents realm asks SLUG | proposals SLUG | panes SLUG
+openagents realm switch SLUG ROW on|off [--rev N]
+openagents realm revise SLUG "WORDS" [--rev N]
+openagents realm ask SLUG "WORDS" [--rev N]         # or --doc FILE, at most 360 KiB
+openagents realm ask-delete SLUG ID [--rev N]
+openagents realm ask-done SLUG ID --commit HASH [--rev N]
+openagents realm row-delete SLUG ROW [--rev N]
+openagents realm move SLUG ENTITY X Z [--rev N]     # trees:3; metres within +/-40, up to two decimals
+openagents realm place SLUG THING X Z [--yaw DEG] [--rev N]
+openagents realm settings SLUG --tools build,talk [--rev N]
+openagents realm lore SLUG WHO "TEXT" [--rev N]     # empty forgets it; at most 400 bytes
+openagents realm quest SLUG GIVER --ask A --step S1 --step S2 --reward R [--rev N]
+openagents realm accept SLUG ID | decline SLUG ID [--rev N]
+openagents realm undo SLUG [--rev N]
+openagents realm apply SLUG FILE [--rev N]          # at most 64 KiB / 256 JSON-line operations
 ```
+
+The catalogue in `commands.coax` supplies realm help and checks bounded
+arguments before requests. Each edit reads the current revision unless
+`--rev N` names one. A stale revision returns exit 5 and the revision now.
+Move saves preserve every existing move; adjacent batch moves share one
+save and undo step. Other batch operations run separately. The first refusal
+stops the batch and reports `applied`, the failing line and the known revision.
+A batch is not atomic.
+
+New edit routes require migration 0102 and the `edit-v1` server family;
+older servers refuse them before effects, including in rolling deployments.
+Side-table edits (lore, quests and asks) consume revisions for ordering;
+their undo remains the existing realm document's scope. The broader
+invertible edit log is #12629.
+
+The end-to-end check drives the built CLI with a throwaway in-memory identity:
+`coax/web/tool.sh cli-journey --cli apps/openagents-cli/build/openagents --fixture`,
+then the same command with `--origin https://staging.openagents.com`.
+It refuses production origins.
 
 - Each request is signed with NIP-98 by the profile's key, so the key's
   account is the caller (`--profile NAME`, or `OPENAGENTS_NSEC`). A key no

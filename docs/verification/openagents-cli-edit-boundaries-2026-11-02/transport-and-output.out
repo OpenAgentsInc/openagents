@@ -1,0 +1,8 @@
+ok   no-op move still reaches atomic stale refusal (exit 5, GET 1, doc 0, POST 1)
+ok   oversized spec stops before any save (exit 1, GET 1, doc 0, POST 0)
+ok   malformed write JSON cannot report success (exit 1, GET 1, doc 0, POST 1)
+ok   missing write revision cannot report success (exit 1, GET 1, doc 0, POST 1)
+ok   large raw document fails with complete error JSON (exit 1, GET 0, doc 1, POST 0)
+ok   positive leading-zero yaw is canonical JSON (exit 0, GET 1, doc 0, POST 1)
+ok   negative zero yaw is canonical JSON (exit 0, GET 1, doc 0, POST 1)
+7 boundary cases, passed true

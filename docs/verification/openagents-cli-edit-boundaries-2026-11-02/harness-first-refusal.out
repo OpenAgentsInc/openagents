@@ -1,0 +1,3 @@
+coax/web/cli-edit-boundaries.coax:93:1: error[E0212]: global variables are not supported by coax0 yet
+  CB_LENGTH: int;
+  ^

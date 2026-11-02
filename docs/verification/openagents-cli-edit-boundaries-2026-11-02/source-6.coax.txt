@@ -1,0 +1,738 @@
+// JSON (RFC 8259) for Coax tools: parse a text into a tree of nodes in a
+// caller's array, read it by key, index or path, and write JSON into a
+// caller's buffer. Nothing allocates; the text is never copied. A node keeps
+// byte ranges into the text: a string's range is its raw bytes between the
+// quotes (jv_str unescapes them on demand), any other value's range is its
+// whole source. Children link first/next in source order; an object member
+// carries its key's raw range.
+//   nodes: [4096] JvNode; d: [1] Jv;
+//   if jv_parse(d[..], text, nodes[..]) {
+//     v := jv_path(d[0], 0, "result.result.value");     // -1 when absent
+//     if jv_kind(d[0], v) == JV_TRUE { ... }
+//     n := jv_str(d[0], jv_path(d[0], 0, "result.data"), out[..]);
+//   }
+//   o: [1] Jo; jo_start(o[..], buf[..]);
+//   jo_obj(o[..]); jo_key(o[..], "id"); jo_int(o[..], 7); jo_end(o[..]);
+//   text := jo_text(o[..]);     // {"id":7}; o[0].bad when buf was too small
+// Not here (refused or not done): depth over JV_DEPTH, more nodes than the
+// array holds, UTF-8 validation of string bytes (they are taken as they
+// come; escapes are checked), duplicate-key detection (jv_get finds the
+// first), and number conversion beyond jv_int's exact integers.
+#authority;
+
+JV_DEPTH :: 64;
+// Node kinds (0 for an index that is not a node).
+JV_NULL :: 1; JV_FALSE :: 2; JV_TRUE :: 3; JV_NUMBER :: 4; JV_STRING :: 5; JV_ARRAY :: 6; JV_OBJECT :: 7;
+JvNode :: struct {
+  kind: int; from: int; to: int;     // the value's range (a string's: between the quotes)
+  key_from: int; key_to: int;        // an object member's key, raw, between the quotes; -1 otherwise
+  first: int = -1; next: int = -1;   // first child; next sibling
+  count: int;                        // children
+}
+// A parsed text. ok: the whole text was one JSON value (and whitespace);
+// count: nodes used (node 0 is the root); err: the byte where parsing
+// stopped when not ok (or nodes.count when the array was too small).
+Jv :: struct { text: string; nodes: [] JvNode; count: int; ok: bool; err: int; }
+
+#test "parse: scalars, nesting, ranges and links" {
+  nodes: [32] JvNode; d: [1] Jv;
+  t := " {\"a\": [1, -2.5e3, true], \"b\\u0041\": {\"c\": null}, \"s\": \"x\\n\\\"y\"} ";
+  #assert jv_parse(d[..], t, nodes[..]);
+  v := d[0];
+  #assert v.count == 8 && jv_kind(v, 0) == JV_OBJECT && jv_len(v, 0) == 3 && jv_raw(v, 0)[0] == '{';
+  a := jv_get(v, 0, "a");
+  #assert jv_kind(v, a) == JV_ARRAY && jv_len(v, a) == 3 && jv_raw(v, a) == "[1, -2.5e3, true]";
+  #assert jv_raw(v, jv_at(v, a, 1)) == "-2.5e3" && jv_kind(v, jv_at(v, a, 2)) == JV_TRUE && jv_at(v, a, 3) == -1;
+  #assert jv_int(v, jv_at(v, a, 0), -9) == 1 && jv_int(v, jv_at(v, a, 1), -9) == -9;
+  // a key with an escape still matches its decoded form
+  b := jv_get(v, 0, "bA");
+  #assert jv_kind(v, b) == JV_OBJECT && jv_kind(v, jv_get(v, b, "c")) == JV_NULL && jv_get(v, 0, "b") == -1;
+  out: [16] u8;
+  s := jv_get(v, 0, "s");
+  n := jv_str(v, s, out[..]);
+  #assert jv_kind(v, s) == JV_STRING && jv_raw(v, s) == "x\\n\\\"y" && n == 4 && cast(string) out[0..<n] == "x\n\"y";
+  #assert jv_str(v, a, out[..]) == -1 && jv_str(v, s, out[0..<3]) == -1;
+  #assert jv_kind(v, -1) == 0 && jv_kind(v, 99) == 0 && jv_len(v, -1) == 0 && jv_raw(v, -1) == "" && jv_get(v, a, "x") == -1;
+  #assert jv_key(v, a) == "a" && jv_key(v, 0) == "" && jv_bool(v, jv_at(v, a, 2)) && !jv_bool(v, a);
+  #assert jv_parse(d[..], "[]", nodes[..]) && d[0].count == 1 && jv_len(d[0], 0) == 0;
+  #assert jv_parse(d[..], "{ }", nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT && d[0].nodes[0].first == -1;
+  #assert jv_parse(d[..], "\"\"", nodes[..]) && jv_raw(d[0], 0) == "" && jv_parse(d[..], "0", nodes[..]) && jv_parse(d[..], "false", nodes[..]);
+  #assert jv_parse(d[..], "[[[]],[{}]]", nodes[..]) && d[0].count == 5 && jv_len(d[0], 0) == 2;
+}
+#test "parse refuses what is not JSON" {
+  nodes: [8] JvNode; d: [1] Jv;
+  bad := [30] string.["", " ", "{", "}", "[1,]", "[,1]", "{\"a\"}", "{\"a\":}", "{a:1}", "{\"a\":1,}", "[1 2]", "01", "1.", ".5", "-", "1e", "+1",
+                      "tru", "nul", "\"x", "\"\\x\"", "\"\\u12g4\"", "\"a\nb\"", "[1]]", "1 2", "{\"a\":1 \"b\":2}", "[\"\\u", "nan", "[1}", "{]"];
+  for s: bad { #assert !jv_parse(d[..], s, nodes[..]) && !d[0].ok && d[0].count == 0; }
+  #assert !jv_parse(d[..], "[1,2,3,4,5,6,7,8]", nodes[..]) && d[0].err == 8;
+  deep: [JV_DEPTH + 1] u8;
+  for i: 0..<JV_DEPTH + 1 { deep[i] = '['; }
+  #assert !jv_parse(d[..], cast(string) deep[..], nodes[..]);
+  #assert jv_parse(d[..], "[1e+2,1E-2,0.5,-0,123456789]", nodes[..]) && jv_int(d[0], jv_at(d[0], 0, 4), 0) == 123456789;
+  #assert jv_parse(d[..], "\"\\/\\b\\f\\r\\t\\\\\"", nodes[..]);
+}
+// Parses text into nodes. True when it is one JSON value; otherwise d[0] has
+// ok false, count 0 and err set.
+jv_parse :: (d: [] Jv, text: string, nodes: [] JvNode) -> bool {
+  d[0] = Jv.{text = text, nodes = nodes, err = 0};
+  stack: [JV_DEPTH] int; last: [JV_DEPTH] int; depth := 0;
+  n := 0; i := jv_ws(text, 0);
+  while true {
+    // A value at i (with its key, when the container is an object).
+    kf := -1; kt := -1;
+    if depth > 0 && nodes[stack[depth - 1]].kind == JV_OBJECT {
+      if i >= text.count || text[i] != '"' { return jv_fail(d, i); }
+      e := jv_string_end(text, i + 1);
+      if e == -1 { return jv_fail(d, i); }
+      kf = i + 1; kt = e; i = jv_ws(text, e + 1);
+      if i >= text.count || text[i] != ':' { return jv_fail(d, i); }
+      i = jv_ws(text, i + 1);
+    }
+    if i >= text.count { return jv_fail(d, i); }
+    if n >= nodes.count { return jv_fail(d, nodes.count); }
+    me := n; n += 1;
+    nodes[me] = JvNode.{key_from = kf, key_to = kt};
+    if depth > 0 {
+      p := stack[depth - 1];
+      if last[depth - 1] == -1 { nodes[p].first = me; } else { nodes[last[depth - 1]].next = me; }
+      last[depth - 1] = me; nodes[p].count += 1;
+    }
+    c := text[i];
+    jv_local_opened := false;
+    if c == '{' || c == '[' {
+      if depth >= JV_DEPTH { return jv_fail(d, i); }
+      nodes[me].kind = ifx c == '{' then JV_OBJECT else JV_ARRAY; nodes[me].from = i;
+      stack[depth] = me; last[depth] = -1; depth += 1;
+      i = jv_ws(text, i + 1);
+      close := ifx c == '{' then cast(u8) '}' else cast(u8) ']';
+      if i < text.count && text[i] == close { depth -= 1; nodes[me].to = i + 1; i += 1; } else { jv_local_opened = true; }
+    } else if c == '"' {
+      e := jv_string_end(text, i + 1);
+      if e == -1 { return jv_fail(d, i); }
+      nodes[me].kind = JV_STRING; nodes[me].from = i + 1; nodes[me].to = e; i = e + 1;
+    } else {
+      e := jv_scalar_end(text, i);
+      if e == -1 { return jv_fail(d, i); }
+      w := text[i..<e];
+      nodes[me].kind = ifx w == "true" then JV_TRUE else ifx w == "false" then JV_FALSE else ifx w == "null" then JV_NULL else JV_NUMBER;
+      nodes[me].from = i; nodes[me].to = e; i = e;
+    }
+    if jv_local_opened { continue; }
+    // After a value: commas, closes, or the end.
+    while true {
+      i = jv_ws(text, i);
+      if depth == 0 {
+        if i != text.count { return jv_fail(d, i); }
+        d[0].count = n; d[0].ok = true;
+        return true;
+      }
+      p := stack[depth - 1];
+      close := ifx nodes[p].kind == JV_OBJECT then cast(u8) '}' else cast(u8) ']';
+      if i < text.count && text[i] == ',' { i = jv_ws(text, i + 1); break; }
+      if i < text.count && text[i] == close { nodes[p].to = i + 1; depth -= 1; i += 1; continue; }
+      return jv_fail(d, i);
+    }
+  }
+  // The checker requires a final return after an unbounded loop. Every
+  // reachable exit above has already published the parser's status.
+  return jv_fail(d,i);
+}
+jv_fail :: (d: [] Jv, at: int) -> bool { d[0].count = 0; d[0].ok = false; d[0].err = at; return false; }
+#test "whitespace and token ends" {
+  #assert jv_ws(" \t\r\nx", 0) == 4 && jv_ws("", 0) == 0 && jv_ws("  ", 1) == 2;
+  #assert jv_string_end("ab\"", 0) == 2 && jv_string_end("a\\\"b\"", 0) == 4 && jv_string_end("ab", 0) == -1 && jv_string_end("\\", 0) == -1;
+  #assert jv_string_end("\\u00e9\"", 0) == 6 && jv_string_end("\\u00e\"", 0) == -1 && jv_string_end("\\q\"", 0) == -1;
+  del := [2] u8.[127, 34];
+  #assert jv_string_end("\t\"", 0) == -1 && jv_string_end(cast(string) del[..], 0) == 1;
+  #assert jv_scalar_end("123,", 0) == 3 && jv_scalar_end("-0.5e+1]", 0) == 7 && jv_scalar_end("null}", 0) == 4;
+  #assert jv_scalar_end("00", 0) == -1 && jv_scalar_end("1.e1", 0) == -1 && jv_scalar_end("x", 0) == -1 && jv_scalar_end("-x", 0) == -1;
+  #assert jv_scalar_end("truex", 0) == -1 && jv_scalar_end("1e5x", 0) == -1 && jv_scalar_end("false", 0) == 5;
+}
+jv_ws :: (t: string, i: int) -> int {
+  k := i;
+  while k < t.count && (t[k] == ' ' || t[k] == '\t' || t[k] == '\n' || t[k] == '\r') { k += 1; }
+  return k;
+}
+jv_hex :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
+  return -1;
+}
+// The index of the closing quote of a string whose bytes start at i, or -1
+// (an unknown escape, a short \u, a control byte, or no end).
+jv_string_end :: (t: string, i: int) -> int {
+  k := i;
+  while k < t.count {
+    c := t[k];
+    if c == '"' { return k; }
+    if c < 32 { return -1; }
+    if c == '\\' {
+      if t.count - k < 3 { return -1; }
+      e := t[k + 1];
+      if e == 'u' {
+        if t.count - k < 7 { return -1; }
+        for j: 2..<6 { if jv_hex(t[k + j]) < 0 { return -1; } }
+        k += 6; continue;
+      }
+      if e != '"' && e != '\\' && e != '/' && e != 'b' && e != 'f' && e != 'n' && e != 'r' && e != 't' { return -1; }
+      k += 2; continue;
+    }
+    k += 1;
+  }
+  return -1;
+}
+jv_digits :: (t: string, i: int) -> int {
+  k := i;
+  while k < t.count && t[k] >= '0' && t[k] <= '9' { k += 1; }
+  return k;
+}
+// The end of the number or literal at i, or -1. What follows must end a token.
+jv_scalar_end :: (t: string, i: int) -> int {
+  e := -1;
+  jv_local_words := [3] string.["true", "false", "null"];
+  for w: jv_local_words {
+    if e == -1 && i + w.count <= t.count && t[i..<i + w.count] == w { e = i + w.count; }
+  }
+  if e == -1 {
+    k := i;
+    if k < t.count && t[k] == '-' { k += 1; }
+    jv_first_digit := k;k = jv_digits(t,k);
+    if k == jv_first_digit { return -1; }
+    if k-jv_first_digit>1 && t[jv_first_digit]=='0' { return -1; }
+    if k < t.count && t[k] == '.' {
+      j := jv_digits(t, k + 1);
+      if j == k + 1 { return -1; }
+      k = j;
+    }
+    if k < t.count && (t[k] == 'e' || t[k] == 'E') {
+      k += 1;
+      if k < t.count && (t[k] == '+' || t[k] == '-') { k += 1; }
+      j := jv_digits(t, k);
+      if j == k { return -1; }
+      k = j;
+    }
+    e = k;
+  }
+  if e < t.count {
+    c := t[e];
+    if c != ' ' && c != '\t' && c != '\n' && c != '\r' && c != ',' && c != ']' && c != '}' { return -1; }
+  }
+  return e;
+}
+
+// ---- reading ---------------------------------------------------------------
+
+jv_ok :: (d: Jv, at: int) -> bool { return at >= 0 && at < d.count; }
+// The node's kind, or 0 when at is not a node.
+jv_kind :: (d: Jv, at: int) -> int { return ifx jv_ok(d, at) then d.nodes[at].kind else 0; }
+// Children of an array or object.
+jv_len :: (d: Jv, at: int) -> int { return ifx jv_ok(d, at) then d.nodes[at].count else 0; }
+// The value's source (a string's raw bytes between its quotes), or "".
+jv_raw :: (d: Jv, at: int) -> string { return ifx jv_ok(d, at) then d.text[d.nodes[at].from..<d.nodes[at].to] else ""; }
+// An object member's raw key, or "".
+jv_key :: (d: Jv, at: int) -> string {
+  if !jv_ok(d, at) || d.nodes[at].key_from == -1 { return ""; }
+  return d.text[d.nodes[at].key_from..<d.nodes[at].key_to];
+}
+jv_bool :: (d: Jv, at: int) -> bool { return jv_kind(d, at) == JV_TRUE; }
+// Child i of an array or object, or -1.
+jv_at :: (d: Jv, at: int, i: int) -> int {
+  if !jv_ok(d, at) || i < 0 { return -1; }
+  k := d.nodes[at].first;
+  for j: 0..<i { if k == -1 { return -1; } k = d.nodes[k].next; }
+  return k;
+}
+// The first member of object at called key (compared unescaped), or -1.
+jv_get :: (d: Jv, at: int, key: string) -> int {
+  if jv_kind(d, at) != JV_OBJECT { return -1; }
+  k := d.nodes[at].first;
+  while k != -1 {
+    if jv_raw_eq(d.text[d.nodes[k].key_from..<d.nodes[k].key_to], key) { return k; }
+    k = d.nodes[k].next;
+  }
+  return -1;
+}
+// Whether raw string bytes unescape to s.
+jv_raw_eq :: (raw: string, s: string) -> bool {
+  plain := true;
+  for c: raw { if c == '\\' { plain = false; } }
+  if plain { return raw == s; }
+  buf: [1024] u8;
+  n := jv_unescape(raw, buf[..]);
+  if n == -1 { return false; }
+  return cast(string) buf[0..<n] == s;
+}
+#test "paths: keys and indexes" {
+  nodes: [32] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"result\":{\"result\":{\"value\":true}},\"t\":[{\"type\":\"page\"},{\"a.b\":2}]}", nodes[..]);
+  v := d[0];
+  #assert jv_kind(v, jv_path(v, 0, "result.result.value")) == JV_TRUE && jv_path(v, 0, "result.nope") == -1;
+  #assert jv_raw(v, jv_path(v, 0, "t[0].type")) == "page" && jv_path(v, 0, "t[2]") == -1 && jv_path(v, 0, "") == 0;
+  #assert jv_path(v, jv_path(v, 0, "t"), "[1]") == jv_at(v, jv_path(v, 0, "t"), 1) && jv_path(v, 0, "t[") == -1 && jv_path(v, 0, "t[x]") == -1;
+  #assert jv_path(v, 0, "t.0") == -1 && jv_path(v, -1, "t") == -1 && jv_path(v, 0, ".t") == -1;
+}
+// A path from at: keys joined by dots, indexes in brackets ("a.b[2].c").
+// -1 when any step is missing (a key cannot hold a dot or a bracket here).
+jv_path :: (d: Jv, at: int, path: string) -> int {
+  k := at; i := 0;
+  if !jv_ok(d, k) { return -1; }
+  while i < path.count {
+    if path[i] == '[' {
+      j := i + 1; v := 0;
+      while j < path.count && path[j] >= '0' && path[j] <= '9' { v = v * 10 + cast(int) (path[j] - '0'); j += 1; }
+      if j == i + 1 || j >= path.count || path[j] != ']' { return -1; }
+      k = jv_at(d, k, v); i = j + 1;
+    } else {
+      if path[i] == '.' { if i == 0 { return -1; } i += 1; }
+      j := i;
+      while j < path.count && path[j] != '.' && path[j] != '[' { j += 1; }
+      if j == i { return -1; }
+      k = jv_get(d, k, path[i..<j]); i = j;
+    }
+    // Public lookups propagate a missing node as -1 at every later step.
+  }
+  return k;
+}
+// A string node unescaped into out: its length, or -1 (not a string, or out too small).
+jv_str :: (d: Jv, at: int, out: [] u8) -> int {
+  if jv_kind(d, at) != JV_STRING { return -1; }
+  return jv_unescape(jv_raw(d, at), out);
+}
+// A number node that is an integer within 2^53 (no fraction or exponent), or fallback.
+jv_int :: (d: Jv, at: int, fallback: int) -> int {
+  if jv_kind(d, at) != JV_NUMBER { return fallback; }
+  s := jv_raw(d, at); i := 0; neg := false;
+  if s[0] == '-' { neg = true; i = 1; }
+  v := 0;
+  for j: i..<s.count {
+    if s[j] < '0' || s[j] > '9' { return fallback; }
+    jv_digit := cast(int)(s[j]-'0');
+    // Admit the next decimal digit before multiplying; this also prevents
+    // signed-carrier overflow on arbitrarily long valid JSON numbers.
+    if v>900719925474099 || (v==900719925474099 && jv_digit>2) {return fallback;}
+    v = v * 10 + jv_digit;
+  }
+  return ifx neg then -v else v;
+}
+#test "unescape: every escape, surrogate pairs and UTF-8" {
+  out: [32] u8;
+  n := jv_unescape("a\\\"\\\\\\/\\b\\f\\n\\r\\tz", out[..]);
+  #assert n == 10 && out[1] == '"' && out[2] == '\\' && out[3] == '/' && out[4] == 8 && out[5] == 12 && out[6] == 10 && out[7] == 13 && out[8] == 9;
+  n = jv_unescape("\\u0041\\u00e9\\u20ac\\ud83d\\ude00", out[..]);
+  #assert n == 10 && out[0] == 'A' && out[1] == 0xc3 && out[2] == 0xa9 && out[3] == 0xe2 && out[4] == 0x82 && out[5] == 0xac;
+  #assert out[6] == 0xf0 && out[7] == 0x9f && out[8] == 0x98 && out[9] == 0x80;
+  // a lone surrogate becomes U+FFFD
+  n = jv_unescape("\\ud800x", out[..]);
+  #assert n == 4 && out[0] == 0xef && out[1] == 0xbf && out[2] == 0xbd && out[3] == 'x';
+  n = jv_unescape("\\udc00", out[..]);
+  #assert n == 3 && out[0] == 0xef;
+  #assert jv_unescape("abc", out[0..<2]) == -1 && jv_unescape("\\u20ac", out[0..<2]) == -1 && jv_unescape("", out[..]) == 0;
+  #assert jv_unescape("\\", out[..]) == -1 && jv_unescape("\\u12", out[..]) == -1;
+}
+// Raw string bytes (between the quotes) unescaped into out: the length, or
+// -1 when out is too small or an escape is malformed. A lone surrogate
+// becomes U+FFFD.
+jv_unescape :: (raw: string, out: [] u8) -> int {
+  n := 0; i := 0;
+  while i < raw.count {
+    c := raw[i];
+    if c != '\\' {
+      if n >= out.count { return -1; }
+      out[n] = c; n += 1; i += 1; continue;
+    }
+    if i + 1 >= raw.count { return -1; }
+    e := raw[i + 1];
+    if e != 'u' {
+      b := jv_escape_byte(e);if b == -1 {return -1;}
+      if n >= out.count { return -1; }
+      out[n] = cast(u8)b; n += 1; i += 2; continue;
+    }
+    cp := jv_u4(raw, i + 2);
+    if cp < 0 { return -1; }
+    i += 6;
+    if cp >= 0xd800 && cp <= 0xdbff {
+      jv_high := cp; cp = 0xfffd;
+      if raw.count-i>=6 && raw[i] == '\\' && raw[i + 1] == 'u' {
+        low := jv_u4(raw, i + 2);
+        if low >= 0xdc00 && low <= 0xdfff { cp = 0x10000 + ((jv_high - 0xd800) << 10) + (low - 0xdc00); i += 6; }
+      }
+    } else if cp >= 0xdc00 && cp <= 0xdfff { cp = 0xfffd; }
+    k := jv_utf8(cp, out, n);
+    if k == -1 { return -1; }
+    n = k;
+  }
+  return n;
+}
+// Simple JSON escapes; unicode escapes have their own four-digit path.
+jv_escape_byte :: (e:u8)->int {
+  if e=='"' || e=='\\' || e=='/' {return cast(int)e;}
+  if e=='b' {return 8;}if e=='f' {return 12;}if e=='n' {return 10;}if e=='r' {return 13;}if e=='t' {return 9;}
+  return -1;
+}
+jv_u4 :: (s: string, i: int) -> int {
+  if i + 4 > s.count { return -1; }
+  v := 0;
+  for j: 0..<4 {
+    h := jv_hex(s[i + j]);
+    if h < 0 { return -1; }
+    v = v * 16 + h;
+  }
+  return v;
+}
+// Code point cp as UTF-8 at out[at..]: the new end, or -1 when it does not fit.
+jv_utf8 :: (cp: int, out: [] u8, at: int) -> int {
+  k := ifx cp < 0x80 then 1 else ifx cp < 0x800 then 2 else ifx cp < 0x10000 then 3 else 4;
+  if at + k > out.count { return -1; }
+  if k == 1 { out[at] = cast(u8) cp; return at + 1; }
+  lead := ifx k == 2 then 0xc0 else ifx k == 3 then 0xe0 else 0xf0;
+  out[at] = cast(u8) (lead | (cp >> (6 * (k - 1))));
+  for j: 1..<k { out[at + j] = cast(u8) (0x80 | ((cp >> (6 * (k - 1 - j))) & 63)); }
+  return at + k;
+}
+
+// ---- writing ---------------------------------------------------------------
+
+// A writer into buf. bad: something did not fit (the text is then cut short
+// and must not be used). Commas go in by themselves.
+Jo :: struct { buf: [] u8; n: int; bad: bool; depth: int; more: [JV_DEPTH] bool; close: [JV_DEPTH] u8; keyed: bool; }
+#test "writing: objects, arrays, escapes and commas" {
+  del := [1] u8.[127];
+  store: [256] u8; o: [1] Jo;
+  jo_start(o[..], store[..]);
+  jo_obj(o[..]); jo_key(o[..], "id"); jo_int(o[..], 7); jo_key(o[..], "method"); jo_str(o[..], "Page.navigate");
+  jo_key(o[..], "params"); jo_obj(o[..]); jo_key(o[..], "url"); url := [10] u8.['a', '"', 'b', '\\', 'c', 10, 1, 9, 0xc3, 0xa9];
+  jo_str(o[..], cast(string) url[..]); jo_end(o[..]);
+  jo_key(o[..], "list"); jo_arr(o[..]); jo_int(o[..], -12); jo_bool(o[..], true); jo_bool(o[..], false); jo_null(o[..]); jo_raw(o[..], "{\"x\":1}"); jo_arr(o[..]); jo_end(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"id\":7,\"method\":\"Page.navigate\",\"params\":{\"url\":\"a\\\"b\\\\c\\n\\u0001\\té\"},\"list\":[-12,true,false,null,{\"x\":1},[]]}";
+  jo_start(o[..], store[0..<5]); jo_str(o[..], "abcdef");
+  #assert o[0].bad;
+  jo_start(o[..], store[..]); jo_int(o[..], 0); #assert jo_text(o[..]) == "0";
+  jo_start(o[..], store[..]); jo_int(o[..], -9223372036854775807); #assert jo_text(o[..]) == "-9223372036854775807";
+  jo_start(o[..], store[..]); jo_end(o[..]); #assert o[0].bad;
+  jo_start(o[..], store[..]); bfr := [3] u8.[8, 12, 13]; jo_str(o[..], cast(string) bfr[..]); #assert jo_text(o[..]) == "\"\\b\\f\\r\"";
+  jo_start(o[..], store[..]); jo_str(o[..], cast(string) del[0..<1]); #assert o[0].n == 3 && store[1] == 127;
+}
+jo_start :: (o: [] Jo, buf: [] u8) { o[0] = Jo.{buf = buf}; }
+jo_text :: (o: [] Jo) -> string { return cast(string) o[0].buf[0..<o[0].n]; }
+jo_put :: (o: [] Jo, s: string) {
+  if o[0].n + s.count > o[0].buf.count { o[0].bad = true; return; }
+  for i: 0..<s.count { o[0].buf[o[0].n + i] = s[i]; }
+  o[0].n += s.count;
+}
+jo_byte :: (o: [] Jo, c: u8) {
+  if o[0].n >= o[0].buf.count { o[0].bad = true; return; }
+  o[0].buf[o[0].n] = c; o[0].n += 1;
+}
+// Before any value: the comma that separates it from the one before.
+jo_value :: (o: [] Jo) {
+  if o[0].keyed { o[0].keyed = false; return; }
+  if o[0].depth > 0 {
+    if o[0].more[o[0].depth - 1] { jo_byte(o, ','); }
+    o[0].more[o[0].depth - 1] = true;
+  }
+}
+jo_open :: (o: [] Jo, c: u8) {
+  jo_value(o);
+  if o[0].depth >= JV_DEPTH { o[0].bad = true; return; }
+  jo_byte(o, c); o[0].more[o[0].depth] = false;
+  o[0].close[o[0].depth] = ifx c == '{' then cast(u8) '}' else cast(u8) ']';
+  o[0].depth += 1;
+}
+jo_obj :: (o: [] Jo) { jo_open(o, '{'); }
+jo_arr :: (o: [] Jo) { jo_open(o, '['); }
+// Closes the innermost object or array.
+jo_end :: (o: [] Jo) {
+  if o[0].depth < 1 { o[0].bad = true; return; }
+  o[0].depth -= 1;
+  jo_byte(o, o[0].close[o[0].depth]);
+}
+jo_key :: (o: [] Jo, k: string) { jo_value(o); jo_quoted(o, k); jo_byte(o, ':'); o[0].keyed = true; }
+jo_str :: (o: [] Jo, s: string) { jo_value(o); jo_quoted(o, s); }
+// Already-encoded JSON, as given.
+jo_raw :: (o: [] Jo, json: string) { jo_value(o); jo_put(o, json); }
+jo_bool :: (o: [] Jo, b: bool) { jo_raw(o, ifx b then "true" else "false"); }
+jo_null :: (o: [] Jo) { jo_raw(o, "null"); }
+jo_int :: (o: [] Jo, v: int) {
+  jo_value(o);
+  tmp: [20] u8; k := 0;
+  neg := v < 0;
+  x := v;
+  while true {
+    dgt := x % 10;
+    tmp[k] = cast(u8) ('0' + cast(int)abs(cast(f64)dgt)); k += 1; x /= 10;
+    if x == 0 { break; }
+  }
+  if neg { jo_byte(o, '-'); }
+  for i: 0..<k { jo_byte(o, tmp[k - 1 - i]); }
+}
+// s as a JSON string, escaped the way JSON.stringify does: quote, backslash
+// and control bytes; everything else (UTF-8 included) as it is.
+jo_quoted :: (o: [] Jo, s: string) {
+  jo_byte(o, '"');
+  jo_escape_bytes(o, s);
+  jo_byte(o, '"');
+}
+jo_escape_bytes :: (o: [] Jo, s: string) {
+  hex := "0123456789abcdef";
+  for c: s {
+    if c == '"' { jo_put(o, "\\\""); }
+    else if c == '\\' { jo_put(o, "\\\\"); }
+    else if c == 10 { jo_put(o, "\\n"); }
+    else if c == 13 { jo_put(o, "\\r"); }
+    else if c == 9 { jo_put(o, "\\t"); }
+    else if c == 8 { jo_put(o, "\\b"); }
+    else if c == 12 { jo_put(o, "\\f"); }
+    else if c < 32 { jo_put(o, "\\u00"); jo_byte(o, hex[c >> 4]); jo_byte(o, hex[c & 15]); }
+    else { jo_byte(o, c); }
+  }
+}
+
+#test "a node written back compactly, strings escaped as JSON.stringify does" {
+  nodes: [32] JvNode; d: [1] Jv; store: [256] u8; o: [1] Jo;
+  #assert jv_parse(d[..], " { \"a\" : [ 1 , \"x\\u0041\\/\" , { } ] , \"b\\\"\" : null, \"c\": -2.5e3 } ", nodes[..]);
+  jo_start(o[..], store[..]); jv_write(d[0], 0, o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"a\":[1,\"xA/\",{}],\"b\\\"\":null,\"c\":-2.5e3}";
+  jo_start(o[..], store[..]); jo_arr(o[..]); jv_write(d[0], jv_get(d[0], 0, "a"), o[..]); jv_write(d[0], jv_get(d[0], 0, "c"), o[..]); jo_end(o[..]);
+  #assert jo_text(o[..]) == "[[1,\"xA/\",{}],-2.5e3]";
+  jo_start(o[..], store[..]); jv_write(d[0], -1, o[..]);
+  #assert o[0].bad;
+  #assert jv_parse(d[..], "\"\\u0001\\n\\ud83d\\ude00\"", nodes[..]);
+  jo_start(o[..], store[..]); jv_write(d[0], 0, o[..]);
+  #assert jo_text(o[..]) == "\"\\u0001\\n😀\"";
+}
+// Node at written into o as compact JSON: no whitespace, strings and keys
+// unescaped and escaped again (jo_str's rules), numbers as written. An
+// index that is not a node marks o bad.
+jv_write :: (d: Jv, at: int, o: [] Jo) {
+  k := jv_kind(d, at);
+  if k == 0 { o[0].bad = true; return; }
+  if k == JV_STRING { jo_value(o); jo_requote(o, jv_raw(d, at)); return; }
+  if k != JV_ARRAY && k != JV_OBJECT { jo_raw(o, jv_raw(d, at)); return; }
+  jo_open(o, ifx k == JV_OBJECT then cast(u8) '{' else cast(u8) '[');
+  c := d.nodes[at].first;
+  while c != -1 {
+    if k == JV_OBJECT { jo_value(o); jo_requote(o, jv_key(d, c)); jo_byte(o, ':'); o[0].keyed = true; }
+    jv_write(d, c, o);
+    c = d.nodes[c].next;
+  }
+  jo_end(o);
+}
+// Raw string bytes (escaped as they came) written as a quoted string with jo_quoted's escapes.
+jo_requote :: (o: [] Jo, raw: string) {
+  jo_byte(o, '"');
+  i := 0;
+  while i != raw.count {
+    j := i;
+    while j < raw.count && raw[j] != '\\' { j += 1; }
+    jo_escape_bytes(o, raw[i..<j]);
+    if j >= raw.count { break; }
+    // one escape (two for a surrogate pair), decoded
+    if j+1>=raw.count {o[0].bad=true;return;}
+    e := j + 2;
+    if raw[j + 1] == 'u' {
+      e = j + 6;
+      // Decode adjacent complete units together. jv_unescape alone decides
+      // whether they form a pair, are separate characters, or are malformed.
+      if raw.count-e>=6 && raw[e]=='\\' && raw[e+1]=='u' {e+=6;}
+    }
+    if e > raw.count { o[0].bad = true; return; }
+    tmp: [8] u8;
+    n := jv_unescape(raw[j..<e], tmp[..]);
+    if n == -1 { o[0].bad = true; return; }
+    jo_escape_bytes(o, cast(string) tmp[0..<n]);
+    i = e;
+  }
+  jo_byte(o, '"');
+}
+
+// Checks stay in this unit so the composed realm fits the source graph budget.
+// Source-part authority checks for the published node/writer boundaries.
+#test "JSON authority publishes complete scalar records and resets reused parse status" {
+  jqa_nodes:[8]JvNode;jqa_d:[1]Jv;
+  for jqa_text,jqa_kind:[5]string.["true","false","null","0","\"\""] {
+    jqa_expected:=[5]int.[JV_TRUE,JV_FALSE,JV_NULL,JV_NUMBER,JV_STRING];
+    jqa_d[0]=Jv.{ok=true,count=81,err=92};
+    #assert jv_parse(jqa_d[..],jqa_text,jqa_nodes[..]);
+    #assert jqa_d[0].ok && jqa_d[0].count==1 && jqa_d[0].err==0 && jqa_d[0].text==jqa_text && jqa_d[0].nodes.count==8;
+    #assert jqa_nodes[0].kind==jqa_expected[jqa_kind] && jqa_nodes[0].first== -1 && jqa_nodes[0].next== -1 && jqa_nodes[0].count==0 && jqa_nodes[0].key_from== -1 && jqa_nodes[0].key_to== -1;
+  }
+  #assert !jv_fail(jqa_d[..],7) && !jqa_d[0].ok && jqa_d[0].count==0 && jqa_d[0].err==7;
+  #assert jqa_d[0].text=="\"\"" && jqa_d[0].nodes.count==8;
+  #assert !jv_parse(jqa_d[..],"[",jqa_nodes[..]) && !jqa_d[0].ok && jqa_d[0].count==0 && jqa_d[0].err==1;
+  #assert jv_parse(jqa_d[..],"[{},[]]",jqa_nodes[..]) && jqa_d[0].ok && jqa_d[0].count==3 && jqa_d[0].err==0;
+  #assert jv_raw(jqa_d[0],0)=="[{},[]]" && jv_raw(jqa_d[0],1)=="{}" && jv_raw(jqa_d[0],2)=="[]";
+}
+#test "JSON authority reaches the actual64container depth bound before node capacity" {
+  jqa_bytes:[130]u8;jqa_nodes:[66]JvNode;jqa_d:[1]Jv;
+  for jqa_i:0..<64 {jqa_bytes[jqa_i]='[';jqa_bytes[127-jqa_i]=']';}
+  #assert jv_parse(jqa_d[..],cast(string)jqa_bytes[0..<128],jqa_nodes[..]) && jqa_d[0].count==64 && jqa_nodes[0].to==128;
+  for jqa_i:0..<65 {jqa_bytes[jqa_i]='[';jqa_bytes[129-jqa_i]=']';}
+  #assert !jv_parse(jqa_d[..],cast(string)jqa_bytes[..],jqa_nodes[..]) && jqa_d[0].err==64 && !jqa_d[0].ok;
+}
+#test "JSON authority empty key and truncated key colon retain exact failure coordinates" {
+  jqa_nodes:[8]JvNode;jqa_d:[1]Jv;
+  #assert jv_parse(jqa_d[..],"{\"\":0}",jqa_nodes[..]) && jv_get(jqa_d[0],0,"")==1 && jqa_nodes[1].key_from==2 && jqa_nodes[1].key_to==2;
+  #assert !jv_parse(jqa_d[..],"{\"x\"",jqa_nodes[..]) && jqa_d[0].err==4;
+  #assert !jv_parse(jqa_d[..],"{\"\":\"unterminated}",jqa_nodes[..]) && jqa_d[0].err==4;
+}
+#forall "JSON authority hex and digit token endpoints classify every ASCII byte" jqa_c:0..<128 {
+  jqa_expected:=-1;
+  if jqa_c>=48 && jqa_c<=57 {jqa_expected=jqa_c-48;}
+  if jqa_c>=65 && jqa_c<=70 {jqa_expected=jqa_c-65+10;}
+  if jqa_c>=97 && jqa_c<=102 {jqa_expected=jqa_c-97+10;}
+  #assert jv_hex(cast(u8)jqa_c)==jqa_expected;
+  jqa_raw:=[2]u8.[cast(u8)jqa_c,','];
+  #assert jv_digits(cast(string)jqa_raw[..],0)==(ifx jqa_c>=48 && jqa_c<=57 then 1 else 0);
+}
+#test "JSON authority string scanning exact spans include empty values whitespace and malformed unicode" {
+  #assert jv_string_end("\"",0)==0 && jv_string_end(" \"",0)==1;
+  #assert jv_string_end("\\u0000",0)== -1 && jv_string_end("\\u00q0\"",0)== -1 && jv_string_end("\\u?000\"",0)== -1;
+  #assert jv_string_end("\\u0041",0)== -1 && jv_string_end("\\u0041\"",0)==6;
+  jqa_control:=[2]u8.[31,34];#assert jv_string_end(cast(string)jqa_control[..],0)== -1;
+  jqa_control[0]=32;#assert jv_string_end(cast(string)jqa_control[..],0)==1;
+}
+#test "JSON authority scalar scanners recognize token delimiters signed digits and missing exponent digits" {
+  for jqa_delimiter:[7]string.[" ","\t","\n","\r",",","]","}"] {
+    jqa_bytes:[8]u8;jqa_bytes[0]='9';jqa_bytes[1]=jqa_delimiter[0];#assert jv_scalar_end(cast(string)jqa_bytes[0..<2],0)==1;
+  }
+  for jqa_text:[7]string.["-0","9","1e-2","1E+2","0.9","true","null"] {#assert jv_scalar_end(jqa_text,0)==jqa_text.count;}
+  for jqa_text:[8]string.[":","1:","1e+","1E-","-:","0:","1e9:","false:"] {#assert jv_scalar_end(jqa_text,0)== -1;}
+}
+#test "JSON authority public readers refuse exact index ends and preserve absent children" {
+  jqa_nodes:[8]JvNode;jqa_d:[1]Jv;#assert jv_parse(jqa_d[..],"{\"a\":[0],\"b\":true}",jqa_nodes[..]);jqa_v:=jqa_d[0];
+  #assert !jv_ok(jqa_v,-1) && jv_ok(jqa_v,0) && jv_ok(jqa_v,3) && !jv_ok(jqa_v,4);
+  #assert jv_key(jqa_v,0)=="" && jv_key(jqa_v,-1)=="" && jv_key(jqa_v,4)=="";
+  #assert jv_at(jqa_v,0,-1)== -1 && jv_at(jqa_v,-1,0)== -1 && jv_at(jqa_v,4,0)== -1;
+  #assert jv_at(jqa_v,2,0)== -1 && jv_at(jqa_v,1,1)== -1 && jv_at(jqa_v,1,2)== -1;
+  #assert jv_get(jqa_v,0,"a")==1 && jv_get(jqa_v,0,"b")==3 && jv_get(jqa_v,0,"missing")== -1;
+}
+#test "JSON authority paths handle nine zero missing brackets and missing nested keys" {
+  jqa_nodes:[16]JvNode;jqa_d:[1]Jv;#assert jv_parse(jqa_d[..],"{\"a\":[0,1,2,3,4,5,6,7,8,9]}",jqa_nodes[..]);jqa_v:=jqa_d[0];
+  #assert jv_int(jqa_v,jv_path(jqa_v,0,"a[9]"),-1)==9 && jv_int(jqa_v,jv_path(jqa_v,0,"a[0]"),-1)==0;
+  for jqa_path:[7]string.["a[", "a[]", "a[0", "a[0:","a[:0]","a.","a..x"] {#assert jv_path(jqa_v,0,jqa_path)== -1;}
+  #assert jv_path(jqa_v,0,"a[0].x")== -1 && jv_path(jqa_v,0,"absent.x")== -1;
+}
+#test "JSON authority integer reads preserve signs exact2pow53 endpoints and reject fractional exponent or oversized words" {
+  jqa_nodes:[16]JvNode;jqa_d:[1]Jv;
+  #assert jv_parse(jqa_d[..],"[-1,-0,-9,9007199254740992,-9007199254740992,9007199254740993,10000000000000000,0.5,1e2]",jqa_nodes[..]);
+  jqa_expected:=[9]int.[-1,0,-9,9007199254740992,-9007199254740992,-71,-71,-71,-71];
+  for jqa_i:0..<9 {#assert jv_int(jqa_d[0],jv_at(jqa_d[0],0,jqa_i),-71)==jqa_expected[jqa_i];}
+}
+#test "JSON authority escaped equality handles long plain text empty decoded text and capacity refusal" {
+  jqa_bytes:[1025]u8;for jqa_i:0..<1025 {jqa_bytes[jqa_i]='a';}
+  #assert jv_raw_eq(cast(string)jqa_bytes[..],cast(string)jqa_bytes[..]) && jv_raw_eq("","");
+  jqa_bytes[0]='\\';jqa_bytes[1]='n';#assert !jv_raw_eq(cast(string)jqa_bytes[..],"different");
+  jqa_zero:=[1]u8.[0];#assert jv_raw_eq("\\u0000",cast(string)jqa_zero[..]) && !jv_raw_eq("\\u12","");
+}
+#test "JSON authority writer fits exact output boundaries and refuses larger puts without partial writes" {
+  jqa_storage:[9]u8;for jqa_i:0..<9 {jqa_storage[jqa_i]=81;}jqa_o:[1]Jo;
+  jo_start(jqa_o[..],jqa_storage[2..<7]);jo_put(jqa_o[..],"abcde");#assert !jqa_o[0].bad && jqa_o[0].n==5 && jo_text(jqa_o[..])=="abcde";
+  jo_put(jqa_o[..],"x");#assert jqa_o[0].bad && jqa_o[0].n==5 && jqa_storage[1]==81 && jqa_storage[7]==81;
+  jo_start(jqa_o[..],jqa_storage[2..<7]);jo_put(jqa_o[..],"ab");jo_put(jqa_o[..],"cdef");#assert jqa_o[0].bad && jqa_o[0].n==2 && jo_text(jqa_o[..])=="ab";
+  jo_start(jqa_o[..],jqa_storage[2..<2]);jo_put(jqa_o[..],"");#assert !jqa_o[0].bad && jqa_o[0].n==0;
+}
+#test "JSON authority writer accepts64nestedcontainers and refuses the next with its flag retained" {
+  jqa_storage:[130]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);
+  for jqa_i:0..<64 {jo_arr(jqa_o[..]);}#assert !jqa_o[0].bad && jqa_o[0].depth==64 && jqa_o[0].n==64;
+  jo_arr(jqa_o[..]);#assert jqa_o[0].bad && jqa_o[0].depth==64 && jqa_o[0].n==64;
+}
+#test "JSON authority integer writer includes zero decimal digits and the signed64 minimum" {
+  jqa_storage:[32]u8;jqa_o:[1]Jo;
+  for jqa_number,jqa_i:[5]int.[0,10,-10,-9223372036854775808,9223372036854775807] {
+    jqa_expected:=[5]string.["0","10","-10","-9223372036854775808","9223372036854775807"];
+    jo_start(jqa_o[..],jqa_storage[..]);jo_int(jqa_o[..],jqa_number);#assert !jqa_o[0].bad && jo_text(jqa_o[..])==jqa_expected[jqa_i];
+  }
+}
+#test "JSON authority UTF8 codepoint boundary 0" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(0,jqa_out[..],2)==3;jqa_expected:=[1]u8.[0];for jqa_i:0..<1 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[3]==81;#assert jv_utf8(0,jqa_out[0..<0],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 127" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(127,jqa_out[..],2)==3;jqa_expected:=[1]u8.[127];for jqa_i:0..<1 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[3]==81;#assert jv_utf8(127,jqa_out[0..<0],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 128" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(128,jqa_out[..],2)==4;jqa_expected:=[2]u8.[194,128];for jqa_i:0..<2 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[4]==81;#assert jv_utf8(128,jqa_out[0..<1],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 2047" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(2047,jqa_out[..],2)==4;jqa_expected:=[2]u8.[223,191];for jqa_i:0..<2 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[4]==81;#assert jv_utf8(2047,jqa_out[0..<1],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 2048" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(2048,jqa_out[..],2)==5;jqa_expected:=[3]u8.[224,160,128];for jqa_i:0..<3 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[5]==81;#assert jv_utf8(2048,jqa_out[0..<2],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 65535" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(65535,jqa_out[..],2)==5;jqa_expected:=[3]u8.[239,191,191];for jqa_i:0..<3 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[5]==81;#assert jv_utf8(65535,jqa_out[0..<2],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 65536" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(65536,jqa_out[..],2)==6;jqa_expected:=[4]u8.[240,144,128,128];for jqa_i:0..<4 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[6]==81;#assert jv_utf8(65536,jqa_out[0..<3],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 1114111" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(1114111,jqa_out[..],2)==6;jqa_expected:=[4]u8.[244,143,191,191];for jqa_i:0..<4 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[6]==81;#assert jv_utf8(1114111,jqa_out[0..<3],0)== -1;}
+#test "JSON authority Unicode escape boundary u0000" {jqa_out:[12]u8;jqa_raw:="\\u0000";#assert jv_unescape(jqa_raw,jqa_out[..])==1;jqa_expected:=[1]u8.[0];for jqa_i:0..<1 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ud800udc00" {jqa_out:[12]u8;jqa_raw:="\\ud800\\udc00";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[240,144,128,128];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary udbffudfff" {jqa_out:[12]u8;jqa_raw:="\\udbff\\udfff";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[244,143,191,191];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary udbffudc00" {jqa_out:[12]u8;jqa_raw:="\\udbff\\udc00";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[244,143,176,128];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ud800udfff" {jqa_out:[12]u8;jqa_raw:="\\ud800\\udfff";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[240,144,143,191];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ud7ff" {jqa_out:[12]u8;jqa_raw:="\\ud7ff";#assert jv_unescape(jqa_raw,jqa_out[..])==3;jqa_expected:=[3]u8.[237,159,191];for jqa_i:0..<3 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary udfff" {jqa_out:[12]u8;jqa_raw:="\\udfff";#assert jv_unescape(jqa_raw,jqa_out[..])==3;jqa_expected:=[3]u8.[239,191,189];for jqa_i:0..<3 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ue000" {jqa_out:[12]u8;jqa_raw:="\\ue000";#assert jv_unescape(jqa_raw,jqa_out[..])==3;jqa_expected:=[3]u8.[238,128,128];for jqa_i:0..<3 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ud800x" {jqa_out:[12]u8;jqa_raw:="\\ud800x";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[239,191,189,120];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ud800u0041" {jqa_out:[12]u8;jqa_raw:="\\ud800\\u0041";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[239,191,189,65];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority malformed raw Unicode and output exhaustion report refusal" {jqa_out:[8]u8;for jqa_raw:[6]string.["\\", "\\u", "\\u12", "\\u?000", "\\uD800\\u?000", "\\uD800\\uDC0"] {#assert jv_unescape(jqa_raw,jqa_out[..])== -1;}#assert jv_unescape("\\n",jqa_out[0..<0])== -1;}
+#test "JSON authority writer byte boundary 0" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[0];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[8]u8.[34,92,117,48,48,48,48,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 1" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[1];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[8]u8.[34,92,117,48,48,48,49,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 15" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[15];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[8]u8.[34,92,117,48,48,48,102,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 16" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[16];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[8]u8.[34,92,117,48,48,49,48,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 31" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[31];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[8]u8.[34,92,117,48,48,49,102,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 32" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[32];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[3]u8.[34,32,34];#assert !jqa_o[0].bad && jqa_o[0].n==3;for jqa_i:0..<3 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 33" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[33];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[3]u8.[34,33,34];#assert !jqa_o[0].bad && jqa_o[0].n==3;for jqa_i:0..<3 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 34" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[34];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[4]u8.[34,92,34,34];#assert !jqa_o[0].bad && jqa_o[0].n==4;for jqa_i:0..<4 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 92" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[92];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[4]u8.[34,92,92,34];#assert !jqa_o[0].bad && jqa_o[0].n==4;for jqa_i:0..<4 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 127" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[127];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[3]u8.[34,127,34];#assert !jqa_o[0].bad && jqa_o[0].n==3;for jqa_i:0..<3 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+
+#test "JSON authority parser refuses truncated live views at the exact observed endpoint" {
+  jqa_nodes:[8]JvNode;jqa_d:[1]Jv;jqa_text:="[1,2]";
+  #assert !jv_parse(jqa_d[..],jqa_text[0..<2],jqa_nodes[..]) && jqa_d[0].err==2;
+  #assert !jv_parse(jqa_d[..],"[1",jqa_nodes[..]) && jqa_d[0].err==2;
+  #assert !jv_parse(jqa_d[..],"{\"unterminated",jqa_nodes[..]) && jqa_d[0].err==1;
+  #assert jv_scalar_end("",0)== -1 && jv_scalar_end("-",0)== -1;
+  #assert jv_string_end("ab\\",0)== -1 && jv_string_end("ab\\u0",0)== -1;
+}
+#test "JSON authority paths preserve multicharacter and chained indexes and reject colon as a digit" {
+  jqa_nodes:[32]JvNode;jqa_d:[1]Jv;
+  #assert jv_parse(jqa_d[..],"{\"a\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]}",jqa_nodes[..]);
+  #assert jv_int(jqa_d[0],jv_path(jqa_d[0],0,"a[10]"),-1)==10 && jv_int(jqa_d[0],jv_path(jqa_d[0],0,"a[20]"),-1)==20;
+  #assert jv_path(jqa_d[0],0,"a[1:]")== -1;
+  #assert jv_parse(jqa_d[..],"[[1]]",jqa_nodes[..]) && jv_int(jqa_d[0],jv_path(jqa_d[0],0,"[0][0]"),-1)==1;
+}
+#test "JSON authority integer overflow refuses before multiplication and malformed raw digits use fallback" {
+  jqa_nodes:[4]JvNode;jqa_d:[1]Jv;
+  for jqa_text:[3]string.["9999999999999999999","-9999999999999999999","-100000000000000000"] {#assert jv_parse(jqa_d[..],jqa_text,jqa_nodes[..]) && jv_int(jqa_d[0],0,-71)== -71;}
+  // Public node views may be supplied by native transport; their digit byte
+  // still has to be admitted by this reader before integer accumulation.
+  jqa_nodes[0]=JvNode.{kind=JV_NUMBER,from=0,to=1};jqa_v:=Jv.{text=":",nodes=jqa_nodes[..],count=1};#assert jv_int(jqa_v,0,-71)== -71;
+}
+#test "JSON authority escaped capacity failure stops before a following raw byte write" {
+  jqa_out:[2]u8;#assert jv_unescape("\\u20acx",jqa_out[..])== -1;
+}
+#test "JSON authority UTF8 exactcapacity 0" {jqa_out:[1]u8;#assert jv_utf8(0,jqa_out[..],0)==1;}
+#test "JSON authority UTF8 exactcapacity 127" {jqa_out:[1]u8;#assert jv_utf8(127,jqa_out[..],0)==1;}
+#test "JSON authority UTF8 exactcapacity 128" {jqa_out:[2]u8;#assert jv_utf8(128,jqa_out[..],0)==2;}
+#test "JSON authority UTF8 exactcapacity 2047" {jqa_out:[2]u8;#assert jv_utf8(2047,jqa_out[..],0)==2;}
+#test "JSON authority UTF8 exactcapacity 2048" {jqa_out:[3]u8;#assert jv_utf8(2048,jqa_out[..],0)==3;}
+#test "JSON authority UTF8 exactcapacity 65535" {jqa_out:[3]u8;#assert jv_utf8(65535,jqa_out[..],0)==3;}
+#test "JSON authority UTF8 exactcapacity 65536" {jqa_out:[4]u8;#assert jv_utf8(65536,jqa_out[..],0)==4;}
+#test "JSON authority UTF8 exactcapacity 1114111" {jqa_out:[4]u8;#assert jv_utf8(1114111,jqa_out[..],0)==4;}
+#test "JSON authority requote completebytes case 0" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\ud800\\udc00x");jqa_expected:=[7]u8.[34,240,144,128,128,120,34];#assert !jqa_o[0].bad && jqa_o[0].n==7;for jqa_i:0..<7 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\ud800\\udc00x",jqa_out[..])==5;}
+#test "JSON authority requote completebytes case 1" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\udbff\\udfffz");jqa_expected:=[7]u8.[34,244,143,191,191,122,34];#assert !jqa_o[0].bad && jqa_o[0].n==7;for jqa_i:0..<7 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\udbff\\udfffz",jqa_out[..])==5;}
+#test "JSON authority requote completebytes case 2" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\udc00\\udc00");jqa_expected:=[8]u8.[34,239,191,189,239,191,189,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\udc00\\udc00",jqa_out[..])==6;}
+#test "JSON authority requote completebytes case 3" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\ud800\\ue000");jqa_expected:=[8]u8.[34,239,191,189,238,128,128,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\ud800\\ue000",jqa_out[..])==6;}
+#test "JSON authority requote completebytes case 4" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\u0041\\udc00");jqa_expected:=[6]u8.[34,65,239,191,189,34];#assert !jqa_o[0].bad && jqa_o[0].n==6;for jqa_i:0..<6 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\u0041\\udc00",jqa_out[..])==4;}
+#test "JSON authority requote completebytes case 5" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\ud800\\u0041");jqa_expected:=[6]u8.[34,239,191,189,65,34];#assert !jqa_o[0].bad && jqa_o[0].n==6;for jqa_i:0..<6 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\ud800\\u0041",jqa_out[..])==4;}
+#test "JSON authority requote completebytes case 6" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\udc00\\udfff");jqa_expected:=[8]u8.[34,239,191,189,239,191,189,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\udc00\\udfff",jqa_out[..])==6;}
+#test "JSON authority requote completebytes case 7" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\udfff\\ue000");jqa_expected:=[8]u8.[34,239,191,189,238,128,128,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\udfff\\ue000",jqa_out[..])==6;}
+#test "JSON authority requote completebytes case 8" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\udbff\\udc00");jqa_expected:=[6]u8.[34,244,143,176,128,34];#assert !jqa_o[0].bad && jqa_o[0].n==6;for jqa_i:0..<6 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\udbff\\udc00",jqa_out[..])==4;}
+#test "JSON authority requote completebytes case 9" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\ud800\\udfff");jqa_expected:=[6]u8.[34,240,144,143,191,34];#assert !jqa_o[0].bad && jqa_o[0].n==6;for jqa_i:0..<6 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\ud800\\udfff",jqa_out[..])==4;}
+#test "JSON authority requote malformed escape reports its writer bad flag" {
+  jqa_storage:[64]u8;jqa_o:[1]Jo;
+  for jqa_raw:[7]string.["\\","\\u","\\u12","\\u?000","\\ud800\\","\\ud800\\u","\\ud800\\u?000"] {
+    jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert jqa_o[0].bad;
+  }
+  jqa_out:[16]u8;#assert jv_unescape("\\ud800\\",jqa_out[..])== -1 && jv_unescape("\\ud800\\u",jqa_out[..])== -1;
+}
+
+#test "JSON authority unescape refuses unknown simple escapes and requotes a final complete simple escape" {
+  jqa_out:[16]u8;
+  for jqa_raw:[3]string.["\\q","\\x","\\ "] {#assert jv_unescape(jqa_raw,jqa_out[..])== -1;}
+  jqa_storage:[8]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\n");
+  #assert !jqa_o[0].bad && jo_text(jqa_o[..])=="\"\\n\"";
+}
+#test "JSON authority integer accumulation refuses the next decimal prefix above its exact limit" {
+  jqa_nodes:[2]JvNode;jqa_d:[1]Jv;
+  #assert jv_parse(jqa_d[..],"9007199254741000",jqa_nodes[..]) && jv_int(jqa_d[0],0,-71)== -71;
+}

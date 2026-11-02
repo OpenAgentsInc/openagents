@@ -1,0 +1,53 @@
+// Positive model completion and actual concurrent-writer checks on an isolated PostgreSQL.
+// PGURL=... PSQL=... coax/web/tool.sh coax/web/api/tests/realm_edit_async.coax
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/proc.coax";
+
+rea_sql :: (db: string, psql: string, sql: string, out: [] u8) -> int {
+  a := [8] string.[psql,"-XAt","-v","ON_ERROR_STOP=1","--dbname",db,"-c",sql];
+  err: [8192] u8;
+  got := proc_run(a[..],15000,out,err[..]);
+  if got.status != 0 || got.timed_out { tool_err(cast(string) err[0..<got.err_n]); return -1; }
+  return got.out_n;
+}
+
+tool_main :: () -> int #export_c {
+  dbb: [1024] u8; pb: [1024] u8; out: [8192] u8;
+  db := proc_getenv("PGURL",dbb[..]); psql := proc_getenv("PSQL",pb[..]);
+  if db == "" || psql == "" { tool_errln("set PGURL and PSQL for an isolated database"); return 2; }
+  sql := "BEGIN; INSERT INTO verse.players(id,key_sha256,created_ms) VALUES ('p-fence-async',encode(sha256(convert_to('fence-async-player-key-001','UTF8')),'hex'),1); INSERT INTO verse.worlds(id,owner_player,created_ms) VALUES ('made-fence-async','p-fence-async',1); INSERT INTO verse.made_realms(slug,world,name,style,ground,time,features,tools,made_ms) VALUES ('fence-async','made-fence-async','Fence Async','lowpoly','grass','day','[{\"feature\":\"trees\",\"count\":4}]','{}',1); DO $$ DECLARE op text; asked jsonb; x jsonb; r bigint; response text; BEGIN response:=jsonb_build_object('candidates',jsonb_build_array(jsonb_build_object('content',jsonb_build_object('parts',jsonb_build_array(jsonb_build_object('text',jsonb_build_object('name','Fence Async','style','lowpoly','ground','grass','time','night','features',jsonb_build_array(jsonb_build_object('feature','trees','count',4,'on',true)),'asked',jsonb_build_array(jsonb_build_object('thing','night','feature','setup')))::text))))))::text; FOREACH op IN ARRAY ARRAY['revise','ask','ask-doc'] LOOP UPDATE verse.realm_plans SET ms=0 WHERE slug='fence-async'; SELECT rev INTO r FROM verse.made_realms WHERE slug='fence-async'; asked:=verse.realm_edit_start('fence-async',jsonb_build_object('rev',r,'prompt','night','words','night','name','design.md','text','night','edit_fence',jsonb_build_object('slug','wrong','rev',999)),100000,'fence-async-player-key-001',false,op); IF asked #>> '{edit_fence,slug}' <> 'fence-async' OR (asked #>> '{edit_fence,rev}')::bigint <> r THEN RAISE EXCEPTION 'not server metadata: %',asked; END IF; x:=verse.realm_edit_finish(asked,200,response,'test',0,op); IF x->>'status' <> '200' OR (x->>'rev')::bigint <> r+1 OR position(E'rev ' || (r+1) || E'\\n' in x->>'lines')=0 THEN RAISE EXCEPTION 'fresh completion %: %',op,x; END IF; IF (SELECT time FROM verse.made_realms WHERE slug='fence-async') <> 'night' THEN RAISE EXCEPTION 'answer did not apply'; END IF; x:=verse.realm_edit_finish(asked,200,response,'test',0,op); IF x->>'status' <> '409' THEN RAISE EXCEPTION 'completion replay %: %',op,x; END IF; END LOOP; END $$; ROLLBACK;";
+  if rea_sql(db,psql,sql,out[..]) < 0 { return 1; }
+  print("ok fresh revise/ask/document completions, returned revisions and replay refusal\n");
+  decline := "BEGIN; INSERT INTO verse.players(id,key_sha256,created_ms) VALUES ('p-fence-decline',encode(sha256(convert_to('fence-decline-player-key-001','UTF8')),'hex'),1); INSERT INTO verse.worlds(id,owner_player,created_ms) VALUES ('made-fence-decline','p-fence-decline',1); INSERT INTO verse.made_realms(slug,world,name,style,ground,time,features,tools,made_ms) VALUES ('fence-decline','made-fence-decline','Fence Decline','lowpoly','grass','day','[]','{}',1); DO $$ DECLARE pid bigint; x jsonb; BEGIN INSERT INTO verse.realm_proposals(slug,ms,change) VALUES ('fence-decline',1,'{\"kind\":\"place\",\"thing\":\"crate\",\"x\":1,\"z\":1,\"yaw\":0}') RETURNING id INTO pid; x:=verse.realm_edit_call('fence-decline','{\"rev\":1}','fence-decline-player-key-001',false,'decline',pid::text); IF x->>'status' <> '200' OR x->>'rev' <> '2' OR (SELECT jsonb_array_length(undo) FROM verse.made_realms WHERE slug='fence-decline') <> 1 THEN RAISE EXCEPTION 'decline must be one revision and undo step: %',x; END IF; x:=verse.realm_undo('fence-decline','{\"rev\":2}','fence-decline-player-key-001',false); IF x->>'status' <> '200' OR (SELECT state FROM verse.realm_proposals WHERE id=pid) <> 'waiting' OR (SELECT jsonb_array_length(undo) FROM verse.made_realms WHERE slug='fence-decline') <> 0 THEN RAISE EXCEPTION 'undo did not restore declined card: %',x; END IF; END $$; ROLLBACK;";
+  if rea_sql(db,psql,decline,out[..]) < 0 { return 1; }
+  print("ok fenced decline is one revision and one reversible undo step\n");
+  seed := "INSERT INTO verse.players(id,key_sha256,created_ms) VALUES ('p-fence-race',encode(sha256(convert_to('fence-race-player-key-001','UTF8')),'hex'),1); INSERT INTO verse.worlds(id,owner_player,created_ms) VALUES ('made-fence-race','p-fence-race',1); INSERT INTO verse.made_realms(slug,world,name,style,ground,time,features,tools,made_ms) VALUES ('fence-race','made-fence-race','Fence Race','lowpoly','grass','day','[{\"feature\":\"trees\",\"count\":4}]','{}',1);";
+  if rea_sql(db,psql,seed,out[..]) < 0 { return 1; }
+  first := "BEGIN; SELECT verse.realm_edit_begin('fence-race','{\"rev\":1}','fence-race-player-key-001',false,'switch')->>'status'; SELECT pg_sleep(2); SELECT verse.realm_edit_call('fence-race','{\"rev\":1,\"row\":\"trees\",\"on\":false}','fence-race-player-key-001',false,'switch',''); COMMIT;";
+  a := [8] string.[psql,"-XAt","-v","ON_ERROR_STOP=1","--dbname",db,"-c",first];
+  h := proc_new(); ok := h >= 0;
+  for arg: a { ok = ok && proc_arg(h,arg); }
+  ok = ok && proc_start(h) == 0;
+  // Observe the first backend sleeping with its transaction open. psql's stdout buffering is
+  // not a synchronization signal: waiting for its output can accidentally serialize both calls.
+  ready := false; until := proc_now_ms() + 1500;
+  while ok && !ready && proc_now_ms() < until {
+    n := rea_sql(db,psql,"SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND wait_event='PgSleep' AND query LIKE '%fence-race%')",out[..]);
+    ready = n > 0 && out[0] == 't';
+    if !ready { proc_sleep(25); }
+  }
+  ok = ok && ready;
+  second := "DO $$ DECLARE x jsonb; BEGIN IF NOT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND wait_event='PgSleep' AND query LIKE '%fence-race%') THEN RAISE EXCEPTION 'writers did not overlap'; END IF; x:=verse.realm_edit_call('fence-race','{\"rev\":1,\"row\":\"trees\",\"on\":true}','fence-race-player-key-001',false,'switch',''); IF x <> '{\"status\":409,\"error\":\"changed since\",\"rev\":2}'::jsonb OR (SELECT jsonb_array_length(features) FROM verse.made_realms WHERE slug='fence-race') <> 0 THEN RAISE EXCEPTION 'lost concurrent update: %',x; END IF; END $$;";
+  if ok { ok = rea_sql(db,psql,second,out[..]) >= 0; }
+  if h >= 0 {
+    if !ok { killed := proc_kill(h,PROC_SIGKILL); }
+    ok = proc_wait(h,3000) == 0 && ok;
+    released := proc_release(h);
+  }
+  clean := "DELETE FROM verse.made_realms WHERE slug='fence-race'; DELETE FROM verse.worlds WHERE id='made-fence-race'; DELETE FROM verse.players WHERE id='p-fence-race';";
+  ok = rea_sql(db,psql,clean,out[..]) >= 0 && ok;
+  if !ok { tool_errln("FAIL concurrent writer waits and refuses the stale revision"); return 1; }
+  print("ok concurrent writer waits and refuses the stale revision\n");
+  return 0;
+}

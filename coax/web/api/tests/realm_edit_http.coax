@@ -1,0 +1,77 @@
+// The actual C route forwards optional revisions, including deletes and extracted documents.
+// Local isolated API/database only; no model or bucket is needed for these refusal cases.
+// API=http://127.0.0.1:PORT PGURL=... PSQL=... coax/web/tool.sh coax/web/api/tests/realm_edit_http.coax
+// tool.sh: tls
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/net/http.coax";
+#load "../../../lib/json/json.coax";
+
+Reh :: struct { api: [256] u8; api_n: int; pass: int; fail: int; }
+reh_check :: (t: [] Reh, name: string, method: string, tail: string, body: string, code: int, rev: int) {
+  ub: [512] u8; n := 0;
+  for c: t[0].api[0..<t[0].api_n] { ub[n] = c; n += 1; }
+  for c: "/api/playtest/realms/fence-http" { ub[n] = c; n += 1; }
+  for c: tail { ub[n] = c; n += 1; }
+  hs := [2] string.["X-Verse-Player: fence-http-player-key-001", "Content-Type: application/json"];
+  w: [1] HttpWork; out: [HTTP_BODY_MAX] u8;
+  got := http_do(w[..],method,cast(string) ub[0..<n],hs[..],body,10000,0,out[..]);
+  text := cast(string) out[0..<got.n];
+  nodes: [128] JvNode; d: [1] Jv;
+  ok := got.error == HTTP_OK && got.code == code;
+  if rev >= 0 { ok = ok && jv_parse(d[..],text,nodes[..]) && jv_int(d[0],jv_get(d[0],0,"rev"),-1) == rev; }
+  if tail == "" { ok = ok && reh_has(text,"edit_fence 1\n"); }
+  if ok { t[0].pass += 1; print("ok %\n",name); }
+  else { t[0].fail += 1; print("FAIL % (status %, body %)\n",name,got.code,text); }
+}
+reh_has :: (s: string, p: string) -> bool {
+  if p.count > s.count { return false; }
+  for i: 0..<s.count-p.count+1 { if s[i..<i+p.count] == p { return true; } }
+  return false;
+}
+
+tool_main :: () -> int #export_c {
+  t: [1] Reh; dbb: [1024] u8; pb: [1024] u8;
+  base := proc_getenv("API",t[0].api[..]); t[0].api_n = base.count;
+  db := proc_getenv("PGURL",dbb[..]); psql := proc_getenv("PSQL",pb[..]);
+  if base.count < 18 || base[0..<17] != "http://127.0.0.1:" || db == "" || psql == "" {
+    tool_errln("set local API=http://127.0.0.1:PORT, PGURL and PSQL"); return 2;
+  }
+  seed := "INSERT INTO verse.players(id,key_sha256,created_ms) VALUES ('p-fence-http',encode(sha256(convert_to('fence-http-player-key-001','UTF8')),'hex'),1); INSERT INTO verse.worlds(id,owner_player,created_ms) VALUES ('made-fence-http','p-fence-http',1); INSERT INTO verse.made_realms(slug,world,name,style,ground,time,features,tools,made_ms) VALUES ('fence-http','made-fence-http','Fence HTTP','lowpoly','grass','day','[{\"feature\":\"trees\",\"count\":4}]','{}',1);";
+  a := [8] string.[psql,"-XAt","-v","ON_ERROR_STOP=1","--dbname",db,"-c",seed];
+  out: [4096] u8; err: [8192] u8;
+  r := proc_run(a[..],15000,out[..],err[..]);
+  if r.status != 0 { tool_err(cast(string) err[0..<r.err_n]); return 1; }
+  oldb: [256] u8; old := proc_getenv("OLD_API",oldb[..]);
+  if old.count > 17 && old[0..<17] == "http://127.0.0.1:" {
+    t[0].api_n = old.count; for i: 0..<old.count { t[0].api[i] = old[i]; }
+    reh_check(t[..],"old instance refuses fenced switch","POST","/edit-v1/switch","{\"rev\":1,\"row\":\"trees\",\"on\":false}",404,-1);
+    reh_check(t[..],"old instance refuses fenced deletion","POST","/edit-v1/asks/1/delete","{\"rev\":1}",404,-1);
+    reh_check(t[..],"old instance refuses fenced proposal decision","POST","/edit-v1/proposals/1/accept","{\"rev\":1}",404,-1);
+    current := proc_getenv("API",t[0].api[..]); t[0].api_n = current.count;
+    guard := [8] string.[psql,"-XAt","-v","ON_ERROR_STOP=1","--dbname",db,"-c","DO $$ BEGIN IF (SELECT rev FROM verse.made_realms WHERE slug='fence-http') <> 1 OR position(E'edit_fence 1\\n' in verse.edit_spec('fence-http','fence-http-player-key-001',false)) > 0 THEN RAISE EXCEPTION 'old transport mutated or advertised fences'; END IF; END $$;"];
+    checked := proc_run(guard[..],15000,out[..],err[..]);
+    if checked.status != 0 { tool_err(cast(string) err[0..<checked.err_n]); t[0].fail += 1; }
+  }
+  reh_check(t[..],"spec advertises atomic edits","GET","","",200,-1);
+  reh_check(t[..],"versioned edit requires a revision","POST","/edit-v1/settings","{}",400,-1);
+  reh_check(t[..],"stale switch","POST","/edit-v1/switch","{\"rev\":999,\"row\":\"trees\",\"on\":false}",409,1);
+  reh_check(t[..],"ask delete forwards its body","POST","/edit-v1/asks/1/delete","{\"rev\":999}",409,1);
+  reh_check(t[..],"row delete forwards its body","POST","/edit-v1/rows/trees/delete","{\"rev\":999}",409,1);
+  reh_check(t[..],"proposal decision forwards its body","POST","/edit-v1/proposals/1/accept","{\"rev\":999}",409,1);
+  reh_check(t[..],"stale revise never asks the model","POST","/edit-v1/revise","{\"rev\":999,\"prompt\":\"night\"}",409,1);
+  reh_check(t[..],"ask lines keep structured refusal","POST","/edit-v1/asks","{\"rev\":999,\"words\":\"night\"}",409,1);
+  reh_check(t[..],"document extraction retains revision","POST","/edit-v1/asks/doc","{\"rev\":999,\"name\":\"design.md\",\"data\":\"bmlnaHQ=\"}",409,1);
+  reh_check(t[..],"document extraction retains invalid null","POST","/edit-v1/asks/doc","{\"rev\":null,\"name\":\"design.md\",\"data\":\"bmlnaHQ=\"}",400,-1);
+  reh_check(t[..],"visibility also compares its revision","POST","/edit-v1/visibility","{\"rev\":999,\"visibility\":\"unlisted\"}",409,1);
+  reh_check(t[..],"fresh switch returns its new revision","POST","/edit-v1/switch","{\"rev\":1,\"row\":\"trees\",\"on\":false}",200,2);
+  reh_check(t[..],"fresh lore orders a side-table write","POST","/edit-v1/lore","{\"rev\":2,\"who\":\"kai\",\"text\":\"A traveller\"}",200,3);
+  reh_check(t[..],"stale quest cannot pass a side-table write","POST","/edit-v1/quest","{\"rev\":2,\"giver\":\"kai\",\"ask\":\"Find it\"}",409,3);
+  reh_check(t[..],"legacy switch remains accepted","POST","/switch","{\"row\":\"trees\",\"on\":true}",200,-1);
+  clean := [8] string.[psql,"-XAt","-v","ON_ERROR_STOP=1","--dbname",db,"-c","DELETE FROM verse.made_realms WHERE slug='fence-http'; DELETE FROM verse.worlds WHERE id='made-fence-http'; DELETE FROM verse.players WHERE id='p-fence-http';"];
+  gone := proc_run(clean[..],15000,out[..],err[..]);
+  if gone.status != 0 { tool_err(cast(string) err[0..<gone.err_n]); t[0].fail += 1; }
+  print("% HTTP checks passed, % failed\n",t[0].pass,t[0].fail);
+  return ifx t[0].fail == 0 then 0 else 1;
+}

@@ -1,0 +1,38 @@
+ok   test identity can read staging access
+ok   make a private realm through the built CLI
+ok   read its revision, moves and document hash
+realm cli-journey-fixture revision 1
+ok   move trees:0 at the revision read
+ok   the document retains the exact move at a newer revision
+ok   a stale save exits 5 with conflict status 409
+ok   stale refusal preserves the current revision and hash
+ok   undo names the current revision
+ok   undo restores the empty moves as a new revision
+ok   publish the exact revision
+ok   fork the published realm
+ok   fork records its parent's exact revision
+fork cli-journey-fork from cli-journey-fixture revision 3
+ok   edit the fork independently
+ok   fork moves, while the original revision and hash stay unchanged
+ok   make a fresh fork for batch and partial-failure checks
+ok   fresh batch fork starts with no moves
+ok   apply two adjacent moves reports both committed in one revision
+ok   both batch entity coordinates survive the document readback
+ok   adjacent moves sent exactly one save request
+ok   one undo removes the whole adjacent-move group
+ok   both grouped moves are gone after that single undo
+ok   a move/publish/move batch carries each accepted revision
+ok   separated save groups preserve the earlier move
+ok   invalid third operation exits 2 and reports exactly two applied
+ok   the committed prefix remains and the operation after refusal never runs
+ok   stale batch exits 5 and reports zero applied
+ok   stale batch preserves the entire current document
+ok   a flag-shaped quest answer survives global option parsing
+ok   the route received that exact flag-shaped answer
+ok   a flag-shaped quest answer survives global option parsing
+ok   the route received that exact flag-shaped answer
+ok   a flag-shaped quest answer survives global option parsing
+ok   the route received that exact flag-shaped answer
+ok   a flag-shaped quest answer survives global option parsing
+ok   the route received that exact flag-shaped answer
+35 journey checks passed (independent loopback fixture).

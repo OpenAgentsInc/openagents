@@ -1,0 +1,230 @@
+// Independent loopback HTTP fixture for cli-journey.coax. This models the
+// published realm document/revision contract; it never loads product CLI or
+// API implementation code and does not qualify production authentication.
+#load "../lib/json/json.coax";
+#load "../lib/net/socket_foreign.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/crypto/sha256-kernel.coax";
+
+CjfSnapshot :: struct { moved: bool; x: f64; z: f64; moves: [512] u8; moves_n: int; }
+CjfRealm :: struct { made: bool; rev: int = 1; moved: bool; x: f64; z: f64; published: int; moves: [512] u8; moves_n: int; history: [16] CjfSnapshot; history_n: int; }
+Cjf :: struct { parent: CjfRealm; fork: CjfRealm; fork_rev: int; calls: int; bad: int; out_n: int; saves: int; last_ask: [64] u8; last_ask_n: int; }
+CjfRequest :: struct { ok: bool; method: string; path: string; body: string; has_auth: bool; }
+
+#test "CLI fixture reads a complete request and refuses truncation or missing lengths" {
+  r := cjf_request("POST /api/playtest/realms/x/save HTTP/1.1\r\nContent-Length: 9\r\nAuthorization: Nostr abc\r\n\r\n{\"rev\":1}");
+  #assert r.ok && r.has_auth && r.method == "POST" && r.path == "/api/playtest/realms/x/save" && r.body == "{\"rev\":1}";
+  #assert !cjf_request("POST /x HTTP/1.1\r\nContent-Length: 9\r\n\r\n{}").ok;
+  #assert !cjf_request("POST /x HTTP/1.1\r\n\r\n{}").ok;
+  #assert cjf_request("GET /x HTTP/1.1\r\n\r\n").ok;
+}
+#test "CLI fixture requires the revision, preserves stale state and undoes a move" {
+  f: [1] Cjf; out: [8192] u8;
+  #assert cjf_route(f[..], "POST", "/api/playtest/realms?as=lines", "{\"plan\":7,\"on\":[true]}", out[..]) == 200;
+  #assert f[0].parent.made && f[0].parent.rev == 1;
+  #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fixture/save", "{\"rev\":1,\"moved\":[{\"entity\":\"trees:0\",\"x\":4.5,\"z\":-2}]}", out[..]) == 200;
+  #assert f[0].parent.rev == 2 && f[0].parent.moved && f[0].parent.x == 4.5 && f[0].parent.z == -2.0;
+  #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fixture/save", "{\"rev\":1,\"moved\":[]}", out[..]) == 409;
+  #assert f[0].parent.rev == 2 && f[0].parent.moved;
+  #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fixture/undo", "{\"rev\":2}", out[..]) == 200;
+  #assert f[0].parent.rev == 3 && !f[0].parent.moved;
+}
+#test "CLI fixture fork retains provenance and its edits do not change the parent" {
+  f: [1] Cjf; out: [8192] u8;
+  f[0].parent.made = true; f[0].parent.rev = 3;
+  #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fixture/publish", "{\"rev\":3}", out[..]) == 200;
+  #assert f[0].parent.published == 3;
+  #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fixture/fork?as=lines", "{}", out[..]) == 200;
+  #assert f[0].fork.made && f[0].fork.rev == 1 && f[0].fork_rev == 3;
+  #assert cjf_route(f[..], "POST", "/api/playtest/realms/cli-journey-fork/save", "{\"rev\":1,\"moved\":[{\"entity\":\"trees:0\",\"x\":-3,\"z\":2}]}", out[..]) == 200;
+  #assert f[0].fork.moved && f[0].fork.rev == 2 && !f[0].parent.moved && f[0].parent.rev == 3;
+}
+#test "CLI fixture a grouped save is one real undo step and specs retain every entity" {
+  f: [1] Cjf; out: [8192] u8; f[0].parent.made = true;
+  #assert cjf_route(f[..],"POST","/api/playtest/realms/cli-journey-fixture/save","{\"rev\":1,\"moved\":[{\"entity\":\"trees:0\",\"x\":9,\"z\":8}]}",out[..]) == 200;
+  #assert cjf_route(f[..],"POST","/api/playtest/realms/cli-journey-fixture/save","{\"rev\":2,\"moved\":[{\"entity\":\"trees:0\",\"x\":1,\"z\":2},{\"entity\":\"trees:1\",\"x\":3,\"z\":4}]}",out[..]) == 200;
+  #assert f[0].saves == 2 && f[0].parent.history_n == 2;
+  #assert cjf_route(f[..],"GET","/api/playtest/realms/cli-journey-fixture","",out[..]) == 200;
+  #assert cjf_find(cast(string)out[0..<f[0].out_n],"moved trees:1 3 4\n") >= 0;
+  #assert cjf_route(f[..],"POST","/api/playtest/realms/cli-journey-fixture/undo","{\"rev\":3}",out[..]) == 200;
+  #assert f[0].parent.rev == 4 && f[0].parent.moved && f[0].parent.x == 9.0 && f[0].parent.history_n == 1;
+  #assert cjf_route(f[..],"POST","/api/playtest/realms/cli-journey-fixture/undo","{\"rev\":4}",out[..]) == 200;
+  #assert !f[0].parent.moved && f[0].parent.history_n == 0;
+}
+#test "CLI fixture the quest route retains flag-shaped ask text exactly" {
+  f: [1] Cjf; out: [8192] u8; f[0].parent.made = true;
+  #assert cjf_route(f[..],"POST","/api/playtest/realms/cli-journey-fixture/edit-v1/quest","{\"rev\":1,\"giver\":\"Bram\",\"ask\":\"--profile\",\"steps\":[]}",out[..]) == 200;
+  #assert f[0].last_ask_n == 9 && cast(string)f[0].last_ask[0..<f[0].last_ask_n] == "--profile";
+}
+#test "CLI fixture generated realm documents declare their null base" {
+  bytes: [4096] u8; nodes: [64] JvNode; d: [1] Jv;
+  doc := cjf_doc(CjfRealm.{made=true},false,0,bytes[..]);
+  #assert jv_parse(d[..],doc,nodes[..]) && jv_kind(d[0],jv_get(d[0],0,"base")) == JV_NULL;
+}
+
+cjf_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+cjf_find :: (s: string, p: string) -> int {
+  if p.count > s.count { return -1; }
+  for i: 0..<s.count - p.count + 1 { if s[i..<i + p.count] == p { return i; } }
+  return -1;
+}
+cjf_put :: (s: string, out: [] u8) -> int {
+  if s.count > out.count { return -1; }
+  for i: 0..<s.count { out[i] = s[i]; }
+  return s.count;
+}
+cjf_header :: (s: string, key: string) -> string {
+  at := cjf_find(s, "\r\n") + 2;
+  while at >= 2 && at < s.count {
+    e := at;
+    while e < s.count && s[e] != '\r' { e += 1; }
+    if e == at { return ""; }
+    line := s[at..<e]; colon := cjf_find(line, ":");
+    if colon == key.count {
+      same := true;
+      for i: 0..<colon { c := line[i]; if c >= 'A' && c <= 'Z' { c += 32; } if c != key[i] { same = false; } }
+      if same { v := colon + 1; while v < line.count && line[v] == ' ' { v += 1; } return line[v..<line.count]; }
+    }
+    at = e + 2;
+  }
+  return "";
+}
+cjf_request :: (s: string) -> CjfRequest {
+  r: CjfRequest;
+  e := cjf_find(s, "\r\n\r\n"); if e < 0 { return r; }
+  sp := cjf_find(s, " "); if sp < 1 { return r; }
+  end := sp + 1; while end < s.count && s[end] != ' ' { end += 1; }
+  if end >= e { return r; }
+  r.method = s[0..<sp]; r.path = s[sp + 1..<end];
+  n := cjf_header(s, "content-length");
+  want := ifx n == "" && r.method == "GET" then 0 else args_whole(n);
+  if want < 0 || s.count - e - 4 != want { return r; }
+  r.body = s[e + 4..<s.count]; r.has_auth = cjf_starts(cjf_header(s, "authorization"), "Nostr "); r.ok = true;
+  return r;
+}
+cjf_answer :: (f: [] Cjf, code: int, text: string, out: [] u8) -> int { f[0].out_n = cjf_put(text, out); return code; }
+cjf_doc :: (r: CjfRealm, forked: bool, from_rev: int, out: [] u8) -> string {
+  rr := r;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "doc"); jo_str(o[..], "aethyr.realm"); jo_key(o[..], "version"); jo_int(o[..], 1);
+  jo_key(o[..], "slug"); jo_str(o[..], ifx forked then "cli-journey-fork" else "cli-journey-fixture");
+  jo_key(o[..], "name"); jo_str(o[..], "CLI Journey Test"); jo_key(o[..], "rev"); jo_int(o[..], r.rev);
+  jo_key(o[..], "features"); jo_raw(o[..], "[{\"kind\":\"trees\",\"count\":2}]");
+  jo_key(o[..], "moved"); jo_raw(o[..], ifx rr.moves_n > 0 then cast(string) rr.moves[0..<rr.moves_n] else "[]");
+  jo_key(o[..], "base"); jo_null(o[..]);
+  jo_key(o[..], "forked_from");
+  if forked { jo_obj(o[..]); jo_key(o[..], "slug"); jo_str(o[..], "cli-journey-fixture"); jo_key(o[..], "rev"); jo_int(o[..], from_rev); jo_end(o[..]); } else { jo_null(o[..]); }
+  jo_end(o[..]); return ifx o[0].bad then "" else jo_text(o[..]);
+}
+cjf_route :: (f: [] Cjf, method: string, path: string, body: string, out: [] u8) -> int {
+  f[0].calls += 1;
+  if method == "GET" && path == "/api/auth/v2/me" { return cjf_answer(f, 200, "account n-fixture\n", out); }
+  if method == "GET" && path == "/api/playtest/access" { return cjf_answer(f, 200, "invites 0\nmake 1\nin 1\ncreator 0\nasked none\n", out); }
+  if method == "POST" && path == "/api/playtest/realms/plan?as=lines" { return cjf_answer(f, 200, "plan 7\nname CLI Journey Test\nf trees 1 Trees\n", out); }
+  if method == "POST" && path == "/api/playtest/realms?as=lines" {
+    f[0].parent = CjfRealm.{made = true};
+    return cjf_answer(f, 200, "slug cli-journey-fixture\nrev 1\n", out);
+  }
+  prefix := "/api/playtest/realms/";
+  if !cjf_starts(path, prefix) { return cjf_answer(f, 404, "{\"error\":\"fixture route\"}", out); }
+  rest := path[prefix.count..<path.count]; slash := cjf_find(rest, "/");
+  slug := ifx slash < 0 then rest else rest[0..<slash];
+  tail := ifx slash < 0 then "" else rest[slash..<rest.count];
+  forked := slug == "cli-journey-fork";
+  if slug != "cli-journey-fixture" && !forked { return cjf_answer(f, 404, "{\"error\":\"fixture slug\"}", out); }
+  r := ifx forked then f[0].fork else f[0].parent;
+  if !r.made { return cjf_answer(f, 404, "{\"error\":\"not made\"}", out); }
+  buf: [4096] u8; o: [1] Jo; jo_start(o[..], out);
+  if method == "GET" && tail == "" {
+    b: [32] u8; bo: [1] Jo; jo_start(bo[..], b[..]); jo_int(bo[..], r.rev);
+    n := cjf_put("name CLI Journey Test\nvisibility private\nrole owner\nrev ", out);
+    m := cjf_put(jo_text(bo[..]), out[n..<out.count]); n += m;
+    n += cjf_put("\npublished 1\nedit_fence 1\ntrees 2\n", out[n..<out.count]);
+    if r.moves_n > 0 {
+      mn: [32] JvNode; md: [1] Jv;
+      if !jv_parse(md[..],cast(string)r.moves[0..<r.moves_n],mn[..]) { return cjf_answer(f,500,"{}",out); }
+      for i: 0..<jv_len(md[0],0) {
+        at := jv_at(md[0],0,i); name: [64] u8; name_n := jv_str(md[0],jv_get(md[0],at,"entity"),name[..]);
+        n += cjf_put("moved ",out[n..<out.count]); n += cjf_put(cast(string)name[0..<name_n],out[n..<out.count]);
+        n += cjf_put(" ",out[n..<out.count]); n += cjf_put(jv_raw(md[0],jv_get(md[0],at,"x")),out[n..<out.count]);
+        n += cjf_put(" ",out[n..<out.count]); n += cjf_put(jv_raw(md[0],jv_get(md[0],at,"z")),out[n..<out.count]); n += cjf_put("\n",out[n..<out.count]);
+      }
+    }
+    f[0].out_n = n; return 200;
+  }
+  if method == "GET" && tail == "/doc" {
+    doc := cjf_doc(r, forked, f[0].fork_rev, buf[..]); hash: [64] u8;
+    if !S_hex(S_hash(doc), hash[..]) { return cjf_answer(f, 500, "{}", out); }
+    jo_obj(o[..]); jo_key(o[..], "doc"); jo_raw(o[..], doc); jo_key(o[..], "sha256"); jo_str(o[..], cast(string) hash[..]); jo_end(o[..]);
+    f[0].out_n = o[0].n; return 200;
+  }
+  if method == "POST" && tail == "/fork?as=lines" {
+    f[0].fork = r; f[0].fork.rev = 1; f[0].fork.published = 0; f[0].fork.history_n = 0; f[0].fork_rev = r.rev;
+    return cjf_answer(f, 200, "slug cli-journey-fork\nrev 1\n", out);
+  }
+  nodes: [64] JvNode; d: [1] Jv;
+  if method != "POST" || !jv_parse(d[..], body, nodes[..]) { return cjf_answer(f, 400, "{\"error\":\"bad fixture request\"}", out); }
+  rev := jv_int(d[0], jv_get(d[0], 0, "rev"), -1);
+  if rev != r.rev {
+    jo_obj(o[..]); jo_key(o[..], "error"); jo_str(o[..], "changed since"); jo_key(o[..], "rev"); jo_int(o[..], r.rev); jo_end(o[..]); f[0].out_n = o[0].n; return 409;
+  }
+  if tail == "/save" {
+    mv := jv_get(d[0], 0, "moved"); count := jv_len(d[0], mv);
+    if jv_kind(d[0], mv) != JV_ARRAY || count > 2 { return cjf_answer(f, 400, "{\"error\":\"fixture moves\"}", out); }
+    raw := jv_raw(d[0], mv); if raw.count > r.moves.count { return cjf_answer(f, 400, "{}", out); }
+    seen := 0;
+    for i: 0..<count {
+      first := jv_at(d[0], mv, i); name: [64] u8;
+      nn := jv_str(d[0], jv_get(d[0], first, "entity"), name[..]);
+      x := args_number(jv_raw(d[0], jv_get(d[0], first, "x"))); z := args_number(jv_raw(d[0], jv_get(d[0], first, "z")));
+      if nn != 7 { return cjf_answer(f,400,"{\"error\":\"fixture entity\"}",out); }
+      entity := cast(string)name[0..<nn]; bit := ifx entity == "trees:0" then 1 else ifx entity == "trees:1" then 2 else 0;
+      if bit == 0 || (seen & bit) != 0 || !x.ok || !z.ok || x.value < -40.0 || x.value > 40.0 || z.value < -40.0 || z.value > 40.0 { return cjf_answer(f, 400, "{\"error\":\"fixture entity\"}", out); }
+      seen = seen | bit;
+      if i == 0 { r.x = x.value; r.z = z.value; }
+    }
+    if r.history_n >= r.history.count { return cjf_answer(f,400,"{\"error\":\"fixture history full\"}",out); }
+    // Snapshot before changing any move, so two separate saves cannot masquerade as one undo.
+    old := ifx forked then f[0].fork else f[0].parent;
+    r.history[r.history_n] = CjfSnapshot.{moved=old.moved,x=old.x,z=old.z,moves=old.moves,moves_n=old.moves_n}; r.history_n += 1;
+    r.moves_n = cjf_put(raw, r.moves[..]); r.moved = count > 0; r.rev += 1;
+    f[0].saves += 1;
+  } else if tail == "/undo" {
+    if r.history_n == 0 { return cjf_answer(f,409,"{\"error\":\"fixture has no prior edit\"}",out); }
+    r.history_n -= 1; prior := r.history[r.history_n];
+    r.moved = prior.moved; r.x = prior.x; r.z = prior.z; r.moves = prior.moves; r.moves_n = prior.moves_n; r.rev += 1;
+  }
+  else if tail == "/publish" { r.published = r.rev; }
+  else if tail == "/edit-v1/quest" {
+    at := jv_get(d[0],0,"ask"); f[0].last_ask_n = jv_str(d[0],at,f[0].last_ask[..]);
+    if f[0].last_ask_n < 0 { return cjf_answer(f,400,"{\"error\":\"fixture quest ask\"}",out); }
+    r.rev += 1;
+  }
+  else { return cjf_answer(f, 404, "{\"error\":\"fixture operation\"}", out); }
+  if forked { f[0].fork = r; } else { f[0].parent = r; }
+  jo_obj(o[..]); jo_key(o[..], "rev"); jo_int(o[..], r.rev);
+  if tail == "/publish" { jo_key(o[..], "published"); jo_bool(o[..], true); }
+  jo_end(o[..]); f[0].out_n = o[0].n; return 200;
+}
+
+// One owned loopback connection; a bounded request, no external listener.
+cjf_serve :: (f: [] Cjf, listener: int) -> bool {
+  h := cxsock_accept(listener, 0); if h < 0 { return false; }
+  buf: [32768] u8; n := 0; req: CjfRequest;
+  until := cxsock_now_ms() + 5000;
+  while cxsock_now_ms() < until && n < buf.count {
+    k := cxsock_read(h, 100); if k < 0 { break; }
+    for i: 0..<k { if n < buf.count { buf[n] = cast,trunc(u8) cxsock_byte(h, i); n += 1; } }
+    req = cjf_request(cast(string) buf[0..<n]); if req.ok { break; }
+  }
+  out: [8192] u8; code := 400;
+  if req.ok && req.has_auth { code = cjf_route(f, req.method, req.path, req.body, out[..]); }
+  else { code = cjf_answer(f, 400, "{\"error\":\"incomplete or unsigned fixture request\"}", out[..]); f[0].bad += 1; }
+  head: [256] u8; o: [1] Jo; jo_start(o[..], head[..]);
+  jo_put(o[..], "HTTP/1.1 "); num: [32] u8; no: [1] Jo; jo_start(no[..], num[..]); jo_int(no[..], code); jo_put(o[..], jo_text(no[..]));
+  jo_put(o[..], " Fixture\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ");
+  jo_start(no[..], num[..]); jo_int(no[..], f[0].out_n); jo_put(o[..], jo_text(no[..])); jo_put(o[..], "\r\n\r\n");
+  for c: jo_text(o[..]) { x := cxsock_write(h, cast(int) c); }
+  for i: 0..<f[0].out_n { x := cxsock_write(h, cast(int) out[i]); }
+  x := cxsock_flush(h, 5000); closed := cxsock_close(h); return true;
+}

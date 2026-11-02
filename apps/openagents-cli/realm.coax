@@ -1,3 +1,268 @@
+// Realm edit effects. Input bounds and the command catalogue are pure Coax
+// policies; SQL owns the atomic revision comparison. Every edit reads its
+// base, sends that revision, and refuses a server without the fence capability.
+#load "commands.coax";
+#load "../../coax/lib/text/base64.coax";
+
+REALM_DOC_MAX :: 368640;
+REALM_DOC_BODY :: 524288;
+
+// Reads may return the document as JSON or the page's compact line protocol.
+realm_read :: (a: [] Args, r: [] Rep, profile: string, tail: string) -> int {
+  out: [API_OUT] u8; path: [256] u8;
+  res := api_call(a,profile,"GET",realm_path(positional(a,2),tail,path[..]),"",out[..]);
+  body := cast(string) out[0..<res.n];
+  if !api_ok(res) { return api_fail(r,res,body); }
+  if tail == "/doc" {
+    if !rep_object(r,body) { return fail(r,EXIT_FAIL,"the document answer isn't a complete JSON object"); }
+    return rep_done(r,EXIT_OK);
+  }
+  if !r[0].json { print("%",body); return EXIT_OK; }
+  rep_str(r,"slug",positional(a,2)); rep_str(r,"lines",body);
+  return rep_done(r,EXIT_OK);
+}
+
+realm_edit_answer :: (r: [] Rep, res: ApiAnswer, body: string) -> int {
+  if res.error == HTTP_OK && res.status == 409 {
+    nodes: [64] JvNode; d: [1] Jv;
+    if jv_parse(d[..],body,nodes[..]) {
+      v := jv_int(d[0],jv_get(d[0],0,"rev"),-1);
+      if v >= 1 { rep_int(r,"rev",v); }
+    }
+  }
+  if !api_ok(res) { return api_fail(r,res,body); }
+  rev := realm_reply_rev(body);
+  if rev < 1 { return fail(r,EXIT_FAIL,"the edit returned no valid revision; read the realm before retrying"); }
+  if !rep_object(r,body) {
+    rep_str(r,"lines",body);
+    v := cli_count(cli_spec_value(body,"rev"),1,999999999);
+    if v >= 1 { rep_int(r,"rev",v); }
+  }
+  return rep_done(r,EXIT_OK);
+}
+
+// A synthetic refusal uses the same body/status as the server, before effects.
+realm_edit_refuse :: (status: int, message: string, rev: int, out: [] u8) -> ApiAnswer {
+  o: [1] Jo; jo_start(o[..],out); jo_obj(o[..]);
+  jo_key(o[..],"error"); jo_str(o[..],message);
+  if rev >= 1 { jo_key(o[..],"rev"); jo_int(o[..],rev); }
+  jo_end(o[..]);
+  return ApiAnswer.{error=HTTP_OK,status=status,n=o[0].n,keyed=true};
+}
+
+realm_edit_tail :: (verb: string, id: string, out: [] u8) -> string {
+  c := REALM_COMMANDS[rc_find(verb)];
+  if verb == "ask-delete" || verb == "ask-done" || verb == "row-delete" || verb == "accept" || verb == "decline" {
+    n := forge_put(out,0,ifx verb == "row-delete" then "/rows/" else ifx verb == "ask-delete" || verb == "ask-done" then "/asks/" else "/proposals/");
+    n = forge_put(out,n,id);
+    n = forge_put(out,n,ifx verb == "ask-done" then "/done" else ifx verb == "accept" then "/accept" else ifx verb == "decline" then "/decline" else "/delete");
+    return ifx n < 0 then "" else cast(string) out[0..<n];
+  }
+  return c.route;
+}
+
+realm_edit_cm_json :: (o: [] Jo, key: string, cm: int) {
+  b: [24] u8; n := forge_put_cm(b[..],0,cm);
+  jo_key(o,key); jo_raw(o,cast(string) b[0..<n]);
+}
+
+realm_edit_doc :: (a: [] Args, profile: string, slug: string, rev: int, out: [] u8) -> ApiAnswer {
+  file := rc_option(a,"ask","--doc","");
+  size := fs_size(file);
+  if size <= 0 || size > REALM_DOC_MAX { return realm_edit_refuse(400,"--doc is a nonempty file of at most 360 KiB",-1,out); }
+  bytes: [REALM_DOC_MAX+1] u8;
+  n := fs_read(file,bytes[..]);
+  if n <= 0 || n > REALM_DOC_MAX { return realm_edit_refuse(400,"--doc is a nonempty file of at most 360 KiB",-1,out); }
+  encoded: [491520] u8; en := b64_encode(cast(string) bytes[0..<n],encoded[..]);
+  if en < 0 { return realm_edit_refuse(400,"the document did not encode",-1,out); }
+  buf: [REALM_DOC_BODY] u8; o: [1] Jo; jo_start(o[..],buf[..]); jo_obj(o[..]);
+  jo_key(o[..],"rev"); jo_int(o[..],rev);
+  jo_key(o[..],"name"); jo_str(o[..],fs_base(file));
+  jo_key(o[..],"data"); jo_str(o[..],cast(string) encoded[0..<en]); jo_end(o[..]);
+  if o[0].bad { return realm_edit_refuse(400,"the document is too large",-1,out); }
+  path: [256] u8;
+  return api_call(a,profile,"POST",realm_path(slug,"/edit-v1/asks/doc",path[..]),jo_text(o[..]),out);
+}
+
+// expected < 1 means read the revision now. Batch calls instead carry the last
+// accepted revision forward, so a concurrent writer stops the remaining batch.
+realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out: [] u8) -> ApiAnswer {
+  slug := rc_pos(a,verb,2);
+  specbuf: [API_OUT] u8; path: [256] u8;
+  read := api_call(a,profile,"GET",realm_path(slug,"",path[..]),"",specbuf[..]);
+  spec := cast(string) specbuf[0..<read.n];
+  if !api_ok(read) {
+    n := copy(spec,out);
+    if n < 0 { return realm_edit_refuse(400,"the answer buffer is too small",-1,out); }
+    read.n = n; return read;
+  }
+  current := cli_count(cli_spec_value(spec,"rev"),1,999999999);
+  if current < 1 { return realm_edit_refuse(400,"that realm has no versioned document",-1,out); }
+  rev := expected;
+  if rev < 1 && rc_has(a,verb,"--rev") { rev = cli_count(rc_option(a,verb,"--rev",""),1,999999999); }
+  if rev < 1 { rev = current; }
+  if rev != current { return realm_edit_refuse(409,"changed since",current,out); }
+  fork_publish := false;
+  if verb == "publish" {
+    docbuf: [API_OUT] u8;
+    got := api_call(a,profile,"GET",realm_path(slug,"/doc",path[..]),"",docbuf[..]);
+    if !api_ok(got) {
+      copied := copy(cast(string) docbuf[0..<got.n],out);
+      if copied < 0 { return realm_edit_refuse(400,"the answer buffer is too small",-1,out); }
+      got.n=copied; return got;
+    }
+    nodes: [2048] JvNode; d: [1] Jv;
+    if !jv_parse(d[..],cast(string) docbuf[0..<got.n],nodes[..]) { return realm_edit_refuse(400,"the publication profile did not read",rev,out); }
+    doc := jv_get(d[0],0,"doc"); base := jv_get(d[0],doc,"base");
+    if jv_kind(d[0],base) == JV_STRING {
+      name: [48] u8; bn := jv_str(d[0],base,name[..]);
+      if bn < 1 || !cli_slug_ok(cast(string) name[0..<bn]) { return realm_edit_refuse(400,"the realm has no supported publication profile",rev,out); }
+      fork_publish=true;
+    }
+    else if jv_kind(d[0],base) != JV_NULL { return realm_edit_refuse(400,"the realm has no supported publication profile",rev,out); }
+    if fork_publish && cli_spec_value(spec,"edit_fence") != "1" { return realm_edit_refuse(400,"built-in fork publication needs revision-fenced routes (migration 0102)",rev,out); }
+  }
+  if verb != "move" && verb != "undo" && verb != "publish" && cli_spec_value(spec,"edit_fence") != "1" {
+    return realm_edit_refuse(400,"this server needs revision-fenced edit routes (migration 0102)",current,out);
+  }
+  if verb == "ask" && rc_has(a,verb,"--doc") { return realm_edit_doc(a,profile,slug,rev,out); }
+  buf: [API_BODY_MAX] u8;
+  if verb == "move" {
+    doc: [1] ForgeDoc; forge_reset(doc[..],rev);
+    if !cli_edit_read_moves(spec,doc[..]) { return realm_edit_refuse(400,"the realm's move list did not read",rev,out); }
+    key := rc_pos(a,verb,3); x := cli_edit_cm(rc_pos(a,verb,4)); z := cli_edit_cm(rc_pos(a,verb,5));
+    now := forge_where(doc[..],key);
+    if !(now.found && now.x == x && now.z == z) && !forge_move(doc[..],key,x,z) { return realm_edit_refuse(400,"the move does not fit the document",rev,out); }
+    n := forge_save_body(doc[..],buf[..]);
+    if n < 0 { return realm_edit_refuse(400,"the move body is too large",rev,out); }
+    return api_call(a,profile,"POST",realm_path(slug,"/save",path[..]),cast(string) buf[0..<n],out);
+  }
+  o: [1] Jo; jo_start(o[..],buf[..]); jo_obj(o[..]); jo_key(o[..],"rev"); jo_int(o[..],rev);
+  v := rc_pos(a,verb,3);
+  if verb == "switch" { jo_key(o[..],"row"); jo_str(o[..],v); jo_key(o[..],"on"); jo_bool(o[..],cli_onoff(rc_pos(a,verb,4)) == 1); }
+  if verb == "revise" || verb == "ask" { jo_key(o[..],ifx verb == "ask" then "words" else "prompt"); jo_str(o[..],v); }
+  if verb == "ask-done" { jo_key(o[..],"commit"); jo_str(o[..],rc_option(a,verb,"--commit","")); }
+  if verb == "place" {
+    jo_key(o[..],"thing"); jo_str(o[..],v);
+    realm_edit_cm_json(o[..],"x",cli_edit_cm(rc_pos(a,verb,4))); realm_edit_cm_json(o[..],"z",cli_edit_cm(rc_pos(a,verb,5)));
+    y := rc_option(a,verb,"--yaw","0");
+    neg := y.count > 0 && y[0] == '-';
+    amount := cli_count(ifx neg then y[1..<y.count] else y,0,360);
+    jo_key(o[..],"yaw"); jo_int(o[..],ifx neg then -amount else amount);
+  }
+  if verb == "settings" {
+    enabled := rc_option(a,verb,"--tools",""); tools := "build|fly|jump|map|talk|voice";
+    jo_key(o[..],"tools"); jo_obj(o[..]);
+    for i: 0..<6 {
+      name := cli_field(tools,i); on := false; at := 0;
+      for end: 0..<enabled.count+1 { if end == enabled.count || enabled[end] == ',' { if enabled[at..<end] == name { on=true; } at=end+1; } }
+      jo_key(o[..],name); jo_bool(o[..],on);
+    }
+    jo_end(o[..]);
+  }
+  if verb == "lore" { jo_key(o[..],"who"); jo_str(o[..],v); jo_key(o[..],"text"); jo_str(o[..],rc_pos(a,verb,4)); }
+  if verb == "quest" {
+    jo_key(o[..],"giver"); jo_str(o[..],v); jo_key(o[..],"ask"); jo_str(o[..],rc_option(a,verb,"--ask",""));
+    jo_key(o[..],"steps"); jo_arr(o[..]);
+    for i: 0..<3 { if rc_option_index(a,verb,"--step",i) >= 0 { jo_str(o[..],rc_option_at(a,verb,"--step",i)); } }
+    jo_end(o[..]); jo_key(o[..],"reward"); jo_str(o[..],rc_option(a,verb,"--reward",""));
+  }
+  if verb == "visibility" { jo_key(o[..],"visibility"); jo_str(o[..],v); }
+  if verb == "publish" && rc_has(a,verb,"--listed") { jo_key(o[..],"listed"); jo_bool(o[..],true); }
+  jo_end(o[..]);
+  if o[0].bad { return realm_edit_refuse(400,"the edit body is too large",rev,out); }
+  tailbuf: [128] u8; tail := realm_edit_tail(verb,v,tailbuf[..]);
+  fenced: [160] u8;
+  if verb != "undo" && (verb != "publish" || fork_publish) { n := forge_put(fenced[..],0,"/edit-v1"); n = forge_put(fenced[..],n,tail); tail = cast(string) fenced[0..<n]; }
+  return api_call(a,profile,"POST",realm_path(slug,tail,path[..]),jo_text(o[..]),out);
+}
+
+realm_edit :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  out: [API_OUT] u8;
+  res := realm_edit_run(a,profile,verb,-1,out[..]);
+  return realm_edit_answer(r,res,cast(string) out[0..<res.n]);
+}
+
+RealmLine :: struct { first: int; end: int; next: int; }
+realm_line :: (text: string, at: int) -> RealmLine {
+  e := at; while e < text.count && text[e] != '\n' { e += 1; }
+  next := ifx e < text.count then e+1 else e;
+  s := at;
+  while s < e && (text[s] == ' ' || text[s] == '\t' || text[s] == '\r') { s += 1; }
+  while e > s && (text[e-1] == ' ' || text[e-1] == '\t' || text[e-1] == '\r') { e -= 1; }
+  return RealmLine.{first=s,end=e,next=next};
+}
+
+// Non-atomic JSON lines: only committed operations count as applied. A group
+// of adjacent moves is one /save and therefore one undo step.
+realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  slug := rc_pos(a,"apply",2); file := rc_pos(a,"apply",3);
+  size := fs_size(file);
+  if size < 1 || size > 65536 { return fail(r,EXIT_USAGE,"apply needs a nonempty JSON-lines file of at most 64 KiB"); }
+  input: [65537] u8; n := fs_read(file,input[..]);
+  if n < 1 || n > 65536 { return fail(r,EXIT_USAGE,"the batch file did not fit"); }
+  text := cast(string) input[0..<n]; at := 0; applied := 0; line := 1;
+  expected := ifx rc_has(a,"apply","--rev") then cli_count(rc_option(a,"apply","--rev",""),1,999999999) else -1;
+  out: [API_OUT] u8; b: [1] Args;
+  while at < text.count {
+    span := realm_line(text,at);
+    if span.first == span.end { at=span.next; line+=1; continue; }
+    if applied >= 256 || !rb_args(text[span.first..<span.end],slug,b[..]) {
+      rep_int(r,"applied",applied); rep_int(r,"line",line); if expected >= 1 { rep_int(r,"rev",expected); }
+      return fail(r,EXIT_USAGE,"invalid or unbounded batch operation");
+    }
+    if rc_has(a,"apply","--origin") {
+      added := args_add(b[..],"--origin") && args_add(b[..],rc_option(a,"apply","--origin",""));
+      if !added { return fail(r,EXIT_USAGE,"batch arguments did not fit"); }
+    }
+    // The parser always emits realm, verb, slug before any flags.
+    verb := args_at(b[..],1);
+    res: ApiAnswer;
+    if verb == "move" {
+      path: [256] u8; specbuf: [API_OUT] u8;
+      read := api_call(a,profile,"GET",realm_path(slug,"",path[..]),"",specbuf[..]);
+      if !api_ok(read) {
+        rep_int(r,"applied",applied); return api_fail(r,read,cast(string) specbuf[0..<read.n]);
+      }
+      spec := cast(string) specbuf[0..<read.n]; current := cli_count(cli_spec_value(spec,"rev"),1,999999999);
+      if current < 1 { rep_int(r,"applied",applied); return fail(r,EXIT_USAGE,"that realm has no versioned document"); }
+      if expected < 1 { expected=current; }
+      if current != expected {
+        rep_int(r,"applied",applied); res=realm_edit_refuse(409,"changed since",current,out[..]);
+        return realm_edit_answer(r,res,cast(string) out[0..<res.n]);
+      }
+      doc: [1] ForgeDoc; forge_reset(doc[..],expected);
+      if !cli_edit_read_moves(spec,doc[..]) { rep_int(r,"applied",applied); return fail(r,EXIT_FAIL,"the realm's move list did not read"); }
+      count := 0;
+      while at < text.count && applied+count < 256 {
+        span=realm_line(text,at);
+        if span.first == span.end { at=span.next; line+=1; continue; }
+        if !rb_args(text[span.first..<span.end],slug,b[..]) || args_at(b[..],1) != "move" { break; }
+        key := rc_pos(b[..],"move",3); x := cli_edit_cm(rc_pos(b[..],"move",4)); z := cli_edit_cm(rc_pos(b[..],"move",5));
+        now := forge_where(doc[..],key);
+        if !(now.found && now.x == x && now.z == z) && !forge_move(doc[..],key,x,z) { break; }
+        count+=1; at=span.next; line+=1;
+      }
+      if count == 0 { rep_int(r,"applied",applied); rep_int(r,"line",line); return fail(r,EXIT_USAGE,"the move group does not fit the document"); }
+      body: [API_BODY_MAX] u8; bn := forge_save_body(doc[..],body[..]);
+      if bn < 0 { rep_int(r,"applied",applied); return fail(r,EXIT_USAGE,"the move group body does not fit"); }
+      res=api_call(a,profile,"POST",realm_path(slug,"/save",path[..]),cast(string) body[0..<bn],out[..]);
+      if !api_ok(res) { rep_int(r,"applied",applied); rep_int(r,"line",line-count); return realm_edit_answer(r,res,cast(string) out[0..<res.n]); }
+      applied+=count;
+    } else {
+      res=realm_edit_run(b[..],profile,verb,expected,out[..]);
+      if !api_ok(res) { rep_int(r,"applied",applied); rep_int(r,"line",line); return realm_edit_answer(r,res,cast(string) out[0..<res.n]); }
+      applied+=1; at=span.next; line+=1;
+    }
+    expected=realm_reply_rev(cast(string) out[0..<res.n]);
+    if expected < 1 {
+      rep_int(r,"applied",applied); return fail(r,EXIT_FAIL,"the batch stopped after an edit returned no revision; read the realm before retrying");
+    }
+  }
+  rep_int(r,"applied",applied); if expected >= 1 { rep_int(r,"rev",expected); }
+  return rep_done(r,EXIT_OK);
+}
+
 // The realm domain: your realms on openagents.com, over the same routes the
 // page uses (coax/web/api/realms.c), each request signed with NIP-98 by the
 // profile's key, so the key's account is the caller. The server decides every
@@ -5,12 +270,7 @@
 
 realm_usage :: () {
   print("%\n", "Realms (openagents.com/realms):");
-  print("%\n", "  realm list                       your realms: slug, revision, published revision, listed, name");
-  print("%\n", "  realm show SLUG                  its spec lines, who sees it, and its page");
-  print("%\n", "  realm new WORDS [--from PLAN]    plan a realm from words and make it (private); --from makes a plan you have");
-  print("%\n", "  realm visibility SLUG private|unlisted|public   who sees it (approved creators and admins)");
-  print("%\n", "  realm publish SLUG [--rev N]     visitors see this revision (without --rev: the one there now)");
-  print("%\n", "  realm fork SLUG [--name NAME]    a copy of it that you own (private)");
+  for c: REALM_COMMANDS { print("  realm % % %  %\n",c.verb,c.arguments,c.flags,c.help); }
   print("%\n", "");
 }
 
@@ -167,12 +427,14 @@ realm_fork :: (a: [] Args, r: [] Rep, profile: string) -> int {
 }
 
 realm_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  why := rc_validate(a,verb);
+  if why != "" { return fail(r,EXIT_USAGE,why); }
   if verb == "list" { return realm_list(a, r, profile); }
   if verb == "shot" { return labs_realm_shot(a, r, profile); }
   if verb == "show" { return realm_show(a, r, profile); }
   if verb == "new" { return realm_new(a, r, profile); }
-  if verb == "visibility" { return realm_visibility(a, r, profile, 2); }
-  if verb == "publish" { return realm_publish(a, r, profile); }
   if verb == "fork" { return realm_fork(a, r, profile); }
-  return fail(r, EXIT_USAGE, "realm: list, show, new, visibility, publish or fork (openagents help)");
+  if verb == "doc" || verb == "asks" || verb == "proposals" || verb == "panes" { return realm_read(a,r,profile,REALM_COMMANDS[rc_find(verb)].route); }
+  if verb == "apply" { return realm_apply(a,r,profile); }
+  return realm_edit(a,r,profile,verb);
 }

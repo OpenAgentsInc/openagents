@@ -1,0 +1,1065 @@
+#load "../../coax/lib/json/json.coax";
+// Realm policies and catalogue share one source unit: the CLI stays within
+// the existing 128-unit compiler profile. The Forge arithmetic stays shared.
+#load "../../aethyr/forge/edit.coax";
+#authority;
+
+#test "CLI reply revisions require a complete JSON object or a bounded revision line" {
+  #assert realm_reply_rev("{\"rev\":7}") == 7 && realm_reply_rev("{\"rev\":1,\"other\":true}") == 1;
+  #assert realm_reply_rev("{\"rev\":999999999}") == 999999999;
+  #assert realm_reply_rev("rev 8\n") == 8 && realm_reply_rev("realm garden\nrev 999999999\n") == 999999999;
+  #assert realm_reply_rev("rev 1\n") == 1 && realm_reply_rev("rev 1000000000\n") == -1;
+  #assert realm_reply_rev("{}") == -1 && realm_reply_rev("{\"rev\":0}") == -1 && realm_reply_rev("{\"rev\":1000000000}") == -1;
+  #assert realm_reply_rev("{\"rev\":1.5}") == -1 && realm_reply_rev("{\"rev\":\"7\"}") == -1;
+  #assert realm_reply_rev("{\nrev 7\n") == -1 && realm_reply_rev(" \n[\nrev 7\n") == -1;
+  #assert realm_reply_rev("\r{\nrev 7\n") == -1 && realm_reply_rev("\t{\nrev 7\n") == -1;
+  #assert realm_reply_rev("\n{\nrev 7\n") == -1 && realm_reply_rev(" {\nrev 7\n") == -1;
+  #assert realm_reply_rev("[]") == -1 && realm_reply_rev("true") == -1 && realm_reply_rev("") == -1;
+}
+
+realm_reply_rev :: (body: string) -> int {
+  nodes: [2048] JvNode; d: [1] Jv;
+  if jv_parse(d[..],body,nodes[..]) {
+    if jv_kind(d[0],0) != JV_OBJECT { return -1; }
+    at := jv_get(d[0],0,"rev");
+    if jv_kind(d[0],at) != JV_NUMBER { return -1; }
+    return cli_count(jv_raw(d[0],at),1,999999999);
+  }
+  i := 0;
+  while i < body.count && (body[i] == ' ' || body[i] == '\n' || body[i] == '\r' || body[i] == '\t') { i+=1; }
+  if i < body.count && (body[i] == '{' || body[i] == '[') { return -1; }
+  return cli_count(cli_spec_value(body,"rev"),1,999999999);
+}
+
+// The realm and admin domains' decisions, with no host calls: which words a
+// command takes (slugs, visibilities, flags, counts, who), which server a
+// profile talks to, the lines a realm's spec and the admin's access rows say,
+// and what an admin key list says. The server decides every right; these keep
+// a command from sending what the server would refuse and read its answers.
+//   coax/bin/coax test apps/openagents-cli/realm_rules.coax --library
+//   coax/bin/coax mutate apps/openagents-cli/realm_rules.coax --library
+
+// A realm's address: 1 to 48 of a-z, 0-9 and '-' (realms.c's slug_ok).
+#test "slugs" {
+  #assert cli_slug_ok("everglade") && cli_slug_ok("a") && cli_slug_ok("test-realm-9") && cli_slug_ok("0");
+  #assert cli_slug_ok("abcdefghijklmnopqrstuvwxyz0123456789abcdefghijkl");
+  #assert !cli_slug_ok("abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklm");
+  #assert !cli_slug_ok("") && !cli_slug_ok("A") && !cli_slug_ok("a/b") && !cli_slug_ok("a b") && !cli_slug_ok("a_b");
+  #assert !cli_slug_ok("a.b") && !cli_slug_ok("a`") && !cli_slug_ok("a{") && !cli_slug_ok("a:") && !cli_slug_ok("a@") && !cli_slug_ok("a,");
+}
+cli_slug_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > 48 { return false; }
+  for c: s {
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; }
+  }
+  return true;
+}
+
+// Who sees a realm (migrations/0099_realm_visibility.sql).
+#test "visibilities" {
+  #assert cli_visibility_ok("private") && cli_visibility_ok("unlisted") && cli_visibility_ok("public");
+  #assert !cli_visibility_ok("") && !cli_visibility_ok("Public") && !cli_visibility_ok("listed") && !cli_visibility_ok("publics");
+}
+cli_visibility_ok :: (s: string) -> bool { return s == "private" || s == "unlisted" || s == "public"; }
+
+// on or off: 1, 0, or -1 for anything else.
+#test "on and off" {
+  #assert cli_onoff("on") == 1 && cli_onoff("off") == 0 && cli_onoff("On") == -1 && cli_onoff("") == -1 && cli_onoff("1") == -1;
+}
+cli_onoff :: (s: string) -> int {
+  if s == "on" { return 1; }
+  if s == "off" { return 0; }
+  return -1;
+}
+
+// The access flags an admin turns on or off (0090).
+#test "flag names" {
+  #assert cli_flag_ok("realm_invites") && cli_flag_ok("auth_v2");
+  #assert !cli_flag_ok("") && !cli_flag_ok("realm-invites") && !cli_flag_ok("auth_v3");
+}
+cli_flag_ok :: (s: string) -> bool { return s == "realm_invites" || s == "auth_v2"; }
+
+// A count in bounds as typed: plain decimal digits, no sign, at most 18; -1 otherwise.
+#test "counts in bounds" {
+  #assert cli_count("1", 1, 1000) == 1 && cli_count("1000", 1, 1000) == 1000 && cli_count("90", 1, 90) == 90 && cli_count("007", 1, 90) == 7;
+  #assert cli_count("0", 1, 1000) == -1 && cli_count("1001", 1, 1000) == -1 && cli_count("91", 1, 90) == -1;
+  #assert cli_count("", 1, 9) == -1 && cli_count("-1", -5, 9) == -1 && cli_count("1x", 1, 9) == -1 && cli_count("x", 0, 9) == -1;
+  #assert cli_count("1234567890", 0, 2000000000) == 1234567890 && cli_count("1234567890123456789", 0, 2000000000) == -1;
+  #assert cli_count("123456789012345678", 0, 999999999999999999) == 123456789012345678 && cli_count("1000000000000000000", 0, 9000000000000000000) == -1 && cli_count("", 0, 9) == -1;
+  #assert cli_count("1:", 0, 1000) == -1 && cli_count("/", 0, 9) == -1 && cli_count(":", 0, 9) == -1 && cli_count("0", 0, 0) == 0 && cli_count("5", 5, 5) == 5 && cli_count("4", 5, 9) == -1;
+}
+cli_count :: (s: string, lo: int, hi: int) -> int {
+  if s.count < 1 || s.count > 18 { return -1; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  if v < lo || v > hi { return -1; }
+  return v;
+}
+
+// 64 lowercase-or-uppercase hex digits: a pubkey as the server names it.
+#test "pubkey hex" {
+  h := "9f4b4c7e00000000000000000000000000000000000000000000000000000000";
+  #assert cli_hex64(h) && cli_hex64("ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789");
+  #assert !cli_hex64(h[0..<63]) && !cli_hex64("") && !cli_hex64("g000000000000000000000000000000000000000000000000000000000000000");
+  #assert !cli_hex64("/000000000000000000000000000000000000000000000000000000000000000") && !cli_hex64(":000000000000000000000000000000000000000000000000000000000000000");
+  #assert !cli_hex64("@000000000000000000000000000000000000000000000000000000000000000") && !cli_hex64("G000000000000000000000000000000000000000000000000000000000000000");
+  #assert !cli_hex64("`000000000000000000000000000000000000000000000000000000000000000");
+}
+cli_hex64 :: (s: string) -> bool {
+  if s.count != 64 { return false; }
+  for c: s {
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) { return false; }
+  }
+  return true;
+}
+
+// Who an admin names as a creator: a pubkey (64 hex) or an account id (e-, n- or w- and 16 to 64
+// hex), the shapes access.add takes; anything else is a usage error before any request.
+#test "who" {
+  #assert cli_who_ok("n-9f4b4c7e00000000000000000000000000000000000000000000000000000000");
+  #assert cli_who_ok("e-0123456789abcdef") && cli_who_ok("w-0123456789abcdef0123") && cli_who_ok("9f4b4c7e00000000000000000000000000000000000000000000000000000000");
+  #assert !cli_who_ok("e-0123456789abcde") && !cli_who_ok("x-0123456789abcdef") && !cli_who_ok("n_0123456789abcdef") && !cli_who_ok("");
+  #assert !cli_who_ok("n-0123456789abcdeg") && !cli_who_ok("n-0123456789ABCDEF") && !cli_who_ok("n-");
+  #assert cli_who_ok("n-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !cli_who_ok("n-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0");
+  #assert !cli_who_ok("n-g123456789abcdef") && !cli_who_ok("p-0123456789abcdef") && !cli_who_ok("n-0123456789abcd/f") && !cli_who_ok("n-0123456789abcd:f") && !cli_who_ok("n-0123456789abcd`f");
+}
+cli_who_ok :: (s: string) -> bool {
+  if cli_hex64(s) { return true; }
+  if s.count < 18 || s.count > 66 || s[1] != '-' { return false; }
+  if s[0] != 'e' && s[0] != 'n' && s[0] != 'w' { return false; }
+  for c: s[2..<s.count] {
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+  }
+  return true;
+}
+
+// The value of a spec's "KEY VALUE" line (GET /api/playtest/realms/<slug>), the first one; "" when
+// none. A key matches only at a line's start and only whole.
+#test "spec values" {
+  spec := "realm moonlit\nname Moonlit Marsh\nrev 7\npublished 5\nvisibility private\nrole owner\n";
+  #assert cli_spec_value(spec, "rev") == "7" && cli_spec_value(spec, "visibility") == "private" && cli_spec_value(spec, "name") == "Moonlit Marsh";
+  #assert cli_spec_value(spec, "realm") == "moonlit" && cli_spec_value(spec, "role") == "owner" && cli_spec_value(spec, "published") == "5";
+  #assert cli_spec_value(spec, "re") == "" && cli_spec_value(spec, "listed") == "" && cli_spec_value("", "rev") == "";
+  #assert cli_spec_value("xrev 1\nrev 2", "rev") == "2" && cli_spec_value("rev 1\nrev 2\n", "rev") == "1" && cli_spec_value("rev", "rev") == "";
+  #assert cli_spec_value("rev \n", "rev") == "" && cli_spec_value("a\n\nrev 3", "rev") == "3" && cli_spec_value("\nrev 3", "rev") == "3";
+}
+cli_spec_value :: (text: string, key: string) -> string {
+  at := 0;
+  for end: 0..<text.count + 1 {
+    if end < text.count && text[end] != '\n' { continue; }
+    line := text[at..<end];
+    k := key.count;
+    if k < line.count && line[0..<k] == key && line[k] == ' ' { return line[k + 1..<line.count]; }
+    at = end + 1;
+  }
+  return "";
+}
+
+// What GET /api/admin/access says, counted: its F (flag), I (invite), R (request) and C (creator)
+// rows (migrations/0090_realm_invites.sql, access.admin_lines).
+AccessSum :: struct { invites_flag: int = -1; auth_flag: int = -1; invites: int; live: int; requests: int; waiting: int; creators: int; }
+#test "access rows counted" {
+  t := "F|realm_invites|1\nF|auth_v2|0\nI|3|1|0|99|live|for kiki\nI|2|1|1|99|used|\nR|5|npub1x|note|a@b.c|waiting|9\nR|4|npub1y|n||approved|8\nC|n-ab|admin|7\nC|p-cd|grandfather|6\n";
+  s := cli_access_sum(t);
+  #assert s.invites_flag == 1 && s.auth_flag == 0 && s.invites == 2 && s.live == 1 && s.requests == 2 && s.waiting == 1 && s.creators == 2;
+  e := cli_access_sum("");
+  #assert e.invites_flag == -1 && e.auth_flag == -1 && e.invites == 0 && e.creators == 0 && e.waiting == 0;
+  o := cli_access_sum("F|realm_invites|0\nF|auth_v2|1\nX|1\nI|1|1|0|1|revoked|x|live\nR|1|n|a|b|declined|1\nC|w-1|invite|1");
+  #assert o.invites_flag == 0 && o.auth_flag == 1 && o.invites == 1 && o.live == 0 && o.requests == 1 && o.waiting == 0 && o.creators == 1;
+  #assert cli_access_sum("\nC|x").creators == 1;
+  #assert cli_field("a|b|c", 0) == "a" && cli_field("a|b|c", 2) == "c" && cli_field("a|b|c", 3) == "" && cli_field("|x", 0) == "" && cli_field("a||c", 1) == "";
+}
+cli_access_sum :: (text: string) -> AccessSum {
+  s: AccessSum;
+  at := 0;
+  for end: 0..<text.count + 1 {
+    if end < text.count && text[end] != '\n' { continue; }
+    line := text[at..<end];
+    kind := cli_field(line, 0);
+    if kind == "F" {
+      on := ifx cli_field(line, 2) == "1" then 1 else 0;
+      if cli_field(line, 1) == "realm_invites" { s.invites_flag = on; }
+      if cli_field(line, 1) == "auth_v2" { s.auth_flag = on; }
+    }
+    if kind == "I" { s.invites += 1; if cli_field(line, 5) == "live" { s.live += 1; } }
+    if kind == "R" { s.requests += 1; if cli_field(line, 5) == "waiting" { s.waiting += 1; } }
+    if kind == "C" { s.creators += 1; }
+    at = end + 1;
+  }
+  return s;
+}
+// The k-th '|' field of a line, or "".
+cli_field :: (line: string, k: int) -> string {
+  at := 0; seen := 0;
+  for i: 0..<line.count + 1 {
+    if i == line.count || line[i] == '|' {
+      if seen == k { return line[at..<i]; }
+      seen += 1; at = i + 1;
+    }
+  }
+  return "";
+}
+
+// A plan's board as lines (POST /api/playtest/realms/plan?as=lines): "plan N", then a row a line,
+// "f FEATURE 1|0 LABEL". The plan's number (or -1) and each row's on, in order, into on (at most
+// on.count rows; more is -1).
+PlanBoard :: struct { plan: int = -1; rows: int; }
+#test "a plan's board read" {
+  on: [4] bool;
+  b := cli_plan_board("plan 41\nname Koi Garden\nstyle flat\nf water 1 A koi pond\nf trees 0 Cherry trees\nf lanterns 1 Lanterns\nwant a bridge\n", on[..]);
+  #assert b.plan == 41 && b.rows == 3 && on[0] && !on[1] && on[2];
+  n := cli_plan_board("name x\nf water 1 y", on[..]);
+  #assert n.plan == -1 && n.rows == 1 && on[0];
+  o := cli_plan_board("plan 7\nf a 1 x\nf b 1 x\nf c 0 x\nf d 1 x\nf e 1 x", on[..]);
+  #assert o.plan == 7 && o.rows == -1;
+  q := cli_plan_board("plan x\nf a 2 x\nff a 1 x\nf a\nplan 12", on[..]);
+  #assert q.plan == 12 && q.rows == 0;
+  #assert cli_plan_board("\nplan 3", on[..]).plan == 3 && cli_plan_board("plan 3\n", on[..]).rows == 0;
+  r := cli_plan_board("f a 0 x\nf b 1 y\n", on[..]);
+  #assert r.rows == 2 && !on[0] && on[1];
+  #assert cli_plan_board("plan 5\nplan ", on[..]).plan == 5 && cli_plan_board("plan 1", on[..]).plan == 1 && cli_plan_board("plan 1000000000", on[..]).plan == -1;
+  #assert cli_plan_board("f a 1", on[..]).rows == 0 && cli_plan_board("f a 1 ", on[..]).rows == 1 && cli_plan_board("f  1 x", on[..]).rows == 0;
+  #assert cli_plan_board("f ab 0 x", on[..]).rows == 1 && !on[0] && cli_plan_board("f ", on[..]).rows == 0 && cli_plan_board("f", on[..]).rows == 0;
+}
+#test "a prefix" {
+  #assert cli_prefix("f a", "f ") && cli_prefix("f ", "f ") && !cli_prefix("f", "f ") && !cli_prefix("g a", "f ") && cli_prefix("x", "");
+}
+cli_prefix :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+cli_plan_board :: (text: string, on: [] bool) -> PlanBoard {
+  b: PlanBoard;
+  at := 0;
+  for end: 0..<text.count + 1 {
+    if end < text.count && text[end] != '\n' { continue; }
+    line := text[at..<end];
+    at = end + 1;
+    if line.count > 5 && line[0..<5] == "plan " { b.plan = cli_count(line[5..<line.count], 1, 999999999); }
+    if b.rows < 0 || !cli_prefix(line, "f ") { continue; }
+    sp := 3;   // a feature is at least one byte
+    while sp < line.count && line[sp] != ' ' { sp += 1; }
+    if sp + 2 >= line.count || line[sp + 2] != ' ' || (line[sp + 1] != '0' && line[sp + 1] != '1') { continue; }
+    if b.rows == on.count { b.rows = -1; continue; }
+    on[b.rows] = line[sp + 1] == '1';
+    b.rows += 1;
+  }
+  return b;
+}
+
+// Bounded fields for realm edit commands. Words still go to the server's
+// typed planner; these checks parse only coordinates, keys and catalogue names.
+//   coax/bin/coax test apps/openagents-cli/realm-edit-rules.coax --library
+//   coax/bin/coax mutate apps/openagents-cli/realm-edit-rules.coax --library --root-only
+
+#test "edit coordinates are exact centimetres inside forty metres" {
+  #assert cli_edit_cm("0") == 0 && cli_edit_cm("-0") == 0;
+  #assert cli_edit_cm("4.5") == 450 && cli_edit_cm("-2") == -200;
+  #assert cli_edit_cm("0.01") == 1 && cli_edit_cm("-0.01") == -1;
+  #assert cli_edit_cm("40") == 4000 && cli_edit_cm("-40.00") == -4000;
+  #assert cli_edit_cm("39.99") == 3999 && cli_edit_cm("000.50") == 50;
+  #assert cli_edit_cm("") == 4001 && cli_edit_cm("-") == 4001;
+  #assert cli_edit_cm("40.01") == 4001 && cli_edit_cm("-40.01") == 4001 && cli_edit_cm("40.02") == 4001 && cli_edit_cm("41") == 4001;
+  #assert cli_edit_cm("1.001") == 4001 && cli_edit_cm("1.") == 4001 && cli_edit_cm(".5") == 4001;
+  #assert cli_edit_cm("1.2.3") == 4001 && cli_edit_cm("1e0") == 4001 && cli_edit_cm("NaN") == 4001;
+  #assert cli_edit_cm("+1") == 4001 && cli_edit_cm(" 1") == 4001 && cli_edit_cm("1 ") == 4001;
+  #assert cli_edit_cm("/") == 4001 && cli_edit_cm(":") == 4001 && cli_edit_cm("--1") == 4001;
+  #assert cli_edit_cm("1..2") == 4001 && cli_edit_cm("0000000000000000000") == 4001;
+  #assert cli_edit_cm("1.:") == 4001 && cli_edit_cm("1./") == 4001;
+}
+
+#test "row keys and commits stay bounded path fields" {
+  #assert cli_edit_row_ok("trees") && cli_edit_row_ok("trees:3") && cli_edit_row_ok("a-0:9z");
+  #assert cli_edit_row_ok("a") && cli_edit_row_ok("012345678901234567890123456789012345678901234567890123456789012");
+  #assert !cli_edit_row_ok("") && !cli_edit_row_ok("0123456789012345678901234567890123456789012345678901234567890123");
+  #assert !cli_edit_row_ok("A") && !cli_edit_row_ok("a/b") && !cli_edit_row_ok("a b") && !cli_edit_row_ok("a_b");
+  #assert !cli_edit_row_ok("a@") && !cli_edit_row_ok("a{") && !cli_edit_row_ok("a,") && !cli_edit_row_ok("a;");
+  #assert cli_edit_commit_ok("0123456") && cli_edit_commit_ok("abcdef0");
+  #assert cli_edit_commit_ok("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
+  #assert !cli_edit_commit_ok("abcdef") && !cli_edit_commit_ok("");
+  #assert !cli_edit_commit_ok("abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567890");
+  #assert !cli_edit_commit_ok("ABCDEF0") && !cli_edit_commit_ok("abcdefg") && !cli_edit_commit_ok("abcdef/") && !cli_edit_commit_ok("abcdef:");
+  #assert !cli_edit_commit_ok("abcdef`");
+}
+
+#test "tools are a nonempty unique list from the server catalogue" {
+  #assert cli_edit_tools("build") && cli_edit_tools("fly") && cli_edit_tools("jump") && cli_edit_tools("map") && cli_edit_tools("talk") && cli_edit_tools("voice");
+  #assert cli_edit_tools("build,fly,jump,map,talk,voice") && cli_edit_tools("voice,talk,map,jump,fly,build");
+  #assert !cli_edit_tools("") && !cli_edit_tools(",build") && !cli_edit_tools("build,") && !cli_edit_tools("build,,fly");
+  #assert !cli_edit_tools("build,build") && !cli_edit_tools("talk,build,talk") && !cli_edit_tools("voice,voice");
+  #assert !cli_edit_tools("Build") && !cli_edit_tools("build, fly") && !cli_edit_tools("builds") && !cli_edit_tools("talk,unknown");
+}
+
+#test "move lines load wholly and keep the read revision" {
+  d: [1] ForgeDoc; forge_reset(d[..], 7);
+  #assert cli_edit_read_moves("realm garden\nrev 7\nmoved trees:3 4.50 -2\nmoved rocks:0 -40 40.00\n", d[..]);
+  #assert d[0].rev == 7 && d[0].move_n == 2 && d[0].op_n == 0;
+  #assert forge_where(d[..], "trees:3").x == 450 && forge_where(d[..], "trees:3").z == -200;
+  #assert forge_where(d[..], "rocks:0").x == -4000 && forge_where(d[..], "rocks:0").z == 4000;
+  #assert cli_edit_read_moves("moved trees:0 0 0", d[..]) && d[0].move_n == 1;
+  #assert forge_where(d[..], "trees:0").found && !forge_where(d[..], "trees:3").found;
+  #assert cli_edit_read_moves("\nmoved trees:9 1 2", d[..]) && forge_where(d[..], "trees:9").x == 100;
+  #assert cli_edit_read_moves("realm garden\nrev 7\n", d[..]) && d[0].move_n == 0;
+}
+
+#test "a malformed or duplicate move refuses without losing the prior document" {
+  d: [1] ForgeDoc; forge_reset(d[..], 9);
+  #assert forge_move(d[..], "trees:1", 1, 2);
+  bad := [14] string.["moved", "moved ", "moved trees:0 1", "moved trees:0 1 2 3", "moved trees:0 1  2", "moved trees:0  1 2", "moved bad 1 2", "moved trees:0 40.01 0", "moved trees:0 0 -40.01", "moved trees:0 .5 0", "moved trees:0 0 x", "moved trees:0 1 2\nmoved trees:0 2 3", "moved trees:0 1 2\nmoved", "moved trees:0 1 2\nmoved rocks:0 1 2\nmoved bad 0 0"];
+  for s: bad {
+    #assert !cli_edit_read_moves(s, d[..]);
+    #assert d[0].rev == 9 && d[0].move_n == 1 && d[0].op_n == 1 && d[0].done == 1;
+    #assert forge_where(d[..], "trees:1").x == 1 && forge_where(d[..], "trees:1").z == 2;
+  }
+  #assert !cli_edit_read_moves("", d[0..<0]);
+}
+
+// Fixed decimal metres, with no binary floating conversion or rounding.
+// The sentinel is outside the admitted interval on both coordinates.
+cli_edit_cm :: (s: string) -> int {
+  if s.count == 0 { return 4001; }
+  negative := s[0] == '-';
+  start := ifx negative then 1 else 0;
+  dot := s.count;
+  for i: start..<s.count { if s[i] == '.' { dot = i; break; } }
+  fraction := 0;
+  if dot < s.count {
+    decimals := s.count - dot - 1;
+    if decimals < 1 || decimals > 2 { return 4001; }
+    for i: dot + 1..<s.count {
+      c := s[i];
+      if c < '0' || c > '9' { return 4001; }
+      fraction = fraction * 10 + cast(int) (c - '0');
+    }
+    if decimals == 1 { fraction *= 10; }
+  }
+  whole := cli_count(s[start..<dot], 0, ifx fraction == 0 then 40 else 39);
+  if whole < 0 { return 4001; }
+  cm := whole * 100 + fraction;
+  return ifx negative then -cm else cm;
+}
+
+cli_edit_row_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > 63 { return false; }
+  for c: s {
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= ':') || c == '-') { return false; }
+  }
+  return true;
+}
+
+cli_edit_commit_ok :: (s: string) -> bool {
+  if s.count < 7 || s.count > 64 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+
+// Kept in step with verse.builder_tools() in migration 0048.
+cli_edit_tool_bit :: (s: string) -> int {
+  if s == "build" { return 1; }
+  if s == "fly" { return 2; }
+  if s == "jump" { return 4; }
+  if s == "map" { return 8; }
+  if s == "talk" { return 16; }
+  if s == "voice" { return 32; }
+  return 0;
+}
+cli_edit_tools :: (s: string) -> bool {
+  at := 0; seen := 0;
+  for i: 0..<s.count + 1 {
+    if i < s.count && s[i] != ',' { continue; }
+    bit := cli_edit_tool_bit(s[at..<i]);
+    if bit == 0 || (seen & bit) != 0 { return false; }
+    seen = seen | bit;
+    at = i + 1;
+  }
+  return true;
+}
+
+// Read a complete spec into a new move projection. A bad line never changes
+// the caller's document, including its revision and undo history.
+cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool {
+  if d.count < 1 { return false; }
+  next: [1] ForgeDoc; forge_reset(next[..], d[0].rev);
+  at := 0;
+  for end: 0..<spec.count + 1 {
+    if end < spec.count && spec[end] != '\n' { continue; }
+    line := spec[at..<end]; at = end + 1;
+    if line == "moved" { return false; }
+    if !cli_prefix(line, "moved ") { continue; }
+    p := 6;
+    while p < line.count && line[p] != ' ' { p += 1; }
+    if p == line.count { return false; }
+    key := line[6..<p]; q := cli_edit_next_space(line, p);
+    if q == line.count { return false; }
+    x := cli_edit_cm(line[p + 1..<q]); z := cli_edit_cm(line[q + 1..<line.count]);
+    if forge_find(next[..], key) >= 0 { return false; }
+    if !forge_read_move(next[..], key, x, z) { return false; }
+  }
+  d[0] = next[0];
+  return true;
+}
+
+#test "the boundary after a separator includes empty final and empty middle fields" {
+  #assert cli_edit_next_space("a b c", 1) == 3;
+  #assert cli_edit_next_space("a ", 1) == 2;
+  #assert cli_edit_next_space("a  c", 1) == 2;
+  #assert cli_edit_next_space("a b", 1) == 3;
+}
+cli_edit_next_space :: (line: string, separator: int) -> int {
+  p := separator + 1;
+  while p < line.count && line[p] != ' ' { p += 1; }
+  return p;
+}
+
+#test "all sixty four distinct moves fit and a sixty fifth refuses" {
+  b: [4096] u8; n := 0;
+  for i: 0..<65 {
+    n = forge_put(b[..], n, "moved trees:"); n = forge_put_int(b[..], n, i); n = forge_put(b[..], n, " 0 0\n");
+    if i == 63 {
+      d: [1] ForgeDoc; forge_reset(d[..], 2);
+      #assert cli_edit_read_moves(cast(string) b[0..<n], d[..]) && d[0].move_n == 64;
+    }
+  }
+  d: [1] ForgeDoc; forge_reset(d[..], 3);
+  #assert !cli_edit_read_moves(cast(string) b[0..<n], d[..]) && d[0].move_n == 0 && d[0].rev == 3;
+}
+
+// The realm command catalogue. Arguments name bounded kinds, flags name their
+// values, and routes are relative to /api/playtest/realms/<slug>. Help, input
+// admission and the future agent adapters consume these same rows.
+#load "../../coax/lib/sys/args.coax";
+
+#test "the realm catalogue covers reads and revisioned writes with unique verbs" {
+  #assert REALM_COMMANDS.count == 26;
+  for i: 0..<REALM_COMMANDS.count {
+    c := REALM_COMMANDS[i];
+    #assert c.domain == "realm" && c.verb.count > 0 && c.help.count > 0;
+    #assert c.method == "GET" || c.method == "POST" || c.method == "LOCAL";
+    #assert rc_find(c.verb) == i;
+    for j: i + 1..<REALM_COMMANDS.count { #assert c.verb != REALM_COMMANDS[j].verb; }
+    for j: 0..<5 { k := cli_field(c.arguments, j); if k != "" { #assert rc_bound(k).max > 0; } }
+  }
+  #assert rc_find("") == -1 && rc_find("Move") == -1 && rc_find("move/x") == -1;
+  #assert REALM_COMMANDS[rc_find("move")].route == "/save";
+  #assert REALM_COMMANDS[rc_find("doc")].method == "GET";
+  #assert REALM_COMMANDS[rc_find("apply")].route == "batch";
+}
+
+#test "argument kinds admit only their declared bounded fields" {
+  #assert rc_value("slug", "a-realm") && !rc_value("slug", "../realm");
+  #assert rc_value("row", "trees") && !rc_value("row", "trees/x");
+  #assert rc_value("entity", "trees:3") && !rc_value("entity", "trees");
+  #assert rc_value("metres", "-40") && rc_value("metres", "40.00") && !rc_value("metres", "40.01");
+  #assert rc_value("onoff", "on") && rc_value("onoff", "off") && !rc_value("onoff", "true");
+  #assert rc_value("id", "1") && rc_value("id", "999999999") && !rc_value("id", "0") && !rc_value("id", "1000000000");
+  #assert rc_value("visibility", "private") && !rc_value("visibility", "listed");
+  #assert rc_value("words", "a pond") && !rc_value("words", "");
+  #assert rc_value("lore", "") && rc_value("file", "scene.jsonl") && !rc_value("file", "");
+  #assert rc_value("who", "Bram") && !rc_value("who", "");
+  #assert !rc_value("unknown", "x");
+  long: [2001] u8; for i: 0..<long.count { long[i] = 'a'; }
+  #assert rc_value("words", cast(string) long[0..<600]) && !rc_value("words", cast(string) long[0..<601]);
+  #assert rc_value("lore", cast(string) long[0..<400]) && !rc_value("lore", cast(string) long[0..<401]);
+  #assert rc_value("who", cast(string) long[0..<40]) && !rc_value("who", cast(string) long[0..<41]);
+  #assert rc_value("file", cast(string) long[0..<1024]) && !rc_value("file", cast(string) long[0..<1025]);
+  #assert rc_bound("unknown").max == 0;
+  #assert rc_value("yaw", "-360") && rc_value("yaw", "360") && !rc_value("yaw", "361") && !rc_value("yaw", "NaN");
+}
+
+#test "the table refuses missing, extra, duplicate and unbounded inputs before requests" {
+  a: [1] Args;
+  #assert args_add(a[..], "realm") && args_add(a[..], "move") && args_add(a[..], "garden") && args_add(a[..], "trees:3") && args_add(a[..], "4.5") && args_add(a[..], "-2");
+  #assert rc_validate(a[..], "move") == "";
+  #assert args_add(a[..], "--rev") && args_add(a[..], "7") && rc_validate(a[..], "move") == "";
+  #assert args_add(a[..], "--rev") && args_add(a[..], "8") && rc_validate(a[..], "move") != "";
+  b: [1] Args;
+  #assert args_add(b[..], "realm") && args_add(b[..], "switch") && args_add(b[..], "garden") && args_add(b[..], "trees");
+  #assert rc_validate(b[..], "switch") != "";
+  #assert args_add(b[..], "on") && rc_validate(b[..], "switch") == "";
+  #assert args_add(b[..], "unexpected") && rc_validate(b[..], "switch") != "";
+  c: [1] Args;
+  #assert args_add(c[..], "realm") && args_add(c[..], "undo") && args_add(c[..], "garden") && args_add(c[..], "--other");
+  #assert rc_validate(c[..], "undo") != "";
+  c[0].n = 3; #assert args_add(c[..], "--rev") && rc_validate(c[..], "undo") != "";
+  #assert args_add(c[..], "0") && rc_validate(c[..], "undo") != "";
+  #assert rc_validate(c[..], "no-such-command") != "";
+}
+
+#test "each declared argument and flag kind publishes its exact limits" {
+  kinds := [22] string.["slug","row","entity","metres","yaw","id","words","newwords","lore","who","file","ask","step","commit","tools","onoff","visibility","bool","shotfile","size","waitms","script"];
+  lows := [22] int.[1,1,3,-40,-360,1,1,1,0,1,1,0,0,7,3,2,6,0,0,0,0,0];
+  highs := [22] int.[48,63,24,40,360,999999999,600,2000,400,40,1024,160,100,64,29,3,8,1,1024,19,120000,131072];
+  for i: 0..<kinds.count { b := rc_bound(kinds[i]); #assert b.min == lows[i] && b.max == highs[i]; }
+  for c: REALM_COMMANDS {
+    fi := 0;
+    while cli_field(c.flags,fi) != "" {
+      i := fi; fi += 1;
+      f := cli_field(c.flags,i);
+      colon := -1;
+      for j: 0..<f.count { if f[j] == ':' { colon = j; } }
+      #assert colon > 2 && colon + 1 < f.count;
+      kind := rc_flag_kind(c,f[0..<colon]);
+      #assert kind == f[colon+1..<f.count] && rc_bound(kind).max > 0;
+    }
+    #assert rc_flag_kind(c,"--json") == "bool" && rc_flag_kind(c,"--profile") == "who" && rc_flag_kind(c,"--origin") == "file";
+    #assert rc_flag_kind(c,"--unknown") == "";
+  }
+  #assert rc_bound("").min == 0 && rc_bound("").max == 0;
+  #assert rc_flag_kind(REALM_COMMANDS[rc_find("undo")],"--rev:id") == "";
+}
+
+#test "realm routes and methods match the published command contract" {
+  routes := [26] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","batch"];
+  for i: 0..<REALM_COMMANDS.count {
+    #assert REALM_COMMANDS[i].route == routes[i];
+    method := ifx i == 6 || i == 25 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
+    #assert REALM_COMMANDS[i].method == method;
+  }
+  #assert REALM_COMMANDS[rc_find("new")].arguments == "newwords";
+  for c: REALM_COMMANDS { #assert c.optional == ifx c.verb == "shot" then 1 else 0; }
+}
+
+#test "text fields and yaw use their full boundary profiles" {
+  b: [2001] u8; for i: 0..<b.count { b[i] = 'x'; }
+  #assert rc_value("newwords",cast(string)b[0..<2000]) && !rc_value("newwords",cast(string)b[..]);
+  #assert !rc_value("newwords","") && rc_value("newwords","x");
+  #assert rc_value("ask","") && rc_value("ask",cast(string)b[0..<160]) && !rc_value("ask",cast(string)b[0..<161]);
+  #assert rc_value("step","") && rc_value("step",cast(string)b[0..<100]) && !rc_value("step",cast(string)b[0..<101]);
+  #assert rc_value("yaw","0") && rc_value("yaw","-0") && rc_value("yaw","359") && rc_value("yaw","-359");
+  #assert !rc_value("yaw","") && !rc_value("yaw","-") && !rc_value("yaw","-361") && !rc_value("yaw","1.5") && !rc_value("yaw","+1") && !rc_value("yaw","1e2");
+  #assert !rc_value("entity","abcdefghijklmnopqrstu:0") && rc_value("entity","abcdefghijklmnopqrst:999");
+  #assert rc_value("bool","") && rc_value("bool","1") && !rc_value("unknown","");
+}
+
+#test "new and ask alternatives exclude their positional words" {
+  a: [1] Args;
+  for s: [4] string.["realm","new","--from","7"] { #assert args_add(a[..],s); }
+  #assert rc_validate(a[..],"new") == "";
+  #assert args_add(a[..],"a pond") && rc_validate(a[..],"new") != "";
+  b: [1] Args;
+  for s: [5] string.["realm","ask","garden","--doc","design.md"] { #assert args_add(b[..],s); }
+  #assert rc_validate(b[..],"ask") == "";
+  #assert args_add(b[..],"a pond") && rc_validate(b[..],"ask") != "";
+  c: [1] Args;
+  for s: [4] string.["realm","new","a pond","--from"] { #assert args_add(c[..],s); }
+  #assert rc_validate(c[..],"new") != "";
+  d: [1] Args; long: [2001] u8; for i: 0..<long.count { long[i] = 'x'; }
+  for s: [2] string.["realm","new"] { #assert args_add(d[..],s); }
+  #assert args_add(d[..],cast(string)long[0..<2000]) && rc_validate(d[..],"new") == "";
+  d[0].v[2] = cast(string)long[..]; #assert rc_validate(d[..],"new") != "";
+}
+
+#test "only actual flag tokens count for duplicate and required flags" {
+  a: [1] Args;
+  for s: [9] string.["realm","quest","garden","Bram","--ask","--rev","--rev","7","--json"] { #assert args_add(a[..],s); }
+  #assert rc_validate(a[..],"quest") == "";
+  #assert rc_has(a[..],"quest","--rev") && rc_option(a[..],"quest","--rev","") == "7";
+  #assert rc_option(a[..],"quest","--ask","") == "--rev";
+  #assert rc_pos(a[..],"quest",0) == "realm" && rc_pos(a[..],"quest",1) == "quest" && rc_pos(a[..],"quest",2) == "garden" && rc_pos(a[..],"quest",3) == "Bram";
+  #assert rc_pos(a[..],"quest",4) == "" && rc_pos(a[..],"quest",-1) == "";
+  #assert args_add(a[..],"--rev") && args_add(a[..],"8") && rc_validate(a[..],"quest") != "";
+  b: [1] Args;
+  for s: [6] string.["realm","ask","garden","hello","--profile","--doc"] { #assert args_add(b[..],s); }
+  #assert rc_validate(b[..],"ask") == "" && !rc_has(b[..],"ask","--doc");
+  #assert rc_option(b[..],"ask","--doc","fallback") == "fallback" && rc_option(b[..],"ask","--profile","") == "--doc";
+  c: [1] Args;
+  for s: [6] string.["realm","ask-done","garden","1","--profile","--commit"] { #assert args_add(c[..],s); }
+  #assert rc_validate(c[..],"ask-done") != "" && !rc_has(c[..],"ask-done","--commit");
+  d: [1] Args;
+  for s: [4] string.["realm","new","--profile","--from"] { #assert args_add(d[..],s); }
+  #assert rc_validate(d[..],"new") != "" && !rc_has(d[..],"new","--from");
+}
+
+#test "lore deletion and quest requirements preserve empty values and ordered steps" {
+  a: [1] Args;
+  for s: [5] string.["realm","lore","garden","Bram",""] { #assert args_add(a[..],s); }
+  #assert rc_validate(a[..],"lore") == "" && rc_pos(a[..],"lore",4) == "";
+  b: [1] Args;
+  for s: [6] string.["realm","quest","garden","Bram","--ask",""] { #assert args_add(b[..],s); }
+  #assert rc_validate(b[..],"quest") == "";
+  for s: [6] string.["--step","first","--step","--reward","--step","third"] { #assert args_add(b[..],s); }
+  #assert rc_validate(b[..],"quest") == "";
+  #assert rc_option_at(b[..],"quest","--step",0) == "first" && rc_option_at(b[..],"quest","--step",1) == "--reward" && rc_option_at(b[..],"quest","--step",2) == "third";
+  #assert rc_option_at(b[..],"quest","--step",3) == "" && !rc_has(b[..],"quest","--reward");
+  #assert args_add(b[..],"--step") && args_add(b[..],"fourth") && rc_validate(b[..],"quest") != "";
+  c: [1] Args;
+  for s: [3] string.["realm","settings","garden"] { #assert args_add(c[..],s); }
+  #assert rc_validate(c[..],"settings") != "";
+  #assert args_add(c[..],"--tools") && args_add(c[..],"build,talk") && rc_validate(c[..],"settings") == "";
+  d: [1] Args;
+  for s: [4] string.["realm","quest","garden","Bram"] { #assert args_add(d[..],s); }
+  #assert rc_validate(d[..],"quest") != "";
+  e: [1] Args;
+  for s: [6] string.["realm","ask-done","garden","7","--commit","abcdef0"] { #assert args_add(e[..],s); }
+  #assert rc_validate(e[..],"ask-done") == "";
+}
+
+#test "parser helpers handle flags before positionals and refuse truncated argv" {
+  a: [1] Args;
+  for s: [7] string.["--profile","test","--json","realm","undo","garden","--yes"] { #assert args_add(a[..],s); }
+  #assert rc_validate(a[..],"undo") != "";
+  a[0].n = 6; #assert rc_validate(a[..],"undo") == "";
+  #assert rc_option(a[..],"undo","--json","boolean") == "boolean" && rc_option(a[..],"undo","--origin","missing") == "missing";
+  #assert rc_pos(a[..],"undo",0) == "realm" && rc_pos(a[..],"undo",2) == "garden";
+  a[0].full = true; #assert rc_validate(a[..],"undo") != "";
+  b: [1] Args; for s: [2] string.["wrong","list"] { #assert args_add(b[..],s); }
+  #assert rc_validate(b[..],"list") != "";
+  b[0].v[0] = "realm"; b[0].v[1] = "other"; #assert rc_validate(b[..],"list") != "";
+  #assert rc_pos(b[..],"unknown",0) == "" && !rc_has(b[..],"unknown","--json") && rc_option(b[..],"unknown","--rev","missing") == "missing";
+  c: [1] Args; for s: [11] string.["realm","list","a","b","c","d","e","f","g","h","i"] { #assert args_add(c[..],s); }
+  #assert rc_validate(c[..],"list") != "";
+  d: [1] Args; for s: [3] string.["realm","undo","--rev"] { #assert args_add(d[..],s); }
+  #assert rc_option(d[..],"undo","--rev","missing") == "missing";
+  e: [1] Args; for s: [4] string.["--profile","test","realm","list"] { #assert args_add(e[..],s); }
+  #assert rc_validate(e[..],"list") == "" && rc_has(e[..],"list","--profile");
+  #assert rc_option(e[..],"list","--profile","") == "test" && rc_option_at(e[..],"list","--profile",0) == "test";
+  #assert rc_pos(e[..],"list",0) == "realm" && rc_pos(e[..],"list",1) == "list";
+  f: [1] Args; for s: [5] string.["realm","quest","garden","Bram","--ask"] { #assert args_add(f[..],s); }
+  #assert rc_validate(f[..],"quest") != "" && rc_option_at(f[..],"quest","--ask",0) == "";
+  g: [1] Args; for s: [6] string.["realm","undo","--unknown","--rev","7","garden"] { #assert args_add(g[..],s); }
+  #assert rc_option(g[..],"undo","--rev","") == "7" && rc_pos(g[..],"undo",2) == "garden";
+  #assert rc_is_flag("--") && rc_is_flag("--rev") && rc_is_flag("---");
+  #assert !rc_is_flag("") && !rc_is_flag("-") && !rc_is_flag("a--");
+}
+
+#test "realm shots preserve optional output and every implemented labs shot flag" {
+  a: [1] Args;
+  for s: [3] string.["realm","shot","garden"] { #assert args_add(a[..],s); }
+  #assert rc_validate(a[..],"shot") == "";
+  #assert args_add(a[..],"garden.png") && rc_validate(a[..],"shot") == "";
+  #assert args_add(a[..],"extra.png") && rc_validate(a[..],"shot") != "";
+  b: [1] Args;
+  for s: [2] string.["realm","shot"] { #assert args_add(b[..],s); }
+  #assert rc_validate(b[..],"shot") != "";
+  for preset: [3] string.["--phone","--square","--vertical"] {
+    c: [1] Args;
+    for s: [9] string.["realm","shot","garden",preset,"--wait","120000","--eval","--phone","--dark"] { #assert args_add(c[..],s); }
+    #assert args_add(c[..],"--fresh") && rc_validate(c[..],"shot") == "";
+    #assert rc_option(c[..],"shot","--eval","") == "--phone";
+  }
+  d: [1] Args;
+  for s: [5] string.["realm","shot","garden","--size","7680x16"] { #assert args_add(d[..],s); }
+  #assert rc_validate(d[..],"shot") == "";
+  #assert args_add(d[..],"--phone") && rc_validate(d[..],"shot") != "";
+  d[0].v[4] = ""; #assert rc_validate(d[..],"shot") == "";
+  #assert args_add(d[..],"--square") && rc_validate(d[..],"shot") != "";
+  e: [1] Args;
+  for s: [4] string.["realm","shot","garden","--as-me"] { #assert args_add(e[..],s); }
+  #assert rc_validate(e[..],"shot") == ""; // labs_shot keeps its explicit not-built refusal.
+  e[0].v[3] = ""; #assert rc_validate(e[..],"shot") == ""; // explicitly empty OUT uses the default too.
+  e[0].v[3] = "--at"; #assert rc_validate(e[..],"shot") != "";
+  e[0].v[3] = "--stage"; #assert rc_validate(e[..],"shot") != "";
+}
+
+#test "shot size wait script and file fields retain their bounded profiles" {
+  #assert rc_value("size","") && rc_value("size","16x16") && rc_value("size","7680x7680") && rc_value("size","000000016x000007680");
+  #assert !rc_value("size","15x16") && !rc_value("size","16x15") && !rc_value("size","7681x16") && !rc_value("size","16x7681");
+  #assert !rc_value("size","x16") && !rc_value("size","16") && !rc_value("size","16x") && !rc_value("size","16.5x16");
+  #assert rc_value("waitms","0") && rc_value("waitms","120000") && !rc_value("waitms","-1") && !rc_value("waitms","120001") && !rc_value("waitms","");
+  #assert !rc_value("waitms","1.5") && !rc_value("waitms","1e3") && !rc_value("waitms","0000000000");
+  b: [131073] u8; for i: 0..<b.count { b[i] = 'x'; }
+  #assert rc_value("script","") && rc_value("script",cast(string)b[0..<131072]) && !rc_value("script",cast(string)b[..]);
+  #assert rc_value("shotfile","") && rc_value("shotfile",cast(string)b[0..<1024]) && !rc_value("shotfile",cast(string)b[0..<1025]);
+  c: [1] Args;
+  for s: [5] string.["realm","shot","garden","--wait",""] { #assert args_add(c[..],s); }
+  #assert rc_validate(c[..],"shot") != "";
+}
+
+CliCommand :: struct { domain: string = "realm"; verb: string; method: string; route: string; arguments: string; optional: int; flags: string; help: string; }
+REALM_COMMANDS :: [26] CliCommand.[
+  CliCommand.{verb="list",method="GET",route="/mine",help="your realms"},
+  CliCommand.{verb="show",method="GET",route="",arguments="slug",help="the realm's spec and page"},
+  CliCommand.{verb="new",method="POST",route="/plan",arguments="newwords",flags="--from:id",help="plan words and make a private realm; --from PLAN uses an existing plan"},
+  CliCommand.{verb="visibility",method="POST",route="/visibility",arguments="slug|visibility",flags="--rev:id",help="who sees it"},
+  CliCommand.{verb="publish",method="POST",route="/publish",arguments="slug",flags="--rev:id|--listed:bool|--yes:bool",help="publish the named revision"},
+  CliCommand.{verb="fork",method="POST",route="/fork",arguments="slug",flags="--name:who",help="a private copy that you own"},
+  CliCommand.{verb="shot",method="LOCAL",route="shot",arguments="slug|shotfile",optional=1,flags="--size:size|--phone:bool|--square:bool|--vertical:bool|--wait:waitms|--eval:script|--dark:bool|--fresh:bool|--as-me:bool",help="a visitor PNG in muted headless Chrome; OUT defaults to SLUG.png"},
+  CliCommand.{verb="doc",method="GET",route="/doc",arguments="slug",help="the versioned document and SHA-256"},
+  CliCommand.{verb="asks",method="GET",route="/asks",arguments="slug",help="the feature asks"},
+  CliCommand.{verb="proposals",method="GET",route="/proposals",arguments="slug",help="visitors' proposals"},
+  CliCommand.{verb="panes",method="GET",route="/panes",arguments="slug",help="lore and quests"},
+  CliCommand.{verb="switch",method="POST",route="/switch",arguments="slug|row|onoff",flags="--rev:id",help="turn a row on or off"},
+  CliCommand.{verb="revise",method="POST",route="/revise",arguments="slug|words",flags="--rev:id",help="ask the planner to revise the board"},
+  CliCommand.{verb="ask",method="POST",route="/asks",arguments="slug|words",flags="--rev:id|--doc:file",help="add words, or --doc FILE, to the feature list"},
+  CliCommand.{verb="ask-delete",method="POST",route="/asks/:id/delete",arguments="slug|id",flags="--rev:id",help="delete an ask"},
+  CliCommand.{verb="ask-done",method="POST",route="/asks/:id/done",arguments="slug|id",flags="--rev:id|--commit:commit",help="an admin marks pushed code done"},
+  CliCommand.{verb="row-delete",method="POST",route="/rows/:row/delete",arguments="slug|row",flags="--rev:id",help="delete a board row"},
+  CliCommand.{verb="move",method="POST",route="/save",arguments="slug|entity|metres|metres",flags="--rev:id",help="move an entity to X Z metres; one save"},
+  CliCommand.{verb="place",method="POST",route="/place",arguments="slug|row|metres|metres",flags="--rev:id|--yaw:yaw",help="place a thing at X Z metres"},
+  CliCommand.{verb="settings",method="POST",route="/settings",arguments="slug",flags="--rev:id|--tools:tools",help="set the enabled tools as a comma-separated list"},
+  CliCommand.{verb="lore",method="POST",route="/lore",arguments="slug|who|lore",flags="--rev:id",help="set WHO's lore; empty text forgets it"},
+  CliCommand.{verb="quest",method="POST",route="/quest",arguments="slug|who",flags="--rev:id|--ask:ask|--step:step|--reward:step",help="set a giver's quest, up to three --step values"},
+  CliCommand.{verb="accept",method="POST",route="/proposals/:id/accept",arguments="slug|id",flags="--rev:id",help="accept a visitor's proposal"},
+  CliCommand.{verb="decline",method="POST",route="/proposals/:id/decline",arguments="slug|id",flags="--rev:id",help="decline a visitor's proposal"},
+  CliCommand.{verb="undo",method="POST",route="/undo",arguments="slug",flags="--rev:id",help="restore the preceding revision as a new revision"},
+  CliCommand.{verb="apply",method="LOCAL",route="batch",arguments="slug|file",flags="--rev:id",help="apply JSON lines in order; consecutive moves share one save"}
+];
+
+rc_find :: (verb: string) -> int { for i: 0..<REALM_COMMANDS.count { if REALM_COMMANDS[i].verb == verb { return i; } } return -1; }
+CliBound :: struct { min: int; max: int; }
+rc_bound :: (kind: string) -> CliBound {
+  if kind == "slug" { return CliBound.{min=1,max=48}; }
+  if kind == "row" { return CliBound.{min=1,max=63}; }
+  if kind == "entity" { return CliBound.{min=3,max=24}; }
+  if kind == "metres" { return CliBound.{min=-40,max=40}; }
+  if kind == "yaw" { return CliBound.{min=-360,max=360}; }
+  if kind == "id" { return CliBound.{min=1,max=999999999}; }
+  if kind == "words" { return CliBound.{min=1,max=600}; }
+  if kind == "newwords" { return CliBound.{min=1,max=2000}; }
+  if kind == "lore" { return CliBound.{min=0,max=400}; }
+  if kind == "who" { return CliBound.{min=1,max=40}; }
+  if kind == "file" { return CliBound.{min=1,max=1024}; }
+  if kind == "ask" { return CliBound.{min=0,max=160}; }
+  if kind == "step" { return CliBound.{min=0,max=100}; }
+  if kind == "commit" { return CliBound.{min=7,max=64}; }
+  if kind == "tools" { return CliBound.{min=3,max=29}; }
+  if kind == "onoff" { return CliBound.{min=2,max=3}; }
+  if kind == "visibility" { return CliBound.{min=6,max=8}; }
+  if kind == "bool" { return CliBound.{min=0,max=1}; }
+  if kind == "shotfile" { return CliBound.{min=0,max=1024}; }
+  if kind == "size" { return CliBound.{min=0,max=19}; }
+  if kind == "waitms" { return CliBound.{min=0,max=120000}; }
+  if kind == "script" { return CliBound.{min=0,max=131072}; }
+  return CliBound.{};
+}
+rc_value :: (kind: string, value: string) -> bool {
+  if kind == "slug" { return cli_slug_ok(value); }
+  if kind == "row" { return cli_edit_row_ok(value); }
+  if kind == "entity" {
+    feature := 0;
+    for c: value { if c == ':' { break; } feature += 1; }
+    return forge_key_ok(value) && feature <= 20;
+  }
+  if kind == "metres" { return cli_edit_cm(value) != 4001; }
+  if kind == "id" { return cli_count(value,1,999999999) >= 1; }
+  if kind == "onoff" { return cli_onoff(value) >= 0; }
+  if kind == "visibility" { return cli_visibility_ok(value); }
+  if kind == "commit" { return cli_edit_commit_ok(value); }
+  if kind == "tools" { return cli_edit_tools(value); }
+  if kind == "yaw" {
+    if value.count == 0 { return false; }
+    s := ifx value[0] == '-' then value[1..<value.count] else value;
+    return cli_count(s,0,360) >= 0;
+  }
+  if kind == "size" {
+    if value == "" { return true; }
+    size := args_size(value);
+    return size.ok && size.w >= 16 && size.h >= 16 && size.w <= 7680 && size.h <= 7680;
+  }
+  if kind == "waitms" { n := args_whole(value); return n >= 0 && n <= 120000; }
+  b := rc_bound(kind);
+  return b.max > 0 && value.count >= b.min && value.count <= b.max;
+}
+
+rc_flag_kind :: (c: CliCommand, flag: string) -> string {
+  if flag == "--json" { return "bool"; }
+  if flag == "--profile" { return "who"; }
+  if flag == "--origin" { return "file"; }
+  i := 0;
+  while cli_field(c.flags,i) != "" {
+    f := cli_field(c.flags,i);
+    n := flag.count;
+    if f.count > n && f[0..<n] == flag && f[n] == ':' { return f[n+1..<f.count]; }
+    i += 1;
+  }
+  return "";
+}
+
+rc_is_flag :: (s: string) -> bool { return s.count >= 2 && s[0..<2] == "--"; }
+
+// Flag-shaped literal values belong to the flag that consumed them. Every
+// reader uses this token walk, rather than searching arbitrary argv words.
+rc_option_index :: (a: [] Args, verb: string, name: string, occurrence: int) -> int {
+  ci := rc_find(verb); if ci < 0 { return -1; }
+  c := REALM_COMMANDS[ci]; found := 0; skip := false;
+  for i: 0..<args_count(a) {
+    if skip { skip = false; continue; }
+    s := args_at(a,i);
+    if rc_is_flag(s) {
+      kind := rc_flag_kind(c,s);
+      if s == name { if found == occurrence { return i; } found += 1; }
+      skip = kind != "" && kind != "bool";
+    }
+  }
+  return -1;
+}
+rc_has :: (a: [] Args, verb: string, name: string) -> bool { return rc_option_index(a,verb,name,0) >= 0; }
+rc_option :: (a: [] Args, verb: string, name: string, fallback: string) -> string {
+  i := rc_option_index(a,verb,name,0);
+  if i < 0 || i + 1 >= args_count(a) { return fallback; }
+  if rc_flag_kind(REALM_COMMANDS[rc_find(verb)],name) == "bool" { return fallback; }
+  return args_at(a,i+1);
+}
+rc_option_at :: (a: [] Args, verb: string, name: string, occurrence: int) -> string {
+  i := rc_option_index(a,verb,name,occurrence);
+  if i < 0 { return ""; }
+  return args_at(a,i+1);
+}
+rc_pos :: (a: [] Args, verb: string, index: int) -> string {
+  ci := rc_find(verb); if ci < 0 { return ""; }
+  c := REALM_COMMANDS[ci]; seen := 0; skip := false;
+  for i: 0..<args_count(a) {
+    if skip { skip = false; continue; }
+    s := args_at(a,i);
+    if rc_is_flag(s) {
+      kind := rc_flag_kind(c,s);
+      skip = kind != "" && kind != "bool";
+      continue;
+    }
+    if seen == index { return s; }
+    seen += 1;
+  }
+  return "";
+}
+
+// Returns a usage error, or empty. Global flags are admitted alongside the row's
+// flags. Repetition is only meaningful for a quest's three ordered steps.
+rc_validate :: (a: [] Args, verb: string) -> string {
+  ci := rc_find(verb); if ci < 0 { return "unknown realm command"; }
+  if a[0].full { return "arguments were truncated"; }
+  c := REALM_COMMANDS[ci];
+  p: [8] string; pn := 0; steps := 0; i := 0;
+  while i < args_count(a) {
+    s := args_at(a,i);
+    if rc_is_flag(s) {
+      kind := rc_flag_kind(c,s);
+      if kind == "" { return "flag is not supported by this realm command"; }
+      if s == "--step" { steps += 1; if steps > 3 { return "a quest has at most three steps"; } }
+      else { if rc_option_index(a,verb,s,0) != i { return "a flag was supplied twice"; } }
+      if kind != "bool" {
+        if i+1 >= args_count(a) || !rc_value(kind,args_at(a,i+1)) { return "flag value is missing or outside its bounds"; }
+        i += 1;
+      }
+    } else { if pn >= p.count { return "too many realm arguments"; } p[pn] = s; pn += 1; }
+    i += 1;
+  }
+  expected := 2;
+  fields := 0;
+  while cli_field(c.arguments,fields) != "" { expected += 1; fields += 1; }
+  if (verb == "ask" && rc_has(a,verb,"--doc")) || (verb == "new" && rc_has(a,verb,"--from")) { expected -= 1; }
+  if pn < expected - c.optional || pn > expected { return "wrong number of realm arguments (openagents help)"; }
+  if p[0] != "realm" || p[1] != verb { return "realm command does not match its catalogue row"; }
+  for j: 2..<pn {
+    kind := cli_field(c.arguments,j-2);
+    if !rc_value(kind,p[j]) { return "realm argument is outside its declared bounds"; }
+  }
+  if verb == "ask-done" && !rc_has(a,verb,"--commit") { return "ask-done needs --commit HASH"; }
+  if verb == "settings" && !rc_has(a,verb,"--tools") { return "settings needs --tools build,talk,..."; }
+  if verb == "quest" && !rc_has(a,verb,"--ask") { return "quest needs --ask TEXT (empty removes it)"; }
+  if verb == "shot" {
+    sizes := 0;
+    if rc_option(a,verb,"--size","") != "" { sizes += 1; }
+    for preset: [3] string.["--phone","--square","--vertical"] { if rc_has(a,verb,preset) { sizes += 1; } }
+    if sizes > 1 { return "shot takes at most one of --size, --phone, --square or --vertical"; }
+  }
+  return "";
+}
+
+// A bounded JSON-line edit becomes the same copied Args the command table
+// validates for a person. No effects, implicit revisions or semantic routing.
+
+#test "batch edits map every supported operation to the exact command arguments" {
+  lines := [16] string.[
+    "{\"op\":\"move\",\"entity\":\"trees:3\",\"x\":4.5,\"z\":-2}",
+    "{\"op\":\"switch\",\"row\":\"trees\",\"on\":true}",
+    "{\"op\":\"place\",\"thing\":\"barrel\",\"x\":2,\"z\":3,\"yaw\":90}",
+    "{\"op\":\"revise\",\"prompt\":\"add a pond\"}",
+    "{\"op\":\"ask\",\"words\":\"more trees\"}",
+    "{\"op\":\"ask-delete\",\"id\":7}",
+    "{\"op\":\"ask-done\",\"id\":8,\"commit\":\"abcdef0\"}",
+    "{\"op\":\"row-delete\",\"row\":\"trees\"}",
+    "{\"op\":\"settings\",\"tools\":\"build,talk\"}",
+    "{\"op\":\"lore\",\"who\":\"Bram\",\"text\":\"\"}",
+    "{\"op\":\"quest\",\"giver\":\"Bram\",\"ask\":\"find it\",\"steps\":[\"first\",\"--reward\",\"third\"],\"reward\":\"a hat\"}",
+    "{\"op\":\"accept\",\"id\":9}",
+    "{\"op\":\"decline\",\"id\":10}",
+    "{\"op\":\"undo\"}",
+    "{\"op\":\"publish\",\"listed\":true}",
+    "{\"op\":\"visibility\",\"visibility\":\"unlisted\"}"
+  ];
+  want := [16] string.[
+    "realm|move|garden|trees:3|4.5|-2", "realm|switch|garden|trees|on", "realm|place|garden|barrel|2|3|--yaw|90",
+    "realm|revise|garden|add a pond", "realm|ask|garden|more trees", "realm|ask-delete|garden|7", "realm|ask-done|garden|8|--commit|abcdef0",
+    "realm|row-delete|garden|trees", "realm|settings|garden|--tools|build,talk", "realm|lore|garden|Bram|",
+    "realm|quest|garden|Bram|--ask|find it|--step|first|--step|--reward|--step|third|--reward|a hat",
+    "realm|accept|garden|9", "realm|decline|garden|10", "realm|undo|garden", "realm|publish|garden|--listed", "realm|visibility|garden|unlisted"
+  ];
+  counts := [16] int.[6,5,8,4,4,4,6,4,5,5,14,4,4,3,4,4];
+  a: [1] Args;
+  for i: 0..<lines.count {
+    #assert rb_args(lines[i], "garden", a[..]) && a[0].n == counts[i] && !a[0].full;
+    for j: 0..<counts[i] { #assert args_at(a[..], j) == cli_field(want[i], j); }
+  }
+}
+#test "batch optional fields preserve false zero empty strings and decoded copies" {
+  a: [1] Args;
+  #assert rb_args("{\"op\":\"switch\",\"row\":\"trees\",\"on\":false}", "garden", a[..]) && args_at(a[..],4) == "off";
+  #assert rb_args("{\"op\":\"place\",\"thing\":\"barrel\",\"x\":0,\"z\":0}", "garden", a[..]) && a[0].n == 6;
+  #assert rb_args("{\"op\":\"publish\",\"listed\":false}", "garden", a[..]) && a[0].n == 3;
+  #assert rb_args("{\"op\":\"publish\"}", "garden", a[..]) && a[0].n == 3;
+  #assert rb_args("{\"op\":\"ask\",\"doc\":\"scene.md\"}", "garden", a[..]) && a[0].n == 5 && args_at(a[..],3) == "--doc" && args_at(a[..],4) == "scene.md";
+  #assert rb_args("{\"op\":\"quest\",\"giver\":\"Bram\",\"ask\":\"\",\"steps\":[]}", "garden", a[..]) && a[0].n == 6 && args_at(a[..],5) == "";
+  #assert rb_args("{\"op\":\"quest\",\"giver\":\"Bram\",\"ask\":\"x\",\"steps\":[\"\"]}", "garden", a[..]) && a[0].n == 8 && args_at(a[..],7) == "";
+  bytes: [256] u8;
+  text := "{\"o\\u0070\":\"lore\",\"who\":\"Kai\\u0020Lin\",\"text\":\"line\\nnext\"}";
+  for i: 0..<text.count { bytes[i] = text[i]; }
+  #assert rb_args(cast(string)bytes[0..<text.count], "garden", a[..]);
+  for i: 0..<text.count { bytes[i] = 'x'; }
+  #assert args_at(a[..],3) == "Kai Lin" && args_at(a[..],4) == "line\nnext";
+}
+#test "batch rejects unsupported keys duplicate decoded keys revisions and read commands" {
+  bad := [24] string.[
+    "", "{}", "[]", "true", "{", "{\"op\":1}", "{\"op\":\"unknown\"}",
+    "{\"op\":\"list\"}", "{\"op\":\"show\"}", "{\"op\":\"doc\"}", "{\"op\":\"asks\"}", "{\"op\":\"proposals\"}", "{\"op\":\"panes\"}", "{\"op\":\"shot\"}",
+    "{\"op\":\"apply\"}", "{\"op\":\"new\"}", "{\"op\":\"fork\"}",
+    "{\"op\":\"undo\",\"rev\":1}", "{\"op\":\"undo\",\"extra\":true}", "{\"op\":\"undo\",\"op\":\"undo\"}", "{\"op\":\"undo\",\"o\\u0070\":\"undo\"}",
+    "{\"op\":\"switch\",\"row\":\"trees\",\"row\":\"rocks\",\"on\":true}", "{\"op\":\"switch\",\"row\":\"trees\",\"r\\u006fw\":\"trees\",\"on\":true}", "{\"op\":\"undo\",\"\":0}"
+  ];
+  a: [1] Args;
+  for s: bad {
+    #assert args_add(a[..],"previous"); a[0].full = true;
+    #assert !rb_args(s,"garden",a[..]) && a[0].n == 0 && a[0].used == 0 && !a[0].full;
+  }
+}
+#test "batch refuses missing fields wrong JSON types alternatives and catalogue bounds" {
+  bad := [35] string.[
+    "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":0}",
+    "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":\"0\",\"z\":0}",
+    "{\"op\":\"move\",\"entity\":3,\"x\":0,\"z\":0}",
+    "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":40.01,\"z\":0}",
+    "{\"op\":\"switch\",\"row\":\"trees\",\"on\":1}", "{\"op\":\"switch\",\"row\":\"trees\"}",
+    "{\"op\":\"place\",\"thing\":\"barrel\",\"x\":0,\"z\":0,\"yaw\":\"90\"}",
+    "{\"op\":\"place\",\"thing\":\"barrel\",\"x\":0,\"z\":0,\"yaw\":361}",
+    "{\"op\":\"revise\",\"prompt\":null}", "{\"op\":\"revise\",\"prompt\":\"\"}",
+    "{\"op\":\"ask\"}", "{\"op\":\"ask\",\"words\":\"x\",\"doc\":\"x.md\"}", "{\"op\":\"ask\",\"doc\":false}",
+    "{\"op\":\"ask-delete\",\"id\":\"7\"}", "{\"op\":\"ask-delete\",\"id\":0}", "{\"op\":\"ask-done\",\"id\":7}", "{\"op\":\"ask-done\",\"id\":7,\"commit\":0}",
+    "{\"op\":\"row-delete\",\"row\":\"../x\"}", "{\"op\":\"settings\",\"tools\":[\"build\"]}", "{\"op\":\"settings\",\"tools\":\"unknown\"}",
+    "{\"op\":\"lore\",\"who\":\"Bram\"}", "{\"op\":\"lore\",\"who\":false,\"text\":\"x\"}", "{\"op\":\"lore\",\"who\":\"Bram\",\"text\":0}",
+    "{\"op\":\"quest\",\"giver\":\"Bram\",\"ask\":\"x\"}", "{\"op\":\"quest\",\"giver\":\"Bram\",\"ask\":\"x\",\"steps\":{}}",
+    "{\"op\":\"quest\",\"giver\":\"Bram\",\"ask\":\"x\",\"steps\":[1]}", "{\"op\":\"quest\",\"giver\":\"Bram\",\"ask\":\"x\",\"steps\":[\"a\",\"b\",\"c\",\"d\"]}",
+    "{\"op\":\"quest\",\"giver\":\"Bram\",\"ask\":\"x\",\"steps\":[],\"reward\":true}",
+    "{\"op\":\"publish\",\"listed\":\"true\"}", "{\"op\":\"publish\",\"listed\":null}",
+    "{\"op\":\"visibility\",\"visibility\":1}", "{\"op\":\"visibility\",\"visibility\":\"listed\"}",
+    "{\"op\":\"accept\",\"id\":1.5}", "{\"op\":\"decline\",\"id\":1000000000}", "{\"op\":\"undo\",\"slug\":\"other\"}"
+  ];
+  a: [1] Args;
+  for s: bad { #assert !rb_args(s,"garden",a[..]) && a[0].n == 0; }
+  #assert !rb_args("{\"op\":\"undo\"}","../bad",a[..]) && a[0].n == 0;
+  #assert !rb_args("{\"op\":\"undo\"}","garden",a[0..<0]);
+}
+#test "batch enforces the exact line bound before parsing and clears successful arguments" {
+  a: [1] Args; bytes: [8193] u8;
+  text := "{\"op\":\"undo\"}";
+  for i: 0..<bytes.count { bytes[i] = ' '; }
+  for i: 0..<text.count { bytes[i] = text[i]; }
+  #assert rb_args(cast(string)bytes[0..<8192],"garden",a[..]) && a[0].n == 3;
+  #assert !rb_args(cast(string)bytes[..],"garden",a[..]) && a[0].n == 0;
+  #assert rb_args(text,"garden",a[..]) && a[0].n == 3 && a[0].used == 15;
+}
+#test "batch bounded field emitters refuse malformed Unicode types arrays and exhausted output" {
+  #assert rb_find("unknown") == -1 && rb_find("move") == 0 && rb_find("m\\u006fve") == 0;
+  a: [1] Args; nodes: [32] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..],"[7,\"\\ud800\",\"\\u0000\",[],[\"a\",\"b\",\"c\",\"d\"],[7]]",nodes[..]);
+  #assert !rb_string(d[0],jv_at(d[0],0,0),a[..]);
+  #assert rb_string(d[0],jv_at(d[0],0,1),a[..]) && args_at(a[..],0) == "�";
+  #assert !rb_string(d[0],jv_at(d[0],0,2),a[..]);
+  step := RbField.{kind=4,flag="--step"};
+  #assert !rb_emit(d[0],jv_at(d[0],0,4),step,a[..]);
+  #assert !rb_emit(d[0],jv_at(d[0],0,5),step,a[..]);
+  rb_clear(a[..]); a[0].used = ARGS_BYTES;
+  #assert !rb_emit(d[0],jv_at(d[0],0,0),RbField.{kind=2,flag="--yaw"},a[..]);
+  #assert !rb_emit(d[0],jv_at(d[0],0,5),step,a[..]);
+  #assert !rb_read("{\"op\":\"undo\"}","garden",a[..]);
+  #assert !rb_args("{\"op\":\"lore\",\"who\":\"Bram\",\"text\":\"\\u0000\"}","garden",a[..]);
+  #assert rb_args("{\"op\":\"lore\",\"who\":\"Bram\",\"text\":\"\\ud800\"}","garden",a[..]);
+  #assert rb_args("{\"op\":\"lore\",\"who\":\"Bram\",\"text\":\"\\u0001\"}","garden",a[..]);
+  big: [1027] u8; big[0] = '"'; big[1026] = '"';
+  for i: 1..<1026 { big[i] = 'x'; }
+  #assert jv_parse(d[..],cast(string)big[..],nodes[..]);
+  #assert !rb_string(d[0],0,a[..]);
+}
+
+RbField :: struct { key: string; kind: int = 1; flag: string; optional: bool; }
+RbSpec :: struct { verb: string; fields: [4] RbField; }
+// kind: 1 string, 2 JSON number, 3 on/off boolean, 4 ordered string array,
+// 5 a boolean flag (false means omit it). The catalogue owns value bounds.
+RB_SPECS :: [16] RbSpec.[
+  RbSpec.{verb="move",fields=[4] RbField.[RbField.{key="entity"},RbField.{key="x",kind=2},RbField.{key="z",kind=2},RbField.{}]},
+  RbSpec.{verb="switch",fields=[4] RbField.[RbField.{key="row"},RbField.{key="on",kind=3},RbField.{},RbField.{}]},
+  RbSpec.{verb="place",fields=[4] RbField.[RbField.{key="thing"},RbField.{key="x",kind=2},RbField.{key="z",kind=2},RbField.{key="yaw",kind=2,flag="--yaw",optional=true}]},
+  RbSpec.{verb="revise",fields=[4] RbField.[RbField.{key="prompt"},RbField.{},RbField.{},RbField.{}]},
+  RbSpec.{verb="ask",fields=[4] RbField.[RbField.{key="words",optional=true},RbField.{key="doc",flag="--doc",optional=true},RbField.{},RbField.{}]},
+  RbSpec.{verb="ask-delete",fields=[4] RbField.[RbField.{key="id",kind=2},RbField.{},RbField.{},RbField.{}]},
+  RbSpec.{verb="ask-done",fields=[4] RbField.[RbField.{key="id",kind=2},RbField.{key="commit",flag="--commit"},RbField.{},RbField.{}]},
+  RbSpec.{verb="row-delete",fields=[4] RbField.[RbField.{key="row"},RbField.{},RbField.{},RbField.{}]},
+  RbSpec.{verb="settings",fields=[4] RbField.[RbField.{key="tools",flag="--tools"},RbField.{},RbField.{},RbField.{}]},
+  RbSpec.{verb="lore",fields=[4] RbField.[RbField.{key="who"},RbField.{key="text"},RbField.{},RbField.{}]},
+  RbSpec.{verb="quest",fields=[4] RbField.[RbField.{key="giver"},RbField.{key="ask",flag="--ask"},RbField.{key="steps",kind=4,flag="--step"},RbField.{key="reward",flag="--reward",optional=true}]},
+  RbSpec.{verb="accept",fields=[4] RbField.[RbField.{key="id",kind=2},RbField.{},RbField.{},RbField.{}]},
+  RbSpec.{verb="decline",fields=[4] RbField.[RbField.{key="id",kind=2},RbField.{},RbField.{},RbField.{}]},
+  RbSpec.{verb="undo"},
+  RbSpec.{verb="publish",fields=[4] RbField.[RbField.{key="listed",kind=5,flag="--listed",optional=true},RbField.{},RbField.{},RbField.{}]},
+  RbSpec.{verb="visibility",fields=[4] RbField.[RbField.{key="visibility"},RbField.{},RbField.{},RbField.{}]}
+];
+
+rb_clear :: (a: [] Args) { a[0].n = 0; a[0].used = 0; a[0].full = false; }
+rb_find :: (raw: string) -> int { for i: 0..<RB_SPECS.count { if jv_raw_eq(raw,RB_SPECS[i].verb) { return i; } } return -1; }
+rb_string :: (d: Jv, at: int, a: [] Args) -> bool {
+  bytes: [1024] u8;
+  if jv_kind(d,at) != JV_STRING { return false; }
+  n := jv_str(d,at,bytes[..]); if n < 0 { return false; }
+  for i: 0..<n { if bytes[i] == 0 { return false; } }
+  return args_add(a,cast(string)bytes[0..<n]);
+}
+rb_emit :: (d: Jv, at: int, f: RbField, a: [] Args) -> bool {
+  if f.kind == 4 {
+    if jv_kind(d,at) != JV_ARRAY || jv_len(d,at) > 3 { return false; }
+    for i: 0..<jv_len(d,at) { if !args_add(a,f.flag) || !rb_string(d,jv_at(d,at,i),a) { return false; } }
+    return true;
+  }
+  if f.kind == 3 || f.kind == 5 {
+    kind := jv_kind(d,at); if kind != JV_TRUE && kind != JV_FALSE { return false; }
+    if f.kind == 5 { return !jv_bool(d,at) || args_add(a,f.flag); }
+    return args_add(a,ifx jv_bool(d,at) then "on" else "off");
+  }
+  if f.flag != "" && !args_add(a,f.flag) { return false; }
+  if f.kind == 1 { return rb_string(d,at,a); }
+  return jv_kind(d,at) == JV_NUMBER && args_add(a,jv_raw(d,at));
+}
+rb_read :: (line: string, slug: string, a: [] Args) -> bool {
+  if line.count > 8192 { return false; }
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..],line,nodes[..]) { return false; }
+  op := jv_get(d[0],0,"op");
+  if jv_kind(d[0],op) != JV_STRING { return false; }
+  index := rb_find(jv_raw(d[0],op)); if index == -1 { return false; }
+  spec := RB_SPECS[index]; verb := spec.verb; fields := [4] int.[-1,-1,-1,-1];
+  c := d[0].nodes[0].first;
+  while c != -1 {
+    key := jv_key(d[0],c);
+    if jv_raw_eq(key,"op") { if c != op { return false; } }
+    else {
+      found := -1;
+      for i: 0..<4 { if spec.fields[i].key != "" && jv_raw_eq(key,spec.fields[i].key) { found = i; } }
+      if found == -1 || fields[found] != -1 { return false; }
+      fields[found] = c;
+    }
+    c = d[0].nodes[c].next;
+  }
+  if verb == "ask" && (fields[0] != -1) == (fields[1] != -1) { return false; }
+  if !args_add(a,"realm") || !args_add(a,verb) || !args_add(a,slug) { return false; }
+  for i: 0..<4 {
+    f := spec.fields[i]; if f.key == "" { continue; }
+    if fields[i] == -1 { if !f.optional { return false; } }
+    else { if !rb_emit(d[0],fields[i],f,a) { return false; } }
+  }
+  return rc_validate(a,verb) == "";
+}
+// Failure leaves no partially parsed operation for a caller to execute.
+rb_args :: (line: string, slug: string, a: [] Args) -> bool {
+  if a.count < 1 { return false; }
+  rb_clear(a);
+  if rb_read(line,slug,a) { return true; }
+  rb_clear(a); return false;
+}

@@ -92,6 +92,20 @@ unlisted, visitors on the revision published, each edit undone as one step); `ae
 since; apply then inverse is the identity); `apps/openagents-web/myrealm.coax`
 (a 409 keeps the changes); `coax/web/tool.sh forge-journey` end to end.
 
+CLI edits use `commands.coax` for bounded arguments and carry a revision to
+the server. Migration `0102_realm_edit_fences.sql` locks the made realm while
+comparing and applying switch/place/settings/lore/quest/ask/proposal changes;
+asynchronous planner results compare their server-held revision again before
+they apply. The `edit-v1` route family is recognized only by the forwarding
+host: an old instance returns 404 without effects, even if another instance
+advertised `edit_fence 1`. Missing or malformed revisions are refused. Existing
+bodies without a revision retain their legacy behavior. Side-table revisions
+order writers without changing the v1 document's undo coverage. CLI move saves
+preserve the complete admitted move list, and consecutive batch moves share
+one save. The first refusal stops a non-atomic batch and reports its committed
+prefix. Checks: `coax/web/api/tests/realm_edit_*.coax`, the catalogue's mutation
+gate and `coax/web/tool.sh cli-journey` against the built CLI.
+
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 
 `psionic/lib/physics/inverse-*.coax` unrolls chapter 109’s exact left-associated

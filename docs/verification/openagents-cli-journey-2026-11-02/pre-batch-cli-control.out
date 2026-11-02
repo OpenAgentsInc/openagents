@@ -1,0 +1,20 @@
+ok   test identity can read staging access
+ok   make a private realm through the built CLI
+ok   read its revision, moves and document hash
+realm cli-journey-fixture revision 1
+ok   move trees:0 at the revision read
+ok   the document retains the exact move at a newer revision
+ok   a stale save exits 5 with conflict status 409
+ok   stale refusal preserves the current revision and hash
+ok   undo names the current revision
+ok   undo restores the empty moves as a new revision
+ok   publish the exact revision
+ok   fork the published realm
+ok   fork records its parent's exact revision
+fork cli-journey-fork from cli-journey-fixture revision 3
+ok   edit the fork independently
+ok   fork moves, while the original revision and hash stay unchanged
+ok   make a fresh fork for batch and partial-failure checks
+ok   fresh batch fork starts with no moves
+FAIL apply two adjacent moves reports both committed in one revision (CLI exit 2)
+16 journey checks passed (independent loopback fixture).

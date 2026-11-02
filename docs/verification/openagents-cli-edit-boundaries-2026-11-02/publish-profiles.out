@@ -1,0 +1,6 @@
+ok   made realm publishes through the legacy versioned route (exit 0, GET 1, doc 1, POST 1)
+ok   built-in fork publishes through edit-v1 (exit 0, GET 1, doc 1, POST 1)
+ok   built-in fork stale publish preserves409 (exit 5, GET 1, doc 1, POST 1)
+ok   missing document base stops before publish (exit 1, GET 1, doc 1, POST 0)
+ok   malformed document base stops before publish (exit 1, GET 1, doc 1, POST 0)
+5 boundary cases, passed true

@@ -1,0 +1,14 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+apps/openagents-cli/commands.coax:22:43: mutant survived: -1 became 0
+      v := jv_int(d[0],jv_get(d[0],0,"rev"),-1);
+                                            ^
+apps/openagents-cli/commands.coax:23:28: mutant survived: '<=' became '<'
+      return ifx v >= 1 && v <= 999999999 then v else -1;
+                             ^
+apps/openagents-cli/commands.coax:28:47: mutant survived: 1 became 2
+    return cli_count(cli_spec_value(body,"rev"),1,999999999);
+                                                ^
+apps/openagents-cli/commands.coax:28:49: mutant survived: 999999999 became 1000000000
+    return cli_count(cli_spec_value(body,"rev"),1,999999999);
+                                                  ^
+976 mutants, 972 killed, 4 survived

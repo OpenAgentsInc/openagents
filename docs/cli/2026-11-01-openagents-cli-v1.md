@@ -323,6 +323,18 @@ the realm first and uses its current revision. With `--rev N`, a realm that
 has moved past N is refused with exit 5, so an agent never overwrites a
 change it didn't see.
 
+Implemented edit commands use `/<slug>/edit-v1/...` for routes that previously
+had no revision comparison (migration 0102). The table below names their
+underlying operations. The server compares and mutates under one row lock,
+and compares again before applying an asynchronous planner answer. An old
+server returns 404 to the new family without effects. Legacy save/undo and
+generated-realm publication already compare revisions atomically.
+
+Coordinates are plain decimal metres with at most two fractional digits;
+yaw is a whole degree from -360 through 360. Text limits are UTF-8 byte
+limits in the CLI. Lore, quest and ask revisions order concurrent writes;
+they do not expand the existing v1 document/undo contract.
+
 | Command | Route |
 | --- | --- |
 | `realm switch SLUG ROW on\|off` | `POST /<slug>/switch {row, on}` |
@@ -349,6 +361,11 @@ bounded fields: slugs, entity keys, numbers, enums and IDs.
 
 `realm apply SLUG FILE [--rev N]` reads JSON lines, one operation a line, and
 runs them in order:
+
+The file is at most 64 KiB, with at most 256 operations and 8 KiB per line.
+Unknown fields, duplicate decoded keys, wrong JSON types, inline revisions,
+read operations and nested `apply` are refused. Each operation uses the last
+accepted revision, so an intervening writer stops the remaining batch.
 
 ```json
 {"op":"move","entity":"trees:3","x":4.5,"z":-2}

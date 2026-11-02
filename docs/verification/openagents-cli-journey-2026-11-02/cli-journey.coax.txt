@@ -1,0 +1,281 @@
+// #12635: drive the built CLI, not its internal procedures.
+//   coax/web/tool.sh cli-journey --cli PATH --fixture
+//   coax/web/tool.sh cli-journey --cli PATH --origin https://staging.openagents.com --probe
+//   coax/web/tool.sh cli-journey --cli PATH --origin https://staging.openagents.com [--profile TEST] [--plan N]
+// Default identity: one fresh in-memory key, passed only in the child's environment.
+// --profile uses an existing test profile; the key is never read by this tool.
+// Only staging and loopback are accepted. The real journey makes private test
+// realms; no production mutations, deployments, browser, sound or key output.
+// --fixture runs the same CLI against an independent loopback HTTP model. It
+// qualifies transport/command behavior, not a deployed API or NIP-98 verifier.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+#load "cli-journey-fixture.coax";
+
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+CjDoc :: struct { ok: bool; rev: int; hash: [64] u8; moves: [8192] u8; moves_n: int; parent: [64] u8; parent_n: int; parent_rev: int; }
+
+#test "CLI journey confines its writes to exact staging or loopback origins" {
+  #assert cj_origin_ok("https://staging.openagents.com") && cj_origin_ok("http://127.0.0.1:1") && cj_origin_ok("http://127.0.0.1:65535");
+  #assert !cj_origin_ok("https://openagents.com") && !cj_origin_ok("https://staging.openagents.com.evil") && !cj_origin_ok("https://staging.openagents.com/path");
+  #assert !cj_origin_ok("http://127.0.0.1:0") && !cj_origin_ok("http://127.0.0.1:65536") && !cj_origin_ok("http://127.0.0.1:80/x");
+}
+#test "CLI journey reads semantic document fields and rejects absent hashes or revisions" {
+  r := cj_doc_read("{\"ok\":true,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"doc\":{\"rev\":2,\"moved\":[{\"entity\":\"trees:0\",\"x\":4.5,\"z\":-2}],\"forked_from\":{\"slug\":\"parent\",\"rev\":1}}}");
+  #assert r.ok && r.rev == 2 && r.moves_n > 2 && r.parent_n == 6 && r.parent_rev == 1;
+  #assert cj_moved(r, 4.5, -2.0) && !cj_moved(r, 7.0, 7.0);
+  same := r; #assert cj_same(r, same); same.hash[0] = 'b'; #assert !cj_same(r, same);
+  same = r; same.rev += 1; #assert !cj_same(r, same);
+  #assert !cj_doc_read("{}").ok && !cj_doc_read("{\"ok\":true,\"doc\":{\"rev\":1,\"moved\":[]},\"sha256\":\"short\"}").ok;
+}
+#test "CLI journey batch reports require exact committed counts and named entity readbacks" {
+  #assert cj_applied("{\"ok\":false,\"applied\":2,\"rev\":7}",2,7);
+  #assert !cj_applied("{\"ok\":false,\"applied\":1,\"rev\":7}",2,7) && !cj_applied("{\"applied\":2,\"rev\":6}",2,7);
+  #assert !cj_applied("{}",0,1);
+  r := cj_doc_read("{\"ok\":true,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"doc\":{\"rev\":2,\"moved\":[{\"entity\":\"trees:0\",\"x\":1,\"z\":2},{\"entity\":\"trees:1\",\"x\":3,\"z\":4}]}}");
+  #assert cj_move_named(r,"trees:0",1.0,2.0) && cj_move_named(r,"trees:1",3.0,4.0);
+  #assert !cj_move_named(r,"trees:1",1.0,2.0) && !cj_move_named(r,"trees:2",3.0,4.0);
+}
+cj_applied :: (body: string, count: int, rev: int) -> bool {
+  nodes: [64] JvNode; d: [1] Jv;
+  return jv_parse(d[..],body,nodes[..]) && jv_int(d[0],jv_get(d[0],0,"applied"),-1) == count && jv_int(d[0],jv_get(d[0],0,"rev"),-1) == rev;
+}
+cj_move_named :: (value: CjDoc, entity: string, x: f64, z: f64) -> bool {
+  v := value; nodes: [256] JvNode; d: [1] Jv;
+  if !v.ok || !jv_parse(d[..],cast(string)v.moves[0..<v.moves_n],nodes[..]) { return false; }
+  for i: 0..<jv_len(d[0],0) {
+    at := jv_at(d[0],0,i); name: [64] u8; n := jv_str(d[0],jv_get(d[0],at,"entity"),name[..]);
+    if n != entity.count || cast(string)name[0..<n] != entity { continue; }
+    xp := args_number(jv_raw(d[0],jv_get(d[0],at,"x"))); zp := args_number(jv_raw(d[0],jv_get(d[0],at,"z")));
+    return xp.ok && zp.ok && xp.value == x && zp.value == z;
+  }
+  return false;
+}
+
+cj_origin_ok :: (s: string) -> bool {
+  if s == "https://staging.openagents.com" { return true; }
+  p := "http://127.0.0.1:";
+  if !cjf_starts(s, p) { return false; }
+  port := args_whole(s[p.count..<s.count]); return port >= 1 && port <= 65535;
+}
+cj_doc_read :: (s: string) -> CjDoc {
+  r: CjDoc; nodes: [2048] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], s, nodes[..]) || !jv_bool(d[0], jv_get(d[0], 0, "ok")) { return r; }
+  at := jv_get(d[0], 0, "doc");
+  r.rev = jv_int(d[0], jv_get(d[0], at, "rev"), -1);
+  if r.rev < 1 || jv_str(d[0], jv_get(d[0], 0, "sha256"), r.hash[..]) != 64 { return r; }
+  for c: r.hash { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return r; } }
+  mv := jv_get(d[0], at, "moved");
+  if jv_kind(d[0], mv) != JV_ARRAY { return r; }
+  r.moves_n = cjf_put(jv_raw(d[0], mv), r.moves[..]); if r.moves_n < 0 { return r; }
+  from := jv_get(d[0], at, "forked_from");
+  if jv_kind(d[0], from) == JV_OBJECT {
+    r.parent_n = jv_str(d[0], jv_get(d[0], from, "slug"), r.parent[..]);
+    r.parent_rev = jv_int(d[0], jv_get(d[0], from, "rev"), -1);
+    if r.parent_n < 1 || r.parent_rev < 1 { return r; }
+  }
+  r.ok = true; return r;
+}
+cj_string :: (s: string, key: string, out: [] u8) -> string {
+  nodes: [2048] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], s, nodes[..]) { return ""; }
+  n := jv_str(d[0], jv_get(d[0], 0, key), out); return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+cj_rev_text :: (rev: int, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_int(o[..], rev); return jo_text(o[..]);
+}
+cj_same :: (a: CjDoc, b: CjDoc) -> bool {
+  if !a.ok || !b.ok || a.rev != b.rev { return false; }
+  for i: 0..<64 { if a.hash[i] != b.hash[i] { return false; } }
+  return true;
+}
+cj_moved :: (value: CjDoc, x: f64, z: f64) -> bool {
+  return cj_move_named(value,"trees:0",x,z);
+}
+
+CjRun :: struct {
+  cli: string; origin: string; profile: string;
+  key_env: [96] u8; key_n: int;
+  listener: int = -1; fixture: [1] Cjf;
+  out: [262144] u8; n: int; status: int; passed: int; end_ms: int;
+}
+cj_body :: (r: [] CjRun) -> string { return cast(string) r[0].out[0..<r[0].n]; }
+cj_check :: (r: [] CjRun, name: string, ok: bool) -> bool {
+  if ok { r[0].passed += 1; print("ok   %\n", name); return true; }
+  print("FAIL % (CLI exit %)\n", name, r[0].status); return false;
+}
+// Bounded child execution, serving the independent model while it runs.
+// stdout/stderr are never dumped on failure: a CLI may print sensitive data
+// in some domains; this harness names only the command step and exit status.
+cj_call :: (r: [] CjRun, words: [] string, expect: int) -> bool {
+  r[0].n = 0; r[0].status = -1;
+  if r[0].end_ms > 0 && proc_now_ms() >= r[0].end_ms { return false; }
+  h := proc_new(); if h < 0 { return false; }
+  ok := proc_arg(h,r[0].cli);
+  ok = ok && proc_env(h, "OPENAGENTS_KEYCHAIN=0");
+  if r[0].profile != "" { ok = ok && proc_unset(h,"OPENAGENTS_NSEC"); }
+  else { ok = ok && proc_env(h, cast(string) r[0].key_env[0..<r[0].key_n]); }
+  for w: words { ok = ok && proc_arg(h, w); }
+  // Globals deliberately follow command values: a literal --origin consumed
+  // by --ask must not steal the real global origin that follows it.
+  ok = ok && proc_arg(h,"--json") && proc_arg(h,"--origin") && proc_arg(h,r[0].origin);
+  if r[0].profile != "" { ok = ok && proc_arg(h,"--profile") && proc_arg(h,r[0].profile); }
+  if !ok || proc_start(h) != 0 { done := proc_release(h); return false; }
+  until := proc_now_ms() + 60000;
+  if r[0].end_ms > 0 && r[0].end_ms < until { until = r[0].end_ms; }
+  line: [65536] u8; complete := false; cut := false;
+  while proc_now_ms() < until {
+    if r[0].listener >= 0 { handled := cjf_serve(r[0].fixture[..], r[0].listener); }
+    n := proc_line(h, 10, line[..]);
+    if n == PROC_EOF { complete = true; break; }
+    if n == PROC_TIMEOUT { continue; }
+    if n < 0 { cut = true; break; }
+    if r[0].n > 0 { if r[0].n >= r[0].out.count { cut = true; break; } r[0].out[r[0].n] = '\n'; r[0].n += 1; }
+    if r[0].n + n > r[0].out.count { cut = true; break; }
+    for i: 0..<n { r[0].out[r[0].n + i] = line[i]; } r[0].n += n;
+  }
+  if !complete { killed := proc_kill(h, PROC_SIGKILL); }
+  r[0].status = proc_wait(h, 2000); done := proc_release(h);
+  if !complete || cut || r[0].status != expect { return false; }
+  nodes: [2048] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cj_body(r), nodes[..]) { return false; }
+  if expect == 0 { return jv_bool(d[0], jv_get(d[0], 0, "ok")); }
+  if jv_kind(d[0],jv_get(d[0],0,"ok")) != JV_FALSE { return false; }
+  return expect == 2 || (expect == 5 && jv_int(d[0], jv_get(d[0], 0, "status"), 0) == 409);
+}
+cj_doc :: (r: [] CjRun, slug: string) -> CjDoc {
+  argv := [3] string.["realm", "doc", slug];
+  if !cj_call(r, argv[..], 0) { d: CjDoc; return d; }
+  return cj_doc_read(cj_body(r));
+}
+cj_journey :: (r: [] CjRun, plan: string) -> bool {
+  a := [1] string.["access"];
+  if !cj_check(r, "test identity can read staging access", cj_call(r, a[..], 0)) { return false; }
+  s: [128] u8; stamp := cj_rev_text(proc_now_ms() % 1000000000, s[..]);
+  prompt: [256] u8; pn := cjf_put("CLI Journey Test ", prompt[..]); pn += cjf_put(stamp, prompt[pn..<prompt.count]);
+  pn += cjf_put(": a simple flat courtyard with two trees", prompt[pn..<prompt.count]);
+  make := [5] string.["realm", "new", cast(string) prompt[0..<pn], "--from", plan];
+  count := ifx plan == "" then 3 else 5;
+  if !cj_check(r, "make a private realm through the built CLI", cj_call(r, make[0..<count], 0)) { return false; }
+  sb: [64] u8; slug := cj_string(cj_body(r), "slug", sb[..]);
+  initial := cj_doc(r, slug);
+  if !cj_check(r, "read its revision, moves and document hash", slug != "" && initial.ok && initial.moves_n == 2) { return false; }
+  print("realm % revision %\n", slug, initial.rev);
+  rb: [32] u8; first := cj_rev_text(initial.rev, rb[..]);
+  move := [8] string.["realm", "move", slug, "trees:0", "4.5", "-2", "--rev", first];
+  if !cj_check(r, "move trees:0 at the revision read", cj_call(r, move[..], 0)) { return false; }
+  moved := cj_doc(r, slug);
+  if !cj_check(r, "the document retains the exact move at a newer revision", moved.ok && moved.rev > initial.rev && cj_moved(moved, 4.5, -2.0)) { return false; }
+  stale := [8] string.["realm", "move", slug, "trees:0", "7", "7", "--rev", first];
+  if !cj_check(r, "a stale save exits 5 with conflict status 409", cj_call(r, stale[..], 5)) { return false; }
+  after_stale := cj_doc(r, slug);
+  if !cj_check(r, "stale refusal preserves the current revision and hash", cj_same(moved, after_stale)) { return false; }
+  next := cj_rev_text(moved.rev, rb[..]); undo := [5] string.["realm", "undo", slug, "--rev", next];
+  if !cj_check(r, "undo names the current revision", cj_call(r, undo[..], 0)) { return false; }
+  undone := cj_doc(r, slug);
+  if !cj_check(r, "undo restores the empty moves as a new revision", undone.ok && undone.rev > moved.rev && undone.moves_n == 2) { return false; }
+  latest := cj_rev_text(undone.rev, rb[..]); pub := [6] string.["realm", "publish", slug, "--rev", latest, "--yes"];
+  if !cj_check(r, "publish the exact revision", cj_call(r, pub[..], 0)) { return false; }
+  original := cj_doc(r, slug);
+  fork := [5] string.["realm", "fork", slug, "--name", "CLI Journey Test Fork"];
+  if !cj_check(r, "fork the published realm", cj_call(r, fork[..], 0)) { return false; }
+  fb: [64] u8; fork_slug := cj_string(cj_body(r), "slug", fb[..]); child := cj_doc(r, fork_slug);
+  if !cj_check(r, "fork records its parent's exact revision", child.ok && child.parent_rev == original.rev && cast(string) child.parent[0..<child.parent_n] == slug) { return false; }
+  print("fork % from % revision %\n", fork_slug, slug, child.parent_rev);
+  frev := cj_rev_text(child.rev, rb[..]); edit := [8] string.["realm", "move", fork_slug, "trees:0", "-3", "2", "--rev", frev];
+  if !cj_check(r, "edit the fork independently", cj_call(r, edit[..], 0)) { return false; }
+  changed := cj_doc(r, fork_slug); kept := cj_doc(r, slug);
+  if !cj_check(r, "fork moves, while the original revision and hash stay unchanged", cj_moved(changed, -3.0, 2.0) && cj_same(original, kept)) { return false; }
+  return cj_batches(r,slug);
+}
+
+cj_apply :: (r: [] CjRun, slug: string, file: string, rev: int, expect: int) -> bool {
+  rb: [32] u8; revision := cj_rev_text(rev,rb[..]);
+  words := [6] string.["realm","apply",slug,file,"--rev",revision];
+  return cj_call(r,words[0..<ifx rev > 0 then 6 else 4],expect);
+}
+cj_batch_steps :: (r: [] CjRun, slug: string, dir: string) -> bool {
+  path: [1024] u8; file := fs_join(dir,"edits.jsonl",path[..]);
+  base := cj_doc(r,slug);
+  if !cj_check(r,"fresh batch fork starts with no moves",base.ok && base.moves_n == 2) { return false; }
+  grouped := "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":1,\"z\":2}\n{\"op\":\"move\",\"entity\":\"trees:1\",\"x\":3,\"z\":4}\n";
+  if !fs_write(file,grouped) { return false; }
+  before_saves := r[0].fixture[0].saves;
+  if !cj_check(r,"apply two adjacent moves reports both committed in one revision",cj_apply(r,slug,file,base.rev,0) && cj_applied(cj_body(r),2,base.rev+1)) { return false; }
+  pair := cj_doc(r,slug);
+  if !cj_check(r,"both batch entity coordinates survive the document readback",cj_move_named(pair,"trees:0",1.0,2.0) && cj_move_named(pair,"trees:1",3.0,4.0)) { return false; }
+  if r[0].listener >= 0 && !cj_check(r,"adjacent moves sent exactly one save request",r[0].fixture[0].saves == before_saves+1) { return false; }
+  rb: [32] u8; rev := cj_rev_text(pair.rev,rb[..]); undo := [5] string.["realm","undo",slug,"--rev",rev];
+  if !cj_check(r,"one undo removes the whole adjacent-move group",cj_call(r,undo[..],0)) { return false; }
+  undone := cj_doc(r,slug);
+  if !cj_check(r,"both grouped moves are gone after that single undo",undone.ok && undone.moves_n == 2 && undone.rev == pair.rev+1) { return false; }
+
+  mixed := "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":2,\"z\":3}\n{\"op\":\"publish\"}\n{\"op\":\"move\",\"entity\":\"trees:1\",\"x\":4,\"z\":5}\n";
+  if !fs_write(file,mixed) { return false; }
+  if !cj_check(r,"a move/publish/move batch carries each accepted revision",cj_apply(r,slug,file,0,0) && cj_applied(cj_body(r),3,undone.rev+2)) { return false; }
+  carried := cj_doc(r,slug);
+  if !cj_check(r,"separated save groups preserve the earlier move",cj_move_named(carried,"trees:0",2.0,3.0) && cj_move_named(carried,"trees:1",4.0,5.0)) { return false; }
+
+  partial := "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":6,\"z\":7}\n{\"op\":\"move\",\"entity\":\"trees:1\",\"x\":-1,\"z\":-2}\n{\"op\":\"unknown\"}\n{\"op\":\"undo\"}\n";
+  if !fs_write(file,partial) { return false; }
+  if !cj_check(r,"invalid third operation exits 2 and reports exactly two applied",cj_apply(r,slug,file,carried.rev,2) && cj_applied(cj_body(r),2,carried.rev+1)) { return false; }
+  prefix := cj_doc(r,slug);
+  if !cj_check(r,"the committed prefix remains and the operation after refusal never runs",cj_move_named(prefix,"trees:0",6.0,7.0) && cj_move_named(prefix,"trees:1",-1.0,-2.0)) { return false; }
+  if !fs_write(file,grouped) { return false; }
+  if !cj_check(r,"stale batch exits 5 and reports zero applied",cj_apply(r,slug,file,base.rev,5) && cj_applied(cj_body(r),0,prefix.rev)) { return false; }
+  refused := cj_doc(r,slug);
+  if !cj_check(r,"stale batch preserves the entire current document",cj_same(prefix,refused)) { return false; }
+
+  // The existing deployed API may not have migration 0102. These option-token
+  // regressions use only the independent fixture's fenced quest route.
+  if r[0].listener >= 0 {
+    for literal: [4] string.["--profile","--help","--origin","--json"] {
+      words := [8] string.["realm","quest",slug,"Bram","--ask",literal,"--step","a step"];
+      if !cj_check(r,"a flag-shaped quest answer survives global option parsing",cj_call(r,words[..],0)) { return false; }
+      got := cast(string)r[0].fixture[0].last_ask[0..<r[0].fixture[0].last_ask_n];
+      if !cj_check(r,"the route received that exact flag-shaped answer",got == literal) { return false; }
+    }
+  }
+  return true;
+}
+cj_batches :: (r: [] CjRun, parent: string) -> bool {
+  words := [5] string.["realm","fork",parent,"--name","CLI Journey Batch Test"];
+  if !cj_check(r,"make a fresh fork for batch and partial-failure checks",cj_call(r,words[..],0)) { return false; }
+  slug_buf: [64] u8; slug := cj_string(cj_body(r),"slug",slug_buf[..]);
+  dir_buf: [1024] u8; dir := fs_temp("coax-cli-journey-",dir_buf[..]); if dir == "" { return false; }
+  ok := cj_batch_steps(r,slug,dir); removed := fs_remove(dir); return ok && removed;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  r: [1] CjRun; r[0].end_ms = proc_now_ms() + 840000; // strict 14-minute whole-journey limit
+  r[0].cli = args_value(a[..], "--cli", "apps/openagents-cli/build/openagents");
+  r[0].profile = args_value(a[..], "--profile", ""); r[0].origin = args_value(a[..], "--origin", "");
+  fixture := args_has(a[..], "--fixture"); base: [128] u8;
+  if fixture {
+    r[0].listener = cxsock_listen(0); if r[0].listener < 0 { tool_errln("cli-journey: loopback listener unavailable"); return 1; }
+    pb: [32] u8; port := cj_rev_text(cxsock_port(r[0].listener), pb[..]);
+    n := cjf_put("http://127.0.0.1:", base[..]); n += cjf_put(port, base[n..<base.count]); r[0].origin = cast(string) base[0..<n];
+  }
+  if !cj_origin_ok(r[0].origin) { tool_errln("cli-journey: --origin must be exact staging.openagents.com or http://127.0.0.1:PORT; production is refused"); return 2; }
+  if r[0].profile == "" {
+    secret: [32] u8; if cxrand_draw(secret[..], 32) != 0 { return 1; }
+    r[0].key_n = cjf_put("OPENAGENTS_NSEC=", r[0].key_env[..]); hex := "0123456789abcdef";
+    for i: 0..<32 { r[0].key_env[r[0].key_n] = hex[cast(int) (secret[i] >> 4)]; r[0].key_env[r[0].key_n + 1] = hex[cast(int) (secret[i] & 15)]; r[0].key_n += 2; secret[i] = 0; }
+  }
+  plan := args_value(a[..], "--plan", "");
+  if plan != "" && args_whole(plan) < 1 { tool_errln("cli-journey: --plan must be a positive plan ID"); return 2; }
+  ok := false;
+  if args_has(a[..], "--probe") {
+    me := [1] string.["whoami"]; access := [1] string.["access"];
+    ok = cj_check(r[..], "read-only test identity lookup", cj_call(r[..], me[..], 0));
+    ok = cj_check(r[..], "read-only access lookup", cj_call(r[..], access[..], 0)) && ok;
+    if ok { print("%\n", cj_body(r[..])); }
+  } else { ok = cj_journey(r[..], plan); }
+  for i: 0..<r[0].key_env.count { r[0].key_env[i] = 0; }
+  if r[0].listener >= 0 { closed := cxsock_close(r[0].listener); if r[0].fixture[0].bad != 0 { ok = false; } }
+  print("% journey checks passed (%).\n", r[0].passed, ifx fixture then "independent loopback fixture" else "staging/API");
+  return ifx ok then 0 else 1;
+}

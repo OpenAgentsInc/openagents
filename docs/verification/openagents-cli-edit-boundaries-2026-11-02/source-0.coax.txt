@@ -1,0 +1,225 @@
+// Independent fault responder for #12635's CLI transport boundaries.
+//   coax/web/tool.sh cli-edit-boundaries --cli PATH [--receipt OUT.json]
+//   coax/web/tool.sh cli-edit-boundaries --cli PATH --publish-profiles [--receipt OUT.json]
+// Every connection is an owned loopback socket. No product CLI/API code is
+// loaded, no owner identity is used, and child output/headers are never dumped.
+// The reused fixture supplies HTTP framing only; this tool owns every reply
+// and expected observation. This is not an authentication or production test.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+#load "cli-journey-fixture.coax";
+
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+CB_REPLY :: 400000;
+CbFault :: struct { mode: int; gets: int; docs: int; posts: int; bad: int; yaw: [16] u8; yaw_n: int; out_n: int; }
+CbResult :: struct { completed: bool; code: int = -1; json: bool; failure: bool; ok: bool; rev: int = -1; status: int; }
+
+#test "boundary output oracle needs a whole object with explicit success or error" {
+  a := cb_result("{\"ok\":false,\"error\":\"changed since\",\"status\":409,\"rev\":8}",5);
+  #assert a.json && a.failure && !a.ok && a.rev == 8 && a.status == 409;
+  b := cb_result("{\"ok\":true,\"rev\":8}",0); #assert b.json && b.ok && !b.failure && b.rev == 8;
+  #assert !cb_result("{\"ok\":false,\"error\":\"broken\"",1).json;
+  #assert !cb_result("{\"ok\":false,\"error\":\"\"}",1).failure && !cb_result("{\"ok\":false}",1).failure;
+  #assert !cb_result("[]",1).json && !cb_result("{\"ok\":true}",1).ok && !cb_result("{\"ok\":false,\"error\":\"broken\"}",0).ok;
+}
+#test "independent faults keep the no-op race and truncation witness distinct" {
+  f: [1] CbFault; out: [CB_REPLY] u8;
+  f[0].mode = 0;
+  n := cb_spec(f[..],out[..]);
+  #assert n > 0 && cjf_find(cast(string)out[0..<n],"moved trees:0 1.00 2.00\n") >= 0;
+  f[0].mode = 1; n = cb_spec(f[..],out[..]);
+  #assert n > 262144 && n < 1048576;
+  #assert cjf_find(cast(string)out[0..<n],"moved trees:1 -3.00 4.00\n") > 262144;
+  code := cb_route(f[..],"POST","/api/playtest/realms/cli-boundary/save","{\"rev\":7,\"moved\":[]}",out[..]);
+  #assert code == 500 && f[0].posts == 1; // Any POST after the oversized read is an error.
+}
+#test "the independent yaw oracle requires canonical JSON numbers and exact coordinates" {
+  #assert cb_yaw("{\"rev\":7,\"thing\":\"barrel\",\"x\":-2.00,\"z\":4.00,\"yaw\":1}","1");
+  #assert cb_yaw("{\"rev\":7,\"x\":-2,\"z\":4,\"yaw\":0}","0");
+  #assert !cb_yaw("{\"rev\":7,\"x\":-2,\"z\":4,\"yaw\":001}","1");
+  #assert !cb_yaw("{\"rev\":7,\"x\":-2,\"z\":4,\"yaw\":-0}","0");
+  #assert !cb_yaw("{\"rev\":7,\"x\":2,\"z\":4,\"yaw\":1}","1");
+}
+#test "the output overflow witness is valid JSON with a raw document larger than the report" {
+  out: [CB_REPLY] u8; n := cb_large_doc(out[..]); nodes: [16] JvNode; d: [1] Jv;
+  #assert n > 65536 && n < 262144 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+  #assert jv_kind(d[0],jv_get(d[0],0,"doc")) == JV_OBJECT && jv_raw(d[0],jv_get(d[0],0,"doc")).count > 65536;
+}
+#test "publish fixtures discriminate made and built-in-fork routes and unsafe base profiles" {
+  f: [1] CbFault; out: [CB_REPLY] u8;
+  f[0].mode = 7;
+  #assert cb_route(f[..],"GET","/api/playtest/realms/cli-boundary/doc","",out[..]) == 200 && f[0].docs == 1;
+  #assert cb_route(f[..],"POST","/api/playtest/realms/cli-boundary/publish","{\"rev\":7}",out[..]) == 200 && f[0].bad == 0;
+  f[0].mode = 8;
+  #assert cb_route(f[..],"POST","/api/playtest/realms/cli-boundary/edit-v1/publish","{\"rev\":7}",out[..]) == 200;
+  #assert cb_route(f[..],"POST","/api/playtest/realms/cli-boundary/publish","{\"rev\":7}",out[..]) == 500;
+  f[0].mode = 10;
+  #assert cb_route(f[..],"POST","/api/playtest/realms/cli-boundary/publish","{\"rev\":7}",out[..]) == 500;
+}
+
+cb_result :: (text: string, code: int) -> CbResult {
+  r: CbResult; r.code = code; nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..],text,nodes[..]) || jv_kind(d[0],0) != JV_OBJECT { return r; }
+  r.json = true; r.rev = jv_int(d[0],jv_get(d[0],0,"rev"),-1); r.status = jv_int(d[0],jv_get(d[0],0,"status"),0);
+  r.ok = code == 0 && jv_kind(d[0],jv_get(d[0],0,"ok")) == JV_TRUE;
+  error: [512] u8;
+  r.failure = code != 0 && jv_kind(d[0],jv_get(d[0],0,"ok")) == JV_FALSE && jv_str(d[0],jv_get(d[0],0,"error"),error[..]) > 0;
+  return r;
+}
+cb_spec :: (f: [] CbFault, out: [] u8) -> int {
+  n := cjf_put("realm cli-boundary\nname CLI Boundary Test\nvisibility private\nrole owner\nrev 7\npublished 1\nedit_fence 1\nrow trees 1 Trees\nmoved trees:0 1.00 2.00\n",out);
+  if f[0].mode == 1 {
+    n += cjf_put("padding ",out[n..<out.count]);
+    for i: 0..<270000 { out[n] = 'x'; n += 1; }
+    n += cjf_put("\nmoved trees:1 -3.00 4.00\n",out[n..<out.count]);
+  }
+  return n;
+}
+cb_large_doc :: (out: [] u8) -> int {
+  n := cjf_put("{\"doc\":{\"rev\":7,\"padding\":\"",out);
+  for i: 0..<70000 { out[n] = 'a'; n += 1; }
+  n += cjf_put("\"},\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",out[n..<out.count]);
+  return n;
+}
+cb_yaw :: (body: string, canonical: string) -> bool {
+  nodes: [32] JvNode; d: [1] Jv;
+  if !jv_parse(d[..],body,nodes[..]) || jv_int(d[0],jv_get(d[0],0,"rev"),-1) != 7 { return false; }
+  x := args_number(jv_raw(d[0],jv_get(d[0],0,"x"))); z := args_number(jv_raw(d[0],jv_get(d[0],0,"z")));
+  return x.ok && z.ok && x.value == -2.0 && z.value == 4.0 && jv_raw(d[0],jv_get(d[0],0,"yaw")) == canonical;
+}
+cb_reply :: (f: [] CbFault, code: int, text: string, out: [] u8) -> int { f[0].out_n = cjf_put(text,out); return code; }
+cb_route :: (f: [] CbFault, method: string, path: string, body: string, out: [] u8) -> int {
+  if method == "GET" && path == "/api/playtest/realms/cli-boundary" { f[0].gets += 1; f[0].out_n = cb_spec(f,out); return 200; }
+  if method == "GET" && path == "/api/playtest/realms/cli-boundary/doc" {
+    f[0].docs += 1;
+    if f[0].mode == 4 { f[0].out_n = cb_large_doc(out); return 200; }
+    if f[0].mode == 7 { return cb_reply(f,200,"{\"doc\":{\"base\":null,\"rev\":7}}",out); }
+    if f[0].mode == 8 || f[0].mode == 9 { return cb_reply(f,200,"{\"doc\":{\"base\":\"everglade\",\"rev\":7}}",out); }
+    if f[0].mode == 10 { return cb_reply(f,200,"{\"doc\":{\"rev\":7}}",out); }
+    if f[0].mode == 11 { return cb_reply(f,200,"{\"doc\":{\"base\":7,\"rev\":7}}",out); }
+  }
+  if method == "POST" {
+    f[0].posts += 1;
+    if f[0].mode == 0 && path == "/api/playtest/realms/cli-boundary/save" { return cb_reply(f,409,"{\"error\":\"changed since\",\"rev\":8}",out); }
+    if (f[0].mode == 2 || f[0].mode == 3) && path == "/api/playtest/realms/cli-boundary/edit-v1/switch" {
+      return cb_reply(f,200,ifx f[0].mode == 2 then "{\"rev\":" else "{\"changed\":true}",out);
+    }
+    if (f[0].mode == 5 || f[0].mode == 6) && path == "/api/playtest/realms/cli-boundary/edit-v1/place" {
+      want := ifx f[0].mode == 5 then "1" else "0";
+      if cb_yaw(body,want) { f[0].yaw_n = cjf_put(want,f[0].yaw[..]); return cb_reply(f,200,"{\"rev\":8}",out); }
+    }
+    if f[0].mode == 7 && path == "/api/playtest/realms/cli-boundary/publish" { return cb_reply(f,200,"{\"rev\":7,\"published\":true}",out); }
+    if f[0].mode == 8 && path == "/api/playtest/realms/cli-boundary/edit-v1/publish" { return cb_reply(f,200,"{\"rev\":7,\"published\":true}",out); }
+    if f[0].mode == 9 && path == "/api/playtest/realms/cli-boundary/edit-v1/publish" { return cb_reply(f,409,"{\"error\":\"changed since\",\"rev\":8}",out); }
+  }
+  f[0].bad += 1;
+  return cb_reply(f,500,"{\"error\":\"unexpected boundary-fixture request\"}",out);
+}
+cb_serve :: (f: [] CbFault, listener: int) -> bool {
+  h := cxsock_accept(listener,0); if h < 0 { return false; }
+  buf: [32768] u8; n := 0; req: CjfRequest; end_ms := proc_now_ms()+5000;
+  while proc_now_ms() < end_ms && n < buf.count {
+    got := cxsock_read(h,100); if got < 0 { break; }
+    for i: 0..<got { if n < buf.count { buf[n] = cast,trunc(u8)cxsock_byte(h,i); n += 1; } }
+    req = cjf_request(cast(string)buf[0..<n]); if req.ok { break; }
+  }
+  out: [CB_REPLY] u8; code := 400;
+  if req.ok && req.has_auth { code = cb_route(f,req.method,req.path,req.body,out[..]); }
+  else { f[0].bad += 1; code = cb_reply(f,400,"{\"error\":\"unsigned or incomplete fixture request\"}",out[..]); }
+  head: [256] u8; o: [1] Jo; jo_start(o[..],head[..]);
+  jo_put(o[..],"HTTP/1.1 "); tmp: [24] u8; num: [1] Jo; jo_start(num[..],tmp[..]); jo_int(num[..],code); jo_put(o[..],jo_text(num[..]));
+  jo_put(o[..]," Boundary\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ");
+  jo_start(num[..],tmp[..]); jo_int(num[..],f[0].out_n); jo_put(o[..],jo_text(num[..])); jo_put(o[..],"\r\n\r\n");
+  for c: jo_text(o[..]) { sent := cxsock_write(h,cast(int)c); }
+  for i: 0..<f[0].out_n { sent := cxsock_write(h,cast(int)out[i]); }
+  flushed := cxsock_flush(h,5000); closed := cxsock_close(h);
+  return flushed == 0 && closed == 0;
+}
+
+cb_child :: (cli: string, origin: string, mode: int, listener: int, f: [] CbFault, env: string, deadline: int) -> CbResult {
+  r: CbResult; h := proc_new(); if h < 0 { return r; }
+  ok := proc_arg(h,cli) && proc_env(h,"OPENAGENTS_KEYCHAIN=0") && proc_env(h,env);
+  ok = ok && proc_unset(h,"OPENAGENTS_PROFILE");
+  moves := [8] string.["realm","move","cli-boundary","trees:0",ifx mode == 1 then "9" else "1",ifx mode == 1 then "9" else "2","--rev","7"];
+  switches := [7] string.["realm","switch","cli-boundary","trees","on","--rev","7"];
+  docs := [3] string.["realm","doc","cli-boundary"];
+  places := [10] string.["realm","place","cli-boundary","barrel","-2","4","--yaw",ifx mode == 5 then "0001" else "-000","--rev","7"];
+  publish := [6] string.["realm","publish","cli-boundary","--rev","7","--yes"];
+  words := ifx mode < 2 then moves[..] else ifx mode < 4 then switches[..] else ifx mode == 4 then docs[..] else ifx mode < 7 then places[..] else publish[..];
+  for word: words { ok = ok && proc_arg(h,word); }
+  for word: [3] string.["--json","--origin",origin] { ok = ok && proc_arg(h,word); }
+  if !ok || proc_start(h) != 0 { released := proc_release(h); return r; }
+  until := proc_now_ms()+25000; if deadline < until { until = deadline; }
+  text: [262144] u8; text_n := 0; line: [262144] u8; complete := false; cut := false;
+  while proc_now_ms() < until {
+    served := cb_serve(f,listener);
+    n := proc_line(h,10,line[..]);
+    if n == PROC_EOF { complete = true; break; }
+    if n == PROC_TIMEOUT { continue; }
+    if n < 0 || text_n + n + 1 > text.count { cut = true; break; }
+    if text_n > 0 { text[text_n] = '\n'; text_n += 1; }
+    for i: 0..<n { text[text_n+i] = line[i]; } text_n += n;
+  }
+  if !complete { killed := proc_kill(h,PROC_SIGKILL); }
+  code := proc_wait(h,2000); released := proc_release(h);
+  r = cb_result(cast(string)text[0..<text_n],code); r.completed = complete && !cut;
+  return r;
+}
+cb_name :: (mode: int) -> string {
+  return [12] string.["no-op move still reaches atomic stale refusal","oversized spec stops before any save","malformed write JSON cannot report success","missing write revision cannot report success","large raw document fails with complete error JSON","positive leading-zero yaw is canonical JSON","negative zero yaw is canonical JSON","made realm publishes through the legacy versioned route","built-in fork publishes through edit-v1","built-in fork stale publish preserves409","missing document base stops before publish","malformed document base stops before publish"][mode];
+}
+cb_pass :: (mode: int, f: CbFault, result: CbResult) -> bool {
+  r := result;
+  if !r.completed || !r.json || f.bad != 0 { return false; }
+  if mode == 0 { return r.code == 5 && r.failure && r.rev == 8 && r.status == 409 && f.gets == 1 && f.posts == 1; }
+  if mode == 1 { return r.code == 1 && r.failure && f.gets == 1 && f.posts == 0; }
+  if mode == 2 || mode == 3 { return r.code == 1 && r.failure && f.gets == 1 && f.posts == 1; }
+  if mode == 4 { return r.code == 1 && r.failure && f.docs == 1 && f.posts == 0; }
+  if mode == 5 || mode == 6 { return r.code == 0 && r.ok && r.rev == 8 && f.gets == 1 && f.posts == 1 && f.yaw_n == 1; }
+  if mode == 7 || mode == 8 { return r.code == 0 && r.ok && f.docs == 1 && f.posts == 1; }
+  if mode == 9 { return r.code == 5 && r.failure && r.rev == 8 && r.status == 409 && f.docs == 1 && f.posts == 1; }
+  return r.code != 0 && r.failure && f.docs == 1 && f.posts == 0;
+}
+cb_file_sha :: (path: string, out: [] u8) -> string {
+  stdout: [4096] u8; stderr: [1024] u8;
+  mac := [4] string.["shasum","-a","256",path]; linux := [2] string.["sha256sum",path];
+  r := proc_run(ifx tool_os() == TOOL_MAC then mac[..] else linux[..],20000,stdout[..],stderr[..]);
+  if r.started != 0 || r.status != 0 || r.out_n < 64 { return ""; }
+  for i: 0..<64 { c := stdout[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return ""; } out[i] = c; }
+  return cast(string)out[0..<64];
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  cli := args_value(a[..],"--cli","apps/openagents-cli/build/openagents"); profiles := args_has(a[..],"--publish-profiles");
+  hash_buf: [64] u8; hash := cb_file_sha(cli,hash_buf[..]); if hash == "" { tool_errln("cli-edit-boundaries: could not hash the CLI"); return 1; }
+  receipt: [16384] u8; jo: [1] Jo; jo_start(jo[..],receipt[..]); jo_obj(jo[..]);
+  jo_key(jo[..],"schema"); jo_str(jo[..],"openagents.cli-edit-boundaries.v1"); jo_key(jo[..],"cli_sha256"); jo_str(jo[..],hash);
+  jo_key(jo[..],"scope"); jo_str(jo[..],ifx profiles then "publish-profiles" else "transport-and-output"); jo_key(jo[..],"cases"); jo_arr(jo[..]);
+  key: [32] u8; key_env: [96] u8; kn := cjf_put("OPENAGENTS_NSEC=",key_env[..]);
+  if cxrand_draw(key[..],32) != 0 { return 1; }
+  digits := "0123456789abcdef";
+  for i: 0..<32 { key_env[kn] = digits[cast(int)(key[i]>>4)]; key_env[kn+1] = digits[cast(int)(key[i]&15)]; kn += 2; key[i] = 0; }
+  deadline := proc_now_ms()+600000; passed := true; count := 0;
+  first := ifx profiles then 7 else 0; last := ifx profiles then 12 else 7;
+  for mode: first..<last {
+    f: [1] CbFault; f[0].mode = mode; listener := cxsock_listen(0);
+    if listener < 0 { passed = false; break; }
+    base: [128] u8; port_buf: [24] u8; num: [1] Jo; jo_start(num[..],port_buf[..]); jo_int(num[..],cxsock_port(listener));
+    bn := cjf_put("http://127.0.0.1:",base[..]); bn += cjf_put(jo_text(num[..]),base[bn..<base.count]);
+    r := cb_child(cli,cast(string)base[0..<bn],mode,listener,f[..],cast(string)key_env[0..<kn],deadline);
+    closed := cxsock_close(listener); ok := cb_pass(mode,f[0],r) && closed == 0; passed = passed && ok; count += 1;
+    print("% % (exit %, GET %, doc %, POST %)\n",ifx ok then "ok  " else "FAIL",cb_name(mode),r.code,f[0].gets,f[0].docs,f[0].posts);
+    jo_obj(jo[..]); jo_key(jo[..],"name"); jo_str(jo[..],cb_name(mode)); jo_key(jo[..],"passed"); jo_bool(jo[..],ok);
+    jo_key(jo[..],"exit"); jo_int(jo[..],r.code); jo_key(jo[..],"gets"); jo_int(jo[..],f[0].gets); jo_key(jo[..],"doc_gets"); jo_int(jo[..],f[0].docs); jo_key(jo[..],"posts"); jo_int(jo[..],f[0].posts);
+    jo_key(jo[..],"complete_json"); jo_bool(jo[..],r.json); jo_key(jo[..],"completed"); jo_bool(jo[..],r.completed); jo_end(jo[..]);
+  }
+  for i: 0..<key_env.count { key_env[i] = 0; }
+  after_buf: [64] u8; after := cb_file_sha(cli,after_buf[..]); same := hash == after; passed = passed && same && count == last-first;
+  jo_end(jo[..]); jo_key(jo[..],"cli_unchanged_during_run"); jo_bool(jo[..],same); jo_key(jo[..],"passed"); jo_bool(jo[..],passed); jo_end(jo[..]);
+  path := args_value(a[..],"--receipt","");
+  if jo[0].bad || (path != "" && !fs_write(path,jo_text(jo[..]))) { tool_errln("cli-edit-boundaries: receipt did not fit or write"); return 1; }
+  print("% boundary cases, passed %\n",count,passed);
+  return ifx passed then 0 else 1;
+}

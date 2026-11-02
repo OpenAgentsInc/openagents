@@ -1,0 +1,3 @@
+ok   #test CLI fixture generated realm documents declare their null base (1 case, 24686 steps, 0 ms)
+1 of 102 checks (--only 'CLI fixture generated realm'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

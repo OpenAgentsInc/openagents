@@ -1,0 +1,159 @@
+{
+  "schema": "openagents.cli-journey.verification.v1",
+  "issue": 12635,
+  "date": "2026-11-02",
+  "base_commit": "9a2ac3f855e1f6f7e1981f4e740b5a347ee1f4e7",
+  "status": "qualified: 35 independent-fixture checks and 26 real staging checks passed for the named CLI artifact",
+  "sources": {
+    "coax/web/cli-journey.coax": "abff6ba218b5b49d39bcc153ce7833bfc6fc5e3480c73c42e3c7e4eae7ca12a1",
+    "coax/web/cli-journey-fixture.coax": "0d57f8041c2677c98368b771a866a3e90dc1af0f4d8735e68a470ad8c34b958b"
+  },
+  "qualified_journey_sources": {
+    "coax/web/cli-journey.coax": "abff6ba218b5b49d39bcc153ce7833bfc6fc5e3480c73c42e3c7e4eae7ca12a1",
+    "coax/web/cli-journey-fixture.coax": "6011cc88985f44788682b25d1c01d3b68a2f62c2a5fa0d15eaa2c13b7e9ac62d"
+  },
+  "qualified_harness_sha256": "23c117a61e2b3be0628e2389f513d6afa4e52eb99a12d1a05fdbb435d016d447",
+  "qualified_cli": {
+    "path": "apps/openagents-cli/build/openagents",
+    "sha256": "2e4015547c4e7dd2dfb6e2a0da83ef47f14721c8e3ac68035de4d8fc1fbfb1b3",
+    "scope": "Generated private realm creation, revisioned edits, publication, generated-realm forks and JSON-lines application. The later built-in-realm fork publication fix is a separate source profile; this evidence remains attached to this exact earlier CLI digest."
+  },
+  "compiler": {
+    "reported_version": "coax0 0.47.0",
+    "sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+    "source": "pre-existing local compiler copied into isolated task worktree; no compiler changes"
+  },
+  "checks_first": {
+    "fixture": "Three authored groups failed against stub request/route procedures before implementation, then passed.",
+    "journey": "Two authored groups failed against stub origin/document readers before implementation, then passed.",
+    "batch_extension": "Three new authored groups failed before implementing batch-report readers, grouped-save snapshots and quest-literal capture. All eight authored CLI groups pass."
+  },
+  "checks": [
+    {
+      "command": "coax/bin/coax test coax/web/cli-journey.coax --library",
+      "exit": 0,
+      "checks": 103,
+      "passed": 103,
+      "scope": "Initial complete source closure including imported JSON, SHA-256, arguments and processes. Later changes added semantic hash/move assertions, output labels and a whole-journey deadline; unchanged imported gates were not repeated."
+    },
+    {
+      "command": "coax/bin/coax test coax/web/cli-journey.coax --library --only 'CLI journey'",
+      "exit": 0,
+      "checks": 2,
+      "passed": 2,
+      "scope": "Historical pre-batch pure readers: exact staging/loopback origins; document revision/hash/moves/provenance; wrong move, changed hash and changed revision controls."
+    },
+    {
+      "command": "coax/bin/coax c coax/web/cli-journey.coax --library",
+      "exit": 0,
+      "scope": "Final extended source, including subprocess argument ordering and the bounded whole-journey deadline, generates native C."
+    },
+    {
+      "command": "coax/bin/coax test coax/web/cli-journey.coax --library",
+      "exit": 0,
+      "checks": 107,
+      "passed": 107,
+      "receipt": "openagents-cli-journey-2026-11-02/harness-tests.out",
+      "scope": "Extended batch helpers and fixture, including eight authored CLI groups. The final subprocess global-argument placement changed afterward; every test-reachable helper stayed unchanged. Final native fixture/staging runs below qualify that effect path."
+    }
+  ],
+  "prior_cli_control": {
+    "sha256": "b15fdd0dccc89f7324c880793efe93b938650a0923d109ef2f9c20636398dfed",
+    "fixture_journey_exit": 1,
+    "observations": [
+      "Actual prior CLI signed requests to independent loopback fixture; access and make succeeded.",
+      "Journey failed at new realm doc with CLI exit 2, demonstrating that the pre-change binary cannot pass.",
+      "Native loopback whoami/access probe passed separately."
+    ]
+  },
+  "pre_batch_cli_control": {
+    "artifact": "worktree CLI built before batch implementation and token-aware global handling",
+    "artifact_sha256": null,
+    "identity_limit": "This intermediate artifact's digest was not captured; it is not the b15fdd0d pre-doc binary above and is not promoted into a source-qualified result.",
+    "exit": 1,
+    "passed_before_failure": 16,
+    "failure": "First realm apply of two adjacent moves exited 2; all preceding original-journey checks passed.",
+    "receipt": "openagents-cli-journey-2026-11-02/pre-batch-cli-control.out"
+  },
+  "staging_access": {
+    "origin": "https://staging.openagents.com",
+    "command": "coax/web/tool.sh cli-journey --cli PRIOR_CLI --origin https://staging.openagents.com --probe",
+    "exit": 0,
+    "identity": "fresh random throwaway Nostr key, passed only in child environment; never printed or stored",
+    "whoami": "passed",
+    "access": {
+      "invites": "0",
+      "make": "1",
+      "in": "0",
+      "creator": "0",
+      "asked": "none"
+    },
+    "bootstrap": "No existing owner/test profile or device-login approval is required while staging's creation gate is off.",
+    "effects": "GET account/access only; no staging realm changes, deployments or production calls in this initial access probe."
+  },
+  "independent_fixture_journey": {
+    "command": "coax/web/tool.sh cli-journey --cli apps/openagents-cli/build/openagents --fixture",
+    "exit": 0,
+    "checks": 35,
+    "passed": 35,
+    "receipt": "openagents-cli-journey-2026-11-02/fixture.out",
+    "additional_observations": [
+      "Adjacent moves send exactly one save request, and one real fixture undo restores the previous complete move snapshot.",
+      "The actual CLI returns parseable JSON for all four --ask literal values: --profile, --help, --origin and --json; the fenced /edit-v1/quest route receives each exact value.",
+      "Actual global --json/--origin options follow the command values, so a literal consumed by --ask cannot steal the true global option."
+    ]
+  },
+  "staging_journey": {
+    "origin": "https://staging.openagents.com",
+    "command": "coax/web/build/tools/cli-journey --cli apps/openagents-cli/build/openagents --origin https://staging.openagents.com",
+    "exit": 0,
+    "checks": 26,
+    "passed": 26,
+    "receipt": "openagents-cli-journey-2026-11-02/staging.out",
+    "identity": "A separate fresh throwaway Nostr key existed only in process memory and child environment; no owner key/profile was loaded, printed or stored.",
+    "effects": "Made a private staging realm and two private generated-realm forks; moved, undid and published private revisions. No --listed or visibility change, deployment, production call or payment was requested.",
+    "excluded": "The four /edit-v1/quest global-token checks run only in the independent fixture. This run does not deploy or qualify the new revision-fenced API routes."
+  },
+  "fixture_schema_followup": {
+    "source_sha256": "0d57f8041c2677c98368b771a866a3e90dc1af0f4d8735e68a470ad8c34b958b",
+    "change": "The generated-realm document explicitly includes base:null, matching the actual realm_doc v1 schema and allowing the newer publisher to distinguish generated realms from built-in forks safely.",
+    "checks_first": "The new null-base assertion failed before the field was added, then passed.",
+    "command": "coax/bin/coax test coax/web/cli-journey-fixture.coax --library --only 'CLI fixture generated realm'",
+    "checks": 1,
+    "passed": 1,
+    "exit": 0,
+    "receipt": "openagents-cli-journey-2026-11-02/fixture-base-schema-test.out",
+    "scope": "Only the affected pure document-schema check was run. The passing 35/26 journey receipts remain bound to their earlier source and CLI digests; the later publisher branch has separate local qualification. No unchanged staging journey was repeated."
+  },
+  "journey_contract": [
+    "Actual built CLI creates a private realm and reads its revision, empty moves and hash.",
+    "Move trees:0 to 4.5,-2 under the revision read; read back exact coordinates at a newer revision.",
+    "A second move with the old revision exits 5 with conflict status 409; current document revision/hash remain unchanged.",
+    "Undo under the current revision restores empty moves at a new revision.",
+    "Publish that exact revision, fork, and verify forked_from slug/revision.",
+    "Move only the fork to -3,2; verify original revision/hash remain unchanged.",
+    "On a fresh fork, apply two adjacent entity moves: applied=2, exactly one newer revision; undo once and observe both moves gone.",
+    "Apply move, publish, move with an implicit starting revision: applied=3; each accepted revision carries forward and the earlier move survives the later save.",
+    "Apply two moves followed by an invalid third operation and a later undo: exit 2, applied=2; the committed prefix remains and the operation after refusal does not execute.",
+    "Apply with a stale explicit revision: exit 5, conflict status 409, applied=0, and unchanged current document hash/revision."
+  ],
+  "retained_receipts_sha256": {
+    "openagents-cli-journey-2026-11-02/fixture.out": "73e6208f1273b072bc528f0c60338daa28c782a8729c1ec564eed91f7b69f60f",
+    "openagents-cli-journey-2026-11-02/staging.out": "1aff85c145331846e034bad268cfcb8ed8a22eeca96523098167ef6a96fa9e3d",
+    "openagents-cli-journey-2026-11-02/pre-batch-cli-control.out": "fae695d560603a58ca6eea7956a62117ef01cf5bceebd49b167f812c6a471c03",
+    "openagents-cli-journey-2026-11-02/harness-tests.out": "915093b3a9a3e9c6407a9ffe9397b84daa2b89f6f8c2d9ac41cf287390c1adc2",
+    "openagents-cli-journey-2026-11-02/cli-journey.coax.txt": "abff6ba218b5b49d39bcc153ce7833bfc6fc5e3480c73c42e3c7e4eae7ca12a1",
+    "openagents-cli-journey-2026-11-02/cli-journey-fixture.coax.txt": "6011cc88985f44788682b25d1c01d3b68a2f62c2a5fa0d15eaa2c13b7e9ac62d",
+    "openagents-cli-journey-2026-11-02/cli-journey-fixture-with-base.coax.txt": "0d57f8041c2677c98368b771a866a3e90dc1af0f4d8735e68a470ad8c34b958b",
+    "openagents-cli-journey-2026-11-02/fixture-base-schema-test.out": "4eb502f1d2a29eaedb7afe1de488a4ecaa6d0f8db777b0198fc77e25e9980b19"
+  },
+  "boundaries": [
+    "Loopback model does not import CLI/server implementation code. Its Authorization presence check does not qualify NIP-98 authentication.",
+    "CLI preflight can reject a stale revision before POST; exit/status/readback evidence is separate from the API agent's atomic concurrent-write tests.",
+    "The independent fixture models HTTP/document/revision behavior and snapshot history; the 26-check staging result separately observes the named CLI against the already deployed staging API. Neither establishes complete API, native-app or production qualification.",
+    "Production origin is refused with exit 2 before a child is spawned. All subprocess arguments are passed directly, without a shell.",
+    "Each CLI subprocess is capped at 60 seconds; the whole journey has a strict 14-minute deadline.",
+    "Fresh journey realms stay private. No delete route exists; test data remains in staging.",
+    "No production mutation, deployment, owner-key read, visible browser or sound occurred."
+  ]
+}

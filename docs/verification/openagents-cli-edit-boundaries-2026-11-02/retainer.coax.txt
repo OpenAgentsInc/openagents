@@ -1,0 +1,56 @@
+#import "Basic";
+#load "/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/sys/tool.coax";
+#load "/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/sys/fs.coax";
+#load "/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/json/json.coax";
+#load "/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/crypto/sha256-kernel.coax";
+
+#test "evidence digest is the independent SHA256 kernel's exact empty vector" {
+  out: [64] u8; #assert S_hex(S_hash(""),out[..]);
+  #assert cast(string)out[..] == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+}
+
+re_copy :: (src: string, member: string, dest: string, jo: [] Jo) -> bool {
+  data: [8388608] u8; n := fs_read(src,data[..]); if n < 0 { print("unreadable %\n",src); return false; }
+  h: [64] u8; if !S_hex(S_hash(cast(string)data[0..<n]),h[..]) { return false; }
+  path: [4096] u8; target := fs_join(dest,member,path[..]);
+  if fs_exists(target) { print("would overwrite %\n",target); return false; }
+  if !fs_write(target,cast(string)data[0..<n]) { return false; }
+  reread := fs_read(target,data[..]); other: [64] u8;
+  if reread != n || !S_hex(S_hash(cast(string)data[0..<reread]),other[..]) || cast(string)h[..] != cast(string)other[..] { return false; }
+  jo_obj(jo); jo_key(jo,"source"); jo_str(jo,src); jo_key(jo,"member"); jo_str(jo,member); jo_key(jo,"bytes"); jo_int(jo,n); jo_key(jo,"sha256"); jo_str(jo,cast(string)h[..]); jo_key(jo,"read_back"); jo_bool(jo,true); jo_end(jo);
+  return true;
+}
+re_artifact :: (name: string, path: string, jo: [] Jo) -> bool {
+  data: [8388608] u8; n := fs_read(path,data[..]); if n < 0 { return false; }
+  out: [64] u8; if !S_hex(S_hash(cast(string)data[0..<n]),out[..]) { return false; }
+  jo_obj(jo); jo_key(jo,"name"); jo_str(jo,name); jo_key(jo,"path"); jo_str(jo,path); jo_key(jo,"bytes"); jo_int(jo,n); jo_key(jo,"sha256"); jo_str(jo,cast(string)out[..]); jo_end(jo); return true;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  dest := args_at(a[..],0); if dest == "" || !fs_mkdir(dest) { return 2; }
+  manifest: [32768] u8; jo: [1] Jo; jo_start(jo[..],manifest[..]); jo_obj(jo[..]);
+  jo_key(jo[..],"schema"); jo_str(jo[..],"openagents.cli-edit-boundary-evidence.v1"); jo_key(jo[..],"members"); jo_arr(jo[..]);
+  sources := [6] string.["/tmp/openissues-cli-boundary-tool-checks.log","/tmp/openissues-cli-boundary-tool-checks-v2.log","/tmp/openissues-cli-edit-boundaries-transport.log","/tmp/openissues-cli-edit-boundaries-transport.json","/tmp/openissues-cli-edit-boundaries-deps.json","/tmp/retain-cli-boundary-evidence.coax"];
+  members := [6] string.["harness-first-refusal.out","harness-checks.out","transport-and-output.out","transport-and-output.json","harness-dependencies.json","retainer.coax.txt"];
+  for i: 0..<sources.count { if !re_copy(sources[i],members[i],dest,jo[..]) { return 1; } }
+  if args_has(a[..],"--profiles") {
+    if !re_copy("/tmp/openissues-cli-edit-boundaries-publish.log","publish-profiles.out",dest,jo[..]) || !re_copy("/tmp/openissues-cli-edit-boundaries-publish.json","publish-profiles.json",dest,jo[..]) { return 1; }
+  }
+  deps_buf: [32768] u8; dn := fs_read("/tmp/openissues-cli-edit-boundaries-deps.json",deps_buf[..]); nodes: [128] JvNode; d: [1] Jv;
+  if dn < 0 || !jv_parse(d[..],cast(string)deps_buf[0..<dn],nodes[..]) { return 1; }
+  at := jv_get(d[0],0,"sources");
+  for i: 0..<jv_len(d[0],at) {
+    src_buf: [4096] u8; sn := jv_str(d[0],jv_at(d[0],at,i),src_buf[..]); if sn < 1 { return 1; }
+    member: [32] u8; mo: [1] Jo; jo_start(mo[..],member[..]); jo_put(mo[..],"source-"); jo_int(mo[..],i); jo_put(mo[..],".coax.txt");
+    if !re_copy(cast(string)src_buf[0..<sn],jo_text(mo[..]),dest,jo[..]) { return 1; }
+  }
+  jo_end(jo[..]); jo_key(jo[..],"artifacts"); jo_arr(jo[..]);
+  root := "/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/"; path: [4096] u8;
+  if !re_artifact("harness-compiler",fs_join(root,"coax/bin/coax",path[..]),jo[..]) { return 1; }
+  if !re_artifact("harness-binary",fs_join(root,"coax/web/build/tools/cli-edit-boundaries",path[..]),jo[..]) { return 1; }
+  if !re_artifact("current-cli",fs_join(root,"apps/openagents-cli/build/openagents",path[..]),jo[..]) { return 1; }
+  jo_end(jo[..]); jo_key(jo[..],"all_members_read_back"); jo_bool(jo[..],true); jo_end(jo[..]);
+  target: [4096] u8; file := fs_join(dest,"manifest.json",target[..]);
+  if jo[0].bad || fs_exists(file) || !fs_write(file,jo_text(jo[..])) { return 1; }
+  print("all evidence copied and read back\n"); return 0;
+}
