@@ -112,6 +112,26 @@ private 404 to another key and to nobody, its document and fork too, off /og;
 unlisted by slug; public on /og; another key 403; invite only refuses an owner
 not approved and admits one approved; a site admin sees and changes it).
 
+Its room is as private: presence and chat in `made-<slug>` answer 404 to
+anyone `verse.realm_hidden` hides the realm from (`verse.room_hidden`,
+`migrations/0108_realm_seat_presence.sql`; `room.c` passes the site admin
+fact). Checks: `coax/web/api/test_room.py` (private room 404 to a visitor,
+the homepage's GET, chat and another account's seat; its owner and an admin's
+seat are in it).
+
+## A presence is an agent's only when it is signed
+
+A row in a room is `agent`, shown to everyone with `{"agent": true}`, only
+when its presence was signed with NIP-98: `room.c` verifies it
+(`access_signed`, `caller-policy.coax`) and acts with the account's player key
+(`auth.caller_key`); a forged, unbound or replayed signature is 401, never the
+player key. An automation mark that says "seat" without a signature is plain
+automation and stays seen only by itself (0069). A person's page posting
+unsigned clears the flag. A seat's own page, which it names, isn't shown that
+seat. Checks: `coax/web/api/test_room.py` (signed seat seen and flagged with
+its account's name, its page not shown it, forged mark unseen, forged
+signature 401, 40 s fresh, gone at once).
+
 ## Only a root admin changes who is an admin
 
 A root admin is a key in `coax/web/api/admins.conf`, changed only by a deploy.

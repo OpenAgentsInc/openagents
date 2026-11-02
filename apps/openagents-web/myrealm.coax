@@ -44,6 +44,7 @@
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
 #load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
 #load "../../aethyr/budget.coax";
+#load "myrealm-room.coax";   // who else is here (/api/playtest/presence/made-<slug>), an agent's seat tagged AGENT
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -280,6 +281,9 @@ MyRealm :: struct {
   caption: [TYPED] u8; caption_n: int; say: [TALK_LINE] u8; say_n: int;
   visit: [VISIT] u8; visit_n: int;
   type_box: Box; field: [4] f32;
+  // the realm's room (myrealm-room.coax): who else is here, and the post in flight beside the realm's own
+  room: [1] RoomState; room_req: int; room_at: f32; room_next: f32; room_asked: bool; room_off: bool;
+  room_url: [URL] u8; room_url_n: int; room_body: [160] u8; room_body_n: int;
 }
 
 realm_reset :: (s: [] MyRealm) {
@@ -287,7 +291,7 @@ realm_reset :: (s: [] MyRealm) {
   s[0].row_press = -1; s[0].cell_press = -1; s[0].req_id = -1; s[0].z = 6; s[0].talk_p = -1;
   // the edit layer's request and presses are none until it starts (a realm with no slug never starts it)
   s[0].ed[0].req_id = -1; s[0].ed[0].press = -1; s[0].ed[0].row_press = -1; s[0].ed[0].finger = -1; s[0].ed[0].switch_row = -1;
-  s[0].moving = -1; s[0].listed = true;
+  s[0].moving = -1; s[0].listed = true; s[0].room_req = -1;
 }
 begin :: (s: [] MyRealm) { if !s[0].started { realm_reset(s); } }
 
@@ -570,6 +574,7 @@ realm_message :: (s: [] MyRealm, t: [] Track, kind: int, text: string) #export_c
     return;
   }
   if kind == MSG_VOICE && (s[0].voice_held || s[0].heard_due) { talk_heard(s, t, text); return; }
+  if s[0].room_req >= 0 && kind == HTTP_ANSWER_KIND + s[0].room_req { room_answered(s, text); return; }
   if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 && kind - HTTP_ANSWER_KIND == s[0].req_id { take_answer(s, t, text); }
 }
 
@@ -2120,6 +2125,7 @@ realm_probe :: (s: [] MyRealm, f: int) -> int #export_c {
     }
     return -1;
   }
+  if (f >= 70 && f <= 72) || (f >= 1800 && f < 1850 + ROOM_OTHERS) { return room_probe(s, f); }   // who else is here (myrealm-room.coax)
   if f == 60 { return s[0].placed_n; }
   if f == 61 { return s[0].server_undo; }
   if f == 62 { return live_state(s); }
@@ -2262,7 +2268,7 @@ draw_names :: (s: [] MyRealm, out: [] f32, at: int) -> int {
     n = centred(k, out, n, nm, c.x, b.y0 + 15 * k, fit_cap(nm, 8 * k, w - 16 * k), white(k, 0.98));
     if rm > 0 { n = centred(k, out, n, role, c.x, b.y0 + 27 * k, fit_cap(role, 6 * k, w - 16 * k), bronze(k, 0.9)); }
   }
-  return n;
+  return room_names(s, out, n);   // who else is here, an agent's seat with AGENT under its name
 }
 
 // What the owner reads under the realm's name: 1 live (visitors see this version), 2 saved but not
@@ -2557,7 +2563,8 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   walk_x0 := s[0].x; walk_z0 := s[0].z;
   realm_step(s, dt);
   track_walk(t, cast(f64) sqrt((s[0].x - walk_x0) * (s[0].x - walk_x0) + (s[0].z - walk_z0) * (s[0].z - walk_z0)));   // walking milestones
-  if s[0].laid { actors(s); }
+  room_ease(s[0].room[..], dt);
+  if s[0].laid { actors(s); room_actors(s); }
   // the talk ends when you walk away, or when the owner takes TALK away
   if s[0].talk_p >= 0 {
     dx := s[0].person_x[s[0].talk_p] - s[0].x; dz := s[0].person_z[s[0].talk_p] - s[0].z;
@@ -3855,4 +3862,52 @@ gate_clear :: (s: [] MyRealm) -> bool {
   inside_n := 0;
   for k: 0..<g[0].plant_n { if abs(g[0].plant_x[k] - g[0].site_x) < g[0].site_h && abs(g[0].plant_z[k] - g[0].site_z) < g[0].site_h { inside_n += 1; } }
   #assert g[0].seg_n == 6 && inside_n >= 6 && gate_clear(g[..]);
+}
+
+// ---- the realm's room (myrealm-room.coax): who else is here, and an agent's seat tagged AGENT
+ROOM_TWO :: "200\n{\"you\": {\"id\": \"p-1\", \"name\": \"Guest 0001\"}, \"last\": 0, \"messages\": [], \"others\": [{\"id\": \"p-2\", \"name\": \"Ann\", \"x\": 1.5, \"y\": 0, \"z\": 4, \"yaw\": 0.5}, {\"id\": \"p-3\", \"name\": \"Ada Agent\", \"x\": -2, \"y\": 0, \"z\": 3, \"yaw\": 1, \"agent\": true}]}";
+#test "a made realm posts where you are each second, and draws who else is here, an agent's seat tagged AGENT" #steps 80000000 {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "village-green", EMPTY);
+  #assert realm_probe(s[..], 70) == 0 && realm_probe(s[..], 71) == 0 && realm_probe(s[..], 72) == 0;
+  // asked once laid out: where you stand, without the chat (a made realm has none)
+  #assert realm_room_ask(s[..]);
+  #assert room_url_text(s[..]) == "/api/playtest/presence/made-village-green";
+  #assert room_body_text(s[..]) == "{\"x\":0.00,\"y\":0.00,\"z\":6.00,\"yaw\":0.00}";
+  realm_room_sent(s[..], 5);
+  #assert !realm_room_ask(s[..]);               // one at a time
+  plain := frame_of(s[..], t[..], 1280, 800); pieces := s[0].piece_n;
+  // its answer is the room's, not the realm's own request
+  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 5, ROOM_TWO);
+  #assert realm_probe(s[..], 70) == 2 && realm_probe(s[..], 71) == 1 && realm_probe(s[..], 72) == 1 && s[0].spec_ready;
+  #assert realm_probe(s[..], 1800) == 150 && realm_probe(s[..], 1801) == 400 && realm_probe(s[..], 1850) == 0 && realm_probe(s[..], 1851) == 1;
+  #assert realm_probe(s[..], 1804) == PROBE_NONE;
+  // each drawn as a figure; the agent's plate says AGENT under its name, a person's says nothing
+  n := frame_of(s[..], t[..], 1280, 800);
+  #assert s[0].piece_n > pieces;
+  #assert other_tag(s[..], 0) == "" && other_tag(s[..], 1) == "AGENT";
+  #assert !realm_room_ask(s[..]);               // not again within the second
+  s[0].time += ROOM_EVERY; #assert realm_room_ask(s[..]);
+  // no answer, a full room or no player key yet: it waits a little longer and asks again
+  realm_room_sent(s[..], 6); realm_message(s[..], t[..], HTTP_ANSWER_KIND + 6, "0\n");
+  s[0].time += ROOM_EVERY; #assert !realm_room_ask(s[..]);
+  s[0].time += ROOM_WAIT; #assert realm_room_ask(s[..]);
+  // a request that never answers is given up on
+  realm_room_sent(s[..], 7); s[0].time += WAIT + 1; #assert realm_room_ask(s[..]);
+  // 404: a private realm that isn't yours (0108): it stops asking
+  realm_room_sent(s[..], 1); realm_message(s[..], t[..], HTTP_ANSWER_KIND + 1, "404\n{\"error\":\"unknown\"}");
+  s[0].time += 60; #assert !realm_room_ask(s[..]);
+  // the host had no slot: asked again next time
+  q: [1] MyRealm; qt: [1] Track;
+  opened(q[..], qt[..], "village-green", EMPTY);
+  #assert realm_room_ask(q[..]);
+  realm_room_sent(q[..], -1);
+  q[0].time += ROOM_EVERY; #assert realm_room_ask(q[..]);
+  // the template's own small realm, with no slug, has no room
+  b: [1] MyRealm; bt: [1] Track;
+  track_init(bt[..], "realm");
+  realm_message(b[..], bt[..], HOST_FACTS, "tab=t1\nurl=https://openagents.com/realms/built\n");
+  realm_catalog(b[..], PACK);
+  m := frame_of(b[..], bt[..], 1280, 800);
+  #assert b[0].spec_ready && !realm_room_ask(b[..]);
 }

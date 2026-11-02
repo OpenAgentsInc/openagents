@@ -101,3 +101,56 @@ check("a person doesn't see a pair", pair_post(person["key"], {}, 0) == [])
 check("nor does the homepage", [o["id"] for o in room_call("GET", PAIR_ROOM)[1]["others"]] == [person["id"]])
 check("a pair's GET sees its pair", sorted(o["id"] for o in json.loads(call("GET", PAIR_ROOM, None, {"X-Verse-Player": pa["key"], "X-Verse-Automation": "pair-ff-1"})[1])["others"]) == sorted([person["id"], pa["id"], pb["id"]]))
 check("a GET joins nobody",room_call("GET", "/api/playtest/presence/nobody-here") == (200, {"others": [], "count": 0}))
+
+# A made realm's room and an agent's seat in it (0108; docs/verse/realm-seat.md slice 4). A seat's
+# presence is signed (NIP-98): everyone sees it, {"agent": true} and its account's name; its own page
+# (named in "page") doesn't. An unsigned "seat" mark is plain automation. A private realm's room is
+# 404 to all but its owner and site admins.
+import tempfile
+
+
+def seat_post(room, body, keyfile=None, headers=None):
+    raw = json.dumps(body).encode()
+    h = {"Content-Type": "application/json", **(headers or {})}
+    if keyfile:
+        f = tempfile.NamedTemporaryFile(delete=False)
+        f.write(raw)
+        f.close()
+        sig = subprocess.run([os.environ["SIGN"], "--key", keyfile, "POST", API + "/api/playtest/presence/" + room, f.name],
+                             capture_output=True, text=True, check=True).stdout.strip()
+        h["Authorization"] = "Nostr " + sig
+    status, out, _ = call("POST", "/api/playtest/presence/" + room, raw, h)
+    return status, json.loads(out)
+
+
+owner, visitor, page = mint(), mint(), mint()
+for slug, vis in (("seat-green", "unlisted"), ("seat-secret", "private")):
+    sql(f"insert into verse.worlds (id, owner_player, created_ms) values ('made-{slug}', '{owner['id']}', verse.now_ms())")
+    sql(f"insert into verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, visibility) "
+        f"values ('{slug}', 'made-{slug}', 'S', 'lowpoly', 'meadow', 'day', '{{}}', '{{}}', verse.now_ms(), '{vis}')")
+GR = "made-seat-green"
+room_call("POST", "/api/playtest/presence/" + GR, {"x": 1, "z": 2}, visitor["key"])
+status, seat = seat_post(GR, {"x": 5, "z": 6, "yaw": 1.5, "page": page["id"]}, os.environ["OTHER_KEY"])
+check("a signed presence is an agent's seat, under its account", status == 200 and seat["you"]["agent"] is True
+      and [o["id"] for o in seat["others"]] == [visitor["id"]], seat)
+status, v = room_call("POST", "/api/playtest/presence/" + GR, {"x": 1, "z": 2}, visitor["key"])
+agents = [o for o in v["others"] if o.get("agent")]
+check("a person in the realm sees the seat, flagged agent, where it stands", status == 200 and len(agents) == 1
+      and agents[0]["id"] == seat["you"]["id"] and agents[0]["name"] == seat["you"]["name"] and agents[0]["x"] == 5, v)
+status, raw, _ = call("POST", "/api/playtest/presence/" + GR, b"{}", {"Content-Type": "application/json", "X-Verse-Player": page["key"], "X-Verse-Automation": "realm-seat"})
+check("the seat's own page sees the people, not its own agent", status == 200 and [o["id"] for o in json.loads(raw)["others"]] == [visitor["id"]], raw)
+check("the homepage counts the seat", seat["you"]["id"] in [o["id"] for o in room_call("GET", "/api/playtest/presence/" + GR)[1]["others"]])
+forged = mint()
+call("POST", "/api/playtest/presence/" + GR, b"{}", {"Content-Type": "application/json", "X-Verse-Player": forged["key"], "X-Verse-Automation": "seat"})
+check("an unsigned seat mark is automation, unseen", forged["id"] not in [o["id"] for o in room_call("POST", "/api/playtest/presence/" + GR, {}, visitor["key"])[1]["others"]])
+sql(f"update verse.room_here set seen_ms = seen_ms - 20000 where room = '{GR}' and player = '{seat['you']['id']}'")
+check("a seat stays seen through a long action (40 s, not 6)", seat["you"]["id"] in [o["id"] for o in room_call("GET", "/api/playtest/presence/" + GR)[1]["others"]])
+check("a seat leaves at once", seat_post(GR, {"gone": True}, os.environ["OTHER_KEY"]) == (200, {"gone": True})
+      and seat["you"]["id"] not in [o["id"] for o in room_call("GET", "/api/playtest/presence/" + GR)[1]["others"]])
+check("a forged signature is refused, not taken as the player key", seat_post(GR, {}, None, {"Authorization": "Nostr e30=", "X-Verse-Player": visitor["key"]})[0] == 401)
+SR = "made-seat-secret"
+check("a private realm's room is 404 to a visitor", room_call("POST", "/api/playtest/presence/" + SR, {}, visitor["key"])[0] == 404
+      and room_call("GET", "/api/playtest/presence/" + SR)[0] == 404 and room_call("GET", "/api/playtest/chat/" + SR + "?after=0")[0] == 404)
+check("and to another account's seat", seat_post(SR, {}, os.environ["OTHER_KEY"])[0] == 404)
+check("its owner is in it", room_call("POST", "/api/playtest/presence/" + SR, {}, owner["key"])[0] == 200)
+check("a site admin's seat is in it", seat_post(SR, {}, os.environ["ADMIN_KEY"])[0] == 200)

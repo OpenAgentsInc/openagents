@@ -3,7 +3,8 @@
 Status: slices 1 to 3 built, 2026-11-02 (#12637): the scene probe, the seat
 engine (`coax/lib/media/realm_seat.coax`, run by `coax/web/tool.sh
 realm-seat`) and `openagents realm play` with its verbs and MCP tools.
-Presence and hosted seats are #12655.
+Slice 4, presence in made realms with the AGENT tag, built 2026-11-02
+(#12655). Slice 5, hosted seats, is not built yet (#12655).
 
 Agents can make and edit realms through the routes and the CLI
 ([realm-edit.md](realm-edit.md), [the CLI spec](../cli/2026-11-01-openagents-cli-v1.md)).
@@ -19,8 +20,9 @@ A realm runs in the browser. Its Coax module (`myrealm.wasm` for made realms,
 its own module for hand-built ones) steps the player, the camera, collision
 and the characters, and draws the frame. The server holds the document, the
 edits and the character chat (`POST /api/playtest/npc/ask`), but has no
-running copy of the world. Only the Haunted House sends presence
-(`POST /api/presence/<room>`); made realms don't show other players yet.
+running copy of the world. Presence (`POST /api/playtest/presence/<room>`)
+is where each visitor stands, and nothing more; a made realm's room is
+`made-<slug>` (slice 4).
 
 So a seat must run the realm's own module. The server can't answer "what
 would happen if I walked north" by itself.
@@ -111,10 +113,26 @@ anything a player couldn't.
   daily cap as a visitor's. Walking and looking cost nothing on the server.
   Seats carry the automation mark (`verse-automation`), so analytics leaves
   them out.
-- **Shown to others.** When made realms get presence, a seat shows as a
-  figure with an AGENT tag over its head, its account's name, and the
-  `agent` flag on its presence row. Until then it's invisible to other
-  visitors, which is honest because they can't see each other either.
+- **Shown to others** (**built**, slice 4). A made realm's page posts where
+  you are about every second to `/api/playtest/presence/made-<slug>` and
+  draws everyone else there as a figure with their name over it
+  (`apps/openagents-web/myrealm-room.coax`). A seat's holder posts the seat's
+  presence itself, signed with the CLI's key (NIP-98), so the server knows
+  it's that account's seat: the row is marked `agent`
+  (`coax/web/api/migrations/0108_realm_seat_presence.sql`), every page in the
+  realm draws it in bronze with its account's name and AGENT under it, and
+  the homepage's GET counts it. Only a signature marks a row `agent`; an
+  unsigned "seat" automation mark is plain automation and stays hidden, as
+  every check does (0069). A seat posts between actions, and an action takes
+  up to 30 s, so a seat's row stays fresh for 40 s instead of 6; the holder
+  posts `{"gone": true}` when it closes. The seat's own page (a guest player,
+  automation) is in the room to see the others; the seat names it (`page`)
+  and that page isn't shown its own agent. A private realm's room is 404 to
+  everyone but its owner and site admins, as its routes are. Checks:
+  `myrealm.coax` ("a made realm posts where you are each second ..."),
+  `room.coax`, `realm_seat.coax` ("a seat's presence ..."), and
+  `coax/web/api/test_room.py` (signed seat, its page, forged mark, 40 s,
+  leaving, private room).
 
 ## Where it runs
 
@@ -138,9 +156,18 @@ panel) comes after, on the same runner as the project agents.
    between commands; see [the CLI spec](../cli/2026-11-01-openagents-cli-v1.md),
    "Play a realm". `openagents mcp --read-only` offers the verbs that change
    nothing on the server: all but `say` and `use`.
-4. **Presence for made realms**, and the AGENT tag (#12655).
+4. **Presence for made realms**, and the AGENT tag (**built**, #12655): see
+   "Shown to others" above. The probe adds fields 70 (how many others), 71
+   (how many of them are agents), 72 (the room answered), 1800 + 2i and
+   1801 + 2i (where each is, cm) and 1850 + i (1 for an agent); a seat's
+   observation carries `others` and `agents`.
 5. **Hosted seats**, for agents with no Chrome and for the web agent panel
-   (#12655).
+   (#12655, **not built**). The limits stay as above: one seat an account, at
+   most 8 a site, closed after 10 idle minutes, acting as its account.
+   Seating a private realm's owner needs the headless page itself to act as
+   the account (a NIP-98 signature on the page's realm requests, as
+   `realm shot --as-me` needs too); the presence route already takes the
+   signature, but the page's spec and talk requests don't carry one yet.
 
 The check, run against staging on 2026-11-02 with the made realm
 `village-green` (a well, two houses and Maple, a baker): `play`, `look

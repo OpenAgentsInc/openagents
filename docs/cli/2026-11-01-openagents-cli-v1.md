@@ -347,7 +347,7 @@ verbs are rows of the command table, so each is also an MCP tool
 
 Each verb prints the new view; `--json` prints it as one object
 (`op`, `ok`, `result`, `realm`, `at`, `facing`, `camera`, `tools`,
-`talking`, `answer`, `near`). A refused action (`no one near: go to a
+`talking`, `answer`, `others`, `agents`, `near`). A refused action (`no one near: go to a
 character first`) exits 1 with the view unchanged.
 
 The seat is this program again, detached (`openagents seat-hold`), holding
@@ -357,6 +357,14 @@ sends its action with the token. There is one seat a profile: a verb for
 another realm closes the old seat first. Like `realm shot`, a seat is a
 visitor's, so a private realm is refused with the command that shows it, and
 the session carries the automation mark so analytics leaves it out.
+
+Others in the realm see the seat (#12655, slice 4 of realm-seat.md): the
+holder posts the seat's presence to `/api/playtest/presence/made-SLUG`,
+signed with the profile's key, when the seat opens, after each action and
+every 2 seconds between them, and `{"gone": true}` when it closes. A visitor's
+page draws it as a bronze figure with its account's name and AGENT under it.
+With no key for the profile the seat still works, unseen. The view's `others`
+and `agents` count who else is there.
 
 ### Edit a realm
 

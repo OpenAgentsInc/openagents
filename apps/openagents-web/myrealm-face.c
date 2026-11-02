@@ -1,6 +1,6 @@
 // A realm someone built: its C face for the browser (coax/web/host.js), scalar Wasm exports over
 // myrealm.coax. The host keeps one MyRealm; the face keeps the page's Track (analytics.coax), hands
-// the realm's one request and the Track's batches to the host's HTTP import, and gives the host the
+// the realm's one request, its room's presence post and the Track's batches to the host's HTTP import, and gives the host the
 // pack's catalog (asset 0) and the scene drawn from it. It decides nothing.
 #include "myrealm.h"
 #include "analytics-face.h"
@@ -31,6 +31,10 @@ static void drain(uint32_t state) {
                               (uint32_t)(uintptr_t)s->req_body.e, (uint32_t)s->req_body_n, (int32_t)s->req_flags);
     realm_requested(at(state), id);
   }
+  // the realm's room (myrealm-room.coax): where you are, about every second, with the player key (13: POST, answer, key)
+  if (realm_room_ask(at(state)))
+    realm_room_sent(at(state), coaxial_http((uint32_t)(uintptr_t)s->room_url.e, (uint32_t)s->room_url_n,
+                                            (uint32_t)(uintptr_t)s->room_body.e, (uint32_t)s->room_body_n, 13));
   // who may make a realm (access.coax): asked once
   if (realm_access_wants(at(state))) {
     static const char access_url[] = "/api/playtest/access";

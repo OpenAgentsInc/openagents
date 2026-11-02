@@ -160,14 +160,14 @@ save_line :: (text: string, at: [] int) -> string {
   return line;
 }
 save_number :: (s: string) -> f64 {
-  v: f64 = 0; seen := false;
+  v: f64 = 0; any_digit := false;
   for i: 0..<s.count {
     c := s[i];
     if c == 46 { break; }
     if c < 48 || c > 57 { return -1; }
-    v = v * 10 + cast(f64) (cast(int) c - 48); seen = true;
+    v = v * 10 + cast(f64) (cast(int) c - 48); any_digit = true;
   }
-  return ifx seen then v else -1;
+  return ifx any_digit then v else -1;
 }
 save_hex :: (c: u8) -> int { return ifx c >= 48 && c <= 57 then cast(int) c - 48 else ifx c >= 97 && c <= 102 then cast(int) c - 87 else -1; }
 

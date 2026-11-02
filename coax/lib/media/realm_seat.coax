@@ -147,6 +147,8 @@ Seat :: struct {
   people: int; px: [SEAT_PEOPLE] f32; pz: [SEAT_PEOPLE] f32;
   answer: [1200] u8; answer_n: int;
   result: [200] u8; result_n: int;
+  others: int; agents: int;   // who else is in the realm's room, and how many of them are agents' seats
+  page: [48] u8; page_n: int; // the page's own playtest player id: its presence's agent isn't shown to it
 }
 seat_note :: (s: [] Seat, what: string) {
   s[0].result_n = 0; for c: what { if s[0].result_n < s[0].result.count { s[0].result[s[0].result_n] = c; s[0].result_n += 1; } }
@@ -223,7 +225,7 @@ seat_drag :: (c: [] Cdp, x: f32, y: f32, dx: f32, dy: f32) -> bool {
 }
 
 // The probe's numbers, in one evaluation: the page's fields as a JSON array (docs/verse/realm-seat.md).
-SEAT_SCENE_JS :: "(() => { const c = globalThis.coaxial; if (!c || !c.ready || c.guardProbe(0) !== 1 || c.guardProbe(64) <= 0) return ''; const g = (f) => c.guardProbe(f), ents = [], people = [], bytes = []; for (let e = 0; e < g(64) && e < 96; e++) ents.push([g(1400 + e), g(1000 + 2 * e), g(1001 + 2 * e)]); for (let p = 0; p < g(65) && p < 4; p++) people.push([g(1700 + 2 * p), g(1701 + 2 * p)]); for (let i = 0; i < 400; i++) { const b = g(3000 + i); if (b < 0) break; bytes.push(b); } return JSON.stringify({x: g(10), z: g(11), yaw: g(17), pitch: g(19), cam: g(18), tools: g(69), talk: g(66), wait: g(67), lines: g(68), busy: g(14), ents, people, answer: new TextDecoder().decode(Uint8Array.from(bytes))}); })()";
+SEAT_SCENE_JS :: "(() => { const c = globalThis.coaxial; if (!c || !c.ready || c.guardProbe(0) !== 1 || c.guardProbe(64) <= 0) return ''; const g = (f) => c.guardProbe(f), ents = [], people = [], bytes = []; for (let e = 0; e < g(64) && e < 96; e++) ents.push([g(1400 + e), g(1000 + 2 * e), g(1001 + 2 * e)]); for (let p = 0; p < g(65) && p < 4; p++) people.push([g(1700 + 2 * p), g(1701 + 2 * p)]); for (let i = 0; i < 400; i++) { const b = g(3000 + i); if (b < 0) break; bytes.push(b); } return JSON.stringify({x: g(10), z: g(11), yaw: g(17), pitch: g(19), cam: g(18), tools: g(69), talk: g(66), wait: g(67), lines: g(68), busy: g(14), others: Math.max(g(70), 0), agents: Math.max(g(71), 0), ents, people, answer: new TextDecoder().decode(Uint8Array.from(bytes))}); })()";
 
 // Reads the page into s; false when the realm isn't laid out yet.
 seat_read :: (s: [] Seat, c: [] Cdp) -> bool {
@@ -238,6 +240,7 @@ seat_read :: (s: [] Seat, c: [] Cdp) -> bool {
   s[0].cam = jv_int(j, jv_get(j, 0, "cam"), 0); s[0].tools = jv_int(j, jv_get(j, 0, "tools"), 0);
   s[0].talk = jv_int(j, jv_get(j, 0, "talk"), -1); s[0].waiting = jv_int(j, jv_get(j, 0, "wait"), 0) == 1;
   s[0].lines = jv_int(j, jv_get(j, 0, "lines"), 0); s[0].busy = jv_int(j, jv_get(j, 0, "busy"), 0) == 1;
+  s[0].others = jv_int(j, jv_get(j, 0, "others"), 0); s[0].agents = jv_int(j, jv_get(j, 0, "agents"), 0);
   ents := jv_get(j, 0, "ents"); s[0].ent_n = 0;
   for e: 0..<jv_len(j, ents) {
     if s[0].ent_n >= SEAT_ENTS { break; }
@@ -484,6 +487,8 @@ seat_observation :: (s: [] Seat, op: string, ok: bool, out: [] SeatBuf) {
   if s[0].talk >= 0 && s[0].talk < s[0].spec_people { seat_q(o, seat_name(s, s[0].talk)); } else if s[0].talk >= 0 { seat_put(o, "\"character:"); seat_int(o, s[0].talk); seat_put(o, "\""); } else { seat_put(o, "null"); }
   // the answer while you talk (a bye ends it)
   seat_put(o, ",\"answer\":"); if s[0].talk >= 0 && s[0].answer_n > 0 { seat_q(o, cast(string) s[0].answer[0..<s[0].answer_n]); } else { seat_put(o, "null"); }
+  // who else is here (the realm's room, myrealm-room.coax), and how many of them are agents
+  seat_put(o, ",\"others\":"); seat_int(o, s[0].others); seat_put(o, ",\"agents\":"); seat_int(o, s[0].agents);
   // what's near, nearest first: characters, then every entity but trees and lanterns past 12 m
   ids: [SEAT_PEOPLE + SEAT_ENTS] int; ds: [SEAT_PEOPLE + SEAT_ENTS] f32; n := 0;
   for p: 0..<s[0].people { ids[n] = -1 - p; ds[n] = seat_dist(s, s[0].px[p], s[0].pz[p]); n += 1; }
@@ -511,6 +516,45 @@ seat_observation :: (s: [] Seat, op: string, ok: bool, out: [] SeatBuf) {
   }
   seat_put(o, "]}");
 }
+// ---- the seat's presence (docs/verse/realm-seat.md slice 4; migrations/0108): the holder posts it,
+// signed with the CLI's key, so others in the realm see an agent with its account's name
+
+seat_presence_path :: (s: [] Seat, out: [] SeatBuf) -> string {
+  out[0].n = 0; out[0].bad = false;
+  seat_put(out, "/api/playtest/presence/made-"); seat_put(out, seat_slug(s));
+  return seat_text(out);
+}
+// A number in thousandths: -0.004, 1.571.
+seat_milli :: (o: [] SeatBuf, v: f32) {
+  m := cast(int) (v * 1000 + (ifx v < 0 then -0.5f32 else 0.5f32));
+  if m < 0 { seat_put(o, "-"); m = -m; }
+  seat_int(o, m / 1000); seat_put(o, ".");
+  f := m % 1000;
+  if f < 100 { seat_put(o, "0"); }
+  if f < 10 { seat_put(o, "0"); }
+  seat_int(o, f);
+}
+// Where the seat stands and faces ({"x","z","yaw"}: metres, and the page's yaw in radians), or leaving.
+seat_presence_body :: (s: [] Seat, gone: bool, out: [] SeatBuf) -> string {
+  out[0].n = 0; out[0].bad = false;
+  if gone { seat_put(out, "{\"gone\":true}"); return seat_text(out); }
+  seat_put(out, "{\"x\":"); seat_milli(out, s[0].x); seat_put(out, ",\"z\":"); seat_milli(out, s[0].z);
+  seat_put(out, ",\"yaw\":"); seat_milli(out, s[0].yaw * 0.0174532925);
+  if s[0].page_n > 0 { seat_put(out, ",\"page\":\""); seat_put(out, cast(string) s[0].page[0..<s[0].page_n]); seat_put(out, "\""); }
+  seat_put(out, "}");
+  return seat_text(out);
+}
+// Keeps the page's playtest player id (p- and lower-case letters and digits), or none.
+seat_page_set :: (s: [] Seat, id: string) {
+  s[0].page_n = 0;
+  if id.count < 3 || id.count > s[0].page.count || id[0] != 'p' || id[1] != '-' { return; }
+  for i: 2..<id.count { c := id[i]; if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { return; } }
+  for i: 0..<id.count { s[0].page[i] = id[i]; }
+  s[0].page_n = id.count;
+}
+SEAT_PAGE_JS :: "(() => { try { const p = JSON.parse(localStorage.getItem('verse.player') || 'null'); return p && typeof p.id === 'string' ? p.id : ''; } catch { return ''; } })()";
+seat_read_page :: (s: [] Seat, c: [] Cdp) { b: [96] u8; seat_page_set(s, seat_js_str(c, SEAT_PAGE_JS, b[..])); }
+
 // A JSON string.
 seat_q :: (o: [] SeatBuf, s: string) {
   buf: [2600] u8; j: [1] Jo; jo_start(j[..], buf[..]); jo_str(j[..], s);
@@ -528,10 +572,34 @@ seat_q :: (o: [] SeatBuf, s: string) {
   seat_note(s[..], "reached");
   o: [1] SeatBuf; seat_observation(s[..], "go", true, o[..]);
   t := seat_text(o[..]);
-  #assert t == "{\"op\":\"go\",\"ok\":true,\"result\":\"reached\",\"realm\":\"village-green\",\"at\":[0.0,0.0],\"facing\":0.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"near\":[{\"kind\":\"centre\",\"id\":\"entity:2\",\"d\":1.0,\"bearing\":90.0},{\"kind\":\"house\",\"id\":\"entity:1\",\"d\":3.0,\"bearing\":90.0},{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":5.0,\"bearing\":0.0}]}";
+  #assert t == "{\"op\":\"go\",\"ok\":true,\"result\":\"reached\",\"realm\":\"village-green\",\"at\":[0.0,0.0],\"facing\":0.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"centre\",\"id\":\"entity:2\",\"d\":1.0,\"bearing\":90.0},{\"kind\":\"house\",\"id\":\"entity:1\",\"d\":3.0,\"bearing\":90.0},{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":5.0,\"bearing\":0.0}]}";
   s[0].talk = 0; seat_observation(s[..], "say", true, o[..]);
   nodes: [256] JvNode; d: [1] Jv;
   #assert jv_parse(d[..], seat_text(o[..]), nodes[..]) && jv_raw(d[0], jv_get(d[0], 0, "talking")) == "Maple" && jv_raw(d[0], jv_get(d[0], 0, "answer")) == "an old line";
+}
+
+#test "a seat's presence: where it stands, its facing in the page's radians, and leaving" {
+  s: [1] Seat;
+  #assert seat_init(s[..], "https://staging.openagents.com", "village-green", false);
+  s[0].x = 1.5; s[0].z = -2.25; s[0].yaw = 90;
+  o: [1] SeatBuf;
+  #assert seat_presence_path(s[..], o[..]) == "/api/playtest/presence/made-village-green";
+  #assert seat_presence_body(s[..], false, o[..]) == "{\"x\":1.500,\"z\":-2.250,\"yaw\":1.571}";
+  s[0].x = -0.004; s[0].yaw = -45;
+  #assert seat_presence_body(s[..], false, o[..]) == "{\"x\":-0.004,\"z\":-2.250,\"yaw\":-0.785}";
+  s[0].yaw = 180; s[0].x = 0;
+  #assert seat_presence_body(s[..], false, o[..]) == "{\"x\":0.000,\"z\":-2.250,\"yaw\":3.142}";
+  #assert seat_presence_body(s[..], true, o[..]) == "{\"gone\":true}";
+  // the seat's own page, named so it isn't shown its own agent; anything else isn't sent
+  seat_page_set(s[..], "p-0a1b2c3d4e5f6a7b");
+  #assert seat_presence_body(s[..], false, o[..]) == "{\"x\":0.000,\"z\":-2.250,\"yaw\":3.142,\"page\":\"p-0a1b2c3d4e5f6a7b\"}";
+  seat_page_set(s[..], "p-1\",\"x\":9"); #assert s[0].page_n == 0;
+  seat_page_set(s[..], "kiki-1"); #assert s[0].page_n == 0;
+  // who else is here, as the page counts them (myrealm-room.coax): in the observation
+  s[0].others = 2; s[0].agents = 1;
+  seat_observation(s[..], "look", true, o[..]);
+  nodes: [256] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], seat_text(o[..]), nodes[..]) && jv_raw(d[0], jv_get(d[0], 0, "others")) == "2" && jv_raw(d[0], jv_get(d[0], 0, "agents")) == "1";
 }
 
 // Opens the realm's page as a visitor (or as player, the page's playtest player {"key","id"}), with

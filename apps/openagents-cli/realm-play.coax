@@ -318,6 +318,27 @@ seat_reply :: (h: int, text: string) {
   ok = ok && cxsock_write(h, 10) == 0 && cxsock_flush(h, 5000) == 0;
 }
 
+// The seat's presence in the realm's room (docs/verse/realm-seat.md slice 4, migrations/0108):
+// signed with the profile's key, so others in the realm see an agent with its account's name and
+// an AGENT tag. Posted when the seat opens, after each action and every SEAT_PRESENCE_MS between
+// them; {"gone": true} when it closes. False when the server won't have it (no key: 401 or 403; a
+// private realm: 404), and the holder stops posting; the seat itself goes on.
+SEAT_PRESENCE_MS :: 2000;
+seat_present :: (a: [] Args, profile: string, s: [] Seat, c: [] Cdp, gone: bool) -> bool {
+  if !gone { read := seat_read(s, c); if s[0].page_n == 0 { seat_read_page(s, c); } }
+  pb: [1] SeatBuf; bb: [1] SeatBuf; out: [4096] u8;
+  res := api_call(a, profile, "POST", seat_presence_path(s, pb[..]), seat_presence_body(s, gone, bb[..]), out[..]);
+  return !seat_presence_refused(res.error == HTTP_OK, res.status);
+}
+// The server's answer means the seat won't be seen: posting again won't change it.
+seat_presence_refused :: (answered: bool, status: int) -> bool {
+  return answered && (status == 401 || status == 403 || status == 404 || status == 405);
+}
+#test "a seat stops posting its presence only when the server refuses it for good" {
+  #assert seat_presence_refused(true, 401) && seat_presence_refused(true, 403) && seat_presence_refused(true, 404) && seat_presence_refused(true, 405);
+  #assert !seat_presence_refused(true, 200) && !seat_presence_refused(true, 429) && !seat_presence_refused(true, 500) && !seat_presence_refused(false, 0);
+}
+
 seat_hold_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   slug := positional(a, 1); origin := positional(a, 2);
   p: [1024] u8; path := seat_file(profile, p[..]);
@@ -340,8 +361,10 @@ seat_hold_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   seat_put(f[..], "\nport "); seat_int(f[..], port); seat_put(f[..], "\ntoken "); seat_put(f[..], token); seat_put(f[..], "\n");
   if cxcli_write_private(pv, f[0].b[0..<f[0].n]) != 0 { x := cxsock_close(l); cdp_close(c[..]); return EXIT_FAIL; }
   png: [SEAT_SHOT] u8; line: [SEAT_LINE] u8; o: [1] SeatBuf;
+  present := seat_present(a, profile, s[..], c[..], false); posted := proc_now_ms();
   last := proc_now_ms();
   while proc_now_ms() - last < SEAT_IDLE_MS {
+    if present && proc_now_ms() - posted >= SEAT_PRESENCE_MS { present = seat_present(a, profile, s[..], c[..], false); posted = proc_now_ms(); }
     h := cxsock_accept(l, 1000);
     if h < 0 { continue; }
     n := seat_read_line(h, line[..], 10000);
@@ -358,7 +381,9 @@ seat_hold_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
     seat_reply(h, seat_text(o[..]));
     x := cxsock_close(h);
     if c[0].h < 0 { break; }   // the browser went
+    if present { present = seat_present(a, profile, s[..], c[..], false); posted = proc_now_ms(); }
   }
+  if present { gone := seat_present(a, profile, s[..], c[..], true); }
   // the file goes with the seat, unless a newer seat has written its own
   now: [2048] u8; m := fs_read(path, now[..]); atb: [1] SeatAt; at := atb[..];
   if m > 0 && seat_at_read(cast(string) now[0..<m], at) && seat_at_token(at) == token { gone := fs_remove(path); }

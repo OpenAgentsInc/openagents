@@ -1,0 +1,115 @@
+// A made realm's room (docs/verse/realm-seat.md slice 4, #12655): the page posts where you are
+// about every second to /api/playtest/presence/made-<slug> (coax/web/api/room.c; migrations 0014,
+// 0069, 0108) and draws who else is here, each a figure with its name over it. An agent's seat
+// (`openagents realm play`, whose holder posts the seat's presence signed with its account's key)
+// comes with "agent": true, and its plate says AGENT under its name. Checks and other automation
+// stay out of it (0069). A private realm's room is its owner's and site admins' only: anyone else
+// gets 404, and the page stops asking. A made realm's room has no chat yet.
+//
+// The face sends the request (realm_room_ask, then realm_room_sent with the host's id) beside the
+// realm's own one; its answer comes back through realm_message.
+#load "room.coax";
+
+ROOM_WAIT :: 4.0;            // seconds more before asking again after a post that failed
+ROOM_SEEN_M :: 20.0;         // names over the others this near
+ROOM_RGB :: [3] f32.[0.7, 0.5, 0.36];      // a person here
+AGENT_RGB :: [3] f32.[0.86, 0.7, 0.24];    // an agent's seat: bronze
+
+room_url_text :: (s: [] MyRealm) -> string { return cast(string) s[0].room_url[0..<s[0].room_url_n]; }
+room_body_text :: (s: [] MyRealm) -> string { return cast(string) s[0].room_body[0..<s[0].room_body_n]; }
+
+// True when a post is due: the url and body are ready, and the face sends them and says the id.
+realm_room_ask :: (s: [] MyRealm) -> bool #export_c {
+  if s[0].slug_n == 0 || !s[0].spec_ready || s[0].room_off { return false; }
+  if s[0].room_req >= 0 {
+    if s[0].time - s[0].room_at <= WAIT { return false; }
+    s[0].room_req = -1;   // never answered: given up on
+  }
+  if s[0].room_asked && s[0].time < s[0].room_next { return false; }
+  name: [80] u8;
+  nn := room_put(name[..], 0, "made-"); nn = room_put(name[..], nn, slug_text(s));
+  un := ifx nn > 0 then room_url(cast(string) name[0..<nn], false, s[0].room_url[..]) else -1;
+  if un < 0 { s[0].room_off = true; return false; }   // a slug too long for a room
+  s[0].room_url_n = un;
+  b := s[0].room_body[..];
+  o := room_put(b, 0, "{\"x\":"); o = room_put_num(b, o, s[0].x);
+  o = room_put(b, o, ",\"y\":"); o = room_put_num(b, o, s[0].y);
+  o = room_put(b, o, ",\"z\":"); o = room_put_num(b, o, s[0].z);
+  o = room_put(b, o, ",\"yaw\":"); o = room_put_num(b, o, s[0].yaw);
+  o = room_put(b, o, "}");
+  s[0].room_body_n = ifx o > 0 then o else 0;
+  return o > 0;
+}
+// The host's id for the post (-1: it had no slot, so the next is asked a second later).
+realm_room_sent :: (s: [] MyRealm, id: int) #export_c {
+  s[0].room_asked = true; s[0].room_next = s[0].time + ROOM_EVERY;
+  s[0].room_req = id; s[0].room_at = s[0].time;
+}
+room_answered :: (s: [] MyRealm, text: string) {
+  s[0].room_req = -1;
+  status := room_take(s[0].room[..], text);
+  if status == 404 { s[0].room_off = true; s[0].room[0].others = 0; return; }
+  if status != 200 { s[0].room_next = s[0].time + ROOM_EVERY + ROOM_WAIT; }
+}
+
+// Who else is here, drawn among the actors: a figure each, an agent's in bronze.
+room_actors :: (s: [] MyRealm) {
+  r := s[0].room[..];
+  for i: 0..<r[0].others {
+    x := r[0].at[i * 4]; y := r[0].at[i * 4 + 1]; z := r[0].at[i * 4 + 2]; yaw := r[0].at[i * 4 + 3];
+    dx := r[0].to[i * 4] - x; dz := r[0].to[i * 4 + 2] - z;
+    pace := ifx dx * dx + dz * dz > 0.0004 then 1.0f32 else 0.0f32;
+    agent := r[0].agent[i];
+    cr := ifx agent then AGENT_RGB[0] else ROOM_RGB[0];
+    cg := ifx agent then AGENT_RGB[1] else ROOM_RGB[1];
+    cb := ifx agent then AGENT_RGB[2] else ROOM_RGB[2];
+    pawn(s, x, y, z, yaw, 1, cr, cg, cb, false, i + 3, pace, s[0].time * 1.6);
+  }
+}
+
+// What a plate says under someone's name: AGENT for an agent's seat, else nothing.
+other_tag :: (s: [] MyRealm, i: int) -> string { return ifx room_other_agent(s[0].room[..], i) then "AGENT" else ""; }
+
+// Their names, on a plate over each within ROOM_SEEN_M, an agent's with AGENT under it.
+room_names :: (s: [] MyRealm, out: [] f32, at: int) -> int {
+  k := s[0].dpr; n := at;
+  r := s[0].room[..];
+  for i: 0..<r[0].others {
+    x := r[0].at[i * 4]; y := r[0].at[i * 4 + 1]; z := r[0].at[i * 4 + 2];
+    dx := x - s[0].x; dz := z - s[0].z;
+    if sqrt(dx * dx + dz * dz) > ROOM_SEEN_M { continue; }
+    c := seen(s, x, y + 2.1, z);
+    if !c.ok { continue; }
+    buf: [ROOM_NAME] u8;
+    m := put(buf[..], 0, room_other_name(r, i)); upper(buf[..], m);
+    nm := cast(string) buf[0..<m];
+    tag := other_tag(s, i);
+    w := hi(measure(nm, GAP, SPACE, false) * 8 * k, measure(tag, GAP, SPACE, false) * 6 * k) + 20 * k;
+    w = lo(w, 260 * k);
+    b := Box.{x0 = c.x - w * 0.5, y0 = c.y - 34 * k, x1 = c.x + w * 0.5, y1 = c.y};
+    if !plate(s, b, 0.85, LOOK_PLAIN) { break; }
+    n = centred(k, out, n, nm, c.x, b.y0 + 15 * k, fit_cap(nm, 8 * k, w - 16 * k), white(k, 0.98));
+    if tag.count > 0 { n = centred(k, out, n, tag, c.x, b.y0 + 27 * k, fit_cap(tag, 6 * k, w - 16 * k), bronze(k, 0.95)); }
+  }
+  return n;
+}
+
+// The probe's room fields (realm_probe): how many others, how many are agents, whether the room
+// answered; 1800 + 2i and 1801 + 2i where each is (cm), 1850 + i 1 for an agent.
+room_probe :: (s: [] MyRealm, f: int) -> int {
+  r := s[0].room[..];
+  if f == 70 { return r[0].others; }
+  if f == 71 { return room_agents(r); }
+  if f == 72 { return ifx r[0].joined then 1 else 0; }
+  if f >= 1800 && f < 1800 + 2 * ROOM_OTHERS {
+    i := (f - 1800) / 2;
+    if i >= r[0].others { return PROBE_NONE; }
+    return cm_of(r[0].to[i * 4 + (ifx (f - 1800) % 2 == 0 then 0 else 2)]);
+  }
+  if f >= 1850 && f < 1850 + ROOM_OTHERS {
+    i := f - 1850;
+    if i >= r[0].others { return PROBE_NONE; }
+    return ifx r[0].agent[i] then 1 else 0;
+  }
+  return PROBE_NONE;
+}

@@ -25,6 +25,7 @@ RoomState :: struct {
   id: [ROOM_OTHERS * ROOM_ID] u8; id_n: [ROOM_OTHERS] int;
   name: [ROOM_OTHERS * ROOM_NAME] u8; name_n: [ROOM_OTHERS] int;
   look: [ROOM_OTHERS * ROOM_LOOK] u8; look_n: [ROOM_OTHERS] int;   // "": none
+  agent: [ROOM_OTHERS] bool;      // an agent's seat (docs/verse/realm-seat.md; migrations/0108): the server's "agent": true
   to: [ROOM_OTHERS * 4] f32;      // found_at each is: x, y, z, yaw
   at: [ROOM_OTHERS * 4] f32;      // found_at each is drawn, easing towards it
   lines: int;                     // in the ring, up to ROOM_LINES
@@ -103,11 +104,11 @@ room_chat_body :: (text: string, sid: string, out: [] u8) -> int #export_c {
 room_num :: (t: string) -> f32 {
   i := 0; neg := false;
   if i < t.count && t[i] == 45 { neg = true; i += 1; }
-  v := 0.0f64; seen := false;
-  while i < t.count && t[i] >= 48 && t[i] <= 57 { v = v * 10 + cast(f64) (t[i] - 48); i += 1; seen = true; }
+  v := 0.0f64; any_digit := false;
+  while i < t.count && t[i] >= 48 && t[i] <= 57 { v = v * 10 + cast(f64) (t[i] - 48); i += 1; any_digit = true; }
   if i < t.count && t[i] == 46 {
     i += 1; d := 0.1f64;
-    while i < t.count && t[i] >= 48 && t[i] <= 57 { v += cast(f64) (t[i] - 48) * d; d *= 0.1; i += 1; seen = true; }
+    while i < t.count && t[i] >= 48 && t[i] <= 57 { v += cast(f64) (t[i] - 48) * d; d *= 0.1; i += 1; any_digit = true; }
   }
   if i < t.count && (t[i] == 101 || t[i] == 69) {
     i += 1; down := false; e := 0;
@@ -116,7 +117,7 @@ room_num :: (t: string) -> f32 {
     if down { for k: 0..<e { v *= 0.1; if v == 0 { break; } } }
     else { if e > 6 { return 0; } for k: 0..<e { v *= 10; } }
   }
-  if !seen || v > 100000 { return 0; }
+  if !any_digit || v > 100000 { return 0; }
   return cast(f32) (ifx neg then -v else v);
 }
 room_int :: (t: string) -> int {
@@ -177,6 +178,9 @@ room_take :: (s: [] RoomState, answer: string) -> int #export_c {
       s[0].look_n[n] = room_text(t, i, "look", s[0].look[..], n * ROOM_LOOK, ROOM_LOOK);
       s[0].to[n * 4] = room_field_num(t, i, "x"); s[0].to[n * 4 + 1] = room_field_num(t, i, "y");
       s[0].to[n * 4 + 2] = room_field_num(t, i, "z"); s[0].to[n * 4 + 3] = room_field_num(t, i, "yaw");
+      agent_at: [1] int;
+      an := world_field(t, i, "agent", agent_at[..]);
+      s[0].agent[n] = agent_at[0] > 0 && t[agent_at[0] - 1] != 34 && t[agent_at[0]..<agent_at[0] + an] == "true";   // the literal, not a string
       found := -1;
       for j: 0..<was {
         if found < 0 && was_n[j] == s[0].id_n[n] && cast(string) was_id[j * ROOM_ID..<j * ROOM_ID + was_n[j]] == cast(string) s[0].id[n * ROOM_ID..<n * ROOM_ID + s[0].id_n[n]] { found = j; }
@@ -276,6 +280,8 @@ room_line_from :: (s: [] RoomState, k: int) -> string #export_c {
   return cast(string) s[0].line_from[slot * ROOM_ID..<slot * ROOM_ID + s[0].line_from_n[slot]];
 }
 room_other_name :: (s: [] RoomState, i: int) -> string #export_c { return cast(string) s[0].name[i * ROOM_NAME..<i * ROOM_NAME + s[0].name_n[i]]; }
+room_other_agent :: (s: [] RoomState, i: int) -> bool { return i >= 0 && i < s[0].others && s[0].agent[i]; }
+room_agents :: (s: [] RoomState) -> int { n := 0; for i: 0..<s[0].others { if s[0].agent[i] { n += 1; } } return n; }
 room_other_look :: (s: [] RoomState, i: int) -> string { return cast(string) s[0].look[i * ROOM_LOOK..<i * ROOM_LOOK + s[0].look_n[i]]; }
 // The k-th line kept, oldest first.
 room_line_name :: (s: [] RoomState, k: int) -> string #export_c {
@@ -328,6 +334,17 @@ room_line_text :: (s: [] RoomState, k: int) -> string #export_c {
   #assert room_take(s[..], "200\n{\"last\": 10, \"others\": [], \"messages\": []}") == 200 && s[0].others == 0 && s[0].lines == 3;
   #assert room_take(s[..], "429\n{\"error\": \"the room is full\"}") == 429 && s[0].full;
   #assert room_take(s[..], "0\n") == 0;
+}
+
+#test "an agent's seat is flagged among who is here, and only while the server says so" {
+  s: [1] RoomState;
+  a := "200\n{\"last\": 0, \"messages\": [], \"others\": [{\"id\": \"p-2\", \"name\": \"Ann\", \"x\": 1, \"y\": 0, \"z\": 2, \"yaw\": 0}, {\"id\": \"p-3\", \"name\": \"Ada\", \"x\": 3, \"y\": 0, \"z\": 4, \"yaw\": 1, \"agent\": true}]}";
+  #assert room_take(s[..], a) == 200 && s[0].others == 2 && !room_other_agent(s[..], 0) && room_other_agent(s[..], 1) && room_agents(s[..]) == 1;
+  // the same seats in another order, the agent first; then an "agent" that isn't true
+  b := "200\n{\"last\": 0, \"messages\": [], \"others\": [{\"id\": \"p-3\", \"name\": \"Ada\", \"x\": 3, \"y\": 0, \"z\": 4, \"yaw\": 1, \"agent\": true}, {\"id\": \"p-2\", \"name\": \"Ann\", \"x\": 1, \"y\": 0, \"z\": 2, \"yaw\": 0}]}";
+  #assert room_take(s[..], b) == 200 && room_other_agent(s[..], 0) && !room_other_agent(s[..], 1);
+  c := "200\n{\"last\": 0, \"messages\": [], \"others\": [{\"id\": \"p-3\", \"name\": \"Ada\", \"x\": 3, \"y\": 0, \"z\": 4, \"yaw\": 1, \"agent\": false}, {\"id\": \"p-4\", \"name\": \"Bo\", \"agent\": \"true\"}]}";
+  #assert room_take(s[..], c) == 200 && !room_other_agent(s[..], 0) && !room_other_agent(s[..], 1) && room_agents(s[..]) == 0;
 }
 
 #test "lines say who said them, and leave when removed or blocked" {

@@ -3,7 +3,9 @@
 // the path, the player key and the body and hands them over.
 //
 //   POST /api/playtest/presence/<room>   {x, y, z, yaw, after}: here now -> {you, others, messages
-//                                        after the number `after`, last}
+//                                        after the number `after`, last}; signed (NIP-98), a seat's:
+//                                        everyone sees it {agent: true}, and {gone: true} leaves (0108)
+//                                        A made realm's room (made-<slug>) is as private as the realm.
 //   GET  /api/playtest/chat/<room>?after=N   the lines after N (the last 50) -> {messages, last}
 //   POST /api/playtest/chat/<room>       {text, sid} -> {n}; a line from automation is shown only to
 //                                        who said it (migrations/0064_room_chat_automation.sql)
@@ -111,9 +113,22 @@ bool room_route(const request *q) {
     if (c) { c += strlen("verse-automation="); size_t i = 0; while (c[i] && c[i] != ';' && c[i] != ' ' && i + 1 < sizeof mark) { mark[i] = c[i]; i++; } mark[i] = 0; }
   }
   api_header(q, "User-Agent", ua, sizeof ua);
-  const char *v[8] = {q->method, kind, room, body, key, after, mark, ua};
-  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.room($1, $2, $3, $4::jsonb, $5, $6::int, $7, $8) x",
-                             8, NULL, v, NULL, NULL, 0);
+  // A seat (openagents realm play, docs/verse/realm-seat.md): its presence is signed with the CLI's
+  // key (NIP-98), which is its account's (caller-policy.coax); it acts with that account's player key
+  // and SQL marks its row agent (0108). Forged, unbound or replayed: 401, never the player key.
+  char signer[65] = "";
+  int sig = 0;
+  if (!strcmp(kind, "presence") && !strcmp(q->method, "POST")) {
+    sig = access_signed(q, db, signer);
+    if (sig < 0) { free(body); return true; }
+    if (sig > 0 && !access_caller_key(db, signer, key)) { free(body); api_json(q->fd, 500, "{\"error\":\"not read\"}"); return true; }
+  }
+  // A made realm's room is as private as the realm (0099, 0108): its owner and site admins only.
+  bool admin = false;
+  if (!strncmp(room, "made-", 5)) { char who[65]; admin = sig > 0 ? admin_is(signer) : admin_who(q, db, who) == 0; }
+  const char *v[10] = {q->method, kind, room, body, key, after, mark, ua, sig > 0 ? "true" : "false", admin ? "true" : "false"};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.room($1, $2, $3, $4::jsonb, $5, $6::int, $7, $8, $9::boolean, $10::boolean) x",
+                             10, NULL, v, NULL, NULL, 0);
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);

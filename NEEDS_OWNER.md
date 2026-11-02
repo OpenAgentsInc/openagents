@@ -12,6 +12,19 @@ apps/openagents-web`), run `coax/web/tool.sh coax/web/gpu-recovery.coax
 http://127.0.0.1:8800/realms/the-grid/` and then the same against Everglade
 and the fixture realm, and add the results to issue #12651. Not blocking.
 
+## Realm seats show in made realms: release to staging, then production (2026-11-02, #12655)
+
+Slice 4 of `docs/verse/realm-seat.md` is in `main`: migration
+`0108_realm_seat_presence.sql`, `coax/web/api/room.c` (a signed presence is
+an agent's seat; a private realm's room is 404 to others), the made-realm page
+(`myrealm-room.coax`: who else is here, an agent's seat tagged AGENT) and the
+CLI holder posting the seat's presence. Nothing is deployed. To see it live,
+release to staging, then run `openagents realm play village-green` with a
+profile that has a key while a browser has the realm open: the seat shows as
+a bronze figure with the account's name and AGENT. Production after that.
+`realm use build THING` still needs a staging realm with BUILD on; no listed
+staging realm has it, and switching one on is an edit to someone's realm.
+
 ## Background jobs stopped after desktop lockups (2026-11-02)
 
 At the owner's request, the open-issues chat stopped its eight mutation
