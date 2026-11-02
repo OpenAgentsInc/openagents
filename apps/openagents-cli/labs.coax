@@ -620,7 +620,7 @@ lb_fil_svg :: (w: [] LbW, text: string, x: f32, base: f32, cap: f32) {
 }
 lb_fil_em :: (text: string) -> f32 { return measure(text, DK_GAP, DK_SPACE, false); }
 
-LB_TEXT_TITLE :: 0; LB_TEXT_CARD :: 1; LB_TEXT_CAPTION :: 2;
+LB_TEXT_TITLE :: 0; LB_TEXT_CARD :: 1; LB_TEXT_CAPTION :: 2; LB_TEXT_HALO :: 3;   // HALO: a caption with a dark halo and no band
 // Line k of text (lines split by newlines), or "".
 lb_line :: (text: string, k: int) -> string {
   at := 0; start := 0;
@@ -654,8 +654,9 @@ lb_text_line :: (w: [] LbW, text: string, x: f32, base: f32, cap: f32, halo: boo
 // the picture, a title card (on the Grid's near-black, or over the picture
 // when transparent), or a caption on a dark band near the bottom. A title's
 // lines stack, each at its size (s's title_cap and scale).
-lb_text_html :: (w: [] LbW, text: string, kind: int, width: int, height: int, ground: bool, s: LbShot) {
+lb_text_html :: (w: [] LbW, text: string, kind_in: int, width: int, height: int, ground: bool, s: LbShot) {
   fw := cast(f32) width; fh := cast(f32) height;
+  halo := kind_in == LB_TEXT_HALO; kind := ifx halo then LB_TEXT_CAPTION else kind_in;
   cap := ifx kind == LB_TEXT_CAPTION then fh * 0.032 else ifx s.title_cap > 0 then fh * s.title_cap else ifx kind == LB_TEXT_CARD then fh * cast(f32) LB_CARD_CAP else fh * cast(f32) LB_TITLE_CAP;
   n := ifx kind == LB_TEXT_CAPTION then 1 else lb_lines(text);
   em := ifx kind == LB_TEXT_CAPTION then lb_fil_em(text) else lb_title_em(s, text);
@@ -671,10 +672,12 @@ lb_text_html :: (w: [] LbW, text: string, kind: int, width: int, height: int, gr
   if ground { lbw_put(w, "<rect width=\"100%\" height=\"100%\" fill=\"#06070a\"/>"); }
   if kind == LB_TEXT_CAPTION {
     tw := em * cap; x := (fw - tw) / 2; pad := cap * 0.9;
-    lbw_put(w, "<rect x=\""); lbw_num(w, cast(f64) (x - pad)); lbw_put(w, "\" y=\""); lbw_num(w, cast(f64) (top - pad));
-    lbw_put(w, "\" width=\""); lbw_num(w, cast(f64) (tw + 2 * pad)); lbw_put(w, "\" height=\""); lbw_num(w, cast(f64) (cap + 2 * pad));
-    lbw_put(w, "\" rx=\""); lbw_num(w, cast(f64) (pad * 0.4)); lbw_put(w, "\" fill=\"rgba(0,0,0,0.6)\"/>");
-    lb_text_line(w, text, x, top + cap, cap, false);
+    if !halo {
+      lbw_put(w, "<rect x=\""); lbw_num(w, cast(f64) (x - pad)); lbw_put(w, "\" y=\""); lbw_num(w, cast(f64) (top - pad));
+      lbw_put(w, "\" width=\""); lbw_num(w, cast(f64) (tw + 2 * pad)); lbw_put(w, "\" height=\""); lbw_num(w, cast(f64) (cap + 2 * pad));
+      lbw_put(w, "\" rx=\""); lbw_num(w, cast(f64) (pad * 0.4)); lbw_put(w, "\" fill=\"rgba(0,0,0,0.6)\"/>");
+    }
+    lb_text_line(w, text, x, top + cap, cap, halo);
   } else {
     y := top;
     for k: 0..<n {
@@ -742,6 +745,56 @@ lb_captions :: (cw: [] LbCutWork, voice: string, why: [] u8) -> int {
   return EXIT_OK;
 }
 
+// ---- captions from an SRT file ------------------------------------------------------
+
+lb_digits :: (t: string, a: int, n: int) -> int { r := 0; for i: a..<a + n { r = r * 10 + cast(int) (t[i] - '0'); } return r; }
+// HH:MM:SS,mmm (or .mmm) in ms, or -1.
+lb_srt_ms :: (s: string) -> int {
+  t := s; while t.count > 0 && t[0] == ' ' { t = cast(string) t[1..<t.count]; }
+  while t.count > 0 && (t[t.count - 1] == ' ' || t[t.count - 1] == '\r') { t = cast(string) t[0..<t.count - 1]; }
+  if t.count != 12 || t[2] != ':' || t[5] != ':' || (t[8] != ',' && t[8] != '.') { return -1; }
+  for i: 0..<12 {
+    if i == 2 || i == 5 || i == 8 { continue; }
+    if t[i] < '0' || t[i] > '9' { return -1; }
+  }
+  return ((lb_digits(t, 0, 2) * 60 + lb_digits(t, 3, 2)) * 60 + lb_digits(t, 6, 2)) * 1000 + lb_digits(t, 9, 3);
+}
+// An SRT file's cues into caps: each cue's text lines joined with spaces. The count, or -1 when it does not read.
+lb_srt_caps :: (caps: [] LbCaption, text: string) -> int {
+  n := 0; i := 0; state := 0;   // 0: the cue's number, 1: its times, 2: its text
+  start := 0;
+  for e: 0..<text.count + 1 {
+    if e < text.count && text[e] != '\n' { continue; }
+    l := cast(string) text[start..<e]; start = e + 1;
+    if l.count > 0 && l[l.count - 1] == '\r' { l = cast(string) l[0..<l.count - 1]; }
+    if l.count == 0 { if state == 2 { n += 1; } state = 0; continue; }
+    if state == 0 { state = 1; continue; }
+    if state == 1 {
+      if n >= caps.count { return n; }
+      arrow := -1;
+      for k: 0..<l.count - 2 { if l[k] == '-' && l[k + 1] == '-' && l[k + 2] == '>' { arrow = k; break; } }
+      if arrow < 0 { return -1; }
+      a := lb_srt_ms(cast(string) l[0..<arrow]); b := lb_srt_ms(cast(string) l[arrow + 3..<l.count]);
+      if a < 0 || b <= a { return -1; }
+      caps[n].a = a; caps[n].b = b; caps[n].n = 0; state = 2; continue;
+    }
+    m := caps[n].n;
+    if m > 0 && m < caps[n].text.count { caps[n].text[m] = ' '; m += 1; }
+    for ch: l { if m < caps[n].text.count { caps[n].text[m] = ch; m += 1; } }
+    caps[n].n = m;
+  }
+  if state == 2 { n += 1; }
+  return n;
+}
+
+#test "an SRT file's cues read as captions" {
+  caps: [4] LbCaption;
+  n := lb_srt_caps(caps[..], "1\n00:00:00,000 --> 00:00:03,940\nHey Speedrun,\nI'm Christopher David\n\n2\r\n00:01:53,760 --> 00:01:57,700\r\nBitcoin class of 2011\r\n");
+  #assert n == 2 && caps[0].a == 0 && caps[0].b == 3940 && cast(string) caps[0].text[0..<caps[0].n] == "Hey Speedrun, I'm Christopher David";
+  #assert caps[1].a == 113760 && caps[1].b == 117700 && cast(string) caps[1].text[0..<caps[1].n] == "Bitcoin class of 2011";
+  #assert lb_srt_caps(caps[..], "1\n00:00:01 --> 2\nx\n") == -1 && lb_srt_ms("01:02:03.004") == 3723004;
+}
+
 // ---- the command --------------------------------------------------------------------
 
 // A path in the cut, relative to the cut file's folder when it is not absolute or a URL.
@@ -781,6 +834,7 @@ labs_cut :: (a: [] Args, r: [] Rep, profile: string) -> int {
   dir := fs_dir(file);
   for i: 0..<c[0].shot_n { c[0].shots[i].src = lb_resolve(c, c[0].shots[i].src, dir); c[0].shots[i].under = lb_resolve(c, c[0].shots[i].under, dir); }
   c[0].music = lb_resolve(c, c[0].music, dir); c[0].voice = lb_resolve(c, c[0].voice, dir);
+  c[0].side = lb_resolve(c, c[0].side, dir); c[0].captions = lb_resolve(c, c[0].captions, dir);
   if c[0].problems[0].n == 0 {
     code := lb_need_ffmpeg(r); if code != EXIT_OK { return code; }
     for i: 0..<c[0].shot_n {
@@ -796,6 +850,10 @@ labs_cut :: (a: [] Args, r: [] Rep, profile: string) -> int {
     }
     if c[0].music.n > 0 && fs_kind(lb_cut_sp(c, c[0].music)) != FS_FILE { lb_cut_problem(c, 0, "no music at ", lb_cut_sp(c, c[0].music), ""); }
     if c[0].voice.n > 0 && fs_kind(lb_cut_sp(c, c[0].voice)) != FS_FILE { lb_cut_problem(c, 0, "no voice at ", lb_cut_sp(c, c[0].voice), ""); }
+    if c[0].side.n > 0 && fs_kind(lb_cut_sp(c, c[0].side)) != FS_FILE { lb_cut_problem(c, 0, "no side panel at ", lb_cut_sp(c, c[0].side), ""); }
+    if c[0].captions.n > 0 && fs_kind(lb_cut_sp(c, c[0].captions)) != FS_FILE { lb_cut_problem(c, 0, "no captions file at ", lb_cut_sp(c, c[0].captions), ""); }
+    if c[0].captions.n > 0 && args_has(a, "--captions") { lb_cut_problem(c, 0, "--captions transcribes the voice, and this cut has a captions file", "", ""); }
+    if c[0].side_w > 0 && c[0].side_w + 64 > c[0].w { lb_cut_problem(c, 0, "the side panel leaves the shots under 64 pixels", "", ""); }
     if args_has(a, "--captions") && c[0].voice.n == 0 { lb_cut_problem(c, 0, "--captions transcribes the voice, and this cut has no voice line", "", ""); }
     lb_cut_check(c, cw[0].src[0..<c[0].shot_n], cw[0].em[0..<c[0].shot_n]);
   }
@@ -820,6 +878,8 @@ labs_cut :: (a: [] Args, r: [] Rep, profile: string) -> int {
   }
   if c[0].music.n > 0 { lbi_file(w[..], "music", lb_cut_sp(c, c[0].music)); }
   if c[0].voice.n > 0 { lbi_file(w[..], "voice", lb_cut_sp(c, c[0].voice)); }
+  if c[0].side.n > 0 { lbi_file(w[..], "side", lb_cut_sp(c, c[0].side)); }
+  if c[0].captions.n > 0 { lbi_file(w[..], "captions", lb_cut_sp(c, c[0].captions)); }
   inb: [80] u8; input := lb_input(w[..], inb[..]);
   lp: [4200] u8; label := lb_label_path(out, lp[..]);
   mb: [4200] u8; master := "";
@@ -828,12 +888,18 @@ labs_cut :: (a: [] Args, r: [] Rep, profile: string) -> int {
   if !args_has(a, "--fresh") && lb_cached(out, label, input) && (master.count == 0 || fs_kind(master) == FS_FILE) {
     return lb_cut_report(r, out, master, label, total, c[0].shot_n, size, true);
   }
-  for i: 0..<c[0].shot_n { if cw[0].src[i].url || c[0].shots[i].title.n > 0 || args_has(a, "--captions") { code := lb_need_chrome(r); if code != EXIT_OK { return code; } break; } }
+  for i: 0..<c[0].shot_n { if cw[0].src[i].url || c[0].shots[i].title.n > 0 || args_has(a, "--captions") || c[0].captions.n > 0 { code := lb_need_chrome(r); if code != EXIT_OK { return code; } break; } }
   why: [4096] u8;
   for i: 0..<why.count { why[i] = 0; }
   if args_has(a, "--captions") {
     code := lb_captions(cw, lb_cut_sp(c, c[0].voice), why[..]);
     if code != EXIT_OK { return fail(r, code, lb_cstr(why[..])); }
+  }
+  if c[0].captions.n > 0 {
+    sn := fs_read(lb_cut_sp(c, c[0].captions), cw[0].tr[..]);
+    got := ifx sn < 0 then -1 else lb_srt_caps(cw[0].caps[..], cast(string) cw[0].tr[0..<sn]);
+    if got < 0 { return fail(r, EXIT_FAIL, "the captions file is not SRT (number, HH:MM:SS,mmm --> HH:MM:SS,mmm, text, blank line)"); }
+    cw[0].cap_n = got;
   }
 
   // 1. URL shots, recorded once into FILE.clips/
@@ -893,6 +959,9 @@ lb_cut_render :: (cw: [] LbCutWork, r: [] Rep, work: string, out: string, master
   crf := ifx q == LB_PREVIEW then "30" else ifx q == LB_MASTER then "12" else "18";
   nb: [256] u8; nw: [1] LbW; nw[0].buf = nb[..];
   segs: [LB_SHOTS] [4200] u8; segn: [LB_SHOTS] int;
+  // a side panel takes its width from the right; the shots, titles and captions fill the rest (lw)
+  sw := ifx c[0].side_w > 0 then (c[0].side_w * size.w / c[0].w) / 2 * 2 else 0;
+  lw := size.w - sw;
   v: [1] LbArgv; g: [1] LbW; g[0].buf = cw[0].graph[..];
   for i: 0..<c[0].shot_n {
     s := c[0].shots[i];
@@ -906,7 +975,7 @@ lb_cut_render :: (cw: [] LbCutWork, r: [] Rep, work: string, out: string, master
       hn: [64] u8; hname := lb_cp(lbw_text(nw[..]), hn[..]);
       card := s.src.n == 0;
       tool_err("cut: drawing the title of "); tool_errln(lb_cut_sp(c, s.name));
-      if !lb_text_png(cw, work, hname, lb_cut_sp(c, s.title), ifx card then LB_TEXT_CARD else LB_TEXT_TITLE, size.w, size.h, card && s.under.n == 0, s, tp, why) { return EXIT_FAIL; }
+      if !lb_text_png(cw, work, hname, lb_cut_sp(c, s.title), ifx card then LB_TEXT_CARD else LB_TEXT_TITLE, lw, size.h, card && s.under.n == 0, s, tp, why) { return EXIT_FAIL; }
       title_png = tp;
     }
     lb_name(nw[..], "seg-", i, ".mp4");
@@ -918,12 +987,13 @@ lb_cut_render :: (cw: [] LbCutWork, r: [] Rep, work: string, out: string, master
       lba(v[..], "-ss"); lba_secs(v[..], ifx s.src.n > 0 then s.in_ms else s.under_in_ms); lba(v[..], "-t"); lba_secs(v[..], slot + 1000); lba(v[..], "-i"); lba(v[..], src);
     } else {
       cb2: [128] u8; cww: [1] LbW; cww[0].buf = cb2[..];
-      lbw_put(cww[..], "color=c=0x06070a:s="); lbw_int(cww[..], size.w); lbw_byte(cww[..], 'x'); lbw_int(cww[..], size.h); lbw_put(cww[..], ":r="); lbw_int(cww[..], fps);
+      lbw_put(cww[..], "color=c=0x06070a:s="); lbw_int(cww[..], lw); lbw_byte(cww[..], 'x'); lbw_int(cww[..], size.h); lbw_put(cww[..], ":r="); lbw_int(cww[..], fps);
       lba(v[..], "-f"); lba(v[..], "lavfi"); lba(v[..], "-i"); lba(v[..], lbw_text(cww[..]));
     }
     if title_png.count > 0 { lba(v[..], "-loop"); lba(v[..], "1"); lba(v[..], "-framerate"); lba_int(v[..], fps); lba(v[..], "-i"); lba(v[..], title_png); }
-    lbw_put(g[..], "[0:v]fps="); lbw_int(g[..], fps); lbw_put(g[..], ",scale="); lbw_int(g[..], size.w); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
-    lbw_put(g[..], ":force_original_aspect_ratio=decrease,pad="); lbw_int(g[..], size.w); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
+    lbw_put(g[..], "[0:v]"); if s.vf.n > 0 { lbw_put(g[..], lb_cut_sp(c, s.vf)); lbw_byte(g[..], ','); }
+    lbw_put(g[..], "fps="); lbw_int(g[..], fps); lbw_put(g[..], ",scale="); lbw_int(g[..], lw); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
+    lbw_put(g[..], ":force_original_aspect_ratio=decrease,pad="); lbw_int(g[..], lw); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
     lbw_put(g[..], ":(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p,tpad=stop_mode=clone:stop_duration=2");
     if s.src.n == 0 && s.under.n > 0 { lbw_put(g[..], ",eq=brightness=-0.25"); }
     if title_png.count > 0 { lbw_put(g[..], "[b];[b][1:v]overlay=0:0:format=auto:shortest=0,format=yuv420p"); }
@@ -944,7 +1014,7 @@ lb_cut_render :: (cw: [] LbCutWork, r: [] Rep, work: string, out: string, master
     cp := fs_join(work, lbw_text(nw[..]), caps[k][..]); capn[k] = cp.count;
     lb_name(nw[..], "caption-", k, "");
     hn: [64] u8; hname := lb_cp(lbw_text(nw[..]), hn[..]);
-    if !lb_text_png(cw, work, hname, cast(string) cw[0].caps[k].text[0..<cw[0].caps[k].n], LB_TEXT_CAPTION, size.w, size.h, false, plain, cp, why) { return EXIT_FAIL; }
+    if !lb_text_png(cw, work, hname, cast(string) cw[0].caps[k].text[0..<cw[0].caps[k].n], ifx c[0].cap_box then LB_TEXT_CAPTION else LB_TEXT_HALO, lw, size.h, false, plain, cp, why) { return EXIT_FAIL; }
   }
   if cw[0].ch[0].up { cdp_close(cw[0].ch[0].c[..]); cw[0].ch[0].up = false; }
 
@@ -957,6 +1027,11 @@ lb_cut_render :: (cw: [] LbCutWork, r: [] Rep, work: string, out: string, master
   music := -1; voice := -1;
   if c[0].music.n > 0 { lba(v[..], "-i"); lba(v[..], lb_cut_sp(c, c[0].music)); music = inputs + cw[0].cap_n; }
   if c[0].voice.n > 0 { lba(v[..], "-i"); lba(v[..], lb_cut_sp(c, c[0].voice)); voice = inputs + cw[0].cap_n + (ifx music >= 0 then 1 else 0); }
+  side := -1;
+  if sw > 0 {
+    lba(v[..], "-ss"); lba_secs(v[..], c[0].side_in_ms); lba(v[..], "-i"); lba(v[..], lb_cut_sp(c, c[0].side));
+    side = inputs + cw[0].cap_n + (ifx music >= 0 then 1 else 0) + (ifx voice >= 0 then 1 else 0);
+  }
   for i: 0..<c[0].shot_n { lbw_byte(g[..], '['); lbw_int(g[..], i); lbw_put(g[..], ":v]settb=AVTB,setpts=PTS-STARTPTS[s"); lbw_int(g[..], i); lbw_put(g[..], "];"); }
   // the first shot's crossfade fades it in from black
   x0 := c[0].shots[0].xfade_ms;
@@ -976,7 +1051,15 @@ lb_cut_render :: (cw: [] LbCutWork, r: [] Rep, work: string, out: string, master
     lbw_put(g[..], ";[c"); lbw_int(g[..], k); lbw_put(g[..], "]["); lbw_int(g[..], inputs + k); lbw_put(g[..], ":v]overlay=0:0:enable='between(t,");
     lbw_secs(g[..], cw[0].caps[k].a); lbw_byte(g[..], ','); lbw_secs(g[..], cw[0].caps[k].b); lbw_put(g[..], ")'[c"); lbw_int(g[..], k + 1); lbw_byte(g[..], ']');
   }
-  lbw_put(g[..], ";[c"); lbw_int(g[..], cw[0].cap_n); lbw_put(g[..], "]format=yuv420p[vout]");
+  lbw_put(g[..], ";[c"); lbw_int(g[..], cw[0].cap_n);
+  if side >= 0 {
+    // the shots behind a 2 px rule, then the side panel: its vf, then fitted to its width and the height
+    lbw_put(g[..], "]crop="); lbw_int(g[..], lw - 2); lbw_byte(g[..], ':'); lbw_int(g[..], size.h); lbw_put(g[..], ":0:0,pad="); lbw_int(g[..], lw); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
+    lbw_put(g[..], ":0:0:color=0x2a2a2a[left];["); lbw_int(g[..], side); lbw_put(g[..], ":v]");
+    if c[0].side_vf.n > 0 { lbw_put(g[..], lb_cut_sp(c, c[0].side_vf)); lbw_byte(g[..], ','); }
+    lbw_put(g[..], "fps="); lbw_int(g[..], fps); lbw_put(g[..], ",scale="); lbw_int(g[..], sw); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
+    lbw_put(g[..], ",setsar=1,format=yuv420p,tpad=stop_mode=clone:stop_duration=10,trim=duration="); lbw_secs(g[..], total); lbw_put(g[..], ",setpts=PTS-STARTPTS[side];[left][side]hstack=inputs=2,format=yuv420p[vout]");
+  } else { lbw_put(g[..], "]format=yuv420p[vout]"); }
   if music >= 0 {
     lbw_put(g[..], ";["); lbw_int(g[..], music); lbw_put(g[..], ":a]volume="); lbw_num(g[..], c[0].music_gain + (ifx voice >= 0 then c[0].duck else 0.0)); lbw_put(g[..], "dB[m]");
   }

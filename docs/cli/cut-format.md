@@ -35,6 +35,8 @@ is your home folder.
 | `music PATH [gain=DB] [duck=DB]` | The music bed. `gain` sets its level in dB. `duck` lowers it further while there is a voice line. |
 | `voice PATH [gain=DB]` | The voice-over, mixed over the music. `--captions` transcribes this file. |
 | `fade in=S out=S` | Fades the picture and the sound in from black and out to black. |
+| `side PATH width=W [in=S] [vf="FILTERS"]` | A picture stacked to the right of the shots, W pixels wide, from `in` on, behind a 2 px rule; for a talking head beside the B-roll. The shots, titles and captions fill the rest of the width. |
+| `captions PATH.srt [box=no]` | Captions from an SRT file instead of transcribing the voice. `box=no` draws them with a dark halo and no band. |
 | `shot NAME ...` | One shot. See the next table. |
 
 | Shot word | Meaning |
@@ -45,6 +47,7 @@ is your home folder.
 | `xfade=S` | A crossfade from the shot before it. On the first shot, a fade in from black. |
 | `title="TEXT"` | A title line drawn in Filament. Repeat `title=` for more lines; each line after the first is half its size. Over a picture, the title sits in the lower third. A shot with a title and no `src` is a title card. |
 | `under=PATH [under_in=S]` | The picture under a title card, darkened. Without it, the card is on the Grid's near-black. |
+| `vf="FILTERS"` | ffmpeg filters run on the source first, such as a crop or a colour LUT. The shot is then fitted to the frame. |
 
 ## Checks
 
