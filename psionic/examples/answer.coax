@@ -1,0 +1,109 @@
+// Chapter 57: answer from a small versioned store, cite the exact sentence,
+// then correct one passage and delete one chapter. The saved answers are
+// checked before they are served again; a changed or deleted source refuses
+// them, and asking again answers from the current text only.
+#import "Basic";
+#load "../lib/book-search/rank.coax";
+#load "../lib/book-search/answer.coax";
+
+// book:begin store
+// Version 1: four passages from three chapters.
+V1_PATH :: [4] string.["psionic/book/ch054.md", "psionic/book/ch054.md", "coax/book/ch06.md", "psionic/book/ch056.md"];
+V1_HEAD :: [4] string.["54. Search > Ranking", "54. Search > Freshness", "6. Memory > Bounds checks", "56. Rerank > Training"];
+V1_TEXT :: [4] string.[
+  "Each passage is scored with BM25. The settings are k1 = 1.2 and b = 0.75. Fusion adds 1/(60 + rank) for each list.",
+  "An index is fresh when every chapter it holds is unchanged. A stale index is refused with exit status 3.",
+  "Every index is checked against the length. An index out of range stops the program with a bounds error.",
+  "The reranker trains for 300 steps with learning rate 0.5. Training starts from zero weights."];
+// Version 2: the ranking passage is corrected and chapter 6 is deleted.
+V2_PATH :: [3] string.["psionic/book/ch054.md", "psionic/book/ch054.md", "psionic/book/ch056.md"];
+V2_HEAD :: [3] string.["54. Search > Ranking", "54. Search > Freshness", "56. Rerank > Training"];
+V2_TEXT :: [3] string.[
+  "Each passage is scored with BM25. The settings are k1 = 0.9 and b = 0.4. Fusion adds 1/(60 + rank) for each list.",
+  "An index is fresh when every chapter it holds is unchanged. A stale index is refused with exit status 3.",
+  "The reranker trains for 300 steps with learning rate 0.5. Training starts from zero weights."];
+// book:end store
+
+// Prints x to four decimals, rounded half away from zero.
+put4 :: (x: f64) {
+  h := 0.5; if x < 0 { h = -0.5; }
+  t := cast(int) (x * 10000 + h);
+  if t < 0 { print("-"); t = -t; }
+  print("%.", t / 10000); print("%", t / 1000 % 10); print("%", t / 100 % 10); print("%", t / 10 % 10); print("%", t % 10);
+}
+book_of :: (path: string) -> string {
+  if path.count >= 5 && path[0..<5] == "coax/" { return "Coax"; }
+  return "Psionic";
+}
+Asked :: struct { answer: AnAnswer; cite: AnCite; quote: string; }
+
+// book:begin ask
+// Retrieve with BM25 (chapter 54's formula, words from answer.coax), keep the
+// top AN_TOP, and answer with the best-supported sentence or abstain.
+ask :: (question: string, path: [] string, head: [] string, text: [] string, ids: [] string) -> Asked {
+  N := text.count; pool: [256] u8; words: [16] string; weight: [16] f64; df: [16] int;
+  n := an_query_words(question, pool[..], words[..]);
+  total := 0;
+  for t: text { total += an_words(t); }
+  average := f64(total) / f64(N);
+  print("question: %\n  words:", question);
+  for k: 0..<n {
+    for t: text { if an_count(t, words[k]) > 0 { df[k] += 1; } }
+    weight[k] = bs_idf(N, df[k]);
+    print(" % (df %) ", words[k], df[k]); put4(weight[k]); if k + 1 < n { print(","); }
+  }
+  print("\n");
+  scores: [8] f64; hits: [AN_TOP] BsHit;
+  for t, p: text {
+    for k: 0..<n { tf := an_count(t, words[k]); if tf > 0 { scores[p] += bs_bm25(tf, df[k], N, an_words(t), average); } }
+  }
+  m := bs_top(scores[0..<N], 0, hits[..]);
+  found: [AN_TOP] string;
+  for h, k: hits[0..<m] { found[k] = text[h.passage]; print("  retrieved %: % (BM25 ", k + 1, head[h.passage]); put4(h.score); print(")\n"); }
+  a := an_answer(words[0..<n], weight[0..<n], found[0..<m], AN_SUPPORT_MIN);
+  r := Asked.{answer = a};
+  if a.rank < 0 { print("  abstain: no passage holds a query word\n\n"); return r; }
+  p := hits[a.rank].passage;
+  r.quote = text[p][a.from..<a.to];
+  r.cite = AnCite.{id = ids[p], from = a.from, to = a.to, digest = an_digest(head[p], text[p])};
+  if a.verdict == AnVerdict.abstain {
+    print("  abstain: the best sentence holds "); put4(a.support); print(" of the query, under the floor "); put4(AN_SUPPORT_MIN);
+    print("\n  closest: \"%\" (%)\n\n", r.quote, head[p]);
+    return r;
+  }
+  hx: [64] u8;
+  print("  answer (support "); put4(a.support); print("): \"%\"\n", r.quote);
+  print("    cites % · % · % · part 0 · bytes %..<% · revision %\n\n", book_of(path[p]), path[p], head[p], a.from, a.to, an_hex(r.cite.digest, 6, hx[..]));
+  return r;
+}
+// book:end ask
+
+// book:begin serve
+// A saved answer is served only while its citation is current.
+serve :: (question: string, saved: Asked, head: [] string, text: [] string, ids: [] string) {
+  c := an_check(saved.cite, saved.quote, ids, head, text);
+  if an_serve(c) { print("serve \"%\": \"%\"\n", question, saved.quote); return; }
+  print("serve \"%\": refused, %\n", question, an_check_name(c));
+}
+// book:end serve
+
+main :: () {
+  idbuf: [4][96] u8; ids1: [4] string; ids2: [3] string; idbuf2: [3][96] u8;
+  p1 := V1_PATH; h1 := V1_HEAD; t1 := V1_TEXT; p2 := V2_PATH; h2 := V2_HEAD; t2 := V2_TEXT;
+  for k: 0..<4 { ids1[k] = an_id(p1[k], h1[k], 0, idbuf[k][..]); }
+  for k: 0..<3 { ids2[k] = an_id(p2[k], h2[k], 0, idbuf2[k][..]); }
+  print("store version 1: 4 passages from 3 chapters\n\n");
+  q1 := "BM25 settings k1 and b"; q2 := "an index out of range"; q3 := "stale weights in the reranker";
+  a1 := ask(q1, p1[..], h1[..], t1[..], ids1[..]);
+  a2 := ask(q2, p1[..], h1[..], t1[..], ids1[..]);
+  a3 := ask(q3, p1[..], h1[..], t1[..], ids1[..]);
+  serve(q1, a1, h1[..], t1[..], ids1[..]);
+  serve(q2, a2, h1[..], t1[..], ids1[..]);
+  print("\nstore version 2: the ranking passage now says k1 = 0.9 and b = 0.4; coax/book/ch06.md is deleted\n\n");
+  serve(q1, a1, h2[..], t2[..], ids2[..]);
+  serve(q2, a2, h2[..], t2[..], ids2[..]);
+  print("\n");
+  b1 := ask(q1, p2[..], h2[..], t2[..], ids2[..]);
+  b2 := ask(q2, p2[..], h2[..], t2[..], ids2[..]);
+  serve(q1, b1, h2[..], t2[..], ids2[..]);
+}

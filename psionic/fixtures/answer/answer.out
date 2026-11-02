@@ -1,0 +1,44 @@
+store version 1: 4 passages from 3 chapters
+
+question: BM25 settings k1 and b
+  words: bm25 (df 1) 1.2040, settings (df 1) 1.2040, k1 (df 1) 1.2040, and (df 1) 1.2040, b (df 1) 1.2040
+  retrieved 1: 54. Search > Ranking (BM25 5.5328)
+  answer (support 0.8000): "The settings are k1 = 1.2 and b = 0.75."
+    cites Psionic · psionic/book/ch054.md · 54. Search > Ranking · part 0 · bytes 34..<73 · revision 393fb299481f
+
+question: an index out of range
+  words: an (df 2) 0.6931, index (df 2) 0.6931, out (df 1) 1.2040, of (df 1) 1.2040, range (df 1) 1.2040
+  retrieved 1: 6. Memory > Bounds checks (BM25 5.3364)
+  retrieved 2: 54. Search > Freshness (BM25 1.6393)
+  answer (support 1.0000): "An index out of range stops the program with a bounds error."
+    cites Coax · coax/book/ch06.md · 6. Memory > Bounds checks · part 0 · bytes 43..<103 · revision 2bab3e225e05
+
+question: stale weights in the reranker
+  words: stale (df 1) 1.2040, weights (df 1) 1.2040, in (df 0) 2.3026, the (df 3) 0.3567, reranker (df 1) 1.2040
+  retrieved 1: 56. Rerank > Training (BM25 2.9974)
+  retrieved 2: 54. Search > Freshness (BM25 1.1978)
+  retrieved 3: 6. Memory > Bounds checks (BM25 0.4957)
+  abstain: the best sentence holds 0.2489 of the query, under the floor 0.5000
+  closest: "The reranker trains for 300 steps with learning rate 0.5." (56. Rerank > Training)
+
+serve "BM25 settings k1 and b": "The settings are k1 = 1.2 and b = 0.75."
+serve "an index out of range": "An index out of range stops the program with a bounds error."
+
+store version 2: the ranking passage now says k1 = 0.9 and b = 0.4; coax/book/ch06.md is deleted
+
+serve "BM25 settings k1 and b": refused, changed: the cited passage has a new revision; ask again
+serve "an index out of range": refused, deleted: no current passage has the cited identity
+
+question: BM25 settings k1 and b
+  words: bm25 (df 1) 0.9808, settings (df 1) 0.9808, k1 (df 1) 0.9808, and (df 1) 0.9808, b (df 1) 0.9808
+  retrieved 1: 54. Search > Ranking (BM25 4.5332)
+  answer (support 0.8000): "The settings are k1 = 0.9 and b = 0.4."
+    cites Psionic · psionic/book/ch054.md · 54. Search > Ranking · part 0 · bytes 34..<72 · revision 1c08c98132a6
+
+question: an index out of range
+  words: an (df 1) 0.9808, index (df 1) 0.9808, out (df 0) 2.0794, of (df 0) 2.0794, range (df 0) 2.0794
+  retrieved 1: 54. Search > Freshness (BM25 2.3295)
+  abstain: the best sentence holds 0.2392 of the query, under the floor 0.5000
+  closest: "An index is fresh when every chapter it holds is unchanged." (54. Search > Freshness)
+
+serve "BM25 settings k1 and b": "The settings are k1 = 0.9 and b = 0.4."

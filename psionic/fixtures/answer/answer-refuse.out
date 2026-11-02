@@ -1,0 +1,9 @@
+the saved citation as made: current
+the same citation quoting k1 = 1.5: span: the cited bytes are not the quoted answer
+a span one byte past the passage: span: the cited bytes are not the quoted answer
+the passage's last byte edited: changed: the cited passage has a new revision; ask again
+the passage's heading renamed: changed: the cited passage has a new revision; ask again
+the passage's chapter removed: deleted: no current passage has the cited identity
+a question of three words into room for two: -1
+a question of 9 letters into 8 bytes: -1
+an identity of 17 bytes into 16: ""

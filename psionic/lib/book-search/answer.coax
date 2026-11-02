@@ -1,0 +1,360 @@
+// Chapter 57: answers from the current sources. An answer is one sentence
+// copied byte for byte from a retrieved passage, never generated text, and it
+// carries a citation: the passage's identity (its file, heading path and
+// part), the byte span of the sentence in the passage, and the passage's
+// revision digest when the answer was made. The assistant answers only when
+// the sentence holds enough of the query (its support); otherwise it
+// abstains. Before an answer is served again, its citation is checked against
+// the passages as they are now: a passage whose text changed, or that is gone,
+// refuses the answer instead of serving it from an old index.
+// Profile cpu-f64-answer-v1: binary64 support, SHA-256 digests, ASCII case
+// folding; bytes at or above 128 are word bytes and compare exactly.
+#authority;
+#load "../../../coax/lib/crypto/sha256.coax";
+
+AnVerdict :: enum u8 { answer; abstain; }
+AnCheck :: enum u8 { current; changed; deleted; span; }
+// A span of a text: bytes from..<to, and how much of the query it holds.
+AnSpan :: struct { from: int; to: int; support: f64; }
+// rank: which retrieved passage holds the span (0 is the best), -1 when none.
+AnAnswer :: struct { verdict: AnVerdict; rank: int; from: int; to: int; support: f64; }
+// The passage's identity, the span in its text and its revision digest.
+AnCite :: struct { id: string; from: int; to: int; digest: [32] u8; }
+
+// Fixed before any held-out query was run; the chapter records them.
+AN_SUPPORT_MIN :: 0.5;
+AN_TOP :: 3;
+
+an_verdict_name :: (v: AnVerdict) -> string { if v == AnVerdict.answer { return "answer"; } return "abstain"; }
+an_check_name :: (c: AnCheck) -> string {
+  if c == AnCheck.changed { return "changed: the cited passage has a new revision; ask again"; }
+  if c == AnCheck.deleted { return "deleted: no current passage has the cited identity"; }
+  if c == AnCheck.span { return "span: the cited bytes are not the quoted answer"; }
+  return "current";
+}
+
+#test "names of verdicts and checks" {
+  #assert an_verdict_name(AnVerdict.answer) == "answer" && an_verdict_name(AnVerdict.abstain) == "abstain";
+  #assert an_check_name(AnCheck.current) == "current" && an_check_name(AnCheck.changed) == "changed: the cited passage has a new revision; ask again";
+  #assert an_check_name(AnCheck.deleted) == "deleted: no current passage has the cited identity" && an_check_name(AnCheck.span) == "span: the cited bytes are not the quoted answer";
+}
+
+// book:begin words
+// A word is a run of ASCII letters and digits and of bytes at or above 128.
+// Words compare with ASCII letters folded to lower case.
+an_word_byte :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 128; }
+an_lower :: (c: u8) -> u8 { if c >= 'A' && c <= 'Z' { return c + 32; } return c; }
+// The first word that starts at or after at; from == to == text.count when
+// none is left.
+an_next_word :: (text: string, at: int) -> AnSpan {
+  a := at;
+  while a < text.count && !an_word_byte(text[a]) { a += 1; }
+  b := a;
+  while b < text.count && an_word_byte(text[b]) { b += 1; }
+  return AnSpan.{from = a, to = b};
+}
+// Does text[from..<to] hold word (lower case) as a whole word?
+an_holds :: (text: string, from: int, to: int, word: string) -> bool {
+  at := from;
+  while at < to {
+    w := an_next_word(text[0..<to], at);
+    if an_same(text, w.from, w.to, word) { return true; }
+    at = w.to;
+  }
+  return false;
+}
+an_same :: (text: string, from: int, to: int, word: string) -> bool {
+  if to - from != word.count { return false; }
+  for i: 0..<word.count { if an_lower(text[from + i]) != word[i] { return false; } }
+  return true;
+}
+// book:end words
+
+// How often word occurs in text as a whole word, and how many words text has.
+an_count :: (text: string, word: string) -> int {
+  n := 0; at := 0;
+  while at < text.count {
+    w := an_next_word(text, at);
+    if an_same(text, w.from, w.to, word) { n += 1; }
+    at = w.to;
+  }
+  return n;
+}
+an_words :: (text: string) -> int {
+  n := 0; at := 0;
+  while at < text.count {
+    w := an_next_word(text, at);
+    if w.to > w.from { n += 1; }
+    at = w.to;
+  }
+  return n;
+}
+// The query's distinct words, lower case, in first-seen order, copied into
+// pool; -1 when out or pool is too small.
+an_query_words :: (query: string, pool: [] u8, out: [] string) -> int {
+  n := 0; used := 0; at := 0;
+  while at < query.count {
+    w := an_next_word(query, at); at = w.to;
+    if w.to == w.from { continue; }
+    seen := false;
+    for k: 0..<n { if an_same(query, w.from, w.to, out[k]) { seen = true; } }
+    if seen { continue; }
+    if n == out.count || used + w.to - w.from > pool.count { return -1; }
+    for i: w.from..<w.to { pool[used + i - w.from] = an_lower(query[i]); }
+    out[n] = cast(string) pool[used..<used + w.to - w.from];
+    used += w.to - w.from; n += 1;
+  }
+  return n;
+}
+
+#test "words are runs of letters, digits and high bytes, compared without ASCII case" {
+  s := "BM25, k1=1.2; naïve x_y";
+  w := an_next_word(s, 0); #assert w.from == 0 && w.to == 4;
+  w = an_next_word(s, 4); #assert w.from == 6 && w.to == 8;
+  w = an_next_word(s, 8); #assert w.from == 9 && w.to == 10;
+  w = an_next_word(s, 10); #assert w.from == 11 && w.to == 12;
+  w = an_next_word(s, 12); #assert w.from == 14 && w.to == 20;
+  w = an_next_word(s, 20); #assert w.from == 21 && w.to == 22;
+  w = an_next_word(s, 22); #assert w.from == 23 && w.to == 24;
+  w = an_next_word(s, 24); #assert w.from == 24 && w.to == 24;
+  w = an_next_word("..", 0); #assert w.from == 2 && w.to == 2;
+  #assert an_word_byte('a') && an_word_byte('z') && an_word_byte('A') && an_word_byte('Z') && an_word_byte('0') && an_word_byte('9') && an_word_byte(128) && an_word_byte(255);
+  #assert !an_word_byte('`') && !an_word_byte('{') && !an_word_byte('@') && !an_word_byte('[') && !an_word_byte('/') && !an_word_byte(':') && !an_word_byte(127) && !an_word_byte(' ');
+  #assert an_lower('A') == 'a' && an_lower('Z') == 'z' && an_lower('@') == '@' && an_lower('[') == '[' && an_lower('a') == 'a' && an_lower(200) == 200;
+  #assert an_holds(s, 0, s.count, "bm25") && an_holds(s, 0, s.count, "naïve") && an_holds(s, 0, s.count, "y") && !an_holds(s, 0, s.count, "bm2") && !an_holds(s, 0, s.count, "k1=1");
+  #assert an_holds(s, 6, 8, "k1") && !an_holds(s, 0, 7, "k1") && !an_holds(s, 7, s.count, "bm25") && !an_holds(s, 0, 0, "bm25");
+  #assert an_holds(s, 0, 4, "bm25") && !an_holds(s, 0, 3, "bm25") && !an_holds(s, 21, 22, "x_y");
+  #assert an_count("A a b A.", "a") == 3 && an_count("ab a", "b") == 0 && an_count("", "a") == 0 && an_count("x", "x") == 1;
+  #assert an_words("A a, b.") == 3 && an_words(" .. ") == 0 && an_words("") == 0 && an_words("x") == 1 && an_words("x ") == 1;
+}
+#test "query words are distinct, lower case and bounded" {
+  pool: [16] u8; out: [4] string;
+  n := an_query_words("The BM25 the, k1 bm25", pool[..], out[..]);
+  #assert n == 3 && out[0] == "the" && out[1] == "bm25" && out[2] == "k1";
+  #assert an_query_words("a b c d", pool[..], out[..]) == 4 && out[3] == "d";
+  #assert an_query_words("a b c d e", pool[..], out[..]) == -1;
+  #assert an_query_words("a b c d a", pool[..], out[..]) == 4;
+  #assert an_query_words("abcdefgh ijklmnop", pool[..], out[..]) == 2 && out[1] == "ijklmnop";
+  #assert an_query_words("abcdefgh ijklmnopq", pool[..], out[..]) == -1;
+  #assert an_query_words(" ,. ", pool[..], out[..]) == 0 && an_query_words("", pool[..], out[0..<0]) == 0;
+  #assert an_query_words("x", pool[0..<1], out[0..<1]) == 1 && out[0] == "x";
+}
+
+// book:begin support
+// The share of the query's weight that text[from..<to] holds. words: the
+// query's distinct words; weight: one per word (the tool and the example
+// use BM25's IDF, so a word the books lack weighs the most). 0 when the
+// query weighs nothing.
+an_support :: (words: [] string, weight: [] f64, text: string, from: int, to: int) -> f64 {
+  total := 0.0; held := 0.0;
+  for w, i: words {
+    total += weight[i];
+    if an_holds(text, from, to, w) { held += weight[i]; }
+  }
+  if total <= 0 { return 0; }
+  return held / total;
+}
+// A sentence ends just after '.', '?' or '!' when white space or the end of
+// the text follows, before a blank line, or at the end of the text.
+an_space :: (c: u8) -> bool { return c == ' ' || c == '\n' || c == '\t' || c == '\r'; }
+an_sentence_end :: (text: string, from: int) -> int {
+  for i: from..<text.count {
+    c := text[i];
+    if (c == '.' || c == '?' || c == '!') && (i + 1 == text.count || an_space(text[i + 1])) { return i + 1; }
+    if c == '\n' && i + 1 < text.count && text[i + 1] == '\n' { return i; }
+  }
+  return text.count;
+}
+// The sentence of text with the most support; the earlier one on a tie.
+an_best_span :: (words: [] string, weight: [] f64, text: string) -> AnSpan {
+  best := AnSpan.{support = -1};
+  at := 0;
+  while at < text.count {
+    if an_space(text[at]) { at += 1; continue; }
+    end := an_sentence_end(text, at);
+    s := an_support(words, weight, text, at, end);
+    if s > best.support { best = AnSpan.{from = at, to = end, support = s}; }
+    at = end;
+  }
+  return best;
+}
+// book:end support
+
+#test "support is the weighted share of query words a span holds" {
+  words := [3] string.["bm25", "k1", "b"]; weight := [3] f64.[1, 2, 5];
+  t := "BM25 uses k1. And b.";
+  #assert an_support(words[..], weight[..], t, 0, t.count) == 1;
+  #assert an_support(words[..], weight[..], t, 0, 13) == 3.0 / 8;
+  #assert an_support(words[..], weight[..], t, 14, t.count) == 5.0 / 8;
+  #assert an_support(words[..], weight[..], t, 5, 9) == 0;
+  zero := [3] f64.[0, 0, 0];
+  #assert an_support(words[..], zero[..], t, 0, t.count) == 0 && an_support(words[0..<0], weight[0..<0], t, 0, t.count) == 0;
+}
+#test "sentences end at a stop before space, before a blank line, or at the end" {
+  t := "Set k1 = 1.2 and b. Then? Go!\nNext line\n\nAfter e.g.x";
+  #assert an_sentence_end(t, 0) == 19 && an_sentence_end(t, 20) == 25 && an_sentence_end(t, 26) == 29;
+  #assert an_sentence_end(t, 30) == 39 && an_sentence_end(t, 41) == t.count;
+  #assert an_sentence_end("a.", 0) == 2 && an_sentence_end("a\n", 0) == 2 && an_sentence_end("a\n\n", 0) == 1 && an_sentence_end("", 0) == 0;
+  #assert an_sentence_end("a.\tb", 0) == 2 && an_sentence_end("a.\rb", 0) == 2 && an_sentence_end("a?b", 0) == 3 && an_sentence_end("a!b", 0) == 3;
+  #assert an_space(' ') && an_space('\n') && an_space('\t') && an_space('\r') && !an_space('x') && !an_space(0);
+}
+#test "the best sentence wins and a tie keeps the earlier one" {
+  words := [2] string.["index", "range"]; weight := [2] f64.[1, 3];
+  t := "  An index is fresh. An index out of range stops.\n\nRange.";
+  s := an_best_span(words[..], weight[..], t);
+  #assert s.from == 21 && s.to == 49 && s.support == 1;
+  u := "Range one. Range two.";
+  s = an_best_span(words[..], weight[..], u);
+  #assert s.from == 0 && s.to == 10 && s.support == 0.75;
+  s = an_best_span(words[..], weight[..], "No match here.");
+  #assert s.from == 0 && s.to == 14 && s.support == 0;
+  s = an_best_span(words[..], weight[..], " \n");
+  #assert s.support == -1 && s.from == 0 && s.to == 0;
+  v := "Index. Range.";
+  s = an_best_span(words[..], weight[..], v);
+  #assert s.from == 7 && s.to == 13 && s.support == 0.75;
+}
+
+// book:begin answer
+// passages: the retrieved texts, best first; the caller passes at most
+// AN_TOP. The answer is the best sentence over them, from the better-ranked
+// passage on a tie. It is given only when its support reaches least and is
+// above zero; otherwise the assistant abstains and keeps the span it found.
+an_answer :: (words: [] string, weight: [] f64, passages: [] string, least: f64) -> AnAnswer {
+  r := AnAnswer.{verdict = AnVerdict.abstain, rank = -1, support = -1};
+  for text, k: passages {
+    s := an_best_span(words, weight, text);
+    if s.support > r.support { r = AnAnswer.{verdict = AnVerdict.abstain, rank = k, from = s.from, to = s.to, support = s.support}; }
+  }
+  if r.rank >= 0 && r.support >= least && r.support > 0 { r.verdict = AnVerdict.answer; }
+  return r;
+}
+// book:end answer
+
+#test "an answer needs support at or above the floor, and above zero" {
+  words := [2] string.["index", "range"]; weight := [2] f64.[1, 1];
+  p := [3] string.["An index.", "Out of range. An index out of range.", "Index and range again."];
+  a := an_answer(words[..], weight[..], p[..], 0.5);
+  #assert a.verdict == AnVerdict.answer && a.rank == 1 && a.from == 14 && a.to == 36 && a.support == 1;
+  a = an_answer(words[..], weight[..], p[0..<1], 0.5);
+  #assert a.verdict == AnVerdict.answer && a.rank == 0 && a.from == 0 && a.to == 9 && a.support == 0.5;
+  a = an_answer(words[..], weight[..], p[0..<1], 0.51);
+  #assert a.verdict == AnVerdict.abstain && a.rank == 0 && a.support == 0.5;
+  q := [1] string.["Nothing."];
+  a = an_answer(words[..], weight[..], q[..], 0);
+  #assert a.verdict == AnVerdict.abstain && a.rank == 0 && a.support == 0;
+  a = an_answer(words[..], weight[..], p[0..<0], 0);
+  #assert a.verdict == AnVerdict.abstain && a.rank == -1;
+  blank := [2] string.["  ", "Range."];
+  a = an_answer(words[..], weight[..], blank[..], 0.5);
+  #assert a.verdict == AnVerdict.answer && a.rank == 1 && a.from == 0 && a.to == 6;
+  a = an_answer(words[..], weight[..], blank[0..<1], -1);
+  #assert a.verdict == AnVerdict.abstain && a.rank == -1;
+}
+
+// book:begin cite
+// A passage's revision digest is chapter 54's passage hash: SHA-256 of its
+// heading path, a newline and its text. Any edit to either changes it.
+an_digest :: (heading: string, text: string) -> [32] u8 {
+  state: [112] u8; out: [32] u8; nl := [1] u8.['\n'];
+  r := sha256_init(state[..]);
+  an_feed(state[..], heading);
+  r = sha256_update_checked(state[..], nl[..], false);
+  an_feed(state[..], text);
+  r = sha256_final_checked(state[..], out[..], false);
+  return out;
+}
+// A passage's identity stays the same across revisions: its file, heading
+// path and part, joined by '#'. "" when out is too small.
+an_id :: (path: string, heading: string, part: int, out: [] u8) -> string {
+  digits: [20] u8; d := 0; v := part;
+  while d == 0 || v > 0 { digits[d] = cast(u8) ('0' + v % 10); v /= 10; d += 1; }
+  n := path.count + heading.count + 2 + d;
+  if n > out.count { return ""; }
+  at := an_put(out, 0, path); out[at] = '#'; at = an_put(out, at + 1, heading); out[at] = '#'; at += 1;
+  while d > 0 { d -= 1; out[at] = digits[d]; at += 1; }
+  return cast(string) out[0..<n];
+}
+// Checks a citation against the passages as they are now (ids, heading paths
+// and texts, one each). The answer may be served only when the check is
+// current: the passage exists, its digest is the cited one, and the cited
+// bytes are exactly the quoted answer.
+an_check :: (c: AnCite, quote: string, ids: [] string, heads: [] string, texts: [] string) -> AnCheck {
+  for id, i: ids {
+    if id != c.id { continue; }
+    if !an_same_digest(an_digest(heads[i], texts[i]), c.digest) { return AnCheck.changed; }
+    if c.from < 0 || c.from > c.to || c.to > texts[i].count || texts[i][c.from..<c.to] != quote { return AnCheck.span; }
+    return AnCheck.current;
+  }
+  return AnCheck.deleted;
+}
+an_serve :: (c: AnCheck) -> bool { return c == AnCheck.current; }
+// book:end cite
+an_same_digest :: (a: [32] u8, b: [32] u8) -> bool {
+  for i: 0..<32 { if a[i] != b[i] { return false; } }
+  return true;
+}
+an_put :: (out: [] u8, at: int, s: string) -> int { for i: 0..<s.count { out[at + i] = s[i]; } return at + s.count; }
+// Feeds a string to SHA-256 through a small buffer.
+an_feed :: (state: [] u8, s: string) {
+  buf: [256] u8; at := 0;
+  while at < s.count {
+    n := 0;
+    while n < buf.count && at + n < s.count { buf[n] = s[at + n]; n += 1; }
+    r := sha256_update_checked(state, buf[0..<n], false);
+    at += n;
+  }
+}
+AN_HEX :: "0123456789abcdef";
+an_hex :: (h: [32] u8, bytes: int, out: [] u8) -> string {
+  for i: 0..<bytes { out[2 * i] = AN_HEX[cast(int) (h[i] >> 4)]; out[2 * i + 1] = AN_HEX[cast(int) (h[i] & 15)]; }
+  return cast(string) out[0..<2 * bytes];
+}
+
+#test "the digest is SHA-256 of the heading path, a newline and the text" {
+  // Written outside Coax with Python's hashlib: sha256(b"H\nabc"),
+  // sha256(b"Head > Sub\n" + b"a" * 600) and sha256(b"\n").
+  x: [64] u8; long: [600] u8;
+  for i: 0..<600 { long[i] = 'a'; }
+  #assert an_hex(an_digest("H", "abc"), 32, x[..]) == "971bbe2fc76ae396d129ad50dac3eb6eee0921713e2c547f9941b0730e662449";
+  #assert an_hex(an_digest("Head > Sub", cast(string) long[..]), 32, x[..]) == "2c0b83efd12f11081a784d86a84766230b4c7f7d4a59f1c48f164310188ae2e7";
+  #assert an_hex(an_digest("", ""), 32, x[..]) == "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b";
+  #assert an_hex(an_digest("H", "abc"), 2, x[..]) == "971b";
+  #assert an_same_digest(an_digest("a", "b"), an_digest("a", "b")) && !an_same_digest(an_digest("a", "b"), an_digest("a", "c")) && !an_same_digest(an_digest("a", "b"), an_digest("ab", ""));
+  d := an_digest("a", "b"); e := d; e[31] = e[31] ^ 1;
+  #assert !an_same_digest(d, e);
+  f := d; f[0] = f[0] ^ 1;
+  #assert !an_same_digest(d, f);
+}
+#test "an identity joins the path, the heading path and the part" {
+  out: [32] u8;
+  #assert an_id("a.md", "T > S", 0, out[..]) == "a.md#T > S#0";
+  #assert an_id("a.md", "T", 120, out[..]) == "a.md#T#120";
+  #assert an_id("a.md", "T", 9, out[0..<8]) == "a.md#T#9" && an_id("a.md", "T", 10, out[0..<8]) == "";
+  #assert an_id("", "", 7, out[..]) == "##7";
+}
+#test "a citation is current only while its passage, digest and bytes all match" {
+  ids := [3] string.["a#T > R#0", "a#T > F#0", "b#M > B#0"];
+  heads := [3] string.["T > R", "T > F", "M > B"];
+  texts := [3] string.["Uses BM25. Set k1 = 1.2 and b.", "Fresh.", "Bounds."];
+  c := AnCite.{id = "a#T > R#0", from = 11, to = 30, digest = an_digest("T > R", texts[0])};
+  #assert an_check(c, "Set k1 = 1.2 and b.", ids[..], heads[..], texts[..]) == AnCheck.current && an_serve(AnCheck.current);
+  edited := texts; edited[0] = "Uses BM25. Set k1 = 0.9 and b.";
+  #assert an_check(c, "Set k1 = 1.2 and b.", ids[..], heads[..], edited[..]) == AnCheck.changed && !an_serve(AnCheck.changed);
+  moved := heads; moved[0] = "T > Ranking";
+  #assert an_check(c, "Set k1 = 1.2 and b.", ids[..], moved[..], texts[..]) == AnCheck.changed;
+  #assert an_check(c, "Set k1 = 1.2 and b.", ids[1..<3], heads[1..<3], texts[1..<3]) == AnCheck.deleted && !an_serve(AnCheck.deleted);
+  #assert an_check(c, "Set k1 = 9.9 and b.", ids[..], heads[..], texts[..]) == AnCheck.span && !an_serve(AnCheck.span);
+  bad := c; bad.from = -1;
+  #assert an_check(bad, "Set k1 = 1.2 and b.", ids[..], heads[..], texts[..]) == AnCheck.span;
+  bad = c; bad.to = 31;
+  #assert an_check(bad, "Set k1 = 1.2 and b.", ids[..], heads[..], texts[..]) == AnCheck.span;
+  bad = c; bad.from = 12; bad.to = 11;
+  #assert an_check(bad, "", ids[..], heads[..], texts[..]) == AnCheck.span;
+  bad = c; bad.from = 30; bad.to = 30;
+  #assert an_check(bad, "", ids[..], heads[..], texts[..]) == AnCheck.current;
+  bad = c; bad.from = 0; bad.to = 0;
+  #assert an_check(bad, "", ids[..], heads[..], texts[..]) == AnCheck.current;
+  last := AnCite.{id = "b#M > B#0", from = 0, to = 7, digest = an_digest("M > B", "Bounds.")};
+  #assert an_check(last, "Bounds.", ids[..], heads[..], texts[..]) == AnCheck.current;
+}

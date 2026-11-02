@@ -3,6 +3,7 @@
 //   ... "query" --k 10 --book psionic --mode bm25|dense|fused --json
 //   ... --eval psionic/fixtures/book-search/heldout.tsv [--json]
 //   ... --rerank-eval psionic/fixtures/book-search/heldout.tsv   (chapter 56)
+//   ... --answer-eval psionic/fixtures/book-search/heldout.tsv   (chapter 57)
 //   ... --no-build      refuse a stale index instead of rebuilding it
 //   ... --rebuild       rebuild the index;  --train  retrain the weights too
 // Runs from the repository root. The weights and the index live in
@@ -16,6 +17,7 @@
 #load "../lib/book-search/encoder.coax";
 #load "../lib/book-search/hnsw.coax";
 #load "../lib/book-search/rerank.coax";
+#load "../lib/book-search/answer.coax";
 #load "../lib/verdict.coax";
 
 FILES_MAX :: 1024;
@@ -640,6 +642,69 @@ last_heading :: (path: string) -> string {
 }
 pct :: (x: f64, out: [] u8) -> string { return fixed(x, 3, out); }
 
+// Chapter 56's training: synthetic queries from the books' structure, never
+// from a query file, and `runs` rerankers trained on them (run 0 with
+// RERANK_SEED, run r > 0 with seed r). ok is false after a refusal.
+Trained :: struct { ok: bool; queries: int; usable: int; rows: int; features_ms: int; train_ms: int; }
+train_rerankers :: (b: Bs, ix: [] HnIndex, unit: [] f64, runs: int, weights: [] f64, trained: [] RrTrained) -> Trained {
+  P := b.passage_n; t1 := proc_now_ms();
+  // Training queries from the books' structure, never from the query file.
+  bm: [PASSAGES_MAX] f64; scores: [PASSAGES_MAX] f64; c: [1] Cands; ids: [QUERY_MAX] int;
+  tf: [TRAIN_POOL * POOL_MAX * RR_FEATURES] f64; tl: [TRAIN_POOL * POOL_MAX] bool; tg: [TRAIN_POOL + 1] int;
+  merged: [POOL_MAX] RrCand; tq := 0; rows := 0; usable := 0;
+  for i: 0..<TRAIN_POOL {
+    p := cast(int) (cr_bits(TRAIN_SEED, cast(u64) (3 * i)) % cast(u64) P);
+    path := heads_of(b, p); pf := b.passages[p].file; n := 0; section := true;
+    if i % 2 == 0 {
+      n = query_ids(b, last_heading(path), ids[..]);
+      section = false;
+      if n < 2 { continue; }
+    } else {
+      body := b.bt[p] - b.bf[p];
+      if body < 16 { continue; }
+      n = 5 + cast(int) (cr_bits(TRAIN_SEED, cast(u64) (3 * i + 1)) % 6);
+      at := b.bf[p] + cast(int) (cr_bits(TRAIN_SEED, cast(u64) (3 * i + 2)) % cast(u64) (body - n + 1));
+      for k: 0..<n { ids[k] = b.ids[at + k]; }
+    }
+    candidates(b, ix[..], HN_EF, ids[0..<n], bm[..], scores[..], c[..]);
+    m := rr_merge(c[0].lexical[0..<c[0].ln], c[0].dense[0..<c[0].dn], merged[..]);
+    if m.status != RrStatus.ok { tool_errln("book-search: merge refused"); return Trained.{}; }
+    tg[tq] = rows;
+    features(b, unit[..], c[..], merged[0..<m.count], bm[..], tf[rows * RR_FEATURES..<(rows + m.count) * RR_FEATURES]);
+    good := 0;
+    for x, k: merged[0..<m.count] {
+      rel := b.passages[x.passage].file == pf;
+      if rel { rel = ifx section then heads_of(b, x.passage) == path else has_component(heads_of(b, x.passage), last_heading(path)); }
+      tl[rows + k] = rel; if rel { good += 1; }
+    }
+    if good > 0 && good < m.count { usable += 1; }
+    rows += m.count; tq += 1;
+  }
+  tg[tq] = rows;
+  t2 := proc_now_ms();
+  // The rerankers: run 0 is the reported one, the rest are for the floor;
+  // each trains on the half of the training queries its seed picks.
+  sf: [TRAIN_POOL * POOL_MAX * RR_FEATURES] f64; sl: [TRAIN_POOL * POOL_MAX] bool; sg: [TRAIN_POOL + 1] int;
+  for run: 0..<runs {
+    seed := ifx run == 0 then cast(u64) RERANK_SEED else cast(u64) run;
+    n := 0; at := 0;
+    for q: 0..<tq {
+      if cr_bits(seed + 1000, cast(u64) q) % 2 != 0 { continue; }
+      sg[n] = at; n += 1;
+      for r: tg[q]..<tg[q + 1] {
+        sl[at] = tl[r];
+        for k: 0..<RR_FEATURES { sf[at * RR_FEATURES + k] = tf[r * RR_FEATURES + k]; }
+        at += 1;
+      }
+    }
+    sg[n] = at;
+    trained[run] = rr_train(RERANK, sf[0..<at * RR_FEATURES], sl[0..<at], sg[0..<n + 1], weights[run * RR_FEATURES..<(run + 1) * RR_FEATURES]);
+    if trained[run].status != RrStatus.ok { tool_err("book-search: reranker: "); tool_errln(rr_status_name(trained[run].status)); return Trained.{}; }
+  }
+  t3 := proc_now_ms();
+  return Trained.{ok = true, queries = tq, usable = usable, rows = rows, features_ms = t2 - t1, train_ms = t3 - t2};
+}
+
 rerank_eval :: (b: Bs, file: string) -> int {
   P := b.passage_n;
   text: [1048576] u8;
@@ -661,61 +726,11 @@ rerank_eval :: (b: Bs, file: string) -> int {
   unit: [VOCAB_MAX * BE_WIDTH] f64;
   rr_unit(b.table[0..<b.vocab[0].n * BE_WIDTH], BE_WIDTH, unit[0..<b.vocab[0].n * BE_WIDTH]);
 
-  // Training queries from the books' structure, never from the query file.
-  bm: [PASSAGES_MAX] f64; scores: [PASSAGES_MAX] f64; c: [1] Cands; ids: [QUERY_MAX] int;
-  tf: [TRAIN_POOL * POOL_MAX * RR_FEATURES] f64; tl: [TRAIN_POOL * POOL_MAX] bool; tg: [TRAIN_POOL + 1] int;
-  merged: [POOL_MAX] RrCand; tq := 0; rows := 0; usable := 0;
-  for i: 0..<TRAIN_POOL {
-    p := cast(int) (cr_bits(TRAIN_SEED, cast(u64) (3 * i)) % cast(u64) P);
-    path := heads_of(b, p); pf := b.passages[p].file; n := 0; section := true;
-    if i % 2 == 0 {
-      n = query_ids(b, last_heading(path), ids[..]);
-      section = false;
-      if n < 2 { continue; }
-    } else {
-      body := b.bt[p] - b.bf[p];
-      if body < 16 { continue; }
-      n = 5 + cast(int) (cr_bits(TRAIN_SEED, cast(u64) (3 * i + 1)) % 6);
-      at := b.bf[p] + cast(int) (cr_bits(TRAIN_SEED, cast(u64) (3 * i + 2)) % cast(u64) (body - n + 1));
-      for k: 0..<n { ids[k] = b.ids[at + k]; }
-    }
-    candidates(b, ix[..], HN_EF, ids[0..<n], bm[..], scores[..], c[..]);
-    m := rr_merge(c[0].lexical[0..<c[0].ln], c[0].dense[0..<c[0].dn], merged[..]);
-    if m.status != RrStatus.ok { tool_errln("book-search: merge refused"); return 2; }
-    tg[tq] = rows;
-    features(b, unit[..], c[..], merged[0..<m.count], bm[..], tf[rows * RR_FEATURES..<(rows + m.count) * RR_FEATURES]);
-    good := 0;
-    for x, k: merged[0..<m.count] {
-      rel := b.passages[x.passage].file == pf;
-      if rel { rel = ifx section then heads_of(b, x.passage) == path else has_component(heads_of(b, x.passage), last_heading(path)); }
-      tl[rows + k] = rel; if rel { good += 1; }
-    }
-    if good > 0 && good < m.count { usable += 1; }
-    rows += m.count; tq += 1;
-  }
-  tg[tq] = rows;
-  t2 := proc_now_ms();
-  // Nine rerankers: the reported one and eight for the floor, each on the
-  // half of the training queries its seed picks.
+  bm: [PASSAGES_MAX] f64; scores: [PASSAGES_MAX] f64; c: [1] Cands; ids: [QUERY_MAX] int; merged: [POOL_MAX] RrCand;
   weights: [RUNS * RR_FEATURES] f64; trained: [RUNS] RrTrained;
-  sf: [TRAIN_POOL * POOL_MAX * RR_FEATURES] f64; sl: [TRAIN_POOL * POOL_MAX] bool; sg: [TRAIN_POOL + 1] int;
-  for run: 0..<RUNS {
-    seed := ifx run == 0 then cast(u64) RERANK_SEED else cast(u64) run;
-    n := 0; at := 0;
-    for q: 0..<tq {
-      if cr_bits(seed + 1000, cast(u64) q) % 2 != 0 { continue; }
-      sg[n] = at; n += 1;
-      for r: tg[q]..<tg[q + 1] {
-        sl[at] = tl[r];
-        for k: 0..<RR_FEATURES { sf[at * RR_FEATURES + k] = tf[r * RR_FEATURES + k]; }
-        at += 1;
-      }
-    }
-    sg[n] = at;
-    trained[run] = rr_train(RERANK, sf[0..<at * RR_FEATURES], sl[0..<at], sg[0..<n + 1], weights[run * RR_FEATURES..<(run + 1) * RR_FEATURES]);
-    if trained[run].status != RrStatus.ok { tool_err("book-search: reranker: "); tool_errln(rr_status_name(trained[run].status)); return 2; }
-  }
-  t3 := proc_now_ms();
+  tr0 := train_rerankers(b, ix[..], unit[..], RUNS, weights[..], trained[..]);
+  if !tr0.ok { return 2; }
+  tq := tr0.queries; usable := tr0.usable; rows := tr0.rows;
 
   // The held-out queries. Columns of rr: 0 BM25, 1 exhaustive dense, 2 fused
   // (chapter 54), 3 fused over HNSW, 4 reranked, 5.. the floor runs.
@@ -782,7 +797,7 @@ rerank_eval :: (b: Bs, file: string) -> int {
   print("HNSW over the passage embeddings: m %, ef_build %, seed %; built with % similarities in % ms; % bytes in memory\n",
         HN_M, HN_EF_BUILD, HN_SEED, built, t1 - t0, hn_memory(ix[..]));
   print("training: % synthetic queries (% with a relevant and another candidate), % candidate rows, features in % ms; 9 rerankers trained in % ms\n",
-        tq, usable, rows, t2 - t1, t3 - t2);
+        tq, usable, rows, tr0.features_ms, tr0.train_ms);
   tr := trained[0];
   print("reranker (seed %): % queries, % pairs, loss % -> %\n", RERANK_SEED, tr.queries, tr.pairs, fixed(tr.first, 4, o1[..]), fixed(tr.last, 4, o2[..]));
   for k: 0..<RR_FEATURES { print("  weight %: %\n", RR_FEATURE_NAMES[k], fixed(weights[k], 4, o1[..])); }
@@ -815,6 +830,122 @@ rerank_eval :: (b: Bs, file: string) -> int {
   }
   return 0;
 }
+// ---- chapter 57: answers that cite the current sources -----------------------------
+// The query file's label "-" marks a question no passage should answer.
+// Answers come from the index (held); every citation is then checked against
+// the books as read from disk now (now), byte for byte.
+ID_POOL :: 4194304;
+answer_eval :: (b: Bs, now: Bs, file: string) -> int {
+  P := b.passage_n;
+  text: [1048576] u8;
+  tn := fs_read(file, text[..]);
+  if tn < 0 { tool_errln("book-search: cannot read the query file"); return 2; }
+  ix: [1] HnIndex; hv: [PASSAGES_MAX * BE_WIDTH] f32; hl: [PASSAGES_MAX] int; hu: [PASSAGES_MAX] int;
+  hb: [PASSAGES_MAX * 2 * HN_M] int; hp: [PASSAGES_MAX * HN_M] int; hs: [PASSAGES_MAX] int;
+  st := hn_init(ix[..], BE_WIDTH, HN_M, HN_EF_BUILD, HN_SEED, hv[0..<P * BE_WIDTH], hl[0..<P], hu[0..<P], hb[0..<P * 2 * HN_M], hp[..], hs[0..<P]);
+  if st != HnStatus.ok { tool_err("book-search: hnsw: "); tool_errln(hn_status_name(st)); return 2; }
+  for p: 0..<P {
+    r := hn_add(ix[..], b.embeddings[p * BE_WIDTH..<(p + 1) * BE_WIDTH]);
+    if r.status != HnStatus.ok { tool_err("book-search: hnsw add: "); tool_errln(hn_status_name(r.status)); return 2; }
+  }
+  unit: [VOCAB_MAX * BE_WIDTH] f64;
+  rr_unit(b.table[0..<b.vocab[0].n * BE_WIDTH], BE_WIDTH, unit[0..<b.vocab[0].n * BE_WIDTH]);
+  weights: [RR_FEATURES] f64; trained: [1] RrTrained;
+  tr := train_rerankers(b, ix[..], unit[..], 1, weights[..], trained[..]);
+  if !tr.ok { return 2; }
+
+  // The books on disk now: every passage's identity, heading path and text.
+  idpool: [ID_POOL] u8; used := 0;
+  nid: [PASSAGES_MAX] string; nhead: [PASSAGES_MAX] string; ntext: [PASSAGES_MAX] string;
+  for p: 0..<now.passage_n {
+    q := now.passages[p];
+    nid[p] = an_id(file_path(now, q.file), heads_of(now, p), q.part, idpool[used..<ID_POOL]);
+    if nid[p].count == 0 { tool_errln("book-search: passage identities do not fit"); return 2; }
+    used += nid[p].count;
+    nhead[p] = heads_of(now, p); ntext[p] = cast(string) now.text[q.from..<q.to];
+  }
+
+  bm: [PASSAGES_MAX] f64; scores: [PASSAGES_MAX] f64; c: [1] Cands; ids: [QUERY_MAX] int;
+  merged: [POOL_MAX] RrCand; f: [POOL_MAX * RR_FEATURES] f64; list: [POOL_MAX] BsHit; relevant: [PASSAGES_MAX] bool;
+  queries := 0; labelled := 0; answered := 0; abstained := 0; current := 0; precise := 0; precise_abstain := 0;
+  top1 := 0; top3 := 0; mrr := 0.0; unlabelled_abstained := 0; spent := 0;
+  o1: [32] u8; o2: [32] u8; o3: [32] u8; hx: [64] u8; ib: [256] u8;
+  print("| Question | Verdict | Support | Cited passage | Labelled relevant | Citation now |\n| --- | --- | ---: | --- | --- | --- |\n");
+  at := 0;
+  while at < tn {
+    end := at; while end < tn && text[end] != '\n' { end += 1; }
+    line := cast(string) text[at..<end]; at = end + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    tab := 0; while tab < line.count && line[tab] != '\t' { tab += 1; }
+    if tab == line.count { tool_errln("book-search: a query line has no tab"); return 2; }
+    question := line[0..<tab]; label := line[tab + 1..<line.count];
+    has := label != "-";
+    if has { if mark_relevant(b, label, relevant[..]) <= 0 { return 2; } labelled += 1; }
+    else { for p: 0..<P { relevant[p] = false; } }
+    queries += 1;
+    s0 := proc_now_ms();
+    // Retrieve and rerank (chapter 56).
+    n := query_ids(b, question, ids[..]);
+    candidates(b, ix[..], HN_EF, ids[0..<n], bm[..], scores[..], c[..]);
+    m := rr_merge(c[0].lexical[0..<c[0].ln], c[0].dense[0..<c[0].dn], merged[..]);
+    if m.status != RrStatus.ok { tool_errln("book-search: merge refused"); return 2; }
+    features(b, unit[..], c[..], merged[0..<m.count], bm[..], f[..]);
+    k := rr_rerank(weights[..], f[0..<m.count * RR_FEATURES], merged[0..<m.count], list[..]);
+    // Answer from the top AN_TOP, weighting each query word by BM25's IDF.
+    pool: [1024] u8; words: [64] string; weight: [64] f64;
+    w := an_query_words(question, pool[..], words[..]);
+    if w < 0 { tool_errln("book-search: a question has too many words"); return 2; }
+    for i: 0..<w { id := bs_find(b.vocab[0], words[i]); weight[i] = bs_idf(P, ifx id >= 0 then b.df[id] else 0); }
+    top := ifx k < AN_TOP then k else AN_TOP;
+    found: [AN_TOP] string;
+    for i: 0..<top { q := b.passages[list[i].passage]; found[i] = cast(string) b.text[q.from..<q.to]; }
+    a := an_answer(words[0..<w], weight[0..<w], found[0..<top], AN_SUPPORT_MIN);
+    spent += proc_now_ms() - s0;
+    if has {
+      first := bs_first_relevant(list[0..<ifx k < 10 then k else 10], relevant[0..<P]);
+      if first == 1 { top1 += 1; }
+      if first >= 1 && first <= AN_TOP { top3 += 1; }
+      mrr += bs_reciprocal(first, 10);
+    }
+    cited := "-"; rel := "-"; check := "-";
+    if a.rank >= 0 {
+      p := list[a.rank].passage; q := b.passages[p];
+      cited = heads_of(b, p);
+      rel = ifx !has then "no label" else ifx relevant[p] then "yes" else "no";
+      if a.verdict == AnVerdict.answer {
+        answered += 1;
+        idb: [4096] u8;
+        cite := AnCite.{id = an_id(file_path(b, q.file), heads_of(b, p), q.part, idb[..]), from = a.from, to = a.to, digest = an_digest(heads_of(b, p), found[a.rank])};
+        ck := an_check(cite, found[a.rank][a.from..<a.to], nid[0..<now.passage_n], nhead[0..<now.passage_n], ntext[0..<now.passage_n]);
+        check = an_check_name(ck);
+        if an_serve(ck) { current += 1; }
+        if has && relevant[p] { precise += 1; }
+      } else {
+        if has && relevant[p] { precise_abstain += 1; }
+      }
+    }
+    if a.verdict == AnVerdict.abstain { abstained += 1; if !has { unlabelled_abstained += 1; } }
+    print("| % | % | % | % | % | % |\n", question, an_verdict_name(a.verdict), fixed(ifx a.support < 0 then 0.0 else a.support, 3, o1[..]), cited, rel, check);
+  }
+  if queries == 0 { tool_errln("book-search: the query file has no queries"); return 2; }
+  rb: [40] u8;
+  print("\n% questions (% labelled, % marked unanswerable) over % passages, books at %, weights %\n", queries, labelled, queries - labelled, P, revision(b, 12, rb[..]), bs_hex(b.digest, 8, hx[..]));
+  print("reranker (seed %): % training queries, loss % -> %; support floor %, top %\n", RERANK_SEED, tr.queries, fixed(trained[0].first, 4, o1[..]), fixed(trained[0].last, 4, o2[..]), fixed(AN_SUPPORT_MIN, 2, o3[..]), AN_TOP);
+  if labelled > 0 {
+    L := f64(labelled);
+    print("retrieval, reranked (labelled questions): recall@1 %, recall@% %, MRR@10 %\n", pct(f64(top1) / L, o1[..]), AN_TOP, pct(f64(top3) / L, o2[..]), pct(mrr / L, o3[..]));
+  }
+  print("answered %, abstained % of %\n", answered, abstained, queries);
+  print("citations current against the books on disk: % of % answers\n", current, answered);
+  if labelled > 0 {
+    print("citation precision (the cited passage is labelled relevant): % of % answers", precise, answered);
+    if answered > 0 { print(" = %", pct(f64(precise) / f64(answered), o1[..])); }
+    print("\nabstained on labelled questions: %; of those, % had a labelled passage as the closest span\n", abstained - unlabelled_abstained, precise_abstain);
+  }
+  if queries > labelled { print("abstained on unanswerable questions: % of %\n", unlabelled_abstained, queries - labelled); }
+  print("answering: % ms per question for retrieval, reranking and the answer (one core)\n", fixed(f64(spent) / f64(queries), 2, o1[..]));
+  return 0;
+}
 verdict_name :: (v: VdVerdict) -> string { if v == VdVerdict.passed { return "passed"; } if v == VdVerdict.failed { return "failed"; } return "unverifiable"; }
 reason_name :: (r: VdReason) -> string {
   if r == VdReason.beyond_floor { return "beyond the floor"; }
@@ -833,14 +964,15 @@ tool_main :: () -> int #export_c {
   query := ""; i := 0;
   while i < args_count(a[..]) {
     x := args_at(a[..], i);
-    if x == "--k" || x == "--book" || x == "--mode" || x == "--eval" || x == "--rerank-eval" { i += 2; continue; }
+    if x == "--k" || x == "--book" || x == "--mode" || x == "--eval" || x == "--rerank-eval" || x == "--answer-eval" { i += 2; continue; }
     if x.count > 1 && x[0] == '-' && x[1] == '-' { i += 1; continue; }
     query = x; i += 1;
   }
   eval := args_value(a[..], "--eval", "");
   reval := args_value(a[..], "--rerank-eval", "");
+  aeval := args_value(a[..], "--answer-eval", "");
   json := args_has(a[..], "--json");
-  if query.count == 0 && eval.count == 0 && reval.count == 0 && !args_has(a[..], "--rebuild") && !args_has(a[..], "--train") {
+  if query.count == 0 && eval.count == 0 && reval.count == 0 && aeval.count == 0 && !args_has(a[..], "--rebuild") && !args_has(a[..], "--train") {
     tool_errln("usage: coax/web/tool.sh psionic/tools/book-search.coax \"QUERY\" [--k N] [--book coax|psionic|aethyr] [--mode fused|bm25|dense] [--json] [--no-build]");
     tool_errln("       coax/web/tool.sh psionic/tools/book-search.coax --eval FILE [--json] [--verbose] | --rebuild | --train");
     return 2;
@@ -901,6 +1033,7 @@ tool_main :: () -> int #export_c {
   }
   for f: 0..<held[0].file_n { held[0].files[f].rev = now[0].files[f].rev; held[0].files[f].edited = now[0].files[f].edited; }
   if reval.count > 0 { return rerank_eval(held[0], reval); }
+  if aeval.count > 0 { return answer_eval(held[0], now[0], aeval); }
   if eval.count > 0 { return evaluate(held[0], eval, json, args_has(a[..], "--verbose")); }
   if query.count == 0 { return 0; }
 

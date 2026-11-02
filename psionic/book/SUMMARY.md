@@ -62,7 +62,7 @@
 - [54. Search the Coax book](ch054-search-the-coax-book.md)
 - [55. Search without scanning everything](ch055-search-without-scanning-everything.md) — partly implemented
 - [56. Rerank the candidates](ch056-rerank-the-candidates.md) — partly implemented
-- [57. Answer from current sources](ch057-answer-from-current-sources.md) — design draft
+- [57. Answer from current sources](ch057-answer-from-current-sources.md) — partly implemented
 - [58. Continue a passage](ch058-continue-a-passage.md) — design draft
 - [59. Run in the browser](ch059-run-in-the-browser.md) — design draft
 
@@ -282,7 +282,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200–204, 206, 207, 212, 215–237, 239–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–57, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200–204, 206, 207, 212, 215–237, 239–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

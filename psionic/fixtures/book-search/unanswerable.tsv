@@ -1,0 +1,11 @@
+# Questions for chapter 57 that no passage of the three books answers, written
+# before the assistant was first run on the books. Never tune on them.
+# Format: query<TAB>- (the label "-" means no passage is relevant).
+how do I bake sourdough bread at home	-
+the capital city of Australia	-
+symptoms of the common flu	-
+how to tune a guitar by ear	-
+deploy a web service to Kubernetes with Helm charts	-
+write a SQL join across three tables	-
+the history of the Roman empire	-
+open a TCP socket and send an HTTP request	-

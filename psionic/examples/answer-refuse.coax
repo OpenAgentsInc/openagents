@@ -1,0 +1,28 @@
+// Chapter 57's broken inputs: citations that must not be served, and
+// requests that do not fit. Each is refused with its reason.
+#import "Basic";
+#load "../lib/book-search/answer.coax";
+
+// book:begin refuse
+main :: () {
+  ids := [2] string.["psionic/book/ch054.md#54. Search > Ranking#0", "psionic/book/ch054.md#54. Search > Freshness#0"];
+  heads := [2] string.["54. Search > Ranking", "54. Search > Freshness"];
+  texts := [2] string.["Each passage is scored with BM25. The settings are k1 = 1.2 and b = 0.75.", "A stale index is refused with exit status 3."];
+  good := AnCite.{id = ids[0], from = 34, to = 73, digest = an_digest(heads[0], texts[0])};
+  quote := "The settings are k1 = 1.2 and b = 0.75.";
+  print("the saved citation as made: %\n", an_check_name(an_check(good, quote, ids[..], heads[..], texts[..])));
+  print("the same citation quoting k1 = 1.5: %\n", an_check_name(an_check(good, "The settings are k1 = 1.5 and b = 0.75.", ids[..], heads[..], texts[..])));
+  past := good; past.to = 74;
+  print("a span one byte past the passage: %\n", an_check_name(an_check(past, quote, ids[..], heads[..], texts[..])));
+  edited := texts; edited[0] = "Each passage is scored with BM25. The settings are k1 = 1.2 and b = 0.75!";
+  print("the passage's last byte edited: %\n", an_check_name(an_check(good, quote, ids[..], heads[..], edited[..])));
+  moved := heads; moved[0] = "54. Search > Scoring";
+  print("the passage's heading renamed: %\n", an_check_name(an_check(good, quote, ids[..], moved[..], texts[..])));
+  print("the passage's chapter removed: %\n", an_check_name(an_check(good, quote, ids[1..<2], heads[1..<2], texts[1..<2])));
+  pool: [8] u8; words: [2] string;
+  print("a question of three words into room for two: %\n", an_query_words("stale index refused", pool[..], words[..]));
+  print("a question of 9 letters into 8 bytes: %\n", an_query_words("freshness", pool[..], words[..]));
+  out: [16] u8;
+  print("an identity of 17 bytes into 16: \"%\"\n", an_id("psionic/a.md", "T", 10, out[..]));
+}
+// book:end refuse
