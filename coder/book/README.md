@@ -55,7 +55,7 @@ names it.
 | [7. Condense the history](ch007-condense-the-history.md) | Partly implemented: cd-condense-v1, bounded CPU |
 | [8. Programs as tool calls](ch008-programs-as-tool-calls.md) | Partly implemented: cpu-harness-program-v1, bounded CPU |
 | [9. Microcoder](ch009-microcoder.md) | Partly implemented: `coder run --engine micro`, Vertex, Gemini API and OpenRouter |
-| [10. Drive Claude Code](ch010-drive-claude-code.md) | Partly implemented: Claude Code 2.1.316 on the person's login |
+| [10. Drive Claude Code](ch010-drive-claude-code.md) | Implemented: Claude Code 2.1.316 on the person's login; approvals by policy; Coder's tools in-process |
 | [11. Drive Codex](ch011-drive-codex.md) | Partly implemented: codex-cli 0.163.0 app-server |
 | [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) | Partly implemented: `--engine psionic` on a local Chat Completions server |
 | [13. Choose an engine](ch013-choose-an-engine.md) | Partly implemented: mammoth-1 routes 22/22 held out; effort reaches the engine; Decisions API blocked |

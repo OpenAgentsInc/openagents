@@ -152,6 +152,12 @@ def verbs(check):
               verdicts == [("Write(a.txt)", "run"), ("Write(/etc/stub-outside.txt)", "ask"), ("Bash(touch b.txt)", "refuse")])
         sent = [json.loads(x)["behavior"] for x in open(answers)] if os.path.exists(answers) else []
         check("policy: Claude Code gets allow, then deny with no one to ask, then deny", sent == ["allow", "deny", "deny"] and '"ending":"finished"' in pol.stdout)
+        mcp_out = os.path.join(home, "mcp-answers")
+        subprocess.run([coder, "run", "go", "--engine", "claude", "--coder-tools", "--cwd", work, "--json"], cwd=REPO,
+                       env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=mcp_out, CLAUDE_STUB_MODE="mcp"), capture_output=True, text=True, timeout=120)
+        got = [json.loads(x)["mcp"] for x in open(mcp_out)] if os.path.exists(mcp_out) else []
+        text = got[0]["result"]["content"][0]["text"] if got and got[0] and "result" in got[0] else ""
+        check("--coder-tools: Claude Code's call to coder_ls gets the session list", got and got[0].get("id") == 7 and sid[:15] in text)
         badp = subprocess.run([coder, "run", "hi", "--allow", "run", "--ceiling", "write"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("policy: --allow can't pass --ceiling", badp.returncode == 2 and "--allow can't be above --ceiling" in badp.stderr)
         # a progress bar and colors read back as a terminal shows them (chapter 37)

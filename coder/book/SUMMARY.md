@@ -17,7 +17,7 @@
 ## II. Engines
 
 - [9. Microcoder](ch009-microcoder.md) — partly implemented
-- [10. Drive Claude Code](ch010-drive-claude-code.md) — partly implemented
+- [10. Drive Claude Code](ch010-drive-claude-code.md) — implemented
 - [11. Drive Codex](ch011-drive-codex.md) — partly implemented
 - [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) — partly implemented
 - [13. Choose an engine](ch013-choose-an-engine.md) — partly implemented

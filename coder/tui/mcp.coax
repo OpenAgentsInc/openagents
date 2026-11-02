@@ -185,3 +185,27 @@ cd_cmd_mcp :: () -> int {
   first := cl_json(list, cl_item(list, 0));
   #assert cl_str(ar[..], first, "name") == "coder_run" && cl_raw(cl_raw(first, "inputSchema"), "required") == "[\"task\"]";
 }
+
+// --coder-tools: the same eight tools as an in-process SDK MCP server in a
+// Claude Code session, so Claude Code can start, follow and steer other
+// Coder sessions. The model sees them as mcp__coder__coder_run and so on.
+cd_claude_coder_server :: (o: [] ClOptions) {
+  names := CD_MCP_TOOLS; about := CD_MCP_ABOUT; schemas := CD_MCP_SCHEMAS;
+  k := cl_add_server(o, "coder", "0.1.0");
+  for name, i: names { x := cl_add_server_tool(o, k, name, about[i], schemas[i]); }
+}
+
+// A tools/call from Claude Code: the verb runs, and its text goes back.
+cd_claude_tool_call :: (a: [] App, ev: ClEvent) {
+  q := a[0].q;
+  name := q[0].options.servers[ev.server].tools[ev.tool].name;
+  pb: [65536] u8;
+  n := json_raw(pb[..], 0, "{\"name\":"); n = json_write_string(pb[..], n, name);
+  n = json_raw(pb[..], n, ",\"arguments\":"); n = json_raw(pb[..], n, ifx ev.arguments.count > 0 then ev.arguments else "{}");
+  n = json_raw(pb[..], n, "}");
+  rb: [300000] u8;
+  res := ifx n < 0 then "" else cd_mcp_call(q[0].ar[..], cast(string) pb[0..<n], rb[..]);
+  if res.count == 0 { cl_tool_answer(q, "[{\"type\":\"text\",\"text\":\"Coder couldn't run that tool.\"}]", true, ""); return; }
+  bad := cl_bool(res, "isError");
+  cl_tool_answer(q, cl_raw(res, "content"), bad.ok && bad.value, "");
+}

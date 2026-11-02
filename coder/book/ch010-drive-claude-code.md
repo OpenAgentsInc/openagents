@@ -1,13 +1,13 @@
 # 10. Drive Claude Code
 
-> **Status: partly implemented.** Coder runs tasks through the installed
+> **Status: implemented.** Coder runs tasks through the installed
 > `claude` CLI (checked with Claude Code 2.1.316) on the person's own
 > login: `coder run "TASK" --engine claude` and the terminal UI's first
 > agent. The reply streams, each tool call and its result show as rows,
 > edits show as diffs, and every event lands in the session log. With
 > `--allow`, `--ceiling` or `--root`, chapter 5's policy answers permission
-> requests. Still to come: in-process MCP servers that expose Coder's tools
-> to Claude Code.
+> requests, and `--coder-tools` gives Claude Code Coder's own verbs as an
+> in-process MCP server.
 
 Many people already pay for Claude Code. Coder can run a task through it
 instead of through its own loop, and keep the same log, approvals and
@@ -50,6 +50,23 @@ coder/tui/coder.sh run 'Run `ls coder/tui | wc -l` and reply with only the numbe
 {"kind":"result","text":"      10","error":false}
 {"kind":"reply","text":"10"}
 {"kind":"end","ending":"finished","ms":5436,"steps":1}
+```
+
+## Coder's tools in Claude Code
+
+`--coder-tools` adds an in-process MCP server named `coder` to the Claude
+Code session. It has the eight tools `coder mcp` serves
+([chapter 16](PLAN.md#iii-many-tasks)): `coder_run`, `coder_ls`,
+`coder_status`, `coder_log`, `coder_send`, `coder_stop`, `coder_fork` and
+`coder_replay`. Claude Code sees them as `mcp__coder__coder_run` and so on,
+so one session can start, follow and steer others. Each call arrives as an
+`mcp_message` control request; Coder runs the verb and returns its text.
+
+```text
+$ coder run "Call the mcp__coder__coder_ls tool once and tell me how many sessions it lists." --engine claude --coder-tools
+  ⏺ mcp__coder__coder_ls
+    └ 20261102-081929-924  claude     running   2s ago   Call the mcp__coder__coder_ls tool  … +45 lines
+● 46
 ```
 
 ## Approvals by policy
@@ -117,7 +134,9 @@ instead of opening a sign-in page.
   CLI, and its events appear in `coder log`.
 - [x] The live smoke runs against a named Claude Code version (2.1.316) and
   never opens a browser sign-in.
-- [ ] Coder's tools reach Claude Code as an in-process MCP server.
+- [x] Coder's tools reach Claude Code as an in-process MCP server:
+  `--coder-tools`, checked live (46 sessions listed, 2026-11-02) and
+  offline against a stand-in Claude Code.
 - [x] Permission requests are answered by chapter 5's policy: `--allow`,
   `--ceiling` and `--root`, checked live (a Write allowed, `touch` refused
   above a `write` ceiling) and offline against a stand-in Claude Code.

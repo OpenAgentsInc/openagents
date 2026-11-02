@@ -3,7 +3,8 @@
 stream-json control protocol to ask for two permissions, a Write inside the
 working directory and a Bash command, and records each answer.
 
-CLAUDE_STUB_OUT names the file the answers go to, one JSON line each."""
+CLAUDE_STUB_OUT names the file the answers go to, one JSON line each.
+CLAUDE_STUB_MODE=mcp calls Coder's in-process coder_ls tool instead."""
 import json, os, sys
 
 out = os.environ.get("CLAUDE_STUB_OUT", "/dev/null")
@@ -38,6 +39,16 @@ while True:
     if m.get("type") == "user":
         break
 send({"type": "system", "subtype": "init", "session_id": "stub", "cwd": cwd, "tools": [], "model": "stub"})
+if os.environ.get("CLAUDE_STUB_MODE") == "mcp":
+    # call Coder's in-process MCP server's coder_ls, and record its text
+    send({"type": "control_request", "request_id": "stub-mcp", "request": {"subtype": "mcp_message", "server_name": "coder",
+          "message": {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "coder_ls", "arguments": {}}}}})
+    r = read()
+    while r.get("type") != "control_response":
+        r = read()
+    with open(out, "a") as f:
+        f.write(json.dumps({"mcp": r["response"].get("response", {}).get("mcp_response")}) + "\n")
+    asks = []
 with open(out, "a") as f:
     for i, (tool, inp) in enumerate(asks):
         send({"type": "control_request", "request_id": "stub-%d" % i, "request": {"subtype": "can_use_tool", "tool_name": tool, "input": inp, "tool_use_id": "toolu_stub%d" % i}})
