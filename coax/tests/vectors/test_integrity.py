@@ -84,6 +84,14 @@ class IntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(IntegrityError, 'revision'):
             audit(root)
 
+    def test_static_source_needs_a_description(self):
+        root = self.corpus(); value = self.manifest(root)
+        entry = next(x for x in value['files'] if x['revision'].startswith('static:'))
+        entry['revision'] = 'static:'
+        self.write(root, value)
+        with self.assertRaisesRegex(IntegrityError, 'static revision'):
+            audit(root)
+
     def test_traversal_duplicate_and_symlink_are_refused(self):
         root = self.corpus(); value = self.manifest(root)
         value['files'][0]['path'] = '../outside'

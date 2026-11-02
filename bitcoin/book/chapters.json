@@ -115,14 +115,22 @@
   {
    "number": 6,
    "title": "RIPEMD-160 and HASH160",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch006-ripemd-160-and-hash160.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
-    1
+    1,
+    4
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/crypto/ripemd160.coax",
+    "coax/lib/bitcoin/hash160.coax",
+    "bitcoin/examples/ripemd160.coax",
+    "bitcoin/examples/checks/ripemd160.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

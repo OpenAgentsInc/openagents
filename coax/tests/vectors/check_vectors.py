@@ -65,6 +65,10 @@ def audit(root=HERE, fetch=False):
             elif entry['revision'].startswith('RFC '):
                 n = entry['revision'][4:]
                 require(n.isdigit() and entry['url'] == f'https://www.rfc-editor.org/rfc/rfc{n}.txt', 'RFC revision: '+path)
+            elif entry['revision'].startswith('static:'):
+                # An author-hosted file with no version history (the RIPEMD-160
+                # paper). Its sha256 is the pin; --fetch detects a changed file.
+                require(len(entry['revision']) > len('static:') + 20 and 'github' not in entry['url'], 'static revision: '+path)
             else:
                 require('archive_member' in entry and 'archive_sha256' in entry, 'unpinned revision: '+path)
                 require(bool(re.fullmatch(r'[a-f0-9]{64}', entry['archive_sha256'])), 'archive digest: '+path)

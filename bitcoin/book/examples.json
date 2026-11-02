@@ -42,6 +42,16 @@
       ]
     },
     {
+      "source": "bitcoin/examples/ripemd160.coax",
+      "chapter": "bitcoin/book/ch006-ripemd-160-and-hash160.md",
+      "stdout": "bitcoin/fixtures/ripemd160.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "bitcoin/examples/hmac-sha256.coax",
       "chapter": "bitcoin/book/ch008-hmac-sha256.md",
       "stdout": "bitcoin/fixtures/hmac-sha256.out",

@@ -54,7 +54,7 @@ otherwise. Nostr From Scratch needs Parts I–V.
 | --- | --- | --- | --- |
 | [4. SHA-256](ch004-sha-256.md) — implemented | 1 | Every NIST CAVS 11.0 vector in `coax/tests/vectors/upstream/nist/SHA256ShortMsg.rsp` and `SHA256LongMsg.rsp` passes. Every split of a 1,000-byte message gives the same digest. The compression kernel moves out of the compiler-fingerprint module without changing a digest. | — |
 | 5. SHA-256d and tagged hashes — planned | 4 | The txids of pinned mainnet transactions and the genesis block hash match their published values. The tag hashes for `BIP0340/challenge`, `TapLeaf`, `TapBranch`, `TapTweak` and `TapSighash` match the BIP texts. | BIP-340, BIP-341 |
-| 6. RIPEMD-160 and HASH160 — planned | 1 | The test vectors in the RIPEMD-160 paper pass. HASH160 of BIP-32 vector 1's master public key gives its published fingerprint. | RIPEMD-160 (Dobbertin, Bosselaers and Preneel, 1996) |
+| [6. RIPEMD-160 and HASH160](ch006-ripemd-160-and-hash160.md) — implemented | 1, 4 | The test vectors in the RIPEMD-160 paper pass. HASH160 of BIP-32 vector 1's master public key gives its published fingerprint. | RIPEMD-160 (Dobbertin, Bosselaers and Preneel, 1996) |
 | 7. SHA-512 — planned | 1 | Every NIST CAVS vector in `SHA512ShortMsg.rsp` and `SHA512LongMsg.rsp` passes. | FIPS 180-4 |
 | [8. HMAC-SHA256](ch008-hmac-sha256.md) — implemented | 4 | RFC 4231 SHA-256 cases 1–7 (`coax/tests/vectors/upstream/rfc/rfc4231.txt`) pass. A tag that differs in one bit is refused by the constant-time comparison. | — |
 | [9. HKDF](ch009-hkdf.md) — implemented | 8 | RFC 5869 SHA-256 cases 1–3 (`coax/tests/vectors/upstream/rfc/rfc5869.txt`) pass. An expand request of `255 * 32 + 1` bytes refuses. | — |

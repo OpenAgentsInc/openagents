@@ -6,7 +6,8 @@ All upstream files are retained byte for byte. No downloaded program, package
 installer or build script was executed to obtain them.
 
 `manifest.json` is the machine-readable inventory: source URL, immutable Git
-revision or numbered RFC/archive identity, retrieval date, byte count, SHA-256,
+revision, numbered RFC/archive identity or a `static:` author-hosted file
+pinned by its digest, retrieval date, byte count, SHA-256,
 license/notice and intended coverage. The NIST archive members also pin the
 complete archive digest and exact member path. Upstream text/response files keep
 original newlines; do not run formatting tools over `upstream/`.
@@ -45,6 +46,16 @@ that a maliciously replaced manifest is authentic.
   RFC's floating-point cases are not silently advertised as supported.
 - **BIP-340:** all 19 official CSV rows, including invalid signatures and
   message lengths 0, 1, 17 and 100. The associated license is retained.
+- **RIPEMD-160:** the authors' paper (Dobbertin, Bosselaers and Preneel,
+  `AB-9601.pdf`), whose Appendix B lists the nine RIPEMD-160 test values.
+  The authors host it without version history, so its revision is `static:`
+  and its SHA-256 is the pin; `--fetch` detects a changed file. Bitcoin
+  chapter 6 reads the values from the PDF's text stream. The RIPEMD-128
+  values in the same appendix are not claimed.
+- **BIP-32:** the BIP text at the same `bitcoin/bips` revision as BIP-173.
+  Bitcoin chapter 6 decodes its extended keys and checks that HASH160 of each
+  parent public key starts with the child's parent fingerprint. The key
+  derivation itself is not claimed here.
 - **NIP-44:** the complete published corpus is obtained from the Unlicense
   JavaScript subtree. Its digest is exactly the checksum in the pinned NIP-44:
   `269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040`.
@@ -97,7 +108,8 @@ index is OpenAgents Apache-2.0; it does not relicense upstream material.
 
 ## Inventory
 
-All dates below are retrieval dates (2026-10-28), not claims about publication.
+All dates below are retrieval dates (2026-10-28; the RIPEMD-160 and BIP-32
+files 2026-11-02), not claims about publication.
 The complete revision/license/archive fields are in `manifest.json`.
 
 | File | Source | SHA-256 |
@@ -112,6 +124,8 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip340/test-vectors.csv`](upstream/bip340/test-vectors.csv) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340/test-vectors.csv) | `34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d` |
 | [`upstream/bip340/LICENSE`](upstream/bip340/LICENSE) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340/LICENSE) | `e4974cd8532036eda7e540a9930fee0c020cb297d455033232606298a89adbd4` |
 | [`upstream/bip173/bip-0173.mediawiki`](upstream/bip173/bip-0173.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0173.mediawiki) | `b19eab06b264bbd15ad7f7d640fa34de8f4a8809fba8a6ecc3e165545b27a543` |
+| [`upstream/bip32/bip-0032.mediawiki`](upstream/bip32/bip-0032.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0032.mediawiki) | `e5e00a8289db2f681052cf24a745320afc225e66b25d1e489a7c884d2fc7f11f` |
+| [`upstream/ripemd160/AB-9601.pdf`](upstream/ripemd160/AB-9601.pdf) | [authors' copy](https://homes.esat.kuleuven.be/~bosselae/ripemd160/pdf/AB-9601/AB-9601.pdf) | `1e235c15d30b57a868b41d870dbebd86df4c0a54e3a709868192f777464ffb87` |
 | [`upstream/nip44/nip44.vectors.json`](upstream/nip44/nip44.vectors.json) | [pinned source](https://raw.githubusercontent.com/paulmillr/nip44/671a1f04bcfacaf125b0db68adc45bc9ce0e763b/javascript/test/nip44.vectors.json) | `269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040` |
 | [`upstream/nip44/LICENSE`](upstream/nip44/LICENSE) | [pinned source](https://raw.githubusercontent.com/paulmillr/nip44/671a1f04bcfacaf125b0db68adc45bc9ce0e763b/javascript/LICENSE) | `f0510d3b9d1223c45e8fdd2b49270ec8734fff491c7f7d1b948ee70162e1ceff` |
 | [`upstream/wycheproof/ecdh_secp256k1_test.json`](upstream/wycheproof/ecdh_secp256k1_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdh_secp256k1_test.json) | `049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae` |

@@ -1,0 +1,140 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/hash160.coax";
+#import "Basic";
+
+// Print a label and a 20-byte digest as lowercase hex.
+show :: (label: string, digest: [] u8) {
+  text: [40] u8;
+  if R_hex(digest, text[..]) { print("%: %\n", label, cast(string) text[..]); }
+}
+// Print a label and bytes as lowercase hex.
+show_bytes :: (label: string, bytes: [] u8) {
+  digits := "0123456789abcdef";
+  text: [128] u8; n := 0;
+  for b: bytes { text[n] = digits[b >> 4]; text[n + 1] = digits[b & 15]; n += 2; }
+  print("%: %\n", label, cast(string) text[0..<n]);
+}
+// Print a label and one 32-bit word as 8 hex digits, most significant first.
+show_word :: (label: string, x: u32) {
+  b: [4] u8;
+  if cb_store_be32(b[..], 0, x) { show_bytes(label, b[..]); }
+}
+// Every call below this point must succeed; say so if one doesn't.
+must :: (status: u32) { if status != RMD_OK { print("unexpected status %\n", status); } }
+// Copy a string into a byte buffer and return the filled view.
+bytes_of :: (text: string, buffer: [] u8) -> [] u8 {
+  for i: 0..<text.count { buffer[i] = text[i]; }
+  return buffer[0..<text.count];
+}
+
+STATUS :: [7] string.["ok", "bad state", "bad input", "bad output",
+  "already final", "overlap", "too long"];
+
+main :: () {
+  // Padding "abc": 0x80 after the message, and the bit length, 24, as a
+  // little-endian 64-bit number in bytes 56-63.
+  block: [64] u8;
+  block[0] = 97; block[1] = 98; block[2] = 99; block[3] = 128; block[56] = 24;
+  show_bytes("padded block bytes 0-3", block[0..<4]);
+  show_bytes("padded block bytes 56-63", block[56..<64]);
+  x0 := cb_load_le32(block[..], 0).value;
+  x5 := cb_load_le32(block[..], 20).value;
+  show_word("X[0]", x0); show_word("X[14]", cb_load_le32(block[..], 56).value);
+
+  // Step 0 of each line, from the initial chaining value.
+  iv := RMD_IV;
+  f := R_f(0, iv[1], iv[2], iv[3]);
+  sum := R_sum4(iv[0], f, x0, 0x00000000);
+  show_word("left f(0, B, C, D)", f);
+  show_word("left A + f + X[0] + K(0)", sum);
+  show_word("left rol 11", R_rol(sum, 11));
+  show_word("left new B", R_sum2(R_rol(sum, 11), iv[4]));
+  show_word("left new D = rol 10 of C", R_rol(iv[2], 10));
+  fp := R_f(79, iv[1], iv[2], iv[3]);
+  sump := R_sum4(iv[0], fp, x5, 0x50a28be6);
+  show_word("right f(79, B', C', D')", fp);
+  show_word("right A' + f + X[5] + K'(0)", sump);
+  show_word("right new B'", R_sum2(R_rol(sump, 8), iv[4]));
+
+  // The whole block through the compression function gives the digest.
+  h := RMD_IV;
+  if !R_compress(h[..], block[..]) { print("compress refused\n"); }
+  out: [20] u8;
+  must(ripemd160_emit(h[..], out[..]));
+  show("RIPEMD-160(\"abc\") from one block", out[..]);
+
+  // The paper's test values, through the streaming interface.
+  messages := [8] string.["", "a", "abc", "message digest", "abcdefghijklmnopqrstuvwxyz",
+    "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+    "12345678901234567890123456789012345678901234567890123456789012345678901234567890"];
+  labels := [8] string.["\"\"", "\"a\"", "\"abc\"", "\"message digest\"", "\"a...z\"",
+    "\"abcdbcde...nopq\"", "\"A...Za...z0...9\"", "8 times \"1234567890\""];
+  for k: 0..<8 {
+    text: [80] u8;
+    must(ripemd160_hash_checked(bytes_of(messages[k], text[..]), out[..], false));
+    show(labels[k], out[..]);
+  }
+
+  // One million "a" bytes, in 1,000 updates of 1,000 bytes.
+  thousand: [1000] u8;
+  for i: 0..<1000 { thousand[i] = 97; }
+  state: [100] u8;
+  must(ripemd160_init(state[..]));
+  for i: 0..<1000 { must(ripemd160_update_checked(state[..], thousand[..], false)); }
+  must(ripemd160_final_checked(state[..], out[..], false));
+  show("1 million times \"a\"", out[..]);
+
+  // Every split of a 1,000-byte message into two updates gives the digest
+  // of one update.
+  message: [1000] u8;
+  for i: 0..<1000 { message[i] = cast(u8) ((i * 7 + 3) % 256); }
+  whole: [20] u8;
+  must(ripemd160_hash_checked(message[..], whole[..], false));
+  agree := 0;
+  for cut: 0..<1001 {
+    split: [20] u8;
+    must(ripemd160_init(state[..]));
+    must(ripemd160_update_checked(state[..], message[0..<cut], false));
+    must(ripemd160_update_checked(state[..], message[cut..<1000], false));
+    must(ripemd160_final_checked(state[..], split[..], false));
+    same := true;
+    for i: 0..<20 { if split[i] != whole[i] { same = false; } }
+    if same { agree += 1; }
+  }
+  print("splits of 1,000 bytes that match one update: % of 1001\n", agree);
+  show("RIPEMD-160(1,000-byte message)", whole[..]);
+
+  // HASH160 of BIP-32 test vector 1's master public key. Its first four
+  // bytes are the fingerprint that every child of the master key records.
+  key := [33] u8.[0x03, 0x39, 0xa3, 0x60, 0x13, 0x30, 0x15, 0x97, 0xda, 0xef, 0x41, 0xfb, 0xe5, 0x93, 0xa0, 0x2c, 0xc5,
+    0x13, 0xd0, 0xb5, 0x55, 0x27, 0xec, 0x2d, 0xf1, 0x05, 0x0e, 0x2e, 0x8f, 0xf4, 0x9c, 0x85, 0xc2];
+  inner: [32] u8;
+  if sha256_hash_checked(key[..], inner[..], false) != SHA_OK { print("sha256 refused\n"); }
+  show_bytes("SHA-256(master key)", inner[..]);
+  must(hash160_checked(key[..], out[..], false));
+  show("HASH160(master key)", out[..]);
+  published := [4] u8.[0x34, 0x42, 0x19, 0x3e];
+  show_bytes("fingerprint", out[0..<4]);
+  print("matches the m/0H parent fingerprint: %\n", cb_ct_equal(out[0..<4], published[..]) == CB_MAX64);
+
+  // A broken case: one flipped bit in the key gives an unrelated fingerprint.
+  key[32] ^= 1;
+  must(hash160_checked(key[..], out[..], false));
+  show_bytes("fingerprint with the last bit flipped", out[0..<4]);
+  print("matches the m/0H parent fingerprint: %\n", cb_ct_equal(out[0..<4], published[..]) == CB_MAX64);
+
+  // Refusals. Each one returns a status and leaves the output unchanged.
+  must(ripemd160_init(state[..]));
+  must(ripemd160_final_checked(state[..], out[..], false));
+  print("update after final: %\n", STATUS[ripemd160_update_checked(state[..], thousand[..], false)]);
+  small: [19] u8;
+  print("19-byte output: %\n", STATUS[hash160_checked(key[..], small[..], false)]);
+  print("1 MiB + 1 byte in one call: %\n", STATUS[ripemd160_request(1048577, 20, false)]);
+  short: [99] u8;
+  print("99-byte state: %\n", STATUS[ripemd160_init(short[..])]);
+  must(ripemd160_init(state[..]));
+  state[7] = 5;
+  print("5 bytes buffered but 0 counted: %\n", STATUS[ripemd160_update_checked(state[..], thousand[..], false)]);
+}
+// book:end example

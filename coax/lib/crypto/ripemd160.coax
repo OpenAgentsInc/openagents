@@ -1,0 +1,313 @@
+// RIPEMD-160 (Dobbertin, Bosselaers and Preneel, 1996): the compression
+// function and a streaming hash over caller-owned byte state. Bitcoin uses
+// it once, inside HASH160 (coax/lib/bitcoin/hash160.coax). No host calls,
+// allocation or input-sized buffer. Every round index, word index and rotate
+// distance comes from a public table, so the message never decides a branch
+// or an index (Bitcoin chapter 3).
+#load "bytes.coax";
+#authority;
+RMD_OK :: cast(u32) 0;
+RMD_BAD_STATE :: cast(u32) 1;
+RMD_BAD_INPUT :: cast(u32) 2;
+RMD_BAD_OUTPUT :: cast(u32) 3;
+RMD_PHASE :: cast(u32) 4;
+RMD_ALIAS :: cast(u32) 5;
+RMD_LENGTH :: cast(u32) 6;
+RMD_STATE_BYTES :: 100;
+RMD_DIGEST_BYTES :: 20;
+RMD_MAX_TOTAL :: cast(u64) 2305843009213693951;
+RMD_ACTIVE :: cast(u32) 1;
+RMD_FINAL :: cast(u32) 2;
+RMD_ONES :: cast(u32) 4294967295;
+Ripemd160Info :: struct { error: u32; phase: u32; total: u64; buffered: u32; }
+Ripemd160Work :: struct { h: [5] u32; block: [64] u8; total: u64; used: int; phase: u32; ok: bool; }
+
+// The initial chaining value and the message-word and rotate tables, from
+// the paper's Appendix A. Primed tables are the right line's.
+RMD_IV :: [5] u32.[0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
+RMD_R :: [80] u8.[
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+  7, 4, 13, 1, 10, 6, 15, 3, 12, 0, 9, 5, 2, 14, 11, 8,
+  3, 10, 14, 4, 9, 15, 8, 1, 2, 7, 0, 6, 13, 11, 5, 12,
+  1, 9, 11, 10, 0, 8, 12, 4, 13, 3, 7, 15, 14, 5, 6, 2,
+  4, 0, 5, 9, 7, 12, 2, 10, 14, 1, 3, 8, 11, 6, 15, 13];
+RMD_RP :: [80] u8.[
+  5, 14, 7, 0, 9, 2, 11, 4, 13, 6, 15, 8, 1, 10, 3, 12,
+  6, 11, 3, 7, 0, 13, 5, 10, 14, 15, 8, 12, 4, 9, 1, 2,
+  15, 5, 1, 3, 7, 14, 6, 9, 11, 8, 12, 2, 10, 0, 4, 13,
+  8, 6, 4, 1, 3, 11, 15, 0, 5, 12, 2, 13, 9, 7, 10, 14,
+  12, 15, 10, 4, 1, 5, 8, 7, 6, 2, 13, 14, 0, 3, 9, 11];
+RMD_S :: [80] u8.[
+  11, 14, 15, 12, 5, 8, 7, 9, 11, 13, 14, 15, 6, 7, 9, 8,
+  7, 6, 8, 13, 11, 9, 7, 15, 7, 12, 15, 9, 11, 7, 13, 12,
+  11, 13, 6, 7, 14, 9, 13, 15, 14, 8, 13, 6, 5, 12, 7, 5,
+  11, 12, 14, 15, 14, 15, 9, 8, 9, 14, 5, 6, 8, 6, 5, 12,
+  9, 15, 5, 11, 6, 8, 13, 12, 5, 12, 13, 14, 11, 8, 5, 6];
+RMD_SP :: [80] u8.[
+  8, 9, 9, 11, 13, 15, 15, 5, 7, 7, 8, 11, 14, 14, 12, 6,
+  9, 13, 15, 7, 12, 8, 9, 11, 7, 7, 12, 7, 6, 15, 13, 11,
+  9, 7, 15, 11, 8, 6, 6, 14, 12, 13, 5, 14, 13, 13, 7, 5,
+  15, 5, 8, 11, 14, 14, 6, 14, 6, 9, 12, 9, 12, 5, 15, 8,
+  8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11];
+
+#test "the paper's short test values" {
+  messages := [8] string.["", "a", "abc", "message digest", "abcdefghijklmnopqrstuvwxyz",
+    "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+    "12345678901234567890123456789012345678901234567890123456789012345678901234567890"];
+  expected := [8] string.["9c1185a5c5e9fc54612808977ee8f548b2258d31",
+    "0bdc9d2d256b3ee9daae347be6f4dc835a467ffe", "8eb208f7e05d987a9b044a8e98c6b087f15a0bfc",
+    "5d0689ef49d2fae572b881b123a85ffa21595f36", "f71c27109c692c1b56bbdceb5b9d2865b3708dbc",
+    "12a053384a9c0c88e405a06c27dcf49ada62eb2b", "b0e20b6e3116640286ed3a87a5713079b21f5189",
+    "9b752e45573d4b39f4dbd3323cab82bf63326bfb"];
+  for k: 0..<8 {
+    text: [80] u8; out: [20] u8; hex: [40] u8; n := messages[k].count;
+    for i: 0..<n { text[i] = messages[k][i]; }
+    #assert ripemd160_hash_checked(text[0..<n], out[..], false) == RMD_OK;
+    #assert R_hex(out[..], hex[..]) && cast(string) hex[..] == expected[k];
+  }
+}
+#forall "streaming in chunks agrees with one update across block boundaries" which: 0..<10, chunk_index: 0..<3 {
+  lengths := [10] int.[0, 1, 55, 56, 63, 64, 65, 119, 120, 129];
+  chunks := [3] int.[1, 7, 64]; n := lengths[which]; chunk := chunks[chunk_index];
+  input: [129] u8; for i: 0..<129 { input[i] = cast(u8) i; }
+  s: [100] u8; whole: [20] u8; split: [20] u8;
+  #assert ripemd160_hash_checked(input[0..<n], whole[..], false) == RMD_OK;
+  #assert ripemd160_init(s[..]) == RMD_OK;
+  at := 0;
+  while at < n { take := ifx n - at < chunk then n - at else chunk;
+    #assert ripemd160_update_checked(s[..], input[at..<at + take], false) == RMD_OK;
+    at += take;
+  }
+  #assert ripemd160_info(s[..]).total == cast(u64) n && ripemd160_info(s[..]).buffered == cast(u32) (n % 64);
+  #assert ripemd160_final_checked(s[..], split[..], false) == RMD_OK;
+  #assert ripemd160_info(s[..]).phase == RMD_FINAL && ripemd160_info(s[..]).buffered == 0;
+  for i: 0..<20 { #assert split[i] == whole[i]; }
+}
+#test "refusals leave the state and the output unchanged" {
+  s: [101] u8; input := [1] u8.[7]; out: [21] u8;
+  for i: 0..<101 { s[i] = 165; }
+  for i: 0..<21 { out[i] = 165; }
+  #assert ripemd160_info(s[0..<100]).error == RMD_BAD_STATE;
+  #assert ripemd160_init(s[0..<99]) == RMD_BAD_STATE && ripemd160_init(s[..]) == RMD_BAD_STATE;
+  #assert ripemd160_update_checked(s[0..<100], input[..], false) == RMD_BAD_STATE;
+  #assert ripemd160_final_checked(s[0..<100], out[..], false) == RMD_BAD_STATE;
+  for i: 0..<101 { #assert s[i] == 165; }
+  #assert ripemd160_init(s[0..<100]) == RMD_OK; before := s;
+  #assert ripemd160_update_checked(s[0..<100], input[..], true) == RMD_ALIAS;
+  #assert ripemd160_final_checked(s[0..<100], out[0..<19], false) == RMD_BAD_OUTPUT;
+  #assert ripemd160_final_checked(s[0..<100], out[..], true) == RMD_ALIAS;
+  #assert ripemd160_update_checked(s[0..<100], input[0..<0], true) == RMD_OK;
+  for i: 0..<101 { #assert s[i] == before[i]; }
+  for i: 0..<21 { #assert out[i] == 165; }
+  #assert ripemd160_final_checked(s[0..<100], out[..], false) == RMD_OK && out[20] == 165;
+  #assert ripemd160_info(s[0..<100]).phase == RMD_FINAL && ripemd160_info(s[0..<100]).buffered == 0;
+  first := out;
+  #assert ripemd160_final_checked(s[0..<100], out[..], false) == RMD_OK;
+  for i: 0..<21 { #assert out[i] == first[i]; }
+  #assert ripemd160_update_checked(s[0..<100], input[..], false) == RMD_PHASE;
+  #assert ripemd160_hash_checked(input[..], out[..], true) == RMD_ALIAS;
+  #assert ripemd160_hash_checked(input[..], out[0..<19], false) == RMD_BAD_OUTPUT;
+  #assert ripemd160_request(-1, 20, false) == RMD_BAD_INPUT && ripemd160_request(CB_MAX_BYTES + 1, 20, false) == RMD_BAD_INPUT;
+  #assert ripemd160_request(0, 20, false) == RMD_OK && ripemd160_state_size() == 100;
+  #assert ripemd160_request(CB_MAX_BYTES, 20, false) == RMD_OK;
+  #assert ripemd160_update_limit(RMD_MAX_TOTAL + 1, 0) == RMD_BAD_STATE;
+  #assert ripemd160_update_limit(0, -1) == RMD_BAD_INPUT && ripemd160_update_limit(0, CB_MAX_BYTES + 1) == RMD_BAD_INPUT;
+  #assert ripemd160_update_limit(0, CB_MAX_BYTES) == RMD_OK;
+  #assert ripemd160_update_limit(RMD_MAX_TOTAL - 1, 1) == RMD_OK && ripemd160_update_limit(RMD_MAX_TOTAL, 1) == RMD_LENGTH;
+  h3: [3] u32; h5: [5] u32;
+  #assert ripemd160_emit(h3[..], out[..]) == RMD_BAD_OUTPUT && ripemd160_emit(h5[..], out[0..<19]) == RMD_BAD_OUTPUT;
+  hex: [40] u8;
+  #assert !R_hex(out[0..<19], hex[..]) && !R_hex(out[0..<20], hex[0..<39]) && R_hex(out[0..<20], hex[..]);
+}
+#forall "every header byte is validated" field: 0..<8 {
+  s: [100] u8; input := [1] u8.[1];
+  #assert ripemd160_init(s[..]) == RMD_OK;
+  s[field] ^= 255; before := s;
+  #assert ripemd160_info(s[..]).error == RMD_BAD_STATE;
+  #assert ripemd160_update_checked(s[..], input[..], false) == RMD_BAD_STATE;
+  for i: 0..<100 { #assert s[i] == before[i]; }
+}
+#test "the length limit refuses without a gigantic input" {
+  s: [100] u8; input := [1] u8.[1]; out: [20] u8;
+  #assert ripemd160_init(s[..]) == RMD_OK;
+  #assert cb_store_be64(s[..], 8, RMD_MAX_TOTAL + 1);
+  #assert ripemd160_info(s[..]).error == RMD_BAD_STATE;
+  #assert ripemd160_init(s[..]) == RMD_OK;
+  #assert cb_store_be64(s[..], 8, RMD_MAX_TOTAL); s[7] = 63; before := s;
+  #assert ripemd160_update_checked(s[..], input[..], false) == RMD_LENGTH;
+  for i: 0..<100 { #assert s[i] == before[i]; }
+  #assert ripemd160_final_checked(s[..], out[..], false) == RMD_OK;
+  // The bit length goes in little-endian: 2^64 - 8 is f8 ff ff ff ff ff ff ff.
+  #assert s[36 + 56] == 248;
+  for i: 57..<64 { #assert s[36 + i] == 255; }
+}
+#test "word arithmetic and the five boolean functions" {
+  #assert R_rol(0x80000001, 1) == 3 && R_rol(0x12345678, 0) == 0x12345678 && R_rol(1, 31) == 0x80000000;
+  #assert R_sum2(RMD_ONES, 2) == 1 && R_sum4(RMD_ONES, RMD_ONES, 1, 1) == 0;
+  #assert R_f(0, 0xefcdab89, 0x98badcfe, 0x10325476) == 0x67452301;
+  #assert R_f(16, 0xf0f0f0f0, 0xaaaaaaaa, 0x55555555) == 0xa5a5a5a5;
+  #assert R_f(32, 0, 0, 0) == RMD_ONES && R_f(32, 0, RMD_ONES, 0) == 0;
+  #assert R_f(48, 0xaaaaaaaa, 0x55555555, 0xf0f0f0f0) == 0xa5a5a5a5;
+  #assert R_f(79, 0xefcdab89, 0x98badcfe, 0x10325476) == 0x10325476;
+  bad: [3] u32; block: [64] u8;
+  #assert !R_compress(bad[..], block[..]);
+  h := RMD_IV; #assert !R_compress(h[..], block[0..<63]);
+  for i: 0..<5 { #assert h[i] == RMD_IV[i]; }
+}
+
+// book:begin words
+// Word arithmetic. Sums widen to u64 and keep the low 32 bits, so they wrap
+// the same way in checked and native builds. `x ^ RMD_ONES` is NOT x.
+R_rol :: (x: u32, n: int) -> u32 {
+  if n == 0 { return x; }
+  return (x << n) | (x >> (32 - n));
+}
+R_sum2 :: (a: u32, b: u32) -> u32 { return cast,trunc(u32) (cast(u64) a + cast(u64) b); }
+R_sum3 :: (a: u32, b: u32, c: u32) -> u32 { return cast,trunc(u32) (cast(u64) a + cast(u64) b + cast(u64) c); }
+R_sum4 :: (a: u32, b: u32, c: u32, d: u32) -> u32 { return cast,trunc(u32) (cast(u64) a + cast(u64) b + cast(u64) c + cast(u64) d); }
+// The five boolean functions. The step number j picks one; it is public.
+R_f :: (j: int, x: u32, y: u32, z: u32) -> u32 {
+  if j < 16 { return x ^ y ^ z; }
+  if j < 32 { return (x & y) | ((x ^ RMD_ONES) & z); }
+  if j < 48 { return (x | (y ^ RMD_ONES)) ^ z; }
+  if j < 64 { return (x & z) | (y & (z ^ RMD_ONES)); }
+  return x ^ (y | (z ^ RMD_ONES));
+}
+// book:end words
+// book:begin compress
+// One 64-byte block into the five chaining words `h`. The left and right
+// lines run the same 80 steps with different tables, then cross-combine.
+R_compress :: (h: [] u32, block: [] u8) -> bool {
+  if h.count != 5 || block.count != 64 { return false; }
+  k := [5] u32.[0x00000000, 0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xa953fd4e];
+  kp := [5] u32.[0x50a28be6, 0x5c4dd124, 0x6d703ef3, 0x7a6d76e9, 0x00000000];
+  // Sixteen little-endian message words.
+  x: [16] u32;
+  for i: 0..<16 {
+    p := i * 4;
+    x[i] = cast(u32) block[p] | (cast(u32) block[p + 1] << 8) | (cast(u32) block[p + 2] << 16) | (cast(u32) block[p + 3] << 24);
+  }
+  a := h[0]; b := h[1]; c := h[2]; d := h[3]; e := h[4];
+  ap := h[0]; bp := h[1]; cp := h[2]; dp := h[3]; ep := h[4];
+  for j: 0..<80 {
+    t := R_sum2(R_rol(R_sum4(a, R_f(j, b, c, d), x[RMD_R[j]], k[j / 16]), cast(int) RMD_S[j]), e);
+    a = e; e = d; d = R_rol(c, 10); c = b; b = t;
+    t = R_sum2(R_rol(R_sum4(ap, R_f(79 - j, bp, cp, dp), x[RMD_RP[j]], kp[j / 16]), cast(int) RMD_SP[j]), ep);
+    ap = ep; ep = dp; dp = R_rol(cp, 10); cp = bp; bp = t;
+  }
+  t := R_sum3(h[1], c, dp);
+  h[1] = R_sum3(h[2], d, ep); h[2] = R_sum3(h[3], e, ap);
+  h[3] = R_sum3(h[4], a, bp); h[4] = R_sum3(h[0], b, cp); h[0] = t;
+  return true;
+}
+// book:end compress
+
+// Lowercase hex of a digest, for checks and examples.
+R_hex :: (digest: [] u8, out: [] u8) -> bool {
+  if digest.count != 20 || out.count < 40 { return false; }
+  digits := "0123456789abcdef";
+  for i: 0..<20 { out[i * 2] = digits[digest[i] >> 4]; out[i * 2 + 1] = digits[digest[i] & 15]; }
+  return true;
+}
+
+// The 100-byte state: "R160", version 1, phase, 0, buffered count, the
+// total byte count (big-endian), five chaining words (little-endian), and
+// the partial block.
+ripemd160_state_size :: () -> int #export_c { return RMD_STATE_BYTES; }
+ripemd160_request :: (input: int, output: int, overlap: bool) -> u32 {
+  if input < 0 || input > CB_MAX_BYTES { return RMD_BAD_INPUT; }
+  if !cb_span(output, 0, RMD_DIGEST_BYTES) { return RMD_BAD_OUTPUT; }
+  if overlap { return RMD_ALIAS; }
+  return RMD_OK;
+}
+ripemd160_update_limit :: (total: u64, count: int) -> u32 {
+  if total > RMD_MAX_TOTAL { return RMD_BAD_STATE; }
+  if count < 0 || count > CB_MAX_BYTES { return RMD_BAD_INPUT; }
+  if cast(u64) count > RMD_MAX_TOTAL - total { return RMD_LENGTH; }
+  return RMD_OK;
+}
+ripemd160_unpack :: (state: [] u8) -> Ripemd160Work {
+  w: Ripemd160Work;
+  if state.count != RMD_STATE_BYTES { return w; }
+  if state[0] != 'R' || state[1] != '1' || state[2] != '6' || state[3] != '0' || state[4] != 1 || state[6] != 0 { return w; }
+  w.phase = cast(u32) state[5]; w.used = cast(int) state[7]; w.total = cb_load_be64(state, 8).value;
+  if (w.phase != RMD_ACTIVE && w.phase != RMD_FINAL) || w.total > RMD_MAX_TOTAL { return w; }
+  // These relationships also bound the buffered count to 0..63.
+  if w.phase == RMD_ACTIVE && cast(u64) w.used != w.total % 64 { return w; }
+  if w.phase == RMD_FINAL && w.used != 0 { return w; }
+  for i: 0..<5 { w.h[i] = cb_load_le32(state, 16 + i * 4).value; }
+  for i: 0..<64 { w.block[i] = state[36 + i]; }
+  w.ok = true; return w;
+}
+ripemd160_pack :: (w: Ripemd160Work, state: [] u8) -> u32 {
+  if state.count != RMD_STATE_BYTES { return RMD_BAD_STATE; }
+  state[0] = 'R'; state[1] = '1'; state[2] = '6'; state[3] = '0';
+  state[4] = 1; state[5] = cast(u8) w.phase; state[6] = 0; state[7] = cast(u8) w.used;
+  if !cb_store_be64(state, 8, w.total) { return RMD_BAD_STATE; }
+  for i: 0..<5 { if !cb_store_le32(state, 16 + i * 4, w.h[i]) { return RMD_BAD_STATE; } }
+  for i: 0..<64 { state[36 + i] = w.block[i]; }
+  return RMD_OK;
+}
+ripemd160_emit :: (h: [] u32, out: [] u8) -> u32 {
+  if h.count != 5 || !cb_span(out.count, 0, RMD_DIGEST_BYTES) { return RMD_BAD_OUTPUT; }
+  for i: 0..<5 { if !cb_store_le32(out, i * 4, h[i]) { return RMD_BAD_OUTPUT; } }
+  return RMD_OK;
+}
+ripemd160_init :: (state: [] u8) -> u32 #export_c {
+  w: Ripemd160Work; w.h = RMD_IV; w.phase = RMD_ACTIVE;
+  return ripemd160_pack(w, state);
+}
+ripemd160_info :: (state: [] u8) -> Ripemd160Info #export_c {
+  w := ripemd160_unpack(state);
+  if !w.ok { return Ripemd160Info.{error = RMD_BAD_STATE}; }
+  return Ripemd160Info.{phase = w.phase, total = w.total, buffered = cast(u32) w.used};
+}
+// book:begin stream
+ripemd160_update_checked :: (state: [] u8, input: [] u8, overlap: bool) -> u32 {
+  w := ripemd160_unpack(state);
+  if !w.ok { return RMD_BAD_STATE; }
+  if w.phase != RMD_ACTIVE { return RMD_PHASE; }
+  status := ripemd160_update_limit(w.total, input.count);
+  if status != RMD_OK { return status; }
+  if input.count > 0 && overlap { return RMD_ALIAS; }
+  for byte: input {
+    w.block[w.used] = byte; w.used += 1;
+    if w.used == 64 {
+      if !R_compress(w.h[..], w.block[..]) { return RMD_BAD_STATE; }
+      w.used = 0;
+    }
+  }
+  w.total += cast(u64) input.count;
+  return ripemd160_pack(w, state);
+}
+// Padding is MD4's: 0x80, zeros, and the bit length as a little-endian u64.
+ripemd160_final_checked :: (state: [] u8, out: [] u8, overlap: bool) -> u32 {
+  w := ripemd160_unpack(state);
+  if !w.ok { return RMD_BAD_STATE; }
+  if !cb_span(out.count, 0, RMD_DIGEST_BYTES) { return RMD_BAD_OUTPUT; }
+  if overlap { return RMD_ALIAS; }
+  if w.phase == RMD_FINAL { return ripemd160_emit(w.h[..], out); }
+  w.block[w.used] = 128;
+  for i: w.used + 1..<64 { w.block[i] = 0; }
+  if w.used >= 56 {
+    if !R_compress(w.h[..], w.block[..]) { return RMD_BAD_STATE; }
+    for i: 0..<64 { w.block[i] = 0; }
+  }
+  bits := w.total * 8;
+  for i: 0..<8 { w.block[56 + i] = cast(u8) ((bits >> (i * 8)) & 255); }
+  if !R_compress(w.h[..], w.block[..]) { return RMD_BAD_STATE; }
+  w.used = 0; w.phase = RMD_FINAL;
+  status := ripemd160_emit(w.h[..], out);
+  if status != RMD_OK { return status; }
+  return ripemd160_pack(w, state);
+}
+// book:end stream
+ripemd160_hash_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 #export_c {
+  status := ripemd160_request(input.count, out.count, overlap);
+  if status != RMD_OK { return status; }
+  state: [100] u8;
+  status = ripemd160_init(state[..]); if status != RMD_OK { return status; }
+  status = ripemd160_update_checked(state[..], input, false); if status != RMD_OK { return status; }
+  return ripemd160_final_checked(state[..], out, false);
+}

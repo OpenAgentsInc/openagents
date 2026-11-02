@@ -1,0 +1,35 @@
+padded block bytes 0-3: 61626380
+padded block bytes 56-63: 1800000000000000
+X[0]: 80636261
+X[14]: 00000018
+left f(0, B, C, D): 67452301
+left A + f + X[0] + K(0): 4eeda863
+left rol 11: 6d431a77
+left new B: 3115fc67
+left new D = rol 10 of C: eb73fa62
+right f(79, B', C', D'): 10325476
+right A' + f + X[5] + K'(0): c81a035d
+right new B': ddd63fb8
+RIPEMD-160("abc") from one block: 8eb208f7e05d987a9b044a8e98c6b087f15a0bfc
+"": 9c1185a5c5e9fc54612808977ee8f548b2258d31
+"a": 0bdc9d2d256b3ee9daae347be6f4dc835a467ffe
+"abc": 8eb208f7e05d987a9b044a8e98c6b087f15a0bfc
+"message digest": 5d0689ef49d2fae572b881b123a85ffa21595f36
+"a...z": f71c27109c692c1b56bbdceb5b9d2865b3708dbc
+"abcdbcde...nopq": 12a053384a9c0c88e405a06c27dcf49ada62eb2b
+"A...Za...z0...9": b0e20b6e3116640286ed3a87a5713079b21f5189
+8 times "1234567890": 9b752e45573d4b39f4dbd3323cab82bf63326bfb
+1 million times "a": 52783243c1697bdbe16d37f97f68f08325dc1528
+splits of 1,000 bytes that match one update: 1001 of 1001
+RIPEMD-160(1,000-byte message): 462fa67a8f19c1df2d98cff47379ba31d681b572
+SHA-256(master key): b766246eacc76f47810bbbdcfcdc0b4e54c5983de526c2b660c65a588468e0ab
+HASH160(master key): 3442193e1bb70916e914552172cd4e2dbc9df811
+fingerprint: 3442193e
+matches the m/0H parent fingerprint: true
+fingerprint with the last bit flipped: ef09242e
+matches the m/0H parent fingerprint: false
+update after final: already final
+19-byte output: bad output
+1 MiB + 1 byte in one call: bad input
+99-byte state: bad state
+5 bytes buffered but 0 counted: bad state

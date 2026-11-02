@@ -413,6 +413,33 @@
       ]
     },
     {
+      "path": "upstream/ripemd160/AB-9601.pdf",
+      "kind": "upstream",
+      "url": "https://homes.esat.kuleuven.be/~bosselae/ripemd160/pdf/AB-9601/AB-9601.pdf",
+      "revision": "static: the authors' hosted paper (Dobbertin, Bosselaers and Preneel, RIPEMD-160: A Strengthened Version of RIPEMD); no version history, bytes pinned by sha256",
+      "license": "Authors' paper; no license declared; retained byte for byte for test provenance only",
+      "covers": [
+        "ripemd160"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "1e235c15d30b57a868b41d870dbebd86df4c0a54e3a709868192f777464ffb87",
+      "bytes": 193329
+    },
+    {
+      "path": "upstream/bip32/bip-0032.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0032.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in source)",
+      "covers": [
+        "bip32",
+        "hash160"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "e5e00a8289db2f681052cf24a745320afc225e66b25d1e489a7c884d2fc7f11f",
+      "bytes": 28032
+    },
+    {
       "path": "derived/catalog.json",
       "kind": "derived",
       "url": "local:make_catalog.py",

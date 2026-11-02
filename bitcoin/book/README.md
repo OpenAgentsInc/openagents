@@ -38,10 +38,10 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 85 chapters, 15 are implemented and 70 are planned. The 15
+Of the 85 chapters, 16 are implemented and 69 are planned. The 16
 implemented chapters have runnable examples, qualified on native CPU, and 13
-of them on Wasm. They are the cryptography Nostr already used; the rest of the
-book is new work.
+of them on Wasm. Fifteen of them are the cryptography Nostr already used;
+chapter 6 is the first new one.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -110,7 +110,7 @@ Every hash, MAC and cipher Bitcoin and Lightning use, each checked against its p
 | --- | --- | --- |
 | [4. SHA-256](ch004-sha-256.md) | Runnable: native C and wasm | Streaming SHA-256 over caller-owned state, checked against every NIST CAVS ShortMsg and LongMsg vector, with split-stream and padding-boundary checks, plus BIP-340 tagged hashes. |
 | 5. SHA-256d and tagged hashes | Planned | The txids of pinned mainnet transactions and the genesis block hash match their published values. The tag hashes for `BIP0340/challenge`, `TapLeaf`, `TapBranch`, `TapTweak` and `TapSighash` match the BIP texts. |
-| 6. RIPEMD-160 and HASH160 | Planned | The test vectors in the RIPEMD-160 paper pass. HASH160 of BIP-32 vector 1's master public key gives its published fingerprint. |
+| [6. RIPEMD-160 and HASH160](ch006-ripemd-160-and-hash160.md) | Runnable: native C | Streaming RIPEMD-160 over caller-owned state and HASH160 on SHA-256, checked against the paper's nine test values, every parent fingerprint in BIP-32 vectors 1–3 and Python's `hashlib`. |
 | 7. SHA-512 | Planned | Every NIST CAVS vector in `SHA512ShortMsg.rsp` and `SHA512LongMsg.rsp` passes. |
 | [8. HMAC-SHA256](ch008-hmac-sha256.md) | Runnable: native C and wasm | HMAC-SHA256 with keys longer than a block hashed first, checked against RFC 4231 cases 1–7 including the truncated case. |
 | [9. HKDF](ch009-hkdf.md) | Runnable: native C and wasm | HKDF-SHA256 extract and expand with output bounds, checked against RFC 5869 cases 1–3, and the exact NIP-44 v2 use: extract with salt `nip44-v2`, expand to 76 bytes. |
