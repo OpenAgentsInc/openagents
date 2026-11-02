@@ -893,6 +893,48 @@ def verbs(check):
         check("recall: an event naming a session gets it and its parent inline, hop by hop, and the Router logs the walk",
               ("Session %s" % qsb) in qc and ("forked from session %s" % qsa) in qc and "fix the parser bug" in qc and "fixed-parser" in qc
               and ("coder log %s" % qsb) in qc and qrec.get("sessions") == 1 and qrec.get("hops") == 2 and qrec.get("bytes", 0) > 0)
+        # mail (chapter 20): a mail source's reply is a Gmail draft through gws, sent only with --send; a Router killed
+        # right after mailing doesn't mail again; --to takes one plain address
+        gws = os.path.join(xhome, "gws")
+        with open(gws, "w") as f:
+            f.write("#!" + sys.executable + "\nimport json, os, sys\n"
+                    "open(os.environ['GWS_STUB_LOG'], 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                    "print(json.dumps({'id': 'm%d' % sum(1 for _ in open(os.environ['GWS_STUB_LOG']))}))\n")
+        os.chmod(gws, 0o755)
+        glog = os.path.join(xhome, "gws.log")
+        menv = dict(xenv, CODER_GWS=gws, GWS_STUB_LOG=glog)
+        def mq(*a, **kw):
+            return subprocess.run([coder, *a], cwd=REPO, env=dict(menv, **kw), capture_output=True, text=True, timeout=300)
+        mbad = mq("policy", "add", "mail", "--mode", "explicit_requests_only", "--authors", "kim", "--engine", "echo", "--channel", "mail",
+                  "--deliver", "--to", "kim@example.com,eve@example.com")
+        mq("policy", "add", "mail", "--mode", "explicit_requests_only", "--authors", "kim", "--engine", "echo", "--channel", "mail",
+           "--deliver", "--to", "kim@example.com")
+        mq("trigger", "$ echo mail-one", "--source", "mail", "--author", "kim", "--thread", "m1", "--to-agent")
+        mr = []
+        for _ in range(60):
+            mr += [json.loads(l) for l in mq("router", "--once", "--json", CODER_ROUTER_FAULT="mailed").stdout.splitlines() if l.startswith("{")]
+            if os.path.exists(glog):
+                break
+            time.sleep(0.3)
+        for _ in range(3):
+            mr += [json.loads(l) for l in mq("router", "--once", "--json").stdout.splitlines() if l.startswith("{")]
+        mcalls = [json.loads(l) for l in open(glog)] if os.path.exists(glog) else []
+        mq("policy", "add", "mail", "--mode", "explicit_requests_only", "--authors", "kim", "--engine", "echo", "--channel", "mail",
+           "--deliver", "--to", "kim@example.com", "--send")
+        mq("trigger", "$ echo mail-two", "--source", "mail", "--author", "kim", "--thread", "m2", "--to-agent")
+        for _ in range(60):
+            mr += [json.loads(l) for l in mq("router", "--once", "--json").stdout.splitlines() if l.startswith("{")]
+            if any(l.get("thread") == "m2" and "reply" in l.get("fate", "") for l in mr):
+                break
+            time.sleep(0.3)
+        mcalls2 = [json.loads(l) for l in open(glog)] if os.path.exists(glog) else []
+        check("mail: a reply is a Gmail draft with its subject, a restart after mailing doesn't repeat it, --send sends, and --to is one address",
+              mbad.returncode == 2 and len(mcalls) == 1 and mcalls[0][:5] == ["gmail", "+send", "--to", "kim@example.com", "--subject"]
+              and mcalls[0][5] == "Re: $ echo mail-one" and "--draft" in mcalls[0] and "mail-one" in mcalls[0][mcalls[0].index("--body") + 1]
+              and not mcalls[0][mcalls[0].index("--body") + 1].startswith("Subject")
+              and any(l.get("thread") == "m1" and "not repeated" in l.get("fate", "") for l in mr)
+              and len(mcalls2) == 2 and "--draft" not in mcalls2[1]
+              and any(l.get("thread") == "m2" and l.get("fate") == "reply mailed" for l in mr))
         # a log cut at any byte (chapter 2): readers read the complete lines and report the rest; a line appended after a crash starts clean
         cr = subprocess.run([coder, "run", "$ echo cut-é-check", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         cid = next(json.loads(l)["id"] for l in cr.stdout.splitlines() if l.startswith('{"kind":"session"'))

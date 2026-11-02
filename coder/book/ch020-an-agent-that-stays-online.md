@@ -20,8 +20,9 @@
 > document replies have their own structure. A Worker for an event from an
 > author its source's policy doesn't name runs under a read ceiling, and
 > its forks keep it. Chapter6's attacks, sent through the Router to Claude
-> Code, ran no effect above read and leaked no secret. Still open: sending mail
-> (replies wait in the outbox) and following a project's own templates.
+> Code, ran no effect above read and leaked no secret. Mail replies go to Gmail as drafts,
+> or are sent when the source says so. Still open: following a project's
+> own templates.
 
 Chapter17's agent is only useful if it keeps working while a laptop sleeps,
 answers while a long build runs, talks the way each channel expects and
@@ -273,10 +274,26 @@ and the reply follows its rules (`rt_reply`):
 | `doc` | Markdown: a title from the task, **Summary** (the result's first paragraph), **Details** (the rest, only when there is more), **Verification** and the session. |
 | `pr` | A pull request body with three sections, always present: **Background** (the task), **Change** (the Worker's result), **Verification** (each command the session ran, from its log, as passed or failed; the last ten). A session that did not finish says so. |
 
-`coder policy add SOURCE --channel pr` sets a source's channel. Mail and
-document replies go to the outbox (`~/.openagents/coder/outbox`) only:
-sending mail is an outward action, and no sender is wired yet. In a live
-check, an event `$ echo pr-three` on a `pr` source got this reply:
+`coder policy add SOURCE --channel pr` sets a source's channel. Every reply
+goes to the outbox (`~/.openagents/coder/outbox`). Document replies stay
+there. A mail source with `--deliver --to ADDR` also gets each reply in
+Gmail through the Google Workspace CLI (`gws gmail +send`): a draft by
+default, so a person reads it before it goes out. With `--send`, it is
+sent. `--to` takes one plain address, so an event can't add a recipient.
+The subject comes from the reply's `Subject:` line. Mailing is at most
+once: the Router writes `router/posting/ID` before calling `gws`, and a
+Router that restarts and finds it doesn't mail again. It says so in the
+reply's fate instead. `router/mailed` lists each draft or message ID.
+
+```sh
+coder policy add mail --channel mail --authors kim --deliver --to kim@example.com
+```
+
+Live, with the real `gws`: an event `$ echo coder-mail-live-check` on a
+mail source became a Gmail draft labelled `DRAFT`, to the source's
+address, with the subject `Re: $ echo coder-mail-live-check`.
+
+In a live check, an event `$ echo pr-three` on a `pr` source got this reply:
 
 ```text
 ## Background
@@ -447,6 +464,11 @@ before its Worker ended.
   another directory are refused with why. A job queued `--on ssh:box` while
   a stand-in `ssh` fails is held, sent on the next daemon pass after `ssh`
   works, and started by the other machine's daemon.
+- The smoke points a mail source at a stand-in `gws`. The first reply is a
+  draft to the source's address, with the subject split from the body. A
+  Router killed right after mailing doesn't mail again on the next pass.
+  With `--send`, the reply is sent, and a `--to` holding two addresses is
+  refused.
 - The smoke stores a credential (mode 600, listed without its value),
   checks that a daemon without the grant refuses a job that names it, and
   that a daemon with the grant starts it with the variable set and a log

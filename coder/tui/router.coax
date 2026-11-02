@@ -644,6 +644,48 @@ rt_poll_github :: (p: [] RtPaths, source: string, policy: string, json: bool) ->
 }
 
 // Posts body as a comment on thread's issue; the new comment's ID ("" when it failed).
+// The Google Workspace CLI: $CODER_GWS when set (the smoke's stand-in), else gws.
+rt_gws :: (out: [] u8) -> string {
+  g := cl_getenv("CODER_GWS", out);
+  return ifx g.count > 0 then g else "gws";
+}
+
+// One plain address: a local part, one @, a domain with a dot; no spaces,
+// commas or quotes, so it can't carry a second recipient or a header.
+rt_mail_address :: (s: string) -> bool {
+  if s.count < 5 || s.count > 254 { return false; }
+  at := -1; dot := false;
+  for c, i: s {
+    if c == '@' { if at >= 0 { return false; } at = i; }
+    else if c <= ' ' || c == ',' || c == ';' || c == '"' || c == '<' || c == '>' || c == 127 { return false; }
+    else if c == '.' && at >= 0 && i > at + 1 && i < s.count - 1 { dot = true; }
+  }
+  return at > 0 && dot;
+}
+
+// A mail reply through gws: a Gmail draft, or a sent message when send is
+// set. The subject is the reply's first line after "Subject: ". The
+// message's ID, or "" when gws failed.
+rt_deliver_mail :: (to: string, reply: string, send: bool, out: [] u8) -> string {
+  e := 0; while e < reply.count && reply[e] != '\n' { e += 1; }
+  subject := ifx e >= 9 && cast(string) reply[0..<9] == "Subject: " then cast(string) reply[9..<e] else "Coder";
+  b := ifx e >= 9 && cast(string) reply[0..<9] == "Subject: " then e else 0;
+  while b < reply.count && reply[b] == '\n' { b += 1; }
+  gb: [1024] u8;
+  argv: [12] string; na := 0;
+  argv[0] = rt_gws(gb[..]); argv[1] = "gmail"; argv[2] = "+send"; argv[3] = "--to"; argv[4] = to;
+  argv[5] = "--subject"; argv[6] = subject; argv[7] = "--body"; argv[8] = cast(string) reply[b..<reply.count];
+  argv[9] = "--format"; argv[10] = "json"; na = 11;
+  if !send { argv[na] = "--draft"; na += 1; }
+  ok: [1] bool; rb: [8192] u8;
+  res := rt_run(argv[0..<na], rb[..], ok[..]);
+  if !ok[0] { return ""; }
+  ab: [16384] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  id := cl_str(ar[..], res, "id");
+  on := cd_cat(out, 0, ifx id.count > 0 then id else "sent");
+  return cast(string) out[0..<on];
+}
+
 rt_deliver_github :: (repo: string, number: string, body: string, out: [] u8) -> string {
   ghb: [1024] u8;
   argv := [7] string.[rt_gh(ghb[..]), "issue", "comment", number, "-R", repo, "--body"];
@@ -1097,6 +1139,28 @@ rt_report :: (p: [] RtPaths, th: [] RtThreads, i: int, text: string, s: [] CsSum
       fate = "reply posted to the issue";
     } else { fate = "reply written to the outbox; posting to the issue failed"; }
   }
+  // mail (chapter 20): a Gmail draft by default; sent only when the policy says "send": true.
+  // At most once: a Router that restarts after delivering doesn't deliver again.
+  to := ifx policy.count > 0 then cl_str(ar[..], policy, "to") else "";
+  if db.ok && db.value && channel == "mail" && to.count > 0 {
+    sb := ifx policy.count > 0 then cl_bool(policy, "send") else ClBool.{};
+    send := sb.ok && sb.value;
+    xm := fs_mkdir(rt_path(p, "/router/posting", b[..]));
+    ib2: [1400] u8; in2 := cd_cat(ib2[..], 0, rt_path(p, "/router/posting/", b[..])); in2 = cd_cat(ib2[..], in2, id);
+    intent := cast(string) ib2[0..<in2];
+    if !rt_mail_address(to) { fate = "reply written to the outbox; the source's to is not one mail address"; }
+    else if fs_exists(intent) { fate = "reply written to the outbox; a delivery may have started before a restart, so it is not repeated"; }
+    else {
+      y := fs_write(intent, "mailing\n");
+      mb: [256] u8; mid := rt_deliver_mail(to, body, send, mb[..]);
+      rt_fault("mailed");
+      if mid.count > 0 {
+        kb: [300] u8; kn := cd_cat(kb[..], 0, ifx send then "sent " else "draft "); kn = cd_cat(kb[..], kn, mid); kn = cd_cat(kb[..], kn, "\n");
+        z := fs_append(rt_path(p, "/router/mailed", b[..]), cast(string) kb[0..<kn]);
+        fate = ifx send then "reply mailed" else "reply saved as a mail draft";
+      } else { fate = "reply written to the outbox; mailing it failed"; }
+    }
+  }
   rk: [64] u8; rn := cd_cat(rk[..], 0, id); rn = cd_cat(rk[..], rn, "\n");
   x := fs_append(rt_path(p, "/router/reported", b[..]), cast(string) rk[0..<rn]);
   ib3: [1400] u8; in3 := cd_cat(ib3[..], 0, rt_path(p, "/router/posting/", b[..])); in3 = cd_cat(ib3[..], in3, id);
@@ -1402,7 +1466,16 @@ cd_cmd_policy :: (args: [] Args, json: bool) -> int {
     if channel.count > 0 && !rt_in(channel, channels[..]) { tool_errln("coder policy: --channel is chat, issue, pr, mail or doc"); return 2; }
     eb: [8192] u8;
     entry := rt_policy_entry(mode, args_value(args, "--authors", "*"), args_value(args, "--engine", ""), args_value(args, "--label", ""), channel, args_has(args, "--deliver"), args_has(args, "--ci"), args_value(args, "--text", ""), eb[..]);
-    next = rt_sources_with(sources, name, entry, ob[..]);
+    // a mail source's recipient, and whether its replies are sent rather than saved as drafts
+    to := args_value(args, "--to", "");
+    if to.count > 0 && !rt_mail_address(to) { tool_errln("coder policy: --to is one mail address, like kim@example.com"); return 2; }
+    if (to.count > 0 || args_has(args, "--send")) && entry.count > 1 {
+      mb2: [8400] u8; mn := cd_cat(mb2[..], 0, cast(string) entry[0..<entry.count - 1]);
+      if to.count > 0 { mn = json_raw(mb2[..], mn, ",\"to\":"); mn = json_write_string(mb2[..], mn, to); }
+      if args_has(args, "--send") { mn = json_raw(mb2[..], mn, ",\"send\":true"); }
+      mn = json_raw(mb2[..], mn, "}");
+      next = rt_sources_with(sources, name, cast(string) mb2[0..<mn], ob[..]);
+    } else { next = rt_sources_with(sources, name, entry, ob[..]); }
   } else { tool_errln("coder policy: list, add or rm"); return 2; }
   if next.count == 0 || !fs_write(path, next) { tool_errln("coder policy: could not write router/sources.json"); return 1; }
   lb: [512] u8; ln := cd_cat(lb[..], 0, ifx what == "rm" then "Removed " else "Saved "); ln = cd_cat(lb[..], ln, name);
@@ -1557,4 +1630,10 @@ cd_cmd_watch :: (thread: string, stop: bool, list: bool) -> int {
   #assert !cd_holds(d1, "## Details");
   wb: [256] u8;
   #assert cast(string) wb[0..<rt_wrap("- one two three four five", 12, wb[..], 0)] == "- one two\n  three four\n  five";
+}
+
+#test "router: a mail source's to is one plain address" {
+  #assert rt_mail_address("kim@example.com") && rt_mail_address("a.b+c@mail.example.org");
+  #assert !rt_mail_address("kim@example") && !rt_mail_address("@example.com") && !rt_mail_address("kim@@example.com");
+  #assert !rt_mail_address("kim@example.com,eve@example.com") && !rt_mail_address("Kim <kim@example.com>") && !rt_mail_address("kim@example.com\nBcc: eve@x.io");
 }
