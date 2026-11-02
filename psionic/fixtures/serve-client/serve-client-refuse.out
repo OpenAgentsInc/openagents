@@ -1,0 +1,20 @@
+submit client 2 of 2: client; 0 jobs, 0 msat held
+submit 0 output tokens: shape; 0 jobs, 0 msat held
+submit 33 output tokens: shape; 0 jobs, 0 msat held
+submit 62 + 3 positions of 64: shape; 0 jobs, 0 msat held
+submit a deadline past a day of device time: budget; 0 jobs, 0 msat held
+submit A: none, job 0; 1 jobs, 29039 msat held
+submit key 1 with 2 output tokens: conflict, job 0; 1 jobs, 29039 msat held
+submit B: none, job 1; 2 jobs, 58066 msat held
+submit a third unfinished job: busy; 2 jobs, 58066 msat held
+submit A against 29,038 msat: budget; 0 jobs, 0 msat held
+read job 2: unknown, 0 events
+read job 0 from -1: cursor, 0 events
+read job 0 after event 4 of 3: ahead, 0 events
+cancel job 7: unknown
+cancel job 0, done: over
+read job 0, past its retention: gone, 0 events
+open with 0 steps of retention: config
+open with a limit of 0 jobs: config
+open with 5 clients: config
+a second step of a 1-step run: steps

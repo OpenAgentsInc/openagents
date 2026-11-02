@@ -2072,6 +2072,26 @@
       ]
     },
     {
+      "source": "psionic/examples/serve-client.coax",
+      "chapter": "psionic/book/ch174-clients-streams-and-background-jobs.md",
+      "stdout": "psionic/fixtures/serve-client/serve-client.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/serve-client-refuse.coax",
+      "chapter": "psionic/book/ch174-clients-streams-and-background-jobs.md",
+      "stdout": "psionic/fixtures/serve-client/serve-client-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/serve-batch.coax",
       "chapter": "psionic/book/ch175-continuous-batching-and-a-fair-scheduler.md",
       "stdout": "psionic/fixtures/serve-batch/serve-batch.out",

@@ -1,0 +1,81 @@
+sc-client-v1: one slot, 8 tokens a step, 64 positions; client 0 may hold 2 unfinished jobs, client 1 one
+A (client 0, key 1, stream): job 0, quote 29039 msat held
+B (client 0, key 2, background): job 1, quote 29027 msat held
+a third job (client 0, key 3, background): refused, busy
+B resent (client 0, key 2, background): job 1 again, nothing new held
+key 2 with another body (client 0, key 2, background): refused, conflict with job 1
+C (client 1, key 1, sync): job 2, quote 29045 msat held
+step 0: clock 22170018 ns; 0=running 1=queued 2=queued
+A's stream, connected:
+id: 1
+event: response.queued
+data: {"type":"response.queued","sequence_number":1}
+
+id: 2
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":2}
+
+id: 3
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":3,"token":217}
+
+  (the connection drops; the client got events 1 and 2)
+step 1: clock 39962490 ns; 0=running 1=queued 2=queued
+step 2: clock 57754962 ns; 0=done 1=queued 2=queued
+A's stream, reconnected with Last-Event-ID: 2
+id: 3
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":3,"token":217}
+
+id: 4
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":4,"token":224}
+
+id: 5
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":5,"token":231}
+
+id: 6
+event: response.completed
+data: {"type":"response.completed","sequence_number":6}
+
+  poll job 0: done, 3 tokens, charged 3920 msat
+step 3: clock 78465798 ns; 0=done 1=queued 2=running
+step 4: clock 96258270 ns; 0=done 1=queued 2=running
+C's connection drops after 2 tokens
+  drop: none
+  poll job 2: cancelled, 2 tokens, charged 1926 msat
+  cancel C again: over
+step 5: clock 115509924 ns; 0=gone 1=running 2=cancelled
+step 6: clock 133302396 ns; 0=gone 1=done 2=cancelled
+B, polled in the background:
+  poll job 1: done, 2 tokens, charged 2873 msat
+id: 1
+event: response.queued
+data: {"type":"response.queued","sequence_number":1}
+
+id: 2
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":2}
+
+id: 3
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":3,"token":279}
+
+id: 4
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":4,"token":286}
+
+id: 5
+event: response.completed
+data: {"type":"response.completed","sequence_number":5}
+
+B resent after it finished (client 0, key 2, background): job 1 again, nothing new held
+step 7: clock 133302396 ns; 0=gone 1=done 2=gone
+step 8: clock 133302396 ns; 0=gone 1=done 2=gone
+step 9: clock 133302396 ns; 0=gone 1=gone 2=gone
+B after its 3 steps of retention:
+  poll job 1: gone, 2 tokens, charged 2873 msat
+  read job 1 after 0: refused, gone
+client 0: 2 jobs settled, 6793 msat charged, 0 held; 5 tokens out, 94798 us of device time
+client 1: 1 jobs settled, 1926 msat charged, 0 held; 2 tokens out, 38503 us of device time

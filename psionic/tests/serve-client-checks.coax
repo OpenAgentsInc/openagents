@@ -1,0 +1,267 @@
+// Chapter 174's check helpers, loaded by psionic/lib/serve-client.coax and
+// owned by its checks: the lifecycle written out as a table, the hand-traced
+// server and requests, the invariants every server must keep (recomputed
+// from its jobs, the table, chapter 180's exact price oracle and the
+// stand-in model's formula), a stream read through random disconnects
+// against the same stream read without them, and random clients.
+
+scx_next :: (h:int)->int {return (h*1103515245+12345)%2147483648;}
+
+// Rows: none, queued, running, done, cancelled, failed, gone. Columns:
+// submit, admit, finish, cancel, deadline, expire. 0 is a refusal.
+scx_table :: (s:int,e:int)->ScState {
+    t:=[42]int.[
+        1,0,0,0,0,0,
+        0,2,0,4,5,0,
+        0,0,3,4,5,0,
+        0,0,0,0,0,6,
+        0,0,0,0,0,6,
+        0,0,0,0,0,6,
+        0,0,0,0,0,0];
+    return cast(ScState)cast(u8)t[s*6+e];
+}
+scx_walk :: (seed:int) {
+    h:=scx_next(seed*7919+13);s:=0;
+    for k:0..<16 {
+        e:=h/65536%6;h=scx_next(h);
+        // Half the time, an edge the table accepts from here, when there is one.
+        if h/65536%2==0 {for f:0..<6 {if scx_table(s,(e+f)%6)!=ScState.none {e=(e+f)%6;break;}}}
+        h=scx_next(h);
+        t:=scx_table(s,e);
+        #assert sc_next(cast(ScState)cast(u8)s,cast(ScEdge)cast(u8)e)==t;
+        if t!=ScState.none {s=cast(int)t;}
+    }
+}
+
+// One slot of 8 tokens and 64 positions; two clients of weight 1, client 0
+// with at most 2 unfinished jobs, client 1 with 1; results kept 3 steps.
+scx_config :: ()->ScConfig {
+    c:ScConfig;
+    c.batch=CbConfig.{slots=1,tokens=8,kv=64,state=0,clients=2,steps=64,weight=[8]int.[1,1,1,1,1,1,1,1]};
+    c.limit=[4]int.[2,1,0,0];c.retain=3;c.price=bl_test_schedule();c.budget=[4]int.[1000000,1000000,0,0];c.evidence=um_test_evidence();
+    return c;
+}
+scx_a :: ()->ScRequest {return ScRequest.{client=0,key=1,mode=ScMode.stream,body=7,prompt=4,output=3,deadline=20};}
+scx_b :: ()->ScRequest {return ScRequest.{client=0,key=2,mode=ScMode.background,body=9,prompt=2,output=2,deadline=20};}
+scx_c :: ()->ScRequest {return ScRequest.{client=1,key=1,mode=ScMode.sync,body=5,prompt=3,output=4,deadline=20};}
+
+// The trail as letters: q queued, r running, d done, c cancelled, f failed, g gone.
+scx_trail :: (j:ScJob,want:string)->bool {
+    if j.nt!=want.count {return false;}
+    letters:="nqrdcfg";
+    for k:0..<j.nt {if letters[cast(int)j.trail[k]]!=want[k] {return false;}}
+    return true;
+}
+// The stand-in model's definition, written again.
+scx_token :: (body:int,k:int)->int {return (body*31+k*7)%1000;}
+
+// Every invariant a server keeps after any call.
+scx_check :: (sv:[]ScServer) {
+    cfg:=sv[0].cfg;n:=sv[0].n;step:=sv[0].s.step;
+    live:[4]int;ended:[4]int;spent:[4]int;held:[4]int;queued:[8]int;kv:=0;running:=0;
+    for i:0..<n {
+        c:=sv[0].jobs[i].req.client;nt:=sv[0].jobs[i].nt;state:=sv[0].jobs[i].state;ran:=sv[0].jobs[i].ran;
+        produced:=sv[0].jobs[i].produced;q:=sv[0].jobs[i].req;count:=sv[0].jobs[i].n;
+        // The trail starts queued, every step is one the table accepts, and it ends in the state.
+        #assert nt>=1 && sv[0].jobs[i].trail[0]==ScState.queued && state==sv[0].jobs[i].trail[nt-1];
+        for k:1..<nt {
+            ok:=false;for e:0..<6 {if scx_table(cast(int)sv[0].jobs[i].trail[k-1],e)==sv[0].jobs[i].trail[k] {ok=true;}}
+            #assert ok;
+        }
+        #assert ran==(nt>=2 && sv[0].jobs[i].trail[1]==ScState.running);
+        over:=!sc_live(state);
+        r1:=0;if ran {r1=1;}
+        end:=0;if over {end=1;}
+        // Events: queued, started if it ran, one per token with the stand-in's answer, then the ending.
+        #assert count==1+r1+produced+end && sv[0].jobs[i].ev[0].kind==ScKind.queued && sv[0].jobs[i].ev[0].token==0 && produced<=q.output;
+        if ran {#assert sv[0].jobs[i].ev[1].kind==ScKind.started && sv[0].jobs[i].ev[1].token==0;}
+        for k:0..<produced {e:=sv[0].jobs[i].ev[1+r1+k];#assert e.kind==ScKind.delta && e.token==scx_token(q.body,k);}
+        if over {
+            last:=state;if last==ScState.gone {last=sv[0].jobs[i].trail[nt-2];}
+            kind:=ScKind.failed;if last==ScState.done {kind=ScKind.completed;}if last==ScState.cancelled {kind=ScKind.cancelled;}
+            #assert sv[0].jobs[i].ev[count-1].kind==kind && sv[0].jobs[i].ev[count-1].token==0;
+            // A deadline ends a job exactly its deadline's steps after submission.
+            if last==ScState.failed {#assert sv[0].jobs[i].ended-sv[0].jobs[i].at==q.deadline;}
+            if last==ScState.done {#assert produced==q.output;}
+            // One charge: chapter 180's exact oracle for the device time held, capped at the quote.
+            device:=0;if ran {device=(sv[0].jobs[i].end_ns-sv[0].jobs[i].admit_ns)/1000;}
+            u:=BlUse.{status=ifx last==ScState.done then BlStatus.answered else BlStatus.cancelled,tokens_in=q.prompt,tokens_out=produced,device_us=device};
+            want:=bl_oracle(cfg.price,u);if want>sv[0].jobs[i].quote.msat {want=sv[0].jobs[i].quote.msat;}
+            #assert sv[0].jobs[i].charge==want && sv[0].jobs[i].ended>=sv[0].jobs[i].at && sv[0].jobs[i].ended<=step;
+            ended[c]+=1;spent[c]+=sv[0].jobs[i].charge;
+        } else {
+            live[c]+=1;held[c]+=sv[0].jobs[i].quote.msat;
+            #assert step-sv[0].jobs[i].at<=q.deadline;
+            #assert sv[0].jobs[i].charge==0;
+            inrun:=0;for k:0..<sv[0].s.nrun {if sv[0].s.run[k]==i {inrun+=1;}}
+            if state==ScState.running {
+                running+=1;kv+=q.prompt+q.output+cfg.batch.state;
+                #assert inrun==1 && sv[0].s.emitted[i]==produced;
+            } else {
+                #assert inrun==0 && produced==0 && sv[0].s.fate[i].admit<0;
+                if sv[0].s.req[i].arrive<step {queued[c]+=1;} else {#assert sv[0].s.req[i].arrive==step;}
+            }
+        }
+    }
+    #assert sv[0].s.nrun==running && running<=cfg.batch.slots && sv[0].s.kv==kv;
+    for c:0..<cfg.batch.clients {
+        #assert sv[0].active[c]==live[c] && live[c]<=cfg.limit[c] && sv[0].s.queued[c]==queued[c];
+        ln:=sv[0].ledger[c].n;a:=sv[0].ledger[c].account;
+        #assert ln==ended[c] && a.spent==spent[c] && a.held==held[c] && sv[0].ledger[c].usage.charged==spent[c];
+        // Each settled key is an ended job of this client, settled once.
+        for k:0..<ln {
+            key:=sv[0].ledger[c].keys[k];
+            #assert key>=0 && key<n && sv[0].jobs[key].req.client==c && !sc_live(sv[0].jobs[key].state);
+            for m:0..<k {#assert sv[0].ledger[c].keys[m]!=key;}
+        }
+    }
+}
+
+// What a submission should get, worked from the jobs alone.
+scx_want :: (sv:[]ScServer,r:ScRequest)->ScSubmit {
+    b:=sv[0].cfg.batch;
+    if r.client<0 || r.client>=b.clients {return ScSubmit.{why=ScWhy.client,id= -1};}
+    if r.key<0 || r.prompt<1 || r.output<1 || r.output>32 || r.deadline<1 || r.prompt+r.output+b.state>b.kv {return ScSubmit.{why=ScWhy.shape,id= -1};}
+    for i:0..<sv[0].n {
+        q:=sv[0].jobs[i].req;
+        if q.client==r.client && q.key==r.key {
+            same:=q.mode==r.mode && q.body==r.body && q.prompt==r.prompt && q.output==r.output && q.deadline==r.deadline;
+            return ScSubmit.{why=ifx same then ScWhy.none else ScWhy.conflict,id=i};
+        }
+    }
+    if sv[0].n==64 {return ScSubmit.{why=ScWhy.full,id= -1};}
+    live:=0;taken:=0;
+    for i:0..<sv[0].n {
+        if sv[0].jobs[i].req.client==r.client {taken+=sv[0].jobs[i].charge;if sc_live(sv[0].jobs[i].state) {live+=1;taken+=sv[0].jobs[i].quote.msat;}}
+    }
+    if live>=sv[0].cfg.limit[r.client] {return ScSubmit.{why=ScWhy.busy,id= -1};}
+    ns:=17792472+(b.tokens-1)*1459182;
+    q:=bl_quote(sv[0].cfg.price,r.prompt,r.output,(r.deadline*ns+999)/1000);
+    if q.cause!=BlCause.none || q.msat>sv[0].cfg.budget[r.client]-taken {return ScSubmit.{why=ScWhy.budget,id= -1};}
+    return ScSubmit.{id=sv[0].n,created=true};
+}
+
+// A stream read through random disconnects. Two identical servers run the
+// same jobs; one stream reads every step without a break, the other drops
+// at random, losing a random part of what was in flight, and reconnects
+// with the last event it got as its Last-Event-ID. What the second gets
+// must be exactly what the first got: no event missed, none twice.
+scx_resume :: (seed:int) {
+    h:=scx_next(seed*104729+7);
+    c:=scx_config();c.retain=1000;c.batch.steps=200;c.limit=[4]int.[4,4,0,0];c.batch.slots=1+h/65536%3;h=scx_next(h);
+    v:=[1]ScServer.[sc_open(c)];u:=v;
+    n:=1+h/65536%4;h=scx_next(h);
+    for i:0..<n {
+        r:=ScRequest.{client=i%2,key=i,mode=cast(ScMode)cast(u8)(h/65536%3),body=h/65536/3%5000,deadline=10+h/65536/15000%60};h=scx_next(h);
+        r.prompt=1+h/65536%12;r.output=1+h/65536/12%SC_OUTPUT;h=scx_next(h);
+        #assert sc_submit(v[..],r).id==i && sc_submit(u[..],r).id==i;
+    }
+    w:=h/65536%n;h=scx_next(h);
+    cancel:=ifx h/65536%3==0 then h/65536/3%40 else -1;h=scx_next(h);
+    all:[35]ScEvent;na:=0;got:[35]ScEvent;ng:=0;buf:[35]ScEvent;up:=true;drops:=0;
+    for t:0..<100 {
+        if !sc_live(u[0].jobs[w].state) {break;}
+        if t==cancel {scx_cancel(v[..],w);scx_cancel(u[..],w);}
+        scx_tick(v[..]);scx_tick(u[..]);
+        g:=sc_read(u[..],w,na,all[na..<35]);
+        #assert g.why==ScWhy.none && g.last==na+g.count;na=g.last;
+        if up {
+            g=sc_read(v[..],w,ng,buf[..]);
+            #assert g.why==ScWhy.none && g.last==ng+g.count;
+            d:=g.count;
+            if h/65536%3==0 {d=h/65536/3%(g.count+1);up=false;drops+=1;}
+            h=scx_next(h);
+            for k:0..<d {got[ng]=buf[k];ng+=1;}
+        } else {
+            up=h/65536%2==0;h=scx_next(h);
+        }
+    }
+    // The job is over by now: reconnect once more and read to the end.
+    g:=sc_read(v[..],w,ng,buf[..]);
+    #assert g.why==ScWhy.none && g.end && g.last==ng+g.count;
+    for k:0..<g.count {got[ng]=buf[k];ng+=1;}
+    #assert ng==na && na==v[0].jobs[w].n && !sc_live(v[0].jobs[w].state);
+    for k:0..<na {#assert got[k].kind==all[k].kind && got[k].token==all[k].token;}
+    scx_check(v[..]);scx_check(u[..]);
+}
+
+// Random clients: submissions (fresh, repeated, or reusing a key with a
+// different body), cancels, dropped connections, reads and steps, with
+// every invariant checked after every call; then every finished job's
+// tokens against the same request run alone, synchronously.
+scx_random :: (seed:int) {
+    h:=scx_next(seed*7919+101);
+    c:ScConfig;
+    c.batch=CbConfig.{slots=1+h/65536%4,clients=1+h/65536/4%4,steps=300};h=scx_next(h);
+    c.batch.tokens=c.batch.slots+h/65536%12;c.batch.state=h/65536/12%3;c.batch.kv=40+h/65536/36%120;h=scx_next(h);
+    for k:0..<8 {c.batch.weight[k]=1+h/65536%3;h=scx_next(h);}
+    for k:0..<4 {
+        c.limit[k]=1+h/65536%4;c.budget[k]=ifx h/65536/4%4==0 then 20000+h/65536/16%60000 else 100000000;h=scx_next(h);
+    }
+    c.retain=1+h/65536%6;c.price=bl_test_schedule();c.evidence=um_test_evidence();h=scx_next(h);
+    v:=[1]ScServer.[sc_open(c)];
+    #assert v[0].why==ScWhy.none;
+    ev:[35]ScEvent;
+    for op:0..<80 {
+        k:=h/65536%10;h=scx_next(h);
+        if k<4 {
+            r:=ScRequest.{client=h/65536%(c.batch.clients+1),key=h/65536/5%6,mode=cast(ScMode)cast(u8)(h/65536/30%3)};h=scx_next(h);
+            r.body=h/65536%100000;r.prompt=1+h/65536/7%(c.batch.kv-4);r.output=h/65536/3%34;r.deadline=h/65536/11%30;h=scx_next(h);
+            if r.output==0 && h/65536%3>0 {r.output=1;}
+            if r.deadline==0 && h/65536%3>0 {r.deadline=12;}
+            if v[0].n>0 && h/65536%4==0 {r=v[0].jobs[h/65536/4%v[0].n].req;if h/65536%16==0 {r.body+=1;}}
+            h=scx_next(h);
+            want:=scx_want(v[..],r);
+            before:[4]SfLedger;before=v[0].ledger;
+            got:=sc_submit(v[..],r);
+            #assert got.why==want.why && got.id==want.id && got.created==want.created;
+            if !got.created && got.id>=0 {for m:0..<4 {#assert sfx_ledger_same(v[0].ledger[m],before[m]);}}
+        } else if k<5 {
+            i:=h/65536%(v[0].n+2)-1;h=scx_next(h);
+            want:=ifx i<0 || i>=v[0].n then ScWhy.unknown else ifx sc_live(v[0].jobs[i].state) then ScWhy.none else ScWhy.over;
+            #assert sc_cancel(v[..],i)==want;
+            if want==ScWhy.none {#assert v[0].jobs[i].state==ScState.cancelled;}
+        } else if k<6 {
+            i:=h/65536%(v[0].n+2)-1;h=scx_next(h);
+            known:=i>=0 && i<v[0].n;
+            was:=ScState.none;if known {was=v[0].jobs[i].state;}
+            w:=sc_drop(v[..],i);
+            if !known {#assert w==ScWhy.unknown;}
+            else if v[0].jobs[i].req.mode==ScMode.sync && sc_live(was) {#assert w==ScWhy.none && v[0].jobs[i].state==ScState.cancelled;}
+            else {#assert v[0].jobs[i].state==was && (w==ScWhy.none || w==ScWhy.over);}
+        } else if k<7 && v[0].n>0 {
+            i:=h/65536%v[0].n;after:=h/65536/64%40-2;h=scx_next(h);
+            j:=v[0].jobs[i];g:=sc_read(v[..],i,after,ev[..]);
+            want:=ifx j.state==ScState.gone then ScWhy.gone else ifx after<0 then ScWhy.cursor else ifx after>j.n then ScWhy.ahead else ScWhy.none;
+            #assert g.why==want;
+            if want==ScWhy.none {
+                #assert g.count==j.n-after && g.last==j.n && g.end==!sc_live(j.state);
+                for m:0..<g.count {#assert ev[m].kind==j.ev[after+m].kind && ev[m].token==j.ev[after+m].token;}
+            }
+        } else {
+            #assert sc_tick(v[..])==ScWhy.none;
+        }
+        scx_check(v[..]);
+    }
+    // Run every job to its end; then each answer equals the request run alone.
+    for t:0..<100 {scx_tick(v[..]);}
+    scx_check(v[..]);
+    solo:=0;
+    for i:0..<v[0].n {
+        j:=v[0].jobs[i];
+        #assert !sc_live(j.state);
+        if j.state==ScState.done && solo<3 {
+            solo+=1;
+            a:=c;a.batch.clients=1;a.limit[0]=1;a.budget[0]=100000000;a.retain=1000;
+            r:=j.req;r.client=0;r.mode=ScMode.sync;
+            x:=[1]ScServer.[sc_open(a)];#assert sc_submit(x[..],r).created;
+            while sc_live(x[0].jobs[0].state) {scx_tick(x[..]);}
+            #assert x[0].jobs[0].state==ScState.done && x[0].jobs[0].n==j.n;
+            for m:0..<j.n {#assert x[0].jobs[0].ev[m].kind==j.ev[m].kind && x[0].jobs[0].ev[m].token==j.ev[m].token;}
+        }
+    }
+}
+
+scx_tick :: (sv:[]ScServer) {#assert sc_tick(sv)==ScWhy.none;}
+scx_add :: (sv:[]ScServer,r:ScRequest) {#assert sc_submit(sv,r).created;}
+scx_cancel :: (sv:[]ScServer,i:int) {w:=sc_cancel(sv,i);#assert w==ScWhy.none || w==ScWhy.over;}

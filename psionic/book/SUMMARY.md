@@ -192,7 +192,7 @@
 
 - [172. Benchmark a service, not a kernel](ch172-benchmark-a-service-not-a-kernel.md) — first production-hosting chapter
 - [173. Serve a model with an honest capability](ch173-serve-a-model-with-an-honest-capability.md) — partly implemented
-- [174. Clients, streams and background jobs](ch174-clients-streams-and-background-jobs.md) — design draft
+- [174. Clients, streams and background jobs](ch174-clients-streams-and-background-jobs.md) — partly implemented
 - [175. Continuous batching and a fair scheduler](ch175-continuous-batching-and-a-fair-scheduler.md) — partly implemented
 - [176. Paged state and a tiered prefix cache](ch176-paged-state-and-a-tiered-prefix-cache.md) — partly implemented
 - [177. Route, queue and scale replicas](ch177-route-queue-and-scale-replicas.md) — partly implemented
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75–82, 84, 86, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–159, 161–164, 165, 167–173, 175–183, 186–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75–82, 84, 86, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–159, 161–164, 165, 167–183, 186–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

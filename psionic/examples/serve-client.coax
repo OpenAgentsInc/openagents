@@ -1,0 +1,66 @@
+// Chapter 174: the hand trace. Two clients share one batch slot. Client 0
+// streams job A and leaves job B in the background; client 1 waits on job C
+// synchronously. A's stream drops after event 2 and resumes from its
+// Last-Event-ID; C's connection drops mid-answer, which cancels it; B gets
+// C's slot at the next step and is polled; results expire after 3 steps.
+#import "Basic";
+#load "../lib/serve-client.coax";
+
+submit :: (v:[]ScServer,what:string,r:ScRequest) {
+    s:=sc_submit(v,r);
+    print("% (client %, key %, %): ",what,r.client,r.key,sc_mode_name(r.mode));
+    if s.why!=ScWhy.none {print("refused, %",sc_why_name(s.why));if s.id>=0 {print(" with job %",s.id);}print("\n");return;}
+    if s.created {print("job %, quote % msat held\n",s.id,v[0].jobs[s.id].quote.msat);} else {print("job % again, nothing new held\n",s.id);}
+}
+advance :: (v:[]ScServer) {
+    w:=sc_tick(v);
+    print("step %: clock % ns;",v[0].s.step-1,v[0].s.clock);
+    for i:0..<v[0].n {print(" %=%",i,sc_state_name(v[0].jobs[i].state));}
+    print("\n");
+    if w!=ScWhy.none {print("  stopped: %\n",sc_why_name(w));}
+}
+stream :: (v:[]ScServer,i:int,after:int) {
+    ev:[35]ScEvent;g:=sc_read(v,i,after,ev[..]);
+    if g.why!=ScWhy.none {print("  read job % after %: refused, %\n",i,after,sc_why_name(g.why));return;}
+    out:[4096]u8;n:=0;
+    for k:0..<g.count {n=sc_sse(after+k+1,ev[k],out[..],n);}
+    print("%",cast(string)out[0..<n]);
+}
+poll :: (v:[]ScServer,i:int) {
+    p:=sc_poll(v,i);
+    print("  poll job %: %, % tokens, charged % msat\n",i,sc_state_name(p.state),p.produced,p.charge);
+}
+
+// book:begin main
+main :: () {
+    v:=[1]ScServer.[sc_open(scx_config())];
+    print("%: one slot, 8 tokens a step, 64 positions; client 0 may hold 2 unfinished jobs, client 1 one\n",SC_PROFILE);
+    submit(v[..],"A",scx_a());submit(v[..],"B",scx_b());
+    x:=scx_b();x.key=3;submit(v[..],"a third job",x);
+    submit(v[..],"B resent",scx_b());
+    x=scx_b();x.body=10;submit(v[..],"key 2 with another body",x);
+    submit(v[..],"C",scx_c());
+
+    advance(v[..]);
+    print("A's stream, connected:\n");stream(v[..],0,0);
+    print("  (the connection drops; the client got events 1 and 2)\n");
+    advance(v[..]);advance(v[..]);
+    print("A's stream, reconnected with Last-Event-ID: 2\n");stream(v[..],0,2);poll(v[..],0);
+
+    advance(v[..]);advance(v[..]);
+    print("C's connection drops after % tokens\n",v[0].jobs[2].produced);
+    w:=sc_drop(v[..],2);print("  drop: %\n",sc_why_name(w));poll(v[..],2);
+    print("  cancel C again: %\n",sc_why_name(sc_cancel(v[..],2)));
+
+    advance(v[..]);advance(v[..]);
+    print("B, polled in the background:\n");poll(v[..],1);stream(v[..],1,0);
+    submit(v[..],"B resent after it finished",scx_b());
+    advance(v[..]);advance(v[..]);advance(v[..]);
+    print("B after its 3 steps of retention:\n");poll(v[..],1);stream(v[..],1,0);
+
+    for c:0..<2 {
+        l:=v[0].ledger[c];
+        print("client %: % jobs settled, % msat charged, % held; % tokens out, % us of device time\n",c,l.n,l.account.spent,l.account.held,l.usage.tokens_out,l.usage.device_us);
+    }
+}
+// book:end main

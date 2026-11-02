@@ -1,0 +1,461 @@
+// Chapter 174: clients, streams and background jobs. The client-facing side
+// of a served model, in one process: a client submits a request with an
+// idempotency key and gets a job back; the job waits in chapter 175's fair
+// scheduler, runs, and ends done, cancelled or failed at its deadline; its
+// events (queued, in progress, one per output token, and the ending) are
+// kept in order, so a stream that drops can resume from its Last-Event-ID
+// and get exactly the events it missed; a background job is polled; a
+// finished job's result is kept for a retention window, then it is gone.
+// Admission holds a quote with chapter 180's prices and refuses past a
+// per-client limit on unfinished jobs; every job is settled exactly once on
+// chapter 181's ledger when it ends, a cancelled one for the device time it
+// held. The model is a stand-in that emits fixed token numbers.
+// Profile sc-client-v1: chapter 175's cb-iteration-v1 steps and timing
+// model; at most 4 clients, 64 jobs and 32 output tokens a job.
+#authority;
+#load "serve-fault.coax";  // chapter 181's exactly-once ledger, and through it chapters 175 and 180
+#load "../tests/serve-client-checks.coax";  // the checks' transition table, scenarios and invariants
+
+SC_PROFILE :: "sc-client-v1";
+SC_CLIENTS :: 4;
+SC_JOBS :: 64;    // one scheduler request a job: chapter 175's CB_REQUESTS
+SC_OUTPUT :: 32;
+SC_EVENTS :: 35;  // queued, in progress, 32 tokens, the ending
+
+// book:begin types
+// stream: events are pushed as they happen; a dropped connection does not
+// cancel, and the client resumes. background: the client polls, or reads
+// the events whenever it likes. sync: the answer comes back on the
+// connection, and a dropped connection cancels the job.
+ScMode :: enum u8 {stream;background;sync;}
+// none is also the answer to a transition the table refuses.
+ScState :: enum u8 {none;queued;running;done;cancelled;failed;gone;}
+ScEdge :: enum u8 {submit;admit;finish;cancel;deadline;expire;}
+ScKind :: enum u8 {queued;started;delta;completed;cancelled;failed;}
+ScEvent :: struct {kind:ScKind;token:int;}
+ScWhy :: enum u8 {none;config;client;shape;conflict;full;busy;budget;unknown;over;gone;cursor;ahead;steps;}
+// batch: chapter 175's scheduler, whose clients and weights are ours.
+// limit: the most unfinished jobs a client may have. retain: steps a
+// finished job's result is kept. budget: each client's account, in msat.
+ScConfig :: struct {batch:CbConfig;limit:[4]int;retain:int;price:BlSchedule;budget:[4]int;evidence:UmEvidence;}
+// key: the client's idempotency key. body: the request's content, as a
+// digest; the stand-in model reads it. deadline: steps after submission.
+ScRequest :: struct {client:int;key:int;mode:ScMode;body:int;prompt:int;output:int;deadline:int;}
+// book:end types
+// trail: every state the job has been in, in order. at, ended: steps run
+// when it was submitted and when it ended. at_ns, admit_ns, end_ns: the
+// modeled clock then, and at admission.
+ScJob :: struct {
+    req:ScRequest;state:ScState;trail:[6]ScState;nt:int;ran:bool;at:int;
+    ended:int;at_ns:int;admit_ns:int;end_ns:int;quote:BlPrice;produced:int;charge:int;n:int;ev:[35]ScEvent;
+}
+ScServer :: struct {why:ScWhy;cfg:ScConfig;s:CbState;n:int;jobs:[64]ScJob;active:[4]int;ledger:[4]SfLedger;}
+ScSubmit :: struct {why:ScWhy;id:int;created:bool;}
+// count events from after+1, ending at last; end: the job's last event was among them.
+ScRead :: struct {why:ScWhy;count:int;last:int;end:bool;}
+ScPoll :: struct {why:ScWhy;state:ScState;produced:int;charge:int;}
+
+// Checks come first. The transition table, the scenarios and the
+// invariants every server must keep are in
+// psionic/tests/serve-client-checks.coax; chapter 174 works the numbers.
+// book:begin check-table
+#test "every transition equals the table" {
+    for s:0..<7 {for e:0..<6 {
+        #assert sc_next(cast(ScState)cast(u8)s,cast(ScEdge)cast(u8)e)==scx_table(s,e);
+    }}
+}
+#forall "a random walk of edges follows the table" seed:0..<400 #steps 4000000 {
+    scx_walk(seed);
+}
+// book:end check-table
+// book:begin check-hand
+#test "the hand trace: admission, a resumed stream, a cancel, a background job, retention" {
+    v:=[1]ScServer.[sc_open(scx_config())];
+    a:=sc_submit(v[..],scx_a());b:=sc_submit(v[..],scx_b());
+    #assert a.why==ScWhy.none && a.id==0 && a.created && b.why==ScWhy.none && b.id==1 && b.created;
+    // A third unfinished job for client 0 is past its limit of 2; key 2 again is job 1, created before.
+    x:=scx_b();x.key=3;r:=sc_submit(v[..],x);#assert r.why==ScWhy.busy && r.id== -1 && !r.created;
+    r=sc_submit(v[..],scx_b());#assert r.why==ScWhy.none && r.id==1 && !r.created;
+    x=scx_b();x.body=10;r=sc_submit(v[..],x);#assert r.why==ScWhy.conflict && r.id==1 && !r.created;
+    c:=sc_submit(v[..],scx_c());#assert c.id==2 && c.created;
+    // Quotes: 20 steps of the 8-row step, 560,135 us; 29,039 msat for A, held.
+    #assert v[0].jobs[0].quote.msat==29039 && v[0].ledger[0].account.held==29039+v[0].jobs[1].quote.msat;
+    // Step 0: A takes the one slot and its 4-token prompt yields token 217.
+    #assert sc_tick(v[..])==ScWhy.none && v[0].jobs[0].state==ScState.running && v[0].jobs[2].state==ScState.queued;
+    ev:[35]ScEvent;g:=sc_read(v[..],0,0,ev[..]);
+    #assert g.why==ScWhy.none && g.count==3 && g.last==3 && !g.end && ev[0].kind==ScKind.queued && ev[1].kind==ScKind.started && ev[2].kind==ScKind.delta && ev[2].token==217;
+    // Steps 1 and 2: tokens 224 and 231; A is done at 57,754,962 ns.
+    scx_tick(v[..]);scx_tick(v[..]);
+    // The stream had acknowledged event 2: resuming gives 3 to 6, the ending last.
+    g=sc_read(v[..],0,2,ev[..]);
+    #assert g.count==4 && g.last==6 && g.end && ev[0].token==217 && ev[1].token==224 && ev[2].token==231 && ev[3].kind==ScKind.completed;
+    o:=sc_poll(v[..],0);
+    #assert o.state==ScState.done && o.produced==3 && o.charge==3920 && v[0].jobs[0].ended==3 && v[0].s.clock==57754962;
+    // Steps 3 and 4: C (client 1, virtual time 0) beats B (virtual time 5,880); two tokens.
+    scx_tick(v[..]);scx_tick(v[..]);
+    #assert v[0].jobs[2].state==ScState.running && v[0].jobs[1].state==ScState.queued && v[0].jobs[2].produced==2 && v[0].s.clock==96258270;
+    // The sync client drops: C is cancelled with 2 tokens produced, charged 38,503 us of device time.
+    #assert sc_drop(v[..],2)==ScWhy.none;o=sc_poll(v[..],2);
+    #assert o.state==ScState.cancelled && o.produced==2 && o.charge==1926 && v[0].jobs[2].ended==5;
+    #assert v[0].s.nrun==0 && v[0].s.kv==0 && v[0].s.done==2 && v[0].s.fate[2].finish==5 && v[0].active[1]==0 && v[0].ledger[1].account.held==0;
+    #assert sc_cancel(v[..],2)==ScWhy.over && sc_drop(v[..],2)==ScWhy.over && v[0].ledger[1].account.spent==1926 && v[0].ledger[1].n==1;
+    // Its usage record: 2 tokens out, 38,503 us of device time, 96,258 us since it was submitted.
+    u:=v[0].ledger[1].usage;#assert u.tokens_out==2 && u.device_us==38503 && u.latency_most==96258 && u.status[4]==1;
+    // Step 5: the freed slot goes to B at once; step 6 finishes it. A is gone after step 5.
+    scx_tick(v[..]);#assert v[0].jobs[1].state==ScState.running && v[0].s.fate[1].admit==5 && v[0].jobs[0].state==ScState.gone;
+    #assert sc_read(v[..],0,0,ev[..]).why==ScWhy.gone && sc_poll(v[..],0).state==ScState.gone;
+    scx_tick(v[..]);o=sc_poll(v[..],1);
+    #assert o.state==ScState.done && o.produced==2 && o.charge==2873 && v[0].jobs[1].ended==7 && v[0].s.clock==133302396;
+    // Resubmitting a finished job's key returns it and charges nothing more.
+    r=sc_submit(v[..],scx_b());#assert r.id==1 && !r.created && v[0].ledger[0].account.spent==3920+2873 && v[0].ledger[0].n==2;
+    u=v[0].ledger[0].usage;#assert u.tokens_out==5 && u.device_us==57754+37044 && u.latency_most==133302 && u.status[1]==2;
+    // C is gone after step 7, B after step 9.
+    scx_tick(v[..]);#assert v[0].jobs[2].state==ScState.gone && v[0].jobs[1].state==ScState.done;
+    scx_tick(v[..]);#assert v[0].jobs[1].state==ScState.done;
+    scx_tick(v[..]);#assert v[0].jobs[1].state==ScState.gone && sc_read(v[..],1,4,ev[..]).why==ScWhy.gone;
+    scx_check(v[..]);
+    // Every job's states, in order.
+    #assert scx_trail(v[0].jobs[0],"qrdg") && scx_trail(v[0].jobs[1],"qrdg") && scx_trail(v[0].jobs[2],"qrcg");
+}
+// book:end check-hand
+// book:begin check-cancel
+#test "cancel before arrival, while queued, while running: the slot is free the next step" {
+    v:=[1]ScServer.[sc_open(scx_config())];
+    scx_add(v[..],scx_a());scx_add(v[..],scx_b());scx_add(v[..],scx_c());
+    // B is cancelled before the scheduler has seen it: it never arrives, and costs nothing.
+    #assert sc_cancel(v[..],1)==ScWhy.none && v[0].s.req[1].arrive== -1 && v[0].s.fate[1].admit==0 && v[0].s.fate[1].finish==0 && v[0].s.done==1;
+    #assert sc_poll(v[..],1).charge==0 && v[0].active[0]==1 && v[0].ledger[0].n==1;
+    scx_tick(v[..]);
+    // C waits behind A: cancelled while queued, it leaves the queue unadmitted and is charged nothing.
+    #assert sc_cancel(v[..],2)==ScWhy.none && v[0].s.queued[1]==0 && v[0].s.fate[2].admit==1 && v[0].s.fate[2].finish==1 && v[0].s.done==2;
+    #assert sc_poll(v[..],2).charge==0 && sc_poll(v[..],2).produced==0 && v[0].jobs[2].n==2;
+    // A is cancelled after one step: 22,170 us of device time, 1 token, 1,109 msat.
+    #assert sc_cancel(v[..],0)==ScWhy.none && v[0].s.nrun==0 && v[0].s.kv==0 && v[0].s.done==3;
+    o:=sc_poll(v[..],0);#assert o.produced==1 && o.charge==1109;
+    // A new job takes the free slot at the very next step.
+    x:=scx_a();x.key=9;scx_add(v[..],x);scx_tick(v[..]);#assert v[0].s.fate[3].admit==1 && v[0].jobs[3].state==ScState.running;
+    #assert sc_cancel(v[..],4)==ScWhy.unknown && sc_cancel(v[..],-1)==ScWhy.unknown && sc_drop(v[..],4)==ScWhy.unknown && sc_drop(v[..],-1)==ScWhy.unknown;
+    // Dropping a stream or a background job's connection cancels nothing.
+    #assert sc_drop(v[..],3)==ScWhy.none && v[0].jobs[3].state==ScState.running;
+    x.key=10;x.mode=ScMode.background;scx_add(v[..],x);#assert sc_drop(v[..],4)==ScWhy.none && v[0].jobs[4].state==ScState.queued;
+    scx_check(v[..]);
+    #assert scx_trail(v[0].jobs[0],"qrc") && scx_trail(v[0].jobs[1],"qc") && scx_trail(v[0].jobs[2],"qc");
+    // Job 3 was submitted at 22,170,018 ns and is cancelled at 44,340,036: 22,170 us in its usage record, as A's.
+    #assert sc_cancel(v[..],3)==ScWhy.none && v[0].ledger[0].usage.latency_most==22170 && v[0].ledger[0].n==3;
+}
+#test "a deadline fails a waiting job before it takes a slot, and a running one" {
+    v:=[1]ScServer.[sc_open(scx_config())];
+    x:=scx_a();x.deadline=4;scx_add(v[..],x);
+    y:=scx_c();y.deadline=2;scx_add(v[..],y);
+    // A runs steps 0 to 2 and is done; C waits; at step 2 its 2 steps are up.
+    scx_tick(v[..]);scx_tick(v[..]);#assert v[0].jobs[1].state==ScState.queued;
+    scx_tick(v[..]);
+    #assert v[0].jobs[1].state==ScState.failed && v[0].jobs[1].ended==2 && v[0].jobs[1].charge==0 && v[0].jobs[0].state==ScState.done;
+    #assert v[0].jobs[1].ev[1].kind==ScKind.failed && v[0].s.queued[1]==0;
+    // A running job: 2 steps, then failed with 2 tokens, before its third step runs.
+    w:=[1]ScServer.[sc_open(scx_config())];x.deadline=2;scx_add(w[..],x);
+    scx_tick(w[..]);scx_tick(w[..]);#assert w[0].jobs[0].state==ScState.running;
+    scx_tick(w[..]);o:=sc_poll(w[..],0);
+    #assert o.state==ScState.failed && o.produced==2 && w[0].jobs[0].ended==2 && w[0].s.clock==39962490 && o.charge==1999 && w[0].s.nrun==0;
+    // 39,962 us at 50,000 msat a second: 1,998.1, rounded up.
+    scx_check(v[..]);scx_check(w[..]);
+    #assert scx_trail(v[0].jobs[1],"qf") && scx_trail(w[0].jobs[0],"qrf");
+}
+// book:end check-cancel
+// book:begin check-refuse
+#test "submissions the server refuses" {
+    v:=[1]ScServer.[sc_open(scx_config())];
+    for k:0..<9 {
+        x:=scx_a();
+        if k==0 {x.client= -1;}if k==1 {x.client=2;}if k==2 {x.key= -1;}if k==3 {x.prompt=0;}if k==4 {x.output=0;}
+        if k==5 {x.output=SC_OUTPUT+1;}if k==6 {x.deadline=0;}if k==7 {x.prompt=62;}if k==8 {x.deadline=4000000000;}
+        r:=sc_submit(v[..],x);
+        want:=ifx k<2 then ScWhy.client else ifx k<8 then ScWhy.shape else ScWhy.budget;
+        #assert r.why==want && r.id== -1 && !r.created && v[0].n==0;
+    }
+    // At every bound: 61 + 3 fills the 64-position state budget; 32 tokens.
+    x:=scx_a();x.prompt=61;#assert sc_submit(v[..],x).why==ScWhy.none;
+    x=scx_c();x.output=SC_OUTPUT;x.prompt=32;x.key=0;#assert sc_submit(v[..],x).why==ScWhy.none;
+    // A key is per client: client 1 may use client 0's key 1.
+    x.key=1;#assert sc_submit(v[..],x).why==ScWhy.busy;
+    // Every field of a resubmission must match.
+    for k:0..<5 {
+        y:=scx_a();y.prompt=61;
+        if k==0 {y.mode=ScMode.sync;}if k==1 {y.body=8;}if k==2 {y.prompt=60;}if k==3 {y.output=2;}if k==4 {y.deadline=21;}
+        r:=sc_submit(v[..],y);#assert r.why==ScWhy.conflict && r.id==0;
+    }
+    // State that is not KV counts: 1 position more leaves room for a 60-token prompt, not 61.
+    c:=scx_config();c.batch.state=1;w:=[1]ScServer.[sc_open(c)];
+    x=scx_a();x.prompt=61;#assert sc_submit(w[..],x).why==ScWhy.shape;x.prompt=60;#assert sc_submit(w[..],x).why==ScWhy.none;
+    // An account that cannot hold the quote.
+    c=scx_config();c.budget[0]=29038;w[0]=sc_open(c);
+    #assert sc_submit(w[..],scx_a()).why==ScWhy.budget && w[0].ledger[0].account.held==0 && w[0].active[0]==0;
+    w[0].ledger[0].account.budget=29039;#assert sc_submit(w[..],scx_a()).why==ScWhy.none;
+    // 64 jobs fill the table.
+    c=scx_config();c.limit[0]=SC_JOBS;c.batch.kv=1024;c.budget[0]=100000000;w[0]=sc_open(c);
+    for i:0..<64 {x=scx_a();x.key=i;#assert sc_submit(w[..],x).id==i;}
+    x.key=64;r:=sc_submit(w[..],x);#assert r.why==ScWhy.full && r.id== -1 && w[0].n==64;
+}
+#test "reads the server refuses" {
+    v:=[1]ScServer.[sc_open(scx_config())];scx_add(v[..],scx_a());scx_tick(v[..]);
+    ev:[35]ScEvent;
+    #assert sc_read(v[..],1,0,ev[..]).why==ScWhy.unknown && sc_read(v[..],-1,0,ev[..]).why==ScWhy.unknown && sc_poll(v[..],1).why==ScWhy.unknown && sc_poll(v[..],-1).why==ScWhy.unknown;
+    #assert sc_read(v[..],0,-1,ev[..]).why==ScWhy.cursor && sc_read(v[..],0,4,ev[..]).why==ScWhy.ahead;
+    // The cursor at the end: nothing new, not ended.
+    g:=sc_read(v[..],0,3,ev[..]);#assert g.why==ScWhy.none && g.count==0 && g.last==3 && !g.end;
+    // A short buffer takes what fits; the rest comes on the next read.
+    g=sc_read(v[..],0,0,ev[0..<2]);#assert g.count==2 && g.last==2 && ev[1].kind==ScKind.started;
+    scx_tick(v[..]);scx_tick(v[..]);
+    g=sc_read(v[..],0,4,ev[0..<1]);#assert g.count==1 && g.last==5 && !g.end && ev[0].token==231;
+    g=sc_read(v[..],0,5,ev[0..<1]);#assert g.count==1 && g.last==6 && g.end && sc_poll(v[..],0).why==ScWhy.none;
+}
+#test "configurations the server refuses" {
+    #assert sc_open(scx_config()).why==ScWhy.none;
+    for k:0..<11 {
+        c:=scx_config();
+        if k==0 {c.batch.slots=0;}if k==1 {c.batch.clients=5;c.limit=[4]int.[1,1,1,1];}if k==2 {c.retain=0;}if k==3 {c.price.base= -1;}
+        if k==4 {c.evidence.backend="";}if k==5 {c.limit[0]=0;}if k==6 {c.limit[1]=SC_JOBS+1;}if k==7 {c.budget[1]= -1;}
+        if k==8 {c.batch.clients=0;}if k==9 {c.batch.steps=0;}if k==10 {c.batch.weight[1]=0;}
+        v:=[1]ScServer.[sc_open(c)];
+        r:=sc_submit(v[..],scx_a());#assert v[0].why==ScWhy.config && r.why==ScWhy.config && r.id== -1 && sc_tick(v[..])==ScWhy.config;
+    }
+    c:=scx_config();c.batch.clients=4;c.limit=[4]int.[1,SC_JOBS,1,1];c.retain=1;c.budget[3]=7;c.batch.weight=[8]int.[1,1,1,1,0,0,0,0];
+    v:=[1]ScServer.[sc_open(c)];
+    #assert v[0].why==ScWhy.none && v[0].s.status==CbStatus.ok && v[0].ledger[1].account.budget==1000000 && v[0].ledger[3].account.budget==7;
+    // A run stops at its step limit.
+    c=scx_config();c.batch.steps=2;v[0]=sc_open(c);scx_add(v[..],scx_a());
+    #assert sc_tick(v[..])==ScWhy.none && sc_tick(v[..])==ScWhy.none && sc_tick(v[..])==ScWhy.steps && v[0].why==ScWhy.steps && v[0].s.step==2;
+}
+// book:end check-refuse
+// book:begin check-sse
+#test "events as server-sent events" {
+    v:=[1]ScServer.[sc_open(scx_config())];scx_add(v[..],scx_a());scx_tick(v[..]);scx_tick(v[..]);scx_tick(v[..]);
+    out:[1024]u8;n:=0;
+    for k:0..<v[0].jobs[0].n {n=sc_sse(k+1,v[0].jobs[0].ev[k],out[..],n);}
+    want:="id: 1\nevent: response.queued\ndata: {\"type\":\"response.queued\",\"sequence_number\":1}\n\nid: 2\nevent: response.in_progress\ndata: {\"type\":\"response.in_progress\",\"sequence_number\":2}\n\nid: 3\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":3,\"token\":217}\n\n";
+    #assert n>want.count && cast(string)out[0..<want.count]==want;
+    end:="id: 6\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":6}\n\n";
+    #assert cast(string)out[n-end.count..<n]==end;
+    m:=sc_sse(1,ScEvent.{kind=ScKind.cancelled},out[..],0);#assert cast(string)out[0..<m]=="id: 1\nevent: response.cancelled\ndata: {\"type\":\"response.cancelled\",\"sequence_number\":1}\n\n";
+    m=sc_sse(12,ScEvent.{kind=ScKind.failed},out[..],0);#assert cast(string)out[0..<m]=="id: 12\nevent: response.failed\ndata: {\"type\":\"response.failed\",\"sequence_number\":12}\n\n";
+    // A buffer one byte short is refused.
+    #assert sc_sse(12,ScEvent.{kind=ScKind.failed},out[0..<m-1],0)== -1 && sc_sse(12,ScEvent.{kind=ScKind.failed},out[0..<m],0)==m;
+}
+// book:end check-sse
+#test "the stand-in model" {
+    #assert sc_token(7,0)==217 && sc_token(7,2)==231 && sc_token(40,3)==261 && sc_token(1000,0)==0 && sc_token(99999,31)==186;
+}
+#test "names" {
+    s:=[7]string.["none","queued","running","done","cancelled","failed","gone"];for k:0..<7 {#assert sc_state_name(cast(ScState)cast(u8)k)==s[k];}
+    w:=[14]string.["none","config","client","shape","conflict","full","busy","budget","unknown","over","gone","cursor","ahead","steps"];
+    for k:0..<14 {#assert sc_why_name(cast(ScWhy)cast(u8)k)==w[k];}
+    m:=[3]string.["stream","background","sync"];for k:0..<3 {#assert sc_mode_name(cast(ScMode)cast(u8)k)==m[k];}
+}
+
+// Independent checks (psionic/tests/serve-client-checks.coax).
+// book:begin check-random
+#forall "resuming after any disconnect gives exactly the uninterrupted stream's suffix" seed:0..<100 #steps 400000000 {
+    scx_resume(seed);
+}
+#forall "random clients: the table, the limits, one settlement per job, the stand-in's answer" seed:0..<60 #steps 800000000 {
+    scx_random(seed);
+}
+// book:end check-random
+
+// book:begin next
+// The lifecycle. A job is queued at submission, runs when the scheduler
+// admits it, and ends done, cancelled or failed; a cancel or a deadline can
+// end it queued or running. An ended job's result expires into gone.
+// Anything else is refused.
+sc_next :: (s:ScState,e:ScEdge)->ScState {
+    live:=s==ScState.queued || s==ScState.running;
+    over:=s==ScState.done || s==ScState.cancelled || s==ScState.failed;
+    if s==ScState.none && e==ScEdge.submit {return ScState.queued;}
+    if s==ScState.queued && e==ScEdge.admit {return ScState.running;}
+    if s==ScState.running && e==ScEdge.finish {return ScState.done;}
+    if live && e==ScEdge.cancel {return ScState.cancelled;}
+    if live && e==ScEdge.deadline {return ScState.failed;}
+    if over && e==ScEdge.expire {return ScState.gone;}
+    return ScState.none;
+}
+sc_live :: (s:ScState)->bool {return s==ScState.queued || s==ScState.running;}
+// book:end next
+
+// book:begin open
+// Chapter 175 checks its own configuration: given no requests it refuses
+// with order only when the configuration itself passed.
+sc_open :: (cfg:ScConfig)->ScServer {
+    v:ScServer;v.cfg=cfg;v.why=ScWhy.config;
+    none:[1]CbRequest;s:=cb_start(cfg.batch,none[0..<0]);
+    if s.status!=CbStatus.order || cfg.batch.clients>SC_CLIENTS || cfg.retain<1 || !bl_schedule_valid(cfg.price) || !um_evidence_valid(cfg.evidence) {return v;}
+    for c:0..<cfg.batch.clients {
+        if cfg.limit[c]<1 || cfg.limit[c]>SC_JOBS || !bl_account_valid(BlAccount.{budget=cfg.budget[c]}) {return v;}
+        v.ledger[c].account.budget=cfg.budget[c];
+    }
+    s.status=CbStatus.ok;v.s=s;v.why=ScWhy.none;
+    return v;
+}
+// book:end open
+
+// book:begin submit
+// The quote's device time: every step of the deadline at the scheduler's
+// widest step, rounded up to a microsecond.
+sc_quote :: (cfg:ScConfig,r:ScRequest)->BlPrice {
+    us:=bl_ceil(r.deadline*cb_step_ns(cfg.batch.tokens),1000);
+    return bl_quote(cfg.price,r.prompt,r.output,us);
+}
+sc_same :: (a:ScRequest,b:ScRequest)->bool {
+    return a.mode==b.mode && a.body==b.body && a.prompt==b.prompt && a.output==b.output && a.deadline==b.deadline;
+}
+// Admission, in order: a known client and a request that fits; then the
+// key (the same request again is its first job, a different one under the
+// same key is refused); then room in the table, the client's limit on
+// unfinished jobs, and an account that holds the quote.
+sc_submit :: (sv:[]ScServer,r:ScRequest)->ScSubmit {
+    if sv[0].why!=ScWhy.none {return ScSubmit.{why=sv[0].why,id= -1};}
+    b:=sv[0].cfg.batch;
+    if r.client<0 || r.client>=b.clients {return ScSubmit.{why=ScWhy.client,id= -1};}
+    if r.key<0 || r.prompt<1 || r.output<1 || r.output>SC_OUTPUT || r.deadline<1 || r.prompt+r.output+b.state>b.kv {return ScSubmit.{why=ScWhy.shape,id= -1};}
+    for i:0..<sv[0].n {
+        q:=sv[0].jobs[i].req;
+        if q.client==r.client && q.key==r.key {
+            if sc_same(q,r) {return ScSubmit.{id=i};}
+            return ScSubmit.{why=ScWhy.conflict,id=i};
+        }
+    }
+    if sv[0].n==SC_JOBS {return ScSubmit.{why=ScWhy.full,id= -1};}
+    if sv[0].active[r.client]>=sv[0].cfg.limit[r.client] {return ScSubmit.{why=ScWhy.busy,id= -1};}
+    q:=sc_quote(sv[0].cfg,r);a:=bl_admit(sv[0].ledger[r.client].account,q);
+    if a.cause!=BlCause.none {return ScSubmit.{why=ScWhy.budget,id= -1};}
+    i:=sv[0].n;sv[0].n+=1;sv[0].ledger[r.client].account=a.account;sv[0].active[r.client]+=1;
+    sv[0].jobs[i]=ScJob.{req=r,at=sv[0].s.step,at_ns=sv[0].s.clock,quote=q};
+    sc_move(sv,i,ScEdge.submit);sc_emit(sv,i,ScKind.queued,0);
+    // The scheduler hears of it at its next step.
+    sv[0].s.req[i]=CbRequest.{client=r.client,arrive=sv[0].s.step,prompt=r.prompt,output=r.output};
+    sv[0].s.fate[i]=CbFate.{admit= -1,finish= -1};sv[0].s.n=i+1;
+    return ScSubmit.{id=i,created=true};
+}
+// book:end submit
+
+// book:begin step
+sc_move :: (sv:[]ScServer,i:int,e:ScEdge) {
+    t:=sc_next(sv[0].jobs[i].state,e);n:=sv[0].jobs[i].nt;
+    sv[0].jobs[i].state=t;sv[0].jobs[i].trail[n]=t;sv[0].jobs[i].nt=n+1;
+}
+sc_emit :: (sv:[]ScServer,i:int,kind:ScKind,token:int) {
+    n:=sv[0].jobs[i].n;sv[0].jobs[i].ev[n]=ScEvent.{kind=kind,token=token};sv[0].jobs[i].n=n+1;
+}
+// The stand-in model: token k of a body.
+sc_token :: (body:int,k:int)->int {return (body*31+k*7)%1000;}
+// Take a job out of the scheduler: before it arrives, it never will;
+// queued, it leaves its client's queue unadmitted, so its client's virtual
+// time is not charged; running, its slot and its state are free for the
+// next step's admission.
+sc_withdraw :: (sv:[]ScServer,i:int) {
+    r:=sv[0].s.req[i];step:=sv[0].s.step;
+    if sv[0].s.fate[i].admit>=0 {
+        m:=0;
+        for k:0..<sv[0].s.nrun {if sv[0].s.run[k]!=i {sv[0].s.run[m]=sv[0].s.run[k];m+=1;}}
+        sv[0].s.nrun=m;sv[0].s.kv-=r.prompt+r.output+sv[0].cfg.batch.state;
+    } else {
+        if r.arrive<step {sv[0].s.queued[r.client]-=1;} else {sv[0].s.req[i].arrive= -1;}
+        // Marked admitted, so chapter 175's admission passes over it.
+        sv[0].s.fate[i].admit=step;
+    }
+    sv[0].s.fate[i].finish=step;sv[0].s.done+=1;
+}
+// End a job: its last event, and its one settlement. A job that ran pays
+// chapter 180's price for the device time it held (answered: plus its
+// tokens), capped at its quote; one that never ran pays nothing.
+sc_end :: (sv:[]ScServer,i:int,e:ScEdge,kind:ScKind) {
+    sc_move(sv,i,e);sc_emit(sv,i,kind,0);
+    c:=sv[0].jobs[i].req.client;clock:=sv[0].s.clock;
+    device:=0;if sv[0].jobs[i].ran {device=(clock-sv[0].jobs[i].admit_ns)/1000;}
+    u:=BlUse.{status=BlStatus.cancelled,tokens_in=sv[0].jobs[i].req.prompt,tokens_out=sv[0].jobs[i].produced,device_us=device};
+    if e==ScEdge.finish {u.status=BlStatus.answered;}
+    t:=sf_settle(sv[0].ledger[c],sv[0].cfg.evidence,sv[0].cfg.price,i,sv[0].jobs[i].quote,u,(clock-sv[0].jobs[i].at_ns)/1000);
+    sv[0].ledger[c]=t.ledger;sv[0].jobs[i].charge=t.charge;sv[0].jobs[i].ended=sv[0].s.step;sv[0].jobs[i].end_ns=clock;sv[0].active[c]-=1;
+}
+// One scheduler step. Deadlines first, so a job out of time never takes a
+// slot; then chapter 175's step; then every admission, token and finish it
+// made becomes an event; then results past the retention window expire.
+sc_tick :: (sv:[]ScServer)->ScWhy {
+    if sv[0].why!=ScWhy.none {return sv[0].why;}
+    now:=sv[0].s.step;
+    if now==sv[0].cfg.batch.steps {sv[0].why=ScWhy.steps;return ScWhy.steps;}
+    for i:0..<sv[0].n {
+        if sc_live(sv[0].jobs[i].state) && now-sv[0].jobs[i].at>=sv[0].jobs[i].req.deadline {sc_withdraw(sv,i);sc_end(sv,i,ScEdge.deadline,ScKind.failed);}
+    }
+    before:=sv[0].s.clock;sv[0].s=cb_step(sv[0].s);
+    for i:0..<sv[0].n {
+        if sc_live(sv[0].jobs[i].state) {
+            f:=sv[0].s.fate[i];
+            if f.admit==now {sc_move(sv,i,ScEdge.admit);sc_emit(sv,i,ScKind.started,0);sv[0].jobs[i].ran=true;sv[0].jobs[i].admit_ns=before;}
+            while sv[0].jobs[i].produced<sv[0].s.emitted[i] {
+                k:=sv[0].jobs[i].produced;sc_emit(sv,i,ScKind.delta,sc_token(sv[0].jobs[i].req.body,k));sv[0].jobs[i].produced=k+1;
+            }
+            if f.finish==now {sc_end(sv,i,ScEdge.finish,ScKind.completed);}
+        }
+    }
+    for i:0..<sv[0].n {
+        t:=sv[0].jobs[i].state;
+        if t!=ScState.gone && !sc_live(t) && sv[0].s.step-sv[0].jobs[i].ended>=sv[0].cfg.retain {sc_move(sv,i,ScEdge.expire);}
+    }
+    return ScWhy.none;
+}
+// book:end step
+
+// book:begin client
+// A client cancels a job, or its connection drops: a sync job is cancelled,
+// a stream or background job keeps running.
+sc_cancel :: (sv:[]ScServer,i:int)->ScWhy {
+    if i<0 || i>=sv[0].n {return ScWhy.unknown;}
+    if !sc_live(sv[0].jobs[i].state) {return ScWhy.over;}
+    sc_withdraw(sv,i);sc_end(sv,i,ScEdge.cancel,ScKind.cancelled);
+    return ScWhy.none;
+}
+sc_drop :: (sv:[]ScServer,i:int)->ScWhy {
+    if i<0 || i>=sv[0].n {return ScWhy.unknown;}
+    if sv[0].jobs[i].req.mode==ScMode.sync {return sc_cancel(sv,i);}
+    return ScWhy.none;
+}
+// Read a job's events after the cursor (a stream's Last-Event-ID, 0 for
+// the start), as many as fit in out.
+sc_read :: (sv:[]ScServer,i:int,after:int,out:[]ScEvent)->ScRead {
+    if i<0 || i>=sv[0].n {return ScRead.{why=ScWhy.unknown};}
+    t:=sv[0].jobs[i].state;n:=sv[0].jobs[i].n;
+    if t==ScState.gone {return ScRead.{why=ScWhy.gone};}
+    if after<0 {return ScRead.{why=ScWhy.cursor};}
+    if after>n {return ScRead.{why=ScWhy.ahead};}
+    count:=cb_min(n-after,out.count);
+    for k:0..<count {out[k]=sv[0].jobs[i].ev[after+k];}
+    last:=after+count;
+    return ScRead.{count=count,last=last,end=last==n && !sc_live(t)};
+}
+sc_poll :: (sv:[]ScServer,i:int)->ScPoll {
+    if i<0 || i>=sv[0].n {return ScPoll.{why=ScWhy.unknown};}
+    j:=sv[0].jobs[i];
+    return ScPoll.{state=j.state,produced=j.produced,charge=j.charge};
+}
+// book:end client
+
+// book:begin sse
+// One event as a server-sent event: its sequence number is its id, the
+// cursor a reconnecting client sends back as Last-Event-ID. -1 when out
+// is too short.
+sc_sse :: (id:int,e:ScEvent,out:[]u8,at:int)->int {
+    names:=[6]string.["response.queued","response.in_progress","response.output_text.delta","response.completed","response.cancelled","response.failed"];
+    name:=names[cast(int)e.kind];
+    n:=um_int(out,um_put(out,at,"id: "),id);n=um_put(out,um_put(out,um_put(out,n,"\nevent: "),name),"\ndata: {\"type\":\"");
+    n=um_int(out,um_put(out,um_put(out,n,name),"\",\"sequence_number\":"),id);
+    if e.kind==ScKind.delta {n=um_int(out,um_put(out,n,",\"token\":"),e.token);}
+    return um_put(out,n,"}\n\n");
+}
+// book:end sse
+
+sc_state_name :: (s:ScState)->string {names:=[7]string.["none","queued","running","done","cancelled","failed","gone"];return names[cast(int)s];}
+sc_why_name :: (w:ScWhy)->string {
+    names:=[14]string.["none","config","client","shape","conflict","full","busy","budget","unknown","over","gone","cursor","ahead","steps"];
+    return names[cast(int)w];
+}
+sc_mode_name :: (m:ScMode)->string {names:=[3]string.["stream","background","sync"];return names[cast(int)m];}

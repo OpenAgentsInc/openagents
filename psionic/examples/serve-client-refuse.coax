@@ -1,0 +1,48 @@
+// Chapter 174: what the server refuses. A refused submission creates no
+// job and holds nothing; a refused read or cancel changes nothing; a
+// refused configuration serves nothing.
+#import "Basic";
+#load "../lib/serve-client.coax";
+
+submit :: (v:[]ScServer,what:string,r:ScRequest) {
+    s:=sc_submit(v,r);print("submit %: %",what,sc_why_name(s.why));
+    if s.id>=0 {print(", job %",s.id);}
+    print("; % jobs, % msat held\n",v[0].n,v[0].ledger[0].account.held);
+}
+read :: (v:[]ScServer,what:string,i:int,after:int) {
+    ev:[35]ScEvent;g:=sc_read(v,i,after,ev[..]);
+    print("read %: %, % events\n",what,sc_why_name(g.why),g.count);
+}
+
+// book:begin main
+main :: () {
+    v:=[1]ScServer.[sc_open(scx_config())];
+    x:=scx_a();x.client=2;submit(v[..],"client 2 of 2",x);
+    x=scx_a();x.output=0;submit(v[..],"0 output tokens",x);
+    x=scx_a();x.output=SC_OUTPUT+1;submit(v[..],"33 output tokens",x);
+    x=scx_a();x.prompt=62;submit(v[..],"62 + 3 positions of 64",x);
+    x=scx_a();x.deadline=4000000000;submit(v[..],"a deadline past a day of device time",x);
+    submit(v[..],"A",scx_a());
+    x=scx_a();x.output=2;submit(v[..],"key 1 with 2 output tokens",x);
+    submit(v[..],"B",scx_b());
+    x=scx_b();x.key=3;submit(v[..],"a third unfinished job",x);
+    c:=scx_config();c.budget[0]=29038;w:=[1]ScServer.[sc_open(c)];
+    submit(w[..],"A against 29,038 msat",scx_a());
+
+    scx_tick(v[..]);
+    read(v[..],"job 2",2,0);
+    read(v[..],"job 0 from -1",0,-1);
+    read(v[..],"job 0 after event 4 of 3",0,4);
+    print("cancel job 7: %\n",sc_why_name(sc_cancel(v[..],7)));
+    for k:0..<3 {scx_tick(v[..]);}
+    print("cancel job 0, done: %\n",sc_why_name(sc_cancel(v[..],0)));
+    for k:0..<3 {scx_tick(v[..]);}
+    read(v[..],"job 0, past its retention",0,0);
+
+    c=scx_config();c.retain=0;print("open with 0 steps of retention: %\n",sc_why_name(sc_open(c).why));
+    c=scx_config();c.limit[1]=0;print("open with a limit of 0 jobs: %\n",sc_why_name(sc_open(c).why));
+    c=scx_config();c.batch.clients=5;print("open with 5 clients: %\n",sc_why_name(sc_open(c).why));
+    c=scx_config();c.batch.steps=1;w[0]=sc_open(c);scx_tick(w[..]);
+    print("a second step of a 1-step run: %\n",sc_why_name(sc_tick(w[..])));
+}
+// book:end main
