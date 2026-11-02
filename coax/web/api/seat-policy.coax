@@ -1,0 +1,92 @@
+// A seat in a running realm (docs/verse/realm-seat.md, #12655): who may open one and how long it
+// lives. seats.c gathers the facts (how many other seats are open on the site, whether the caller
+// is an account, whether the seat is hosted and has a runner, when it was last kept) and SQL does
+// what this file decides; the host decides nothing.
+//
+//   one seat an account   opening a seat closes the account's open one first (a crashed holder
+//                         never locks its account out); so only other accounts' seats count
+//   at most 8 a site      each seat is a headless Chrome somewhere; a ninth is refused
+//   10 idle minutes       a seat not kept (an action, its holder's keep) for 10 minutes is closed
+//   an account's          only a signed caller (NIP-98, its account) opens one; the seat acts as
+//                         that account and nothing else
+//   hosted                a hosted seat needs the runner (OA_AGENT_WAKE_URL) to start its Chrome
+#authority;
+
+SP_OPEN :: 0;
+SP_UNSIGNED :: 1; SP_SITE_FULL :: 2; SP_NO_RUNNER :: 3; SP_BAD_REALM :: 4;
+SP_SITE_MOST :: 8;
+SP_IDLE_MS :: 600000;
+
+#test "an account opens a seat while fewer than 8 others are open" {
+  #assert sp_open(true, true, 0, false, false) == SP_OPEN;
+  #assert sp_open(true, true, 7, false, false) == SP_OPEN;
+  #assert sp_open(true, true, 8, false, false) == SP_SITE_FULL;
+  #assert sp_open(true, true, 9, false, false) == SP_SITE_FULL;
+  #assert sp_open(true, true, -1, false, false) == SP_OPEN;
+}
+#test "only a signed account opens one, for a realm it can see; a hosted one needs the runner" {
+  #assert sp_open(false, true, 0, false, false) == SP_UNSIGNED;
+  #assert sp_open(false, false, 9, true, false) == SP_UNSIGNED;
+  #assert sp_open(true, false, 0, false, false) == SP_BAD_REALM;
+  #assert sp_open(true, false, 9, true, false) == SP_BAD_REALM;
+  #assert sp_open(true, true, 0, true, false) == SP_NO_RUNNER;
+  #assert sp_open(true, true, 0, true, true) == SP_OPEN;
+  #assert sp_open(true, true, 7, true, true) == SP_OPEN;
+  #assert sp_open(true, true, 8, true, true) == SP_SITE_FULL;
+  #assert sp_open(true, true, 0, false, true) == SP_OPEN;
+}
+#test "a seat lives 10 minutes from when it was last kept, and never once closed" {
+  #assert sp_live(1000, 1000, false);
+  #assert sp_live(600999, 1000, false);
+  #assert !sp_live(601000, 1000, false);
+  #assert !sp_live(700000, 1000, false);
+  #assert !sp_live(1000, 1000, true);
+  #assert !sp_live(1000, 2000, false);          // kept after now: a clock that went back is not a live seat
+  #assert sp_until(1000) == 601000 && sp_until(0) == SP_IDLE_MS;
+  #assert sp_idle_ms() == 600000 && sp_site_most() == 8;
+}
+#test "each refusal has its status and words" {
+  #assert sp_status(SP_OPEN) == 200 && sp_status(SP_UNSIGNED) == 401 && sp_status(SP_SITE_FULL) == 429;
+  #assert sp_status(SP_NO_RUNNER) == 503 && sp_status(SP_BAD_REALM) == 404 && sp_status(5) == 500 && sp_status(-1) == 500;
+  #assert sp_refusal_text(SP_UNSIGNED) == "sign the request (NIP-98): a seat is an account's";
+  #assert sp_refusal_text(SP_SITE_FULL) == "the site's seats are full (8 at once): try again in a few minutes";
+  #assert sp_refusal_text(SP_NO_RUNNER) == "hosted seats aren't running here";
+  #assert sp_refusal_text(SP_BAD_REALM) == "no such realm";
+  #assert sp_refusal_text(SP_OPEN) == "" && sp_refusal_text(5) == "" && sp_refusal_text(-1) == "";
+  #assert SP_OPEN == 0 && SP_UNSIGNED == 1 && SP_SITE_FULL == 2 && SP_NO_RUNNER == 3 && SP_BAD_REALM == 4;
+}
+
+// Whether a seat opens: signed (an account), seen (the realm is there for that account: a private
+// realm only for its owner and site admins), others_open (seats open now on the site, the
+// caller's own left out), hosted, and whether a runner is configured.
+sp_open :: (signed: bool, seen: bool, others_open: int, hosted: bool, runner: bool) -> int #export_c {
+  if !signed { return SP_UNSIGNED; }
+  if !seen { return SP_BAD_REALM; }
+  if hosted && !runner { return SP_NO_RUNNER; }
+  if others_open >= SP_SITE_MOST { return SP_SITE_FULL; }
+  return SP_OPEN;
+}
+// Whether a seat kept at kept_ms is still open at now_ms.
+sp_live :: (now_ms: int, kept_ms: int, closed: bool) -> bool #export_c {
+  if closed || kept_ms > now_ms { return false; }
+  return now_ms - kept_ms < SP_IDLE_MS;
+}
+// When a seat kept now closes unless kept again.
+sp_until :: (now_ms: int) -> int #export_c { return now_ms + SP_IDLE_MS; }
+sp_idle_ms :: () -> int #export_c { return SP_IDLE_MS; }
+sp_site_most :: () -> int #export_c { return SP_SITE_MOST; }
+sp_status :: (code: int) -> int #export_c {
+  if code == SP_OPEN { return 200; }
+  if code == SP_UNSIGNED { return 401; }
+  if code == SP_SITE_FULL { return 429; }
+  if code == SP_NO_RUNNER { return 503; }
+  if code == SP_BAD_REALM { return 404; }
+  return 500;
+}
+sp_refusal_text :: (code: int) -> string #export_c {
+  if code == SP_UNSIGNED { return "sign the request (NIP-98): a seat is an account's"; }
+  if code == SP_SITE_FULL { return "the site's seats are full (8 at once): try again in a few minutes"; }
+  if code == SP_NO_RUNNER { return "hosted seats aren't running here"; }
+  if code == SP_BAD_REALM { return "no such realm"; }
+  return "";
+}

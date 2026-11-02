@@ -693,9 +693,10 @@ static void turns(const char *slug) {
 // ---- the wake server: one turn loop per project at a time
 #define SLUGS 32
 static struct { char slug[72]; pid_t pid; } loops[SLUGS];
+static void seat_reaped(pid_t p);   // seat-runner.c: a hosted seat's oa-seat went
 static void reap(void) {
   int st; pid_t p;
-  while ((p = waitpid(-1, &st, WNOHANG)) > 0) for (int i = 0; i < SLUGS; i++) if (loops[i].pid == p) loops[i].pid = 0;
+  while ((p = waitpid(-1, &st, WNOHANG)) > 0) { for (int i = 0; i < SLUGS; i++) if (loops[i].pid == p) loops[i].pid = 0; seat_reaped(p); }
 }
 static void wake(const char *slug) {
   reap();
@@ -716,9 +717,10 @@ static void respond(int fd, int status, const char *body) {
   if (write(fd, head, (size_t)n) < 0 || write(fd, body, strlen(body)) < 0) say("write failed");
 }
 #include "chat-runner.c"   // the general mode, for /chat
+#include "seat-runner.c"   // hosted seats in running realms (docs/verse/realm-seat.md)
 
 static void serve(int fd) {
-  char req[8192]; size_t n = 0;
+  char req[32768]; size_t n = 0;
   struct timeval tv = {5, 0}; setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
   char *end = NULL;
   while (n < sizeof req - 1) {
@@ -732,6 +734,7 @@ static void serve(int fd) {
     }
   }
   if (!end) { respond(fd, 400, "{\"error\":\"bad request\"}"); return; }
+  if (seat_serve(fd, req, end + 4)) { OPENSSL_cleanse(req, sizeof req); return; }   // a seat's key may be in it
   if (!strncmp(req, "POST /credential ", 17)) {   // /chat: check and seal a credential (chat-runner.c)
     pid_t pid = fork();
     if (pid == 0) { credential(fd, end + 4); _exit(0); }
@@ -770,6 +773,11 @@ int main(int argc, char **argv) {
   if (bind(lfd, (struct sockaddr *)&a, sizeof a) || listen(lfd, 64)) { perror("oa-agent: listen"); return 1; }
   say("listening on %s:%d as %.8s", host, port, pubhex);
   for (;;) {
+    // hosted seats close after their idle limit: wake at least every 30 s to look
+    struct pollfd lp = {lfd, POLLIN, 0};
+    int ready = poll(&lp, 1, 30000);
+    reap(); seats_idle();
+    if (ready <= 0) continue;
     int fd = accept(lfd, NULL, NULL);
     if (fd < 0) { if (errno == EINTR) continue; reap(); continue; }
     serve(fd);

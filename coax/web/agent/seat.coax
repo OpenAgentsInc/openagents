@@ -1,0 +1,108 @@
+// oa-seat: one hosted seat in a running realm (docs/verse/realm-seat.md slice 5, #12655), on the
+// project agents' runner (runner.c, seat-runner.c). The runner starts one per seat oa-api opened
+// (coax/web/api/seats.c) and speaks JSON lines with it over its stdin and stdout:
+//
+//   in   {"origin": O, "slug": S, "player": {"key": K, "id": P}, "phone": false}   once, first
+//        then one action a line, as realm_seat.coax takes them ({"op": "look", "turn": 90}, ...)
+//   out  one observation a line: the first when the realm has laid out ({"op": "open", ...}),
+//        then one after each action
+//
+// The player is the seat's own (migrations/0110): the page plays with it as the seat's account. It
+// arrives on stdin, never in the arguments or the environment, and is never written out. The seat
+// ends on {"op": "leave"}, at the end of its input (the runner closed it), or after 10 minutes
+// without a line (seat-policy.coax's idle limit; the server closes the seat then too).
+// tool.sh: run-steps 250000000
+#import "Basic";
+#load "../../lib/media/realm_seat.coax";
+
+eio_read_line :: (timeout_ms: int) -> int #foreign;
+eio_line_byte :: (i: int) -> int #foreign;
+eio_put :: (byte: int) -> int #foreign;
+eio_flush :: () -> int #foreign;
+
+HOST_IDLE_MS :: 600000;   // seat-policy.coax SP_IDLE_MS
+HOST_LINE :: 65536;
+
+HostOpen :: struct { origin: [256] u8; origin_n: int; slug: [64] u8; slug_n: int; player: [320] u8; player_n: int; phone: bool; }
+// The first line: false when it isn't a seat to open (an origin that isn't http(s), a bad slug, no player).
+host_first :: (line: string, h: [] HostOpen) -> bool {
+  h[0] = HostOpen.{};
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  h[0].origin_n = jv_str(d[0], jv_get(d[0], 0, "origin"), h[0].origin[..]);
+  h[0].slug_n = jv_str(d[0], jv_get(d[0], 0, "slug"), h[0].slug[..]);
+  if h[0].origin_n <= 0 || h[0].slug_n <= 0 { return false; }
+  origin := cast(string) h[0].origin[0..<h[0].origin_n];
+  if !(seat_starts(origin, "https://") || seat_starts(origin, "http://127.0.0.1:")) || seat_origin_of(origin) != origin { return false; }
+  if !seat_slug_ok(cast(string) h[0].slug[0..<h[0].slug_n]) { return false; }
+  p := jv_get(d[0], 0, "player");
+  kb: [200] u8; ib: [64] u8;
+  kn := jv_str(d[0], jv_get(d[0], p, "key"), kb[..]); pn := jv_str(d[0], jv_get(d[0], p, "id"), ib[..]);
+  if kn < 20 || pn < 3 { return false; }
+  o: [1] Jo; jo_start(o[..], h[0].player[..]); jo_obj(o[..]);
+  jo_key(o[..], "key"); jo_str(o[..], cast(string) kb[0..<kn]); jo_key(o[..], "id"); jo_str(o[..], cast(string) ib[0..<pn]); jo_end(o[..]);
+  if o[0].bad { return false; }
+  h[0].player_n = jo_text(o[..]).count;
+  h[0].phone = jv_raw(d[0], jv_get(d[0], 0, "phone")) == "true";
+  return true;
+}
+// Whether an action line asks the seat to leave.
+host_leaving :: (line: string) -> bool {
+  nodes: [16] JvNode; d: [1] Jv; ob: [16] u8;
+  if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  n := jv_str(d[0], jv_get(d[0], 0, "op"), ob[..]);
+  return n == 5 && cast(string) ob[0..<5] == "leave";
+}
+#test "a hosted seat opens only with an origin, a slug and the seat's player" {
+  h: [1] HostOpen;
+  #assert host_first("{\"origin\":\"https://staging.openagents.com\",\"slug\":\"village-green\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1a2b\"}}", h[..]);
+  #assert cast(string) h[0].origin[0..<h[0].origin_n] == "https://staging.openagents.com" && cast(string) h[0].slug[0..<h[0].slug_n] == "village-green";
+  #assert cast(string) h[0].player[0..<h[0].player_n] == "{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1a2b\"}" && !h[0].phone;
+  #assert host_first("{\"origin\":\"http://127.0.0.1:8800\",\"slug\":\"g\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1\"},\"phone\":true}", h[..]) && h[0].phone;
+  #assert !host_first("{\"origin\":\"https://staging.openagents.com/x\",\"slug\":\"g\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1\"}}", h[..]);
+  #assert !host_first("{\"origin\":\"file:///etc\",\"slug\":\"g\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1\"}}", h[..]);
+  #assert !host_first("{\"origin\":\"http://evil.example\",\"slug\":\"g\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1\"}}", h[..]);
+  #assert !host_first("{\"origin\":\"https://a.b\",\"slug\":\"Bad Slug\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1\"}}", h[..]);
+  #assert !host_first("{\"origin\":\"https://a.b\",\"slug\":\"g\",\"player\":{\"key\":\"short\",\"id\":\"p-1\"}}", h[..]);
+  #assert !host_first("{\"origin\":\"https://a.b\",\"slug\":\"g\"}", h[..]) && !host_first("[]", h[..]) && !host_first("", h[..]);
+  #assert host_leaving("{\"op\":\"leave\"}") && !host_leaving("{\"op\":\"look\"}") && !host_leaving("leave") && !host_leaving("{\"op\":\"leaves\"}");
+}
+
+host_say :: (text: string) { for c: text { p := eio_put(cast(int) c); } nl := eio_put(10); f := eio_flush(); }
+host_line :: (n: int, out: [] u8) -> string {
+  if n < 0 || n > out.count { return ""; }
+  for i: 0..<n { out[i] = cast,trunc(u8) eio_line_byte(i); }
+  return cast(string) out[0..<n];
+}
+
+tool_main :: () -> int #export_c {
+  buf: [HOST_LINE] u8;
+  first := eio_read_line(30000);
+  h: [1] HostOpen;
+  if first <= 0 || !host_first(host_line(first, buf[..]), h[..]) { host_say("{\"op\":\"open\",\"ok\":false,\"result\":\"not a seat to open\"}"); return 2; }
+  for i: 0..<buf.count { buf[i] = 0; }   // the line held the seat's key
+  s: [1] Seat;
+  if !seat_init(s[..], cast(string) h[0].origin[0..<h[0].origin_n], cast(string) h[0].slug[0..<h[0].slug_n], h[0].phone) { host_say("{\"op\":\"open\",\"ok\":false,\"result\":\"not a seat to open\"}"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], s[0].w, s[0].h, "oa-seat-") { host_say("{\"op\":\"open\",\"ok\":false,\"result\":\"no browser\"}"); return 1; }
+  opened := seat_open(s[..], c[..], cast(string) h[0].player[0..<h[0].player_n]);
+  for i: 0..<h[0].player.count { h[0].player[i] = 0; }
+  if !opened || !seat_wait_laid(s[..], c[..], 60000) { host_say("{\"op\":\"open\",\"ok\":false,\"result\":\"the realm never laid out\"}"); cdp_close(c[..]); return 1; }
+  seat_read_spec(s[..], c[..]);
+  seat_note(s[..], "seated");
+  o: [1] SeatBuf;
+  seat_observation(s[..], "open", true, o[..]); host_say(seat_text(o[..]));
+  png: [SEAT_SHOT] u8;
+  while true {
+    n := eio_read_line(HOST_IDLE_MS);
+    if n < 0 { break; }   // the runner closed it, or 10 minutes without a line
+    line := host_line(n, buf[..]);
+    if line.count == 0 { continue; }
+    if host_leaving(line) { host_say("{\"op\":\"leave\",\"ok\":true,\"result\":\"left\"}"); break; }
+    acted := seat_act(s[..], c[..], line, png[..], o[..]);
+    host_say(seat_text(o[..]));
+    if c[0].h < 0 { break; }
+  }
+  cdp_close(c[..]);
+  return 0;
+}

@@ -12,7 +12,7 @@ skill_text :: (out: [] u8) -> string {
   rep_put(r[..], "- A new realm is private. Its owner opens it at `https://openagents.com/realms/built#SLUG`. `realm visibility SLUG unlisted` gives it a page at `/realms/SLUG`.\n");
   rep_put(r[..], "- Read before you edit: `realm doc SLUG` gives the revision. Pass it as `--rev N`; an edit fails with exit code 5 when someone changed the realm since.\n");
   rep_put(r[..], "- Look at what you made: `realm shot SLUG out.png` (add `--phone` for a phone screen), then read the picture.\n");
-  rep_put(r[..], "- Visit what you made as a visitor would: `realm play SLUG` opens a seat (headless Chrome on this computer) and says where you stand and what is near, nearest first. Then `realm go SLUG Maple`, `realm say SLUG \"hello\"`, `realm look SLUG --turn 90 --shot view.png`, `realm use SLUG jump`, `realm bye SLUG`; each answers with the new view. Read the view, not the picture, to decide where to go. `realm leave SLUG` closes the seat; it also closes after 10 idle minutes. A seat is a visitor's, so the realm must be unlisted or public.\n");
+  rep_put(r[..], "- Visit what you made as a visitor would: `realm play SLUG` opens a seat (headless Chrome on this computer) and says where you stand and what is near, nearest first. Then `realm go SLUG Maple`, `realm say SLUG \"hello\"`, `realm look SLUG --turn 90 --shot view.png`, `realm use SLUG jump`, `realm bye SLUG`; each answers with the new view. Read the view, not the picture, to decide where to go. `realm leave SLUG` closes the seat; it also closes after 10 idle minutes. With this profile's key the seat is your account's: others in the realm see an agent with your name, and a private realm of yours opens to it; `realm play SLUG --hosted` holds it on the server instead (no Chrome here). Without a key it is a visitor's, unseen, so the realm must be unlisted or public.\n");
   rep_put(r[..], "- Exit codes: 0 done, 1 failed, 2 usage, 3 no key (run `openagents login`), 4 forbidden, 5 conflict, 6 not found, 7 slow down, 8 a needed program is missing.\n\n");
   rep_put(r[..], "## Commands\n\n");
   for c: REALM_COMMANDS {
@@ -30,7 +30,7 @@ skill_text :: (out: [] u8) -> string {
   out: [65536] u8; s := skill_text(out[..]);
   #assert acct_has(s, "name: openagents-realm") && acct_has(s, "`openagents realm move SLUG ENTITY X Z [--rev N]`: move a thing");
   #assert acct_has(s, "`openagents realm list`: ");
-  #assert acct_has(s, "`openagents realm play SLUG [--phone]`: ") && acct_has(s, "`openagents realm go SLUG TARGET | SLUG --x X --z Z [--max S]`: ") && acct_has(s, "`realm leave SLUG` closes the seat");
+  #assert acct_has(s, "`openagents realm play SLUG [--phone] [--hosted]`: ") && acct_has(s, "`openagents realm go SLUG TARGET | SLUG --x X --z Z [--max S]`: ") && acct_has(s, "`realm leave SLUG` closes the seat");
   for c: REALM_COMMANDS { #assert acct_has(s, c.help) && acct_has(s, c.usage); }
 }
 skill_main :: (a: [] Args, r: [] Rep, verb: string) -> int {

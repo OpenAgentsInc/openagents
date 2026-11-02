@@ -44,6 +44,8 @@ bool piece_route(const request *q);       // npc.c: the Sandbox's set pieces
 bool voice_edit_route(const request *q);  // npc.c: an admin's spoken edit to a realm (eg-voice-edit)
 bool private_route(const request *q);     // private.c
 bool room_route(const request *q);        // room.c
+bool seats_route(const request *q);       // seats.c: seats in running realms (seat-policy.coax)
+void seats_sweep(PGconn *db);             // seats.c: closes the seats seat-policy.coax says are idle
 bool drops_route(const request *q);       // drops.c
 bool drops_token(char *out, size_t cap);   // the bucket's part, shared with villa.c
 bool drops_open_upload(const char *object, const char *type, const char *bytes, const char *from, char *out, size_t cap);

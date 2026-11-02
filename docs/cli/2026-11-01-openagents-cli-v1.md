@@ -320,9 +320,10 @@ chapters 51 to 55 and 82.
 | `realm shot SLUG OUT.png [--phone]` | the page in headless Chrome (`coax/web/shot.coax`, muted, never a visible window), 1440x900 or 390x844, as the owner when the profile owns it |
 
 `realm shot` is how an agent sees what it did. It's the one command that needs
-Chrome on the machine. As built, it is a visitor's picture (`--as-me` is not
-built), so a private realm is refused before Chrome starts with the command
-that shows it: `openagents realm visibility SLUG unlisted`. It waits for the
+Chrome on the machine. It is a visitor's picture unless `--as-me`, which
+takes it through the account's seat (the profile's key; a private realm you
+own shows as you see it). Without `--as-me` a private realm is refused before
+Chrome starts, with the two ways to show it. It waits for the
 page to report its scene drawn (`globalThis.coaxial.sceneReady`), then
 `--wait` milliseconds more; a page still loading after 180 seconds fails and
 nothing is written or cached.
@@ -337,7 +338,7 @@ verbs are rows of the command table, so each is also an MCP tool
 
 | Command | What it does |
 | --- | --- |
-| `realm play SLUG [--phone]` | Opens a seat: headless Chrome on this computer, at 1440x900 or 390x844. Prints where you stand, the camera, the tools on and what's near, nearest first (a character's name and role, or `entity:N` and its kind, with its distance and bearing). |
+| `realm play SLUG [--phone] [--hosted]` | Opens a seat as your account: headless Chrome on this computer, at 1440x900 or 390x844, or the server's with `--hosted`. Prints where you stand, the camera, the tools on and what's near, nearest first (a character's name and role, or `entity:N` and its kind, with its distance and bearing). |
 | `realm look SLUG [--turn DEG] [--pitch DEG] [--shot OUT.png]` | Turns right (negative: left), -180 to 180; `--pitch` looks up or down (-60 to 60) in first person; `--shot` keeps a picture of the view. |
 | `realm go SLUG TARGET` or `realm go SLUG --x X --z Z [--max S]` | Walks to a character's name, a kind (`house`, `centre`, `tree`...), `character:N`, `entity:N` or X Z metres. Stops `reached` (within 2 m), `blocked` or `timeout` (`--max`, 10 seconds, at most 30). |
 | `realm say SLUG "WORDS"` | Talks to the character within 3.5 m (400 characters) and waits for the answer. Counts against the same daily cap as a visitor's chat. |
@@ -358,13 +359,20 @@ another realm closes the old seat first. Like `realm shot`, a seat is a
 visitor's, so a private realm is refused with the command that shows it, and
 the session carries the automation mark so analytics leaves it out.
 
-Others in the realm see the seat (#12655, slice 4 of realm-seat.md): the
-holder posts the seat's presence to `/api/playtest/presence/made-SLUG`,
-signed with the profile's key, when the seat opens, after each action and
-every 2 seconds between them, and `{"gone": true}` when it closes. A visitor's
-page draws it as a bronze figure with its account's name and AGENT under it.
-With no key for the profile the seat still works, unseen. The view's `others`
-and `agents` count who else is there.
+With the profile's key the seat is the account's (#12655): `realm play`
+first opens it on the server (`POST /api/playtest/seats`, signed), and the
+page plays with the seat's own player key. Others in the realm see a bronze
+figure with the account's name and AGENT under it; a private realm opens to
+its owner and site admins; character chat counts against the account. The
+server allows one seat an account (a new one closes the old), 8 a site, and
+closes one after 10 idle minutes. With no key the seat is a visitor's,
+unseen, and a private realm is refused. The view's `others` and `agents`
+count who else is there.
+
+`realm play SLUG --hosted` holds the seat on the server instead (no Chrome
+here): its page runs on the project agents' runner, each verb goes to
+`POST /api/playtest/seats/ID/act`, and `--shot` and `--phone` are for a seat
+on this computer.
 
 ### Edit a realm
 
@@ -449,7 +457,6 @@ as an operation in one log.
 | --- | --- |
 | `realm setup SLUG [--style S] [--time T] [--camera C] [--ground G] [--palette P] [--rev N]` | A route that changes a made realm's setup: no route in `coax/web/api/realms.c` does (`settings` sets only tools; a setup is fixed at `/plan`). It needs `POST /api/playtest/realms/<slug>/edit-v1/setup {rev, style?, time?, camera?, ground?, palette?}`, admitted by the owner's `verse.edit_role`, held to `verse.builder_styles()`, `builder_times()`, `builder_cameras()`, `builder_grounds()` and `builder_palettes()`, compared and applied under the 0102 revision fence as a new document revision (so it is one undo step), and the page rewritten. Until then `realm new --style ...` fixes the setup when the realm is made. |
 | `anime` as a realm style | `verse.builder_styles()` is `lowpoly`, `painterly`, `flat` (migration 0062). Anime becomes a CLI value once a migration adds it there and the realm renderer draws it. |
-| `realm shot --as-me` | A NIP-98 sign-in for a headless page. Until then a shot is a visitor's, so a realm must be unlisted or public (`openagents realm visibility SLUG unlisted`). |
 
 ## Connecting Claude Code and other agents (built, 2026-11-02)
 

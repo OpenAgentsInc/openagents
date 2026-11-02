@@ -31,7 +31,12 @@ stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/src"
 "$repo/coax/bin/coax" c "$here/turn.coax" > "$stage/src/turn.c"
 "$repo/coax/bin/coax" c "$here/chat.coax" > "$stage/src/chat.c"
-cp "$here/runner.c" "$here/chat-runner.c" "$here/engine-io.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/process-native.h" "$stage/src/"
+cp "$here/runner.c" "$here/chat-runner.c" "$here/seat-runner.c" "$here/engine-io.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/process-native.h" "$stage/src/"
+# oa-seat, the hosted seats' engine (seat.coax, docs/verse/realm-seat.md slice 5): its C, the platform's C and the entropy policy
+mkdir -p "$stage/src/seat"
+"$repo/coax/bin/coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$stage/src/seat/entropy-policy.h" > "$stage/src/seat/entropy.c"
+"$repo/coax/bin/coax" c "$here/seat.coax" --library --run-steps 250000000 > "$stage/src/seat/seat.c"
+cp "$repo"/coax/platform/*.c "$repo"/coax/platform/*.h "$stage/src/seat/"
 cp "$here/Dockerfile" "$here/known_hosts" "$stage/"
 image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-agent:$(git -C "$here" rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)"
 gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$image" --quiet \

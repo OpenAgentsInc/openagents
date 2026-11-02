@@ -103,7 +103,16 @@ cdp_nix_chromium :: (text: string, from: int) -> string {
   b: [1] Args;
   #assert cdp_flags(b[..], 2, "chromium", "/p", 64, 32) && args_at(b[..], 7) == "--enable-features=Vulkan,VulkanFromANGLE";
   #assert args_at(b[..], 8) == "--use-angle=vulkan" && args_at(b[..], 9) == "--ignore-gpu-blocklist" && args_at(b[..], 10) == "--window-size=64,32";
+  // CDP_WEBGPU=swiftshader (a machine with no GPU for Chrome: the runner's hosted seats, coderos-4080's
+  // headless pages): WebGPU on SwiftShader, no Vulkan or ANGLE GPU flags
+  s: [1] Args;
+  #assert cdp_flags(s[..], CDP_OS_SWIFTSHADER, "chromium", "/p", 64, 32) && args_at(s[..], 7) == "--use-angle=swiftshader";
+  #assert args_at(s[..], 8) == "--use-webgpu-adapter=swiftshader" && args_at(s[..], 9) == "--enable-unsafe-swiftshader" && args_at(s[..], 10) == "--window-size=64,32";
+  #assert cdp_os("swiftshader", 2) == CDP_OS_SWIFTSHADER && cdp_os("", 2) == 2 && cdp_os("vulkan", TOOL_MAC) == TOOL_MAC;
 }
+// The flags' OS: CDP_WEBGPU=swiftshader asks for SwiftShader's WebGPU whatever the OS.
+CDP_OS_SWIFTSHADER :: 100;
+cdp_os :: (webgpu: string, os: int) -> int { return ifx webgpu == "swiftshader" then CDP_OS_SWIFTSHADER else os; }
 // argv for Chrome (the program first), as chrome.ts and shot.ts gave it.
 // The empty argument at the end marks the list's end for cdp_spawn.
 cdp_flags :: (a: [] Args, os: int, chrome: string, profile: string, w: int, h: int) -> bool {
@@ -113,6 +122,8 @@ cdp_flags :: (a: [] Args, os: int, chrome: string, profile: string, w: int, h: i
   ok = ok && args_add(a, "--enable-unsafe-webgpu");
   if os == TOOL_MAC {
     ok = ok && args_add(a, "--enable-features=Vulkan") && args_add(a, "--use-angle=metal");
+  } else if os == CDP_OS_SWIFTSHADER {
+    ok = ok && args_add(a, "--use-angle=swiftshader") && args_add(a, "--use-webgpu-adapter=swiftshader") && args_add(a, "--enable-unsafe-swiftshader");
   } else {
     ok = ok && args_add(a, "--enable-features=Vulkan,VulkanFromANGLE") && args_add(a, "--use-angle=vulkan") && args_add(a, "--ignore-gpu-blocklist");
   }
@@ -387,7 +398,8 @@ cdp_launch_once_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background
   c[0].profile_n = profile.count;
   if profile.count == 0 { return cdp_fail(c, "could not make a temporary profile", ""); }
   a: [1] Args;
-  fitted:=ifx background then cdp_background_flags(a[..],cxtool_os(),chrome,profile,w,h) else cdp_flags(a[..],cxtool_os(),chrome,profile,w,h);
+  wg: [32] u8; os := cdp_os(proc_getenv("CDP_WEBGPU", wg[..]), cxtool_os());
+  fitted:=ifx background then cdp_background_flags(a[..],os,chrome,profile,w,h) else cdp_flags(a[..],os,chrome,profile,w,h);
   if !fitted { cdp_close(c); return cdp_fail(c, "the browser's arguments do not fit", ""); }
   p := proc_new();
   ok := p >= 0;

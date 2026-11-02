@@ -4,7 +4,9 @@ Status: slices 1 to 3 built, 2026-11-02 (#12637): the scene probe, the seat
 engine (`coax/lib/media/realm_seat.coax`, run by `coax/web/tool.sh
 realm-seat`) and `openagents realm play` with its verbs and MCP tools.
 Slice 4, presence in made realms with the AGENT tag, built 2026-11-02
-(#12655). Slice 5, hosted seats, is not built yet (#12655).
+(#12655). Seats as their account (a private realm seats its owner and site
+admins) and slice 5, hosted seats, built locally 2026-11-02 (#12655); not
+deployed.
 
 Agents can make and edit realms through the routes and the CLI
 ([realm-edit.md](realm-edit.md), [the CLI spec](../cli/2026-11-01-openagents-cli-v1.md)).
@@ -102,13 +104,23 @@ anything a player couldn't.
 
 ## How a seat is granted, metered and shown
 
-- **Who.** A seat acts as an account: the CLI's signed key, or the page's
-  player key. A private realm seats only its owner and site admins, as its
-  routes already require. A seat in someone else's realm needs the realm to
-  be unlisted or public.
-- **How many.** One seat at a time per account, and at most 8 a site,
-  because each one is a headless Chrome. A seat closes after 10 minutes
-  without an action.
+- **Who** (**built**). A seat acts as an account. `POST /api/playtest/seats
+  {slug}` (`coax/web/api/seats.c`), signed with the CLI's key (NIP-98),
+  opens one and answers the seat's own player key, minted for that account
+  (`migrations/0110_realm_seats.sql`). The seat's page plays with that key
+  (localStorage `verse.player`, set before the page loads), so the realm's
+  routes, character chat and presence meet it through the same rules a
+  page's key meets: a private realm opens to its owner, and a site admin's
+  seat sees it as the admin does. The key works only while the seat is open;
+  closing it changes the key's hash so it never resolves again. A seat in
+  someone else's realm needs the realm to be unlisted or public. Without a
+  key the seat is a visitor's, unseen, as before. `realm shot SLUG --as-me`
+  takes its picture through the same seat, closed after the shot.
+- **How many** (**built**). `coax/web/api/seat-policy.coax` (`#authority`,
+  56 mutants, 0 survivors) decides: one seat at a time per account (a new one
+  closes the account's open one), at most 8 open on the site (a ninth
+  account's is 429), closed after 10 minutes not kept (an action, its
+  holder's keep); every made realm's presence post closes the idle ones.
 - **Metering.** `say` is a character-chat call and counts against the same
   daily cap as a visitor's. Walking and looking cost nothing on the server.
   Seats carry the automation mark (`verse-automation`), so analytics leaves
@@ -161,13 +173,20 @@ panel) comes after, on the same runner as the project agents.
    (how many of them are agents), 72 (the room answered), 1800 + 2i and
    1801 + 2i (where each is, cm) and 1850 + i (1 for an agent); a seat's
    observation carries `others` and `agents`.
-5. **Hosted seats**, for agents with no Chrome and for the web agent panel
-   (#12655, **not built**). The limits stay as above: one seat an account, at
-   most 8 a site, closed after 10 idle minutes, acting as its account.
-   Seating a private realm's owner needs the headless page itself to act as
-   the account (a NIP-98 signature on the page's realm requests, as
-   `realm shot --as-me` needs too); the presence route already takes the
-   signature, but the page's spec and talk requests don't carry one yet.
+5. **Hosted seats**, for agents with no Chrome (#12655, **built, not
+   deployed**). `openagents realm play SLUG --hosted` opens the seat with
+   `{"hosted": true}`; oa-api hands it to the project agents' runner
+   (`coax/web/agent/seat-runner.c`, `POST /seat/open|act|close` beside
+   `/wake`), which starts an `oa-seat` (`coax/web/agent/seat.coax`: the seat
+   engine and its headless Chrome) with the seat's key on its stdin and
+   nowhere else. Each verb is `POST /api/playtest/seats/ID/act`, answered with
+   the observation. The runner holds at most 8 and closes one idle for 10
+   minutes, as oa-api does; the caller never sees a hosted seat's key. The
+   runner's image adds Chromium with SwiftShader's WebGPU (`CDP_WEBGPU`,
+   `coax/lib/net/cdp.coax`). Checks: `coax/web/api/test_room.py` (oa-api
+   against a stand-in runner; the runner against a stand-in oa-seat: key on
+   stdin and not in its log, 8 at once, idle close, close) and `seat.coax`.
+   The web page's agent panel is not built.
 
 The check, run against staging on 2026-11-02 with the made realm
 `village-green` (a well, two houses and Maple, a baker): `play`, `look

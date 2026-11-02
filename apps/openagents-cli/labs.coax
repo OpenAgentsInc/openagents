@@ -224,7 +224,8 @@ lb_flag_ms :: (a: [] Args, flag: string, fallback: string) -> int { return lb_ms
 
 // ---- labs shot ------------------------------------------------------------------
 
-LbShotJob :: struct { url: string; out: string; size: ArgsSize; wait: int; script: string; dark: bool; fresh: bool; guard: string; }
+// player: a seat's own player ({"key","id"}, realm shot --as-me): the page plays as its account.
+LbShotJob :: struct { url: string; out: string; size: ArgsSize; wait: int; script: string; dark: bool; fresh: bool; guard: string; player: string; }
 LbShotDone :: struct { code: int; cached: bool; value_n: int = -1; }
 // Takes one shot with its label (Chrome launched by the caller when c is up; launched here when not).
 lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] u8) -> LbShotDone {
@@ -238,6 +239,7 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
   // may sit beside a loading screen, so it never matches.
   lbi(w[..], "ready", "scene");
   if j.guard.count > 0 { lbi(w[..],"guard",j.guard); }
+  if j.player.count > 0 { lbi(w[..], "as", "me"); }   // the owner's picture is never a visitor's cached one
   if w[0].full { done.code = EXIT_USAGE; lb_say("capture inputs are too long",why); return done; }
   inb: [80] u8; input := lb_input(w[..], inb[..]);
   if !j.fresh && lb_cached(j.out, label, input) { done.cached = true; return done; }
@@ -245,6 +247,7 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
     if !cdp_launch(ch[0].c[..], j.size.w, j.size.h, "openagents-labs-") { done.code = 1; lb_say(cdp_error(ch[0].c[..]), why); return done; }
     ch[0].up = true;
   }
+  if j.player.count > 0 && !seat_player_script(ch[0].c[..], j.player) { done.code = EXIT_FAIL; lb_say("could not sign the page in as the seat", why); return done; }
   o: MediaShotOptions; o.wait = j.wait; o.script = j.script; o.dark = j.dark; o.guard = j.guard;
   build: [256] u8;
   s := media_shot(ch[0].c[..], j.url, j.out, j.size, o, value, build[..]);
@@ -270,10 +273,12 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
   return done;
 }
 
-labs_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
+labs_shot :: (a: [] Args, r: [] Rep, profile: string) -> int { return labs_shot_as(a, r, profile, ""); }
+// A shot; player (realm shot --as-me) the seat's own player the page plays with.
+labs_shot_as :: (a: [] Args, r: [] Rep, profile: string, player: string) -> int {
   target := positional(a, 2); out := positional(a, 3);
   if target == "" || out == "" { return fail(r, EXIT_USAGE, "labs shot URL OUT.png [--size WxH|--phone] [--wait MS] [--eval JS] [--dark] [--fresh]"); }
-  if args_has(a, "--as-me") { return fail(r, EXIT_USAGE, LB_AS_ME); }
+  if player == "" && args_has(a, "--as-me") { return fail(r, EXIT_USAGE, LB_AS_ME); }
   ob: [300] u8; ub: [LB_CAPTURE_URL_BYTES] u8;
   url := lb_url(acct_origin(a, profile, ob[..]), target, ub[..]);
   if url == "" { return fail(r, EXIT_USAGE, "URL is https://..., http://..., file://... or a path such as /realms/SLUG"); }
@@ -283,7 +288,7 @@ labs_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
   if wait < 0 || wait > 120000 { return fail(r, EXIT_USAGE, "--wait is milliseconds from 0 to 120000"); }
   if !lb_ends(out, ".png") { return fail(r, EXIT_USAGE, "OUT is a .png file"); }
   code := lb_need_chrome(r); if code != EXIT_OK { return code; }
-  j := LbShotJob.{url = url, out = out, size = size, wait = wait, script = args_value(a, "--eval", ""), dark = args_has(a, "--dark"), fresh = args_has(a, "--fresh")};
+  j := LbShotJob.{url = url, out = out, size = size, wait = wait, script = args_value(a, "--eval", ""), dark = args_has(a, "--dark"), fresh = args_has(a, "--fresh"), player = player};
   ch: [1] DkChrome; value: [1048576] u8; why: [600] u8;
   for i: 0..<why.count { why[i] = 0; }
   done := lb_shot_one(r, ch[..], j, value[..], why[..]);
@@ -306,12 +311,21 @@ labs_realm_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
   path: [128] u8; n := copy("/realms/", path[..]); n += copy(slug, path[n..<path.count]);
   name: [128] u8; m := copy(slug, name[..]); m += copy(".png", name[m..<name.count]);
   out := positional(a, 3);
-  // A shot is a visitor's: a private realm is 404 to one, so say how to show it instead.
+  as_me := args_has(a, "--as-me");
+  // Without --as-me a shot is a visitor's: a private realm is 404 to one, so say how to show it instead.
   sb: [API_OUT] u8; sp: [128] u8;
   seen := api_call(a, profile, "GET", realm_path(slug, "", sp[..]), "", sb[..]);
-  if api_ok(seen) && cli_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {
+  if !as_me && api_ok(seen) && cli_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {
     said: [300] u8;
     return fail(r, EXIT_USAGE, lb_private_shot(slug, said[..]));
+  }
+  // --as-me: the account's seat (coax/web/api/seats.c), its player in the page, closed after the shot
+  g: [1] SeatGrant; gw: [512] u8; player := "";
+  if as_me {
+    says := seat_grant(a, profile, slug, false, g[..], gw[..]);
+    if says == SG_VISITOR { return fail(r, EXIT_USAGE, "--as-me needs this profile's key: openagents nostr new, or openagents nostr import"); }
+    if says == SG_REFUSED { gn := 0; while gn < gw.count && gw[gn] != 0 { gn += 1; } return fail(r, EXIT_FAIL, cast(string) gw[0..<gn]); }
+    player = cast(string) g[0].player[0..<g[0].player_n];
   }
   b: [1] Args;
   ok := args_add(b[..], "labs") && args_add(b[..], "shot") && args_add(b[..], cast(string) path[0..<n]) && args_add(b[..], ifx out != "" then out else cast(string) name[0..<m]);
@@ -319,8 +333,10 @@ labs_realm_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
     s := args_at(a, i);
     if s.count > 1 && s[0] == '-' && s[1] == '-' { ok = ok && args_add(b[..], s); if takes_value(s) && i + 1 < args_count(a) { ok = ok && args_add(b[..], args_at(a, i + 1)); } }
   }
-  if !ok { return fail(r, EXIT_USAGE, "arguments too long"); }
-  return labs_shot(b[..], r, profile);
+  if !ok { if as_me { t := seat_tell(a, profile, g[0].id, "close"); } return fail(r, EXIT_USAGE, "arguments too long"); }
+  code := labs_shot_as(b[..], r, profile, player);
+  if as_me { t := seat_tell(a, profile, g[0].id, "close"); }
+  return code;
 }
 
 // ---- labs clip ------------------------------------------------------------------

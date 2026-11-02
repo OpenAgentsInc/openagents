@@ -224,10 +224,11 @@ openagents labs shot URL OUT.png [--size WxH | --phone] [--wait MS] [--eval JS]
   page for its dark theme (**new**: `shot.coax` takes no theme today).
 - `--eval JS` runs once before the capture and prints what it returns as
   `eval VALUE`.
-- `--as-me` signs the page in as the profile's account, so a private realm
-  you own is taken as you see it. Without it the page is taken as a visitor.
-  This is how `realm shot` from the CLI v1 spec works; `realm shot` becomes
-  a short name for `labs shot /realms/SLUG --as-me`.
+- `--as-me` (`realm shot SLUG --as-me`, built 2026-11-02, #12655) opens the
+  profile's account's seat (`POST /api/playtest/seats`) and the page plays
+  with the seat's own player key, so a private realm you own is taken as you
+  see it; the seat closes after the shot. Without it the page is taken as a
+  visitor. `labs shot URL --as-me` is refused: only a made realm has a seat.
 - Prints `out PATH`, `size WxH`, `label PATH.json`.
 - Uses: `coax/web/shot.coax`'s `shot` and `coax/lib/net/cdp.coax`.
 

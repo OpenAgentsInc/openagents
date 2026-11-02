@@ -602,6 +602,23 @@ seat_q :: (o: [] SeatBuf, s: string) {
   #assert jv_parse(d[..], seat_text(o[..]), nodes[..]) && jv_raw(d[0], jv_get(d[0], 0, "others")) == "2" && jv_raw(d[0], jv_get(d[0], 0, "agents")) == "1";
 }
 
+// The page's playtest player ({"key","id"}: a seat's own, POST /api/playtest/seats, migrations/0110),
+// in place before the page's scripts run, so the page plays as the seat's account.
+seat_player_source :: (player: string, out: [] SeatBuf) -> string {
+  out[0].n = 0; out[0].bad = false;
+  seat_put(out, "try { localStorage.setItem('verse.player', "); seat_q(out, player); seat_put(out, "); } catch {}");
+  return seat_text(out);
+}
+seat_player_script :: (c: [] Cdp, player: string) -> bool {
+  params: [4096] u8; o: [1] Jo; src: [1] SeatBuf;
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], seat_player_source(player, src[..])); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+#test "a seat's player goes in before the page's scripts, as JSON text" {
+  o: [1] SeatBuf;
+  #assert seat_player_source("{\"key\":\"k1\",\"id\":\"p-1\"}", o[..]) == "try { localStorage.setItem('verse.player', \"{\\\"key\\\":\\\"k1\\\",\\\"id\\\":\\\"p-1\\\"}\"); } catch {}";
+}
+
 // Opens the realm's page as a visitor (or as player, the page's playtest player {"key","id"}), with
 // the automation mark (verse-automation) so analytics leaves the seat out.
 seat_open :: (s: [] Seat, c: [] Cdp, player: string) -> bool {
@@ -617,12 +634,7 @@ seat_open :: (s: [] Seat, c: [] Cdp, player: string) -> bool {
   jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], "realm-seat");
   jo_key(o[..], "url"); jo_str(o[..], seat_origin(s)); jo_end(o[..]);
   if cdp_call(c, "Network.setCookie", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
-  if player.count > 0 {
-    // the owner's playtest player, in place before the page's scripts run
-    src: [1] SeatBuf; seat_put(src[..], "try { localStorage.setItem('verse.player', "); seat_q(src[..], player); seat_put(src[..], "); } catch {}");
-    jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], seat_text(src[..])); jo_end(o[..]);
-    if o[0].bad || cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
-  }
+  if player.count > 0 && !seat_player_script(c, player) { return false; }
   u: [1] SeatBuf; seat_put(u[..], seat_origin(s)); seat_put(u[..], "/realms/built#"); seat_put(u[..], seat_slug(s));
   jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], seat_text(u[..])); jo_end(o[..]);
   return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;

@@ -125,7 +125,10 @@ bool room_route(const request *q) {
   }
   // A made realm's room is as private as the realm (0099, 0108): its owner and site admins only.
   bool admin = false;
-  if (!strncmp(room, "made-", 5)) { char who[65]; admin = sig > 0 ? admin_is(signer) : admin_who(q, db, who) == 0; }
+  if (!strncmp(room, "made-", 5)) {
+    char who[65]; admin = sig > 0 ? admin_is(signer) : admin_who(q, db, who) == 0;
+    if (!strcmp(kind, "presence") && !strcmp(q->method, "POST")) seats_sweep(db);   // an idle seat's key dies (seat-policy.coax)
+  }
   const char *v[10] = {q->method, kind, room, body, key, after, mark, ua, sig > 0 ? "true" : "false", admin ? "true" : "false"};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.room($1, $2, $3, $4::jsonb, $5, $6::int, $7, $8, $9::boolean, $10::boolean) x",
                              10, NULL, v, NULL, NULL, 0);

@@ -22,7 +22,7 @@ SEAT_LINE :: 65536;
 
 // ---- the seat file: slug, origin, port and token, one "key value" a line
 
-SeatAt :: struct { slug: [80] u8; slug_n: int; origin: [300] u8; origin_n: int; port: int; token: [64] u8; token_n: int; error: [300] u8; error_n: int; }
+SeatAt :: struct { slug: [80] u8; slug_n: int; origin: [300] u8; origin_n: int; port: int; token: [64] u8; token_n: int; error: [300] u8; error_n: int; hosted: int; }   // hosted: the server's seat id, held on the runner (no port, no token)
 seat_at_put :: (to: [] u8, n: [] int, v: string) { m := 0; for c: v { if m < to.count { to[m] = c; m += 1; } } n[0] = m; }
 // The file's text into at; false when it names no seat (an error line is kept in at.error).
 seat_at_read :: (text: string, at: [] SeatAt) -> bool {
@@ -39,8 +39,9 @@ seat_at_read :: (text: string, at: [] SeatAt) -> bool {
     if k == "token" { seat_at_put(at[0].token[..], n[..], v); at[0].token_n = n[0]; }
     if k == "error" { seat_at_put(at[0].error[..], n[..], v); at[0].error_n = n[0]; }
     if k == "port" { at[0].port = cli_count(v, 1, 65535); }
+    if k == "hosted" { at[0].hosted = cli_count(v, 1, 1000000000000); }
   }
-  return at[0].slug_n > 0 && at[0].origin_n > 0 && at[0].port > 0 && at[0].token_n == 32;
+  return at[0].slug_n > 0 && at[0].origin_n > 0 && ((at[0].port > 0 && at[0].token_n == 32) || at[0].hosted > 0);
 }
 seat_at_slug :: (at: [] SeatAt) -> string { return cast(string) at[0].slug[0..<at[0].slug_n]; }
 seat_at_origin :: (at: [] SeatAt) -> string { return cast(string) at[0].origin[0..<at[0].origin_n]; }
@@ -55,6 +56,9 @@ seat_at_error :: (at: [] SeatAt) -> string { return cast(string) at[0].error[0..
   #assert !seat_at_read("slug x\norigin https://a\nport 9\ntoken short\n", at[..]);
   #assert !seat_at_read("error the realm never laid out\n", at[..]) && seat_at_error(at[..]) == "the realm never laid out";
   #assert !seat_at_read("", at[..]);
+  // a hosted seat: the server's id, no port or token
+  #assert seat_at_read("slug village-green\norigin https://staging.openagents.com\nhosted 42\n", at[..]) && at[0].hosted == 42 && at[0].port <= 0;
+  #assert !seat_at_read("slug x\norigin https://a\nhosted 0\n", at[..]) && !seat_at_read("slug x\norigin https://a\nhosted many\n", at[..]);
 }
 
 seat_file :: (profile: string, out: [] u8) -> string {
@@ -65,6 +69,84 @@ seat_dir_make :: () -> bool {
   d: [1024] u8; s: [1024] u8;
   base := cli_dir(d[..]); dir := fs_join(base, "seats", s[..]);
   return base.count > 0 && dir.count > 0 && cxcli_mkdir_private(d[0..<base.count]) == 0 && cxcli_mkdir_private(s[0..<dir.count]) == 0;
+}
+
+// ---- the account's seat on the server (POST /api/playtest/seats, coax/web/api/seats.c; pure)
+//
+// With a key, a seat is opened as the profile's account: the server hands back the seat's own player
+// key, and the seat's page plays with it, so a private realm opens to its owner and site admins,
+// character chat counts against the account, and others see the seat as an agent with the account's
+// name. The server's limits (seat-policy.coax): one seat an account, 8 a site, 10 idle minutes.
+
+SG_SEATED :: 0; SG_VISITOR :: 1; SG_REFUSED :: 2;
+SeatGrant :: struct { id: int; player: [320] u8; player_n: int; }
+seat_open_body :: (slug: string, hosted: bool, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]); jo_key(o[..], "slug"); jo_str(o[..], slug);
+  if hosted { jo_key(o[..], "hosted"); jo_bool(o[..], true); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// The server's {id, player: {id, key}}: g's id and the player as the page keeps it ({"key","id"}).
+seat_grant_read :: (body: string, g: [] SeatGrant) -> bool {
+  g[0] = SeatGrant.{};
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  id := jv_int(d[0], jv_get(d[0], 0, "id"), 0);
+  p := jv_get(d[0], 0, "player");
+  kb: [200] u8; ib: [64] u8;
+  kn := jv_str(d[0], jv_get(d[0], p, "key"), kb[..]); pn := jv_str(d[0], jv_get(d[0], p, "id"), ib[..]);
+  if id <= 0 { return false; }
+  g[0].id = id;
+  if kn <= 0 || pn <= 0 { return true; }   // a hosted seat's key stays with the runner
+  o: [1] Jo; jo_start(o[..], g[0].player[..]); jo_obj(o[..]);
+  jo_key(o[..], "key"); jo_str(o[..], cast(string) kb[0..<kn]); jo_key(o[..], "id"); jo_str(o[..], cast(string) ib[0..<pn]); jo_end(o[..]);
+  g[0].player_n = ifx o[0].bad then 0 else jo_text(o[..]).count;
+  return g[0].player_n > 0;
+}
+// What an answer to opening a seat means: seated (200), a visitor (no key: the seat goes on unseen,
+// as before seats were the account's), or refused (404 a realm not there for the account, 429 the
+// site's seats are full, any other failure).
+seat_grant_says :: (answered: bool, status: int, keyed: bool) -> int {
+  if answered && status == 200 { return SG_SEATED; }
+  if !keyed { return SG_VISITOR; }
+  return SG_REFUSED;
+}
+#test "a seat on the server: the body, the grant read back, and what an answer means" {
+  b: [256] u8;
+  #assert seat_open_body("village-green", false, b[..]) == "{\"slug\":\"village-green\"}";
+  #assert seat_open_body("village-green", true, b[..]) == "{\"slug\":\"village-green\",\"hosted\":true}";
+  g: [1] SeatGrant;
+  #assert seat_grant_read("{\"id\":7,\"slug\":\"g\",\"hosted\":false,\"player\":{\"id\":\"p-1a\",\"key\":\"k0123\"},\"until\":9}", g[..]);
+  #assert g[0].id == 7 && cast(string) g[0].player[0..<g[0].player_n] == "{\"key\":\"k0123\",\"id\":\"p-1a\"}";
+  #assert seat_grant_read("{\"id\":8,\"hosted\":true,\"player\":{\"id\":\"p-1a\"}}", g[..]) && g[0].id == 8 && g[0].player_n == 0;
+  #assert !seat_grant_read("{\"error\":\"no such realm\"}", g[..]) && !seat_grant_read("nope", g[..]) && !seat_grant_read("{\"id\":0}", g[..]);
+  #assert seat_grant_says(true, 200, true) == SG_SEATED && seat_grant_says(true, 200, false) == SG_SEATED;
+  #assert seat_grant_says(true, 401, false) == SG_VISITOR && seat_grant_says(false, 0, false) == SG_VISITOR;
+  #assert seat_grant_says(true, 404, true) == SG_REFUSED && seat_grant_says(true, 429, true) == SG_REFUSED && seat_grant_says(false, 0, true) == SG_REFUSED;
+}
+// Opens the account's seat in slug (hosted: on the runner): what the answer means, and g.
+seat_grant :: (a: [] Args, profile: string, slug: string, hosted: bool, g: [] SeatGrant, why: [] u8) -> int {
+  bb: [256] u8; out: [4096] u8;
+  res := api_call(a, profile, "POST", "/api/playtest/seats", seat_open_body(slug, hosted, bb[..]), out[..]);
+  body := cast(string) out[0..<res.n];
+  // a server from before seats (0110) has no such route: the seat goes on as a visitor, as it did
+  w0: [64] u8; before_seats := res.error == HTTP_OK && res.status == 404 && api_why(body, w0[..]) == "not found";
+  says := seat_grant_says(res.error == HTTP_OK && !before_seats, res.status, res.keyed && !before_seats);
+  if says == SG_SEATED && !seat_grant_read(body, g) { says = SG_REFUSED; }
+  if says == SG_REFUSED {
+    w: [512] u8; t := api_why(body, w[..]);
+    n := copy(ifx t.count > 0 then t else "the seat didn't open", why);
+    if n < 0 { n = copy("the seat didn't open", why); }
+    why[ifx n >= 0 && n < why.count then n else 0] = 0;
+  }
+  return says;
+}
+// Keeps (an action happened) or closes the account's seat id.
+seat_tell :: (a: [] Args, profile: string, id: int, op: string) -> bool {
+  p: [96] u8; n := copy("/api/playtest/seats/", p[..]); t: [24] u8; n += copy(int_text(id, t[..]), p[n..<p.count]);
+  n += copy("/", p[n..<p.count]); n += copy(op, p[n..<p.count]);
+  out: [1024] u8; res := api_call(a, profile, "POST", cast(string) p[0..<n], "{}", out[..]);
+  return api_ok(res);
 }
 
 // ---- the action a verb sends (pure)
@@ -193,6 +275,7 @@ seat_find :: (profile: string, at: [] SeatAt) -> bool {
   p: [1024] u8; path := seat_file(profile, p[..]);
   text: [2048] u8; n := fs_read(path, text[..]);
   if n <= 0 || !seat_at_read(cast(string) text[0..<n], at) { return false; }
+  if at[0].hosted > 0 { return true; }   // held on the runner: the server says whether it is open
   // a holder that isn't there any more leaves its file: drop it
   for b: "127.0.0.1" { r := cxsock_host_push(cast(int) b); }
   h := cxsock_connect(at[0].port, 2000);
@@ -200,7 +283,8 @@ seat_find :: (profile: string, at: [] SeatAt) -> bool {
   x := cxsock_close(h);
   return true;
 }
-seat_leave_at :: (at: [] SeatAt) {
+seat_leave_at :: (a: [] Args, profile: string, at: [] SeatAt) {
+  if at[0].hosted > 0 { closed := seat_tell(a, profile, at[0].hosted, "close"); p: [1024] u8; gone := fs_remove(seat_file(profile, p[..])); return; }
   b: [256] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
   jo_key(o[..], "token"); jo_str(o[..], seat_at_token(at)); jo_key(o[..], "op"); jo_str(o[..], "leave"); jo_end(o[..]);
   out: [4096] u8; n := seat_send(at[0].port, jo_text(o[..]), out[..], 15000);
@@ -241,7 +325,7 @@ realm_seat :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   same := open && seat_at_slug(at) == slug && seat_at_origin(at) == origin;
   if verb == "leave" {
     if !same { rep_str(r, "realm", slug); rep_str(r, "result", "no seat open there"); return rep_done(r, EXIT_OK); }
-    seat_leave_at(at);
+    seat_leave_at(a, profile, at);
     rep_str(r, "realm", slug); rep_str(r, "result", "left"); return rep_done(r, EXIT_OK);
   }
   if !same {
@@ -249,18 +333,33 @@ realm_seat :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
     sb: [API_OUT] u8; sp: [128] u8;
     seen := api_call(a, profile, "GET", realm_path(slug, "", sp[..]), "", sb[..]);
     if !api_ok(seen) { return api_fail(r, seen, cast(string) sb[0..<seen.n]); }
-    if cli_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {
+    if !seen.keyed && cli_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {   // with a key, the seat is the account's (0110)
       said: [400] u8; n := copy(slug, said[..]);
       n += copy(" is private, and a seat is a visitor's: make it unlisted or public first: openagents realm visibility ", said[n..<said.count]);
       n += copy(slug, said[n..<said.count]); n += copy(" unlisted", said[n..<said.count]);
       return fail(r, EXIT_USAGE, cast(string) said[0..<n]);
     }
     if open {
-      seat_leave_at(at);
+      seat_leave_at(a, profile, at);
       tool_err("openagents: closed the seat in "); tool_err(seat_at_slug(at)); tool_errln(" first (one seat a profile)");
     }
-    why := seat_start(a, profile, slug, origin, rc_has(a, verb, "--phone"), at);
-    if why != "" { return fail(r, EXIT_FAIL, why); }
+    if rc_has(a, verb, "--hosted") {
+      // the server's runner holds the page (slice 5): no Chrome here
+      if rc_has(a, verb, "--phone") { return fail(r, EXIT_USAGE, "a hosted seat is 1440x900: --phone is for a seat here"); }
+      g: [1] SeatGrant; gw: [512] u8;
+      says := seat_grant(a, profile, slug, true, g[..], gw[..]);
+      if says == SG_VISITOR { return fail(r, EXIT_USAGE, "a hosted seat is the account's: this profile needs a key (openagents nostr new, or openagents nostr import)"); }
+      if says == SG_REFUSED { gn := 0; while gn < gw.count && gw[gn] != 0 { gn += 1; } return fail(r, EXIT_FAIL, cast(string) gw[0..<gn]); }
+      f: [1] SeatBuf; t: [24] u8;
+      seat_put(f[..], "slug "); seat_put(f[..], slug); seat_put(f[..], "\norigin "); seat_put(f[..], origin);
+      seat_put(f[..], "\nhosted "); seat_put(f[..], int_text(g[0].id, t[..])); seat_put(f[..], "\n");
+      p: [1024] u8; path := seat_file(profile, p[..]);
+      if !seat_dir_make() || cxcli_write_private(p[0..<path.count], f[0].b[0..<f[0].n]) != 0 { closed := seat_tell(a, profile, g[0].id, "close"); return fail(r, EXIT_FAIL, "could not write ~/.openagents/cli/seats"); }
+      ok := seat_at_read(seat_text(f[..]), at);
+    } else {
+      why := seat_start(a, profile, slug, origin, rc_has(a, verb, "--phone"), at);
+      if why != "" { return fail(r, EXIT_FAIL, why); }
+    }
   }
   // --shot: an absolute path, since the holder runs in the folder it was started in
   shot := rc_option(a, verb, "--shot", ""); sb: [2200] u8;
@@ -268,9 +367,20 @@ realm_seat :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
     if !seat_ends(shot, ".png") { return fail(r, EXIT_USAGE, "--shot names a .png file"); }
     if shot[0] != '/' { cw: [1024] u8; shot = fs_join(fs_cwd(cw[..]), shot, sb[..]); if shot == "" { return fail(r, EXIT_USAGE, "--shot's path is too long"); } }
   }
+  if at[0].hosted > 0 && shot != "" { return fail(r, EXIT_USAGE, "a hosted seat keeps no pictures here: --shot is for a seat on this computer"); }
   line: [8192] u8; act := seat_action(a, verb, seat_at_token(at), shot, line[..]);
   if act == "" { return fail(r, EXIT_USAGE, "the action is too long"); }
-  out: [SEAT_LINE] u8; n := seat_send(at[0].port, act, out[..], SEAT_ACT_MS);
+  out: [SEAT_LINE] u8; n := -1;
+  if at[0].hosted > 0 {
+    // POST /api/playtest/seats/ID/act: oa-api hands it to the runner's oa-seat and answers its observation
+    pb: [96] u8; pn := copy("/api/playtest/seats/", pb[..]); t: [24] u8; pn += copy(int_text(at[0].hosted, t[..]), pb[pn..<pb.count]); pn += copy("/act", pb[pn..<pb.count]);
+    res := api_call(a, profile, "POST", cast(string) pb[0..<pn], act, out[..]);
+    if res.error == HTTP_OK && res.status == 404 { p: [1024] u8; gone := fs_remove(seat_file(profile, p[..])); return fail(r, EXIT_FAIL, "the hosted seat is closed (openagents realm play SLUG --hosted opens a new one)"); }
+    if !api_ok(res) { return api_fail(r, res, cast(string) out[0..<res.n]); }
+    n = res.n;
+  } else {
+    n = seat_send(at[0].port, act, out[..], SEAT_ACT_MS);
+  }
   if n < 0 { return fail(r, EXIT_FAIL, "the seat didn't answer (openagents realm play SLUG opens a new one)"); }
   obs := cast(string) out[0..<n];
   if obs.count == 0 || obs[0] != '{' { return fail(r, EXIT_FAIL, "the seat's answer isn't JSON"); }
@@ -348,7 +458,12 @@ seat_hold_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   if !seat_init(s[..], origin, slug, args_has(a, "--phone")) { seat_hold_say(pv, "the seat's realm or origin doesn't read"); return EXIT_USAGE; }
   c: [1] Cdp;
   if !cdp_launch(c[..], s[0].w, s[0].h, "openagents-seat-") { seat_hold_say(pv, cdp_error(c[..])); return EXIT_FAIL; }
-  if !seat_open(s[..], c[..], "") { seat_hold_say(pv, "the realm's page didn't open"); cdp_close(c[..]); return EXIT_FAIL; }
+  // the account's seat on the server first: its player goes into the page before the page loads
+  g: [1] SeatGrant; gw: [512] u8;
+  says := seat_grant(a, profile, slug, false, g[..], gw[..]);
+  if says == SG_REFUSED { gn := 0; while gn < gw.count && gw[gn] != 0 { gn += 1; } seat_hold_say(pv, cast(string) gw[0..<gn]); cdp_close(c[..]); return EXIT_FAIL; }
+  seated := says == SG_SEATED;
+  if !seat_open(s[..], c[..], ifx seated then cast(string) g[0].player[0..<g[0].player_n] else "") { if seated { t := seat_tell(a, profile, g[0].id, "close"); } seat_hold_say(pv, "the realm's page didn't open"); cdp_close(c[..]); return EXIT_FAIL; }
   if !seat_wait_laid(s[..], c[..], 60000) { seat_hold_say(pv, "the realm never laid out (is it a made realm, and there?)"); cdp_close(c[..]); return EXIT_FAIL; }
   seat_read_spec(s[..], c[..]);
   l := cxsock_listen(0);
@@ -361,7 +476,8 @@ seat_hold_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   seat_put(f[..], "\nport "); seat_int(f[..], port); seat_put(f[..], "\ntoken "); seat_put(f[..], token); seat_put(f[..], "\n");
   if cxcli_write_private(pv, f[0].b[0..<f[0].n]) != 0 { x := cxsock_close(l); cdp_close(c[..]); return EXIT_FAIL; }
   png: [SEAT_SHOT] u8; line: [SEAT_LINE] u8; o: [1] SeatBuf;
-  present := seat_present(a, profile, s[..], c[..], false); posted := proc_now_ms();
+  // a seated page is the agent itself (its key is the seat's, 0110); unseated, the holder posts a signed presence (0108)
+  present := !seated && seat_present(a, profile, s[..], c[..], false); posted := proc_now_ms();
   last := proc_now_ms();
   while proc_now_ms() - last < SEAT_IDLE_MS {
     if present && proc_now_ms() - posted >= SEAT_PRESENCE_MS { present = seat_present(a, profile, s[..], c[..], false); posted = proc_now_ms(); }
@@ -381,8 +497,10 @@ seat_hold_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
     seat_reply(h, seat_text(o[..]));
     x := cxsock_close(h);
     if c[0].h < 0 { break; }   // the browser went
+    if seated { kept := seat_tell(a, profile, g[0].id, "keep"); }
     if present { present = seat_present(a, profile, s[..], c[..], false); posted = proc_now_ms(); }
   }
+  if seated { closed := seat_tell(a, profile, g[0].id, "close"); }
   if present { gone := seat_present(a, profile, s[..], c[..], true); }
   // the file goes with the seat, unless a newer seat has written its own
   now: [2048] u8; m := fs_read(path, now[..]); atb: [1] SeatAt; at := atb[..];
