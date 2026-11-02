@@ -1,0 +1,17 @@
+exponent plane: 3 symbols, frequencies 126: 1024, 127: 2048, 128: 1024
+rANS: 4 bytes, final state 536909824
+frame: 62 bytes, codec raw; chapter 186's message: 52 bytes
+1 rows: chapter 186's message 1060 bytes
+  raw: 1070 bytes (1009 per mille of raw), planes 0/0/0/0; none, none, 256 of 256 values equal bit for bit
+  planes: 988 bytes (932 per mille of raw), planes 171/257/257/257; none, none, 256 of 256 values equal bit for bit
+  delta: 988 bytes (932 per mille of raw), planes 171/257/257/257; none, none, 256 of 256 values equal bit for bit
+2 rows: chapter 186's message 2084 bytes
+  raw: 2094 bytes (1004 per mille of raw), planes 0/0/0/0; none, none, 512 of 512 values equal bit for bit
+  planes: 1871 bytes (897 per mille of raw), planes 286/513/513/513; none, none, 512 of 512 values equal bit for bit
+  delta: 1970 bytes (945 per mille of raw), planes 385/513/513/513; none, none, 512 of 512 values equal bit for bit
+3 rows: chapter 186's message 3108 bytes
+  raw: 3118 bytes (1003 per mille of raw), planes 0/0/0/0; none, none, 768 of 768 values equal bit for bit
+  planes: 2735 bytes (879 per mille of raw), planes 382/769/769/769; none, none, 768 of 768 values equal bit for bit
+  delta: 2881 bytes (926 per mille of raw), planes 528/769/769/769; none, none, 768 of 768 values equal bit for bit
+a receiver that accepts raw and planes, a sender that wants delta: it sends raw
+a receiver that accepts all three, a sender that wants planes: it sends planes

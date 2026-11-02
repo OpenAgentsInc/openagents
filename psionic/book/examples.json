@@ -2869,6 +2869,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/boundary-codec.coax",
+      "chapter": "psionic/book/ch193-compress-activations-exactly.md",
+      "stdout": "psionic/fixtures/boundary-codec.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/boundary-codec-refuse.coax",
+      "chapter": "psionic/book/ch193-compress-activations-exactly.md",
+      "stdout": "psionic/fixtures/boundary-codec-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

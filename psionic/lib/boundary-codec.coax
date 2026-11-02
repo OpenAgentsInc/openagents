@@ -1,0 +1,444 @@
+// Chapter 193: compress the activations that cross a stage boundary,
+// exactly. Chapter 186's boundary message (a 9-word header, then f32 rows)
+// travels inside a frame: a version byte, a codec byte, the header, the
+// payload and a checksum. The raw codec copies the values. The planes codec
+// splits every f32 into four byte planes (the exponent; the sign with the
+// top 7 mantissa bits; the middle and the low mantissa bytes) and codes
+// each plane with a static rANS coder over a 12-bit frequency table, or
+// stores it as it is when coding would not shrink it. The delta codec does
+// the same after XOR-ing each value with the one a row earlier. Decoding
+// gives back every bit, NaN payloads, negative zero and subnormals
+// included. The receiver refuses a frame of another version, an unknown
+// codec or one it did not accept, a damaged or cut frame, and a stream or
+// table that does not decode exactly, each with its reason.
+// Profile boundary-codec-v1: integer arithmetic only; up to 64 rows of up
+// to 8,192 values a frame.
+#authority;
+#load "../tests/boundary-codec-checks.coax";   // the checks' messages, generator and real Ministral rows
+
+// book:begin types
+BcCodec :: enum u8 {raw;planes;delta;}
+BcRefusal :: enum u8 {none;partial;version;codec;declined;geometry;truncated;excess;checksum;room;size;plane;table;stream;}
+// A frame the sender wrote: its bytes (0 when the message was refused),
+// the codec it used, and the bytes each plane took (0 when sent raw).
+BcFrame :: struct {bytes:int;codec:BcCodec;plane:[4]int;}
+// What the receiver found: a refusal, or the codec and the words written.
+BcDecoded :: struct {refusal:BcRefusal;codec:BcCodec;words:int;}
+
+BC_VERSION :: 1;
+BC_CODECS :: 3;
+BC_WORDS :: 9;          // chapter 186's header words
+BC_HEAD :: 42;          // version, codec, 36 header bytes, the payload's length
+BC_TAIL :: 4;           // the checksum
+BC_ROWS_MAX :: 64;
+BC_WIDTH_MAX :: 8192;
+BC_SCALE :: 4096;       // frequencies sum to 2^12
+BC_LOW :: 8388608;      // the coder's state stays in [2^23, 2^31)
+BC_EMIT :: 19;          // emit a byte while state >> 19 >= frequency
+// book:end types
+
+// ---- Checks first ------------------------------------------------------------
+
+#test "FNV-1a's published values" {
+    a:=[1]u8.[0x61];f:=[6]u8.[0x66,0x6f,0x6f,0x62,0x61,0x72];
+    #assert bc_checksum(f[0..<0])==0x811c9dc5 && bc_checksum(a[..])==0xe40c292c && bc_checksum(f[..])==0xbf9cf968;
+}
+#test "the byte planes of 1.0, -2.0, 0.5, -0.0, a NaN and a subnormal" {
+    // 1.0 is 0x3f800000: exponent 127, everything else 0.
+    #assert bc_symbol(0x3f800000,0)==127 && bc_symbol(0x3f800000,1)==0 && bc_symbol(0x3f800000,2)==0 && bc_symbol(0x3f800000,3)==0;
+    // -2.0 is 0xc0000000: exponent 128, sign 1.
+    #assert bc_symbol(0xc0000000,0)==128 && bc_symbol(0xc0000000,1)==128;
+    #assert bc_symbol(0x3f000000,0)==126 && bc_symbol(0x80000000,0)==0 && bc_symbol(0x80000000,1)==128;
+    // A NaN with payload 0x7fc12345 and the smallest subnormal.
+    #assert bc_symbol(0x7fc12345,0)==255 && bc_symbol(0x7fc12345,1)==0x41 && bc_symbol(0x7fc12345,2)==0x23 && bc_symbol(0x7fc12345,3)==0x45;
+    #assert bc_symbol(0x00000001,0)==0 && bc_symbol(0x00000001,3)==1;
+    for w:[6]int.[0x3f800000,0xc0000000,0x7fc12345,0x80000000,0x00000001,0xffffffff] {
+        #assert bc_place(bc_symbol(w,0),0)|bc_place(bc_symbol(w,1),1)|bc_place(bc_symbol(w,2),2)|bc_place(bc_symbol(w,3),3)==w;
+    }
+}
+#test "the hand-worked plane: 1.0, -2.0, 0.5, 1.0" {
+    // Exponents 127, 128, 126, 127. Each present symbol gets 1, then a share
+    // of the other 4,093 slots: 127 gets 1 + 2 x 4093 / 4 = 2047, 126 and
+    // 128 get 1 + 4093 / 4 = 1024, and the slot left over goes to 127.
+    m:=bcx_message(1,4);m[9]=0x3f800000;m[10]=0xc0000000;m[11]=0x3f000000;m[12]=0x3f800000;
+    pay:=m[9..<13];t:=bc_table(pay,4,false,0);
+    #assert t.k==3 && t.freq[126]==1024 && t.freq[127]==2048 && t.freq[128]==1024;
+    sum:=0;for f:t.freq {sum+=f;}#assert sum==4096;
+    // No byte leaves the state; it ends at 536,909,824, written in front.
+    work:[16]u8;#assert bc_stream(pay,4,false,0,t.freq[..],work[..])==12 && bc_get32(work[..],12)==536909824;
+    // Coded, the plane would take 1 + 32 + 3 x 2 + 4 + 4 = 47 bytes, so
+    // it is stored as it is: mode 0 and the four exponents.
+    out:=[8]u8.[9,9,9,9,9,9,9,9];#assert bc_plane(pay,4,false,0,out[..],0,work[..])==5;
+    #assert out[0]==0 && out[1]==127 && out[2]==128 && out[3]==126 && out[4]==127 && out[5]==9;
+    // The coded plane, built by hand: the map's bits for 126, 127 and 128,
+    // frequencies 1024, 2048, 1024, a 4-byte stream holding the state.
+    h:[47]u8;h[0]=1;h[16]=0xc0;h[17]=0x01;h[34]=0x04;h[36]=0x08;h[38]=0x04;bc_put32(h[..],39,4);bc_put32(h[..],43,536909824);
+    v:[4]u32;r:=bc_unplane(h[..],0,0,v[..]);
+    #assert r.refusal==BcRefusal.none && r.at==47 && v[0]==0x3f800000 && v[1]==0x40000000 && v[2]==0x3f000000 && v[3]==0x3f800000;
+    // Every plane is stored as it is, so the frame is sent raw: 62 bytes.
+    x:=bcx_frame(BcCodec.planes,m[0..<13]);#assert x.f.bytes==BC_HEAD+16+BC_TAIL && x.f.codec==BcCodec.raw && x.bytes[1]==0;
+    for p:0..<4 {#assert x.f.plane[p]==0;}
+    got:[13]u32;d:=bc_decode(7,x.bytes[0..<x.f.bytes],got[..]);
+    #assert d.refusal==BcRefusal.none && d.codec==BcCodec.raw && d.words==13;
+    for k:0..<13 {#assert got[k]==m[k];}
+}
+#test "tables: shares rounded down, the rest to the first most frequent symbol" {
+    // Symbols 3 and 5 forty times each, 9 twenty times: 1 + 40 x 4093 / 100
+    // = 1638 each, 1 + 20 x 4093 / 100 = 819; 1 slot is left, and goes to 3.
+    m:=bcx_message(1,100);for i:0..<100 {m[9+i]=cast(u32)([5]int.[3,5,3,9,5][i%5]);}
+    out:[200]u8;work:[208]u8;n:=bc_plane(m[9..<109],100,false,3,out[..],0,work[..]);
+    #assert out[0]==1 && bc_get32(out[..],33)==1639+(1638<<16) && out[37]==0x33 && out[38]==0x03;
+    #assert n==1+32+6+4+bc_get32(out[..],39) && n<101;
+    // 0 and 1 twice, 2 once: symbol 0 takes the slot left.
+    two:=[5]u32.[0,1,0,1,2];t:=bc_table(two[..],5,false,3);#assert t.freq[0]==1639 && t.freq[1]==1638 && t.freq[2]==819;
+    // 7, 7, 9: 1 + 2 x 4094 / 3 = 2730 and 1 + 4094 / 3 = 1365; 7 takes the slot left.
+    three:=[3]u32.[7,7,9];t=bc_table(three[..],3,false,3);#assert t.k==2 && t.freq[7]==2731 && t.freq[9]==1365;
+    // One value in 4,200 gets the smallest frequency, 1, and still decodes.
+    rare:[4200]u32;rare[1234]=1;wide:[8408]u8;plane:[8408]u8;
+    t=bc_table(rare[..],4200,false,3);#assert t.freq[1]==1 && t.freq[0]==4095;
+    b:=bc_plane(rare[..],4200,false,3,plane[..],0,wide[..]);#assert plane[0]==1 && b<100;
+    back:[4200]u32;r:=bc_unplane(plane[0..<b],0,3,back[..]);#assert r.refusal==BcRefusal.none && r.at==b;
+    for i:0..<4200 {#assert back[i]==rare[i];}
+}
+#test "a coded plane and the frame: 64 values of one exponent" {
+    // Every value 1.0 + k/128: exponent 127, sign and top mantissa bits k,
+    // low bytes 0. Planes 0, 2 and 3 hold one symbol each: mode 1, a map
+    // with one bit, frequency 4096 and the 4-byte state 2^23, 43 bytes.
+    // Plane 1 holds 64 different symbols and is stored as it is: 65 bytes.
+    m:=bcx_ramp();x:=bcx_frame(BcCodec.planes,m[..]);
+    #assert x.f.codec==BcCodec.planes && x.f.plane[0]==43 && x.f.plane[1]==65 && x.f.plane[2]==43 && x.f.plane[3]==43;
+    #assert x.f.bytes==BC_HEAD+43*3+65+BC_TAIL && x.bytes[1]==1 && x.bytes[0]==BC_VERSION;
+    #assert bc_get32(x.bytes[..],38)==43*3+65 && bc_get32(x.bytes[..],BC_HEAD+43*3+65)==bc_checksum(x.bytes[0..<BC_HEAD+43*3+65]);
+    for k:0..<9 {#assert bc_get32(x.bytes[..],2+4*k)==cast(int)m[k];}
+    #assert bc_get32(x.bytes[..],BC_HEAD+35)==4 && bc_get32(x.bytes[..],BC_HEAD+39)==BC_LOW && cast(int)x.bytes[BC_HEAD+1+15]==128;
+    #assert bc_get32(x.bytes[..],BC_HEAD+33)==4096+(4<<16) && x.bytes[BC_HEAD+43]==0;
+    got:[73]u32;d:=bc_decode(2,x.bytes[0..<x.f.bytes],got[..]);
+    #assert d.refusal==BcRefusal.none && d.codec==BcCodec.planes && d.words==73;
+    for k:0..<73 {#assert got[k]==m[k];}
+    // Into buffers full of old bytes, the same frame and the same words.
+    old:BcxFrame;for i:0..<BCX_FRAME {old.bytes[i]=0xa5;}work:[2*64+8]u8;
+    old.f=bc_encode(BcCodec.planes,m[..],old.bytes[..],work[..]);#assert old.f.bytes==x.f.bytes;
+    for i:0..<x.f.bytes {#assert old.bytes[i]==x.bytes[i];}
+    for k:0..<73 {got[k]=0xffffffff;}
+    #assert bc_decode(2,x.bytes[0..<x.f.bytes],got[..]).refusal==BcRefusal.none;
+    for k:0..<73 {#assert got[k]==m[k];}
+}
+#test "delta: rows that repeat shrink to one symbol" {
+    // Eight equal rows of 64 random words: XOR-ed with the row above, all
+    // but the first row are zeros.
+    m:=bcx_message(8,64);g:=5;for k:0..<64 {g=bcx_next(g);for r:0..<8 {m[9+64*r+k]=cast(u32)g;}}
+    a:=bcx_frame(BcCodec.planes,m[0..<521]);b:=bcx_frame(BcCodec.delta,m[0..<521]);
+    #assert b.f.codec==BcCodec.delta && b.f.bytes<a.f.bytes;
+    got:[521]u32;d:=bc_decode(4,b.bytes[0..<b.f.bytes],got[..]);
+    #assert d.refusal==BcRefusal.none && d.codec==BcCodec.delta && d.words==521;
+    for k:0..<521 {#assert got[k]==m[k];}
+    // A receiver that accepts only planes refuses it.
+    #assert bc_decode(2,b.bytes[0..<b.f.bytes],got[..]).refusal==BcRefusal.declined;
+}
+#test "a plane whose coded size equals its plain size is stored as it is" {
+    // Found by search: coded and plain both take 1 + n bytes.
+    n:=BCX_TIE_WIDTH;m:=bcx_random_message(BCX_TIE_SEED,1,n);out:[2048]u8;work:[2048]u8;
+    t:=bc_table(m[9..<9+n],n,false,BCX_TIE_PLANE);w:=bc_stream(m[9..<9+n],n,false,BCX_TIE_PLANE,t.freq[..],work[..]);
+    #assert 1+32+2*t.k+4+2048-w==1+n;
+    #assert bc_plane(m[9..<9+n],n,false,BCX_TIE_PLANE,out[..],0,work[..])==1+n && out[0]==0;
+}
+#test "reads past the end give 0" {
+    // A plain plane of 4 values cut after 2: the values read 5, 6, 0, 0.
+    pl:=[3]u8.[0,5,6];v:[4]u32;r:=bc_unplane(pl[..],0,3,v[..]);
+    #assert r.refusal==BcRefusal.none && r.at==5 && v[0]==5 && v[1]==6 && v[2]==0 && v[3]==0;
+    #assert bc_byte(pl[..],2)==6 && bc_byte(pl[..],3)==0 && bc_get32(pl[..],1)==5+(6<<8);
+}
+#test "negotiation: a common codec, or raw" {
+    #assert bc_choose(7,BcCodec.delta)==BcCodec.delta && bc_choose(3,BcCodec.delta)==BcCodec.raw;
+    #assert bc_choose(2,BcCodec.planes)==BcCodec.planes && bc_choose(5,BcCodec.planes)==BcCodec.raw && bc_choose(0,BcCodec.raw)==BcCodec.raw;
+    // Raw is always accepted, even by a receiver that lists nothing.
+    m:=bcx_message(1,3);x:=bcx_frame(BcCodec.raw,m[0..<12]);got:[12]u32;
+    #assert x.f.bytes==BC_HEAD+12+BC_TAIL && bc_decode(0,x.bytes[0..<x.f.bytes],got[..]).refusal==BcRefusal.none;
+    #assert bc_codec_name(BcCodec.delta)=="delta" && bc_refusal_name(BcRefusal.stream)=="stream";
+}
+#forall "random words round-trip exactly through every codec" seed:0..<60 #steps 400000000 {
+    rows:=1+seed%3;width:=1+(seed*7)%40;n:=rows*width;m:=bcx_random_message(seed,rows,width);
+    for c:0..<3 {
+        x:=bcx_frame(cast(BcCodec)c,m[0..<9+n]);
+        #assert x.f.bytes>0 && x.f.bytes<=bc_bound(n);
+        got:[200]u32;d:=bc_decode(7,x.bytes[0..<x.f.bytes],got[..]);
+        #assert d.refusal==BcRefusal.none && d.words==9+n;
+        for k:0..<d.words {#assert got[k]==m[k];}
+    }
+}
+#forall "Ministral's layer-0 boundary rows round-trip exactly and shrink" rows:1..<4, codec:1..<3 #steps 400000000 {
+    m:=bcx_real_message(rows);n:=rows*BCX_REAL_WIDTH;x:=bcx_frame(cast(BcCodec)codec,m[0..<9+n]);
+    #assert x.f.codec==cast(BcCodec)codec && x.f.bytes<BC_HEAD+4*n+BC_TAIL;
+    got:[BCX_MAX]u32;d:=bc_decode(7,x.bytes[0..<x.f.bytes],got[..]);
+    #assert d.refusal==BcRefusal.none && d.words==9+n;
+    for k:0..<d.words {#assert got[k]==m[k];}
+}
+#test "the sender refuses a message it cannot frame" {
+    m:=bcx_message(2,3);out:[100]u8;work:[100]u8;
+    #assert bc_encode(BcCodec.planes,m[0..<15],out[0..<bc_bound(6)],work[0..<bc_work(6)]).bytes>0;
+    #assert bc_bound(6)==BC_HEAD+4*6+4+BC_TAIL && bc_work(6)==2*6+8;
+    #assert bc_encode(BcCodec.planes,m[0..<15],out[0..<bc_bound(6)-1],work[..]).bytes==0;
+    #assert bc_encode(BcCodec.planes,m[0..<15],out[..],work[0..<bc_work(6)-1]).bytes==0;
+    #assert bc_encode(BcCodec.planes,m[0..<8],out[..],work[..]).bytes==0;
+    #assert bc_encode(BcCodec.planes,m[0..<5],out[..],work[..]).bytes==0 && bc_encode(BcCodec.planes,m[0..<9],out[..],work[..]).bytes==0;
+    one:=bcx_message(1,1);#assert bc_encode(BcCodec.planes,one[0..<10],out[..],work[..]).bytes==BC_HEAD+4+BC_TAIL;
+    #assert bc_encode(BcCodec.planes,m[0..<14],out[..],work[..]).bytes==0;
+    #assert bc_encode(BcCodec.planes,m[0..<16],out[..],work[..]).bytes==0;
+    big:[16]u32;#assert bc_encode(BcCodec.planes,big[..],out[..],work[..]).bytes==0;
+    for g:[6][2]int.[[2]int.[0,3],[2]int.[65,1],[2]int.[1,0],[2]int.[1,8193],[2]int.[64,1],[2]int.[1,8192]] {
+        #assert bc_geometry(g[0],g[1])==(g[0]>=1 && g[0]<=64 && g[1]>=1 && g[1]<=8192);
+    }
+}
+#test "the receiver refuses damaged, cut and foreign frames, each with its reason" {
+    m:=bcx_ramp();x:=bcx_frame(BcCodec.planes,m[..]);f:=x.bytes;n:=x.f.bytes;got:[73]u32;
+    #assert bc_decode(7,f[0..<n],got[..]).refusal==BcRefusal.none;
+    #assert bc_decode(7,f[0..<BC_HEAD+BC_TAIL-1],got[..]).refusal==BcRefusal.partial;
+    // The shortest whole frame, 46 bytes, is read: a raw frame with no payload.
+    e:=f;e[1]=0;bc_put32(e[..],38,0);bc_put32(e[..],BC_HEAD,bc_checksum(e[0..<BC_HEAD]));
+    #assert bc_decode(7,e[0..<BC_HEAD+BC_TAIL],got[..]).refusal==BcRefusal.size;
+    c:=f;c[0]=2;#assert bc_decode(7,c[0..<n],got[..]).refusal==BcRefusal.version;
+    c=f;c[1]=3;#assert bc_decode(7,c[0..<n],got[..]).refusal==BcRefusal.codec;
+    c=f;c[1]=2;#assert bc_decode(7,c[0..<n],got[..]).refusal==BcRefusal.checksum;
+    #assert bc_decode(5,f[0..<n],got[..]).refusal==BcRefusal.declined;
+    #assert bc_decode(7,f[0..<n-1],got[..]).refusal==BcRefusal.truncated;
+    #assert bc_decode(7,f[0..<n+1],got[..]).refusal==BcRefusal.excess;
+    c=f;c[BC_HEAD+50]^=1;#assert bc_decode(7,c[0..<n],got[..]).refusal==BcRefusal.checksum;
+    c=f;c[n-1]^=128;#assert bc_decode(7,c[0..<n],got[..]).refusal==BcRefusal.checksum;
+    #assert bc_decode(7,f[0..<n],got[0..<72]).refusal==BcRefusal.room;
+    // Rows and width out of range, before anything else is read.
+    for g:[4][2]int.[[2]int.[0,1],[2]int.[65,1],[2]int.[1,0],[2]int.[1,8193]] {
+        c=f;bc_put32(c[..],22,g[0]);bc_put32(c[..],26,g[1]);#assert bc_decode(7,c[0..<n],got[..]).refusal==BcRefusal.geometry;
+    }
+}
+#test "a frame whose checksum is right but whose payload is not" {
+    m:=bcx_ramp();x:=bcx_frame(BcCodec.planes,m[..]);got:[73]u32;P:=x.f.bytes-BC_HEAD-BC_TAIL;
+    // Plane 0 at byte 42 of the frame: mode, map, frequency at +33, length at +35, state at +39.
+    #assert bcx_reseal(x,BC_HEAD,2,got[..])==BcRefusal.plane;
+    #assert bcx_reseal(x,BC_HEAD+34,0x0f,got[..])==BcRefusal.table;        // frequency 0x0f00: 3840, not 4096
+    #assert bcx_reseal(x,BC_HEAD+17,0x81,got[..])==BcRefusal.table;        // two more symbols, frequencies read from the length
+    #assert bcx_reseal(x,BC_HEAD+39,1,got[..])==BcRefusal.stream;          // state 2^23 + 1
+    #assert bcx_reseal(x,BC_HEAD+41,0x7f,got[..])==BcRefusal.stream;       // a state below 2^23
+    #assert bcx_reseal(x,BC_HEAD+35,5,got[..])==BcRefusal.stream;          // a 5-byte stream: one byte left over
+    #assert bcx_reseal(x,BC_HEAD+35,3,got[..])==BcRefusal.stream;          // a 3-byte stream
+    #assert bcx_reseal(x,BC_HEAD+38,1,got[..])==BcRefusal.size;            // a stream longer than the payload
+    #assert bcx_reseal(x,BC_HEAD+P-1,0x81,got[..])==BcRefusal.stream;      // plane 3's state, the payload's last byte
+    #assert bcx_cut(x,1,got[..])==BcRefusal.size;                          // the payload one byte short, resealed
+    #assert bcx_cut(x,-1,got[..])==BcRefusal.size;                         // one byte too many
+    // A raw frame whose payload is not 4 bytes a value.
+    r:=bcx_frame(BcCodec.raw,m[..]);#assert bcx_cut(r,1,got[..])==BcRefusal.size && bcx_cut(r,-1,got[..])==BcRefusal.size;
+    // A stream whose length says one byte fewer than it holds.
+    s:=bcx_message(1,512);for k:0..<512 {s[9+k]=cast(u32)((k*37)%5);}
+    y:=bcx_frame(BcCodec.planes,s[0..<521]);Q:=y.f.bytes-BC_HEAD-BC_TAIL;L:=y.f.plane[3];at:=BC_HEAD+Q-L+43;
+    yg:[521]u32;#assert L<513 && bcx_reseal(y,at,cast(int)y.bytes[at]-1,yg[..])==BcRefusal.stream;
+}
+
+// ---- the codec -----------------------------------------------------------------
+
+// book:begin bytes
+// Bytes, little-endian. A read past the end gives 0, so a damaged frame can
+// make the decoder read garbage but never outside its payload.
+bc_byte :: (b:[]u8,at:int)->int {if at<b.count {return cast(int)b[at];}return 0;}
+bc_get32 :: (b:[]u8,at:int)->int {return bc_byte(b,at)|(bc_byte(b,at+1)<<8)|(bc_byte(b,at+2)<<16)|(bc_byte(b,at+3)<<24);}
+bc_put32 :: (b:[]u8,at:int,v:int) {for k:0..<4 {b[at+k]=cast(u8)((v>>(8*k))&255);}}
+// FNV-1a over the frame's bytes.
+bc_checksum :: (b:[]u8)->int {
+    h:=2166136261;
+    for v:b {h=((h^cast(int)v)*16777619)&4294967295;}
+    return h;
+}
+bc_geometry :: (rows:int,width:int)->bool {return rows>=1 && rows<=BC_ROWS_MAX && width>=1 && width<=BC_WIDTH_MAX;}
+// The most bytes a frame of n values takes, and the encoder's scratch.
+bc_bound :: (n:int)->int #export_c {return BC_HEAD+4*n+4+BC_TAIL;}
+bc_work :: (n:int)->int #export_c {return 2*n+8;}
+// book:end bytes
+
+// book:begin planes
+// Plane 0 is the exponent, plane 1 the sign and the top 7 mantissa bits,
+// planes 2 and 3 the other two mantissa bytes. bc_place puts a symbol back.
+bc_symbol :: (w:int,p:int)->int {
+    if p==0 {return (w>>23)&255;}
+    if p==1 {return ((w>>24)&128)|((w>>16)&127);}
+    return (w>>(24-8*p))&255;
+}
+bc_place :: (s:int,p:int)->int {
+    if p==0 {return s<<23;}
+    if p==1 {return ((s&128)<<24)|((s&127)<<16);}
+    return s<<(24-8*p);
+}
+// Value i of the payload, XOR-ed with the one a row above for delta.
+bc_value :: (pay:[]u32,i:int,width:int,delta:bool)->int {
+    w:=cast(int)pay[i];
+    if delta && i>=width {w=w^cast(int)pay[i-width];}
+    return w;
+}
+// book:end planes
+
+// book:begin encode
+// The frequency table of plane p: every present symbol gets 1 slot, then
+// its share of the other 4,096 - k (k symbols present), rounded down; the
+// slots left over go to the most frequent symbol, the first on a tie.
+BcTable :: struct {k:int;freq:[256]int;}
+bc_table :: (pay:[]u32,width:int,delta:bool,p:int)->BcTable {
+    n:=pay.count;count:[256]int;t:BcTable;
+    for i:0..<n {count[bc_symbol(bc_value(pay,i,width,delta),p)]+=1;}
+    for c:count {if c>0 {t.k+=1;}}
+    sum:=0;top:=0;
+    for s:0..<256 {
+        if count[s]>0 {t.freq[s]=1+count[s]*(BC_SCALE-t.k)/n;sum+=t.freq[s];}
+        if count[s]>count[top] {top=s;}
+    }
+    t.freq[top]+=BC_SCALE-sum;
+    return t;
+}
+// rANS over plane p, last value first. The state x starts at 2^23; before
+// a symbol of frequency f it gives up low bytes while x >> 19 >= f, then
+// becomes (x / f) * 4096 + x % f + start. The bytes go to the end of work,
+// backwards, and the final state goes in front of them, so the decoder
+// reads forwards. Returns where the stream starts in work.
+bc_stream :: (pay:[]u32,width:int,delta:bool,p:int,freq:[]int,work:[]u8)->int {
+    n:=pay.count;start:[256]int;
+    for s:1..<256 {start[s]=start[s-1]+freq[s-1];}
+    x:=BC_LOW;w:=work.count;
+    for j:0..<n {
+        s:=bc_symbol(bc_value(pay,n-1-j,width,delta),p);f:=freq[s];
+        while x>>BC_EMIT>=f {w-=1;work[w]=cast(u8)(x&255);x=x>>8;}
+        x=(x/f)*BC_SCALE+x%f+start[s];
+    }
+    w-=4;bc_put32(work,w,x);
+    return w;
+}
+// Write plane p of the payload at out[at..]; return the bytes it took.
+// Coded: mode 1, a 32-byte map of the symbols present, each one's
+// frequency in 2 bytes, the stream's length in 4, then the stream. Plain:
+// mode 0 and one byte a value. Coded only when that is smaller.
+bc_plane :: (pay:[]u32,width:int,delta:bool,p:int,out:[]u8,at:int,work:[]u8)->int {
+    n:=pay.count;t:=bc_table(pay,width,delta,p);w:=bc_stream(pay,width,delta,p,t.freq[..],work);
+    stream:=work.count-w;coded:=1+32+2*t.k+4+stream;
+    if coded>=1+n {
+        out[at]=0;
+        for i:0..<n {out[at+1+i]=cast(u8)bc_symbol(bc_value(pay,i,width,delta),p);}
+        return 1+n;
+    }
+    out[at]=1;e:=at+33;
+    for b:0..<32 {
+        v:=0;for j:0..<8 {if t.freq[8*b+j]>0 {v|=1<<j;}}
+        out[at+1+b]=cast(u8)v;
+    }
+    for s:0..<256 {
+        if t.freq[s]>0 {out[e]=cast(u8)(t.freq[s]&255);out[e+1]=cast(u8)(t.freq[s]>>8);e+=2;}
+    }
+    bc_put32(out,e,stream);
+    for b:0..<stream {out[e+4+b]=work[w+b];}
+    return coded;
+}
+// Frame chapter 186's message msg (9 header words, then rows x width
+// values) with `codec`. A coded frame whose planes all went plain is sent
+// raw instead.
+bc_encode :: (codec:BcCodec,msg:[]u32,out:[]u8,work:[]u8)->BcFrame #export_c {
+    f:BcFrame;n:=msg.count-BC_WORDS;
+    if n<1 || out.count<bc_bound(n) || work.count<bc_work(n) {return f;}
+    rows:=cast(int)msg[5];width:=cast(int)msg[6];
+    if !bc_geometry(rows,width) || rows*width!=n {return f;}
+    pay:=msg[BC_WORDS..<BC_WORDS+n];at:=BC_HEAD;coded:=false;f.codec=codec;
+    if codec!=BcCodec.raw {
+        for p:0..<4 {b:=bc_plane(pay,width,codec==BcCodec.delta,p,out,at,work);coded=coded || out[at]==1;f.plane[p]=b;at+=b;}
+    }
+    if !coded {
+        f.codec=BcCodec.raw;at=BC_HEAD;
+        for p:0..<4 {f.plane[p]=0;}
+        for i:0..<n {bc_put32(out,at,cast(int)pay[i]);at+=4;}
+    }
+    out[0]=BC_VERSION;out[1]=cast(u8)f.codec;bc_put32(out,38,at-BC_HEAD);
+    for k:0..<BC_WORDS {bc_put32(out,2+4*k,cast(int)msg[k]);}
+    bc_put32(out,at,bc_checksum(out[0..<at]));
+    f.bytes=at+BC_TAIL;
+    return f;
+}
+// The sender's choice: the codec it wants if the receiver accepts it (bit
+// c of accept), raw otherwise. Every receiver accepts raw.
+bc_choose :: (accept:int,want:BcCodec)->BcCodec #export_c {
+    if (accept>>cast(int)want)&1==1 {return want;}
+    return BcCodec.raw;
+}
+// book:end encode
+
+// book:begin decode
+BcAt :: struct {refusal:BcRefusal;at:int;}
+// Read plane p from pl[at0..] into out (OR-ed in); return where it ended.
+bc_unplane :: (pl:[]u8,at0:int,p:int,out:[]u32)->BcAt {
+    n:=out.count;at:=at0+1;mode:=bc_byte(pl,at0);
+    if mode==0 {
+        for i:0..<n {out[i]|=cast(u32)bc_place(bc_byte(pl,at+i),p);}
+        return BcAt.{at=at+n};
+    }
+    if mode!=1 {return BcAt.{refusal=BcRefusal.plane};}
+    // The table: the present symbols' frequencies, summing to 4,096.
+    freq:[256]int;start:[256]int;e:=at+32;sum:=0;
+    for s:0..<256 {
+        if (bc_byte(pl,at+s/8)>>(s%8))&1==1 {freq[s]=bc_byte(pl,e)|(bc_byte(pl,e+1)<<8);e+=2;sum+=freq[s];}
+    }
+    if sum!=BC_SCALE {return BcAt.{refusal=BcRefusal.table};}
+    // Each slot names its symbol; the slots symbols 1..255 do not claim
+    // are symbol 0's.
+    slot:[4096]u8;
+    for s:1..<256 {start[s]=start[s-1]+freq[s-1];for j:start[s]..<start[s]+freq[s] {slot[j]=cast(u8)s;}}
+    // The stream: a state of at least 2^23, then the bytes it reads. It
+    // must end in the state the encoder started from, with every byte read.
+    S:=bc_get32(pl,e);at=e+4;
+    if at+S>pl.count {return BcAt.{refusal=BcRefusal.size};}
+    st:=pl[at..<at+S];x:=bc_get32(st,0);r:=4;
+    if x<BC_LOW {return BcAt.{refusal=BcRefusal.stream};}
+    for i:0..<n {
+        j:=x&(BC_SCALE-1);s:=cast(int)slot[j];x=freq[s]*(x>>12)+j-start[s];
+        while x<BC_LOW {x=(x<<8)|bc_byte(st,r);r+=1;}
+        out[i]|=cast(u32)bc_place(s,p);
+    }
+    if x!=BC_LOW || r!=S {return BcAt.{refusal=BcRefusal.stream};}
+    return BcAt.{at=at+S};
+}
+// The receiver's checks, in order: a whole header, the version, a known
+// codec it accepts (raw always), rows and width in range, exactly the
+// payload the frame announces, the checksum, room, then the payload
+// itself. out receives chapter 186's message; on a refusal its contents
+// are not defined.
+bc_decode :: (accept:int,frame:[]u8,out:[]u32)->BcDecoded #export_c {
+    d:BcDecoded;
+    if frame.count<BC_HEAD+BC_TAIL {d.refusal=BcRefusal.partial;return d;}
+    if frame[0]!=BC_VERSION {d.refusal=BcRefusal.version;return d;}
+    c:=cast(int)frame[1];
+    if c>=BC_CODECS {d.refusal=BcRefusal.codec;return d;}
+    d.codec=cast(BcCodec)c;
+    if bc_choose(accept,d.codec)!=d.codec {d.refusal=BcRefusal.declined;return d;}
+    rows:=bc_get32(frame,22);width:=bc_get32(frame,26);
+    if !bc_geometry(rows,width) {d.refusal=BcRefusal.geometry;return d;}
+    P:=bc_get32(frame,38);end:=BC_HEAD+P;
+    if frame.count<end+BC_TAIL {d.refusal=BcRefusal.truncated;return d;}
+    if frame.count>end+BC_TAIL {d.refusal=BcRefusal.excess;return d;}
+    if bc_get32(frame,end)!=bc_checksum(frame[0..<end]) {d.refusal=BcRefusal.checksum;return d;}
+    n:=rows*width;
+    if out.count<BC_WORDS+n {d.refusal=BcRefusal.room;return d;}
+    pay:=out[BC_WORDS..<BC_WORDS+n];pl:=frame[BC_HEAD..<end];
+    if c==0 {
+        if P!=4*n {d.refusal=BcRefusal.size;return d;}
+        for i:0..<n {pay[i]=cast(u32)bc_get32(pl,4*i);}
+    } else {
+        for i:0..<n {pay[i]=0;}
+        at:=0;
+        for p:0..<4 {r:=bc_unplane(pl,at,p,pay);if r.refusal!=BcRefusal.none {d.refusal=r.refusal;return d;}at=r.at;}
+        if at!=P {d.refusal=BcRefusal.size;return d;}
+        if c==2 {for i:width..<n {pay[i]=pay[i]^pay[i-width];}}
+    }
+    for k:0..<BC_WORDS {out[k]=cast(u32)bc_get32(frame,2+4*k);}
+    d.words=BC_WORDS+n;
+    return d;
+}
+// book:end decode
+
+bc_codec_name :: (c:BcCodec)->string {
+    names:=[3]string.["raw","planes","delta"];
+    return names[cast(int)c];
+}
+bc_refusal_name :: (r:BcRefusal)->string {
+    names:=[14]string.["none","partial","version","codec","declined","geometry","truncated","excess","checksum","room","size","plane","table","stream"];
+    return names[cast(int)r];
+}

@@ -1,0 +1,38 @@
+// Chapter 193: frames that are wrong in one way each, every one refused
+// with its reason, and a frame that decodes but carries another model's
+// message, which chapter 186's receiver refuses.
+#import "Basic";
+#load "../lib/stage-plan.coax";
+#load "../lib/boundary-codec.coax";
+
+say :: (what:string,r:BcRefusal) {print("%: %\n",what,bc_refusal_name(r));}
+
+// book:begin refuse
+main :: () {
+    // 64 values 1.0 + k/128, framed by planes: 240 bytes.
+    m:=bcx_ramp();x:=bcx_frame(BcCodec.planes,m[..]);f:=x.bytes;n:=x.f.bytes;got:[73]u32;
+    say("the frame as sent",bc_decode(7,f[0..<n],got[..]).refusal);
+    say("the first 45 bytes",bc_decode(7,f[0..<45],got[..]).refusal);
+    c:=f;c[0]=2;say("version 2",bc_decode(7,c[0..<n],got[..]).refusal);
+    c=f;c[1]=3;say("codec 3",bc_decode(7,c[0..<n],got[..]).refusal);
+    say("a receiver that accepts raw and delta",bc_decode(5,f[0..<n],got[..]).refusal);
+    c=f;bc_put32(c[..],22,65);say("65 rows",bc_decode(7,c[0..<n],got[..]).refusal);
+    say("the last byte lost",bc_decode(7,f[0..<n-1],got[..]).refusal);
+    say("one byte too many",bc_decode(7,f[0..<n+1],got[..]).refusal);
+    c=f;c[BC_HEAD+50]^=1;say("one bit flipped in the payload",bc_decode(7,c[0..<n],got[..]).refusal);
+    say("room for 72 words",bc_decode(7,f[0..<n],got[0..<72]).refusal);
+    // Sealed again after the change, so only the payload's own checks see it.
+    say("resealed, plane 0's mode 2",bcx_reseal(x,BC_HEAD,2,got[..]));
+    say("resealed, a frequency of 3840",bcx_reseal(x,BC_HEAD+34,0x0f,got[..]));
+    say("resealed, a state of 2^23 + 1",bcx_reseal(x,BC_HEAD+39,1,got[..]));
+    say("resealed, a 5-byte stream",bcx_reseal(x,BC_HEAD+35,5,got[..]));
+    say("resealed, the payload a byte short",bcx_cut(x,1,got[..]));
+    // A whole frame around a message for another model: the codec passes
+    // it, and chapter 186's receiver refuses it.
+    rows:[64]f32;for k:0..<64 {rows[k]=f32_from_bits(m[9+k]);}msg:[73]u32;
+    w:=stg_pack(cast(u64)0x0186,1,0,64,rows[..],msg[..]);out:[BCX_FRAME]u8;scratch:[136]u8;
+    g:=bc_encode(BcCodec.planes,msg[0..<w],out[..],scratch[..]);d:=bc_decode(7,out[0..<g.bytes],got[..]);back:[64]f32;
+    s:=stg_receive(StgExpect.{model=cast(u64)0x722430146632596c,layer=1,start=0,width=64},got[0..<d.words],back[..]);
+    print("another model's rows: codec %, boundary %\n",bc_refusal_name(d.refusal),stg_refusal_name(s.refusal));
+}
+// book:end refuse

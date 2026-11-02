@@ -1,0 +1,16 @@
+the frame as sent: none
+the first 45 bytes: partial
+version 2: version
+codec 3: codec
+a receiver that accepts raw and delta: declined
+65 rows: geometry
+the last byte lost: truncated
+one byte too many: excess
+one bit flipped in the payload: checksum
+room for 72 words: room
+resealed, plane 0's mode 2: plane
+resealed, a frequency of 3840: table
+resealed, a state of 2^23 + 1: stream
+resealed, a 5-byte stream: stream
+resealed, the payload a byte short: size
+another model's rows: codec none, boundary model

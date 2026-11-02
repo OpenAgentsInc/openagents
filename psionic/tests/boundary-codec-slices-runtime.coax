@@ -1,0 +1,31 @@
+// Chapter 193's original-weight slice entry: Ministral 3 3B's embedding and
+// first two layers (chapter 81's ms_embed and ms_layer) give the residual
+// rows that cross a stage boundary after layer 0 and after layer 1; they are
+// packed as chapter 186's messages (stg_pack), framed by each codec
+// (boundary-codec.coax), unframed and received again (stg_receive). C maps
+// the file, moves bytes and keeps the clock; all arithmetic and every check
+// is Coax.
+#load "../lib/stage-run.coax";
+#load "../lib/boundary-codec.coax";
+#load "../lib/model-io/access.coax";
+
+// hidden holds three blocks of tokens x width: the embedding, after layer
+// 0, after layer 1.
+bc_slice_rows :: (s:MsShape,embed:[]u8,layers:[]MsLayer,tokens:[]int,hidden:[]f32,work:[]f32)->MsResult #export_c {
+    n:=tokens.count*s.width;
+    if layers.count!=2 || hidden.count<3*n {return MsResult.{status=MsStatus.capacity};}
+    a:=hidden[0..<n];b:=hidden[n..<2*n];c:=hidden[2*n..<3*n];
+    r:=ms_embed(s,embed,tokens,a);if r.status!=MsStatus.ok {return r;}
+    r=ms_layer(s,layers[0],a,tokens.count,b,work);if r.status!=MsStatus.ok {return r;}
+    r=ms_layer(s,layers[1],b,tokens.count,c,work);if r.status!=MsStatus.ok {r.cause=1;}
+    return r;
+}
+bc_slice_floats :: (s:MsShape,tokens:int)->int #export_c {return ms_layer_work(s,tokens);}
+// Chapter 186's message for the stage whose first layer is `layer`, at position `start`.
+bc_slice_pack :: (layer:int,start:int,width:int,rows:[]f32,out:[]u32)->int #export_c {return stg_pack(STG_MINISTRAL_DIGEST,layer,start,width,rows,out);}
+bc_slice_receive :: (layer:int,start:int,width:int,wire:[]u32,out:[]f32)->StgReceived #export_c {
+    return stg_receive(StgExpect.{model=STG_MINISTRAL_DIGEST,layer=layer,start=start,width=width},wire,out);
+}
+// Chapter 182's link model (psionic/lib/serve-split.coax, dg_transfer_ns):
+// the latency, then the bits at gbit bits a nanosecond, rounded up.
+bc_slice_link_ns :: (gbit:int,lat_ns:int,bytes:int)->int #export_c {return lat_ns+(bytes*8+gbit-1)/gbit;}

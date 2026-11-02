@@ -1,0 +1,44 @@
+// Chapter 193: the hand-worked plane, then three real rows of Ministral 3
+// 3B's layer-0 boundary packed as chapter 186's message, framed by every
+// codec, unframed, received and compared bit for bit.
+#import "Basic";
+#load "../lib/stage-plan.coax";
+#load "../lib/boundary-codec.coax";
+
+// The first 8 bytes of the pinned checkpoint's SHA-256 (chapter 81).
+MINISTRAL :: cast(u64)0x722430146632596c;
+
+// book:begin hand-example
+main :: () {
+    // The exponents of 1.0, -2.0, 0.5 and 1.0: 127, 128, 126, 127.
+    m:=bcx_message(1,4);m[9]=0x3f800000;m[10]=0xc0000000;m[11]=0x3f000000;m[12]=0x3f800000;
+    t:=bc_table(m[9..<13],4,false,0);
+    print("exponent plane: % symbols, frequencies 126: %, 127: %, 128: %\n",t.k,t.freq[126],t.freq[127],t.freq[128]);
+    work:[16]u8;w:=bc_stream(m[9..<13],4,false,0,t.freq[..],work[..]);
+    print("rANS: % bytes, final state %\n",16-w,bc_get32(work[..],w));
+    x:=bcx_frame(BcCodec.planes,m[0..<13]);
+    print("frame: % bytes, codec %; chapter 186's message: % bytes\n",x.f.bytes,bc_codec_name(x.f.codec),4*13);
+// book:end hand-example
+
+// book:begin real-example
+    // Rows 0, 1 and 2 after layer 0, the first 256 values of each.
+    rows:[768]f32;for i:0..<768 {rows[i]=f32_from_bits(BCX_REAL[i]);}
+    want:=StgExpect.{model=MINISTRAL,layer=1,start=0,width=256};
+    for r:1..<4 {
+        msg:[9+768]u32;n:=stg_pack(MINISTRAL,1,0,256,rows[0..<256*r],msg[..]);
+        print("% rows: chapter 186's message % bytes\n",r,4*n);
+        for c:0..<3 {
+            out:[BCX_FRAME]u8;scratch:[2*768+8]u8;
+            f:=bc_encode(cast(BcCodec)c,msg[0..<n],out[..],scratch[..]);
+            got:[9+768]u32;d:=bc_decode(7,out[0..<f.bytes],got[..]);
+            back:[768]f32;s:=stg_receive(want,got[0..<d.words],back[..]);
+            same:=0;for i:0..<256*r {if f32_bits(back[i])==f32_bits(rows[i]) {same+=1;}}
+            print("  %: % bytes (% per mille of raw), planes %/%/%/%; %, %, % of % values equal bit for bit\n",
+                bc_codec_name(f.codec),f.bytes,1000*f.bytes/(4*n),f.plane[0],f.plane[1],f.plane[2],f.plane[3],
+                bc_refusal_name(d.refusal),stg_refusal_name(s.refusal),same,256*r);
+        }
+    }
+    print("a receiver that accepts raw and planes, a sender that wants delta: it sends %\n",bc_codec_name(bc_choose(3,BcCodec.delta)));
+    print("a receiver that accepts all three, a sender that wants planes: it sends %\n",bc_codec_name(bc_choose(7,BcCodec.planes)));
+}
+// book:end real-example

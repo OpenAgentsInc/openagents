@@ -1,0 +1,71 @@
+// Chapter 193's check helpers, loaded by psionic/lib/boundary-codec.coax
+// and owned by its checks: chapter 186 boundary messages built by hand, a
+// generator of awkward f32 words (NaN payloads, negative zero, subnormals,
+// infinities, repeated rows, BF16-like values), frames re-sealed after a
+// change, and three real rows of Ministral 3 3B's layer-0 boundary.
+#load "boundary-codec-real.coax";
+
+BCX_MAX :: 9+3*BCX_REAL_WIDTH;
+BCX_FRAME :: 42+4*3*BCX_REAL_WIDTH+4+4;
+BcxFrame :: struct {f:BcFrame;bytes:[BCX_FRAME]u8;}
+
+// Chapter 186's header for rows of `width` f32 values entering layer 1 of
+// the synthetic model (digest 0x0186), position 0; its checksum word is
+// left 0, since the codec carries the header as it is.
+bcx_message :: (rows:int,width:int)->[BCX_MAX]u32 {
+    m:[BCX_MAX]u32;head:=[9]u32.[1,0x0186,0,1,0,cast(u32)rows,cast(u32)width,1,0];
+    for k:0..<9 {m[k]=head[k];}
+    return m;
+}
+// One row of 64 values 1.0 + k/128.
+bcx_ramp :: ()->[73]u32 {
+    m:=bcx_message(1,64);r:[73]u32;
+    for k:0..<9 {r[k]=m[k];}
+    for k:0..<64 {r[9+k]=cast(u32)(0x3f800000+(k<<16));}
+    return r;
+}
+// A plane whose coded and plain sizes are equal, found by searching seeds.
+BCX_TIE_SEED :: 0;
+BCX_TIE_WIDTH :: 264;
+BCX_TIE_PLANE :: 0;
+bcx_next :: (x:int)->int {return (x*48271+11)%2147483647;}
+// Words of eight kinds: activation-like values, special values, any 32
+// bits, the value a row above, and BF16-like values with low bytes zero.
+BCX_SPECIAL :: [12]u32.[0x7fc00000,0x7fc12345,0xffffffff,0x7f800001,0x80000000,0x00000000,0x7f800000,0xff800000,0x00000001,0x807fffff,0x7f7fffff,0x00800000];
+bcx_random_message :: (seed:int,rows:int,width:int)->[BCX_MAX]u32 {
+    m:=bcx_message(rows,width);g:=bcx_next(seed*7919+1);
+    for i:0..<rows*width {
+        g=bcx_next(g);kind:=g%8;g=bcx_next(g);a:=g;g=bcx_next(g);b:=g;
+        w:=((a&1)<<31)|((120+b%11)<<23)|(a>>8);
+        if kind==4 {w=cast(int)BCX_SPECIAL[b%12];}
+        if kind==5 {w=((a&65535)<<16)|(b&65535);}
+        if kind==6 && i>=width {w=cast(int)m[9+i-width];}
+        if kind==7 {w=w&0xffff0000;}
+        m[9+i]=cast(u32)w;
+    }
+    return m;
+}
+bcx_real_message :: (rows:int)->[BCX_MAX]u32 {
+    m:=bcx_message(rows,BCX_REAL_WIDTH);
+    for i:0..<rows*BCX_REAL_WIDTH {m[9+i]=BCX_REAL[i];}
+    return m;
+}
+bcx_frame :: (codec:BcCodec,msg:[]u32)->BcxFrame {
+    x:BcxFrame;work:[2*3*BCX_REAL_WIDTH+8]u8;
+    x.f=bc_encode(codec,msg,x.bytes[..],work[..]);
+    return x;
+}
+// Set byte `at` of the frame to v, seal it again, and decode it.
+bcx_reseal :: (x:BcxFrame,at:int,v:int,got:[]u32)->BcRefusal {
+    c:=x.bytes;n:=x.f.bytes;c[at]=cast(u8)v;
+    bc_put32(c[..],n-4,bc_checksum(c[0..<n-4]));
+    return bc_decode(7,c[0..<n],got).refusal;
+}
+// Make the payload k bytes shorter (or -k longer, with zeros), announce
+// it, seal it again, and decode it.
+bcx_cut :: (x:BcxFrame,k:int,got:[]u32)->BcRefusal {
+    c:=x.bytes;P:=x.f.bytes-46-k;
+    for i:42+P..<46+P {c[i]=0;}
+    bc_put32(c[..],38,P);bc_put32(c[..],42+P,bc_checksum(c[0..<42+P]));
+    return bc_decode(7,c[0..<46+P],got).refusal;
+}
