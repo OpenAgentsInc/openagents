@@ -135,10 +135,10 @@ testing, the chapter names the chapter in Parts I–V that measures it.
 | [29. Aider](ch029-aider.md) — written | Repository maps, edit formats and a benchmark culture. |
 | [30. mini-SWE-agent](ch030-mini-swe-agent.md) — written | The smallest honest baseline: a linear loop and independent commands. |
 | [31. OpenHands Software Agent SDK](ch031-openhands-sdk.md) — written | An agent SDK with a clean split between fast tests and evaluation. |
-| [32. Hermes Agent](ch032-hermes-agent.md) — planned | Nous Research's agent runtime and its training-facing environments. |
-| [33. Toad](ch033-toad.md) — planned | A terminal host for agents over ACP, with an embedded shell. |
-| [34. Background Agents](ch034-background-agents.md) — planned | Durable remote sessions, prepared worktrees, a branch per task and pull-request delivery. |
-| [35. Flue and Agent OS](ch035-flue-and-agent-os.md) — planned | Programmable headless agents on Workers, and an in-process agent runtime with isolation. |
+| [32. Hermes Agent](ch032-hermes-agent.md) — written | Nous Research's agent runtime and its training-facing environments. |
+| [33. Toad](ch033-toad.md) — written | A terminal host for agents over ACP, with an embedded shell. |
+| [34. Background Agents](ch034-background-agents.md) — written | Durable remote sessions, prepared worktrees, a branch per task and pull-request delivery. |
+| [35. Flue and Agent OS](ch035-flue-and-agent-os.md) — written | Programmable headless agents on Workers, and an in-process agent runtime with isolation. |
 
 ## VIII. The terminal
 

@@ -76,10 +76,10 @@ names it.
 | [29. Aider](ch029-aider.md) | Written: Aider-AI/aider@5dc9490 |
 | [30. mini-SWE-agent](ch030-mini-swe-agent.md) | Written: SWE-agent/mini-swe-agent@04d809c |
 | [31. OpenHands Software Agent SDK](ch031-openhands-sdk.md) | Written: OpenHands/software-agent-sdk@9884945 |
-| [32. Hermes Agent](ch032-hermes-agent.md) | Planned |
-| [33. Toad](ch033-toad.md) | Planned |
-| [34. Background Agents](ch034-background-agents.md) | Planned |
-| [35. Flue and Agent OS](ch035-flue-and-agent-os.md) | Planned |
+| [32. Hermes Agent](ch032-hermes-agent.md) | Written: NousResearch/hermes-agent@4d26e0c |
+| [33. Toad](ch033-toad.md) | Written: batrachianai/toad@dd4f90e |
+| [34. Background Agents](ch034-background-agents.md) | Written: ColeMurray/background-agents@80426f4 |
+| [35. Flue and Agent OS](ch035-flue-and-agent-os.md) | Written: withastro/flue@deee93b, rivet-dev/agent-os@c746292 |
 | [36. A terminal UI](ch036-a-terminal-ui.md) | Planned |
 | [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) | Planned |
 
