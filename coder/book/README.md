@@ -28,8 +28,8 @@ built. The [plan](PLAN.md#the-cli-is-the-spine) lists them.
 
 ## Status
 
-Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 19 are
-partly implemented, 12 are written surveys, 5 are design drafts and 1 is
+Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 20 are
+partly implemented, 12 are written surveys, 4 are design drafts and 1 is
 planned; none is fully implemented yet. Chapters 1–8
 and 14–22 moved here from Part XXI of the Psionic book on 2026-11-01. Their
 code is still under `psionic/lib/harness/`, and the [registry](chapters.json)
@@ -59,7 +59,7 @@ names it.
 | [10. Drive Claude Code](ch010-drive-claude-code.md) | Partly implemented: Claude Code 2.1.316 on the person's login |
 | [11. Drive Codex](ch011-drive-codex.md) | Partly implemented: codex-cli 0.163.0 app-server |
 | [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) | Partly implemented: `--engine psionic` on a local Chat Completions server |
-| [13. Choose an engine](ch013-choose-an-engine.md) | Unimplemented: design draft |
+| [13. Choose an engine](ch013-choose-an-engine.md) | Partly implemented: mammoth-1 routes 22/22 held out |
 | [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) | Unimplemented: design draft |
 | [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) | Unimplemented: design draft |
 | [16. Speak the protocols](ch016-speak-the-protocols.md) | Partly implemented: cpu-mcp-2025-06-18-subset-v1, bounded CPU |

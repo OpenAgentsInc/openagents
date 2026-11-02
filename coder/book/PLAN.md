@@ -84,7 +84,7 @@ grow together:
 | [10. Drive Claude Code](ch010-drive-claude-code.md) — partly implemented | The `claude` CLI's stream-json protocol as a Coax state machine: queries, control frames, in-process MCP servers and approvals, checked against recorded fixtures. |
 | [11. Drive Codex](ch011-drive-codex.md) — partly implemented | `codex app-server` over JSON-RPC as a pull-based client: requests, server requests, approvals and recorded sessions replayed byte for byte. |
 | [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) — partly implemented | Microcoder's loop on a model Psionic serves on this machine or a Pylon, with the prefix-cache and constrained-tool gains measured against a hosted model. |
-| [13. Choose an engine](ch013-choose-an-engine.md) — design draft | A System One decision picks the engine, model and effort for each task from the request and the machine, with a labelled set split into tuning and held-out halves. |
+| [13. Choose an engine](ch013-choose-an-engine.md) — partly implemented | A System One decision picks the engine, model and effort for each task from the request and the machine, with a labelled set split into tuning and held-out halves. |
 
 ## III. Many tasks
 

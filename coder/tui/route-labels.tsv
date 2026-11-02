@@ -1,0 +1,45 @@
+split	label	message
+train	claude	refactor the session store into its own module and update every caller
+train	claude	split lab.coax into routing and transcript files
+train	claude	find out why the websocket reconnect loops forever and fix it
+train	claude	design a caching layer for the gateway plan and implement it
+train	claude	review the changes in this branch for bugs
+train	claude	migrate the parser from regexes to a hand-written tokenizer
+train	claude	explain how the build pipeline in this repo works, end to end
+train	claude	add pagination to the projects API, server and client
+train	codex	fix the typo in README.md
+train	codex	run the tests and tell me what fails
+train	codex	bump the version in package.json to 1.2.0
+train	codex	rename the variable tmp to buffer in main.c
+train	codex	show me the git log for the last 5 commits
+train	codex	delete the unused import at the top of app.ts
+train	codex	make the build script executable
+train	codex	change the default port from 8080 to 9090 in config.toml
+train	micro	hi
+train	micro	what's the capital of Japan?
+train	micro	tell me a joke
+train	micro	how are you today?
+train	micro	what does HTTP 418 mean?
+train	micro	thanks!
+held	claude	refactor the payment code so each provider is its own class
+held	claude	restructure the desktop app's settings into separate panes and files
+held	claude	track down the memory leak in the renderer
+held	claude	rewrite the auth flow to use sessions instead of JWTs across the app
+held	claude	audit this repo for SQL injection and fix what you find
+held	claude	extract the shared validation logic from the three handlers into one helper
+held	claude	implement offline mode for the mobile client
+held	claude	refactor the CLI argument parsing into a reusable library
+held	codex	fix the missing semicolon on line 40 of index.js
+held	codex	run cargo fmt
+held	codex	list the files in this folder
+held	codex	add a .gitignore entry for node_modules
+held	codex	change the button color in styles.css to blue
+held	codex	commit these changes with the message 'wip'
+held	codex	install the dependencies
+held	codex	update the copyright year in LICENSE to 2026
+held	micro	hello there
+held	micro	who wrote Hamlet?
+held	micro	what's 17 times 23?
+held	micro	good morning
+held	micro	what is a monad, briefly?
+held	micro	recommend a good sci-fi book

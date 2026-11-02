@@ -31,6 +31,7 @@
 #load "codex.coax";
 #load "microcoder.coax";
 #load "session.coax";
+#load "route.coax";
 
 cxterm_keys :: (on: int) -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
@@ -703,7 +704,7 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines\n       coder ls [--json]                         sessions, newest first\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder ls [--json]                         sessions, newest first\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
 
 // Flags that take a value: their value is not a positional argument.
 CD_VALUE_FLAGS :: [5] string.["--engine", "--model", "--cwd", "--print", "--on"];
@@ -863,6 +864,12 @@ cd_cmd_log :: (id: string, json: bool) -> int {
     ob: [8192] u8; n := 0;
     if kind == "session" { n = cd_cat(ob[..], 0, "Coder "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "version")); n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "engine")); n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "cwd")); }
     else if kind == "user" { n = cd_cat(ob[..], 0, "› "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "text")); }
+    else if kind == "route" {
+      n = cd_cat(ob[..], 0, "  Engine: "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "ran"));
+      ok := cl_bool(line, "ok");
+      if ok.ok && ok.value { n = cd_cat(ob[..], n, ", System One said "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "engine")); }
+      else { n = cd_cat(ob[..], n, ", the default; no decision: "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "text")); }
+    }
     else if kind == "agent" { n = cd_cat(ob[..], 0, "  Agent: "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "engine")); }
     else if kind == "tool" { n = cd_cat(ob[..], 0, "  ⏺ "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "label")); }
     else if kind == "result" {
@@ -894,6 +901,61 @@ cd_cmd_log :: (id: string, json: bool) -> int {
   return 0;
 }
 
+// The engine to run for a decision: System One's pick when it is sure and the
+// agent is here; else Claude Code when it is installed, else Microcoder.
+cd_route_pick :: (r: [] CdRoute) -> int {
+  fallback := ifx cd_on_path("claude") then ENGINE_CLAUDE else ENGINE_MICRO;
+  if !r[0].ok || r[0].probability < CD_ROUTE_SURE { return fallback; }
+  e := cd_route_engine(r);
+  if e == "claude" { return ifx cd_on_path("claude") then ENGINE_CLAUDE else ENGINE_MICRO; }
+  if e == "codex" { return ifx cd_on_path("codex") then ENGINE_CODEX else fallback; }
+  if e == "psionic" { return ENGINE_PSIONIC; }
+  return ENGINE_MICRO;
+}
+
+// "  Engine: codex (0.87) · easy · effort low, chosen by System One"
+cd_route_line :: (a: [] App, r: [] CdRoute, out: [] u8) -> string {
+  tb: [256] u8;
+  n := cd_cat(out, 0, "  Engine: "); n = cd_cat(out, n, cd_engine_name(a[0].engine));
+  if !r[0].ok { n = cd_cat(out, n, ", the default; no decision: "); n = cd_cat(out, n, cast(string) r[0].why[0..<r[0].nwhy]); }
+  else if cd_engine_name(a[0].engine) != cd_route_engine(r) && !(a[0].engine == ENGINE_MICRO && cd_route_engine(r) == "micro") {
+    n = cd_cat(out, n, ", the default; System One said "); n = cd_cat(out, n, cd_route_text(r, tb[..]));
+  } else { n = cd_cat(out, 0, "  Engine: "); n = cd_cat(out, n, cd_route_text(r, tb[..])); n = cd_cat(out, n, ", chosen by System One"); }
+  return cast(string) out[0..<n];
+}
+
+cd_route_json :: (r: [] CdRoute, ran: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"kind\":\"route\",\"ok\":"); n = json_raw(out, n, ifx r[0].ok then "true" else "false");
+  if r[0].ok {
+    n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, cd_route_engine(r));
+    pm := cast(int) (r[0].probability * 1000.0 + 0.5);       // as 0.962: three places are what the decision carries
+    n = json_raw(out, n, ",\"probability\":"); n = json_write_int(out, n, pm / 1000); n = json_raw(out, n, ".");
+    n = json_raw(out, n, ifx pm % 1000 < 10 then "00" else ifx pm % 1000 < 100 then "0" else ""); n = json_write_int(out, n, pm % 1000);
+    n = json_raw(out, n, ",\"difficulty\":"); n = json_write_int(out, n, r[0].difficulty);
+    n = json_raw(out, n, ",\"effort\":"); n = json_write_string(out, n, cast(string) r[0].effort[0..<r[0].neffort]);
+  } else { n = json_raw(out, n, ",\"text\":"); n = json_write_string(out, n, cast(string) r[0].why[0..<r[0].nwhy]); }
+  if ran.count > 0 { n = json_raw(out, n, ",\"ran\":"); n = json_write_string(out, n, ran); }
+  n = json_raw(out, n, "}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+cs_route :: (a: [] App, r: [] CdRoute) {
+  n := 0; o := a[0].log[0].line[..];
+  line := cd_route_json(r, cd_engine_name(a[0].engine), o);
+  cs_put(a, line.count);
+}
+
+cd_cmd_route :: (task: string, json: bool) -> int {
+  if task.count == 0 { tool_errln("coder route: needs a task: coder route \"TASK\""); return 2; }
+  rt: [1] CdRoute; eb: [64] u8;
+  cd_route(task, cl_getenv("PSIONIC_BASE_URL", eb[..]).count > 0, rt[..]);
+  ob: [1024] u8;
+  if json { cd_outln(cd_route_json(rt[..], "", ob[..])); }
+  else if rt[0].ok { cd_outln(cd_route_text(rt[..], ob[..])); }
+  else { tool_err("coder route: "); tool_errln(cast(string) rt[0].why[0..<rt[0].nwhy]); }
+  return ifx rt[0].ok then 0 else 1;
+}
+
 tool_main :: () -> int #export_c {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { tool_errln("coder: bad arguments"); return 2; }
@@ -904,6 +966,7 @@ tool_main :: () -> int #export_c {
   if verb == "ls" { return cd_cmd_ls(json); }
   if verb == "status" { return cd_cmd_status(cd_positional(args, 1), json); }
   if verb == "log" { return cd_cmd_log(cd_positional(args, 1), json); }
+  if verb == "route" { return cd_cmd_route(cd_positional(args, 1), json); }
   if verb.count > 0 && verb != "run" { tool_err("coder: unknown verb "); tool_errln(verb); tool_errln(USAGE); return 2; }
   a_b: [1] App; a := a_b[..];
   q: [1] ClQuery; p: [1] ClProcess;
@@ -937,8 +1000,12 @@ tool_main :: () -> int #export_c {
     a[0].log[0].json = json;
     if task.count == 0 { tool_errln("coder run: needs a task: coder run \"TASK\""); return 2; }
     tui_ed_set(a[0].ed[..], task);
+    // No --engine: System One chooses (chapter 13); the session's first lines say what and why.
+    rt: [1] CdRoute; routed := verb == "run" && want.count == 0;
+    if routed { cd_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]); a[0].engine = cd_route_pick(rt[..]); a[0].model_engine = a[0].engine; cs_open(a); cs_route(a, rt[..]); }
     cd_submit(a);
     if !json { tb: [64] u8; tn := cd_cat(tb[..], 0, "  session "); tn = cd_cat(tb[..], tn, cs_id(a[0].log)); cd_commit(a, TUI_FAINT, cast(string) tb[0..<tn]); }
+    if routed && !json { rb: [700] u8; cd_commit(a, TUI_FAINT, cd_route_line(a, rt[..], rb[..])); }
     for guard: 0..<100000000 { if !a[0].running { break; } if a[0].ask { cd_claude_answer(a, 'n'); } if !cd_poll(a) { x := cxproc_sleep_ms(5); } }
     cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
     return a[0].exit;

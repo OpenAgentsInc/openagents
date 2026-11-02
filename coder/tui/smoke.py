@@ -6,7 +6,8 @@ paste, walks history with Up, switches agent with Shift-Tab (legacy and
 kitty), then quits with Ctrl-C and checks the exit. Then the verbs without a
 terminal, in a fresh HOME: coder run --json on the psionic engine against a
 stand-in local model server (local_model.py), coder ls --json, coder log and
-coder status on an unknown ID.
+coder status on an unknown ID, and coder run without --engine or a System
+One key (the default engine, with the reason in the log).
 
     python3 coder/tui/smoke.py                # offline, echo engine
     python3 coder/tui/smoke.py --live         # two turns on the claude engine (your Claude Code login)
@@ -107,6 +108,14 @@ def verbs(check):
         sid = rows[0]["id"] if rows else "none"
         log = subprocess.run([coder, "log", sid[:15]], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("log by ID prefix", log.returncode == 0 and "● local-ok" in log.stdout and "Bash(echo local-step)" in log.stdout)
+        # no --engine and no System One key: the default engine, and the log says why
+        bare = dict(env, PATH="/usr/bin:/bin")
+        for k in ("BASETEN_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):
+            bare.pop(k, None)
+        routed = subprocess.run([coder, "run", "hi", "--json"], cwd=REPO, env=bare, capture_output=True, text=True, timeout=120)
+        rl = [json.loads(l) for l in routed.stdout.splitlines() if l.startswith("{")]
+        check("run without --engine or a key: the default, and why", len(rl) > 1 and rl[1]["kind"] == "route" and not rl[1]["ok"]
+              and rl[1]["ran"] == "microcoder" and "System One key" in rl[1]["text"])
         bad = subprocess.run([coder, "status", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("status of an unknown ID exits 6", bad.returncode == 6)
     finally:

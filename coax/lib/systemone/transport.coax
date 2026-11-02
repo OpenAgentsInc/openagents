@@ -17,6 +17,7 @@ SoClient :: struct {
   scheme: string = "Api-Key";    // Baseten also takes Bearer
   curl: string = "curl";         // found on PATH; needs curl 8.3 or later
   timeout_s: int = 60;
+  key_value: string;             // the key read from a file: set in curl's environment only, as key_env; "" when key_env is already in this process's
 }
 
 SoResult :: struct {
@@ -79,8 +80,12 @@ so_start :: (c: SoClient, body: string, call: [] SoCall, out: [] u8, err: [] u8)
   keyed := c.key_env.count > 0;
   if keyed {
     if !so_name_ok(c.key_env) { return so_fail_call(call, "key_env must be a plain variable name"); }
-    for ch: c.key_env { k := cxproc_getenv_push(cast(int) ch); }
-    if cxproc_getenv() <= 0 { return so_fail_call(call, "the API key variable is unset or empty"); }
+    if c.key_value.count > 0 {
+      for ch: c.key_value { if ch < 33 || ch > 126 { return so_fail_call(call, "the API key holds a character a header cannot"); } }
+    } else {
+      for ch: c.key_env { k := cxproc_getenv_push(cast(int) ch); }
+      if cxproc_getenv() <= 0 { return so_fail_call(call, "the API key variable is unset or empty"); }
+    }
   }
   if body.count == 0 { return so_fail_call(call, "no request body"); }
   h := cxproc_new();
@@ -91,6 +96,9 @@ so_start :: (c: SoClient, body: string, call: [] SoCall, out: [] u8, err: [] u8)
     ok = ok && so_arg(h, "--variable") && so_push_part(h, CL_FIELD_ARG, "%") && so_arg(h, c.key_env);
     ok = ok && so_arg(h, "--expand-header") && so_push_part(h, CL_FIELD_ARG, "Authorization: ") && so_push_part(h, CL_FIELD_ARG, c.scheme)
             && so_push_part(h, CL_FIELD_ARG, " {{") && so_push_part(h, CL_FIELD_ARG, c.key_env) && so_arg(h, "}}");
+  }
+  if keyed && c.key_value.count > 0 {
+    ok = ok && so_push_part(h, CL_FIELD_ENV, c.key_env) && so_push_part(h, CL_FIELD_ENV, "=") && so_push_part(h, CL_FIELD_ENV, c.key_value) && cxproc_end(h, CL_FIELD_ENV) == 0;
   }
   ok = ok && so_arg(h, "-H") && so_arg(h, "Content-Type: application/json");
   ok = ok && so_arg(h, "--data-binary") && so_arg(h, "@-");

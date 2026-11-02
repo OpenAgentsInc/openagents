@@ -1,0 +1,169 @@
+// Choose an engine (Coder book chapter 13): the task and this machine's
+// environment (the OS, which agent CLIs are on PATH, whether a model server
+// answers on this machine) go to System One as typed questions, and the
+// answer names the engine, how hard the task is and the effort to give it.
+// It is a decision, never a keyword rule. `coder run` asks when no --engine
+// is given; --engine always overrides it.
+//
+// The model is Baseten's mammoth-1 through coax/lib/systemone, the same
+// request shape as the desktop Lab's router. Its key comes from
+// ~/work/.secrets/baseten.env into curl's environment only.
+//
+// The labels split Claude Code and Codex by the job's size, not by whether
+// it mentions code, as the Lab's labels do; route-labels.tsv is the labelled
+// set and route_eval.py scores the held-out half.
+
+#load "../../coax/lib/systemone/systemone.coax";
+
+CD_ROUTE_ENGINES :: [4] string.["claude", "codex", "micro", "psionic"];
+CD_ROUTE_ENGINE_LABELS :: [4] string.[
+  "Claude Code, Anthropic's coding agent CLI: for work that spans files or needs understanding first: refactors, restructuring, new features, debugging, reviews, design, and explaining a codebase",
+  "Codex, OpenAI's coding agent CLI: for quick, contained jobs: a one-line or one-file edit, a typo, a version bump, running tests, a build, git or other terminal commands",
+  "Microcoder, OpenAgents' own small agent on a hosted model: for small talk, a plain question with a short answer, or when neither coding agent CLI is installed",
+  "Microcoder on a model served on this machine: only when the environment says a local model server is running and the user wants the work kept on this machine"];
+CD_ROUTE_LEVELS :: [5] string.["Trivial: a one-line answer", "Easy: a short answer or a small edit", "Moderate: a few files or steps",
+                               "Hard: many files, debugging or design", "Very hard: a long, open-ended or risky task"];
+CD_ROUTE_EFFORTS :: [3] string.["low", "medium", "high"];
+CD_ROUTE_EFFORT_LABELS :: [3] string.["Low: answer directly, little thinking", "Medium: some thought", "High: careful reasoning for hard problems"];
+CD_ROUTE_SURE :: 0.5;            // below this the person's default engine runs, and Coder says so
+CD_BASETEN_ENV :: "/work/.secrets/baseten.env";
+
+CdRoute :: struct {
+  ok: bool;
+  engine: [16] u8; nengine: int;
+  probability: f64;
+  difficulty: int;               // 0 trivial to 4 very hard
+  effort: [16] u8; neffort: int;
+  why: [512] u8; nwhy: int;      // why there is no decision
+}
+
+// Whether name is a program in a PATH directory.
+cd_on_path :: (name: string) -> bool {
+  pb: [8192] u8; path := cl_getenv("PATH", pb[..]);
+  at := 0;
+  while at <= path.count {
+    e := at; while e < path.count && path[e] != ':' { e += 1; }
+    if e > at {
+      fb: [4200] u8; n := cd_cat(fb[..], 0, cast(string) path[at..<e]); n = cd_cat(fb[..], n, "/"); n = cd_cat(fb[..], n, name);
+      if fs_exists(cast(string) fb[0..<n]) { return true; }
+    }
+    at = e + 1;
+  }
+  return false;
+}
+
+// The state System One sees: {"message": ..., "environment": {...}}.
+cd_route_state :: (task: string, claude: bool, codex: bool, local: bool, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"message\":"); n = json_write_string(out, n, task);
+  n = json_raw(out, n, ",\"environment\":{\"os\":\"macOS\",\"app\":\"Coder in the terminal\",\"agents\":{\"claude_code\":{\"installed\":");
+  n = json_raw(out, n, ifx claude then "true" else "false");
+  n = json_raw(out, n, "},\"codex\":{\"installed\":"); n = json_raw(out, n, ifx codex then "true" else "false");
+  n = json_raw(out, n, "}},\"local_model_server\":"); n = json_raw(out, n, ifx local then "true" else "false");
+  n = json_raw(out, n, "}}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+cd_route_body :: (b: [] SoBody, buf: [] u8, state: string) {
+  engines := CD_ROUTE_ENGINES; labels := CD_ROUTE_ENGINE_LABELS; levels := CD_ROUTE_LEVELS;
+  efforts := CD_ROUTE_EFFORTS; effort_labels := CD_ROUTE_EFFORT_LABELS;
+  so_begin(b, buf, SO_MAMMOTH, "");
+  so_state_json(b, state);
+  so_choice(b, "engine", "Which agent should handle the user's message? Only choose an agent the environment says is available.", engines[..], labels[..]);
+  so_score(b, "difficulty", "How hard is the user's request to do well?", levels[..]);
+  so_choice(b, "effort", "How much reasoning should the agent spend on this request? Hard requests need more.", efforts[..], effort_labels[..]);
+}
+
+// NAME=value from an env file's text ("" when absent); export and quotes dropped.
+cd_env_value :: (text: string, name: string) -> string {
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    if line.count > 7 && cast(string) line[0..<7] == "export " { line = cast(string) line[7..<line.count]; }
+    if line.count <= name.count || cast(string) line[0..<name.count] != name || line[name.count] != '=' { continue; }
+    v := cast(string) line[name.count + 1..<line.count];
+    while v.count > 0 && (v[v.count - 1] == 13 || v[v.count - 1] == ' ') { v = cast(string) v[0..<v.count - 1]; }
+    if v.count >= 2 && (v[0] == '"' || v[0] == '\'') && v[v.count - 1] == v[0] { v = cast(string) v[1..<v.count - 1]; }
+    return v;
+  }
+  return "";
+}
+
+cd_route_fail :: (r: [] CdRoute, why: string) { r[0].ok = false; r[0].nwhy = cd_cat(r[0].why[..], 0, why); }
+
+// Asks System One; r says what it chose, or why there is no decision.
+cd_route :: (task: string, local: bool, r: [] CdRoute) {
+  sb: [32768] u8;
+  state := cd_route_state(task, cd_on_path("claude"), cd_on_path("codex"), local, sb[..]);
+  if state.count == 0 { cd_route_fail(r, "the task is too long to route"); return; }
+  c: SoClient;
+  kb: [512] u8; kn := 0;
+  ev: [16] u8;
+  if cl_getenv(SO_BASETEN_KEY_ENV, ev[..]).count == 0 {
+    hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+    pb: [1200] u8; pn := cd_cat(pb[..], cd_cat(pb[..], 0, home), CD_BASETEN_ENV);
+    fb: [8192] u8; nf := fs_read(cast(string) pb[0..<pn], fb[..]);
+    v := cd_env_value(cast(string) fb[0..<ifx nf > 0 then nf else 0], SO_BASETEN_KEY_ENV);
+    if v.count <= kb.count { kn = cd_cat(kb[..], 0, v); }
+    for i: 0..<fb.count { fb[i] = 0; }
+    if kn == 0 { cd_route_fail(r, "no System One key: set BASETEN_API_KEY or add it to ~/work/.secrets/baseten.env"); return; }
+    c.key_value = cast(string) kb[0..<kn];
+  }
+  buf: [16384] u8; b: [1] SoBody;
+  cd_route_body(b[..], buf[..], state);
+  out: [65536] u8; err: [4096] u8;
+  res := so_decide(c, b[..], out[..], err[..]);
+  for i: 0..<kb.count { kb[i] = 0; }
+  if res.problem.count > 0 { cd_route_fail(r, ifx res.stderr.count > 0 then res.stderr else res.problem); return; }
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  e := so_choice_of(ar[..], res.body, "engine");
+  if !e.ok { cd_route_fail(r, "System One's answer has no engine"); return; }
+  r[0].nengine = cd_cat(r[0].engine[..], 0, e.choice);
+  r[0].probability = e.probability;
+  d := so_score_of(res.body, "difficulty");
+  r[0].difficulty = ifx d.ok then d.level else 2;
+  f := so_choice_of(ar[..], res.body, "effort");
+  r[0].neffort = cd_cat(r[0].effort[..], 0, ifx f.ok then f.choice else "medium");
+  r[0].ok = true;
+}
+
+cd_route_engine :: (r: [] CdRoute) -> string { return cast(string) r[0].engine[0..<r[0].nengine]; }
+
+// "claude (0.93) · moderate · effort medium"
+cd_route_text :: (r: [] CdRoute, out: [] u8) -> string {
+  levels := [5] string.["trivial", "easy", "moderate", "hard", "very hard"];
+  tb: [16] u8;
+  n := cd_cat(out, 0, cd_route_engine(r)); n = cd_cat(out, n, " (");
+  pc := cast(int) (r[0].probability * 100.0 + 0.5);
+  n = cd_cat(out, n, ifx pc >= 100 then "1.00" else "0."); if pc < 100 { if pc < 10 { n = cd_cat(out, n, "0"); } n = cd_cat(out, n, cd_itoa(pc, tb[..])); }
+  n = cd_cat(out, n, ") · "); n = cd_cat(out, n, levels[ifx r[0].difficulty >= 0 && r[0].difficulty < 5 then r[0].difficulty else 2]);
+  n = cd_cat(out, n, " · effort "); n = cd_cat(out, n, cast(string) r[0].effort[0..<r[0].neffort]);
+  return cast(string) out[0..<n];
+}
+
+#test "the route asks three typed questions about the message and this machine" {
+  sb: [4096] u8; buf: [16384] u8; b: [1] SoBody;
+  state := cd_route_state("fix the failing test", true, false, false, sb[..]);
+  #assert state == "{\"message\":\"fix the failing test\",\"environment\":{\"os\":\"macOS\",\"app\":\"Coder in the terminal\",\"agents\":{\"claude_code\":{\"installed\":true},\"codex\":{\"installed\":false}},\"local_model_server\":false}}";
+  cd_route_body(b[..], buf[..], state);
+  body := so_body(b[..]);
+  #assert body.count > 0;
+  q := cl_raw(body, "questions");
+  #assert cl_raw(q, "engine").count > 0 && cl_raw(q, "difficulty").count > 0 && cl_raw(q, "effort").count > 0;
+}
+
+#test "a decision reads back as engine, probability, difficulty and effort" {
+  r: [1] CdRoute;
+  r[0].nengine = cd_cat(r[0].engine[..], 0, "codex"); r[0].probability = 0.87; r[0].difficulty = 1;
+  r[0].neffort = cd_cat(r[0].effort[..], 0, "low");
+  ob: [128] u8;
+  #assert cd_route_text(r[..], ob[..]) == "codex (0.87) · easy · effort low";
+  r[0].probability = 0.05;
+  #assert cd_route_text(r[..], ob[..]) == "codex (0.05) · easy · effort low";
+}
+
+#test "env files: export prefixes and quotes" {
+  #assert cd_env_value("A=1\nexport BASETEN_API_KEY=\"k1\"\n", "BASETEN_API_KEY") == "k1";
+  #assert cd_env_value("BASETEN_API_KEYS=x", "BASETEN_API_KEY") == "";
+}
