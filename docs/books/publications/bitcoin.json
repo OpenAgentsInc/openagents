@@ -4,28 +4,28 @@
   "book": "bitcoin",
   "space_id": "wmf6C6tD4ovtQQqoeMmP",
   "public_url": "https://openagents.gitbook.io/bitcoin-from-scratch",
-  "published_at": "2026-11-02T19:34:48Z",
+  "published_at": "2026-11-02T20:04:39Z",
   "source": {
-    "commit": "329da2c61efb6167fa3ac3d71c9ea51a06817958",
+    "commit": "c466f49635001e4ff3b0c353fe32f7004baae98f",
     "directory": "bitcoin/book",
     "summary": {
       "path": "bitcoin/book/SUMMARY.md",
-      "bytes": 1370,
-      "sha256": "be88be8f6c2b0d190abe3b4e4736b9b76930526660bc8007ca7f9e1f8764e71c"
+      "bytes": 1585,
+      "sha256": "c3af7e6c7773cd26c17b7d25359ae76a473c4dc032ee034253861b744e8764c5"
     },
     "pages": [
       {
         "path": "bitcoin/book/README.md",
-        "bytes": 21500,
-        "sha256": "508b2d3b6bcbc5ba137c50b75a47508abf37ccb5ad021215f1ffeebf8118e010",
+        "bytes": 21832,
+        "sha256": "b3cf5c2106e2738d091789b2fd85869f841bebda54456dec4e682ef49d0a1cd9",
         "file": "README.md",
         "title": "Introduction",
         "group": null
       },
       {
         "path": "bitcoin/book/PLAN.md",
-        "bytes": 21029,
-        "sha256": "3d99792561c011a0d62868b39cc68e55e7f3aba04ee34006d60cf85fb9de4fb2",
+        "bytes": 21189,
+        "sha256": "6b965230908735a0bb4876c07edd90b441ddd3b48c913fc60941e0fe807da3b3",
         "file": "PLAN.md",
         "title": "Plan and prerequisites",
         "group": null
@@ -60,6 +60,30 @@
         "sha256": "c273bc8568f1013d8de3336880838743e4480499bbd9c35016b9ea3fb481ce60",
         "file": "ch004-sha-256.md",
         "title": "4. SHA-256",
+        "group": "II. Hashes, MACs and ciphers"
+      },
+      {
+        "path": "bitcoin/book/ch005-sha-256d-and-tagged-hashes.md",
+        "bytes": 31516,
+        "sha256": "184fa59754a5a0c4e260e7e7b1d1f006cb888f34bb992d52fa9c8760429126bb",
+        "file": "ch005-sha-256d-and-tagged-hashes.md",
+        "title": "5. SHA-256d and tagged hashes",
+        "group": "II. Hashes, MACs and ciphers"
+      },
+      {
+        "path": "bitcoin/book/ch006-ripemd-160-and-hash160.md",
+        "bytes": 30612,
+        "sha256": "62bfc7e7cc332b2c71adcf953615db5a1dd7e2e6ad00e95b5928aafc26f7cc24",
+        "file": "ch006-ripemd-160-and-hash160.md",
+        "title": "6. RIPEMD-160 and HASH160",
+        "group": "II. Hashes, MACs and ciphers"
+      },
+      {
+        "path": "bitcoin/book/ch007-sha-512.md",
+        "bytes": 33755,
+        "sha256": "7ebd93c18734e0579200c18ac9031c71e7f4adf5fb9150216efab0790fbca26d",
+        "file": "ch007-sha-512.md",
+        "title": "7. SHA-512",
         "group": "II. Hashes, MACs and ciphers"
       },
       {
@@ -151,22 +175,22 @@
         "group": "V. Encodings and addresses"
       }
     ],
-    "sha256": "923d54b1fa3159a44583d40ca660ba5c72e99c55e1301334691c6838c62cec32"
+    "sha256": "4438fa3fcbf40bc826957f2289d6b706955a75b1067e97dfb536688c91764044"
   },
-  "change_request": "9oWQ9iE1yYVfucGcgVnl",
+  "change_request": "i2hLUl6e3iwBG1KuwlkZ",
   "submitted_markdown": [
     {
       "path": "README.md",
-      "bytes": 22074,
-      "sha256": "6a32b921c61adb8b5d3cafe29e8e15b38ead7db629cbc4471205ca03bafa2c73",
+      "bytes": 22405,
+      "sha256": "e6af92f897423e00e02db11d5746746dc60ffa611477cad0dd676630a86b243f",
       "file": "README.md",
       "page_id": "besin3huF9gZExKRhXRI",
       "title": "Introduction"
     },
     {
       "path": "PLAN.md",
-      "bytes": 21086,
-      "sha256": "11e2ca3dd82f3d9f60180ced97ff093e61fd0a8fe2081ca7da0a5b41cb2d4e71",
+      "bytes": 21245,
+      "sha256": "df987ab72e60d830cec68a3336d7a7cc17807ed2ab6ae7a7a75a0b4f34fbbf4c",
       "file": "PLAN.md",
       "page_id": "DZPfGx9df4B3Up0QXp4C",
       "title": "Plan and prerequisites"
@@ -174,7 +198,7 @@
     {
       "path": "ch001-bytes-hex-and-base64.md",
       "bytes": 13990,
-      "sha256": "5259a1e5e74d9c77a9d439881e949db38a14f45cad589ba9be080c541276ec27",
+      "sha256": "97d018ef9378fef99dc5c161c5ff7148994ad7496a9354b55a73584bbfb6beec",
       "file": "ch001-bytes-hex-and-base64.md",
       "page_id": "oI5FR70Ss9ZrRjz7xvrv",
       "title": "1. Bytes, hex and base64"
@@ -182,7 +206,7 @@
     {
       "path": "ch002-big-integers-in-fixed-limbs.md",
       "bytes": 17410,
-      "sha256": "444545fcb7caadf0fd3b397295cf87599dea56178af5706f8fcf956a12597ef8",
+      "sha256": "82220e3eabfc0cf097a7f2361239b205913dbecc69362424b4cc3e228c062b4a",
       "file": "ch002-big-integers-in-fixed-limbs.md",
       "page_id": "tMEU5eWcPSxTqqv6cDH9",
       "title": "2. Big integers in fixed limbs"
@@ -190,7 +214,7 @@
     {
       "path": "ch003-constant-time-rules.md",
       "bytes": 18619,
-      "sha256": "bf4c17aa793419f1946edfab6fd2f00ce729dac0617cf3fa4bc47f1de005ebec",
+      "sha256": "e61edfc15476d98e7139963a75f243642f402b1fb23cc323d8bb87baa49d4379",
       "file": "ch003-constant-time-rules.md",
       "page_id": "X9jOjlQ7dLiKrcH6Qtwj",
       "title": "3. Constant-time rules and secrets"
@@ -198,15 +222,39 @@
     {
       "path": "ch004-sha-256.md",
       "bytes": 27269,
-      "sha256": "3d6ab31cf7358b471ff59665fb2aeeb51b90035f8e0222071f689c19460c1b59",
+      "sha256": "c4bf2ccccd5ffa2820a10d04ddfc49ba42fa62c0417de8950789e9caf13ae2d4",
       "file": "ch004-sha-256.md",
       "page_id": "PBcXHtN1BUmDQKsdID1r",
       "title": "4. SHA-256"
     },
     {
+      "path": "ch005-sha-256d-and-tagged-hashes.md",
+      "bytes": 32315,
+      "sha256": "5ec6457444fadeda7db178e7faede85b973642c9dc7fa0c92ec5da2fdf93ac87",
+      "file": "ch005-sha-256d-and-tagged-hashes.md",
+      "page_id": "PWvqwAQhbhcGReCirbL9",
+      "title": "5. SHA-256d and tagged hashes"
+    },
+    {
+      "path": "ch006-ripemd-160-and-hash160.md",
+      "bytes": 31381,
+      "sha256": "b9b4de3e8267f5899e91da381e7186de2997abcd82161e8d4987232f62881b44",
+      "file": "ch006-ripemd-160-and-hash160.md",
+      "page_id": "zK8h2RlWud7iNhkuSTJZ",
+      "title": "6. RIPEMD-160 and HASH160"
+    },
+    {
+      "path": "ch007-sha-512.md",
+      "bytes": 34444,
+      "sha256": "f0513d11b43b93d1e731582abe00b4d07713368fc44312b5cb975b3af0cc50ce",
+      "file": "ch007-sha-512.md",
+      "page_id": "ZVHvuyuODYObL0DuZrGo",
+      "title": "7. SHA-512"
+    },
+    {
       "path": "ch008-hmac-sha256.md",
       "bytes": 15103,
-      "sha256": "3f27d817891a368547005371797f76946ed6e3550cf6b5c2d33780e1d72072dd",
+      "sha256": "9ce7e0ab37f65c203fa47957b92357857aede5a07ec3f9664e41d3c04e73f684",
       "file": "ch008-hmac-sha256.md",
       "page_id": "pfh2c7ZTr5vc83OKUhGs",
       "title": "8. HMAC-SHA256"
@@ -214,7 +262,7 @@
     {
       "path": "ch009-hkdf.md",
       "bytes": 16949,
-      "sha256": "e7c80114b250e9927c0f9e877430448a7bc0f5f861246bc4b9853c1ee3e374bc",
+      "sha256": "bc56bbd35b25c641bc309e00da8ef1d0c9a85aee4588d1fd977828bef0887bdc",
       "file": "ch009-hkdf.md",
       "page_id": "elBPoAhfRkdVL1YOMWDI",
       "title": "9. HKDF"
@@ -222,7 +270,7 @@
     {
       "path": "ch011-chacha20.md",
       "bytes": 31899,
-      "sha256": "bb41637808e90564d50812a0d1a0c4c0c50d90c56e3eb429737ec07703ef436b",
+      "sha256": "1dc4edb5da948ee8c3f2595532b2e4b949eafeeb2c517fa7316a01d2720d5f35",
       "file": "ch011-chacha20.md",
       "page_id": "LJRGwU5TqQpMbkFVlrw5",
       "title": "11. ChaCha20"
@@ -230,7 +278,7 @@
     {
       "path": "ch013-field-arithmetic-mod-p.md",
       "bytes": 21836,
-      "sha256": "1df837c256ec65750a576245617020ab83bb92b8529861c80fdb79d0134d95b6",
+      "sha256": "0d30e23ded6ef175c16400e4135f3c573b549419c22742dc5869bb83af5e0ac0",
       "file": "ch013-field-arithmetic-mod-p.md",
       "page_id": "uc1wu2poRB3mjZZcki32",
       "title": "13. Field arithmetic mod p"
@@ -238,7 +286,7 @@
     {
       "path": "ch014-scalars-mod-n.md",
       "bytes": 15625,
-      "sha256": "0afc7f365674f97cc1cba469359d59ead1af49642d3f0ff4f6af9e4bbb909596",
+      "sha256": "bdd2f8922aaff545197a083c6fe06d14ebdf6a127538b062cbbc5b164f45312c",
       "file": "ch014-scalars-mod-n.md",
       "page_id": "8YATOHqP4qiZRFXiZbto",
       "title": "14. Scalars mod n"
@@ -246,7 +294,7 @@
     {
       "path": "ch015-the-secp256k1-group-law.md",
       "bytes": 24022,
-      "sha256": "0ece8e57669a4a7450852743fc92b08c7cde03b6c8e8fe8697a34bbdc6162e89",
+      "sha256": "57a4903cbffd8bb685fb944ea51aba2a42b4e0feb2cc5a86cbace482da95fee1",
       "file": "ch015-the-secp256k1-group-law.md",
       "page_id": "Drk6DUUnSIZ0LqhIiFtd",
       "title": "15. The secp256k1 group law"
@@ -254,7 +302,7 @@
     {
       "path": "ch016-scalar-multiplication.md",
       "bytes": 26625,
-      "sha256": "486f6d867c934e34f93fd4ecd8401a20dbec5f06bfc461759d4456b579361958",
+      "sha256": "824b3d2e2a1f657b5156f8d7c31156e334a49be8bd14954b598fae650486e25c",
       "file": "ch016-scalar-multiplication.md",
       "page_id": "zsvbqeINypFqWc1UuzXf",
       "title": "16. Scalar multiplication"
@@ -262,7 +310,7 @@
     {
       "path": "ch018-keys-and-randomness.md",
       "bytes": 36364,
-      "sha256": "87e3d97d351542181c1b973e2be2375bb2911acc13f9624d580cc39f5bb49e96",
+      "sha256": "043b82b204e86bdc694e45fbf4680cec9c64ac0f05bdb57113dae9173859f2a2",
       "file": "ch018-keys-and-randomness.md",
       "page_id": "g3xOwvFhvloULuNsweFK",
       "title": "18. Keys and randomness"
@@ -270,7 +318,7 @@
     {
       "path": "ch023-verify-a-schnorr-signature.md",
       "bytes": 29984,
-      "sha256": "c9ef2ea6a75a6ec7468d3466bf9b8095e6ed8d4e425fba58cf8cda50704a8674",
+      "sha256": "34fd257c4f7cd494b6e3c6bf7066db716e3a74812a54177a2fb4e632f6166e31",
       "file": "ch023-verify-a-schnorr-signature.md",
       "page_id": "kjsZpoSUh4NdmLIHwNlN",
       "title": "23. Verify a Schnorr signature"
@@ -278,7 +326,7 @@
     {
       "path": "ch024-sign-with-schnorr.md",
       "bytes": 37608,
-      "sha256": "beded2a6b2df5f7dd26a028b71f0ef0da9325fdc8923ef6beff9cc1225043a63",
+      "sha256": "a788049f9ba253638729ddc01a980d958122cd2e691aa9c5754a97620b578f7d",
       "file": "ch024-sign-with-schnorr.md",
       "page_id": "n5He1MU2puawbZX2dfVM",
       "title": "24. Sign with Schnorr"
@@ -286,15 +334,15 @@
     {
       "path": "ch027-bech32.md",
       "bytes": 26171,
-      "sha256": "5169084b59a2bac64a161b38e5a26d1ced83fae14453148e2819b07889bf7863",
+      "sha256": "2d17dba2fd56cb8b2e0c063ed2b71270f2624c2346a7207580efa6033383bfb7",
       "file": "ch027-bech32.md",
       "page_id": "jph6n4hzR37G6fZzvz25",
       "title": "27. Bech32"
     }
   ],
-  "submitted_markdown_sha256": "36128d525b1691bb42729919f2d1f2fbf59a9ebb7da36d7a16a634874c851c01",
+  "submitted_markdown_sha256": "8454a006363f2d003ed272d1652505af8ed21cb2fb596f7d84ae4688000c1447",
   "verified_live": {
-    "revision": "mh2Z0oK9QjzQRCLhG6ut",
+    "revision": "C1Bx3kAsAbgsP22Bo87e",
     "inventory": [
       {
         "id": "besin3huF9gZExKRhXRI",
@@ -342,6 +390,24 @@
             "id": "PBcXHtN1BUmDQKsdID1r",
             "title": "4. SHA-256",
             "path": "ii.-hashes-macs-and-ciphers/ch004-sha-256",
+            "pages": []
+          },
+          {
+            "id": "PWvqwAQhbhcGReCirbL9",
+            "title": "5. SHA-256d and tagged hashes",
+            "path": "ii.-hashes-macs-and-ciphers/ch005-sha-256d-and-tagged-hashes",
+            "pages": []
+          },
+          {
+            "id": "zK8h2RlWud7iNhkuSTJZ",
+            "title": "6. RIPEMD-160 and HASH160",
+            "path": "ii.-hashes-macs-and-ciphers/ch006-ripemd-160-and-hash160",
+            "pages": []
+          },
+          {
+            "id": "ZVHvuyuODYObL0DuZrGo",
+            "title": "7. SHA-512",
+            "path": "ii.-hashes-macs-and-ciphers/ch007-sha-512",
             "pages": []
           },
           {
@@ -434,7 +500,7 @@
         ]
       }
     ],
-    "sha256": "d57c4fe32294393c459489f2404e76c9e21e98963567c0a40fbcd61459279cd9"
+    "sha256": "5f4efcde8f4010388bc096f132d6de25b584203cc2f33bada8fe0d714ea8095d"
   },
   "verification_scope": "Source and submitted-markdown hashes record publication provenance; live revision and page inventory were checked, not live document-body parity."
 }
