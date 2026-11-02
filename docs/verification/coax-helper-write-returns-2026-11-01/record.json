@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "status": "UNMERGED; keep main compiler and seed unchanged",
+  "final_source_sha256": "1757cceb2f6bb8df04fb0e76da8b52f0fa16a90f0ee05537452c855e98389793",
+  "archive": {
+    "path": "final-proof.tar.xz",
+    "sha256": "46287ddbcb3b377f63b6bcd740b467c00ded21fc99d1d32c3368daf2bb85bec5",
+    "bytes": 2308924,
+    "logical_files": 470,
+    "unique_text_members": 191,
+    "readback_verified": true
+  },
+  "manifest_sha256": "c606c73dd383d263772d791b9129708bf32b4c3cdd759d1728d208893407632f",
+  "source_patch_sha256": "20381d38e3d0c55bfc74a38b53a4e27c90002a92ff222313297cd1fa34987403",
+  "main_checker_seed_not_updated": true,
+  "self_compile": {
+    "candidate": "/tmp/coax-b2-inline-actual-cost-20261102/process.json",
+    "candidate_work_at_refusal": 1048577,
+    "bound": 1048576,
+    "paired_retained_seed_debug": "/tmp/coax-b2-paired-debug-baseline-cost-20261102/process.json",
+    "paired_retained_seed_work": 1047492,
+    "paired_retained_seed_headroom": 1084,
+    "paired_input_identical": true
+  },
+  "qualification_limits": "c206 helper mutation220/220 and raw/class native12;1757 inline focused6 and single-unit canonical generation pass, but whole compiler fails. No normal release/bootstrap qualification.",
+  "patch_manifest_sha256": "651fa483b1fb11a44add8ea1ace37fa2f8b2e2e768ae898bb42ffed223252181",
+  "proposed_docs_patch_sha256": "0a80a5df22a707fc6989957e774bee2aa304581627064bfe0c9de781d7f311af",
+  "portable_patches": [
+    {
+      "path": "source-and-tests.patch.gz",
+      "sha256": "60203317227b920adc3d87cdb00085e9cae3b1da5324b9a40c3570e993b9d9c0",
+      "decompressed_sha256": "20381d38e3d0c55bfc74a38b53a4e27c90002a92ff222313297cd1fa34987403",
+      "roundtrip_verified": true
+    },
+    {
+      "path": "proposed-current-docs.patch.gz",
+      "sha256": "89e0bb0abbab906a424c9d9dd49b00227d93b3c4a2fac6563caa49f5767e9dec",
+      "decompressed_sha256": "0a80a5df22a707fc6989957e774bee2aa304581627064bfe0c9de781d7f311af",
+      "roundtrip_verified": true
+    }
+  ]
+}

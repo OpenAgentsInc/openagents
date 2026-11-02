@@ -1,0 +1,9 @@
+{
+  "archive": "candidate-proof.tar.xz",
+  "sha256": "5dec0e92e4b5a716d73cd2b899d4005dd228ee6b53c39bb1847c7452dc4cf053",
+  "bytes": 1599224,
+  "logical_files": 637,
+  "unique_members": 148,
+  "readback_verified": true,
+  "manifest_sha256": "75d2cf7c38cf1db80f75842646e2f63442232b6d00be0b534605cb6373554aaf"
+}
