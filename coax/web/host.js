@@ -1644,6 +1644,15 @@ const voice = script?.dataset.voice
   ? startVoice({ send, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;
 
 // The location's hash, for an app that opens something by it (a link straight to it).
+// Action 1 to a same-page address that differs only after its # (/realms/built#a to #b) reloads the
+// page: assigning such an address only changes the hash, and the app would go on showing the old one.
+function navigateTo(path) {
+  const to = new URL(path, location.href);
+  const samePage = to.origin === location.origin && to.pathname === location.pathname && to.search === location.search;
+  location.assign(to.href);
+  if (samePage && to.hash) location.reload();
+}
+
 function sendHash() {
   const x = engine?.exports;
   if (!x?.coaxial_hash || !x.coaxial_inbox) return;
@@ -1671,7 +1680,7 @@ function after(gesture, tap = false) {
   if (code) {
     const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_outbox(arena.state), x.coaxial_outbox_len(arena.state)).slice());
     call("coaxial_action_done");
-    if (code === 1) { if (text.startsWith("https://") || /^lightning:ln[a-z0-9]+$/i.test(text)) location.assign(text); else if (text.startsWith("/")) location.assign(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
+    if (code === 1) { if (text.startsWith("https://") || /^lightning:ln[a-z0-9]+$/i.test(text)) location.assign(text); else if (text.startsWith("/")) navigateTo(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
     // A copy or cut: the app chose the text (never a masked field's); this runs
     // inside the key event, so the browser lets it reach the clipboard.
     else if (code === 2) navigator.clipboard?.writeText(text).catch(() => {});

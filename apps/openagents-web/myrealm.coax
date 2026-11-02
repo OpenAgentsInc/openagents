@@ -738,12 +738,22 @@ forge_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
     set_note(s, ifx status == 409 then changed else "Not published. Try again.");
     return;
   }
-  // FORK: "slug S", "path P", "page 0|1"; the page goes there
+  // FORK: "slug S", "path P", "page 0|1"; the page goes there. A new fork is private (0099) and has
+  // no page of its own (page 0): its owner opens it at /realms/built#S, as MAKE IT does (builder.coax).
   if status == 200 {
+    slug := ""; path := ""; page := false;
     i := 0;
     while i < body.count {
       e := line_end(body, i); line := body[i..<e]; i = e + 1;
-      if word_of(line, 0) == "path" && line.count > 5 && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, line[5..<line.count]); s[0].action = ACT_NAVIGATE; return; }
+      if word_of(line, 0) == "slug" && line.count > 5 { slug = line[5..<line.count]; }
+      if word_of(line, 0) == "path" && line.count > 5 { path = line[5..<line.count]; }
+      if line == "page 1" { page = true; }
+    }
+    if s[0].action == 0 && slug.count > 0 && slug.count <= 60 {
+      n := 0;
+      if page && starts(path, "/realms/") { n = put(s[0].outbox[..], 0, path); }
+      else { n = put(s[0].outbox[..], 0, "/realms/built#"); n = put(s[0].outbox[..], n, slug); }
+      s[0].out_n = n; s[0].action = ACT_NAVIGATE; return;
     }
   }
   set_note(s, ifx status == 429 then "That's today's realms. Fork it tomorrow." else ifx status == 403 then "Making realms is by invite for now." else "Not forked. Try again.");

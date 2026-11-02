@@ -131,7 +131,10 @@ wait_probe :: (c: [] Cdp, field: int, want: int, ms: int) -> bool {
   while proc_now_ms() < until { if probe(c, field) == want { return true; } proc_sleep(150); }
   return probe(c, field) == want;
 }
-path_now :: (c: [] Cdp, out: [] u8) -> string { return js_str(c, "location.pathname", out); }
+// A private realm has no page of its own: its owner opens /realms/built#SLUG (0099), read here as /realms/SLUG.
+path_now :: (c: [] Cdp, out: [] u8) -> string {
+  return js_str(c, "location.pathname === '/realms/built' && location.hash.length > 1 ? '/realms/' + location.hash.slice(1) : location.pathname", out);
+}
 
 // ---- the typed actions
 
@@ -268,6 +271,18 @@ generate :: (r: [] Run, c: [] Cdp, stamp: string) -> bool {
   if doc_field(r, c, slug_text(r), "j.doc.moved.length", o[..]) != "0" { return why(r, "the new realm has moves"); }
   if spec_line(c, slug_text(r), "listed", o[..]) != "listed 0" { return why(r, "a realm made by this tool isn't unlisted"); }
   if probe(c, 2) != 1 || probe(c, 4) != 0 { return why(r, "the page's revision isn't the server's"); }
+  // a new realm is private (0099): a visitor gets 404. Make it unlisted, as an owner shares a link,
+  // so the later steps can check what a visitor sees.
+  if spec_line(c, slug_text(r), "visibility", o[..]) != "visibility private" && visitor_line(c, slug_text(r), "role", o[..]) != "" {
+    return why(r, "a new realm isn't private");
+  }
+  v: [1] Buf;
+  bput(v[..], "(async () => { let k = ''; try { k = JSON.parse(localStorage.getItem('verse.player')).key; } catch {}\n");
+  bput(v[..], "  const res = await fetch('/api/playtest/realms/"); bput(v[..], slug_text(r));
+  bput(v[..], "/visibility', {method: 'POST', headers: {'X-Verse-Player': k, 'Content-Type': 'application/json'}, body: JSON.stringify({visibility: 'unlisted'})});\n");
+  bput(v[..], "  return String(res.status); })().catch(e => 'error ' + e)");
+  if js_str(c, btext(v[..]), o[..]) != "200" { return why(r, "the owner couldn't make the new realm unlisted"); }
+  if visitor_line(c, slug_text(r), "role", o[..]) == "" { return why(r, "an unlisted realm isn't open to a visitor"); }
   return true;
 }
 
