@@ -1,0 +1,399 @@
+{
+  "schema": 1,
+  "date": "2026-11-01",
+  "scope": "Four-book documentation, registry and maintenance-tooling reconciliation; no product implementation or runtime requalification.",
+  "review_base": "f47c0561e5c65f9497ad24d37768d71433833b47",
+  "implementation_commit": "c4973562537a7a88faac60c85de87123cf51ce39",
+  "books": {
+    "coax": {
+      "chapters": 47,
+      "statuses": {
+        "implemented": 21,
+        "partly implemented": 8,
+        "planned": 18
+      },
+      "chapters_with_recorded_consumers": 5,
+      "consumer_edges": 10
+    },
+    "psionic": {
+      "chapters": 250,
+      "statuses": {
+        "implemented": 128,
+        "partly implemented": 61,
+        "design draft": 61
+      },
+      "chapters_with_recorded_consumers": 21,
+      "consumer_edges": 22
+    },
+    "aethyr": {
+      "chapters": 86,
+      "statuses": {
+        "implemented": 13,
+        "design draft": 70,
+        "partly implemented": 3
+      },
+      "chapters_with_recorded_consumers": 11,
+      "consumer_edges": 52
+    },
+    "nostr": {
+      "chapters": 104,
+      "statuses": {
+        "implemented": 102,
+        "partly implemented": 2
+      },
+      "chapters_with_recorded_consumers": 47,
+      "consumer_edges": 78
+    }
+  },
+  "inventory": [
+    {
+      "path": "NEEDS_OWNER.md",
+      "bytes": 18678,
+      "sha256": "31f166e3b7e93589adcad29320ab99970bd737ba7f7a94235ba9e046fa044dcc"
+    },
+    {
+      "path": "aethyr/book/PLAN.md",
+      "bytes": 22244,
+      "sha256": "576a1dfef3a2e04389b633375c014a35f2b32f64e7cbd4a795828c87b61c51b8"
+    },
+    {
+      "path": "aethyr/book/README.md",
+      "bytes": 35516,
+      "sha256": "984096fa4e569c431917045a812a8f5183cb0b63d55c65b458780d1d281e4510"
+    },
+    {
+      "path": "aethyr/book/ch005-replay-a-session-exactly.md",
+      "bytes": 34149,
+      "sha256": "666bbf347ebc84fd202ad590afdb14fdda2ef711638595d51fd6a45fe813cd8d"
+    },
+    {
+      "path": "aethyr/book/ch007-ask-the-world-where-things-are.md",
+      "bytes": 32287,
+      "sha256": "b8af80a627a412906f7b2c8af4bbde61b421b1e51c0f0b162929fc6004ef7d16"
+    },
+    {
+      "path": "aethyr/book/ch011-the-wgsl-renderer.md",
+      "bytes": 7057,
+      "sha256": "1a6dd51389e8563eab505fddfb018a0fcd2481c865add05d764c1760099d5d5a"
+    },
+    {
+      "path": "aethyr/book/ch018-rigid-bodies-and-time-steps.md",
+      "bytes": 6167,
+      "sha256": "6bc0ebb602777f769f745859ba6b47ab19d239eff88ca5e1e64116c8df442d43"
+    },
+    {
+      "path": "aethyr/book/ch021-find-where-they-touch.md",
+      "bytes": 6163,
+      "sha256": "08ed7f1e3842292a4d0a6098f2dadd2d3079896c52162ec9cdcf3d9b93525f5a"
+    },
+    {
+      "path": "aethyr/book/ch022-contact-as-an-optimization.md",
+      "bytes": 5564,
+      "sha256": "a9d968df3e545dd974a91c17a46681e27681d74a869bb0d4bb701d450cd486b7"
+    },
+    {
+      "path": "aethyr/book/ch024-liquids-from-particles.md",
+      "bytes": 4180,
+      "sha256": "adf86ee13c619a1beec8674ebc344fe68adeb4416eb18aab01f0622f0ef8c624"
+    },
+    {
+      "path": "aethyr/book/ch025-cloth-and-rope-from-constraints.md",
+      "bytes": 4014,
+      "sha256": "16bffe0e7ea045f3b4ab7c1ebf5dffac3c3c3b86af25b1c9d2c334e2fc79875a"
+    },
+    {
+      "path": "aethyr/book/ch026-sand-snow-and-clay-on-a-grid.md",
+      "bytes": 4596,
+      "sha256": "533ea71ec187581ebde648f0a67e51d5a7e355d8472451efc210310e2dbea3c6"
+    },
+    {
+      "path": "aethyr/book/ch027-elastic-solids-on-a-mesh.md",
+      "bytes": 4255,
+      "sha256": "eb270ccde58f9c3898b824fe306c57fb1adbcc13dd319ca7738d13b5f2ac65a1"
+    },
+    {
+      "path": "aethyr/book/ch028-smoke-on-a-grid.md",
+      "bytes": 2830,
+      "sha256": "202c3574fc054ec1a9a7e66933d49df10e1ba66bb1ba4763fb9623b581993a66"
+    },
+    {
+      "path": "aethyr/book/ch031-many-worlds-in-one-step.md",
+      "bytes": 3834,
+      "sha256": "82e6af0b03afe071eaf681ecb4fc5af213d5411ec92c02dda82b9e05a9620e5f"
+    },
+    {
+      "path": "aethyr/book/ch033-sensors-read-the-simulation.md",
+      "bytes": 3213,
+      "sha256": "03089eac30d47a423d7415937d638e43e80545ad1d2902544f54df6a6d125528"
+    },
+    {
+      "path": "aethyr/book/ch035-bring-in-robots-and-meshes.md",
+      "bytes": 3943,
+      "sha256": "42c88af6281c70127b1dbe6e34ecf09a10a517f0ab69cc4974f6bdfcbf019980"
+    },
+    {
+      "path": "aethyr/book/ch037-measure-the-engine-honestly.md",
+      "bytes": 3728,
+      "sha256": "230c61ec16449f388f6b8cbf594b70f000d9199a50e9340acbf2f293483870d3"
+    },
+    {
+      "path": "aethyr/book/ch050-shared-state-over-the-network.md",
+      "bytes": 5474,
+      "sha256": "d3ed7377fe709cd6f35bdfbe7a35ad9b379ce3efbabe360320d48ff5d3874fc5"
+    },
+    {
+      "path": "aethyr/book/ch051-a-realm-is-a-document.md",
+      "bytes": 7404,
+      "sha256": "18b2d21f9d683545f89eed19fb94e5d3a0fac4aa279a969dc86ec64a15a9cc9a"
+    },
+    {
+      "path": "aethyr/book/ch055-fork-a-realm.md",
+      "bytes": 4838,
+      "sha256": "f3e3e673ecb609ed4fff5a44a6173868c0c16cf58912764d85e5d5ee57a96eac"
+    },
+    {
+      "path": "aethyr/book/ch064-every-realm-runs-on-aethyr.md",
+      "bytes": 6614,
+      "sha256": "56c68e54d3c890026843b05d0367d7081257283e016ce3a65d41dff8cad00d76"
+    },
+    {
+      "path": "aethyr/book/ch085-one-realm-on-every-host.md",
+      "bytes": 8321,
+      "sha256": "84fcdb0d294bd8a865a11ea7e8a5b3f515ede4426c4402e45e6cb6ab8523056f"
+    },
+    {
+      "path": "aethyr/book/chapters.json",
+      "bytes": 24579,
+      "sha256": "80d206820a48a22c2c5cfe9dbdd3f0907ef4446b478b8352370a7212f2f26761"
+    },
+    {
+      "path": "coax/ROADMAP.md",
+      "bytes": 88296,
+      "sha256": "9b23ef772cd7782fcd286b91d54aa2c7110dcf99b473961336287033f2d3f7b2"
+    },
+    {
+      "path": "coax/book-maintenance.md",
+      "bytes": 9089,
+      "sha256": "8b80d5f5353d25e3e28bdb567eb8b34284f3a441030c714805e192a7926830e1"
+    },
+    {
+      "path": "coax/book/README.md",
+      "bytes": 19004,
+      "sha256": "db997067ce3d00e41cc12c6fa63d2a378831e814c51943574497a522acbdb3ed"
+    },
+    {
+      "path": "coax/book/capability-claims.json",
+      "bytes": 19156,
+      "sha256": "e5a481f5b7482b1f2978d288baf2f8d491c90a28a9d98ca2c2c3208e1a040ee5"
+    },
+    {
+      "path": "coax/book/ch28-road-ahead.md",
+      "bytes": 17783,
+      "sha256": "c1c332cd38aa829af1ae01024acfc84765ee57b323f40dd206f4a3449674e2bb"
+    },
+    {
+      "path": "coax/book/chapters.json",
+      "bytes": 14646,
+      "sha256": "d90eb0535fa7d67f42e761fddc72cc9f2b710875ba896866dfb498679676a3c1"
+    },
+    {
+      "path": "coax/book/check-structure.py",
+      "bytes": 15840,
+      "sha256": "7ce4f0891a58a2e1c5ef4298bfc37bf3608546e1d0a7d2f37ac6f5223b6f62e0"
+    },
+    {
+      "path": "coax/nostr.md",
+      "bytes": 51178,
+      "sha256": "90925e8156d7285593823d62a0f258e8dcd28ad24be6ad345a5e2acfe510caab"
+    },
+    {
+      "path": "coax/tests/book_registry.py",
+      "bytes": 6035,
+      "sha256": "5aef8d065d389c3b591cd46353a2496a4c74baa517248f06ff8a3dca33591460"
+    },
+    {
+      "path": "docs/books/completion.md",
+      "bytes": 10530,
+      "sha256": "723c79137475c1e7121d2c138b315dea6ef588539a2f899f606646a86182b100"
+    },
+    {
+      "path": "docs/books/paths.md",
+      "bytes": 11009,
+      "sha256": "8e59eff655e5abb68de01a33d7e5b91e69382a2710419120e9d1230e9a2e6f19"
+    },
+    {
+      "path": "nostr/book/COMPLETION.md",
+      "bytes": 8473,
+      "sha256": "e58b5325a8dd5e6cf164095af8c146ba5ac6f42ea72d7b30355d59e69197a94e"
+    },
+    {
+      "path": "nostr/book/PLAN.md",
+      "bytes": 38421,
+      "sha256": "1cd65d9fa1be1e345c960e40777796f1134ed8960187c082482e7e423fd4ddcd"
+    },
+    {
+      "path": "nostr/book/README.md",
+      "bytes": 42853,
+      "sha256": "96ad968cba6329aefc6f13836a9a66eb6ba2e4a9dccabb5eea03d4fdb571ac0c"
+    },
+    {
+      "path": "nostr/book/SUMMARY.md",
+      "bytes": 8926,
+      "sha256": "845ef558466daa979317d88db6b7fb39d25183e32a6db1aa8cea6a28091c5d9a"
+    },
+    {
+      "path": "nostr/book/ch097-a-conformance-report.md",
+      "bytes": 37160,
+      "sha256": "0c7babcea0003619620f513e03cf33474d0b1c44b6b2459925420a1bf4da7ff7"
+    },
+    {
+      "path": "nostr/book/ch099-the-website-and-sign-in.md",
+      "bytes": 30701,
+      "sha256": "c197d5e53c29d7906423fa4c36ab368a1439ed2fb62b8d56ff55a3d781fca362"
+    },
+    {
+      "path": "nostr/book/ch100-pylons-and-the-mesh.md",
+      "bytes": 49005,
+      "sha256": "935069dc512ac49179b00c149b760117ccb60a5a7aa689685fc969ade0aaa6ca"
+    },
+    {
+      "path": "nostr/book/ch101-the-verse-and-the-wallet.md",
+      "bytes": 44006,
+      "sha256": "71add2ca6a25212c40373e42d75073a6ee84ee106753151b3c2c52008ed2c9bd"
+    },
+    {
+      "path": "nostr/book/ch102-agents-on-nostr.md",
+      "bytes": 43383,
+      "sha256": "6e4ae49efe58e00addc54b0aa0017ff277c323da0904054e4e13111b925a4082"
+    },
+    {
+      "path": "nostr/book/ch103-replace-relay-openagents-com.md",
+      "bytes": 35576,
+      "sha256": "fc50526ff53b16cf20c11979845a11c0159bda216fcf3fc36bddbde0fefdc924"
+    },
+    {
+      "path": "nostr/book/ch104-agent-treasuries-and-a-network-of-keys.md",
+      "bytes": 49860,
+      "sha256": "1a89bc25770f5e185342b35ac2c5cea62865f4a888b8373d479feee2682b6e78"
+    },
+    {
+      "path": "nostr/book/chapters.json",
+      "bytes": 54099,
+      "sha256": "3c957144c203335bc681385cbf7b2686479ca18322eb0ab914f3aed0cc880bc7"
+    },
+    {
+      "path": "psionic/README.md",
+      "bytes": 34682,
+      "sha256": "5b4e041e291c26275ac6c27d26aac68b097a8e93d1563b7beb89b9bdd7f132d1"
+    },
+    {
+      "path": "psionic/book/PLAN.md",
+      "bytes": 186752,
+      "sha256": "3ed491839e6bf37fa326c442060b1d7de19ba5ebca7551de4a41e01212687500"
+    },
+    {
+      "path": "psionic/book/README.md",
+      "bytes": 101625,
+      "sha256": "cbf1c73ac0ca4ee2446238046fc4d62ee243732010fd9abf5656e71800c369da"
+    },
+    {
+      "path": "psionic/book/ch031-directions-on-request.md",
+      "bytes": 11627,
+      "sha256": "38aeef876c4d2b7b0fd93a4d58939adf7189d072f398cad7721bf4ff0fba8058"
+    },
+    {
+      "path": "psionic/book/chapters.json",
+      "bytes": 95867,
+      "sha256": "4f40024ba84c366ed671e63acd7ff8fb8a79e8e5363c5a3e24ff4a0b04677719"
+    },
+    {
+      "path": "psionic/docs/roadmap.md",
+      "bytes": 40000,
+      "sha256": "a0915b10737ee53ec15c585686fd2a084c74b3828a9ff282412988cbff4bd58a"
+    }
+  ],
+  "preservation": {
+    "chapter_identities_statuses_and_qualified_targets_match_review_base": true,
+    "runtime_sources_and_example_transcripts_unchanged_vs_review_base": true,
+    "existing_dated_verification_records_unchanged": true,
+    "incoming_psionic_chapter_183_preserved": true,
+    "original_lqr_results_and_longer_continuation_unchanged": true
+  },
+  "changes": [
+    "Refresh four-book reader paths, scoped completion milestones and current capability/adoption explanations.",
+    "Separate minimum teaching prerequisites from later integrations; remove Aethyr and offline Nostr101 prerequisite cycles/misbindings while preserving future acceptance work in prose.",
+    "Record reviewed component consumers without promoting whole profiles, deployment or target claims.",
+    "Reconcile generated shader/native-rendering baseline, actual game/robotics/GPU-training delivery, frozen conformance snapshots, configurable relay capacity and existing owner gates.",
+    "Extend normal metadata gates to reject cross-book prerequisite cycles and invalid or evidence-only adoption paths."
+  ],
+  "checks": [
+    {
+      "command": "python3 coax/tests/book_registry.py",
+      "scope": "First nine helper regressions, before integration cases were added",
+      "result": "passed: 9 tests",
+      "compiler_or_product_execution": false
+    },
+    {
+      "command": "python3 coax/tests/book_registry.py RegistryIntegration",
+      "scope": "Two added normal-gate integration regressions, after correcting the synthetic fixture's missing PLAN.md",
+      "result": "passed: 2 tests",
+      "compiler_or_product_execution": false
+    },
+    {
+      "command": "python3 coax/book/check-structure.py",
+      "result": "book navigation, local links, checked excerpts and the chapter registry pass",
+      "exit_status": 0,
+      "seconds": 0.063782542,
+      "compiler_or_product_execution": false
+    },
+    {
+      "command": "python3 psionic/tests/book.py",
+      "result": "psionic book structure: 241 programs, 1183 source-linked listings, local links pass",
+      "exit_status": 0,
+      "seconds": 0.499869875,
+      "compiler_or_product_execution": false
+    },
+    {
+      "command": "python3 psionic/tests/book.py --book aethyr",
+      "result": "aethyr book structure: 19 programs, 107 source-linked listings, local links pass",
+      "exit_status": 0,
+      "seconds": 0.157523125,
+      "compiler_or_product_execution": false
+    },
+    {
+      "command": "python3 psionic/tests/book.py --book nostr",
+      "result": "nostr book structure: 104 programs, 825 source-linked listings, local links pass",
+      "exit_status": 0,
+      "seconds": 0.580693458,
+      "compiler_or_product_execution": false
+    },
+    {
+      "command": "Shared-document local-target scan",
+      "result": "127 local link targets, 0 missing; subsequent reader-path wording changed no targets",
+      "compiler_or_product_execution": false
+    },
+    {
+      "command": "git diff --check; explicit source/registry preservation audit",
+      "result": "passed",
+      "compiler_or_product_execution": false
+    }
+  ],
+  "reviewed_claim_bindings": {
+    "changed_claims": [
+      "psionic.autodiff.current",
+      "psionic.execution.current"
+    ],
+    "reason": "Replace stale blanket negative claims with bounded permanent-IR transforms and retained tiny-decoder CUDA backward/optimizer/resume evidence; bind existing source and qualification records. Preserve all incoming SUMMARY/examples bindings.",
+    "target_or_compiler_promotion": false
+  },
+  "initial_failures_preserved_as_observations": [
+    "The nine prospective metadata tests initially failed because the new helper APIs did not yet exist.",
+    "The two integration tests first failed because the synthetic Psionic fixture lacked PLAN.md; adding that fixture file made both pass."
+  ],
+  "limits": [
+    "No compiler build, model run, mutation run, SDK/simulator run, rendering gate, whole-book example execution, live deployment or GitBook publication was performed.",
+    "The metadata checker validates path hygiene and graph consistency, not semantic adoption or production readiness; source-to-consumer edges received manual and independent review.",
+    "Open product gaps and owner actions remain open. Chapter status counts are profile counts, not completion percentages."
+  ],
+  "next_actions_document": "docs/books/completion.md"
+}
