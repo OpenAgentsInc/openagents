@@ -1,0 +1,421 @@
+{
+  "schema": "aethyr.icecream.mesh-bands.native.v1",
+  "status": "pass",
+  "scope": "Independent repaired C++ oracle copy versus actual normal generated-Coax meshes; original C++ fixtures stay historical.",
+  "commands": [
+    {
+      "args": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "deps",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.coax"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.074342,
+      "log": "deps.json",
+      "log_sha256": "d15d9ffa84eeca2ae44cc94641e16d40b835e1487c237bbc30764f839e547688"
+    },
+    {
+      "args": [
+        "/usr/bin/clang++",
+        "-std=c++20",
+        "-I",
+        "/Users/christopherdavid/work/aethyr-demo/src",
+        "-MM",
+        "/Users/christopherdavid/work/aethyr-demo/src/icecream/rules.cpp"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.166275,
+      "log": "cpp-deps-0.txt",
+      "log_sha256": "a7f63effdcf3b87f6e7ec409ebe8f26f4fcacefd0128f92c2f02886a9c914799"
+    },
+    {
+      "args": [
+        "/usr/bin/clang++",
+        "-std=c++20",
+        "-I",
+        "/Users/christopherdavid/work/aethyr-demo/src",
+        "-MM",
+        "/Users/christopherdavid/work/aethyr-demo/src/icecream/mesh.cpp"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.05903,
+      "log": "cpp-deps-1.txt",
+      "log_sha256": "8975eb00c1b0e8fbcb0b5509c88e5fbf18d7f4ff85b40a6f5fa03d7927911122"
+    },
+    {
+      "args": [
+        "/usr/bin/clang++",
+        "-std=c++20",
+        "-I",
+        "/Users/christopherdavid/work/aethyr-demo/src",
+        "-MM",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-oracle.cpp"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.059252,
+      "log": "cpp-deps-2.txt",
+      "log_sha256": "81c02824f51391e2380dbfe4f18d708aef52fc8eb061cc8a1630e781a0811265"
+    },
+    {
+      "args": [
+        "/usr/bin/clang++",
+        "-std=c++20",
+        "-O2",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/cpp-source",
+        "-I",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/cpp-source/icecream",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/cpp-source/icecream/rules.cpp",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/cpp-source/icecream/mesh-bands.cpp",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/cpp-source/oracle-harness.cpp",
+        "-Wl,-undefined,dynamic_lookup",
+        "-o",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/oracle"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 2.213423,
+      "log": "oracle-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "args": [
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/oracle"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 1.499807,
+      "log": "oracle.bin",
+      "log_sha256": "bc2ab1789f13dd3e619564f412e20071cde403629d38dc4f053b559c4ab58ba5"
+    },
+    {
+      "args": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.coax",
+        "--library",
+        "--header",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/IceCream.h"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.191016,
+      "log": "IceCream.c",
+      "log_sha256": "f213f9318ca0c46253b0817da51e3071bb8df234dcf7dea86239f33c890901f8"
+    },
+    {
+      "args": [
+        "/usr/bin/clang",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-ffp-contract=off",
+        "-Wno-unused-value",
+        "-I",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/IceCream.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-check.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/mesh-debug"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.301614,
+      "log": "mesh-debug-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "args": [
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/mesh-debug",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/oracle.bin",
+        "--table",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/repaired-oracle-table.coax"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 3.057105,
+      "log": "mesh-debug.log",
+      "log_sha256": "f31f62a74dc27cf846bfd745eb38727e3ebeba33b879cd43b07b30a9f2cc8ac2"
+    },
+    {
+      "args": [
+        "/usr/bin/clang",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-ffp-contract=off",
+        "-Wno-unused-value",
+        "-I",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/IceCream.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/bands-debug"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.213346,
+      "log": "bands-debug-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "args": [
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/bands-debug"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.248804,
+      "log": "bands-debug.log",
+      "log_sha256": "f353fbf2b5dcba810c7b23de0d64db1d6b4c23844e6e33f981d24ed193f59b3e"
+    },
+    {
+      "args": [
+        "/usr/bin/clang",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-Wno-unused-value",
+        "-I",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/IceCream.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-check.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/mesh-checked-o2"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.792916,
+      "log": "mesh-checked-o2-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "args": [
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/mesh-checked-o2",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/oracle.bin"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.353018,
+      "log": "mesh-checked-o2.log",
+      "log_sha256": "050097cf654ffe35c61b6248aa403fd7d50ab32884d1d6804f5c6484fa1b4d93"
+    },
+    {
+      "args": [
+        "/usr/bin/clang",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-Wno-unused-value",
+        "-I",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/IceCream.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/bands-checked-o2"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.779665,
+      "log": "bands-checked-o2-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "args": [
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/bands-checked-o2"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.174331,
+      "log": "bands-checked-o2.log",
+      "log_sha256": "f353fbf2b5dcba810c7b23de0d64db1d6b4c23844e6e33f981d24ed193f59b3e"
+    },
+    {
+      "args": [
+        "/usr/bin/clang",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-Wno-unused-value",
+        "-I",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/IceCream.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-check.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/mesh-sanitized-o1"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 1.81342,
+      "log": "mesh-sanitized-o1-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "args": [
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/mesh-sanitized-o1",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/oracle.bin"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 1.091333,
+      "log": "mesh-sanitized-o1.log",
+      "log_sha256": "050097cf654ffe35c61b6248aa403fd7d50ab32884d1d6804f5c6484fa1b4d93"
+    },
+    {
+      "args": [
+        "/usr/bin/clang",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-Wno-unused-value",
+        "-I",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/IceCream.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/bands-sanitized-o1"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 1.581897,
+      "log": "bands-sanitized-o1-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "args": [
+        "/private/tmp/aethyr-ch11-icecream-mesh-bands-qualified/bands-sanitized-o1"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.257866,
+      "log": "bands-sanitized-o1.log",
+      "log_sha256": "f353fbf2b5dcba810c7b23de0d64db1d6b4c23844e6e33f981d24ed193f59b3e"
+    }
+  ],
+  "whole_deadline_seconds": 820,
+  "child_deadline_seconds": 600,
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "source_sha256": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.coax": "5b1f4b76ba49ba0cb3a3dc4bc8feecda7d5d51afe48c4f04491696a239e4e87c",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh.coax": "4f911f2d43d247177e9d38426f84a9c84a61610436c36af2be05f53a1ab3cc12",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/rules.coax": "936c676da35c11b32d8e67e41500dea021b377063904dcb1b5e47688e2fa3cf4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/tuning.coax": "3754c90740d8ebb78891e7a93a1403312a6ec26aa2253b24dac9025101ffc63c",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/fixtures/mesh-oracle.coax": "78baa9a7e9952e007814fea6db1cf38b84cbfc753161e8e340fa9d6439b8173d",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/fixtures/mesh-band-oracle.coax": "4c1c462c6b5f4b8a68b517758ee6d5da560b1f929306ba4e383aef4e8370ddb7",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c": "a6f052b499fcd4a5eed7e88091b7926332d274b5053284a912d45da4d2c337a0",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-check.c": "d179d4df6680562c8cf625e5e1a46fbd5cac27d0a86c42630743efbc18c594e8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-oracle.cpp": "bc6e81f195885cb14a93b4139a30c4ba4fc9468dd00184b1f1da294376b77180",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/check_mesh_bands.py": "6adc092f17e0b8d9d9a5adc9756cc897da269c04eca27d2e5c4adf89bb54720a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/test-mesh.sh": "ebed295f2d8f0af1896635c4348f174566fbbb5f363bc6db91a8b21114600698"
+  },
+  "checks_reused_from": "/private/tmp/aethyr-ch11-icecream-mesh-repair/full-check-receipt.json",
+  "checks_receipt_sha256": "76b38046251260a220c993d7be8c444ab1cd2657bcedbb82feb47c42ca0d3a8e",
+  "cpp_original_sha256": {
+    "/Users/christopherdavid/work/aethyr-demo/src/vec3.h": "f4970f19ec9ef86fb3e0d788c07f582a9b652da78918ddb29e151493689f9250",
+    "/Users/christopherdavid/work/aethyr-demo/src/ecs/ecs.h": "d04af780819ff7cce4799c4672e21c4b0ee2893c8458d4f89323d266992f0586",
+    "/Users/christopherdavid/work/aethyr-demo/src/icecream/mesh.cpp": "8aed0202f11bb0c45d03faa64f2fc6be2af7c81c9e837c1de327398793cf2132",
+    "/Users/christopherdavid/work/aethyr-demo/src/icecream/rules.h": "722d2af5fdaf19522ff039aebba673ac15927e408696a9fee24c56d4ecef9c69",
+    "/Users/christopherdavid/work/aethyr-demo/src/icecream/mesh.h": "79b5989d2944d2b4cfcae2c30320d373e1a9382580d07d13ed9044e2eca6777b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-oracle.cpp": "bc6e81f195885cb14a93b4139a30c4ba4fc9468dd00184b1f1da294376b77180",
+    "/Users/christopherdavid/work/aethyr-demo/src/icecream/rules.cpp": "c314f05cd68a372056a2a15d54aebee60a9bbde6c4b0851be6810c18f9b8312c",
+    "/Users/christopherdavid/work/aethyr-demo/src/ecs/json.h": "43c8d272584df91b8de786e3815eb5023d99b5fc69600d40c4eaf512b136687a"
+  },
+  "cpp_repair_sha256": "070c802b35647550ae01e40eed6e20ccd20bf1efa45284ff47d8563af5b6aa36",
+  "oracle_sha256": "bc2ab1789f13dd3e619564f412e20071cde403629d38dc4f053b559c4ab58ba5",
+  "profiles": [
+    {
+      "mode": "debug",
+      "flags": [
+        "-O0",
+        "-g"
+      ],
+      "sanitizers": [],
+      "programs": [
+        {
+          "kind": "mesh",
+          "executable_sha256": "8a66bc94c7be0d507237fef47962bf9bd75ff25a13d4ee375d8609374eac9442",
+          "log": "mesh-debug.log",
+          "output": "mesh: 68 houses, 38 models, 0 failures; 99.9647% of 134729811 floats bit for bit, worst 1.67e-05"
+        },
+        {
+          "kind": "bands",
+          "executable_sha256": "5819321d2d1367ac6e3e246dd054332e7246165803ca32727ad21beafe35bde8",
+          "log": "bands-debug.log",
+          "output": "bands: 3696 short-view cases, 5203968 vertex words, exact seams/unchanged trims/canaries pass"
+        }
+      ]
+    },
+    {
+      "mode": "checked-o2",
+      "flags": [
+        "-O2"
+      ],
+      "sanitizers": [],
+      "programs": [
+        {
+          "kind": "mesh",
+          "executable_sha256": "8a379c403c8dc419ba83bc5a76c5bad636efcd971894fee14905f49e3fb2a5f0",
+          "log": "mesh-checked-o2.log",
+          "output": "mesh: 68 houses, 38 models, 0 failures; 100.0000% of 134729811 floats bit for bit, worst 0"
+        },
+        {
+          "kind": "bands",
+          "executable_sha256": "a47efbb943c0ed13dbe8027575c00056b2847f6d4176a0e4a114c10267e08387",
+          "log": "bands-checked-o2.log",
+          "output": "bands: 3696 short-view cases, 5203968 vertex words, exact seams/unchanged trims/canaries pass"
+        }
+      ]
+    },
+    {
+      "mode": "sanitized-o1",
+      "flags": [
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer"
+      ],
+      "sanitizers": [
+        "address",
+        "undefined"
+      ],
+      "programs": [
+        {
+          "kind": "mesh",
+          "executable_sha256": "1b602703e39f6c64f5272afddeaaa4ebdf761d6be5f1f080c3a02e0e09e92a14",
+          "log": "mesh-sanitized-o1.log",
+          "output": "mesh: 68 houses, 38 models, 0 failures; 100.0000% of 134729811 floats bit for bit, worst 0"
+        },
+        {
+          "kind": "bands",
+          "executable_sha256": "3ff188605d14b9ce2a685d73f763f298c182d85f8338f469ae34c45d82c3c4ad",
+          "log": "bands-sanitized-o1.log",
+          "output": "bands: 3696 short-view cases, 5203968 vertex words, exact seams/unchanged trims/canaries pass"
+        }
+      ]
+    }
+  ],
+  "source_changes": [],
+  "compiler_changed": false,
+  "generated_c_sha256": "f213f9318ca0c46253b0817da51e3071bb8df234dcf7dea86239f33c890901f8",
+  "header_sha256": "8ddc9136f0b239b44a30bbaa0f1ef08bedce996ad8cc7105185f9bc52de465cb",
+  "elapsed_seconds": 15.40845
+}

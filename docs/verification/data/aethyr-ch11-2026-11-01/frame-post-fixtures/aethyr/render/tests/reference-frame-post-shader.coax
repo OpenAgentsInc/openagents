@@ -1,0 +1,49 @@
+// Purpose-built conformance shaders with Fairy Forest's actual seven entry
+// interfaces. Binary fractions keep the independent whole-graph oracle exact.
+#load "../../../verse/gpu/shader.coax";
+RFGTargets :: struct {colour:V4;aux:V4;}
+RFGObject :: struct {a:V4;b:V4;c:V4;d:V4;}
+RFGWater :: struct {position:V4;tag:u32 #flat;}
+RFGAttributes :: struct {a:V4;b:V4;c:V4;d:V4;}
+
+#test "post graph fixture water factors distinguish each record and its multiply then add phase" {
+  rfg_empty:[]f32;rfg_v:=RFGWater.{tag=0};
+  #assert rfg_transmit(rfg_v,rfg_empty).colour.x==0.5 && rfg_emit(rfg_v,rfg_empty).colour.x==0.125;
+  rfg_v.tag=1;
+  #assert rfg_transmit(rfg_v,rfg_empty).colour.x==0.25 && rfg_emit(rfg_v,rfg_empty).colour.x==0.5;
+}
+rfg_position :: (rfg_vertex:u32)->V4 {
+  rfg_points:=[3]V2.[v2(-1,1),v2(3,1),v2(-1,-3)];rfg_p:=rfg_points[cast(int)(rfg_vertex%3)];
+  return v4(rfg_p.x,rfg_p.y,0.5,1);
+}
+rfg_bg_vs :: (rfg_vertex:u32,rfg_instance:u32)->V4 {return rfg_position(rfg_vertex);}
+rfg_bg_fs :: (rfg_p:V4,u:[]f32)->RFGTargets {
+  return RFGTargets.{colour=v4(0.125,0.25,0.5,1),aux=v4(0.75,0.25,1,1)};
+}
+rfg_scene_vs :: (rfg_vertex:u32,rfg_instance:u32,u:[]f32,heights:[]f32,objects:[]RFGObject)->V4 {return rfg_position(rfg_vertex);}
+rfg_scene_fs :: (rfg_p:V4,u:[]f32,heights:[]f32)->RFGTargets {
+  return RFGTargets.{colour=v4(0.875,0.875,0.875,1),aux=v4(0,0,0,1)};
+}
+rfg_water_vs :: (rfg_vertex:u32,rfg_instance:u32,u:[]f32,water_nodes:[]f32)->RFGWater {
+  return RFGWater.{position=rfg_position(rfg_vertex),tag=rfg_instance};
+}
+rfg_transmit :: (rfg_v:RFGWater,u:[]f32)->RFGTargets {
+  rfg_factor:=ifx rfg_v.tag==0 then 0.5f32 else 0.25f32;
+  return RFGTargets.{colour=v4(rfg_factor,rfg_factor,rfg_factor,0),aux=v4(9,10,11,12)};
+}
+rfg_emit :: (rfg_v:RFGWater,u:[]f32)->RFGTargets {
+  rfg_factor:=ifx rfg_v.tag==0 then 0.125f32 else 0.5f32;
+  return RFGTargets.{colour=v4(rfg_factor,rfg_factor,rfg_factor,0),aux=v4(13,14,15,16)};
+}
+rfg_bloom :: (rfg_p:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  rfg_sample:=gpu_sample_level(bloom_src,bloom_lin,v2(0.5,0.5),0);
+  return add4(rfg_sample,v4(bloom_step[0]/16,bloom_step[1]/32,bloom_step[2]/64,bloom_step[3]/128));
+}
+rfg_post :: (rfg_p:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_lin:Sampler)->V4 {
+  rfg_uv:=v2(0.5,0.5);rfg_light:=gpu_sample_level(post_light,post_lin,rfg_uv,0);
+  rfg_quarter:=gpu_sample_level(post_quarter,post_lin,rfg_uv,0);rfg_eighth:=gpu_sample_level(post_eighth,post_lin,rfg_uv,0);rfg_aux:=gpu_sample_level(post_aux,post_lin,rfg_uv,0);
+  rfg_colour:=add4(add4(rfg_light,scale4(rfg_quarter,0.5)),add4(scale4(rfg_eighth,0.25),scale4(rfg_aux,0.125)));
+  return v4(rfg_colour.x+u[0]/16,rfg_colour.y,rfg_colour.z,1);
+}
+rfg_hud_vs :: (rfg_vertex:u32,rfg_instance:u32,rfg_a:RFGAttributes,u:[]f32)->V4 {return rfg_a.a;}
+rfg_hud_fs :: (rfg_p:V4,u:[]f32)->V4 {return v4(0,0,0,0);}

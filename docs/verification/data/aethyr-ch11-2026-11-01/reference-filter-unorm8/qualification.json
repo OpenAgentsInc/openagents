@@ -1,0 +1,58 @@
+{
+  "schema": "aethyr.render.reference-filter-unorm8.v1",
+  "status": "scoped-pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "profiles": {
+    "analytic": "unchanged default",
+    "metal-unorm8": "UNORM8, positive-tie1/256axis fractions, floor1/64mipLOD, final1/4080round",
+    "nvidia-unorm8-integer": "UNORM8 integer boundedLOD only; joint1/256weights preserve rounded first corner and exact row/column marginals; finalUNORM16positive-tie round"
+  },
+  "unsupported": [
+    "nonUNORM8 physicalformats",
+    "nonlinear min/mag or mip-nearest sampling",
+    "depthcomparison",
+    "NVIDIA fractional boundedLOD"
+  ],
+  "root_mutants": {
+    "reference-half": 91,
+    "filter-profile": 41,
+    "reference-quad": 354,
+    "reference-raster": 443,
+    "reference-texture": 63,
+    "reference-frame": 618
+  },
+  "waivers": 0,
+  "native_filter_qualification": "../native-filtering/qualification.json",
+  "scope": "Opt-in diagnostic sampling policies and half-codec ownership extraction. IR opcode/VM implementation unchanged; historical IR proof remains separately scoped. Raster baseline predates a later additive Quad check group; the full618frame baseline composes the current retained checks. No complete catalog or Grid image equivalence claim.",
+  "source_archive": "frame-618-sources.tar.gz",
+  "source_archive_sha256": "5ff1375ac8c9b02d7f08f19501d41c6136cf33e9e8172a049e341dcafd6d8578",
+  "grid_integer_profile": "Actual fullGrid glyphs use fractionalLOD and therefore atomically refuse the explicitly limited NVIDIA mode. The analytic159channel image failure remains retained; production ownedSans filtering follows separately.",
+  "files": {
+    "raster-443.log": "203a496d9898062a0998588e76d18121803e0a5d87422f32c25d18f793f4f169",
+    "quad-354.log": "00e64abbf2dd5dc54230bd4bf9db3684457e2012910de4261622da300cdd3608",
+    "texture-63.log": "0f367e7c5c456e20b52007a3bc31e69d700ca7ea025fa35202a10861046d05bd",
+    "frame-618.log": "4863a3997532ce0837bf87aa2090837e132c21c73ee011bd747794100c80e422",
+    "frame-618-sources.tar.gz": "5ff1375ac8c9b02d7f08f19501d41c6136cf33e9e8172a049e341dcafd6d8578",
+    "tooling-10.log": "da35be041bfe5959b935d33a3af85a2b2133db277b3d869cbe2c2dc28cbe7d33",
+    "half-91.log": "5d3e9076530796247dc035360c606a274082fc7c5ee7fa2899112a2edbf97818",
+    "frame-618-inputs.json": "38aba7ae9755bce84336a4ab421ed2217074d4d724c9fe1213501ecbcc7130a5",
+    "filter-policy-41.log": "8d09e97cd02bb414730c2e4028c0afc55998e1d3dddcab5e3fcdded91f5d01d9",
+    "probes/render-filter-format-cases.json": "d6f4773f2d9ba510d33b50e572ec2aa993a3b849af5eb0c8f13c1753a7762834",
+    "probes/format-native.json": "dfee50afadf972e8cf639a3855693d92fec9abe2aeedfa5406eb3a06459f273c",
+    "probes/render-filter-format-probe.bindings": "86b203e28ef41da70cc18e6b2c7dba9c49503b6887f813a3aacb43f1d39c0785",
+    "probes/render-filter-format-probe.coax": "660ad9d4a44f5529107e183f880651f9dd7b1a85a4ff6b4e84db9b6d7e4db04e",
+    "probes/first-metal.json": "6620b98b11bc5beb156edf4740fdae1774451da42afb179ba39104f17e7b6cc5",
+    "probes/check_filter_format_webgpu.ts": "968237364e80826cda4ee1a1a1ecf54b1ad6386f8d05ebcfc5328f3608db1f05",
+    "probes/format-metal.json": "6c92c7f86d52ff338f7a612e784d1bad1aec6b2868093befd294525ba4c75faf",
+    "probes/format.spv": "7b568ea8c8544166856ca055558f3d52c264d894ecfe8e44155e4404d33498bf",
+    "probes/render-filter-joint-cases.json": "94ff6d34cd306738b8552dd4bfe60fe278e4835cd307b8a56f6f9f42d7657944",
+    "probes/format.wgsl": "5c2330fcde7d53ec48ba83fa0e2782b754fd5848133be2e9f6ed10fd1d9fded9",
+    "probes/joint-native.json": "4679a3b6730441b559ddd1c8319d761521f47003c96b619df196d20b43246c6d",
+    "probes/first-native.json": "dc506916067b24f91c8e73c8b6e94cb6933990354b4aea4e35dae33d419865d9",
+    "probes/joint-metal.json": "e425bc94bbc22ce2cc5b22b821ed8238b7215334c88671b54e600ef716d2c5e5",
+    "grid-integer-refusal/render.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "grid-integer-refusal/emission.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "grid-integer-refusal/measurement.json": "a348f7f825e877aaca13bec567834a0d3ce6ccc0033621b752aaba8d41cdc28d",
+    "grid-integer-refusal/frame.json": "7db9a82668e35a08019153e186b1108fd2e8ad70d16675136372b9e936e24ec1"
+  }
+}

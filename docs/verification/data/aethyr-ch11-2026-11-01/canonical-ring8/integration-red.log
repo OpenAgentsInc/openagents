@@ -1,0 +1,12 @@
+FAIL #test DeadGears capsule closes every seam and collapses each exact pole (0 ms)
+apps/openagents-web/gpu/deadgears.coax:368:3: error[E0406]: assertion failed
+    #assert f32_bits(dg_ring_a.p.x)==f32_bits(dg_ring_b.p.x) && f32_bits(dg_ring_a.p.y)==f32_bits(dg_ring_b.p.y) && f32_bits(dg_ring_a.p.z)==f32_bits(dg_ring_b.p.z);
+    ^
+  note: in #test DeadGears capsule closes every seam and collapses each exact pole
+FAIL #test DeadGears capsule retains its authored radius normals winding and240vertices (13 ms)
+apps/openagents-web/gpu/deadgears.coax:396:2: error[E0406]: assertion failed
+   #assert dg_ring_faces==64 && dg_ring_degenerate==16;
+   ^
+  note: in #test DeadGears capsule retains its authored radius normals winding and240vertices
+2 of 20 checks (--only 'DeadGears capsule'), 0 passed, 2 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

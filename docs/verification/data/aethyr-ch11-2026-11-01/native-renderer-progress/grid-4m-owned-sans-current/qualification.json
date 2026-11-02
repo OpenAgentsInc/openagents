@@ -1,0 +1,24 @@
+{
+  "schema": "aethyr.render.repaired-geometry-native-frame.v1",
+  "case": "grid-4m-owned-sans-current",
+  "status": "GPU validation pass; strict CPU/backend numerical comparison separate",
+  "frame": {
+    "status": "rendered",
+    "profile": 1,
+    "resource": 1,
+    "width": 320,
+    "height": 180,
+    "format": "rgba16f",
+    "bytes": 460800,
+    "draw_commands": 2,
+    "device": "NVIDIA GeForce RTX 4080",
+    "subPixelPrecisionBits": 8,
+    "validation_errors": 0,
+    "validation_warnings": 0
+  },
+  "raw_sha256": "ec62e7ad6b938df300c6a37de9163ad644b5643c096ec4cbe81aaebf19bf1fd0",
+  "input_equality": "input-equality.json",
+  "scope": "Distinctfreshcurrentdefaultproducerinput. Exactactualproducer/resourceobservationsretained; historicalgenericexecutor reusedundercompletesource/headerbytefence. No CPUacceptanceclaim.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/grid-4m-owned-sans-current",
+  "archive_sha256": "afd0c274871136d62ee8cc7647797686bfaca5dd2c34b84f610ae230fd5d3271"
+}

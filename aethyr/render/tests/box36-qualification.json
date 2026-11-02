@@ -1,0 +1,125 @@
+{
+  "schema": "aethyr.render.box36-qualification.v1",
+  "status": "source and independent native primitive pass; full actual-frame strict numerical comparisons fail",
+  "scope": "Correct outward winding of the four X/Y box faces while preserving all36 positions, face planes, normals and packet extents. Culling remains disabled. This repairs geometry consistency and does not claim to resolve near-depth intersections.",
+  "source_sha256": {
+    "apps/openagents-web/gpu/deadgears.coax": "fc2c77948ba78e4ab380c8f398e5f235c86b97a1f3a2f74c95e1a2195a39ca38",
+    "aethyr/tests/render-box36-native.coax": "49d3e203af18d6eb995da00f242a83a3583291bc6309e7ef0bd1d8141b0ae6a3",
+    "aethyr/render/tests/box36-native.c": "1fc9807d72b43b1e98f491e7bdd288b11263bcdd26f2ea2fd79c28042d9449e6",
+    "aethyr/render/tests/check_box36_native.py": "b1bfdc178c013de55d1d5906289b1a4930e57233ab796e82dd8c4a5621352f47"
+  },
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "check_first": "Identity corner packets and positive-affine triangle-normal law fail the retained original source before changing vertex order. Both original failures remain in this record.",
+  "source_checks": {
+    "passed": 27,
+    "failed": 0,
+    "log": "green.log"
+  },
+  "native_primitive": "native-qualification.json",
+  "historical_preservation": "preservation.json",
+  "ring8_proof_reused": "Canonical direction helpers and actual capsule generator expressions are unchanged; prior728-case Vulkan/WebGPU and normal-C packets remain historical qualified evidence. No unchanged primitive rerun.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-box36",
+  "archive_sha256": "d57a9f3b0dfbd2a2d8143426b1cc1684a991653e108d96a40febdca16eb72e7e",
+  "remaining": "Fresh shader package and matching actual CPU/WebGPU/Vulkan frame measurements and strict numerical comparisons.",
+  "runtime": {
+    "schema": "aethyr.render.box36-runtime.v1",
+    "status": "strict numerical comparisons fail",
+    "completion_claim": false,
+    "scope": "Fresh default b50 producer plus winding-repaired package, complete320x180RGBA16F images. Browser/native inputs differ from pre-winding only in authenticated package/entry5tree. Historical qualified RF C/header/backend reused with explicit original Geometry epoch and backend-specific raster profiles; no attribution to newer Everglade admission.",
+    "package_sha256": "def947afb78d14e9320f0f7c74a612e105b81d8cee4fd82bbfd03596bb8d4e7f",
+    "native_validation_errors": 0,
+    "native_validation_warnings": 0,
+    "browser_source_changes": [],
+    "comparisons": {
+      "native": {
+        "status": "fail",
+        "pixels": 57600,
+        "channels": 230400,
+        "colour_failures": 3,
+        "nonfinite_failures": 0,
+        "max_absolute_error": 0.005706787109375,
+        "max_normalized_error": 0.005706787109375,
+        "samples": [
+          {
+            "x": 42,
+            "y": 76,
+            "channel": "r",
+            "cpu": 0.0284423828125,
+            "gpu": 0.034149169921875,
+            "absolute_error": 0.005706787109375,
+            "bound": 0.002,
+            "reason": "colour"
+          },
+          {
+            "x": 42,
+            "y": 76,
+            "channel": "g",
+            "cpu": 0.035980224609375,
+            "gpu": 0.041656494140625,
+            "absolute_error": 0.00567626953125,
+            "bound": 0.002,
+            "reason": "colour"
+          },
+          {
+            "x": 42,
+            "y": 76,
+            "channel": "b",
+            "cpu": 0.047119140625,
+            "gpu": 0.052520751953125,
+            "absolute_error": 0.005401611328125,
+            "bound": 0.002,
+            "reason": "colour"
+          }
+        ],
+        "masked_pixels": 0,
+        "rule": "abs(gpu-cpu) <= 0.002 * max(1, abs(cpu)); both values finite"
+      },
+      "browser": {
+        "status": "fail",
+        "pixels": 57600,
+        "channels": 230400,
+        "colour_failures": 3,
+        "nonfinite_failures": 0,
+        "max_absolute_error": 0.005706787109375,
+        "max_normalized_error": 0.005706787109375,
+        "samples": [
+          {
+            "x": 42,
+            "y": 76,
+            "channel": "r",
+            "cpu": 0.0284423828125,
+            "gpu": 0.034149169921875,
+            "absolute_error": 0.005706787109375,
+            "bound": 0.002,
+            "reason": "colour"
+          },
+          {
+            "x": 42,
+            "y": 76,
+            "channel": "g",
+            "cpu": 0.035980224609375,
+            "gpu": 0.041656494140625,
+            "absolute_error": 0.00567626953125,
+            "bound": 0.002,
+            "reason": "colour"
+          },
+          {
+            "x": 42,
+            "y": 76,
+            "channel": "b",
+            "cpu": 0.047119140625,
+            "gpu": 0.052520751953125,
+            "absolute_error": 0.005401611328125,
+            "bound": 0.002,
+            "reason": "colour"
+          }
+        ],
+        "masked_pixels": 0,
+        "rule": "abs(gpu-cpu) <= 0.002 * max(1, abs(cpu)); both values finite"
+      }
+    },
+    "visible_review": "No observed framing, scene-geometry, palette or HUD change in display preview. Native readback is byte-identical; WebGPU changes only6halfchannels at5pixels,max.000244140625. Full strict images still fail at(42,76).",
+    "archive_sha256": "71dee4fa4847f624301c966f15cd29bfb734d88531376dad93bfa724e92b6fe9",
+    "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-box36/runtime"
+  }
+}

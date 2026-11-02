@@ -1,0 +1,39 @@
+// Observed GPU texture payloads share one physical byte/mip description with
+// the native uploader. Coax decodes RGB to linear values before CPU filtering;
+// platform code never normalizes sRGB bytes or chooses a sampling policy.
+#module "aethyr.render.reference.texture";
+#load "texture-codec.coax";
+#authority;
+RFTextureNeed :: struct {status:RenderTextureStatus;format:RenderTexelFormat;pixels:int;}
+RFTextureDecoded :: struct {status:RenderTextureStatus;bad_level:int=-1;bad_texel:int=-1;texture:RQTexture;}
+#load "tests/reference-texture-checks.coax";
+rf_texture_format :: (name:string)->RenderTexelFormat {
+ if name=="rgba8unorm" {return RenderTexelFormat.rgba8;}if name=="rgba8unorm-srgb" {return RenderTexelFormat.rgba8_srgb;}
+ if name=="bgra8unorm" {return RenderTexelFormat.bgra8;}if name=="bgra8unorm-srgb" {return RenderTexelFormat.bgra8_srgb;}
+ if name=="rgba16float" {return RenderTexelFormat.rgba16f;}if name=="rgba32float" {return RenderTexelFormat.rgba32f;}
+ if name=="depth32float" {return RenderTexelFormat.depth32f;}return RenderTexelFormat.invalid;
+}
+rf_texture_storage :: (format:RenderTexelFormat)->RQStorageFormat {
+ if format==RenderTexelFormat.rgba8 || format==RenderTexelFormat.bgra8 {return RQStorageFormat.unorm8;}
+ if format==RenderTexelFormat.rgba8_srgb || format==RenderTexelFormat.bgra8_srgb {return RQStorageFormat.srgb8;}
+ if format==RenderTexelFormat.rgba16f {return RQStorageFormat.half;}
+ if format==RenderTexelFormat.rgba32f {return RQStorageFormat.float32;}
+ if format==RenderTexelFormat.depth32f {return RQStorageFormat.depth32;}return RQStorageFormat.unclassified;
+}
+rf_texture_require :: (name:string,layers:int,levels:[]RenderTextureLevel)->RFTextureNeed {
+ format:=rf_texture_format(name);if format==RenderTexelFormat.invalid {return RFTextureNeed.{status=RenderTextureStatus.bad_format};}
+ if layers<1 || layers>2048 || levels.count<1 {return RFTextureNeed.{status=RenderTextureStatus.bad_layout};}
+ need:=RFTextureNeed.{format=format};
+ for level:levels {
+  if level.width<1 || level.width>16384 || level.height<1 || level.height>16384 {need.status=RenderTextureStatus.bad_layout;return need;}
+  pixels:=level.width*level.height*layers;
+  if pixels>RENDER_TEXTURE_PIXELS-need.pixels {need.status=RenderTextureStatus.work_budget;return need;}need.pixels+=pixels;
+ }
+ return need;
+}
+rf_texture_decode :: (name:string,layers:int,levels:[]RenderTextureLevel,bytes:[]u8,out:[]RQColor,out_levels:[]RQMip)->RFTextureDecoded {
+ need:=rf_texture_require(name,layers,levels);if need.status!=RenderTextureStatus.ok {return RFTextureDecoded.{status=need.status};}
+ decoded:=render_texture_decode(need.format,layers,levels,bytes,out,out_levels,RENDER_TEXTURE_PIXELS);
+ r:=RFTextureDecoded.{status=decoded.status,bad_level=decoded.bad_level,bad_texel=decoded.bad_texel};
+ if r.status==RenderTextureStatus.ok {r.texture=RQTexture.{levels=out_levels[0..<levels.count],layers=layers,texels=out[0..<decoded.pixels],depth=need.format==RenderTexelFormat.depth32f,storage=rf_texture_storage(need.format)};}return r;
+}

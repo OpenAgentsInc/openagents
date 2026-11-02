@@ -1,0 +1,26 @@
+rq_ir_view_fixture :: (which:int,tree:[]u32,meta:[]int)->RQProgram {
+ prefix:=RQ_IR_COUNTS_TREE;for j:0..<30 {tree[j]=prefix[j];}tree[1]=11;tree[30]=9;tree[31]=3;
+ suffix:=[15]u32.[1,0,0,4,7,9,7,9,3,11,1,0,1,1,0];for j:0..<15 {tree[32+j]=suffix[j];}
+ if which==7 {tree[42]=0;}if which==8 {tree[43]=1;}if which==9 {tree[37]=10;}
+ return rq_ir_prepare(tree[0..<47],meta);
+}
+#forall "quad private view admission deduplicates array identity and keeps its exact64 record cap" which:0..<10 {
+ tree:[64]u32;meta:[RQ_IR_META]int;p:=rq_ir_view_fixture(which,tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[1024]u32;memory[0]=16;memory[1]=24;memory[2]=32;memory[3]=40;for lane:0..<4 {memory[24+lane]=7;}
+ count:=0;mask:u32=15;wanted:=RQStatus.ok;expected_count:=1;expected_id:=0;
+ if which==1 || which==2 {count=2;expected_count=2;expected_id=ifx which==1 then 0 else 1;}
+ if which==3 {count=64;expected_count=64;wanted=RQStatus.capacity;}
+ if which==4 {count=63;expected_count=64;expected_id=63;}
+ if which==5 {mask=0;expected_count=0;}if which==6 {mask=1;}
+ if which>=7 {wanted=RQStatus.malformed;expected_count=0;}
+ m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,version=2,stage=1,budget=1000,at=41,used=800,private_count=count}];
+ for j:0..<count {m[0].private_views[j]=RQPrivate.{at=100+j*8,elem=2,count=2,lane_words=2};}
+ if which==1 {m[0].private_views[0].at=16;}if which==2 {m[0].private_views[1].at=16;}
+ flow:=rq_ir_stmt(m[..],tree[0..<47],meta[..],memory[..],RQResources.{},RQFrame.{proc=0,locals=0},mask);
+ #assert m[0].status==wanted && m[0].private_count==expected_count && m[0].used==800;
+ #assert flow.returned==0 && flow.breaking==0 && flow.continuing==0;
+ if wanted==RQStatus.ok && mask!=0 {
+  view:=m[0].private_views[expected_id];#assert view.at==16 && view.elem==2 && view.count==2 && view.lane_words==2;
+  for lane:0..<4 {#assert memory[24+lane]==(ifx (mask&(cast(u32)1<<cast(u32)lane))!=0 then 2147483648+cast(u32)expected_id else cast(u32)7);}
+ }else {for lane:0..<4 {#assert memory[24+lane]==7;}}
+}

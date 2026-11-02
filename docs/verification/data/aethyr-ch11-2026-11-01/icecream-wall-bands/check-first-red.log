@@ -1,0 +1,16 @@
+FAIL #test room wall bands: closed and doorway spans retain disjoint materials (479 ms)
+verse/icecream/mesh.coax:1113:3: error[E0406]: assertion failed
+    #assert iwlo>0.27f32 && iwhi<2.39f32;
+    ^
+  note: in #test room wall bands: closed and doorway spans retain disjoint materials
+FAIL #test room wall bands: mixed palette retains disjoint materials (440 ms)
+verse/icecream/mesh.coax:1113:3: error[E0406]: assertion failed
+    #assert iwlo>0.27f32 && iwhi<2.39f32;
+    ^
+  note: in #test room wall bands: mixed palette retains disjoint materials
+FAIL #test room wall bands: Backrooms stripes retain disjoint materials (285 ms)
+verse/icecream/mesh.coax:1113:3: error[E0406]: assertion failed
+    #assert iwlo>0.27f32 && iwhi<2.39f32;
+    ^
+  note: in #test room wall bands: Backrooms stripes retain disjoint materials
+3 of 19 checks (--only 'room wall bands:'), 0 passed, 3 failed

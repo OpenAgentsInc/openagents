@@ -422,9 +422,11 @@ NONE uint32_t coaxial_outbox(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_outbox_len(uint32_t s) { (void)s; return 0; }
 NONE void coaxial_action_done(uint32_t s) { (void)s; }
 NONE uint32_t coaxial_asset(uint32_t s, int32_t i, uint32_t b) { (void)s; (void)i; (void)b; return 0; }
+NONE uint32_t coaxial_asset_capacity(uint32_t s, int32_t i) { (void)s; (void)i; return 0; }
 NONE void coaxial_asset_ready(uint32_t s, int32_t i, uint32_t b) { (void)s; (void)i; (void)b; }
 NONE void coaxial_hash(uint32_t s, uint32_t n) { (void)s; (void)n; }
 NONE uint32_t coaxial_draws(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_draw_capacity(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_draw_count(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_water_draws(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_grass_instances(uint32_t s) { (void)s; return 0; }
@@ -445,6 +447,8 @@ NONE uint32_t coaxial_particle_cap(void) { return 0; }
 NONE uint32_t coaxial_particles(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_particle_bytes(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_particle_instances(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_media(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_media_len(uint32_t s) { (void)s; return 0; }
 // The phone's thumbs (verse/grid.coax) draw through these; a desktop has none.
 void host_line(int64_t h, double ax, double ay, double bx, double by, double la, double lb, double w) {
   (void)h; (void)ax; (void)ay; (void)bx; (void)by; (void)la; (void)lb; (void)w;

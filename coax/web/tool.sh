@@ -34,7 +34,7 @@ elif [[ -s "$sources" ]]; then
     if [[ ! -e "$f" || "$f" -nt "$bin" ]]; then why="$f changed"; break; fi
   done < "$sources"
   [[ -n "$why" ]] || { changed="$(find "$(dirname "$src")" -maxdepth 1 -name '*.coax' -newer "$bin" -print -quit)"; [[ -z "$changed" ]] || why="$changed changed"; }
-elif changed="$(find "$src" "$(dirname "$src")" "$repo/coax" "$repo/verse" "$repo/psionic" "$repo/apps" "$repo/proto" "$repo/os" -name '*.coax' -newer "$bin" -print -quit)"; [[ -n "$changed" ]]; then
+elif changed="$(find "$src" "$(dirname "$src")" "$repo/coax" "$repo/aethyr" "$repo/verse" "$repo/psionic" "$repo/apps" "$repo/proto" "$repo/os" -name '*.coax' -newer "$bin" -print -quit)"; [[ -n "$changed" ]]; then
   why="$changed changed"
 fi
 if [[ -n "$why" ]]; then

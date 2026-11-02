@@ -1,0 +1,105 @@
+// Source part of reference-frame.coax. Small purpose-built checked trees were
+// emitted by compiler30868e8c; their source, exact trees and hashes are retained
+// with the chapter's layout-fixture evidence. Malformed layout variants modify
+// tree transport before preparing a fresh immutable tree/metadata pair.
+RFL_PAIR_TREE :: [122]u32.[2,8,0,1,2,3,4,5,9,2,7,4,2,0,2,4,2,8,2,12,16,3,7,3,4,4,6,3,4,4,6,23,1,1,4,22,2,4,27,42,40,2,16,5,0,0,16,2,0,16,2,0,16,2,1065353216,7,2,7,6,2,7,6,23,1,1,4,22,2,4,27,42,40,1,16,5,0,0,16,2,0,16,2,0,16,2,1065353216,7,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,7,4,18,0,18,1,18,2,18,3,2,0,0,0,1,2,1,1,3,2];
+RFL_EMPTY_TREE :: [104]u32.[2,7,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,3,6,2,4,4,2,4,4,18,1,1,4,22,2,4,16,2,0,16,2,0,16,2,0,16,2,1065353216,6,1,6,1,6,18,1,1,4,22,2,4,16,2,0,16,2,0,16,2,0,16,2,1065353216,6,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,6,4,18,0,18,1,18,2,18,3,2,0,0,0,1,1,1,2];
+RFL_EXTRA_TREE :: [135]u32.[2,8,0,1,2,3,4,5,9,2,7,4,2,0,2,4,2,8,2,12,16,3,7,4,4,4,6,6,4,4,4,6,6,33,1,1,4,22,2,4,19,1,27,42,40,2,16,5,0,0,27,42,40,3,16,5,0,0,16,2,0,16,2,0,16,2,1065353216,7,2,7,6,2,7,6,23,1,1,4,22,2,4,27,42,40,1,16,5,0,0,16,2,0,16,2,0,16,2,1065353216,7,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,7,4,18,0,18,1,18,2,18,3,2,0,0,0,1,2,3,1,1,4,2];
+RFL_KIND_TREE :: [109]u32.[2,8,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,10,0,3,6,2,4,4,2,4,4,18,1,1,4,22,2,4,16,2,0,16,2,0,16,2,0,16,2,1065353216,6,2,6,7,2,6,7,18,1,1,4,33,7,6,4,18,1,16,3,0,16,3,0,16,3,0,6,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,6,4,18,0,18,1,18,2,18,3,2,0,0,0,1,1,1,2,3];
+RFL_STRIDE_TREE :: [133]u32.[2,10,0,1,2,3,4,5,7,2,2,0,2,4,8,9,6,7,4,2,0,2,4,2,8,2,12,16,9,2,3,8,3,4,4,7,3,4,4,7,25,1,1,4,22,2,4,27,41,42,40,2,16,5,0,0,0,16,2,0,16,2,0,16,2,1065353216,8,2,8,9,2,8,9,23,1,1,4,22,2,4,27,42,40,1,16,5,0,0,16,2,0,16,2,0,16,2,1065353216,8,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,8,4,18,0,18,1,18,2,18,3,2,0,0,0,1,2,1,1,3,2];
+RFL_STAGE_TREE :: [114]u32.[2,8,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,9,2,3,6,2,4,4,2,4,4,18,1,1,4,22,2,4,16,2,0,16,2,0,16,2,0,16,2,1065353216,6,2,6,7,2,6,7,23,1,1,4,22,2,4,27,42,40,1,16,5,0,0,16,2,0,16,2,0,16,2,1065353216,6,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,6,4,18,0,18,1,18,2,18,3,2,0,0,0,1,1,1,2,3];
+RFL_SMALL_TREE :: [124]u32.[2,9,0,1,2,3,4,5,7,1,2,0,4,7,4,2,0,2,4,2,8,2,12,16,9,2,3,7,3,4,4,6,3,4,4,6,20,1,1,4,22,2,4,27,41,40,2,0,16,2,0,16,2,0,16,2,1065353216,7,2,7,8,2,7,8,23,1,1,4,22,2,4,27,42,40,1,16,5,0,0,16,2,0,16,2,0,16,2,1065353216,7,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,7,4,18,0,18,1,18,2,18,3,2,0,0,0,1,2,1,1,3,4];
+RFL_MAX_TREE :: [156]u32.[2,9,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,7,16,6,0,6,16,6,32,6,48,6,64,6,80,6,96,6,112,6,128,6,144,6,160,6,176,6,192,6,208,6,224,6,240,256,9,2,3,6,3,4,4,7,3,4,4,7,22,1,1,4,22,2,4,27,41,41,40,2,0,0,16,2,0,16,2,0,16,2,1065353216,6,2,6,8,2,6,8,23,1,1,4,22,2,4,27,42,40,1,16,5,0,0,16,2,0,16,2,0,16,2,1065353216,6,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,6,4,18,0,18,1,18,2,18,3,2,0,0,0,1,2,1,1,3,4];
+RFL_LARGE_TREE :: [156]u32.[2,9,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,7,17,6,0,6,16,6,32,6,48,6,64,6,80,6,96,6,112,6,128,6,144,6,160,6,176,6,192,6,208,6,224,6,240,2,256,260,9,2,3,6,3,4,4,7,3,4,4,7,20,1,1,4,22,2,4,27,41,40,2,16,16,2,0,16,2,0,16,2,1065353216,6,2,6,8,2,6,8,23,1,1,4,22,2,4,27,42,40,1,16,5,0,0,16,2,0,16,2,0,16,2,1065353216,6,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,6,4,18,0,18,1,18,2,18,3,2,0,0,0,1,2,1,1,3,4];
+RFL_ARRAY_TREE :: [306]u32.[2,13,0,1,2,3,4,5,9,2,7,2,2,0,2,4,8,8,7,6,8,7,4,2,0,2,4,2,8,2,12,16,7,2,9,0,7,16,24,10,1,11,0,5,10,3,4,4,6,5,4,4,6,8,7,136,1,3,3,40,3,31,8,6,22,2,2,16,2,0,16,2,0,22,2,2,16,2,1065353216,16,2,0,22,2,2,16,2,0,16,2,1065353216,22,2,2,16,2,0,16,2,1065353216,22,2,2,16,2,1065353216,16,2,0,22,2,2,16,2,1065353216,16,2,1065353216,3,40,4,27,42,40,3,29,5,18,0,4,31,10,2,22,3,4,22,4,3,27,42,40,2,16,5,0,0,27,42,40,2,16,5,2,0,27,41,40,4,0,22,4,3,27,42,40,2,16,5,1,0,27,42,40,2,16,5,3,0,27,41,40,4,1,16,2,0,16,2,1065353216,18,4,9,4,10,6,11,12,4,10,6,11,12,19,1,1,4,33,4,9,4,18,2,18,3,27,41,40,0,1,16,3,0,7,2,2,2,2,2,2,10,1,1,4,31,7,2,18,0,18,1,9,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,9,4,18,0,18,1,18,2,18,3,2,3,2,2,2,3,2,2,2,17,1,1,4,19,1,18,0,19,3,19,2,18,1,18,0,18,2,2,0,0,0,1,2,1,1,3,2,4,5];
+RFL_COMPARE_TREE :: [340]u32.[2,13,0,1,2,3,4,5,9,2,7,2,2,0,2,4,8,8,7,6,8,7,4,2,0,2,4,2,8,2,12,16,7,2,9,0,7,16,24,10,0,11,1,5,10,3,4,4,6,5,4,4,6,8,7,136,1,3,3,40,3,31,8,6,22,2,2,16,2,0,16,2,0,22,2,2,16,2,1065353216,16,2,0,22,2,2,16,2,0,16,2,1065353216,22,2,2,16,2,0,16,2,1065353216,22,2,2,16,2,1065353216,16,2,0,22,2,2,16,2,1065353216,16,2,1065353216,3,40,4,27,42,40,3,29,5,18,0,4,31,10,2,22,3,4,22,4,3,27,42,40,2,16,5,0,0,27,42,40,2,16,5,2,0,27,41,40,4,0,22,4,3,27,42,40,2,16,5,1,0,27,42,40,2,16,5,3,0,27,41,40,4,1,16,2,0,16,2,1065353216,18,4,9,4,10,6,11,12,5,10,6,11,12,9,52,1,2,3,40,4,33,7,9,4,18,2,16,3,0,16,3,0,16,3,0,4,22,3,4,19,3,27,41,40,4,0,27,42,40,1,16,5,4,0,27,41,40,4,1,27,41,40,4,2,16,2,1065353216,7,2,2,2,2,2,2,10,1,1,4,31,7,2,18,0,18,1,9,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,9,4,18,0,18,1,18,2,18,3,2,3,2,2,2,3,2,2,2,17,1,1,4,19,1,18,0,19,3,19,2,18,1,18,0,18,2,2,0,0,0,1,2,1,1,3,2,4,5];
+RFL_MEDIA_TREE :: [358]u32.[2,13,0,1,2,3,4,5,9,2,7,2,2,0,2,4,8,8,7,6,8,7,4,2,0,2,4,2,8,2,12,16,7,2,9,0,7,16,24,10,0,11,0,5,10,3,4,4,6,5,4,4,6,8,7,136,1,3,3,40,3,31,8,6,22,2,2,16,2,0,16,2,0,22,2,2,16,2,1065353216,16,2,0,22,2,2,16,2,0,16,2,1065353216,22,2,2,16,2,0,16,2,1065353216,22,2,2,16,2,1065353216,16,2,0,22,2,2,16,2,1065353216,16,2,1065353216,3,40,4,27,42,40,3,29,5,18,0,4,31,10,2,22,3,4,22,4,3,27,42,40,2,16,5,0,0,27,42,40,2,16,5,2,0,27,41,40,4,0,22,4,3,27,42,40,2,16,5,1,0,27,42,40,2,16,5,3,0,27,41,40,4,1,16,2,0,16,2,1065353216,18,4,9,4,10,6,11,12,5,10,6,11,12,9,70,1,2,3,40,4,33,2,9,3,18,2,18,3,27,41,40,0,1,4,22,3,4,19,3,27,41,40,4,0,27,42,40,1,16,5,4,0,19,3,27,41,40,4,1,27,42,40,1,16,5,4,0,19,3,27,41,40,4,2,27,42,40,1,16,5,4,0,16,2,1065353216,7,2,2,2,2,2,2,10,1,1,4,31,7,2,18,0,18,1,9,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,9,4,18,0,18,1,18,2,18,3,2,3,2,2,2,3,2,2,2,17,1,1,4,19,1,18,0,19,3,19,2,18,1,18,0,18,2,2,0,0,0,1,2,1,1,3,2,4,5];
+
+#test "reference layout maps actual media uniform image and sampler names and stage roles" {
+  tree:=RFL_MEDIA_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+  #assert p.status==RQStatus.ok;
+  for profile:[2]int.[2,13] {
+    r:=rf_shader_layout(profile,13,p,tree[..],meta[..]);
+    #assert r.status==RQStatus.ok && r.pipeline.has_fragment && r.count==3 && r.attribute_count==0 && r.attribute_stride==0;
+    ids:=[3]int.[2,4,5];
+    for i:0..<3 {
+      #assert r.bindings[i].name_id==ids[i] && r.bindings[i].kind==i+1 && r.bindings[i].resource==i;
+      use:=rf_shader_use(profile,13,i);
+      #assert use.resource==i && use.slot==i && use.native_kind==i+1 && use.shape==0;
+      #assert use.stages==(ifx i==0 then 3 else 2) && use.stride==(ifx i==0 then 4 else 0);
+    }
+  }
+  #assert rf_shader_layout(15,13,p,tree[..],meta[..]).status==RQStatus.resource;
+  #assert rf_shader_layout(-1,13,p,tree[..],meta[..]).status==RQStatus.resource;
+  #assert rf_shader_layout(2,-1,p,tree[..],meta[..]).status==RQStatus.resource;
+  #assert rf_shader_layout(2,14,p,tree[..],meta[..]).status==RQStatus.resource;
+}
+#test "reference layout admits the real vertex-only caster and rejects both fragment-presence mismatches" {
+  caster:=RP_CATALOG_CASTER_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(caster[..],meta[..]);
+  r:=rf_catalog_layout(7,RenderPassId.caster,p,caster[..],meta[..]);
+  #assert r.status==RQStatus.ok && !r.pipeline.has_fragment && r.count==1;
+  #assert r.bindings[0].resource==0 && r.bindings[0].kind==1;
+  #assert rf_shader_use(7,2,0).stages==1;
+  #assert rf_catalog_layout(15,RenderPassId.background,p,caster[..],meta[..]).status==RQStatus.unsupported;
+  pair:=RFL_PAIR_TREE;p=rq_ir_prepare(pair[..],meta[..]);
+  #assert rf_catalog_layout(7,RenderPassId.caster,p,pair[..],meta[..]).status==RQStatus.unsupported;
+}
+#test "reference layout propagates preparation and pipeline failures before mapping any resources" {
+  mismatch:=RP_MISMATCH_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(mismatch[..],meta[..]);
+  #assert p.status==RQStatus.ok;
+  r:=rf_catalog_layout(15,RenderPassId.background,p,mismatch[..],meta[..]);
+  #assert r.status==RQStatus.unsupported && r.count==0;
+  three:=RP_THREE_TREE;p=rq_ir_prepare(three[..],meta[..]);
+  #assert p.status==RQStatus.ok;
+  #assert rf_catalog_layout(15,RenderPassId.background,p,three[..],meta[..]).status==RQStatus.capacity;
+  p.status=RQStatus.capacity;
+  #assert rf_catalog_layout(15,RenderPassId.background,p,three[..],meta[..]).status==RQStatus.capacity;
+}
+#forall "reference layout refuses missing extra wrongly typed strided or single-stage catalog resources" variant:0..<5 {
+  empty:=RFL_EMPTY_TREE;extra:=RFL_EXTRA_TREE;kind:=RFL_KIND_TREE;stride:=RFL_STRIDE_TREE;stage:=RFL_PAIR_TREE;
+  tree:[]u32=empty[..];if variant==1 {tree=extra[..];}if variant==2 {tree=kind[..];}if variant==3 {tree=stride[..];}if variant==4 {tree=stage[..];}
+  meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree,meta[..]);#assert p.status==RQStatus.ok;
+  r:=rf_catalog_layout(15,RenderPassId.background,p,tree,meta[..]);
+  #assert r.status==RQStatus.unsupported;
+  if variant==0 {#assert r.count==0;}
+  if variant==1 {#assert r.count==1;}
+  if variant==2 {#assert rq_ir_parameter(p,tree,meta[..],1,1).kind==2;}
+  if variant==3 {#assert rq_ir_parameter(p,tree,meta[..],0,2).stride==8;}
+  if variant==4 {#assert rr_pipeline(p,tree,meta[..]).vs.params==3 && r.count==1;}
+}
+#test "reference layout preserves an actual fragment-only uniform without inventing a vertex use" {
+  tree:=RFL_STAGE_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+  r:=rf_catalog_layout(15,RenderPassId.background,p,tree[..],meta[..]);
+  #assert r.status==RQStatus.ok && r.count==1 && r.bindings[0].resource==0 && r.bindings[0].kind==1;
+  #assert r.pipeline.vs.params==2 && r.pipeline.fs.params==2 && r.attribute_count==0 && r.attribute_stride==0;
+  #assert rf_shader_use(15,0,0).stages==2;
+}
+#forall "reference layout observes independent image and sampler shape mismatches" comparison:bool {
+  array:=RFL_ARRAY_TREE;compare:=RFL_COMPARE_TREE;tree:[]u32=array[..];if comparison {tree=compare[..];}
+  meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree,meta[..]);#assert p.status==RQStatus.ok;
+  r:=rf_shader_layout(2,13,p,tree,meta[..]);#assert r.status==RQStatus.unsupported;
+  at:=ifx comparison then 3 else 2;arg:=rq_ir_parameter(p,tree,meta[..],1,at);
+  #assert arg.shape==1 && arg.kind==(ifx comparison then 3 else 2);
+  #assert r.count==(ifx comparison then 2 else 1);
+}
+#forall "reference layout admits exact four and256byte attribute extents and refuses260" variant:0..<3 {
+  small:=RFL_SMALL_TREE;large:=RFL_LARGE_TREE;maximal:=RFL_MAX_TREE;tree:[]u32=small[..];if variant==1 {tree=maximal[..];}if variant==2 {tree=large[..];}
+  meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree,meta[..]);#assert p.status==RQStatus.ok;
+  r:=rf_catalog_layout(15,RenderPassId.background,p,tree,meta[..]);
+  if variant==2 {#assert r.status==RQStatus.unsupported;}
+  else {
+    count:=ifx variant==0 then 1 else 16;stride:=ifx variant==0 then 1 else 64;components:=ifx variant==0 then 1 else 4;
+    #assert r.status==RQStatus.ok && r.count==1 && r.attribute_count==count && r.attribute_stride==stride;
+    for i:0..<count {#assert r.attributes[i].location==i && r.attributes[i].offset==i*components && r.attributes[i].components==components;}
+  }
+}
+#forall "reference layout refuses odd total bytes and misaligned actual attribute fields after fresh preparation" field_offset:bool {
+  tree:=RF_WATCH_HUD;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+  attrs:=rr_pipeline(p,tree[..],meta[..]).vs.attributes_type;at:=rq_ir_type(meta[..],attrs,1);count:=cast(int)tree[at+1];
+  #assert count==4;
+  if field_offset {
+    for i:0..<count {tree[at+3+i*2]+=1;}tree[at+2+count*2]+=4;
+  }else {tree[at+2+count*2]+=1;}
+  p=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+  #assert rf_catalog_layout(15,RenderPassId.hud,p,tree[..],meta[..]).status==RQStatus.unsupported;
+}

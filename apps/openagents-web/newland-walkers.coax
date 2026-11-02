@@ -153,7 +153,7 @@ walk_dive :: (s: [] LandState, step: f32) {
   s[0].dive_fade = e;
 }
 
-#test "the Grid's walkers walk the homepage under their names, and WALK AROUND dives on into the Grid" {
+#test "the Grid's walkers walk the homepage under their names, and WALK AROUND dives on into the Grid" #steps 50000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   s[0].time = 9;

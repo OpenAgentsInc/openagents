@@ -1,0 +1,80 @@
+{
+  "schema": "aethyr.render.host-memory.native.v1",
+  "status": "pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "compiler_source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "source_inputs": {
+    "/private/tmp/aethyr-ch11-host-memory-native/stage.coax": "5d8d68c51fea43fb4853b8d926f7bf9a92af4a949b5d1b0197568fdc81f842fc",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/host-memory.coax": "56ff937dd5272b490462aeace06b03652e2f4b96227e2bcbb94da25a18c4c08b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/frame.coax": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-frame-checks.coax": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/host-memory-checks.coax": "c0b6b72e2f95c06660fbc5015f21212c980c1ffcddb50f3f6021bfb6c928bcb9",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_host_memory.py": "c48cb2b0c22eb52e8986c34c669111c3a69333d6046a5602a8943d410fc5b6a5",
+    "/private/tmp/aethyr-ch11-host-memory-native/driver.c": "046b22489d85e5172cfff397b76227ca0c99d2e3eef5a0ba266e432b7b76d288"
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "cases": 12900,
+      "fields": [
+        "status",
+        "address",
+        "next",
+        "pages"
+      ],
+      "loss_controls": [
+        "status",
+        "address",
+        "next",
+        "pages"
+      ],
+      "generated_c_sha256": "1ff711c4688385054ad6ef7712f039b55efaa0650d9bbd3a3362c4619ae79ba8",
+      "header_sha256": "3eb1db7d358f323bde7abc89201c9b2c419366dbaa0bb4b184e6004c09acb2cd",
+      "executable_sha256": "5e5b6c63c4b941710fd52f4ca4232899da6ddce169d071b80d8917f36358382f",
+      "transcript_sha256": "3ca8df0624e97148c0e1fd4b1d89397fa78becb0700fb5751e8a23cf44ab4543"
+    },
+    {
+      "mode": "release",
+      "cases": 12900,
+      "fields": [
+        "status",
+        "address",
+        "next",
+        "pages"
+      ],
+      "loss_controls": [
+        "status",
+        "address",
+        "next",
+        "pages"
+      ],
+      "generated_c_sha256": "9e9c650bc006063557c70bf53c9d920c51362f607f0d4bc8f4a5add5950a90fc",
+      "header_sha256": "3eb1db7d358f323bde7abc89201c9b2c419366dbaa0bb4b184e6004c09acb2cd",
+      "executable_sha256": "09fc66dc34a6660d5f1af54a80d416ca73c98d8284c0757a401641fb0118c48a",
+      "transcript_sha256": "3ca8df0624e97148c0e1fd4b1d89397fa78becb0700fb5751e8a23cf44ab4543"
+    },
+    {
+      "mode": "sanitized",
+      "cases": 12900,
+      "fields": [
+        "status",
+        "address",
+        "next",
+        "pages"
+      ],
+      "loss_controls": [
+        "status",
+        "address",
+        "next",
+        "pages"
+      ],
+      "generated_c_sha256": "1ff711c4688385054ad6ef7712f039b55efaa0650d9bbd3a3362c4619ae79ba8",
+      "header_sha256": "3eb1db7d358f323bde7abc89201c9b2c419366dbaa0bb4b184e6004c09acb2cd",
+      "executable_sha256": "045772c0a5e494cef1b3f11f46e287122525d3acdfc896e3c2f909f5771ec39c",
+      "transcript_sha256": "3ca8df0624e97148c0e1fd4b1d89397fa78becb0700fb5751e8a23cf44ab4543"
+    }
+  ],
+  "elapsed_seconds": 1.237,
+  "scope": "Complete native staging record against Python unbounded-integer alignment/end/page oracles in checked, wrapping and sanitizer modes. Includes four transported-field loss controls per mode; no GPU execution claim."
+}

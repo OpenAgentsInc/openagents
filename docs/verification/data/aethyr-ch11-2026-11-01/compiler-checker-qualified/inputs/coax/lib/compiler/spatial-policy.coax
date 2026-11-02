@@ -1,0 +1,121 @@
+// Pure M3 producer only. No frame parser, coordinate arithmetic or transforms.
+#load "quantity.coax";
+#authority;
+SP_Convention :: enum u8 {unset;cartesian;body;optical;invalid=255;}
+SP_Continuity :: enum u8 {unset;continuous;jumping;invalid=255;}
+SP_Kind :: enum u8 {raw;point;vector;invalid=255;}
+SP_Op :: enum u8 {add;sub;mul;div;eq;ne;lt;dot;cross;invalid=255;}
+SP_Status :: enum u8 {ok;type;metadata;unit;precision;frame;operation;}
+SP_Frame :: struct {handedness:int;convention:SP_Convention;continuity:SP_Continuity;min_rep:int;}
+SP_Type :: struct {kind:SP_Kind;frame:int;unit:int;rep:int;}
+SP_Result :: struct {status:SP_Status;result:SP_Type;}
+
+#forall "frame metadata has explicit conventions continuity precision and optical handedness" hand:0..<2,convention:1..<4,continuity:1..<3,precision:0..<2 {
+  f:=SP_Frame.{handedness=ifx hand==0 then -1 else 1,convention=cast(SP_Convention)convention,continuity=cast(SP_Continuity)continuity,min_rep=ifx precision==0 then 32 else 64};
+  #assert SP_frame_valid(f)== !(hand==0 && convention==3);
+}
+#forall "every missing or invalid frame field is refused" field:0..<4,bad:0..<5 {
+  f:=SP_Frame.{handedness=1,convention=SP_Convention.cartesian,continuity=SP_Continuity.continuous,min_rep=32};
+  hands:=[5]int.[0,2,-2,-9223372036854775808,9223372036854775807];conventions:=[5]int.[0,255,0,255,0];continuities:=[5]int.[0,255,0,255,0];precisions:=[5]int.[0,31,33,63,65];
+  if field==0 {f.handedness=hands[bad];}if field==1 {f.convention=cast(SP_Convention)conventions[bad];}if field==2 {f.continuity=cast(SP_Continuity)continuities[bad];}if field==3 {f.min_rep=precisions[bad];}
+  #assert !SP_frame_valid(f);
+}
+#forall "descriptor shape rejects unknown kinds nonnominal IDs and unsupported representations" kind:0..<3,field:0..<4,bad:0..<5 {
+  t:=SP_Type.{kind=cast(SP_Kind)kind,frame=1,unit=2,rep=32};if kind==0 {t.frame=0;t.unit=0;}
+  kinds:=[5]int.[255,255,255,255,255];ids:=[5]int.[0,-1,2147483648,-9223372036854775808,9223372036854775807];reps:=[5]int.[0,31,33,63,65];
+  if field==0 {t.kind=cast(SP_Kind)kinds[bad];}if field==1 {t.frame=ids[bad];if kind==0 && bad==0 {t.frame=1;}}
+  if field==2 {t.unit=ids[bad];if kind==0 && bad==0 {t.unit=1;}}if field==3 {t.rep=reps[bad];}
+  #assert !SP_type_valid(t) && SP_admit(t,SP_Frame.{},Q_Unit.{})==SP_Status.type;
+  raw:=SP_Type.{rep=32};results:=[3]SP_Result.[SP_binary(SP_Op.eq,t,raw),SP_binary(SP_Op.eq,raw,t),SP_negate(t)];
+  for r:results {#assert r.status==SP_Status.type && r.result.kind==SP_Kind.raw && r.result.frame==0 && r.result.unit==0 && r.result.rep==0;}
+}
+#test "nominal descriptor limits admit endpoints and raw has no frame or unit" {
+  for kind:[2]SP_Kind.[SP_Kind.point,SP_Kind.vector] {for id:[2]int.[1,2147483647] {for rep:[2]int.[32,64] {#assert SP_type_valid(SP_Type.{kind=kind,frame=id,unit=id,rep=rep});}}}
+  #assert SP_type_valid(SP_Type.{rep=32}) && SP_type_valid(SP_Type.{rep=64}) && !SP_type_valid(SP_Type.{});
+  #assert SP_admit(SP_Type.{rep=32},SP_Frame.{},Q_Unit.{})==SP_Status.ok;
+}
+#test "point length unit vector arbitrary unit and frame precision are independent admissions" {
+  f:=SP_Frame.{handedness=1,convention=SP_Convention.cartesian,continuity=SP_Continuity.continuous,min_rep=32};
+  t:=SP_Type.{kind=SP_Kind.point,frame=1,unit=2,rep=32};metre:=Q_Unit.{length=1,numerator=1,denominator=2};
+  #assert SP_admit(t,f,metre)==SP_Status.ok;f.min_rep=64;#assert SP_admit(t,f,metre)==SP_Status.precision;t.rep=64;#assert SP_admit(t,f,metre)==SP_Status.ok;
+  for axis:0..<4 {wrong:=metre;if axis==0 {wrong.mass=1;}if axis==1 {wrong.length=0;}if axis==2 {wrong.time=1;}if axis==3 {wrong.angle=1;}
+    #assert SP_admit(t,f,wrong)==SP_Status.unit;t.kind=SP_Kind.vector;#assert SP_admit(t,f,wrong)==SP_Status.ok;t.kind=SP_Kind.point;}
+  metre.numerator=0;#assert SP_admit(t,f,metre)==SP_Status.metadata;metre.numerator=1;f.handedness=0;#assert SP_admit(t,f,metre)==SP_Status.metadata;
+}
+#test "admission precedence is descriptor metadata physical unit then precision" {
+  f:=SP_Frame.{handedness=1,convention=SP_Convention.body,continuity=SP_Continuity.jumping,min_rep=64};
+  t:=SP_Type.{kind=SP_Kind.point,frame=1,unit=2,rep=32};u:=Q_Unit.{time=1,numerator=1,denominator=1};
+  #assert SP_admit(t,f,u)==SP_Status.unit;t.kind=SP_Kind.vector;#assert SP_admit(t,f,u)==SP_Status.precision;t.rep=64;#assert SP_admit(t,f,u)==SP_Status.ok;
+  u.denominator=0;#assert SP_admit(t,f,u)==SP_Status.metadata;t.rep=31;#assert SP_admit(t,f,u)==SP_Status.type;
+}
+#forall "affine operation decisions follow an independent complete table and mismatch precedence" op:0..<9,left:0..<3,right:0..<3,facts:0..<8,width:0..<2 {
+  a:=SP_Type.{kind=cast(SP_Kind)left,frame=1,unit=2,rep=ifx width==0 then 32 else 64};b:=a;b.kind=cast(SP_Kind)right;
+  if left==0 {a.frame=0;a.unit=0;}if right==0 {b.frame=0;b.unit=0;}
+  if (facts&1)!=0 {b.rep=ifx width==0 then 64 else 32;}if right!=0 && (facts&2)!=0 {b.frame=3;}if right!=0 && (facts&4)!=0 {b.unit=4;}
+  add:=[9]int.[0,0,0,0,0,1,0,1,2];sub:=[9]int.[0,0,0,0,2,1,0,0,2];mul:=[9]int.[0,0,2,0,0,0,2,0,0];div:=[9]int.[0,0,0,0,0,0,2,0,0];index:=left*3+right;out:=0;
+  if op==0 {out=add[index];}if op==1 {out=sub[index];}if op==2 {out=mul[index];}if op==3 {out=div[index];}
+  status:=SP_Status.ok;if out==0 {status=SP_Status.operation;}
+  else if a.rep!=b.rep {status=SP_Status.precision;}
+  else if left!=0 && right!=0 && a.frame!=b.frame {status=SP_Status.frame;}
+  else if left!=0 && right!=0 && a.unit!=b.unit {status=SP_Status.unit;}
+  r:=SP_binary(cast(SP_Op)op,a,b);#assert r.status==status;
+  if status==SP_Status.ok {source:=a;if left==0 {source=b;}#assert r.result.kind==cast(SP_Kind)out && r.result.frame==source.frame && r.result.unit==source.unit && r.result.rep==source.rep;}
+  else {#assert r.result.kind==SP_Kind.raw && r.result.frame==0 && r.result.unit==0 && r.result.rep==0;}
+}
+#test "only vectors negate and unknown operations remain refused" {
+  for kind:[3]SP_Kind.[SP_Kind.raw,SP_Kind.point,SP_Kind.vector] {t:=SP_Type.{kind=kind,frame=1,unit=2,rep=64};if kind==SP_Kind.raw {t.frame=0;t.unit=0;}
+    r:=SP_negate(t);if kind==SP_Kind.vector {#assert r.status==SP_Status.ok && r.result.kind==kind && r.result.frame==1 && r.result.unit==2 && r.result.rep==64;}
+    else {#assert r.status==SP_Status.operation && r.result.kind==SP_Kind.raw && r.result.frame==0 && r.result.unit==0 && r.result.rep==0;}
+    r=SP_binary(cast(SP_Op)255,t,t);#assert r.status==SP_Status.operation && r.result.rep==0;}
+}
+
+// Implementation follows the independently stated checks.
+SP_frame_valid :: (frame:SP_Frame)->bool #export_c {
+  if frame.handedness!= -1 && frame.handedness!=1 {return false;}
+  if frame.convention!=SP_Convention.cartesian && frame.convention!=SP_Convention.body && frame.convention!=SP_Convention.optical {return false;}
+  if frame.continuity!=SP_Continuity.continuous && frame.continuity!=SP_Continuity.jumping {return false;}
+  if frame.min_rep!=32 && frame.min_rep!=64 {return false;}
+  return frame.convention!=SP_Convention.optical || frame.handedness==1;
+}
+SP_type_valid :: (type:SP_Type)->bool #export_c {
+  if type.rep!=32 && type.rep!=64 {return false;}
+  if type.kind==SP_Kind.raw {return type.frame==0 && type.unit==0;}
+  if type.kind!=SP_Kind.point && type.kind!=SP_Kind.vector {return false;}
+  return type.frame>=1 && type.frame<=2147483647 && type.unit>=1 && type.unit<=2147483647;
+}
+SP_admit :: (type:SP_Type,frame:SP_Frame,unit:Q_Unit)->SP_Status #export_c {
+  if !SP_type_valid(type) {return SP_Status.type;}if type.kind==SP_Kind.raw {return SP_Status.ok;}
+  if !SP_frame_valid(frame) || !Q_unit_valid(unit) {return SP_Status.metadata;}
+  if type.kind==SP_Kind.point && (unit.mass!=0 || unit.length!=1 || unit.time!=0 || unit.angle!=0) {return SP_Status.unit;}
+  if frame.min_rep==64 && type.rep!=64 {return SP_Status.precision;}
+  return SP_Status.ok;
+}
+SP_binary :: (op:SP_Op,left:SP_Type,right:SP_Type)->SP_Result #export_c {
+  if !SP_type_valid(left) || !SP_type_valid(right) {return SP_Result.{status=SP_Status.type};}
+  kind:=SP_Kind.raw;
+  if op==SP_Op.add {
+    if left.kind==SP_Kind.point && right.kind==SP_Kind.vector {kind=SP_Kind.point;}
+    if left.kind==SP_Kind.vector && right.kind==SP_Kind.point {kind=SP_Kind.point;}
+    if left.kind==SP_Kind.vector && right.kind==SP_Kind.vector {kind=SP_Kind.vector;}
+  }
+  if op==SP_Op.sub {
+    if left.kind==SP_Kind.point && right.kind==SP_Kind.point {kind=SP_Kind.vector;}
+    if left.kind==SP_Kind.point && right.kind==SP_Kind.vector {kind=SP_Kind.point;}
+    if left.kind==SP_Kind.vector && right.kind==SP_Kind.vector {kind=SP_Kind.vector;}
+  }
+  if op==SP_Op.mul && ((left.kind==SP_Kind.vector && right.kind==SP_Kind.raw) || (left.kind==SP_Kind.raw && right.kind==SP_Kind.vector)) {kind=SP_Kind.vector;}
+  if op==SP_Op.div && left.kind==SP_Kind.vector && right.kind==SP_Kind.raw {kind=SP_Kind.vector;}
+  if kind==SP_Kind.raw {return SP_Result.{status=SP_Status.operation};}
+  if left.rep!=right.rep {return SP_Result.{status=SP_Status.precision};}
+  if left.kind!=SP_Kind.raw && right.kind!=SP_Kind.raw {
+    if left.frame!=right.frame {return SP_Result.{status=SP_Status.frame};}
+    if left.unit!=right.unit {return SP_Result.{status=SP_Status.unit};}
+  }
+  result:=left;if left.kind==SP_Kind.raw {result=right;}result.kind=kind;
+  return SP_Result.{result=result};
+}
+SP_negate :: (type:SP_Type)->SP_Result #export_c {
+  if !SP_type_valid(type) {return SP_Result.{status=SP_Status.type};}
+  if type.kind!=SP_Kind.vector {return SP_Result.{status=SP_Status.operation};}
+  return SP_Result.{result=type};
+}

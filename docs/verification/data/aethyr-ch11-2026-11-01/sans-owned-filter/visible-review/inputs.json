@@ -1,0 +1,23 @@
+{
+  "scope": "Preview only: retained full native half readbacks, clampedlinearRGB mappedto8bit; nearest-enlarged for glyph placement/legibility inspection. No numerical or colourspace claim from previews.",
+  "pairs": [
+    {
+      "name": "Grid",
+      "width": 320,
+      "height": 180,
+      "before": "/tmp/aethyr-ch11-native-grid-sans/screen.raw",
+      "before_sha256": "f095ee713ab4891145cb27e84e8955146f4dde3dba19cfd6429f1332f461261d",
+      "after": "/tmp/aethyr-ch11-native-owned-sans-the-grid/screen.raw",
+      "after_sha256": "c9ca3d9ae571a757ff80e5463fc9793c9df569d12e14d3d9eab118772062ad4c"
+    },
+    {
+      "name": "Galaxy",
+      "width": 160,
+      "height": 90,
+      "before": "/tmp/aethyr-ch11-native-galaxy-160-half/screen.raw",
+      "before_sha256": "241e2d21b3673fcab1cec26213bd05f9a4476f59aba85f8217549dc81a65cdcb",
+      "after": "/tmp/aethyr-ch11-native-owned-sans-galaxy/screen.raw",
+      "after_sha256": "241e2d21b3673fcab1cec26213bd05f9a4476f59aba85f8217549dc81a65cdcb"
+    }
+  ]
+}

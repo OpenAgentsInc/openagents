@@ -1,0 +1,16 @@
+{
+  "schema": "aethyr.render.noise.exploratory.v1",
+  "status": "provisional",
+  "source_sha256": "ad09463fa44857c050fceb76f04be1d8f688ef628a2a6cc668ed2bdf31d09c8b",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "compiler_version": "coax0 0.47.0",
+  "mutation": {
+    "total": 29,
+    "killed": 29,
+    "survivors": 0,
+    "scope": "root-only; imported checks retained",
+    "log": "/tmp/aethyr-ch11-noise-mutation-2.log",
+    "log_sha256": "1e1a4b353c28b593d80172331607d1a6a56f11c09bd7339202cc5abca8ee0af3"
+  },
+  "scope": "Sharp Coax scalar/integer finite-coordinate lattice profile. Nonfinite0 is CPU diagnostic only; no GPU NaN/infinity, image or arbitraryint64 claim. Final artifact and complete shader/host qualifications pending."
+}

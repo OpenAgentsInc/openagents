@@ -1,0 +1,266 @@
+{
+  "schema": "aethyr.render.actual-input-equality.v1",
+  "equal": true,
+  "differences": [],
+  "inputs": {
+    "submitted": {
+      "config": "/tmp/aethyr-ch11-owned-sans-frame-inputs/galaxy/frame.config",
+      "config_sha256": "72ab66b164983e6fca62cd363a0125d7e34636f5dc8659da6a42b9ead506bffe",
+      "observations": {
+        "counts": [
+          17,
+          160,
+          90,
+          7926,
+          16,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "producer_files": [
+          {
+            "bytes": 544,
+            "sha256": "d5587d767be24f41607cb6c95a22eb4acfdab2fecb6f68c5129ecd630ed270b2"
+          },
+          {
+            "bytes": 507264,
+            "sha256": "0e99ad362a71db634cbf83a1935334fefd97337a0c8470acb9f69c192025b337"
+          },
+          {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ],
+        "package": {
+          "bytes": 6585,
+          "sha256": "cf50c65c72be07ea664fe3bad75f530709426eb02c7e57adc0d51eb1a59de0c0"
+        },
+        "trees": [
+          {
+            "index": 0,
+            "file": {
+              "bytes": 11892,
+              "sha256": "557f249313820731861b5143b0eb62211c826afbe8c6b124b3163c0463cd40c9"
+            }
+          },
+          {
+            "index": 12,
+            "file": {
+              "bytes": 6444,
+              "sha256": "23e566d0a0d92162cf026018e80991cd39393078f799fc8df9c1d9125a67dec6"
+            }
+          }
+        ],
+        "buffers": [
+          {
+            "name": "u.bin",
+            "file": {
+              "bytes": 544,
+              "sha256": "d5587d767be24f41607cb6c95a22eb4acfdab2fecb6f68c5129ecd630ed270b2"
+            },
+            "observed": [
+              544,
+              544,
+              0,
+              0,
+              544,
+              1
+            ]
+          }
+        ],
+        "textures": [
+          {
+            "name": "sans_atlas",
+            "format": "rgba8unorm",
+            "layers": 1,
+            "file": {
+              "bytes": 5505024,
+              "sha256": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6"
+            },
+            "levels": [
+              [
+                1536,
+                672,
+                0,
+                6144,
+                4128768
+              ],
+              [
+                768,
+                336,
+                4128768,
+                3072,
+                1032192
+              ],
+              [
+                384,
+                168,
+                5160960,
+                1536,
+                258048
+              ],
+              [
+                192,
+                84,
+                5419008,
+                768,
+                64512
+              ],
+              [
+                96,
+                42,
+                5483520,
+                512,
+                21504
+              ]
+            ]
+          }
+        ],
+        "media_text": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "media_images": []
+      }
+    },
+    "current": {
+      "config": "/tmp/aethyr-ch11-galaxy-owned-sans-160-current/frame.config",
+      "config_sha256": "5fd809e73c425fae3235d0facc4153aa796eeb5bf8eba68020752121415b5919",
+      "observations": {
+        "counts": [
+          17,
+          160,
+          90,
+          7926,
+          16,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "producer_files": [
+          {
+            "bytes": 544,
+            "sha256": "d5587d767be24f41607cb6c95a22eb4acfdab2fecb6f68c5129ecd630ed270b2"
+          },
+          {
+            "bytes": 507264,
+            "sha256": "0e99ad362a71db634cbf83a1935334fefd97337a0c8470acb9f69c192025b337"
+          },
+          {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ],
+        "package": {
+          "bytes": 6585,
+          "sha256": "cf50c65c72be07ea664fe3bad75f530709426eb02c7e57adc0d51eb1a59de0c0"
+        },
+        "trees": [
+          {
+            "index": 0,
+            "file": {
+              "bytes": 11892,
+              "sha256": "557f249313820731861b5143b0eb62211c826afbe8c6b124b3163c0463cd40c9"
+            }
+          },
+          {
+            "index": 12,
+            "file": {
+              "bytes": 6444,
+              "sha256": "23e566d0a0d92162cf026018e80991cd39393078f799fc8df9c1d9125a67dec6"
+            }
+          }
+        ],
+        "buffers": [
+          {
+            "name": "u.bin",
+            "file": {
+              "bytes": 544,
+              "sha256": "d5587d767be24f41607cb6c95a22eb4acfdab2fecb6f68c5129ecd630ed270b2"
+            },
+            "observed": [
+              544,
+              544,
+              0,
+              0,
+              544,
+              1
+            ]
+          }
+        ],
+        "textures": [
+          {
+            "name": "sans_atlas",
+            "format": "rgba8unorm",
+            "layers": 1,
+            "file": {
+              "bytes": 5505024,
+              "sha256": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6"
+            },
+            "levels": [
+              [
+                1536,
+                672,
+                0,
+                6144,
+                4128768
+              ],
+              [
+                768,
+                336,
+                4128768,
+                3072,
+                1032192
+              ],
+              [
+                384,
+                168,
+                5160960,
+                1536,
+                258048
+              ],
+              [
+                192,
+                84,
+                5419008,
+                768,
+                64512
+              ],
+              [
+                96,
+                42,
+                5483520,
+                512,
+                21504
+              ]
+            ]
+          }
+        ],
+        "media_text": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "media_images": []
+      }
+    }
+  },
+  "scope": "All raw counts, producer buffers, package and checked-tree bytes, named buffer observations, physical mip bytes/descriptors and media observations compared. Paths may differ; content and every transported value must match."
+}

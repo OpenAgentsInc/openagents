@@ -1,0 +1,95 @@
+{
+  "schema": "aethyr.render.reference-frame.root-proof.v1",
+  "status": "pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "root_mutants": 633,
+  "killed": 633,
+  "survived": 0,
+  "waivers": 0,
+  "scope": "Entry-source reference-frame procedures; imported baseline checks retained in every supported shard. Dependency authority gates retain their separate exact source scopes.",
+  "source_units": 110,
+  "source_changes": [],
+  "commands": [
+    [
+      "coax/bin/coax",
+      "mutate",
+      "aethyr/render/reference-frame.coax",
+      "--root-only",
+      "--library",
+      "--jobs",
+      "2",
+      "--shard",
+      "1/4"
+    ],
+    [
+      "coax/bin/coax",
+      "mutate",
+      "aethyr/render/reference-frame.coax",
+      "--root-only",
+      "--library",
+      "--jobs",
+      "2",
+      "--shard",
+      "2/4"
+    ],
+    [
+      "coax/bin/coax",
+      "mutate",
+      "aethyr/render/reference-frame.coax",
+      "--root-only",
+      "--library",
+      "--jobs",
+      "2",
+      "--shard",
+      "3/4"
+    ],
+    [
+      "coax/bin/coax",
+      "mutate",
+      "aethyr/render/reference-frame.coax",
+      "--root-only",
+      "--library",
+      "--jobs",
+      "2",
+      "--shard",
+      "4/4"
+    ]
+  ],
+  "merge": [
+    "coax/bin/coax",
+    "mutate",
+    "aethyr/render/reference-frame.coax",
+    "--root-only",
+    "--library",
+    "--merge",
+    "1.rec",
+    "--merge",
+    "2.rec",
+    "--merge",
+    "3.rec",
+    "--merge",
+    "4.rec"
+  ],
+  "whole_command_limit_seconds": 840,
+  "prior_uncompleted_attempt": {
+    "status": "timeout-no-score",
+    "deadline_seconds": 840,
+    "reason": "Owned group terminated at deadline during unrelated CPU contention; no pass is inferred.",
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "files": {
+    "batch-3-4.json": "e91920630b734a4d56047d5659cd936695a6795cf05f76b3fda65500c8d996d1",
+    "4.log": "3eae5ef765d43d6fcbb9b0e9c82a8315faa818e9f5854b303b91b5253698241b",
+    "1.rec": "e0c9a64bf5fd6fe6ba9dca9bd61e899218153d1384abbadc11b53b5f15763f35",
+    "3.rec": "f89e57f7fe9ebbc8e767802de09afd78f17557fe8de25f8dba1975b1d753cd19",
+    "2.rec": "1958ea4dbb24da389d58c4d6817945f80261f7a0b4f7f03e95f408e396d5c2c8",
+    "2.log": "df771e121645729c05b0230f8bddfbc286b4b4bdde7b6fea939563a8936ba252",
+    "3.log": "88be8e3c771d34ebca1e678f756c07b5101f150d5c5c1ee9c84570f4c6da87ab",
+    "1.log": "490fb44b4fc2fb3334ce5ac7e494a8800d4d16a69cd019f4a8d11975946be5ac",
+    "4.rec": "1b1a2ee0532909de24450c85ca1557c73224e060ebdd89d1ab5dc9fa3437acb3",
+    "source-closure.tar.gz": "01c5a8a74f09486713dcce88c3e7b82f7b2c597d487eb376eb4a3e4813d4cb6d",
+    "merge.log": "76e1e99e2490cd8a658eaa5f12258d1768155f2c1048dab286c493113eff5fee",
+    "batch-1-2.json": "7aa48b7e24eeb7f3323ea58f65d5b8b28b9a687a45f953470e5d73748fe516b4",
+    "inputs.json": "41820a68a5e3d31cf1c40b88fef3972ef3b06c947b45198cd2f3db231fff138d"
+  }
+}

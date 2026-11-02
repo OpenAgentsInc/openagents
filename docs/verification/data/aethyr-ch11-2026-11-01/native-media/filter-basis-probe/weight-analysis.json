@@ -1,0 +1,765 @@
+{
+  "scope": "Basis observations converted to integer1/256 codes. RGBA16F observations are exact dyadic weights; UNORM8 values additionally include observed normalized16 output conversion. Fractional-LOD formula is not inferred here.",
+  "rows": [
+    {
+      "format": "rgba8unorm",
+      "case": 0,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0,
+        0
+      ],
+      "weights_in_256": [
+        137,
+        34,
+        68,
+        17
+      ],
+      "sum_codes": 256,
+      "missing_mass_in_256": 0,
+      "raw_sum": 1.0
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 1,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.0009765625,
+        0
+      ],
+      "weights_in_256": [
+        137,
+        34,
+        68,
+        17
+      ],
+      "sum_codes": 256,
+      "missing_mass_in_256": 0,
+      "raw_sum": 1.0
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 2,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.001953125,
+        0
+      ],
+      "weights_in_256": [
+        137,
+        34,
+        68,
+        17
+      ],
+      "sum_codes": 256,
+      "missing_mass_in_256": 0,
+      "raw_sum": 1.0
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 3,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.0029296875,
+        0
+      ],
+      "weights_in_256": [
+        137,
+        34,
+        68,
+        17
+      ],
+      "sum_codes": 256,
+      "missing_mass_in_256": 0,
+      "raw_sum": 1.0
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 4,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.10000000149011612,
+        0
+      ],
+      "weights_in_256": [
+        124,
+        31,
+        61,
+        15
+      ],
+      "sum_codes": 231,
+      "missing_mass_in_256": 25,
+      "raw_sum": 0.9023575186729431
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 5,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.20000000298023224,
+        0
+      ],
+      "weights_in_256": [
+        110,
+        27,
+        54,
+        14
+      ],
+      "sum_codes": 205,
+      "missing_mass_in_256": 51,
+      "raw_sum": 0.800793468952179
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 6,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.3333333432674408,
+        0
+      ],
+      "weights_in_256": [
+        92,
+        23,
+        45,
+        11
+      ],
+      "sum_codes": 171,
+      "missing_mass_in_256": 85,
+      "raw_sum": 0.6679789423942566
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 7,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.25,
+        0
+      ],
+      "weights_in_256": [
+        103,
+        25,
+        51,
+        13
+      ],
+      "sum_codes": 192,
+      "missing_mass_in_256": 64,
+      "raw_sum": 0.7500114440917969
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 8,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.5,
+        0
+      ],
+      "weights_in_256": [
+        68,
+        17,
+        34,
+        9
+      ],
+      "sum_codes": 128,
+      "missing_mass_in_256": 128,
+      "raw_sum": 0.5000076293945312
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 9,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.75,
+        0
+      ],
+      "weights_in_256": [
+        34,
+        9,
+        17,
+        4
+      ],
+      "sum_codes": 64,
+      "missing_mass_in_256": 192,
+      "raw_sum": 0.2500038146972656
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 10,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.9990234375,
+        0
+      ],
+      "weights_in_256": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "sum_codes": 1,
+      "missing_mass_in_256": 255,
+      "raw_sum": 0.003906309604644775
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 11,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        1,
+        0
+      ],
+      "weights_in_256": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "sum_codes": 0,
+      "missing_mass_in_256": 256,
+      "raw_sum": 0
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 12,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.24609375,
+        0
+      ],
+      "weights_in_256": [
+        139,
+        16,
+        34,
+        4
+      ],
+      "sum_codes": 193,
+      "missing_mass_in_256": 63,
+      "raw_sum": 0.7539024949073792
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 13,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.25,
+        0
+      ],
+      "weights_in_256": [
+        138,
+        16,
+        34,
+        4
+      ],
+      "sum_codes": 192,
+      "missing_mass_in_256": 64,
+      "raw_sum": 0.7499961853027344
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 14,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.25390625,
+        0
+      ],
+      "weights_in_256": [
+        138,
+        15,
+        34,
+        4
+      ],
+      "sum_codes": 191,
+      "missing_mass_in_256": 65,
+      "raw_sum": 0.7460898756980896
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 15,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.49609375,
+        0
+      ],
+      "weights_in_256": [
+        93,
+        10,
+        23,
+        3
+      ],
+      "sum_codes": 129,
+      "missing_mass_in_256": 127,
+      "raw_sum": 0.503913938999176
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 16,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.5,
+        0
+      ],
+      "weights_in_256": [
+        92,
+        10,
+        23,
+        3
+      ],
+      "sum_codes": 128,
+      "missing_mass_in_256": 128,
+      "raw_sum": 0.5000076293945312
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 17,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.50390625,
+        0
+      ],
+      "weights_in_256": [
+        91,
+        10,
+        23,
+        3
+      ],
+      "sum_codes": 127,
+      "missing_mass_in_256": 129,
+      "raw_sum": 0.4961013197898865
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 18,
+      "uniform": [
+        0.00390625,
+        0.5,
+        0,
+        0
+      ],
+      "weights_in_256": [
+        128,
+        0,
+        127,
+        1
+      ],
+      "sum_codes": 256,
+      "missing_mass_in_256": 0,
+      "raw_sum": 1.0000152587890625
+    },
+    {
+      "format": "rgba8unorm",
+      "case": 19,
+      "uniform": [
+        0.00390625,
+        0.5,
+        0.5,
+        0
+      ],
+      "weights_in_256": [
+        64,
+        0,
+        63,
+        1
+      ],
+      "sum_codes": 128,
+      "missing_mass_in_256": 128,
+      "raw_sum": 0.5000076293945312
+    },
+    {
+      "format": "rgba16float",
+      "case": 0,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0,
+        0
+      ],
+      "weights_in_256": [
+        137,
+        34,
+        68,
+        17
+      ],
+      "sum_codes": 256,
+      "missing_mass_in_256": 0,
+      "raw_sum": 1.0
+    },
+    {
+      "format": "rgba16float",
+      "case": 1,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.0009765625,
+        0
+      ],
+      "weights_in_256": [
+        137,
+        34,
+        68,
+        17
+      ],
+      "sum_codes": 256,
+      "missing_mass_in_256": 0,
+      "raw_sum": 1.0
+    },
+    {
+      "format": "rgba16float",
+      "case": 2,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.001953125,
+        0
+      ],
+      "weights_in_256": [
+        137,
+        34,
+        68,
+        17
+      ],
+      "sum_codes": 256,
+      "missing_mass_in_256": 0,
+      "raw_sum": 1.0
+    },
+    {
+      "format": "rgba16float",
+      "case": 3,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.0029296875,
+        0
+      ],
+      "weights_in_256": [
+        137,
+        34,
+        68,
+        17
+      ],
+      "sum_codes": 256,
+      "missing_mass_in_256": 0,
+      "raw_sum": 1.0
+    },
+    {
+      "format": "rgba16float",
+      "case": 4,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.10000000149011612,
+        0
+      ],
+      "weights_in_256": [
+        124,
+        31,
+        61,
+        15
+      ],
+      "sum_codes": 231,
+      "missing_mass_in_256": 25,
+      "raw_sum": 0.90234375
+    },
+    {
+      "format": "rgba16float",
+      "case": 5,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.20000000298023224,
+        0
+      ],
+      "weights_in_256": [
+        110,
+        27,
+        54,
+        14
+      ],
+      "sum_codes": 205,
+      "missing_mass_in_256": 51,
+      "raw_sum": 0.80078125
+    },
+    {
+      "format": "rgba16float",
+      "case": 6,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.3333333432674408,
+        0
+      ],
+      "weights_in_256": [
+        92,
+        23,
+        45,
+        11
+      ],
+      "sum_codes": 171,
+      "missing_mass_in_256": 85,
+      "raw_sum": 0.66796875
+    },
+    {
+      "format": "rgba16float",
+      "case": 7,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.25,
+        0
+      ],
+      "weights_in_256": [
+        103,
+        25,
+        51,
+        13
+      ],
+      "sum_codes": 192,
+      "missing_mass_in_256": 64,
+      "raw_sum": 0.75
+    },
+    {
+      "format": "rgba16float",
+      "case": 8,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.5,
+        0
+      ],
+      "weights_in_256": [
+        68,
+        17,
+        34,
+        9
+      ],
+      "sum_codes": 128,
+      "missing_mass_in_256": 128,
+      "raw_sum": 0.5
+    },
+    {
+      "format": "rgba16float",
+      "case": 9,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.75,
+        0
+      ],
+      "weights_in_256": [
+        34,
+        9,
+        17,
+        4
+      ],
+      "sum_codes": 64,
+      "missing_mass_in_256": 192,
+      "raw_sum": 0.25
+    },
+    {
+      "format": "rgba16float",
+      "case": 10,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        0.9990234375,
+        0
+      ],
+      "weights_in_256": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "sum_codes": 1,
+      "missing_mass_in_256": 255,
+      "raw_sum": 0.00390625
+    },
+    {
+      "format": "rgba16float",
+      "case": 11,
+      "uniform": [
+        0.20000000298023224,
+        0.3333333432674408,
+        1,
+        0
+      ],
+      "weights_in_256": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "sum_codes": 0,
+      "missing_mass_in_256": 256,
+      "raw_sum": 0
+    },
+    {
+      "format": "rgba16float",
+      "case": 12,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.24609375,
+        0
+      ],
+      "weights_in_256": [
+        139,
+        16,
+        34,
+        4
+      ],
+      "sum_codes": 193,
+      "missing_mass_in_256": 63,
+      "raw_sum": 0.75390625
+    },
+    {
+      "format": "rgba16float",
+      "case": 13,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.25,
+        0
+      ],
+      "weights_in_256": [
+        138,
+        16,
+        34,
+        4
+      ],
+      "sum_codes": 192,
+      "missing_mass_in_256": 64,
+      "raw_sum": 0.75
+    },
+    {
+      "format": "rgba16float",
+      "case": 14,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.25390625,
+        0
+      ],
+      "weights_in_256": [
+        138,
+        15,
+        34,
+        4
+      ],
+      "sum_codes": 191,
+      "missing_mass_in_256": 65,
+      "raw_sum": 0.74609375
+    },
+    {
+      "format": "rgba16float",
+      "case": 15,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.49609375,
+        0
+      ],
+      "weights_in_256": [
+        93,
+        10,
+        23,
+        3
+      ],
+      "sum_codes": 129,
+      "missing_mass_in_256": 127,
+      "raw_sum": 0.50390625
+    },
+    {
+      "format": "rgba16float",
+      "case": 16,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.5,
+        0
+      ],
+      "weights_in_256": [
+        92,
+        10,
+        23,
+        3
+      ],
+      "sum_codes": 128,
+      "missing_mass_in_256": 128,
+      "raw_sum": 0.5
+    },
+    {
+      "format": "rgba16float",
+      "case": 17,
+      "uniform": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.50390625,
+        0
+      ],
+      "weights_in_256": [
+        91,
+        10,
+        23,
+        3
+      ],
+      "sum_codes": 127,
+      "missing_mass_in_256": 129,
+      "raw_sum": 0.49609375
+    },
+    {
+      "format": "rgba16float",
+      "case": 18,
+      "uniform": [
+        0.00390625,
+        0.5,
+        0,
+        0
+      ],
+      "weights_in_256": [
+        128,
+        0,
+        127,
+        1
+      ],
+      "sum_codes": 256,
+      "missing_mass_in_256": 0,
+      "raw_sum": 1.0
+    },
+    {
+      "format": "rgba16float",
+      "case": 19,
+      "uniform": [
+        0.00390625,
+        0.5,
+        0.5,
+        0
+      ],
+      "weights_in_256": [
+        64,
+        0,
+        63,
+        1
+      ],
+      "sum_codes": 128,
+      "missing_mass_in_256": 128,
+      "raw_sum": 0.5
+    }
+  ]
+}

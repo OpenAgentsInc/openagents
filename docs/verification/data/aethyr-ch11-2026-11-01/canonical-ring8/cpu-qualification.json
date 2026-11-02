@@ -1,0 +1,74 @@
+{
+  "schema": "aethyr.render.ring8-native-primitive.v1",
+  "status": "pass",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "comparison": "Exact finite nonzero f32 words; signed zero equivalent. Independent analytic expected geometry/direction packet.",
+  "modes": [
+    {
+      "mode": "debug",
+      "cases": 728,
+      "channels": 2912,
+      "uint32_max_refusals": 2,
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I",
+        "/tmp/aethyr-ch11-ring8",
+        "/tmp/aethyr-ch11-ring8/cpu.c",
+        "/tmp/aethyr-ch11-ring8/Probe.c",
+        "-lm",
+        "-o",
+        "/tmp/aethyr-ch11-ring8/cpu-debug"
+      ],
+      "artifact_sha256": "7693178338926fb674cfd5cd78b81a71b4a9e858d805d1bc35115563469acc37"
+    },
+    {
+      "mode": "o2",
+      "cases": 728,
+      "channels": 2912,
+      "uint32_max_refusals": 2,
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I",
+        "/tmp/aethyr-ch11-ring8",
+        "/tmp/aethyr-ch11-ring8/cpu.c",
+        "/tmp/aethyr-ch11-ring8/Probe.c",
+        "-lm",
+        "-o",
+        "/tmp/aethyr-ch11-ring8/cpu-o2"
+      ],
+      "artifact_sha256": "58b597a59b4f98631b74547923e2687c3b493649cdd46120a1c2cac155cb47d4"
+    },
+    {
+      "mode": "san",
+      "cases": 728,
+      "channels": 2912,
+      "uint32_max_refusals": 2,
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I",
+        "/tmp/aethyr-ch11-ring8",
+        "/tmp/aethyr-ch11-ring8/cpu.c",
+        "/tmp/aethyr-ch11-ring8/Probe.c",
+        "-lm",
+        "-o",
+        "/tmp/aethyr-ch11-ring8/cpu-san"
+      ],
+      "artifact_sha256": "f3d0857e54124af372dc0dc863a292812dafbefc47cac8e4f233eb691b010b04"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "status": "budget-refusals",
+  "scope": "Fresh308 checked-C/O2 backend; actual producer inputs, fixed100M shader work per pass. Refused images are not numerical conformance results. Garden160 progresses past background but scene reaches the same cap. Inputs are bound by copied measurement receipts and retained upstream capture/package receipts; full payloads remain in their producer archives.",
+  "artifact_sha256": "fd29374fcd1ddec7067aa6c249b69f0f8213a249243cecde9834d3d596211054",
+  "measurements": [
+    "garden320",
+    "garden160",
+    "galaxy320",
+    "villa320"
+  ]
+}

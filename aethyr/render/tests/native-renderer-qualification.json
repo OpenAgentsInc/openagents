@@ -1,0 +1,440 @@
+{
+  "schema": "aethyr.render.native-progress.v1",
+  "status": "gpu_validation_pass_numerical_qualification_separate",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "captured_profile_count": 18,
+  "profiles": [
+    {
+      "profile": 0,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 135,
+      "raw_sha256": "887ecf0c7340c0606fb64046f34b2af4f14cd8a9761f8889f554f91b321bb0c4",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/0",
+      "scope": "actual retained producer input plus actual production GPU-uploaded layer mip observations; CPU numerical comparison is a separate receipt",
+      "source_pair": "docs/verification/data/aethyr-ch11-2026-11-01/native-media/actual-villa-source-pair.tar.gz"
+    },
+    {
+      "profile": 1,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 2,
+      "raw_sha256": "f095ee713ab4891145cb27e84e8955146f4dde3dba19cfd6429f1332f461261d",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/1",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    },
+    {
+      "profile": 2,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 145,
+      "raw_sha256": "2cef3728af34c8a566e491e69cfc5af6e0d5253c9169d4abc4735189639e701d",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/2",
+      "scope": "actual retained producer input plus actual production GPU-uploaded layer mip observations; CPU numerical comparison is a separate receipt",
+      "source_pair": "docs/verification/data/aethyr-ch11-2026-11-01/native-media/actual-villa-source-pair.tar.gz"
+    },
+    {
+      "profile": 3,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 15,
+      "raw_sha256": "0a46626457e2fa760c3645a9b5c776a65d24cc46b8a16e3bc997607b5bfcc021",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/3",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    },
+    {
+      "profile": 4,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 4,
+      "raw_sha256": "5afc5e66519ffc60f6cda91fcba33a480cd811fcbd8390c62b8d399462af168f",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/4",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    },
+    {
+      "profile": 5,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 2,
+      "raw_sha256": "ac133d566f1f280ae9ea057e8d3b2da8cd8781f0e0bcbddbef0b5bab7741dc46",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/5",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    },
+    {
+      "profile": 6,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 2,
+      "raw_sha256": "9716bf93a4f628775b40043f79c8cb0dab46253cdb0e85834b22c80238fa8d61",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/6",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    },
+    {
+      "profile": 7,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 10,
+      "raw_sha256": "f5aaf977ffa2deec908dc5dc548f362091710ed6f1edbad45d9427c48af20648",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/7",
+      "scope": "actual retained producer input plus actual production GPU-uploaded layer mip observations; CPU numerical comparison is a separate receipt",
+      "source_pair": "docs/verification/data/aethyr-ch11-2026-11-01/native-media/actual-villa-source-pair.tar.gz"
+    },
+    {
+      "profile": 8,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 2,
+      "raw_sha256": "91e858fca92fec941a2b4ad5239fdc7625bb06b5cf447d16a4238f87405d4b79",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/8",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    },
+    {
+      "profile": 9,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 12,
+      "raw_sha256": "99ce99faaace2b2e6ead167e4dd183218ca93a868c436ec24353b04be9de8f1b",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/9",
+      "scope": "actual retained producer input plus actual production GPU-uploaded layer mip observations; CPU numerical comparison is a separate receipt",
+      "source_pair": "docs/verification/data/aethyr-ch11-2026-11-01/native-media/actual-villa-source-pair.tar.gz"
+    },
+    {
+      "profile": 10,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 8,
+      "raw_sha256": "efd69d4aa7bd3f4e48a1b3c673041b95a6511000bc324f15df6f7a8c1da81421",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/10",
+      "scope": "actual retained producer input plus actual production GPU-uploaded layer mip observations; CPU numerical comparison is a separate receipt",
+      "source_pair": "docs/verification/data/aethyr-ch11-2026-11-01/native-media/actual-villa-source-pair.tar.gz"
+    },
+    {
+      "profile": 11,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 29,
+      "raw_sha256": "790c22a55e3c5089c9b6f0b5958878d069f5e403a623e137069abf78ea72c2db",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/11",
+      "scope": "actual retained producer input plus actual production GPU-uploaded layer mip observations; CPU numerical comparison is a separate receipt",
+      "source_pair": "docs/verification/data/aethyr-ch11-2026-11-01/native-media/actual-villa-source-pair.tar.gz"
+    },
+    {
+      "profile": 12,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 57,
+      "raw_sha256": "3e37282407791dd6c113c9032ac38370dd41c1516ec36e766d60831e15362175",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/12",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    },
+    {
+      "profile": 13,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 15,
+      "raw_sha256": "51c9d5f32ba77d682932656673030837bc8beab32e28bd6729b0bd6013e6cae0",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/13",
+      "scope": "geometry/particles only; nonempty media unobserved"
+    },
+    {
+      "profile": 14,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 2,
+      "raw_sha256": "3485d06eeee377a27acc335b2a0b2e00487317489308f5f8ccf6a3e0d3570772",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/14",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    },
+    {
+      "profile": 15,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 2,
+      "raw_sha256": "4cb7fa3b772d60e5bde59ee75d5e758bb5604d10b82f45533589fc7fec6f3a98",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/15",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    },
+    {
+      "profile": 16,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 6,
+      "raw_sha256": "612b0162680d04b2f48bb21b7aa3fb9a73da6b26a65d7c0ea9f3ef5946159885",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/16",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    },
+    {
+      "profile": 17,
+      "gpu_validation": "pass",
+      "format": "rgba16f",
+      "width": 320,
+      "height": 180,
+      "draw_commands": 2,
+      "raw_sha256": "b4100aeb765a7d273dd227d876a5b57cbcf241eb8548d5ab9e32c40705fa1bb1",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/17",
+      "scope": "actual captured producer input; CPU numerical comparison is a separate receipt"
+    }
+  ],
+  "missing_external_layer_profiles": [],
+  "generic_executable_sha256": "9e9725e4942090185ee3f95a8df9a95ab81de84358a140b3f70f799818b4bfde",
+  "generic_owner_scope": "Historical admitted normal Garden allocation owner/header + unchanged Grid/Player/RenderTexture units. Additional captures reused the exact linked generic ELF after source byte equality; later mutable Coax source changes are not ascribed to this emission.",
+  "actual_product_parity": [
+    {
+      "profile": 15,
+      "frames": 90,
+      "gpu_validation": "pass",
+      "raw_byte_identical_to_capture": true,
+      "record": "/tmp/aethyr-ch11-native-live-watchtower/execution.json"
+    },
+    {
+      "profile": 16,
+      "frames": 90,
+      "gpu_validation": "pass",
+      "raw_byte_identical_to_capture": true,
+      "record": "/tmp/aethyr-ch11-native-live-garden-allocation/execution.json"
+    }
+  ],
+  "limitations": "No complete chapter/native adoption claim. Six external-layer profiles and nonempty native media remain. Per-profile full-RGBA CPU numerical comparisons are owned separately. The actual product gates are headless/offline; no visible display or network execution.",
+  "missing_profiles": [],
+  "source_scope": "The earlier twelve-profile records retain their original producer-carrier C/header and effects snapshot. The six added layer-profile records use the later source-fenced standalone renderer C/header containing physical-media and raw-bool admission. No earlier result is attributed to a newly emitted artifact.",
+  "remaining": "Strict CPU/backend numerical comparisons, old-product visual goldens, and browser/ordinary-native whole-flow acceptance have separate records. Native asynchronous media-image acquisition is not qualified by the captured input executor.",
+  "distinct_smaller_actual_frames": [
+    {
+      "case": "garden-160-half",
+      "frame": {
+        "status": "rendered",
+        "profile": 16,
+        "resource": 1,
+        "width": 160,
+        "height": 90,
+        "format": "rgba16f",
+        "bytes": 115200,
+        "draw_commands": 6,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "55aa6b4c9bf68aa4445d1337fb3909336dc5b3ddf552e3a2c1267384ce66f5ff",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/garden-160-half"
+    },
+    {
+      "case": "galaxy-160-half",
+      "frame": {
+        "status": "rendered",
+        "profile": 17,
+        "resource": 1,
+        "width": 160,
+        "height": 90,
+        "format": "rgba16f",
+        "bytes": 115200,
+        "draw_commands": 2,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "241e2d21b3673fcab1cec26213bd05f9a4476f59aba85f8217549dc81a65cdcb",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/galaxy-160-half"
+    },
+    {
+      "schema": "aethyr.render.smaller-actual-native-frame.v1",
+      "status": "GPU validation pass; CPU numerical comparison separate",
+      "frame": {
+        "status": "rendered",
+        "profile": 5,
+        "resource": 1,
+        "width": 160,
+        "height": 90,
+        "format": "rgba16f",
+        "bytes": 115200,
+        "draw_commands": 2,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "0de99a67b6333744db2fbc5f6fc733da83e13580b81e2c9f1a65539cc637c3b3",
+      "scope": "New actual production160x90Belt frame. Exact input observations retained; historical generic executor reused with complete byte fence. No image/source edits.",
+      "input_equality": "input-equality.json",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/belt-half-160-current"
+    }
+  ],
+  "owned_sans_package_frames": [
+    {
+      "slug": "the-grid",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/owned-sans-the-grid",
+      "frame": {
+        "status": "rendered",
+        "profile": 1,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 2,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "c9ca3d9ae571a757ff80e5463fc9793c9df569d12e14d3d9eab118772062ad4c",
+      "scope": "Same retained actual producer/resource inputs with only the authenticated owned-Sans package and checked trees substituted. No clock/camera reconstruction."
+    },
+    {
+      "slug": "galaxy",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/owned-sans-galaxy",
+      "frame": {
+        "status": "rendered",
+        "profile": 17,
+        "resource": 1,
+        "width": 160,
+        "height": 90,
+        "format": "rgba16f",
+        "bytes": 115200,
+        "draw_commands": 2,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "241e2d21b3673fcab1cec26213bd05f9a4476f59aba85f8217549dc81a65cdcb",
+      "scope": "Same retained actual producer/resource inputs with only the authenticated owned-Sans package and checked trees substituted. No clock/camera reconstruction.",
+      "current_producer_input_equality": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/owned-sans-galaxy/current-capture-input-equality.json"
+    }
+  ],
+  "repaired_geometry_frames": [
+    {
+      "schema": "aethyr.render.repaired-geometry-native-frame.v1",
+      "case": "deadgears-ring8",
+      "status": "GPU validation pass; strict CPU/backend numerical comparison separate",
+      "frame": {
+        "status": "rendered",
+        "profile": 4,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 4,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "5afc5e66519ffc60f6cda91fcba33a480cd811fcbd8390c62b8d399462af168f",
+      "input_equality": "input-equality.json",
+      "scope": "New repaired geometry frame. Exact actual producer/resource observations retained, with explicit shader package substitution only for DeadGears. Historical generic executor reused under complete source/header byte fence.",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/deadgears-ring8",
+      "archive_sha256": "2ac1dec4882ef417a7e91b8d311211267b28879b94c429701f939815209a08e4"
+    },
+    {
+      "schema": "aethyr.render.repaired-geometry-native-frame.v1",
+      "case": "icecream-bands-320",
+      "status": "GPU validation pass; strict CPU/backend numerical comparison separate",
+      "frame": {
+        "status": "rendered",
+        "profile": 12,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 62,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "3b825aacd0605345a75d423462357f18bb2ed2b33e5ba428ae3156aecc6819f0",
+      "input_equality": "input-equality.json",
+      "scope": "New repaired geometry frame. Exact actual producer/resource observations retained, with explicit shader package substitution only for DeadGears. Historical generic executor reused under complete source/header byte fence.",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/icecream-bands-320",
+      "archive_sha256": "500cb57a8f75ab4066befa151ea1f9e29d71f36d30bd95a588bba74836c023a6"
+    }
+  ],
+  "fresh_current_default_frames": [
+    {
+      "schema": "aethyr.render.repaired-geometry-native-frame.v1",
+      "case": "deadgears-ring8-current-default",
+      "status": "GPU validation pass; strict CPU/backend numerical comparison separate",
+      "frame": {
+        "status": "rendered",
+        "profile": 4,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 4,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "08fe3735b8646336168abe0d0c035efb72a7e23a98dfc05c734bac44832765e0",
+      "input_equality": "input-equality.json",
+      "scope": "Distinctfreshcurrentdefaultproducerinput. Exactactualproducer/resourceobservationsretained; historicalgenericexecutor reusedundercompletesource/headerbytefence. No CPUacceptanceclaim.",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/deadgears-ring8-current-default",
+      "archive_sha256": "eeb7ef6d9ec32b21d9830df103ad3e28f58125fbc8214b8290ef747b63fcceb3"
+    },
+    {
+      "schema": "aethyr.render.repaired-geometry-native-frame.v1",
+      "case": "grid-4m-owned-sans-current",
+      "status": "GPU validation pass; strict CPU/backend numerical comparison separate",
+      "frame": {
+        "status": "rendered",
+        "profile": 1,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 2,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "ec62e7ad6b938df300c6a37de9163ad644b5643c096ec4cbe81aaebf19bf1fd0",
+      "input_equality": "input-equality.json",
+      "scope": "Distinctfreshcurrentdefaultproducerinput. Exactactualproducer/resourceobservationsretained; historicalgenericexecutor reusedundercompletesource/headerbytefence. No CPUacceptanceclaim.",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/grid-4m-owned-sans-current",
+      "archive_sha256": "afd0c274871136d62ee8cc7647797686bfaca5dd2c34b84f610ae230fd5d3271"
+    }
+  ]
+}

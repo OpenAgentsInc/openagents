@@ -1,6 +1,7 @@
 // villa's shaders, the source of apps/openagents-web/villa.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (villa.module,
 // villa.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/noise.coax";
 #load "../../../verse/gpu/wgsl.coax";
 #load "../../../verse/look.coax";
 #load "../../../verse/style.coax";
@@ -78,11 +79,17 @@ VILLA_HEM :: 0.06f32;
 VILLA_DITHER :: 0.25f32;
 VILLA_DITHER_STEPS :: 4.0f32;
 VillaLit :: struct {light:V4; aux:V4; }
+#test "villa_hash live lattice uses the portable integer noise profile" {
+  #assert f32_bits(villa_hash(v2(1,2)))==0x3f6013da;
+}
 villa_hash :: (p:V2)->f32 {
-  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+  return render_noise2(p.x,p.y);
+}
+#test "villa_hash3 live lattice uses the portable integer noise profile" {
+  #assert f32_bits(villa_hash3(v3(1,2,3)))==0x3f42352b;
 }
 villa_hash3 :: (p:V3)->f32 {
-  return fract(sin(wg_dot3(p,v3(127.1f32,311.7f32,74.7f32)))*43758.5453f32);
+  return render_noise3(p.x,p.y,p.z);
 }
 villa_noise :: (p:V2)->f32 {
   i:V2=wg_floor_f2(p);
@@ -413,7 +420,7 @@ villa_scene_fs :: (s:VillaS,u:[]f32)->VillaLit {
   dx:V3=wg_dpdx_f3(s.world);
   dy:V3=wg_dpdy_f3(s.world);
   ground_aa:f32=fmax(wg_length2(wg_fwidth_f2(v2(s.world.x,s.world.z))),0.002f32); // derivatives first, while control flow is uniform
-  local_aa:f32=gpu_fwidth(s.local.y);
+  local_aa:f32=gpu_fwidth_fine(s.local.y);
   to_eye:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
   facet:V3=wg_cross3(dy,dx);
   facet=wg_normalize3(ifx wg_dot3(facet,facet)<1e-14f32 then v3(0.0f32,1.0f32,0.0f32) else facet);
@@ -433,7 +440,7 @@ villa_scene_fs :: (s:VillaS,u:[]f32)->VillaLit {
     cell:V2=wg_add_f2f2(wg_floor_f2(wg_div_f2f(v2(s.pos.x,s.pos.y),fmax(u[6],1.0f32))),v2(drift,drift*2.0f32));
     // a third of its heart and nearly all of its rim let what is behind it show
     if (verse_style_bayer(cell.x,cell.y)>(body*0.68f32)) {
-      gpu_discard();
+      gpu_demote_helper();
     }
     core:V3=wg_mix_f3f3f(v3(0.5f32,0.55f32,0.92f32),v3(0.8f32,0.82f32,1.0f32),body);
     return VillaLit.{light=wg_make_f4_f3f(wg_mix_f3f3f(core,villa_pal(VILLA_P_HORIZON),fade*0.5f32),0.22f32),aux=v4(smooth_n.x,smooth_n.y,smooth_n.z,-d)};
@@ -627,9 +634,9 @@ wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
 wg_neg_f2 :: (a:V2)->V2 {return v2(-a.x,-a.y);}
 wg_clamp_f3f3f3 :: (p0:V3,p1:V3,p2:V3)->V3 {return v3(clampf(p0.x,p1.x,p2.x),clampf(p0.y,p1.y,p2.y),clampf(p0.z,p1.z,p2.z));}
 wg_pow_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(pow(p0.x,p1.x),pow(p0.y,p1.y),pow(p0.z,p1.z));}
-wg_dpdx_f3 :: (p0:V3)->V3 {return v3(gpu_dpdx(p0.x),gpu_dpdx(p0.y),gpu_dpdx(p0.z));}
-wg_dpdy_f3 :: (p0:V3)->V3 {return v3(gpu_dpdy(p0.x),gpu_dpdy(p0.y),gpu_dpdy(p0.z));}
-wg_fwidth_f2 :: (p0:V2)->V2 {return v2(gpu_fwidth(p0.x),gpu_fwidth(p0.y));}
+wg_dpdx_f3 :: (p0:V3)->V3 {return v3(gpu_dpdx_fine(p0.x),gpu_dpdx_fine(p0.y),gpu_dpdx_fine(p0.z));}
+wg_dpdy_f3 :: (p0:V3)->V3 {return v3(gpu_dpdy_fine(p0.x),gpu_dpdy_fine(p0.y),gpu_dpdy_fine(p0.z));}
+wg_fwidth_f2 :: (p0:V2)->V2 {return v2(gpu_fwidth_fine(p0.x),gpu_fwidth_fine(p0.y));}
 wg_neg_f3 :: (a:V3)->V3 {return v3(-a.x,-a.y,-a.z);}
 wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
 wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}

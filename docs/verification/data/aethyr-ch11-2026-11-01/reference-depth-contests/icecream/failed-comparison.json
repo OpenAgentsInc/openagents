@@ -1,0 +1,195 @@
+{
+  "schema": "aethyr.render.image-comparison.v1",
+  "status": "fail",
+  "width": 320,
+  "height": 180,
+  "source_sha256": "30961fe5c589cfd45818d28122ff39de4ac8288e4339255b13907e0d738c7f55",
+  "comparison": {
+    "status": "fail",
+    "pixels": 57600,
+    "channels": 230400,
+    "colour_failures": 117,
+    "nonfinite_failures": 0,
+    "max_absolute_error": 0.08642578125,
+    "max_normalized_error": 0.08642578125,
+    "samples": [
+      {
+        "x": 287,
+        "y": 98,
+        "channel": "r",
+        "cpu": 0.5830078125,
+        "gpu": 0.6572265625,
+        "absolute_error": 0.07421875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 287,
+        "y": 98,
+        "channel": "g",
+        "cpu": 0.509765625,
+        "gpu": 0.59619140625,
+        "absolute_error": 0.08642578125,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 287,
+        "y": 98,
+        "channel": "b",
+        "cpu": 0.253173828125,
+        "gpu": 0.320556640625,
+        "absolute_error": 0.0673828125,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 288,
+        "y": 98,
+        "channel": "r",
+        "cpu": 0.5830078125,
+        "gpu": 0.65673828125,
+        "absolute_error": 0.07373046875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 288,
+        "y": 98,
+        "channel": "g",
+        "cpu": 0.509765625,
+        "gpu": 0.595703125,
+        "absolute_error": 0.0859375,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 288,
+        "y": 98,
+        "channel": "b",
+        "cpu": 0.253173828125,
+        "gpu": 0.320556640625,
+        "absolute_error": 0.0673828125,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 289,
+        "y": 98,
+        "channel": "r",
+        "cpu": 0.58251953125,
+        "gpu": 0.65673828125,
+        "absolute_error": 0.07421875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 289,
+        "y": 98,
+        "channel": "g",
+        "cpu": 0.509765625,
+        "gpu": 0.595703125,
+        "absolute_error": 0.0859375,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 289,
+        "y": 98,
+        "channel": "b",
+        "cpu": 0.25341796875,
+        "gpu": 0.320556640625,
+        "absolute_error": 0.067138671875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 290,
+        "y": 98,
+        "channel": "r",
+        "cpu": 0.58251953125,
+        "gpu": 0.65625,
+        "absolute_error": 0.07373046875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 290,
+        "y": 98,
+        "channel": "g",
+        "cpu": 0.509765625,
+        "gpu": 0.59521484375,
+        "absolute_error": 0.08544921875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 290,
+        "y": 98,
+        "channel": "b",
+        "cpu": 0.253662109375,
+        "gpu": 0.320556640625,
+        "absolute_error": 0.06689453125,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 291,
+        "y": 98,
+        "channel": "r",
+        "cpu": 0.58251953125,
+        "gpu": 0.65625,
+        "absolute_error": 0.07373046875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 291,
+        "y": 98,
+        "channel": "g",
+        "cpu": 0.509765625,
+        "gpu": 0.59521484375,
+        "absolute_error": 0.08544921875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 291,
+        "y": 98,
+        "channel": "b",
+        "cpu": 0.25390625,
+        "gpu": 0.320556640625,
+        "absolute_error": 0.066650390625,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 292,
+        "y": 98,
+        "channel": "r",
+        "cpu": 0.58251953125,
+        "gpu": 0.65576171875,
+        "absolute_error": 0.0732421875,
+        "bound": 0.002,
+        "reason": "colour"
+      }
+    ],
+    "masked_pixels": 0,
+    "rule": "abs(gpu-cpu) <= 0.002 * max(1, abs(cpu)); both values finite"
+  },
+  "inputs": {
+    "cpu": {
+      "path": "/private/tmp/aethyr-ch11-reference-ice-cream-man-native-viewport-308/screen.rgba32f",
+      "format": "rgba32f",
+      "bytes": 921600,
+      "sha256": "454231583650f1b065e3702368baf587bc96659000f32f303a110d18e25e01f8"
+    },
+    "gpu": {
+      "path": "/private/tmp/aethyr-ch11-native-icecream/screen.raw",
+      "format": "rgba16f",
+      "bytes": 460800,
+      "sha256": "3e37282407791dd6c113c9032ac38370dd41c1516ec36e766d60831e15362175"
+    }
+  },
+  "scope": "Complete supplied readback/CPU image comparison, including alpha and all nonfinite values, without a mask. The enclosing host gate must establish matching frame and resource provenance."
+}

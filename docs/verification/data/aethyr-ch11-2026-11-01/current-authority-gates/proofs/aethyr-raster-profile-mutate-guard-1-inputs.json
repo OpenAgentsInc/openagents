@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+    "mutate",
+    "aethyr/render/raster-profile.coax",
+    "--library",
+    "--root-only",
+    "--jobs",
+    "8"
+  ],
+  "exit": 0,
+  "elapsed": 0.020872832974418998,
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "compiler_unchanged": true,
+  "source_sha256": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/raster-profile.coax": "4f788c64149ab1763dd35f7fc20ece72ec326fc909dd820cb3d0b90efce4de34",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-quad.coax": "d5e462db357b672231ef6a43456d069f2a1fd2eb5d1c16b2e0619efd6a7c71d7",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/reference-quad-checks.coax": "4d8d4d75129a69aeed49bcc2b9d1330690f337dc434c418971bac6fa404d9d1e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/raster-profile-checks.coax": "de42dc7209596db18ededd3283212ee35209805cc6cc607628ea566098030ef4"
+  },
+  "source_changes": []
+}

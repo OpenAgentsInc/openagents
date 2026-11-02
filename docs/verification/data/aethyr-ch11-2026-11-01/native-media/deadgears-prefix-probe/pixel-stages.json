@@ -1,0 +1,295 @@
+{
+  "schema": "aethyr.render.native-causal-prefix.v1",
+  "status": "pass",
+  "scope": "Effects-only diagnostic prefixes of exact retained DeadGears producer input/products and historical source epoch. Depth store enabled for observation; instrumented full colour image is byte-identical to retained baseline. Prefixes are causal diagnostics, not ordinary product frames. BG depth is uninitialized and not interpreted.",
+  "elapsed_seconds": 19.510144750005566,
+  "full_identity_sha256": "5afc5e66519ffc60f6cda91fcba33a480cd811fcbd8390c62b8d399462af168f",
+  "expected_full_sha256": "5afc5e66519ffc60f6cda91fcba33a480cd811fcbd8390c62b8d399462af168f",
+  "original_stage": {
+    "native-frame": "9e9725e4942090185ee3f95a8df9a95ab81de84358a140b3f70f799818b4bfde",
+    "RenderTexture.c": "044e7753b8c564b572f54b4444bac6ca4401862209f2a74bb1ee97e5a3434c44",
+    "garden.c": "4d25cd0390bf6f30cb2c4e49946417d79962bc20340e26750c42192ed4a0d725",
+    "vks.c": "1c535649cf3f6109974b39f182aa90c3d2c2206d379527e9171ae121654751fa",
+    "render-host.c": "64abcca7215ade0b9cbd975e7af80a7bd234d32823ab0a6cb3bef71e8fcecfb5",
+    "vkc.h": "93c64a4b34d6bb2ec3308729ec09455a868d793f0bd596c87404f0543a48c2cc",
+    "frame-input.h": "d716cb91d7c2a3add14393ed4c7f2a2f0d4c53ad775ea35401a47d83e06d65e7",
+    "RenderTexture.h": "16b69c46411209daad995a937703b4a74a2a66da989b8887b0b7682ac224caf0",
+    "RenderHost.h": "ef9899d2b6bfa8e1c6122e6fdb6b67dcd4d6a20cfa1896695f072914fdd3ef6d",
+    "vks.h": "7acf90e709323c4737c89574b886da638748eed2be0229da289d1c0794281c69",
+    "render-host.h": "54922daa9d1bfe0bbadfc36d929d245365de6362f8d66ae6a677114e94789ce4",
+    "remote.sh": "961bbdda002b550cd765a3ac02ff8bae5b09400076c3dfd21aac9937e6958c9a",
+    "frame.config": "da83f28346a436df3a9fca79c5c186d329508bef8ae175744845cdbce31a2298",
+    "Grid.c": "7ef410e3b4ed0e460ebc022dea83fc93606e6da765bc4978130ca2424de0dac1",
+    "native-frame.c": "b3f785b02b413f8db7be68801e2fddaabed23d128e1cc517ea70ddb980796883",
+    "vkc.c": "9b60bcf80801b0932a82e3f623281c65269f6a7b55c62ae6901a70649065b13a",
+    "Player.c": "c65456946b1f025733174365c3b9544cf2674f8e589ac5cce191a5f9b769ff07",
+    "package/render.json": "74bbac88f5d13a1c91abff4f2fb95a4eb005ad7a887b58245de524b6b481da5a",
+    "package/pipeline-5-7f095ea67b18452bb4036884b6529fd091efc3312c4a1bd6ea54618be74feaf5.spv": "7f095ea67b18452bb4036884b6529fd091efc3312c4a1bd6ea54618be74feaf5",
+    "package/pipeline-0-d5747e46d2e28382caec0818642a7d4ca1d5a6cfc91ce347088d429b5ea03f23.spv": "d5747e46d2e28382caec0818642a7d4ca1d5a6cfc91ce347088d429b5ea03f23",
+    "package/pipeline-12-e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75.spv": "e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75",
+    "inputs/draws.bin": "e843237a265a3c33f073d05086c705e3718530215ad60cb2396219ee56ab1157",
+    "inputs/s0.bin": "f837e11b94fe44e63e352fedcf0cc8f2a9d13888374a11f5426b198ae76f050c",
+    "inputs/render.json": "74bbac88f5d13a1c91abff4f2fb95a4eb005ad7a887b58245de524b6b481da5a",
+    "inputs/pipeline-12-5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c.tree": "5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c",
+    "inputs/hud.bin": "03181cc66aa9bddb4cb942ad345552cb6494445fdaebd9b9ab63b7a49ee17625",
+    "inputs/index.bin": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef",
+    "inputs/pipeline-0-8d34e8c938ceedb5deb943774f9a8105729d643928261ddc60bd198f5c86fcae.tree": "8d34e8c938ceedb5deb943774f9a8105729d643928261ddc60bd198f5c86fcae",
+    "inputs/u.bin": "60bab0ae95b768ac1fcee1b80c4dc6d03f077a111be6a991d5802ca2ec4cf575",
+    "inputs/pipeline-5-aab891fa7a32dfd92c22fee13f67f4b623c7e5644298b3da379f354db0f51d2d.tree": "aab891fa7a32dfd92c22fee13f67f4b623c7e5644298b3da379f354db0f51d2d"
+  },
+  "instrumented_files": {
+    "render-host.c": "59ce8503209834535d13fdf4d227ffd260a1c3e72a4a5abae646c350c2ffbcb5",
+    "native-frame.c": "d637dc51a97f85c50924aeba438b2f6ae10c6056a0a41fcfeba4b1265cc2f383",
+    "remote.sh": "ab90cb1592128c0a1d513bc427a849b4c97c30ccfa6ba9aab1b88d7ab2d7202f"
+  },
+  "observations": [
+    {
+      "stage": "bg",
+      "frame": {
+        "status": "rendered",
+        "profile": 4,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 1,
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "pixels": [
+        {
+          "x": 42,
+          "y": 76,
+          "rgba": [
+            0.1572265625,
+            0.165283203125,
+            0.18017578125,
+            1.0
+          ],
+          "depth": null
+        },
+        {
+          "x": 124,
+          "y": 118,
+          "rgba": [
+            0.1090087890625,
+            0.11663818359375,
+            0.1297607421875,
+            1.0
+          ],
+          "depth": null
+        },
+        {
+          "x": 67,
+          "y": 122,
+          "rgba": [
+            0.61376953125,
+            0.6259765625,
+            0.66015625,
+            1.0
+          ],
+          "depth": null
+        },
+        {
+          "x": 138,
+          "y": 134,
+          "rgba": [
+            0.31298828125,
+            0.36328125,
+            0.43115234375,
+            1.0
+          ],
+          "depth": null
+        }
+      ]
+    },
+    {
+      "stage": "scene",
+      "frame": {
+        "status": "rendered",
+        "profile": 4,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 3,
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "pixels": [
+        {
+          "x": 42,
+          "y": 76,
+          "rgba": [
+            0.139404296875,
+            0.15283203125,
+            0.173583984375,
+            1.0
+          ],
+          "depth": 0.9982852935791016
+        },
+        {
+          "x": 124,
+          "y": 118,
+          "rgba": [
+            0.0799560546875,
+            0.093017578125,
+            0.11102294921875,
+            1.0
+          ],
+          "depth": 0.9870345592498779
+        },
+        {
+          "x": 67,
+          "y": 122,
+          "rgba": [
+            0.12347412109375,
+            0.1431884765625,
+            0.1905517578125,
+            1.0
+          ],
+          "depth": 0.990074634552002
+        },
+        {
+          "x": 138,
+          "y": 134,
+          "rgba": [
+            0.30517578125,
+            0.3564453125,
+            0.4248046875,
+            1.0
+          ],
+          "depth": 0.9874150156974792
+        }
+      ]
+    },
+    {
+      "stage": "hud",
+      "frame": {
+        "status": "rendered",
+        "profile": 4,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 4,
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "pixels": [
+        {
+          "x": 42,
+          "y": 76,
+          "rgba": [
+            0.139404296875,
+            0.15283203125,
+            0.173583984375,
+            1.0
+          ],
+          "depth": 0.9982852935791016
+        },
+        {
+          "x": 124,
+          "y": 118,
+          "rgba": [
+            0.0799560546875,
+            0.093017578125,
+            0.11102294921875,
+            1.0
+          ],
+          "depth": 0.9870345592498779
+        },
+        {
+          "x": 67,
+          "y": 122,
+          "rgba": [
+            0.12347412109375,
+            0.1431884765625,
+            0.1905517578125,
+            1.0
+          ],
+          "depth": 0.990074634552002
+        },
+        {
+          "x": 138,
+          "y": 134,
+          "rgba": [
+            0.30517578125,
+            0.3564453125,
+            0.4248046875,
+            1.0
+          ],
+          "depth": 0.9874150156974792
+        }
+      ]
+    },
+    {
+      "stage": "full",
+      "frame": {
+        "status": "rendered",
+        "profile": 4,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 4,
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "pixels": [
+        {
+          "x": 42,
+          "y": 76,
+          "rgba": [
+            0.139404296875,
+            0.15283203125,
+            0.173583984375,
+            1.0
+          ],
+          "depth": 0.9982852935791016
+        },
+        {
+          "x": 124,
+          "y": 118,
+          "rgba": [
+            0.0799560546875,
+            0.093017578125,
+            0.11102294921875,
+            1.0
+          ],
+          "depth": 0.9870345592498779
+        },
+        {
+          "x": 67,
+          "y": 122,
+          "rgba": [
+            0.12347412109375,
+            0.1431884765625,
+            0.1905517578125,
+            1.0
+          ],
+          "depth": 0.990074634552002
+        },
+        {
+          "x": 138,
+          "y": 134,
+          "rgba": [
+            0.30517578125,
+            0.3564453125,
+            0.4248046875,
+            1.0
+          ],
+          "depth": 0.9874150156974792
+        }
+      ]
+    }
+  ]
+}

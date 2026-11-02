@@ -1,0 +1,265 @@
+// The closed catalog's loading and delivery policy. A pack replaces its one
+// declaration with four ordinary delivery IDs; the container gets no ID.
+#module "aethyr.render.asset.profile";
+#load "binding-sources.coax";
+#authority;
+RENDER_ASSET_ROWS :: 48;
+RenderAssetKind :: enum u8 {invalid;data;storage;index;layers;sound;loop;particles;mesh;}
+RenderAssetStatus :: enum u8 {invalid;ok;capacity;}
+RenderAsset :: struct {
+ valid:bool;row:int=-1;kind:RenderAssetKind;url:string;name:string;
+ packed:bool;pack_part:int;pack_first:int=-1;url_count:int;
+ initial:bool;gpu_required:bool;
+}
+RenderAssetProfile :: struct {status:RenderAssetStatus;count:int;asset:RenderAsset;}
+RenderAssetState :: enum u8 {pending;ready;failed;invalid;}
+RenderAssetObservation :: struct {row:int;state:RenderAssetState;}
+RenderAssetReadiness :: struct {
+ status:RenderAssetStatus;readiness:RenderReadiness=RenderReadiness.invalid;
+ particles_ready:bool;mesh_ready:bool;bad_row:int=-1;failed_row:int=-1;
+}
+#forall "asset delivery counts preserve every canonical page including direct profiles" rapt_profile:0..<18 {
+ rapt_counts:=[18]int.[29,0,5,1,1,0,1,4,0,4,4,17,1,2,0,0,1,0];
+ #assert render_asset_count(rapt_profile)==rapt_counts[rapt_profile];
+ for rapt_row:0..<rapt_counts[rapt_profile] {
+  rapt_q:=render_asset(rapt_profile,rapt_row);#assert rapt_q.valid && rapt_q.row==rapt_row && rapt_q.kind!=RenderAssetKind.invalid;
+  #assert rapt_q.url_count>0 && render_asset_url(rapt_profile,rapt_row,0).count>0;
+ }
+ #assert !render_asset(rapt_profile,-1).valid && !render_asset(rapt_profile,rapt_counts[rapt_profile]).valid;
+}
+#test "a pack has four delivery IDs with fixed VPK part kinds and no container ID" {
+ rapt_kinds:=[4]RenderAssetKind.[RenderAssetKind.data,RenderAssetKind.storage,RenderAssetKind.index,RenderAssetKind.layers];
+ for rapt_row:0..<4 {
+  rapt_q:=render_asset(2,rapt_row);#assert rapt_q.valid && rapt_q.row==rapt_row && rapt_q.kind==rapt_kinds[rapt_row];
+  #assert rapt_q.packed && rapt_q.pack_part==rapt_row+1 && rapt_q.pack_first==0 && rapt_q.url_count==1;
+  #assert rapt_q.initial && rapt_q.gpu_required==(rapt_row!=0) && rapt_q.name.count==0;
+  #assert rapt_q.url=="/realms/everglade/assets/everglade.pack" && render_asset_url(2,rapt_row,0)==rapt_q.url && render_asset_url(2,rapt_row,1)=="";
+ }
+ rapt_q:=render_asset(2,4);#assert rapt_q.kind==RenderAssetKind.particles && !rapt_q.packed && rapt_q.pack_first== -1 && rapt_q.pack_part==0 && !rapt_q.initial && !rapt_q.gpu_required;
+ #assert rapt_q.url=="/everglade-fx.wgsl";
+}
+#test "individual layers sounds loops and index payloads preserve exact URLs and lazy loading" {
+ rapt_q:=render_asset(0,3);#assert rapt_q.kind==RenderAssetKind.layers && !rapt_q.packed && rapt_q.url_count==12 && rapt_q.initial && rapt_q.gpu_required;
+ #assert render_asset_url(0,3,0)=="/realms/haunted-house/assets/haunt-layer0.jpg";
+ #assert render_asset_url(0,3,7)=="/realms/haunted-house/assets/haunt-layer22.jpg";
+ #assert render_asset_url(0,3,11)=="/realms/haunted-house/assets/haunt-layer28.jpg";
+ #assert render_asset_url(0,3,-1)=="" && render_asset_url(0,3,12)=="";
+ rapt_q=render_asset(0,4);#assert rapt_q.kind==RenderAssetKind.sound && rapt_q.name=="boo" && rapt_q.url=="/realms/haunted-house/assets/haunt-boo.mp3" && !rapt_q.initial && !rapt_q.gpu_required && rapt_q.url_count==1;
+ rapt_q=render_asset(0,27);#assert rapt_q.kind==RenderAssetKind.loop && rapt_q.name=="" && !rapt_q.initial && !rapt_q.gpu_required;
+ #assert render_asset(0,0).kind==RenderAssetKind.data && render_asset(0,0).initial && !render_asset(0,0).gpu_required;
+ #assert render_asset_url(3,0,0)=="/realms/fairy-forest/assets/Fairy.indices" && render_asset(3,0).kind==RenderAssetKind.index;
+ #assert render_asset_url(3,0,1)=="" && render_asset_url(-1,0,0)=="";
+}
+#test "GPU source ordinals refer to decoded storage mesh and layers delivery rows" {
+ rapt_storage:=RenderBindingSource.{valid=true,kind=RenderSourceKind.immutable_storage_asset,index=0};
+ rapt_mesh:=RenderBindingSource.{valid=true,kind=RenderSourceKind.mesh_asset,index=0};
+ rapt_layers:=RenderBindingSource.{valid=true,kind=RenderSourceKind.layers,index=0};
+ #assert render_asset_for_source(2,rapt_storage).row==1 && render_asset_for_source(0,rapt_storage).row==1;
+ #assert render_asset_for_source(6,rapt_mesh).row==0 && render_asset_for_source(6,rapt_mesh).url=="/realms/orbit-league/assets/roadster.bin";
+ #assert render_asset_for_source(2,rapt_layers).row==3 && render_asset_for_source(0,rapt_layers).row==3;
+ #assert render_asset_find(2,RenderAssetKind.index,0).row==2 && render_asset_find(16,RenderAssetKind.index,0).row==0;
+ #assert render_asset_find(0,RenderAssetKind.sound,22).row==26 && !render_asset_find(0,RenderAssetKind.sound,23).valid;
+ #assert !render_asset_find(2,RenderAssetKind.index,-1).valid;
+ rapt_storage.index=1;#assert !render_asset_for_source(2,rapt_storage).valid;rapt_storage.index=0;rapt_storage.valid=false;#assert !render_asset_for_source(2,rapt_storage).valid;
+ #assert !render_asset_for_source(2,RenderBindingSource.{valid=true,kind=RenderSourceKind.dynamic_store,index=0}).valid;
+ #assert !render_asset_for_source(2,RenderBindingSource.{valid=true,kind=RenderSourceKind.main_uniform,index=0}).valid;
+ #assert !render_asset_for_source(2,RenderBindingSource.{valid=true,kind=RenderSourceKind.particle_emitters,index=0}).valid;
+}
+#test "scene readiness waits only for storage index and layer deliveries" {
+ rapt_rows:=[4]RenderAssetObservation.[RenderAssetObservation.{row=0,state=RenderAssetState.failed},RenderAssetObservation.{row=3,state=RenderAssetState.ready},RenderAssetObservation.{row=1,state=RenderAssetState.ready},RenderAssetObservation.{row=2,state=RenderAssetState.ready}];
+ rapt_q:=render_asset_readiness(2,true,true,rapt_rows[..]);
+ #assert rapt_q.status==RenderAssetStatus.ok && rapt_q.readiness==RenderReadiness.ready && rapt_q.particles_ready && rapt_q.mesh_ready && rapt_q.failed_row== -1 && rapt_q.bad_row== -1;
+ rapt_q=render_asset_readiness(2,false,true,rapt_rows[..]);#assert rapt_q.readiness==RenderReadiness.loading && !rapt_q.particles_ready;
+ rapt_rows[1].state=RenderAssetState.pending;rapt_q=render_asset_readiness(2,true,false,rapt_rows[..]);#assert rapt_q.readiness==RenderReadiness.background && !rapt_q.particles_ready && rapt_q.failed_row== -1;
+ rapt_rows[1].state=RenderAssetState.failed;rapt_q=render_asset_readiness(2,true,true,rapt_rows[..]);#assert rapt_q.readiness==RenderReadiness.background && rapt_q.failed_row==3;
+ #assert render_asset_readiness(2,true,true,rapt_rows[0..<2]).readiness==RenderReadiness.background;
+}
+#test "mesh readiness preserves the independent zero placeholder path and optional audio never blocks" {
+ rapt_none:[]RenderAssetObservation;rapt_q:=render_asset_readiness(6,true,true,rapt_none);
+ #assert rapt_q.status==RenderAssetStatus.ok && rapt_q.readiness==RenderReadiness.ready && !rapt_q.mesh_ready && !rapt_q.particles_ready;
+ rapt_mesh:=[1]RenderAssetObservation.[RenderAssetObservation.{row=0,state=RenderAssetState.ready}];
+ rapt_q=render_asset_readiness(6,true,false,rapt_mesh[..]);#assert rapt_q.mesh_ready;
+ rapt_mesh[0].state=RenderAssetState.failed;rapt_q=render_asset_readiness(6,true,false,rapt_mesh[..]);#assert !rapt_q.mesh_ready && rapt_q.readiness==RenderReadiness.ready;
+ rapt_rows:=[4]RenderAssetObservation.[RenderAssetObservation.{row=1,state=RenderAssetState.ready},RenderAssetObservation.{row=2,state=RenderAssetState.ready},RenderAssetObservation.{row=3,state=RenderAssetState.ready},RenderAssetObservation.{row=4,state=RenderAssetState.failed}];
+ #assert render_asset_readiness(0,true,true,rapt_rows[..]).readiness==RenderReadiness.ready;
+ #assert render_asset_readiness(15,true,true,rapt_none).readiness==RenderReadiness.ready;
+}
+#test "readiness refuses duplicate unknown states and out of range observations without a partial receipt" {
+ rapt_rows:=[2]RenderAssetObservation.[RenderAssetObservation.{row=0},RenderAssetObservation.{row=0}];
+ rapt_q:=render_asset_readiness(2,true,true,rapt_rows[..]);#assert rapt_q.status==RenderAssetStatus.invalid && rapt_q.readiness==RenderReadiness.invalid && rapt_q.bad_row==1;
+ rapt_rows[1].row=-1;#assert render_asset_readiness(2,true,true,rapt_rows[..]).bad_row==1;
+ rapt_rows[1].row=5;#assert render_asset_readiness(2,true,true,rapt_rows[..]).bad_row==1;
+ rapt_rows[1].row=1;rapt_rows[1].state=RenderAssetState.invalid;#assert render_asset_readiness(2,true,true,rapt_rows[..]).bad_row==1;
+ rapt_rows[1].state=RenderAssetState.ready;rapt_rows[0].row=-1;#assert render_asset_readiness(2,true,true,rapt_rows[..]).bad_row==0;
+ rapt_many:[49]RenderAssetObservation;#assert render_asset_readiness(2,true,true,rapt_many[..]).status==RenderAssetStatus.capacity;
+ #assert render_asset_count(-1)== -1 && render_asset_count(18)== -1 && !render_asset(-1,0).valid;
+ #assert render_asset_readiness(-1,true,true,rapt_rows[..]).status==RenderAssetStatus.invalid;
+}
+#test "canonical declaration parsing refuses malformed rows and never publishes an incomplete profile" {
+ for rapt_text:[8]string.["missing","unknown:/x","pack:","data:","sound:=/x","sound:boo=","layers:/x||/y","data:/x\n"] {
+  rapt_q:=rap_parse(rapt_text);#assert rapt_q.status==RenderAssetStatus.invalid && rapt_q.count==0;
+ }
+ rapt_q:=rap_parse("");#assert rapt_q.status==RenderAssetStatus.ok && rapt_q.count==0;
+ rapt_q=rap_parse("sound:bell=/bell.mp3\npack:/world.pack\nmesh:/car.bin");#assert rapt_q.status==RenderAssetStatus.ok && rapt_q.count==6 && rap_parse_at("sound:bell=/bell.mp3\npack:/world.pack\nmesh:/car.bin",1).asset.pack_first==1 && rap_parse_at("sound:bell=/bell.mp3\npack:/world.pack\nmesh:/car.bin",4).asset.pack_part==4 && rap_parse_at("sound:bell=/bell.mp3\npack:/world.pack\nmesh:/car.bin",5).asset.kind==RenderAssetKind.mesh;
+ rapt_bytes:[512]u8;rapt_line:="data:/x\n";
+ for rapt_i:0..<49 {for rapt_j:0..<rapt_line.count {rapt_bytes[rapt_i*rapt_line.count+rapt_j]=rapt_line[rapt_j];}}
+ rapt_q=rap_parse(cast(string)rapt_bytes[0..<48*rapt_line.count-1]);#assert rapt_q.status==RenderAssetStatus.ok && rapt_q.count==48;
+ rapt_q=rap_parse(cast(string)rapt_bytes[0..<49*rapt_line.count-1]);#assert rapt_q.status==RenderAssetStatus.capacity && rapt_q.count==0;
+}
+
+#test "asset parser retains one character roots names and exact refusal boundaries" {
+ rapt_q:=rap_parse("sound:a=/");#assert rapt_q.status==RenderAssetStatus.ok && rapt_q.asset.valid && rapt_q.asset.name=="a" && rapt_q.asset.url=="/" && rapt_q.asset.kind==RenderAssetKind.sound;
+ rapt_q=rap_parse("data:/x\nindex:/y");#assert rapt_q.asset.row==0 && rapt_q.asset.kind==RenderAssetKind.data && rapt_q.asset.url=="/x";
+ for rapt_bad:[7]string.[":/x","sound:no_equals","data:relative","layers:|/x","data:/x|/y","layers:/x|","layers:relative|/x"] {#assert rap_parse(rapt_bad).status==RenderAssetStatus.invalid;}
+ rapt_obs:[48]RenderAssetObservation;rapt_read:=render_asset_readiness(2,true,true,rapt_obs[..]);#assert rapt_read.status==RenderAssetStatus.invalid && rapt_read.bad_row==1;
+ rapt_first:=[1]RenderAssetObservation.[RenderAssetObservation.{row=0,state=RenderAssetState.failed}];#assert render_asset_readiness(16,true,false,rapt_first[..]).failed_row==0;
+ rapt_two:=[2]RenderAssetObservation.[RenderAssetObservation.{row=2,state=RenderAssetState.failed},RenderAssetObservation.{row=1,state=RenderAssetState.failed}];#assert render_asset_readiness(2,true,true,rapt_two[..]).failed_row==1;
+}
+
+
+RenderAssetMip :: struct {valid:bool;width:int;height:int;levels:int;}
+#test "layer mip policy keeps first image extent with floor halves and a full chain" {
+ rapt_m:=render_asset_mip(3,5,12,0,32768,2048);#assert rapt_m.valid && rapt_m.width==3 && rapt_m.height==5 && rapt_m.levels==3;
+ rapt_m=render_asset_mip(3,5,12,1,32768,2048);#assert rapt_m.valid && rapt_m.width==1 && rapt_m.height==2 && rapt_m.levels==3;
+ rapt_m=render_asset_mip(3,5,12,2,32768,2048);#assert rapt_m.valid && rapt_m.width==1 && rapt_m.height==1;
+ rapt_m=render_asset_mip(1920,1080,1,10,32768,2048);#assert rapt_m.valid && rapt_m.width==1 && rapt_m.height==1 && rapt_m.levels==11;
+ rapt_m=render_asset_mip(1,1025,1,0,32768,2048);#assert rapt_m.valid && rapt_m.width==1 && rapt_m.height==1025 && rapt_m.levels==11;
+ rapt_m=render_asset_mip(1025,1,1,1,32768,2048);#assert rapt_m.valid && rapt_m.width==512 && rapt_m.height==1 && rapt_m.levels==11;
+ rapt_m=render_asset_mip(1,1,1,0,1,1);#assert rapt_m.valid && rapt_m.width==1 && rapt_m.height==1 && rapt_m.levels==1;
+}
+#test "layer mip admission refuses limits instead of clipping any base dimension or layer" {
+ rapt_m:=render_asset_mip(16384,16384,2048,14,32768,4096);#assert rapt_m.valid && rapt_m.width==1 && rapt_m.height==1 && rapt_m.levels==15;
+ #assert !render_asset_mip(16385,1,1,0,32768,4096).valid;
+ #assert !render_asset_mip(1,16385,1,0,32768,4096).valid;
+ #assert !render_asset_mip(1,1,2049,0,32768,4096).valid;
+ #assert !render_asset_mip(2,1,1,0,1,1).valid && !render_asset_mip(1,2,1,0,1,1).valid;
+ #assert !render_asset_mip(1,1,2,0,16384,1).valid;
+ for rapt_bad:[4]int.[-1,0,9223372036854775807,-9223372036854775807] {
+  #assert !render_asset_mip(rapt_bad,1,1,0,16384,256).valid && !render_asset_mip(1,rapt_bad,1,0,16384,256).valid;
+  #assert !render_asset_mip(1,1,rapt_bad,0,16384,256).valid;
+ }
+ #assert !render_asset_mip(1,1,1,-1,16384,256).valid && !render_asset_mip(1,1,1,1,16384,256).valid;
+ #assert !render_asset_mip(1,1,1,0,0,1).valid && !render_asset_mip(1,1,1,0,1,0).valid;
+ #assert !render_asset_mip(3,5,1,3,16384,256).valid;
+}
+RenderAssetLayers :: struct {format:string;premultiplied_alpha:bool;resize_quality:string;}
+#test "layer upload description preserves sRGB straight alpha and original high quality resizing" {
+ rapt_layers:=render_asset_layers();#assert rapt_layers.format=="rgba8unorm-srgb" && !rapt_layers.premultiplied_alpha && rapt_layers.resize_quality=="high";
+}
+render_asset_layers :: ()->RenderAssetLayers {return RenderAssetLayers.{format="rgba8unorm-srgb",premultiplied_alpha=false,resize_quality="high"};}
+
+rap_half_extent :: (rap_extent:int)->int {rap_half:=rap_extent/2;return ifx rap_half==0 then 1 else rap_half;}
+render_asset_mip :: (rap_width:int,rap_height:int,rap_layers:int,rap_level:int,rap_device_max:int,rap_device_layers:int)->RenderAssetMip {
+ if rap_width<1 || rap_height<1 || rap_width>16384 || rap_height>16384 || rap_width>rap_device_max || rap_height>rap_device_max
+   || rap_layers<1 || rap_layers>2048 || rap_layers>rap_device_layers {return RenderAssetMip.{};}
+ rap_w:=rap_width;rap_h:=rap_height;rap_levels:=1;
+ while rap_w>1 || rap_h>1 {rap_w=rap_half_extent(rap_w);rap_h=rap_half_extent(rap_h);rap_levels+=1;}
+ if rap_level<0 || rap_level>=rap_levels {return RenderAssetMip.{};}
+ rap_w=rap_width;rap_h=rap_height;
+ for rap_i:0..<rap_level {rap_w=rap_half_extent(rap_w);rap_h=rap_half_extent(rap_h);}
+ return RenderAssetMip.{valid=true,width=rap_w,height=rap_h,levels=rap_levels};
+}
+
+rap_kind :: (rap_word:string)->RenderAssetKind {
+ if rap_word=="data" {return RenderAssetKind.data;}if rap_word=="storage" {return RenderAssetKind.storage;}
+ if rap_word=="index" {return RenderAssetKind.index;}if rap_word=="layers" {return RenderAssetKind.layers;}
+ if rap_word=="sound" {return RenderAssetKind.sound;}if rap_word=="loop" {return RenderAssetKind.loop;}
+ if rap_word=="particles" {return RenderAssetKind.particles;}if rap_word=="mesh" {return RenderAssetKind.mesh;}return RenderAssetKind.invalid;
+}
+rap_url_count :: (rap_url:string)->int {
+ rap_start:=0;rap_count:=0;
+ for rap_character,rap_at:rap_url {if rap_character=='|' {
+  if rap_at==rap_start || rap_url[rap_start]!='/' {return 0;}rap_count+=1;rap_start=rap_at+1;
+ }}
+ if rap_start==rap_url.count || rap_url[rap_start]!='/' {return 0;}return rap_count+1;
+}
+// Qualified by the caller's nonnegative URL ordinal below the declared count.
+rap_url_at :: (rap_url:string,rap_wanted:int)->string {
+ rap_start:=0;rap_count:=0;
+ for rap_character,rap_at:rap_url {if rap_character=='|' {
+  if rap_count==rap_wanted {return rap_url[rap_start..<rap_at];}rap_count+=1;rap_start=rap_at+1;
+ }}return rap_url[rap_start..<rap_url.count];
+}
+rap_sound :: (rap_rest:string)->RenderAsset {
+ for rap_character,rap_at:rap_rest {if rap_character=='=' {
+  if rap_at==0 {return RenderAsset.{};}rap_url:=rap_rest[rap_at+1..<rap_rest.count];if rap_url_count(rap_url)!=1 {return RenderAsset.{};}
+  return RenderAsset.{valid=true,kind=RenderAssetKind.sound,name=rap_rest[0..<rap_at],url=rap_url,url_count=1};
+ }}return RenderAsset.{};
+}
+rap_declaration :: (rap_line:string)->RenderAsset {
+ for rap_character,rap_at:rap_line {if rap_character==':' {
+  rap_word:=rap_line[0..<rap_at];rap_kind_value:=rap_kind(rap_word);rap_packed:=rap_word=="pack";
+  if !rap_packed && rap_kind_value==RenderAssetKind.invalid {return RenderAsset.{};}
+  rap_rest:=rap_line[rap_at+1..<rap_line.count];if rap_kind_value==RenderAssetKind.sound {return rap_sound(rap_rest);}
+  rap_urls:=rap_url_count(rap_rest);if rap_urls==0 || (rap_kind_value!=RenderAssetKind.layers && rap_urls!=1) {return RenderAsset.{};}
+  return RenderAsset.{valid=true,kind=rap_kind_value,packed=rap_packed,url=rap_rest,url_count=rap_urls};
+ }}return RenderAsset.{};
+}
+rap_append :: (rap_result:RenderAssetProfile,rap_decl:RenderAsset,rap_wanted:int)->RenderAssetProfile {
+ if !rap_decl.valid {return RenderAssetProfile.{};}rap_rows:=ifx rap_decl.packed then 4 else 1;
+ if rap_rows>RENDER_ASSET_ROWS-rap_result.count {return RenderAssetProfile.{status=RenderAssetStatus.capacity};}
+ rap_next:=rap_result;
+ if rap_wanted>=rap_result.count && rap_wanted<rap_result.count+rap_rows {
+  rap_asset:=rap_decl;rap_asset.row=rap_wanted;
+  if rap_decl.packed {
+   rap_asset.pack_part=rap_wanted-rap_result.count+1;rap_asset.pack_first=rap_result.count;
+   rap_kinds:=[4]RenderAssetKind.[RenderAssetKind.data,RenderAssetKind.storage,RenderAssetKind.index,RenderAssetKind.layers];rap_asset.kind=rap_kinds[rap_asset.pack_part-1];
+  }
+  rap_asset.initial=rap_asset.kind!=RenderAssetKind.sound && rap_asset.kind!=RenderAssetKind.loop && rap_asset.kind!=RenderAssetKind.particles;
+  rap_asset.gpu_required=rap_asset.kind==RenderAssetKind.storage || rap_asset.kind==RenderAssetKind.index || rap_asset.kind==RenderAssetKind.layers;rap_next.asset=rap_asset;
+ }
+ rap_next.count+=rap_rows;return rap_next;
+}
+// A streaming selection avoids allocating an array of string-bearing rows.
+// Every declaration is validated before a selected row is returned.
+rap_parse_at :: (rap_text:string,rap_wanted:int)->RenderAssetProfile {
+ rap_result:=RenderAssetProfile.{status=RenderAssetStatus.ok};if rap_text.count==0 {return rap_result;}rap_start:=0;
+ for rap_character,rap_at:rap_text {if rap_character=='\n' {
+  rap_result=rap_append(rap_result,rap_declaration(rap_text[rap_start..<rap_at]),rap_wanted);if rap_result.status!=RenderAssetStatus.ok {return rap_result;}rap_start=rap_at+1;
+ }}return rap_append(rap_result,rap_declaration(rap_text[rap_start..<rap_text.count]),rap_wanted);
+}
+rap_parse :: (rap_text:string)->RenderAssetProfile {return rap_parse_at(rap_text,0);}
+render_asset_count :: (rap_profile:int)->int {
+ rap_meta:=render_catalog(rap_profile);if !rap_meta.valid {return -1;}
+ // The complete closed catalog is checked below; malformed candidate text is
+ // only accepted by the private checked parser, never installed in catalog.
+ return rap_parse(rap_meta.assets).count;
+}
+render_asset :: (rap_profile:int,rap_row:int)->RenderAsset {return rap_parse_at(render_catalog(rap_profile).assets,rap_row).asset;}
+render_asset_url :: (rap_profile:int,rap_row:int,rap_url:int)->string {
+ rap_asset:=render_asset(rap_profile,rap_row);if rap_url>=0 && rap_url<rap_asset.url_count {return rap_url_at(rap_asset.url,rap_url);}return "";
+}
+render_asset_find :: (rap_profile:int,rap_find_kind:RenderAssetKind,rap_ordinal:int)->RenderAsset {
+ if rap_ordinal<0 {return RenderAsset.{};}rap_seen:=0;
+ for rap_row:0..<render_asset_count(rap_profile) {rap_asset:=render_asset(rap_profile,rap_row);if rap_asset.kind==rap_find_kind {
+  if rap_seen==rap_ordinal {return rap_asset;}rap_seen+=1;
+ }}return RenderAsset.{};
+}
+render_asset_for_source :: (rap_profile:int,rap_source:RenderBindingSource)->RenderAsset {
+ if !rap_source.valid {return RenderAsset.{};}rap_kind_value:=RenderAssetKind.invalid;
+ if rap_source.kind==RenderSourceKind.immutable_storage_asset {rap_kind_value=RenderAssetKind.storage;}
+ else if rap_source.kind==RenderSourceKind.mesh_asset {rap_kind_value=RenderAssetKind.mesh;}
+ else if rap_source.kind==RenderSourceKind.layers {rap_kind_value=RenderAssetKind.layers;}
+ else {return RenderAsset.{};}
+ return render_asset_find(rap_profile,rap_kind_value,rap_source.index);
+}
+render_asset_readiness :: (rap_profile:int,rap_pipeline_ready:bool,rap_particles_ready:bool,rap_observed:[]RenderAssetObservation)->RenderAssetReadiness {
+ rap_meta:=render_catalog(rap_profile);if !rap_meta.valid {return RenderAssetReadiness.{};}
+ if rap_observed.count>RENDER_ASSET_ROWS {return RenderAssetReadiness.{status=RenderAssetStatus.capacity};}
+ rap_count:=render_asset_count(rap_profile);rap_seen:[RENDER_ASSET_ROWS]bool;rap_states:[RENDER_ASSET_ROWS]RenderAssetState;
+ for rap_i:0..<rap_observed.count {
+  rap_o:=rap_observed[rap_i];if rap_o.row<0 || rap_o.row>=rap_count || cast(int)rap_o.state>cast(int)RenderAssetState.failed {return RenderAssetReadiness.{bad_row=rap_i};}
+  if rap_seen[rap_o.row] {return RenderAssetReadiness.{bad_row=rap_i};}rap_seen[rap_o.row]=true;rap_states[rap_o.row]=rap_o.state;
+ }
+ rap_result:=RenderAssetReadiness.{status=RenderAssetStatus.ok,readiness=RenderReadiness.ready,mesh_ready=true,
+  particles_ready=rap_meta.features.particles && rap_pipeline_ready && rap_particles_ready};
+ for rap_row:0..<rap_count {
+  rap_asset:=render_asset(rap_profile,rap_row);
+  if rap_asset.gpu_required && rap_states[rap_row]!=RenderAssetState.ready {
+   rap_result.readiness=RenderReadiness.background;
+  }
+  if rap_asset.kind==RenderAssetKind.mesh && rap_states[rap_row]!=RenderAssetState.ready {rap_result.mesh_ready=false;}
+ }
+ for rap_row:0..<rap_count {if render_asset(rap_profile,rap_row).gpu_required && rap_states[rap_row]==RenderAssetState.failed {rap_result.failed_row=rap_row;break;}}
+ if !rap_pipeline_ready {rap_result.readiness=RenderReadiness.loading;}return rap_result;
+}

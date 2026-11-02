@@ -54,6 +54,11 @@ EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32
   (void)state;
   return i == 0 && bytes <= sizeof catalog ? (uint32_t)(uintptr_t)catalog : 0u;
 }
+// Physical destination allocation observation; the typed host admits its
+// requested byte span before copying into this existing asset buffer.
+EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) {
+  (void)state;return i == 0 ? (uint32_t)sizeof catalog : 0u;
+}
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) realm_catalog(at(state), (coax_string){(const char *)catalog, (int64_t)bytes});
   if (i >= 0 && i <= 3 && bytes == 0) realm_pack_failed(at(state));

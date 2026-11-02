@@ -1,0 +1,9 @@
+ok   #forall reference run rejects each independently short workspace before any candidate effect (8 cases, 1585430 steps, 45 ms)
+ok   #forall reference run preserves geometry and frame failure identities before preparing a shader (2 cases, 449920 steps, 12 ms)
+ok   #forall reference run propagates invalid requests and loading without needing any executable workspace (3 cases, 2000 steps, 1 ms)
+ok   #forall reference run admits both exact work endpoints before loading and refuses each adjacent bound (8 cases, 4438 steps, 2 ms)
+ok   #test reference run uses the nonsquare screen product and publishes only those complete pixels (1 case, 6038717 steps, 228 ms)
+ok   #forall reference run executes ordinary scene records and a real attribute HUD through the common draw path (2 cases, 4772039 steps, 206 ms)
+ok   #forall reference run refuses wrong attribute stride negative shader index and missing unused pipeline before graph effects (3 cases, 995600 steps, 30 ms)
+7 of 428 checks (--only 'reference run'), 7 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

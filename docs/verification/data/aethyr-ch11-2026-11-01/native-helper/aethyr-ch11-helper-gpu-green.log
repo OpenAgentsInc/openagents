@@ -1,0 +1,4 @@
+device=NVIDIA GeForce RTX 4080 vendor=4318 device_id=9988 driver=2496774464 helper_supported=1 helper_enabled=1 int64_enabled=1
+unsupported helper feature refused before pipeline creation: 4
+unsupported Int64 feature refused before pipeline creation: 5
+mixed helper publication/depth and four byte views: wrong=0 validation_errors=0 validation_warnings=0

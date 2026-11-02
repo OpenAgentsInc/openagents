@@ -1,6 +1,8 @@
 // myrealm's shaders, the source of apps/openagents-web/myrealm.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (myrealm.module,
 // myrealm.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/sampling.coax";
+#load "../../../aethyr/render/noise.coax";
 #load "../../../verse/gpu/wgsl.coax";
 #load "../../../verse/style.coax";
 
@@ -94,8 +96,11 @@ myrealm_panels :: (p:V2,under:V3,u:[]f32)->V3 {
   }
   return c;
 }
+#test "myrealm_hash live lattice uses the portable integer noise profile" {
+  #assert f32_bits(myrealm_hash(v2(1,2)))==0x3f6013da;
+}
 myrealm_hash :: (p:V2)->f32 {
-  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+  return render_noise2(p.x,p.y);
 }
 // Stars: one at most per cell of 3 CSS pixels' grid, a few of them brighter, twinkling slowly.
 myrealm_stars :: (p:V2,u:[]f32)->f32 {
@@ -543,7 +548,7 @@ myrealm_scene_fs :: (s:MyrealmS,u:[]f32,sheets:Tex2DArray,sheet:Sampler)->V4 {
   // a round piece has no texture: its tint, a little lighter toward its top
   rounded:bool=s.slice>=4096;
   layer:u32=ifx rounded then 0 else s.slice;
-  sampled:V4=gpu_sample_layer(sheets,sheet,s.uv,cast,trunc(s32)(layer));
+  sampled:V4=render_sample_layer8(sheets,sheet,s.uv,cast,trunc(s32)(layer));
   // plain (glow below -2.5, myrealm-things.coax untextured): its tint alone, like a round piece
   bare:bool=rounded||(s.glow<(-2.5f32));
   tex:V4=ifx bare then v4(1.0f32,1.0f32,1.0f32,1.0f32) else wg_make_f4_f3f(myrealm_surfaced(v3(sampled.x,sampled.y,sampled.z),s.glow),sampled.w);
@@ -554,11 +559,11 @@ myrealm_scene_fs :: (s:MyrealmS,u:[]f32,sheets:Tex2DArray,sheet:Sampler)->V4 {
   // painterly leaves are blobs: their cutout from a nearer mip, so pinholes of sky close up
   cut:f32=ifx bare then 1.0f32 else ifx (u[449]>0.5f32)&&(u[449]<1.5f32) then gpu_sample_layer_level(sheets,sheet,s.uv,cast,trunc(s32)(layer),2.0f32).w else tex.w;
   if (cut<0.35f32) {
-    gpu_discard();
+    gpu_demote_helper();
   }
   // nothing shows below the ground (a round piece's lower half ball, a rock's buried foot)
   if ((s.world.y<(-0.04f32))&&(((wg_length2(v2(s.world.x,s.world.z))<u[31])||(myrealm_land(u)<0.5f32))||(myrealm_land(u)>1.5f32))) {
-    gpu_discard();
+    gpu_demote_helper();
   }
   n:V3=wg_normalize3(s.normal);
   if myrealm_styled(u) {

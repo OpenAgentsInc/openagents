@@ -1,0 +1,100 @@
+// Raw GPU texture bytes into the linear colors the quad reference filters.
+// Source/outputs are valid, nonoverlapping caller-owned views. A full first
+// pass validates the candidate before either output view is changed.
+#module "aethyr.render.texture.codec";
+#load "reference-raster.coax";
+#authority;
+RENDER_TEXTURE_PIXELS :: 16777216;
+RenderTexelFormat :: enum u8 {rgba8;rgba8_srgb;bgra8;bgra8_srgb;rgba16f;rgba32f;depth32f;invalid;}
+RenderTextureStatus :: enum u8 {ok;bad_format;bad_span;nonfinite;bad_depth;bad_layout;capacity;work_budget;}
+RenderTexelResult :: struct {status:RenderTextureStatus;colour:RQColor;}
+RenderTextureLevel :: struct {width:int;height:int;offset:u64;row_bytes:u64;layer_bytes:u64;}
+RenderTextureResult :: struct {status:RenderTextureStatus;bad_level:int=-1;bad_texel:int=-1;pixels:int;}
+RTProduct :: struct {valid:bool;bytes:u64;}
+#load "tests/texture-codec-checks.coax";
+
+render_texture_srgb :: (byte:u8)->f32 {
+ c:=f64(byte)/255.0;
+ if byte<=10 {return f32(c/12.92);}
+ return f32(pow((c+0.055)/1.055,2.4));
+}
+rt_pixel_bytes :: (format:RenderTexelFormat)->int {
+ if format==RenderTexelFormat.rgba8 || format==RenderTexelFormat.rgba8_srgb || format==RenderTexelFormat.bgra8 || format==RenderTexelFormat.bgra8_srgb || format==RenderTexelFormat.depth32f {return 4;}
+ if format==RenderTexelFormat.rgba16f {return 8;}
+ if format==RenderTexelFormat.rgba32f {return 16;}return 0;
+}
+rt_u16 :: (bytes:[]u8,at:int)->u32 {return u32(bytes[at])|(u32(bytes[at+1])<<8);}
+rt_u32 :: (bytes:[]u8,at:int)->u32 {return rt_u16(bytes,at)|(rt_u16(bytes,at+2)<<16);}
+rt_float :: (format:RenderTexelFormat,bytes:[]u8,at:int)->RRScalar {
+ if format==RenderTexelFormat.rgba16f {return rr_half_decode(rt_u16(bytes,at));}
+ bits:=rt_u32(bytes,at);if (bits&0x7f800000)==0x7f800000 {return RRScalar.{status=RQStatus.resource};}
+ return RRScalar.{value=f32_from_bits(bits)};
+}
+render_texel_decode :: (format:RenderTexelFormat,bytes:[]u8,at:int)->RenderTexelResult {
+ r:=RenderTexelResult.{};n:=rt_pixel_bytes(format);
+ if n==0 {r.status=RenderTextureStatus.bad_format;return r;}
+ if at<0 || at>bytes.count-n {r.status=RenderTextureStatus.bad_span;return r;}
+ if format==RenderTexelFormat.depth32f {
+  depth:=rt_float(format,bytes,at);if depth.status!=RQStatus.ok {r.status=RenderTextureStatus.nonfinite;return r;}
+  if depth.value<0 || depth.value>1 {r.status=RenderTextureStatus.bad_depth;return r;}
+  r.colour=RQColor.{r=depth.value,a=1};return r;
+ }
+ if format==RenderTexelFormat.rgba16f || format==RenderTexelFormat.rgba32f {
+  channels:[4]f32;step:=n/4;
+  for k:0..<4 {c:=rt_float(format,bytes,at+k*step);if c.status!=RQStatus.ok {r.status=RenderTextureStatus.nonfinite;return r;}channels[k]=c.value;}
+  r.colour=RQColor.{r=channels[0],g=channels[1],b=channels[2],a=channels[3]};return r;
+ }
+ red:=bytes[at];blue:=bytes[at+2];
+ if format==RenderTexelFormat.bgra8 || format==RenderTexelFormat.bgra8_srgb {red=bytes[at+2];blue=bytes[at];}
+ r.colour=RQColor.{r=f32(red)/255,g=f32(bytes[at+1])/255,b=f32(blue)/255,a=f32(bytes[at+3])/255};
+ if format==RenderTexelFormat.rgba8_srgb || format==RenderTexelFormat.bgra8_srgb {r.colour.r=render_texture_srgb(red);r.colour.g=render_texture_srgb(bytes[at+1]);r.colour.b=render_texture_srgb(blue);}
+ return r;
+}
+rt_product :: (a:u64,b:u64,limit:u64)->RTProduct {
+ if b==0 {return RTProduct.{valid=true};}
+ if a>limit/b {return RTProduct.{};}return RTProduct.{valid=true,bytes=a*b};
+}
+render_texture_decode :: (format:RenderTexelFormat,layers:int,levels:[]RenderTextureLevel,bytes:[]u8,out:[]RQColor,out_levels:[]RQMip,pixel_budget:int)->RenderTextureResult {
+ r:=RenderTextureResult.{};bpp:=rt_pixel_bytes(format);
+ if bpp==0 {r.status=RenderTextureStatus.bad_format;return r;}
+ if pixel_budget<1 || pixel_budget>RENDER_TEXTURE_PIXELS {r.status=RenderTextureStatus.work_budget;return r;}
+ if layers<1 || layers>2048 || levels.count<1 {r.status=RenderTextureStatus.bad_layout;return r;}
+ if out_levels.count<levels.count {r.status=RenderTextureStatus.capacity;return r;}
+ total:=0;expected_w:=levels[0].width;expected_h:=levels[0].height;available:=u64(bytes.count);
+ for l:0..<levels.count {
+  level:=levels[l];r.bad_level=l;
+  if level.width<1 || level.width>16384 || level.height<1 || level.height>16384 || level.width!=expected_w || level.height!=expected_h || (l+1<levels.count && level.width==1 && level.height==1) {r.status=RenderTextureStatus.bad_layout;return r;}
+  row:=u64(level.width*bpp);
+  if level.row_bytes<row {r.status=RenderTextureStatus.bad_layout;return r;}
+  rows:=rt_product(level.row_bytes,u64(level.height-1),available);
+  if !rows.valid {r.status=RenderTextureStatus.bad_span;return r;}
+  // available comes from a nonnegative signed view count; row<=262144.
+  // This sum therefore fits u64 even before the final source-span check.
+  layer_bytes:=rows.bytes+row;
+  if level.layer_bytes<layer_bytes {r.status=RenderTextureStatus.bad_layout;return r;}
+  sheets:=rt_product(level.layer_bytes,u64(layers-1),available);
+  if !sheets.valid || layer_bytes>available-sheets.bytes {r.status=RenderTextureStatus.bad_span;return r;}
+  span:=sheets.bytes+layer_bytes;
+  if level.offset>available-span {r.status=RenderTextureStatus.bad_span;return r;}
+  pixels:=level.width*level.height*layers;
+  if pixels>pixel_budget-total {r.status=RenderTextureStatus.work_budget;return r;}
+  if pixels>out.count-total {r.status=RenderTextureStatus.capacity;return r;}
+  total+=pixels;expected_w=level.width/2+(ifx level.width==1 then 1 else 0);expected_h=level.height/2+(ifx level.height==1 then 1 else 0);
+ }
+ // One budget unit is one texel's validation/publication pair. Work is at
+ // most two bounded decodes per pixel, and no output changes on refusal.
+ for publish:[2]bool.[false,true] {
+  next:=0;
+  for l:0..<levels.count {
+   level:=levels[l];
+   if publish {out_levels[l]=RQMip.{width=level.width,height=level.height,offset=next};}
+   for layer:0..<layers {for y:0..<level.height {for x:0..<level.width {
+    at:=level.offset+u64(layer)*level.layer_bytes+u64(y)*level.row_bytes+u64(x*bpp);
+    texel:=render_texel_decode(format,bytes,int(at));
+    if !publish && texel.status!=RenderTextureStatus.ok {r.status=texel.status;r.bad_level=l;r.bad_texel=next;return r;}
+    if publish {out[next]=texel.colour;}next+=1;
+   }}}
+  }
+ }
+ r.bad_level= -1;r.pixels=total;return r;
+}

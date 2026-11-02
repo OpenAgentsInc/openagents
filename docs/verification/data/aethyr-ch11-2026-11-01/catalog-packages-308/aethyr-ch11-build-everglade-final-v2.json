@@ -1,0 +1,106 @@
+{
+  "schema": "aethyr.render.build.qualification.v1",
+  "status": "pass",
+  "compiler_version": "coax0 0.47.0",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "compiler_source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "package": {
+    "profile": "everglade",
+    "modules": 3,
+    "entries": [
+      {
+        "entry_index": 0,
+        "spirv_words": 22514,
+        "spirv_sha256": "b2ffa0ea286d9f7eecbd920226e76fbdb6ac7f552dc024162dc9d0f30b85e19c",
+        "tree_words": 11736,
+        "tree_sha256": "bd8ab0ab1d8115a353c29c5df5f3ad9061e7a978d63a6f38bd35a6a3efc1bb89"
+      },
+      {
+        "entry_index": 1,
+        "spirv_words": 20313,
+        "spirv_sha256": "019dedb3210f82c8f94fff24f08a9f98b650cd62e3c729ec284a278988e417b6",
+        "tree_words": 10711,
+        "tree_sha256": "c6af73f0158f9a39e79f72be0ef28ec026602e4e28fc0cad80b168643c74f893"
+      },
+      {
+        "entry_index": 3,
+        "spirv_words": 38240,
+        "spirv_sha256": "cd8f66fee4266ff60ea4ca4baf4fcd839e218b99f9fba8c1b15d813644264eb2",
+        "tree_words": 20506,
+        "tree_sha256": "ec69210d7b532da7ebfbc5c1bfb1399429e80e0e689de385f9b2ca4b49d128f8"
+      },
+      {
+        "entry_index": 5,
+        "spirv_words": 60646,
+        "spirv_sha256": "5788baaba43118969580938c55a6f486ae3729369f62b67961cda8aef4243f13",
+        "tree_words": 33761,
+        "tree_sha256": "1ff060000cef7cdc806fae6af5bce0bba03f135ad302db7af9766ffcac05976e"
+      },
+      {
+        "entry_index": 6,
+        "spirv_words": 43307,
+        "spirv_sha256": "93bd8eb8324441f5d44b3ca2ba3b4e7bf4d507bf3946e1aca5b06ec0e4877588",
+        "tree_words": 24255,
+        "tree_sha256": "61eb6649bdf9dfdc715d27f4553f4005f594ebe1f1ff01f0fb6f63adc5314623"
+      },
+      {
+        "entry_index": 7,
+        "spirv_words": 47462,
+        "spirv_sha256": "fc7d868565ff9ab93d20cccb6f1c48238231a9444d6dab9ec03e51ca5416c711",
+        "tree_words": 26746,
+        "tree_sha256": "4a9f5ae7605241a6a2d549e9c8be02edb6d14fe48ee011852e148b70e3822de6"
+      },
+      {
+        "entry_index": 8,
+        "spirv_words": 9360,
+        "spirv_sha256": "ff471f185e718b7e4cb5f788e4b8474c2b51e1651b0bae985a6ca04164267af7",
+        "tree_words": 4545,
+        "tree_sha256": "cabbc473a143bc434e42d444a7f139f72c52b88ddf68aa35e14edd9b76b207f8"
+      },
+      {
+        "entry_index": 9,
+        "spirv_words": 9563,
+        "spirv_sha256": "50652b811216bc36cf5c37db55a7a1ca457f4a0ce56baea56dcead9b4d9a7968",
+        "tree_words": 4613,
+        "tree_sha256": "5be6e48520e5f3705e41af39e2a1b2f2889acea804354ced12426ca647d22f05"
+      },
+      {
+        "entry_index": 10,
+        "spirv_words": 2653,
+        "spirv_sha256": "05841bf0f57155250e200c4495e1dca4cf1a43d5907217e9d5aa90ca3307e07c",
+        "tree_words": 1173,
+        "tree_sha256": "55b7a09ae6dd28b0ec4dbd0d9d3ec1f1821c1040e1a0454fa436f42ec213d985"
+      },
+      {
+        "entry_index": 11,
+        "spirv_words": 14356,
+        "spirv_sha256": "778b9aeb106a043dde265ec0deaad27ccdf01c4d6ce3501e8aeb3315a5363f72",
+        "tree_words": 6846,
+        "tree_sha256": "9bc287cb555fa0b294191bbb60698b3b1af82a2df9d508b4f3bf718b819f223f"
+      },
+      {
+        "entry_index": 12,
+        "spirv_words": 2023,
+        "spirv_sha256": "e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75",
+        "tree_words": 790,
+        "tree_sha256": "5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c"
+      },
+      {
+        "entry_index": 13,
+        "spirv_words": 956,
+        "spirv_sha256": "777426a649e4a31d6ea3b7e257ff9dccd79ebf0c55f975b6a6ab719fc9f872e9",
+        "tree_words": 358,
+        "tree_sha256": "55f0b973588bed551a63b190f87c3b668f440fbcc7a5f9381209f034664f8afe"
+      }
+    ],
+    "manifest_sha256": "67914ed228c187721c38e8c81be0fd36a93b7776784423ca6e2e3b9da475a2d9"
+  },
+  "builder_sha256": "4e47dd0c098fdd4285947bd7fbad05a002e36df5fd6d73198f0fe0525958d691",
+  "builder_receipt_sha256": "10fd1d5b405fe8d47a9d37833b15e38fd6147db3fcc85495548feac173f7d600",
+  "failure_controls": [],
+  "cache_product_controls": [],
+  "enumerated_profiles": 18,
+  "elapsed_seconds": 8.467,
+  "qualifier_sha256": "bf7aae4bbdeb75ecabab7bf73dd2c9f03cad9c9b3fade8002e9ad4f51620ebf9",
+  "scope": "Actual emitted module/pipeline inventory, independent SPIRV framing/interface/resource/capability observations, catalog resource contract, source closure and atomic manifest publication. Not GPU numerical/image qualification."
+}

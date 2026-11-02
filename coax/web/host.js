@@ -170,6 +170,7 @@ import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
 import { makeHttpRequests } from "./http-requests.js";
+import { RenderHost } from "./render.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -177,6 +178,7 @@ const app = (script && script.dataset.app) || "app";
 // can keep them for good; in development they are /build/APP.wasm and /APP.wgsl.
 const wasmUrl = (script && script.dataset.wasm) || `/build/${app}.wasm`;
 const wgslUrl = (script && script.dataset.wgsl) || `/${app}.wgsl`;
+const renderUrl = script?.dataset.render || "";
 // A realm page (docs/verse/realm-host.md) names its realm (data-realm) and the
 // save slot it keeps under (data-slot); data-slot-was is a slot it used
 // before, read once when its own is empty, so a renamed slot keeps its save.
@@ -189,6 +191,7 @@ const root = (script && script.dataset.root) || "";
 const canvas = document.getElementById("coaxial");
 const dev = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 const probe = dev && new URLSearchParams(location.search).has("probe"); // tests: read the frame back
+let probeArmed = !new URLSearchParams(location.search).has("probe-manual");
 // ?probe&at=SECONDS: run the app's clock that far in 0.1 s steps before the
 // probed frame, so a headless browser can see a moment of the animation.
 const probeAt = probe ? Number(new URLSearchParams(location.search).get("at")) || 0 : 0;
@@ -205,6 +208,7 @@ const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "
 // Grown at load to whatever the app's module declares (importedMemoryPages).
 const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 }); // 8 MiB, at most 64 MiB
 let engine = null;   // { exports, layout }
+let engineInstalling = false;
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
 let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, vertexBuffer, bg, fx }
 let wanted = 0;      // the newest requested engine; an older finished build never replaces it
@@ -213,7 +217,7 @@ const PACK_CATALOG = 1, PACK_VERTICES = 2, PACK_INDICES = 3, PACK_LAYER = 4, PAC
 const assets = parseAssets((script && script.dataset.assets) || "");
 // What main() loads once the GPU is up (sounds wait to be played; fonts and icons are gpui.js's).
 const LATER = ["sound", "loop", "particles", "font", "icons", "licence"];
-const firstAssets = assets.filter((a) => !a.pack && !LATER.includes(a.kind)), firstPacks = new Set(assets.filter((a) => a.pack).map((a) => a.pack));
+let firstAssets = assets.filter((a) => !a.pack && !LATER.includes(a.kind)), firstPacks = new Set(assets.filter((a) => a.pack).map((a) => a.pack));
 // A realm's loading screen (loader.js): told what really loads, gone on the world's first frame.
 const loading = startLoading({ realm: realmId, assets: firstAssets.length + firstPacks.size,
   textured: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "layers"),
@@ -235,6 +239,7 @@ let last = 0;
 // after all outstanding shader loads have settled. Pixel/error checks still
 // decide whether the frame actually looks correct.
 let sceneEpoch = 0, pendingSceneEpoch = -1, installedGeneration = 0, shaderLoads = 0;
+let renderReload = Promise.resolve();
 function invalidateScene() {
   sceneEpoch += 1; pendingSceneEpoch = -1;
   globalThis.coaxial.sceneReady = false;
@@ -275,7 +280,21 @@ function importedMemoryPages(bytes) {
 }
 
 async function loadEngine(bytes, generation) {
+  if (dev) globalThis.coaxial.renderLifecyclePhase="engine-await-render";
+  if (dev) globalThis.coaxial.renderLifecyclePhase="engine-compile";
   const module = await WebAssembly.compile(bytes);
+  if (generation !== wanted) return false;
+  const previousEngine = engine, previousRenderer = gpu?.renderer;
+  if (previousRenderer) {
+    previousRenderer.suspended = true;
+    await previousRenderer.settled;
+    await Promise.all(previousRenderer.pendingEffects);
+  }
+  if (generation !== wanted) { if (previousRenderer) previousRenderer.suspended = false;return false; }
+  // The next operation can initialize imported memory. Retire every callback
+  // sharing this media cache, including older same-instance shader owners.
+  if (previousRenderer?.mediaCache) previousRenderer.mediaCache.retiring = true;
+  engine = null;globalThis.coaxial.ready = false;
   const pages = importedMemoryPages(bytes), have = memory.buffer.byteLength / 65536;
   if (pages > have) memory.grow(pages - have); // instantiate refuses an imported memory smaller than declared
   const random = prepareRandomImport(memory, module, randomScratch);
@@ -286,10 +305,11 @@ async function loadEngine(bytes, generation) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= Object.create(null))[imp.name] ||= wasiStub(imp.module, imp.name);
   }
+  if (dev) globalThis.coaxial.renderLifecyclePhase="engine-instantiate";
   const instance = await WebAssembly.instantiate(module, imports);
-  if (generation !== wanted) return false; // a newer build was asked for meanwhile
+  if (generation !== wanted) { stopEngine();return false; } // memory was already initialized
   const kept = await keptRead;   // before the first frame, so a kept world opens with it
-  if (generation !== wanted) return false;
+  if (generation !== wanted) { stopEngine();return false; }
   byteStorage.reset(); // pending effects belong to the old engine, even if its state layout survives
   httpRequests.reset();
   const x = instance.exports;
@@ -312,7 +332,7 @@ async function loadEngine(bytes, generation) {
   if (arena.layout !== layout) {
     new Uint8Array(memory.buffer, arena.state, arena.stateCap).fill(0); // the state's shape changed: start it over
     x.coaxial_state_init?.(arena.state); // its struct defaults, as native (the face calls the compiler's coax_default_T)
-    if (engine) say(`state layout changed: ${app} starts over`);
+    if (previousEngine) say(`state layout changed: ${app} starts over`);
     arena.layout = layout;
   }
   x.coaxial_page?.(arena.state, Number((script && script.dataset.page) || 0));
@@ -321,6 +341,17 @@ async function loadEngine(bytes, generation) {
   engine = { exports: x, layout };
   installedGeneration = generation;
   invalidateScene();
+  // Renderer metadata and scratch belong to this concrete Wasm instance.
+  // Re-admit its package before any new producer frame reaches the GPU.
+  if (renderUrl && gpu) {
+    try { if (dev) globalThis.coaxial.renderLifecyclePhase="engine-renderer";await loadShadersOnce();if (generation !== wanted) { stopEngine();return false; }if (dev) globalThis.coaxial.renderLifecyclePhase="engine-renderer-done";for (const a of firstAssets) if (!a.done) loadAsset(a);for (const pack of firstPacks) if (!pack.done) loadPack(pack); }
+    catch (error) {
+      // Instantiation has already initialized shared linear memory. An old
+      // facade cannot safely resume against those new data segments.
+      stopEngine();
+      loading.fail(`ENGINE REPLACEMENT STOPPED: ${error.message}`);throw error;
+    }
+  }
   if (script?.dataset.text) send(2, script.dataset.text);
   // data-lines="KIND:URL": a text file the app reads as message KIND, fetched fresh each load
   // (/projects: 43:/projects/published.txt, the projects published from a drop since the build).
@@ -329,6 +360,7 @@ async function loadEngine(bytes, generation) {
     fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.text() : ""), () => "").then((t) => { if (t) send(Number(kind), t); });
   }
   for (const a of assets) if (a.done) deliver(a); // a new build gets what the last one had
+  if (dev) globalThis.coaxial.renderLifecyclePhase="engine-assets-delivered";
   sendHash();
   // The page's scripts may talk to the app from now (action 0: ready).
   if (kept) send(4, kept);
@@ -342,6 +374,7 @@ async function loadEngine(bytes, generation) {
   if (bar) send(BAR_KIND, bar);
   viewer();
   dispatchEvent(new CustomEvent("coaxial", { detail: { code: 0, text: "" } }));
+  if (dev) globalThis.coaxial.renderLifecyclePhase="engine-ready";
   return true;
 }
 
@@ -685,16 +718,29 @@ async function startGpu() {
   if (!adapter) return false;
   const device = await adapter.requestDevice();
   loading.watch(device);
+  if (dev) { device.lost.then((info) => { globalThis.coaxial.renderDeviceLost = { reason: info.reason, message: info.message }; });device.addEventListener("uncapturederror", (event) => { console.error("RENDER DEVICE",event.error?.message); }); }
   loading.step("shaders");
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque", usage: GPUTextureUsage.RENDER_ATTACHMENT | (probe ? GPUTextureUsage.COPY_SRC : 0) });
-  gpu = { device, context, format };
+  // A headless numerical measurement can substitute an offscreen target.
+  // The same renderer admits its format and executes the same graph/shaders.
+  const measuredFormat = probe && globalThis.coaxialRenderCaptureFormat;
+  let measuredTexture;
+  const renderContext = measuredFormat ? { getCurrentTexture() {
+    if (!measuredTexture || measuredTexture.width !== canvas.width || measuredTexture.height !== canvas.height) {
+      measuredTexture?.destroy();measuredTexture = device.createTexture({ size: [canvas.width, canvas.height], format: measuredFormat,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+    }
+    return measuredTexture;
+  } } : context;
+  gpu = { device, context: renderContext, format: measuredFormat || format };
   makeBuffers();
   return loadShaders();
 }
 
 function makeBuffers() {
+  if (renderUrl) { gpu.renderer?.destroy();gpu.renderer = null;return; }
   const { device } = gpu;
   gpu.uniformBuffer = device.createBuffer({ size: align(arena.uniformFloats * 4, 16), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   gpu.vertexBuffer = device.createBuffer({ size: arena.maxVertices * arena.floats * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
@@ -741,6 +787,7 @@ function useMesh() {
   bindMesh();
 }
 function bindMesh() {
+  if (gpu?.renderer) return;
   if (!gpu.meshOn) return;
   const { device } = gpu, a = assets.find((x) => x.kind === "mesh" && x.done && !x.failed && x.buffer);
   gpu.meshEmpty ||= device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE });
@@ -798,10 +845,29 @@ function gpuiFrame(dpr) {
 }
 
 async function loadShaders() {
+  const next = renderReload.then(() => loadShadersOnce());
+  renderReload = next.catch(() => {});return next;
+}
+async function loadShadersOnce() {
+  if (!engine) return false;
   shaderLoads += 1;
   invalidateScene();
   try {
   const { device, format } = gpu;
+  if (renderUrl) {
+    const previous = gpu.renderer;
+    const candidate = new RenderHost({ device, context: gpu.context, format, memory, exports: engine.exports, arena,
+      url: renderUrl, profile: Number(script.dataset.renderProfile), coarse: matchMedia("(pointer: coarse)").matches, capture: probe,
+      onMedia: (rows) => send(MEDIA_KIND, rows.filter((m) => m.ready || m.failed).map((m) => `${m.url} ${m.failed ? 0 : m.width} ${m.failed ? 0 : m.height}`).join("\n")) });
+    await candidate.initialize(previous);
+    for (const asset of candidate.assetRows) asset.renderOwner = candidate;
+    assets.splice(0, assets.length, ...candidate.assetRows);
+    firstAssets = assets.filter((a) => a.initial && !a.pack);firstPacks = new Set(assets.filter((a) => a.initial && a.pack).map((a) => a.pack));
+    gpu.renderer = candidate;
+    gpu.bg = candidate.pipelines.get(0);gpu.fx = candidate.pipelines.get(12);gpu.scene3d = Boolean(candidate.pipeline(5, 0));
+    if (previous) { if (!candidate.reuses) previous.destroy(candidate.retainedResources);else previous.ready = false; }
+    return true;
+  }
   const code = await (await fetch(wgslUrl, { cache: dev ? "no-store" : "default" })).text();
   if (/var\s+sans_atlas\b/.test(code)) useSans();
   if (/var\s+gpui_atlas\b/.test(code)) useGpui();
@@ -972,6 +1038,7 @@ function parseAssets(text) {
 }
 // ---- a realm's asset pack (verse/tools/pack_realm.py has the format)
 async function loadPack(pack) {
+  if (pack.fetching || pack.done) return;pack.fetching = true;
   const parts = assets.filter((a) => a.pack === pack);
   let entries = null;
   try {
@@ -990,21 +1057,26 @@ async function loadPack(pack) {
     const bytes = new Uint8Array(loaded);
     let at = 0; for (const c of chunks) { bytes.set(c, at); at += c.length; }
     send(PACK_KIND, `${loaded} ${loaded}`);
+    if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
     entries = unpack(bytes);
     const { device } = gpu, of = (kind) => entries.filter((e) => e.kind === kind);
     const [catalog, vertices, indices, layers] = parts;
     catalog.bytes = of(PACK_CATALOG)[0].bytes; catalog.size = catalog.bytes.length;
     for (const [a, e] of [[vertices, of(PACK_VERTICES)[0]], [indices, of(PACK_INDICES)[0]]]) {
+      if (gpu.renderer) { a.bytes = e.bytes;a.size = e.bytes.length;gpu.renderer.acceptAsset(a);continue; }
       const whole = new Uint8Array(align(Math.max(e.bytes.length, 4), 4)); whole.set(e.bytes);
       a.buffer = device.createBuffer({ size: whole.length, usage: (a.kind === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST });
       device.queue.writeBuffer(a.buffer, 0, whole); a.size = e.bytes.length;
     }
     loading.textures(0, 2 * of(PACK_LAYER).length);   // each layer decoded, then on the GPU
     const images = await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes])).then((b) => (loading.textures(1, 0), b))));
-    if (images.length) { layers.texture = await layerTexture(images); layers.size = images.length; }
+    if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
+    if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
     else layers.failed = true;
     for (const e of of(PACK_SOUND)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
   } catch (e) { for (const a of parts) a.failed = true; say(`${app}: ${e.message}`, true); }
+  pack.fetching = false;pack.done = true;
+  if (!parts.every(currentAsset)) return;
   for (const a of parts) { a.done = true; deliver(a); }
   bindScene();
   loading.assetDone(parts[0].failed && `WORLD FAILED TO LOAD: ${pack.url.split("/").pop()}`);
@@ -1024,16 +1096,24 @@ function unpack(bytes) {
   return out;
 }
 // Hands an asset that has arrived to the app (data into its memory) and tells it.
+function currentAsset(a) { return !renderUrl || !a.renderOwner || a.renderOwner === gpu?.renderer; }
 function deliver(a) {
+  if (!currentAsset(a)) return;
   const x = engine?.exports;
   if (!x) return;
   if (a.kind === "data" && a.bytes) {
     const at = x.coaxial_asset?.(arena.state, a.i, a.bytes.length) || 0;
-    if (at) new Uint8Array(memory.buffer, at, a.bytes.length).set(a.bytes);
+    if (gpu?.renderer) {
+      const capacity = x.coaxial_asset_capacity?.(arena.state, a.i) ?? 0;
+      if (x.coaxial_render_asset_span(at, capacity, a.bytes.length, memory.buffer.byteLength) !== 0) throw Error("Coax refused measured asset destination");
+      new Uint8Array(memory.buffer, at, a.bytes.length).set(a.bytes);
+    } else if (at) new Uint8Array(memory.buffer, at, a.bytes.length).set(a.bytes);
   }
   x.coaxial_asset_ready?.(arena.state, a.i, a.failed ? 0 : a.size);
+  gpu?.renderer?.assetComplete(a);
 }
 async function loadAsset(a) {
+  if (a.fetching) return;a.fetching = true;
   const { device } = gpu;
   try {
     if (a.kind === "layers") {
@@ -1045,11 +1125,15 @@ async function loadAsset(a) {
         loading.textures(1, 0);
         return b;
       }));
-      a.texture = await layerTexture(images); a.size = images.length;
+      if (renderUrl) await renderReload;if (!currentAsset(a)) return;
+      a.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!currentAsset(a)) return;
+      if (gpu.renderer) gpu.renderer.layerTexture = a.texture;a.size = images.length;
     } else {
       const bytes = await fetchedOnce(a.url);
+      if (renderUrl) await renderReload;if (!currentAsset(a)) return;
       a.size = bytes.length;
       if (a.kind === "data") a.bytes = bytes;
+      else if (gpu.renderer) { a.bytes = bytes;gpu.renderer.acceptAsset(a); }
       else {
         const usage = (a.kind === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST;
         const whole = new Uint8Array(align(bytes.length, 4)); whole.set(bytes);   // writes come in 4-byte words
@@ -1058,6 +1142,7 @@ async function loadAsset(a) {
       }
     }
   } catch (e) { a.failed = true; say(`${app}: ${e.message}`, true); }
+  a.fetching = false;if (!currentAsset(a)) return;
   a.done = true;
   deliver(a);
   if (a.kind === "mesh") bindMesh();
@@ -1077,6 +1162,7 @@ function fetchedOnce(url) {
 }
 // A 2D-array texture, an image a layer, sRGB, mipmapped (every image at the first one's size).
 async function layerTexture(images) {   // the loading screen counts each layer as it goes up
+  if (gpu.renderer) { const texture = await gpu.renderer.makeLayers(images);loading.textures(images.length, 0);return texture; }
   const { device } = gpu, [w, h] = [images[0].width, images[0].height];
   const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
   const texture = device.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
@@ -1182,6 +1268,7 @@ function postTargets(w, h) {
 }
 // Group 1, once every GPU asset is in: the storage assets, the stores, the texture, its sampler.
 function bindScene() {
+  if (gpu?.renderer) return;
   const gpuAssets = assets.filter((a) => ["storage", "index", "layers"].includes(a.kind));
   if (!gpu || gpu.sceneGroup || !engine?.exports.coaxial_draws || gpuAssets.some((a) => !a.done || a.failed)) return;
   const x = engine.exports, { device } = gpu, resources = [];
@@ -1413,7 +1500,7 @@ function frame(now) {
 }
 let frameCost = 0;   // ms of main thread the drawing itself takes, smoothed: socket events get what's left
 function draw(now) {
-  if (!engine || !gpu?.bg) return;
+  if (engineInstalling || !engine || !gpu?.bg) return;
   const dt = last ? (now - last) / 1000 : 0; last = now;
   const [dw, dh] = devicePixels || [Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio)), Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio))];
   const f = drawn(dw) * SUPERSAMPLE, w = Math.max(1, Math.round(dw * f)), h = Math.max(1, Math.round(dh * f));
@@ -1427,6 +1514,20 @@ function draw(now) {
     n = engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
     if (gpu.gpuiOn) gpuiFrame(dpr);
   } catch (e) { say(`${app} trapped: ${e.message}`, true); loading.fail(`ENGINE STOPPED: ${e.message}`); engine = null; return; }
+  if (gpu.renderer) {
+    try {
+      const submitted = gpu.renderer.frame(n, w, h, probe && probeArmed && ++frames >= 1 && !gpu.probed ? (encoder, texture) => readBack(encoder, texture) : null);
+      if (submitted && gpu.renderer.readiness === gpu.renderer.ids.readiness.ready) globalThis.coaxial.sceneReady = true;
+      if (probe) globalThis.coaxial.renderStatus = { submitted, readiness: gpu.renderer.readiness, refusal: gpu.renderer.lastRefusal, error: gpu.renderer.error?.message, captureArmed: probeArmed, observed: !!gpu.renderer.observation, probed: gpu.probed };
+      if (gpu.snap) { const take = gpu.snap;gpu.snap = null;take(); }
+      document.documentElement.classList.add("gpu");
+      if (loading.on) loading.frame(globalThis.coaxial.sceneReady);
+      if (gpu.renderer.observation) report(gpu.renderer.observation, gpu.renderer.lastTexture);
+      if (engine.exports.coaxial_sounds) playSounds(engine.exports);
+      after(false);
+    } catch (e) { say(`${app} renderer: ${e.message}`, true);loading.fail(`RENDERER STOPPED: ${e.message}`);gpu.bg = null; }
+    return;
+  }
   n = Math.min(n, arena.maxVertices);
   const { device, context } = gpu;
   const x = engine.exports;
@@ -1611,7 +1712,28 @@ function send(kind, text = "") {
   after(false);
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
+  captureFrame: () => { if (probe) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
   guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0 };
+// Headless verification observes effects without exposing renderer policy.
+if (dev) {
+  globalThis.coaxial.reloadRenderer = async () => { try { return await loadShaders(); } catch { return false; } };
+  globalThis.coaxial.renderResources = () => gpu?.renderer ? [gpu.renderer.vertexBuffer, gpu.renderer.uniformBuffer,
+    ...[...gpu.renderer.resourceRecords.values()].map((r) => r.gpu), gpu.renderer.indexRecord?.gpu, gpu.renderer.sansTexture, gpu.renderer.layerTexture] : [];
+  globalThis.coaxial.renderFixture = (kind) => kind === "video" ? engine?.exports.coaxial_render_fixture_video?.(arena.state) : engine?.exports.coaxial_render_fixture?.(arena.state);
+  globalThis.coaxial.renderAssets = () => gpu?.renderer?.assetRows ?? [];
+  globalThis.coaxial.renderMediaObjects = () => [...(gpu?.renderer?.mediaCache?.values() ?? [])];
+  globalThis.coaxial.renderUploadState = (stage = false) => [...(gpu?.renderer?.resourceRecords?.values() ?? [])].filter((r) => r.source === gpu.renderer.ids.source.dynamic_store).map((r) => {
+    if (stage) engine.exports.coaxial_render_upload_stage(r.id, BigInt(r.sourceCapacity), BigInt(r.sourceCapacity));
+    return { name: r.name, pending: Number(engine.exports.coaxial_render_upload_pending(r.id)) };
+  });
+  globalThis.coaxial.renderMediaState = () => [...(gpu?.renderer?.mediaCache?.values() ?? [])].map(({ kind, url, ready, failed, error, width, height }) => ({ kind, url, ready, failed, error, width, height }));
+  globalThis.coaxial.reloadEngine = () => fetchEngine(beginEngine());
+  globalThis.coaxial.renderSettled = () => gpu?.renderer?.settled;
+  globalThis.coaxial.retireRenderer = () => stopEngine();
+  globalThis.coaxial.renderEngineMarker = () => engine?.exports.coaxial_reload_marker?.() ?? null;
+  globalThis.coaxial.renderBindingState = () => ({ stopped: !engine || !gpu?.bg, coherent: !!engine && !!gpu?.renderer && engine.exports === gpu.renderer.x });
+  globalThis.coaxial.renderBank = () => engine?.exports.coaxial_render_active_bank?.();
+}
 // The OpenAgents app turns the camera with the phone (its gyro), radians since the last call.
 globalThis.coaxial.tilt = (dyaw, dpitch) => { engine?.exports.coaxial_tilt?.(arena.state, dyaw, dpitch); };
 // A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
@@ -1834,15 +1956,28 @@ function runProbe(w, h, dpr) {
 // as text, so a headless browser can check what was drawn.
 function readBack(encoder, texture) {
   gpu.probed = true;
-  const row = align(texture.width * 4, 256);
+  const pixelBytes = texture.format === "rgba16float" ? 8 : 4;
+  const row = align(texture.width * pixelBytes, 256);
   const buffer = gpu.device.createBuffer({ size: row * texture.height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow: row }, [texture.width, texture.height]);
-  return { buffer, row };
+  return { buffer, row, pixelBytes };
 }
-async function report({ buffer, row }, texture) {
+async function report({ buffer, row, pixelBytes = 4, rendererSnapshot, validation, textureCapture }, texture) {
+  const validated = validation ? await validation : null;
+  if (validated && !validated.ok) { buffer.destroy();throw Error(validated.error); }
   await buffer.mapAsync(GPUMapMode.READ);
   const px = new Uint8Array(buffer.getMappedRange());
   const w = texture.width, h = texture.height, cols = 110, rows = 14;
+  if (gpu.renderer) {
+    if (textureCapture) rendererSnapshot.textures.push(...await textureCapture);
+    const tight = new Uint8Array(w * h * pixelBytes);
+    for (let y = 0; y < h; y++) tight.set(px.subarray(y * row, y * row + w * pixelBytes), y * w * pixelBytes);
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", tight));
+    globalThis.coaxial.renderCapture = { schema: "aethyr.render.readback.v1", width: w, height: h, format: texture.format, frame_validation: validated,
+      row_bytes: w * pixelBytes, sha256: [...digest].map((b) => b.toString(16).padStart(2, "0")).join(""), bytes: Array.from(tight),
+      ...rendererSnapshot };
+    buffer.unmap();buffer.destroy();return;
+  }
   const x0 = Math.floor(w * 0.3), x1 = Math.floor(w * 0.7), y0 = Math.floor(h * 0.47), y1 = Math.floor(h * 0.53);
   let art = "", peak = 0, sum = 0;
   for (let r = 0; r < rows; r++) {
@@ -1879,7 +2014,21 @@ async function fetchEngine(generation) {
   if (!response.ok) throw new Error(`engine: ${response.status}`);
   const bytes = await readBytes(response, (l, t) => loading.engine(l, t));
   loading.step("compile");
-  return loadEngine(bytes, generation);
+  // One queue owns destructive engine and shader installation. Asset effects
+  // await this same queue, so none can publish through a retired facade.
+  const install = renderReload.then(async () => {
+    if (generation !== wanted) return false;
+    engineInstalling = true;
+    try { return await loadEngine(bytes, generation); }
+    catch (error) { stopEngine();throw error; }
+    finally { engineInstalling = false; }
+  });
+  renderReload = install.catch(() => {});return install;
+}
+function stopEngine() {
+  engine = null;
+  if (gpu) { gpu.bg = null;gpu.renderer?.destroy();gpu.renderer = null; }
+  globalThis.coaxial.ready = false;globalThis.coaxial.sceneReady = false;
 }
 
 function live() {

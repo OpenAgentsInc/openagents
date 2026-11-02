@@ -1,0 +1,42 @@
+// Reused synthetic data/transport for Coax failure-path and native ABI checks.
+// This is verification scaffolding; production logic stays in the renderer.
+rr_test_fixture :: (tree:[]u32,scenario:int,target:[]RRPixel)->RRPassResult {
+ meta:[RQ_IR_META]int;memory:[RQ_IR_WORDS]u32;scratch:[64]RRPixel;
+ p:=rq_ir_prepare(tree,meta[..]);r:=rr_pipeline(p,tree,meta[..]);
+ if r.status!=RQStatus.ok {return RRPassResult.{status=r.status};}
+ if scenario<0 || scenario>17 {return RRPassResult.{status=RQStatus.resource};}
+ u:=[1]u32.[f32_bits(1.0f32)];poison:=[1]u32.[f32_bits(42.0f32)];
+ buffers:=[2]RQBuffer.[RQBuffer.{words=poison[..],count=1,stride=4},RQBuffer.{words=u[..],count=1,stride=4}];
+ mips:=[1]RQMip.[RQMip.{width=1,height=1}];texels:=[1]RQColor.[RQColor.{r=0.125,g=0.25,b=0.5,a=1}];
+ textures:=[3]RQTexture.[RQTexture.{},RQTexture.{},RQTexture.{levels=mips[..],layers=1,texels=texels[..]}];
+ samplers:=[4]RQSampler.[RQSampler.{max_anisotropy=2},RQSampler.{max_anisotropy=2},RQSampler.{max_anisotropy=2},RQSampler.{}];
+ res:=RQResources.{buffers=buffers[..],textures=textures[..],samplers=samplers[..]};
+ bindings:[3]RRBinding;bindings[0]=RRBinding.{name_id=rq_ir_parameter(p,tree,meta[..],0,3).name_id,kind=1,resource=1};n_bindings:=1;
+ if scenario==10 || scenario==11 {
+  bindings[1]=RRBinding.{name_id=rq_ir_parameter(p,tree,meta[..],1,2).name_id,kind=2,resource=2};
+  bindings[2]=RRBinding.{name_id=rq_ir_parameter(p,tree,meta[..],1,3).name_id,kind=3,resource=3};
+  if scenario==10 {n_bindings=3;}
+ }
+ words:=rp_test_attrs();
+ if scenario==7 {for k:0..<4 {words[k]=0;}}
+ if scenario==8 {
+  positions:=[3][4]f32.[[4]f32.[-1,1,0.5,1],[4]f32.[2,2,1,2],[4]f32.[-6,-6,3,6]];
+  for v:0..<3 {for k:0..<4 {words[v*6+k]=f32_bits(positions[v][k]);}}
+ }
+ if scenario==9 {for v:0..<6 {words[v*6+4]=f32_bits(3.0e38f32);}}
+ locations:=[3]RRAttribute.[RRAttribute.{components=4},RRAttribute.{location=1,offset=4,components=1},RRAttribute.{location=2,offset=5,components=1}];
+ attrs:=RRAttributes.{words=words[..],stride=6,locations=locations[..]};
+ draws:=[2]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=6,base_instance=2,instances=1},RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,first=6,count=3,instances=1}];n_draws:=1;
+ indices:=[6]u32.[0,1,2,3,4,5];width:=2;height:=2;budget:=1000000;
+ state:=RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,outputs=2};
+ if scenario==2 {width=4;height=4;draws[0].kind=RenderDrawKind.indexed;draws[0].instances=2;state.depth=RenderDepth.always;}
+ if scenario==3 || scenario==4 || scenario==14 {state.depth=RenderDepth.always;state.bias=2;}
+ if scenario==4 {draws[0].kind=RenderDrawKind.indexed;indices=[6]u32.[0,2,1,3,5,4];}
+ if scenario==5 {n_draws=2;}if scenario==6 {budget=1;}
+ if scenario==9 {state.colour=RenderBlend.add;}
+ if scenario==10 || scenario==11 {state.outputs=1;}
+ if scenario==15 || scenario==16 {state.outputs=0;state.bias=2;state.slope=2;}
+ if scenario==17 {n_bindings=0;draws[0].count=3;state.outputs=2;state.aux_write=false;state.depth_write=false;}
+ if scenario==12 {r.status=RQStatus.unsupported;}if scenario==13 {r.layout.count=-1;}
+ return rr_reference_pass(r,p,tree,meta[..],res,bindings[0..<n_bindings],attrs,draws[0..<n_draws],indices[..],state,width,height,RRFormat.f32,budget,memory[..],scratch[..],target);
+}

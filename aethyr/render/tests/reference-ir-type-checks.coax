@@ -1,0 +1,48 @@
+// Protocol fixtures exercise transport limits separately from stage IO rules.
+rq_ir_header_fixture :: (prefix:[]u32,params:int,locals:int,local_type:int,tree:[]u32,meta:[]int)->RQProgram {
+ tree[0]=2;for j:0..<prefix.count {tree[j+1]=prefix[j];}at:=prefix.count+1;
+ tree[at]=1;tree[at+1]=0;tree[at+2]=cast(u32)params;at+=3;
+ for j:0..<params {tree[at+j]=2;}at+=params;tree[at]=cast(u32)locals;at+=1;
+ for j:0..<locals {tree[at+j]=cast(u32)local_type;}at+=locals;
+ tree[at]=1;tree[at+1]=5;tree[at+2]=1;tree[at+3]=1;tree[at+4]=0;at+=5;
+ for j:0..<params {tree[at+j]=cast(u32)j;}at+=params;
+ return rq_ir_prepare(tree[0..<at],meta);
+}
+#forall "quad type transport covers each scalar aggregate and resource record" kind:0..<13 {
+ prefix:[32]u32;prefix[0]=7;for j:0..<6 {prefix[j+1]=cast(u32)j;}prefix[7]=cast(u32)kind;n:=8;
+ if kind==7 {prefix[8]=1;prefix[9]=2;prefix[10]=0;prefix[11]=4;n=12;}
+ if kind==8 {prefix[8]=2;prefix[9]=2;prefix[10]=4;n=11;}
+ if kind==9 {prefix[8]=2;n=9;}if kind==10 {prefix[8]=2;n=9;}if kind==11 {prefix[8]=1;n=9;}
+ tree:[256]u32;meta:[RQ_IR_META]int;p:=rq_ir_header_fixture(prefix[0..<n],0,0,2,tree[..],meta[..]);
+ words:=[12]int.[0,1,1,1,1,2,2,1,2,1,1,1];bytes:=[12]int.[0,1,4,4,4,8,8,4,8,0,0,0];
+ if kind==12 {#assert p.status==RQStatus.unsupported;}else {#assert p.status==RQStatus.ok && p.types==7 && meta[48]==kind && meta[49]==8 && meta[50]==words[kind] && meta[51]==bytes[kind];}
+}
+#forall "quad type transport keeps exact count size forward reference and byte boundaries" which:0..<19 {
+ prefix:[256]u32;prefix[0]=7;for j:0..<6 {prefix[j+1]=cast(u32)j;}
+ prefix[7]=8;prefix[8]=2;prefix[9]=1;prefix[10]=4;n:=11;wanted:=RQStatus.malformed;
+ if which==0 {prefix[8]=0;}if which==1 {prefix[8]=6;}if which==2 {prefix[9]=0;}if which==3 {prefix[9]=65537;}if which==4 {prefix[10]=3;}
+ if which==5 {prefix[9]=65536;wanted=RQStatus.ok;}if which==6 {prefix[9]=65536;prefix[10]=256;wanted=RQStatus.ok;}
+ if which==7 {prefix[9]=65536;prefix[10]=257;wanted=RQStatus.capacity;}
+ if which==8 {prefix[7]=7;prefix[8]=64;for j:0..<64 {prefix[9+j*2]=2;prefix[10+j*2]=cast(u32)(j*4);}prefix[137]=256;n=138;wanted=RQStatus.ok;}
+ if which==9 || which==10 {prefix[7]=7;prefix[8]=1;prefix[9]=1;prefix[10]=0;prefix[11]=ifx which==9 then cast(u32)16777216 else cast(u32)16777217;n=12;wanted=ifx which==9 then RQStatus.ok else RQStatus.capacity;}
+ if which==11 || which==12 {prefix[7]=9;prefix[8]=ifx which==11 then cast(u32)0 else cast(u32)6;n=9;}
+ if which==13 {prefix[7]=10;prefix[8]=3;n=9;}if which==14 {prefix[7]=11;prefix[8]=2;n=9;}
+ if which==15 {prefix[7]=12;n=8;wanted=RQStatus.unsupported;}
+ if which==16 {prefix[8]=5;prefix[9]=32769;prefix[10]=8;wanted=RQStatus.capacity;}
+ if which==17 || which==18 {
+  prefix[0]=8;prefix[7]=8;prefix[8]=2;prefix[9]=65536;prefix[10]=4;
+  prefix[11]=7;prefix[12]=2;prefix[13]=6;prefix[14]=0;prefix[15]=ifx which==17 then cast(u32)6 else cast(u32)1;prefix[16]=262144;prefix[17]=ifx which==17 then cast(u32)524288 else cast(u32)262148;n=18;wanted=RQStatus.capacity;
+ }
+ tree:[512]u32;meta:[RQ_IR_META]int;p:=rq_ir_header_fixture(prefix[0..<n],0,0,2,tree[..],meta[..]);#assert p.status==wanted;
+ if which==5 {#assert meta[50]==65536 && meta[51]==262144;}if which==6 {#assert meta[51]==16777216;}if which==8 {#assert meta[50]==64 && meta[51]==256;}
+}
+#forall "quad procedure transport separates parameter local and aggregate workspace caps" which:0..<11 {
+ prefix:=[11]u32.[7,0,1,2,3,4,5,8,2,65536,4];params:=0;locals:=0;ty:=2;wanted:=RQStatus.ok;
+ if which==0 {locals=2048;}if which==1 {locals=2049;wanted=RQStatus.malformed;}
+ if which==2 {params=128;locals=128;}if which==3 {params=129;locals=129;wanted=RQStatus.malformed;}
+ if which==4 {params=1;wanted=RQStatus.malformed;}if which==5 {locals=1;ty=0;wanted=RQStatus.malformed;}if which==6 {locals=1;ty=7;wanted=RQStatus.malformed;}
+ if which==7 {locals=4;ty=6;}if which==8 {locals=5;ty=6;wanted=RQStatus.malformed;}
+ if which==9 {params=1;locals=1;ty=1;wanted=RQStatus.malformed;}if which==10 {params=1;locals=1;}
+ tree:[4096]u32;meta:[RQ_IR_META]int;p:=rq_ir_header_fixture(prefix[..],params,locals,ty,tree[..],meta[..]);#assert p.status==wanted;
+ if which==0 {#assert rq_ir_proc(meta[..],0,2)==2048;}if which==2 {#assert rq_ir_proc(meta[..],0,1)==128 && rq_ir_parameter_words(p,tree[..],meta[..],1)==512;}if which==7 {#assert rq_ir_proc(meta[..],0,6)==262144;}
+}

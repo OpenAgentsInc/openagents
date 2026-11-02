@@ -1,0 +1,69 @@
+{
+  "schema": "aethyr.render.noise-image-isolation.v1",
+  "status": "isolated",
+  "image_tolerance_pass": false,
+  "width": 320,
+  "height": 180,
+  "controls": {
+    "retained": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "source_changes": [],
+      "legacy_sha256": "05f229895c0a54afef8f9b916a31605dc0458f8d64d52f65e705fbd4ffb6df12",
+      "generic_sha256": "7c03bfb1bbc96af06d781bd8c746b92bacb7e6ec756b257f4dc907774d89f440",
+      "different_channels": 129411,
+      "different_pixels": 47333,
+      "max_byte_delta": 25,
+      "identical": false,
+      "scope": "current identical producer, retained legacy WGSL and pass executor vs shared renderer; not evidence for producer fixes"
+    },
+    "integer": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "legacy_shader_override": "/tmp/aethyr-ch11-garden-noise-isolation/integer.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-garden-2/generic",
+      "source_changes": [],
+      "legacy_sha256": "7c03bfb1bbc96af06d781bd8c746b92bacb7e6ec756b257f4dc907774d89f440",
+      "generic_sha256": "7c03bfb1bbc96af06d781bd8c746b92bacb7e6ec756b257f4dc907774d89f440",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "current identical producer, retained legacy WGSL and pass executor vs shared renderer; not evidence for producer fixes"
+    },
+    "sin": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": false,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "legacy_shader_override": "/tmp/aethyr-ch11-garden-noise-isolation/sin.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-garden-2/generic",
+      "source_changes": [],
+      "legacy_sha256": "05f229895c0a54afef8f9b916a31605dc0458f8d64d52f65e705fbd4ffb6df12",
+      "generic_sha256": "7c03bfb1bbc96af06d781bd8c746b92bacb7e6ec756b257f4dc907774d89f440",
+      "different_channels": 129411,
+      "different_pixels": 47333,
+      "max_byte_delta": 25,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    }
+  },
+  "same_captured_producer_bytes": true,
+  "producer_wasm_sha256": {
+    "earlier_host_abi": "a641f334cd599a28ddd2ffae2ae1631799b01f67c16749c26f00d4c824623022",
+    "current_host_abi": "8a30f24a360909edcf8f2d999efb451c6119f8fd38152faedb361d288ed52f3a"
+  },
+  "metadata_correction": "The integer comparison predates the explicit same_producer_wasm field; its same_producer:true is not binary identity. Both host ABI binaries retain exact matching captured uniform/HUD/draw bytes. Original receipts are unmodified.",
+  "scope": "Both variants are emitted from Coax. Only garden_hash arithmetic differs; sin variant removes its inapplicable integer-profile assertion. Old executor plus sin exactly reproduces retained baseline; old executor plus integer exactly reproduces shared renderer.",
+  "artifacts_sha256": "ab8da2fac699a45d0ce9f51b2738dd47ffebbd844531fbcddadd47358ad961da"
+}

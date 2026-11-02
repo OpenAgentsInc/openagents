@@ -1,0 +1,138 @@
+{
+  "schema": "aethyr.render.belt-authored-check-budgets.v1",
+  "status": "individual measurements pass; authored fullcarrier build pending",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "original_source_sha256": {
+    "apps/openagents-web/belt.coax": "647f17f10f710df5221fc3c4fd0b740943042df98ff86bd658637d8380613194",
+    "apps/openagents-web/belt-tactical.coax": "98797061e2c40278836e26d68f66fb06ae6275fa15259afb8f9c960c4264d67a",
+    "apps/openagents-web/belt-rival.coax": "3715ae19c657ed490aabf0f2ec90e2ba36afc13d0e263dd2f5922d7d3862d587",
+    "apps/openagents-web/belt-win.coax": "655a857e36b340d2ea679366a8996070342ba3a3ec97b097402cb15b7f3ee2a4",
+    "apps/openagents-web/belt-lockstep.coax": "7b995157dff1536ce4830be1b58904425dc9b1eccca15cf60546699ddef846c6",
+    "apps/openagents-web/belt-net.coax": "75ea255622e090eec6169db02d42faaf05791239454bd56fd71f2e1788fcf85b"
+  },
+  "authored_source_sha256": {
+    "apps/openagents-web/belt.coax": "c9f843c04c5f4b94ef04b5bc6e943b8753ddfc0e27eb3f90c1b6709681b6733d",
+    "apps/openagents-web/belt-tactical.coax": "3caf8e691482b8395456a943407486283be42776b2c6ef41feab19537690f33a",
+    "apps/openagents-web/belt-rival.coax": "8fdfd113cf1e5af23cd1802f9e8aacd30e27a7129093ba22f3b8b33b6d174ea8",
+    "apps/openagents-web/belt-win.coax": "bc00587c6f0b91ee086995ba5fe888e546b5d8119e0c98dc88643ca697d0a03c",
+    "apps/openagents-web/belt-lockstep.coax": "c1ea44bf318de5c40293a2fa7ed847406726b32b49b6c6f95c7e9e16ebc2a5f5",
+    "apps/openagents-web/belt-net.coax": "6dc97ae9d625fcadbb853f5a40cf7659f5f36b5cd7aeb4e60fb9378f850979a3"
+  },
+  "source_bodies_unchanged": true,
+  "source_line_count_unchanged": true,
+  "global_check_limit_unchanged": 20000000,
+  "original_documented_caller_budget": 2000000000,
+  "measured_sum": 2410969144,
+  "measured_max": 707484341,
+  "authored_max": 890000000,
+  "rule": "125percent of measured work rounded upward to10million; only15 concrete existing default-budget failures; owner paths are retained percheck. No test body, expectation or production arithmetic changed.",
+  "checks": [
+    {
+      "source": "apps/openagents-web/belt.coax",
+      "name": "the system view keeps Hearth on the screen as Ceres goes round; a view zoomed in rides with what it was on",
+      "measured_steps": 214602551,
+      "authored_limit": 270000000,
+      "profile_index": 0
+    },
+    {
+      "source": "apps/openagents-web/belt.coax",
+      "name": "with a ship selected, each of the eight ice rocks is a named button that plans the trip, on a phone and a desktop",
+      "measured_steps": 420276156,
+      "authored_limit": 530000000,
+      "profile_index": 1
+    },
+    {
+      "source": "apps/openagents-web/belt.coax",
+      "name": "from the whole system down to a 300 m hull in flight: the followed ship holds its pixel, frame after frame",
+      "measured_steps": 77536077,
+      "authored_limit": 100000000,
+      "profile_index": 2
+    },
+    {
+      "source": "apps/openagents-web/belt.coax",
+      "name": "a freighter on a standing route hauls a rig's ice home again and again without new orders",
+      "measured_steps": 94309099,
+      "authored_limit": 120000000,
+      "profile_index": 3
+    },
+    {
+      "source": "apps/openagents-web/belt.coax",
+      "name": "a tactical battle: engaging opens it, it resolves, and BACK TO THE MAP applies the losses",
+      "measured_steps": 39934640,
+      "authored_limit": 50000000,
+      "profile_index": 4
+    },
+    {
+      "source": "apps/openagents-web/belt.coax",
+      "name": "the highlight stage: LANTERN braking hard past Saturn's rings with IRONWAKE on its tail, Saturn big in every frame, and the save untouched",
+      "measured_steps": 292396062,
+      "authored_limit": 370000000,
+      "profile_index": 5
+    },
+    {
+      "source": "apps/openagents-web/belt.coax",
+      "name": "a claimed maker's name draws MADE BY <NAME> \u00b7 TIP, and TIP goes to the tip page",
+      "measured_steps": 45439565,
+      "authored_limit": 60000000,
+      "profile_index": 6
+    },
+    {
+      "source": "apps/openagents-web/belt.coax",
+      "name": "Belt 2200's frames fit its declared budget",
+      "measured_steps": 96735054,
+      "authored_limit": 130000000,
+      "profile_index": 7
+    },
+    {
+      "source": "apps/openagents-web/belt-tactical.coax",
+      "name": "tactical: two warships fight it out to an end, one side out or apart, the same every time on one seed",
+      "measured_steps": 82996208,
+      "authored_limit": 110000000,
+      "profile_index": 8
+    },
+    {
+      "source": "apps/openagents-web/belt-tactical.coax",
+      "name": "tactical: point defense shoots missiles down, and an unarmed freighter runs",
+      "measured_steps": 31069722,
+      "authored_limit": 40000000,
+      "profile_index": 9
+    },
+    {
+      "source": "apps/openagents-web/belt-rival.coax",
+      "name": "rival: over two seeded years the Mars Union expands, mines, builds miners and contests our rocks, its ice within a band of ours",
+      "measured_steps": 147964360,
+      "authored_limit": 190000000,
+      "profile_index": 10
+    },
+    {
+      "source": "apps/openagents-web/belt-win.coax",
+      "name": "a new player's first game: the clock waits for the first order, and the hint says what the game is",
+      "measured_steps": 55653498,
+      "authored_limit": 70000000,
+      "profile_index": 11
+    },
+    {
+      "source": "apps/openagents-web/belt-win.coax",
+      "name": "?unknown=1: the Unknown off the screen is a mark at its edge, toward it; tapping it flies the view there, where the mark gives way to the Unknown itself",
+      "measured_steps": 707484341,
+      "authored_limit": 890000000,
+      "profile_index": 12
+    },
+    {
+      "source": "apps/openagents-web/belt-lockstep.coax",
+      "name": "lockstep: two clients given the same orders have equal state hashes after ten game-days; a different order is a desync, reported at its check",
+      "measured_steps": 44971101,
+      "authored_limit": 60000000,
+      "profile_index": 13
+    },
+    {
+      "source": "apps/openagents-web/belt-net.coax",
+      "name": "net: INVITE makes a room; the one who joins gets the game; both fleets' orders play the same game in lockstep; a nudged client is seen by both and mended",
+      "measured_steps": 59600710,
+      "authored_limit": 80000000,
+      "profile_index": 14
+    }
+  ],
+  "archive": "measurements.tar.gz",
+  "archive_sha256": "ca12de6dd4a6834a85975d9683bab314ab5fffe7fa5194eeeb092b5c69750f11"
+}

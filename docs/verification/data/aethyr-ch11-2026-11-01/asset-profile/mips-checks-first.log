@@ -1,0 +1,7 @@
+FAIL #test layer mip policy keeps first image extent with floor halves and a full chain (0 ms)
+aethyr/render/asset-profile.coax:122:48: error[E0406]: assertion failed
+   rapt_m:=render_asset_mip(3,5,12,0,32768,2048);#assert rapt_m.valid && rapt_m.width==3 && rapt_m.height==5 && rapt_m.levels==3;
+                                                 ^
+  note: in #test layer mip policy keeps first image extent with floor halves and a full chain
+1 of 80 checks (--only 'layer mip policy'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

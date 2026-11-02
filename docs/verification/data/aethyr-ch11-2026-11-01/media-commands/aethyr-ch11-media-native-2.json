@@ -1,0 +1,101 @@
+{
+  "schema": "aethyr.render.media.native.v1",
+  "status": "pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "compiler_source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "source_inputs": {
+    "/private/tmp/aethyr-ch11-media-native-2/media.coax": "b9394a266f158f9ede8a0510ae7a7b42c1848019c0ab7b1cf6fdd8286103ac91",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/media-commands.coax": "e678478059fea2231f99d14e6f571018ccdfba409879eb80898945cce996f3de",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/media-limits.coax": "2eee681d405e9f77a78fe0b664a8d7ec708b7931229a74ea8922172819da8bef",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/media-commands-checks.coax": "f9fb7892da60194892dd03358eefbd71bea7ba3c16ce2a7d14ca927bff2b834a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_media_commands.py": "e3e101a21b7504de02dfb9f69cacb44ef8bbb3e74698f5aa086a6fd4b97bc90b",
+    "/private/tmp/aethyr-ch11-media-native-2/driver.c": "c7a4474a46277e01c4679634a2e63a0fd87d7275326fe7231312b21eb08d6f00",
+    "/private/tmp/aethyr-ch11-media-native-2/oracle.cjs": "9f34ad0c8aa770b5a1a1e60a9eba679b9f8ba6873a24fd90c82d6bcc05b01354"
+  },
+  "oracle_sha256": "9f34ad0c8aa770b5a1a1e60a9eba679b9f8ba6873a24fd90c82d6bcc05b01354",
+  "modes": [
+    {
+      "mode": "debug",
+      "cases": 2165,
+      "loss_controls": [
+        "parse-count",
+        "parse-line",
+        "parse-url",
+        "parse-box",
+        "rect-line",
+        "rect-over",
+        "rect-draw",
+        "uniform-0",
+        "uniform-1",
+        "uniform-2",
+        "uniform-3",
+        "uniform-4",
+        "uniform-5",
+        "uniform-6",
+        "uniform-7",
+        "extent-width",
+        "extent-height"
+      ],
+      "generated_c_sha256": "ec86e9c544b06a15a1e531887bda261b2e31fce0ec5ffa4a4296b09cb2d6d362",
+      "header_sha256": "c7f99dce3c40f56259531be5663a68c9a6d8c3b691ed98ec96c2ab30b4296833",
+      "executable_sha256": "8fb90b14c36b1844055bacabbde86a861f87139c01df7db70b4c2225565d37f9",
+      "transcript_sha256": "f9f1aa9f0f5e6ee6c6f91d0d268b96477b79e517134eed3cb73bdb0e9e6da431"
+    },
+    {
+      "mode": "release",
+      "cases": 2165,
+      "loss_controls": [
+        "parse-count",
+        "parse-line",
+        "parse-url",
+        "parse-box",
+        "rect-line",
+        "rect-over",
+        "rect-draw",
+        "uniform-0",
+        "uniform-1",
+        "uniform-2",
+        "uniform-3",
+        "uniform-4",
+        "uniform-5",
+        "uniform-6",
+        "uniform-7",
+        "extent-width",
+        "extent-height"
+      ],
+      "generated_c_sha256": "9ec631d85f17e0ba91cf8aaea9847d9e7cb634f891ea751b7cdb264b0e3dec56",
+      "header_sha256": "c7f99dce3c40f56259531be5663a68c9a6d8c3b691ed98ec96c2ab30b4296833",
+      "executable_sha256": "655247907eba26d74b04391222fd42b97119f3e31aca612c907602446ad557ea",
+      "transcript_sha256": "f9f1aa9f0f5e6ee6c6f91d0d268b96477b79e517134eed3cb73bdb0e9e6da431"
+    },
+    {
+      "mode": "sanitized",
+      "cases": 2165,
+      "loss_controls": [
+        "parse-count",
+        "parse-line",
+        "parse-url",
+        "parse-box",
+        "rect-line",
+        "rect-over",
+        "rect-draw",
+        "uniform-0",
+        "uniform-1",
+        "uniform-2",
+        "uniform-3",
+        "uniform-4",
+        "uniform-5",
+        "uniform-6",
+        "uniform-7",
+        "extent-width",
+        "extent-height"
+      ],
+      "generated_c_sha256": "ec86e9c544b06a15a1e531887bda261b2e31fce0ec5ffa4a4296b09cb2d6d362",
+      "header_sha256": "c7f99dce3c40f56259531be5663a68c9a6d8c3b691ed98ec96c2ab30b4296833",
+      "executable_sha256": "4a5a8e15f7e0702a617308b962624e3c3c9068f097707af0e268ad960b81d318",
+      "transcript_sha256": "f9f1aa9f0f5e6ee6c6f91d0d268b96477b79e517134eed3cb73bdb0e9e6da431"
+    }
+  ],
+  "elapsed_seconds": 3.431,
+  "scope": "Native borrowed media records, atomic capacity, line window, exact f32 aspect-fit uniforms and bounded static image extents against independent JavaScript Number/Float32Array arithmetic. Authored integer and selected exact decimal rows only; no image decoding or universal numeric-parser rounding claim."
+}

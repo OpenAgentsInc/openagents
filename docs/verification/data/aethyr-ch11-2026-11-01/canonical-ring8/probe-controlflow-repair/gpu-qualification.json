@@ -1,0 +1,76 @@
+{
+  "reused_executable_evidence": "probe-before-controlflow/gpu-qualification.json",
+  "schema": "aethyr.render.ring8-vulkan-primitive.v1",
+  "status": "pass",
+  "scope": "Actual GPU primitive/direction packet against input-only analytic expected f32 data; finite nonzero words exact, signed zero numeric-equivalent. Exact actual-output seams are separately bit-checked. Device qualification, not universal arithmetic equivalence.",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "device": {
+    "device": "NVIDIA GeForce RTX 4080",
+    "subPixelPrecisionBits": 8,
+    "cases": 728,
+    "validation_errors": 0,
+    "validation_warnings": 0
+  },
+  "cases": 728,
+  "channels": 2912,
+  "seams": [
+    {
+      "row": 0,
+      "first": 0,
+      "last": 43
+    },
+    {
+      "row": 1,
+      "first": 48,
+      "last": 91
+    },
+    {
+      "row": 2,
+      "first": 96,
+      "last": 139
+    },
+    {
+      "row": 3,
+      "first": 144,
+      "last": 187
+    },
+    {
+      "row": 4,
+      "first": 192,
+      "last": 235
+    },
+    {
+      "row": 5,
+      "first": 197,
+      "last": 236
+    }
+  ],
+  "comparison_loss_controls": {
+    "one_ulp_diagonal_loss": true,
+    "truncated_observation": true,
+    "extra_observation": true,
+    "lost_all_outputs": true,
+    "stale_one_case": true,
+    "lost_alpha": true,
+    "nonfinite": true
+  },
+  "elapsed_seconds": 5.367676166933961,
+  "source_fence": {
+    "/tmp/aethyr-ch11-ring8/gpu.c": "ee5d83d2fc8ad4d769fb90605cc6080e6491e3fa047b2d7578b6438e66e62726",
+    "/tmp/aethyr-ch11-ring8/probe.spv": "e0480d5c654fa2291328a3f53cf6f6a0de0c78052e9c2d903ab536b9f601ef7a",
+    "/tmp/aethyr-ch11-ring8/cases.bin": "4d7c287e6e9d5b08115a68971a100732ff7a0a82dcaff2a035b657de900ca701",
+    "/tmp/aethyr-ch11-ring8/probe": "91fc62a7d4c58f8415347159af09ff4afa02991930344c2cd4d0724272609250",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vks.c": "1c535649cf3f6109974b39f182aa90c3d2c2206d379527e9171ae121654751fa",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vks.h": "7acf90e709323c4737c89574b886da638748eed2be0229da289d1c0794281c69",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vkc.c": "9b60bcf80801b0932a82e3f623281c65269f6a7b55c62ae6901a70649065b13a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vkc.h": "93c64a4b34d6bb2ec3308729ec09455a868d793f0bd596c87404f0543a48c2cc",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/ring8.coax": "67c2f429d8c1a93efd2dd6147b482b3299b21147671f6fd84c617f06ba96eff2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/gpu/deadgears.coax": "47bc1e2b0a1c5558b8a48a4106cbb5699a9f8302b8f76433ffd30234dde0107f",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-ring8-probe.coax": "d21dcee3cd8d540f9dde6f3e0f6c440d4e9ee70d1480b8f5121184da4d2cf3fe",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/shader.coax": "9688942c90063b6a8f162d79f19332dde17dbb4d7cbeb8885ee13d899c0e1813",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/wgsl.coax": "89fe38e7cade18f6804f4d785ab90866784be86128a26be26ab103348d3f47eb"
+  },
+  "executable_sha256": "91fc62a7d4c58f8415347159af09ff4afa02991930344c2cd4d0724272609250",
+  "observations_sha256": "4ae4f548573137f1eb20c909503f980c275808c5a908bbdcfef05381ba3317a2",
+  "cases_sha256": "b9789d8a749caa2ff9fdc218a9d64058aa72b8f58d7d6ce5f44774f1d97ca0e5"
+}

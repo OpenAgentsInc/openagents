@@ -1,0 +1,7 @@
+FAIL #test reference shared buffer namespace validates before publishing copied observations (0 ms)
+aethyr/render/tests/reference-frame-boundary-extra-checks.coax:98:56: error[E0406]: assertion failed
+   q:=rf_buffer_observations(files[..],uniforms,out[..]);#assert q.status==RQStatus.resource && q.count==0 && out[0].name=="canary0" && out[1].name=="canary1";
+                                                         ^
+  note: in #test reference shared buffer namespace validates before publishing copied observations
+1 of 447 checks (--only 'reference shared buffer namespace'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,15 @@
+#forall "quad array size queries preserve old tree refusal and new tree base dimensions" version:2..<4, fn:10..<12 {
+ tree:=RQ_IR_TEXTURE_10;tree[0]=cast(u32)version;
+ for j:0..<tree.count-5 {if tree[j]==33 && tree[j+1]==10 && tree[j+2]==4 && tree[j+3]==1 && tree[j+4]==18 && tree[j+5]==1 {tree[j+1]=cast(u32)fn;tree[j+5]=2;}}
+ meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ levels:=[1]RQMip.[RQMip.{width=4,height=2}];texels:[16]RQColor;textures:=[1]RQTexture.[RQTexture.{levels=levels[..],layers=2,texels=texels[..]}];
+ input:[36]u32;memory:[4096]u32;out:[16]u32;for j:0..<16 {out[j]=123;}
+ r:=rq_ir_run(p,tree[..],meta[..],input[..],RQResources.{textures=textures[..]},memory[..],out[..],1,10000,15,RQDerivative.fine);
+ if version==2 {#assert r.status==RQStatus.unsupported;for j:0..<16 {#assert out[j]==123;}}
+ else {#assert r.status==RQStatus.ok;for lane:0..<4 {#assert f32_from_bits(out[lane*4])==(ifx fn==10 then 4.0f32 else 2.0f32);}}
+}
+#test "quad image dimension cache is replaced when a later program reuses metadata" {
+ tree:=RQ_IR_TEXTURE_10;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);at:=rq_ir_type(meta[..],9,1);
+ #assert meta[9*8+4]==1;
+ tree[at+1]=0;p=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok && meta[9*8+4]==0;
+}

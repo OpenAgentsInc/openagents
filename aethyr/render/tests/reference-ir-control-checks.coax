@@ -1,0 +1,20 @@
+// These immutable streams were emitted from reference-quad-shader.coax
+// by source-matching Coax0.47; expected values are independent analytic lanes.
+RQ_IR_RUNTIME_TREE :: [364]u32.[2,9,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,7,3,2,0,2,4,2,8,12,7,2,7,0,4,12,16,5,6,1,6,4,6,5,2,2,120,1,2,3,40,1,29,5,27,41,40,0,0,6,1,19,10,18,1,16,5,0,0,1,1,4,22,1,4,20,27,41,40,0,1,16,2,1065353216,16,2,1073741824,16,2,1077936128,1,3,3,40,2,19,4,16,2,1065353216,27,41,40,0,0,3,40,3,19,1,20,29,2,20,18,1,23,5,1,27,41,40,0,0,4,22,1,4,19,1,22,2,1,18,1,18,2,18,3,24,21,19,6,18,1,16,5,2,0,16,2,1065353216,16,2,0,29,2,25,22,3,1,27,41,40,0,1,1,6,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,6,4,18,0,18,1,18,2,18,3,2,1,5,4,5,5,5,5,106,1,5,3,40,1,16,5,0,0,8,2,16,5,2,0,19,1,18,0,16,5,3,0,1,3,6,0,19,10,18,2,16,5,3,0,1,1,10,6,0,19,10,18,2,16,5,5,0,1,1,9,3,40,1,19,1,27,40,1,18,2,3,40,3,16,5,0,0,7,19,6,18,3,18,0,1,2,3,40,1,19,1,27,40,1,16,5,10,0,3,40,3,19,1,27,40,3,16,5,1,0,4,29,2,18,1,8,1,2,1,2,26,1,1,4,31,8,2,22,4,3,18,0,16,2,1073741824,16,2,1077936128,29,4,19,1,18,0,16,2,1092616192,7,3,2,2,2,3,2,2,2,12,1,1,4,31,7,3,18,0,18,1,18,2,1,1,0,0];
+RQ_IR_LITERAL_TREE :: [98]u32.[2,7,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,2,6,1,6,2,6,5,41,1,2,3,40,1,16,5,2596069104,305419896,4,22,1,4,29,2,19,14,18,1,16,5,65535,0,29,2,19,18,18,1,16,5,32,0,27,41,40,0,0,16,2,1065353216,6,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,6,4,18,0,18,1,18,2,18,3,1,1,0,0];
+
+#test "quad actual checked control tree preserves lane returns loops masks unary and field values" {
+ tree:=RQ_IR_RUNTIME_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ input:[16]u32;memory:[8192]u32;out:[16]u32;
+ for lane:0..<4 {input[lane*4]=f32_bits(cast(f32)lane);input[lane*4+1]=f32_bits(cast(f32)(2+lane*2));input[lane*4+3]=1065353216;}
+ r:=rq_ir_run(p,tree[..],meta[..],input[..],RQResources.{},memory[..],out[..],1,100000,15,RQDerivative.fine);
+ #assert r.status==RQStatus.ok && r.publish_mask==15 && r.output_words==16;
+ expected:=[16]f32.[-2,1,2,3,13,1,0,14,26.5,2.6931471806,1,16,36.3333320618,4.0986123085,1,18];
+ for j:0..<16 {#assert abs(f32_from_bits(out[j])-expected[j])<0.00001f32;}
+}
+#test "quad actual checked signed64 literal retains its high and low halves before conversion" {
+ tree:=RQ_IR_LITERAL_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ input:[16]u32;memory:[4096]u32;out:[16]u32;for lane:0..<4 {input[lane*4]=f32_bits(cast(f32)lane);}
+ r:=rq_ir_run(p,tree[..],meta[..],input[..],RQResources.{},memory[..],out[..],1,100000,15,RQDerivative.fine);#assert r.status==RQStatus.ok;
+ for lane:0..<4 {#assert f32_from_bits(out[lane*4])==57072 && f32_from_bits(out[lane*4+1])==305419904 && f32_from_bits(out[lane*4+2])==cast(f32)lane && f32_from_bits(out[lane*4+3])==1;}
+}

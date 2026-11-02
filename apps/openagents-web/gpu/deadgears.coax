@@ -1,7 +1,9 @@
 // deadgears's shaders, the source of apps/openagents-web/deadgears.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (deadgears.module,
 // deadgears.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/noise.coax";
 #load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/render/ring8.coax";
 
 // DeadgearsU, a uniform block, is read from a []f32 at these offsets (floats):
 //   size 0
@@ -77,8 +79,11 @@ deadgears_hurt :: (p:V2,c:V3,u:[]f32)->V3 {
   edge:f32=smoothstep(0.55f32,1.35f32,wg_length2(q));
   return wg_mix_f3f3f(c,v3(0.55f32,0.04f32,0.03f32),(edge*u[59])*0.6f32);
 }
+#test "deadgears_hash live lattice uses the portable integer noise profile" {
+  #assert f32_bits(deadgears_hash(v2(1,2)))==0x3f6013da;
+}
 deadgears_hash :: (p:V2)->f32 {
-  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+  return render_noise2(p.x,p.y);
 }
 deadgears_noise :: (p:V2)->f32 {
   i:V2=wg_floor_f2(p);
@@ -117,17 +122,16 @@ deadgears_round_vertex :: (m:DeadgearsObj,id:u32)->DeadgearsVert {
   q:u32=id/6;
   c:V2=deadgears_quad(id%6);
   row:u32=add_wrap(q/DEADGEARS_AROUND,wg_u32_f(c.y));
-  k:f32=((cast(f32)(add_wrap(q%DEADGEARS_AROUND,wg_u32_f(c.x))))/(cast(f32)(DEADGEARS_AROUND)))*6.2831853f32;
+  azimuth:=render_ring8_direction(add_wrap(q%DEADGEARS_AROUND,wg_u32_f(c.x)));
+  polar:=render_capsule2_polar(row);
   a:V3=v3(m.r0.x,m.r0.y,m.r0.z);
   b:V3=v3(m.r1.x,m.r1.y,m.r1.z);
   axis:V3=wg_normalize3(wg_add_f3f3(wg_sub_f3f3(b,a),v3(0.0f32,0.00001f32,0.0f32)));
   side:V3=wg_normalize3(wg_cross3(axis,ifx abs(axis.y)<0.9f32 then v3(0.0f32,1.0f32,0.0f32) else v3(1.0f32,0.0f32,0.0f32)));
   other:V3=wg_cross3(axis,side);
-  out:V3=wg_add_f3f3(wg_mul_f3f(side,cos(k)),wg_mul_f3f(other,sin(k)));
+  out:V3=wg_add_f3f3(wg_mul_f3f(side,azimuth.direction.x),wg_mul_f3f(other,azimuth.direction.y));
   top:bool=row>DEADGEARS_RINGS;
-  step:f32=((cast(f32)(ifx top then sub_wrap(sub_wrap(row,DEADGEARS_RINGS),1) else row))/(cast(f32)(DEADGEARS_RINGS)))*1.5707963f32;
-  phi:f32=ifx top then step else step-1.5707963f32;
-  n:V3=wg_add_f3f3(wg_mul_f3f(out,cos(phi)),wg_mul_f3f(axis,sin(phi)));
+  n:V3=wg_add_f3f3(wg_mul_f3f(out,polar.direction.x),wg_mul_f3f(axis,polar.direction.y));
   r:f32=ifx top then m.r1.w else m.r0.w;
   return DeadgearsVert.{p=wg_add_f3f3(ifx top then b else a,wg_mul_f3f(n,r)),n=n};
 }
@@ -145,6 +149,9 @@ deadgears_scene_vs :: (id:u32,instance:u32,u:[]f32,objects:[]DeadgearsObj)->Dead
   }
   f:u32=id/6;
   c:V2=wg_sub_f2f2(deadgears_quad(id%6),v2(0.5f32,0.5f32));
+  // The four X/Y faces use the opposite local basis orientation to Z.
+  // Reverse their triangle order while preserving each face's six corners.
+  if f<4 {c=v2(c.y,c.x);}
   n:V3=v3(0.0f32,0.0f32,0.0f32);
   a:V3=v3(0.0f32,0.0f32,0.0f32);
   b:V3=v3(0.0f32,0.0f32,0.0f32);
@@ -354,3 +361,85 @@ wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
 wg_div_ff3 :: (a:f32,b:V3)->V3 {return v3(a/b.x,a/b.y,a/b.z);}
 wg_min_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(fmin(p0.x,p1.x),fmin(p0.y,p1.y),fmin(p0.z,p1.z));}
 wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
+
+#test "DeadGears capsule closes every seam and collapses each exact pole" {
+ dg_ring_m:=DeadgearsObj.{r0=v4(0,0,0,1),r1=v4(0,0.99999,0,1)};
+ for dg_ring_row:0..<6 {
+  dg_ring_first:=ifx dg_ring_row<5 then dg_ring_row*48 else 197;
+  dg_ring_last:=ifx dg_ring_row<5 then dg_ring_row*48+43 else 236;
+  dg_ring_a:=deadgears_round_vertex(dg_ring_m,cast(u32)dg_ring_first);dg_ring_b:=deadgears_round_vertex(dg_ring_m,cast(u32)dg_ring_last);
+  #assert f32_bits(dg_ring_a.p.x)==f32_bits(dg_ring_b.p.x) && f32_bits(dg_ring_a.p.y)==f32_bits(dg_ring_b.p.y) && f32_bits(dg_ring_a.p.z)==f32_bits(dg_ring_b.p.z);
+  #assert f32_bits(dg_ring_a.n.x)==f32_bits(dg_ring_b.n.x) && f32_bits(dg_ring_a.n.y)==f32_bits(dg_ring_b.n.y) && f32_bits(dg_ring_a.n.z)==f32_bits(dg_ring_b.n.z);
+ }
+ for dg_ring_sector:0..<8 {
+  dg_ring_bottom:=deadgears_round_vertex(dg_ring_m,cast(u32)(dg_ring_sector*6));
+  dg_ring_top:=deadgears_round_vertex(dg_ring_m,cast(u32)((32+dg_ring_sector)*6+5));
+  #assert dg_ring_bottom.p.x==0 && dg_ring_bottom.p.z==0 && dg_ring_bottom.n.x==0 && dg_ring_bottom.n.z==0 && dg_ring_bottom.n.y==(-1);
+  #assert dg_ring_top.p.x==0 && dg_ring_top.p.z==0 && dg_ring_top.n.x==0 && dg_ring_top.n.z==0 && dg_ring_top.n.y==1;
+ }
+}
+#test "DeadGears capsule retains its authored radius normals winding and240vertices" {
+ dg_ring_m:=DeadgearsObj.{r0=v4(0,0,0,1),r1=v4(0,0.99999,0,1)};
+ dg_ring_faces:=0;dg_ring_degenerate:=0;
+ #assert (DEADGEARS_RINGS*2+1)*DEADGEARS_AROUND*6==240;
+ for dg_ring_id:0..<240 {
+  dg_ring_v:=deadgears_round_vertex(dg_ring_m,cast(u32)dg_ring_id);
+  #assert abs(dot3(dg_ring_v.n,dg_ring_v.n)-1)<0.000001;
+  dg_ring_row:=dg_ring_id/48+cast(int)deadgears_quad(cast(u32)(dg_ring_id%6)).y;
+  dg_ring_centre:=ifx dg_ring_row>2 then dg_ring_m.r1.y else dg_ring_m.r0.y;
+  dg_ring_radial:=v3(dg_ring_v.p.x,dg_ring_v.p.y-dg_ring_centre,dg_ring_v.p.z);
+  #assert abs(dot3(dg_ring_radial,dg_ring_radial)-1)<0.000001;
+ }
+ for dg_ring_t:0..<80 {
+  dg_ring_a:=deadgears_round_vertex(dg_ring_m,cast(u32)(dg_ring_t*3));dg_ring_b:=deadgears_round_vertex(dg_ring_m,cast(u32)(dg_ring_t*3+1));dg_ring_c:=deadgears_round_vertex(dg_ring_m,cast(u32)(dg_ring_t*3+2));
+  dg_ring_cross:=cross3(sub3(dg_ring_b.p,dg_ring_a.p),sub3(dg_ring_c.p,dg_ring_a.p));
+  if dot3(dg_ring_cross,dg_ring_cross)==0 {dg_ring_degenerate+=1;}
+  else {dg_ring_faces+=1;#assert dot3(dg_ring_cross,add3(add3(dg_ring_a.n,dg_ring_b.n),dg_ring_c.n))>0;}
+ }
+ #assert dg_ring_faces==64 && dg_ring_degenerate==16;
+}
+#test "DeadGears capsule keeps oblique endpoint radii and unit normals" {
+ dg_ring_m:=DeadgearsObj.{r0=v4(1,-2,3,0.4),r1=v4(2,1,5,0.8)};
+ for dg_ring_id:0..<240 {
+  dg_ring_v:=deadgears_round_vertex(dg_ring_m,cast(u32)dg_ring_id);
+  dg_ring_row:=dg_ring_id/48+cast(int)deadgears_quad(cast(u32)(dg_ring_id%6)).y;
+  dg_ring_end:=ifx dg_ring_row>2 then dg_ring_m.r1 else dg_ring_m.r0;
+  dg_ring_offset:=sub3(dg_ring_v.p,v3(dg_ring_end.x,dg_ring_end.y,dg_ring_end.z));
+  #assert abs(dot3(dg_ring_v.n,dg_ring_v.n)-1)<0.000002;
+  #assert abs(dot3(dg_ring_offset,dg_ring_offset)-dg_ring_end.w*dg_ring_end.w)<0.000002;
+ }
+}
+
+#test "DeadGears closed box keeps all36 corner packets with outward triangle winding" {
+ dg_box_u:[24]f32;dg_box_u[8]=1;dg_box_u[13]=1;dg_box_u[18]=1;dg_box_u[23]=1;
+ dg_box_objects:[97]DeadgearsObj;
+ dg_box_objects[96]=DeadgearsObj.{r0=v4(1,0,0,0),r1=v4(0,1,0,0),r2=v4(0,0,1,0),colour=v4(1,1,1,0)};
+ dg_box_corners:=[8]V3.[v3(-0.5,-0.5,-0.5),v3(0.5,-0.5,-0.5),v3(0.5,0.5,-0.5),v3(-0.5,0.5,-0.5),v3(-0.5,-0.5,0.5),v3(0.5,-0.5,0.5),v3(0.5,0.5,0.5),v3(-0.5,0.5,0.5)];
+ dg_box_indices:=[36]int.[1,2,6,1,6,5,0,4,7,0,7,3,3,7,6,3,6,2,0,1,5,0,5,4,4,5,6,4,6,7,0,3,2,0,2,1];
+ dg_box_normals:=[6]V3.[v3(1,0.00001,0),v3(-1,0.00001,0),v3(0,1,0),v3(0,-1,0),v3(0,0.00001,1),v3(0,0.00001,-1)];
+ for dg_box_id:0..<36 {
+  dg_box_vertex:=deadgears_scene_vs(cast(u32)dg_box_id,96,dg_box_u[..],dg_box_objects[..]);
+  dg_box_expected:=dg_box_corners[dg_box_indices[dg_box_id]];dg_box_normal:=dg_box_normals[dg_box_id/6];
+  #assert dg_box_vertex.world.x==dg_box_expected.x && dg_box_vertex.world.y==dg_box_expected.y && dg_box_vertex.world.z==dg_box_expected.z;
+  #assert dg_box_vertex.normal.x==dg_box_normal.x && dg_box_vertex.normal.y==dg_box_normal.y && dg_box_vertex.normal.z==dg_box_normal.z;
+  #assert dg_box_vertex.pos.x==dg_box_expected.x && dg_box_vertex.pos.y==dg_box_expected.y && dg_box_vertex.pos.z==dg_box_expected.z && dg_box_vertex.pos.w==1;
+ }
+ for dg_box_triangle:0..<12 {
+  dg_box_a:=deadgears_scene_vs(cast(u32)(dg_box_triangle*3),96,dg_box_u[..],dg_box_objects[..]);
+  dg_box_b:=deadgears_scene_vs(cast(u32)(dg_box_triangle*3+1),96,dg_box_u[..],dg_box_objects[..]);
+  dg_box_c:=deadgears_scene_vs(cast(u32)(dg_box_triangle*3+2),96,dg_box_u[..],dg_box_objects[..]);
+  #assert dot3(cross3(sub3(dg_box_b.world,dg_box_a.world),sub3(dg_box_c.world,dg_box_a.world)),dg_box_a.normal)>0;
+ }
+}
+
+#test "DeadGears transformed closed box winding agrees with every authored face normal" {
+ dg_box_u:[24]f32;dg_box_u[8]=1;dg_box_u[13]=1;dg_box_u[18]=1;dg_box_u[23]=1;
+ dg_box_objects:[97]DeadgearsObj;
+ dg_box_objects[96]=DeadgearsObj.{r0=v4(0,0,2,3),r1=v4(0,3,0,-2),r2=v4(-4,0,0,5),colour=v4(1,1,1,0)};
+ for dg_box_triangle:0..<12 {
+  dg_box_a:=deadgears_scene_vs(cast(u32)(dg_box_triangle*3),96,dg_box_u[..],dg_box_objects[..]);
+  dg_box_b:=deadgears_scene_vs(cast(u32)(dg_box_triangle*3+1),96,dg_box_u[..],dg_box_objects[..]);
+  dg_box_c:=deadgears_scene_vs(cast(u32)(dg_box_triangle*3+2),96,dg_box_u[..],dg_box_objects[..]);
+  #assert dot3(cross3(sub3(dg_box_b.world,dg_box_a.world),sub3(dg_box_c.world,dg_box_a.world)),dg_box_a.normal)>0;
+ }
+}

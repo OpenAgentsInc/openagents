@@ -1,0 +1,982 @@
+{
+  "schema": "aethyr.render.browser-capture.v1",
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/156.0.8078.80",
+    "revision": "@fb096c0011f9d50f0a264a9376420cdea9c421e3",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "jsVersion": "15.6.75.27"
+  },
+  "reloads": [],
+  "mediaChecks": [],
+  "mediaReloadChecks": [
+    {
+      "before": {
+        "ready": true,
+        "kind": 2,
+        "width": 64,
+        "height": 32
+      },
+      "shader": true,
+      "shaderValidation": {
+        "ok": true,
+        "error": null
+      },
+      "shaderState": {
+        "same": true,
+        "textureSame": true,
+        "bound": true,
+        "render": {
+          "submitted": true,
+          "readiness": 2,
+          "refusal": null,
+          "captureArmed": true,
+          "observed": false,
+          "probed": true
+        }
+      },
+      "engine": true,
+      "engineValidation": {
+        "ok": true,
+        "error": null
+      },
+      "engineState": {
+        "ready": true,
+        "kind": 2,
+        "width": 64,
+        "height": 32,
+        "bound": true,
+        "oldClosed": true,
+        "coherent": true,
+        "render": {
+          "submitted": true,
+          "readiness": 2,
+          "refusal": null,
+          "captureArmed": true,
+          "observed": false,
+          "probed": true
+        }
+      },
+      "recaptured": true,
+      "retired": {
+        "binding": {
+          "stopped": true,
+          "coherent": false
+        },
+        "cache": 0,
+        "lateAllocations": 0,
+        "closed": true
+      }
+    }
+  ],
+  "engineChecks": [],
+  "engineFailureChecks": [],
+  "pendingChecks": [],
+  "control": {
+    "mediaReload": true,
+    "textureStream": true,
+    "mediaVideo": true,
+    "videoFixture": {
+      "mime": "video/webm;codecs=vp8",
+      "width": 64,
+      "height": 32,
+      "audio_tracks": 0,
+      "bytes": 407,
+      "sha256": "3dee5e915e6b8e2b848b032f86c50a82d233cdbcfa4fa1355a866d2a322d8893"
+    },
+    "pendingIndex": false,
+    "pendingLayer": false,
+    "pendingPack": false,
+    "engineFailure": false,
+    "physicalSize": "80x120",
+    "engineReload": false,
+    "mediaControls": false,
+    "mediaFixture": true,
+    "reloadCheck": false,
+    "half": true,
+    "start": true,
+    "requireDraws": true,
+    "width": 320,
+    "height": 240,
+    "dpr": 1,
+    "started": true,
+    "armed": true,
+    "armResult": {
+      "result": {
+        "type": "boolean",
+        "value": true
+      }
+    }
+  },
+  "inputs": {
+    "/tmp/aethyr-ch11-reload-marker/current/video.wasm": "e4ab7bee419997dc57242dca3505d4cc3517efb5ffc3e14625456c9ef8ed8fc4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js": "824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js": "214003ec97f37ce55daab424763a358715574030d533f1caed3853a1e46696af",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/chrome.ts": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render-face.c": "d169fd4b7fd7ff62ccb6c590e043c4fc2ad03b5622f272c85561198158f6a51f",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/index.html": "f59576e549b768210ddac7838353f5a3214e2a56e377514d89be58b2fe73aac7",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_host.ts": "0abc51e18e68f14cc73d0bbaafc9b8928f8a034ca5ef2bb2eda0ec215fad6a5e",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/render.json": "9e880903d4678b88af83e11f0cab6032a25f029898e3f1c77e268d0e981ef6c0",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl": "e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl": "c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl": "589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/assets/Villa.indices": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef",
+    "/tmp/aethyr-ch11-video-ready-reloads/fixture.webm": "3dee5e915e6b8e2b848b032f86c50a82d233cdbcfa4fa1355a866d2a322d8893"
+  },
+  "source_changes": [],
+  "requests": [
+    "/",
+    "/coaxial/host.js",
+    "/coaxial/render.js",
+    "/coaxial/entropy-import.js",
+    "/coaxial/drop.js",
+    "/coaxial/uploads.js",
+    "/coaxial/docs.js",
+    "/coaxial/card.js",
+    "/coaxial/voice.js",
+    "/coaxial/gpui.js",
+    "/coaxial/loader.js",
+    "/coaxial/http-requests.js",
+    "/coaxial/entropy.js",
+    "/test.wasm",
+    "/favicon.svg",
+    "/api/auth/viewer",
+    "/package/render.json",
+    "/package/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl",
+    "/package/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+    "/package/media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl",
+    "/realms/hecates-cemetery/assets/Villa.indices",
+    "/coaxial/live",
+    "/api/playtest/player",
+    "/api/playtest/realms/hecates-cemetery",
+    "/test-video.webm",
+    "/api/villa/memorial/fixture0/media/0000000000000000",
+    "/capture/texture-0.bin",
+    "/package/render.json",
+    "/package/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl",
+    "/package/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+    "/package/media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl",
+    "/test.wasm",
+    "/package/render.json",
+    "/package/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl",
+    "/package/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+    "/package/media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl",
+    "/api/auth/viewer",
+    "/coaxial/live",
+    "/api/playtest/player",
+    "/api/villa/memorial/fixture0/media/0000000000000000",
+    "/capture/texture-1.bin"
+  ],
+  "status": {
+    "capture": {
+      "schema": "aethyr.render.readback.v1",
+      "width": 80,
+      "height": 120,
+      "format": "rgba16float",
+      "frame_validation": {
+        "ok": true,
+        "error": null
+      },
+      "row_bytes": 640,
+      "sha256": "c1d8a493bd7677d8aca3db9839c7395a1b36463c49faab928c961d8fd6a2284f",
+      "requested_hud": 6810,
+      "admitted_hud": 6810,
+      "admitted_draws": 6,
+      "counts": {
+        "draws": 6,
+        "water": 0,
+        "grass": 0,
+        "particles": 384,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "coarse": false,
+      "vertex_stride": 16,
+      "vertex_gpu_bytes": 3072000,
+      "uniform_gpu_bytes": 1984,
+      "buffers": [
+        {
+          "name": "u.bin",
+          "source_capacity": 1984,
+          "logical_payload": 1984,
+          "initialized_highwater": 0,
+          "upload_bytes": 0,
+          "gpu_bytes": 1984,
+          "zero_initialized": 1,
+          "file": "u.bin"
+        },
+        {
+          "name": "s0.bin",
+          "source_capacity": 16900,
+          "logical_payload": 0,
+          "initialized_highwater": 0,
+          "upload_bytes": 16900,
+          "gpu_bytes": 16912,
+          "zero_initialized": 1,
+          "file": "s0.bin"
+        },
+        {
+          "name": "s1.bin",
+          "source_capacity": 199680,
+          "logical_payload": 0,
+          "initialized_highwater": 0,
+          "upload_bytes": 199680,
+          "gpu_bytes": 199680,
+          "zero_initialized": 1,
+          "file": "s1.bin"
+        },
+        {
+          "name": "puffs.bin",
+          "source_capacity": 1536,
+          "logical_payload": 0,
+          "initialized_highwater": 0,
+          "upload_bytes": 384,
+          "gpu_bytes": 1536,
+          "zero_initialized": 1,
+          "file": "puffs.bin"
+        }
+      ],
+      "package": {
+        "schema": "aethyr.render.package.v1",
+        "profile_index": 13,
+        "slug": "hecates-cemetery",
+        "app": "villa",
+        "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "source_inputs": [
+          {
+            "path": "aethyr/render/build.coax",
+            "sha256": "e1a2785e794a1a5bc2ee35d8ff077c64015f9e5bd2d9a4368d93a9c22a3532c3"
+          },
+          {
+            "path": "coax/lib/sys/tool.coax",
+            "sha256": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70"
+          },
+          {
+            "path": "coax/lib/sys/args.coax",
+            "sha256": "9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3"
+          },
+          {
+            "path": "coax/lib/sys/fs.coax",
+            "sha256": "b5cc6abf4c76ecd416e00bada836c7321e4f342ac58a17546ad53faa20d18614"
+          },
+          {
+            "path": "coax/lib/sys/proc.coax",
+            "sha256": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b"
+          },
+          {
+            "path": "coax/lib/crypto/sha256-kernel.coax",
+            "sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926"
+          },
+          {
+            "path": "aethyr/render/build-policy.coax",
+            "sha256": "d0565da9cec37044680d6932aa58bc166a6ccb5f9ea28a8cc273355816e796c4"
+          },
+          {
+            "path": "aethyr/render/emit.coax",
+            "sha256": "bb71e2908ce9f8d269ed5fb5de43f22896229ed39e759deaa4e00862ecbb6e99"
+          },
+          {
+            "path": "aethyr/render/bindings.coax",
+            "sha256": "8f5644b4665a1660f9a15605118e3515689e5697a8101866e68d9f7237f641bc"
+          },
+          {
+            "path": "aethyr/render/capabilities.coax",
+            "sha256": "390d3c31419058a24ab95419929d0bc55298beb580a935e1cba9b13b10757959"
+          },
+          {
+            "path": "aethyr/render/catalog.coax",
+            "sha256": "ffc486dfe5ba07894b0e82485133411411ecc6e62e470621a2befbe9dea2d888"
+          },
+          {
+            "path": "aethyr/render/passes.coax",
+            "sha256": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462"
+          },
+          {
+            "path": "aethyr/render/types.coax",
+            "sha256": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e"
+          },
+          {
+            "path": "coax/lib/json/json.coax",
+            "sha256": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1"
+          },
+          {
+            "path": "aethyr/render/interface.coax",
+            "sha256": "fe37fad6ab782bc12e21f3bd35ec3d2bbadb9ced3f8c2442757ff30be1a71563"
+          },
+          {
+            "path": "aethyr/render/fragment-layout.coax",
+            "sha256": "8ba891b8041e4eb3d063d353f682035982dde1d06a9101c779a56bdfcc6d28b5"
+          },
+          {
+            "path": "aethyr/render/tests/fragment-layout-checks.coax",
+            "sha256": "c298be106bcb41e0acd2a487e0203b9aebeb349c69d508c97e51c79edee53189"
+          },
+          {
+            "path": "aethyr/render/media-profile.coax",
+            "sha256": "9b161447a4a76c933ed89d9eaf289896aa2bbaba1f1ff15c36b58ec604add397"
+          },
+          {
+            "path": "aethyr/render/package.coax",
+            "sha256": "763c6ca78f849090555b495110338469b9d542f6eadeb4c138b2d899c27ea161"
+          },
+          {
+            "path": "aethyr/render/tests/package-checks.coax",
+            "sha256": "4a014b3f6afcd71fb228ada067e7a47d9e0a39c25d2f2c9ac38ccb61c4be20ad"
+          },
+          {
+            "path": "aethyr/render/reference-tree.coax",
+            "sha256": "c54f85ad6474ad2999edcb6448f3daef9075983a98c4168e6ddc0e9eabff7d5d"
+          },
+          {
+            "path": "aethyr/render/tests/reference-tree-checks.coax",
+            "sha256": "8a1e08fb8b5e73ea1182d876aa704b3d52e4b67ef07d149bb4f7fc18b9ee73bf"
+          },
+          {
+            "path": "aethyr/render/asset-profile.coax",
+            "sha256": "7b86793b25e78deab91386d3ddebe383501e7bd2111f9e521b8dc0a3636b63a7"
+          },
+          {
+            "path": "aethyr/render/binding-sources.coax",
+            "sha256": "4128fa3131dbaf2dfce5e4279b782c6801e9bfe80282275c726cdb5b46afc122"
+          },
+          {
+            "path": "aethyr/render/resources.coax",
+            "sha256": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8"
+          },
+          {
+            "path": "aethyr/render/frame.coax",
+            "sha256": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471"
+          },
+          {
+            "path": "aethyr/tests/render-frame-checks.coax",
+            "sha256": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007"
+          },
+          {
+            "path": "aethyr/render/tests/resources-checks.coax",
+            "sha256": "22e811191a1112c1740694d96338936a20ff8092c5915f0638e80f70d0f2c61f"
+          },
+          {
+            "path": "aethyr/render/tests/binding-sources-checks.coax",
+            "sha256": "bc8449bd749a5ccb5e673bccf38b86bad5b553d8a7faa9e8c093ba775f6be4a8"
+          },
+          {
+            "path": "apps/openagents-web/gpu/villa.coax",
+            "sha256": "3ab2fb14b2c00c7aa4ca6c3a3d7c5e00beac912cf3cb53020c1ed8a1813a099f"
+          },
+          {
+            "path": "aethyr/render/noise.coax",
+            "sha256": "4a6cd03a97af0a546e110439145814c5ffc6c27dd90d1bc5a7cff7a705764346"
+          },
+          {
+            "path": "verse/gpu/shader.coax",
+            "sha256": "9688942c90063b6a8f162d79f19332dde17dbb4d7cbeb8885ee13d899c0e1813"
+          },
+          {
+            "path": "verse/gpu/wgsl.coax",
+            "sha256": "89fe38e7cade18f6804f4d785ab90866784be86128a26be26ab103348d3f47eb"
+          },
+          {
+            "path": "verse/look.coax",
+            "sha256": "097fc4d0ea9ebf66bd1dd0b5fda643362491ea8a3c7f1fbd443bbea4c951a0d4"
+          },
+          {
+            "path": "verse/style.coax",
+            "sha256": "30a5b680e7270870abd50829dd78aa4114bab90cc28b80cec3dfcdae960a5df2"
+          },
+          {
+            "path": "apps/openagents-web/gpu/particles.coax",
+            "sha256": "9ecda37dc7b1dfb8b4921372fbaeb97577d11f4fa88ed4fd1f7034868b7610fb"
+          },
+          {
+            "path": "verse/particle-motion.coax",
+            "sha256": "01f15dd4f63c5da209d3cddadd4b6737e155fae667715619f62247d0324e91ba"
+          },
+          {
+            "path": "verse/haunt-light.coax",
+            "sha256": "a26cf3fc8367363a41e3dde5c44a3baec8c49e9ec3a2b2decfa78a518c01070e"
+          },
+          {
+            "path": "aethyr/render/media.coax",
+            "sha256": "22a19e7e752899bd0cb36e59b042276e6ca9c8aeca79f76c35e07ef9865c16b6"
+          }
+        ],
+        "modules": [
+          {
+            "binding_set": 0,
+            "wgsl_file": "module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl",
+            "wgsl_sha256": "e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3"
+          },
+          {
+            "binding_set": 1,
+            "wgsl_file": "module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+            "wgsl_sha256": "c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a"
+          },
+          {
+            "binding_set": 2,
+            "wgsl_file": "media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl",
+            "wgsl_sha256": "589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8"
+          }
+        ],
+        "entries": [
+          {
+            "entry_index": 0,
+            "binding_set": 0,
+            "vertex": "villa_bg_vs",
+            "fragment": "villa_bg_fs",
+            "wgsl_vertex": "bg_vs",
+            "wgsl_fragment": "bg_fs",
+            "spirv_file": "pipeline-0-90a2a330f69ab462a459e61adae070b892475730b7e9085f06e83399eb89c2ea.spv",
+            "spirv_sha256": "90a2a330f69ab462a459e61adae070b892475730b7e9085f06e83399eb89c2ea",
+            "tree_file": "pipeline-0-6ea3f72b4231450b0ec638de6b40f941754b4d435f0afed056d17fbe6f1a523f.tree",
+            "tree_sha256": "6ea3f72b4231450b0ec638de6b40f941754b4d435f0afed056d17fbe6f1a523f",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 2
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 2,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 5,
+            "binding_set": 0,
+            "vertex": "villa_scene_vs",
+            "fragment": "villa_scene_fs",
+            "wgsl_vertex": "scene_vs",
+            "wgsl_fragment": "scene_fs",
+            "spirv_file": "pipeline-5-5e3b6652c58628a86e2d4500aeabe4369cb9409c9c12ea0815c80e7fed5dc6c6.spv",
+            "spirv_sha256": "5e3b6652c58628a86e2d4500aeabe4369cb9409c9c12ea0815c80e7fed5dc6c6",
+            "tree_file": "pipeline-5-fa90656c2d0ec19242b490a850d239db83ca10b27affc8ed97d49f33fccf9357.tree",
+            "tree_sha256": "fa90656c2d0ec19242b490a850d239db83ca10b27affc8ed97d49f33fccf9357",
+            "reflection_schema": 2,
+            "tree_version": 3,
+            "derivatives": 2,
+            "control": 2,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 3
+              },
+              {
+                "name": "heights",
+                "slot": 1,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 1
+              },
+              {
+                "name": "objects",
+                "slot": 2,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 64,
+                "stages": 1
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 2,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 9,
+            "binding_set": 1,
+            "vertex": "particles_particle_vs",
+            "fragment": "particles_particle_fs",
+            "wgsl_vertex": "particle_vs",
+            "wgsl_fragment": "particle_fs",
+            "spirv_file": "pipeline-9-e6c620260dd2cd97889c6f9115988199ee7d22d7fd29a278b5cb2c4f064e4d0f.spv",
+            "spirv_sha256": "e6c620260dd2cd97889c6f9115988199ee7d22d7fd29a278b5cb2c4f064e4d0f",
+            "tree_file": "pipeline-9-927581e829af95e575b348792f844b5e309a090bb14225b537c2868da4959b61.tree",
+            "tree_sha256": "927581e829af95e575b348792f844b5e309a090bb14225b537c2868da4959b61",
+            "reflection_schema": 2,
+            "tree_version": 3,
+            "derivatives": 0,
+            "control": 2,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 3
+              },
+              {
+                "name": "emitters",
+                "slot": 1,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 64,
+                "stages": 1
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 1,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 10,
+            "binding_set": 0,
+            "vertex": "villa_bg_vs",
+            "fragment": "villa_bloom_fs",
+            "wgsl_vertex": "bg_vs",
+            "wgsl_fragment": "bloom_fs",
+            "spirv_file": "pipeline-10-5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968.spv",
+            "spirv_sha256": "5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968",
+            "tree_file": "pipeline-10-0069aed93ae1661ad3e7d9f39ca1765203bd9e85e6423bb92b2856ac3954c09a.tree",
+            "tree_sha256": "0069aed93ae1661ad3e7d9f39ca1765203bd9e85e6423bb92b2856ac3954c09a",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "bloom_src",
+                "slot": 0,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "bloom_lin",
+                "slot": 1,
+                "native_kind": 3,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "bloom_step",
+                "slot": 2,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 2
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 1,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 11,
+            "binding_set": 0,
+            "vertex": "villa_bg_vs",
+            "fragment": "villa_post_fs",
+            "wgsl_vertex": "bg_vs",
+            "wgsl_fragment": "post_fs",
+            "spirv_file": "pipeline-11-5e5f4f037691194ec5a7c2724898b07b3394390e872ec09bbd0d1f53ad6993aa.spv",
+            "spirv_sha256": "5e5f4f037691194ec5a7c2724898b07b3394390e872ec09bbd0d1f53ad6993aa",
+            "tree_file": "pipeline-11-a529dfd9b89de430af0ebaf6c28170e8fd8b6a3dd87c233a5667fcc0eca8180d.tree",
+            "tree_sha256": "a529dfd9b89de430af0ebaf6c28170e8fd8b6a3dd87c233a5667fcc0eca8180d",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 2
+              },
+              {
+                "name": "post_light",
+                "slot": 1,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "post_quarter",
+                "slot": 2,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "post_eighth",
+                "slot": 3,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "post_aux",
+                "slot": 4,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "post_lin",
+                "slot": 5,
+                "native_kind": 3,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 1,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 12,
+            "binding_set": 0,
+            "vertex": "villa_fx_vs",
+            "fragment": "villa_fx_fs",
+            "wgsl_vertex": "fx_vs",
+            "wgsl_fragment": "fx_fs",
+            "spirv_file": "pipeline-12-e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75.spv",
+            "spirv_sha256": "e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75",
+            "tree_file": "pipeline-12-5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c.tree",
+            "tree_sha256": "5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 3
+              }
+            ],
+            "vertex_stride": 64,
+            "attributes": [
+              {
+                "location": 0,
+                "scalar": 2,
+                "width": 4,
+                "offset": 0
+              },
+              {
+                "location": 1,
+                "scalar": 2,
+                "width": 4,
+                "offset": 16
+              },
+              {
+                "location": 2,
+                "scalar": 2,
+                "width": 4,
+                "offset": 32
+              },
+              {
+                "location": 3,
+                "scalar": 2,
+                "width": 4,
+                "offset": 48
+              }
+            ],
+            "fragment_targets": 1,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 13,
+            "binding_set": 2,
+            "vertex": "media_vs",
+            "fragment": "media_fs",
+            "wgsl_vertex": "vs",
+            "wgsl_fragment": "fs",
+            "spirv_file": "pipeline-13-505de9c6ceaee9535066b4a470a613e506f710f6232291dc648dcad8a21abaf3.spv",
+            "spirv_sha256": "505de9c6ceaee9535066b4a470a613e506f710f6232291dc648dcad8a21abaf3",
+            "tree_file": "pipeline-13-7cccf19da58184c2607e000590233b1d420494a93740e3c7eed72f0bd0d2d46c.tree",
+            "tree_sha256": "7cccf19da58184c2607e000590233b1d420494a93740e3c7eed72f0bd0d2d46c",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 3
+              },
+              {
+                "name": "media_image",
+                "slot": 1,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "media_sampler",
+                "slot": 2,
+                "native_kind": 3,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 1,
+            "fragment_depth": false
+          }
+        ]
+      },
+      "shader_messages": [],
+      "textures": [
+        {
+          "name": "media_image-0",
+          "format": "rgba8unorm",
+          "layers": 1,
+          "levels": [
+            {
+              "width": 64,
+              "height": 32,
+              "offset": 0,
+              "row_bytes": 256,
+              "layer_bytes": 8192
+            }
+          ],
+          "sha256": "9fd8fe44a7086ae4bfb7218e7b5c2f610f65b3bb2c59a91d3af9cd91d38d423d",
+          "file": "texture-1.bin"
+        }
+      ],
+      "media_text": "video /api/villa/memorial/fixture0/media/0000000000000000 17 74 63 90\n",
+      "media_images": [
+        {
+          "kind": 2,
+          "url": "/api/villa/memorial/fixture0/media/0000000000000000",
+          "ready": 1,
+          "width": 64,
+          "height": 32
+        }
+      ]
+    },
+    "render": {
+      "submitted": true,
+      "readiness": 2,
+      "refusal": null,
+      "captureArmed": true,
+      "observed": true,
+      "probed": true
+    },
+    "ready": true,
+    "engineReady": true,
+    "search": "?probe&golden&probe-manual",
+    "physical": {
+      "kind": "injected device-pixel-box",
+      "css_width": 320,
+      "css_height": 240,
+      "physical_width": 80,
+      "physical_height": 120,
+      "window_dpr": 1
+    },
+    "media": [
+      {
+        "kind": 2,
+        "url": "/api/villa/memorial/fixture0/media/0000000000000000",
+        "ready": true,
+        "failed": false,
+        "width": 64,
+        "height": 32
+      }
+    ],
+    "body": "Hecate's Cemetery\n\nHecate's Cemetery",
+    "media_video": [
+      {
+        "kind": 2,
+        "ready": true,
+        "width": 64,
+        "height": 32,
+        "muted": true,
+        "defaultMuted": true,
+        "videoWidth": 64,
+        "videoHeight": 32
+      }
+    ]
+  },
+  "events": [
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 1,
+          "origin": "://",
+          "name": "",
+          "uniqueId": "-4188196311474776284.2947018565227393288",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "C52EA2B21F1B51F7B8791F18FCC2E06A"
+          }
+        }
+      }
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 2,
+          "origin": "http://127.0.0.1:50665",
+          "name": "",
+          "uniqueId": "6184901333257240157.608341104989703458",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "C52EA2B21F1B51F7B8791F18FCC2E06A"
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:50665/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793585841206.934,
+          "url": "http://127.0.0.1:50665/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:50665/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              },
+              {
+                "functionName": "main",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:50665/coaxial/host.js",
+                "lineNumber": 2038,
+                "columnNumber": 11
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "timestamp": 1793585841271.624,
+          "url": "http://127.0.0.1:50665/api/playtest/player",
+          "networkRequestId": "45976.24"
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "timestamp": 1793585841271.726,
+          "url": "http://127.0.0.1:50665/api/playtest/realms/hecates-cemetery",
+          "networkRequestId": "45976.25"
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:50665/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793585842220.419,
+          "url": "http://127.0.0.1:50665/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:50665/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "timestamp": 1793585842236.15,
+          "url": "http://127.0.0.1:50665/api/playtest/player",
+          "networkRequestId": "45976.40"
+        }
+      }
+    }
+  ]
+}

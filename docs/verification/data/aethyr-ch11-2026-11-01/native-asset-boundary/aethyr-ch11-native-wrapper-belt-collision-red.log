@@ -1,0 +1,9 @@
+aethyr/render/native-host.coax:34:2: error[E0304]: 'words' is already the name of a procedure
+   words:=[8]u32.[7,8,9,10,11,12,13,14];
+   ^
+  fix: pick another name
+aethyr/render/native-host.coax:35:78: error[E0305]: procedures are not values in coax0
+   named:=[1]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="s0.bin",words=words[..],observed=RenderBufferObserved.{source_capacity=32,gpu_bytes=32,zero_initialized=true}}];
+                                                                               ^
+  fix: call it: words()
+2 errors

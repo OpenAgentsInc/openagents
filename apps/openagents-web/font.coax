@@ -8,6 +8,8 @@
 // The table is sorted by code point: font_find is a binary search.
 // Glyphs: ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ; < = > ? @ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [ \ ] ^ _ ` | ~ U+00B7 U+2013 U+2014 U+2018 U+2019 U+201C U+201D U+2022 U+2026 U+20BF U+2192
 
+#load "../../aethyr/render/sans-profile.coax";
+
 FONT_BREAK :: 255;
 FONT_GLYPHS :: 77;
 FONT_MAX_POINTS :: 18;   // the most points (breaks included) one glyph has
@@ -393,18 +395,11 @@ wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, 
 // rasterizes (coax/web/host.js, "the sans atlas"): titles and the HUD's
 // chrome stay in Filament. Widths are the fonts' advance widths in
 // thousandths of an em; text is laid out here, so both sides agree on them.
-SANS_GLYPHS :: 111;
-SANS_COLUMNS :: 16; SANS_ROWS :: 7;
-SANS_CELL :: 96.0;          // a cell, atlas texels at the top level
-SANS_EM :: 64.0;            // the font size the top level is drawn at
-SANS_LEFT :: 16.0;          // the pen's x in its cell
-SANS_BASE :: 72.0;          // the baseline's y in its cell
+// Atlas identity, cell metrics and codepoints come from sans-profile.coax.
 SANS_CAP :: 0.716;          // cap height, ems
 SANS_SCALE :: 1.3;          // sans text's cap height against the Filament cap it stands in for
 SANS_MAX_CAP :: 9.0;        // CSS pixels: Filament from this cap height up (titles)
 MODE_SANS :: 4.0;
-// The atlas's characters after ASCII 32..126, in order (host.js has the same list).
-SANS_EXTRA :: [16] u32.[183, 8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8594, 8383, 8722, 215, 8804, 8805, 8800];
 SANS_WIDTH :: [111] u16.[
   278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
   556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
@@ -422,9 +417,7 @@ uses_sans :: (k: Ink, cap: f32) -> bool {
 
 // A code point's place in the atlas, or -1.
 sans_index :: (code: u32) -> int {
-  if code >= 32 && code <= 126 { return cast(int) code - 32; }
-  for k: 0..<16 { if SANS_EXTRA[k] == code { return 95 + k; } }
-  return -1;
+  return render_sans_index(code);
 }
 
 // The em of sans text standing in for Filament capitals cap pixels tall.
@@ -518,4 +511,25 @@ wrap_ink :: (text: string, from: int, width: f32, cap: f32, gap: f32, space: f32
   #assert sans_index(8212) == 97 && sans_index(8800) == 110 && sans_index(9731) == -1;
   #assert SANS_WIDTH[sans_index('M')] == 833 && SANS_WIDTH[sans_index('i')] == 222;
   #assert sans_width("HI", 1000) == 1000;
+}
+
+#test "Font and atlas roundtrip every codepoint into the same glyph cell" {
+  font_atlas_fp := render_sans_profile();
+  #assert SANS_WIDTH.count == font_atlas_fp.glyphs;
+  font_atlas_ftext: [4] u8; font_atlas_fvertices: [6 * VERTEX_FLOATS] f32;
+  font_atlas_fk := Ink.{core = 1, light = 1, glow = 0, red = 1, green = 1, blue = 1, mode = 0, sans = true};
+  for font_atlas_fi: 0..<111 {
+    font_atlas_fg := render_sans_glyph(0, font_atlas_fi);
+    font_atlas_fn := encode(font_atlas_fg.code, font_atlas_ftext[..], 0);
+    font_atlas_fr := decode(cast(string) font_atlas_ftext[0..<font_atlas_fn], 0);
+    #assert font_atlas_fn > 0 && font_atlas_fr.len == font_atlas_fn && font_atlas_fr.code == font_atlas_fg.code && sans_index(font_atlas_fr.code) == font_atlas_fi;
+    font_atlas_fv := draw_sans(font_atlas_fvertices[..], 0, cast(string) font_atlas_ftext[0..<font_atlas_fn], 20, 100, 8, font_atlas_fk);
+    if font_atlas_fi == 0 { #assert font_atlas_fv == 0; }
+    else {
+      #assert font_atlas_fv == 6 && font_atlas_fvertices[11] == 4;
+      #assert font_atlas_fvertices[2] == f32(font_atlas_fi % 16) / 16 && font_atlas_fvertices[3] == f32(font_atlas_fi / 16) / 7;
+      #assert font_atlas_fvertices[2 * VERTEX_FLOATS + 2] == f32(font_atlas_fi % 16 + 1) / 16;
+      #assert font_atlas_fvertices[2 * VERTEX_FLOATS + 3] == f32(font_atlas_fi / 16 + 1) / 7;
+    }
+  }
 }

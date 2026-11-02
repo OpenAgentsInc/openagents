@@ -1,0 +1,6 @@
+coax/web/project/landing-fold-face.c:14:fold_begin	128	static
+coax/web/project/landing-fold-face.c:15:fold_feed	80	static
+coax/web/project/landing-fold-face.c:16:fold_result	64	static
+coax/web/project/landing-fold-face.c:17:home_fold_ids	64	static
+coax/web/project/landing-fold-face.c:18:home_fold_known	64	static
+coax/web/project/landing-fold-face.c:21:home_fold_admitted	48	static

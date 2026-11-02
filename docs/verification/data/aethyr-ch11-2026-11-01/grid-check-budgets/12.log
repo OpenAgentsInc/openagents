@@ -1,0 +1,13 @@
+ok   #test walked off from every project, the HUD names the nearest one, which way it lies and how far, and an arrow points there (1 case, 65532202 steps, 6348 ms)
+        own steps  share   with calls     calls  procedure
+         17890803  27.3%     17890803     22653  lit  apps/openagents-web/newland.coax:266
+          7591539  11.6%     34126961     51877  seg  apps/openagents-web/newland.coax:425
+          6029688   9.2%     39577682         7  floor_grid  apps/openagents-web/newland.coax:1174
+          5678473   8.7%      5678473    298867  dot3  apps/openagents-web/newland.coax:395
+          4399333   6.7%      4399333     40355  on_plot  apps/openagents-web/newland.coax:459
+          3045474   4.6%      4060632    169193  fv_sub  verse/figure.coax:134
+          2866352   4.4%      8143433     65425  spot  apps/openagents-web/newland.coax:413
+          1972530   3.0%      1972530      3906  m3_mul  verse/figure.coax:140
+     ... 154 more procedures
+1 of 114 checks (--only 'walked off from every project, the HUD names the nearest one, which way it lies and how far, and an arrow points there'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

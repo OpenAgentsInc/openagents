@@ -1,0 +1,147 @@
+{
+  "schema": "aethyr.render.pipeline.native.v1",
+  "status": "pass",
+  "compiler_version": "coax0 0.47.0",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "compiler_recorded_source_digest": "604574a88c8273b0c110f34779cba55817778ecee02c4a797dbb79c9af6a6220",
+  "compiler_current_source_digest": "604574a88c8273b0c110f34779cba55817778ecee02c4a797dbb79c9af6a6220",
+  "compiler_current_sources_match": true,
+  "source_sha256": {
+    "aethyr/render/active-lanes.coax": "4f4723b318c9e0a15eec337d936a2be56c9cf081cc6c0a1f3d583cbb2efeaa20",
+    "aethyr/render/passes.coax": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800",
+    "aethyr/render/reference-depth.coax": "960c4b5af8e6b4e10aea7d7f02c0de29aebdcae8c10c2ef2c8f2d0992316acd7",
+    "aethyr/render/reference-io.coax": "7fffdd860aeb65d61f612e0d40dd13d68438a9683a83ca165a25d90d4ef68d4c",
+    "aethyr/render/reference-ir.coax": "2e0358d123d3830018e62dc74a57ba7e04bfb5975926f086daf09ca507a9940e",
+    "aethyr/render/reference-pipeline.coax": "9a3b342b4ee24fa69140fedbfe11fa3f7438907b927033d974e37f6975deb08f",
+    "aethyr/render/reference-quad.coax": "d5e462db357b672231ef6a43456d069f2a1fd2eb5d1c16b2e0619efd6a7c71d7",
+    "aethyr/render/reference-raster.coax": "86af225aafa268fd85a87af84cac8320e135ea885ee80645083d8b63d96c3b7a",
+    "aethyr/render/tests/active-lanes-checks.coax": "6d476b2d3ea0822e585ccf824a55f8d4d9c6098f5669e99fc58e1e6e4618b4bd",
+    "aethyr/render/tests/check_pipeline.py": "0f0a3465b4c2df55eedc892db9062043dce83eaaf196855318bbc384aca90b02",
+    "aethyr/render/tests/pipeline-native.c": "c474b1567c23fe6c656bd9376aa7219f4afe433d0f0a32fc8874dcdc6498fa06",
+    "aethyr/render/tests/pipeline-native.coax": "c11471b56dc4d4555f66178e93786b8fa02ae16acd0ef5ccc5385e0336fb591a",
+    "aethyr/render/tests/pipeline-shader-deps.coax": "d8bdb0252262ca6cb7ef7e4dda8ba6887edddfba09baf13ded8862175a7a9225",
+    "aethyr/render/tests/pipeline-shader.coax": "1ed9d32064e93780eedb48f37af5ffbdf47bfe5b55a8799c725bec79a3b1996c",
+    "aethyr/render/tests/reference-io-checks.coax": "cd16f99e5a252e6caaf0c9e07c25e93e4a6420b85232173673759105b73ec990",
+    "aethyr/render/tests/reference-ir-admission-checks.coax": "458a01ab040a8b5a00ddeb2652ae9f0045f0b85fe1e41e8d3914a1a8c4c07918",
+    "aethyr/render/tests/reference-ir-checks.coax": "28fedfce923071c5599c992f48f4444139515b08c89177b50afb5e21d23063e7",
+    "aethyr/render/tests/reference-ir-convert-checks.coax": "a431596008cbf55c9f646076b7a4d2bda576ed478d62f13e7dc9069de9ef4388",
+    "aethyr/render/tests/reference-ir-run-checks.coax": "2015374549fb19613bfd39201c7e5cb7d8e4d347c41926faf0a7fad51adc7495",
+    "aethyr/render/tests/reference-ir-scalar-checks.coax": "645565544a009bc315fc03a69f12a0ae125d172f8921297834da2dfbd10136ba",
+    "aethyr/render/tests/reference-ir-storage-checks.coax": "8c81209acc1d6b767a65f8da333f55b5cb26ced401a3dfff20f161558b1c39dc",
+    "aethyr/render/tests/reference-pipeline-checks.coax": "9e65d0688df06564b5fc5f0b70fa519bda2162df9bfc35b3eccd74fb3dad6725",
+    "aethyr/render/tests/reference-pipeline-trees.coax": "90f3de93b8f2975b06044b51fd09393dbe91f499017b3bbc13969ea4455475d6",
+    "aethyr/render/tests/reference-quad-checks.coax": "4d8d4d75129a69aeed49bcc2b9d1330690f337dc434c418971bac6fa404d9d1e",
+    "aethyr/render/tests/reference-raster-checks.coax": "af3327de2a889d5c073cd96a3cfe6dd65235b16c4a5bd43b36447acaf055fbeb",
+    "aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "verse/gpu/shader.coax": "8600583891e2954e9ac599638783ec01def9820bf2869bfa6a6d0b721925fcc0"
+  },
+  "header_fields_checked": {
+    "RQColor": [
+      "r",
+      "g",
+      "b",
+      "a"
+    ],
+    "RRPixel": [
+      "depth",
+      "colour",
+      "aux"
+    ],
+    "RRPassResult": [
+      "status",
+      "steps",
+      "triangles",
+      "quads",
+      "fragments",
+      "written"
+    ]
+  },
+  "trees": {
+    "plain": {
+      "vertex": "rp_vertex",
+      "fragment": "rp_fragment",
+      "version": 2,
+      "words": 256,
+      "sha256": "5f312932b7d57515857df300e46dec35d3d3762584a5e39cb4b6cdfe5e7a662b"
+    },
+    "helper": {
+      "vertex": "rp_vertex",
+      "fragment": "rp_helper_fragment",
+      "version": 3,
+      "words": 280,
+      "sha256": "5c999f34251b5cc8ae1c95e3b9702f7bd86462a23c060b3bee36a8faf80f4e0d"
+    },
+    "depth": {
+      "vertex": "rp_vertex",
+      "fragment": "rp_depth_fragment",
+      "version": 2,
+      "words": 271,
+      "sha256": "8b46db400595e04b0d617b5ab5793907ffd6152f2d1f3ceeb8150f66d2640e4c"
+    },
+    "texture": {
+      "vertex": "rp_vertex",
+      "fragment": "rp_texture_fragment",
+      "version": 2,
+      "words": 250,
+      "sha256": "06968497657003c0a25df7969b66a2b2362e8640f91e7d6cf2fc800145342429"
+    }
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "scenarios": 15,
+      "pixel_words_observed": 2160,
+      "producer_faults_detected": {
+        "status": 0,
+        "work": 6,
+        "publication": 0,
+        "coverage": 0,
+        "colour": 0,
+        "depth": 0,
+        "aux": 0
+      },
+      "transcript_sha256": "e66156e689dd17a576ac50a7546a17b750a29867631c0564b7f52299db926eed",
+      "generated_c_sha256": "1574b774a24c473725dfaf6b38f62b857826e2a78657b33fb3b3b906cf3885a1",
+      "generated_header_sha256": "f00f172bb9a7966dfd3dd35191b51935366755835682c81a7eb67c1410c63e9c",
+      "executable_sha256": "ea7ce51ef71aa543d9d9d0d10ee6929d0717a4f08755abd7522742dfb3a95dc5"
+    },
+    {
+      "mode": "release",
+      "scenarios": 15,
+      "pixel_words_observed": 2160,
+      "producer_faults_detected": {
+        "status": 0,
+        "work": 6,
+        "publication": 0,
+        "coverage": 0,
+        "colour": 0,
+        "depth": 0,
+        "aux": 0
+      },
+      "transcript_sha256": "e66156e689dd17a576ac50a7546a17b750a29867631c0564b7f52299db926eed",
+      "generated_c_sha256": "5c714c07ace8374ee682fc0ae093eabb096ed7e33e4f0730ace2f9c9772ccd68",
+      "generated_header_sha256": "f00f172bb9a7966dfd3dd35191b51935366755835682c81a7eb67c1410c63e9c",
+      "executable_sha256": "5d1b088f06ac0d3024a8d20f0b9e68bf0b373fced6ec886261d626d3d3f2735b"
+    },
+    {
+      "mode": "sanitized",
+      "scenarios": 15,
+      "pixel_words_observed": 2160,
+      "producer_faults_detected": {
+        "status": 0,
+        "work": 6,
+        "publication": 0,
+        "coverage": 0,
+        "colour": 0,
+        "depth": 0,
+        "aux": 0
+      },
+      "transcript_sha256": "e66156e689dd17a576ac50a7546a17b750a29867631c0564b7f52299db926eed",
+      "generated_c_sha256": "1574b774a24c473725dfaf6b38f62b857826e2a78657b33fb3b3b906cf3885a1",
+      "generated_header_sha256": "f00f172bb9a7966dfd3dd35191b51935366755835682c81a7eb67c1410c63e9c",
+      "executable_sha256": "36ab7951a0714b14cdb663f2114256869727f27b0857fc12b27e7c352164d3bc"
+    }
+  ],
+  "elapsed_seconds": 4.168,
+  "scope": "Synthetic normal-C conformance: actual checked VS/FS trees, indexed/nonindexed/instanced rasterization, clipping/helpers/fine derivatives/demotion, depth-first explicit outputs/MRT, resource mapping and atomic refusal. All nine scalar words in every pixel and the unused tail are observed. Not full-realm GPU image qualification. Historical local-compiler candidate before subsequent pipeline layout/staging refactoring; retain exact generated C, trees and transcripts. Final merged-compiler qualification remains required."
+}

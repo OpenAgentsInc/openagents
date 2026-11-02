@@ -1,0 +1,12 @@
+filter.c: In function ‘main’:
+filter.c:18:4: error: implicit declaration of function ‘memcpy’ [-Wimplicit-function-declaration]
+   18 |    memcpy(u.map,cases+i*4,16);Probe probe={&pipe,&pass};vks_submit(&v,record,&probe);vks_read(&v,&target,pixels,64*64*16);float *pixel=pixels+(9*64+9)*4;assert(fwrite(pixel,4,4,raw)==4);
+      |    ^~~~~~
+filter.c:6:1: note: include ‘<string.h>’ or provide a declaration of ‘memcpy’
+    5 | #include <assert.h>
+  +++ |+#include <string.h>
+    6 | typedef struct {VksPipe *pipe;VksPass *pass;} Probe;
+filter.c:18:4: warning: incompatible implicit declaration of built-in function ‘memcpy’ [-Wbuiltin-declaration-mismatch]
+   18 |    memcpy(u.map,cases+i*4,16);Probe probe={&pipe,&pass};vks_submit(&v,record,&probe);vks_read(&v,&target,pixels,64*64*16);float *pixel=pixels+(9*64+9)*4;assert(fwrite(pixel,4,4,raw)==4);
+      |    ^~~~~~
+filter.c:18:4: note: include ‘<string.h>’ or provide a declaration of ‘memcpy’

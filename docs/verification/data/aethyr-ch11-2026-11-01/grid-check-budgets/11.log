@@ -1,0 +1,13 @@
+ok   #test the Grid's EDIT: its owner gets it left of HOME (under REALMS on a phone), its pane's glass, and the board's rows switch the names and the walkers (1 case, 68764558 steps, 6675 ms)
+        own steps  share   with calls     calls  procedure
+         21162414  30.8%     21162414     26754  lit  apps/openagents-web/newland.coax:266
+          8114430  11.8%     36750584     49940  seg  apps/openagents-web/newland.coax:425
+          5753162   8.4%      5753162    302798  dot3  apps/openagents-web/newland.coax:395
+          4785415   7.0%     36766199         5  floor_grid  apps/openagents-web/newland.coax:1174
+          4513465   6.6%      4513465     41710  on_plot  apps/openagents-web/newland.coax:459
+          3015468   4.4%      4020624    167526  fv_sub  verse/figure.coax:134
+          2975984   4.3%      8454500     67636  spot  apps/openagents-web/newland.coax:413
+          2460313   3.6%     67573822         5  coaxial_walk_frame  apps/openagents-web/newland-walk.coax:425
+     ... 187 more procedures
+1 of 114 checks (--only 'the Grid's EDIT: its owner gets it left of HOME (under REALMS on a phone), its pane's glass, and the board's rows switch the names and the walkers'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,41 @@
+{
+  "schema": "aethyr.render.build.qualification.v1",
+  "status": "pass",
+  "compiler_version": "coax0 0.47.0",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "compiler_source_digest": "604574a88c8273b0c110f34779cba55817778ecee02c4a797dbb79c9af6a6220",
+  "package": {
+    "profile": "the-grid",
+    "modules": 1,
+    "entries": [
+      {
+        "entry_index": 0,
+        "spirv_words": 5709,
+        "spirv_sha256": "b7c185dc2e3ae9bc939176abd1776f9c6e2736cabe255e0577dd7cc6d0f8fa38"
+      },
+      {
+        "entry_index": 12,
+        "spirv_words": 3762,
+        "spirv_sha256": "7100c095731ef6c6a6c61b626e5765a3e3a2c69f091c0c723c875258036acc63"
+      }
+    ],
+    "manifest_sha256": "f150cbcd0288b4096054e88f817aad3c097811498c919978838b062ec02f5204"
+  },
+  "failure_controls": [
+    "name",
+    "target",
+    "generic",
+    "framing",
+    "source",
+    "compiler",
+    "exit"
+  ],
+  "cache_product_controls": [
+    "wgsl",
+    "spirv"
+  ],
+  "enumerated_profiles": 18,
+  "elapsed_seconds": 14.245,
+  "qualifier_sha256": "43bc3fad9d83b44d9a5e7b0a9dd7cf46ad6ad2c37a83bf66cc77520db0b456c7",
+  "scope": "Actual emitted module/pipeline inventory, independent SPIRV framing/interface/resource/capability observations, catalog resource contract, source closure and atomic manifest publication. Not GPU numerical/image qualification."
+}

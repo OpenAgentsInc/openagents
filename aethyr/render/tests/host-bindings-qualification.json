@@ -1,0 +1,42 @@
+{
+  "schema": "aethyr.render.host-bindings.v1",
+  "status": "pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "compiler_source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "source_closure_sha256": {
+    "aethyr/render/host-bindings.coax": "85b5743e39d9b0ab5c699228cf95636738a4fea24b0e8fde97f7f4ae5ffe1264",
+    "aethyr/render/binding-sources.coax": "4128fa3131dbaf2dfce5e4279b782c6801e9bfe80282275c726cdb5b46afc122",
+    "aethyr/render/catalog.coax": "ffc486dfe5ba07894b0e82485133411411ecc6e62e470621a2befbe9dea2d888",
+    "aethyr/render/bindings.coax": "8f5644b4665a1660f9a15605118e3515689e5697a8101866e68d9f7237f641bc",
+    "aethyr/render/passes.coax": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462",
+    "aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "aethyr/render/resources.coax": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8",
+    "aethyr/render/frame.coax": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+    "aethyr/tests/render-frame-checks.coax": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007",
+    "aethyr/render/tests/resources-checks.coax": "22e811191a1112c1740694d96338936a20ff8092c5915f0638e80f70d0f2c61f",
+    "aethyr/render/media-profile.coax": "3205f0f137d8170e6186f70ec6cfec1c3c74c348c7ef98918546ba349d07125b",
+    "aethyr/render/tests/binding-sources-checks.coax": "bc8449bd749a5ccb5e673bccf38b86bad5b553d8a7faa9e8c093ba775f6be4a8",
+    "aethyr/render/media-limits.coax": "2eee681d405e9f77a78fe0b664a8d7ec708b7931229a74ea8922172819da8bef",
+    "aethyr/render/tests/host-bindings-checks.coax": "a0947f39b18155ba5709d8429830453c82a9c3eea337df552e83fa7f82191318"
+  },
+  "checks": 80,
+  "root_mutants": 149,
+  "killed": 149,
+  "survivors": 0,
+  "equivalence_waivers": 0,
+  "catalog_profiles": 18,
+  "entry_indices": 14,
+  "group_extent_cases": 252,
+  "artifacts": {
+    "docs/verification/data/aethyr-ch11-2026-11-01/host-bindings/root-308.log": "a5498f2fb2bfe274203f081dafa89f3f1334b4a22e94149f7b39de98c4c9f906",
+    "docs/verification/data/aethyr-ch11-2026-11-01/host-bindings/groups-first.log": "fa716c9e42a0daae7c46376e3490cbbf162f85116adfe581c7b3c2d4007e1a03",
+    "docs/verification/data/aethyr-ch11-2026-11-01/host-bindings/initial-baseline.log": "d9c913afb203661a279c313fcdc2d0d1c16a7a5c8ae2adc9a2afadd186c5c31a",
+    "docs/verification/data/aethyr-ch11-2026-11-01/host-bindings/checks-first.log": "8e0ec55a7580bffd643bbfef801753657c3fcf14950047fe357a6268b7c44b01",
+    "docs/verification/data/aethyr-ch11-2026-11-01/host-bindings/root-308-final149.log": "249b6d63a49782643c170b9ae9f0181e2bbcdea1f9022d2075997d76adf59dda",
+    "docs/verification/data/aethyr-ch11-2026-11-01/host-bindings/clear-first.log": "65b4bf84ed2a54ae0fa8e3fd4e72cfbee1dd0a30b52237674d598632afa08b69",
+    "docs/verification/data/aethyr-ch11-2026-11-01/host-bindings/media-cap-first.log": "bcb53cb33dfdb9850fa311e4fe8a943bbf3ec5486d54c3b12030e0bf3db9a951",
+    "docs/verification/data/aethyr-ch11-2026-11-01/host-bindings/root-308-final-namespace.log": "249b6d63a49782643c170b9ae9f0181e2bbcdea1f9022d2075997d76adf59dda"
+  },
+  "scope": "Typed canonical catalog/media binding/use/source projections and pipeline compatibility descriptors derived from the shared graph. Includes physical MRT attachment counts and masks, media depth policy, explicit WGSL group gaps, source-origin filenames, storage indices0..47, media line indices0..111, atomic scratch formatting and opaque-black/depth1 clear values. Representative activation counts are immutable configuration, not producer requests or frame admission. GPU effects and actual frame outputs are separate.",
+  "history": "Earlier74-mutant receipts are retained as historical pre-source-name evidence. The final149-mutant root gate includes all80 baseline groups; no passing unchanged gate was repeated. Source closure hashes were retained after confirming no closure file changed after this final gate. Final149 gate was refreshed after media-limits gained a canonical logical module and composed-app test locals were prefixed; policy values, numerical operations and public layouts were unchanged."
+}

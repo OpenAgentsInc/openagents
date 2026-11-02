@@ -1,0 +1,281 @@
+{
+  "schema": "aethyr.render.orbit-authored-check-budgets.v1",
+  "status": "pass default typedbuild and actualdependency sourcefence",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "original_source_sha256": {
+    "apps/openagents-web/orbitleague.coax": "7740837300dc880b0a2bd7df758ac4ff9767fe4e4c58a359a5002909a6f77ca8",
+    "verse/drum.coax": "602716d02f7a1e5603fe8948e0be2ca2d02147cfb0af245d8842a1b598115911"
+  },
+  "authored_source_sha256": {
+    "apps/openagents-web/orbitleague.coax": "ea002412db66ba1e009bd3529b29512281c24e5104347ed7c8367722dfdfd4f2",
+    "verse/drum.coax": "b0f549448a6bd977c36029da0f1661d5c403942b481816466e3a8a0091209bc0"
+  },
+  "source_bodies_unchanged": true,
+  "source_line_count_unchanged": true,
+  "global_check_limit_unchanged": 20000000,
+  "original_documented_caller_budget": 2000000000,
+  "measured_sum": 3299387702,
+  "measured_max": 238091238,
+  "authored_max": 300000000,
+  "rule": "125percent of measured work rounded upward to10million; only35 concrete existing default-budget failures,34appchecks andone importeddrumcheck. No test body, expectation or production arithmetic changed.",
+  "checks": [
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "kickoff counts down, then you drive and boost toward the ball",
+      "measured_steps": 41074178,
+      "authored_limit": 60000000,
+      "profile_index": 0
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "driving into the ball moves it; a ball past the line scores and kicks off again",
+      "measured_steps": 97433033,
+      "authored_limit": 130000000,
+      "profile_index": 1
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a ball hit at the wall beside the goal bounces back; the roof and walls hold it",
+      "measured_steps": 61562808,
+      "authored_limit": 80000000,
+      "profile_index": 2
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a goal sets off its blast and sparks, a hard hit throws sparks, and both die away",
+      "measured_steps": 99671329,
+      "authored_limit": 130000000,
+      "profile_index": 3
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a car over a ready pad takes its boost; the pad waits, then is ready again",
+      "measured_steps": 121951884,
+      "authored_limit": 160000000,
+      "profile_index": 4
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a kickoff while you sit still doesn't fly the ball into your goal",
+      "measured_steps": 70956405,
+      "authored_limit": 90000000,
+      "profile_index": 5
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "the bot drives to the ball and gets it moving",
+      "measured_steps": 81355041,
+      "authored_limit": 110000000,
+      "profile_index": 6
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "?stage=highlight sets up the shot: a hard hit, then a goal for blue within 2 s; without it, a plain kickoff",
+      "measured_steps": 21093614,
+      "authored_limit": 30000000,
+      "profile_index": 7
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a kickoff is a fair race: holding W from the countdown, you reach the ball before the bot, and it doesn't score off it",
+      "measured_steps": 91213180,
+      "authored_limit": 120000000,
+      "profile_index": 8
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "ball cam keeps your car on screen everywhere, and the ball too away from the glass, on a laptop and a phone",
+      "measured_steps": 35935680,
+      "authored_limit": 50000000,
+      "profile_index": 9
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a car pinned nose-first against the glass turns right on D, the way it turns on open floor",
+      "measured_steps": 133232398,
+      "authored_limit": 170000000,
+      "profile_index": 10
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a car pinned nose-first against the glass turns left on A",
+      "measured_steps": 133232380,
+      "authored_limit": 170000000,
+      "profile_index": 11
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a car into the glass at an angle turns away on the stick, and S backs it off",
+      "measured_steps": 140416966,
+      "authored_limit": 180000000,
+      "profile_index": 12
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a goal knocks a car near it back from the goal, then kickoff puts car and ball on their spots",
+      "measured_steps": 61751580,
+      "authored_limit": 80000000,
+      "profile_index": 13
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "after it hits the ball the bot coasts a moment, and its aim misses by less as the match goes on",
+      "measured_steps": 34370893,
+      "authored_limit": 50000000,
+      "profile_index": 14
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "driving into the glass, square or at an angle, the car never stands on it for long (ol-fp-wall-stand)",
+      "measured_steps": 216000009,
+      "authored_limit": 280000000,
+      "profile_index": 15
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "with boost too",
+      "measured_steps": 218054389,
+      "authored_limit": 280000000,
+      "profile_index": 16
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a car leaning on the glass, slow, is set back on its wheels within 1.5 s",
+      "measured_steps": 44781740,
+      "authored_limit": 60000000,
+      "profile_index": 17
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "in the drum the car drives from the floor up the curve, over the ceiling and down again, wheels on",
+      "measured_steps": 58724915,
+      "authored_limit": 80000000,
+      "profile_index": 18
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "the ball keeps inside the curve, and the bot scores in the drum's goal",
+      "measured_steps": 70549198,
+      "authored_limit": 90000000,
+      "profile_index": 19
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "in the drum the camera stays inside, its up toward the axis, with your car in view all the way round",
+      "measured_steps": 32502704,
+      "authored_limit": 50000000,
+      "profile_index": 20
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a car tipped over on the drum's wall is set back on its wheels there",
+      "measured_steps": 46010810,
+      "authored_limit": 60000000,
+      "profile_index": 21
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "in the drum the pads lie up the walls too: a car on the wall takes one, and it comes back (ol-boost-pads)",
+      "measured_steps": 116776999,
+      "authored_limit": 150000000,
+      "profile_index": 22
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "?arena=sphere plays in the sphere: the cars start on its curve on their wheels and the ball at its lowest point",
+      "measured_steps": 40184650,
+      "authored_limit": 60000000,
+      "profile_index": 23
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "in the sphere a car drives round toward the equator's wall and up it, wheels on",
+      "measured_steps": 59382499,
+      "authored_limit": 80000000,
+      "profile_index": 24
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "in the sphere a ball into the +z pole's cap is blue's goal, into the -z cap magenta's; a ball elsewhere is no goal",
+      "measured_steps": 41342553,
+      "authored_limit": 60000000,
+      "profile_index": 25
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "with 150 ms of latency your car answers the first frame you press, and the ball you hit is drawn without a jump (ol-prediction)",
+      "measured_steps": 132336189,
+      "authored_limit": 170000000,
+      "profile_index": 26
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "the pro bot reads where a rolling ball goes, and drops back when it heads for its goal (ol-bot)",
+      "measured_steps": 37582649,
+      "authored_limit": 50000000,
+      "profile_index": 27
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "the pro bot scores into an empty goal (ol-bot; orbitleague-sim.coax plays full 1v1s against it)",
+      "measured_steps": 181886039,
+      "authored_limit": 230000000,
+      "profile_index": 28
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "in a 2v2 all three bots drive after the kickoff, the one of a pair further from the ball hangs back, and PLAY 1V1 / PLAY 2V2 switch (ol-bot-modes)",
+      "measured_steps": 83099118,
+      "authored_limit": 110000000,
+      "profile_index": 29
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a goal's replay plays its recorded drives through the same physics and ends with the ball where the goal left it (ol-replay)",
+      "measured_steps": 220753868,
+      "authored_limit": 280000000,
+      "profile_index": 30
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a key or a tap skips the replay to the kickoff; tests and the room skip replays (ol-replay)",
+      "measured_steps": 157579156,
+      "authored_limit": 200000000,
+      "profile_index": 31
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a saved clip's link plays the same replay in another game: your drives as recorded, the bot deciding again, the ball into the same goal (ol-clips)",
+      "measured_steps": 238091238,
+      "authored_limit": 300000000,
+      "profile_index": 32
+    },
+    {
+      "source": "apps/openagents-web/orbitleague.coax",
+      "name": "a page's state starts zeroed, and game_reset gives every defaulted field its default: gravity, the bot, its miss (the face runs no initialisers)",
+      "measured_steps": 39523741,
+      "authored_limit": 50000000,
+      "profile_index": 33
+    },
+    {
+      "source": "verse/drum.coax",
+      "name": "a car drives from the floor up the curve, over the ceiling and back down, wheels on the rim all the way",
+      "measured_steps": 38973869,
+      "authored_limit": 50000000,
+      "profile_index": 34
+    }
+  ],
+  "archive": "measurements.tar.gz",
+  "archive_sha256": "89105b096c97123901d4cd409e9f81112dc757c016a1ee8270ba78d7fb1c6408",
+  "default_build": {
+    "raw_receipt": "/tmp/aethyr-ch11-typed-hosts-one/orbitleague.json",
+    "raw_returncode": 0,
+    "seconds": 465.019,
+    "raw_conservative_source_changes": [
+      "apps/openagents-web/realm-face.c"
+    ],
+    "actual_source_fence": "/tmp/aethyr-ch11-typed-hosts-one/orbitleague-actual-fence.json",
+    "actual_source_changes": [],
+    "scope": "All129checks duringordinarydefaulttypedcompile underauthoredlimits; rawallfacefencecorrectlynotesunrelatedHauntfaceedit. RealClang -MM target/options plusretainedCoaxsource rangesprove itwasnotacompilationinput. No compiler capraised and no passedbuild repeated."
+  }
+}

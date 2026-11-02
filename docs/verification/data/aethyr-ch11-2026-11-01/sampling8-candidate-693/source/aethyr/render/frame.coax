@@ -1,0 +1,130 @@
+// Whole-frame range admission. No host operation happens in this module.
+// The caller supplies valid borrowed views; measured source/GPU allocation
+// descriptors are checked before callers form upload views or submit work.
+#module "aethyr.render.frame";
+#load "types.coax";
+#load "../tests/render-frame-checks.coax";
+#authority;
+
+render_frame_limits_ok :: (rf_l: RenderFrameLimits) -> bool {
+  return rf_l.max_width >= 1 && rf_l.max_width <= 65536 && rf_l.max_height >= 1 && rf_l.max_height <= 65536
+    && rf_l.max_draws >= 0 && rf_l.max_draws <= 65536 && rf_l.max_uploads >= 0 && rf_l.max_uploads <= 48
+    && rf_l.max_vertex_stride >= 0 && rf_l.max_vertex_stride <= 64 && rf_l.index_work >= 0 && rf_l.index_work <= 16777216;
+}
+render_count_word_ok :: (rf_count: int) -> bool { return rf_count >= 0 && rf_count <= 4294967295; }
+render_span_fits :: (rf_first: u64, rf_count: u64, rf_begin: u64, rf_end: u64) -> bool {
+  return rf_first >= rf_begin && rf_first <= rf_end && rf_count <= rf_end - rf_first;
+}
+render_vertex_span_fits :: (rf_d: RenderDrawDomain, rf_first: u64, rf_count: u64) -> bool {
+  return render_span_fits(rf_first, rf_count, rf_d.vertex_begin, rf_d.vertices)
+    || render_span_fits(rf_first, rf_count, rf_d.vertex_alt_begin, rf_d.vertex_alt_end);
+}
+render_frame_counts_ok :: (rf_c: FrameCounts, rf_l: RenderFrameLimits) -> bool {
+  return render_count_word_ok(rf_c.hud_vertices) && render_count_word_ok(rf_c.draw_count)
+    && render_count_word_ok(rf_c.water_draws) && rf_c.water_draws <= rf_c.draw_count
+    && render_count_word_ok(rf_c.grass_instances) && render_count_word_ok(rf_c.particle_instances)
+    && render_count_word_ok(rf_c.surface_vertices) && render_count_word_ok(rf_c.caster_vertices)
+    && render_count_word_ok(rf_c.caster_instances) && rf_c.vertex_stride >= 0
+    && rf_c.vertex_stride <= rf_l.max_vertex_stride && (rf_c.hud_vertices == 0 || rf_c.vertex_stride > 0);
+}
+
+// Subtractions follow their ordering guards, so no addition can wrap at a
+// native address boundary. End points include the empty span at an end.
+render_upload_ok :: (rf_u: RenderUpload) -> bool {
+  rf_max: u64 = 18446744073709551615;
+  if !(rf_u.alignment == 4 || rf_u.alignment == 8 || rf_u.alignment == 16 || rf_u.alignment == 32
+      || rf_u.alignment == 64 || rf_u.alignment == 128 || rf_u.alignment == 256) { return false; }
+  if rf_u.source_bytes > rf_max - rf_u.source_base || rf_u.source_address < rf_u.source_base { return false; }
+  rf_offset := rf_u.source_address - rf_u.source_base;
+  return rf_offset <= rf_u.source_bytes && rf_u.bytes <= rf_u.source_bytes - rf_offset
+    && rf_u.gpu_offset <= rf_u.gpu_bytes && rf_u.bytes <= rf_u.gpu_bytes - rf_u.gpu_offset
+    && rf_u.source_address % rf_u.alignment == 0 && rf_u.gpu_offset % rf_u.alignment == 0 && rf_u.bytes % 4 == 0;
+}
+
+// The raw host bridge calls this before constructing any data view used
+// by geometry admission. Its descriptor view is caller-owned valid data.
+render_uploads_admit :: (rf_l: RenderFrameLimits, rf_uploads: [] RenderUpload) -> RenderFrameResult {
+  rf_out: RenderFrameResult;
+  if !render_frame_limits_ok(rf_l) { rf_out.status = RenderFrameStatus.bad_limits; return rf_out; }
+  if rf_uploads.count > rf_l.max_uploads { rf_out.status = RenderFrameStatus.capacity; return rf_out; }
+  for rf_i: 0..<rf_uploads.count {
+    if !render_upload_ok(rf_uploads[rf_i]) {
+      rf_out.status = RenderFrameStatus.bad_upload; rf_out.bad_upload = rf_i; return rf_out;
+    }
+  }
+  return rf_out;
+}
+
+// Draw stays four u32 words. A nonindexed base's flag is not an instance
+// number; indexed draws retain their whole (necessarily flag-free) base.
+render_decode_draw :: (rf_words: [] u32, rf_record: int) -> RenderDecodedDraw {
+  if rf_record < 0 || rf_record >= rf_words.count / 4 { return RenderDecodedDraw.{kind = RenderDrawKind.invalid}; }
+  rf_at := rf_record * 4;
+  rf_draw := RenderDecodedDraw.{first = rf_words[rf_at], count = rf_words[rf_at + 1],
+    base_instance = rf_words[rf_at + 2], instances = rf_words[rf_at + 3]};
+  if rf_draw.count == 0 || rf_draw.instances == 0 { return rf_draw; }
+  rf_draw.kind = RenderDrawKind.indexed;
+  if (rf_draw.base_instance & 2147483648) != 0 {
+    rf_draw.kind = RenderDrawKind.nonindexed;
+    rf_draw.base_instance &= 2147483647;
+  }
+  return rf_draw;
+}
+
+render_frame_admit :: (rf_c: FrameCounts, rf_l: RenderFrameLimits, rf_direct: RenderDirectDomains, rf_uploads: [] RenderUpload,
+    rf_words: [] u32, rf_domains: [] RenderDrawDomain, rf_indices: [] u32) -> RenderFrameResult {
+  rf_out: RenderFrameResult;
+  if !render_frame_limits_ok(rf_l) { rf_out.status = RenderFrameStatus.bad_limits; return rf_out; }
+  if rf_c.width < 1 || rf_c.width > rf_l.max_width || rf_c.height < 1 || rf_c.height > rf_l.max_height {
+    rf_out.status = RenderFrameStatus.bad_viewport; return rf_out;
+  }
+  if !render_frame_counts_ok(rf_c, rf_l) { rf_out.status = RenderFrameStatus.bad_counts; return rf_out; }
+  rf_requested := [6] int.[rf_c.hud_vertices, rf_c.grass_instances, rf_c.particle_instances,
+    rf_c.surface_vertices, rf_c.caster_vertices, rf_c.caster_instances];
+  rf_caps := [6] u64.[rf_direct.hud_vertices, rf_direct.grass_instances, rf_direct.particle_instances,
+    rf_direct.surface_vertices, rf_direct.caster_vertices, rf_direct.caster_instances];
+  for rf_i: 0..<6 {
+    if rf_caps[rf_i] > 4294967296 { rf_out.status = RenderFrameStatus.bad_domain; rf_out.bad_direct = rf_i; return rf_out; }
+    if cast(u64) rf_requested[rf_i] > rf_caps[rf_i] { rf_out.status = RenderFrameStatus.bad_direct; rf_out.bad_direct = rf_i; return rf_out; }
+  }
+  if rf_c.draw_count > rf_l.max_draws || rf_words.count / 4 < rf_c.draw_count || rf_domains.count < rf_c.draw_count {
+    rf_out.status = RenderFrameStatus.capacity; return rf_out;
+  }
+  rf_memory := render_uploads_admit(rf_l, rf_uploads);
+  if rf_memory.status != RenderFrameStatus.ok { return rf_memory; }
+  rf_active := 0;
+  for rf_i: 0..<rf_c.draw_count {
+    rf_draw := render_decode_draw(rf_words, rf_i);
+    if rf_draw.kind == RenderDrawKind.skip { continue; }
+    rf_out.bad_draw = rf_i;
+    rf_domain := rf_domains[rf_i];
+    if rf_domain.vertex_begin > rf_domain.vertices || rf_domain.vertices > 4294967296
+        || rf_domain.vertex_alt_begin > rf_domain.vertex_alt_end || rf_domain.vertex_alt_end > 4294967296
+        || rf_domain.instance_begin >= rf_domain.instances || rf_domain.instances > 4294967296 || rf_domain.indices > 4294967296 {
+      rf_out.status = RenderFrameStatus.bad_domain; return rf_out;
+    }
+    rf_first := cast(u64) rf_draw.first; rf_count := cast(u64) rf_draw.count;
+    rf_base := cast(u64) rf_draw.base_instance; rf_instances := cast(u64) rf_draw.instances;
+    if !render_span_fits(rf_base, rf_instances, rf_domain.instance_begin, rf_domain.instances) {
+      rf_out.status = RenderFrameStatus.bad_draw; return rf_out;
+    }
+    if rf_draw.kind == RenderDrawKind.nonindexed {
+      if !render_vertex_span_fits(rf_domain, rf_first, rf_count) {
+        rf_out.status = RenderFrameStatus.bad_draw; return rf_out;
+      }
+    } else {
+      if !render_span_fits(rf_first, rf_count, 0, rf_domain.indices)
+          || !render_span_fits(rf_first, rf_count, 0, cast(u64) rf_indices.count) {
+        rf_out.status = RenderFrameStatus.bad_draw; return rf_out;
+      }
+      for rf_j: 0..<cast(int) rf_draw.count {
+        if rf_out.checked_indices >= rf_l.index_work { rf_out.status = RenderFrameStatus.index_budget; return rf_out; }
+        rf_index := rf_indices[cast(int) rf_draw.first + rf_j]; rf_out.checked_indices += 1;
+        if !render_vertex_span_fits(rf_domain, cast(u64) rf_index, 1) { rf_out.status = RenderFrameStatus.bad_index; return rf_out; }
+      }
+    }
+    rf_active += 1;
+  }
+  rf_out.bad_draw = -1; rf_out.admitted_draws = rf_active;
+  return rf_out;
+}

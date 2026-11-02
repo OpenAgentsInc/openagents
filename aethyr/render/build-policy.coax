@@ -1,0 +1,294 @@
+// The shader build reads compiler observations, then admits them against the
+// renderer catalog. Strings in a receipt borrow its unchanged report buffer.
+#module "aethyr.render.buildpolicy";
+#load "emit.coax";
+#load "capabilities.coax";
+#load "catalog.coax" as bc;
+#load "bindings.coax" as rb;
+#load "passes.coax" as bp;
+#load "../../coax/lib/json/json.coax";
+#authority;
+
+RenderVertexInput :: struct {location:int;scalar:int;width:int;offset:int;}
+RenderBuildReflection :: struct {
+  ok:bool; schema:int; tree_version:int; derivatives:int; control:int;
+  use_count:int; uses:[32]RenderReflectedUse;
+  vertex_stride:int; attribute_count:int; attributes:[32]RenderVertexInput;
+  fragment_targets:int; fragment_depth:bool;
+}
+RenderReportWords :: struct {ok:bool;count:int;words:[8]string;}
+RenderSpirvInfo :: struct {ok:bool;native_int64:bool;}
+RenderBuildModule :: struct {
+  ok:bool; source:string; strip:string;
+  vertex_count:int; fragment_count:int; vertices:[14]string; fragments:[14]string;
+}
+
+#test "build reflection reads actual versioned rows without losing resource or input layout" {
+  r:=render_build_reflection("binding 0 storage u\nbinding 1 image layers\nreflection 2\ntree-version 3\nresource 0 1 0 4 3 u\nresource 1 2 1 0 2 layers\nvertex-stride 20\nvertex-input 0 2 4 0\nvertex-input 1 4 1 16\nfragment-targets 2\nfragment-depth 1\nderivatives 1 2\ncontrol 1 2\n");
+  #assert r.ok && r.schema==2 && r.tree_version==3 && r.derivatives==2 && r.control==2;
+  #assert r.use_count==2 && r.uses[0].name=="u" && r.uses[0].slot==0 && r.uses[0].native_kind==1 && r.uses[0].shape==0 && r.uses[0].stride==4 && r.uses[0].stages==3;
+  #assert r.uses[1].name=="layers" && r.uses[1].slot==1 && r.uses[1].native_kind==2 && r.uses[1].shape==1 && r.uses[1].stride==0 && r.uses[1].stages==2;
+  #assert r.vertex_stride==20 && r.attribute_count==2 && r.fragment_targets==2 && r.fragment_depth;
+  #assert r.attributes[0].location==0 && r.attributes[0].scalar==2 && r.attributes[0].width==4 && r.attributes[0].offset==0;
+  #assert r.attributes[1].location==1 && r.attributes[1].scalar==4 && r.attributes[1].width==1 && r.attributes[1].offset==16;
+}
+RB_REPORT :: "reflection 2\ntree-version 2\nfragment-targets 1\nfragment-depth 0\nderivatives 1 0\ncontrol 1 0\n";
+#test "build reflection accepts a procedural vertex and refuses incomplete or ambiguous reports" {
+  r:=render_build_reflection(RB_REPORT);
+  #assert r.ok && r.use_count==0 && r.attribute_count==0 && r.vertex_stride==0 && !r.fragment_depth;
+  bad:=[12]string.["", "reflection 2\n", "reflection 1\ntree-version 2\nfragment-targets 1\nfragment-depth 0\nderivatives 1 0\ncontrol 1 0\n",
+    "reflection 2\ntree-version 1\nfragment-targets 1\nfragment-depth 0\nderivatives 1 0\ncontrol 1 0\n",
+    "reflection 2\ntree-version 2\nfragment-targets 1\nfragment-depth 0\nderivatives 2 0\ncontrol 1 0\n",
+    "reflection 2\ntree-version 2\nfragment-targets 1\nfragment-depth 0\nderivatives 1 0\ncontrol 2 0\n",
+    "reflection 2\ntree-version 2\nfragment-targets 1\nfragment-depth 2\nderivatives 1 0\ncontrol 1 0\n",
+    "reflection 2\ntree-version 2\nfragment-targets 1\nfragment-depth 0\nderivatives 1 4\ncontrol 1 0\n",
+    "reflection 2\ntree-version 2\nfragment-targets 1\nfragment-depth 0\nderivatives 1 0\ncontrol 1 4\n",
+    "reflection 2\ntree-version 2\nfragment-targets 1\nfragment-depth 0\nderivatives 1 2\ncontrol 1 0\n",
+    "reflection 2\ntree-version 2\nfragment-targets 1\nfragment-depth 0\nderivatives 1 0\ncontrol 1 2\n",
+    "reflection 2\nreflection 2\ntree-version 2\nfragment-targets 1\nfragment-depth 0\nderivatives 1 0\ncontrol 1 0\n"];
+  for b:bad {#assert !render_build_reflection(b).ok;}
+}
+#test "reflection token and integer readers reject truncation overflow and extra columns" {
+  w:=render_report_words("vertex-input 0 2 4 16");
+  #assert w.ok && w.count==5 && w.words[0]=="vertex-input" && w.words[4]=="16";
+  #assert !render_report_words("").ok && !render_report_words("a b c d e f g h i").ok;
+  #assert render_report_words("a").ok && render_report_words("a").count==1;
+  #assert render_report_words("a\rb").words[1]=="b";
+  #assert render_report_words("  a\tb \r").ok && render_report_words("  a\tb \r").count==2;
+  #assert render_report_int("0")==0 && render_report_int("9")==9 && render_report_int("2147483647")==2147483647;
+  for b:[9]string.["","-1","+1","1x","/",":","2147483648","9999999999","10000000000"] {#assert render_report_int(b)==-1;}
+}
+#test "reflection required rows are unique and their exact column counts are checked" {
+  rows:=[6]string.["reflection 2","tree-version 2","fragment-targets 1","fragment-depth 0","derivatives 1 0","control 1 0"];
+  for missing:0..<6 {buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);
+    for k:0..<6 {if k!=missing {jo_put(o[..],rows[k]);jo_put(o[..],"\n");}}
+    #assert !render_build_reflection(jo_text(o[..])).ok;
+  }
+  for duplicate:0..<6 {buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],RB_REPORT);jo_put(o[..],rows[duplicate]);
+    #assert !render_build_reflection(jo_text(o[..])).ok;
+  }
+  for tail:[9]string.["unknown 1","fragment-depth 0 extra","derivatives 1","control 1","binding 0 storage","binding 0 storage u extra","resource 0 1 0 4 3 u extra","vertex-input 0 2 4","vertex-stride 16 extra"] {
+    buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],RB_REPORT);jo_put(o[..],tail);
+    #assert !render_build_reflection(jo_text(o[..])).ok;
+  }
+  #assert render_build_reflection(RB_REPORT[0..<RB_REPORT.count-1]).ok;
+  #assert render_build_reflection("reflection 2\ntree-version 2\nfragment-targets 0\nfragment-depth 0\nderivatives 1 1\ncontrol 1 1").ok;
+}
+#test "reflection resource fields and the thirty-second slot have explicit bounds" {
+  rows:=[10]string.["resource -1 1 0 4 3 u","resource 1 1 0 4 3 u","resource 0 0 0 4 3 u","resource 0 4 0 4 3 u",
+    "resource 0 1 -1 4 3 u","resource 0 1 3 4 3 u","resource 0 1 0 -1 3 u","resource 0 1 0 4 0 u","resource 0 1 0 4 4 u","resource 0 1 0 4 3"];
+  for row:rows {buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],RB_REPORT);jo_put(o[..],row);#assert !render_build_reflection(jo_text(o[..])).ok;}
+  for kind:1..<4 {buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],RB_REPORT);jo_put(o[..],"resource 0 ");jo_int(o[..],kind);jo_put(o[..]," 2 0 1 r");
+    r:=render_build_reflection(jo_text(o[..]));#assert r.ok && r.uses[0].native_kind==kind && r.uses[0].shape==2 && r.uses[0].stride==0 && r.uses[0].stages==1;
+  }
+  buf:[8192]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],RB_REPORT);
+  for i:0..<33 {
+    jo_put(o[..],"resource ");jo_int(o[..],i);jo_put(o[..]," 1 0 4 3 u\n");r:=render_build_reflection(jo_text(o[..]));
+    #assert r.ok==(i<32);if i<32 {#assert r.use_count==i+1 && r.uses[i].slot==i;}
+  }
+}
+#test "reflection target and vertex input endpoints refuse malformed layout" {
+  rows:=[20]string.["fragment-targets -1","fragment-targets 9","vertex-stride 16","vertex-input 0 2 1 0",
+    "vertex-stride 16\nvertex-stride 16","vertex-stride 16\nvertex-input 1 2 1 0","vertex-stride 16\nvertex-input 0 1 1 0",
+    "vertex-stride 16\nvertex-input 0 5 1 0","vertex-stride 16\nvertex-input 0 2 0 0","vertex-stride 20\nvertex-input 0 2 5 0",
+    "vertex-stride 16\nvertex-input 0 2 1 -1","vertex-stride 16\nvertex-input 0 2 1 2","vertex-stride 16\nvertex-input 0 2 1 16",
+    "vertex-stride 17\nvertex-input 0 2 4 0","vertex-stride 65540\nvertex-input 0 2 4 0","vertex-stride 0\nvertex-input 0 2 1 0",
+    "vertex-stride 4\nvertex-input 0 2 2 0","vertex-stride -1\nvertex-input 0 2 1 0","vertex-stride 16\nvertex-input 0 2 4 4","vertex-stride 16\nvertex-input 0 2 4 0 extra"];
+  for row:rows {
+    buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);
+    // Target rows replace, rather than duplicate, the required target row.
+    if row[0]=='f' {jo_put(o[..],"reflection 2\ntree-version 2\nfragment-depth 0\nderivatives 1 0\ncontrol 1 0\n");}
+    else {jo_put(o[..],RB_REPORT);}
+    jo_put(o[..],row);#assert !render_build_reflection(jo_text(o[..])).ok;
+  }
+  for row:[3]string.["vertex-stride 4\nvertex-input 0 3 1 0","vertex-stride 65536\nvertex-input 0 4 4 65520","vertex-stride 16\nvertex-input 0 2 3 4"] {
+    buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],RB_REPORT);jo_put(o[..],row);#assert render_build_reflection(jo_text(o[..])).ok;
+  }
+  #assert render_build_reflection("reflection 2\ntree-version 2\nfragment-targets 8\nfragment-depth 0\nderivatives 1 0\ncontrol 1 0").ok;
+  buf:[8192]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_put(o[..],RB_REPORT);jo_put(o[..],"vertex-stride 128\n");
+  for i:0..<33 {
+    jo_put(o[..],"vertex-input ");jo_int(o[..],i);jo_put(o[..]," 2 1 ");jo_int(o[..],i*4);jo_put(o[..],"\n");
+    r:=render_build_reflection(jo_text(o[..]));#assert r.ok==(i<32);if i<32 {#assert r.attribute_count==i+1 && r.attributes[i].offset==i*4;}
+  }
+}
+#test "SPIRV requirement scanning uses framed instructions and the actual Int64 capability" {
+  rbp_spirv_words:=[10]u32.[0x07230203,0x00010300,0,20,0,0x00020011,1,0x0003000e,0,1];
+  r:=render_spirv_info(rbp_spirv_words[..]);#assert r.ok && !r.native_int64;
+  rbp_spirv_words[6]=11;r=render_spirv_info(rbp_spirv_words[..]);#assert r.ok && r.native_int64;
+  rbp_spirv_words[5]=0x00020012;#assert render_spirv_info(rbp_spirv_words[..]).ok && !render_spirv_info(rbp_spirv_words[..]).native_int64;
+  rbp_spirv_words[5]=0x00010011;#assert !render_spirv_info(rbp_spirv_words[..]).ok;
+  rbp_spirv_words[5]=0x00000011;#assert !render_spirv_info(rbp_spirv_words[..]).ok;
+  rbp_spirv_words[5]=0x00060011;#assert !render_spirv_info(rbp_spirv_words[..]).ok;
+  rbp_spirv_words[0]=0;#assert !render_spirv_info(rbp_spirv_words[..]).ok;
+  #assert !render_spirv_info(rbp_spirv_words[0..<5]).ok;
+  #assert !render_spirv_info(rbp_spirv_words[0..<4]).ok;
+  rbp_spirv_words[0]=0x07230203;#assert render_spirv_info(rbp_spirv_words[0..<5]).ok;
+  rbp_spirv_words[5]=0x00010000;#assert render_spirv_info(rbp_spirv_words[0..<6]).ok;
+  rbp_spirv_words[5]=0x00060000;#assert !render_spirv_info(rbp_spirv_words[..]).ok;
+}
+#test "module emission groups a source and derives its aliases from catalog entries" {
+  entries:=[3]bc.RenderEntry.[bc.render_catalog_entry(0,bp.RenderPassId.background),
+    bc.render_catalog_entry(0,bp.RenderPassId.bloom),bc.render_catalog_entry(0,bp.RenderPassId.hud)];
+  r:=render_build_module(entries[..]);
+  #assert r.ok && r.source=="apps/openagents-web/gpu/realm.coax" && r.strip=="realm_";
+  #assert r.vertex_count==2 && r.fragment_count==3 && r.vertices[0]=="realm_bg_vs" && r.vertices[1]=="realm_fx_vs";
+  #assert r.fragments[0]=="realm_bg_fs" && r.fragments[1]=="realm_bloom_fs" && r.fragments[2]=="realm_fx_fs";
+  entries[1]=entries[0];r=render_build_module(entries[..]);#assert r.ok && r.fragment_count==2;
+  #assert !render_build_module(entries[0..<0]).ok;
+}
+#forall "module emission refuses an entry that cannot share the source or prefix" rbp_changed_field:0..<8 {
+  entries:=[2]bc.RenderEntry.[bc.render_catalog_entry(0,bp.RenderPassId.background),bc.render_catalog_entry(0,bp.RenderPassId.hud)];
+  if rbp_changed_field==0 {entries[1].valid=false;}if rbp_changed_field==1 {entries[1].source="other.coax";}
+  if rbp_changed_field==2 {entries[1].binding_set=1;}if rbp_changed_field==3 {entries[1].wgsl_vertex="other";}
+  if rbp_changed_field==4 {entries[1].wgsl_fragment="other";}if rbp_changed_field==5 {entries[1].vertex="short";}
+  if rbp_changed_field==6 {entries[1].fragment="short";}if rbp_changed_field==7 {entries[1].vertex="other_fx_vs";entries[1].fragment="other_fx_fs";}
+  #assert !render_build_module(entries[..]).ok;
+}
+#test "a module admits one unprefixed entry and its full entry table but refuses empty names" {
+  entries:[15]bc.RenderEntry;
+  for i:0..<15 {entries[i]=bc.RenderEntry.{valid=true,source="x",vertex="v",fragment="f",wgsl_vertex="v",wgsl_fragment="f"};}
+  r:=render_build_module(entries[0..<1]);#assert r.ok && r.strip=="" && r.vertex_count==1 && r.fragment_count==1 && r.source=="x";
+  #assert render_build_module(entries[0..<14]).ok && !render_build_module(entries[..]).ok;
+  entries[0].source="";#assert !render_build_module(entries[0..<1]).ok;entries[0].source="x";
+  entries[0].wgsl_vertex="";#assert !render_build_module(entries[0..<1]).ok;entries[0].wgsl_vertex="v";
+  entries[0].wgsl_fragment="";#assert !render_build_module(entries[0..<1]).ok;
+  entries[0].wgsl_vertex="";entries[0].fragment="v";#assert !render_build_module(entries[0..<1]).ok;
+}
+#test "the real vertex-only caster contributes no fictitious fragment entry" {
+  entries:=[2]bc.RenderEntry.[bc.render_catalog_entry(7,bp.RenderPassId.background),bc.render_catalog_entry(7,bp.RenderPassId.caster)];
+  r:=render_build_module(entries[..]);#assert r.ok && r.vertex_count==2 && r.fragment_count==1 && r.vertices[1]=="fixture_caster_vs" && r.fragments[0]=="fixture_bg_fs";
+  r=render_build_module(entries[1..<2]);#assert r.ok && r.vertex_count==1 && r.fragment_count==0;
+  entries[1].wgsl_fragment="caster_fs";#assert !render_build_module(entries[..]).ok;
+}
+#test "bindings text comes from the declared logical addresses and uniform transport" {
+  b:=[3]rb.RenderBinding.[rb.RenderBinding.{name="u",kind=rb.RenderResourceKind.uniform,uniform_vec4s=3937,stride=4},
+    rb.RenderBinding.{name="vertices",kind=rb.RenderResourceKind.storage,group=1,stride=4},
+    rb.RenderBinding.{name="shadow_cmp",kind=rb.RenderResourceKind.comparison,group=2,binding=1}];
+  text:[128]u8;n:=render_build_bindings(b[..],text[..]);
+  #assert n==47 && cast(string)text[0..<n]=="u 0 0 uniform 3937\nvertices 1 0\nshadow_cmp 2 1\n";
+  #assert render_build_bindings(b[..],text[0..<n-1])== -1;
+  text[0]=99;b[0].stride=0;#assert render_build_bindings(b[..],text[..])== -1 && text[0]==99;
+}
+
+render_build_module :: (entries:[]bc.RenderEntry)->RenderBuildModule {
+  r:RenderBuildModule;if entries.count<1 || entries.count>14 {return r;}
+  r.source=entries[0].source;if r.source.count==0 {return r;}
+  for i:0..<entries.count {
+    e:=entries[i];if !e.valid || e.source!=r.source || e.binding_set!=entries[0].binding_set {return r;}
+    names:=[2]string.[e.vertex,e.fragment];aliases:=[2]string.[e.wgsl_vertex,e.wgsl_fragment];
+    for stage:0..<2 {
+      name:=names[stage];alias:=aliases[stage];
+      // The caster's depth-only pipeline has no fragment entry. It still
+      // contributes its vertex entry to the shared WGSL module.
+      if stage==1 && name.count==0 && alias.count==0 {continue;}
+      if alias.count==0 || name.count<alias.count {return r;}
+      n:=name.count-alias.count;if name[n..<name.count]!=alias {return r;}
+      prefix:=name[0..<n];
+      if i==0 && stage==0 {r.strip=prefix;}
+      else if prefix!=r.strip {return r;}
+      found:=false;
+      if stage==0 {
+        for k:0..<r.vertex_count {if r.vertices[k]==name {found=true;}}
+        if !found {r.vertices[r.vertex_count]=name;r.vertex_count+=1;}
+      } else {
+        for k:0..<r.fragment_count {if r.fragments[k]==name {found=true;}}
+        if !found {r.fragments[r.fragment_count]=name;r.fragment_count+=1;}
+      }
+    }
+  }
+  r.ok=true;return r;
+}
+render_build_bindings :: (bindings:[]rb.RenderBinding,out:[]u8)->int {
+  if rb.render_bindings(bindings)!=rb.RenderBindingStatus.ok {return -1;}
+  o:[1]Jo;jo_start(o[..],out);
+  for b:bindings {
+    jo_put(o[..],b.name);jo_put(o[..]," ");jo_int(o[..],b.group);jo_put(o[..]," ");jo_int(o[..],b.binding);
+    if b.kind==rb.RenderResourceKind.uniform {jo_put(o[..]," uniform ");jo_int(o[..],b.uniform_vec4s);}
+    jo_put(o[..],"\n");
+  }
+  if o[0].bad {return -1;}return o[0].n;
+}
+
+render_report_int :: (s:string)->int {
+  if s.count==0 {return -1;}
+  n:=0;
+  for c:s {
+    if c<'0' || c>'9' {return -1;}
+    digit:=cast(int)(c-'0');
+    if n>(2147483647-digit)/10 {return -1;}
+    n=n*10+digit;
+  }
+  return n;
+}
+render_report_words :: (s:string)->RenderReportWords {
+  r:RenderReportWords;i:=0;
+  while i<s.count {
+    if s[i]==' ' || s[i]=='\t' || s[i]=='\r' {i+=1;continue;}
+    if r.count==8 {return r;}
+    first:=i;
+    while i<s.count && s[i]!=' ' && s[i]!='\t' && s[i]!='\r' {i+=1;}
+    r.words[r.count]=s[first..<i];r.count+=1;
+  }
+  r.ok=r.count>0;return r;
+}
+render_build_reflection :: (s:string)->RenderBuildReflection {
+  r:RenderBuildReflection;rbp_seen:=0;at:=0;
+  while at<s.count {
+    end:=at;while end<s.count && s[end]!='\n' {end+=1;}
+    w:=render_report_words(s[at..<end]);at=end+1;
+    if !w.ok {return r;}
+    key:=w.words[0];bit:int;
+    if key=="binding" {
+      // Legacy rows remain for older tooling. The versioned resource rows
+      // below, not these untyped rows, are the admitted resource contract.
+      if w.count!=4 {return r;}
+      continue;
+    }
+    if key=="resource" {
+      if w.count!=7 || r.use_count==32 {return r;}
+      u:=RenderReflectedUse.{slot=render_report_int(w.words[1]),native_kind=render_report_int(w.words[2]),
+        shape=render_report_int(w.words[3]),stride=render_report_int(w.words[4]),stages=render_report_int(w.words[5]),name=w.words[6]};
+      if u.slot!=r.use_count || u.native_kind<1 || u.native_kind>3 || u.shape<0 || u.shape>2 || u.stride<0 || u.stages<1 || u.stages>3 {return r;}
+      r.uses[r.use_count]=u;r.use_count+=1;continue;
+    }
+    if key=="vertex-input" {
+      if w.count!=5 || r.attribute_count==32 {return r;}
+      a:=RenderVertexInput.{location=render_report_int(w.words[1]),scalar=render_report_int(w.words[2]),
+        width=render_report_int(w.words[3]),offset=render_report_int(w.words[4])};
+      if a.location!=r.attribute_count || a.scalar<2 || a.scalar>4 || a.width<1 || a.width>4 || a.offset<0 || a.offset%4!=0 {return r;}
+      r.attributes[r.attribute_count]=a;r.attribute_count+=1;continue;
+    }
+    n:=render_report_int(w.words[1]);
+    if key=="reflection" {bit=1;r.schema=n;}
+    else if key=="tree-version" {bit=2;r.tree_version=n;}
+    else if key=="fragment-targets" {bit=4;r.fragment_targets=n;}
+    else if key=="fragment-depth" {bit=8;if n<0 || n>1 {return r;}r.fragment_depth=n==1;}
+    else if key=="derivatives" {bit=16;if w.count!=3 || n!=1 {return r;}r.derivatives=render_report_int(w.words[2]);}
+    else if key=="control" {bit=32;if w.count!=3 || n!=1 {return r;}r.control=render_report_int(w.words[2]);}
+    else if key=="vertex-stride" {bit=64;r.vertex_stride=n;}
+    else {return r;}
+    if (rbp_seen&bit)!=0 {return r;}
+    if bit!=16 && bit!=32 && w.count!=2 {return r;}
+    rbp_seen|=bit;
+  }
+  if (rbp_seen&63)!=63 || r.fragment_targets<0 || r.fragment_targets>8 {return r;}
+  if (rbp_seen&64)!=0 {
+    if r.vertex_stride/4>16384 || r.vertex_stride%4!=0 || r.attribute_count==0 {return r;}
+  } else if r.attribute_count!=0 {return r;}
+  for i:0..<r.attribute_count {a:=r.attributes[i];if a.offset+a.width*4>r.vertex_stride {return r;}}
+  requirements:=RenderShaderRequirements.{reflection_schema=r.schema,tree_version=r.tree_version,derivatives=r.derivatives,control=r.control};
+  device:=RenderDeviceCapabilities.{backend=RenderBackend.webgpu,helper_enabled=true};
+  r.ok=render_capabilities_admit(requirements,device,false)==RenderCapabilityStatus.ok;return r;
+}
+render_spirv_info :: (rbp_spirv_words:[]u32)->RenderSpirvInfo {
+  r:RenderSpirvInfo;
+  if rbp_spirv_words.count<5 || rbp_spirv_words[0]!=0x07230203 {return r;}
+  at:=5;
+  while at<rbp_spirv_words.count {
+    first:=rbp_spirv_words[at];count:=cast(int)(first>>16);opcode:=first&65535;
+    if count<1 || count>rbp_spirv_words.count-at {return r;}
+    if opcode==17 {if count!=2 {return r;}if rbp_spirv_words[at+1]==11 {r.native_int64=true;}}
+    at+=count;
+  }
+  r.ok=true;return r;
+}

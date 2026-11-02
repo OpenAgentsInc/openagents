@@ -1,0 +1,617 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:42:12: mutant survived: 13 became 14
+   if index==13 {return render_media_use(slot);}return render_catalog_use(profile,cast(RenderPassId)index,slot);
+             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:46:13: mutant survived: '||' became '&&'
+   if index<0 || index>13 {return RFShaderLayout.{status=RQStatus.resource};}
+              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:46:21: mutant survived: '>' became '>='
+   if index<0 || index>13 {return RFShaderLayout.{status=RQStatus.resource};}
+                      ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:46:22: mutant survived: 13 became 14
+   if index<0 || index>13 {return RFShaderLayout.{status=RQStatus.resource};}
+                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:48:12: mutant survived: 13 became 14
+   if index==13 {
+             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:49:6: mutant survived: the if condition was negated
+    if !render_catalog(profile).features.media {return RFShaderLayout.{status=RQStatus.resource};}
+       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:50:32: mutant survived: the assignment was removed
+    m:=render_media_entry();entry=RenderEntry.{valid=true,fragment=m.fragment};
+                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:50:52: mutant survived: true became false
+    m:=render_media_entry();entry=RenderEntry.{valid=true,fragment=m.fragment};
+                                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:54:45: mutant survived: the assignment was removed
+   if r.pipeline.status!=RQStatus.ok {r.status=r.pipeline.status;return r;}
+                                              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:55:51: mutant survived: '>' became '>='
+   if r.pipeline.has_fragment!=(entry.fragment.count>0) {r.status=RQStatus.unsupported;return r;}
+                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:55:52: mutant survived: 0 became 1
+   if r.pipeline.has_fragment!=(entry.fragment.count>0) {r.status=RQStatus.unsupported;return r;}
+                                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:55:64: mutant survived: the assignment was removed
+   if r.pipeline.has_fragment!=(entry.fragment.count>0) {r.status=RQStatus.unsupported;return r;}
+                                                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:56:23: mutant survived: 13 became 14
+   expected:=ifx index==13 then render_media_use_count() else render_catalog_use_count(profile,cast(RenderPassId)index);stages:[32]int;
+                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:62:11: mutant survived: '==' became '!='
+    if stage==1 && !r.pipeline.has_fragment {continue;}
+            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:62:13: mutant survived: 1 became 2
+    if stage==1 && !r.pipeline.has_fragment {continue;}
+              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:67:15: mutant survived: '>=' became '>'
+      if r.count>=expected {r.status=RQStatus.unsupported;return r;}
+                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:67:35: mutant survived: the assignment was removed
+      if r.count>=expected {r.status=RQStatus.unsupported;return r;}
+                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:72:57: mutant survived: '||' became '&&'
+     if arg.kind!=use.native_kind || arg.shape!=use.shape || arg.stride!=use.stride {r.status=RQStatus.unsupported;return r;}
+                                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:72:33: mutant survived: '||' became '&&'
+     if arg.kind!=use.native_kind || arg.shape!=use.shape || arg.stride!=use.stride {r.status=RQStatus.unsupported;return r;}
+                                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:72:92: mutant survived: the assignment was removed
+     if arg.kind!=use.native_kind || arg.shape!=use.shape || arg.stride!=use.stride {r.status=RQStatus.unsupported;return r;}
+                                                                                             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:76:32: mutant survived: the assignment was removed
+   if r.count!=expected {r.status=RQStatus.unsupported;return r;}
+                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:77:8: mutant survived: 0 became 1
+   for k:0..<r.count {if stages[k]!=rf_shader_use(profile,index,k).stages {r.status=RQStatus.unsupported;return r;}}
+         ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:77:82: mutant survived: the assignment was removed
+   for k:0..<r.count {if stages[k]!=rf_shader_use(profile,index,k).stages {r.status=RQStatus.unsupported;return r;}}
+                                                                                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:81:28: mutant survived: '||' became '&&'
+    if bytes%4!=0 || bytes<4 || bytes>256 {r.status=RQStatus.unsupported;return r;}
+                             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:81:17: mutant survived: '||' became '&&'
+    if bytes%4!=0 || bytes<4 || bytes>256 {r.status=RQStatus.unsupported;return r;}
+                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:81:25: mutant survived: '<' became '<='
+    if bytes%4!=0 || bytes<4 || bytes>256 {r.status=RQStatus.unsupported;return r;}
+                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:81:26: mutant survived: 4 became 5
+    if bytes%4!=0 || bytes<4 || bytes>256 {r.status=RQStatus.unsupported;return r;}
+                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:81:36: mutant survived: '>' became '>='
+    if bytes%4!=0 || bytes<4 || bytes>256 {r.status=RQStatus.unsupported;return r;}
+                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:81:37: mutant survived: 256 became 257
+    if bytes%4!=0 || bytes<4 || bytes>256 {r.status=RQStatus.unsupported;return r;}
+                                      ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:81:50: mutant survived: the assignment was removed
+    if bytes%4!=0 || bytes<4 || bytes>256 {r.status=RQStatus.unsupported;return r;}
+                                                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:82:87: mutant survived: 1 became 2
+    r.attribute_stride=bytes/4;r.attribute_count=rq_ir_io_field_count(p,tree,meta,attrs,1);
+                                                                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:85:39: mutant survived: the assignment was removed
+     if field.byte_offset%4!=0 {r.status=RQStatus.unsupported;return r;}
+                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:93:41: mutant survived: '||' became '&&'
+   a:=render_catalog(profile);if !a.valid || c.vertex_stride!=a.vertex_stride || c.draw_count>4096 {return RFRequirements.{status=RQStatus.resource};}
+                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:93:92: mutant survived: '>' became '>='
+   a:=render_catalog(profile);if !a.valid || c.vertex_stride!=a.vertex_stride || c.draw_count>4096 {return RFRequirements.{status=RQStatus.resource};}
+                                                                                             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:93:93: mutant survived: 4096 became 4097
+   a:=render_catalog(profile);if !a.valid || c.vertex_stride!=a.vertex_stride || c.draw_count>4096 {return RFRequirements.{status=RQStatus.resource};}
+                                                                                              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:101:18: mutant survived: the if condition was negated
+    else if op.kind==RenderOpKind.copy {targets[0]=op.target;}
+                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:101:18: mutant survived: '==' became '!='
+    else if op.kind==RenderOpKind.copy {targets[0]=op.target;}
+                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:101:49: mutant survived: the assignment was removed
+    else if op.kind==RenderOpKind.copy {targets[0]=op.target;}
+                                                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:101:47: mutant survived: 0 became 1
+    else if op.kind==RenderOpKind.copy {targets[0]=op.target;}
+                                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:109:13: mutant survived: '>' became '>='
+     if pixels>r.pass_pixels {r.pass_pixels=pixels;}
+              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:117:26: mutant survived: '||' became '&&'
+   if policy.shader_work<1 || policy.shader_work>100000000 || policy.pixel_work<1 || policy.pixel_work>100000000 {r.status=RQStatus.resource;return r;}
+                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:117:48: mutant survived: 100000000 became 100000001
+   if policy.shader_work<1 || policy.shader_work>100000000 || policy.pixel_work<1 || policy.pixel_work>100000000 {r.status=RQStatus.resource;return r;}
+                                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:117:78: mutant survived: '<' became '<='
+   if policy.shader_work<1 || policy.shader_work>100000000 || policy.pixel_work<1 || policy.pixel_work>100000000 {r.status=RQStatus.resource;return r;}
+                                                                               ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:117:79: mutant survived: 1 became 2
+   if policy.shader_work<1 || policy.shader_work>100000000 || policy.pixel_work<1 || policy.pixel_work>100000000 {r.status=RQStatus.resource;return r;}
+                                                                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:119:38: mutant survived: the assignment was removed
+   if req.status!=RQStatus.ok {r.status=req.status;return r;}if req.loading {r.loading=true;return r;}
+                                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:119:85: mutant survived: the assignment was removed
+   if req.status!=RQStatus.ok {r.status=req.status;return r;}if req.loading {r.loading=true;return r;}
+                                                                                      ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:119:86: mutant survived: true became false
+   if req.status!=RQStatus.ok {r.status=req.status;return r;}if req.loading {r.loading=true;return r;}
+                                                                                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:120:79: mutant survived: '*' became '+'
+   c:=input.counts;profile:=render_catalog(input.profile);screen_pixels:=c.width*c.height;
+                                                                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:121:219: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                                                                                                                                                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:121:184: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                                                                                                                                         ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:121:150: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                                                                                                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:121:115: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:121:77: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:121:40: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                         ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:121:266: mutant survived: '<' became '<='
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                                                                                                                                                                                                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:124:80: mutant survived: '+' became '-'
+   uniforms:=work.words[RQ_IR_WORDS..<RQ_IR_WORDS+nu];hud:=work.words[RQ_IR_WORDS+nu..<req.word_words];
+                                                                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:125:63: mutant survived: 0 became 1
+   for j:0..<nu {uniforms[j]=f32_bits(input.uniforms[j]);}for j:0..<nh {hud[j]=f32_bits(input.hud[j]);}
+                                                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:125:77: mutant survived: the assignment was removed
+   for j:0..<nu {uniforms[j]=f32_bits(input.uniforms[j]);}for j:0..<nh {hud[j]=f32_bits(input.hud[j]);}
+                                                                              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:127:15: mutant survived: 0 became 1
+   for resource:0..<profile.binding_count {
+                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:128:43: mutant survived: 0 became 1
+    b:=render_catalog_binding(input.profile,0,resource);if b.kind!=RenderResourceKind.storage {continue;}
+                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:129:47: mutant survived: 0 became 1
+    source:=render_binding_source(input.profile,0,resource);q:=rf_buffer(b,source,input.buffers,uniforms,empty);
+                                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:130:14: mutant survived: the if condition was negated
+    if q.status!=RQStatus.ok {r.status=q.status;return r;}geometry[ng]=RenderGeometryBuffer.{resource=resource,words=q.buffer.words};ng+=1;
+               ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:130:14: mutant survived: '!=' became '=='
+    if q.status!=RQStatus.ok {r.status=q.status;return r;}geometry[ng]=RenderGeometryBuffer.{resource=resource,words=q.buffer.words};ng+=1;
+               ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:130:37: mutant survived: the assignment was removed
+    if q.status!=RQStatus.ok {r.status=q.status;return r;}geometry[ng]=RenderGeometryBuffer.{resource=resource,words=q.buffer.words};ng+=1;
+                                      ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:130:69: mutant survived: the assignment was removed
+    if q.status!=RQStatus.ok {r.status=q.status;return r;}geometry[ng]=RenderGeometryBuffer.{resource=resource,words=q.buffer.words};ng+=1;
+                                                                      ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:130:134: mutant survived: the assignment was removed
+    if q.status!=RQStatus.ok {r.status=q.status;return r;}geometry[ng]=RenderGeometryBuffer.{resource=resource,words=q.buffer.words};ng+=1;
+                                                                                                                                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:130:134: mutant survived: '+=' became '-='
+    if q.status!=RQStatus.ok {r.status=q.status;return r;}geometry[ng]=RenderGeometryBuffer.{resource=resource,words=q.buffer.words};ng+=1;
+                                                                                                                                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:130:136: mutant survived: 1 became 2
+    if q.status!=RQStatus.ok {r.status=q.status;return r;}geometry[ng]=RenderGeometryBuffer.{resource=resource,words=q.buffer.words};ng+=1;
+                                                                                                                                         ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:132:149: mutant survived: the assignment was removed
+   g:=render_geometry_admit(input.profile,c,input.draw_words,input.indices,input.uniforms,geometry[0..<ng],input.hud,work.domains,16777216);r.geometry=g.status;
+                                                                                                                                                      ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:133:48: mutant survived: the assignment was removed
+   if g.status!=RenderGeometryStatus.ok {r.status=RQStatus.resource;return r;}
+                                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:134:139: mutant survived: the assignment was removed
+   uploads:[]RenderUpload;f:=render_frame_admit(c,RenderFrameLimits.{},g.direct,uploads,input.draw_words,work.domains,input.indices);r.frame=f.status;
+                                                                                                                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:135:45: mutant survived: the assignment was removed
+   if f.status!=RenderFrameStatus.ok {r.status=RQStatus.resource;return r;}
+                                              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:136:8: mutant survived: 0 became 1
+   for j:0..<c.draw_count {work.decoded[j]=render_decode_draw(input.draw_words,j);}
+         ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:136:41: mutant survived: the assignment was removed
+   for j:0..<c.draw_count {work.decoded[j]=render_decode_draw(input.draw_words,j);}
+                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:140:22: mutant survived: '>' became '>='
+    if index<0 || index>13 || prepared[index].present {r.status=RQStatus.resource;return r;}
+                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:141:49: mutant survived: 1 became 2
+    metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];p:=rq_ir_prepare(shaders[j].tree,metadata);layout:=rf_shader_layout(input.profile,index,p,shaders[j].tree,metadata);
+                                                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:141:52: mutant survived: 8192 became 8193
+    metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];p:=rq_ir_prepare(shaders[j].tree,metadata);layout:=rf_shader_layout(input.profile,index,p,shaders[j].tree,metadata);
+                                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:142:42: mutant survived: the assignment was removed
+    if layout.status!=RQStatus.ok {r.status=layout.status;return r;}
+                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:143:29: mutant survived: 0 became 1
+    if layout.attribute_count>0 && layout.attribute_stride!=c.vertex_stride {r.status=RQStatus.resource;return r;}
+                              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:143:84: mutant survived: the assignment was removed
+    if layout.attribute_count>0 && layout.attribute_stride!=c.vertex_stride {r.status=RQStatus.resource;return r;}
+                                                                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:146:58: mutant survived: '+' became '-'
+   expected:=profile.pass_count+profile.particle_pass_count+(ifx profile.features.media then 1 else 0);
+                                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:146:30: mutant survived: '+' became '-'
+   expected:=profile.pass_count+profile.particle_pass_count+(ifx profile.features.media then 1 else 0);
+                               ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:146:92: mutant survived: 1 became 2
+   expected:=profile.pass_count+profile.particle_pass_count+(ifx profile.features.media then 1 else 0);
+                                                                                             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:150:36: mutant survived: 0 became 1
+   active:RenderOp;at:=0;each_start:=0;each_first:=0;each_count:=0;each_current:=0;
+                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:150:50: mutant survived: 0 became 1
+   active:RenderOp;at:=0;each_start:=0;each_first:=0;each_count:=0;each_current:=0;
+                                                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:150:64: mutant survived: 0 became 1
+   active:RenderOp;at:=0;each_start:=0;each_first:=0;each_count:=0;each_current:=0;
+                                                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:150:80: mutant survived: 0 became 1
+   active:RenderOp;at:=0;each_start:=0;each_first:=0;each_count:=0;each_current:=0;
+                                                                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:151:10: mutant survived: '<' became '<='
+   while at<req.plan.count {
+           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:157:100: mutant survived: '*' became '+'
+       if id==RenderTarget.none {continue;}canvas:=req.images[cast(int)id];n:=canvas.descriptor.width*canvas.descriptor.height;
+                                                                                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:159:41: mutant survived: '==' became '!='
+       clear:=ifx canvas.descriptor.format==RenderTextureFormat.depth32 then RQColor.{r=1} else RQColor.{a=1};
+                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:160:12: mutant survived: 0 became 1
+       for j:0..<n {work.images[canvas.offset+j]=clear;}
+             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:160:47: mutant survived: the assignment was removed
+       for j:0..<n {work.images[canvas.offset+j]=clear;}
+                                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:164:99: mutant survived: '*' became '+'
+     src:=req.images[cast(int)op.source];dst:=req.images[cast(int)op.target];n:=src.descriptor.width*src.descriptor.height;
+                                                                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:165:5: mutant survived: the assignment was removed
+     r=rf_pixel_work(r,policy,n);if r.status!=RQStatus.ok {return r;}for j:0..<n {work.images[dst.offset+j]=work.images[src.offset+j];}
+      ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:165:43: mutant survived: the if condition was negated
+     r=rf_pixel_work(r,policy,n);if r.status!=RQStatus.ok {return r;}for j:0..<n {work.images[dst.offset+j]=work.images[src.offset+j];}
+                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:165:43: mutant survived: '!=' became '=='
+     r=rf_pixel_work(r,policy,n);if r.status!=RQStatus.ok {return r;}for j:0..<n {work.images[dst.offset+j]=work.images[src.offset+j];}
+                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:165:74: mutant survived: 0 became 1
+     r=rf_pixel_work(r,policy,n);if r.status!=RQStatus.ok {return r;}for j:0..<n {work.images[dst.offset+j]=work.images[src.offset+j];}
+                                                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:165:106: mutant survived: the assignment was removed
+     r=rf_pixel_work(r,policy,n);if r.status!=RQStatus.ok {return r;}for j:0..<n {work.images[dst.offset+j]=work.images[src.offset+j];}
+                                                                                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:165:129: mutant survived: '+' became '-'
+     r=rf_pixel_work(r,policy,n);if r.status!=RQStatus.ok {return r;}for j:0..<n {work.images[dst.offset+j]=work.images[src.offset+j];}
+                                                                                                                                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:165:103: mutant survived: '+' became '-'
+     r=rf_pixel_work(r,policy,n);if r.status!=RQStatus.ok {return r;}for j:0..<n {work.images[dst.offset+j]=work.images[src.offset+j];}
+                                                                                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:166:56: mutant survived: the assignment was removed
+    }else if op.kind==RenderOpKind.each_begin {each_start=at+1;each_first=op.first;each_count=op.count;each_current=0;}
+                                                         ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:166:59: mutant survived: '+' became '-'
+    }else if op.kind==RenderOpKind.each_begin {each_start=at+1;each_first=op.first;each_count=op.count;each_current=0;}
+                                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:166:60: mutant survived: 1 became 2
+    }else if op.kind==RenderOpKind.each_begin {each_start=at+1;each_first=op.first;each_count=op.count;each_current=0;}
+                                                             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:166:72: mutant survived: the assignment was removed
+    }else if op.kind==RenderOpKind.each_begin {each_start=at+1;each_first=op.first;each_count=op.count;each_current=0;}
+                                                                         ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:166:92: mutant survived: the assignment was removed
+    }else if op.kind==RenderOpKind.each_begin {each_start=at+1;each_first=op.first;each_count=op.count;each_current=0;}
+                                                                                             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:166:114: mutant survived: the assignment was removed
+    }else if op.kind==RenderOpKind.each_begin {each_start=at+1;each_first=op.first;each_count=op.count;each_current=0;}
+                                                                                                                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:166:115: mutant survived: 0 became 1
+    }else if op.kind==RenderOpKind.each_begin {each_start=at+1;each_first=op.first;each_count=op.count;each_current=0;}
+                                                                                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:167:55: mutant survived: the assignment was removed
+    else if op.kind==RenderOpKind.each_end {each_current+=1;if each_current<each_count {at=each_start;continue;}}
+                                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:167:55: mutant survived: '+=' became '-='
+    else if op.kind==RenderOpKind.each_end {each_current+=1;if each_current<each_count {at=each_start;continue;}}
+                                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:167:57: mutant survived: 1 became 2
+    else if op.kind==RenderOpKind.each_end {each_current+=1;if each_current<each_count {at=each_start;continue;}}
+                                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:167:74: mutant survived: the if condition was negated
+    else if op.kind==RenderOpKind.each_end {each_current+=1;if each_current<each_count {at=each_start;continue;}}
+                                                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:167:74: mutant survived: '<' became '<='
+    else if op.kind==RenderOpKind.each_end {each_current+=1;if each_current<each_count {at=each_start;continue;}}
+                                                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:167:89: mutant survived: the assignment was removed
+    else if op.kind==RenderOpKind.each_end {each_current+=1;if each_current<each_count {at=each_start;continue;}}
+                                                                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:169:88: mutant survived: 8192 became 8193
+     index:=cast(int)op.pass;prepared_program:=prepared[index];metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];tree:=shaders[prepared_program.source].tree;
+                                                                                         ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:169:110: mutant survived: '*' became '+'
+     index:=cast(int)op.pass;prepared_program:=prepared[index];metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];tree:=shaders[prepared_program.source].tree;
+                                                                                                               ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:169:108: mutant survived: 1 became 2
+     index:=cast(int)op.pass;prepared_program:=prepared[index];metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];tree:=shaders[prepared_program.source].tree;
+                                                                                                             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:169:111: mutant survived: 8192 became 8193
+     index:=cast(int)op.pass;prepared_program:=prepared[index];metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];tree:=shaders[prepared_program.source].tree;
+                                                                                                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:170:10: mutant survived: 0 became 1
+     for j:0..<4 {bloom[j]=f32_bits(op.bloom_step[j]);}
+           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:170:25: mutant survived: the assignment was removed
+     for j:0..<4 {bloom[j]=f32_bits(op.bloom_step[j]);}
+                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:172:36: mutant survived: the assignment was removed
+     if status!=RQStatus.ok {r.status=status;return r;}
+                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:174:54: mutant survived: the assignment was removed
+     if op.draw_source==RenderDrawSource.records {draws=work.decoded[op.first..<op.first+op.count];}
+                                                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:174:87: mutant survived: '+' became '-'
+     if op.draw_source==RenderDrawSource.records {draws=work.decoded[op.first..<op.first+op.count];}
+                                                                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:175:59: mutant survived: the assignment was removed
+     else if op.draw_source==RenderDrawSource.current {draws=work.decoded[each_first+each_current..<each_first+each_current+1];}
+                                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:175:83: mutant survived: '+' became '-'
+     else if op.draw_source==RenderDrawSource.current {draws=work.decoded[each_first+each_current..<each_first+each_current+1];}
+                                                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:175:122: mutant survived: '+' became '-'
+     else if op.draw_source==RenderDrawSource.current {draws=work.decoded[each_first+each_current..<each_first+each_current+1];}
+                                                                                                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:175:109: mutant survived: '+' became '-'
+     else if op.draw_source==RenderDrawSource.current {draws=work.decoded[each_first+each_current..<each_first+each_current+1];}
+                                                                                                              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:175:123: mutant survived: 1 became 2
+     else if op.draw_source==RenderDrawSource.current {draws=work.decoded[each_first+each_current..<each_first+each_current+1];}
+                                                                                                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:178:142: mutant survived: '*' became '+'
+     canvas:=req.images[cast(int)(ifx active.colour0!=RenderTarget.none then active.colour0 else active.depth)];d:=canvas.descriptor;n:=d.width*d.height;
+                                                                                                                                               ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:180:4: mutant survived: the call was removed
+     rf_pixels(req,active,work.images,work.target,false);
+     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:180:49: mutant survived: false became true
+     rf_pixels(req,active,work.images,work.target,false);
+                                                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:181:265: mutant survived: '-' became '+'
+     q:=rr_reference_pass(prepared_program.layout.pipeline,prepared_program.program,tree,metadata,resources,prepared_program.layout.bindings[0..<prepared_program.layout.count],attrs,draws,input.indices,op.state,d.width,d.height,rf_format(d.format),policy.shader_work-r.pass_steps[index],work.words[0..<RQ_IR_WORDS],work.scratch,work.target);
+                                                                                                                                                                                                                                                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:181:297: mutant survived: 0 became 1
+     q:=rr_reference_pass(prepared_program.layout.pipeline,prepared_program.program,tree,metadata,resources,prepared_program.layout.bindings[0..<prepared_program.layout.count],attrs,draws,input.indices,op.state,d.width,d.height,rf_format(d.format),policy.shader_work-r.pass_steps[index],work.words[0..<RQ_IR_WORDS],work.scratch,work.target);
+                                                                                                                                                                                                                                                                                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:181:301: mutant survived: 65536 became 65537
+     q:=rr_reference_pass(prepared_program.layout.pipeline,prepared_program.program,tree,metadata,resources,prepared_program.layout.bindings[0..<prepared_program.layout.count],attrs,draws,input.indices,op.state,d.width,d.height,rf_format(d.format),policy.shader_work-r.pass_steps[index],work.words[0..<RQ_IR_WORDS],work.scratch,work.target);
+                                                                                                                                                                                                                                                                                                              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:196:99: mutant survived: '<' became '<='
+   if source.kind!=RenderSourceKind.dynamic_store || source.index<0 || source.index>=48 || out.count<7 {return "";}
+                                                                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:196:100: mutant survived: 7 became 8
+   if source.kind!=RenderSourceKind.dynamic_store || source.index<0 || source.index>=48 || out.count<7 {return "";}
+                                                                                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:209:31: mutant survived: 4 became 5
+    bytes:=cast(u64)words.count*4;o=RenderBufferObserved.{source_capacity=bytes,logical_payload=bytes,initialized_highwater=bytes,gpu_bytes=bytes};
+                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:211:79: mutant survived: 0 became 1
+    name_bytes:[8]u8;name:=rf_buffer_name(source,name_bytes[..]);if name.count==0 {return RFBufferResult.{status=RQStatus.resource};}
+                                                                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:215:88: mutant survived: '==' became '!='
+   if view.status!=RenderResourceStatus.ok {return RFBufferResult.{status=ifx view.status==RenderResourceStatus.capacity then RQStatus.capacity else RQStatus.resource};}
+                                                                                         ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:217:71: mutant survived: '||' became '&&'
+   if view.offset%4!=0 || view.bytes%4!=0 || first>cast(u64)words.count || n>cast(u64)words.count-first {return RFBufferResult.{status=RQStatus.resource};}
+                                                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:217:41: mutant survived: '||' became '&&'
+   if view.offset%4!=0 || view.bytes%4!=0 || first>cast(u64)words.count || n>cast(u64)words.count-first {return RFBufferResult.{status=RQStatus.resource};}
+                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:217:22: mutant survived: '||' became '&&'
+   if view.offset%4!=0 || view.bytes%4!=0 || first>cast(u64)words.count || n>cast(u64)words.count-first {return RFBufferResult.{status=RQStatus.resource};}
+                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:217:49: mutant survived: '>' became '>='
+   if view.offset%4!=0 || view.bytes%4!=0 || first>cast(u64)words.count || n>cast(u64)words.count-first {return RFBufferResult.{status=RQStatus.resource};}
+                                                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:217:96: mutant survived: '-' became '+'
+   if view.offset%4!=0 || view.bytes%4!=0 || first>cast(u64)words.count || n>cast(u64)words.count-first {return RFBufferResult.{status=RQStatus.resource};}
+                                                                                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:229:50: mutant survived: '==' became '!='
+    if b.kind==RenderResourceKind.uniform || b.kind==RenderResourceKind.storage {
+                                                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:231:47: mutant survived: the if condition was negated
+    }else if b.kind==RenderResourceKind.sampler || b.kind==RenderResourceKind.comparison {
+                                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:231:47: mutant survived: '||' became '&&'
+    }else if b.kind==RenderResourceKind.sampler || b.kind==RenderResourceKind.comparison {
+                                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:231:18: mutant survived: '==' became '!='
+    }else if b.kind==RenderResourceKind.sampler || b.kind==RenderResourceKind.comparison {
+                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:231:56: mutant survived: '==' became '!='
+    }else if b.kind==RenderResourceKind.sampler || b.kind==RenderResourceKind.comparison {
+                                                         ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:232:59: mutant survived: the if condition was negated
+     d:=render_sampler_desc(source.sampler_name);if d.status!=RenderResourceStatus.ok {return RQStatus.resource;}samplers[resource]=rf_sampler(source.sampler_name);
+                                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:232:59: mutant survived: '!=' became '=='
+     d:=render_sampler_desc(source.sampler_name);if d.status!=RenderResourceStatus.ok {return RQStatus.resource;}samplers[resource]=rf_sampler(source.sampler_name);
+                                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:232:130: mutant survived: the assignment was removed
+     d:=render_sampler_desc(source.sampler_name);if d.status!=RenderResourceStatus.ok {return RQStatus.resource;}samplers[resource]=rf_sampler(source.sampler_name);
+                                                                                                                                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:235:51: mutant survived: the if condition was negated
+     if source.kind==RenderSourceKind.render_target || source.kind==RenderSourceKind.pass_source {
+                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:235:51: mutant survived: '||' became '&&'
+     if source.kind==RenderSourceKind.render_target || source.kind==RenderSourceKind.pass_source {
+                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:235:18: mutant survived: '==' became '!='
+     if source.kind==RenderSourceKind.render_target || source.kind==RenderSourceKind.pass_source {
+                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:235:65: mutant survived: '==' became '!='
+     if source.kind==RenderSourceKind.render_target || source.kind==RenderSourceKind.pass_source {
+                                                                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:236:28: mutant survived: '==' became '!='
+      target:=ifx source.kind==RenderSourceKind.pass_source then op.source else source.target;at:=cast(int)target;
+                             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:237:31: mutant survived: the if condition was negated
+      canvas:=req.images[at];if !canvas.present {return RQStatus.resource;}d:=canvas.descriptor;n:=d.width*d.height;
+                                ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:237:105: mutant survived: '*' became '+'
+      canvas:=req.images[at];if !canvas.present {return RQStatus.resource;}d:=canvas.descriptor;n:=d.width*d.height;
+                                                                                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:238:21: mutant survived: the assignment was removed
+      levels[resource]=RQMip.{width=d.width,height=d.height};t=RQTexture.{levels=levels[resource..<resource+1],layers=1,texels=images[canvas.offset..<canvas.offset+n],depth=d.format==RenderTextureFormat.depth32};
+                      ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:238:61: mutant survived: the assignment was removed
+      levels[resource]=RQMip.{width=d.width,height=d.height};t=RQTexture.{levels=levels[resource..<resource+1],layers=1,texels=images[canvas.offset..<canvas.offset+n],depth=d.format==RenderTextureFormat.depth32};
+                                                              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:238:106: mutant survived: '+' became '-'
+      levels[resource]=RQMip.{width=d.width,height=d.height};t=RQTexture.{levels=levels[resource..<resource+1],layers=1,texels=images[canvas.offset..<canvas.offset+n],depth=d.format==RenderTextureFormat.depth32};
+                                                                                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:238:107: mutant survived: 1 became 2
+      levels[resource]=RQMip.{width=d.width,height=d.height};t=RQTexture.{levels=levels[resource..<resource+1],layers=1,texels=images[canvas.offset..<canvas.offset+n],depth=d.format==RenderTextureFormat.depth32};
+                                                                                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:238:117: mutant survived: 1 became 2
+      levels[resource]=RQMip.{width=d.width,height=d.height};t=RQTexture.{levels=levels[resource..<resource+1],layers=1,texels=images[canvas.offset..<canvas.offset+n],depth=d.format==RenderTextureFormat.depth32};
+                                                                                                                      ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:238:162: mutant survived: '+' became '-'
+      levels[resource]=RQMip.{width=d.width,height=d.height};t=RQTexture.{levels=levels[resource..<resource+1],layers=1,texels=images[canvas.offset..<canvas.offset+n],depth=d.format==RenderTextureFormat.depth32};
+                                                                                                                                                                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:238:180: mutant survived: '==' became '!='
+      levels[resource]=RQMip.{width=d.width,height=d.height};t=RQTexture.{levels=levels[resource..<resource+1],layers=1,texels=images[canvas.offset..<canvas.offset+n],depth=d.format==RenderTextureFormat.depth32};
+                                                                                                                                                                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:240:12: mutant survived: -1 became 0
+      found:=-1;
+             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:241:11: mutant survived: 0 became 1
+      for j:0..<input.textures.count {if input.textures[j].name==b.name {if found>=0 {return RQStatus.resource;}found=j;}}
+            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:241:62: mutant survived: the if condition was negated
+      for j:0..<input.textures.count {if input.textures[j].name==b.name {if found>=0 {return RQStatus.resource;}found=j;}}
+                                                               ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:241:80: mutant survived: the if condition was negated
+      for j:0..<input.textures.count {if input.textures[j].name==b.name {if found>=0 {return RQStatus.resource;}found=j;}}
+                                                                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:241:80: mutant survived: '>=' became '>'
+      for j:0..<input.textures.count {if input.textures[j].name==b.name {if found>=0 {return RQStatus.resource;}found=j;}}
+                                                                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:241:82: mutant survived: 0 became 1
+      for j:0..<input.textures.count {if input.textures[j].name==b.name {if found>=0 {return RQStatus.resource;}found=j;}}
+                                                                                   ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:241:116: mutant survived: the assignment was removed
+      for j:0..<input.textures.count {if input.textures[j].name==b.name {if found>=0 {return RQStatus.resource;}found=j;}}
+                                                                                                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:242:13: mutant survived: the if condition was negated
+      if found<0 {return RQStatus.resource;}t=input.textures[found].texture;
+              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:242:13: mutant survived: '<' became '<='
+      if found<0 {return RQStatus.resource;}t=input.textures[found].texture;
+              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:242:14: mutant survived: 0 became 1
+      if found<0 {return RQStatus.resource;}t=input.textures[found].texture;
+               ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:242:44: mutant survived: the assignment was removed
+      if found<0 {return RQStatus.resource;}t=input.textures[found].texture;
+                                             ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:244:32: mutant survived: the if condition was negated
+     q:=rq_texture_status(t);if q!=RQStatus.ok {return q;}
+                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:244:32: mutant survived: '!=' became '=='
+     q:=rq_texture_status(t);if q!=RQStatus.ok {return q;}
+                                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:245:51: mutant survived: the if condition was negated
+     if t.depth!=(b.kind==RenderResourceKind.depth) || (b.kind==RenderResourceKind.image2d && t.layers!=1) {return RQStatus.resource;}textures[resource]=t;
+                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:245:51: mutant survived: '||' became '&&'
+     if t.depth!=(b.kind==RenderResourceKind.depth) || (b.kind==RenderResourceKind.image2d && t.layers!=1) {return RQStatus.resource;}textures[resource]=t;
+                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:245:14: mutant survived: '!=' became '=='
+     if t.depth!=(b.kind==RenderResourceKind.depth) || (b.kind==RenderResourceKind.image2d && t.layers!=1) {return RQStatus.resource;}textures[resource]=t;
+               ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:245:23: mutant survived: '==' became '!='
+     if t.depth!=(b.kind==RenderResourceKind.depth) || (b.kind==RenderResourceKind.image2d && t.layers!=1) {return RQStatus.resource;}textures[resource]=t;
+                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:245:90: mutant survived: '&&' became '||'
+     if t.depth!=(b.kind==RenderResourceKind.depth) || (b.kind==RenderResourceKind.image2d && t.layers!=1) {return RQStatus.resource;}textures[resource]=t;
+                                                                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:245:61: mutant survived: '==' became '!='
+     if t.depth!=(b.kind==RenderResourceKind.depth) || (b.kind==RenderResourceKind.image2d && t.layers!=1) {return RQStatus.resource;}textures[resource]=t;
+                                                              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:245:101: mutant survived: '!=' became '=='
+     if t.depth!=(b.kind==RenderResourceKind.depth) || (b.kind==RenderResourceKind.image2d && t.layers!=1) {return RQStatus.resource;}textures[resource]=t;
+                                                                                                      ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:245:103: mutant survived: 1 became 2
+     if t.depth!=(b.kind==RenderResourceKind.depth) || (b.kind==RenderResourceKind.image2d && t.layers!=1) {return RQStatus.resource;}textures[resource]=t;
+                                                                                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:245:151: mutant survived: the assignment was removed
+     if t.depth!=(b.kind==RenderResourceKind.depth) || (b.kind==RenderResourceKind.image2d && t.layers!=1) {return RQStatus.resource;}textures[resource]=t;
+                                                                                                                                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:251:16: mutant survived: '>' became '>='
+   q:=r;if amount>policy.pixel_work-q.pixel_steps {q.status=RQStatus.budget;return q;}q.pixel_steps+=amount;return q;
+                 ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:258:148: mutant survived: '*' became '+'
+   target:=ifx active.colour0!=RenderTarget.none then active.colour0 else active.depth;canvas:=req.images[cast(int)target];n:=canvas.descriptor.width*canvas.descriptor.height;
+                                                                                                                                                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:264:71: mutant survived: the if condition was negated
+     if publish {if channel==0 {images[offset]=p.colour;}else if channel==1 {images[offset]=p.aux;}else {images[offset]=RQColor.{r=p.depth};}}
+                                                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:264:71: mutant survived: '==' became '!='
+     if publish {if channel==0 {images[offset]=p.colour;}else if channel==1 {images[offset]=p.aux;}else {images[offset]=RQColor.{r=p.depth};}}
+                                                                        ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:264:73: mutant survived: 1 became 2
+     if publish {if channel==0 {images[offset]=p.colour;}else if channel==1 {images[offset]=p.aux;}else {images[offset]=RQColor.{r=p.depth};}}
+                                                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:264:90: mutant survived: the assignment was removed
+     if publish {if channel==0 {images[offset]=p.colour;}else if channel==1 {images[offset]=p.aux;}else {images[offset]=RQColor.{r=p.depth};}}
+                                                                                           ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:264:118: mutant survived: the assignment was removed
+     if publish {if channel==0 {images[offset]=p.colour;}else if channel==1 {images[offset]=p.aux;}else {images[offset]=RQColor.{r=p.depth};}}
+                                                                                                                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:265:20: mutant survived: the if condition was negated
+     else {if channel==0 {p.colour=images[offset];}else if channel==1 {p.aux=images[offset];}else {p.depth=images[offset].r;}}
+                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:265:20: mutant survived: '==' became '!='
+     else {if channel==0 {p.colour=images[offset];}else if channel==1 {p.aux=images[offset];}else {p.depth=images[offset].r;}}
+                     ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:265:22: mutant survived: 0 became 1
+     else {if channel==0 {p.colour=images[offset];}else if channel==1 {p.aux=images[offset];}else {p.depth=images[offset].r;}}
+                       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:265:33: mutant survived: the assignment was removed
+     else {if channel==0 {p.colour=images[offset];}else if channel==1 {p.aux=images[offset];}else {p.depth=images[offset].r;}}
+                                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:265:65: mutant survived: the if condition was negated
+     else {if channel==0 {p.colour=images[offset];}else if channel==1 {p.aux=images[offset];}else {p.depth=images[offset].r;}}
+                                                                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:265:65: mutant survived: '==' became '!='
+     else {if channel==0 {p.colour=images[offset];}else if channel==1 {p.aux=images[offset];}else {p.depth=images[offset].r;}}
+                                                                  ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:265:67: mutant survived: 1 became 2
+     else {if channel==0 {p.colour=images[offset];}else if channel==1 {p.aux=images[offset];}else {p.depth=images[offset].r;}}
+                                                                    ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:265:75: mutant survived: the assignment was removed
+     else {if channel==0 {p.colour=images[offset];}else if channel==1 {p.aux=images[offset];}else {p.depth=images[offset].r;}}
+                                                                            ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:265:105: mutant survived: the assignment was removed
+     else {if channel==0 {p.colour=images[offset];}else if channel==1 {p.aux=images[offset];}else {p.depth=images[offset].r;}}
+                                                                                                          ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:267:6: mutant survived: the if condition was negated
+    if !publish {pixels[at]=p;}
+       ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-frame.coax:267:26: mutant survived: the assignment was removed
+    if !publish {pixels[at]=p;}
+                           ^
+568 mutants, 363 killed, 205 survived

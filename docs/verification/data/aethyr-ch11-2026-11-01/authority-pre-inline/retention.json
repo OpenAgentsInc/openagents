@@ -1,0 +1,12 @@
+{
+  "coax/lib/json/json-authority-checks.coax": "4e6ea10ff7fa7e336830e9e2cfb0bc6d33705e38d9c424b36ea809c60e907775",
+  "coax/lib/json/json.coax": "8a8474885889fb3c80db00d9340ea6de18fe0409b72dfc864a49a0cbb72ce509",
+  "aethyr/render/host-memory.coax": "56ff937dd5272b490462aeace06b03652e2f4b96227e2bcbb94da25a18c4c08b",
+  "aethyr/render/media-commands.coax": "e678478059fea2231f99d14e6f571018ccdfba409879eb80898945cce996f3de",
+  "aethyr/render/host-uploads.coax": "aa94dd4057d5a5ed361d7649d30a80d3eab088960afd3efe375156df07446a63",
+  "aethyr/render/host-media.coax": "0a59b3167f2a43c59ea28c36d7d8e9b97b6a81d904aa44774eac6269358477d1",
+  "aethyr/render/tests/host-uploads-checks.coax": "424b61ca24df3df2e43ed4821a62bbc554abbc081e98b18365574d3532fadb6b",
+  "aethyr/render/tests/media-commands-checks.coax": "f9fb7892da60194892dd03358eefbd71bea7ba3c16ce2a7d14ca927bff2b834a",
+  "aethyr/render/tests/host-memory-checks.coax": "d8adc35c62f6b4b7b92acaee6c7d4e6c7282971e58b2b71563fdae17cfbe2cee",
+  "aethyr/render/tests/host-media-checks.coax": "dc431841d7b12f5f1dcb1f9a6effd0db34ded0e288ee707ec542401a9ce6b07d"
+}

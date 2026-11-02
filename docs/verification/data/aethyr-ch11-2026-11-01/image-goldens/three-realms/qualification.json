@@ -1,0 +1,528 @@
+{
+  "schema": "aethyr.render.three-realm-visible-migration.v1",
+  "status": "pass_for_three_explicit_visible_migrations",
+  "cases": [
+    "built",
+    "garden",
+    "dead-gears"
+  ],
+  "exact_controls": {
+    "built-base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "reused_generic": null,
+      "source_changes": [],
+      "legacy_sha256": "a3427bf9f192fa27e8d7da2b2aba35f5fde9e46c5692db499bc6843ecaab543c",
+      "generic_sha256": "676d69ac51ff09eb15b76e266db29e5b1e0e8287af0dd0544c890962032ee9f7",
+      "different_channels": 58915,
+      "different_pixels": 26871,
+      "max_byte_delta": 101,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "garden-base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "legacy_particle_override": null,
+      "reused_generic": null,
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "05f229895c0a54afef8f9b916a31605dc0458f8d64d52f65e705fbd4ffb6df12",
+      "generic_sha256": "7c03bfb1bbc96af06d781bd8c746b92bacb7e6ec756b257f4dc907774d89f440",
+      "different_channels": 129411,
+      "different_pixels": 47333,
+      "max_byte_delta": 25,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "deadgears-base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "reused_generic": null,
+      "source_changes": [],
+      "legacy_sha256": "155c4b5630fe9f1b5fd7ad977a3d32bfdc64334eac7c4b3804cf74a4371c5a07",
+      "generic_sha256": "5571cb34d3bf184c25882420eba303effe003ebfbea52fd78a21ab5cb023e70e",
+      "different_channels": 21428,
+      "different_pixels": 9501,
+      "max_byte_delta": 32,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "built-integer": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-myrealm-noise-controls/integer.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-built-current/generic",
+      "source_changes": [],
+      "legacy_sha256": "676d69ac51ff09eb15b76e266db29e5b1e0e8287af0dd0544c890962032ee9f7",
+      "generic_sha256": "676d69ac51ff09eb15b76e266db29e5b1e0e8287af0dd0544c890962032ee9f7",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "built-sin": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-myrealm-noise-controls/sin.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-built-current/generic",
+      "source_changes": [],
+      "legacy_sha256": "c26b4a36de2eeb5c5feda2c49ccadc107f477b757d400b1634290007d03faccb",
+      "generic_sha256": "676d69ac51ff09eb15b76e266db29e5b1e0e8287af0dd0544c890962032ee9f7",
+      "different_channels": 58224,
+      "different_pixels": 26421,
+      "max_byte_delta": 39,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "built-sin-hardware": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-myrealm-noise-controls/sin-hardware.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-built-current/generic",
+      "source_changes": [],
+      "legacy_sha256": "a3427bf9f192fa27e8d7da2b2aba35f5fde9e46c5692db499bc6843ecaab543c",
+      "generic_sha256": "676d69ac51ff09eb15b76e266db29e5b1e0e8287af0dd0544c890962032ee9f7",
+      "different_channels": 58915,
+      "different_pixels": 26871,
+      "max_byte_delta": 101,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "deadgears-integer": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-deadgears-noise-controls/integer.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-deadgears-current/generic",
+      "source_changes": [],
+      "legacy_sha256": "5571cb34d3bf184c25882420eba303effe003ebfbea52fd78a21ab5cb023e70e",
+      "generic_sha256": "5571cb34d3bf184c25882420eba303effe003ebfbea52fd78a21ab5cb023e70e",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "deadgears-sin": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-deadgears-noise-controls/sin.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-deadgears-current/generic",
+      "source_changes": [],
+      "legacy_sha256": "155c4b5630fe9f1b5fd7ad977a3d32bfdc64334eac7c4b3804cf74a4371c5a07",
+      "generic_sha256": "5571cb34d3bf184c25882420eba303effe003ebfbea52fd78a21ab5cb023e70e",
+      "different_channels": 21428,
+      "different_pixels": 9501,
+      "max_byte_delta": 32,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    }
+  },
+  "garden_historical_isolation": {
+    "schema": "aethyr.render.noise-image-isolation.v1",
+    "status": "isolated",
+    "image_tolerance_pass": false,
+    "width": 320,
+    "height": 180,
+    "controls": {
+      "retained": {
+        "schema": "aethyr.render.legacy-comparison.v1",
+        "same_producer": true,
+        "same_inputs": true,
+        "same_shape": true,
+        "frames": 90,
+        "start": true,
+        "source_changes": [],
+        "legacy_sha256": "05f229895c0a54afef8f9b916a31605dc0458f8d64d52f65e705fbd4ffb6df12",
+        "generic_sha256": "7c03bfb1bbc96af06d781bd8c746b92bacb7e6ec756b257f4dc907774d89f440",
+        "different_channels": 129411,
+        "different_pixels": 47333,
+        "max_byte_delta": 25,
+        "identical": false,
+        "scope": "current identical producer, retained legacy WGSL and pass executor vs shared renderer; not evidence for producer fixes"
+      },
+      "integer": {
+        "schema": "aethyr.render.legacy-comparison.v1",
+        "same_producer": true,
+        "same_inputs": true,
+        "same_shape": true,
+        "frames": 90,
+        "start": true,
+        "legacy_shader_override": "/tmp/aethyr-ch11-garden-noise-isolation/integer.wgsl",
+        "reused_generic": "/tmp/aethyr-ch11-golden-garden-2/generic",
+        "source_changes": [],
+        "legacy_sha256": "7c03bfb1bbc96af06d781bd8c746b92bacb7e6ec756b257f4dc907774d89f440",
+        "generic_sha256": "7c03bfb1bbc96af06d781bd8c746b92bacb7e6ec756b257f4dc907774d89f440",
+        "different_channels": 0,
+        "different_pixels": 0,
+        "max_byte_delta": 0,
+        "identical": true,
+        "scope": "current identical producer, retained legacy WGSL and pass executor vs shared renderer; not evidence for producer fixes"
+      },
+      "sin": {
+        "schema": "aethyr.render.legacy-comparison.v1",
+        "same_producer_wasm": false,
+        "same_inputs": true,
+        "same_shape": true,
+        "frames": 90,
+        "start": true,
+        "legacy_shader_override": "/tmp/aethyr-ch11-garden-noise-isolation/sin.wgsl",
+        "reused_generic": "/tmp/aethyr-ch11-golden-garden-2/generic",
+        "source_changes": [],
+        "legacy_sha256": "05f229895c0a54afef8f9b916a31605dc0458f8d64d52f65e705fbd4ffb6df12",
+        "generic_sha256": "7c03bfb1bbc96af06d781bd8c746b92bacb7e6ec756b257f4dc907774d89f440",
+        "different_channels": 129411,
+        "different_pixels": 47333,
+        "max_byte_delta": 25,
+        "identical": false,
+        "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+      }
+    },
+    "same_captured_producer_bytes": true,
+    "producer_wasm_sha256": {
+      "earlier_host_abi": "a641f334cd599a28ddd2ffae2ae1631799b01f67c16749c26f00d4c824623022",
+      "current_host_abi": "8a30f24a360909edcf8f2d999efb451c6119f8fd38152faedb361d288ed52f3a"
+    },
+    "metadata_correction": "The integer comparison predates the explicit same_producer_wasm field; its same_producer:true is not binary identity. Both host ABI binaries retain exact matching captured uniform/HUD/draw bytes. Original receipts are unmodified.",
+    "scope": "Both variants are emitted from Coax. Only garden_hash arithmetic differs; sin variant removes its inapplicable integer-profile assertion. Old executor plus sin exactly reproduces retained baseline; old executor plus integer exactly reproduces shared renderer.",
+    "artifacts_sha256": "ab8da2fac699a45d0ce9f51b2738dd47ffebbd844531fbcddadd47358ad961da"
+  },
+  "garden_epoch_bridge": "Fresh current-producer legacy and generic raw images match the earlier05f22989/7c03bfb1 pair exactly. Historical causal variants use different host-ABI Wasms with exact matching producer payloads, not identical binaries. Both historical WGSL variants are byte-identical to the current control emissions. Their original metadata remains unmodified in garden-historical/.",
+  "stock_gates": {
+    "initial-generic": {
+      "batch_status": "fail",
+      "seconds": 87.872,
+      "selected_zero_block_checks": {
+        "built": [],
+        "garden": [],
+        "dead-gears": []
+      },
+      "report": {
+        "base": "http://127.0.0.1:56066",
+        "failed": [
+          "landing: the engine started",
+          "landing: draws (0.0% lit, at least 0.4%)",
+          "haunted-house: at http://127.0.0.1:56066/realms/haunted-house",
+          "dead-gears: matches its golden (1107 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-792; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-nclHlB/dead-gears.png)",
+          "built: matches its golden (920 blocks changed, 6 allowed, 12 moving, x 56-1256, y 0-344; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-6qddGT/built.png)",
+          "sandbox: matches its golden (31 blocks changed, 6 allowed, 0 moving, x 448-1168, y 160-792; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-OsI8T5/sandbox.png)",
+          "hecates-cemetery: matches its golden (381 blocks changed, 6 allowed, 114 moving, x 0-1240, y 88-544; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-ey1KPK/hecates-cemetery.png)",
+          "garden: matches its golden (4782 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-800; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-HKS9zU/garden.png)"
+        ],
+        "golden": [
+          {
+            "name": "dead-gears",
+            "path": "/realms/dead-gears"
+          },
+          {
+            "name": "built",
+            "path": "/realms/built"
+          },
+          {
+            "name": "sandbox",
+            "path": "/realms/sandbox"
+          },
+          {
+            "name": "hecates-cemetery",
+            "path": "/realms/hecates-cemetery"
+          },
+          {
+            "name": "garden",
+            "path": "/realms/garden"
+          }
+        ],
+        "other": [
+          "landing: the engine started",
+          "landing: draws (0.0% lit, at least 0.4%)",
+          "haunted-house: at http://127.0.0.1:56066/realms/haunted-house"
+        ]
+      },
+      "log": "lane journey (41.1 s)\n  ok    landing: at http://127.0.0.1:56066/verse\n  FAIL  landing: the engine started\n  info  landing: 0.0% lit, under 0.4%; shooting it again\n  info  landing: 0.0% lit, under 0.4%; shooting it again\n  info  landing: 0.0% lit, under 0.4%; shooting it again\n  info  landing: 0.0% lit, under 0.4%; shooting it again\n  ok    landing: no errors\n  FAIL  landing: draws (0.0% lit, at least 0.4%)\n  time  landing: 26.0 s\n  FAIL  haunted-house: at http://127.0.0.1:56066/realms/haunted-house\n  time  haunted-house: 15.1 s\nlane dead-gears (7.4 s)\n  ok    dead-gears: at http://127.0.0.1:56066/realms/dead-gears\n  ok    dead-gears: the engine started\n  ok    dead-gears: no errors\n  ok    dead-gears: draws (87.9% lit, at least 5.0%)\n  FAIL  dead-gears: matches its golden (1107 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-792; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-nclHlB/dead-gears.png)\n  time  dead-gears: 7.4 s\n  ok    analytics contract: every dead-gears event sent (5 events, 0.0 s)\nlane orbit-league (8.7 s)\n  ok    orbit-league: at http://127.0.0.1:56066/realms/orbit-league\n  ok    orbit-league: the engine started\n  ok    orbit-league: no errors\n  ok    orbit-league: draws (18.4% lit, at least 3.0%)\n  ok    orbit-league: matches its golden (6 blocks changed, 6 allowed, 0 moving, x 120-1272, y 144-360)\n  time  orbit-league: 8.7 s\n  ok    analytics contract: every orbit-league event sent (4 events, 0.0 s)\nlane built (6.9 s)\n  ok    built: at http://127.0.0.1:56066/realms/built\n  ok    built: the engine started\n  ok    built: no errors\n  ok    built: draws (97.5% lit, at least 1.5%)\n  FAIL  built: matches its golden (920 blocks changed, 6 allowed, 12 moving, x 56-1256, y 0-344; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-6qddGT/built.png)\n  time  built: 6.9 s\nlane sandbox (7.2 s)\n  ok    sandbox: at http://127.0.0.1:56066/realms/sandbox\n  ok    sandbox: the engine started\n  ok    sandbox: no errors\n  ok    sandbox: draws (84.6% lit, at least 3.0%)\n  FAIL  sandbox: matches its golden (31 blocks changed, 6 allowed, 0 moving, x 448-1168, y 160-792; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-OsI8T5/sandbox.png)\n  time  sandbox: 7.2 s\n  ok    analytics contract: every sandbox event sent (4 events, 0.0 s)\nlane hecates-cemetery (7.0 s)\n  ok    hecates-cemetery: at http://127.0.0.1:56066/realms/hecates-cemetery\n  ok    hecates-cemetery: the engine started\n  ok    hecates-cemetery: no errors\n  ok    hecates-cemetery: draws (99.8% lit, at least 1.5%)\n  FAIL  hecates-cemetery: matches its golden (381 blocks changed, 6 allowed, 114 moving, x 0-1240, y 88-544; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-ey1KPK/hecates-cemetery.png)\n  time  hecates-cemetery: 6.9 s\n  ok    analytics contract: every hecates-cemetery event sent (4 events, 0.0 s)\nlane garden (7.8 s)\n  ok    garden: at http://127.0.0.1:56066/realms/garden\n  ok    garden: the engine started\n  ok    garden: no errors\n  ok    garden: draws (100.0% lit, at least 50.0%)\n  FAIL  garden: matches its golden (4782 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-800; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-HKS9zU/garden.png)\n  time  garden: 7.8 s\ngoldens http://127.0.0.1:56066: 8 failed in 87.7 s (1 tabs)\n"
+    },
+    "original-legacy-mixed-batch": {
+      "batch_status": "fail",
+      "seconds": 40.612,
+      "selected_zero_block_checks": {
+        "built": [
+          "ok    built: matches its golden (0 blocks changed, 6 allowed, 12 moving)"
+        ],
+        "garden": [
+          "ok    garden: matches its golden (0 blocks changed, 6 allowed, 0 moving)"
+        ],
+        "dead-gears": [
+          "ok    dead-gears: matches its golden (0 blocks changed, 6 allowed, 0 moving)"
+        ]
+      },
+      "report": {
+        "base": "http://127.0.0.1:56615",
+        "failed": [
+          "hecates-cemetery: matches its golden (42 blocks changed, 6 allowed, 108 moving, x 128-568, y 120-328; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-wKeApU/hecates-cemetery.png)"
+        ],
+        "golden": [
+          {
+            "name": "hecates-cemetery",
+            "path": "/realms/hecates-cemetery"
+          }
+        ],
+        "other": []
+      },
+      "log": "lane dead-gears (7.6 s)\n  ok    dead-gears: at http://127.0.0.1:56615/realms/dead-gears\n  ok    dead-gears: the engine started\n  ok    dead-gears: no errors\n  ok    dead-gears: draws (87.9% lit, at least 5.0%)\n  ok    dead-gears: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  dead-gears: 7.6 s\n  ok    analytics contract: every dead-gears event sent (5 events, 0.0 s)\nlane built (7.9 s)\n  ok    built: at http://127.0.0.1:56615/realms/built\n  ok    built: the engine started\n  ok    built: no errors\n  ok    built: draws (97.5% lit, at least 1.5%)\n  ok    built: matches its golden (0 blocks changed, 6 allowed, 12 moving)\n  time  built: 7.9 s\nlane sandbox (8.0 s)\n  ok    sandbox: at http://127.0.0.1:56615/realms/sandbox\n  ok    sandbox: the engine started\n  ok    sandbox: no errors\n  ok    sandbox: draws (84.6% lit, at least 3.0%)\n  ok    sandbox: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  sandbox: 7.8 s\n  ok    analytics contract: every sandbox event sent (4 events, 0.0 s)\nlane hecates-cemetery (7.5 s)\n  ok    hecates-cemetery: at http://127.0.0.1:56615/realms/hecates-cemetery\n  ok    hecates-cemetery: the engine started\n  ok    hecates-cemetery: no errors\n  ok    hecates-cemetery: draws (99.8% lit, at least 1.5%)\n  FAIL  hecates-cemetery: matches its golden (42 blocks changed, 6 allowed, 108 moving, x 128-568, y 120-328; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-wKeApU/hecates-cemetery.png)\n  time  hecates-cemetery: 7.4 s\n  ok    analytics contract: every hecates-cemetery event sent (4 events, 0.1 s)\nlane garden (8.5 s)\n  ok    garden: at http://127.0.0.1:56615/realms/garden\n  ok    garden: the engine started\n  ok    garden: no errors\n  ok    garden: draws (100.0% lit, at least 50.0%)\n  ok    garden: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  garden: 8.5 s\ngoldens http://127.0.0.1:56615: 1 failed in 40.5 s (1 tabs)\n"
+    },
+    "restored-sine": {
+      "batch_status": "pass",
+      "seconds": 31.586,
+      "selected_zero_block_checks": {
+        "built": [
+          "ok    built: matches its golden (0 blocks changed, 6 allowed, 12 moving)"
+        ],
+        "garden": [
+          "ok    garden: matches its golden (0 blocks changed, 6 allowed, 0 moving)"
+        ],
+        "dead-gears": [
+          "ok    dead-gears: matches its golden (0 blocks changed, 6 allowed, 0 moving)"
+        ]
+      },
+      "report": {
+        "base": "http://127.0.0.1:58204",
+        "failed": [],
+        "golden": [],
+        "other": []
+      },
+      "log": "lane dead-gears (7.5 s)\n  ok    dead-gears: at http://127.0.0.1:58204/realms/dead-gears\n  ok    dead-gears: the engine started\n  ok    dead-gears: no errors\n  ok    dead-gears: draws (87.9% lit, at least 5.0%)\n  ok    dead-gears: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  dead-gears: 7.4 s\n  ok    analytics contract: every dead-gears event sent (5 events, 0.0 s)\nlane built (6.9 s)\n  ok    built: at http://127.0.0.1:58204/realms/built\n  ok    built: the engine started\n  ok    built: no errors\n  ok    built: draws (97.5% lit, at least 1.5%)\n  ok    built: matches its golden (0 blocks changed, 6 allowed, 12 moving)\n  time  built: 6.9 s\nlane sandbox (7.2 s)\n  ok    sandbox: at http://127.0.0.1:58204/realms/sandbox\n  ok    sandbox: the engine started\n  ok    sandbox: no errors\n  ok    sandbox: draws (84.6% lit, at least 3.0%)\n  ok    sandbox: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  sandbox: 7.2 s\n  ok    analytics contract: every sandbox event sent (4 events, 0.0 s)\nlane garden (8.7 s)\n  ok    garden: at http://127.0.0.1:58204/realms/garden\n  ok    garden: the engine started\n  ok    garden: no errors\n  ok    garden: draws (100.0% lit, at least 50.0%)\n  ok    garden: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  garden: 8.6 s\ngoldens http://127.0.0.1:58204: passed in 31.5 s (1 tabs)\n"
+    },
+    "migrated-generic": {
+      "batch_status": "pass",
+      "seconds": 24.951,
+      "selected_zero_block_checks": {
+        "built": [
+          "ok    built: matches its golden (0 blocks changed, 6 allowed, 9 moving)"
+        ],
+        "garden": [
+          "ok    garden: matches its golden (0 blocks changed, 6 allowed, 0 moving)"
+        ],
+        "dead-gears": [
+          "ok    dead-gears: matches its golden (0 blocks changed, 6 allowed, 0 moving)"
+        ]
+      },
+      "report": {
+        "base": "http://127.0.0.1:58758",
+        "failed": [],
+        "golden": [],
+        "other": []
+      },
+      "log": "lane dead-gears (7.6 s)\n  ok    dead-gears: at http://127.0.0.1:58758/realms/dead-gears\n  ok    dead-gears: the engine started\n  ok    dead-gears: no errors\n  ok    dead-gears: draws (87.9% lit, at least 5.0%)\n  ok    dead-gears: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  dead-gears: 7.6 s\n  ok    analytics contract: every dead-gears event sent (5 events, 0.0 s)\nlane built (7.9 s)\n  ok    built: at http://127.0.0.1:58758/realms/built\n  ok    built: the engine started\n  ok    built: no errors\n  ok    built: draws (97.5% lit, at least 1.5%)\n  ok    built: matches its golden (0 blocks changed, 6 allowed, 9 moving)\n  time  built: 7.8 s\nlane garden (8.0 s)\n  ok    garden: at http://127.0.0.1:58758/realms/garden\n  ok    garden: the engine started\n  ok    garden: no errors\n  ok    garden: draws (100.0% lit, at least 50.0%)\n  ok    garden: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  garden: 8.0 s\ngoldens http://127.0.0.1:58758: passed in 24.8 s (1 tabs)\n"
+    },
+    "migrated-integer": {
+      "batch_status": "pass",
+      "seconds": 24.32,
+      "selected_zero_block_checks": {
+        "built": [
+          "ok    built: matches its golden (0 blocks changed, 6 allowed, 12 moving)"
+        ],
+        "garden": [
+          "ok    garden: matches its golden (0 blocks changed, 6 allowed, 0 moving)"
+        ],
+        "dead-gears": [
+          "ok    dead-gears: matches its golden (0 blocks changed, 6 allowed, 0 moving)"
+        ]
+      },
+      "report": {
+        "base": "http://127.0.0.1:58761",
+        "failed": [],
+        "golden": [],
+        "other": []
+      },
+      "log": "lane dead-gears (7.5 s)\n  ok    dead-gears: at http://127.0.0.1:58761/realms/dead-gears\n  ok    dead-gears: the engine started\n  ok    dead-gears: no errors\n  ok    dead-gears: draws (87.9% lit, at least 5.0%)\n  ok    dead-gears: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  dead-gears: 7.4 s\n  ok    analytics contract: every dead-gears event sent (5 events, 0.0 s)\nlane built (7.5 s)\n  ok    built: at http://127.0.0.1:58761/realms/built\n  ok    built: the engine started\n  ok    built: no errors\n  ok    built: draws (97.5% lit, at least 1.5%)\n  ok    built: matches its golden (0 blocks changed, 6 allowed, 12 moving)\n  time  built: 7.5 s\nlane garden (7.8 s)\n  ok    garden: at http://127.0.0.1:58761/realms/garden\n  ok    garden: the engine started\n  ok    garden: no errors\n  ok    garden: draws (100.0% lit, at least 50.0%)\n  ok    garden: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  garden: 7.8 s\ngoldens http://127.0.0.1:58761: passed in 24.1 s (1 tabs)\n"
+    }
+  },
+  "baseline_migration": {
+    "cases": {
+      "built": {
+        "images": {
+          "before.png": "2e1419f0e354a9dd9a8310991eee56ed46553729bd04d600091528a54b3be708",
+          "after.png": "cf6148cb106275cf30e2aa56be8c6348eb1da7c62450253eb626aadfff188323"
+        },
+        "baseline_updated": true,
+        "new_baseline_sha256": "cf6148cb106275cf30e2aa56be8c6348eb1da7c62450253eb626aadfff188323"
+      },
+      "garden": {
+        "images": {
+          "before.png": "c8cf51ec956c8ffa20dd5e378c93e3e519ffdcf29216f09d20b5ac2c0d5b0055",
+          "after.png": "cf3425a45620d07325ac4f88db7b07a75ac1cb28b112dab5b09bd496276a3cdd"
+        },
+        "baseline_updated": true,
+        "new_baseline_sha256": "cf3425a45620d07325ac4f88db7b07a75ac1cb28b112dab5b09bd496276a3cdd"
+      },
+      "dead-gears": {
+        "images": {
+          "before.png": "bbfe21ac37ddb7d932a4dd0da010c80701cda5c205da1fc1e509f6bdec03d53f",
+          "after.png": "531d86379fd72383eb3b9ee769a08a84d6166c706029be942707a76012c657ae"
+        },
+        "baseline_updated": true,
+        "new_baseline_sha256": "531d86379fd72383eb3b9ee769a08a84d6166c706029be942707a76012c657ae"
+      }
+    },
+    "visual_reviews": [
+      {
+        "reviewer": "root",
+        "finding": "Built, Garden and Dead Gears retain camera/framing, characters and props, HUD, palette and lighting layout. Portable cloud, canopy, ground and floor patterns change; Built also has independently isolated explicit eight-tap texture filtering."
+      },
+      {
+        "reviewer": "coax_review",
+        "finding": "Built, Garden and Dead Gears preserve framing, character/prop geometry, silhouettes, palette and HUD. Surface, canopy and floor detail changes agree with the exact shader controls. Other three cases retain separate findings and are not approved by this migration."
+      }
+    ]
+  },
+  "source_epoch": "All74 unique consumed served path/hash observations match and are retained in the digest pool. Current host214003ec/render824e1128; old Garden isolation is separately retained with its historical ABI correction. No new GPU run was performed for retention.",
+  "served_inputs": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/dead-gears/index.html": "b7a658b3c830c50ba336a7a7ec54effb834f40f973584cdcf806863b54675afa",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js": "214003ec97f37ce55daab424763a358715574030d533f1caed3853a1e46696af",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js": "824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+    "/tmp/aethyr-ch11-typed-hosts-one/deadgears.wasm": "b50fd61025c82a4775efa1a47463722a0358f8d258ab4724590bb760a1752f0d",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74",
+    "/tmp/aethyr-ch11-packages-current/dead-gears/render.json": "d88b52215ba0ca851064106fa1babe982baabd4c8217dd94e6cf35a0d8d0c007",
+    "/tmp/aethyr-ch11-packages-current/dead-gears/module-0-d276231fcebaf7cf287bfda7eba834fe8a582993990ee21ea8461174c52b14f6.wgsl": "d276231fcebaf7cf287bfda7eba834fe8a582993990ee21ea8461174c52b14f6",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/dead-gears/assets/DeadGears.indices": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/orbit-league/index.html": "23ebba021c0e7f731422865e43f7b1417317993515c49237931d4ab250d590e6",
+    "/tmp/aethyr-ch11-typed-hosts-relinked/orbitleague.wasm": "2b420b5a23d481c8f8a876e80606643606a1592a009d49860d5cf94f6b3fb86b",
+    "/tmp/aethyr-ch11-packages-current/orbit-league/render.json": "0932424597c04e9d5f5bd0f160dfed13a04f441962b31cb2871590ae2a5fdd2b",
+    "/tmp/aethyr-ch11-packages-current/orbit-league/module-0-9a0c9c664949fd42c4c01213d3e3173f65d156fd46d299c6ef1a5aac7e0b0afc.wgsl": "9a0c9c664949fd42c4c01213d3e3173f65d156fd46d299c6ef1a5aac7e0b0afc",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/orbit-league/assets/roadster.bin": "6be9a3c06c8d5535c9ddb4833d647afe156a7b7893773fc39f7944ac612f908c",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/built/index.html": "69b65233bc454d15dbc841c4db34bcec1060064109bbac2d3ff64cbcc847bf4d",
+    "/tmp/aethyr-ch11-typed-hosts-one/myrealm.wasm": "1f8181c1a9eac7ed244f8e69bd7220fb5076995971c588b8277900c7723a997a",
+    "/tmp/aethyr-ch11-packages-current/built/render.json": "eb147dc390e189e2d0adbf06f761215d0bacfcb8b7c99c0773564f88e3e461f1",
+    "/tmp/aethyr-ch11-packages-current/built/module-0-9fab1c7495982f1a45522335229be4321dc062687107486349f1c1ef5aa390a6.wgsl": "9fab1c7495982f1a45522335229be4321dc062687107486349f1c1ef5aa390a6",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/fixture/assets/fixture.pack": "df9c027378c87383f5be40d61c764b9fb615148524388d4b310229e9b0e39ad9",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/sandbox/index.html": "bc96c13f3cb44b995b2bd23cea0d84603cb77412fd56c4fe5921447632ef6281",
+    "/tmp/aethyr-ch11-typed-hosts-relinked/realm.wasm": "e6ee33d1bdb12dce2744a04b9bf67417aeb45170ced6c78d17e5a1c3075e0a35",
+    "/tmp/aethyr-ch11-packages-current/sandbox/render.json": "8f740bfacb3f9490b3cc3ed9b06b24fd103d4159b156389d0d0cceb76b1c7b3a",
+    "/tmp/aethyr-ch11-packages-current/sandbox/module-0-f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37.wgsl": "f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37",
+    "/tmp/aethyr-ch11-packages-current/sandbox/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl": "c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/sandbox/assets/Sandbox.pb": "dc43202a76cac3dd1de976bc3d0c7f08e7d74fea7237e253f8acaf8a3de6ed58",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.vertices": "ab92258e4a67ebcf5dddc24416cb315b21cb6dd74fa10959133030ae76039b91",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.indices": "4cb71e613cd5cc0c302b912782d5b643cad4d465cbab4c458b2a38044dcd0881",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer0.jpg": "c06dfe76db1838a0ec43135d62d66f18643ffbf56cd57c75cca7b91ec837e3f3",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer1.jpg": "ad03b7e165d731b8a53cb2db2a65a57a88fa8829ccff945acb51e939a4057da9",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer2.jpg": "e8f999a4bd722d43151ca9daff09a2e6d1e9c6f4717580f5a2ace96dfb61fbc3",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer18.jpg": "5e4255dac35fe8211566b2446f26dd94858c5f18f1d5cfde799128c9fae7798d",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer19.jpg": "4da3048be862cd13b9e7ae406cdb3d89af00bf22f7fb72627aa3b5d8600de5f8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer20.jpg": "9819f951eb6a554022467b2fc44db3e532e76fcedd8aa0c17628e03e8e248ae5",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer21.jpg": "cd5d5839c77d6993108b11699078c2d84ff8c4050dacfd596bf84d366ddd0af7",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer22.jpg": "56486f48b04d829b7dd0daf31610568371dcd5406c3844cbeecba9fcb7a6fe3d",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer24.jpg": "c56c0814b2a3dfa50641cfe2eeea80cd99eeb9f37651fdcf3a5255c8d062d602",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer26.jpg": "27032f86370225bcd5406a9638c35bfb44bc47ed8a2a7dfe1de13199dd96a741",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer27.jpg": "42bea928dfa1e112bc6e404680c91fce98e7158f6d4b6c48fc994246b6c45418",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer28.jpg": "42bea928dfa1e112bc6e404680c91fce98e7158f6d4b6c48fc994246b6c45418",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/index.html": "f59576e549b768210ddac7838353f5a3214e2a56e377514d89be58b2fe73aac7",
+    "/tmp/aethyr-ch11-typed-hosts-one/villa.wasm": "ff815805b19b5bd7e2ff4719ba74637fab6153f7a58b6dd1cd27631e59830612",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/render.json": "9e880903d4678b88af83e11f0cab6032a25f029898e3f1c77e268d0e981ef6c0",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl": "e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl": "c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl": "589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/assets/Villa.indices": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/garden/index.html": "f99f43264cd719a447f7f42d5a0be03c644ec0a62630e5fc31b61a1af5151ab1",
+    "/tmp/aethyr-ch11-typed-hosts-one/garden.wasm": "10e4021ebecbc63c0e0ee082e620a508d36dba295528e2c3e6545fff2b332c7b",
+    "/tmp/aethyr-ch11-packages-current/garden/render.json": "6af569b136fa50ecd72da4fce0cc87383fad06a238a68e389f0fed1e15ee9c50",
+    "/tmp/aethyr-ch11-packages-current/garden/module-0-b69fddd0f2c2314c5a2db30d795ab71e4edc66b044f7ac45a5d6b5bbd8cde0cd.wgsl": "b69fddd0f2c2314c5a2db30d795ab71e4edc66b044f7ac45a5d6b5bbd8cde0cd",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/garden/assets/Garden.indices": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/deadgears.wgsl": "f16614e102e4cf43fffc24c2a51752fe11a66693e5d4ab116ff6a98bf151897f",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/myrealm.wgsl": "224131021ece59f302974020b344ca8ba4e4eed18a1b5aff53daf62380a10c9c",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realm.wgsl": "5c862b8996fd6e6b75885d576adc7a808bd7b02e232a75ac90860c30c15b0bc5",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/particles.wgsl": "4bf3486e6923dbd7b22daf44a61575a720ae7daf7a8e2df446bb1c882ecb6c05",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/villa.wgsl": "19dc016a55ed1a5bee67988bdae3212cdba89a6a5a8c7db88f07ec0c9dacb460",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/garden.wgsl": "79b1d930963c419e28d8288bb62050d68bc3b0b8bb9b333a8e8e06249dde02ad",
+    "/tmp/aethyr-ch11-deadgears-noise-controls/sin.wgsl": "6e1de64f41c4c124c64b36aed9796084630d4ced9ed91b233664ca5d86e35516",
+    "/tmp/aethyr-ch11-myrealm-noise-controls/sin-hardware.wgsl": "c63f463aef6b8eed1f54160eaaf2025ca1ce59e01df84a28748962c8208b410d",
+    "/tmp/aethyr-ch11-realm-noise-controls/sin-hardware.wgsl": "6b9ac6d4fbaae59842b1d1bfe160709806b9b2e06e6e5fd3e1a0b9b597922877",
+    "/tmp/aethyr-ch11-garden-noise-controls/sin.wgsl": "49362027791c237a5fe1e5051417590181bd66a75a44d41194f45fdbf3dc6514",
+    "/tmp/aethyr-ch11-deadgears-noise-controls/integer.wgsl": "d276231fcebaf7cf287bfda7eba834fe8a582993990ee21ea8461174c52b14f6",
+    "/tmp/aethyr-ch11-myrealm-noise-controls/integer.wgsl": "9fab1c7495982f1a45522335229be4321dc062687107486349f1c1ef5aa390a6",
+    "/tmp/aethyr-ch11-garden-noise-controls/integer.wgsl": "b69fddd0f2c2314c5a2db30d795ab71e4edc66b044f7ac45a5d6b5bbd8cde0cd",
+    "/tmp/aethyr-ch11-myrealm-noise-controls/sin.wgsl": "77c492cfb9c655b670b240ee4980b6908d15c082b44c1dc18ff614e575f9ab53"
+  },
+  "walk_sources": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/goldens.ts": "c2d9af7a87a59454a1bd9bd084750f9d7250d656087d75f7546ebc22466b1947",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/golden-pages.ts": "12a16e915dfff4274e1e6b55a587405783a436b071bfded3f21cb811b082f3be",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/golden-policy.ts": "0aecf05a623ceb565b285ae69172ca66bf2009e824e7dcd30c4d16bac1a3c82f",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/realms.ts": "6178dadec4c07d42c483bde38864a6bef86e36a1b91d6445c5e7d36a9ba20d45",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms.json": "1cf8ea39eff7b414c82dd0703b6b450d1262ec0416b359b97ad5d161ca874d37"
+  },
+  "built_sampling_isolation": "Noise-only sine restoration does not restore the original Built raw image. Restoring the old implicit hardware sampling call as well reproduces the exact original raw image; portable noise and explicit eight-tap filtering are separate visible migrations.",
+  "scope": "Only Built, Garden and Dead Gears production PNG baselines are covered. Original six-block allowance is unchanged; selected3 original, restored-sine, migrated-generic and migrated-integer checks each report0changed blocks. The original-legacy five-case batch still fails unrelated Hecate and is retained as mixed, not globally passing. Both reviewers approved these3 before PNG updates. CPU/GPU numerical acceptance and decoded-texture equality remain separate.",
+  "source_changes": [],
+  "archive": {
+    "file": "artifacts.tar.gz",
+    "sha256": "afc1c7bee51f8d32462a07d07688dac40bd165a93bb13f40dc664072a8e14434",
+    "bytes": 12953771
+  }
+}

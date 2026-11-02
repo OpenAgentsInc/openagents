@@ -1,0 +1,4 @@
+rules.o: /Users/christopherdavid/work/aethyr-demo/src/icecream/rules.cpp \
+  /Users/christopherdavid/work/aethyr-demo/src/icecream/rules.h \
+  /Users/christopherdavid/work/aethyr-demo/src/icecream/../ecs/ecs.h \
+  /Users/christopherdavid/work/aethyr-demo/src/icecream/../ecs/json.h

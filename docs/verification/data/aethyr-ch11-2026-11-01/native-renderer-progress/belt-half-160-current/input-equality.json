@@ -1,0 +1,77 @@
+{
+  "schema": "aethyr.render.complete-frame-input-equality.v1",
+  "equal": true,
+  "source": "/tmp/aethyr-ch11-belt-half-160-current/frame.config",
+  "staged": "/tmp/aethyr-ch11-native-belt-160-current/stage/frame.config",
+  "scope": "Every RFI non-path token is identical; every referenced file, including authenticated package/trees and physical resource bytes, has equal size and SHA. No counts/camera/clock/resource reconstruction.",
+  "grammar_reader": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_reference_frame.py",
+  "grammar_reader_sha256": "0afd820dd9069fbe0e1b94c6b34086b719eb61c83de8fe4b8c558f29aed6509a",
+  "source_files": {
+    "/private/tmp/aethyr-ch11-belt-half-160-current/u.bin": {
+      "bytes": 704,
+      "sha256": "7f68ee1d30d307b03d5b2e29129837400d46015da245e092b3ff32a527713254"
+    },
+    "/private/tmp/aethyr-ch11-belt-half-160-current/hud.bin": {
+      "bytes": 2121984,
+      "sha256": "a7aef6dea55029664156bb26f706a4bece6ed78d6d77ba8ad2465e9dfb62b0de"
+    },
+    "/private/tmp/aethyr-ch11-belt-half-160-current/draws.bin": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/private/tmp/aethyr-ch11-belt-half-160-current/indices.bin": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/private/tmp/aethyr-ch11-packages-current/belt-2200/render.json": {
+      "bytes": 5985,
+      "sha256": "720c1f9b275bc0e83ed3497e7fa566a9cc6c04c9dd5c06f1f4ff608625bca4ed"
+    },
+    "/private/tmp/aethyr-ch11-packages-current/belt-2200/pipeline-0-0c943433dfded4305ada7c47140b49342861d73f33e46923a50950fa0af36785.tree": {
+      "bytes": 20394,
+      "sha256": "0c943433dfded4305ada7c47140b49342861d73f33e46923a50950fa0af36785"
+    },
+    "/private/tmp/aethyr-ch11-packages-current/belt-2200/pipeline-12-933234f684bde94176595848f85d611a9807b613fcc58ed9973f244f76f4a2a4.tree": {
+      "bytes": 2862,
+      "sha256": "933234f684bde94176595848f85d611a9807b613fcc58ed9973f244f76f4a2a4"
+    },
+    "/private/tmp/aethyr-ch11-belt-half-160-current/media.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "staged_files": {
+    "/private/tmp/aethyr-ch11-native-belt-160-current/stage/inputs/u.bin": {
+      "bytes": 704,
+      "sha256": "7f68ee1d30d307b03d5b2e29129837400d46015da245e092b3ff32a527713254"
+    },
+    "/private/tmp/aethyr-ch11-native-belt-160-current/stage/inputs/hud.bin": {
+      "bytes": 2121984,
+      "sha256": "a7aef6dea55029664156bb26f706a4bece6ed78d6d77ba8ad2465e9dfb62b0de"
+    },
+    "/private/tmp/aethyr-ch11-native-belt-160-current/stage/inputs/draws.bin": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/private/tmp/aethyr-ch11-native-belt-160-current/stage/inputs/indices.bin": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/private/tmp/aethyr-ch11-native-belt-160-current/stage/package/render.json": {
+      "bytes": 5985,
+      "sha256": "720c1f9b275bc0e83ed3497e7fa566a9cc6c04c9dd5c06f1f4ff608625bca4ed"
+    },
+    "/private/tmp/aethyr-ch11-native-belt-160-current/stage/inputs/pipeline-0-0c943433dfded4305ada7c47140b49342861d73f33e46923a50950fa0af36785.tree": {
+      "bytes": 20394,
+      "sha256": "0c943433dfded4305ada7c47140b49342861d73f33e46923a50950fa0af36785"
+    },
+    "/private/tmp/aethyr-ch11-native-belt-160-current/stage/inputs/pipeline-12-933234f684bde94176595848f85d611a9807b613fcc58ed9973f244f76f4a2a4.tree": {
+      "bytes": 2862,
+      "sha256": "933234f684bde94176595848f85d611a9807b613fcc58ed9973f244f76f4a2a4"
+    },
+    "/private/tmp/aethyr-ch11-native-belt-160-current/stage/inputs/media.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

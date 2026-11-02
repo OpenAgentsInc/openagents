@@ -1,0 +1,17 @@
+// Feed recorded f32 vertex outputs directly to rasterization. This isolates
+// raster/projection precision from the production vertex shader's arithmetic.
+#load "../../verse/gpu/shader.coax";
+ClipOutputProbe :: struct {pos:V4;basis:V3;}
+#test "clip output probe preserves all four homogeneous words and vertex basis" {
+ u:=[12]f32.[1,2,3,4,5,6,7,8,9,10,11,12];
+ a:=render_clip_output_probe_vs(0,0,u[..]);b:=render_clip_output_probe_vs(1,0,u[..]);c:=render_clip_output_probe_vs(2,0,u[..]);
+ #assert a.pos.x==1 && a.pos.y==2 && a.pos.z==3 && a.pos.w==4 && a.basis.x==1 && a.basis.y==0 && a.basis.z==0;
+ #assert b.pos.x==5 && b.pos.y==6 && b.pos.z==7 && b.pos.w==8 && b.basis.x==0 && b.basis.y==1 && b.basis.z==0;
+ #assert c.pos.x==9 && c.pos.y==10 && c.pos.z==11 && c.pos.w==12 && c.basis.x==0 && c.basis.y==0 && c.basis.z==1;
+}
+render_clip_output_probe_vs :: (vertex:u32,instance:u32,u:[]f32)->ClipOutputProbe {
+ at:=cast(int)vertex*4;basis:=v3(0,0,1);
+ if vertex==0 {basis=v3(1,0,0);}if vertex==1 {basis=v3(0,1,0);}
+ return ClipOutputProbe.{pos=v4(u[at],u[at+1],u[at+2],u[at+3]),basis=basis};
+}
+render_clip_output_probe_fs :: (v:ClipOutputProbe)->V4 {return v4(v.pos.z,v.basis.x,v.basis.y,v.pos.w);}

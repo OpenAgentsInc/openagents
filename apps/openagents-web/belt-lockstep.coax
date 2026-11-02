@@ -66,7 +66,7 @@ lock_compare :: (c: [] LockCheck, tick: int, mine: u64, theirs: u64) {
   if mine != theirs && !c[0].desync { c[0].desync = true; c[0].tick = tick; }
 }
 
-#test "lockstep: two clients given the same orders have equal state hashes after ten game-days; a different order is a desync, reported at its check" {
+#test "lockstep: two clients given the same orders have equal state hashes after ten game-days; a different order is a desync, reported at its check" #steps 60000000 {
   a: [1] Belt; b: [1] Belt; x: [1] Belt;
   belt_start(a[..]); belt_start(b[..]); belt_start(x[..]);
   orders := [4] Order.[

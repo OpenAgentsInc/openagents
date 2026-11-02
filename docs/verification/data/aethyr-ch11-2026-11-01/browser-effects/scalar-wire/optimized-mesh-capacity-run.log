@@ -1,0 +1,1 @@
+Assertion failed: (coaxial_render_mesh_placeholder(0,1,15)==COAX_RenderResourceStatus_capacity), function main, file wire.c, line 31.

@@ -1,0 +1,14 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/render/tests/filter-native.coax:63:64: mutant survived: '*' became '+'
+   return rq_sample_compare(rnf_texture,rnf_config,(0.5f32+rnf_x)*0.5f32,(0.5f32+rnf_y)*0.5f32,0,rnf_lod,rnf_ref);
+                                                                 ^
+aethyr/render/tests/filter-native.coax:63:57: mutant survived: '+' became '-'
+   return rq_sample_compare(rnf_texture,rnf_config,(0.5f32+rnf_x)*0.5f32,(0.5f32+rnf_y)*0.5f32,0,rnf_lod,rnf_ref);
+                                                          ^
+aethyr/render/tests/filter-native.coax:63:86: mutant survived: '*' became '+'
+   return rq_sample_compare(rnf_texture,rnf_config,(0.5f32+rnf_x)*0.5f32,(0.5f32+rnf_y)*0.5f32,0,rnf_lod,rnf_ref);
+                                                                                       ^
+aethyr/render/tests/filter-native.coax:63:79: mutant survived: '+' became '-'
+   return rq_sample_compare(rnf_texture,rnf_config,(0.5f32+rnf_x)*0.5f32,(0.5f32+rnf_y)*0.5f32,0,rnf_lod,rnf_ref);
+                                                                                ^
+12 mutants, 8 killed, 4 survived

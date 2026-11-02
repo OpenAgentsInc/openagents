@@ -1,0 +1,34 @@
+#forall "host staging rounds each cursor residue up to four and admits complete word spans" cursor:0..<20,rhm_word_count:0..<5 {
+  r:=render_host_stage(cast(u64)cursor,cast(u64)(rhm_word_count*4),128);
+  expected:=cast(u64)((cursor+3)/4*4);
+  #assert r.status==RenderFrameStatus.ok && r.address==expected && r.next==expected+cast(u64)(rhm_word_count*4);
+  #assert r.pages==(ifx r.next==0 then cast(u64)0 else cast(u64)1);
+}
+#test "host staging page counts include an exact boundary without an extra page" {
+  a:=render_host_stage(65532,4,131072);b:=render_host_stage(65536,4,131072);
+  #assert a.status==RenderFrameStatus.ok && a.address==65532 && a.next==65536 && a.pages==1;
+  #assert b.status==RenderFrameStatus.ok && b.address==65536 && b.next==65540 && b.pages==2;
+  z:=render_host_stage(65535,0,65536);#assert z.status==RenderFrameStatus.ok && z.address==65536 && z.next==65536 && z.pages==1;
+}
+#test "host staging admits the exact64MiB allocation and an empty span at its end" {
+  r:=render_host_stage(0,67108864,67108864);#assert r.status==RenderFrameStatus.ok && r.address==0 && r.next==67108864 && r.pages==1024;
+  r=render_host_stage(67108864,0,67108864);#assert r.status==RenderFrameStatus.ok && r.address==67108864 && r.next==67108864 && r.pages==1024;
+  r=render_host_stage(0,0,0);#assert r.status==RenderFrameStatus.ok && r.address==0 && r.next==0 && r.pages==0;
+}
+#forall "host staging refuses nonword payloads before returning a writable address" bytes:1..<16 {
+  if bytes%4!=0 {
+    r:=render_host_stage(7,cast(u64)bytes,128);
+    #assert r.status==RenderFrameStatus.bad_upload && r.address==0 && r.next==7 && r.pages==0;
+  }
+}
+#test "host staging refuses exhaustion alignment padding and native addition overflow atomically" {
+  cursors:=[7]u64.[1,5,8,67108864,18446744073709551615,18446744073709551612,4];
+  sizes:=[7]u64.[0,4,4,4,0,4,18446744073709551612];limits:=[7]u64.[0,8,8,67108864,67108864,67108864,67108864];
+  for i:0..<7 {r:=render_host_stage(cursors[i],sizes[i],limits[i]);#assert r.status==RenderFrameStatus.capacity && r.address==0 && r.next==cursors[i] && r.pages==0;}
+  r:=render_host_stage(16,0,15);#assert r.status==RenderFrameStatus.capacity && r.next==16 && r.address==0 && r.pages==0;
+}
+#test "host staging rejects a forged allocation limit above the imported memory maximum" {
+  r:=render_host_stage(4,4,67108865);
+  #assert r.status==RenderFrameStatus.bad_limits && r.address==0 && r.next==4 && r.pages==0;
+  r=render_host_stage(0,0,18446744073709551615);#assert r.status==RenderFrameStatus.bad_limits && r.next==0;
+}

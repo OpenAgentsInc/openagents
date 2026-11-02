@@ -1,0 +1,291 @@
+// Independent boundary fixtures. Only the production frame unit is an
+// authority/mutation root; these helpers construct inputs for its checks.
+rf_test_counts :: () -> FrameCounts { return FrameCounts.{width = 640, height = 480}; }
+rf_test_direct :: () -> RenderDirectDomains {
+  return RenderDirectDomains.{hud_vertices = 4294967296, grass_instances = 4294967296,
+    particle_instances = 4294967296, surface_vertices = 4294967296, caster_vertices = 4294967296, caster_instances = 4294967296};
+}
+
+#test "renderer admits a clear-only frame and validates every declared limit" {
+  rf_c := rf_test_counts(); rf_l: RenderFrameLimits;
+  rf_u: [1] RenderUpload; rf_w: [1] u32; rf_d: [1] RenderDrawDomain;
+  rf_r := render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]);
+  #assert rf_r.status == RenderFrameStatus.ok && rf_r.admitted_draws == 0 && rf_r.checked_indices == 0;
+  #assert rf_r.bad_draw == -1 && rf_r.bad_upload == -1;
+  #assert rf_l.max_width == 16384 && rf_l.max_height == 16384 && rf_l.max_draws == 4096 && rf_l.max_uploads == 48;
+  #assert rf_l.max_vertex_stride == 64 && rf_l.index_work == 16777216;
+  rf_l.max_draws = 0; rf_l.max_uploads = 0; rf_l.max_vertex_stride = 0; rf_l.index_work = 0;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.ok;
+}
+
+#forall "renderer refuses malformed frame limits" rf_field: 0..<6, rf_bad: 0..<2 {
+  rf_c := rf_test_counts(); rf_l: RenderFrameLimits;
+  if rf_field == 0 { rf_l.max_width = ifx rf_bad == 0 then 0 else 65537; }
+  if rf_field == 1 { rf_l.max_height = ifx rf_bad == 0 then 0 else 65537; }
+  if rf_field == 2 { rf_l.max_draws = ifx rf_bad == 0 then -1 else 65537; }
+  if rf_field == 3 { rf_l.max_uploads = ifx rf_bad == 0 then -1 else 49; }
+  if rf_field == 4 { rf_l.max_vertex_stride = ifx rf_bad == 0 then -1 else 65; }
+  if rf_field == 5 { rf_l.index_work = ifx rf_bad == 0 then -1 else 16777217; }
+  rf_u: [1] RenderUpload; rf_w: [1] u32; rf_d: [1] RenderDrawDomain;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.bad_limits;
+}
+
+#test "renderer viewport and HUD stride have exact admitted boundaries" {
+  rf_c := rf_test_counts(); rf_l: RenderFrameLimits;
+  rf_u: [1] RenderUpload; rf_w: [1] u32; rf_d: [1] RenderDrawDomain;
+  rf_c.width = 1; rf_c.height = 1;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.ok;
+  rf_c.width = rf_l.max_width; rf_c.height = rf_l.max_height;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.ok;
+  rf_c.width += 1;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.bad_viewport;
+  rf_c = rf_test_counts(); rf_c.height = 0;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.bad_viewport;
+  rf_c = rf_test_counts(); rf_c.hud_vertices = 1;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.bad_counts;
+  rf_c.vertex_stride = 64;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.ok;
+  rf_c.vertex_stride = 65;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.bad_counts;
+}
+
+#forall "renderer count words never truncate negative or wide producer values" rf_field: 0..<9, rf_bad: 0..<2 {
+  rf_c := rf_test_counts(); rf_l: RenderFrameLimits;
+  rf_value := ifx rf_bad == 0 then -1 else 4294967296;
+  if rf_field == 0 { rf_c.hud_vertices = rf_value; }
+  if rf_field == 1 { rf_c.draw_count = rf_value; }
+  if rf_field == 2 { rf_c.water_draws = rf_value; }
+  if rf_field == 3 { rf_c.grass_instances = rf_value; }
+  if rf_field == 4 { rf_c.particle_instances = rf_value; }
+  if rf_field == 5 { rf_c.surface_vertices = rf_value; }
+  if rf_field == 6 { rf_c.caster_vertices = rf_value; }
+  if rf_field == 7 { rf_c.caster_instances = rf_value; }
+  if rf_field == 8 { rf_c.vertex_stride = rf_value; }
+  rf_u: [1] RenderUpload; rf_w: [1] u32; rf_d: [1] RenderDrawDomain;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.bad_counts;
+}
+
+#test "renderer uploads check allocation end GPU end alignment and overflow without clipping" {
+  rf_u := RenderUpload.{source_base = 100, source_address = 116, source_bytes = 64, bytes = 16, gpu_offset = 16, gpu_bytes = 32};
+  #assert render_upload_ok(rf_u);
+  rf_u.bytes = 20; #assert !render_upload_ok(rf_u);
+  rf_u.bytes = 16; rf_u.gpu_bytes = 36; rf_u.source_address = 152; #assert !render_upload_ok(rf_u);
+  rf_u.source_address = 148; #assert render_upload_ok(rf_u);
+  rf_u.source_address = 149; #assert !render_upload_ok(rf_u);
+  rf_u.source_address = 96; #assert !render_upload_ok(rf_u);
+  rf_u.source_address = 164; rf_u.bytes = 0; #assert render_upload_ok(rf_u);
+  rf_u.source_address = 168; #assert !render_upload_ok(rf_u);
+  rf_u = RenderUpload.{source_address = 256, source_bytes = 1024, bytes = 12, gpu_bytes = 12, alignment = 256};
+  #assert render_upload_ok(rf_u); // byte count needs four-byte, not 256-byte alignment
+  rf_u.alignment = 3; #assert !render_upload_ok(rf_u);
+  rf_u.alignment = 8; rf_u.source_address = 260; #assert !render_upload_ok(rf_u);
+  rf_u.source_address = 256; rf_u.gpu_offset = 4; rf_u.gpu_bytes = 16; #assert !render_upload_ok(rf_u);
+  rf_u.gpu_offset = 0; rf_u.bytes = 10; #assert !render_upload_ok(rf_u);
+  rf_u = RenderUpload.{source_base = 18446744073709551600, source_address = 18446744073709551600, source_bytes = 16};
+  #assert !render_upload_ok(rf_u); // allocation end would wrap
+  rf_u.source_bytes = 12; #assert render_upload_ok(rf_u);
+  rf_u.source_base = 0; rf_u.source_address = 0; rf_u.source_bytes = 16;
+  rf_u.gpu_offset = 18446744073709551612; rf_u.gpu_bytes = 18446744073709551615; rf_u.bytes = 4;
+  #assert !render_upload_ok(rf_u);
+}
+
+#test "renderer validates every upload before admitting a frame" {
+  rf_c := rf_test_counts(); rf_l: RenderFrameLimits;
+  rf_u: [2] RenderUpload; rf_w: [1] u32; rf_d: [1] RenderDrawDomain;
+  rf_u[1].bytes = 4;
+  rf_r := render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[..], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]);
+  #assert rf_r.status == RenderFrameStatus.bad_upload && rf_r.bad_upload == 1 && rf_r.bad_draw == -1;
+  rf_l.max_uploads = 1;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[..], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.capacity;
+}
+
+#test "renderer keeps four draw words and decodes the high base bit only for nonindexed draws" {
+  rf_w := [12] u32.[1,3,7,2, 3,2,2147483654,3, 4294967295,0,4294967295,4294967295];
+  rf_a := render_decode_draw(rf_w[..], 0); rf_b := render_decode_draw(rf_w[..], 1); rf_z := render_decode_draw(rf_w[..], 2);
+  #assert rf_a.kind == RenderDrawKind.indexed && rf_a.first == 1 && rf_a.count == 3 && rf_a.base_instance == 7 && rf_a.instances == 2;
+  #assert rf_b.kind == RenderDrawKind.nonindexed && rf_b.first == 3 && rf_b.count == 2 && rf_b.base_instance == 6 && rf_b.instances == 3;
+  #assert rf_z.kind == RenderDrawKind.skip;
+  #assert render_decode_draw(rf_w[..], -1).kind == RenderDrawKind.invalid && render_decode_draw(rf_w[..], 3).kind == RenderDrawKind.invalid;
+  rf_w[9] = 1; rf_w[11] = 0;
+  #assert render_decode_draw(rf_w[..], 2).kind == RenderDrawKind.skip;
+}
+
+#test "renderer checks indexed payloads GPU domains skip records and nonindexed endpoints" {
+  rf_c := rf_test_counts(); rf_c.draw_count = 3; rf_c.water_draws = 1;
+  rf_l: RenderFrameLimits; rf_u: [1] RenderUpload;
+  rf_w := [12] u32.[1,3,7,2, 3,2,2147483654,3, 4294967295,0,4294967295,4294967295];
+  rf_i := [4] u32.[0,1,4,2]; rf_d := [3] RenderDrawDomain.[
+    RenderDrawDomain.{vertices = 5, instances = 9, indices = 4}, RenderDrawDomain.{vertices = 5, instances = 9}, RenderDrawDomain.{}];
+  rf_r := render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]);
+  #assert rf_r.status == RenderFrameStatus.ok && rf_r.admitted_draws == 2 && rf_r.checked_indices == 3;
+  rf_i[2] = 5;
+  rf_r = render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]);
+  #assert rf_r.status == RenderFrameStatus.bad_index && rf_r.bad_draw == 0 && rf_r.checked_indices == 2;
+  rf_i[2] = 4; rf_d[0].indices = 3;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]).status == RenderFrameStatus.bad_draw;
+  rf_d[0].indices = 4; rf_d[1].vertices = 4;
+  rf_r = render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]);
+  #assert rf_r.status == RenderFrameStatus.bad_draw && rf_r.bad_draw == 1;
+  rf_d[1].vertices = 5; rf_d[1].instances = 8;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]).status == RenderFrameStatus.bad_draw;
+}
+
+#test "renderer rejects incomplete draw tables and an exhausted index budget without partial admission" {
+  rf_c := rf_test_counts(); rf_c.draw_count = 1; rf_l: RenderFrameLimits; rf_u: [1] RenderUpload;
+  rf_w := [4] u32.[0,2,0,1]; rf_i := [2] u32.[0,1]; rf_d := [1] RenderDrawDomain.[RenderDrawDomain.{vertices = 2, instances = 1, indices = 2}];
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<3], rf_d[..], rf_i[..]).status == RenderFrameStatus.capacity;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[0..<0], rf_i[..]).status == RenderFrameStatus.capacity;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[0..<1]).status == RenderFrameStatus.bad_draw;
+  rf_l.index_work = 1;
+  rf_r := render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]);
+  #assert rf_r.status == RenderFrameStatus.index_budget && rf_r.bad_draw == 0 && rf_r.checked_indices == 1 && rf_r.admitted_draws == 0;
+  rf_l.index_work = 2;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]).status == RenderFrameStatus.ok;
+  rf_l.max_draws = 0;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]).status == RenderFrameStatus.capacity;
+  rf_c.draw_count = 0; rf_c.water_draws = 1;
+  #assert render_frame_admit(rf_c, RenderFrameLimits.{}, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_i[..]).status == RenderFrameStatus.bad_counts;
+}
+
+#test "renderer u32 endpoint arithmetic never wraps first count base or the declared domains" {
+  rf_c := rf_test_counts(); rf_c.draw_count = 1; rf_l: RenderFrameLimits; rf_u: [1] RenderUpload;
+  rf_w := [4] u32.[4294967295,1,2147483648,1]; rf_i := [1] u32.[4294967295];
+  rf_d := [1] RenderDrawDomain.[RenderDrawDomain.{vertices = 4294967296, instances = 1, indices = 1}];
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]).status == RenderFrameStatus.ok;
+  rf_w[1] = 2;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]).status == RenderFrameStatus.bad_draw;
+  rf_w = [4] u32.[0,1,2147483647,2147483649]; rf_d[0].instances = 4294967296;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]).status == RenderFrameStatus.ok;
+  rf_d[0].vertices = 4294967295;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]).status == RenderFrameStatus.bad_index;
+  rf_d[0].vertices = 4294967297;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[..], rf_d[..], rf_i[..]).status == RenderFrameStatus.bad_domain;
+}
+
+#test "renderer admits the exact representable count and configured limits" {
+  #assert render_count_word_ok(0) && render_count_word_ok(4294967295);
+  #assert !render_count_word_ok(-1) && !render_count_word_ok(4294967296);
+  rf_l := RenderFrameLimits.{max_width = 65536, max_height = 65536, max_draws = 65536,
+    max_uploads = 48, max_vertex_stride = 64, index_work = 16777216};
+  #assert render_frame_limits_ok(rf_l);
+  rf_c := rf_test_counts(); rf_c.width = 0;
+  rf_u: [1] RenderUpload; rf_w: [1] u32; rf_d: [1] RenderDrawDomain;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.bad_viewport;
+  rf_c.width = -1; rf_c.height = 65537;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.bad_viewport;
+  rf_c.width = 65536; rf_c.height = 65537;
+  #assert render_frame_admit(rf_c, rf_l, rf_test_direct(), rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]).status == RenderFrameStatus.bad_viewport;
+}
+
+#forall "renderer admits each supported alignment and rejects smaller non-power alignments" rf_alignment: 0..<10 {
+  rf_values := [10] u64.[4,8,16,32,64,128,256,0,2,12];
+  rf_u := RenderUpload.{source_address = 256, source_bytes = 1024, bytes = 4, gpu_bytes = 4, alignment = rf_values[rf_alignment]};
+  #assert render_upload_ok(rf_u) == (rf_alignment < 7);
+}
+
+#test "renderer empty upload can reach the exact u64 allocation endpoint" {
+  rf_u := RenderUpload.{source_bytes = 18446744073709551615};
+  #assert render_upload_ok(rf_u);
+  rf_words := [4] u32.[0,1,2147483655,1];
+  #assert render_decode_draw(rf_words[..],0).base_instance == 7;
+}
+
+#forall "renderer direct command counts fit the actual admitted resource domains" rf_field: 0..<6 {
+  rf_c := rf_test_counts(); rf_c.vertex_stride = 4;
+  rf_caps := rf_test_direct(); rf_l: RenderFrameLimits;
+  if rf_field == 0 { rf_c.hud_vertices = 1; rf_caps.hud_vertices = 0; }
+  if rf_field == 1 { rf_c.grass_instances = 1; rf_caps.grass_instances = 0; }
+  if rf_field == 2 { rf_c.particle_instances = 1; rf_caps.particle_instances = 0; }
+  if rf_field == 3 { rf_c.surface_vertices = 1; rf_caps.surface_vertices = 0; }
+  if rf_field == 4 { rf_c.caster_vertices = 1; rf_caps.caster_vertices = 0; }
+  if rf_field == 5 { rf_c.caster_instances = 1; rf_caps.caster_instances = 0; }
+  rf_u: [1] RenderUpload; rf_w: [1] u32; rf_d: [1] RenderDrawDomain;
+  rf_r := render_frame_admit(rf_c, rf_l, rf_caps, rf_u[0..<0], rf_w[0..<0], rf_d[0..<0], rf_w[0..<0]);
+  #assert rf_r.status == RenderFrameStatus.bad_direct && rf_r.bad_direct == rf_field && rf_r.admitted_draws == 0;
+}
+
+#test "renderer direct domain metadata and later draw failures never grant partial work" {
+  rf_c := rf_test_counts(); rf_caps := rf_test_direct(); rf_caps.caster_instances = 4294967297;
+  rf_l: RenderFrameLimits; rf_u: [1] RenderUpload; rf_i := [1] u32.[0];
+  rf_words := [8] u32.[0,1,0,1, 0,1,0,2];
+  rf_domains := [2] RenderDrawDomain.[RenderDrawDomain.{vertices = 1, instances = 1, indices = 1}, RenderDrawDomain.{vertices = 1, instances = 1, indices = 1}];
+  rf_r := render_frame_admit(rf_c, rf_l, rf_caps, rf_u[0..<0], rf_words[..], rf_domains[..], rf_i[..]);
+  #assert rf_r.status == RenderFrameStatus.bad_domain && rf_r.bad_direct == 5;
+  rf_caps = rf_test_direct(); rf_c.draw_count = 2;
+  rf_r = render_frame_admit(rf_c, rf_l, rf_caps, rf_u[0..<0], rf_words[..], rf_domains[..], rf_i[..]);
+  #assert rf_r.status == RenderFrameStatus.bad_draw && rf_r.bad_draw == 1 && rf_r.admitted_draws == 0;
+  rf_words[7] = 1; rf_domains[0].instances = 4294967297;
+  #assert render_frame_admit(rf_c, rf_l, rf_caps, rf_u[0..<0], rf_words[..], rf_domains[..], rf_i[..]).status == RenderFrameStatus.bad_domain;
+  rf_domains[0].instances = 1; rf_domains[0].indices = 4294967297;
+  #assert render_frame_admit(rf_c, rf_l, rf_caps, rf_u[0..<0], rf_words[..], rf_domains[..], rf_i[..]).status == RenderFrameStatus.bad_domain;
+}
+
+#test "renderer admits encoded prefix intervals and rejects gaps without widening domains" {
+  rf_c := rf_test_counts(); rf_c.draw_count = 1; rf_l: RenderFrameLimits; rf_u: [1] RenderUpload;
+  rf_words := [4] u32.[0,3,1048577,2]; rf_indices := [3] u32.[2,1000,1002];
+  rf_domains := [1] RenderDrawDomain.[RenderDrawDomain.{vertex_begin = 2, vertices = 5,
+    vertex_alt_begin = 1000, vertex_alt_end = 1003, instance_begin = 1048576, instances = 1048579, indices = 3}];
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_words[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.ok;
+  rf_indices[1] = 999;
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_words[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.bad_index;
+  rf_indices[1] = 1;
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_words[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.bad_index;
+  rf_words = [4] u32.[1000,3,2148532224,3];
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_words[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.ok;
+  rf_words[0] = 4; rf_words[1] = 997;
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_words[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.bad_draw;
+  rf_words = [4] u32.[1000,3,2148532223,1];
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_words[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.bad_draw;
+  #assert render_span_fits(5,0,2,5) && render_span_fits(2,3,2,5) && !render_span_fits(1,0,2,5);
+  #assert !render_span_fits(6,0,2,5) && !render_span_fits(2,4,2,5) && !render_span_fits(3,0,4,2);
+  rf_domains[0].vertex_begin = 6;
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_words[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.bad_domain;
+  rf_domains[0].vertex_begin = 2; rf_domains[0].vertex_alt_begin = 1004;
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_words[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.bad_domain;
+  rf_domains[0].vertex_alt_begin = 1000; rf_domains[0].vertex_alt_end = 4294967297;
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_words[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.bad_domain;
+  rf_domains[0].vertex_alt_end = 1003; rf_domains[0].instance_begin = 1048580;
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_words[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.bad_domain;
+}
+
+#test "renderer preflights source descriptors before a host constructs geometry views" {
+  rf_l: RenderFrameLimits; rf_u: [2] RenderUpload;
+  #assert render_uploads_admit(rf_l,rf_u[..]).status == RenderFrameStatus.ok;
+  rf_u[0].bytes = 4;
+  rf_bad := render_uploads_admit(rf_l,rf_u[..]);
+  #assert rf_bad.status == RenderFrameStatus.bad_upload && rf_bad.bad_upload == 0;
+  rf_c := rf_test_counts(); rf_w: [1] u32; rf_d: [1] RenderDrawDomain;
+  rf_bad = render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[..],rf_w[0..<0],rf_d[0..<0],rf_w[0..<0]);
+  #assert rf_bad.status == RenderFrameStatus.bad_upload && rf_bad.bad_upload == 0;
+  rf_l.max_uploads = 1;
+  #assert render_uploads_admit(rf_l,rf_u[..]).status == RenderFrameStatus.capacity;
+  rf_l.max_width = 0;
+  #assert render_uploads_admit(rf_l,rf_u[..]).status == RenderFrameStatus.bad_limits;
+}
+
+#test "renderer one-pixel and one-float profiles admit equal direct capacities" {
+  rf_c := FrameCounts.{width = 1, height = 1};
+  rf_l := RenderFrameLimits.{max_width = 1, max_height = 1}; rf_caps: RenderDirectDomains;
+  rf_u: [1] RenderUpload; rf_w: [1] u32; rf_d: [1] RenderDrawDomain;
+  rf_r := render_frame_admit(rf_c,rf_l,rf_caps,rf_u[0..<0],rf_w[0..<0],rf_d[0..<0],rf_w[0..<0]);
+  #assert rf_r.status == RenderFrameStatus.ok && rf_r.bad_draw == -1;
+  rf_c.hud_vertices = 1; rf_c.vertex_stride = 1; rf_caps.hud_vertices = 1;
+  #assert render_frame_admit(rf_c,rf_l,rf_caps,rf_u[0..<0],rf_w[0..<0],rf_d[0..<0],rf_w[0..<0]).status == RenderFrameStatus.ok;
+}
+
+#test "renderer empty primary and exact secondary/index endpoints retain their meanings" {
+  rf_c := rf_test_counts(); rf_c.draw_count = 1;
+  rf_l: RenderFrameLimits; rf_u: [1] RenderUpload;
+  rf_w := [4] u32.[4294967295,1,2147483648,1]; rf_indices := [2] u32.[4294967295,0];
+  rf_domains := [1] RenderDrawDomain.[RenderDrawDomain.{vertices = 0,
+    vertex_alt_begin = 4294967295, vertex_alt_end = 4294967296, instances = 1, indices = 4294967296}];
+  rf_r := render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_w[..],rf_domains[..],rf_indices[..]);
+  #assert rf_r.status == RenderFrameStatus.ok && rf_r.bad_draw == -1;
+  rf_w = [4] u32.[0,1,0,1];
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_w[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.ok;
+  rf_domains[0].instances = 0;
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_w[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.bad_domain;
+  rf_domains[0].instances = 1; rf_domains[0].vertices = 4294967296;
+  rf_w[0] = 1; rf_w[1] = 2;
+  #assert render_frame_admit(rf_c,rf_l,rf_test_direct(),rf_u[0..<0],rf_w[..],rf_domains[..],rf_indices[..]).status == RenderFrameStatus.bad_draw;
+}

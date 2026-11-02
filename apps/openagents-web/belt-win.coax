@@ -217,7 +217,7 @@ win_step :: (s: [] Belt, days: f64) {
   #assert s[0].engaged[kite] == -1 && s[0].engaged[m] == -1;
 }
 
-#test "a new player's first game: the clock waits for the first order, and the hint says what the game is" {
+#test "a new player's first game: the clock waits for the first order, and the hint says what the game is" #steps 70000000 {
   s: [1] Belt;
   belt_start(s[..]);
   belt_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200\ncoarse=1\n");
@@ -236,7 +236,7 @@ win_step :: (s: [] Belt, days: f64) {
   #assert !r[0].hold;
 }
 
-#test "?unknown=1: the Unknown off the screen is a mark at its edge, toward it; tapping it flies the view there, where the mark gives way to the Unknown itself" {
+#test "?unknown=1: the Unknown off the screen is a mark at its edge, toward it; tapping it flies the view there, where the mark gives way to the Unknown itself" #steps 890000000 {
   s: [1] Belt;
   belt_start(s[..]);
   belt_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200?unknown=1\n");

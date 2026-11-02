@@ -1,0 +1,5 @@
+ok   #test reference pixel storage formats select all three raster storage rules (1 case, 63 steps, 0 ms)
+ok   #test reference pixel work admits equality and refuses one visit beyond the remaining budget (1 case, 234 steps, 0 ms)
+ok   #forall reference pixel transport preserves every channel offset absent attachment and unused tail (4 cases, 14530 steps, 1 ms)
+3 of 323 checks (--only 'reference pixel'), 3 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

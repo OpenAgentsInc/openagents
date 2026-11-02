@@ -1,0 +1,10 @@
+binding 0 image layers
+binding 1 sampler sheet
+reflection 2
+tree-version 3
+resource 0 2 1 0 2 layers
+resource 1 3 0 0 2 sheet
+fragment-targets 1
+fragment-depth 0
+derivatives 1 0
+control 1 0

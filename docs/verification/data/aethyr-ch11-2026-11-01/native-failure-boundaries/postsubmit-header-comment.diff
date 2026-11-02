@@ -1,0 +1,13 @@
+--- executed/render-host.h
++++ current/render-host.h
+@@ -23,7 +23,9 @@
+ // The receipt must be the unmodified result of aethyr_render_frame for these
+ // exact resources. Media receipts/rectangles must likewise be the unmodified
+ // result of the shared composer for these physical textures. Refusal makes
+-// no command submissions; preparation may allocate private scratch resources.
++// no render submission for Coax/resource refusal; preparation may allocate
++// private scratch resources. A device validation failure after submission can
++// already have effects and returns failure without acknowledging uploads.
+ int rhg_execute(RhgRenderer *renderer,const coax_t_RenderRuntimeFrame *receipt,const RhgFrame *frame,
+   int coarse,coax_t_RenderTextureFormat screen_format,char *error,size_t error_bytes);
+ VksImage *rhg_screen(RhgRenderer *renderer);

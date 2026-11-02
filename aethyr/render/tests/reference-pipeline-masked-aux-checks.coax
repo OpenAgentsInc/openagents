@@ -1,0 +1,28 @@
+#forall "reference pipeline permits exactly an omitted masked auxiliary fragment output" physical:0..<4, aux:bool {
+ tree:=RP_NOATTR_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);
+ #assert r.status==RQStatus.ok && r.colours==1;
+ resources:RQResources;bindings:[]RRBinding;attrs:RRAttributes;
+ draws:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=3,instances=1}];indices:[]u32;
+ memory:[RQ_IR_WORDS]u32;target:[5]RRPixel;scratch:[4]RRPixel;
+ clear:=RRPixel.{depth=1,colour=RQColor.{r=91,g=92,b=93,a=94},aux=RQColor.{r=2,g=3,b=4,a=5}};for j:0..<5 {target[j]=clear;}
+ state:=RenderPassState.{valid=true,depth=RenderDepth.less,outputs=physical,aux_write=aux};
+ q:=rr_reference_pass(r,p,tree[..],meta[..],resources,bindings,attrs,draws[..],indices,state,2,2,RRFormat.f32,1000000,memory[..],scratch[..],target[..]);
+ allowed:=physical==1 || (physical==2 && !aux);
+ #assert q.status==(ifx allowed then RQStatus.ok else RQStatus.resource) && q.written==(ifx allowed then 4 else 0);
+ for j:0..<4 {
+  if allowed {#assert target[j].colour.r==f32(j%2)+0.5f32 && target[j].colour.g==f32(j/2)+0.5f32 && target[j].colour.b==0.5f32 && target[j].colour.a==1;}
+  else {#assert target[j].colour.r==91 && target[j].colour.g==92 && target[j].colour.b==93 && target[j].colour.a==94;}
+  #assert target[j].depth==1 && target[j].aux.r==2 && target[j].aux.g==3 && target[j].aux.b==4 && target[j].aux.a==5;
+ }
+ #assert target[4].colour.r==91 && target[4].aux.a==5;
+}
+#test "reference pipeline native masked auxiliary fixture dispatch observes every retained pixel" {
+ tree:=RP_NOATTR_TREE;target:[16]RRPixel;
+ clear:=RRPixel.{depth=1,colour=RQColor.{r=0.125,g=0.25,b=0.5,a=0.75},aux=RQColor.{r=0.25,g=0.5,b=0.75,a=1}};for j:0..<16 {target[j]=clear;}
+ q:=rr_test_fixture(tree[..],17,target[..]);#assert q.status==RQStatus.ok && q.triangles==2 && q.quads==2 && q.fragments==4 && q.written==4;
+ for j:0..<16 {
+  if j<4 {#assert target[j].colour.r==f32(j%2)+0.5f32 && target[j].colour.g==f32(j/2)+0.5f32 && target[j].colour.b==0.5f32 && target[j].colour.a==1;}
+  else {#assert target[j].colour.r==0.125f32 && target[j].colour.g==0.25f32 && target[j].colour.b==0.5f32 && target[j].colour.a==0.75f32;}
+  #assert target[j].depth==1 && target[j].aux.r==0.25f32 && target[j].aux.g==0.5f32 && target[j].aux.b==0.75f32 && target[j].aux.a==1;
+ }
+}

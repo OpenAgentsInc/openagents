@@ -1,0 +1,7 @@
+FAIL #test the first step marks the front door, nudges you there after a while standing still, and the saving notice goes after a few seconds (out of steps: 100000000 used, its budget is 100000000, 2162 ms)
+apps/openagents-web/font.coax:126:20: error[E0400]: compile-time evaluation exceeded 100000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    if c >= 'a' && c <= 'z' { return c - 32; }
+                     ^
+  note: in #test the first step marks the front door, nudges you there after a while standing still, and the saving notice goes after a few seconds
+1 of 91 checks (--only 'first step marks'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,52 @@
+// Build-time bridge from the legacy Coax image/font decoder outputs. Only raw
+// texture rows are observed; the old spec's passes/shaders never choose the
+// typed renderer's graph, bindings, formats or resource origins.
+// coax/web/tool.sh aethyr/render/tools/native-textures.coax SLUG SPEC_DIR OUT_DIR > OUT_DIR/textures.config
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/args.coax";
+#load "../native-texture-profile.coax";
+
+tool_main :: ()->int #export_c {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {tool_errln("usage: native-textures SLUG SPEC_DIR OUT_DIR");return 2;}
+ profile:=render_catalog_find(args_at(args[..],0));source_dir:=args_at(args[..],1);out_dir:=args_at(args[..],2);
+ needs:=render_native_texture_needs(profile);
+ if !needs.valid {tool_errln("native-textures: unknown canonical profile");return 2;}
+ if source_dir=="-" && !needs.layers && !needs.sans {print("textures 0\n");return 0;}
+ paths:[4][4096]u8;spec:[65536]u8;n:=fs_read(fs_join(source_dir,"spec.txt",paths[0][..]),spec[..]);
+ if n<0 {tool_errln("native-textures: cannot read legacy raw-resource observations");return 1;}
+ observations:[2]RenderNativeTextureObservation;stages:[2]RenderNativeTextureStage;count:=0;start:=0;
+ for at:0..<n+1 {
+  if at==n || spec[at]==10 {
+   row:=render_native_texture_observation(cast(string)spec[start..<at]);start=at+1;
+   if row.known {
+    if !row.valid || count==observations.count {tool_errln("native-textures: malformed or excess texture observations");return 1;}
+    bytes:=fs_size(fs_join(source_dir,row.file,paths[0][..]));if bytes<0 {tool_errln("native-textures: missing decoded texture bytes");return 1;}
+    stages[count]=render_native_texture_stage(profile,row.kind,row.width,row.height,row.layers,row.levels,u64(bytes),67108864);
+    observations[count]=row;count+=1;
+   }
+  }
+ }
+ if !render_native_textures_complete(profile,stages[0..<count]) {tool_errln("native-textures: raw resources do not match the compiled texture profile");return 1;}
+ if !fs_mkdir(out_dir) {tool_errln("native-textures: cannot make output directory");return 1;}
+ source:[67108864]u8;rgba:[8388608]u8;
+ for i:0..<count {
+  stage:=stages[i];read:=fs_read(fs_join(source_dir,observations[i].file,paths[0][..]),source[..]);
+  if read<0 || u64(read)!=stage.source_bytes {tool_errln("native-textures: decoded source changed or exceeds the build buffer");return 1;}
+  bytes:=source[0..<read];
+  if stage.kind==RenderNativeTextureKind.sans {
+   if !render_native_sans_expand(bytes,rgba[..]) {tool_errln("native-textures: canonical coverage expansion refused");return 1;}bytes=rgba[0..<int(stage.rgba_bytes)];
+  }
+  if !fs_write(fs_join(out_dir,stage.file,paths[1][..]),cast(string)bytes) {tool_errln("native-textures: cannot stage decoded texture");return 1;}
+ }
+ // Publish the descriptor to stdout only after all raw files were staged.
+ // Paths are relative to textures.config; the caller keeps the complete
+ // output in its build artifact and records its source/payload hashes.
+ print("textures %\n",count);
+ for i:0..<count {
+  stage:=stages[i];print("% % % % %\n",stage.name,stage.format,stage.layers,stage.levels,stage.file);
+  for level:0..<stage.levels {m:=render_native_texture_mip(stage,level);print("% % % % %\n",m.width,m.height,m.offset,m.row_bytes,m.layer_bytes);}
+ }
+ return 0;
+}

@@ -1,0 +1,11 @@
+test_metadata_contract_and_complete_table (__main__.PackageChecks.test_metadata_contract_and_complete_table) ... ok
+test_module_entry_is_read_from_rehashed_wgsl (__main__.PackageChecks.test_module_entry_is_read_from_rehashed_wgsl) ... ok
+test_native_capability_is_read_from_rehashed_binary (__main__.PackageChecks.test_native_capability_is_read_from_rehashed_binary) ... ok
+test_reflection_output_and_profiles_are_observed (__main__.PackageChecks.test_reflection_output_and_profiles_are_observed) ... ok
+test_source_hash_and_product_hash_are_observed (__main__.PackageChecks.test_source_hash_and_product_hash_are_observed) ... ok
+test_vertex_offsets_are_observed (__main__.PackageChecks.test_vertex_offsets_are_observed) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.044s
+
+OK

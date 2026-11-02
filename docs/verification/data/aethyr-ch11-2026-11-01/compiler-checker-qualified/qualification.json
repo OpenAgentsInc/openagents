@@ -1,0 +1,255 @@
+{
+  "schema": "aethyr.compiler.checker-complete.v1",
+  "status": "pass",
+  "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+  "source_sha256": {
+    "coax/lib/compiler/checker.coax": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+    "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+    "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+    "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+    "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+    "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+    "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+  },
+  "construction_record": [
+    "coax-stage0-artifact-v1",
+    "9e6f851ca518c5fafbfcefb24c74b085ec09138c7c81415ee53bb1d5b82aaa83",
+    "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+    "9e914a8539c6bb8c5f7b893d5c0c388632d33abbeab179a4b04cd697476a2f99"
+  ],
+  "source_closure_sha256": "44ad9ebdbbdb9964a4e4ec8ecfa555364131d4fa1a8bc3d8444493c82af7aea7",
+  "manifest": "/tmp/aethyr-ch11-final-checker-shards/complete.manifest",
+  "manifest_sha256": "dcda7c4ad9507927717b9d9f10d6cae8a5f393157203f36289d94c6cc78d7bb9",
+  "records": [
+    {
+      "schema": "aethyr.compiler.checker-shard.v1",
+      "status": "finished",
+      "exit_status": 0,
+      "complete_record": true,
+      "argv": [
+        "/private/tmp/aethyr-ch11-final-compiler-retained/coax/bin/.bootstrap-30583/stage0",
+        "mutate",
+        "lib/compiler/checker.coax",
+        "--shard",
+        "1/8"
+      ],
+      "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+      "source_sha256": {
+        "coax/lib/compiler/checker.coax": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+        "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+        "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+        "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+        "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+        "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+      },
+      "record_sha256": "032e340640ea504e07ad7a697f2a80f44a929d1b0ed8957781008cc0cb6d4986",
+      "stderr_sha256": "a0cdc6be31448fe1518ef942656d16bd6e67672ecd09e8f1f0fbcf12fd126093",
+      "elapsed_seconds": 147.827
+    },
+    {
+      "schema": "aethyr.compiler.checker-shard.v1",
+      "status": "finished",
+      "exit_status": 0,
+      "complete_record": true,
+      "argv": [
+        "/private/tmp/aethyr-ch11-final-compiler-retained/coax/bin/.bootstrap-30583/stage0",
+        "mutate",
+        "lib/compiler/checker.coax",
+        "--shard",
+        "2/8"
+      ],
+      "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+      "source_sha256": {
+        "coax/lib/compiler/checker.coax": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+        "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+        "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+        "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+        "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+        "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+      },
+      "record_sha256": "f846c7ab284336e976f8254b2df098dc9f30e31da2e94c77dba8a913c91c775f",
+      "stderr_sha256": "84a687cb1236aecf1acda747d0bdaf7844d11bbd4b525358ccb5054c7d24de41",
+      "elapsed_seconds": 146.139
+    },
+    {
+      "schema": "aethyr.compiler.checker-shard.v1",
+      "status": "finished",
+      "exit_status": 0,
+      "complete_record": true,
+      "argv": [
+        "/private/tmp/aethyr-ch11-final-compiler-retained/coax/bin/.bootstrap-30583/stage0",
+        "mutate",
+        "lib/compiler/checker.coax",
+        "--shard",
+        "3/8"
+      ],
+      "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+      "source_sha256": {
+        "coax/lib/compiler/checker.coax": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+        "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+        "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+        "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+        "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+        "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+      },
+      "record_sha256": "218ccd844263c9258cf1fe6501b5ec5eea4fb110cd3d659046dbe3893b56e6aa",
+      "stderr_sha256": "c1269461766415f7bcf1d951a8922e5c004bc44a42b8ad0ebc47044764eff2e2",
+      "elapsed_seconds": 146.229
+    },
+    {
+      "schema": "aethyr.compiler.checker-shard.v1",
+      "status": "finished",
+      "exit_status": 0,
+      "complete_record": true,
+      "argv": [
+        "/private/tmp/aethyr-ch11-final-compiler-retained/coax/bin/.bootstrap-30583/stage0",
+        "mutate",
+        "lib/compiler/checker.coax",
+        "--shard",
+        "4/8"
+      ],
+      "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+      "source_sha256": {
+        "coax/lib/compiler/checker.coax": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+        "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+        "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+        "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+        "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+        "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+      },
+      "record_sha256": "cd76614453a0f5e96f56ec2149c44899744a813c58acd04a08579f7baa795e4d",
+      "stderr_sha256": "0c68a4999a03fd584f040c83a40dfb50c5baf8754ba7a9df42c16db90361aa9f",
+      "elapsed_seconds": 152.035
+    },
+    {
+      "schema": "aethyr.compiler.checker-shard.v1",
+      "status": "finished",
+      "exit_status": 0,
+      "complete_record": true,
+      "argv": [
+        "/private/tmp/aethyr-ch11-final-compiler-retained/coax/bin/.bootstrap-30583/stage0",
+        "mutate",
+        "lib/compiler/checker.coax",
+        "--shard",
+        "5/8"
+      ],
+      "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+      "source_sha256": {
+        "coax/lib/compiler/checker.coax": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+        "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+        "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+        "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+        "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+        "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+      },
+      "record_sha256": "ae693491a6e633b0c867e052ac8ca108adae4588b6b9f2ea1c3cc5d570a6b89b",
+      "stderr_sha256": "6bdb59981684f69490c54969303a137b981339abb208d56881d5653e888b02d4",
+      "elapsed_seconds": 133.224
+    },
+    {
+      "schema": "aethyr.compiler.checker-shard.v1",
+      "status": "finished",
+      "exit_status": 0,
+      "complete_record": true,
+      "argv": [
+        "/private/tmp/aethyr-ch11-final-compiler-retained/coax/bin/.bootstrap-30583/stage0",
+        "mutate",
+        "lib/compiler/checker.coax",
+        "--shard",
+        "6/8"
+      ],
+      "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+      "source_sha256": {
+        "coax/lib/compiler/checker.coax": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+        "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+        "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+        "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+        "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+        "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+      },
+      "record_sha256": "39e40bba30286a786f54d694ccf4765aad936cae8082286abd2a19fbd2c83356",
+      "stderr_sha256": "b5e66cdb1c2d5aeec7f887a37dba460d9eb0d820956e4b0d6f90b901cf32ac3e",
+      "elapsed_seconds": 131.851
+    },
+    {
+      "schema": "aethyr.compiler.checker-shard.v1",
+      "status": "finished",
+      "exit_status": 0,
+      "complete_record": true,
+      "argv": [
+        "/private/tmp/aethyr-ch11-final-compiler-retained/coax/bin/.bootstrap-30583/stage0",
+        "mutate",
+        "lib/compiler/checker.coax",
+        "--shard",
+        "7/8"
+      ],
+      "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+      "source_sha256": {
+        "coax/lib/compiler/checker.coax": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+        "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+        "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+        "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+        "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+        "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+      },
+      "record_sha256": "af3e75c7cad72bd63513d921157ddf1100150351416cb29633e82272c27ac78d",
+      "stderr_sha256": "5c3cff9e932aef5f778586600961a560e919f627128741b646d9e51cdd67333a",
+      "elapsed_seconds": 145.455
+    },
+    {
+      "schema": "aethyr.compiler.checker-shard.v1",
+      "status": "finished",
+      "exit_status": 0,
+      "complete_record": true,
+      "argv": [
+        "/private/tmp/aethyr-ch11-final-compiler-retained/coax/bin/.bootstrap-30583/stage0",
+        "mutate",
+        "lib/compiler/checker.coax",
+        "--shard",
+        "8/8"
+      ],
+      "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+      "source_sha256": {
+        "coax/lib/compiler/checker.coax": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+        "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+        "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+        "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+        "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+        "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+      },
+      "record_sha256": "54913ce35618354385933c761ee9c37394c10fc648d8feafdda3d02590d2149d",
+      "stderr_sha256": "1826923aebfb0d0350cae66cc2ee872cf3e3d3175a01b235a868522a51ca7941",
+      "elapsed_seconds": 135.317
+    }
+  ],
+  "cache_key": "6b3bd1c52665ed05427b40333647b3fc597be55dffc183813dbc9d9ffdd86442",
+  "cache_file": "/Users/christopherdavid/.cache/coax-gates/6b3bd1c52665ed05427b40333647b3fc597be55dffc183813dbc9d9ffdd86442",
+  "cache_record_sha256": "db8d22c35b78b8f3f0fea3a07b90459647df919e34d5d1e737b761975990d37f",
+  "merge_log": "/tmp/aethyr-ch11-final-checker-shards/private-replay.log",
+  "merge_log_sha256": "176af88b85eae34275574827044b4038e8f87f5e859af2dab299d08fba87277b",
+  "elapsed_seconds": 10.062,
+  "scope": "Complete8-shard checker gate, merged by exact retained stage0 through supported private mode; original gate() wrote source-identity cache after its real verdict. Future debug-path-different binaries reuse existing cache semantics, not this exact checkedbinary claim.",
+  "aggregate_outcomes": {
+    "mutants": 9253,
+    "killed": 9253,
+    "survivors": 0,
+    "indices_complete": true
+  }
+}

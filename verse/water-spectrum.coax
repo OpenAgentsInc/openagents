@@ -683,7 +683,7 @@ wsp_sea :: (wind_speed: f64, fetch: f64, seed: u64) -> Spectrum {
   return Spectrum.{seed = seed, wind_speed = wind_speed, fetch = fetch, wind = 0.4};
 }
 
-#test "the transform matches the direct sum" {
+#test "the transform matches the direct sum" #steps 90000000 {
   for n: [4] int.[2, 4, 16, 32] {
     state: u32 = 0x12345678;
     re0: [1024] f32; im0: [1024] f32;
@@ -778,10 +778,10 @@ variance_case :: (sp: Spectrum, count: int, size: int) -> bool {
 // modes' within 1%, cascade 0's at each tick within 2%, each cascade's mean
 // over the loop, and the whole surface's. Calm, moderate, storm and choppy
 // narrow seas (the old test's; 64 texels where it had 128 for the moderate).
-#test "tile variance matches the spectrum integral: calm" { #assert variance_case(wsp_sea(4.0, 5000.0, 1), 2, 64); }
-#test "tile variance matches the spectrum integral: moderate" { #assert variance_case(wsp_sea(9.0, 40000.0, 2), 3, 64); }
-#test "tile variance matches the spectrum integral: storm" { #assert variance_case(wsp_sea(18.0, 200000.0, 3), 2, 64); }
-#test "tile variance matches the spectrum integral: choppy and narrow" {
+#test "tile variance matches the spectrum integral: calm" #steps 770000000 { #assert variance_case(wsp_sea(4.0, 5000.0, 1), 2, 64); }
+#test "tile variance matches the spectrum integral: moderate" #steps 970000000 { #assert variance_case(wsp_sea(9.0, 40000.0, 2), 3, 64); }
+#test "tile variance matches the spectrum integral: storm" #steps 770000000 { #assert variance_case(wsp_sea(18.0, 200000.0, 3), 2, 64); }
+#test "tile variance matches the spectrum integral: choppy and narrow" #steps 970000000 {
   sp := wsp_sea(12.0, 80000.0, 4); sp.choppiness = 1.2; sp.spread = 0.3;
   #assert variance_case(sp, 3, 64);
 }
@@ -796,7 +796,7 @@ tiles_equal :: (a: [] Tile, b: [] Tile) -> bool {
 // A tile repeats exactly on its period, and the same seed and tick give the
 // same tile from a fresh synth; another seed or tick does not. The gameplay
 // band is cascade 0's modes on the same grid.
-#test "tiles loop and reproduce" {
+#test "tiles loop and reproduce" #steps 730000000 {
   sp := wsp_sea(10.0, 50000.0, 7);
   a: [1] Synth; b: [1] Synth; other: [1] Synth;
   wsp_synth(a[..], sp, 2, 64); wsp_synth(b[..], sp, 2, 64);
@@ -828,7 +828,7 @@ tiles_equal :: (a: [] Tile, b: [] Tile) -> bool {
 // Fetch-limited growth: the significant height follows
 // g H / U^2 = 1.6e-3 (g F / U^2)^(1/2) within 30%, the spreading integrates
 // to one, and shallow water slows long waves.
-#test "the spectrum has its published shape" {
+#test "the spectrum has its published shape" #steps 30000000 {
   us := [3] f64.[5.0, 10.0, 20.0];
   fs := [3] f64.[10000.0, 50000.0, 100000.0];
   for u, i: us {
@@ -851,7 +851,7 @@ tiles_equal :: (a: [] Tile, b: [] Tile) -> bool {
 
 // Choppy displacement moves water toward the crests: the Jacobian falls where
 // the surface is high, and averages one.
-#test "crests sharpen" {
+#test "crests sharpen" #steps 60000000 {
   sp := wsp_sea(16.0, 150000.0, 5); sp.choppiness = 1.4;
   synth: [1] Synth; tile: [1] Tile;
   wsp_synth(synth[..], sp, 1, 64);
@@ -882,7 +882,7 @@ tiles_equal :: (a: [] Tile, b: [] Tile) -> bool {
 // The spectral surface for physics: a tick folds on the period, the height
 // over a displaced rest point is that rest point's, and the band's vertical
 // velocity is the height's rate of change.
-#test "the spectral surface is deterministic and consistent" {
+#test "the spectral surface is deterministic and consistent" #steps 80000000 {
   sp := wsp_sea(9.0, 30000.0, 11);
   synth: [1] Synth;
   wsp_synth(synth[..], sp, 1, 64);
@@ -916,7 +916,7 @@ tiles_equal :: (a: [] Tile, b: [] Tile) -> bool {
 
 // The baked tile: its base level's slopes have the set RMS, the levels
 // halve, and the lost variance grows as the levels coarsen.
-#test "the phone's baked tile" {
+#test "the phone's baked tile" #steps 60000000 {
   synth: [1] Synth; tile: [1] Tile;
   out: [WSP_TILE_FLOATS] f32;
   wsp_bake_tile(synth[..], tile[..], out[..]);

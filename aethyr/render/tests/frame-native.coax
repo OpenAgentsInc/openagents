@@ -1,0 +1,8 @@
+// Test transport only: actual admission and decoding remain in frame.coax.
+#load "../frame.coax";
+aethyr_frame_admit :: (c:FrameCounts,l:RenderFrameLimits,d:RenderDirectDomains,u:[]RenderUpload,
+  w:[]u32,domains:[]RenderDrawDomain,indices:[]u32)->RenderFrameResult #export_c {
+  return render_frame_admit(c,l,d,u,w,domains,indices);
+}
+aethyr_frame_decode :: (w:[]u32,record:int)->RenderDecodedDraw #export_c {return render_decode_draw(w,record);}
+aethyr_frame_preflight :: (l:RenderFrameLimits,u:[]RenderUpload)->RenderFrameResult #export_c {return render_uploads_admit(l,u);}

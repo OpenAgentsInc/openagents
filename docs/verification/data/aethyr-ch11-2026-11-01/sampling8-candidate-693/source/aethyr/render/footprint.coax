@@ -1,0 +1,29 @@
+// The deterministic color-texture anisotropy policy shared by emitted shaders
+// and the quad CPU interpreter. It has no shader-library or host dependency.
+#module "aethyr.render.footprint";
+#authority;
+RenderFootprint :: struct {valid:bool;taps:int;du:f32;dv:f32;lod:f32;}
+#load "tests/footprint-checks.coax";
+
+render_footprint_finite :: (x:f32)->bool {return x>=-3.4028234663852886e38f32 && x<=3.4028234663852886e38f32;}
+// Inputs are nonnegative and bounded by this profile. The identity is shared
+// Coax f32 arithmetic on all three targets; it cannot overflow in this box.
+render_footprint_max :: (a:f32,b:f32)->f32 {return (a+b+abs(a-b))*0.5f32;}
+render_footprint :: (width:int,height:int,du_dx:f32,dv_dx:f32,du_dy:f32,dv_dy:f32,bias:f32)->RenderFootprint {
+ if width<1 || width>16384 || height<1 || height>16384 ||
+  !render_footprint_finite(du_dx) || !render_footprint_finite(dv_dx) || !render_footprint_finite(du_dy) || !render_footprint_finite(dv_dy) || !render_footprint_finite(bias) ||
+  abs(du_dx)>65536 || abs(dv_dx)>65536 || abs(du_dy)>65536 || abs(dv_dy)>65536 || abs(bias)>32 {return RenderFootprint.{};}
+ x:=du_dx*cast(f32)width;y:=dv_dx*cast(f32)height;
+ u:=du_dy*cast(f32)width;v:=dv_dy*cast(f32)height;
+ a:=x*x+y*y;b:=u*u+v*v;
+ major:f32=0;minor:f32=0;du:f32=0;dv:f32=0;
+ if a>=b {major=sqrt(a);minor=sqrt(b);du=du_dx;dv=dv_dx;}
+ else {major=sqrt(b);minor=sqrt(a);du=du_dy;dv=dv_dy;}
+ minor=render_footprint_max(minor,1);
+ taps:=cast(int)(-floor(-major/minor));if taps==0 {taps=1;}
+ // Signed integer positive-part, exact in native s64 and in the bounded GPU
+ // i32 carrier. A WGSL shift uses the low five bits of63, hence its sign bit.
+ excess:=taps-8;taps-=excess&((excess>>63)^(-1));
+ span:=render_footprint_max(minor,major/cast(f32)taps);
+ return RenderFootprint.{valid=true,taps=taps,du=du/cast(f32)taps,dv=dv/cast(f32)taps,lod=log(span)/log(2.0f32)+bias};
+}

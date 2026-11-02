@@ -1,0 +1,187 @@
+{
+  "schema": "aethyr.render.box36-native-primitive.v1",
+  "status": "pass",
+  "scope": "Actual production sceneVS under identity viewport and three independent positive-determinant affine object transforms. Classic outward cube oracle covers all36positions/faceplanes/authored normals plus12triangles per model. Exact nonzero binary32 words; signedzero equivalent. This is not full-frame numerical acceptance or a culling change.",
+  "source_sha256": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-box36-native.coax": "49d3e203af18d6eb995da00f242a83a3583291bc6309e7ef0bd1d8141b0ae6a3",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/gpu/deadgears.coax": "fc2c77948ba78e4ab380c8f398e5f235c86b97a1f3a2f74c95e1a2195a39ca38",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/noise.coax": "4a6cd03a97af0a546e110439145814c5ffc6c27dd90d1bc5a7cff7a705764346",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/shader.coax": "9688942c90063b6a8f162d79f19332dde17dbb4d7cbeb8885ee13d899c0e1813",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/wgsl.coax": "89fe38e7cade18f6804f4d785ab90866784be86128a26be26ab103348d3f47eb",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/ring8.coax": "67c2f429d8c1a93efd2dd6147b482b3299b21147671f6fd84c617f06ba96eff2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_box36_native.py": "b1bfdc178c013de55d1d5906289b1a4930e57233ab796e82dd8c4a5621352f47",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/box36-native.c": "1fc9807d72b43b1e98f491e7bdd288b11263bcdd26f2ea2fd79c28042d9449e6",
+    "/private/tmp/aethyr-authority-budget-qualified-1fac/coax": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa"
+  },
+  "source_changes": [],
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "emission_command": [
+    "/private/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "c",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-box36-native.coax",
+    "--library",
+    "--header",
+    "/tmp/aethyr-ch11-box36/native/Box36.h"
+  ],
+  "generated_c_sha256": "af1cdb9ef64dfd923b001b2e5f7f85c045025160096c067f1af139170f6afb02",
+  "header_sha256": "15aaaa12c9c3567d21da8f427e5840c53de800e241e21cc2cc6f5c3c4ae9aacf",
+  "modes": [
+    {
+      "mode": "debug",
+      "packets": 108,
+      "channels": 1080,
+      "triangles": 36,
+      "exact_nonzero_f32_words": true,
+      "signed_zero_equivalent": true,
+      "controls": [
+        {
+          "fault": "reversed-triangle",
+          "detected": true,
+          "reason": "packet 1 lane 2: 0.5 != -0.5"
+        },
+        {
+          "fault": "lost-face-plane",
+          "detected": true,
+          "reason": "packet 0 lane 4: -0.5 != 0.5"
+        },
+        {
+          "fault": "reversed-normal",
+          "detected": true,
+          "reason": "packet 0 lane 7: -1.0 != 1.0"
+        },
+        {
+          "fault": "missing-last-vertex",
+          "detected": true,
+          "reason": "packet count"
+        },
+        {
+          "fault": "historical-inward-order",
+          "detected": true,
+          "reason": "packet 1 lane 1: -0.5 != 0.5"
+        }
+      ],
+      "command": [
+        "clang",
+        "-std=c11",
+        "-O0",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I",
+        "/tmp/aethyr-ch11-box36/native",
+        "/tmp/aethyr-ch11-box36/native/Box36.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/box36-native.c",
+        "-lm",
+        "-o",
+        "/tmp/aethyr-ch11-box36/native/native-debug"
+      ],
+      "executable_sha256": "35f4663de81e9c4d7c2fea5918a20736e62252520e02a97beab296ae6ec85947",
+      "output_sha256": "a1ab0b27aaa1d9a96b96e790fe94ab0ee343eeca9b82b1802914e5de4391b72c"
+    },
+    {
+      "mode": "o2",
+      "packets": 108,
+      "channels": 1080,
+      "triangles": 36,
+      "exact_nonzero_f32_words": true,
+      "signed_zero_equivalent": true,
+      "controls": [
+        {
+          "fault": "reversed-triangle",
+          "detected": true,
+          "reason": "packet 1 lane 2: 0.5 != -0.5"
+        },
+        {
+          "fault": "lost-face-plane",
+          "detected": true,
+          "reason": "packet 0 lane 4: -0.5 != 0.5"
+        },
+        {
+          "fault": "reversed-normal",
+          "detected": true,
+          "reason": "packet 0 lane 7: -1.0 != 1.0"
+        },
+        {
+          "fault": "missing-last-vertex",
+          "detected": true,
+          "reason": "packet count"
+        },
+        {
+          "fault": "historical-inward-order",
+          "detected": true,
+          "reason": "packet 1 lane 1: -0.5 != 0.5"
+        }
+      ],
+      "command": [
+        "clang",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I",
+        "/tmp/aethyr-ch11-box36/native",
+        "/tmp/aethyr-ch11-box36/native/Box36.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/box36-native.c",
+        "-lm",
+        "-o",
+        "/tmp/aethyr-ch11-box36/native/native-o2"
+      ],
+      "executable_sha256": "642d91ea6121e95783cf02ace7b9293f7b3f63987cb0ab6487abc28e32b695b1",
+      "output_sha256": "a1ab0b27aaa1d9a96b96e790fe94ab0ee343eeca9b82b1802914e5de4391b72c"
+    },
+    {
+      "mode": "san",
+      "packets": 108,
+      "channels": 1080,
+      "triangles": 36,
+      "exact_nonzero_f32_words": true,
+      "signed_zero_equivalent": true,
+      "controls": [
+        {
+          "fault": "reversed-triangle",
+          "detected": true,
+          "reason": "packet 1 lane 2: 0.5 != -0.5"
+        },
+        {
+          "fault": "lost-face-plane",
+          "detected": true,
+          "reason": "packet 0 lane 4: -0.5 != 0.5"
+        },
+        {
+          "fault": "reversed-normal",
+          "detected": true,
+          "reason": "packet 0 lane 7: -1.0 != 1.0"
+        },
+        {
+          "fault": "missing-last-vertex",
+          "detected": true,
+          "reason": "packet count"
+        },
+        {
+          "fault": "historical-inward-order",
+          "detected": true,
+          "reason": "packet 1 lane 1: -0.5 != 0.5"
+        }
+      ],
+      "command": [
+        "clang",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I",
+        "/tmp/aethyr-ch11-box36/native",
+        "/tmp/aethyr-ch11-box36/native/Box36.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/box36-native.c",
+        "-lm",
+        "-o",
+        "/tmp/aethyr-ch11-box36/native/native-san"
+      ],
+      "executable_sha256": "84909c82f37cade3060844b3114b11c3099002781b59790ab8e5a1db1600a085",
+      "output_sha256": "a1ab0b27aaa1d9a96b96e790fe94ab0ee343eeca9b82b1802914e5de4391b72c"
+    }
+  ],
+  "elapsed_seconds": 1.8660889999009669
+}

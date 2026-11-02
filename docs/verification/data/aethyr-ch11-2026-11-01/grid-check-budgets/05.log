@@ -1,0 +1,13 @@
+ok   #test a click on a Pylon opens its card, which never navigates (1 case, 86738324 steps, 7689 ms)
+        own steps  share   with calls     calls  procedure
+         28179942  32.5%     28179942     35762  lit  apps/openagents-web/newland.coax:266
+         11354136  13.1%     49294942     49112  seg  apps/openagents-web/newland.coax:425
+          7549175   8.7%      7549175    397325  dot3  apps/openagents-web/newland.coax:395
+          4758109   5.5%     49259001         5  floor_grid  apps/openagents-web/newland.coax:1174
+          4448029   5.1%      4448029     40972  on_plot  apps/openagents-web/newland.coax:459
+          4386668   5.1%     12462125     99697  spot  apps/openagents-web/newland.coax:413
+          3562668   4.1%      4750224    197926  fv_sub  verse/figure.coax:134
+          2525822   2.9%      2702082       223  draw_sans  apps/openagents-web/font.coax:442
+     ... 157 more procedures
+1 of 114 checks (--only 'a click on a Pylon opens its card, which never navigates'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,7 @@
+FAIL #test water and particles may omit only the masked auxiliary attachment (0 ms)
+aethyr/render/interface.coax:40:3: error[E0406]: assertion failed
+    #assert render_interface_admit(2,6,r) && render_interface_admit(2,7,r);
+    ^
+  note: in #test water and particles may omit only the masked auxiliary attachment
+1 of 62 checks (--only 'water and particles'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

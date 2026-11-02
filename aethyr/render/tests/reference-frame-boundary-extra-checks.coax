@@ -1,0 +1,132 @@
+#test "reference copied buffer observations preserve every physical field and exact capacity" {
+ names:[48][16]u8;files:[49]RenderHostNamedBuffer;out:[48]RenderHostNamedBuffer;words:=[4]u32.[11,22,33,44];empty:[]u32;
+ for j:0..<48 {files[j].name=render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.dynamic_store,index=j},names[j][..]);}
+ out[0].name="canary";
+ #assert rf_buffer_observations(files[..],empty,out[..]).status==RQStatus.capacity && out[0].name=="canary";
+ #assert rf_buffer_observations(files[0..<48],words[..],out[..]).status==RQStatus.capacity && out[0].name=="canary";
+ files[0].name="u.bin";files[0].words=words[0..<1];
+ fields:=RenderBufferObserved.{source_capacity=12,logical_payload=8,initialized_highwater=16,upload_bytes=4,gpu_bytes=32,offset=4,alignment=8,zero_initialized=true};files[2].words=words[0..<3];files[2].observed=fields;
+ q:=rf_buffer_observations(files[0..<48],words[..],out[..]);#assert q.status==RQStatus.ok && q.count==48 && out[0].name=="u.bin" && out[0].words.count==4 && out[0].words[3]==44;
+ #assert out[0].observed.source_capacity==16 && out[0].observed.logical_payload==16 && out[0].observed.initialized_highwater==16 && out[0].observed.gpu_bytes==16 && out[0].observed.upload_bytes==0 && !out[0].observed.zero_initialized;
+ #assert out[2].words.count==3 && out[2].words[2]==33 && out[2].observed.source_capacity==12 && out[2].observed.logical_payload==8 && out[2].observed.initialized_highwater==16 && out[2].observed.upload_bytes==4 && out[2].observed.gpu_bytes==32 && out[2].observed.offset==4 && out[2].observed.alignment==8 && out[2].observed.zero_initialized;
+ #assert rf_buffer_observations(files[0..<1],empty,out[0..<0]).status==RQStatus.capacity;
+ #assert rf_buffer_observations(files[0..<0],empty,out[0..<0]).status==RQStatus.ok;
+}
+#test "reference media preparation preserves output on malformed resources capacity and shared policy refusal" {
+ mip:=[1]RQMip.[RQMip.{width=1,height=1}];pixel:=[1]RQColor.[RQColor.{a=1}];
+ files:=[2]RFNamedTexture.[RFNamedTexture.{name="media_image-0",texture=RQTexture.{levels=mip[..],layers=1,texels=pixel[..]}},RFNamedTexture.{name="unused"}];out:[2]RenderMediaRect;out[0].line=71;out[1].line=73;
+ observed:=[1]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.image,url="/x",ready=true,width=1,height=1}];text:="image /x 0 0 2 2";
+ #assert rf_prepare_media(15,text,2,2,files[..],observed[..],out[..]).status==RQStatus.unsupported && out[0].line==71;
+ #assert rf_prepare_media(13,text,2,2,files[..],observed[..],out[0..<0]).status==RQStatus.capacity && out[0].line==71;
+ #assert rf_prepare_media(13,"image https://example.invalid/x 0 0 2 2",2,2,files[..],observed[..],out[..]).status==RQStatus.ok && out[0].line==71;
+ #assert rf_prepare_media(13,text,0,2,files[..],observed[..],out[..]).status==RQStatus.resource && out[0].line==71;
+ files[1].name=files[0].name;#assert rf_prepare_media(13,text,2,2,files[..],observed[..],out[..]).status==RQStatus.resource && out[0].line==71;files[1].name="unused";
+ files[0].texture.layers=2;q:=rf_prepare_media(13,text,2,2,files[..],observed[..],out[..]);#assert q.status==RQStatus.resource && q.composed.bad_request==0 && out[0].line==71;files[0].texture.layers=1;
+ mip[0].width=0;q=rf_prepare_media(13,text,2,2,files[..],observed[..],out[..]);#assert q.status==RQStatus.resource && q.composed.bad_request==0 && out[0].line==71;mip[0].width=1;
+ huge:[65537]u8;huge_text:=cast(string)huge[..];#assert rf_prepare_media(13,huge_text,2,2,files[..],observed[..],out[..]).status==RQStatus.capacity && out[0].line==71;
+ #assert rf_prepare_media(15,"",2,2,files[..],observed[..],out[..]).status==RQStatus.ok && out[0].line==71 && out[1].line==73;
+}
+#test "reference media identity comes from actual observations rather than a current line texture" {
+ mip:=[1]RQMip.[RQMip.{width=1,height=1}];pixels:=[1]RQColor.[RQColor.{a=1}];files:=[1]RFNamedTexture.[RFNamedTexture.{name="media_image-0",texture=RQTexture.{levels=mip[..],layers=1,texels=pixels[..]}}];out:[1]RenderMediaRect;
+ observed:=[1]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.image,url="/stale",ready=true,width=1,height=1}];text:="image /requested 0 0 2 2";
+ q:=rf_prepare_media(13,text,2,2,files[..],observed[..],out[..]);#assert q.status==RQStatus.ok && q.count==1 && !out[0].draw;
+ observed[0].url="/requested";observed[0].kind=RenderMediaKind.video;q=rf_prepare_media(13,text,2,2,files[..],observed[..],out[..]);#assert q.status==RQStatus.ok && !out[0].draw;
+ observed[0].kind=RenderMediaKind.image;observed[0].ready=false;q=rf_prepare_media(13,text,2,2,files[..],observed[..],out[..]);#assert q.status==RQStatus.ok && !out[0].draw;
+ observed[0].ready=true;q=rf_prepare_media(13,text,2,2,files[..],observed[..],out[..]);#assert q.status==RQStatus.ok && out[0].draw;
+ observed[0].width=2;out[0].line=91;q=rf_prepare_media(13,text,2,2,files[..],observed[..],out[..]);#assert q.status==RQStatus.resource && q.composed.bad_request==0 && out[0].line==91;
+}
+#test "reference physical texture adapter admits all114 canonical origins and refuses the next observation" {
+ names:[112][32]u8;files:[115]RFNamedTexture;mip:=[1]RQMip.[RQMip.{width=1,height=1}];pixels:=[1]RQColor.[RQColor.{r=0.25,a=1}];texture:=RQTexture.{levels=mip[..],layers=1,texels=pixels[..]};
+ for j:0..<112 {files[j]=RFNamedTexture.{name=render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.media_image,index=j},names[j][..]),texture=texture};}
+ files[112]=RFNamedTexture.{name="layers",texture=texture};files[113]=RFNamedTexture.{name="sans_atlas",texture=texture};files[114]=RFNamedTexture.{name="extra",texture=texture};
+ input:=RFInput.{profile=0,textures=files[0..<114]};layout:=RFShaderLayout.{count=1};layout.bindings[0].resource=4;
+ buffers:[48]RQBuffer;textures:[48]RQTexture;samplers:[48]RQSampler;levels:[48]RQMip;images:[]RQColor;u:[]u32;
+ #assert rf_resources(input,5,layout,RenderOp.{},RFRequirements.{},images,u,u,buffers[..],textures[..],samplers[..],levels[..])==RQStatus.ok && textures[4].texels[0].r==0.25;
+ input.textures=files[..];#assert rf_resources(input,5,layout,RenderOp.{},RFRequirements.{},images,u,u,buffers[..],textures[..],samplers[..],levels[..])==RQStatus.capacity;
+ observed:=[1]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.image,url="/x",ready=true,width=1,height=1}];out:[1]RenderMediaRect;out[0].line=91;q:=rf_prepare_media(13,"image /x 0 0 2 2",2,2,files[0..<114],observed[..],out[..]);#assert q.status==RQStatus.ok && q.count==1 && out[0].draw;
+ out[0].line=91;q=rf_prepare_media(13,"image /x 0 0 2 2",2,2,files[..],observed[..],out[..]);#assert q.status==RQStatus.capacity && out[0].line==91;
+}
+#test "reference requirements retain exact large viewport counts record boundary and both copy destinations" {
+ c:=FrameCounts.{width=16383,height=16383,vertex_stride=16};q:=rf_require(15,c,RenderReadiness.ready,true,false,RenderTextureFormat.rgba16f);
+ #assert q.status==RQStatus.ok && q.pass_pixels==268402689 && q.image_pixels==268402689;
+ c=FrameCounts.{width=1,height=1,vertex_stride=1};#assert rf_require(15,c,RenderReadiness.ready,true,false,RenderTextureFormat.rgba8).status==RQStatus.resource;
+ c.vertex_stride=16;c.draw_count=4096;#assert rf_require(16,c,RenderReadiness.ready,true,false,RenderTextureFormat.rgba8).status==RQStatus.ok;
+ c.draw_count=4097;#assert rf_require(16,c,RenderReadiness.ready,true,false,RenderTextureFormat.rgba8).status==RQStatus.resource;
+ c=FrameCounts.{width=3,height=1,vertex_stride=16,draw_count=2,water_draws=1};q=rf_require(2,c,RenderReadiness.ready,true,true,RenderTextureFormat.rgba16f);
+ #assert q.status==RQStatus.ok && q.images[6].present && q.images[7].present && q.images[6].descriptor.width==3 && q.images[6].descriptor.height==1 && q.images[6].descriptor.format==RenderTextureFormat.rgba16f && q.images[7].descriptor.format==RenderTextureFormat.depth32 && q.images[6].offset!=q.images[7].offset && q.pass_pixels==1048576;
+}
+#forall "reference media hook refuses malformed receipts and unsupported profiles before drawing" mode:0..<4 {
+ tree:=RFM_ACTUAL_TREE;metadata:[14*RQ_IR_META]int;meta:=metadata[13*RQ_IR_META..<14*RQ_IR_META];program:=rq_ir_prepare(tree[..],meta);layout:=rf_shader_layout(13,13,program,tree[..],meta);
+ p:=RFPrepared.{present=true,program=program,layout=layout};words:[RQ_IR_WORDS]u32;images:[4]RQColor;target:[4]RRPixel;scratch:[4]RRPixel;work:=RFWorking.{images=images[..],target=target[..],scratch=scratch[..],words=words[..],meta=metadata[..]};
+ req:RFRequirements;req.images[1]=RFCanvasLayout.{present=true,descriptor=RenderTargetDescriptor.{width=2,height=2,format=RenderTextureFormat.rgba16f}};
+ records:[113]RenderMediaRect;count:=113;profile:=13;
+ if mode==1 {count=1;records[0]=RenderMediaRect.{ok=true,draw=true,line= -1};}
+ if mode==2 {count=0;profile=15;}
+ if mode==3 {count=1;records[0]=RenderMediaRect.{ok=true,line=0};}
+ q:=rf_media(RFInput.{profile=profile,media=records[0..<count]},false,p,tree[..],req,RenderOp.{colour0=RenderTarget.screen},RFPolicy.{},work,RFResult.{});
+ expected:=ifx mode==0 then RQStatus.capacity else ifx mode==1 then RQStatus.resource else ifx mode==2 then RQStatus.unsupported else RQStatus.ok;
+ #assert q.status==expected && q.pixel_steps==0 && q.shader_steps==0 && q.draws==0 && q.bad_media== -1;
+}
+
+#test "reference graph resource dispatcher executes actual admitted begin and copy operations" {
+ c:=FrameCounts.{width=3,height=1,vertex_stride=16,draw_count=2,water_draws=1};plan:=render_plan(RenderFeatures.{scene=true,water=true,water_copy=true,post=true},c,RenderReadiness.ready,true);
+ #assert plan.status==RenderPlanStatus.ok;op:=plan.ops[0];req:RFRequirements;
+ ids:=[5]RenderTarget.[RenderTarget.light,RenderTarget.aux,RenderTarget.scene_depth,RenderTarget.water_light,RenderTarget.water_depth];
+ for j:0..<5 {id:=ids[j];req.images[cast(int)id]=RFCanvasLayout.{present=true,offset=j*5+1,descriptor=render_target_desc(id,3,1,false,RenderTextureFormat.rgba16f)};}
+ images:[25]RQColor;for j:0..<25 {images[j]=RQColor.{r=f32(j)/32,g=f32(j)/64,b=f32(j)/128,a=0.5};}
+ r:=rf_transfer_op(req,op,images[..],RFPolicy.{pixel_work=9},RFResult.{});#assert r.status==RQStatus.ok && r.pixel_steps==9;
+ for j:0..<3 {#assert rfpx_same(images[1+j],RQColor.{a=1}) && rfpx_same(images[6+j],RQColor.{a=1}) && rfpx_same(images[11+j],RQColor.{r=1});}
+ copied:=false;for j:0..<plan.count {if plan.ops[j].kind==RenderOpKind.copy && !copied {op=plan.ops[j];copied=true;}}
+ #assert copied;for j:0..<3 {images[1+j]=RQColor.{r=f32(j+1)/4,g=0.125,b=0.25,a=0.75};}
+ r=rf_transfer_op(req,op,images[..],RFPolicy.{pixel_work=12},r);#assert r.status==RQStatus.ok && r.pixel_steps==12;for j:0..<3 {#assert rfpx_same(images[16+j],images[1+j]);}
+ before:=images[16];r=rf_transfer_op(req,RenderOp.{kind=RenderOpKind.end},images[..],RFPolicy.{pixel_work=12},r);#assert r.status==RQStatus.ok && r.pixel_steps==12 && rfpx_same(images[16],before);
+ r=rf_transfer_op(req,op,images[..],RFPolicy.{pixel_work=14},r);#assert r.status==RQStatus.budget && r.pixel_steps==12 && rfpx_same(images[16],before);
+}
+#test "reference copied uniform constructor admits exactly one owned word" {
+ words:=[1]u32.[0x12345678];files:[]RenderHostNamedBuffer;out:[1]RenderHostNamedBuffer;
+ r:=rf_buffer_observations(files,words[..],out[..]);#assert r.status==RQStatus.ok && r.count==1 && out[0].name=="u.bin" && out[0].words.count==1 && out[0].words[0]==0x12345678 && out[0].observed.source_capacity==4 && out[0].observed.logical_payload==4 && out[0].observed.gpu_bytes==4 && out[0].observed.initialized_highwater==4;
+}
+
+#test "reference memory partition owns exact disjoint arena uniform and HUD prefixes" {
+ words:[65646]u32;words[0]=11;words[65535]=22;words[65536]=33;words[65595]=44;words[65596]=55;words[65643]=66;words[65644]=77;
+ m:=rf_partition_words(words[..],60,48);#assert m.arena.count==65536 && m.uniforms.count==60 && m.hud.count==48;
+ #assert m.arena[0]==11 && m.arena[65535]==22 && m.uniforms[0]==33 && m.uniforms[59]==44 && m.hud[0]==55 && m.hud[47]==66;
+ m.uniforms[0]=81;m.hud[0]=82;#assert words[65536]==81 && words[65596]==82 && words[65535]==22 && words[65644]==77;
+}
+#test "reference shared buffer namespace validates before publishing copied observations" {
+ files:=[2]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="duplicate"},RenderHostNamedBuffer.{name="duplicate"}];uniforms:[]u32;out:[2]RenderHostNamedBuffer;out[0].name="canary0";out[1].name="canary1";
+ q:=rf_buffer_observations(files[..],uniforms,out[..]);#assert q.status==RQStatus.resource && q.count==0 && out[0].name=="canary0" && out[1].name=="canary1";
+}
+#test "reference media validates CPU mip spans after shared physical identity admission" {
+ levels:=[2]RQMip.[RQMip.{width=2,height=2},RQMip.{width=2,height=1,offset=4}];pixels:[6]RQColor;
+ files:=[1]RFNamedTexture.[RFNamedTexture.{name="media_image-0",texture=RQTexture.{levels=levels[..],layers=1,texels=pixels[..]}}];images:=[1]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.image,url="/x",ready=true,width=2,height=2}];out:[1]RenderMediaRect;out[0].line=91;
+ q:=rf_prepare_media(13,"image /x 0 0 2 2",2,2,files[..],images[..],out[..]);#assert q.status==RQStatus.resource && q.bad_bitmap==0 && q.composed.status==RenderHostMediaStatus.ok && out[0].line==91;
+ too_many:[113]RenderHostMediaImage;q=rf_prepare_media(13,"image /x 0 0 2 2",2,2,files[..],too_many[..],out[..]);#assert q.status==RQStatus.capacity && q.composed.status==RenderHostMediaStatus.capacity && out[0].line==91;
+}
+#test "reference media draw preserves untouched pixels and exact nonsquare work accounting" {
+ tree:=RFM_ACTUAL_TREE;metadata:[14*RQ_IR_META]int;words:[RQ_IR_WORDS]u32;meta:=metadata[13*RQ_IR_META..<14*RQ_IR_META];program:=rq_ir_prepare(tree[..],meta);layout:=rf_shader_layout(13,13,program,tree[..],meta);#assert layout.status==RQStatus.ok;
+ entry:=RFPrepared.{present=true,program=program,layout=layout};level:=[1]RQMip.[RQMip.{width=1,height=1}];pixel:=[1]RQColor.[RQColor.{r=0.125,g=0.25,b=0.5,a=0.25}];files:=[1]RFNamedTexture.[RFNamedTexture.{name="media_image-0",texture=RQTexture.{levels=level[..],layers=1,texels=pixel[..]}}];
+ rectangle:=render_media_rect(RenderMediaRequest.{kind=RenderMediaKind.image,line=0,box=[4]f64.[0,0,2,2]},3,1,1,1);media:=[1]RenderMediaRect.[rectangle];input:=RFInput.{profile=13,textures=files[..],media=media[..]};req:RFRequirements;req.images[1]=RFCanvasLayout.{present=true,descriptor=RenderTargetDescriptor.{width=3,height=1,format=RenderTextureFormat.rgba16f}};
+ images:[3]RQColor;images[2]=RQColor.{r=0.25,g=0.5,b=0.75,a=1};target:[3]RRPixel;target[2].colour=RQColor.{r=0.875,a=1};scratch:[3]RRPixel;work:=RFWorking.{images=images[..],target=target[..],scratch=scratch[..],words=words[..],meta=metadata[..]};active:=RenderOp.{colour0=RenderTarget.screen};
+ r:=rf_media(input,false,entry,tree[..],req,active,RFPolicy.{pixel_work=6},work,RFResult.{});#assert r.status==RQStatus.ok && r.pixel_steps==6 && r.draws==1 && r.written==2;for k:0..<2 {#assert images[k].r==0.125 && images[k].a==1;}#assert images[2].r==0.25 && images[2].g==0.5 && images[2].b==0.75;
+ r=rf_media(input,false,entry,tree[..],req,active,RFPolicy.{pixel_work=5},work,RFResult.{});#assert r.status==RQStatus.budget && r.draws==0 && r.written==0;
+ input.textures=files[0..<0];r=rf_media(input,false,entry,tree[..],req,active,RFPolicy.{},work,RFResult.{});#assert r.status==RQStatus.resource && r.pixel_steps==0 && r.draws==0 && r.bad_media==0;
+}
+#forall "reference metadata slots own exactly one complete shader arena" slot:0..<14 {
+ words:[14*8192+2]int;for k:0..<14 {words[k*8192]=100+k;words[(k+1)*8192-1]=200+k;}words[14*8192]=91;words[14*8192+1]=92;
+ m:=rf_metadata_slot(words[..],slot);#assert m.count==8192 && m[0]==100+slot && m[8191]==200+slot;
+ m[0]= -1;m[8191]= -2;#assert words[slot*8192]== -1 && words[(slot+1)*8192-1]== -2;
+ if slot>0 {#assert words[slot*8192-1]==200+slot-1;}if slot<13 {#assert words[(slot+1)*8192]==100+slot+1;}#assert words[14*8192]==91 && words[14*8192+1]==92;
+}
+
+// Actual30868e8c tree; decimal transport SHA256 a65d5a86eb805a1dbe349e8111bed63607b8c817e743ce256be3df2e59b4bfb4.
+RF_ARENA_TREE :: [233]u32.[2,11,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,9,2,8,2,16384,4,7,2,2,0,2,4,8,8,9,3,8,5,6,2,4,4,2,4,4,8,1,1,4,22,2,1,18,0,6,2,6,7,3,6,7,8,39,1,3,3,40,2,17,8,3,42,40,2,16,5,0,0,16,2,1048576000,4,22,3,4,27,42,40,2,16,5,0,0,16,2,1056964608,16,2,1061158912,16,2,1065353216,6,1,4,3,4,10,9,71,1,3,3,40,1,31,10,3,22,4,2,16,2,3212836864,16,2,1065353216,22,4,2,16,2,1077936128,16,2,1065353216,22,4,2,16,2,3212836864,16,2,3225419776,3,40,2,27,42,40,1,29,5,19,5,18,0,16,4,3,4,22,3,4,27,41,40,2,0,27,41,40,2,1,16,2,1056964608,16,2,1065353216,6,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,6,4,18,0,18,1,18,2,18,3,9,2,2,2,2,2,2,10,1,1,4,31,9,2,18,0,18,1,2,0,0,0,1,1,1,2,3];
+#test "reference oversized working allocation cannot grant uniform words to shader scratch" {
+ counts:=FrameCounts.{width=2,height=2,vertex_stride=16};uniforms:[60]f32;uniforms[0]=2;uniforms[1]=2;
+ bg:=RF_ARENA_TREE;hud:=RF_WATCH_HUD;shaders:=[2]RFShader.[RFShader.{tree=bg[..]},RFShader.{index=12,tree=hud[..]}];
+ images:[4]RQColor;target:[4]RRPixel;scratch:[4]RRPixel;words:[200000]u32;meta:[114688]int;domains:[]RenderDrawDomain;decoded:[]RenderDecodedDraw;out:[5]RQColor;for j:0..<5 {out[j].r=91;}
+ work:=RFWorking.{images=images[..],target=target[..],scratch=scratch[..],words=words[..],meta=meta[..],domains=domains,decoded=decoded};
+ r:=rf_run(RFInput.{profile=15,counts=counts,uniforms=uniforms[..]},shaders[..],false,RenderTextureFormat.rgba8,RFPolicy.{},work,out[..]);
+ #assert r.status==RQStatus.capacity && r.geometry==RenderGeometryStatus.ok && r.frame==RenderFrameStatus.ok && r.bad_shader== -1 && r.draws==0 && r.written==0;
+ #assert words[65536]==f32_bits(2) && words[65537]==f32_bits(2);for j:0..<5 {#assert out[j].r==91;}
+}

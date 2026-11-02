@@ -1,6 +1,7 @@
 // garden's shaders, the source of apps/openagents-web/garden.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (garden.module,
 // garden.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/noise.coax";
 #load "../../../verse/gpu/wgsl.coax";
 
 // The Garden's three passes: the sky, the scene and the HUD. Every number
@@ -216,8 +217,11 @@ garden_scene_vs :: (id:u32,instance:u32,u:[]f32,heights:[]f32,objects:[]GardenOb
   o.look=(wg_u32_f(m.colour.w))/8;
   return o;
 }
+#test "garden live lattice uses the portable integer noise profile" {
+  #assert f32_bits(garden_hash(v2(1,2)))==0x3f6013da;
+}
 garden_hash :: (p:V2)->f32 {
-  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+  return render_noise2(p.x,p.y);
 }
 garden_noise :: (p:V2)->f32 {
   i:V2=wg_floor_f2(p);

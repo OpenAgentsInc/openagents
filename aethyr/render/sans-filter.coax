@@ -1,0 +1,24 @@
+// GPU resource effects for the checked Sans filter packet. Sampling policy and
+// arithmetic live in sans-filter-core; the scalar shader library has level0
+// only, so actual mip wiring is qualified through emitted GPU/quad execution.
+#load "sans-filter-core.coax";
+#test "Sans GPU load adapter follows the checked four-texel order" {
+ pixels:=[4]V4.[v4(0,4,8,12),v4(4,8,12,16),v4(8,12,16,20),v4(12,16,20,24)];
+ t:=Tex2D.{width=2,height=2,texels=pixels[..]};cell:=render_sans_filter_cell(2,2,0.375,0.5);
+ q:=render_sans_filter_level(t,cell,0);#assert q.x==5 && q.y==9 && q.z==13 && q.w==17;
+ bad:=render_sans_sample(t,v2(0.5,0.5),0);#assert bad.x==0 && bad.y==0 && bad.z==0 && bad.w==0;
+}
+render_sans_filter_level :: (texture:Tex2D,cell:RenderSansFilterCell,level:s32)->V4 {
+ a:=gpu_load(texture,cell.x0,cell.y0,level);b:=gpu_load(texture,cell.x1,cell.y0,level);
+ c:=gpu_load(texture,cell.x0,cell.y1,level);d:=gpu_load(texture,cell.x1,cell.y1,level);
+ return render_sans_filter_bilinear(a,b,c,d,cell.tx,cell.ty);
+}
+render_sans_sample :: (texture:Tex2D,uv:V2,lod:f32)->V4 {
+ plan:=render_sans_filter_lod(cast(s32)gpu_width(texture),cast(s32)gpu_height(texture),lod);
+ if !plan.valid {gpu_demote_helper();return V4.{};}
+ low:=render_sans_filter_cell(render_sans_filter_width(plan.low),render_sans_filter_height(plan.low),uv.x,uv.y);
+ if !low.valid {gpu_demote_helper();return V4.{};}
+ // The same admitted UVs and positive profile extents establish the high cell.
+ high:=render_sans_filter_cell(render_sans_filter_width(plan.high),render_sans_filter_height(plan.high),uv.x,uv.y);
+ return render_sans_filter_interpolate(render_sans_filter_level(texture,low,plan.low),render_sans_filter_level(texture,high,plan.high),plan.amount);
+}

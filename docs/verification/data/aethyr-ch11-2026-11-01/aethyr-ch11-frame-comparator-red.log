@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/test_compare_frames.py", line 10, in <module>
+    from compare_frames import compare_buffers
+ModuleNotFoundError: No module named 'compare_frames'. Did you mean: 'test_compare_frames'?

@@ -1,6 +1,7 @@
 // waterlab's shaders, the source of apps/openagents-web/waterlab.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (waterlab.module,
 // waterlab.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/noise.coax";
 #load "../../../verse/gpu/wgsl.coax";
 #load "../../../verse/style.coax";
 
@@ -123,8 +124,11 @@ waterlab_chop :: (p:V2,u:[]f32)->V2 {
   }
   return wg_mul_f2f(acc,u[43]);
 }
+#test "waterlab_hash2 live lattice uses the portable integer noise profile" {
+  #assert f32_bits(waterlab_hash2(v2(1,2)))==0x3f6013da;
+}
 waterlab_hash2 :: (p:V2)->f32 {
-  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+  return render_noise2(p.x,p.y);
 }
 waterlab_noise :: (p:V2)->f32 {
   i:V2=wg_floor_f2(p);
@@ -407,8 +411,11 @@ waterlab_surface_normal :: (p:V2,t:f32,u:[]f32)->V3 {
   sl:V2=wg_add_f2f2(v2(c.z,c.w),waterlab_fine(wg_add_f2f2(p,wg_mul_f2f(wg_mul_f2f(v2(u[32],u[33]),t),0.3f32)),u));
   return wg_normalize3(v3(-sl.x,1.0f32,-sl.y));
 }
+#test "waterlab_hash3 live lattice uses the portable integer noise profile" {
+  #assert f32_bits(waterlab_hash3(v3(1,2,3)))==0x3f42352b;
+}
 waterlab_hash3 :: (c:V3)->f32 {
-  return fract(sin(wg_dot3(c,v3(127.1f32,311.7f32,74.7f32)))*43758.5453f32);
+  return render_noise3(c.x,c.y,c.z);
 }
 waterlab_motes :: (o:V3,d:V3,reach:f32,t:f32,u:[]f32)->f32 {
   a:f32=0.0f32;

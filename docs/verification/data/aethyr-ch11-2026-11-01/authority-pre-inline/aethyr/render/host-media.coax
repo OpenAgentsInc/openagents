@@ -1,0 +1,44 @@
+// Shared ready-image composition. Parsing and aspect fit stay in Coax; hosts
+// only retain media objects and report their actual readiness and dimensions.
+#module "aethyr.render.host.media";
+#load "media-commands.coax";
+#authority;
+RenderHostMediaImage :: struct {kind:RenderMediaKind;url:string;ready:bool;width:int;height:int;}
+RenderHostMediaStatus :: enum u8 {ok;capacity;invalid;}
+RenderHostMediaReceipt :: struct {status:RenderHostMediaStatus;count:int;bad_image:int=-1;bad_request:int=-1;}
+#load "tests/host-media-checks.coax";
+
+hm_identity :: (hm_kind:RenderMediaKind,hm_url:string)->bool {
+  if (hm_kind!=RenderMediaKind.image && hm_kind!=RenderMediaKind.video) || hm_url.count==0 || hm_url[0]!='/' {return false;}
+  return hm_url.count==1 || hm_url[1]!='/';
+}
+render_host_media_rects :: (hm_requests:[]RenderMediaRequest,hm_images:[]RenderHostMediaImage,hm_width:int,hm_height:int,hm_out:[]RenderMediaRect)->RenderHostMediaReceipt {
+  if hm_requests.count>RENDER_MEDIA_ITEMS || hm_images.count>RENDER_MEDIA_ITEMS || hm_out.count<hm_requests.count {return RenderHostMediaReceipt.{status=RenderHostMediaStatus.capacity};}
+  if hm_width<1 || hm_height<1 {return RenderHostMediaReceipt.{status=RenderHostMediaStatus.invalid};}
+  for hm_i:0..<hm_images.count {
+    hm_image:=hm_images[hm_i];hm_valid:=hm_identity(hm_image.kind,hm_image.url);
+    if hm_image.ready {
+      hm_extent:=render_media_image_extent(hm_image.kind,hm_image.width,hm_image.height);
+      hm_valid=hm_valid && hm_extent.ok && hm_extent.width==hm_image.width && hm_extent.height==hm_image.height;
+    }
+    for hm_j:0..<hm_i {if hm_images[hm_j].kind==hm_image.kind && hm_images[hm_j].url==hm_image.url {hm_valid=false;}}
+    if !hm_valid {return RenderHostMediaReceipt.{status=RenderHostMediaStatus.invalid,bad_image=hm_i};}
+  }
+  hm_candidate:[RENDER_MEDIA_ITEMS]RenderMediaRect;
+  for hm_i:0..<hm_requests.count {
+    hm_request:=hm_requests[hm_i];
+    // render_media_rect owns the line bound along with rectangle admission.
+    if !hm_identity(hm_request.kind,hm_request.url) {return RenderHostMediaReceipt.{status=RenderHostMediaStatus.invalid,bad_request=hm_i};}
+    if hm_i>0 && hm_request.line<=hm_requests[hm_i-1].line {return RenderHostMediaReceipt.{status=RenderHostMediaStatus.invalid,bad_request=hm_i};}
+    hm_iw:=0;hm_ih:=0;
+    for hm_j:0..<hm_images.count {
+      hm_image:=hm_images[hm_j];
+      if hm_image.ready && hm_image.kind==hm_request.kind && hm_image.url==hm_request.url {hm_iw=hm_image.width;hm_ih=hm_image.height;}
+    }
+    hm_rect:=render_media_rect(hm_request,hm_width,hm_height,hm_iw,hm_ih);
+    if !hm_rect.ok {return RenderHostMediaReceipt.{status=RenderHostMediaStatus.invalid,bad_request=hm_i};}
+    hm_candidate[hm_i]=hm_rect;
+  }
+  for hm_i:0..<hm_requests.count {hm_out[hm_i]=hm_candidate[hm_i];}
+  return RenderHostMediaReceipt.{count=hm_requests.count};
+}

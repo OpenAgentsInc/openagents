@@ -1,0 +1,28 @@
+// CPU reference admission consumes the same package and authenticated checked
+// trees as the GPU adapters. Implemented reference capabilities are explicit;
+// this never describes a physical GPU or accepts unchecked C arithmetic.
+#module "aethyr.render.reference.package";
+#load "package.coax";
+#load "reference-tree.coax";
+#load "reference-ir.coax";
+#authority;
+RFPackageTree :: struct {status:RQStatus;package_status:RenderPackageStatus;transport:RenderTreeText;program:RQProgram;}
+#load "tests/reference-package-checks.coax";
+rf_package_admit :: (json:string,profile:int,entries:[]RenderPackageEntry)->RenderPackage {
+ p:=render_package_parse(json,entries);p.status=render_package_admit(p,profile,RenderDeviceCapabilities.{backend=RenderBackend.reference,helper_enabled=true,int64_enabled=true});return p;
+}
+rf_package_prepare :: (p:RenderPackage,index:int,bytes:[]u8,words:[]u32,meta:[]int)->RFPackageTree {
+ r:RFPackageTree;
+ if p.status!=RenderPackageStatus.ok {r.status=RQStatus.resource;r.package_status=p.status;return r;}
+ r.package_status=render_package_tree_bytes(p,index,bytes);
+ if r.package_status!=RenderPackageStatus.ok {r.status=ifx r.package_status==RenderPackageStatus.capacity then RQStatus.capacity else RQStatus.resource;return r;}
+ r.transport=render_tree_decode(bytes,words);r.status=rf_transport_status(r.transport.status);if r.status!=RQStatus.ok {return r;}
+ if r.transport.version!=p.entries[index].reflection.tree_version {r.status=RQStatus.unsupported;return r;}
+ r.program=rq_ir_prepare(words[0..<r.transport.count],meta);r.status=r.program.status;return r;
+}
+rf_transport_status :: (status:RenderTreeStatus)->RQStatus {
+ if status==RenderTreeStatus.ok {return RQStatus.ok;}
+ if status==RenderTreeStatus.unsupported {return RQStatus.unsupported;}
+ if status==RenderTreeStatus.capacity {return RQStatus.capacity;}
+ if status==RenderTreeStatus.budget {return RQStatus.budget;}return RQStatus.malformed;
+}

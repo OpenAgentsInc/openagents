@@ -1,0 +1,6 @@
+FAIL #test house: the demo's rooms and lights for a set of seeds (13165 ms)
+verse/icecream/mesh.coax:1048:3: error[E0406]: assertion failed
+    #assert s.count == o.count && s.hash == o.hash && near3(s.lo, o.lo) && near3(s.hi, o.hi);
+    ^
+  note: in #test house: the demo's rooms and lights for a set of seeds
+1 of 21 checks (--only 'house: the demo's rooms and lights for a set'), 0 passed, 1 failed

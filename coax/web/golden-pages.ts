@@ -84,6 +84,7 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
 
 /** What every page is built or walked with: files, and directories (ending in /). */
 export const SHARED = ["coax/web/host.js", "coax/web/http-requests.js", "coax/web/loader.js", "coax/web/voice.js", "coax/web/entropy.js", "coax/web/entropy-import.js", "coax/web/drop.js", "coax/web/docs.js",
+  "aethyr/render/", "coax/web/render.js", "coax/web/render-face.c", "coax/web/render_stage.py",
   "coax/web/uploads.js", "coax/web/deploy.sh", "coax/web/strip.ts", "coax/web/wasm.sh", "coax/web/wgsl-block.coax", "coax/web/wgsl-module.coax", "coax/web/realms.ts",
   "coax/web/goldens.ts", "coax/web/golden-pages.ts", "coax/web/golden-policy.ts", "coax/web/unlock/", "coax/web/voice/",
   `${APP}/build.sh`, `${APP}/realms.json`, `${APP}/realms.coax`, "coax/"]

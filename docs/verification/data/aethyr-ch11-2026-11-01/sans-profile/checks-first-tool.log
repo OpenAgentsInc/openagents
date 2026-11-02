@@ -1,0 +1,7 @@
+verse/tools/sans-atlas.coax:147:23: error[E0316]: 'sa_script' takes 3 arguments, given 1
+    b: [32768] u8; n := sa_script(b[..]);
+                        ^
+verse/tools/sans-atlas.coax:155:11: error[E0316]: 'sa_script' takes 3 arguments, given 1
+    #assert sa_script(tiny[..]) == -1;
+            ^
+2 errors

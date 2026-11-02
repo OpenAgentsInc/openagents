@@ -1,0 +1,11 @@
+{
+  "command": [
+    "coax/web/tool.sh",
+    "aethyr/render/tools/native-textures.coax",
+    "the-grid",
+    "/tmp/aethyr-ch11-texture-stage-sans/spec",
+    "/tmp/aethyr-ch11-texture-stage-sans/out"
+  ],
+  "exit": 0,
+  "elapsed_seconds": 0.18249045801348984
+}

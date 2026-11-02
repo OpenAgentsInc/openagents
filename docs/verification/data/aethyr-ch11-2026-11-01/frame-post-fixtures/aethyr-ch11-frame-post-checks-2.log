@@ -1,0 +1,4 @@
+ok   #forall reference full graph interleaves two water records and carries all five bloom stages into post (2 cases, 4835945 steps, 222 ms)
+ok   #test reference full graph gives five bloom draws one cumulative shader budget and keeps final output atomic (1 case, 6781355 steps, 254 ms)
+2 of 406 checks (--only 'reference full graph'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

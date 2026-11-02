@@ -1,0 +1,13 @@
+{
+  "schema": "aethyr-sans-legacy-pixel-parity-v1",
+  "status": "pass",
+  "bytes": 1374912,
+  "alpha_sha256": "de9a635cb675ea2e2e70a9ff5ce2a9cfd51dfc513204b92e3d889c3cc4127dc3",
+  "frozen_legacy_tool_sha256": "68b4293eacd776806ac9f7dc49a3c77d2034ea1f891085926e4ae7c92f33cf1b",
+  "frozen_legacy_host_sha256": "75a3c43b77598ca3d3b2e1074dace3fdfccf6399e75c855a9ad1b9a5aceacda5",
+  "legacy_script_sha256": "f2e8b3d49e9c22cd317ca657d5ebb0f4028da7f9080f93025d4846781184ebe4",
+  "legacy_png_sha256": "7744946435851aa76ce4186d620bf24e66afdab1ae8a22505ea32ef155a1daa4",
+  "new_script_sha256": "47216134ac5759f08f2766f8fad1edc246bb31cc011e989654484cfc42f6a75c",
+  "elapsed_seconds": 2.656,
+  "scope": "Current offline Coax command generation versus frozen legacy JavaScript raster policy, identical alpha bytes for every mip on this machine. This does not qualify the WebGPU-uploaded texture; its actual RGBA capture is separate."
+}

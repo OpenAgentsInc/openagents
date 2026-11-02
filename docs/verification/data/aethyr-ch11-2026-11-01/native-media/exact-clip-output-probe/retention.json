@@ -1,0 +1,17 @@
+{
+  "schema": "aethyr.render.exact-clip-probe-retention.v1",
+  "files": {
+    "render-clip-output-probe.coax": "5bb38ea420be1338314940fd6b1490c06180b2f034bfffcff6bf5d907b21dddf",
+    "run.py": "f5706dbb5a07cbdb63c17f6e90c39e117d093fb44ff328ccdd2e287d601546f2",
+    "qualification.json": "fa90b44d019fe38ac8769471cf78bd4825d69ab1fb1601d05c7000f53e0c38de",
+    "observations.rgba32f": "b45b295be2b3b73116b7a55af31cad0143fe8584995742138bd88d4865fd0eea",
+    "ssh.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native.log": "c69dcbd1586254a801118b63a95a46c21b042b0657cea903664bd4f1b6731e9d",
+    "cases.bin": "924937d4d2c59f7047e8caad34ac031888dc4daca60941fd56ecf410456c8aa4",
+    "cases.json": "2183091f2d11e72e686308eac8693edb1d09d9118ce8d1c632862fa283752c52",
+    "status.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "native-inputs-and-executable.tar.gz": "c9de968c7b40c50597299ce03e46a980d8139d357b3b48dfc1a9e3e1936650f4",
+    "probe.c": "f8917e5c339b4a59bd0eff8d6985aff640ef9fec6213a1f34c4534d719a38ae6",
+    "probe.spv": "55c2a277b4ff8bc293dfd435ad737f1ca516af9df5ed4f3b1355084388b0a825"
+  }
+}

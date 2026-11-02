@@ -1,0 +1,155 @@
+{
+  "schema": "aethyr.render.image-comparison.v1",
+  "status": "fail",
+  "width": 320,
+  "height": 180,
+  "source_sha256": "30961fe5c589cfd45818d28122ff39de4ac8288e4339255b13907e0d738c7f55",
+  "comparison": {
+    "status": "fail",
+    "pixels": 57600,
+    "channels": 230400,
+    "colour_failures": 12,
+    "nonfinite_failures": 0,
+    "max_absolute_error": 0.1207275390625,
+    "max_normalized_error": 0.1207275390625,
+    "samples": [
+      {
+        "x": 42,
+        "y": 76,
+        "channel": "r",
+        "cpu": 0.068115234375,
+        "gpu": 0.139404296875,
+        "absolute_error": 0.0712890625,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 42,
+        "y": 76,
+        "channel": "g",
+        "cpu": 0.081787109375,
+        "gpu": 0.15283203125,
+        "absolute_error": 0.071044921875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 42,
+        "y": 76,
+        "channel": "b",
+        "cpu": 0.1060791015625,
+        "gpu": 0.173583984375,
+        "absolute_error": 0.0675048828125,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 124,
+        "y": 118,
+        "channel": "r",
+        "cpu": 0.0823974609375,
+        "gpu": 0.0799560546875,
+        "absolute_error": 0.00244140625,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 124,
+        "y": 118,
+        "channel": "g",
+        "cpu": 0.09564208984375,
+        "gpu": 0.093017578125,
+        "absolute_error": 0.00262451171875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 124,
+        "y": 118,
+        "channel": "b",
+        "cpu": 0.11376953125,
+        "gpu": 0.11102294921875,
+        "absolute_error": 0.00274658203125,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 67,
+        "y": 122,
+        "channel": "r",
+        "cpu": 0.2022705078125,
+        "gpu": 0.12347412109375,
+        "absolute_error": 0.07879638671875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 67,
+        "y": 122,
+        "channel": "g",
+        "cpu": 0.2352294921875,
+        "gpu": 0.1431884765625,
+        "absolute_error": 0.092041015625,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 67,
+        "y": 122,
+        "channel": "b",
+        "cpu": 0.311279296875,
+        "gpu": 0.1905517578125,
+        "absolute_error": 0.1207275390625,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 138,
+        "y": 134,
+        "channel": "r",
+        "cpu": 0.309814453125,
+        "gpu": 0.30517578125,
+        "absolute_error": 0.004638671875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 138,
+        "y": 134,
+        "channel": "g",
+        "cpu": 0.361083984375,
+        "gpu": 0.3564453125,
+        "absolute_error": 0.004638671875,
+        "bound": 0.002,
+        "reason": "colour"
+      },
+      {
+        "x": 138,
+        "y": 134,
+        "channel": "b",
+        "cpu": 0.429931640625,
+        "gpu": 0.4248046875,
+        "absolute_error": 0.005126953125,
+        "bound": 0.002,
+        "reason": "colour"
+      }
+    ],
+    "masked_pixels": 0,
+    "rule": "abs(gpu-cpu) <= 0.002 * max(1, abs(cpu)); both values finite"
+  },
+  "inputs": {
+    "cpu": {
+      "path": "/private/tmp/aethyr-ch11-reference-dead-gears-native-guard65536-308/screen.rgba32f",
+      "format": "rgba32f",
+      "bytes": 921600,
+      "sha256": "fde1bcabb3d12b8da1abdbaf65fff31bbba0c7b4b527a4a74ce0dea49bfcc371"
+    },
+    "gpu": {
+      "path": "/private/tmp/aethyr-ch11-native-deadgears-rgba16f/screen.raw",
+      "format": "rgba16f",
+      "bytes": 460800,
+      "sha256": "5afc5e66519ffc60f6cda91fcba33a480cd811fcbd8390c62b8d399462af168f"
+    }
+  },
+  "scope": "Complete supplied readback/CPU image comparison, including alpha and all nonfinite values, without a mask. The enclosing host gate must establish matching frame and resource provenance."
+}

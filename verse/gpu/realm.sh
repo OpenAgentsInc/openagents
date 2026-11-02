@@ -39,13 +39,20 @@ root="$(cd "$here/../.." && pwd -P)"
 host="${1:?usage: realm.sh HOST check|screen|net [options]}"
 mode="${2:?usage: realm.sh HOST check|screen|net [options]}"
 shift 2
+case "$mode" in check|screen|net) ;; *) echo "realm.sh: unknown mode $mode" >&2; exit 2 ;; esac
+renderer="${VERSE_GPU_RENDERER:-shared}"
+case "$renderer" in shared|legacy) ;; *) echo "realm.sh: VERSE_GPU_RENDERER must be shared or legacy" >&2; exit 2 ;; esac
+check_sizes="${VERSE_GPU_CHECK_SIZES-320x180 2560x1440 3840x2160}"
+check_frames="${VERSE_GPU_CHECK_FRAMES:-600}"
+[[ "$check_frames" =~ ^[1-9][0-9]*$ && "$check_frames" -le 90000 ]] || { echo "realm.sh: invalid VERSE_GPU_CHECK_FRAMES" >&2; exit 2; }
+for size in $check_sizes; do [[ "$size" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || { echo "realm.sh: invalid VERSE_GPU_CHECK_SIZES" >&2; exit 2; }; done
 work="$(mktemp -d "${TMPDIR:-/tmp}/realm.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 seconds=60
 for ((i = 1; i <= $#; i++)); do [[ "${!i}" == --seconds ]] && { j=$((i + 1)); seconds="${!j}"; }; done
 
 # The realms travel reaches: a slug (what a navigation names: rh_realm_of) and its module.
-travel="galaxy:verse the-grid:newland hold-the-stair:stair belt-2200:belt waterlab:waterlab orbit-league:orbitleague everglade:everglade dead-gears:deadgears ice-cream-man:icecream hecates-cemetery:villa fairy-forest:fairy haunted-house:haunted-house sandbox:sandbox fixture:fixture drop:drop built:built"
+travel="galaxy:verse the-grid:newland hold-the-stair:stair belt-2200:belt waterlab:waterlab orbit-league:orbitleague everglade:everglade dead-gears:deadgears ice-cream-man:icecream hecates-cemetery:villa fairy-forest:fairy haunted-house:haunted-house sandbox:sandbox fixture:fixture drop:drop built:built garden:garden watchtower:watchtower"
 # the module a realm runs, where its name is its slug
 module_of_realm() {
   case "$1" in
@@ -57,6 +64,21 @@ module_of_realm() {
   esac
 }
 read -r -a realms <<< "${REALM:-everglade}"
+if [[ "$renderer" == shared ]]; then
+  (cd "$root" && coax/web/tool.sh aethyr/render/build.coax --app-table) > "$work/profiles"
+fi
+profile_of() {
+  # Identity comes from the compiled Coax catalog. A caller's explicit slug
+  # wins; an old module alias must resolve to exactly one catalog row.
+  local index slug app found="" count=0 module
+  module="$(module_of_realm "$1")"
+  while read -r index slug app; do [[ "$slug" != "$1" ]] || { echo "$slug"; return; }; done < "$work/profiles"
+  while read -r index slug app; do
+    if [[ "$app" == "$module" ]]; then found="$slug"; count=$((count + 1)); fi
+  done < "$work/profiles"
+  [[ "$count" == 1 ]] || { echo "realm.sh: ambiguous or absent Coax profile for $1" >&2; return 2; }
+  echo "$found"
+}
 given_of() {
   case "$1" in
     everglade) echo "everglade.pack --facts everglade.facts --extra 9000" ;;
@@ -68,19 +90,33 @@ given_of() {
   esac
 }
 for realm in "${realms[@]}"; do
+  emit=()
   case "$realm" in
     everglade) emit=(verse/gpu/everglade-pass.coax "$host" live --emit "$work/$realm/spec") ;;
     verse|newland|stair|belt|waterlab|orbitleague) emit=(verse/gpu/flat-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
     deadgears|icecream|villa|fairy|haunted-house|sandbox|fixture|drop|built) emit=(verse/gpu/scene-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
     painterly) emit=(verse/gpu/scene-pass.coax "$host" fixture --facts "$root/verse/native/painterly.facts" --emit "$work/$realm/spec") ;;
+    watchtower|garden) [[ "$renderer" == shared ]] || { echo "realm.sh: $realm has no legacy spec route" >&2; exit 2; } ;;
     *) echo "realm.sh: no realm $realm" >&2; exit 2 ;;
   esac
-  "$root/verse/native/build.sh" "$(module_of_realm "$realm")" "$work/$realm/c" > /dev/null
-  (cd "$root" && coax/web/tool.sh "${emit[@]}") >&2
+  build=("$(module_of_realm "$realm")" "$work/$realm/c")
+  if [[ "$renderer" == shared ]]; then profile="$(profile_of "$realm")"; build+=(--render-profile "$profile"); fi
+  "$root/verse/native/build.sh" "${build[@]}" > /dev/null
+  if [[ ${#emit[@]} -gt 0 ]]; then (cd "$root" && coax/web/tool.sh "${emit[@]}") >&2; fi
+  if [[ "$renderer" == shared ]]; then
+    texture_source="$work/$realm/spec"; [[ -d "$texture_source" ]] || texture_source="-"
+    (cd "$root" && coax/web/tool.sh aethyr/render/tools/native-textures.coax "$profile" "$texture_source" "$work/$realm/c/render-assets") > "$work/$realm/c/render-assets/textures.config.pending"
+    mv "$work/$realm/c/render-assets/textures.config.pending" "$work/$realm/c/render-assets/textures.config"
+  fi
   ship="$work/ship/$realm"
   mkdir -p "$ship/spec"
-  (cd "$work/$realm/spec" && cp spec.txt *.spv *.spv.bindings *.bin "$ship/spec/")
+  if [[ ${#emit[@]} -gt 0 ]]; then (cd "$work/$realm/spec" && cp spec.txt *.spv *.spv.bindings *.bin "$ship/spec/"); fi
   cp "$work/$realm/c"/*.c "$work/$realm/c"/*.h "$work/$realm/c/sources" "$ship/"
+  if [[ "$renderer" == shared ]]; then
+    cp -R "$work/$realm/c/render" "$work/$realm/c/render-assets" "$ship/"
+    cp "$work/$realm/c/render-native/"*.c "$work/$realm/c/render-native/"*.h "$ship/"
+    printf '.\n' > "$ship/drawdir"
+  else printf 'spec\n' > "$ship/drawdir"; fi
   cp "$here"/vk-realm.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h \
      "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$ship/"
   # the kms headers apart: a module has a realm.h of its own (the realm module's), and keys.h finds its sibling first
@@ -97,6 +133,8 @@ cp "$root/verse/native/musl-math.sh" "$work/ship/"
 cp "$here"/vk-passes.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h "$here"/vk-escape.c "$work/ship/"
 echo "${realms[*]}" > "$work/ship/realms"
 echo "$travel" > "$work/ship/travel"
+printf '%s\n' "$check_sizes" > "$work/ship/check-sizes"
+printf '%s\n' "$check_frames" > "$work/ship/check-frames"
 # the network helper: its Coax as C here, built there against OpenSSL (coax/platform/tls-env.sh's)
 mkdir -p "$work/ship/net-src"
 coax="${COAX:-$root/coax/bin/coax}"
@@ -121,15 +159,22 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
   flags=\"-std=gnu11 -O2 -no-pie -ffp-contract=off -fno-fast-math -w -I.\"
   # the math of the wasm (musl, verse/native/musl-math.sh) ahead of glibc, as realm-run links it
   math=\$(./musl-math.sh \$PWD)
+  realm_pids=()
   for r in \$(cat realms); do
     (cd \$r
      read -r -a sources < sources
-     for s in \"\${sources[@]}\" realm-host.c; do gcc \$flags -c \$s -o \${s%.c}.o & done
-     wait
-     gcc \$flags -Ikms \$(pkg-config --cflags libdrm) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-realm
-     cp ../net .) &
+     renderer_units=(); link_flags=()
+     if [ -f RenderIdentity.h ]; then
+       renderer_units=(render-host.c render-realm.c render-media.c render-textures.c RenderTexture.c)
+       flags=\"\$flags -ffunction-sections -fdata-sections\"; link_flags=(-Wl,--gc-sections)
+     fi
+     pids=()
+     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
+     for pid in \"\${pids[@]}\"; do wait \$pid; done
+     gcc \$flags \"\${link_flags[@]}\" -Ikms \$(pkg-config --cflags libdrm) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-realm
+     cp ../net .) & realm_pids+=(\$!)
   done
-  wait
+  for pid in \"\${realm_pids[@]}\"; do wait \$pid; done
   gcc -std=c11 -O2 -I. vk-passes.c vk-spec.c vks.c vkc.c -lvulkan -lm -o vk-passes
   gcc -std=c11 -O2 -Wall vk-escape.c -o vk-escape
   echo \"VK_ADD_LAYER_PATH=\$(dirname \$(find /nix/store -maxdepth 6 -name VkLayer_khronos_validation.json -path \"*validation-layers*\" | head -1))\" > env
@@ -143,15 +188,17 @@ module_of() { for p in \$(cat \$here/travel); do [ \"\${p%%:*}\" = \"\$1\" ] && 
 if [ $mode = check ]; then
   differ=''
   for r in \$(cat realms); do
-    cd \$here/\$r; given=\$(cat given)
+    cd \$here/\$r; given=\$(cat given); drawdir=\$(cat drawdir)
     # the frame the spec was written from (wasm-run's 90th, golden, clock 0), drawn by vk-passes and by vk-realm
     export VK_ADD_LAYER_PATH VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation
-    (cd spec && \$here/vk-passes spec.txt \$here/\$r/passes.f32)
-    VERSE_NATIVE_CLOCK_MS=0 ./vk-realm spec \$given --golden --size 320x180 --headless 90 --out \$here/\$r/realm.f32
-    cmp passes.f32 realm.f32 && echo \"realm.sh: \$r: the realm's 90th frame is vk-passes' to the bit\" || { echo \"realm.sh: \$r: the frames differ, \$(cmp -l passes.f32 realm.f32 | wc -l) bytes\"; differ=\"\$differ \$r\"; }
+    if [ -f spec/spec.txt ]; then (cd spec && \$here/vk-passes spec.txt \$here/\$r/passes.f32); fi
+    VERSE_NATIVE_CLOCK_MS=0 ./vk-realm \$drawdir \$given --golden --size 320x180 --headless 90 --out \$here/\$r/realm.f32
+    if [ -f passes.f32 ]; then
+      cmp passes.f32 realm.f32 && echo \"realm.sh: \$r: the realm's 90th frame is vk-passes' to the bit\" || { echo \"realm.sh: \$r: the frames differ, \$(cmp -l passes.f32 realm.f32 | wc -l) bytes\"; differ=\"\$differ \$r\"; }
+    else echo \"realm.sh: \$r:90-frame native execution checked; image comparison has its separate recorded fixture\"; fi
     # the frame times, without the validation layers
     unset VK_INSTANCE_LAYERS
-    for size in 320x180 2560x1440 3840x2160; do ./vk-realm spec \$given --size \$size --headless 600; done
+    for size in \$(cat \$here/check-sizes); do ./vk-realm \$drawdir \$given --size \$size --headless \$(cat \$here/check-frames); done
   done
   if [ -d \$here/verse ]; then
     # travel: the galaxy, a world picked (Right REALM_PICK times) and opened (Enter)
@@ -159,12 +206,12 @@ if [ $mode = check ]; then
     for i in \$(seq ${REALM_PICK:-2}); do keys=\"\$keys\$f:-5:1,\$((f + 1)):-5:0,\"; f=\$((f + 10)); done
     keys=\"\$keys\$f:-2:1,\$((f + 1)):-2:0\"
     cd \$here/verse; rm -f \$here/go
-    status=0; VERSE_NATIVE_CLOCK_MS=0 ./vk-realm spec \$(cat given) --size 320x180 --headless 600 --keys \$keys --go \$here/go || status=\$?
+    status=0; VERSE_NATIVE_CLOCK_MS=0 ./vk-realm \$(cat drawdir) \$(cat given) --size 320x180 --headless 600 --keys \$keys --go \$here/go || status=\$?
     slug=\$(cat \$here/go 2>/dev/null || true)
     [ \$status = 3 ] && [ -n \"\$slug\" ] || { echo \"realm.sh: travel: the galaxy went nowhere (status \$status)\"; exit 1; }
     to=\$(module_of \$slug)
     if [ -n \"\$to\" ]; then
-      cd \$here/\$to && ./vk-realm spec \$(cat given) --size 320x180 --headless 120 && echo \"realm.sh: travel: the galaxy opened \$slug, and \$to drew there\"
+      cd \$here/\$to && ./vk-realm \$(cat drawdir) \$(cat given) --size 320x180 --headless 120 && echo \"realm.sh: travel: the galaxy opened \$slug, and \$to drew there\"
     else
       echo \"realm.sh: travel: the galaxy opened \$slug, which is not native here; the player stays in the galaxy\"
     fi
@@ -176,7 +223,7 @@ if [ $mode = net ]; then
   cd \$here/$first
   VERSE_AUTOMATION=$automation ./net \$here/answer openagents.com 443 4 '/api/playtest/planets?after=1000000000' - - 65536 10000
   echo \"realm.sh: the helper's answer: \$(head -c 120 \$here/answer | tr '\\n' ' ')\"
-  VERSE_AUTOMATION=$automation VERSE_NATIVE_NET_LOG=1 ./vk-realm spec \$(cat given) --name $first --size 320x180 --headless 3000 --net \$here/kept
+  VERSE_AUTOMATION=$automation VERSE_NATIVE_NET_LOG=1 ./vk-realm \$(cat drawdir) \$(cat given) --name $first --size 320x180 --headless 3000 --net \$here/kept
   echo \"realm.sh: kept: \$(ls \$here/kept 2>/dev/null | tr '\\n' ' ')\"
   exit 0
 fi
@@ -196,7 +243,7 @@ while :; do
   [ \$left -gt 0 ] || break
   rm -f \$here/go; status=0
   (cd \$here/\$cur && sudo -n env VK_DRIVER_FILES=\$VK_DRIVER_FILES LD_LIBRARY_PATH=\$LD_LIBRARY_PATH ${automation:+VERSE_AUTOMATION=$automation} \
-    ./vk-realm spec \$(cat given) --name \$cur --shot \$here/shot.ppm --net \$HOME/.local/state/verse $args --seconds \$left --go \$here/go) || status=\$?
+    ./vk-realm \$(cat drawdir) \$(cat given) --name \$cur --shot \$here/shot.ppm --net \$HOME/.local/state/verse $args --seconds \$left --go \$here/go) || status=\$?
   [ \$status = 3 ] || break
   slug=\$(cat \$here/go 2>/dev/null || true); next=\$(module_of \$slug)
   if [ -n \"\$next\" ]; then echo \"realm.sh: \$cur opened \$slug (\$next)\"; cur=\$next; else echo \"realm.sh: \$cur opened \$slug, which is not native here; staying\"; fi

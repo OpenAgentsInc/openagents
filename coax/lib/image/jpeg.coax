@@ -509,8 +509,12 @@ jpg_framed :: (b: []u8) -> JpgState {
   ss[0].nc = jpg_sof(ss[..], 0, f.count) + 3;
   for t: 0..<8 { ss[0].huff[t].set = true; }
   for t: 0..<4 { ss[0].qset[t] = true; }
-  ss[0].src = b;
-  return ss[0];
+  // Copy owned fields into a fresh descriptor. Reassigning src on ss would
+  // retain its earlier local may-origin in conservative borrow analysis.
+  return JpgState.{src=b,at=ss[0].at,bits=ss[0].bits,n=ss[0].n,stuck=ss[0].stuck,dry=ss[0].dry,
+    q=ss[0].q,qset=ss[0].qset,huff=ss[0].huff,w=ss[0].w,h=ss[0].h,nc=ss[0].nc,comps=ss[0].comps,
+    hmax=ss[0].hmax,vmax=ss[0].vmax,mcux=ss[0].mcux,mcuy=ss[0].mcuy,restart=ss[0].restart,
+    frame=ss[0].frame,scanned=ss[0].scanned,seen=ss[0].seen,work=ss[0].work};
 }
 #test "scan headers: components, tables, and what is refused" {
   { b := [10] u8.[3,1,0,2,17,3,35,0,63,0]; ss: [1] JpgState; ss[0] = jpg_framed(b[..]); of: [3] int;

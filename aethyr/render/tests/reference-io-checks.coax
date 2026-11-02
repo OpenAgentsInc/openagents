@@ -1,0 +1,159 @@
+RQ_IO_TEST_TREE :: [221]u32.[2,12,0,1,2,3,4,5,7,3,2,0,2,4,2,8,12,7,2,6,0,4,12,16,9,2,7,4,2,0,2,4,2,8,2,12,16,7,3,9,0,2,2147483664,4,2147483668,24,7,2,9,0,2,1073741840,20,4,10,4,4,4,7,8,5,4,4,7,8,2,45,1,2,3,40,4,19,1,29,2,27,41,40,2,1,27,42,40,3,16,5,0,0,4,31,10,3,22,2,2,27,41,40,2,0,16,2,1065353216,18,4,19,1,18,0,18,1,11,1,10,2,10,2,35,1,2,3,40,1,16,2,1056964608,4,31,11,2,22,3,4,27,41,40,0,1,29,2,27,41,40,0,2,16,2,0,16,2,1065353216,18,1,9,2,6,2,2,6,2,23,1,1,4,31,9,4,27,41,40,0,0,27,41,40,0,1,27,41,40,0,2,18,1,9,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,9,4,18,0,18,1,18,2,18,3,2,0,0,0,1,2,3,1,1,4];
+#test "quad stage interface preserves reflected position flat integer and depth fields" {
+ tree:=RQ_IO_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ vs:=rq_ir_interface(p,tree[..],meta[..],0);fs:=rq_ir_interface(p,tree[..],meta[..],1);
+ #assert vs.status==RQStatus.ok && vs.params==4 && vs.resource_start==3 && vs.attributes_type>=0 && vs.front_parameter==(-1);
+ #assert vs.result_words==6 && vs.input_words==28;
+ #assert fs.status==RQStatus.ok && fs.params==1 && fs.result_words==5 && fs.input_words==24 && fs.resource_start==1 && fs.attributes_type==(-1);
+ #assert rq_ir_io_field_count(p,tree[..],meta[..],vs.result_type,0)==3;
+ pos:=rq_ir_io_field(p,tree[..],meta[..],vs.result_type,0,0);
+ flat:=rq_ir_io_field(p,tree[..],meta[..],vs.result_type,1,0);
+ tag:=rq_ir_io_field(p,tree[..],meta[..],vs.result_type,2,0);
+ #assert pos.status==RQStatus.ok && pos.position && pos.words==4 && pos.word_offset==0 && pos.location==(-1);
+ #assert flat.status==RQStatus.ok && flat.flat && !flat.position && flat.words==1 && flat.word_offset==4 && flat.location==0 && flat.byte_offset==16;
+ #assert tag.status==RQStatus.ok && tag.flat && tag.words==1 && tag.word_offset==5 && tag.location==1 && tag.byte_offset==20;
+ #assert rq_ir_vector_width(p,tree[..],meta[..],pos.ty)==4;
+ color:=rq_ir_io_field(p,tree[..],meta[..],fs.result_type,0,2);
+ depth:=rq_ir_io_field(p,tree[..],meta[..],fs.result_type,1,2);
+ #assert color.words==4 && color.location==0 && !color.depth;
+ #assert depth.depth && depth.words==1 && depth.word_offset==4 && depth.location==(-1) && depth.byte_offset==16;
+ #assert rq_ir_io_field_count(p,tree[..],meta[..],fs.result_type,2)==2;
+}
+#test "quad parameter metadata maps attributes resources and packed quad argument offsets" {
+ tree:=RQ_IO_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ id:=rq_ir_parameter(p,tree[..],meta[..],0,0);attrs:=rq_ir_parameter(p,tree[..],meta[..],0,2);u:=rq_ir_parameter(p,tree[..],meta[..],0,3);
+ #assert id.status==RQStatus.ok && id.words==1 && id.word_offset==0 && id.kind==0;
+ #assert attrs.status==RQStatus.ok && attrs.words==4 && attrs.word_offset==8 && attrs.kind==0;
+ #assert u.status==RQStatus.ok && u.words==1 && u.word_offset==24 && u.kind==1 && u.stride==4 && u.shape==0 && u.name_id==3;
+ #assert rq_ir_io_field_count(p,tree[..],meta[..],attrs.ty,1)==2;
+ at:=rq_ir_io_field(p,tree[..],meta[..],attrs.ty,0,1);packed:=rq_ir_io_field(p,tree[..],meta[..],attrs.ty,1,1);
+ #assert at.location==0 && at.words==3 && at.byte_offset==0 && rq_ir_vector_width(p,tree[..],meta[..],at.ty)==3;
+ #assert packed.location==1 && packed.word_offset==3 && packed.words==1 && packed.byte_offset==12;
+ #assert rq_ir_parameter(p,tree[..],meta[..],0,-1).status==RQStatus.resource;
+ #assert rq_ir_parameter(p,tree[..],meta[..],0,4).status==RQStatus.resource;
+ #assert rq_ir_interface(p,tree[..],meta[..],2).status==RQStatus.resource;
+}
+
+RQ_IO_FRONT_TREE :: [139]u32.[2,10,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,10,0,11,0,7,2,2,0,2,4,8,3,6,4,6,1,7,8,4,6,1,7,8,45,1,1,4,24,18,1,33,3,6,4,18,2,18,3,22,1,2,27,41,40,0,0,27,41,40,0,1,16,2,0,22,2,4,16,2,0,16,2,0,16,2,0,16,2,1065353216,9,2,2,2,2,2,2,10,1,1,4,31,9,2,18,0,18,1,6,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,6,4,18,0,18,1,18,2,18,3,1,1,0,0,1,2,3];
+#test "quad fragment front resource kinds and primitive V4 interfaces remain explicit" {
+ tree:=RQ_IO_FRONT_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);f:=rq_ir_interface(p,tree[..],meta[..],1);
+ #assert f.status==RQStatus.ok && f.front_parameter==1 && f.resource_start==2 && f.params==4 && f.result_words==4 && f.input_words==28;
+ #assert rq_ir_io_field_count(p,tree[..],meta[..],f.result_type,0)==1 && rq_ir_io_field_count(p,tree[..],meta[..],f.result_type,2)==1;
+ pos:=rq_ir_io_field(p,tree[..],meta[..],f.result_type,0,0);color:=rq_ir_io_field(p,tree[..],meta[..],f.result_type,0,2);
+ #assert pos.position && pos.location==(-1) && color.location==0 && !color.position && !color.depth;
+ #assert rq_ir_io_field_count(p,tree[..],meta[..],f.result_type,1)==0;
+ front:=rq_ir_parameter(p,tree[..],meta[..],1,1);tex:=rq_ir_parameter(p,tree[..],meta[..],1,2);samp:=rq_ir_parameter(p,tree[..],meta[..],1,3);
+ #assert front.ty==1 && front.word_offset==16 && front.words==1 && front.name_id==1;
+ #assert tex.kind==2 && tex.shape==0 && tex.stride==0 && tex.word_offset==20 && tex.name_id==2;
+ #assert samp.kind==3 && samp.shape==0 && samp.stride==0 && samp.word_offset==24 && samp.name_id==3;
+}
+#test "quad resource parameter reflection retains array depth and comparison shapes" {
+ tree:=RQ_IR_TEXTURE_2;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ for j:1..<6 {
+  a:=rq_ir_parameter(p,tree[..],meta[..],1,j);
+  #assert a.status==RQStatus.ok && a.words==1 && a.word_offset==12+j*4 && a.name_id==j && a.stride==0;
+  if j<4 {#assert a.kind==2 && a.shape==j-1;}else {#assert a.kind==3 && a.shape==j-4;}
+ }
+}
+#test "quad I O accessors refuse unavailable records without reading stale workspace" {
+ tree:=RQ_IO_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ #assert rq_ir_vector_width(p,tree[..],meta[..],-1)==0 && rq_ir_vector_width(p,tree[..],meta[..],0)==0;
+ #assert rq_ir_io_field_count(p,tree[..],meta[..],-1,0)==0 && rq_ir_io_field_count(p,tree[..],meta[..],0,2)==0;
+ #assert rq_ir_io_field_count(p,tree[..],meta[..],0,-1)==0 && rq_ir_io_field_count(p,tree[..],meta[..],0,3)==0;
+ #assert rq_ir_parameter(p,tree[..],meta[..],7,0).status==RQStatus.resource;
+ fs:=rq_ir_interface(p,tree[..],meta[..],1);#assert rq_ir_io_field(p,tree[..],meta[..],fs.result_type,-1,2).status==RQStatus.resource;
+ #assert rq_ir_io_field(p,tree[..],meta[..],fs.result_type,2,2).status==RQStatus.resource;
+ // Unused workspace is scratch, so a previous module can have left a vector
+ // record exactly after the current module's type table. It is not a type.
+ pos:=rq_ir_io_field(p,tree[..],meta[..],rq_ir_interface(p,tree[..],meta[..],0).result_type,0,0);
+ for k:0..<8 {meta[p.types*8+k]=meta[pos.ty*8+k];}
+ #assert rq_ir_vector_width(p,tree[..],meta[..],p.types)==0;
+ #assert rq_ir_io_field_count(p,tree[..],meta[..],p.types,0)==0;
+ p.status=RQStatus.capacity;
+ #assert rq_ir_vector_width(p,tree[..],meta[..],pos.ty)==0 && rq_ir_io_field_count(p,tree[..],meta[..],pos.ty,0)==0;
+ #assert rq_ir_parameter(p,tree[..],meta[..],0,0).status==RQStatus.capacity && rq_ir_interface(p,tree[..],meta[..],0).status==RQStatus.capacity;
+}
+
+RQ_IO_PROFILE_TYPES :: [338]u32.[34,0,1,2,3,4,5,7,2,2,0,2,4,8,7,3,2,0,2,4,2,8,12,7,4,2,0,2,4,2,8,2,12,16,7,2,8,0,2,16,20,7,2,7,0,4,12,16,7,6,8,0,2,16,2,2147483668,3,24,4,28,6,32,40,7,3,2,1073741824,8,4,8,20,36,7,1,2,0,4,7,5,2,0,2,4,2,8,2,12,2,16,20,7,2,7,0,2,12,16,7,9,8,0,8,16,8,32,8,48,8,64,8,80,8,96,8,112,8,128,144,7,8,8,0,8,16,8,32,8,48,8,64,8,80,8,96,8,112,128,7,3,8,0,2,1073741840,2,1073741844,24,7,1,8,1073741824,16,7,2,8,0,1,16,20,7,1,1,0,1,7,2,8,0,2,16,20,7,32,8,0,2,16,2,20,2,24,2,28,2,32,2,36,2,40,2,44,2,48,2,52,2,56,2,60,2,64,2,68,2,72,2,76,2,80,2,84,2,88,2,92,2,96,2,100,2,104,2,108,2,112,2,116,2,120,2,124,2,128,2,132,2,136,140,7,33,8,0,2,16,2,20,2,24,2,28,2,32,2,36,2,40,2,44,2,48,2,52,2,56,2,60,2,64,2,68,2,72,2,76,2,80,2,84,2,88,2,92,2,96,2,100,2,104,2,108,2,112,2,116,2,120,2,124,2,128,2,132,2,136,2,140,144,8,2,2,4,7,2,8,0,25,16,24,9,2,10,0,10,1,10,2,11,0,11,1,7,3,8,0,2,1073741840,8,20,36];
+rq_io_fixture :: (stage:int,ret:int,params:[]u32,tree:[]u32,meta:[]int)->RQProgram {
+ prefix:=RQ_IO_PROFILE_TYPES;tree[0]=2;for i:0..<prefix.count {tree[i+1]=prefix[i];}at:=prefix.count+1;
+ tree[at]=1;tree[at+1]=cast(u32)ret;tree[at+2]=cast(u32)params.count;at+=3;
+ for j:0..<params.count {tree[at+j]=params[j];}at+=params.count;tree[at]=cast(u32)(params.count+1);at+=1;
+ for j:0..<params.count {tree[at+j]=params[j];}at+=params.count;tree[at]=2;at+=1;
+ if ret==0 {tree[at]=1;tree[at+1]=5;at+=2;}else {tree[at]=3;tree[at+1]=4;tree[at+2]=17;tree[at+3]=cast(u32)ret;at+=4;}
+ tree[at]=1;tree[at+1]=cast(u32)stage;tree[at+2]=0;at+=3;
+ for j:0..<params.count {tree[at+j]=cast(u32)j;}at+=params.count;
+ return rq_ir_prepare(tree[0..<at],meta);
+}
+#forall "quad reflected interfaces admit exactly the declared vertex and fragment forms" which:0..<30 {
+ stage:=0;ret:=8;args:=[8]u32.[4,4,0,0,0,0,0,0];n:=2;good:=true;
+ if which==1 {ret=11;args[2]=10;args[3]=27;args[4]=28;args[5]=31;n=6;}
+ if which==2 {ret=23;}
+ if which==3 {ret=24;good=false;}if which==4 {ret=15;good=false;}
+ if which==5 {ret=20;good=false;}if which==6 {ret=26;good=false;}
+ if which==7 {n=1;good=false;}if which==8 {args[0]=3;good=false;}if which==9 {args[1]=3;good=false;}
+ if which==10 {args[2]=2;n=3;good=false;}if which==11 {args[2]=10;args[3]=1;n=4;good=false;}
+ if which==12 {args[2]=13;n=3;}if which==13 {args[2]=8;n=3;good=false;}if which==14 {args[2]=21;n=3;good=false;}
+ if which>=15 {stage=1;args[0]=8;n=1;}
+ if which==16 {ret=12;args[0]=11;args[1]=1;args[2]=28;args[3]=31;n=4;}
+ if which==17 {ret=17;}if which==18 {ret=16;good=false;}
+ if which==19 {ret=18;good=false;}if which==20 {ret=19;good=false;}if which==21 {ret=22;good=false;}
+ if which==22 {ret=0;}if which==23 {n=0;good=false;}if which==24 {args[0]=7;good=false;}
+ if which==25 {args[1]=2;n=2;good=false;}if which==26 {args[0]=11;args[1]=28;n=2;}
+ if which==27 {args[0]=20;good=false;}if which==28 {args[0]=24;good=false;}if which==29 {args[0]=15;good=false;}
+ tree:[4096]u32;meta:[RQ_IR_META]int;p:=rq_io_fixture(stage,ret,args[0..<n],tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ io:=rq_ir_interface(p,tree[0..<p.tree_words],meta[..],stage);
+ #assert (io.status==RQStatus.ok)==good;
+ if which==0 {#assert io.params==2 && io.resource_start==2 && io.attributes_type==(-1);}
+}
+#test "quad I O field metadata distinguishes scalar smooth flat integers vector widths and target order" {
+ tree:[4096]u32;meta:[RQ_IR_META]int;args:=[2]u32.[4,4];p:=rq_io_fixture(0,11,args[..],tree[..],meta[..]);
+ for ty:6..<9 {#assert rq_ir_vector_width(p,tree[..],meta[..],ty)==ty-4;}
+ #assert rq_ir_vector_width(p,tree[..],meta[..],13)==0 && rq_ir_vector_width(p,tree[..],meta[..],14)==0;
+ #assert rq_ir_io_field_count(p,tree[..],meta[..],23,0)==32 && rq_ir_io_field_count(p,tree[..],meta[..],24,0)==0;
+ #assert rq_ir_io_field_count(p,tree[..],meta[..],8,3)==0;
+ for i:1..<6 {
+  f:=rq_ir_io_field(p,tree[..],meta[..],11,i,0);#assert f.status==RQStatus.ok && f.location==i-1;
+  #assert f.flat==(i==2 || i==3 || i==4);
+  #assert f.words==(ifx i==5 then 2 else 1);
+  #assert rq_ir_io_field(p,tree[..],meta[..],11,i,1).status==RQStatus.ok;
+ }
+ for j:0..<3 {
+  f:=rq_ir_io_field(p,tree[..],meta[..],12,j,2);
+  if j==0 {#assert f.depth && f.word_offset==0 && f.location==(-1);}
+  else {#assert !f.depth && f.word_offset==1+(j-1)*4 && f.location==j-1;}
+ }
+ last:=rq_ir_io_field(p,tree[..],meta[..],33,2,2);#assert last.status==RQStatus.ok && last.location==1 && last.word_offset==5;
+ #assert rq_ir_io_field(p,tree[..],meta[..],8,0,2).words==4;
+ #assert rq_ir_io_field(p,tree[..],meta[..],8,0,0).words==4;
+}
+
+#test "quad entry parameter names follow both records and preserve reordered stage records" {
+ tree:=RQ_IO_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ first:=rq_ir_parameter(p,tree[..],meta[..],1,0);#assert first.status==RQStatus.ok && first.name_id==4;
+ at:=p.entry_at;words:[9]u32;for j:0..<9 {words[j]=tree[at+j];}
+ // The protocol identifies stages explicitly; order is not a name-table index.
+ for j:0..<3 {tree[at+j]=words[6+j];}for j:0..<6 {tree[at+3+j]=words[j];}
+ p=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ first=rq_ir_parameter(p,tree[..],meta[..],0,3);#assert first.status==RQStatus.ok && first.name_id==3;
+ first=rq_ir_parameter(p,tree[..],meta[..],1,0);#assert first.status==RQStatus.ok && first.name_id==4;
+}
+#test "quad raw field layout keeps storage flags without assigning a stage role" {
+ tree:[4096]u32;meta:[RQ_IR_META]int;args:=[2]u32.[4,4];p:=rq_io_fixture(0,11,args[..],tree[..],meta[..]);
+ types:=[6]int.[8,2,2,3,4,6];words:=[6]int.[4,1,1,1,1,2];offsets:=[6]int.[0,4,5,6,7,8];bytes:=[6]int.[0,16,20,24,28,32];flat:=[6]bool.[false,false,true,true,true,false];
+ for index:0..<6 {
+  r:=rq_ir_field_layout(p,tree[..],meta[..],11,index);
+  #assert r.status==RQStatus.ok && r.ty==types[index] && r.words==words[index] && r.word_offset==offsets[index] && r.byte_offset==bytes[index] && r.flat==flat[index];
+  #assert !r.position && !r.depth && r.location==(-1);
+ }
+ d:=rq_ir_field_layout(p,tree[..],meta[..],33,1);#assert d.status==RQStatus.ok && d.depth && !d.position && d.location==(-1) && d.word_offset==4 && d.byte_offset==16;
+}
+#test "quad raw bare V4 is one whole slot and never exposes its components as varyings" {
+ tree:=RQ_IO_FRONT_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ r:=rq_ir_field_layout(p,tree[..],meta[..],6,0);#assert r.status==RQStatus.ok && r.ty==6 && r.words==4 && r.word_offset==0 && r.byte_offset==0 && !r.position && !r.flat && !r.depth && r.location==(-1);
+ #assert rq_ir_field_layout(p,tree[..],meta[..],6,1).status==RQStatus.resource;
+ #assert rq_ir_field_layout(p,tree[..],meta[..],6,-1).status==RQStatus.resource;
+ #assert rq_ir_field_layout(p,tree[..],meta[..],2,0).status==RQStatus.resource;
+ #assert rq_ir_field_layout(p,tree[..],meta[..],p.types,0).status==RQStatus.resource;
+ p.status=RQStatus.unsupported;#assert rq_ir_field_layout(p,tree[0..<0],meta[..],6,0).status==RQStatus.resource;
+}

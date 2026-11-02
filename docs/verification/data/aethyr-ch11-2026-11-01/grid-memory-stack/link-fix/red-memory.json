@@ -1,0 +1,26 @@
+{
+  "schema": "aethyr.grid.memory-link-check.v1",
+  "status": "failed",
+  "scope": "Real Wasm instantiation, scalar getters and arena memory.grow; no producer frame or GPU image claim.",
+  "wasm": "/tmp/aethyr-ch11-grid-qualified/newland.wasm",
+  "wasm_sha256": "8037740a81fbab5e358c42c49fcd9a0a7087fc1aabb096f7cd8f6381e5e253da",
+  "driver_sha256": "93ff149aad46619760405639c15d6f9c034305bac984a903901524635f24ba61",
+  "minimum_pages": 758,
+  "maximum_pages": 1024,
+  "stack_pointer_initial": 8388608,
+  "heap_base": 49631664,
+  "state_size": 667752,
+  "max_vertices": 400000,
+  "vertex_floats": 12,
+  "uniform_floats": 112,
+  "arena_base": 49676288,
+  "arena_need": 69544560,
+  "arena_pages": 1062,
+  "final_memory_bytes": 49676288,
+  "growth_error": "RangeError: WebAssembly.Memory.grow would exceed the memory's declared maximum size",
+  "effects": [],
+  "failures": [
+    "Grid stack reservation is not 4 MiB",
+    "startup arena memory.grow refused"
+  ]
+}

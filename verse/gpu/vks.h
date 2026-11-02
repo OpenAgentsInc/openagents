@@ -44,6 +44,10 @@ typedef struct {
   const VkcBuffer *buffer;
   const VksImage *image;
   VkSampler sampler;
+  // Admitted per-pass byte view. Zero range retains the trusted legacy API's
+  // whole-buffer binding; checked renderer plans always provide a range.
+  VkDeviceSize offset, range;
+  VkShaderStageFlags stages; // zero keeps the trusted legacy API's two stages
 } VksBinding;
 
 // Blending, as source and destination factors: replace; add (one, one); alpha (source alpha, one
@@ -94,6 +98,17 @@ typedef struct {
 void vks_pipe_open(Vkc *v, VksPipe *p, const VksPass *pass);
 void vks_pipe_record(VksPipe *p, VkCommandBuffer cmd, const VksPass *pass);
 void vks_pipe_close(Vkc *v, VksPipe *p);
+// Checked renderer effects: a surface is an explicit graph begin/end, even
+// when it has no draws. Pipelines bind independently inside that surface.
+// The caller supplies admitted attachment roles, load/store and draw values.
+typedef struct {
+  VkRenderPass rp;VkFramebuffer fb;uint32_t w,h,colours;int depth;
+} VksSurface;
+void vks_surface_open(Vkc *v,VksSurface *s,const VksPass *attachments,int store_depth);
+void vks_surface_begin(const VksSurface *s,VkCommandBuffer cmd,const float clear[4],float clear_depth);
+void vks_surface_end(VkCommandBuffer cmd);
+void vks_surface_close(Vkc *v,VksSurface *s);
+void vks_pipe_bind(const VksPipe *p,VkCommandBuffer cmd,const VksPass *pass);
 // One image's level 0 into another of its size and format (colour or depth), both ready to sample after.
 void vks_copy(Vkc *v, VksImage *from, VksImage *to);
 // The same, recorded into cmd (its sizes and formats checked as vks_copy checks them).

@@ -1,0 +1,91 @@
+aethyr/render/ring8.coax:8:14: error[E0315]: procedure 'render_ring8_direction' is not declared
+   ring8_zero:=render_ring8_direction(0);ring8_quarter:=render_ring8_direction(2);
+               ^
+aethyr/render/ring8.coax:8:55: error[E0315]: procedure 'render_ring8_direction' is not declared
+   ring8_zero:=render_ring8_direction(0);ring8_quarter:=render_ring8_direction(2);
+                                                        ^
+aethyr/render/ring8.coax:9:14: error[E0315]: procedure 'render_ring8_direction' is not declared
+   ring8_half:=render_ring8_direction(4);ring8_three:=render_ring8_direction(6);ring8_closed:=render_ring8_direction(8);
+               ^
+aethyr/render/ring8.coax:9:53: error[E0315]: procedure 'render_ring8_direction' is not declared
+   ring8_half:=render_ring8_direction(4);ring8_three:=render_ring8_direction(6);ring8_closed:=render_ring8_direction(8);
+                                                      ^
+aethyr/render/ring8.coax:9:93: error[E0315]: procedure 'render_ring8_direction' is not declared
+   ring8_half:=render_ring8_direction(4);ring8_three:=render_ring8_direction(6);ring8_closed:=render_ring8_direction(8);
+                                                                                              ^
+aethyr/render/ring8.coax:13:10: error[E0378]: byte intrinsic argument type mismatch
+   #assert f32_bits(ring8_closed.direction.x)==f32_bits(ring8_zero.direction.x) && f32_bits(ring8_closed.direction.y)==f32_bits(ring8_zero.direction.y);
+           ^
+aethyr/render/ring8.coax:13:46: error[E0378]: byte intrinsic argument type mismatch
+   #assert f32_bits(ring8_closed.direction.x)==f32_bits(ring8_zero.direction.x) && f32_bits(ring8_closed.direction.y)==f32_bits(ring8_zero.direction.y);
+                                               ^
+aethyr/render/ring8.coax:13:82: error[E0378]: byte intrinsic argument type mismatch
+   #assert f32_bits(ring8_closed.direction.x)==f32_bits(ring8_zero.direction.x) && f32_bits(ring8_closed.direction.y)==f32_bits(ring8_zero.direction.y);
+                                                                                   ^
+aethyr/render/ring8.coax:13:118: error[E0378]: byte intrinsic argument type mismatch
+   #assert f32_bits(ring8_closed.direction.x)==f32_bits(ring8_zero.direction.x) && f32_bits(ring8_closed.direction.y)==f32_bits(ring8_zero.direction.y);
+                                                                                                                       ^
+aethyr/render/ring8.coax:16:18: error[E0315]: procedure 'render_ring8_direction' is not declared
+   ring8_diagonal:=render_ring8_direction(1);
+                   ^
+aethyr/render/ring8.coax:17:34: error[E0378]: byte intrinsic argument type mismatch
+   #assert ring8_diagonal.valid && f32_bits(ring8_diagonal.direction.x)==0x3f3504f3 && ring8_diagonal.direction.x==ring8_diagonal.direction.y;
+                                   ^
+aethyr/render/ring8.coax:19:12: error[E0315]: procedure 'render_ring8_direction' is not declared
+    ring8_a:=render_ring8_direction(cast(u32)ring8_i);ring8_b:=render_ring8_direction(cast(u32)(ring8_i+1));
+             ^
+aethyr/render/ring8.coax:19:62: error[E0315]: procedure 'render_ring8_direction' is not declared
+    ring8_a:=render_ring8_direction(cast(u32)ring8_i);ring8_b:=render_ring8_direction(cast(u32)(ring8_i+1));
+                                                               ^
+aethyr/render/ring8.coax:25:12: error[E0315]: procedure 'render_ring8_direction' is not declared
+    ring8_a:=render_ring8_direction(cast(u32)ring8_i);ring8_b:=render_ring8_direction(cast(u32)(ring8_i+2));
+             ^
+aethyr/render/ring8.coax:25:62: error[E0315]: procedure 'render_ring8_direction' is not declared
+    ring8_a:=render_ring8_direction(cast(u32)ring8_i);ring8_b:=render_ring8_direction(cast(u32)(ring8_i+2));
+                                                               ^
+aethyr/render/ring8.coax:30:13: error[E0315]: procedure 'render_capsule2_polar' is not declared
+   ring8_low:=render_capsule2_polar(0);ring8_lower:=render_capsule2_polar(1);ring8_equator_a:=render_capsule2_polar(2);
+              ^
+aethyr/render/ring8.coax:30:51: error[E0315]: procedure 'render_capsule2_polar' is not declared
+   ring8_low:=render_capsule2_polar(0);ring8_lower:=render_capsule2_polar(1);ring8_equator_a:=render_capsule2_polar(2);
+                                                    ^
+aethyr/render/ring8.coax:30:93: error[E0315]: procedure 'render_capsule2_polar' is not declared
+   ring8_low:=render_capsule2_polar(0);ring8_lower:=render_capsule2_polar(1);ring8_equator_a:=render_capsule2_polar(2);
+                                                                                              ^
+aethyr/render/ring8.coax:31:19: error[E0315]: procedure 'render_capsule2_polar' is not declared
+   ring8_equator_b:=render_capsule2_polar(3);ring8_upper:=render_capsule2_polar(4);ring8_high:=render_capsule2_polar(5);
+                    ^
+aethyr/render/ring8.coax:31:57: error[E0315]: procedure 'render_capsule2_polar' is not declared
+   ring8_equator_b:=render_capsule2_polar(3);ring8_upper:=render_capsule2_polar(4);ring8_high:=render_capsule2_polar(5);
+                                                          ^
+aethyr/render/ring8.coax:31:94: error[E0315]: procedure 'render_capsule2_polar' is not declared
+   ring8_equator_b:=render_capsule2_polar(3);ring8_upper:=render_capsule2_polar(4);ring8_high:=render_capsule2_polar(5);
+                                                                                               ^
+aethyr/render/ring8.coax:34:94: error[E0378]: byte intrinsic argument type mismatch
+   #assert ring8_lower.direction.x>0 && ring8_lower.direction.x==(-ring8_lower.direction.y) && f32_bits(ring8_lower.direction.x)==0x3f3504f3;
+                                                                                               ^
+aethyr/render/ring8.coax:37:10: error[E0378]: byte intrinsic argument type mismatch
+   #assert f32_bits(ring8_equator_a.direction.x)==f32_bits(ring8_equator_b.direction.x) && f32_bits(ring8_equator_a.direction.y)==f32_bits(ring8_equator_b.direction.y);
+           ^
+aethyr/render/ring8.coax:37:49: error[E0378]: byte intrinsic argument type mismatch
+   #assert f32_bits(ring8_equator_a.direction.x)==f32_bits(ring8_equator_b.direction.x) && f32_bits(ring8_equator_a.direction.y)==f32_bits(ring8_equator_b.direction.y);
+                                                  ^
+aethyr/render/ring8.coax:37:90: error[E0378]: byte intrinsic argument type mismatch
+   #assert f32_bits(ring8_equator_a.direction.x)==f32_bits(ring8_equator_b.direction.x) && f32_bits(ring8_equator_a.direction.y)==f32_bits(ring8_equator_b.direction.y);
+                                                                                           ^
+aethyr/render/ring8.coax:37:129: error[E0378]: byte intrinsic argument type mismatch
+   #assert f32_bits(ring8_equator_a.direction.x)==f32_bits(ring8_equator_b.direction.x) && f32_bits(ring8_equator_a.direction.y)==f32_bits(ring8_equator_b.direction.y);
+                                                                                                                                  ^
+aethyr/render/ring8.coax:40:15: error[E0315]: procedure 'render_ring8_direction' is not declared
+   ring8_bad_a:=render_ring8_direction(9);ring8_bad_b:=render_ring8_direction(4294967295);
+                ^
+aethyr/render/ring8.coax:40:54: error[E0315]: procedure 'render_ring8_direction' is not declared
+   ring8_bad_a:=render_ring8_direction(9);ring8_bad_b:=render_ring8_direction(4294967295);
+                                                       ^
+aethyr/render/ring8.coax:41:15: error[E0315]: procedure 'render_capsule2_polar' is not declared
+   ring8_bad_c:=render_capsule2_polar(6);ring8_bad_d:=render_capsule2_polar(4294967295);
+                ^
+aethyr/render/ring8.coax:41:53: error[E0315]: procedure 'render_capsule2_polar' is not declared
+   ring8_bad_c:=render_capsule2_polar(6);ring8_bad_d:=render_capsule2_polar(4294967295);
+                                                      ^
+30 errors

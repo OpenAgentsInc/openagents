@@ -1,0 +1,8 @@
+FAIL #forall reference metadata slots own exactly one complete shader arena (0 ms)
+aethyr/render/tests/reference-frame-boundary-extra-checks.coax:117:38: error[E0406]: assertion failed
+   m:=rf_metadata_slot(words[..],slot);#assert m.count==8192 && m[0]==100+slot && m[8191]==200+slot;
+                                       ^
+  note: in #forall reference metadata slots own exactly one complete shader arena
+  counterexample: slot = 0
+1 of 451 checks (--only 'reference metadata slots'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

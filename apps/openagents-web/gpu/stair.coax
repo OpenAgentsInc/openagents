@@ -1,6 +1,7 @@
 // stair's shaders, the source of apps/openagents-web/stair.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (stair.module,
 // stair.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/noise.coax";
 #load "../../../verse/gpu/wgsl.coax";
 
 // Hold the Stair (stair.coax): bg_fs draws the tower's floor seen from above
@@ -32,8 +33,11 @@ STAIR_ROWS :: 9;
 STAIR_INK :: ()->V3 {return v3(0.05f32,0.04f32,0.07f32);}
 STAIR_WALL :: 0.55f32; // the back wall's height above the map, in rows
 STAIR_RIM :: 0.16f32; // the stone rim on the other sides
+#test "stair_hash live lattice uses the portable integer noise profile" {
+  #assert f32_bits(stair_hash(v2(1,2)))==0x3f6013da;
+}
 stair_hash :: (p:V2)->f32 {
-  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+  return render_noise2(p.x,p.y);
 }
 stair_noise :: (p:V2)->f32 {
   i:V2=wg_floor_f2(p);
@@ -703,7 +707,7 @@ stair_fx_vs :: (vi:u32,_iid2:u32,in_:stair_fx_vs_in,u:[]f32)->StairV {
 // (bar.x the inner layer's radius as a share, bar.yzw its colour), 3 a soft light.
 stair_fx_fs :: (v:StairV,u:[]f32)->V4 {
   if ((v.on_map>0.5f32)&&((v.pos.y<u[270])||(v.pos.y>u[271]))) {
-    gpu_discard();
+    gpu_demote_helper();
   }
   along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
   mode:s32=wg_i32_f(v.tint.w+0.5f32);

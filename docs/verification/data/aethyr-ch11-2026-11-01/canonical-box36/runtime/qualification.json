@@ -1,0 +1,101 @@
+{
+  "schema": "aethyr.render.box36-runtime.v1",
+  "status": "strict numerical comparisons fail",
+  "completion_claim": false,
+  "scope": "Fresh default b50 producer plus winding-repaired package, complete320x180RGBA16F images. Browser/native inputs differ from pre-winding only in authenticated package/entry5tree. Historical qualified RF C/header/backend reused with explicit original Geometry epoch and backend-specific raster profiles; no attribution to newer Everglade admission.",
+  "package_sha256": "def947afb78d14e9320f0f7c74a612e105b81d8cee4fd82bbfd03596bb8d4e7f",
+  "native_validation_errors": 0,
+  "native_validation_warnings": 0,
+  "browser_source_changes": [],
+  "comparisons": {
+    "native": {
+      "status": "fail",
+      "pixels": 57600,
+      "channels": 230400,
+      "colour_failures": 3,
+      "nonfinite_failures": 0,
+      "max_absolute_error": 0.005706787109375,
+      "max_normalized_error": 0.005706787109375,
+      "samples": [
+        {
+          "x": 42,
+          "y": 76,
+          "channel": "r",
+          "cpu": 0.0284423828125,
+          "gpu": 0.034149169921875,
+          "absolute_error": 0.005706787109375,
+          "bound": 0.002,
+          "reason": "colour"
+        },
+        {
+          "x": 42,
+          "y": 76,
+          "channel": "g",
+          "cpu": 0.035980224609375,
+          "gpu": 0.041656494140625,
+          "absolute_error": 0.00567626953125,
+          "bound": 0.002,
+          "reason": "colour"
+        },
+        {
+          "x": 42,
+          "y": 76,
+          "channel": "b",
+          "cpu": 0.047119140625,
+          "gpu": 0.052520751953125,
+          "absolute_error": 0.005401611328125,
+          "bound": 0.002,
+          "reason": "colour"
+        }
+      ],
+      "masked_pixels": 0,
+      "rule": "abs(gpu-cpu) <= 0.002 * max(1, abs(cpu)); both values finite"
+    },
+    "browser": {
+      "status": "fail",
+      "pixels": 57600,
+      "channels": 230400,
+      "colour_failures": 3,
+      "nonfinite_failures": 0,
+      "max_absolute_error": 0.005706787109375,
+      "max_normalized_error": 0.005706787109375,
+      "samples": [
+        {
+          "x": 42,
+          "y": 76,
+          "channel": "r",
+          "cpu": 0.0284423828125,
+          "gpu": 0.034149169921875,
+          "absolute_error": 0.005706787109375,
+          "bound": 0.002,
+          "reason": "colour"
+        },
+        {
+          "x": 42,
+          "y": 76,
+          "channel": "g",
+          "cpu": 0.035980224609375,
+          "gpu": 0.041656494140625,
+          "absolute_error": 0.00567626953125,
+          "bound": 0.002,
+          "reason": "colour"
+        },
+        {
+          "x": 42,
+          "y": 76,
+          "channel": "b",
+          "cpu": 0.047119140625,
+          "gpu": 0.052520751953125,
+          "absolute_error": 0.005401611328125,
+          "bound": 0.002,
+          "reason": "colour"
+        }
+      ],
+      "masked_pixels": 0,
+      "rule": "abs(gpu-cpu) <= 0.002 * max(1, abs(cpu)); both values finite"
+    }
+  },
+  "visible_review": "No observed framing, scene-geometry, palette or HUD change in display preview. Native readback is byte-identical; WebGPU changes only6halfchannels at5pixels,max.000244140625. Full strict images still fail at(42,76).",
+  "archive_sha256": "71dee4fa4847f624301c966f15cd29bfb734d88531376dad93bfa724e92b6fe9",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-box36/runtime"
+}

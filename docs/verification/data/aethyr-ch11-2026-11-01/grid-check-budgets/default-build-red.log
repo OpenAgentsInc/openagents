@@ -1,0 +1,53 @@
+apps/openagents-web/newland.coax:414:19: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    v := fv_sub(p, c.eye);
+                    ^
+  note: in #test a press let go where it was opens a place's card, and never navigates
+apps/openagents-web/newland.coax:414:19: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    v := fv_sub(p, c.eye);
+                    ^
+  note: in #test a drag pans the view and is never a click
+apps/openagents-web/newland.coax:414:19: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    v := fv_sub(p, c.eye);
+                    ^
+  note: in #test OPEN PROJECT goes to the place's page; a click outside closes the card
+apps/openagents-web/newland.coax:414:19: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    v := fv_sub(p, c.eye);
+                    ^
+  note: in #test the zoom stays in its range and the view on the Grid
+apps/openagents-web/newland.coax:414:19: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    v := fv_sub(p, c.eye);
+                    ^
+  note: in #test a two-finger pinch zooms and is never a click
+apps/openagents-web/newland.coax:414:19: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    v := fv_sub(p, c.eye);
+                    ^
+  note: in #test a click on a Pylon opens its card, which never navigates
+apps/openagents-web/newland.coax:417:48: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    return Spot.{x = c.cx + dot3(v, c.right) / z * c.focal, y = c.cy - dot3(v, c.up) / z * c.focal, z = z, ok = true};
+                                                 ^
+  note: in #test The Grid's frames fit its declared budget
+coax/lib/nostr/json.coax:89:6: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    c:=text[i];if c<0x80 {return 1;}
+       ^
+  note: in #test a project with as many rows as the live fold hands up is ready, one more is refused
+apps/openagents-web/newland.coax:426:6: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    if light <= 0.003 { return at; }
+       ^
+  note: in #test the Grid's walkers walk the homepage under their names, and WALK AROUND dives on into the Grid
+verse/figure.coax:132:55: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+  fv :: (x: f32, y: f32, z: f32) -> Fv { return Fv.{x = x, y = y, z = z}; }
+                                                        ^
+  note: in #test the Grid draws the homepage's scene from behind you, and its own HUD
+apps/openagents-web/newland.coax:440:17: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+      if ps[i] == 0 { if qs[i] < 0 { return at; } continue; }
+                  ^
+  note: in #test everyone else on the Grid walks it here too, where the room says, and ?from=home dives
+apps/openagents-web/newland.coax:421:3: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    dx := (x - c.vx) / c.vr; dy := (y - c.vy) / c.vr;
+    ^
+  note: in #test the Grid's EDIT: its owner gets it left of HOME (under REALMS on a phone), its pane's glass, and the board's rows switch the names and the walkers
+apps/openagents-web/newland.coax:279:26: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+      out[o] = ax + ux * a[v] + nx * c[v];
+                           ^
+  note: in #test walked off from every project, the HUD names the nearest one, which way it lies and how far, and an arrow points there
+13 errors

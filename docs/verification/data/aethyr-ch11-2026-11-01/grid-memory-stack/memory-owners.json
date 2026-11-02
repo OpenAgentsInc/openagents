@@ -1,0 +1,613 @@
+{
+  "schema": "aethyr.grid.memory-observation.v1",
+  "wasm": "/tmp/aethyr-ch11-grid-qualified/newland.wasm",
+  "wasm_sha256": "8037740a81fbab5e358c42c49fcd9a0a7087fc1aabb096f7cd8f6381e5e253da",
+  "declared": {
+    "module": "env",
+    "name": "memory",
+    "flags": 1,
+    "min": 758,
+    "max": 1024
+  },
+  "hostInitialPages": 128,
+  "actualInitialPages": 758,
+  "bytesBeforeInitialize": 49676288,
+  "bytesAfterInitialize": 49676288,
+  "heapBase": 49631664,
+  "stateSize": 667752,
+  "maxVertices": 400000,
+  "vertexFloats": 12,
+  "uniformFloats": 112,
+  "arena": {
+    "base": 49676288,
+    "stateCap": 667760,
+    "vertexBytes": 19200000,
+    "uniformBytes": 448,
+    "tailBytes": 64,
+    "need": 69544560,
+    "pages": 1062,
+    "limit": 67108864,
+    "excess": 2435696,
+    "growPages": 304
+  },
+  "effects": {},
+  "imports": [
+    {
+      "module": "env",
+      "name": "memory",
+      "kind": "memory",
+      "type": {
+        "maximum": 1024,
+        "minimum": 758,
+        "shared": false,
+        "address": "i32"
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_now_seconds",
+      "kind": "function",
+      "type": {
+        "parameters": [],
+        "results": [
+          "i64"
+        ]
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_http",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_socket_open",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_socket_send",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32",
+          "i32"
+        ],
+        "results": []
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_socket_close",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32"
+        ],
+        "results": []
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_storage_put",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_storage_get",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_fdstat_get",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_seek",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i64",
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_write",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32",
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    }
+  ],
+  "scope": "Only instantiate and scalar getters in an isolated ephemeral memory; no producer frame or renderer effects.",
+  "layout_sizes": {
+    "coax_t_LbMessage": 16,
+    "coax_t_LbSeen": 262168,
+    "coax_t_LrQuery": 270408,
+    "coax_t_NostrEvent": 264,
+    "coax_t_SmWnaf": 2072,
+    "coax_t_SgPoint": 240,
+    "coax_t_SgAffine": 168,
+    "coax_t_SgResult": 248,
+    "coax_t_SgAffineResult": 176,
+    "coax_t_SgEncoded": 56,
+    "coax_t_SecpField": 80,
+    "coax_t_SecpFieldResult": 88,
+    "coax_t_SecpFieldDebug": 96,
+    "coax_t_CbU32": 8,
+    "coax_t_CbU64": 16,
+    "coax_t_ScScalar": 32,
+    "coax_t_ScLoad": 36,
+    "coax_t_ScInverse": 36,
+    "coax_t_ScWindow": 8,
+    "coax_t_Sha256Info": 24,
+    "coax_t_S_Digest": 36,
+    "coax_t_JsonSafeInt": 16,
+    "coax_t_JsonPolicy": 88,
+    "coax_t_NmSpan": 16,
+    "coax_t_NostrMessage": 136,
+    "coax_t_NostrTagFilter": 24,
+    "coax_t_NostrFilter": 136,
+    "coax_t_PbClass": 40,
+    "coax_t_PbService": 72,
+    "coax_t_PbBeacon": 208,
+    "coax_t_PbAuth": 32,
+    "coax_t_PbRead": 184,
+    "coax_t_PbHeld": 24,
+    "coax_t_PbSnap": 32,
+    "coax_t_PbLife": 64,
+    "coax_t_PtTag": 88,
+    "coax_t_HcCache": 704,
+    "coax_t_RenderHostEntryBank": 42672,
+    "coax_t_RenderHostJsonBank": 262144,
+    "coax_t_RenderHostShaderBytes": 2097152,
+    "coax_t_RenderHostNamedBank": 6144,
+    "coax_t_RenderHostGeometryBank": 230912,
+    "coax_t_RenderHostUploadBank": 3248,
+    "coax_t_RenderHostAssetBank": 768,
+    "coax_t_RenderHostMediaBank": 28672,
+    "coax_t_RenderHostMediaTextBank": 65536,
+    "coax_t_RenderHostPackageState": 240,
+    "coax_t_RenderHostPackageCandidate": 304,
+    "coax_t_RenderHostWordView": 24,
+    "coax_t_RenderHostByteView": 24,
+    "coax_t_RenderHostBool": 2,
+    "coax_t_RenderRuntimePreflight": 56,
+    "coax_t_RenderRuntimeFrame": 26880,
+    "coax_t_RenderGeometryBuffer": 32,
+    "coax_t_RenderCatalog": 160,
+    "coax_t_RenderBinding": 56,
+    "coax_t_RenderUse": 48,
+    "coax_t_RenderFeatures": 14,
+    "coax_t_RenderPassState": 48,
+    "coax_t_RenderOp": 104,
+    "coax_t_RenderPlan": 26640,
+    "coax_t_FrameCounts": 88,
+    "coax_t_RenderFrameLimits": 48,
+    "coax_t_RenderUpload": 56,
+    "coax_t_RenderDrawDomain": 56,
+    "coax_t_RenderDecodedDraw": 20,
+    "coax_t_RenderFrameResult": 48,
+    "coax_t_RenderPackageModule": 48,
+    "coax_t_RenderPackageEntry": 3048,
+    "coax_t_RenderPackage": 224,
+    "coax_t_RenderVertexInput": 32,
+    "coax_t_RenderBuildReflection": 2896,
+    "coax_t_RenderReflectedUse": 56,
+    "coax_t_RenderDeviceCapabilities": 3,
+    "coax_t_RenderMediaEffects": 40,
+    "coax_t_RenderBindingSource": 48,
+    "coax_t_RenderTargetDescriptor": 32,
+    "coax_t_RenderSamplerDescriptor": 32,
+    "coax_t_RenderTextureLayout": 3,
+    "coax_t_RenderBufferObserved": 64,
+    "coax_t_RenderBufferView": 32,
+    "coax_t_RenderHostBufferSizes": 24,
+    "coax_t_RenderHostFlatLayout": 200,
+    "coax_t_RenderHostBinding": 112,
+    "coax_t_RenderHostUse": 168,
+    "coax_t_RenderHostPipeline": 64,
+    "coax_t_RenderHostClear": 20,
+    "coax_t_RenderHostNamedBuffer": 96,
+    "coax_t_RenderHostBufferReceipt": 72,
+    "coax_t_RenderHostGeometryBuffers": 16,
+    "coax_t_RenderHostNamedTexture": 32,
+    "coax_t_RenderHostTextureReceipt": 72,
+    "coax_t_RenderHostStage": 32,
+    "coax_t_RenderSansProfile": 144,
+    "coax_t_RenderSansLevel": 96,
+    "coax_t_RenderSansGlyph": 56,
+    "coax_t_RenderMediaRequest": 72,
+    "coax_t_RenderMediaParse": 32,
+    "coax_t_RenderMediaRect": 56,
+    "coax_t_RenderMediaExtent": 24,
+    "coax_t_RenderHostMediaImage": 48,
+    "coax_t_RenderHostMediaTexture": 48,
+    "coax_t_RenderHostMediaReceipt": 32,
+    "coax_t_RenderHostMediaObserved": 56,
+    "coax_t_RenderHostUploadState": 8,
+    "coax_t_RenderHostUploadReceipt": 24,
+    "coax_t_RenderAsset": 96,
+    "coax_t_RenderAssetObservation": 16,
+    "coax_t_RenderAssetReadiness": 24,
+    "coax_t_RenderAssetMip": 32,
+    "coax_t_RenderAssetLayers": 40,
+    "coax_t_Box": 16,
+    "coax_t_Pyl": 152,
+    "coax_t_Plot": 688,
+    "coax_t_LandState": 667752,
+    "coax_t_Cam": 92,
+    "coax_t_NetworkCounts": 24,
+    "coax_t_Fv": 12,
+    "coax_t_Shape": 96,
+    "coax_t_Part": 32,
+    "coax_t_Skeleton": 1776,
+    "coax_t_Pose": 444,
+    "coax_t_ShapeRead": 136,
+    "coax_t_Limit": 36,
+    "coax_t_Place": 16,
+    "coax_t_HudPoint": 8,
+    "coax_t_HomeNet": 17752,
+    "coax_t_Pipe": 17424,
+    "coax_t_XpAward": 192,
+    "coax_t_XpPulse": 40,
+    "coax_t_HomeXp": 32976,
+    "coax_t_Track": 53016,
+    "coax_t_RBox": 16,
+    "coax_t_RealmEdit": 30912,
+    "coax_t_Walkers": 6792,
+    "coax_t_RoomState": 6400,
+    "coax_t_WorldOffers": 56,
+    "coax_t_SaveOpened": 32,
+    "coax_t_SaveSlots": 56,
+    "coax_t_SavePick": 40,
+    "coax_t_Walk": 176,
+    "coax_t_LfState": 13158152,
+    "coax_t_Store": 11206712,
+    "coax_t_Ref": 16,
+    "coax_t_Fold": 1930808,
+    "coax_t_N22Scope": 288,
+    "coax_t_N22Comment": 1040,
+    "coax_t_NtEvent": 64,
+    "coax_t_NtSpan": 16,
+    "coax_t_NtTag": 88,
+    "coax_t_N34Repo": 624,
+    "coax_t_N34Project": 808,
+    "coax_t_N34Item": 32,
+    "coax_t_N34Order": 192,
+    "coax_t_N34Fields": 400,
+    "coax_t_N34Issue": 536,
+    "coax_t_N34Status": 104,
+    "coax_t_GridWalk": 132408,
+    "coax_t_Vec3": 12,
+    "coax_t_Player": 320,
+    "coax_t_FrameClock": 104,
+    "coax_t_InputPress": 40,
+    "coax_t_InputBuffer": 136,
+    "coax_t_Sticks": 152,
+    "coax_t_ReplayEvent": 112,
+    "coax_t_ReplayChannel": 32,
+    "uint8_t": 1,
+    "uint32_t": 4,
+    "int32_t": 4,
+    "int64_t": 8,
+    "uint64_t": 8,
+    "_Bool": 1,
+    "coax_string": 16
+  },
+  "renderer_static_objects": [
+    {
+      "name": "render_package",
+      "type": "coax_t_RenderHostPackageState",
+      "bytes": 240
+    },
+    {
+      "name": "render_candidate",
+      "type": "coax_t_RenderHostPackageCandidate",
+      "bytes": 304
+    },
+    {
+      "name": "render_descriptor_profile",
+      "type": "int64_t",
+      "bytes": 8
+    },
+    {
+      "name": "render_initialized",
+      "type": "uint32_t",
+      "bytes": 4
+    },
+    {
+      "name": "render_json",
+      "type": "coax_t_RenderHostJsonBank",
+      "bytes": 524288
+    },
+    {
+      "name": "render_entries",
+      "type": "coax_t_RenderHostEntryBank",
+      "bytes": 85344
+    },
+    {
+      "name": "render_shader",
+      "type": "coax_t_RenderHostShaderBytes",
+      "bytes": 2097152
+    },
+    {
+      "name": "render_device",
+      "type": "coax_t_RenderDeviceCapabilities",
+      "bytes": 3
+    },
+    {
+      "name": "render_limits",
+      "type": "coax_t_RenderFrameLimits",
+      "bytes": 48
+    },
+    {
+      "name": "render_frame",
+      "type": "coax_t_RenderRuntimeFrame",
+      "bytes": 26880
+    },
+    {
+      "name": "render_layout",
+      "type": "coax_t_RenderHostFlatLayout",
+      "bytes": 200
+    },
+    {
+      "name": "render_sizes",
+      "type": "coax_t_RenderHostBufferSizes",
+      "bytes": 24
+    },
+    {
+      "name": "render_buffer_view",
+      "type": "coax_t_RenderBufferView",
+      "bytes": 32
+    },
+    {
+      "name": "render_target",
+      "type": "coax_t_RenderTargetDescriptor",
+      "bytes": 32
+    },
+    {
+      "name": "render_sampler",
+      "type": "coax_t_RenderSamplerDescriptor",
+      "bytes": 32
+    },
+    {
+      "name": "render_texture_layout",
+      "type": "coax_t_RenderTextureLayout",
+      "bytes": 3
+    },
+    {
+      "name": "render_sans",
+      "type": "coax_t_RenderSansProfile",
+      "bytes": 144
+    },
+    {
+      "name": "render_sans_level",
+      "type": "coax_t_RenderSansLevel",
+      "bytes": 96
+    },
+    {
+      "name": "render_sans_glyph",
+      "type": "coax_t_RenderSansGlyph",
+      "bytes": 56
+    },
+    {
+      "name": "render_name_scratch",
+      "type": "uint8_t",
+      "bytes": 32
+    },
+    {
+      "name": "render_name",
+      "type": "coax_string",
+      "bytes": 16
+    },
+    {
+      "name": "render_stage",
+      "type": "coax_t_RenderHostStage",
+      "bytes": 32
+    },
+    {
+      "name": "render_counts",
+      "type": "coax_t_FrameCounts",
+      "bytes": 88
+    },
+    {
+      "name": "render_named",
+      "type": "coax_t_RenderHostNamedBank",
+      "bytes": 6144
+    },
+    {
+      "name": "render_geometry",
+      "type": "coax_t_RenderHostGeometryBank",
+      "bytes": 230912
+    },
+    {
+      "name": "render_uploads",
+      "type": "coax_t_RenderHostUploadBank",
+      "bytes": 3248
+    },
+    {
+      "name": "render_named_count",
+      "type": "int64_t",
+      "bytes": 8
+    },
+    {
+      "name": "render_geometry_result",
+      "type": "coax_t_RenderHostGeometryBuffers",
+      "bytes": 16
+    },
+    {
+      "name": "render_resolved",
+      "type": "coax_t_RenderHostBufferReceipt",
+      "bytes": 72
+    },
+    {
+      "name": "render_draw_words",
+      "type": "coax_v_u32",
+      "bytes": 16
+    },
+    {
+      "name": "render_decoded",
+      "type": "coax_t_RenderDecodedDraw",
+      "bytes": 20
+    },
+    {
+      "name": "render_index_words",
+      "type": "coax_v_u32",
+      "bytes": 16
+    },
+    {
+      "name": "render_assets",
+      "type": "coax_t_RenderHostAssetBank",
+      "bytes": 768
+    },
+    {
+      "name": "render_asset_count",
+      "type": "int64_t",
+      "bytes": 8
+    },
+    {
+      "name": "render_asset",
+      "type": "coax_t_RenderAsset",
+      "bytes": 96
+    },
+    {
+      "name": "render_asset_text",
+      "type": "coax_string",
+      "bytes": 16
+    },
+    {
+      "name": "render_asset_ready",
+      "type": "coax_t_RenderAssetReadiness",
+      "bytes": 24
+    },
+    {
+      "name": "render_asset_mip",
+      "type": "coax_t_RenderAssetMip",
+      "bytes": 32
+    },
+    {
+      "name": "render_layer_profile",
+      "type": "coax_t_RenderAssetLayers",
+      "bytes": 40
+    },
+    {
+      "name": "render_media",
+      "type": "coax_t_RenderHostMediaBank",
+      "bytes": 28672
+    },
+    {
+      "name": "render_media_text",
+      "type": "coax_t_RenderHostMediaTextBank",
+      "bytes": 65536
+    },
+    {
+      "name": "render_media_parse",
+      "type": "coax_t_RenderMediaParse",
+      "bytes": 32
+    },
+    {
+      "name": "render_media_result",
+      "type": "coax_t_RenderHostMediaReceipt",
+      "bytes": 32
+    },
+    {
+      "name": "render_media_effects",
+      "type": "coax_t_RenderMediaEffects",
+      "bytes": 40
+    },
+    {
+      "name": "render_media_extent",
+      "type": "coax_t_RenderMediaExtent",
+      "bytes": 24
+    }
+  ],
+  "renderer_static_bytes": 3070830,
+  "cache_static": {
+    "bytes": 12582912,
+    "project_projections": 1572864,
+    "event_integer_columns": 786432,
+    "slot_table": 262144,
+    "event_ids": 524288,
+    "dead_flags": 16384,
+    "cache_descriptor": 704
+  },
+  "cache_static_bytes": 15745728
+}

@@ -1,0 +1,7 @@
+{
+  "scope": "Independent wordwise original/current uniform comparison, not an acceptance change. The current default input has additional UI plates that obscure/attenuate original scene contours. Preserve the original four-pixel failure separately.",
+  "correction": "Changed U fields are plate count11to14 and plate records. Fade, camera and object payloads are unchanged; earlier progress wording suggesting a fade change was incorrect.",
+  "current_strict_failures": "Both backend-specific CPU profiles fail3RGBchannels at(42,76),max.005706787109375; original unobscured-input ring8comparison stillfails12channels/fourpixels.",
+  "native_input_evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/deadgears-ring8-current-default",
+  "archive_sha256": "0422d09341375cdcfeb20cb5920c342de143f25be048d5b9659826b7e5bda7a6"
+}

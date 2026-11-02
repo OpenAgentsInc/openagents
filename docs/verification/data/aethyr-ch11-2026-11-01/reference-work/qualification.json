@@ -1,0 +1,61 @@
+{
+  "status": "pass",
+  "scope": "Raw C ABI enum tags2/3/128/255 refuse; exact standard/large limits and10 invocation boundaries, three native modes.",
+  "results": [
+    {
+      "mode": "debug",
+      "status": "pass",
+      "command": [
+        "clang",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "Work.c",
+        "check.c",
+        "-lm",
+        "-o",
+        "debug"
+      ]
+    },
+    {
+      "mode": "release",
+      "status": "pass",
+      "command": [
+        "clang",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O2",
+        "Work.c",
+        "check.c",
+        "-lm",
+        "-o",
+        "release"
+      ]
+    },
+    {
+      "mode": "san",
+      "status": "pass",
+      "command": [
+        "clang",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O1",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "Work.c",
+        "check.c",
+        "-lm",
+        "-o",
+        "san"
+      ]
+    }
+  ],
+  "source_sha256": {
+    "entry.coax": "6f6745f7e6f7d49c7fe8669ec7a23870b70975ed60d9b18dccc5de87d0f0c047",
+    "Work.c": "aeb4662417bb331227f1bb5bc950df361686b5450a32c1bdba1032148c70d5c9",
+    "Work.h": "a0de4b4890832692aba90fa740279e5cf2ec56cbb4a5f0de7a4cc1a2016ca683",
+    "check.c": "5068d0e6215015d189cac8f68463efdab2e9fa6c87a9c80bcc8da582323064d7"
+  }
+}

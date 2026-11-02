@@ -1,0 +1,60 @@
+// Canonical discrete directions for eight sectors and two rings per cap.
+// Source part: keep the caller's existing shader vector type owner.
+#load "../../verse/gpu/shader.coax";
+#authority;
+RenderRingDirection :: struct {valid:bool;direction:V2;}
+
+#test "ring8 has exact cardinal directions and an exact closing sample" {
+ ring8_zero:=render_ring8_direction(0);ring8_quarter:=render_ring8_direction(2);
+ ring8_half:=render_ring8_direction(4);ring8_three:=render_ring8_direction(6);ring8_closed:=render_ring8_direction(8);
+ #assert ring8_zero.valid && ring8_quarter.valid && ring8_half.valid && ring8_three.valid && ring8_closed.valid;
+ #assert ring8_zero.direction.x==1 && ring8_zero.direction.y==0 && ring8_quarter.direction.x==0 && ring8_quarter.direction.y==1;
+ #assert ring8_half.direction.x==(-1) && ring8_half.direction.y==0 && ring8_three.direction.x==0 && ring8_three.direction.y==(-1);
+ #assert f32_bits(ring8_closed.direction.x)==f32_bits(ring8_zero.direction.x) && f32_bits(ring8_closed.direction.y)==f32_bits(ring8_zero.direction.y);
+}
+#test "ring8 diagonals are nearest-f32 square-root-half with positive winding" {
+ ring8_diagonal:=render_ring8_direction(1);
+ #assert ring8_diagonal.valid && f32_bits(ring8_diagonal.direction.x)==0x3f3504f3 && ring8_diagonal.direction.x==ring8_diagonal.direction.y;
+ for ring8_i:0..<8 {
+  ring8_a:=render_ring8_direction(cast(u32)ring8_i);ring8_b:=render_ring8_direction(cast(u32)(ring8_i+1));
+  #assert ring8_a.valid && ring8_b.valid && abs(dot2(ring8_a.direction,ring8_a.direction)-1)<0.0000001;
+  #assert ring8_a.direction.x*ring8_b.direction.y-ring8_a.direction.y*ring8_b.direction.x>0;
+  #assert abs(dot2(ring8_a.direction,ring8_b.direction)-ring8_diagonal.direction.x)<0.0000001;
+ }
+ for ring8_i:0..<6 {
+  ring8_a:=render_ring8_direction(cast(u32)ring8_i);ring8_b:=render_ring8_direction(cast(u32)(ring8_i+2));
+  #assert ring8_b.direction.x==(-ring8_a.direction.y) && ring8_b.direction.y==ring8_a.direction.x;
+ }
+}
+#test "capsule2 polar rows have exact poles and matching equators" {
+ ring8_low:=render_capsule2_polar(0);ring8_lower:=render_capsule2_polar(1);ring8_equator_a:=render_capsule2_polar(2);
+ ring8_equator_b:=render_capsule2_polar(3);ring8_upper:=render_capsule2_polar(4);ring8_high:=render_capsule2_polar(5);
+ #assert ring8_low.valid && ring8_lower.valid && ring8_equator_a.valid && ring8_equator_b.valid && ring8_upper.valid && ring8_high.valid;
+ #assert ring8_low.direction.x==0 && ring8_low.direction.y==(-1) && ring8_high.direction.x==0 && ring8_high.direction.y==1;
+ #assert ring8_lower.direction.x>0 && ring8_lower.direction.x==(-ring8_lower.direction.y) && f32_bits(ring8_lower.direction.x)==0x3f3504f3;
+ #assert ring8_upper.direction.x==ring8_lower.direction.x && ring8_upper.direction.y==(-ring8_lower.direction.y);
+ #assert ring8_equator_a.direction.x==1 && ring8_equator_a.direction.y==0;
+ #assert f32_bits(ring8_equator_a.direction.x)==f32_bits(ring8_equator_b.direction.x) && f32_bits(ring8_equator_a.direction.y)==f32_bits(ring8_equator_b.direction.y);
+}
+#test "discrete directions refuse the first and largest out-of-domain sample" {
+ ring8_bad_a:=render_ring8_direction(9);ring8_bad_b:=render_ring8_direction(4294967295);
+ ring8_bad_c:=render_capsule2_polar(6);ring8_bad_d:=render_capsule2_polar(4294967295);
+ #assert !ring8_bad_a.valid && !ring8_bad_b.valid && !ring8_bad_c.valid && !ring8_bad_d.valid;
+ #assert ring8_bad_a.direction.x==0 && ring8_bad_a.direction.y==0 && ring8_bad_b.direction.x==0 && ring8_bad_b.direction.y==0;
+ #assert ring8_bad_c.direction.x==0 && ring8_bad_c.direction.y==0 && ring8_bad_d.direction.x==0 && ring8_bad_d.direction.y==0;
+}
+
+// sqrt(1/2), rounded once to the nearest binary32 value. Cardinal zeros and
+// poles are authored exactly; a repeated closing sample never evaluates2pi.
+render_ring8_direction :: (sample:u32)->RenderRingDirection {
+ if sample>8 {return RenderRingDirection.{};}
+ ring8_h:=0.70710677f32;
+ ring8_entries:=[9]V2.[v2(1,0),v2(ring8_h,ring8_h),v2(0,1),v2(-ring8_h,ring8_h),v2(-1,0),v2(-ring8_h,-ring8_h),v2(0,-1),v2(ring8_h,-ring8_h),v2(1,0)];
+ return RenderRingDirection.{valid=true,direction=ring8_entries[cast(int)sample]};
+}
+render_capsule2_polar :: (row:u32)->RenderRingDirection {
+ if row>5 {return RenderRingDirection.{};}
+ ring8_h:=0.70710677f32;
+ ring8_entries:=[6]V2.[v2(0,-1),v2(ring8_h,-ring8_h),v2(1,0),v2(1,0),v2(ring8_h,ring8_h),v2(0,1)];
+ return RenderRingDirection.{valid=true,direction=ring8_entries[cast(int)row]};
+}

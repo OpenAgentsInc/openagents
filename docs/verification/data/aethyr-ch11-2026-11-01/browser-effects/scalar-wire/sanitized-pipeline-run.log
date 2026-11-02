@@ -1,0 +1,1 @@
+Assertion failed: (coaxial_render_candidate_pipeline(0,value)==COAX_RenderPackageStatus_invalid), function main, file wire.c, line 20.

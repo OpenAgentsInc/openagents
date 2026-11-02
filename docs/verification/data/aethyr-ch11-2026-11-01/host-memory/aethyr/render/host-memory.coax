@@ -1,0 +1,19 @@
+// Reserve an immutable payload after the observed Wasm arena. The platform
+// grows/copies only this admitted span; next is unchanged on every refusal.
+#module "aethyr.render.host.memory";
+#load "frame.coax";
+#authority;
+RENDER_HOST_MEMORY_BYTES :: 67108864;
+RenderHostStage :: struct {status:RenderFrameStatus;address:u64;next:u64;pages:u64;}
+#load "tests/host-memory-checks.coax";
+render_host_stage :: (cursor:u64,bytes:u64,limit:u64)->RenderHostStage {
+  r:=RenderHostStage.{next=cursor};
+  if limit>RENDER_HOST_MEMORY_BYTES {r.status=RenderFrameStatus.bad_limits;return r;}
+  if bytes%4!=0 {r.status=RenderFrameStatus.bad_upload;return r;}
+  padding:=(4-cursor%4)%4;
+  if !render_span_fits(cursor,padding,0,limit) {r.status=RenderFrameStatus.capacity;return r;}
+  address:=cursor+padding;
+  if !render_span_fits(address,bytes,0,limit) {r.status=RenderFrameStatus.capacity;return r;}
+  next:=address+bytes;pages:=next/65536;if next%65536!=0 {pages+=1;}
+  return RenderHostStage.{address=address,next=next,pages=pages};
+}

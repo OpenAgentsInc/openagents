@@ -1,0 +1,1 @@
+Assertion failed: (render_draw_source_view(0x103c,16,0x2000).status==COAX_RenderFrameStatus_bad_upload), function main, file wire.c, line 38.

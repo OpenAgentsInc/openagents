@@ -1,0 +1,25 @@
+13 80 120 6456 16 6 0 0 384 0 0 0 0
+/private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/78fa3cccd209751b-u.bin
+/private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/f3aa54364296033c-hud.bin
+/private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/a7f92cc7d0c327b4-draws.bin
+/private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/c89db72221268633-indices.bin
+/private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/9e880903d4678b88-render.json
+7
+0 /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/6ea3f72b4231450b-pipeline-0-6ea3f72b4231450b0ec638de6b40f941754b4d435f0afed056d17fbe6f1a523f.tree
+5 /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/fa90656c2d0ec192-pipeline-5-fa90656c2d0ec19242b490a850d239db83ca10b27affc8ed97d49f33fccf9357.tree
+9 /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/927581e829af95e5-pipeline-9-927581e829af95e575b348792f844b5e309a090bb14225b537c2868da4959b61.tree
+10 /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/0069aed93ae1661a-pipeline-10-0069aed93ae1661ad3e7d9f39ca1765203bd9e85e6423bb92b2856ac3954c09a.tree
+11 /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/a529dfd9b89de430-pipeline-11-a529dfd9b89de430af0ebaf6c28170e8fd8b6a3dd87c233a5667fcc0eca8180d.tree
+12 /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/5509c7315e4dc466-pipeline-12-5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c.tree
+13 /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/7cccf19da58184c2-pipeline-13-7cccf19da58184c2607e000590233b1d420494a93740e3c7eed72f0bd0d2d46c.tree
+4
+u.bin /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/78fa3cccd209751b-u.bin 1984 1984 0 0 1984 1
+s0.bin /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/172ab0d28769218f-s0.bin 16900 0 0 16900 16912 1
+s1.bin /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/ec3ea5b2390706e7-s1.bin 199680 0 0 199680 199680 1
+puffs.bin /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/92aa124235e55e96-puffs.bin 1536 0 0 384 1536 1
+textures 1
+media_image-0 rgba8unorm 1 1 /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/6b7700f4d4d0e15b-texture-0.bin
+1200 630 0 4864 3064320
+media_text /private/tmp/aethyr-ch11-reference-villa-media-80x120-metal-guard65536-308/inputs/5443a780f99c35a6-media.txt
+media_images 1
+1 /api/villa/memorial/fixture0/media/0000000000000000 1 1200 630

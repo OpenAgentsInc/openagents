@@ -1,0 +1,201 @@
+{
+  "schema": "aethyr.render.water-authored-check-budgets.v1",
+  "status": "20 selected measurements pass; canonical default typed Wasm build pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "original_source_sha256": {
+    "verse/water-ocean.coax": "2b0dacb7e42e609896fce49978b264fe2b2a2d545b094a301df1fe8d198cecc0",
+    "verse/water-spectrum.coax": "f2e33da5efcc4ea7e4d8a4f957cfce58078463c6a7295ed93c0381833f4e5127",
+    "verse/water.coax": "aeaa41a2497abf5c68ae12311d2c46214cb0c32a89f8977610c823f49557882a"
+  },
+  "authored_source_sha256": {
+    "verse/water-ocean.coax": "6d9cf5fddd2581aecef5bea9f2324e76b61aa05faa8a33ddeb687f6a4f80a0bc",
+    "verse/water-spectrum.coax": "b93fa4cf327659d81ccbad82c3df5a85fefad4a4afaf49064092417b5b332421",
+    "verse/water.coax": "f8c40c9a3a1102476876af3576627cb09ecd8373d62c05729e168689f63a9695"
+  },
+  "source_bodies_unchanged": true,
+  "source_line_count_unchanged": true,
+  "global_check_limit_unchanged": 20000000,
+  "measured_sum": 5112156436,
+  "measured_max": 773913991,
+  "authored_max": 970000000,
+  "measurement_max_seconds": 41.629,
+  "rule": "125% of measured work rounded upward to 10 million. Only the 20 concrete default-budget failures changed: 1 ocean, 10 spectrum, 9 water. Exact owning files come from compiler evidence. No app-owned check failed in that log.",
+  "scope": "Selected unchanged checks under their existing documented 2B (spectrum/ocean) or 500M (water) caller limits. No authority-coverage or whole-carrier success is inferred.",
+  "checks": [
+    {
+      "source": "verse/water-ocean.coax",
+      "name": "every client agrees on the simulated sea, whatever it draws",
+      "measured_steps": 254298104,
+      "authored_limit": 320000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 0
+    },
+    {
+      "source": "verse/water-spectrum.coax",
+      "name": "the transform matches the direct sum",
+      "measured_steps": 64301158,
+      "authored_limit": 90000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 1
+    },
+    {
+      "source": "verse/water-spectrum.coax",
+      "name": "tile variance matches the spectrum integral: calm",
+      "measured_steps": 608558949,
+      "authored_limit": 770000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 2
+    },
+    {
+      "source": "verse/water-spectrum.coax",
+      "name": "tile variance matches the spectrum integral: moderate",
+      "measured_steps": 773509347,
+      "authored_limit": 970000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 3
+    },
+    {
+      "source": "verse/water-spectrum.coax",
+      "name": "tile variance matches the spectrum integral: storm",
+      "measured_steps": 611070952,
+      "authored_limit": 770000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 4
+    },
+    {
+      "source": "verse/water-spectrum.coax",
+      "name": "tile variance matches the spectrum integral: choppy and narrow",
+      "measured_steps": 773913991,
+      "authored_limit": 970000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 5
+    },
+    {
+      "source": "verse/water-spectrum.coax",
+      "name": "tiles loop and reproduce",
+      "measured_steps": 579219358,
+      "authored_limit": 730000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 6
+    },
+    {
+      "source": "verse/water-spectrum.coax",
+      "name": "the spectrum has its published shape",
+      "measured_steps": 22683624,
+      "authored_limit": 30000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 7
+    },
+    {
+      "source": "verse/water-spectrum.coax",
+      "name": "crests sharpen",
+      "measured_steps": 43246161,
+      "authored_limit": 60000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 8
+    },
+    {
+      "source": "verse/water-spectrum.coax",
+      "name": "the spectral surface is deterministic and consistent",
+      "measured_steps": 60034195,
+      "authored_limit": 80000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 9
+    },
+    {
+      "source": "verse/water-spectrum.coax",
+      "name": "the phone's baked tile",
+      "measured_steps": 44790484,
+      "authored_limit": 60000000,
+      "documented_measurement_caller_limit": 2000000000,
+      "measurement_index": 10
+    },
+    {
+      "source": "verse/water.coax",
+      "name": "caps and slices match their closed forms",
+      "measured_steps": 67454082,
+      "authored_limit": 90000000,
+      "documented_measurement_caller_limit": 500000000,
+      "measurement_index": 11
+    },
+    {
+      "source": "verse/water.coax",
+      "name": "a cube of half water's density settles half submerged",
+      "measured_steps": 146865034,
+      "authored_limit": 190000000,
+      "documented_measurement_caller_limit": 500000000,
+      "measurement_index": 12
+    },
+    {
+      "source": "verse/water.coax",
+      "name": "a plank floats flat and rights itself after a push",
+      "measured_steps": 123061963,
+      "authored_limit": 160000000,
+      "documented_measurement_caller_limit": 500000000,
+      "measurement_index": 13
+    },
+    {
+      "source": "verse/water.coax",
+      "name": "a floating body sleeps on a still pond but not on waves",
+      "measured_steps": 49775420,
+      "authored_limit": 70000000,
+      "documented_measurement_caller_limit": 500000000,
+      "measurement_index": 14
+    },
+    {
+      "source": "verse/water.coax",
+      "name": "generated river flow is divergence-free and carries the discharge",
+      "measured_steps": 45038675,
+      "authored_limit": 60000000,
+      "documented_measurement_caller_limit": 500000000,
+      "measurement_index": 15
+    },
+    {
+      "source": "verse/water.coax",
+      "name": "a seeded float follows the river round the bend and replays exactly",
+      "measured_steps": 363697799,
+      "authored_limit": 460000000,
+      "documented_measurement_caller_limit": 500000000,
+      "measurement_index": 16
+    },
+    {
+      "source": "verse/water.coax",
+      "name": "the momentum ledger balances with the water terms",
+      "measured_steps": 252495209,
+      "authored_limit": 320000000,
+      "documented_measurement_caller_limit": 500000000,
+      "measurement_index": 17
+    },
+    {
+      "source": "verse/water.coax",
+      "name": "a copied world in water continues bit for bit",
+      "measured_steps": 197828717,
+      "authored_limit": 250000000,
+      "documented_measurement_caller_limit": 500000000,
+      "measurement_index": 18
+    },
+    {
+      "source": "verse/water.coax",
+      "name": "a water set finds the same water as testing every body",
+      "measured_steps": 30313214,
+      "authored_limit": 40000000,
+      "documented_measurement_caller_limit": 500000000,
+      "measurement_index": 19
+    }
+  ],
+  "archive": "measurements.tar.gz",
+  "archive_sha256": "1642e1e7ad29a957f4d9fb6633c129a3914d14588622e61142e6d2ae874b8fc7",
+  "canonical_typed_build": {
+    "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/default-typed-builds/qualification.json#builds.waterlab",
+    "elapsed_seconds": 250.983,
+    "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+    "wasm_sha256": "1cc90b0d96faa0b02032cf1784a4dc202fa9ebadb7a0b7b128098048faf82885",
+    "source_changes": [],
+    "emitted": {
+      "waterlab.c": "d4e8ff348cb9baae7ed0462b89e9f49b9e2126b1daa3dfdc2d5ae6716101df24",
+      "waterlab.h": "493cc991fb314153ff8443a10c8f5b05402701ded92fc3f82d3c5d1be8fc8d5a",
+      "Render.h": "493cc991fb314153ff8443a10c8f5b05402701ded92fc3f82d3c5d1be8fc8d5a"
+    },
+    "receipt_sha256": "f7b2406292799c36d0e568ba51b16a65271f251d0453046482db962d2d0c231f"
+  }
+}

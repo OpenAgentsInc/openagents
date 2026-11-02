@@ -26,7 +26,16 @@
 #include "face.h"
 #include "mice.h"
 #include "realm-host.h"
+#if defined(__has_include)
+#if __has_include("RenderIdentity.h")
+#include "RenderIdentity.h"
+#endif
+#endif
+#ifdef AETHYR_RENDER_TYPED
+#include "render-realm.h"
+#else
 #include "vk-spec.h"
+#endif
 #include "vkd.h"
 #include <math.h>
 #include <signal.h>
@@ -93,6 +102,7 @@ bool realm_key_up(void *state, int key) { (void)state; coaxial_key_up(H.state, k
 
 // The spec's files that are the realm's: its uniforms, stores and particles (with their
 // capacities, so the buffers hold what they grow to) and the pack's indices.
+#ifndef AETHYR_RENDER_TYPED
 static const void *file(void *user, const char *name, size_t *size, size_t *cap) {
   (void)user;
   if (!strcmp(name, "u.bin")) { *size = *cap = (size_t)H.uniform_floats * 4; return rh_ptr(H.uniforms); }
@@ -115,6 +125,7 @@ static const void *file(void *user, const char *name, size_t *size, size_t *cap)
   if (e) { *size = *cap = e->length; return e->bytes; }
   return NULL;  // the rest from the directory (the layers, the draw list's first frame)
 }
+#endif
 
 // The pointer: the mice into the face, as host.js's pointer and wheel events, and drawn as a
 // dot after the frame's own vertices (fx_vs's 16 floats: the place in device pixels and the
@@ -124,7 +135,7 @@ static void to_wheel(void *user, float dy) { (void)user; coaxial_wheel(H.state, 
 static Mice mice;
 static int cursor;
 static uint32_t with_cursor(uint32_t n) {
-  if (!cursor || H.floats != 16 || n + 6 > (uint32_t)H.max_vertices) return n;
+  if (!cursor || H.floats != 16 || n > (uint32_t)H.max_vertices || 6 > (uint32_t)H.max_vertices-n) return n;
   float *v = (float *)rh_ptr(H.vertices) + (size_t)n * 16, r = 14;
   static const float corner[6][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, -1}, {1, 1}, {-1, 1}};
   for (int i = 0; i < 6; i++, v += 16) {
@@ -134,11 +145,21 @@ static uint32_t with_cursor(uint32_t n) {
   }
   return n + 6;
 }
+static uint32_t produce_frame(float width,float height,float scale,float dt){
+#ifdef AETHYR_RENDER_TYPED
+  // Preserve the producer's requested count for Coax admission. The legacy
+  // rh_frame helper clips it and is retained only by the legacy spec path.
+  return coaxial_frame(H.state,H.vertices,H.uniforms,width,height,scale,dt,0);
+#else
+  return rh_frame(&H,width,height,scale,dt);
+#endif
+}
 
+static uint32_t hud_vertices;   // the last frame's own vertices (rh_frame's count)
+#ifndef AETHYR_RENDER_TYPED
 typedef struct { VkcBuffer *buf; uint32_t version; size_t cap; } Store;
 static Store stores[4];
 static VkcBuffer *uniforms, *puffs, *hud;
-static uint32_t hud_vertices;   // the last frame's own vertices (rh_frame's count)
 
 // The frame's data into the spec, as host.js writes its buffers.
 static void update(VkSpec *s) {
@@ -171,6 +192,11 @@ static void update(VkSpec *s) {
   vk_spec_draws(s, all ? rh_ptr(coaxial_draws(H.state)) : NULL);
 }
 static void record(VkCommandBuffer cmd, void *user) { vk_spec_record(user, cmd); }
+#else
+// The shared executor has completed the frame. Presentation only copies its
+// image; it does not interpret or redraw the graph.
+static void record(VkCommandBuffer cmd, void *user) { (void)cmd; (void)user; }
+#endif
 
 static char *slurp(const char *path, size_t *n) {
   FILE *f = fopen(path, "rb");
@@ -224,7 +250,7 @@ int main(int argc, char **argv) {
                     "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...]\n");
     return 2;
   }
-  const char *dir = argv[1], *pack = argv[2], *facts = NULL, *extra = "", *shot = NULL, *out = NULL;
+  const char *dir = argv[1], *pack = argv[2], *facts = NULL, *extra = "", *shot = NULL, *out = NULL,*raw_out=NULL;
   double seconds = 60, shot_at = 4;
   float scale = 1;
   uint32_t w = 0, h = 0;
@@ -248,6 +274,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--shot-at")) shot_at = atof(val), i++;
     else if (!strcmp(a, "--headless")) headless = atoi(val), i++;
     else if (!strcmp(a, "--out")) out = val, i++;
+    else if (!strcmp(a, "--raw-out")) raw_out = val, i++;
     else if (!strcmp(a, "--page")) page = atoi(val), i++;
     else if (!strcmp(a, "--go")) go = val, i++;      // travel: another realm's slug written here, and it leaves (status 3)
     else if (!strcmp(a, "--keys")) keys = val, i++;  // headless: realm-run's F:KEY:DOWN, a key held or let go at frame F
@@ -259,7 +286,13 @@ int main(int argc, char **argv) {
   // The realm: as realm-run starts it (the page's facts, the viewer, the pack's parts).
   rh_open(&H, golden);
   rh_page(&H, page);
+#ifndef AETHYR_RENDER_TYPED
   if (rh_pack(&H, pack)) return 1;
+#else
+  // The compiled Coax asset profile selects the typed route's staged pack.
+  // A legacy CLI argument must never substitute another VPK for that URL.
+  (void)pack;
+#endif
   if (facts) {
     size_t n;
     char *text = slurp(facts, &n);
@@ -291,10 +324,17 @@ int main(int argc, char **argv) {
     sizes[nextra++] = (uint32_t)strtoul(p, (char **)&p, 10);
     if (*p == ',') p++;
   }
+#ifdef AETHYR_RENDER_TYPED
+  if(chdir(dir)){fprintf(stderr,"vk-realm: no directory %s\n",dir);return 1;}
+  char asset_error[256];if(!rhgr_deliver(&H,AETHYR_RENDER_PROFILE_ID,asset_error,sizeof asset_error)){fprintf(stderr,"vk-realm: %s\n",asset_error);return 1;}
+#else
   rh_deliver(&H, nextra, sizes);
+#endif
   // one frame so the stores exist at their sizes before the spec's buffers are made
-  hud_vertices = rh_frame(&H, 320, 180, scale, 1.0f / 60);
+  hud_vertices = produce_frame(320,180,scale,1.0f/60);
+#ifndef AETHYR_RENDER_TYPED
   if (chdir(dir)) { fprintf(stderr, "vk-realm: no directory %s\n", dir); return 1; }
+#endif
 
   Vkc v;
   Vkd screen;
@@ -305,8 +345,15 @@ int main(int argc, char **argv) {
     vkp_open(&v, &p, screen.surface, screen.extent.width, screen.extent.height);
     if (!w) { w = p.w; h = p.h; }
   }
-  VkSpecFiles files = {file, NULL, w, h};
   double t_open = now_s();
+#ifdef AETHYR_RENDER_TYPED
+  if(!w)w=320;if(!h)h=180;char render_error[256];
+  RhgRealm *s=rhgr_open(&v,&H,AETHYR_RENDER_PROFILE_ID,AETHYR_RENDER_PACKAGE_FILE,render_error,sizeof render_error);
+  if(!s){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}
+  int nlast=1;VksImage *typed_last[1]={NULL};VksImage **last=typed_last;
+  fprintf(stderr,"vk-realm: canonical profile%lld at %ux%u, package made in %.0f ms\n",(long long)AETHYR_RENDER_PROFILE_ID,w,h,(now_s()-t_open)*1000);
+#else
+  VkSpecFiles files = {file, NULL, w, h};
   VkSpec *s = vk_spec_open(&v, "spec.txt", &files);
   if (!s) return 1;
   w = vk_spec_width(s); h = vk_spec_height(s);
@@ -325,6 +372,7 @@ int main(int argc, char **argv) {
   int nlast;
   VksImage **last = vk_spec_last(s, &nlast);
   fprintf(stderr, "vk-realm: %s, %d passes at %ux%u, made in %.0f ms\n", v.props.deviceName, vk_spec_passes(s), w, h, (now_s() - t_open) * 1000);
+#endif
 
   static double stepped[MAX_FRAMES], took[MAX_FRAMES], presented[MAX_FRAMES];
   int frames = 0;
@@ -336,16 +384,28 @@ int main(int argc, char **argv) {
       double t0 = now_s();
       if (net_dir) rh_net_poll(&H);
       press_keys(keys, frames);
-      hud_vertices = rh_frame(&H, (float)w, (float)h, scale, 1.0f / 60);
+      hud_vertices = produce_frame((float)w,(float)h,scale,1.0f/60);
+#ifdef AETHYR_RENDER_TYPED
+      if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_screen(s);
+#else
       update(s);
+#endif
       rh_after(&H, net_dir != NULL);
       if (go && went_to(go)) { why = "it went to another realm"; travelled = 1; frames++; break; }
       double t1 = now_s();
+#ifndef AETHYR_RENDER_TYPED
       vks_submit(&v, record, s);
+#endif
       stepped[frames] = t1 - t0;
       took[frames] = now_s() - t1;
     }
     if (!travelled) why = "it drew its frames";
+    if(raw_out){
+      FILE *f=fopen(raw_out,"wb");if(!f){fprintf(stderr,"vk-realm: cannot write raw output\n");return 1;}
+      uint16_t *raw=malloc((size_t)w*h*8);if(!raw)return 1;
+      for(int i=0;i<nlast;i++){if(!last[i]){fprintf(stderr,"vk-realm: no completed frame\n");return 1;}vks_read(&v,last[i],raw,(size_t)w*h*8);if(fwrite(raw,8,(size_t)w*h,f)!=(size_t)w*h)return 1;}
+      free(raw);if(fclose(f))return 1;
+    }
     if (out) {
       FILE *f = fopen(out, "wb");
       if (!f) { fprintf(stderr, "vk-realm: cannot write %s\n", out); return 1; }
@@ -386,8 +446,12 @@ int main(int argc, char **argv) {
       prev = t;
       if (dt > 0.1) dt = 0.1;
       rh_net_poll(&H);   // the answers that came, before the realm's step
-      hud_vertices = with_cursor(rh_frame(&H, (float)w, (float)h, scale, (float)dt));
+      hud_vertices = with_cursor(produce_frame((float)w,(float)h,scale,(float)dt));
+#ifdef AETHYR_RENDER_TYPED
+      if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_screen(s);
+#else
       update(s);
+#endif
       rh_after(&H, 0);   // keeps the player, place and bar (--net); a copy a bare screen ignores
       if (go && went_to(go)) { why = "it went to another realm"; travelled = 1; break; }
       double t1 = now_s();
@@ -405,7 +469,13 @@ int main(int argc, char **argv) {
   static double sorted[MAX_FRAMES];
   int skip = frames > 120 ? 60 : headless ? 1 : 0, n = frames - skip;
   if (n > 0) {
-    const char *names[2] = {"step", headless ? "gpu" : "wait"};
+    const char *names[2] = {
+#ifdef AETHYR_RENDER_TYPED
+      "step+render", headless ? "post-render" : "wait"
+#else
+      "step", headless ? "gpu" : "wait"
+#endif
+    };
     double *what[2] = {stepped, took};
     for (int k = 0; k < 2; k++) {
       memcpy(sorted, what[k] + skip, (size_t)n * sizeof(double));
@@ -430,9 +500,17 @@ int main(int argc, char **argv) {
     qsort(sorted, (size_t)g, sizeof(double), cmp_double);
     printf("vk-realm: frame time median %.2f ms, 95th %.2f ms, 99th %.2f ms\n", sorted[g / 2] * 1000, sorted[g * 95 / 100] * 1000, sorted[g * 99 / 100] * 1000);
   }
+#ifdef AETHYR_RENDER_TYPED
+  printf("vk-realm: %s, %ux%u, %d frames, %llu draws the last; it ended because %s\n",v.props.deviceName,w,h,frames,(unsigned long long)rhgr_draw_commands(s),why);
+#else
   printf("vk-realm: %s, %ux%u, %d frames, %u draws the last; it ended because %s\n", v.props.deviceName, w, h, frames, vk_spec_drawn(s), why);
+#endif
   if (v.validating) printf("vk-realm: validation: %d errors, %d warnings\n", vkc_validation_errors, vkc_validation_warnings);
+#ifdef AETHYR_RENDER_TYPED
+  rhgr_close(s);
+#else
   vk_spec_close(&v, s);
+#endif
   if (headless) vkc_close(&v);
   else {
     vkp_close(&v, &p);
@@ -442,5 +520,5 @@ int main(int argc, char **argv) {
   }
   rh_net_close();
   rh_close(&H);
-  return vkc_validation_errors ? 1 : travelled ? 3 : 0;
+  return (vkc_validation_errors || vkc_validation_warnings) ? 1 : travelled ? 3 : 0;
 }

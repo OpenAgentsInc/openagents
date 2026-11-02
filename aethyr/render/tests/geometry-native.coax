@@ -1,0 +1,9 @@
+#load "../geometry.coax";
+
+aethyr_geometry_probe :: (profile:int,c:FrameCounts,draws:[]u32,indices:[]u32,u:[]f32,buffers:[]RenderGeometryBuffer,hud:[]f32,domains:[]RenderDrawDomain)->RenderGeometryResult #export_c {
+  return render_geometry_admit(profile,c,draws,indices,u,buffers,hud,domains,RENDER_GEOMETRY_WORK);
+}
+aethyr_geometry_frame_probe :: (c:FrameCounts,direct:RenderDirectDomains,draws:[]u32,indices:[]u32,domains:[]RenderDrawDomain)->RenderFrameResult #export_c {
+  uploads:[]RenderUpload;
+  return render_frame_admit(c,RenderFrameLimits.{},direct,uploads,draws,domains,indices);
+}

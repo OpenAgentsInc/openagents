@@ -1,0 +1,200 @@
+{
+  "schema": "aethyr.grid.memory-observation.v1",
+  "wasm": "/tmp/aethyr-ch11-grid-qualified/newland.wasm",
+  "wasm_sha256": "8037740a81fbab5e358c42c49fcd9a0a7087fc1aabb096f7cd8f6381e5e253da",
+  "declared": {
+    "module": "env",
+    "name": "memory",
+    "flags": 1,
+    "min": 758,
+    "max": 1024
+  },
+  "hostInitialPages": 128,
+  "actualInitialPages": 758,
+  "bytesBeforeInitialize": 49676288,
+  "bytesAfterInitialize": 49676288,
+  "heapBase": 49631664,
+  "stateSize": 667752,
+  "maxVertices": 400000,
+  "vertexFloats": 12,
+  "uniformFloats": 112,
+  "arena": {
+    "base": 49676288,
+    "stateCap": 667760,
+    "vertexBytes": 19200000,
+    "uniformBytes": 448,
+    "tailBytes": 64,
+    "need": 69544560,
+    "pages": 1062,
+    "limit": 67108864,
+    "excess": 2435696,
+    "growPages": 304
+  },
+  "effects": {},
+  "imports": [
+    {
+      "module": "env",
+      "name": "memory",
+      "kind": "memory",
+      "type": {
+        "maximum": 1024,
+        "minimum": 758,
+        "shared": false,
+        "address": "i32"
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_now_seconds",
+      "kind": "function",
+      "type": {
+        "parameters": [],
+        "results": [
+          "i64"
+        ]
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_http",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_socket_open",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_socket_send",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32",
+          "i32"
+        ],
+        "results": []
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_socket_close",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32"
+        ],
+        "results": []
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_storage_put",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "env",
+      "name": "coaxial_storage_get",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_fdstat_get",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_seek",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i64",
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_write",
+      "kind": "function",
+      "type": {
+        "parameters": [
+          "i32",
+          "i32",
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      }
+    }
+  ],
+  "scope": "Only instantiate and scalar getters in an isolated ephemeral memory; no producer frame or renderer effects."
+}

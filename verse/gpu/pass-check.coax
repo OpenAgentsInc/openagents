@@ -17,6 +17,7 @@
 // --against compares the browser with FILE (as --keep writes them, e.g. the
 // pass run on the CPU) instead of drawing on HOST.
 #import "Basic";
+#load "../../aethyr/render/emit.coax" as render_emit;
 #load "../../coax/lib/net/cdp.coax";
 
 PC_FILE :: 4194304;
@@ -122,29 +123,22 @@ pc_targets :: (t: string) -> int {
 // ---- the comparison (pure)
 // Within an f16's rounding of the golden.
 pc_close :: (g: f32, n: f32) -> bool {
-  m := abs(g); if m < 1 { m = 1; }
-  d := abs(g - n);
-  return d <= PC_TOL * m;
+  return render_emit.render_value_close(g,n);
 }
 #test "an f16's rounding is close, more is not" {
   #assert pc_close(1, 1.0019) && !pc_close(1, 1.0021) && pc_close(100, 100.19) && !pc_close(100, 100.3) && pc_close(0, 0.0019) && !pc_close(0, 0.003);
 }
 compare :: (g: [] f32, n: [] f32, w: int, h: int, nt: int, allow: int) -> int {
-  bad := 0; worst: f32 = 0; at := -1; nan := 0;
-  for i: 0..<g.count {
-    if g[i] != g[i] || n[i] != n[i] { if !(g[i] != g[i] && n[i] != n[i]) { nan += 1; } continue; }
-    d := abs(g[i] - n[i]);
-    if d > worst { worst = d; at = i; }
-    if !pc_close(g[i], n[i]) { bad += 1; }
-  }
-  print("pass-check: % values (% targets of %x%), % past the tolerance, % NaN on one side only; largest difference %", g.count, nt, w, h, bad, nan, worst);
+  checked := render_emit.render_compare(g,n,allow);
+  bad := checked.bad; worst := checked.worst; at := checked.worst_at;
+  print("pass-check: % values (% targets of %x%), % past the tolerance, % nonfinite; largest difference %", g.count, nt, w, h, bad, checked.nonfinite, worst);
   if at >= 0 {
     px := at / 4;
     print(" at target %, (%, %) channel %: golden % native %", px / (w * h), px % (w * h) % w, px % (w * h) / w, at % 4, g[at], n[at]);
   }
   print("\n");
   if bad > allow { print("pass-check: more than the % allowed\n", allow); }
-  return ifx bad <= allow && nan == 0 then 0 else 1;
+  return ifx checked.status == render_emit.RenderEmissionStatus.ok then 0 else 1;
 }
 // Floats as little-endian bytes, in out.
 f32_bytes :: (f: [] f32, out: [] u8) -> string {

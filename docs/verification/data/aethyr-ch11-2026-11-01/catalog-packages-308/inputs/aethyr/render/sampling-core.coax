@@ -1,0 +1,61 @@
+// Shader source part: it joins the caller's existing shader-library types.
+// Logical8x filtering is this shared Coax loop, not opaque driver anisotropy.
+#load "../../verse/gpu/shader.coax";
+#load "footprint.coax" as footprint;
+#authority;
+RenderFilteredColor :: struct {valid:bool;colour:V4;}
+
+#test "owned texture filtering averages one four and eight centered taps" {
+  rs_pixels:[8]V4;
+  for rs_i:0..<8 {rs_pixels[rs_i]=v4(ifx rs_i==3 || rs_i==4 then 1.0f32 else 0.0f32,cast(f32)rs_i/8,0.25,1);}
+  rs_tex:=Tex2D.{width=8,height=1,texels=rs_pixels[..]};rs_sampler:=Sampler.{linear=true};
+  rs_eight:=render_filter8_grad(rs_tex,rs_sampler,v2(0.5,0.5),v2(1,0),V2.{},0);
+  rs_four:=render_filter8_grad(rs_tex,rs_sampler,v2(0.5,0.5),v2(0.5,0),V2.{},0);
+  rs_one:=render_filter8_grad(rs_tex,rs_sampler,v2(0.5,0.5),v2(0.125,0),V2.{},0);
+  #assert rs_eight.valid && rs_four.valid && rs_one.valid && rs_eight.colour.x==0.25 && rs_four.colour.x==0.5 && rs_one.colour.x==1;
+  #assert rs_eight.colour.y==0.4375 && rs_eight.colour.z==0.25 && rs_eight.colour.w==1;
+  rs_centred:=render_filter8_grad(rs_tex,rs_sampler,v2(0.1875,0.5),v2(0.125,0),V2.{},0);
+  #assert rs_centred.colour.y==0.125;
+  // Scalar derivative bodies are still zero; the ordinary wrapper is one tap.
+}
+#test "owned layer filtering preserves the selected layer and bounded bias" {
+  rs_pixels:[16]V4;
+  for rs_i:0..<8 {
+    rs_r:=ifx rs_i==3 || rs_i==4 then 1.0f32 else 0.0f32;
+    rs_pixels[rs_i]=v4(rs_r,cast(f32)rs_i/8,0.25,1);
+    rs_pixels[8+rs_i]=v4(1-rs_r,1-cast(f32)rs_i/8,0.75,1);
+  }
+  rs_tex:=Tex2DArray.{width=8,height=1,layers=2,texels=rs_pixels[..]};rs_sampler:=Sampler.{linear=true};
+  rs_a:=render_filter_layer8_grad(rs_tex,rs_sampler,v2(0.5,0.5),1,v2(1,0),V2.{},0);
+  #assert rs_a.valid && rs_a.colour.x==0.75 && rs_a.colour.y==0.5625 && rs_a.colour.z==0.75 && rs_a.colour.w==1;
+  #assert render_filter_layer8_grad(rs_tex,rs_sampler,v2(0.5,0.5),0,v2(1,0),V2.{},32).colour.x==0.25;
+  #assert render_filter_layer8_grad(rs_tex,rs_sampler,v2(0.5,0.5),0,v2(1,0),V2.{},33).valid==false;
+}
+#test "sampling outside the footprint profile refuses fragment publication" {
+  rs_sampler:=Sampler.{};
+  #assert render_filter8_grad(Tex2D.{},rs_sampler,V2.{},V2.{},V2.{},0).valid==false;
+  #assert render_filter_layer8_grad(Tex2DArray.{},rs_sampler,V2.{},0,V2.{},V2.{},0).valid==false;
+}
+
+render_filter8_grad :: (texture:Tex2D,sheet:Sampler,uv:V2,dx:V2,dy:V2,bias:f32)->RenderFilteredColor {
+  rs_f:=footprint.render_footprint(cast(int)gpu_width(texture),cast(int)gpu_height(texture),dx.x,dx.y,dy.x,dy.y,bias);
+  if !rs_f.valid {return RenderFilteredColor.{};}
+  rs_sum:V4;
+  for rs_i:0..<rs_f.taps {
+    rs_offset:=cast(f32)rs_i+0.5f32-0.5f32*cast(f32)rs_f.taps;
+    rs_at:=add2(uv,scale2(v2(rs_f.du,rs_f.dv),rs_offset));
+    rs_sum=add4(rs_sum,gpu_sample_level(texture,sheet,rs_at,rs_f.lod));
+  }
+  return RenderFilteredColor.{valid=true,colour=scale4(rs_sum,1.0f32/cast(f32)rs_f.taps)};
+}
+render_filter_layer8_grad :: (texture:Tex2DArray,sheet:Sampler,uv:V2,layer:s32,dx:V2,dy:V2,bias:f32)->RenderFilteredColor {
+  rs_f:=footprint.render_footprint(cast(int)gpu_layer_width(texture),cast(int)gpu_layer_height(texture),dx.x,dx.y,dy.x,dy.y,bias);
+  if !rs_f.valid {return RenderFilteredColor.{};}
+  rs_sum:V4;
+  for rs_i:0..<rs_f.taps {
+    rs_offset:=cast(f32)rs_i+0.5f32-0.5f32*cast(f32)rs_f.taps;
+    rs_at:=add2(uv,scale2(v2(rs_f.du,rs_f.dv),rs_offset));
+    rs_sum=add4(rs_sum,gpu_sample_layer_level(texture,sheet,rs_at,layer,rs_f.lod));
+  }
+  return RenderFilteredColor.{valid=true,colour=scale4(rs_sum,1.0f32/cast(f32)rs_f.taps)};
+}

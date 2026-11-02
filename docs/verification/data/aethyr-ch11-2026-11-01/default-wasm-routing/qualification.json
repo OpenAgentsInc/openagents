@@ -1,0 +1,28 @@
+{
+  "schema": "aethyr.render.default-wasm-routing.v1",
+  "status": "pass for measured catalog/noncatalog builds",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "source_sha256": {
+    "coax/web/wasm.sh": "ffdf970b58fe1547a2fefdda6a00a01b4a66eb48faa9d29c9e4a5f22d644b563",
+    "coax/web/project/build-home.sh": "11dea5d5ea975e50d5d96a4c959e29157e5349df4f018fda3f6bd73522b1ea0e"
+  },
+  "catalog": {
+    "app": "verse",
+    "default_build_renderer_enabled": true,
+    "byte_identical_to_explicit_COAXIAL_RENDER_1": true,
+    "wasm_sha256": "60be7e79fa6096fd307582080c087ef65ab56646fd1364da460d61df840e075d",
+    "scope": "Matching artifacts at this measured source epoch; later helper/face changes require their own final build."
+  },
+  "noncatalog": {
+    "source": "main :: () {}",
+    "platform_export": "control()->1",
+    "exports": [
+      "_initialize",
+      "control",
+      "__heap_base"
+    ],
+    "renderer_exports": [],
+    "wasm_sha256": "cd2d627c5c75d10852d3e7181666e238efade162453b000e326b63d283b94a08"
+  },
+  "scope": "Actual default builder routing and Wasm export/byte checks; not all-app final compilation or GPU image acceptance."
+}

@@ -1,0 +1,54 @@
+#forall "reference texture physical format names retain their exact byte interpretation" index:0..<9 {
+ names:=[9]string.["rgba8unorm","rgba8unorm-srgb","bgra8unorm","bgra8unorm-srgb","rgba16float","rgba32float","depth32float","rgba8","RGBA8UNORM"];
+ expected:=[9]RenderTexelFormat.[RenderTexelFormat.rgba8,RenderTexelFormat.rgba8_srgb,RenderTexelFormat.bgra8,RenderTexelFormat.bgra8_srgb,RenderTexelFormat.rgba16f,RenderTexelFormat.rgba32f,RenderTexelFormat.depth32f,RenderTexelFormat.invalid,RenderTexelFormat.invalid];
+ #assert rf_texture_format(names[index])==expected[index];
+}
+#test "reference texture observed sRGB bytes become linear RGB before a returned sampled view" {
+ levels:=[1]RenderTextureLevel.[RenderTextureLevel.{width=1,height=1,offset=4,row_bytes=8,layer_bytes=12}];bytes:=[12]u8.[91,92,93,94,128,64,255,128,95,96,97,98];out:[2]RQColor;out[1].r=81;mips:[2]RQMip;mips[1].width=77;
+ need:=rf_texture_require("rgba8unorm-srgb",1,levels[..]);#assert need.status==RenderTextureStatus.ok && need.pixels==1 && need.format==RenderTexelFormat.rgba8_srgb;
+ r:=rf_texture_decode("rgba8unorm-srgb",1,levels[..],bytes[..],out[..],mips[..]);#assert r.status==RenderTextureStatus.ok && r.bad_level==(-1) && r.bad_texel==(-1) && !r.texture.depth && r.texture.layers==1 && r.texture.texels.count==1 && r.texture.levels.count==1;
+ #assert abs(out[0].r-0.2158605f32)<0.0000001f32 && abs(out[0].g-0.05126946f32)<0.0000001f32 && out[0].b==1 && out[0].a==128.0f32/255;
+ #assert mips[0].width==1 && mips[0].height==1 && mips[0].offset==0 && out[1].r==81 && mips[1].width==77;
+}
+#test "reference texture requirements count every layer and mip within the allocation budget" {
+ levels:=[2]RenderTextureLevel.[RenderTextureLevel.{width=2,height=2},RenderTextureLevel.{width=1,height=1}];need:=rf_texture_require("rgba8unorm",3,levels[..]);#assert need.status==RenderTextureStatus.ok && need.pixels==15;
+ levels[0].width=16384;levels[0].height=1024;need=rf_texture_require("rgba8unorm",1,levels[0..<1]);#assert need.status==RenderTextureStatus.ok && need.pixels==16777216;
+ need=rf_texture_require("rgba8unorm",1,levels[..]);#assert need.status==RenderTextureStatus.work_budget;
+ levels[0].width=16385;#assert rf_texture_require("rgba8unorm",1,levels[..]).status==RenderTextureStatus.bad_layout;
+ levels[0].width=0;#assert rf_texture_require("rgba8unorm",1,levels[..]).status==RenderTextureStatus.bad_layout;
+ #assert rf_texture_require("unknown",1,levels[..]).status==RenderTextureStatus.bad_format;
+ #assert rf_texture_require("rgba8unorm",0,levels[..]).status==RenderTextureStatus.bad_layout;
+ #assert rf_texture_require("rgba8unorm",2049,levels[..]).status==RenderTextureStatus.bad_layout;
+ #assert rf_texture_require("rgba8unorm",1,levels[0..<0]).status==RenderTextureStatus.bad_layout;
+}
+#test "reference texture codec failures retain both owned outputs and preserve their diagnostics" {
+ level:=[1]RenderTextureLevel.[RenderTextureLevel.{width=1,height=1,row_bytes=4,layer_bytes=4}];bytes:=[4]u8.[0,0,128,127];out:=[1]RQColor.[RQColor.{r=91}];mips:=[1]RQMip.[RQMip.{width=92}];
+ r:=rf_texture_decode("depth32float",1,level[..],bytes[..],out[..],mips[..]);#assert r.status==RenderTextureStatus.nonfinite && r.bad_level==0 && r.bad_texel==0 && out[0].r==91 && mips[0].width==92;
+ r=rf_texture_decode("rgba8unorm",1,level[..],bytes[0..<3],out[..],mips[..]);#assert r.status==RenderTextureStatus.bad_span && out[0].r==91 && mips[0].width==92;
+ r=rf_texture_decode("unknown",1,level[..],bytes[..],out[..],mips[..]);#assert r.status==RenderTextureStatus.bad_format && out[0].r==91 && mips[0].width==92;
+}
+#test "reference texture allocation dimension and layer limits are independent sharp endpoints" {
+ levels:=[1]RenderTextureLevel.[RenderTextureLevel.{width=1,height=1}];q:=rf_texture_require("rgba8unorm",2048,levels[..]);#assert q.status==RenderTextureStatus.ok && q.pixels==2048;
+ levels[0].height=16384;q=rf_texture_require("rgba8unorm",1,levels[..]);#assert q.status==RenderTextureStatus.ok && q.pixels==16384;
+ levels[0].height=16385;#assert rf_texture_require("rgba8unorm",1,levels[..]).status==RenderTextureStatus.bad_layout;
+ levels[0].height=0;#assert rf_texture_require("rgba8unorm",1,levels[..]).status==RenderTextureStatus.bad_layout;
+}
+#test "reference texture successful depth retains its physical depth interpretation" {
+ levels:=[1]RenderTextureLevel.[RenderTextureLevel.{width=1,height=1,row_bytes=4,layer_bytes=4}];bytes:=[4]u8.[0,0,0,63];out:[1]RQColor;mips:[1]RQMip;
+ r:=rf_texture_decode("depth32float",1,levels[..],bytes[..],out[..],mips[..]);#assert r.status==RenderTextureStatus.ok && r.texture.depth && r.texture.texels.count==1 && r.texture.texels[0].r==0.5f32;
+}
+#test "reference texture rejects only the bad layer count when all dimensions are valid" {
+ for layers:[3]int.[-1,0,2049] {
+ levels:=[1]RenderTextureLevel.[RenderTextureLevel.{width=1,height=1}];q:=rf_texture_require("rgba8unorm",layers,levels[..]);#assert q.status==RenderTextureStatus.bad_layout;}
+}
+#forall "reference texture format receipts preserve measured filtering provenance" index:0..<8 {
+ formats:=[8]RenderTexelFormat.[RenderTexelFormat.rgba8,RenderTexelFormat.bgra8,RenderTexelFormat.rgba8_srgb,RenderTexelFormat.bgra8_srgb,RenderTexelFormat.rgba16f,RenderTexelFormat.rgba32f,RenderTexelFormat.depth32f,RenderTexelFormat.invalid];
+ expected:=[8]RQStorageFormat.[RQStorageFormat.unorm8,RQStorageFormat.unorm8,RQStorageFormat.srgb8,RQStorageFormat.srgb8,RQStorageFormat.half,RQStorageFormat.float32,RQStorageFormat.depth32,RQStorageFormat.unclassified];
+ #assert rf_texture_storage(formats[index])==expected[index];
+}
+#test "reference decoded UNORM8 carries its physical storage class into measured filtering" {
+ levels:=[1]RenderTextureLevel.[RenderTextureLevel.{width=1,height=1,row_bytes=4,layer_bytes=4}];bytes:=[4]u8.[0,128,255,64];out:[1]RQColor;mips:[1]RQMip;
+ r:=rf_texture_decode("rgba8unorm",1,levels[..],bytes[..],out[..],mips[..]);#assert r.status==RenderTextureStatus.ok && r.texture.storage==RQStorageFormat.unorm8;
+ q:=rq_sample_level(r.texture,RQSampler.{min_linear=true,mag_linear=true,mip_linear=true,precision=RQFilterProfile.nvidia_unorm8_integer},0.5,0.5,0,0);
+ #assert q.status==RQStatus.ok && q.color.r==0 && q.color.g==128.0f32/255 && q.color.b==1 && q.color.a==64.0f32/255;
+}

@@ -19,7 +19,7 @@
 //
 // orbitleague.wgsl traces the arena, the cars, the ball and the space round
 // them from the uniforms written here; the HUD is strokes over it.
-//   coax/bin/coax test apps/openagents-web/orbitleague.coax --steps 2000000000
+//   coax/bin/coax test apps/openagents-web/orbitleague.coax   (long simulations declare measured #steps)
 
 #load "font.coax";
 #load "ui.coax";
@@ -2535,7 +2535,7 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   for i: 0..<steps { game_step(s, STEP); }
 }
 
-#test "kickoff counts down, then you drive and boost toward the ball" {
+#test "kickoff counts down, then you drive and boost toward the ball" #steps 60000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   s[0].width = 1440; s[0].height = 900; s[0].dpr = 1;
@@ -2549,7 +2549,7 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   #assert s[0].bodies[YOU].pos.z > z0 + 8.0 && s[0].tanks[0].fuel < BOOST_START + PAD_SMALL - 10.0;
 }
 
-#test "driving into the ball moves it; a ball past the line scores and kicks off again" {
+#test "driving into the ball moves it; a ball past the line scores and kicks off again" #steps 130000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   run_for(s[..], KICKOFF + 0.1);
@@ -2567,7 +2567,7 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   #assert s[0].phase == PHASE_KICKOFF && abs(s[0].bodies[BALL].pos.z) < 0.01;
 }
 
-#test "a ball hit at the wall beside the goal bounces back; the roof and walls hold it" {
+#test "a ball hit at the wall beside the goal bounces back; the roof and walls hold it" #steps 80000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   run_for(s[..], KICKOFF + 0.1);
@@ -2582,7 +2582,7 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   #assert abs(p.x) < ARENA_HX && p.y < ARENA_H && p.y > 0.0;
 }
 
-#test "a goal sets off its blast and sparks, a hard hit throws sparks, and both die away" {
+#test "a goal sets off its blast and sparks, a hard hit throws sparks, and both die away" #steps 130000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   run_for(s[..], KICKOFF + 0.1);
@@ -2606,7 +2606,7 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   #assert alive > 0;
 }
 
-#test "a car over a ready pad takes its boost; the pad waits, then is ready again" {
+#test "a car over a ready pad takes its boost; the pad waits, then is ready again" #steps 160000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   run_for(s[..], KICKOFF + 0.1);
@@ -2660,7 +2660,7 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   #assert u[0].tanks[0].fuel == 100.0 && u[0].tanks[1].fuel == 100.0;
 }
 
-#test "a kickoff while you sit still doesn't fly the ball into your goal" {
+#test "a kickoff while you sit still doesn't fly the ball into your goal" #steps 90000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   top := 0.0;
@@ -2668,14 +2668,14 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   #assert s[0].score[1] == 0 && top <= BALL_MAX + 0.001;
 }
 
-#test "the bot drives to the ball and gets it moving" {
+#test "the bot drives to the ball and gets it moving" #steps 110000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   run_for(s[..], KICKOFF + 5.0);
   #assert d3_len(s[0].bodies[BALL].vel) > 0.5 || d3_len(d3_sub(s[0].bodies[BALL].pos, d3(0.0, BALL_R, 0.0))) > 1.0;
 }
 
-#test "?stage=highlight sets up the shot: a hard hit, then a goal for blue within 2 s; without it, a plain kickoff" {
+#test "?stage=highlight sets up the shot: a hard hit, then a goal for blue within 2 s; without it, a plain kickoff" #steps 30000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league\n");
@@ -2735,7 +2735,7 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   }
 }
 
-#test "a kickoff is a fair race: holding W from the countdown, you reach the ball before the bot, and it doesn't score off it" {
+#test "a kickoff is a fair race: holding W from the countdown, you reach the ball before the bot, and it doesn't score off it" #steps 120000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   s[0].held = HOLD_UP;
@@ -2752,7 +2752,7 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
 
 eye_of :: (s: [] OrbitLeague) -> D3 { return d3(cast(f64) s[0].eye[0], cast(f64) s[0].eye[1], cast(f64) s[0].eye[2]); }
 
-#test "ball cam keeps your car on screen everywhere, and the ball too away from the glass, on a laptop and a phone" {
+#test "ball cam keeps your car on screen everywhere, and the ball too away from the glass, on a laptop and a phone" #steps 50000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   s[0].ball_cam = true;
@@ -2808,19 +2808,19 @@ wall_run :: (s: [] OrbitLeague, yaw: f64, held: int, secs: f64, x: f64) -> f64 {
   return ifx f0.z * f.x - f0.x * f.z > 0.0 then a else -a;
 }
 
-#test "a car pinned nose-first against the glass turns right on D, the way it turns on open floor" {
+#test "a car pinned nose-first against the glass turns right on D, the way it turns on open floor" #steps 170000000 {
   s: [1] OrbitLeague;
   open_right := wall_run(s[..], PI_D * 0.5, HOLD_UP | HOLD_RIGHT, 1.0, -15.0);
   wall_right := wall_run(s[..], PI_D * 0.5, HOLD_UP | HOLD_RIGHT, 2.0, ARENA_HX - 3.0);
   #assert abs(open_right) > 0.3 && wall_right * open_right > 0.0 && abs(wall_right) > 0.7;
 }
-#test "a car pinned nose-first against the glass turns left on A" {
+#test "a car pinned nose-first against the glass turns left on A" #steps 170000000 {
   s: [1] OrbitLeague;
   open_right := wall_run(s[..], PI_D * 0.5, HOLD_UP | HOLD_RIGHT, 1.0, -15.0);
   wall_left := wall_run(s[..], PI_D * 0.5, HOLD_UP | HOLD_LEFT, 2.0, ARENA_HX - 3.0);
   #assert wall_left * open_right < 0.0 && abs(wall_left) > 0.7;
 }
-#test "a car into the glass at an angle turns away on the stick, and S backs it off" {
+#test "a car into the glass at an angle turns away on the stick, and S backs it off" #steps 180000000 {
   s: [1] OrbitLeague;
   #assert abs(wall_run(s[..], PI_D * 0.3, HOLD_UP | HOLD_RIGHT, 2.0, ARENA_HX - 3.0)) > 0.7;
   r := wall_run(s[..], PI_D * 0.5, HOLD_DOWN, 2.0, ARENA_HX - 3.0);
@@ -2850,7 +2850,7 @@ wall_run :: (s: [] OrbitLeague, yaw: f64, held: int, secs: f64, x: f64) -> f64 {
   #assert r.ok;
 }
 
-#test "a goal knocks a car near it back from the goal, then kickoff puts car and ball on their spots" {
+#test "a goal knocks a car near it back from the goal, then kickoff puts car and ball on their spots" #steps 80000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   s[0].no_bot = true;
@@ -2883,7 +2883,7 @@ wall_run :: (s: [] OrbitLeague, yaw: f64, held: int, secs: f64, x: f64) -> f64 {
   }
 }
 
-#test "after it hits the ball the bot coasts a moment, and its aim misses by less as the match goes on" {
+#test "after it hits the ball the bot coasts a moment, and its aim misses by less as the match goes on" #steps 50000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   run_for(s[..], KICKOFF + 0.5);
@@ -2913,19 +2913,19 @@ glass_charge :: (s: [] OrbitLeague, yaw: f64, boost: bool, secs: f64) -> f64 {
   }
   return longest;
 }
-#test "driving into the glass, square or at an angle, the car never stands on it for long (ol-fp-wall-stand)" {
+#test "driving into the glass, square or at an angle, the car never stands on it for long (ol-fp-wall-stand)" #steps 280000000 {
   s: [1] OrbitLeague;
   #assert glass_charge(s[..], 0.0, false, 4.0) < 1.5;
   #assert glass_charge(s[..], 0.5, false, 4.0) < 1.5;
   #assert glass_charge(s[..], 1.0, false, 4.0) < 1.5;
 }
-#test "with boost too" {
+#test "with boost too" #steps 280000000 {
   s: [1] OrbitLeague;
   #assert glass_charge(s[..], 0.0, true, 4.0) < 1.5;
   #assert glass_charge(s[..], 0.5, true, 4.0) < 1.5;
   #assert glass_charge(s[..], 1.0, true, 4.0) < 1.5;
 }
-#test "a car leaning on the glass, slow, is set back on its wheels within 1.5 s" {
+#test "a car leaning on the glass, slow, is set back on its wheels within 1.5 s" #steps 60000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]); s[0].no_bot = true; kickoff(s[..]);
   run_for(s[..], KICKOFF + 0.1);
@@ -2944,7 +2944,7 @@ drum_game :: (s: [] OrbitLeague) {
   game_reset(s); s[0].no_bot = true; set_arena(s, true);
   run_for(s, KICKOFF + 0.1);
 }
-#test "in the drum the car drives from the floor up the curve, over the ceiling and down again, wheels on" {
+#test "in the drum the car drives from the floor up the curve, over the ceiling and down again, wheels on" #steps 80000000 {
   s: [1] OrbitLeague;
   drum_game(s[..]);
   s[0].bodies[YOU].pos = d3(0.0, 0.9, 0.0); s[0].bodies[YOU].orientation = dq_y(PI_D / 2.0);
@@ -2959,7 +2959,7 @@ drum_game :: (s: [] OrbitLeague) {
   }
   #assert top > 0.0 && off < 0.4 && s[0].phase == PHASE_PLAY;
 }
-#test "the ball keeps inside the curve, and the bot scores in the drum's goal" {
+#test "the ball keeps inside the curve, and the bot scores in the drum's goal" #steps 90000000 {
   s: [1] OrbitLeague;
   drum_game(s[..]);
   // thrown hard at the wall
@@ -2972,7 +2972,7 @@ drum_game :: (s: [] OrbitLeague) {
   run_for(s[..], 1.0);
   #assert s[0].score[1] == 1;
 }
-#test "in the drum the camera stays inside, its up toward the axis, with your car in view all the way round" {
+#test "in the drum the camera stays inside, its up toward the axis, with your car in view all the way round" #steps 50000000 {
   s: [1] OrbitLeague;
   drum_game(s[..]);
   s[0].width = 1440; s[0].height = 900;
@@ -2991,7 +2991,7 @@ drum_game :: (s: [] OrbitLeague) {
     #assert pc.ok && pc.x > 0 && pc.x < 1440 && pc.y > 0 && pc.y < 900;
   }
 }
-#test "a car tipped over on the drum's wall is set back on its wheels there" {
+#test "a car tipped over on the drum's wall is set back on its wheels there" #steps 60000000 {
   s: [1] OrbitLeague;
   drum_game(s[..]);
   a := 1.2;
@@ -3108,7 +3108,7 @@ drum_game :: (s: [] OrbitLeague) {
   #assert bot_recover(b[..]) == BOT_RECOVER && bot_recover(s[..]) == BOT_DRUM_RECOVER && BOT_DRUM_THROTTLE < BOT_THROTTLE;
 }
 
-#test "in the drum the pads lie up the walls too: a car on the wall takes one, and it comes back (ol-boost-pads)" {
+#test "in the drum the pads lie up the walls too: a car on the wall takes one, and it comes back (ol-boost-pads)" #steps 150000000 {
   s: [1] OrbitLeague;
   drum_game(s[..]);
   walls := 0;
@@ -3160,7 +3160,7 @@ sphere_game :: (s: [] OrbitLeague) {
   game_reset(s); s[0].no_bot = true; set_arena_kind(s, ARENA_SPHERE);
   run_for(s, KICKOFF + 0.1);
 }
-#test "?arena=sphere plays in the sphere: the cars start on its curve on their wheels and the ball at its lowest point" {
+#test "?arena=sphere plays in the sphere: the cars start on its curve on their wheels and the ball at its lowest point" #steps 60000000 {
   s: [1] OrbitLeague;
   game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?arena=sphere\n");
   #assert s[0].sphere && !s[0].drum && arena_kind(s[..]) == ARENA_SPHERE;
@@ -3175,7 +3175,7 @@ sphere_game :: (s: [] OrbitLeague) {
   #assert s[0].cars[0].wheels == 4 && d3_dot(rigid_axis(you, D3_Y), sphere_up(sp, you.pos)) > 0.95 && sphere_clearance(sp, you.pos) < 1.5;
   #assert near_d(sphere_clearance(sp, s[0].bodies[BALL].pos), BALL_R, 0.05);
 }
-#test "in the sphere a car drives round toward the equator's wall and up it, wheels on" {
+#test "in the sphere a car drives round toward the equator's wall and up it, wheels on" #steps 80000000 {
   s: [1] OrbitLeague;
   sphere_game(s[..]);
   sp := arena_sphere();
@@ -3192,7 +3192,7 @@ sphere_game :: (s: [] OrbitLeague) {
   // up past the wall's middle, and on its wheels almost all the way
   #assert top > SPHERE_R && cast(f64) off * STEP < 0.4;
 }
-#test "in the sphere a ball into the +z pole's cap is blue's goal, into the -z cap magenta's; a ball elsewhere is no goal" {
+#test "in the sphere a ball into the +z pole's cap is blue's goal, into the -z cap magenta's; a ball elsewhere is no goal" #steps 60000000 {
   s: [1] OrbitLeague;
   sphere_game(s[..]);
   #assert goal_past(s[..], sphere_goal_z() + 0.1) == BLUE && goal_past(s[..], -sphere_goal_z() - 0.1) == MAGENTA && goal_past(s[..], 20.0) == -1;
@@ -3244,7 +3244,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   n := room_state_echo(room, tick, 0, cars, seats[..], 1, echo[0], buf[..]);
   room_heard(c, cast(string) buf[0..<n]);
 }
-#test "with 150 ms of latency your car answers the first frame you press, and the ball you hit is drawn without a jump (ol-prediction)" {
+#test "with 150 ms of latency your car answers the first frame you press, and the ball you hit is drawn without a jump (ol-prediction)" #steps 170000000 {
   room: [1] OrbitLeague; room_reset(room[..]);
   c: [1] OrbitLeague;
   game_message(c[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?room=lag&lag=150\n");
@@ -3276,7 +3276,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
 
 // ---- the pro bot (ol-bot)
 
-#test "the pro bot reads where a rolling ball goes, and drops back when it heads for its goal (ol-bot)" {
+#test "the pro bot reads where a rolling ball goes, and drops back when it heads for its goal (ol-bot)" #steps 50000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]); s[0].bot_smart = true;
   run_for(s[..], KICKOFF + 0.1);
@@ -3287,7 +3287,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   bot_predict(s[..]);
   #assert s[0].bot_path_goal == -1 && s[0].bot_path[4].x > 2.0;
 }
-#test "the pro bot scores into an empty goal (ol-bot; orbitleague-sim.coax plays full 1v1s against it)" {
+#test "the pro bot scores into an empty goal (ol-bot; orbitleague-sim.coax plays full 1v1s against it)" #steps 230000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]); s[0].bot_smart = true; s[0].bot_miss_k = 0.0;
   run_for(s[..], KICKOFF + 0.1);
@@ -3322,7 +3322,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   game_message(r[..], HOST_FACTS, "coarse=1\nurl=https://openagents.com/realms/orbit-league?room=a\n");
   #assert r[0].cars_n == 2;
 }
-#test "in a 2v2 all three bots drive after the kickoff, the one of a pair further from the ball hangs back, and PLAY 1V1 / PLAY 2V2 switch (ol-bot-modes)" {
+#test "in a 2v2 all three bots drive after the kickoff, the one of a pair further from the ball hangs back, and PLAY 1V1 / PLAY 2V2 switch (ol-bot-modes)" #steps 110000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]); set_mode(s[..], CARS);
   run_for(s[..], KICKOFF + 1.5);
@@ -3340,7 +3340,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
 
 // ---- goal replays (ol-replay)
 
-#test "a goal's replay plays its recorded drives through the same physics and ends with the ball where the goal left it (ol-replay)" {
+#test "a goal's replay plays its recorded drives through the same physics and ends with the ball where the goal left it (ol-replay)" #steps 280000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]); s[0].replays = true; s[0].no_bot = true; kickoff(s[..]);
   // in the countdown the ball is set rolling slowly at +z; you drive round
@@ -3358,7 +3358,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   while s[0].phase == PHASE_REPLAY { run_for(s[..], STEP); }
   #assert d3_dist(s[0].rp_ball, at) < 0.000001 && s[0].phase == PHASE_KICKOFF && s[0].score[BLUE] == 1 && s[0].touches == touches;
 }
-#test "a key or a tap skips the replay to the kickoff; tests and the room skip replays (ol-replay)" {
+#test "a key or a tap skips the replay to the kickoff; tests and the room skip replays (ol-replay)" #steps 200000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]); s[0].replays = true;
   run_for(s[..], KICKOFF + 1.0);
@@ -3391,7 +3391,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   s: [1] OrbitLeague; game_reset(s[..]);
   #assert !clip_open(s[..], "https://openagents.com/realms/orbit-league/#clip=o1ABC") && !s[0].clip_play;
 }
-#test "a saved clip's link plays the same replay in another game: your drives as recorded, the bot deciding again, the ball into the same goal (ol-clips)" {
+#test "a saved clip's link plays the same replay in another game: your drives as recorded, the bot deciding again, the ball into the same goal (ol-clips)" #steps 300000000 {
   s: [1] OrbitLeague;
   game_reset(s[..]); s[0].replays = true; kickoff(s[..]);
   run_for(s[..], KICKOFF - 0.2);
@@ -3436,7 +3436,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   #assert q[0].paint == 26;
 }
 
-#test "a page's state starts zeroed, and game_reset gives every defaulted field its default: gravity, the bot, its miss (the face runs no initialisers)" {
+#test "a page's state starts zeroed, and game_reset gives every defaulted field its default: gravity, the bot, its miss (the face runs no initialisers)" #steps 50000000 {
   s: [1] OrbitLeague;
   // zeroed, as the browser's memory is
   s[0].copied_t = 0.0; s[0].cars_n = 0; s[0].bot_miss_k = 0.0; s[0].bot_path_at = 0.0; s[0].bot_path_goal = 0;

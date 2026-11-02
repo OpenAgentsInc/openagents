@@ -1,0 +1,220 @@
+{
+  "schema": "aethyr.render.default-fixture-water-visible-migration.v1",
+  "status": "pass_for_two_explicit_visible_migrations",
+  "exact_controls": {
+    "fixture-base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "reused_generic": null,
+      "source_changes": [],
+      "legacy_sha256": "170d01b0fe5db442942ea773dc6f6e10f11d8ffbea56fce15033c7bd703f74f0",
+      "generic_sha256": "eb8056f6313c1fd8954e450fc6468b58522b49baf38bd1c131d7f8c2a2f79462",
+      "different_channels": 423,
+      "different_pixels": 219,
+      "max_byte_delta": 82,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "fixture-integer": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-fixture-noise-isolation/integer.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-fixture-current/generic",
+      "source_changes": [],
+      "legacy_sha256": "eb8056f6313c1fd8954e450fc6468b58522b49baf38bd1c131d7f8c2a2f79462",
+      "generic_sha256": "eb8056f6313c1fd8954e450fc6468b58522b49baf38bd1c131d7f8c2a2f79462",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "fixture-sin": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-fixture-noise-controls/sin.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-fixture-current/generic",
+      "source_changes": [],
+      "legacy_sha256": "e102dc37998237c66f2ffaed5b0be30af809b7e1db0e6db17f54ca2e1da3548a",
+      "generic_sha256": "eb8056f6313c1fd8954e450fc6468b58522b49baf38bd1c131d7f8c2a2f79462",
+      "different_channels": 216,
+      "different_pixels": 74,
+      "max_byte_delta": 82,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "fixture-sin-hardware": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-fixture-noise-controls/sin-hardware.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-fixture-current/generic",
+      "source_changes": [],
+      "legacy_sha256": "170d01b0fe5db442942ea773dc6f6e10f11d8ffbea56fce15033c7bd703f74f0",
+      "generic_sha256": "eb8056f6313c1fd8954e450fc6468b58522b49baf38bd1c131d7f8c2a2f79462",
+      "different_channels": 423,
+      "different_pixels": 219,
+      "max_byte_delta": 82,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "waterlab-base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "reused_generic": null,
+      "source_changes": [],
+      "legacy_sha256": "41488165d0a25b358752f37f86a3c4a4b549bf914283423afcbf4c325fcc91d0",
+      "generic_sha256": "54559a56cff81836cc0ba353d1ec85d413e8c91d563aab6f0e26ec90a77105e8",
+      "different_channels": 95513,
+      "different_pixels": 39871,
+      "max_byte_delta": 140,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "waterlab-integer": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-waterlab-noise-controls/integer.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-waterlab-current/generic",
+      "source_changes": [],
+      "legacy_sha256": "54559a56cff81836cc0ba353d1ec85d413e8c91d563aab6f0e26ec90a77105e8",
+      "generic_sha256": "54559a56cff81836cc0ba353d1ec85d413e8c91d563aab6f0e26ec90a77105e8",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "waterlab-sin": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-waterlab-noise-controls/sin.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-waterlab-current/generic",
+      "source_changes": [],
+      "legacy_sha256": "41488165d0a25b358752f37f86a3c4a4b549bf914283423afcbf4c325fcc91d0",
+      "generic_sha256": "54559a56cff81836cc0ba353d1ec85d413e8c91d563aab6f0e26ec90a77105e8",
+      "different_channels": 95513,
+      "different_pixels": 39871,
+      "max_byte_delta": 140,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    }
+  },
+  "stock_gates": {
+    "initial-generic": {
+      "status": "fail",
+      "seconds": 28.082,
+      "log": "lane fixture (7.5 s)\n  ok    fixture: at http://127.0.0.1:53870/realms/fixture\n  ok    fixture: the engine started\n  ok    fixture: no errors\n  ok    fixture: draws (2.0% lit, at least 1.5%)\n  FAIL  fixture: matches its golden (29 blocks changed, 6 allowed, 0 moving, x 128-1272, y 8-800; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-iVXoWl/fixture.png)\n  time  fixture: 7.4 s\nlane waterlab (7.1 s)\n  ok    waterlab: at http://127.0.0.1:53870/realms/waterlab\n  ok    waterlab: the engine started\n  ok    waterlab: no errors\n  ok    waterlab: draws (100.0% lit, at least 50.0%)\n  FAIL  waterlab: matches its golden (2465 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-656; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-K3LDnO/waterlab.png)\n  time  waterlab: 7.0 s\nlane drop (7.0 s)\n  ok    drop: at http://127.0.0.1:53870/realms/drop\n  ok    drop: the engine started\n  ok    drop: no errors\n  ok    drop: draws (13.4% lit, at least 1.5%)\n  ok    drop: matches its golden (1 blocks changed, 6 allowed, 1592 moving, x 680-688, y 8-16)\n  time  drop: 7.0 s\nlane watchtower (5.0 s)\n  ok    watchtower: at http://127.0.0.1:53870/realms/watchtower\n  ok    watchtower: the engine started\n  ok    watchtower: no errors\n  ok    watchtower: draws (3.9% lit, at least 2.0%)\n  NEW REALM watchtower: no golden yet, approve with `bun coax/web/goldens.ts http://127.0.0.1:53870 --update`, look at /Users/christopherdavid/work/openagents-aethyr-book/coax/web/goldens/pending/watchtower.png and commit coax/web/goldens/watchtower.png\n  time  watchtower: 4.9 s\ngoldens http://127.0.0.1:53870: 2 failed in 27.9 s (1 tabs)\n"
+    },
+    "original-legacy": {
+      "status": "pass",
+      "seconds": 16.202,
+      "log": "lane fixture (7.6 s)\n  ok    fixture: at http://127.0.0.1:54071/realms/fixture\n  ok    fixture: the engine started\n  ok    fixture: no errors\n  ok    fixture: draws (2.0% lit, at least 1.5%)\n  ok    fixture: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  fixture: 7.5 s\nlane waterlab (7.2 s)\n  ok    waterlab: at http://127.0.0.1:54071/realms/waterlab\n  ok    waterlab: the engine started\n  ok    waterlab: no errors\n  ok    waterlab: draws (100.0% lit, at least 50.0%)\n  ok    waterlab: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  waterlab: 7.2 s\ngoldens http://127.0.0.1:54071: passed in 16.1 s (1 tabs)\n"
+    },
+    "restored-sine": {
+      "status": "pass",
+      "seconds": 15.88,
+      "log": "lane fixture (7.5 s)\n  ok    fixture: at http://127.0.0.1:54212/realms/fixture\n  ok    fixture: the engine started\n  ok    fixture: no errors\n  ok    fixture: draws (2.0% lit, at least 1.5%)\n  ok    fixture: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  fixture: 7.5 s\nlane waterlab (7.4 s)\n  ok    waterlab: at http://127.0.0.1:54212/realms/waterlab\n  ok    waterlab: the engine started\n  ok    waterlab: no errors\n  ok    waterlab: draws (100.0% lit, at least 50.0%)\n  ok    waterlab: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  waterlab: 7.4 s\ngoldens http://127.0.0.1:54212: passed in 15.7 s (1 tabs)\n"
+    },
+    "migrated-generic": {
+      "status": "pass",
+      "seconds": 17.106,
+      "log": "lane fixture (7.6 s)\n  ok    fixture: at http://127.0.0.1:55709/realms/fixture\n  ok    fixture: the engine started\n  ok    fixture: no errors\n  ok    fixture: draws (2.0% lit, at least 1.5%)\n  ok    fixture: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  fixture: 7.6 s\nlane waterlab (7.8 s)\n  ok    waterlab: at http://127.0.0.1:55709/realms/waterlab\n  ok    waterlab: the engine started\n  ok    waterlab: no errors\n  ok    waterlab: draws (100.0% lit, at least 50.0%)\n  ok    waterlab: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  waterlab: 7.6 s\ngoldens http://127.0.0.1:55709: passed in 17.0 s (1 tabs)\n"
+    },
+    "migrated-integer": {
+      "status": "pass",
+      "seconds": 17.256,
+      "log": "lane fixture (8.0 s)\n  ok    fixture: at http://127.0.0.1:55714/realms/fixture\n  ok    fixture: the engine started\n  ok    fixture: no errors\n  ok    fixture: draws (2.0% lit, at least 1.5%)\n  ok    fixture: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  fixture: 8.0 s\nlane waterlab (7.6 s)\n  ok    waterlab: at http://127.0.0.1:55714/realms/waterlab\n  ok    waterlab: the engine started\n  ok    waterlab: no errors\n  ok    waterlab: draws (100.0% lit, at least 50.0%)\n  ok    waterlab: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  waterlab: 7.4 s\ngoldens http://127.0.0.1:55714: passed in 17.1 s (1 tabs)\n"
+    }
+  },
+  "baseline_migration": {
+    "schema": "aethyr.render.visible-noise-pairs.v1",
+    "cases": {
+      "fixture": {
+        "images": {
+          "before.png": "74c3634c43895e70288747a2628c2b8b79cf023b3ddabddf3ddbb8d3c8a78be7",
+          "after.png": "14951a7dc650a7ad72c2d06c39b5ad769baaa8865e78569cfc7c32e109180bc2"
+        },
+        "baseline_updated": true,
+        "new_baseline_sha256": "14951a7dc650a7ad72c2d06c39b5ad769baaa8865e78569cfc7c32e109180bc2"
+      },
+      "waterlab": {
+        "images": {
+          "before.png": "563ee0942175fd5c88395ad03b0a1e623a1ccb2fea9154a63699e181572affcb",
+          "after.png": "eb82bff102aa64bc5b736e7fb3d3f1d44c084f0174855508811b74132e11f473"
+        },
+        "baseline_updated": true,
+        "new_baseline_sha256": "eb82bff102aa64bc5b736e7fb3d3f1d44c084f0174855508811b74132e11f473"
+      }
+    },
+    "visual_reviews": [
+      {
+        "reviewer": "root",
+        "finding": "Fixture retains camera, object silhouettes, circular ground lines, lamp and HUD; star placement changes. Waterlab retains horizon, camera, coastline, wave bands, foam and palette; cloud/noise changes. Small Fixture object texture differences also come from explicit eight-tap sampling, independently isolated with shader controls."
+      },
+      {
+        "reviewer": "aethyr_review",
+        "finding": "No additional regression in supplied static views. Fixture viewpoint, object silhouettes and material visibility, ground rings, central lamp/halo and HUD aligned; star placement changes. Waterlab camera, horizon height, coastline shape, wave bands, foam and overall palette preserved; cloud/noise structure changes. No texture holes, seams, missing geometry or HUD displacement visible."
+      }
+    ],
+    "scope": "Two existing production golden scenarios. Before/after review precedes baseline migration. Six-block allowance unchanged; numerical image tolerance separate."
+  },
+  "source_epoch": "All consumed served bytes retained by digest, current host214003ec and render824e1128. Old-executor and shared-renderer producer bytes match; decoded physical texture equivalence is established separately by texture qualification.",
+  "fixture_sampling_isolation": "Noise-only restoration leaves145pixels/207channels different from oldraw inside textured object bounds x90..230,y39..88. Restoring the old implicit texture-array call as well closes the old image exactly. A coarse-derivative diagnostic emits byte-identical WGSL to sine-only and supplies no distinct GPU evidence.",
+  "scope": "Two existing production golden scenarios, original six-block allowance unchanged. Fixture stars/noise and explicit eight-tap object filtering are recorded separately; Waterlab visible differences isolate to noise. Both reviewers inspect original and current screenshots before PNG changes. Numerical CPU/GPU acceptance is separate.",
+  "archive": {
+    "file": "artifacts.tar.gz",
+    "sha256": "d9d9b015e1174ba738cd2931b357a3d4acb97591247a9874a72672ed87b30e72",
+    "bytes": 4370967
+  }
+}

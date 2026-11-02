@@ -1,0 +1,4 @@
+// Shared source part: a media command's first-line window is independent of
+// the renderer's48 binding resources or dynamic stores.
+#module "aethyr.render.media.limits";
+RENDER_MEDIA_ITEMS :: 112;

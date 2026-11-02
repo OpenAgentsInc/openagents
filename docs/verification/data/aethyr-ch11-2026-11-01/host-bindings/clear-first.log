@@ -1,0 +1,4 @@
+aethyr/render/tests/host-bindings-checks.coax:170:15: error[E0315]: procedure 'render_host_clear' is not declared
+    rhbt_clear:=render_host_clear();
+                ^
+1 error

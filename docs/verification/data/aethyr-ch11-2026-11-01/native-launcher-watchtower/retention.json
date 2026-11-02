@@ -1,0 +1,19 @@
+{
+  "scope": "Actual full ordinary90-frame Watchtower launcher flow; later independent native identity fixes have separate qualification. Exact still-matching sources retained; changed later files are explicitly not relabelled.",
+  "files": {
+    "receipt.json": "2779c58c7e092d20cfe5b1e5e910fb14d0bba74696e94e96ff0edf7257d0e453",
+    "execution.log": "92e5e200de0f16bd122d81d7c6a261338713b66c9cbfd5ce5da23d5f4834503d",
+    "source-snapshot.tar.gz": "b1fe3a90203a293ecd7ed4ca7511ca6374a3de1838196647a421f70426af2c99"
+  },
+  "matching_source_count": 14,
+  "later_changed_sources": {
+    "verse/gpu/vk-realm.c": {
+      "execution_sha256": "98d5da88177e23bb218585f2466b00e31fc356437fc19dc98338e997b52dbc9d",
+      "later_current_sha256": "1e44752bdc0d645c4e981d84c0188385458b2a47890f9f2d2c1b44de4a01589a"
+    },
+    "verse/native/render-realm.c": {
+      "execution_sha256": "01ef44c684337b2fa2b1c5198ca90d98e9404be1ed7428e7ce5b5a4ad64ed364",
+      "later_current_sha256": "fe9a38ca1e226f39453c4f4f0fa4c06cd07d68acab84b7e7f548603724582f52"
+    }
+  }
+}

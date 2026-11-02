@@ -1,0 +1,14 @@
+#forall "quad value word views expose exactly the four owned lanes" which:0..<4 {
+ tree:=RQ_IR_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);memory:[64]u32;
+ m:=[1]RQMachine.[RQMachine.{types=p.types,used=2}];types:=[4]int.[0,2,5,6];counts:=[4]int.[0,4,8,16];
+ v:=rq_ir_value(m[..],meta[..],memory[..],types[which]);for j:0..<64 {memory[j]=cast(u32)(100+j);}
+ words:=rq_ir_value_words(memory[..],v);#assert words.count==counts[which];
+ for j:0..<words.count {#assert words[j]==cast(u32)(102+j);}
+ if words.count>0 {words[words.count-1]=777;#assert memory[2+counts[which]-1]==777;}
+ #assert memory[1]==101 && memory[2+counts[which]]==cast(u32)(102+counts[which]);
+}
+#test "quad one byte view elements retain their exact physical storage domain" {
+ source:[1]u32;buffers:=[1]RQBuffer.[RQBuffer.{words=source[..],count=4,stride=1}];m:=[1]RQMachine.[RQMachine.{}];
+ b:=rq_ir_buffer_view(m[..],RQResources.{buffers=buffers[..]},0,1);#assert m[0].status==RQStatus.ok && b.count==4 && b.stride==1;
+ m[0].status=RQStatus.ok;b=rq_ir_buffer_view(m[..],RQResources.{buffers=buffers[..]},-1,1);#assert m[0].status==RQStatus.resource;
+}

@@ -1,0 +1,80 @@
+// Call-frame transport checks use admitted word trees; no mutation of their
+// prepared metadata. The independent frames deliberately use nonzero arena
+// offsets, partial lane masks and live caller-private descriptors.
+RQ_IR_CALL_TREE :: [23]u32.[2,6,0,1,2,3,4,5,1,1,1,1,2,1,4,3,4,18,0,1,1,0,77];
+#test "quad calls return only active lanes and reclaim every callee frame slot" {
+ tree:=RQ_IR_CALL_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[64]u32;for i:0..<64 {memory[i]=999;}
+ m:=[1]RQMachine.[RQMachine.{version=p.version,types=p.types,procs=p.procs,budget=100,used=2,at=777,private_count=2,terminated=8}];
+ m[0].private_views[0]=RQPrivate.{at=41,elem=2,count=3,lane_words=3};m[0].private_views[1]=RQPrivate.{at=47,elem=4,count=2,lane_words=2};
+ value:=rq_ir_value(m[..],meta[..],memory[..],1);expected:=[4]u64.[1,0,1,0];
+ for lane:0..<4 {rq_ir_put_u64(memory[..],value,lane,expected[lane]);}
+ args:=[1]RQValue.[value];result:=rq_ir_call(m[..],tree[..],meta[..],memory[..],RQResources.{},0,args[..],5);
+ #assert m[0].status==RQStatus.ok && m[0].at==777 && m[0].used==10 && m[0].private_count==2 && m[0].terminated==8 && m[0].nesting==0 && m[0].steps==3;
+ #assert result.ty==1 && result.at==6 && result.words==1;
+ for lane:0..<4 {#assert rq_ir_u64(memory[..],result,lane)==expected[lane];}
+ #assert memory[0]==999 && memory[1]==999 && memory[24]==999;
+ #assert m[0].private_views[0].at==41 && m[0].private_views[0].count==3 && m[0].private_views[1].at==47 && m[0].private_views[1].elem==4;
+}
+#test "quad call slot admission refuses before reserving outside its owned arena" {
+ tree:=RQ_IR_CALL_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[32]u32;m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,budget=100,used=2,at=83}];
+ value:=rq_ir_value(m[..],meta[..],memory[..],1);args:=[1]RQValue.[value];
+ result:=rq_ir_call(m[..],tree[..],meta[..],memory[0..<11],RQResources.{},0,args[..],15);
+ #assert m[0].status==RQStatus.capacity && m[0].steps==0 && m[0].used==10 && m[0].at==83;
+ #assert result.ty==1 && result.at==6 && result.words==1;
+}
+#test "quad call arguments refuse wrong arity or type before interpreting the body" {
+ tree:=RQ_IR_CALL_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[64]u32;args:[1]RQValue;m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,budget=100,at=83}];
+ result:=rq_ir_call(m[..],tree[..],meta[..],memory[..],RQResources.{},0,args[0..<0],15);
+ #assert m[0].status==RQStatus.malformed && m[0].steps==0 && m[0].used==0 && m[0].at==83;
+ m[0]=RQMachine.{types=p.types,procs=p.procs,budget=100,at=83};args[0]=rq_ir_value(m[..],meta[..],memory[..],4);
+ result=rq_ir_call(m[..],tree[..],meta[..],memory[..],RQResources.{},0,args[..],15);
+ #assert m[0].status==RQStatus.malformed && m[0].steps==0 && m[0].at==83;
+}
+#test "quad zero-local void calls need no arena words and preserve an earlier refusal" {
+ tree:=[17]u32.[2,6,0,1,2,3,4,5,1,0,0,0,1,5,1,1,0];
+ meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[1]u32;args:[1]RQValue;m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,budget=1,at=91}];
+ r:=rq_ir_call(m[..],tree[..],meta[..],memory[0..<0],RQResources.{},0,args[0..<0],15);
+ #assert m[0].status==RQStatus.ok && m[0].used==0 && m[0].at==91 && m[0].steps==1 && r.ty==0 && r.words==0;
+ m[0]=RQMachine.{types=p.types,procs=p.procs,budget=1,at=91,status=RQStatus.resource};
+ r=rq_ir_call(m[..],tree[..],meta[..],memory[0..<0],RQResources.{},0,args[0..<0],15);
+ #assert m[0].status==RQStatus.resource && m[0].at==91 && m[0].steps==0;
+}
+#forall "quad call completion refuses escaping loop control and missing returned lanes" kind:0..<5 {
+ tree:[64]u32;tree[0]=2;tree[1]=6;for i:0..<6 {tree[2+i]=cast(u32)i;}
+ tree[8]=1;tree[9]=ifx kind==3 || kind==4 then cast(u32)1 else cast(u32)0;tree[10]=0;tree[11]=0;
+ body:[16]u32;n:=1;body[0]=ifx kind==0 then cast(u32)9 else cast(u32)10;
+ if kind==2 || kind==3 {body[0]=1;body[1]=0;n=2;}
+ if kind==4 {body[0]=2;body[1]=33;body[2]=1;body[3]=0;body[4]=0;n=5;}
+ tree[12]=cast(u32)n;for i:0..<n {tree[13+i]=body[i];}tree[13+n]=1;tree[14+n]=1;tree[15+n]=0;
+ meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[0..<16+n],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[32]u32;args:[1]RQValue;m:=[1]RQMachine.[RQMachine.{version=p.version,stage=1,types=p.types,procs=p.procs,budget=100,at=101}];
+ r:=rq_ir_call(m[..],tree[0..<16+n],meta[..],memory[..],RQResources.{},0,args[0..<0],5);
+ if kind==2 || kind==4 {#assert m[0].status==RQStatus.ok;}else {#assert m[0].status==RQStatus.malformed;}
+ #assert m[0].at==101 && m[0].nesting==0;
+ if kind==4 {#assert m[0].terminated==5;}
+}
+#test "quad a callee's private view cannot extend its caller's descriptor lifetime" {
+ tree:=[30]u32.[2,8,0,1,2,3,4,5,8,2,2,4,9,2,1,0,0,2,7,6,6,1,2,11,0,1,5,1,1,0];
+ meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[40]u32;for i:0..<40 {memory[i]=999;}
+ args:[1]RQValue;m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,budget=100,at=1001,used=2,private_count=3}];
+ for i:0..<3 {m[0].private_views[i]=RQPrivate.{at=100+i,elem=4,count=2+i,lane_words=2+i};}
+ r:=rq_ir_call(m[..],tree[..],meta[..],memory[..],RQResources.{},0,args[0..<0],5);
+ #assert m[0].status==RQStatus.ok && m[0].used==2 && m[0].private_count==3 && m[0].at==1001 && m[0].steps==6;
+ for i:0..<3 {#assert m[0].private_views[i].at==100+i && m[0].private_views[i].count==2+i && m[0].private_views[i].elem==4;}
+ #assert m[0].private_views[3].at==8 && m[0].private_views[3].elem==2 && m[0].private_views[3].count==2 && m[0].private_views[3].lane_words==2;
+ #assert memory[4]==2147483651 && memory[5]==0 && memory[6]==2147483651 && memory[7]==0 && memory[16]==999;
+}
+#test "quad local lookup uses the actual declared slot type and both handle offsets" {
+ tree:=RQ_IR_ENTRY_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[64]u32;memory[7]=19;memory[8]=29;memory[9]=39;
+ m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,budget=100}];f:=RQFrame.{proc=0,locals=7};
+ a:=rq_ir_local(m[..],tree[..],meta[..],memory[..],f,0);b:=rq_ir_local(m[..],tree[..],meta[..],memory[..],f,1);c:=rq_ir_local(m[..],tree[..],meta[..],memory[..],f,2);
+ #assert m[0].status==RQStatus.ok && a.ty==2 && a.at==19 && a.words==1 && b.ty==4 && b.at==29 && b.words==1 && c.ty==3 && c.at==39 && c.words==1;
+ m[0].status=RQStatus.ok;a=rq_ir_local(m[..],tree[..],meta[..],memory[..],f,-1);#assert m[0].status==RQStatus.malformed;
+ m[0].status=RQStatus.ok;a=rq_ir_local(m[..],tree[..],meta[..],memory[..],f,3);#assert m[0].status==RQStatus.malformed;
+}

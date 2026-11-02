@@ -1,0 +1,144 @@
+{
+  "extent_records": [
+    {
+      "min_x": -37322.953125,
+      "max_x": 17396.3515625,
+      "min_y": -1571.1796875,
+      "max_y": 2574.46484375,
+      "max_excess": 37322.953125,
+      "setups": 97685
+    }
+  ],
+  "fragment_records": [],
+  "pixel_records": [],
+  "tool_sha256": "83c74756a2f9c60776bf13926c5346373a05b059c8d9a427fa182eff1069ab59",
+  "measurement_sha256_before": "3d4af21cbdfed16dcb0532faced4681abcccadf2d4b4fa082da9970f1da32231",
+  "profile_source_fences": {
+    "/tmp/aethyr-ch11-villa-guard-extent/profiled.c": "d90a8f5d4e2232f36f66d226dcf6501fb96de07d7c010ef19a0110a4538fb157",
+    "/tmp/aethyr-ch11-villa-guard-extent/driver.c": "24769ffb5e8686c68cad9f2b0fa21bbec0753cc276cf2415425de88f0a72282a",
+    "/private/tmp/aethyr-ch11-reference-villa-media-80x120-complex-webgpu-308/reference-frame.h": "13cbd4b3dd1524a1e5637fbf75d9f4e73d88227a6bc3457dd61ec22443041589",
+    "/tmp/aethyr-ch11-villa-guard-extent/profiled": "63a488625b97fd732ce85855ff6c9aca22c6ad9d19235b99a2d74cbc415d7f1d",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/reference-frame-native.c": "9e3bf56a5b709502a2c11bc0f162012e7c9a5f794cee564d8aae3831abab6941"
+  },
+  "schema": "aethyr.render.generated-stage-profile.v1",
+  "status": "pass",
+  "scope": "Unchanged retained generated-Coax values with effects-only stage-counter logging; result and image byte identity checked. Not a new shader/profile admission or GPU numerical qualification.",
+  "measurement_sha256": "3d4af21cbdfed16dcb0532faced4681abcccadf2d4b4fa082da9970f1da32231",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "generated_c_sha256": "bf25b2865eda1a24e3e18d4416d02e14744e5958b64c46f61c147965dd5cff35",
+  "profiled_c_sha256": "d90a8f5d4e2232f36f66d226dcf6501fb96de07d7c010ef19a0110a4538fb157",
+  "driver_sha256": "24769ffb5e8686c68cad9f2b0fa21bbec0753cc276cf2415425de88f0a72282a",
+  "stages": [
+    {
+      "entry": 0,
+      "vertex_steps": 112,
+      "fragment_steps": 130168800,
+      "vertex_groups": 1,
+      "fragment_groups": 2400
+    },
+    {
+      "entry": 5,
+      "vertex_steps": 910636424,
+      "fragment_steps": 1728920528,
+      "vertex_groups": 100004,
+      "fragment_groups": 5897
+    },
+    {
+      "entry": 9,
+      "vertex_steps": 6587904,
+      "fragment_steps": 1411639,
+      "vertex_groups": 768,
+      "fragment_groups": 1223
+    },
+    {
+      "entry": 10,
+      "vertex_steps": 560,
+      "fragment_steps": 1235090,
+      "vertex_groups": 5,
+      "fragment_groups": 530
+    },
+    {
+      "entry": 11,
+      "vertex_steps": 112,
+      "fragment_steps": 53414400,
+      "vertex_groups": 1,
+      "fragment_groups": 2400
+    },
+    {
+      "entry": 12,
+      "vertex_steps": 363688,
+      "fragment_steps": 4142390,
+      "vertex_groups": 2152,
+      "fragment_groups": 6962
+    },
+    {
+      "entry": 13,
+      "vertex_steps": 432,
+      "fragment_steps": 11760,
+      "vertex_groups": 2,
+      "fragment_groups": 140
+    }
+  ],
+  "result": {
+    "work_profile": 3,
+    "shader_ceiling": 3000000000,
+    "pixel_ceiling": 100000000,
+    "status": 0,
+    "geometry": 0,
+    "frame": 0,
+    "bad_op": -1,
+    "bad_shader": -1,
+    "bad_media": -1,
+    "shader_steps": 2837098544,
+    "pixel_steps": 169500,
+    "draws": 11,
+    "written": 43830,
+    "pass_steps": [
+      130171313,
+      0,
+      0,
+      0,
+      0,
+      2639730134,
+      0,
+      0,
+      0,
+      8003453,
+      1236185,
+      53416913,
+      4528096,
+      12450
+    ]
+  },
+  "unattributed_steps": 204705,
+  "commands": [
+    [
+      "clang",
+      "-std=c11",
+      "-O2",
+      "-ffp-contract=off",
+      "-I",
+      "/private/tmp/aethyr-ch11-reference-villa-media-80x120-complex-webgpu-308",
+      "-I",
+      "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests",
+      "/tmp/aethyr-ch11-villa-guard-extent/profiled.c",
+      "/tmp/aethyr-ch11-villa-guard-extent/driver.c",
+      "-lm",
+      "-o",
+      "/tmp/aethyr-ch11-villa-guard-extent/profiled"
+    ],
+    [
+      "/tmp/aethyr-ch11-villa-guard-extent/profiled",
+      "/private/tmp/aethyr-ch11-reference-villa-media-80x120-guard65536-308/frame.config",
+      "/tmp/aethyr-ch11-villa-guard-extent/screen.rgba32f",
+      "/tmp/aethyr-ch11-villa-guard-extent/frame.json",
+      "nearest-even",
+      "8",
+      "guard-band",
+      "65536",
+      "rgba16f",
+      "complex-world"
+    ]
+  ],
+  "elapsed_seconds": 80.51427174999844
+}

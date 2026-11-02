@@ -1,0 +1,77 @@
+{
+  "schema": "aethyr.compiler.array-coordinate.v1",
+  "status": "pass",
+  "source_commit": "2223d61c50",
+  "book_commit": "08729561f9",
+  "source_sha256": {
+    "coax/lib/compiler/shader.coax": "dd54f3f08e6417aaadf36ba91f1f3293764ef53a63545928b18db76d6b14c4c8"
+  },
+  "compiler": {
+    "path": "/Users/christopherdavid/work/openagents-aethyr-compiler/coax/bin/coax",
+    "version": "coax0 0.47.0",
+    "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+    "source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+    "provenance_input_fingerprint": "49964f9ed3abf6e9b42ea1f0681e7abc586ab3b6d0522a77a2164faf92714a7d",
+    "provenance_verified": true
+  },
+  "mutation": {
+    "total": 3876,
+    "killed": 3826,
+    "survivors": 0,
+    "preexisting_marked_equivalent": 50,
+    "new_equivalence_marks": 0,
+    "baseline_checks": 39,
+    "execution_compiler_sha256": "2ca1c98e15b57b7eda2599ec2a2d067a5ca9facd1bdb339a0bf8b010e6e63c9f",
+    "note": "Normal source-level authority mutation before rebuild. Fresh stage0 shader test/mutation also passed inside the recorded bootstrap. Three first-run survivors were new fixture transport observations; tree version/type audit sharpened them without waivers."
+  },
+  "checker_cache": {
+    "reused_existing_9253_proof": true,
+    "key": "6b3bd1c52665ed05427b40333647b3fc597be55dffc183813dbc9d9ffdd86442",
+    "note": "No C++ or seed changes; existing stage0 source-input identity and checker closure reused under the established cache policy. Raw new debug-path stage0 is not claimed to have rerun9253 mutants."
+  },
+  "build": {
+    "status": "finished",
+    "exit_status": 0,
+    "retained": true,
+    "elapsed_seconds": 125.492,
+    "log": "/tmp/aethyr-ch11-array-coordinate-compiler-build.log"
+  },
+  "artifacts": {
+    "red_regression": {
+      "path": "/tmp/aethyr-ch11-array-coordinate-red.log",
+      "sha256": "e8a5458ccffd194e5cd951fca8cbe917a4f37c1a300f3a3b152c71ca24a38bcb"
+    },
+    "source_checks": {
+      "path": "/tmp/aethyr-ch11-array-coordinate-checks.log",
+      "sha256": "fa0c5fda9cb155d206a4c693f4e1fe496a42c6e55d06d0770332d0e1061df922"
+    },
+    "first_mutation_fixture_gaps": {
+      "path": "/tmp/aethyr-ch11-array-coordinate-mutation-1.log",
+      "sha256": "3f696d238b3688c8eddb82888f0626f94aafd615e793a1e59d4a39f92fc8cc65"
+    },
+    "qualified_mutation": {
+      "path": "/tmp/aethyr-ch11-array-coordinate-mutation-3.log",
+      "sha256": "ae1054b2a003bba6f8418347402d8cbaf2bb079b763e594969a65a18ad8dd667"
+    },
+    "build_log": {
+      "path": "/tmp/aethyr-ch11-array-coordinate-compiler-build.log",
+      "sha256": "97643f0f312916c57db6b7779535ec76575f788ff13dc79f81a56f9dac760167"
+    },
+    "build_receipt": {
+      "path": "/tmp/aethyr-ch11-array-coordinate-compiler-build.json",
+      "sha256": "3d1a01fe8b528bbaca1c20302e213b5848b5bcfdc648ea07ae0fb5cb9b70d4e0"
+    }
+  },
+  "native_sampling_probe": {
+    "path": "/tmp/aethyr-ch11-sampling-gpu-vec3/qualification.json",
+    "sha256": "27fa59ad5daf4356f908103ee0f3eba3015e64a85c47d7c6be28a909ecee0136",
+    "status": "passed",
+    "source_changes": [],
+    "positive_pixels_wrong": 0,
+    "planted_2d_demotion_control_wrong": 16,
+    "planted_array_demotion_control_wrong": 16,
+    "validation_errors": 0,
+    "validation_warnings": 0
+  },
+  "scope": "Sparse V2/V4 checked trees in tree2/tree3 now synthesize/cache an f32 V3 for array coordinates. Existing declared-V3 path and pinned valid module output remain unchanged. The actual six-module Vulkan probe also validates all SPIR-V and verifies 2D/2-layer array output plus missing-demotion controls on coderos-4080, with zero validation errors/warnings."
+}

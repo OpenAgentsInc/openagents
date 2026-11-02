@@ -1,0 +1,12 @@
+// Native byte/mip validation uses the same observed-format interpretation and
+// decoder as the reference frame. The C adapter only uploads the original
+// admitted bytes into the corresponding Vulkan format.
+#load "reference-texture.coax";
+aethyr_native_texture_require :: (rnt_name:string,rnt_layers:int,rnt_levels:[]RenderTextureLevel)->RFTextureNeed #export_c {
+  return rf_texture_require(rnt_name,rnt_layers,rnt_levels);
+}
+aethyr_native_texture_decode :: (rnt_name:string,rnt_layers:int,rnt_levels:[]RenderTextureLevel,rnt_bytes:[]u8,
+  rnt_out:[]RQColor,rnt_out_levels:[]RQMip)->RFTextureDecoded #export_c {
+  return rf_texture_decode(rnt_name,rnt_layers,rnt_levels,rnt_bytes,rnt_out,rnt_out_levels);
+}
+aethyr_native_texel_bytes :: (rnt_format:RenderTexelFormat)->int #export_c {return rt_pixel_bytes(rnt_format);}

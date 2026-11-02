@@ -1,0 +1,188 @@
+// Source-part authority checks for the published node/writer boundaries.
+#test "JSON authority publishes complete scalar records and resets reused parse status" {
+  jqa_nodes:[8]JvNode;jqa_d:[1]Jv;
+  for jqa_text,jqa_kind:[5]string.["true","false","null","0","\"\""] {
+    jqa_expected:=[5]int.[JV_TRUE,JV_FALSE,JV_NULL,JV_NUMBER,JV_STRING];
+    jqa_d[0]=Jv.{ok=true,count=81,err=92};
+    #assert jv_parse(jqa_d[..],jqa_text,jqa_nodes[..]);
+    #assert jqa_d[0].ok && jqa_d[0].count==1 && jqa_d[0].err==0 && jqa_d[0].text==jqa_text && jqa_d[0].nodes.count==8;
+    #assert jqa_nodes[0].kind==jqa_expected[jqa_kind] && jqa_nodes[0].first== -1 && jqa_nodes[0].next== -1 && jqa_nodes[0].count==0 && jqa_nodes[0].key_from== -1 && jqa_nodes[0].key_to== -1;
+  }
+  #assert !jv_fail(jqa_d[..],7) && !jqa_d[0].ok && jqa_d[0].count==0 && jqa_d[0].err==7;
+  #assert jqa_d[0].text=="\"\"" && jqa_d[0].nodes.count==8;
+  #assert !jv_parse(jqa_d[..],"[",jqa_nodes[..]) && !jqa_d[0].ok && jqa_d[0].count==0 && jqa_d[0].err==1;
+  #assert jv_parse(jqa_d[..],"[{},[]]",jqa_nodes[..]) && jqa_d[0].ok && jqa_d[0].count==3 && jqa_d[0].err==0;
+  #assert jv_raw(jqa_d[0],0)=="[{},[]]" && jv_raw(jqa_d[0],1)=="{}" && jv_raw(jqa_d[0],2)=="[]";
+}
+#test "JSON authority reaches the actual64container depth bound before node capacity" {
+  jqa_bytes:[130]u8;jqa_nodes:[66]JvNode;jqa_d:[1]Jv;
+  for jqa_i:0..<64 {jqa_bytes[jqa_i]='[';jqa_bytes[127-jqa_i]=']';}
+  #assert jv_parse(jqa_d[..],cast(string)jqa_bytes[0..<128],jqa_nodes[..]) && jqa_d[0].count==64 && jqa_nodes[0].to==128;
+  for jqa_i:0..<65 {jqa_bytes[jqa_i]='[';jqa_bytes[129-jqa_i]=']';}
+  #assert !jv_parse(jqa_d[..],cast(string)jqa_bytes[..],jqa_nodes[..]) && jqa_d[0].err==64 && !jqa_d[0].ok;
+}
+#test "JSON authority empty key and truncated key colon retain exact failure coordinates" {
+  jqa_nodes:[8]JvNode;jqa_d:[1]Jv;
+  #assert jv_parse(jqa_d[..],"{\"\":0}",jqa_nodes[..]) && jv_get(jqa_d[0],0,"")==1 && jqa_nodes[1].key_from==2 && jqa_nodes[1].key_to==2;
+  #assert !jv_parse(jqa_d[..],"{\"x\"",jqa_nodes[..]) && jqa_d[0].err==4;
+  #assert !jv_parse(jqa_d[..],"{\"\":\"unterminated}",jqa_nodes[..]) && jqa_d[0].err==4;
+}
+#forall "JSON authority hex and digit token endpoints classify every ASCII byte" jqa_c:0..<128 {
+  jqa_expected:=-1;
+  if jqa_c>=48 && jqa_c<=57 {jqa_expected=jqa_c-48;}
+  if jqa_c>=65 && jqa_c<=70 {jqa_expected=jqa_c-65+10;}
+  if jqa_c>=97 && jqa_c<=102 {jqa_expected=jqa_c-97+10;}
+  #assert jv_hex(cast(u8)jqa_c)==jqa_expected;
+  jqa_raw:=[2]u8.[cast(u8)jqa_c,','];
+  #assert jv_digits(cast(string)jqa_raw[..],0)==(ifx jqa_c>=48 && jqa_c<=57 then 1 else 0);
+}
+#test "JSON authority string scanning exact spans include empty values whitespace and malformed unicode" {
+  #assert jv_string_end("\"",0)==0 && jv_string_end(" \"",0)==1;
+  #assert jv_string_end("\\u0000",0)== -1 && jv_string_end("\\u00q0\"",0)== -1 && jv_string_end("\\u?000\"",0)== -1;
+  #assert jv_string_end("\\u0041",0)== -1 && jv_string_end("\\u0041\"",0)==6;
+  jqa_control:=[2]u8.[31,34];#assert jv_string_end(cast(string)jqa_control[..],0)== -1;
+  jqa_control[0]=32;#assert jv_string_end(cast(string)jqa_control[..],0)==1;
+}
+#test "JSON authority scalar scanners recognize token delimiters signed digits and missing exponent digits" {
+  for jqa_delimiter:[7]string.[" ","\t","\n","\r",",","]","}"] {
+    jqa_bytes:[8]u8;jqa_bytes[0]='9';jqa_bytes[1]=jqa_delimiter[0];#assert jv_scalar_end(cast(string)jqa_bytes[0..<2],0)==1;
+  }
+  for jqa_text:[7]string.["-0","9","1e-2","1E+2","0.9","true","null"] {#assert jv_scalar_end(jqa_text,0)==jqa_text.count;}
+  for jqa_text:[8]string.[":","1:","1e+","1E-","-:","0:","1e9:","false:"] {#assert jv_scalar_end(jqa_text,0)== -1;}
+}
+#test "JSON authority public readers refuse exact index ends and preserve absent children" {
+  jqa_nodes:[8]JvNode;jqa_d:[1]Jv;#assert jv_parse(jqa_d[..],"{\"a\":[0],\"b\":true}",jqa_nodes[..]);jqa_v:=jqa_d[0];
+  #assert !jv_ok(jqa_v,-1) && jv_ok(jqa_v,0) && jv_ok(jqa_v,3) && !jv_ok(jqa_v,4);
+  #assert jv_key(jqa_v,0)=="" && jv_key(jqa_v,-1)=="" && jv_key(jqa_v,4)=="";
+  #assert jv_at(jqa_v,0,-1)== -1 && jv_at(jqa_v,-1,0)== -1 && jv_at(jqa_v,4,0)== -1;
+  #assert jv_at(jqa_v,2,0)== -1 && jv_at(jqa_v,1,1)== -1 && jv_at(jqa_v,1,2)== -1;
+  #assert jv_get(jqa_v,0,"a")==1 && jv_get(jqa_v,0,"b")==3 && jv_get(jqa_v,0,"missing")== -1;
+}
+#test "JSON authority paths handle nine zero missing brackets and missing nested keys" {
+  jqa_nodes:[16]JvNode;jqa_d:[1]Jv;#assert jv_parse(jqa_d[..],"{\"a\":[0,1,2,3,4,5,6,7,8,9]}",jqa_nodes[..]);jqa_v:=jqa_d[0];
+  #assert jv_int(jqa_v,jv_path(jqa_v,0,"a[9]"),-1)==9 && jv_int(jqa_v,jv_path(jqa_v,0,"a[0]"),-1)==0;
+  for jqa_path:[7]string.["a[", "a[]", "a[0", "a[0:","a[:0]","a.","a..x"] {#assert jv_path(jqa_v,0,jqa_path)== -1;}
+  #assert jv_path(jqa_v,0,"a[0].x")== -1 && jv_path(jqa_v,0,"absent.x")== -1;
+}
+#test "JSON authority integer reads preserve signs exact2pow53 endpoints and reject fractional exponent or oversized words" {
+  jqa_nodes:[16]JvNode;jqa_d:[1]Jv;
+  #assert jv_parse(jqa_d[..],"[-1,-0,-9,9007199254740992,-9007199254740992,9007199254740993,10000000000000000,0.5,1e2]",jqa_nodes[..]);
+  jqa_expected:=[9]int.[-1,0,-9,9007199254740992,-9007199254740992,-71,-71,-71,-71];
+  for jqa_i:0..<9 {#assert jv_int(jqa_d[0],jv_at(jqa_d[0],0,jqa_i),-71)==jqa_expected[jqa_i];}
+}
+#test "JSON authority escaped equality handles long plain text empty decoded text and capacity refusal" {
+  jqa_bytes:[1025]u8;for jqa_i:0..<1025 {jqa_bytes[jqa_i]='a';}
+  #assert jv_raw_eq(cast(string)jqa_bytes[..],cast(string)jqa_bytes[..]) && jv_raw_eq("","");
+  jqa_bytes[0]='\\';jqa_bytes[1]='n';#assert !jv_raw_eq(cast(string)jqa_bytes[..],"different");
+  jqa_zero:=[1]u8.[0];#assert jv_raw_eq("\\u0000",cast(string)jqa_zero[..]) && !jv_raw_eq("\\u12","");
+}
+#test "JSON authority writer fits exact output boundaries and refuses larger puts without partial writes" {
+  jqa_storage:[9]u8;for jqa_i:0..<9 {jqa_storage[jqa_i]=81;}jqa_o:[1]Jo;
+  jo_start(jqa_o[..],jqa_storage[2..<7]);jo_put(jqa_o[..],"abcde");#assert !jqa_o[0].bad && jqa_o[0].n==5 && jo_text(jqa_o[..])=="abcde";
+  jo_put(jqa_o[..],"x");#assert jqa_o[0].bad && jqa_o[0].n==5 && jqa_storage[1]==81 && jqa_storage[7]==81;
+  jo_start(jqa_o[..],jqa_storage[2..<7]);jo_put(jqa_o[..],"ab");jo_put(jqa_o[..],"cdef");#assert jqa_o[0].bad && jqa_o[0].n==2 && jo_text(jqa_o[..])=="ab";
+  jo_start(jqa_o[..],jqa_storage[2..<2]);jo_put(jqa_o[..],"");#assert !jqa_o[0].bad && jqa_o[0].n==0;
+}
+#test "JSON authority writer accepts64nestedcontainers and refuses the next with its flag retained" {
+  jqa_storage:[130]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);
+  for jqa_i:0..<64 {jo_arr(jqa_o[..]);}#assert !jqa_o[0].bad && jqa_o[0].depth==64 && jqa_o[0].n==64;
+  jo_arr(jqa_o[..]);#assert jqa_o[0].bad && jqa_o[0].depth==64 && jqa_o[0].n==64;
+}
+#test "JSON authority integer writer includes zero decimal digits and the signed64 minimum" {
+  jqa_storage:[32]u8;jqa_o:[1]Jo;
+  for jqa_number,jqa_i:[5]int.[0,10,-10,-9223372036854775808,9223372036854775807] {
+    jqa_expected:=[5]string.["0","10","-10","-9223372036854775808","9223372036854775807"];
+    jo_start(jqa_o[..],jqa_storage[..]);jo_int(jqa_o[..],jqa_number);#assert !jqa_o[0].bad && jo_text(jqa_o[..])==jqa_expected[jqa_i];
+  }
+}
+#test "JSON authority UTF8 codepoint boundary 0" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(0,jqa_out[..],2)==3;jqa_expected:=[1]u8.[0];for jqa_i:0..<1 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[3]==81;#assert jv_utf8(0,jqa_out[0..<0],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 127" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(127,jqa_out[..],2)==3;jqa_expected:=[1]u8.[127];for jqa_i:0..<1 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[3]==81;#assert jv_utf8(127,jqa_out[0..<0],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 128" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(128,jqa_out[..],2)==4;jqa_expected:=[2]u8.[194,128];for jqa_i:0..<2 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[4]==81;#assert jv_utf8(128,jqa_out[0..<1],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 2047" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(2047,jqa_out[..],2)==4;jqa_expected:=[2]u8.[223,191];for jqa_i:0..<2 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[4]==81;#assert jv_utf8(2047,jqa_out[0..<1],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 2048" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(2048,jqa_out[..],2)==5;jqa_expected:=[3]u8.[224,160,128];for jqa_i:0..<3 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[5]==81;#assert jv_utf8(2048,jqa_out[0..<2],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 65535" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(65535,jqa_out[..],2)==5;jqa_expected:=[3]u8.[239,191,191];for jqa_i:0..<3 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[5]==81;#assert jv_utf8(65535,jqa_out[0..<2],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 65536" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(65536,jqa_out[..],2)==6;jqa_expected:=[4]u8.[240,144,128,128];for jqa_i:0..<4 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[6]==81;#assert jv_utf8(65536,jqa_out[0..<3],0)== -1;}
+#test "JSON authority UTF8 codepoint boundary 1114111" {jqa_out:[8]u8;for jqa_i:0..<8 {jqa_out[jqa_i]=81;}#assert jv_utf8(1114111,jqa_out[..],2)==6;jqa_expected:=[4]u8.[244,143,191,191];for jqa_i:0..<4 {#assert jqa_out[2+jqa_i]==jqa_expected[jqa_i];}#assert jqa_out[1]==81 && jqa_out[6]==81;#assert jv_utf8(1114111,jqa_out[0..<3],0)== -1;}
+#test "JSON authority Unicode escape boundary u0000" {jqa_out:[12]u8;jqa_raw:="\\u0000";#assert jv_unescape(jqa_raw,jqa_out[..])==1;jqa_expected:=[1]u8.[0];for jqa_i:0..<1 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ud800udc00" {jqa_out:[12]u8;jqa_raw:="\\ud800\\udc00";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[240,144,128,128];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary udbffudfff" {jqa_out:[12]u8;jqa_raw:="\\udbff\\udfff";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[244,143,191,191];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary udbffudc00" {jqa_out:[12]u8;jqa_raw:="\\udbff\\udc00";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[244,143,176,128];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ud800udfff" {jqa_out:[12]u8;jqa_raw:="\\ud800\\udfff";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[240,144,143,191];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ud7ff" {jqa_out:[12]u8;jqa_raw:="\\ud7ff";#assert jv_unescape(jqa_raw,jqa_out[..])==3;jqa_expected:=[3]u8.[237,159,191];for jqa_i:0..<3 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary udfff" {jqa_out:[12]u8;jqa_raw:="\\udfff";#assert jv_unescape(jqa_raw,jqa_out[..])==3;jqa_expected:=[3]u8.[239,191,189];for jqa_i:0..<3 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ue000" {jqa_out:[12]u8;jqa_raw:="\\ue000";#assert jv_unescape(jqa_raw,jqa_out[..])==3;jqa_expected:=[3]u8.[238,128,128];for jqa_i:0..<3 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ud800x" {jqa_out:[12]u8;jqa_raw:="\\ud800x";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[239,191,189,120];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority Unicode escape boundary ud800u0041" {jqa_out:[12]u8;jqa_raw:="\\ud800\\u0041";#assert jv_unescape(jqa_raw,jqa_out[..])==4;jqa_expected:=[4]u8.[239,191,189,65];for jqa_i:0..<4 {#assert jqa_out[jqa_i]==jqa_expected[jqa_i];}jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert !jqa_o[0].bad;}
+#test "JSON authority malformed raw Unicode and output exhaustion report refusal" {jqa_out:[8]u8;for jqa_raw:[6]string.["\\", "\\u", "\\u12", "\\u?000", "\\uD800\\u?000", "\\uD800\\uDC0"] {#assert jv_unescape(jqa_raw,jqa_out[..])== -1;}#assert jv_unescape("\\n",jqa_out[0..<0])== -1;}
+#test "JSON authority writer byte boundary 0" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[0];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[8]u8.[34,92,117,48,48,48,48,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 1" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[1];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[8]u8.[34,92,117,48,48,48,49,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 15" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[15];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[8]u8.[34,92,117,48,48,48,102,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 16" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[16];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[8]u8.[34,92,117,48,48,49,48,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 31" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[31];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[8]u8.[34,92,117,48,48,49,102,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 32" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[32];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[3]u8.[34,32,34];#assert !jqa_o[0].bad && jqa_o[0].n==3;for jqa_i:0..<3 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 33" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[33];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[3]u8.[34,33,34];#assert !jqa_o[0].bad && jqa_o[0].n==3;for jqa_i:0..<3 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 34" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[34];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[4]u8.[34,92,34,34];#assert !jqa_o[0].bad && jqa_o[0].n==4;for jqa_i:0..<4 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 92" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[92];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[4]u8.[34,92,92,34];#assert !jqa_o[0].bad && jqa_o[0].n==4;for jqa_i:0..<4 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+#test "JSON authority writer byte boundary 127" {jqa_storage:[16]u8;jqa_o:[1]Jo;jqa_raw:=[1]u8.[127];jo_start(jqa_o[..],jqa_storage[..]);jo_quoted(jqa_o[..],cast(string)jqa_raw[..]);jqa_expected:=[3]u8.[34,127,34];#assert !jqa_o[0].bad && jqa_o[0].n==3;for jqa_i:0..<3 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}}
+
+#test "JSON authority parser refuses truncated live views at the exact observed endpoint" {
+  jqa_nodes:[8]JvNode;jqa_d:[1]Jv;jqa_text:="[1,2]";
+  #assert !jv_parse(jqa_d[..],jqa_text[0..<2],jqa_nodes[..]) && jqa_d[0].err==2;
+  #assert !jv_parse(jqa_d[..],"[1",jqa_nodes[..]) && jqa_d[0].err==2;
+  #assert !jv_parse(jqa_d[..],"{\"unterminated",jqa_nodes[..]) && jqa_d[0].err==1;
+  #assert jv_scalar_end("",0)== -1 && jv_scalar_end("-",0)== -1;
+  #assert jv_string_end("ab\\",0)== -1 && jv_string_end("ab\\u0",0)== -1;
+}
+#test "JSON authority paths preserve multicharacter and chained indexes and reject colon as a digit" {
+  jqa_nodes:[32]JvNode;jqa_d:[1]Jv;
+  #assert jv_parse(jqa_d[..],"{\"a\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]}",jqa_nodes[..]);
+  #assert jv_int(jqa_d[0],jv_path(jqa_d[0],0,"a[10]"),-1)==10 && jv_int(jqa_d[0],jv_path(jqa_d[0],0,"a[20]"),-1)==20;
+  #assert jv_path(jqa_d[0],0,"a[1:]")== -1;
+  #assert jv_parse(jqa_d[..],"[[1]]",jqa_nodes[..]) && jv_int(jqa_d[0],jv_path(jqa_d[0],0,"[0][0]"),-1)==1;
+}
+#test "JSON authority integer overflow refuses before multiplication and malformed raw digits use fallback" {
+  jqa_nodes:[4]JvNode;jqa_d:[1]Jv;
+  for jqa_text:[3]string.["9999999999999999999","-9999999999999999999","-100000000000000000"] {#assert jv_parse(jqa_d[..],jqa_text,jqa_nodes[..]) && jv_int(jqa_d[0],0,-71)== -71;}
+  // Public node views may be supplied by native transport; their digit byte
+  // still has to be admitted by this reader before integer accumulation.
+  jqa_nodes[0]=JvNode.{kind=JV_NUMBER,from=0,to=1};jqa_v:=Jv.{text=":",nodes=jqa_nodes[..],count=1};#assert jv_int(jqa_v,0,-71)== -71;
+}
+#test "JSON authority escaped capacity failure stops before a following raw byte write" {
+  jqa_out:[2]u8;#assert jv_unescape("\\u20acx",jqa_out[..])== -1;
+}
+#test "JSON authority UTF8 exactcapacity 0" {jqa_out:[1]u8;#assert jv_utf8(0,jqa_out[..],0)==1;}
+#test "JSON authority UTF8 exactcapacity 127" {jqa_out:[1]u8;#assert jv_utf8(127,jqa_out[..],0)==1;}
+#test "JSON authority UTF8 exactcapacity 128" {jqa_out:[2]u8;#assert jv_utf8(128,jqa_out[..],0)==2;}
+#test "JSON authority UTF8 exactcapacity 2047" {jqa_out:[2]u8;#assert jv_utf8(2047,jqa_out[..],0)==2;}
+#test "JSON authority UTF8 exactcapacity 2048" {jqa_out:[3]u8;#assert jv_utf8(2048,jqa_out[..],0)==3;}
+#test "JSON authority UTF8 exactcapacity 65535" {jqa_out:[3]u8;#assert jv_utf8(65535,jqa_out[..],0)==3;}
+#test "JSON authority UTF8 exactcapacity 65536" {jqa_out:[4]u8;#assert jv_utf8(65536,jqa_out[..],0)==4;}
+#test "JSON authority UTF8 exactcapacity 1114111" {jqa_out:[4]u8;#assert jv_utf8(1114111,jqa_out[..],0)==4;}
+#test "JSON authority requote completebytes case 0" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\ud800\\udc00x");jqa_expected:=[7]u8.[34,240,144,128,128,120,34];#assert !jqa_o[0].bad && jqa_o[0].n==7;for jqa_i:0..<7 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\ud800\\udc00x",jqa_out[..])==5;}
+#test "JSON authority requote completebytes case 1" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\udbff\\udfffz");jqa_expected:=[7]u8.[34,244,143,191,191,122,34];#assert !jqa_o[0].bad && jqa_o[0].n==7;for jqa_i:0..<7 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\udbff\\udfffz",jqa_out[..])==5;}
+#test "JSON authority requote completebytes case 2" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\udc00\\udc00");jqa_expected:=[8]u8.[34,239,191,189,239,191,189,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\udc00\\udc00",jqa_out[..])==6;}
+#test "JSON authority requote completebytes case 3" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\ud800\\ue000");jqa_expected:=[8]u8.[34,239,191,189,238,128,128,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\ud800\\ue000",jqa_out[..])==6;}
+#test "JSON authority requote completebytes case 4" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\u0041\\udc00");jqa_expected:=[6]u8.[34,65,239,191,189,34];#assert !jqa_o[0].bad && jqa_o[0].n==6;for jqa_i:0..<6 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\u0041\\udc00",jqa_out[..])==4;}
+#test "JSON authority requote completebytes case 5" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\ud800\\u0041");jqa_expected:=[6]u8.[34,239,191,189,65,34];#assert !jqa_o[0].bad && jqa_o[0].n==6;for jqa_i:0..<6 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\ud800\\u0041",jqa_out[..])==4;}
+#test "JSON authority requote completebytes case 6" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\udc00\\udfff");jqa_expected:=[8]u8.[34,239,191,189,239,191,189,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\udc00\\udfff",jqa_out[..])==6;}
+#test "JSON authority requote completebytes case 7" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\udfff\\ue000");jqa_expected:=[8]u8.[34,239,191,189,238,128,128,34];#assert !jqa_o[0].bad && jqa_o[0].n==8;for jqa_i:0..<8 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\udfff\\ue000",jqa_out[..])==6;}
+#test "JSON authority requote completebytes case 8" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\udbff\\udc00");jqa_expected:=[6]u8.[34,244,143,176,128,34];#assert !jqa_o[0].bad && jqa_o[0].n==6;for jqa_i:0..<6 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\udbff\\udc00",jqa_out[..])==4;}
+#test "JSON authority requote completebytes case 9" {jqa_storage:[64]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\ud800\\udfff");jqa_expected:=[6]u8.[34,240,144,143,191,34];#assert !jqa_o[0].bad && jqa_o[0].n==6;for jqa_i:0..<6 {#assert jqa_storage[jqa_i]==jqa_expected[jqa_i];}jqa_out:[32]u8;#assert jv_unescape("\\ud800\\udfff",jqa_out[..])==4;}
+#test "JSON authority requote malformed escape reports its writer bad flag" {
+  jqa_storage:[64]u8;jqa_o:[1]Jo;
+  for jqa_raw:[7]string.["\\","\\u","\\u12","\\u?000","\\ud800\\","\\ud800\\u","\\ud800\\u?000"] {
+    jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],jqa_raw);#assert jqa_o[0].bad;
+  }
+  jqa_out:[16]u8;#assert jv_unescape("\\ud800\\",jqa_out[..])== -1 && jv_unescape("\\ud800\\u",jqa_out[..])== -1;
+}
+
+#test "JSON authority unescape refuses unknown simple escapes and requotes a final complete simple escape" {
+  jqa_out:[16]u8;
+  for jqa_raw:[3]string.["\\q","\\x","\\ "] {#assert jv_unescape(jqa_raw,jqa_out[..])== -1;}
+  jqa_storage:[8]u8;jqa_o:[1]Jo;jo_start(jqa_o[..],jqa_storage[..]);jo_requote(jqa_o[..],"\\n");
+  #assert !jqa_o[0].bad && jo_text(jqa_o[..])=="\"\\n\"";
+}
+#test "JSON authority integer accumulation refuses the next decimal prefix above its exact limit" {
+  jqa_nodes:[2]JvNode;jqa_d:[1]Jv;
+  #assert jv_parse(jqa_d[..],"9007199254741000",jqa_nodes[..]) && jv_int(jqa_d[0],0,-71)== -71;
+}

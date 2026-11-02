@@ -1,6 +1,7 @@
 // Everglade's particles, the source of everglade-fx.wgsl (G6): build.sh writes that module from this
 // with coax/web/wgsl-module.coax (gpu-fx.module, gpu-fx.bindings), and coax spirv lowers it for
 // the GPU. It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../aethyr/render/noise.coax";
 #load "../gpu/wgsl.coax";
 #load "../style.coax";
 
@@ -99,8 +100,11 @@ egfx_particle_over_vs :: (v:u32,n:u32,u:[]f32,puffs:[]EgfxPuff)->EgfxP {
   }
   return egfx_place(v,n,u,puffs);
 }
+#test "egfx_hash2 live lattice uses the portable integer noise profile" {
+  #assert f32_bits(egfx_hash2(v2(1,2)))==0x3f6013da;
+}
 egfx_hash2 :: (p:V2)->f32 {
-  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+  return render_noise2(p.x,p.y);
 }
 egfx_noise2 :: (p:V2)->f32 {
   i:V2=wg_floor_f2(p);
@@ -169,7 +173,7 @@ egfx_particle_fs :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->V4 {
     }
     r2:f32=wg_dot2(q,q);
     if (r2>=1.0f32) {
-      gpu_discard();
+      gpu_demote_helper();
     }
     a=exp((-r2)*3.5f32)*(1.0f32-r2);
     c=wg_mix_f3f3f(c,wg_make_f3_f(fmax(c.x,fmax(c.y,c.z))),p.colour.w*exp((-r2)*18.0f32));
@@ -177,7 +181,7 @@ egfx_particle_fs :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->V4 {
     // fire: its body is drawn over (particle_over_fs); here only its heat's glow, which blooms
     m:f32=egfx_billow(p.corner,p.look.y,0.6f32,0.08f32,p.look.z,u);
     if (m<=0.002f32) {
-      gpu_discard();
+      gpu_demote_helper();
     }
     c=wg_mul_f3f(egfx_fire(p,m,u),(0.08f32+(0.4f32*p.colour.w)));
     a=m;
@@ -191,7 +195,7 @@ egfx_particle_over_fs :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->V4 {
     // a billow of fire: its own light, covering what is behind as thickly as it is there
     m:f32=egfx_billow(p.corner,p.look.y,0.6f32,0.08f32,p.look.z,u);
     if (m<=0.002f32) {
-      gpu_discard();
+      gpu_demote_helper();
     }
     a:f32=((clampf(m,0.0f32,1.0f32)*p.near)*egfx_far(p.look.w,u))*egfx_soft(p,u,particle_depth);
     return wg_make_f4_f3f(wg_mul_f3f(egfx_fire(p,m,u),a),a);
@@ -199,7 +203,7 @@ egfx_particle_over_fs :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->V4 {
   // smoke: lit from above, darker under, ragged and churning, as thick as it says
   m:f32=egfx_billow(p.corner,p.look.y,0.7f32,0.12f32,p.colour.w,u);
   if (m<=0.002f32) {
-    gpu_discard();
+    gpu_demote_helper();
   }
   a:f32=((clampf(m*fmin(p.colour.w*1.6f32,0.92f32),0.0f32,1.0f32)*p.near)*egfx_far(p.look.w,u))*egfx_soft(p,u,particle_depth);
   // a ball of smoke lit from above: its top and its bulges catch the light, its underside in shadow

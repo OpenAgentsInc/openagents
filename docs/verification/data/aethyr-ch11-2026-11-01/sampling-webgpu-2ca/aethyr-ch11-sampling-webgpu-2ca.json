@@ -1,0 +1,159 @@
+{
+  "device": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "messages": [],
+  "errors": [],
+  "results": [
+    {
+      "entry": "render_sampling_fs",
+      "wrong": 0,
+      "actual": [
+        0.25,
+        0.4375,
+        0.25,
+        1,
+        0.25,
+        0.4375,
+        0.25,
+        1,
+        0.25,
+        0.4375,
+        0.25,
+        1,
+        0.25,
+        0.4375,
+        0.25,
+        1
+      ]
+    },
+    {
+      "entry": "render_sampling_invalid_fs",
+      "wrong": 0,
+      "actual": [
+        0.125,
+        0.25,
+        0.5,
+        0.75,
+        0.125,
+        0.25,
+        0.5,
+        0.75,
+        0.125,
+        0.25,
+        0.5,
+        0.75,
+        0.125,
+        0.25,
+        0.5,
+        0.75
+      ]
+    },
+    {
+      "entry": "render_sampling_array_fs",
+      "wrong": 0,
+      "actual": [
+        0.75,
+        0.5,
+        0.125,
+        1,
+        0.75,
+        0.5,
+        0.125,
+        1,
+        0.75,
+        0.5,
+        0.125,
+        1,
+        0.75,
+        0.5,
+        0.125,
+        1
+      ]
+    },
+    {
+      "entry": "render_sampling_invalid_array_fs",
+      "wrong": 0,
+      "actual": [
+        0.125,
+        0.25,
+        0.5,
+        0.75,
+        0.125,
+        0.25,
+        0.5,
+        0.75,
+        0.125,
+        0.25,
+        0.5,
+        0.75,
+        0.125,
+        0.25,
+        0.5,
+        0.75
+      ]
+    },
+    {
+      "entry": "render_sampling_invalid_fs",
+      "wrong": 16,
+      "actual": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "entry": "render_sampling_invalid_array_fs",
+      "wrong": 16,
+      "actual": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/156.0.8078.80",
+    "revision": "@fb096c0011f9d50f0a264a9376420cdea9c421e3",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "jsVersion": "15.6.75.27"
+  },
+  "source_inputs": {
+    "/tmp/aethyr-ch11-sampling-2ca.wgsl": "b681b31769fbf6434f28079404eb4ea62c302b36b1f9bec07e985a3c1556d013",
+    "/tmp/aethyr-ch11-sampling-fault-2ca.wgsl": "360566081774c117a27924ed13d54ccb3c3547463423d1fcf9fdbeb85b81491b",
+    "/tmp/aethyr-ch11-sampling-fault-array-2ca.wgsl": "383c4939a467fd114fc3720acc16a77361fd00803f22edff7f669ef8229d874c",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_sampling_webgpu.ts": "02a944236ad9f0d4a35b7b13f20c46b66645900dd1257cb1328e9bf0f7587045",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/chrome.ts": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3"
+  },
+  "source_changes": []
+}

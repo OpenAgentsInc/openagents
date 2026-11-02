@@ -1,0 +1,462 @@
+#test the calendar: J2000 and 1 January 2200
+#test a trip to any ice rock near Ceres is planned in months, not a loop round the Sun
+#test an ice rock beside Ceres is a cheap hop: a few km/s on the economy plan, well inside RASP's tanks
+#test GO FAST to the nearest ice rock is weeks, within RASP's propellant
+#test the ice rocks keep Ceres's year: a century on they are still within a few degrees of Hearth
+#test light lag: a ship ten light-minutes away is seen where it was ten minutes before
+#test the field: five thousand rocks where their orbits put them, each a quad, all within the vertex budget
+#test the system view keeps Hearth on the screen as Ceres goes round; a view zoomed in rides with what it was on
+#test with a ship selected, each of the eight ice rocks is a named button that plans the trip, on a phone and a desktop
+#test from the whole system down to a 300 m hull in flight: the followed ship holds its pixel, frame after frame
+#test a miner sent for ice mines at the rock, flies home and delivers it, and the rivals fly
+#test fleets: a box takes all three ships and one order sends them all; Ctrl+4 keeps them as a group; Shift queues the next order
+#test MINE ICE with several ships: each plans from where it is, and a full hold flies home to unload
+#test on a phone, a long-press on your ship adds it to the selection or takes it out; a short tap selects it alone
+#test the yard: a freighter spends its metal and crew and appears at Hearth when it is done, and the save keeps it
+#test a freighter on a standing route hauls a rig's ice home again and again without new orders
+#test intercepts: two hostile ships whose paths cross engage at the moment they come in range, stop the clock, and part after
+#test the ship cards fit a phone: at 390x844 and 320x568, every card's box is inside the canvas, with a full yard
+#test with the yard full, metal expands the refinery: half as much ice again a shift each, for twice the metal each time, kept in the save
+#test trip toasts fold into one count, never cover a toast that matters, and a hull at 100% lost no crew
+#test a tactical battle: engaging opens it, it resolves, and BACK TO THE MAP applies the losses
+#test an order to a ship 20 light-minutes from Hearth takes effect 20 minutes later; meanwhile it keeps to its course
+#test Hearth refines its ice into reaction mass at the refinery's rate, a shift short while the crews are away, and an old save still reads
+#test a rival leaves its world on a hyperbola and arrives at its periapsis, with no jump at the handoff
+#test a save mid-flight reads back to the same game, and a broken one changes nothing
+#test the highlight stage: LANTERN braking hard past Saturn's rings with IRONWAKE on its tail, Saturn big in every frame, and the save untouched
+#test a claimed maker's name draws MADE BY <NAME> · TIP, and TIP goes to the tip page
+#test Belt 2200's frames fit its declared budget
+#test every glyph is on the grid, inside its width, and the table is sorted
+#test the HUD's and a deck's characters all have glyphs
+#test UTF-8 goes both ways, and bad bytes read as '?'
+#test measure and wrap
+#test small text with a scale lands on device-pixel centres, without glow
+#test small text keeps its dots: a period, a colon and an exclamation mark each draw
+#test the sans covers ASCII and its extras, in the host's order
+#test Font and atlas roundtrip every codepoint into the same glyph cell
+#test sans profile pins the existing atlas and raster effect contract
+#test sans mip commands pin byte offsets and independent raster sizes
+#test sans glyph commands enumerate every codepoint and exact half texel position
+#test sans commands refuse unknown glyphs and mip endpoints before arithmetic
+#test a page's facts start a session and a page view; events batch into the playtest's shape
+#test numbers keep three decimals; long words are cut at a code point
+#test a realm's acts: once, tallies, walking milestones and chat length
+#test Kepler's equation holds for ellipses and hyperbolas
+#test elements to a state and back
+#test a two-body orbit keeps its energy and angular momentum and closes after a period
+#test the ephemeris: the Earth at 1 AU in a year, the Moon at 384,400 km, Jupiter's sphere
+#test Lambert's arc meets the orbit it was cut from, and a Hohmann transfer is its cheapest
+#test a finite burn gives the rocket equation's delta-v
+#test a departure hyperbola leaves from its periapsis along v_inf, and arriving is its mirror
+#forall acos and atan agree with cos and tan
+#test quaternions rotate as glam's
+#test a tumbling body keeps its angular momentum and a falling one gains m g t
+#test a supported body at rest sleeps after SLEEP_TIME and an unsupported one never does
+#test camera-relative displacement preserves all three F64 components before narrowing
+#test a hull at 5 AU draws to the pixel: the floating origin keeps f64 until the camera subtracts
+#test zooming about a pixel keeps the world point under it, and easing reaches the goal
+#test select, toggle, box and groups
+#test a queue of orders, first in first out, and full at CMD_QUEUE
+#test the refinery: ice into reaction mass, water and air at its rate, slower with crews away, and never more than it has
+#test tactical: a rail gun's lead meets a target crossing at speed
+#test tactical: two warships fight it out to an end, one side out or apart, the same every time on one seed
+#test tactical: point defense shoots missiles down, and an unarmed freighter runs
+#test rival: over two seeded years the Mars Union expands, mines, builds miners and contests our rocks, its ice within a band of ours
+#test win: each condition ends a match: twice the Union's ice two years running, its yard starved, the Unknown held; and their mirrors lose
+#test win: a ship of ours arriving at a rock where a Union miner works fights it there, and a crippled miner limps home
+#test a new player's first game: the clock waits for the first order, and the hint says what the game is
+#test ?unknown=1: the Unknown off the screen is a mark at its edge, toward it; tapping it flies the view there, where the mark gives way to the Unknown itself
+#test lockstep: two clients given the same orders have equal state hashes after ten game-days; a different order is a desync, reported at its check
+#test lockroom: the one who joins gets the game; both then run the same ticks with each other's orders; a desync is seen by both and the holder's state mends it
+#test socket events decode from message kinds; a pipe queues commands and refuses what doesn't fit
+#test net: INVITE makes a room; the one who joins gets the game; both fleets' orders play the same game in lockstep; a nudged client is seen by both and mended
+#test a declaration names each limit, and one is valid only below its vertex buffer
+#test the arena is the state and four bytes a float of the vertex and uniform buffers
+#test takes that fit add up, and the peak keeps the most one frame used
+#test one vertex too many is refused whole, reported with its kind and counts, and fails the check
+#test a measured frame takes its vertices, draws and bytes, and fails when one doesn't fit
+#test a count below zero, an unknown kind and a sum past the largest int are refused
+#test native span observations treat capacity as a size at a nonzero allocation base
+#test native upload and buffer forwarding retain exact physical byte views and atomic refusal
+#test host byte staging and source views refuse before construction outside their actual spans
+#forall host backend transport preserves only the three declared identities
+#test host operation projection never exposes an inactive or invalid frame slot
+#forall host profile selection binds app page and exact catalog realm
+#test host selection refuses ambiguous shared apps and unknown realm identities
+#forall host implicit app selection covers both catalog endpoints and refuses shared ownership
+#test host package admission commits only an inactive retained JSON and entry bank
+#test host package rejects corrupt bank state and unsupported capabilities before publication
+#test host raw target enums refuse wrapped values before narrowing and intersect device limits
+#test host reload waits for every verified module and created pipeline before replacing its active bank
+#test host reload failures and a later retry preserve the old borrowed bank and invalidate stale prepared receipts
+#test host transaction preparation admits one owner and refuses active corrupt or exhausted banks
+#test host transactions reject absent products invalid acknowledgements and malformed candidate views
+#forall host transaction native and reference products are distinct from a verified browser module
+#test host transaction verifies all three module banks and the last media pipeline
+#test host commit requires the first pipeline and first module independently
+#test host text source spans admit unaligned bytes and zero end views without overflowing endpoints
+#forall host raw booleans preserve only the two declared integer encodings
+#test host raw booleans refuse wide transports before narrowing
+#forall host raw readiness preserves only the declared loading background and ready states
+#test host raw readiness refuses integers that would wrap into a declared state
+#test host asset destination checks measured object capacity and linear memory for arbitrary bytes
+#test runtime admits the real flat HUD and keeps requested counts
+#test runtime source admission precedes loading and any payload use
+#test runtime background uses the canonical plan without requiring pending scene assets
+#test runtime publishes domains only after indexed payload validation succeeds
+#test runtime geometry refusal and loading publish no frame operations
+#test runtime derives all direct work from canonical commands without counting scaffolding
+#forall runtime preflight rejects malformed raw metadata before readiness masks work
+#test runtime keeps invalid schedule and missing output storage atomic
+#forall runtime exact viewport and command capacity boundaries remain admissible
+#test render geometry derives stored vertex records and object rows rather than trusting counts
+#test render geometry ground and object partitions have distinct vertex domains
+#test render geometry refuses a bad second record without publishing the first
+#test render geometry retains the sparse Myrealm round vertex interval
+#test render geometry decodes Icecream terrain chunks and object outline prefixes
+#test render geometry checks every packed skin joint against the initialized pose
+#test render geometry rectangular Fairy ground includes both additional path planes
+#test render geometry derives river grid vertices and all Everglade water piece classes
+#test render geometry derives Waterlab clipmap and uniform-only fixture direct capacities
+#forall render geometry accepts empty frames for all catalog profiles
+#forall render geometry procedural shape limits follow each realm's actual encoding
+#test render geometry indexed domains retain initialized index length and actual index values
+#test render geometry refuses a water tail on a nonwater profile
+#test render geometry skips empty commands before looking at unused ground metadata
+#forall render geometry integer cap primitive includes adjacent values zero and ties
+#test render geometry budget and numeric metadata distinguish every refusal boundary
+#forall render geometry validates catalog resources and borrowed view record strides
+#test render geometry exact buffer table outer capacity precedes invalid resource contents
+#forall render geometry preflight refusals leave a caller's domains intact
+#test render geometry admits exact empty command and work capacities without amplification
+#test render geometry generic particle instances expand sixty four slots per initialized emitter
+#forall render geometry Icecream prefixes chunks partial tails and metadata bounds are exact
+#test render geometry person packed offsets pose blocks and threshold equality are observable
+#forall render geometry checks all four joint bytes even when weights are zero
+#test render geometry skin refusals distinguish malformed metadata out of bounds fetch and work
+#forall render geometry water metadata rejects each malformed dimension before resource reads
+#test render geometry water dimensions preserve exact and fractional piece counts
+#test render geometry packed virtual extents preserve the procedural discriminator at large sizes
+#test render geometry round and box instance batches retain their exact Deadgears boundary
+#test render geometry grass near rings retain phone threshold and checked u32 arithmetic
+#forall render geometry rejects each invalid grass parameter without overflowing products
+#forall render geometry ocean clipmaps validate both tiers and every level record
+#test render geometry error receipts name resource and preflight failures precisely
+#test render geometry index work is paid once per checked word and refusal is atomic
+#test render geometry metadata bases must leave a complete packed record
+#test render geometry follows requested skin indices rather than adjacent valid vertices
+#test render geometry overflow checks precede a grass product and a near-ring sum
+#test render geometry clipmaps refuse a thirteenth fully populated level
+#test render geometry procedural metadata and exhausted work retain exact statuses
+#test render geometry draw outer cap is independent of caller output allocation
+#test render geometry Realm lights use their own live resource extent only when active
+#test render geometry Everglade puffs are one twelve-word record per instance
+#test render geometry virtual ground dimensions and all height planes are exact
+#test render geometry bad indexed fetch and object work refusal name the record
+#forall render geometry bit metadata refuses nonfinite words before float conversion
+#test render geometry a single grass draw still validates its ground payload
+#test render geometry shard plane metadata stays inside the same object resource
+#test render geometry active river shading validates nodes without requiring a water draw
+#test render geometry shard plane encoding uses a full byte below the plane index
+#forall render geometry river spacing is finite bounded and may disable node reads
+#forall render catalog preserves every current realm identity and its declared frame shape
+#forall render catalog has valid logical tables and exact reflected active pipeline sets
+#test render catalog refusals cannot select a different resource or pipeline
+#test render bindings retain uniform transport and disjoint pipeline aliases
+#forall render binding domains refuse exactly the bad resource fields
+#test render bindings admit their exact declared edges and reject duplicate names
+#forall render reflected native kinds and texture shapes match the logical resource
+#forall render use indices stages and physical slots are checked before publication
+#test render use capacity is separate from a well formed zero resource entry
+#test render binding and active use capacities admit the last slot
+#test render flat graph is one clear background and maximum blended HUD
+#test render loading admits no effects and pending assets retain background and HUD
+#test render shadow map is cleared without mesh draws before a consumer reads it
+#test render water preserves each draw transmit then emit and copies before both
+#test render copied depth is also fresh for smoke when there are no wet draws
+#test render five bloom stages retain exact sources directions scales and final targets
+#forall render graph feature admission follows the complete prerequisite relation
+#forall render pipeline states retain every output depth blend bias and channel policy
+#test render surface and nonpost scene pipeline states retain a shared unwritten HUD depth
+#forall render malformed counts or schedules return no partial program
+#test render refusal precedes loading and never publishes malformed plans
+#forall render zero work is omitted while clear and dependency passes remain
+#test render symbolically bounded graph handles maximum u32 counts without expansion
+#test render grass readiness differs for buffer scenes and uniform-only casters
+#test render complete graph is the canonical forty operation GPU program
+#test render asymmetric feature flags and suppressed work remain independent
+#forall render surface flag and positive count must both be present
+#test renderer admits a clear-only frame and validates every declared limit
+#forall renderer refuses malformed frame limits
+#test renderer viewport and HUD stride have exact admitted boundaries
+#forall renderer count words never truncate negative or wide producer values
+#test renderer uploads check allocation end GPU end alignment and overflow without clipping
+#test renderer validates every upload before admitting a frame
+#test renderer keeps four draw words and decodes the high base bit only for nonindexed draws
+#test renderer checks indexed payloads GPU domains skip records and nonindexed endpoints
+#test renderer rejects incomplete draw tables and an exhausted index budget without partial admission
+#test renderer u32 endpoint arithmetic never wraps first count base or the declared domains
+#test renderer admits the exact representable count and configured limits
+#forall renderer admits each supported alignment and rejects smaller non-power alignments
+#test renderer empty upload can reach the exact u64 allocation endpoint
+#forall renderer direct command counts fit the actual admitted resource domains
+#test renderer direct domain metadata and later draw failures never grant partial work
+#test renderer admits encoded prefix intervals and rejects gaps without widening domains
+#test renderer preflights source descriptors before a host constructs geometry views
+#test renderer one-pixel and one-float profiles admit equal direct capacities
+#test renderer empty primary and exact secondary/index endpoints retain their meanings
+#test catalog interfaces admit the exact three-vector HUD and procedural background
+#forall HUD admission observes every attribute and its exact complete extent
+#test target and depth admission follow the shared pass state including media
+#test water and particles may omit only the masked auxiliary attachment
+#test build reflection reads actual versioned rows without losing resource or input layout
+#test build reflection accepts a procedural vertex and refuses incomplete or ambiguous reports
+#test reflection token and integer readers reject truncation overflow and extra columns
+#test reflection required rows are unique and their exact column counts are checked
+#test reflection resource fields and the thirty-second slot have explicit bounds
+#test reflection target and vertex input endpoints refuse malformed layout
+#test SPIRV requirement scanning uses framed instructions and the actual Int64 capability
+#test module emission groups a source and derives its aliases from catalog entries
+#forall module emission refuses an entry that cannot share the source or prefix
+#test a module admits one unprefixed entry and its full entry table but refuses empty names
+#test the real vertex-only caster contributes no fictitious fragment entry
+#test bindings text comes from the declared logical addresses and uniform transport
+#test shader reflection matches each pass's names slots layouts and stages
+#forall shader reflection refuses every changed observed field
+#test shader reflection refuses malformed declarations and its exact capacity
+#test shader emission admits the exact thirty-second active slot
+#test render comparisons keep the stated relative tolerance and exact allowance
+#forall render comparison refuses nonfinite values even on both sides or within allowance
+#test render comparison handles finite extrema without overflowing its error
+#test portable shader capability admission uses enabled helper and native integer features
+#forall both generic derivative masks require an explicit trusted legacy profile
+#forall capability metadata refuses unknown schema versions masks and backends
+#test tree2 never acquires the new registry through capability admission
+#test the reference interpreter declares its own helper and native integer capabilities
+#test parse: scalars, nesting, ranges and links
+#test parse refuses what is not JSON
+#test whitespace and token ends
+#test paths: keys and indexes
+#test unescape: every escape, surrogate pairs and UTF-8
+#test writing: objects, arrays, escapes and commas
+#test a node written back compactly, strings escaped as JSON.stringify does
+#test JSON authority publishes complete scalar records and resets reused parse status
+#test JSON authority reaches the actual64container depth bound before node capacity
+#test JSON authority empty key and truncated key colon retain exact failure coordinates
+#forall JSON authority hex and digit token endpoints classify every ASCII byte
+#test JSON authority string scanning exact spans include empty values whitespace and malformed unicode
+#test JSON authority scalar scanners recognize token delimiters signed digits and missing exponent digits
+#test JSON authority public readers refuse exact index ends and preserve absent children
+#test JSON authority paths handle nine zero missing brackets and missing nested keys
+#test JSON authority integer reads preserve signs exact2pow53 endpoints and reject fractional exponent or oversized words
+#test JSON authority escaped equality handles long plain text empty decoded text and capacity refusal
+#test JSON authority writer fits exact output boundaries and refuses larger puts without partial writes
+#test JSON authority writer accepts64nestedcontainers and refuses the next with its flag retained
+#test JSON authority integer writer includes zero decimal digits and the signed64 minimum
+#test JSON authority UTF8 codepoint boundary 0
+#test JSON authority UTF8 codepoint boundary 127
+#test JSON authority UTF8 codepoint boundary 128
+#test JSON authority UTF8 codepoint boundary 2047
+#test JSON authority UTF8 codepoint boundary 2048
+#test JSON authority UTF8 codepoint boundary 65535
+#test JSON authority UTF8 codepoint boundary 65536
+#test JSON authority UTF8 codepoint boundary 1114111
+#test JSON authority Unicode escape boundary u0000
+#test JSON authority Unicode escape boundary ud800udc00
+#test JSON authority Unicode escape boundary udbffudfff
+#test JSON authority Unicode escape boundary udbffudc00
+#test JSON authority Unicode escape boundary ud800udfff
+#test JSON authority Unicode escape boundary ud7ff
+#test JSON authority Unicode escape boundary udfff
+#test JSON authority Unicode escape boundary ue000
+#test JSON authority Unicode escape boundary ud800x
+#test JSON authority Unicode escape boundary ud800u0041
+#test JSON authority malformed raw Unicode and output exhaustion report refusal
+#test JSON authority writer byte boundary 0
+#test JSON authority writer byte boundary 1
+#test JSON authority writer byte boundary 15
+#test JSON authority writer byte boundary 16
+#test JSON authority writer byte boundary 31
+#test JSON authority writer byte boundary 32
+#test JSON authority writer byte boundary 33
+#test JSON authority writer byte boundary 34
+#test JSON authority writer byte boundary 92
+#test JSON authority writer byte boundary 127
+#test JSON authority parser refuses truncated live views at the exact observed endpoint
+#test JSON authority paths preserve multicharacter and chained indexes and reject colon as a digit
+#test JSON authority integer overflow refuses before multiplication and malformed raw digits use fallback
+#test JSON authority escaped capacity failure stops before a following raw byte write
+#test JSON authority UTF8 exactcapacity 0
+#test JSON authority UTF8 exactcapacity 127
+#test JSON authority UTF8 exactcapacity 128
+#test JSON authority UTF8 exactcapacity 2047
+#test JSON authority UTF8 exactcapacity 2048
+#test JSON authority UTF8 exactcapacity 65535
+#test JSON authority UTF8 exactcapacity 65536
+#test JSON authority UTF8 exactcapacity 1114111
+#test JSON authority requote completebytes case 0
+#test JSON authority requote completebytes case 1
+#test JSON authority requote completebytes case 2
+#test JSON authority requote completebytes case 3
+#test JSON authority requote completebytes case 4
+#test JSON authority requote completebytes case 5
+#test JSON authority requote completebytes case 6
+#test JSON authority requote completebytes case 7
+#test JSON authority requote completebytes case 8
+#test JSON authority requote completebytes case 9
+#test JSON authority requote malformed escape reports its writer bad flag
+#test JSON authority unescape refuses unknown simple escapes and requotes a final complete simple escape
+#test JSON authority integer accumulation refuses the next decimal prefix above its exact limit
+#forall fragment layouts retain exact zero one and two targets plus masked auxiliary omission
+#test shared media entry and all three bindings come from one compiled descriptor
+#test media geometry declares the exact ordered two-triangle UV packet and draw extent
+#test media image uploads preserve the declared legacy colour and alpha representation
+#test published SHA256 empty and abc vectors
+#test SHA256 length and padding boundaries
+#test binary SHA256 vector 1
+#test binary SHA256 vector 3
+#test binary SHA256 vector 55
+#test binary SHA256 vector 56
+#test binary SHA256 vector 57
+#test binary SHA256 vector 63
+#test binary SHA256 vector 64
+#test binary SHA256 vector 65
+#test binary SHA256 vector 119
+#test binary SHA256 vector 120
+#test binary SHA256 vector 128
+#test binary SHA256 vector 256
+#test binary SHA256 vector 1000
+#forall every rotate distance
+#test logical maximum SHA length without allocating the input
+#test runtime package parses the complete concrete Grid resource and input interfaces
+#test CPU tree bytes are authenticated separately from their decoder and IR admission
+#test runtime package admission requires the expected catalog and enabled device features
+#test runtime package hashes the actual fetched module and SPIRV bytes before use
+#forall package parsing and admission refuse each independently changed scalar field
+#forall package integer fields reject fractions missing values and negative values
+#test package object keys distinguish empty optional fields required fields and duplicates
+#forall package hash and sibling filename grammar check every possible byte
+#test package hash filename JSON storage and fetched-file sizes have exact boundaries
+#test package entry syntax retains zero integers before catalog semantics and true depth
+#forall package entry refuses empty names and accepts single-byte transport names
+#test entry arrays are typed independently and own exactly thirty-two rows
+#test package provenance is optional typed metadata and candidate entry storage is reusable
+#test all three module sets and the media entry preserve catalog identity and file access
+#forall SPIRV requirements come from framed byte opcodes including adjacent nonfeatures
+#test package entry module indices and profile identity obey their parse bounds
+#test package module and entry tables require arrays and retain one-entry candidates
+#test package byte admission refuses a short entry receipt and mismatched or malformed SPIRV requirements
+#test depth-only caster transport retains an absent fragment as typed empty strings
+#forall render target descriptions preserve every role format and odd viewport extent
+#forall render reduced target extents round up on both axes including a one pixel viewport
+#forall render sampler profiles retain all filtering addressing comparison and logical quality fields
+#forall render texture layouts preserve depth array and unfilterable copied water roles
+#forall render legacy buffer views preserve padded array length independently of upload bytes
+#test render uniform and immutable views retain their declared extent instead of allocation capacity
+#forall render target admission refuses malformed viewport format and platform limits
+#test render target exact limits retain colour formats and coarse shadow capacity
+#forall render buffer publication refuses bad modes layouts ranges and uninitialized tails
+#test render buffer updates retain a valid prefix and require clearing padded tails
+#test render target platform minimum and singleton storage binding retain exact edges
+#forall render buffer mode must match the declared shader buffer kind
+#forall render texture layout refuses malformed logical bindings before describing a GPU view
+#forall render buffer offset alignment admits exactly the declared power of two set
+#test render padded capacity refuses the final unsigned byte without addition overflow
+#forall binding origins match every resource in all eighteen catalog profiles
+#forall binding origins map particle uniforms to the main allocation and emitter views
+#forall binding origins grant shared media only to declared media profiles
+#forall binding origins refuse absent profiles and unknown resource sets without fallback
+#test binding asset ordinals count decoded GPU payloads not data sound or index rows
+#forall binding storage source boundaries retain distinct asset ordinals and store zero
+#test flat host allocation sizes admit exact device extents without clipping
+#test flat host exact empty and full source endpoints remain valid
+#test flat host source spans precede borrowed payload construction and GPU upload
+#forall generic host arena spans cover every declared scene and surface profile
+#test generic host arena admission refuses counts and capacities before source views
+#test host pipeline activation data retains positive work for every graph branch
+#forall host logical binding tables include exact catalog and optional media sets
+#forall host reflected slots retain per-pass resources transport and source roles
+#forall host pipeline templates preserve physical attachments and shared pass state
+#test host descriptor refusal bounds precede casts and unknown table access
+#test host media projection retains an attached nonpost depth and refuses absent operations
+#forall host pipeline group extents retain empty gaps in every frozen catalog entry
+#forall host file origin names preserve every bounded producer and media index
+#test host static resource origins do not require scratch and unknown origins have no filename
+#test host media origin keeps the existing 112 line window independently of stores
+#forall host media origin names retain every additional line and exact scratch capacity
+#test host clear policy is opaque black on both colour attachments and depth one
+#test shared host inputs retain independent main and particle uniform extents
+#test shared host inputs preserve legacy padding retained initialization and physical offsets
+#test shared host inputs resolve an immutable mesh view and refuse missing duplicate or wrong roles
+#test shared host inputs keep graph generated bloom and media uniform observations separate
+#test shared host inputs publish geometry bindings in catalog order only after every view is valid
+#test shared host inputs include particle storage and bound names without mutating short output
+#test shared host inputs admit exactly48 distinct names and refuse49 before lookup
+#forall shared host inputs closed storage inventories fit the48 row geometry receipt
+#test shared host owned buffers describe every exact initialized byte and preserve their word view
+#test shared physical buffer allocation retains minimum and exact legacy padding under the device limit
+#test shared texture origins select the named image rather than its array order
+#test shared sans origin refuses an array or a depth image
+#test shared texture namespace rejects duplicate missing empty and unknown roles
+#forall media images retain the original line context including three digit names
+#test media images reject out of window contexts and refuse absent contexts
+#test generated render targets and pass sources do not masquerade as named textures
+#test the texture namespace admits the complete media window and two shared images
+#forall all catalog texture roles use the shared origin and shape protocol
+#forall host staging rounds each cursor residue up to four and admits complete word spans
+#test host staging page counts include an exact boundary without an extra page
+#test host staging admits the exact64MiB allocation and an empty span at its end
+#forall host staging refuses nonword payloads before returning a writable address
+#test host staging refuses exhaustion alignment padding and native addition overflow atomically
+#test host staging rejects a forged allocation limit above the imported memory maximum
+#test media text retains kind URL phase line number and all four coordinates
+#test media text skips malformed rows without renumbering later image contexts
+#test media row selection preserves literal space columns and rejects unsafe or nonfinite records
+#test media admission is atomic when caller entry storage is too short
+#test media112 contexts are independent of48 binding slots and later lines are explicitly outside the window
+#test media raw text admits its exact byte bound and refuses one extra byte before any write
+#test media numeric decoding covers signed decimal exponent prefixed integers and ASCII whitespace
+#test media decimal scaling admits the finite extreme and retains gradual underflow
+#test media decimal scaling does not overflow a cancelled long significand
+#test media aspect fit authors exact centred horizontal and vertical uniforms
+#test media pending and one-pixel boxes keep valid context without drawing
+#test media rectangle supports one-pixel images and screens up to the exact finite f32 coordinate limit
+#forall media rectangle refuses invalid identities dimensions and nonfinite or unrepresentable coordinates
+#test media image extent keeps video dimensions and rounds bounded image resizes with a one-pixel minimum
+#test media aspect selection preserves the smaller positive ratio without cancellation
+#test media finite and digit classification include both signed infinities and base boundaries
+#forall host media raw observations retain exact kind readiness URL and signed dimensions before composition
+#test host media raw observations refuse integers that would wrap enum or bool before any narrowing
+#test host media composes parsed line identities with one shared ready image observation
+#test host media missing and pending observations preserve line phase without selecting a draw
+#forall host media ready observations match both kind and URL rather than row or cache order
+#forall host media invalid observed identities duplicate keys and unprepared image dimensions fail atomically
+#forall host media invalid request identity line order and rectangle refuse the entire candidate
+#forall host media requires valid screen dimensions even when no rows need a draw
+#test host media exact112 boundary is independent of resource slots and insufficient output is atomic
+#test host media admits the slash path video dimensions and unused pending observations
+#test host media observes the first image and admits exactly112 distinct pending image keys
+#test host media draws bind independently observed readiness to the exact physical line texture
+#forall host media physical publication refuses missing wrong shaped or mismatched line textures atomically
+#test host media pending or stale identity never draws merely because a matching line texture exists
+#test host media physical validation preserves the complete candidate when a later image fails
+#test host media physical composition propagates invalid images requests and short output before publication
+#test host media physical observations reject ambiguous names and exact capacity overrun even for an empty media set
+#test host media physical composition refuses unsupported profile requests while allowing its empty media frame
+#forall host upload staging retains the union prefix and reports only strict growth
+#forall host upload staging refuses each nonword incoming or retained prefix without publication
+#test host upload staging admits exact capacity and refuses either prefix beyond it
+#test host upload retries retain a consumed producer prefix until an actual submission acknowledges it
+#test host upload union never adds its u64 endpoints and preserves native high bits
+#forall asset delivery counts preserve every canonical page including direct profiles
+#test a pack has four delivery IDs with fixed VPK part kinds and no container ID
+#test individual layers sounds loops and index payloads preserve exact URLs and lazy loading
+#test GPU source ordinals refer to decoded storage mesh and layers delivery rows
+#test scene readiness waits only for storage index and layer deliveries
+#test mesh readiness preserves the independent zero placeholder path and optional audio never blocks
+#test readiness refuses duplicate unknown states and out of range observations without a partial receipt
+#test canonical declaration parsing refuses malformed rows and never publishes an incomplete profile
+#test asset parser retains one character roots names and exact refusal boundaries
+#test layer mip policy keeps first image extent with floor halves and a full chain
+#test layer mip admission refuses limits instead of clipping any base dimension or layer
+#test layer upload description preserves sRGB straight alpha and original high quality resizing

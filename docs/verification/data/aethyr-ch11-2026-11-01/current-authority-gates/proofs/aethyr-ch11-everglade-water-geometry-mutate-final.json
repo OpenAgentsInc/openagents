@@ -1,0 +1,17 @@
+{
+  "status": "pass",
+  "command": [
+    "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "mutate",
+    "--library",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/geometry.coax",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "source_sha256": "494bfde7afbdaaf741a67f9088cf108f59751fe01d39a770fcbd9a6ece507261",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "source_changed": false,
+  "elapsed_seconds": 45.19917825004086,
+  "exit": 0
+}

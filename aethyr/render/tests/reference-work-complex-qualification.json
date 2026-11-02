@@ -1,0 +1,113 @@
+{
+  "schema": "aethyr.render.reference-work-complex.v1",
+  "status": "pass",
+  "source_sha256": "64f2f0192b688f46dd58d9a36b6a8773dc11c1c403cd9335d56353af3493fa45",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "root_mutants": 39,
+  "killed": 39,
+  "survived": 0,
+  "new_waivers": 0,
+  "scope": "Explicit additional complex-world3B/pass profile; standard0/100M,large1/1B,invalid2 identities preserved, complex3 appended. Every invocation remains capped100M; remaining registry budget admitted0..3B.",
+  "native": {
+    "status": "pass",
+    "scope": "Three exact enum/profile limits including3B, four undeclared C ABI tags,15 invocation boundaries including >2^31 and >2^32, an int64 counter crossing INT32_MAX, plus independent signed/unsigned32 transport-loss controls.",
+    "results": [
+      {
+        "mode": "debug",
+        "status": "pass",
+        "exit": 0,
+        "command": [
+          "clang",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "Work.c",
+          "check.c",
+          "-lm",
+          "-o",
+          "debug"
+        ]
+      },
+      {
+        "mode": "release",
+        "status": "pass",
+        "exit": 0,
+        "command": [
+          "clang",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-O2",
+          "Work.c",
+          "check.c",
+          "-lm",
+          "-o",
+          "release"
+        ]
+      },
+      {
+        "mode": "san",
+        "status": "pass",
+        "exit": 0,
+        "command": [
+          "clang",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-O1",
+          "-fsanitize=address,undefined",
+          "-fno-omit-frame-pointer",
+          "Work.c",
+          "check.c",
+          "-lm",
+          "-o",
+          "san"
+        ]
+      },
+      {
+        "mode": "signed32-loss",
+        "status": "planted_transport_fault_detected",
+        "exit": 2,
+        "command": [
+          "clang",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-O2",
+          "-DRR_SIGNED_LOSS",
+          "Work.c",
+          "check.c",
+          "-lm",
+          "-o",
+          "signed32-loss"
+        ]
+      },
+      {
+        "mode": "unsigned32-loss",
+        "status": "planted_transport_fault_detected",
+        "exit": 3,
+        "command": [
+          "clang",
+          "-std=c11",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-O2",
+          "-DRR_UNSIGNED_LOSS",
+          "Work.c",
+          "check.c",
+          "-lm",
+          "-o",
+          "unsigned32-loss"
+        ]
+      }
+    ],
+    "source_sha256": {
+      "entry.coax": "6f6745f7e6f7d49c7fe8669ec7a23870b70975ed60d9b18dccc5de87d0f0c047",
+      "Work.c": "82e694bf491c5c8a8239bf5a655a8c6acd71271353bda4d0da43e38d3fa722f4",
+      "Work.h": "3a08a7a9b6f6c0c9bc58c577dbaceb8810f1d79a79987c28e26d27c9ae8392b4",
+      "check.c": "90704a4ea910e39c0276c2085070691ed9047e6ad85578b2a1f1dda91915c81a"
+    }
+  },
+  "old_source_sha256": "badf88ead3993607520906500a0a6eaec767ca4ddce46163dea47895359a570d",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/reference-work-complex"
+}

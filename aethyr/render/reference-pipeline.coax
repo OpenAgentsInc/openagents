@@ -1,0 +1,221 @@
+// A CPU pass runs the actual admitted checked shader tree. Platform code only
+// supplies recorded words/resources and observes the resulting framebuffer.
+// Prepared program/tree/metadata are one immutable pair. Caller-owned target,
+// staging pixels and interpreter memory must be valid, disjoint live storage.
+#module "aethyr.render.reference.pipeline";
+#load "reference-io.coax";
+#load "reference-depth.coax";
+#load "active-lanes.coax";
+#load "reference-work.coax";
+#load "fragment-layout.coax";
+#authority;
+RR_INPUT_WORDS :: 2048;
+RR_OUTPUT_WORDS :: 528;
+RRBinding :: struct {name_id:int;kind:int;resource:int;}
+// Strides and offsets count u32 words, after the recorded GPU attribute
+// byte format has been admitted as aligned four-byte scalar components.
+RRAttribute :: struct {location:int;offset:int;components:int;}
+RRAttributes :: struct {words:[]u32;stride:int;locations:[]RRAttribute;}
+RRVarying :: struct {vertex_word:int;fragment_word:int;words:int;at:int;}
+RRPipeline :: struct {
+ status:RQStatus;vs:RQInterface;fs:RQInterface;has_fragment:bool;layout:RRLayout;
+ varyings:int;varying:[32]RRVarying;
+ colours:int;targets:[2]int;depth_word:int=-1;
+}
+RRVertices :: struct {status:RQStatus;steps:int;vertices:[3]RRVertex;}
+RRShaded :: struct {status:RQStatus;steps:int;publish:u32;colour:[4]RQColor;aux:[4]RQColor;depth:[4]f32;}
+RRPassResult :: struct {status:RQStatus;steps:int;triangles:int;quads:int;fragments:int;written:int;}
+#load "tests/reference-pipeline-checks.coax";
+
+rr_pipeline :: (p:RQProgram,tree:[]u32,meta:[]int)->RRPipeline {
+ vs:=rq_ir_interface(p,tree,meta,0);if vs.status!=RQStatus.ok {return RRPipeline.{status=vs.status};}
+ if rq_ir_entry(p,tree,meta,1)<0 {return RRPipeline.{vs=vs};}
+ fs:=rq_ir_interface(p,tree,meta,1);if fs.status!=RQStatus.ok {return RRPipeline.{status=fs.status};}
+ // Admitted IO has at most128 parameters,32 fields of at most4 words,
+ // and one position first. Thus input<=1020 and output<=512 quad words.
+ // These static buffers exceed those bounds; no duplicate runtime gate.
+ r:=RRPipeline.{vs=vs,fs=fs,has_fragment=true};ftype:=rq_ir_parameter(p,tree,meta,1,0).ty;field_index:=1;
+ // The admitted shader interface assigns dense varying locations in field
+ // order after position. Read each actual staged field, including its role.
+ while true {
+  field:=rq_ir_io_field(p,tree,meta,ftype,field_index,0);
+  if field.status==RQStatus.resource {break;}
+  if field.status!=RQStatus.ok {return RRPipeline.{status=field.status};}
+  output:=rq_ir_field_layout(p,tree,meta,vs.result_type,field.location+1);
+  if output.status!=RQStatus.ok {return RRPipeline.{status=RQStatus.unsupported};}
+  if output.words!=field.words || output.flat!=field.flat || rq_ir_type(meta,output.ty,0)!=rq_ir_type(meta,field.ty,0) {return RRPipeline.{status=RQStatus.unsupported};}
+  // At most31 varying fields of at most4 words fit RR_WORDS128.
+  r.varying[r.varyings]=RRVarying.{vertex_word=output.word_offset,fragment_word=field.word_offset,words=field.words,at=r.layout.count};r.varyings+=1;
+  for k:0..<field.words {r.layout.flat[r.layout.count+k]=field.flat;}r.layout.count+=field.words;field_index+=1;
+ }
+ count:=rq_ir_io_field_count(p,tree,meta,fs.result_type,2);
+ for f:0..<count {
+  field:=rq_ir_io_field(p,tree,meta,fs.result_type,f,2);
+  if field.depth {r.depth_word=field.word_offset;}
+  else {
+   if field.location>=2 {return RRPipeline.{status=RQStatus.capacity};}
+   r.targets[field.location]=field.word_offset;r.colours+=1;
+  }
+ }
+ return r;
+}
+// Parameter IDs and logical resource indices come from admitted checked
+// reflection; raw word pointers do not select a shader binding implicitly.
+rr_arguments :: (p:RQProgram,tree:[]u32,meta:[]int,stage:int,io:RQInterface,
+    res:RQResources,bindings:[]RRBinding,input:[]u32)->RQStatus {
+ for j:io.resource_start..<io.params {
+  param:=rq_ir_parameter(p,tree,meta,stage,j);found:=-1;
+  for b:0..<bindings.count {
+   if bindings[b].name_id==param.name_id {if found>=0 {return RQStatus.resource;}found=b;}
+  }
+  if found<0 {return RQStatus.resource;}binding:=bindings[found];
+  if binding.kind!=param.kind || binding.resource<0 {return RQStatus.resource;}
+  capacity:=ifx param.kind==1 then res.buffers.count else ifx param.kind==2 then res.textures.count else res.samplers.count;
+  if binding.resource>=capacity {return RQStatus.resource;}
+  for lane:0..<4 {input[param.word_offset+lane]=cast(u32)binding.resource;}
+ }
+ return RQStatus.ok;
+}
+rr_vertices :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
+    attributes:RRAttributes,ids:[3]u32,instance:u32,budget:int,memory:[]u32)->RRVertices {
+ if budget<1 {return RRVertices.{status=RQStatus.budget};}
+ input:[RR_INPUT_WORDS]u32;output:[RR_OUTPUT_WORDS]u32;
+ status:=rr_arguments(p,tree,meta,0,r.vs,res,bindings,input[0..<r.vs.input_words]);if status!=RQStatus.ok {return RRVertices.{status=status};}
+ // Validated VS builtins are two one-word parameters: four vertex IDs,
+ // then four instance IDs, before the reflected attributes/resources.
+ for lane:0..<4 {
+  id:=ids[ifx lane==3 then 2 else lane];input[lane]=id;input[4+lane]=instance;
+  if r.vs.attributes_type!=(-1) {
+   param:=rq_ir_parameter(p,tree,meta,0,2);field_index:=0;
+   if attributes.stride<1 || attributes.stride>64 {return RRVertices.{status=RQStatus.resource};}
+   while true {
+    field:=rq_ir_io_field(p,tree,meta,param.ty,field_index,1);
+    if field.status==RQStatus.resource {break;}
+    if field.status!=RQStatus.ok {return RRVertices.{status=field.status};}
+    found:=-1;
+    for a:0..<attributes.locations.count {if attributes.locations[a].location==field.location {if found>=0 {return RRVertices.{status=RQStatus.resource};}found=a;}}
+    if found<0 {return RRVertices.{status=RQStatus.resource};}a:=attributes.locations[found];
+    if a.offset<0 || a.components<field.words || a.components>4 || a.offset>attributes.stride-a.components {return RRVertices.{status=RQStatus.resource};}
+    at:=cast(u64)id*cast(u64)attributes.stride+cast(u64)a.offset;
+    if at+cast(u64)field.words>cast(u64)attributes.words.count {return RRVertices.{status=RQStatus.resource};}
+    for k:0..<field.words {input[param.word_offset+lane*param.words+field.word_offset+k]=attributes.words[cast(int)at+k];}
+    field_index+=1;
+   }
+  }
+ }
+ execution:=rq_ir_run(p,tree,meta,input[0..<r.vs.input_words],res,memory,output[..],0,budget,15,RQDerivative.fine);
+ if execution.status!=RQStatus.ok {return RRVertices.{status=execution.status,steps=execution.steps};}
+ result:=RRVertices.{steps=execution.steps};
+ for lane:0..<3 {
+  for k:0..<4 {result.vertices[lane].clip[k]=f32_from_bits(output[lane*r.vs.result_words+k]);}
+  for v:0..<r.varyings {field:=r.varying[v];for k:0..<field.words {result.vertices[lane].words[field.at+k]=output[lane*r.vs.result_words+field.vertex_word+k];}}
+ }
+ return result;
+}
+// Stage the exact quad argument packet in caller-owned scratch, including
+// canonical0/1 bool words. The packet can be recorded independently of the
+// interpreter and is the same carrier rq_ir_run accepts.
+rr_fragment_inputs :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
+    quad:RRQuad,front:bool,input:[]u32)->RQStatus {
+ if !r.has_fragment {return RQStatus.unsupported;}
+ if input.count<r.fs.input_words {return RQStatus.capacity;}
+ status:=rr_arguments(p,tree,meta,1,r.fs,res,bindings,input[0..<r.fs.input_words]);if status!=RQStatus.ok {return status;}
+ param:=rq_ir_parameter(p,tree,meta,1,0);
+ for lane:0..<4 {
+  for k:0..<4 {input[param.word_offset+lane*param.words+k]=f32_bits(quad.lanes[lane].position[k]);}
+  for v:0..<r.varyings {field:=r.varying[v];for k:0..<field.words {input[param.word_offset+lane*param.words+field.fragment_word+k]=quad.lanes[lane].words[field.at+k];}}
+ }
+ if r.fs.front_parameter!=(-1) {arg:=rq_ir_parameter(p,tree,meta,1,r.fs.front_parameter);for lane:0..<4 {input[arg.word_offset+lane]=ifx front then 1 else 0;}}
+ return RQStatus.ok;
+}
+rr_shade :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
+    quad:RRQuad,front:bool,budget:int,memory:[]u32)->RRShaded {
+ if budget<0 {return RRShaded.{status=RQStatus.budget};}
+ if !r.has_fragment {
+  result:=RRShaded.{publish=quad.coverage};
+  for lane:0..<4 {result.depth[lane]=quad.lanes[lane].position[2];}return result;
+ }
+ if budget<1 {return RRShaded.{status=RQStatus.budget};}
+ input:[RR_INPUT_WORDS]u32;output:[RR_OUTPUT_WORDS]u32;
+ status:=rr_fragment_inputs(r,p,tree,meta,res,bindings,quad,front,input[0..<r.fs.input_words]);
+ if status!=RQStatus.ok {return RRShaded.{status=status};}
+ execution:=rq_ir_run(p,tree,meta,input[0..<r.fs.input_words],res,memory,output[..],1,budget,quad.coverage,RQDerivative.fine);
+ if execution.status!=RQStatus.ok {return RRShaded.{status=execution.status,steps=execution.steps};}
+ result:=RRShaded.{steps=execution.steps,publish=execution.publish_mask};
+ for lane:0..<4 {
+  colours:[2]RQColor;
+  for target:0..<r.colours {
+   at:=lane*r.fs.result_words+r.targets[target];colours[target]=RQColor.{r=f32_from_bits(output[at]),g=f32_from_bits(output[at+1]),b=f32_from_bits(output[at+2]),a=f32_from_bits(output[at+3])};
+  }
+  result.colour[lane]=colours[0];result.aux[lane]=colours[1];
+  result.depth[lane]=quad.lanes[lane].position[2];
+  if r.depth_word>=0 {result.depth[lane]=f32_from_bits(output[lane*r.fs.result_words+r.depth_word]);}
+ }
+ return result;
+}
+rr_reference_pass :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
+    attributes:RRAttributes,draws:[]RenderDecodedDraw,indices:[]u32,state:RenderPassState,width:int,height:int,format:RRFormat,
+    budget:int,memory:[]u32,scratch:[]RRPixel,target:[]RRPixel)->RRPassResult {
+ return rr_reference_pass_profile(r,p,tree,meta,res,bindings,attributes,draws,indices,state,width,height,format,budget,memory,scratch,target,RRRasterProfile.{});
+}
+rr_reference_pass_profile :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
+    attributes:RRAttributes,draws:[]RenderDecodedDraw,indices:[]u32,state:RenderPassState,width:int,height:int,format:RRFormat,
+    budget:int,memory:[]u32,scratch:[]RRPixel,target:[]RRPixel,profile:RRRasterProfile)->RRPassResult {
+ return rr_reference_pass_work_profile(r,p,tree,meta,res,bindings,attributes,draws,indices,state,width,height,format,budget,memory,scratch,target,profile,RRWorkProfile.standard);
+}
+rr_reference_pass_work_profile :: (r:RRPipeline,p:RQProgram,tree:[]u32,meta:[]int,res:RQResources,bindings:[]RRBinding,
+    attributes:RRAttributes,draws:[]RenderDecodedDraw,indices:[]u32,state:RenderPassState,width:int,height:int,format:RRFormat,
+    budget:int,memory:[]u32,scratch:[]RRPixel,target:[]RRPixel,profile:RRRasterProfile,work_profile:RRWorkProfile)->RRPassResult {
+ if !rr_raster_profile_ok(profile) {return RRPassResult.{status=RQStatus.unsupported};}
+ if r.status!=RQStatus.ok {return RRPassResult.{status=r.status};}
+ limits:=rr_work_limits(work_profile);if !limits.ok {return RRPassResult.{status=RQStatus.unsupported};}
+ if width<1 || height<1 || width>16384 || height>16384 || budget<1 || budget>limits.pass_steps || !state.valid || !render_fragment_outputs(state.outputs,state.aux_write,r.colours) {return RRPassResult.{status=RQStatus.resource};}
+ pixels:=width*height;if scratch.count<pixels || target.count<pixels {return RRPassResult.{status=RQStatus.capacity};}
+ for at:0..<pixels {scratch[at]=target[at];}
+ result:RRPassResult;written:=0;
+ for d:0..<draws.count {
+  draw:=draws[d];
+  if draw.kind==RenderDrawKind.skip || draw.count<3 || draw.instances==0 {continue;}
+  if draw.kind!=RenderDrawKind.indexed && draw.kind!=RenderDrawKind.nonindexed {result.status=RQStatus.resource;return result;}
+  if cast(u64)draw.first+cast(u64)draw.count>4294967296 || cast(u64)draw.base_instance+cast(u64)draw.instances>4294967296 {result.status=RQStatus.resource;return result;}
+  if draw.kind==RenderDrawKind.indexed && cast(u64)draw.first+cast(u64)draw.count>cast(u64)indices.count {result.status=RQStatus.resource;return result;}
+  for instance:0..<cast(int)draw.instances {
+   for triangle:0..<cast(int)draw.count/3 {
+    if result.steps>=budget {result.status=RQStatus.budget;return result;}result.steps+=1;
+    ids:[3]u32;
+    for k:0..<3 {at:=cast(int)draw.first+triangle*3+k;ids[k]=ifx draw.kind==RenderDrawKind.indexed then indices[at] else cast(u32)at;}
+    v:=rr_vertices(r,p,tree,meta,res,bindings,attributes,ids,draw.base_instance+cast(u32)instance,rr_work_invocation(budget-result.steps),memory);
+    result.steps+=v.steps;if v.status!=RQStatus.ok {result.status=v.status;return result;}
+    polygon:=rr_clip_profile(v.vertices,r.layout,profile);if polygon.status!=RQStatus.ok {result.status=polygon.status;return result;}
+    for fan:1..<polygon.count-1 {
+     vertices:=[3]RRVertex.[polygon.vertices[0],polygon.vertices[fan],polygon.vertices[fan+1]];
+     setup:=rr_triangle_profile(vertices,width,height,profile);if setup.status!=RQStatus.ok {result.status=setup.status;return result;}
+     if setup.empty {continue;}result.triangles+=1;
+     bias:=rr_depth_bias(setup,state);if bias.status!=RQStatus.ok {result.status=bias.status;return result;}
+     rows:=(setup.end_y-setup.min_y)/2;cols:=(setup.end_x-setup.min_x)/2;
+     for row:0..<rows {for col:0..<cols {
+      if result.steps>=budget {result.status=RQStatus.budget;return result;}result.steps+=1;
+      x:=setup.min_x+col*2;y:=setup.min_y+row*2;quad:=rr_quad(setup,r.layout,x,y);
+      if quad.status!=RQStatus.ok {result.status=quad.status;return result;}if quad.coverage==0 {continue;}
+      for lane:0..<4 {quad.lanes[lane].position[2]=cast(f32)(cast(f64)quad.lanes[lane].position[2]+bias.offset);}
+      result.quads+=1;
+      shaded:=rr_shade(r,p,tree,meta,res,bindings,quad,setup.front,rr_work_invocation(budget-result.steps),memory);
+      result.steps+=shaded.steps;if shaded.status!=RQStatus.ok {result.status=shaded.status;return result;}
+      active:=rq_active_lanes(shaded.publish);
+      for selected:0..<active.count {
+       lane:=active.lanes[selected];
+       at:=(y+lane/2)*width+x+lane%2;result.fragments+=1;
+       stored:=rr_store(scratch[at],state,shaded.colour[lane],shaded.aux[lane],shaded.depth[lane],format);
+       if stored.status!=RQStatus.ok {result.status=stored.status;return result;}
+       if stored.written {scratch[at]=stored.pixel;written+=1;}
+      }
+     }}
+    }
+   }
+  }
+ }
+ for at:0..<pixels {target[at]=scratch[at];}result.written=written;
+ return result;
+}
+
+#load "tests/reference-pipeline-work-checks.coax";

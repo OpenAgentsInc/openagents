@@ -1,0 +1,13 @@
+ok   #test a two-finger pinch zooms and is never a click (1 case, 54380349 steps, 4841 ms)
+        own steps  share   with calls     calls  procedure
+         17757978  32.7%     17757978     22488  lit  apps/openagents-web/newland.coax:266
+          7012956  12.9%     30502320     29910  seg  apps/openagents-web/newland.coax:425
+          4596993   8.5%      4596993    241947  dot3  apps/openagents-web/newland.coax:395
+          2871249   5.3%     30290409         3  floor_grid  apps/openagents-web/newland.coax:1174
+          2716503   5.0%      2716503     25026  on_plot  apps/openagents-web/newland.coax:459
+          2671020   4.9%      7588125     60705  spot  apps/openagents-web/newland.coax:413
+          2169594   4.0%      2892792    120533  fv_sub  verse/figure.coax:134
+          1575366   2.9%      1686129       132  draw_sans  apps/openagents-web/font.coax:442
+     ... 149 more procedures
+1 of 114 checks (--only 'a two-finger pinch zooms and is never a click'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

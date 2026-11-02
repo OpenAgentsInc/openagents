@@ -1,0 +1,16 @@
+{
+  "captured": true,
+  "sha256": "679024cc9bb24fdb0de04771534169076f791c39dbbbec7710790725293c4a1e",
+  "draws": 6,
+  "hud": 6810,
+  "render": {
+    "submitted": true,
+    "readiness": 2,
+    "refusal": null,
+    "captureArmed": true,
+    "observed": true,
+    "probed": true
+  },
+  "body": "Hecate's Cemetery\n\nHecate's Cemetery",
+  "exceptions": []
+}

@@ -1,0 +1,3829 @@
+{
+  "reference_commit": "6445ee005033d844ccba0410e763325e2652f1c0",
+  "profiles": [
+    {
+      "slug": "haunted-house",
+      "module": "realm",
+      "listed": true,
+      "retired": false,
+      "assets": "data:/realms/haunted-house/assets/Haunt.pb\nstorage:/realms/haunted-house/assets/Haunt.vertices\nindex:/realms/haunted-house/assets/Haunt.indices\nlayers:/realms/haunted-house/assets/haunt-layer0.jpg|/realms/haunted-house/assets/haunt-layer1.jpg|/realms/haunted-house/assets/haunt-layer2.jpg|/realms/haunted-house/assets/haunt-layer18.jpg|/realms/haunted-house/assets/haunt-layer19.jpg|/realms/haunted-house/assets/haunt-layer20.jpg|/realms/haunted-house/assets/haunt-layer21.jpg|/realms/haunted-house/assets/haunt-layer22.jpg|/realms/haunted-house/assets/haunt-layer24.jpg|/realms/haunted-house/assets/haunt-layer26.jpg|/realms/haunted-house/assets/haunt-layer27.jpg|/realms/haunted-house/assets/haunt-layer28.jpg\nsound:boo=/realms/haunted-house/assets/haunt-boo.mp3\nsound:boom=/realms/haunted-house/assets/haunt-boom.mp3\nsound:bubble=/realms/haunted-house/assets/haunt-bubble.mp3\nsound:chime=/realms/haunted-house/assets/haunt-chime.mp3\nsound:click=/realms/haunted-house/assets/haunt-click.mp3\nsound:creak=/realms/haunted-house/assets/haunt-creak.mp3\nsound:hiss=/realms/haunted-house/assets/haunt-hiss.mp3\nsound:jump=/realms/haunted-house/assets/haunt-jump.mp3\nsound:land=/realms/haunted-house/assets/haunt-land.mp3\nsound:slam=/realms/haunted-house/assets/haunt-slam.mp3\nsound:step_grass_1=/realms/haunted-house/assets/haunt-step_grass_1.mp3\nsound:step_grass_2=/realms/haunted-house/assets/haunt-step_grass_2.mp3\nsound:step_grass_3=/realms/haunted-house/assets/haunt-step_grass_3.mp3\nsound:step_metal_1=/realms/haunted-house/assets/haunt-step_metal_1.mp3\nsound:step_metal_2=/realms/haunted-house/assets/haunt-step_metal_2.mp3\nsound:step_metal_3=/realms/haunted-house/assets/haunt-step_metal_3.mp3\nsound:step_stone_1=/realms/haunted-house/assets/haunt-step_stone_1.mp3\nsound:step_stone_2=/realms/haunted-house/assets/haunt-step_stone_2.mp3\nsound:step_stone_3=/realms/haunted-house/assets/haunt-step_stone_3.mp3\nsound:step_wood_1=/realms/haunted-house/assets/haunt-step_wood_1.mp3\nsound:step_wood_2=/realms/haunted-house/assets/haunt-step_wood_2.mp3\nsound:step_wood_3=/realms/haunted-house/assets/haunt-step_wood_3.mp3\nsound:thunder=/realms/haunted-house/assets/haunt-thunder.mp3\nloop:/realms/haunted-house/assets/haunt-wind_loop.mp3\nparticles:/particles.wgsl",
+      "uniform_vec4s": 64,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": true,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": true,
+        "post_depth": true,
+        "traced_depth": false,
+        "particles": true,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 1411,
+      "binding_first": 0,
+      "binding_count": 17,
+      "pass_first": 0,
+      "pass_count": 6,
+      "particle_binding_first": 17,
+      "particle_binding_count": 2,
+      "particle_pass_first": 6,
+      "particle_pass_count": 1,
+      "page": 0
+    },
+    {
+      "slug": "the-grid",
+      "module": "newland",
+      "page": 1,
+      "listed": true,
+      "retired": false,
+      "assets": "",
+      "uniform_vec4s": 28,
+      "vertex_stride": 12,
+      "features": {
+        "scene": false,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 0,
+      "binding_first": 19,
+      "binding_count": 3,
+      "pass_first": 7,
+      "pass_count": 2,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0
+    },
+    {
+      "slug": "everglade",
+      "module": "everglade",
+      "listed": true,
+      "retired": false,
+      "assets": "pack:/realms/everglade/assets/everglade.pack\nparticles:/everglade-fx.wgsl",
+      "uniform_vec4s": 575,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": true,
+        "casters": false,
+        "grass": true,
+        "surface": false,
+        "water": true,
+        "water_copy": true,
+        "post": true,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": true,
+        "particle_depth": true,
+        "particle_over": true,
+        "media": true
+      },
+      "feature_bits": 15595,
+      "binding_first": 22,
+      "binding_count": 21,
+      "pass_first": 9,
+      "pass_count": 9,
+      "particle_binding_first": 43,
+      "particle_binding_count": 3,
+      "particle_pass_first": 18,
+      "particle_pass_count": 2,
+      "page": 0
+    },
+    {
+      "slug": "fairy-forest",
+      "module": "fairy",
+      "listed": true,
+      "retired": false,
+      "assets": "index:/realms/fairy-forest/assets/Fairy.indices",
+      "uniform_vec4s": 199,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": true,
+        "water_copy": false,
+        "post": true,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 161,
+      "binding_first": 46,
+      "binding_count": 13,
+      "pass_first": 20,
+      "pass_count": 7,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "dead-gears",
+      "module": "deadgears",
+      "listed": true,
+      "retired": false,
+      "assets": "index:/realms/dead-gears/assets/DeadGears.indices",
+      "uniform_vec4s": 171,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 1,
+      "binding_first": 59,
+      "binding_count": 2,
+      "pass_first": 27,
+      "pass_count": 3,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "belt-2200",
+      "module": "belt",
+      "listed": true,
+      "retired": false,
+      "assets": "",
+      "uniform_vec4s": 44,
+      "vertex_stride": 12,
+      "features": {
+        "scene": false,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 0,
+      "binding_first": 61,
+      "binding_count": 1,
+      "pass_first": 30,
+      "pass_count": 2,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "orbit-league",
+      "module": "orbitleague",
+      "listed": true,
+      "retired": false,
+      "assets": "mesh:/realms/orbit-league/assets/roadster.bin",
+      "uniform_vec4s": 108,
+      "vertex_stride": 16,
+      "features": {
+        "scene": false,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 0,
+      "binding_first": 62,
+      "binding_count": 2,
+      "pass_first": 32,
+      "pass_count": 2,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "fixture",
+      "module": "fixture",
+      "listed": true,
+      "retired": false,
+      "assets": "pack:/realms/fixture/assets/fixture.pack",
+      "uniform_vec4s": 71,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": false,
+        "casters": true,
+        "grass": true,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": true,
+        "post_depth": false,
+        "traced_depth": true,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 653,
+      "binding_first": 64,
+      "binding_count": 16,
+      "pass_first": 34,
+      "pass_count": 7,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "waterlab",
+      "module": "waterlab",
+      "listed": true,
+      "retired": false,
+      "assets": "",
+      "uniform_vec4s": 3937,
+      "vertex_stride": 16,
+      "features": {
+        "scene": false,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": true,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": true,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 528,
+      "binding_first": 80,
+      "binding_count": 1,
+      "pass_first": 41,
+      "pass_count": 3,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "drop",
+      "module": "droprealm",
+      "listed": true,
+      "retired": false,
+      "assets": "pack:/realms/fixture/assets/fixture.pack",
+      "uniform_vec4s": 43,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 1,
+      "binding_first": 81,
+      "binding_count": 5,
+      "pass_first": 44,
+      "pass_count": 3,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "built",
+      "module": "myrealm",
+      "listed": true,
+      "retired": false,
+      "assets": "pack:/realms/fixture/assets/fixture.pack",
+      "uniform_vec4s": 113,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 1,
+      "binding_first": 86,
+      "binding_count": 5,
+      "pass_first": 47,
+      "pass_count": 3,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "sandbox",
+      "module": "realm",
+      "listed": true,
+      "retired": false,
+      "assets": "data:/realms/sandbox/assets/Sandbox.pb\nstorage:/realms/haunted-house/assets/Haunt.vertices\nindex:/realms/haunted-house/assets/Haunt.indices\nlayers:/realms/haunted-house/assets/haunt-layer0.jpg|/realms/haunted-house/assets/haunt-layer1.jpg|/realms/haunted-house/assets/haunt-layer2.jpg|/realms/haunted-house/assets/haunt-layer18.jpg|/realms/haunted-house/assets/haunt-layer19.jpg|/realms/haunted-house/assets/haunt-layer20.jpg|/realms/haunted-house/assets/haunt-layer21.jpg|/realms/haunted-house/assets/haunt-layer22.jpg|/realms/haunted-house/assets/haunt-layer24.jpg|/realms/haunted-house/assets/haunt-layer26.jpg|/realms/haunted-house/assets/haunt-layer27.jpg|/realms/haunted-house/assets/haunt-layer28.jpg\nsound:click=/realms/haunted-house/assets/haunt-click.mp3\nsound:jump=/realms/haunted-house/assets/haunt-jump.mp3\nsound:land=/realms/haunted-house/assets/haunt-land.mp3\nsound:step_grass_1=/realms/haunted-house/assets/haunt-step_grass_1.mp3\nsound:step_grass_2=/realms/haunted-house/assets/haunt-step_grass_2.mp3\nsound:step_grass_3=/realms/haunted-house/assets/haunt-step_grass_3.mp3\nsound:step_stone_1=/realms/haunted-house/assets/haunt-step_stone_1.mp3\nsound:step_stone_2=/realms/haunted-house/assets/haunt-step_stone_2.mp3\nsound:step_stone_3=/realms/haunted-house/assets/haunt-step_stone_3.mp3\nsound:step_wood_1=/realms/haunted-house/assets/haunt-step_wood_1.mp3\nsound:step_wood_2=/realms/haunted-house/assets/haunt-step_wood_2.mp3\nsound:step_wood_3=/realms/haunted-house/assets/haunt-step_wood_3.mp3\nparticles:/particles.wgsl",
+      "uniform_vec4s": 64,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": true,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": true,
+        "post_depth": true,
+        "traced_depth": false,
+        "particles": true,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 1411,
+      "binding_first": 0,
+      "binding_count": 17,
+      "pass_first": 0,
+      "pass_count": 6,
+      "particle_binding_first": 17,
+      "particle_binding_count": 2,
+      "particle_pass_first": 6,
+      "particle_pass_count": 1,
+      "page": 0
+    },
+    {
+      "slug": "ice-cream-man",
+      "module": "icecream",
+      "listed": true,
+      "retired": false,
+      "assets": "index:/realms/ice-cream-man/assets/IceCream.indices",
+      "uniform_vec4s": 191,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 1,
+      "binding_first": 91,
+      "binding_count": 3,
+      "pass_first": 50,
+      "pass_count": 3,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "hecates-cemetery",
+      "module": "villa",
+      "listed": true,
+      "retired": false,
+      "assets": "index:/realms/hecates-cemetery/assets/Villa.indices\nparticles:/particles.wgsl",
+      "uniform_vec4s": 124,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": true,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": true,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": true
+      },
+      "feature_bits": 9345,
+      "binding_first": 94,
+      "binding_count": 12,
+      "pass_first": 53,
+      "pass_count": 5,
+      "particle_binding_first": 17,
+      "particle_binding_count": 2,
+      "particle_pass_first": 6,
+      "particle_pass_count": 1,
+      "page": 0
+    },
+    {
+      "slug": "hold-the-stair",
+      "module": "stair",
+      "listed": true,
+      "retired": false,
+      "assets": "",
+      "uniform_vec4s": 118,
+      "vertex_stride": 16,
+      "features": {
+        "scene": false,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 0,
+      "binding_first": 106,
+      "binding_count": 1,
+      "pass_first": 58,
+      "pass_count": 2,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "watchtower",
+      "module": "watchtower",
+      "listed": true,
+      "retired": false,
+      "assets": "",
+      "uniform_vec4s": 15,
+      "vertex_stride": 16,
+      "features": {
+        "scene": false,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 0,
+      "binding_first": 107,
+      "binding_count": 1,
+      "pass_first": 60,
+      "pass_count": 2,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0,
+      "page": 0
+    },
+    {
+      "slug": "garden",
+      "module": "garden",
+      "page": 0,
+      "listed": false,
+      "retired": false,
+      "assets": "index:/realms/garden/assets/Garden.indices",
+      "uniform_vec4s": 82,
+      "vertex_stride": 16,
+      "features": {
+        "scene": true,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 1,
+      "binding_first": 108,
+      "binding_count": 3,
+      "pass_first": 62,
+      "pass_count": 3,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0
+    },
+    {
+      "slug": "galaxy",
+      "module": "verse",
+      "page": 1,
+      "listed": false,
+      "retired": true,
+      "assets": "",
+      "uniform_vec4s": 34,
+      "vertex_stride": 16,
+      "features": {
+        "scene": false,
+        "shadow": false,
+        "casters": false,
+        "grass": false,
+        "surface": false,
+        "water": false,
+        "water_copy": false,
+        "post": false,
+        "post_depth": false,
+        "traced_depth": false,
+        "particles": false,
+        "particle_depth": false,
+        "particle_over": false,
+        "media": false
+      },
+      "feature_bits": 0,
+      "binding_first": 111,
+      "binding_count": 3,
+      "pass_first": 65,
+      "pass_count": 2,
+      "particle_binding_first": 0,
+      "particle_binding_count": 0,
+      "particle_pass_first": 0,
+      "particle_pass_count": 0
+    }
+  ],
+  "bindings": [
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 64
+    },
+    {
+      "name": "vertices",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "objects",
+      "kind": "storage",
+      "group": 1,
+      "binding": 1,
+      "stride": 64,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "lights",
+      "kind": "storage",
+      "group": 1,
+      "binding": 2,
+      "stride": 32,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sheets",
+      "kind": "image_array",
+      "group": 1,
+      "binding": 3,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sheet",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 4,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "shadow_map",
+      "kind": "depth",
+      "group": 2,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "shadow_cmp",
+      "kind": "comparison",
+      "group": 2,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_src",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_lin",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_step",
+      "kind": "uniform",
+      "group": 1,
+      "binding": 2,
+      "stride": 4,
+      "uniform_vec4s": 1
+    },
+    {
+      "name": "post_light",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_quarter",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_eighth",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 2,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_aux",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 3,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_depth",
+      "kind": "depth",
+      "group": 1,
+      "binding": 4,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_lin",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 5,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 64
+    },
+    {
+      "name": "emitters",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 64,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 28
+    },
+    {
+      "name": "sans_atlas",
+      "kind": "image2d",
+      "group": 0,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sans_sampler",
+      "kind": "sampler",
+      "group": 0,
+      "binding": 2,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 575
+    },
+    {
+      "name": "vertices",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "heights",
+      "kind": "storage",
+      "group": 1,
+      "binding": 1,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "objects",
+      "kind": "storage",
+      "group": 1,
+      "binding": 2,
+      "stride": 64,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "pose",
+      "kind": "storage",
+      "group": 1,
+      "binding": 3,
+      "stride": 16,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "water_nodes",
+      "kind": "storage",
+      "group": 1,
+      "binding": 4,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sheets",
+      "kind": "image_array",
+      "group": 1,
+      "binding": 5,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sheet",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 6,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "shadow_map",
+      "kind": "depth",
+      "group": 2,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "shadow_cmp",
+      "kind": "comparison",
+      "group": 2,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "water_scene",
+      "kind": "image2d",
+      "group": 3,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "water_scene_depth",
+      "kind": "depth",
+      "group": 3,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_src",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_lin",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_step",
+      "kind": "uniform",
+      "group": 1,
+      "binding": 2,
+      "stride": 4,
+      "uniform_vec4s": 1
+    },
+    {
+      "name": "post_light",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_quarter",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_eighth",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 2,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_aux",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 3,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_depth",
+      "kind": "depth",
+      "group": 1,
+      "binding": 4,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_lin",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 5,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 7
+    },
+    {
+      "name": "puffs",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 48,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "particle_depth",
+      "kind": "depth",
+      "group": 3,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 199
+    },
+    {
+      "name": "heights",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "objects",
+      "kind": "storage",
+      "group": 1,
+      "binding": 1,
+      "stride": 64,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "water_nodes",
+      "kind": "storage",
+      "group": 1,
+      "binding": 2,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_src",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_lin",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_step",
+      "kind": "uniform",
+      "group": 1,
+      "binding": 2,
+      "stride": 4,
+      "uniform_vec4s": 1
+    },
+    {
+      "name": "post_light",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_quarter",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_eighth",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 2,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_aux",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 3,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_depth",
+      "kind": "depth",
+      "group": 1,
+      "binding": 4,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_lin",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 5,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 171
+    },
+    {
+      "name": "objects",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 64,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 44
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 108
+    },
+    {
+      "name": "mesh",
+      "kind": "storage",
+      "group": 0,
+      "binding": 1,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 71
+    },
+    {
+      "name": "shadow_map",
+      "kind": "depth",
+      "group": 2,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "shadow_cmp",
+      "kind": "comparison",
+      "group": 2,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "vertices",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "objects",
+      "kind": "storage",
+      "group": 1,
+      "binding": 1,
+      "stride": 64,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sheets",
+      "kind": "image_array",
+      "group": 1,
+      "binding": 2,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sheet",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 3,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_src",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_lin",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_step",
+      "kind": "uniform",
+      "group": 1,
+      "binding": 2,
+      "stride": 4,
+      "uniform_vec4s": 1
+    },
+    {
+      "name": "post_light",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_quarter",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_eighth",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 2,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_aux",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 3,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_depth",
+      "kind": "depth",
+      "group": 1,
+      "binding": 4,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_lin",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 5,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 3937
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 43
+    },
+    {
+      "name": "vertices",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "objects",
+      "kind": "storage",
+      "group": 1,
+      "binding": 1,
+      "stride": 64,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sheets",
+      "kind": "image_array",
+      "group": 1,
+      "binding": 2,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sheet",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 3,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 113
+    },
+    {
+      "name": "vertices",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "objects",
+      "kind": "storage",
+      "group": 1,
+      "binding": 1,
+      "stride": 64,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sheets",
+      "kind": "image_array",
+      "group": 1,
+      "binding": 2,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sheet",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 3,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 191
+    },
+    {
+      "name": "vertices",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "objects",
+      "kind": "storage",
+      "group": 1,
+      "binding": 1,
+      "stride": 16,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 124
+    },
+    {
+      "name": "heights",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "objects",
+      "kind": "storage",
+      "group": 1,
+      "binding": 1,
+      "stride": 64,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_src",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_lin",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "bloom_step",
+      "kind": "uniform",
+      "group": 1,
+      "binding": 2,
+      "stride": 4,
+      "uniform_vec4s": 1
+    },
+    {
+      "name": "post_light",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 0,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_quarter",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_eighth",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 2,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_aux",
+      "kind": "image2d",
+      "group": 1,
+      "binding": 3,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_depth",
+      "kind": "depth",
+      "group": 1,
+      "binding": 4,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "post_lin",
+      "kind": "sampler",
+      "group": 1,
+      "binding": 5,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 118
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 15
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 82
+    },
+    {
+      "name": "heights",
+      "kind": "storage",
+      "group": 1,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "objects",
+      "kind": "storage",
+      "group": 1,
+      "binding": 1,
+      "stride": 64,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "u",
+      "kind": "uniform",
+      "group": 0,
+      "binding": 0,
+      "stride": 4,
+      "uniform_vec4s": 34
+    },
+    {
+      "name": "sans_atlas",
+      "kind": "image2d",
+      "group": 0,
+      "binding": 1,
+      "stride": 0,
+      "uniform_vec4s": 0
+    },
+    {
+      "name": "sans_sampler",
+      "kind": "sampler",
+      "group": 0,
+      "binding": 2,
+      "stride": 0,
+      "uniform_vec4s": 0
+    }
+  ],
+  "passes": [
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/realm.coax",
+      "vertex": "realm_bg_vs",
+      "fragment": "realm_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "shadow",
+      "source": "apps/openagents-web/gpu/realm.coax",
+      "vertex": "realm_shadow_vs",
+      "fragment": "realm_shadow_fs",
+      "wgsl_vertex": "shadow_vs",
+      "wgsl_fragment": "shadow_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 1
+        },
+        {
+          "resource": 4,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 5,
+          "slot": 4,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "scene",
+      "source": "apps/openagents-web/gpu/realm.coax",
+      "vertex": "realm_scene_vs",
+      "fragment": "realm_scene_fs",
+      "wgsl_vertex": "scene_vs",
+      "wgsl_fragment": "scene_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 1
+        },
+        {
+          "resource": 3,
+          "slot": 3,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 32,
+          "stages": 2
+        },
+        {
+          "resource": 4,
+          "slot": 4,
+          "native_kind": 2,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 5,
+          "slot": 5,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 6,
+          "slot": 6,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 7,
+          "slot": 7,
+          "native_kind": 3,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "bloom",
+      "source": "apps/openagents-web/gpu/realm.coax",
+      "vertex": "realm_bg_vs",
+      "fragment": "realm_bloom_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bloom_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 8,
+          "slot": 0,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 9,
+          "slot": 1,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 10,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "post",
+      "source": "apps/openagents-web/gpu/realm.coax",
+      "vertex": "realm_bg_vs",
+      "fragment": "realm_post_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "post_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        },
+        {
+          "resource": 11,
+          "slot": 1,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 12,
+          "slot": 2,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 13,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 14,
+          "slot": 4,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 15,
+          "slot": 5,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 16,
+          "slot": 6,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/realm.coax",
+      "vertex": "realm_fx_vs",
+      "fragment": "realm_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "particle",
+      "source": "apps/openagents-web/gpu/particles.coax",
+      "vertex": "particles_particle_vs",
+      "fragment": "particles_particle_fs",
+      "wgsl_vertex": "particle_vs",
+      "wgsl_fragment": "particle_fs",
+      "binding_set": 1,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 1
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/newland.coax",
+      "vertex": "newland_bg_vs",
+      "fragment": "newland_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/newland.coax",
+      "vertex": "newland_fx_vs",
+      "fragment": "newland_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "verse/everglade/gpu.coax",
+      "vertex": "eg_bg_vs",
+      "fragment": "eg_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "shadow",
+      "source": "verse/everglade/gpu.coax",
+      "vertex": "eg_shadow_vs",
+      "fragment": "eg_shadow_fs",
+      "wgsl_vertex": "shadow_vs",
+      "wgsl_fragment": "shadow_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 3,
+          "slot": 3,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 3
+        },
+        {
+          "resource": 4,
+          "slot": 4,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 16,
+          "stages": 1
+        },
+        {
+          "resource": 6,
+          "slot": 5,
+          "native_kind": 2,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 7,
+          "slot": 6,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "grass",
+      "source": "verse/everglade/gpu.coax",
+      "vertex": "eg_grass_vs",
+      "fragment": "eg_grass_fs",
+      "wgsl_vertex": "grass_vs",
+      "wgsl_fragment": "grass_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 2,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 5,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 8,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 9,
+          "slot": 4,
+          "native_kind": 3,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "scene",
+      "source": "verse/everglade/gpu.coax",
+      "vertex": "eg_scene_vs",
+      "fragment": "eg_scene_fs",
+      "wgsl_vertex": "scene_vs",
+      "wgsl_fragment": "scene_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 3,
+          "slot": 3,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 3
+        },
+        {
+          "resource": 4,
+          "slot": 4,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 16,
+          "stages": 1
+        },
+        {
+          "resource": 5,
+          "slot": 5,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        },
+        {
+          "resource": 6,
+          "slot": 6,
+          "native_kind": 2,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 7,
+          "slot": 7,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 8,
+          "slot": 8,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 9,
+          "slot": 9,
+          "native_kind": 3,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "water_transmit",
+      "source": "verse/everglade/gpu.coax",
+      "vertex": "eg_water_vs",
+      "fragment": "eg_water_transmit_fs",
+      "wgsl_vertex": "water_vs",
+      "wgsl_fragment": "water_transmit_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 2,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 5,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 8,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 9,
+          "slot": 4,
+          "native_kind": 3,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 11,
+          "slot": 5,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "water_emit",
+      "source": "verse/everglade/gpu.coax",
+      "vertex": "eg_water_vs",
+      "fragment": "eg_water_emit_fs",
+      "wgsl_vertex": "water_vs",
+      "wgsl_fragment": "water_emit_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 2,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 5,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 8,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 9,
+          "slot": 4,
+          "native_kind": 3,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 10,
+          "slot": 5,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 11,
+          "slot": 6,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "bloom",
+      "source": "verse/everglade/gpu.coax",
+      "vertex": "eg_bg_vs",
+      "fragment": "eg_bloom_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bloom_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 12,
+          "slot": 0,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 13,
+          "slot": 1,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 14,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "post",
+      "source": "verse/everglade/gpu.coax",
+      "vertex": "eg_bg_vs",
+      "fragment": "eg_post_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "post_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        },
+        {
+          "resource": 15,
+          "slot": 1,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 16,
+          "slot": 2,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 17,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 18,
+          "slot": 4,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 20,
+          "slot": 5,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "verse/everglade/gpu.coax",
+      "vertex": "eg_fx_vs",
+      "fragment": "eg_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "particle_over",
+      "source": "verse/everglade/gpu-fx.coax",
+      "vertex": "egfx_particle_over_vs",
+      "fragment": "egfx_particle_over_fs",
+      "wgsl_vertex": "particle_over_vs",
+      "wgsl_fragment": "particle_over_fs",
+      "binding_set": 1,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 48,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "particle",
+      "source": "verse/everglade/gpu-fx.coax",
+      "vertex": "egfx_particle_vs",
+      "fragment": "egfx_particle_fs",
+      "wgsl_vertex": "particle_vs",
+      "wgsl_fragment": "particle_fs",
+      "binding_set": 1,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 48,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/fairy.coax",
+      "vertex": "fairy_bg_vs",
+      "fragment": "fairy_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "scene",
+      "source": "apps/openagents-web/gpu/fairy.coax",
+      "vertex": "fairy_scene_vs",
+      "fragment": "fairy_scene_fs",
+      "wgsl_vertex": "scene_vs",
+      "wgsl_fragment": "scene_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 1
+        }
+      ]
+    },
+    {
+      "pass_id": "water_transmit",
+      "source": "apps/openagents-web/gpu/fairy.coax",
+      "vertex": "fairy_water_vs",
+      "fragment": "fairy_water_transmit_fs",
+      "wgsl_vertex": "water_vs",
+      "wgsl_fragment": "water_transmit_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 3,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        }
+      ]
+    },
+    {
+      "pass_id": "water_emit",
+      "source": "apps/openagents-web/gpu/fairy.coax",
+      "vertex": "fairy_water_vs",
+      "fragment": "fairy_water_emit_fs",
+      "wgsl_vertex": "water_vs",
+      "wgsl_fragment": "water_emit_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 3,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        }
+      ]
+    },
+    {
+      "pass_id": "bloom",
+      "source": "apps/openagents-web/gpu/fairy.coax",
+      "vertex": "fairy_bg_vs",
+      "fragment": "fairy_bloom_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bloom_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 4,
+          "slot": 0,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 5,
+          "slot": 1,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 6,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "post",
+      "source": "apps/openagents-web/gpu/fairy.coax",
+      "vertex": "fairy_bg_vs",
+      "fragment": "fairy_post_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "post_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        },
+        {
+          "resource": 7,
+          "slot": 1,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 8,
+          "slot": 2,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 9,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 10,
+          "slot": 4,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 12,
+          "slot": 5,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/fairy.coax",
+      "vertex": "fairy_fx_vs",
+      "fragment": "fairy_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/deadgears.coax",
+      "vertex": "deadgears_bg_vs",
+      "fragment": "deadgears_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "scene",
+      "source": "apps/openagents-web/gpu/deadgears.coax",
+      "vertex": "deadgears_scene_vs",
+      "fragment": "deadgears_scene_fs",
+      "wgsl_vertex": "scene_vs",
+      "wgsl_fragment": "scene_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 1
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/deadgears.coax",
+      "vertex": "deadgears_fx_vs",
+      "fragment": "deadgears_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/belt.coax",
+      "vertex": "belt_bg_vs",
+      "fragment": "belt_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/belt.coax",
+      "vertex": "belt_fx_vs",
+      "fragment": "belt_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/orbitleague.coax",
+      "vertex": "orbitleague_bg_vs",
+      "fragment": "orbitleague_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/orbitleague.coax",
+      "vertex": "orbitleague_fx_vs",
+      "fragment": "orbitleague_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/fixture.coax",
+      "vertex": "fixture_bg_vs",
+      "fragment": "fixture_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 3,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "caster",
+      "source": "apps/openagents-web/gpu/fixture.coax",
+      "vertex": "fixture_caster_vs",
+      "fragment": "",
+      "wgsl_vertex": "caster_vs",
+      "wgsl_fragment": "",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        }
+      ]
+    },
+    {
+      "pass_id": "grass",
+      "source": "apps/openagents-web/gpu/fixture.coax",
+      "vertex": "fixture_grass_vs",
+      "fragment": "fixture_grass_fs",
+      "wgsl_vertex": "grass_vs",
+      "wgsl_fragment": "grass_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 2,
+          "shape": 2,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 3,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "scene",
+      "source": "apps/openagents-web/gpu/fixture.coax",
+      "vertex": "fixture_scene_vs",
+      "fragment": "fixture_scene_fs",
+      "wgsl_vertex": "scene_vs",
+      "wgsl_fragment": "scene_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 3,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 4,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 1
+        },
+        {
+          "resource": 5,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 6,
+          "slot": 4,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "bloom",
+      "source": "apps/openagents-web/gpu/fixture.coax",
+      "vertex": "fixture_bg_vs",
+      "fragment": "fixture_bloom_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bloom_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 7,
+          "slot": 0,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 8,
+          "slot": 1,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 9,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "post",
+      "source": "apps/openagents-web/gpu/fixture.coax",
+      "vertex": "fixture_bg_vs",
+      "fragment": "fixture_post_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "post_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        },
+        {
+          "resource": 10,
+          "slot": 1,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 11,
+          "slot": 2,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 12,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 13,
+          "slot": 4,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 15,
+          "slot": 5,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/fixture.coax",
+      "vertex": "fixture_fx_vs",
+      "fragment": "fixture_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/waterlab.coax",
+      "vertex": "waterlab_bg_vs",
+      "fragment": "waterlab_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "surface",
+      "source": "apps/openagents-web/gpu/waterlab.coax",
+      "vertex": "waterlab_surface_vs",
+      "fragment": "waterlab_surface_fs",
+      "wgsl_vertex": "surface_vs",
+      "wgsl_fragment": "surface_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/waterlab.coax",
+      "vertex": "waterlab_fx_vs",
+      "fragment": "waterlab_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/droprealm.coax",
+      "vertex": "droprealm_bg_vs",
+      "fragment": "droprealm_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "scene",
+      "source": "apps/openagents-web/gpu/droprealm.coax",
+      "vertex": "droprealm_scene_vs",
+      "fragment": "droprealm_scene_fs",
+      "wgsl_vertex": "scene_vs",
+      "wgsl_fragment": "scene_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 1
+        },
+        {
+          "resource": 3,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 4,
+          "slot": 4,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/droprealm.coax",
+      "vertex": "droprealm_fx_vs",
+      "fragment": "droprealm_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/myrealm.coax",
+      "vertex": "myrealm_bg_vs",
+      "fragment": "myrealm_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "scene",
+      "source": "apps/openagents-web/gpu/myrealm.coax",
+      "vertex": "myrealm_scene_vs",
+      "fragment": "myrealm_scene_fs",
+      "wgsl_vertex": "scene_vs",
+      "wgsl_fragment": "scene_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 1
+        },
+        {
+          "resource": 3,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 1,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 4,
+          "slot": 4,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/myrealm.coax",
+      "vertex": "myrealm_fx_vs",
+      "fragment": "myrealm_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/icecream.coax",
+      "vertex": "icecream_bg_vs",
+      "fragment": "icecream_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "scene",
+      "source": "apps/openagents-web/gpu/icecream.coax",
+      "vertex": "icecream_scene_vs",
+      "fragment": "icecream_scene_fs",
+      "wgsl_vertex": "scene_vs",
+      "wgsl_fragment": "scene_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 16,
+          "stages": 1
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/icecream.coax",
+      "vertex": "icecream_fx_vs",
+      "fragment": "icecream_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/villa.coax",
+      "vertex": "villa_bg_vs",
+      "fragment": "villa_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "scene",
+      "source": "apps/openagents-web/gpu/villa.coax",
+      "vertex": "villa_scene_vs",
+      "fragment": "villa_scene_fs",
+      "wgsl_vertex": "scene_vs",
+      "wgsl_fragment": "scene_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 1
+        }
+      ]
+    },
+    {
+      "pass_id": "bloom",
+      "source": "apps/openagents-web/gpu/villa.coax",
+      "vertex": "villa_bg_vs",
+      "fragment": "villa_bloom_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bloom_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 3,
+          "slot": 0,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 4,
+          "slot": 1,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 5,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "post",
+      "source": "apps/openagents-web/gpu/villa.coax",
+      "vertex": "villa_bg_vs",
+      "fragment": "villa_post_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "post_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        },
+        {
+          "resource": 6,
+          "slot": 1,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 7,
+          "slot": 2,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 8,
+          "slot": 3,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 9,
+          "slot": 4,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 11,
+          "slot": 5,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/villa.coax",
+      "vertex": "villa_fx_vs",
+      "fragment": "villa_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/stair.coax",
+      "vertex": "stair_bg_vs",
+      "fragment": "stair_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/stair.coax",
+      "vertex": "stair_fx_vs",
+      "fragment": "stair_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/watchtower.coax",
+      "vertex": "watchtower_bg_vs",
+      "fragment": "watchtower_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/watchtower.coax",
+      "vertex": "watchtower_fx_vs",
+      "fragment": "watchtower_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/garden.coax",
+      "vertex": "garden_bg_vs",
+      "fragment": "garden_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "scene",
+      "source": "apps/openagents-web/gpu/garden.coax",
+      "vertex": "garden_scene_vs",
+      "fragment": "garden_scene_fs",
+      "wgsl_vertex": "scene_vs",
+      "wgsl_fragment": "scene_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 1
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 64,
+          "stages": 1
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/garden.coax",
+      "vertex": "garden_fx_vs",
+      "fragment": "garden_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        }
+      ]
+    },
+    {
+      "pass_id": "background",
+      "source": "apps/openagents-web/gpu/verse.coax",
+      "vertex": "verse_bg_vs",
+      "fragment": "verse_bg_fs",
+      "wgsl_vertex": "bg_vs",
+      "wgsl_fragment": "bg_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 2
+        }
+      ]
+    },
+    {
+      "pass_id": "hud",
+      "source": "apps/openagents-web/gpu/verse.coax",
+      "vertex": "verse_fx_vs",
+      "fragment": "verse_fx_fs",
+      "wgsl_vertex": "fx_vs",
+      "wgsl_fragment": "fx_fs",
+      "binding_set": 0,
+      "uses": [
+        {
+          "resource": 0,
+          "slot": 0,
+          "native_kind": 1,
+          "shape": 0,
+          "stride": 4,
+          "stages": 3
+        },
+        {
+          "resource": 1,
+          "slot": 1,
+          "native_kind": 2,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        },
+        {
+          "resource": 2,
+          "slot": 2,
+          "native_kind": 3,
+          "shape": 0,
+          "stride": 0,
+          "stages": 2
+        }
+      ]
+    }
+  ],
+  "sources_sha256": {
+    "apps/openagents-web/gpu/realm.coax": "236f1dde267a1388119a1c569a791eec572ac6486143fbfa5c46548024074457",
+    "apps/openagents-web/gpu/realm.module": "2736ff3b1b62412efd689dca97c5644c7e95c4ccf971dfc07919858477eda12c",
+    "apps/openagents-web/gpu/realm.bindings": "bf530dd818d2b938212a368c973476802bb582aed4841f044892b6c4807ea513",
+    "apps/openagents-web/gpu/particles.coax": "1bed527b106299a17649b3e60921c4e164269a897c8eaf2483ae581fc118f7a3",
+    "apps/openagents-web/gpu/particles.module": "72247125d4d6330cf7bec70813c2b1c6973bd13cd9d57bb529c6d7cf5d4620fa",
+    "apps/openagents-web/gpu/particles.bindings": "baa0be965fa75e9b73e7704d218f440660cb6a9008007614a5c296a86b5a82e0",
+    "apps/openagents-web/realm.wgsl": "5c862b8996fd6e6b75885d576adc7a808bd7b02e232a75ac90860c30c15b0bc5",
+    "apps/openagents-web/realm-face.c": "9461787f08df42a9bfda88557b5fbeac1ecfef4e36f97fad907efb7b4a9103b7",
+    "apps/openagents-web/gpu/newland.coax": "6d591ee76de2f8226d4a4fede310a6f8aac493bb0e25363d72452c2e62b0c26d",
+    "apps/openagents-web/gpu/newland.module": "b9884ee56ed1a96c38880546227011fad2e6f4a74f3c0861149455607e196fe9",
+    "apps/openagents-web/gpu/newland.bindings": "824a117e99b975e5bf5d3a784e15c401c504cd07cf7f9aca07536b78b3a027c1",
+    "apps/openagents-web/newland.wgsl": "c1341a360fb2d6062cc22d1575bda9321187a26879cc7d40005afb5362d1547e",
+    "apps/openagents-web/newland-face.c": "abceffafb8dc8cde6274a0405de8b41cf25abb61f84641ca85bda62fa564b380",
+    "verse/everglade/gpu.coax": "1ee5486e07d851e2bc29c6d95afa5f0996550b75849c6a31f0b8adf2bec6d184",
+    "verse/everglade/gpu.module": "bfab57518f3f98254fd11f702534d385bdf296c6f00e0bde642633190f001db3",
+    "verse/everglade/gpu.bindings": "6d8dbfed3d1dfd5e6b0afbafca5423dbf85005ed69bf1d98bda42cf07f6f1530",
+    "verse/everglade/gpu-fx.coax": "fbdf179aa591086eb1a612e7cfd22d0b56c6b0bd083d4698d7ce52a6be199333",
+    "verse/everglade/gpu-fx.module": "8b176923d0c7d685c688920904f352f30869d67424e965ef882cc8ab5d6649e9",
+    "verse/everglade/gpu-fx.bindings": "b17ceaef68bf999a2f891390fb5a915b12c1ea682cd310b0db8a3844a86b367a",
+    "apps/openagents-web/everglade.wgsl": "12dce0734ca3be0cecdc41039961c4863444e9a5c57df6849ab2fe4996319be6",
+    "apps/openagents-web/everglade-face.c": "1efd153e71ed0044f77aa3dfa8c9259e30633ea79a5813a582a71f2c13b01380",
+    "apps/openagents-web/gpu/fairy.coax": "8477580041d4bf30f8eb114c7b00ee78bc920eb6bba501948297b8b5746797ff",
+    "apps/openagents-web/gpu/fairy.module": "63d72d2c2d44e82de4268bfd23c2a70ff5036a46b1387c0d4d1556e8364c79ff",
+    "apps/openagents-web/gpu/fairy.bindings": "f50898d9e7a31e1f4d827ffb3bc6850ec22793081693989def87f0f097460070",
+    "apps/openagents-web/fairy.wgsl": "6124fe2c8147c7ff59858943c130651ccbc7c8bca9cddfb84e148e9a5da1ca25",
+    "apps/openagents-web/fairy-face.c": "73cf3458c99b7ec7ed49ddf7d5c3ef08bec7fb02ed09d2dec954a3e4783f8f12",
+    "apps/openagents-web/gpu/deadgears.coax": "8c0e70657a0f4d46dea2110add9bec34cf3d3051fb9a2d79f7e01342a306b48a",
+    "apps/openagents-web/gpu/deadgears.module": "c1c181bf137849ad3a0982450260365a508d5f44fac3842066da41f6f880ded0",
+    "apps/openagents-web/gpu/deadgears.bindings": "6c57e4caf00d24b294d1715293dd19b4a0e8b8618761028666716fac105671b4",
+    "apps/openagents-web/deadgears.wgsl": "f16614e102e4cf43fffc24c2a51752fe11a66693e5d4ab116ff6a98bf151897f",
+    "apps/openagents-web/deadgears-face.c": "3ebbf5099aad7ea7783d01008f2b81f812b3811098cbee49b1c7f3c5a5a0da71",
+    "apps/openagents-web/gpu/belt.coax": "5e8c081edcc19f0dbf99d355ec1c27ea062f137d931ae6e60aa27bb17ac2ab84",
+    "apps/openagents-web/gpu/belt.module": "48a3d62dc07a9070bb8527b4a09d4cce18539670e24640b4a39595b4b21a0089",
+    "apps/openagents-web/gpu/belt.bindings": "877220ea0a6145e0d9c793a19802fdd1cda5ca8c8c4e906a60506a3c62399333",
+    "apps/openagents-web/belt.wgsl": "b2181f337cfc70c0734ea092f762bbc3b0de32cd793f3d2d10aeb91f71496ce1",
+    "apps/openagents-web/belt-face.c": "e9e5c44a6563063f4099e08711452223a8f7a15896833a166ad7f9d6705ecc6a",
+    "apps/openagents-web/gpu/orbitleague.coax": "41c0181436bbd1f0c72ed8f93b8a2ae7bff7fb306388399e5256e71f063d5627",
+    "apps/openagents-web/gpu/orbitleague.module": "718a05c6589c76498426a9230d2424978a6cee691441306290554a5cdfdbf8ce",
+    "apps/openagents-web/gpu/orbitleague.bindings": "74373c112d17bacb046708fa0092d658334f4518cb241fb31e37fbb3c7bff369",
+    "apps/openagents-web/orbitleague.wgsl": "6fd1b627719463c0e2cc612376dec20574e1b760eb1a7b1170f64b861ec73f9f",
+    "apps/openagents-web/orbitleague-face.c": "45f51f943ad4ce24e7778238af5d93447c6d54b9aaf463a7022ed2e79350ad19",
+    "apps/openagents-web/gpu/fixture.coax": "2c6c230a394b7e22626f40f4ded7861ab4f4b63a908f24ebe5deb098da46506a",
+    "apps/openagents-web/gpu/fixture.module": "3abea663a32fe44ae3e747abd09def49ac70e298b1efa415d334a8c49833a2dd",
+    "apps/openagents-web/gpu/fixture.bindings": "6591826444084205bcc3e7d1248ccef9a2b32946ae99f220e173c69c30d8d4e4",
+    "apps/openagents-web/fixture.wgsl": "01df78e673cbf2954b2073c8998b9b031b997efce8fb353a8fb3863f0520e30d",
+    "apps/openagents-web/fixture-face.c": "0de053d2256d2b2f2cd6841d8f3e1ab85ac09af6b9c2d9ae050a691d262c8a96",
+    "apps/openagents-web/gpu/waterlab.coax": "ee8c536fe171ef4c745178f563466bf2a547276ff7d98899efd4540c117990fc",
+    "apps/openagents-web/gpu/waterlab.module": "7cc0361ca66961c1c79bed2e693a7b4f0cd349debe5b6bad756bc62f6ad74ddd",
+    "apps/openagents-web/gpu/waterlab.bindings": "3d40fac2777d5aee33dafe78b023850b7718a243ffdb83e3c2a91b9b14111a18",
+    "apps/openagents-web/waterlab.wgsl": "651c37b7978112d58d1ddcfe1e729b6b2ab40b6a64bc604168c126c30fd3e50c",
+    "apps/openagents-web/waterlab-face.c": "e90f4ab9108aaae2f9abb1f7d520e8006eb7772e9b448f1bafccc75c85c4ece0",
+    "apps/openagents-web/gpu/droprealm.coax": "f0edc3c47fdbc464f58dcace29447d9262370c924a983a23e5665882608dd548",
+    "apps/openagents-web/gpu/droprealm.module": "5b75231739512a45721094ff3ff2233efcafbd296feb0959ca191258dc8f883b",
+    "apps/openagents-web/gpu/droprealm.bindings": "2b26e7b02e3481452012b773523f5963fca4fd177d57f4d86e0db8de607997b2",
+    "apps/openagents-web/droprealm.wgsl": "9e769bb92859fffa9cc4ff760557037c509dac124edd47e4cf2f954fb9beda33",
+    "apps/openagents-web/droprealm-face.c": "f46c20ac3f794ae2c24ec1219d9d50f3d132ad09d0e7e8617423f65089ebc7bb",
+    "apps/openagents-web/gpu/myrealm.coax": "23bd44eafc854b583be3271f60fe820d6f11d7bf635d2e22343d84f0d9c26759",
+    "apps/openagents-web/gpu/myrealm.module": "78deaada488b3becf5e50aadb031d1d4c3da0022de0fdde208e35241b3c3b9dc",
+    "apps/openagents-web/gpu/myrealm.bindings": "0f716f9a54433e8acbc48afbc9a9768bfa3ce6679bb6fe2dcc0cd8f3857f0804",
+    "apps/openagents-web/myrealm.wgsl": "224131021ece59f302974020b344ca8ba4e4eed18a1b5aff53daf62380a10c9c",
+    "apps/openagents-web/myrealm-face.c": "a1cd7993f5e6c7e4a9b474544ca4bda8a5f514c269d237d097bdcaae3ee6846b",
+    "apps/openagents-web/gpu/icecream.coax": "442fad36607800dd93beff71a746a3170c639a3250b1c9ef2edfbb34044e6259",
+    "apps/openagents-web/gpu/icecream.module": "797dec4be204aaf5872c6ecfc54f3698245567815b3c2ff83bb371e07de78f3b",
+    "apps/openagents-web/gpu/icecream.bindings": "fac2f821678dbec07efc5f8adc165975db88726801251c9094a203ba1a30b1ba",
+    "apps/openagents-web/icecream.wgsl": "72724a1c6a7d6658c012dd755017764a14cab6fb4c26af7ced0f93ea5d93ac46",
+    "apps/openagents-web/icecream-face.c": "33c8c234bbbace2e2a58faaf8e395d732531be75db56cecf6f613c7adee26dba",
+    "apps/openagents-web/gpu/villa.coax": "1bc6d7b62a52aa4cd572137c6fff3a00351e3f6dbf7f50b9cd30187455814434",
+    "apps/openagents-web/gpu/villa.module": "031936aebfaf1cc190d1095ac17a432707db31bfc65efe79d8a6886472447731",
+    "apps/openagents-web/gpu/villa.bindings": "9229a3638b394934c9a577a9460bdffca83f8d382fda3fd62c6be2244a986532",
+    "apps/openagents-web/villa.wgsl": "19dc016a55ed1a5bee67988bdae3212cdba89a6a5a8c7db88f07ec0c9dacb460",
+    "apps/openagents-web/villa-face.c": "0a0c5e6521d15b2c7388755f5fc3b534169f2aa36c2cb8ae1af907ef4300aa2d",
+    "apps/openagents-web/gpu/stair.coax": "932e48d83ae4173d2fe73489ca21beb7cb3e15c096ae62990bf4fdb096f2cb81",
+    "apps/openagents-web/gpu/stair.module": "de9e0c7d074e9c1aec7565e27ab5d8bfb049390b1b2fa876b8743fe6bf86d992",
+    "apps/openagents-web/gpu/stair.bindings": "deac01f99b13274d4e12784fbcf2a7896ca55828b39473909b5d2cf8ca61bdbe",
+    "apps/openagents-web/stair.wgsl": "1ad533952892a229fad5539d779e5c6b5e925c87ab476594afc48114108e3e4f",
+    "apps/openagents-web/stair-face.c": "64afea2595eb80f81ac4ab09443105f6d40d088234b31cf3756aedbd1a98237b",
+    "apps/openagents-web/gpu/watchtower.coax": "314dac56f09f89070ceb78670969ef7aeac9d9d68a7d89b65f38e022692d6a1f",
+    "apps/openagents-web/gpu/watchtower.module": "f882700aff8adf9f61560800cb5c8e8da6a27e05cf5b614509ae2411ce7342b2",
+    "apps/openagents-web/gpu/watchtower.bindings": "d341ad02ef356eac74990023e05b6522c749e0bae44816dfebb2dd07921779b4",
+    "apps/openagents-web/watchtower.wgsl": "6263f88a8f3138ba6877eb78ff34b99b27707e4ca80a06525adbe93902a7263c",
+    "apps/openagents-web/watchtower-face.c": "f57dc942da33cd588839260561111fd7778e6c0e0dffd9d5fabd4dfe542932c8",
+    "apps/openagents-web/gpu/garden.coax": "1f4360dbad08640eacea6d25f0e430ae4dd4bcd8a1f69bd159b71206fd56ea20",
+    "apps/openagents-web/gpu/garden.module": "42b9840ef8c7aa83a2f9f207dd214ee680d0d7512c70220e554c99b1be62c328",
+    "apps/openagents-web/gpu/garden.bindings": "c2a945de4463990ed26a135b283214f74ba4c31059160ba3513c27f0633e8ff2",
+    "apps/openagents-web/garden.wgsl": "79b1d930963c419e28d8288bb62050d68bc3b0b8bb9b333a8e8e06249dde02ad",
+    "apps/openagents-web/garden-face.c": "b5ea9b671a73921e583980c1b92d67f304f3383fe68ea9e077067886ec332e2a",
+    "apps/openagents-web/gpu/verse.coax": "a0d0c14ac3c33aee02fbe46113b3e32637d91f3f53868ee8d091a20dd8130366",
+    "apps/openagents-web/gpu/verse.module": "36cc520bad68fc4eea4409e520c235dab9a4c9c3b901dbf36ffba3af543260fa",
+    "apps/openagents-web/gpu/verse.bindings": "c84fcf36656665544786aafa165721093bf0accdfe48156867b923586377833b",
+    "apps/openagents-web/verse.wgsl": "5ac253f61f38e71bac3fcd6450853527053f83e86a798f40d37084562cf86d58",
+    "apps/openagents-web/verse-face.c": "f328c86dfbc123c6a25c8e4bf60d82dd1d9b5febf840b8bfa92f11d0656e2535"
+  }
+}

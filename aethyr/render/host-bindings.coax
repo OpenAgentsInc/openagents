@@ -1,0 +1,112 @@
+// Shared descriptors for browser and native effects. Entry indices0..12 are
+// canonical passes;13 is the separate media entry, not RenderPassId.invalid.
+#module "aethyr.render.host.bindings";
+#load "binding-sources.coax";
+#load "media-profile.coax";
+#load "media-limits.coax";
+#authority;
+RenderHostBinding :: struct {valid:bool;binding:RenderBinding;source:RenderBindingSource;}
+RenderHostUse :: struct {valid:bool;binding_set:int=-1;use:RenderUse;binding:RenderBinding;source:RenderBindingSource;}
+RenderHostPipeline :: struct {valid:bool;state:RenderPassState;colour0:RenderTarget;colour1:RenderTarget;depth:RenderTarget;}
+RenderHostClear :: struct {colour:[4]f32;depth:f32;}
+// Representative activation data, independent of any producer's actual work.
+// Its two records leave both an opaque and a water record when water is enabled.
+RENDER_HOST_PIPELINE_TEMPLATE :: FrameCounts.{width=1,height=1,vertex_stride=1,hud_vertices=1,
+  draw_count=2,water_draws=1,grass_instances=1,particle_instances=1,surface_vertices=1,caster_vertices=1,caster_instances=1};
+#load "tests/host-bindings-checks.coax";
+
+render_host_binding_count :: (rhbd_profile:int,rhbd_set:int)->int {
+  if rhbd_set==2 {return ifx render_catalog(rhbd_profile).features.media then render_media_binding_count() else -1;}
+  return render_catalog_binding_count(rhbd_profile,rhbd_set);
+}
+render_host_binding :: (rhbd_profile:int,rhbd_set:int,rhbd_resource:int)->RenderHostBinding {
+  rhbd_count:=render_host_binding_count(rhbd_profile,rhbd_set);
+  if rhbd_resource<0 || rhbd_resource>=rhbd_count {return RenderHostBinding.{};}
+  rhbd_binding:=ifx rhbd_set==2 then render_media_binding(rhbd_resource) else render_catalog_binding(rhbd_profile,rhbd_set,rhbd_resource);
+  return RenderHostBinding.{valid=true,binding=rhbd_binding,source=render_binding_source(rhbd_profile,rhbd_set,rhbd_resource)};
+}
+render_host_use_count :: (rhbd_profile:int,rhbd_entry:int)->int {
+  if rhbd_entry<0 || rhbd_entry>13 {return -1;}
+  if rhbd_entry==13 {return ifx render_catalog(rhbd_profile).features.media then render_media_use_count() else -1;}
+  return render_catalog_use_count(rhbd_profile,cast(RenderPassId)rhbd_entry);
+}
+render_host_use :: (rhbd_profile:int,rhbd_entry:int,rhbd_slot:int)->RenderHostUse {
+  rhbd_count:=render_host_use_count(rhbd_profile,rhbd_entry);
+  if rhbd_slot<0 || rhbd_slot>=rhbd_count {return RenderHostUse.{};}
+  rhbd_set:=2;rhbd_use:=RenderUse.{};
+  if rhbd_entry==13 {rhbd_use=render_media_use(rhbd_slot);}
+  else {
+    rhbd_set=render_catalog_entry(rhbd_profile,cast(RenderPassId)rhbd_entry).binding_set;
+    rhbd_use=render_catalog_use(rhbd_profile,cast(RenderPassId)rhbd_entry,rhbd_slot);
+  }
+  rhbd_binding:=render_host_binding(rhbd_profile,rhbd_set,rhbd_use.resource);
+  return RenderHostUse.{valid=true,binding_set=rhbd_set,use=rhbd_use,binding=rhbd_binding.binding,source=rhbd_binding.source};
+}
+// The bit width retains empty layout groups below the highest active group.
+// Canonical binding admission bounds group indices before this projection.
+render_host_group_count :: (rhbd_profile:int,rhbd_entry:int)->int {
+  rhbd_mask:u32;rhbd_count:=render_host_use_count(rhbd_profile,rhbd_entry);
+  for rhbd_slot:0..<rhbd_count {
+    rhbd_use:=render_host_use(rhbd_profile,rhbd_entry,rhbd_slot);
+    rhbd_mask |= u32(1)<<u32(rhbd_use.binding.group);
+  }
+  rhbd_groups:=0;
+  while rhbd_mask!=0 {rhbd_groups+=1;rhbd_mask>>=1;}
+  return rhbd_groups;
+}
+// Formatting is for the fixed source-origin transport names below; it grants
+// no resource admission. Refusal leaves scratch unchanged.
+rhb_numbered_name :: (rhbn_prefix:string,rhbn_suffix:string,rhbn_index:int,rhbn_limit:int,rhbn_out:[]u8)->string {
+  if rhbn_index<0 || rhbn_index>=rhbn_limit {return "";}
+  rhbn_digits:=ifx rhbn_index>=10 then 2 else 1;
+  if rhbn_index>=100 {rhbn_digits=3;}
+  rhbn_length:=rhbn_prefix.count+rhbn_digits+rhbn_suffix.count;
+  if rhbn_out.count<rhbn_length {return "";}
+  for rhbn_at:0..<rhbn_prefix.count {rhbn_out[rhbn_at]=rhbn_prefix[rhbn_at];}
+  // The qualified limits are48 stores or112 media lines: three digits
+  // therefore always have a leading1, never an arbitrary integer's hundreds.
+  if rhbn_digits==3 {rhbn_out[rhbn_prefix.count]=49;}
+  if rhbn_digits>=2 {rhbn_out[rhbn_prefix.count+rhbn_digits-2]=u8(48+(rhbn_index/10)%10);}
+  rhbn_out[rhbn_prefix.count+rhbn_digits-1]=u8(48+rhbn_index%10);
+  for rhbn_at:0..<rhbn_suffix.count {rhbn_out[rhbn_prefix.count+rhbn_digits+rhbn_at]=rhbn_suffix[rhbn_at];}
+  return cast(string)rhbn_out[0..<rhbn_length];
+}
+render_host_buffer_name :: (rhbn_source:RenderBindingSource,rhbn_out:[]u8)->string {
+  if rhbn_source.kind==RenderSourceKind.main_uniform {return "u.bin";}
+  if rhbn_source.kind==RenderSourceKind.immutable_storage_asset && rhbn_source.index==0 {return "vertices.bin";}
+  if rhbn_source.kind==RenderSourceKind.mesh_asset && rhbn_source.index==0 {return "mesh.bin";}
+  if rhbn_source.kind==RenderSourceKind.particle_emitters {return "puffs.bin";}
+  if rhbn_source.kind==RenderSourceKind.dynamic_store {return rhb_numbered_name("s",".bin",rhbn_source.index,48,rhbn_out);}
+  return "";
+}
+render_host_texture_name :: (rhbn_source:RenderBindingSource,rhbn_out:[]u8)->string {
+  if rhbn_source.kind==RenderSourceKind.layers {return "layers";}
+  if rhbn_source.kind==RenderSourceKind.sans_atlas {return "sans_atlas";}
+  if rhbn_source.kind==RenderSourceKind.media_image {return rhb_numbered_name("media_image-","",rhbn_source.index,RENDER_MEDIA_ITEMS,rhbn_out);}
+  return "";
+}
+render_host_clear :: ()->RenderHostClear {return RenderHostClear.{colour=[4]f32.[0,0,0,1],depth=1};}
+// Only called with a canonical bounded graph. This is pipeline compatibility
+// metadata, not frame admission or the targets of a later actual draw. Bloom's
+// first target is q0; all five bloom targets have the same physical format.
+rhb_pipeline_graph :: (rhbd_plan:RenderPlan,rhbd_entry:int)->RenderHostPipeline {
+  rhbd_c0:=RenderTarget.none;rhbd_c1:=RenderTarget.none;rhbd_depth:=RenderTarget.none;
+  for rhbd_at:0..<rhbd_plan.count {
+    rhbd_op:=rhbd_plan.ops[rhbd_at];
+    if rhbd_op.kind==RenderOpKind.begin {rhbd_c0=rhbd_op.colour0;rhbd_c1=rhbd_op.colour1;rhbd_depth=rhbd_op.depth;}
+    if rhbd_entry==13 && rhbd_op.kind==RenderOpKind.media_before {
+      rhbd_state:=RenderPassState.{valid=true};
+      if rhbd_depth!=RenderTarget.none {rhbd_state.depth=RenderDepth.always;}
+      return RenderHostPipeline.{valid=true,state=rhbd_state,colour0=rhbd_c0,colour1=rhbd_c1,depth=rhbd_depth};
+    }
+    if rhbd_op.kind==RenderOpKind.draw && int(rhbd_op.pass)==rhbd_entry {
+      return RenderHostPipeline.{valid=true,state=rhbd_op.state,colour0=rhbd_c0,colour1=rhbd_c1,depth=rhbd_depth};
+    }
+  }
+  return RenderHostPipeline.{};
+}
+render_host_pipeline :: (rhbd_profile:int,rhbd_entry:int)->RenderHostPipeline {
+  if render_host_use_count(rhbd_profile,rhbd_entry)== -1 {return RenderHostPipeline.{};}
+  rhbd_meta:=render_catalog(rhbd_profile);
+  return rhb_pipeline_graph(render_plan(rhbd_meta.features,RENDER_HOST_PIPELINE_TEMPLATE,RenderReadiness.ready,true),rhbd_entry);
+}

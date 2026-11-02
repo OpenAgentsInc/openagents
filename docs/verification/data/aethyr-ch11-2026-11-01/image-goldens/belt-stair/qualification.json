@@ -1,0 +1,363 @@
+{
+  "schema": "aethyr.render.belt-stair-visible-migration.v1",
+  "status": "pass_for_two_explicit_visible_migrations",
+  "cases": [
+    "belt-2200",
+    "hold-the-stair"
+  ],
+  "exact_controls": {
+    "belt-base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "legacy_particle_override": null,
+      "reused_generic": null,
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "dd170d461c7fe58c506c50b0275bd313d615bc40cc647afc183f751701d84aa2",
+      "generic_sha256": "10e953567425bd181e77831c6dc20c6c0f2da7ccbbce0d46d9eb2d1f657b412f",
+      "different_channels": 13276,
+      "different_pixels": 6545,
+      "max_byte_delta": 93,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "belt-integer": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-belt-noise-controls/integer.wgsl",
+      "legacy_particle_override": null,
+      "reused_generic": "/tmp/aethyr-ch11-golden-belt-current/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "10e953567425bd181e77831c6dc20c6c0f2da7ccbbce0d46d9eb2d1f657b412f",
+      "generic_sha256": "10e953567425bd181e77831c6dc20c6c0f2da7ccbbce0d46d9eb2d1f657b412f",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "belt-incomplete-sine-control": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-belt-noise-controls/sin.wgsl",
+      "legacy_particle_override": null,
+      "reused_generic": "/tmp/aethyr-ch11-golden-belt-current/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "7addb13265216477b9b538b66baa7b1617c66a832a7d827dc450a2476cebf16f",
+      "generic_sha256": "10e953567425bd181e77831c6dc20c6c0f2da7ccbbce0d46d9eb2d1f657b412f",
+      "different_channels": 11353,
+      "different_pixels": 5809,
+      "max_byte_delta": 33,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "belt-complete-sine-control": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-belt-noise-controls/sin-all.wgsl",
+      "legacy_particle_override": null,
+      "reused_generic": "/tmp/aethyr-ch11-golden-belt-current/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "dd170d461c7fe58c506c50b0275bd313d615bc40cc647afc183f751701d84aa2",
+      "generic_sha256": "10e953567425bd181e77831c6dc20c6c0f2da7ccbbce0d46d9eb2d1f657b412f",
+      "different_channels": 13276,
+      "different_pixels": 6545,
+      "max_byte_delta": 93,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "stair-base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "legacy_particle_override": null,
+      "reused_generic": null,
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "aaca3bd85a9671290f610e1b38488337606dffaab1438867d34a71aaf23c8e19",
+      "generic_sha256": "214b56fc8c3f1dbd155a8be1decf2dfe04a064495c7c9a690c758591cd78249b",
+      "different_channels": 7386,
+      "different_pixels": 3595,
+      "max_byte_delta": 37,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "stair-integer": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-stair-noise-controls/integer.wgsl",
+      "legacy_particle_override": null,
+      "reused_generic": "/tmp/aethyr-ch11-golden-stair-current/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "214b56fc8c3f1dbd155a8be1decf2dfe04a064495c7c9a690c758591cd78249b",
+      "generic_sha256": "214b56fc8c3f1dbd155a8be1decf2dfe04a064495c7c9a690c758591cd78249b",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "stair-sine-control": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-stair-noise-controls/sin.wgsl",
+      "legacy_particle_override": null,
+      "reused_generic": "/tmp/aethyr-ch11-golden-stair-current/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "aaca3bd85a9671290f610e1b38488337606dffaab1438867d34a71aaf23c8e19",
+      "generic_sha256": "214b56fc8c3f1dbd155a8be1decf2dfe04a064495c7c9a690c758591cd78249b",
+      "different_channels": 7386,
+      "different_pixels": 3595,
+      "max_byte_delta": 37,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    }
+  },
+  "stock_gates": {
+    "original-mixed-failure": {
+      "execution": {
+        "status": "fail",
+        "route": "generic",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:61285",
+          "--only",
+          "belt-2200,hold-the-stair,everglade",
+          "--report",
+          "/tmp/aethyr-ch11-stock-final-three-generic/report.json"
+        ],
+        "elapsed_seconds": 24.404,
+        "returncode": 1,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": {
+        "base": "http://127.0.0.1:61285",
+        "failed": [
+          "everglade: draws (0.0% lit, at least 3.0%)",
+          "everglade: matches its golden (16000 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-800; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-3vXvnb/everglade.png)",
+          "belt-2200: matches its golden (29 blocks changed, 8 allowed, 0 moving, x 72-1264, y 32-720; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-n3XhM1/belt-2200.png)",
+          "hold-the-stair: matches its golden (1222 blocks changed, 6 allowed, 0 moving, x 112-1168, y 64-656; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-UuzvhM/hold-the-stair.png)"
+        ],
+        "golden": [
+          {
+            "name": "everglade",
+            "path": "/realms/everglade"
+          },
+          {
+            "name": "belt-2200",
+            "path": "/realms/belt-2200"
+          },
+          {
+            "name": "hold-the-stair",
+            "path": "/realms/hold-the-stair"
+          }
+        ],
+        "other": [
+          "everglade: draws (0.0% lit, at least 3.0%)"
+        ]
+      },
+      "log": "lane everglade (10.2 s)\n  ok    everglade: at http://127.0.0.1:61285/realms/everglade\n  ok    everglade: the engine started\n  info  everglade: 0.2% lit, under 3.0%; shooting it again\n  info  everglade: 0.2% lit, under 3.0%; shooting it again\n  info  everglade: 0.2% lit, under 3.0%; shooting it again\n  info  everglade: 0.0% lit, under 3.0%; shooting it again\n  ok    everglade: no errors\n  FAIL  everglade: draws (0.0% lit, at least 3.0%)\n  FAIL  everglade: matches its golden (16000 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-800; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-3vXvnb/everglade.png)\n  time  everglade: 10.1 s\n  ok    analytics contract: every everglade event sent (4 events, 0.0 s)\nlane belt-2200 (6.4 s)\n  ok    belt-2200: at http://127.0.0.1:61285/realms/belt-2200\n  ok    belt-2200: the engine started\n  ok    belt-2200: no errors\n  ok    belt-2200: draws (2.4% lit, at least 0.4%)\n  FAIL  belt-2200: matches its golden (29 blocks changed, 8 allowed, 0 moving, x 72-1264, y 32-720; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-n3XhM1/belt-2200.png)\n  time  belt-2200: 6.4 s\n  ok    analytics contract: every belt-2200 event sent (4 events, 0.0 s)\nlane hold-the-stair (7.2 s)\n  ok    hold-the-stair: at http://127.0.0.1:61285/realms/hold-the-stair\n  ok    hold-the-stair: the engine started\n  ok    hold-the-stair: no errors\n  ok    hold-the-stair: draws (32.0% lit, at least 2.0%)\n  FAIL  hold-the-stair: matches its golden (1222 blocks changed, 6 allowed, 0 moving, x 112-1168, y 64-656; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-UuzvhM/hold-the-stair.png)\n  time  hold-the-stair: 7.2 s\ngoldens http://127.0.0.1:61285: 4 failed in 24.3 s (1 tabs)\n"
+    },
+    "original-legacy": {
+      "execution": {
+        "status": "pass",
+        "route": "legacy",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:65298",
+          "--only",
+          "belt-2200,hold-the-stair",
+          "--report",
+          "/tmp/aethyr-ch11-stock-belt-stair-legacy/report.json"
+        ],
+        "elapsed_seconds": 16.012,
+        "returncode": 0,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": {
+        "base": "http://127.0.0.1:65298",
+        "failed": [],
+        "golden": [],
+        "other": []
+      },
+      "log": "lane belt-2200 (6.9 s)\n  ok    belt-2200: at http://127.0.0.1:65298/realms/belt-2200\n  ok    belt-2200: the engine started\n  ok    belt-2200: no errors\n  ok    belt-2200: draws (2.4% lit, at least 0.4%)\n  ok    belt-2200: matches its golden (6 blocks changed, 8 allowed, 0 moving, x 304-352, y 80-88)\n  time  belt-2200: 6.8 s\n  ok    analytics contract: every belt-2200 event sent (4 events, 0.0 s)\nlane hold-the-stair (7.6 s)\n  ok    hold-the-stair: at http://127.0.0.1:65298/realms/hold-the-stair\n  ok    hold-the-stair: the engine started\n  ok    hold-the-stair: no errors\n  ok    hold-the-stair: draws (32.9% lit, at least 2.0%)\n  ok    hold-the-stair: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  hold-the-stair: 7.6 s\ngoldens http://127.0.0.1:65298: passed in 15.9 s (1 tabs)\n"
+    },
+    "migrated-generic": {
+      "execution": {
+        "status": "pass",
+        "route": "generic",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:49404",
+          "--only",
+          "belt-2200,hold-the-stair",
+          "--report",
+          "/tmp/aethyr-ch11-stock-belt-stair-migrated-generic/report.json"
+        ],
+        "elapsed_seconds": 18.453,
+        "returncode": 0,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": {
+        "base": "http://127.0.0.1:49404",
+        "failed": [],
+        "golden": [],
+        "other": []
+      },
+      "log": "lane belt-2200 (7.6 s)\n  ok    belt-2200: at http://127.0.0.1:49404/realms/belt-2200\n  ok    belt-2200: the engine started\n  ok    belt-2200: no errors\n  ok    belt-2200: draws (2.4% lit, at least 0.4%)\n  ok    belt-2200: matches its golden (0 blocks changed, 8 allowed, 0 moving)\n  time  belt-2200: 7.5 s\n  ok    analytics contract: every belt-2200 event sent (4 events, 0.1 s)\nlane hold-the-stair (9.1 s)\n  ok    hold-the-stair: at http://127.0.0.1:49404/realms/hold-the-stair\n  ok    hold-the-stair: the engine started\n  ok    hold-the-stair: no errors\n  ok    hold-the-stair: draws (32.0% lit, at least 2.0%)\n  ok    hold-the-stair: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  hold-the-stair: 9.1 s\ngoldens http://127.0.0.1:49404: passed in 18.3 s (1 tabs)\n"
+    },
+    "migrated-integer": {
+      "execution": {
+        "status": "pass",
+        "route": "legacy-integer",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:49403",
+          "--only",
+          "belt-2200,hold-the-stair",
+          "--report",
+          "/tmp/aethyr-ch11-stock-belt-stair-migrated-integer/report.json"
+        ],
+        "elapsed_seconds": 17.975,
+        "returncode": 0,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": {
+        "base": "http://127.0.0.1:49403",
+        "failed": [],
+        "golden": [],
+        "other": []
+      },
+      "log": "lane belt-2200 (7.6 s)\n  ok    belt-2200: at http://127.0.0.1:49403/realms/belt-2200\n  ok    belt-2200: the engine started\n  ok    belt-2200: no errors\n  ok    belt-2200: draws (2.4% lit, at least 0.4%)\n  ok    belt-2200: matches its golden (0 blocks changed, 8 allowed, 0 moving)\n  time  belt-2200: 7.5 s\n  ok    analytics contract: every belt-2200 event sent (4 events, 0.1 s)\nlane hold-the-stair (8.7 s)\n  ok    hold-the-stair: at http://127.0.0.1:49403/realms/hold-the-stair\n  ok    hold-the-stair: the engine started\n  ok    hold-the-stair: no errors\n  ok    hold-the-stair: draws (32.0% lit, at least 2.0%)\n  ok    hold-the-stair: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  hold-the-stair: 8.7 s\ngoldens http://127.0.0.1:49403: passed in 17.9 s (1 tabs)\n"
+    }
+  },
+  "baseline_migration": {
+    "schema": "aethyr.render.belt-stair-visible-review.v1",
+    "cases": {
+      "belt-2200": {
+        "before_sha256": "949ef8a48bff17c219740852dd20294cf6136bab752392b9ede51a036744c6e5",
+        "after_sha256": "3dcace28fe2e2ab131ddd6230a8a921452319f9e99ffa4d934b82173a0f4f1fd",
+        "stock_capture": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-n3XhM1/belt-2200.png",
+        "size": [
+          1280,
+          800
+        ],
+        "baseline_updated": true
+      },
+      "hold-the-stair": {
+        "before_sha256": "25e7a087c3045cc0858753879697f9508e6ef27653c46a2fb7a9d376845612bb",
+        "after_sha256": "f0bad763e62a16ca68d2d825ea13a4bba6e7161fad64c5b93e1fa4feb6a43ca2",
+        "stock_capture": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-UuzvhM/hold-the-stair.png",
+        "size": [
+          1280,
+          800
+        ],
+        "baseline_updated": true
+      }
+    },
+    "reviews": {
+      "root": "Belt preserves orbits, planets, marks, ships, cards, counts and framing. Existing GALAXY to REALMS caption and fine star/asteroid patterns differ. Stair preserves all paths, walls, goal/start, lamps, HUD and hotbar; fine material noise differs.",
+      "independent_coax_review": "Reviewed both before/after montages and identities: no missing object, layout, text, path or palette regression. Same concrete features as root; star/material pattern and existing caption changes explicit."
+    },
+    "controls": "Belt currentinteger old executor equals shared exactly; restoring belt_hash2 and consumed stars_hash exactly reproduces old raw. Earlier belt-only restoration did not and remains retained. Stair currentinteger old executor equals shared; restoredstair_hash exactly reproduces old raw. Original stock old executor passes both unchanged allowances (Belt6/8blocks fromcaption, Stair0/6).",
+    "policy": "Belt8block andStair6block allowances unchanged; numerical allchannel CPU comparisons separate."
+  },
+  "source_inputs": {
+    "/tmp/aethyr-ch11-typed-hosts-qualified/belt.wasm": "e9328ad513aad24d696aaefd3364466557e6b261f337593e3f2c307ffb280e0a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/belt-2200/index.html": "0c3fa56f74c9279539555e40b7747dc41ce85a164969a9c931e91bc4a08d79c0",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_goldens.ts": "3bc6185197d61c11ff271ffaf6c8b1f7e261d5accb5aa6ee2c2be25fb4ccb58b",
+    "/tmp/aethyr-ch11-packages-current/belt-2200/render.json": "720c1f9b275bc0e83ed3497e7fa566a9cc6c04c9dd5c06f1f4ff608625bca4ed",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js": "214003ec97f37ce55daab424763a358715574030d533f1caed3853a1e46696af",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js": "824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/chrome.ts": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/belt.wgsl": "b2181f337cfc70c0734ea092f762bbc3b0de32cd793f3d2d10aeb91f71496ce1",
+    "/tmp/aethyr-ch11-packages-current/belt-2200/module-0-498b892601eda9fc9ae1ffe98f7f3282046780b1ab54f9da51101e84bd94b67e.wgsl": "498b892601eda9fc9ae1ffe98f7f3282046780b1ab54f9da51101e84bd94b67e",
+    "/tmp/aethyr-ch11-belt-noise-controls/integer.wgsl": "498b892601eda9fc9ae1ffe98f7f3282046780b1ab54f9da51101e84bd94b67e",
+    "/tmp/aethyr-ch11-belt-noise-controls/sin.wgsl": "0a6a466c2dfd5898d7d8ed636b8995ec728a18ae1a3308685e7a22a05fa6a366",
+    "/tmp/aethyr-ch11-belt-noise-controls/sin-all.wgsl": "bb95f94ec7ad5dee377e3ef955f4c0352a8a0a14939b334f22549ee436aadbd8",
+    "/tmp/aethyr-ch11-typed-hosts-one/stair.wasm": "5b74a878c439a60a6c0ad4f59823d4a7ca1f2974f6520164fbdb64c1eb3b1ebf",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hold-the-stair/index.html": "ad511ee545815d3088a26de2c1b65bd1043fd729ce803b5d1636c6ace13ad2e0",
+    "/tmp/aethyr-ch11-packages-current/hold-the-stair/render.json": "e7cca251a2872e59a0f48d6c6aed1a8ccf834fbab825094df2497484301a8252",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/stair.wgsl": "1ad533952892a229fad5539d779e5c6b5e925c87ab476594afc48114108e3e4f",
+    "/tmp/aethyr-ch11-packages-current/hold-the-stair/module-0-9b1fd52e233bc4a4f233b2d77019f22acc5ede6e338386d6488daa8759f4925f.wgsl": "9b1fd52e233bc4a4f233b2d77019f22acc5ede6e338386d6488daa8759f4925f",
+    "/tmp/aethyr-ch11-stair-noise-controls/integer.wgsl": "9b1fd52e233bc4a4f233b2d77019f22acc5ede6e338386d6488daa8759f4925f",
+    "/tmp/aethyr-ch11-stair-noise-controls/sin.wgsl": "886ecc0caf9cb9a9b59f14d6536dd7c5f247f8a7c858efde63e6062a1351e56c"
+  },
+  "source_changes": [],
+  "scope": "Belt8block andStair6block allowances unchanged; both migratedexecutor routes report0changedblocks. Firststockbatch retainsEverglade refusal asfailure. Two independentvisual reviews precedePNGupdates. Consumedbytes from exact rawcomparisons retained, includingproducerWasms; source/headerbuild evidence lives indefaultbuild records. CPU/GPU numerical acceptance is separate.",
+  "archive": {
+    "file": "artifacts.tar.gz",
+    "sha256": "5e41d1e594dd084084ef04a9135067e970e0508ba7829f5019989e193ff315dc",
+    "bytes": 6496319
+  }
+}

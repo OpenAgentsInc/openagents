@@ -1,0 +1,12 @@
+// Verification-only carrier for the actual production box vertex path.
+#load "../../apps/openagents-web/gpu/deadgears.coax";
+
+box36_sample :: (id:u32,model:u32)->DeadgearsS #export_c {
+ box36_u:[24]f32;box36_u[8]=1;box36_u[13]=1;box36_u[18]=1;box36_u[23]=1;
+ box36_objects:[97]DeadgearsObj;
+ box36_object:=DeadgearsObj.{r0=v4(1,0,0,0),r1=v4(0,1,0,0),r2=v4(0,0,1,0),colour=v4(1,1,1,0)};
+ if model==1 {box36_object.r0=v4(0,0,2,3);box36_object.r1=v4(0,3,0,-2);box36_object.r2=v4(-4,0,0,5);}
+ if model==2 {box36_object.r0=v4(2,0,0,3);box36_object.r1=v4(0,4,0,-2);box36_object.r2=v4(0,0,8,5);}
+ box36_objects[96]=box36_object;
+ return deadgears_scene_vs(id,96,box36_u[..],box36_objects[..]);
+}

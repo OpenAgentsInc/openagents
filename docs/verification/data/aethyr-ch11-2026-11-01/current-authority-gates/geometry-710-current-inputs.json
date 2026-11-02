@@ -1,0 +1,14 @@
+{
+  "schema": "aethyr.geometry.post-gate-current-inputs.v1",
+  "observed_utc": "2026-11-02T04:20:57.414887+00:00",
+  "source_sha256": {
+    "aethyr/render/geometry.coax": "494bfde7afbdaaf741a67f9088cf108f59751fe01d39a770fcbd9a6ece507261",
+    "aethyr/render/catalog.coax": "ffc486dfe5ba07894b0e82485133411411ecc6e62e470621a2befbe9dea2d888",
+    "aethyr/render/bindings.coax": "8f5644b4665a1660f9a15605118e3515689e5697a8101866e68d9f7237f641bc",
+    "aethyr/render/passes.coax": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462",
+    "aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "aethyr/render/frame.coax": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+    "aethyr/tests/render-frame-checks.coax": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007"
+  },
+  "basis": "Observed immediately after the owner reported final source/dependency freeze. The root source is bound by the original gate JSON; dependency hashes are a post-gate observation, not a compiler-owned contemporaneous inventory."
+}

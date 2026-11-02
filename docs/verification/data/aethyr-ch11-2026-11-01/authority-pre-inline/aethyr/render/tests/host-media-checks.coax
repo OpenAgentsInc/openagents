@@ -1,0 +1,87 @@
+#test "host media composes parsed line identities with one shared ready image observation" {
+  hm_rows:[4]RenderMediaRequest;hm_parsed:=render_media_parse("image /same 10 20 210 120\nbad\nover /same 10 20 210 120\nvideo /movie 0 0 400 200",hm_rows[..]);
+  hm_images:=[2]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.video,url="/movie",ready=true,width=400,height=100},RenderHostMediaImage.{kind=RenderMediaKind.image,url="/same",ready=true,width=400,height=400}];
+  hm_out:[5]RenderMediaRect;hm_out[3].line=81;hm_out[4].line=82;
+  hm_receipt:=render_host_media_rects(hm_rows[0..<hm_parsed.count],hm_images[..],400,200,hm_out[..]);
+  #assert hm_receipt.status==RenderHostMediaStatus.ok && hm_receipt.count==3 && hm_receipt.bad_image== -1 && hm_receipt.bad_request== -1;
+  hm_expected:=[8]f32.[-0.7,0.8,-0.2,-0.2,1,0,0,0];
+  for hm_i:0..<2 {#assert hm_out[hm_i].ok && hm_out[hm_i].draw && hm_out[hm_i].line==hm_i*2 && hm_out[hm_i].over==(hm_i==1);for hm_k:0..<8 {#assert hm_out[hm_i].uniforms[hm_k]==hm_expected[hm_k];}}
+  #assert hm_out[2].ok && hm_out[2].draw && hm_out[2].line==3 && !hm_out[2].over;
+  #assert hm_out[2].uniforms[0]== -1 && hm_out[2].uniforms[1]==0.5 && hm_out[2].uniforms[2]==1 && hm_out[2].uniforms[3]== -0.5;
+  #assert hm_out[3].line==81 && hm_out[4].line==82;
+}
+#test "host media missing and pending observations preserve line phase without selecting a draw" {
+  hm_rows:=[2]RenderMediaRequest.[RenderMediaRequest.{kind=RenderMediaKind.image,url="/missing",line=2,over=true,box=[4]f64.[0,0,8,8]},RenderMediaRequest.{kind=RenderMediaKind.video,url="/pending",line=111,box=[4]f64.[0,0,8,8]}];
+  hm_images:=[1]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.video,url="/pending",width=123,height=456}];hm_out:[2]RenderMediaRect;
+  hm_receipt:=render_host_media_rects(hm_rows[..],hm_images[..],8,8,hm_out[..]);
+  #assert hm_receipt.status==RenderHostMediaStatus.ok && hm_receipt.count==2;
+  for hm_i:0..<2 {#assert hm_out[hm_i].ok && !hm_out[hm_i].draw && hm_out[hm_i].line==hm_rows[hm_i].line && hm_out[hm_i].over==hm_rows[hm_i].over;for hm_k:0..<8 {#assert hm_out[hm_i].uniforms[hm_k]==0;}}
+}
+#forall "host media ready observations match both kind and URL rather than row or cache order" hm_variant:0..<3 {
+  hm_rows:=[1]RenderMediaRequest.[RenderMediaRequest.{kind=RenderMediaKind.image,url="/x",line=9,box=[4]f64.[0,0,8,8]}];
+  hm_images:=[2]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.video,url="/x",ready=true,width=1,height=2},RenderHostMediaImage.{kind=RenderMediaKind.image,url="/other",ready=true,width=2,height=1}];
+  if hm_variant==1 {hm_images[0].kind=RenderMediaKind.image;}if hm_variant==2 {hm_images[1].url="/x";}
+  hm_out:[1]RenderMediaRect;hm_receipt:=render_host_media_rects(hm_rows[..],hm_images[..],8,8,hm_out[..]);
+  #assert hm_receipt.status==RenderHostMediaStatus.ok && hm_receipt.count==1 && hm_out[0].ok && hm_out[0].draw==(hm_variant!=0);
+  if hm_variant==1 {#assert hm_out[0].uniforms[0]== -0.5 && hm_out[0].uniforms[2]==0.5;}
+  if hm_variant==2 {#assert hm_out[0].uniforms[1]==0.5 && hm_out[0].uniforms[3]== -0.5;}
+}
+#forall "host media invalid observed identities duplicate keys and unprepared image dimensions fail atomically" hm_variant:0..<10 {
+  hm_rows:=[1]RenderMediaRequest.[RenderMediaRequest.{kind=RenderMediaKind.image,url="/x",line=0,box=[4]f64.[0,0,8,8]}];
+  hm_images:=[2]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.image,url="/x",ready=true,width=2,height=2},RenderHostMediaImage.{kind=RenderMediaKind.video,url="/v",ready=true,width=4,height=4}];
+  if hm_variant==0 {hm_images[1].kind=RenderMediaKind.invalid;}if hm_variant==1 {hm_images[1].url="";}if hm_variant==2 {hm_images[1].url="x";}if hm_variant==3 {hm_images[1].url="//x";}
+  if hm_variant==4 {hm_images[1]=hm_images[0];}if hm_variant==5 {hm_images[1].width=0;}if hm_variant==6 {hm_images[1].height= -1;}
+  if hm_variant==7 {hm_images[1].kind=RenderMediaKind.image;hm_images[1].width=2049;}if hm_variant==8 {hm_images[1].kind=RenderMediaKind.image;hm_images[1].height=2049;}
+  if hm_variant==9 {hm_images[1].kind=RenderMediaKind.image;hm_images[1].url="/x";hm_images[1].ready=false;}
+  hm_out:=[2]RenderMediaRect.[RenderMediaRect.{line=81,over=true},RenderMediaRect.{line=82,draw=true}];
+  hm_receipt:=render_host_media_rects(hm_rows[..],hm_images[..],8,8,hm_out[..]);
+  #assert hm_receipt.status==RenderHostMediaStatus.invalid && hm_receipt.count==0 && hm_receipt.bad_image==1 && hm_receipt.bad_request== -1;
+  #assert hm_out[0].line==81 && hm_out[0].over && hm_out[1].line==82 && hm_out[1].draw;
+}
+#forall "host media invalid request identity line order and rectangle refuse the entire candidate" hm_variant:0..<11 {
+  hm_rows:=[2]RenderMediaRequest.[RenderMediaRequest.{kind=RenderMediaKind.image,url="/x",line=1,box=[4]f64.[0,0,8,8]},RenderMediaRequest.{kind=RenderMediaKind.video,url="/v",line=9,box=[4]f64.[0,0,8,8]}];
+  hm_images:=[2]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.image,url="/x",ready=true,width=2,height=2},RenderHostMediaImage.{kind=RenderMediaKind.video,url="/v",ready=true,width=2,height=2}];
+  if hm_variant==0 {hm_rows[1].kind=RenderMediaKind.invalid;}if hm_variant==1 {hm_rows[1].url="";}if hm_variant==2 {hm_rows[1].url="v";}if hm_variant==3 {hm_rows[1].url="//v";}
+  if hm_variant==4 {hm_rows[1].line= -1;}if hm_variant==5 {hm_rows[1].line=112;}if hm_variant==6 {hm_rows[1].line=1;}if hm_variant==7 {hm_rows[1].line=0;}
+  hm_zero:=0.0;if hm_variant==8 {hm_rows[1].box[0]=hm_zero/hm_zero;}if hm_variant==9 {hm_rows[1].box[2]=1e300;}if hm_variant==10 {hm_rows[1].box[3]=1.0/hm_zero;}
+  hm_out:=[2]RenderMediaRect.[RenderMediaRect.{line=81},RenderMediaRect.{line=82}];
+  hm_receipt:=render_host_media_rects(hm_rows[..],hm_images[..],8,8,hm_out[..]);
+  #assert hm_receipt.status==RenderHostMediaStatus.invalid && hm_receipt.count==0 && hm_receipt.bad_request==1 && hm_receipt.bad_image== -1;
+  #assert hm_out[0].line==81 && hm_out[1].line==82;
+}
+#forall "host media requires valid screen dimensions even when no rows need a draw" hm_height:bool {
+  hm_rows:[]RenderMediaRequest;hm_images:[]RenderHostMediaImage;hm_out:[1]RenderMediaRect;hm_out[0].line=81;
+  hm_receipt:=render_host_media_rects(hm_rows,hm_images,ifx hm_height then 8 else 0,ifx hm_height then 0 else 8,hm_out[..]);
+  #assert hm_receipt.status==RenderHostMediaStatus.invalid && hm_receipt.count==0 && hm_receipt.bad_image== -1 && hm_receipt.bad_request== -1 && hm_out[0].line==81;
+}
+#test "host media exact112 boundary is independent of resource slots and insufficient output is atomic" {
+  hm_rows:[113]RenderMediaRequest;hm_images:[113]RenderHostMediaImage;hm_out:[113]RenderMediaRect;
+  for hm_i:0..<113 {hm_rows[hm_i]=RenderMediaRequest.{kind=RenderMediaKind.image,url="/x",line=hm_i,box=[4]f64.[0,0,8,8]};hm_out[hm_i].line=81;}
+  hm_empty:[]RenderHostMediaImage;
+  hm_receipt:=render_host_media_rects(hm_rows[0..<112],hm_empty,8,8,hm_out[0..<112]);
+  #assert hm_receipt.status==RenderHostMediaStatus.ok && hm_receipt.count==112 && hm_out[111].ok && hm_out[111].line==111 && !hm_out[111].draw && hm_out[112].line==81;
+  hm_out[0].line=81;hm_out[111].line=82;
+  hm_receipt=render_host_media_rects(hm_rows[..],hm_empty,8,8,hm_out[..]);#assert hm_receipt.status==RenderHostMediaStatus.capacity && hm_receipt.count==0;
+  hm_receipt=render_host_media_rects(hm_rows[0..<112],hm_images[..],8,8,hm_out[..]);#assert hm_receipt.status==RenderHostMediaStatus.capacity && hm_receipt.count==0;
+  hm_receipt=render_host_media_rects(hm_rows[0..<112],hm_empty,8,8,hm_out[0..<111]);#assert hm_receipt.status==RenderHostMediaStatus.capacity && hm_receipt.count==0;
+  #assert hm_out[0].line==81 && hm_out[111].line==82 && hm_out[112].line==81;
+}
+#test "host media admits the slash path video dimensions and unused pending observations" {
+  hm_rows:=[1]RenderMediaRequest.[RenderMediaRequest.{kind=RenderMediaKind.video,url="/",line=0,box=[4]f64.[0,0,8,8]}];
+  hm_images:=[2]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.video,url="/",ready=true,width=8192,height=4096},RenderHostMediaImage.{kind=RenderMediaKind.image,url="/unused",width= -1,height= -2}];hm_out:[1]RenderMediaRect;
+  hm_receipt:=render_host_media_rects(hm_rows[..],hm_images[..],8,8,hm_out[..]);
+  #assert hm_receipt.status==RenderHostMediaStatus.ok && hm_receipt.count==1 && hm_out[0].draw && hm_out[0].uniforms[1]==0.5 && hm_out[0].uniforms[3]== -0.5;
+  hm_empty:[]RenderMediaRequest;hm_images_empty:[]RenderHostMediaImage;hm_receipt=render_host_media_rects(hm_empty,hm_images_empty,1,1,hm_out[..]);
+  #assert hm_receipt.status==RenderHostMediaStatus.ok && hm_receipt.count==0 && hm_out[0].draw;
+}
+#test "host media observes the first image and admits exactly112 distinct pending image keys" {
+  hm_requests:[]RenderMediaRequest;hm_images:[112]RenderHostMediaImage;hm_names:[448]u8;hm_out:[1]RenderMediaRect;hm_out[0].line=81;
+  for hm_i:0..<112 {
+    hm_at:=hm_i*4;hm_names[hm_at]='/';hm_names[hm_at+1]=cast(u8)('0'+hm_i/100);hm_names[hm_at+2]=cast(u8)('0'+(hm_i/10)%10);hm_names[hm_at+3]=cast(u8)('0'+hm_i%10);
+    hm_images[hm_i]=RenderHostMediaImage.{kind=RenderMediaKind.image,url=cast(string)hm_names[hm_at..<hm_at+4]};
+  }
+  hm_receipt:=render_host_media_rects(hm_requests,hm_images[..],1,1,hm_out[..]);
+  #assert hm_receipt.status==RenderHostMediaStatus.ok && hm_receipt.count==0 && hm_receipt.bad_image== -1 && hm_out[0].line==81;
+  hm_images[0].url="//bad";hm_receipt=render_host_media_rects(hm_requests,hm_images[..],1,1,hm_out[..]);
+  #assert hm_receipt.status==RenderHostMediaStatus.invalid && hm_receipt.count==0 && hm_receipt.bad_image==0 && hm_receipt.bad_request== -1 && hm_out[0].line==81;
+}

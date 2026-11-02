@@ -1,0 +1,52 @@
+#load "../../../verse/gpu/shader.coax";
+RPAttributes :: struct {position:V4;value:f32;tag:u32;}
+RPVaryings :: struct {position:V4;value:V2;tag:u32 #flat;}
+RPTargets :: struct {colour:V4;aux:V4;}
+rp_vertex :: (vertex:u32,instance:u32,a:RPAttributes,u:[]f32)->RPVaryings {
+ return RPVaryings.{position=a.position,value=v2(a.value+u[0],7-a.value+u[0]),tag=a.tag+instance};
+}
+rp_fragment :: (v:RPVaryings)->RPTargets {
+ return RPTargets.{colour=v4(v.value.x,gpu_dpdx(v.value.x),gpu_dpdy(v.value.y),1),aux=v4(cast(f32)v.tag,v.position.x,v.position.y,v.value.y)};
+}
+RPSingleAttributes :: struct {value:f32;}
+rp_single_vertex :: (vertex:u32,instance:u32,a:RPSingleAttributes)->RPVaryings {
+ positions:=[3]V2.[v2(-1,1),v2(3,1),v2(-1,-3)];position:=positions[cast(int)(vertex%3)];
+ return RPVaryings.{position=v4(position.x,position.y,0.5,1),value=v2(a.value+cast(f32)vertex,cast(f32)instance),tag=instance};
+}
+rp_noattrs_vertex :: (vertex:u32,instance:u32)->RPVaryings {
+ positions:=[3]V2.[v2(-1,1),v2(3,1),v2(-1,-3)];position:=positions[cast(int)(vertex%3)];
+ return RPVaryings.{position=v4(position.x,position.y,0.5,1),value=v2(cast(f32)vertex,cast(f32)instance),tag=instance};
+}
+rp_position_fragment :: (position:V4)->V4 {return v4(position.x,position.y,position.z,1);}
+RPDepthFirst :: struct {depth:f32 #depth;colour:V4;aux:V4;}
+rp_depth_fragment :: (v:RPVaryings,front:bool,u:[]f32)->RPDepthFirst {
+ return RPDepthFirst.{depth=u[0]*0.25,colour=v4(ifx front then 0.25f32 else 0.75f32,v.position.z,v.value.y,1),aux=v4(v.value.x,cast(f32)v.tag,v.position.x,v.position.y)};
+}
+RPDepthLast :: struct {colour:V4;aux:V4;depth:f32 #depth;}
+rp_depth_last_fragment :: (v:RPVaryings,front:bool,u:[]f32)->RPDepthLast {
+ return RPDepthLast.{colour=v4(ifx front then 0.25f32 else 0.75f32,v.position.z,v.value.y,1),aux=v4(v.value.x,cast(f32)v.tag,v.position.x,v.position.y),depth=u[0]*0.25};
+}
+RPThreeTargets :: struct {a:V4;b:V4;c:V4;}
+rp_three_fragment :: (v:RPVaryings)->RPThreeTargets {return RPThreeTargets.{a=v.position,b=v.position,c=v.position};}
+RPMismatch :: struct {position:V4;value:f32;tag:u32 #flat;}
+rp_mismatch_fragment :: (v:RPMismatch)->V4 {return v4(v.value,0,0,1);}
+RPFlatVaryings :: struct {position:V4;value:V2 #flat;tag:u32 #flat;}
+rp_flat_mismatch_fragment :: (v:RPFlatVaryings)->V4 {return v4(v.value.x,0,0,1);}
+RPExtraVarying :: struct {position:V4;value:V2;tag:u32 #flat;extra:f32;}
+rp_extra_fragment :: (v:RPExtraVarying)->V4 {return v4(v.extra,0,0,1);}
+rp_texture_fragment :: (v:RPVaryings,u:[]f32,texture:Tex2D,sample:Sampler)->V4 {
+ colour:=gpu_sample_level(texture,sample,v2(0.25,0.75),0);
+ return v4(colour.x+u[0],colour.y,colour.z,colour.w);
+}
+rp_helper_fragment :: (v:RPVaryings)->RPTargets {
+ value:=v.value.x;
+ if v.position.x>1 {gpu_demote_helper();value+=8;}
+ return RPTargets.{colour=v4(gpu_dpdx_fine(value),gpu_dpdy_fine(value),value,1),aux=v4(cast(f32)v.tag,v.position.x,v.position.y,1)};
+}
+#test "pipeline fixture exposes its independent affine color and flat tag" {
+ u:=[1]f32.[0];a:=RPAttributes.{position=v4(-1,1,0.5,1),value=3,tag=9};
+ v:=rp_vertex(0,0,a,u[..]);#assert v.value.x==3 && v.value.y==4 && v.tag==9 && v.position.z==0.5;
+ f:=rp_fragment(v);#assert f.colour.x==3 && f.aux.x==9;
+}
+// A void fragment stage still runs and may remove depth publication.
+rp_void_fragment :: (v:RPVaryings) {if v.position.x>1 {gpu_demote_helper();}}

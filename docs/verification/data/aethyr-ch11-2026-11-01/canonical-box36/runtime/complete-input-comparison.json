@@ -1,0 +1,43 @@
+{
+  "schema": "aethyr.render.complete-frame-product-substitution.v1",
+  "equal": false,
+  "old_config": "/tmp/aethyr-ch11-deadgears-ring8-current-default/frame.config",
+  "new_config": "/tmp/aethyr-ch11-deadgears-box36-current-default/frame.config",
+  "old_rows": 16,
+  "new_rows": 16,
+  "differences": [
+    {
+      "row": 5,
+      "before": [
+        {
+          "bytes": 6894,
+          "sha256": "e03dcb2750e67127f614e8bff5dc4e821eeaec319ce04eaa4c06002777a1ed66"
+        }
+      ],
+      "after": [
+        {
+          "bytes": 6894,
+          "sha256": "def947afb78d14e9320f0f7c74a612e105b81d8cee4fd82bbfd03596bb8d4e7f"
+        }
+      ]
+    },
+    {
+      "row": 8,
+      "before": [
+        "5",
+        {
+          "bytes": 19467,
+          "sha256": "1c1812ba634f18cb96e84a70285f56010019d88dae41a0af0a2de1b838aa9c8a"
+        }
+      ],
+      "after": [
+        "5",
+        {
+          "bytes": 19533,
+          "sha256": "22f1044355279e5a87772f9c71dc5ea71377f85c39690fc4d5cff5387efae6d1"
+        }
+      ]
+    }
+  ],
+  "scope": "All raw RFI tokens compared, all file paths replaced only byactual bytecount/SHA. Package/checkedtree changes are expected shader products; everyotherdifference would require separateproducerinputscope."
+}

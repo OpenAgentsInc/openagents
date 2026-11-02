@@ -13,13 +13,15 @@
 // view keeps counting without writing, so a caller can size its buffer.
 // Nothing here draws. Models face +z in their own space; the floor is y = 0.
 //
-// Float arithmetic is plain f32 in the C++'s order, so the same seed gives
-// the same vertices as the demo: verse/icecream/test-mesh.sh compares them
-// one by one against the C++ built natively, and the checks below hold the
-// counts and bounds it recorded (fixtures/mesh-oracle.coax).
+// Float arithmetic is plain f32 in the original C++ order. Chapter11
+// removes overlapping wall/trim endcaps; all model geometry and room
+// counts/bounds retain the original fixture. test-mesh.sh compares every
+// vertex with an explicitly repaired independent C++ oracle copy. The
+// original mesh-oracle.coax and the new band hashes keep those scopes apart.
 //   coax/bin/coax test verse/icecream/mesh.coax --library --steps 1000000000   (the house seeds ~512M)
 #load "rules.coax";
 #load "fixtures/mesh-oracle.coax";
+#load "fixtures/mesh-band-oracle.coax";
 
 HALF_PI_F :: 1.57079632679489661923f32;
 KMAN_HEIGHT :: 2.35f32;
@@ -512,6 +514,141 @@ piece :: (v: [] Vtx, n: int, w: Wall, s0: f32, s1: f32, y0: f32, y1: f32, colour
   return block(v, n, v3(lo, y0, s0), v3(hi, y1, s1), colour, 0);
 }
 
+// The wall and both trim bands cover one span without overlapping coloured
+// endcaps. Keep the trim blocks unchanged. Centre/half-size reconstruction
+// can round a nominal seam differently for the middle box, so its endpoints
+// use the actual f32 bounds produced by those two existing trim transforms.
+room_wall_bands :: (v:[]Vtx,n0:int,w:Wall,s0:f32,s1:f32,colour:u32,trim:u32)->int {
+  bottom:f32=0.28; top:f32=WALL_HEIGHT-0.22f32;
+  upper_mid:f32=(top+WALL_HEIGHT)*0.5f32;
+  upper_half:f32=(WALL_HEIGHT-top)*0.5f32;
+  seam_high:f32=upper_mid-upper_half;
+  middle:=piece(v,n0,w,s0,s1,bottom,top,colour,0);
+  split:f32=(bottom+top)*0.5f32;
+  // piece writes complete triangles only, including in a short caller view.
+  for iwbt:0..<(middle-n0)/3 {
+    iwbat:=n0+iwbt*3;
+    if iwbat+3<=v.count {
+      for iwbv:0..<3 {
+        iwbi:=iwbat+iwbv;
+        v[iwbi].p.y=ifx v[iwbi].p.y<split then bottom else seam_high;
+      }
+    }
+  }
+  lower:=piece(v,middle,w,s0,s1,0,bottom,trim,0.05f32);
+  return piece(v,lower,w,s0,s1,top,WALL_HEIGHT,trim,0.05f32);
+}
+
+// Covered opening caps are internal to the union of the wall and the real
+// emitted door post. Certification uses exact f32 box corners and topology,
+// with no depth epsilon and no replacement of partially exposed overhangs.
+RoomDoorFace :: struct {valid:bool;lo:V3;hi:V3;}
+RoomDoorBox :: struct {valid:bool;lo:V3;hi:V3;}
+room_component :: (v:V3,axis:int)->f32 {return ifx axis==0 then v.x else ifx axis==1 then v.y else v.z;}
+room_finite3 :: (v:V3)->bool {
+  limit:f32=3.4028234663852886e38;
+  return v.x>=-limit && v.x<=limit && v.y>=-limit && v.y<=limit && v.z>=-limit && v.z<=limit;
+}
+room_door_face :: (vertices:[]Vtx,axis:int,positive:bool)->RoomDoorFace {
+  if vertices.count!=6 || axis<0 || axis>2 {return RoomDoorFace.{};}
+  lo:=vertices[0].p;hi:=lo;sign:=ifx positive then 1.0f32 else -1.0f32;
+  for ijf:0..<6 {
+    ijv:=vertices[ijf];
+    if !room_finite3(ijv.p) || !room_finite3(ijv.n) {return RoomDoorFace.{};}
+    if room_component(ijv.n,axis)*sign<=0.5f32 {return RoomDoorFace.{};}
+    if room_component(ijv.n,(axis+1)%3)!=0 || room_component(ijv.n,(axis+2)%3)!=0 {return RoomDoorFace.{};}
+    lo=v3min(lo,ijv.p);hi=v3max(hi,ijv.p);
+  }
+  iju:=(axis+1)%3;ijw:=(axis+2)%3;
+  if room_component(lo,axis)!=room_component(hi,axis)
+    || room_component(lo,iju)>=room_component(hi,iju)
+    || room_component(lo,ijw)>=room_component(hi,ijw) {return RoomDoorFace.{};}
+  ijcodes:[6]int;ijmasks:[2]u32;
+  for ijf:0..<6 {
+    ijp:=vertices[ijf].p;ijc:=0;
+    if room_component(ijp,iju)==room_component(hi,iju) {ijc+=1;}
+    else if room_component(ijp,iju)!=room_component(lo,iju) {return RoomDoorFace.{};}
+    if room_component(ijp,ijw)==room_component(hi,ijw) {ijc+=2;}
+    else if room_component(ijp,ijw)!=room_component(lo,ijw) {return RoomDoorFace.{};}
+    ijcodes[ijf]=ijc;ijmasks[ijf/3]|=u32(1)<<u32(ijc);
+  }
+  for ijt:0..<2 {
+    ija:=ijcodes[ijt*3];ijb:=ijcodes[ijt*3+1];ijc:=ijcodes[ijt*3+2];
+    ijdet:=((ijb&1)-(ija&1))*((ijc/2)-(ija/2))-((ijb/2)-(ija/2))*((ijc&1)-(ija&1));
+    if ijdet!=(ifx positive then 1 else -1) {return RoomDoorFace.{};}
+  }
+  ijshared:=ijmasks[0]&ijmasks[1];
+  if (ijmasks[0]|ijmasks[1])!=15 || (ijshared!=9 && ijshared!=6) {return RoomDoorFace.{};}
+  return RoomDoorFace.{valid=true,lo=lo,hi=hi};
+}
+room_door_box :: (vertices:[]Vtx)->RoomDoorBox {
+  if vertices.count!=36 {return RoomDoorBox.{};}
+  lo:=vertices[0].p;hi:=lo;
+  for ijv:0..<vertices.count {
+    if !room_finite3(vertices[ijv].p) || !room_finite3(vertices[ijv].n) {return RoomDoorBox.{};}
+    lo=v3min(lo,vertices[ijv].p);hi=v3max(hi,vertices[ijv].p);
+  }
+  if lo.x>=hi.x || lo.y>=hi.y || lo.z>=hi.z {return RoomDoorBox.{};}
+  for ijaxis:0..<3 {for ijside:0..<2 {
+    ijpositive:=ijside==1;ijsign:=ifx ijpositive then 1.0f32 else -1.0f32;
+    ijface:[6]Vtx;ijcount:=0;
+    for ijv:0..<vertices.count {
+      if room_component(vertices[ijv].n,ijaxis)*ijsign>0.5f32 {
+        if ijcount>=6 {return RoomDoorBox.{};}
+        ijface[ijcount]=vertices[ijv];ijcount+=1;
+      }
+    }
+    if ijcount!=6 {return RoomDoorBox.{};}
+    ijrect:=room_door_face(ijface[..],ijaxis,ijpositive);
+    if !ijrect.valid {return RoomDoorBox.{};}
+    for ijdim:0..<3 {
+      if ijdim==ijaxis {
+        ijplane:=ifx ijpositive then room_component(hi,ijdim) else room_component(lo,ijdim);
+        if room_component(ijrect.lo,ijdim)!=ijplane {return RoomDoorBox.{};}
+      } else if room_component(ijrect.lo,ijdim)!=room_component(lo,ijdim)
+        || room_component(ijrect.hi,ijdim)!=room_component(hi,ijdim) {return RoomDoorBox.{};}
+    }
+  }}
+  return RoomDoorBox.{valid=true,lo=lo,hi=hi};
+}
+room_clip_jamb_caps :: (vertices:[]Vtx,horizontal:bool,at_end:bool,box:RoomDoorBox) {
+  if !box.valid {return;}
+  ijaxis:=ifx horizontal then 0 else 2;ijcross:=ifx horizontal then 2 else 0;
+  // Each original box face occupies six adjacent slots. Moving its lower
+  // corners re-triangulates the exposed rectangle. Fully hidden faces keep
+  // explicit zero-area slots; every other attribute and count is retained.
+  for ijf:0..<vertices.count/6 {
+    ijface:=vertices[ijf*6..<ijf*6+6];ijrect:=room_door_face(ijface,ijaxis,at_end);
+    if !ijrect.valid {continue;}
+    ijplane:=room_component(ijrect.lo,ijaxis);
+    if ijplane<room_component(box.lo,ijaxis) || ijplane>room_component(box.hi,ijaxis)
+      || room_component(ijrect.lo,ijcross)<room_component(box.lo,ijcross)
+      || room_component(ijrect.hi,ijcross)>room_component(box.hi,ijcross)
+      || ijrect.lo.y<box.lo.y {continue;}
+    if ijrect.hi.y<=box.hi.y {
+      ijpoint:=ijface[0].p;
+      for ijv:0..<6 {ijface[ijv].p=ijpoint;}
+    } else if ijrect.lo.y<box.hi.y {
+      for ijv:0..<6 {if ijface[ijv].p.y<box.hi.y {ijface[ijv].p.y=box.hi.y;}}
+    }
+  }
+}
+room_publish_triangles :: (v:[]Vtx,n0:int,source:[]Vtx)->int {
+  #assert source.count%3==0;
+  ijn:=n0;
+  for ijt:0..<source.count/3 {
+    if ijn+3<=v.count {for ijv:0..<3 {v[ijn+ijv]=source[ijt*3+ijv];}}
+    ijn+=3;
+  }
+  return ijn;
+}
+room_open_wall_bands :: (v:[]Vtx,n0:int,w:Wall,s0:f32,s1:f32,colour:u32,trim:u32,at_end:bool,post:[]Vtx)->int {
+  ijbands:[108]Vtx;ijcount:=room_wall_bands(ijbands[..],0,w,s0,s1,colour,trim);
+  #assert ijcount<=ijbands.count && ijcount%6==0;
+  room_clip_jamb_caps(ijbands[0..<ijcount],w.horizontal,at_end,room_door_box(post));
+  return room_publish_triangles(v,n0,ijbands[0..<ijcount]);
+}
+
 // One room: floor, ceiling, its side of each wall with doorways, trim,
 // drips, the carpet's sprinkles and its furniture; the front door in its
 // room. `yellow` (0 to 1) turns it into the Backrooms.
@@ -564,13 +701,20 @@ tn_room :: (g: [] Game, index: int, yellow: f32, v: [] Vtx, n0: int) -> int {
     a1 := a0 + CELL;
     mid := (a0 + a1) / two;
     gap := DOOR / two;
+    ijposts:[72]Vtx;ijleft:=0;ijright:=0;
+    if open {
+      ijleft=piece(ijposts[..],0,w,mid-gap-0.12f32,mid-gap,0,DOOR_HEIGHT,frame,0.06f32);
+      ijright=piece(ijposts[..],ijleft,w,mid+gap,mid+gap+0.12f32,0,DOOR_HEIGHT,frame,0.06f32);
+      #assert ijright<=ijposts.count;
+    }
     spans := ifx open then 2 else 1;
     for k: 0..<spans {
       s0 := ifx open && k == 1 then mid + gap else a0;
       s1 := ifx open && k == 0 then mid - gap else a1;
-      n = piece(v, n, w, s0, s1, 0, WALL_HEIGHT, colour, 0);
-      n = piece(v, n, w, s0, s1, 0, 0.28, trim, 0.05);
-      n = piece(v, n, w, s0, s1, WALL_HEIGHT - 0.22, WALL_HEIGHT, trim, 0.05);
+      if open {
+        ijpost:=ifx k==0 then ijposts[0..<ijleft] else ijposts[ijleft..<ijright];
+        n=room_open_wall_bands(v,n,w,s0,s1,colour,trim,k==0,ijpost);
+      } else {n = room_wall_bands(v, n, w, s0, s1, colour, trim);}
       if backrooms {
         at := s0 + 0.25;
         while at < s1 - 0.1 {
@@ -581,8 +725,8 @@ tn_room :: (g: [] Game, index: int, yellow: f32, v: [] Vtx, n0: int) -> int {
     }
     if open {
       n = piece(v, n, w, mid - gap, mid + gap, DOOR_HEIGHT, WALL_HEIGHT, colour, 0);
-      n = piece(v, n, w, mid - gap - 0.12, mid - gap, 0, DOOR_HEIGHT, frame, 0.06);
-      n = piece(v, n, w, mid + gap, mid + gap + 0.12, 0, DOOR_HEIGHT, frame, 0.06);
+      n = room_publish_triangles(v,n,ijposts[0..<ijleft]);
+      n = room_publish_triangles(v,n,ijposts[ijleft..<ijright]);
       n = piece(v, n, w, mid - gap - 0.12, mid + gap + 0.12, DOOR_HEIGHT - 0.12, DOOR_HEIGHT, frame, 0.06);
     }
     drips := ifx backrooms then 0 else 6;
@@ -1006,7 +1150,7 @@ part_of :: (kind: s32, index: s32, v: [] Vtx) -> int {
   }
 }
 
-// The oracle's houses, two to a check: the compile-time traversal budget is per check.
+// One house per check keeps the fixed aggregate traversal budget bounded.
 house_matches_oracle :: (k: int) {
   games: [1] Game;
   g := games[..];
@@ -1022,13 +1166,19 @@ house_matches_oracle :: (k: int) {
     s = fold(s, v[..], n);
   }
   for i: 0..<o.rooms { s = fold(s, v[..], tn_lights(g, i, o.yellow, v[..], 0)); }
-  #assert s.count == o.count && s.hash == o.hash && near3(s.lo, o.lo) && near3(s.hi, o.hi);
+  #assert s.count == o.count && near3(s.lo, o.lo) && near3(s.hi, o.hi);
+  #assert s.hash == BANDED_HOUSE_HASHES[k] && s.hash != o.hash;
 }
-#test "house: the demo's rooms and lights for a set of seeds" { #assert ORACLE_HOUSES.count == 10; house_matches_oracle(0); house_matches_oracle(1); }
-#test "house: the demo's rooms and lights, seeds 3 and 4 of the set" { house_matches_oracle(2); house_matches_oracle(3); }
-#test "house: the demo's rooms and lights, seeds 5 and 6 of the set" { house_matches_oracle(4); house_matches_oracle(5); }
-#test "house: the demo's rooms and lights, seeds 7 and 8 of the set" { house_matches_oracle(6); house_matches_oracle(7); }
-#test "house: the demo's rooms and lights, seeds 9 and 10 of the set" { house_matches_oracle(8); house_matches_oracle(9); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 1" { #assert ORACLE_HOUSES.count == 10; house_matches_oracle(0); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 2" { house_matches_oracle(1); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 3" { house_matches_oracle(2); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 4" { house_matches_oracle(3); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 5" { house_matches_oracle(4); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 6" { house_matches_oracle(5); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 7" { house_matches_oracle(6); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 8" { house_matches_oracle(7); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 9" { house_matches_oracle(8); }
+#test "house: repaired wall bands with the demo's counts and bounds, fixture 10" { house_matches_oracle(9); }
 
 #test "house: the same seed builds the same geometry, another seed another" {
   games: [3] Game;
@@ -1089,4 +1239,142 @@ house_matches_oracle :: (k: int) {
   }
   #assert found;
   #assert man_top(0) == KMAN_HEIGHT && man_top(1) < 2 && man_top(-3) == man_top(0) && man_top(4) == man_top(1);
+}
+
+
+// Regression: wall/endcap materials occupy disjoint height bands. These
+// offsets independently count the two slabs plus the normal sprinkles or
+// Backrooms damp/ceiling decorations before the north wall's first span.
+ice_wall_band_room_check :: (yellow: f32, open: bool) {
+  iwbg:[1]Game; iwbg[0].house.room_n=1;
+  iwbg[0].house.front.room=-1;
+  iwbg[0].house.rooms[0]=Room.{at=cell(0,0),kind=Module.bedroom,flavor=Flavor.vanilla};
+  iwbg[0].house.rooms[0].doors[0]=open;
+  iwv:[9000]Vtx; iwn:=tn_room(iwbg[..],0,yellow,iwv[..],0);
+  iwstart:=ifx yellow>=0.5f32 then 570 else 1368;
+  #assert iwn>iwstart+108;
+  iwlo:=100.0f32; iwhi:=-100.0f32;
+  iwbtop:=-100.0f32; iwttop:=100.0f32;
+  for iwb:0..<36 {
+    iwlo=cmin(iwlo,iwv[iwstart+iwb].p.y); iwhi=cmax(iwhi,iwv[iwstart+iwb].p.y);
+    iwbtop=cmax(iwbtop,iwv[iwstart+36+iwb].p.y);
+    iwttop=cmin(iwttop,iwv[iwstart+72+iwb].p.y);
+  }
+  #assert iwlo>0.27f32 && iwhi<2.39f32;
+  #assert f32_bits(iwlo)==f32_bits(iwbtop) && f32_bits(iwhi)==f32_bits(iwttop);
+  for iwb:0..<36 {
+    #assert iwv[iwstart+iwb].colour==mix_colour(wall_colour(Flavor.vanilla),BACK_WALL,yellow);
+    #assert iwv[iwstart+36+iwb].colour==mix_colour(WAFFLE,BACK_TRIM,yellow);
+    #assert iwv[iwstart+72+iwb].colour==mix_colour(WAFFLE,BACK_TRIM,yellow);
+  }
+}
+#test "room wall bands: closed and doorway spans retain disjoint materials" {
+  ice_wall_band_room_check(0,false); ice_wall_band_room_check(0,true);
+}
+#test "room wall bands: mixed palette retains disjoint materials" {
+  ice_wall_band_room_check(0.3f32,false); ice_wall_band_room_check(0.3f32,true);
+}
+#test "room wall bands: Backrooms stripes retain disjoint materials" {
+  ice_wall_band_room_check(1,false); ice_wall_band_room_check(1,true);
+}
+
+ice_band_same_vertex :: (a:Vtx,b:Vtx)->bool {
+  return f32_bits(a.p.x)==f32_bits(b.p.x) && f32_bits(a.p.y)==f32_bits(b.p.y) && f32_bits(a.p.z)==f32_bits(b.p.z)
+    && f32_bits(a.n.x)==f32_bits(b.n.x) && f32_bits(a.n.y)==f32_bits(b.n.y) && f32_bits(a.n.z)==f32_bits(b.n.z)
+    && f32_bits(a.hull.x)==f32_bits(b.hull.x) && f32_bits(a.hull.y)==f32_bits(b.hull.y) && f32_bits(a.hull.z)==f32_bits(b.hull.z)
+    && a.colour==b.colour && f32_bits(a.weight)==f32_bits(b.weight);
+}
+#test "room wall bands: every orientation shares exact seams and unchanged trim" {
+  for iwbside:0..<4 {
+    iwbsign:=ifx iwbside<2 then 1.0f32 else -1.0f32;
+    iwbwall:=Wall.{horizontal=iwbside%2==0,inner=iwbsign*9.85f32,outer=iwbsign*10.0f32};
+    iwball:[108]Vtx; iwbold:[72]Vtx;
+    #assert room_wall_bands(iwball[..],0,iwbwall,-2.25f32,4.75f32,0x112233,0x445566)==108;
+    #assert piece(iwbold[..],0,iwbwall,-2.25f32,4.75f32,0,0.28f32,0x445566,0.05f32)==36;
+    #assert piece(iwbold[..],36,iwbwall,-2.25f32,4.75f32,WALL_HEIGHT-0.22f32,WALL_HEIGHT,0x445566,0.05f32)==72;
+    iwbmin:=100.0f32; iwbmax:=-100.0f32; iwblower:=-100.0f32; iwbupper:=100.0f32;
+    for iwbi:0..<36 {
+      iwbmin=cmin(iwbmin,iwball[iwbi].p.y);iwbmax=cmax(iwbmax,iwball[iwbi].p.y);
+      iwblower=cmax(iwblower,iwbold[iwbi].p.y);iwbupper=cmin(iwbupper,iwbold[36+iwbi].p.y);
+      #assert iwball[iwbi].colour==0x112233;
+    }
+    #assert f32_bits(iwbmin)==f32_bits(iwblower) && f32_bits(iwbmax)==f32_bits(iwbupper);
+    #assert iwbmin>0.27f32 && iwbmax<2.39f32;
+    for iwbi:0..<72 {#assert ice_band_same_vertex(iwball[36+iwbi],iwbold[iwbi]);}
+  }
+}
+#test "room wall bands: short views keep whole triangles and surrounding canaries" {
+  iwbwall:=Wall.{horizontal=false,inner=9.85f32,outer=10.0f32};
+  iwbf:[112]Vtx;iwbs:[112]Vtx;
+  iwbmark:=Vtx.{p=V3.{x=91,y=92,z=93},colour=0xABCDEF,weight=94};
+  for iwbi:0..<112 {iwbf[iwbi]=iwbmark;}
+  #assert room_wall_bands(iwbf[..],3,iwbwall,-2.25f32,4.75f32,0x112233,0x445566)==111;
+  iwbcaps:=[14]int.[0,1,2,3,4,5,6,38,39,40,74,110,111,112];
+  for iwbc:0..<iwbcaps.count {
+    iwbcap:=iwbcaps[iwbc];for iwbi:0..<112 {iwbs[iwbi]=iwbmark;}
+    #assert room_wall_bands(iwbs[0..<iwbcap],3,iwbwall,-2.25f32,4.75f32,0x112233,0x445566)==111;
+    for iwbi:0..<112 {
+      iwbadmitted:=iwbi>=3 && iwbi<111 && (3+(iwbi-3)/3*3+3)<=iwbcap;
+      #assert ice_band_same_vertex(iwbs[iwbi],ifx iwbadmitted then iwbf[iwbi] else iwbmark);
+    }
+  }
+}
+
+
+// Real open-room caps: the jamb owns its covered portion of the wall plane.
+ice_jamb_room_check :: (yellow:f32) {
+  ijg:[1]Game;ijg[0].house.room_n=1;ijg[0].house.front.room=-1;
+  ijg[0].house.rooms[0]=Room.{at=cell(0,0),kind=Module.bedroom,flavor=Flavor.vanilla};
+  ijg[0].house.rooms[0].doors[0]=true;ijv:[9000]Vtx;
+  ijn:=tn_room(ijg[..],0,yellow,ijv[..],0);
+  ijfirst:=ifx yellow>=0.5f32 then 570 else 1368;
+  ijsecond:=ijfirst+108+(ifx yellow>=0.5f32 then 288 else 0);
+  #assert ijn>ijsecond+108;
+  for ijside:0..<2 {
+    ijstart:=ifx ijside==0 then ijfirst else ijsecond;
+    ijsign:=ifx ijside==0 then 1.0f32 else -1.0f32;
+    ijmain:=0;ijhidden:=0;
+    for iji:0..<36 {
+      if ijv[ijstart+iji].n.x*ijsign>0.5f32 {
+        #assert ijv[ijstart+iji].p.y>=DOOR_HEIGHT;
+        ijmain+=1;
+      }
+    }
+    for ijt:0..<12 {
+      ijat:=ijstart+36+ijt*3;
+      if ijv[ijat].n.x*ijsign>0.5f32 {
+        ijarea:=v3cross(v3sub(ijv[ijat+1].p,ijv[ijat].p),v3sub(ijv[ijat+2].p,ijv[ijat].p));
+        #assert v3dot(ijarea,ijarea)==0;
+        ijhidden+=1;
+      }
+    }
+    #assert ijmain==6 && ijhidden==2;
+  }
+}
+#test "door jamb caps: normal room materials do not overlap" {ice_jamb_room_check(0);}
+#test "door jamb caps: mixed room materials do not overlap" {ice_jamb_room_check(0.3f32);}
+#test "door jamb caps: Backrooms materials do not overlap" {ice_jamb_room_check(1);}
+
+#test "door jamb caps: emitted closed boxes and malformed donors" {
+  ijw:=Wall.{horizontal=true,inner=0.15f32,outer=0};ijd:[36]Vtx;
+  #assert piece(ijd[..],0,ijw,3.78f32,3.9f32,0,DOOR_HEIGHT,WAFFLE_DARK,0.06f32)==36;
+  ijbox:=room_door_box(ijd[..]);#assert ijbox.valid && ijbox.lo.y==0 && ijbox.hi.y==DOOR_HEIGHT;
+  #assert !room_door_box(ijd[0..<35]).valid;
+  ijsave:=ijd[0];ijd[0]=ijd[1];ijd[1]=ijsave;
+  #assert !room_door_box(ijd[..]).valid;
+}
+#test "door jamb caps: actual donor bounds preserve exposed trim overhang" {
+  ijw:=Wall.{horizontal=true,inner=0.15f32,outer=0};ijd:[36]Vtx;ija:[108]Vtx;ijb:[108]Vtx;
+  #assert room_wall_bands(ija[..],0,ijw,0,3.9f32,BACK_WALL,BACK_TRIM)==108;
+  // This real narrower post covers the wall but leaves trim protruding.
+  #assert piece(ijd[..],0,ijw,3.78f32,3.9f32,0,DOOR_HEIGHT,WAFFLE_DARK,0.01f32)==36;
+  #assert room_open_wall_bands(ijb[..],0,ijw,0,3.9f32,BACK_WALL,BACK_TRIM,true,ijd[..])==108;
+  for iji:36..<108 {#assert ice_band_same_vertex(ija[iji],ijb[iji]);}
+  // A spatially separate emitted box must not hide any original surface.
+  #assert piece(ijd[..],0,ijw,4.1f32,4.22f32,0,DOOR_HEIGHT,WAFFLE_DARK,0.06f32)==36;
+  #assert room_open_wall_bands(ijb[..],0,ijw,0,3.9f32,BACK_WALL,BACK_TRIM,true,ijd[..])==108;
+  for iji:0..<108 {#assert ice_band_same_vertex(ija[iji],ijb[iji]);}
+  // Incomplete actual geometry cannot certify a solid donor.
+  #assert room_open_wall_bands(ijb[..],0,ijw,0,3.9f32,BACK_WALL,BACK_TRIM,true,ijd[0..<35])==108;
+  for iji:0..<108 {#assert ice_band_same_vertex(ija[iji],ijb[iji]);}
 }

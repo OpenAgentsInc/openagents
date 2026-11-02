@@ -1,0 +1,71 @@
+{
+  "schema": "aethyr.render.build.qualification.v1",
+  "status": "pass",
+  "compiler_version": "coax0 0.47.0",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "compiler_source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "package": {
+    "profile": "fixture",
+    "modules": 1,
+    "entries": [
+      {
+        "entry_index": 0,
+        "spirv_words": 28351,
+        "spirv_sha256": "7c61ce1a11f65fb4aa712f231ef899343dd2502c05220ddc66f58e55189f3a75",
+        "tree_words": 15121,
+        "tree_sha256": "37158aadde1ab94789293edb7d89d9714316e4aeba1ee92ab82136601ad71fec"
+      },
+      {
+        "entry_index": 2,
+        "spirv_words": 6957,
+        "spirv_sha256": "04609d94029d37606b6fc4dcca2640f3f8a91e5db1cff28d4c9e8f57cf236ee6",
+        "tree_words": 3440,
+        "tree_sha256": "a42dec99e009a967d7e51f6fa927c2225637497d3fa2613501e74a43d45f236d"
+      },
+      {
+        "entry_index": 3,
+        "spirv_words": 18701,
+        "spirv_sha256": "55a2d65f3b470a81e9a6670272e0599de3ed2217857b3663dfee0c7a21939820",
+        "tree_words": 9588,
+        "tree_sha256": "b7049aed1296a77a9e0a1492ac3a4d8eaf778dd1ea440aace38aa9162ac69078"
+      },
+      {
+        "entry_index": 5,
+        "spirv_words": 8277,
+        "spirv_sha256": "5ab7058891b069a273f275604d911a5494213ce03dea810cb8a26e1325e6bfd3",
+        "tree_words": 3841,
+        "tree_sha256": "12eea45365880dd9f49b19292bc0e6c558f0e4d895c04ca9c4ed9567f8cb99bb"
+      },
+      {
+        "entry_index": 10,
+        "spirv_words": 2653,
+        "spirv_sha256": "05841bf0f57155250e200c4495e1dca4cf1a43d5907217e9d5aa90ca3307e07c",
+        "tree_words": 1173,
+        "tree_sha256": "55b7a09ae6dd28b0ec4dbd0d9d3ec1f1821c1040e1a0454fa436f42ec213d985"
+      },
+      {
+        "entry_index": 11,
+        "spirv_words": 8471,
+        "spirv_sha256": "83d61f6c6e1a8bf1d0d1fe3bbb30139752a030ec6eaff5987be1611535fd82ac",
+        "tree_words": 3888,
+        "tree_sha256": "fac1ac38b8fb274864b9e3323d657a8e7e72c2082d6b3d2518aab8b2ceaaa59c"
+      },
+      {
+        "entry_index": 12,
+        "spirv_words": 2054,
+        "spirv_sha256": "f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da",
+        "tree_words": 807,
+        "tree_sha256": "acff5828e1965a6da909ea2a28863f3ab2f144e90528586ff22ecc428c238da4"
+      }
+    ],
+    "manifest_sha256": "bb23f81ee6c492ebb73b37235642c9190b15068d278739186128696709bae0dd"
+  },
+  "builder_sha256": "4e47dd0c098fdd4285947bd7fbad05a002e36df5fd6d73198f0fe0525958d691",
+  "builder_receipt_sha256": "10fd1d5b405fe8d47a9d37833b15e38fd6147db3fcc85495548feac173f7d600",
+  "failure_controls": [],
+  "cache_product_controls": [],
+  "enumerated_profiles": 18,
+  "elapsed_seconds": 3.424,
+  "qualifier_sha256": "bf7aae4bbdeb75ecabab7bf73dd2c9f03cad9c9b3fade8002e9ad4f51620ebf9",
+  "scope": "Actual emitted module/pipeline inventory, independent SPIRV framing/interface/resource/capability observations, catalog resource contract, source closure and atomic manifest publication. Not GPU numerical/image qualification."
+}

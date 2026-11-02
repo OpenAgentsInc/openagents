@@ -1,0 +1,497 @@
+{
+  "schema": "aethyr.render.browser-wire.v1",
+  "status": "passed",
+  "inputs": {
+    "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c": "4d3621a1b288ad21ba3391847833bb405ca6387eaa3a906eb6a00686b8219c46",
+    "/private/tmp/aethyr-ch11-host-mesh-abi/Render.h": "fd0298a5f76d6956441e85b63161a673595def602655e5b12d844b2fd1427a03",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render-face.c": "d169fd4b7fd7ff62ccb6c590e043c4fc2ad03b5622f272c85561198158f6a51f",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-host-wire.c": "6690ec6bd7a3e035209c355e2a7121af43153896f165d0db3969f68e2fbcda75",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/host-policy.coax": "a3bf4a200469ca3f8e81ac37735afe47f6d3ccd83992bfd09f13c6a118ec4241",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/host.coax": "ae4ac411c8038a4c4dcdb3519007d85b98416e7281b650f531204bb8cf5765bf",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_host_wire.py": "ac6f2c69bd8500c4b538f19444f59a2346f4c5c48edd084a70304339c3395fbd",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980"
+  },
+  "commands": [
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O0",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/wire"
+      ],
+      "exit_code": 0,
+      "seconds": 0.386,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/wire"
+      ],
+      "exit_code": 0,
+      "seconds": 0.233,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O0",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/fault-ack"
+      ],
+      "exit_code": 0,
+      "seconds": 0.516,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-ack-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/fault-ack"
+      ],
+      "exit_code": -6,
+      "seconds": 0.265,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-ack-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O0",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/fault-pipeline"
+      ],
+      "exit_code": 0,
+      "seconds": 0.536,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-pipeline-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/fault-pipeline"
+      ],
+      "exit_code": -6,
+      "seconds": 0.278,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-pipeline-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O0",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/fault-mesh-capacity"
+      ],
+      "exit_code": 0,
+      "seconds": 0.437,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-mesh-capacity-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/fault-mesh-capacity"
+      ],
+      "exit_code": -6,
+      "seconds": 0.254,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-mesh-capacity-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O0",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/fault-draw-object"
+      ],
+      "exit_code": 0,
+      "seconds": 0.486,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-draw-object-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/fault-draw-object"
+      ],
+      "exit_code": -6,
+      "seconds": 0.258,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-draw-object-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O0",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/fault-draw-null"
+      ],
+      "exit_code": 0,
+      "seconds": 0.481,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-draw-null-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug/fault-draw-null"
+      ],
+      "exit_code": -6,
+      "seconds": 0.237,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/debug-draw-null-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O2",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/wire"
+      ],
+      "exit_code": 0,
+      "seconds": 1.965,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/wire"
+      ],
+      "exit_code": 0,
+      "seconds": 0.266,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O2",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/fault-ack"
+      ],
+      "exit_code": 0,
+      "seconds": 1.998,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-ack-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/fault-ack"
+      ],
+      "exit_code": -6,
+      "seconds": 0.26,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-ack-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O2",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/fault-pipeline"
+      ],
+      "exit_code": 0,
+      "seconds": 1.683,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-pipeline-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/fault-pipeline"
+      ],
+      "exit_code": -6,
+      "seconds": 0.282,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-pipeline-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O2",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/fault-mesh-capacity"
+      ],
+      "exit_code": 0,
+      "seconds": 1.733,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-mesh-capacity-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/fault-mesh-capacity"
+      ],
+      "exit_code": -6,
+      "seconds": 0.295,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-mesh-capacity-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O2",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/fault-draw-object"
+      ],
+      "exit_code": 0,
+      "seconds": 1.844,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-draw-object-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/fault-draw-object"
+      ],
+      "exit_code": -6,
+      "seconds": 0.306,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-draw-object-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O2",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/fault-draw-null"
+      ],
+      "exit_code": 0,
+      "seconds": 1.724,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-draw-null-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized/fault-draw-null"
+      ],
+      "exit_code": -6,
+      "seconds": 0.259,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/optimized-draw-null-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O1",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/wire"
+      ],
+      "exit_code": 0,
+      "seconds": 2.984,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/wire"
+      ],
+      "exit_code": 0,
+      "seconds": 0.351,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O1",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/fault-ack"
+      ],
+      "exit_code": 0,
+      "seconds": 3.009,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-ack-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/fault-ack"
+      ],
+      "exit_code": -6,
+      "seconds": 0.324,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-ack-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O1",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/fault-pipeline"
+      ],
+      "exit_code": 0,
+      "seconds": 3.081,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-pipeline-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/fault-pipeline"
+      ],
+      "exit_code": -6,
+      "seconds": 0.319,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-pipeline-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O1",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/fault-mesh-capacity"
+      ],
+      "exit_code": 0,
+      "seconds": 3.072,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-mesh-capacity-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/fault-mesh-capacity"
+      ],
+      "exit_code": -6,
+      "seconds": 0.299,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-mesh-capacity-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O1",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/fault-draw-object"
+      ],
+      "exit_code": 0,
+      "seconds": 2.937,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-draw-object-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/fault-draw-object"
+      ],
+      "exit_code": -6,
+      "seconds": 0.301,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-draw-object-run.log"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O1",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-I/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized",
+        "/private/tmp/aethyr-ch11-host-mesh-abi/Render.c",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/wire.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/fault-draw-null"
+      ],
+      "exit_code": 0,
+      "seconds": 3.026,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-draw-null-build.log"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized/fault-draw-null"
+      ],
+      "exit_code": -6,
+      "seconds": 0.347,
+      "log": "/private/tmp/aethyr-ch11-host-wire-draw-reset-qualification/sanitized-draw-null-run.log"
+    }
+  ],
+  "source_changes": []
+}

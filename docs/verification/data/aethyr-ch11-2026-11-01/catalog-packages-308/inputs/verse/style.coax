@@ -1,0 +1,783 @@
+#load "../aethyr/render/noise.coax";
+// The art styles' shading functions (docs/verse/art-styles.md), as plain f32
+// functions the realms' WGSL calls. coax wgsl emits them into a
+// realm's WGSL between "// ---- generated: verse/style.coax" markers, the
+// way verse/look.coax's outlines are. The numbers they take come from the
+// realm's style preset, evaluated at its clock (verse/style-preset.coax:
+// verse_style_at fills the STYLE_FLOATS uniform block), so a realm never
+// hand-tunes them. Colours are linear RGB; a colour function works on one
+// channel at a time (the Metal scalar profile has no vectors).
+//
+//   coax/bin/coax test verse/style.coax
+st_min :: (a:f32,b:f32)->f32 {if a<b{return a;}return b;}
+st_max :: (a:f32,b:f32)->f32 {if a>b{return a;}return b;}
+st_sat :: (x:f32)->f32 {return st_min(1.0f32,st_max(0.0f32,x));}
+// smoothstep(e - s, e + s, x): a band edge at e, blended over 2s.
+verse_style_soft_step :: (e:f32,s:f32,x:f32)->f32 #export_c {
+ t:=st_sat((x-(e-s))/st_max(2.0f32*s,0.000001f32));
+ return t*t*(3.0f32-2.0f32*t);
+}
+
+// ---- 1. Shading: soft toon bands
+// Wrapped Lambert: N.L lifted a quarter, so the terminator sits past the side.
+verse_style_wrap :: (ndl:f32)->f32 #export_c {return st_sat((ndl+0.25f32)/1.25f32);}
+// Three bands: shadow 0, mid (`mid`, 0.55), lit 1, edges e0 and e1 (0.20, 0.58)
+// softened over s (0.06). w is the wrapped term times the shadow map's soft term.
+verse_style_bands :: (w:f32,e0:f32,e1:f32,s:f32,mid:f32)->f32 #export_c {
+ return mid*verse_style_soft_step(e0,s,w)+(1.0f32-mid)*verse_style_soft_step(e1,s,w);
+}
+// Two bands, for characters: one edge (0.40, softness 0.08).
+verse_style_bands2 :: (w:f32,e:f32,s:f32)->f32 #export_c {return verse_style_soft_step(e,s,w);}
+// One channel of a banded surface: the albedo under the tinted ambient in the
+// shadow band (`shadow_light`: shadow tint times ambient) and under the key
+// plus ambient in the lit one (`lit_light`), mixed by the band.
+verse_style_shade :: (albedo:f32,shadow_light:f32,lit_light:f32,band:f32)->f32 #export_c {
+ return albedo*(shadow_light+(lit_light-shadow_light)*st_sat(band));
+}
+// Painterly shadows are cool (art-styles.md 3), warm albedos too: the shadow band's colour (one
+// channel c of albedo times the tinted ambient) takes the tint's hue once more (tint over tint_lum,
+// the tint's luminance), raised to `amount` (the preset's `cool`), and verse_style_keep_value then
+// scales the three back to the luminance they had. A multiply, not a mix: mixing a warm colour toward
+// blue passes through grey, while multiplying turns olive teal and brown slate and keeps colour in it.
+verse_style_cool :: (c:f32,tint:f32,tint_lum:f32,amount:f32)->f32 #export_c {
+ return c*pow(st_max(tint,0.000001f32)/st_max(tint_lum,0.000001f32),st_max(amount,0.0f32));
+}
+// One channel of the cooled colour put back to the luminance `before` from `after` (both from verse_style_luma).
+verse_style_keep_value :: (c:f32,before:f32,after:f32)->f32 #export_c {return c*before/st_max(after,0.000001f32);}
+// One channel of a banded surface from its cooled shadow colour and its lit colour (albedo times
+// key plus ambient), mixed by the band.
+verse_style_banded :: (shadow_c:f32,lit_c:f32,band:f32)->f32 #export_c {return shadow_c+(lit_c-shadow_c)*st_sat(band);}
+// A hemisphere ambient channel: ground below, sky above, by the normal's y.
+verse_style_ambient :: (ny:f32,sky:f32,ground:f32,scale:f32)->f32 #export_c {
+ return (ground+(sky-ground)*(st_sat(ny*0.5f32+0.5f32)))*scale;
+}
+// The one hard dab of a wet, metal or glass surface: R.L past `cut` (0.92) at `strength` (0.35).
+verse_style_dab :: (rdl:f32,cut:f32,strength:f32)->f32 #export_c {return ifx rdl>=cut then strength else 0.0f32;}
+
+// ---- 2. Rim light
+// How much rim a surface gets: from where it turns `start` (N.V 0.38) from the
+// eye to full at `full` (0.12), more on the key light's side, times strength.
+verse_style_rim :: (ndv:f32,ndl:f32,start:f32,full:f32,strength:f32)->f32 #export_c {
+ t:=st_sat((ndv-start)/(full-start));
+ edge:=t*t*(3.0f32-2.0f32*t);
+ return edge*(0.35f32+0.65f32*st_sat(ndl+0.3f32))*strength;
+}
+
+// ---- 3. Real shadows: the key light's shadow map (host.js shadowLayout, 2048 square, 1024 on a phone)
+// How far round the eye the map reaches, in metres: the camera's near 60 m, 40 m on a phone.
+verse_style_shadow_reach :: (on_phone:f32)->f32 #export_c {if on_phone>0.5f32 {return 40.0f32;} return 60.0f32;}
+// The map's place snapped to whole texels (reach across size texels each way), so shadows hold still as the eye moves.
+verse_style_shadow_snap :: (x:f32,reach:f32,size:f32)->f32 #export_c {
+ texel:=2.0f32*reach/st_max(size,1.0f32);
+ return floor(x/texel+0.5f32)*texel;
+}
+// A point's place across the map, -1 to 1 from its middle (x metres across the light from the
+// snapped middle), and its depth, 0 to 1, from how far it lies toward the light (`along`, metres
+// past the middle): nearer the light is nearer 0, and the map holds twice its reach either way.
+verse_style_shadow_across :: (x:f32,reach:f32)->f32 #export_c {return x/st_max(reach,0.001f32);}
+verse_style_shadow_depth :: (along:f32,reach:f32)->f32 #export_c {return 0.5f32-along/(4.0f32*st_max(reach,0.001f32));}
+// How many Poisson taps the filter takes, and how far out they reach in texels.
+verse_style_shadow_taps :: (on_phone:f32)->f32 #export_c {if on_phone>0.5f32 {return 4.0f32;} return 9.0f32;}
+verse_style_shadow_radius :: (on_phone:f32)->f32 #export_c {return 2.5f32+0.0f32*on_phone;}
+// Tap k's offset on the unit disc, `which` 0 across and 1 down: nine spread Poisson points, or a
+// phone's four in a turned square.
+verse_style_shadow_tap :: (k:f32,on_phone:f32,which:f32)->f32 #export_c {
+ x:=0.0f32; y:=0.0f32;
+ if on_phone>0.5f32 {
+  if k<0.5f32 {x=-0.60f32;y=-0.25f32;} else if k<1.5f32 {x=0.25f32;y=-0.60f32;} else if k<2.5f32 {x=0.60f32;y=0.25f32;} else {x=-0.25f32;y=0.60f32;}
+ } else {
+  if k<0.5f32 {x=0.0f32;y=0.0f32;} else if k<1.5f32 {x=-0.326f32;y=-0.406f32;} else if k<2.5f32 {x=-0.840f32;y=-0.074f32;}
+  else if k<3.5f32 {x=-0.696f32;y=0.457f32;} else if k<4.5f32 {x=-0.203f32;y=0.621f32;} else if k<5.5f32 {x=0.962f32;y=-0.195f32;}
+  else if k<6.5f32 {x=0.473f32;y=-0.480f32;} else if k<7.5f32 {x=0.519f32;y=0.767f32;} else {x=0.185f32;y=-0.893f32;}
+ }
+ if which>0.5f32 {return y;} return x;
+}
+// The cast shadow (1 lit, 0 shadowed) with a mover's blob under it: the blob darkens to
+// 1 - strength (0.35) at its middle and never lightens a cast shadow.
+verse_style_contact :: (cast_lit:f32,blob:f32,strength:f32)->f32 #export_c {return st_min(cast_lit,1.0f32-strength*st_sat(blob));}
+
+// ---- 4. Atmosphere: haze
+// The haze's share at distance d, height y over the ground at the eye (base_y):
+// exponential past `start`, thinner higher up (falloff), capped.
+verse_style_haze :: (d:f32,y:f32,base_y:f32,start:f32,density:f32,cap:f32,falloff:f32)->f32 #export_c {
+ dist:=1.0f32-exp(-density*st_max(d-start,0.0f32));
+ height:=exp(-st_max(y-base_y,0.0f32)/st_max(falloff,0.001f32));
+ return st_min(dist*(1.0f32+(height-1.0f32)*0.6f32),cap);
+}
+// How much of the key light's colour the haze takes looking toward it (V.L).
+verse_style_haze_glow :: (vdl:f32)->f32 #export_c {
+ a:=st_sat(vdl);a2:=a*a;a4:=a2*a2;
+ return a4*a4*0.45f32;
+}
+// One channel of a surface through the haze: toward haze_c (the haze's colour
+// with the key's glow mixed in) by the haze's share f.
+verse_style_fog :: (c:f32,haze_c:f32,f:f32)->f32 #export_c {return c+(haze_c-c)*st_sat(f);}
+
+// The haze's hue by its share (art-styles.md 4): teal where it is thin, the middle distance, turning
+// to the preset's blue as it thickens toward its cap, so far ridges step back teal, then blue, and
+// the haze never whitens what's near. One channel (0 red, 1 green, 2 blue) of the haze colour h.
+verse_style_haze_teal :: (ch:f32)->f32 #export_c {if ch<0.5f32 {return 0.70f32;} if ch<1.5f32 {return 1.0f32;} return 0.84f32;}
+verse_style_haze_hue :: (h:f32,ch:f32,f:f32,cap:f32)->f32 #export_c {
+ t:=verse_style_haze_teal(ch);
+ far:=verse_style_soft_step((0.15f32+cap)*0.5f32,(cap-0.15f32)*0.5f32,f);
+ return h*(t+(1.0f32-t)*far);
+}
+
+// ---- 5. Sky
+// The gradient from horizon (0) to zenith (1) by the view ray's elevation sine.
+verse_style_sky_t :: (up:f32)->f32 #export_c {return pow(st_max(up,0.000001f32),0.55f32);}
+// The horizon band: within 6 degrees (sine 0.1045) of the horizon, lifted toward the haze.
+verse_style_sky_band :: (up:f32,lift:f32)->f32 #export_c {return lift*(1.0f32-st_sat(abs(up)/0.1045f32));}
+// A halo term, exp(-k (1 - cos theta)).
+verse_style_halo :: (cos_t:f32,k:f32)->f32 #export_c {return exp(-k*st_max(1.0f32-cos_t,0.0f32));}
+
+// ---- 5b. Clouds: one dome layer (1,500 m), two octaves of value noise (one on a on_phone), cut soft,
+// shaded in two tones. Fairy Forest's sky is these, lifted into the engine.
+// A hash of a lattice point, 0 to 1.
+#test "style live lattice uses the portable integer noise profile" {
+ #assert f32_bits(verse_style_hash(1,2))==0x3f6013da;
+}
+verse_style_hash :: (x:f32,y:f32)->f32 #export_c {
+ return render_noise2(x,y);
+}
+// Value noise at (x, y): the four lattice hashes round it, eased between.
+verse_style_noise :: (x:f32,y:f32)->f32 #export_c {
+ ix:=floor(x); iy:=floor(y); fx:=x-ix; fy:=y-iy;
+ sx:=fx*fx*(3.0f32-2.0f32*fx); sy:=fy*fy*(3.0f32-2.0f32*fy);
+ a:=verse_style_hash(ix,iy); b:=verse_style_hash(ix+1.0f32,iy);
+ c:=verse_style_hash(ix,iy+1.0f32); d:=verse_style_hash(ix+1.0f32,iy+1.0f32);
+ return a+(b-a)*sx+((c+(d-c)*sx)-(a+(b-a)*sx))*sy;
+}
+// The cloud field at (x, z) metres on the layer: the first octave at s1 per metre, and with two
+// octaves 0.35 of a second at s2, offset so they don't line up.
+verse_style_cloud_field :: (x:f32,z:f32,s1:f32,s2:f32,octaves:f32)->f32 #export_c {
+ n:=verse_style_noise(x*s1,z*s1);
+ if octaves<1.5f32 {return n;}
+ return n*0.65f32+verse_style_noise(x*s2+3.1f32,z*s2+7.7f32)*0.35f32;
+}
+// How much of the sky the field covers: cut soft from cut_lo to cut_hi (0.48, 0.62) at the default cover
+// 0.35, more cover lowering the cut; none at all at cover 0.
+verse_style_cloud_cover :: (n:f32,cover:f32,cut_lo:f32,cut_hi:f32)->f32 #export_c {
+ return verse_style_soft_step((cut_lo+cut_hi)*0.5f32,(cut_hi-cut_lo)*0.5f32,n+(cover-0.35f32)*0.4f32)*verse_style_soft_step(0.025f32,0.025f32,cover);
+}
+// The lit share of a cloud, from the field here and a little toward the light: thinning toward the
+// light is the lit top, thickening its underside.
+verse_style_cloud_lit :: (n:f32,toward:f32)->f32 #export_c {return st_sat((n-toward)*5.0f32+0.55f32);}
+// Clouds fade into the horizon band: none under 0.01 of elevation sine, all by 0.16, at most 0.92.
+verse_style_cloud_fade :: (up:f32)->f32 #export_c {return verse_style_soft_step(0.085f32,0.075f32,up)*0.92f32;}
+
+// ---- 8. Grass and wind (art-styles.md 8): blades instanced from a hash of their cell, bent by one
+// wind every realm and the foliage's sway share.
+// The gust at (x, z) metres: value noise at `scale` (1/25 per metre) moving with the wave, -1 to 1.
+verse_style_gust :: (x:f32,z:f32,t:f32,wx:f32,wz:f32,speed:f32,scale:f32)->f32 #export_c {
+ return 2.0f32*verse_style_noise((x-wx*speed*t)*scale,(z-wz*speed*t)*scale)-1.0f32;
+}
+// The wind's bend (radians) where the wave's phase coordinate (metres along the wind) is `along`:
+// A (0.6 sin(k along - w t) + 0.4 gust), wavelength 12 m, moving 3 m/s, A 0.30 rad.
+verse_style_wind :: (along:f32,gust:f32,t:f32,amp:f32,wavelength:f32,speed:f32)->f32 #export_c {
+ k:=6.2831853f32/st_max(wavelength,0.001f32);
+ return amp*(0.6f32*sin(k*along-k*speed*t)+0.4f32*gust);
+}
+// How far a point `share` of the way up a blade (or a canopy over its tree's height) moves for a bend
+// theta: with the square of its height, so the base stays put.
+verse_style_bend :: (theta:f32,height:f32,share:f32)->f32 #export_c {return sin(theta)*height*share*share;}
+// The bent blade's normal tilts toward the light by its bend, up to `most` (20 degrees) at the full
+// bend: the bands that roll across a field. Signed: a blade bent away from the light darkens.
+verse_style_grass_tilt :: (theta:f32,amp:f32,tilt_most:f32)->f32 #export_c {return tilt_most*st_max(-1.0f32,st_min(1.0f32,theta/st_max(amp,0.0001f32)));}
+// A blade's height from its hash h (0 to 1): 0.35 to 0.60 m.
+verse_style_blade_height :: (h:f32,low:f32,high:f32)->f32 #export_c {return low+(high-low)*st_sat(h);}
+// How much of a blade stands at distance d from the eye: all of it to 6 m inside the radius (32 m,
+// 18 on a on_phone), shrinking to nothing at the radius, so the field has no edge.
+verse_style_grass_fade :: (d:f32,radius:f32,fade:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(radius-fade*0.5f32,fade*0.5f32,d);}
+// How many blades the realm draws in the half disc ahead of the eye: a square 2 radius across and
+// one radius deep, at the density (24 a square metre, 8 on a on_phone).
+verse_style_grass_blades :: (radius:f32,density:f32)->f32 #export_c {return 2.0f32*radius*radius*density;}
+// The mask: a blade's share of its height by its distance past a masked shape's edge (a path, a
+// plot, a floor): none on it, all of it 0.25 m clear of it.
+verse_style_grass_clear :: (past:f32)->f32 #export_c {return verse_style_soft_step(0.125f32,0.125f32,past);}
+// The distance from (x, z) to the segment a..b: a capsule's mask is this less its radius.
+verse_style_segment :: (x:f32,z:f32,ax:f32,az:f32,bx:f32,bz:f32)->f32 #export_c {
+ ux:=bx-ax; uz:=bz-az; px:=x-ax; pz:=z-az;
+ h:=st_sat((px*ux+pz*uz)/st_max(ux*ux+uz*uz,0.000001f32));
+ dx:=px-ux*h; dz:=pz-uz*h;
+ return sqrt(dx*dx+dz*dz);
+}
+// A mover parts the grass: a blade within `radius` (0.7 m) leans away, fully at the mover, by this share.
+verse_style_part :: (d:f32,radius:f32)->f32 #export_c {return st_sat(1.0f32-d/st_max(radius,0.001f32));}
+// One channel of a blade's tip: the ground's colour lifted 15% and warmed (the brush stroke's lifted
+// end), red and green up, blue held.
+verse_style_tip :: (c:f32,ch:f32,lift:f32)->f32 #export_c {
+ if ch<0.5f32 {return c*(1.0f32+lift*1.3f32);} if ch<1.5f32 {return c*(1.0f32+lift);} return c;
+}
+// One channel's hue jitter for a blade with hash h: red and blue apart by up to `jitter` (4%), green held.
+verse_style_jitter :: (c:f32,ch:f32,h:f32,jitter:f32)->f32 #export_c {
+ j:=(h*2.0f32-1.0f32)*jitter;
+ if ch<0.5f32 {return c*(1.0f32+j);} if ch<1.5f32 {return c;} return c*(1.0f32-j);
+}
+
+// ---- 9. Tone
+// The tone curve: 1 - exp(-c exposure).
+verse_style_tone :: (c:f32,exposure:f32)->f32 #export_c {return 1.0f32-exp(-st_max(c,0.0f32)*exposure);}
+// Saturation about luminance: a channel pushed away from the pixel's luminance.
+verse_style_saturation :: (c:f32,lum:f32,amount:f32)->f32 #export_c {return st_max(0.0f32,lum+(c-lum)*amount);}
+// Blacks lifted before encoding: c = lift + (1 - lift) c.
+verse_style_lift :: (c:f32,lift:f32)->f32 #export_c {return lift+(1.0f32-lift)*c;}
+// The share of a pixel's light that blooms (art-styles.md 6): none under the
+// threshold less the knee, all of the excess past the threshold, a quadratic
+// knee between so the glow starts without a seam. As a fraction of the light.
+verse_style_bloom_share :: (lum:f32,threshold:f32,knee:f32)->f32 #export_c {
+ if lum<=0.0f32 {return 0.0f32;}
+ k:=st_max(knee,0.00001f32);
+ q:=st_min(st_max(lum-threshold+k,0.0f32),2.0f32*k);
+ return st_min(st_max(q*q/(4.0f32*k),lum-threshold)/lum,1.0f32);
+}
+// The light with its blurred bright share mixed back: gently, `amount` of it.
+verse_style_bloom_mix :: (c:f32,bloom:f32,amount:f32)->f32 #export_c {return c+bloom*amount;}
+// ---- 6b. Light shafts: a radial blur of the sky's glow toward the key light's place on screen
+// The glow a sky pixel puts into the blur: the sky near the light, by the ray's cosine to it
+// (exp(-24 (1 - cos)): half at 14 degrees, a tenth at 25), so gaps in a canopy against the sky round
+// the sun stream light and open sky far from it adds nothing. A surface passes it on in the share the
+// haze has taken of it (the lit air in front of a far ridge glows; a near trunk blocks).
+verse_style_shaft_source :: (cos_t:f32)->f32 #export_c {return exp(-24.0f32*st_max(1.0f32-cos_t,0.0f32));}
+// How much of the shafts show, by where the light sits on screen (x, y: 0 to 1 across the frame,
+// outside it past an edge): all of them inside the frame, fading out over `margin` (0.35) of the
+// frame past its edge, none further.
+verse_style_shaft_fade :: (x:f32,y:f32,margin:f32)->f32 #export_c {
+ out:=st_max(st_max(st_max(-x,x-1.0f32),st_max(-y,y-1.0f32)),0.0f32);
+ return 1.0f32-verse_style_soft_step(margin*0.5f32,margin*0.5f32,out);
+}
+// Tap i's weight along the march from the pixel toward the light: decay^i (0.94).
+verse_style_shaft_tap :: (i:f32,decay:f32)->f32 #export_c {return pow(st_max(decay,0.000001f32),i);}
+// All n taps' weights together, to share the shafts' strength over them.
+verse_style_shaft_total :: (n:f32,decay:f32)->f32 #export_c {
+ if abs(1.0f32-decay)<0.000001f32 {return n;}
+ return (1.0f32-pow(st_max(decay,0.000001f32),n))/(1.0f32-decay);
+}
+// A pixel's shafts: `sum` (the taps' glow, each times its weight) shared over the taps, at the
+// preset's weight (0.44 by day, 0.20 at night) and the frame-edge fade. Added to the light, coloured
+// like the key light in the haze.
+verse_style_shaft :: (sum:f32,total:f32,weight:f32,fade:f32)->f32 #export_c {return sum/st_max(total,0.000001f32)*weight*st_sat(fade);}
+// Relative luminance of linear RGB.
+verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.7152f32*g+0.0722f32*b;}
+
+// ---- 7. Foliage: blob canopies (art-styles.md 7). A canopy shades as one soft blob round its centre,
+// not as its leaf cards: its normal leans 0.85 of the way to the blob's.
+// One channel of the blob's direction at a canopy point p with centre c and half size `half` on that
+// which: (p - c) / half^2, an ellipsoid's gradient (a sphere's when the three half sizes match), so a
+// pine's tall crown rounds over its top and sides alike. The three are normalized together.
+verse_style_canopy_axis :: (p:f32,c:f32,half:f32)->f32 #export_c {h:=st_max(half,0.001f32);return (p-c)/(h*h);}
+// One channel of the canopy normal before normalizing: the mesh's normal mixed `k` (0.85) toward the blob's.
+verse_style_canopy_normal :: (mesh_n:f32,blob_n:f32,k:f32)->f32 #export_c {return mesh_n+(blob_n-mesh_n)*k;}
+// How far a canopy point `share` of its tree's height up (from the trunk's base) moves in the wind:
+// `reach` (0.05 m) times its share times the wind's bend over its amplitude, so the canopy breathes
+// with the grass and the trunk stays still.
+verse_style_canopy_sway :: (theta:f32,amp:f32,reach:f32,share:f32)->f32 #export_c {
+ return reach*st_sat(share)*st_max(-1.0f32,st_min(1.0f32,theta/st_max(amp,0.0001f32)));
+}
+// Leafy gaps: whether the canopy is open at a point whose leaf noise is n (0 to 1): open where the noise
+// is under `gap` (the preset's 0.36), so the sky shows through in holes and the light shafts streak.
+verse_style_canopy_open :: (n:f32,gap:f32)->f32 #export_c {return ifx n<gap then 1.0f32 else 0.0f32;}
+// The near ring (another.jpg's forest floor): a square 2 reach across round the eye where more
+// blades grow (the preset's grass_near a m2, on top of the far field's), and the blades nearer
+// than reach widen toward the eye, 2.4 times at it, so the ground under you reads as thick grass.
+verse_style_near_reach :: (on_phone:f32)->f32 #export_c {return ifx on_phone>0.5f32 then 6.0f32 else 7.0f32;}
+verse_style_near_blades :: (reach:f32,density:f32)->f32 #export_c {return 4.0f32*reach*reach*density;}
+verse_style_near_width :: (d:f32,reach:f32)->f32 #export_c {return 1.0f32+1.4f32*(1.0f32-st_sat(d/st_max(reach,0.001f32)));}
+// The cap on how far the shadow tint and the light may grey a surface: its saturation (chroma over
+// value) kept to at least `keep` of its albedo's; the gain to put on its distance from grey (1 when it
+// is saturated enough, never more than 2.5).
+verse_style_chroma_gain :: (have:f32,albedo:f32,keep:f32)->f32 #export_c {
+ if have<0.0001f32 {return 1.0f32;}
+ return st_min(2.5f32,st_max(1.0f32,albedo*keep/have));
+}
+
+// ---- Flat (art-styles.md, Flat): flat-shaded low poly in a strongly limited palette. Big solid
+// fills, two or three flat tones a form (lit, shade, dark), no specular, no rim, no outline; a flat
+// sky with one soft horizon band; cast shadows as flat translucent shapes; a thin trim line along
+// some hems; now and then a slight dithered gradient down a tall shape. The edges here are the
+// flat preset's (verse/style-preset.coax STYLE_FLAT), as literals because coax wgsl writes these.
+// The light on a flat surface: half Lambert (N.L folded into 0 to 1) under the cast shadow's light.
+verse_style_flat_light :: (fl_ndl:f32,fl_lit:f32)->f32 #export_c {return st_sat(fl_ndl*0.5f32+0.5f32)*st_sat(fl_lit);}
+// Three flat tones from that light: dark (0) under 0.38, shade (0.5) to 0.62, lit (1) above it. Each
+// edge is a hard step, antialiased over 0.01 either side, never a gradient.
+verse_style_flat_band :: (fl_w:f32)->f32 #export_c {return verse_style_bands(fl_w,0.38f32,0.62f32,0.01f32,0.5f32);}
+// Two for characters: shade and lit, one edge at 0.45.
+verse_style_flat_band2 :: (fl_w:f32)->f32 #export_c {return verse_style_soft_step(0.45f32,0.01f32,fl_w);}
+// The sky: one flat colour, and toward the horizon a soft band of the horizon colour, all of it at
+// and under the horizon and none 0.24 (elevation sine, 14 degrees) up. Its share of the horizon colour.
+verse_style_flat_sky :: (fl_up:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(0.12f32,0.12f32,fl_up);}
+// A cast shadow's cover at d (its distance from the middle over its radius): flat all through, a
+// soft rim from 0.7 out to the radius. The realm darkens toward its shadow colour by cover times strength.
+verse_style_flat_shadow :: (fl_d:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(0.85f32,0.15f32,fl_d);}
+// Far off, a surface goes over to the horizon colour: nothing to `start` metres, then softly up to
+// `cap` by `start` plus `reach`. One fade, no fog layers.
+verse_style_flat_fade :: (fl_d:f32,fl_start:f32,fl_reach:f32,fl_cap:f32)->f32 #export_c {
+ return fl_cap*verse_style_soft_step(fl_start+fl_reach*0.5f32,st_max(fl_reach*0.5f32,0.001f32),fl_d);
+}
+// A 4 by 4 ordered (Bayer) threshold at pixel (px, py), 0 to 15/16 plus half a step.
+st_bayer2 :: (fl_a:f32,fl_b:f32)->f32 {return 2.0f32*fl_a+3.0f32*fl_b-4.0f32*fl_a*fl_b;}
+verse_style_bayer :: (fl_px:f32,fl_py:f32)->f32 #export_c {
+ fl_x:=fl_px-4.0f32*floor(fl_px*0.25f32); fl_y:=fl_py-4.0f32*floor(fl_py*0.25f32);
+ fl_x0:=fl_x-2.0f32*floor(fl_x*0.5f32); fl_y0:=fl_y-2.0f32*floor(fl_y*0.5f32);
+ fl_x1:=floor(fl_x*0.5f32); fl_y1:=floor(fl_y*0.5f32);
+ return (4.0f32*st_bayer2(fl_x0,fl_y0)+st_bayer2(fl_x1,fl_y1)+0.5f32)/16.0f32;
+}
+// A slight gradient down a tall shape, in `steps` flat steps dithered at pixel (px, py) where they meet:
+// t (0 at its top, 1 at its foot) to the step it shows, 0 to 1.
+verse_style_flat_dither :: (fl_t:f32,fl_px:f32,fl_py:f32,fl_steps:f32)->f32 #export_c {
+ fl_n:=st_max(fl_steps,1.0f32);
+ return st_sat(floor(st_sat(fl_t)*fl_n+verse_style_bayer(fl_px,fl_py))/fl_n);
+}
+// A hem's trim: 1 on a thin line `width` deep from the edge (y: the distance from it, in the same
+// units), antialiased over aa; 0 past it. Trim, not an outline: only where a realm asks for it.
+verse_style_flat_hem :: (fl_y:f32,fl_width:f32,fl_aa:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(fl_width,st_max(fl_aa,0.000001f32),fl_y);}
+
+// The palettes (art-styles.md, Flat: palettes): each flat realm's few colours, in sRGB 0 to 1. A slot
+// is a role; the realm draws only these (and mixes of them). The two realms in the style so far:
+FLAT_CEMETERY :: 0;   // Hecate's Cemetery, moonlit pastel: periwinkle sky, sage ground, lavender shade, cream stone
+FLAT_GARDEN :: 1;     // made realms (flat): a cosy pastel garden, olive and lime, orange, mint and lavender
+FLAT_FAIRY :: 2;      // Fairy Forest: muted pastels on a plain dusty-blue sky, sage, butter, rose-lavender, white edges
+FLAT_PALETTES :: 3;
+FLAT_SKY :: 0; FLAT_HORIZON :: 1; FLAT_GROUND :: 2; FLAT_GROUND2 :: 3; FLAT_PATH :: 4;
+FLAT_LIT :: 5; FLAT_SHADE :: 6; FLAT_SHADOW :: 7;     // light: the lit tone's, the dark tone's, a cast shadow's
+FLAT_ACCENT :: 8; FLAT_DARK :: 9; FLAT_LIGHT :: 10; FLAT_FOLIAGE :: 11; FLAT_FOLIAGE2 :: 12; FLAT_WATER :: 13;
+FLAT_WOOD :: 14; FLAT_WARM :: 15; FLAT_MINT :: 16; FLAT_ROCK :: 17; FLAT_LAVENDER :: 18; FLAT_SAGE :: 19;
+FLAT_SLOTS :: 20;
+st_pick :: (fl_ch:f32,fl_r:f32,fl_g:f32,fl_b:f32)->f32 {if fl_ch<0.5f32 {return fl_r;} if fl_ch<1.5f32 {return fl_g;} return fl_b;}
+// One channel (0 red, 1 green, 2 blue) of a slot of a palette, sRGB.
+verse_style_flat_srgb :: (fl_realm:f32,fl_slot:f32,fl_ch:f32)->f32 #export_c {
+ if fl_realm<0.5f32 {
+  if fl_slot<0.5f32 {return st_pick(fl_ch,0.400f32,0.463f32,0.690f32);}    // sky: soft periwinkle
+  if fl_slot<1.5f32 {return st_pick(fl_ch,0.745f32,0.706f32,0.847f32);}    // horizon: pale lilac
+  if fl_slot<2.5f32 {return st_pick(fl_ch,0.443f32,0.584f32,0.537f32);}    // ground: moonlit sage
+  if fl_slot<3.5f32 {return st_pick(fl_ch,0.494f32,0.631f32,0.565f32);}    // ground2: a step lighter
+  if fl_slot<4.5f32 {return st_pick(fl_ch,0.875f32,0.820f32,0.710f32);}    // path: warm cream
+  if fl_slot<5.5f32 {return st_pick(fl_ch,1.000f32,0.990f32,0.970f32);}    // lit: the moon, near white
+  if fl_slot<6.5f32 {return st_pick(fl_ch,0.660f32,0.660f32,0.860f32);}    // shade: soft lavender
+  if fl_slot<7.5f32 {return st_pick(fl_ch,0.600f32,0.600f32,0.820f32);}    // shadow: lavender-blue
+  if fl_slot<8.5f32 {return st_pick(fl_ch,0.980f32,0.960f32,0.900f32);}    // accent: cream trim
+  if fl_slot<9.5f32 {return st_pick(fl_ch,0.204f32,0.212f32,0.341f32);}    // dark: deep indigo
+  if fl_slot<10.5f32 {return st_pick(fl_ch,0.965f32,0.937f32,0.871f32);}   // light: cream
+  if fl_slot<11.5f32 {return st_pick(fl_ch,0.271f32,0.447f32,0.420f32);}   // foliage: deep teal
+  if fl_slot<12.5f32 {return st_pick(fl_ch,0.455f32,0.620f32,0.490f32);}   // foliage2: sage green
+  if fl_slot<13.5f32 {return st_pick(fl_ch,0.580f32,0.820f32,0.800f32);}   // water: mint
+  if fl_slot<14.5f32 {return st_pick(fl_ch,0.690f32,0.545f32,0.420f32);}   // wood: tan
+  if fl_slot<15.5f32 {return st_pick(fl_ch,0.980f32,0.875f32,0.580f32);}   // warm: butter yellow
+  if fl_slot<16.5f32 {return st_pick(fl_ch,0.780f32,0.900f32,0.850f32);}   // mint: pale mint
+  if fl_slot<17.5f32 {return st_pick(fl_ch,0.776f32,0.765f32,0.867f32);}   // rock: lavender-grey stone
+  if fl_slot<18.5f32 {return st_pick(fl_ch,0.533f32,0.533f32,0.722f32);}   // lavender: slate plaque
+  return st_pick(fl_ch,0.600f32,0.700f32,0.620f32);                      // sage
+ }
+ if fl_realm>1.5f32 {
+  if fl_slot<0.5f32 {return st_pick(fl_ch,0.627f32,0.694f32,0.827f32);}    // sky: a plain soft dusty blue
+  if fl_slot<1.5f32 {return st_pick(fl_ch,0.835f32,0.851f32,0.922f32);}    // horizon: pale clear blue-lilac
+  if fl_slot<2.5f32 {return st_pick(fl_ch,0.627f32,0.757f32,0.494f32);}    // ground: soft sage
+  if fl_slot<3.5f32 {return st_pick(fl_ch,0.545f32,0.690f32,0.459f32);}    // ground2: a step deeper
+  if fl_slot<4.5f32 {return st_pick(fl_ch,0.890f32,0.824f32,0.737f32);}    // path: soft sand
+  if fl_slot<5.5f32 {return st_pick(fl_ch,1.000f32,0.984f32,0.953f32);}    // lit: warm white
+  if fl_slot<6.5f32 {return st_pick(fl_ch,0.580f32,0.588f32,0.800f32);}    // shade: lavender-blue, well under the lit
+  if fl_slot<7.5f32 {return st_pick(fl_ch,0.600f32,0.600f32,0.820f32);}    // shadow: blue-violet, defined
+  if fl_slot<8.5f32 {return st_pick(fl_ch,0.992f32,0.984f32,0.965f32);}    // accent: the crisp white edge
+  if fl_slot<9.5f32 {return st_pick(fl_ch,0.165f32,0.165f32,0.247f32);}    // dark: deep indigo, the eyes
+  if fl_slot<10.5f32 {return st_pick(fl_ch,0.961f32,0.949f32,0.910f32);}   // light: cream-white
+  if fl_slot<11.5f32 {return st_pick(fl_ch,0.373f32,0.643f32,0.506f32);}   // foliage: clear jade green
+  if fl_slot<12.5f32 {return st_pick(fl_ch,0.596f32,0.812f32,0.486f32);}   // foliage2: fresh leaf
+  if fl_slot<13.5f32 {return st_pick(fl_ch,0.502f32,0.784f32,0.824f32);}   // water: clear teal
+  if fl_slot<14.5f32 {return st_pick(fl_ch,0.682f32,0.525f32,0.455f32);}   // wood: rosy taupe
+  if fl_slot<15.5f32 {return st_pick(fl_ch,0.957f32,0.871f32,0.596f32);}   // warm: butter yellow (never orange)
+  if fl_slot<16.5f32 {return st_pick(fl_ch,0.784f32,0.914f32,0.859f32);}   // mint: pale mint
+  if fl_slot<17.5f32 {return st_pick(fl_ch,0.698f32,0.667f32,0.835f32);}   // rock: lavender stone
+  if fl_slot<18.5f32 {return st_pick(fl_ch,0.824f32,0.682f32,0.894f32);}   // lavender: rose-lavender
+  return st_pick(fl_ch,0.918f32,0.639f32,0.729f32);                       // sage slot: rose (the flowers)
+ }
+ if fl_slot<0.5f32 {return st_pick(fl_ch,0.663f32,0.827f32,0.816f32);}     // sky: soft mint-blue
+ if fl_slot<1.5f32 {return st_pick(fl_ch,0.910f32,0.937f32,0.816f32);}     // horizon: cream
+ if fl_slot<2.5f32 {return st_pick(fl_ch,0.624f32,0.710f32,0.290f32);}     // ground: lime-olive
+ if fl_slot<3.5f32 {return st_pick(fl_ch,0.502f32,0.600f32,0.243f32);}     // ground2: olive
+ if fl_slot<4.5f32 {return st_pick(fl_ch,0.851f32,0.753f32,0.541f32);}     // path: warm tan
+ if fl_slot<5.5f32 {return st_pick(fl_ch,1.000f32,0.980f32,0.920f32);}     // lit: warm white
+ if fl_slot<6.5f32 {return st_pick(fl_ch,0.700f32,0.700f32,0.840f32);}     // shade: lavender
+ if fl_slot<7.5f32 {return st_pick(fl_ch,0.760f32,0.750f32,0.880f32);}     // shadow
+ if fl_slot<8.5f32 {return st_pick(fl_ch,1.000f32,0.965f32,0.878f32);}     // accent: cream trim
+ if fl_slot<9.5f32 {return st_pick(fl_ch,0.114f32,0.122f32,0.165f32);}     // dark: the creatures' eyes
+ if fl_slot<10.5f32 {return st_pick(fl_ch,0.949f32,0.918f32,0.824f32);}    // light: cream
+ if fl_slot<11.5f32 {return st_pick(fl_ch,0.435f32,0.541f32,0.227f32);}    // foliage: olive
+ if fl_slot<12.5f32 {return st_pick(fl_ch,0.710f32,0.812f32,0.353f32);}    // foliage2: lime
+ if fl_slot<13.5f32 {return st_pick(fl_ch,0.561f32,0.812f32,0.753f32);}    // water: mint teal
+ if fl_slot<14.5f32 {return st_pick(fl_ch,0.659f32,0.529f32,0.353f32);}    // wood: tan
+ if fl_slot<15.5f32 {return st_pick(fl_ch,0.878f32,0.518f32,0.227f32);}    // warm: cattail orange
+ if fl_slot<16.5f32 {return st_pick(fl_ch,0.769f32,0.925f32,0.839f32);}    // mint: pale mint
+ if fl_slot<17.5f32 {return st_pick(fl_ch,0.663f32,0.639f32,0.769f32);}    // rock: lavender-grey
+ if fl_slot<18.5f32 {return st_pick(fl_ch,0.788f32,0.702f32,0.878f32);}    // lavender
+ return st_pick(fl_ch,0.655f32,0.710f32,0.604f32);                       // sage
+}
+// The same, linear (what the shaders compute in).
+verse_style_flat_colour :: (fl_realm:f32,fl_slot:f32,fl_ch:f32)->f32 #export_c {return pow(verse_style_flat_srgb(fl_realm,fl_slot,fl_ch),2.2f32);}
+// What the time of day does to a palette, one channel's factor: dusk warms it, night takes it down to
+// a blue dusk. The cemetery's palette is its night already, so it holds all day.
+verse_style_flat_time :: (fl_realm:f32,fl_ch:f32,fl_dusk:f32,fl_night:f32)->f32 #export_c {
+ if fl_realm<0.5f32 {return 1.0f32;}
+ fl_warm:=1.0f32+(st_pick(fl_ch,1.0f32,0.80f32,0.68f32)-1.0f32)*st_sat(fl_dusk);
+ return fl_warm+(st_pick(fl_ch,0.20f32,0.25f32,0.44f32)-fl_warm)*st_sat(fl_night);
+}
+
+// ---- Facets (art-styles.md, Flat: facets): flat-shaded low poly with clean faceted silhouettes. A
+// shape's faces are drawn with the face's own normal, so each face is one flat tone; round shapes are
+// coarse (eight round, five down) with their corners nudged in and out a little so a crown or a
+// stone reads as cut, not turned; and a crisp light line runs along a shape's outline where it stands
+// in front of something further off. Shared by the flat realms that ask for it.
+// One face's tone from its normal's N.L under the light left (lit): half Lambert eased, 0 (shade) to 1 (lit).
+verse_style_facet_tone :: (fl_ndl:f32,fl_lit:f32)->f32 #export_c {
+ fl_t:=st_sat(((fl_ndl*0.5f32+0.5f32)*st_sat(fl_lit)-0.18f32)/0.7f32);
+ return fl_t*fl_t*(3.0f32-2.0f32*fl_t);
+}
+// How far a round shape's corner (i round, j down, of a grid `round` corners round) moves out (+) or
+// in (-), -1 to 1 times the shape's nudge. The seam (i = round) and each pole (j = 0 or `down`) share one
+// value, so no face ever opens a crack.
+verse_style_facet_jitter :: (fl_i:f32,fl_j:f32,fl_round:f32,fl_down:f32,fl_seed:f32)->f32 #export_c {
+ fl_a:=fl_i-fl_round*floor(fl_i/st_max(fl_round,1.0f32));
+ if fl_j<0.5f32 || fl_j>fl_down-0.5f32 {fl_a=0.0f32;}
+ return verse_style_hash(fl_a+fl_seed*13.0f32,fl_j+fl_seed*7.0f32)*2.0f32-1.0f32;
+}
+// The light edge at a pixel whose surface lies `own` metres off, beside one `other` metres off (0: the
+// sky, or nothing): 1 where the other is clearly further (more than 4 percent and 0.25 m), easing in
+// over the same again; 0 for a pixel that asks for no edge (own 0 or less: the ground, the water).
+verse_style_facet_edge :: (fl_own:f32,fl_other:f32)->f32 #export_c {
+ if fl_own<=0.0f32 {return 0.0f32;}
+ if fl_other<=0.0f32 {return 1.0f32;}
+ fl_gap:=st_max(fl_other,-fl_other)-fl_own;
+ fl_at:=fl_own*0.04f32+0.25f32;
+ return verse_style_soft_step(fl_at*1.5f32,fl_at*0.5f32,fl_gap);
+}
+
+#test "facets: one tone a face from its normal; corners nudged without cracks; an edge only in front of something further" {
+ #assert verse_style_facet_tone(1.0f32,1.0f32)==1.0f32 && verse_style_facet_tone(-1.0f32,1.0f32)==0.0f32 && verse_style_facet_tone(1.0f32,0.0f32)==0.0f32;
+ fl_last:=-1.0f32;
+ for fl_i:0..<201 { fl_t:=verse_style_facet_tone(cast(f32)fl_i/100.0f32-1.0f32,1.0f32); #assert fl_t>=fl_last && fl_t>=0.0f32 && fl_t<=1.0f32; fl_last=fl_t; }
+ for fl_j:0..<6 {
+  #assert verse_style_facet_jitter(0.0f32,cast(f32)fl_j,8.0f32,5.0f32,1.0f32)==verse_style_facet_jitter(8.0f32,cast(f32)fl_j,8.0f32,5.0f32,1.0f32);
+  for fl_i:0..<9 { fl_v:=verse_style_facet_jitter(cast(f32)fl_i,cast(f32)fl_j,8.0f32,5.0f32,1.0f32); #assert fl_v>=-1.0f32 && fl_v<=1.0f32; }
+ }
+ #assert verse_style_facet_jitter(3.0f32,0.0f32,8.0f32,5.0f32,1.0f32)==verse_style_facet_jitter(6.0f32,0.0f32,8.0f32,5.0f32,1.0f32);
+ #assert verse_style_facet_jitter(3.0f32,5.0f32,8.0f32,5.0f32,1.0f32)==verse_style_facet_jitter(1.0f32,5.0f32,8.0f32,5.0f32,1.0f32);
+ #assert verse_style_facet_edge(5.0f32,0.0f32)==1.0f32 && verse_style_facet_edge(5.0f32,20.0f32)==1.0f32 && verse_style_facet_edge(5.0f32,-20.0f32)==1.0f32;
+ #assert verse_style_facet_edge(5.0f32,5.1f32)==0.0f32 && verse_style_facet_edge(5.0f32,3.0f32)==0.0f32;
+ #assert verse_style_facet_edge(0.0f32,20.0f32)==0.0f32 && verse_style_facet_edge(-4.0f32,20.0f32)==0.0f32;
+}
+#test "flat: the fairy palette is muted pastels, never orange, on a plain sky bluer than it is green" {
+ for fl_s:0..<FLAT_SLOTS {
+  fl_r:=verse_style_flat_srgb(2.0f32,cast(f32)fl_s,0.0f32); fl_g:=verse_style_flat_srgb(2.0f32,cast(f32)fl_s,1.0f32); fl_b:=verse_style_flat_srgb(2.0f32,cast(f32)fl_s,2.0f32);
+  fl_hi:=st_max(fl_r,st_max(fl_g,fl_b)); fl_lo:=st_min(fl_r,st_min(fl_g,fl_b));
+  #assert fl_hi-fl_lo<0.4f32;                                    // muted: no slot far from grey
+  if fl_s!=FLAT_DARK {#assert fl_hi>0.44f32;}                     // pastel: light, but for the eyes' dark
+  #assert !(fl_r>0.6f32 && fl_r-fl_b>0.25f32 && fl_g<fl_r*0.8f32);  // orange is Bitcoin's
+ }
+ #assert verse_style_flat_srgb(2.0f32,0.0f32,2.0f32)>verse_style_flat_srgb(2.0f32,0.0f32,1.0f32) && verse_style_flat_srgb(2.0f32,0.0f32,1.0f32)>verse_style_flat_srgb(2.0f32,0.0f32,0.0f32);
+}
+#test "flat: three hard tones, never a gradient; two for characters" {
+ // every light lands on 0, 0.5 or 1 but within 0.01 of the two edges
+ for fl_i:0..<1001 {
+  fl_w:=cast(f32)fl_i/1000.0f32; fl_b:=verse_style_flat_band(fl_w);
+  if abs(fl_w-0.38f32)>0.011f32 && abs(fl_w-0.62f32)>0.011f32 {#assert fl_b==0.0f32 || abs(fl_b-0.5f32)<0.00001f32 || fl_b==1.0f32;}
+  fl_c:=verse_style_flat_band2(fl_w);
+  if abs(fl_w-0.45f32)>0.011f32 {#assert fl_c==0.0f32 || fl_c==1.0f32;}
+ }
+ #assert verse_style_flat_band(0.2f32)==0.0f32 && abs(verse_style_flat_band(0.5f32)-0.5f32)<0.00001f32 && verse_style_flat_band(0.9f32)==1.0f32;
+ // the light: lit facing the key, dark facing away, a cast shadow drops it to dark
+ #assert verse_style_flat_band(verse_style_flat_light(1.0f32,1.0f32))==1.0f32 && verse_style_flat_band(verse_style_flat_light(-1.0f32,1.0f32))==0.0f32;
+ #assert verse_style_flat_band(verse_style_flat_light(1.0f32,0.3f32))==0.0f32;
+}
+#test "flat: a flat sky with one soft horizon band; flat shadows with a soft rim; one far fade" {
+ #assert verse_style_flat_sky(-0.2f32)==1.0f32 && verse_style_flat_sky(0.0f32)==1.0f32 && verse_style_flat_sky(0.24f32)==0.0f32 && verse_style_flat_sky(0.9f32)==0.0f32;
+ #assert abs(verse_style_flat_sky(0.12f32)-0.5f32)<0.0001f32;
+ #assert verse_style_flat_shadow(0.0f32)==1.0f32 && verse_style_flat_shadow(0.7f32)==1.0f32 && verse_style_flat_shadow(1.0f32)==0.0f32;
+ #assert verse_style_flat_fade(10.0f32,40.0f32,80.0f32,0.5f32)==0.0f32 && verse_style_flat_fade(500.0f32,40.0f32,80.0f32,0.5f32)==0.5f32;
+}
+#test "flat: the dither steps a gradient in flat steps, each pixel one of them, the 4x4 pattern covering all 16 thresholds" {
+ fl_seen: [16] bool;
+ for fl_y:0..<4 { for fl_x:0..<4 {
+  fl_b:=verse_style_bayer(cast(f32)fl_x,cast(f32)fl_y);
+  #assert fl_b>0.0f32 && fl_b<1.0f32;
+  fl_seen[cast(int)floor(fl_b*16.0f32)]=true;
+  #assert verse_style_bayer(cast(f32)(fl_x+4),cast(f32)(fl_y+8))==fl_b;
+  for fl_i:0..<11 { fl_d:=verse_style_flat_dither(cast(f32)fl_i/10.0f32,cast(f32)fl_x,cast(f32)fl_y,3.0f32); #assert fl_d==0.0f32 || abs(fl_d-1.0f32/3.0f32)<0.0001f32 || abs(fl_d-2.0f32/3.0f32)<0.0001f32 || fl_d==1.0f32; }
+ } }
+ for fl_k:0..<16 {#assert fl_seen[fl_k];}
+ // on average the steps follow the gradient
+ fl_sum:=0.0f32;
+ for fl_y:0..<4 { for fl_x:0..<4 { fl_sum+=verse_style_flat_dither(0.5f32,cast(f32)fl_x,cast(f32)fl_y,4.0f32); } }
+ #assert abs(fl_sum/16.0f32-0.5f32)<0.07f32;
+}
+#test "flat: a hem's trim is a thin line at the edge, nothing past it" {
+ #assert verse_style_flat_hem(0.0f32,0.05f32,0.005f32)==1.0f32 && verse_style_flat_hem(0.03f32,0.05f32,0.005f32)==1.0f32;
+ #assert verse_style_flat_hem(0.06f32,0.05f32,0.005f32)==0.0f32 && verse_style_flat_hem(0.4f32,0.05f32,0.005f32)==0.0f32;
+}
+#test "the chroma cap: a greyed shadow gets back to 0.7 of its albedo's saturation, never past 2.5 times; a saturated one is left" {
+ #assert abs(verse_style_chroma_gain(0.2f32,0.6f32,0.7f32)-2.1f32)<0.0001f32;
+ #assert verse_style_chroma_gain(0.5f32,0.6f32,0.7f32)==1.0f32 && verse_style_chroma_gain(0.05f32,0.9f32,0.7f32)==2.5f32 && verse_style_chroma_gain(0.0f32,0.6f32,0.7f32)==1.0f32;
+}
+#test "the near ring: 7 m (6 on a phone), 4 r2 blades a density, 2.4 times as wide at the eye and 1 at the reach" {
+ #assert verse_style_near_reach(0.0f32)==7.0f32 && verse_style_near_reach(1.0f32)==6.0f32;
+ #assert verse_style_near_blades(7.0f32,32.0f32)==6272.0f32;
+ #assert abs(verse_style_near_width(0.0f32,7.0f32)-2.4f32)<0.0001f32 && verse_style_near_width(7.0f32,7.0f32)==1.0f32 && verse_style_near_width(20.0f32,7.0f32)==1.0f32;
+}
+#test "the band edges sit at 0.20 and 0.58 and blend over 0.12" {
+ #assert verse_style_bands(0.0f32,0.20f32,0.58f32,0.06f32,0.55f32)==0.0f32;
+ #assert verse_style_bands(0.14f32,0.20f32,0.58f32,0.06f32,0.55f32)==0.0f32;
+ #assert abs(verse_style_bands(0.20f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.275f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.26f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.55f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.40f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.55f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.52f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.55f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.64f32,0.20f32,0.58f32,0.06f32,0.55f32)-1.0f32)<0.0001f32;
+ #assert verse_style_bands(1.0f32,0.20f32,0.58f32,0.06f32,0.55f32)==1.0f32;
+}
+#test "the bands never step back as the light grows" {
+ for i:0..<100 {a:=cast(f32)i*0.01f32;
+  #assert verse_style_bands(a+0.01f32,0.20f32,0.58f32,0.06f32,0.55f32)>=verse_style_bands(a,0.20f32,0.58f32,0.06f32,0.55f32);}
+}
+#test "the wrap lifts the terminator a quarter and stays in 0..1" {
+ #assert verse_style_wrap(1.0f32)==1.0f32;
+ #assert verse_style_wrap(-0.25f32)==0.0f32;
+ #assert verse_style_wrap(-1.0f32)==0.0f32;
+ #assert abs(verse_style_wrap(0.0f32)-0.2f32)<0.0001f32;
+}
+#test "characters get two bands at 0.40" {
+ #assert verse_style_bands2(0.31f32,0.40f32,0.08f32)==0.0f32;
+ #assert abs(verse_style_bands2(0.40f32,0.40f32,0.08f32)-0.5f32)<0.0001f32;
+ #assert verse_style_bands2(0.49f32,0.40f32,0.08f32)==1.0f32;
+}
+#test "the shadow band is the albedo under the tinted ambient, never black" {
+ #assert abs(verse_style_shade(0.5f32,0.3f32,1.5f32,0.0f32)-0.15f32)<0.0001f32;
+ #assert abs(verse_style_shade(0.5f32,0.3f32,1.5f32,1.0f32)-0.75f32)<0.0001f32;
+ #assert verse_style_shade(0.5f32,0.3f32,1.5f32,-1.0f32)>0.0f32;
+}
+#test "the shadow band takes the tint's hue once more, warm albedos included, keeping its value" {
+ // the fixture's olive and brown grounds under the noon tint (0.52, 0.58, 0.86) times the day's sky
+ // ambient (0.30, 0.36, 0.46): albedo x tint x ambient alone keeps them warm (blue the smallest)
+ tr:=0.52f32; tint_g:=0.58f32; tb:=0.86f32; tl:=verse_style_luma(tr,tint_g,tb);
+ for g:0..<2 {
+  ar:=ifx g==0 then 0.21f32 else 0.27f32; ag:=ifx g==0 then 0.29f32 else 0.22f32; ab:=ifx g==0 then 0.08f32 else 0.10f32;
+  r:=ar*tr*0.30f32; gg:=ag*tint_g*0.36f32; b:=ab*tb*0.46f32;
+  #assert b<r && b<gg;
+  y:=verse_style_luma(r,gg,b);
+  mr:=verse_style_cool(r,tr,tl,1.0f32); mg:=verse_style_cool(gg,tint_g,tl,1.0f32); mb:=verse_style_cool(b,tb,tl,1.0f32);
+  m:=verse_style_luma(mr,mg,mb);
+  cr:=verse_style_keep_value(mr,y,m); cg:=verse_style_keep_value(mg,y,m); cb:=verse_style_keep_value(mb,y,m);
+  // its value kept, blue gaining on red and green, and colour left in it (never grey): its channels
+  // spread at least as far apart as the plain shadow's
+  #assert abs(verse_style_luma(cr,cg,cb)-y)<0.00001f32;
+  #assert cb/cr>b/r*1.4f32 && cb/cg>b/gg*1.4f32;
+  #assert st_max(cr,st_max(cg,cb))-st_min(cr,st_min(cg,cb))>=0.6f32*(st_max(r,st_max(gg,b))-st_min(r,st_min(gg,b)));
+  #assert cr>0.0f32 && cg>0.0f32 && cb>0.0f32;
+ }
+ // none leaves it, and a neutral tint changes nothing
+ #assert verse_style_cool(0.3f32,tr,tl,0.0f32)==0.3f32;
+ #assert abs(verse_style_cool(0.3f32,0.5f32,0.5f32,1.0f32)-0.3f32)<0.00001f32;
+ #assert verse_style_banded(0.1f32,0.7f32,0.0f32)==0.1f32 && verse_style_banded(0.1f32,0.7f32,1.0f32)==0.7f32;
+ #assert abs(verse_style_banded(0.1f32,0.7f32,0.5f32)-0.4f32)<0.00001f32 && verse_style_banded(0.1f32,0.7f32,2.0f32)==0.7f32;
+}
+#test "one dab of paint, not a gloss" {
+ #assert verse_style_dab(0.91f32,0.92f32,0.35f32)==0.0f32;
+ #assert verse_style_dab(0.95f32,0.92f32,0.35f32)==0.35f32;
+}
+#test "the rim starts at 68 degrees, is full at 83, and is stronger toward the key" {
+ #assert verse_style_rim(0.38f32,1.0f32,0.38f32,0.12f32,0.30f32)==0.0f32;
+ #assert verse_style_rim(0.9f32,1.0f32,0.38f32,0.12f32,0.30f32)==0.0f32;
+ #assert abs(verse_style_rim(0.12f32,1.0f32,0.38f32,0.12f32,0.30f32)-0.30f32)<0.0001f32;
+ #assert abs(verse_style_rim(0.0f32,-1.0f32,0.38f32,0.12f32,0.30f32)-0.105f32)<0.0001f32;
+ #assert verse_style_rim(0.2f32,0.5f32,0.38f32,0.12f32,0.30f32)>verse_style_rim(0.2f32,-0.5f32,0.38f32,0.12f32,0.30f32);
+}
+#test "on a 1.8 m figure 8 m away at 1440x900 the rim is 2 to 4 px wide" {
+ // a figure's body: a 0.24 m round seen side on, by the style fixture's lens (900 rows over a
+ // half-height of 0.36): 156 px a metre at 8 m. Walk in from the silhouette a millimetre at a time.
+ px_per_m:=900.0f32/(2.0f32*0.36f32*8.0f32);
+ r:=0.24f32; rim_m:=0.0f32;
+ for i:0..<240 {x:=r-cast(f32)i*0.001f32-0.0005f32; ndv:=sqrt(st_max(1.0f32-x*x/(r*r),0.0f32));
+  if verse_style_rim(ndv,0.5f32,0.38f32,0.12f32,0.45f32)>0.0f32 {rim_m=rim_m+0.001f32;}}
+ w:=rim_m*px_per_m;
+ #assert w>=2.0f32 && w<=4.0f32;
+}
+#test "the shadow map reaches 60 m, 40 m on a phone, snapped to whole texels" {
+ #assert verse_style_shadow_reach(0.0f32)==60.0f32 && verse_style_shadow_reach(1.0f32)==40.0f32;
+ // 120 m over 2048 texels: 0.0586 m a texel; a point moves only in whole texels
+ t:=120.0f32/2048.0f32;
+ #assert abs(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)-10.0f32)<t*0.5f32+0.00001f32;
+ #assert abs(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)/t-floor(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)/t+0.5f32))<0.001f32;
+ #assert verse_style_shadow_snap(10.01f32,60.0f32,2048.0f32)==verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32);
+}
+#test "the map's depth runs 0 at the light's side to 1 away from it, over twice the reach each way" {
+ #assert verse_style_shadow_depth(0.0f32,60.0f32)==0.5f32;
+ #assert verse_style_shadow_depth(120.0f32,60.0f32)==0.0f32 && verse_style_shadow_depth(-120.0f32,60.0f32)==1.0f32;
+ #assert verse_style_shadow_depth(1.0f32,60.0f32)<verse_style_shadow_depth(0.0f32,60.0f32);
+ #assert verse_style_shadow_across(60.0f32,60.0f32)==1.0f32 && verse_style_shadow_across(-20.0f32,40.0f32)==-0.5f32;
+}
+#test "nine Poisson taps at 2.5 texels on desktop, four on a phone, all on the unit disc" {
+ #assert verse_style_shadow_taps(0.0f32)==9.0f32 && verse_style_shadow_taps(1.0f32)==4.0f32 && verse_style_shadow_radius(0.0f32)==2.5f32 && verse_style_shadow_radius(1.0f32)==2.5f32;
+ for k:0..<9 {x:=verse_style_shadow_tap(cast(f32)k,0.0f32,0.0f32); y:=verse_style_shadow_tap(cast(f32)k,0.0f32,1.0f32);
+  #assert x*x+y*y<=1.0f32;
+  for j:0..<9 {if j!=k {u:=verse_style_shadow_tap(cast(f32)j,0.0f32,0.0f32)-x; v:=verse_style_shadow_tap(cast(f32)j,0.0f32,1.0f32)-y; #assert u*u+v*v>0.09f32;}}}
+ sx:=0.0f32; sy:=0.0f32;
+ for k:0..<4 {x:=verse_style_shadow_tap(cast(f32)k,1.0f32,0.0f32); y:=verse_style_shadow_tap(cast(f32)k,1.0f32,1.0f32); #assert x*x+y*y<=1.0f32; sx=sx+x; sy=sy+y;}
+ #assert abs(sx)<0.0001f32 && abs(sy)<0.0001f32;
+}
+#test "a mover's blob darkens to 0.65 under it and never lightens a cast shadow" {
+ #assert abs(verse_style_contact(1.0f32,1.0f32,0.35f32)-0.65f32)<0.0001f32;
+ #assert verse_style_contact(1.0f32,0.0f32,0.35f32)==1.0f32;
+ #assert verse_style_contact(0.2f32,1.0f32,0.35f32)==0.2f32;
+}
+#test "day haze: 0.58 at 100 m, 0.86 at 200 m, never past its cap" {
+ #assert verse_style_haze(20.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.0f32;
+ #assert abs(verse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.585f32)<0.005f32;
+ #assert abs(verse_style_haze(200.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.862f32)<0.005f32;
+ #assert verse_style_haze(5000.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.88f32;
+}
+#test "haze thins higher up, to 0.4 of itself far above the eye" {
+ low:=verse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ high:=verse_style_haze(100.0f32,60.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ top:=verse_style_haze(100.0f32,10000.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ #assert high<low;
+ #assert abs(top-low*0.4f32)<0.001f32;
+ #assert verse_style_haze(100.0f32,-30.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==low;
+}
+#test "the haze glows toward the key light only" {
+ #assert verse_style_haze_glow(-1.0f32)==0.0f32;
+ #assert verse_style_haze_glow(0.0f32)==0.0f32;
+ #assert abs(verse_style_haze_glow(1.0f32)-0.45f32)<0.0001f32;
+ #assert abs(verse_style_fog(0.2f32,0.8f32,0.5f32)-0.5f32)<0.0001f32;
+}
+#test "haze is teal in the middle distance and the preset's blue far off" {
+ // the day haze (0.56, 0.74, 0.90): thin, at a share of 0.15, it's teal (green the largest)
+ r:=verse_style_haze_hue(0.56f32,0.0f32,0.15f32,0.88f32); g:=verse_style_haze_hue(0.74f32,1.0f32,0.15f32,0.88f32); b:=verse_style_haze_hue(0.90f32,2.0f32,0.15f32,0.88f32);
+ #assert abs(r-0.392f32)<0.001f32 && g==0.74f32 && abs(b-0.756f32)<0.001f32;
+ #assert g>r && b>r;
+ // at its cap, the blue itself
+ #assert abs(verse_style_haze_hue(0.56f32,0.0f32,0.88f32,0.88f32)-0.56f32)<0.0001f32 && abs(verse_style_haze_hue(0.90f32,2.0f32,0.88f32,0.88f32)-0.90f32)<0.0001f32;
+ // and it turns steadily between
+ for i:0..<80 {f:=cast(f32)i*0.01f32; #assert verse_style_haze_hue(0.56f32,0.0f32,f+0.01f32,0.88f32)>=verse_style_haze_hue(0.56f32,0.0f32,f,0.88f32);}
+}
+#test "the sky runs horizon to zenith by elevation, with a 6 degree band" {
+ #assert verse_style_sky_t(0.0f32)<0.001f32;
+ #assert abs(verse_style_sky_t(1.0f32)-1.0f32)<0.0001f32;
+ #assert verse_style_sky_t(-0.5f32)<0.001f32;
+ #assert abs(verse_style_sky_band(0.0f32,0.15f32)-0.15f32)<0.0001f32;
+ #assert verse_style_sky_band(0.2f32,0.15f32)==0.0f32;
+ #assert abs(verse_style_halo(1.0f32,900.0f32)-1.0f32)<0.0001f32;
+ #assert verse_style_halo(0.99f32,900.0f32)<0.001f32;
+ #assert verse_style_halo(0.99f32,60.0f32)>0.5f32;
+}
+#test "value noise stays in 0..1, is smooth, and repeats exactly at a lattice point" {
+ for i:0..<200 {x:=cast(f32)i*0.173f32-11.0f32; y:=cast(f32)i*0.311f32+4.0f32;
+  n:=verse_style_noise(x,y);
+  #assert n>=0.0f32 && n<=1.0f32;
+  #assert abs(verse_style_noise(x+0.001f32,y)-n)<0.02f32;
+  h:=verse_style_hash(x,y); #assert h>=0.0f32 && h<1.0f32;}
+ #assert verse_style_noise(3.0f32,5.0f32)==verse_style_hash(3.0f32,5.0f32);
+}
+#test "clouds: two octaves (one on a phone), cut at 0.48 to 0.62, none at cover 0" {
+ #assert verse_style_cloud_field(100.0f32,40.0f32,1.0f32/2000.0f32,1.0f32/700.0f32,1.0f32)==verse_style_noise(0.05f32,0.02f32);
+ two:=verse_style_cloud_field(100.0f32,40.0f32,1.0f32/2000.0f32,1.0f32/700.0f32,2.0f32);
+ #assert abs(two-(verse_style_noise(0.05f32,0.02f32)*0.65f32+verse_style_noise(100.0f32/700.0f32+3.1f32,40.0f32/700.0f32+7.7f32)*0.35f32))<0.00001f32;
+ #assert verse_style_cloud_cover(0.48f32,0.35f32,0.48f32,0.62f32)==0.0f32;
+ #assert verse_style_cloud_cover(0.62f32,0.35f32,0.48f32,0.62f32)==1.0f32;
+ #assert abs(verse_style_cloud_cover(0.55f32,0.35f32,0.48f32,0.62f32)-0.5f32)<0.0001f32;
+ #assert verse_style_cloud_cover(0.9f32,0.0f32,0.48f32,0.62f32)==0.0f32;
+ #assert verse_style_cloud_cover(0.5f32,0.6f32,0.48f32,0.62f32)>verse_style_cloud_cover(0.5f32,0.35f32,0.48f32,0.62f32);
+ #assert verse_style_cloud_lit(0.6f32,0.6f32)==0.55f32 && verse_style_cloud_lit(0.4f32,0.6f32)==0.0f32 && verse_style_cloud_lit(0.8f32,0.6f32)==1.0f32;
+ #assert verse_style_cloud_fade(0.005f32)==0.0f32 && verse_style_cloud_fade(0.2f32)==0.92f32;
+}
+#test "bloom starts 0.25 under 0.85 with a soft knee and takes all of the excess past it" {
+ #assert verse_style_bloom_share(0.5f32,0.85f32,0.25f32)==0.0f32;
+ #assert verse_style_bloom_share(0.60f32,0.85f32,0.25f32)==0.0f32;
+ #assert verse_style_bloom_share(0.0f32,0.85f32,0.25f32)==0.0f32;
+ // at the threshold the knee gives k/4 of light: 0.0625 of 0.85
+ #assert abs(verse_style_bloom_share(0.85f32,0.85f32,0.25f32)-0.0625f32/0.85f32)<0.0001f32;
+ // past threshold + knee, just the excess
+ #assert abs(verse_style_bloom_share(2.0f32,0.85f32,0.25f32)-1.15f32/2.0f32)<0.0001f32;
+ // continuous and never stepping back across the knee
+ for i:0..<200 {a:=0.55f32+cast(f32)i*0.004f32;
+  #assert verse_style_bloom_share(a+0.004f32,0.85f32,0.25f32)*(a+0.004f32)>=verse_style_bloom_share(a,0.85f32,0.25f32)*a;
+  #assert abs(verse_style_bloom_share(a+0.004f32,0.85f32,0.25f32)*(a+0.004f32)-verse_style_bloom_share(a,0.85f32,0.25f32)*a)<0.01f32;}
+ #assert abs(verse_style_bloom_mix(0.5f32,1.0f32,0.30f32)-0.80f32)<0.0001f32;
+ #assert abs(verse_style_bloom_mix(0.5f32,1.0f32,0.22f32)-0.72f32)<0.0001f32;
+}
+#test "the tone keeps black, approaches white, and lifts blacks 0.035" {
+ #assert verse_style_tone(0.0f32,1.6f32)==0.0f32;
+ #assert verse_style_tone(20.0f32,1.6f32)>0.999f32;
+ #assert verse_style_tone(0.3f32,2.4f32)>verse_style_tone(0.3f32,1.6f32);
+ #assert abs(verse_style_lift(0.0f32,0.035f32)-0.035f32)<0.00001f32;
+ #assert abs(verse_style_lift(1.0f32,0.035f32)-1.0f32)<0.00001f32;
+ #assert abs(verse_style_saturation(0.6f32,0.5f32,1.10f32)-0.61f32)<0.0001f32;
+ #assert verse_style_saturation(0.0f32,0.5f32,3.0f32)==0.0f32;
+ #assert abs(verse_style_luma(1.0f32,1.0f32,1.0f32)-1.0f32)<0.0001f32;
+}
+
+#test "light shafts: the sky's glow toward the light, 24 taps decaying 0.94, at most the preset's weight" {
+ #assert verse_style_shaft_source(1.0f32)==1.0f32;
+ #assert abs(verse_style_shaft_source(cos(13.8f32*0.0174533f32))-0.5f32)<0.01f32;
+ #assert verse_style_shaft_source(cos(25.5f32*0.0174533f32))<0.1f32 && verse_style_shaft_source(-1.0f32)<0.0001f32;
+ #assert verse_style_shaft_tap(0.0f32,0.94f32)==1.0f32 && abs(verse_style_shaft_tap(23.0f32,0.94f32)-0.2405f32)<0.001f32;
+ // the 24 desktop taps' weights, and a phone's 12, summed
+ s:=0.0f32; for i:0..<24 {s=s+verse_style_shaft_tap(cast(f32)i,0.94f32);}
+ #assert abs(verse_style_shaft_total(24.0f32,0.94f32)-s)<0.001f32;
+ s=0.0f32; for i:0..<12 {s=s+verse_style_shaft_tap(cast(f32)i,0.94f32);}
+ #assert abs(verse_style_shaft_total(12.0f32,0.94f32)-s)<0.001f32;
+ #assert verse_style_shaft_total(5.0f32,1.0f32)==5.0f32;
+ // every tap in the light's full glow: the preset's weight, 0.44 by day and 0.20 at night; none in shadow
+ t:=verse_style_shaft_total(24.0f32,0.94f32);
+ #assert abs(verse_style_shaft(t,t,0.44f32,1.0f32)-0.44f32)<0.0001f32 && abs(verse_style_shaft(t,t,0.20f32,1.0f32)-0.20f32)<0.0001f32;
+ #assert verse_style_shaft(0.0f32,t,0.22f32,1.0f32)==0.0f32;
+}
+#test "shafts show while the light is in the frame and fade out over 0.35 of it past the edge" {
+ #assert verse_style_shaft_fade(0.5f32,0.5f32,0.35f32)==1.0f32 && verse_style_shaft_fade(0.0f32,1.0f32,0.35f32)==1.0f32;
+ #assert abs(verse_style_shaft_fade(1.175f32,0.5f32,0.35f32)-0.5f32)<0.0001f32;
+ #assert verse_style_shaft_fade(0.5f32,-0.35f32,0.35f32)==0.0f32 && verse_style_shaft_fade(-3.0f32,0.5f32,0.35f32)==0.0f32;
+ for i:0..<50 {o:=cast(f32)i*0.01f32; #assert verse_style_shaft_fade(1.0f32+o+0.01f32,0.5f32,0.35f32)<=verse_style_shaft_fade(1.0f32+o,0.5f32,0.35f32);}
+}
+#test "wind: 0.30 rad, a 12 m wave at 3 m/s with a gust, the base still and the tip bent with height squared" {
+ // the wave alone (no gust): its crest 3 m along at t 0, there again 4 s later 12 m on
+ #assert abs(verse_style_wind(3.0f32,0.0f32,0.0f32,0.30f32,12.0f32,3.0f32)-0.18f32)<0.0001f32;
+ #assert abs(verse_style_wind(15.0f32,0.0f32,4.0f32,0.30f32,12.0f32,3.0f32)-0.18f32)<0.001f32;
+ #assert abs(verse_style_wind(3.0f32,0.0f32,1.0f32,0.30f32,12.0f32,3.0f32)-0.0f32)<0.001f32;
+ // never past A
+ for i:0..<100 {g:=cast(f32)i*0.02f32-1.0f32; #assert abs(verse_style_wind(cast(f32)i*0.37f32,g,1.3f32,0.30f32,12.0f32,3.0f32))<=0.30001f32;}
+ // the gust stays in -1..1 and moves with the wave
+ for i:0..<100 {x:=cast(f32)i*0.9f32; g:=verse_style_gust(x,2.0f32,0.5f32,0.8f32,0.6f32,3.0f32,0.04f32); #assert g>=-1.0f32 && g<=1.0f32;}
+ #assert abs(verse_style_gust(10.0f32,5.0f32,0.0f32,0.8f32,0.6f32,3.0f32,0.04f32)-verse_style_gust(10.0f32+2.4f32,5.0f32+1.8f32,1.0f32,0.8f32,0.6f32,3.0f32,0.04f32))<0.0001f32;
+ #assert verse_style_bend(0.3f32,0.5f32,0.0f32)==0.0f32;
+ #assert abs(verse_style_bend(0.3f32,0.5f32,1.0f32)-sin(0.3f32)*0.5f32)<0.00001f32;
+ #assert abs(verse_style_bend(0.3f32,0.5f32,0.5f32)-sin(0.3f32)*0.5f32*0.25f32)<0.00001f32;
+ // the normal tilts toward the light by up to 20 degrees at the full bend, away when bent back
+ #assert abs(verse_style_grass_tilt(0.30f32,0.30f32,0.349066f32)-0.349066f32)<0.0001f32;
+ #assert abs(verse_style_grass_tilt(-0.15f32,0.30f32,0.349066f32)+0.174533f32)<0.0001f32;
+ #assert verse_style_grass_tilt(0.9f32,0.30f32,0.349066f32)==0.349066f32;
+}
+#test "blades: 0.35 to 0.60 m, 24 a square metre to 32 m (8 to 18 on a phone), shrinking over the last 6 m" {
+ #assert verse_style_blade_height(0.0f32,0.35f32,0.60f32)==0.35f32 && verse_style_blade_height(1.0f32,0.35f32,0.60f32)==0.60f32;
+ #assert verse_style_grass_fade(10.0f32,32.0f32,6.0f32)==1.0f32 && verse_style_grass_fade(26.0f32,32.0f32,6.0f32)==1.0f32;
+ #assert abs(verse_style_grass_fade(29.0f32,32.0f32,6.0f32)-0.5f32)<0.0001f32 && verse_style_grass_fade(32.0f32,32.0f32,6.0f32)==0.0f32;
+ #assert verse_style_grass_fade(12.0f32,18.0f32,6.0f32)==1.0f32 && verse_style_grass_fade(18.0f32,18.0f32,6.0f32)==0.0f32;
+ #assert verse_style_grass_blades(32.0f32,24.0f32)==49152.0f32 && verse_style_grass_blades(18.0f32,8.0f32)==5184.0f32;
+}
+#test "no blade on a masked path; all of them 0.25 m clear; movers part them within 0.7 m" {
+ #assert verse_style_grass_clear(-0.5f32)==0.0f32 && verse_style_grass_clear(0.0f32)==0.0f32 && verse_style_grass_clear(0.25f32)==1.0f32;
+ #assert abs(verse_style_segment(0.0f32,3.0f32,-2.0f32,0.0f32,2.0f32,0.0f32)-3.0f32)<0.0001f32;
+ #assert abs(verse_style_segment(5.0f32,0.0f32,-2.0f32,0.0f32,2.0f32,0.0f32)-3.0f32)<0.0001f32;
+ #assert verse_style_part(0.0f32,0.7f32)==1.0f32 && verse_style_part(0.7f32,0.7f32)==0.0f32 && abs(verse_style_part(0.35f32,0.7f32)-0.5f32)<0.0001f32;
+}
+#test "a blade's tip is 15% lighter and warmer, and its hue jitters 4% at most" {
+ #assert abs(verse_style_tip(0.4f32,1.0f32,0.15f32)-0.46f32)<0.0001f32 && verse_style_tip(0.1f32,2.0f32,0.15f32)==0.1f32;
+ #assert verse_style_tip(0.3f32,0.0f32,0.15f32)/0.3f32>verse_style_tip(0.4f32,1.0f32,0.15f32)/0.4f32;
+ #assert abs(verse_style_jitter(0.5f32,0.0f32,1.0f32,0.04f32)-0.52f32)<0.0001f32 && abs(verse_style_jitter(0.5f32,2.0f32,1.0f32,0.04f32)-0.48f32)<0.0001f32;
+ #assert verse_style_jitter(0.5f32,1.0f32,0.3f32,0.04f32)==0.5f32 && verse_style_jitter(0.5f32,0.0f32,0.5f32,0.04f32)==0.5f32;
+}
+#test "canopies: normals 0.85 to the blob, an ellipsoid for a pine, 0.05 m of sway at the top, 0.36 open" {
+ // a sphere's blob direction is p - c over the radius squared; an ellipsoid's leans to its short axes
+ #assert abs(verse_style_canopy_axis(3.0f32,1.0f32,2.0f32)-0.5f32)<0.00001f32;
+ #assert verse_style_canopy_axis(1.0f32,0.0f32,1.0f32)>verse_style_canopy_axis(1.0f32,0.0f32,3.0f32);
+ #assert abs(verse_style_canopy_normal(0.0f32,1.0f32,0.85f32)-0.85f32)<0.00001f32 && verse_style_canopy_normal(0.4f32,0.4f32,0.85f32)==0.4f32;
+ #assert verse_style_canopy_sway(0.3f32,0.3f32,0.05f32,0.0f32)==0.0f32;
+ #assert abs(verse_style_canopy_sway(0.3f32,0.3f32,0.05f32,1.0f32)-0.05f32)<0.00001f32;
+ #assert abs(verse_style_canopy_sway(-0.15f32,0.3f32,0.05f32,0.5f32)+0.0125f32)<0.00001f32;
+ #assert verse_style_canopy_sway(0.9f32,0.3f32,0.05f32,2.0f32)==0.05f32;
+ #assert verse_style_canopy_open(0.1f32,0.3f32)==1.0f32 && verse_style_canopy_open(0.3f32,0.3f32)==0.0f32 && verse_style_canopy_open(0.5f32,0.0f32)==0.0f32;
+}

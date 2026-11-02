@@ -2284,7 +2284,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   if used { s[0].pointed = true; }
 }
 
-#test "a press let go where it was opens a place's card, and never navigates" {
+#test "a press let go where it was opens a place's card, and never navigates" #steps 100000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   settled(s[..], out[..], u[..]);
@@ -2300,7 +2300,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   #assert coaxial_land_key(s[..], KEY_ESCAPE, 0) && s[0].card == CARD_NONE;
 }
 
-#test "a drag pans the view and is never a click" {
+#test "a drag pans the view and is never a click" #steps 90000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   settled(s[..], out[..], u[..]);
@@ -2321,7 +2321,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   #assert coaxial_land_pointer(s[..], x + 4, y + 3, POINTER_UP, 0, 1) && s[0].card == CARD_PLACE;
 }
 
-#test "OPEN PROJECT goes to the place's page; a click outside closes the card" {
+#test "OPEN PROJECT goes to the place's page; a click outside closes the card" #steps 100000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   settled(s[..], out[..], u[..]);
@@ -2338,7 +2338,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   #assert s[0].card == CARD_NONE && s[0].action == 0;
 }
 
-#test "the zoom stays in its range and the view on the Grid" {
+#test "the zoom stays in its range and the view on the Grid" #steps 490000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   settled(s[..], out[..], u[..]);
@@ -2354,7 +2354,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   #assert abs(s[0].vel_x) < 40;
 }
 
-#test "a two-finger pinch zooms and is never a click" {
+#test "a two-finger pinch zooms and is never a click" #steps 70000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   settled(s[..], out[..], u[..]);
@@ -2392,7 +2392,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   #assert same(cast(string) b[0..<say_span(b[..], 0, 2 * 86400 + 3 * 3600)], "2 d 3 h");
 }
 
-#test "a click on a Pylon opens its card, which never navigates" {
+#test "a click on a Pylon opens its card, which never navigates" #steps 110000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   settled(s[..], out[..], u[..]);
@@ -2466,7 +2466,7 @@ LAND_BUDGET :: FrameBudget.{steps = 8, vertices = 62000, draws = 0, bytes = 2188
 
 // The Grid at the spawn: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.
-#test "The Grid's frames fit its declared budget" {
+#test "The Grid's frames fit its declared budget" #steps 190000000 {
   #assert budget_declared(LAND_BUDGET, TEST_VERTICES) == BUDGET_NONE;
   frames := 3;
   m := [1] BudgetMeter.[budget_meter(LAND_BUDGET)];

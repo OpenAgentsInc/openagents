@@ -1,0 +1,7 @@
+#forall "fragment layouts retain exact zero one and two targets plus masked auxiliary omission" physical:-1..<5, colours:-1..<5, aux:bool {
+ expected:=false;
+ if physical==0 {expected=colours==0;}
+ if physical==1 {expected=colours==1;}
+ if physical==2 {expected=colours==2 || (!aux && colours==1);}
+ #assert render_fragment_outputs(physical,aux,colours)==expected;
+}

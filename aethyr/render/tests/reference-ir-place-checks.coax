@@ -1,0 +1,46 @@
+rq_ir_place_fixture :: (place:[]u32,tree:[]u32,meta:[]int)->RQProgram {
+ prefix:=RQ_IR_COUNTS_TREE;for j:0..<30 {tree[j]=prefix[j];}tree[1]=11;tree[30]=9;tree[31]=8;
+ header:=[9]u32.[1,0,0,4,7,9,8,10,0];for j:0..<9 {tree[32+j]=header[j];}tree[40]=cast(u32)(place.count+2);tree[41]=2;tree[42]=27;
+ for j:0..<place.count {tree[43+j]=place[j];}at:=43+place.count;tree[at]=1;tree[at+1]=1;tree[at+2]=0;return rq_ir_prepare(tree[0..<at+3],meta);
+}
+#forall "quad places distinguish logical private words from external bytes and refuse invalid owners" which:0..<19 {
+ ast:[24]u32;ast[0]=42;ast[1]=40;ast[2]=1;ast[3]=16;ast[4]=5;ast[5]=1;ast[6]=0;n:=7;
+ if which==0 {ast[0]=41;ast[1]=40;ast[2]=2;ast[3]=4;n=4;}
+ if which==1 || which==9 || which==10 {ast[2]=0;}
+ if which==3 || which==18 {b:=[9]u32.[41,42,40,3,16,5,1,0,4];for j:0..<9 {ast[j]=b[j];}n=9;}
+ if which==4 {b:=[14]u32.[42,41,42,40,3,16,5,1,0,5,16,5,1,0];for j:0..<14 {ast[j]=b[j];}n=14;}
+ if which==5 {b:=[9]u32.[42,41,40,2,5,16,5,1,0];for j:0..<9 {ast[j]=b[j];}n=9;}
+ if which==9 {ast[5]=4294967295;ast[6]=4294967295;}if which==10 {ast[5]=2;}if which==11 {ast[2]=2;}
+ if which==16 || which==17 {b:=[8]u32.[42,40,0,27,41,40,2,1];for j:0..<8 {ast[j]=b[j];}n=8;if which==17 {ast[2]=3;}}
+ tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_place_fixture(ast[0..<n],tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ if which==18 {at:=rq_ir_type(meta[..],8,1);tree[at+11]|=2147483648;p=rq_ir_prepare(tree[0..<46+n],meta[..]);#assert p.status==RQStatus.ok;}
+ memory:[1024]u32;memory[0]=16;memory[1]=24;memory[2]=100;memory[3]=40;
+ data:[20]u32;buffers:=[1]RQBuffer.[RQBuffer.{words=data[..],count=2,stride=4}];if which==3 || which==4 || which==17 || which==18 {buffers[0].stride=40;}
+ mask:u32=15;wanted:=RQStatus.ok;if which==16 || which==17 {mask=5;for lane:0..<4 {memory[101+lane*9]=ifx (lane%2)==0 then cast(u32)(lane/2) else cast(u32)4294967295;}}
+ if which==6 || which==7 || which==8 {for lane:0..<4 {memory[24+lane]=ifx which==7 then cast(u32)2147483649 else cast(u32)2147483648;}}
+ if which==7 || which==9 || which==10 || which==12 || which==13 || which==14 || which==15 {wanted=RQStatus.resource;}
+ if which==8 || which==11 {wanted=RQStatus.malformed;}
+ if which==12 {for lane:0..<4 {memory[24+lane]=1;}}if which==13 {buffers[0].stride=8;}if which==14 {buffers[0].count=-1;}if which==15 {buffers[0].count=21;}
+ m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,version=3,stage=1,budget=1000,at=43,used=512,private_count=1}];m[0].private_views[0]=RQPrivate.{at=16,elem=ifx which==8 then 3 else 2,count=2,lane_words=2};
+ place:=rq_ir_place(m[..],tree[0..<46+n],meta[..],memory[..],RQResources.{buffers=buffers[..]},RQFrame.{proc=0,locals=0},mask);#assert m[0].status==wanted;
+ if wanted==RQStatus.ok {
+  #assert m[0].at==43+n && m[0].nesting==0;
+  for lane:0..<4 {if (mask&(cast(u32)1<<cast(u32)lane))!=0 {
+   address:=4;buffer:=0;ty:=2;
+   if which==0 {address=105+lane*9;buffer=-1;ty=6;}
+   if which==1 || which==6 {address=17+lane*2;buffer=-1;}
+   if which==3 || which==18 {address=64;ty=6;}if which==4 {address=76;}if which==5 {address=108+lane*9;buffer=-1;}
+   if which==16 {address=ifx lane==0 then 16 else 21;buffer=-1;}if which==17 {address=ifx lane==0 then 0 else 40;ty=8;}
+   #assert place.ty==ty && place.at[lane]==address && place.buffer[lane]==buffer;
+  }}
+ }
+}
+#test "quad external nested fixed arrays use native stride from their own type record" {
+ tree:[64]u32;prefix:=RQ_IR_COUNTS_TREE;for j:0..<30 {tree[j]=prefix[j];}tree[1]=12;
+ tail:=[29]u32.[8,2,3,4,9,10,1,0,0,1,11,14,2,27,42,42,40,0,16,5,1,0,16,5,2,0,1,1,0];for j:0..<29 {tree[30+j]=tail[j];}
+ meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[0..<59],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[128]u32;memory[0]=4;data:[6]u32;buffers:=[1]RQBuffer.[RQBuffer.{words=data[..],count=2,stride=12}];
+ m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,version=2,stage=1,budget=1000,at=44,used=32}];
+ r:=rq_ir_place(m[..],tree[0..<59],meta[..],memory[..],RQResources.{buffers=buffers[..]},RQFrame.{proc=0,locals=0},15);#assert m[0].status==RQStatus.ok;
+ for lane:0..<4 {#assert r.ty==2 && r.buffer[lane]==0 && r.at[lane]==20;}
+}

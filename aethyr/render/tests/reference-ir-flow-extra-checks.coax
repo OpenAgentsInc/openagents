@@ -1,0 +1,37 @@
+#forall "quad return statements refuse mismatched value and void return types" empty:bool {
+  body:=[4]u32.[4,16,2,1065353216];n:=4;if empty {body[0]=5;n=1;}
+  tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_statement_fixture(body[0..<n],1,tree[..],meta[..]);#assert p.status==RQStatus.ok;
+  memory:[128]u32;memory[0]=16;memory[1]=48;for i:32..<36 {memory[i]=99;}
+  m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,version=p.version,stage=1,budget=100,at=27,used=64}];
+  f:=RQFrame.{proc=0,locals=0,result=RQValue.{ty=1,at=32,words=1}};
+  flow:=rq_ir_stmt(m[..],tree[0..<31+n],meta[..],memory[..],RQResources.{},f,5);
+  #assert m[0].status==RQStatus.malformed && m[0].used==64 && flow.returned==5 && m[0].nesting==0;
+  for i:32..<36 {#assert memory[i]==99;}
+}
+#forall "quad a for range refuses either mismatched endpoint before writing its index" wrong_start:bool {
+  body:[16]u32;body[0]=8;body[1]=1;n:=2;
+  for stage:0..<2 {
+    ty:=ifx (stage==0)==wrong_start then 3 else 5;body[n]=16;body[n+1]=cast(u32)ty;body[n+2]=cast(u32)stage;n+=3;
+    if ty==5 {body[n]=0;n+=1;}
+  }
+  body[n]=5;n+=1;
+  tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_statement_fixture(body[0..<n],0,tree[..],meta[..]);#assert p.status==RQStatus.ok;
+  memory:[128]u32;memory[0]=16;memory[1]=48;for i:48..<56 {memory[i]=11;}
+  m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,version=p.version,stage=1,budget=100,at=27,used=64}];
+  flow:=rq_ir_stmt(m[..],tree[0..<31+n],meta[..],memory[..],RQResources.{},RQFrame.{proc=0,locals=0},5);
+  #assert m[0].status==RQStatus.malformed && m[0].steps==9 && flow.returned==0 && m[0].nesting==0;
+  for i:48..<56 {#assert memory[i]==11;}
+}
+#forall "quad loop returns propagate each returned lane and finish at the statement end" for_range:bool {
+  body:[16]u32;n:=8;
+  if for_range {b:=[14]u32.[8,1,16,5,0,0,16,5,2,0,4,16,2,1065353216];for i:0..<14 {body[i]=b[i];}n=14;}
+  else {b:=[8]u32.[7,16,1,1,4,16,2,1065353216];for i:0..<8 {body[i]=b[i];}}
+  tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_statement_fixture(body[0..<n],2,tree[..],meta[..]);#assert p.status==RQStatus.ok;
+  memory:[128]u32;memory[0]=16;memory[1]=48;for i:32..<36 {memory[i]=99;}
+  m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,version=p.version,stage=1,budget=100,at=27,used=64}];
+  f:=RQFrame.{proc=0,locals=0,result=RQValue.{ty=2,at=32,words=1}};
+  flow:=rq_ir_stmt(m[..],tree[0..<31+n],meta[..],memory[..],RQResources.{},f,5);
+  #assert m[0].status==RQStatus.ok && m[0].at==27+n && m[0].used==64 && m[0].steps==n && m[0].nesting==0;
+  #assert flow.returned==5 && flow.breaking==0 && flow.continuing==0;
+  #assert memory[32]==1065353216 && memory[33]==99 && memory[34]==1065353216 && memory[35]==99;
+}

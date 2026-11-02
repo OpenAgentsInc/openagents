@@ -1,0 +1,26 @@
+// The production media rectangle shader, formerly inline in host.js.
+#load "../../verse/gpu/shader.coax";
+#load "media-profile.coax";
+MediaVaryings :: struct {position:V4;uv:V2;}
+#test "media rectangles preserve corners texture coordinates brightness and opaque output" {
+  u:=[8]f32.[-0.75,0.5,0.25,-0.5,0.5,0,0,0];
+  a:=media_vs(0,0,u[..]);b:=media_vs(5,0,u[..]);
+  #assert a.position.x==(-0.75) && a.position.y==0.5 && a.uv.x==0 && a.uv.y==0;
+  #assert b.position.x==0.25 && b.position.y==(-0.5) && b.uv.x==1 && b.uv.y==1;
+  pixels:=[1]V4.[v4(0.5,0.25,0.75,0.125)];
+  c:=media_fs(a,u[..],Tex2D.{width=1,height=1,texels=pixels[..]},Sampler.{});
+  #assert c.x==0.25 && c.y==0.125 && c.z==0.375 && c.w==1;
+}
+media_vs :: (vertex:u32,instance:u32,u:[]f32)->MediaVaryings {
+  packet:=render_media_quad();c:=packet.corners[cast(int)vertex];
+  return MediaVaryings.{position=v4(mix(u[0],u[2],c.x),mix(u[1],u[3],c.y),0,1),uv=v2(c.x,c.y)};
+}
+media_fs :: (v:MediaVaryings,u:[]f32,media_image:Tex2D,media_sampler:Sampler)->V4 {
+  c:=gpu_sample(media_image,media_sampler,v.uv);
+  return v4(c.x*u[4],c.y*u[4],c.z*u[4],1);
+}
+
+#test "production media vertex shader consumes every shared packet corner in order" {
+ u:=[8]f32.[-0.75,0.5,0.25,-0.5,1,0,0,0];x:=[6]f32.[-0.75,0.25,-0.75,-0.75,0.25,0.25];y:=[6]f32.[0.5,0.5,-0.5,-0.5,0.5,-0.5];uvx:=[6]f32.[0,1,0,0,1,1];uvy:=[6]f32.[0,0,1,1,0,1];
+ for j:0..<render_media_vertex_count() {r:=media_vs(cast(u32)j,0,u[..]);#assert r.position.x==x[j] && r.position.y==y[j] && r.position.z==0 && r.position.w==1 && r.uv.x==uvx[j] && r.uv.y==uvy[j];}
+}

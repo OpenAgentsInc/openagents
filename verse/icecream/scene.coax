@@ -502,7 +502,8 @@ icecream_facts :: (s: [] IceScene, out: [] f32) #export_c { ice_play_facts(s[0].
 
 // The default (Normal) house and the models are over the compile-time storage cap: this check
 // stores an Easy house; scene-check.c (test.sh) runs the same checks on the default one natively.
-#test "the house and every model are stored once, chunk by chunk" {
+// Measured 140,896,424 steps before the explicit upload-retry observations below.
+#test "the house and every model are stored once, chunk by chunk" #steps 180000000 {
   s: [1] IceScene;
   vs: [EASY_SCENE * SCENE_WORDS] u32; tb: [SCENE_TRACE] u8; icecream_attach(s[..], vs[..], tb[..]);
   icecream_hash(s[..], "easy");
@@ -510,9 +511,15 @@ icecream_facts :: (s: [] IceScene, out: [] f32) #export_c { ice_play_facts(s[0].
   #assert s[0].built && s[0].vert_n % CHUNK == 0 && s[0].vert_n < MAX_SCENE && s[0].vert_n < scene_cap(s[..]) && s[0].house_chunks * CHUNK > 60000;
   for m: 0..<MODELS { #assert s[0].model_count[m] > 0 && s[0].model_first[m] >= s[0].house_chunks; }
   #assert (s[0].verts[4] >> 24) == 0;
-  #assert icecream_scene_store_bytes(s[..], 0) == s[0].vert_n * SCENE_WORDS * 4;
-  #assert icecream_scene_store_bytes(s[..], 0) > 0 && icecream_scene_store_bytes(s[..], 0) > 0 && icecream_scene_store_bytes(s[..], 0) == 0;
-  #assert icecream_scene_store_bytes(s[..], 1) == s[0].obj_n * OBJ_FLOATS * 4;
+  // Reading store 0 consumes an upload retry. Store 1 is the live object data
+  // and does not consume one; zero after the third retry means unchanged.
+  store_first := icecream_scene_store_bytes(s[..], 0);
+  #assert store_first == s[0].vert_n * SCENE_WORDS * 4 && store_first > 0 && s[0].sent == 1;
+  #assert icecream_scene_store_bytes(s[..], 1) == s[0].obj_n * OBJ_FLOATS * 4 && s[0].sent == 1;
+  store_retry2 := icecream_scene_store_bytes(s[..], 0);
+  store_retry3 := icecream_scene_store_bytes(s[..], 0);
+  store_idle := icecream_scene_store_bytes(s[..], 0);
+  #assert store_retry2 == store_first && store_retry3 == store_first && store_idle == 0 && s[0].sent == 3;
 }
 
 #test "the kid and the keys are drawn, each with its outline" {

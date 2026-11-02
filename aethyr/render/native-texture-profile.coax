@@ -1,0 +1,184 @@
+// Native build-time transport for the existing Coax layer decoder and the
+// canonical independently rasterized Sans mips. This does not assert byte
+// identity with another platform's image resize/font rasterization effects.
+#module "aethyr.render.native.texture.profile";
+#load "asset-profile.coax";
+#load "sans-profile.coax";
+#authority;
+RenderNativeTextureKind :: enum u8 {invalid;layers;sans;}
+RenderNativeTextureNeeds :: struct {valid:bool;layers:bool;sans:bool;}
+RenderNativeTextureStage :: struct {
+ valid:bool;kind:RenderNativeTextureKind;name:string;format:string;file:string;
+ width:int;height:int;layers:int;levels:int;source_bytes:u64;rgba_bytes:u64;
+}
+RenderNativeTextureMip :: struct {valid:bool;width:int;height:int;offset:u64;row_bytes:u64;layer_bytes:u64;}
+
+#test "native texture needs come from all18 canonical binding catalogs" {
+ for p:0..<18 {
+  q:=render_native_texture_needs(p);#assert q.valid;
+  #assert q.layers==((u32(3717)&(u32(1)<<u32(p)))!=0);
+  #assert q.sans==((u32(131074)&(u32(1)<<u32(p)))!=0);
+ }
+ #assert !render_native_texture_needs(-1).valid && !render_native_texture_needs(18).valid;
+}
+#test "native layer staging preserves every tight byte of the existing1024px12layer decoder" {
+ q:=render_native_texture_stage(0,RenderNativeTextureKind.layers,1024,1024,12,11,67108848,67108864);
+ #assert q.valid && q.kind==RenderNativeTextureKind.layers && q.name=="layers" && q.format=="rgba8unorm-srgb" && q.file=="layers.bin";
+ #assert q.width==1024 && q.height==1024 && q.layers==12 && q.levels==11 && q.source_bytes==67108848 && q.rgba_bytes==67108848;
+ offset:u64;
+ for level:0..<11 {
+  mip:=render_native_texture_mip(q,level);side:=1024>>level;
+  #assert mip.valid && mip.width==side && mip.height==side && mip.offset==offset && mip.row_bytes==u64(side*4) && mip.layer_bytes==u64(side*side*4);
+  offset+=u64(side*side*4*12);
+ }
+ #assert offset==q.rgba_bytes && !render_native_texture_mip(q,-1).valid && !render_native_texture_mip(q,11).valid;
+ #assert !render_native_texture_mip(RenderNativeTextureStage.{},0).valid;
+}
+#test "native Sans staging keeps all5 authored mips and expands coverage without a font or resize policy" {
+ s:=render_sans_profile();q:=render_native_texture_stage(1,RenderNativeTextureKind.sans,s.width,s.height,1,s.levels,s.coverage_bytes,67108864);
+ #assert q.valid && q.kind==RenderNativeTextureKind.sans && q.name=="sans_atlas" && q.format==s.format && q.file=="sans-atlas.rgba";
+ #assert q.source_bytes==s.coverage_bytes && q.rgba_bytes==s.rgba_bytes && q.width==s.width && q.height==s.height && q.layers==1 && q.levels==s.levels;
+ for level:0..<5 {m:=render_native_texture_mip(q,level);r:=render_sans_level(level);#assert m.valid && m.width==r.width && m.height==r.height && m.offset==r.rgba_offset && m.row_bytes==u64(r.width*4) && m.layer_bytes==r.rgba_bytes;}
+ #assert render_native_texture_stage(17,RenderNativeTextureKind.sans,s.width,s.height,1,s.levels,s.coverage_bytes,67108864).valid;
+}
+#forall "native staging refuses malformed legacy layer observations and absent canonical sources" mode:0..<18 {
+ p:=0;kind:=RenderNativeTextureKind.layers;w:=1024;h:=1024;n:=12;l:=11;bytes:u64=67108848;
+ if mode==0 {p= -1;}if mode==1 {p=18;}if mode==2 {p=1;}if mode==3 {kind=RenderNativeTextureKind.invalid;}
+ if mode==4 {w=0;}if mode==5 {w=1025;}if mode==6 {h=512;}if mode==7 {n=0;}if mode==8 {n=2049;}
+ if mode==9 {l=0;}if mode==10 {l=12;}if mode==11 {bytes-=1;}if mode==12 {bytes+=1;}if mode==13 {n=11;bytes=61516444;}
+ if mode==14 {p=7;n=13;bytes=72617919;}if mode==15 {w= -1;}if mode==16 {n= -1;}if mode==17 {l= -1;}
+ q:=render_native_texture_stage(p,kind,w,h,n,l,bytes,67108864);#assert !q.valid && q.kind==RenderNativeTextureKind.invalid && q.name=="" && q.format=="" && q.file=="" && q.rgba_bytes==0;
+}
+#test "packed layer counts stay observed while separate layer URLs constrain their exact count" {
+ q:=render_native_texture_stage(7,RenderNativeTextureKind.layers,1,1,2048,1,8192,67108864);#assert q.valid && q.layers==2048 && q.rgba_bytes==8192;
+ q=render_native_texture_stage(0,RenderNativeTextureKind.layers,1,1,12,1,48,67108864);#assert q.valid && q.levels==1;
+ q=render_native_texture_stage(7,RenderNativeTextureKind.layers,1024,1024,13,11,72701252,67108864);#assert !q.valid;
+}
+#forall "native Sans observations must match the canonical atlas exactly" mode:0..<7 {
+ s:=render_sans_profile();p:=1;w:=s.width;h:=s.height;n:=1;l:=s.levels;bytes:=s.coverage_bytes;
+ if mode==0 {p=0;}if mode==1 {w-=1;}if mode==2 {h+=1;}if mode==3 {n=2;}if mode==4 {l-=1;}if mode==5 {bytes-=1;}if mode==6 {bytes+=1;}
+ #assert !render_native_texture_stage(p,RenderNativeTextureKind.sans,w,h,n,l,bytes,67108864).valid;
+}
+#test "native coverage expansion copies all4channels and refuses short output atomically" {
+ a:=[4]u8.[0,1,127,255];out:[18]u8;for i:0..<out.count {out[i]=91;}
+ #assert !render_native_sans_expand(a[..],out[1..<16]);for c:out {#assert c==91;}
+ #assert render_native_sans_expand(a[..],out[1..<17]);#assert out[0]==91 && out[17]==91;
+ for i:0..<4 {for c:0..<4 {#assert out[1+i*4+c]==a[i];}}
+ empty:[]u8;#assert render_native_sans_expand(empty,empty);
+}
+
+#test "native layer admission charges actual output capacity and independent lower upper dimension and layer edges" {
+ #assert render_native_texture_stage(7,RenderNativeTextureKind.layers,1,1,1,1,4,4).valid;
+ #assert !render_native_texture_stage(7,RenderNativeTextureKind.layers,1,1,1,1,4,3).valid;
+ #assert !render_native_texture_stage(7,RenderNativeTextureKind.layers,1,1,2049,1,8196,8196).valid;
+ #assert !render_native_texture_stage(7,RenderNativeTextureKind.layers,0,0,1,0,0,0).valid;
+ #assert !render_native_texture_stage(7,RenderNativeTextureKind.layers,1,1,0,1,0,0).valid;
+ #assert !render_native_texture_stage(7,RenderNativeTextureKind.layers,1025,1025,1,11,5600600,67108864).valid;
+ s:=render_sans_profile();
+ #assert render_native_texture_stage(1,RenderNativeTextureKind.sans,s.width,s.height,1,s.levels,s.coverage_bytes,s.rgba_bytes).valid;
+ #assert !render_native_texture_stage(1,RenderNativeTextureKind.sans,s.width,s.height,1,s.levels,s.coverage_bytes,s.rgba_bytes-1).valid;
+}
+
+render_native_texture_needs :: (ntp_profile:int)->RenderNativeTextureNeeds {
+ if !render_catalog(ntp_profile).valid {return RenderNativeTextureNeeds.{};}
+ result:=RenderNativeTextureNeeds.{valid=true};
+ ntp_row:int;count:=render_catalog_binding_count(ntp_profile,0);
+ while ntp_row!=count {
+  source:=render_binding_source(ntp_profile,0,ntp_row);
+  result.layers=result.layers || source.kind==RenderSourceKind.layers;
+  result.sans=result.sans || source.kind==RenderSourceKind.sans_atlas;
+  ntp_row+=1;
+ }return result;
+}
+render_native_texture_stage :: (ntp_profile:int,ntp_kind:RenderNativeTextureKind,ntp_width:int,ntp_height:int,ntp_layers:int,ntp_levels:int,ntp_source_bytes:u64,ntp_capacity:u64)->RenderNativeTextureStage {
+ needs:=render_native_texture_needs(ntp_profile);if !needs.valid {return RenderNativeTextureStage.{};}
+ result:=RenderNativeTextureStage.{};
+ if ntp_kind==RenderNativeTextureKind.layers {
+  if !needs.layers || ntp_width<1 || ntp_width>1024 || ntp_height!=ntp_width || ntp_layers<1 || ntp_layers>2048 {return result;}
+  asset:=render_asset_find(ntp_profile,RenderAssetKind.layers,0);
+  if !asset.packed && ntp_layers!=asset.url_count {return result;}
+  levels:=0;side:=ntp_width;bytes:u64;
+  while side>0 {levels+=1;bytes+=u64(side*side*4*ntp_layers);side>>=1;}
+  if ntp_levels!=levels || bytes>ntp_capacity || ntp_source_bytes!=bytes {return result;}
+  result.name="layers";result.format=render_asset_layers().format;result.file="layers.bin";result.rgba_bytes=bytes;
+ }else if ntp_kind==RenderNativeTextureKind.sans {
+  s:=render_sans_profile();
+  if !needs.sans || ntp_width!=s.width || ntp_height!=s.height || ntp_layers!=1 || ntp_levels!=s.levels || ntp_source_bytes!=s.coverage_bytes {return result;}
+  if s.rgba_bytes>ntp_capacity {return result;}
+  result.name="sans_atlas";result.format=s.format;result.file="sans-atlas.rgba";result.rgba_bytes=s.rgba_bytes;
+ }else{return result;}
+ result.valid=true;result.kind=ntp_kind;result.width=ntp_width;result.height=ntp_height;result.layers=ntp_layers;result.levels=ntp_levels;result.source_bytes=ntp_source_bytes;return result;
+}
+RenderNativeTextureObservation :: struct {known:bool;valid:bool;kind:RenderNativeTextureKind;file:string;width:int;height:int;layers:int;levels:int;}
+#test "native raw texture observations retain exact legacy layer and atlas metadata" {
+ a:=render_native_texture_observation("layers sheets layers.bin 1024 1024 12 11");
+ #assert a.known && a.valid && a.kind==RenderNativeTextureKind.layers && a.file=="layers.bin" && a.width==1024 && a.height==1024 && a.layers==12 && a.levels==11;
+ b:=render_native_texture_observation("atlas sans_atlas sans-atlas.bin 1536 672 5");
+ #assert b.known && b.valid && b.kind==RenderNativeTextureKind.sans && b.file=="sans-atlas.bin" && b.width==1536 && b.height==672 && b.layers==1 && b.levels==5;
+ for line:[4]string.["", "buffer u u.bin", "sampler layers linear repeat", "layersX sheets layers.bin 1 1 1 1"] {#assert !render_native_texture_observation(line).known;}
+}
+#test "native raw texture observation parser rejects malformed known rows without path or integer coercion" {
+ for line:[15]string.["layers", "layers sheets layers.bin 1 1 1", "layers sheets layers.bin 1 1 1 1 extra", "layers wrong layers.bin 1 1 1 1", "layers sheets ../layers.bin 1 1 1 1", "layers sheets layers.bin -1 1 1 1", "layers sheets layers.bin x 1 1 1", "layers sheets layers.bin 9223372036854775808 1 1 1", "layers  sheets layers.bin 1 1 1 1", "atlas sans_atlas sans-atlas.bin 1 1", "atlas wrong sans-atlas.bin 1 1 1", "atlas sans_atlas other.bin 1 1 1", "atlas sans_atlas sans-atlas.bin 1 1 1 extra", "atlas sans_atlas sans-atlas.bin 1 1 1 ", "layers sheets layers.bin 1 1 1 1 "] {q:=render_native_texture_observation(line);#assert q.known && !q.valid;}
+ #assert ntp_integer("0")==0 && ntp_integer("9223372036854775807")==9223372036854775807 && ntp_integer("")==(-1) && ntp_integer("/")==(-1) && ntp_integer(":")==(-1);
+ #assert ntp_integer("92233720368547758070")==(-1);
+ zero:=render_native_texture_observation("layers sheets layers.bin 0 0 0 0");#assert zero.valid && zero.width==0 && zero.height==0 && zero.layers==0 && zero.levels==0;
+}
+ntp_integer :: (text:string)->int {
+ if text.count==0 {return -1;}value:int;
+ for c:text {if c<'0' || c>'9' {return -1;}digit:=int(c)-'0';if value>(9223372036854775807-digit)/10 {return -1;}value=value*10+digit;}return value;
+}
+render_native_texture_observation :: (line:string)->RenderNativeTextureObservation {
+ result:=RenderNativeTextureObservation.{};first:=0;while first<line.count && line[first]!=' ' {first+=1;}
+ kind:=line[0..<first];if kind!="layers" && kind!="atlas" {return result;}result.known=true;
+ parts:[6]string;count:int;start:=first+1;at:=start;
+ while at<=line.count {
+  if at==line.count || line[at]==' ' {
+   if count==parts.count || at==start {return result;}parts[count]=line[start..<at];count+=1;start=at+1;
+  }at+=1;
+ }
+ if kind=="layers" {
+  if count!=6 || parts[0]!="sheets" || parts[1]!="layers.bin" {return result;}
+  result.kind=RenderNativeTextureKind.layers;result.layers=ntp_integer(parts[4]);result.levels=ntp_integer(parts[5]);
+ }else{
+  if count!=5 || parts[0]!="sans_atlas" || parts[1]!="sans-atlas.bin" {return result;}
+  result.kind=RenderNativeTextureKind.sans;result.layers=1;result.levels=ntp_integer(parts[4]);
+ }
+ result.file=parts[1];result.width=ntp_integer(parts[2]);result.height=ntp_integer(parts[3]);
+ result.valid=result.width>=0 && result.height>=0 && result.layers>=0 && result.levels>=0;return result;
+}
+
+// Receipt is an unmodified result of render_native_texture_stage.
+render_native_texture_mip :: (ntp_stage:RenderNativeTextureStage,ntp_level:int)->RenderNativeTextureMip {
+ if !ntp_stage.valid || ntp_level<0 || ntp_level>=ntp_stage.levels {return RenderNativeTextureMip.{};}
+ if ntp_stage.kind==RenderNativeTextureKind.sans {
+  m:=render_sans_level(ntp_level);return RenderNativeTextureMip.{valid=true,width=m.width,height=m.height,offset=m.rgba_offset,row_bytes=u64(m.width*4),layer_bytes=m.rgba_bytes};
+ }
+ offset:u64;for l:0..<ntp_level {side:=ntp_stage.width>>l;offset+=u64(side*side*4*ntp_stage.layers);}
+ side:=ntp_stage.width>>ntp_level;return RenderNativeTextureMip.{valid=true,width=side,height=side,offset=offset,row_bytes=u64(side*4),layer_bytes=u64(side*side*4)};
+}
+render_native_sans_expand :: (ntp_coverage:[]u8,ntp_rgba:[]u8)->bool {
+ if ntp_coverage.count>ntp_rgba.count/4 {return false;}
+ for i:0..<ntp_coverage.count {for channel:0..<4 {ntp_rgba[i*4+channel]=ntp_coverage[i];}}return true;
+}
+
+#test "native texture publication requires exactly the canonical source set without duplicate receipts" {
+ s:=render_sans_profile();a:=render_native_texture_stage(1,RenderNativeTextureKind.sans,s.width,s.height,1,s.levels,s.coverage_bytes,s.rgba_bytes);
+ layers:=render_native_texture_stage(0,RenderNativeTextureKind.layers,1,1,12,1,48,48);
+ rows:=[2]RenderNativeTextureStage.[a,a];empty:[]RenderNativeTextureStage;
+ #assert render_native_textures_complete(1,rows[0..<1]) && !render_native_textures_complete(1,rows[..]);
+ #assert !render_native_textures_complete(0,rows[0..<1]) && !render_native_textures_complete(1,empty);
+ #assert render_native_textures_complete(4,empty) && !render_native_textures_complete(-1,empty);
+ rows[0]=layers;#assert render_native_textures_complete(0,rows[0..<1]);
+ rows[0].valid=false;#assert !render_native_textures_complete(0,rows[0..<1]);
+ rows[0]=RenderNativeTextureStage.{valid=true};#assert !render_native_textures_complete(0,rows[0..<1]);
+}
+// Receipts are unmodified results of render_native_texture_stage for profile.
+render_native_textures_complete :: (ntp_profile:int,ntp_stages:[]RenderNativeTextureStage)->bool {
+ needs:=render_native_texture_needs(ntp_profile);if !needs.valid {return false;}seen:u8;
+ for stage:ntp_stages {
+  if !stage.valid {return false;}bit:u8;
+  if stage.kind==RenderNativeTextureKind.layers {bit=1;}else if stage.kind==RenderNativeTextureKind.sans {bit=2;}else{return false;}
+  if (seen&bit)!=0 {return false;}seen|=bit;
+ }
+ wanted:u8;if needs.layers {wanted|=1;}if needs.sans {wanted|=2;}return seen==wanted;
+}

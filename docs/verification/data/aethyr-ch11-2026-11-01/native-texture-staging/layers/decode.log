@@ -1,0 +1,5 @@
+/Users/christopherdavid/work/openagents-aethyr-book/coax/lib/image/jpeg.coax:513:12: error[E0383]: returned borrow may refer to local inline storage through a helper or aggregate
+    return ss[0];
+             ^
+  fix: return owned storage, or keep the borrowed backing in the caller
+1 error

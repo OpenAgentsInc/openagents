@@ -1,0 +1,7 @@
+FAIL #test complex world offline work appends tag3 while preserving all earlier identities (0 ms)
+aethyr/render/reference-work.coax:51:44: error[E0411]: no member of RRWorkProfile has the value 3
+   #assert rr_work_profile("complex-world")==cast(RRWorkProfile)3;
+                                             ^
+  note: in #test complex world offline work appends tag3 while preserving all earlier identities
+1 of 4 checks (--only 'complex world offline'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

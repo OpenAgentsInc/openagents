@@ -1,0 +1,18 @@
+{
+  "schema": "aethyr.render.production-vs-probe-retention.v1",
+  "files": {
+    "run.py": "28c392db0b82b6e4e4fbf1d73e1a09713d0ef89d465b183f6bb311b8f0c741e7",
+    "qualification.json": "8a1e8de1b5a21af84affc86554d2bdcfb51a8baaede230ab33664dec68e3313e",
+    "observations.rgba32f": "11a9d4398ed1bdfcca4c28305458639aab691fd8d193c724a4379468ef3af16a",
+    "ssh.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "comparison.json": "87c95fdb002c89947dcdbde782213ad26a46e4e25ec696cc70e0c80a7120bb3c",
+    "native.log": "f0289503400bd7ebf6d3d77a35e9888070e3592defa599a85124090b2887ce6c",
+    "cases.bin": "eee077f5c13ec2826418b11f5e1b83f93619e324f3d3400a656da4034d1fa861",
+    "cases.json": "8d1f78a5e719ac8eded51476e381160e95f1aeb29e2a4fcf6bf742e93bc4fb30",
+    "render-deadgears-vs-probe.coax": "531304a8f6d9e4c0a37304f92f8a91209661859e676f15382a48c2126896d955",
+    "status.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "native-inputs-and-executable.tar.gz": "d61caa6eed34d8b550049c39a450ea166c313cdf460573ea1fb86a07bce8ba0f",
+    "probe.c": "18e9de0270f8c4b9a0c3a84747f58133f3f6f49172d0e1aa4eb7d4fde8f44032",
+    "probe.spv": "4cb62f14c4d9aee496eba6418609b4d2d84fe0bc1345a7fdb3bf1f4f01b8f39b"
+  }
+}

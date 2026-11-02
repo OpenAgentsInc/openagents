@@ -1,0 +1,7 @@
+FAIL #test layer upload description preserves sRGB straight alpha and original high quality resizing (0 ms)
+aethyr/render/asset-profile.coax:147:37: error[E0406]: assertion failed
+   rapt_layers:=render_asset_layers();#assert rapt_layers.format=="rgba8unorm-srgb" && !rapt_layers.premultiplied_alpha && rapt_layers.resize_quality=="high";
+                                      ^
+  note: in #test layer upload description preserves sRGB straight alpha and original high quality resizing
+1 of 81 checks (--only 'layer upload description'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,253 @@
+{
+  "schema": "aethyr.render.media-retirement.v1",
+  "status": "failed",
+  "fault": "keep-cache",
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/156.0.8078.80",
+    "revision": "@fb096c0011f9d50f0a264a9376420cdea9c421e3",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "jsVersion": "15.6.75.27"
+  },
+  "waiting": {
+    "present": true,
+    "ready": false,
+    "decoded": 0
+  },
+  "replacement": {
+    "failed": true,
+    "error": "Coax refused shader digest"
+  },
+  "stopped": {
+    "stopped": true,
+    "coherent": false
+  },
+  "after": {
+    "decoded": 1,
+    "closed": 0,
+    "allocations": 1,
+    "textures": 1,
+    "ready": true,
+    "hasTexture": true,
+    "current": 0,
+    "binding": {
+      "stopped": true,
+      "coherent": false
+    }
+  },
+  "inputs": {
+    "/tmp/aethyr-ch11-media-fixture/fixture.wasm": "f86f44cc607ca3427963a54f494c311ac3350780c680b465707716b7482b8e3a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_media_retirement.ts": "90d3eb173db57803f4c499391a0ed6057ce80db904fbd960ceadb6c1fafd40a7",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js": "f9f91c6030b28840173a692727ce141fd3b2d03fcf67acebe4015c4b75b54dd8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js": "441571badfac66621fd1cef046bf43a20f365d1d4205301edd0b5f6ff8e92939",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/render.json": "9e880903d4678b88af83e11f0cab6032a25f029898e3f1c77e268d0e981ef6c0",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl": "e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl": "c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a",
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl": "589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/assets/Villa.indices": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/og/default.jpg": "52bf309a7061ea27d15d32c57965561f096423148b7aeca769d391df8187d05d"
+  },
+  "source_changes": [],
+  "requests": [
+    "/",
+    "/coaxial/host.js",
+    "/coaxial/entropy-import.js",
+    "/coaxial/drop.js",
+    "/coaxial/uploads.js",
+    "/coaxial/docs.js",
+    "/coaxial/card.js",
+    "/coaxial/voice.js",
+    "/coaxial/gpui.js",
+    "/coaxial/loader.js",
+    "/coaxial/http-requests.js",
+    "/coaxial/render.js",
+    "/coaxial/entropy.js",
+    "/test.wasm",
+    "/favicon.svg",
+    "/api/auth/viewer",
+    "/package/render.json",
+    "/package/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl",
+    "/package/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+    "/package/media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl",
+    "/realms/hecates-cemetery/assets/Villa.indices",
+    "/coaxial/live",
+    "/api/playtest/player",
+    "/api/playtest/realms/hecates-cemetery",
+    "/api/villa/memorial/fixture0/media/0000000000000000",
+    "/test.wasm",
+    "/package/render.json",
+    "/package/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live"
+  ],
+  "events": [
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 1,
+          "origin": "://",
+          "name": "",
+          "uniqueId": "-4940012701152788968.-386081217858217068",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "EFFF09964BF8C74C8B592AF23E8B7122"
+          }
+        }
+      }
+    },
+    {
+      "method": "Page.frameResized",
+      "params": {}
+    },
+    {
+      "method": "Page.frameStartedNavigating",
+      "params": {
+        "frameId": "EFFF09964BF8C74C8B592AF23E8B7122",
+        "url": "http://127.0.0.1:57520/?probe&golden&probe-manual",
+        "loaderId": "7AEB3CA1183FA276354A52C5BA37E5C1",
+        "navigationType": "differentDocument"
+      }
+    },
+    {
+      "method": "Page.frameStartedLoading",
+      "params": {
+        "frameId": "EFFF09964BF8C74C8B592AF23E8B7122"
+      }
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Page.frameNavigated",
+      "params": {
+        "frame": {
+          "id": "EFFF09964BF8C74C8B592AF23E8B7122",
+          "loaderId": "7AEB3CA1183FA276354A52C5BA37E5C1",
+          "url": "http://127.0.0.1:57520/?probe&golden&probe-manual",
+          "domainAndRegistry": "",
+          "securityOrigin": "http://127.0.0.1:57520",
+          "securityOriginDetails": {
+            "isLocalhost": true
+          },
+          "mimeType": "text/html",
+          "adFrameStatus": {
+            "adFrameType": "none"
+          },
+          "secureContextType": "SecureLocalhost",
+          "crossOriginIsolatedContextType": "NotIsolated",
+          "gatedAPIFeatures": []
+        },
+        "type": "Navigation"
+      }
+    },
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 2,
+          "origin": "http://127.0.0.1:57520",
+          "name": "",
+          "uniqueId": "-3528840856915024003.-171687476229046922",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "EFFF09964BF8C74C8B592AF23E8B7122"
+          }
+        }
+      }
+    },
+    {
+      "method": "Page.domContentEventFired",
+      "params": {
+        "timestamp": 520935.422328
+      }
+    },
+    {
+      "method": "Page.loadEventFired",
+      "params": {
+        "timestamp": 520935.422507
+      }
+    },
+    {
+      "method": "Page.frameStoppedLoading",
+      "params": {
+        "frameId": "EFFF09964BF8C74C8B592AF23E8B7122"
+      }
+    },
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "error",
+        "args": [
+          {
+            "type": "string",
+            "value": "Coax renderer initialization"
+          },
+          {
+            "type": "object",
+            "subtype": "error",
+            "className": "RenderRefusal",
+            "description": "RenderRefusal: Coax refused shader digest\n    at RenderHost.initializeChecked (http://127.0.0.1:57520/coaxial/render.js:93:96)\n    at async RenderHost.initialize (http://127.0.0.1:57520/coaxial/render.js:33:89)\n    at async loadShadersOnce (http://127.0.0.1:57520/coaxial/host.js:845:5)",
+            "objectId": "-2438307752230857580.2.1",
+            "preview": {
+              "type": "object",
+              "subtype": "error",
+              "description": "RenderRefusal: Coax refused shader digest\n    at RenderHost.initializeChecked (http://127.0.0.1:57520/coaxial/render.js:93:96)\n    at async RenderHost.initialize (http://127.0.0.1:57520/coaxial/render.js:33:89)\n    at async loadShadersOnce (http://127.0.0.1:57520/coaxial/host.js:845:5)",
+              "overflow": false,
+              "properties": [
+                {
+                  "name": "stack",
+                  "type": "string",
+                  "value": "Error: Coax refused shader digest\n    at RenderHos…ce (http://127.0.0.1:57520/coaxial/host.js:845:5)"
+                },
+                {
+                  "name": "message",
+                  "type": "string",
+                  "value": "Coax refused shader digest"
+                }
+              ]
+            }
+          }
+        ],
+        "executionContextId": 2,
+        "timestamp": 1793582274696.267,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "initialize",
+              "scriptId": "17",
+              "url": "http://127.0.0.1:57520/coaxial/render.js",
+              "lineNumber": 36,
+              "columnNumber": 14
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

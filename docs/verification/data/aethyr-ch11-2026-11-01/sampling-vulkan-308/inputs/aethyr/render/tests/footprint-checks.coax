@@ -1,0 +1,62 @@
+#test "portable footprint chooses the longer texel derivative and a per-tap UV step" {
+ f:=render_footprint(8,8,0.5,0,0,0.125,0);
+ #assert f.valid && f.taps==4 && f.du==0.125 && f.dv==0 && f.lod==0;
+ f=render_footprint(8,8,0,0.125,0.5,0,0);
+ #assert f.valid && f.taps==4 && f.du==0.125 && f.dv==0 && f.lod==0;
+ f=render_footprint(16,8,0,0.5,0.0625,0,0);
+ #assert f.valid && f.taps==4 && f.du==0 && f.dv==0.125 && f.lod==0;
+ f=render_footprint(8,8,0.125,0,0,0.125,0);
+ #assert f.valid && f.taps==1 && f.du==0.125 && f.dv==0 && f.lod==0;
+}
+#test "portable footprint caps eight taps by raising the covered mip footprint" {
+ f:=render_footprint(64,64,1,0,0,0.015625,0);
+ #assert f.valid && f.taps==8 && f.du==0.125 && f.dv==0 && abs(f.lod-3)<0.000001;
+ f=render_footprint(8,8,1,0,0,0.125,0);
+ #assert f.valid && f.taps==8 && f.du==0.125 && f.lod==0;
+ f=render_footprint(16,16,0.5,0,0,0.125,0.5);
+ #assert f.valid && f.taps==4 && f.du==0.125 && abs(f.lod-1.5)<0.000001;
+}
+#test "portable footprint magnification stays one centered tap and preserves derivative sign" {
+ f:=render_footprint(8,8,0,0,0,0,0);
+ #assert f.valid && f.taps==1 && f.du==0 && f.dv==0 && f.lod==0;
+ f=render_footprint(8,8,-0.0625,0,0,0.03125,-1);
+ #assert f.valid && f.taps==1 && f.du==(-0.0625) && f.dv==0 && f.lod==(-1);
+ f=render_footprint(8,8,0.3125,0,0,0.125,0);
+ #assert f.valid && f.taps==3 && abs(f.du-0.1041666667)<0.000001 && f.lod==0;
+}
+#test "portable footprint finite admission covers exact size derivative and bias limits" {
+ f:=render_footprint(16384,1,65536,0,0,0,32);
+ #assert f.valid && f.taps==8 && abs(f.lod-59)<0.00001;
+ #assert render_footprint(1,16384,0,-65536,0,0,-32).valid;
+ #assert !render_footprint(0,1,0,0,0,0,0).valid && !render_footprint(1,0,0,0,0,0,0).valid;
+ #assert !render_footprint(16385,1,0,0,0,0,0).valid && !render_footprint(1,16385,0,0,0,0,0).valid;
+ #assert !render_footprint(1,1,65536.0078125,0,0,0,0).valid;
+ #assert !render_footprint(1,1,0,-65536.0078125,0,0,0).valid;
+ #assert !render_footprint(1,1,0,0,65536.0078125,0,0).valid;
+ #assert !render_footprint(1,1,0,0,0,-65536.0078125,0).valid;
+ #assert !render_footprint(1,1,0,0,0,0,32.000003814697265625).valid;
+ #assert !render_footprint(1,1,0,0,0,0,-32.000003814697265625).valid;
+}
+#test "portable footprint clamp uses a signed32 carrier over its entire admitted box" {
+ // The two-axis diagonal is the largest candidate, still strictly below2^31.
+ f:=render_footprint(16384,16384,65536,65536,0,0,0);
+ #assert f.valid && f.taps==8 && f.du==8192 && f.dv==8192 && abs(f.lod-27.5)<0.00001;
+ f=render_footprint(8,1,0.875,0,0,0,0);#assert f.valid && f.taps==7;
+ f=render_footprint(8,1,1,0,0,0,0);#assert f.valid && f.taps==8;
+ f=render_footprint(9,1,1,0,0,0,0);#assert f.valid && f.taps==8 && f.du==0.125;
+}
+#forall "portable footprint refuses every nonfinite derivative and bias field" field:0..<5 {
+ values:[5]f32;values[field]=0.0f32/0.0f32;
+ #assert !render_footprint(8,8,values[0],values[1],values[2],values[3],values[4]).valid;
+ values[field]=1.0f32/0.0f32;
+ #assert !render_footprint(8,8,values[0],values[1],values[2],values[3],values[4]).valid;
+ values[field]=-1.0f32/0.0f32;
+ #assert !render_footprint(8,8,values[0],values[1],values[2],values[3],values[4]).valid;
+}
+#test "portable footprint retains the other minor axis and nonzero vertical major step" {
+ f:=render_footprint(16,16,0.125,0,0,0.5,0);
+ #assert f.valid && f.taps==4 && f.du==0 && f.dv==0.125 && abs(f.lod-1)<0.000001;
+ #assert render_footprint_finite(3.4028234663852886e38f32) && render_footprint_finite(-3.4028234663852886e38f32);
+ #assert render_footprint(1,1,0,0,65536,0,0).valid;
+ #assert render_footprint(1,1,0,0,0,-65536,0).valid;
+}

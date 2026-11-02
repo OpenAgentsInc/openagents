@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # A realm natively: its Coax to C (as coax/web/wasm.sh does for wasm32),
 # its browser face, and this directory's host, in OUT.
-#   verse/native/build.sh REALM OUT     generate the C (any machine with coax)
+#   verse/native/build.sh REALM OUT [--render-profile SLUG]
+# The optional profile binds this producer to a complete Coax-built renderer
+# package, its shared source carrier/header, and native renderer effect sources.
 # On Linux it then builds OUT/realm-run with gcc, without PIE, so every
 # pointer the face hands back fits its 32 bits (realm-host.c). The realms:
 #   everglade   apps/openagents-web/everglade.coax and everglade-face.c, as
@@ -29,6 +31,12 @@ site_libraries() {
 if [[ "${1:-}" == --libraries ]]; then site_libraries "${2:?usage: build.sh --libraries REALM}"; exit; fi
 realm="${1:?usage: build.sh REALM OUT}"
 out="${2:?usage: build.sh REALM OUT}"
+shift 2
+render_profile=""
+if [[ $# -gt 0 ]]; then
+  [[ $# == 2 && "$1" == --render-profile ]] || { echo "build.sh: expected --render-profile SLUG" >&2; exit 2; }
+  render_profile="$2"
+fi
 units_too=(); faces_too=()   # Coax units kept by their own names, and C faces of their own
 case "$realm" in
   everglade) app="$web/everglade.coax"; face="$web/everglade-face.c"
@@ -49,19 +57,51 @@ case "$realm" in
     if [[ -f "$web/build.sh" ]]; then while IFS= read -r l; do libraries+=("$(cd "$(dirname "$l")" && pwd -P)/$(basename "$l")"); done < <(site_libraries "$realm"); fi ;;
 esac
 mkdir -p "$out"
+out="$(cd "$out" && pwd -P)"
 coax="${COAX:-$root/coax/bin/coax}"
 if [[ -x "$coax" ]]; then
   relative() { echo "${1#"$root"/}"; }
-  (cd "$root" && "$coax" c "$(relative "$app")" --library --header "$out/$realm.h") > "$out/$realm.c" &
+  emit_args=()
+  if [[ -n "$render_profile" ]]; then
+    # All seventeen composed source carriers were measured with this compiler;
+    # Everglade's 102,161 aggregate initialization steps set the largest case.
+    emit_args=(--run-steps "${COAXIAL_RUN_STEPS:-128000}")
+  elif [[ -n "${COAXIAL_RUN_STEPS:-}" ]]; then
+    emit_args=(--run-steps "$COAXIAL_RUN_STEPS")
+  fi
+  source_app="$app"
+  if [[ -n "$render_profile" && "$realm" != newland ]]; then
+    source_app="$root/aethyr/render/carriers/$realm.coax"
+    [[ -f "$source_app" ]] || { echo "build.sh: no renderer source carrier for $realm" >&2; exit 2; }
+  fi
+  generated=()
+  (cd "$root" && "$coax" c "$(relative "$source_app")" --library --header "$out/$realm.h" ${emit_args[@]+"${emit_args[@]}"}) > "$out/$realm.c" & generated+=($!)
   for library in ${libraries[@]+"${libraries[@]}"}; do
     base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
-    (cd "$root" && "$coax" c "$(relative "$library")" --library --header "$out/$base.h") > "$out/$base.c" &
+    (cd "$root" && "$coax" c "$(relative "$library")" --library --header "$out/$base.h" ${emit_args[@]+"${emit_args[@]}"}) > "$out/$base.c" & generated+=($!)
   done
   for unit in ${units_too[@]+"${units_too[@]}"}; do
     base="$(basename "$unit" .coax)"
-    (cd "$root" && "$coax" c "$(relative "$unit")" --library --header "$out/$base.h") > "$out/$base.c" &
+    source_unit="$unit"
+    if [[ -n "$render_profile" && "$realm" == newland && "$base" == landing-browser ]]; then
+      source_unit="$root/aethyr/render/carriers/landing-browser.coax"
+    fi
+    (cd "$root" && "$coax" c "$(relative "$source_unit")" --library --header "$out/$base.h" ${emit_args[@]+"${emit_args[@]}"}) > "$out/$base.c" & generated+=($!)
   done
-  wait
+  for pid in "${generated[@]}"; do wait "$pid"; done
+  if [[ -n "$render_profile" ]]; then
+    owner_header="$out/$realm.h"
+    [[ "$realm" == newland ]] && owner_header="$out/landing-browser.h"
+    cp "$owner_header" "$out/RenderHost.h"
+    mkdir -p "$out/render-native"
+    (cd "$root" && "$coax" c aethyr/render/native-texture.coax --library --header "$out/render-native/RenderTexture.h") > "$out/render-native/RenderTexture.c"
+    cp "$here/render-host.c" "$here/render-host.h" "$here/render-realm.c" "$here/render-realm.h" "$here/render-textures.c" "$here/render-textures.h" "$here/render-media.c" "$here/render-media.h" "$root/aethyr/render/tests/frame-input.h" "$out/render-native/"
+    (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/render/build.coax "$render_profile" "$out/render" --coax "$coax")
+    python3 "$here/render_package.py" --package "$out/render/render.json" --app "$realm" --profile "$render_profile" --output "$out/RenderIdentity.h"
+    (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/render/build.coax --asset-table "$render_profile") > "$out/render-assets.pending.json"
+    python3 "$here/render_assets.py" --table "$out/render-assets.pending.json" --package "$out/render/render.json" --web-root "$web" --output "$out/render-assets"
+    rm "$out/render-assets.pending.json"
+  fi
   cp "$face" "$web"/*-face.h "$web"/*-bridge.h ${faces_too[@]+"${faces_too[@]}"} "$out/"
   cp "$here"/face.h "$here"/realm-host.h "$here"/realm-host.c "$here"/realm-run.c "$out/"
   units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
@@ -85,12 +125,18 @@ read -r -a sources < "$out/sources"
 # The browser's flags: no fast math and no contraction, so it computes what the checks computed.
 flags=(-std=gnu11 -O2 -no-pie -ffp-contract=off -fno-fast-math -Wno-attributes -Wno-unused-function -Wno-unused-variable
        -Wno-unused-but-set-variable -w -I "$out")
+link_flags=()
+if [[ -n "$render_profile" ]]; then
+  flags+=(-ffunction-sections -fdata-sections)
+  link_flags+=(-Wl,--gc-sections)
+fi
 objects=()
+pids=()
 for s in "${sources[@]}" realm-host.c; do
-  gcc "${flags[@]}" -c "$out/$s" -o "$out/${s%.c}.o" & objects+=("$out/${s%.c}.o")
+  gcc "${flags[@]}" -c "$out/$s" -o "$out/${s%.c}.o" & objects+=("$out/${s%.c}.o"); pids+=($!)
 done
-wait
+for pid in "${pids[@]}"; do wait "$pid"; done
 # the wasm's math (musl's, verse/native/musl-math.sh) ahead of glibc's
 read -r -a math <<< "$("$here/musl-math.sh" "$out")"
-gcc "${flags[@]}" "$out/realm-run.c" "${objects[@]}" ${math[@]+"${math[@]}"} -lm -o "$out/realm-run"
+gcc "${flags[@]}" ${link_flags[@]+"${link_flags[@]}"} "$out/realm-run.c" "${objects[@]}" ${math[@]+"${math[@]}"} -lm -o "$out/realm-run"
 echo "$out/realm-run"

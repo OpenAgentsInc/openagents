@@ -1,0 +1,57 @@
+// The five independently rasterized Sans mips use Coax-owned clamp, bilinear
+// weights and explicit LOD interpolation. Hardware filtering is not consulted.
+// Source part: retain the shader library's existing logical owner.
+#load "sans-profile.coax";
+#load "../../verse/gpu/shader.coax";
+#authority;
+RSANS_FILTER_WIDTH :: cast(s32)(SANS_COLUMNS*SANS_CELL);
+RSANS_FILTER_HEIGHT :: cast(s32)(SANS_ROWS*SANS_CELL);
+RenderSansFilterLOD :: struct {valid:bool;low:s32;high:s32;amount:f32;}
+RenderSansFilterCell :: struct {valid:bool;x0:s32;y0:s32;x1:s32;y1:s32;tx:f32;ty:f32;}
+
+#test "Sans filter keeps the declared five mips and clamps finite LOD endpoints" {
+ a:=render_sans_filter_lod(1536,672,-1);#assert a.valid && a.low==0 && a.high==1 && a.amount==0;
+ b:=render_sans_filter_lod(1536,672,1.25);#assert b.valid && b.low==1 && b.high==2 && b.amount==0.25;
+ c:=render_sans_filter_lod(1536,672,4);#assert c.valid && c.low==4 && c.high==4 && c.amount==0;
+ d:=render_sans_filter_lod(1536,672,8);#assert d.valid && d.low==4 && d.high==4 && d.amount==0;
+ #assert !render_sans_filter_lod(1535,672,0).valid && !render_sans_filter_lod(1536,671,0).valid;
+ #assert !render_sans_filter_lod(1537,672,0).valid && !render_sans_filter_lod(1536,673,0).valid;
+ #assert !render_sans_filter_lod(1536,672,0.0f32/0.0f32).valid;
+ #assert !render_sans_filter_lod(1536,672,1.0f32/0.0f32).valid;
+}
+#test "Sans filter coordinates clamp before conversion and preserve asymmetric fractions" {
+ a:=render_sans_filter_cell(2,2,0.3,0.35);#assert a.valid && a.x0==0 && a.x1==1 && a.y0==0 && a.y1==1;
+ #assert abs(a.tx-0.1f32)<0.0000001f32 && abs(a.ty-0.2f32)<0.0000001f32;
+ b:=render_sans_filter_cell(2,2,-1000000000,1000000000);#assert b.valid && b.x0==0 && b.x1==0 && b.y0==1 && b.y1==1 && b.tx==0.5 && b.ty==0.5;
+ c:=render_sans_filter_cell(1,1,0.5,0.5);#assert c.valid && c.x0==0 && c.x1==0 && c.y0==0 && c.y1==0 && c.tx==0 && c.ty==0;
+ #assert !render_sans_filter_cell(0,2,0,0).valid && !render_sans_filter_cell(2,0,0,0).valid;
+ #assert !render_sans_filter_cell(2,2,0.0f32/0.0f32,0).valid && !render_sans_filter_cell(2,2,0,1.0f32/0.0f32).valid;
+ full:=render_sans_filter_cell(1536,672,0,1);#assert full.valid && full.x0==0 && full.x1==0 && full.y0==671 && full.y1==671;
+ #assert !render_sans_filter_cell(1537,672,0,0).valid && !render_sans_filter_cell(1536,673,0,0).valid;
+ interior:=render_sans_filter_cell(4,4,0.4,0.4);#assert interior.valid && interior.x0==1 && interior.y0==1 && interior.x1==2 && interior.y1==2;
+}
+#test "Sans filter mip extents follow the same rectangular atlas at all five levels" {
+ #assert render_sans_filter_width(0)==1536 && render_sans_filter_height(0)==672;
+ #assert render_sans_filter_width(1)==768 && render_sans_filter_height(1)==336;
+ #assert render_sans_filter_width(4)==96 && render_sans_filter_height(4)==42;
+}
+#test "Sans filter interpolation keeps both axes all channels and the explicit mip fraction" {
+ a:=v4(0,4,8,12);b:=v4(4,8,12,16);c:=v4(8,12,16,20);d:=v4(12,16,20,24);
+ q:=render_sans_filter_bilinear(a,b,c,d,0.25,0.5);#assert q.x==5 && q.y==9 && q.z==13 && q.w==17;
+ m:=render_sans_filter_interpolate(v4(2,4,6,8),v4(10,20,30,40),0.25);#assert m.x==4 && m.y==8 && m.z==12 && m.w==16;
+}
+render_sans_filter_width :: (level:s32)->s32 {return RSANS_FILTER_WIDTH>>level;}
+render_sans_filter_height :: (level:s32)->s32 {return RSANS_FILTER_HEIGHT>>level;}
+render_sans_filter_lod :: (width:s32,height:s32,lod:f32)->RenderSansFilterLOD {
+ if width!=render_sans_filter_width(0) || height!=render_sans_filter_height(0) || (lod-lod)!=0 {return RenderSansFilterLOD.{};}
+ last:=cast(f32)(SANS_LEVELS-1);bounded:=clampf(lod,0,last);low:=cast(s32)floor(bounded);high:=cast(s32)fmin(cast(f32)(low+1),last);
+ return RenderSansFilterLOD.{valid=true,low=low,high=high,amount=bounded-cast(f32)low};
+}
+render_sans_filter_cell :: (width:s32,height:s32,u:f32,v:f32)->RenderSansFilterCell {
+ if width<1 || width>render_sans_filter_width(0) || height<1 || height>render_sans_filter_height(0) || (u-u)!=0 || (v-v)!=0 {return RenderSansFilterCell.{};}
+ fx:=clampf(u,0,1)*cast(f32)width-0.5f32;fy:=clampf(v,0,1)*cast(f32)height-0.5f32;
+ x:=cast(int)floor(fx);y:=cast(int)floor(fy);
+ return RenderSansFilterCell.{valid=true,x0=cast(s32)clamp_texel(x,cast(int)width),y0=cast(s32)clamp_texel(y,cast(int)height),x1=cast(s32)clamp_texel(x+1,cast(int)width),y1=cast(s32)clamp_texel(y+1,cast(int)height),tx=fx-cast(f32)x,ty=fy-cast(f32)y};
+}
+render_sans_filter_bilinear :: (a:V4,b:V4,c:V4,d:V4,tx:f32,ty:f32)->V4 {return mix4(mix4(a,b,tx),mix4(c,d,tx),ty);}
+render_sans_filter_interpolate :: (low:V4,high:V4,amount:f32)->V4 {return mix4(low,high,amount);}

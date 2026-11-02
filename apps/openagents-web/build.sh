@@ -42,6 +42,12 @@ for m in "$here"/gpu/*.module; do
   [[ "$w" == nip ]] && continue
   (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax "apps/openagents-web/gpu/$w.coax" "apps/openagents-web/$w.wgsl" "apps/openagents-web/gpu/$w.module")
 done
+# The closed realm catalog owns these identities and module/entry/binding
+# declarations. Unchanged packages reuse verified source and product hashes.
+profiles="$(cd "$here/../.." && coax/web/tool.sh aethyr/render/build.coax --profiles)"
+while IFS= read -r profile; do
+  (cd "$here/../.." && coax/web/tool.sh aethyr/render/build.coax "$profile" "$here/build/render/$profile")
+done <<< "$profiles"
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
 facet_fns="verse_style_facet_tone verse_style_facet_jitter verse_style_facet_edge"
 # The flat style (art-styles.md, Flat) and its palettes go to the flat realms: Hecate's Cemetery and Fairy Forest.

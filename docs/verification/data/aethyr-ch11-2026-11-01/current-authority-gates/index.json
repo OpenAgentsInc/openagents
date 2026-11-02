@@ -1,0 +1,3312 @@
+{
+  "schema": "aethyr.render.current-authority-gates.v1",
+  "status": "identity-audit-with-explicit-historical-dependency-epochs",
+  "observed_utc": "2026-11-02T04:03:12.428084+00:00",
+  "worktree_head": "08729561f96d6cc56c454c62a1920ab2e9b29410",
+  "scope": "All physically marked #authority Coax units under aethyr/render, including filter-native tooling, plus chapter-touched JSON/JPEG/beacon dependencies. No gates were rerun. This index consolidates earlier scores and source identities; it does not promote chapter11 or requalify older compilers against current HEAD.",
+  "semantics": {
+    "root_only": "Only the physical entry-source sites are mutated. Complete imported baseline checks run; dependency mutation coverage is not inferred.",
+    "source-and-closure-bound": "The retained primary proof manifest records exact current entry and literal dependency hashes.",
+    "source-bound-historical-dependencies": "The primary record binds the unchanged current entry; dependency changes or missing inventory are enumerated.",
+    "log-only-identity-not-recorded": "A retained passing raw score exists but does not bind source bytes. Current snapshot is only this audit observation; do not silently relabel it a compiler-owned gate receipt.",
+    "root-source-mismatch": "Primary proof names a different entry hash. Its score is historical, not current-entry qualification.",
+    "compiler_epochs": "Pinned executable identities remain explicit. An old executable is never claimed to match a newer source checkout. Publication/compiler-front-end gates are independent.",
+    "source-bound-post-gate-dependency-observation": "Current root/compiler are bound by the original final gate JSON; a separate explicitly dated post-gate dependency observation does not masquerade as compiler-owned gate metadata."
+  },
+  "root_count": 50,
+  "identity_counts": {
+    "log-only-identity-not-recorded": 21,
+    "source-and-closure-bound": 12,
+    "source-bound-historical-dependencies": 16,
+    "source-bound-post-gate-dependency-observation": 1
+  },
+  "new_gates_run": 0,
+  "root_gates": [
+    {
+      "source": "aethyr/render/active-lanes.coax",
+      "current_sha256": "4f4723b318c9e0a15eec337d936a2be56c9cf081cc6c0a1f3d583cbb2efeaa20",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 20,
+        "killed": 20,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+        "epoch": "693",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "owner-reported epoch; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-active-lanes-mutate.log",
+          "sha256": "72476967159d53dced22e45e03c16269c6ef766e7633a174d79d97b1ceb3cc8e",
+          "original_path": "/tmp/aethyr-active-lanes-mutate.log"
+        }
+      ],
+      "stdout_summary": [
+        20,
+        20,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/active-lanes.coax",
+          "aethyr/render/tests/active-lanes-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/active-lanes.coax",
+        "sha256": "4f4723b318c9e0a15eec337d936a2be56c9cf081cc6c0a1f3d583cbb2efeaa20"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/asset-profile.coax",
+      "current_sha256": "7b86793b25e78deab91386d3ddebe383501e7bd2111f9e521b8dc0a3636b63a7",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 250,
+        "killed": 250,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "qualification manifest",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/asset-profile-qualification.json",
+          "sha256": "9548e11e94ffc1c10ec6c01df5077c48246c9025fc12a0c887f4e30469aebd28"
+        }
+      ],
+      "proof_identity": {
+        "recorded_root_sha256": "7b86793b25e78deab91386d3ddebe383501e7bd2111f9e521b8dc0a3636b63a7",
+        "root_matches_current": true,
+        "current_closure_files": 12,
+        "recorded_current_closure_files": 12,
+        "changed_dependencies": [
+          {
+            "path": "aethyr/render/media-profile.coax",
+            "proof_sha256": "a224f77209b4a956899ec604ccf5778646623ba077b13efcf320b715c921b239",
+            "current_sha256": "9b161447a4a76c933ed89d9eaf289896aa2bbaba1f1ff15c36b58ec604add397"
+          }
+        ],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/asset-profile.coax",
+        "sha256": "7b86793b25e78deab91386d3ddebe383501e7bd2111f9e521b8dc0a3636b63a7"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/binding-sources.coax",
+      "current_sha256": "4128fa3131dbaf2dfce5e4279b782c6801e9bfe80282275c726cdb5b46afc122",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 145,
+        "killed": 145,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+        "epoch": "693",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "qualification manifest",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/binding-sources-qualification.json",
+          "sha256": "7f386504dd3c2e379a7f06c6609c552a3464edf21732f17a1521c36961f5afa0"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-binding-sources-mutation-3.log",
+          "sha256": "0e1c3219e90211febe60dee528c8fcf75d56b821722747655cdd05966a87d18e",
+          "original_path": "/tmp/aethyr-ch11-binding-sources-mutation-3.log"
+        }
+      ],
+      "stdout_summary": [
+        145,
+        145,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "4128fa3131dbaf2dfce5e4279b782c6801e9bfe80282275c726cdb5b46afc122",
+        "root_matches_current": true,
+        "current_closure_files": 11,
+        "recorded_current_closure_files": 1,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/catalog.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "aethyr/render/resources.coax",
+          "aethyr/render/frame.coax",
+          "aethyr/tests/render-frame-checks.coax",
+          "aethyr/render/tests/resources-checks.coax",
+          "aethyr/render/media-profile.coax",
+          "aethyr/render/tests/binding-sources-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/binding-sources.coax",
+        "sha256": "4128fa3131dbaf2dfce5e4279b782c6801e9bfe80282275c726cdb5b46afc122"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/bindings.coax",
+      "current_sha256": "8f5644b4665a1660f9a15605118e3515689e5697a8101866e68d9f7237f641bc",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 114,
+        "killed": 114,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "identifier-prefix gate; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-bindings-carrier-prefix-mutation.log",
+          "sha256": "29814ccf8b7853e58441cfbc8acb17a0df9c7ae15ecfef7a037c219882fe1812",
+          "original_path": "/tmp/aethyr-ch11-bindings-carrier-prefix-mutation.log"
+        }
+      ],
+      "stdout_summary": [
+        114,
+        114,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 1,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/bindings.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/bindings.coax",
+        "sha256": "8f5644b4665a1660f9a15605118e3515689e5697a8101866e68d9f7237f641bc"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/build-policy.coax",
+      "current_sha256": "d0565da9cec37044680d6932aa58bc166a6ccb5f9ea28a8cc273355816e796c4",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 392,
+        "killed": 392,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "carrier-prefix gate; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-build-policy-carrier-prefix-mutate-2.log",
+          "sha256": "d432581ed2e718e9bc27d623012b97dfa49d407d91172c7133137f4e26c1b03a",
+          "original_path": "/tmp/aethyr-ch11-build-policy-carrier-prefix-mutate-2.log"
+        }
+      ],
+      "stdout_summary": [
+        392,
+        392,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 8,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/build-policy.coax",
+          "aethyr/render/emit.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/capabilities.coax",
+          "aethyr/render/catalog.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "coax/lib/json/json.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/build-policy.coax",
+        "sha256": "d0565da9cec37044680d6932aa58bc166a6ccb5f9ea28a8cc273355816e796c4"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/capabilities.coax",
+      "current_sha256": "390d3c31419058a24ab95419929d0bc55298beb580a935e1cba9b13b10757959",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 62,
+        "killed": 62,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "2ca1c98e15b57b7eda2599ec2a2d067a5ca9facd1bdb339a0bf8b010e6e63c9f",
+        "epoch": "2ca",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "named-reference-backend gate; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-reference-caps-mutation.log",
+          "sha256": "4ca44d75573f9330103fb6ca0615606b1074220460b8fc181208c4f5aaeec4e2",
+          "original_path": "/tmp/aethyr-ch11-reference-caps-mutation.log"
+        }
+      ],
+      "stdout_summary": [
+        62,
+        62,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 1,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/capabilities.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/capabilities.coax",
+        "sha256": "390d3c31419058a24ab95419929d0bc55298beb580a935e1cba9b13b10757959"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/catalog.coax",
+      "current_sha256": "ffc486dfe5ba07894b0e82485133411411ecc6e62e470621a2befbe9dea2d888",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 46,
+        "killed": 46,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+        "epoch": "693",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "owner-reported epoch; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-catalog-mutation-2.log",
+          "sha256": "53a203ccd8a313b40642bffcf4b617b4acd66fadc16c8ba62edcf048398d4d64",
+          "original_path": "/tmp/aethyr-ch11-catalog-mutation-2.log"
+        }
+      ],
+      "stdout_summary": [
+        46,
+        46,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 4,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/catalog.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/catalog.coax",
+        "sha256": "ffc486dfe5ba07894b0e82485133411411ecc6e62e470621a2befbe9dea2d888"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/emit.coax",
+      "current_sha256": "bb71e2908ce9f8d269ed5fb5de43f22896229ed39e759deaa4e00862ecbb6e99",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 73,
+        "killed": 73,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": null,
+        "epoch": null,
+        "identity_basis": "not recorded"
+      },
+      "provenance_note": "raw version3 root log; exact compiler not recorded",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-emit-version3.log",
+          "sha256": "609a1261c8a032a9a548df1b49d9ca8f1e6dfb14123a15f57e88af903ae0a171",
+          "original_path": "/tmp/aethyr-ch11-emit-version3.log"
+        }
+      ],
+      "stdout_summary": [
+        73,
+        73,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/emit.coax",
+          "aethyr/render/bindings.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/emit.coax",
+        "sha256": "bb71e2908ce9f8d269ed5fb5de43f22896229ed39e759deaa4e00862ecbb6e99"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/filter-profile.coax",
+      "current_sha256": "94259fba2d19134361f0e46f6439be17f6a0c85370ea2c542ee68bfc118178c0",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 41,
+        "killed": 41,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "composition source archive",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/qualification.json",
+          "sha256": "c5457ddee6ff42cc70dd62c5bc9ac0adecd6da496c497e6afbf7640ce58a0438"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/frame-618-inputs.json",
+          "sha256": "38aba7ae9755bce84336a4ab421ed2217074d4d724c9fe1213501ecbcc7130a5"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/filter-policy-41.log",
+          "sha256": "8d09e97cd02bb414730c2e4028c0afc55998e1d3dddcab5e3fcdded91f5d01d9"
+        }
+      ],
+      "stdout_summary": [
+        41,
+        41,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "94259fba2d19134361f0e46f6439be17f6a0c85370ea2c542ee68bfc118178c0",
+        "root_matches_current": true,
+        "current_closure_files": 1,
+        "recorded_current_closure_files": 1,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/filter-profile.coax",
+        "sha256": "94259fba2d19134361f0e46f6439be17f6a0c85370ea2c542ee68bfc118178c0"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/footprint.coax",
+      "current_sha256": "35d8181537f0bef4928797d755b2e32720695b79bfde1009e45db5dde284e2c3",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 76,
+        "killed": 76,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": null,
+        "epoch": null,
+        "identity_basis": "not recorded"
+      },
+      "provenance_note": "s32 portable-shift repair; raw root log, compiler hash not retained with gate",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-footprint-s32-mutation.log",
+          "sha256": "711de2f96314bc564dbb5c2479cc18ac6335c7e68d246e9a5b16aa72349d8725",
+          "original_path": "/tmp/aethyr-ch11-footprint-s32-mutation.log"
+        }
+      ],
+      "stdout_summary": [
+        76,
+        76,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/footprint.coax",
+          "aethyr/render/tests/footprint-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/footprint.coax",
+        "sha256": "35d8181537f0bef4928797d755b2e32720695b79bfde1009e45db5dde284e2c3"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/fragment-layout.coax",
+      "current_sha256": "8ba891b8041e4eb3d063d353f682035982dde1d06a9101c779a56bdfcc6d28b5",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 21,
+        "killed": 21,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "owner-reported epoch; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-fragment-layout-mutate.log",
+          "sha256": "9358b428c92e4413329e996f252a35e3fdf9aaf1d7643a27bc773de48005fdfe",
+          "original_path": "/tmp/aethyr-fragment-layout-mutate.log"
+        }
+      ],
+      "stdout_summary": [
+        21,
+        21,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/fragment-layout.coax",
+          "aethyr/render/tests/fragment-layout-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/fragment-layout.coax",
+        "sha256": "8ba891b8041e4eb3d063d353f682035982dde1d06a9101c779a56bdfcc6d28b5"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/frame.coax",
+      "current_sha256": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 247,
+        "killed": 247,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+        "epoch": "046",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "source-bound historical exploratory gate",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/frame-raster-exploratory.json",
+          "sha256": "dc28819466c3f10de5293c07222d2aa5eb18df9a01a80cf527daf66670ce3f59"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-frame-mutate-2.log",
+          "sha256": "acd958015964e419f2e5a5b306dfe35eafe8a7cadffebb66cc95f56332b36013",
+          "original_path": "/tmp/aethyr-ch11-frame-mutate-2.log"
+        }
+      ],
+      "stdout_summary": [
+        247,
+        247,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+        "root_matches_current": true,
+        "current_closure_files": 3,
+        "recorded_current_closure_files": 3,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/frame.coax",
+        "sha256": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/geometry.coax",
+      "current_sha256": "494bfde7afbdaaf741a67f9088cf108f59751fe01d39a770fcbd9a6ece507261",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 710,
+        "killed": 710,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+        "epoch": "1fac",
+        "identity_basis": "contemporaneous final gate JSON"
+      },
+      "provenance_note": "Actual Everglade river-node span admission repair;98 full baseline checks then710 root mutants zero; two earlier survivors were removed by using existing rg_min without waivers. Current GPU and RF backend proof epochs stay separate.",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-everglade-water-geometry-mutate-final.json",
+          "sha256": "6d6033eec949e42ded683e3a50af70f0b9a87df5883ba8184da25b25ade8cfdc"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-everglade-water-geometry-mutate-final.log",
+          "sha256": "9f2cf45bcd50408f8125f90ab9c1c3e6d50153fbc95b51f61825079c676e93aa"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-everglade-water-geometry-green-final.log",
+          "sha256": "6e7ddd70ba497ea128c24d455be6c3ee04f11747b8ab8d8bebae587210f76e87"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-everglade-water-geometry-mutate.json",
+          "sha256": "aa2b0d19a09fc080cc1e3e71b6e2fdb8f589e4b56cb4f3cb78d1523909a30284"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-everglade-water-geometry-mutate.log",
+          "sha256": "7bfcf4ae3030d0d78a5b48446b2895cc52931eacb373c9d3840114f383d6cfe6"
+        }
+      ],
+      "stdout_summary": [
+        710,
+        710,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "494bfde7afbdaaf741a67f9088cf108f59751fe01d39a770fcbd9a6ece507261",
+        "root_matches_current": true,
+        "current_closure_files": 7,
+        "complete_closure_matches": false,
+        "limitation": "Original gate JSON records root source/compiler/exit/freeze. Full dependency hashes are retained as an explicit post-gate observation."
+      },
+      "status": "source-bound-post-gate-dependency-observation",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source-revisions/494bfde7afbdaaf741a67f9088cf108f59751fe01d39a770fcbd9a6ece507261/aethyr/render/geometry.coax",
+        "sha256": "494bfde7afbdaaf741a67f9088cf108f59751fe01d39a770fcbd9a6ece507261"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      },
+      "observed_utc": "2026-11-02T04:20:57.414887+00:00",
+      "post_gate_dependency_inventory": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/geometry-710-current-inputs.json",
+        "sha256": "ba1a7cf85a610a65b20fa661af59a8393a90d50f5f06259f547c836a9eed1679"
+      },
+      "history": [
+        {
+          "source": "aethyr/render/geometry.coax",
+          "current_sha256": "67fada3f27a8616b12716f3db9908f1994c6ae4dba2507fff798194c30f04318",
+          "scope": "root-only; imported baseline checks retained",
+          "reported_outcome": {
+            "mutants": 705,
+            "killed": 705,
+            "survivors": 0,
+            "waivers": 0
+          },
+          "compiler": {
+            "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+            "epoch": "308",
+            "identity_basis": "owning agent gate report"
+          },
+          "provenance_note": "identifier-prefix gate; older dedicated geometry record is historical",
+          "evidence": [
+            {
+              "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-geometry-prefix-final.log",
+              "sha256": "f3b7dfe91e9ebb3cb72148c7ff82ff32da79ab3e8185b105f903e6e142ec6541",
+              "original_path": "/tmp/aethyr-ch11-geometry-prefix-final.log"
+            }
+          ],
+          "stdout_summary": [
+            705,
+            705,
+            0
+          ],
+          "stdout_scope": "root-only",
+          "proof_identity": {
+            "recorded_root_sha256": null,
+            "root_matches_current": null,
+            "current_closure_files": 7,
+            "recorded_current_closure_files": 0,
+            "changed_dependencies": [],
+            "unrecorded_closure_files": [
+              "aethyr/render/geometry.coax",
+              "aethyr/render/catalog.coax",
+              "aethyr/render/bindings.coax",
+              "aethyr/render/passes.coax",
+              "aethyr/render/types.coax",
+              "aethyr/render/frame.coax",
+              "aethyr/tests/render-frame-checks.coax"
+            ],
+            "complete_closure_matches": false
+          },
+          "status": "log-only-identity-not-recorded",
+          "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+          "current_source_snapshot": {
+            "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/geometry.coax",
+            "sha256": "67fada3f27a8616b12716f3db9908f1994c6ae4dba2507fff798194c30f04318"
+          },
+          "later_imported_baseline": {
+            "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+            "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+            "entry_sha256_matches": true,
+            "current_closure_matches": true,
+            "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+          }
+        }
+      ]
+    },
+    {
+      "source": "aethyr/render/host-bindings.coax",
+      "current_sha256": "85b5743e39d9b0ab5c699228cf95636738a4fea24b0e8fde97f7f4ae5ffe1264",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 149,
+        "killed": 149,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "qualification manifest",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/host-bindings-qualification.json",
+          "sha256": "f508b13af022ccb6cf9eef23ef3c50ef322e851af0c76e2c2e2ea46bd3fbef45"
+        }
+      ],
+      "proof_identity": {
+        "recorded_root_sha256": "85b5743e39d9b0ab5c699228cf95636738a4fea24b0e8fde97f7f4ae5ffe1264",
+        "root_matches_current": true,
+        "current_closure_files": 14,
+        "recorded_current_closure_files": 14,
+        "changed_dependencies": [
+          {
+            "path": "aethyr/render/media-profile.coax",
+            "proof_sha256": "3205f0f137d8170e6186f70ec6cfec1c3c74c348c7ef98918546ba349d07125b",
+            "current_sha256": "9b161447a4a76c933ed89d9eaf289896aa2bbaba1f1ff15c36b58ec604add397"
+          }
+        ],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-bindings.coax",
+        "sha256": "85b5743e39d9b0ab5c699228cf95636738a4fea24b0e8fde97f7f4ae5ffe1264"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/host-frame.coax",
+      "current_sha256": "83eb513c6d75b14bf326b717471c6ab8f137e3e7ca70bfdb715ebc5fe70e4d13",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 74,
+        "killed": 74,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "actual generic frame composition; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-frame-generic-mutation-2.log",
+          "sha256": "a5498f2fb2bfe274203f081dafa89f3f1334b4a22e94149f7b39de98c4c9f906",
+          "original_path": "/tmp/aethyr-ch11-host-frame-generic-mutation-2.log"
+        }
+      ],
+      "stdout_summary": [
+        74,
+        74,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 9,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/host-frame.coax",
+          "aethyr/render/runtime.coax",
+          "aethyr/render/geometry.coax",
+          "aethyr/render/catalog.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "aethyr/render/frame.coax",
+          "aethyr/tests/render-frame-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-frame.coax",
+        "sha256": "83eb513c6d75b14bf326b717471c6ab8f137e3e7ca70bfdb715ebc5fe70e4d13"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/host-inputs.coax",
+      "current_sha256": "f5c00016ba47233e54d0406f8e19d1396e688bae18c13f1a47ae0937c5e8ee71",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 70,
+        "killed": 70,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "mesh-placeholder record and latest raw root log",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/native-mesh-placeholder-qualification.json",
+          "sha256": "63afc78280b458e438d8b787e83b9d471637af97209f3af40b0e2ff3eebc8271"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-inputs-mesh-mutate-2.log",
+          "sha256": "ac70b1d9539fdfc1a620f7355a117322f8853ca8ca5f346afd35a194a4d89b62",
+          "original_path": "/tmp/aethyr-ch11-host-inputs-mesh-mutate-2.log"
+        }
+      ],
+      "stdout_summary": [
+        70,
+        70,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 16,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/host-inputs.coax",
+          "aethyr/render/host-bindings.coax",
+          "aethyr/render/binding-sources.coax",
+          "aethyr/render/catalog.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "aethyr/render/resources.coax",
+          "aethyr/render/frame.coax",
+          "aethyr/tests/render-frame-checks.coax",
+          "aethyr/render/tests/resources-checks.coax",
+          "aethyr/render/media-profile.coax",
+          "aethyr/render/tests/binding-sources-checks.coax",
+          "aethyr/render/media-limits.coax",
+          "aethyr/render/tests/host-bindings-checks.coax",
+          "aethyr/render/geometry.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-inputs.coax",
+        "sha256": "f5c00016ba47233e54d0406f8e19d1396e688bae18c13f1a47ae0937c5e8ee71"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/host-media.coax",
+      "current_sha256": "9bac9f15856f98b0906b229d1f03842b0bf28913747be74feb124b60146ac38b",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 117,
+        "killed": 117,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "physical media composition gate",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/host-media-physical-117/retention.json",
+          "sha256": "91a9e8f5ce79075e467b6a2a3580510c266b6ac1b66531131e1eb1f5ea1c92ea"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-media-physical-mutate-1.log",
+          "sha256": "acf224694b0c8b6b83d5af72a93b95f044965e6afebad5f01b6a9763aaa12d7f",
+          "original_path": "/tmp/aethyr-ch11-host-media-physical-mutate-1.log"
+        }
+      ],
+      "stdout_summary": [
+        117,
+        117,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "9bac9f15856f98b0906b229d1f03842b0bf28913747be74feb124b60146ac38b",
+        "root_matches_current": true,
+        "current_closure_files": 18,
+        "recorded_current_closure_files": 1,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/media-commands.coax",
+          "aethyr/render/media-limits.coax",
+          "aethyr/render/host-textures.coax",
+          "aethyr/render/host-bindings.coax",
+          "aethyr/render/binding-sources.coax",
+          "aethyr/render/catalog.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "aethyr/render/resources.coax",
+          "aethyr/render/frame.coax",
+          "aethyr/tests/render-frame-checks.coax",
+          "aethyr/render/tests/resources-checks.coax",
+          "aethyr/render/media-profile.coax",
+          "aethyr/render/tests/binding-sources-checks.coax",
+          "aethyr/render/tests/host-bindings-checks.coax",
+          "aethyr/render/tests/host-textures-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-media.coax",
+        "sha256": "9bac9f15856f98b0906b229d1f03842b0bf28913747be74feb124b60146ac38b"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/host-memory.coax",
+      "current_sha256": "35cc126ac6c85ee0be56fd5864f86ef36dc99e87e055cc980effa6e91985fa08",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 34,
+        "killed": 34,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "checks inlined after source-unit bound; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-memory-inline-mutate.log",
+          "sha256": "dc2d5cb9546cfc67088b6a8fb9bb984b6bcbdd6081ef8bf825fb8485ff90d83d",
+          "original_path": "/tmp/aethyr-ch11-host-memory-inline-mutate.log"
+        }
+      ],
+      "stdout_summary": [
+        34,
+        34,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 4,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/host-memory.coax",
+          "aethyr/render/frame.coax",
+          "aethyr/render/types.coax",
+          "aethyr/tests/render-frame-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-memory.coax",
+        "sha256": "35cc126ac6c85ee0be56fd5864f86ef36dc99e87e055cc980effa6e91985fa08"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/host-policy.coax",
+      "current_sha256": "a3bf4a200469ca3f8e81ac37735afe47f6d3ccd83992bfd09f13c6a118ec4241",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 242,
+        "killed": 242,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "asset span after raw booleans and package transaction; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-policy-asset-span-mutation.log",
+          "sha256": "8a2e9ad1fd1cb3fcd06f995c1516692fd1be1470846101eaf57395b0cf133da5",
+          "original_path": "/tmp/aethyr-ch11-host-policy-asset-span-mutation.log"
+        }
+      ],
+      "stdout_summary": [
+        242,
+        242,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 24,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/host-policy.coax",
+          "aethyr/render/runtime.coax",
+          "aethyr/render/geometry.coax",
+          "aethyr/render/catalog.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "aethyr/render/frame.coax",
+          "aethyr/tests/render-frame-checks.coax",
+          "aethyr/render/package.coax",
+          "aethyr/render/interface.coax",
+          "aethyr/render/build-policy.coax",
+          "aethyr/render/emit.coax",
+          "aethyr/render/capabilities.coax",
+          "coax/lib/json/json.coax",
+          "aethyr/render/fragment-layout.coax",
+          "aethyr/render/tests/fragment-layout-checks.coax",
+          "aethyr/render/media-profile.coax",
+          "coax/lib/crypto/sha256-kernel.coax",
+          "aethyr/render/tests/package-checks.coax",
+          "aethyr/render/binding-sources.coax",
+          "aethyr/render/resources.coax",
+          "aethyr/render/tests/resources-checks.coax",
+          "aethyr/render/tests/binding-sources-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-policy.coax",
+        "sha256": "a3bf4a200469ca3f8e81ac37735afe47f6d3ccd83992bfd09f13c6a118ec4241"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/host-textures.coax",
+      "current_sha256": "beb8ffd86622eb5ca98fd93f88936f9c2a997403030c7709da74a055b69778a7",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 39,
+        "killed": 39,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "qualification manifest",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/host-textures-qualification.json",
+          "sha256": "b528e48f4e38c699b24a01a47e5ff4332d7f748e952719b37b445826f55f9834"
+        }
+      ],
+      "proof_identity": {
+        "recorded_root_sha256": "beb8ffd86622eb5ca98fd93f88936f9c2a997403030c7709da74a055b69778a7",
+        "root_matches_current": true,
+        "current_closure_files": 16,
+        "recorded_current_closure_files": 16,
+        "changed_dependencies": [
+          {
+            "path": "aethyr/render/media-profile.coax",
+            "proof_sha256": "3205f0f137d8170e6186f70ec6cfec1c3c74c348c7ef98918546ba349d07125b",
+            "current_sha256": "9b161447a4a76c933ed89d9eaf289896aa2bbaba1f1ff15c36b58ec604add397"
+          }
+        ],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-textures.coax",
+        "sha256": "beb8ffd86622eb5ca98fd93f88936f9c2a997403030c7709da74a055b69778a7"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/host-uploads.coax",
+      "current_sha256": "6c01b6ec542a9a9e2e0575297d05fe5ad0c38af9c5dcf06217fc059027f6405e",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 22,
+        "killed": 22,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "checks inlined after source-unit bound",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/host-uploads/retention.json",
+          "sha256": "a83a81ac026a35a8c9e9c61cf3006d60482c72e0aec326f829eda00a2606fd89"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-uploads-inline-mutate.log",
+          "sha256": "82baf095a5df74d514967d34436ae74bcc9f8c8a069172f08d91b5a28c3e4152",
+          "original_path": "/tmp/aethyr-ch11-host-uploads-inline-mutate.log"
+        }
+      ],
+      "stdout_summary": [
+        22,
+        22,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "6c01b6ec542a9a9e2e0575297d05fe5ad0c38af9c5dcf06217fc059027f6405e",
+        "root_matches_current": true,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 1,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/types.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-uploads.coax",
+        "sha256": "6c01b6ec542a9a9e2e0575297d05fe5ad0c38af9c5dcf06217fc059027f6405e"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/interface.coax",
+      "current_sha256": "fe37fad6ab782bc12e21f3bd35ec3d2bbadb9ced3f8c2442757ff30be1a71563",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 60,
+        "killed": 60,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "masked-aux rule and carrier prefixes; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-interface-carrier-prefix-mutate-2.log",
+          "sha256": "1d2c88da008f3a0aaf713fb006f00b2a639dfe337b9f4fb4881e464fe7bbb5e1",
+          "original_path": "/tmp/aethyr-ch11-interface-carrier-prefix-mutate-2.log"
+        }
+      ],
+      "stdout_summary": [
+        60,
+        60,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 11,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/interface.coax",
+          "aethyr/render/build-policy.coax",
+          "aethyr/render/emit.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/capabilities.coax",
+          "aethyr/render/catalog.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "coax/lib/json/json.coax",
+          "aethyr/render/fragment-layout.coax",
+          "aethyr/render/tests/fragment-layout-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/interface.coax",
+        "sha256": "fe37fad6ab782bc12e21f3bd35ec3d2bbadb9ced3f8c2442757ff30be1a71563"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/media-commands.coax",
+      "current_sha256": "9ce466f12c37117af43e571f79322632eba722fbb4b9c180a0909d31697688e0",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 462,
+        "killed": 462,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "checks inlined after source-unit bound; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-media-commands-inline-mutate.log",
+          "sha256": "56fd9af2b343cdb52b5f3efb912e08dc463b12bd9e10d583572e6d6226a9ba7a",
+          "original_path": "/tmp/aethyr-ch11-media-commands-inline-mutate.log"
+        }
+      ],
+      "stdout_summary": [
+        462,
+        462,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/media-commands.coax",
+          "aethyr/render/media-limits.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/media-commands.coax",
+        "sha256": "9ce466f12c37117af43e571f79322632eba722fbb4b9c180a0909d31697688e0"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/media-profile.coax",
+      "current_sha256": "9b161447a4a76c933ed89d9eaf289896aa2bbaba1f1ff15c36b58ec604add397",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 33,
+        "killed": 33,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "canonical topology and descriptor; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-media-profile-mut-final.log",
+          "sha256": "d62d6298740d8945f29a2eabc0ba418ef3f43417cdb64c491c8c8cd1f761d97c",
+          "original_path": "/tmp/aethyr-ch11-media-profile-mut-final.log"
+        }
+      ],
+      "stdout_summary": [
+        33,
+        33,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/media-profile.coax",
+          "aethyr/render/bindings.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/media-profile.coax",
+        "sha256": "9b161447a4a76c933ed89d9eaf289896aa2bbaba1f1ff15c36b58ec604add397"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/native-host.coax",
+      "current_sha256": "63ea840411544aa4bf690538265f1ed9547a87a50fb991ef74d2e2b4753c1fde",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 2,
+        "killed": 2,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "physical native wrapper gate",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/native-asset-boundary-qualification.json",
+          "sha256": "16b33160beea57d9ba4fc46ccdd809a1d2c1e26229b64e55fd6e214e9ae81945"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/native-asset-boundary/aethyr-ch11-native-span-mutation-composed-final.log",
+          "sha256": "311b1ca871af4724ccf297ef2129954a6a71c8713fe8aec1478c4ba2eeebf624"
+        }
+      ],
+      "stdout_summary": [
+        2,
+        2,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "63ea840411544aa4bf690538265f1ed9547a87a50fb991ef74d2e2b4753c1fde",
+        "root_matches_current": true,
+        "current_closure_files": 40,
+        "recorded_current_closure_files": 1,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/host.coax",
+          "aethyr/render/host-policy.coax",
+          "aethyr/render/runtime.coax",
+          "aethyr/render/geometry.coax",
+          "aethyr/render/catalog.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "aethyr/render/frame.coax",
+          "aethyr/tests/render-frame-checks.coax",
+          "aethyr/render/package.coax",
+          "aethyr/render/interface.coax",
+          "aethyr/render/build-policy.coax",
+          "aethyr/render/emit.coax",
+          "aethyr/render/capabilities.coax",
+          "coax/lib/json/json.coax",
+          "aethyr/render/fragment-layout.coax",
+          "aethyr/render/tests/fragment-layout-checks.coax",
+          "aethyr/render/media-profile.coax",
+          "coax/lib/crypto/sha256-kernel.coax",
+          "aethyr/render/tests/package-checks.coax",
+          "aethyr/render/binding-sources.coax",
+          "aethyr/render/resources.coax",
+          "aethyr/render/tests/resources-checks.coax",
+          "aethyr/render/tests/binding-sources-checks.coax",
+          "aethyr/render/host-frame.coax",
+          "aethyr/render/host-bindings.coax",
+          "aethyr/render/media-limits.coax",
+          "aethyr/render/tests/host-bindings-checks.coax",
+          "aethyr/render/host-inputs.coax",
+          "aethyr/render/host-textures.coax",
+          "aethyr/render/tests/host-textures-checks.coax",
+          "aethyr/render/host-memory.coax",
+          "aethyr/render/sans-profile.coax",
+          "aethyr/render/tests/sans-profile-checks.coax",
+          "aethyr/render/media-commands.coax",
+          "aethyr/render/host-media.coax",
+          "aethyr/render/host-uploads.coax",
+          "aethyr/render/asset-profile.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/native-host.coax",
+        "sha256": "63ea840411544aa4bf690538265f1ed9547a87a50fb991ef74d2e2b4753c1fde"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/native-texture-profile.coax",
+      "current_sha256": "caaad4704b2e24c468dffd502a7f48f3540ba7de9bfd64b83cc6b59faf4740df",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 259,
+        "killed": 259,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "qualification manifest",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/native-texture-staging-qualification.json",
+          "sha256": "beab1bbbbed45bcc5f19957ee965875e4c6b08513978e1a1ce8852576a666004"
+        }
+      ],
+      "proof_identity": {
+        "recorded_root_sha256": "caaad4704b2e24c468dffd502a7f48f3540ba7de9bfd64b83cc6b59faf4740df",
+        "root_matches_current": true,
+        "current_closure_files": 15,
+        "recorded_current_closure_files": 1,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/asset-profile.coax",
+          "aethyr/render/binding-sources.coax",
+          "aethyr/render/catalog.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "aethyr/render/resources.coax",
+          "aethyr/render/frame.coax",
+          "aethyr/tests/render-frame-checks.coax",
+          "aethyr/render/tests/resources-checks.coax",
+          "aethyr/render/media-profile.coax",
+          "aethyr/render/tests/binding-sources-checks.coax",
+          "aethyr/render/sans-profile.coax",
+          "aethyr/render/tests/sans-profile-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/native-texture-profile.coax",
+        "sha256": "caaad4704b2e24c468dffd502a7f48f3540ba7de9bfd64b83cc6b59faf4740df"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/noise.coax",
+      "current_sha256": "4a6cd03a97af0a546e110439145814c5ffc6c27dd90d1bc5a7cff7a705764346",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 29,
+        "killed": 29,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "identifier-prefix gate; old dedicated noise record is historical",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-noise-prefix-mutation.log",
+          "sha256": "1e1a4b353c28b593d80172331607d1a6a56f11c09bd7339202cc5abca8ee0af3",
+          "original_path": "/tmp/aethyr-ch11-noise-prefix-mutation.log"
+        }
+      ],
+      "stdout_summary": [
+        29,
+        29,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/noise.coax",
+          "verse/gpu/shader.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/noise.coax",
+        "sha256": "4a6cd03a97af0a546e110439145814c5ffc6c27dd90d1bc5a7cff7a705764346"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/package.coax",
+      "current_sha256": "763c6ca78f849090555b495110338469b9d542f6eadeb4c138b2d899c27ea161",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 522,
+        "killed": 522,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "mandatory trees, typed empty caster and carrier prefixes; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-package-carrier-prefix-mutate-2.log",
+          "sha256": "f1d5b5851497aa548a1289c5b5baaa435cfda7ee177cac272c7a0375494eefea",
+          "original_path": "/tmp/aethyr-ch11-package-carrier-prefix-mutate-2.log"
+        }
+      ],
+      "stdout_summary": [
+        522,
+        522,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 15,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/package.coax",
+          "aethyr/render/interface.coax",
+          "aethyr/render/build-policy.coax",
+          "aethyr/render/emit.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/capabilities.coax",
+          "aethyr/render/catalog.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "coax/lib/json/json.coax",
+          "aethyr/render/fragment-layout.coax",
+          "aethyr/render/tests/fragment-layout-checks.coax",
+          "aethyr/render/media-profile.coax",
+          "coax/lib/crypto/sha256-kernel.coax",
+          "aethyr/render/tests/package-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/package.coax",
+        "sha256": "763c6ca78f849090555b495110338469b9d542f6eadeb4c138b2d899c27ea161"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/passes.coax",
+      "current_sha256": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 291,
+        "killed": 291,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "identifier-prefix gate; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-passes-carrier-prefix-mutation.log",
+          "sha256": "e1ae17b840d23c083839422f676c7b24bc9a022d28028b526216f32189ecc85a",
+          "original_path": "/tmp/aethyr-ch11-passes-carrier-prefix-mutation.log"
+        }
+      ],
+      "stdout_summary": [
+        291,
+        291,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/passes.coax",
+        "sha256": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/raster-profile.coax",
+      "current_sha256": "4f788c64149ab1763dd35f7fc20ece72ec326fc909dd820cb3d0b90efce4de34",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 65,
+        "killed": 65,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "bounded guard-band profiles; contemporaneous gate input manifest",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-raster-profile-mutate-guard-1-inputs.json",
+          "sha256": "59745ad3112240ba826af5f24fa8345b0427e5558914663230549dc2df1d2e73",
+          "original_path": "/tmp/aethyr-raster-profile-mutate-guard-1-inputs.json"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-raster-profile-mutate-guard-1.log",
+          "sha256": "521b7ae6419cba8917c7f606714886aafc4ab7a42033c4cea3ffe1428de826fd",
+          "original_path": "/tmp/aethyr-raster-profile-mutate-guard-1.log"
+        }
+      ],
+      "stdout_summary": [
+        65,
+        65,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "4f788c64149ab1763dd35f7fc20ece72ec326fc909dd820cb3d0b90efce4de34",
+        "root_matches_current": true,
+        "current_closure_files": 6,
+        "recorded_current_closure_files": 4,
+        "changed_dependencies": [
+          {
+            "path": "aethyr/render/reference-quad.coax",
+            "proof_sha256": "d5e462db357b672231ef6a43456d069f2a1fd2eb5d1c16b2e0619efd6a7c71d7",
+            "current_sha256": "c84ed79e27e7666003d6cdd2b4b5b7942641d330d1ddf1a08d1bb892b7064259"
+          }
+        ],
+        "unrecorded_closure_files": [
+          "aethyr/render/filter-profile.coax",
+          "aethyr/render/tests/reference-filter-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/raster-profile.coax",
+        "sha256": "4f788c64149ab1763dd35f7fc20ece72ec326fc909dd820cb3d0b90efce4de34"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-depth.coax",
+      "current_sha256": "960c4b5af8e6b4e10aea7d7f02c0de29aebdcae8c10c2ef2c8f2d0992316acd7",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 66,
+        "killed": 66,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+        "epoch": "046",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "historical unchanged depth implementation; dependency raster evolved",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-depth-mutate-2.log",
+          "sha256": "92019b167495635fbd2af150c2225c4fd1587118f2c9e77b9c71b835b9728535",
+          "original_path": "/tmp/aethyr-ch11-depth-mutate-2.log"
+        }
+      ],
+      "stdout_summary": [
+        66,
+        66,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 14,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/reference-depth.coax",
+          "aethyr/render/reference-raster.coax",
+          "aethyr/render/reference-quad.coax",
+          "aethyr/render/filter-profile.coax",
+          "aethyr/render/tests/reference-quad-checks.coax",
+          "aethyr/render/tests/reference-filter-checks.coax",
+          "aethyr/render/reference-half.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "aethyr/render/raster-profile.coax",
+          "aethyr/render/tests/raster-profile-checks.coax",
+          "aethyr/render/tests/reference-raster-checks.coax",
+          "aethyr/render/tests/reference-raster-subpixel-checks.coax",
+          "aethyr/render/tests/reference-raster-guard-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-depth.coax",
+        "sha256": "960c4b5af8e6b4e10aea7d7f02c0de29aebdcae8c10c2ef2c8f2d0992316acd7"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-frame.coax",
+      "current_sha256": "64ac628fe3d800c09b5d1a4eb1bbd8e086a6ce12a2fc945e40788723a785a9cb",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 633,
+        "killed": 633,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "supported four-shard merge with exact110-source inventory",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+          "sha256": "ef5792be119c767d0f6d7ebf563c482bef2d43771ec016cb65fb72774a52451e"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+          "sha256": "41820a68a5e3d31cf1c40b88fef3972ef3b06c947b45198cd2f3db231fff138d"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/merge.log",
+          "sha256": "76e1e99e2490cd8a658eaa5f12258d1768155f2c1048dab286c493113eff5fee"
+        }
+      ],
+      "stdout_summary": [
+        633,
+        633,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "64ac628fe3d800c09b5d1a4eb1bbd8e086a6ce12a2fc945e40788723a785a9cb",
+        "root_matches_current": true,
+        "current_closure_files": 91,
+        "recorded_current_closure_files": 91,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-frame.coax",
+        "sha256": "64ac628fe3d800c09b5d1a4eb1bbd8e086a6ce12a2fc945e40788723a785a9cb"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-half.coax",
+      "current_sha256": "33953ee679200c7ef13980d8ec9cf7abc5f5ad3c9d0168be105b97fc740f21fa",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 91,
+        "killed": 91,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "composition source archive",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/qualification.json",
+          "sha256": "c5457ddee6ff42cc70dd62c5bc9ac0adecd6da496c497e6afbf7640ce58a0438"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/frame-618-inputs.json",
+          "sha256": "38aba7ae9755bce84336a4ab421ed2217074d4d724c9fe1213501ecbcc7130a5"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/half-91.log",
+          "sha256": "5d3e9076530796247dc035360c606a274082fc7c5ee7fa2899112a2edbf97818"
+        }
+      ],
+      "stdout_summary": [
+        91,
+        91,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "33953ee679200c7ef13980d8ec9cf7abc5f5ad3c9d0168be105b97fc740f21fa",
+        "root_matches_current": true,
+        "current_closure_files": 1,
+        "recorded_current_closure_files": 1,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-half.coax",
+        "sha256": "33953ee679200c7ef13980d8ec9cf7abc5f5ad3c9d0168be105b97fc740f21fa"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-io.coax",
+      "current_sha256": "27f946d2a7a41a228dcc63353b07b93742fe92d8b1f35907ddab289adafb31c5",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 371,
+        "killed": 371,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+        "epoch": "693",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "raw accessors sharpened; owner-reported historical implementation epoch",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-io-mutate-7.log",
+          "sha256": "8738a2e98ce9cad1d7004442c5759e4381d66bc4db9e311e54c81ee3aaacd240",
+          "original_path": "/tmp/aethyr-reference-io-mutate-7.log"
+        }
+      ],
+      "stdout_summary": [
+        371,
+        371,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 30,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/reference-io.coax",
+          "aethyr/render/reference-ir.coax",
+          "aethyr/render/reference-quad.coax",
+          "aethyr/render/filter-profile.coax",
+          "aethyr/render/tests/reference-quad-checks.coax",
+          "aethyr/render/tests/reference-filter-checks.coax",
+          "aethyr/render/active-lanes.coax",
+          "aethyr/render/tests/active-lanes-checks.coax",
+          "aethyr/render/tests/reference-ir-checks.coax",
+          "aethyr/render/tests/reference-ir-scalar-checks.coax",
+          "aethyr/render/tests/reference-ir-admission-checks.coax",
+          "aethyr/render/tests/reference-ir-convert-checks.coax",
+          "aethyr/render/tests/reference-ir-storage-checks.coax",
+          "aethyr/render/tests/reference-ir-run-checks.coax",
+          "aethyr/render/tests/reference-ir-gpu-checks.coax",
+          "aethyr/render/tests/reference-ir-type-checks.coax",
+          "aethyr/render/tests/reference-ir-shape-checks.coax",
+          "aethyr/render/tests/reference-ir-arena-checks.coax",
+          "aethyr/render/tests/reference-ir-transport-extra-checks.coax",
+          "aethyr/render/tests/reference-ir-prepare-budget-checks.coax",
+          "aethyr/render/tests/reference-ir-control-checks.coax",
+          "aethyr/render/tests/reference-ir-texture-extra-checks.coax",
+          "aethyr/render/tests/reference-ir-private-checks.coax",
+          "aethyr/render/tests/reference-ir-statement-checks.coax",
+          "aethyr/render/tests/reference-ir-array-query-checks.coax",
+          "aethyr/render/tests/reference-ir-call-checks.coax",
+          "aethyr/render/tests/reference-ir-place-checks.coax",
+          "aethyr/render/tests/reference-ir-value-extra-checks.coax",
+          "aethyr/render/tests/reference-ir-flow-extra-checks.coax",
+          "aethyr/render/tests/reference-io-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-io.coax",
+        "sha256": "27f946d2a7a41a228dcc63353b07b93742fe92d8b1f35907ddab289adafb31c5"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-ir.coax",
+      "current_sha256": "1fba92f895be5a7af06fd9de9fd49bcccc3aefb3022d23d5e844b574a34a0f69",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 2401,
+        "killed": 2401,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+        "epoch": "693",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "v2/v3 checked tree interpreter; contemporaneous gate input manifest",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-ir-mutate-13-inputs.json",
+          "sha256": "f22419f1ea2194f700ecae63aba73168eac5d64427f52a2e6815990fda1e538f",
+          "original_path": "/tmp/aethyr-reference-ir-mutate-13-inputs.json"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-ir-mutate-13.log",
+          "sha256": "128e96c7b61d0b2113deff6d6f8d45ea75c38d0412d27e28f021201c61c0fa86",
+          "original_path": "/tmp/aethyr-reference-ir-mutate-13.log"
+        }
+      ],
+      "stdout_summary": [
+        2401,
+        2401,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "1fba92f895be5a7af06fd9de9fd49bcccc3aefb3022d23d5e844b574a34a0f69",
+        "root_matches_current": true,
+        "current_closure_files": 28,
+        "recorded_current_closure_files": 26,
+        "changed_dependencies": [
+          {
+            "path": "aethyr/render/reference-quad.coax",
+            "proof_sha256": "d5e462db357b672231ef6a43456d069f2a1fd2eb5d1c16b2e0619efd6a7c71d7",
+            "current_sha256": "c84ed79e27e7666003d6cdd2b4b5b7942641d330d1ddf1a08d1bb892b7064259"
+          }
+        ],
+        "unrecorded_closure_files": [
+          "aethyr/render/filter-profile.coax",
+          "aethyr/render/tests/reference-filter-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-ir.coax",
+        "sha256": "1fba92f895be5a7af06fd9de9fd49bcccc3aefb3022d23d5e844b574a34a0f69"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-package.coax",
+      "current_sha256": "a23e7c9491a900ba8bf4db03a44f867ee67849bc6ddb097c8ff1499fecc88bdb",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 30,
+        "killed": 30,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "CPU package facade; contemporaneous gate input manifest",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-package-mutate-2-inputs.json",
+          "sha256": "3afced5ffee7b55017822956d5d8802894050e529d66d7ff98e439ce945d0bf0",
+          "original_path": "/tmp/aethyr-reference-package-mutate-2-inputs.json"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-package-mutate-2.log",
+          "sha256": "fae59be12940b2859f6d0536ef6f0a71eca993f93d16f0829bd316818a9c5f02",
+          "original_path": "/tmp/aethyr-reference-package-mutate-2.log"
+        }
+      ],
+      "stdout_summary": [
+        30,
+        30,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "a23e7c9491a900ba8bf4db03a44f867ee67849bc6ddb097c8ff1499fecc88bdb",
+        "root_matches_current": true,
+        "current_closure_files": 47,
+        "recorded_current_closure_files": 43,
+        "changed_dependencies": [
+          {
+            "path": "aethyr/render/reference-quad.coax",
+            "proof_sha256": "d5e462db357b672231ef6a43456d069f2a1fd2eb5d1c16b2e0619efd6a7c71d7",
+            "current_sha256": "c84ed79e27e7666003d6cdd2b4b5b7942641d330d1ddf1a08d1bb892b7064259"
+          },
+          {
+            "path": "aethyr/render/passes.coax",
+            "proof_sha256": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800",
+            "current_sha256": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462"
+          },
+          {
+            "path": "aethyr/render/bindings.coax",
+            "proof_sha256": "bd02c0475836ff87c378ee10e595080d13225f9670ecdcc7a7310f715b4e0efb",
+            "current_sha256": "8f5644b4665a1660f9a15605118e3515689e5697a8101866e68d9f7237f641bc"
+          },
+          {
+            "path": "aethyr/render/media-profile.coax",
+            "proof_sha256": "3205f0f137d8170e6186f70ec6cfec1c3c74c348c7ef98918546ba349d07125b",
+            "current_sha256": "9b161447a4a76c933ed89d9eaf289896aa2bbaba1f1ff15c36b58ec604add397"
+          },
+          {
+            "path": "aethyr/render/package.coax",
+            "proof_sha256": "b11550e59a0df2e6bb0304c8e6b27e3a430b31d7a21044d2c26393843c1fdf2b",
+            "current_sha256": "763c6ca78f849090555b495110338469b9d542f6eadeb4c138b2d899c27ea161"
+          },
+          {
+            "path": "aethyr/render/interface.coax",
+            "proof_sha256": "1bdb5ecfa89923f5284d3629729818a0ab018f6eb9ab478106e1117c064b9be9",
+            "current_sha256": "fe37fad6ab782bc12e21f3bd35ec3d2bbadb9ced3f8c2442757ff30be1a71563"
+          },
+          {
+            "path": "aethyr/render/build-policy.coax",
+            "proof_sha256": "1e1f933b9f94155aa6eeb8ea7f49ebe32c7260c4a1d992c87fc62c513e2608bf",
+            "current_sha256": "d0565da9cec37044680d6932aa58bc166a6ccb5f9ea28a8cc273355816e796c4"
+          },
+          {
+            "path": "coax/lib/json/json.coax",
+            "proof_sha256": "504a9af2a5c5a3d786776e04a31b1f509ae9a7bc76e79956f7b665ff11ad6cda",
+            "current_sha256": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1"
+          },
+          {
+            "path": "aethyr/render/tests/package-checks.coax",
+            "proof_sha256": "3b238cb65fc54a0ab578621647c07e0b02da9041f64fbb738cff854e5ac7bcf1",
+            "current_sha256": "4a014b3f6afcd71fb228ada067e7a47d9e0a39c25d2f2c9ac38ccb61c4be20ad"
+          }
+        ],
+        "unrecorded_closure_files": [
+          "aethyr/render/fragment-layout.coax",
+          "aethyr/render/tests/fragment-layout-checks.coax",
+          "aethyr/render/filter-profile.coax",
+          "aethyr/render/tests/reference-filter-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-package.coax",
+        "sha256": "a23e7c9491a900ba8bf4db03a44f867ee67849bc6ddb097c8ff1499fecc88bdb"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-pipeline.coax",
+      "current_sha256": "1a8d2984f5f2cd1be4846f4b65be7567de220aacada6ddc15e2028fdc7b92313",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 419,
+        "killed": 419,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "large-work plumbing; source hash is bound by contemporaneous frame manifest",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-frame-large-614/qualification.json",
+          "sha256": "ab278daaaab333e815e85c4396133c7a22731057b9b1e68a85f1deda10cddcf2"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-pipeline-large-mutate-1.log",
+          "sha256": "55cd5f5fed530b25cf594d91d51ea6936e8b9d5dfc1cb51692afd2b27e70e7ed",
+          "original_path": "/tmp/aethyr-reference-pipeline-large-mutate-1.log"
+        }
+      ],
+      "stdout_summary": [
+        419,
+        419,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "1a8d2984f5f2cd1be4846f4b65be7567de220aacada6ddc15e2028fdc7b92313",
+        "root_matches_current": true,
+        "current_closure_files": 53,
+        "recorded_current_closure_files": 50,
+        "changed_dependencies": [
+          {
+            "path": "aethyr/render/reference-quad.coax",
+            "proof_sha256": "d5e462db357b672231ef6a43456d069f2a1fd2eb5d1c16b2e0619efd6a7c71d7",
+            "current_sha256": "c84ed79e27e7666003d6cdd2b4b5b7942641d330d1ddf1a08d1bb892b7064259"
+          },
+          {
+            "path": "aethyr/render/reference-raster.coax",
+            "proof_sha256": "5e4c81c461f258ebbb548bd1b980105fa13ac53be9ad392a01ed99477de5a4a4",
+            "current_sha256": "48ab9115593e1679ca2ccd7d003697d1bdac5b0fc6030b6fe5f23693337db3ba"
+          },
+          {
+            "path": "aethyr/render/reference-work.coax",
+            "proof_sha256": "badf88ead3993607520906500a0a6eaec767ca4ddce46163dea47895359a570d",
+            "current_sha256": "64f2f0192b688f46dd58d9a36b6a8773dc11c1c403cd9335d56353af3493fa45"
+          },
+          {
+            "path": "aethyr/render/tests/reference-pipeline-work-checks.coax",
+            "proof_sha256": "734ccd247716e51df06a879b7ecca9bc9175e7d9fa74c6d2a1f5ee5d63695516",
+            "current_sha256": "ffa260cbbc94508e840712b10ee8975af2c64913daf0a37d5794075692bad464"
+          }
+        ],
+        "unrecorded_closure_files": [
+          "aethyr/render/filter-profile.coax",
+          "aethyr/render/tests/reference-filter-checks.coax",
+          "aethyr/render/reference-half.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-pipeline.coax",
+        "sha256": "1a8d2984f5f2cd1be4846f4b65be7567de220aacada6ddc15e2028fdc7b92313"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-quad.coax",
+      "current_sha256": "c84ed79e27e7666003d6cdd2b4b5b7942641d330d1ddf1a08d1bb892b7064259",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 354,
+        "killed": 354,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "composition source archive",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/qualification.json",
+          "sha256": "c5457ddee6ff42cc70dd62c5bc9ac0adecd6da496c497e6afbf7640ce58a0438"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/frame-618-inputs.json",
+          "sha256": "38aba7ae9755bce84336a4ab421ed2217074d4d724c9fe1213501ecbcc7130a5"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/quad-354.log",
+          "sha256": "00e64abbf2dd5dc54230bd4bf9db3684457e2012910de4261622da300cdd3608"
+        }
+      ],
+      "stdout_summary": [
+        354,
+        354,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "c84ed79e27e7666003d6cdd2b4b5b7942641d330d1ddf1a08d1bb892b7064259",
+        "root_matches_current": true,
+        "current_closure_files": 4,
+        "recorded_current_closure_files": 4,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-quad.coax",
+        "sha256": "c84ed79e27e7666003d6cdd2b4b5b7942641d330d1ddf1a08d1bb892b7064259"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-raster.coax",
+      "current_sha256": "48ab9115593e1679ca2ccd7d003697d1bdac5b0fc6030b6fe5f23693337db3ba",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 443,
+        "killed": 443,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "half codec extraction and measured filter composition",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/qualification.json",
+          "sha256": "c5457ddee6ff42cc70dd62c5bc9ac0adecd6da496c497e6afbf7640ce58a0438"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/frame-618-inputs.json",
+          "sha256": "38aba7ae9755bce84336a4ab421ed2217074d4d724c9fe1213501ecbcc7130a5"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/raster-443.log",
+          "sha256": "203a496d9898062a0998588e76d18121803e0a5d87422f32c25d18f793f4f169"
+        }
+      ],
+      "stdout_summary": [
+        443,
+        443,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "48ab9115593e1679ca2ccd7d003697d1bdac5b0fc6030b6fe5f23693337db3ba",
+        "root_matches_current": true,
+        "current_closure_files": 13,
+        "recorded_current_closure_files": 13,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-raster.coax",
+        "sha256": "48ab9115593e1679ca2ccd7d003697d1bdac5b0fc6030b6fe5f23693337db3ba"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-texture.coax",
+      "current_sha256": "0f568ce71ae4eb3400c7176341993ef5b76bb46343768242962bf8601d2ff681",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 63,
+        "killed": 63,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "composition source archive",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/qualification.json",
+          "sha256": "c5457ddee6ff42cc70dd62c5bc9ac0adecd6da496c497e6afbf7640ce58a0438"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/frame-618-inputs.json",
+          "sha256": "38aba7ae9755bce84336a4ab421ed2217074d4d724c9fe1213501ecbcc7130a5"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/reference-filter-unorm8/texture-63.log",
+          "sha256": "0f367e7c5c456e20b52007a3bc31e69d700ca7ea025fa35202a10861046d05bd"
+        }
+      ],
+      "stdout_summary": [
+        63,
+        63,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "0f568ce71ae4eb3400c7176341993ef5b76bb46343768242962bf8601d2ff681",
+        "root_matches_current": true,
+        "current_closure_files": 17,
+        "recorded_current_closure_files": 17,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-texture.coax",
+        "sha256": "0f568ce71ae4eb3400c7176341993ef5b76bb46343768242962bf8601d2ff681"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-tree.coax",
+      "current_sha256": "c54f85ad6474ad2999edcb6448f3daef9075983a98c4168e6ddc0e9eabff7d5d",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 124,
+        "killed": 124,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+        "epoch": "693",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "bounded text-word decoder; contemporaneous gate input manifest",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-tree-mutate-2-inputs.json",
+          "sha256": "616b392ab40318215c2282e60d19b5a18a718d06b82c4b49c53f4c7b8f26deaf",
+          "original_path": "/tmp/aethyr-reference-tree-mutate-2-inputs.json"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-tree-mutate-2.log",
+          "sha256": "bc4bf064f86493dfffec18469218bda76873d68c99331912078147db326a9ec0",
+          "original_path": "/tmp/aethyr-reference-tree-mutate-2.log"
+        }
+      ],
+      "stdout_summary": [
+        124,
+        124,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "c54f85ad6474ad2999edcb6448f3daef9075983a98c4168e6ddc0e9eabff7d5d",
+        "root_matches_current": true,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 2,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-tree.coax",
+        "sha256": "c54f85ad6474ad2999edcb6448f3daef9075983a98c4168e6ddc0e9eabff7d5d"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/reference-work.coax",
+      "current_sha256": "64f2f0192b688f46dd58d9a36b6a8773dc11c1c403cd9335d56353af3493fa45",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 39,
+        "killed": 39,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "explicit additional complex-work profile; standard limits unchanged",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/reference-work-complex-qualification.json",
+          "sha256": "49ed723e257fd240a71cc9473f56c4b508a7fe1c4ad44ffbc1a7facf9335c50f"
+        }
+      ],
+      "proof_identity": {
+        "recorded_root_sha256": "64f2f0192b688f46dd58d9a36b6a8773dc11c1c403cd9335d56353af3493fa45",
+        "root_matches_current": true,
+        "current_closure_files": 1,
+        "recorded_current_closure_files": 1,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-work.coax",
+        "sha256": "64f2f0192b688f46dd58d9a36b6a8773dc11c1c403cd9335d56353af3493fa45"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/resources.coax",
+      "current_sha256": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 180,
+        "killed": 180,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+        "epoch": "693",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "source-bound historical qualification; identifier-only dependency changes later",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-resources-qualification-047.json",
+          "sha256": "608b9a4aecb8d55cd132590557ee65b8a55de094158c7c7ab50c6ccd252a37bf",
+          "original_path": "/tmp/aethyr-resources-qualification-047.json"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-resources-mutate-2.log",
+          "sha256": "fa8881d1ede44a9b35bd78842e1c7a3f0ad47b84c43f3b9dda4bf3b17553eb56",
+          "original_path": "/tmp/aethyr-resources-mutate-2.log"
+        }
+      ],
+      "stdout_summary": [
+        180,
+        180,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8",
+        "root_matches_current": true,
+        "current_closure_files": 7,
+        "recorded_current_closure_files": 7,
+        "changed_dependencies": [
+          {
+            "path": "aethyr/render/passes.coax",
+            "proof_sha256": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800",
+            "current_sha256": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462"
+          },
+          {
+            "path": "aethyr/render/bindings.coax",
+            "proof_sha256": "bd02c0475836ff87c378ee10e595080d13225f9670ecdcc7a7310f715b4e0efb",
+            "current_sha256": "8f5644b4665a1660f9a15605118e3515689e5697a8101866e68d9f7237f641bc"
+          }
+        ],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/resources.coax",
+        "sha256": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/ring8.coax",
+      "current_sha256": "67c2f429d8c1a93efd2dd6147b482b3299b21147671f6fd84c617f06ba96eff2",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 8,
+        "killed": 8,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+        "epoch": "1fac",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "compiler-owned evidence with exact two-file inventory",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-ring8/mutation.evidence.json",
+          "sha256": "77a7a92055cecffae3841d0311744e6948259977ff88ac437d5a371cffd54135"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-ring8/mutation.log",
+          "sha256": "0caa06210fee9d5f231649c103508f885bbe72b158573a27ad6eeef3b7a49bef"
+        }
+      ],
+      "stdout_summary": [
+        8,
+        8,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "67c2f429d8c1a93efd2dd6147b482b3299b21147671f6fd84c617f06ba96eff2",
+        "root_matches_current": true,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 2,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/ring8.coax",
+        "sha256": "67c2f429d8c1a93efd2dd6147b482b3299b21147671f6fd84c617f06ba96eff2"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/runtime.coax",
+      "current_sha256": "40797c9db8139cf374ee9ac6e02e663d2ba6160c558c9ad923145f3c27464959",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 85,
+        "killed": 85,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+        "epoch": "693",
+        "identity_basis": "owning agent gate report"
+      },
+      "provenance_note": "whole geometry/frame/pass composition; raw root log",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-runtime-mutation-2.log",
+          "sha256": "bb56b5eea8f561a28b51ce6d8ef0d69386f890c7cac90c2f23ebf025676f04d7",
+          "original_path": "/tmp/aethyr-ch11-runtime-mutation-2.log"
+        }
+      ],
+      "stdout_summary": [
+        85,
+        85,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": null,
+        "root_matches_current": null,
+        "current_closure_files": 8,
+        "recorded_current_closure_files": 0,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/runtime.coax",
+          "aethyr/render/geometry.coax",
+          "aethyr/render/catalog.coax",
+          "aethyr/render/bindings.coax",
+          "aethyr/render/passes.coax",
+          "aethyr/render/types.coax",
+          "aethyr/render/frame.coax",
+          "aethyr/tests/render-frame-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "log-only-identity-not-recorded",
+      "limitation": "The retained stdout proves the stated score. This audit does not invent a contemporaneous source/compiler inventory; current-source snapshot below is an observation made during consolidation.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/runtime.coax",
+        "sha256": "40797c9db8139cf374ee9ac6e02e663d2ba6160c558c9ad923145f3c27464959"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/sampling-core.coax",
+      "current_sha256": "3b03c9587956c4af4d60dc50fea61a06bd496e1a4a4bc2e790c6dbd8bd5f288f",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 16,
+        "killed": 16,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+        "epoch": "693",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "owned anisotropic tap policy; helper footprint later got s32 repair",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/sampling8-candidate-693/qualification.json",
+          "sha256": "f07718b17076d5f59491a869c697ab7e017c968d081004d9d0eebd26875723c1"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/sampling8-candidate-693/source-manifest.json",
+          "sha256": "409697d8106a5bd8eff7bfe21ecda403f929bfb1d974865b5acc9094a038c8ee"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-sampling-core-mut.log",
+          "sha256": "fc1564ac10c0665611272ca5630bab6d5e52d21618ee7a2d840a1f6a4d5221a2",
+          "original_path": "/tmp/aethyr-ch11-sampling-core-mut.log"
+        }
+      ],
+      "stdout_summary": [
+        16,
+        16,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "3b03c9587956c4af4d60dc50fea61a06bd496e1a4a4bc2e790c6dbd8bd5f288f",
+        "root_matches_current": true,
+        "current_closure_files": 4,
+        "recorded_current_closure_files": 4,
+        "changed_dependencies": [
+          {
+            "path": "verse/gpu/shader.coax",
+            "proof_sha256": "4a5333e783dbc9abfb774d8f8c7512b89af77dbb789bf64de8ab4488a5d5897b",
+            "current_sha256": "9688942c90063b6a8f162d79f19332dde17dbb4d7cbeb8885ee13d899c0e1813"
+          },
+          {
+            "path": "aethyr/render/footprint.coax",
+            "proof_sha256": "1fbc72b396b8f637322c6f714508ee4cb804e9bda24e6951c7376bd6c665cd0d",
+            "current_sha256": "35d8181537f0bef4928797d755b2e32720695b79bfde1009e45db5dde284e2c3"
+          },
+          {
+            "path": "aethyr/render/tests/footprint-checks.coax",
+            "proof_sha256": "3d600fb7166555bb1423ee741c22dc82108bfc7ceba59b979e2d8b74c1204976",
+            "current_sha256": "37bd23938d81c51c74053bb0323ce9873596f4c4f1d05d0337d100a12bdaa6a9"
+          }
+        ],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/sampling-core.coax",
+        "sha256": "3b03c9587956c4af4d60dc50fea61a06bd496e1a4a4bc2e790c6dbd8bd5f288f"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/sans-filter-core.coax",
+      "current_sha256": "90caae1905358cf05c0b74d2dca4ba0f1b8299496700534ec2494404223f48bf",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 44,
+        "killed": 44,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "owned five-level Sans filtering",
+      "evidence": [
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/qualification.json",
+          "sha256": "af9c94d7675aca93ed8ac1047ced1a9e9d3d7b4a38ee2dc1d71dd6ba6cd28af0"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/helper-44.log",
+          "sha256": "1a4c6b71db635521f5d65129d6fbf91838d2e95b067d1058b43f21b445634c02"
+        }
+      ],
+      "stdout_summary": [
+        44,
+        44,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "90caae1905358cf05c0b74d2dca4ba0f1b8299496700534ec2494404223f48bf",
+        "root_matches_current": true,
+        "current_closure_files": 4,
+        "recorded_current_closure_files": 1,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [
+          "aethyr/render/sans-profile.coax",
+          "aethyr/render/tests/sans-profile-checks.coax",
+          "verse/gpu/shader.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/sans-filter-core.coax",
+        "sha256": "90caae1905358cf05c0b74d2dca4ba0f1b8299496700534ec2494404223f48bf"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/sans-profile.coax",
+      "current_sha256": "f8256f8dbf05657b8854c545e7e1267114eb8231c9a2e52bdd15089318b10993",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 94,
+        "killed": 94,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "2ca1c98e15b57b7eda2599ec2a2d067a5ca9facd1bdb339a0bf8b010e6e63c9f",
+        "epoch": "2ca",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "canonical glyph/mip policy; offline111glyph five-mip parity separate",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/sans-profile-qualification.json",
+          "sha256": "a218851770daf06df2c81d32bb9966a541947f8ad40b9d6304a17ce19cb0226b"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/core-root-047.log",
+          "sha256": "8419cdc7f3cf5a12a16756bd259208d70797f7c51a000d4341afc802cc950e34"
+        }
+      ],
+      "stdout_summary": [
+        94,
+        94,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "f8256f8dbf05657b8854c545e7e1267114eb8231c9a2e52bdd15089318b10993",
+        "root_matches_current": true,
+        "current_closure_files": 2,
+        "recorded_current_closure_files": 2,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/sans-profile.coax",
+        "sha256": "f8256f8dbf05657b8854c545e7e1267114eb8231c9a2e52bdd15089318b10993"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/tests/filter-native.coax",
+      "current_sha256": "d1d89146921babbcf39195c33eed60198cce50f6afd6a75c65e4426453994dcd",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 12,
+        "killed": 12,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "epoch": "308",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "native filter transport policy",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/filter-native-qualification.json",
+          "sha256": "0e71ab6b60bdbba86f609a527fbc9cc315d9beeacee64ee9cec64f914b502009"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-filter-native-mutation-final-2.log",
+          "sha256": "28b8f39515d5c02675da54bbfea58fcef0695d137368b94e80a2a348179cee3c",
+          "original_path": "/tmp/aethyr-ch11-filter-native-mutation-final-2.log"
+        }
+      ],
+      "stdout_summary": [
+        12,
+        12,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "d1d89146921babbcf39195c33eed60198cce50f6afd6a75c65e4426453994dcd",
+        "root_matches_current": true,
+        "current_closure_files": 18,
+        "recorded_current_closure_files": 18,
+        "changed_dependencies": [],
+        "unrecorded_closure_files": [],
+        "complete_closure_matches": true
+      },
+      "status": "source-and-closure-bound",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/tests/filter-native.coax",
+        "sha256": "d1d89146921babbcf39195c33eed60198cce50f6afd6a75c65e4426453994dcd"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": null,
+        "current_closure_matches": false,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    },
+    {
+      "source": "aethyr/render/texture-codec.coax",
+      "current_sha256": "166db59138926ed611567c2f4e42add561bacbd2e6a378a89db8256e70d205c1",
+      "scope": "root-only; imported baseline checks retained",
+      "reported_outcome": {
+        "mutants": 257,
+        "killed": 257,
+        "survivors": 0,
+        "waivers": 0
+      },
+      "compiler": {
+        "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+        "epoch": "693",
+        "identity_basis": "primary manifest"
+      },
+      "provenance_note": "historical codec gate; dependencies evolved separately",
+      "evidence": [
+        {
+          "path": "aethyr/render/tests/texture-codec-qualification.json",
+          "sha256": "0ede54530c7b76c311567d5ed63ccfce37ea70caffa8b5b32aedbcc444e2898d"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-texture-codec-mutation-4.log",
+          "sha256": "03e1357ee7f7dec9202eba08b0cc280baed9830f0974f8f6903f62a08363014b",
+          "original_path": "/tmp/aethyr-ch11-texture-codec-mutation-4.log"
+        }
+      ],
+      "stdout_summary": [
+        257,
+        257,
+        0
+      ],
+      "stdout_scope": "root-only",
+      "proof_identity": {
+        "recorded_root_sha256": "166db59138926ed611567c2f4e42add561bacbd2e6a378a89db8256e70d205c1",
+        "root_matches_current": true,
+        "current_closure_files": 15,
+        "recorded_current_closure_files": 8,
+        "changed_dependencies": [
+          {
+            "path": "aethyr/render/reference-raster.coax",
+            "proof_sha256": "86af225aafa268fd85a87af84cac8320e135ea885ee80645083d8b63d96c3b7a",
+            "current_sha256": "48ab9115593e1679ca2ccd7d003697d1bdac5b0fc6030b6fe5f23693337db3ba"
+          },
+          {
+            "path": "aethyr/render/reference-quad.coax",
+            "proof_sha256": "d5e462db357b672231ef6a43456d069f2a1fd2eb5d1c16b2e0619efd6a7c71d7",
+            "current_sha256": "c84ed79e27e7666003d6cdd2b4b5b7942641d330d1ddf1a08d1bb892b7064259"
+          },
+          {
+            "path": "aethyr/render/passes.coax",
+            "proof_sha256": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800",
+            "current_sha256": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462"
+          }
+        ],
+        "unrecorded_closure_files": [
+          "aethyr/render/filter-profile.coax",
+          "aethyr/render/tests/reference-filter-checks.coax",
+          "aethyr/render/reference-half.coax",
+          "aethyr/render/raster-profile.coax",
+          "aethyr/render/tests/raster-profile-checks.coax",
+          "aethyr/render/tests/reference-raster-subpixel-checks.coax",
+          "aethyr/render/tests/reference-raster-guard-checks.coax"
+        ],
+        "complete_closure_matches": false
+      },
+      "status": "source-bound-historical-dependencies",
+      "limitation": "The exact unchanged entry source retains this mutation epoch; dependency changes/missing inventory are explicit. Newer imported-baseline executions and dependency root gates have separate scopes.",
+      "current_source_snapshot": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/texture-codec.coax",
+        "sha256": "166db59138926ed611567c2f4e42add561bacbd2e6a378a89db8256e70d205c1"
+      },
+      "later_imported_baseline": {
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/qualification.json",
+        "inventory": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/frame-authority-633/inputs.json",
+        "entry_sha256_matches": true,
+        "current_closure_matches": true,
+        "note": "Full633 gate baseline imported these exact files when recorded. Only reference-frame root sites were mutated; this is not dependency mutation coverage."
+      }
+    }
+  ],
+  "chapter_dependencies": [
+    {
+      "source": "coax/lib/json/json.coax",
+      "current_sha256": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1",
+      "record": {
+        "path": "docs/verification/coax-json-authority-2026-11-01.json",
+        "sha256": "1fb543ae2b185f125fa0a198eaee508e787788aec6ad58e9eb5579a1bf178410"
+      },
+      "recorded_sha256": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1",
+      "root_matches_record": true,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "root_mutants": 1055,
+      "killed": 1055,
+      "survivors": 0,
+      "new_waivers": 0,
+      "preexisting_equivalence_marks": 0,
+      "scope": "Chapter dependency; see original record for complete scope, source closure, failed history and non-renderer limitations."
+    },
+    {
+      "source": "coax/lib/image/jpeg.coax",
+      "current_sha256": "98552cd3c170ab334ed26138387c375e54371d9c7c2c7f49e93ce6b0d7f6e830",
+      "record": {
+        "path": "aethyr/render/tests/native-texture-staging-qualification.json",
+        "sha256": "beab1bbbbed45bcc5f19957ee965875e4c6b08513978e1a1ce8852576a666004"
+      },
+      "recorded_sha256": "98552cd3c170ab334ed26138387c375e54371d9c7c2c7f49e93ce6b0d7f6e830",
+      "root_matches_record": true,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "root_mutants": 1365,
+      "killed": 1330,
+      "survivors": 0,
+      "new_waivers": 0,
+      "preexisting_equivalence_marks": 35,
+      "scope": "Chapter dependency; see original record for complete scope, source closure, failed history and non-renderer limitations."
+    },
+    {
+      "source": "psionic/lib/pylon/beacon.coax",
+      "current_sha256": "2c49cb3aab76f594dfab68f1e7a7e18c917b584cdfb2c9e35bcba0875cce334a",
+      "record": {
+        "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/dependencies/psionic-pylon-beacon-fixture-alias-2026-11-01.json",
+        "sha256": "ded1e95237b953a61288cda3c89b9520a0f5742f313b7d2266633b20a995af2f",
+        "original_path": "/Users/christopherdavid/work/openagents-pylon-beacon-alias/docs/verification/psionic-pylon-beacon-fixture-alias-2026-11-01.json"
+      },
+      "recorded_sha256": "2c49cb3aab76f594dfab68f1e7a7e18c917b584cdfb2c9e35bcba0875cce334a",
+      "root_matches_record": true,
+      "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+      "root_mutants": 839,
+      "killed": 839,
+      "survivors": 0,
+      "new_waivers": 0,
+      "preexisting_equivalence_marks": 0,
+      "scope": "Chapter dependency; see original record for complete scope, source closure, failed history and non-renderer limitations."
+    }
+  ],
+  "unrelated_upstream_scope": "Upstream Psionic/Nostr authority edits since chapter9 are not renderer changes. Their publication records are outside this index. Compiler implementation dependencies retain independent release/bootstrap records.",
+  "compiler_dependencies": [
+    {
+      "commit": "745666d66e1669bce81ff8d16256c8185a32f2df",
+      "record": "docs/verification/coax-gpu-047-2026-11-01.json",
+      "artifact_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "scope": "Published GPU0.47 shader/tree3/array-vector compiler dependency; historical50existing shader equivalences explicit in its record."
+    },
+    {
+      "commit": "8008dcc0386f7ba819faa7b1bc8c4454ed460fae",
+      "record": "docs/verification/coax-authority-check-budgets-2026-11-01.json",
+      "artifact_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+      "scope": "Published existing authority-check storage-budget context and9502/9502 supported checker mutation proof. Stable artifact remains external to the book308 path. Later upstream installer/Metal compiler edits are not covered by1fac."
+    }
+  ],
+  "current_inventory": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source-inventory.json",
+    "sha256": "cca6b22232d7547b273da307ee46602de2667b625ddcbde72f517e980468b0d8"
+  },
+  "release_followup": "Resolve any actual current-entry mismatch or missing source/epoch attribution using retained exact records/owner reports; retain changed dependency scopes explicitly. Do not rerun unchanged passing gates merely to make this index uniform.",
+  "retained_artifact_index": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/artifact-index.json",
+    "sha256": "e2a1968b3b3946f508afb60686934aaf5f88fc0beeae07a108af888c6bdde66e"
+  },
+  "post_audit_source_changes": [],
+  "post_audit_observed_utc": "2026-11-02T04:19:27.784736+00:00",
+  "source_epoch_note": "The per-root current_sha256 fields name the original observed_utc snapshot. Any post_audit_source_changes below require separate proof; old scores are not assigned to later source bytes.",
+  "later_dependency_changes": [
+    {
+      "source": "aethyr/render/geometry.coax",
+      "audited_sha256": "67fada3f27a8616b12716f3db9908f1994c6ae4dba2507fff798194c30f04318",
+      "later_sha256": "494bfde7afbdaaf741a67f9088cf108f59751fe01d39a770fcbd9a6ece507261",
+      "new_root_score": "710/710 zero;1fac",
+      "affected_original_inventory_roots": [
+        "aethyr/render/host-frame.coax",
+        "aethyr/render/host-inputs.coax",
+        "aethyr/render/host-policy.coax",
+        "aethyr/render/native-host.coax",
+        "aethyr/render/reference-frame.coax",
+        "aethyr/render/runtime.coax"
+      ],
+      "scope": "These earlier root scores and imported baseline inventories remain their exact historical epochs. This new Geometry gate is not a fresh compilation or image qualification of those dependents."
+    }
+  ],
+  "geometry_refresh_utc": "2026-11-02T04:20:57.414887+00:00"
+}

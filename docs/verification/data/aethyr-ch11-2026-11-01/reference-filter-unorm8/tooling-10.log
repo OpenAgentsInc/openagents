@@ -1,0 +1,15 @@
+test_compiler_and_every_artifact_identity_are_checked (test_reference_frame_tool.BackendReceipts.test_compiler_and_every_artifact_identity_are_checked) ... ok
+test_completed_artifacts_retain_exact_coax_closure_across_tool_changes (test_reference_frame_tool.BackendReceipts.test_completed_artifacts_retain_exact_coax_closure_across_tool_changes) ... ok
+test_incomplete_or_changed_receipts_do_not_authorize_reuse (test_reference_frame_tool.BackendReceipts.test_incomplete_or_changed_receipts_do_not_authorize_reuse) ... ok
+test_source_drift_and_other_entries_are_rejected (test_reference_frame_tool.BackendReceipts.test_source_drift_and_other_entries_are_rejected) ... ok
+test_checked_and_wrapping_emissions_cannot_cross_profiles (test_reference_frame_tool.NativeProfiles.test_checked_and_wrapping_emissions_cannot_cross_profiles) ... ok
+test_checked_emission_rebuilds_for_sanitizers_and_other_compiler_flags (test_reference_frame_tool.NativeProfiles.test_checked_emission_rebuilds_for_sanitizers_and_other_compiler_flags) ... ok
+test_historical_checked_o2_identity_and_missing_driver_identity (test_reference_frame_tool.NativeProfiles.test_historical_checked_o2_identity_and_missing_driver_identity) ... ok
+test_shared_rfi_whitespace_framing_preserves_every_observation (test_reference_frame_tool.RecordedTransport.test_shared_rfi_whitespace_framing_preserves_every_observation) ... ok
+test_snapshot_preserves_names_counts_and_every_texture_media_payload (test_reference_frame_tool.RecordedTransport.test_snapshot_preserves_names_counts_and_every_texture_media_payload) ... ok
+test_truncation_unknown_suffix_and_wrong_requested_package_refuse (test_reference_frame_tool.RecordedTransport.test_truncation_unknown_suffix_and_wrong_requested_package_refuse) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.018s
+
+OK

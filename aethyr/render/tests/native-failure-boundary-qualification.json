@@ -1,0 +1,48 @@
+{
+  "schema": "aethyr.render.native-failure-boundaries.v1",
+  "status": "pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "scope": "Actual typed Fixture submission with a planted warning-counter increment immediately after the real GPU submit, plus Grid missing-static-Sans pre-submit sentinel controls. Qualifies failure/acknowledgement behavior, not numerical image comparison or a naturally occurring device warning.",
+  "cases": {
+    "postsubmit-red": {
+      "native_exit": 2,
+      "elapsed_seconds": 15.148443625017535,
+      "diagnostic": "postsubmit result1 pending0 warning1 diagnostic\n",
+      "staged_archive_sha256": "925bcf407571d87cfc350ea31d62fb23435f51f7219cbc7b3cbe2f35f7f3c6bf",
+      "expected_exit": 2,
+      "meaning": "Original-source regression demonstrates incorrect acceptance/publication"
+    },
+    "postsubmit-green": {
+      "native_exit": 0,
+      "elapsed_seconds": 13.50056512496667,
+      "diagnostic": "postsubmit warning refused; retained689184 bytes; successful retry acknowledged all prefixes\n",
+      "staged_archive_sha256": "8d0c14b266006b88276edf865651ae5f0d46c363b804eb7b14d873eecf673a13",
+      "expected_exit": 0,
+      "meaning": "Corrected refusal/acknowledgement behavior passes independent assertions"
+    },
+    "missing-sans-red": {
+      "native_exit": 3,
+      "elapsed_seconds": 5.8443106670165434,
+      "diagnostic": "missing Sans changed buffer payload before refusal:physical binding observation unavailable\n",
+      "staged_archive_sha256": "6e8e56e433ce64b9b90663cac6eede415856b245a5d44828e863b21cce72b1c8",
+      "expected_exit": 3,
+      "meaning": "Original-source regression demonstrates incorrect acceptance/publication"
+    },
+    "missing-sans-green": {
+      "native_exit": 0,
+      "elapsed_seconds": 5.694369416974951,
+      "diagnostic": "missing Sans refused before all producer GPU payload writes:active texture observation refused by Coax before payload writes\n",
+      "staged_archive_sha256": "93e5d76a877d6adba5edece5e76a31d9fa12e3cc73207f1bc227e6706b07ec8d",
+      "expected_exit": 0,
+      "meaning": "Corrected refusal/acknowledgement behavior passes independent assertions"
+    }
+  },
+  "postsubmit_fence": {
+    "original_source_fence_unchanged": false,
+    "reason": "Only render-host.h documentation changed during execution. Exact executed header retained in staged archive; implementation used by experiment held fixed. Header diff retained.",
+    "limitations": "Post-submit failure can have already issued GPU effects. It retains pending producer upload prefixes; the next clean retry acknowledges them. Zero-effects applies only to the demonstrated pre-submit static-texture refusal. The test explicitly makes the second clean API call; the ordinary vk-realm CLI exits on frame refusal rather than automatically retrying."
+  },
+  "static_texture_preflight": "Active Coax-selected binding/texture observations are checked before producer payload copies. Missing Sans leaves both initialized sentinel uniform/HUD GPU buffers byte-identical.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-failure-boundaries",
+  "postsubmit_fault": "Test-only submit wrapper calls the original Vulkan submit, then increments vkc_validation_warnings exactly once; the second clean retry uses the ordinary submit. Original driver and executed ELF retained."
+}

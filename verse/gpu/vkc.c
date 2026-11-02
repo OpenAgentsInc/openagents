@@ -31,6 +31,18 @@ static int has_layer(const char *name) {
 
 void vkc_open(Vkc *v) { vkc_open_with(v, NULL, 0, NULL, 0); }
 
+static int has_device_extension(VkPhysicalDevice gpu, const char *name) {
+  uint32_t n = 0;
+  CHECK(vkEnumerateDeviceExtensionProperties(gpu, NULL, &n, NULL));
+  VkExtensionProperties *properties = calloc(n, sizeof *properties);
+  if (n && !properties) { fprintf(stderr, "vkc: cannot read device extensions\n"); exit(1); }
+  CHECK(vkEnumerateDeviceExtensionProperties(gpu, NULL, &n, properties));
+  int found = 0;
+  for (uint32_t i = 0; i < n; i++) found |= !strcmp(properties[i].extensionName, name);
+  free(properties);
+  return found;
+}
+
 void vkc_open_with(Vkc *v, const char *const *instance_exts, uint32_t ni, const char *const *device_exts, uint32_t nd) {
   memset(v, 0, sizeof *v);
   // An instance with only the surface extensions asked for; none is headless.
@@ -77,9 +89,24 @@ void vkc_open_with(Vkc *v, const char *const *instance_exts, uint32_t ni, const 
   float priority = 1;
   VkDeviceQueueCreateInfo qci = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, .queueFamilyIndex = v->family, .queueCount = 1, .pQueuePriorities = &priority};
   // Kernels and draws from coax spirv keep f32 NaN, infinity and signed zero (float controls).
-  const char *dexts[8] = {VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME};
+  const char *dexts[9] = {VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME};
   if (nd > 7) { fprintf(stderr, "vkc: at most 7 device extensions\n"); exit(1); }
   for (uint32_t i = 0; i < nd; i++) dexts[1 + i] = device_exts[i];
+  uint32_t dext_count = 1 + nd;
+  // This is platform feature discovery/enablement, not shader admission.
+  // Coax must refuse a required helper feature when enabled remains false.
+  VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT demote = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT};
+  if (has_device_extension(v->gpu, VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME)) {
+    VkPhysicalDeviceFeatures2 observed = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &demote};
+    vkGetPhysicalDeviceFeatures2(v->gpu, &observed);
+    v->demote_helper_supported = demote.shaderDemoteToHelperInvocation != VK_FALSE;
+  }
+  if (v->demote_helper_supported) {
+    int already_requested = 0;
+    for (uint32_t i = 0; i < dext_count; i++) already_requested |= !strcmp(dexts[i], VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME);
+    if (!already_requested) dexts[dext_count++] = VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME;
+  }
   // Shaders from coax spirv --vertex/--fragment use 64-bit integers for Coax's int.
   VkPhysicalDeviceFeatures has, want = {0};
   vkGetPhysicalDeviceFeatures(v->gpu, &has);
@@ -87,8 +114,11 @@ void vkc_open_with(Vkc *v, const char *const *instance_exts, uint32_t ni, const 
   // A pass may blend one target and leave another as it is (WebGPU's per-target blend and write mask).
   want.independentBlend = has.independentBlend;
   VkDeviceCreateInfo dci = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .queueCreateInfoCount = 1, .pQueueCreateInfos = &qci,
-                            .enabledExtensionCount = 1 + nd, .ppEnabledExtensionNames = dexts, .pEnabledFeatures = &want};
+                            .pNext = v->demote_helper_supported ? &demote : NULL,
+                            .enabledExtensionCount = dext_count, .ppEnabledExtensionNames = dexts, .pEnabledFeatures = &want};
   CHECK(vkCreateDevice(v->gpu, &dci, NULL, &v->dev));
+  v->demote_helper_enabled = v->demote_helper_supported;
+  v->shader_int64_enabled = want.shaderInt64 != VK_FALSE;
   vkGetDeviceQueue(v->dev, v->family, 0, &v->queue);
 }
 

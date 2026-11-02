@@ -1,0 +1,13 @@
+ok   #test OPEN PROJECT goes to the place's page; a click outside closes the card (1 case, 72863748 steps, 6248 ms)
+        own steps  share   with calls     calls  procedure
+         23743748  32.6%     23743748     30068  lit  apps/openagents-web/newland.coax:266
+          9350608  12.8%     40669760     39880  seg  apps/openagents-web/newland.coax:425
+          6129172   8.4%      6129172    322588  dot3  apps/openagents-web/newland.coax:395
+          3828332   5.3%     40387213         4  floor_grid  apps/openagents-web/newland.coax:1174
+          3622004   5.0%      3622004     33368  on_plot  apps/openagents-web/newland.coax:459
+          3561360   4.9%     10117500     80940  spot  apps/openagents-web/newland.coax:413
+          2892672   4.0%      3856896    160704  fv_sub  verse/figure.coax:134
+          2288284   3.1%      2448737       194  draw_sans  apps/openagents-web/font.coax:442
+     ... 159 more procedures
+1 of 114 checks (--only 'OPEN PROJECT goes to the place's page; a click outside closes the card'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

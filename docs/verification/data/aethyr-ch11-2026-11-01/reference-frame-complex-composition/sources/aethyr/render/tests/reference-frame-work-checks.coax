@@ -1,0 +1,26 @@
+#forall "reference frame work identity preserves standard admission and selects explicit large world" which:0..<9 {
+ policy:=RFPolicy.{};#assert policy.work_profile==RRWorkProfile.standard && policy.shader_work==100000000 && policy.pixel_work==100000000;
+ expected:=RQStatus.ok;
+ if which==1 {policy.shader_work=100000001;expected=RQStatus.resource;}
+ if which>=2 {policy=rf_work_policy(RRWorkProfile.large_world);#assert policy.shader_work==1000000000 && policy.pixel_work==100000000 && policy.work_profile==RRWorkProfile.large_world;}
+ if which==3 {policy.shader_work=1000000001;expected=RQStatus.resource;}
+ if which==4 {policy.work_profile=RRWorkProfile.invalid;expected=RQStatus.unsupported;}
+ if which==5 {policy.work_profile=rr_work_profile("LARGE-WORLD");expected=RQStatus.unsupported;}
+ if which==6 {policy.shader_work=0;expected=RQStatus.resource;}
+ if which==7 {policy.pixel_work=100000001;expected=RQStatus.resource;}
+ if which==8 {policy.pixel_work=0;expected=RQStatus.resource;}
+ counts:=FrameCounts.{width=2,height=2,vertex_stride=16};input:=RFInput.{profile=15,counts=counts,ready=RenderReadiness.loading};shaders:[]RFShader;out:[1]RQColor;out[0].r=91;
+ q:=rf_run(input,shaders,false,RenderTextureFormat.rgba16f,policy,RFWorking.{},out[..]);#assert q.status==expected && q.draws==0 && q.written==0 && q.pixel_steps==0 && q.shader_steps==0 && out[0].r==91;
+ if expected==RQStatus.ok {#assert q.loading;}else {#assert !q.loading;}
+}
+#test "reference standard work constructor retains the historical defaults" {
+ q:=rf_work_policy(RRWorkProfile.standard);#assert q.shader_work==100000000 && q.pixel_work==100000000 && q.work_profile==RRWorkProfile.standard;
+ q=rf_work_policy(RRWorkProfile.invalid);#assert q.work_profile==RRWorkProfile.invalid && q.shader_work==0;
+}
+#forall "reference complex world admits its finite signed64 ceiling without changing other limits" which:0..<3 {
+ policy:=rf_work_policy(rr_work_profile("complex-world"));#assert policy.work_profile==RRWorkProfile.complex_world && policy.shader_work==3000000000 && policy.pixel_work==100000000;
+ expected:=RQStatus.ok;if which==1 {policy.shader_work=3000000001;expected=RQStatus.resource;}if which==2 {policy.shader_work=2147483648;}
+ input:=RFInput.{profile=15,counts=FrameCounts.{width=2,height=2,vertex_stride=16},ready=RenderReadiness.loading};shaders:[]RFShader;out:[1]RQColor;out[0].r=91;
+ q:=rf_run(input,shaders,false,RenderTextureFormat.rgba16f,policy,RFWorking.{},out[..]);#assert q.status==expected && q.draws==0 && q.shader_steps==0 && out[0].r==91;
+ #assert q.loading==(expected==RQStatus.ok);
+}

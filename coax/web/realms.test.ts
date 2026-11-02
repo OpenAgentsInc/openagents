@@ -5,7 +5,7 @@ import { expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { hasMaker, listCoax, listMarkdown, listPage, listed, page, worlds, zoneFact, ANIME_VARIANTS, STYLE_BLOCK, STYLE_MODULE, styled } from "./realms"
+import { hasMaker, listCoax, listMarkdown, listPage, listed, page, renderProfile, worlds, zoneFact, ANIME_VARIANTS, STYLE_BLOCK, STYLE_MODULE, styled } from "./realms"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const table = () => JSON.parse(readFileSync(join(SITE, "realms.json"), "utf8"))
@@ -26,6 +26,19 @@ test("the tagged table passes, and every realm has a style and a clock", () => {
     if (!w.realm) continue
     expect(["lowpoly", "painterly", "photoreal", "flat", "anime"]).toContain(w.realm.style)
     expect(w.realm.clock).toMatch(/^(cycle|real|fixed:)/)
+  }
+})
+test("every manifest realm names its own shared renderer package", () => {
+  for (const world of worlds()) if (world.realm) {
+    expect(page(world.realm)).toContain(`data-render="/build/render/${world.realm.slug}/render.json"`)
+    expect(page(world.realm)).toContain(`data-render-profile="${renderProfile(world.realm.slug)}"`)
+  }
+})
+test("direct Garden and retained Galaxy bind the compiled base renderer profile", () => {
+  for (const [slug, path] of [["garden", "realms/garden"], ["galaxy", "render-fixtures/galaxy"]]) {
+    const html = readFileSync(join(SITE, path, "index.html"), "utf8")
+    expect(html).toContain(`data-render="/build/render/${slug}/render.json"`)
+    expect(html).toContain(`data-render-profile="${renderProfile(slug)}"`)
   }
 })
 test("Everglade is painterly, Hecate's Cemetery and Fairy Forest flat; the rest lowpoly", () => {

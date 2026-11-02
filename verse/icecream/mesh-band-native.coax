@@ -1,0 +1,19 @@
+// Verification carrier for the real room producer and unchanged piece builder.
+#load "mesh.coax";
+ice_band_native_wall :: (orientation:int)->Wall {
+  sign:=ifx orientation<2 then 1.0f32 else -1.0f32;
+  return Wall.{horizontal=orientation%2==0,inner=sign*9.85f32,outer=sign*10.0f32};
+}
+icecream_band_native :: (v:[]Vtx,n:int,orientation:int,s0:f32,s1:f32)->int #export_c {
+  return room_wall_bands(v,n,ice_band_native_wall(orientation),s0,s1,0x112233,0x445566);
+}
+icecream_piece_native :: (v:[]Vtx,n:int,orientation:int,s0:f32,s1:f32,y0:f32,y1:f32,colour:u32,grow:f32)->int #export_c {
+  return piece(v,n,ice_band_native_wall(orientation),s0,s1,y0,y1,colour,grow);
+}
+icecream_open_band_native :: (v:[]Vtx,n:int,orientation:int,s0:f32,s1:f32,at_end:bool)->int #export_c {
+  ijw:=ice_band_native_wall(orientation);ijpost:[36]Vtx;
+  ija:=ifx at_end then s1-0.12f32 else s0;
+  ijb:=ifx at_end then s1 else s0+0.12f32;
+  ijcount:=piece(ijpost[..],0,ijw,ija,ijb,0,DOOR_HEIGHT,0x778899,0.06f32);
+  return room_open_wall_bands(v,n,ijw,s0,s1,0x112233,0x445566,at_end,ijpost[0..<ijcount]);
+}

@@ -1,0 +1,24 @@
+{
+  "schema": "aethyr.render.repaired-geometry-native-frame.v1",
+  "case": "deadgears-ring8-current-default",
+  "status": "GPU validation pass; strict CPU/backend numerical comparison separate",
+  "frame": {
+    "status": "rendered",
+    "profile": 4,
+    "resource": 1,
+    "width": 320,
+    "height": 180,
+    "format": "rgba16f",
+    "bytes": 460800,
+    "draw_commands": 4,
+    "device": "NVIDIA GeForce RTX 4080",
+    "subPixelPrecisionBits": 8,
+    "validation_errors": 0,
+    "validation_warnings": 0
+  },
+  "raw_sha256": "08fe3735b8646336168abe0d0c035efb72a7e23a98dfc05c734bac44832765e0",
+  "input_equality": "input-equality.json",
+  "scope": "Distinctfreshcurrentdefaultproducerinput. Exactactualproducer/resourceobservationsretained; historicalgenericexecutor reusedundercompletesource/headerbytefence. No CPUacceptanceclaim.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/deadgears-ring8-current-default",
+  "archive_sha256": "eeb7ef6d9ec32b21d9830df103ad3e28f58125fbc8214b8290ef747b63fcceb3"
+}

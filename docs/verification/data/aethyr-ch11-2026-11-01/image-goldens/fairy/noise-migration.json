@@ -1,0 +1,182 @@
+{
+  "schema": "aethyr.render.fairy-noise-migration.v1",
+  "status": "pass_for_explicit_visible_noise_migration",
+  "scope": "Existing production Fairy Forest screenshot, unchanged six-block allowance. Exact matching producer controls isolate portable integer noise from host/pass changes; numerical CPU/GPU parity remains separate.",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "exact_controls": {
+    "base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "reused_generic": null,
+      "source_changes": [],
+      "legacy_sha256": "6583cef8ba3cfe03f6736ce93efc750c4209e472032f4aacb0a52a342ab83956",
+      "generic_sha256": "af705f3adfd74949a1ede6a5cfd44b554e728110a542d2e96bc41a2b90da27ca",
+      "different_channels": 19449,
+      "different_pixels": 7114,
+      "max_byte_delta": 162,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "integer": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-fairy-visible-isolation/integer.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-fairy/generic",
+      "source_changes": [],
+      "legacy_sha256": "af705f3adfd74949a1ede6a5cfd44b554e728110a542d2e96bc41a2b90da27ca",
+      "generic_sha256": "af705f3adfd74949a1ede6a5cfd44b554e728110a542d2e96bc41a2b90da27ca",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "sin": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-fairy-visible-isolation/sin.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-fairy/generic",
+      "source_changes": [],
+      "legacy_sha256": "6583cef8ba3cfe03f6736ce93efc750c4209e472032f4aacb0a52a342ab83956",
+      "generic_sha256": "af705f3adfd74949a1ede6a5cfd44b554e728110a542d2e96bc41a2b90da27ca",
+      "different_channels": 19449,
+      "different_pixels": 7114,
+      "max_byte_delta": 162,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    }
+  },
+  "stock_gates": {
+    "generic": {
+      "execution": {
+        "status": "fail",
+        "route": "generic",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:53092",
+          "--only",
+          "fairy-forest",
+          "--report",
+          "/tmp/aethyr-ch11-stock-fairy-generic/report.json"
+        ],
+        "elapsed_seconds": 9.01,
+        "returncode": 1,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "source_changes": [],
+      "log": "lane fairy-forest (8.0 s)\n  ok    fairy-forest: at http://127.0.0.1:53092/realms/fairy-forest\n  ok    fairy-forest: the engine started\n  ok    fairy-forest: no errors\n  ok    fairy-forest: draws (100.0% lit, at least 3.0%)\n  FAIL  fairy-forest: matches its golden (1668 blocks changed, 6 allowed, 731 moving, x 0-1280, y 0-440; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-WdsLzP/fairy-forest.png)\n  time  fairy-forest: 7.9 s\n  ok    analytics contract: every fairy-forest event sent (4 events, 0.0 s)\ngoldens http://127.0.0.1:53092: 1 failed in 8.9 s (1 tabs)\n"
+    },
+    "sin": {
+      "execution": {
+        "status": "pass",
+        "route": "legacy-sin",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:53161",
+          "--only",
+          "fairy-forest",
+          "--report",
+          "/tmp/aethyr-ch11-stock-fairy-sin/report.json"
+        ],
+        "elapsed_seconds": 9.661,
+        "returncode": 0,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "source_changes": [],
+      "log": "lane fairy-forest (7.9 s)\n  ok    fairy-forest: at http://127.0.0.1:53161/realms/fairy-forest\n  ok    fairy-forest: the engine started\n  ok    fairy-forest: no errors\n  ok    fairy-forest: draws (100.0% lit, at least 3.0%)\n  ok    fairy-forest: matches its golden (0 blocks changed, 6 allowed, 754 moving)\n  time  fairy-forest: 7.9 s\n  ok    analytics contract: every fairy-forest event sent (4 events, 0.0 s)\ngoldens http://127.0.0.1:53161: passed in 9.6 s (1 tabs)\n"
+    },
+    "migrated-generic": {
+      "execution": {
+        "status": "pass",
+        "route": "generic",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:53405",
+          "--only",
+          "fairy-forest",
+          "--report",
+          "/tmp/aethyr-ch11-stock-fairy-migrated-generic/report.json"
+        ],
+        "elapsed_seconds": 9.342,
+        "returncode": 0,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "source_changes": [],
+      "log": "lane fairy-forest (7.6 s)\n  ok    fairy-forest: at http://127.0.0.1:53405/realms/fairy-forest\n  ok    fairy-forest: the engine started\n  ok    fairy-forest: no errors\n  ok    fairy-forest: draws (100.0% lit, at least 3.0%)\n  ok    fairy-forest: matches its golden (0 blocks changed, 6 allowed, 744 moving)\n  time  fairy-forest: 7.6 s\n  ok    analytics contract: every fairy-forest event sent (4 events, 0.0 s)\ngoldens http://127.0.0.1:53405: passed in 9.2 s (1 tabs)\n"
+    },
+    "migrated-integer": {
+      "execution": {
+        "status": "pass",
+        "route": "legacy-integer",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:53411",
+          "--only",
+          "fairy-forest",
+          "--report",
+          "/tmp/aethyr-ch11-stock-fairy-migrated-integer/report.json"
+        ],
+        "elapsed_seconds": 10.246,
+        "returncode": 0,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "source_changes": [],
+      "log": "lane fairy-forest (8.4 s)\n  ok    fairy-forest: at http://127.0.0.1:53411/realms/fairy-forest\n  ok    fairy-forest: the engine started\n  ok    fairy-forest: no errors\n  ok    fairy-forest: draws (100.0% lit, at least 3.0%)\n  ok    fairy-forest: matches its golden (0 blocks changed, 6 allowed, 745 moving)\n  time  fairy-forest: 8.2 s\n  ok    analytics contract: every fairy-forest event sent (4 events, 0.1 s)\ngoldens http://127.0.0.1:53411: passed in 10.1 s (1 tabs)\n"
+    }
+  },
+  "baseline_migration": {
+    "schema": "aethyr.render.visible-noise-before-after.v1",
+    "images": {
+      "before.png": "9df1b579c708cf5d40660aea8b9feada0c6ea810fa2f887f75cb4d09856dde69",
+      "after.png": "2ada2b693abaf645018e2ce47168bc822eb88eea78f2d665cb7e84ed1520ccf7",
+      "review.png": "ac9d59a2b7dca544aedcd936a64186a6da33de7ced9b431aa496214a8c1efa26"
+    },
+    "current_source_changes": [],
+    "baseline_updated": true,
+    "visual_reviews": [
+      {
+        "reviewer": "root",
+        "finding": "Framing, fairy pose, wings, object placement, bridge and paths, palette and HUD preserved. Canopy and ground noise patches change intentionally."
+      },
+      {
+        "reviewer": "coax_review",
+        "finding": "No unintended visual regression in the supplied view. Framing, fairy pose and wings, paths, bridge, river, object placement, palette and HUD layout preserved; localized canopy and ground patterns and shadows match the isolated portable-noise change."
+      }
+    ],
+    "new_baseline_sha256": "2ada2b693abaf645018e2ce47168bc822eb88eea78f2d665cb7e84ed1520ccf7",
+    "scope": "One existing Fairy Forest production golden. Unchanged six-block allowance; both exact shader controls and visual reviews precede this migration."
+  },
+  "retention": {
+    "archive": "artifacts.tar.gz",
+    "sha256": "d67553314552c3d352cfd7cc5e53eb33aefe6f2d2bbb1e3befffd153800fbd41",
+    "bytes": 3052148,
+    "missing": [],
+    "source_epoch": "Exact served files retained by observed digest. Original host recovered by reversing only retained readback instrumentation and verified against original served SHA. Earlier render.js retained from its original browser-effects snapshot."
+  }
+}

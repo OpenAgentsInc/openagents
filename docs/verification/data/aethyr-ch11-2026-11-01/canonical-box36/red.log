@@ -1,0 +1,7 @@
+FAIL #test DeadGears closed box keeps all36 corner packets with outward triangle winding (0 ms)
+apps/openagents-web/gpu/deadgears.coax:420:3: error[E0406]: assertion failed
+    #assert dg_box_vertex.world.x==dg_box_expected.x && dg_box_vertex.world.y==dg_box_expected.y && dg_box_vertex.world.z==dg_box_expected.z;
+    ^
+  note: in #test DeadGears closed box keeps all36 corner packets with outward triangle winding
+1 of 26 checks (--only 'DeadGears closed box'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

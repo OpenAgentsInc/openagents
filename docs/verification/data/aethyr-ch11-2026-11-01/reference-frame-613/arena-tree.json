@@ -1,0 +1,23 @@
+{
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "shader_source_sha256": "9303e8f3bf1a2046411a12f240aaeb96341b8547dfafdf3957e92459c6b5dd67",
+  "tree_sha256": "a65d5a86eb805a1dbe349e8111bed63607b8c817e743ce256be3df2e59b4bfb4",
+  "word_count": 233,
+  "command": [
+    "coax/bin/coax",
+    "spirv",
+    "aethyr/render/tests/reference-frame-arena-shader.coax",
+    "--vertex",
+    "rfg_bg_vs",
+    "--fragment",
+    "rfma_fragment",
+    "--tree",
+    "-o",
+    "/tmp/aethyr-frame-arena.tree"
+  ],
+  "source_sha256": {
+    "aethyr/render/tests/reference-frame-arena-shader.coax": "9303e8f3bf1a2046411a12f240aaeb96341b8547dfafdf3957e92459c6b5dd67",
+    "aethyr/render/tests/reference-frame-post-shader.coax": "8bb3a5179c951cbd97a959ef62eba0ad397f530f3bace29f41d310a3c5f996e2",
+    "verse/gpu/shader.coax": "9688942c90063b6a8f162d79f19332dde17dbb4d7cbeb8885ee13d899c0e1813"
+  }
+}

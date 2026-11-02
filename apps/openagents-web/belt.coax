@@ -18,7 +18,7 @@
 // rocks as discs and draws the Belt's dust (belt.wgsl world, belt_dust).
 // Labels are placed most important first where they overlap nothing.
 // belt-face.c binds it for the browser.
-//   coax/bin/coax test apps/openagents-web/belt.coax --library --steps 2000000000
+//   coax/bin/coax test apps/openagents-web/belt.coax --library   (long checks declare measured #steps)
 
 #load "font.coax";
 #load "analytics.coax";
@@ -3129,7 +3129,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert n > ROCKS_FIRST * 6 && n < MAX_VERTICES;
 }
 
-#test "the system view keeps Hearth on the screen as Ceres goes round; a view zoomed in rides with what it was on" {
+#test "the system view keeps Hearth on the screen as Ceres goes round; a view zoomed in rides with what it was on" #steps 270000000 {
   s: [1] Belt;
   belt_start(s[..]);
   s[0].w = 1280; s[0].h = 800; s[0].dpr = 1;
@@ -3157,7 +3157,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert load_game(b[..], cast(string) buf[0..<n]) && !b[0].framed;
 }
 
-#test "with a ship selected, each of the eight ice rocks is a named button that plans the trip, on a phone and a desktop" {
+#test "with a ship selected, each of the eight ice rocks is a named button that plans the trip, on a phone and a desktop" #steps 530000000 {
   sizes := [2] D2.[D2.{x = 1170, y = 2532}, D2.{x = 1280, y = 800}];
   dprs := [2] f32.[3, 1];
   for z: 0..<2 {
@@ -3185,7 +3185,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   }
 }
 
-#test "from the whole system down to a 300 m hull in flight: the followed ship holds its pixel, frame after frame" {
+#test "from the whole system down to a 300 m hull in flight: the followed ship holds its pixel, frame after frame" #steps 100000000 {
   s: [1] Belt;
   belt_start(s[..]);
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
@@ -3328,7 +3328,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert load_game(b[..], cast(string) buf[0..<n]) && b[0].ship_n == SHIP_BASE + 1 && b[0].ships[f].name == s[0].ships[f].name && b[0].ships[f].cargo_cap == 2000.0;
 }
 
-#test "a freighter on a standing route hauls a rig's ice home again and again without new orders" {
+#test "a freighter on a standing route hauls a rig's ice home again and again without new orders" #steps 120000000 {
   s: [1] Belt;
   belt_start(s[..]);
   s[0].w = 1440; s[0].h = 900; s[0].dpr = 1;
@@ -3446,7 +3446,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert s[0].station[0].people == people;
 }
 
-#test "a tactical battle: engaging opens it, it resolves, and BACK TO THE MAP applies the losses" {
+#test "a tactical battle: engaging opens it, it resolves, and BACK TO THE MAP applies the losses" #steps 50000000 {
   s: [1] Belt;
   belt_start(s[..]);
   s[0].speed = 2;
@@ -3626,7 +3626,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert c[0].t == t0;
 }
 
-#test "the highlight stage: LANTERN braking hard past Saturn's rings with IRONWAKE on its tail, Saturn big in every frame, and the save untouched" {
+#test "the highlight stage: LANTERN braking hard past Saturn's rings with IRONWAKE on its tail, Saturn big in every frame, and the save untouched" #steps 370000000 {
   // without the parameter nothing is staged
   #assert stage_of("https://openagents.com/realms/belt-2200") == STAGE_NONE;
   #assert stage_of("https://openagents.com/realms/belt-2200?stage=other") == STAGE_NONE;
@@ -3668,7 +3668,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert s[0].action == 0 && s[0].out_n == 0;
 }
 
-#test "a claimed maker's name draws MADE BY <NAME> · TIP, and TIP goes to the tip page" {
+#test "a claimed maker's name draws MADE BY <NAME> · TIP, and TIP goes to the tip page" #steps 60000000 {
   ss: [2] Belt;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   for dims: 0..<2 {
@@ -3699,7 +3699,7 @@ BELT_BUDGET :: FrameBudget.{steps = 8, vertices = 56000, draws = 0, bytes = 5373
 
 // Its opening: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.
-#test "Belt 2200's frames fit its declared budget" {
+#test "Belt 2200's frames fit its declared budget" #steps 130000000 {
   #assert budget_declared(BELT_BUDGET, MAX_VERTICES) == BUDGET_NONE;
   frames := 3;
   m := [1] BudgetMeter.[budget_meter(BELT_BUDGET)];

@@ -1,0 +1,9 @@
+// Normal-C exports for the independent transport/ownership qualification.
+#load "../package.coax";
+render_pkg_native_parse :: (json:string,entries:[]RenderPackageEntry)->RenderPackage #export_c {return render_package_parse(json,entries);}
+render_pkg_native_admit :: (p:RenderPackage,profile:int,backend:int,helper:bool,int64_enabled:bool)->int #export_c {
+  return cast(int)render_package_admit(p,profile,RenderDeviceCapabilities.{backend=cast(RenderBackend)backend,helper_enabled=helper,int64_enabled=int64_enabled});
+}
+render_pkg_native_module :: (p:RenderPackage,set:int,bytes:[]u8)->int #export_c {return cast(int)render_package_module_bytes(p,set,bytes);}
+render_pkg_native_spirv :: (p:RenderPackage,index:int,bytes:[]u8)->int #export_c {return cast(int)render_package_spirv_bytes(p,index,bytes);}
+render_pkg_native_tree :: (p:RenderPackage,index:int,bytes:[]u8)->int #export_c {return cast(int)render_package_tree_bytes(p,index,bytes);}

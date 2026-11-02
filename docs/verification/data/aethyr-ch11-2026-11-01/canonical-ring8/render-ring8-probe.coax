@@ -1,0 +1,33 @@
+// Independent primitive observation of the production capsule and its authored
+// direction packets. All720 geometry observations share one vertical bone.
+#load "../../apps/openagents-web/gpu/deadgears.coax";
+RenderRing8Probe :: struct {pos:V4;point:V3 #flat;normal:V3 #flat;directions:V4 #flat;}
+#test "ring8 probe preserves production geometry and exact packet values" {
+ ring8_probe_u:=[4]f32.[96,0,0,0];ring8_probe_v:=render_ring8_probe_vs(0,0,ring8_probe_u[..]);
+ #assert ring8_probe_v.pos.x==(-1) && ring8_probe_v.pos.y==1 && ring8_probe_v.point.x==0 && ring8_probe_v.point.y==0 && ring8_probe_v.point.z==(-1);
+ #assert ring8_probe_v.normal.x==0 && ring8_probe_v.normal.y==0 && ring8_probe_v.normal.z==(-1);
+ #assert ring8_probe_v.directions.x==1 && ring8_probe_v.directions.y==0 && ring8_probe_v.directions.z==1 && ring8_probe_v.directions.w==0;
+ ring8_probe_u[0]=9;ring8_probe_u[1]=3;ring8_probe_v=render_ring8_probe_vs(0,0,ring8_probe_u[..]);
+ #assert ring8_probe_v.directions.x==0 && ring8_probe_v.directions.y==0 && ring8_probe_v.directions.z==0 && ring8_probe_v.directions.w==0;
+}
+render_ring8_probe_vs :: (vertex:u32,instance:u32,u:[]f32)->RenderRing8Probe {
+ ring8_probe_points:=[3]V2.[v2(-1,1),v2(3,1),v2(-1,-3)];ring8_probe_p:=ring8_probe_points[cast(int)vertex];
+ ring8_probe_out:=RenderRing8Probe.{pos=v4(ring8_probe_p.x,ring8_probe_p.y,0.5,1)};
+ ring8_probe_id:=cast(u32)u[0];ring8_probe_mode:=cast(s32)u[1];
+ if ring8_probe_mode>=3 {
+  ring8_probe_d:=ifx ring8_probe_mode==3 then render_ring8_direction(ring8_probe_id) else render_capsule2_polar(ring8_probe_id);
+  ring8_probe_out.directions=v4(ifx ring8_probe_d.valid then 1.0f32 else 0.0f32,ring8_probe_d.direction.x,ring8_probe_d.direction.y,0);
+ } else {
+  ring8_probe_m:=DeadgearsObj.{r0=v4(0,0,0,1),r1=v4(0,0.99999,0,1)};ring8_probe_v:=deadgears_round_vertex(ring8_probe_m,ring8_probe_id);
+  ring8_probe_q:=ring8_probe_id/6;ring8_probe_corner:=deadgears_quad(ring8_probe_id%6);
+  ring8_probe_a:=render_ring8_direction(add_wrap(ring8_probe_q%8,wg_u32_f(ring8_probe_corner.x)));ring8_probe_b:=render_capsule2_polar(add_wrap(ring8_probe_q/8,wg_u32_f(ring8_probe_corner.y)));
+  ring8_probe_out.point=ring8_probe_v.p;ring8_probe_out.normal=ring8_probe_v.n;ring8_probe_out.directions=v4(ring8_probe_a.direction.x,ring8_probe_a.direction.y,ring8_probe_b.direction.x,ring8_probe_b.direction.y);
+ }
+ return ring8_probe_out;
+}
+render_ring8_probe_fs :: (v:RenderRing8Probe,u:[]f32)->V4 {
+ ring8_probe_mode:=cast(s32)u[1];
+ if ring8_probe_mode==0 {return v4(v.point.x,v.point.y,v.point.z,1);}
+ if ring8_probe_mode==1 {return v4(v.normal.x,v.normal.y,v.normal.z,1);}
+ return v.directions;
+}

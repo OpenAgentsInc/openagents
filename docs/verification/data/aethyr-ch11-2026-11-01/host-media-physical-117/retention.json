@@ -1,0 +1,7 @@
+{
+  "scope": "Exact retained source snapshots and execution receipts; earlier snapshots are preserved separately.",
+  "files": {
+    "aethyr-ch11-host-media-physical-mutate-1.log": "acf224694b0c8b6b83d5af72a93b95f044965e6afebad5f01b6a9763aaa12d7f",
+    "aethyr/render/host-media.coax": "9bac9f15856f98b0906b229d1f03842b0bf28913747be74feb124b60146ac38b"
+  }
+}

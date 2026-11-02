@@ -1,0 +1,123 @@
+{
+  "schema": "aethyr.render.generated-stage-profile.v1",
+  "status": "pass",
+  "scope": "Unchanged retained generated-Coax values with effects-only stage-counter logging; result and image byte identity checked. Not a new shader/profile admission or GPU numerical qualification.",
+  "measurement_sha256": "067110ab31485c07c103d02420bf872e38f3d78b0d5a324f6ad8016efa9fb56e",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "generated_c_sha256": "d6b3b10f639ff9425e509a4ebb4a4293df947c32ec39c119adf28cdba1df8414",
+  "profiled_c_sha256": "190ec3fdb43a1054a5501eae85240cdd12293b90069e9a1ddad68ad6c3a3a8ff",
+  "driver_sha256": "24769ffb5e8686c68cad9f2b0fa21bbec0753cc276cf2415425de88f0a72282a",
+  "stages": [
+    {
+      "entry": 0,
+      "vertex_steps": 112,
+      "fragment_steps": 264676560,
+      "vertex_groups": 1,
+      "fragment_groups": 4880
+    },
+    {
+      "entry": 5,
+      "vertex_steps": 88036808,
+      "fragment_steps": 2911917505,
+      "vertex_groups": 9668,
+      "fragment_groups": 9540
+    },
+    {
+      "entry": 9,
+      "vertex_steps": 0,
+      "fragment_steps": 0,
+      "vertex_groups": 0,
+      "fragment_groups": 0
+    },
+    {
+      "entry": 10,
+      "vertex_steps": 0,
+      "fragment_steps": 0,
+      "vertex_groups": 0,
+      "fragment_groups": 0
+    },
+    {
+      "entry": 11,
+      "vertex_steps": 0,
+      "fragment_steps": 0,
+      "vertex_groups": 0,
+      "fragment_groups": 0
+    },
+    {
+      "entry": 12,
+      "vertex_steps": 0,
+      "fragment_steps": 0,
+      "vertex_groups": 0,
+      "fragment_groups": 0
+    },
+    {
+      "entry": 13,
+      "vertex_steps": 0,
+      "fragment_steps": 0,
+      "vertex_groups": 0,
+      "fragment_groups": 0
+    }
+  ],
+  "result": {
+    "work_profile": 3,
+    "shader_ceiling": 3000000000,
+    "pixel_ceiling": 100000000,
+    "status": 4,
+    "geometry": 0,
+    "frame": 0,
+    "bad_op": 2,
+    "bad_shader": -1,
+    "bad_media": -1,
+    "shader_steps": 3264686273,
+    "pixel_steps": 134400,
+    "draws": 1,
+    "written": 19200,
+    "pass_steps": [
+      264686273,
+      0,
+      0,
+      0,
+      0,
+      3000000000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "unattributed_steps": 55288,
+  "commands": [
+    [
+      "clang",
+      "-std=c11",
+      "-O2",
+      "-ffp-contract=off",
+      "-I",
+      "/private/tmp/aethyr-ch11-reference-villa-media-160-complex-webgpu-308",
+      "-I",
+      "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests",
+      "/tmp/aethyr-ch11-villa-stage-costs-2/profiled.c",
+      "/tmp/aethyr-ch11-villa-stage-costs-2/driver.c",
+      "-lm",
+      "-o",
+      "/tmp/aethyr-ch11-villa-stage-costs-2/profiled"
+    ],
+    [
+      "/tmp/aethyr-ch11-villa-stage-costs-2/profiled",
+      "/private/tmp/aethyr-ch11-reference-villa-media-160-complex-webgpu-308/frame.config",
+      "/tmp/aethyr-ch11-villa-stage-costs-2/screen.rgba32f",
+      "/tmp/aethyr-ch11-villa-stage-costs-2/frame.json",
+      "nearest-positive",
+      "8",
+      "viewport",
+      "0",
+      "rgba16f",
+      "complex-world"
+    ]
+  ],
+  "elapsed_seconds": 80.25507708301302
+}

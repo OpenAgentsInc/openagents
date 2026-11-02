@@ -1,0 +1,21 @@
+// Independent fixed-function precision probe. All authored clip coordinates
+// are binary-exact, all three vertices are inside the64x64 viewport, and the
+// sampled pixel is interior. Host deltas do not change coverage-bin identity.
+#load "../../verse/gpu/shader.coax";
+RenderDepthPlaneProbe :: struct {position:V4;value:f32;}
+#test "depth plane probe keeps authored screen and depth inputs binary exact" {
+ dpp_u:=[4]f32.[0,0,0,0];dpp_a:=render_depth_plane_probe_vs(0,0,dpp_u[..]);dpp_b:=render_depth_plane_probe_vs(1,0,dpp_u[..]);dpp_c:=render_depth_plane_probe_vs(2,0,dpp_u[..]);
+ #assert dpp_a.position.x== -0.875 && dpp_a.position.y==0.875 && dpp_a.position.z==0.125 && dpp_a.position.w==1 && dpp_a.value==0.25;
+ #assert dpp_b.position.x==0.7265625 && dpp_b.position.y==0.74609375 && dpp_b.position.z==0.875 && dpp_b.value==0.75;
+ #assert dpp_c.position.x== -0.64453125 && dpp_c.position.y== -0.8046875 && dpp_c.position.z==0.375 && dpp_c.value==0.5;
+ dpp_u[1]=1;dpp_b=render_depth_plane_probe_vs(1,0,dpp_u[..]);dpp_c=render_depth_plane_probe_vs(2,0,dpp_u[..]);#assert dpp_b.position.w==2 && dpp_b.position.z==1.75 && dpp_c.position.w==0.5 && dpp_c.position.z==0.1875;
+}
+render_depth_plane_probe_vs :: (vertex:u32,instance:u32,u:[]f32)->RenderDepthPlaneProbe {
+ dpp_x:=ifx vertex==0 then 4.0f32+u[0] else ifx vertex==1 then 55.25f32 else 11.375f32;
+ dpp_y:=ifx vertex==0 then 4.0f32 else ifx vertex==1 then 8.125f32 else 57.75f32;
+ dpp_z:=ifx vertex==0 then 0.125f32 else ifx vertex==1 then 0.875f32 else 0.375f32;
+ dpp_w:=ifx u[1]==0 then 1.0f32 else ifx vertex==0 then 1.0f32 else ifx vertex==1 then 2.0f32 else 0.5f32;
+ dpp_value:=ifx vertex==0 then 0.25f32 else ifx vertex==1 then 0.75f32 else 0.5f32;
+ return RenderDepthPlaneProbe.{position=v4((dpp_x/32-1)*dpp_w,(1-dpp_y/32)*dpp_w,dpp_z*dpp_w,dpp_w),value=dpp_value};
+}
+render_depth_plane_probe_fs :: (v:RenderDepthPlaneProbe)->V4 {return v4(v.position.z,v.value,v.position.w,1);}

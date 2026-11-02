@@ -1,0 +1,136 @@
+{
+  "schema": "aethyr.render.frame.native.v1",
+  "status": "exploratory",
+  "compiler_version": "coax0 0.46.0",
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "compiler_recorded_source_digest": "e863c6921a9f865223a3871b42a70d43cc053b2983df5af604223c64a4a7dfb5",
+  "compiler_current_source_digest": "09db6c78cb38c00b2c867b2e8856fc15afa1c56fad988ee8cf5e622814fbf45d",
+  "compiler_current_sources_match": false,
+  "source_sha256": {
+    "aethyr/render/tests/frame-native.coax": "3c2a016747109f8b387307928edf1e36f36e4e549b2b2d2d8d5437b5b0aa8272",
+    "aethyr/render/frame.coax": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+    "aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "aethyr/tests/render-frame-checks.coax": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007",
+    "aethyr/render/tests/frame-native.c": "1eb787385aaef2de2aab2329126ffebc94a922c533b6dc2ca8e376b0f4afd9c6",
+    "aethyr/render/tests/check_frame.py": "2d217bc6e1544d42ff989dbd299d23d811faf76181e54b0640c6306c2a6dc1a6"
+  },
+  "header_fields_checked": {
+    "FrameCounts": [
+      "width",
+      "height",
+      "hud_vertices",
+      "vertex_stride",
+      "draw_count",
+      "water_draws",
+      "grass_instances",
+      "particle_instances",
+      "surface_vertices",
+      "caster_vertices",
+      "caster_instances"
+    ],
+    "RenderFrameLimits": [
+      "max_width",
+      "max_height",
+      "max_draws",
+      "max_uploads",
+      "max_vertex_stride",
+      "index_work"
+    ],
+    "RenderDirectDomains": [
+      "hud_vertices",
+      "grass_instances",
+      "particle_instances",
+      "surface_vertices",
+      "caster_vertices",
+      "caster_instances"
+    ],
+    "RenderUpload": [
+      "source_address",
+      "source_base",
+      "source_bytes",
+      "bytes",
+      "gpu_offset",
+      "gpu_bytes",
+      "alignment"
+    ],
+    "RenderDrawDomain": [
+      "vertex_begin",
+      "vertices",
+      "vertex_alt_begin",
+      "vertex_alt_end",
+      "instance_begin",
+      "instances",
+      "indices"
+    ],
+    "RenderFrameResult": [
+      "status",
+      "bad_upload",
+      "bad_draw",
+      "bad_direct",
+      "checked_indices",
+      "admitted_draws"
+    ],
+    "RenderDecodedDraw": [
+      "kind",
+      "first",
+      "count",
+      "base_instance",
+      "instances"
+    ]
+  },
+  "input_sha256": "323fcde6427fca9984ef2a1f53db62875948ed1f37e63b6d04f6d7897f168f8a",
+  "expected_sha256": "55eab4246031caebc5a095c843825d5deba1be6c5320c8b5e53645543426bdef",
+  "cases": 1891,
+  "modes": [
+    {
+      "mode": "debug",
+      "cases": 1891,
+      "producer_faults_detected": [
+        "status",
+        "slot",
+        "work",
+        "publication",
+        "preflight",
+        "decode"
+      ],
+      "transcript_sha256": "c9b73ea3403d8d2e04fd293d10c6cb3593f16694aa8d662702c71dba71f52b39",
+      "generated_c_sha256": "d067708cb39e95bb048996db285ebadccf24831552d7199760fd9d13c14beee0",
+      "generated_header_sha256": "ebb9fb57d524fd1876074afbf0c0b0291ec0297f26bd6b5a1cb24dcd5588d3b7",
+      "executable_sha256": "e221550b488dcf97da174036306ec1c0a587b77c392be07c11e015088618fee0"
+    },
+    {
+      "mode": "release",
+      "cases": 1891,
+      "producer_faults_detected": [
+        "status",
+        "slot",
+        "work",
+        "publication",
+        "preflight",
+        "decode"
+      ],
+      "transcript_sha256": "c9b73ea3403d8d2e04fd293d10c6cb3593f16694aa8d662702c71dba71f52b39",
+      "generated_c_sha256": "dd5fedb983f7794b81f868a954490c197bd6ba2e4e71b653bfa7c1a340983183",
+      "generated_header_sha256": "ebb9fb57d524fd1876074afbf0c0b0291ec0297f26bd6b5a1cb24dcd5588d3b7",
+      "executable_sha256": "82a95656c08913a0ee9982bdfeefabdf912f1a3442330d0c9cbf32bb0739b5b5"
+    },
+    {
+      "mode": "sanitized",
+      "cases": 1891,
+      "producer_faults_detected": [
+        "status",
+        "slot",
+        "work",
+        "publication",
+        "preflight",
+        "decode"
+      ],
+      "transcript_sha256": "c9b73ea3403d8d2e04fd293d10c6cb3593f16694aa8d662702c71dba71f52b39",
+      "generated_c_sha256": "d067708cb39e95bb048996db285ebadccf24831552d7199760fd9d13c14beee0",
+      "generated_header_sha256": "ebb9fb57d524fd1876074afbf0c0b0291ec0297f26bd6b5a1cb24dcd5588d3b7",
+      "executable_sha256": "b17bad6728e9c8e07e85200359300572cf3a14830e7f40e74fa935f9e500283c"
+    }
+  ],
+  "elapsed_seconds": 1.325,
+  "scope": "Mathematical integer endpoint oracle for whole-frame ranges, typed normal-C transport, four-u32 Draw and atomic admission/refusal. Borrowed views themselves must be valid; geometry/profile admission and arbitrary shader data access are separate checks."
+}

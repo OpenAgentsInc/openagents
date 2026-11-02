@@ -1,0 +1,1090 @@
+{
+  "schema": "aethyr.render.browser-capture.v1",
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/156.0.8078.80",
+    "revision": "@fb096c0011f9d50f0a264a9376420cdea9c421e3",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "jsVersion": "15.6.75.27"
+  },
+  "reloads": [],
+  "mediaChecks": [],
+  "engineChecks": [],
+  "engineFailureChecks": [
+    {
+      "failure": {
+        "failed": true,
+        "message": "Coax refused shader digest"
+      },
+      "binding": {
+        "stopped": true,
+        "coherent": false
+      }
+    }
+  ],
+  "pendingChecks": [
+    {
+      "waiting": {
+        "done": false,
+        "fetching": true,
+        "parts": 4
+      },
+      "first": true,
+      "same": true,
+      "ready": {
+        "done": true,
+        "bytes": 1199,
+        "size": 1199,
+        "texture": true,
+        "failed": false
+      },
+      "second": true,
+      "validation": {
+        "ok": true,
+        "error": null
+      },
+      "final": {
+        "same": true,
+        "done": true,
+        "bytes": 1199,
+        "textureSame": true,
+        "binding": {
+          "stopped": false,
+          "coherent": true
+        },
+        "render": {
+          "submitted": true,
+          "readiness": 2,
+          "refusal": null,
+          "captureArmed": false,
+          "observed": false
+        }
+      },
+      "heldAssets": 1
+    }
+  ],
+  "control": {
+    "pendingIndex": false,
+    "pendingLayer": false,
+    "pendingPack": true,
+    "engineFailure": true,
+    "engineReload": false,
+    "mediaControls": false,
+    "mediaFixture": false,
+    "reloadCheck": false,
+    "half": true,
+    "start": true,
+    "requireDraws": true,
+    "width": 320,
+    "height": 180,
+    "dpr": 1,
+    "started": true,
+    "armed": true,
+    "armResult": {
+      "result": {
+        "type": "boolean",
+        "value": true
+      }
+    }
+  },
+  "inputs": {
+    "/tmp/aethyr-ch11-typed-hosts/fixture-auto.wasm": "b11b23d0601e1261aafaef80df39b4d2ae7feb904c964135ff07044cfc93451d",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js": "441571badfac66621fd1cef046bf43a20f365d1d4205301edd0b5f6ff8e92939",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js": "f9f91c6030b28840173a692727ce141fd3b2d03fcf67acebe4015c4b75b54dd8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/chrome.ts": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render-face.c": "3fa6b5997077963554a1153c69168d8fbc52ca8217870ca2a0b08e87f83b3e19",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/fixture/index.html": "5c557cb8f81f2cac35a7c607912d0eeccc535a640ceca0b1bf774bdfc95e3939",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_host.ts": "4d11b9d4961d7be268b0f2c9748e41919ca1ce192e82b0524782983a70a3863f",
+    "/tmp/aethyr-ch11-packages-current/fixture/render.json": "67595872c21d1264d41534f3a4138e6036196c1705f466601dbc0e5a1b79555b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74",
+    "/tmp/aethyr-ch11-packages-current/fixture/module-0-ab72e9a02ddae098911eff0465b6cfaf3bffe74d581eb3c6b1f63b2eac08164a.wgsl": "ab72e9a02ddae098911eff0465b6cfaf3bffe74d581eb3c6b1f63b2eac08164a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/fixture/assets/fixture.pack": "df9c027378c87383f5be40d61c764b9fb615148524388d4b310229e9b0e39ad9"
+  },
+  "source_changes": [],
+  "requests": [
+    "/",
+    "/coaxial/host.js",
+    "/coaxial/entropy-import.js",
+    "/coaxial/drop.js",
+    "/coaxial/uploads.js",
+    "/coaxial/docs.js",
+    "/coaxial/card.js",
+    "/coaxial/voice.js",
+    "/coaxial/gpui.js",
+    "/coaxial/loader.js",
+    "/coaxial/http-requests.js",
+    "/coaxial/render.js",
+    "/coaxial/entropy.js",
+    "/test.wasm",
+    "/favicon.svg",
+    "/api/auth/viewer",
+    "/package/render.json",
+    "/package/module-0-ab72e9a02ddae098911eff0465b6cfaf3bffe74d581eb3c6b1f63b2eac08164a.wgsl",
+    "/realms/fixture/assets/fixture.pack",
+    "/coaxial/live",
+    "/test.wasm",
+    "/package/render.json",
+    "/package/module-0-ab72e9a02ddae098911eff0465b6cfaf3bffe74d581eb3c6b1f63b2eac08164a.wgsl",
+    "/api/auth/viewer",
+    "/test.wasm",
+    "/package/render.json",
+    "/coaxial/live",
+    "/package/module-0-ab72e9a02ddae098911eff0465b6cfaf3bffe74d581eb3c6b1f63b2eac08164a.wgsl",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/api/auth/viewer",
+    "/coaxial/live",
+    "/test.wasm",
+    "/package/render.json",
+    "/package/module-0-ab72e9a02ddae098911eff0465b6cfaf3bffe74d581eb3c6b1f63b2eac08164a.wgsl"
+  ],
+  "status": {
+    "capture": {
+      "schema": "aethyr.render.readback.v1",
+      "width": 320,
+      "height": 180,
+      "format": "rgba16float",
+      "frame_validation": {
+        "ok": true,
+        "error": null
+      },
+      "row_bytes": 2560,
+      "sha256": "bd2a6326e315b1335d6c3270f038032c948e05e0e9b213a049a7066988bd9388",
+      "requested_hud": 13098,
+      "admitted_hud": 13098,
+      "admitted_draws": 10,
+      "counts": {
+        "draws": 10,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "coarse": false,
+      "vertex_stride": 16,
+      "vertex_gpu_bytes": 1536000,
+      "uniform_gpu_bytes": 1136,
+      "buffers": [
+        {
+          "name": "u.bin",
+          "source_capacity": 1136,
+          "logical_payload": 1136,
+          "initialized_highwater": 0,
+          "upload_bytes": 0,
+          "gpu_bytes": 1136,
+          "zero_initialized": 1,
+          "file": "u.bin"
+        },
+        {
+          "name": "vertices.bin",
+          "source_capacity": 687408,
+          "logical_payload": 687408,
+          "initialized_highwater": 0,
+          "upload_bytes": 0,
+          "gpu_bytes": 687408,
+          "zero_initialized": 1,
+          "file": "vertices.bin"
+        },
+        {
+          "name": "s0.bin",
+          "source_capacity": 1024,
+          "logical_payload": 0,
+          "initialized_highwater": 0,
+          "upload_bytes": 640,
+          "gpu_bytes": 1024,
+          "zero_initialized": 1,
+          "file": "s0.bin"
+        }
+      ],
+      "package": {
+        "schema": "aethyr.render.package.v1",
+        "profile_index": 7,
+        "slug": "fixture",
+        "app": "fixture",
+        "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "source_inputs": [
+          {
+            "path": "aethyr/render/build.coax",
+            "sha256": "e1a2785e794a1a5bc2ee35d8ff077c64015f9e5bd2d9a4368d93a9c22a3532c3"
+          },
+          {
+            "path": "coax/lib/sys/tool.coax",
+            "sha256": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70"
+          },
+          {
+            "path": "coax/lib/sys/args.coax",
+            "sha256": "9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3"
+          },
+          {
+            "path": "coax/lib/sys/fs.coax",
+            "sha256": "b5cc6abf4c76ecd416e00bada836c7321e4f342ac58a17546ad53faa20d18614"
+          },
+          {
+            "path": "coax/lib/sys/proc.coax",
+            "sha256": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b"
+          },
+          {
+            "path": "coax/lib/crypto/sha256-kernel.coax",
+            "sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926"
+          },
+          {
+            "path": "aethyr/render/build-policy.coax",
+            "sha256": "d0565da9cec37044680d6932aa58bc166a6ccb5f9ea28a8cc273355816e796c4"
+          },
+          {
+            "path": "aethyr/render/emit.coax",
+            "sha256": "bb71e2908ce9f8d269ed5fb5de43f22896229ed39e759deaa4e00862ecbb6e99"
+          },
+          {
+            "path": "aethyr/render/bindings.coax",
+            "sha256": "8f5644b4665a1660f9a15605118e3515689e5697a8101866e68d9f7237f641bc"
+          },
+          {
+            "path": "aethyr/render/capabilities.coax",
+            "sha256": "390d3c31419058a24ab95419929d0bc55298beb580a935e1cba9b13b10757959"
+          },
+          {
+            "path": "aethyr/render/catalog.coax",
+            "sha256": "ffc486dfe5ba07894b0e82485133411411ecc6e62e470621a2befbe9dea2d888"
+          },
+          {
+            "path": "aethyr/render/passes.coax",
+            "sha256": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462"
+          },
+          {
+            "path": "aethyr/render/types.coax",
+            "sha256": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e"
+          },
+          {
+            "path": "coax/lib/json/json.coax",
+            "sha256": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1"
+          },
+          {
+            "path": "aethyr/render/interface.coax",
+            "sha256": "fe37fad6ab782bc12e21f3bd35ec3d2bbadb9ced3f8c2442757ff30be1a71563"
+          },
+          {
+            "path": "aethyr/render/fragment-layout.coax",
+            "sha256": "8ba891b8041e4eb3d063d353f682035982dde1d06a9101c779a56bdfcc6d28b5"
+          },
+          {
+            "path": "aethyr/render/tests/fragment-layout-checks.coax",
+            "sha256": "c298be106bcb41e0acd2a487e0203b9aebeb349c69d508c97e51c79edee53189"
+          },
+          {
+            "path": "aethyr/render/media-profile.coax",
+            "sha256": "9b161447a4a76c933ed89d9eaf289896aa2bbaba1f1ff15c36b58ec604add397"
+          },
+          {
+            "path": "aethyr/render/package.coax",
+            "sha256": "763c6ca78f849090555b495110338469b9d542f6eadeb4c138b2d899c27ea161"
+          },
+          {
+            "path": "aethyr/render/tests/package-checks.coax",
+            "sha256": "4a014b3f6afcd71fb228ada067e7a47d9e0a39c25d2f2c9ac38ccb61c4be20ad"
+          },
+          {
+            "path": "aethyr/render/reference-tree.coax",
+            "sha256": "c54f85ad6474ad2999edcb6448f3daef9075983a98c4168e6ddc0e9eabff7d5d"
+          },
+          {
+            "path": "aethyr/render/tests/reference-tree-checks.coax",
+            "sha256": "8a1e08fb8b5e73ea1182d876aa704b3d52e4b67ef07d149bb4f7fc18b9ee73bf"
+          },
+          {
+            "path": "aethyr/render/asset-profile.coax",
+            "sha256": "7b86793b25e78deab91386d3ddebe383501e7bd2111f9e521b8dc0a3636b63a7"
+          },
+          {
+            "path": "aethyr/render/binding-sources.coax",
+            "sha256": "4128fa3131dbaf2dfce5e4279b782c6801e9bfe80282275c726cdb5b46afc122"
+          },
+          {
+            "path": "aethyr/render/resources.coax",
+            "sha256": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8"
+          },
+          {
+            "path": "aethyr/render/frame.coax",
+            "sha256": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471"
+          },
+          {
+            "path": "aethyr/tests/render-frame-checks.coax",
+            "sha256": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007"
+          },
+          {
+            "path": "aethyr/render/tests/resources-checks.coax",
+            "sha256": "22e811191a1112c1740694d96338936a20ff8092c5915f0638e80f70d0f2c61f"
+          },
+          {
+            "path": "aethyr/render/tests/binding-sources-checks.coax",
+            "sha256": "bc8449bd749a5ccb5e673bccf38b86bad5b553d8a7faa9e8c093ba775f6be4a8"
+          },
+          {
+            "path": "apps/openagents-web/gpu/fixture.coax",
+            "sha256": "66bcdeabde984fb158abefb5de96bbc1e3b65e622787473f0462af4f465f6294"
+          },
+          {
+            "path": "aethyr/render/sampling.coax",
+            "sha256": "5cb0e8c69947eae0f233de97d44d8c23088edafa154b9b44e5bd5ae1997c82c6"
+          },
+          {
+            "path": "aethyr/render/sampling-core.coax",
+            "sha256": "3b03c9587956c4af4d60dc50fea61a06bd496e1a4a4bc2e790c6dbd8bd5f288f"
+          },
+          {
+            "path": "verse/gpu/shader.coax",
+            "sha256": "9688942c90063b6a8f162d79f19332dde17dbb4d7cbeb8885ee13d899c0e1813"
+          },
+          {
+            "path": "aethyr/render/footprint.coax",
+            "sha256": "35d8181537f0bef4928797d755b2e32720695b79bfde1009e45db5dde284e2c3"
+          },
+          {
+            "path": "aethyr/render/tests/footprint-checks.coax",
+            "sha256": "37bd23938d81c51c74053bb0323ce9873596f4c4f1d05d0337d100a12bdaa6a9"
+          },
+          {
+            "path": "aethyr/render/noise.coax",
+            "sha256": "4a6cd03a97af0a546e110439145814c5ffc6c27dd90d1bc5a7cff7a705764346"
+          },
+          {
+            "path": "verse/gpu/wgsl.coax",
+            "sha256": "89fe38e7cade18f6804f4d785ab90866784be86128a26be26ab103348d3f47eb"
+          },
+          {
+            "path": "verse/look.coax",
+            "sha256": "097fc4d0ea9ebf66bd1dd0b5fda643362491ea8a3c7f1fbd443bbea4c951a0d4"
+          },
+          {
+            "path": "verse/style.coax",
+            "sha256": "30a5b680e7270870abd50829dd78aa4114bab90cc28b80cec3dfcdae960a5df2"
+          }
+        ],
+        "modules": [
+          {
+            "binding_set": 0,
+            "wgsl_file": "module-0-ab72e9a02ddae098911eff0465b6cfaf3bffe74d581eb3c6b1f63b2eac08164a.wgsl",
+            "wgsl_sha256": "ab72e9a02ddae098911eff0465b6cfaf3bffe74d581eb3c6b1f63b2eac08164a"
+          }
+        ],
+        "entries": [
+          {
+            "entry_index": 0,
+            "binding_set": 0,
+            "vertex": "fixture_bg_vs",
+            "fragment": "fixture_bg_fs",
+            "wgsl_vertex": "bg_vs",
+            "wgsl_fragment": "bg_fs",
+            "spirv_file": "pipeline-0-7c61ce1a11f65fb4aa712f231ef899343dd2502c05220ddc66f58e55189f3a75.spv",
+            "spirv_sha256": "7c61ce1a11f65fb4aa712f231ef899343dd2502c05220ddc66f58e55189f3a75",
+            "tree_file": "pipeline-0-37158aadde1ab94789293edb7d89d9714316e4aeba1ee92ab82136601ad71fec.tree",
+            "tree_sha256": "37158aadde1ab94789293edb7d89d9714316e4aeba1ee92ab82136601ad71fec",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 2
+              },
+              {
+                "name": "shadow_map",
+                "slot": 1,
+                "native_kind": 2,
+                "shape": 2,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "shadow_cmp",
+                "slot": 2,
+                "native_kind": 3,
+                "shape": 1,
+                "stride": 0,
+                "stages": 2
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 2,
+            "fragment_depth": true
+          },
+          {
+            "entry_index": 2,
+            "binding_set": 0,
+            "vertex": "fixture_caster_vs",
+            "fragment": "",
+            "wgsl_vertex": "caster_vs",
+            "wgsl_fragment": "",
+            "spirv_file": "pipeline-2-04609d94029d37606b6fc4dcca2640f3f8a91e5db1cff28d4c9e8f57cf236ee6.spv",
+            "spirv_sha256": "04609d94029d37606b6fc4dcca2640f3f8a91e5db1cff28d4c9e8f57cf236ee6",
+            "tree_file": "pipeline-2-a42dec99e009a967d7e51f6fa927c2225637497d3fa2613501e74a43d45f236d.tree",
+            "tree_sha256": "a42dec99e009a967d7e51f6fa927c2225637497d3fa2613501e74a43d45f236d",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 1
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 0,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 3,
+            "binding_set": 0,
+            "vertex": "fixture_grass_vs",
+            "fragment": "fixture_grass_fs",
+            "wgsl_vertex": "grass_vs",
+            "wgsl_fragment": "grass_fs",
+            "spirv_file": "pipeline-3-55a2d65f3b470a81e9a6670272e0599de3ed2217857b3663dfee0c7a21939820.spv",
+            "spirv_sha256": "55a2d65f3b470a81e9a6670272e0599de3ed2217857b3663dfee0c7a21939820",
+            "tree_file": "pipeline-3-b7049aed1296a77a9e0a1492ac3a4d8eaf778dd1ea440aace38aa9162ac69078.tree",
+            "tree_sha256": "b7049aed1296a77a9e0a1492ac3a4d8eaf778dd1ea440aace38aa9162ac69078",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 3
+              },
+              {
+                "name": "shadow_map",
+                "slot": 1,
+                "native_kind": 2,
+                "shape": 2,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "shadow_cmp",
+                "slot": 2,
+                "native_kind": 3,
+                "shape": 1,
+                "stride": 0,
+                "stages": 2
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 2,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 5,
+            "binding_set": 0,
+            "vertex": "fixture_scene_vs",
+            "fragment": "fixture_scene_fs",
+            "wgsl_vertex": "scene_vs",
+            "wgsl_fragment": "scene_fs",
+            "spirv_file": "pipeline-5-5ab7058891b069a273f275604d911a5494213ce03dea810cb8a26e1325e6bfd3.spv",
+            "spirv_sha256": "5ab7058891b069a273f275604d911a5494213ce03dea810cb8a26e1325e6bfd3",
+            "tree_file": "pipeline-5-12eea45365880dd9f49b19292bc0e6c558f0e4d895c04ca9c4ed9567f8cb99bb.tree",
+            "tree_sha256": "12eea45365880dd9f49b19292bc0e6c558f0e4d895c04ca9c4ed9567f8cb99bb",
+            "reflection_schema": 2,
+            "tree_version": 3,
+            "derivatives": 2,
+            "control": 2,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 3
+              },
+              {
+                "name": "vertices",
+                "slot": 1,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 1
+              },
+              {
+                "name": "objects",
+                "slot": 2,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 64,
+                "stages": 1
+              },
+              {
+                "name": "sheets",
+                "slot": 3,
+                "native_kind": 2,
+                "shape": 1,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "sheet",
+                "slot": 4,
+                "native_kind": 3,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 2,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 10,
+            "binding_set": 0,
+            "vertex": "fixture_bg_vs",
+            "fragment": "fixture_bloom_fs",
+            "wgsl_vertex": "bg_vs",
+            "wgsl_fragment": "bloom_fs",
+            "spirv_file": "pipeline-10-05841bf0f57155250e200c4495e1dca4cf1a43d5907217e9d5aa90ca3307e07c.spv",
+            "spirv_sha256": "05841bf0f57155250e200c4495e1dca4cf1a43d5907217e9d5aa90ca3307e07c",
+            "tree_file": "pipeline-10-55b7a09ae6dd28b0ec4dbd0d9d3ec1f1821c1040e1a0454fa436f42ec213d985.tree",
+            "tree_sha256": "55b7a09ae6dd28b0ec4dbd0d9d3ec1f1821c1040e1a0454fa436f42ec213d985",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "bloom_src",
+                "slot": 0,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "bloom_lin",
+                "slot": 1,
+                "native_kind": 3,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "bloom_step",
+                "slot": 2,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 2
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 1,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 11,
+            "binding_set": 0,
+            "vertex": "fixture_bg_vs",
+            "fragment": "fixture_post_fs",
+            "wgsl_vertex": "bg_vs",
+            "wgsl_fragment": "post_fs",
+            "spirv_file": "pipeline-11-83d61f6c6e1a8bf1d0d1fe3bbb30139752a030ec6eaff5987be1611535fd82ac.spv",
+            "spirv_sha256": "83d61f6c6e1a8bf1d0d1fe3bbb30139752a030ec6eaff5987be1611535fd82ac",
+            "tree_file": "pipeline-11-fac1ac38b8fb274864b9e3323d657a8e7e72c2082d6b3d2518aab8b2ceaaa59c.tree",
+            "tree_sha256": "fac1ac38b8fb274864b9e3323d657a8e7e72c2082d6b3d2518aab8b2ceaaa59c",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 2
+              },
+              {
+                "name": "post_light",
+                "slot": 1,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "post_quarter",
+                "slot": 2,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "post_eighth",
+                "slot": 3,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "post_aux",
+                "slot": 4,
+                "native_kind": 2,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              },
+              {
+                "name": "post_lin",
+                "slot": 5,
+                "native_kind": 3,
+                "shape": 0,
+                "stride": 0,
+                "stages": 2
+              }
+            ],
+            "vertex_stride": 0,
+            "attributes": [],
+            "fragment_targets": 1,
+            "fragment_depth": false
+          },
+          {
+            "entry_index": 12,
+            "binding_set": 0,
+            "vertex": "fixture_fx_vs",
+            "fragment": "fixture_fx_fs",
+            "wgsl_vertex": "fx_vs",
+            "wgsl_fragment": "fx_fs",
+            "spirv_file": "pipeline-12-f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da.spv",
+            "spirv_sha256": "f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da",
+            "tree_file": "pipeline-12-acff5828e1965a6da909ea2a28863f3ab2f144e90528586ff22ecc428c238da4.tree",
+            "tree_sha256": "acff5828e1965a6da909ea2a28863f3ab2f144e90528586ff22ecc428c238da4",
+            "reflection_schema": 2,
+            "tree_version": 2,
+            "derivatives": 0,
+            "control": 0,
+            "native_int64": true,
+            "uses": [
+              {
+                "name": "u",
+                "slot": 0,
+                "native_kind": 1,
+                "shape": 0,
+                "stride": 4,
+                "stages": 3
+              }
+            ],
+            "vertex_stride": 64,
+            "attributes": [
+              {
+                "location": 0,
+                "scalar": 2,
+                "width": 4,
+                "offset": 0
+              },
+              {
+                "location": 1,
+                "scalar": 2,
+                "width": 4,
+                "offset": 16
+              },
+              {
+                "location": 2,
+                "scalar": 2,
+                "width": 4,
+                "offset": 32
+              },
+              {
+                "location": 3,
+                "scalar": 2,
+                "width": 4,
+                "offset": 48
+              }
+            ],
+            "fragment_targets": 1,
+            "fragment_depth": false
+          }
+        ]
+      },
+      "shader_messages": [],
+      "textures": [
+        {
+          "name": "layers",
+          "format": "rgba8unorm-srgb",
+          "layers": 7,
+          "levels": [
+            {
+              "width": 512,
+              "height": 512,
+              "offset": 0,
+              "row_bytes": 2048,
+              "layer_bytes": 1048576
+            },
+            {
+              "width": 256,
+              "height": 256,
+              "offset": 7340032,
+              "row_bytes": 1024,
+              "layer_bytes": 262144
+            },
+            {
+              "width": 128,
+              "height": 128,
+              "offset": 9175040,
+              "row_bytes": 512,
+              "layer_bytes": 65536
+            },
+            {
+              "width": 64,
+              "height": 64,
+              "offset": 9633792,
+              "row_bytes": 256,
+              "layer_bytes": 16384
+            },
+            {
+              "width": 32,
+              "height": 32,
+              "offset": 9748480,
+              "row_bytes": 256,
+              "layer_bytes": 8192
+            },
+            {
+              "width": 16,
+              "height": 16,
+              "offset": 9805824,
+              "row_bytes": 256,
+              "layer_bytes": 4096
+            },
+            {
+              "width": 8,
+              "height": 8,
+              "offset": 9834496,
+              "row_bytes": 256,
+              "layer_bytes": 2048
+            },
+            {
+              "width": 4,
+              "height": 4,
+              "offset": 9848832,
+              "row_bytes": 256,
+              "layer_bytes": 1024
+            },
+            {
+              "width": 2,
+              "height": 2,
+              "offset": 9856000,
+              "row_bytes": 256,
+              "layer_bytes": 512
+            },
+            {
+              "width": 1,
+              "height": 1,
+              "offset": 9859584,
+              "row_bytes": 256,
+              "layer_bytes": 256
+            }
+          ],
+          "sha256": "5c48f4d5e6b75b206dd5269d957f2547288f6970491c2ccd812a8de9bbe291c2",
+          "file": "texture-0.bin"
+        }
+      ],
+      "media_text": "",
+      "media_images": []
+    },
+    "render": {
+      "submitted": true,
+      "readiness": 2,
+      "refusal": null,
+      "captureArmed": true,
+      "observed": true,
+      "probed": true
+    },
+    "ready": true,
+    "engineReady": true,
+    "search": "?probe&golden&probe-manual",
+    "media": [],
+    "body": "Fixture Realm\n\nFixture Realm"
+  },
+  "events": [
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 1,
+          "origin": "://",
+          "name": "",
+          "uniqueId": "6585954318622869094.-552907916887660830",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "6F65B755A252BD16202B5E4FF889548B"
+          }
+        }
+      }
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 2,
+          "origin": "http://127.0.0.1:58098",
+          "name": "",
+          "uniqueId": "8306970638331163213.4615805316033829109",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "6F65B755A252BD16202B5E4FF889548B"
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:58098/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793582481527.223,
+          "url": "http://127.0.0.1:58098/coaxial/host.js",
+          "lineNumber": 1979,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "6",
+                "url": "http://127.0.0.1:58098/coaxial/host.js",
+                "lineNumber": 1979,
+                "columnNumber": 17
+              },
+              {
+                "functionName": "main",
+                "scriptId": "6",
+                "url": "http://127.0.0.1:58098/coaxial/host.js",
+                "lineNumber": 2014,
+                "columnNumber": 11
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:58098/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793582482705.953,
+          "url": "http://127.0.0.1:58098/coaxial/host.js",
+          "lineNumber": 1979,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "6",
+                "url": "http://127.0.0.1:58098/coaxial/host.js",
+                "lineNumber": 1979,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:58098/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793582484640.846,
+          "url": "http://127.0.0.1:58098/coaxial/host.js",
+          "lineNumber": 1979,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "6",
+                "url": "http://127.0.0.1:58098/coaxial/host.js",
+                "lineNumber": 1979,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:58098/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793582488817.685,
+          "url": "http://127.0.0.1:58098/coaxial/host.js",
+          "lineNumber": 1979,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "6",
+                "url": "http://127.0.0.1:58098/coaxial/host.js",
+                "lineNumber": 1979,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:58098/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793582500562.083,
+          "url": "http://127.0.0.1:58098/coaxial/host.js",
+          "lineNumber": 1979,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "6",
+                "url": "http://127.0.0.1:58098/coaxial/host.js",
+                "lineNumber": 1979,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:58098/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793582502323.41,
+          "url": "http://127.0.0.1:58098/coaxial/host.js",
+          "lineNumber": 1979,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "6",
+                "url": "http://127.0.0.1:58098/coaxial/host.js",
+                "lineNumber": 1979,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "error",
+        "args": [
+          {
+            "type": "string",
+            "value": "Coax renderer initialization"
+          },
+          {
+            "type": "object",
+            "subtype": "error",
+            "className": "RenderRefusal",
+            "description": "RenderRefusal: Coax refused shader digest\n    at RenderHost.initializeChecked (http://127.0.0.1:58098/coaxial/render.js:93:96)\n    at async RenderHost.initialize (http://127.0.0.1:58098/coaxial/render.js:33:89)\n    at async loadShadersOnce (http://127.0.0.1:58098/coaxial/host.js:845:5)",
+            "objectId": "-1536182796064436650.2.1",
+            "preview": {
+              "type": "object",
+              "subtype": "error",
+              "description": "RenderRefusal: Coax refused shader digest\n    at RenderHost.initializeChecked (http://127.0.0.1:58098/coaxial/render.js:93:96)\n    at async RenderHost.initialize (http://127.0.0.1:58098/coaxial/render.js:33:89)\n    at async loadShadersOnce (http://127.0.0.1:58098/coaxial/host.js:845:5)",
+              "overflow": false,
+              "properties": [
+                {
+                  "name": "stack",
+                  "type": "string",
+                  "value": "Error: Coax refused shader digest\n    at RenderHos…ce (http://127.0.0.1:58098/coaxial/host.js:845:5)"
+                },
+                {
+                  "name": "message",
+                  "type": "string",
+                  "value": "Coax refused shader digest"
+                }
+              ]
+            }
+          }
+        ],
+        "executionContextId": 2,
+        "timestamp": 1793582503227.776,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "initialize",
+              "scriptId": "17",
+              "url": "http://127.0.0.1:58098/coaxial/render.js",
+              "lineNumber": 36,
+              "columnNumber": 14
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "command": [
+    "coax/web/tool.sh",
+    "verse/gpu/layers.coax",
+    "/tmp/aethyr-ch11-texture-stage-layers/spec/layers.bin.list",
+    "/tmp/aethyr-ch11-texture-stage-layers/spec/layers.bin",
+    "1024"
+  ],
+  "exit": 0,
+  "elapsed_seconds": 3.7040615410078317
+}

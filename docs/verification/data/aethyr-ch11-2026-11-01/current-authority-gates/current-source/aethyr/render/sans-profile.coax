@@ -1,0 +1,81 @@
+// Shared source part: Font layout and renderer effects load this same physical
+// owner without a second logical module or C exports. Font's advance widths and
+// cap-height layout remain in apps/openagents-web/font.coax.
+#authority;
+SANS_GLYPHS :: 111;
+SANS_COLUMNS :: 16; SANS_ROWS :: 7;
+SANS_CELL :: 96.0;
+SANS_EM :: 64.0;
+SANS_LEFT :: 16.0;
+SANS_BASE :: 72.0;
+SANS_LEVELS :: 5;
+SANS_EXTRA :: [16] u32.[183, 8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8594, 8383, 8722, 215, 8804, 8805, 8800];
+SANS_FAMILY :: "Helvetica, Arial, \"Liberation Sans\", \"Nimbus Sans\", sans-serif";
+
+RenderSansProfile :: struct {
+  glyphs: int; columns: int; rows: int; cell: int; levels: int;
+  width: int; height: int;
+  coverage_bytes: u64; rgba_bytes: u64;
+  family: string; format: string; fill: string; text_baseline: string;
+  premultiplied_alpha: bool;
+}
+RenderSansLevel :: struct {
+  valid: bool; level: int = -1;
+  width: int; height: int; cell: int; font_px: int;
+  left_half: int; baseline_half: int;
+  coverage_offset: u64; coverage_bytes: u64;
+  rgba_offset: u64; rgba_bytes: u64;
+}
+RenderSansGlyph :: struct {
+  valid: bool; code: u32; index: int = -1; column: int; row: int;
+  x_half: int; y_half: int; x: f32; y: f32;
+}
+#load "tests/sans-profile-checks.coax";
+
+// One coverage byte per texel, or four equal RGBA bytes after premultiplying
+// the white glyph. Every rsp_mip is independently rasterized at its own font size.
+render_sans_level :: (rsp_level_index: int) -> RenderSansLevel {
+  if rsp_level_index < 0 || rsp_level_index >= SANS_LEVELS { return RenderSansLevel.{}; }
+  rsp_result := RenderSansLevel.{valid = true, level = rsp_level_index};
+  rsp_result.cell = int(SANS_CELL) >> rsp_level_index;
+  rsp_result.width = SANS_COLUMNS * rsp_result.cell; rsp_result.height = SANS_ROWS * rsp_result.cell;
+  rsp_result.font_px = int(SANS_EM) >> rsp_level_index;
+  rsp_result.left_half = int(SANS_LEFT * 2) >> rsp_level_index;
+  rsp_result.baseline_half = int(SANS_BASE * 2) >> rsp_level_index;
+  for rsp_previous: 0..<rsp_level_index {
+    rsp_previous_cell := int(SANS_CELL) >> rsp_previous;
+    rsp_result.coverage_offset += u64(SANS_COLUMNS * rsp_previous_cell * SANS_ROWS * rsp_previous_cell);
+  }
+  rsp_result.coverage_bytes = u64(rsp_result.width * rsp_result.height);
+  rsp_result.rgba_offset = rsp_result.coverage_offset * 4;
+  rsp_result.rgba_bytes = rsp_result.coverage_bytes * 4;
+  return rsp_result;
+}
+
+render_sans_profile :: () -> RenderSansProfile {
+  rsp_first_mip := render_sans_level(0); rsp_final_mip := render_sans_level(SANS_LEVELS - 1);
+  return RenderSansProfile.{glyphs = SANS_GLYPHS, columns = SANS_COLUMNS, rows = SANS_ROWS,
+    cell = int(SANS_CELL), levels = SANS_LEVELS, width = rsp_first_mip.width, height = rsp_first_mip.height,
+    coverage_bytes = rsp_final_mip.coverage_offset + rsp_final_mip.coverage_bytes,
+    rgba_bytes = rsp_final_mip.rgba_offset + rsp_final_mip.rgba_bytes,
+    family = SANS_FAMILY, format = "rgba8unorm", fill = "#fff", text_baseline = "alphabetic", premultiplied_alpha = true};
+}
+
+render_sans_index :: (rsp_code: u32) -> int {
+  if rsp_code >= 32 && rsp_code <= 126 { return int(rsp_code) - 32; }
+  for rsp_extra_index: 0..<SANS_EXTRA.count { if SANS_EXTRA[rsp_extra_index] == rsp_code { return 95 + rsp_extra_index; } }
+  return -1;
+}
+
+render_sans_glyph :: (rsp_level_index: int, rsp_glyph_index: int) -> RenderSansGlyph {
+  if rsp_glyph_index < 0 || rsp_glyph_index >= SANS_GLYPHS { return RenderSansGlyph.{}; }
+  rsp_mip := render_sans_level(rsp_level_index);
+  if !rsp_mip.valid { return RenderSansGlyph.{}; }
+  rsp_result := RenderSansGlyph.{valid = true, index = rsp_glyph_index,
+    column = rsp_glyph_index % SANS_COLUMNS, row = rsp_glyph_index / SANS_COLUMNS};
+  rsp_result.code = ifx rsp_glyph_index < 95 then u32(rsp_glyph_index + 32) else SANS_EXTRA[rsp_glyph_index - 95];
+  rsp_result.x_half = rsp_result.column * rsp_mip.cell * 2 + rsp_mip.left_half;
+  rsp_result.y_half = rsp_result.row * rsp_mip.cell * 2 + rsp_mip.baseline_half;
+  rsp_result.x = f32(rsp_result.x_half) * 0.5; rsp_result.y = f32(rsp_result.y_half) * 0.5;
+  return rsp_result;
+}

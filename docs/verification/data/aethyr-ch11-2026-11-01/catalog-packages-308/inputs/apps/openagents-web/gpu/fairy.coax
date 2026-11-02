@@ -1,0 +1,1120 @@
+// fairy's shaders, the source of apps/openagents-web/fairy.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (fairy.module,
+// fairy.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/noise.coax";
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../verse/style.coax";
+
+// Fairy Forest's passes in the flat style, faceted (docs/verse/art-styles.md, Flat and Flat: facets):
+// a plain sky over a soft horizon band, the scene flat-shaded low poly (every face one tone from its
+// own normal, round shapes coarse and cut) with soft translucent shadows, the stream and the lakes in
+// flat bands, then a post pass that draws a crisp light line along each shape's outline and blooms
+// only what glows, and the HUD. No specular, no tone curve. Every number of the scene comes from
+// fairy.coax; the shading curves and the palette (FLAT_FAIRY: muted pastels, sage, butter,
+// rose-lavender, a dusty-blue sky, white edges) are verse/style.coax's, generated below. Light is
+// linear until the post pass encodes it.
+//
+// The fade (verse/fairy-forest/forest.coax): colour is drained most of the
+// way (four tenths) to a pale grey-green of the same lightness everywhere but inside the
+// bloom circles, which spread out from what you restore; a circle's young
+// front glows a moment.
+//
+// Every shape's colour is drawn toward the palette's nearest (snap, in the
+// vertex stage, once a vertex): the realm keeps its shapes and the palette
+// decides their colours.
+// FairyU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   plates 5
+//   k 6
+//   you_z 7
+//   r0 8
+//   r1 12
+//   r2 16
+//   r3 20
+//   eye 24
+//   sun 28
+//   ground 32
+//   overview 36
+//   here 40
+//   shadow 44
+//   path 108
+//   path_info 236
+//   bloom 240
+//   bloom_info 336
+//   plate 340
+//   water 468
+//   night 792
+// the eye, the haze's density
+// toward the sun, phone
+// cells west to east, cell size, west and south edge
+// how far the haze is pushed back while the map is open (m; fairymap.coax)
+// unused, the water's level, unused, your x
+// the fade's circles (x, z, radius, edge; forest.coax FF_FADE): the paths are in the ground's planes now
+// 0, a footpath's half width, the ground's rows south to north, its points (a plane's length)
+// how dark (0 day, 1 night), dawn or dusk's warmth, the light she carries, its height
+// The palette's slots (verse/style.coax FLAT_*), linear.
+FAIRY_PALETTE :: 2.0f32; // FLAT_FAIRY
+FAIRY_P_SKY :: 0.0f32;
+FAIRY_P_HORIZON :: 1.0f32;
+FAIRY_P_GROUND :: 2.0f32;
+FAIRY_P_GROUND2 :: 3.0f32;
+FAIRY_P_PATH :: 4.0f32;
+FAIRY_P_LIT :: 5.0f32;
+FAIRY_P_SHADE :: 6.0f32;
+FAIRY_P_SHADOW :: 7.0f32;
+FAIRY_P_ACCENT :: 8.0f32;
+FAIRY_P_DARK :: 9.0f32;
+FAIRY_P_LIGHT :: 10.0f32;
+FAIRY_P_FOLIAGE :: 11.0f32;
+FAIRY_P_FOLIAGE2 :: 12.0f32;
+FAIRY_P_WATER :: 13.0f32;
+FAIRY_P_WOOD :: 14.0f32;
+FAIRY_P_WARM :: 15.0f32;
+FAIRY_P_MINT :: 16.0f32;
+FAIRY_P_ROCK :: 17.0f32;
+FAIRY_P_LAVENDER :: 18.0f32;
+FAIRY_P_SAGE :: 19.0f32;
+fairy_pal :: (slot:f32)->V3 {
+  return v3(verse_style_flat_colour(FAIRY_PALETTE,slot,0.0f32),verse_style_flat_colour(FAIRY_PALETTE,slot,1.0f32),verse_style_flat_colour(FAIRY_PALETTE,slot,2.0f32));
+}
+// Through the day (fairy.coax U_NIGHT, verse/fairy-forest/night.coax): the palette at noon, warmer at
+// dawn and dusk, a blue dusk by night (verse_style_flat_time).
+fairy_by_time :: (u:[]f32)->V3 {
+  return v3(verse_style_flat_time(FAIRY_PALETTE,0.0f32,u[793],u[792]),verse_style_flat_time(FAIRY_PALETTE,1.0f32,u[793],u[792]),verse_style_flat_time(FAIRY_PALETTE,2.0f32,u[793],u[792]));
+}
+fairy_tp :: (slot:f32,u:[]f32)->V3 {
+  return wg_mul_f3f3(fairy_pal(slot),fairy_by_time(u));
+}
+// The flat preset's numbers (verse/style-preset.coax verse_style_flat): the far fade, the hem, a tall
+// shape's dithered darkening toward its foot and its steps.
+// Fairy Forest keeps the near and middle park crisp: only the far terrain fades (from 140 m, over 260 m, at most 0.35).
+FAIRY_FADE_FROM :: 140.0f32;
+FAIRY_FADE_OVER :: 260.0f32;
+FAIRY_FADE_CAP :: 0.35f32;
+FAIRY_HEM :: 0.06f32;
+FAIRY_DITHER :: 0.25f32;
+FAIRY_DITHER_STEPS :: 4.0f32;
+FAIRY_TAU :: 6.2831853f32;
+FairyLit :: struct {light:V4; aux:V4; }
+fairy_ray :: (pos:V2,u:[]f32)->V3 {
+  nx:f32=((pos.x/u[0])*2.0f32)-1.0f32;
+  ny:f32=1.0f32-((pos.y/u[1])*2.0f32);
+  fx2:f32=wg_dot3(v3(u[8],u[9],u[10]),v3(u[8],u[9],u[10]));
+  fy2:f32=wg_dot3(v3(u[12],u[13],u[14]),v3(u[12],u[13],u[14]));
+  return wg_normalize3(wg_add_f3f3(wg_add_f3f3(v3(u[20],u[21],u[22]),wg_div_f3f(wg_mul_f3f(v3(u[8],u[9],u[10]),nx),fx2)),wg_div_f3f(wg_mul_f3f(v3(u[12],u[13],u[14]),ny),fy2)));
+}
+#test "fairy_hash live lattice uses the portable integer noise profile" {
+  #assert f32_bits(fairy_hash(v2(1,2)))==0x3f6013da;
+}
+fairy_hash :: (p:V2)->f32 {
+  return render_noise2(p.x,p.y);
+}
+fairy_noise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(fairy_hash(i),fairy_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(fairy_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),fairy_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+fairy_sun_dir :: (u:[]f32)->V3 {
+  return wg_normalize3(v3(u[28],u[29],u[30]));
+}
+// The flat sky along d: one colour over a soft band of the horizon's, the sun (or by night the
+// moon) a flat disc, and by night a few flat stars.
+fairy_sky_colour :: (d:V3,u:[]f32)->V3 {
+  up:f32=d.y;
+  c:V3=wg_mix_f3f3f(fairy_tp(FAIRY_P_SKY,u),fairy_tp(FAIRY_P_HORIZON,u),verse_style_flat_sky(up));
+  cs:f32=wg_dot3(d,fairy_sun_dir(u));
+  if (cs>0.99966f32) {
+    c=wg_mix_f3f3f(wg_mul_f3f(fairy_pal(FAIRY_P_LIGHT),1.1f32),wg_mul_f3f(fairy_pal(FAIRY_P_LIGHT),0.8f32),u[792]);
+  }
+  if ((u[792]>0.0f32)&&(up>0.02f32)) {
+    q:V3=wg_mul_f3f(wg_div_f3f(d,fmax(abs(d.x),fmax(abs(d.y),abs(d.z)))),160.0f32);
+    cell:V3=wg_floor_f3(q);
+    h:f32=fairy_hash(wg_add_f2f2(wg_add_f2f2(v2(cell.x,cell.y),wg_mul_f2f(v2(cell.y,cell.z),7.13f32)),wg_mul_f2f(v2(cell.z,cell.x),3.71f32)));
+    point:f32=1.0f32-smoothstep(0.12f32,0.2f32,wg_length3(wg_sub_f3f3(wg_fract_f3(q),v3(0.5f32,0.5f32,0.5f32))));
+    c=wg_mix_f3f3f(c,wg_mul_f3f(fairy_pal(FAIRY_P_LIGHT),0.8f32),(point*stepf(0.99f32,h))*u[792]);
+  }
+  return c;
+}
+// How much colour is back at xz (forest.coax ff_restored), and the glow of a young front there.
+fairy_restored :: (xz:V2,u:[]f32)->V2 {
+  front:f32=0.0f32;
+  count:s32=wg_i32_f(u[336]);
+  // outside the fade's circles (forest.coax FF_FADE) the park keeps its colour
+  faded:f32=0.0f32;
+  {
+    i:s32=0;
+    while i<8 {
+      if (i>=(wg_i32_f(u[337]))) {
+        break;
+      }
+      z:V4=wg_at4(u,(cast(int)i)*4+108);
+      faded=fmax(faded,1.0f32-clampf((wg_length2(wg_sub_f2f2(xz,v2(z.x,z.y)))-(z.z-z.w))/fmax(z.w,0.001f32),0.0f32,1.0f32));
+      i+=1;
+    }
+  }
+  best:f32=1.0f32-faded;
+  {
+    i:s32=0;
+    while i<24 {
+      if (i>=count) {
+        break;
+      }
+      b:V4=wg_at4(u,(cast(int)i)*4+240);
+      if (b.z<=0.0f32) {
+        {i+=1; continue;}
+      }
+      d:f32=wg_length2(wg_sub_f2f2(xz,v2(b.x,b.y)));
+      edge:f32=fmin(5.0f32,b.z);
+      best=fmax(best,1.0f32-clampf((d-(b.z-edge))/fmax(edge,0.001f32),0.0f32,1.0f32));
+      front=fmax(front,b.w*exp(-pow((d-b.z)/1.6f32,2.0f32)));
+      i+=1;
+    }
+  }
+  return v2(best,front);
+}
+// The faded world: the colour drained to a pale lilac-grey of its lightness.
+fairy_faded :: (c:V3,r:f32)->V3 {
+  if (r>=1.0f32) {
+    return c;
+  }
+  l:f32=wg_dot3(c,v3(0.3f32,0.55f32,0.15f32));
+  grey:V3=wg_mul_f3f3(v3(l,l,l),v3(0.98f32,0.97f32,1.02f32));
+  return wg_mix_f3f3f(wg_mul_f3f(wg_mix_f3f3f(grey,c,0.7f32),1.03f32),c,r);
+}
+// Far off, a surface goes over to the horizon colour: one soft fade, no fog layers.
+// The city round the park sits back as a soft plain backdrop: what stands tall (8 to 40 m up) and
+// well off (50 to 140 m) goes most of the way to the sky's horizon band, so the park in front stays crisp.
+fairy_hazed :: (c:V3,world:V3,u:[]f32)->V3 {
+  d:f32=fmax(wg_length3(wg_sub_f3f3(world,v3(u[24],u[25],u[26])))-u[36],0.0f32);
+  backdrop:f32=(smoothstep(8.0f32,40.0f32,world.y-u[41])*smoothstep(50.0f32,140.0f32,d))*0.7f32;
+  return wg_mix_f3f3f(c,fairy_tp(FAIRY_P_HORIZON,u),fmax(verse_style_flat_fade(d,FAIRY_FADE_FROM,FAIRY_FADE_OVER,FAIRY_FADE_CAP),backdrop));
+}
+fairy_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if (s.x<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=8.0f32*s.z;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (d>1.0f32) {
+    return under;
+  }
+  over:bool=s.y>=2.0f32;
+  fill:V3=ifx over then v3(0.22f32,0.27f32,0.36f32) else v3(0.16f32,0.2f32,0.27f32);
+  line:V3=ifx over||(s.y>=1.0f32) then v3(0.98f32,0.84f32,0.52f32) else v3(0.78f32,0.7f32,0.52f32);
+  w:f32=1.25f32*s.z;
+  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.x,0.0f32,1.0f32)*0.9f32;
+  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,(edge*fmin(1.0f32,a+0.1f32))*0.7f32);
+}
+fairy_plates :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  {
+    k:s32=0;
+    while k<16 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      c=fairy_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+340),wg_at4(u,(cast(int)((k*2)+1))*4+340));
+      k+=1;
+    }
+  }
+  return c;
+}
+fairy_encode :: (c:V3)->V3 {
+  return wg_pow_f3f3(wg_clamp_f3f3f3(c,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),wg_make_f3_f(1.0f32/2.2f32));
+}
+fairy_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+fairy_bg_fs :: (pos:V4,u:[]f32)->FairyLit {
+  d:V3=fairy_ray(v2(pos.x,pos.y),u);
+  c:V3=fairy_sky_colour(d,u);
+  share:f32=ifx wg_dot3(d,fairy_sun_dir(u))>0.99966f32 then 0.3f32 else 0.0f32;
+  return FairyLit.{light=v4(c.x,c.y,c.z,share),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+FairyObj :: struct {r0:V4; r1:V4; r2:V4; colour:V4; }
+FairyS :: struct {pos:V4; world:V3; normal:V3; tint:V3; look:u32 #flat; local:V3; size:V2 #flat; }
+// where on its shape (a unit shape, -0.5 to 0.5): a wing's veins
+// its height (m), how tall it reads (0 to 1)
+fairy_quad :: (v:u32)->V2 {
+  q:[6]V2=[6]V2.[v2(0.0f32,0.0f32),v2(1.0f32,0.0f32),v2(1.0f32,1.0f32),v2(0.0f32,0.0f32),v2(1.0f32,1.0f32),v2(0.0f32,1.0f32)];
+  return q[cast(int)v];
+}
+fairy_height :: (x:s32,z:s32,u:[]f32,heights:[]f32)->f32 {
+  n:s32=wg_i32_f(u[32]);
+  cx:s32=wg_clamp_i(x,0,n);
+  cz:s32=wg_clamp_i(z,0,wg_i32_f(u[238]));
+  return heights[cast(int)(cast,trunc(u32)((cz*(n+1))+cx))];
+}
+// How far a ground point is past a footpath's edge (x) and a drive's or the street's (y): the heights' second and third planes (fairy.coax path_planes).
+fairy_path_planes :: (x:s32,z:s32,u:[]f32,heights:[]f32)->V2 {
+  i:u32=cast,trunc(u32)((z*((wg_i32_f(u[32]))+1))+x);
+  p:u32=wg_u32_f(u[239]);
+  return v2(heights[cast(int)add_wrap(p,i)],heights[cast(int)add_wrap(mul_wrap(cast(u32)2,p),i)]);
+}
+// The ground's height at xz, the same two triangles a cell as it is drawn (terrain.coax).
+fairy_ground_h :: (xz:V2,u:[]f32,heights:[]f32)->f32 {
+  n:f32=u[32];
+  g:V2=wg_clamp_f2f2f2(wg_div_f2f(wg_sub_f2f2(xz,v2(u[34],u[35])),u[33]),v2(0.0f32,0.0f32),wg_sub_f2f2(v2(n,u[238]),v2(0.0001f32,0.0001f32)));
+  i:s32=wg_i32_f(floor(g.x));
+  j:s32=wg_i32_f(floor(g.y));
+  f:V2=wg_sub_f2f2(g,v2(cast(f32)(i),cast(f32)(j)));
+  h00:f32=fairy_height(i,j,u,heights);
+  h10:f32=fairy_height(i+1,j,u,heights);
+  h01:f32=fairy_height(i,j+1,u,heights);
+  h11:f32=fairy_height(i+1,j+1,u,heights);
+  if (f.x>=f.y) {
+    return (h00+((h10-h00)*f.x))+((h11-h10)*f.y);
+  }
+  return (h00+((h11-h01)*f.x))+((h01-h00)*f.y);
+}
+FairyVert :: struct {p:V3; n:V3; }
+fairy_box_vertex :: (id:u32)->FairyVert {
+  f:u32=id/6;
+  c:V2=wg_sub_f2f2(fairy_quad(id%6),v2(0.5f32,0.5f32));
+  n:V3=v3(0.0f32,0.0f32,0.0f32);
+  a:V3=v3(0.0f32,0.0f32,0.0f32);
+  b:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    _sw2:u32=f;
+    if _sw2==0 {
+      n=v3(1.0f32,0.0f32,0.0f32);
+      a=v3(0.0f32,0.0f32,1.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else if _sw2==1 {
+      n=v3(-1.0f32,0.0f32,0.0f32);
+      a=v3(0.0f32,0.0f32,1.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else if _sw2==2 {
+      n=v3(0.0f32,1.0f32,0.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,0.0f32,1.0f32);
+    } else if _sw2==3 {
+      n=v3(0.0f32,-1.0f32,0.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,0.0f32,1.0f32);
+    } else if _sw2==4 {
+      n=v3(0.0f32,0.0f32,1.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else {
+      n=v3(0.0f32,0.0f32,-1.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    }
+  }
+  return FairyVert.{p=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(n,0.5f32),wg_mul_f3f(a,c.x)),wg_mul_f3f(b,c.y)),n=n};
+}
+// Low poly (art-styles.md, Flat: facets): a sphere is coarse, eight faces round and five down, the
+// rest of its 16 x 10 grid collapsed to nothing; `nudge` moves each corner in or out by up to that
+// share of the radius (verse_style_facet_jitter, seeded per shape), so a crown or a stone reads as cut.
+FAIRY_ROUND :: 8.0f32;
+FAIRY_DOWN :: 5.0f32;
+fairy_nothing :: ()->FairyVert {
+  return FairyVert.{p=v3(0.0f32,0.0f32,0.0f32),n=v3(0.0f32,1.0f32,0.0f32)};
+}
+fairy_sphere_vertex :: (id:u32,nudge:f32,seed:f32)->FairyVert {
+  q:u32=id/6;
+  if (((q%16)>=8)||((q/16)>=5)) {
+    return fairy_nothing();
+  }
+  c:V2=fairy_quad(id%6);
+  i:f32=(cast(f32)(q%16))+c.x;
+  j:f32=(cast(f32)(q/16))+c.y;
+  lon:f32=(i/FAIRY_ROUND)*FAIRY_TAU;
+  lat:f32=(j/FAIRY_DOWN)*3.14159265f32;
+  n:V3=v3(sin(lat)*cos(lon),cos(lat),sin(lat)*sin(lon));
+  return FairyVert.{p=wg_mul_f3f(wg_mul_f3f(n,0.5f32),(1.0f32+(nudge*verse_style_facet_jitter(i,j,FAIRY_ROUND,FAIRY_DOWN,seed)))),n=n};
+}
+// Eight flat sides (the other eight collapsed) and flat caps.
+fairy_cylinder_vertex :: (id:u32)->FairyVert {
+  if (id<96) {
+    if ((id/6)>=8) {
+      return fairy_nothing();
+    }
+    c:V2=fairy_quad(id%6);
+    a:f32=(((cast(f32)(id/6))+c.x)/FAIRY_ROUND)*FAIRY_TAU;
+    n:V3=v3(cos(a),0.0f32,sin(a));
+    return FairyVert.{p=v3(n.x*0.5f32,c.y-0.5f32,n.z*0.5f32),n=n};
+  }
+  t:u32=sub_wrap(id,cast(u32)96)/3;
+  k:u32=sub_wrap(id,cast(u32)96)%3;
+  if ((t%16)>=8) {
+    return fairy_nothing();
+  }
+  top:bool=t<16;
+  y:f32=ifx top then 0.5f32 else -0.5f32;
+  n:V3=v3(0.0f32,ifx top then 1.0f32 else -1.0f32,0.0f32);
+  if (k==0) {
+    return FairyVert.{p=v3(0.0f32,y,0.0f32),n=n};
+  }
+  a:f32=(((cast(f32)(t%16))+(cast(f32)(sub_wrap(k,cast(u32)1))))/FAIRY_ROUND)*FAIRY_TAU;
+  return FairyVert.{p=v3(cos(a)*0.5f32,y,sin(a)*0.5f32),n=n};
+}
+fairy_cone_vertex :: (id:u32)->FairyVert {
+  t:u32=(id%48)/3;
+  k:u32=id%3;
+  if (t>=8) {
+    return fairy_nothing();
+  }
+  if (id<48) {
+    if (k==0) {
+      return FairyVert.{p=v3(0.0f32,0.5f32,0.0f32),n=v3(0.0f32,1.0f32,0.0f32)};
+    }
+    a:f32=(((cast(f32)(t))+(cast(f32)(sub_wrap(k,cast(u32)1))))/FAIRY_ROUND)*FAIRY_TAU;
+    return FairyVert.{p=v3(cos(a)*0.5f32,-0.5f32,sin(a)*0.5f32),n=wg_normalize3(v3(cos(a),0.5f32,sin(a)))};
+  }
+  n:V3=v3(0.0f32,-1.0f32,0.0f32);
+  if (k==0) {
+    return FairyVert.{p=v3(0.0f32,-0.5f32,0.0f32),n=n};
+  }
+  a:f32=(((cast(f32)(t))+(cast(f32)(sub_wrap(k,cast(u32)1))))/FAIRY_ROUND)*FAIRY_TAU;
+  return FairyVert.{p=v3(cos(a)*0.5f32,-0.5f32,sin(a)*0.5f32),n=n};
+}
+fairy_clip :: (w:V3,u:[]f32)->V4 {
+  p:V4=v4(w.x,w.y,w.z,1.0f32);
+  return v4(wg_dot4(wg_at4(u,8),p),wg_dot4(wg_at4(u,12),p),wg_dot4(wg_at4(u,16),p),wg_dot4(wg_at4(u,20),p));
+}
+// The cast shadows, flat translucent shapes: the light left (1 none, 0 all), the deepest where they overlap.
+fairy_blob_shadows :: (p:V2,u:[]f32)->f32 {
+  s:f32=0.0f32;
+  sd:V3=fairy_sun_dir(u);
+  flat_len:f32=wg_length2(v2(sd.x,sd.z));
+  away:V2=ifx flat_len>1e-3f32 then wg_div_f2f(wg_neg_f2(v2(sd.x,sd.z)),fmax(flat_len,1e-4f32)) else v2(0.0f32,0.0f32);
+  stretch:f32=clampf(((flat_len/fmax(sd.y,0.05f32))*1.1f32)+1.0f32,1.0f32,2.2f32);
+  {
+    i:s32=0;
+    while i<16 {
+      b:V4=wg_at4(u,(cast(int)i)*4+44);
+      if (b.z<=0.0f32) {
+        break;
+      }
+      // cast away from the sun: the shape slides off its foot and stretches along the ground, longer
+      // the lower the sun (1 to 2.2 times), so the shadows read as long soft shapes, not blots
+      q:V2=wg_sub_f2f2(p,v2(b.x,b.y));
+      if (wg_dot2(away,away)>1e-6f32) {
+        a:f32=wg_dot2(q,away)-((b.z*(stretch-1.0f32))*0.8f32);
+        c:f32=wg_dot2(q,v2(-away.y,away.x));
+        q=v2(a/stretch,c);
+      }
+      s=fmax(s,verse_style_flat_shadow(wg_length2(q)/b.z)*fmin(b.w*1.6f32,1.0f32));
+      i+=1;
+    }
+  }
+  return 1.0f32-s;
+}
+// A shape's colour drawn `k` of the way to the palette's nearest (by sRGB-ish distance).
+fairy_near :: (q:V3,slot:f32,best:V4)->V4 {
+  p:V3=fairy_pal(slot);
+  e:V3=wg_sub_f3f3(wg_sqrt_f3(p),q);
+  dd:f32=wg_dot3(e,e);
+  return ifx dd<best.y then v4(slot,dd,0.0f32,0.0f32) else best;
+}
+fairy_snap :: (c:V3,k:f32)->V3 {
+  q:V3=wg_sqrt_f3(wg_max_f3f3(c,v3(0.0f32,0.0f32,0.0f32)));
+  b:V4=v4(FAIRY_P_GROUND,1e9f32,0.0f32,0.0f32);
+  b=fairy_near(q,FAIRY_P_GROUND,b);
+  b=fairy_near(q,FAIRY_P_GROUND2,b);
+  b=fairy_near(q,FAIRY_P_PATH,b);
+  b=fairy_near(q,FAIRY_P_DARK,b);
+  b=fairy_near(q,FAIRY_P_LIGHT,b);
+  b=fairy_near(q,FAIRY_P_FOLIAGE,b);
+  b=fairy_near(q,FAIRY_P_FOLIAGE2,b);
+  b=fairy_near(q,FAIRY_P_WATER,b);
+  b=fairy_near(q,FAIRY_P_WOOD,b);
+  b=fairy_near(q,FAIRY_P_WARM,b);
+  b=fairy_near(q,FAIRY_P_MINT,b);
+  b=fairy_near(q,FAIRY_P_ROCK,b);
+  b=fairy_near(q,FAIRY_P_LAVENDER,b);
+  b=fairy_near(q,FAIRY_P_SAGE,b);
+  return wg_mix_f3f3f(c,fairy_pal(b.x),k);
+}
+// The wind (art-styles.md 8): a 12 m wave at 3 m/s along the wind, with gusts.
+FAIRY_WIND :: ()->V2 {return v2(0.8f32,0.6f32);}
+fairy_wind_bend :: (xz:V2,u:[]f32)->f32 {
+  t:f32=u[2]*(1.0f32-u[4]);
+  k:f32=FAIRY_TAU/12.0f32;
+  along:f32=wg_dot2(xz,FAIRY_WIND());
+  gust:f32=fairy_noise(wg_sub_f2f2(wg_div_f2f(xz,25.0f32),wg_div_f2f(wg_mul_f2f(wg_mul_f2f(FAIRY_WIND(),t),3.0f32),25.0f32)));
+  return 0.30f32*((0.6f32*sin((k*along)-((k*3.0f32)*t)))+(0.4f32*((gust*2.0f32)-1.0f32)));
+}
+fairy_scene_vs :: (id:u32,instance:u32,u:[]f32,heights:[]f32,objects:[]FairyObj)->FairyS {
+  o:FairyS;
+  n:u32=wg_u32_f(u[32]);
+  cells:u32=mul_wrap(n,wg_u32_f(u[238]));
+  if (instance<cells) {
+    c:V2=fairy_quad(id%6);
+    gx:s32=(cast,trunc(s32)(instance%n))+(wg_i32_f(c.x));
+    gz:s32=(cast,trunc(s32)(instance/n))+(wg_i32_f(c.y));
+    w:V3=v3(u[34]+((cast(f32)(gx))*u[33]),fairy_height(gx,gz,u,heights),u[35]+((cast(f32)(gz))*u[33]));
+    // the height field's normal over three cells, so the terrain's facets don't show
+    normal:V3=wg_normalize3(v3(fairy_height(gx-2,gz,u,heights)-fairy_height(gx+2,gz,u,heights),4.0f32*u[33],fairy_height(gx,gz-2,u,heights)-fairy_height(gx,gz+2,u,heights)));
+    o.pos=fairy_clip(w,u);
+    o.world=w;
+    o.normal=normal;
+    o.tint=wg_make_f3_f2f(fairy_path_planes(gx,gz,u,heights),0.0f32);
+    o.look=99;
+    o.local=v3(0.0f32,0.0f32,0.0f32);
+    o.size=v2(0.0f32,0.0f32);
+    return o;
+  }
+  objects_n:u32=cast(u32) objects.count;
+  m:FairyObj=objects[cast(int)sub_wrap(instance,cells)];
+  kind:u32=(wg_u32_f(m.colour.w))%8;
+  shape_look:u32=((wg_u32_f(m.colour.w))%128)/8;
+  // crowns, stones and plain shapes are cut irregular; her, the creatures' skin, wings and what glows keep even faces
+  nudge:f32=ifx (shape_look<=2)||(shape_look==7) then 0.16f32 else 0.0f32;
+  v:FairyVert;
+  {
+    _sw3:u32=kind;
+    if _sw3==1 {
+      v=fairy_box_vertex(id);
+    } else if _sw3==2 {
+      v=fairy_sphere_vertex(id,nudge,fract((m.r0.w*0.137f32)+(m.r2.w*0.071f32)));
+    } else if _sw3==3 {
+      v=fairy_cylinder_vertex(id);
+    } else {
+      v=fairy_cone_vertex(id);
+    }
+  }
+  p:V4=v4(v.p.x,v.p.y,v.p.z,1.0f32);
+  w:V3=v3(wg_dot4(m.r0,p),wg_dot4(m.r1,p),wg_dot4(m.r2,p));
+  c0:V3=v3(m.r0.x,m.r1.x,m.r2.x);
+  c1:V3=v3(m.r0.y,m.r1.y,m.r2.y);
+  c2:V3=v3(m.r0.z,m.r1.z,m.r2.z);
+  normal:V3=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(wg_cross3(c1,c2),v.n.x),wg_mul_f3f(wg_cross3(c2,c0),v.n.y)),wg_mul_f3f(wg_cross3(c0,c1),v.n.z));
+  code:u32=wg_u32_f(m.colour.w);
+  look:u32=(code%128)/8;
+  // canopies breathe in the wind, the top more than the bottom
+  if (((look==1)&&(kind==2))&&(wg_length3(c1)>1.0f32)) {
+    w=v3(w.x+(((FAIRY_WIND().x*fairy_wind_bend(v2(w.x,w.z),u))*0.25f32)*(v.p.y+0.5f32)),w.y,w.z+(((FAIRY_WIND().y*fairy_wind_bend(v2(w.x,w.z),u))*0.25f32)*(v.p.y+0.5f32)));
+  }
+  o.pos=fairy_clip(w,u);
+  o.world=w;
+  o.normal=wg_normalize3(wg_add_f3f3(normal,v3(0.0f32,0.00001f32,0.0f32)));
+  // the palette: what glows, her wings and her skin and clothes keep more of their own colour
+  own:bool=((((look==3)||(look==4))||(look==5))||(look==6))||(look==9);
+  o.tint=fairy_snap(v3(m.colour.x,m.colour.y,m.colour.z),ifx own then 0.5f32 else 0.8f32);
+  o.look=add_wrap(look,ifx code>=128 then 32 else 0); // + 32: hers (fairy.coax MINE)
+  o.local=v.p;
+  o.size=v2(wg_length3(c1),smoothstep(1.6f32,3.2f32,wg_length3(c1)));
+  return o;
+}
+// The ground's colour at xz: broad flat fills of lime and olive, the footpaths a flat tan band,
+// the drives and avenues the same tan greyed. paths: how far past a footpath's and a drive's
+// edge (the ground's planes, fairy.coax path_planes).
+fairy_ground_colour :: (xz:V2,aa:f32,paths:V2)->V3 {
+  base:V3=wg_mix_f3f3f(fairy_pal(FAIRY_P_GROUND),fairy_pal(FAIRY_P_GROUND2),stepf(0.58f32,fairy_noise(wg_mul_f2f(xz,0.035f32))));
+  base=wg_mix_f3f3f(base,fairy_pal(FAIRY_P_PATH),1.0f32-smoothstep(-aa,aa,paths.x));
+  grey:V3=wg_mul_f3f(wg_make_f3_f(wg_dot3(fairy_pal(FAIRY_P_PATH),v3(0.3f32,0.55f32,0.15f32))),0.78f32);
+  base=wg_mix_f3f3f(base,grey,1.0f32-smoothstep(-aa,aa,paths.y));
+  return base;
+}
+// The flat light on albedo c with normal n at world: three flat tones (two for characters),
+// lit and shade from the palette, the cast shadow a flat translucent shape (shadow: the light
+// it leaves). No rim, no specular.
+fairy_painted :: (c:V3,n:V3,world:V3,shadow:f32,character:bool,u:[]f32)->V3 {
+  // one tone a face (art-styles.md, Flat: facets), between the palette's shade and lit
+  band:f32=verse_style_facet_tone(wg_dot3(n,fairy_sun_dir(u)),1.0f32);
+  if character {
+    band=0.25f32+(0.75f32*band);
+  }
+  light:V3=wg_mul_f3f3(c,wg_mix_f3f3f(fairy_tp(FAIRY_P_SHADE,u),fairy_tp(FAIRY_P_LIT,u),band));
+  light=wg_mul_f3f3(light,wg_mix_f3f3f(fairy_pal(FAIRY_P_SHADOW),v3(1.0f32,1.0f32,1.0f32),shadow));
+  // by night, the light she carries (LIGHT): a warm pool round her, in two flat steps
+  if (u[794]>0.0f32) {
+    to:V3=wg_sub_f3f3(v3(u[43],u[795],u[7]),world);
+    d2:f32=wg_dot3(to,to);
+    reach:f32=fmax(u[794],1.0f32); // her lantern (fairytools.coax) sends it twice as far
+    fall:f32=fmin(u[794],1.0f32)*((0.5f32*stepf(d2,(36.0f32*reach)*reach))+(0.5f32*stepf(d2,(9.0f32*reach)*reach)));
+    light=wg_add_f3f3(light,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f3(c,fairy_pal(FAIRY_P_WARM)),0.8f32),fall));
+  }
+  return light;
+}
+fairy_scene_fs :: (s:FairyS,u:[]f32,heights:[]f32)->FairyLit {
+  ground_aa:f32=fmax(wg_length2(wg_fwidth_f2(v2(s.world.x,s.world.z))),0.002f32); // derivatives first, while control flow is uniform
+  local_aa:f32=gpu_fwidth_fine(s.local.y);
+  // the face's own normal (art-styles.md, Flat: facets): one flat tone a face, turned to the side the shape faces
+  face_n:V3=wg_cross3(wg_dpdx_f3(s.world),wg_dpdy_f3(s.world));
+  face_n=wg_normalize3(ifx wg_dot3(face_n,face_n)<1e-14f32 then v3(0.0f32,1.0f32,0.0f32) else face_n);
+  if (wg_dot3(face_n,s.normal)<0.0f32) {
+    face_n=wg_neg_f3(face_n);
+  }
+  n:V3=wg_normalize3(s.normal);
+  edge:f32=1.0f32; // a light outline where this surface stands in front of something further (the post pass)
+  base:V3=s.tint;
+  xz:V2=v2(s.world.x,s.world.z);
+  shadow:f32=1.0f32;
+  character:bool=false;
+  glow:f32=0.0f32;
+  keep:bool=false;
+  // hers (look + 32) or not; anything else within about 1.6 m of the lens
+  // dissolves (an ordered dither), so nothing near blots out the view
+  look:u32=s.look;
+  if ((look>=32)&&(look<99)) {
+    look=sub_wrap(look,cast(u32)32);
+  } else if (look<32) {
+    // (and, further out, anything nearer the lens than she is, so a cap or
+    // a trunk between you and the camera never blots her or the way out)
+    near:f32=wg_length3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26])));
+    clear:f32=ifx u[36]>0.0f32 then 1.6f32 else fmax(1.6f32,wg_length2(wg_sub_f2f2(v2(u[24],u[26]),v2(u[43],u[7])))); // (not over the map)
+    if (near<clear) {
+      edge=0.0f32;
+      p:U2=wg_mod_u2u(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),4);
+      bayer:[16]f32=[16]f32.[0.0f32,8.0f32,2.0f32,10.0f32,12.0f32,4.0f32,14.0f32,6.0f32,3.0f32,11.0f32,1.0f32,9.0f32,15.0f32,7.0f32,13.0f32,5.0f32];
+      if ((smoothstep(clear*0.8f32,clear,near)*16.0f32)<=(bayer[cast(int)add_wrap(mul_wrap(p.y,cast(u32)4),p.x)]+0.5f32)) {
+        gpu_demote_helper();
+      }
+    }
+  }
+  if (look==99) {
+    base=fairy_ground_colour(xz,ground_aa,v2(s.tint.x,s.tint.y));
+    // the banks: a flat sand where the ground dips to the water
+    base=wg_mix_f3f3f(base,fairy_pal(FAIRY_P_PATH),stepf(s.world.y,u[41]+0.2f32));
+    shadow=fairy_blob_shadows(xz,u);
+    // the ground's own faces show a little, half their tilt over the smooth slope
+    n=face_n;
+    edge=0.0f32;
+  } else if ((look==3)||(look==6)) {
+    character=true;
+    keep=true;
+    n=face_n;
+  } else if (look==4) {
+    glow=1.0f32;
+  } else if (look==9) {
+    glow=1.0f32;
+    keep=true;
+  } else if (look==5) {
+    // a wing (art-styles.md, Flat: facets): feathers, not membrane. Its pointed outline (fairy.coax
+    // wing_half) cut along the edge into feather tips, pale at the root, its own colour toward the
+    // tips with a jagged line between, a white seam between feathers and a crisp white rim
+    q:V2=wg_mul_f2f(v2(s.local.x,s.local.y),2.0f32);
+    along:f32=clampf((q.y+1.0f32)*0.5f32,0.0f32,1.0f32);
+    fan:f32=wg_atan2(q.x,q.y+1.0f32);
+    f:f32=fract((fan*3.4f32)+0.5f32);
+    notch:f32=abs(f-0.5f32)*2.0f32; // 0 down a feather's middle, 1 at the seam between two
+    half:f32=clampf((1.9f32*pow(along,0.6f32))*(1.0f32-along),0.0f32,1.0f32)*(1.0f32-((0.2f32*notch)*smoothstep(0.25f32,0.6f32,along)));
+    if ((abs(q.x)>half)||(along>(1.0f32-(0.1f32*notch)))) {
+      gpu_demote_helper();
+    }
+    tips:f32=stepf(0.5f32+(0.16f32*notch),along);
+    pale:V3=wg_mix_f3f3f(base,fairy_pal(FAIRY_P_LIGHT),0.7f32);
+    base=wg_mix_f3f3f(pale,base,tips);
+    seam:f32=stepf(0.93f32,notch)*stepf(0.3f32,along);
+    rim:f32=stepf(0.86f32,abs(q.x)/fmax(half,0.001f32));
+    base=wg_mix_f3f3f(base,fairy_pal(FAIRY_P_ACCENT),fmax(seam*0.8f32,rim));
+    n=face_n;
+    glow=0.3f32;
+    keep=true;
+  } else if (look==10) {
+    // falling water (fairypond.coax): streaks running down it, whiter toward
+    // its foot, and between them thin water the light comes through
+    q:V3=s.local;
+    bands:f32=fairy_noise(v2((q.x*14.0f32)+(q.z*6.0f32),(q.y*4.0f32)+(u[2]*2.4f32)));
+    streak:f32=fairy_noise(v2(q.x*31.0f32,(q.y*9.0f32)+(u[2]*4.0f32)));
+    white:f32=clampf(((smoothstep(0.5f32,0.85f32,bands)*0.8f32)+(smoothstep(0.6f32,0.9f32,streak)*0.5f32))+(smoothstep(-0.15f32,-0.5f32,q.y)*0.7f32),0.0f32,1.0f32);
+    cell:U2=wg_mod_u2u(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),2);
+    if ((white<0.25f32)&&((add_wrap(cell.x,cell.y)%2)==0)) {
+      gpu_demote_helper();
+    }
+    base=wg_mix_f3f3f(fairy_pal(FAIRY_P_WATER),fairy_pal(FAIRY_P_LIGHT),stepf(0.5f32,white));
+    glow=0.0f32;
+  } else if (look==11) {
+    // a lake (fairypark.coax ffpk_lakes): a few flat tones by its depth over the carved bed, two
+    // soft light bands along the shore, and slow broken ripple lines drifting across the open water
+    depth:f32=u[41]-fairy_ground_h(xz,u,heights);
+    w:V3=fairy_pal(FAIRY_P_WATER);
+    base=wg_mix_f3f3f(w,wg_mul_f3f(w,0.82f32),stepf(0.42f32,depth));
+    base=wg_mix_f3f3f(base,wg_mix_f3f3f(w,fairy_pal(FAIRY_P_LIGHT),0.28f32),stepf(depth,0.2f32));
+    base=wg_mix_f3f3f(base,wg_mix_f3f3f(w,fairy_pal(FAIRY_P_LIGHT),0.55f32),stepf(depth,0.07f32));
+    drift:V2=v2(0.8f32,0.6f32);
+    ph:f32=((wg_dot2(xz,drift)/6.0f32)+(fairy_noise(wg_mul_f2f(xz,0.04f32))*1.5f32))-(u[2]*0.025f32);
+    thin:f32=fmax(0.035f32,(ground_aa/6.0f32)*1.5f32);
+    ripple:f32=(stepf(abs(fract(ph)-0.5f32),thin)*stepf(0.5f32,fairy_noise(wg_add_f2f2(wg_mul_f2f2(xz,v2(0.09f32,0.13f32)),wg_mul_f2f(wg_mul_f2f(drift,u[2]),0.04f32)))))*stepf(0.14f32,depth);
+    base=wg_mix_f3f3f(base,wg_mix_f3f3f(w,fairy_pal(FAIRY_P_LIGHT),0.45f32),ripple*(1.0f32-smoothstep(30.0f32,70.0f32,wg_length3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26]))))));
+    n=v3(0.0f32,1.0f32,0.0f32);
+  } else if (look==7) {
+    keep=true;
+    n=face_n;
+  } else if (look!=10) {
+    n=face_n;
+  }
+  // trim: a thin cream line along the hem of her clothes
+  if (look==6) {
+    from_hem:f32=(s.local.y+0.5f32)*s.size.x;
+    base=wg_mix_f3f3f(base,fairy_pal(FAIRY_P_ACCENT),verse_style_flat_hem(from_hem,FAIRY_HEM*0.5f32,fmax(local_aa*s.size.x,0.001f32)));
+  }
+  // a tall shape (a trunk, the heart tree) steps a little darker toward its foot, dithered where the steps meet
+  if ((s.size.y>0.0f32)&&(look<99)) {
+    t:f32=verse_style_flat_dither(0.5f32-s.local.y,s.pos.x,s.pos.y,FAIRY_DITHER_STEPS);
+    base=wg_mix_f3f3f(base,wg_mul_f3f(wg_mul_f3f3(base,fairy_pal(FAIRY_P_SHADE)),0.8f32),(t*FAIRY_DITHER)*s.size.y);
+  }
+  r:V2=fairy_restored(xz,u);
+  if (!keep) {
+    base=fairy_faded(base,r.x);
+  }
+  c:V3=v3(0.0f32,0.0f32,0.0f32);
+  share:f32=0.0f32;
+  if (glow>0.0f32) {
+    // what glows skips the tones: one flat light colour (a wing, glow 0.3, keeps a little of its face's tone)
+    c=wg_mul_f3f(base,ifx glow<1.0f32 then 1.0f32 else 1.3f32);
+    if (glow<0.5f32) {
+      c=wg_mul_f3f(base,mix(0.86f32,1.04f32,verse_style_facet_tone(wg_dot3(n,fairy_sun_dir(u)),1.0f32)));
+    }
+    if (!keep) {
+      c=wg_mul_f3f(c,mix(0.35f32,1.0f32,r.x));
+    }
+    share=ifx glow>=1.0f32 then 0.75f32 else ifx glow<0.5f32 then 0.06f32 else 0.45f32;
+  } else {
+    c=fairy_painted(base,n,s.world,shadow,character,u);
+  }
+  // a bloom's spreading front sparkles gold
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(fairy_pal(FAIRY_P_ACCENT),r.y),0.6f32));
+  share=fmax(share,r.y*0.5f32);
+  c=fairy_hazed(c,s.world,u);
+  dist:f32=wg_length3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26])));
+  return FairyLit.{light=v4(c.x,c.y,c.z,share),aux=v4(n.x,n.y,n.z,ifx (edge>0.5f32)&&(look!=11) then dist else -dist)};
+}
+// ---- water: the W2 mesh and detail (copied from everglade.wgsl)
+FAIRY_WATER_F0 :: 0.0200593f32; // ((n - 1) / (n + 1))^2, n = 1.33
+FAIRY_WATER_RIPPLE_SPEED :: 1.1f32;
+FAIRY_WATER_FLOW_PERIOD :: 1.6f32;
+FAIRY_WATER_DRY :: 0.6f32;
+FairyWaterU :: struct {waves:[16]V4; detail:[32]V4; ripples:[24]V4; params:V4; absorb:V4; scatter:V4; body:V4; rest:V4; control:V4; grid:V4; grid2:V4; frame:V4; }
+// time, detail count, ripple count, wave count
+// in-scatter rgb, foam
+// roughness, swell gain, eye inside, crest scattering
+// shore band, pixel angle, sun disc, metres along a node
+// detail waves, glint fade, foam octaves, 1
+// nodes across, nodes along, quads across a patch, quads along a patch
+// nodes along a patch, patches
+// the first node's x, z, the way along (rad about +Y from +z), metres across a node
+fairy_water_node :: (k:u32,f:u32,water_nodes:[]f32)->f32 {
+  return water_nodes[cast(int)add_wrap(mul_wrap(k,cast(u32)8),f)];
+}
+FairyWaterRest :: struct {pos:V3; depth:f32; shore:f32; flow:V2; foam:f32; }
+// The baked grid between its nodes: u across, v along, in node units.
+fairy_water_rest :: (uv:V2,u:[]f32,water_nodes:[]f32)->FairyWaterRest {
+  cols:u32=wg_u32_f(u[780]);
+  rows:u32=wg_u32_f(u[781]);
+  a:V2=wg_clamp_f2f2f2(uv,v2(0.0f32,0.0f32),v2(cast(f32)(sub_wrap(cols,cast(u32)1)),cast(f32)(sub_wrap(rows,cast(u32)1))));
+  i:u32=wg_min_u(wg_u32_f(floor(a.x)),sub_wrap(cols,cast(u32)2));
+  j:u32=wg_min_u(wg_u32_f(floor(a.y)),sub_wrap(rows,cast(u32)2));
+  f:V2=wg_sub_f2f2(a,v2(cast(f32)(i),cast(f32)(j)));
+  k00:u32=add_wrap(mul_wrap(j,cols),i);
+  k10:u32=add_wrap(k00,cast(u32)1);
+  k01:u32=add_wrap(k00,cols);
+  k11:u32=add_wrap(k01,cast(u32)1);
+  o:FairyWaterRest;
+  v:[8]f32;
+  {
+    c:u32=0;
+    while c<8 {
+      v[cast(int)c]=mix(mix(fairy_water_node(k00,c,water_nodes),fairy_water_node(k10,c,water_nodes),f.x),mix(fairy_water_node(k01,c,water_nodes),fairy_water_node(k11,c,water_nodes),f.x),f.y);
+      c=add_wrap(c,1);
+    }
+  }
+  o.pos=v3(v[0],v[1],v[2]);
+  o.depth=v[3];
+  o.shore=v[4];
+  o.flow=v2(v[5],v[6]);
+  o.foam=v[7];
+  return o;
+}
+fairy_water_shoal :: (k:f32,depth:f32)->f32 {
+  return sqrt(wg_tanh(clampf(k*depth,0.0f32,10.0f32)));
+}
+// The Gerstner displacement (xyz, m) of rest point p0 and how tightly the
+// waves squeeze the surface there (w, crests near one).
+fairy_water_gerstner :: (p0:V2,depth:f32,scale:f32,u:[]f32)->V4 {
+  d:V3=v3(0.0f32,0.0f32,0.0f32);
+  squeeze:f32=0.0f32;
+  count:s32=wg_i32_f(u[759]);
+  gain:f32=u[769]*scale;
+  {
+    i:s32=0;
+    while i<8 {
+      if (i>=count) {
+        break;
+      }
+      a:V4=wg_at4(u,(cast(int)(i*2))*4+468);
+      c:V4=wg_at4(u,(cast(int)((i*2)+1))*4+468);
+      k:f32=a.z;
+      amp:f32=(a.w*gain)*fairy_water_shoal(k,depth);
+      theta:f32=(k*wg_dot2(v2(a.x,a.y),p0))+c.y;
+      co:f32=cos(theta);
+      s:f32=sin(theta);
+      d.x=d.x+(((c.x*amp)*a.x)*co);
+      d.z=d.z+(((c.x*amp)*a.y)*co);
+      d.y=d.y+(amp*s);
+      squeeze=squeeze+(((c.x*amp)*k)*s);
+      i+=1;
+    }
+  }
+  return v4(d.x,d.y,d.z,squeeze);
+}
+// The waves' slope at p0 (dh/dx, dh/dz) and the squeeze's change of the normal's y (Finch 2004, eq. 12).
+fairy_water_gerstner_slope :: (p0:V2,depth:f32,scale:f32,u:[]f32)->V3 {
+  g:V3=v3(0.0f32,0.0f32,0.0f32);
+  count:s32=wg_i32_f(u[759]);
+  gain:f32=u[769]*scale;
+  {
+    i:s32=0;
+    while i<8 {
+      if (i>=count) {
+        break;
+      }
+      a:V4=wg_at4(u,(cast(int)(i*2))*4+468);
+      c:V4=wg_at4(u,(cast(int)((i*2)+1))*4+468);
+      k:f32=a.z;
+      wa:f32=((k*a.w)*gain)*fairy_water_shoal(k,depth);
+      theta:f32=(k*wg_dot2(v2(a.x,a.y),p0))+c.y;
+      co:f32=cos(theta);
+      g.x=g.x+((a.x*wa)*co);
+      g.y=g.y+((a.y*wa)*co);
+      g.z=g.z+((c.x*wa)*sin(theta));
+      i+=1;
+    }
+  }
+  return g;
+}
+FairyWaterOut :: struct {clip:V4; world_depth:V4; rest_flow:V4; look:V4; extra:V4; }
+// the displaced position, the depth under it at rest
+// the rest position on the plane, the flow (m/s)
+// white water, 0, crest squeeze, shore distance (m)
+// 0, height over the level (m)
+// A patch an instance; its quads are sampled between the baked nodes, and a
+// quad whose four corners stand above the water is dry ground and not drawn.
+fairy_water_vs :: (id:u32,piece:u32,u:[]f32,water_nodes:[]f32)->FairyWaterOut {
+  o:FairyWaterOut;
+  qa:u32=wg_u32_f(u[782]);
+  ql:u32=wg_u32_f(u[783]);
+  quad_id:u32=id/6;
+  c:V2=fairy_quad(id%6);
+  qx:u32=quad_id%qa;
+  qz:u32=quad_id/qa;
+  across:f32=(u[780]-1.0f32)/(cast(f32)(qa));
+  along:f32=u[784]/(cast(f32)(ql));
+  base:f32=(cast(f32)(piece))*u[784];
+  uv:V2=v2(((cast(f32)(qx))+c.x)*across,base+(((cast(f32)(qz))+c.y)*along));
+  low:f32=1000.0f32;
+  {
+    k:u32=0;
+    while k<4 {
+      corner:V2=v2((cast(f32)(add_wrap(qx,(k&1))))*across,base+((cast(f32)(add_wrap(qz,(k>>1))))*along));
+      low=fmin(low,-fairy_water_rest(corner,u,water_nodes).depth);
+      k=add_wrap(k,1);
+    }
+  }
+  r:FairyWaterRest=fairy_water_rest(uv,u,water_nodes);
+  if ((low>FAIRY_WATER_DRY)||(quad_id>=mul_wrap(qa,ql))) {
+    o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+    return o;
+  }
+  wave:V4=fairy_water_gerstner(v2(r.pos.x,r.pos.z),r.depth,1.0f32,u);
+  world:V3=wg_add_f3f3(r.pos,v3(wave.x,wave.y,wave.z));
+  o.clip=fairy_clip(world,u);
+  o.world_depth=v4(world.x,world.y,world.z,r.depth);
+  o.rest_flow=wg_make_f4_f2f2(v2(r.pos.x,r.pos.z),r.flow);
+  o.look=v4(r.foam,0.0f32,wave.w,r.shore);
+  o.extra=v4(0.0f32,world.y-r.pos.y,0.0f32,0.0f32);
+  return o;
+}
+// ---- detail: what bends the normal but never moves the surface
+// pcg3d (Jarzynski and Olano, "Hash Functions for GPU Rendering", JCGT 2020) on the cell's corner.
+fairy_water_hash :: (p:V3)->f32 {
+  v:U3=wg_add_u3u(wg_mul_u3u(wg_bits_u3i3(wg_cvt_i3f3(p)),1664525),1013904223);
+  v.x=add_wrap(v.x,mul_wrap(v.y,v.z));
+  v.y=add_wrap(v.y,mul_wrap(v.z,v.x));
+  v.z=add_wrap(v.z,mul_wrap(v.x,v.y));
+  v=wg_xor_u3u3(v,wg_shr_u3u3(v,u3(16,16,16)));
+  v.x=add_wrap(v.x,mul_wrap(v.y,v.z));
+  return (cast(f32)(v.x>>8))/16777215.0f32;
+}
+fairy_water_noise :: (p:V3)->f32 {
+  i:V3=wg_floor_f3(p);
+  f:V3=wg_fract_f3(p);
+  s:V3=wg_mul_f3f3(wg_mul_f3f3(f,f),wg_sub_ff3(3.0f32,wg_mul_ff3(2.0f32,f)));
+  a:f32=fairy_water_hash(i);
+  b:f32=fairy_water_hash(wg_add_f3f3(i,v3(1.0f32,0.0f32,0.0f32)));
+  c:f32=fairy_water_hash(wg_add_f3f3(i,v3(0.0f32,1.0f32,0.0f32)));
+  d:f32=fairy_water_hash(wg_add_f3f3(i,v3(1.0f32,1.0f32,0.0f32)));
+  e:f32=fairy_water_hash(wg_add_f3f3(i,v3(0.0f32,0.0f32,1.0f32)));
+  g:f32=fairy_water_hash(wg_add_f3f3(i,v3(1.0f32,0.0f32,1.0f32)));
+  h:f32=fairy_water_hash(wg_add_f3f3(i,v3(0.0f32,1.0f32,1.0f32)));
+  k:f32=fairy_water_hash(wg_add_f3f3(i,v3(1.0f32,1.0f32,1.0f32)));
+  return mix(mix(mix(a,b,s.x),mix(c,d,s.x),s.y),mix(mix(e,g,s.x),mix(h,k,s.x),s.y),s.z);
+}
+// The analytic detail waves' slope at p, each faded once it is shorter than a
+// few of the pixel's footprint (m), and the slope variance the faded waves
+// would have added (z), which becomes roughness (after Toksvig 2005).
+fairy_water_detail_waves :: (p:V2,footprint:f32,gain:f32,u:[]f32)->V3 {
+  g:V2=v2(0.0f32,0.0f32);
+  lost:f32=0.0f32;
+  t:f32=u[756];
+  n:s32=wg_min_i(wg_i32_f(u[776]),wg_i32_f(u[757]));
+  {
+    i:s32=0;
+    while i<16 {
+      if (i>=n) {
+        break;
+      }
+      a:V4=wg_at4(u,(cast(int)(i*2))*4+532);
+      b:V4=wg_at4(u,(cast(int)((i*2)+1))*4+532);
+      k:f32=a.z;
+      slope:f32=(a.w*k)*gain;
+      keep:f32=clampf((b.z/(6.0f32*fmax(footprint,1e-4f32)))-0.5f32,0.0f32,1.0f32);
+      theta:f32=((k*wg_dot2(v2(a.x,a.y),p))-(b.x*t))+b.y;
+      g=wg_add_f2f2(g,wg_mul_f2f(v2(a.x,a.y),((slope*keep)*cos(theta))));
+      lost=lost+(((0.5f32*slope)*slope)*(1.0f32-(keep*keep)));
+      i+=1;
+    }
+  }
+  return v3(g.x,g.y,lost);
+}
+// A pixel's footprint on the surface (m): the eye's distance times the
+// pixel's angle, stretched along the view at grazing angles.
+fairy_water_footprint :: (v:V3,distance:f32,u:[]f32)->f32 {
+  size:f32=fmax(distance*u[773],1e-4f32);
+  return size*sqrt(1.0f32/fmax(abs(v.y),0.08f32));
+}
+// Detail carried along the flow in two phases half a cycle apart, blended
+// so neither phase's reset shows (Vlachos 2010). Still water stands.
+fairy_water_flow_detail :: (p:V2,flow:V2,footprint:f32,u:[]f32)->V3 {
+  if (wg_length2(flow)<=0.02f32) {
+    return fairy_water_detail_waves(p,footprint,1.0f32,u);
+  }
+  t:f32=u[756];
+  phase_a:f32=fract(t/FAIRY_WATER_FLOW_PERIOD);
+  phase_b:f32=fract((t/FAIRY_WATER_FLOW_PERIOD)+0.5f32);
+  da:V3=fairy_water_detail_waves(wg_sub_f2f2(p,wg_mul_f2f(wg_mul_f2f(flow,phase_a),FAIRY_WATER_FLOW_PERIOD)),footprint,1.4f32,u);
+  db:V3=fairy_water_detail_waves(wg_add_f2f2(wg_sub_f2f2(p,wg_mul_f2f(wg_mul_f2f(flow,phase_b),FAIRY_WATER_FLOW_PERIOD)),v2(3.7f32,1.3f32)),footprint,1.4f32,u);
+  wa:f32=1.0f32-abs((2.0f32*phase_a)-1.0f32);
+  return wg_add_f3f3(wg_mul_f3f(da,wa),wg_mul_f3f(db,(1.0f32-wa)));
+}
+// The ripples' slope at p: damped wave packets riding expanding rings.
+fairy_water_ripples :: (p:V2,u:[]f32)->V2 {
+  g:V2=v2(0.0f32,0.0f32);
+  t:f32=u[756];
+  count:s32=wg_i32_f(u[758]);
+  k:f32=6.2831853f32/0.45f32;
+  {
+    i:s32=0;
+    while i<24 {
+      if (i>=count) {
+        break;
+      }
+      r:V4=wg_at4(u,(cast(int)i)*4+660);
+      age:f32=t-r.z;
+      to:V2=wg_sub_f2f2(p,v2(r.x,r.y));
+      dist:f32=wg_length2(to);
+      x:f32=dist-(FAIRY_WATER_RIPPLE_SPEED*age);
+      envelope:f32=(exp(((-x)*x)/0.18f32)*exp((-age)*1.1f32))/(1.0f32+(1.5f32*dist));
+      g=wg_add_f2f2(g,wg_mul_f2f(wg_div_f2f(to,fmax(dist,1e-3f32)),(((r.w*envelope)*k)*cos(k*x))));
+      i+=1;
+    }
+  }
+  return g;
+}
+// Foam riding the rings of young ripples.
+fairy_water_ripple_foam :: (p:V2,u:[]f32)->f32 {
+  foam:f32=0.0f32;
+  t:f32=u[756];
+  count:s32=wg_i32_f(u[758]);
+  {
+    i:s32=0;
+    while i<24 {
+      if (i>=count) {
+        break;
+      }
+      r:V4=wg_at4(u,(cast(int)i)*4+660);
+      age:f32=t-r.z;
+      x:f32=wg_length2(wg_sub_f2f2(p,v2(r.x,r.y)))-(FAIRY_WATER_RIPPLE_SPEED*age);
+      foam=fmax(foam,(exp(((-x)*x)/0.08f32)*exp((-age)*1.6f32))*clampf(r.w*25.0f32,0.0f32,1.0f32));
+      i+=1;
+    }
+  }
+  return foam;
+}
+fairy_water_fresnel :: (c:f32)->f32 {
+  m:f32=clampf(1.0f32-c,0.0f32,1.0f32);
+  m2:f32=m*m;
+  return FAIRY_WATER_F0+((((1.0f32-FAIRY_WATER_F0)*m2)*m2)*m);
+}
+// ---- the flat water: two flat bands of the palette's water by depth (verse_style_flat's
+// shallow, mid and deep), a flat cream shore line and rings, no reflection and no sparkle.
+// The mesh, the waves and the ripples are the W2 shader's (everglade.wgsl), from
+// verse/fairy-forest/stream.coax's nodes (store 2).
+FairyWaterShade :: struct {emit:V3; transmit:V3; }
+fairy_water_fragment :: (i:FairyWaterOut,u:[]f32)->FairyWaterShade {
+  o:FairyWaterShade;
+  world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
+  rest:V2=v2(i.rest_flow.x,i.rest_flow.y);
+  depth:f32=i.world_depth.w;
+  dist:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world));
+  if (u[25]<world.y) {
+    o.emit=v3(0.0f32,0.0f32,0.0f32);
+    o.transmit=v3(1.0f32,1.0f32,1.0f32);
+    return o;
+  }
+  w:V3=fairy_pal(FAIRY_P_WATER);
+  body:V3=wg_mix_f3f3f(wg_mix_f3f3f(w,wg_mul_f3f(w,0.78f32),stepf(0.4f32,depth)),wg_mul_f3f(w,0.6f32),stepf(1.5f32,depth));
+  body=wg_mul_f3f3(body,fairy_tp(FAIRY_P_LIT,u));
+  r:V2=fairy_restored(v2(world.x,world.z),u);
+  body=fairy_faded(body,r.x);
+  shore:f32=i.look.w;
+  line:f32=stepf(shore,0.22f32)*stepf(0.0f32,depth);
+  rings:f32=stepf(0.5f32,fairy_water_ripple_foam(rest,u)*1.6f32);
+  foam:f32=fmax(line,rings);
+  alpha:f32=(0.6f32+(0.35f32*stepf(0.4f32,depth)))*smoothstep(-0.05f32,0.1f32,depth);
+  emit:V3=wg_mix_f3f3f(wg_mul_f3f(body,alpha),wg_mul_f3f3(fairy_pal(FAIRY_P_LIGHT),fairy_tp(FAIRY_P_LIT,u)),foam);
+  hz:f32=verse_style_flat_fade(fmax(dist-u[36],0.0f32),FAIRY_FADE_FROM,FAIRY_FADE_OVER,FAIRY_FADE_CAP);
+  trans:V3=wg_make_f3_f((1.0f32-alpha)*(1.0f32-foam));
+  o.emit=wg_add_f3f3(wg_mul_f3f(emit,(1.0f32-hz)),wg_mul_f3f3(wg_mul_f3f(fairy_tp(FAIRY_P_HORIZON,u),hz),wg_sub_f3f3(v3(1.0f32,1.0f32,1.0f32),trans)));
+  o.transmit=trans;
+  return o;
+}
+fairy_water_transmit_fs :: (i:FairyWaterOut,u:[]f32)->FairyLit {
+  s:FairyWaterShade=fairy_water_fragment(i,u);
+  return FairyLit.{light=v4(s.transmit.x,s.transmit.y,s.transmit.z,1.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+fairy_water_emit_fs :: (i:FairyWaterOut,u:[]f32)->FairyLit {
+  s:FairyWaterShade=fairy_water_fragment(i,u);
+  return FairyLit.{light=v4(s.emit.x,s.emit.y,s.emit.z,0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+// ---- the post pass (host.js postLayouts): the bright share blurred at a quarter
+// and an eighth of the size, mixed back gently (only what glows has a share); no tone curve,
+// so the palette shows as it is.
+// FairyStep, a uniform block, is read from a []f32 at these offsets (floats):
+//   v 0
+fairy_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  texel_2:V2=wg_div_ff2(1.0f32,wg_cvt_f2u2(wg_dims_2d(bloom_src)));
+  uv:V2=wg_mul_f2f2(wg_mul_f2f(v2(pos.x,pos.y),bloom_step[3]),texel_2);
+  if (bloom_step[2]<0.5f32) {
+    c:V3=v3(0.0f32,0.0f32,0.0f32);
+    {
+      k:s32=0;
+      while k<4 {
+        t:V4=gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f2(wg_sub_f2f(wg_mul_f2f(v2(cast(f32)(k&1),cast(f32)(k>>1)),2.0f32),1.0f32),texel_2)),0.0f32);
+        c=wg_add_f3f3(c,wg_mul_f3f(v3(t.x,t.y,t.z),fmin(t.w,1.0f32)));
+        k+=1;
+      }
+    }
+    return wg_make_f4_f3f(wg_mul_f3f(c,0.25f32),1.0f32);
+  }
+  d:V2=wg_mul_f2f2(v2(bloom_step[0],bloom_step[1]),texel_2);
+  c:V3=wg_mul_f3f(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,uv,0.0f32)),0.227f32);
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,1.385f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,1.385f32)),0.0f32))),0.316f32));
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32))),0.070f32));
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+fairy_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_lin:Sampler)->V4 {
+  p:I2=wg_cvt_i2f2(v2(pos.x,pos.y));
+  uv:V2=wg_div_f2f2(v2(pos.x,pos.y),wg_at2(u,0));
+  light:V3=wg_sw_rgb_f4(wg_load_2d(post_light,p,0));
+  near:V3=wg_sw_rgb_f4(gpu_sample_level(post_quarter,post_lin,uv,0.0f32));
+  far:V3=wg_sw_rgb_f4(gpu_sample_level(post_eighth,post_lin,uv,0.0f32));
+  c:V3=wg_add_f3f3(light,wg_mul_f3f(wg_add_f3f3(wg_mul_f3f(near,0.55f32),wg_mul_f3f(far,0.45f32)),0.6f32));
+  // the crisp light line along a shape's outline (art-styles.md, Flat: facets): on the near side of
+  // an edge, where a neighbour lies clearly further off (or is sky), fading out with distance
+  own:f32=wg_load_2d(post_aux,p,0).w;
+  if ((own>0.0f32)&&(own<140.0f32)) {
+    hi:I2=wg_sub_i2i2(wg_cvt_i2f2(wg_at2(u,0)),i2(1,1));
+    e:f32=verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(1,0)),i2(0,0),hi),0).w);
+    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(1,0)),i2(0,0),hi),0).w));
+    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
+    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
+    c=wg_mix_f3f3f(c,fairy_tp(FAIRY_P_ACCENT,u),((e*0.85f32)*(1.0f32-smoothstep(60.0f32,140.0f32,own)))*(1.0f32-(u[792]*0.6f32)));
+  }
+  return wg_make_f4_f3f(fairy_plates(v2(pos.x,pos.y),fairy_encode(c),u),1.0f32);
+}
+// ---- the HUD's strokes
+FairyV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+fairy_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+fairy_fx_vs :: (_vid4:u32,_iid5:u32,in_:fairy_fx_vs_in,u:[]f32)->FairyV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:FairyV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+fairy_fx_fs :: (v:FairyV,u:[]f32)->V4 {
+  if (v.tint.w<(-0.5f32)) {
+    // An invoice's QR (fairyupgrade.coax ffu_qr_draw): its light modules, flat and square-ended, no glow.
+    return wg_make_f4_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),v.shape.z),1.0f32);
+  }
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_floor_f3 :: (p0:V3)->V3 {return v3(floor(p0.x),floor(p0.y),floor(p0.z));}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_fract_f3 :: (p0:V3)->V3 {return v3(fract(p0.x),fract(p0.y),fract(p0.z));}
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_clamp_f3f3f3 :: (p0:V3,p1:V3,p2:V3)->V3 {return v3(clampf(p0.x,p1.x,p2.x),clampf(p0.y,p1.y,p2.y),clampf(p0.z,p1.z,p2.z));}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_pow_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(pow(p0.x,p1.x),pow(p0.y,p1.y),pow(p0.z,p1.z));}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_clamp_f2f2f2 :: (p0:V2,p1:V2,p2:V2)->V2 {return v2(clampf(p0.x,p1.x,p2.x),clampf(p0.y,p1.y,p2.y));}
+wg_neg_f2 :: (a:V2)->V2 {return v2(-a.x,-a.y);}
+wg_sqrt_f3 :: (p0:V3)->V3 {return v3(sqrt(p0.x),sqrt(p0.y),sqrt(p0.z));}
+wg_max_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(fmax(p0.x,p1.x),fmax(p0.y,p1.y),fmax(p0.z,p1.z));}
+wg_make_f3_f2f :: (p0:V2,p1:f32)->V3 {return v3(p0.x,p0.y,p1);}
+wg_fwidth_f2 :: (p0:V2)->V2 {return v2(gpu_fwidth_fine(p0.x),gpu_fwidth_fine(p0.y));}
+wg_dpdx_f3 :: (p0:V3)->V3 {return v3(gpu_dpdx_fine(p0.x),gpu_dpdx_fine(p0.y),gpu_dpdx_fine(p0.z));}
+wg_dpdy_f3 :: (p0:V3)->V3 {return v3(gpu_dpdy_fine(p0.x),gpu_dpdy_fine(p0.y),gpu_dpdy_fine(p0.z));}
+wg_neg_f3 :: (a:V3)->V3 {return v3(-a.x,-a.y,-a.z);}
+wg_cvt_u2f2 :: (p:V2)->U2 {return u2(wg_u32_f(p.x),wg_u32_f(p.y));}
+wg_mod_u2u :: (a:U2,b:u32)->U2 {return u2(a.x%b,a.y%b);}
+wg_make_f4_f2f2 :: (p0:V2,p1:V2)->V4 {return v4(p0.x,p0.y,p1.x,p1.y);}
+wg_cvt_i3f3 :: (p:V3)->I3 {return i3(wg_i32_f(p.x),wg_i32_f(p.y),wg_i32_f(p.z));}
+wg_bits_u3i3 :: (p:I3)->U3 {return u3(cast,trunc(u32)(p.x),cast,trunc(u32)(p.y),cast,trunc(u32)(p.z));}
+wg_mul_u3u :: (a:U3,b:u32)->U3 {return u3(mul_wrap(a.x,b),mul_wrap(a.y,b),mul_wrap(a.z,b));}
+wg_add_u3u :: (a:U3,b:u32)->U3 {return u3(add_wrap(a.x,b),add_wrap(a.y,b),add_wrap(a.z,b));}
+wg_shr_u3u3 :: (a:U3,b:U3)->U3 {return u3(a.x>>b.x,a.y>>b.y,a.z>>b.z);}
+wg_xor_u3u3 :: (a:U3,b:U3)->U3 {return u3(a.x^b.x,a.y^b.y,a.z^b.z);}
+wg_mul_ff3 :: (a:f32,b:V3)->V3 {return v3(a*b.x,a*b.y,a*b.z);}
+wg_sub_ff3 :: (a:f32,b:V3)->V3 {return v3(a-b.x,a-b.y,a-b.z);}
+wg_cvt_f2u2 :: (p:U2)->V2 {return v2(cast(f32)(p.x),cast(f32)(p.y));}
+wg_div_ff2 :: (a:f32,b:V2)->V2 {return v2(a/b.x,a/b.y);}
+wg_sub_f2f :: (a:V2,b:f32)->V2 {return v2(a.x-b,a.y-b);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_sw_rgb_f4 :: (p:V4)->V3 {return v3(p.x,p.y,p.z);}
+wg_cvt_i2f2 :: (p:V2)->I2 {return i2(wg_i32_f(p.x),wg_i32_f(p.y));}
+wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
+wg_sub_i2i2 :: (a:I2,b:I2)->I2 {return i2(a.x-b.x,a.y-b.y);}
+wg_add_i2i2 :: (a:I2,b:I2)->I2 {return i2(a.x+b.x,a.y+b.y);}
+wg_clamp_i2i2i2 :: (p0:I2,p1:I2,p2:I2)->I2 {return i2(wg_clamp_i(p0.x,p1.x,p2.x),wg_clamp_i(p0.y,p1.y,p2.y));}

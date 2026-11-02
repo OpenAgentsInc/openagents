@@ -1,0 +1,51 @@
+// book:begin example
+#load "../render/types.coax" as rt;
+#load "../render/frame.coax" as frame;
+#load "../render/passes.coax" as passes;
+#import "Basic";
+
+#test "the worked frame admits both four-word draw encodings" {
+  result := worked_frame(0);
+  #assert result.status == rt.RenderFrameStatus.ok && result.admitted_draws == 2 && result.checked_indices == 3;
+}
+#test "the worked frame refuses a bad index before admitting any draw" {
+  result := worked_frame(1);
+  #assert result.status == rt.RenderFrameStatus.bad_index && result.bad_draw == 0 && result.admitted_draws == 0;
+}
+#test "the worked frame refuses a later span before admitting any draw" {
+  result := worked_frame(2);
+  #assert result.status == rt.RenderFrameStatus.bad_draw && result.bad_draw == 1 && result.admitted_draws == 0;
+}
+
+worked_frame :: (fault: int) -> rt.RenderFrameResult {
+  counts := rt.FrameCounts.{width = 320, height = 180, hud_vertices = 6, vertex_stride = 16, draw_count = 2};
+  // These virtual addresses are numbers in a pure admission fixture. No
+  // pointer is formed or read. A real host measures the source allocation.
+  uploads := [1] rt.RenderUpload.[rt.RenderUpload.{
+    source_address = 4096, source_base = 4096, source_bytes = 512,
+    bytes = 384, gpu_offset = 256, gpu_bytes = 1024}];
+  words := [8] u32.[0, 3, 0, 1, 0, 3, 0x80000000, 1];
+  indices := [3] u32.[0, 2, 1];
+  if fault == 1 { indices[2] = 3; }
+  if fault == 2 { words[4] = 1; }
+  // A real host gets these domains from render_geometry_admit and its
+  // admitted typed payloads, rather than supplying its own maxima.
+  domains := [2] rt.RenderDrawDomain.[
+    rt.RenderDrawDomain.{vertices = 3, instances = 1, indices = 3},
+    rt.RenderDrawDomain.{vertices = 3, instances = 1, indices = 3}];
+  return frame.render_frame_admit(counts, rt.RenderFrameLimits.{},
+    rt.RenderDirectDomains.{hud_vertices = 8}, uploads[..], words[..], domains[..], indices[..]);
+}
+
+main :: () {
+  good := worked_frame(0);
+  bad_index := worked_frame(1);
+  bad_span := worked_frame(2);
+  print("frame: %, admitted %, checked indices %\n", good.status, good.admitted_draws, good.checked_indices);
+  print("bad index: %, draw %, admitted %\n", bad_index.status, bad_index.bad_draw, bad_index.admitted_draws);
+  print("later span: %, draw %, admitted %\n", bad_span.status, bad_span.bad_draw, bad_span.admitted_draws);
+  counts := rt.FrameCounts.{width = 320, height = 180, hud_vertices = 6, vertex_stride = 16, draw_count = 2};
+  plan := passes.render_plan(passes.RenderFeatures.{scene = true}, counts, passes.RenderReadiness.ready, false);
+  print("shared plan: %, % ops\n", plan.status, plan.count);
+}
+// book:end example

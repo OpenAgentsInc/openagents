@@ -1,0 +1,42 @@
+// A descriptor is observed only after the platform/codec has admitted the
+// actual texture bytes and format. This module selects a canonical origin
+// and checks its binding shape; it does not decode or resample pixels.
+#module "aethyr.render.host.textures";
+#load "host-bindings.coax";
+#authority;
+RENDER_HOST_TEXTURES :: RENDER_MEDIA_ITEMS+2; // one layers image and one sans atlas
+RenderHostNamedTexture :: struct {name:string;layers:int;depth:bool;}
+RenderHostTextureReceipt :: struct {
+  status:RenderResourceStatus;named_index:int=-1;
+  layout:RenderTextureLayout;source:RenderBindingSource;
+}
+#load "tests/host-textures-checks.coax";
+
+render_host_named_textures :: (rht_named:[]RenderHostNamedTexture)->RenderResourceStatus {
+  if rht_named.count>RENDER_HOST_TEXTURES {return RenderResourceStatus.capacity;}
+  for rht_i:0..<rht_named.count {
+    if rht_named[rht_i].name.count==0 {return RenderResourceStatus.invalid;}
+    for rht_j:0..<rht_i {if rht_named[rht_i].name==rht_named[rht_j].name {return RenderResourceStatus.invalid;}}
+  }
+  return RenderResourceStatus.ok;
+}
+render_host_resolve_texture :: (rht_profile:int,rht_set:int,rht_resource:int,rht_named:[]RenderHostNamedTexture,rht_media_context:int)->RenderHostTextureReceipt {
+  rht_status:=render_host_named_textures(rht_named);
+  if rht_status!=RenderResourceStatus.ok {return RenderHostTextureReceipt.{status=rht_status};}
+  rht_binding:=render_host_binding(rht_profile,rht_set,rht_resource);
+  if !rht_binding.valid {return RenderHostTextureReceipt.{};}
+  rht_layout:=render_texture_layout(rht_binding.binding);
+  if rht_layout.status!=RenderResourceStatus.ok {return RenderHostTextureReceipt.{};}
+  rht_source:=rht_binding.source;
+  if rht_source.kind==RenderSourceKind.render_target || rht_source.kind==RenderSourceKind.pass_source {
+    return RenderHostTextureReceipt.{status=RenderResourceStatus.ok,layout=rht_layout,source=rht_source};
+  }
+  if rht_source.kind==RenderSourceKind.media_image {rht_source.index=rht_media_context;}
+  rht_name_bytes:[32]u8;rht_name:=render_host_texture_name(rht_source,rht_name_bytes[..]);rht_found:=-1;
+  for rht_i:0..<rht_named.count {if rht_named[rht_i].name==rht_name {rht_found=rht_i;}}
+  if rht_found<0 {return RenderHostTextureReceipt.{};}
+  rht_texture:=rht_named[rht_found];
+  if rht_texture.layers<1 || rht_texture.depth!=(rht_binding.binding.kind==RenderResourceKind.depth)
+      || (rht_layout.dimension==RenderTextureDimension.d2 && rht_texture.layers!=1) {return RenderHostTextureReceipt.{};}
+  return RenderHostTextureReceipt.{status=RenderResourceStatus.ok,named_index=rht_found,layout=rht_layout,source=rht_source};
+}

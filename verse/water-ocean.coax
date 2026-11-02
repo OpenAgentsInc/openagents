@@ -407,7 +407,7 @@ lab_needs :: (c: [] OceanCells, eye_x: f64, eye_z: f64, needs: [] bool) {
 // Two clients, a phone and a desktop: each synthesizes its own cascades, yet
 // the gameplay band is the same numbers on both at every tick, for one who
 // joined late as for one who was there from the start.
-#test "every client agrees on the simulated sea, whatever it draws" {
+#test "every client agrees on the simulated sea, whatever it draws" #steps 320000000 {
   sp := wsp_sea(8.0, 60000.0, 17);
   phone: [1] Synth; desk: [1] Synth;
   wsp_synth(phone[..], sp, 1, 64);

@@ -1,0 +1,13 @@
+ok   #test everyone else on the Grid walks it here too, where the room says, and ?from=home dives (1 case, 53757008 steps, 5271 ms)
+        own steps  share   with calls     calls  procedure
+         15049566  28.0%     15049566     19026  lit  apps/openagents-web/newland.coax:266
+          6696959  12.5%     28664517     40006  seg  apps/openagents-web/newland.coax:425
+          4997532   9.3%      4997532    263028  dot3  apps/openagents-web/newland.coax:395
+          3828332   7.1%     29845445         4  floor_grid  apps/openagents-web/newland.coax:1174
+          3610772   6.7%      3610772     33368  on_plot  apps/openagents-web/newland.coax:459
+          2684000   5.0%      7625000     61000  spot  apps/openagents-web/newland.coax:413
+          2538504   4.7%      3384672    141028  fv_sub  verse/figure.coax:134
+          1377108   2.6%      1377108    229518  fv  verse/figure.coax:132
+     ... 175 more procedures
+1 of 114 checks (--only 'everyone else on the Grid walks it here too, where the room says, and ?from=home dives'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

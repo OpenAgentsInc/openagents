@@ -1560,7 +1560,7 @@ body_eq :: (a: RigidBody, b: RigidBody) -> bool {
   }
 }
 
-#test "caps and slices match their closed forms" {
+#test "caps and slices match their closed forms" #steps 90000000 {
   r := 0.5;
   up := Plane.{point = D3_ZERO, normal = D3_Y};
   // A sphere 0.2 m into the water: a cap of height 0.2.
@@ -1602,7 +1602,7 @@ body_eq :: (a: RigidBody, b: RigidBody) -> bool {
 
 // Floating and sinking.
 
-#test "a cube of half water's density settles half submerged" {
+#test "a cube of half water's density settles half submerged" #steps 190000000 {
   pts: [4] D2; ponds: [1] WaterBody; starts: [1025] int; entries: [2048] int;
   ponds[0] = still_pond(pts[..]);
   s := water_set(ponds[..], 4.0, starts[..], entries[..]);
@@ -1674,7 +1674,7 @@ analytic_draft :: (r: f64, ratio: f64) -> f64 {
   #assert abs(speed - terminal) / terminal < 0.02;
 }
 
-#test "a plank floats flat and rights itself after a push" {
+#test "a plank floats flat and rights itself after a push" #steps 160000000 {
   pts: [4] D2; ponds: [1] WaterBody; starts: [1025] int; entries: [2048] int;
   ponds[0] = still_pond(pts[..]);
   s := water_set(ponds[..], 4.0, starts[..], entries[..]);
@@ -1698,7 +1698,7 @@ analytic_draft :: (r: f64, ratio: f64) -> f64 {
   #assert abs(dq_rotate(bodies[0].orientation, D3_Y).y) > 0.995;
 }
 
-#test "a floating body sleeps on a still pond but not on waves" {
+#test "a floating body sleeps on a still pond but not on waves" #steps 70000000 {
   pts: [4] D2; ponds: [1] WaterBody; starts: [1025] int; entries: [2048] int;
   ponds[0] = still_pond(pts[..]);
   pond := water_set(ponds[..], 4.0, starts[..], entries[..]);
@@ -1731,7 +1731,7 @@ analytic_draft :: (r: f64, ratio: f64) -> f64 {
 
 // Currents.
 
-#test "generated river flow is divergence-free and carries the discharge" {
+#test "generated river flow is divergence-free and carries the discharge" #steps 60000000 {
   pts: [25] D2; widths: [25] f64; lengths: [25] f64; profile: [2] D2; flow: [3465] D2;
   body := test_river(pts[..], widths[..], lengths[..], profile[..], flow[..]);
   course := body.course;
@@ -1795,7 +1795,7 @@ river_run :: (seed: u64, trace: [] RigidBody) -> RigidBody {
   return bodies[0];
 }
 
-#test "a seeded float follows the river round the bend and replays exactly" {
+#test "a seeded float follows the river round the bend and replays exactly" #steps 460000000 {
   pts: [25] D2; widths: [25] f64; lengths: [25] f64;
   course := test_bend(pts[..], widths[..], lengths[..]);
   trace: [300] RigidBody;
@@ -1815,7 +1815,7 @@ river_run :: (seed: u64, trace: [] RigidBody) -> RigidBody {
 
 // Bookkeeping and determinism.
 
-#test "the momentum ledger balances with the water terms" {
+#test "the momentum ledger balances with the water terms" #steps 320000000 {
   oceans: [1] WaterBody; ostarts: [2] int; oentries: [1] int;
   oceans[0] = wavy_ocean();
   ocean := water_set(oceans[..], 4.0, ostarts[..], oentries[..]);
@@ -1849,7 +1849,7 @@ river_run :: (seed: u64, trace: [] RigidBody) -> RigidBody {
   #assert ledger_error(ledger_without(ledger, Term.buoyancy), world_momentum(w, origin)).linear > 0.001;
 }
 
-#test "a copied world in water continues bit for bit" {
+#test "a copied world in water continues bit for bit" #steps 250000000 {
   pts: [25] D2; widths: [25] f64; lengths: [25] f64; profile: [2] D2; flow: [3465] D2;
   waters: [2] WaterBody;
   waters[0] = test_river(pts[..], widths[..], lengths[..], profile[..], flow[..]);
@@ -1883,7 +1883,7 @@ river_run :: (seed: u64, trace: [] RigidBody) -> RigidBody {
   }
 }
 
-#test "a water set finds the same water as testing every body" {
+#test "a water set finds the same water as testing every body" #steps 40000000 {
   pond: [4] D2; pts: [25] D2; widths: [25] f64; lengths: [25] f64; profile: [2] D2; flow: [3465] D2;
   tri: [3] D2;
   tri[0] = d2(60.0, 0.0); tri[1] = d2(70.0, 0.0); tri[2] = d2(65.0, 8.0);

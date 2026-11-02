@@ -1,0 +1,171 @@
+// A complete checked frame. The platform constructs payload views only after
+// preflight and performs GPU effects only after the final receipt succeeds.
+#module "aethyr.render.runtime";
+#load "geometry.coax";
+#authority;
+
+RenderRuntimeStatus :: enum u8 { invalid; ok; loading; bad_profile; bad_frame; bad_upload; bad_geometry; bad_plan; }
+RenderRuntimePreflight :: struct {
+  status:RenderRuntimeStatus=RenderRuntimeStatus.invalid;
+  frame:RenderFrameResult;
+}
+RenderRuntimeFrame :: struct {
+  status:RenderRuntimeStatus=RenderRuntimeStatus.invalid;
+  requested:FrameCounts; counts:FrameCounts;
+  frame:RenderFrameResult;
+  geometry_status:RenderGeometryStatus=RenderGeometryStatus.bad_profile;
+  plan:RenderPlan;
+}
+
+#test "runtime admits the real flat HUD and keeps requested counts" {
+  rt_u:[256]f32;rt_hud:[24]f32;rt_words:[]u32;rt_buffers:[]RenderGeometryBuffer;rt_uploads:[]RenderUpload;rt_domains:[1]RenderDrawDomain;
+  rt_c:=FrameCounts.{width=320,height=180,vertex_stride=12,hud_vertices=2};
+  rt_r:=render_runtime_frame(1,rt_c,RenderFrameLimits.{},RenderReadiness.ready,true,rt_uploads,rt_words,rt_words,rt_u[..],rt_buffers,rt_hud[..],rt_domains[..],1);
+  #assert rt_r.status==RenderRuntimeStatus.ok && rt_r.requested.hud_vertices==2 && rt_r.counts.hud_vertices==2;
+  #assert rt_r.frame.status==RenderFrameStatus.ok && rt_r.plan.status==RenderPlanStatus.ok && rt_r.plan.count==4;
+  #assert rt_r.plan.ops[1].pass==RenderPassId.background && rt_r.plan.ops[2].pass==RenderPassId.hud;
+}
+#test "runtime source admission precedes loading and any payload use" {
+  rt_c:=FrameCounts.{width=320,height=180,vertex_stride=12};rt_uploads:=[1]RenderUpload.[RenderUpload.{source_address=5,source_base=4,source_bytes=4,bytes=4,gpu_bytes=4}];
+  rt_r:=render_runtime_preflight(1,rt_c,RenderFrameLimits.{},rt_uploads[..]);
+  #assert rt_r.status==RenderRuntimeStatus.bad_upload && rt_r.frame.status==RenderFrameStatus.bad_upload;
+  rt_none:[]u32;rt_u:[]f32;rt_buffers:[]RenderGeometryBuffer;rt_domains:[1]RenderDrawDomain;
+  rt_q:=render_runtime_frame(1,rt_c,RenderFrameLimits.{},RenderReadiness.loading,false,rt_uploads[..],rt_none,rt_none,rt_u,rt_buffers,rt_u,rt_domains[..],1);
+  #assert rt_q.status==RenderRuntimeStatus.bad_upload && rt_q.frame.status==RenderFrameStatus.bad_upload && rt_q.frame.bad_upload==0 && rt_q.plan.count==0 && rt_q.frame.admitted_draws==0;
+}
+#test "runtime background uses the canonical plan without requiring pending scene assets" {
+  rt_u:[328]f32;rt_hud:[32]f32;rt_words:=[4]u32.[0,6,0x80000000,1];rt_none:[]u32;rt_buffers:[]RenderGeometryBuffer;rt_uploads:[]RenderUpload;
+  rt_domains:=[1]RenderDrawDomain.[RenderDrawDomain.{vertices=99}];
+  rt_c:=FrameCounts.{width=320,height=180,vertex_stride=16,hud_vertices=2,draw_count=1};
+  rt_r:=render_runtime_frame(16,rt_c,RenderFrameLimits.{},RenderReadiness.background,false,rt_uploads,rt_words[..],rt_none,rt_u[..],rt_buffers,rt_hud[..],rt_domains[..],1);
+  #assert rt_r.status==RenderRuntimeStatus.ok && rt_r.requested.draw_count==1 && rt_r.counts.draw_count==0 && rt_r.counts.hud_vertices==2;
+  #assert rt_domains[0].vertices==99 && rt_r.frame.admitted_draws==0;
+  for rt_i:0..<rt_r.plan.count {#assert rt_r.plan.ops[rt_i].pass!=RenderPassId.scene;}
+}
+#test "runtime publishes domains only after indexed payload validation succeeds" {
+  rt_u:[328]f32;rt_u[32]=1;rt_heights:[4]u32;rt_hud:[16]f32;
+  rt_buffers:=[1]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=rt_heights[..]}];
+  rt_words:=[4]u32.[0,1,0,1];rt_indices:=[1]u32.[6];rt_uploads:[]RenderUpload;
+  rt_domains:=[1]RenderDrawDomain.[RenderDrawDomain.{vertices=99}];
+  rt_c:=FrameCounts.{width=320,height=180,vertex_stride=16,hud_vertices=1,draw_count=1};
+  rt_r:=render_runtime_frame(16,rt_c,RenderFrameLimits.{},RenderReadiness.ready,true,rt_uploads,rt_words[..],rt_indices[..],rt_u[..],rt_buffers[..],rt_hud[..],rt_domains[..],2);
+  #assert rt_r.status==RenderRuntimeStatus.bad_geometry && rt_r.geometry_status==RenderGeometryStatus.bad_draw && rt_r.plan.count==0 && rt_r.frame.admitted_draws==0 && rt_domains[0].vertices==99;
+  rt_indices[0]=5;
+  rt_r=render_runtime_frame(16,rt_c,RenderFrameLimits.{index_work=0},RenderReadiness.ready,true,rt_uploads,rt_words[..],rt_indices[..],rt_u[..],rt_buffers[..],rt_hud[..],rt_domains[..],2);
+  #assert rt_r.status==RenderRuntimeStatus.bad_frame && rt_r.frame.status==RenderFrameStatus.index_budget && rt_r.plan.count==0 && rt_r.frame.admitted_draws==0 && rt_domains[0].vertices==99;
+  rt_r=render_runtime_frame(16,rt_c,RenderFrameLimits.{},RenderReadiness.ready,true,rt_uploads,rt_words[..],rt_indices[..],rt_u[..],rt_buffers[..],rt_hud[..],rt_domains[..],2);
+  #assert rt_r.status==RenderRuntimeStatus.ok && rt_r.frame.admitted_draws==1 && rt_domains[0].vertices==6 && rt_domains[0].instances==1;
+}
+#test "runtime geometry refusal and loading publish no frame operations" {
+  rt_u:[328]f32;rt_hud:[16]f32;rt_words:=[4]u32.[0,6,0x80000000,1];rt_none:[]u32;rt_buffers:[]RenderGeometryBuffer;rt_uploads:[]RenderUpload;
+  rt_domains:=[1]RenderDrawDomain.[RenderDrawDomain.{vertices=99}];rt_c:=FrameCounts.{width=320,height=180,vertex_stride=16,draw_count=1};
+  rt_r:=render_runtime_frame(16,rt_c,RenderFrameLimits.{},RenderReadiness.ready,true,rt_uploads,rt_words[..],rt_none,rt_u[..],rt_buffers,rt_hud[..],rt_domains[..],1);
+  #assert rt_r.status==RenderRuntimeStatus.bad_geometry && rt_r.geometry_status==RenderGeometryStatus.bad_resources && rt_r.plan.count==0 && rt_domains[0].vertices==99;
+  rt_r=render_runtime_frame(16,rt_c,RenderFrameLimits.{},RenderReadiness.loading,true,rt_uploads,rt_words[..],rt_none,rt_u[..],rt_buffers,rt_hud[..],rt_domains[..],1);
+  #assert rt_r.status==RenderRuntimeStatus.loading && rt_r.plan.status==RenderPlanStatus.loading && rt_r.plan.count==0 && rt_domains[0].vertices==99;
+}
+#test "runtime derives all direct work from canonical commands without counting scaffolding" {
+  rt_c:=FrameCounts.{width=319,height=179,vertex_stride=12,hud_vertices=999,draw_count=99,water_draws=98,particle_instances=777};
+  rt_p:=RenderPlan.{status=RenderPlanStatus.ok,count=9};
+  rt_p.ops[0]=RenderOp.{kind=RenderOpKind.draw,pass=RenderPassId.scene,draw_source=RenderDrawSource.records,first=0,count=2};
+  rt_p.ops[1]=RenderOp.{kind=RenderOpKind.each_begin,first=2,count=1};
+  rt_p.ops[2]=RenderOp.{kind=RenderOpKind.draw,pass=RenderPassId.hud,count=23};
+  rt_p.ops[3]=RenderOp.{kind=RenderOpKind.draw,pass=RenderPassId.grass,instances=17};
+  rt_p.ops[4]=RenderOp.{kind=RenderOpKind.draw,pass=RenderPassId.surface,count=31};
+  rt_p.ops[5]=RenderOp.{kind=RenderOpKind.draw,pass=RenderPassId.caster,count=1872,instances=8};
+  rt_p.ops[6]=RenderOp.{kind=RenderOpKind.draw,pass=RenderPassId.particle,instances=64};
+  rt_p.ops[7]=RenderOp.{kind=RenderOpKind.draw,pass=RenderPassId.water_emit,draw_source=RenderDrawSource.current,count=1};
+  rt_p.ops[8]=RenderOp.{kind=RenderOpKind.begin,draw_source=RenderDrawSource.records,first=7,count=99};
+  rt_a:=render_runtime_work(rt_c,rt_p);
+  #assert rt_a.width==319 && rt_a.height==179 && rt_a.vertex_stride==12;
+  #assert rt_a.hud_vertices==23 && rt_a.draw_count==3 && rt_a.water_draws==1 && rt_a.grass_instances==17 && rt_a.surface_vertices==31;
+  #assert rt_a.caster_vertices==1872 && rt_a.caster_instances==8 && rt_a.particle_instances==64;
+  rt_p.count=1;rt_a=render_runtime_work(rt_c,rt_p);
+  #assert rt_a.draw_count==2 && rt_a.water_draws==0 && rt_a.hud_vertices==0 && rt_a.grass_instances==0 && rt_a.surface_vertices==0 && rt_a.caster_vertices==0 && rt_a.caster_instances==0 && rt_a.particle_instances==0;
+}
+#forall "runtime preflight rejects malformed raw metadata before readiness masks work" rt_case:0..<12 {
+  rt_profile:=1;rt_c:=FrameCounts.{width=320,height=180,vertex_stride=12};rt_l:=RenderFrameLimits.{};rt_uploads:[]RenderUpload;
+  rt_expected:=RenderFrameStatus.bad_counts;rt_status:=RenderRuntimeStatus.bad_frame;
+  if rt_case==0 {rt_profile=-1;rt_status=RenderRuntimeStatus.bad_profile;rt_expected=RenderFrameStatus.ok;}
+  if rt_case==1 {rt_profile=18;rt_status=RenderRuntimeStatus.bad_profile;rt_expected=RenderFrameStatus.ok;}
+  if rt_case==2 {rt_l.max_width=0;rt_expected=RenderFrameStatus.bad_limits;}
+  if rt_case==3 {rt_c.width=0;rt_expected=RenderFrameStatus.bad_viewport;}
+  if rt_case==4 {rt_c.width=16385;rt_expected=RenderFrameStatus.bad_viewport;}
+  if rt_case==5 {rt_c.height=0;rt_expected=RenderFrameStatus.bad_viewport;}
+  if rt_case==6 {rt_c.height=16385;rt_expected=RenderFrameStatus.bad_viewport;}
+  if rt_case==7 {rt_c.hud_vertices=-1;}
+  if rt_case==8 {rt_c.vertex_stride=13;}
+  if rt_case==9 {rt_c.water_draws=1;}
+  if rt_case==10 {rt_c.draw_count=1;rt_l.max_draws=0;rt_expected=RenderFrameStatus.capacity;}
+  if rt_case==11 {rt_c.draw_count=4097;rt_l.max_draws=65536;rt_expected=RenderFrameStatus.capacity;}
+  rt_r:=render_runtime_preflight(rt_profile,rt_c,rt_l,rt_uploads);
+  #assert rt_r.status==rt_status && rt_r.frame.status==rt_expected && rt_r.frame.admitted_draws==0;
+}
+#test "runtime keeps invalid schedule and missing output storage atomic" {
+  rt_c:=FrameCounts.{width=320,height=180,vertex_stride=16,draw_count=1};rt_words:=[4]u32.[0,6,0x80000000,1];
+  rt_none:[]u32;rt_u:[328]f32;rt_hud:[]f32;rt_buffers:[]RenderGeometryBuffer;rt_uploads:[]RenderUpload;rt_domains:[]RenderDrawDomain;
+  rt_r:=render_runtime_frame(16,rt_c,RenderFrameLimits.{},RenderReadiness.invalid,true,rt_uploads,rt_words[..],rt_none,rt_u[..],rt_buffers,rt_hud,rt_domains,1);
+  #assert rt_r.status==RenderRuntimeStatus.bad_plan && rt_r.plan.count==0;
+  rt_r=render_runtime_frame(16,rt_c,RenderFrameLimits.{},RenderReadiness.ready,true,rt_uploads,rt_words[..],rt_none,rt_u[..],rt_buffers,rt_hud,rt_domains,1);
+  #assert rt_r.status==RenderRuntimeStatus.bad_frame && rt_r.frame.status==RenderFrameStatus.capacity && rt_r.plan.count==0;
+}
+#forall "runtime exact viewport and command capacity boundaries remain admissible" rt_case:0..<2 {
+  rt_c:=FrameCounts.{width=1,height=1,vertex_stride=16};rt_l:=RenderFrameLimits.{max_draws=0};rt_uploads:[]RenderUpload;
+  if rt_case==1 {rt_c.width=16384;rt_c.height=16384;rt_c.draw_count=4096;rt_l.max_draws=4096;}
+  rt_r:=render_runtime_preflight(16,rt_c,rt_l,rt_uploads);
+  #assert rt_r.status==RenderRuntimeStatus.ok && rt_r.frame.status==RenderFrameStatus.ok;
+}
+
+render_runtime_preflight :: (rt_profile:int,rt_c:FrameCounts,rt_limits:RenderFrameLimits,rt_uploads:[]RenderUpload)->RenderRuntimePreflight {
+  rt_r:=RenderRuntimePreflight.{status=RenderRuntimeStatus.bad_profile};rt_meta:=render_catalog(rt_profile);
+  if !rt_meta.valid {return rt_r;}
+  rt_r.status=RenderRuntimeStatus.bad_frame;
+  if !render_frame_limits_ok(rt_limits) {rt_r.frame.status=RenderFrameStatus.bad_limits;return rt_r;}
+  if rt_c.width<1 || rt_c.width>rt_limits.max_width || rt_c.height<1 || rt_c.height>rt_limits.max_height {rt_r.frame.status=RenderFrameStatus.bad_viewport;return rt_r;}
+  if !render_frame_counts_ok(rt_c,rt_limits) || rt_c.vertex_stride!=rt_meta.vertex_stride {rt_r.frame.status=RenderFrameStatus.bad_counts;return rt_r;}
+  if rt_c.draw_count>rt_limits.max_draws || rt_c.draw_count>RENDER_GEOMETRY_DRAWS {rt_r.frame.status=RenderFrameStatus.capacity;return rt_r;}
+  rt_r.frame=render_uploads_admit(rt_limits,rt_uploads);
+  if rt_r.frame.status!=RenderFrameStatus.ok {rt_r.status=RenderRuntimeStatus.bad_upload;return rt_r;}
+  rt_r.status=RenderRuntimeStatus.ok;return rt_r;
+}
+
+render_runtime_work :: (rt_c:FrameCounts,rt_plan:RenderPlan)->FrameCounts {
+  // The canonical plan owns readiness and feature decisions. Derive the work
+  // that will actually execute from its operations instead of copying those
+  // decisions here or letting a platform mask counts itself. Record ranges in
+  // this fixed graph are a prefix followed by its optional water suffix.
+  rt_active:=FrameCounts.{width=rt_c.width,height=rt_c.height,vertex_stride=rt_c.vertex_stride};
+  for rt_i:0..<rt_plan.count {
+    rt_op:=rt_plan.ops[rt_i];
+    if rt_op.kind==RenderOpKind.each_begin {rt_active.draw_count=rt_op.first+rt_op.count;rt_active.water_draws=rt_op.count;}
+    if rt_op.kind==RenderOpKind.draw {
+      if rt_op.draw_source==RenderDrawSource.records {rt_active.draw_count=rt_op.first+rt_op.count;}
+      if rt_op.pass==RenderPassId.hud {rt_active.hud_vertices=rt_op.count;}
+      if rt_op.pass==RenderPassId.grass {rt_active.grass_instances=rt_op.instances;}
+      if rt_op.pass==RenderPassId.surface {rt_active.surface_vertices=rt_op.count;}
+      if rt_op.pass==RenderPassId.caster {rt_active.caster_vertices=rt_op.count;rt_active.caster_instances=rt_op.instances;}
+      if rt_op.pass==RenderPassId.particle {rt_active.particle_instances=rt_op.instances;}
+    }
+  }
+  return rt_active;
+}
+
+render_runtime_frame :: (rt_profile:int,rt_c:FrameCounts,rt_limits:RenderFrameLimits,rt_ready:RenderReadiness,rt_particles_ready:bool,
+    rt_uploads:[]RenderUpload,rt_words:[]u32,rt_indices:[]u32,rt_u:[]f32,rt_buffers:[]RenderGeometryBuffer,rt_hud:[]f32,rt_domains:[]RenderDrawDomain,rt_work_limit:int)->RenderRuntimeFrame {
+  rt_r:=RenderRuntimeFrame.{requested=rt_c};rt_pre:=render_runtime_preflight(rt_profile,rt_c,rt_limits,rt_uploads);
+  rt_r.status=rt_pre.status;rt_r.frame=rt_pre.frame;
+  if rt_pre.status!=RenderRuntimeStatus.ok {return rt_r;}
+  rt_plan:=render_plan(render_catalog(rt_profile).features,rt_c,rt_ready,rt_particles_ready);
+  if rt_plan.status==RenderPlanStatus.loading {rt_r.status=RenderRuntimeStatus.loading;rt_r.plan=rt_plan;return rt_r;}
+  if rt_plan.status!=RenderPlanStatus.ok {rt_r.status=RenderRuntimeStatus.bad_plan;return rt_r;}
+  rt_active:=render_runtime_work(rt_c,rt_plan);
+  if rt_domains.count<rt_active.draw_count {rt_r.status=RenderRuntimeStatus.bad_frame;rt_r.frame.status=RenderFrameStatus.capacity;return rt_r;}
+  rt_candidate:[RENDER_GEOMETRY_DRAWS]RenderDrawDomain;
+  rt_geo:=render_geometry_admit(rt_profile,rt_active,rt_words,rt_indices,rt_u,rt_buffers,rt_hud,rt_candidate[..],rt_work_limit);
+  rt_r.geometry_status=rt_geo.status;
+  if rt_geo.status!=RenderGeometryStatus.ok {rt_r.status=RenderRuntimeStatus.bad_geometry;return rt_r;}
+  rt_r.frame=render_frame_admit(rt_active,rt_limits,rt_geo.direct,rt_uploads,rt_words,rt_candidate[..],rt_indices);
+  if rt_r.frame.status!=RenderFrameStatus.ok {rt_r.status=RenderRuntimeStatus.bad_frame;return rt_r;}
+  for rt_i:0..<rt_active.draw_count {rt_domains[rt_i]=rt_candidate[rt_i];}
+  rt_r.counts=rt_active;rt_r.plan=rt_plan;return rt_r;
+}

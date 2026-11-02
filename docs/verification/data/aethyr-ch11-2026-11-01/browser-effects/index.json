@@ -1,0 +1,151 @@
+{
+  "schema": "aethyr.render.browser-effects-archive.v1",
+  "scope": "Actual platform effects, lifetime and scalar transport conformance. These receipts do not assert CPU/GPU image parity or complete chapter11 acceptance.",
+  "proofs": {
+    "pending-index": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/pending-index.json",
+      "sha256": "8b547f1d4d072919fb469faaa246f2721e44155c72ef5c1de9a84b243c632d34",
+      "original": "/tmp/aethyr-ch11-garden-pending-replacement-9/receipt.json"
+    },
+    "pending-pack": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/pending-pack.json",
+      "sha256": "14f8ba975e5481373b59632be8f9702b09fe66073ddad88507a0fc6dff05ce9f",
+      "original": "/tmp/aethyr-ch11-fixture-pending-pack/receipt.json"
+    },
+    "pending-layer-decode": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/pending-layer-decode.json",
+      "sha256": "3c9150217cafbc1153aae1c607e552dd1e7b17733ecfd6efa1e851dfcbbb5dc8",
+      "original": "/tmp/aethyr-ch11-fixture-pending-layer/receipt.json"
+    },
+    "media-retirement": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/media-retirement.json",
+      "sha256": "7320d7ab751679daa35fea22c358128ca044fbe4ab42538af72b7066e68de1cf",
+      "original": "/tmp/aethyr-ch11-media-retirement/qualification.json"
+    },
+    "media-retirement-planted-fault": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/media-retirement-planted-fault.json",
+      "sha256": "1d0ff438dab8ce03aa624540c075b9e832ddcad41c0840949989fd7fcff8bfdd",
+      "original": "/tmp/aethyr-ch11-media-retirement-fault/qualification.json"
+    },
+    "scalar-wire-with-mesh": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/scalar-wire-with-mesh.json",
+      "sha256": "6f560465d7a9437cbf07b36984e5281d4e5541c0cae800f1fa3aae4605cdb33c",
+      "original": "/tmp/aethyr-ch11-host-wire-mesh-qualification/qualification.json"
+    },
+    "silent-video": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/silent-video.json",
+      "sha256": "52470cf2edf0140460ffac956ccf9b7130e044c7205f35630e697f014ca198fc",
+      "original": "/tmp/aethyr-ch11-villa-silent-video/receipt.json"
+    },
+    "individual-layers-current": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/individual-layers-current.json",
+      "sha256": "9eef2c18b19adef9b94e4121825a2beb2d10b576fac4c7c811c05ce2bf49bed0",
+      "original": "/tmp/aethyr-ch11-haunt-pending-individual-layer/receipt.json"
+    },
+    "ready-image-reloads": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/ready-image-reloads.json",
+      "sha256": "1bc6663f009cfc06288b5d60e59fb402801f16197a3778e60ecfe53e9ac28bc9",
+      "original": "/tmp/aethyr-ch11-image-ready-reloads-2/receipt.json"
+    },
+    "ready-video-reloads": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/ready-video-reloads.json",
+      "sha256": "ab9c0c19154ca779dba6e168bb32c9775bcc296966dd76d35559317f793d1cfd",
+      "original": "/tmp/aethyr-ch11-video-ready-reloads/receipt.json"
+    },
+    "engine-generation-before-red": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/engine-generation-before-red.json",
+      "sha256": "8906b04345cb2c5d35e19e1b82d595b3ade8c87c41aa02eb5a533c35a9ccd2ea",
+      "original": "/tmp/aethyr-ch11-engine-generations-before-red/qualification.json"
+    },
+    "engine-generation-during-red": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/engine-generation-during-red.json",
+      "sha256": "e6abe40da233025b3cbf4aae8fc23067d3ff256c94643cad84cdfdc66c49cb1b",
+      "original": "/tmp/aethyr-ch11-engine-generations-during-red/qualification.json"
+    },
+    "engine-generation-before-green": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/engine-generation-before-green.json",
+      "sha256": "1d3f676cf0ce01cc05587c86f82808a6733d12f7987ceed6b73315d74c4b78b1",
+      "original": "/tmp/aethyr-ch11-engine-generations-before-green/qualification.json"
+    },
+    "engine-generation-during-green": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/engine-generation-during-green.json",
+      "sha256": "c2d68eef8b20f28eb6deea2c34fbb8b5d237282aae0889b22615c31a8650035f",
+      "original": "/tmp/aethyr-ch11-engine-generations-during-green/qualification.json"
+    },
+    "engine-generation-overlap-current": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/engine-generation-overlap-current.json",
+      "sha256": "360c15a9b09f24b044bf82eea73fd56da0448941bf8043e95f2cc3054a1c03ac",
+      "original": "/tmp/aethyr-ch11-engine-generations-overlap-current/qualification.json"
+    },
+    "media-retirement-current": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/media-retirement-current.json",
+      "sha256": "637f7bc4b0348a4f5955eee56ba882eb7257a135de53ae82203755b0eba1bf73",
+      "original": "/tmp/aethyr-ch11-media-retirement-current/qualification.json"
+    },
+    "media-retirement-current-fault": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/media-retirement-current-fault.json",
+      "sha256": "eeb6f0ed28b111f023fef8cfa7786cb74529434a2cf4fd44442922bffbb60d38",
+      "original": "/tmp/aethyr-ch11-media-retirement-current-fault/qualification.json"
+    },
+    "scalar-wire-draw-reset": {
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/browser-effects/scalar-wire-draw-reset.json",
+      "sha256": "9c52aa9e62a0a63fbc742f1dc64900486112087d4593cdd1acb1303a4c1f769b",
+      "original": "/tmp/aethyr-ch11-host-wire-draw-reset-qualification/qualification.json"
+    }
+  },
+  "raw_inputs_note": "Receipt hashes bind the original actual producer Wasm, packages, frames and texture files. Large raw resources remain at their recorded paths. The shared CPU/native comparison receipts bind those same bytes.",
+  "video_note": "This seeded functional fixture uses the production memorial video path. The browser encoded a silent 64 by 32 canvas as VP8, then HTMLVideoElement fetched, decoded and uploaded it. The physical 80 by 120 viewport is an explicitly injected ResizeObserver observation with CSS 320 by 240 retained; it is not a measured device DPR.",
+  "exact_media_retirement_sources": {
+    "host.js": "f9f91c6030b28840173a692727ce141fd3b2d03fcf67acebe4015c4b75b54dd8",
+    "check_render_media_retirement.ts": "90d3eb173db57803f4c499391a0ed6057ce80db904fbd960ceadb6c1fafd40a7",
+    "render.js": "441571badfac66621fd1cef046bf43a20f365d1d4205301edd0b5f6ff8e92939"
+  },
+  "historical_source_note": "The earlier media-retirement source snapshot matches its recorded bytes. Later epochs add optional video fixture selection, serialized engine installation and measured draw object spans; separate current receipts qualify those changes.",
+  "current_source_hashes": {
+    "sanitized-run.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "optimized-run.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "debug-pipeline-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "optimized-draw-object-run.log": "5a3fcec2b6c62ccb5c0353ac5b721881065f7436ff3420e035636c14d82763e1",
+    "host.js": "214003ec97f37ce55daab424763a358715574030d533f1caed3853a1e46696af",
+    "check_render_host_wire.py": "ac6f2c69bd8500c4b538f19444f59a2346f4c5c48edd084a70304339c3395fbd",
+    "check_render_media_retirement.ts": "c7df83efdaf0c8c67dcd45f93bb5a94c42286e37fe831b63eaa2b265129d7df1",
+    "debug-pipeline-run.log": "bc7affccf0c3459dbe64c6b81ba8b6a6b541a5f9c7eedbc6ee52a5f8622cea08",
+    "debug-draw-object-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-draw-null-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "optimized-pipeline-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "reload-marker.c": "62efbd5a81ffdc6b6c0c9369d2184eecd659740864a997cbb38afd766511f225",
+    "optimized-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "optimized-mesh-capacity-run.log": "809467587197818d0d2a85de4afa639656fbee1cbdd0552815f1cb0206848139",
+    "debug-ack-run.log": "866544776caa5ee17cb25b04db848f6290d4c883eb33ba5ed00307a162baa0fc",
+    "debug-draw-object-run.log": "5a3fcec2b6c62ccb5c0353ac5b721881065f7436ff3420e035636c14d82763e1",
+    "optimized-ack-run.log": "866544776caa5ee17cb25b04db848f6290d4c883eb33ba5ed00307a162baa0fc",
+    "optimized-draw-object-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "render-host-wire.c": "6690ec6bd7a3e035209c355e2a7121af43153896f165d0db3969f68e2fbcda75",
+    "render.js": "824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9",
+    "debug-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "debug-ack-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "debug-mesh-capacity-run.log": "809467587197818d0d2a85de4afa639656fbee1cbdd0552815f1cb0206848139",
+    "sanitized-pipeline-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "optimized-ack-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "optimized-mesh-capacity-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "debug-draw-null-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "debug-mesh-capacity-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-draw-null-run.log": "179cfb56806c10b8461d71db5e07eca6d45bf4b4b6965ebd8e8075d3ca29c286",
+    "sanitized-ack-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-mesh-capacity-run.log": "809467587197818d0d2a85de4afa639656fbee1cbdd0552815f1cb0206848139",
+    "debug-run.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-draw-object-run.log": "5a3fcec2b6c62ccb5c0353ac5b721881065f7436ff3420e035636c14d82763e1",
+    "render-face.c": "d169fd4b7fd7ff62ccb6c590e043c4fc2ad03b5622f272c85561198158f6a51f",
+    "sanitized-draw-object-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-mesh-capacity-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "optimized-draw-null-run.log": "179cfb56806c10b8461d71db5e07eca6d45bf4b4b6965ebd8e8075d3ca29c286",
+    "optimized-draw-null-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "optimized-pipeline-run.log": "bc7affccf0c3459dbe64c6b81ba8b6a6b541a5f9c7eedbc6ee52a5f8622cea08",
+    "debug-draw-null-run.log": "179cfb56806c10b8461d71db5e07eca6d45bf4b4b6965ebd8e8075d3ca29c286",
+    "sanitized-ack-run.log": "866544776caa5ee17cb25b04db848f6290d4c883eb33ba5ed00307a162baa0fc",
+    "check_render_engine_generations.ts": "229ed6b3c462e561745daed943ef798c726086f8bd0affde4d9e9e11e71ca071",
+    "sanitized-pipeline-run.log": "bc7affccf0c3459dbe64c6b81ba8b6a6b541a5f9c7eedbc6ee52a5f8622cea08"
+  },
+  "source_epoch_rule": "A passing record retains its original exact source hashes. Later edits are not retroactively attributed to that record. Runtime JS and browser C source are currently frozen; the original image reload failure was a test observation error because uploaded image bitmaps are already closed and nulled."
+}

@@ -1,0 +1,29 @@
+{
+  "status": "executed",
+  "native_status": "0",
+  "elapsed_seconds": 6.2713151660282165,
+  "inputs": {
+    "/private/tmp/aethyr-ch11-reference-watchtower-2ca-first/inputs/u.bin": "67233b18fb833f7c59745ce55321c49b308c7d57ca9b3e15dc9c4d56d36ca280",
+    "/private/tmp/aethyr-ch11-reference-watchtower-2ca-first/inputs/hud.bin": "6ab6d800839f0ed0f3c2a16b95c2cd6475d23b455a4295340112f2c6034748c0",
+    "/private/tmp/aethyr-ch11-reference-watchtower-2ca-first/inputs/draws.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/aethyr-ch11-reference-watchtower-2ca-first/inputs/render.json": "ab43ed6575e394f80b9ad55ad5c40cb214ab1906a29d82eaa1bfeb8a74349109",
+    "/private/tmp/aethyr-ch11-reference-watchtower-2ca-first/inputs/pipeline-0-a7a20877f89c63fad7c0e99acdde0fbf877fa0340342ad3be71b7ef6d5c9e1c2.tree": "a7a20877f89c63fad7c0e99acdde0fbf877fa0340342ad3be71b7ef6d5c9e1c2",
+    "/private/tmp/aethyr-ch11-reference-watchtower-2ca-first/inputs/pipeline-12-fd4528221798fcec5d82ff5cd621c511a4a7973b89a049b46bc7ea291c547245.tree": "fd4528221798fcec5d82ff5cd621c511a4a7973b89a049b46bc7ea291c547245",
+    "/tmp/aethyr-ch11-packages-final-v2/watchtower/pipeline-12-e6baeb0ef616a56f5bd9d6529f3a1598e64acf7e2a93d3512dcd1a4cedf1396b.spv": "e6baeb0ef616a56f5bd9d6529f3a1598e64acf7e2a93d3512dcd1a4cedf1396b",
+    "/tmp/aethyr-ch11-packages-final-v2/watchtower/render.json": "6ada90e96c42754c7206086529b2c2fdb5d91b786c04e7f9c0386ca55cf39250",
+    "/tmp/aethyr-ch11-packages-final-v2/watchtower/pipeline-0-016e2e88071b9cda47bf70204f03d862732461d7ce66061cbda5bab0fd37f8d5.spv": "016e2e88071b9cda47bf70204f03d862732461d7ce66061cbda5bab0fd37f8d5",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/native/render-host.c": "64abcca7215ade0b9cbd975e7af80a7bd234d32823ab0a6cb3bef71e8fcecfb5",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/native/render-host.h": "54922daa9d1bfe0bbadfc36d929d245365de6362f8d66ae6a677114e94789ce4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/native-frame.c": "6b959dcad2502b8487b1d348927277375f00f4703f96ae9ba49fd15ee3696a3e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/frame-input.h": "cb8ded6f90d84fbf65bf0a97856bcf37c0564d86611ee451178dd740f5f324a8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vks.c": "1c535649cf3f6109974b39f182aa90c3d2c2206d379527e9171ae121654751fa",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vks.h": "7acf90e709323c4737c89574b886da638748eed2be0229da289d1c0794281c69",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vkc.c": "9b60bcf80801b0932a82e3f623281c65269f6a7b55c62ae6901a70649065b13a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vkc.h": "93c64a4b34d6bb2ec3308729ec09455a868d793f0bd596c87404f0543a48c2cc",
+    "/tmp/aethyr-ch11-native-render/RenderHost.c": "6f029e2ae2e78218e2a257174fd8aeef5ba1a62951c799405d3839e18c5c5ac2",
+    "/tmp/aethyr-ch11-native-render/RenderHost.h": "6afcf4270a03089a7279ddb138dbd5dad0918f86a8828c89095ea41bc7c222b2",
+    "/tmp/aethyr-ch11-native-render/RenderTexture.c": "044e7753b8c564b572f54b4444bac6ca4401862209f2a74bb1ee97e5a3434c44",
+    "/tmp/aethyr-ch11-native-render/RenderTexture.h": "16b69c46411209daad995a937703b4a74a2a66da989b8887b0b7682ac224caf0"
+  },
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980"
+}

@@ -1,0 +1,14 @@
+{
+  "command": [
+    "coax/web/tool.sh",
+    "aethyr/render/tools/native-textures.coax",
+    "haunted-house",
+    "/tmp/aethyr-ch11-texture-stage-layers/spec",
+    "/tmp/aethyr-ch11-texture-stage-layers/out"
+  ],
+  "exit": 0,
+  "elapsed_seconds": 3.354870665993076,
+  "raw_bytes": 67108848,
+  "sha256": "5bf8b27d8d9cba62332f0f60f94945c3ee0b3888ace3e02221944a9f2adf0125",
+  "all_bytes_preserved": true
+}

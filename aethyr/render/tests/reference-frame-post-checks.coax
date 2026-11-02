@@ -1,0 +1,77 @@
+#load "reference-frame-post-trees.coax";
+RFGSnapshot :: struct {result:RFResult;light:RQColor;aux:RQColor;quarter:RQColor;eighth:RQColor;last_bloom:int=-1;}
+rfg_frame :: (rfg_reverse:bool,rfg_budget:int,rfg_out:[]RQColor)->RFGSnapshot {return rfg_frame_case(rfg_reverse,rfg_budget,0,rfg_out);}
+rfg_frame_case :: (rfg_reverse:bool,rfg_budget:int,rfg_fault:int,rfg_out:[]RQColor)->RFGSnapshot {
+  rfg_u:[796]f32;rfg_u[0]=2;rfg_u[1]=2;
+  // Valid Fairy ground and a2×3 water grid with two independent instances.
+  rfg_u[32]=1;rfg_u[238]=2;rfg_u[239]=6;
+  rfg_u[780]=2;rfg_u[781]=3;rfg_u[782]=1;rfg_u[783]=1;rfg_u[784]=1;
+  rfg_heights:[20]u32;rfg_objects:[16]u32;rfg_nodes:[48]u32;
+  rfg_buffers:=[3]RenderHostNamedBuffer.[
+    RenderHostNamedBuffer.{name="s0.bin",words=rfg_heights[..],observed=RenderBufferObserved.{source_capacity=72,logical_payload=72,initialized_highwater=80,gpu_bytes=80,zero_initialized=true}},
+    RenderHostNamedBuffer.{name="s1.bin",words=rfg_objects[..],observed=RenderBufferObserved.{source_capacity=64,logical_payload=64,initialized_highwater=64,gpu_bytes=64,zero_initialized=true}},
+    RenderHostNamedBuffer.{name="s2.bin",words=rfg_nodes[..],observed=RenderBufferObserved.{source_capacity=192,logical_payload=192,initialized_highwater=192,gpu_bytes=192,zero_initialized=true}}];
+  rfg_draws:=[12]u32.[0,3,0x80000000,1,0,3,0x80000001,1,0,3,0x80000001,1];
+  if rfg_reverse {rfg_draws[2]=0x80000001;rfg_draws[6]=0x80000000;}
+  rfg_bg:=RFG_TREE_0;rfg_scene:=RFG_TREE_5;rfg_transmit:=RFG_TREE_6;rfg_emit:=RFG_TREE_7;rfg_bloom:=RFG_TREE_10;rfg_post:=RFG_TREE_11;rfg_hud:=RFG_TREE_12;
+  rfg_shaders:=[7]RFShader.[RFShader.{index=0,tree=rfg_bg[..]},RFShader.{index=5,tree=rfg_scene[..]},RFShader.{index=6,tree=rfg_transmit[..]},RFShader.{index=7,tree=rfg_emit[..]},RFShader.{index=10,tree=rfg_bloom[..]},RFShader.{index=11,tree=rfg_post[..]},RFShader.{index=12,tree=rfg_hud[..]}];
+  rfg_counts:=FrameCounts.{width=2,height=2,vertex_stride=16,draw_count=2,water_draws=2};
+  rfg_images:[32]RQColor;rfg_pixels:[4]RRPixel;rfg_scratch:[4]RRPixel;rfg_words:[66380]u32;rfg_meta:[114688]int;rfg_domains:[3]RenderDrawDomain;rfg_decoded:[3]RenderDecodedDraw;
+  rfg_hud_payload:[48]f32;rfg_positions:=[12]f32.[-1,1,0.5,1,3,1,0.5,1,-1,-3,0.5,1];
+  for rfg_i:0..<3 {for rfg_k:0..<4 {rfg_hud_payload[rfg_i*16+rfg_k]=rfg_positions[rfg_i*4+rfg_k];}}
+  if rfg_fault==9 {rfg_u[32]=0;}if rfg_fault==10 {rfg_counts.caster_vertices=1;}
+  if rfg_fault==11 {rfg_counts.water_draws=1;}if rfg_fault==12 {rfg_counts.hud_vertices=3;}
+  if rfg_fault==16 {rfg_counts.draw_count=3;rfg_draws[2]=0x80000001;rfg_draws[6]=0x80000000;}
+  // Raw caller observations fail independently of the graph and its workspaces.
+  if rfg_fault==17 {rfg_buffers[1].name="s0.bin";}
+  if rfg_fault==18 {rfg_buffers[0].words=rfg_heights[0..<19];}
+  if rfg_fault==19 {rfg_shaders[0].tree=rfg_hud[..];}
+  if rfg_fault==21 {rfg_counts.hud_vertices=3;}
+  rfg_small:=RFL_SMALL_TREE;if rfg_fault==13 {rfg_shaders[0].tree=rfg_small[..];}if rfg_fault==14 {rfg_shaders[1].index= -1;}
+  rfg_requirements:=rf_require(3,rfg_counts,RenderReadiness.ready,true,false,RenderTextureFormat.rgba16f);
+  rfg_work:=RFWorking.{images=rfg_images[..],target=rfg_pixels[..],scratch=rfg_scratch[..],words=rfg_words[..],meta=rfg_meta[..],domains=rfg_domains[..],decoded=rfg_decoded[..]};
+  if rfg_fault==1 {rfg_work.images=rfg_images[0..<rfg_requirements.image_pixels-1];}
+  if rfg_fault==2 {rfg_work.target=rfg_pixels[0..<rfg_requirements.pass_pixels-1];}
+  if rfg_fault==3 {rfg_work.scratch=rfg_scratch[0..<rfg_requirements.pass_pixels-1];}
+  if rfg_fault==4 {rfg_work.words=rfg_words[0..<rfg_requirements.word_words-1];}
+  if rfg_fault==5 {rfg_work.meta=rfg_meta[0..<rfg_requirements.meta_words-1];}
+  if rfg_fault==6 {rfg_work.domains=rfg_domains[0..<1];}if rfg_fault==7 {rfg_work.decoded=rfg_decoded[0..<1];}
+  rfg_output:=rfg_out;if rfg_fault==8 {rfg_output=rfg_out[0..<3];}
+  rfg_ns:=ifx rfg_fault==15 then 6 else 7;
+  rfg_uniform_view:=rfg_u[..];rfg_hud_view:=rfg_hud_payload[..];
+  if rfg_fault==20 {rfg_uniform_view=rfg_u[0..<795];}
+  if rfg_fault==21 {rfg_hud_view=rfg_hud_payload[0..<47];}
+  rfg_result:=rf_run(RFInput.{profile=3,counts=rfg_counts,uniforms=rfg_uniform_view,hud=rfg_hud_view,draw_words=rfg_draws[..],buffers=rfg_buffers[..]},rfg_shaders[0..<rfg_ns],false,RenderTextureFormat.rgba16f,RFPolicy.{shader_work=rfg_budget},rfg_work,rfg_output);
+  rfg_req:=rf_require(3,rfg_counts,RenderReadiness.ready,true,false,RenderTextureFormat.rgba16f);
+  rfg_snapshot:=RFGSnapshot.{result=rfg_result,light=rfg_images[rfg_req.images[2].offset],aux=rfg_images[rfg_req.images[3].offset],quarter=rfg_images[rfg_req.images[8].offset],eighth=rfg_images[rfg_req.images[10].offset]};
+  for rfg_i:0..<rfg_req.plan.count {if rfg_req.plan.ops[rfg_i].kind==RenderOpKind.draw && rfg_req.plan.ops[rfg_i].pass==RenderPassId.bloom {rfg_snapshot.last_bloom=rfg_i;}}
+  return rfg_snapshot;
+}
+#forall "reference full graph interleaves two water records and carries all five bloom stages into post" rfg_reverse:bool {
+  rfg_out:[5]RQColor;for rfg_i:0..<5 {rfg_out[rfg_i]=RQColor.{r=91,g=92,b=93,a=94};}
+  rfg_s:=rfg_frame(rfg_reverse,100000000,rfg_out[..]);rfg_r:=rfg_s.result;
+  #assert rfg_r.status==RQStatus.ok && rfg_r.geometry==RenderGeometryStatus.ok && rfg_r.frame==RenderFrameStatus.ok && rfg_r.bad_op== -1 && rfg_r.bad_shader== -1;
+  // Forward: ((c*.5+.125)*.25+.5). Reverse: ((c*.25+.5)*.5+.125).
+  rfg_light:=ifx rfg_reverse then RQColor.{r=0.390625,g=0.40625,b=0.4375,a=1} else RQColor.{r=0.546875,g=0.5625,b=0.59375,a=1};
+  #assert rfpx_same(rfg_s.light,rfg_light) && rfpx_same(rfg_s.aux,RQColor.{r=0.75,g=0.25,b=1,a=1});
+  #assert rfpx_same(rfg_s.quarter,RQColor.{r=rfg_light.r+0.0625,g=rfg_light.g+0.03125,b=rfg_light.b+0.03125,a=1.046875});
+  #assert rfpx_same(rfg_s.eighth,RQColor.{r=rfg_light.r+0.125,g=rfg_light.g+0.0625,b=rfg_light.b+0.0625,a=1.0703125});
+  // Post samples L + Q/2 + E/4 + A/8; only red adds u[0]/16.
+  rfg_expected:=ifx rfg_reverse then RQColor.{r=0.96484375,g=0.7734375,b=0.921875,a=1} else RQColor.{r=1.23828125,g=1.046875,b=1.1953125,a=1};
+  for rfg_i:0..<4 {#assert rfpx_same(rfg_out[rfg_i],rfg_expected);}
+  #assert rfpx_same(rfg_out[4],RQColor.{r=91,g=92,b=93,a=94});
+  #assert rfg_r.draws==11 && rfg_r.pass_steps[6]>0 && rfg_r.pass_steps[7]>0 && rfg_r.pass_steps[10]>0 && rfg_r.pass_steps[11]>0 && rfg_r.pass_steps[5]==0 && rfg_r.pass_steps[12]==0;
+}
+#test "reference full graph gives five bloom draws one cumulative shader budget and keeps final output atomic" {
+  rfg_first:[4]RQColor;rfg_good:=rfg_frame(false,100000000,rfg_first[..]);
+  #assert rfg_good.result.status==RQStatus.ok;
+  rfg_limit:=rfg_good.result.pass_steps[10];
+  for rfg_i:0..<14 {#assert rfg_good.result.pass_steps[rfg_i]<=rfg_limit;}
+  rfg_out:[5]RQColor;for rfg_i:0..<5 {rfg_out[rfg_i]=RQColor.{r=81,g=82,b=83,a=84};}
+  rfg_equal:=rfg_frame(false,rfg_limit,rfg_out[..]);#assert rfg_equal.result.status==RQStatus.ok && rfg_equal.result.pass_steps[10]==rfg_limit;
+  for rfg_i:0..<4 {#assert rfpx_same(rfg_out[rfg_i],rfg_first[rfg_i]);}
+  for rfg_i:0..<5 {rfg_out[rfg_i]=RQColor.{r=81,g=82,b=83,a=84};}
+  rfg_short:=rfg_frame(false,rfg_limit-1,rfg_out[..]);
+  #assert rfg_short.result.status==RQStatus.budget && rfg_short.result.bad_op==rfg_good.last_bloom && rfg_short.result.pass_steps[10]==rfg_limit-1;
+  for rfg_i:0..<5 {#assert rfpx_same(rfg_out[rfg_i],RQColor.{r=81,g=82,b=83,a=84});}
+}

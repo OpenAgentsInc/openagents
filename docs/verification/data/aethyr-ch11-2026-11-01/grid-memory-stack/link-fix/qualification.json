@@ -1,0 +1,98 @@
+{
+  "schema": "aethyr.grid.stack-link-fix.v1",
+  "status": "passed-c-only-link-and-actual-startup-memory",
+  "old_wasm_sha256": "8037740a81fbab5e358c42c49fcd9a0a7087fc1aabb096f7cd8f6381e5e253da",
+  "new_wasm_sha256": "ec39a47fceb155072e37971974fed7a36dcbbb7573de2c3d52ddadddf0c44017",
+  "change": "Only shared homepage/Grid linker stack8MiB\u21924MiB, justified by separately retained static callgraph.64MiB max,400k output vertices and every package/buffer capacity preserved.",
+  "checks_first": {
+    "command": [
+      "bun",
+      "aethyr/tests/check_grid_memory.ts",
+      "OLD.wasm",
+      "RECEIPT.json"
+    ],
+    "old_exit": 1,
+    "new_exit": 0,
+    "old_arena_need": 69544560,
+    "new_arena_need": 65350256,
+    "actual_memory_grow": "old refused; new succeeded"
+  },
+  "coax_check_reuse": "All original1fac source-bound Coax C/header admission reused byte-for-byte; no Coax emission/check repeated. New ordinary platform C/link is separately fenced.",
+  "rows": 320,
+  "upstream512": "Prediction only in../capacity-growth.json; final integrated artifact must be measured.",
+  "actual_browser": "Separate fresh actual WebGPU owned-Sans capture started after this fix; numerical comparison and image acceptance are separate.",
+  "files": {
+    "build-home.sh": {
+      "sha256": "5f7c9c5c57e2d2d0170f25397d1233ac2081f8381583029144b4304179fa9300",
+      "bytes": 3789
+    },
+    "c-only-relink.json": {
+      "sha256": "60cfd40fef29c0a86dd01cf5f86092863fb6102b3b816517825082bc4f86b06b",
+      "bytes": 30608
+    },
+    "check_grid_memory.ts": {
+      "sha256": "93ff149aad46619760405639c15d6f9c034305bac984a903901524635f24ba61",
+      "bytes": 5899
+    },
+    "compile-Gridwalk.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compile-Render-face.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compile-landing-browser.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compile-landing-cache-face.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compile-landing-fold-face.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compile-landing-fold.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compile-landing-reader-face.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compile-newland-face.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compile-newland.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "green-memory.json": {
+      "sha256": "a6904c53c6e1a22f9bc8e0e8ebf8a6675fd5f6bd48bb78c9af2832117593f2c4",
+      "bytes": 792
+    },
+    "link.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "old-runtime-refusal.json": {
+      "sha256": "8e520359b534f55406bdbdb4e050932c440b1ae94b54e5ea818bf2ffda9917ac",
+      "bytes": 25705
+    },
+    "qualified-wasm.tar.gz": {
+      "sha256": "f4d0cefd4086be131bd93e87295e2cdac803bbe0ea68ca900e9a02af65948b34",
+      "bytes": 389944
+    },
+    "red-memory.json": {
+      "sha256": "abcc6fe6dd6a00463e2e59cdc2f98c1842fb6a1fa29c56062b7bba1c10b6b572",
+      "bytes": 961
+    },
+    "relink.py": {
+      "sha256": "7bebc95c70a23d54360155813730a47c46f2651ea5f494db54808b8e7cd3768f",
+      "bytes": 4320
+    }
+  }
+}

@@ -1,0 +1,7 @@
+ok   #forall reference graph clears exactly its selected colour auxiliary and depth spans (8 cases, 14882 steps, 1 ms)
+ok   #test reference graph keep suppresses every clear and every pixel charge (1 case, 471 steps, 0 ms)
+ok   #forall reference graph clear exhaustion retains only completed candidate attachments (10 cases, 17915 steps, 2 ms)
+ok   #forall reference graph copies colour and depth words without reencoding or touching guards (2 cases, 2872 steps, 0 ms)
+ok   #forall reference graph copy refuses before any destination write when its visit budget is short (4 cases, 4557 steps, 0 ms)
+5 of 384 checks (--only 'reference graph'), 5 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

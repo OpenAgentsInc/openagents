@@ -1,0 +1,31 @@
+{
+  "schema": "aethyr.render.icecream-prefix-retention.v1",
+  "files": {
+    "original-stage.json": "0c7838c8bbffb68d4ea5676f0aad5768e5fa9ef8e6ee82f0b22e864240e6d435",
+    "full.depth32.gz": "017c1d750b482f10f140a0be76e36ff1ed4d3b28e37ad3baa9728dce116af35c",
+    "run.py": "1337628c73bd60de8850fca7d29a4fcbc647bb07a3d42b839a6e6aaf790f9b3b",
+    "original-render-host.c": "64abcca7215ade0b9cbd975e7af80a7bd234d32823ab0a6cb3bef71e8fcecfb5",
+    "bg.raw.gz": "e5b54a1f237588636e2f5a1e68d9c25ded1eedc87d65ca294a7d16dd8fe10ec8",
+    "scene.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "full.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bg.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scene.raw.gz": "97cddd92684dfb663df31bf61599570e20f4706c03cfd8885fd7931400438400",
+    "full.raw.gz": "755cdf9e9efc75f8dc48e3d12d234cb8c829285c80abe18078a8d3e963e6faab",
+    "ssh.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "original-native-frame.c": "b3f785b02b413f8db7be68801e2fddaabed23d128e1cc517ea70ddb980796883",
+    "scene.json": "b3ff88d2f8a1012a7175a7b10d65e6347bb91bd14c872e4c665792cad9c1da56",
+    "compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scene.depth32.gz": "796e29cf6b7173271f4f5a22510a2d1a3eb8f90f6ea6380d84485cd9bf12ef48",
+    "full.json": "3791a21acc258abd4e20b080ff32f47a00bb9c13aa0cb0867483ba1e0b06e6f7",
+    "hud.json": "3791a21acc258abd4e20b080ff32f47a00bb9c13aa0cb0867483ba1e0b06e6f7",
+    "exact-instrumented-stage.tar.gz": "08acc7c84b93858c6d1de686c70fbd8c1f01f60067758852473580e7869dc9c6",
+    "remote.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bg.json": "e9f5f84793ff1d77325049bf0ab7ae6ee54a006c45cd8c39a17722a48f943fa9",
+    "pixel-stages.json": "d8480ad90a56f94fc7086f32227cd0ffb2ca20a80edbae0a4699264bd643c172",
+    "hud.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "status.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "bg.depth32.gz": "c7a11f951dc564060d43a500bfa6454a82a37396952c9c99d8e8c01e9d18face",
+    "hud.depth32.gz": "b36f115f4b5a9b2acbb63054c938a22752687ca0488d6a8f1c4ae7e9b7432344",
+    "hud.raw.gz": "4f99d77d4b3babbc53eac95266d149102cbbaf41e22150bb356bedc34e84cc53"
+  }
+}

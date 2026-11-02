@@ -1394,8 +1394,8 @@ demo_hit :: (b: [] RigidBody, r: D3, n: D3, depth: f64, share: f64) -> f64 {
   if vn >= 0.0 { return 0.0; }
   j := -(1.0 + DEMO_RESTITUTION) * vn / demo_reach(b, 0, r, n);
   demo_kick_at(b, 0, d3_scale(n, j), r);
-  v2 := demo_point_vel(b, 0, r);
-  slide := d3_sub(v2, d3_scale(n, d3_dot(v2, n)));
+  dem_v2 := demo_point_vel(b, 0, r);
+  slide := d3_sub(dem_v2, d3_scale(n, d3_dot(dem_v2, n)));
   sl := d3_len(slide);
   if sl > 0.0001 {
     t := d3_scale(slide, -1.0 / sl);

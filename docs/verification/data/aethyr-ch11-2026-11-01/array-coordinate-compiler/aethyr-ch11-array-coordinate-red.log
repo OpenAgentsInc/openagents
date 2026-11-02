@@ -1,0 +1,10 @@
+FAIL #test array samples declare one float coordinate vector when V3 is absent (3 ms)
+coax/lib/compiler/shader.coax:1971:9: error[E0406]: assertion failed
+          #assert sa_vector!=0 && sa_binary[sa_at+1]==sa_vector;
+          ^
+  note: in #test array samples declare one float coordinate vector when V3 is absent
+1 of 39 checks (--only 'array samples declare'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents-aethyr-compiler/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents-aethyr-compiler/coax/build.sh

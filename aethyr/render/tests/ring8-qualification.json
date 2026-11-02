@@ -1,0 +1,67 @@
+{
+  "schema": "aethyr.render.canonical-ring8-qualification.v1",
+  "status": "authority/core/native/Vulkan/WebGPU primitive pass; actual native frame GPU validation pass; strict full-frame CPU/browser comparison pending",
+  "scope": "Canonical8-sector azimuth and2-ring-per-hemisphere polar directions. Root mutation covers the two authoritative direction-packet functions. Actual production capsule integration tests cover all240vertex IDs,64outward nondegenerate triangles,16exact pole degenerates, seam identity and vertical/oblique radii/normals.",
+  "source_sha256": {
+    "aethyr/render/ring8.coax": "67c2f429d8c1a93efd2dd6147b482b3299b21147671f6fd84c617f06ba96eff2",
+    "apps/openagents-web/gpu/deadgears.coax": "47bc1e2b0a1c5558b8a48a4106cbb5699a9f8302b8f76433ffd30234dde0107f",
+    "aethyr/tests/render-ring8-probe.coax": "d21dcee3cd8d540f9dde6f3e0f6c440d4e9ee70d1480b8f5121184da4d2cf3fe"
+  },
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "check_first": "Old production shader fails exact seam and exact pole topology checks before the coefficient change; original source and failing evidence retained. NewAPI checks were authored before its implementation.",
+  "authority_mutation": {
+    "sites": 8,
+    "killed": 8,
+    "survived": 0,
+    "waivers": 0,
+    "log": "mutation.log"
+  },
+  "checked_native_primitive": "cpu-qualification.json",
+  "vulkan_primitive": "gpu-qualification.json",
+  "primitive_expected": "Independent80-digit Decimal sqrt(1/2), quarter rotations and exact poles; every nonzero finite f32 word exact, signedzero equivalent;728cases/2912channels.",
+  "geometry_policy": "Cardinal and polar zeros are exact; diagonals are nearest binary32 sqrt(1/2). A repeated0/2pi sample has identical bits. No runtime trigonometry is used by the capsule generator.",
+  "preserved": "All immutable producer object/uniform inputs,240vertex count, draw protocol, axis/basis and remaining shader expressions. No oracle, mask, colour tolerance or image-derived coefficient.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-ring8",
+  "archive_sha256": "691d9fb890a6446150851381a6273021aa6a5af5a5920f7253901d0a73b2194f",
+  "probe_controlflow_repair": {
+    "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-ring8/probe-controlflow-repair",
+    "change": "Probe-only aggregate ifx replaced with explicit variable+if to stay within the emitted WGSL subset. Production helper/DG source unchanged.",
+    "old_probe_source_sha256": "e9a7260a5968413c2551e13189570f2c80f0eca36060aa785c2a66829a0e54cb",
+    "current_spirv_sha256": "e0480d5c654fa2291328a3f53cf6f6a0de0c78052e9c2d903ab536b9f601ef7a",
+    "current_native_gpu": "728cases/2912channels exact; GPU0/0;7loss controls; unchanged C effects executable reused.",
+    "ordinary_c_scope": "Earlier checked-C debug/O2/sanitizer observations exercise the same unchanged production functions through the pre-repair probe transport; that exact old source/C/header pair remains archived.",
+    "archive_sha256": "530b107374c03afb819855f4d12e326a325c97e0ca1c1467ff57469768ea8a3d"
+  },
+  "webgpu_primitive": {
+    "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-ring8/webgpu-current",
+    "cases": 728,
+    "channels": 2912,
+    "nonzero_f32_words_exact": true,
+    "all_six_seams_bit_exact": true,
+    "source_changes": []
+  },
+  "actual_native_frame": {
+    "schema": "aethyr.render.repaired-geometry-native-frame.v1",
+    "case": "deadgears-ring8",
+    "status": "GPU validation pass; strict CPU/backend numerical comparison separate",
+    "frame": {
+      "status": "rendered",
+      "profile": 4,
+      "resource": 1,
+      "width": 320,
+      "height": 180,
+      "format": "rgba16f",
+      "bytes": 460800,
+      "draw_commands": 4,
+      "device": "NVIDIA GeForce RTX 4080",
+      "subPixelPrecisionBits": 8,
+      "validation_errors": 0,
+      "validation_warnings": 0
+    },
+    "raw_sha256": "5afc5e66519ffc60f6cda91fcba33a480cd811fcbd8390c62b8d399462af168f",
+    "input_equality": "input-equality.json",
+    "scope": "New repaired geometry frame. Exact actual producer/resource observations retained, with explicit shader package substitution only for DeadGears. Historical generic executor reused under complete source/header byte fence.",
+    "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/deadgears-ring8",
+    "archive_sha256": "2ac1dec4882ef417a7e91b8d311211267b28879b94c429701f939815209a08e4"
+  }
+}

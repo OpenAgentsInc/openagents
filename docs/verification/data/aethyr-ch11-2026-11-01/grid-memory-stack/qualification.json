@@ -1,0 +1,538 @@
+{
+  "schema": "aethyr.grid.memory-stack-static-audit.v1",
+  "status": "measured-current-artifact-and-conservative-stack-bound; no build setting changed",
+  "observed_utc": "2026-11-02T04:11:10.507745+00:00",
+  "qualified_wasm_sha256": "8037740a81fbab5e358c42c49fcd9a0a7087fc1aabb096f7cd8f6381e5e253da",
+  "qualified_compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "scope": "Exact retained default Grid artifact, admitted Coax C/headers and original platform C. Only Clang stack-usage/map/debug-name diagnostic emission; no Coax checks or GPU rendering repeated. Original semantic Wasm sections are byte-identical to names-retained optimized diagnostic.",
+  "memory": {
+    "minimum_pages": 758,
+    "maximum_pages": 1024,
+    "heap_base": 49631664,
+    "state_bytes": 667752,
+    "vertex_bytes": 19200000,
+    "startup_arena_need": 69544560,
+    "excess_to_64MiB": 2435696
+  },
+  "stack": {
+    "reserved_bytes": 8388608,
+    "c_functions_with_static_usage": 985,
+    "c_dynamic_allocations": 0,
+    "largest_C_frame": {
+      "function": "coax_p_render_package_spirv_bytes",
+      "bytes": 2100240,
+      "kind": "static"
+    },
+    "pre_binaryen_maximum_callchain_bytes": 2102784,
+    "pre_binaryen_note": "The two noncanonical SP reads are a128B static leaf red-zone (Coax gc_edge_sweep, confirmed by .su) and zero-allocation libc TLS metadata. They do not determine the maximum2,102,784B path. Post-Binaryen analysis below has no unknown SP reads.",
+    "optimized_defined_functions": 500,
+    "exported_roots": 170,
+    "reader_export_roots": 20,
+    "optimized_conservative_maximum_bytes": 1956816,
+    "largest_export": "coaxial_frame",
+    "bound_method": "For each optimized function sum ALL constant stack-pointer decrement sites, even when mutually exclusive or sequential. Add the maximum child bound along direct calls and every immutable-table candidate for indirect calls. C stack-usage reports contain only static allocations; inlined fragments retain balanced ABI stack restoration. Zero-allocation self-recursive libc nodes do not grow linear memory.",
+    "allocation_writes": 435,
+    "restore_writes": 431,
+    "unknown_SP_write_shapes": 0,
+    "noreturn_unrestored_frames": [
+      {
+        "function": "coax_trap",
+        "sites": [
+          {
+            "local": 3,
+            "bytes": 16,
+            "allocations": 1,
+            "restores": 0
+          }
+        ],
+        "ends_with_unreachable": true,
+        "tail": [
+          [
+            "i32.const",
+            "8545776"
+          ],
+          [
+            "i32.load",
+            "0"
+          ],
+          [
+            "local.get",
+            "3"
+          ],
+          [
+            "call",
+            "495"
+          ],
+          [
+            "unreachable",
+            ""
+          ],
+          [
+            "end",
+            ""
+          ]
+        ]
+      },
+      {
+        "function": "coax_trap_229",
+        "sites": [
+          {
+            "local": 3,
+            "bytes": 16,
+            "allocations": 1,
+            "restores": 0
+          }
+        ],
+        "ends_with_unreachable": true,
+        "tail": [
+          [
+            "i32.const",
+            "8545776"
+          ],
+          [
+            "i32.load",
+            "0"
+          ],
+          [
+            "local.get",
+            "3"
+          ],
+          [
+            "call",
+            "495"
+          ],
+          [
+            "unreachable",
+            ""
+          ],
+          [
+            "end",
+            ""
+          ]
+        ]
+      },
+      {
+        "function": "coax_trap_491",
+        "sites": [
+          {
+            "local": 3,
+            "bytes": 16,
+            "allocations": 1,
+            "restores": 0
+          }
+        ],
+        "ends_with_unreachable": true,
+        "tail": [
+          [
+            "i32.const",
+            "8545776"
+          ],
+          [
+            "i32.load",
+            "0"
+          ],
+          [
+            "local.get",
+            "3"
+          ],
+          [
+            "call",
+            "495"
+          ],
+          [
+            "unreachable",
+            ""
+          ],
+          [
+            "end",
+            ""
+          ]
+        ]
+      },
+      {
+        "function": "coax_trap_524",
+        "sites": [
+          {
+            "local": 3,
+            "bytes": 16,
+            "allocations": 1,
+            "restores": 0
+          }
+        ],
+        "ends_with_unreachable": true,
+        "tail": [
+          [
+            "i32.const",
+            "8545776"
+          ],
+          [
+            "i32.load",
+            "0"
+          ],
+          [
+            "local.get",
+            "3"
+          ],
+          [
+            "call",
+            "495"
+          ],
+          [
+            "unreachable",
+            ""
+          ],
+          [
+            "end",
+            ""
+          ]
+        ]
+      }
+    ],
+    "recursion": {
+      "components": [
+        [
+          {
+            "id": 494,
+            "name": "fflush",
+            "frame_bytes": 0
+          }
+        ],
+        [
+          {
+            "id": 505,
+            "name": "frexp",
+            "frame_bytes": 0
+          }
+        ]
+      ],
+      "fflush": "Recursion occurs only in the null-FILE branch; each recursive call is guarded by a nonzero loaded FILE pointer and enters the nonrecursive branch. Maximum two active instances, zero linear-stack allocation.",
+      "frexp": "The nonzero subnormal branch multiplies by2^64 before its one recursive call. Even the least binary64 subnormal becomes normal, so recursion depth is at most two. Both instances have zero linear-stack allocation."
+    },
+    "assumptions": "Valid Wasm/C ABI execution and memory integrity; the observed single-thread browser imports do not synchronously re-enter this Wasm module. The implicit VM operand/native call stack is separate from the linear-memory linker reservation."
+  },
+  "capacity_512_only": {
+    "schema": "aethyr.grid.capacity-field-growth.v1",
+    "scope": "Exact size arithmetic for ONLY the current320\u2192origin512 HOME_ISSUES/FOLD_ISSUES capacity edit, using retained C ABI element sizes. This is not a claim about all later upstream data/code changes or a replacement for measuring the final relinked artifact.",
+    "upstream_commit": "31944a2a34b20c06a1e4ef3d32379cfb45ad7f67",
+    "fold_type_body_unchanged": true,
+    "store_type_body_unchanged": true,
+    "fold_per_issue_fields": [
+      {
+        "field": "root",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "fields",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "revised",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "status",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "status_at",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "status_ev",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "kind",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "claimed",
+        "element": "Ref",
+        "element_bytes": 16
+      },
+      {
+        "field": "claimed_at",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "commit",
+        "element": "Ref",
+        "element_bytes": 16
+      },
+      {
+        "field": "plan",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "plan_by",
+        "element": "Ref",
+        "element_bytes": 16
+      },
+      {
+        "field": "note",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "alias",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "rank",
+        "element": "Ref",
+        "element_bytes": 16
+      },
+      {
+        "field": "steps",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "steps_done",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "note_from",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "note_cnt",
+        "element": "int",
+        "element_bytes": 8
+      },
+      {
+        "field": "slug",
+        "element": "Ref",
+        "element_bytes": 16
+      },
+      {
+        "field": "subject",
+        "element": "Ref",
+        "element_bytes": 16
+      },
+      {
+        "field": "size",
+        "element": "Ref",
+        "element_bytes": 16
+      },
+      {
+        "field": "parent",
+        "element": "Ref",
+        "element_bytes": 16
+      }
+    ],
+    "bytes_per_issue": 248,
+    "old_issues": 320,
+    "new_issues": 512,
+    "static_growth": {
+      "Fold": 47616,
+      "LfState.expected": 12288,
+      "total": 59904,
+      "Store": 0,
+      "LandState": 0
+    },
+    "retained_layouts": {
+      "int": 8,
+      "Ref": 16,
+      "HomeIssue": 144,
+      "Fold": 1930808,
+      "LfState": 13158152,
+      "Store": 11206712,
+      "LandState": 667752
+    },
+    "predicted_layouts": {
+      "Fold": 1978424,
+      "LfState": 13218056
+    },
+    "reachable_local_array_growth": [
+      {
+        "entry": "apps/openagents-web/newland-network.coax:hn_project",
+        "array": "issues",
+        "element_bytes": 144,
+        "growth_bytes": 27648
+      },
+      {
+        "entry": "apps/openagents-web/newland-network.coax:hn_project",
+        "array": "claim",
+        "element_bytes": 8,
+        "growth_bytes": 1536
+      },
+      {
+        "entry": "apps/openagents-web/newland-network.coax:hn_project",
+        "array": "done_rows",
+        "element_bytes": 8,
+        "growth_bytes": 1536
+      },
+      {
+        "entry": "apps/openagents-web/project-fold.coax:fold",
+        "array": "roots",
+        "element_bytes": 8,
+        "growth_bytes": 1536
+      }
+    ],
+    "local_growth_sum_upper_bound": 32256,
+    "static_alignment_note": "All issue arrays have8-byte element alignment; the64-byte ID expansion and all growth totals are multiples of8, so no extra struct padding is introduced.",
+    "predictions": [
+      {
+        "stack_bytes": 8388608,
+        "predicted_heap_base": 49691568,
+        "predicted_minimum_pages": 759,
+        "arena_bytes": 69610096,
+        "arena_pages": 1063,
+        "spare_to_64MiB": -2501232
+      },
+      {
+        "stack_bytes": 4194304,
+        "predicted_heap_base": 45497264,
+        "predicted_minimum_pages": 695,
+        "arena_bytes": 65415792,
+        "arena_pages": 999,
+        "spare_to_64MiB": 1693072
+      }
+    ],
+    "current_stack_conservative_bound": 1956816,
+    "capacity_growth_added_conservatively_to_stack": 1989072,
+    "hypothetical_4MiB_stack_slack_after_all_local_growth": 2205232,
+    "source_sha256": {
+      "current_project_fold": "aedefaa3e518466297855d68cd7d9277db8fefc11e75cc8e2408a38becefa112",
+      "upstream_project_fold": "196a90ac6051bdbf23b63d2859b3382048eb886c86dc007a81f5739fa0852054"
+    }
+  },
+  "recommendation": {
+    "grid_only_stack_bytes": 4194304,
+    "reason": "Exceeds both pre- and post-Binaryen conservative bounds. Even the larger pre-Binaryen bound plus all derived512-row local growth leaves2,059,264bytes slack. Preserves400k output vertices and all package/data capacities. This audit does not change a build flag or declare the final upstream-integrated module qualified.",
+    "followup": "After an authorized Grid-only link setting change, relink the already admitted C/headers, independently remeasure minpages/heap/arena, run actual startup/render, and retain artifact/source identity. Later upstream code/data changes need their own final artifact measurement."
+  },
+  "tools": {
+    "/opt/homebrew/opt/llvm/bin/clang": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a",
+    "/opt/homebrew/bin/wasm-ld": "4c6afc01e2cda45bd78412d6fadf140d94a84031647cdb05d75ad479145150b7",
+    "/opt/homebrew/bin/wasm-opt": "2bcdcc070df2a1e7ef9159c301829e79f04a27b64327921b56bbbb1d74436db4",
+    "/opt/homebrew/opt/llvm/bin/llvm-objdump": "1b4b790e952d146a44f98258f945d491e00a35a63ce21f2ba6976d8afc2db439",
+    "/opt/homebrew/Cellar/llvm/23.1.4/etc/clang/wasm32-unknown-wasip1.cfg": "0da7fccec41611e7f3e0475ce9392960dd3d4bba4abab96153433b58219d5a08"
+  },
+  "archive": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-01/grid-memory-stack/inputs-and-diagnostics.tar.gz",
+    "sha256": "972e4f453495a7d8e248e477bc033abe2a097685a669c7eff33aab629f624171",
+    "bytes": 8546777,
+    "file_index": "archive-index.json"
+  },
+  "files": {
+    "analyze.py": {
+      "sha256": "3a41113f14232f94dc62ee12dc55625ffd0dc52beb84164392f58d5f5603a821",
+      "bytes": 3595
+    },
+    "archive-index.json": {
+      "sha256": "4c44a3c8f9e6859c383615398fe634f0814da18bce6c152826af7d5f85210cf4",
+      "bytes": 3259
+    },
+    "c-only-compilation.json": {
+      "sha256": "694d345c4383221eeb96fd73f43fe0e9a1c4afa9ed07fdecee3f14bf337956c8",
+      "bytes": 12221
+    },
+    "callgraph-preopt.json": {
+      "sha256": "8453f62e6e4815a57f7c07688a8b0a35689b50a88740f7fc645306e18e6ea2c9",
+      "bytes": 373068
+    },
+    "callgraph.json": {
+      "sha256": "4a296b6ebd615f90a60de4279c507c84406c3fb90726b7a6ab145c45f80d2c60",
+      "bytes": 262504
+    },
+    "capacity-growth.json": {
+      "sha256": "ffaa6c45f073f8f3025580be7f9c0154557a7f8ed9202b6e6153fd0f41ef26ab",
+      "bytes": 4701
+    },
+    "capacity.py": {
+      "sha256": "6cdf6cd63dcd3ac093387be18b098e33c3fd3fb38359a7054ca2995ee40665be",
+      "bytes": 3866
+    },
+    "driver-commands.txt": {
+      "sha256": "76061bc3ed0b484493b5c3e6bfa9b04b556c32624879201ad20bd4bdecfe4261",
+      "bytes": 1569
+    },
+    "graph.py": {
+      "sha256": "4c4136d2123181281bee32c12c353f689227db3c4e3fb9661a01984edd4f5c03",
+      "bytes": 7196
+    },
+    "inputs-and-diagnostics.tar.gz": {
+      "sha256": "972e4f453495a7d8e248e477bc033abe2a097685a669c7eff33aab629f624171",
+      "bytes": 8546777
+    },
+    "memory-owners.json": {
+      "sha256": "fa474b503b55645afe98e5f0de4fe19521834001dcde7fed4e82064887f80971",
+      "bytes": 14355
+    },
+    "memory.json": {
+      "sha256": "bb9a3b9a7ed5707144ac3c1792a1b743ce7a2c29840b7712746a90edef2c774e",
+      "bytes": 3799
+    },
+    "names-commands.json": {
+      "sha256": "a3034fcee751bcd8d24be0718dbf39f01ce00dc47f71ddb02c15e90f6f59ccf8",
+      "bytes": 1586
+    },
+    "retain.py": {
+      "sha256": "22bfcf356f1bd1ec508ca2d01f5f4564b78e84776accbad11f9361208e609044",
+      "bytes": 7316
+    },
+    "stack-usage/Gridwalk.su": {
+      "sha256": "b86b44d94be375b5f3d7223a373b91576c994ecb476c4f378217d032ee89f140",
+      "bytes": 4667
+    },
+    "stack-usage/landing-browser.su": {
+      "sha256": "a5c8238de6802d4660a4ebd600280ea5e1417f76929f7e65145e384aec7c5e21",
+      "bytes": 38711
+    },
+    "stack-usage/landing-cache-face.su": {
+      "sha256": "d87969e8393638d50014529beb1fec1f0935a3b9ef50d16beae7204f73720e14",
+      "bytes": 1314
+    },
+    "stack-usage/landing-fold-face.su": {
+      "sha256": "f50eb3a5d8d82e93caa1be7e1b8a9fc86ede9eefeee866961a46781808ed55e2",
+      "bytes": 383
+    },
+    "stack-usage/landing-fold.su": {
+      "sha256": "765f91f0e362b9e032b1328efcb72cad62baec55a584e77ff052cdbbf2c9385e",
+      "bytes": 3099
+    },
+    "stack-usage/landing-reader-face.su": {
+      "sha256": "7886e2a0a08cd9be6892f22169abfb261890eec91559dca5f598017bf6711036",
+      "bytes": 1285
+    },
+    "stack-usage/newland-face.su": {
+      "sha256": "cbd95cf49ceac0a824cdb73b09a06864710f27afd14c5391e97711db02ff4fdb",
+      "bytes": 3360
+    },
+    "stack-usage/newland.su": {
+      "sha256": "755778317c03f590851369be984460adae3847eb1fe24f80e60b929659cc8f5f",
+      "bytes": 23622
+    },
+    "stack-usage/render-face.su": {
+      "sha256": "2666e97ad2a9f9a5d98fe01ade5257df496cef054a1c98e112971c38f18d7b8a",
+      "bytes": 6828
+    },
+    "stack-write-shapes.json": {
+      "sha256": "a44c84c10dc29d668d91232149267d273372e81dc7ec21784f1bdf5de6b39053",
+      "bytes": 2778
+    }
+  },
+  "subsequent_qualified_fix": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-01/grid-memory-stack/link-fix/qualification.json",
+    "sha256": "ad0737ffcfc6e8941d1e47d0be372cd007ff07ed4005f1e0f36d621fdc3b8dbd"
+  },
+  "subsequent_actual_browser": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-01/grid-memory-stack/current-browser/qualification.json",
+    "sha256": "4b375b957e6b128dbfad049d95a9d32a5385bdeeb290513e432e295a2bcf507d"
+  },
+  "audit_epoch_note": "The initial8MiB analysis and input archive remain historical. The subsequent4MiB C-only link and actual browser/current-input CPU comparisons have their own receipts. The512-row totals remain a prediction until upstream integration is measured."
+}

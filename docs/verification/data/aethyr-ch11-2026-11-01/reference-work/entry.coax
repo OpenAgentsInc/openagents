@@ -1,0 +1,3 @@
+#load "../reference-work.coax";
+rr_probe_limits :: (profile:RRWorkProfile)->RRWorkLimits #export_c {return rr_work_limits(profile);}
+rr_probe_invocation :: (left:int)->int #export_c {return rr_work_invocation(left);}

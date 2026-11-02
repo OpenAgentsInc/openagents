@@ -1,0 +1,27 @@
+// Execute the unchanged production VS against fenced original resources, then
+// observe every returned component through flat varyings. The synthetic probe
+// entry differs from the production entry, so optimization context is explicit.
+#load "../../apps/openagents-web/gpu/deadgears.coax";
+DeadgearsVSProbe :: struct {pos:V4;recorded_clip:V4 #flat;world:V3 #flat;normal:V3 #flat;tint:V3 #flat;glow:f32 #flat;}
+#test "DeadGears VS probe transports the production box result without changing resources" {
+ u:[684]f32;u[8]=1;u[13]=1;u[18]=1;u[23]=1;
+ objects:[130]DeadgearsObj;objects[129]=DeadgearsObj.{r0=v4(1,0,0,0),r1=v4(0,1,0,0),r2=v4(0,0,1,0),colour=v4(1,1,1,0)};
+ probes:=[4]f32.[0,129,0,0];q:=render_deadgears_vs_probe_vs(0,0,u[..],objects[..],probes[..]);
+ #assert q.pos.x==(-1) && q.pos.y==1 && q.pos.z==0.5 && q.pos.w==1;
+ #assert q.recorded_clip.x==0.5 && q.recorded_clip.y==(-0.5) && q.recorded_clip.z==(-0.5) && q.recorded_clip.w==1;
+ #assert q.world.x==0.5 && q.world.y==(-0.5) && q.world.z==(-0.5) && q.tint.x==1 && q.tint.y==1 && q.tint.z==1 && q.glow==0;
+ #assert q.normal.x==1 && q.normal.y>0 && q.normal.z==0;
+}
+render_deadgears_vs_probe_vs :: (vertex:u32,instance:u32,u:[]f32,objects:[]DeadgearsObj,probes:[]f32)->DeadgearsVSProbe {
+ actual:=deadgears_scene_vs(cast(u32)probes[0],cast(u32)probes[1],u,objects);
+ points:=[3]V2.[v2(-1,1),v2(3,1),v2(-1,-3)];point:=points[cast(int)vertex];
+ return DeadgearsVSProbe.{pos=v4(point.x,point.y,0.5,1),recorded_clip=actual.pos,world=actual.world,normal=actual.normal,tint=actual.tint,glow=actual.glow};
+}
+render_deadgears_vs_probe_fs :: (v:DeadgearsVSProbe,probes:[]f32)->V4 {
+ // Runtime selection retains all production VS fields in the probe program.
+ mode:=cast(s32)probes[2];
+ if mode==0 {return v.recorded_clip;}
+ if mode==1 {return v4(v.world.x,v.world.y,v.world.z,v.glow);}
+ if mode==2 {return v4(v.normal.x,v.normal.y,v.normal.z,1);}
+ return v4(v.tint.x,v.tint.y,v.tint.z,1);
+}

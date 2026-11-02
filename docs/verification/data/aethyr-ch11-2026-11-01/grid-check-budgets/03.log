@@ -1,0 +1,13 @@
+ok   #test the zoom stays in its range and the view on the Grid (1 case, 386474260 steps, 36318 ms)
+        own steps  share   with calls     calls  procedure
+        119473886  30.9%    119473886    151136  lit  apps/openagents-web/newland.coax:266
+         50417772  13.0%    219546078    224282  seg  apps/openagents-web/newland.coax:425
+         34539036   8.9%     34539036   1817844  dot3  apps/openagents-web/newland.coax:395
+         24176885   6.3%    232255189        27  floor_grid  apps/openagents-web/newland.coax:1174
+         20081688   5.2%     57050250    456402  spot  apps/openagents-web/newland.coax:413
+         19568899   5.1%     19568899    180326  on_plot  apps/openagents-web/newland.coax:459
+         16290144   4.2%     21720192    905008  fv_sub  verse/figure.coax:134
+         11409196   3.0%     12207525       965  draw_sans  apps/openagents-web/font.coax:442
+     ... 146 more procedures
+1 of 114 checks (--only 'the zoom stays in its range and the view on the Grid'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

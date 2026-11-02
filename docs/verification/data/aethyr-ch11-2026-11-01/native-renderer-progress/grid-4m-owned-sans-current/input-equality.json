@@ -1,0 +1,85 @@
+{
+  "schema": "aethyr.render.complete-frame-input-equality.v1",
+  "equal": true,
+  "source": "/tmp/aethyr-ch11-grid-4m-owned-sans-browser/frame.config",
+  "staged": "/tmp/aethyr-ch11-native-grid-4m-owned-sans-current/stage/frame.config",
+  "scope": "Every RFI non-path token is identical; every referenced file, including authenticated package/trees and physical resource bytes, has equal size and SHA. No counts/camera/clock/resource reconstruction.",
+  "grammar_reader": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_reference_frame.py",
+  "grammar_reader_sha256": "0afd820dd9069fbe0e1b94c6b34086b719eb61c83de8fe4b8c558f29aed6509a",
+  "source_files": {
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/u.bin": {
+      "bytes": 448,
+      "sha256": "88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160"
+    },
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/hud.bin": {
+      "bytes": 1733184,
+      "sha256": "2c8f145ec2348683be411a46bde7e63db8b26808adf76e5c928cd73ab3e8e541"
+    },
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/draws.bin": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/indices.bin": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/private/tmp/aethyr-ch11-packages-owned-sans/the-grid/render.json": {
+      "bytes": 6550,
+      "sha256": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf"
+    },
+    "/private/tmp/aethyr-ch11-packages-owned-sans/the-grid/pipeline-0-6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e.tree": {
+      "bytes": 7592,
+      "sha256": "6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e"
+    },
+    "/private/tmp/aethyr-ch11-packages-owned-sans/the-grid/pipeline-12-316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456.tree": {
+      "bytes": 6906,
+      "sha256": "316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456"
+    },
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/texture-0.bin": {
+      "bytes": 5505024,
+      "sha256": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6"
+    },
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/media.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "staged_files": {
+    "/private/tmp/aethyr-ch11-native-grid-4m-owned-sans-current/stage/inputs/u.bin": {
+      "bytes": 448,
+      "sha256": "88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160"
+    },
+    "/private/tmp/aethyr-ch11-native-grid-4m-owned-sans-current/stage/inputs/hud.bin": {
+      "bytes": 1733184,
+      "sha256": "2c8f145ec2348683be411a46bde7e63db8b26808adf76e5c928cd73ab3e8e541"
+    },
+    "/private/tmp/aethyr-ch11-native-grid-4m-owned-sans-current/stage/inputs/draws.bin": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/private/tmp/aethyr-ch11-native-grid-4m-owned-sans-current/stage/inputs/indices.bin": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/private/tmp/aethyr-ch11-native-grid-4m-owned-sans-current/stage/package/render.json": {
+      "bytes": 6550,
+      "sha256": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf"
+    },
+    "/private/tmp/aethyr-ch11-native-grid-4m-owned-sans-current/stage/inputs/pipeline-0-6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e.tree": {
+      "bytes": 7592,
+      "sha256": "6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e"
+    },
+    "/private/tmp/aethyr-ch11-native-grid-4m-owned-sans-current/stage/inputs/pipeline-12-316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456.tree": {
+      "bytes": 6906,
+      "sha256": "316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456"
+    },
+    "/private/tmp/aethyr-ch11-native-grid-4m-owned-sans-current/stage/inputs/texture-0.bin": {
+      "bytes": 5505024,
+      "sha256": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6"
+    },
+    "/private/tmp/aethyr-ch11-native-grid-4m-owned-sans-current/stage/inputs/media.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

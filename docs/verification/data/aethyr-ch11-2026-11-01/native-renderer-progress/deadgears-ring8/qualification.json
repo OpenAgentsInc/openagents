@@ -1,0 +1,24 @@
+{
+  "schema": "aethyr.render.repaired-geometry-native-frame.v1",
+  "case": "deadgears-ring8",
+  "status": "GPU validation pass; strict CPU/backend numerical comparison separate",
+  "frame": {
+    "status": "rendered",
+    "profile": 4,
+    "resource": 1,
+    "width": 320,
+    "height": 180,
+    "format": "rgba16f",
+    "bytes": 460800,
+    "draw_commands": 4,
+    "device": "NVIDIA GeForce RTX 4080",
+    "subPixelPrecisionBits": 8,
+    "validation_errors": 0,
+    "validation_warnings": 0
+  },
+  "raw_sha256": "5afc5e66519ffc60f6cda91fcba33a480cd811fcbd8390c62b8d399462af168f",
+  "input_equality": "input-equality.json",
+  "scope": "New repaired geometry frame. Exact actual producer/resource observations retained, with explicit shader package substitution only for DeadGears. Historical generic executor reused under complete source/header byte fence.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/deadgears-ring8",
+  "archive_sha256": "2ac1dec4882ef417a7e91b8d311211267b28879b94c429701f939815209a08e4"
+}

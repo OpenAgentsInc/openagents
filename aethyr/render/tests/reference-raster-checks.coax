@@ -1,0 +1,217 @@
+rr_test_vertex :: (x:f32,y:f32,z:f32,w:f32,value:f32)->RRVertex {
+ r:RRVertex;r.clip=[4]f32.[x,y,z,w];r.words[0]=f32_bits(value);return r;
+}
+#test "reference clipping retains an inside triangle and all six clip planes" {
+ t:=[3]RRVertex.[rr_test_vertex(-0.5,0,0.5,1,1),rr_test_vertex(0.5,0,0.5,1,3),rr_test_vertex(0,0.5,0.5,1,2)];
+ l:=RRLayout.{count=1};q:=rr_clip(t,l);
+ #assert q.status==RQStatus.ok && q.count==3 && q.vertices[0].clip[0]==-0.5 && q.vertices[1].words[0]==f32_bits(3.0f32);
+ for plane:0..<6 {
+  outside:=[3]RRVertex.[rr_test_vertex(0,0,0.5,1,1),rr_test_vertex(0,0,0.5,1,2),rr_test_vertex(0,0,0.5,1,3)];
+  axis:=plane/2;v:=ifx plane%2==0 then -2.0f32 else 2.0f32;
+  for n:0..<3 {outside[n].clip[axis]=v;}
+  q=rr_clip(outside,l);#assert q.status==RQStatus.ok && q.count==0;
+ }
+}
+#test "reference clip intersections interpolate perspective inputs and retain original flat words" {
+ l:=RRLayout.{count=2};l.flat[1]=true;
+ t:=[3]RRVertex.[rr_test_vertex(-2,0,0.5,1,0),rr_test_vertex(0,0,0.5,1,4),rr_test_vertex(0,1,0.5,1,8)];
+ t[0].words[1]=19;t[1].words[1]=31;t[2].words[1]=47;
+ q:=rr_clip(t,l);#assert q.status==RQStatus.ok && q.count==4;
+ expected_x:=[4]f32.[-1,-1,0,0];expected_y:=[4]f32.[0.5,0,0,1];expected_value:=[4]f32.[4,2,4,8];
+ hits:=0;for n:0..<q.count {
+  #assert q.vertices[n].clip[0]==expected_x[n] && q.vertices[n].clip[1]==expected_y[n] && f32_from_bits(q.vertices[n].words[0])==expected_value[n];
+  #assert q.vertices[n].words[1]==19;
+  if q.vertices[n].clip[0]==-1 {hits+=1;v:=f32_from_bits(q.vertices[n].words[0]);#assert v==2 || v==4;}
+ }#assert hits==2;
+}
+#test "reference clipping refuses invalid layouts nonfinite positions and interpolated values atomically" {
+ t:=[3]RRVertex.[rr_test_vertex(0,0,0.5,1,1),rr_test_vertex(0,1,0.5,1,2),rr_test_vertex(1,0,0.5,1,3)];
+ for value:0..<4 {
+  l:=RRLayout.{count=1};v:=t;
+  if value==0 {l.count=-1;}if value==1 {l.count=129;}if value==2 {v[1].words[0]=0x7f800000;}if value==3 {v[2].words[0]=0x7fc00000;}
+  q:=rr_clip(v,l);#assert q.status!=RQStatus.ok && q.count==0;
+ }
+ l:=RRLayout.{count=1};l.flat[0]=true;t[1].words[0]=0xffffffff;
+ #assert rr_clip(t,l).status==RQStatus.ok;
+}
+#test "reference adjacent triangles own every pixel once with top left coverage" {
+ l:RRLayout;
+ a:=[3]RRVertex.[rr_test_vertex(-1,1,0.5,1,0),rr_test_vertex(1,1,0.5,1,0),rr_test_vertex(-1,-1,0.5,1,0)];
+ b:=[3]RRVertex.[a[1],rr_test_vertex(1,-1,0.5,1,0),a[2]];
+ x:=rr_triangle(a,2,2);y:=rr_triangle(b,2,2);
+ q:=rr_quad(x,l,0,0);r:=rr_quad(y,l,0,0);
+ #assert q.status==RQStatus.ok && r.status==RQStatus.ok && (q.coverage&r.coverage)==0 && (q.coverage|r.coverage)==15;
+ #assert q.coverage==1 && r.coverage==14;
+ #assert q.lanes[0].position[0]==0.5 && q.lanes[0].position[1]==0.5 && q.lanes[0].position[2]==0.5 && q.lanes[0].position[3]==1;
+ #assert x.min_x==0 && x.min_y==0 && x.end_x==2 && x.end_y==2;
+}
+#test "reference perspective interpolation differs from affine and evaluates uncovered helpers" {
+ l:=RRLayout.{count=2};l.flat[1]=true;
+ t:=[3]RRVertex.[rr_test_vertex(-1,1,0.25,1,0),rr_test_vertex(2,2,1,2,8),rr_test_vertex(-4,-4,3,4,16)];
+ t[0].words[1]=91;t[1].words[1]=17;t[2].words[1]=32;
+ q:=rr_quad(rr_triangle(t,2,2),l,0,0);
+ #assert q.status==RQStatus.ok && q.coverage==1;
+ #assert abs(f32_from_bits(q.lanes[0].words[0])-2.909091f32)<0.000001;
+ #assert q.lanes[0].position[2]==0.4375 && q.lanes[0].position[3]==0.6875;
+ for k:0..<4 {#assert q.lanes[k].words[1]==91;}
+ #assert f32_from_bits(q.lanes[3].words[0])!=0;
+}
+#test "reference winding normalization preserves provoking vertex and odd viewport coverage" {
+ l:=RRLayout.{count=1};l.flat[0]=true;
+ t:=[3]RRVertex.[rr_test_vertex(-1,1,0,1,0),rr_test_vertex(-1,-7,0,1,0),rr_test_vertex(7,1,0,1,0)];t[0].words[0]=77;
+ s:=rr_triangle(t,1,1);q:=rr_quad(s,l,0,0);
+ #assert s.status==RQStatus.ok && s.front && q.status==RQStatus.ok && q.coverage==1;
+ #assert q.lanes[3].words[0]==77 && s.end_x==2 && s.end_y==2 && s.area==16 && q.lanes[0].position[3]==1;
+}
+#test "reference triangle and quad admission refuses invalid dimensions degeneracy and helper origins" {
+ t:=[3]RRVertex.[rr_test_vertex(-1,1,0,1,0),rr_test_vertex(1,1,0,1,0),rr_test_vertex(-1,-1,0,1,0)];l:RRLayout;
+ #assert rr_triangle(t,0,1).status==RQStatus.resource && rr_triangle(t,1,16385).status==RQStatus.capacity;
+ t[1]=t[0];#assert rr_triangle(t,2,2).empty;
+ t[1]=rr_test_vertex(1,1,0,0,0);#assert rr_triangle(t,2,2).status==RQStatus.resource;
+ t[1]=rr_test_vertex(1,1,0,1,0);s:=rr_triangle(t,2,2);
+ #assert rr_quad(s,l,1,0).status==RQStatus.resource && rr_quad(s,l,0,-2).status==RQStatus.resource;
+ l.count=129;#assert rr_quad(s,l,0,0).status==RQStatus.capacity;
+}
+#test "reference half storage rounds ties even subnormals signed zero and overflow" {
+ #assert rr_half_bits(1)==0x3c00 && rr_half_bits(-2)==0xc000 && rr_half_bits(65504)==0x7bff;
+ #assert rr_half_bits(1.00048828125f32)==0x3c00 && rr_half_bits(1.00146484375f32)==0x3c02;
+ #assert rr_half_bits(0.000000059604644775390625f32)==1 && rr_half_bits(0.0000000298023223876953125f32)==0;
+ #assert rr_half_bits(f32_from_bits(0x80000000))==0x8000 && rr_half_bits(65520)==0x7c00;
+ #assert rr_half_decode(0x7c00).status==RQStatus.resource && rr_half_decode(0x10000).status==RQStatus.resource;
+ #assert f32_bits(rr_half_decode(0x8000).value)==0x80000000 && rr_half_decode(1).value==0.000000059604644775390625f32;
+}
+#forall "reference every finite half representation survives a storage round trip" bits:0..<65536 {
+ if (bits&0x7c00)!=0x7c00 {#assert rr_half_bits(rr_half_decode(cast(u32)bits).value)==cast(u32)bits;}
+}
+#test "reference blend factors include independent alpha and color policies" {
+ #assert rr_blend(RenderBlend.replace,0.25,0.75,0.5)==0.25;
+ #assert rr_blend(RenderBlend.maximum,0.25,0.75,0.5)==0.75;
+ #assert rr_blend(RenderBlend.multiply,0.25,0.75,0.5)==0.1875;
+ #assert rr_blend(RenderBlend.add,0.25,0.75,0.5)==1;
+ #assert rr_blend(RenderBlend.keep,0.25,0.75,0.5)==0.75;
+ #assert rr_blend(RenderBlend.over,0.25,0.75,0.5)==0.625;
+ #assert rr_blend(RenderBlend.under,0.25,0.75,0.5)==0.375;
+}
+#test "reference fragment store applies depth writes MRT masks formats and atomic refusal" {
+ old:=RRPixel.{depth=0.75,colour=RQColor.{r=0.5,g=0.25,b=0.125,a=1},aux=RQColor.{r=0.25,g=0.5,b=1,a=0.5}};
+ state:=RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,colour=RenderBlend.add,alpha=RenderBlend.keep,outputs=2};
+ colour:=RQColor.{r=0.125,g=0.25,b=0.5,a=0.5};aux:=RQColor.{r=1,g=2,b=3,a=4};
+ q:=rr_store(old,state,colour,aux,0.5,RRFormat.half);
+ #assert q.status==RQStatus.ok && q.written && q.pixel.depth==0.5 && q.pixel.colour.r==0.625 && q.pixel.colour.b==0.625 && q.pixel.colour.a==1 && q.pixel.aux.g==2;
+ state.aux_write=false;q=rr_store(old,state,colour,aux,0.5,RRFormat.f32);#assert q.pixel.aux.g==0.5;
+ q=rr_store(old,state,colour,aux,0.75,RRFormat.f32);#assert !q.written && q.pixel.depth==old.depth && q.pixel.colour.r==old.colour.r;
+ state.depth=RenderDepth.always;state.depth_write=false;q=rr_store(old,state,colour,aux,0.75,RRFormat.f32);#assert q.written && q.pixel.depth==0.75;
+ state.outputs=0;state.depth_write=true;q=rr_store(old,state,colour,aux,0.25,RRFormat.f32);#assert q.written && q.pixel.depth==0.25 && q.pixel.colour.g==old.colour.g;
+ state.outputs=1;state.colour=RenderBlend.replace;colour.r=65520;q=rr_store(old,state,colour,aux,0.25,RRFormat.half);
+ #assert q.status==RQStatus.resource && !q.written && q.pixel.depth==old.depth && q.pixel.colour.r==old.colour.r;
+}
+#test "reference unorm clamps range and rounds both tie parities" {
+ #assert rr_unorm8(-1)==0 && rr_unorm8(2)==1 && rr_unorm8(0.5)==128.0f32/255.0f32;
+ #assert rr_unorm8(0.1)==26.0f32/255.0f32;
+}
+#test "reference clipping and interpolation retain the full last word and first flat word" {
+ l:=RRLayout.{count=128};l.flat[0]=true;
+ t:=[3]RRVertex.[rr_test_vertex(-2,0,0.5,1,0),rr_test_vertex(0,0,0.5,1,0),rr_test_vertex(0,1,0.5,1,0)];
+ t[0].words[0]=99;t[1].words[0]=77;t[2].words[0]=55;
+ for v:0..<3 {t[v].words[127]=f32_bits(cast(f32)v*4);}
+ p:=rr_clip(t,l);#assert p.status==RQStatus.ok && p.count==4;
+ for k:0..<p.count {#assert p.vertices[k].words[0]==99;}
+ #assert p.vertices[1].words[127]==f32_bits(2.0f32);
+ for v:0..<3 {t[v].clip[0]+=1;}
+ q:=rr_quad(rr_triangle(t,4,4),l,0,0);#assert q.status==RQStatus.ok && q.lanes[3].words[0]==99;
+ t[0].words[1]=0x7f800001;#assert rr_clip(t,l).status==RQStatus.resource;
+}
+#forall "reference nonfinite clip components refuse before projection in each vertex" vertex:0..<3,component:0..<4,kind:0..<3 {
+ zero:=0.0f32;bad:=ifx kind==0 then zero/zero else ifx kind==1 then 1/zero else -1/zero;
+ t:=[3]RRVertex.[rr_test_vertex(-1,1,0,1,0),rr_test_vertex(1,1,0,1,0),rr_test_vertex(-1,-1,0,1,0)];
+ t[vertex].clip[component]=bad;l:RRLayout;
+ #assert rr_clip(t,l).status==RQStatus.resource && rr_triangle(t,2,2).status==RQStatus.resource;
+}
+#test "reference edge directions distinguish top left right bottom and empty edges" {
+ a:RRScreenVertex;
+ #assert !rr_top_left(a,a);
+ b:=RRScreenVertex.{x=1};#assert rr_top_left(a,b) && !rr_top_left(b,a);
+ b=RRScreenVertex.{y=1};#assert !rr_top_left(a,b) && rr_top_left(b,a);
+ b=RRScreenVertex.{x=1,y=1};#assert !rr_top_left(a,b) && rr_top_left(b,a);
+ b=RRScreenVertex.{x=-1,y=-1};#assert rr_top_left(a,b) && !rr_top_left(b,a);
+}
+#test "reference windows clamp all sides keep aligned nonzero origins and omit outside triangles" {
+ t:=[3]RRVertex.[rr_test_vertex(-0.5,0,0,1,0),rr_test_vertex(0.5,0,0,1,0),rr_test_vertex(-0.5,-1,0,1,0)];
+ s:=rr_triangle(t,8,8);#assert s.min_x==2 && s.min_y==4 && s.end_x==6 && s.end_y==8;
+ t=[3]RRVertex.[rr_test_vertex(0.5,-0.5,0,1,0),rr_test_vertex(-0.5,0.5,0,1,0),rr_test_vertex(1,0.5,0,1,0)];
+ s=rr_triangle(t,8,8);#assert s.min_x==2 && s.min_y==2 && s.end_x==8 && s.end_y==6;
+ for side:0..<4 {
+  v:=[3]RRVertex.[rr_test_vertex(-1,1,0,1,0),rr_test_vertex(3,1,0,1,0),rr_test_vertex(-1,-3,0,1,0)];
+  axis:=side/2;shift:=ifx side%2==0 then -4.0f32 else 4.0f32;
+  for k:0..<3 {v[k].clip[axis]+=shift;}
+  s=rr_triangle(v,8,8);#assert s.status==RQStatus.ok && s.empty;
+ }
+ t=[3]RRVertex.[rr_test_vertex(-3,3,0,1,0),rr_test_vertex(3,3,0,1,0),rr_test_vertex(-3,-3,0,1,0)];
+ s=rr_triangle(t,8,8);#assert s.min_x==0 && s.min_y==0 && s.end_x==8 && s.end_y==8;
+ #assert rr_triangle(t,16384,16384).status==RQStatus.ok;
+ #assert rr_triangle(t,16385,1).status==RQStatus.capacity && rr_triangle(t,1,16384).status==RQStatus.ok;
+ t[1]=t[0];s=rr_triangle(t,2,2);#assert s.empty && !s.front;
+ q:=rr_quad(s,RRLayout.{},0,0);#assert q.status==RQStatus.ok && q.coverage==0;
+}
+#test "reference quad edge distance non symmetric weights and aligned origins are observable" {
+ t:=[3]RRVertex.[rr_test_vertex(-1,1,0.125,1,3),rr_test_vertex(2,2,1,2,8),rr_test_vertex(-4,-4,3,4,16)];
+ s:=rr_triangle(t,2,4);l:=RRLayout.{count=1};q:=rr_quad(s,l,0,0);
+ #assert q.status==RQStatus.ok && abs(f32_from_bits(q.lanes[0].words[0])-4.32f32)<0.000001;
+ #assert q.lanes[0].position[2]==0.296875 && q.lanes[0].position[3]==0.78125;
+ t=[3]RRVertex.[rr_test_vertex(-1,1,0,1,0),rr_test_vertex(1,1,0,1,0),rr_test_vertex(-1,-1,0,1,0)];
+ s=rr_triangle(t,2,2);q=rr_quad(s,RRLayout.{},0,0);
+ #assert q.edge_distance[0]==0.5 && q.edge_distance[1]==0 && abs(q.edge_distance[3]-0.70710678f32)<0.000001;
+ #assert rr_quad(s,l,2,0).status==RQStatus.resource && rr_quad(s,l,0,2).status==RQStatus.resource;
+ s=rr_triangle(t,8,8);#assert rr_quad(s,l,2,2).status==RQStatus.ok;
+ #assert rr_quad(s,l,0,1).status==RQStatus.resource;
+ bad:=RRTriangle.{status=RQStatus.unsupported};#assert rr_quad(bad,l,0,0).status==RQStatus.unsupported;
+ t=[3]RRVertex.[rr_test_vertex(-1,1,0,1,0),rr_test_vertex(-1,-7,0,1,0),rr_test_vertex(7,1,0,1,0)];
+ s=rr_triangle(t,3,3);q=rr_quad(s,RRLayout.{},2,2);#assert q.coverage==1;
+ s=rr_triangle(t,2,3);q=rr_quad(s,RRLayout.{},0,2);#assert q.coverage==3;
+ s=rr_triangle(t,3,2);q=rr_quad(s,RRLayout.{},2,0);#assert q.coverage==5;
+}
+#test "reference storage tie boundaries overflow signs and negative zero remain explicit" {
+ #assert rr_half_bits(100000)==0x7c00 && rr_half_bits(-100000)==0xfc00;
+ #assert rr_half_bits(f32_from_bits(0x33000001))==1 && rr_half_bits(f32_from_bits(0x33c00000))==2;
+ #assert rr_half_bits(f32_from_bits(0x34200000))==2 && rr_half_bits(f32_from_bits(0x3f801001))==0x3c01;
+ #assert rr_half_decode(0x7c01).status==RQStatus.resource && rr_half_decode(0xffff).status==RQStatus.resource;
+ #assert rr_unorm8(0.5f32/255.0f32)==0 && rr_unorm8(1.5f32/255.0f32)==2.0f32/255.0f32;
+ #assert f32_bits(rr_blend(RenderBlend.maximum,0,f32_from_bits(0x80000000),1))==0x80000000;
+ c:=RQColor.{r=0.1,g=0.5,b=-1,a=2};q:=rr_colour_format(c,RRFormat.unorm8);
+ #assert q.color.r==26.0f32/255.0f32 && q.color.g==128.0f32/255.0f32 && q.color.b==0 && q.color.a==1;
+}
+#forall "reference storage refuses each nonfinite channel and malformed state before publication" field:0..<18 {
+ old:=RRPixel.{depth=0.75,colour=RQColor.{r=1,g=2,b=3,a=4},aux=RQColor.{r=5,g=6,b=7,a=8}};
+ state:=RenderPassState.{valid=true,depth=RenderDepth.always,depth_write=true,outputs=2};
+ c:=RQColor.{r=0.125,g=0.25,b=0.5,a=1};a:=c;depth:=0.5f32;zero:=0.0f32;bad:=1/zero;
+ if field==0 {state.valid=false;}if field==1 {state.outputs=-1;}if field==2 {state.outputs=3;}
+ if field==3 {depth=bad;}if field==4 {old.depth=bad;}
+ if field==5 {c.r=bad;}if field==6 {c.g=bad;}if field==7 {c.b=bad;}if field==8 {c.a=bad;}
+ if field==9 {old.colour.r=bad;}if field==10 {old.colour.g=bad;}if field==11 {old.colour.b=bad;}if field==12 {old.colour.a=bad;}
+ if field==13 {a.r=bad;}if field==14 {a.g=bad;}if field==15 {a.b=bad;}if field==16 {a.a=bad;}
+ if field==17 {c.r=3.0e38f32;old.colour.r=3.0e38f32;state.colour=RenderBlend.add;}
+ q:=rr_store(old,state,c,a,depth,RRFormat.f32);#assert q.status==RQStatus.resource && !q.written;
+ #assert q.pixel.aux.r==5 && q.pixel.aux.g==6 && q.pixel.aux.b==7 && q.pixel.aux.a==8;
+}
+#test "reference depth absence and clamping do not write a depth attachment" {
+ old:=RRPixel.{depth=0.5};state:=RenderPassState.{valid=true,depth=RenderDepth.none,depth_write=true,outputs=0};
+ q:=rr_store(old,state,RQColor.{},RQColor.{},0.25,RRFormat.f32);#assert q.written && q.pixel.depth==0.5;
+ state.depth=RenderDepth.less;q=rr_store(old,state,RQColor.{},RQColor.{},-1,RRFormat.f32);#assert q.written && q.pixel.depth==0;
+ state.depth_write=false;q=rr_store(old,state,RQColor.{},RQColor.{},0.25,RRFormat.f32);#assert q.written && q.pixel.depth==0.5;
+ for channel:0..<4 {
+  c:RQColor;if channel==0 {c.r=65536;}if channel==1 {c.g=65536;}if channel==2 {c.b=65536;}if channel==3 {c.a=65536;}
+  state.outputs=1;q=rr_store(old,state,c,RQColor.{},0.25,RRFormat.half);#assert q.status==RQStatus.resource && !q.written && q.pixel.depth==0.5;
+ }
+}
+#test "reference normalized attachments clamp source destination and factors before blending" {
+ old:=RRPixel.{colour=RQColor.{r=0.75,g=-1,b=2,a=0.75}};
+ state:=RenderPassState.{valid=true,outputs=1,colour=RenderBlend.over,alpha=RenderBlend.under};
+ colour:=RQColor.{r=0.25,g=0.25,b=0.25,a=2};
+ q:=rr_store(old,state,colour,RQColor.{},0,RRFormat.unorm8);
+ #assert q.status==RQStatus.ok && q.pixel.colour.r==64.0f32/255.0f32 && q.pixel.colour.g==64.0f32/255.0f32 && q.pixel.colour.b==64.0f32/255.0f32 && q.pixel.colour.a==0;
+ colour=RQColor.{r=0.25,g=0.75,b=0.25,a=0.5};q=rr_store(old,state,colour,RQColor.{},0,RRFormat.unorm8);
+ #assert q.pixel.colour.g==191.0f32/255.0f32 && q.pixel.colour.b==191.0f32/255.0f32;
+ state.colour=RenderBlend.multiply;colour=RQColor.{r=2,g=2,b=-1,a=-1};
+ q=rr_store(old,state,colour,RQColor.{},0,RRFormat.unorm8);
+ #assert q.pixel.colour.r==191.0f32/255.0f32 && q.pixel.colour.g==0 && q.pixel.colour.b==0 && q.pixel.colour.a==191.0f32/255.0f32;
+}

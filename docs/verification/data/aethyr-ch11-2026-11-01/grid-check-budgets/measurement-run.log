@@ -1,0 +1,14 @@
+{"index": 1, "name": "a drag pans the view and is never a click", "steps": 71923867, "returncode": 0, "elapsed_seconds": 7.932, "status": "pass"}
+{"index": 2, "name": "OPEN PROJECT goes to the place's page; a click outside closes the card", "steps": 72863748, "returncode": 0, "elapsed_seconds": 7.936, "status": "pass"}
+{"index": 0, "name": "a press let go where it was opens a place's card, and never navigates", "steps": 73174431, "returncode": 0, "elapsed_seconds": 8.025, "status": "pass"}
+{"index": 4, "name": "a two-finger pinch zooms and is never a click", "steps": 54380349, "returncode": 0, "elapsed_seconds": 6.612, "status": "pass"}
+{"index": 5, "name": "a click on a Pylon opens its card, which never navigates", "steps": 86738324, "returncode": 0, "elapsed_seconds": 9.707, "status": "pass"}
+{"index": 7, "name": "a project with as many rows as the live fold hands up is ready, one more is refused", "steps": 48632427, "returncode": 0, "elapsed_seconds": 4.415, "status": "pass"}
+{"index": 8, "name": "the Grid's walkers walk the homepage under their names, and WALK AROUND dives on into the Grid", "steps": 36970975, "returncode": 0, "elapsed_seconds": 5.763, "status": "pass"}
+{"index": 6, "name": "The Grid's frames fit its declared budget", "steps": 150808165, "returncode": 0, "elapsed_seconds": 16.259, "status": "pass"}
+{"index": 9, "name": "the Grid draws the homepage's scene from behind you, and its own HUD", "steps": 34153685, "returncode": 0, "elapsed_seconds": 5.572, "status": "pass"}
+{"index": 10, "name": "everyone else on the Grid walks it here too, where the room says, and ?from=home dives", "steps": 53757008, "returncode": 0, "elapsed_seconds": 7.371, "status": "pass"}
+{"index": 11, "name": "the Grid's EDIT: its owner gets it left of HOME (under REALMS on a phone), its pane's glass, and the board's rows switch the names and the walkers", "steps": 68764558, "returncode": 0, "elapsed_seconds": 8.722, "status": "pass"}
+{"index": 12, "name": "walked off from every project, the HUD names the nearest one, which way it lies and how far, and an arrow points there", "steps": 65532202, "returncode": 0, "elapsed_seconds": 8.488, "status": "pass"}
+{"index": 3, "name": "the zoom stays in its range and the view on the Grid", "steps": 386474260, "returncode": 0, "elapsed_seconds": 37.995, "status": "pass"}
+BATCH pass 38.001

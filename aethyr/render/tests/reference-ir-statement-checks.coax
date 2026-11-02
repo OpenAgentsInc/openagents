@@ -1,0 +1,34 @@
+rq_ir_statement_fixture :: (body:[]u32,ret:int,tree:[]u32,meta:[]int)->RQProgram {
+ original:=RQ_IR_TEST_TREE;for j:0..<25 {tree[j]=original[j];}tree[20]=cast(u32)ret;tree[23]=2;tree[25]=5;tree[26]=cast(u32)body.count;
+ for j:0..<body.count {tree[27+j]=body[j];}at:=27+body.count;tree[at]=1;tree[at+1]=1;tree[at+2]=0;tree[at+3]=0;return rq_ir_prepare(tree[0..<at+4],meta);
+}
+#forall "quad statement scopes reclaim temporary words and retain the exact cursor" which:0..<9 {
+ body:[32]u32;body[0]=2;body[1]=16;body[2]=2;body[3]=1065353216;n:=4;ret:=0;
+ if which==1 {body[0]=3;body[1]=40;body[2]=0;body[3]=17;body[4]=6;n=5;}
+ if which==2 {body[0]=4;body[1]=17;body[2]=6;n=3;ret=6;}
+ if which==3 {b:=[9]u32.[6,0,16,1,1,2,16,2,1065353216];for j:0..<9 {body[j]=b[j];}n=9;}
+ if which==4 || which==8 {b:=[14]u32.[8,1,16,5,2,0,16,5,3,0,2,16,2,1065353216];for j:0..<14 {body[j]=b[j];}n=14;}
+ if which==5 {b:=[8]u32.[7,16,1,0,2,16,2,1065353216];for j:0..<8 {body[j]=b[j];}n=8;}
+ if which==6 {b:=[5]u32.[7,16,1,1,9];for j:0..<5 {body[j]=b[j];}n=5;}
+ if which==7 {b:=[20]u32.[7,19,6,18,1,16,5,3,0,3,40,1,19,1,18,1,16,5,1,0];for j:0..<20 {body[j]=b[j];}n=20;}
+ tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_statement_fixture(body[0..<n],ret,tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[128]u32;memory[0]=16;memory[1]=48;for j:16..<48 {memory[j]=9;}
+ m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,version=3,stage=1,budget=1000,at=27,used=64}];
+ f:=RQFrame.{proc=0,locals=0,result=RQValue.{ty=ret,at=32,words=ifx ret==6 then 4 else 0}};
+ flow:=rq_ir_stmt(m[..],tree[0..<31+n],meta[..],memory[..],RQResources.{},f,ifx which==8 then cast(u32)0 else cast(u32)15);
+ #assert m[0].status==RQStatus.ok && m[0].at==27+n && m[0].used==64 && m[0].nesting==0;
+ #assert flow.returned==(ifx which==2 then cast(u32)15 else cast(u32)0) && flow.breaking==0 && flow.continuing==0;
+ if which==1 {for j:16..<32 {#assert memory[j]==0;}}
+ if which==2 {for j:32..<48 {#assert memory[j]==0;}}
+ if which==4 || which==7 {v:=RQValue.{ty=5,at=48,words=2};for lane:0..<4 {#assert rq_ir_u64(memory[..],v,lane)==3;}}
+ #assert m[0].steps==(ifx which==7 then 77 else (ifx which==4 then 18 else n));
+}
+#forall "quad if else retains distinct returned break and continue lane masks" continuing:bool {
+ body:=[14]u32.[6,1,19,6,27,41,40,0,0,16,2,1073741824,5,9];if continuing {body[13]=10;}
+ tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_statement_fixture(body[..],0,tree[..],meta[..]);memory:[128]u32;memory[0]=16;memory[1]=48;
+ for lane:0..<4 {memory[16+lane*4]=f32_bits(cast(f32)lane);}
+ m:=[1]RQMachine.[RQMachine.{types=p.types,procs=p.procs,version=3,stage=1,budget=1000,at=27,used=64}];
+ f:=RQFrame.{proc=0,locals=0};flow:=rq_ir_stmt(m[..],tree[0..<45],meta[..],memory[..],RQResources.{},f,15);
+ #assert m[0].status==RQStatus.ok && m[0].at==41 && m[0].used==64 && flow.returned==3;
+ #assert flow.breaking==(ifx continuing then cast(u32)0 else cast(u32)12) && flow.continuing==(ifx continuing then cast(u32)12 else cast(u32)0);
+}

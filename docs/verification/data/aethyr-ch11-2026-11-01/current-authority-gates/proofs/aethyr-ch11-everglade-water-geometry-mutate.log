@@ -1,0 +1,8 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/geometry.coax:598:13: mutant survived: '<' became '<='
+      if spray<3 {spray=3;}
+              ^
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/geometry.coax:598:14: mutant survived: 3 became 4
+      if spray<3 {spray=3;}
+               ^
+710 mutants, 708 killed, 2 survived

@@ -1,0 +1,98 @@
+// Independently serialized protocol fixtures. These qualify preparation and
+// structural transport; stage IO and execution have their own checks.
+rq_extra_tree :: (prefix:[]u32,body:[]u32,params:int,tree:[]u32,meta:[]int)->RQProgram {
+ tree[0]=3;for j:0..<prefix.count {tree[j+1]=prefix[j];}at:=prefix.count+1;
+ tree[at]=1;tree[at+1]=0;tree[at+2]=cast(u32)params;at+=3;
+ for j:0..<params {tree[at+j]=2;}at+=params;tree[at]=cast(u32)params;at+=1;
+ for j:0..<params {tree[at+j]=2;}at+=params;tree[at]=cast(u32)body.count;at+=1;
+ for j:0..<body.count {tree[at+j]=body[j];}at+=body.count;
+ tree[at]=1;tree[at+1]=1;tree[at+2]=0;at+=3;
+ for j:0..<params {tree[at+j]=cast(u32)j;}at+=params;
+ return rq_ir_prepare(tree[0..<at],meta);
+}
+#forall "quad extra transport admits bool element arrays views and local words" kind:0..<3 {
+ prefix:[11]u32;prefix[0]=7;for j:0..<6 {prefix[j+1]=cast(u32)j;}
+ prefix[7]=ifx kind==0 then cast(u32)8 else cast(u32)9;prefix[8]=1;n:=9;
+ if kind==0 {prefix[9]=1;prefix[10]=1;n=11;}
+ tree:[256]u32;meta:[RQ_IR_META]int;
+ p:=rq_ir_header_fixture(prefix[0..<n],0,ifx kind==2 then 1 else 0,1,tree[..],meta[..]);
+ #assert p.status==RQStatus.ok;
+ if kind==2 {#assert rq_ir_proc(meta[..],0,6)==1;}else{#assert meta[50]==1;}
+}
+#test "quad extra transport retains bool parameter and corresponding local type identity" {
+ prefix:=[7]u32.[6,0,1,2,3,4,5];tree:[256]u32;meta:[RQ_IR_META]int;
+ rejected:=rq_ir_header_fixture(prefix[..],1,1,1,tree[..],meta[..]);#assert rejected.status==RQStatus.malformed;
+ tree[11]=1;p:=rq_ir_prepare(tree[0..<20],meta[..]);
+ #assert p.status==RQStatus.ok && rq_ir_parameter_words(p,tree[..],meta[..],1)==4;
+}
+#forall "quad extra transport refuses a sixty-fifth struct field and self reference" which:0..<2 {
+ prefix:[140]u32;prefix[0]=7;for j:0..<6 {prefix[j+1]=cast(u32)j;}prefix[7]=7;
+ prefix[8]=ifx which==0 then cast(u32)65 else cast(u32)1;
+ fields:=cast(int)prefix[8];
+ for j:0..<fields {prefix[9+j*2]=ifx which==0 then cast(u32)1 else cast(u32)6;prefix[10+j*2]=cast(u32)j;}
+ prefix[9+fields*2]=cast(u32)fields;
+ tree:[256]u32;meta:[RQ_IR_META]int;
+ #assert rq_ir_header_fixture(prefix[0..<10+fields*2],0,0,2,tree[..],meta[..]).status==RQStatus.malformed;
+}
+#forall "quad extra transport bounds the complete procedure table including its last entry" count:512..<514 {
+ tree:[4096]u32;meta:[RQ_IR_META]int;tree[0]=3;tree[1]=6;for j:0..<6 {tree[2+j]=cast(u32)j;}tree[8]=cast(u32)count;
+ for proc:0..<count {at:=9+proc*5;tree[at]=0;tree[at+1]=0;tree[at+2]=0;tree[at+3]=1;tree[at+4]=5;}
+ last:=9+count*5;tree[last]=1;tree[last+1]=1;tree[last+2]=cast(u32)(count-1);
+ p:=rq_ir_prepare(tree[0..<last+3],meta[..]);
+ if count==512 {#assert p.status==RQStatus.ok && p.procs==512 && rq_ir_entry(p,tree[..],meta[..],1)==511;}
+ else {#assert p.status==RQStatus.malformed;}
+}
+#test "quad extra transport refuses a local workspace exactly one word beyond the limit" {
+ prefix:=[11]u32.[7,0,1,2,3,4,5,8,2,65536,4];tree:[256]u32;meta:[RQ_IR_META]int;
+ rejected:=rq_ir_header_fixture(prefix[..],0,5,6,tree[..],meta[..]);#assert rejected.status==RQStatus.malformed;
+ tree[20]=1;#assert rq_ir_prepare(tree[0..<26],meta[..]).status==RQStatus.malformed;
+}
+#forall "quad extra transport preserves distinct entry stages and refuses absent procedures" which:0..<3 {
+ prefix:=[7]u32.[6,0,1,2,3,4,5];body:=[1]u32.[5];tree:[128]u32;meta:[RQ_IR_META]int;
+ p:=rq_extra_tree(prefix[..],body[..],0,tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ // Header8 words, procedure count1 and five-word procedure, then entries.
+ n:=17;
+ if which==0 {tree[14]=2;tree[15]=0;tree[16]=0;tree[17]=1;tree[18]=0;n=19;}
+ if which==1 {tree[16]=1;}
+ if which==2 {tree[14]=2;tree[15]=1;tree[16]=0;tree[17]=1;tree[18]=0;n=19;}
+ p=rq_ir_prepare(tree[0..<n],meta[..]);
+ if which==0 {#assert p.status==RQStatus.ok && p.entries==2 && rq_ir_entry(p,tree[..],meta[..],0)==0 && rq_ir_entry(p,tree[..],meta[..],1)==0;}
+ else {#assert p.status==RQStatus.malformed;}
+}
+#forall "quad extra expressions retain both unary forms and numeric conversion" op:20..<22 {
+ prefix:=[7]u32.[6,0,1,2,3,4,5];body:=[5]u32.[2,0,16,2,1065353216];body[1]=cast(u32)op;
+ if op==21 {body[3]=1;body[4]=0;}
+ tree:[128]u32;meta:[RQ_IR_META]int;#assert rq_extra_tree(prefix[..],body[..],0,tree[..],meta[..]).status==RQStatus.ok;
+}
+#test "quad extra expressions consume a bitcast's complete operand" {
+ prefix:=[7]u32.[6,0,1,2,3,4,5];body:=[6]u32.[2,30,4,16,2,1065353216];tree:[128]u32;meta:[RQ_IR_META]int;
+ #assert rq_extra_tree(prefix[..],body[..],0,tree[..],meta[..]).status==RQStatus.ok;
+}
+#forall "quad extra expressions reject the first absent zero-value or GPU result type" gpu:bool {
+ body:[5]u32;body[0]=2;body[1]=17;body[2]=7;n:=3;
+ if gpu {body[1]=33;body[2]=18;body[3]=7;body[4]=0;n=5;}
+ tree:[128]u32;meta:[RQ_IR_META]int;#assert rq_ir_body_fixture(body[0..<n],3,tree[..],meta[..]).status==RQStatus.malformed;
+}
+#test "quad extra expressions consume the full high word of an unsigned64 literal" {
+ prefix:=[8]u32.[7,0,1,2,3,4,5,6];body:=[5]u32.[2,16,6,4294967295,43690];tree:[128]u32;meta:[RQ_IR_META]int;
+ #assert rq_extra_tree(prefix[..],body[..],0,tree[..],meta[..]).status==RQStatus.ok;
+}
+#test "quad extra expressions refuse a zero-field constructor at its exact body endpoint" {
+ body:=[4]u32.[2,31,6,0];tree:[128]u32;meta:[RQ_IR_META]int;
+ #assert rq_ir_body_fixture(body[..],3,tree[..],meta[..]).status==RQStatus.malformed;
+}
+#test "quad extra expressions retain the final binary operator" {
+ body:=[7]u32.[2,19,18,17,1,17,1];tree:[128]u32;meta:[RQ_IR_META]int;
+ #assert rq_ir_body_fixture(body[..],3,tree[..],meta[..]).status==RQStatus.ok;
+}
+#forall "quad extra expressions retain the first unary and final binary math builtins" last:bool {
+ body:[8]u32;body[0]=2;body[1]=23;body[2]=ifx last then cast(u32)9 else cast(u32)1;body[3]=ifx last then cast(u32)2 else cast(u32)1;body[4]=17;body[5]=2;n:=6;
+ if last {body[6]=17;body[7]=2;n=8;}
+ tree:[128]u32;meta:[RQ_IR_META]int;#assert rq_ir_body_fixture(body[0..<n],3,tree[..],meta[..]).status==RQStatus.ok;
+}
+#test "quad extra expressions admit the exact128-argument call envelope" {
+ prefix:=[7]u32.[6,0,1,2,3,4,5];body:[260]u32;body[0]=2;body[1]=22;body[2]=0;body[3]=128;
+ for arg:0..<128 {body[4+arg*2]=17;body[5+arg*2]=2;}
+ tree:[1024]u32;meta:[RQ_IR_META]int;p:=rq_extra_tree(prefix[..],body[..],128,tree[..],meta[..]);
+ #assert p.status==RQStatus.ok && rq_ir_proc(meta[..],0,1)==128;
+}

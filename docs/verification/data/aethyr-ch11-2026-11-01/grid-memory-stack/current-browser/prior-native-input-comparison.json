@@ -1,0 +1,295 @@
+{
+  "schema": "aethyr.grid.current-browser-prior-native-input-comparison.v1",
+  "source_configs": [
+    {
+      "config": "/tmp/aethyr-ch11-grid-4m-owned-sans-browser/frame.config",
+      "counts": [
+        1,
+        320,
+        180,
+        36108,
+        12,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "rows": [
+        [
+          "1",
+          "320",
+          "180",
+          "36108",
+          "12",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "SHA256:88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160"
+        ],
+        [
+          "SHA256:2c8f145ec2348683be411a46bde7e63db8b26808adf76e5c928cd73ab3e8e541"
+        ],
+        [
+          "EMPTY"
+        ],
+        [
+          "EMPTY"
+        ],
+        [
+          "SHA256:52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf"
+        ],
+        [
+          "2"
+        ],
+        [
+          "0",
+          "SHA256:6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e"
+        ],
+        [
+          "12",
+          "SHA256:316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456"
+        ],
+        [
+          "1"
+        ],
+        [
+          "u.bin",
+          "SHA256:88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160",
+          "448",
+          "448",
+          "0",
+          "0",
+          "448",
+          "1"
+        ],
+        [
+          "textures",
+          "1"
+        ],
+        [
+          "sans_atlas",
+          "rgba8unorm",
+          "1",
+          "5",
+          "SHA256:f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6"
+        ],
+        [
+          "1536",
+          "672",
+          "0",
+          "6144",
+          "4128768"
+        ],
+        [
+          "768",
+          "336",
+          "4128768",
+          "3072",
+          "1032192"
+        ],
+        [
+          "384",
+          "168",
+          "5160960",
+          "1536",
+          "258048"
+        ],
+        [
+          "192",
+          "84",
+          "5419008",
+          "768",
+          "64512"
+        ],
+        [
+          "96",
+          "42",
+          "5483520",
+          "512",
+          "21504"
+        ],
+        [
+          "media_text",
+          "EMPTY"
+        ],
+        [
+          "media_images",
+          "0"
+        ]
+      ],
+      "files": {
+        "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/u.bin": "88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160",
+        "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/hud.bin": "2c8f145ec2348683be411a46bde7e63db8b26808adf76e5c928cd73ab3e8e541",
+        "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/draws.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/indices.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "/private/tmp/aethyr-ch11-packages-owned-sans/the-grid/render.json": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf",
+        "/private/tmp/aethyr-ch11-packages-owned-sans/the-grid/pipeline-0-6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e.tree": "6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e",
+        "/private/tmp/aethyr-ch11-packages-owned-sans/the-grid/pipeline-12-316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456.tree": "316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456",
+        "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/texture-0.bin": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6",
+        "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/media.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "config": "/tmp/aethyr-ch11-native-owned-sans-the-grid/stage/frame.config",
+      "counts": [
+        1,
+        320,
+        180,
+        36108,
+        12,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "rows": [
+        [
+          "1",
+          "320",
+          "180",
+          "36108",
+          "12",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "SHA256:88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160"
+        ],
+        [
+          "SHA256:e4c94efb7436be626b6a44339a1f46bc0942f3d32dea87557dd1c30776f5a3bb"
+        ],
+        [
+          "EMPTY"
+        ],
+        [
+          "EMPTY"
+        ],
+        [
+          "SHA256:52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf"
+        ],
+        [
+          "2"
+        ],
+        [
+          "0",
+          "SHA256:6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e"
+        ],
+        [
+          "12",
+          "SHA256:316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456"
+        ],
+        [
+          "3"
+        ],
+        [
+          "u.bin",
+          "SHA256:88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160",
+          "448",
+          "448",
+          "448",
+          "0",
+          "448",
+          "1"
+        ],
+        [
+          "hud.bin",
+          "SHA256:e4c94efb7436be626b6a44339a1f46bc0942f3d32dea87557dd1c30776f5a3bb",
+          "1733184",
+          "1733184",
+          "1733184",
+          "0",
+          "1733184",
+          "1"
+        ],
+        [
+          "draws.bin",
+          "EMPTY",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1"
+        ],
+        [
+          "textures",
+          "1"
+        ],
+        [
+          "sans_atlas",
+          "rgba8unorm",
+          "1",
+          "5",
+          "SHA256:f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6"
+        ],
+        [
+          "1536",
+          "672",
+          "0",
+          "6144",
+          "4128768"
+        ],
+        [
+          "768",
+          "336",
+          "4128768",
+          "3072",
+          "1032192"
+        ],
+        [
+          "384",
+          "168",
+          "5160960",
+          "1536",
+          "258048"
+        ],
+        [
+          "192",
+          "84",
+          "5419008",
+          "768",
+          "64512"
+        ],
+        [
+          "96",
+          "42",
+          "5483520",
+          "512",
+          "21504"
+        ]
+      ],
+      "files": {
+        "/private/tmp/aethyr-ch11-native-owned-sans-the-grid/stage/inputs/u.bin": "88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160",
+        "/private/tmp/aethyr-ch11-native-owned-sans-the-grid/stage/inputs/hud.bin": "e4c94efb7436be626b6a44339a1f46bc0942f3d32dea87557dd1c30776f5a3bb",
+        "/private/tmp/aethyr-ch11-native-owned-sans-the-grid/stage/inputs/draws.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "/private/tmp/aethyr-ch11-native-owned-sans-the-grid/stage/package/render.json": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf",
+        "/private/tmp/aethyr-ch11-native-owned-sans-the-grid/stage/inputs/pipeline-0-6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e.tree": "6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e",
+        "/private/tmp/aethyr-ch11-native-owned-sans-the-grid/stage/inputs/pipeline-12-316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456.tree": "316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456",
+        "/private/tmp/aethyr-ch11-native-owned-sans-the-grid/stage/inputs/texture-0.bin": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6"
+      }
+    }
+  ],
+  "all_normalized_rows_identical": false,
+  "scope": "Path tokens replaced with content hashes; empty byte files and absent index/media payloads normalized toEMPTY. Metadata rows remain literal, not silently rewritten."
+}

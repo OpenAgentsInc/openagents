@@ -1,0 +1,84 @@
+#test "shared texture origins select the named image rather than its array order" {
+ rhtt_named:=[2]RenderHostNamedTexture.[RenderHostNamedTexture.{name="unrelated",layers=1},RenderHostNamedTexture.{name="layers",layers=7}];
+ rhtt_q:=render_host_resolve_texture(2,0,6,rhtt_named[..],-1);
+ #assert rhtt_q.status==RenderResourceStatus.ok && rhtt_q.named_index==1 && rhtt_q.source.kind==RenderSourceKind.layers;
+ #assert rhtt_q.layout.status==RenderResourceStatus.ok && rhtt_q.layout.dimension==RenderTextureDimension.d2_array && rhtt_q.layout.sample==RenderTextureSample.filterable;
+ rhtt_named[1].layers=1;#assert render_host_resolve_texture(2,0,6,rhtt_named[..],-1).status==RenderResourceStatus.ok;
+ rhtt_named[1].layers=0;#assert render_host_resolve_texture(2,0,6,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+ rhtt_named[1].layers=-1;#assert render_host_resolve_texture(2,0,6,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+ rhtt_named[1].layers=7;rhtt_named[1].depth=true;#assert render_host_resolve_texture(2,0,6,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+}
+#test "shared sans origin refuses an array or a depth image" {
+ rhtt_named:=[2]RenderHostNamedTexture.[RenderHostNamedTexture.{name="layers",layers=8},RenderHostNamedTexture.{name="sans_atlas",layers=1}];
+ rhtt_q:=render_host_resolve_texture(1,0,1,rhtt_named[..],-1);
+ #assert rhtt_q.status==RenderResourceStatus.ok && rhtt_q.named_index==1 && rhtt_q.source.kind==RenderSourceKind.sans_atlas && rhtt_q.layout.dimension==RenderTextureDimension.d2;
+ rhtt_named[1].layers=2;#assert render_host_resolve_texture(1,0,1,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+ rhtt_named[1].layers=0;#assert render_host_resolve_texture(1,0,1,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+ rhtt_named[1].layers=1;rhtt_named[1].depth=true;#assert render_host_resolve_texture(1,0,1,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+}
+#test "shared texture namespace rejects duplicate missing empty and unknown roles" {
+ rhtt_named:=[2]RenderHostNamedTexture.[RenderHostNamedTexture.{name="layers",layers=1},RenderHostNamedTexture.{name="layers",layers=2}];
+ #assert render_host_named_textures(rhtt_named[..])==RenderResourceStatus.invalid;
+ rhtt_q:=render_host_resolve_texture(2,0,6,rhtt_named[..],-1);#assert rhtt_q.status==RenderResourceStatus.invalid && rhtt_q.named_index== -1;
+ rhtt_named[1].name="other";#assert render_host_named_textures(rhtt_named[..])==RenderResourceStatus.ok;
+ rhtt_named[0].name="wrong";#assert render_host_resolve_texture(2,0,6,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+ rhtt_named[0].name="";#assert render_host_named_textures(rhtt_named[..])==RenderResourceStatus.invalid;
+ rhtt_named[0].name="layers";rhtt_named[1].name="";#assert render_host_named_textures(rhtt_named[..])==RenderResourceStatus.invalid;
+ rhtt_named[1].name="other";
+ for rhtt_bad:[4]int.[-1,18,9223372036854775807,-9223372036854775807] {#assert render_host_resolve_texture(rhtt_bad,0,6,rhtt_named[..],-1).status==RenderResourceStatus.invalid;}
+ #assert render_host_resolve_texture(2,-1,6,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+ #assert render_host_resolve_texture(2,0,-1,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+ #assert render_host_resolve_texture(2,0,21,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+ #assert render_host_resolve_texture(2,0,0,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+ #assert render_host_resolve_texture(2,0,7,rhtt_named[..],-1).status==RenderResourceStatus.invalid;
+}
+#forall "media images retain the original line context including three digit names" rhtt_context:0..<112 {
+ rhtt_bytes:[32]u8;rhtt_source:=RenderBindingSource.{kind=RenderSourceKind.media_image,index=rhtt_context};
+ rhtt_name:=render_host_texture_name(rhtt_source,rhtt_bytes[..]);
+ rhtt_named:=[2]RenderHostNamedTexture.[RenderHostNamedTexture.{name="unrelated",layers=1},RenderHostNamedTexture.{name=rhtt_name,layers=1}];
+ rhtt_q:=render_host_resolve_texture(2,2,1,rhtt_named[..],rhtt_context);
+ #assert rhtt_q.status==RenderResourceStatus.ok && rhtt_q.named_index==1 && rhtt_q.source.kind==RenderSourceKind.media_image && rhtt_q.source.index==rhtt_context;
+ #assert rhtt_q.layout.dimension==RenderTextureDimension.d2 && rhtt_q.layout.sample==RenderTextureSample.filterable;
+ rhtt_named[1].layers=2;#assert render_host_resolve_texture(2,2,1,rhtt_named[..],rhtt_context).status==RenderResourceStatus.invalid;
+}
+#test "media images reject out of window contexts and refuse absent contexts" {
+ rhtt_named:=[1]RenderHostNamedTexture.[RenderHostNamedTexture.{name="media_image-0",layers=1}];
+ for rhtt_bad:[4]int.[-1,112,113,9223372036854775807] {#assert render_host_resolve_texture(2,2,1,rhtt_named[..],rhtt_bad).status==RenderResourceStatus.invalid;}
+ #assert render_host_resolve_texture(1,2,1,rhtt_named[..],0).status==RenderResourceStatus.invalid;
+ #assert render_host_resolve_texture(2,2,1,rhtt_named[..],1).status==RenderResourceStatus.invalid;
+}
+#test "generated render targets and pass sources do not masquerade as named textures" {
+ rhtt_named:[]RenderHostNamedTexture;
+ rhtt_q:=render_host_resolve_texture(2,0,8,rhtt_named,-1);
+ #assert rhtt_q.status==RenderResourceStatus.ok && rhtt_q.named_index== -1 && rhtt_q.source.kind==RenderSourceKind.render_target && rhtt_q.source.target==RenderTarget.shadow_map;
+ #assert rhtt_q.layout.sample==RenderTextureSample.depth;
+ rhtt_q=render_host_resolve_texture(2,0,10,rhtt_named,-1);
+ #assert rhtt_q.status==RenderResourceStatus.ok && rhtt_q.named_index== -1 && rhtt_q.source.target==RenderTarget.water_light && rhtt_q.layout.sample==RenderTextureSample.unfilterable;
+ rhtt_q=render_host_resolve_texture(2,0,12,rhtt_named,-1);
+ #assert rhtt_q.status==RenderResourceStatus.ok && rhtt_q.named_index== -1 && rhtt_q.source.kind==RenderSourceKind.pass_source && rhtt_q.layout.sample==RenderTextureSample.filterable;
+}
+#test "the texture namespace admits the complete media window and two shared images" {
+ rhtt_names:[115]u8;rhtt_named:[115]RenderHostNamedTexture;
+ for rhtt_i:0..<115 {rhtt_names[rhtt_i]=u8(rhtt_i);rhtt_named[rhtt_i]=RenderHostNamedTexture.{name=cast(string)rhtt_names[rhtt_i..<rhtt_i+1],layers=1};}
+ #assert render_host_named_textures(rhtt_named[0..<114])==RenderResourceStatus.ok;
+ #assert render_host_named_textures(rhtt_named[..])==RenderResourceStatus.capacity;
+ rhtt_q:=render_host_resolve_texture(2,0,8,rhtt_named[..],-1);#assert rhtt_q.status==RenderResourceStatus.capacity && rhtt_q.named_index== -1;
+ rhtt_named[113].name=rhtt_named[112].name;#assert render_host_named_textures(rhtt_named[0..<114])==RenderResourceStatus.invalid;
+}
+#forall "all catalog texture roles use the shared origin and shape protocol" rhtt_profile:0..<18 {
+ rhtt_named:=[3]RenderHostNamedTexture.[RenderHostNamedTexture.{name="sans_atlas",layers=1},RenderHostNamedTexture.{name="media_image-111",layers=1},RenderHostNamedTexture.{name="layers",layers=3}];
+ for rhtt_set:0..<3 {
+  rhtt_count:=render_host_binding_count(rhtt_profile,rhtt_set);if rhtt_count<0 {continue;}
+  for rhtt_resource:0..<rhtt_count {
+   rhtt_b:=render_host_binding(rhtt_profile,rhtt_set,rhtt_resource);
+   rhtt_q:=render_host_resolve_texture(rhtt_profile,rhtt_set,rhtt_resource,rhtt_named[..],111);
+   if rhtt_b.binding.kind==RenderResourceKind.image2d || rhtt_b.binding.kind==RenderResourceKind.image_array || rhtt_b.binding.kind==RenderResourceKind.depth {
+    #assert rhtt_q.status==RenderResourceStatus.ok && rhtt_q.layout.status==RenderResourceStatus.ok;
+    if rhtt_b.source.kind==RenderSourceKind.layers {#assert rhtt_q.named_index==2;}
+    else if rhtt_b.source.kind==RenderSourceKind.sans_atlas {#assert rhtt_q.named_index==0;}
+    else if rhtt_b.source.kind==RenderSourceKind.media_image {#assert rhtt_q.named_index==1 && rhtt_q.source.index==111;}
+    else {#assert rhtt_q.named_index== -1;}
+   }else {#assert rhtt_q.status==RenderResourceStatus.invalid;}
+  }
+ }
+}

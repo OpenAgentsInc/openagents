@@ -1,0 +1,1739 @@
+{
+  "schema": "aethyr.render.geometry.producers.v1",
+  "status": "pass",
+  "compiler_version": "coax0 0.47.0",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "compiler_recorded_source_digest": "604574a88c8273b0c110f34779cba55817778ecee02c4a797dbb79c9af6a6220",
+  "compiler_current_source_digest": "604574a88c8273b0c110f34779cba55817778ecee02c4a797dbb79c9af6a6220",
+  "compiler_current_sources_match": true,
+  "source_sha256": {
+    "aethyr/render/tests/geometry-native.coax": "c5aed0452522b4be558eb5b2dd641f9832e0a28e61e59d0f8b7334a9d8f55cd6",
+    "aethyr/render/geometry.coax": "1cebf7a63d674f6e548365d8a51f59bf4f889f680877992e7e4e6fa91fdc7ac5",
+    "aethyr/render/catalog.coax": "ffc486dfe5ba07894b0e82485133411411ecc6e62e470621a2befbe9dea2d888",
+    "aethyr/render/bindings.coax": "bd02c0475836ff87c378ee10e595080d13225f9670ecdcc7a7310f715b4e0efb",
+    "aethyr/render/passes.coax": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800",
+    "aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "aethyr/render/frame.coax": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+    "aethyr/tests/render-frame-checks.coax": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007",
+    "aethyr/render/tests/geometry-native.c": "f87f2fc243afb26cf3bddcb1224c3064e38cd08878ebbc6f57ca7c57e21fc5d3",
+    "aethyr/render/tests/catalog-6445ee0050.json": "bbdd8e0b4d29f13eda7b27241ed9a778c18eb2ff8a01a353bab0c12bafb06294",
+    "aethyr/render/tests/check_geometry.py": "fe6210af3999e0e2e8edb262fe821c08492c013466d326225e8d500b993522eb"
+  },
+  "header_fields_checked": {
+    "FrameCounts": [
+      "width",
+      "height",
+      "hud_vertices",
+      "vertex_stride",
+      "draw_count",
+      "water_draws",
+      "grass_instances",
+      "particle_instances",
+      "surface_vertices",
+      "caster_vertices",
+      "caster_instances"
+    ],
+    "RenderGeometryBuffer": [
+      "binding_set",
+      "resource",
+      "words"
+    ],
+    "RenderGeometryResult": [
+      "status",
+      "bad_draw",
+      "bad_resource",
+      "work",
+      "direct"
+    ],
+    "RenderDirectDomains": [
+      "hud_vertices",
+      "grass_instances",
+      "particle_instances",
+      "surface_vertices",
+      "caster_vertices",
+      "caster_instances"
+    ],
+    "RenderDrawDomain": [
+      "vertex_begin",
+      "vertices",
+      "vertex_alt_begin",
+      "vertex_alt_end",
+      "instance_begin",
+      "instances",
+      "indices"
+    ],
+    "RenderFrameResult": [
+      "status",
+      "bad_upload",
+      "bad_draw",
+      "bad_direct",
+      "checked_indices",
+      "admitted_draws"
+    ]
+  },
+  "producer_inputs": {
+    "haunted-house": {
+      "capture_sha256": "cbbb3a82f3f112e7f3835b46a6334e090b695fdbe3fe2babcd6e7e6af42ee448",
+      "files": {
+        "u.bin": {
+          "bytes": 1024,
+          "sha256": "e19ef7102aa1f52d2cbc6566e14981b8f4883fea15a33f73635381ff270c5e92"
+        },
+        "hud.bin": {
+          "bytes": 505344,
+          "sha256": "4bb3edaeab88b0b0add89718ce63559b3e26bc7919f8f6224ece89bb75f9abd2"
+        },
+        "draws.bin": {
+          "bytes": 1008,
+          "sha256": "d74e01b4eb12c565d9098e9d5b8d6cc4001e54440789f7ab68a3cb178d0bb2d1"
+        },
+        "s0.bin": {
+          "bytes": 262144,
+          "sha256": "24a607e294bf78e9eae00d9e22c6f74e3bb38010612b7b47c899e8055d19b2ef"
+        },
+        "s0.upload.bin": {
+          "bytes": 106240,
+          "sha256": "c0e56808d2fd0a2af7ee6bc161f244ae20e5f1cd14d00e7ffe21db2166c6c058"
+        },
+        "s1.bin": {
+          "bytes": 2048,
+          "sha256": "c8f8aa1467d6fbc5ac1bd5a640e9518c11e134b72a38151aa06ff02e41d74ecb"
+        },
+        "s1.upload.bin": {
+          "bytes": 896,
+          "sha256": "af3724be0c75ef2ae5ad072d009fe8d8167bac479c3fc14c74f9e945bf50122d"
+        },
+        "puffs.bin": {
+          "bytes": 1536,
+          "sha256": "58880d601cd4728e8ab0e57f140f86405b7de34931821a488009ca14bbe38b67"
+        },
+        "puffs.upload.bin": {
+          "bytes": 704,
+          "sha256": "759ab07884b42e947f51c986779e7beb7318a425ce152dac8cb9bf60d966e400"
+        },
+        "vertices.bin": {
+          "bytes": 3514896,
+          "sha256": "ab92258e4a67ebcf5dddc24416cb315b21cb6dd74fa10959133030ae76039b91"
+        },
+        "index.bin": {
+          "bytes": 721740,
+          "sha256": "4cb71e613cd5cc0c302b912782d5b643cad4d465cbab4c458b2a38044dcd0881"
+        },
+        "layer-0.img": {
+          "bytes": 156235,
+          "sha256": "c06dfe76db1838a0ec43135d62d66f18643ffbf56cd57c75cca7b91ec837e3f3"
+        },
+        "layer-1.img": {
+          "bytes": 196794,
+          "sha256": "ad03b7e165d731b8a53cb2db2a65a57a88fa8829ccff945acb51e939a4057da9"
+        },
+        "layer-2.img": {
+          "bytes": 260741,
+          "sha256": "e8f999a4bd722d43151ca9daff09a2e6d1e9c6f4717580f5a2ace96dfb61fbc3"
+        },
+        "layer-3.img": {
+          "bytes": 157720,
+          "sha256": "5e4255dac35fe8211566b2446f26dd94858c5f18f1d5cfde799128c9fae7798d"
+        },
+        "layer-4.img": {
+          "bytes": 267341,
+          "sha256": "4da3048be862cd13b9e7ae406cdb3d89af00bf22f7fb72627aa3b5d8600de5f8"
+        },
+        "layer-5.img": {
+          "bytes": 136513,
+          "sha256": "9819f951eb6a554022467b2fc44db3e532e76fcedd8aa0c17628e03e8e248ae5"
+        },
+        "layer-6.img": {
+          "bytes": 183921,
+          "sha256": "cd5d5839c77d6993108b11699078c2d84ff8c4050dacfd596bf84d366ddd0af7"
+        },
+        "layer-7.img": {
+          "bytes": 150465,
+          "sha256": "56486f48b04d829b7dd0daf31610568371dcd5406c3844cbeecba9fcb7a6fe3d"
+        },
+        "layer-8.img": {
+          "bytes": 169719,
+          "sha256": "c56c0814b2a3dfa50641cfe2eeea80cd99eeb9f37651fdcf3a5255c8d062d602"
+        },
+        "layer-9.img": {
+          "bytes": 197600,
+          "sha256": "27032f86370225bcd5406a9638c35bfb44bc47ed8a2a7dfe1de13199dd96a741"
+        },
+        "layer-10.img": {
+          "bytes": 17457,
+          "sha256": "42bea928dfa1e112bc6e404680c91fce98e7158f6d4b6c48fc994246b6c45418"
+        },
+        "layer-11.img": {
+          "bytes": 17457,
+          "sha256": "42bea928dfa1e112bc6e404680c91fce98e7158f6d4b6c48fc994246b6c45418"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 7896,
+        "draws": 63,
+        "water": 0,
+        "grass": 0,
+        "particles": 704,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/haunted-house",
+        "pack": "/tmp/aethyr-ch11-producer-captures/haunted-house.pack",
+        "index": "apps/openagents-web/realms/haunted-house/assets/Haunt.indices",
+        "facts": "/tmp/aethyr-ch11-producer-captures/haunted-house/host.facts",
+        "extra": "12605"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch9-consumers/realm.wasm",
+        "bytes": 537643,
+        "sha256": "f68b7fcddccd363dc1a9618ee1ad1af9b75667ad94a06578f8c5b8ba94e31084"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "pack": {
+          "path": "/tmp/aethyr-ch11-producer-captures/haunted-house.pack",
+          "bytes": 6266569,
+          "sha256": "3a41ca9605e083fed5e7ed83118d9669535be267e049ea4b309e019e5762acdf"
+        },
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/haunted-house/host.facts",
+          "bytes": 427,
+          "sha256": "f6f2c011a20d31e90eb88d18ed83affbb574f03f21f7a0bceddebbd7cf913512"
+        },
+        "index": {
+          "path": "apps/openagents-web/realms/haunted-house/assets/Haunt.indices",
+          "bytes": 721740,
+          "sha256": "4cb71e613cd5cc0c302b912782d5b643cad4d465cbab4c458b2a38044dcd0881"
+        }
+      }
+    },
+    "the-grid": {
+      "capture_sha256": "e9f7ff5b0f1823099371fc25639fd08033fd36564ccc1c174dd40cdeb9c6b15e",
+      "files": {
+        "u.bin": {
+          "bytes": 448,
+          "sha256": "88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160"
+        },
+        "hud.bin": {
+          "bytes": 1733184,
+          "sha256": "e4c94efb7436be626b6a44339a1f46bc0942f3d32dea87557dd1c30776f5a3bb"
+        },
+        "draws.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 36108,
+        "draws": 0,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/the-grid",
+        "page": "1"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch9-consumers/grid.wasm",
+        "bytes": 820203,
+        "sha256": "c24b09a3b45b3e197f8e2c2e62e7d163fbbd7f110663b0970b001435223dd494"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {}
+    },
+    "everglade": {
+      "capture_sha256": "1060217b8f889f2bcbb4e05f5c4c58951a3243cd1b4a5398bb943e6293ae7cca",
+      "files": {
+        "u.bin": {
+          "bytes": 9200,
+          "sha256": "0e274ec3c59299858489939f4c825d2d2ea40b5621b2db3a1b7b0f7b0458ae96"
+        },
+        "hud.bin": {
+          "bytes": 97152,
+          "sha256": "e5015fd0b52af2329687c0294e43d982adb2ae45b69335d83cdebc154da1aad9"
+        },
+        "draws.bin": {
+          "bytes": 3040,
+          "sha256": "656ce74e60b5fd52b53d458c05144bc402c222d332d63e5bb5ad35f09048fe1d"
+        },
+        "s0.bin": {
+          "bytes": 88208,
+          "sha256": "da872d881e399f74fafefa40c731ddba01066ef34c1b5999382b0d852320de2f"
+        },
+        "s0.upload.bin": {
+          "bytes": 88200,
+          "sha256": "999c8b6126889cb214c895c085f351734c6f4c437e6d70116fdf75e0b17a62b2"
+        },
+        "s1.bin": {
+          "bytes": 733952,
+          "sha256": "41861e5981fc75f2f08465ad55703feed3126ad641a35d602796d151e2f38b6e"
+        },
+        "s1.upload.bin": {
+          "bytes": 733952,
+          "sha256": "41861e5981fc75f2f08465ad55703feed3126ad641a35d602796d151e2f38b6e"
+        },
+        "s2.bin": {
+          "bytes": 35280,
+          "sha256": "ef8dac2e3a0667920596782c5656a490175b4169631442e045a7f35619e60a3f"
+        },
+        "s2.upload.bin": {
+          "bytes": 35280,
+          "sha256": "ef8dac2e3a0667920596782c5656a490175b4169631442e045a7f35619e60a3f"
+        },
+        "s3.bin": {
+          "bytes": 86944,
+          "sha256": "59cf7bac5caec0e923f18ed083638a20b481ee43b3fc1fc72623b83c99cdaa7f"
+        },
+        "s3.upload.bin": {
+          "bytes": 86944,
+          "sha256": "59cf7bac5caec0e923f18ed083638a20b481ee43b3fc1fc72623b83c99cdaa7f"
+        },
+        "puffs.bin": {
+          "bytes": 67200,
+          "sha256": "6df431e924626a03ee13e64b596db1f6cc466795933b5e904dbd6fd098db0b54"
+        },
+        "puffs.upload.bin": {
+          "bytes": 768,
+          "sha256": "7e09541acff06943c65fa61a67a6849e20ee94335cc85af08ee091debe981011"
+        },
+        "vertices.bin": {
+          "bytes": 5878032,
+          "sha256": "3cf0e9bd3ae43df241d88c764a16f2f719bce99ffe76b87801741584e787ef1e"
+        },
+        "index.bin": {
+          "bytes": 1858384,
+          "sha256": "7b8201e218b651363f011b80f4fd41f2c55fd175c38a9bcc120276eab2294085"
+        },
+        "layer-0.img": {
+          "bytes": 21294,
+          "sha256": "f242802e24e24958022432f7a338f20875de8fb88d5eabd94eaa9c044e858b60"
+        },
+        "layer-1.img": {
+          "bytes": 23941,
+          "sha256": "72db4f1e782c9c9dce10f4cd09c1a9adb573bff2e0c8845a2bb7d190f90917ca"
+        },
+        "layer-2.img": {
+          "bytes": 58584,
+          "sha256": "6cbf172cf924f222756e853dd1e49aa59144d4fc57a3ba152b9050a1fc327011"
+        },
+        "layer-3.img": {
+          "bytes": 183518,
+          "sha256": "0acd3d88634b74bb0d86ed5b2a1ebb70814bd580a32482f5f4f03faa218acecb"
+        },
+        "layer-4.img": {
+          "bytes": 73686,
+          "sha256": "d33523250b3c82559d90968da193c81432260cad2af4ae441cb7b1f7e61a384d"
+        },
+        "layer-5.img": {
+          "bytes": 36126,
+          "sha256": "f02ab7683fbfacf576267d929c2680a3b8792bb0ad653c481722986259088046"
+        },
+        "layer-6.img": {
+          "bytes": 33510,
+          "sha256": "f97d2bf2a83c784e50d18be29a63f5c2045994b6a76846d8d722bc640aab1f4f"
+        },
+        "layer-7.img": {
+          "bytes": 14783,
+          "sha256": "09bff3b5702de2143fc5a29cabdb46778d3ff8168b7c57d4c7f43dd78dbe9bd7"
+        },
+        "layer-8.img": {
+          "bytes": 29608,
+          "sha256": "54474c2f8654355cf9357a37ce8fe51d0b934787396c58135332d3b9f858dcc3"
+        },
+        "layer-9.img": {
+          "bytes": 28048,
+          "sha256": "1256df605977783cb657456a047f623f427e60cfd38e0070b455c55502dd9378"
+        },
+        "layer-10.img": {
+          "bytes": 31359,
+          "sha256": "58133c46848f940f9ff160c746acca5a9548364d17e26f8841809e365c65d0ed"
+        },
+        "layer-11.img": {
+          "bytes": 21209,
+          "sha256": "625c7e8fa28a08a2a12761e01a20d737fae2300008c4a04b84ea9bb6bbc1ebe2"
+        },
+        "layer-12.img": {
+          "bytes": 39967,
+          "sha256": "a6b82776222d25da3bec405264ea14308dbef5429ed60e9379b34bc2372e0284"
+        },
+        "layer-13.img": {
+          "bytes": 29243,
+          "sha256": "21c5312b0d28c4f3483fd77f2bc8ac9d3e8dd2eb91521828a20d12f44af75014"
+        },
+        "layer-14.img": {
+          "bytes": 35256,
+          "sha256": "3d333383dd5fd27638e736e9abfdfef1a8702b6fa6530d1308a396ed4d6ec64d"
+        },
+        "layer-15.img": {
+          "bytes": 22661,
+          "sha256": "b46d7f41690cc27b3da8ad67d9764107422a97432d6d9b15f531926feef3226b"
+        },
+        "layer-16.img": {
+          "bytes": 35797,
+          "sha256": "3bbde5e4effccafd114a183a8a0ee52bcfc08f1cb962641f1b3a69c8bc72ab86"
+        },
+        "layer-17.img": {
+          "bytes": 19791,
+          "sha256": "2a920c3f7c943001e00145e47980cbbb4e3632543395cf5c70c425462df9ed02"
+        },
+        "layer-18.img": {
+          "bytes": 1820,
+          "sha256": "7c372d5151c247e1966b03192e570cc892d02f15c99f4e3f6bdcc40bdad1514d"
+        },
+        "layer-19.img": {
+          "bytes": 1820,
+          "sha256": "7c372d5151c247e1966b03192e570cc892d02f15c99f4e3f6bdcc40bdad1514d"
+        },
+        "layer-20.img": {
+          "bytes": 264391,
+          "sha256": "2667cb28c2d93a9063d1324082c4fe3b26afe0dbe3b8b7eeded9e69edd0b86bc"
+        },
+        "layer-21.img": {
+          "bytes": 67507,
+          "sha256": "555a056a846ff2993e003e943e2c38c1de8d793b2be91f91b4a8aa1f296f4dd4"
+        },
+        "layer-22.img": {
+          "bytes": 37103,
+          "sha256": "5cc9ba2cd33d9860a1f524fc5374471b676ff876b1be8599e0a5a1ae845926fe"
+        },
+        "layer-23.img": {
+          "bytes": 18673,
+          "sha256": "bad20ebb7ddbd2b7db0d1a92de7bbd47a2e311709f891c637d41987ef8ff9c01"
+        },
+        "layer-24.img": {
+          "bytes": 70716,
+          "sha256": "18725934ae61924c59e343d5d78ace0511d89d56dc29b55383c12afa5270a0ce"
+        },
+        "layer-25.img": {
+          "bytes": 10955,
+          "sha256": "8c14223dd77a97f5f922f1ad73f6dd6a68f2e97de371e5a8f354d7445fb7a960"
+        },
+        "layer-26.img": {
+          "bytes": 9523,
+          "sha256": "c5fa0bcf3a1082fce501e271eabea2184fb6987f494699d3f055ee4288d39a70"
+        },
+        "layer-27.img": {
+          "bytes": 6787,
+          "sha256": "cf340c296a6025d71dcdb750a0f935daa0690e0ea11a5da56bb8c2bd2b69f6dd"
+        },
+        "layer-28.img": {
+          "bytes": 12063,
+          "sha256": "855f70f93d8fdbbda0fc662aaf23ab0974ce94b0e36fc0e16c182b5c19dac6e7"
+        },
+        "layer-29.img": {
+          "bytes": 10418,
+          "sha256": "2f06b76028a409a42a5d163838103997d320f054cc0028e61e75e92e15885c3d"
+        },
+        "layer-30.img": {
+          "bytes": 6897,
+          "sha256": "1b954e7931328d37f357ee8702a01f3a42b47b59a11389b508352fdaf8dd585a"
+        },
+        "layer-31.img": {
+          "bytes": 9113,
+          "sha256": "fd64417595a39b4b6520f68ecd004614edabd9816ec0dd6afbd2c7c5aa445f99"
+        },
+        "layer-32.img": {
+          "bytes": 3544,
+          "sha256": "e89ab72f8a5e7386b5663ac940084a9a8f502fc36fe20a498b2249feca3aa281"
+        },
+        "layer-33.img": {
+          "bytes": 6423,
+          "sha256": "abbd8138f300e43b9e51a0e3cd0782a557f3c246ae2011c036b408e198163169"
+        },
+        "layer-34.img": {
+          "bytes": 10027,
+          "sha256": "e4edb6bcf5333065f99f553bd4703e16f594fc41a3053b12b9deb9d2f73e0b4c"
+        },
+        "layer-35.img": {
+          "bytes": 6157,
+          "sha256": "bda36e32b7de7ddcce124b95c2677606d28c2a755334b814176e8798df4f568b"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 1518,
+        "draws": 190,
+        "water": 1,
+        "grass": 13824,
+        "particles": 16,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/everglade",
+        "pack": "apps/openagents-web/realms/everglade/assets/everglade.pack",
+        "facts": "verse/native/everglade.facts",
+        "extra": "21595"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch9-consumers/everglade.wasm",
+        "bytes": 1986524,
+        "sha256": "48b0917f982e43bec0119cdc4e6fd9af544da6ab71904b062428f6a8ff3aad03"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "pack": {
+          "path": "apps/openagents-web/realms/everglade/assets/everglade.pack",
+          "bytes": 9039012,
+          "sha256": "5595e2a3839bb38bd2cd839c688bb9a13a64ed23958fda84907e03c0dc90f8d8"
+        },
+        "facts": {
+          "path": "verse/native/everglade.facts",
+          "bytes": 385,
+          "sha256": "c2bffa8d218ec135fc82af4b73ac958adf97aecfe56c92fa87470656c5cdc0c0"
+        }
+      }
+    },
+    "fairy-forest": {
+      "capture_sha256": "82de9aa44a3882fe787d13cae0a231ef975ff6ccbdfffc80c537b9153c3ad748",
+      "files": {
+        "u.bin": {
+          "bytes": 3184,
+          "sha256": "ef3cdf6e284e0334604f7bd220189c361f7ce4ca9ae6b2c35de5f7aedaf235c9"
+        },
+        "hud.bin": {
+          "bytes": 404736,
+          "sha256": "cdd3f68def42d2ecf413d082e90f6ff1e7350293c8a28790599e583a5efd62b8"
+        },
+        "draws.bin": {
+          "bytes": 96,
+          "sha256": "68ddf1cc9304da369d69e0973e8c3f3df4de1a3df8df3b2f402b1930b57d1dd5"
+        },
+        "s0.bin": {
+          "bytes": 345072,
+          "sha256": "9882e261ce070d5f88ec3ee2c17f20347d0823a048eeb180433834b55f394620"
+        },
+        "s0.upload.bin": {
+          "bytes": 345060,
+          "sha256": "c086d835d5a4f960c7787de64cb421c5fe7f90c559788c0ae06f575a51738734"
+        },
+        "s1.bin": {
+          "bytes": 343040,
+          "sha256": "ce36fd2162a5791649f7282b8b46aca338f466b35b53e0816445051419500bd8"
+        },
+        "s1.upload.bin": {
+          "bytes": 343040,
+          "sha256": "ce36fd2162a5791649f7282b8b46aca338f466b35b53e0816445051419500bd8"
+        },
+        "s2.bin": {
+          "bytes": 314880,
+          "sha256": "0f6fc9082fb02ab49ebb4a8634ebba1316c457d8f6e6350398ee39fecea6202c"
+        },
+        "s2.upload.bin": {
+          "bytes": 314880,
+          "sha256": "0f6fc9082fb02ab49ebb4a8634ebba1316c457d8f6e6350398ee39fecea6202c"
+        },
+        "index.bin": {
+          "bytes": 4096,
+          "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 6324,
+        "draws": 6,
+        "water": 1,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/fairy-forest",
+        "index": "apps/openagents-web/realms/fairy-forest/assets/Fairy.indices",
+        "extra": "4096"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch9-consumers/fairy.wasm",
+        "bytes": 730171,
+        "sha256": "640eaa6a4cb15754272bf8b148f27321bbb392ac0d701b5ed14a8735d7315dc8"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "index": {
+          "path": "apps/openagents-web/realms/fairy-forest/assets/Fairy.indices",
+          "bytes": 4096,
+          "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+        }
+      }
+    },
+    "dead-gears": {
+      "capture_sha256": "49c74d572fc577aa006860f971de7557099e64056deb9cf3ab40342d2799bbb5",
+      "files": {
+        "u.bin": {
+          "bytes": 2736,
+          "sha256": "60bab0ae95b768ac1fcee1b80c4dc6d03f077a111be6a991d5802ca2ec4cf575"
+        },
+        "hud.bin": {
+          "bytes": 203904,
+          "sha256": "03181cc66aa9bddb4cb942ad345552cb6494445fdaebd9b9ab63b7a49ee17625"
+        },
+        "draws.bin": {
+          "bytes": 32,
+          "sha256": "e843237a265a3c33f073d05086c705e3718530215ad60cb2396219ee56ab1157"
+        },
+        "s0.bin": {
+          "bytes": 384000,
+          "sha256": "f837e11b94fe44e63e352fedcf0cc8f2a9d13888374a11f5426b198ae76f050c"
+        },
+        "s0.upload.bin": {
+          "bytes": 24896,
+          "sha256": "e7022f17e1cbe28b89352a26991eaf437aab3be3f9fa7ffb37e825fe62513114"
+        },
+        "index.bin": {
+          "bytes": 4096,
+          "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 3186,
+        "draws": 2,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/dead-gears",
+        "index": "apps/openagents-web/realms/dead-gears/assets/DeadGears.indices",
+        "extra": "4096"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch9-consumers/deadgears.wasm",
+        "bytes": 374864,
+        "sha256": "4857d4f2d287b2fa09a598f6c07ad02ef00be232798e1796e00a9c2c96af25f7"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "index": {
+          "path": "apps/openagents-web/realms/dead-gears/assets/DeadGears.indices",
+          "bytes": 4096,
+          "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+        }
+      }
+    },
+    "belt-2200": {
+      "capture_sha256": "b1135b834ddb2b7191f2ac4a78896677fbd1c252ccb509651185fc46e8ef4613",
+      "files": {
+        "u.bin": {
+          "bytes": 704,
+          "sha256": "0f0e0063df13873222c03d6ea4713b2019e32750dac8e20ad8cc9e2236eeedef"
+        },
+        "hud.bin": {
+          "bytes": 2079072,
+          "sha256": "fe63632280b15a59675b5ab94437b372eafb2e09043d812350646e8b69f48c79"
+        },
+        "draws.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 43314,
+        "draws": 0,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/belt-2200",
+        "facts": "/tmp/aethyr-ch11-producer-captures/belt-2200/host.facts"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch11-producer-captures/belt.wasm",
+        "bytes": 331037,
+        "sha256": "1fbbeb5a1038f6ed6af9c5e25e9033daeeef0d0f462f7f5c0ca1c2a9538fa093"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/belt-2200/host.facts",
+          "bytes": 411,
+          "sha256": "880e5b3b18c57c57435d89a66a0e64d6dc62ce104aa9b713a994dae19de29d84"
+        }
+      }
+    },
+    "orbit-league": {
+      "capture_sha256": "19fcb2657f3d8e21218ae6319589e18624b58de8b5917fb0a099377c8f9fddfd",
+      "files": {
+        "u.bin": {
+          "bytes": 1728,
+          "sha256": "bfb6923f412732371f04b47b46bba62da64a4d26e1cffc5bf40b2b6f5567e4e9"
+        },
+        "hud.bin": {
+          "bytes": 147840,
+          "sha256": "f29a7b4c5fa8bd6ebc2d641376f9f233d92bd9e9727912dfcb762cf9dc0ba0c4"
+        },
+        "draws.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "mesh.bin": {
+          "bytes": 6304920,
+          "sha256": "6be9a3c06c8d5535c9ddb4833d647afe156a7b7893773fc39f7944ac612f908c"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 2310,
+        "draws": 0,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "facts": "/tmp/aethyr-ch11-producer-captures/orbit-league/host.facts",
+        "mesh": "apps/openagents-web/realms/orbit-league/assets/roadster.bin",
+        "dump": "/tmp/aethyr-ch11-producer-captures/orbit-league"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch11-producer-captures/orbitleague.wasm",
+        "bytes": 247461,
+        "sha256": "5a450190c8bac0574a7cb13628b161d7ab632f3972d1603cdc6b23a2971b6f07"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/orbit-league/host.facts",
+          "bytes": 420,
+          "sha256": "48b798b3b44002eccdfb90a737473d519baf55ffda84744bc1e156bbc4be8a8b"
+        },
+        "mesh": {
+          "path": "apps/openagents-web/realms/orbit-league/assets/roadster.bin",
+          "bytes": 6304920,
+          "sha256": "6be9a3c06c8d5535c9ddb4833d647afe156a7b7893773fc39f7944ac612f908c"
+        }
+      }
+    },
+    "fixture": {
+      "capture_sha256": "2f04fd26d3b3bfa8947b8a526118123e1c445b9a0aeab8ead5d77c527f1b2c01",
+      "files": {
+        "u.bin": {
+          "bytes": 1136,
+          "sha256": "abbf548f7a45ef3ce79e4b8785c48dc1eb0b29b10fbc72d746dbbcfd797edb66"
+        },
+        "hud.bin": {
+          "bytes": 61056,
+          "sha256": "5ee33d5a48b694c9dc11b624c00541fd22a32f131cfd650c78a5f5627e3aa274"
+        },
+        "draws.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "s0.bin": {
+          "bytes": 1024,
+          "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+        },
+        "s0.upload.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "vertices.bin": {
+          "bytes": 687408,
+          "sha256": "d7530239f78244f3079ccc6c2aa74d21e842b16ec9f5f38bcceaec9f38d3d7bd"
+        },
+        "index.bin": {
+          "bytes": 122364,
+          "sha256": "004c96d6b3b61b1fc3817333ff61ccacf32d5eb39e8544057897917eed567567"
+        },
+        "layer-0.img": {
+          "bytes": 35256,
+          "sha256": "3d333383dd5fd27638e736e9abfdfef1a8702b6fa6530d1308a396ed4d6ec64d"
+        },
+        "layer-1.img": {
+          "bytes": 29243,
+          "sha256": "21c5312b0d28c4f3483fd77f2bc8ac9d3e8dd2eb91521828a20d12f44af75014"
+        },
+        "layer-2.img": {
+          "bytes": 33510,
+          "sha256": "f97d2bf2a83c784e50d18be29a63f5c2045994b6a76846d8d722bc640aab1f4f"
+        },
+        "layer-3.img": {
+          "bytes": 21294,
+          "sha256": "f242802e24e24958022432f7a338f20875de8fb88d5eabd94eaa9c044e858b60"
+        },
+        "layer-4.img": {
+          "bytes": 69515,
+          "sha256": "918d20b4f1920da485a586170515c9f5d60c17ce452ed35209cf9bfdf586a28b"
+        },
+        "layer-5.img": {
+          "bytes": 36126,
+          "sha256": "f02ab7683fbfacf576267d929c2680a3b8792bb0ad653c481722986259088046"
+        },
+        "layer-6.img": {
+          "bytes": 220576,
+          "sha256": "888ae78644beeb6780f3926a66291046e4f457f6856a3b7bca9eede30cbb388e"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 954,
+        "draws": 0,
+        "water": 0,
+        "grass": 5184,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 1872,
+        "caster_instances": 8
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/fixture",
+        "pack": "apps/openagents-web/realms/fixture/assets/fixture.pack",
+        "facts": "verse/native/painterly.facts"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch11-producer-captures/fixture.wasm",
+        "bytes": 71380,
+        "sha256": "6a56d0faa0ed60d81c687ef1d1a8360d8b76da1d9fc7618a19526ea8922a0dcf"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "pack": {
+          "path": "apps/openagents-web/realms/fixture/assets/fixture.pack",
+          "bytes": 1267160,
+          "sha256": "df9c027378c87383f5be40d61c764b9fb615148524388d4b310229e9b0e39ad9"
+        },
+        "facts": {
+          "path": "verse/native/painterly.facts",
+          "bytes": 395,
+          "sha256": "ac36e428ef821a69b313fb67844595788ff0c8d80d368b56243b73ab8cedad1b"
+        }
+      }
+    },
+    "waterlab": {
+      "capture_sha256": "0dfd8665f378c058c93449674ad6dc2f63b273b851c28381e9e3ce915cfa8aae",
+      "files": {
+        "u.bin": {
+          "bytes": 62992,
+          "sha256": "5d0b90c55a016457ca3aed4613157c3100aee8c0e0d03b2cc54a20d9634931da"
+        },
+        "hud.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "draws.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 0,
+        "draws": 0,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 47616,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/waterlab",
+        "facts": "/tmp/aethyr-ch11-producer-captures/waterlab/host.facts"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch11-producer-captures/waterlab.wasm",
+        "bytes": 74355,
+        "sha256": "8e914551ca7d710b32e023864e51060604d897dc3196324caedb56f0637a8238"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/waterlab/host.facts",
+          "bytes": 409,
+          "sha256": "6864b04308fc83b0d4322487b4bd5b4ea56ac396da35cfd3b3e3e302ecf205a4"
+        }
+      }
+    },
+    "drop": {
+      "capture_sha256": "bb6f32f40093b35789c153c951670b4aeb748f9fb311500ea4d2645b040b7b55",
+      "files": {
+        "u.bin": {
+          "bytes": 688,
+          "sha256": "fc53e25f65120647a786b01795e3d90d26c25c8aaa7456e1261923ef3ec72965"
+        },
+        "hud.bin": {
+          "bytes": 604032,
+          "sha256": "660d15069be7354a82837de6e5ba9f0a54e9c8a9da0b82b11128c4269c0338ad"
+        },
+        "draws.bin": {
+          "bytes": 160,
+          "sha256": "8cd79ecdeb38b92ac3d7da1e07abc7b2ac66efc841177fc1ddccf1347b0caefe"
+        },
+        "s0.bin": {
+          "bytes": 1536,
+          "sha256": "cadb91c4216c4dd8acb6a0e152e434a346fd907f6160fa357061a1cab1736d8e"
+        },
+        "s0.upload.bin": {
+          "bytes": 640,
+          "sha256": "a5dc99648dd8930410a609563add4a34d4ac6ef71065814cc9da12a97237f36d"
+        },
+        "vertices.bin": {
+          "bytes": 687408,
+          "sha256": "d7530239f78244f3079ccc6c2aa74d21e842b16ec9f5f38bcceaec9f38d3d7bd"
+        },
+        "index.bin": {
+          "bytes": 122364,
+          "sha256": "004c96d6b3b61b1fc3817333ff61ccacf32d5eb39e8544057897917eed567567"
+        },
+        "layer-0.img": {
+          "bytes": 35256,
+          "sha256": "3d333383dd5fd27638e736e9abfdfef1a8702b6fa6530d1308a396ed4d6ec64d"
+        },
+        "layer-1.img": {
+          "bytes": 29243,
+          "sha256": "21c5312b0d28c4f3483fd77f2bc8ac9d3e8dd2eb91521828a20d12f44af75014"
+        },
+        "layer-2.img": {
+          "bytes": 33510,
+          "sha256": "f97d2bf2a83c784e50d18be29a63f5c2045994b6a76846d8d722bc640aab1f4f"
+        },
+        "layer-3.img": {
+          "bytes": 21294,
+          "sha256": "f242802e24e24958022432f7a338f20875de8fb88d5eabd94eaa9c044e858b60"
+        },
+        "layer-4.img": {
+          "bytes": 69515,
+          "sha256": "918d20b4f1920da485a586170515c9f5d60c17ce452ed35209cf9bfdf586a28b"
+        },
+        "layer-5.img": {
+          "bytes": 36126,
+          "sha256": "f02ab7683fbfacf576267d929c2680a3b8792bb0ad653c481722986259088046"
+        },
+        "layer-6.img": {
+          "bytes": 220576,
+          "sha256": "888ae78644beeb6780f3926a66291046e4f457f6856a3b7bca9eede30cbb388e"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 9438,
+        "draws": 10,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/drop",
+        "pack": "apps/openagents-web/realms/fixture/assets/fixture.pack",
+        "facts": "/tmp/aethyr-ch11-producer-captures/drop/host.facts"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch11-producer-captures/droprealm.wasm",
+        "bytes": 53585,
+        "sha256": "a8c77d2b46bead689e6319fd9ad8eb0550421149fa90b9ef6e37f120aed9dd08"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "pack": {
+          "path": "apps/openagents-web/realms/fixture/assets/fixture.pack",
+          "bytes": 1267160,
+          "sha256": "df9c027378c87383f5be40d61c764b9fb615148524388d4b310229e9b0e39ad9"
+        },
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/drop/host.facts",
+          "bytes": 391,
+          "sha256": "b8a9a698d91474124d2122685d91311262aee53ac3e5365b4316962a58764c8c"
+        }
+      }
+    },
+    "built": {
+      "capture_sha256": "7ebc318f7c8e156858ca02a2ea9982cf939432528b2ed8e82ddb3a93b799fe2c",
+      "files": {
+        "u.bin": {
+          "bytes": 1808,
+          "sha256": "5c880082ec574d7cf7800f462c5a4a685f5777a6cba996693a719595f76db322"
+        },
+        "hud.bin": {
+          "bytes": 178944,
+          "sha256": "9973178f025811ef70e65b3accbc4d96e9346b389f2172a39a70dafe0df2392d"
+        },
+        "draws.bin": {
+          "bytes": 96,
+          "sha256": "169c5dccc92201d3905e14ec1f13bd217423c58dfc78361b9a50af568d669b63"
+        },
+        "s0.bin": {
+          "bytes": 102400,
+          "sha256": "f9d97880b146ac4834c04b375801bde266ae6b8d13e8a60ff0d5acde2d2b0dbd"
+        },
+        "s0.upload.bin": {
+          "bytes": 15744,
+          "sha256": "c539d2fd95edfcc7a3cc465e0fbb619aa132467f8646fd649acb7990cb16841e"
+        },
+        "vertices.bin": {
+          "bytes": 687408,
+          "sha256": "d7530239f78244f3079ccc6c2aa74d21e842b16ec9f5f38bcceaec9f38d3d7bd"
+        },
+        "index.bin": {
+          "bytes": 122364,
+          "sha256": "004c96d6b3b61b1fc3817333ff61ccacf32d5eb39e8544057897917eed567567"
+        },
+        "layer-0.img": {
+          "bytes": 35256,
+          "sha256": "3d333383dd5fd27638e736e9abfdfef1a8702b6fa6530d1308a396ed4d6ec64d"
+        },
+        "layer-1.img": {
+          "bytes": 29243,
+          "sha256": "21c5312b0d28c4f3483fd77f2bc8ac9d3e8dd2eb91521828a20d12f44af75014"
+        },
+        "layer-2.img": {
+          "bytes": 33510,
+          "sha256": "f97d2bf2a83c784e50d18be29a63f5c2045994b6a76846d8d722bc640aab1f4f"
+        },
+        "layer-3.img": {
+          "bytes": 21294,
+          "sha256": "f242802e24e24958022432f7a338f20875de8fb88d5eabd94eaa9c044e858b60"
+        },
+        "layer-4.img": {
+          "bytes": 69515,
+          "sha256": "918d20b4f1920da485a586170515c9f5d60c17ce452ed35209cf9bfdf586a28b"
+        },
+        "layer-5.img": {
+          "bytes": 36126,
+          "sha256": "f02ab7683fbfacf576267d929c2680a3b8792bb0ad653c481722986259088046"
+        },
+        "layer-6.img": {
+          "bytes": 220576,
+          "sha256": "888ae78644beeb6780f3926a66291046e4f457f6856a3b7bca9eede30cbb388e"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 2796,
+        "draws": 6,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/built",
+        "pack": "apps/openagents-web/realms/fixture/assets/fixture.pack",
+        "facts": "/tmp/aethyr-ch11-producer-captures/built/host.facts"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch11-producer-captures/myrealm.wasm",
+        "bytes": 430011,
+        "sha256": "2a2965cb5d4d18d41cc85de18e7ec0507f8b3a05300f7ee88c042e5ab6b88b07"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "pack": {
+          "path": "apps/openagents-web/realms/fixture/assets/fixture.pack",
+          "bytes": 1267160,
+          "sha256": "df9c027378c87383f5be40d61c764b9fb615148524388d4b310229e9b0e39ad9"
+        },
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/built/host.facts",
+          "bytes": 395,
+          "sha256": "fb9386ab065346607136be4a1dbc0676265904ca02c251ba18bf87edfb2889db"
+        }
+      }
+    },
+    "sandbox": {
+      "capture_sha256": "78b34293e126a0c036fc2e65659805ab3e9ff2ad9ce613c237012a4a026465d2",
+      "files": {
+        "u.bin": {
+          "bytes": 1024,
+          "sha256": "51581322cdfa724f56279e9d8b37652cbef925544ce98579c0681cce84977cf8"
+        },
+        "hud.bin": {
+          "bytes": 439680,
+          "sha256": "97c7d1dc546672eded5be916d03ceeb69c46e3d0e2afb20e9201566153963183"
+        },
+        "draws.bin": {
+          "bytes": 160,
+          "sha256": "b94e2c3785c6930b242eee78ac6696c55c0aa63bcf545c550a6de7091ec18a18"
+        },
+        "s0.bin": {
+          "bytes": 262144,
+          "sha256": "d19b778b8c62895b61f1cbe72f8c5e1c0d6ac3d264ea31cf02dfcb02dd3b8dfb"
+        },
+        "s0.upload.bin": {
+          "bytes": 2240,
+          "sha256": "a859856ab3cfff9d32a85971a68b89e60b979368036496bf87caed43ce55f0ab"
+        },
+        "s1.bin": {
+          "bytes": 2048,
+          "sha256": "b694677d003a9860dd250a541427ec24ac1e04b0cf4227dbff505d5f37c1fb7a"
+        },
+        "s1.upload.bin": {
+          "bytes": 320,
+          "sha256": "74c098001375460b707b82c9af5d2dc8b3a80d3a9e1bc0b56e37ac606823e929"
+        },
+        "puffs.bin": {
+          "bytes": 1536,
+          "sha256": "ca1b412cb0c4dea9d496d85667bd6419c9e0a1b348dc94c641dd6391c142c175"
+        },
+        "puffs.upload.bin": {
+          "bytes": 576,
+          "sha256": "12a389888c20be347c160ac567b5237b375d46ece65ad0f8becc5ea577f3200c"
+        },
+        "vertices.bin": {
+          "bytes": 3514896,
+          "sha256": "ab92258e4a67ebcf5dddc24416cb315b21cb6dd74fa10959133030ae76039b91"
+        },
+        "index.bin": {
+          "bytes": 721740,
+          "sha256": "4cb71e613cd5cc0c302b912782d5b643cad4d465cbab4c458b2a38044dcd0881"
+        },
+        "layer-0.img": {
+          "bytes": 156235,
+          "sha256": "c06dfe76db1838a0ec43135d62d66f18643ffbf56cd57c75cca7b91ec837e3f3"
+        },
+        "layer-1.img": {
+          "bytes": 196794,
+          "sha256": "ad03b7e165d731b8a53cb2db2a65a57a88fa8829ccff945acb51e939a4057da9"
+        },
+        "layer-2.img": {
+          "bytes": 260741,
+          "sha256": "e8f999a4bd722d43151ca9daff09a2e6d1e9c6f4717580f5a2ace96dfb61fbc3"
+        },
+        "layer-3.img": {
+          "bytes": 157720,
+          "sha256": "5e4255dac35fe8211566b2446f26dd94858c5f18f1d5cfde799128c9fae7798d"
+        },
+        "layer-4.img": {
+          "bytes": 267341,
+          "sha256": "4da3048be862cd13b9e7ae406cdb3d89af00bf22f7fb72627aa3b5d8600de5f8"
+        },
+        "layer-5.img": {
+          "bytes": 136513,
+          "sha256": "9819f951eb6a554022467b2fc44db3e532e76fcedd8aa0c17628e03e8e248ae5"
+        },
+        "layer-6.img": {
+          "bytes": 183921,
+          "sha256": "cd5d5839c77d6993108b11699078c2d84ff8c4050dacfd596bf84d366ddd0af7"
+        },
+        "layer-7.img": {
+          "bytes": 150465,
+          "sha256": "56486f48b04d829b7dd0daf31610568371dcd5406c3844cbeecba9fcb7a6fe3d"
+        },
+        "layer-8.img": {
+          "bytes": 169719,
+          "sha256": "c56c0814b2a3dfa50641cfe2eeea80cd99eeb9f37651fdcf3a5255c8d062d602"
+        },
+        "layer-9.img": {
+          "bytes": 197600,
+          "sha256": "27032f86370225bcd5406a9638c35bfb44bc47ed8a2a7dfe1de13199dd96a741"
+        },
+        "layer-10.img": {
+          "bytes": 17457,
+          "sha256": "42bea928dfa1e112bc6e404680c91fce98e7158f6d4b6c48fc994246b6c45418"
+        },
+        "layer-11.img": {
+          "bytes": 17457,
+          "sha256": "42bea928dfa1e112bc6e404680c91fce98e7158f6d4b6c48fc994246b6c45418"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 6870,
+        "draws": 10,
+        "water": 0,
+        "grass": 0,
+        "particles": 576,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/sandbox",
+        "pack": "/tmp/aethyr-ch11-producer-captures/sandbox.pack",
+        "index": "apps/openagents-web/realms/haunted-house/assets/Haunt.indices",
+        "facts": "/tmp/aethyr-ch11-producer-captures/sandbox/host.facts",
+        "extra": "12605"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch9-consumers/realm.wasm",
+        "bytes": 537643,
+        "sha256": "f68b7fcddccd363dc1a9618ee1ad1af9b75667ad94a06578f8c5b8ba94e31084"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "pack": {
+          "path": "/tmp/aethyr-ch11-producer-captures/sandbox.pack",
+          "bytes": 6157389,
+          "sha256": "45101b859718239b813b65927602a03307152e4bfacc9b2129e77404e4ee793f"
+        },
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/sandbox/host.facts",
+          "bytes": 403,
+          "sha256": "1c069a792cff94c466351e131cca49eae3cadf617151dea7e3a8f87d9c434c0b"
+        },
+        "index": {
+          "path": "apps/openagents-web/realms/haunted-house/assets/Haunt.indices",
+          "bytes": 721740,
+          "sha256": "4cb71e613cd5cc0c302b912782d5b643cad4d465cbab4c458b2a38044dcd0881"
+        }
+      }
+    },
+    "ice-cream-man": {
+      "capture_sha256": "82bd6b8e00f08830b9e29643beb085b48e0f4d25506fb2db1af8287716fee740",
+      "files": {
+        "u.bin": {
+          "bytes": 3056,
+          "sha256": "370dc4eb1befe81149e1b4f3bebe266c94eddb98a69d52c5b8cbaade1615a860"
+        },
+        "hud.bin": {
+          "bytes": 137088,
+          "sha256": "4b761d6d99d63a95ae77f82ef81c616534064a588f7d22e4a4563a0be2bbbc3f"
+        },
+        "draws.bin": {
+          "bytes": 880,
+          "sha256": "f2682310496ccda9da2cd34ed8f68eddde57fd563b8158c74e19cf818efb60aa"
+        },
+        "s0.bin": {
+          "bytes": 14400000,
+          "sha256": "9be6e9646cbd6eb6b93fa0ceebd48e6cd68113619be719f1f680f9abcf9de576"
+        },
+        "s0.upload.bin": {
+          "bytes": 3011040,
+          "sha256": "5be87604a4ad3ce3b5443c126948f759ec83e0d3aa58dc8d05e1059160db1b03"
+        },
+        "s1.bin": {
+          "bytes": 196608,
+          "sha256": "b60d308f55f69d357e454ad20b367131d994195e83d98d7e07ee28c2deb278d2"
+        },
+        "s1.upload.bin": {
+          "bytes": 3072,
+          "sha256": "1c0e929fd859d80b7b819a7341369a8da669cc2682028d520ff022d7390cbda8"
+        },
+        "index.bin": {
+          "bytes": 4096,
+          "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 2142,
+        "draws": 55,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:87:1,3:87:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/ice-cream-man",
+        "index": "apps/openagents-web/realms/ice-cream-man/assets/IceCream.indices",
+        "facts": "/tmp/aethyr-ch11-producer-captures/ice-cream-man/host.facts",
+        "hash": "easy"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch11-producer-captures/icecream.wasm",
+        "bytes": 430952,
+        "sha256": "719a93a9e859454ece808eeae29b6f8ea010624de570ab8eaff6ce137611c5e7"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/ice-cream-man/host.facts",
+          "bytes": 427,
+          "sha256": "27425e463626750e5ea704171b571d905e640e1c015914075b598d8d466d59f6"
+        },
+        "index": {
+          "path": "apps/openagents-web/realms/ice-cream-man/assets/IceCream.indices",
+          "bytes": 4096,
+          "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+        }
+      }
+    },
+    "hecates-cemetery": {
+      "capture_sha256": "e57b88415a444b35ba2d9662dee78da9748962870609e2c7bed8bef307cbe17e",
+      "files": {
+        "u.bin": {
+          "bytes": 1984,
+          "sha256": "72246e6ba51ce7f4949adf4c892e0366f2dd9c762b6621bf94963c92544416d1"
+        },
+        "hud.bin": {
+          "bytes": 284928,
+          "sha256": "f66f662082b376dae560d3276cfbc4bb600e933f439eeae7c1c1703b5e8c174d"
+        },
+        "draws.bin": {
+          "bytes": 96,
+          "sha256": "a7f92cc7d0c327b4bc0144a881d9071b01fb97be6062de13f83c7903c804f340"
+        },
+        "s0.bin": {
+          "bytes": 16912,
+          "sha256": "172ab0d28769218fcbf0d885cb4e6177b858f4e21f53f84b9ab71ed68dfc3a1d"
+        },
+        "s0.upload.bin": {
+          "bytes": 16900,
+          "sha256": "551ff9ff437afac1088800e15320a31522223082db4788f973a055a017aef2c0"
+        },
+        "s1.bin": {
+          "bytes": 199680,
+          "sha256": "179923b059e3ecab28d9d3d25498f1b8330ccc6ca9d9b9032b64c69957571768"
+        },
+        "s1.upload.bin": {
+          "bytes": 199680,
+          "sha256": "179923b059e3ecab28d9d3d25498f1b8330ccc6ca9d9b9032b64c69957571768"
+        },
+        "puffs.bin": {
+          "bytes": 1536,
+          "sha256": "92aa124235e55e96eff21b9943a057860a65500afd80c913137fc89750e61504"
+        },
+        "puffs.upload.bin": {
+          "bytes": 384,
+          "sha256": "dd90d534bd7644bc409ff4e3aab7d369859a45fbed7f48aa155abcece5a9dc23"
+        },
+        "index.bin": {
+          "bytes": 4096,
+          "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 4452,
+        "draws": 6,
+        "water": 0,
+        "grass": 0,
+        "particles": 384,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/hecates-cemetery",
+        "index": "apps/openagents-web/realms/hecates-cemetery/assets/Villa.indices",
+        "extra": "4096,12605"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch9-consumers/villa.wasm",
+        "bytes": 520465,
+        "sha256": "1fd2a42d2892b8a7e2097e24b9d0efdf066ceb2da608098c18f5a77c3d08cd9e"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "index": {
+          "path": "apps/openagents-web/realms/hecates-cemetery/assets/Villa.indices",
+          "bytes": 4096,
+          "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+        }
+      }
+    },
+    "hold-the-stair": {
+      "capture_sha256": "0e8e61115418c8af3f0315b8245b550b573048fa9b26d1d6865caaf00a9d094c",
+      "files": {
+        "u.bin": {
+          "bytes": 1888,
+          "sha256": "f7e232c138ebda19bf6605de7a5a0cee2bc5f8777d2327f2666ce2acb85c1ce5"
+        },
+        "hud.bin": {
+          "bytes": 462336,
+          "sha256": "ad5598425cc03566425f8ec2ef3bad19b54917fbd2bc70857bc6b1768570c00b"
+        },
+        "draws.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 7224,
+        "draws": 0,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/hold-the-stair",
+        "facts": "/tmp/aethyr-ch11-producer-captures/hold-the-stair/host.facts"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch11-producer-captures/stair.wasm",
+        "bytes": 238373,
+        "sha256": "38e3f711299c82c12a5c86faa9810a21ad2b63002462d5708e60cd7397935630"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/hold-the-stair/host.facts",
+          "bytes": 435,
+          "sha256": "a4a16229d267c175aab06038eb43b9498569c9de129478972f46c2ee7c065efb"
+        }
+      }
+    },
+    "watchtower": {
+      "capture_sha256": "9c9fe45f082de8ea42f61cd2281cb0758dadeb9064fbdb46b23a06c44d2ad19b",
+      "files": {
+        "u.bin": {
+          "bytes": 240,
+          "sha256": "67233b18fb833f7c59745ce55321c49b308c7d57ca9b3e15dc9c4d56d36ca280"
+        },
+        "hud.bin": {
+          "bytes": 1717248,
+          "sha256": "6ab6d800839f0ed0f3c2a16b95c2cd6475d23b455a4295340112f2c6034748c0"
+        },
+        "draws.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 26832,
+        "draws": 0,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/watchtower",
+        "facts": "/tmp/aethyr-ch11-producer-captures/watchtower/host.facts"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch11-producer-captures/watchtower.wasm",
+        "bytes": 216951,
+        "sha256": "0d8d75b99a0a752d179e39c586ee45dc207e9d6011fea44047e363b7eadc9181"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/watchtower/host.facts",
+          "bytes": 415,
+          "sha256": "5cda40f3d86d2796e16bfa07e884461df6487b34f4d9e7db5aeba46d263c8dd1"
+        }
+      }
+    },
+    "garden": {
+      "capture_sha256": "6c916c243cc4b2797d2d200fa2a8111b3cde2bb71e3140fe2b57b209390ea61f",
+      "files": {
+        "u.bin": {
+          "bytes": 1312,
+          "sha256": "f65fccfb055ee5ef4c9cc36a446ddfc74feae257fcd66557d2b65f716c0dd977"
+        },
+        "hud.bin": {
+          "bytes": 106752,
+          "sha256": "9cac623cd3424ac0d06cb87f87c1a1abc5a350f6fe8bdb16e3c1dcdc41bcf802"
+        },
+        "draws.bin": {
+          "bytes": 80,
+          "sha256": "b8fc3317de4536e10765260e3de6e538c8948a0b67b859c81b673cdd33a15b57"
+        },
+        "s0.bin": {
+          "bytes": 16912,
+          "sha256": "17ab0982402d1b47650b798a4028e4526a57eb1c3befb79cc7dde5d5cf305882"
+        },
+        "s0.upload.bin": {
+          "bytes": 16900,
+          "sha256": "47cc5534a3948405fa9059b59d4b52ce1cf7a965a9d12b9bfb7909dbda9dd9a5"
+        },
+        "s1.bin": {
+          "bytes": 29184,
+          "sha256": "3c8a3e8c796ab021f3c5997483fdb8d7a257f37e0cfa33f434c4fa65a6119e4e"
+        },
+        "s1.upload.bin": {
+          "bytes": 29184,
+          "sha256": "3c8a3e8c796ab021f3c5997483fdb8d7a257f37e0cfa33f434c4fa65a6119e4e"
+        },
+        "index.bin": {
+          "bytes": 4096,
+          "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 1668,
+        "draws": 5,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/garden",
+        "index": "apps/openagents-web/realms/garden/assets/Garden.indices",
+        "extra": "4096"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch9-consumers/garden.wasm",
+        "bytes": 213330,
+        "sha256": "97b8534f3d5571fd55f84a832dfff70a507ae81e0e500fc931184ab0a1331335"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "index": {
+          "path": "apps/openagents-web/realms/garden/assets/Garden.indices",
+          "bytes": 4096,
+          "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+        }
+      }
+    },
+    "galaxy": {
+      "capture_sha256": "c318b58b001e45a2e07a4b69591b7aad1b9d3225f7161c9bdea0042bdb19c2c9",
+      "files": {
+        "u.bin": {
+          "bytes": 544,
+          "sha256": "dad046e34fe62454b6d5d3c529677bb135b757e37bab40e124a6d6d0f8fe28db"
+        },
+        "hud.bin": {
+          "bytes": 516480,
+          "sha256": "675f134e2d54a3140deeacb4c967c2d4e52f42e5d88f2736c9e4f58b263e6da5"
+        },
+        "draws.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "counts": {
+        "frame": 90,
+        "hud": 8070,
+        "draws": 0,
+        "water": 0,
+        "grass": 0,
+        "particles": 0,
+        "surface": 0,
+        "caster_vertices": 0,
+        "caster_instances": 0
+      },
+      "options": {
+        "size": "320x180",
+        "frames": "90",
+        "every": "90",
+        "golden": "1",
+        "keys": "2:13:1,3:13:0",
+        "dump": "/tmp/aethyr-ch11-producer-captures/galaxy",
+        "facts": "/tmp/aethyr-ch11-producer-captures/galaxy/host.facts",
+        "page": "1"
+      },
+      "wasm": {
+        "path": "/tmp/aethyr-ch11-producer-captures/verse.wasm",
+        "bytes": 128061,
+        "sha256": "0c5d39d08e484ec5d0e89f8fc3eb66854d416b6480a35db44ccbc07df9db2265"
+      },
+      "tool": {
+        "path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/capture-render-frame.ts",
+        "sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b"
+      },
+      "inputs": {
+        "facts": {
+          "path": "/tmp/aethyr-ch11-producer-captures/galaxy/host.facts",
+          "bytes": 396,
+          "sha256": "97082f9978f590d885f323664b60c6cdacfac232c67070e504e00f137f2ccc86"
+        }
+      }
+    }
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "profiles": 18,
+      "generated_c_sha256": "3f8f32024351dedc1e719889bc97e384d924e5d647a55f9f3957eda741e4bf46",
+      "generated_header_sha256": "5385d1a615ac7f598e273a5ab9bc655b26f703e782e81de56c6fe4cd27efd312",
+      "executable_sha256": "2d4133f993ac63e2b00e83d3fd4c0467440f95a0a6208a9f1bc101f4c1605d31",
+      "transcript": "/private/tmp/aethyr-ch11-geometry-producers/debug.json",
+      "transcript_sha256": "81b848eab4b3bc4d13b25ebf67fe4bc9b2dbf1bbbc6a8a085fd301f38abe19f7",
+      "negative_inputs": 58
+    },
+    {
+      "mode": "release",
+      "profiles": 18,
+      "generated_c_sha256": "a8cf40f726239b92cb5c3bb7b4e23d6fec99f2154f68fb1428324314cb0bcdd0",
+      "generated_header_sha256": "5385d1a615ac7f598e273a5ab9bc655b26f703e782e81de56c6fe4cd27efd312",
+      "executable_sha256": "99915eadd865efe00c62f2dba714cc94cda90db83f661af7868cb8bd3abd7485",
+      "transcript": "/private/tmp/aethyr-ch11-geometry-producers/release.json",
+      "transcript_sha256": "81b848eab4b3bc4d13b25ebf67fe4bc9b2dbf1bbbc6a8a085fd301f38abe19f7",
+      "negative_inputs": 58
+    },
+    {
+      "mode": "sanitized",
+      "profiles": 18,
+      "generated_c_sha256": "3f8f32024351dedc1e719889bc97e384d924e5d647a55f9f3957eda741e4bf46",
+      "generated_header_sha256": "5385d1a615ac7f598e273a5ab9bc655b26f703e782e81de56c6fe4cd27efd312",
+      "executable_sha256": "24a3bb8759f2b91da7195ca695d6259820d91467085f8dd34ac9920034211b73",
+      "transcript": "/private/tmp/aethyr-ch11-geometry-producers/sanitized.json",
+      "transcript_sha256": "81b848eab4b3bc4d13b25ebf67fe4bc9b2dbf1bbbc6a8a085fd301f38abe19f7",
+      "negative_inputs": 58
+    }
+  ],
+  "elapsed_seconds": 10.584,
+  "scope": "18 actual retained producer payloads through normal-C Coax geometry and frame admission, independent wire-range audit and atomic-refusal negative inputs. App encoding rules are qualified by the sharp Coax checks. Does not prove shader arithmetic, asset BVH truth, GPU execution or images.",
+  "mutation": {
+    "scope": "root-only; complete imported baseline retained",
+    "total": 705,
+    "killed": 705,
+    "survivors": 0,
+    "log": "/tmp/aethyr-ch11-geometry-mutation-9.log",
+    "log_sha256": "f3b7dfe91e9ebb3cb72148c7ff82ff32da79ab3e8185b105f903e6e142ec6541",
+    "source_sha256": "1cebf7a63d674f6e548365d8a51f59bf4f889f680877992e7e4e6fa91fdc7ac5",
+    "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6"
+  },
+  "tooling_failure_controls": {
+    "command": "python3 aethyr/render/tests/test_geometry_tooling.py",
+    "checks": 4,
+    "status": "pass",
+    "source_sha256": "f06b6856286b93899398c37ce0594a1d65b0d12ea375613f962c33bc43f163a4"
+  }
+}

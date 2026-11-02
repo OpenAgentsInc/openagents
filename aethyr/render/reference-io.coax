@@ -1,0 +1,124 @@
+// The CPU renderer reads the checked tree's actual stage interface and flags.
+// It imports the admitted tree carrier, never a compiler implementation.
+#module "aethyr.render.reference.io";
+#authority;
+#load "reference-ir.coax";
+RQInterface :: struct {
+ status:RQStatus;proc:int;params:int;result_type:int;result_words:int;input_words:int;
+ attributes_type:int=-1;front_parameter:int=-1;resource_start:int;
+}
+RQParameter :: struct {status:RQStatus;ty:int;word_offset:int;words:int;kind:int;shape:int;stride:int;name_id:int;}
+RQIOField :: struct {status:RQStatus;ty:int;word_offset:int;words:int;byte_offset:int;location:int=-1;position:bool;flat:bool;depth:bool;}
+#load "tests/reference-io-checks.coax";
+
+rq_ir_vector_width :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int)->int {
+ if p.status!=RQStatus.ok || cast,trunc(u64)ty>=cast(u64)p.types || rq_ir_type(meta,ty,0)!=7 {return 0;}
+ at:=rq_ir_type(meta,ty,1);n:=cast(int)tree[at+1];if n<2 || n>4 {return 0;}
+ for j:0..<n {if cast(int)tree[at+2+j*2]!=2 {return 0;}}return n;
+}
+rq_ir_parameter :: (p:RQProgram,tree:[]u32,meta:[]int,stage:int,index:int)->RQParameter {
+ if p.status!=RQStatus.ok {return RQParameter.{status=p.status};}
+ proc:=rq_ir_entry(p,tree,meta,stage);
+ if proc<0 || index<0 || index>=rq_ir_proc(meta,proc,1) {return RQParameter.{status=RQStatus.resource};}
+ at:=rq_ir_proc(meta,proc,7);ty:=cast(int)tree[at+index];offset:=0;
+ for j:0..<index {offset+=4*rq_ir_type(meta,cast(int)tree[at+j],2);}
+ names:=p.entry_at;name_id:int;
+ for e:0..<p.entries {
+  s:=cast(int)tree[names];
+  if s==stage {name_id=cast(int)tree[names+2+index];break;}
+  pr:=cast(int)tree[names+1];names+=2+rq_ir_proc(meta,pr,1);
+ }
+ raw:=rq_ir_type(meta,ty,0);shape:=0;stride:=0;kind:=0;type_at:=rq_ir_type(meta,ty,1);
+ if raw==9 {kind=1;child:=cast(int)tree[type_at+1];stride=rq_ir_type(meta,child,3);}
+ else if raw==10 {kind=2;shape=cast(int)tree[type_at+1];}
+ else if raw==11 {kind=3;shape=cast(int)tree[type_at+1];}
+ return RQParameter.{ty=ty,word_offset=offset,words=rq_ir_type(meta,ty,2),kind=kind,shape=shape,stride=stride,name_id=name_id};
+}
+rq_ir_io_field_count :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,role:int)->int {
+ if p.status!=RQStatus.ok || cast,trunc(u64)ty>=cast(u64)p.types || cast,trunc(u64)role>2 {return 0;}
+ vector:=rq_ir_vector_width(p,tree,meta,ty);
+ if vector==4 && role!=1 {return 1;}
+ if rq_ir_type(meta,ty,0)!=7 || vector!=0 {return 0;}
+ count:=cast(int)tree[rq_ir_type(meta,ty,1)+1];if count>32 {return 0;}return count;
+}
+// One canonical IO slot: a bare V4 is a whole value at index0. Struct
+// members retain storage layout/flags. Stage classification is separate.
+rq_ir_field_layout :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,index:int)->RQIOField {
+ count:=rq_ir_io_field_count(p,tree,meta,ty,0);
+ if index<0 || index>=count {return RQIOField.{status=RQStatus.resource};}
+ r:RQIOField;vector:=rq_ir_vector_width(p,tree,meta,ty);
+ if vector==4 {r.ty=ty;r.words=4;}
+ else {
+  at:=rq_ir_type(meta,ty,1);r.ty=cast(int)tree[at+2+index*2];flags:=tree[at+3+index*2];
+  r.byte_offset=cast(int)(flags&1073741823);r.flat=(flags>>31)!=0;r.depth=((flags>>30)&1)!=0;
+  for j:0..<index {r.word_offset+=rq_ir_type(meta,cast(int)tree[at+2+j*2],2);}
+  r.words=rq_ir_type(meta,r.ty,2);
+ }
+ scalar:=rq_ir_type(meta,r.ty,0);
+ if scalar==3 || scalar==4 {r.flat=true;}
+ return r;
+}
+rq_ir_io_field :: (p:RQProgram,tree:[]u32,meta:[]int,ty:int,index:int,role:int)->RQIOField {
+ count:=rq_ir_io_field_count(p,tree,meta,ty,role);
+ if index<0 || index>=count {return RQIOField.{status=RQStatus.resource};}
+ r:=rq_ir_field_layout(p,tree,meta,ty,index);vector:=rq_ir_vector_width(p,tree,meta,ty);
+ scalar:=rq_ir_type(meta,r.ty,0);width:=rq_ir_vector_width(p,tree,meta,r.ty);
+ if role==0 {
+  if index==0 {if width!=4 || r.depth {return RQIOField.{status=RQStatus.unsupported};}r.position=true;}
+  else {
+   if r.depth || (scalar!=2 && scalar!=3 && scalar!=4 && width==0) {return RQIOField.{status=RQStatus.unsupported};}
+   r.location=index-1;
+  }
+ } else if role==1 {
+  if r.depth || (scalar!=2 && scalar!=3 && scalar!=4 && width==0) {return RQIOField.{status=RQStatus.unsupported};}r.location=index;
+ } else {
+  if r.depth {if scalar!=2 {return RQIOField.{status=RQStatus.unsupported};}}
+  else {
+   if width!=4 {return RQIOField.{status=RQStatus.unsupported};}
+   r.location=0;
+   if vector==0 {at:=rq_ir_type(meta,ty,1);for j:0..<index {if ((tree[at+3+j*2]>>30)&1)==0 {r.location+=1;}}}
+  }
+ }
+ return r;
+}
+rq_ir_interface :: (p:RQProgram,tree:[]u32,meta:[]int,stage:int)->RQInterface {
+ if p.status!=RQStatus.ok {return RQInterface.{status=p.status};}
+ proc:=rq_ir_entry(p,tree,meta,stage);if proc<0 {return RQInterface.{status=RQStatus.resource};}
+ params:=rq_ir_proc(meta,proc,1);ret:=rq_ir_proc(meta,proc,0);
+ r:=RQInterface.{proc=proc,params=params,result_type=ret,result_words=rq_ir_type(meta,ret,2),input_words=rq_ir_parameter_words(p,tree,meta,stage)};
+ if stage==0 {
+  if params<2 || rq_ir_parameter(p,tree,meta,stage,0).ty!=4 || rq_ir_parameter(p,tree,meta,stage,1).ty!=4 {return RQInterface.{status=RQStatus.unsupported};}
+  r.resource_start=2;
+  if params>2 {
+   arg:=rq_ir_parameter(p,tree,meta,stage,2);
+   if arg.kind==0 {r.attributes_type=arg.ty;r.resource_start=3;}
+  }
+  if r.attributes_type!=(-1) {
+   if rq_ir_type(meta,r.attributes_type,0)!=7 {return RQInterface.{status=RQStatus.unsupported};}
+   // A prepared struct is nonempty; each member validates the attribute role,
+   // including the vector-as-a-whole and field-count exclusions.
+   count:=cast(int)tree[rq_ir_type(meta,r.attributes_type,1)+1];
+   for j:0..<count {if rq_ir_io_field(p,tree,meta,r.attributes_type,j,1).status!=RQStatus.ok {return RQInterface.{status=RQStatus.unsupported};}}
+  }
+  count:=rq_ir_io_field_count(p,tree,meta,ret,0);if count==0 {return RQInterface.{status=RQStatus.unsupported};}
+  for j:0..<count {if rq_ir_io_field(p,tree,meta,ret,j,0).status!=RQStatus.ok {return RQInterface.{status=RQStatus.unsupported};}}
+ } else {
+  if params<1 {return RQInterface.{status=RQStatus.unsupported};}
+  arg:=rq_ir_parameter(p,tree,meta,stage,0);count:=rq_ir_io_field_count(p,tree,meta,arg.ty,0);
+  if count==0 {return RQInterface.{status=RQStatus.unsupported};}
+  for j:0..<count {if rq_ir_io_field(p,tree,meta,arg.ty,j,0).status!=RQStatus.ok {return RQInterface.{status=RQStatus.unsupported};}}
+  r.resource_start=1;
+  if rq_ir_parameter(p,tree,meta,stage,1).ty==1 {r.front_parameter=1;r.resource_start=2;}
+  if ret!=0 {
+   outputs:=rq_ir_io_field_count(p,tree,meta,ret,2);if outputs==0 {return RQInterface.{status=RQStatus.unsupported};}
+   colors:=0;depths:=0;
+   for j:0..<outputs {
+    f:=rq_ir_io_field(p,tree,meta,ret,j,2);if f.status!=RQStatus.ok {return RQInterface.{status=RQStatus.unsupported};}
+    if f.depth {depths+=1;}else {colors+=1;}
+   }
+   if depths>1 || colors>8 {return RQInterface.{status=RQStatus.unsupported};}
+  }
+ }
+ for j:r.resource_start..<params {if rq_ir_parameter(p,tree,meta,stage,j).kind==0 {return RQInterface.{status=RQStatus.unsupported};}}
+ return r;
+}

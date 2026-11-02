@@ -203,7 +203,7 @@ void vks_pipe_open(Vkc *v, VksPipe *p, const VksPass *pass) {
   VkDescriptorPoolSize sizes[3] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0}, {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 0}, {VK_DESCRIPTOR_TYPE_SAMPLER, 0}};
   for (uint32_t i = 0; i < pass->nb; i++) {
     binds[i] = (VkDescriptorSetLayoutBinding){.binding = i, .descriptorType = descriptor(pass->bindings[i].kind), .descriptorCount = 1,
-                                              .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT};
+                                              .stageFlags = pass->bindings[i].stages ? pass->bindings[i].stages : VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT};
     sizes[pass->bindings[i].kind - 1].descriptorCount++;
   }
   VkDescriptorSetLayoutCreateInfo dsli = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = pass->nb, .pBindings = binds};
@@ -223,7 +223,7 @@ void vks_pipe_open(Vkc *v, VksPipe *p, const VksPass *pass) {
     const VksBinding *b = &pass->bindings[i];
     writes_[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = p->set, .dstBinding = i,
                                         .descriptorCount = 1, .descriptorType = descriptor(b->kind)};
-    if (b->kind == VKS_STORAGE) { bufs[i] = (VkDescriptorBufferInfo){b->buffer->buf, 0, VK_WHOLE_SIZE}; writes_[i].pBufferInfo = &bufs[i]; }
+    if (b->kind == VKS_STORAGE) { bufs[i] = (VkDescriptorBufferInfo){b->buffer->buf, b->offset, b->range ? b->range : VK_WHOLE_SIZE}; writes_[i].pBufferInfo = &bufs[i]; }
     else {
       imgs[i] = (VkDescriptorImageInfo){.sampler = b->sampler, .imageView = b->kind == VKS_IMAGE ? b->image->view : VK_NULL_HANDLE,
                                         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
@@ -279,10 +279,12 @@ void vks_pipe_record(VksPipe *p, VkCommandBuffer cmd, const VksPass *pass) {
   VkRenderPassBeginInfo rbi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = p->rp, .framebuffer = p->fb,
                                .renderArea = {{0, 0}, {p->w, p->h}}, .clearValueCount = n, .pClearValues = clears};
   vkCmdBeginRenderPass(cmd, &rbi, VK_SUBPASS_CONTENTS_INLINE);
+  if (pass->nattrs && (pass->vertex_count || pass->ndraws)) {
+    VkDeviceSize zero = 0; vkCmdBindVertexBuffers(cmd, 0, 1, &pass->vertices->buf, &zero);
+  }
   if (pass->vertex_count) {
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, 0, 1, &p->set, 0, NULL);
-    if (pass->nattrs) { VkDeviceSize zero = 0; vkCmdBindVertexBuffers(cmd, 0, 1, &pass->vertices->buf, &zero); }
     vkCmdDraw(cmd, pass->vertex_count, pass->instance_count ? pass->instance_count : 1, 0, 0);
   }
   if (pass->ndraws) {
@@ -308,6 +310,54 @@ void vks_pipe_close(Vkc *v, VksPipe *p) {
   vkDestroyDescriptorSetLayout(dev, p->dsl, NULL);
   vkDestroyFramebuffer(dev, p->fb, NULL);
   vkDestroyRenderPass(dev, p->rp, NULL);
+}
+
+// Explicit surfaces for the admitted Coax graph. The legacy one-pass helper
+// above remains unchanged; these calls perform no draw decoding or ordering.
+void vks_surface_open(Vkc *v,VksSurface *s,const VksPass *a,int store_depth) {
+  memset(s,0,sizeof*s);
+  const VksImage *first=a->ntargets?a->targets[0]:a->depth;
+  if(!first||a->ntargets>8){fprintf(stderr,"vks: no representable surface attachments\n");exit(1);}
+  s->w=first->w;s->h=first->h;s->colours=a->ntargets;s->depth=a->depth!=NULL;
+  VkAttachmentDescription att[9];VkAttachmentReference refs[8],depth_ref;VkImageView views[9];uint32_t n=0;
+  for(uint32_t i=0;i<a->ntargets;i++,n++){
+    att[n]=(VkAttachmentDescription){.format=a->targets[i]->format,.samples=VK_SAMPLE_COUNT_1_BIT,
+      .loadOp=a->keep?VK_ATTACHMENT_LOAD_OP_LOAD:VK_ATTACHMENT_LOAD_OP_CLEAR,.storeOp=VK_ATTACHMENT_STORE_OP_STORE,
+      .stencilLoadOp=VK_ATTACHMENT_LOAD_OP_DONT_CARE,.stencilStoreOp=VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      .initialLayout=a->keep?VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:VK_IMAGE_LAYOUT_UNDEFINED,.finalLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    refs[i]=(VkAttachmentReference){n,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};views[n]=a->targets[i]->view;
+  }
+  if(a->depth){
+    att[n]=(VkAttachmentDescription){.format=a->depth->format,.samples=VK_SAMPLE_COUNT_1_BIT,
+      .loadOp=a->keep?VK_ATTACHMENT_LOAD_OP_LOAD:VK_ATTACHMENT_LOAD_OP_CLEAR,.storeOp=store_depth?VK_ATTACHMENT_STORE_OP_STORE:VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      .stencilLoadOp=VK_ATTACHMENT_LOAD_OP_DONT_CARE,.stencilStoreOp=VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      .initialLayout=a->keep?VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:VK_IMAGE_LAYOUT_UNDEFINED,.finalLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    depth_ref=(VkAttachmentReference){n,VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};views[n++]=a->depth->view;
+  }
+  VkSubpassDescription sub={.pipelineBindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS,.colorAttachmentCount=a->ntargets,.pColorAttachments=refs,.pDepthStencilAttachment=a->depth?&depth_ref:NULL};
+  VkPipelineStageFlags stages=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT|VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+  VkAccessFlags access=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT|VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+  VkSubpassDependency deps[2]={
+    {.srcSubpass=VK_SUBPASS_EXTERNAL,.dstSubpass=0,.srcStageMask=VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT|VK_PIPELINE_STAGE_TRANSFER_BIT|stages,.dstStageMask=stages,.srcAccessMask=access,.dstAccessMask=access},
+    {.srcSubpass=0,.dstSubpass=VK_SUBPASS_EXTERNAL,.srcStageMask=stages,.dstStageMask=VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT|VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_TRANSFER_BIT,.srcAccessMask=access,.dstAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_TRANSFER_READ_BIT}};
+  VkRenderPassCreateInfo rp={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,.attachmentCount=n,.pAttachments=att,.subpassCount=1,.pSubpasses=&sub,.dependencyCount=2,.pDependencies=deps};
+  CHECK(vkCreateRenderPass(v->dev,&rp,NULL,&s->rp));
+  VkFramebufferCreateInfo fb={.sType=VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,.renderPass=s->rp,.attachmentCount=n,.pAttachments=views,.width=s->w,.height=s->h,.layers=1};
+  CHECK(vkCreateFramebuffer(v->dev,&fb,NULL,&s->fb));
+}
+void vks_surface_begin(const VksSurface *s,VkCommandBuffer cmd,const float clear[4],float clear_depth){
+  VkClearValue values[9];for(uint32_t i=0;i<s->colours;i++)memcpy(values[i].color.float32,clear,16);
+  if(s->depth)values[s->colours].depthStencil=(VkClearDepthStencilValue){clear_depth,0};
+  VkRenderPassBeginInfo begin={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,.renderPass=s->rp,.framebuffer=s->fb,.renderArea={{0,0},{s->w,s->h}},.clearValueCount=s->colours+(s->depth?1u:0u),.pClearValues=values};
+  vkCmdBeginRenderPass(cmd,&begin,VK_SUBPASS_CONTENTS_INLINE);
+}
+void vks_surface_end(VkCommandBuffer cmd){vkCmdEndRenderPass(cmd);}
+void vks_surface_close(Vkc *v,VksSurface *s){vkDestroyFramebuffer(v->dev,s->fb,NULL);vkDestroyRenderPass(v->dev,s->rp,NULL);memset(s,0,sizeof*s);}
+void vks_pipe_bind(const VksPipe *p,VkCommandBuffer cmd,const VksPass *pass){
+  vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,p->pipeline);
+  vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,p->layout,0,1,&p->set,0,NULL);
+  if(pass->nattrs){VkDeviceSize zero=0;vkCmdBindVertexBuffers(cmd,0,1,&pass->vertices->buf,&zero);}
+  if(pass->index)vkCmdBindIndexBuffer(cmd,pass->index->buf,0,VK_INDEX_TYPE_UINT32);
 }
 
 typedef struct { VksImage *from, *to; } ImageCopy;

@@ -1,0 +1,50 @@
+// Opt-in, device-probed UNORM8 filter models. Analytic remains the default.
+// These identities do not claim universal Vulkan/WebGPU filtering precision.
+#module "aethyr.render.filter.profile";
+#authority;
+RQFilterProfile :: enum u8 {analytic;metal_unorm8;nvidia_unorm8_integer;invalid;}
+RQStorageFormat :: enum u8 {unclassified;unorm8;half;srgb8;float32;depth32;}
+RQFilterLimits :: struct {ok:bool;axis:int;lod:int;result:int;units:int;integer_lod:bool;joint:bool;}
+RQFilterWeights :: struct {v:[4]f64;}
+
+#test "filter profiles preserve analytic default and explicit measured identities" {
+ a:=rq_filter_limits(RQFilterProfile.analytic);#assert a.ok && a.axis==0 && a.lod==0 && a.result==0 && a.units==0 && !a.integer_lod && !a.joint;
+ m:=rq_filter_limits(rq_filter_profile("metal-unorm8"));#assert m.ok && m.axis==256 && m.lod==64 && m.result==4080 && m.units==16 && !m.integer_lod && !m.joint;
+ n:=rq_filter_limits(rq_filter_profile("nvidia-unorm8-integer"));#assert n.ok && n.axis==256 && n.lod==0 && n.result==65535 && n.units==257 && n.integer_lod && n.joint;
+ #assert rq_filter_profile("analytic")==RQFilterProfile.analytic && !rq_filter_limits(rq_filter_profile("unknown")).ok;
+ #assert !rq_filter_limits(RQFilterProfile.invalid).ok;
+}
+#test "filter bilinear models distinguish joint weights and preserve both marginal sums" {
+ a:=rq_filter_weights(26.0/256,51.0/256,false);
+ #assert a.v[0]==47150.0/65536 && a.v[1]==5330.0/65536 && a.v[2]==11730.0/65536 && a.v[3]==1326.0/65536;
+ n:=rq_filter_weights(26.0/256,51.0/256,true);
+ #assert n.v[0]==184.0/256 && n.v[1]==21.0/256 && n.v[2]==46.0/256 && n.v[3]==5.0/256;
+ tie:=rq_filter_weights(1.0/256,0.5,true);
+ #assert tie.v[0]==0.5 && tie.v[1]==0 && tie.v[2]==127.0/256 && tie.v[3]==1.0/256;
+ other:=rq_filter_weights(3.0/256,0.5,true);
+ #assert other.v[0]==127.0/256 && other.v[1]==1.0/256 && other.v[2]==126.0/256 && other.v[3]==2.0/256;
+ edge:=rq_filter_weights(0,1,true);#assert edge.v[0]==0 && edge.v[1]==0 && edge.v[2]==1 && edge.v[3]==0;
+}
+rq_filter_profile :: (name:string)->RQFilterProfile {
+ if name=="analytic" {return RQFilterProfile.analytic;}
+ if name=="metal-unorm8" {return RQFilterProfile.metal_unorm8;}
+ if name=="nvidia-unorm8-integer" {return RQFilterProfile.nvidia_unorm8_integer;}
+ return RQFilterProfile.invalid;
+}
+rq_filter_limits :: (profile:RQFilterProfile)->RQFilterLimits {
+ if profile==RQFilterProfile.analytic {return RQFilterLimits.{ok=true};}
+ if profile==RQFilterProfile.metal_unorm8 {return RQFilterLimits.{ok=true,axis=256,lod=64,result=4080,units=16};}
+ if profile==RQFilterProfile.nvidia_unorm8_integer {return RQFilterLimits.{ok=true,axis=256,result=65535,units=257,integer_lod=true,joint=true};}
+ return RQFilterLimits.{};
+}
+// Inputs are admitted unit fractions; measured callers supply exact multiples
+// of1/256. Rounding the first joint weight and retaining the two exact marginal
+// sums avoids inventing gain at the independently probed half-weight ties.
+rq_filter_weights :: (x:f64,y:f64,joint:bool)->RQFilterWeights {
+ first:=(1-x)*(1-y);
+ if joint {
+  first=floor(first*256+0.5)/256;
+  return RQFilterWeights.{v=[4]f64.[first,1-y-first,1-x-first,x+y-1+first]};
+ }
+ return RQFilterWeights.{v=[4]f64.[first,x*(1-y),(1-x)*y,x*y]};
+}

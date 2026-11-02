@@ -1,0 +1,13 @@
+{
+  "status": "historical candidate",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "source_inputs_not_retained_due_to_later_changes": [],
+  "archive_sha256": "2e8d521531d450bfe81d250704308f77098da2a4864be7bd0b4a10b11c707f6a",
+  "root_mutants": {
+    "package_source_part": 506,
+    "build_policy_caster": 392,
+    "interface": 61
+  },
+  "survivors": 0,
+  "scope": "Local0.47 artifact693, current cache/package/caster transport policies. New default compiler and actual18-profile hosts not yet qualified. Replay hook/compiler work is separate."
+}

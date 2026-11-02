@@ -162,7 +162,7 @@ net_pump :: (a: [] Belt, b: [] Belt) {
 }
 net_say :: (s: [] Belt, t: string) { belt_message(s, SOCKET_KIND + 4 * s[0].lock[0].sock + SOCKET_FRAME, t); }
 
-#test "net: INVITE makes a room; the one who joins gets the game; both fleets' orders play the same game in lockstep; a nudged client is seen by both and mended" {
+#test "net: INVITE makes a room; the one who joins gets the game; both fleets' orders play the same game in lockstep; a nudged client is seen by both and mended" #steps 80000000 {
   a: [1] Belt; b: [1] Belt;
   belt_start(a[..]); belt_start(b[..]);
   belt_message(a[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200\n");

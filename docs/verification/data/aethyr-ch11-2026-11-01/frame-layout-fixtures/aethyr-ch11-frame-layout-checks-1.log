@@ -1,0 +1,24 @@
+ok   #test reference layout maps actual media uniform image and sampler names and stage roles (1 case, 69938 steps, 0 ms)
+ok   #test reference layout admits the real vertex-only caster and rejects both fragment-presence mismatches (1 case, 361208 steps, 3 ms)
+ok   #test reference layout propagates preparation and pipeline failures before mapping any resources (1 case, 76060 steps, 0 ms)
+FAIL #forall reference layout refuses missing extra wrongly typed strided or single-stage catalog resources (1 ms)
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/reference-frame-layout-checks.coax:63:3: error[E0406]: assertion failed
+    #assert r.status==RQStatus.unsupported;
+    ^
+  note: in #forall reference layout refuses missing extra wrongly typed strided or single-stage catalog resources
+  counterexample: variant = 4
+FAIL #forall reference layout observes independent image and sampler shape mismatches (0 ms)
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/reference-frame-layout-checks.coax:76:3: error[E0406]: assertion failed
+    #assert r.count==(ifx comparison then 3 else 2);
+    ^
+  note: in #forall reference layout observes independent image and sampler shape mismatches
+  counterexample: comparison = false
+FAIL #forall reference layout admits exact four and256byte attribute extents and refuses260 (0 ms)
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/reference-frame-layout-checks.coax:85:5: error[E0406]: assertion failed
+      #assert r.status==RQStatus.ok && r.count==1 && r.attribute_count==count && r.attribute_stride==stride;
+      ^
+  note: in #forall reference layout admits exact four and256byte attribute extents and refuses260
+  counterexample: variant = 0
+ok   #forall reference layout refuses odd total bytes and misaligned actual attribute fields after fresh preparation (2 cases, 397131 steps, 4 ms)
+7 of 333 checks (--only 'reference layout'), 4 passed, 3 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

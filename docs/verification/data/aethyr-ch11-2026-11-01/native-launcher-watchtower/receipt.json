@@ -1,0 +1,35 @@
+{
+  "schema": "aethyr.render.native-launcher-measurement.v1",
+  "status": "pass",
+  "returncode": 0,
+  "elapsed_seconds": 37.523,
+  "command": [
+    "verse/gpu/realm.sh",
+    "coderos-4080",
+    "check"
+  ],
+  "environment": {
+    "REALM": "watchtower",
+    "VERSE_GPU_CHECK_SIZES": ""
+  },
+  "source_sha256": {
+    "verse/gpu/realm.sh": "9cd74b693d5dbbf7e61cc42490b1b6a20623140eeab72ac846eb7076e525ed1c",
+    "verse/native/build.sh": "5e1cc825812301b8c7cfde1f1ced4c839b1795541750df57dcd7795d965e2b98",
+    "verse/native/render_package.py": "e5800716509915a768fbd4fcd29ef6b206422fef99e06518bf296afb62f71cf7",
+    "verse/native/render_assets.py": "7bf2700ad58448aa20e32de13bd5ba3fac82fce0c5420031c3ced7ff5ecbef7d",
+    "aethyr/render/build.coax": "14450bf548d1914b6199e007a2df42d95e3163f95e140cb14dd628929afc970e",
+    "aethyr/render/tools/native-textures.coax": "dd1b1f4541cdb9cc04f9970e83e51717f964442afabdcd4e256da2e958bdff2e",
+    "aethyr/render/native-texture-profile.coax": "caaad4704b2e24c468dffd502a7f48f3540ba7de9bfd64b83cc6b59faf4740df",
+    "verse/gpu/vk-realm.c": "98d5da88177e23bb218585f2466b00e31fc356437fc19dc98338e997b52dbc9d",
+    "verse/native/render-host.c": "08ad984fddb5e858abd0a40c19b65d95da60748b06f17211229ab42d9352ca94",
+    "verse/native/render-host.h": "3f0d73aaf84433fad2e78d95ecf275f438bd3205cfc08e58dd4f297aa4319488",
+    "verse/native/render-realm.c": "01ef44c684337b2fa2b1c5198ca90d98e9404be1ed7428e7ce5b5a4ad64ed364",
+    "verse/native/render-realm.h": "1d9a84e881803deb75ab91a284c6293dc85f45d2ff72e2ef8f7dd63a707c3b75",
+    "verse/native/render-media.c": "5fab6a1f7a166bbdce12f7882783012b92b061755f58461b735acf547db41251",
+    "verse/native/render-media.h": "8e6db089675ddfd4ef509eecaeec34d2d7d0a98afd72395f78bdf6d712904895",
+    "verse/native/render-textures.c": "80bb3e49baf7cb364cd0d79f2f152b23df387b414ca7e986e3d57254272877df",
+    "verse/native/render-textures.h": "5cb6bea9e3cd0b10136f89467153a1732d5794cde9a0833062ad03b5bbd6c612"
+  },
+  "source_changes": [],
+  "scope": "Actual ordinary source-to-package/asset staging, remote C build and native90-frame shared renderer flow. Performance runs deliberately omitted; independent numerical image receipts remain separate."
+}

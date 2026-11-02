@@ -1,0 +1,124 @@
+#forall "texture sRGB EOTF matches independent analytic byte fixtures" which:0..<8 {
+ bytes:=[8]u8.[0,1,10,11,64,128,192,255];
+ expected:=[8]f64.[0,0.0003035269835488375,0.003035269835488375,0.003346535763899161,0.05126945837404324,0.21586050011389926,0.5271151257058131,1];
+ #assert abs(f64(render_texture_srgb(bytes[which]))-expected[which])<0.0000001;
+}
+#forall "texture byte color formats decode RGB order and preserve linear alpha" kind:0..<4 {
+ formats:=[4]RenderTexelFormat.[RenderTexelFormat.rgba8,RenderTexelFormat.rgba8_srgb,RenderTexelFormat.bgra8,RenderTexelFormat.bgra8_srgb];
+ bytes:=[4]u8.[64,128,192,32];r:=render_texel_decode(formats[kind],bytes[..],0);
+ red:=ifx kind>=2 then 192.0f32/255 else 64.0f32/255;blue:=ifx kind>=2 then 64.0f32/255 else 192.0f32/255;
+ if kind%2==1 {red=ifx kind>=2 then 0.5271151257f32 else 0.05126945837f32;blue=ifx kind>=2 then 0.05126945837f32 else 0.5271151257f32;}
+ green:=ifx kind%2==1 then 0.2158605001f32 else 128.0f32/255;
+ #assert r.status==RenderTextureStatus.ok && abs(r.colour.r-red)<0.0000001 && abs(r.colour.g-green)<0.0000001 && abs(r.colour.b-blue)<0.0000001 && r.colour.a==32.0f32/255;
+}
+#test "texture sRGB is linear before bilinear filtering while alpha remains linear" {
+ bytes:=[8]u8.[64,64,64,64,192,192,192,192];out:[2]RQColor;levels:[1]RQMip;
+ source:=[1]RenderTextureLevel.[RenderTextureLevel.{width=2,height=1,row_bytes=8,layer_bytes=8}];
+ r:=render_texture_decode(RenderTexelFormat.rgba8_srgb,1,source[..],bytes[..],out[..],levels[..],2);
+ #assert r.status==RenderTextureStatus.ok && r.pixels==2;
+ tex:=RQTexture.{layers=1,levels=levels[..],texels=out[..]};s:=rq_sample_level(tex,RQSampler.{min_linear=true,mag_linear=true},0.5,0.5,0,0);
+ #assert s.status==RQStatus.ok && abs(s.color.r-0.289192292f32)<0.0000002 && abs(s.color.a-128.0f32/255)<0.0000001;
+ #assert abs(s.color.r-0.2158605001f32)>0.07f32;
+}
+#forall "texture half and float words decode little endian without range clipping" wide:bool {
+ half:=[8]u8.[0,60,0,192,0,56,0,60];full:=[16]u8.[0,0,128,63,0,0,0,192,0,0,0,63,0,0,128,63];
+ r:=ifx wide then render_texel_decode(RenderTexelFormat.rgba32f,full[..],0) else render_texel_decode(RenderTexelFormat.rgba16f,half[..],0);
+ #assert r.status==RenderTextureStatus.ok && r.colour.r==1 && r.colour.g== -2 && r.colour.b==0.5f32 && r.colour.a==1;
+}
+#test "texture floating decode preserves negative zero and the smallest half subnormal" {
+ bytes:=[8]u8.[0,128,1,0,255,123,0,0];r:=render_texel_decode(RenderTexelFormat.rgba16f,bytes[..],0);
+ #assert r.status==RenderTextureStatus.ok && f32_bits(r.colour.r)==0x80000000 && r.colour.g==0.000000059604644775390625f32 && r.colour.b==65504;
+}
+#forall "texture float and half nonfinite bytes refuse before a floating conversion" wide:bool,negative:bool,nan:bool {
+ bytes:[16]u8;bytes[2]=128;bytes[3]=ifx negative then cast(u8)255 else cast(u8)127;
+ if wide {if nan {bytes[0]=1;}}
+ else {bytes[2]=0;bytes[3]=0;bytes[1]=ifx negative then cast(u8)252 else cast(u8)124;if nan {bytes[0]=1;}}
+ r:=render_texel_decode(ifx wide then RenderTexelFormat.rgba32f else RenderTexelFormat.rgba16f,bytes[..],0);
+ #assert r.status==RenderTextureStatus.nonfinite;
+}
+#forall "texture depth decode enforces finite zero-to-one values" which:0..<5 {
+ bytes:=[4]u8.[0,0,0,0];if which==1 {bytes[3]=63;}if which==2 {bytes[2]=128;bytes[3]=63;}if which==3 {bytes[2]=128;bytes[3]=191;}if which==4 {bytes[2]=192;bytes[3]=63;}
+ r:=render_texel_decode(RenderTexelFormat.depth32f,bytes[..],0);
+ if which<3 {#assert r.status==RenderTextureStatus.ok && r.colour.r==f32(which)*0.5f32 && r.colour.g==0 && r.colour.b==0 && r.colour.a==1;}
+ else {#assert r.status==RenderTextureStatus.bad_depth;}
+}
+#test "texture texel spans refuse invalid formats negative offsets and one-byte truncation" {
+ bytes:[16]u8;
+ #assert render_texel_decode(RenderTexelFormat.invalid,bytes[..],0).status==RenderTextureStatus.bad_format;
+ #assert render_texel_decode(RenderTexelFormat.rgba8,bytes[..],-1).status==RenderTextureStatus.bad_span;
+ #assert render_texel_decode(RenderTexelFormat.rgba32f,bytes[0..<15],0).status==RenderTextureStatus.bad_span;
+ #assert render_texel_decode(RenderTexelFormat.rgba8,bytes[..],12).status==RenderTextureStatus.ok;
+ #assert render_texel_decode(RenderTexelFormat.rgba8,bytes[..],13).status==RenderTextureStatus.bad_span;
+}
+#test "texture mip and layer decoding retains row padding and packed output offsets" {
+ bytes:[80]u8;out:[14]RQColor;levels:[2]RQMip;
+ source:=[2]RenderTextureLevel.[RenderTextureLevel.{width=3,height=2,offset=4,row_bytes=16,layer_bytes=32},RenderTextureLevel.{width=1,height=1,offset=68,row_bytes=4,layer_bytes=8}];
+ for layer:0..<2 {for y:0..<2 {for x:0..<3 {at:=4+layer*32+y*16+x*4;bytes[at]=cast(u8)(1+layer*6+y*3+x);bytes[at+3]=255;}}}
+ bytes[68]=13;bytes[71]=255;bytes[76]=14;bytes[79]=255;
+ r:=render_texture_decode(RenderTexelFormat.rgba8,2,source[..],bytes[..],out[..],levels[..],14);
+ #assert r.status==RenderTextureStatus.ok && r.pixels==14 && r.bad_level== -1 && r.bad_texel== -1;
+ #assert levels[0].width==3 && levels[0].height==2 && levels[0].offset==0 && levels[1].width==1 && levels[1].height==1 && levels[1].offset==12;
+ for i:0..<14 {#assert out[i].r==f32(i+1)/255 && out[i].g==0 && out[i].b==0 && out[i].a==1;}
+}
+#forall "texture decoding refuses invalid layout budgets and spans atomically" which:0..<15 {
+ bytes:[32]u8;out:=[2]RQColor.[RQColor.{r=99},RQColor.{r=98}];levels:=[2]RQMip.[RQMip.{width=99},RQMip.{width=98}];
+ source:=[2]RenderTextureLevel.[RenderTextureLevel.{width=1,height=1,row_bytes=4,layer_bytes=4},RenderTextureLevel.{width=1,height=1,row_bytes=4,layer_bytes=4}];
+ format:=RenderTexelFormat.rgba8;layers:=1;count:=1;budget:=2;out_count:=2;level_count:=2;wanted:=RenderTextureStatus.bad_layout;
+ if which==0 {format=RenderTexelFormat.invalid;wanted=RenderTextureStatus.bad_format;}
+ if which==1 {layers=0;}if which==2 {layers=2049;}if which==3 {count=0;}if which==4 {source[0].width=0;}if which==5 {source[0].height=16385;}
+ if which==6 {source[0].row_bytes=3;}if which==7 {source[0].layer_bytes=3;}if which==8 {source[0].offset=18446744073709551615;wanted=RenderTextureStatus.bad_span;}
+ if which==9 {source[0].width=2;source[0].height=2;source[0].row_bytes=18446744073709551615;source[0].layer_bytes=18446744073709551615;wanted=RenderTextureStatus.bad_span;budget=4;}
+ if which==10 {out_count=0;wanted=RenderTextureStatus.capacity;}if which==11 {level_count=0;wanted=RenderTextureStatus.capacity;}
+ if which==12 {budget=0;wanted=RenderTextureStatus.work_budget;}if which==13 {budget=16777217;wanted=RenderTextureStatus.work_budget;}if which==14 {count=2;}
+ r:=render_texture_decode(format,layers,source[0..<count],bytes[..],out[0..<out_count],levels[0..<level_count],budget);
+ #assert r.status==wanted && r.pixels==0 && out[0].r==99 && out[1].r==98 && levels[0].width==99 && levels[1].width==98;
+ if which==0 {#assert r.bad_level== -1 && r.bad_texel== -1;}
+}
+#test "texture a later nonfinite texel preserves both complete outputs" {
+ bytes:=[8]u8.[0,0,0,0,0,0,128,127];out:=[2]RQColor.[RQColor.{r=99},RQColor.{r=98}];levels:=[1]RQMip.[RQMip.{width=99}];
+ source:=[1]RenderTextureLevel.[RenderTextureLevel.{width=2,height=1,row_bytes=8,layer_bytes=8}];
+ r:=render_texture_decode(RenderTexelFormat.depth32f,1,source[..],bytes[..],out[..],levels[..],2);
+ #assert r.status==RenderTextureStatus.nonfinite && r.bad_level==0 && r.bad_texel==1 && r.pixels==0 && out[0].r==99 && out[1].r==98 && levels[0].width==99;
+}
+#forall "texture checked stride multiplication retains exact zero equal and overflow endpoints" which:0..<4 {
+ a:=[4]u64.[5,6,18446744073709551615,18446744073709551615];b:=[4]u64.[2,2,0,2];limit:=[4]u64.[10,10,0,18446744073709551615];
+ r:=rt_product(a[which],b[which],limit[which]);#assert r.valid==(which==0 || which==2);
+ if r.valid {#assert r.bytes==(ifx which==0 then cast(u64)10 else cast(u64)0);}
+}
+#forall "texture one-pixel decoding accepts both budget endpoints" most:bool {
+ bytes:[4]u8;out:[1]RQColor;levels:[1]RQMip;source:=[1]RenderTextureLevel.[RenderTextureLevel.{width=1,height=1,row_bytes=4,layer_bytes=4}];
+ #assert render_texture_decode(RenderTexelFormat.rgba8,1,source[..],bytes[..],out[..],levels[..],ifx most then 16777216 else 1).status==RenderTextureStatus.ok;
+}
+#forall "texture dimension and layer maxima are admitted before source span validation" which:0..<6 {
+ bytes:[]u8;out:[]RQColor;levels:[1]RQMip;source:=[1]RenderTextureLevel.[RenderTextureLevel.{width=1,height=1,row_bytes=65540,layer_bytes=1073741824}];layers:=1;
+ if which<2 {source[0].width=ifx which==0 then 16384 else 16385;}
+ if which>=2 && which<4 {source[0].height=ifx which==2 then 16384 else 16385;}
+ if which>=4 {layers=ifx which==4 then 2048 else 2049;}
+ r:=render_texture_decode(RenderTexelFormat.rgba8,layers,source[..],bytes,out,levels[..],16777216);
+ #assert r.status==(ifx which%2==0 then RenderTextureStatus.bad_span else RenderTextureStatus.bad_layout) && r.pixels==0;
+}
+#forall "texture rectangular mip chains retain a one-pixel axis and cumulative budgets" vertical:bool,refuse:0..<3 {
+ bytes:[28]u8;out:[7]RQColor;levels:[3]RQMip;source:[3]RenderTextureLevel;at:=0;
+ for l:0..<3 {n:=4>>l;source[l]=RenderTextureLevel.{width=ifx vertical then 1 else n,height=ifx vertical then n else 1,offset=u64(at),row_bytes=u64(ifx vertical then 4 else n*4),layer_bytes=u64(n*4)};at+=n*4;}
+ budget:=ifx refuse==1 then 6 else 7;out_count:=ifx refuse==2 then 6 else 7;
+ r:=render_texture_decode(RenderTexelFormat.rgba8,1,source[..],bytes[..],out[0..<out_count],levels[..],budget);
+ wanted:=ifx refuse==0 then RenderTextureStatus.ok else ifx refuse==1 then RenderTextureStatus.work_budget else RenderTextureStatus.capacity;
+ #assert r.status==wanted;
+ if refuse==0 {#assert r.pixels==7 && levels[1].offset==4 && levels[2].offset==6;}
+ else {#assert r.bad_level==2 && r.pixels==0;}
+}
+#test "texture malformed later dimensions and earlier bad texels name the correct level" {
+ bytes:=[12]u8.[0,0,0,0,0,0,128,127,0,0,0,0];out:=[3]RQColor.[RQColor.{r=99},RQColor.{r=98},RQColor.{r=97}];levels:=[2]RQMip.[RQMip.{width=99},RQMip.{width=98}];
+ source:=[2]RenderTextureLevel.[RenderTextureLevel.{width=2,height=1,row_bytes=8,layer_bytes=8},RenderTextureLevel.{width=1,height=1,offset=8,row_bytes=4,layer_bytes=4}];
+ r:=render_texture_decode(RenderTexelFormat.depth32f,1,source[..],bytes[..],out[..],levels[..],3);
+ #assert r.status==RenderTextureStatus.nonfinite && r.bad_level==0 && r.bad_texel==1;
+ source[1].width=2;r=render_texture_decode(RenderTexelFormat.depth32f,1,source[..],bytes[..],out[..],levels[..],3);
+ #assert r.status==RenderTextureStatus.bad_layout && r.bad_level==1 && r.bad_texel== -1;
+ #assert out[0].r==99 && out[1].r==98 && out[2].r==97 && levels[0].width==99 && levels[1].width==98;
+}
+#forall "texture source-span refusals precede pixel decoding for layer gaps and offsets" layers:bool {
+ bytes:[10]u8;out:[2]RQColor;levels:[1]RQMip;
+ source:=[1]RenderTextureLevel.[RenderTextureLevel.{width=1,height=1,offset=ifx layers then cast(u64)0 else cast(u64)3,row_bytes=4,layer_bytes=8}];
+ r:=render_texture_decode(RenderTexelFormat.rgba8,ifx layers then 2 else 1,source[..],bytes[0..<(ifx layers then 10 else 6)],out[..],levels[..],2);
+ #assert r.status==RenderTextureStatus.bad_span && r.bad_level==0 && r.bad_texel== -1 && r.pixels==0;
+}

@@ -1,0 +1,25 @@
+#forall "quad execution admission refuses malformed receipts capacities work and coverage atomically" which:0..<14 {
+ tree:=RQ_IR_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ input:[17]u32;memory:[4096]u32;out:[17]u32;for j:0..<17 {out[j]=cast(u32)(1000+j);}
+ nt:=tree.count;nm:=meta.count;ni:=16;no:=16;budget:=10000;coverage:u32=15;stage:=1;wanted:=RQStatus.malformed;
+ if which==0 {p.status=RQStatus.unsupported;wanted=RQStatus.unsupported;}
+ if which==1 {nt-=1;}if which==2 {nm-=1;}if which==3 {p.types=5;}if which==4 {p.types=513;}if which==5 {p.procs=0;}if which==6 {p.procs=513;}
+ if which==7 {budget=0;wanted=RQStatus.resource;}if which==8 {budget=100000001;wanted=RQStatus.resource;}
+ if which==9 {coverage=16;wanted=RQStatus.resource;}if which==10 {stage=0;wanted=RQStatus.resource;}
+ if which==11 {ni=15;wanted=RQStatus.capacity;}if which==12 {ni=17;wanted=RQStatus.capacity;}if which==13 {no=15;wanted=RQStatus.capacity;}
+ r:=rq_ir_run(p,tree[0..<nt],meta[0..<nm],input[0..<ni],RQResources.{},memory[..],out[0..<no],stage,budget,coverage,RQDerivative.fine);
+ #assert r.status==wanted;
+ for j:0..<17 {#assert out[j]==cast(u32)(1000+j);}
+}
+#test "quad exact work and coverage edges retain the complete result receipt" {
+ tree:=RQ_IR_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ input:[16]u32;memory:[4096]u32;out:[16]u32;
+ r:=rq_ir_run(p,tree[..],meta[..],input[..],RQResources.{},memory[..],out[..],1,100000000,0,RQDerivative.coarse);
+ #assert r.status==RQStatus.ok && r.publish_mask==0 && r.discarded==15 && r.output_words==16;
+ steps:=r.steps;
+ r=rq_ir_run(p,tree[..],meta[..],input[..],RQResources.{},memory[..],out[..],1,steps,15,RQDerivative.fine);
+ #assert r.status==RQStatus.ok && r.steps==steps && r.publish_mask==0;
+ out[0]=123;r=rq_ir_run(p,tree[..],meta[..],input[..],RQResources.{},memory[..],out[..],1,steps-1,15,RQDerivative.fine);
+ #assert r.status==RQStatus.budget && r.steps==steps-1 && out[0]==123;
+}
+

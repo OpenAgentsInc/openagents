@@ -1,0 +1,13 @@
+ok   #test the Grid draws the homepage's scene from behind you, and its own HUD (1 case, 34153685 steps, 3540 ms)
+        own steps  share   with calls     calls  procedure
+         10750754  31.5%     10750754     13604  lit  apps/openagents-web/newland.coax:266
+          4023294  11.8%     18011954     19958  seg  apps/openagents-web/newland.coax:425
+          2683541   7.9%      2683541    141239  dot3  apps/openagents-web/newland.coax:395
+          1914166   5.6%     17840628         2  floor_grid  apps/openagents-web/newland.coax:1174
+          1808194   5.3%      1808194     16684  on_plot  apps/openagents-web/newland.coax:459
+          1486012   4.4%      4221625     33773  spot  apps/openagents-web/newland.coax:413
+          1326456   3.9%      1768608     73692  fv_sub  verse/figure.coax:134
+          1175112   3.4%     34153685         0  (the check's own body)
+     ... 173 more procedures
+1 of 114 checks (--only 'the Grid draws the homepage's scene from behind you, and its own HUD'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

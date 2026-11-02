@@ -1,0 +1,64 @@
+// This source goes through the real compiler's checked shader tree, not a
+// hand-written executable oracle. The host only reads decimal tree words.
+#load "../../../verse/gpu/shader.coax";
+rq_fixture_sum :: (x:f32)->f32 {
+ total:f32=0;
+ for i:0..<4 {if i==1 {continue;}if i==3 {break;}total+=x+cast(f32)i;}
+ j:=0;while j<2 {total+=1;j+=1;}
+ return total;
+}
+rq_fixture_fs :: (position:V4)->V4 {
+ if position.w<0.5f32 {gpu_demote_helper();}
+ return v4(gpu_dpdx_fine(position.x),gpu_dpdy_fine(position.x),gpu_fwidth_fine(position.x),rq_fixture_sum(position.z));
+}
+rq_fixture_write :: (v:[]f32)->f32 {v[0]=9;return 1;}
+rq_private_fs :: (position:V4)->V4 {
+ a:[1]f32;a[0]=2;v:=a[..];
+ before:=v[0]+rq_fixture_write(v);
+ return v4(before,v[0],position.x,1);
+}
+rq_array_fs :: (position:V4)->V4 {
+ a:=[2]f32.[2,7];return v4(a[0],a[1],position.x,1);
+}
+rq_select_fs :: (position:V4)->V4 {
+ return ifx position.x<5 then v4(gpu_dpdx(position.x),1,2,3) else v4(9,8,7,6);
+}
+RQFixtureFlat :: struct {position:V4;flat_value:f32 #flat;tag:u32 #flat;}
+RQFixtureDepth :: struct {color:V4;depth:f32 #depth;}
+rq_flags_fs :: (in:RQFixtureFlat)->RQFixtureDepth {
+ depth:f32=0.5;
+ return RQFixtureDepth.{color=v4(in.flat_value,cast(f32)in.tag,0,1),depth=depth};
+}
+RQFixtureAttrs :: struct {position:V3;packed:u32;}
+rq_flags_vs :: (vid:u32,iid:u32,attrs:RQFixtureAttrs,u:[]f32)->RQFixtureFlat {
+ flat_value:=cast(f32)attrs.packed+u[0];
+ return RQFixtureFlat.{position=v4_of(attrs.position,1),flat_value=flat_value,tag=vid+iid};
+}
+rq_front_fs :: (position:V4,front:bool,t:Tex2D,s:Sampler)->V4 {
+ return ifx front then gpu_sample_level(t,s,v2(position.x,position.y),0) else v4(0,0,0,1);
+}
+// Distinct lanes take returns, else, nonzero for starts, continue, break and
+// different while lengths. Inactive x=0 must never enter division or log.
+rq_runtime_sum :: (n:int)->f32 {
+ total:=0;
+ for i:2..<n+3 {if i==3 {continue;}if i==5 {break;}total+=i;}
+ j:=0;while j<n {total+=10;j+=1;}return cast(f32)total;
+}
+rq_runtime_pair :: (x:f32)->RQFixtureAttrs {return RQFixtureAttrs.{position=v3(x,2,3),packed=cast(u32)(x+10)};}
+rq_runtime_fs :: (position:V4)->V4 {
+ n:=cast(int)position.x;
+ if n==0 {return v4(-position.y,1,2,3);}
+ else {
+  guard:=1/position.x;green:=-cast(f32)(-n)+log(position.x);
+  return v4(rq_runtime_sum(n)+guard,green,ifx !(n<2) then 1 else 0,cast(f32)rq_runtime_pair(position.y).packed);
+ }
+}
+rq_literal_fs :: (position:V4)->V4 {
+ value:int=1311768467463790320;
+ return v4(cast(f32)(value&65535),cast(f32)(value>>32),position.x,1);
+}
+rq_operand_kill :: (x:f32)->f32 {if x==0 {gpu_discard();}return x;}
+rq_operand_fs :: (position:V4)->V4 {
+ quotient:=10/cast(int)rq_operand_kill(position.x);
+ return V4.{x=cast(f32)quotient,y=0,z=0,w=1};
+}

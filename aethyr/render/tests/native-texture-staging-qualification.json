@@ -1,0 +1,52 @@
+{
+  "schema": "aethyr.render.native-texture-staging.v1",
+  "status": "pass",
+  "scope": "Build-time transport reuses exact existing Coax layer decoder output and canonical independently rasterized Sans coverage; runtime only uploads Coax-admitted raw bytes. This is the native legacy image-construction profile, not a claim of byte-identical browser resizing.",
+  "command": "coax/web/tool.sh aethyr/render/tools/native-textures.coax SLUG LEGACY_SPEC_DIR OUT_DIR > OUT_DIR/textures.config",
+  "no_texture_profile": "LEGACY_SPEC_DIR may be - only when the compiled profile requires neither layers nor Sans.",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "source_sha256": {
+    "aethyr/render/native-texture-profile.coax": "caaad4704b2e24c468dffd502a7f48f3540ba7de9bfd64b83cc6b59faf4740df",
+    "aethyr/render/tools/native-textures.coax": "dd1b1f4541cdb9cc04f9970e83e51717f964442afabdcd4e256da2e958bdff2e",
+    "coax/lib/image/jpeg.coax": "98552cd3c170ab334ed26138387c375e54371d9c7c2c7f49e93ce6b0d7f6e830",
+    "verse/gpu/layers.coax": "910af1f5c17fc7012b608926d0f8b80757df76d59414505c1656af39b50fffcb",
+    "verse/tools/sans-atlas.coax": "ba5ed650f09e5ff5861ff0c6e2a1b0d17bbd8d6589fff3d704db92dc0891b952"
+  },
+  "policy_gate": {
+    "mutants": 259,
+    "killed": 259,
+    "survived": 0,
+    "new_waivers": 0
+  },
+  "tool_checks": 103,
+  "jpeg_fixture_compatibility": {
+    "change": "Reconstruct fresh JpgState from owned fields and caller-backed src in test helper; decoder arithmetic/API unchanged.",
+    "mutants": 1365,
+    "killed": 1330,
+    "survived": 0,
+    "preexisting_equivalence_marks": 35,
+    "new_waivers": 0
+  },
+  "layers": {
+    "command": [
+      "coax/web/tool.sh",
+      "aethyr/render/tools/native-textures.coax",
+      "haunted-house",
+      "/tmp/aethyr-ch11-texture-stage-layers/spec",
+      "/tmp/aethyr-ch11-texture-stage-layers/out"
+    ],
+    "exit": 0,
+    "elapsed_seconds": 3.354870665993076,
+    "raw_bytes": 67108848,
+    "sha256": "5bf8b27d8d9cba62332f0f60f94945c3ee0b3888ace3e02221944a9f2adf0125",
+    "all_bytes_preserved": true
+  },
+  "sans": {
+    "coverage_bytes": 1374912,
+    "rgba_bytes": 5499648,
+    "all_four_channels_exact": true,
+    "rgba_sha256": "54da8e3ee14f856180aa2e5a99bf7e04906d3cc90cb7f04853509fa2a378d0f5"
+  },
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-texture-staging",
+  "trust": "Texture descriptors are reconciled/validated in Coax; decoded bytes are not cryptographically bound into the current shader-package schema. The build retains separate source/payload hashes."
+}

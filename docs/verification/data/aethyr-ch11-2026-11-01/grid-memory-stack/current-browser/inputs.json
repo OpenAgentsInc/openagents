@@ -1,0 +1,138 @@
+{
+  "served_inputs": {
+    "/tmp/aethyr-ch11-grid-stack-4m/newland.wasm": {
+      "sha256": "ec39a47fceb155072e37971974fed7a36dcbbb7573de2c3d52ddadddf0c44017",
+      "archive_path": "served/ec39a47fceb155072e37971974fed7a36dcbbb7573de2c3d52ddadddf0c44017"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js": {
+      "sha256": "824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9",
+      "archive_path": "served/824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js": {
+      "sha256": "214003ec97f37ce55daab424763a358715574030d533f1caed3853a1e46696af",
+      "archive_path": "served/214003ec97f37ce55daab424763a358715574030d533f1caed3853a1e46696af"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/chrome.ts": {
+      "sha256": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3",
+      "archive_path": "served/fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render-face.c": {
+      "sha256": "d169fd4b7fd7ff62ccb6c590e043c4fc2ad03b5622f272c85561198158f6a51f",
+      "archive_path": "served/d169fd4b7fd7ff62ccb6c590e043c4fc2ad03b5622f272c85561198158f6a51f"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/the-grid/index.html": {
+      "sha256": "52349221bacf10296865effa83a93d7e8942d6d95fc316e8442cdde205549d03",
+      "archive_path": "served/52349221bacf10296865effa83a93d7e8942d6d95fc316e8442cdde205549d03"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_host.ts": {
+      "sha256": "b310234bf3b57e2dbf8883d1a47f7b6bc5db3dce9b4849dfb43240f25c711ef1",
+      "archive_path": "served/b310234bf3b57e2dbf8883d1a47f7b6bc5db3dce9b4849dfb43240f25c711ef1"
+    },
+    "/tmp/aethyr-ch11-packages-owned-sans/the-grid/render.json": {
+      "sha256": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf",
+      "archive_path": "served/52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js": {
+      "sha256": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+      "archive_path": "served/4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js": {
+      "sha256": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+      "archive_path": "served/65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js": {
+      "sha256": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+      "archive_path": "served/c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js": {
+      "sha256": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+      "archive_path": "served/50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js": {
+      "sha256": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+      "archive_path": "served/6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js": {
+      "sha256": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+      "archive_path": "served/d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js": {
+      "sha256": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+      "archive_path": "served/89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js": {
+      "sha256": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+      "archive_path": "served/27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js": {
+      "sha256": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+      "archive_path": "served/9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js": {
+      "sha256": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+      "archive_path": "served/14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a"
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg": {
+      "sha256": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74",
+      "archive_path": "served/0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74"
+    },
+    "/tmp/aethyr-ch11-packages-owned-sans/the-grid/module-0-5ea807d676d8848be30da96f9675c49513c0284aa925c2cbb3658a787cc46a8d.wgsl": {
+      "sha256": "5ea807d676d8848be30da96f9675c49513c0284aa925c2cbb3658a787cc46a8d",
+      "archive_path": "served/5ea807d676d8848be30da96f9675c49513c0284aa925c2cbb3658a787cc46a8d"
+    }
+  },
+  "rfi_ref_inputs": {
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/u.bin": {
+      "sha256": "88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160",
+      "archive_path": "rfi-refs/88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160"
+    },
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/hud.bin": {
+      "sha256": "2c8f145ec2348683be411a46bde7e63db8b26808adf76e5c928cd73ab3e8e541",
+      "archive_path": "rfi-refs/2c8f145ec2348683be411a46bde7e63db8b26808adf76e5c928cd73ab3e8e541"
+    },
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/draws.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive_path": "rfi-refs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/indices.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive_path": "rfi-refs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/private/tmp/aethyr-ch11-packages-owned-sans/the-grid/render.json": {
+      "sha256": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf",
+      "archive_path": "rfi-refs/52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf"
+    },
+    "/private/tmp/aethyr-ch11-packages-owned-sans/the-grid/pipeline-0-6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e.tree": {
+      "sha256": "6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e",
+      "archive_path": "rfi-refs/6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e"
+    },
+    "/private/tmp/aethyr-ch11-packages-owned-sans/the-grid/pipeline-12-316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456.tree": {
+      "sha256": "316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456",
+      "archive_path": "rfi-refs/316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456"
+    },
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/texture-0.bin": {
+      "sha256": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6",
+      "archive_path": "rfi-refs/f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6"
+    },
+    "/private/tmp/aethyr-ch11-grid-4m-owned-sans-browser/media.txt": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive_path": "rfi-refs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "captured_files": {
+    "texture-0.bin": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6",
+    "draws.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver.ts": "b310234bf3b57e2dbf8883d1a47f7b6bc5db3dce9b4849dfb43240f25c711ef1",
+    "prior-native-input-comparison.json": "82ef38ab80d41b95d809d1697ea141e102d2b789c3d01e8817f1812b744e2316",
+    "hud.bin": "2c8f145ec2348683be411a46bde7e63db8b26808adf76e5c928cd73ab3e8e541",
+    "hud-differences.json": "ad3ea1c44fa3b4fd2a6e5e661744a826306d564a6107f816c6d8e9571b2b249d",
+    "gpu.bin": "47c2a6565e55f52b8f9e3c21dc1bfb5155b12f317ef15ec536ad1895ee7493c8",
+    "u.bin": "88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160",
+    "indices.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "media.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "execution.log": "26b57b6d1ca7f908852da125cf42585d4dd52156d077596ba446e6dff1436293",
+    "frame.config": "a9d58bcbcefce458522b136cfa783bd04c9d0908cc1b36a691a3d1a355967991",
+    "execution.json": "8e8352fe2a3c4a89fe0fe6dccd728eea337cce76623463f8e2f646f5bac118e7",
+    "receipt.json": "b75b61a668d0025f1b7ede89b78f11e7b1d9716bae1f9c95f88b2175e8cb30f5"
+  }
+}

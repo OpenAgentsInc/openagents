@@ -1,0 +1,42 @@
+// Native carrier of the shared renderer facade and input composition. Raw
+// texture validation is a separate native-texture.coax unit; browser builds
+// do not import the CPU codec or reference rasterizer.
+#load "host.coax";
+#load "host-inputs.coax";
+#authority;
+
+aethyr_native_resource_limit :: ()->int #export_c {return RENDER_RESOURCES;}
+aethyr_native_uploads :: (rn_limits:RenderFrameLimits,rn_uploads:[]RenderUpload)->RenderFrameResult #export_c {return render_uploads_admit(rn_limits,rn_uploads);}
+aethyr_native_span :: (rn_address:u64,rn_bytes:u64,rn_base:u64,rn_capacity:u64)->bool #export_c {return render_host_bytes(rn_address,rn_base,rn_capacity,rn_bytes).status==RenderFrameStatus.ok;}
+aethyr_native_resolve_buffer :: (rn_profile:int,rn_set:int,rn_resource:int,rn_named:[]RenderHostNamedBuffer,rn_generated:RenderHostNamedBuffer)->RenderHostBufferReceipt #export_c {
+  return render_host_resolve_buffer(rn_profile,rn_set,rn_resource,rn_named,rn_generated);
+}
+aethyr_native_geometry_buffers :: (rn_profile:int,rn_named:[]RenderHostNamedBuffer,rn_out:[]RenderGeometryBuffer)->RenderHostGeometryBuffers #export_c {
+  return render_host_geometry_buffers(rn_profile,rn_named,rn_out);
+}
+
+#test "native span observations treat capacity as a size at a nonzero allocation base" {
+ #assert aethyr_native_resource_limit()==48;
+ #assert aethyr_native_span(4096,384,4096,512);
+ #assert aethyr_native_span(4608,0,4096,512);
+ #assert aethyr_native_span(4607,1,4096,512);
+ #assert !aethyr_native_span(4607,2,4096,512);
+ #assert !aethyr_native_span(4095,1,4096,512);
+ #assert !aethyr_native_span(4609,0,4096,512);
+ #assert !aethyr_native_span(4096,513,4096,512);
+ #assert aethyr_native_span(18446744073709551615,0,18446744073709551610,5);
+ #assert !aethyr_native_span(18446744073709551615,1,18446744073709551610,5);
+}
+#test "native upload and buffer forwarding retain exact physical byte views and atomic refusal" {
+ rn_test_limits:=RenderFrameLimits.{};rn_test_uploads:=[1]RenderUpload.[RenderUpload.{source_address=4096,source_base=4096,source_bytes=32,bytes=16,gpu_bytes=16}];
+ #assert aethyr_native_uploads(rn_test_limits,rn_test_uploads[..]).status==RenderFrameStatus.ok;
+ rn_test_uploads[0].gpu_offset=4;#assert aethyr_native_uploads(rn_test_limits,rn_test_uploads[..]).status==RenderFrameStatus.bad_upload;
+ rn_test_words:=[8]u32.[7,8,9,10,11,12,13,14];
+ rn_test_named:=[1]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="s0.bin",words=rn_test_words[..],observed=RenderBufferObserved.{source_capacity=32,gpu_bytes=32,zero_initialized=true}}];
+ rn_test_q:=aethyr_native_resolve_buffer(16,0,1,rn_test_named[..],RenderHostNamedBuffer.{});
+ #assert rn_test_q.status==RenderResourceStatus.ok && rn_test_q.named_index==0 && rn_test_q.view.bytes==32 && rn_test_q.words.count==8 && rn_test_q.words[7]==14;
+ rn_test_output:[1]RenderGeometryBuffer;rn_test_g:=aethyr_native_geometry_buffers(16,rn_test_named[..],rn_test_output[..]);
+ #assert rn_test_g.status==RenderResourceStatus.ok && rn_test_g.count==1 && rn_test_output[0].binding_set==0 && rn_test_output[0].resource==1 && rn_test_output[0].words[0]==7;
+ rn_test_output[0].resource=91;rn_test_named[0].observed.gpu_bytes=28;rn_test_g=aethyr_native_geometry_buffers(16,rn_test_named[..],rn_test_output[..]);
+ #assert rn_test_g.status!=RenderResourceStatus.ok && rn_test_g.count==0 && rn_test_output[0].resource==91;
+}

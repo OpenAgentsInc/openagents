@@ -1,0 +1,129 @@
+#forall "render target descriptions preserve every role format and odd viewport extent" role:0..<13, coarse:bool {
+ widths:=[13]int.[0,321,321,321,321,2048,321,321,81,81,41,41,0];
+ heights:=[13]int.[0,181,181,181,181,2048,181,181,46,46,23,23,0];
+ formats:=[13]RenderTextureFormat.[RenderTextureFormat.rgba8,RenderTextureFormat.bgra8,RenderTextureFormat.rgba16f,RenderTextureFormat.rgba16f,RenderTextureFormat.depth32,RenderTextureFormat.depth32,RenderTextureFormat.rgba16f,RenderTextureFormat.depth32,RenderTextureFormat.rgba16f,RenderTextureFormat.rgba16f,RenderTextureFormat.rgba16f,RenderTextureFormat.rgba16f,RenderTextureFormat.rgba8];
+ r:=render_target_desc(cast(passes.RenderTarget)role,321,181,coarse,RenderTextureFormat.bgra8);
+ if role==0 || role==12 {#assert r.status==RenderResourceStatus.invalid;}
+ else {#assert r.status==RenderResourceStatus.ok && r.format==formats[role];if role==5 && coarse {#assert r.width==1024 && r.height==1024;}else {#assert r.width==widths[role] && r.height==heights[role];}}
+}
+#forall "render reduced target extents round up on both axes including a one pixel viewport" x:0..<9, y:0..<9 {
+ quarter:=[9]int.[1,1,1,1,2,2,2,2,3];eighth:=[9]int.[1,1,1,1,1,1,1,1,2];
+ q:=render_target_desc(passes.RenderTarget.q0,x+1,y+1,false,RenderTextureFormat.rgba8);
+ e:=render_target_desc(passes.RenderTarget.e0,x+1,y+1,false,RenderTextureFormat.rgba8);
+ #assert q.status==RenderResourceStatus.ok && q.width==quarter[x] && q.height==quarter[y];
+ #assert e.status==RenderResourceStatus.ok && e.width==eighth[x] && e.height==eighth[y];
+}
+#forall "render sampler profiles retain all filtering addressing comparison and logical quality fields" which:0..<7 {
+ names:=[7]string.["sheet","shadow_cmp","bloom_lin","post_lin","sans_sampler","media_sampler","unknown"];
+ r:=render_sampler_desc(names[which]);
+ if which==6 {#assert r.status==RenderResourceStatus.invalid;}
+ else {
+  #assert r.status==RenderResourceStatus.ok && r.min_linear && r.mag_linear && r.physical_anisotropy==1;
+  #assert r.mip_linear==(which==0 || which==4);
+  if which==0 {#assert r.address_u==RenderSamplerAddress.repeat && r.address_v==RenderSamplerAddress.repeat && r.logical_anisotropy==8;}
+  else {#assert r.address_u==RenderSamplerAddress.clamp && r.address_v==RenderSamplerAddress.clamp && r.logical_anisotropy==1;}
+  #assert (r.compare==RenderSamplerCompare.less)==(which==1);
+ }
+}
+#forall "render texture layouts preserve depth array and unfilterable copied water roles" which:0..<5 {
+ b:=bindings.RenderBinding.{name="ordinary",kind=bindings.RenderResourceKind.image2d};
+ if which==1 {b.name="water_scene";}if which==2 {b.kind=bindings.RenderResourceKind.image_array;}if which==3 {b.kind=bindings.RenderResourceKind.depth;}
+ if which==4 {b.kind=bindings.RenderResourceKind.sampler;}
+ r:=render_texture_layout(b);
+ if which==4 {#assert r.status==RenderResourceStatus.invalid;}
+ else {#assert r.status==RenderResourceStatus.ok && (r.dimension==RenderTextureDimension.d2_array)==(which==2);#assert (r.sample==RenderTextureSample.depth)==(which==3);#assert (r.sample==RenderTextureSample.unfilterable)==(which==1);}
+}
+#forall "render legacy buffer views preserve padded array length independently of upload bytes" which:0..<10 {
+ raw:=[10]u64.[0,1,4,15,16,17,31,32,33,64];padded:=[10]u64.[16,16,16,16,16,32,32,32,48,64];
+ b:=bindings.RenderBinding.{name="objects",kind=bindings.RenderResourceKind.storage,stride=4};
+ o:=RenderBufferObserved.{source_capacity=raw[which],gpu_bytes=128,zero_initialized=true};
+ r:=render_buffer_view(b,RenderBufferMode.legacy_capacity,o);
+ #assert r.status==RenderResourceStatus.ok && r.offset==0 && r.bytes==padded[which] && r.elements==padded[which]/4;
+}
+#test "render uniform and immutable views retain their declared extent instead of allocation capacity" {
+ b:=bindings.RenderBinding.{name="u",kind=bindings.RenderResourceKind.uniform,stride=4,uniform_vec4s=3937};
+ o:=RenderBufferObserved.{gpu_bytes=131072,source_capacity=62992,upload_bytes=62992};
+ r:=render_buffer_view(b,RenderBufferMode.declared_uniform,o);
+ #assert r.status==RenderResourceStatus.ok && r.bytes==62992 && r.elements==15748;
+ o.upload_bytes=0;o.initialized_highwater=62992;
+ r=render_buffer_view(b,RenderBufferMode.declared_uniform,o);#assert r.status==RenderResourceStatus.ok && r.bytes==62992;
+ b=bindings.RenderBinding.{name="bones",kind=bindings.RenderResourceKind.storage,stride=16};
+ o=RenderBufferObserved.{gpu_bytes=128,logical_payload=80,initialized_highwater=80};
+ r=render_buffer_view(b,RenderBufferMode.immutable_payload,o);#assert r.status==RenderResourceStatus.ok && r.bytes==80 && r.elements==5;
+}
+#forall "render target admission refuses malformed viewport format and platform limits" which:0..<12 {
+ w:=1;h:=1;limit:=16384;t:=passes.RenderTarget.screen;f:=RenderTextureFormat.rgba8;wanted:=RenderResourceStatus.invalid;
+ if which==0 {w=0;}if which==1 {w=-1;}if which==2 {h=0;}if which==3 {h=-1;}
+ if which==4 {w=16385;wanted=RenderResourceStatus.capacity;}if which==5 {h=16385;wanted=RenderResourceStatus.capacity;}
+ if which==6 {limit=0;}if which==7 {limit=16385;}if which==8 {f=RenderTextureFormat.depth32;}if which==9 {f=RenderTextureFormat.invalid;}
+ if which==10 {t=passes.RenderTarget.shadow_map;limit=1024;wanted=RenderResourceStatus.capacity;}
+ if which==11 {w=17;limit=16;wanted=RenderResourceStatus.capacity;}
+ r:=render_target_desc_with_limit(t,w,h,false,f,limit);#assert r.status==wanted && r.width==0 && r.height==0;
+}
+#test "render target exact limits retain colour formats and coarse shadow capacity" {
+ for f:0..<3 {r:=render_target_desc(passes.RenderTarget.screen,16384,16384,false,cast(RenderTextureFormat)f);#assert r.status==RenderResourceStatus.ok && r.width==16384 && r.height==16384 && r.format==cast(RenderTextureFormat)f;}
+ r:=render_target_desc_with_limit(passes.RenderTarget.shadow_map,1,1,true,RenderTextureFormat.rgba8,1024);#assert r.status==RenderResourceStatus.ok && r.width==1024 && r.height==1024;
+}
+#forall "render buffer publication refuses bad modes layouts ranges and uninitialized tails" which:0..<24 {
+ b:=bindings.RenderBinding.{name="objects",kind=bindings.RenderResourceKind.storage,stride=4};mode:=RenderBufferMode.legacy_capacity;
+ o:=RenderBufferObserved.{source_capacity=64,gpu_bytes=128,offset=16,alignment=16,initialized_highwater=80};wanted:=RenderResourceStatus.invalid;
+ if which==0 {mode=RenderBufferMode.invalid;}if which==1 {b=bindings.RenderBinding.{name="u",kind=bindings.RenderResourceKind.uniform,stride=4,uniform_vec4s=1};}
+ if which==2 {b.uniform_vec4s=1;}if which==3 {o.offset=144;wanted=RenderResourceStatus.capacity;}if which==4 {o.alignment=0;}if which==5 {o.alignment=3;}if which==6 {o.offset=4;}
+ if which==7 {o.initialized_highwater=129;}if which==8 {o.source_capacity=129;wanted=RenderResourceStatus.capacity;}
+ if which==9 {o.gpu_bytes=126;o.source_capacity=105;wanted=RenderResourceStatus.capacity;}
+ if which==10 {o.upload_bytes=68;wanted=RenderResourceStatus.capacity;}
+ if which==11 {mode=RenderBufferMode.immutable_payload;o.logical_payload=64;o.source_capacity=128;o.upload_bytes=116;wanted=RenderResourceStatus.capacity;}
+ if which==12 {o.upload_bytes=2;}if which==13 {o.initialized_highwater=79;wanted=RenderResourceStatus.uninitialized;}
+ if which==14 {o.source_capacity=0;o.initialized_highwater=31;wanted=RenderResourceStatus.uninitialized;}
+ if which==15 {mode=RenderBufferMode.immutable_payload;}
+ if which==16 {mode=RenderBufferMode.immutable_payload;o.logical_payload=3;}
+ if which==17 {mode=RenderBufferMode.immutable_payload;o.logical_payload=65;}
+ if which==18 {b=bindings.RenderBinding.{name="image",kind=bindings.RenderResourceKind.image2d};}
+ if which==19 {b=bindings.RenderBinding.{name="u",kind=bindings.RenderResourceKind.uniform,stride=4,uniform_vec4s=1};mode=RenderBufferMode.declared_uniform;o.offset=116;o.alignment=4;wanted=RenderResourceStatus.capacity;}
+ if which==20 {o.alignment=131072;}
+ if which==21 {o.offset=18446744073709551600;o.gpu_bytes=18446744073709551615;o.initialized_highwater=0;o.source_capacity=16;wanted=RenderResourceStatus.capacity;}
+ if which==22 {b.name="";}if which==23 {b.stride=0;}
+ r:=render_buffer_view(b,mode,o);#assert r.status==wanted && r.offset==0 && r.bytes==0 && r.elements==0;
+}
+#test "render buffer updates retain a valid prefix and require clearing padded tails" {
+ b:=bindings.RenderBinding.{name="objects",kind=bindings.RenderResourceKind.storage,stride=4};
+ o:=RenderBufferObserved.{source_capacity=32,gpu_bytes=64,upload_bytes=16,initialized_highwater=32};
+ r:=render_buffer_view(b,RenderBufferMode.legacy_capacity,o);#assert r.status==RenderResourceStatus.ok && r.bytes==32;
+ o.offset=32;o.initialized_highwater=32;o.upload_bytes=32;
+ r=render_buffer_view(b,RenderBufferMode.legacy_capacity,o);#assert r.status==RenderResourceStatus.ok && r.offset==32;
+ o.source_capacity=12;o.offset=0;o.initialized_highwater=0;o.upload_bytes=12;
+ r=render_buffer_view(b,RenderBufferMode.legacy_capacity,o);#assert r.status==RenderResourceStatus.uninitialized;
+ o.zero_initialized=true;r=render_buffer_view(b,RenderBufferMode.legacy_capacity,o);#assert r.status==RenderResourceStatus.ok && r.bytes==16;
+}
+
+#test "render target platform minimum and singleton storage binding retain exact edges" {
+ t:=render_target_desc_with_limit(passes.RenderTarget.screen,1,1,false,RenderTextureFormat.rgba8,1);
+ #assert t.status==RenderResourceStatus.ok && t.width==1 && t.height==1;
+ b:=bindings.RenderBinding.{name="one",kind=bindings.RenderResourceKind.storage,stride=4};
+ o:=RenderBufferObserved.{gpu_bytes=4,logical_payload=4,initialized_highwater=4};
+ r:=render_buffer_view(b,RenderBufferMode.immutable_payload,o);#assert r.status==RenderResourceStatus.ok && r.bytes==4 && r.elements==1;
+}
+#forall "render buffer mode must match the declared shader buffer kind" which:0..<3 {
+ b:=bindings.RenderBinding.{name="u",kind=bindings.RenderResourceKind.uniform,stride=4,uniform_vec4s=1};
+ mode:=RenderBufferMode.immutable_payload;if which==1 {mode=RenderBufferMode.legacy_capacity;}
+ if which==2 {b=bindings.RenderBinding.{name="s",kind=bindings.RenderResourceKind.storage,stride=4};mode=RenderBufferMode.declared_uniform;}
+ o:=RenderBufferObserved.{source_capacity=16,logical_payload=16,gpu_bytes=16,zero_initialized=true};
+ #assert render_buffer_view(b,mode,o).status==RenderResourceStatus.invalid;
+}
+#forall "render texture layout refuses malformed logical bindings before describing a GPU view" which:0..<3 {
+ b:=bindings.RenderBinding.{name="t",kind=bindings.RenderResourceKind.image2d};
+ if which==0 {b.name="";}if which==1 {b.stride=4;}if which==2 {b.uniform_vec4s=1;}
+ #assert render_texture_layout(b).status==RenderResourceStatus.invalid;
+}
+#forall "render buffer offset alignment admits exactly the declared power of two set" which:0..<20 {
+ alignments:=[20]u64.[0,1,2,3,4,5,6,7,8,9,15,16,255,256,257,32768,65535,65536,65537,131072];
+ allowed:=[20]bool.[false,false,false,false,true,false,false,false,true,false,false,true,false,true,false,true,false,true,false,false];
+ b:=bindings.RenderBinding.{name="s",kind=bindings.RenderResourceKind.storage,stride=4};
+ o:=RenderBufferObserved.{source_capacity=16,gpu_bytes=16,zero_initialized=true,alignment=alignments[which]};
+ r:=render_buffer_view(b,RenderBufferMode.legacy_capacity,o);#assert (r.status==RenderResourceStatus.ok)==allowed[which];
+}
+#test "render padded capacity refuses the final unsigned byte without addition overflow" {
+ b:=bindings.RenderBinding.{name="s",kind=bindings.RenderResourceKind.storage,stride=4};
+ o:=RenderBufferObserved.{source_capacity=18446744073709551615,gpu_bytes=18446744073709551615,zero_initialized=true};
+ r:=render_buffer_view(b,RenderBufferMode.legacy_capacity,o);#assert r.status==RenderResourceStatus.capacity;
+}

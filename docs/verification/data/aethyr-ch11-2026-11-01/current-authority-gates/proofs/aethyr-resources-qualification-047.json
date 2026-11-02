@@ -1,0 +1,43 @@
+{
+  "scope": "resource descriptors and buffer-view admission; no host adoption or full-realm rendering claim",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "compiler_fingerprint_reported_by_parent": "604574a88c8273b0c110f34779cba55817778ecee02c4a797dbb79c9af6a6220",
+  "source_sha256": {
+    "aethyr/render/resources.coax": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8",
+    "aethyr/render/passes.coax": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800",
+    "aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "aethyr/render/bindings.coax": "bd02c0475836ff87c378ee10e595080d13225f9670ecdcc7a7310f715b4e0efb",
+    "aethyr/render/frame.coax": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+    "aethyr/tests/render-frame-checks.coax": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007",
+    "aethyr/render/tests/resources-checks.coax": "22e811191a1112c1740694d96338936a20ff8092c5915f0638e80f70d0f2c61f"
+  },
+  "checks": {
+    "command": [
+      "coax/bin/coax",
+      "test",
+      "aethyr/render/resources.coax",
+      "--library"
+    ],
+    "exit_code": 0,
+    "checks": 58,
+    "passed": 58,
+    "log": "/tmp/aethyr-resources-sharp.log"
+  },
+  "mutation": {
+    "command": [
+      "coax/bin/coax",
+      "mutate",
+      "aethyr/render/resources.coax",
+      "--library",
+      "--root-only",
+      "--jobs",
+      "8"
+    ],
+    "exit_code": 0,
+    "sites": 180,
+    "killed": 180,
+    "survived": 0,
+    "log": "/tmp/aethyr-resources-mutate-2.log"
+  },
+  "later_requirement": "new merged compiler/source closure qualification before chapter11 completion"
+}

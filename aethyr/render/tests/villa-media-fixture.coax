@@ -1,0 +1,28 @@
+// Test-only setup. The production memorial parser, layout, producer, browser
+// decoder and admitted renderer execute after this seeded server response.
+#load "../../../apps/openagents-web/villa.coax";
+#load "../native-host.coax";
+RFM_MEMORIAL :: "{\"name\":\"Fixture memorial\",\"media\":[{\"id\":\"0000000000000000\",\"kind\":\"image\"}]}";
+RFM_VIDEO :: "{\"name\":\"Fixture memorial\",\"media\":[{\"id\":\"0000000000000000\",\"kind\":\"video\"}]}";
+#test "seeded memorial uses the real media record parser and URL producer" {
+ rfm_pet:[1]PetUi;rfm_seed_pet(rfm_pet[..]);
+ #assert rfm_pet[0].view==PV_MEMORIAL && rfm_pet[0].m_ok && rfm_pet[0].m_media_n==1 && !rfm_pet[0].m_video[0];
+ pet_media(rfm_pet[..],0,Box.{x0=10,y0=20,x1=110,y1=90});
+ #assert cast(string)rfm_pet[0].media_text[0..<rfm_pet[0].media_n]=="image /api/villa/memorial/fixture0/media/0000000000000000 10 20 110 90\n";
+}
+#test "seeded silent video uses the real memorial parser and video media command" {
+ rfm_pet:[1]PetUi;rfm_seed_video(rfm_pet[..]);
+ #assert rfm_pet[0].view==PV_MEMORIAL && rfm_pet[0].m_ok && rfm_pet[0].m_media_n==1 && rfm_pet[0].m_video[0];
+ pet_media(rfm_pet[..],0,Box.{x0=10,y0=20,x1=110,y1=90});
+ #assert cast(string)rfm_pet[0].media_text[0..<rfm_pet[0].media_n]=="video /api/villa/memorial/fixture0/media/0000000000000000 10 20 110 90\n";
+}
+rfm_seed_pet :: (rfm_pet:[]PetUi) {
+ pet_take_memorial(rfm_pet,RFM_MEMORIAL);rfm_pet[0].view=PV_MEMORIAL;rfm_pet[0].m_big=0;
+ for rfm_i:0..<8 {rfm_pet[0].m_slug[rfm_i]="fixture0"[rfm_i];}
+}
+render_fixture_seed :: (rfm_scene:[]Villa) #export_c {rfm_seed_pet(rfm_scene[0].pet[..]);}
+rfm_seed_video :: (rfm_pet:[]PetUi) {
+ pet_take_memorial(rfm_pet,RFM_VIDEO);rfm_pet[0].view=PV_MEMORIAL;rfm_pet[0].m_big=0;
+ for rfm_i:0..<8 {rfm_pet[0].m_slug[rfm_i]="fixture0"[rfm_i];}
+}
+render_fixture_video_seed :: (rfm_scene:[]Villa) #export_c {rfm_seed_video(rfm_scene[0].pet[..]);}

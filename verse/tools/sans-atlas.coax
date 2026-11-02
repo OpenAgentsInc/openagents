@@ -8,7 +8,8 @@
 // premultiplies white), verse/gpu/vk-spec.c's and pass.js's `atlas` directive. Offline tooling;
 // never run by a page.
 //   coax/web/tool.sh verse/tools/sans-atlas.coax OUT [--report] [--script]   (--script prints the script)
-// It reads SANS_EXTRA and SANS_FONT from coax/web/host.js, so the atlas follows the page's.
+// Its profile and raster commands come from aethyr/render/sans-profile.coax,
+// the same source the page's Font layout and renderer effects consume.
 // The font is the system's (Helvetica on a Mac), as the browser on this machine draws it.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
@@ -16,10 +17,7 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/image/png.coax";
-
-SA_COLS :: 16;
-SA_CELL :: 96;
-SA_LEVELS :: 5;
+#load "../../aethyr/render/sans-profile.coax";
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -28,23 +26,14 @@ tool_main :: () -> int #export_c {
 }
 
 sa_run :: (out_path: string, report: bool, script_only: bool) -> int {
-  host: [4194304] u8;
-  hn := fs_read("coax/web/host.js", host[..]);
-  if hn < 0 { tool_errln("sans-atlas: run it from the repository's root (no coax/web/host.js)"); return 2; }
-  extra := sa_line(cast(string) host[0..<hn], "const SANS_EXTRA = [", "];");
-  font := sa_line(cast(string) host[0..<hn], "const SANS_FONT = '", "';");
-  if extra.count == 0 || font.count == 0 { tool_errln("sans-atlas: host.js's SANS_EXTRA or SANS_FONT is not where it was"); return 1; }
-  codes := 95 + sa_commas(extra) + 1;
-  rows := (codes + SA_COLS - 1) / SA_COLS;
-  total := 0;
-  for l: 0..<SA_LEVELS { total += SA_COLS * (SA_CELL >> l) * rows * (SA_CELL >> l); }
+  profile := render_sans_profile(); total := int(profile.coverage_bytes);
   atlas: [4194304] u8;
   if total > atlas.count { tool_errln("sans-atlas: too large"); return 1; }
   // one screenshot: the levels stacked down a canvas at one pixel a texel, each texel's alpha as an
   // opaque grey; the script's checksum of the alpha must be the screenshot's
-  w := SA_COLS * SA_CELL; h := 0;
-  for l: 0..<SA_LEVELS { h += rows * (SA_CELL >> l); }
-  js: [8192] u8; jn := sa_script(js[..], extra, font);
+  w := profile.width; h := 0;
+  for l: 0..<profile.levels { h += render_sans_level(l).height; }
+  js: [32768] u8; jn := sa_script(js[..]);
   if jn < 0 { tool_errln("sans-atlas: the script does not fit"); return 1; }
   if script_only { print("%\n", cast(string) js[0..<jn]); return 0; }
   pb: [1024] u8; tb: [1024] u8; sb: [64] u8;
@@ -63,8 +52,8 @@ sa_run :: (out_path: string, report: bool, script_only: bool) -> int {
   work: [40000000] u8; px: [16777216] u8;
   if info.work > work.count || w * h * 4 > px.count || png_decode(png[0..<pn], work[..], px[..]) != PNG_OK { tool_errln("sans-atlas: the screenshot does not decode"); return 1; }
   at := 0; y0 := 0;
-  for l: 0..<SA_LEVELS {
-    lw := SA_COLS * (SA_CELL >> l); lh := rows * (SA_CELL >> l);
+  for l: 0..<profile.levels {
+    mip := render_sans_level(l); lw := mip.width; lh := mip.height;
     for y: 0..<lh { for x: 0..<lw { atlas[at] = px[((y0 + y) * w + x) * 4]; at += 1; } }
     y0 += lh;
   }
@@ -74,44 +63,42 @@ sa_run :: (out_path: string, report: bool, script_only: bool) -> int {
   if !fs_write(out_path, cast(string) atlas[0..<total]) { tool_err("sans-atlas: cannot write "); tool_errln(out_path); return 1; }
   if report {
     lit := 0;
-    for i: 0..<SA_COLS * SA_CELL * rows * SA_CELL { if atlas[i] > 0 { lit += 1; } }
-    print("sans-atlas: % glyphs, % rows, % levels, % bytes; level 0 %x%, % texels lit\n", codes, rows, SA_LEVELS, total, SA_COLS * SA_CELL, rows * SA_CELL, lit);
+    for i: 0..<int(render_sans_level(0).coverage_bytes) { if atlas[i] > 0 { lit += 1; } }
+    print("sans-atlas: % glyphs, % rows, % levels, % bytes; level 0 %x%, % texels lit\n", profile.glyphs, profile.rows, profile.levels, total, profile.width, profile.height, lit);
   }
   return 0;
 }
 
-// The text between `start` (at a line's start) and `end` on that line.
-sa_line :: (text: string, start: string, end: string) -> string {
-  i := 0;
-  while i + start.count <= text.count {
-    if (i == 0 || text[i - 1] == '\n') && text[i..<i + start.count] == start {
-      j := i + start.count; k := j;
-      while k + end.count <= text.count && text[k] != '\n' {
-        if text[k..<k + end.count] == end { return text[j..<k]; }
-        k += 1;
-      }
-      return "";
+// JavaScript executes explicit Coax raster commands; it derives no glyph
+// ordering, cell dimensions, mip dimensions, font size or pen coordinates.
+sa_script :: (out: [] u8) -> int {
+  profile := render_sans_profile(); height := 0;
+  for l: 0..<profile.levels { height += render_sans_level(l).height; }
+  n := sa_put(out, 0, "(()=>{const font='"); n = sa_put(out, n, profile.family);
+  n = sa_put(out, n, "',levels=[");
+  for l: 0..<profile.levels {
+    mip := render_sans_level(l);
+    if l > 0 { n = sa_put(out, n, ","); }
+    n = sa_put(out, n, "{w:"); n = sa_int(out, n, mip.width);
+    n = sa_put(out, n, ",h:"); n = sa_int(out, n, mip.height);
+    n = sa_put(out, n, ",font:"); n = sa_int(out, n, mip.font_px);
+    n = sa_put(out, n, ",draw:[");
+    for glyph_index: 0..<profile.glyphs {
+      command := render_sans_glyph(l, glyph_index);
+      if glyph_index > 0 { n = sa_put(out, n, ","); }
+      n = sa_put(out, n, "["); n = sa_int(out, n, int(command.code));
+      n = sa_put(out, n, ","); n = sa_half(out, n, command.x_half);
+      n = sa_put(out, n, ","); n = sa_half(out, n, command.y_half);
+      n = sa_put(out, n, "]");
     }
-    i += 1;
+    n = sa_put(out, n, "]}");
   }
-  return "";
-}
-sa_commas :: (s: string) -> int { n := 0; for i: 0..<s.count { if s[i] == ',' { n += 1; } } return n; }
-#test "host.js's lines" {
-  t := "x\nconst SANS_EXTRA = [1, 2, 3];\nconst SANS_FONT = 'A, \"B\"';\n";
-  #assert sa_line(t, "const SANS_EXTRA = [", "];") == "1, 2, 3" && sa_commas("1, 2, 3") == 2;
-  #assert sa_line(t, "const SANS_FONT = '", "';") == "A, \"B\"" && sa_line(t, "nope", ";") == "";
-}
-
-// The script: host.js's sansAtlas on OffscreenCanvases, each level's alpha put as opaque grey into
-// one canvas over the page (level after level, downwards); it returns the alpha's checksum (sa_sum).
-sa_script :: (out: [] u8, extra: string, font: string) -> int {
-  n := 0;
-  parts := [5] string.[
-    "(()=>{const codes=[...Array.from({length:95},(_,i)=>32+i),", extra,
-    "];const cols=16,rows=Math.ceil(codes.length/cols),cell=96,levels=5,font='", font,
-    "';const out=document.createElement('canvas');out.width=cols*cell;let H=0;for(let l=0;l<levels;l++)H+=rows*(cell>>l);out.height=H;out.style.cssText='position:fixed;left:0;top:0;width:'+out.width+'px;height:'+H+'px;image-rendering:pixelated';document.body.style.margin='0';document.body.appendChild(out);const G=out.getContext('2d');let y0=0,sum=0,at=0;for(let level=0;level<levels;level++){const c=cell>>level,w=cols*c,h=rows*c;const cv=new OffscreenCanvas(w,h),g=cv.getContext('2d');g.fillStyle='#fff';g.textBaseline='alphabetic';g.font=`${64/(1<<level)}px ${font}`;codes.forEach((code,i)=>g.fillText(String.fromCodePoint(code),(i%cols)*c+16/(1<<level),Math.floor(i/cols)*c+72/(1<<level)));const d=g.getImageData(0,0,w,h).data;const im=G.createImageData(w,h);for(let k=0;k<d.length;k+=4){const a=d[k+3];im.data[k]=a;im.data[k+1]=a;im.data[k+2]=a;im.data[k+3]=255;sum=(sum+a*((at%251)+1))%2147483647;at++;}G.putImageData(im,0,y0);y0+=h;}return String(sum);})()"];
-  for p: parts { if n + p.count > out.count { return -1; } for i: 0..<p.count { out[n + i] = p[i]; } n += p.count; }
+  n = sa_put(out, n, "];const out=document.createElement('canvas');out.width="); n = sa_int(out, n, profile.width);
+  n = sa_put(out, n, ";out.height="); n = sa_int(out, n, height);
+  n = sa_put(out, n, ";out.style.cssText='position:fixed;left:0;top:0;width:'+out.width+'px;height:'+out.height+'px;image-rendering:pixelated';document.body.style.margin='0';document.body.appendChild(out);const G=out.getContext('2d');let y0=0,sum=0,at=0;for(const level of levels){const w=level.w,h=level.h;const cv=new OffscreenCanvas(w,h),g=cv.getContext('2d');g.fillStyle='");
+  n = sa_put(out, n, profile.fill); n = sa_put(out, n, "';g.textBaseline='");
+  n = sa_put(out, n, profile.text_baseline);
+  n = sa_put(out, n, "';g.font=`${level.font}px ${font}`;for(const [code,x,y] of level.draw)g.fillText(String.fromCodePoint(code),x,y);const d=g.getImageData(0,0,w,h).data;const im=G.createImageData(w,h);for(let k=0;k<d.length;k+=4){const a=d[k+3];im.data[k]=a;im.data[k+1]=a;im.data[k+2]=a;im.data[k+3]=255;sum=(sum+a*((at%251)+1))%2147483647;at++;}G.putImageData(im,0,y0);y0+=h;}return String(sum);})()");
   return n;
 }
 // The script's checksum: each byte times its place mod 251, plus one, summed mod 2^31 - 1.
@@ -135,16 +122,39 @@ sa_whole :: (text: string) -> int {
   b := [3] u8.[1, 2, 255];
   #assert sa_sum(b[..]) == 1 + 4 + 765 && sa_whole("770\n/x.png") == 770 && sa_whole("x") == -1 && sa_whole("") == -1;
 }
-sa_put :: (out: [] u8, n: int, s: string) -> int { for i: 0..<s.count { out[n + i] = s[i]; } return n + s.count; }
+sa_put :: (out: [] u8, n: int, s: string) -> int {
+  if n < 0 || n > out.count || s.count > out.count - n { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; } return n + s.count;
+}
 sa_int :: (out: [] u8, n: int, v: int) -> int {
+  if n < 0 || n > out.count || v < 0 { return -1; }
   d: [24] u8; k := 0; x := v;
   if x == 0 { d[0] = '0'; k = 1; }
   while x > 0 { d[k] = cast,trunc(u8) (48 + x % 10); x /= 10; k += 1; }
+  if k > out.count - n { return -1; }
   for i: 0..<k { out[n + i] = d[k - 1 - i]; }
   return n + k;
 }
+sa_half :: (out: [] u8, n: int, halves: int) -> int {
+  if halves < 0 { return -1; }
+  at := sa_int(out, n, halves / 2);
+  if halves % 2 != 0 { at = sa_put(out, at, ".5"); }
+  return at;
+}
 #test "the script" {
-  b: [8192] u8; n := sa_script(b[..], "183", "A");
+  b: [32768] u8; n := sa_script(b[..]);
   #assert n > 23 && cast(string) b[n - 23..<n] == "return String(sum);})()" && cast(string) b[0..<7] == "(()=>{c";
+  #assert sa_contains(cast(string) b[0..<n], "Helvetica, Arial, \"Liberation Sans\", \"Nimbus Sans\", sans-serif");
+  #assert sa_contains(cast(string) b[0..<n], "width=1536;out.height=1302;");
+  #assert sa_contains(cast(string) b[0..<n], "draw:[[32,16,72],[33,112,72]");
+  #assert sa_contains(cast(string) b[0..<n], "draw:[[32,1,4.5],[33,7,4.5]");
+  #assert sa_contains(cast(string) b[0..<n], "[8800,85,40.5]");
+  tiny: [31] u8;
+  #assert sa_script(tiny[..]) == -1;
+}
+
+sa_contains :: (text: string, needle: string) -> bool {
+  for i: 0..<text.count - needle.count + 1 { if text[i..<i + needle.count] == needle { return true; } }
+  return false;
 }
 

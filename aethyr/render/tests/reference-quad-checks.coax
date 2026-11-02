@@ -1,0 +1,217 @@
+// Analytic expectations are authored here, not computed through the derivative
+// or sampling implementation under test. Lane order: TL, TR, BL, BR.
+#test "quad fine and coarse derivatives distinguish both row and column pairs" {
+  v:=RQQuad.{v=[4]f32.[2,6,10,22]};
+  dx:=rq_derivative(v,0,RQDerivative.fine);
+  dy:=rq_derivative(v,1,RQDerivative.fine);
+  #assert dx.v[0]==4 && dx.v[1]==4 && dx.v[2]==12 && dx.v[3]==12;
+  #assert dy.v[0]==8 && dy.v[1]==16 && dy.v[2]==8 && dy.v[3]==16;
+  cx:=rq_derivative(v,0,RQDerivative.coarse);cy:=rq_derivative(v,1,RQDerivative.coarse);
+  for k:0..<4 {#assert cx.v[k]==4 && cy.v[k]==8;}
+  fw:=rq_fwidth(v,RQDerivative.fine);
+  #assert fw.v[0]==12 && fw.v[1]==20 && fw.v[2]==20 && fw.v[3]==28;
+}
+#test "quad discarded fragments remain helper inputs and cannot publish" {
+  q:=RQControl.{coverage=15,discarded=0};
+  q=rq_discard(q,2);
+  #assert rq_publish_mask(q)==13 && rq_helper_mask(q)==15;
+  dx:=rq_derivative(RQQuad.{v=[4]f32.[2,6,10,22]},0,RQDerivative.fine);
+  #assert dx.v[0]==4 && dx.v[2]==12;
+  q=rq_discard(q,5);#assert rq_publish_mask(q)==8 && rq_helper_mask(q)==15;
+  q.coverage=3;#assert rq_publish_mask(q)==0;
+}
+#test "quad explicit mip layer and bias sampling read distinct authored levels" {
+  pixels:=[10]RQColor.[RQColor.{r=1},RQColor.{r=2},RQColor.{r=3},RQColor.{r=4},
+    RQColor.{r=10},RQColor.{r=20},RQColor.{r=30},RQColor.{r=40},RQColor.{r=100},RQColor.{r=200}];
+  mips:=[2]RQMip.[RQMip.{width=2,height=2,offset=0},RQMip.{width=1,height=1,offset=8}];
+  t:=RQTexture.{levels=mips[..],layers=2,texels=pixels[..]};s:=RQSampler.{};
+  a:=rq_sample_level(t,s,0.25,0.25,0,0);
+  b:=rq_sample_level(t,s,0.25,0.25,1,0);
+  c:=rq_sample_level(t,s,0.25,0.25,1,1);
+  #assert a.status==RQStatus.ok && a.color.r==1;
+  #assert b.status==RQStatus.ok && b.color.r==10;
+  #assert c.status==RQStatus.ok && c.color.r==200;
+  s.mip_linear=true;c=rq_sample_level(t,s,0.25,0.25,0,0.5);
+  #assert c.status==RQStatus.ok && c.color.r==50.5;
+  uvx:=RQQuad.{v=[4]f32.[0.25,0.75,0.25,0.75]};
+  uvy:=RQQuad.{v=[4]f32.[0.25,0.25,0.75,0.75]};
+  q:=rq_sample_quad(t,RQSampler.{},uvx,uvy,0,1,RQDerivative.fine);
+  #assert q.status==RQStatus.ok;
+  for k:0..<4 {#assert q.colors[k].r==100;}
+}
+#test "quad texel addressing and comparison happen before bilinear interpolation" {
+  pixels:=[4]RQColor.[RQColor.{r=0.25},RQColor.{r=0.75},RQColor.{r=0.25},RQColor.{r=0.75}];
+  levels:=[1]RQMip.[RQMip.{width=2,height=2}];
+  t:=RQTexture.{levels=levels[..],layers=1,texels=pixels[..]};
+  s:=RQSampler.{address_u=RQAddress.repeat};
+  #assert rq_sample_level(t,s,-0.25,0.25,0,0).color.r==0.75;
+  s.address_u=RQAddress.mirror;
+  #assert rq_sample_level(t,s,1.25,0.25,0,0).color.r==0.75;
+  s=RQSampler.{min_linear=true,mag_linear=true,compare=RQCompare.less_equal};
+  t.depth=true;
+  a:=rq_sample_compare(t,s,0.5,0.25,0,0,0.5);
+  #assert a.status==RQStatus.ok && a.color.r==0.5;
+  // Comparing the interpolated depth instead would produce one, not one half.
+  s.compare=RQCompare.less;#assert rq_sample_compare(t,s,0.25,0.25,0,0,0.25).color.r==0;
+  s.compare=RQCompare.less_equal;#assert rq_sample_compare(t,s,0.25,0.25,0,0,0.25).color.r==1;
+}
+#test "quad malformed resources and unsupported sampling refuse instead of inventing pixels" {
+  px:=[1]RQColor.[RQColor.{r=9}];mips:=[1]RQMip.[RQMip.{width=1,height=1}];
+  t:=RQTexture.{levels=mips[..],layers=1,texels=px[..]};s:=RQSampler.{};
+  #assert rq_sample_level(t,s,0,0,0,0).status==RQStatus.ok;
+  t.layers=0;#assert rq_sample_level(t,s,0,0,0,0).status==RQStatus.resource;t.layers=1;
+  mips[0].offset=1;#assert rq_sample_level(t,s,0,0,0,0).status==RQStatus.resource;mips[0].offset=0;
+  s.max_anisotropy=2;#assert rq_sample_level(t,s,0,0,0,0).status==RQStatus.unsupported;s.max_anisotropy=1;
+  #assert rq_sample_level(t,s,0,0,1,0).status==RQStatus.resource;
+  #assert rq_sample_level(t,s,0.0f32/0.0f32,0,0,0).status==RQStatus.resource;
+}
+
+#test "quad zero UV footprint stays magnified despite a large finite bias" {
+ px:=[5]RQColor.[RQColor.{r=1},RQColor.{r=2},RQColor.{r=3},RQColor.{r=4},RQColor.{r=99}];
+ levels:=[2]RQMip.[RQMip.{width=2,height=2},RQMip.{width=1,height=1,offset=4}];
+ t:=RQTexture.{levels=levels[..],layers=1,texels=px[..]};
+ u:=RQQuad.{v=[4]f32.[0.25,0.25,0.25,0.25]};
+ r:=rq_sample_quad(t,RQSampler.{},u,u,0,64,RQDerivative.fine);
+ #assert r.status==RQStatus.ok;
+ for lane:0..<4 {#assert r.colors[lane].r==1;}
+}
+#test "quad RGBA mixing and finite endpoints preserve every channel and signed zero" {
+ c:=rq_mix_color(RQColor.{r=2,g=4,b=6,a=8},RQColor.{r=10,g=12,b=14,a=16},0.25);
+ #assert c.r==4 && c.g==6 && c.b==8 && c.a==10;
+ #assert rq_finite(3.4028234663852886e38f32) && rq_finite(-3.4028234663852886e38f32);
+ #assert !rq_finite(1.0f32/0.0f32) && !rq_finite(-1.0f32/0.0f32) && !rq_finite(0.0f32/0.0f32);
+ #assert f32_bits(rq_clamp(-0.0f32,0,1))==2147483648;
+ #assert f32_bits(rq_clamp(0.0f32,-1,-0.0f32))==0;
+ #assert rq_clamp(-2,-1,1)==-1 && rq_clamp(2,-1,1)==1;
+ #assert rq_derivative(RQQuad.{v=[4]f32.[2,6,10,22]},2,RQDerivative.fine).v[0]==0;
+}
+#test "quad address modes cover both period boundaries and negative coordinates" {
+ #assert rq_address(-1,4,RQAddress.clamp)==0 && rq_address(4,4,RQAddress.clamp)==3;
+ #assert rq_address(2,4,RQAddress.clamp)==2 && rq_address(0,4,RQAddress.clamp)==0;
+ #assert rq_address(-4,4,RQAddress.repeat)==0 && rq_address(-5,4,RQAddress.repeat)==3;
+ #assert rq_address(4,4,RQAddress.repeat)==0 && rq_address(5,4,RQAddress.repeat)==1;
+ #assert rq_address(-1,4,RQAddress.mirror)==0 && rq_address(-4,4,RQAddress.mirror)==3;
+ #assert rq_address(4,4,RQAddress.mirror)==3 && rq_address(7,4,RQAddress.mirror)==0 && rq_address(8,4,RQAddress.mirror)==0;
+}
+#forall "quad comparison modes distinguish equality from either side" relation:0..<3 {
+ actual:=[3]f32.[0.25,0.5,0.75];ref:=0.5f32;a:=actual[relation];
+ #assert rq_compare(a,ref,RQCompare.never)==0 && rq_compare(a,ref,RQCompare.none)==0;
+ #assert rq_compare(a,ref,RQCompare.always)==1;
+ #assert rq_compare(a,ref,RQCompare.less)==(ifx relation==2 then 1.0f32 else 0.0f32);
+ #assert rq_compare(a,ref,RQCompare.equal)==(ifx relation==1 then 1.0f32 else 0.0f32);
+ #assert rq_compare(a,ref,RQCompare.less_equal)==(ifx relation>=1 then 1.0f32 else 0.0f32);
+ #assert rq_compare(a,ref,RQCompare.greater)==(ifx relation==0 then 1.0f32 else 0.0f32);
+ #assert rq_compare(a,ref,RQCompare.not_equal)==(ifx relation!=1 then 1.0f32 else 0.0f32);
+ #assert rq_compare(a,ref,RQCompare.greater_equal)==(ifx relation<=1 then 1.0f32 else 0.0f32);
+}
+#test "quad sampler admission reports exact enum and LOD boundaries" {
+ s:=RQSampler.{address_u=RQAddress.mirror,address_v=RQAddress.mirror,compare=RQCompare.always,lod_min=32,lod_max=32};
+ #assert rq_sampler_status(s)==RQStatus.ok;
+ s.lod_min=-1;#assert rq_sampler_status(s)==RQStatus.resource;s.lod_min=32;
+ s.lod_max=31;#assert rq_sampler_status(s)==RQStatus.resource;s.lod_max=33;#assert rq_sampler_status(s)==RQStatus.resource;
+ s.lod_max=32;s.lod_min=0.0f32/0.0f32;#assert rq_sampler_status(s)==RQStatus.resource;s.lod_min=0;s.lod_max=1.0f32/0.0f32;#assert rq_sampler_status(s)==RQStatus.resource;
+}
+#test "quad texture admission separates capacity from malformed mip layout" {
+ levels:[33]RQMip;px:[12]RQColor;
+ levels[0]=RQMip.{width=1,height=1};
+ t:=RQTexture.{levels=levels[0..<1],layers=2048,texels=px[..]};
+ #assert rq_texture_status(t)==RQStatus.resource;
+ t.layers=2049;#assert rq_texture_status(t)==RQStatus.capacity;t.layers=1;
+ t.levels=levels[0..<32];#assert rq_texture_status(t)==RQStatus.resource;
+ t.levels=levels[..];#assert rq_texture_status(t)==RQStatus.capacity;t.levels=levels[0..<1];
+ levels[0].width=16384;#assert rq_texture_status(t)==RQStatus.resource;
+ levels[0].width=16385;#assert rq_texture_status(t)==RQStatus.capacity;levels[0].width=1;
+ levels[0].height=16384;#assert rq_texture_status(t)==RQStatus.resource;
+ levels[0].height=16385;#assert rq_texture_status(t)==RQStatus.capacity;levels[0].height=0;#assert rq_texture_status(t)==RQStatus.resource;
+ levels[0].height=1;levels[0].width=0;#assert rq_texture_status(t)==RQStatus.resource;levels[0].width=1;
+ t.layers=-1;#assert rq_texture_status(t)==RQStatus.resource;t.layers=1;
+ t.levels=levels[0..<0];#assert rq_texture_status(t)==RQStatus.resource;
+ t.levels=levels[0..<1];levels[0].offset=-1;#assert rq_texture_status(t)==RQStatus.resource;
+ levels[0].offset=12;#assert rq_texture_status(t)==RQStatus.resource;
+}
+#test "quad rectangular mip chains halve each axis independently and never overlap" {
+ px:[11]RQColor;
+ levels:=[3]RQMip.[RQMip.{width=1,height=4},RQMip.{width=1,height=2,offset=4},RQMip.{width=1,height=1,offset=6}];
+ t:=RQTexture.{levels=levels[..],layers=1,texels=px[..]};#assert rq_texture_ok(t);
+ levels[1].width=2;#assert !rq_texture_ok(t);levels[1].width=1;
+ levels[1].height=3;#assert !rq_texture_ok(t);levels[1].height=2;
+ levels[1].offset=3;#assert !rq_texture_ok(t);levels[1].offset=4;
+ levels[2].offset=5;#assert !rq_texture_ok(t);levels[2].offset=6;
+ levels[0]=RQMip.{width=4,height=1};levels[1]=RQMip.{width=2,height=1,offset=4};#assert rq_texture_ok(t);
+ levels[0]=RQMip.{width=2,height=2};levels[1]=RQMip.{width=1,height=1,offset=4};levels[2]=RQMip.{width=1,height=1,offset=5};
+ #assert !rq_texture_ok(t);
+}
+#test "quad bilinear texel centers keep asymmetric row and column weights" {
+ px:=[4]RQColor.[RQColor.{r=0,g=2,b=4,a=6},RQColor.{r=2,g=4,b=6,a=8},RQColor.{r=4,g=6,b=8,a=10},RQColor.{r=6,g=8,b=10,a=12}];
+ levels:=[1]RQMip.[RQMip.{width=2,height=2}];t:=RQTexture.{levels=levels[..],layers=1,texels=px[..]};
+ s:=RQSampler.{min_linear=true,mag_linear=true};
+ c:=rq_sample_level(t,s,0.625,0.375,0,0);
+ #assert c.status==RQStatus.ok && c.color.r==2.5 && c.color.g==4.5 && c.color.b==6.5 && c.color.a==8.5;
+ s.mag_linear=false;c=rq_sample_level(t,s,0.5,0.5,0,0);#assert c.color.r==6;
+ c=rq_sample_level(t,s,0.5,0.5,0,0.25);#assert c.color.r==3;
+}
+#test "quad mip bounds and trilinear last level preserve the sampled range" {
+ px:=[5]RQColor.[RQColor.{r=1},RQColor.{r=2},RQColor.{r=3},RQColor.{r=4},RQColor.{r=100}];
+ levels:=[2]RQMip.[RQMip.{width=2,height=2},RQMip.{width=1,height=1,offset=4}];
+ t:=RQTexture.{levels=levels[..],layers=1,texels=px[..]};s:=RQSampler.{};
+ #assert rq_sample_level(t,s,0.25,0.25,0,-2).color.r==1;
+ #assert rq_sample_level(t,s,0.25,0.25,0,4).color.r==100;
+ s.lod_min=1;#assert rq_sample_level(t,s,0.25,0.25,0,0).color.r==100;
+ s.lod_min=0;s.lod_max=0;#assert rq_sample_level(t,s,0.25,0.25,0,1).color.r==1;
+ s.lod_max=32;s.mip_linear=true;
+ #assert rq_sample_level(t,s,0.25,0.25,0,1).color.r==100;
+ #assert rq_sample_level(t,s,0.25,0.25,0,0.25).color.r==25.75;
+ #assert rq_sample_level(t,s,1000000000,0,0,0).status==RQStatus.ok;
+ #assert rq_sample_level(t,s,1000000128,0,0,0).status==RQStatus.resource;
+ #assert rq_sample_level(t,s,0,-1000000000,0,0).status==RQStatus.ok;
+ #assert rq_sample_level(t,s,0,-1000000128,0,0).status==RQStatus.resource;
+ #assert rq_sample_compare(t,s,0,0,0,0,0.5).status==RQStatus.resource;
+ s.compare=RQCompare.less;t.depth=true;
+ #assert rq_sample_compare(t,s,0,0,0,0,0.0f32/0.0f32).status==RQStatus.resource;
+ #assert rq_sample_level(t,s,0,0,0,1.0f32/0.0f32).status==RQStatus.resource;
+}
+#test "quad implicit footprint uses both UV components and both screen axes" {
+ // Squared footprints4 and16 are lambda1 and2; transposing axes preserves it.
+ #assert abs(rq_footprint_lod(4,16,0)-2)<0.00001;
+ #assert abs(rq_footprint_lod(16,4,0)-2)<0.00001;
+ #assert abs(rq_footprint_lod(4,4,1)-2)<0.00001;
+ #assert abs(rq_footprint_lod(0.25,0.0625,0)+1)<0.00001;
+ px:[85]RQColor;for k:0..<64 {px[k].r=1;}for k:64..<80 {px[k].r=10;}for k:80..<84 {px[k].r=100;}px[84].r=1000;
+ levels:=[4]RQMip.[RQMip.{width=8,height=8},RQMip.{width=4,height=4,offset=64},RQMip.{width=2,height=2,offset=80},RQMip.{width=1,height=1,offset=84}];
+ t:=RQTexture.{levels=levels[..],layers=1,texels=px[..]};s:=RQSampler.{};
+ u:=RQQuad.{v=[4]f32.[0,0.25,0,0.5]};v:=RQQuad.{v=[4]f32.[0,0,0.25,0.25]};
+ r:=rq_sample_quad(t,s,u,v,0,0,RQDerivative.fine);
+ #assert r.status==RQStatus.ok && r.colors[0].r==10 && r.colors[1].r==100 && r.colors[2].r==100 && r.colors[3].r==100;
+ u=RQQuad.{v=[4]f32.[0,0,0.5,0.5]};v=RQQuad.{v=[4]f32.[0,0.25,0,0.25]};
+ r=rq_sample_quad(t,s,u,v,0,0,RQDerivative.fine);for k:0..<4 {#assert r.colors[k].r==100;}
+ r=rq_sample_quad(t,s,u,v,0,0.0f32/0.0f32,RQDerivative.fine);#assert r.status==RQStatus.resource;
+}
+#test "quad bilinear interior indices and repeat seams use neighboring texels" {
+ px:[16]RQColor;for y:0..<4 {for x:0..<4 {px[y*4+x].r=cast(f32)(y*8+x*2);}}
+ levels:=[1]RQMip.[RQMip.{width=4,height=4}];t:=RQTexture.{levels=levels[..],layers=1,texels=px[..]};
+ s:=RQSampler.{min_linear=true,mag_linear=true};
+ #assert rq_sample_level(t,s,0.4375,0.5625,0,0).color.r==16.5;
+ s.address_u=RQAddress.repeat;s.address_v=RQAddress.repeat;
+ #assert rq_sample_level(t,s,-0.0625,0.0625,0,0).color.r==10.5;
+ s.compare=RQCompare.less;
+ #assert rq_sample_compare(t,s,0,0,0,0,0.5).status==RQStatus.resource;
+ t.depth=true;s.compare=RQCompare.none;
+ #assert rq_sample_compare(t,s,0,0,0,0,0.5).status==RQStatus.resource;
+}
+#test "quad trilinear fraction is relative to the selected nonzero low level" {
+ px:[15]RQColor;for i:0..<8 {px[i].r=20;}for i:8..<12 {px[i].r=40;}px[12].r=60;px[13].r=60;px[14].r=80;
+ levels:=[4]RQMip.[RQMip.{width=8,height=1},RQMip.{width=4,height=1,offset=8},RQMip.{width=2,height=1,offset=12},RQMip.{width=1,height=1,offset=14}];
+ t:=RQTexture.{levels=levels[..],layers=1,texels=px[..]};s:=RQSampler.{mip_linear=true};
+ #assert rq_sample_level(t,s,0,0,0,1.25).color.r==45;
+}
+#test "quad implicit LOD includes both squared components on each screen axis" {
+ px:[85]RQColor;for k:0..<64 {px[k].r=1;}for k:64..<80 {px[k].r=10;}for k:80..<84 {px[k].r=100;}px[84].r=1000;
+ levels:=[4]RQMip.[RQMip.{width=8,height=8},RQMip.{width=4,height=4,offset=64},RQMip.{width=2,height=2,offset=80},RQMip.{width=1,height=1,offset=84}];
+ t:=RQTexture.{levels=levels[..],layers=1,texels=px[..]};s:=RQSampler.{mip_linear=true};
+ u:=RQQuad.{v=[4]f32.[0,0.1875,0,0.1875]};v:=RQQuad.{v=[4]f32.[0,0.375,0,0.375]};
+ r:=rq_sample_quad(t,s,u,v,0,0,RQDerivative.fine);
+ for k:0..<4 {#assert r.colors[k].r>77.132 && r.colors[k].r<77.135;}
+ u=RQQuad.{v=[4]f32.[0,0,0.1875,0.1875]};v=RQQuad.{v=[4]f32.[0,0,0.375,0.375]};
+ r=rq_sample_quad(t,s,u,v,0,0,RQDerivative.fine);
+ for k:0..<4 {#assert r.colors[k].r>77.132 && r.colors[k].r<77.135;}
+}

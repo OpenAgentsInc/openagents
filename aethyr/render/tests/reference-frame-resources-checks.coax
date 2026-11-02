@@ -1,0 +1,61 @@
+#forall "reference resources resolve canonical observed layers instead of shader aliases and reject malformed images" mode:0..<7 {
+ mip:=[1]RQMip.[RQMip.{width=1,height=1}];pixels:=[2]RQColor.[RQColor.{r=0.25,g=0.5,b=0.75,a=1},RQColor.{r=0.75,g=0.125,b=0.25,a=0.5}];
+ files:=[2]RFNamedTexture.[RFNamedTexture.{name="layers",texture=RQTexture.{levels=mip[..],layers=2,texels=pixels[..]}},RFNamedTexture.{name="unused"}];
+ input:=RFInput.{profile=0,textures=files[..]};layout:=RFShaderLayout.{count=1};layout.bindings[0].resource=4;index:=5;
+ if mode==1 {input.textures=files[0..<0];}if mode==2 {files[1]=files[0];}if mode==3 {files[0].texture.depth=true;}if mode==4 {mip[0].width=0;}
+ if mode==5 || mode==6 {input.profile=1;layout.bindings[0].resource=1;index=12;files[0].name="sans_atlas";if mode==6 {files[0].texture.layers=1;}}
+ buffers:[48]RQBuffer;textures:[48]RQTexture;samplers:[48]RQSampler;levels:[48]RQMip;images:[]RQColor;u:[]u32;req:RFRequirements;
+ status:=rf_resources(input,index,layout,RenderOp.{},req,images,u,u,buffers[..],textures[..],samplers[..],levels[..]);
+ good:=mode==0;#assert status==(ifx good then RQStatus.ok else RQStatus.resource);
+ if good {#assert textures[4].layers==2 && textures[4].levels[0].width==1 && !textures[4].depth && textures[4].texels[0].r==0.25f32 && textures[4].texels[1].r==0.75f32;}
+}
+#forall "reference Sans metadata requires exact physical format extent and all five mips" mode:0..<10 {
+ levels:[6]RQMip;for k:0..<5 {d:=render_sans_level(k);levels[k]=RQMip.{width=d.width,height=d.height};}
+ storage:=RQStorageFormat.unorm8;count:=5;
+ if mode==1 {count=4;}if mode==2 {count=6;}if mode==3 {count=0;}
+ if mode==4 {levels[0].width=1535;}if mode==5 {levels[0].width=1537;}
+ if mode==6 {levels[0].height=671;}if mode==7 {levels[0].height=673;}
+ if mode==8 {storage=RQStorageFormat.srgb8;}if mode==9 {storage=RQStorageFormat.unclassified;}
+ #assert rf_sans_profile(storage,levels[0..<count])==(mode==0);
+}
+#forall "reference resources borrow distinct generated colour auxiliary depth and pass-source views" mode:0..<5 {
+ req:RFRequirements;req.images[2]=RFCanvasLayout.{present=true,offset=1,descriptor=RenderTargetDescriptor.{width=3,height=1,format=RenderTextureFormat.rgba16f}};
+ req.images[3]=RFCanvasLayout.{present=true,offset=6,descriptor=RenderTargetDescriptor.{width=3,height=1,format=RenderTextureFormat.rgba16f}};
+ req.images[4]=RFCanvasLayout.{present=true,offset=11,descriptor=RenderTargetDescriptor.{width=3,height=1,format=RenderTextureFormat.depth32}};
+ images:[16]RQColor;for k:0..<16 {images[k]=RQColor.{r=f32(k)/16,g=f32(k)/32,b=f32(k)/64,a=1};}
+ layout:=RFShaderLayout.{count=3};layout.bindings[0].resource=11;layout.bindings[1].resource=14;layout.bindings[2].resource=15;
+ if mode==1 {req.images[4].present=false;}if mode==2 {req.images[4].descriptor.format=RenderTextureFormat.rgba16f;}
+ if mode==3 {req.images[2].descriptor.format=RenderTextureFormat.depth32;}
+ op:RenderOp;index:=11;
+ if mode==4 {req.images[9]=req.images[2];req.images[9].offset=6;layout.count=1;layout.bindings[0].resource=8;op.source=RenderTarget.q1;index=10;}
+ buffers:[48]RQBuffer;textures:[48]RQTexture;samplers:[48]RQSampler;levels:[48]RQMip;u:[]u32;
+ status:=rf_resources(RFInput.{profile=0},index,layout,op,req,images[..],u,u,buffers[..],textures[..],samplers[..],levels[..]);
+ #assert status==(ifx mode==0 || mode==4 then RQStatus.ok else RQStatus.resource);
+ if mode==0 {#assert textures[11].texels.count==3 && textures[11].texels[0].r==1.0f32/16 && textures[11].texels[2].r==3.0f32/16 && textures[14].texels[0].r==6.0f32/16 && textures[15].texels[0].r==11.0f32/16 && textures[15].depth && !textures[11].depth && levels[11].width==3 && levels[11].height==1;}
+ if mode==0 {#assert textures[11].storage==RQStorageFormat.half && textures[14].storage==RQStorageFormat.half && textures[15].storage==RQStorageFormat.depth32;}
+ if mode==4 {#assert textures[8].texels.count==3 && textures[8].texels[0].r==6.0f32/16 && textures[8].texels[2].r==8.0f32/16 && textures[8].layers==1;}
+}
+#forall "reference resource construction preserves the explicit sampler precision selection" mode:0..<3 {
+ profiles:=[3]RQFilterProfile.[RQFilterProfile.analytic,RQFilterProfile.metal_unorm8,RQFilterProfile.nvidia_unorm8_integer];
+ layout:=RFShaderLayout.{count=1};layout.bindings[0].resource=2;
+ buffers:[48]RQBuffer;textures:[48]RQTexture;samplers:[48]RQSampler;levels:[48]RQMip;u:[]u32;images:[]RQColor;
+ status:=rf_resources_profile(RFInput.{profile=1},12,layout,RenderOp.{},RFRequirements.{},images,u,u,buffers[..],textures[..],samplers[..],levels[..],profiles[mode]);
+ #assert status==RQStatus.ok && samplers[2].precision==profiles[mode] && samplers[2].mag_linear && samplers[2].min_linear && samplers[2].mip_linear;
+}
+#test "reference resources bind explicit bloom step bytes and sampler state" {
+ layout:=RFShaderLayout.{count=2};layout.bindings[0].resource=9;layout.bindings[1].resource=10;
+ bloom:=[4]u32.[f32_bits(1.0f32),f32_bits(2.0f32),f32_bits(3.0f32),f32_bits(4.0f32)];u:[]u32;images:[]RQColor;
+ buffers:[48]RQBuffer;textures:[48]RQTexture;samplers:[48]RQSampler;levels:[48]RQMip;
+ #assert rf_resources(RFInput.{profile=0},10,layout,RenderOp.{},RFRequirements.{},images,u,bloom[..],buffers[..],textures[..],samplers[..],levels[..])==RQStatus.ok;
+ #assert buffers[10].count==4 && buffers[10].stride==4 && buffers[10].words.count==4;for j:0..<4 {#assert buffers[10].words[j]==bloom[j];}
+ #assert samplers[9].min_linear && samplers[9].mag_linear && !samplers[9].mip_linear && samplers[9].address_u==RQAddress.clamp && samplers[9].max_anisotropy==1;
+}
+#test "reference resources use media binding set2 and the current context origin" {
+ mip:=[1]RQMip.[RQMip.{width=1,height=1}];pixel:=[1]RQColor.[RQColor.{r=0.25,g=0.5,b=0.75,a=1}];files:=[1]RFNamedTexture.[RFNamedTexture.{name="media_image-7",texture=RQTexture.{levels=mip[..],layers=1,texels=pixel[..]}}];
+ input:=RFInput.{profile=2,textures=files[..],media_context=7};layout:=RFShaderLayout.{count=3};for j:0..<3 {layout.bindings[j].resource=j;}
+ u:=[8]u32.[1,2,3,4,5,6,7,8];empty:[]u32;images:[]RQColor;buffers:[48]RQBuffer;textures:[48]RQTexture;samplers:[48]RQSampler;levels:[48]RQMip;
+ status:=rf_resources(input,13,layout,RenderOp.{},RFRequirements.{},images,u[..],empty,buffers[..],textures[..],samplers[..],levels[..]);#assert status==RQStatus.ok;
+ #assert buffers[0].count==8 && buffers[0].words.count==8;for j:0..<8 {#assert buffers[0].words[j]==u[j];}
+ #assert textures[1].layers==1 && textures[1].texels[0].r==0.25f32 && samplers[2].min_linear && samplers[2].mag_linear && samplers[2].compare==RQCompare.none;
+ input.media_context=8;#assert rf_resources(input,13,layout,RenderOp.{},RFRequirements.{},images,u[..],empty,buffers[..],textures[..],samplers[..],levels[..])==RQStatus.resource;
+}

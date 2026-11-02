@@ -1,0 +1,42 @@
+#test "raster profiles keep analytic and measured fixed modes distinct" {
+ a:=rr_raster_profile("analytic",0);e:=rr_raster_profile("nearest-even",8);p:=rr_raster_profile("nearest-positive",8);bad:=rr_raster_profile("native",8);
+ #assert a.rounding==RRRasterRounding.analytic && rr_raster_profile_ok(a);
+ #assert e.rounding==RRRasterRounding.nearest_even && e.subpixel_bits==8 && rr_raster_profile_ok(e);
+ #assert p.rounding==RRRasterRounding.nearest_positive && p.subpixel_bits==8 && rr_raster_profile_ok(p);
+ #assert bad.rounding==RRRasterRounding.invalid && !rr_raster_profile_ok(bad);
+ #assert !rr_raster_profile_ok(rr_raster_profile("analytic",1));
+ #assert rr_raster_profile_ok(rr_raster_profile("nearest-even",0)) && rr_raster_profile_ok(rr_raster_profile("nearest-positive",16));
+ #assert !rr_raster_profile_ok(rr_raster_profile("nearest-even",-1)) && !rr_raster_profile_ok(rr_raster_profile("nearest-even",17));
+}
+#test "raster subpixel conversion preserves analytic inputs and observed Apple screen vertices" {
+ a:=RRRasterProfile.{};p:=rr_raster_profile("nearest-even",8);
+ values:=[4]f64.[309.05499267578125,288.94500732421875,17.05500030517578,10.944999694824219];
+ expected:=[4]f64.[309.0546875,288.9453125,17.0546875,10.9453125];
+ for j:0..<4 {q:=rr_subpixel(values[j],a);#assert q.status==RQStatus.ok && q.value==values[j];q=rr_subpixel(values[j],p);#assert q.status==RQStatus.ok && q.value==expected[j];}
+}
+#forall "raster nearest profiles expose signed even and positive tie rules" mode:0..<2 {
+ p:=rr_raster_profile(ifx mode==0 then "nearest-even" else "nearest-positive",0);
+ values:=[8]f64.[2.25,2.75,2.5,3.5,-2.5,-3.5,0.5,-0.5];
+ even:=[8]f64.[2,3,2,4,-2,-4,0,0];positive:=[8]f64.[2,3,3,4,-2,-3,1,0];
+ for j:0..<8 {q:=rr_subpixel(values[j],p);#assert q.status==RQStatus.ok && q.value==(ifx mode==0 then even[j] else positive[j]);}
+ p.subpixel_bits=16;q:=rr_subpixel(1.0f64/131072,p);#assert q.value==(ifx mode==0 then 0.0f64 else 1.0f64/65536);
+}
+#test "raster conversion refuses unsupported profiles nonfinite coordinates and scaled overflow" {
+ z:=0.0f64;max:=1.7976931348623157e308f64;
+ #assert rr_subpixel(1,rr_raster_profile("nearest-even",17)).status==RQStatus.unsupported;
+ #assert rr_subpixel(1,rr_raster_profile("unknown",0)).status==RQStatus.unsupported;
+ #assert rr_subpixel(z/z,RRRasterProfile.{}).status==RQStatus.resource && rr_subpixel(1/z,RRRasterProfile.{}).status==RQStatus.resource && rr_subpixel(-1/z,RRRasterProfile.{}).status==RQStatus.resource;
+ #assert rr_subpixel(max,rr_raster_profile("nearest-even",16)).status==RQStatus.resource && rr_subpixel(-max,rr_raster_profile("nearest-even",16)).status==RQStatus.resource;
+ #assert rr_subpixel(max,RRRasterProfile.{}).value==max;
+ #assert f64_bits(rr_subpixel(-0.0f64,RRRasterProfile.{}).value)==0x8000000000000000;
+}
+
+#test "raster guard-band profile names and finite projected envelope remain explicit" {
+ p:=rr_raster_xy_profile("nearest-positive",8,"guard-band",4096);#assert p.xy==RRXYClipping.guard_band && p.guard_pixels==4096 && rr_raster_profile_ok(p);
+ for padding:[2]int.[0,65536] {#assert rr_raster_profile_ok(rr_raster_xy_profile("nearest-even",8,"guard-band",padding));}
+ #assert !rr_raster_profile_ok(rr_raster_xy_profile("nearest-even",8,"guard-band",-1));
+ #assert !rr_raster_profile_ok(rr_raster_xy_profile("nearest-even",8,"guard-band",65537));
+ #assert !rr_raster_profile_ok(rr_raster_xy_profile("nearest-even",8,"viewport",1));
+ #assert !rr_raster_profile_ok(rr_raster_xy_profile("nearest-even",8,"unknown",0));
+ #assert rr_raster_profile_ok(rr_raster_xy_profile("analytic",0,"viewport",0));
+}

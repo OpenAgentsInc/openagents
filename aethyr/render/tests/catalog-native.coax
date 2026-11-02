@@ -1,0 +1,10 @@
+// Normal-C transport for an independent, complete catalog inventory. None of
+// these adapters decides policy; the imported authoritative accessors do.
+#load "../catalog.coax";
+
+aethyr_catalog_profile :: (i:int)->RenderCatalog #export_c {return render_catalog(i);}
+aethyr_catalog_binding_count :: (i:int,set:int)->int #export_c {return render_catalog_binding_count(i,set);}
+aethyr_catalog_binding :: (i:int,set:int,r:int)->RenderBinding #export_c {return render_catalog_binding(i,set,r);}
+aethyr_catalog_entry :: (i:int,p:RenderPassId)->RenderEntry #export_c {return render_catalog_entry(i,p);}
+aethyr_catalog_use_count :: (i:int,p:RenderPassId)->int #export_c {return render_catalog_use_count(i,p);}
+aethyr_catalog_use :: (i:int,p:RenderPassId,s:int)->RenderUse #export_c {return render_catalog_use(i,p,s);}

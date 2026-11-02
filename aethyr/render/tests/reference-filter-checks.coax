@@ -1,0 +1,49 @@
+// Expected values are independent physical GPU observations. Integer output
+// codes keep every expected channel independent of the filter implementation.
+rqf_pixels :: ()->[5]RQColor {
+ return [5]RQColor.[RQColor.{r=13.0f32/255,g=191.0f32/255,b=57.0f32/255,a=239.0f32/255},
+ RQColor.{r=241.0f32/255,g=37.0f32/255,b=199.0f32/255,a=83.0f32/255},
+ RQColor.{r=103.0f32/255,g=227.0f32/255,b=5.0f32/255,a=149.0f32/255},
+ RQColor.{r=67.0f32/255,g=17.0f32/255,b=211.0f32/255,a=31.0f32/255},
+ RQColor.{r=173.0f32/255,g=73.0f32/255,b=131.0f32/255,a=197.0f32/255}];
+}
+#test "quad measured UNORM8 profiles reproduce independent bilinear and mip observations" {
+ pixels:=rqf_pixels();levels:=[2]RQMip.[RQMip.{width=2,height=2},RQMip.{width=1,height=1,offset=4}];
+ t:=RQTexture.{levels=levels[..],layers=1,texels=pixels[..],storage=RQStorageFormat.unorm8};
+ s:=RQSampler.{min_linear=true,mag_linear=true,mip_linear=true,precision=RQFilterProfile.metal_unorm8};
+ m:=rq_sample_level(t,s,0.3,0.35,0,0);
+ #assert m.status==RQStatus.ok && m.color.r==cast(f32)(780.0/4080) && m.color.g==cast(f32)(2902.0/4080) && m.color.b==cast(f32)(998.0/4080) && m.color.a==cast(f32)(3296.0/4080);
+ mip:=rq_sample_level(t,s,0.35,cast(f32)(5.0/12),0,0.1);
+ #assert mip.status==RQStatus.ok && mip.color.r==cast(f32)(1287.0/4080) && mip.color.g==cast(f32)(2554.0/4080) && mip.color.b==cast(f32)(1244.0/4080) && mip.color.a==cast(f32)(2914.0/4080);
+ s.precision=RQFilterProfile.nvidia_unorm8_integer;n:=rq_sample_level(t,s,0.3,0.35,0,0);
+ #assert n.status==RQStatus.ok && n.color.r==cast(f32)(12575.0/65535) && n.color.g==cast(f32)(46629.0/65535) && n.color.b==cast(f32)(16014.0/65535) && n.color.a==cast(f32)(52934.0/65535);
+ #assert rq_sample_level(t,s,0.35,cast(f32)(5.0/12),0,0.5).status==RQStatus.unsupported;
+ last:=rq_sample_level(t,s,0.3,0.35,0,1);#assert last.status==RQStatus.ok && last.color.r==173.0f32/255 && last.color.a==197.0f32/255;
+ s.address_u=RQAddress.repeat;wrapped:=rq_sample_level(t,s,-0.25,0.25,0,0);#assert wrapped.status==RQStatus.ok && wrapped.color.r==241.0f32/255;
+}
+#test "quad measured filter profiles refuse unqualified formats modes and bad decoded texels" {
+ pixels:=rqf_pixels();levels:=[1]RQMip.[RQMip.{width=2,height=2}];
+ t:=RQTexture.{levels=levels[..],layers=1,texels=pixels[..],storage=RQStorageFormat.unorm8};
+ s:=RQSampler.{min_linear=true,mag_linear=true,mip_linear=true,precision=RQFilterProfile.metal_unorm8};
+ kinds:=[5]RQStorageFormat.[RQStorageFormat.unclassified,RQStorageFormat.half,RQStorageFormat.srgb8,RQStorageFormat.float32,RQStorageFormat.depth32];
+ for kind:kinds {t.storage=kind;#assert rq_sample_level(t,s,0.3,0.35,0,0).status==RQStatus.unsupported;}
+ t.storage=RQStorageFormat.unorm8;s.precision=RQFilterProfile.invalid;#assert rq_sample_level(t,s,0.3,0.35,0,0).status==RQStatus.unsupported;
+ s.precision=RQFilterProfile.metal_unorm8;s.mag_linear=false;#assert rq_sample_level(t,s,0.3,0.35,0,0).status==RQStatus.unsupported;s.mag_linear=true;
+ s.mip_linear=false;#assert rq_sample_level(t,s,0.3,0.35,0,0).status==RQStatus.unsupported;s.mip_linear=true;
+ t.depth=true;s.compare=RQCompare.less;#assert rq_sample_compare(t,s,0.3,0.35,0,0,0.5).status==RQStatus.unsupported;
+ t.depth=false;s.compare=RQCompare.none;
+ pixels[0].r=-0.01;#assert rq_sample_level(t,s,0.3,0.35,0,0).status==RQStatus.resource;
+ pixels[0].r=1.01;#assert rq_sample_level(t,s,0.3,0.35,0,0).status==RQStatus.resource;
+ pixels[0].r=0.0f32/0.0f32;#assert rq_sample_level(t,s,0.3,0.35,0,0).status==RQStatus.resource;
+}
+#test "quad measured filters retain decoded endpoints repeated rows and nonzero mip origins" {
+ pixels:=rqf_pixels();pixels[0]=RQColor.{g=1,a=1};levels:=[1]RQMip.[RQMip.{width=2,height=2}];
+ t:=RQTexture.{levels=levels[..],layers=1,texels=pixels[..],storage=RQStorageFormat.unorm8};
+ s:=RQSampler.{min_linear=true,mag_linear=true,mip_linear=true,precision=RQFilterProfile.metal_unorm8};
+ endpoint:=rq_sample_level(t,s,0.25,0.25,0,0);#assert endpoint.status==RQStatus.ok && endpoint.color.r==0 && endpoint.color.g==1 && endpoint.color.b==0 && endpoint.color.a==1;
+ s.address_v=RQAddress.repeat;repeated:=rq_sample_level(t,s,0.25,1.25,0,0);#assert repeated.status==RQStatus.ok && repeated.color.r==0 && repeated.color.g==1 && repeated.color.a==1;
+ chain:[21]RQColor;for n:16..<20 {chain[n]=RQColor.{r=1,g=1,b=1,a=1};}
+ mips:=[3]RQMip.[RQMip.{width=4,height=4},RQMip.{width=2,height=2,offset=16},RQMip.{width=1,height=1,offset=20}];
+ t=RQTexture.{levels=mips[..],layers=1,texels=chain[..],storage=RQStorageFormat.unorm8};
+ interior:=rq_sample_level(t,s,0.25,0.25,0,1.25);#assert interior.status==RQStatus.ok && interior.color.r==0.75 && interior.color.g==0.75 && interior.color.b==0.75 && interior.color.a==0.75;
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "aethyr.compiler.checker-shard.v1",
+  "status": "finished",
+  "exit_status": 0,
+  "complete_record": true,
+  "argv": [
+    "/private/tmp/aethyr-ch11-final-compiler-retained/coax/bin/.bootstrap-30583/stage0",
+    "mutate",
+    "lib/compiler/checker.coax",
+    "--shard",
+    "2/8"
+  ],
+  "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+  "source_sha256": {
+    "coax/lib/compiler/checker.coax": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+    "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+    "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+    "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+    "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+    "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+    "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+  },
+  "record_sha256": "f846c7ab284336e976f8254b2df098dc9f30e31da2e94c77dba8a913c91c775f",
+  "stderr_sha256": "84a687cb1236aecf1acda747d0bdaf7844d11bbd4b525358ccb5054c7d24de41",
+  "elapsed_seconds": 146.139
+}

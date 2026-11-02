@@ -1,0 +1,27 @@
+{
+  "status": "exploratory",
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "compiler_recorded_source_digest": "e863c6921a9f865223a3871b42a70d43cc053b2983df5af604223c64a4a7dfb5",
+  "source_sha256": {
+    "aethyr/render/frame.coax": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+    "aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "aethyr/tests/render-frame-checks.coax": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007",
+    "aethyr/render/reference-raster.coax": "bfbd379bc9089d593bb2d240cae9db268d9c9fea29c73d801aa1c8ea25095258",
+    "aethyr/render/tests/reference-raster-checks.coax": "6a7d7950dd1c016db71ec163c88013a44fd7750cf1d03c37c8f63dafa94ec954"
+  },
+  "modules": {
+    "aethyr/render/frame.coax": {
+      "root_mutants": 247,
+      "killed": 247,
+      "survivors": 0,
+      "waivers": 0
+    },
+    "aethyr/render/reference-raster.coax": {
+      "root_mutants": 515,
+      "killed": 515,
+      "survivors": 0,
+      "waivers": 0
+    }
+  },
+  "scope": "Exploratory old-artifact checks only; final source-matching compiler qualification is required. Sources/Coax checks frozen at this record, before the complete shader/raster driver and host qualification."
+}

@@ -1,0 +1,34 @@
+// Shader effects consume the authoritative filtering receipt. Scalar library
+// calls have no publication mask; quad/GPU qualification observes demotion.
+#load "sampling-core.coax";
+
+#test "scalar sampling adapters retain their established zero-derivative profile" {
+  rs_pixel:=[1]V4.[v4(0.25,0.5,0.75,1)];rs_tex:=Tex2D.{width=1,height=1,texels=rs_pixel[..]};
+  rs_array:=Tex2DArray.{width=1,height=1,layers=1,texels=rs_pixel[..]};rs_sampler:=Sampler.{};
+  #assert render_sample8(rs_tex,rs_sampler,V2.{}).y==0.5;
+  #assert render_sample_layer8(rs_array,rs_sampler,V2.{},0).z==0.75;
+  #assert render_sample_layer8_bias(rs_array,rs_sampler,V2.{},0,0).x==0.25;
+}
+render_sample8_grad :: (texture:Tex2D,sheet:Sampler,uv:V2,dx:V2,dy:V2,bias:f32)->V4 {
+  rs_result:=render_filter8_grad(texture,sheet,uv,dx,dy,bias);
+  if !rs_result.valid {gpu_demote_helper();}
+  return rs_result.colour;
+}
+render_sample_layer8_grad :: (texture:Tex2DArray,sheet:Sampler,uv:V2,layer:s32,dx:V2,dy:V2,bias:f32)->V4 {
+  rs_result:=render_filter_layer8_grad(texture,sheet,uv,layer,dx,dy,bias);
+  if !rs_result.valid {gpu_demote_helper();}
+  return rs_result.colour;
+}
+render_sample8 :: (texture:Tex2D,sheet:Sampler,uv:V2)->V4 {
+  rs_dx:=v2(gpu_dpdx_fine(uv.x),gpu_dpdx_fine(uv.y));rs_dy:=v2(gpu_dpdy_fine(uv.x),gpu_dpdy_fine(uv.y));
+  rs_no_bias:f32;
+  return render_sample8_grad(texture,sheet,uv,rs_dx,rs_dy,rs_no_bias);
+}
+render_sample_layer8_bias :: (texture:Tex2DArray,sheet:Sampler,uv:V2,layer:s32,bias:f32)->V4 {
+  rs_dx:=v2(gpu_dpdx_fine(uv.x),gpu_dpdx_fine(uv.y));rs_dy:=v2(gpu_dpdy_fine(uv.x),gpu_dpdy_fine(uv.y));
+  return render_sample_layer8_grad(texture,sheet,uv,layer,rs_dx,rs_dy,bias);
+}
+render_sample_layer8 :: (texture:Tex2DArray,sheet:Sampler,uv:V2,layer:s32)->V4 {
+  rs_no_bias:f32;
+  return render_sample_layer8_bias(texture,sheet,uv,layer,rs_no_bias);
+}

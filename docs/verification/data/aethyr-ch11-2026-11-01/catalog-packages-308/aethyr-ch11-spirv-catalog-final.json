@@ -1,0 +1,1035 @@
+{
+  "schema": "aethyr.render.spirv-validation.v1",
+  "status": "pass",
+  "host": "coderos-4080",
+  "declared_programs": 77,
+  "unique_programs": 58,
+  "command": [
+    "ssh",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=15",
+    "-o",
+    "ServerAliveInterval=15",
+    "-o",
+    "ServerAliveCountMax=2",
+    "coderos-4080",
+    "set -eu\nd=$(mktemp -d)\ntrap 'rm -rf \"$d\"' EXIT\ntar -xf - -C \"$d\"\ncd \"$d\"\ntimeout 600 nix-shell -p spirv-tools python3 --run 'python3 validate.py'\n"
+  ],
+  "source_inputs": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_spirv_modules.py": "275322631b47a9283123b40b1f32f7d91da94a0e9c6531d141b2f2b72699e63c",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/catalog-6445ee0050.json": "bbdd8e0b4d29f13eda7b27241ed9a778c18eb2ff8a01a353bab0c12bafb06294",
+    "/private/tmp/aethyr-ch11-packages-final-v2/haunted-house/render.json": "48cece0ab5d1f09be60435fcc27b682c6682bdaf7d0c7d6d555cb452911c300a",
+    "/private/tmp/aethyr-ch11-packages-final-v2/haunted-house/pipeline-0-b8942a40c7d73c0e539309a510b33b246dd892a9477001c441bc5fcb5e2059e1.spv": "b8942a40c7d73c0e539309a510b33b246dd892a9477001c441bc5fcb5e2059e1",
+    "/private/tmp/aethyr-ch11-packages-final-v2/haunted-house/pipeline-1-94dbe2902358b1c23b81dc7a1c4df2d3105c5e01f50084f06ef92ce77631bdc0.spv": "94dbe2902358b1c23b81dc7a1c4df2d3105c5e01f50084f06ef92ce77631bdc0",
+    "/private/tmp/aethyr-ch11-packages-final-v2/haunted-house/pipeline-5-ae46c80d010a454420fd6b72043b9b240c2ee461a854f141a48714394680deae.spv": "ae46c80d010a454420fd6b72043b9b240c2ee461a854f141a48714394680deae",
+    "/private/tmp/aethyr-ch11-packages-final-v2/haunted-house/pipeline-9-e6c620260dd2cd97889c6f9115988199ee7d22d7fd29a278b5cb2c4f064e4d0f.spv": "e6c620260dd2cd97889c6f9115988199ee7d22d7fd29a278b5cb2c4f064e4d0f",
+    "/private/tmp/aethyr-ch11-packages-final-v2/haunted-house/pipeline-10-5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968.spv": "5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968",
+    "/private/tmp/aethyr-ch11-packages-final-v2/haunted-house/pipeline-11-5c7a4900458fe7f43b9d1ad89b101e19bfe9690d66ff3d217fc38297e6d81295.spv": "5c7a4900458fe7f43b9d1ad89b101e19bfe9690d66ff3d217fc38297e6d81295",
+    "/private/tmp/aethyr-ch11-packages-final-v2/haunted-house/pipeline-12-12e2a4f35dbd2212f118567f6b93057d89a06013e12b07ba4c4b82d5674fdaa0.spv": "12e2a4f35dbd2212f118567f6b93057d89a06013e12b07ba4c4b82d5674fdaa0",
+    "/private/tmp/aethyr-ch11-packages-final-v2/the-grid/render.json": "5496c375fe36d16acd07ea401fa6246c733b649bdbce68fdd708eb0bdfc10d75",
+    "/private/tmp/aethyr-ch11-packages-final-v2/the-grid/pipeline-0-b7c185dc2e3ae9bc939176abd1776f9c6e2736cabe255e0577dd7cc6d0f8fa38.spv": "b7c185dc2e3ae9bc939176abd1776f9c6e2736cabe255e0577dd7cc6d0f8fa38",
+    "/private/tmp/aethyr-ch11-packages-final-v2/the-grid/pipeline-12-7100c095731ef6c6a6c61b626e5765a3e3a2c69f091c0c723c875258036acc63.spv": "7100c095731ef6c6a6c61b626e5765a3e3a2c69f091c0c723c875258036acc63",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/render.json": "67914ed228c187721c38e8c81be0fd36a93b7776784423ca6e2e3b9da475a2d9",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-0-b2ffa0ea286d9f7eecbd920226e76fbdb6ac7f552dc024162dc9d0f30b85e19c.spv": "b2ffa0ea286d9f7eecbd920226e76fbdb6ac7f552dc024162dc9d0f30b85e19c",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-1-019dedb3210f82c8f94fff24f08a9f98b650cd62e3c729ec284a278988e417b6.spv": "019dedb3210f82c8f94fff24f08a9f98b650cd62e3c729ec284a278988e417b6",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-3-cd8f66fee4266ff60ea4ca4baf4fcd839e218b99f9fba8c1b15d813644264eb2.spv": "cd8f66fee4266ff60ea4ca4baf4fcd839e218b99f9fba8c1b15d813644264eb2",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-5-5788baaba43118969580938c55a6f486ae3729369f62b67961cda8aef4243f13.spv": "5788baaba43118969580938c55a6f486ae3729369f62b67961cda8aef4243f13",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-6-93bd8eb8324441f5d44b3ca2ba3b4e7bf4d507bf3946e1aca5b06ec0e4877588.spv": "93bd8eb8324441f5d44b3ca2ba3b4e7bf4d507bf3946e1aca5b06ec0e4877588",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-7-fc7d868565ff9ab93d20cccb6f1c48238231a9444d6dab9ec03e51ca5416c711.spv": "fc7d868565ff9ab93d20cccb6f1c48238231a9444d6dab9ec03e51ca5416c711",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-8-ff471f185e718b7e4cb5f788e4b8474c2b51e1651b0bae985a6ca04164267af7.spv": "ff471f185e718b7e4cb5f788e4b8474c2b51e1651b0bae985a6ca04164267af7",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-9-50652b811216bc36cf5c37db55a7a1ca457f4a0ce56baea56dcead9b4d9a7968.spv": "50652b811216bc36cf5c37db55a7a1ca457f4a0ce56baea56dcead9b4d9a7968",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-10-05841bf0f57155250e200c4495e1dca4cf1a43d5907217e9d5aa90ca3307e07c.spv": "05841bf0f57155250e200c4495e1dca4cf1a43d5907217e9d5aa90ca3307e07c",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-11-778b9aeb106a043dde265ec0deaad27ccdf01c4d6ce3501e8aeb3315a5363f72.spv": "778b9aeb106a043dde265ec0deaad27ccdf01c4d6ce3501e8aeb3315a5363f72",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-12-e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75.spv": "e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75",
+    "/private/tmp/aethyr-ch11-packages-final-v2/everglade/pipeline-13-777426a649e4a31d6ea3b7e257ff9dccd79ebf0c55f975b6a6ab719fc9f872e9.spv": "777426a649e4a31d6ea3b7e257ff9dccd79ebf0c55f975b6a6ab719fc9f872e9",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fairy-forest/render.json": "6da59720b96848d9130fefea1eb33c9f1529988bbd64b18adcec6856f00150e6",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fairy-forest/pipeline-0-dbc8c1c0509b977ba832ffdf2c014ad20b83ec5a6ad4385c9f7d32844a9a63be.spv": "dbc8c1c0509b977ba832ffdf2c014ad20b83ec5a6ad4385c9f7d32844a9a63be",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fairy-forest/pipeline-5-8dcd4ea81a18f6800576dada53213442cc2b6a9f0fece51015e71042eda156c2.spv": "8dcd4ea81a18f6800576dada53213442cc2b6a9f0fece51015e71042eda156c2",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fairy-forest/pipeline-6-3e33c874e394cfa941304b51fdd33955591b01ab5ef5eccc860c664a83ed8c56.spv": "3e33c874e394cfa941304b51fdd33955591b01ab5ef5eccc860c664a83ed8c56",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fairy-forest/pipeline-7-91ab9cadc1ebdd609c22cca84565fd61235e988224c32bd750eea6391b4bfc7e.spv": "91ab9cadc1ebdd609c22cca84565fd61235e988224c32bd750eea6391b4bfc7e",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fairy-forest/pipeline-10-5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968.spv": "5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fairy-forest/pipeline-11-6a4e2b4e4c7397cd1169a442a1eaa7422ca94fcb59e93b862d5123dafe81b3d5.spv": "6a4e2b4e4c7397cd1169a442a1eaa7422ca94fcb59e93b862d5123dafe81b3d5",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fairy-forest/pipeline-12-799c57cf5ccdb48bebe2207f97eb134411ec646b3a538b63ed3fca2495649829.spv": "799c57cf5ccdb48bebe2207f97eb134411ec646b3a538b63ed3fca2495649829",
+    "/private/tmp/aethyr-ch11-packages-final-v2/dead-gears/render.json": "74bbac88f5d13a1c91abff4f2fb95a4eb005ad7a887b58245de524b6b481da5a",
+    "/private/tmp/aethyr-ch11-packages-final-v2/dead-gears/pipeline-0-d5747e46d2e28382caec0818642a7d4ca1d5a6cfc91ce347088d429b5ea03f23.spv": "d5747e46d2e28382caec0818642a7d4ca1d5a6cfc91ce347088d429b5ea03f23",
+    "/private/tmp/aethyr-ch11-packages-final-v2/dead-gears/pipeline-5-7f095ea67b18452bb4036884b6529fd091efc3312c4a1bd6ea54618be74feaf5.spv": "7f095ea67b18452bb4036884b6529fd091efc3312c4a1bd6ea54618be74feaf5",
+    "/private/tmp/aethyr-ch11-packages-final-v2/dead-gears/pipeline-12-e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75.spv": "e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75",
+    "/private/tmp/aethyr-ch11-packages-final-v2/belt-2200/render.json": "ddb0cc493508eec987e2a55a856e1fe7f184095f7383fcbe4508a6952c3fa133",
+    "/private/tmp/aethyr-ch11-packages-final-v2/belt-2200/pipeline-0-662baa8b34b52d5c1d629150a2192415677ba61196309696b2bb0cb627706d8a.spv": "662baa8b34b52d5c1d629150a2192415677ba61196309696b2bb0cb627706d8a",
+    "/private/tmp/aethyr-ch11-packages-final-v2/belt-2200/pipeline-12-8430178326f814beb99fe79b6e97d8cdcab653c3e6c6ee4f62866f182411661b.spv": "8430178326f814beb99fe79b6e97d8cdcab653c3e6c6ee4f62866f182411661b",
+    "/private/tmp/aethyr-ch11-packages-final-v2/orbit-league/render.json": "121e3b4be4b65d58334904ff15ab131dc760b612d9c0fc395d9652c5f798ca0c",
+    "/private/tmp/aethyr-ch11-packages-final-v2/orbit-league/pipeline-0-a41df8594fd0f23cdeb02605ca649176f6b6790d4c30f0e9dfdd754a2536369c.spv": "a41df8594fd0f23cdeb02605ca649176f6b6790d4c30f0e9dfdd754a2536369c",
+    "/private/tmp/aethyr-ch11-packages-final-v2/orbit-league/pipeline-12-f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da.spv": "f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fixture/render.json": "bb23f81ee6c492ebb73b37235642c9190b15068d278739186128696709bae0dd",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fixture/pipeline-0-7c61ce1a11f65fb4aa712f231ef899343dd2502c05220ddc66f58e55189f3a75.spv": "7c61ce1a11f65fb4aa712f231ef899343dd2502c05220ddc66f58e55189f3a75",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fixture/pipeline-2-04609d94029d37606b6fc4dcca2640f3f8a91e5db1cff28d4c9e8f57cf236ee6.spv": "04609d94029d37606b6fc4dcca2640f3f8a91e5db1cff28d4c9e8f57cf236ee6",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fixture/pipeline-3-55a2d65f3b470a81e9a6670272e0599de3ed2217857b3663dfee0c7a21939820.spv": "55a2d65f3b470a81e9a6670272e0599de3ed2217857b3663dfee0c7a21939820",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fixture/pipeline-5-5ab7058891b069a273f275604d911a5494213ce03dea810cb8a26e1325e6bfd3.spv": "5ab7058891b069a273f275604d911a5494213ce03dea810cb8a26e1325e6bfd3",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fixture/pipeline-10-05841bf0f57155250e200c4495e1dca4cf1a43d5907217e9d5aa90ca3307e07c.spv": "05841bf0f57155250e200c4495e1dca4cf1a43d5907217e9d5aa90ca3307e07c",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fixture/pipeline-11-83d61f6c6e1a8bf1d0d1fe3bbb30139752a030ec6eaff5987be1611535fd82ac.spv": "83d61f6c6e1a8bf1d0d1fe3bbb30139752a030ec6eaff5987be1611535fd82ac",
+    "/private/tmp/aethyr-ch11-packages-final-v2/fixture/pipeline-12-f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da.spv": "f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da",
+    "/private/tmp/aethyr-ch11-packages-final-v2/waterlab/render.json": "d5e02d90d29f531331226275ee67c2ff0bccb2f97448a382eb0528756d87f1c9",
+    "/private/tmp/aethyr-ch11-packages-final-v2/waterlab/pipeline-0-da6bce060e8fd0cff505d0460fc0431aea8157aa5b083d710a8de1c0259f1675.spv": "da6bce060e8fd0cff505d0460fc0431aea8157aa5b083d710a8de1c0259f1675",
+    "/private/tmp/aethyr-ch11-packages-final-v2/waterlab/pipeline-4-43d3914dff199e06771aaa9dfd31c60bca0a9a5580b73f97c231f159153c3314.spv": "43d3914dff199e06771aaa9dfd31c60bca0a9a5580b73f97c231f159153c3314",
+    "/private/tmp/aethyr-ch11-packages-final-v2/waterlab/pipeline-12-031dffefae9eaf01d3f966fea187b94f4e559c79ed0283e5e2678705c4aee584.spv": "031dffefae9eaf01d3f966fea187b94f4e559c79ed0283e5e2678705c4aee584",
+    "/private/tmp/aethyr-ch11-packages-final-v2/drop/render.json": "6438d55ecf3c3f342c8c4322cf931776ebbc259b7ea2811e69433b8ee88ac220",
+    "/private/tmp/aethyr-ch11-packages-final-v2/drop/pipeline-0-556dc288db27ad629162629ae93c30f2403da9a885fd10130d5ec1e4c186d932.spv": "556dc288db27ad629162629ae93c30f2403da9a885fd10130d5ec1e4c186d932",
+    "/private/tmp/aethyr-ch11-packages-final-v2/drop/pipeline-5-e2c0a0c154282f2855692c8ca846e745b199d24a91388cff318550e4b3235d61.spv": "e2c0a0c154282f2855692c8ca846e745b199d24a91388cff318550e4b3235d61",
+    "/private/tmp/aethyr-ch11-packages-final-v2/drop/pipeline-12-f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da.spv": "f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da",
+    "/private/tmp/aethyr-ch11-packages-final-v2/built/render.json": "78458be9446b66d21601b03617b6587431fc20344f76658afa2fd10ef58030ef",
+    "/private/tmp/aethyr-ch11-packages-final-v2/built/pipeline-0-d65d219961153fcfa431bd9d0e47e1183a61804b361b72c0d2891b78d8b422ed.spv": "d65d219961153fcfa431bd9d0e47e1183a61804b361b72c0d2891b78d8b422ed",
+    "/private/tmp/aethyr-ch11-packages-final-v2/built/pipeline-5-02638aeaa5941ac92824fca56af31abb6cdfe0dade0831d90ae173d8e7bb78a0.spv": "02638aeaa5941ac92824fca56af31abb6cdfe0dade0831d90ae173d8e7bb78a0",
+    "/private/tmp/aethyr-ch11-packages-final-v2/built/pipeline-12-f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da.spv": "f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da",
+    "/private/tmp/aethyr-ch11-packages-final-v2/sandbox/render.json": "af40dfea08a0f49b40c94c40ec461147bc991c09fe86ddea257548dd08751395",
+    "/private/tmp/aethyr-ch11-packages-final-v2/sandbox/pipeline-0-b8942a40c7d73c0e539309a510b33b246dd892a9477001c441bc5fcb5e2059e1.spv": "b8942a40c7d73c0e539309a510b33b246dd892a9477001c441bc5fcb5e2059e1",
+    "/private/tmp/aethyr-ch11-packages-final-v2/sandbox/pipeline-1-94dbe2902358b1c23b81dc7a1c4df2d3105c5e01f50084f06ef92ce77631bdc0.spv": "94dbe2902358b1c23b81dc7a1c4df2d3105c5e01f50084f06ef92ce77631bdc0",
+    "/private/tmp/aethyr-ch11-packages-final-v2/sandbox/pipeline-5-ae46c80d010a454420fd6b72043b9b240c2ee461a854f141a48714394680deae.spv": "ae46c80d010a454420fd6b72043b9b240c2ee461a854f141a48714394680deae",
+    "/private/tmp/aethyr-ch11-packages-final-v2/sandbox/pipeline-9-e6c620260dd2cd97889c6f9115988199ee7d22d7fd29a278b5cb2c4f064e4d0f.spv": "e6c620260dd2cd97889c6f9115988199ee7d22d7fd29a278b5cb2c4f064e4d0f",
+    "/private/tmp/aethyr-ch11-packages-final-v2/sandbox/pipeline-10-5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968.spv": "5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968",
+    "/private/tmp/aethyr-ch11-packages-final-v2/sandbox/pipeline-11-5c7a4900458fe7f43b9d1ad89b101e19bfe9690d66ff3d217fc38297e6d81295.spv": "5c7a4900458fe7f43b9d1ad89b101e19bfe9690d66ff3d217fc38297e6d81295",
+    "/private/tmp/aethyr-ch11-packages-final-v2/sandbox/pipeline-12-12e2a4f35dbd2212f118567f6b93057d89a06013e12b07ba4c4b82d5674fdaa0.spv": "12e2a4f35dbd2212f118567f6b93057d89a06013e12b07ba4c4b82d5674fdaa0",
+    "/private/tmp/aethyr-ch11-packages-final-v2/ice-cream-man/render.json": "4eb52122c3a95290e90bb322c44217884cae040cfe0716a60ffc2f3a16169c7e",
+    "/private/tmp/aethyr-ch11-packages-final-v2/ice-cream-man/pipeline-0-24fc9cf0ffb859f62725762731d350034af8dd9723a4274cf11e5edc1aa69566.spv": "24fc9cf0ffb859f62725762731d350034af8dd9723a4274cf11e5edc1aa69566",
+    "/private/tmp/aethyr-ch11-packages-final-v2/ice-cream-man/pipeline-5-c3b32828791756e228646f990c62d0e2016354efc9ab1739546c3dfae85eb47b.spv": "c3b32828791756e228646f990c62d0e2016354efc9ab1739546c3dfae85eb47b",
+    "/private/tmp/aethyr-ch11-packages-final-v2/ice-cream-man/pipeline-12-f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da.spv": "f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hecates-cemetery/render.json": "c1c28c895dd2fe6d742cabdfbd5f8be4de8dc807214733f489269935f8dee489",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hecates-cemetery/pipeline-0-90a2a330f69ab462a459e61adae070b892475730b7e9085f06e83399eb89c2ea.spv": "90a2a330f69ab462a459e61adae070b892475730b7e9085f06e83399eb89c2ea",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hecates-cemetery/pipeline-5-5e3b6652c58628a86e2d4500aeabe4369cb9409c9c12ea0815c80e7fed5dc6c6.spv": "5e3b6652c58628a86e2d4500aeabe4369cb9409c9c12ea0815c80e7fed5dc6c6",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hecates-cemetery/pipeline-9-e6c620260dd2cd97889c6f9115988199ee7d22d7fd29a278b5cb2c4f064e4d0f.spv": "e6c620260dd2cd97889c6f9115988199ee7d22d7fd29a278b5cb2c4f064e4d0f",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hecates-cemetery/pipeline-10-5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968.spv": "5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hecates-cemetery/pipeline-11-5e5f4f037691194ec5a7c2724898b07b3394390e872ec09bbd0d1f53ad6993aa.spv": "5e5f4f037691194ec5a7c2724898b07b3394390e872ec09bbd0d1f53ad6993aa",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hecates-cemetery/pipeline-12-e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75.spv": "e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hecates-cemetery/pipeline-13-777426a649e4a31d6ea3b7e257ff9dccd79ebf0c55f975b6a6ab719fc9f872e9.spv": "777426a649e4a31d6ea3b7e257ff9dccd79ebf0c55f975b6a6ab719fc9f872e9",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hold-the-stair/render.json": "170d4bbd99f04d875e1390737d377ef2fe67306d28319cbe7a3f3ea0bd7fa1e5",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hold-the-stair/pipeline-0-84e9fb7f79faf20f49671233a5683e954feec5490e50cba950c4b0b5a6cbf02c.spv": "84e9fb7f79faf20f49671233a5683e954feec5490e50cba950c4b0b5a6cbf02c",
+    "/private/tmp/aethyr-ch11-packages-final-v2/hold-the-stair/pipeline-12-4833288af4bd4a714553761a8b02252d5ca832e61e2e4d057a40e9bc88861def.spv": "4833288af4bd4a714553761a8b02252d5ca832e61e2e4d057a40e9bc88861def",
+    "/private/tmp/aethyr-ch11-packages-final-v2/watchtower/render.json": "6ada90e96c42754c7206086529b2c2fdb5d91b786c04e7f9c0386ca55cf39250",
+    "/private/tmp/aethyr-ch11-packages-final-v2/watchtower/pipeline-0-016e2e88071b9cda47bf70204f03d862732461d7ce66061cbda5bab0fd37f8d5.spv": "016e2e88071b9cda47bf70204f03d862732461d7ce66061cbda5bab0fd37f8d5",
+    "/private/tmp/aethyr-ch11-packages-final-v2/watchtower/pipeline-12-e6baeb0ef616a56f5bd9d6529f3a1598e64acf7e2a93d3512dcd1a4cedf1396b.spv": "e6baeb0ef616a56f5bd9d6529f3a1598e64acf7e2a93d3512dcd1a4cedf1396b",
+    "/private/tmp/aethyr-ch11-packages-final-v2/garden/render.json": "3cfd3b2416fb8009683ebd54ce11914485e51c61f84bfbb9a895b1899235f069",
+    "/private/tmp/aethyr-ch11-packages-final-v2/garden/pipeline-0-391fd3ba4d7f4af8894a0ba4821ff429508376ed12511b2a5fbe69bebc76aa2b.spv": "391fd3ba4d7f4af8894a0ba4821ff429508376ed12511b2a5fbe69bebc76aa2b",
+    "/private/tmp/aethyr-ch11-packages-final-v2/garden/pipeline-5-2561043a316c647a3ceaeb4c768f1ea2ca5dc1aa5dd8c12fdcadcf97028f84c4.spv": "2561043a316c647a3ceaeb4c768f1ea2ca5dc1aa5dd8c12fdcadcf97028f84c4",
+    "/private/tmp/aethyr-ch11-packages-final-v2/garden/pipeline-12-e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75.spv": "e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75",
+    "/private/tmp/aethyr-ch11-packages-final-v2/galaxy/render.json": "6725496f8fcd450e10a6d50f4de8b812f408ac5e932aa6535f1a56c4ab652ae3",
+    "/private/tmp/aethyr-ch11-packages-final-v2/galaxy/pipeline-0-a4eec29bf81cada7a4c97fb16d540e3f2301be538dd725ba689ec0a1505db484.spv": "a4eec29bf81cada7a4c97fb16d540e3f2301be538dd725ba689ec0a1505db484",
+    "/private/tmp/aethyr-ch11-packages-final-v2/galaxy/pipeline-12-aa975e4656ea4cf03334f4dacfeadbe7476c4ab2ef92dd8c872782c128a79031.spv": "aa975e4656ea4cf03334f4dacfeadbe7476c4ab2ef92dd8c872782c128a79031"
+  },
+  "source_changes": [],
+  "remote_script_sha256": "e79333ce46439d5bf7e296e861c8b20bd731b7aff01e96f8b71d6fa3abf64b09",
+  "elapsed_seconds": 2.969,
+  "result": {
+    "status": "pass",
+    "validator": "/nix/store/vzkr4vhj77fif6g5j5c5cprmfwfzg50k-spirv-tools-1.4.341.0/bin/spirv-val",
+    "validator_sha256": "9da466349d444d870111c4240a290d8b5b6f18ae48f982a6a34206792aecffcc",
+    "version": "SPIRV-Tools v2026.1 unknown hash, 1980-01-01T00:00:00+00:00\nTargets:\n  SPIR-V 1.0\n  SPIR-V 1.1\n  SPIR-V 1.2\n  SPIR-V 1.3\n  SPIR-V 1.4\n  SPIR-V 1.5\n  SPIR-V 1.6\n  SPIR-V 1.2 (under OpenCL 2.2 Full Profile semantics)\n  SPIR-V 1.0 (under Vulkan 1.0 semantics)\n  SPIR-V 1.3 (under Vulkan 1.1 semantics)\n  SPIR-V 1.4 (under Vulkan 1.1 semantics)\n  SPIR-V 1.5 (under Vulkan 1.2 semantics)\n  SPIR-V 1.6 (under Vulkan 1.3 semantics) SPIR-V 1.6 (under Vulkan 1.4 semantics)\n",
+    "observations": [
+      {
+        "file": "b8942a40c7d73c0e539309a510b33b246dd892a9477001c441bc5fcb5e2059e1.spv",
+        "sha256": "b8942a40c7d73c0e539309a510b33b246dd892a9477001c441bc5fcb5e2059e1",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "haunted-house",
+            "entry_index": 0
+          },
+          {
+            "profile": "sandbox",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "94dbe2902358b1c23b81dc7a1c4df2d3105c5e01f50084f06ef92ce77631bdc0.spv",
+        "sha256": "94dbe2902358b1c23b81dc7a1c4df2d3105c5e01f50084f06ef92ce77631bdc0",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "haunted-house",
+            "entry_index": 1
+          },
+          {
+            "profile": "sandbox",
+            "entry_index": 1
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "ae46c80d010a454420fd6b72043b9b240c2ee461a854f141a48714394680deae.spv",
+        "sha256": "ae46c80d010a454420fd6b72043b9b240c2ee461a854f141a48714394680deae",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "haunted-house",
+            "entry_index": 5
+          },
+          {
+            "profile": "sandbox",
+            "entry_index": 5
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "e6c620260dd2cd97889c6f9115988199ee7d22d7fd29a278b5cb2c4f064e4d0f.spv",
+        "sha256": "e6c620260dd2cd97889c6f9115988199ee7d22d7fd29a278b5cb2c4f064e4d0f",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "haunted-house",
+            "entry_index": 9
+          },
+          {
+            "profile": "sandbox",
+            "entry_index": 9
+          },
+          {
+            "profile": "hecates-cemetery",
+            "entry_index": 9
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968.spv",
+        "sha256": "5c933263386e89a9f6b38e82caab7dfda14c7f7f177a66f1044835910bdd1968",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "haunted-house",
+            "entry_index": 10
+          },
+          {
+            "profile": "fairy-forest",
+            "entry_index": 10
+          },
+          {
+            "profile": "sandbox",
+            "entry_index": 10
+          },
+          {
+            "profile": "hecates-cemetery",
+            "entry_index": 10
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "5c7a4900458fe7f43b9d1ad89b101e19bfe9690d66ff3d217fc38297e6d81295.spv",
+        "sha256": "5c7a4900458fe7f43b9d1ad89b101e19bfe9690d66ff3d217fc38297e6d81295",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "haunted-house",
+            "entry_index": 11
+          },
+          {
+            "profile": "sandbox",
+            "entry_index": 11
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "12e2a4f35dbd2212f118567f6b93057d89a06013e12b07ba4c4b82d5674fdaa0.spv",
+        "sha256": "12e2a4f35dbd2212f118567f6b93057d89a06013e12b07ba4c4b82d5674fdaa0",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "haunted-house",
+            "entry_index": 12
+          },
+          {
+            "profile": "sandbox",
+            "entry_index": 12
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "b7c185dc2e3ae9bc939176abd1776f9c6e2736cabe255e0577dd7cc6d0f8fa38.spv",
+        "sha256": "b7c185dc2e3ae9bc939176abd1776f9c6e2736cabe255e0577dd7cc6d0f8fa38",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "the-grid",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "7100c095731ef6c6a6c61b626e5765a3e3a2c69f091c0c723c875258036acc63.spv",
+        "sha256": "7100c095731ef6c6a6c61b626e5765a3e3a2c69f091c0c723c875258036acc63",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "the-grid",
+            "entry_index": 12
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "b2ffa0ea286d9f7eecbd920226e76fbdb6ac7f552dc024162dc9d0f30b85e19c.spv",
+        "sha256": "b2ffa0ea286d9f7eecbd920226e76fbdb6ac7f552dc024162dc9d0f30b85e19c",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "019dedb3210f82c8f94fff24f08a9f98b650cd62e3c729ec284a278988e417b6.spv",
+        "sha256": "019dedb3210f82c8f94fff24f08a9f98b650cd62e3c729ec284a278988e417b6",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 1
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "cd8f66fee4266ff60ea4ca4baf4fcd839e218b99f9fba8c1b15d813644264eb2.spv",
+        "sha256": "cd8f66fee4266ff60ea4ca4baf4fcd839e218b99f9fba8c1b15d813644264eb2",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 3
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "5788baaba43118969580938c55a6f486ae3729369f62b67961cda8aef4243f13.spv",
+        "sha256": "5788baaba43118969580938c55a6f486ae3729369f62b67961cda8aef4243f13",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 5
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "93bd8eb8324441f5d44b3ca2ba3b4e7bf4d507bf3946e1aca5b06ec0e4877588.spv",
+        "sha256": "93bd8eb8324441f5d44b3ca2ba3b4e7bf4d507bf3946e1aca5b06ec0e4877588",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 6
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "fc7d868565ff9ab93d20cccb6f1c48238231a9444d6dab9ec03e51ca5416c711.spv",
+        "sha256": "fc7d868565ff9ab93d20cccb6f1c48238231a9444d6dab9ec03e51ca5416c711",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 7
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "ff471f185e718b7e4cb5f788e4b8474c2b51e1651b0bae985a6ca04164267af7.spv",
+        "sha256": "ff471f185e718b7e4cb5f788e4b8474c2b51e1651b0bae985a6ca04164267af7",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 8
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "50652b811216bc36cf5c37db55a7a1ca457f4a0ce56baea56dcead9b4d9a7968.spv",
+        "sha256": "50652b811216bc36cf5c37db55a7a1ca457f4a0ce56baea56dcead9b4d9a7968",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 9
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "05841bf0f57155250e200c4495e1dca4cf1a43d5907217e9d5aa90ca3307e07c.spv",
+        "sha256": "05841bf0f57155250e200c4495e1dca4cf1a43d5907217e9d5aa90ca3307e07c",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 10
+          },
+          {
+            "profile": "fixture",
+            "entry_index": 10
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "778b9aeb106a043dde265ec0deaad27ccdf01c4d6ce3501e8aeb3315a5363f72.spv",
+        "sha256": "778b9aeb106a043dde265ec0deaad27ccdf01c4d6ce3501e8aeb3315a5363f72",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 11
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75.spv",
+        "sha256": "e4f7c3c9c3541c242bb90115731d76705c2abc6b9c9bd3044804b9c7f0f9bd75",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 12
+          },
+          {
+            "profile": "dead-gears",
+            "entry_index": 12
+          },
+          {
+            "profile": "hecates-cemetery",
+            "entry_index": 12
+          },
+          {
+            "profile": "garden",
+            "entry_index": 12
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "777426a649e4a31d6ea3b7e257ff9dccd79ebf0c55f975b6a6ab719fc9f872e9.spv",
+        "sha256": "777426a649e4a31d6ea3b7e257ff9dccd79ebf0c55f975b6a6ab719fc9f872e9",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "everglade",
+            "entry_index": 13
+          },
+          {
+            "profile": "hecates-cemetery",
+            "entry_index": 13
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "dbc8c1c0509b977ba832ffdf2c014ad20b83ec5a6ad4385c9f7d32844a9a63be.spv",
+        "sha256": "dbc8c1c0509b977ba832ffdf2c014ad20b83ec5a6ad4385c9f7d32844a9a63be",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fairy-forest",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "8dcd4ea81a18f6800576dada53213442cc2b6a9f0fece51015e71042eda156c2.spv",
+        "sha256": "8dcd4ea81a18f6800576dada53213442cc2b6a9f0fece51015e71042eda156c2",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fairy-forest",
+            "entry_index": 5
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "3e33c874e394cfa941304b51fdd33955591b01ab5ef5eccc860c664a83ed8c56.spv",
+        "sha256": "3e33c874e394cfa941304b51fdd33955591b01ab5ef5eccc860c664a83ed8c56",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fairy-forest",
+            "entry_index": 6
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "91ab9cadc1ebdd609c22cca84565fd61235e988224c32bd750eea6391b4bfc7e.spv",
+        "sha256": "91ab9cadc1ebdd609c22cca84565fd61235e988224c32bd750eea6391b4bfc7e",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fairy-forest",
+            "entry_index": 7
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "6a4e2b4e4c7397cd1169a442a1eaa7422ca94fcb59e93b862d5123dafe81b3d5.spv",
+        "sha256": "6a4e2b4e4c7397cd1169a442a1eaa7422ca94fcb59e93b862d5123dafe81b3d5",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fairy-forest",
+            "entry_index": 11
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "799c57cf5ccdb48bebe2207f97eb134411ec646b3a538b63ed3fca2495649829.spv",
+        "sha256": "799c57cf5ccdb48bebe2207f97eb134411ec646b3a538b63ed3fca2495649829",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fairy-forest",
+            "entry_index": 12
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "d5747e46d2e28382caec0818642a7d4ca1d5a6cfc91ce347088d429b5ea03f23.spv",
+        "sha256": "d5747e46d2e28382caec0818642a7d4ca1d5a6cfc91ce347088d429b5ea03f23",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "dead-gears",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "7f095ea67b18452bb4036884b6529fd091efc3312c4a1bd6ea54618be74feaf5.spv",
+        "sha256": "7f095ea67b18452bb4036884b6529fd091efc3312c4a1bd6ea54618be74feaf5",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "dead-gears",
+            "entry_index": 5
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "662baa8b34b52d5c1d629150a2192415677ba61196309696b2bb0cb627706d8a.spv",
+        "sha256": "662baa8b34b52d5c1d629150a2192415677ba61196309696b2bb0cb627706d8a",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "belt-2200",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "8430178326f814beb99fe79b6e97d8cdcab653c3e6c6ee4f62866f182411661b.spv",
+        "sha256": "8430178326f814beb99fe79b6e97d8cdcab653c3e6c6ee4f62866f182411661b",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "belt-2200",
+            "entry_index": 12
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "a41df8594fd0f23cdeb02605ca649176f6b6790d4c30f0e9dfdd754a2536369c.spv",
+        "sha256": "a41df8594fd0f23cdeb02605ca649176f6b6790d4c30f0e9dfdd754a2536369c",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "orbit-league",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da.spv",
+        "sha256": "f3411843737c51ad64a8e07fce191c11d0827fff1651da6e4962af1b070f48da",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "orbit-league",
+            "entry_index": 12
+          },
+          {
+            "profile": "fixture",
+            "entry_index": 12
+          },
+          {
+            "profile": "drop",
+            "entry_index": 12
+          },
+          {
+            "profile": "built",
+            "entry_index": 12
+          },
+          {
+            "profile": "ice-cream-man",
+            "entry_index": 12
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "7c61ce1a11f65fb4aa712f231ef899343dd2502c05220ddc66f58e55189f3a75.spv",
+        "sha256": "7c61ce1a11f65fb4aa712f231ef899343dd2502c05220ddc66f58e55189f3a75",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fixture",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "04609d94029d37606b6fc4dcca2640f3f8a91e5db1cff28d4c9e8f57cf236ee6.spv",
+        "sha256": "04609d94029d37606b6fc4dcca2640f3f8a91e5db1cff28d4c9e8f57cf236ee6",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fixture",
+            "entry_index": 2
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "55a2d65f3b470a81e9a6670272e0599de3ed2217857b3663dfee0c7a21939820.spv",
+        "sha256": "55a2d65f3b470a81e9a6670272e0599de3ed2217857b3663dfee0c7a21939820",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fixture",
+            "entry_index": 3
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "5ab7058891b069a273f275604d911a5494213ce03dea810cb8a26e1325e6bfd3.spv",
+        "sha256": "5ab7058891b069a273f275604d911a5494213ce03dea810cb8a26e1325e6bfd3",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fixture",
+            "entry_index": 5
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "83d61f6c6e1a8bf1d0d1fe3bbb30139752a030ec6eaff5987be1611535fd82ac.spv",
+        "sha256": "83d61f6c6e1a8bf1d0d1fe3bbb30139752a030ec6eaff5987be1611535fd82ac",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "fixture",
+            "entry_index": 11
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "da6bce060e8fd0cff505d0460fc0431aea8157aa5b083d710a8de1c0259f1675.spv",
+        "sha256": "da6bce060e8fd0cff505d0460fc0431aea8157aa5b083d710a8de1c0259f1675",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "waterlab",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "43d3914dff199e06771aaa9dfd31c60bca0a9a5580b73f97c231f159153c3314.spv",
+        "sha256": "43d3914dff199e06771aaa9dfd31c60bca0a9a5580b73f97c231f159153c3314",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "waterlab",
+            "entry_index": 4
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "031dffefae9eaf01d3f966fea187b94f4e559c79ed0283e5e2678705c4aee584.spv",
+        "sha256": "031dffefae9eaf01d3f966fea187b94f4e559c79ed0283e5e2678705c4aee584",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "waterlab",
+            "entry_index": 12
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "556dc288db27ad629162629ae93c30f2403da9a885fd10130d5ec1e4c186d932.spv",
+        "sha256": "556dc288db27ad629162629ae93c30f2403da9a885fd10130d5ec1e4c186d932",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "drop",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "e2c0a0c154282f2855692c8ca846e745b199d24a91388cff318550e4b3235d61.spv",
+        "sha256": "e2c0a0c154282f2855692c8ca846e745b199d24a91388cff318550e4b3235d61",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "drop",
+            "entry_index": 5
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "d65d219961153fcfa431bd9d0e47e1183a61804b361b72c0d2891b78d8b422ed.spv",
+        "sha256": "d65d219961153fcfa431bd9d0e47e1183a61804b361b72c0d2891b78d8b422ed",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "built",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "02638aeaa5941ac92824fca56af31abb6cdfe0dade0831d90ae173d8e7bb78a0.spv",
+        "sha256": "02638aeaa5941ac92824fca56af31abb6cdfe0dade0831d90ae173d8e7bb78a0",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "built",
+            "entry_index": 5
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "24fc9cf0ffb859f62725762731d350034af8dd9723a4274cf11e5edc1aa69566.spv",
+        "sha256": "24fc9cf0ffb859f62725762731d350034af8dd9723a4274cf11e5edc1aa69566",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "ice-cream-man",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "c3b32828791756e228646f990c62d0e2016354efc9ab1739546c3dfae85eb47b.spv",
+        "sha256": "c3b32828791756e228646f990c62d0e2016354efc9ab1739546c3dfae85eb47b",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "ice-cream-man",
+            "entry_index": 5
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "90a2a330f69ab462a459e61adae070b892475730b7e9085f06e83399eb89c2ea.spv",
+        "sha256": "90a2a330f69ab462a459e61adae070b892475730b7e9085f06e83399eb89c2ea",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "hecates-cemetery",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "5e3b6652c58628a86e2d4500aeabe4369cb9409c9c12ea0815c80e7fed5dc6c6.spv",
+        "sha256": "5e3b6652c58628a86e2d4500aeabe4369cb9409c9c12ea0815c80e7fed5dc6c6",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "hecates-cemetery",
+            "entry_index": 5
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "5e5f4f037691194ec5a7c2724898b07b3394390e872ec09bbd0d1f53ad6993aa.spv",
+        "sha256": "5e5f4f037691194ec5a7c2724898b07b3394390e872ec09bbd0d1f53ad6993aa",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "hecates-cemetery",
+            "entry_index": 11
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "84e9fb7f79faf20f49671233a5683e954feec5490e50cba950c4b0b5a6cbf02c.spv",
+        "sha256": "84e9fb7f79faf20f49671233a5683e954feec5490e50cba950c4b0b5a6cbf02c",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "hold-the-stair",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "4833288af4bd4a714553761a8b02252d5ca832e61e2e4d057a40e9bc88861def.spv",
+        "sha256": "4833288af4bd4a714553761a8b02252d5ca832e61e2e4d057a40e9bc88861def",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "hold-the-stair",
+            "entry_index": 12
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "016e2e88071b9cda47bf70204f03d862732461d7ce66061cbda5bab0fd37f8d5.spv",
+        "sha256": "016e2e88071b9cda47bf70204f03d862732461d7ce66061cbda5bab0fd37f8d5",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "watchtower",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "e6baeb0ef616a56f5bd9d6529f3a1598e64acf7e2a93d3512dcd1a4cedf1396b.spv",
+        "sha256": "e6baeb0ef616a56f5bd9d6529f3a1598e64acf7e2a93d3512dcd1a4cedf1396b",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "watchtower",
+            "entry_index": 12
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "391fd3ba4d7f4af8894a0ba4821ff429508376ed12511b2a5fbe69bebc76aa2b.spv",
+        "sha256": "391fd3ba4d7f4af8894a0ba4821ff429508376ed12511b2a5fbe69bebc76aa2b",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "garden",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "2561043a316c647a3ceaeb4c768f1ea2ca5dc1aa5dd8c12fdcadcf97028f84c4.spv",
+        "sha256": "2561043a316c647a3ceaeb4c768f1ea2ca5dc1aa5dd8c12fdcadcf97028f84c4",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "garden",
+            "entry_index": 5
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "a4eec29bf81cada7a4c97fb16d540e3f2301be538dd725ba689ec0a1505db484.spv",
+        "sha256": "a4eec29bf81cada7a4c97fb16d540e3f2301be538dd725ba689ec0a1505db484",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "galaxy",
+            "entry_index": 0
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "aa975e4656ea4cf03334f4dacfeadbe7476c4ab2ef92dd8c872782c128a79031.spv",
+        "sha256": "aa975e4656ea4cf03334f4dacfeadbe7476c4ab2ef92dd8c872782c128a79031",
+        "kind": "program",
+        "owners": [
+          {
+            "profile": "galaxy",
+            "entry_index": 12
+          }
+        ],
+        "exit_status": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "file": "bad-magic.spv",
+        "sha256": "b2f73ba76b6188c8f1f72a74b0eb730d8550a995e1513bbbf31df7866f9c636e",
+        "kind": "control",
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: line 0: Invalid SPIR-V magic number.\n"
+      },
+      {
+        "file": "bad-result-type.spv",
+        "sha256": "93aade3402323504d10dabd84da9037b73868dc9a4cb35d8f661a402d7bec85e",
+        "kind": "control",
+        "exit_status": 1,
+        "stdout": "",
+        "stderr": "error: line 97: Error: Type Id is 0\n"
+      }
+    ]
+  },
+  "scope": "Exact actual package programs validated for Vulkan1.1 by the named installed validator, with two structural refusal controls. No pipeline creation, GPU execution or numerical-image claim."
+}

@@ -1,0 +1,4 @@
+  File "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/check_mesh_bands.py", line 60
+    commands.append(dict(args=list(map(str,args)),exit=active.returncode,failure=failure.__name__if failure else None,elapsed_seconds=round(time.monotonic()-begin,6),log=path.name,log_sha256=sha(path)))
+                                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?

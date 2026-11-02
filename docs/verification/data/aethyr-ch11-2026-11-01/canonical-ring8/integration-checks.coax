@@ -1,0 +1,37 @@
+
+#test "DeadGears capsule closes every seam and collapses each exact pole" {
+ dg_ring_m:=DeadgearsObj.{r0=v4(0,0,0,1),r1=v4(0,0.99999,0,1)};
+ for dg_ring_row:0..<6 {
+  dg_ring_first:=ifx dg_ring_row<5 then dg_ring_row*48 else 197;
+  dg_ring_last:=ifx dg_ring_row<5 then dg_ring_row*48+43 else 236;
+  dg_ring_a:=deadgears_round_vertex(dg_ring_m,cast(u32)dg_ring_first);dg_ring_b:=deadgears_round_vertex(dg_ring_m,cast(u32)dg_ring_last);
+  #assert f32_bits(dg_ring_a.p.x)==f32_bits(dg_ring_b.p.x) && f32_bits(dg_ring_a.p.y)==f32_bits(dg_ring_b.p.y) && f32_bits(dg_ring_a.p.z)==f32_bits(dg_ring_b.p.z);
+  #assert f32_bits(dg_ring_a.n.x)==f32_bits(dg_ring_b.n.x) && f32_bits(dg_ring_a.n.y)==f32_bits(dg_ring_b.n.y) && f32_bits(dg_ring_a.n.z)==f32_bits(dg_ring_b.n.z);
+ }
+ for dg_ring_sector:0..<8 {
+  dg_ring_bottom:=deadgears_round_vertex(dg_ring_m,cast(u32)(dg_ring_sector*6));
+  dg_ring_top:=deadgears_round_vertex(dg_ring_m,cast(u32)((32+dg_ring_sector)*6+5));
+  #assert dg_ring_bottom.p.x==0 && dg_ring_bottom.p.z==0 && dg_ring_bottom.n.x==0 && dg_ring_bottom.n.z==0 && dg_ring_bottom.n.y==(-1);
+  #assert dg_ring_top.p.x==0 && dg_ring_top.p.z==0 && dg_ring_top.n.x==0 && dg_ring_top.n.z==0 && dg_ring_top.n.y==1;
+ }
+}
+#test "DeadGears capsule retains its authored radius normals winding and240vertices" {
+ dg_ring_m:=DeadgearsObj.{r0=v4(0,0,0,1),r1=v4(0,0.99999,0,1)};
+ dg_ring_faces:=0;dg_ring_degenerate:=0;
+ #assert (DEADGEARS_RINGS*2+1)*DEADGEARS_AROUND*6==240;
+ for dg_ring_id:0..<240 {
+  dg_ring_v:=deadgears_round_vertex(dg_ring_m,cast(u32)dg_ring_id);
+  #assert abs(dot3(dg_ring_v.n,dg_ring_v.n)-1)<0.000001;
+  dg_ring_row:=dg_ring_id/48+cast(int)deadgears_quad(cast(u32)(dg_ring_id%6)).y;
+  dg_ring_centre:=ifx dg_ring_row>2 then dg_ring_m.r1.y else dg_ring_m.r0.y;
+  dg_ring_radial:=v3(dg_ring_v.p.x,dg_ring_v.p.y-dg_ring_centre,dg_ring_v.p.z);
+  #assert abs(dot3(dg_ring_radial,dg_ring_radial)-1)<0.000001;
+ }
+ for dg_ring_t:0..<80 {
+  dg_ring_a:=deadgears_round_vertex(dg_ring_m,cast(u32)(dg_ring_t*3));dg_ring_b:=deadgears_round_vertex(dg_ring_m,cast(u32)(dg_ring_t*3+1));dg_ring_c:=deadgears_round_vertex(dg_ring_m,cast(u32)(dg_ring_t*3+2));
+  dg_ring_cross:=cross3(sub3(dg_ring_b.p,dg_ring_a.p),sub3(dg_ring_c.p,dg_ring_a.p));
+  if dot3(dg_ring_cross,dg_ring_cross)==0 {dg_ring_degenerate+=1;}
+  else {dg_ring_faces+=1;#assert dot3(dg_ring_cross,add3(add3(dg_ring_a.n,dg_ring_b.n),dg_ring_c.n))>0;}
+ }
+ #assert dg_ring_faces==64 && dg_ring_degenerate==16;
+}

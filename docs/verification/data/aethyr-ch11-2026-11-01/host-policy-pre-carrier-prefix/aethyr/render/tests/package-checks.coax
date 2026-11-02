@@ -1,0 +1,225 @@
+// Concrete two-pipeline Grid transport fixture. SHA fields use abc and a
+// framed seven-word Int64 requirement probe, not a complete GPU program.
+RPKG_TEST_JSON :: "{\"schema\":\"aethyr.render.package.v1\",\"profile_index\":1,\"slug\":\"the-grid\",\"app\":\"newland\",\"modules\":[{\"binding_set\":0,\"wgsl_file\":\"main.wgsl\",\"wgsl_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}],\"entries\":[{\"entry_index\":0,\"binding_set\":0,\"vertex\":\"newland_bg_vs\",\"fragment\":\"newland_bg_fs\",\"wgsl_vertex\":\"bg_vs\",\"wgsl_fragment\":\"bg_fs\",\"spirv_file\":\"pass-0.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":2}],\"vertex_stride\":0,\"attributes\":[],\"fragment_targets\":1,\"fragment_depth\":false,\"tree_file\":\"tree-0.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"},{\"entry_index\":12,\"binding_set\":0,\"vertex\":\"newland_fx_vs\",\"fragment\":\"newland_fx_fs\",\"wgsl_vertex\":\"fx_vs\",\"wgsl_fragment\":\"fx_fs\",\"spirv_file\":\"pass-12.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":3},{\"name\":\"sans_atlas\",\"slot\":1,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2},{\"name\":\"sans_sampler\",\"slot\":2,\"native_kind\":3,\"shape\":0,\"stride\":0,\"stages\":2}],\"vertex_stride\":48,\"attributes\":[{\"location\":0,\"scalar\":2,\"width\":4,\"offset\":0},{\"location\":1,\"scalar\":2,\"width\":4,\"offset\":16},{\"location\":2,\"scalar\":2,\"width\":4,\"offset\":32}],\"fragment_targets\":1,\"fragment_depth\":false,\"tree_file\":\"tree-12.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"}]}";
+RPKG_TEST_SPV :: [28]u8.[3,2,35,7,0,3,1,0,0,0,0,0,1,0,0,0,0,0,0,0,17,0,2,0,11,0,0,0];
+#test "runtime package parses the complete concrete Grid resource and input interfaces" {
+  entries:[14]RenderPackageEntry;p:=render_package_parse(RPKG_TEST_JSON,entries[..]);#assert p.status==RenderPackageStatus.ok && p.profile_index==1 && p.slug=="the-grid" && p.app=="newland";
+  #assert p.module_count==1 && p.entry_count==2 && p.modules[0].present && p.modules[0].wgsl_file=="main.wgsl" && !p.modules[1].present && !p.modules[2].present;
+  #assert p.modules[0].binding_set==0 && p.entries[0].present && p.entries[12].present && !p.entries[1].present;
+  #assert p.entries[0].vertex=="newland_bg_vs" && p.entries[0].fragment=="newland_bg_fs" && p.entries[0].wgsl_vertex=="bg_vs" && p.entries[0].wgsl_fragment=="bg_fs";
+  #assert p.entries[0].binding_set==0 && p.entries[0].spirv_file=="pass-0.spv" && p.entries[0].native_int64;
+  #assert p.entries[0].tree_file=="tree-0.tree" && p.entries[0].tree_sha256.count==64;
+  r:=p.entries[12].reflection;#assert r.ok && r.schema==2 && r.tree_version==2 && r.derivatives==0 && r.control==0;
+  #assert r.vertex_stride==48 && r.attribute_count==3 && r.fragment_targets==1 && !r.fragment_depth && r.use_count==3;
+  #assert r.uses[1].name=="sans_atlas" && r.uses[1].slot==1 && r.uses[1].native_kind==2 && r.uses[1].shape==0 && r.uses[1].stride==0 && r.uses[1].stages==2;
+  #assert r.attributes[2].location==2 && r.attributes[2].scalar==2 && r.attributes[2].width==4 && r.attributes[2].offset==32;
+}
+#test "CPU tree bytes are authenticated separately from their decoder and IR admission" {
+  entries:[14]RenderPackageEntry;p:=render_package_parse(RPKG_TEST_JSON,entries[..]);text:=RPKG_TEST_TREE;
+  bytes:[128]u8;for i:0..<text.count {bytes[i]=text[i];}
+  #assert render_package_tree_bytes(p,0,bytes[0..<text.count])==RenderPackageStatus.ok;
+  wrong:=[3]u8.[1,2,3];#assert render_package_tree_bytes(p,0,wrong[..])==RenderPackageStatus.hash;
+  #assert render_package_tree_bytes(p,-1,wrong[..])==RenderPackageStatus.invalid && render_package_tree_bytes(p,14,wrong[..])==RenderPackageStatus.invalid;
+  p.entries=entries[0..<13];#assert render_package_tree_bytes(p,0,wrong[..])==RenderPackageStatus.invalid;
+  out:[8192]u8;#assert !rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"tree_file\":\"tree-0.tree\"","\"tree_file\":\"../x.tree\"",out[..])).present;
+  from:[128]u8;o:[1]Jo;jo_start(o[..],from[..]);jo_put(o[..],"\"tree_sha256\":");jo_quoted(o[..],entries[0].tree_sha256);
+  #assert !rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,jo_text(o[..]),"\"tree_sha256\":\"bad\"",out[..])).present;
+  p=render_package_parse(RPKG_TEST_MEDIA,entries[..]);#assert render_package_tree_bytes(p,13,bytes[0..<text.count])==RenderPackageStatus.ok;
+}
+#test "runtime package admission requires the expected catalog and enabled device features" {
+  entries:[14]RenderPackageEntry;p:=render_package_parse(RPKG_TEST_JSON,entries[..]);d:=RenderDeviceCapabilities.{backend=RenderBackend.vulkan,int64_enabled=true,helper_enabled=true};
+  #assert render_package_admit(p,1,d)==RenderPackageStatus.ok;
+  #assert render_package_admit(p,0,d)==RenderPackageStatus.mismatch;
+  d.int64_enabled=false;#assert render_package_admit(p,1,d)==RenderPackageStatus.capability;
+  d.backend=RenderBackend.webgpu;#assert render_package_admit(p,1,d)==RenderPackageStatus.ok;
+}
+#test "runtime package hashes the actual fetched module and SPIRV bytes before use" {
+  entries:[14]RenderPackageEntry;p:=render_package_parse(RPKG_TEST_JSON,entries[..]);wgsl:=[3]u8.[97,98,99];spv:=RPKG_TEST_SPV;
+  #assert render_package_module_bytes(p,0,wgsl[..])==RenderPackageStatus.ok;
+  wgsl[2]=100;#assert render_package_module_bytes(p,0,wgsl[..])==RenderPackageStatus.hash;
+  #assert render_package_spirv_bytes(p,0,spv[..])==RenderPackageStatus.ok;
+  spv[24]=1;#assert render_package_spirv_bytes(p,0,spv[..])==RenderPackageStatus.hash;
+  #assert render_package_module_bytes(p,-1,wgsl[..])==RenderPackageStatus.invalid && render_package_module_bytes(p,3,wgsl[..])==RenderPackageStatus.invalid;
+  #assert render_package_spirv_bytes(p,-1,spv[..])==RenderPackageStatus.invalid && render_package_spirv_bytes(p,14,spv[..])==RenderPackageStatus.invalid;
+}
+
+rpkg_test_edit :: (text:string,from:string,to:string,out:[]u8)->string {
+  for i:0..<text.count-from.count+1 {
+    if text[i..<i+from.count]==from {
+      o:[1]Jo;jo_start(o[..],out);jo_put(o[..],text[0..<i]);jo_put(o[..],to);jo_put(o[..],text[i+from.count..<text.count]);
+      #assert !o[0].bad;return jo_text(o[..]);
+    }
+  }
+  #assert false;return "";
+}
+rpkg_test_allowed :: (json:string)->bool {
+  entries:[14]RenderPackageEntry;p:=render_package_parse(json,entries[..]);
+  return render_package_admit(p,1,RenderDeviceCapabilities.{backend=RenderBackend.webgpu,helper_enabled=true})==RenderPackageStatus.ok;
+}
+#forall "package parsing and admission refuse each independently changed scalar field" field:0..<31 {
+  from:=[31]string.["\"schema\":\"aethyr.render.package.v1\"","\"profile_index\":1","\"slug\":\"the-grid\"","\"app\":\"newland\"",
+    "\"binding_set\":0","\"entry_index\":0","\"vertex\":\"newland_bg_vs\"","\"fragment\":\"newland_bg_fs\"","\"wgsl_vertex\":\"bg_vs\"","\"wgsl_fragment\":\"bg_fs\"",
+    "\"reflection_schema\":2","\"tree_version\":2","\"derivatives\":0","\"control\":0","\"native_int64\":true","\"vertex_stride\":0","\"fragment_targets\":1","\"fragment_depth\":false",
+    "\"name\":\"u\"","\"slot\":0","\"native_kind\":1","\"shape\":0","\"stride\":4","\"stages\":2",
+    "\"location\":0","\"scalar\":2","\"width\":4","\"offset\":0","\"wgsl_file\":\"main.wgsl\"","\"spirv_file\":\"pass-0.spv\"","\"uses\":["];
+  to:=[31]string.["\"schema\":\"aethyr.render.package.v2\"","\"profile_index\":0","\"slug\":\"wrong\"","\"app\":\"wrong\"",
+    "\"binding_set\":3","\"entry_index\":14","\"vertex\":\"wrong\"","\"fragment\":\"wrong\"","\"wgsl_vertex\":\"wrong\"","\"wgsl_fragment\":\"wrong\"",
+    "\"reflection_schema\":1","\"tree_version\":1","\"derivatives\":1","\"control\":1","\"native_int64\":1","\"vertex_stride\":4","\"fragment_targets\":2","\"fragment_depth\":0",
+    "\"name\":\"wrong\"","\"slot\":1","\"native_kind\":2","\"shape\":1","\"stride\":8","\"stages\":1",
+    "\"location\":1","\"scalar\":4","\"width\":3","\"offset\":4","\"wgsl_file\":\"../main.wgsl\"","\"spirv_file\":\"/pass.spv\"","\"uses\":{"];
+  out:[8192]u8;#assert !rpkg_test_allowed(rpkg_test_edit(RPKG_TEST_JSON,from[field],to[field],out[..]));
+}
+#forall "package integer fields reject fractions missing values and negative values" field:0..<18,kind:0..<3 {
+  fields:=[18]string.["\"profile_index\":1","\"binding_set\":0","\"entry_index\":0","\"reflection_schema\":2","\"tree_version\":2","\"derivatives\":0","\"control\":0","\"vertex_stride\":0","\"fragment_targets\":1",
+    "\"slot\":0","\"native_kind\":1","\"shape\":0","\"stride\":4","\"stages\":2","\"location\":0","\"scalar\":2","\"width\":4","\"offset\":0"];
+  original:=fields[field];replace:[128]u8;o:[1]Jo;jo_start(o[..],replace[..]);jo_put(o[..],original[0..<original.count-1]);
+  jo_put(o[..],ifx kind==0 then "-1" else ifx kind==1 then "0.5" else "null");
+  out:[8192]u8;p:RenderPackage;entries:[14]RenderPackageEntry;p=render_package_parse(rpkg_test_edit(RPKG_TEST_JSON,original,jo_text(o[..]),out[..]),entries[..]);
+  #assert p.status==RenderPackageStatus.invalid;
+}
+#test "package object keys distinguish empty optional fields required fields and duplicates" {
+  nodes:[32]JvNode;doc:[1]Jv;keys:=[2]string.["a","b"];
+  #assert jv_parse(doc[..],"{}",nodes[..]) && rpkg_object(doc[0],0,keys[..],0) && !rpkg_object(doc[0],0,keys[..],1);
+  #assert !rpkg_object(doc[0],0,keys[..],-1) && !rpkg_object(doc[0],0,keys[..],3);
+  wide:=RPKG_TEST_KEYS;#assert rpkg_object(doc[0],0,wide[0..<31],0) && !rpkg_object(doc[0],0,wide[..],0);
+  for text:[5]string.["[]","{\"unknown\":1}","{\"a\":1,\"a\":2}","{\"a\":1}","{\"a\":1,\"b\":2}"] {
+    #assert jv_parse(doc[..],text,nodes[..]);#assert rpkg_object(doc[0],0,keys[..],2)==(text=="{\"a\":1,\"b\":2}");
+  }
+  #assert jv_parse(doc[..],"{\"value\":\"a\\u0062\"}",nodes[..]) && rpkg_string(doc[0],0,"value")=="";
+  #assert jv_parse(doc[..],"{\"value\":7}",nodes[..]) && rpkg_string(doc[0],0,"value")=="";
+}
+#forall "package hash and sibling filename grammar check every possible byte" code:0..<256 {
+  hash:[64]u8;for i:0..<64 {hash[i]='0';}hash[0]=cast(u8)code;
+  hex:="0123456789abcdef";good_hash:=false;for c:hex {if c==cast(u8)code {good_hash=true;}}
+  #assert rpkg_hash(cast(string)hash[..])==good_hash;
+  name:=[7]u8.['x',0,'.','w','g','s','l'];name[1]=cast(u8)code;
+  alphabet:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.";good_name:=false;for c:alphabet {if c==cast(u8)code {good_name=true;}}
+  #assert rpkg_file(cast(string)name[..],".wgsl")==good_name;
+}
+#test "package hash filename JSON storage and fetched-file sizes have exact boundaries" {
+  hash:[65]u8;for i:0..<65 {hash[i]='f';}#assert rpkg_hash(cast(string)hash[0..<64]) && !rpkg_hash(cast(string)hash[0..<63]) && !rpkg_hash(cast(string)hash[..]);
+  name:[129]u8;for i:0..<129 {name[i]='x';}extension:=".wgsl";for i:0..<5 {name[123+i]=extension[i];}
+  #assert rpkg_file(cast(string)name[0..<128],".wgsl");for i:0..<5 {name[124+i]=extension[i];}#assert !rpkg_file(cast(string)name[..],".wgsl");
+  #assert !rpkg_file(".wgsl",".wgsl") && !rpkg_file(".hidden.wgsl",".wgsl") && !rpkg_file("x.spv",".wgsl");
+  #assert rpkg_file("x.wgsl",".wgsl");
+  #assert !render_package_shader_size(0) && !render_package_shader_size(-1) && render_package_shader_size(1) && render_package_shader_size(2097152) && !render_package_shader_size(2097153);
+  entries:[14]RenderPackageEntry;#assert render_package_parse(RPKG_TEST_JSON,entries[0..<13]).status==RenderPackageStatus.capacity;
+  #assert render_package_parse("",entries[..]).status==RenderPackageStatus.invalid;
+  bytes:[262145]u8;#assert render_package_parse(cast(string)bytes[..],entries[..]).status==RenderPackageStatus.capacity;
+  #assert render_package_parse(cast(string)bytes[0..<262144],entries[..]).status==RenderPackageStatus.invalid;
+}
+rpkg_test_entry :: (text:string)->RenderPackageEntry {nodes:[1024]JvNode;d:[1]Jv;#assert jv_parse(d[..],text,nodes[..]);return rpkg_entry(d[0],0);}
+#test "package entry syntax retains zero integers before catalog semantics and true depth" {
+  text:[8192]u8;other:[8192]u8;
+  e:=rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"reflection_schema\":2","\"reflection_schema\":0",text[..]));#assert e.present && e.reflection.schema==0;
+  e=rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"tree_version\":2","\"tree_version\":0",text[..]));#assert e.present && e.reflection.tree_version==0;
+  e=rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"fragment_targets\":1","\"fragment_targets\":0",text[..]));#assert e.present && e.reflection.fragment_targets==0;
+  e=rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"fragment_depth\":false","\"fragment_depth\":true",text[..]));#assert e.present && e.reflection.fragment_depth;
+  e=rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"native_kind\":1","\"native_kind\":0",text[..]));#assert e.present && e.reflection.uses[0].native_kind==0;
+  e=rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"stages\":2","\"stages\":0",text[..]));#assert e.present && e.reflection.uses[0].stages==0;
+  a:=rpkg_test_edit(RPKG_TEST_HUD,"\"scalar\":2","\"scalar\":0",text[..]);
+  e=rpkg_test_entry(rpkg_test_edit(a,"\"width\":4","\"width\":0",other[..]));#assert e.present && e.reflection.attributes[0].scalar==0 && e.reflection.attributes[0].width==0;
+  e=rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"binding_set\":0","\"binding_set\":2",text[..]));#assert e.present && e.binding_set==2;
+}
+#forall "package entry refuses empty names and accepts single-byte transport names" field:0..<4 {
+  fields:=[4]string.["\"vertex\":\"newland_bg_vs\"","\"fragment\":\"newland_bg_fs\"","\"wgsl_vertex\":\"bg_vs\"","\"wgsl_fragment\":\"bg_fs\""];
+  keys:=[4]string.["vertex","fragment","wgsl_vertex","wgsl_fragment"];replace:[128]u8;o:[1]Jo;jo_start(o[..],replace[..]);jo_quoted(o[..],keys[field]);jo_put(o[..],":\"\"");
+  text:[8192]u8;#assert !rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,fields[field],jo_text(o[..]),text[..])).present;
+  jo_start(o[..],replace[..]);jo_quoted(o[..],keys[field]);jo_put(o[..],":\"x\"");
+  #assert rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,fields[field],jo_text(o[..]),text[..])).present;
+}
+#test "entry arrays are typed independently and own exactly thirty-two rows" {
+  text:[8192]u8;
+  #assert !rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,RPKG_TEST_USES,"{}",text[..])).present;
+  #assert !rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"attributes\":[]","\"attributes\":{}",text[..])).present;
+  for count:[2]int.[32,33] {
+    list:[8192]u8;o:[1]Jo;jo_start(o[..],list[..]);jo_put(o[..],"[");
+    for i:0..<count {if i>0 {jo_put(o[..],",");}jo_put(o[..],"{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":2}");}jo_put(o[..],"]");
+    e:=rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,RPKG_TEST_USES,jo_text(o[..]),text[..]));#assert e.present==(count==32);if count==32 {#assert e.reflection.use_count==32;}
+    jo_start(o[..],list[..]);jo_put(o[..],"[");for i:0..<count {if i>0 {jo_put(o[..],",");}jo_put(o[..],"{\"location\":0,\"scalar\":2,\"width\":4,\"offset\":0}");}jo_put(o[..],"]");
+    e=rpkg_test_entry(rpkg_test_edit(RPKG_TEST_HUD,RPKG_TEST_ATTRS,jo_text(o[..]),text[..]));#assert e.present==(count==32);if count==32 {#assert e.reflection.attribute_count==32;}
+  }
+}
+#test "package provenance is optional typed metadata and candidate entry storage is reusable" {
+  entries:[15]RenderPackageEntry;p:=render_package_parse(RPKG_TEST_JSON,entries[..]);#assert p.status==RenderPackageStatus.ok;
+  entries[13].present=true;entries[14].present=true;p=render_package_parse(RPKG_TEST_JSON,entries[..]);
+  #assert p.status==RenderPackageStatus.ok && !entries[13].present && entries[14].present && p.entries.count==14;
+  text:[8192]u8;
+  for extra:[4]string.[",\"compiler_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}",",\"source_inputs\":[]}",",\"compiler_sha256\":0}",",\"source_inputs\":{}}"] {
+    o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],RPKG_TEST_JSON[0..<RPKG_TEST_JSON.count-1]);jo_put(o[..],extra);
+    p=render_package_parse(jo_text(o[..]),entries[..]);#assert (p.status==RenderPackageStatus.ok)==(extra==",\"compiler_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}" || extra==",\"source_inputs\":[]}");
+  }
+  nodes:[16]JvNode;d:[1]Jv;keys:=[2]string.["a","b"];#assert jv_parse(d[..],"{\"a\":1,\"b\":2,\"unknown\":3}",nodes[..]);#assert !rpkg_object(d[0],0,keys[..],2);
+}
+#test "all three module sets and the media entry preserve catalog identity and file access" {
+  entries:[14]RenderPackageEntry;p:=render_package_parse(RPKG_TEST_MEDIA,entries[..]);d:=RenderDeviceCapabilities.{backend=RenderBackend.webgpu,helper_enabled=true};
+  #assert p.status==RenderPackageStatus.ok && p.module_count==3 && p.entry_count==7 && p.entries[13].present && p.entries[13].binding_set==2;
+  #assert render_package_admit(p,13,d)==RenderPackageStatus.ok;
+  bytes:=[3]u8.[97,98,99];spv:=RPKG_TEST_SPV;
+  #assert render_package_module_bytes(p,2,bytes[..])==RenderPackageStatus.ok && render_package_spirv_bytes(p,13,spv[..])==RenderPackageStatus.ok;
+  p.module_count=2;#assert render_package_admit(p,13,d)==RenderPackageStatus.mismatch;p.module_count=3;
+  p.entry_count=6;#assert render_package_admit(p,13,d)==RenderPackageStatus.mismatch;
+}
+#forall "SPIRV requirements come from framed byte opcodes including adjacent nonfeatures" which:0..<15 {
+  ops:=[15]int.[206,207,208,209,210,211,212,213,214,215,216,252,253,5380,5381];
+  derivatives:=[15]int.[0,1,1,1,2,2,2,1,1,1,0,0,0,0,0];control:=[15]int.[0,0,0,0,0,0,0,0,0,0,0,1,0,2,0];
+  bytes:[32]u8;original:=RPKG_TEST_SPV;for i:0..<28 {bytes[i]=original[i];}
+  opcode:=cast(u32)ops[which]|65536;for k:0..<4 {bytes[28+k]=cast,trunc(u8)(opcode>>(k*8));}
+  entries:[14]RenderPackageEntry;p:=render_package_parse(RPKG_TEST_JSON,entries[..]);
+  entries[0].spirv_sha256=RPKG_TEST_SPV_HASHES[which];entries[0].reflection.derivatives=derivatives[which];entries[0].reflection.control=control[which];
+  #assert render_package_spirv_bytes(p,0,bytes[..])==RenderPackageStatus.ok;
+  entries[0].reflection.derivatives=3;#assert render_package_spirv_bytes(p,0,bytes[..])==RenderPackageStatus.mismatch;
+}
+#test "package entry module indices and profile identity obey their parse bounds" {
+  text:[8192]u8;entries:[14]RenderPackageEntry;
+  #assert !rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"binding_set\":0","\"binding_set\":3",text[..])).present;
+  #assert !rpkg_test_entry(rpkg_test_edit(RPKG_TEST_BG,"\"binding_set\":0","\"binding_set\":-1",text[..])).present;
+  p:=render_package_parse(rpkg_test_edit(RPKG_TEST_JSON,"\"profile_index\":1","\"profile_index\":0",text[..]),entries[..]);#assert p.status==RenderPackageStatus.ok && p.profile_index==0;
+  p=render_package_parse(rpkg_test_edit(RPKG_TEST_JSON,"\"profile_index\":1","\"profile_index\":17",text[..]),entries[..]);#assert p.status==RenderPackageStatus.ok && p.profile_index==17;
+  p=render_package_parse(rpkg_test_edit(RPKG_TEST_JSON,"\"profile_index\":1","\"profile_index\":18",text[..]),entries[..]);#assert p.status==RenderPackageStatus.invalid;
+  p=render_package_parse(rpkg_test_edit(RPKG_TEST_JSON,"\"slug\":\"the-grid\"","\"slug\":\"\"",text[..]),entries[..]);#assert p.status==RenderPackageStatus.invalid;
+  p=render_package_parse(rpkg_test_edit(RPKG_TEST_JSON,"\"app\":\"newland\"","\"app\":\"\"",text[..]),entries[..]);#assert p.status==RenderPackageStatus.invalid;
+}
+#test "package module and entry tables require arrays and retain one-entry candidates" {
+  text:[8192]u8;entries:[14]RenderPackageEntry;
+  for replacement:[2]string.["{}","[]"] {
+    p:=render_package_parse(rpkg_test_edit(RPKG_TEST_JSON,RPKG_TEST_MODULES,replacement,text[..]),entries[..]);#assert p.status==RenderPackageStatus.invalid;
+    p=render_package_parse(rpkg_test_edit(RPKG_TEST_JSON,RPKG_TEST_ENTRIES,replacement,text[..]),entries[..]);#assert p.status==RenderPackageStatus.invalid;
+  }
+  list:[4096]u8;o:[1]Jo;jo_start(o[..],list[..]);jo_put(o[..],"[");jo_put(o[..],RPKG_TEST_BG);jo_put(o[..],"]");
+  p:=render_package_parse(rpkg_test_edit(RPKG_TEST_JSON,RPKG_TEST_ENTRIES,jo_text(o[..]),text[..]),entries[..]);#assert p.status==RenderPackageStatus.ok && p.entry_count==1;
+  jo_start(o[..],list[..]);jo_put(o[..],"[");jo_put(o[..],RPKG_TEST_MODULE);jo_put(o[..],",");jo_put(o[..],RPKG_TEST_MODULE);jo_put(o[..],"]");
+  p=render_package_parse(rpkg_test_edit(RPKG_TEST_JSON,RPKG_TEST_MODULES,jo_text(o[..]),text[..]),entries[..]);#assert p.status==RenderPackageStatus.invalid;
+}
+#test "package byte admission refuses a short entry receipt and mismatched or malformed SPIRV requirements" {
+  entries:[14]RenderPackageEntry;p:=render_package_parse(RPKG_TEST_JSON,entries[..]);bytes:=RPKG_TEST_SPV;
+  p.entries=entries[0..<13];#assert render_package_spirv_bytes(p,0,bytes[..])==RenderPackageStatus.invalid;p.entries=entries[..];
+  entries[0].native_int64=false;#assert render_package_spirv_bytes(p,0,bytes[..])==RenderPackageStatus.mismatch;
+  bytes[0]=0;hex:[64]u8;#assert S_hex(S_hash(cast(string)bytes[..]),hex[..]);entries[0].spirv_sha256=cast(string)hex[..];
+  #assert render_package_spirv_bytes(p,0,bytes[..])==RenderPackageStatus.mismatch;
+  #assert render_package_module_bytes(p,0,bytes[0..<0])==RenderPackageStatus.capacity;
+}
+#test "depth-only caster transport retains an absent fragment as typed empty strings" {
+  text:[8192]u8;other:[8192]u8;
+  first:=rpkg_test_edit(RPKG_TEST_BG,"\"fragment\":\"newland_bg_fs\"","\"fragment\":\"\"",text[..]);
+  both:=rpkg_test_edit(first,"\"wgsl_fragment\":\"bg_fs\"","\"wgsl_fragment\":\"\"",other[..]);
+  e:=rpkg_test_entry(both);#assert e.present && e.fragment=="" && e.wgsl_fragment=="";
+  bad:[8192]u8;
+  #assert !rpkg_test_entry(rpkg_test_edit(both,"\"fragment\":\"\"","\"fragment\":null",bad[..])).present;
+  #assert !rpkg_test_entry(rpkg_test_edit(both,"\"wgsl_fragment\":\"\"","\"wgsl_fragment\":null",bad[..])).present;
+  #assert !rpkg_test_entry(rpkg_test_edit(both,"\"fragment\":\"\"","\"fragment\":\"\\u0066\"",bad[..])).present;
+}
+
+RPKG_TEST_MODULE :: "{\"binding_set\":0,\"wgsl_file\":\"main.wgsl\",\"wgsl_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}";
+RPKG_TEST_BG :: "{\"entry_index\":0,\"binding_set\":0,\"vertex\":\"newland_bg_vs\",\"fragment\":\"newland_bg_fs\",\"wgsl_vertex\":\"bg_vs\",\"wgsl_fragment\":\"bg_fs\",\"spirv_file\":\"pass-0.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":2}],\"vertex_stride\":0,\"attributes\":[],\"fragment_targets\":1,\"fragment_depth\":false,\"tree_file\":\"tree-0.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"}";
+RPKG_TEST_HUD :: "{\"entry_index\":12,\"binding_set\":0,\"vertex\":\"newland_fx_vs\",\"fragment\":\"newland_fx_fs\",\"wgsl_vertex\":\"fx_vs\",\"wgsl_fragment\":\"fx_fs\",\"spirv_file\":\"pass-12.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":3},{\"name\":\"sans_atlas\",\"slot\":1,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2},{\"name\":\"sans_sampler\",\"slot\":2,\"native_kind\":3,\"shape\":0,\"stride\":0,\"stages\":2}],\"vertex_stride\":48,\"attributes\":[{\"location\":0,\"scalar\":2,\"width\":4,\"offset\":0},{\"location\":1,\"scalar\":2,\"width\":4,\"offset\":16},{\"location\":2,\"scalar\":2,\"width\":4,\"offset\":32}],\"fragment_targets\":1,\"fragment_depth\":false,\"tree_file\":\"tree-12.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"}";
+RPKG_TEST_KEYS :: [32]string.["k0","k1","k2","k3","k4","k5","k6","k7","k8","k9","k10","k11","k12","k13","k14","k15","k16","k17","k18","k19","k20","k21","k22","k23","k24","k25","k26","k27","k28","k29","k30","k31"];
+
+RPKG_TEST_MODULES :: "[{\"binding_set\":0,\"wgsl_file\":\"main.wgsl\",\"wgsl_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}]";
+RPKG_TEST_ENTRIES :: "[{\"entry_index\":0,\"binding_set\":0,\"vertex\":\"newland_bg_vs\",\"fragment\":\"newland_bg_fs\",\"wgsl_vertex\":\"bg_vs\",\"wgsl_fragment\":\"bg_fs\",\"spirv_file\":\"pass-0.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":2}],\"vertex_stride\":0,\"attributes\":[],\"fragment_targets\":1,\"fragment_depth\":false,\"tree_file\":\"tree-0.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"},{\"entry_index\":12,\"binding_set\":0,\"vertex\":\"newland_fx_vs\",\"fragment\":\"newland_fx_fs\",\"wgsl_vertex\":\"fx_vs\",\"wgsl_fragment\":\"fx_fs\",\"spirv_file\":\"pass-12.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":3},{\"name\":\"sans_atlas\",\"slot\":1,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2},{\"name\":\"sans_sampler\",\"slot\":2,\"native_kind\":3,\"shape\":0,\"stride\":0,\"stages\":2}],\"vertex_stride\":48,\"attributes\":[{\"location\":0,\"scalar\":2,\"width\":4,\"offset\":0},{\"location\":1,\"scalar\":2,\"width\":4,\"offset\":16},{\"location\":2,\"scalar\":2,\"width\":4,\"offset\":32}],\"fragment_targets\":1,\"fragment_depth\":false,\"tree_file\":\"tree-12.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"}]";
+RPKG_TEST_USES :: "[{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":2}]";
+RPKG_TEST_ATTRS :: "[{\"location\":0,\"scalar\":2,\"width\":4,\"offset\":0},{\"location\":1,\"scalar\":2,\"width\":4,\"offset\":16},{\"location\":2,\"scalar\":2,\"width\":4,\"offset\":32}]";
+RPKG_TEST_MEDIA :: "{\"schema\":\"aethyr.render.package.v1\",\"profile_index\":13,\"slug\":\"hecates-cemetery\",\"app\":\"villa\",\"modules\":[{\"binding_set\":0,\"wgsl_file\":\"main-0.wgsl\",\"wgsl_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"},{\"binding_set\":1,\"wgsl_file\":\"main-1.wgsl\",\"wgsl_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"},{\"binding_set\":2,\"wgsl_file\":\"main-2.wgsl\",\"wgsl_sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}],\"entries\":[{\"binding_set\":0,\"vertex\":\"villa_bg_vs\",\"fragment\":\"villa_bg_fs\",\"wgsl_vertex\":\"bg_vs\",\"wgsl_fragment\":\"bg_fs\",\"entry_index\":0,\"spirv_file\":\"pass-0.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":2,\"name\":\"u\"}],\"vertex_stride\":0,\"attributes\":[],\"fragment_targets\":2,\"fragment_depth\":false,\"tree_file\":\"tree-0.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"},{\"binding_set\":0,\"vertex\":\"villa_scene_vs\",\"fragment\":\"villa_scene_fs\",\"wgsl_vertex\":\"scene_vs\",\"wgsl_fragment\":\"scene_fs\",\"entry_index\":5,\"spirv_file\":\"pass-5.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":3,\"name\":\"u\"},{\"slot\":1,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":1,\"name\":\"heights\"},{\"slot\":2,\"native_kind\":1,\"shape\":0,\"stride\":64,\"stages\":1,\"name\":\"objects\"}],\"vertex_stride\":0,\"attributes\":[],\"fragment_targets\":2,\"fragment_depth\":false,\"tree_file\":\"tree-5.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"},{\"binding_set\":0,\"vertex\":\"villa_bg_vs\",\"fragment\":\"villa_bloom_fs\",\"wgsl_vertex\":\"bg_vs\",\"wgsl_fragment\":\"bloom_fs\",\"entry_index\":10,\"spirv_file\":\"pass-10.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"slot\":0,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2,\"name\":\"bloom_src\"},{\"slot\":1,\"native_kind\":3,\"shape\":0,\"stride\":0,\"stages\":2,\"name\":\"bloom_lin\"},{\"slot\":2,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":2,\"name\":\"bloom_step\"}],\"vertex_stride\":0,\"attributes\":[],\"fragment_targets\":1,\"fragment_depth\":false,\"tree_file\":\"tree-10.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"},{\"binding_set\":0,\"vertex\":\"villa_bg_vs\",\"fragment\":\"villa_post_fs\",\"wgsl_vertex\":\"bg_vs\",\"wgsl_fragment\":\"post_fs\",\"entry_index\":11,\"spirv_file\":\"pass-11.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":2,\"name\":\"u\"},{\"slot\":1,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2,\"name\":\"post_light\"},{\"slot\":2,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2,\"name\":\"post_quarter\"},{\"slot\":3,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2,\"name\":\"post_eighth\"},{\"slot\":4,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2,\"name\":\"post_aux\"},{\"slot\":5,\"native_kind\":3,\"shape\":0,\"stride\":0,\"stages\":2,\"name\":\"post_lin\"}],\"vertex_stride\":0,\"attributes\":[],\"fragment_targets\":1,\"fragment_depth\":false,\"tree_file\":\"tree-11.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"},{\"binding_set\":0,\"vertex\":\"villa_fx_vs\",\"fragment\":\"villa_fx_fs\",\"wgsl_vertex\":\"fx_vs\",\"wgsl_fragment\":\"fx_fs\",\"entry_index\":12,\"spirv_file\":\"pass-12.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":3,\"name\":\"u\"}],\"vertex_stride\":64,\"attributes\":[{\"location\":0,\"scalar\":2,\"width\":4,\"offset\":0},{\"location\":1,\"scalar\":2,\"width\":4,\"offset\":16},{\"location\":2,\"scalar\":2,\"width\":4,\"offset\":32},{\"location\":3,\"scalar\":2,\"width\":4,\"offset\":48}],\"fragment_targets\":1,\"fragment_depth\":false,\"tree_file\":\"tree-12.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"},{\"binding_set\":1,\"vertex\":\"particles_particle_vs\",\"fragment\":\"particles_particle_fs\",\"wgsl_vertex\":\"particle_vs\",\"wgsl_fragment\":\"particle_fs\",\"entry_index\":9,\"spirv_file\":\"pass-9.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":3,\"name\":\"u\"},{\"slot\":1,\"native_kind\":1,\"shape\":0,\"stride\":64,\"stages\":1,\"name\":\"emitters\"}],\"vertex_stride\":0,\"attributes\":[],\"fragment_targets\":2,\"fragment_depth\":false,\"tree_file\":\"tree-9.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"},{\"entry_index\":13,\"binding_set\":2,\"vertex\":\"media_vs\",\"fragment\":\"media_fs\",\"wgsl_vertex\":\"vs\",\"wgsl_fragment\":\"fs\",\"spirv_file\":\"pass-0.spv\",\"spirv_sha256\":\"31257e528c70161d7d64b73b0e1571a57d89dcce3067a3fbfaab44319bdc5ce3\",\"reflection_schema\":2,\"tree_version\":2,\"derivatives\":0,\"control\":0,\"native_int64\":true,\"uses\":[{\"name\":\"u\",\"slot\":0,\"native_kind\":1,\"shape\":0,\"stride\":4,\"stages\":3},{\"name\":\"media_image\",\"slot\":1,\"native_kind\":2,\"shape\":0,\"stride\":0,\"stages\":2},{\"name\":\"media_sampler\",\"slot\":2,\"native_kind\":3,\"shape\":0,\"stride\":0,\"stages\":2}],\"vertex_stride\":0,\"attributes\":[],\"fragment_targets\":1,\"fragment_depth\":false,\"tree_file\":\"tree-13.tree\",\"tree_sha256\":\"6b5740a8f3f5552ea577c7e93ed49567a902f22f0dff7b89b755827a19acb93e\"}]}";
+RPKG_TEST_SPV_HASHES :: [15]string.["0fb70aa2dbbfe185c7cfe81de7ccf5bfc926f7b1f988ad1b0dd2ae8758c7a310","5b55f697f59c0f0e69c9f849d9538ea870e0ced7e12bb326f29d12927077d329","aa3ebd64fb71731948f967d86b36ef87d18abf0ed3687875d185317b9a472105","42167a90a7e30e114d6e7abb19d3b0d28ae7888822f006f3d3b716c937dc9c97","e097f900b5acccb7f091217c5ace789fad6d32eda2dd1191e8038d66bc116208","87fb2e952aad291e4cdba30a3eb646969dc5f6d35c7a1656eac9189fece47d43","932e0eefb2b5f7c7e86d97ab6cfeb61537251a78411c09633dcf718d37e8a935","b54f573b4098320c9a2515783f37160eaf3ae9b4e16d3d7e06fdc2b0d45feb85","80754390a6717d98499db3b91ce27ae0b42711877b953c0b7d771694ca499a72","faa756473ea6c1c6cee5befcb32ab39d4c07ee402d10352a1ba1ad38b4a742af","aec037486d360641f28782ea5a0e72846d9bec4f74f3e71414e9ec69e2af9938","05207360eb3443e277b87dad75df30b4d4f75d7c1f31b840dca367f2ee34b905","8bfb33b67c2575a68687a48c1eba1aeafd666da84e4caa0d967a93fb643e3517","c3e1156d95b1f0150e8819fa115fc546360d96418dfe99be25d0f747a300225a","9b0d2ae4a83a9f1e6ff9daf1b05f6a1d1b4849e1d72ab184511100dc8a53235a"];
+
+RPKG_TEST_TREE :: "2 6 0 1 2 3 4 5 1 0 0 0 1 5 1 1 0\n";

@@ -1,0 +1,85 @@
+{
+  "schema": "aethyr.render.complete-frame-input-equality.v1",
+  "equal": true,
+  "source": "/tmp/aethyr-ch11-ring8-frame-inputs/dead-gears/frame.config",
+  "staged": "/tmp/aethyr-ch11-native-deadgears-ring8/stage/frame.config",
+  "scope": "Every RFI non-path token is identical; every referenced file, including authenticated package/trees and physical resource bytes, has equal size and SHA. No counts/camera/clock/resource reconstruction.",
+  "grammar_reader": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_reference_frame.py",
+  "grammar_reader_sha256": "0afd820dd9069fbe0e1b94c6b34086b719eb61c83de8fe4b8c558f29aed6509a",
+  "source_files": {
+    "/private/tmp/aethyr-ch11-native-deadgears-rgba16f/stage/inputs/u.bin": {
+      "bytes": 2736,
+      "sha256": "60bab0ae95b768ac1fcee1b80c4dc6d03f077a111be6a991d5802ca2ec4cf575"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-rgba16f/stage/inputs/hud.bin": {
+      "bytes": 203904,
+      "sha256": "03181cc66aa9bddb4cb942ad345552cb6494445fdaebd9b9ab63b7a49ee17625"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-rgba16f/stage/inputs/draws.bin": {
+      "bytes": 32,
+      "sha256": "e843237a265a3c33f073d05086c705e3718530215ad60cb2396219ee56ab1157"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-rgba16f/stage/inputs/index.bin": {
+      "bytes": 4096,
+      "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+    },
+    "/private/tmp/aethyr-ch11-packages-ring8/dead-gears/render.json": {
+      "bytes": 6894,
+      "sha256": "e03dcb2750e67127f614e8bff5dc4e821eeaec319ce04eaa4c06002777a1ed66"
+    },
+    "/private/tmp/aethyr-ch11-packages-ring8/dead-gears/pipeline-0-8d34e8c938ceedb5deb943774f9a8105729d643928261ddc60bd198f5c86fcae.tree": {
+      "bytes": 7302,
+      "sha256": "8d34e8c938ceedb5deb943774f9a8105729d643928261ddc60bd198f5c86fcae"
+    },
+    "/private/tmp/aethyr-ch11-packages-ring8/dead-gears/pipeline-5-1c1812ba634f18cb96e84a70285f56010019d88dae41a0af0a2de1b838aa9c8a.tree": {
+      "bytes": 19467,
+      "sha256": "1c1812ba634f18cb96e84a70285f56010019d88dae41a0af0a2de1b838aa9c8a"
+    },
+    "/private/tmp/aethyr-ch11-packages-ring8/dead-gears/pipeline-12-5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c.tree": {
+      "bytes": 2014,
+      "sha256": "5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-rgba16f/stage/inputs/s0.bin": {
+      "bytes": 384000,
+      "sha256": "f837e11b94fe44e63e352fedcf0cc8f2a9d13888374a11f5426b198ae76f050c"
+    }
+  },
+  "staged_files": {
+    "/private/tmp/aethyr-ch11-native-deadgears-ring8/stage/inputs/u.bin": {
+      "bytes": 2736,
+      "sha256": "60bab0ae95b768ac1fcee1b80c4dc6d03f077a111be6a991d5802ca2ec4cf575"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-ring8/stage/inputs/hud.bin": {
+      "bytes": 203904,
+      "sha256": "03181cc66aa9bddb4cb942ad345552cb6494445fdaebd9b9ab63b7a49ee17625"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-ring8/stage/inputs/draws.bin": {
+      "bytes": 32,
+      "sha256": "e843237a265a3c33f073d05086c705e3718530215ad60cb2396219ee56ab1157"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-ring8/stage/inputs/index.bin": {
+      "bytes": 4096,
+      "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-ring8/stage/package/render.json": {
+      "bytes": 6894,
+      "sha256": "e03dcb2750e67127f614e8bff5dc4e821eeaec319ce04eaa4c06002777a1ed66"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-ring8/stage/inputs/pipeline-0-8d34e8c938ceedb5deb943774f9a8105729d643928261ddc60bd198f5c86fcae.tree": {
+      "bytes": 7302,
+      "sha256": "8d34e8c938ceedb5deb943774f9a8105729d643928261ddc60bd198f5c86fcae"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-ring8/stage/inputs/pipeline-5-1c1812ba634f18cb96e84a70285f56010019d88dae41a0af0a2de1b838aa9c8a.tree": {
+      "bytes": 19467,
+      "sha256": "1c1812ba634f18cb96e84a70285f56010019d88dae41a0af0a2de1b838aa9c8a"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-ring8/stage/inputs/pipeline-12-5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c.tree": {
+      "bytes": 2014,
+      "sha256": "5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c"
+    },
+    "/private/tmp/aethyr-ch11-native-deadgears-ring8/stage/inputs/s0.bin": {
+      "bytes": 384000,
+      "sha256": "f837e11b94fe44e63e352fedcf0cc8f2a9d13888374a11f5426b198ae76f050c"
+    }
+  }
+}

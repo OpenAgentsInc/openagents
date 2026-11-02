@@ -1,0 +1,4 @@
+// Chapter11 wall/trim and covered doorway-cap repair hashes for the ten
+// historical ORACLE_HOUSES. An independently repaired private C++ copy
+// reads actual trim/post vertices; original mesh-oracle.coax stays immutable.
+BANDED_HOUSE_HASHES :: [10]u64.[0x3567d2510057ebd8, 0x6e72ee03b077dbb0, 0x69873aaf93379158, 0x9ac15a76b0b84e2a, 0x995baba765ff039c, 0x810b3e692185add4, 0x8fb7ba00c8b64dd7, 0x10bb4f8aeeed0987, 0xef585f99db90178b, 0xd33f6cdf084f1d03];

@@ -1,0 +1,7 @@
+// A real checked shader whose four-lane local array exhausts the declared
+// interpreter arena. Uniform/HUD storage must never extend that arena.
+#load "reference-frame-post-shader.coax";
+rfma_fragment :: (rfma_position:V4,u:[]f32)->V4 {
+ rfma_values:[16384]f32;rfma_values[0]=0.25;
+ return v4(rfma_values[0],0.5,0.75,1);
+}

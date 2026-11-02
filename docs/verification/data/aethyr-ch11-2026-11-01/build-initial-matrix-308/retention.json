@@ -1,0 +1,158 @@
+{
+  "scope": "Exact initial14-passing/4-interface-refused catalog matrix before correcting omission of masked auxiliary fragment outputs. No final current-source chapter qualification claim. Inputs retain actual original hashes; one modified interface input recovered byte-identically from its unchanged HEAD version.",
+  "artifacts_sha256": "e009d730121e2dd912de6cea49786a55aac6d52ef4f0a3d136c916ba5db22643",
+  "builder_inputs": [
+    {
+      "file": "builder-inputs/aethyr/render/bindings.coax",
+      "sha256": "bd02c0475836ff87c378ee10e595080d13225f9670ecdcc7a7310f715b4e0efb"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/build-policy.coax",
+      "sha256": "1e1f933b9f94155aa6eeb8ea7f49ebe32c7260c4a1d992c87fc62c513e2608bf"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/build.coax",
+      "sha256": "dfd8d990742c4ac17296b163c2fdf87f5f975269ca1b85427e3c8a2709de1796"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/capabilities.coax",
+      "sha256": "390d3c31419058a24ab95419929d0bc55298beb580a935e1cba9b13b10757959"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/catalog.coax",
+      "sha256": "ffc486dfe5ba07894b0e82485133411411ecc6e62e470621a2befbe9dea2d888"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/emit.coax",
+      "sha256": "bb71e2908ce9f8d269ed5fb5de43f22896229ed39e759deaa4e00862ecbb6e99"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/interface.coax",
+      "sha256": "1bdb5ecfa89923f5284d3629729818a0ab018f6eb9ab478106e1117c064b9be9"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/media-profile.coax",
+      "sha256": "3205f0f137d8170e6186f70ec6cfec1c3c74c348c7ef98918546ba349d07125b"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/package.coax",
+      "sha256": "b11550e59a0df2e6bb0304c8e6b27e3a430b31d7a21044d2c26393843c1fdf2b"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/passes.coax",
+      "sha256": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/reference-tree.coax",
+      "sha256": "c54f85ad6474ad2999edcb6448f3daef9075983a98c4168e6ddc0e9eabff7d5d"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/tests/package-checks.coax",
+      "sha256": "3b238cb65fc54a0ab578621647c07e0b02da9041f64fbb738cff854e5ac7bcf1"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/tests/reference-tree-checks.coax",
+      "sha256": "8a1e08fb8b5e73ea1182d876aa704b3d52e4b67ef07d149bb4f7fc18b9ee73bf"
+    },
+    {
+      "file": "builder-inputs/aethyr/render/types.coax",
+      "sha256": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e"
+    },
+    {
+      "file": "builder-inputs/coax/lib/crypto/entropy.coax",
+      "sha256": "efbe909c032939134e83db8ceb296d4da04baac37cd5a291f4276aad955e84fe"
+    },
+    {
+      "file": "builder-inputs/coax/lib/crypto/sha256-kernel.coax",
+      "sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926"
+    },
+    {
+      "file": "builder-inputs/coax/lib/json/json.coax",
+      "sha256": "504a9af2a5c5a3d786776e04a31b1f509ae9a7bc76e79956f7b665ff11ad6cda"
+    },
+    {
+      "file": "builder-inputs/coax/lib/sys/args.coax",
+      "sha256": "9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3"
+    },
+    {
+      "file": "builder-inputs/coax/lib/sys/fs.coax",
+      "sha256": "b5cc6abf4c76ecd416e00bada836c7321e4f342ac58a17546ad53faa20d18614"
+    },
+    {
+      "file": "builder-inputs/coax/lib/sys/proc.coax",
+      "sha256": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b"
+    },
+    {
+      "file": "builder-inputs/coax/lib/sys/tool.coax",
+      "sha256": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70"
+    },
+    {
+      "file": "builder-inputs/coax/platform/camera-native.h",
+      "sha256": "fa27e6bfaccf291b1d8a1041e003ebb355542750ff9dcbcbe08d9b30069e94f4"
+    },
+    {
+      "file": "builder-inputs/coax/platform/entropy-foreign.c",
+      "sha256": "0718319242b28767b5f319e076e3ef9b927e313e402d173fbb5eb45e8a25aa6a"
+    },
+    {
+      "file": "builder-inputs/coax/platform/entropy-foreign.h",
+      "sha256": "95898457f3cf8f142617f92a87a9020e95302d6f4fe21aae37f4a87d63752bab"
+    },
+    {
+      "file": "builder-inputs/coax/platform/entropy-native.c",
+      "sha256": "c24f1fb976094e1a41bb3b5c72d50d2a2013e7cc188a5769d26caa448db40af0"
+    },
+    {
+      "file": "builder-inputs/coax/platform/entropy-native.h",
+      "sha256": "0dc938532bc0fc5d2dcd3600886523c63c0ca06d69cbf1aa3852976b05f20109"
+    },
+    {
+      "file": "builder-inputs/coax/platform/process-native.c",
+      "sha256": "c5657424d634fdb9ebd8c011ed05ea4e7cc4633f25b5382be37d5d0dfcc71256"
+    },
+    {
+      "file": "builder-inputs/coax/platform/process-native.h",
+      "sha256": "4f0cc2c0b47d189ae8119861de61057eba04c4e1a4333d5a2e4a7acf99eb2b92"
+    },
+    {
+      "file": "builder-inputs/coax/platform/screen-native.h",
+      "sha256": "3ddd84484d6e80ceef13fcdf2954cd8d6887baa5714de617d1a2f18e53d9b328"
+    },
+    {
+      "file": "builder-inputs/coax/platform/socket-native.c",
+      "sha256": "32e414effa41edf5041768d728fef3158383c1544fae0baa8dd6f7a3e85a0def"
+    },
+    {
+      "file": "builder-inputs/coax/platform/socket-native.h",
+      "sha256": "55478113e95285cf0aa9acab7529eaf948abecda1e25a9d86aa3bdd33bbc1910"
+    },
+    {
+      "file": "builder-inputs/coax/platform/socket-server-native.h",
+      "sha256": "0a0523f474e2b04b23d638ffd985ab914c1fd5f0c7cb4bca47a4e53cf0b043de"
+    },
+    {
+      "file": "builder-inputs/coax/platform/store-file-native.c",
+      "sha256": "d25436c4ac3c4d3cf390d7dc43547bca9645261bd337ce722649d010b1afb5c9"
+    },
+    {
+      "file": "builder-inputs/coax/platform/store-file-native.h",
+      "sha256": "88a91331527f89a22400c7369d0ab2db656b07d9a14d4b588d93390ee663ad3d"
+    },
+    {
+      "file": "builder-inputs/coax/platform/tls-native.h",
+      "sha256": "07988aab83b80bbe4756dce800651e174434c411156cb13c1fa9391fd77e5df8"
+    },
+    {
+      "file": "builder-inputs/coax/platform/tool-native.c",
+      "sha256": "bc4df4431b7b609a3e630e6b4f8020a1824ecc212467e1764923f6765bde8818"
+    },
+    {
+      "file": "builder-inputs/coax/platform/tool-native.h",
+      "sha256": "68b708dbf79d754528726f3c9f0423d76fa7d9f96cb70295a7dbcbf10c0f57a8"
+    },
+    {
+      "file": "builder-inputs/coax/platform/wayland-native.h",
+      "sha256": "1d4fac834056a5ce9d14eae9d47cd4e0d03e7bb7e74c7620934723252b166d9e"
+    }
+  ]
+}

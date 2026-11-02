@@ -1,0 +1,48 @@
+// Actual productionmedia.coax checkedtree under30868e8c.
+// RawtextSHA256 7cccf19da58184c2607e000590233b1d420494a93740e3c7eed72f0bd0d2d46c.
+RFM_ACTUAL_TREE :: [396]u32.[2,15,0,1,2,3,4,5,9,2,7,2,2,0,2,4,8,8,7,6,8,7,1,8,0,48,7,4,2,0,2,4,2,8,2,12,16,7,2,2,0,2,4,8,7,2,10,0,11,16,24,10,0,11,0,6,12,3,4,4,6,5,4,4,6,9,7,95,1,3,3,40,3,22,2,0,3,40,4,27,42,41,40,3,0,29,5,18,0,4,31,12,2,22,3,4,22,4,3,27,42,40,2,16,5,0,0,27,42,40,2,16,5,2,0,27,41,40,4,0,22,4,3,27,42,40,2,16,5,1,0,27,42,40,2,16,5,3,0,27,41,40,4,1,16,2,0,16,2,1065353216,22,5,2,27,41,40,4,0,27,41,40,4,1,10,4,12,6,13,14,5,12,6,13,14,10,70,1,2,3,40,4,33,2,10,3,18,2,18,3,27,41,40,0,1,4,22,3,4,19,3,27,41,40,4,0,27,42,40,1,16,5,4,0,19,3,27,41,40,4,1,27,42,40,1,16,5,4,0,19,3,27,41,40,4,2,27,42,40,1,16,5,4,0,16,2,1065353216,9,0,0,63,1,1,4,31,9,1,31,8,6,31,7,2,16,2,0,16,2,0,31,7,2,16,2,1065353216,16,2,0,31,7,2,16,2,0,16,2,1065353216,31,7,2,16,2,0,16,2,1065353216,31,7,2,16,2,1065353216,16,2,0,31,7,2,16,2,1065353216,16,2,1065353216,10,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,10,4,18,0,18,1,18,2,18,3,2,3,2,2,2,3,2,2,2,17,1,1,4,19,1,18,0,19,3,19,2,18,1,18,0,18,2,11,2,2,2,2,2,2,10,1,1,4,31,11,2,18,0,18,1,2,0,0,0,1,2,1,1,3,2,4,5];
+#test "reference media phases draw the actual rectangle shader through admitted line textures" {
+ tree:=RFM_ACTUAL_TREE;metadata:[14*RQ_IR_META]int;words:[RQ_IR_WORDS]u32;
+ meta:=metadata[13*RQ_IR_META..<14*RQ_IR_META];program:=rq_ir_prepare(tree[..],meta);layout:=rf_shader_layout(13,13,program,tree[..],meta);#assert layout.status==RQStatus.ok;
+ p:=RFPrepared.{present=true,program=program,layout=layout};
+ pixels:=[2]RQColor.[RQColor.{r=0.125,g=0.25,b=0.5,a=0.25},RQColor.{r=0.75,g=0.5,b=0.25,a=0.125}];mip:=[1]RQMip.[RQMip.{width=1,height=1}];
+ textures:=[2]RFNamedTexture.[RFNamedTexture.{name="media_image-0",texture=RQTexture.{levels=mip[..],layers=1,texels=pixels[0..<1]}},RFNamedTexture.{name="media_image-1",texture=RQTexture.{levels=mip[..],layers=1,texels=pixels[1..<2]}}];
+ first:=render_media_rect(RenderMediaRequest.{kind=RenderMediaKind.image,line=0,box=[4]f64.[0,0,2,2]},2,2,1,1);
+ last:=render_media_rect(RenderMediaRequest.{kind=RenderMediaKind.image,line=1,over=true,box=[4]f64.[0,0,2,2]},2,2,1,1);rects:=[2]RenderMediaRect.[last,first];
+ input:=RFInput.{profile=13,textures=textures[..],media=rects[..]};req:RFRequirements;req.images[1]=RFCanvasLayout.{present=true,descriptor=RenderTargetDescriptor.{width=2,height=2,format=RenderTextureFormat.rgba16f}};
+ images:[4]RQColor;target:[4]RRPixel;scratch:[4]RRPixel;work:=RFWorking.{images=images[..],target=target[..],scratch=scratch[..],words=words[..],meta=metadata[..]};active:=RenderOp.{colour0=RenderTarget.screen};r:RFResult;
+ r=rf_media(input,false,p,tree[..],req,active,RFPolicy.{},work,r);#assert r.status==RQStatus.ok && r.draws==1 && r.written==4 && r.pass_steps[13]>0 && r.bad_media== -1;
+ for k:0..<4 {#assert images[k].r==0.125 && images[k].g==0.25 && images[k].b==0.5 && images[k].a==1;}
+ first_steps:=r.pass_steps[13];r=rf_media(input,true,p,tree[..],req,active,RFPolicy.{},work,r);#assert r.status==RQStatus.ok && r.draws==2 && r.written==8 && r.pass_steps[13]==2*first_steps && r.pixel_steps==16;
+ for k:0..<4 {#assert images[k].r==0.75 && images[k].g==0.5 && images[k].b==0.25 && images[k].a==1;}
+ r=rf_media(input,true,p,tree[..],req,active,RFPolicy.{shader_work=r.pass_steps[13]},work,r);#assert r.status==RQStatus.budget && r.bad_media==1;
+ // Both entries are now underneath, deliberately supplied in reverse line
+ // order. Source line1 must remain the later opaque image.
+ rects[0].over=false;r=rf_media(input,false,p,tree[..],req,active,RFPolicy.{},work,RFResult.{});#assert r.status==RQStatus.ok && r.draws==2 && r.written==8 && r.pixel_steps==16;
+ for k:0..<4 {#assert images[k].r==0.75 && images[k].g==0.5 && images[k].b==0.25 && images[k].a==1;}
+ // Ascending observations make the first input participate in later ranks.
+ last.over=false;rects[0]=first;rects[1]=last;r=rf_media(input,false,p,tree[..],req,active,RFPolicy.{},work,RFResult.{});
+ #assert r.status==RQStatus.ok && r.draws==2 && r.written==8;for k:0..<4 {#assert images[k].r==0.75;}
+ // A pending earlier request has a distinct source line and no texture.
+ first.line=1;last.line=2;textures[0].name="media_image-1";textures[1].name="media_image-2";
+ pending:=RenderMediaRect.{ok=true,draw=false,line=0};mixed:=[3]RenderMediaRect.[pending,first,last];input.media=mixed[..];
+ r=rf_media(input,false,p,tree[..],req,active,RFPolicy.{},work,RFResult.{});#assert r.status==RQStatus.ok && r.draws==2 && r.written==8;for k:0..<4 {#assert images[k].r==0.75;}
+}
+#test "reference media rejects capacity malformed receipts duplicates and nonfinite uniforms" {
+ receipts:[113]RenderMediaRect;
+ #assert rf_media_status(receipts[..])==RQStatus.capacity && rf_media_status(receipts[0..<112])==RQStatus.ok;
+ receipts[0]=RenderMediaRect.{ok=true,line= -1};#assert rf_media_status(receipts[0..<1])==RQStatus.ok;
+ receipts[0].draw=true;#assert rf_media_status(receipts[0..<1])==RQStatus.resource;
+ receipts[0].line=112;#assert rf_media_status(receipts[0..<1])==RQStatus.resource;
+ receipts[0].line=111;#assert rf_media_status(receipts[0..<1])==RQStatus.ok;
+ z:=0.0f32;receipts[0].uniforms[7]=z/z;#assert rf_media_status(receipts[0..<1])==RQStatus.resource;receipts[0].uniforms[7]=0;receipts[0].uniforms[0]=z/z;#assert rf_media_status(receipts[0..<1])==RQStatus.resource;receipts[0].uniforms[0]=0;
+ receipts[1]=receipts[0];#assert rf_media_status(receipts[0..<2])==RQStatus.resource;
+ receipts[0].ok=false;#assert rf_media_status(receipts[0..<2])==RQStatus.ok;
+ receipts[0].ok=true;receipts[0].draw=false;#assert rf_media_status(receipts[0..<2])==RQStatus.ok;
+ receipts[1].draw=false;receipts[1].line= -1;receipts[0].draw=true;receipts[0].ok=false;#assert rf_media_status(receipts[0..<2])==RQStatus.ok;
+}
+#test "reference media cannot be introduced into a catalog without media features" {
+ receipts:=[1]RenderMediaRect.[RenderMediaRect.{}];input:=RFInput.{profile=15,counts=FrameCounts.{width=2,height=2,vertex_stride=16},media=receipts[..]};shaders:[]RFShader;out:[]RQColor;
+ q:=rf_run(input,shaders,false,RenderTextureFormat.rgba8,RFPolicy.{},RFWorking.{},out);#assert q.status==RQStatus.unsupported && q.pixel_steps==0 && q.draws==0 && q.bad_op== -1;
+}
+

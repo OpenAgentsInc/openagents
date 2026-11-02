@@ -1,0 +1,5 @@
+/Users/christopherdavid/work/openagents-aethyr-book/coax/lib/image/jpeg.coax:510:50: error[E0366]: a view needs an array variable it may write through, and this is a constant
+    ss: [1] JpgState; ss[0].src = JPG_FRAMED_HEADER[..];
+                                                   ^
+  fix: copy it into a local variable first
+1 error

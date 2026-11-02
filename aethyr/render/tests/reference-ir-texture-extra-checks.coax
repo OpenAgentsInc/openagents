@@ -1,0 +1,55 @@
+#forall "quad extra texture admission checks every coordinate resource and typed result boundary" which:0..<30 {
+ tree:=RQ_IR_TEXTURE_2;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);memory:[256]u32;
+ m:=[1]RQMachine.[RQMachine.{types=p.types,version=2,stage=1}];
+ image:=rq_ir_value(m[..],meta[..],memory[..],8);sampler:=rq_ir_value(m[..],meta[..],memory[..],11);uv:=rq_ir_value(m[..],meta[..],memory[..],7);
+ x:=rq_ir_value(m[..],meta[..],memory[..],3);y:=rq_ir_value(m[..],meta[..],memory[..],3);level:=rq_ir_value(m[..],meta[..],memory[..],3);lod:=rq_ir_value(m[..],meta[..],memory[..],2);layer:=rq_ir_value(m[..],meta[..],memory[..],3);
+ levels:=[2]RQMip.[RQMip.{width=4,height=2},RQMip.{width=2,height=1,offset=8}];colours:[10]RQColor;
+ for j:0..<10 {colours[j]=RQColor.{r=0.25,g=10,b=20,a=30};}
+ textures:=[1]RQTexture.[RQTexture.{levels=levels[..],layers=1,texels=colours[..]}];samplers:=[1]RQSampler.[RQSampler.{}];
+ fn:=7;ty:=6;mask:u32=15;wanted:=RQStatus.resource;
+ if which==0 {rq_ir_put_u64(memory[..],x,0,4294967295);}if which==1 {rq_ir_put_u64(memory[..],x,0,4);}if which==2 {rq_ir_put_u64(memory[..],y,0,4294967295);}if which==3 {rq_ir_put_u64(memory[..],y,0,2);}
+ if which==4 {rq_ir_put_u64(memory[..],level,0,4294967295);}if which==5 {rq_ir_put_u64(memory[..],level,0,2);}if which==6 {memory[image.at]=1;}
+ if which==7 {fn=2;memory[sampler.at]=1;}if which==8 {levels[0].width=0;}if which==9 {fn=8;ty=2;}
+ if which==10 {ty=2;wanted=RQStatus.malformed;}if which==11 {fn=8;textures[0].depth=true;wanted=RQStatus.malformed;}
+ if which>=12 && which<=21 {fn=2;}
+ if which==12 || which==13 || which==14 || which==15 || which==16 {wanted=RQStatus.malformed;}
+ if which==15 {fn=6;}if which==16 {fn=9;ty=2;textures[0].depth=true;samplers[0].compare=RQCompare.less;}
+ if which==17 {m[0].stage=0;wanted=RQStatus.unsupported;}
+ if which==18 || which==19 || which==20 {mask=1;wanted=RQStatus.divergent;if which==19 {fn=4;}if which==20 {fn=6;}}
+ if which==21 {mask=0;memory[image.at]=1;wanted=RQStatus.ok;}
+ if which==22 {fn=3;samplers[0].max_anisotropy=2;wanted=RQStatus.unsupported;}
+ if which==23 || which==24 {fn=9;ty=2;samplers[0].compare=RQCompare.less;if which==24 {textures[0].depth=true;samplers[0].compare=RQCompare.none;}}
+ if which==25 {fn=3;samplers[0].lod_min=1;samplers[0].lod_max=0;}
+ if which==26 {textures[0].layers=2049;wanted=RQStatus.capacity;}
+ if which==27 {fn=3;rq_ir_put_f32(memory[..],uv,0,10000000000.0f32);}
+ if which==28 {fn=5;rq_ir_put_u64(memory[..],layer,0,1);}if which==29 {fn=2;wanted=RQStatus.malformed;}
+ args:=[5]RQValue.[image,sampler,uv,layer,lod];if fn==3 {args[3]=lod;}if fn==7 || fn==8 {args[1]=x;args[2]=y;args[3]=level;}
+ if which==12 {args[0]=uv;}if which==29 {args[0]=x;}if which==13 || which==15 {args[1]=uv;}if which==14 || which==16 {args[2]=image;}
+ r:=rq_ir_gpu(m[..],meta[..],memory[..],RQResources.{textures=textures[..],samplers=samplers[..]},fn,ty,args[0..<rq_ir_gpu_arity(fn)],mask);
+ #assert m[0].status==wanted;
+ if which==21 {for lane:0..<4 {for c:0..<4 {#assert memory[r.at+lane*4+c]==0;}}}
+}
+#forall "quad extra texture loads include the first texel and distinguish nonsquare extents" fn:7..<12 {
+ tree:=RQ_IR_TEXTURE_2;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);memory:[128]u32;m:=[1]RQMachine.[RQMachine.{types=p.types,version=2,stage=1}];
+ image:=rq_ir_value(m[..],meta[..],memory[..],8);zero:=rq_ir_value(m[..],meta[..],memory[..],3);sampler:=rq_ir_value(m[..],meta[..],memory[..],12);uv:=rq_ir_value(m[..],meta[..],memory[..],7);ref:=rq_ir_value(m[..],meta[..],memory[..],2);
+ levels:=[1]RQMip.[RQMip.{width=4,height=2}];colours:[8]RQColor;for j:0..<8 {colours[j]=RQColor.{r=0.25,g=10,b=20,a=30};}
+ textures:=[1]RQTexture.[RQTexture.{levels=levels[..],layers=1,texels=colours[..],depth=fn==8 || fn==9}];samplers:=[1]RQSampler.[RQSampler.{compare=RQCompare.less}];
+ for lane:0..<4 {rq_ir_put_f32(memory[..],ref,lane,0.5);memory[uv.at+lane*2]=f32_bits(0.125f32);memory[uv.at+lane*2+1]=f32_bits(0.25f32);}
+ ty:=6;if fn==8 || fn==9 {ty=2;}if fn>=10 {ty=4;}
+ args:=[4]RQValue.[image,zero,zero,zero];if fn==9 {args[1]=sampler;args[2]=uv;args[3]=ref;}
+ r:=rq_ir_gpu(m[..],meta[..],memory[..],RQResources.{textures=textures[..],samplers=samplers[..]},fn,ty,args[0..<rq_ir_gpu_arity(fn)],15);#assert m[0].status==RQStatus.ok;
+ for lane:0..<4 {
+  if fn==7 {#assert rq_ir_f32(memory[..],r,lane)==0.25f32 && f32_from_bits(memory[r.at+lane*4+1])==10 && f32_from_bits(memory[r.at+lane*4+2])==20 && f32_from_bits(memory[r.at+lane*4+3])==30;}
+  if fn==8 {#assert rq_ir_f32(memory[..],r,lane)==0.25f32;}if fn==9 {#assert rq_ir_f32(memory[..],r,lane)==0;}
+  if fn==10 {#assert rq_ir_u64(memory[..],r,lane)==4;}if fn==11 {#assert rq_ir_u64(memory[..],r,lane)==2;}
+ }
+}
+#forall "quad extra texture implicit LOD depends on either dominant UV component" axis:0..<2 {
+ tree:=RQ_IR_TEXTURE_2;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);memory:[128]u32;m:=[1]RQMachine.[RQMachine.{types=p.types,version=2,stage=1}];
+ image:=rq_ir_value(m[..],meta[..],memory[..],8);sampler:=rq_ir_value(m[..],meta[..],memory[..],11);uv:=rq_ir_value(m[..],meta[..],memory[..],7);
+ for lane:0..<4 {memory[uv.at+lane*2+axis]=f32_bits(cast(f32)(lane%2));}
+ levels:=[2]RQMip.[RQMip.{width=2,height=2},RQMip.{width=1,height=1,offset=4}];colours:=[5]RQColor.[RQColor.{r=1},RQColor.{r=2},RQColor.{r=3},RQColor.{r=4},RQColor.{r=100}];
+ textures:=[1]RQTexture.[RQTexture.{levels=levels[..],layers=1,texels=colours[..]}];samplers:=[1]RQSampler.[RQSampler.{}];args:=[3]RQValue.[image,sampler,uv];
+ r:=rq_ir_gpu(m[..],meta[..],memory[..],RQResources.{textures=textures[..],samplers=samplers[..]},2,6,args[..],15);#assert m[0].status==RQStatus.ok;
+ for lane:0..<4 {#assert rq_ir_f32(memory[..],r,lane)==100;}
+}

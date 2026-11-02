@@ -1,0 +1,16 @@
+#load "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/media.coax";
+RFLASmall :: struct {x:f32;}
+RFLAMax :: struct {a0:V4;a1:V4;a2:V4;a3:V4;a4:V4;a5:V4;a6:V4;a7:V4;a8:V4;a9:V4;a10:V4;a11:V4;a12:V4;a13:V4;a14:V4;a15:V4;}
+RFLALarge :: struct {a0:V4;a1:V4;a2:V4;a3:V4;a4:V4;a5:V4;a6:V4;a7:V4;a8:V4;a9:V4;a10:V4;a11:V4;a12:V4;a13:V4;a14:V4;a15:V4;tail:f32;}
+rfl_vs :: (v:u32,i:u32,u:[]f32)->V4 {return v4(u[0],0,0,1);}
+rfl_fs :: (p:V4,u:[]f32)->V4 {return v4(u[0],0,0,1);}
+rfl_empty_vs :: (v:u32,i:u32)->V4 {return v4(0,0,0,1);}
+rfl_empty_fs :: (p:V4)->V4 {return v4(0,0,0,1);}
+rfl_extra_vs :: (v:u32,i:u32,u:[]f32,extra:[]f32)->V4 {return v4(u[0]+extra[0],0,0,1);}
+rfl_kind_fs :: (p:V4,u:Tex2D)->V4 {return gpu_load(u,0,0,0);}
+rfl_stride_vs :: (v:u32,i:u32,u:[]V2)->V4 {return v4(u[0].x,0,0,1);}
+rfl_small_vs :: (v:u32,i:u32,a:RFLASmall)->V4 {return v4(a.x,0,0,1);}
+rfl_max_vs :: (v:u32,i:u32,a:RFLAMax)->V4 {return v4(a.a0.x,0,0,1);}
+rfl_large_vs :: (v:u32,i:u32,a:RFLALarge)->V4 {return v4(a.tail,0,0,1);}
+rfl_array_fs :: (v:MediaVaryings,u:[]f32,media_image:Tex2DArray,media_sampler:Sampler)->V4 {return gpu_sample_layer(media_image,media_sampler,v.uv,0);}
+rfl_compare_fs :: (v:MediaVaryings,u:[]f32,media_image:Tex2D,media_sampler:SamplerCompare)->V4 {c:=gpu_load(media_image,0,0,0);return v4(c.x*u[4],c.y,c.z,1);}

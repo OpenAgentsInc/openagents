@@ -22,7 +22,7 @@
 #load "../../aethyr/loop.coax";   // the fixed steps: Aethyr's one clock
 
 VERTEX_FLOATS :: 16;
-MAX_VERTICES :: 52000;   // the swarm stage draws 39,318 at 1440 px; 36,000 clipped it (STAIR_BUDGET)
+MAX_VERTICES :: 52000;   // the swarm stage draws 39,354 at 1440 px; 36,000 clipped it (STAIR_BUDGET)
 PLATES :: 24;
 COLS :: 14; ROWS :: 9; CELLS :: 126;
 // The uniforms: size, time, fade; the map (origin x, y, tile, squash); info (screen cols, rows,
@@ -2723,7 +2723,7 @@ play_until :: (s: [] Stair, who: int, seed: u64, until: int) -> Played {
   r.won = s[0].phase == WON || (s[0].phase == BUILD && s[0].wave >= until); r.wave = s[0].wave; r.lives = s[0].lives; r.placed = s[0].placed;
   return r;
 }
-#test "with no party the tower falls; a party that builds as gold allows holds the first ten waves" {
+#test "with no party the tower falls; a party that builds as gold allows holds the first ten waves" #steps 970000000 {
   s: [1] Stair;
   stair_start(s[..]);
   #assert play_through(s[..], false) == LOST;
@@ -2746,7 +2746,7 @@ play_until :: (s: [] Stair, who: int, seed: u64, until: int) -> Played {
   #assert rule_last(s[..], 0).what == RULE_POP && rule_last(s[..], 1).what == RULE_SPLIT;
 }
 
-#test "seeded dice: a map replayed with its seed rolls every roll the same; another seed doesn't" {
+#test "seeded dice: a map replayed with its seed rolls every roll the same; another seed doesn't" #steps 140000000 {
   a: [1] Stair; b: [1] Stair; c: [1] Stair;
   stair_start(a[..]); stair_start(b[..]); stair_start(c[..]);
   #assert a[0].seed == STAIR_SEED;
@@ -2766,7 +2766,7 @@ play_until :: (s: [] Stair, who: int, seed: u64, until: int) -> Played {
   #assert !stair_tables_read(t[..], "seed 0") && stair_tables_error(t[..]) == "line 1: a seed is a whole number from 1 to 999999999";
 }
 
-#test "turns are deterministic: two runs on the same seed end the same, turn by turn" {
+#test "turns are deterministic: two runs on the same seed end the same, turn by turn" #steps 210000000 {
   a: [1] Stair; b: [1] Stair;
   stair_start(a[..]); stair_start(b[..]);
   // the last wave against a full party (the highlight stage), twenty seconds of turns each
@@ -2779,19 +2779,19 @@ play_until :: (s: [] Stair, who: int, seed: u64, until: int) -> Played {
   }
 }
 
-#test "the curve: a new player placing one a round reaches wave 8" {
+#test "the curve: a new player placing one a round reaches wave 8" #steps 600000000 {
   s: [1] Stair;
   stair_start(s[..]);
   r := play_until(s[..], NEW_PLAYER, 7919, 10);
   #assert r.wave >= 8;
 }
-#test "the curve: a player who keeps their gold and places three falls by wave 7" {
+#test "the curve: a player who keeps their gold and places three falls by wave 7" #steps 390000000 {
   s: [1] Stair;
   stair_start(s[..]);
   r := play_until(s[..], HOARDER, 7919, 10);
   #assert !r.won && r.wave <= 7;
 }
-#test "the curve: the best play holds the first ten waves (all forty: stair-sim.coax)" {
+#test "the curve: the best play holds the first ten waves (all forty: stair-sim.coax)" #steps 810000000 {
   s: [1] Stair;
   stair_start(s[..]);
   r := play_until(s[..], BEST, 7919, 10);
@@ -3049,7 +3049,7 @@ placed_at :: (s: [] Stair, c: int, cls: int, lv: int) -> int {
   #assert upgrade(s[..], pl) && s[0].party[pl].smite;
 }
 
-#test "area queries: a Fireball's 20-foot sphere and a Lightning Bolt's line over five hundred beasts look only at the tiles they cover, and find what a full scan finds" {
+#test "area queries: a Fireball's 20-foot sphere and a Lightning Bolt's line over five hundred beasts look only at the tiles they cover, and find what a full scan finds" #steps 730000000 {
   s: [1] Stair;
   stair_start(s[..]);
   stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=swarm");
@@ -3092,7 +3092,7 @@ placed_at :: (s: [] Stair, c: int, cls: int, lv: int) -> int {
   #assert most < live / 2 && found > 40;
 }
 
-#test "three maps: each holds its first ten waves, the fork sends the beasts up both stairs, and MAP picks one before the first wave" {
+#test "three maps: each holds its first ten waves, the fork sends the beasts up both stairs, and MAP picks one before the first wave" #steps 2550000000 {
   s: [1] Stair;
   stair_start(s[..]);
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
@@ -3321,7 +3321,7 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
   #assert s[0].wave_t > t0;
 }
 
-#test "the staged highlight is the last wave against a full party at the top level, and the stair is busy" {
+#test "the staged highlight is the last wave against a full party at the top level, and the stair is busy" #steps 60000000 {
   s: [1] Stair;
   stair_start(s[..]);
   stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=highlight");
@@ -3332,7 +3332,7 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
   #assert !query_is("https://x/y?stage=highlights", "stage", "highlight") && query_is("https://x/y?a=1&stage=highlight#z", "stage", "highlight");
 }
 
-#test "the swarm stage keeps five hundred beasts on the stair, every one drawn within the vertex budget" {
+#test "the swarm stage keeps five hundred beasts on the stair, every one drawn within the vertex budget" #steps 1290000000 {
   s: [1] Stair;
   stair_start(s[..]);
   stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=swarm");
@@ -3406,8 +3406,8 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
 
 // ---------------------------------------------------------------------------------------------
 // The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Hold the Stair may
-// use. Its heaviest frame is the swarm stage's tenth: 39,318 vertices at 1440 by 900, which the
-// 36,000-vertex buffer clipped before this check; the buffer is now 52,000.
+// use. Its heaviest frame is the swarm stage's tenth: 39,354 vertices at 1440 by 900, which the
+// 36,000-vertex buffer clipped before this check; the buffer is now 52,000. REALMS adds 36 vertices over the old GALAXY label.
 STAIR_BUDGET :: FrameBudget.{steps = 8, vertices = 48000, draws = 0, bytes = 3932160};
 
 // The steps a frame runs, measured against the budget: at 1x, 4x and 8x, at 30, 60 and 144 FPS
@@ -3466,7 +3466,7 @@ STAIR_BUDGET :: FrameBudget.{steps = 8, vertices = 48000, draws = 0, bytes = 393
 }
 
 // Ten frames of the opening and ten of the swarm stage, at every budget screen.
-#test "Hold the Stair's frames fit its declared budget" {
+#test "Hold the Stair's frames fit its declared budget" #steps 430000000 {
   #assert budget_declared(STAIR_BUDGET, MAX_VERTICES) == BUDGET_NONE;
   frames := 10;
   m := [1] BudgetMeter.[budget_meter(STAIR_BUDGET)];
@@ -3481,6 +3481,14 @@ STAIR_BUDGET :: FrameBudget.{steps = 8, vertices = 48000, draws = 0, bytes = 393
       for f: 0..<frames { n := stair_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, 0.05, false); budget_measure(m[..], n, 0, bytes); }
     }
   }
-  #assert budget_ok(m[0]) && m[0].peak[BUDGET_VERTICES] == 39318;
+  #assert budget_ok(m[0]) && m[0].peak[BUDGET_VERTICES] == 39354;
   #assert MAX_VERTICES - STAIR_BUDGET.vertices == 4000;   // the buffer keeps 4,000 vertices past the budget
+}
+
+#test "REALMS has six more Filament strokes than the old GALAXY exit label" {
+ out:[256*VERTEX_FLOATS]f32;k:=Ink.{core=1,light=1,glow=0,red=1,green=1,blue=1,mode=0};
+ #assert draw_text(out[..],0,"GALAXY",0,20,12,0.1,0.5,k,false,false)==192;
+ #assert draw_text(out[..],0,"REALMS",0,20,12,0.1,0.5,k,false,false)==228;
+ s:[1]Stair;stair_start(s[..]);label:[16]u8;n:=button_label(s[..],B_GALAXY,label[..]);
+ #assert (cast(string)label[0..<n])=="REALMS";
 }

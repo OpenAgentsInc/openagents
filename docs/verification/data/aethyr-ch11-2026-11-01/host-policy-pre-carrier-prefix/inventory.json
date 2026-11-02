@@ -1,0 +1,10 @@
+{
+  "purpose": "Exact policy/check source before identifier-only carrier composition edits; retains earlier proof source identity.",
+  "files": {
+    "aethyr/render/build-policy.coax": "1e1f933b9f94155aa6eeb8ea7f49ebe32c7260c4a1d992c87fc62c513e2608bf",
+    "aethyr/render/interface.coax": "23ce98c048198711a0fbab1360fb4e1784d00f91febf4d0756f2ab70486d81df",
+    "aethyr/render/package.coax": "b11550e59a0df2e6bb0304c8e6b27e3a430b31d7a21044d2c26393843c1fdf2b",
+    "aethyr/render/tests/package-checks.coax": "3b238cb65fc54a0ab578621647c07e0b02da9041f64fbb738cff854e5ac7bcf1",
+    "aethyr/render/tests/host-memory-checks.coax": "c0b6b72e2f95c06660fbc5015f21212c980c1ffcddb50f3f6021bfb6c928bcb9"
+  }
+}

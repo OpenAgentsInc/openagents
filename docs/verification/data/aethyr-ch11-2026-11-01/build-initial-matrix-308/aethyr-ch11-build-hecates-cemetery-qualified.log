@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_build.py", line 354, in <module>
+    main()
+    ~~~~^^
+  File "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_build.py", line 300, in main
+    result = run([builder, args.profile, output])
+  File "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_build.py", line 274, in run
+    raise RuntimeError(result.stderr.decode(errors="replace")[-2000:])
+RuntimeError: aethyr render build: shader interface differs from the catalog pass
+

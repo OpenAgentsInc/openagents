@@ -1,6 +1,7 @@
 // realm's shaders, the source of apps/openagents-web/realm.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (realm.module,
 // realm.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/sampling.coax";
 #load "../../../verse/gpu/wgsl.coax";
 #load "../../../verse/light.coax";
 #load "../../../verse/haunt-light.coax";
@@ -133,7 +134,7 @@ realm_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]RealmIn
 }
 realm_shadow_fs :: (s:RealmShade,sheets:Tex2DArray,sheet:Sampler) {
   if (gpu_sample_layer_level(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),0.0f32).w<0.35f32) {
-    gpu_discard();
+    gpu_demote_helper();
   }
 }
 realm_moonlit :: (w:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->f32 {
@@ -202,12 +203,12 @@ realm_cut_away :: (w:V3,n:V3,u:[]f32)->bool {
   return off<(1.05f32+(0.35f32*(1.0f32-(along/span))));
 }
 realm_scene_fs :: (s:RealmS,u:[]f32,lights:[]RealmLight,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->RealmLit {
-  tex:V4=gpu_sample_layer(sheets,sheet,s.uv,cast,trunc(s32)(s.slice));
+  tex:V4=render_sample_layer8(sheets,sheet,s.uv,cast,trunc(s32)(s.slice));
   if (tex.w<0.35f32) {
-    gpu_discard();
+    gpu_demote_helper();
   }
   if realm_cut_away(s.world,wg_normalize3(s.normal),u) {
-    gpu_discard();
+    gpu_demote_helper();
   }
   n:V3=wg_normalize3(s.normal);
   facing:f32=fmax(0.0f32,wg_dot3(n,realm_moon_dir()));

@@ -15,6 +15,9 @@ uint32_t coaxial_uniform_floats(void);
 void coaxial_golden(uint32_t on);
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still);
 uint32_t coaxial_draws(uint32_t state);
+// Optional measured allocation for faces whose draw records live outside state.
+// Zero retains the caller's measured state-arena source allocation.
+uint32_t coaxial_draw_capacity(uint32_t state);
 uint32_t coaxial_draw_count(uint32_t state);
 uint32_t coaxial_stores(void);
 uint32_t coaxial_store_cap(int32_t k);
@@ -31,6 +34,8 @@ uint32_t coaxial_inbox(uint32_t state);
 uint32_t coaxial_inbox_cap(void);
 void coaxial_message(uint32_t state, int32_t kind, uint32_t length);
 uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes);
+// Actual allocation size of the destination returned by coaxial_asset.
+uint32_t coaxial_asset_capacity(uint32_t state, int32_t i);
 void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes);
 void coaxial_hash(uint32_t state, uint32_t length);
 int32_t coaxial_action(uint32_t state);
@@ -41,6 +46,8 @@ uint32_t coaxial_particle_cap(void);
 uint32_t coaxial_particles(uint32_t state);
 uint32_t coaxial_particle_bytes(uint32_t state);
 uint32_t coaxial_particle_instances(uint32_t state);
+uint32_t coaxial_media(uint32_t state);
+uint32_t coaxial_media_len(uint32_t state);
 uint32_t coaxial_grass_instances(uint32_t state);
 // a traced page's surface (the water lab's sea): vertices drawn after bg, three a triangle
 uint32_t coaxial_surface_vertices(uint32_t state);

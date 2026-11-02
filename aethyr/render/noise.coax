@@ -1,0 +1,76 @@
+// Portable lattice hash: finite coordinates saturate before a signed32 cell
+// conversion; the permutation wraps in u32 and only24exact bits become f32.
+// The nonfinite0 fallback is a scalar CPU diagnostic convention. It is not
+// GPU input admission or a cross-backend guarantee for NaN/infinity.
+#module "aethyr.render.noise";
+#load "../../verse/gpu/shader.coax";
+#authority;
+
+#forall "render noise integer words match an independent wrapping oracle" i:0..<6 {
+  x:=[6]u32.[0,1,4294967295,2147483648,64,4294967295];
+  y:=[6]u32.[0,2,0,2147483647,128,4294967295];
+  z:=[6]u32.[0,3,1,270544960,192,4294967295];
+  two:=[6]u32.[0,3866883025,4208463291,2341835472,3759397522,1840992480];
+  three:=[6]u32.[0,2741175798,1897632134,1386373364,3258264408,468835505];
+  #assert render_noise_mix2(x[i],y[i])==two[i] && render_noise_mix3(x[i],y[i],z[i])==three[i];
+}
+#forall "render noise cell quantization includes negative floor and signed32 endpoints" i:0..<10 {
+  x:=[10]f32.[0,0.015625,0.015624,-0.0001,-0.015625,-0.015626,33554430,-33554432,1e38,-1e38];
+  expected:=[10]u32.[0,1,0,4294967295,4294967295,4294967294,2147483520,2147483648,2147483520,2147483648];
+  #assert render_noise_cell(x[i])==expected[i];
+}
+#forall "render noise float promotion keeps only its exact high twenty-four bits" i:0..<5 {
+  h:=[5]u32.[0,255,256,4294967040,4294967295];
+  expected:=[5]u32.[0,0,0x33800000,0x3f7fffff,0x3f7fffff];
+  #assert f32_bits(render_noise_unit(h[i]))==expected[i];
+}
+#test "render noise live coordinate fixtures match independently computed float words" {
+  #assert f32_bits(render_noise2(1,2))==0x3f6013da && f32_bits(render_noise3(1,2,3))==0x3f42352b;
+  #assert f32_bits(render_noise2(0.015625,0.03125))==0x3f667bf3;
+  #assert f32_bits(render_noise3(0.015625,0.03125,0.046875))==0x3f236305;
+  #assert render_noise2(0,0)==0 && render_noise3(0,0,0)==0;
+  #assert render_noise2(1e38,-1e38)==render_noise2(33554430,-33554432);
+}
+#forall "render noise scalar diagnostic refuses every nonfinite coordinate position" bad:0..<3,noise_axis:0..<3 {
+  zero:=0.0f32;v:=ifx bad==0 then zero/zero else ifx bad==1 then 1.0f32/zero else -1.0f32/zero;
+  #assert !render_noise_coordinate_ok(v);
+  x:=ifx noise_axis==0 then v else 1.0f32;y:=ifx noise_axis==1 then v else 2.0f32;z:=ifx noise_axis==2 then v else 3.0f32;
+  #assert render_noise3(x,y,z)==0;
+  if noise_axis<2 {#assert render_noise2(x,y)==0;}
+}
+#test "render noise finite diagnostic retains both finite f32 extremes" {
+  #assert render_noise_coordinate_ok(3.4028234663852886e38f32) && render_noise_coordinate_ok(-3.4028234663852886e38f32);
+}
+
+render_noise_coordinate_ok :: (x:f32)->bool {
+  return x>=-3.4028234663852886e38f32 && x<=3.4028234663852886e38f32;
+}
+// Caller has checked finiteness. The powers-of-two scaling is exact for the
+// admitted ordinary finite-coordinate profile. Explicit saturation keeps the
+// conversion inside signed32; the positive endpoint is the last f32 below2^25.
+render_noise_cell :: (x:f32)->u32 {
+  bounded:=fmin(fmax(x,-33554432.0f32),33554430.0f32);
+  return cast,trunc(u32)(cast(s32)floor(bounded*64.0f32));
+}
+render_noise_permute :: (word:u32)->u32 {
+  h:=mul_wrap(word,747796405);
+  h=mul_wrap(h^(h>>16),2246822519);
+  return h^(h>>13);
+}
+render_noise_mix2 :: (x:u32,y:u32)->u32 {
+  return render_noise_permute(mul_wrap(x,1597334677)^mul_wrap(y,3812015801));
+}
+render_noise_mix3 :: (x:u32,y:u32,z:u32)->u32 {
+  return render_noise_permute(mul_wrap(x,1597334677)^mul_wrap(y,3812015801)^mul_wrap(z,2654435761));
+}
+render_noise_unit :: (word:u32)->f32 {
+  return cast(f32)(word>>8)*0.000000059604644775390625f32;
+}
+render_noise2 :: (x:f32,y:f32)->f32 {
+  if !render_noise_coordinate_ok(x) || !render_noise_coordinate_ok(y) {return 0;}
+  return render_noise_unit(render_noise_mix2(render_noise_cell(x),render_noise_cell(y)));
+}
+render_noise3 :: (x:f32,y:f32,z:f32)->f32 {
+  if !render_noise_coordinate_ok(x) || !render_noise_coordinate_ok(y) || !render_noise_coordinate_ok(z) {return 0;}
+  return render_noise_unit(render_noise_mix3(render_noise_cell(x),render_noise_cell(y),render_noise_cell(z)));
+}

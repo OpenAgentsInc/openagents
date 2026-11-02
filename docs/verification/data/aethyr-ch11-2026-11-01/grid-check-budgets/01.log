@@ -1,0 +1,13 @@
+ok   #test a drag pans the view and is never a click (1 case, 71923867 steps, 6230 ms)
+        own steps  share   with calls     calls  procedure
+         23673496  32.9%     23673496     29986  lit  apps/openagents-web/newland.coax:266
+          9340287  13.0%     40626725     39793  seg  apps/openagents-web/newland.coax:425
+          6116024   8.5%      6116024    321896  dot3  apps/openagents-web/newland.coax:395
+          3825113   5.3%     40330524         4  floor_grid  apps/openagents-web/newland.coax:1174
+          3612716   5.0%      3612716     33281  on_plot  apps/openagents-web/newland.coax:459
+          3553704   4.9%     10095750     80766  spot  apps/openagents-web/newland.coax:413
+          2886480   4.0%      3848640    160360  fv_sub  verse/figure.coax:134
+          2100488   2.9%      2248172       176  draw_sans  apps/openagents-web/font.coax:442
+     ... 152 more procedures
+1 of 114 checks (--only 'a drag pans the view and is never a click'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

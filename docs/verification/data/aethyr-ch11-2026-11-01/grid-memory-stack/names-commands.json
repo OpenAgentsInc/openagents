@@ -1,0 +1,42 @@
+{
+  "link": [
+    "/opt/homebrew/bin/wasm-ld",
+    "-m",
+    "wasm32",
+    "-L/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/lib/wasm32-unknown-wasip1",
+    "-L/opt/homebrew/opt/wasi-libc/share/wasi-sysroot/lib/wasm32-wasip1/noeh",
+    "-L/opt/homebrew/opt/wasi-libc/share/wasi-sysroot/lib/wasm32-wasip1",
+    "/opt/homebrew/opt/wasi-libc/share/wasi-sysroot/lib/wasm32-wasip1/crt1-reactor.o",
+    "--entry",
+    "_initialize",
+    "/tmp/aethyr-ch11-grid-stack/objects/newland.o",
+    "/tmp/aethyr-ch11-grid-stack/objects/landing-browser.o",
+    "/tmp/aethyr-ch11-grid-stack/objects/landing-fold.o",
+    "/tmp/aethyr-ch11-grid-stack/objects/Gridwalk.o",
+    "/tmp/aethyr-ch11-grid-stack/objects/newland-face.o",
+    "/tmp/aethyr-ch11-grid-stack/objects/landing-reader-face.o",
+    "/tmp/aethyr-ch11-grid-stack/objects/landing-fold-face.o",
+    "/tmp/aethyr-ch11-grid-stack/objects/landing-cache-face.o",
+    "/tmp/aethyr-ch11-grid-stack/objects/render-face.o",
+    "--import-memory",
+    "--max-memory=67108864",
+    "-z",
+    "stack-size=8388608",
+    "--export=__heap_base",
+    "--gc-sections",
+    "-lc",
+    "/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/lib/wasm32-unknown-wasip1/libclang_rt.builtins.a",
+    "-o",
+    "/tmp/aethyr-ch11-grid-stack/grid-unoptimized-names.wasm",
+    "--keep-section=target_features",
+    "-Map=/tmp/aethyr-ch11-grid-stack/grid-names.map"
+  ],
+  "opt": [
+    "/opt/homebrew/bin/wasm-opt",
+    "/tmp/aethyr-ch11-grid-stack/grid-unoptimized-names.wasm",
+    "-O2",
+    "-g",
+    "-o",
+    "/tmp/aethyr-ch11-grid-stack/grid-names.wasm"
+  ]
+}

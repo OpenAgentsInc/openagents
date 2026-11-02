@@ -1,0 +1,3 @@
+ok   #forall reference run preserves raw input refusal status and leaves output atomic (5 cases, 1066531 steps, 17 ms)
+1 of 625 checks (--only 'reference run preserves raw'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

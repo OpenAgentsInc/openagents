@@ -1,0 +1,12 @@
+{"status":"failed","fault":"keep-cache","waiting":{"present":true,"ready":false,"decoded":0},"replacement":{"failed":true,"error":"Coax refused shader digest"},"after":{"decoded":1,"closed":0,"allocations":1,"textures":1,"ready":true,"hasTexture":true,"current":0,"binding":{"stopped":true,"coherent":false}}}
+55 |   do { after = await evaluate("({decoded:retireDecoded,closed:retireClosed,allocations:lateAllocations,textures:lateTextures,ready:retiredMedia.ready,hasTexture:!!retiredMedia.texture,current:coaxial.renderMediaObjects().length,binding:coaxial.renderBindingState()})"); if (after.closed) break; await Bun.sleep(50); } while (Date.now() < completed);
+56 |   const changes = [...inputs].filter(([p, h]) => sha(readFileSync(p)) !== h).map(([p]) => p);
+57 |   const passed = replacement.failed && stopped.stopped && !stopped.coherent && after.decoded === 1 && after.closed === 1 && after.allocations === 0 && after.textures === 0 && !after.ready && !after.hasTexture && after.current === 0 && after.binding.stopped && !after.binding.coherent && changes.length === 0;
+58 |   const receipt = { schema: "aethyr.render.media-retirement.v1", status: passed ? "passed" : "failed", fault, browser, waiting, replacement, stopped, after, inputs: Object.fromEntries(inputs), source_changes: changes, requests, events };
+59 |   writeFileSync(`${out}/qualification.json`, JSON.stringify(receipt, null, 2) + "\n"); console.log(JSON.stringify({ status: receipt.status, fault, waiting, replacement, after }));
+60 |   if (!passed) throw Error("retired media completion escaped its owner");
+                          ^
+error: retired media completion escaped its owner
+      at /Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_media_retirement.ts:60:22
+
+Bun v1.4.0 (macOS arm64)

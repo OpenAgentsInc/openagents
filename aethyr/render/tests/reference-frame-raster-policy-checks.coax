@@ -1,0 +1,5 @@
+#test "reference frame refuses unrecognized raster precision before loading or publication" {
+ input:RFInput;shaders:[]RFShader;work:RFWorking;out:[]RQColor;
+ policy:=RFPolicy.{raster=rr_raster_profile("unknown",8)};
+ #assert rf_run(input,shaders,false,RenderTextureFormat.rgba8,policy,work,out).status==RQStatus.unsupported;
+}

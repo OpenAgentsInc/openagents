@@ -1,0 +1,7 @@
+apps/openagents-web/font.coax:519:9: error[E0315]: procedure 'render_sans_profile' is not declared
+    fp := render_sans_profile();
+          ^
+apps/openagents-web/font.coax:524:11: error[E0315]: procedure 'render_sans_glyph' is not declared
+      fg := render_sans_glyph(0, fi);
+            ^
+2 errors

@@ -1,0 +1,211 @@
+{
+  "schema": "aethyr.render.native-helper.v1",
+  "status": "passed",
+  "scope": "bounded RTX4080 actual-source mixed helper and per-pass buffer-view probe; normal Coax C compiled native O2",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "command": [
+    "bash",
+    "aethyr/tests/check_render_helper_gpu.sh",
+    "coderos-4080",
+    "/tmp/aethyr-ch11-helper-gpu-green"
+  ],
+  "observations": {
+    "pixels_wrong": 0,
+    "vulkan_errors": 0,
+    "vulkan_warnings": 0,
+    "uniform_view_bytes": [
+      112,
+      9200,
+      112
+    ],
+    "uniform_view_offsets": [
+      0,
+      0,
+      256
+    ],
+    "legacy_whole_view": true,
+    "helper_disabled_refused_before_pipeline": true,
+    "int64_disabled_refused_before_pipeline": true
+  },
+  "sources": [
+    {
+      "path": "aethyr/tests/render-capabilities-bridge.coax",
+      "sha256": "69884d2d4aad9d02dcd32f838959ca50bf248de7c7e6a19a6a757e38262a5150",
+      "archived": "source/aethyr/tests/render-capabilities-bridge.coax"
+    },
+    {
+      "path": "aethyr/render/capabilities.coax",
+      "sha256": "ae385c231cd4d9551c4676c111518fa805fe4660f28c3a09d8a0b280f63808c2",
+      "archived": "source/aethyr/render/capabilities.coax"
+    },
+    {
+      "path": "aethyr/render/resources.coax",
+      "sha256": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8",
+      "archived": "source/aethyr/render/resources.coax"
+    },
+    {
+      "path": "aethyr/render/passes.coax",
+      "sha256": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800",
+      "archived": "source/aethyr/render/passes.coax"
+    },
+    {
+      "path": "aethyr/render/types.coax",
+      "sha256": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+      "archived": "source/aethyr/render/types.coax"
+    },
+    {
+      "path": "aethyr/render/bindings.coax",
+      "sha256": "bd02c0475836ff87c378ee10e595080d13225f9670ecdcc7a7310f715b4e0efb",
+      "archived": "source/aethyr/render/bindings.coax"
+    },
+    {
+      "path": "aethyr/render/frame.coax",
+      "sha256": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+      "archived": "source/aethyr/render/frame.coax"
+    },
+    {
+      "path": "aethyr/tests/render-frame-checks.coax",
+      "sha256": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007",
+      "archived": "source/aethyr/tests/render-frame-checks.coax"
+    },
+    {
+      "path": "aethyr/render/tests/resources-checks.coax",
+      "sha256": "22e811191a1112c1740694d96338936a20ff8092c5915f0638e80f70d0f2c61f",
+      "archived": "source/aethyr/render/tests/resources-checks.coax"
+    },
+    {
+      "path": "aethyr/render/tests/pipeline-shader.coax",
+      "sha256": "6964512b1a908f99fef0623c1de8153d36771d7fd0b5bca84a4cee8d15e5409e",
+      "archived": "source/aethyr/render/tests/pipeline-shader.coax"
+    },
+    {
+      "path": "aethyr/tests/render-binding-shader.coax",
+      "sha256": "4907c24973c9af825f20c0fa26a2560e67f6277940516fc031612518fc7f1fcc",
+      "archived": "source/aethyr/tests/render-binding-shader.coax"
+    },
+    {
+      "path": "verse/gpu/shader.coax",
+      "sha256": "8600583891e2954e9ac599638783ec01def9820bf2869bfa6a6d0b721925fcc0",
+      "archived": "source/verse/gpu/shader.coax",
+      "basis": "checkpoint blob, unchanged until immediately after completed GPU qualification"
+    }
+  ],
+  "files": [
+    {
+      "path": "RenderCaps.c",
+      "sha256": "4ededd76a6b2c4550940a94c6c7977aa525d2f502b002316a7de18eeed18a90c"
+    },
+    {
+      "path": "RenderCaps.h",
+      "sha256": "efa90e4d121c8fcb28c34479f3dfa3da9381a1be6f985079f7083cf7ae4eae0f"
+    },
+    {
+      "path": "aethyr-ch11-helper-gpu-green.log",
+      "sha256": "e2b318a03f1d4c41f0e84216acc50ae210f5b6a3a3245d3370cb2b3b73b43fc9"
+    },
+    {
+      "path": "aethyr-ch11-helper-gpu-red.log",
+      "sha256": "579c02b37d1f5f64525e2c35ea3370c9ca7d95e7236b044a0b6a6f611552eb92"
+    },
+    {
+      "path": "bridge-inputs.json",
+      "sha256": "5c65b8dbe14dee19d936d81973c14e2c43d1ac1996d9c82f1f32b27f17d2e0d5"
+    },
+    {
+      "path": "check_render_helper_gpu.sh",
+      "sha256": "a1d74b80f0e2f8ae88e48640d32a0c9dfd5e21763214e7de8b30c4776caf1e25"
+    },
+    {
+      "path": "helper.reflection",
+      "sha256": "c0b5d3f73b83adfe37b51987192c99f783554ad5d37bd25337bdd4296635b6bf"
+    },
+    {
+      "path": "helper.spv",
+      "sha256": "121014c743aa5be84e69c0a0ebe922347ece680b2a85d8b5117504fa13705b09"
+    },
+    {
+      "path": "range.reflection",
+      "sha256": "71002ad739476c65044a8cc600f547728a3df13438bd08da8a4628c2a2a9d3ec"
+    },
+    {
+      "path": "range.spv",
+      "sha256": "19b1e6ee4a4ff8463ea509f213ac7db3df505522ed6773d27d27cc2ae2dfb801"
+    },
+    {
+      "path": "remote.sh",
+      "sha256": "dc685e2c3d3456d2d3e6e8edbc930d3704b9913b439945262bea68b73e4c42f3"
+    },
+    {
+      "path": "render-helper-gpu.c",
+      "sha256": "ecdff8ef7d1d53a1fa0ec2084f03bdb440da0221496fe2c9d1e1c520da72262b"
+    },
+    {
+      "path": "source/aethyr/render/bindings.coax",
+      "sha256": "bd02c0475836ff87c378ee10e595080d13225f9670ecdcc7a7310f715b4e0efb"
+    },
+    {
+      "path": "source/aethyr/render/capabilities.coax",
+      "sha256": "ae385c231cd4d9551c4676c111518fa805fe4660f28c3a09d8a0b280f63808c2"
+    },
+    {
+      "path": "source/aethyr/render/frame.coax",
+      "sha256": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471"
+    },
+    {
+      "path": "source/aethyr/render/passes.coax",
+      "sha256": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800"
+    },
+    {
+      "path": "source/aethyr/render/resources.coax",
+      "sha256": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8"
+    },
+    {
+      "path": "source/aethyr/render/tests/pipeline-shader.coax",
+      "sha256": "6964512b1a908f99fef0623c1de8153d36771d7fd0b5bca84a4cee8d15e5409e"
+    },
+    {
+      "path": "source/aethyr/render/tests/resources-checks.coax",
+      "sha256": "22e811191a1112c1740694d96338936a20ff8092c5915f0638e80f70d0f2c61f"
+    },
+    {
+      "path": "source/aethyr/render/types.coax",
+      "sha256": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e"
+    },
+    {
+      "path": "source/aethyr/tests/render-binding-shader.coax",
+      "sha256": "4907c24973c9af825f20c0fa26a2560e67f6277940516fc031612518fc7f1fcc"
+    },
+    {
+      "path": "source/aethyr/tests/render-capabilities-bridge.coax",
+      "sha256": "69884d2d4aad9d02dcd32f838959ca50bf248de7c7e6a19a6a757e38262a5150"
+    },
+    {
+      "path": "source/aethyr/tests/render-frame-checks.coax",
+      "sha256": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007"
+    },
+    {
+      "path": "source/verse/gpu/shader.coax",
+      "sha256": "8600583891e2954e9ac599638783ec01def9820bf2869bfa6a6d0b721925fcc0"
+    },
+    {
+      "path": "vkc.c",
+      "sha256": "9b60bcf80801b0932a82e3f623281c65269f6a7b55c62ae6901a70649065b13a"
+    },
+    {
+      "path": "vkc.h",
+      "sha256": "93c64a4b34d6bb2ec3308729ec09455a868d793f0bd596c87404f0543a48c2cc"
+    },
+    {
+      "path": "vks.c",
+      "sha256": "3a63a7535171dae40ed8617fff4ce5127bed4e0b70d42fe3d5351b48c2b84f5e"
+    },
+    {
+      "path": "vks.h",
+      "sha256": "24d03be9dcce6773a603c0013884c39f0013973b033b8919cc7d95100ee1e65a"
+    }
+  ],
+  "limitations": [
+    "GPU native compiler package selected by nix-shell; native executable bytes were not retained in this bounded probe.",
+    "This is the feature/binding bridge, not a complete realm image qualification."
+  ]
+}

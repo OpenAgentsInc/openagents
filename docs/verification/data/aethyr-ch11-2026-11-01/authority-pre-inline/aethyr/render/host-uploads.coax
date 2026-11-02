@@ -1,0 +1,18 @@
+// An effectful producer getter may consume its update before later frame
+// admission refuses. Keep the whole copied prefix pending until submission.
+#module "aethyr.render.host.uploads";
+#load "types.coax";
+#authority;
+RenderHostUploadState :: struct {pending:u64;}
+RenderHostUploadReceipt :: struct {status:RenderFrameStatus;next:RenderHostUploadState;grew:bool;}
+#load "tests/host-uploads-checks.coax";
+render_host_upload_stage :: (rhu_state:RenderHostUploadState,rhu_incoming:u64,rhu_capacity:u64)->RenderHostUploadReceipt {
+  rhu_result:=RenderHostUploadReceipt.{next=rhu_state};
+  if rhu_incoming%4!=0 || rhu_state.pending%4!=0 {rhu_result.status=RenderFrameStatus.bad_upload;return rhu_result;}
+  if rhu_incoming>rhu_capacity || rhu_state.pending>rhu_capacity {rhu_result.status=RenderFrameStatus.capacity;return rhu_result;}
+  if rhu_incoming>rhu_state.pending {rhu_result.next.pending=rhu_incoming;rhu_result.grew=true;}
+  return rhu_result;
+}
+render_host_upload_ack :: (rhu_state:RenderHostUploadState,rhu_submitted:bool)->RenderHostUploadState {
+  if rhu_submitted {return RenderHostUploadState.{};}return rhu_state;
+}

@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/check_mesh_band_controls.py", line 47, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/check_mesh_band_controls.py", line 39, in main
+    args=[exe,qdir/'oracle.bin']if verifier=='mesh'else[exe];commands.append(run(args,d/'execution.log',1))
+                                                                             ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/check_mesh_band_controls.py", line 27, in run
+    assert code==expected,(args,code,log)
+           ^^^^^^^^^^^^^^
+AssertionError: ([PosixPath('/private/tmp/aethyr-ch11-icecream-mesh-band-controls/partial-triangle-guard/control')], -6, PosixPath('/private/tmp/aethyr-ch11-icecream-mesh-band-controls/partial-triangle-guard/execution.log'))

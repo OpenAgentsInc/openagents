@@ -1,0 +1,19 @@
+{
+  "schema": "aethyr.render.box36-historical-preservation.v1",
+  "status": "pass",
+  "scope": "Normal checked-C execution of the exact retained pre-winding production source in a separate immutable source tree. The independent outward cube oracle correctly refuses its old vertex order. All six per-face packet multisets remain byte-identical after the fix, across three positive-determinant affine models.",
+  "historical_control_detected": true,
+  "historical_control_reason": "packet 1 lane 1: -0.5 != 0.5",
+  "models": 3,
+  "vertices_per_model": 36,
+  "per_face_multisets_preserved": 18,
+  "all_packet_bytes_preserved_per_face": true,
+  "production_prefix_change_only": "One local-coordinate swap on faces0..3, plus its comment. No culling, transform, normal, shader or packet-layout change.",
+  "old_source_sha256": "47bc1e2b0a1c5558b8a48a4106cbb5699a9f8302b8f76433ffd30234dde0107f",
+  "current_source_sha256": "fc2c77948ba78e4ab380c8f398e5f235c86b97a1f3a2f74c95e1a2195a39ca38",
+  "old_generated_c_sha256": "31ede31adff43778cad8b5f58ff7b1aff17167f71339fa70454a54ead1ccf6a3",
+  "old_header_sha256": "1c1b4937d15f75a519a488c4225df5c8e147295b6033fa8d6505b14622fb7b54",
+  "old_executable_sha256": "c90e35176b694f5f90682776ae966c6dab657ddf2abddb4a795b71f6b71e6270",
+  "old_output_sha256": "0d43840f931bcc1311f184dda747946a78bf4a4bcc806f4d9f775697af4ed194",
+  "current_output_sha256": "a1ab0b27aaa1d9a96b96e790fe94ab0ee343eeca9b82b1802914e5de4391b72c"
+}

@@ -1,0 +1,16 @@
+#load "reference-frame-media-graph-trees.coax";
+#test "reference whole Cemetery graph places actual media beneath and above the real attribute HUD" {
+ bg:=RFG_TREE_0;scene:=RFMG_SCENE;particle:=RFMG_PARTICLE;bloom:=RFG_TREE_10;post:=RFG_TREE_11;hud_tree:=RFMG_HUD;media_tree:=RFM_ACTUAL_TREE;
+ shaders:=[7]RFShader.[RFShader.{index=0,tree=bg[..]},RFShader.{index=5,tree=scene[..]},RFShader.{index=9,tree=particle[..]},RFShader.{index=10,tree=bloom[..]},RFShader.{index=11,tree=post[..]},RFShader.{index=12,tree=hud_tree[..]},RFShader.{index=13,tree=media_tree[..]}];
+ u:[496]f32;u[0]=4;u[1]=2;hud:[96]f32;positions:=[6][2]f32.[[2]f32.[-1,1],[2]f32.[0,1],[2]f32.[-1,-1],[2]f32.[-1,-1],[2]f32.[0,1],[2]f32.[0,-1]];
+ for j:0..<6 {hud[j*16]=positions[j][0];hud[j*16+1]=positions[j][1];hud[j*16+3]=1;}
+ mips:=[2]RQMip.[RQMip.{width=2,height=1},RQMip.{width=1,height=1}];colours:=[3]RQColor.[RQColor.{r=0.125,g=0.25,b=0.5,a=0.125},RQColor.{r=0.125,g=0.25,b=0.5,a=0.125},RQColor.{r=0.75,g=0.5,b=0.25,a=0.25}];
+ files:=[2]RFNamedTexture.[RFNamedTexture.{name="media_image-0",texture=RQTexture.{levels=mips[0..<1],layers=1,texels=colours[0..<2]}},RFNamedTexture.{name="media_image-2",texture=RQTexture.{levels=mips[1..<2],layers=1,texels=colours[2..<3]}}];
+ observed:=[2]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.image,url="/under",ready=true,width=2,height=1},RenderHostMediaImage.{kind=RenderMediaKind.image,url="/over",ready=true,width=1,height=1}];rectangles:[2]RenderMediaRect;media:=rf_prepare_media(13,"image /under 0 0 4 2\nbad\nover /over 2 0 4 2",4,2,files[..],observed[..],rectangles[..]);#assert media.status==RQStatus.ok && media.count==2 && rectangles[0].line==0 && rectangles[1].line==2;
+ images:[48]RQColor;target:[8]RRPixel;scratch:[8]RRPixel;words:[66128]u32;meta:[114688]int;out:[9]RQColor;for j:0..<9 {out[j]=RQColor.{r=71,g=72,b=73,a=74};}
+ work:=RFWorking.{images=images[..],target=target[..],scratch=scratch[..],words=words[..],meta=meta[..]};
+ input:=RFInput.{profile=13,counts=FrameCounts.{width=4,height=2,vertex_stride=16,hud_vertices=6},uniforms=u[..],hud=hud[..],textures=files[..],media=rectangles[..]};
+ r:=rf_run(input,shaders[..],false,RenderTextureFormat.rgba16f,RFPolicy.{},work,out[..]);#assert r.status==RQStatus.ok && r.draws==10 && r.bad_op== -1 && r.bad_shader== -1 && r.bad_media== -1 && r.pass_steps[13]>0;
+ for j:0..<8 {expected:=ifx j%4<2 then RQColor.{r=0.5,g=0.25,b=0.5,a=1} else RQColor.{r=0.75,g=0.5,b=0.25,a=1};#assert rfpx_same(out[j],expected);}
+ #assert rfpx_same(out[8],RQColor.{r=71,g=72,b=73,a=74});
+}

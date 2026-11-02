@@ -1,0 +1,4 @@
+unsupported helper feature refused before pipeline creation: 4
+mixed helper publication/depth and four byte views: wrong=10 validation_errors=1 validation_warnings=0
+vkc: validation: vkCmdDraw(): the last bound pipeline has pVertexBindingDescriptions[0].binding (0) (pointing to Locations [0, 1, 2]) which didn't have a buffer bound from any vkCmdBindVertexBuffers call in this command buffer.
+The Vulkan spec states: All vertex input bindings accessed via vertex input variables declared in the vertex shader entry point's interface must have either valid or VK_NULL_HANDLE buffers bound (https://docs.vulkan.org/spec/latest/chapters/drawing.html#VUID-vkCmdDraw-None-04007)

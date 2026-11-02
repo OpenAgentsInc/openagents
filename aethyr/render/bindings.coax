@@ -1,0 +1,152 @@
+// Logical shader resources and each pipeline's physical reflection. A module may
+// reuse a WGSL address between different pipelines; an active pipeline may not.
+#module "aethyr.render.bindings";
+#authority;
+
+RENDER_RESOURCES :: 48;
+RENDER_NATIVE_BINDINGS :: 32;
+RenderResourceKind :: enum u8 { uniform; storage; image2d; image_array; depth; sampler; comparison; invalid; }
+RenderBindingStatus :: enum u8 { ok; invalid; capacity; }
+RenderBinding :: struct {
+  name: string; kind: RenderResourceKind; group: int; binding: int;
+  // Underlying storage element size. A uniform is f32 storage on SPIR-V and
+  // vec4[uniform_vec4s] in WGSL; both carry exactly 16*uniform_vec4s bytes.
+  stride: int; uniform_vec4s: int;
+}
+RenderUse :: struct {
+  resource: int; slot: int; native_kind: int; shape: int; stride: int;
+  // 1 vertex, 2 fragment, 3 both. Image shape: 0 2d, 1 array, 2 depth.
+  // Sampler shape: 0 ordinary, 1 comparison. Storage shape is zero.
+  stages: int = 3;
+}
+
+#test "render bindings retain uniform transport and disjoint pipeline aliases" {
+  b := [3] RenderBinding.[
+    RenderBinding.{name="u",kind=RenderResourceKind.uniform,stride=4,uniform_vec4s=3937},
+    RenderBinding.{name="objects",kind=RenderResourceKind.storage,group=1,stride=64},
+    RenderBinding.{name="bloom_src",kind=RenderResourceKind.image2d,group=1}];
+  #assert render_bindings(b[..]) == RenderBindingStatus.ok;
+  first := [2] RenderUse.[RenderUse.{resource=0,native_kind=1,stride=4},RenderUse.{resource=1,slot=1,native_kind=1,stride=64}];
+  second := [1] RenderUse.[RenderUse.{resource=2,native_kind=2}];
+  #assert render_uses(b[..],first[..]) == RenderBindingStatus.ok;
+  #assert render_uses(b[..],second[..]) == RenderBindingStatus.ok;
+  first[1] = RenderUse.{resource=2,slot=1,native_kind=2};
+  #assert render_uses(b[..],first[..]) == RenderBindingStatus.ok;
+  first[0] = RenderUse.{resource=1,native_kind=1,stride=64};
+  #assert render_uses(b[..],first[..]) == RenderBindingStatus.invalid;
+}
+#forall "render binding domains refuse exactly the bad resource fields" rb_check_field:0..<16 {
+  b := [1] RenderBinding.[RenderBinding.{name="u",kind=RenderResourceKind.uniform,stride=4,uniform_vec4s=1}];
+  if rb_check_field==0 {b[0].name="";} if rb_check_field==1 {b[0].kind=cast(RenderResourceKind)7;}
+  if rb_check_field==2 {b[0].group=-1;} if rb_check_field==3 {b[0].group=4;}
+  if rb_check_field==4 {b[0].binding=-1;} if rb_check_field==5 {b[0].binding=32;}
+  if rb_check_field==6 {b[0].stride=8;} if rb_check_field==7 {b[0].uniform_vec4s=0;}
+  if rb_check_field==8 {b[0].uniform_vec4s=4097;}
+  if rb_check_field==9 {b[0].kind=RenderResourceKind.storage;b[0].uniform_vec4s=1;}
+  if rb_check_field==10 {b[0].kind=RenderResourceKind.storage;b[0].uniform_vec4s=0;b[0].stride=0;}
+  if rb_check_field==11 {b[0].kind=RenderResourceKind.storage;b[0].uniform_vec4s=0;b[0].stride=6;}
+  if rb_check_field==12 {b[0].kind=RenderResourceKind.storage;b[0].uniform_vec4s=0;b[0].stride=65540;}
+  if rb_check_field==13 {b[0].kind=RenderResourceKind.depth;b[0].stride=4;b[0].uniform_vec4s=0;}
+  if rb_check_field==14 {b[0].kind=RenderResourceKind.sampler;b[0].stride=0;b[0].uniform_vec4s=1;}
+  if rb_check_field==15 {b[0].name="abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklm";}
+  #assert render_bindings(b[..]) == RenderBindingStatus.invalid;
+}
+#test "render bindings admit their exact declared edges and reject duplicate names" {
+  b := [2] RenderBinding.[
+    RenderBinding.{name="abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl",kind=RenderResourceKind.uniform,group=3,binding=31,stride=4,uniform_vec4s=4096},
+    RenderBinding.{name="s",kind=RenderResourceKind.storage,stride=65536}];
+  #assert render_bindings(b[..]) == RenderBindingStatus.ok;
+  b[1].name=b[0].name;
+  #assert render_bindings(b[..]) == RenderBindingStatus.invalid;
+  #assert render_bindings(b[0..<0]) == RenderBindingStatus.invalid;
+  big:[49]RenderBinding;
+  #assert render_bindings(big[..]) == RenderBindingStatus.capacity;
+}
+#forall "render reflected native kinds and texture shapes match the logical resource" k:0..<7 {
+  b := [1] RenderBinding.[RenderBinding.{name="r",kind=cast(RenderResourceKind)k}];
+  expected_kind:=2;expected_shape:=0;
+  if k==0 {b[0].stride=4;b[0].uniform_vec4s=1;expected_kind=1;}
+  if k==1 {b[0].stride=16;expected_kind=1;}
+  if k==3 {expected_shape=1;} if k==4 {expected_shape=2;}
+  if k==5 {expected_kind=3;} if k==6 {expected_kind=3;expected_shape=1;}
+  u := [1] RenderUse.[RenderUse.{native_kind=expected_kind,shape=expected_shape,stride=b[0].stride}];
+  #assert render_bindings(b[..]) == RenderBindingStatus.ok && render_uses(b[..],u[..]) == RenderBindingStatus.ok;
+  u[0].native_kind=expected_kind+1;
+  #assert render_uses(b[..],u[..]) == RenderBindingStatus.invalid;
+  u[0].native_kind=expected_kind;u[0].shape=expected_shape+1;
+  #assert render_uses(b[..],u[..]) == RenderBindingStatus.invalid;
+  u[0].shape=expected_shape;u[0].stride+=4;
+  #assert render_uses(b[..],u[..]) == RenderBindingStatus.invalid;
+}
+#forall "render use indices stages and physical slots are checked before publication" rb_check_field:0..<7 {
+  b := [1] RenderBinding.[RenderBinding.{name="u",kind=RenderResourceKind.uniform,stride=4,uniform_vec4s=1}];
+  u := [1] RenderUse.[RenderUse.{native_kind=1,stride=4}];
+  if rb_check_field==0 {u[0].resource=-1;}if rb_check_field==1 {u[0].resource=1;}
+  if rb_check_field==2 {u[0].slot=-1;}if rb_check_field==3 {u[0].slot=1;}
+  if rb_check_field==4 {u[0].stages=0;}if rb_check_field==5 {u[0].stages=4;}
+  if rb_check_field==6 {b[0].stride=0;}
+  #assert render_uses(b[..],u[..]) == RenderBindingStatus.invalid;
+}
+#test "render use capacity is separate from a well formed zero resource entry" {
+  b := [1] RenderBinding.[RenderBinding.{name="u",kind=RenderResourceKind.uniform,stride=4,uniform_vec4s=1}];
+  u:[33]RenderUse;
+  #assert render_uses(b[..],u[0..<0]) == RenderBindingStatus.ok;
+  #assert render_uses(b[..],u[..]) == RenderBindingStatus.capacity;
+  one := [1] RenderUse.[RenderUse.{native_kind=1,stride=4,stages=1}];
+  #assert render_uses(b[..],one[..]) == RenderBindingStatus.ok;
+  one[0].stages=2;#assert render_uses(b[..],one[..]) == RenderBindingStatus.ok;
+}
+#test "render binding and active use capacities admit the last slot" {
+  names := [48]string.["r00","r01","r02","r03","r04","r05","r06","r07","r08","r09","r10","r11","r12","r13","r14","r15","r16","r17","r18","r19","r20","r21","r22","r23","r24","r25","r26","r27","r28","r29","r30","r31","r32","r33","r34","r35","r36","r37","r38","r39","r40","r41","r42","r43","r44","r45","r46","r47"];
+  b:[48]RenderBinding;u:[32]RenderUse;
+  for i:0..<48 {b[i]=RenderBinding.{name=names[i],kind=RenderResourceKind.storage,stride=4,group=i/32,binding=i%32};}
+  for i:0..<32 {u[i]=RenderUse.{resource=i,slot=i,native_kind=1,stride=4};}
+  #assert render_bindings(b[..])==RenderBindingStatus.ok && render_uses(b[..],u[..])==RenderBindingStatus.ok;
+  b[0].kind=RenderResourceKind.invalid;b[0].stride=0;
+  #assert render_bindings(b[..])==RenderBindingStatus.invalid;
+}
+
+render_bindings :: (bindings:[]RenderBinding)->RenderBindingStatus {
+  if bindings.count>RENDER_RESOURCES {return RenderBindingStatus.capacity;}
+  if bindings.count==0 {return RenderBindingStatus.invalid;}
+  for i:0..<bindings.count {
+    rb:=bindings[i];
+    if rb.name.count==0 || rb.name.count>64 || cast(int)rb.kind>6 || rb.group<0 || rb.group>3 || rb.binding<0 || rb.binding>31 {return RenderBindingStatus.invalid;}
+    if rb.kind==RenderResourceKind.uniform {
+      if rb.stride!=4 || rb.uniform_vec4s<1 || rb.uniform_vec4s>4096 {return RenderBindingStatus.invalid;}
+    } else {
+      if rb.uniform_vec4s!=0 {return RenderBindingStatus.invalid;}
+      if rb.kind==RenderResourceKind.storage {
+        if rb.stride<4 || rb.stride%4!=0 || rb.stride/4>16384 {return RenderBindingStatus.invalid;}
+      } else if rb.stride!=0 {return RenderBindingStatus.invalid;}
+    }
+    for j:0..<i {if rb.name==bindings[j].name {return RenderBindingStatus.invalid;}}
+  }
+  return RenderBindingStatus.ok;
+}
+render_native_kind :: (kind:RenderResourceKind)->int {
+  if kind==RenderResourceKind.uniform || kind==RenderResourceKind.storage {return 1;}
+  if kind==RenderResourceKind.image2d || kind==RenderResourceKind.image_array || kind==RenderResourceKind.depth {return 2;}
+  return 3;
+}
+render_native_shape :: (kind:RenderResourceKind)->int {
+  if kind==RenderResourceKind.image_array || kind==RenderResourceKind.comparison {return 1;}
+  if kind==RenderResourceKind.depth {return 2;}
+  return 0;
+}
+render_uses :: (bindings:[]RenderBinding,uses:[]RenderUse)->RenderBindingStatus {
+  status:=render_bindings(bindings);
+  if status!=RenderBindingStatus.ok {return status;}
+  if uses.count>RENDER_NATIVE_BINDINGS {return RenderBindingStatus.capacity;}
+  for i:0..<uses.count {
+    ru:=uses[i];
+    if ru.resource<0 || ru.resource>=bindings.count || ru.slot!=i || ru.stages<1 || ru.stages>3 {return RenderBindingStatus.invalid;}
+    rb:=bindings[ru.resource];
+    if ru.native_kind!=render_native_kind(rb.kind) || ru.shape!=render_native_shape(rb.kind) || ru.stride!=rb.stride {return RenderBindingStatus.invalid;}
+    for j:0..<i {
+      previous:=bindings[uses[j].resource];
+      if rb.group==previous.group && rb.binding==previous.binding {return RenderBindingStatus.invalid;}
+    }
+  }
+  return RenderBindingStatus.ok;
+}

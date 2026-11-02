@@ -1,0 +1,104 @@
+{
+  "tool_sha256": "4b37f2678784db966bce031aff4b388c8d0cf86f4d7e8d8a5143afc4016ef952",
+  "measurement_sha256_before": "e2bceabaf002736071a1f0f8e3b6b2db2776524d3fac99d19314f0e653023175",
+  "profile_source_fences": {
+    "/tmp/aethyr-ch11-garden-stage-costs/profiled.c": "a032db762fa6a17fae12df9e3d264121f43d21eb871c05927811068be23c1d14",
+    "/tmp/aethyr-ch11-garden-stage-costs/driver.c": "24769ffb5e8686c68cad9f2b0fa21bbec0753cc276cf2415425de88f0a72282a",
+    "/private/tmp/aethyr-ch11-reference-garden-160-large-308/reference-frame.h": "2d7a38cd550c81a50decf2373f9a75b7f11ce9b4f5e5695580355112c877282f",
+    "/tmp/aethyr-ch11-garden-stage-costs/profiled": "b376e49e705e2325489b6caaa47914ea14397382af0647cab770f5ca7915248b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/reference-frame-native.c": "9e3bf56a5b709502a2c11bc0f162012e7c9a5f794cee564d8aae3831abab6941"
+  },
+  "schema": "aethyr.render.generated-stage-profile.v1",
+  "status": "pass",
+  "scope": "Unchanged retained generated-Coax values with effects-only stage-counter logging; result and image byte identity checked. Not a new shader/profile admission or GPU numerical qualification.",
+  "measurement_sha256": "e2bceabaf002736071a1f0f8e3b6b2db2776524d3fac99d19314f0e653023175",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "generated_c_sha256": "e248c26d82293577a7bc5b63ca42d5ccc6fd95b4691aaed611244d9e1abf956f",
+  "profiled_c_sha256": "a032db762fa6a17fae12df9e3d264121f43d21eb871c05927811068be23c1d14",
+  "driver_sha256": "24769ffb5e8686c68cad9f2b0fa21bbec0753cc276cf2415425de88f0a72282a",
+  "stages": [
+    {
+      "entry": 0,
+      "vertex_steps": 112,
+      "fragment_steps": 25352820,
+      "vertex_groups": 1,
+      "fragment_groups": 3660
+    },
+    {
+      "entry": 5,
+      "vertex_steps": 313009320,
+      "fragment_steps": 438899933,
+      "vertex_groups": 44148,
+      "fragment_groups": 12515
+    },
+    {
+      "entry": 12,
+      "vertex_steps": 93964,
+      "fragment_steps": 1440495,
+      "vertex_groups": 556,
+      "fragment_groups": 2421
+    }
+  ],
+  "result": {
+    "work_profile": 1,
+    "shader_ceiling": 1000000000,
+    "pixel_ceiling": 100000000,
+    "status": 0,
+    "geometry": 0,
+    "frame": 0,
+    "bad_op": -1,
+    "bad_shader": -1,
+    "bad_media": -1,
+    "shader_steps": 778932561,
+    "pixel_steps": 129600,
+    "draws": 3,
+    "written": 38173,
+    "pass_steps": [
+      25360133,
+      0,
+      0,
+      0,
+      0,
+      752030129,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1542299,
+      0
+    ]
+  },
+  "unattributed_steps": 135917,
+  "commands": [
+    [
+      "clang",
+      "-std=c11",
+      "-O2",
+      "-ffp-contract=off",
+      "-I",
+      "/private/tmp/aethyr-ch11-reference-garden-160-large-308",
+      "-I",
+      "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests",
+      "/tmp/aethyr-ch11-garden-stage-costs/profiled.c",
+      "/tmp/aethyr-ch11-garden-stage-costs/driver.c",
+      "-lm",
+      "-o",
+      "/tmp/aethyr-ch11-garden-stage-costs/profiled"
+    ],
+    [
+      "/tmp/aethyr-ch11-garden-stage-costs/profiled",
+      "/private/tmp/aethyr-ch11-reference-garden-160-large-308/frame.config",
+      "/tmp/aethyr-ch11-garden-stage-costs/screen.rgba32f",
+      "/tmp/aethyr-ch11-garden-stage-costs/frame.json",
+      "nearest-positive",
+      "8",
+      "viewport",
+      "0",
+      "rgba16f",
+      "large-world"
+    ]
+  ],
+  "elapsed_seconds": 30.105513792019337
+}

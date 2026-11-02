@@ -1,0 +1,38 @@
+RQ_IR_CONVERT_EXPECTED :: [100]u64.[0,1069547520,1089994752,1123418112,0,1,7,123,0,1,7,123,0,1,7,123,0,1,7,123,0,3212836864,1123418112,3472883712,0,4294967295,123,2147483648,0,4294967295,123,2147483648,0,18446744073709551615,123,18446744071562067968,0,18446744073709551615,123,18446744071562067968,0,1333788672,1123418112,1325400064,0,4294967295,123,2147483648,0,4294967295,123,2147483648,0,4294967295,123,2147483648,0,4294967295,123,2147483648,0,3212836864,1123418112,3741319168,0,4294967295,123,0,0,4294967295,123,0,0,18446744073709551615,123,9223372036854775808,0,18446744073709551615,123,9223372036854775808,0,1602224128,1123418112,1593835520,0,4294967295,123,0,0,4294967295,123,0,0,18446744073709551615,123,9223372036854775808,0,18446744073709551615,123,9223372036854775808];
+#forall "quad numeric conversions match independent signed and width oracles" source:2..<7, target:2..<7 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ table:=[20]u64.[0,1069547520,1089994752,1123418112,0,4294967295,123,2147483648,0,4294967295,123,2147483648,0,18446744073709551615,123,9223372036854775808,0,18446744073709551615,123,9223372036854775808];
+ a:=rq_ir_value(m[..],meta[..],memory[..],source);for lane:0..<4 {rq_ir_put_u64(memory[..],a,lane,table[(source-2)*4+lane]);}
+ r:=rq_ir_convert(m[..],meta[..],memory[..],target,a,false,15);#assert m[0].status==RQStatus.ok;
+ for lane:0..<4 {#assert rq_ir_u64(memory[..],r,lane)==RQ_IR_CONVERT_EXPECTED[((source-2)*5+target-2)*4+lane];}
+}
+#forall "quad numeric f32 conversion admits closed low and open high endpoints" which:0..<9 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ values:=[9]f32.[-1,2147483648,-2147483648,4294967296,9223372036854775808.0,-9223372036854775808.0,18446744073709551616.0,65535.5,-0.0];
+ types:=[9]int.[4,3,3,4,5,5,6,4,6];good:=[9]bool.[false,false,true,false,false,true,false,true,true];expected:=[9]u64.[0,0,2147483648,0,0,9223372036854775808,0,65535,0];
+ a:=rq_ir_value(m[..],meta[..],memory[..],2);for lane:0..<4 {rq_ir_put_f32(memory[..],a,lane,values[which]);}
+ r:=rq_ir_convert(m[..],meta[..],memory[..],types[which],a,false,15);
+ if good[which] {#assert m[0].status==RQStatus.ok;for lane:0..<4 {#assert rq_ir_u64(memory[..],r,lane)==expected[which];}}
+ else {#assert m[0].status==RQStatus.unsupported;}
+}
+#forall "quad scalar bitcasts preserve all32bits without numerical conversion" which:0..<6 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ sources:=[6]int.[2,2,3,3,4,4];targets:=[6]int.[3,4,2,4,2,3];
+ a:=rq_ir_value(m[..],meta[..],memory[..],sources[which]);word:u64=3212836864;
+ for lane:0..<4 {rq_ir_put_u64(memory[..],a,lane,word);}
+ r:=rq_ir_convert(m[..],meta[..],memory[..],targets[which],a,true,5);#assert m[0].status==RQStatus.ok;
+ #assert rq_ir_u64(memory[..],r,0)==word && rq_ir_u64(memory[..],r,2)==word && rq_ir_u64(memory[..],r,1)==0 && rq_ir_u64(memory[..],r,3)==0;
+}
+#test "quad scalar bitcasts refuse booleans wide words and identity forms absent from the GPU registry" {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ a:=rq_ir_value(m[..],meta[..],memory[..],1);r:=rq_ir_convert(m[..],meta[..],memory[..],2,a,true,15);#assert m[0].status==RQStatus.unsupported;
+ m[0].status=RQStatus.ok;m[0].used=0;a=rq_ir_value(m[..],meta[..],memory[..],5);r=rq_ir_convert(m[..],meta[..],memory[..],6,a,true,15);#assert m[0].status==RQStatus.unsupported;
+ m[0].status=RQStatus.ok;m[0].used=0;a=rq_ir_value(m[..],meta[..],memory[..],2);r=rq_ir_convert(m[..],meta[..],memory[..],2,a,true,15);#assert m[0].status==RQStatus.unsupported;
+}
+#forall "quad conversions reject each unsupported carrier and one sided wide bitcasts" which:0..<8 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);meta[7*8]=7;meta[7*8+2]=1;meta[7*8+3]=4;
+ m:=[1]RQMachine.[RQMachine.{types=8}];memory:[64]u32;
+ sources:=[8]int.[0,1,7,2,2,2,5,2];targets:=[8]int.[2,2,2,0,1,7,2,5];
+ a:=rq_ir_value(m[..],meta[..],memory[..],sources[which]);r:=rq_ir_convert(m[..],meta[..],memory[..],targets[which],a,which>=6,15);
+ #assert m[0].status==RQStatus.unsupported;
+}

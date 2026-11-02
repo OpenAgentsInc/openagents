@@ -1,0 +1,20 @@
+{
+  "exit": 0,
+  "command": [
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+    "mutate",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-tree.coax",
+    "--root-only",
+    "--library",
+    "--jobs",
+    "8"
+  ],
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "source_sha256": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/reference-tree.coax": "c54f85ad6474ad2999edcb6448f3daef9075983a98c4168e6ddc0e9eabff7d5d",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/reference-tree-checks.coax": "8a1e08fb8b5e73ea1182d876aa704b3d52e4b67ef07d149bb4f7fc18b9ee73bf"
+  },
+  "changes": [],
+  "compiler_changed": false,
+  "elapsed_seconds": 0.018
+}

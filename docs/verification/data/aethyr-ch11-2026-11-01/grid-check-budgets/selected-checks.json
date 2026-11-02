@@ -1,0 +1,93 @@
+[
+  {
+    "index": 0,
+    "name": "a press let go where it was opens a place's card, and never navigates",
+    "source": "apps/openagents-web/newland.coax",
+    "line": 2287,
+    "header": "#test \"a press let go where it was opens a place's card, and never navigates\" {"
+  },
+  {
+    "index": 1,
+    "name": "a drag pans the view and is never a click",
+    "source": "apps/openagents-web/newland.coax",
+    "line": 2303,
+    "header": "#test \"a drag pans the view and is never a click\" {"
+  },
+  {
+    "index": 2,
+    "name": "OPEN PROJECT goes to the place's page; a click outside closes the card",
+    "source": "apps/openagents-web/newland.coax",
+    "line": 2324,
+    "header": "#test \"OPEN PROJECT goes to the place's page; a click outside closes the card\" {"
+  },
+  {
+    "index": 3,
+    "name": "the zoom stays in its range and the view on the Grid",
+    "source": "apps/openagents-web/newland.coax",
+    "line": 2341,
+    "header": "#test \"the zoom stays in its range and the view on the Grid\" {"
+  },
+  {
+    "index": 4,
+    "name": "a two-finger pinch zooms and is never a click",
+    "source": "apps/openagents-web/newland.coax",
+    "line": 2357,
+    "header": "#test \"a two-finger pinch zooms and is never a click\" {"
+  },
+  {
+    "index": 5,
+    "name": "a click on a Pylon opens its card, which never navigates",
+    "source": "apps/openagents-web/newland.coax",
+    "line": 2395,
+    "header": "#test \"a click on a Pylon opens its card, which never navigates\" {"
+  },
+  {
+    "index": 6,
+    "name": "The Grid's frames fit its declared budget",
+    "source": "apps/openagents-web/newland.coax",
+    "line": 2469,
+    "header": "#test \"The Grid's frames fit its declared budget\" {"
+  },
+  {
+    "index": 7,
+    "name": "a project with as many rows as the live fold hands up is ready, one more is refused",
+    "source": "apps/openagents-web/newland-network.coax",
+    "line": 37,
+    "header": "#test \"a project with as many rows as the live fold hands up is ready, one more is refused\" {"
+  },
+  {
+    "index": 8,
+    "name": "the Grid's walkers walk the homepage under their names, and WALK AROUND dives on into the Grid",
+    "source": "apps/openagents-web/newland-walkers.coax",
+    "line": 156,
+    "header": "#test \"the Grid's walkers walk the homepage under their names, and WALK AROUND dives on into the Grid\" {"
+  },
+  {
+    "index": 9,
+    "name": "the Grid draws the homepage's scene from behind you, and its own HUD",
+    "source": "apps/openagents-web/newland-walk.coax",
+    "line": 488,
+    "header": "#test \"the Grid draws the homepage's scene from behind you, and its own HUD\" {"
+  },
+  {
+    "index": 10,
+    "name": "everyone else on the Grid walks it here too, where the room says, and ?from=home dives",
+    "source": "apps/openagents-web/newland-walk.coax",
+    "line": 556,
+    "header": "#test \"everyone else on the Grid walks it here too, where the room says, and ?from=home dives\" {"
+  },
+  {
+    "index": 11,
+    "name": "the Grid's EDIT: its owner gets it left of HOME (under REALMS on a phone), its pane's glass, and the board's rows switch the names and the walkers",
+    "source": "apps/openagents-web/newland-walk.coax",
+    "line": 580,
+    "header": "#test \"the Grid's EDIT: its owner gets it left of HOME (under REALMS on a phone), its pane's glass, and the board's rows switch the names and the walkers\" {"
+  },
+  {
+    "index": 12,
+    "name": "walked off from every project, the HUD names the nearest one, which way it lies and how far, and an arrow points there",
+    "source": "apps/openagents-web/newland-walk.coax",
+    "line": 620,
+    "header": "#test \"walked off from every project, the HUD names the nearest one, which way it lies and how far, and an arrow points there\" {"
+  }
+]

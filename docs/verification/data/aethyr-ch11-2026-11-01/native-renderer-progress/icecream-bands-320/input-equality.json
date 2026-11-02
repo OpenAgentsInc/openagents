@@ -1,0 +1,101 @@
+{
+  "schema": "aethyr.render.complete-frame-input-equality.v1",
+  "equal": true,
+  "source": "/tmp/aethyr-ch11-icecream-bands-half-320/frame.config",
+  "staged": "/tmp/aethyr-ch11-native-icecream-bands-320/stage/frame.config",
+  "scope": "Every RFI non-path token is identical; every referenced file, including authenticated package/trees and physical resource bytes, has equal size and SHA. No counts/camera/clock/resource reconstruction.",
+  "grammar_reader": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_reference_frame.py",
+  "grammar_reader_sha256": "0afd820dd9069fbe0e1b94c6b34086b719eb61c83de8fe4b8c558f29aed6509a",
+  "source_files": {
+    "/private/tmp/aethyr-ch11-icecream-bands-half-320/u.bin": {
+      "bytes": 3056,
+      "sha256": "f37a1d77ae1e58724bff968062f4e43ab2e48afd7664a99657b200de8b1c97d6"
+    },
+    "/private/tmp/aethyr-ch11-icecream-bands-half-320/hud.bin": {
+      "bytes": 415488,
+      "sha256": "a0351958e7adca2130e7ba920f385496d9502bf2d8c9908d9d8dde0f3fdc88aa"
+    },
+    "/private/tmp/aethyr-ch11-icecream-bands-half-320/draws.bin": {
+      "bytes": 960,
+      "sha256": "2296fdbeaed5316156f185fb7a600057289ba7e6ee6b214e86f88f491d9e7055"
+    },
+    "/private/tmp/aethyr-ch11-icecream-bands-half-320/indices.bin": {
+      "bytes": 4096,
+      "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+    },
+    "/private/tmp/aethyr-ch11-packages-current/ice-cream-man/render.json": {
+      "bytes": 6743,
+      "sha256": "bbfa0fb78abbe9dad237f7b1460267ce25916f3ddf3482d34b49880e565dc3db"
+    },
+    "/private/tmp/aethyr-ch11-packages-current/ice-cream-man/pipeline-0-79c4f2504e21e51f648b5ba654629ea4ca4f965ac49e5f02db0b45de1820f7d0.tree": {
+      "bytes": 6374,
+      "sha256": "79c4f2504e21e51f648b5ba654629ea4ca4f965ac49e5f02db0b45de1820f7d0"
+    },
+    "/private/tmp/aethyr-ch11-packages-current/ice-cream-man/pipeline-5-0156de2afb1177ff1fbfcc1e70e06f2f90ae14e17f2a5b902353050f7d9b31b6.tree": {
+      "bytes": 14957,
+      "sha256": "0156de2afb1177ff1fbfcc1e70e06f2f90ae14e17f2a5b902353050f7d9b31b6"
+    },
+    "/private/tmp/aethyr-ch11-packages-current/ice-cream-man/pipeline-12-acff5828e1965a6da909ea2a28863f3ab2f144e90528586ff22ecc428c238da4.tree": {
+      "bytes": 2057,
+      "sha256": "acff5828e1965a6da909ea2a28863f3ab2f144e90528586ff22ecc428c238da4"
+    },
+    "/private/tmp/aethyr-ch11-icecream-bands-half-320/s0.bin": {
+      "bytes": 14400000,
+      "sha256": "289470372dc89a142d94aac42df90032d17cbc2a1ba43a1470f15beb6641405a"
+    },
+    "/private/tmp/aethyr-ch11-icecream-bands-half-320/s1.bin": {
+      "bytes": 196608,
+      "sha256": "09427c1a9ee1b46621eaaaa00e3562e39e5b145b43ea2e47ed8849beaf27203b"
+    },
+    "/private/tmp/aethyr-ch11-icecream-bands-half-320/media.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "staged_files": {
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/inputs/u.bin": {
+      "bytes": 3056,
+      "sha256": "f37a1d77ae1e58724bff968062f4e43ab2e48afd7664a99657b200de8b1c97d6"
+    },
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/inputs/hud.bin": {
+      "bytes": 415488,
+      "sha256": "a0351958e7adca2130e7ba920f385496d9502bf2d8c9908d9d8dde0f3fdc88aa"
+    },
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/inputs/draws.bin": {
+      "bytes": 960,
+      "sha256": "2296fdbeaed5316156f185fb7a600057289ba7e6ee6b214e86f88f491d9e7055"
+    },
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/inputs/indices.bin": {
+      "bytes": 4096,
+      "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+    },
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/package/render.json": {
+      "bytes": 6743,
+      "sha256": "bbfa0fb78abbe9dad237f7b1460267ce25916f3ddf3482d34b49880e565dc3db"
+    },
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/inputs/pipeline-0-79c4f2504e21e51f648b5ba654629ea4ca4f965ac49e5f02db0b45de1820f7d0.tree": {
+      "bytes": 6374,
+      "sha256": "79c4f2504e21e51f648b5ba654629ea4ca4f965ac49e5f02db0b45de1820f7d0"
+    },
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/inputs/pipeline-5-0156de2afb1177ff1fbfcc1e70e06f2f90ae14e17f2a5b902353050f7d9b31b6.tree": {
+      "bytes": 14957,
+      "sha256": "0156de2afb1177ff1fbfcc1e70e06f2f90ae14e17f2a5b902353050f7d9b31b6"
+    },
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/inputs/pipeline-12-acff5828e1965a6da909ea2a28863f3ab2f144e90528586ff22ecc428c238da4.tree": {
+      "bytes": 2057,
+      "sha256": "acff5828e1965a6da909ea2a28863f3ab2f144e90528586ff22ecc428c238da4"
+    },
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/inputs/s0.bin": {
+      "bytes": 14400000,
+      "sha256": "289470372dc89a142d94aac42df90032d17cbc2a1ba43a1470f15beb6641405a"
+    },
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/inputs/s1.bin": {
+      "bytes": 196608,
+      "sha256": "09427c1a9ee1b46621eaaaa00e3562e39e5b145b43ea2e47ed8849beaf27203b"
+    },
+    "/private/tmp/aethyr-ch11-native-icecream-bands-320/stage/inputs/media.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

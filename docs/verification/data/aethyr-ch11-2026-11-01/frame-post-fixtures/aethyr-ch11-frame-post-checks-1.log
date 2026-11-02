@@ -1,0 +1,13 @@
+FAIL #forall reference full graph interleaves two water records and carries all five bloom stages into post (3 ms)
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/reference-frame-post-checks.coax:29:3: error[E0406]: assertion failed
+    #assert rfg_r.status==RQStatus.ok && rfg_r.geometry==RenderGeometryStatus.ok && rfg_r.frame==RenderFrameStatus.ok && rfg_r.bad_op== -1 && rfg_r.bad_shader== -1;
+    ^
+  note: in #forall reference full graph interleaves two water records and carries all five bloom stages into post
+  counterexample: rfg_reverse = false
+FAIL #test reference full graph gives five bloom draws one cumulative shader budget and keeps final output atomic (2 ms)
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/reference-frame-post-checks.coax:43:3: error[E0406]: assertion failed
+    #assert rfg_good.result.status==RQStatus.ok;
+    ^
+  note: in #test reference full graph gives five bloom draws one cumulative shader budget and keeps final output atomic
+2 of 406 checks (--only 'reference full graph'), 0 passed, 2 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

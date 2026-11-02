@@ -1,0 +1,50 @@
+// The closed catalog has procedural/storage-fed world vertices and one dense
+// vec4 HUD input. Build and runtime admission use this same physical interface.
+#module "aethyr.render.interface";
+#load "build-policy.coax";
+#load "catalog.coax";
+#load "passes.coax";
+#authority;
+
+#test "catalog interfaces admit the exact three-vector HUD and procedural background" {
+  r:=RenderBuildReflection.{ok=true,vertex_stride=48,attribute_count=3,fragment_targets=1};
+  for i:0..<3 {r.attributes[i]=RenderVertexInput.{location=i,scalar=2,width=4,offset=i*16};}
+  #assert render_interface_admit(1,12,r);
+  r=RenderBuildReflection.{ok=true,fragment_targets=1};#assert render_interface_admit(1,0,r);
+  #assert !render_interface_admit(-1,0,r) && !render_interface_admit(18,0,r) && !render_interface_admit(1,-1,r) && !render_interface_admit(1,14,r);
+  #assert !render_interface_admit(1,5,r) && !render_interface_admit(1,13,r);
+  #assert render_interface_admit(2,13,r) && render_interface_admit(13,13,r);
+}
+#forall "HUD admission observes every attribute and its exact complete extent" field:0..<7 {
+  r:=RenderBuildReflection.{ok=true,vertex_stride=64,attribute_count=4,fragment_targets=1};
+  for i:0..<4 {r.attributes[i]=RenderVertexInput.{location=i,scalar=2,width=4,offset=i*16};}
+  #assert render_interface_admit(16,12,r);
+  if field==0 {r.vertex_stride=60;}if field==1 {r.attribute_count=3;}if field==2 {r.attributes[0].location=1;}
+  if field==3 {r.attributes[1].scalar=4;}if field==4 {r.attributes[2].width=3;}if field==5 {r.attributes[3].offset=44;}if field==6 {r.ok=false;}
+  #assert !render_interface_admit(16,12,r);
+}
+#test "target and depth admission follow the shared pass state including media" {
+  r:=RenderBuildReflection.{ok=true,fragment_targets=2};#assert render_interface_admit(0,0,r);
+  r.fragment_targets=1;#assert !render_interface_admit(0,0,r);
+  r.fragment_targets=2;r.fragment_depth=true;#assert render_interface_admit(0,0,r);
+  r=RenderBuildReflection.{ok=true,fragment_targets=0};#assert render_interface_admit(0,1,r);
+  r.fragment_targets=1;#assert !render_interface_admit(0,1,r);
+  r=RenderBuildReflection.{ok=true,fragment_targets=1,fragment_depth=true};#assert !render_interface_admit(1,0,r) && !render_interface_admit(2,13,r);
+  r.fragment_depth=false;r.vertex_stride=4;#assert !render_interface_admit(1,0,r) && !render_interface_admit(2,13,r);
+  r.vertex_stride=0;r.attribute_count=1;#assert !render_interface_admit(1,0,r) && !render_interface_admit(2,13,r);
+}
+
+render_interface_admit :: (profile:int,index:int,r:RenderBuildReflection)->bool {
+  a:=render_catalog(profile);if !a.valid || !r.ok || index<0 || index>13 {return false;}
+  if index==13 {
+    return a.features.media && r.fragment_targets==1 && !r.fragment_depth && r.vertex_stride==0 && r.attribute_count==0;
+  }
+  state:=render_pass_state(a.features,cast(RenderPassId)index);
+  if !state.valid || r.fragment_targets!=state.outputs || (r.fragment_depth && state.depth==RenderDepth.none) {return false;}
+  if index!=12 {return r.vertex_stride==0 && r.attribute_count==0;}
+  if r.vertex_stride!=a.vertex_stride*4 || r.attribute_count!=a.vertex_stride/4 {return false;}
+  for i:0..<r.attribute_count {
+    x:=r.attributes[i];if x.location!=i || x.scalar!=2 || x.width!=4 || x.offset!=i*16 {return false;}
+  }
+  return true;
+}

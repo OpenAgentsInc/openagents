@@ -1,0 +1,12 @@
+binding 0 storage u
+reflection 2
+tree-version 3
+resource 0 1 0 4 1 u
+vertex-stride 24
+vertex-input 0 2 4 0
+vertex-input 1 2 1 16
+vertex-input 2 4 1 20
+fragment-targets 2
+fragment-depth 0
+derivatives 1 2
+control 1 2

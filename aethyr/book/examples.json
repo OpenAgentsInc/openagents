@@ -190,6 +190,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/admit-a-frame.coax",
+      "chapter": "aethyr/book/ch011-the-wgsl-renderer.md",
+      "stdout": "aethyr/fixtures/admit-a-frame.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

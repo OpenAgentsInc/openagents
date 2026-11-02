@@ -1,0 +1,12 @@
+binding 0 storage u
+binding 1 image filter_image
+binding 2 sampler filter_sampler
+reflection 2
+tree-version 3
+resource 0 1 0 4 2 u
+resource 1 2 0 0 2 filter_image
+resource 2 3 0 0 2 filter_sampler
+fragment-targets 1
+fragment-depth 0
+derivatives 1 0
+control 1 2

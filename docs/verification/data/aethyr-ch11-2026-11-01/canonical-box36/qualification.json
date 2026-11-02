@@ -1,0 +1,24 @@
+{
+  "schema": "aethyr.render.box36-qualification.v1",
+  "status": "source and independent native primitive pass; full actual-frame numerical comparison pending",
+  "scope": "Correct outward winding of the four X/Y box faces while preserving all36 positions, face planes, normals and packet extents. Culling remains disabled. This repairs geometry consistency and does not claim to resolve near-depth intersections.",
+  "source_sha256": {
+    "apps/openagents-web/gpu/deadgears.coax": "fc2c77948ba78e4ab380c8f398e5f235c86b97a1f3a2f74c95e1a2195a39ca38",
+    "aethyr/tests/render-box36-native.coax": "49d3e203af18d6eb995da00f242a83a3583291bc6309e7ef0bd1d8141b0ae6a3",
+    "aethyr/render/tests/box36-native.c": "1fc9807d72b43b1e98f491e7bdd288b11263bcdd26f2ea2fd79c28042d9449e6",
+    "aethyr/render/tests/check_box36_native.py": "b1bfdc178c013de55d1d5906289b1a4930e57233ab796e82dd8c4a5621352f47"
+  },
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "check_first": "Identity corner packets and positive-affine triangle-normal law fail the retained original source before changing vertex order. Both original failures remain in this record.",
+  "source_checks": {
+    "passed": 27,
+    "failed": 0,
+    "log": "green.log"
+  },
+  "native_primitive": "native-qualification.json",
+  "historical_preservation": "preservation.json",
+  "ring8_proof_reused": "Canonical direction helpers and actual capsule generator expressions are unchanged; prior728-case Vulkan/WebGPU and normal-C packets remain historical qualified evidence. No unchanged primitive rerun.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-box36",
+  "archive_sha256": "d57a9f3b0dfbd2a2d8143426b1cc1684a991653e108d96a40febdca16eb72e7e",
+  "remaining": "Fresh shader package and matching actual CPU/WebGPU/Vulkan frame measurements and strict numerical comparisons."
+}

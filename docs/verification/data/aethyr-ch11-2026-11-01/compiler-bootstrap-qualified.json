@@ -1,0 +1,38 @@
+{
+  "schema": "aethyr-compiler-bootstrap-qualification-v1",
+  "status": "pass",
+  "compiler": {
+    "path": "/Users/christopherdavid/work/openagents-aethyr-compiler/coax/bin/coax",
+    "version": "coax0 0.47.0",
+    "sha256": "2ca1c98e15b57b7eda2599ec2a2d067a5ca9facd1bdb339a0bf8b010e6e63c9f",
+    "source_digest": "e6ff8496512cc28c7afedec71a9fe28a423ab340b298ba1309e24d5b4f7e6de5",
+    "provenance_input_fingerprint": "9e914a8539c6bb8c5f7b893d5c0c388632d33abbeab179a4b04cd697476a2f99",
+    "provenance_record_sha256": "cc3832b2c70a5e885a7a04a628cffbe81ba3490b8a638125bfcfbc4a67fbf566"
+  },
+  "source_commit": "f5774087ab",
+  "build": {
+    "status": "finished",
+    "exit_status": 0,
+    "retained": true,
+    "elapsed_seconds": 104.566,
+    "log": "/tmp/aethyr-ch11-resumed-compiler-build.log"
+  },
+  "build_log_sha256": "081983dd1dce4c4ed20b89e23283a47b0f35d1d841be369f2fc64fa4a0ab58b3",
+  "checker_shard_qualification": "/tmp/aethyr-ch11-final-checker-shards/qualification.json",
+  "checker_shard_qualification_sha256": "2ac320ccb753aafdbeaecf5cc9a797e069610bb5190a1b06e817dd8979c0f97a",
+  "hook_tests": {
+    "groups": 8,
+    "log": "/tmp/aethyr-ch11-bootstrap-hook-final-checks.log",
+    "sha256": "c240b3af1341016fcd9464d973dce015ccd8e787bc86ef5dd9ff4dca2a132639"
+  },
+  "provenance_tests": {
+    "groups": 13,
+    "log": "/tmp/aethyr-ch11-provenance-hook-checks.log",
+    "sha256": "005cc83f727691ec813a3947602bc97cd17b74fda67c78a849754db4bd80bbe9"
+  },
+  "construction_mismatch_controls": {
+    "path": "/tmp/aethyr-ch11-final-context-controls.json",
+    "sha256": "b23af706df1fb6b817d94a24aabc2285b4de496234f8c08d6abf102a76d24318"
+  },
+  "scope": "The real 9253-mutant checker gate ran on retained stage0 SHA28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965; supported private replay ran built-in merge and original gate() wrote its normal source-identity cache record. The successful ordinary build reused that source-identity cache. It did not rerun 9253 mutants on its raw new debug-path stage0 bytes. Final installed compiler provenance was verified against frozen isolated sources. Renderer runtime/GPU qualification is separate."
+}

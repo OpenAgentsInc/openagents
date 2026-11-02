@@ -1,0 +1,10 @@
+aethyr/render/tests/host-bindings-checks.coax:115:34: error[E0315]: procedure 'render_host_group_count' is not declared
+    for rhbt_entry:0..<14 {#assert render_host_group_count(rhbt_profile,rhbt_entry)==rhbt_groups[rhbt_profile][rhbt_entry];}
+                                   ^
+aethyr/render/tests/host-bindings-checks.coax:116:11: error[E0315]: procedure 'render_host_group_count' is not declared
+    #assert render_host_group_count(rhbt_profile,-1)==0 && render_host_group_count(rhbt_profile,14)==0;
+            ^
+aethyr/render/tests/host-bindings-checks.coax:116:58: error[E0315]: procedure 'render_host_group_count' is not declared
+    #assert render_host_group_count(rhbt_profile,-1)==0 && render_host_group_count(rhbt_profile,14)==0;
+                                                           ^
+3 errors

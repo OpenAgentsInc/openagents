@@ -9,7 +9,7 @@
     "design_draft": 70
   },
   "current_chapter": 11,
-  "status": "chapters 2, 8 and 9 qualified; chapter 9 delivery ready, next chapter 11; whole book incomplete",
+  "status": "chapter11 implementation and qualification in progress",
   "deliveries": [
     {
       "chapter": 2,
@@ -33,7 +33,7 @@
       "profile": "native and Wasm fixed-step walking",
       "result": "Real Walk core and compatible C facade, declared admitted locomotion, actual Garden/Villa same-clock followers, previous-pose interpolation, atomic queued-action refusal, native/Wasm cadence traces, frozen C ABI/state parity, and worked teaching text.",
       "evidence_directory": "docs/verification/data/aethyr-ch9-2026-11-01",
-      "commit": "the accompanying chapter 9 implementation commit"
+      "commit": "6445ee005033d844ccba0410e763325e2652f1c0"
     }
   ],
   "next_incomplete_chapters": [
@@ -167,11 +167,10 @@
     }
   },
   "current_status": {
-    "implemented": 11,
-    "partly_implemented": 5,
+    "implemented": 13,
+    "partly_implemented": 3,
     "design_draft": 70
   },
-  "deadline_utc": "2026-11-01 08:40 UTC (owner two-hour task limit)",
   "chapter_8": {
     "status": "qualified",
     "profile": "native f32 meshes and capsule contacts",
@@ -349,5 +348,916 @@
   ],
   "chapter_9_ready_to_push_utc": "2026-11-01T13:08:21.594115+00:00",
   "continuation_rule": "Continue the active whole-book objective chapter by chapter and push each qualified chapter to main. Keep each command under fifteen minutes and retain unchanged passing evidence. The updated AGENTS.md on current main removes the earlier per-task two-hour cap.",
-  "chapter_9_rebased_on": "2c18d4ccdf6bc786447b40be976ceff6bf542c4b"
+  "chapter_9_rebased_on": "2c18d4ccdf6bc786447b40be976ceff6bf542c4b",
+  "historical_original_deadline_utc": "2026-11-01 08:40 UTC (owner two-hour task limit)",
+  "chapter_11_started_utc": "2026-11-01T13:09:00Z",
+  "chapter_11_base_commit": "6445ee005033d844ccba0410e763325e2652f1c0",
+  "chapter_11_work": {
+    "status": "in progress; no chapter promotion",
+    "shared_frame": "Whole-frame admission, catalog, binding tables and pass programs implemented; current module checks are exploratory until source-matching compiler qualification.",
+    "reference": "Checked four-lane shader IR, stage IO, samplers and raster kernels in progress.",
+    "remaining": [
+      "Finish both actual host executors and qualify every catalog realm.",
+      "Complete whole-frame CPU graph/resource authority sharpening and actual captured frame execution.",
+      "Capture exact physical textures and compare CPU/WebGPU/Vulkan complete frames with matching inputs; qualify affected goldens.",
+      "Finish teaching text and synchronize chapter/book status only after all acceptance requirements pass."
+    ],
+    "compiler_candidate": {
+      "version": "coax0 0.47.0",
+      "sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+      "source_fingerprint": "604574a88c8273b0c110f34779cba55817778ecee02c4a797dbb79c9af6a6220",
+      "introducing_local_commit": "cb9aabafcd",
+      "build": "First bounded command stopped at830s after all cached stage0 gates passed (checker mutation725s); second command reused exact passing gates and finished84.702s.",
+      "remaining": "origin/main has new retained-borrow/checker and release catalogue changes. Preserve both changes during final rebase and qualify the merged compiler before chapter publication.",
+      "source_matching_local_checkout_at_recording": true,
+      "scope": "Historical693 source-matching localcheckpoint, superseded by qualified compiler below."
+    },
+    "frame_native": "1891 independent integer-endpoint cases in debug/release/sanitized on historical0.46 artifact; final merged-compiler qualification pending.",
+    "cpu_pipeline_candidate": "15 synthetic actual-checked-tree scenarios; every depth/RGBA/MRT word and unused tail in16pixels observed in debug/release/ASan+UBSan on local0.47;7producer controls per mode caught. Exact historical generated-C/tree/transcript artifacts retained. Subsequent layout/staging refactor and final merged compiler require fresh qualification.",
+    "candidate_evidence": "docs/verification/data/aethyr-ch11-2026-11-01/pipeline-native-candidate-047.json",
+    "provisional_module_proofs": {
+      "frame_root_046": 247,
+      "raster_store_root_046": 519,
+      "depth_bias_root_046": 66,
+      "quad_root_046": 281,
+      "footprint_root_046": 76,
+      "geometry_root_047": 705,
+      "active_lanes_root_047": 20,
+      "resources_root_047": 180,
+      "pipeline_root_047": 419,
+      "reference_io_root_047": 371,
+      "build_policy_root_047": 392,
+      "package_root_047": 522,
+      "interface_root_047": 61,
+      "texture_codec_root_047": 257,
+      "binding_sources_root_047": 145,
+      "shader_ir_root_047": 2401,
+      "runtime_composition_root_047": 85,
+      "reference_tree_root_047": 124
+    },
+    "pipeline_mutation": "419/419 root mutants killed with current308 compiler; historical405 receipt remains an earlier stage. Actual wholeframe authority now has its own613/613 proof.",
+    "shader_ir": "2401/2401 root mutants killed,136-check baseline on local693; vertex-only pipeline419/419 and18-observation native debug/release/ASan corpus pass. Actual frame adapter in progress; newcompiler qualifier refresh pending.",
+    "geometry_native": "All18 actual captured producer profiles pass debug/release/ASan+UBSan on local0.47 artifact693c3f...;58 planted negative cases per mode. Explicitly geometry-domain/frame scope, not shader pixels/BVH truth. See aethyr/render/tests/geometry-qualification.json.",
+    "shader_build": {
+      "status": "pass for package build/inventory and shader validity; host/image execution separate",
+      "profiles": 18,
+      "package_modules": 24,
+      "distinct_wgsl_modules": 20,
+      "pipeline_programs": 77,
+      "distinct_spirv_programs": 58,
+      "wgsl_errors": 0,
+      "wgsl_warnings": 2,
+      "wgsl_warning_scope": "Unreachable code in Everglade and Orbit League; messages retained, no shader source changed to suppress them.",
+      "spirv_validation_failures": 0,
+      "spirv_negative_controls": 2,
+      "grid_cache_product_controls": 3,
+      "grid_atomic_failure_controls": 7,
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/catalog-packages-308/retention.json",
+      "initial_matrix": "14 packages passed and4 exposed the masked auxiliary attachment rule; original matrix retained separately as history."
+    },
+    "shader_build_evidence": "docs/verification/data/aethyr-ch11-2026-11-01/build-grid-candidate-047.json",
+    "package_runtime": {
+      "status": "pass full native transport/admission gate",
+      "profiles": 18,
+      "modes": [
+        "debug",
+        "release",
+        "ASan+UBSan"
+      ],
+      "observations_per_mode": 130,
+      "producer_loss_controls_per_mode": 6,
+      "malformed_catalog_capability_corruption_controls_per_mode": 17,
+      "entry_storage": "Guarded caller-owned14-entry view, borrowed JSON retained.",
+      "payloads": "Every actual WGSL, SPIRV and CPU-tree product hash admitted.",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/catalog-packages-308/aethyr-ch11-package-native-final.json",
+      "scope": "Package bytes/records/admission, not shader images or actual host execution."
+    },
+    "compiler_qualified": {
+      "version": "coax0 0.47.0",
+      "sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "source_fingerprint": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+      "provenance_input_fingerprint": "49964f9ed3abf6e9b42ea1f0681e7abc586ab3b6d0522a77a2164faf92714a7d",
+      "provenance": "Supported provenance.sh install verified source-matching book tree at08729561f9.",
+      "receipt": "docs/verification/data/aethyr-ch11-2026-11-01/array-coordinate-compiler/qualification.json",
+      "shader_mutants": 3876,
+      "shader_killed": 3826,
+      "shader_survivors": 0,
+      "new_equivalence_marks": 0,
+      "preexisting_equivalence_marks": 50,
+      "checker_mutants_reused": 9253,
+      "checker_survivors": 0,
+      "checker_retained_evidence": "docs/verification/data/aethyr-ch11-2026-11-01/compiler-checker-qualified/retention.json",
+      "build_seconds": 125.492,
+      "published_dependency_commit": "745666d66e1669bce81ff8d16256c8185a32f2df",
+      "published_record": "docs/verification/coax-gpu-047-2026-11-01.json"
+    },
+    "sans_profile": {
+      "status": "qualified source extraction; production host adoption in progress",
+      "root_mutants": 94,
+      "survivors": 0,
+      "actual_drop_closure_checks": 41,
+      "offline_tool_checks": 23,
+      "atlas_alpha_bytes": 1374912,
+      "legacy_pixel_parity": "all five mip levels byte identical",
+      "receipt": "aethyr/render/tests/sans-profile-qualification.json"
+    },
+    "capabilities_reference_backend": {
+      "backend_value": 3,
+      "root_mutants": 62,
+      "survivors": 0,
+      "scope": "Named CPU reference backend requires its actual helper/i64 implementation; no GPU-device claim."
+    },
+    "compiler_qualified_before_array_fix": {
+      "version": "coax0 0.47.0",
+      "sha256": "2ca1c98e15b57b7eda2599ec2a2d067a5ca9facd1bdb339a0bf8b010e6e63c9f",
+      "source_fingerprint": "e6ff8496512cc28c7afedec71a9fe28a423ab340b298ba1309e24d5b4f7e6de5",
+      "provenance": "Supported provenance.sh install passed against rebased book tree; no bootstrap repeat.",
+      "bootstrap_receipt": "docs/verification/data/aethyr-ch11-2026-11-01/compiler-bootstrap-qualified.json",
+      "checker_mutants": 9253,
+      "checker_survivors": 0,
+      "checker_shards": 8,
+      "hook_tests": 8,
+      "provenance_tests": 13,
+      "upstream_rebased_on": "4aa69fe6fa",
+      "local_unpublished_checkpoint": "7430fcb133",
+      "checker_retained_evidence": "docs/verification/data/aethyr-ch11-2026-11-01/compiler-checker-qualified/retention.json",
+      "known_followup": "Actual array texture microfixture revealed absent implicit vec3 construction in the Coax SPIRV lowerer; isolated repair in progress. Do not treat 2ca as final chapter qualification."
+    },
+    "fragment_outputs": {
+      "shared_rule": "fragment-layout.coax keeps physical attachments separate from fragment result locations; only masked auxiliary output may be omitted.",
+      "shared_root_mutants": 21,
+      "shared_survivors": 0,
+      "interface_root_mutants": 60,
+      "interface_survivors": 0,
+      "pipeline_root_mutants": 418,
+      "pipeline_survivors": 0,
+      "native_pipeline_updated_observation": "Pending final19-scenario native qualification; old18-scenario proof retained historically."
+    },
+    "layout_test_support": {
+      "groups": 8,
+      "cases": 16,
+      "compiler_emitted_fixture_trees": 12,
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/frame-layout-fixtures/retention.json",
+      "scope": "Focused layout tests passed; whole reference-frame zero-survivor mutation still in progress."
+    },
+    "image_comparator": {
+      "tests": 8,
+      "rule": "abs(gpu-cpu) <= 0.002 * max(1,abs(cpu)); all RGBA channels finite, no exclusion mask.",
+      "source": "aethyr/render/tests/compare_frames.py",
+      "status": "Failure controls pass; waiting for actual corresponding host images."
+    },
+    "rendered_watchtower": {
+      "status": "measurement only, not GPU image parity",
+      "dimensions": [
+        320,
+        180
+      ],
+      "seconds": 1.086,
+      "hud_vertices": 26832,
+      "background_vm_steps": 90836993,
+      "hud_vm_steps": 17953974,
+      "pixel_visits": 345600,
+      "framebuffer_writes": 115872,
+      "compiler": "Historical2ca artifact; corrected308 package shader products byte-identical.",
+      "receipt": "/tmp/aethyr-ch11-reference-watchtower-2ca-first/measurement-first.json"
+    },
+    "carrier_compatible_policies": {
+      "status": "pass for unit authority; host execution separate",
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "root_mutants": {
+        "build-policy": 392,
+        "interface": 60,
+        "package": 522,
+        "host-memory": 34,
+        "media-commands": 462,
+        "host-media": 83,
+        "host-uploads": 22
+      },
+      "survivors": 0,
+      "new_equivalence_marks": 0,
+      "notes": "Identifier-only carrier composition changes and subsequent JSON authority sharpening have their own exact receipts. JSON dependency now1055/1055zero, published778b641e48; initial169-survivor history retained. No waivers."
+    },
+    "media_commands": {
+      "status": "pass",
+      "native_cases_per_mode": 2165,
+      "modes": [
+        "debug",
+        "release",
+        "sanitized"
+      ],
+      "field_loss_controls_per_mode": 17,
+      "oracle": "Independent JavaScript Number/literal-space parser/Float32Array aspect fit and static extent arithmetic; authored whole-pixel and selected exact decimal input only. No universal correctly-rounded numeric parser or image decoding claim.",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/media-commands/retention.json"
+    },
+    "host_memory": {
+      "status": "pass",
+      "native_cases_per_mode": 12900,
+      "field_loss_controls_per_mode": 4,
+      "modes": [
+        "debug",
+        "release",
+        "sanitized"
+      ],
+      "oracle": "Independent unbounded-integer span/alignment/page endpoints",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/host-memory/retention.json",
+      "scope": "Earlier native source identity retained; current test-local binder prefix has a separate34/34 root mutation log."
+    },
+    "carrier_package_build": {
+      "status": "pass",
+      "profiles": 18,
+      "receipt": "/tmp/aethyr-ch11-build-carrier-prefix-catalog.json",
+      "gpu_products": "AllWGSL/SPIR-V/CPUtree hashes byte-identical to already validated final-v2 products; GPU validator results reused, not rerun.",
+      "source_fence": "New current source-compatible builder and package manifests; unit tests and producer/carrier qualification remain separate."
+    },
+    "native_build_identity": {
+      "status": "first Watchtower build passed; broader live adapter qualification pending",
+      "command": "verse/native/build.sh watchtower /tmp/aethyr-ch11-native-build-hook-watchtower --render-profile watchtower",
+      "identity_checks": 4,
+      "release_stage_checks": 3,
+      "aggregate_initialization_budget": 128000,
+      "measured_maximum_steps": 102161,
+      "scope": "Shared app/facade ownership, generated typed profile/manifest identity, whole shader package and separate native codec/effect sources. Initial Watchtower hook run predates adding live render-realm source copies; production adapter gate follows."
+    },
+    "actual_native_captures": {
+      "status": "executed; full image qualification separate",
+      "validation_errors": 0,
+      "validation_warnings": 0,
+      "format": "rgba8",
+      "profiles": {
+        "watchtower": "/tmp/aethyr-ch11-native-watchtower-v2/execution.json",
+        "garden": "/tmp/aethyr-ch11-native-garden/execution.json",
+        "dead-gears": "/tmp/aethyr-ch11-native-dead-gears/execution.json",
+        "belt-2200": "/tmp/aethyr-ch11-native-belt-2200/execution.json"
+      },
+      "scope": "Real captured producer bytes and shared executor. These are not a complete catalog or strict point-image pass."
+    },
+    "strict_watchtower_half": {
+      "status": "pass for both measured hosts",
+      "extent": [
+        320,
+        180
+      ],
+      "channels_per_host": 230400,
+      "masked_pixels": 0,
+      "nonfinite_failures": 0,
+      "rule": "abs(gpu-cpu) <=0.002*max(1,abs(cpu))",
+      "apple": "/tmp/aethyr-ch11-watchtower-half-comparison.json",
+      "vulkan": "/tmp/aethyr-ch11-watchtower-vulkan-half-comparison.json",
+      "scope": "Matching physical rgba16f targets and measured host raster profiles. Earlier unorm8 strict failures remain failures; other profiles and production goldens pending.",
+      "native_live_byte_identity": "4cb7fa3b772d60e5bde59ee75d5e758bb5604d10b82f45533589fc7fec6f3a98"
+    },
+    "graph_fixture_support": {
+      "status": "pass for small internal admitted clear/copy fixtures",
+      "check_groups": 5,
+      "cases": 25,
+      "log": "/tmp/aethyr-ch11-frame-graph-checks.log",
+      "scope": "Selected disjoint colour/aux/depth offsets and guards; keep; exact remaining pixel budget; partial candidate clear vs atomic copy refusal. Whole frame authority gate still pending."
+    },
+    "native_live_watchtower": {
+      "status": "pass for actual native producer/admission/executor flow",
+      "frames": 90,
+      "screen_format": "rgba16f",
+      "extent": [
+        320,
+        180
+      ],
+      "validation_errors": 0,
+      "validation_warnings": 0,
+      "screen_sha256": "4cb7fa3b772d60e5bde59ee75d5e758bb5604d10b82f45533589fc7fec6f3a98",
+      "same_image_as_previously_strict_compared_capture": true,
+      "receipt": "/tmp/aethyr-ch11-native-live-watchtower/execution.json",
+      "scope": "Actualvk-realm typedidentity and realRealmHost. Existing captured-input strictpoint pass reused through exactscreenbyteidentity; no newfullcatalog,texture/media or60FPSclaim."
+    },
+    "whole_graph_fixture_support": {
+      "status": "pass",
+      "check_groups": 2,
+      "cases": 3,
+      "tree_programs": 7,
+      "log": "/tmp/aethyr-ch11-frame-post-checks-2.log",
+      "tree_receipt": "/tmp/aethyr-ch11-frame-post-trees/receipt.json",
+      "scope": "Purpose-built actual checkedshader trees matchingFairy3interfaces at2x2, independent exactforward/reversewater interleaving, maskedaux, fivebloom steps/targets andmixedpostpixels. Aggregatebloom budgetequality+budget-1refusal; externaloutputatomic. NotactualFairyGPUimagequalification."
+    },
+    "host_media_composition": {
+      "status": "pass for Coax authority",
+      "root_mutants": 117,
+      "survivors": 0,
+      "check_groups": 18,
+      "log": "/tmp/aethyr-ch11-host-media-physical-mutate-1.log",
+      "scope": "Raw kind/ready integers admitted before narrowing; actual URL/kind identity, readiness and dimensions reconciled with the canonical physical texture binding; all-or-nothing output.",
+      "raw_integer_bridge": true,
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/host-media-physical-117/retention.json"
+    },
+    "host_upload_retry": {
+      "status": "pass for authority and nativeABI",
+      "root_mutants": 22,
+      "survivors": 0,
+      "check_groups": 5,
+      "log": "/tmp/aethyr-ch11-host-uploads-mutate-2.log",
+      "scope": "Consumed producer updateprefix surviveslaterframe refusal, unionswithfutureupdates withoutaddition/overflow, clears onlyafteractualsubmissionack. Transport/effectgates separate.",
+      "native_cases_per_mode": 16000,
+      "native_modes": 3,
+      "native_field_loss_controls_per_mode": 4,
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/host-uploads/retention.json"
+    },
+    "json_dependency": {
+      "status": "qualified and published independently",
+      "commit": "778b641e48",
+      "record": "docs/verification/coax-json-authority-2026-11-01.json",
+      "root_mutants": 1055,
+      "survivors": 0,
+      "new_equivalence_marks": 0,
+      "checks": 74,
+      "native_cases_per_mode": 555,
+      "native_modes": 3,
+      "scope": "Parser/Unicode/integer/writer authority; malformed helper fixes. Does not complete rendererchapter."
+    },
+    "run_fixture_support": {
+      "status": "pass",
+      "groups": 9,
+      "cases": 33,
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/frame-run-inputs-33/retention.json",
+      "scope": "Eight short workspaces, loading/work endpoints, non-square screen, ordinary scene/HUD, mixed scene/two-water records, duplicate buffer names, short raw word view, mismatched shader interface and short uniform/HUD inputs. Exact refusal status, bad_shader and atomic output checked. Whole RF root gate separate."
+    },
+    "native_asset_tooling": {
+      "status": "actual Core Garden index staging and native90-frame production path passed",
+      "helper_checks": 4,
+      "coax_cli": "build.coax --asset-table SLUG",
+      "actual_source_bytes": 4096,
+      "actual_source_sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef",
+      "scope": "Coax decides initial/GPU-required rows and pack identities. Python stages only those exact URLs. Actual Garden buffer-padding failure was corrected through the shared Core allocation accessor; its live native output exactly matches the retained captured-input half image."
+    },
+    "physical_source_budget": {
+      "limit": 128,
+      "compiler_changed": false,
+      "action": "Keepown smallpolicychecks inexistingphysicalunits; PSalsoinlinedhostinputschecks; mediatopologyfoldedintoexistingmedia-profile.",
+      "everglade_frontend": "/tmp/aethyr-ch11-carrier-everglade-inline.json",
+      "evaluated_init_steps": 102163,
+      "aggregate_init_budget": 128000,
+      "scope": "CurrentEvergladecarrierpassesafterphysicalcomposition; finalall-carrier consumer source fence stillpending."
+    },
+    "current_catalog_build": {
+      "status": "pass",
+      "profiles": 18,
+      "receipt": "/tmp/aethyr-ch11-build-current-catalog.json",
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "changed_gpu_products": "Only media13 in Everglade/Hecate differs from the previously qualified carrier-prefix products. All other WGSL/SPIRV/tree bytes are identical and reuse their earlier validation.",
+      "current_media_browser": "/tmp/aethyr-ch11-villa-media-current/receipt.json",
+      "scope": "Source-bound package construction and independent inventory. Actual broader host/image acceptance remains separate."
+    },
+    "garden_golden_noise_isolation": {
+      "status": "isolated visible shader change",
+      "same_captured_inputs": true,
+      "retained_pixels": 57600,
+      "changed_pixels": 47333,
+      "maximum_byte_difference": 25,
+      "tolerance_pass": false,
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/garden/isolation.json",
+      "scope": "Old executor plus current integer shader exactly matches new shared renderer. Current Coax variant restoring only prior sine hash exactly matches retained old WGSL image. Different host-ABI Wasm hashes are explicit; captured uniform/HUD/draw bytes match exactly."
+    },
+    "authority_compile_budget_dependency": {
+      "status": "in_progress",
+      "worktree": "/Users/christopherdavid/work/openagents-aethyr-check-budgets",
+      "base": "d4af1a43ce",
+      "problem": "Authority compilation used constant-evaluation storage limits for checks; coax test already uses the published larger check limits.",
+      "change": "Use existing test storage budget only while authority/library checks run; restore compile limits afterward. No published cap raised.",
+      "red": "/tmp/aethyr-authority-budget-red",
+      "stage0_green": "/tmp/aethyr-authority-budget-stage0",
+      "qualification": "Targeted regression groups and ASan/UBSan allocator restoration pass on retained fixed stage0. Supported compiler mutation inventory found one real latest-main checker borrow-depth survivor in shard102; sharper oracle and a fresh supported checker gate are required before publication. No waiver or manufactured cache.",
+      "new_current_snapshot": "fbb44c46a2 plusonly4ownedbudgetchanges, independentcompilerworktree; upstreamcf844regressionpreserved, old9489inventory9488killed/1survivorretained ashistoricalfailure.",
+      "published_commit": "8008dcc0386f7ba819faa7b1bc8c4454ed460fae",
+      "current_qualification": {
+        "status": "pass and published",
+        "checker_mutants": 9502,
+        "killed": 9502,
+        "survivors": 0,
+        "normal_build_seconds": 241.866,
+        "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+        "input_fingerprint": "06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039",
+        "source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+        "record": "docs/verification/coax-authority-check-budgets-2026-11-01.json",
+        "scope": "Supported hash-bound shard merge/cache replay and normal bootstrap, rebase fingerprint/provenance unchanged before push. Historical9489/1survivor inventory retained separately and not reused as a passing gate."
+      }
+    },
+    "house_idle_check": {
+      "status": "pass",
+      "steps": 64353082,
+      "declared_steps": 80000000,
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/house-idle-check/retention.json",
+      "scope": "Preserves 9.6s actual HUD clock advancement and full endpoint draws; omits unused intermediate vertex writes. Original 1200-full-draw check exceeded100Msteps. Product logic unchanged."
+    },
+    "reference_frame_authority": {
+      "status": "pass; standard historical and changed explicit work policy separately qualified",
+      "root_mutants": 613,
+      "survivors": 0,
+      "full_checks": 453,
+      "seconds": 152.31,
+      "record": "docs/verification/aethyr-ch11-reference-frame-2026-11-01.md",
+      "source_changes": [],
+      "scope": "Full standard-profile reference frame, canonical buffers, raw booleans, physical media, shared scratch partition/metadata slots, atomic output and all graph paths. Large offline-work profile is a new explicit qualification in progress.",
+      "large_profile": {
+        "root_mutants": 614,
+        "killed": 614,
+        "survivors": 0,
+        "full_checks": 459,
+        "record": "docs/verification/data/aethyr-ch11-2026-11-01/reference-frame-large-614/qualification.json",
+        "pipeline_mutants": 419,
+        "scope": "Shared RF/RRP work-profile plumbing. Complex-work enum append is qualified separately; no implicit increase of standard limits."
+      },
+      "complex_work_policy": {
+        "root_mutants": 39,
+        "survivors": 0,
+        "record": "aethyr/render/tests/reference-work-complex-qualification.json",
+        "scope": "Explicit appended complex-world profile, 3 billion steps/pass and unchanged 100 million/invocation. Debug/release/sanitized int64 transport boundaries and loss controls."
+      },
+      "strict_actual_frames": {
+        "status": "pass for Garden/Galaxy160x90 RGBA16F",
+        "comparisons": 4,
+        "channels_each": 57600,
+        "masks": 0,
+        "failures": 0,
+        "nonfinite": 0,
+        "max_normalized_error": 0.0009765625,
+        "rule": "abs(gpu-cpu) <= .002*max(1,abs(cpu))",
+        "scope": "Two actual producer frames against WebGPU and Vulkan; native Garden uses existing even8 viewport raster profile after guard4096 refusal. Separate from production UNORM goldens."
+      }
+    },
+    "native_launcher_adoption": {
+      "status": "pass for retained actual Watchtower launcher; later packed-data/mesh boundaries separately qualified",
+      "default": "shared",
+      "legacy_opt_in": "VERSE_GPU_RENDERER=legacy",
+      "identity": "Compiled Core --app-table; exact slug or unique old module alias. Whole package/assets/codec/effects staged beside matching shared owner header.",
+      "textures": "Core-authorized native-textures.coax consumes existing Coax raw layer/font output, writes relative texture descriptor last; no platform pixel policy.",
+      "checks": "Actual default shared source-to-package/assets/codec remote build and90frame run passed37.523s,2draws,RTX4080,validation0errors/0warnings; performance sweep explicitly omitted. Exact source epoch retained; later vk-realm/render-realm fixes do not relabel earlier receipt.",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/native-launcher-watchtower/receipt.json"
+    },
+    "actual_media_physical_observation": {
+      "status": "pass: complete strict 80 by 120 image comparisons on both GPU backends under the existing explicit guard-band 65536",
+      "fixture": "test-only memorial seed using production parser/layout/frame/media effects",
+      "css_size": [
+        320,
+        240
+      ],
+      "physical_size": [
+        80,
+        120
+      ],
+      "device_observation": "explicit test-only ResizeObserver device-pixel-box; production host derives actual dimensions without manual uniform edits",
+      "image_dimensions": [
+        1200,
+        630
+      ],
+      "scene_draws": 6,
+      "hud_vertices": 6456,
+      "gpu_sha256": "0b44acfabe43d92c2a88481d0211259dab8e06034568d6c34e7d118c426f7058",
+      "receipt": "/tmp/aethyr-ch11-villa-media-physical80x120/receipt.json",
+      "source_changes": [],
+      "smaller_refusal": "80x60 production layout emitted no media at its minimum .5 UI scale; retained as failed capture, not numerical evidence.",
+      "viewport_failure": {
+        "pixels": 3,
+        "channels": 7,
+        "masks": 0,
+        "cause": "Clip-then-resnap shifted depth planes at right viewport, changing near-equal scene visibility. Original snapped planes match actualGpu depths; shade/media/HUD were notthecause.",
+        "retention": "Both exactfailedviewportcomparisons and causalpass/primitive traces retained byreference/native records."
+      },
+      "guard_band_comparison": {
+        "profile": "existing even8 guard-band65536; complex-world3B",
+        "comparisons": 2,
+        "channels_each": 38400,
+        "failures": 0,
+        "masks": 0,
+        "nonfinite": 0,
+        "max_normalized_error": 0.00146484375,
+        "scope": "Exact actual frame, finite declared guard-band model. Measured triangle envelope and independent far-Y and negative-X GPU probes retained; no shader, raster, budget or tolerance changes."
+      },
+      "qualification": "docs/verification/data/aethyr-ch11-2026-11-01/reference-villa-guard65536/qualification.json"
+    },
+    "actual_image_goldens_icecream": {
+      "status": "pass",
+      "comparison": "byte-identical old/shared WebGPU readbacks with identical actualproducer u/HUD/draw bytes",
+      "wasm_build": "default auto routing, compiler308, exact C/header/Wasm retained",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/icecream/qualification.json",
+      "sha256": "0641be743d1b5be4c49b72bfb65bca7e04f232d78f77af8836caca5ffeed7532"
+    },
+    "painterly_noise_migration": {
+      "status": "pass:9 reviewed savedPNG baselines migrated; historicalsine andcurrentgeneric/integer stock gates pass",
+      "source": "Only fixture_hash and verse_style_hash arithmetic restored in historical sine diagnostic; emitted integerWGSL byte-identical currentpackage",
+      "old_golden_controls": {
+        "noon": "exact original producer input and image; unchanged0block result",
+        "all9": "unchanged6-block policy, allpass; phone dusk5blocks, no expanded tolerance"
+      },
+      "visual_review": "Root and psionic_review inspected all9before/after scenarios; cloud/crown/grasspattern differences intentional; layout/palette/framing/lighting preserved",
+      "new_baseline_gate": "Existing stockgoldens.ts9scenarios PASS68.7s; no errors; all draw",
+      "current_scope": "Explicit visible hash migration, separate from numerical CPU/GPU conformance. Later browser lifecycle fixes retain separate sourceepochs.",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/fixture/noise-migration.json",
+      "legacy_executor_integer_gate": "9 migratedscenarios PASS67.3s withunchanged6block policy andclean sourcefences.",
+      "historical_epoch_note": "The initial unmodifiedlegacy noonscreenshot passed itsimage comparison but its server saw a host.js sourcefence change. Retained ashistorical image-only result, excludedfromqualification; exact sinecontrol rawimages and all9sine stockgates have cleanfences."
+    },
+    "orbit_check_budget_adoption": {
+      "status": "pass: 35 measured checks, per-check limits authored, ordinary default typed build passed",
+      "red": "Defaultrenderer-enabled compile sees35 existing20M budget failures; sourcealreadydocumented manual2B callerbudget",
+      "method": "Measureeach namedcheck under documented2B callerbudget; assign only measuredlongchecks125percent headroom rounded10M, never changeglobalcompilerdefault or skipauthoritychecks",
+      "profiles": "/tmp/aethyr-ch11-orbit-check-profiles",
+      "passing_measured_count": 35,
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/orbit-check-budgets/qualification.json",
+      "measured_sum_steps": 3299387702,
+      "max_authored_steps": 300000000,
+      "scope": "34existing appchecks plus1 importedverse/drum check; only #steps metadata and documented invocationchanged; production/testbodies and sourcelinecountsunchanged.",
+      "default_build": {
+        "elapsed_seconds": 465.019,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/orbitleague-actual-fence.json",
+        "scope": "Raw command returned zero. Its conservative fence included an unrelated realm-face.c edit; derived Clang include graph and retained Coax source ranges verify the actual inputs unchanged. No repeated Coax build."
+      }
+    },
+    "default_typed_fairy": {
+      "status": "pass",
+      "seconds": 331.576,
+      "source_changes": [],
+      "wasm_sha256": "8632018bd5f3c046153f07bc3aaaed9b645df496493ee046761a5e02d32f8510",
+      "source_scope": "Originalcurrent authored150\u2013500M checks; no newbudget/sourcechanges; actualincludegraph separatelyverified."
+    },
+    "current_browser_bridge": {
+      "status": "qualifiedCoaxC/H relinked withfrozen object-span/lifecyclebridge",
+      "core_policy": "unchanged242/70sourceproofs; existingCoreasset_span+render_words composition, no newCoaxABI",
+      "relinked": {
+        "icecream": {
+          "sha256": "910c2f7c9d28f208599abb714239d3a5ce48f88bf96d17032b284984e0fc129c",
+          "seconds": 7.4
+        },
+        "fairy": {
+          "sha256": "53bade8faef59d17ff5e87c27ee97cff282163d739663db8152c8b4826fade1a",
+          "seconds": 14.876
+        },
+        "orbitleague": {
+          "sha256": "2b420b5a23d481c8f8a876e80606643606a1592a009d49860d5cf94f6b3fb86b",
+          "seconds": 4.732
+        },
+        "realm": {
+          "sha256": "e6ee33d1bdb12dce2744a04b9bf67417aeb45170ced6c78d17e5a1c3075e0a35",
+          "seconds": 8.842
+        }
+      },
+      "scope": "CurrentfencedCeffects; exactcheckedCoaxC/header reused, no baseline repeated. IncludesstaticHauntdrawcapacity andrawnull/short/staleobjectcontrols; sourceepochs preserved."
+    },
+    "ordinary_asset_lifecycle": {
+      "status": "pass forindependent browsercapturedflows",
+      "cases": [
+        "pending ordinaryindex",
+        "pending VPKfetch",
+        "pending packedbitmapdecode",
+        "pending individualHauntlayerdecode",
+        "obsoleteengine before/duringinitialization",
+        "serializedoverlap",
+        "lateimagedecodeafterretirement",
+        "readyimage/video acrossshader+enginereplacement"
+      ],
+      "scope": "Native startup/observeddecodedframeupload andstatic-sourcecontrols remainseparate; no nativeasynchronousHTTP/codecsvclaimed. Dedicatedbrowser/nativearchives retain source/proofepochs."
+    },
+    "default_typed_waterlab": {
+      "status": "pass",
+      "elapsed_seconds": 250.983,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "wasm_sha256": "1cc90b0d96faa0b02032cf1784a4dc202fa9ebadb7a0b7b128098048faf82885",
+      "build_receipt": "/tmp/aethyr-ch11-typed-hosts-one/waterlab.json",
+      "authored_check_budget_record": "docs/verification/data/aethyr-ch11-2026-11-01/water-check-budgets/qualification.json",
+      "scope": "Ordinary default renderer-enabled wasm.sh build, current typed Core and scalar bridge, no source changes during the build. Twenty existing long checks retain their bodies and use measured per-check step budgets."
+    },
+    "default_typed_belt": {
+      "status": "refused_pending_compiler_storage_fix",
+      "build_receipt": "/tmp/aethyr-ch11-typed-hosts-one/belt.json",
+      "elapsed_seconds": 180.733,
+      "diagnostic": "Compile-time aggregate storage limit exceeded in belt-win first-game check: 1,579,165 slots needed; compile path supplied 1,572,864 instead of the existing check budget of 33,554,432.",
+      "authored_check_budget_record": "docs/verification/data/aethyr-ch11-2026-11-01/belt-check-budgets/qualification.json",
+      "scope": "Fifteen measured long checks retain their bodies. Their step budgets are sufficient; the compiler storage-budget fix remains independently in qualification."
+    },
+    "owned_sans_filter": {
+      "status": "pass: 633 root mutants killed, independent primitive probes and actual full native Grid/Galaxy plus current browser Galaxy frames",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/sans-owned-filter/qualification.json",
+      "scope": "Shared Coax bilinear/mip arithmetic, canonical five-mip atlas, retained sampler ABI. Three actual full-frame comparisons and complete source-bound mutation/execution archives retained. Fresh default Grid browser producer remains a separate adoption gate.",
+      "native_frames": {
+        "grid": {
+          "shape": [
+            320,
+            180
+          ],
+          "channels": 230400,
+          "failures": 0,
+          "masks": 0,
+          "nonfinite": 0,
+          "max_normalized_error": 0.00146484375
+        },
+        "galaxy": {
+          "shape": [
+            160,
+            90
+          ],
+          "channels": 57600,
+          "failures": 0,
+          "masks": 0,
+          "nonfinite": 0,
+          "max_normalized_error": 0.0009765625
+        }
+      },
+      "browser_frames": {
+        "galaxy": {
+          "shape": [
+            160,
+            90
+          ],
+          "channels": 57600,
+          "failures": 0,
+          "masks": 0,
+          "nonfinite": 0,
+          "max_normalized_error": 0.000973709834,
+          "comparison": "/tmp/aethyr-ch11-galaxy-owned-sans-webgpu-comparison.json"
+        }
+      }
+    },
+    "fairy_noise_migration": {
+      "status": "pass",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/fairy/noise-migration.json",
+      "scope": "Exact matching producer-byte causal controls, original stock golden sine restoration, two visual reviews, then unchanged six-block policy against reviewed baseline in both current and old executors. All qualified source fences clean; no numerical tolerance changed."
+    },
+    "default_typed_build_progress": {
+      "fairy": {
+        "status": "pass",
+        "elapsed_seconds": 331.576,
+        "wasm_sha256": "8632018bd5f3c046153f07bc3aaaed9b645df496493ee046761a5e02d32f8510",
+        "source_changes": [],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/fairy.json"
+      },
+      "orbitleague": {
+        "status": "fail",
+        "elapsed_seconds": 465.019,
+        "wasm_sha256": "23fdf109ccead395889ff6db48f0a25212069f5a722f1cbbda18e19c1e926f07",
+        "source_changes": [
+          "apps/openagents-web/realm-face.c"
+        ],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/orbitleague.json"
+      },
+      "realm": {
+        "status": "pass",
+        "elapsed_seconds": 25.058,
+        "wasm_sha256": "b4eb542ca435be4cf452c4bf1b99ae6a04e547345654698e9f32e09b202494df",
+        "source_changes": [],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/realm.json"
+      },
+      "icecream": {
+        "status": "pass",
+        "elapsed_seconds": 16.589,
+        "wasm_sha256": "fbb1aed049077fd559b2fa0f96b3dd079216c89d93db81a37340b429f86cb9f6",
+        "source_changes": [],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/icecream.json"
+      },
+      "watchtower": {
+        "status": "pass",
+        "elapsed_seconds": 25.191,
+        "wasm_sha256": "f11b2edf5080f96a7d8237f86c5210361efe1f4e2b31c239582024fe89a70b2d",
+        "source_changes": [],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/watchtower.json"
+      },
+      "waterlab": {
+        "status": "pass",
+        "elapsed_seconds": 250.983,
+        "wasm_sha256": "1cc90b0d96faa0b02032cf1784a4dc202fa9ebadb7a0b7b128098048faf82885",
+        "source_changes": [],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/waterlab.json"
+      },
+      "verse": {
+        "status": "pass",
+        "elapsed_seconds": 19.871,
+        "wasm_sha256": "5c47960461e505ef3c69777e51b1731697fc3d8919d9e3e08cc35a0fe2208e64",
+        "source_changes": [],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/verse.json"
+      },
+      "fixture": {
+        "status": "pass",
+        "elapsed_seconds": 26.628,
+        "wasm_sha256": "869cc748738f89b628a03139813a9f89b306dc91d3d8ad21988d56b2379f8d7b",
+        "source_changes": [],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/fixture.json"
+      },
+      "droprealm": {
+        "status": "pass",
+        "elapsed_seconds": 22.437,
+        "wasm_sha256": "ba5c593e92332e6bb1a01a87a4b1c34a6cc4b0dd74f4958acee83f605d96b1d2",
+        "source_changes": [],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/droprealm.json"
+      },
+      "garden": {
+        "status": "pass",
+        "elapsed_seconds": 44.221,
+        "wasm_sha256": "10e4021ebecbc63c0e0ee082e620a508d36dba295528e2c3e6545fff2b332c7b",
+        "source_changes": [],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/garden.json"
+      },
+      "myrealm": {
+        "status": "pass",
+        "elapsed_seconds": 116.196,
+        "wasm_sha256": "1f8181c1a9eac7ed244f8e69bd7220fb5076995971c588b8277900c7723a997a",
+        "source_changes": [],
+        "error": null,
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/myrealm.json"
+      },
+      "belt": {
+        "status": "pass",
+        "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+        "elapsed_seconds": 83.215,
+        "wasm_sha256": "e9328ad513aad24d696aaefd3364466557e6b261f337593e3f2c307ffb280e0a",
+        "source_changes": [],
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-qualified/belt.json"
+      },
+      "stair": {
+        "status": "pass",
+        "elapsed_seconds": 154.684,
+        "wasm_sha256": "5b74a878c439a60a6c0ad4f59823d4a7ca1f2974f6520164fbdb64c1eb3b1ebf",
+        "source_changes": [],
+        "receipt": "/tmp/aethyr-ch11-typed-hosts-one/stair.json"
+      },
+      "everglade": {
+        "status": "pass",
+        "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+        "elapsed_seconds": 779.014,
+        "wasm_sha256": "bf436b991f9ed1cbb397f888d861a831cf4b8a1fdd5b12f278957397db021935",
+        "source_changes": [],
+        "retention": "docs/verification/data/aethyr-ch11-2026-11-01/default-wasm-routing/everglade",
+        "historical_timeout_retention": "docs/verification/data/aethyr-ch11-2026-11-01/default-wasm-routing/everglade-incomplete"
+      }
+    },
+    "default_typed_build_progress_scope": "Rolling exact-receipt inventory. Raw overbroad source-fence failures retain separate actual include-graph derivations; four C-only relinks retain separate bridge receipts. This is not full chapter acceptance.",
+    "default_typed_build_retention": {
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/default-typed-builds/qualification.json",
+      "owners": [
+        "watchtower",
+        "waterlab",
+        "verse",
+        "fixture",
+        "droprealm",
+        "garden",
+        "myrealm",
+        "villa",
+        "deadgears"
+      ],
+      "scope": "Nine current ordinary builds, qualified generated C/headers and Wasm retained. Earlier four C-only relinks and four pending producer owners remain separate."
+    },
+    "fixture_water_default_visible_migration": {
+      "status": "pass",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/fixture-water-default/qualification.json",
+      "scope": "Both original stock goldens restored by diagnostic Coax controls; two visual reviews precede baseline changes; both executors pass reviewed baseline with zero changed blocks under original six-block allowance. Low-poly Fixture explicitly separates portable noise and eight-tap object filtering."
+    },
+    "current_upstream_observation": {
+      "commit": "31944a2a34",
+      "book_status_counts": {
+        "implemented": 13,
+        "partly_implemented": 4,
+        "design_draft": 69
+      },
+      "current_chapter": 11,
+      "scope": "Fetched latest main in continuing shared worktree. Integration must preserve upstream book DAG/chapter15, fontaliases,512rowcapacities, compiler installer and backend changes; no completed-chapter publication claimed."
+    },
+    "stair_check_budget_adoption": {
+      "status": "pass: 13 measured long checks, independent stale-pin repair, canonical default typed build",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/stair-check-budgets/qualification.json",
+      "scope": "Historical GALAXY to REALMS caption adds six Filament strokes,36vertices. Independent literal glyph count and60ordinary native producer frames agree on39354peak withzero refusals. Production48000budget and52000buffer unchanged.",
+      "default_build": {
+        "elapsed_seconds": 154.684,
+        "wasm_sha256": "5b74a878c439a60a6c0ad4f59823d4a7ca1f2974f6520164fbdb64c1eb3b1ebf",
+        "source_changes": [],
+        "retention": "docs/verification/data/aethyr-ch11-2026-11-01/default-wasm-routing/stair"
+      }
+    },
+    "current_image_review_progress": {
+      "migrated_scenarios": 20,
+      "cases": [
+        "fixture painterly9",
+        "fairy1",
+        "fixture default1",
+        "waterlab1",
+        "built1",
+        "garden1",
+        "dead-gears1 historicalprewinding",
+        "Belt1",
+        "Stair1",
+        "Sandbox1",
+        "Hecate1",
+        "Haunt1"
+      ],
+      "gates": "Each reviewed migration passes both the shared renderer and the old executor with current integer noise procedures at the original screenshot allowances.",
+      "still_pending": [
+        "Everglade freshdefaultfullsize repairedframe",
+        "Gridstockgolden on4MiBsource integratedwithlatestmain",
+        "Ice doorwayrepairnewimages",
+        "DeadGearsboxwindingnewimage/numericalcontract",
+        "latestmainintegration andfinalsourceepochchecks"
+      ]
+    },
+    "golden_observer_repair": {
+      "status": "pass_for_scoped_readback_and_wrong_producer_refusal",
+      "original_failures": [
+        "/tmp/aethyr-ch11-golden-haunt-current/generic/failure.json",
+        "/tmp/aethyr-ch11-golden-sandbox-current/generic/failure.json"
+      ],
+      "repair": "Project only image and producer observations before CDP serialization; physical resource captures stay in the dedicated actual-frame driver. Reuse the already qualified legacy readbacks, validate artifact hashes and all capture controls, refuse a different producer Wasm before starting a browser.",
+      "current_haunt": "/tmp/aethyr-ch11-golden-haunt-current-scoped-readback/comparison.json",
+      "current_sandbox": "/tmp/aethyr-ch11-golden-sandbox-current-scoped-readback/comparison.json",
+      "negative_control": "/tmp/aethyr-ch11-golden-capture-refusal-control/qualification.json",
+      "current_shader_controls": {
+        "haunt": "/tmp/aethyr-ch11-haunt-current-shaders-old-executor/comparison.json",
+        "sandbox": "/tmp/aethyr-ch11-sandbox-current-shaders-old-executor/comparison.json"
+      },
+      "scope": "Current scene and particle shader modules in the old executor produce complete raw images byte-identical to the shared renderer for both actual typed producers. This separates visible shader changes from pass/host execution."
+    },
+    "three_realm_visible_migration": {
+      "status": "pass",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/three-realms/qualification.json",
+      "scope": "Built, Garden and Dead Gears have causal shader controls, two visual reviews, then zero changed blocks against reviewed baselines in both executors under original six-block policy. Mixed original-legacy batch failure is preserved for Hecate; selected three cases pass."
+    },
+    "grid_check_budget_adoption": {
+      "status": "13 measured checks pass, per-check budgets authored, canonical default build running",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/grid-check-budgets/qualification.json",
+      "scope": "Seven checks in newland, one network, one walkers and four walk. Actual1fac measurement under documented400M; only #steps metadata changed, bodies and lines preserved. Final merge must retain upstream HOME_ISSUES512 and remeasure only actual new refusals."
+    },
+    "worked_example": {
+      "status": "pass",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/worked-example/qualification.json",
+      "registration": "aethyr/book/examples.json",
+      "scope": "Actual book runner executes newly registered admit-a-frame in debug/release, exact stdout and exit status match; unchanged earlier examples not repeated."
+    },
+    "pylon_beacon_fixture_dependency": {
+      "published_commit": "993dece6b46cd480e0a95e6a279748403b2d2b7f",
+      "status": "published_pass",
+      "scope": "Stable separate good_tags backing for an existing borrowed-string test fixture. No Beacon protocol/product procedure changed.45checks/839rootmutantszero and debug/O2/sanitized native evidence on published record.",
+      "record": "docs/verification/psionic-pylon-beacon-fixture-alias-2026-11-01.json"
+    },
+    "grid_runtime_memory": {
+      "status": "pass_for_current_320_row_source",
+      "stack_record": "docs/verification/data/aethyr-ch11-2026-11-01/grid-memory-stack/qualification.json",
+      "link_fix_record": "docs/verification/data/aethyr-ch11-2026-11-01/grid-memory-stack/link-fix/qualification.json",
+      "browser_record": "docs/verification/data/aethyr-ch11-2026-11-01/grid-memory-stack/current-browser/qualification.json",
+      "wasm_sha256": "ec39a47fceb155072e37971974fed7a36dcbbb7573de2c3d52ddadddf0c44017",
+      "old_runtime": "8037740a build passed; actualbrowser allocation failed at1062pages above64MiB. Failure retained.",
+      "fix": "Grid-only stack8MiB\u21924MiB, conservatively bounded optimized callgraph1,956,816bytes; all400,000\u00d712vertex andpackage capacities and64MiBmemory cap retained.",
+      "numeric": {
+        "channels_each": 230400,
+        "webgpu_failures": 0,
+        "native_failures": 0,
+        "masks": 0,
+        "nonfinite": 0,
+        "max_normalized_error_webgpu": 0.0009746588694,
+        "max_normalized_error_native": 0.00146484375
+      },
+      "limits": "512row upstream source growth separately predicted; integrated512binary still requires qualification. Old RF emission was reused with original source identity; no currentchangedGeometry source claim."
+    },
+    "everglade_fullsize_water_admission": {
+      "status": "implementation_qualified_runtime_recheck_pending",
+      "failure": "Actual1280\u00d7800 frame,190draws, geometrybad_draw189. Desktop576vertices,120instances; olddomain118.160\u00d790 draws admitted andcolored.",
+      "fix": "Reserve max(3,ceil(64/per))spray slots, matching producer3slot contract and shader earlyclip before particle reads. No shader/pass/memory/tolerance changes.",
+      "checks": 98,
+      "mutants": 710,
+      "killed": 710,
+      "survivors": 0,
+      "equivalence_waivers": 0,
+      "source_sha256": "494bfde7afbdaaf741a67f9088cf108f59751fe01d39a770fcbd9a6ece507261",
+      "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+      "temporary_evidence": [
+        "/tmp/aethyr-ch11-everglade-full-input-refusal",
+        "/tmp/aethyr-ch11-everglade-water-geometry-mutate-final.json"
+      ],
+      "history": "Original max expression produced2survivors; implementation rewritten without equivalent marks. Old logs kept. Fresh default ordinary producer build pending.",
+      "native": "Actual 190-draw payload passes independently emitted C in debug, O2 and ASan/UBSan. Excess instance, excess index and short node payload each refuse with no partial publication; exact replay and logs are retained in the record.",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/everglade-water-spray/qualification.json"
+    },
+    "current_authority_proof_index": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/index.json",
+    "belt_stair_visible_migration": {
+      "status": "pass",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/belt-stair/qualification.json",
+      "cases": 2,
+      "raw_controls": "Currentinteger shaders inoldexecutor equalshared; restoredBelt+Stars hashes andStairhash reproduceoldraws exactly. FirstBelt-only control failed toclose andisretained.",
+      "stock": "Migratedshared andoldexecutorcurrentinteger routes each0changedblocks; allowances8/6unchanged."
+    },
+    "last_three_visible_migration": {
+      "status": "pass",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/last-three/qualification.json",
+      "cases": 3,
+      "stock": "Bothroutes0changedblocks underunchanged6blockallowance. All90step rawcomparisons bindidenticalproducerbytes andallRGBAwithoutimageexclusions.",
+      "scope": "Haunttimedprompt/REALMSlabel andpre11Hecatepiece/facetdifference explicit; notclassifiedasnoise. Earlierobserverbytes retained withtheirsourceepochs."
+    },
+    "deadgears_current_depth_gap": {
+      "status": "open",
+      "source": "canonicalRing8 and correctedoutwardBox36winding, cullnone",
+      "browser_and_native": "Eachcurrentstrictcomparisonfails3RGBchannelsatonepixel42,76,maxnormalized0.0057067871; no masks/nonfinitevalues. Bothbackend rasterprofiles independently measured.",
+      "epoch": "ExacthistoricalRFbackend sourceepoch retained; changedEvergladewateradmission notclaimedascompiledintoRF.",
+      "cause": "Read-onlycurrentgeometryaudit finds perpendicularsharedboxedgeandintersectingcapsulebones, notcoplanar duplicatecaps. Independentboxrepair preservesfullvertexpacketmultisets; nativeimageunchanged, browser6smallhalfchannelchangesat5otherpixels.",
+      "next": "Design an input-derived precision contract using primary specifications before changing the oracle; no tolerance has been broadened."
+    }
+  }
 }

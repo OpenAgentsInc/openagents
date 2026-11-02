@@ -1,0 +1,51 @@
+// Decimal checked-tree transport, separate from the CPU interpreter. Input
+// bytes and output words are live disjoint views; input stays immutable during
+// both passes. Validation precedes every output write. Work counts byte visits,
+// at most three per admitted byte, not interpreter or compiler work units.
+#module "aethyr.render.reference.tree";
+#authority;
+RENDER_TREE_BYTES :: 2097152;
+RenderTreeStatus :: enum u8 {ok;malformed;overflow;unsupported;capacity;budget;}
+RenderTreeText :: struct {status:RenderTreeStatus;count:int;version:int=-1;bad_byte:int=-1;work:int;}
+#load "tests/reference-tree-checks.coax";
+render_tree_space :: (byte:u8)->bool {return byte==9 || byte==10 || byte==13 || byte==32;}
+render_tree_measure :: (bytes:[]u8,max_bytes:int)->RenderTreeText {
+ r:RenderTreeText;
+ if max_bytes<1 || max_bytes>RENDER_TREE_BYTES {r.status=RenderTreeStatus.budget;return r;}
+ if bytes.count>max_bytes {r.status=RenderTreeStatus.budget;r.bad_byte=max_bytes;return r;}
+ value:u32;inside:bool;
+ for at:0..<bytes.count {
+  byte:=bytes[at];r.work+=1;
+  if render_tree_space(byte) {
+   if inside {if r.count==0 {r.version=cast(int)value;}r.count+=1;value=0;inside=false;}
+  }else{
+   if byte<'0' || byte>'9' {r.status=RenderTreeStatus.malformed;r.bad_byte=at;return r;}
+   digit:=cast(u32)(byte-'0');
+   if value>429496729 || (value==429496729 && digit>5) {r.status=RenderTreeStatus.overflow;r.bad_byte=at;return r;}
+   value=value*10+digit;inside=true;
+  }
+ }
+ if inside {if r.count==0 {r.version=cast(int)value;}r.count+=1;}
+ if r.count==0 {r.status=RenderTreeStatus.malformed;r.bad_byte=bytes.count;return r;}
+ if r.version!=2 && r.version!=3 {r.status=RenderTreeStatus.unsupported;r.bad_byte=0;}
+ return r;
+}
+// The preceding measure admits the unchanged bytes and exact output capacity.
+// Each byte is classified once and every digit contributes one conversion visit.
+render_tree_copy :: (bytes:[]u8,out:[]u32)->int {
+ value:u32;inside:bool;count:=0;work:=0;
+ for byte:bytes {
+  work+=1;
+  if render_tree_space(byte) {
+   if inside {out[count]=value;count+=1;value=0;inside=false;}
+  }else{value=value*10+cast(u32)(byte-'0');inside=true;work+=1;}
+ }
+ if inside {out[count]=value;}
+ return work;
+}
+render_tree_decode :: (bytes:[]u8,out:[]u32)->RenderTreeText {return render_tree_decode_with_limit(bytes,out,RENDER_TREE_BYTES);}
+render_tree_decode_with_limit :: (bytes:[]u8,out:[]u32,max_bytes:int)->RenderTreeText {
+ r:=render_tree_measure(bytes,max_bytes);if r.status!=RenderTreeStatus.ok {return r;}
+ if r.count>out.count {r.status=RenderTreeStatus.capacity;return r;}
+ r.work+=render_tree_copy(bytes,out);return r;
+}

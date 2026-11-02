@@ -1,0 +1,79 @@
+#forall "quad checked tree malformed transport fields refuse independently" which:0..<29 {
+ original:=RQ_IR_TEST_TREE;tree:[128]u32;for i:0..<original.count {tree[i]=original[i];}n:=original.count;
+ at:=[29]int.[0,1,1,2,9,9,10,10,13,18,19,19,20,21,22,22,23,23,24,24,24,25,25,77,77,78,79,0,0];
+ value:=[29]u32.[0,5,513,1,0,65,0,7,3,15,0,513,7,129,0,7,0,2049,0,7,5,0,1000000,0,3,2,1,0,0];
+ if which<27 {tree[at[which]]=value[which];}else if which==27 {tree[n]=0;n+=1;}else {n=23;}
+ meta:[RQ_IR_META]int;#assert rq_ir_prepare(tree[0..<n],meta[..]).status==RQStatus.malformed;
+}
+#test "quad checked tree type and procedure capacities admit their exact last entries" {
+ tree:[4096]u32;meta:[RQ_IR_META]int;
+ tree[0]=2;tree[1]=512;for i:0..<512 {tree[2+i]=cast(u32)(ifx i<6 then i else 2);}
+ at:=514;tree[at]=1;at+=1;
+ // void() {return;} and one fragment entry; interface admission is separate.
+ proc:=[6]u32.[0,0,0,1,5,0];
+ tree[at]=0;tree[at+1]=0;tree[at+2]=0;tree[at+3]=1;tree[at+4]=5;at+=5;
+ tree[at]=1;tree[at+1]=1;tree[at+2]=0;at+=3;
+ p:=rq_ir_prepare(tree[0..<at],meta[..]);#assert p.status==RQStatus.ok;
+ memory:[1]u32;out:[1]u32;
+ r:=rq_ir_run(p,tree[0..<at],meta[..],out[0..<0],RQResources.{},memory[..],out[0..<0],1,1,15,RQDerivative.fine);
+ #assert r.status==RQStatus.ok && r.steps==1 && r.output_words==0 && r.publish_mask==15;
+ tree[1]=513;#assert rq_ir_prepare(tree[0..<at],meta[..]).status==RQStatus.malformed;
+ // Six builtins, then512 independent void procedures, then one entry.
+ tree[1]=6;for i:0..<6 {tree[2+i]=cast(u32)i;}tree[8]=512;at=9;
+ for i:0..<512 {tree[at]=0;tree[at+1]=0;tree[at+2]=0;tree[at+3]=1;tree[at+4]=5;at+=5;}
+ tree[at]=1;tree[at+1]=1;tree[at+2]=0;at+=3;
+ p=rq_ir_prepare(tree[0..<at],meta[..]);#assert p.status==RQStatus.ok;
+ r=rq_ir_run(p,tree[0..<at],meta[..],out[0..<0],RQResources.{},memory[..],out[0..<0],1,1,15,RQDerivative.fine);
+ #assert r.status==RQStatus.ok && r.steps==1 && r.output_words==0 && r.publish_mask==15;
+ tree[8]=513;#assert rq_ir_prepare(tree[0..<at],meta[..]).status==RQStatus.malformed;
+}
+#test "quad checked tree rejects duplicate stages and retains both distinct entries" {
+ original:=RQ_IR_TEST_TREE;tree:[128]u32;for i:0..<original.count {tree[i]=original[i];}
+ n:=original.count;tree[n-4]=2;tree[n]=0;tree[n+1]=0;tree[n+2]=0;
+ meta:[RQ_IR_META]int;
+ p:=rq_ir_prepare(tree[0..<n+3],meta[..]);#assert p.status==RQStatus.ok && p.entries==2;
+ tree[n]=1;#assert rq_ir_prepare(tree[0..<n+3],meta[..]).status==RQStatus.malformed;
+}
+#test "quad native execution nesting admits127 and refuses128 without changing the cursor" {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);memory:[64]u32;
+ literal:=[3]u32.[16,2,1065353216];m:=[1]RQMachine.[RQMachine.{types=7,budget=100,nesting=127}];
+ r:=rq_ir_expr(m[..],literal[..],meta[..],memory[..],RQResources.{},RQFrame.{},15);
+ #assert m[0].status==RQStatus.ok && m[0].nesting==127 && m[0].at==3 && rq_ir_f32(memory[..],r,0)==1;
+ m[0]=RQMachine.{types=7,budget=100,nesting=128};r=rq_ir_expr(m[..],literal[..],meta[..],memory[..],RQResources.{},RQFrame.{},15);
+ #assert m[0].status==RQStatus.budget && m[0].nesting==128 && m[0].at==0;
+ empty:=[1]u32.[5];m[0]=RQMachine.{types=7,budget=100,nesting=127};
+ flow:=rq_ir_stmt(m[..],empty[..],meta[..],memory[..],RQResources.{},RQFrame.{},15);
+ #assert m[0].status==RQStatus.ok && flow.returned==15 && m[0].nesting==127;
+ m[0]=RQMachine.{types=7,budget=100,nesting=128};flow=rq_ir_stmt(m[..],empty[..],meta[..],memory[..],RQResources.{},RQFrame.{},15);
+ #assert m[0].status==RQStatus.budget && m[0].at==0;
+ local:=[3]u32.[40,0,2];meta[RQ_IR_PROC+2]=1;meta[RQ_IR_PROC+3]=2;memory[0]=1;
+ m[0]=RQMachine.{types=7,budget=100,nesting=127};place:=rq_ir_place(m[..],local[..],meta[..],memory[..],RQResources.{},RQFrame.{},15);
+ #assert m[0].status==RQStatus.ok && place.ty==2 && place.at[0]==1 && place.at[3]==4 && m[0].nesting==127;
+ m[0]=RQMachine.{types=7,budget=100,nesting=128};place=rq_ir_place(m[..],local[..],meta[..],memory[..],RQResources.{},RQFrame.{},15);
+ #assert m[0].status==RQStatus.budget && m[0].at==0;
+}
+#test "quad token reader latches the first refusal and never invents a failed word" {
+ words:=[2]u32.[7,9];m:=[1]RQMachine.[RQMachine.{budget=2}];
+ #assert rq_ir_next(m[..],words[..])==7 && rq_ir_next(m[..],words[..])==9;
+ #assert m[0].at==2 && m[0].steps==2;
+ #assert rq_ir_next(m[..],words[..])==0 && m[0].status==RQStatus.budget && m[0].at==2 && m[0].steps==2;
+ rq_ir_fail(m[..],RQStatus.malformed);#assert rq_ir_next(m[..],words[..])==0 && m[0].status==RQStatus.budget;
+ m[0]=RQMachine.{budget=10,at=-1};#assert rq_ir_next(m[..],words[..])==0 && m[0].status==RQStatus.malformed && m[0].at==-1 && m[0].steps==0;
+ m[0]=RQMachine.{budget=10,at=2};#assert rq_ir_next(m[..],words[..])==0 && m[0].status==RQStatus.malformed && m[0].steps==0;
+ m[0]=RQMachine.{budget=10,status=RQStatus.unsupported,at=1};#assert rq_ir_next(m[..],words[..])==0 && m[0].status==RQStatus.unsupported && m[0].at==1 && m[0].steps==0;
+}
+#test "quad arena allocation clears exactly four lane values and preserves both surrounding canaries" {
+ meta:[RQ_IR_META]int;tree:=RQ_IR_TEST_TREE;p:=rq_ir_prepare(tree[..],meta[..]);memory:[19]u32;for j:0..<19 {memory[j]=999;}
+ m:=[1]RQMachine.[RQMachine.{types=p.types,budget=100,used=2}];
+ r:=rq_ir_value(m[..],meta[..],memory[0..<18],6);#assert m[0].status==RQStatus.ok && r.ty==6 && r.at==2 && r.words==4 && m[0].used==18;
+ #assert memory[0]==999 && memory[1]==999 && memory[18]==999;for j:2..<18 {#assert memory[j]==0;}
+ m[0]=RQMachine.{types=p.types,budget=100,used=2};r=rq_ir_value(m[..],meta[..],memory[0..<17],6);#assert m[0].status==RQStatus.capacity && m[0].used==2;
+ m[0]=RQMachine.{types=p.types,budget=100};r=rq_ir_value(m[..],meta[..],memory[..],-1);#assert m[0].status==RQStatus.malformed && m[0].used==0;
+ m[0]=RQMachine.{types=p.types,budget=100};r=rq_ir_value(m[..],meta[..],memory[..],7);#assert m[0].status==RQStatus.malformed && m[0].used==0;
+}
+RQ_IR_ENTRY_TREE :: [34]u32.[2,6,0,1,2,3,4,5,2,0,2,2,4,3,2,4,3,1,5,0,1,3,1,3,1,5,2,0,0,210,211,1,1,212];
+#test "quad stage entry lookup skips each complete parameter name list" {
+ tree:=RQ_IR_ENTRY_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ #assert rq_ir_entry(p,tree[..],meta[..],0)==0 && rq_ir_entry(p,tree[..],meta[..],1)==1 && rq_ir_entry(p,tree[..],meta[..],2)==-1;
+ #assert rq_ir_parameter_words(p,tree[..],meta[..],0)==8 && rq_ir_parameter_words(p,tree[..],meta[..],1)==4 && rq_ir_parameter_words(p,tree[..],meta[..],2)==0;
+}

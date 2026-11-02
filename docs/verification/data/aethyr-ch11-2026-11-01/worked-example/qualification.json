@@ -1,0 +1,24 @@
+{
+  "schema": "aethyr.book.worked-example.v1",
+  "status": "pass",
+  "example": {
+    "source": "aethyr/examples/admit-a-frame.coax",
+    "chapter": "aethyr/book/ch011-the-wgsl-renderer.md",
+    "stdout": "aethyr/fixtures/admit-a-frame.out",
+    "exit_status": 0,
+    "modes": [
+      "debug",
+      "release"
+    ]
+  },
+  "modes": [
+    "debug",
+    "release"
+  ],
+  "runner": "psionic/tests/book.py run_one, called only for the newly registered chapter11 example; unchanged earlier examples not rerun",
+  "runner_sha256": "2d84aeb125a6e143677f393a59929a5a59e461fa1e1780bd1983d1db2a8e7831",
+  "source_sha256": "75e3610ef328f1f9db278190fd7abf053f0fc97f07a99cc5e2d459678dcfcd95",
+  "stdout_sha256": "622c1ac14d8b74c8a85e0cae4df6d430eeace136826db799fbaa50a8c14c3ffe",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "elapsed_seconds": 0.733
+}

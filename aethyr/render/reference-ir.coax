@@ -1,0 +1,720 @@
+// Checked shader tree-v2/v3 execution on four fragment helper lanes. The native
+// host supplies owned word/resource views and compiles this Coax; it decides no
+// operation, control flow, texture policy or fragment publication.
+#module "aethyr.render.reference.ir";
+#authority;
+#load "reference-quad.coax";
+#load "active-lanes.coax";
+
+RQ_IR_TYPES :: 512;RQ_IR_PROCS :: 512;RQ_IR_META :: 8192;
+RQ_IR_PROC :: 4096;RQ_IR_SYNTAX_DEPTH :: 24;RQ_IR_NESTING :: 128;RQ_IR_WORDS :: 65536;
+RQBuffer :: struct {words:[]u32;count:int;stride:int;}
+RQResources :: struct {buffers:[]RQBuffer;textures:[]RQTexture;samplers:[]RQSampler;}
+RQProgram :: struct {version:int;status:RQStatus;types:int;procs:int;entries:int;entry_at:int;tree_words:int;prepare_steps:int;}
+RQExecution :: struct {status:RQStatus;steps:int;discarded:u32;publish_mask:u32;output_words:int;}
+RQPrivate :: struct {at:int;elem:int;count:int;lane_words:int;}
+RQMachine :: struct {version:int;private_count:int;private_views:[64]RQPrivate;types:int;procs:int;stage:int;nesting:int;status:RQStatus;at:int;used:int;steps:int;budget:int;discarded:u32;terminated:u32;derivative:RQDerivative;}
+RQValue :: struct {ty:int;at:int;words:int;}
+RQPlace :: struct {ty:int;at:[4]int;buffer:[4]int;}
+RQFrame :: struct {proc:int;locals:int;values:int;result:RQValue;}
+RQFlow :: struct {returned:u32;breaking:u32;continuing:u32;}
+
+rq_ir_fail :: (m:[]RQMachine,status:RQStatus) {if m[0].status==RQStatus.ok {m[0].status=status;}}
+rq_ir_next :: (m:[]RQMachine,tree:[]u32)->int {
+ if m[0].status!=RQStatus.ok {return 0;}
+ if m[0].steps>=m[0].budget {rq_ir_fail(m,RQStatus.budget);return 0;}
+ if m[0].at<0 || m[0].at>=tree.count {rq_ir_fail(m,RQStatus.malformed);return 0;}
+ n:=cast(int)tree[m[0].at];m[0].at+=1;m[0].steps+=1;return n;
+}
+rq_ir_meta_words :: ()->int {return RQ_IR_META;}
+rq_ir_type :: (meta:[]int,ty:int,k:int)->int {return meta[ty*8+k];}
+rq_ir_proc :: (meta:[]int,p:int,k:int)->int {return meta[RQ_IR_PROC+p*8+k];}
+rq_ir_prepare :: (tree:[]u32,meta:[]int)->RQProgram {return rq_ir_prepare_with_budget(tree,meta,4000000);}
+rq_ir_prepare_with_budget :: (tree:[]u32,meta:[]int,budget:int)->RQProgram {
+ if meta.count<RQ_IR_META {return RQProgram.{status=RQStatus.capacity};}
+ if budget<1 || budget>4000000 {return RQProgram.{status=RQStatus.resource};}
+ ms:=[1]RQMachine.[RQMachine.{budget=budget}];result:=rq_ir_prepare_work(tree,meta,ms[..]);
+ if ms[0].status!=RQStatus.ok {result.status=ms[0].status;}result.prepare_steps=ms[0].steps;return result;
+}
+rq_ir_prepare_work :: (tree:[]u32,meta:[]int,ms:[]RQMachine)->RQProgram {
+ version:=rq_ir_next(ms[..],tree);nt:=rq_ir_next(ms[..],tree);
+ if (version!=2 && version!=3) || nt<6 || nt>RQ_IR_TYPES {return RQProgram.{status=RQStatus.malformed};}
+ ms[0].version=version;ms[0].types=nt;
+ for t:0..<nt {
+  at:=ms[0].at;k:=rq_ir_next(ms[..],tree);words:=0;bytes:=0;
+  if t<6 && k!=t {return RQProgram.{status=RQStatus.malformed};}
+  if k==0 {}
+  else if k==1 {words=1;bytes=1;}
+  else if k>=2 && k<=4 {words=1;bytes=4;}
+  else if k==5 || k==6 {words=2;bytes=8;}
+  else if k==7 {
+   n:=rq_ir_next(ms[..],tree);if n<1 || n>64 {return RQProgram.{status=RQStatus.malformed};}
+   end:=0;
+   for f:0..<n {
+    child:=rq_ir_next(ms[..],tree);offset:=rq_ir_next(ms[..],tree)&1073741823;
+    if child<1 || child>=t || offset<end {return RQProgram.{status=RQStatus.malformed};}
+    words+=rq_ir_type(meta,child,2);end=offset+rq_ir_type(meta,child,3);
+   }
+   bytes=rq_ir_next(ms[..],tree);if bytes<end {return RQProgram.{status=RQStatus.malformed};}
+  } else if k==8 {
+   child:=rq_ir_next(ms[..],tree);n:=rq_ir_next(ms[..],tree);stride:=rq_ir_next(ms[..],tree);
+   if child<1 || child>=t || n<1 || n>65536 || stride<rq_ir_type(meta,child,3) {return RQProgram.{status=RQStatus.malformed};}
+   words=rq_ir_type(meta,child,2)*n;bytes=stride*n;
+  } else if k==9 {
+   child:=rq_ir_next(ms[..],tree);if child<1 || child>=t {return RQProgram.{status=RQStatus.malformed};}words=1;
+  } else if k==10 {
+   dim:=rq_ir_next(ms[..],tree);if dim>2 {return RQProgram.{status=RQStatus.malformed};}meta[t*8+4]=dim;words=1;
+  } else if k==11 {
+   cmp:=rq_ir_next(ms[..],tree);if cmp>1 {return RQProgram.{status=RQStatus.malformed};}words=1;
+  } else {return RQProgram.{status=RQStatus.unsupported};}
+  if words>RQ_IR_WORDS || bytes>16777216 {return RQProgram.{status=RQStatus.capacity};}
+  meta[t*8]=k;meta[t*8+1]=at;meta[t*8+2]=words;meta[t*8+3]=bytes;
+ }
+ np:=rq_ir_next(ms[..],tree);if np<1 || np>RQ_IR_PROCS {return RQProgram.{status=RQStatus.malformed};}
+ ms[0].procs=np;
+ for p:0..<np {
+  ret:=rq_ir_next(ms[..],tree);params:=rq_ir_next(ms[..],tree);param_at:=ms[0].at;
+  if ret>=nt || params>128 {return RQProgram.{status=RQStatus.malformed};}
+  for j:0..<params {ty:=rq_ir_next(ms,tree);}
+  locals:=rq_ir_next(ms[..],tree);types_at:=ms[0].at;localwords:=0;
+  if locals<params || locals>2048 {return RQProgram.{status=RQStatus.malformed};}
+  for j:0..<locals {
+   ty:=rq_ir_next(ms[..],tree);if ty<1 || ty>=nt {return RQProgram.{status=RQStatus.malformed};}
+   if j<params && tree[param_at+j]!=cast(u32)ty {return RQProgram.{status=RQStatus.malformed};}
+   localwords+=rq_ir_type(meta,ty,2);
+  }
+  length:=rq_ir_next(ms[..],tree);body:=ms[0].at;
+  if length<1 || localwords>262144 {return RQProgram.{status=RQStatus.malformed};}
+  row:=RQ_IR_PROC+p*8;
+  meta[row]=ret;meta[row+1]=params;meta[row+2]=locals;meta[row+3]=types_at;
+  meta[row+4]=body;meta[row+5]=body+length;meta[row+6]=localwords;meta[row+7]=param_at;
+  ms[0].at=body+length;
+ }
+ entries:=rq_ir_next(ms[..],tree);entry_at:=ms[0].at;
+ if entries<1 {return RQProgram.{status=RQStatus.malformed};}
+ stages:u32=0;
+ for e:0..<entries {
+  stage:=rq_ir_next(ms[..],tree);p:=rq_ir_next(ms[..],tree);
+  if stage>1 || p>=np {return RQProgram.{status=RQStatus.malformed};}
+  bit:=cast(u32)(stage+1);if (stages&bit)!=0 {return RQProgram.{status=RQStatus.malformed};}stages|=bit;
+  for j:0..<rq_ir_proc(meta,p,1) {name:=rq_ir_next(ms[..],tree);}
+ }
+ if ms[0].status!=RQStatus.ok || ms[0].at!=tree.count {return RQProgram.{status=RQStatus.malformed};}
+ for p:0..<np {
+  ms[0].at=rq_ir_proc(meta,p,4);rq_ir_shape_stmt(ms[..],tree,meta);
+  if ms[0].status!=RQStatus.ok {return RQProgram.{status=ms[0].status};}
+  if ms[0].at!=rq_ir_proc(meta,p,5) {return RQProgram.{status=RQStatus.malformed};}
+ }
+ return RQProgram.{version=version,types=nt,procs=np,entries=entries,entry_at=entry_at,tree_words=tree.count};
+}
+rq_ir_entry :: (program:RQProgram,tree:[]u32,meta:[]int,stage:int)->int {
+ at:=program.entry_at;
+ for e:0..<program.entries {s:=cast(int)tree[at];p:=cast(int)tree[at+1];if s==stage {return p;}at+=2+rq_ir_proc(meta,p,1);}
+ return -1;
+}
+rq_ir_parameter_words :: (program:RQProgram,tree:[]u32,meta:[]int,stage:int)->int {
+ p:=rq_ir_entry(program,tree,meta,stage);if p<0 {return 0;}
+ at:=rq_ir_proc(meta,p,7);n:=0;
+ for j:0..<rq_ir_proc(meta,p,1) {n+=4*rq_ir_type(meta,cast(int)tree[at+j],2);}return n;
+}
+rq_ir_value :: (m:[]RQMachine,meta:[]int,memory:[]u32,ty:int)->RQValue {
+ if ty<0 || ty>=m[0].types {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
+ n:=rq_ir_type(meta,ty,2);at:=m[0].used;
+ if n*4>memory.count-at {rq_ir_fail(m,RQStatus.capacity);return RQValue.{};}
+ for j:0..<n*4 {memory[at+j]=0;}m[0].used+=n*4;return RQValue.{ty=ty,at=at,words=n};
+}
+// Values own four contiguous lanes inside the caller's larger arena. Exact
+// subviews enforce that ownership independently of unused arena tail space.
+rq_ir_value_words :: (memory:[]u32,v:RQValue)->[]u32 {return memory[v.at..<v.at+4*v.words];}
+rq_ir_transfer :: (memory:[]u32,to:RQValue,from:RQValue,mask:u32) {
+ target:=rq_ir_value_words(memory,to);source:=rq_ir_value_words(memory,from);
+ active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];for j:0..<to.words {target[lane*to.words+j]=source[lane*from.words+j];}}
+}
+rq_ir_u64 :: (memory:[]u32,v:RQValue,lane:int)->u64 {
+ words:=rq_ir_value_words(memory,v);at:=lane*v.words;n:=cast(u64)words[at];if v.words==2 {n|=cast(u64)words[at+1]<<32;}return n;
+}
+rq_ir_put_u64 :: (memory:[]u32,v:RQValue,lane:int,n:u64) {
+ words:=rq_ir_value_words(memory,v);at:=lane*v.words;words[at]=cast(u32)(n&4294967295);if v.words==2 {words[at+1]=cast(u32)(n>>32);}
+}
+rq_ir_f32 :: (memory:[]u32,v:RQValue,lane:int)->f32 {words:=rq_ir_value_words(memory,v);return f32_from_bits(words[lane*v.words]);}
+rq_ir_put_f32 :: (memory:[]u32,v:RQValue,lane:int,f:f32) {words:=rq_ir_value_words(memory,v);words[lane*v.words]=f32_bits(f);}
+
+#load "tests/reference-ir-checks.coax";
+
+rq_ir_local :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,f:RQFrame,id:int)->RQValue {
+ if id<0 || id>=rq_ir_proc(meta,f.proc,2) {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
+ ty:=cast(int)tree[rq_ir_proc(meta,f.proc,3)+id];
+ return RQValue.{ty=ty,at=cast(int)memory[f.locals+id],words=rq_ir_type(meta,ty,2)};
+}
+rq_ir_field :: (m:[]RQMachine,tree:[]u32,meta:[]int,ty:int,field:int)->RQValue {
+ if rq_ir_type(meta,ty,0)!=7 {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
+ at:=rq_ir_type(meta,ty,1);count:=cast(int)tree[at+1];
+ if field<0 || field>=count {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
+ offset:=0;for j:0..<field {offset+=rq_ir_type(meta,cast(int)tree[at+2+j*2],2);}
+ child:=cast(int)tree[at+2+field*2];return RQValue.{ty=child,at=offset,words=rq_ir_type(meta,child,2)};
+}
+rq_ir_bool_mask :: (memory:[]u32,v:RQValue,mask:u32)->u32 {
+ r:u32=0;active:=rq_active_lanes(mask);
+ for k:0..<active.count {lane:=active.lanes[k];if memory[v.at+lane*v.words]!=0 {r|=cast(u32)1<<cast(u32)lane;}}return r;
+}
+rq_ir_binary :: (m:[]RQMachine,meta:[]int,memory:[]u32,op:int,a:RQValue,b:RQValue,mask:u32)->RQValue {
+ if a.ty!=b.ty || op<1 || op>18 {rq_ir_fail(m,RQStatus.unsupported);return RQValue.{};}
+ kind:=rq_ir_type(meta,a.ty,0);
+ if kind<1 || kind>6 || (kind==1 && (op<10 || op>13)) || (kind==2 && (op==5 || op>=12)) || (kind>=3 && (op==12 || op==13)) {rq_ir_fail(m,RQStatus.unsupported);return RQValue.{};}
+ ty:=ifx op>=6 && op<14 then 1 else a.ty;r:=rq_ir_value(m,meta,memory,ty);
+ if m[0].status!=RQStatus.ok {return r;}
+ active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
+  yes:bool;
+  if kind==2 {
+   x:=rq_ir_f32(memory,a,lane);y:=rq_ir_f32(memory,b,lane);v:f32;
+   if op==1 {v=x+y;}else if op==2 {v=x-y;}else if op==3 {v=x*y;}else if op==4 {v=x/y;}
+   else if op==6 {yes=x<y;}else if op==7 {yes=x<=y;}else if op==8 {yes=x>y;}else if op==9 {yes=x>=y;}else if op==10 {yes=x==y;}else if op==11 {yes=x!=y;}
+   if ty==1 {rq_ir_put_u64(memory,r,lane,ifx yes then 1 else 0);}else {rq_ir_put_f32(memory,r,lane,v);}
+  } else {
+   x:=rq_ir_u64(memory,a,lane);y:=rq_ir_u64(memory,b,lane);v:u64;
+   sx:=cast,trunc(int)x;sy:=cast,trunc(int)y;
+   if kind==3 {sx=cast(int)cast,trunc(s32)x;sy=cast(int)cast,trunc(s32)y;}
+   signed:=kind==3 || kind==5;
+   if op==1 {v=add_wrap(x,y);}else if op==2 {v=sub_wrap(x,y);}else if op==3 {v=mul_wrap(x,y);}
+   else if op==4 || op==5 {
+    if y==0 || (signed && sx==(-9223372036854775807-1) && sy==(-1)) {rq_ir_fail(m,RQStatus.unsupported);return r;}
+    if signed {v=cast,trunc(u64)(ifx op==4 then sx/sy else sx%sy);}else {v=ifx op==4 then x/y else x%y;}
+   } else if op==6 {yes=ifx signed then sx<sy else x<y;}
+   else if op==7 {yes=ifx signed then sx<=sy else x<=y;}
+   else if op==8 {yes=ifx signed then sx>sy else x>y;}
+   else if op==9 {yes=ifx signed then sx>=sy else x>=y;}
+   else if op==10 {yes=x==y;}else if op==11 {yes=x!=y;}
+   else if op==12 {yes=x!=0 && y!=0;}else if op==13 {yes=x!=0 || y!=0;}
+   else if op==14 {v=x&y;}else if op==15 {v=x|y;}else if op==16 {v=x^y;}
+   else {
+    width:=ifx kind==5 || kind==6 then 64 else 32;
+    if y>=cast(u64)width {rq_ir_fail(m,RQStatus.unsupported);return r;}
+    if op==17 {v=x<<cast(u32)y;}else if signed {v=cast,trunc(u64)(sx>>cast(u32)y);}else {v=x>>cast(u32)y;}
+   }
+   if ty==1 {v=ifx yes then 1 else 0;}rq_ir_put_u64(memory,r,lane,v);
+  }
+ }return r;
+}
+rq_ir_math :: (m:[]RQMachine,meta:[]int,memory:[]u32,fn:int,args:[]RQValue,mask:u32)->RQValue {
+ if args.count<1 || args.count>2 || fn<1 || fn>9 || ((fn==9)!=(args.count==2)) {rq_ir_fail(m,RQStatus.unsupported);return RQValue.{};}
+ for j:0..<args.count {if args[j].ty!=2 {rq_ir_fail(m,RQStatus.unsupported);return RQValue.{};}}
+ r:=rq_ir_value(m,meta,memory,2);if m[0].status!=RQStatus.ok {return r;}
+ active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
+  x:=rq_ir_f32(memory,args[0],lane);v:f32;
+  if fn==1 {v=sin(x);}else if fn==2 {v=cos(x);}else if fn==3 {v=tan(x);}else if fn==4 {v=exp(x);}else if fn==5 {v=log(x);}else if fn==6 {v=sqrt(x);}else if fn==7 {v=floor(x);}else if fn==8 {v=abs(x);}else {v=pow(x,rq_ir_f32(memory,args[1],lane));}
+  rq_ir_put_f32(memory,r,lane,v);
+ }return r;
+}
+rq_ir_gpu_arity :: (fn:int)->int {
+ if fn<1 || fn>18 {return -1;}
+ counts:=[18]int.[0,3,4,4,5,5,4,4,4,1,1,1,1,1,1,1,1,0];return counts[fn-1];
+}
+rq_ir_gpu :: (m:[]RQMachine,meta:[]int,memory:[]u32,res:RQResources,fn:int,ty:int,args:[]RQValue,mask:u32)->RQValue {
+ r:=rq_ir_value(m,meta,memory,ty);if m[0].status!=RQStatus.ok {return r;}
+ arity:=rq_ir_gpu_arity(fn);if arity<0 {rq_ir_fail(m,RQStatus.unsupported);return r;}
+ if args.count!=arity {rq_ir_fail(m,RQStatus.malformed);return r;}
+ if m[0].stage==0 && (fn==1 || fn>=12) {rq_ir_fail(m,RQStatus.unsupported);return r;}
+ if m[0].version==2 && fn>=15 {rq_ir_fail(m,RQStatus.unsupported);return r;}
+ if fn==1 || fn==18 {
+  if ty!=0 {rq_ir_fail(m,RQStatus.malformed);}
+  else {m[0].discarded|=mask;if fn==1 {m[0].terminated|=mask;}}return r;
+ }
+ if fn>=12 {
+  if args[0].ty!=2 || ty!=2 {rq_ir_fail(m,RQStatus.malformed);return r;}
+  if mask==0 {return r;}if mask!=15 {rq_ir_fail(m,RQStatus.divergent);return r;}
+  q:RQQuad;for lane:0..<4 {q.v[lane]=rq_ir_f32(memory,args[0],lane);}
+  mode:=ifx fn>=15 then RQDerivative.fine else m[0].derivative;
+  axis:=ifx fn==13 || fn==16 then 1 else 0;
+  d:=ifx fn==14 || fn==17 then rq_fwidth(q,mode) else rq_derivative(q,axis,mode);
+  for lane:0..<4 {rq_ir_put_f32(memory,r,lane,d.v[lane]);}return r;
+ }
+ return rq_ir_gpu_texture(m,meta,memory,res,fn,r,args,mask);
+}
+rq_ir_expr_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQValue {
+ op:=rq_ir_next(m,tree);if m[0].status!=RQStatus.ok {return RQValue.{};}
+ if op==16 || op==17 {
+  ty:=rq_ir_next(m,tree);r:=rq_ir_value(m,meta,memory,ty);if m[0].status!=RQStatus.ok {return r;}
+  if op==16 {bits:=cast(u64)rq_ir_next(m,tree);if r.words==2 {bits|=cast(u64)rq_ir_next(m,tree)<<32;}
+   for lane:0..<4 {rq_ir_put_u64(memory,r,lane,bits);}}
+  return r;
+ }
+ if op==18 {
+  id:=rq_ir_next(m,tree);v:=rq_ir_local(m,tree,meta,memory,f,id);r:=rq_ir_value(m,meta,memory,v.ty);
+  if m[0].status==RQStatus.ok {rq_ir_transfer(memory,r,v,mask);}return r;
+ }
+ if op==19 {kind:=rq_ir_next(m,tree);a:=rq_ir_expr(m,tree,meta,memory,res,f,mask);b:=rq_ir_expr(m,tree,meta,memory,res,f,mask);if m[0].status!=RQStatus.ok {return RQValue.{};}return rq_ir_binary(m,meta,memory,kind,a,b,mask&(m[0].terminated^15));}
+ if op==20 || op==21 {
+  a:=rq_ir_expr(m,tree,meta,memory,res,f,mask);r:=rq_ir_value(m,meta,memory,a.ty);if m[0].status!=RQStatus.ok {return r;}
+  active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
+   if op==21 {rq_ir_put_u64(memory,r,lane,ifx rq_ir_u64(memory,a,lane)==0 then 1 else 0);}
+   else if a.ty==2 {rq_ir_put_f32(memory,r,lane,-rq_ir_f32(memory,a,lane));}
+   else {rq_ir_put_u64(memory,r,lane,sub_wrap(cast(u64)0,rq_ir_u64(memory,a,lane)));}
+  }return r;
+ }
+ if op==22 || op==23 || op==33 {
+  fn:=rq_ir_next(m,tree);ty:int;if op==33 {ty=rq_ir_next(m,tree);}n:=rq_ir_next(m,tree);
+  args:[128]RQValue;for j:0..<n {args[j]=rq_ir_expr(m,tree,meta,memory,res,f,mask);}
+  if m[0].status!=RQStatus.ok {return RQValue.{};}
+  if op==22 {return rq_ir_call(m,tree,meta,memory,res,fn,args[0..<n],mask);}
+  if op==23 {return rq_ir_math(m,meta,memory,fn,args[0..<n],mask&(m[0].terminated^15));}
+  return rq_ir_gpu(m,meta,memory,res,fn,ty,args[0..<n],mask&(m[0].terminated^15));
+ }
+ if op==24 {
+  test:=rq_ir_expr(m,tree,meta,memory,res,f,mask);yes:=rq_ir_bool_mask(memory,test,mask);
+  a:=rq_ir_expr(m,tree,meta,memory,res,f,mask);b:=rq_ir_expr(m,tree,meta,memory,res,f,mask);
+  if m[0].status!=RQStatus.ok {return RQValue.{};}if a.ty!=b.ty {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
+  r:=rq_ir_value(m,meta,memory,a.ty);if m[0].status!=RQStatus.ok {return r;}
+  rq_ir_transfer(memory,r,a,yes);rq_ir_transfer(memory,r,b,mask^yes);return r;
+ }
+ if op==25 {
+  a:=rq_ir_expr(m,tree,meta,memory,res,f,mask);field:=rq_ir_next(m,tree);v:=rq_ir_field(m,tree,meta,a.ty,field);
+  r:=rq_ir_value(m,meta,memory,v.ty);if m[0].status!=RQStatus.ok {return r;}
+  target:=rq_ir_value_words(memory,r);source:=rq_ir_value_words(memory,a);
+  for lane:0..<4 {for j:0..<v.words {target[lane*v.words+j]=source[lane*a.words+v.at+j];}}return r;
+ }
+ if op==27 {place:=rq_ir_place(m,tree,meta,memory,res,f,mask);return rq_ir_load(m,tree,meta,memory,res,place,mask);}
+ if op==29 || op==30 {
+  ty:=rq_ir_next(m,tree);a:=rq_ir_expr(m,tree,meta,memory,res,f,mask);return rq_ir_convert(m,meta,memory,ty,a,op==30,mask);
+ }
+ if op==31 {
+  ty:=rq_ir_next(m,tree);n:=rq_ir_next(m,tree);
+  r:=rq_ir_value(m,meta,memory,ty);if m[0].status!=RQStatus.ok {return r;}
+  kind:=rq_ir_type(meta,ty,0);at:=rq_ir_type(meta,ty,1);offset:=0;
+  for j:0..<n {
+   a:=rq_ir_expr(m,tree,meta,memory,res,f,mask);
+   if m[0].status!=RQStatus.ok {return r;}
+   child:=cast(int)tree[at+(ifx kind==7 then 2+j*2 else 1)];
+   if a.ty!=child {rq_ir_fail(m,RQStatus.malformed);return r;}
+   target:=rq_ir_value_words(memory,r);source:=rq_ir_value_words(memory,a);
+   for lane:0..<4 {for k:0..<a.words {target[lane*r.words+offset+k]=source[lane*a.words+k];}}offset+=a.words;
+  }return r;
+ }
+ if op==32 {place:=rq_ir_place(m,tree,meta,memory,res,f,mask);return rq_ir_count(m,tree,meta,memory,res,place,mask);}
+ return RQValue.{};
+}
+
+rq_ir_place_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQPlace {
+ op:=rq_ir_next(m,tree);r:RQPlace;
+ for lane:0..<4 {r.buffer[lane]=-1;}
+ if m[0].status!=RQStatus.ok {return r;}
+ if op==40 {
+  id:=rq_ir_next(m,tree);v:=rq_ir_local(m,tree,meta,memory,f,id);r.ty=v.ty;
+  for lane:0..<4 {r.at[lane]=v.at+lane*v.words;}return r;
+ }
+ if op==41 {
+  base:=rq_ir_place(m,tree,meta,memory,res,f,mask);field:=rq_ir_next(m,tree);v:=rq_ir_field(m,tree,meta,base.ty,field);r=base;r.ty=v.ty;
+  if m[0].status!=RQStatus.ok {return r;}
+  at:=rq_ir_type(meta,base.ty,1);bytes:=cast(int)(tree[at+3+field*2]&1073741823);
+  for lane:0..<4 {r.at[lane]+=ifx r.buffer[lane]>=0 then bytes else v.at;}return r;
+ }
+ if op==42 {
+  base:=rq_ir_place(m,tree,meta,memory,res,f,mask);index:=rq_ir_expr(m,tree,meta,memory,res,f,mask);
+  if m[0].status!=RQStatus.ok {return r;}
+  kind:=rq_ir_type(meta,base.ty,0);at:=rq_ir_type(meta,base.ty,1);
+  if kind!=8 && kind!=9 {rq_ir_fail(m,RQStatus.malformed);return r;}
+  child:=cast(int)tree[at+1];r.ty=child;
+  active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
+   ix:=rq_ir_integer(m,meta,memory,index,lane);count:int;stride:int;
+   if kind==9 {
+    handle:=cast(int)memory[base.at[lane]];
+    if handle>=2147483648 {
+     id:=handle-2147483648;if id>=m[0].private_count {rq_ir_fail(m,RQStatus.resource);return r;}
+     pv:=m[0].private_views[id];if pv.elem!=child {rq_ir_fail(m,RQStatus.malformed);return r;}
+     count=pv.count;stride=rq_ir_type(meta,child,2);r.at[lane]=pv.at+lane*pv.lane_words;
+    } else {
+     b:=rq_ir_buffer_view(m,res,handle,rq_ir_type(meta,child,3));if m[0].status!=RQStatus.ok {return r;}
+     count=b.count;stride=b.stride;
+     r.buffer[lane]=handle;
+    }
+   } else {
+    count=cast(int)tree[at+2];r.buffer[lane]=base.buffer[lane];r.at[lane]=base.at[lane];
+    stride=ifx r.buffer[lane]>=0 then cast(int)tree[at+3] else rq_ir_type(meta,child,2);
+   }
+   if ix<0 || ix>=count {rq_ir_fail(m,RQStatus.resource);return r;}
+   r.at[lane]+=ix*stride;
+  }return r;
+ }
+ return r;
+}
+rq_ir_integer :: (m:[]RQMachine,meta:[]int,memory:[]u32,v:RQValue,lane:int)->int {
+ kind:=rq_ir_type(meta,v.ty,0);bits:=rq_ir_u64(memory,v,lane);
+ if kind==3 {return cast(int)cast,trunc(s32)bits;}
+ if kind==5 {return cast,trunc(int)bits;}
+ if kind==4 || kind==6 {if bits>9223372036854775807 {rq_ir_fail(m,RQStatus.resource);return 0;}return cast(int)bits;}
+ rq_ir_fail(m,RQStatus.malformed);return 0;
+}
+// Array length and indexing share the same owned-view admission. A logical
+// count may describe a prefix, but never elements outside its physical words.
+rq_ir_buffer_view :: (m:[]RQMachine,res:RQResources,index:int,element_bytes:int)->RQBuffer {
+ if cast,trunc(u64)index>=cast(u64)res.buffers.count {rq_ir_fail(m,RQStatus.resource);return RQBuffer.{};}
+ b:=res.buffers[index];
+ if b.count<0 || b.stride!=element_bytes || b.stride<1 || b.count>b.words.count*4/b.stride {rq_ir_fail(m,RQStatus.resource);return RQBuffer.{};}return b;
+}
+rq_ir_decode :: (m:[]RQMachine,tree:[]u32,meta:[]int,source:[]u32,byte:int,memory:[]u32,out:int,ty:int) {
+ if m[0].status!=RQStatus.ok {return;}
+ size:=rq_ir_type(meta,ty,3);kind:=rq_ir_type(meta,ty,0);
+ if byte<0 || size>source.count*4-byte {rq_ir_fail(m,RQStatus.resource);return;}
+ if kind>=1 && kind<=6 {
+  if kind==1 {memory[out]=ifx ((source[byte/4]>>cast(u32)((byte%4)*8))&255)!=0 then 1 else 0;return;}
+  if byte%4!=0 {rq_ir_fail(m,RQStatus.resource);return;}
+  memory[out]=source[byte/4];if size==8 {memory[out+1]=source[byte/4+1];}return;
+ }
+ at:=rq_ir_type(meta,ty,1);offset:=0;
+ if kind==7 {
+  for f:0..<cast(int)tree[at+1] {
+   child:=cast(int)tree[at+2+f*2];fieldbyte:=cast(int)(tree[at+3+f*2]&1073741823);
+   rq_ir_decode(m,tree,meta,source,byte+fieldbyte,memory,out+offset,child);offset+=rq_ir_type(meta,child,2);
+  }return;
+ }
+ if kind==8 {
+  child:=cast(int)tree[at+1];count:=cast(int)tree[at+2];stride:=cast(int)tree[at+3];words:=rq_ir_type(meta,child,2);
+  for j:0..<count {rq_ir_decode(m,tree,meta,source,byte+j*stride,memory,out+j*words,child);}return;
+ }
+ rq_ir_fail(m,RQStatus.unsupported);
+}
+rq_ir_load :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,place:RQPlace,mask:u32)->RQValue {
+ r:=rq_ir_value(m,meta,memory,place.ty);if m[0].status!=RQStatus.ok {return r;}
+ active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
+  at:=place.at[lane];out:=r.at+lane*r.words;
+  if place.buffer[lane]>=0 {rq_ir_decode(m,tree,meta,res.buffers[place.buffer[lane]].words,at,memory,out,place.ty);}
+  else {for j:0..<r.words {memory[out+j]=memory[at+j];}}
+ }return r;
+}
+rq_ir_count :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,place:RQPlace,mask:u32)->RQValue {
+ r:=rq_ir_value(m,meta,memory,5);if m[0].status!=RQStatus.ok {return r;}
+ kind:=rq_ir_type(meta,place.ty,0);at:=rq_ir_type(meta,place.ty,1);
+ active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
+  n:int;
+  if kind==8 {n=cast(int)tree[at+2];}
+  else if kind==9 {
+   handle:=cast(int)memory[place.at[lane]];
+   if handle>=2147483648 {id:=handle-2147483648;if id>=m[0].private_count {rq_ir_fail(m,RQStatus.resource);return r;}n=m[0].private_views[id].count;}
+   else {child:=cast(int)tree[at+1];b:=rq_ir_buffer_view(m,res,handle,rq_ir_type(meta,child,3));if m[0].status!=RQStatus.ok {return r;}n=b.count;}
+  } else {rq_ir_fail(m,RQStatus.malformed);return r;}
+  rq_ir_put_u64(memory,r,lane,cast(u64)n);
+ }return r;
+}
+rq_ir_convert :: (m:[]RQMachine,meta:[]int,memory:[]u32,ty:int,a:RQValue,bits:bool,mask:u32)->RQValue {
+ r:=rq_ir_value(m,meta,memory,ty);if m[0].status!=RQStatus.ok {return r;}
+ target:=rq_ir_type(meta,ty,0);source:=rq_ir_type(meta,a.ty,0);
+ if target<2 || target>6 || source<2 || source>6 {rq_ir_fail(m,RQStatus.unsupported);return r;}
+ if bits {
+  if target>4 || source>4 || target==source {rq_ir_fail(m,RQStatus.unsupported);return r;}
+  rq_ir_transfer(memory,r,a,mask);return r;
+ }
+ active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
+  if target==2 {
+   f:f32=0;
+   if source==2 {f=rq_ir_f32(memory,a,lane);}
+   else if source==3 || source==5 {f=cast(f32)rq_ir_integer(m,meta,memory,a,lane);}
+   else {f=cast(f32)rq_ir_u64(memory,a,lane);}rq_ir_put_f32(memory,r,lane,f);
+  } else {
+   v:u64;
+   if source==2 {
+    f:=rq_ir_f32(memory,a,lane);low:f64=0;high:f64=0;
+    if target==3 {low=-2147483648;high=2147483648;}
+    else if target==4 {high=4294967296;}
+    else if target==5 {low=-9223372036854775808.0;high=9223372036854775808.0;}
+    else {high=18446744073709551616.0;}
+    if !(cast(f64)f>=low && cast(f64)f<high) {rq_ir_fail(m,RQStatus.unsupported);return r;}
+    if target==3 || target==5 {v=cast,trunc(u64)cast(int)f;}else {v=cast(u64)f;}
+   } else if source==3 || source==5 {v=cast,trunc(u64)rq_ir_integer(m,meta,memory,a,lane);}
+   else {v=rq_ir_u64(memory,a,lane);}
+   rq_ir_put_u64(memory,r,lane,v);
+  }
+ }return r;
+}
+rq_ir_store :: (m:[]RQMachine,meta:[]int,memory:[]u32,place:RQPlace,value:RQValue,mask:u32) {
+ if place.ty!=value.ty {rq_ir_fail(m,RQStatus.malformed);return;}
+ active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
+  if place.buffer[lane]>=0 {rq_ir_fail(m,RQStatus.unsupported);return;}
+  for j:0..<value.words {memory[place.at[lane]+j]=memory[value.at+lane*value.words+j];}
+ }
+}
+rq_ir_stmt_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQFlow {
+ op:=rq_ir_next(m,tree);r:RQFlow;if m[0].status!=RQStatus.ok {return r;}
+ mark:=m[0].used;
+ if op==1 {
+  n:=rq_ir_next(m,tree);
+  for j:0..<n {
+   child:=rq_ir_stmt(m,tree,meta,memory,res,f,mask&((r.returned|r.breaking|r.continuing)^15));
+   r.returned|=child.returned;r.breaking|=child.breaking;r.continuing|=child.continuing;
+   if m[0].status!=RQStatus.ok {return r;}
+  }return r;
+ }
+ if op==2 {value:=rq_ir_expr(m,tree,meta,memory,res,f,mask);m[0].used=mark;return r;}
+ if op==3 {
+  place:=rq_ir_place(m,tree,meta,memory,res,f,mask);value:=rq_ir_expr(m,tree,meta,memory,res,f,mask);
+  if m[0].status==RQStatus.ok {rq_ir_store(m,meta,memory,place,value,mask);}m[0].used=mark;return r;
+ }
+ if op==4 {
+  value:=rq_ir_expr(m,tree,meta,memory,res,f,mask);
+  if m[0].status==RQStatus.ok {if value.ty!=f.result.ty {rq_ir_fail(m,RQStatus.malformed);}else {rq_ir_transfer(memory,f.result,value,mask);}}
+  r.returned=mask;m[0].used=mark;return r;
+ }
+ if op==5 {if f.result.ty!=0 {rq_ir_fail(m,RQStatus.malformed);}r.returned=mask;return r;}
+ if op==6 {
+  has_else:=rq_ir_next(m,tree);
+  test:=rq_ir_expr(m,tree,meta,memory,res,f,mask);if m[0].status!=RQStatus.ok {return r;}
+  yes:=rq_ir_bool_mask(memory,test,mask);m[0].used=mark;
+  r=rq_ir_stmt(m,tree,meta,memory,res,f,yes);
+  if has_else==1 {other:=rq_ir_stmt(m,tree,meta,memory,res,f,mask^yes);r.returned|=other.returned;r.breaking|=other.breaking;r.continuing|=other.continuing;}
+  return r;
+ }
+ if op==7 || op==8 {
+  local:int;if op==8 {local=rq_ir_next(m,tree);}condition:=m[0].at;start:RQValue;limit:RQValue;loop:RQValue;
+  if op==8 {
+   start=rq_ir_expr(m,tree,meta,memory,res,f,mask);limit=rq_ir_expr(m,tree,meta,memory,res,f,mask);loop=rq_ir_local(m,tree,meta,memory,f,local);
+   if m[0].status!=RQStatus.ok {return r;}if start.ty!=loop.ty || limit.ty!=loop.ty {rq_ir_fail(m,RQStatus.malformed);return r;}
+   rq_ir_transfer(memory,loop,start,mask);
+  }
+  body:=m[0].at;active:=mask;first:=true;
+  while active!=0 || first {
+   first=false;running:=active;
+   if op==7 {m[0].at=condition;test:=rq_ir_expr(m,tree,meta,memory,res,f,active);if m[0].status!=RQStatus.ok {return r;}running=rq_ir_bool_mask(memory,test,active);body=m[0].at;}
+   else {indices:=rq_active_lanes(running);for k:0..<indices.count {lane:=indices.lanes[k];bit:=cast(u32)1<<cast(u32)lane;
+    if rq_ir_integer(m,meta,memory,loop,lane)>=rq_ir_integer(m,meta,memory,limit,lane) {running&=bit^15;}}}
+   m[0].at=body;child:=rq_ir_stmt(m,tree,meta,memory,res,f,running);
+   if m[0].status!=RQStatus.ok {return r;}
+   r.returned|=child.returned;active=running&((child.returned|child.breaking)^15);
+   if op==8 {indices:=rq_active_lanes(active);for k:0..<indices.count {lane:=indices.lanes[k];n:=rq_ir_u64(memory,loop,lane);rq_ir_put_u64(memory,loop,lane,add_wrap(n,cast(u64)1));}}
+   // Keep the for range values alive across iterations; body temporaries are
+   // reclaimed by each statement. While-condition temporaries are ephemeral.
+   if op==7 {m[0].used=mark;}
+  }
+  m[0].used=mark;return r;
+ }
+ if op==9 {r.breaking=mask;return r;}if op==10 {r.continuing=mask;return r;}
+ if op==11 {
+  target:=rq_ir_next(m,tree);array:=rq_ir_next(m,tree);
+  view:=rq_ir_local(m,tree,meta,memory,f,target);value:=rq_ir_local(m,tree,meta,memory,f,array);
+  if m[0].status!=RQStatus.ok {return r;}
+  if rq_ir_type(meta,view.ty,0)!=9 || rq_ir_type(meta,value.ty,0)!=8 {rq_ir_fail(m,RQStatus.malformed);return r;}
+  va:=rq_ir_type(meta,value.ty,1);vt:=rq_ir_type(meta,view.ty,1);elem:=cast(int)tree[va+1];
+  if cast(int)tree[vt+1]!=elem {rq_ir_fail(m,RQStatus.malformed);return r;}
+  if mask!=0 {
+   id:=m[0].private_count;
+   for j:0..<m[0].private_count {if m[0].private_views[j].at==value.at {id=j;}}
+   if id==m[0].private_count {
+    if id>=64 {rq_ir_fail(m,RQStatus.capacity);return r;}
+    m[0].private_views[id]=RQPrivate.{at=value.at,elem=elem,count=cast(int)tree[va+2],lane_words=value.words};m[0].private_count+=1;
+   }
+   active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];memory[view.at+lane]=2147483648|cast(u32)id;}
+  }return r;
+ }
+ return r;
+}
+rq_ir_call :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,p:int,args:[]RQValue,mask:u32)->RQValue {
+ // Prepared immutable tree transport already bounds every call index.
+ // The shared execution nesting budget also bounds recursive calls.
+ if args.count!=rq_ir_proc(meta,p,1) {rq_ir_fail(m,RQStatus.malformed);return RQValue.{};}
+ ret:=rq_ir_proc(meta,p,0);result:=rq_ir_value(m,meta,memory,ret);mark:=m[0].used;
+ locals:=rq_ir_proc(meta,p,2);localat:=m[0].used;
+ if locals>memory.count-localat {rq_ir_fail(m,RQStatus.capacity);return result;}m[0].used+=locals;
+ f:=RQFrame.{proc=p,locals=localat,result=result};
+ for j:0..<locals {
+  ty:=cast(int)tree[rq_ir_proc(meta,p,3)+j];v:=rq_ir_value(m,meta,memory,ty);
+  if m[0].status!=RQStatus.ok {return result;}memory[localat+j]=cast(u32)v.at;
+  if j<args.count {if args[j].ty!=ty {rq_ir_fail(m,RQStatus.malformed);return result;}rq_ir_transfer(memory,v,args[j],mask);}
+ }
+ caller:=m[0].at;private_mark:=m[0].private_count;m[0].at=rq_ir_proc(meta,p,4);
+ flow:=rq_ir_stmt(m,tree,meta,memory,res,f,mask);
+ if m[0].at!=rq_ir_proc(meta,p,5) || (ret!=0 && ((flow.returned|m[0].terminated)&mask)!=mask) || flow.breaking!=0 || flow.continuing!=0 {rq_ir_fail(m,RQStatus.malformed);}
+ m[0].at=caller;m[0].used=mark;m[0].private_count=private_mark;return result;
+}
+rq_ir_run :: (program:RQProgram,tree:[]u32,meta:[]int,inputs:[]u32,res:RQResources,memory:[]u32,outputs:[]u32,stage:int,budget:int,coverage:u32,derivative:RQDerivative)->RQExecution {
+ if program.status!=RQStatus.ok {return RQExecution.{status=program.status};}
+ if meta.count<RQ_IR_META || tree.count!=program.tree_words || program.types<6 || program.types>RQ_IR_TYPES || program.procs<1 || program.procs>RQ_IR_PROCS {return RQExecution.{status=RQStatus.malformed};}
+ if budget<1 || budget>100000000 || coverage>15 {return RQExecution.{status=RQStatus.resource};}
+ p:=rq_ir_entry(program,tree,meta,stage);if p<0 {return RQExecution.{status=RQStatus.resource};}
+ n:=rq_ir_proc(meta,p,1);ret:=rq_ir_proc(meta,p,0);words:=4*rq_ir_type(meta,ret,2);
+ if inputs.count!=rq_ir_parameter_words(program,tree,meta,stage) || outputs.count<words {return RQExecution.{status=RQStatus.capacity};}
+ ms:=[1]RQMachine.[RQMachine.{version=program.version,budget=budget,types=program.types,procs=program.procs,stage=stage,derivative=derivative}];args:[128]RQValue;at:=0;
+ for j:0..<n {
+  ty:=cast(int)tree[rq_ir_proc(meta,p,7)+j];v:=rq_ir_value(ms[..],meta,memory,ty);args[j]=v;
+  if ms[0].status!=RQStatus.ok {return RQExecution.{status=ms[0].status};}
+  for k:0..<v.words*4 {memory[v.at+k]=inputs[at+k];}at+=v.words*4;
+ }
+ result:=rq_ir_call(ms[..],tree,meta,memory,res,p,args[0..<n],15);
+ if ms[0].status!=RQStatus.ok {return RQExecution.{status=ms[0].status,steps=ms[0].steps,discarded=ms[0].discarded};}
+ for k:0..<words {outputs[k]=memory[result.at+k];}
+ return RQExecution.{steps=ms[0].steps,discarded=ms[0].discarded,publish_mask=coverage&(ms[0].discarded^15),output_words=words};
+}
+
+rq_ir_lod :: (t:RQTexture,u:RQQuad,v:RQQuad,lane:int,mode:RQDerivative,bias:f32)->f32 {
+ dx:=rq_derivative(u,0,mode);dy:=rq_derivative(u,1,mode);vx:=rq_derivative(v,0,mode);vy:=rq_derivative(v,1,mode);
+ w:=cast(f32)t.levels[0].width;h:=cast(f32)t.levels[0].height;
+ ax:=dx.v[lane]*w;ay:=vx.v[lane]*h;bx:=dy.v[lane]*w;by:=vy.v[lane]*h;
+ return rq_footprint_lod(ax*ax+ay*ay,bx*bx+by*by,bias);
+}
+rq_ir_color :: (memory:[]u32,r:RQValue,lane:int,color:RQColor) {
+ at:=r.at+lane*r.words;memory[at]=f32_bits(color.r);
+ if r.words==4 {memory[at+1]=f32_bits(color.g);memory[at+2]=f32_bits(color.b);memory[at+3]=f32_bits(color.a);}
+}
+rq_ir_gpu_texture :: (m:[]RQMachine,meta:[]int,memory:[]u32,res:RQResources,fn:int,r:RQValue,args:[]RQValue,mask:u32)->RQValue {
+ // The registry dispatcher has already selected texture operations2..11.
+ if rq_ir_type(meta,args[0].ty,0)!=10 || args[0].words!=1 || (fn<=7 && r.words!=4) || (fn>=8 && r.words!=1) {rq_ir_fail(m,RQStatus.malformed);return r;}
+ if m[0].version==2 && (fn==10 || fn==11) && rq_ir_type(meta,args[0].ty,4)==1 {rq_ir_fail(m,RQStatus.unsupported);return r;}
+ implicit:=fn==2 || fn==4 || fn==6;
+ if implicit && m[0].stage==0 {rq_ir_fail(m,RQStatus.unsupported);return r;}
+ if implicit && mask!=0 && mask!=15 {rq_ir_fail(m,RQStatus.divergent);return r;}
+ if fn<=6 || fn==9 {if args[1].words!=1 || args[2].words!=2 {rq_ir_fail(m,RQStatus.malformed);return r;}}
+ u:RQQuad;v:RQQuad;
+ if implicit {for lane:0..<4 {at:=args[2].at+lane*args[2].words;u.v[lane]=f32_from_bits(memory[at]);v.v[lane]=f32_from_bits(memory[at+1]);}}
+ active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
+  image:int;
+  // Resource handles occupy one word and have image/sampler nominal types,
+  // rather than integer types; their carrier is read directly.
+  image=cast(int)memory[args[0].at+lane];
+  if image>=res.textures.count {rq_ir_fail(m,RQStatus.resource);return r;}
+  t:=res.textures[image];texture:=rq_texture_status(t);if texture!=RQStatus.ok {rq_ir_fail(m,texture);return r;}
+  if fn==10 || fn==11 {size:=ifx fn==10 then t.levels[0].width else t.levels[0].height;rq_ir_put_u64(memory,r,lane,cast(u64)size);}
+  else if fn==7 || fn==8 {
+   x:=rq_ir_integer(m,meta,memory,args[1],lane);y:=rq_ir_integer(m,meta,memory,args[2],lane);level:=rq_ir_integer(m,meta,memory,args[3],lane);
+   if m[0].status!=RQStatus.ok {return r;}
+   if level<0 || level>=t.levels.count {rq_ir_fail(m,RQStatus.resource);return r;}lev:=t.levels[level];
+   if x<0 || x>=lev.width || y<0 || y>=lev.height || (fn==8 && !t.depth) {rq_ir_fail(m,RQStatus.resource);return r;}
+   color:=t.texels[lev.offset+y*lev.width+x];rq_ir_color(memory,r,lane,color);
+  } else {
+   sampler:=cast(int)memory[args[1].at+lane];
+   if sampler>=res.samplers.count {rq_ir_fail(m,RQStatus.resource);return r;}s:=res.samplers[sampler];
+   at:=args[2].at+lane*args[2].words;cu:=f32_from_bits(memory[at]);cv:=f32_from_bits(memory[at+1]);layer:=0;lod:f32=0;
+   if fn==4 || fn==5 || fn==6 {layer=rq_ir_integer(m,meta,memory,args[3],lane);}
+   if fn==3 {lod=rq_ir_f32(memory,args[3],lane);}else if fn==5 {lod=rq_ir_f32(memory,args[4],lane);}
+   if implicit {bias:=ifx fn==6 then rq_ir_f32(memory,args[4],lane) else 0.0f32;lod=rq_ir_lod(t,u,v,lane,m[0].derivative,bias);}
+   sample:RQSample;
+   if fn==9 {sample=rq_sample_compare(t,s,cu,cv,0,0,rq_ir_f32(memory,args[3],lane));}
+   else {sample=rq_sample_level(t,s,cu,cv,layer,lod);}
+   if sample.status!=RQStatus.ok {rq_ir_fail(m,sample.status);return r;}rq_ir_color(memory,r,lane,sample.color);
+  }
+ }return r;
+}
+
+rq_ir_expr :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQValue {
+ if m[0].nesting>=RQ_IR_NESTING {rq_ir_fail(m,RQStatus.budget);return RQValue.{};}
+ m[0].nesting+=1;r:=rq_ir_expr_inner(m,tree,meta,memory,res,f,mask&(m[0].terminated^15));m[0].nesting-=1;return r;
+}
+
+rq_ir_stmt :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQFlow {
+ if m[0].nesting>=RQ_IR_NESTING {rq_ir_fail(m,RQStatus.budget);return RQFlow.{};}
+ m[0].nesting+=1;r:=rq_ir_stmt_inner(m,tree,meta,memory,res,f,mask&(m[0].terminated^15));m[0].nesting-=1;return r;
+}
+
+rq_ir_place :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQResources,f:RQFrame,mask:u32)->RQPlace {
+ if m[0].nesting>=RQ_IR_NESTING {rq_ir_fail(m,RQStatus.budget);return RQPlace.{};}
+ m[0].nesting+=1;r:=rq_ir_place_inner(m,tree,meta,memory,res,f,mask&(m[0].terminated^15));m[0].nesting-=1;return r;
+}
+
+// Structural admission follows node boundaries, never scans arbitrary words
+// for opcode-looking constants. The input is the compiler's checked typed tree;
+// this pass bounds its transport/control shape and enforces the op registry.
+rq_ir_shape_place :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
+ if m[0].nesting>=RQ_IR_SYNTAX_DEPTH {rq_ir_fail(m,RQStatus.budget);return;}m[0].nesting+=1;
+ op:=rq_ir_next(m,tree);
+ if op==40 {local:=rq_ir_next(m,tree);}
+ else if op==41 {rq_ir_shape_place(m,tree,meta);field:=rq_ir_next(m,tree);}
+ else if op==42 {rq_ir_shape_place(m,tree,meta);rq_ir_shape_expr(m,tree,meta);}
+ else {rq_ir_fail(m,RQStatus.malformed);}
+ m[0].nesting-=1;
+}
+rq_ir_shape_expr :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
+ if m[0].nesting>=RQ_IR_SYNTAX_DEPTH {rq_ir_fail(m,RQStatus.budget);return;}m[0].nesting+=1;
+ rq_ir_shape_expr_inner(m,tree,meta);m[0].nesting-=1;
+}
+rq_ir_shape_expr_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
+ op:=rq_ir_next(m,tree);if m[0].status!=RQStatus.ok {return;}
+ if op==16 || op==17 || op==29 || op==30 || op==31 {
+  ty:=rq_ir_next(m,tree);if ty>=m[0].types {rq_ir_fail(m,RQStatus.malformed);return;}
+  if op==16 {
+   kind:=rq_ir_type(meta,ty,0);if kind<1 || kind>6 {rq_ir_fail(m,RQStatus.malformed);return;}
+   low:=rq_ir_next(m,tree);if kind==5 || kind==6 {high:=rq_ir_next(m,tree);}return;
+  }
+  if op==17 {return;}
+  if op==29 || op==30 {rq_ir_shape_expr(m,tree,meta);return;}
+  kind:=rq_ir_type(meta,ty,0);if kind!=7 && kind!=8 {rq_ir_fail(m,RQStatus.unsupported);return;}
+  at:=rq_ir_type(meta,ty,1);expected:=cast(int)tree[at+(ifx kind==7 then 1 else 2)];
+  count:=rq_ir_next(m,tree);if count!=expected {rq_ir_fail(m,RQStatus.malformed);return;}
+  for j:0..<count {rq_ir_shape_expr(m,tree,meta);if m[0].status!=RQStatus.ok {return;}}return;
+ }
+ if op==18 {local:=rq_ir_next(m,tree);return;}
+ if op==19 {kind:=rq_ir_next(m,tree);if kind<1 || kind>18 {rq_ir_fail(m,RQStatus.unsupported);return;}rq_ir_shape_expr(m,tree,meta);rq_ir_shape_expr(m,tree,meta);return;}
+ if op==20 || op==21 {rq_ir_shape_expr(m,tree,meta);return;}
+ if op==22 || op==23 || op==33 {
+  fn:=rq_ir_next(m,tree);
+  if op==33 {
+   ty:=rq_ir_next(m,tree);if ty>=m[0].types {rq_ir_fail(m,RQStatus.malformed);return;}
+   if rq_ir_gpu_arity(fn)<0 || (m[0].version==2 && fn>=15) {rq_ir_fail(m,RQStatus.unsupported);return;}
+  }
+  n:=rq_ir_next(m,tree);if n>128 {rq_ir_fail(m,RQStatus.capacity);return;}
+  if op==22 && fn>=m[0].procs {rq_ir_fail(m,RQStatus.malformed);return;}
+  if op==23 && (fn<1 || fn>9) {rq_ir_fail(m,RQStatus.unsupported);return;}
+  if op==22 && n!=rq_ir_proc(meta,fn,1) {rq_ir_fail(m,RQStatus.malformed);return;}
+  if op==23 && n!=(ifx fn==9 then 2 else 1) {rq_ir_fail(m,RQStatus.unsupported);return;}
+  if op==33 && n!=rq_ir_gpu_arity(fn) {rq_ir_fail(m,RQStatus.malformed);return;}
+  for j:0..<n {rq_ir_shape_expr(m,tree,meta);if m[0].status!=RQStatus.ok {return;}}return;
+ }
+ if op==24 {rq_ir_shape_expr(m,tree,meta);rq_ir_shape_expr(m,tree,meta);rq_ir_shape_expr(m,tree,meta);return;}
+ if op==25 {rq_ir_shape_expr(m,tree,meta);field:=rq_ir_next(m,tree);return;}
+ if op==27 || op==32 {rq_ir_shape_place(m,tree,meta);return;}
+ rq_ir_fail(m,RQStatus.unsupported);
+}
+rq_ir_shape_stmt :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
+ if m[0].nesting>=RQ_IR_SYNTAX_DEPTH {rq_ir_fail(m,RQStatus.budget);return;}m[0].nesting+=1;
+ rq_ir_shape_stmt_inner(m,tree,meta);m[0].nesting-=1;
+}
+rq_ir_shape_stmt_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int) {
+ op:=rq_ir_next(m,tree);if m[0].status!=RQStatus.ok {return;}
+ if op==1 {
+  n:=rq_ir_next(m,tree);if !rq_ir_block_count_ok(n) {rq_ir_fail(m,RQStatus.capacity);return;}
+  for j:0..<n {rq_ir_shape_stmt(m,tree,meta);if m[0].status!=RQStatus.ok {return;}}return;
+ }
+ if op==2 || op==4 {rq_ir_shape_expr(m,tree,meta);return;}
+ if op==3 {rq_ir_shape_place(m,tree,meta);rq_ir_shape_expr(m,tree,meta);return;}
+ if op==5 || op==9 || op==10 {return;}
+ if op==6 {
+  other:=rq_ir_next(m,tree);if other>1 {rq_ir_fail(m,RQStatus.malformed);return;}
+  rq_ir_shape_expr(m,tree,meta);rq_ir_shape_stmt(m,tree,meta);if other==1 {rq_ir_shape_stmt(m,tree,meta);}return;
+ }
+ if op==7 {rq_ir_shape_expr(m,tree,meta);rq_ir_shape_stmt(m,tree,meta);return;}
+ if op==8 {local:=rq_ir_next(m,tree);rq_ir_shape_expr(m,tree,meta);rq_ir_shape_expr(m,tree,meta);rq_ir_shape_stmt(m,tree,meta);return;}
+ if op==11 {view:=rq_ir_next(m,tree);array:=rq_ir_next(m,tree);return;}
+ rq_ir_fail(m,RQStatus.unsupported);
+}
+
+#load "tests/reference-ir-scalar-checks.coax";
+
+#load "tests/reference-ir-admission-checks.coax";
+
+#load "tests/reference-ir-convert-checks.coax";
+
+#load "tests/reference-ir-storage-checks.coax";
+
+#load "tests/reference-ir-run-checks.coax";
+
+#load "tests/reference-ir-gpu-checks.coax";
+#load "tests/reference-ir-type-checks.coax";
+#load "tests/reference-ir-shape-checks.coax";
+// The syntax envelope is independent of the runtime work allowance.
+rq_ir_block_count_ok :: (count:int)->bool {return cast,trunc(u64)count<=1000000;}
+#load "tests/reference-ir-arena-checks.coax";
+
+#load "tests/reference-ir-transport-extra-checks.coax";
+#load "tests/reference-ir-prepare-budget-checks.coax";
+
+#load "tests/reference-ir-control-checks.coax";
+
+#load "tests/reference-ir-texture-extra-checks.coax";
+
+#load "tests/reference-ir-private-checks.coax";
+
+#load "tests/reference-ir-statement-checks.coax";
+
+#load "tests/reference-ir-array-query-checks.coax";
+
+#load "tests/reference-ir-call-checks.coax";
+
+#load "tests/reference-ir-place-checks.coax";
+
+#load "tests/reference-ir-value-extra-checks.coax";
+
+#load "tests/reference-ir-flow-extra-checks.coax";

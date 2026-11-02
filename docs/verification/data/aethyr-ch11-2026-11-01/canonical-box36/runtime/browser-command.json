@@ -1,0 +1,17 @@
+{
+  "command": [
+    "bun",
+    "aethyr/tests/check_render_host.ts",
+    "/tmp/aethyr-ch11-typed-hosts-one/deadgears.wasm",
+    "/tmp/aethyr-ch11-packages-box36/dead-gears",
+    "apps/openagents-web/realms/dead-gears/index.html",
+    "/tmp/aethyr-ch11-deadgears-box36-current-default",
+    "--half",
+    "--start",
+    "--texture-stream",
+    "--size=320x180",
+    "--require-draws"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 2.3858349579386413
+}

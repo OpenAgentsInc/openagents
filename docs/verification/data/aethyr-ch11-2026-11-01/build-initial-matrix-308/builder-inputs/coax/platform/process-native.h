@@ -1,0 +1,102 @@
+#ifndef COAX_PROCESS_NATIVE_H
+#define COAX_PROCESS_NATIVE_H
+#include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+/* Child processes for Coax, through #foreign scalars only. A handle is a
+   small index; strings cross one byte at a time. Policy (what to run, which
+   flags, which environment) is Coax; this file only performs the effects.
+
+   Build: cxproc_new, then cxproc_push bytes into a field and cxproc_end to
+   close each entry. Field 0 is an argument (the first is the program),
+   1 an environment entry KEY=VALUE set on top of the inherited one, 2 the
+   name of an inherited variable to remove, 3 the working directory.
+
+   Run: cxproc_spawn starts the child in its own process group with stdin,
+   stdout and stderr on pipes. cxproc_read_line returns the next stdout
+   line's length (its bytes through cxproc_line_byte, valid until the next
+   read), CXPROC_EOF, CXPROC_TIMEOUT, CXPROC_ERROR or CXPROC_TOO_LONG (the
+   line was skipped); a timeout of 0 takes only what the pipe already holds,
+   without waiting, and a negative one waits for ever. stderr is drained while reading and its last
+   CXPROC_STDERR_KEEP bytes are kept. cxproc_write buffers a byte and
+   cxproc_flush sends them. cxproc_kill signals the whole group;
+   cxproc_wait reaps the child; cxproc_release kills, reaps and frees. */
+#define CXPROC_EOF (-1)
+#define CXPROC_TIMEOUT (-2)
+#define CXPROC_ERROR (-3)
+#define CXPROC_TOO_LONG (-4)
+#define CXPROC_RUNNING (-2)
+#define CXPROC_MAX (16)
+#define CXPROC_MAX_LINE (64 * 1024 * 1024)
+#define CXPROC_STDERR_KEEP (64 * 1024)
+int64_t cxproc_new(void);
+int64_t cxproc_push(int64_t h, int64_t field, int64_t byte);
+int64_t cxproc_end(int64_t h, int64_t field);
+int64_t cxproc_spawn(int64_t h);
+int64_t cxproc_read_line(int64_t h, int64_t timeout_ms);
+int64_t cxproc_line_byte(int64_t h, int64_t i);
+int64_t cxproc_write(int64_t h, int64_t byte);
+int64_t cxproc_flush(int64_t h);
+/* Owned child-stdin pipes only. timeout_ms is 0..INT_MAX; zero makes one
+   nonblocking attempt. One monotonic deadline covers all writes and waits.
+   Returns 0 complete, CXPROC_TIMEOUT, or CXPROC_ERROR. Only unsent bytes stay
+   buffered on timeout/error, so retry never repeats a delivered prefix.
+   The original fd flags are restored; stderr stays in the existing ring. */
+int64_t cxproc_flush_timeout(int64_t h, int64_t timeout_ms);
+int64_t cxproc_close_stdin(int64_t h);
+int64_t cxproc_kill(int64_t h, int64_t sig);
+int64_t cxproc_wait(int64_t h, int64_t timeout_ms);
+int64_t cxproc_pid(int64_t h);
+int64_t cxproc_group_alive(int64_t pgid);
+int64_t cxproc_pid_alive(int64_t pid);              /* kill(pid, 0): 1 when it is there */
+int64_t cxproc_pid_signal(int64_t pid, int64_t sig); /* 0 or -1 */
+int64_t cxproc_stderr_count(int64_t h);
+int64_t cxproc_stderr_byte(int64_t h, int64_t i);
+int64_t cxproc_release(int64_t h);
+int64_t cxproc_now_ms(void);
+int64_t cxproc_wall_us(void);   /* the wall clock, microseconds since the epoch */
+#ifdef COAX_coax_v_u8_DEFINED
+#ifndef COAX_SCHEMA_coax_v_u8_31343a636f61782d632d747970652d7631343a76696577393a636f61785f765f7538323a3136313a38373a75696e74385f74
+#error "incompatible Coax C type coax_v_u8"
+#endif
+#else
+#define COAX_coax_v_u8_DEFINED
+#define COAX_SCHEMA_coax_v_u8_31343a636f61782d632d747970652d7631343a76696577393a636f61785f765f7538323a3136313a38373a75696e74385f74
+typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
+#endif
+/* This program's own executable, as an absolute path: its length, or -1 (or more than out holds). */
+int64_t cxproc_self_path(coax_v_u8 out);
+/* The local time as YYYYmmdd-HHMMSS (date +'%Y%m%d-%H%M%S'): 15, or -1. */
+int64_t cxproc_local_stamp(coax_v_u8 out);
+int64_t cxproc_uid(void);   /* id -u */
+int64_t cxproc_self_pid(void);   /* $$ */
+/* exec: this process becomes the handle's program; returns the error when that fails. */
+int64_t cxproc_exec(int64_t h);
+/* Binary stdout: up to out.count bytes, 0 when none came in time, CXPROC_EOF, CXPROC_ERROR. */
+int64_t cxproc_read_bytes(int64_t h, int64_t timeout_ms, coax_v_u8 out);
+/* /proc/PID/cmdline (arguments, NUL-ended): the byte count, or -1. */
+int64_t cxproc_cmdline(int64_t pid, coax_v_u8 out);
+/* Before spawn: stdout to /dev/null, stderr inherited, stdin a pipe. */
+int64_t cxproc_out_null(int64_t h);
+/* Non-blocking write to the child's stdin: the count taken (0 when full), -1 when broken. */
+int64_t cxproc_write_some(int64_t h, coax_v_u8 s);
+/* Before cxproc_spawn: the child's stdout and stderr go to /dev/null
+   instead of pipes (a browser that logs freely must never block on a pipe
+   nobody reads). stdin stays a pipe. */
+int64_t cxproc_quiet(int64_t h);
+/* Before cxproc_spawn: the child outlives this process, in a session of its own (stdin and stdout
+   /dev/null, stderr this process's unless quiet); release neither kills nor waits for it. */
+int64_t cxproc_detach(int64_t h);
+/* Sleeps ms milliseconds (0..86400000): 0, or -1. */
+int64_t cxproc_sleep_ms(int64_t ms);
+/* The host's own environment: cxproc_getenv_push the name's bytes, then
+   cxproc_getenv returns the value's length (or -1 when unset) and
+   cxproc_getenv_byte its bytes, until the next lookup. */
+int64_t cxproc_getenv_push(int64_t byte);
+int64_t cxproc_getenv(void);
+int64_t cxproc_getenv_byte(int64_t i);
+#ifdef __cplusplus
+}
+#endif
+#endif

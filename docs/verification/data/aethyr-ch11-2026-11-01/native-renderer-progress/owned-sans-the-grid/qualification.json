@@ -1,0 +1,21 @@
+{
+  "schema": "aethyr.render.owned-sans-native-frame.v1",
+  "status": "GPU validation pass; CPU numerical comparison separate",
+  "frame": {
+    "status": "rendered",
+    "profile": 1,
+    "resource": 1,
+    "width": 320,
+    "height": 180,
+    "format": "rgba16f",
+    "bytes": 460800,
+    "draw_commands": 2,
+    "device": "NVIDIA GeForce RTX 4080",
+    "subPixelPrecisionBits": 8,
+    "validation_errors": 0,
+    "validation_warnings": 0
+  },
+  "raw_sha256": "c9ca3d9ae571a757ff80e5463fc9793c9df569d12e14d3d9eab118772062ad4c",
+  "scope": "Same retained actual producer/resource inputs with only the authenticated owned-Sans package and checked trees substituted. No clock/camera reconstruction.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/owned-sans-the-grid"
+}

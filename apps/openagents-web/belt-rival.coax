@@ -120,7 +120,7 @@ rival_yard_step :: (s: [] Belt, days: f64) {
   s[0].rbuilding = RIVAL_SHIP_DAYS;
 }
 
-#test "rival: over two seeded years the Mars Union expands, mines, builds miners and contests our rocks, its ice within a band of ours" {
+#test "rival: over two seeded years the Mars Union expands, mines, builds miners and contests our rocks, its ice within a band of ours" #steps 190000000 {
   s: [1] Belt;
   belt_start(s[..]);
   s[0].w = 1440; s[0].h = 900; s[0].dpr = 1;

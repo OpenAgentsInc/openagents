@@ -1,0 +1,156 @@
+{
+  "schema": "aethyr.render.catalog-build.v1",
+  "status": "pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "compiler_source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "profiles": [
+    {
+      "profile": "haunted-house",
+      "entries": 7,
+      "modules": 2,
+      "receipt": "/tmp/aethyr-ch11-build-haunted-house-final-v2.json",
+      "receipt_sha256": "437ba5f70627ccd36fdd50fedc3873ec187d0dd548fc28c7c8814e91ccb38312",
+      "manifest_sha256": "48cece0ab5d1f09be60435fcc27b682c6682bdaf7d0c7d6d555cb452911c300a"
+    },
+    {
+      "profile": "the-grid",
+      "entries": 2,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-the-grid-final-v2.json",
+      "receipt_sha256": "e41558f62594b6353c9ba2b72c633a2d563ed6ec27c7035571acba3128fed7ce",
+      "manifest_sha256": "5496c375fe36d16acd07ea401fa6246c733b649bdbce68fdd708eb0bdfc10d75"
+    },
+    {
+      "profile": "everglade",
+      "entries": 12,
+      "modules": 3,
+      "receipt": "/tmp/aethyr-ch11-build-everglade-final-v2.json",
+      "receipt_sha256": "11342f76f3fb160df201f0a9d82a3645fda6e469e8d0362ec1479f2ae6882a77",
+      "manifest_sha256": "67914ed228c187721c38e8c81be0fd36a93b7776784423ca6e2e3b9da475a2d9"
+    },
+    {
+      "profile": "fairy-forest",
+      "entries": 7,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-fairy-forest-final-v2.json",
+      "receipt_sha256": "77d30323b5ff73234af9d9906394c6b8da93cb65b10b9fe6e7ebe0bd59eac046",
+      "manifest_sha256": "6da59720b96848d9130fefea1eb33c9f1529988bbd64b18adcec6856f00150e6"
+    },
+    {
+      "profile": "dead-gears",
+      "entries": 3,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-dead-gears-final-v2.json",
+      "receipt_sha256": "c043959dff265a519cb9d14768d554c2cfc2cfdf87c543578a4e17862a30bc7a",
+      "manifest_sha256": "74bbac88f5d13a1c91abff4f2fb95a4eb005ad7a887b58245de524b6b481da5a"
+    },
+    {
+      "profile": "belt-2200",
+      "entries": 2,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-belt-2200-final-v2.json",
+      "receipt_sha256": "3ec33bdae464d14440bd9b091d19cd2cfdd3fa7b75a3654309c8c4631427df55",
+      "manifest_sha256": "ddb0cc493508eec987e2a55a856e1fe7f184095f7383fcbe4508a6952c3fa133"
+    },
+    {
+      "profile": "orbit-league",
+      "entries": 2,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-orbit-league-final-v2.json",
+      "receipt_sha256": "a7971717097f0b8ef46f9d9b4a16a8374564367d614a70ee4320f0f12e9ab6a2",
+      "manifest_sha256": "121e3b4be4b65d58334904ff15ab131dc760b612d9c0fc395d9652c5f798ca0c"
+    },
+    {
+      "profile": "fixture",
+      "entries": 7,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-fixture-final-v2.json",
+      "receipt_sha256": "1d4201db4785e5bd3e4392e323b3abbe6bc10bd3641578346d6d4b374c73292e",
+      "manifest_sha256": "bb23f81ee6c492ebb73b37235642c9190b15068d278739186128696709bae0dd"
+    },
+    {
+      "profile": "waterlab",
+      "entries": 3,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-waterlab-final-v2.json",
+      "receipt_sha256": "1fce24e358da1250c8b5069691c9d8a72eea62775538806da96782c0a4194075",
+      "manifest_sha256": "d5e02d90d29f531331226275ee67c2ff0bccb2f97448a382eb0528756d87f1c9"
+    },
+    {
+      "profile": "drop",
+      "entries": 3,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-drop-final-v2.json",
+      "receipt_sha256": "06e537207d9356e4a7df7b748347e4b271e15c128d2b72a34a6de3d737cd1c67",
+      "manifest_sha256": "6438d55ecf3c3f342c8c4322cf931776ebbc259b7ea2811e69433b8ee88ac220"
+    },
+    {
+      "profile": "built",
+      "entries": 3,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-built-final-v2.json",
+      "receipt_sha256": "0d8e94aeccde002164936db2a5d63e37db53d208226b62ff5ac9e29127e0bd42",
+      "manifest_sha256": "78458be9446b66d21601b03617b6587431fc20344f76658afa2fd10ef58030ef"
+    },
+    {
+      "profile": "sandbox",
+      "entries": 7,
+      "modules": 2,
+      "receipt": "/tmp/aethyr-ch11-build-sandbox-final-v2.json",
+      "receipt_sha256": "83d5898ca6c42b1983d93da3a6a7f1e477d8d7bb76e07e3fcc330ecb924d6519",
+      "manifest_sha256": "af40dfea08a0f49b40c94c40ec461147bc991c09fe86ddea257548dd08751395"
+    },
+    {
+      "profile": "ice-cream-man",
+      "entries": 3,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-ice-cream-man-final-v2.json",
+      "receipt_sha256": "0df7501527ff191aba8b6c02fe46926792d80cc2b2384cc084909f159e1bf63d",
+      "manifest_sha256": "4eb52122c3a95290e90bb322c44217884cae040cfe0716a60ffc2f3a16169c7e"
+    },
+    {
+      "profile": "hecates-cemetery",
+      "entries": 7,
+      "modules": 3,
+      "receipt": "/tmp/aethyr-ch11-build-hecates-cemetery-final-v2.json",
+      "receipt_sha256": "f255b41ab20e4af50871541b81e8ef229c17369b7da9def09828c05dffc7813f",
+      "manifest_sha256": "c1c28c895dd2fe6d742cabdfbd5f8be4de8dc807214733f489269935f8dee489"
+    },
+    {
+      "profile": "hold-the-stair",
+      "entries": 2,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-hold-the-stair-final-v2.json",
+      "receipt_sha256": "d6d332a4dd6c36365e7c75d04141311cee3a596fb7c751c39f8816222deea791",
+      "manifest_sha256": "170d4bbd99f04d875e1390737d377ef2fe67306d28319cbe7a3f3ea0bd7fa1e5"
+    },
+    {
+      "profile": "watchtower",
+      "entries": 2,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-watchtower-final-v2.json",
+      "receipt_sha256": "6bb1783a27d1fcb2afa468727d50f17c17084c6c6765d6da018be9fb5e7b21ed",
+      "manifest_sha256": "6ada90e96c42754c7206086529b2c2fdb5d91b786c04e7f9c0386ca55cf39250"
+    },
+    {
+      "profile": "garden",
+      "entries": 3,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-garden-final-v2.json",
+      "receipt_sha256": "d056ac9ac7f2b7f3da31d37920ee7a4eef74be3f4eadef4aee8ca8f698f05210",
+      "manifest_sha256": "3cfd3b2416fb8009683ebd54ce11914485e51c61f84bfbb9a895b1899235f069"
+    },
+    {
+      "profile": "galaxy",
+      "entries": 2,
+      "modules": 1,
+      "receipt": "/tmp/aethyr-ch11-build-galaxy-final-v2.json",
+      "receipt_sha256": "d0abe177bf9cf5884aae6bb69ffe6e716cebd1810d1918b71f4b853c0565bf60",
+      "manifest_sha256": "6725496f8fcd450e10a6d50f4de8b812f408ac5e932aa6535f1a56c4ab652ae3"
+    }
+  ],
+  "profile_count": 18,
+  "pipeline_count": 77,
+  "module_count": 24,
+  "scope": "All18 fresh source-bound packages and independent inventory checks. Actual image/host execution remains separate."
+}

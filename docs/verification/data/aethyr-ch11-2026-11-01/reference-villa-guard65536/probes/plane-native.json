@@ -1,0 +1,89 @@
+{
+  "subPixelPrecisionBits": 8,
+  "rgba": [
+    [
+      0.40701404213905334,
+      0.4617944359779358,
+      1,
+      1
+    ],
+    [
+      0.40701404213905334,
+      0.4617944359779358,
+      1,
+      1
+    ],
+    [
+      0.40701404213905334,
+      0.4617944359779358,
+      1,
+      1
+    ],
+    [
+      0.40698960423469543,
+      0.46177834272384644,
+      1,
+      1
+    ],
+    [
+      0.4069651961326599,
+      0.46176227927207947,
+      1,
+      1
+    ],
+    [
+      0.4069651961326599,
+      0.46176227927207947,
+      1,
+      1
+    ],
+    [
+      0.40701404213905334,
+      0.4359681308269501,
+      1.1449816226959229,
+      1
+    ],
+    [
+      0.40701404213905334,
+      0.4359681308269501,
+      1.1449816226959229,
+      1
+    ],
+    [
+      0.40701404213905334,
+      0.4359681308269501,
+      1.1449816226959229,
+      1
+    ],
+    [
+      0.40698960423469543,
+      0.4359588325023651,
+      1.1450008153915405,
+      1
+    ],
+    [
+      0.4069651961326599,
+      0.43594953417778015,
+      1.1450201272964478,
+      1
+    ],
+    [
+      0.4069651961326599,
+      0.43594953417778015,
+      1.1450201272964478,
+      1
+    ]
+  ],
+  "validation_errors": 0,
+  "validation_warnings": 0,
+  "source_sha256": {
+    "/tmp/aethyr-ch11-native-depth-plane/depth-plane.c": "139b0d8d4244d894b18922b1ef1c43d0f07da2c88848d29441d3e042ee45082d",
+    "/tmp/aethyr-ch11-native-depth-plane/depth-plane.spv": "a15d1f0955a24d7af68971eebe37d33dce949a83b9109902cd7af5d8034d9c6a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vks.c": "1c535649cf3f6109974b39f182aa90c3d2c2206d379527e9171ae121654751fa",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vks.h": "7acf90e709323c4737c89574b886da638748eed2be0229da289d1c0794281c69",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vkc.c": "9b60bcf80801b0932a82e3f623281c65269f6a7b55c62ae6901a70649065b13a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vkc.h": "93c64a4b34d6bb2ec3308729ec09455a868d793f0bd596c87404f0543a48c2cc"
+  },
+  "shader_source_sha256": "3d4c38c84a2a798c4847e506c2fc72ebcd1eaf2dd17d920ef6e593ef1ce7de7d",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980"
+}

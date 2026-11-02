@@ -1,0 +1,33 @@
+control (()=>{globalThis.heldAsset=coaxial.renderAssets().find(a=>a.kind==="layers");globalThis.he
+control coaxial.reloadEngine()
+control heldParts.every(a=>coaxial.renderAssets().includes(a))
+control globalThis.coaxialReleaseAsset()
+control coaxialClipStep(1,Infinity)
+control heldParts.every(a=>a.done)
+control coaxialClipStep(1,Infinity)
+control heldParts.every(a=>a.done)
+control coaxialClipStep(1,Infinity)
+control heldParts.every(a=>a.done)
+control coaxialClipStep(1,Infinity)
+control heldParts.every(a=>a.done)
+control (()=>{globalThis.retainedLayer=heldParts.find(a=>a.kind==="layers")?.texture;return {done:
+control coaxial.reloadEngine()
+control coaxialClipStep(1,Infinity)
+control coaxial.renderSettled()
+control ({same:heldParts.every(a=>coaxial.renderAssets().includes(a)),done:heldParts.every(a=>a.do
+{
+  "captured": true,
+  "sha256": "bd2a6326e315b1335d6c3270f038032c948e05e0e9b213a049a7066988bd9388",
+  "draws": 10,
+  "hud": 13098,
+  "render": {
+    "submitted": true,
+    "readiness": 2,
+    "refusal": null,
+    "captureArmed": true,
+    "observed": true,
+    "probed": true
+  },
+  "body": "Fixture Realm\n\nFixture Realm",
+  "exceptions": []
+}

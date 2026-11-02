@@ -1,0 +1,56 @@
+{
+  "schema": "aethyr.render.ring8-webgpu-primitive.v1",
+  "status": "pass",
+  "cases": 728,
+  "channels": 2912,
+  "comparison": "Every expected nonzero f32 word must match exactly; signed zeros compare numerically. Exact seam/pole equalities are separately checked within actual GPU outputs.",
+  "device": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "seams": [
+    {
+      "row": 0,
+      "first": 0,
+      "last": 43,
+      "all_selectors_bit_exact": true
+    },
+    {
+      "row": 1,
+      "first": 48,
+      "last": 91,
+      "all_selectors_bit_exact": true
+    },
+    {
+      "row": 2,
+      "first": 96,
+      "last": 139,
+      "all_selectors_bit_exact": true
+    },
+    {
+      "row": 3,
+      "first": 144,
+      "last": 187,
+      "all_selectors_bit_exact": true
+    },
+    {
+      "row": 4,
+      "first": 192,
+      "last": 235,
+      "all_selectors_bit_exact": true
+    },
+    {
+      "row": 5,
+      "first": 197,
+      "last": 236,
+      "all_selectors_bit_exact": true
+    }
+  ],
+  "source_changes": [],
+  "shader_messages": [],
+  "validation_errors": [],
+  "readback_observer_repair": "One mapped ArrayBuffer is shared by float/word views; original duplicate getMappedRange failure/driver preserved. This is separate from the probe-only aggregate-select repair.",
+  "receipt_sha256": "1a63910ae6927fc725515bcc47d1b052a0b52ff5dd2d184e07278ee703483884"
+}

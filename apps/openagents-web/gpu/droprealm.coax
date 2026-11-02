@@ -1,6 +1,8 @@
 // droprealm's shaders, the source of apps/openagents-web/droprealm.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (droprealm.module,
 // droprealm.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/sampling.coax";
+#load "../../../aethyr/render/noise.coax";
 #load "../../../verse/gpu/wgsl.coax";
 
 // A first realm's three passes (droprealm.coax): the night and the floor
@@ -70,8 +72,11 @@ droprealm_panels :: (p:V2,under:V3,u:[]f32)->V3 {
   }
   return c;
 }
+#test "droprealm_hash live lattice uses the portable integer noise profile" {
+  #assert f32_bits(droprealm_hash(v2(1,2)))==0x3f6013da;
+}
 droprealm_hash :: (p:V2)->f32 {
-  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+  return render_noise2(p.x,p.y);
 }
 // Stars: one at most per cell of 3 CSS pixels' grid, a few of them brighter, twinkling slowly.
 droprealm_stars :: (p:V2,u:[]f32)->f32 {
@@ -110,7 +115,7 @@ droprealm_bg_fs :: (pos:V4,u:[]f32)->V4 {
   hit:V3=wg_add_f3f3(v3(u[28],u[29],u[30]),wg_mul_f3f(ray,fmin(t,1000.0f32)));
   r:f32=wg_length2(v2(hit.x,hit.z));
   w2:V2=wg_max_f2f2(wg_fwidth_f2(v2(hit.x,hit.z)),v2(0.0001f32,0.0001f32));
-  wr:f32=fmax(gpu_fwidth(r/2.0f32)*2.0f32,0.0001f32);
+  wr:f32=fmax(gpu_fwidth_fine(r/2.0f32)*2.0f32,0.0001f32);
   g:V2=wg_div_f2f2(wg_abs_f2(wg_sub_f2f(wg_fract_f2(wg_add_f2f(v2(hit.x,hit.z),0.5f32)),0.5f32)),w2);
   grid:f32=1.0f32-fmin(fmin(g.x,g.y),1.0f32);
   rings:f32=1.0f32-fmin((abs(fract((r/2.0f32)+0.5f32)-0.5f32)*2.0f32)/wr,1.0f32);
@@ -149,9 +154,9 @@ droprealm_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Drop
   return o;
 }
 droprealm_scene_fs :: (s:DroprealmS,u:[]f32,sheets:Tex2DArray,sheet:Sampler)->V4 {
-  tex:V4=gpu_sample_layer(sheets,sheet,s.uv,cast,trunc(s32)(s.slice));
+  tex:V4=render_sample_layer8(sheets,sheet,s.uv,cast,trunc(s32)(s.slice));
   if (tex.w<0.35f32) {
-    gpu_discard();
+    gpu_demote_helper();
   }
   n:V3=wg_normalize3(s.normal);
   key:f32=fmax(0.0f32,wg_dot3(n,wg_normalize3(v3(-0.4f32,0.8f32,0.45f32))));
@@ -205,7 +210,7 @@ wg_mul_ff3 :: (a:f32,b:V3)->V3 {return v3(a*b.x,a*b.y,a*b.z);}
 wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
 wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
 wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
-wg_fwidth_f2 :: (p0:V2)->V2 {return v2(gpu_fwidth(p0.x),gpu_fwidth(p0.y));}
+wg_fwidth_f2 :: (p0:V2)->V2 {return v2(gpu_fwidth_fine(p0.x),gpu_fwidth_fine(p0.y));}
 wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
 wg_sub_f2f :: (a:V2,b:f32)->V2 {return v2(a.x-b,a.y-b);}
 wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}

@@ -1,0 +1,13 @@
+ok   #test The Grid's frames fit its declared budget (1 case, 150808165 steps, 14352 ms)
+        own steps  share   with calls     calls  procedure
+         49165459  32.6%     49165459     62489  lit  apps/openagents-web/newland.coax:266
+         20037144  13.3%     86889150     87512  seg  apps/openagents-web/newland.coax:425
+         13452817   8.9%     13452817    708043  dot3  apps/openagents-web/newland.coax:395
+          8531681   5.7%     87209500         9  floor_grid  apps/openagents-web/newland.coax:1174
+          7910665   5.2%      7910665     72860  on_plot  apps/openagents-web/newland.coax:459
+          7817348   5.2%     22208375    177667  spot  apps/openagents-web/newland.coax:413
+          6348600   4.2%      8464800    352700  fv_sub  verse/figure.coax:134
+          3615738   2.4%      3869925       297  draw_sans  apps/openagents-web/font.coax:442
+     ... 150 more procedures
+1 of 114 checks (--only 'The Grid's frames fit its declared budget'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

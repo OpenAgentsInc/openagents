@@ -1,0 +1,4 @@
+#load "../texture-codec.coax";
+render_texture_native_texel :: (format:RenderTexelFormat,bytes:[]u8,offset:int)->RenderTexelResult #export_c {
+ return render_texel_decode(format,bytes,offset);
+}

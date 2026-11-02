@@ -1,0 +1,282 @@
+// Shader package builder. Run from the repository root:
+//   coax/web/tool.sh aethyr/render/build.coax PROFILE OUT_DIR [--coax FILE]
+// The shared catalog and build-policy own admission. This adapter runs the
+// compiler and writes content-addressed products, then atomically publishes
+// render.json. Failed builds leave the previous manifest usable.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+#load "build-policy.coax";
+#load "interface.coax";
+#load "catalog.coax";
+#load "bindings.coax";
+#load "passes.coax";
+#load "media-profile.coax";
+#load "package.coax";
+#load "reference-tree.coax";
+
+RB_FILE :: 4194304;
+RB_PACKAGE :: 262144;
+RB_DEADLINE_MS :: 830000;
+RenderBuildProduct :: struct {ok:bool;name:[96]u8;name_count:int;hash:[64]u8;}
+RenderBuildInput :: struct {path:[FS_PATH_MAX]u8;path_count:int;hash:[64]u8;}
+RenderBuildInputs :: struct {count:int;rows:[256]RenderBuildInput;}
+
+// Only effects and serialization live here. All admitted fields are the
+// compiler's observations, checked against compiled Coax declarations.
+rb_run :: (compiler:string,argv:[]string,deadline:int,out:[]u8,err:[]u8)->ProcRun {
+  left:=proc_left(deadline,proc_now_ms());
+  if left==0 {return ProcRun.{started=PROC_ERROR,timed_out=true};}
+  r:=proc_run(argv,left,out,err);
+  if r.started!=0 || r.status!=0 || r.timed_out || r.cut {
+    tool_errln("aethyr render build: compiler command failed or exceeded its output/time bound");
+    tool_err(cast(string)err[0..<r.err_n]);
+  }
+  return r;
+}
+rb_ok :: (r:ProcRun)->bool {return r.started==0 && r.status==0 && !r.timed_out && !r.cut;}
+rb_inputs :: (inputs:[]RenderBuildInputs,compiler:string,file:string,temp:string,deadline:int)->bool {
+  // Shader entries deliberately declare neither a native main nor C exports.
+  // A dependency-only carrier lets the normal compiler own their load closure;
+  // its one empty marker is never emitted, served or included as a source input.
+  cwd:[FS_PATH_MAX]u8;source_path:[FS_PATH_MAX]u8;carrier_path:[FS_PATH_MAX]u8;
+  root:=fs_cwd(cwd[..]);source:=fs_join(root,file,source_path[..]);carrier:=fs_join(temp,"deps.coax",carrier_path[..]);
+  text:[8192]u8;writer:[1]Jo;jo_start(writer[..],text[..]);jo_put(writer[..],"#load ");jo_quoted(writer[..],source);
+  jo_put(writer[..],";\nrb_dependency_marker :: () #export_c {}\n");
+  if writer[0].bad || !fs_write(carrier,jo_text(writer[..])) {return false;}
+  argv:=[4]string.[compiler,"deps",carrier,"--library"];stdout:[65536]u8;stderr:[65536]u8;
+  run:=rb_run(compiler,argv[..],deadline,stdout[..],stderr[..]);if !rb_ok(run) {return false;}
+  doc:[1]Jv;nodes:[1024]JvNode;
+  if !jv_parse(doc[..],cast(string)stdout[0..<run.out_n],nodes[..]) {return false;}
+  d:=doc[0];
+  if jv_kind(d,0)!=JV_OBJECT || jv_int(d,jv_get(d,0,"schema_version"),-1)!=1 {return false;}
+  bytes:[RB_FILE]u8;
+  for key:[2]string.["sources","descriptors"] {
+    array:=jv_get(d,0,key);if jv_kind(d,array)!=JV_ARRAY {return false;}
+    for i:0..<jv_len(d,array) {
+      path:[FS_PATH_MAX]u8;n:=jv_str(d,jv_at(d,array,i),path[..]);if n<1 {return false;}
+      // deps canonicalizes the entry's path (on macOS /var may become
+      // /private/var). Its first source is the dependency-only carrier.
+      if key=="sources" && i==0 {
+        if fs_base(cast(string)path[0..<n])!="deps.coax" {return false;}
+        continue;
+      }
+      seen:=false;
+      for k:0..<inputs[0].count {
+        old:=inputs[0].rows[k];if cast(string)old.path[0..<old.path_count]==cast(string)path[0..<n] {seen=true;}
+      }
+      if seen {continue;}
+      if inputs[0].count==256 {return false;}
+      size:=fs_read(cast(string)path[0..<n],bytes[..]);if size<0 {return false;}
+      row:=RenderBuildInput.{path=path,path_count=n};
+      if !S_hex(S_hash(cast(string)bytes[0..<size]),row.hash[..]) {return false;}
+      inputs[0].rows[inputs[0].count]=row;inputs[0].count+=1;
+    }
+  }
+  return true;
+}
+rb_inputs_unchanged :: (inputs:[]RenderBuildInputs)->bool {
+  bytes:[RB_FILE]u8;hash:[64]u8;
+  for i:0..<inputs[0].count {
+    row:=inputs[0].rows[i];size:=fs_read(cast(string)row.path[0..<row.path_count],bytes[..]);
+    if size<0 || !S_hex(S_hash(cast(string)bytes[0..<size]),hash[..]) || cast(string)hash[..]!=cast(string)row.hash[..] {
+      tool_err("aethyr render build: source changed: ");tool_errln(cast(string)row.path[0..<row.path_count]);return false;
+    }
+  }
+  return true;
+}
+rb_label :: (path:string,root:string)->string {
+  if path.count>root.count && path[0..<root.count]==root && path[root.count]=='/' {return path[root.count+1..<path.count];}
+  return path;
+}
+rb_cached :: (outdir:string,profile:int,compiler_hash:string,inputs:[]RenderBuildInputs)->bool {
+  path:[FS_PATH_MAX]u8;manifest:[RB_PACKAGE]u8;n:=fs_read(fs_join(outdir,"render.json",path[..]),manifest[..]);if n<1 {return false;}
+  json:=cast(string)manifest[0..<n];entries:[14]RenderPackageEntry;p:=render_package_parse(json,entries[..]);
+  if render_package_admit(p,profile,RenderDeviceCapabilities.{backend=RenderBackend.webgpu,helper_enabled=true})!=RenderPackageStatus.ok {return false;}
+  nodes:[16384]JvNode;doc:[1]Jv;if !jv_parse(doc[..],json,nodes[..]) {return false;}d:=doc[0];
+  if rpkg_string(d,0,"compiler_sha256")!=compiler_hash {return false;}
+  sources:=jv_get(d,0,"source_inputs");if jv_kind(d,sources)!=JV_ARRAY || jv_len(d,sources)!=inputs[0].count {return false;}
+  cwd:[FS_PATH_MAX]u8;root:=fs_cwd(cwd[..]);
+  for i:0..<inputs[0].count {
+    row:=inputs[0].rows[i];at:=jv_at(d,sources,i);
+    if rpkg_string(d,at,"path")!=rb_label(cast(string)row.path[0..<row.path_count],root) || rpkg_string(d,at,"sha256")!=cast(string)row.hash[..] {return false;}
+  }
+  bytes:[RENDER_PACKAGE_SHADER]u8;
+  for set:0..<3 {if p.modules[set].present {
+    size:=fs_read(fs_join(outdir,p.modules[set].wgsl_file,path[..]),bytes[..]);
+    if size<0 || render_package_module_bytes(p,set,bytes[0..<size])!=RenderPackageStatus.ok {return false;}
+  }}
+  for i:0..<14 {if p.entries[i].present {
+    size:=fs_read(fs_join(outdir,p.entries[i].spirv_file,path[..]),bytes[..]);
+    if size<0 || render_package_spirv_bytes(p,i,bytes[0..<size])!=RenderPackageStatus.ok {return false;}
+    size=fs_read(fs_join(outdir,p.entries[i].tree_file,path[..]),bytes[..]);
+    if size<0 || render_package_tree_bytes(p,i,bytes[0..<size])!=RenderPackageStatus.ok {return false;}
+  }}
+  return true;
+}
+rb_product :: (outdir:string,prefix:string,extension:string,bytes:string)->RenderBuildProduct {
+  p:RenderBuildProduct;
+  if !S_hex(S_hash(bytes),p.hash[..]) {return p;}
+  n:[1]Jo;jo_start(n[..],p.name[..]);jo_put(n[..],prefix);jo_put(n[..],"-");
+  jo_put(n[..],cast(string)p.hash[..]);jo_put(n[..],extension);
+  path:[FS_PATH_MAX]u8;
+  if n[0].bad || !fs_write(fs_join(outdir,jo_text(n[..]),path[..]),bytes) {return p;}
+  p.name_count=n[0].n;p.ok=true;return p;
+}
+rb_product_fields :: (o:[]Jo,p:RenderBuildProduct,key:string,hashkey:string) {
+  q:=p;jo_key(o,key);jo_str(o,cast(string)q.name[0..<q.name_count]);jo_key(o,hashkey);jo_str(o,cast(string)q.hash[..]);
+}
+rb_entry :: (profile:int,index:int)->RenderEntry {
+  if index<13 {return render_catalog_entry(profile,cast(RenderPassId)index);}
+  m:=render_media_entry();
+  return RenderEntry.{valid=render_catalog(profile).features.media,source=m.source,vertex=m.vertex,
+    fragment=m.fragment,wgsl_vertex=m.wgsl_vertex,wgsl_fragment=m.wgsl_fragment,binding_set=m.binding_set};
+}
+rb_bindings :: (profile:int,set:int,into:[]RenderBinding)->int {
+  n:=ifx set==2 then render_media_binding_count() else render_catalog_binding_count(profile,set);
+  for i:0..<n {into[i]=ifx set==2 then render_media_binding(i) else render_catalog_binding(profile,set,i);}
+  return n;
+}
+rb_uses :: (profile:int,index:int,into:[]RenderUse)->int {
+  n:=ifx index==13 then render_media_use_count() else render_catalog_use_count(profile,cast(RenderPassId)index);
+  for i:0..<n {into[i]=ifx index==13 then render_media_use(i) else render_catalog_use(profile,cast(RenderPassId)index,i);}
+  return n;
+}
+rb_module :: (compiler:string,profile:int,set:int,temp:string,outdir:string,deadline:int)->RenderBuildProduct {
+  entries:[14]RenderEntry;n:=0;
+  for i:0..<14 {e:=rb_entry(profile,i);if e.valid && e.binding_set==set {entries[n]=e;n+=1;}}
+  m:=render_build_module(entries[0..<n]);if !m.ok {tool_errln("aethyr render build: inconsistent module catalog");return RenderBuildProduct.{};}
+  bindings:[48]RenderBinding;bn:=rb_bindings(profile,set,bindings[..]);text:[8192]u8;
+  tn:=render_build_bindings(bindings[0..<bn],text[..]);if tn<0 {return RenderBuildProduct.{};}
+  bp:[FS_PATH_MAX]u8;wp:[FS_PATH_MAX]u8;
+  binding_file:=fs_join(temp,"module.bindings",bp[..]);wgsl_file:=fs_join(temp,"module.wgsl",wp[..]);
+  if !fs_write(binding_file,cast(string)text[0..<tn]) {return RenderBuildProduct.{};}
+  vb:[2048]u8;fb:[2048]u8;vo:[1]Jo;fo:[1]Jo;jo_start(vo[..],vb[..]);jo_start(fo[..],fb[..]);
+  for i:0..<m.vertex_count {if i>0 {jo_put(vo[..],",");}jo_put(vo[..],m.vertices[i]);}
+  for i:0..<m.fragment_count {if i>0 {jo_put(fo[..],",");}jo_put(fo[..],m.fragments[i]);}
+  if vo[0].bad || fo[0].bad {return RenderBuildProduct.{};}
+  argv:=[13]string.[compiler,"wgsl",m.source,"--vertices",jo_text(vo[..]),"--fragments",jo_text(fo[..]),"--bindings",binding_file,"--strip",m.strip,"-o",wgsl_file];
+  stdout:[65536]u8;stderr:[65536]u8;
+  if !rb_ok(rb_run(compiler,argv[..],deadline,stdout[..],stderr[..])) {return RenderBuildProduct.{};}
+  bytes:[RB_FILE]u8;count:=fs_read(wgsl_file,bytes[..]);if !render_package_shader_size(count) {tool_errln("aethyr render build: missing or oversized WGSL");return RenderBuildProduct.{};}
+  prefix:=[3]string.["module-0","module-1","media"][set];
+  return rb_product(outdir,prefix,".wgsl",cast(string)bytes[0..<count]);
+}
+rb_pipeline :: (o:[]Jo,compiler:string,profile:int,index:int,temp:string,outdir:string,deadline:int)->bool {
+  e:=rb_entry(profile,index);sp:[FS_PATH_MAX]u8;spirv_file:=fs_join(temp,"pipeline.spv",sp[..]);
+  argv:=[9]string.[compiler,"spirv",e.source,"--vertex",e.vertex,"--fragment",e.fragment,"-o",spirv_file];
+  stdout:[65536]u8;stderr:[65536]u8;run:=rb_run(compiler,argv[..],deadline,stdout[..],stderr[..]);
+  if !rb_ok(run) {return false;}
+  r:=render_build_reflection(cast(string)stderr[0..<run.err_n]);
+  if !r.ok {tool_errln("aethyr render build: malformed compiler reflection");return false;}
+  b:[48]RenderBinding;u:[32]RenderUse;bn:=rb_bindings(profile,e.binding_set,b[..]);un:=rb_uses(profile,index,u[..]);
+  if render_emission_admit(r.schema,b[0..<bn],u[0..<un],r.uses[0..<r.use_count])!=RenderEmissionStatus.ok {
+    tool_errln("aethyr render build: shader resource reflection differs from the catalog");return false;
+  }
+  if !render_interface_admit(profile,index,r) {tool_errln("aethyr render build: shader interface differs from the catalog pass");return false;}
+  bytes:[RB_FILE]u8;count:=fs_read(spirv_file,bytes[..]);
+  if !render_package_shader_size(count) || count%4!=0 {tool_errln("aethyr render build: missing or oversized SPIRV");return false;}
+  words:[RB_FILE/4]u32;
+  for i:0..<count/4 {at:=i*4;words[i]=cast(u32)bytes[at]|(cast(u32)bytes[at+1]<<8)|(cast(u32)bytes[at+2]<<16)|(cast(u32)bytes[at+3]<<24);}
+  info:=render_spirv_info(words[0..<count/4]);
+  req:=RenderShaderRequirements.{reflection_schema=r.schema,tree_version=r.tree_version,derivatives=r.derivatives,control=r.control,requires_int64=info.native_int64};
+  dev:=RenderDeviceCapabilities.{backend=RenderBackend.webgpu,helper_enabled=true};
+  if !info.ok || render_capabilities_admit(req,dev,true)!=RenderCapabilityStatus.ok {tool_errln("aethyr render build: shader lacks the portable fine/helper profile");return false;}
+  prefix:[32]u8;po:[1]Jo;jo_start(po[..],prefix[..]);jo_put(po[..],"pipeline-");jo_int(po[..],index);
+  product:=rb_product(outdir,jo_text(po[..]),".spv",cast(string)bytes[0..<count]);if !product.ok {return false;}
+  tp:[FS_PATH_MAX]u8;tree_file:=fs_join(temp,"pipeline.tree",tp[..]);
+  tree_args:=[10]string.[compiler,"spirv",e.source,"--vertex",e.vertex,"--fragment",e.fragment,"--tree","-o",tree_file];
+  tree_stdout:[65536]u8;tree_stderr:[65536]u8;
+  // Keep the reflection's borrowed stderr names alive while this second
+  // command emits the CPU tree. Its text goes to a file, not a bounded line.
+  if !rb_ok(rb_run(compiler,tree_args[..],deadline,tree_stdout[..],tree_stderr[..])) {return false;}
+  tree_count:=fs_read(tree_file,bytes[..]);
+  if !render_package_shader_size(tree_count) {tool_errln("aethyr render build: missing or oversized checked-tree product");return false;}
+  decoded:=render_tree_decode(bytes[0..<tree_count],words[..]);
+  if decoded.status!=RenderTreeStatus.ok || decoded.count<1 || decoded.version!=r.tree_version {tool_errln("aethyr render build: invalid checked-tree product");return false;}
+  tree_product:=rb_product(outdir,jo_text(po[..]),".tree",cast(string)bytes[0..<tree_count]);if !tree_product.ok {return false;}
+  jo_obj(o);jo_key(o,"entry_index");jo_int(o,index);jo_key(o,"binding_set");jo_int(o,e.binding_set);
+  jo_key(o,"vertex");jo_str(o,e.vertex);jo_key(o,"fragment");jo_str(o,e.fragment);
+  jo_key(o,"wgsl_vertex");jo_str(o,e.wgsl_vertex);jo_key(o,"wgsl_fragment");jo_str(o,e.wgsl_fragment);
+  rb_product_fields(o,product,"spirv_file","spirv_sha256");
+  rb_product_fields(o,tree_product,"tree_file","tree_sha256");
+  jo_key(o,"reflection_schema");jo_int(o,r.schema);jo_key(o,"tree_version");jo_int(o,r.tree_version);
+  jo_key(o,"derivatives");jo_int(o,r.derivatives);jo_key(o,"control");jo_int(o,r.control);jo_key(o,"native_int64");jo_bool(o,info.native_int64);
+  jo_key(o,"uses");jo_arr(o);
+  for i:0..<r.use_count {x:=r.uses[i];jo_obj(o);
+    jo_key(o,"name");jo_str(o,x.name);jo_key(o,"slot");jo_int(o,x.slot);jo_key(o,"native_kind");jo_int(o,x.native_kind);
+    jo_key(o,"shape");jo_int(o,x.shape);jo_key(o,"stride");jo_int(o,x.stride);jo_key(o,"stages");jo_int(o,x.stages);jo_end(o);
+  }jo_end(o);
+  jo_key(o,"vertex_stride");jo_int(o,r.vertex_stride);jo_key(o,"attributes");jo_arr(o);
+  for i:0..<r.attribute_count {x:=r.attributes[i];jo_obj(o);jo_key(o,"location");jo_int(o,x.location);
+    jo_key(o,"scalar");jo_int(o,x.scalar);jo_key(o,"width");jo_int(o,x.width);jo_key(o,"offset");jo_int(o,x.offset);jo_end(o);
+  }jo_end(o);
+  jo_key(o,"fragment_targets");jo_int(o,r.fragment_targets);jo_key(o,"fragment_depth");jo_bool(o,r.fragment_depth);jo_end(o);
+  return !o[0].bad;
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;
+  if !args_load(args[..]) {return 2;}
+  if args_count(args[..])==1 && args_at(args[..],0)=="--profiles" {
+    for i:0..<RENDER_CATALOG_COUNT {print("%\n",render_catalog(i).slug);}return 0;
+  }
+  if args_count(args[..])==1 && args_at(args[..],0)=="--profile-table" {
+    for i:0..<RENDER_CATALOG_COUNT {print("% %\n",i,render_catalog(i).slug);}return 0;
+  }
+  if args_count(args[..])!=2 && args_count(args[..])!=4 {
+    tool_errln("usage: aethyr/render/build.coax PROFILE OUT_DIR [--coax FILE]");return 2;
+  }
+  profile:=render_catalog_find(args_at(args[..],0));outdir:=args_at(args[..],1);
+  if profile<0 || (args_count(args[..])==4 && args_at(args[..],2)!="--coax") {tool_errln("aethyr render build: unknown profile or option");return 2;}
+  compiler:=args_value(args[..],"--coax","coax/bin/coax");deadline:=proc_now_ms()+RB_DEADLINE_MS;
+  if !fs_mkdir(outdir) {tool_errln("aethyr render build: cannot create output directory");return 1;}
+  tb:[FS_PATH_MAX]u8;temp:=fs_temp("aethyr-render-",tb[..]);if temp.count==0 {return 1;}
+  bytes:[RB_FILE]u8;cn:=fs_read(compiler,bytes[..]);compiler_hash:[64]u8;
+  if cn<1 || !S_hex(S_hash(cast(string)bytes[0..<cn]),compiler_hash[..]) {tool_errln("aethyr render build: compiler exceeds the4MiB input bound");removed:=fs_remove(temp);return 1;}
+  inputs:[1]RenderBuildInputs;
+  if !rb_inputs(inputs[..],compiler,"aethyr/render/build.coax",temp,deadline) {tool_errln("aethyr render build: cannot snapshot builder inputs");removed:=fs_remove(temp);return 1;}
+  for set:0..<3 {
+    source:string;
+    for i:0..<14 {e:=rb_entry(profile,i);if e.valid && e.binding_set==set {source=e.source;}}
+    if source.count>0 && !rb_inputs(inputs[..],compiler,source,temp,deadline) {tool_errln("aethyr render build: cannot snapshot shader inputs");removed:=fs_remove(temp);return 1;}
+  }
+  if rb_cached(outdir,profile,cast(string)compiler_hash[..],inputs[..]) {
+    after:=fs_read(compiler,bytes[..]);again:[64]u8;
+    if after<1 || !S_hex(S_hash(cast(string)bytes[0..<after]),again[..]) || cast(string)again[..]!=cast(string)compiler_hash[..] || !rb_inputs_unchanged(inputs[..]) {
+      tool_errln("aethyr render build: an input changed while checking cached products");removed:=fs_remove(temp);return 1;
+    }
+    print("aethyr render build: reused %/render.json\n",outdir);removed:=fs_remove(temp);return 0;
+  }
+  package:[RB_PACKAGE]u8;o:[1]Jo;jo_start(o[..],package[..]);a:=render_catalog(profile);
+  jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.package.v1");jo_key(o[..],"profile_index");jo_int(o[..],profile);
+  jo_key(o[..],"slug");jo_str(o[..],a.slug);jo_key(o[..],"app");jo_str(o[..],a.app);
+  jo_key(o[..],"compiler_sha256");jo_str(o[..],cast(string)compiler_hash[..]);
+  cwd:[FS_PATH_MAX]u8;root:=fs_cwd(cwd[..]);
+  jo_key(o[..],"source_inputs");jo_arr(o[..]);
+  for i:0..<inputs[0].count {row:=inputs[0].rows[i];path:=cast(string)row.path[0..<row.path_count];label:=rb_label(path,root);
+    jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],label);jo_key(o[..],"sha256");jo_str(o[..],cast(string)row.hash[..]);jo_end(o[..]);
+  }jo_end(o[..]);
+  jo_key(o[..],"modules");jo_arr(o[..]);
+  for set:0..<3 {
+    n:=ifx set==2 then (ifx a.features.media then 3 else -1) else render_catalog_binding_count(profile,set);
+    if n<0 {continue;}
+    p:=rb_module(compiler,profile,set,temp,outdir,deadline);
+    if !p.ok {removed:=fs_remove(temp);return 1;}
+    jo_obj(o[..]);jo_key(o[..],"binding_set");jo_int(o[..],set);rb_product_fields(o[..],p,"wgsl_file","wgsl_sha256");jo_end(o[..]);
+  }jo_end(o[..]);jo_key(o[..],"entries");jo_arr(o[..]);
+  for i:0..<14 {if rb_entry(profile,i).valid {
+    print("aethyr render build: % entry %\n",a.slug,i);
+    if !rb_pipeline(o[..],compiler,profile,i,temp,outdir,deadline) {removed:=fs_remove(temp);return 1;}
+  }}jo_end(o[..]);jo_end(o[..]);
+  // A changed compiler cannot qualify the products it did not produce.
+  after:=fs_read(compiler,bytes[..]);again:[64]u8;
+  if after<1 || !S_hex(S_hash(cast(string)bytes[0..<after]),again[..]) || cast(string)again[..]!=cast(string)compiler_hash[..] || o[0].bad || !rb_inputs_unchanged(inputs[..]) {
+    tool_errln("aethyr render build: input changed or package exceeded its capacity");removed:=fs_remove(temp);return 1;
+  }
+  pending:=rb_product(outdir,"render-pending",".json",jo_text(o[..]));pp:[FS_PATH_MAX]u8;mp:[FS_PATH_MAX]u8;
+  ok:=pending.ok && fs_rename(fs_join(outdir,cast(string)pending.name[0..<pending.name_count],pp[..]),fs_join(outdir,"render.json",mp[..]));
+  removed:=fs_remove(temp);if !ok {tool_errln("aethyr render build: cannot publish manifest");return 1;}
+  print("aethyr render build: %/render.json\n",outdir);return 0;
+}

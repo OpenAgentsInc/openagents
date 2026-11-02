@@ -1,0 +1,10 @@
+{
+  "scope": "Exact retained authority/native/fixture receipts. Each receipt keeps its own source closure; later test-source composition and added fixture modes do not relabel earlier executions.",
+  "files": {
+    "aethyr-ch11-host-uploads-native.json": "0abdb5a094aa38f9e885d3bb9ca1c035ce2ede5a8dd26dc6c717d73d55061869",
+    "artifacts.tar.gz": "93b6c76a0ca468302eec05a5b34ab9720d982df174ff2e93b541ef2bc5b76e60",
+    "aethyr-ch11-host-uploads-inline-mutate.log": "82baf095a5df74d514967d34436ae74bcc9f8c8a069172f08d91b5a28c3e4152",
+    "aethyr/render/host-uploads.coax": "6c01b6ec542a9a9e2e0575297d05fe5ad0c38af9c5dcf06217fc059027f6405e",
+    "aethyr/render/tests/check_host_uploads.py": "cfb84643a18ed0c75475dbe89a6398d0ae5b80b49e0a1a1ac2c149c81026f0d0"
+  }
+}

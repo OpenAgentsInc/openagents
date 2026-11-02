@@ -1,0 +1,1 @@
+{"status":"passed","fault":"","waiting":{"present":true,"ready":false,"decoded":0},"replacement":{"failed":true,"error":"Coax refused shader digest"},"after":{"decoded":1,"closed":1,"allocations":0,"textures":0,"ready":false,"hasTexture":false,"current":0,"binding":{"stopped":true,"coherent":false}}}

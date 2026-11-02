@@ -1,0 +1,216 @@
+{
+  "schema": "aethyr.render.pipeline.native.v1",
+  "status": "pass",
+  "compiler_version": "coax0 0.47.0",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "compiler_recorded_source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "compiler_current_source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "compiler_current_sources_match": true,
+  "source_sha256": {
+    "aethyr/render/active-lanes.coax": "4f4723b318c9e0a15eec337d936a2be56c9cf081cc6c0a1f3d583cbb2efeaa20",
+    "aethyr/render/fragment-layout.coax": "8ba891b8041e4eb3d063d353f682035982dde1d06a9101c779a56bdfcc6d28b5",
+    "aethyr/render/passes.coax": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462",
+    "aethyr/render/raster-profile.coax": "4f788c64149ab1763dd35f7fc20ece72ec326fc909dd820cb3d0b90efce4de34",
+    "aethyr/render/reference-depth.coax": "960c4b5af8e6b4e10aea7d7f02c0de29aebdcae8c10c2ef2c8f2d0992316acd7",
+    "aethyr/render/reference-io.coax": "27f946d2a7a41a228dcc63353b07b93742fe92d8b1f35907ddab289adafb31c5",
+    "aethyr/render/reference-ir.coax": "1fba92f895be5a7af06fd9de9fd49bcccc3aefb3022d23d5e844b574a34a0f69",
+    "aethyr/render/reference-pipeline.coax": "1a8d2984f5f2cd1be4846f4b65be7567de220aacada6ddc15e2028fdc7b92313",
+    "aethyr/render/reference-quad.coax": "d5e462db357b672231ef6a43456d069f2a1fd2eb5d1c16b2e0619efd6a7c71d7",
+    "aethyr/render/reference-raster.coax": "5e4c81c461f258ebbb548bd1b980105fa13ac53be9ad392a01ed99477de5a4a4",
+    "aethyr/render/reference-work.coax": "badf88ead3993607520906500a0a6eaec767ca4ddce46163dea47895359a570d",
+    "aethyr/render/tests/active-lanes-checks.coax": "6d476b2d3ea0822e585ccf824a55f8d4d9c6098f5669e99fc58e1e6e4618b4bd",
+    "aethyr/render/tests/check_pipeline.py": "9732e9e0e0aa20116a6eab3ac9ba097bbaabf0000756bb2ca4daa35ba918cbf9",
+    "aethyr/render/tests/fragment-layout-checks.coax": "c298be106bcb41e0acd2a487e0203b9aebeb349c69d508c97e51c79edee53189",
+    "aethyr/render/tests/pipeline-fixtures.coax": "ca0c0dc1aa30f7d69bd0b04e488db7ac06d7aa0f233f730ccac87d14ef7d321f",
+    "aethyr/render/tests/pipeline-native.c": "a99e1bf203ab91b1908f0cdf4b04ec921027fe21137fbb7dbc14e9d29526588f",
+    "aethyr/render/tests/pipeline-native.coax": "c4f26ffcdb68262106c4b330d005e9972558b93a24e6402de9423bbec74c5727",
+    "aethyr/render/tests/pipeline-shader-deps.coax": "d8bdb0252262ca6cb7ef7e4dda8ba6887edddfba09baf13ded8862175a7a9225",
+    "aethyr/render/tests/pipeline-shader.coax": "bfcfd30d05176dcff26ec6491849d8d91250636712cfea6602a03bdd74c3bf36",
+    "aethyr/render/tests/raster-profile-checks.coax": "de42dc7209596db18ededd3283212ee35209805cc6cc607628ea566098030ef4",
+    "aethyr/render/tests/reference-io-checks.coax": "28d586e8494a6cdbfbb6fbcb743fe3040a1e91f1837dc366de2298a30d65fd06",
+    "aethyr/render/tests/reference-ir-admission-checks.coax": "59f1af6f93f6f788ec2488564f79c196c1c2a30f6d96e4112f9fa5f68299183c",
+    "aethyr/render/tests/reference-ir-arena-checks.coax": "3f4f05c15c6c5e1b2465d949b0b301a4ee3c186a7fe504d53cebefb0dd344a05",
+    "aethyr/render/tests/reference-ir-array-query-checks.coax": "635f6b2935f7de8203893baa6070d9d0d180d8240e1842a4b8ef4b8489a9ad71",
+    "aethyr/render/tests/reference-ir-call-checks.coax": "16d346de1fdd611b0ccbb3568cd57449c387b2dec26b785b89e966f9a355feb2",
+    "aethyr/render/tests/reference-ir-checks.coax": "8e36fe7a77c2f89aba04c6ec01db14fb87b7b2287445a5bcea2eb4a20fef624c",
+    "aethyr/render/tests/reference-ir-control-checks.coax": "62943cbce98fc5dc6e2ff0ffde4a4259a5e8022125d3cad926b1448624e1c0e7",
+    "aethyr/render/tests/reference-ir-convert-checks.coax": "0a3e5b6e3c63119ae245415a741765ca9ac9005b2c02cb15eb1c92094dbb3ce1",
+    "aethyr/render/tests/reference-ir-flow-extra-checks.coax": "eb22ef6b5285baa289a818ba5f58eea218cf47ee1cb9aacdcdc85cb1ac0cd3df",
+    "aethyr/render/tests/reference-ir-gpu-checks.coax": "93c4a10c7ce0532b41a0bd65bcbdc023d3ceb2423817f52bea99d3d3a374a067",
+    "aethyr/render/tests/reference-ir-place-checks.coax": "5146dcf8c658bb619079137ae98b97894a1f7b0111281b210558de50104b1ace",
+    "aethyr/render/tests/reference-ir-prepare-budget-checks.coax": "61fd20890435f1f115bafa8833a200855ea7eceb00dc7c79f9a30b6194afe85f",
+    "aethyr/render/tests/reference-ir-private-checks.coax": "9911abb49dd2c01aa80fa5aaba87918051caa00d70cbb7e2217b140d53702cf7",
+    "aethyr/render/tests/reference-ir-run-checks.coax": "2015374549fb19613bfd39201c7e5cb7d8e4d347c41926faf0a7fad51adc7495",
+    "aethyr/render/tests/reference-ir-scalar-checks.coax": "b9731ee555862fd1781592eb33e827b77d7c83bf67e8efe9ef6e988fd8c8bd68",
+    "aethyr/render/tests/reference-ir-shape-checks.coax": "bfecb32a2cfa64d63d7be4196e3ba42a9304c886ea2931774f8dd494cbc177eb",
+    "aethyr/render/tests/reference-ir-statement-checks.coax": "68f925da506e1c3b38047f5b365fcd7ef96f026e069d538c1359d69b340990e5",
+    "aethyr/render/tests/reference-ir-storage-checks.coax": "ff02af3dd0ec8aadf13132e9285ab9a8520908ade91560a429668386f9da8a88",
+    "aethyr/render/tests/reference-ir-texture-extra-checks.coax": "b06040334e7ede82589bb45a15c30b36efd43a4ab664e0b718a91fb46f0c656b",
+    "aethyr/render/tests/reference-ir-transport-extra-checks.coax": "395d55cda3abfc84bc25a83b798606b4eed7f0b6bbb0c12a94d4ede55349d70d",
+    "aethyr/render/tests/reference-ir-type-checks.coax": "a07475338a29c850b4ae114b79dfe28f20b0c208a5bb6248b8778d4e50b31c34",
+    "aethyr/render/tests/reference-ir-value-extra-checks.coax": "8d7389a69454736d419433f8284ee0be5756f2b0338479c4fcedd15a3052d9bb",
+    "aethyr/render/tests/reference-pipeline-caster-tree.coax": "26056b24b12009749c6988bf208b5dd206904f603189a957c5811b81bb09eb52",
+    "aethyr/render/tests/reference-pipeline-checks.coax": "e2dbb9c6db5b6c8359af71f5d749a26d18cbd87846fd4f6ed0752a67ffd5b5c0",
+    "aethyr/render/tests/reference-pipeline-guard-profile-checks.coax": "e93ad49de04e06c736b892365a382256ef0f329ced1b172aefda78b8cfbcce36",
+    "aethyr/render/tests/reference-pipeline-masked-aux-checks.coax": "fe890bd460f5b1bb1e3a212d7116adea556b3e1252f689ea69acf380cac01565",
+    "aethyr/render/tests/reference-pipeline-raster-profile-checks.coax": "3f7334aae3d8d610be0cbb74bf496ffb674a9cf7fbd96fc683a856393c2ced67",
+    "aethyr/render/tests/reference-pipeline-trees.coax": "a07078d26a66bd72af1e00428bf79dc325e4e4ca26f497c30fd6884b34995c29",
+    "aethyr/render/tests/reference-pipeline-vertex-only-checks.coax": "0c0a71ff4dbbd9c5f7bdaae48c4bcb67a7b4c66db4a4d0f5023c0eccbee97cd8",
+    "aethyr/render/tests/reference-pipeline-work-checks.coax": "734ccd247716e51df06a879b7ecca9bc9175e7d9fa74c6d2a1f5ee5d63695516",
+    "aethyr/render/tests/reference-quad-checks.coax": "4d8d4d75129a69aeed49bcc2b9d1330690f337dc434c418971bac6fa404d9d1e",
+    "aethyr/render/tests/reference-raster-checks.coax": "af3327de2a889d5c073cd96a3cfe6dd65235b16c4a5bd43b36447acaf055fbeb",
+    "aethyr/render/tests/reference-raster-guard-checks.coax": "06b4b58d62ae8b9d88bf239c43da47dba0d1858433f74a1511fcd1d63d719534",
+    "aethyr/render/tests/reference-raster-subpixel-checks.coax": "f92b21ca4d53b38085fdbcd6a1f9f13bea530607f000187d9995cf7568c58e8a",
+    "aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "verse/gpu/shader.coax": "9688942c90063b6a8f162d79f19332dde17dbb4d7cbeb8885ee13d899c0e1813"
+  },
+  "header_fields_checked": {
+    "RQColor": [
+      "r",
+      "g",
+      "b",
+      "a"
+    ],
+    "RRPixel": [
+      "depth",
+      "colour",
+      "aux"
+    ],
+    "RRPassResult": [
+      "status",
+      "steps",
+      "triangles",
+      "quads",
+      "fragments",
+      "written"
+    ]
+  },
+  "trees": {
+    "plain": {
+      "vertex": "rp_vertex",
+      "fragment": "rp_fragment",
+      "version": 2,
+      "words": 256,
+      "sha256": "5f312932b7d57515857df300e46dec35d3d3762584a5e39cb4b6cdfe5e7a662b"
+    },
+    "helper": {
+      "vertex": "rp_vertex",
+      "fragment": "rp_helper_fragment",
+      "version": 3,
+      "words": 280,
+      "sha256": "5c999f34251b5cc8ae1c95e3b9702f7bd86462a23c060b3bee36a8faf80f4e0d"
+    },
+    "depth": {
+      "vertex": "rp_vertex",
+      "fragment": "rp_depth_fragment",
+      "version": 2,
+      "words": 271,
+      "sha256": "8b46db400595e04b0d617b5ab5793907ffd6152f2d1f3ceeb8150f66d2640e4c"
+    },
+    "depth_last": {
+      "vertex": "rp_vertex",
+      "fragment": "rp_depth_last_fragment",
+      "version": 2,
+      "words": 271,
+      "sha256": "58806a82b40c737c9bd8ffb8204c8538fdb8979ee748f0b896b5b92a0d2449f4"
+    },
+    "texture": {
+      "vertex": "rp_vertex",
+      "fragment": "rp_texture_fragment",
+      "version": 2,
+      "words": 250,
+      "sha256": "06968497657003c0a25df7969b66a2b2362e8640f91e7d6cf2fc800145342429"
+    },
+    "vertex_only": {
+      "vertex": "rp_vertex",
+      "fragment": "",
+      "version": 2,
+      "words": 142,
+      "sha256": "5801c0054d3e824876dd2fd08ca7aaabaf301c989ce4f9b77b8ba252b2d2a885"
+    },
+    "void": {
+      "vertex": "rp_vertex",
+      "fragment": "rp_void_fragment",
+      "version": 3,
+      "words": 174,
+      "sha256": "c32b840f78891cee965ed6dea703ddb6e882dcecd9a5335a5b35d6b4664e08c6"
+    },
+    "masked_aux": {
+      "vertex": "rp_noattrs_vertex",
+      "fragment": "rp_position_fragment",
+      "version": 2,
+      "words": 219,
+      "sha256": "b9b4ed455a5958ee2fcc999a453bfc8f04cd3ba43018cf79e0a70dd3fc414e60"
+    }
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "scenarios": 19,
+      "pixel_words_observed": 2736,
+      "producer_faults_detected": {
+        "status": 0,
+        "work": 6,
+        "publication": 0,
+        "coverage": 0,
+        "colour": 0,
+        "depth": 0,
+        "aux": 0,
+        "vertex_colour": 15,
+        "vertex_depth": 15,
+        "void_depth": 16,
+        "masked_aux": 17
+      },
+      "transcript_sha256": "26f7242f15dcf5a9b28d74f5db030c950710c8169cacb19b3aa70aa3f1ffd2ef",
+      "generated_c_sha256": "a47e3bd5746c9a7805df438d03fb7ba7c448e5f34ac308888f4b6de77220c502",
+      "generated_header_sha256": "f00f172bb9a7966dfd3dd35191b51935366755835682c81a7eb67c1410c63e9c",
+      "executable_sha256": "33bfd65f95dd00623dae84e8655188e165460ae965d63872f24ad02a7d2dca69"
+    },
+    {
+      "mode": "release",
+      "scenarios": 19,
+      "pixel_words_observed": 2736,
+      "producer_faults_detected": {
+        "status": 0,
+        "work": 6,
+        "publication": 0,
+        "coverage": 0,
+        "colour": 0,
+        "depth": 0,
+        "aux": 0,
+        "vertex_colour": 15,
+        "vertex_depth": 15,
+        "void_depth": 16,
+        "masked_aux": 17
+      },
+      "transcript_sha256": "26f7242f15dcf5a9b28d74f5db030c950710c8169cacb19b3aa70aa3f1ffd2ef",
+      "generated_c_sha256": "5aa3468bc9c6795a48b77af0b9b68632c08f8f50d98676cbb6309e2035fa666e",
+      "generated_header_sha256": "f00f172bb9a7966dfd3dd35191b51935366755835682c81a7eb67c1410c63e9c",
+      "executable_sha256": "02442d54910fdb0f91b5d5d1d59209a17012caa25060e009b22fd4161a28a6f9"
+    },
+    {
+      "mode": "sanitized",
+      "scenarios": 19,
+      "pixel_words_observed": 2736,
+      "producer_faults_detected": {
+        "status": 0,
+        "work": 6,
+        "publication": 0,
+        "coverage": 0,
+        "colour": 0,
+        "depth": 0,
+        "aux": 0,
+        "vertex_colour": 15,
+        "vertex_depth": 15,
+        "void_depth": 16,
+        "masked_aux": 17
+      },
+      "transcript_sha256": "26f7242f15dcf5a9b28d74f5db030c950710c8169cacb19b3aa70aa3f1ffd2ef",
+      "generated_c_sha256": "a47e3bd5746c9a7805df438d03fb7ba7c448e5f34ac308888f4b6de77220c502",
+      "generated_header_sha256": "f00f172bb9a7966dfd3dd35191b51935366755835682c81a7eb67c1410c63e9c",
+      "executable_sha256": "766bbca201688ab8359bdfaa4111dccc1e454b46d299bfa2f31e2c57d8e35609"
+    }
+  ],
+  "elapsed_seconds": 18.5,
+  "scope": "Synthetic normal-C conformance: actual checked VS/FS trees, indexed/nonindexed/instanced rasterization, clipping/helpers/fine derivatives/demotion, depth-first/last explicit outputs/MRT, vertex-only biased depth, present void-FS demotion and omitted masked auxiliary output, resource mapping and atomic refusal. All nine scalar words in every pixel and the unused tail are observed. Not full-realm GPU image qualification."
+}

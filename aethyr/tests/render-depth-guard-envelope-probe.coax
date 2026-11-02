@@ -1,0 +1,11 @@
+// Distinct guard-envelope diagnostic. Reuse the binary-exact inside vertices
+// and depth/value carriers; place onlyC at an authored far screenY.
+#load "render-depth-plane-probe.coax";
+render_depth_guard_probe_vs :: (vertex:u32,instance:u32,u:[]f32)->RenderDepthPlaneProbe {
+ dge_v:=render_depth_plane_probe_vs(vertex,instance,u);if vertex==2 {dge_v.position.y=(1-u[2]/32)*dge_v.position.w;}return dge_v;
+}
+#test "guard envelope changes only the far vertex position" {
+ dge_u:=[4]f32.[0,0,65536,0];dge_a:=render_depth_guard_probe_vs(0,0,dge_u[..]);dge_c:=render_depth_guard_probe_vs(2,0,dge_u[..]);
+ #assert dge_a.position.x== -0.875 && dge_a.position.y==0.875;
+ #assert dge_c.position.y== -2047 && dge_c.position.z==0.375 && dge_c.position.w==1 && dge_c.value==0.5;
+}

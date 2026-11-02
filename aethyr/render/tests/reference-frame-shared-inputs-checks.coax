@@ -1,0 +1,13 @@
+#test "reference buffer adapter consumes shared admission including unrelated duplicate names" {
+ words:=[4]u32.[11,22,33,0];files:=[3]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="s0.bin",words=words[..],observed=RenderBufferObserved.{source_capacity=12,logical_payload=12,initialized_highwater=12,gpu_bytes=16,zero_initialized=true}},RenderHostNamedBuffer.{name="unused"},RenderHostNamedBuffer.{name="unused"}];empty:[]u32;
+ q:=rf_resolve_buffer(16,0,1,files[0..<1],empty,empty);#assert q.status==RQStatus.ok && q.buffer.words.count==4 && q.buffer.count==4 && q.buffer.stride==4 && q.buffer.words[2]==33;
+ #assert rf_resolve_buffer(16,0,1,files[..],empty,empty).status==RQStatus.resource;
+ files[1].name="";#assert rf_resolve_buffer(16,0,1,files[0..<2],empty,empty).status==RQStatus.resource;
+ #assert rf_resolve_buffer(16,0,47,files[0..<1],empty,empty).status==RQStatus.resource;
+}
+#test "reference texture adapter consumes shared whole-observation name admission" {
+ mip:=[1]RQMip.[RQMip.{width=1,height=1}];pixels:=[1]RQColor.[RQColor.{a=1}];files:=[3]RFNamedTexture.[RFNamedTexture.{name="layers",texture=RQTexture.{levels=mip[..],layers=1,texels=pixels[..]}},RFNamedTexture.{name="unused"},RFNamedTexture.{name="unused"}];
+ input:=RFInput.{profile=0,textures=files[..]};layout:=RFShaderLayout.{count=1};layout.bindings[0].resource=4;
+ buffers:[48]RQBuffer;textures:[48]RQTexture;samplers:[48]RQSampler;levels:[48]RQMip;images:[]RQColor;u:[]u32;
+ #assert rf_resources(input,5,layout,RenderOp.{},RFRequirements.{},images,u,u,buffers[..],textures[..],samplers[..],levels[..])==RQStatus.resource;
+}

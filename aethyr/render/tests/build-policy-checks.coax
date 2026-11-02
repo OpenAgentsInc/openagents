@@ -1,0 +1,3 @@
+// A check entry, not a shader or runtime export.
+#load "../build-policy.coax";
+main :: () {}

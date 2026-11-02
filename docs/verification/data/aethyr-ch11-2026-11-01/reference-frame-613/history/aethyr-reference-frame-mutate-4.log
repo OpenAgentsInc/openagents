@@ -1,0 +1,20 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/render/reference-frame.coax:129:125: mutant survived: the assignment was removed
+   partition:=rf_partition_words(work.words,nu,nh);uniforms:=partition.uniforms;hud:=partition.hud;running:=work;running.words=partition.arena;
+                                                                                                                              ^
+aethyr/render/reference-frame.coax:132:110: mutant survived: the assignment was removed
+   observed:=rf_buffer_observations(input.buffers,uniforms,named[..]);if observed.status!=RQStatus.ok {r.status=observed.status;return r;}
+                                                                                                               ^
+aethyr/render/reference-frame.coax:133:144: mutant survived: the assignment was removed
+   shared:=render_host_geometry_buffers(input.profile,named[0..<observed.count],geometry[..]);if shared.status!=RenderResourceStatus.ok {r.status=rf_resource_status(shared.status);return r;}
+                                                                                                                                                 ^
+aethyr/render/reference-frame.coax:144:42: mutant survived: the assignment was removed
+    if layout.status!=RQStatus.ok {r.status=layout.status;return r;}
+                                           ^
+aethyr/render/reference-frame.coax:160:108: mutant survived: 1 became 2
+     index:=cast(int)op.pass;prepared_program:=prepared[index];metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];tree:=shaders[prepared_program.source].tree;
+                                                                                                             ^
+aethyr/render/reference-frame.coax:160:111: mutant survived: 8192 became 8193
+     index:=cast(int)op.pass;prepared_program:=prepared[index];metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];tree:=shaders[prepared_program.source].tree;
+                                                                                                                ^
+620 mutants, 614 killed, 6 survived

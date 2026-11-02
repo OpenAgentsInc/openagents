@@ -1,0 +1,200 @@
+{
+  "schema": "aethyr.grid.capacity-field-growth.v1",
+  "scope": "Exact size arithmetic for ONLY the current320\u2192origin512 HOME_ISSUES/FOLD_ISSUES capacity edit, using retained C ABI element sizes. This is not a claim about all later upstream data/code changes or a replacement for measuring the final relinked artifact.",
+  "upstream_commit": "31944a2a34b20c06a1e4ef3d32379cfb45ad7f67",
+  "fold_type_body_unchanged": true,
+  "store_type_body_unchanged": true,
+  "fold_per_issue_fields": [
+    {
+      "field": "root",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "fields",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "revised",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "status",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "status_at",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "status_ev",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "kind",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "claimed",
+      "element": "Ref",
+      "element_bytes": 16
+    },
+    {
+      "field": "claimed_at",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "commit",
+      "element": "Ref",
+      "element_bytes": 16
+    },
+    {
+      "field": "plan",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "plan_by",
+      "element": "Ref",
+      "element_bytes": 16
+    },
+    {
+      "field": "note",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "alias",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "rank",
+      "element": "Ref",
+      "element_bytes": 16
+    },
+    {
+      "field": "steps",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "steps_done",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "note_from",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "note_cnt",
+      "element": "int",
+      "element_bytes": 8
+    },
+    {
+      "field": "slug",
+      "element": "Ref",
+      "element_bytes": 16
+    },
+    {
+      "field": "subject",
+      "element": "Ref",
+      "element_bytes": 16
+    },
+    {
+      "field": "size",
+      "element": "Ref",
+      "element_bytes": 16
+    },
+    {
+      "field": "parent",
+      "element": "Ref",
+      "element_bytes": 16
+    }
+  ],
+  "bytes_per_issue": 248,
+  "old_issues": 320,
+  "new_issues": 512,
+  "static_growth": {
+    "Fold": 47616,
+    "LfState.expected": 12288,
+    "total": 59904,
+    "Store": 0,
+    "LandState": 0
+  },
+  "retained_layouts": {
+    "int": 8,
+    "Ref": 16,
+    "HomeIssue": 144,
+    "Fold": 1930808,
+    "LfState": 13158152,
+    "Store": 11206712,
+    "LandState": 667752
+  },
+  "predicted_layouts": {
+    "Fold": 1978424,
+    "LfState": 13218056
+  },
+  "reachable_local_array_growth": [
+    {
+      "entry": "apps/openagents-web/newland-network.coax:hn_project",
+      "array": "issues",
+      "element_bytes": 144,
+      "growth_bytes": 27648
+    },
+    {
+      "entry": "apps/openagents-web/newland-network.coax:hn_project",
+      "array": "claim",
+      "element_bytes": 8,
+      "growth_bytes": 1536
+    },
+    {
+      "entry": "apps/openagents-web/newland-network.coax:hn_project",
+      "array": "done_rows",
+      "element_bytes": 8,
+      "growth_bytes": 1536
+    },
+    {
+      "entry": "apps/openagents-web/project-fold.coax:fold",
+      "array": "roots",
+      "element_bytes": 8,
+      "growth_bytes": 1536
+    }
+  ],
+  "local_growth_sum_upper_bound": 32256,
+  "static_alignment_note": "All issue arrays have8-byte element alignment; the64-byte ID expansion and all growth totals are multiples of8, so no extra struct padding is introduced.",
+  "predictions": [
+    {
+      "stack_bytes": 8388608,
+      "predicted_heap_base": 49691568,
+      "predicted_minimum_pages": 759,
+      "arena_bytes": 69610096,
+      "arena_pages": 1063,
+      "spare_to_64MiB": -2501232
+    },
+    {
+      "stack_bytes": 4194304,
+      "predicted_heap_base": 45497264,
+      "predicted_minimum_pages": 695,
+      "arena_bytes": 65415792,
+      "arena_pages": 999,
+      "spare_to_64MiB": 1693072
+    }
+  ],
+  "current_stack_conservative_bound": 1956816,
+  "capacity_growth_added_conservatively_to_stack": 1989072,
+  "hypothetical_4MiB_stack_slack_after_all_local_growth": 2205232,
+  "source_sha256": {
+    "current_project_fold": "aedefaa3e518466297855d68cd7d9277db8fefc11e75cc8e2408a38becefa112",
+    "upstream_project_fold": "196a90ac6051bdbf23b63d2859b3382048eb886c86dc007a81f5739fa0852054"
+  }
+}

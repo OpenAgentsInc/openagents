@@ -1,0 +1,40 @@
+{
+  "records": [
+    {
+      "shard": 1,
+      "args": [
+        "coax/bin/coax",
+        "mutate",
+        "aethyr/render/reference-frame.coax",
+        "--root-only",
+        "--library",
+        "--jobs",
+        "2",
+        "--shard",
+        "1/4"
+      ],
+      "pid": 66366,
+      "started": 526259.022699083,
+      "exit": 0
+    },
+    {
+      "shard": 2,
+      "args": [
+        "coax/bin/coax",
+        "mutate",
+        "aethyr/render/reference-frame.coax",
+        "--root-only",
+        "--library",
+        "--jobs",
+        "2",
+        "--shard",
+        "2/4"
+      ],
+      "pid": 66367,
+      "started": 526259.025964291,
+      "exit": 0
+    }
+  ],
+  "source_changes": [],
+  "elapsed": 490.2885231971741
+}

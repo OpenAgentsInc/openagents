@@ -1,0 +1,11 @@
+{
+  "scope": "Probe-only WGSL subset repair: aggregate ifx/select replaced with explicit typed variable and if assignment. Production direction/capsule code unchanged.",
+  "before_source_sha256": "e9a7260a5968413c2551e13189570f2c80f0eca36060aa785c2a66829a0e54cb",
+  "after_source_sha256": "d21dcee3cd8d540f9dde6f3e0f6c440d4e9ee70d1480b8f5121184da4d2cf3fe",
+  "diagnosis": "WGSLselect does not accept arbitrary structures; original SPIR-V and ordinary C observations remain historical.",
+  "diagnostic": "webgpu-compile-diagnostic.json",
+  "old_spirv_sha256": "9807428d3d1c319c87ea574a74611c0a75f98daac56a705645f33f3e0c6588ee",
+  "new_spirv_sha256": "e0480d5c654fa2291328a3f53cf6f6a0de0c78052e9c2d903ab536b9f601ef7a",
+  "spirv_byte_identical": false,
+  "wgsl_sha256": "df88e4e004da17ddd7894a3961dc1fb4736e085ae496476719b5d2708338ae86"
+}

@@ -1,0 +1,61 @@
+#forall "reference run rejects each independently short workspace before any candidate effect" rfr_fault:1..<9 {
+  rfr_guard:=RQColor.{r=71,g=72,b=73,a=74};rfr_out:[5]RQColor;for rfr_i:0..<5 {rfr_out[rfr_i]=rfr_guard;}
+  rfr_s:=rfg_frame_case(false,100000000,rfr_fault,rfr_out[..]);
+  #assert rfr_s.result.status==RQStatus.capacity && rfr_s.result.bad_op== -1 && rfr_s.result.bad_shader== -1 && rfr_s.result.pixel_steps==0 && rfr_s.result.shader_steps==0 && rfr_s.result.draws==0;
+  for rfr_i:0..<5 {#assert rfpx_same(rfr_out[rfr_i],rfr_guard);}
+}
+#forall "reference run preserves geometry and frame failure identities before preparing a shader" rfr_frame:bool {
+  rfr_guard:=RQColor.{r=81,g=82,b=83,a=84};rfr_out:[5]RQColor;for rfr_i:0..<5 {rfr_out[rfr_i]=rfr_guard;}
+  rfr_s:=rfg_frame_case(false,100000000,ifx rfr_frame then 10 else 9,rfr_out[..]);rfr_r:=rfr_s.result;
+  #assert rfr_r.status==RQStatus.resource && rfr_r.bad_op== -1 && rfr_r.bad_shader== -1 && rfr_r.pixel_steps==0 && rfr_r.shader_steps==0 && rfr_r.draws==0;
+  #assert rfr_r.geometry==(ifx rfr_frame then RenderGeometryStatus.ok else RenderGeometryStatus.bad_resources);
+  #assert rfr_r.frame==(ifx rfr_frame then RenderFrameStatus.bad_direct else RenderFrameStatus.ok);
+  for rfr_i:0..<5 {#assert rfpx_same(rfr_out[rfr_i],rfr_guard);}
+}
+#forall "reference run propagates invalid requests and loading without needing any executable workspace" rfr_variant:0..<3 {
+  rfr_input:=RFInput.{profile=15,counts=FrameCounts.{width=3,height=1,vertex_stride=16},ready=RenderReadiness.loading};
+  if rfr_variant==1 {rfr_input.profile= -1;}if rfr_variant==2 {rfr_input.counts.vertex_stride=15;}
+  rfr_shaders:[]RFShader;rfr_work:RFWorking;rfr_out:=[1]RQColor.[RQColor.{r=91,g=92,b=93,a=94}];
+  rfr_r:=rf_run(rfr_input,rfr_shaders,false,RenderTextureFormat.rgba16f,RFPolicy.{},rfr_work,rfr_out[..]);
+  #assert rfr_r.status==(ifx rfr_variant==0 then RQStatus.ok else RQStatus.resource) && rfr_r.loading==(rfr_variant==0);
+  #assert rfr_r.bad_op== -1 && rfr_r.bad_shader== -1 && rfr_r.pixel_steps==0 && rfr_r.shader_steps==0 && rfr_r.draws==0;
+  #assert rfpx_same(rfr_out[0],RQColor.{r=91,g=92,b=93,a=94});
+}
+#forall "reference run admits both exact work endpoints before loading and refuses each adjacent bound" rfr_variant:0..<8 {
+  rfr_policy:RFPolicy;
+  if rfr_variant==0 {rfr_policy.shader_work=0;}if rfr_variant==1 {rfr_policy.shader_work=100000001;}
+  if rfr_variant==2 {rfr_policy.pixel_work=0;}if rfr_variant==3 {rfr_policy.pixel_work=100000001;}
+  if rfr_variant==4 {rfr_policy.shader_work=1;}if rfr_variant==5 {rfr_policy.pixel_work=1;}
+  if rfr_variant==6 {rfr_policy.shader_work=100000000;}if rfr_variant==7 {rfr_policy.pixel_work=100000000;}
+  rfr_input:=RFInput.{profile=15,counts=FrameCounts.{width=1,height=1,vertex_stride=16},ready=RenderReadiness.loading};
+  rfr_shaders:[]RFShader;rfr_work:RFWorking;rfr_out:[]RQColor;
+  rfr_r:=rf_run(rfr_input,rfr_shaders,false,RenderTextureFormat.rgba16f,rfr_policy,rfr_work,rfr_out);
+  #assert rfr_r.status==(ifx rfr_variant>=4 then RQStatus.ok else RQStatus.resource) && rfr_r.loading==(rfr_variant>=4) && rfr_r.pixel_steps==0 && rfr_r.shader_steps==0;
+}
+#test "reference run uses the nonsquare screen product and publishes only those complete pixels" {
+  rfr_c:=FrameCounts.{width=3,height=1,vertex_stride=16};rfr_u:[60]f32;rfr_u[0]=3;rfr_u[1]=1;rfr_u[3]=1;rfr_u[4]=1;rfr_u[5]=1;rfr_u[6]=8;
+  rfr_bg:=RF_WATCH_BG;rfr_hud:=RF_WATCH_HUD;rfr_shaders:=[2]RFShader.[RFShader.{tree=rfr_bg[..]},RFShader.{index=12,tree=rfr_hud[..]}];
+  rfr_images:[3]RQColor;rfr_target:[3]RRPixel;rfr_scratch:[3]RRPixel;rfr_words:[65596]u32;rfr_meta:[114688]int;rfr_out:[3]RQColor;
+  rfr_work:=RFWorking.{images=rfr_images[..],target=rfr_target[..],scratch=rfr_scratch[..],words=rfr_words[..],meta=rfr_meta[..]};
+  rfr_r:=rf_run(RFInput.{profile=15,counts=rfr_c,uniforms=rfr_u[..]},rfr_shaders[..],false,RenderTextureFormat.rgba16f,RFPolicy.{},rfr_work,rfr_out[..]);
+  #assert rfr_r.status==RQStatus.ok && rfr_r.bad_op== -1 && rfr_r.written==3 && rfr_r.draws==1;
+  for rfr_i:0..<3 {#assert rfr_out[rfr_i].a==1 && rq_finite(rfr_out[rfr_i].r) && rq_finite(rfr_out[rfr_i].g) && rq_finite(rfr_out[rfr_i].b);}
+}
+#forall "reference run executes ordinary scene records and a real attribute HUD through the common draw path" rfr_hud:bool {
+  rfr_out:[5]RQColor;rfr_s:=rfg_frame_case(false,100000000,ifx rfr_hud then 12 else 11,rfr_out[..]);rfr_r:=rfr_s.result;
+  #assert rfr_r.status==RQStatus.ok && rfr_r.geometry==RenderGeometryStatus.ok && rfr_r.frame==RenderFrameStatus.ok && rfr_r.bad_op== -1;
+  if rfr_hud {
+    #assert rfr_r.draws==12 && rfr_r.pass_steps[12]>0 && rfr_r.pass_steps[5]==0;
+    for rfr_i:0..<4 {#assert rfpx_same(rfr_out[rfr_i],RQColor.{r=1.23828125,g=1.046875,b=1.1953125,a=1});}
+  }else{
+    #assert rfr_r.draws==10 && rfr_r.pass_steps[5]>0 && rfr_r.pass_steps[12]==0;
+    for rfr_i:0..<4 {#assert rfpx_same(rfr_out[rfr_i],RQColor.{r=1.71875,g=1.5625,b=1.5625,a=1});}
+  }
+}
+#forall "reference run refuses wrong attribute stride negative shader index and missing unused pipeline before graph effects" rfr_fault:13..<16 {
+  rfr_out:[5]RQColor;for rfr_i:0..<5 {rfr_out[rfr_i]=RQColor.{r=61,g=62,b=63,a=64};}
+  rfr_s:=rfg_frame_case(false,100000000,rfr_fault,rfr_out[..]);rfr_r:=rfr_s.result;
+  #assert rfr_r.status==RQStatus.resource && rfr_r.pixel_steps==0 && rfr_r.shader_steps==0 && rfr_r.bad_op== -1;
+  #assert rfr_r.bad_shader==(ifx rfr_fault==13 then 0 else ifx rfr_fault==14 then 1 else -1);
+  for rfr_i:0..<5 {#assert rfpx_same(rfr_out[rfr_i],RQColor.{r=61,g=62,b=63,a=64});}
+}

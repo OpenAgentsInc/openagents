@@ -169,7 +169,7 @@ stair_hash :: (s: [] Stair) -> u64 {
   return h;
 }
 
-#test "co-op: two clients given both seats' orders keep one game: the same hash, one purse, each other's defenders, and only your own to sell" {
+#test "co-op: two clients given both seats' orders keep one game: the same hash, one purse, each other's defenders, and only your own to sell" #steps 40000000 {
   a: [1] Stair; b: [1] Stair;
   stair_start(a[..]); stair_start(b[..]);
   a[0].seed = 7919; stair_reset(a[..]); coop_begin(a[..], 0);
@@ -225,7 +225,7 @@ coop_face :: (a: [] Stair, b: [] Stair) {
 }
 coop_say :: (s: [] Stair, t: string) { stair_message(s, SOCKET_KIND + 4 * s[0].lock[0].sock + SOCKET_FRAME, t); }
 
-#test "co-op over the relay: INVITE makes a room, the partner who joins gets the game, both play it in lockstep with each other's defenders, and a nudged client is mended" {
+#test "co-op over the relay: INVITE makes a room, the partner who joins gets the game, both play it in lockstep with each other's defenders, and a nudged client is mended" #steps 130000000 {
   a: [1] Stair; b: [1] Stair;
   stair_start(a[..]); stair_start(b[..]);
   stair_message(a[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair\n");

@@ -1,0 +1,32 @@
+{
+  "scope": "Explicit shader-product substitution: original actual producer counts, buffers, texture bytes and all raw observations retained. No producer time/camera reconstruction. Only package/tree paths change; physical-file paths are made absolute.",
+  "original_config": "/tmp/aethyr-ch11-galaxy-half-160/frame.config",
+  "original_config_sha256": "0ccb4f2435fb76a1d079d868a04e5c97f6d253c8b98fe06554a9c333d7f65c2c",
+  "derived_config_sha256": "72ab66b164983e6fca62cd363a0125d7e34636f5dc8659da6a42b9ead506bffe",
+  "package": "/tmp/aethyr-ch11-packages-owned-sans/galaxy/render.json",
+  "package_sha256": "cf50c65c72be07ea664fe3bad75f530709426eb02c7e57adc0d51eb1a59de0c0",
+  "unchanged_producer_resource_files": {
+    "/tmp/aethyr-ch11-galaxy-half-160/u.bin": "d5587d767be24f41607cb6c95a22eb4acfdab2fecb6f68c5129ecd630ed270b2",
+    "/tmp/aethyr-ch11-galaxy-half-160/hud.bin": "0e99ad362a71db634cbf83a1935334fefd97337a0c8470acb9f69c192025b337",
+    "/tmp/aethyr-ch11-galaxy-half-160/draws.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/aethyr-ch11-galaxy-half-160/indices.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/aethyr-ch11-galaxy-half-160/texture-0.bin": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6",
+    "/tmp/aethyr-ch11-galaxy-half-160/media.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "changed_shader_products": [
+    {
+      "entry": 0,
+      "old_tree": "/tmp/aethyr-ch11-packages-current/galaxy/pipeline-0-557f249313820731861b5143b0eb62211c826afbe8c6b124b3163c0463cd40c9.tree",
+      "new_tree": "/tmp/aethyr-ch11-packages-owned-sans/galaxy/pipeline-0-557f249313820731861b5143b0eb62211c826afbe8c6b124b3163c0463cd40c9.tree",
+      "new_tree_sha256": "557f249313820731861b5143b0eb62211c826afbe8c6b124b3163c0463cd40c9",
+      "spirv_sha256": "a4eec29bf81cada7a4c97fb16d540e3f2301be538dd725ba689ec0a1505db484"
+    },
+    {
+      "entry": 12,
+      "old_tree": "/tmp/aethyr-ch11-packages-current/galaxy/pipeline-12-c59452ea804639949079a2e5c9ff53e2294135ef21ff5471a7007cd7d3bd107c.tree",
+      "new_tree": "/tmp/aethyr-ch11-packages-owned-sans/galaxy/pipeline-12-23e566d0a0d92162cf026018e80991cd39393078f799fc8df9c1d9125a67dec6.tree",
+      "new_tree_sha256": "23e566d0a0d92162cf026018e80991cd39393078f799fc8df9c1d9125a67dec6",
+      "spirv_sha256": "32f3561f8ecfea0ab406c575dbf2d4b6e001f345158444b1bab0cea04abd6bf9"
+    }
+  ]
+}

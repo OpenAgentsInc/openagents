@@ -1,0 +1,9 @@
+ok   #test reference layout maps actual media uniform image and sampler names and stage roles (1 case, 69938 steps, 0 ms)
+ok   #test reference layout admits the real vertex-only caster and rejects both fragment-presence mismatches (1 case, 361208 steps, 3 ms)
+ok   #test reference layout propagates preparation and pipeline failures before mapping any resources (1 case, 76060 steps, 0 ms)
+ok   #forall reference layout refuses missing extra wrongly typed strided or single-stage catalog resources (5 cases, 145501 steps, 1 ms)
+ok   #forall reference layout observes independent image and sampler shape mismatches (2 cases, 103472 steps, 1 ms)
+ok   #forall reference layout admits exact four and256byte attribute extents and refuses260 (3 cases, 130817 steps, 1 ms)
+ok   #forall reference layout refuses odd total bytes and misaligned actual attribute fields after fresh preparation (2 cases, 397131 steps, 4 ms)
+7 of 333 checks (--only 'reference layout'), 7 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

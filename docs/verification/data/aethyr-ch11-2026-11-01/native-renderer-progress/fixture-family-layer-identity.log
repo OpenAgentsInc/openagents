@@ -1,0 +1,3 @@
+ok   #test Fixture Drop and Built use the same canonical immutable packed layer payload (1 case, 10302 steps, 0 ms)
+1 of 83 checks (--only 'Fixture Drop and Built'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

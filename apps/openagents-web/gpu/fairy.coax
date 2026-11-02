@@ -1,6 +1,7 @@
 // fairy's shaders, the source of apps/openagents-web/fairy.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (fairy.module,
 // fairy.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/noise.coax";
 #load "../../../verse/gpu/wgsl.coax";
 #load "../../../verse/style.coax";
 
@@ -105,8 +106,11 @@ fairy_ray :: (pos:V2,u:[]f32)->V3 {
   fy2:f32=wg_dot3(v3(u[12],u[13],u[14]),v3(u[12],u[13],u[14]));
   return wg_normalize3(wg_add_f3f3(wg_add_f3f3(v3(u[20],u[21],u[22]),wg_div_f3f(wg_mul_f3f(v3(u[8],u[9],u[10]),nx),fx2)),wg_div_f3f(wg_mul_f3f(v3(u[12],u[13],u[14]),ny),fy2)));
 }
+#test "fairy_hash live lattice uses the portable integer noise profile" {
+  #assert f32_bits(fairy_hash(v2(1,2)))==0x3f6013da;
+}
 fairy_hash :: (p:V2)->f32 {
-  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+  return render_noise2(p.x,p.y);
 }
 fairy_noise :: (p:V2)->f32 {
   i:V2=wg_floor_f2(p);
@@ -537,7 +541,7 @@ fairy_painted :: (c:V3,n:V3,world:V3,shadow:f32,character:bool,u:[]f32)->V3 {
 }
 fairy_scene_fs :: (s:FairyS,u:[]f32,heights:[]f32)->FairyLit {
   ground_aa:f32=fmax(wg_length2(wg_fwidth_f2(v2(s.world.x,s.world.z))),0.002f32); // derivatives first, while control flow is uniform
-  local_aa:f32=gpu_fwidth(s.local.y);
+  local_aa:f32=gpu_fwidth_fine(s.local.y);
   // the face's own normal (art-styles.md, Flat: facets): one flat tone a face, turned to the side the shape faces
   face_n:V3=wg_cross3(wg_dpdx_f3(s.world),wg_dpdy_f3(s.world));
   face_n=wg_normalize3(ifx wg_dot3(face_n,face_n)<1e-14f32 then v3(0.0f32,1.0f32,0.0f32) else face_n);
@@ -567,7 +571,7 @@ fairy_scene_fs :: (s:FairyS,u:[]f32,heights:[]f32)->FairyLit {
       p:U2=wg_mod_u2u(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),4);
       bayer:[16]f32=[16]f32.[0.0f32,8.0f32,2.0f32,10.0f32,12.0f32,4.0f32,14.0f32,6.0f32,3.0f32,11.0f32,1.0f32,9.0f32,15.0f32,7.0f32,13.0f32,5.0f32];
       if ((smoothstep(clear*0.8f32,clear,near)*16.0f32)<=(bayer[cast(int)add_wrap(mul_wrap(p.y,cast(u32)4),p.x)]+0.5f32)) {
-        gpu_discard();
+        gpu_demote_helper();
       }
     }
   }
@@ -599,7 +603,7 @@ fairy_scene_fs :: (s:FairyS,u:[]f32,heights:[]f32)->FairyLit {
     notch:f32=abs(f-0.5f32)*2.0f32; // 0 down a feather's middle, 1 at the seam between two
     half:f32=clampf((1.9f32*pow(along,0.6f32))*(1.0f32-along),0.0f32,1.0f32)*(1.0f32-((0.2f32*notch)*smoothstep(0.25f32,0.6f32,along)));
     if ((abs(q.x)>half)||(along>(1.0f32-(0.1f32*notch)))) {
-      gpu_discard();
+      gpu_demote_helper();
     }
     tips:f32=stepf(0.5f32+(0.16f32*notch),along);
     pale:V3=wg_mix_f3f3f(base,fairy_pal(FAIRY_P_LIGHT),0.7f32);
@@ -619,7 +623,7 @@ fairy_scene_fs :: (s:FairyS,u:[]f32,heights:[]f32)->FairyLit {
     white:f32=clampf(((smoothstep(0.5f32,0.85f32,bands)*0.8f32)+(smoothstep(0.6f32,0.9f32,streak)*0.5f32))+(smoothstep(-0.15f32,-0.5f32,q.y)*0.7f32),0.0f32,1.0f32);
     cell:U2=wg_mod_u2u(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),2);
     if ((white<0.25f32)&&((add_wrap(cell.x,cell.y)%2)==0)) {
-      gpu_discard();
+      gpu_demote_helper();
     }
     base=wg_mix_f3f3f(fairy_pal(FAIRY_P_WATER),fairy_pal(FAIRY_P_LIGHT),stepf(0.5f32,white));
     glow=0.0f32;
@@ -1089,9 +1093,9 @@ wg_neg_f2 :: (a:V2)->V2 {return v2(-a.x,-a.y);}
 wg_sqrt_f3 :: (p0:V3)->V3 {return v3(sqrt(p0.x),sqrt(p0.y),sqrt(p0.z));}
 wg_max_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(fmax(p0.x,p1.x),fmax(p0.y,p1.y),fmax(p0.z,p1.z));}
 wg_make_f3_f2f :: (p0:V2,p1:f32)->V3 {return v3(p0.x,p0.y,p1);}
-wg_fwidth_f2 :: (p0:V2)->V2 {return v2(gpu_fwidth(p0.x),gpu_fwidth(p0.y));}
-wg_dpdx_f3 :: (p0:V3)->V3 {return v3(gpu_dpdx(p0.x),gpu_dpdx(p0.y),gpu_dpdx(p0.z));}
-wg_dpdy_f3 :: (p0:V3)->V3 {return v3(gpu_dpdy(p0.x),gpu_dpdy(p0.y),gpu_dpdy(p0.z));}
+wg_fwidth_f2 :: (p0:V2)->V2 {return v2(gpu_fwidth_fine(p0.x),gpu_fwidth_fine(p0.y));}
+wg_dpdx_f3 :: (p0:V3)->V3 {return v3(gpu_dpdx_fine(p0.x),gpu_dpdx_fine(p0.y),gpu_dpdx_fine(p0.z));}
+wg_dpdy_f3 :: (p0:V3)->V3 {return v3(gpu_dpdy_fine(p0.x),gpu_dpdy_fine(p0.y),gpu_dpdy_fine(p0.z));}
 wg_neg_f3 :: (a:V3)->V3 {return v3(-a.x,-a.y,-a.z);}
 wg_cvt_u2f2 :: (p:V2)->U2 {return u2(wg_u32_f(p.x),wg_u32_f(p.y));}
 wg_mod_u2u :: (a:U2,b:u32)->U2 {return u2(a.x%b,a.y%b);}

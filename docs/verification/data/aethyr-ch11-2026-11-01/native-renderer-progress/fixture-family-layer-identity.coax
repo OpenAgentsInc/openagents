@@ -1,0 +1,5 @@
+#load "../asset-profile.coax";
+#test "Fixture Drop and Built use the same canonical immutable packed layer payload" {
+ a:=render_asset_find(7,RenderAssetKind.layers,0);#assert a.valid && a.packed && a.pack_part==4;
+ for p:[2]int.[9,10] {b:=render_asset_find(p,RenderAssetKind.layers,0);#assert b.valid && b.packed && b.pack_part==a.pack_part && b.url==a.url && b.url_count==a.url_count;}
+}

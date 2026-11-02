@@ -1,0 +1,49 @@
+// Explicit offline reference-work profiles. These are evaluator work budgets,
+// not GPU frame-time promises or a change to the default acceptance profile.
+#module "aethyr.render.reference.work";
+#authority;
+RRWorkProfile :: enum u8 {standard;large_world;invalid;}
+RRWorkLimits :: struct {ok:bool;pass_steps:int;invocation_steps:int;}
+#test "reference work profiles have exact versioned names and limits" {
+ #assert rr_work_profile("standard")==RRWorkProfile.standard && rr_work_profile("large-world")==RRWorkProfile.large_world;
+ for name:[5]string.["","large_world","large-world ","STANDARD","other"] {#assert rr_work_profile(name)==RRWorkProfile.invalid;}
+ a:=rr_work_limits(RRWorkProfile.standard);b:=rr_work_limits(RRWorkProfile.large_world);
+ #assert a.ok && a.pass_steps==100000000 && a.invocation_steps==100000000;
+ #assert b.ok && b.pass_steps==1000000000 && b.invocation_steps==100000000;
+ for p:[1]RRWorkProfile.[RRWorkProfile.invalid] {q:=rr_work_limits(p);#assert !q.ok && q.pass_steps==0 && q.invocation_steps==0;}
+}
+#test "reference invocation budget clamps only admitted nonnegative remaining work" {
+ inputs:=[9]int.[0,1,99999999,100000000,100000001,999999999,1000000000,-1,1000000001];
+ expected:=[9]int.[0,1,99999999,100000000,100000000,100000000,100000000,-1,-1];
+ for n,i:inputs {#assert rr_work_invocation(n)==expected[i];}
+ #assert rr_work_invocation(-9223372036854775807-1)==(-1) && rr_work_invocation(9223372036854775807)==(-1);
+}
+rr_work_profile :: (rrw_name:string)->RRWorkProfile {
+ if rrw_name=="standard" {return RRWorkProfile.standard;}
+ if rrw_name=="large-world" {return RRWorkProfile.large_world;}return RRWorkProfile.invalid;
+}
+rr_work_limits :: (rrw_profile:RRWorkProfile)->RRWorkLimits {
+ if rrw_profile==RRWorkProfile.standard {return RRWorkLimits.{ok=true,pass_steps=100000000,invocation_steps=100000000};}
+ if rrw_profile==RRWorkProfile.large_world {return RRWorkLimits.{ok=true,pass_steps=1000000000,invocation_steps=100000000};}
+ return RRWorkLimits.{};
+}
+rr_work_invocation :: (rrw_left:int)->int {
+ if rrw_left<0 || rrw_left>1000000000 {return -1;}
+ // All admitted integers and this sum/difference are exactly representable
+ // in f64. Clear only the difference's sign to take its absolute value.
+ delta:=f64(rrw_left)-100000000.0;
+ magnitude:=f64_from_bits(f64_bits(delta)&0x7fffffffffffffff);
+ twice:=f64(rrw_left)+100000000.0-magnitude;
+ return rrw_integer(twice/2.0);
+}
+
+#test "reference floating work receipts refuse fractions nonfinite values and values outside an invocation" {
+ #assert rrw_integer(0)==0 && rrw_integer(1)==1 && rrw_integer(100000000)==100000000;
+ for value:[5]f64.[0.5,99999999.5,-1,100000001,1e300] {#assert rrw_integer(value)==(-1);}
+ zero:=0.0;#assert rrw_integer(zero/zero)==(-1) && rrw_integer(1.0/zero)==(-1) && rrw_integer(-1.0/zero)==(-1);
+}
+// Admit an exact integer work receipt before narrowing a floating calculation.
+rrw_integer :: (rrw_value:f64)->int {
+ if !(rrw_value>=0 && rrw_value<=100000000) {return -1;}
+ result:=int(rrw_value);if f64(result)!=rrw_value {return -1;}return result;
+}

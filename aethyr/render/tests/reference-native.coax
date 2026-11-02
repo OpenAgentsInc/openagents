@@ -1,0 +1,10 @@
+// Verification-only ABI. The library owns every shader operation; native C
+// supplies truthful views, loads the checked tree and observes the result.
+#load "../reference-ir.coax";
+rq_native_meta_words :: ()->int #export_c {return rq_ir_meta_words();}
+rq_native_run :: (tree:[]u32,input:[]u32,resources:RQResources,meta:[]int,scratch:[]u32,out:[]u32,stage:int,budget:int,coverage:u32,mode:RQDerivative)->RQExecution #export_c {
+ program:=rq_ir_prepare(tree,meta);
+ return rq_ir_run(program,tree,meta,input,resources,scratch,out,stage,budget,coverage,mode);
+}
+rq_native_assert_probe :: (ok:bool) #export_c {#assert ok;}
+#test "native quad assertion probe admits its true input" {rq_native_assert_probe(true);}

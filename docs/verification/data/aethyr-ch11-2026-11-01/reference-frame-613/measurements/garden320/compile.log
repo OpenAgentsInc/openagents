@@ -1,0 +1,7 @@
+/private/tmp/aethyr-ch11-reference-garden-half-final-308/reference-frame.c:7814:67: warning: unused parameter 'l_meta' [-Wunused-parameter]
+ 7814 | static void coax_p_rq_ir_store(coax_v_t_RQMachine l_m, coax_v_s64 l_meta, coax_v_u32 l_memory, coax_t_RQPlace l_place, coax_t_RQValue l_value, uint32_t l_mask) {
+      |                                                                   ^
+/private/tmp/aethyr-ch11-reference-garden-half-final-308/reference-frame.c:8838:56: warning: unused parameter 'l_q' [-Wunused-parameter]
+ 8838 | static uint32_t coax_p_rq_helper_mask(coax_t_RQControl l_q) {
+      |                                                        ^
+2 warnings generated.

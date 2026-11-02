@@ -1,0 +1,30 @@
+control (()=>{globalThis.heldAsset=coaxial.renderAssets().find(a=>a.kind==='index');return {done:!
+control coaxial.reloadEngine()
+control coaxial.renderAssets().includes(heldAsset)
+control globalThis.coaxialReleaseAsset()
+control coaxialClipStep(1,Infinity)
+control !!heldAsset.done
+control ({done:!!heldAsset.done,bytes:heldAsset.bytes?.length??0})
+control coaxial.reloadEngine()
+control coaxialClipStep(1,Infinity)
+control coaxial.renderSettled()
+control ({same:coaxial.renderAssets().includes(heldAsset),done:!!heldAsset.done,bytes:heldAsset.by
+control coaxial.reloadEngine().then(()=>({failed:false}),error=>({failed:true,message:String(error
+control coaxialClipStep(1,Infinity)
+control coaxial.renderBindingState()
+{
+  "captured": true,
+  "sha256": "70a419e341a2fc55ffa9d30fdb174eb28d5017f7fa0d238b3e697cbdd229e4a4",
+  "draws": 4,
+  "hud": 1668,
+  "render": {
+    "submitted": true,
+    "readiness": 2,
+    "refusal": null,
+    "captureArmed": true,
+    "observed": true,
+    "probed": true
+  },
+  "body": "The Garden\n\nThe Garden",
+  "exceptions": []
+}

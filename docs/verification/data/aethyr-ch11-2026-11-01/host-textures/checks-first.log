@@ -1,0 +1,7 @@
+FAIL #test shared texture origins select the named image rather than its array order (0 ms)
+aethyr/render/tests/host-textures-checks.coax:4:2: error[E0406]: assertion failed
+   #assert rhtt_q.status==RenderResourceStatus.ok && rhtt_q.named_index==1 && rhtt_q.source.kind==RenderSourceKind.layers;
+   ^
+  note: in #test shared texture origins select the named image rather than its array order
+1 of 88 checks (--only 'shared texture origins'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

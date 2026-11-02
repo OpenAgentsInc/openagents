@@ -1,0 +1,160 @@
+{
+  "scope": "Every post-Binaryen write to global0 is either a constant decrement from current SP or a constant restore through the saved local. Every decrement has a matching restoring shape except the four noreturn trap helpers. C codegen reports no dynamic allocations.",
+  "allocation_writes": 435,
+  "restore_writes": 431,
+  "unknown_shapes": [],
+  "allocation_shapes_without_any_restore": [
+    {
+      "function": "coax_trap",
+      "sites": [
+        {
+          "local": 3,
+          "bytes": 16,
+          "allocations": 1,
+          "restores": 0
+        }
+      ],
+      "ends_with_unreachable": true,
+      "tail": [
+        [
+          "i32.const",
+          "8545776"
+        ],
+        [
+          "i32.load",
+          "0"
+        ],
+        [
+          "local.get",
+          "3"
+        ],
+        [
+          "call",
+          "495"
+        ],
+        [
+          "unreachable",
+          ""
+        ],
+        [
+          "end",
+          ""
+        ]
+      ]
+    },
+    {
+      "function": "coax_trap_229",
+      "sites": [
+        {
+          "local": 3,
+          "bytes": 16,
+          "allocations": 1,
+          "restores": 0
+        }
+      ],
+      "ends_with_unreachable": true,
+      "tail": [
+        [
+          "i32.const",
+          "8545776"
+        ],
+        [
+          "i32.load",
+          "0"
+        ],
+        [
+          "local.get",
+          "3"
+        ],
+        [
+          "call",
+          "495"
+        ],
+        [
+          "unreachable",
+          ""
+        ],
+        [
+          "end",
+          ""
+        ]
+      ]
+    },
+    {
+      "function": "coax_trap_491",
+      "sites": [
+        {
+          "local": 3,
+          "bytes": 16,
+          "allocations": 1,
+          "restores": 0
+        }
+      ],
+      "ends_with_unreachable": true,
+      "tail": [
+        [
+          "i32.const",
+          "8545776"
+        ],
+        [
+          "i32.load",
+          "0"
+        ],
+        [
+          "local.get",
+          "3"
+        ],
+        [
+          "call",
+          "495"
+        ],
+        [
+          "unreachable",
+          ""
+        ],
+        [
+          "end",
+          ""
+        ]
+      ]
+    },
+    {
+      "function": "coax_trap_524",
+      "sites": [
+        {
+          "local": 3,
+          "bytes": 16,
+          "allocations": 1,
+          "restores": 0
+        }
+      ],
+      "ends_with_unreachable": true,
+      "tail": [
+        [
+          "i32.const",
+          "8545776"
+        ],
+        [
+          "i32.load",
+          "0"
+        ],
+        [
+          "local.get",
+          "3"
+        ],
+        [
+          "call",
+          "495"
+        ],
+        [
+          "unreachable",
+          ""
+        ],
+        [
+          "end",
+          ""
+        ]
+      ]
+    }
+  ]
+}

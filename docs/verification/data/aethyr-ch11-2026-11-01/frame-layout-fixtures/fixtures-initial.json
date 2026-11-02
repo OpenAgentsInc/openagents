@@ -1,0 +1,90 @@
+{
+  "source_sha256": "f05fe0f0947c4385c3b02c0247d1446942338cababa0b477141a64d6cb9749fe",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "cases": [
+    {
+      "name": "PAIR",
+      "vertex": "rfl_vs",
+      "fragment": "rfl_fs",
+      "words": 122,
+      "tree_sha256": "f95f965cfa343b6469b8f739700dc4d066bfe51dc25247ba0cceb3160b977ac6"
+    },
+    {
+      "name": "EMPTY",
+      "vertex": "rfl_empty_vs",
+      "fragment": "rfl_empty_fs",
+      "words": 104,
+      "tree_sha256": "ffb27f15e5a57ba08d9c5dd7b4da159fd3277cbdfb9b6d3b08c95638906e6082"
+    },
+    {
+      "name": "EXTRA",
+      "vertex": "rfl_extra_vs",
+      "fragment": "rfl_fs",
+      "words": 135,
+      "tree_sha256": "12b4b1b17663cdfd966341e72f1b110aba4872e6f4e1086690ba52b8a40d2ae3"
+    },
+    {
+      "name": "KIND",
+      "vertex": "rfl_empty_vs",
+      "fragment": "rfl_kind_fs",
+      "words": 109,
+      "tree_sha256": "e6ca9deae288b51ef8d96fd00f3f833173fd63b0da20859a4a668cb6c9bbfef4"
+    },
+    {
+      "name": "STRIDE",
+      "vertex": "rfl_stride_vs",
+      "fragment": "rfl_fs",
+      "words": 133,
+      "tree_sha256": "4113a55defa67ff6b5174e37e800a0d057716e0c5316f3dd780ab4670cf91c09"
+    },
+    {
+      "name": "STAGE",
+      "vertex": "rfl_empty_vs",
+      "fragment": "rfl_fs",
+      "words": 114,
+      "tree_sha256": "e07e219ce4cf6cf906f41bdbb1b733e3b0a3403cf531a6aef5460f2f85629b4c"
+    },
+    {
+      "name": "SMALL",
+      "vertex": "rfl_small_vs",
+      "fragment": "rfl_fs",
+      "words": 137,
+      "tree_sha256": "c257b0a0bafe9266f60b688ae72e7eb292c26d1d3cb55f32a1e4b35f8c5caf17"
+    },
+    {
+      "name": "MAX",
+      "vertex": "rfl_max_vs",
+      "fragment": "rfl_fs",
+      "words": 169,
+      "tree_sha256": "b30dd46cc38f0ac86fed6635702308fd740d54ad9356bd75ab253556cf253ee4"
+    },
+    {
+      "name": "LARGE",
+      "vertex": "rfl_large_vs",
+      "fragment": "rfl_fs",
+      "words": 169,
+      "tree_sha256": "0c7d341b62cf3f075702ce8deec13756df17e1c37be223935095da2d4e1d3010"
+    },
+    {
+      "name": "ARRAY",
+      "vertex": "media_vs",
+      "fragment": "rfl_array_fs",
+      "words": 306,
+      "tree_sha256": "b80305f3be40a2c442c7ee81420f7c6c24472585d7b3decf6f301f23db829659"
+    },
+    {
+      "name": "COMPARE",
+      "vertex": "media_vs",
+      "fragment": "rfl_compare_fs",
+      "words": 340,
+      "tree_sha256": "e2290eac63a1a7b0815647b33bbf09a2b8d72a0225c08aa7f663d9757b725339"
+    },
+    {
+      "name": "MEDIA",
+      "vertex": "media_vs",
+      "fragment": "media_fs",
+      "words": 358,
+      "tree_sha256": "55f0b973588bed551a63b190f87c3b668f440fbcc7a5f9381209f034664f8afe"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+41 |    await read.mapAsync(GPUMapMode.READ);const rgba=Array.from(new Float32Array(read.getMappedRange(),0,4)),words=Array.from(new Uint32Array(read.getMappedRange(),0,4));results.push({index,rgba,words});read.unmap();read.destroy();
+42 |   }
+43 |   const error=await device.popErrorScope();if(error)errors.push(error.message);const info=adapter.info;
+44 |   return {format:'rgba32float',width:8,height:8,device:{vendor:info.vendor,architecture:info.architecture,device:info.device,description:info.description},messages,errors,results};
+45 |  })()`;
+46 |  const response=await call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});if(response.exceptionDetails)throw Error(JSON.stringify(response.exceptionDetails));
+                                                                                                                                         ^
+error: {"exceptionId":1,"text":"Uncaught (in promise)","lineNumber":0,"columnNumber":0,"exception":{"type":"object","subtype":"error","className":"DOMException","description":"OperationError: Failed to execute 'getMappedRange' on 'GPUBuffer': getMappedRange [0, 256) overlaps with previously returned range [0, 256).\n    at <anonymous>:18:146","objectId":"-8054966799355137398.2.1","preview":{"type":"object","subtype":"error","description":"OperationError: Failed to execute 'getMappedRange' on 'GPUBuffer': getMappedRange [0, 256) overlaps with previously returned range [0, 256).\n    at <anonymous>:18:146","overflow":false,"properties":[{"name":"stack","type":"string","value":"OperationError: Failed to execute 'getMappedRange'…eturned range [0, 256).\n    at <anonymous>:18:146"},{"name":"code","type":"number","value":"0"},{"name":"name","type":"string","value":"OperationError"},{"name":"message","type":"string","value":"Failed to execute 'getMappedRange' on 'GPUBuffer':…overlaps with previously returned range [0, 256)."}]}}}
+      at /Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_ring8_webgpu.ts:46:133
+
+Bun v1.4.0 (macOS arm64)

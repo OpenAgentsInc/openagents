@@ -1,0 +1,356 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/render/reference-frame.coax:67:13: mutant survived: 1 became 2
+    if stage==1 && !r.pipeline.has_fragment {continue;}
+              ^
+aethyr/render/reference-frame.coax:96:41: mutant survived: '||' became '&&'
+   a:=render_catalog(profile);if !a.valid || c.vertex_stride!=a.vertex_stride || c.draw_count>4096 {return RFRequirements.{status=RQStatus.resource};}
+                                          ^
+aethyr/render/reference-frame.coax:96:92: mutant survived: '>' became '>='
+   a:=render_catalog(profile);if !a.valid || c.vertex_stride!=a.vertex_stride || c.draw_count>4096 {return RFRequirements.{status=RQStatus.resource};}
+                                                                                             ^
+aethyr/render/reference-frame.coax:96:93: mutant survived: 4096 became 4097
+   a:=render_catalog(profile);if !a.valid || c.vertex_stride!=a.vertex_stride || c.draw_count>4096 {return RFRequirements.{status=RQStatus.resource};}
+                                                                                              ^
+aethyr/render/reference-frame.coax:104:18: mutant survived: the if condition was negated
+    else if op.kind==RenderOpKind.copy {targets[0]=op.target;}
+                   ^
+aethyr/render/reference-frame.coax:104:18: mutant survived: '==' became '!='
+    else if op.kind==RenderOpKind.copy {targets[0]=op.target;}
+                   ^
+aethyr/render/reference-frame.coax:104:49: mutant survived: the assignment was removed
+    else if op.kind==RenderOpKind.copy {targets[0]=op.target;}
+                                                  ^
+aethyr/render/reference-frame.coax:104:47: mutant survived: 0 became 1
+    else if op.kind==RenderOpKind.copy {targets[0]=op.target;}
+                                                ^
+aethyr/render/reference-frame.coax:112:13: mutant survived: '>' became '>='
+     if pixels>r.pass_pixels {r.pass_pixels=pixels;}
+              ^
+aethyr/render/reference-frame.coax:121:48: mutant survived: 100000000 became 100000001
+   if policy.shader_work<1 || policy.shader_work>100000000 || policy.pixel_work<1 || policy.pixel_work>100000000 {r.status=RQStatus.resource;return r;}
+                                                 ^
+aethyr/render/reference-frame.coax:121:78: mutant survived: '<' became '<='
+   if policy.shader_work<1 || policy.shader_work>100000000 || policy.pixel_work<1 || policy.pixel_work>100000000 {r.status=RQStatus.resource;return r;}
+                                                                               ^
+aethyr/render/reference-frame.coax:121:79: mutant survived: 1 became 2
+   if policy.shader_work<1 || policy.shader_work>100000000 || policy.pixel_work<1 || policy.pixel_work>100000000 {r.status=RQStatus.resource;return r;}
+                                                                                ^
+aethyr/render/reference-frame.coax:123:38: mutant survived: the assignment was removed
+   if req.status!=RQStatus.ok {r.status=req.status;return r;}if req.loading {r.loading=true;return r;}
+                                       ^
+aethyr/render/reference-frame.coax:123:85: mutant survived: the assignment was removed
+   if req.status!=RQStatus.ok {r.status=req.status;return r;}if req.loading {r.loading=true;return r;}
+                                                                                      ^
+aethyr/render/reference-frame.coax:123:86: mutant survived: true became false
+   if req.status!=RQStatus.ok {r.status=req.status;return r;}if req.loading {r.loading=true;return r;}
+                                                                                       ^
+aethyr/render/reference-frame.coax:124:79: mutant survived: '*' became '+'
+   c:=input.counts;profile:=render_catalog(input.profile);screen_pixels:=c.width*c.height;
+                                                                                ^
+aethyr/render/reference-frame.coax:126:219: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                                                                                                                                                                            ^
+aethyr/render/reference-frame.coax:126:184: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                                                                                                                                         ^
+aethyr/render/reference-frame.coax:126:150: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                                                                                                       ^
+aethyr/render/reference-frame.coax:126:115: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                                                                    ^
+aethyr/render/reference-frame.coax:126:77: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                                                              ^
+aethyr/render/reference-frame.coax:126:40: mutant survived: '||' became '&&'
+   if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+                                         ^
+aethyr/render/reference-frame.coax:129:80: mutant survived: '+' became '-'
+   uniforms:=work.words[RQ_IR_WORDS..<RQ_IR_WORDS+nu];hud:=work.words[RQ_IR_WORDS+nu..<req.word_words];
+                                                                                 ^
+aethyr/render/reference-frame.coax:130:63: mutant survived: 0 became 1
+   for j:0..<nu {uniforms[j]=f32_bits(input.uniforms[j]);}for j:0..<nh {hud[j]=f32_bits(input.hud[j]);}
+                                                                ^
+aethyr/render/reference-frame.coax:130:77: mutant survived: the assignment was removed
+   for j:0..<nu {uniforms[j]=f32_bits(input.uniforms[j]);}for j:0..<nh {hud[j]=f32_bits(input.hud[j]);}
+                                                                              ^
+aethyr/render/reference-frame.coax:132:110: mutant survived: the assignment was removed
+   observed:=rf_buffer_observations(input.buffers,uniforms,named[..]);if observed.status!=RQStatus.ok {r.status=observed.status;return r;}
+                                                                                                               ^
+aethyr/render/reference-frame.coax:133:144: mutant survived: the assignment was removed
+   shared:=render_host_geometry_buffers(input.profile,named[0..<observed.count],geometry[..]);if shared.status!=RenderResourceStatus.ok {r.status=rf_resource_status(shared.status);return r;}
+                                                                                                                                                 ^
+aethyr/render/reference-frame.coax:134:159: mutant survived: the assignment was removed
+   g:=render_geometry_admit(input.profile,c,input.draw_words,input.indices,input.uniforms,geometry[0..<shared.count],input.hud,work.domains,16777216);r.geometry=g.status;
+                                                                                                                                                                ^
+aethyr/render/reference-frame.coax:135:48: mutant survived: the assignment was removed
+   if g.status!=RenderGeometryStatus.ok {r.status=RQStatus.resource;return r;}
+                                                 ^
+aethyr/render/reference-frame.coax:136:139: mutant survived: the assignment was removed
+   uploads:[]RenderUpload;f:=render_frame_admit(c,RenderFrameLimits.{},g.direct,uploads,input.draw_words,work.domains,input.indices);r.frame=f.status;
+                                                                                                                                            ^
+aethyr/render/reference-frame.coax:137:45: mutant survived: the assignment was removed
+   if f.status!=RenderFrameStatus.ok {r.status=RQStatus.resource;return r;}
+                                              ^
+aethyr/render/reference-frame.coax:142:22: mutant survived: '>' became '>='
+    if index<0 || index>13 || prepared[index].present {r.status=RQStatus.resource;return r;}
+                       ^
+aethyr/render/reference-frame.coax:143:49: mutant survived: 1 became 2
+    metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];p:=rq_ir_prepare(shaders[j].tree,metadata);layout:=rf_shader_layout(input.profile,index,p,shaders[j].tree,metadata);
+                                                  ^
+aethyr/render/reference-frame.coax:143:52: mutant survived: 8192 became 8193
+    metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];p:=rq_ir_prepare(shaders[j].tree,metadata);layout:=rf_shader_layout(input.profile,index,p,shaders[j].tree,metadata);
+                                                     ^
+aethyr/render/reference-frame.coax:144:42: mutant survived: the assignment was removed
+    if layout.status!=RQStatus.ok {r.status=layout.status;return r;}
+                                           ^
+aethyr/render/reference-frame.coax:145:29: mutant survived: 0 became 1
+    if layout.attribute_count>0 && layout.attribute_stride!=c.vertex_stride {r.status=RQStatus.resource;return r;}
+                              ^
+aethyr/render/reference-frame.coax:145:84: mutant survived: the assignment was removed
+    if layout.attribute_count>0 && layout.attribute_stride!=c.vertex_stride {r.status=RQStatus.resource;return r;}
+                                                                                     ^
+aethyr/render/reference-frame.coax:148:58: mutant survived: '+' became '-'
+   expected:=profile.pass_count+profile.particle_pass_count+(ifx profile.features.media then 1 else 0);
+                                                           ^
+aethyr/render/reference-frame.coax:148:30: mutant survived: '+' became '-'
+   expected:=profile.pass_count+profile.particle_pass_count+(ifx profile.features.media then 1 else 0);
+                               ^
+aethyr/render/reference-frame.coax:148:92: mutant survived: 1 became 2
+   expected:=profile.pass_count+profile.particle_pass_count+(ifx profile.features.media then 1 else 0);
+                                                                                             ^
+aethyr/render/reference-frame.coax:151:36: mutant survived: 0 became 1
+   active:RenderOp;at:=0;each_start:=0;each_first:=0;each_count:=0;each_current:=0;
+                                     ^
+aethyr/render/reference-frame.coax:151:50: mutant survived: 0 became 1
+   active:RenderOp;at:=0;each_start:=0;each_first:=0;each_count:=0;each_current:=0;
+                                                   ^
+aethyr/render/reference-frame.coax:151:64: mutant survived: 0 became 1
+   active:RenderOp;at:=0;each_start:=0;each_first:=0;each_count:=0;each_current:=0;
+                                                                 ^
+aethyr/render/reference-frame.coax:151:80: mutant survived: 0 became 1
+   active:RenderOp;at:=0;each_start:=0;each_first:=0;each_count:=0;each_current:=0;
+                                                                                 ^
+aethyr/render/reference-frame.coax:152:10: mutant survived: '<' became '<='
+   while at<req.plan.count {
+           ^
+aethyr/render/reference-frame.coax:158:5: mutant survived: the assignment was removed
+     r=rf_copy_target(req,op,work.images,policy,r);if r.status!=RQStatus.ok {return r;}
+      ^
+aethyr/render/reference-frame.coax:158:61: mutant survived: the if condition was negated
+     r=rf_copy_target(req,op,work.images,policy,r);if r.status!=RQStatus.ok {return r;}
+                                                              ^
+aethyr/render/reference-frame.coax:158:61: mutant survived: '!=' became '=='
+     r=rf_copy_target(req,op,work.images,policy,r);if r.status!=RQStatus.ok {return r;}
+                                                              ^
+aethyr/render/reference-frame.coax:159:72: mutant survived: the assignment was removed
+    }else if op.kind==RenderOpKind.each_begin {each_start=at+1;each_first=op.first;each_count=op.count;each_current=0;}
+                                                                         ^
+aethyr/render/reference-frame.coax:159:114: mutant survived: the assignment was removed
+    }else if op.kind==RenderOpKind.each_begin {each_start=at+1;each_first=op.first;each_count=op.count;each_current=0;}
+                                                                                                                   ^
+aethyr/render/reference-frame.coax:162:108: mutant survived: 1 became 2
+     index:=cast(int)op.pass;prepared_program:=prepared[index];metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];tree:=shaders[prepared_program.source].tree;
+                                                                                                             ^
+aethyr/render/reference-frame.coax:162:111: mutant survived: 8192 became 8193
+     index:=cast(int)op.pass;prepared_program:=prepared[index];metadata:=work.meta[index*RQ_IR_META..<(index+1)*RQ_IR_META];tree:=shaders[prepared_program.source].tree;
+                                                                                                                ^
+aethyr/render/reference-frame.coax:165:54: mutant survived: the assignment was removed
+     if op.draw_source==RenderDrawSource.records {draws=work.decoded[op.first..<op.first+op.count];}
+                                                       ^
+aethyr/render/reference-frame.coax:165:87: mutant survived: '+' became '-'
+     if op.draw_source==RenderDrawSource.records {draws=work.decoded[op.first..<op.first+op.count];}
+                                                                                        ^
+aethyr/render/reference-frame.coax:170:47: mutant survived: '||' became '&&'
+    }else if op.kind==RenderOpKind.media_before || op.kind==RenderOpKind.media_after {
+                                                ^
+aethyr/render/reference-frame.coax:171:20: mutant survived: 13 became 14
+     entry:=prepared[13];r=rf_media(input,op.kind==RenderOpKind.media_after,entry,shaders[entry.source].tree,req,active,policy,work,r);if r.status!=RQStatus.ok {return r;}
+                     ^
+aethyr/render/reference-frame.coax:171:25: mutant survived: the assignment was removed
+     entry:=prepared[13];r=rf_media(input,op.kind==RenderOpKind.media_after,entry,shaders[entry.source].tree,req,active,policy,work,r);if r.status!=RQStatus.ok {return r;}
+                          ^
+aethyr/render/reference-frame.coax:171:48: mutant survived: '==' became '!='
+     entry:=prepared[13];r=rf_media(input,op.kind==RenderOpKind.media_after,entry,shaders[entry.source].tree,req,active,policy,work,r);if r.status!=RQStatus.ok {return r;}
+                                                 ^
+aethyr/render/reference-frame.coax:171:145: mutant survived: the if condition was negated
+     entry:=prepared[13];r=rf_media(input,op.kind==RenderOpKind.media_after,entry,shaders[entry.source].tree,req,active,policy,work,r);if r.status!=RQStatus.ok {return r;}
+                                                                                                                                                  ^
+aethyr/render/reference-frame.coax:171:145: mutant survived: '!=' became '=='
+     entry:=prepared[13];r=rf_media(input,op.kind==RenderOpKind.media_after,entry,shaders[entry.source].tree,req,active,policy,work,r);if r.status!=RQStatus.ok {return r;}
+                                                                                                                                                  ^
+aethyr/render/reference-frame.coax:189:25: mutant survived: '>' became '>='
+   if input.textures.count>RENDER_HOST_TEXTURES {return RQStatus.capacity;}
+                          ^
+aethyr/render/reference-frame.coax:189:26: mutant survived: 114 became 115
+   if input.textures.count>RENDER_HOST_TEXTURES {return RQStatus.capacity;}
+                           ^
+aethyr/render/reference-frame.coax:238:164: mutant survived: the assignment was removed
+   status:=rf_resources(input,index,entry.layout,op,req,work.images,uniforms,bloom,buffers[..],textures[..],samplers[..],levels[..]);if status!=RQStatus.ok {r.status=status;return r;}
+                                                                                                                                                                     ^
+aethyr/render/reference-frame.coax:240:140: mutant survived: '*' became '+'
+   canvas:=req.images[cast(int)(ifx active.colour0!=RenderTarget.none then active.colour0 else active.depth)];d:=canvas.descriptor;n:=d.width*d.height;
+                                                                                                                                             ^
+aethyr/render/reference-frame.coax:241:68: mutant survived: the call was removed
+   r=rf_pixel_work(r,policy,n*2);if r.status!=RQStatus.ok {return r;}rf_pixels(req,active,work.images,work.target,false);
+                                                                     ^
+aethyr/render/reference-frame.coax:241:113: mutant survived: false became true
+   r=rf_pixel_work(r,policy,n*2);if r.status!=RQStatus.ok {return r;}rf_pixels(req,active,work.images,work.target,false);
+                                                                                                                  ^
+aethyr/render/reference-frame.coax:242:243: mutant survived: 0 became 1
+   q:=rr_reference_pass_profile(entry.layout.pipeline,entry.program,tree,meta,resources,layout.bindings[0..<layout.count],attrs,draws,input.indices,op.state,d.width,d.height,rf_format(d.format),policy.shader_work-r.pass_steps[index],work.words[0..<RQ_IR_WORDS],work.scratch,work.target,policy.raster);
+                                                                                                                                                                                                                                                    ^
+aethyr/render/reference-frame.coax:251:9: mutant survived: 0 became 1
+    for k:0..<8 {if !rq_finite(rect.uniforms[k]) {return RQStatus.resource;}}
+          ^
+aethyr/render/reference-frame.coax:257:20: mutant survived: the assignment was removed
+   r:=result;r.status=rf_media_status(input.media);if r.status!=RQStatus.ok {return r;}
+                     ^
+aethyr/render/reference-frame.coax:258:60: mutant survived: the assignment was removed
+   if !render_catalog(input.profile).features.media {r.status=RQStatus.unsupported;return r;}
+                                                             ^
+aethyr/render/reference-frame.coax:263:36: mutant survived: '||' became '&&'
+    rect:=input.media[j];if !rect.ok || !rect.draw || rect.over!=over {continue;}
+                                     ^
+aethyr/render/reference-frame.coax:264:56: mutant survived: '>' became '>='
+    at:=count;while at>0 && input.media[order[at-1]].line>rect.line {order[at]=order[at-1];at-=1;}order[at]=j;count+=1;
+                                                         ^
+aethyr/render/reference-frame.coax:264:47: mutant survived: '-' became '+'
+    at:=count;while at>0 && input.media[order[at-1]].line>rect.line {order[at]=order[at-1];at-=1;}order[at]=j;count+=1;
+                                                ^
+aethyr/render/reference-frame.coax:264:77: mutant survived: the assignment was removed
+    at:=count;while at>0 && input.media[order[at-1]].line>rect.line {order[at]=order[at-1];at-=1;}order[at]=j;count+=1;
+                                                                              ^
+aethyr/render/reference-frame.coax:264:86: mutant survived: '-' became '+'
+    at:=count;while at>0 && input.media[order[at-1]].line>rect.line {order[at]=order[at-1];at-=1;}order[at]=j;count+=1;
+                                                                                       ^
+aethyr/render/reference-frame.coax:266:131: mutant survived: 6 became 7
+   words:[8]u32;empty:[]u32;attrs:RRAttributes;draws:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=6,instances=1}];
+                                                                                                                                    ^
+aethyr/render/reference-frame.coax:296:16: mutant survived: '>' became '>='
+   if files.count>RENDER_RESOURCES {return RFBufferObservations.{status=RQStatus.capacity};}
+                 ^
+aethyr/render/reference-frame.coax:296:17: mutant survived: 48 became 49
+   if files.count>RENDER_RESOURCES {return RFBufferObservations.{status=RQStatus.capacity};}
+                  ^
+aethyr/render/reference-frame.coax:298:8: mutant survived: 0 became 1
+   for j:0..<files.count {if files[j].name==main_name {found=j;}}
+         ^
+aethyr/render/reference-frame.coax:298:59: mutant survived: the assignment was removed
+   for j:0..<files.count {if files[j].name==main_name {found=j;}}
+                                                            ^
+aethyr/render/reference-frame.coax:299:29: mutant survived: '<' became '<='
+   count:=files.count;if found<0 && uniforms.count>0 {count+=1;}
+                              ^
+aethyr/render/reference-frame.coax:299:30: mutant survived: 0 became 1
+   count:=files.count;if found<0 && uniforms.count>0 {count+=1;}
+                               ^
+aethyr/render/reference-frame.coax:299:50: mutant survived: 0 became 1
+   count:=files.count;if found<0 && uniforms.count>0 {count+=1;}
+                                                   ^
+aethyr/render/reference-frame.coax:300:21: mutant survived: '||' became '&&'
+   if count>out.count || count>RENDER_RESOURCES {return RFBufferObservations.{status=RQStatus.capacity};}
+                      ^
+aethyr/render/reference-frame.coax:300:10: mutant survived: '>' became '>='
+   if count>out.count || count>RENDER_RESOURCES {return RFBufferObservations.{status=RQStatus.capacity};}
+           ^
+aethyr/render/reference-frame.coax:300:29: mutant survived: '>' became '>='
+   if count>out.count || count>RENDER_RESOURCES {return RFBufferObservations.{status=RQStatus.capacity};}
+                              ^
+aethyr/render/reference-frame.coax:300:30: mutant survived: 48 became 49
+   if count>out.count || count>RENDER_RESOURCES {return RFBufferObservations.{status=RQStatus.capacity};}
+                               ^
+aethyr/render/reference-frame.coax:304:19: mutant survived: '>' became '>='
+   if uniforms.count>0 {at:=ifx found<0 then files.count else found;bytes:=cast(u64)uniforms.count*4;out[at]=RenderHostNamedBuffer.{name=main_name,words=uniforms,observed=RenderBufferObserved.{source_capacity=bytes,logical_payload=bytes,initialized_highwater=bytes,gpu_bytes=bytes}};}
+                    ^
+aethyr/render/reference-frame.coax:304:20: mutant survived: 0 became 1
+   if uniforms.count>0 {at:=ifx found<0 then files.count else found;bytes:=cast(u64)uniforms.count*4;out[at]=RenderHostNamedBuffer.{name=main_name,words=uniforms,observed=RenderBufferObserved.{source_capacity=bytes,logical_payload=bytes,initialized_highwater=bytes,gpu_bytes=bytes}};}
+                     ^
+aethyr/render/reference-frame.coax:304:36: mutant survived: '<' became '<='
+   if uniforms.count>0 {at:=ifx found<0 then files.count else found;bytes:=cast(u64)uniforms.count*4;out[at]=RenderHostNamedBuffer.{name=main_name,words=uniforms,observed=RenderBufferObserved.{source_capacity=bytes,logical_payload=bytes,initialized_highwater=bytes,gpu_bytes=bytes}};}
+                                     ^
+aethyr/render/reference-frame.coax:304:37: mutant survived: 0 became 1
+   if uniforms.count>0 {at:=ifx found<0 then files.count else found;bytes:=cast(u64)uniforms.count*4;out[at]=RenderHostNamedBuffer.{name=main_name,words=uniforms,observed=RenderBufferObserved.{source_capacity=bytes,logical_payload=bytes,initialized_highwater=bytes,gpu_bytes=bytes}};}
+                                      ^
+aethyr/render/reference-frame.coax:304:98: mutant survived: 4 became 5
+   if uniforms.count>0 {at:=ifx found<0 then files.count else found;bytes:=cast(u64)uniforms.count*4;out[at]=RenderHostNamedBuffer.{name=main_name,words=uniforms,observed=RenderBufferObserved.{source_capacity=bytes,logical_payload=bytes,initialized_highwater=bytes,gpu_bytes=bytes}};}
+                                                                                                   ^
+aethyr/render/reference-frame.coax:309:166: mutant survived: 4 became 5
+   binding:=render_host_binding(profile,set,resource);words:=ifx binding.source.kind==RenderSourceKind.bloom_step then bloom else uniforms;bytes:=cast(u64)words.count*4;
+                                                                                                                                                                       ^
+aethyr/render/reference-frame.coax:318:52: mutant survived: the assignment was removed
+   if r.parsed.status!=RenderMediaStatus.ok {r.status=RQStatus.capacity;return r;}if r.parsed.count==0 {return r;}
+                                                     ^
+aethyr/render/reference-frame.coax:318:100: mutant survived: 0 became 1
+   if r.parsed.status!=RenderMediaStatus.ok {r.status=RQStatus.capacity;return r;}if r.parsed.count==0 {return r;}
+                                                                                                     ^
+aethyr/render/reference-frame.coax:319:54: mutant survived: the assignment was removed
+   if !render_catalog(profile).features.media {r.status=RQStatus.unsupported;return r;}
+                                                       ^
+aethyr/render/reference-frame.coax:320:16: mutant survived: '>' became '>='
+   if files.count>RENDER_HOST_TEXTURES {r.status=RQStatus.capacity;return r;}
+                 ^
+aethyr/render/reference-frame.coax:320:17: mutant survived: 114 became 115
+   if files.count>RENDER_HOST_TEXTURES {r.status=RQStatus.capacity;return r;}
+                  ^
+aethyr/render/reference-frame.coax:320:47: mutant survived: the assignment was removed
+   if files.count>RENDER_HOST_TEXTURES {r.status=RQStatus.capacity;return r;}
+                                                ^
+aethyr/render/reference-frame.coax:322:10: mutant survived: the assignment was removed
+   r.status=rf_resource_status(render_host_named_textures(named[0..<files.count]));if r.status!=RQStatus.ok {return r;}
+           ^
+aethyr/render/reference-frame.coax:322:63: mutant survived: 0 became 1
+   r.status=rf_resource_status(render_host_named_textures(named[0..<files.count]));if r.status!=RQStatus.ok {return r;}
+                                                                ^
+aethyr/render/reference-frame.coax:324:8: mutant survived: 0 became 1
+   for j:0..<r.parsed.count {
+         ^
+aethyr/render/reference-frame.coax:326:9: mutant survived: 0 became 1
+    for k:0..<files.count {if files[k].name==name {found=k;}}
+          ^
+aethyr/render/reference-frame.coax:328:11: mutant survived: '>=' became '>'
+    if found>=0 {
+            ^
+aethyr/render/reference-frame.coax:328:13: mutant survived: 0 became 1
+    if found>=0 {
+              ^
+aethyr/render/reference-frame.coax:330:12: mutant survived: the assignment was removed
+     r.status=rf_resource_status(q.status);if r.status==RQStatus.ok {r.status=rq_texture_status(texture);}if r.status!=RQStatus.ok {r.bad_texture=found;return r;}
+             ^
+aethyr/render/reference-frame.coax:330:53: mutant survived: the if condition was negated
+     r.status=rf_resource_status(q.status);if r.status==RQStatus.ok {r.status=rq_texture_status(texture);}if r.status!=RQStatus.ok {r.bad_texture=found;return r;}
+                                                      ^
+aethyr/render/reference-frame.coax:330:53: mutant survived: '==' became '!='
+     r.status=rf_resource_status(q.status);if r.status==RQStatus.ok {r.status=rq_texture_status(texture);}if r.status!=RQStatus.ok {r.bad_texture=found;return r;}
+                                                      ^
+aethyr/render/reference-frame.coax:330:76: mutant survived: the assignment was removed
+     r.status=rf_resource_status(q.status);if r.status==RQStatus.ok {r.status=rq_texture_status(texture);}if r.status!=RQStatus.ok {r.bad_texture=found;return r;}
+                                                                             ^
+aethyr/render/reference-frame.coax:330:144: mutant survived: the assignment was removed
+     r.status=rf_resource_status(q.status);if r.status==RQStatus.ok {r.status=rq_texture_status(texture);}if r.status!=RQStatus.ok {r.bad_texture=found;return r;}
+                                                                                                                                                 ^
+aethyr/render/reference-frame.coax:333:61: mutant survived: '&&' became '||'
+    cached:=-1;for k:0..<count {if images[k].kind==image.kind && images[k].url==image.url {cached=k;}}
+                                                              ^
+aethyr/render/reference-frame.coax:335:16: mutant survived: the if condition was negated
+    else if image.ready {
+                 ^
+aethyr/render/reference-frame.coax:336:66: mutant survived: '||' became '&&'
+     if images[cached].ready && (images[cached].width!=image.width || images[cached].height!=image.height) {r.status=RQStatus.resource;r.bad_texture=found;return r;}images[cached]=image;
+                                                                   ^
+aethyr/render/reference-frame.coax:336:115: mutant survived: the assignment was removed
+     if images[cached].ready && (images[cached].width!=image.width || images[cached].height!=image.height) {r.status=RQStatus.resource;r.bad_texture=found;return r;}images[cached]=image;
+                                                                                                                    ^
+aethyr/render/reference-frame.coax:336:147: mutant survived: the assignment was removed
+     if images[cached].ready && (images[cached].width!=image.width || images[cached].height!=image.height) {r.status=RQStatus.resource;r.bad_texture=found;return r;}images[cached]=image;
+                                                                                                                                                    ^
+aethyr/render/reference-frame.coax:336:178: mutant survived: the assignment was removed
+     if images[cached].ready && (images[cached].width!=image.width || images[cached].height!=image.height) {r.status=RQStatus.resource;r.bad_texture=found;return r;}images[cached]=image;
+                                                                                                                                                                                   ^
+aethyr/render/reference-frame.coax:340:64: mutant survived: the assignment was removed
+   if r.composed.status==RenderHostMediaStatus.capacity {r.status=RQStatus.capacity;}else if r.composed.status!=RenderHostMediaStatus.ok {r.status=RQStatus.resource;}
+                                                                 ^
+aethyr/render/reference-frame.coax:340:145: mutant survived: the assignment was removed
+   if r.composed.status==RenderHostMediaStatus.capacity {r.status=RQStatus.capacity;}else if r.composed.status!=RenderHostMediaStatus.ok {r.status=RQStatus.resource;}
+                                                                                                                                                  ^
+671 mutants, 553 killed, 118 survived

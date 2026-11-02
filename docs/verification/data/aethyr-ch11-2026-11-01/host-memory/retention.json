@@ -1,0 +1,12 @@
+{
+  "scope": "Exact native run artifacts and current unit source snapshots. Earlier native receipts retain their own recorded source identities; test-local prefixes are separately qualified by the current root mutation log.",
+  "files": {
+    "aethyr-ch11-host-memory-carrier-prefix-mutate-2.log": "dc2d5cb9546cfc67088b6a8fb9bb984b6bcbdd6081ef8bf825fb8485ff90d83d",
+    "aethyr-ch11-host-memory-native.json": "3400b4582003cd80e997afa8f50ffb1a0d55f564425f9fc46958f0e700a08027",
+    "aethyr-ch11-host-memory-mutate-2.log": "dc2d5cb9546cfc67088b6a8fb9bb984b6bcbdd6081ef8bf825fb8485ff90d83d",
+    "native-artifacts.tar.gz": "1341d107cd2725246178670eb68dc3e563d467188ad8bcf7859f98e4b071ca88",
+    "aethyr/render/host-memory.coax": "56ff937dd5272b490462aeace06b03652e2f4b96227e2bcbb94da25a18c4c08b",
+    "aethyr/render/tests/host-memory-checks.coax": "d8adc35c62f6b4b7b92acaee6c7d4e6c7282971e58b2b71563fdae17cfbe2cee",
+    "aethyr/render/tests/check_host_memory.py": "c48cb2b0c22eb52e8986c34c669111c3a69333d6046a5602a8943d410fc5b6a5"
+  }
+}

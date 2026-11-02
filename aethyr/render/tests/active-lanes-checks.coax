@@ -1,0 +1,13 @@
+
+RQ_ACTIVE_MASK_COUNTS :: [32]int.[0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4];
+RQ_ACTIVE_MASK_LANES :: [128]int.[0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,2,0,0,0,0,2,0,0,1,2,0,0,0,1,2,0,3,0,0,0,0,3,0,0,1,3,0,0,0,1,3,0,2,3,0,0,0,2,3,0,1,2,3,0,0,1,2,3,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,2,0,0,0,0,2,0,0,1,2,0,0,0,1,2,0,3,0,0,0,0,3,0,0,1,3,0,0,0,1,3,0,2,3,0,0,0,2,3,0,1,2,3,0,0,1,2,3];
+#forall "quad active lane iteration is ordered bounded and ignores high mask bits" mask:0..<32 {
+ active:=rq_active_lanes(cast(u32)mask);#assert active.count==RQ_ACTIVE_MASK_COUNTS[mask];
+ for k:0..<4 {#assert active.lanes[k]==RQ_ACTIVE_MASK_LANES[mask*4+k];}
+}
+
+#forall "quad active lane iteration ignores every high bit without changing order" mask:0..<16 {
+ a:=rq_active_lanes(cast(u32)mask|2147483648);b:=rq_active_lanes(cast(u32)mask|4294967280);
+ #assert a.count==RQ_ACTIVE_MASK_COUNTS[mask] && b.count==a.count;
+ for j:0..<4 {#assert a.lanes[j]==RQ_ACTIVE_MASK_LANES[mask*4+j] && b.lanes[j]==a.lanes[j];}
+}

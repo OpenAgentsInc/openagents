@@ -1,0 +1,79 @@
+// Independent role blueprints for every declared resource in the pre-move
+// inventory. Each character denotes an origin, not a WGSL slot or name guess.
+RBS_EXPECTED :: [18]string.[
+ "UVDDLSHSPSBIQEATS", "UNS", "UVDDDDLSHSWZPSBIQEATS", "UDDDPSBIQEATS", "UD", "U", "UM", "UHSVDLSPSBIQEATS", "U", "UVDLS", "UVDLS", "UVDDLSHSPSBIQEATS", "UDD", "UDDPSBIQEATS", "U", "U", "UDD", "UNS"];
+rbs_test_expected :: (code:u8,index:int,sampler:string)->RenderBindingSource {
+ r:=RenderBindingSource.{valid=true};
+ if code=='U' {r.kind=RenderSourceKind.main_uniform;r.index=0;r.buffer_mode=resource_views.RenderBufferMode.declared_uniform;}
+ if code=='V' {r.kind=RenderSourceKind.immutable_storage_asset;r.index=0;r.buffer_mode=resource_views.RenderBufferMode.immutable_payload;}
+ if code=='D' {r.kind=RenderSourceKind.dynamic_store;r.index=index;r.buffer_mode=resource_views.RenderBufferMode.legacy_capacity;}
+ if code=='M' {r.kind=RenderSourceKind.mesh_asset;r.index=0;r.buffer_mode=resource_views.RenderBufferMode.immutable_payload;}
+ if code=='L' {r.kind=RenderSourceKind.layers;r.index=0;}
+ if code=='N' {r.kind=RenderSourceKind.sans_atlas;r.index=0;}
+ if code=='S' {r.kind=RenderSourceKind.sampler;r.sampler_name=sampler;}
+ if code=='P' {r.kind=RenderSourceKind.pass_source;}
+ if code=='B' {r.kind=RenderSourceKind.bloom_step;r.index=0;r.buffer_mode=resource_views.RenderBufferMode.declared_uniform;}
+ if code=='H' || code=='W' || code=='Z' || code=='I' || code=='Q' || code=='E' || code=='A' || code=='T' {
+  r.kind=RenderSourceKind.render_target;
+  if code=='H' {r.target=RenderTarget.shadow_map;}if code=='W' {r.target=RenderTarget.water_light;}if code=='Z' {r.target=RenderTarget.water_depth;}
+  if code=='I' {r.target=RenderTarget.light;}if code=='Q' {r.target=RenderTarget.q0;}if code=='E' {r.target=RenderTarget.e0;}if code=='A' {r.target=RenderTarget.aux;}if code=='T' {r.target=RenderTarget.scene_depth;}
+ }
+ return r;
+}
+rbs_test_same :: (actual:RenderBindingSource,wanted:RenderBindingSource)->bool {
+ return actual.valid==wanted.valid && actual.kind==wanted.kind && actual.index==wanted.index && actual.target==wanted.target && actual.sampler_name==wanted.sampler_name && actual.buffer_mode==wanted.buffer_mode;
+}
+#forall "binding origins match every resource in all eighteen catalog profiles" profile:0..<18 {
+ // The blueprint contains no whitespace in its logical role sequence.
+ row:=RBS_EXPECTED[profile];logical:=0;store:=0;
+ for c:row {if c==' ' {continue;}
+  name:=render_catalog_binding(profile,0,logical).name;
+  expected:=rbs_test_expected(c,store,name);actual:=render_binding_source(profile,0,logical);
+  #assert rbs_test_same(actual,expected);
+  if c=='D' {store+=1;}logical+=1;
+ }
+ #assert logical==render_catalog_binding_count(profile,0);
+ #assert !render_binding_source(profile,0,logical).valid && !render_binding_source(profile,0,-1).valid;
+}
+#forall "binding origins map particle uniforms to the main allocation and emitter views" profile:0..<18 {
+ count:=render_catalog_binding_count(profile,1);
+ if count>0 {
+  u:=render_binding_source(profile,1,0);p:=render_binding_source(profile,1,1);
+  #assert u.valid && u.kind==RenderSourceKind.main_uniform && u.index==0 && u.buffer_mode==resource_views.RenderBufferMode.declared_uniform;
+  #assert p.valid && p.kind==RenderSourceKind.particle_emitters && p.index==0 && p.buffer_mode==resource_views.RenderBufferMode.legacy_capacity;
+  if profile==2 {d:=render_binding_source(profile,1,2);#assert d.valid && d.kind==RenderSourceKind.render_target && d.target==RenderTarget.water_depth && d.index== -1 && d.sampler_name=="";}
+ }
+ #assert !render_binding_source(profile,1,count).valid && !render_binding_source(profile,1,-1).valid;
+}
+#forall "binding origins grant shared media only to declared media profiles" profile:0..<18 {
+ for i:0..<3 {
+  source:=render_binding_source(profile,2,i);
+  #assert source.valid==render_catalog(profile).features.media;
+  if source.valid {
+   if i==0 {#assert source.kind==RenderSourceKind.media_uniform && source.index==0 && source.buffer_mode==resource_views.RenderBufferMode.declared_uniform;}
+   if i==1 {#assert source.kind==RenderSourceKind.media_image && source.index==0;}
+   if i==2 {#assert source.kind==RenderSourceKind.sampler && source.sampler_name=="media_sampler" && source.index== -1;}
+   #assert source.target==RenderTarget.none;
+  }
+ }
+ #assert !render_binding_source(profile,2,-1).valid && !render_binding_source(profile,2,3).valid;
+}
+#forall "binding origins refuse absent profiles and unknown resource sets without fallback" which:0..<4 {
+ profile:=ifx which==0 then -1 else ifx which==1 then 18 else 0;set:=ifx which==2 then -1 else ifx which==3 then 3 else 0;
+ source:=render_binding_source(profile,set,0);
+ #assert rbs_test_same(source,RenderBindingSource.{});
+}
+#test "binding asset ordinals count decoded GPU payloads not data sound or index rows" {
+ a:=rbs_assets("data:x\nstorage:a\nindex:b\nlayers:c\nsound:d\npack:e\nmesh:f\n");
+ #assert a.storage==2 && a.meshes==1 && a.layers==2;
+ b:=rbs_assets("storage:a\nstorage:b");#assert b.storage==2 && b.meshes==0 && b.layers==0;
+ c:=rbs_assets("");#assert c.storage==0 && c.meshes==0 && c.layers==0;
+ empty:=rbs_assets("storage:\npack:\nmesh:\nlayers:");#assert empty.storage==0 && empty.meshes==0 && empty.layers==0;
+ blank:=rbs_assets("\nstorage:a\n\npack:b\n");#assert blank.storage==2 && blank.meshes==0 && blank.layers==1;
+}
+#forall "binding storage source boundaries retain distinct asset ordinals and store zero" ordinal:0..<5 {
+ source:=rbs_storage_source(ordinal,RBSAssetCounts.{storage=2,meshes=1});
+ expected:=ifx ordinal<2 then rbs_test_expected('V',0,"") else ifx ordinal==2 then rbs_test_expected('M',0,"") else rbs_test_expected('D',ordinal-3,"");
+ if ordinal<2 {expected.index=ordinal;}
+ #assert rbs_test_same(source,expected);
+}

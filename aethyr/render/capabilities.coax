@@ -1,0 +1,79 @@
+// Shader/device admission is Coax policy. Platform adapters only report which
+// features were actually enabled; support alone is not permission to publish.
+#module "aethyr.render.capabilities";
+#authority;
+RenderBackend :: enum u8 {invalid;webgpu;vulkan;reference;}
+RenderCapabilityStatus :: enum u8 {ok;invalid;generic_derivatives;legacy_kill;helper_unavailable;int64_unavailable;}
+RenderShaderRequirements :: struct {
+  reflection_schema:int=2;tree_version:int=2;derivatives:int;control:int;requires_int64:bool;
+}
+RenderDeviceCapabilities :: struct {backend:RenderBackend;helper_enabled:bool;int64_enabled:bool;}
+
+#test "portable shader capability admission uses enabled helper and native integer features" {
+  rc_req:=RenderShaderRequirements.{tree_version=3,derivatives=2,control=2,requires_int64=true};
+  rc_dev:=RenderDeviceCapabilities.{backend=RenderBackend.vulkan,helper_enabled=true,int64_enabled=true};
+  #assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.ok;
+  rc_dev.helper_enabled=false;
+  #assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.helper_unavailable;
+  rc_dev.helper_enabled=true;rc_dev.int64_enabled=false;
+  #assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.int64_unavailable;
+  rc_dev.backend=RenderBackend.webgpu;
+  #assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.ok;
+  rc_req=RenderShaderRequirements.{};rc_dev.helper_enabled=false;
+  #assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.ok;
+  rc_dev.backend=RenderBackend.vulkan;
+  #assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.ok;
+}
+#forall "both generic derivative masks require an explicit trusted legacy profile" rc_mask:1..<4 {
+  rc_req:=RenderShaderRequirements.{tree_version=3,derivatives=rc_mask};
+  rc_dev:=RenderDeviceCapabilities.{backend=RenderBackend.webgpu,helper_enabled=true};
+  #assert render_capabilities_admit(rc_req,rc_dev,false)==RenderCapabilityStatus.ok;
+  #assert render_capabilities_admit(rc_req,rc_dev,true)==(ifx rc_mask==2 then RenderCapabilityStatus.ok else RenderCapabilityStatus.generic_derivatives);
+  rc_req.derivatives=0;rc_req.control=rc_mask;
+  #assert render_capabilities_admit(rc_req,rc_dev,false)==RenderCapabilityStatus.ok;
+  #assert render_capabilities_admit(rc_req,rc_dev,true)==(ifx rc_mask==2 then RenderCapabilityStatus.ok else RenderCapabilityStatus.legacy_kill);
+}
+#forall "capability metadata refuses unknown schema versions masks and backends" rc_field:0..<8 {
+  rc_req:=RenderShaderRequirements.{};rc_dev:=RenderDeviceCapabilities.{backend=RenderBackend.vulkan};
+  if rc_field==0 {rc_req.reflection_schema=1;}if rc_field==1 {rc_req.reflection_schema=3;}
+  if rc_field==2 {rc_req.tree_version=1;}if rc_field==3 {rc_req.tree_version=4;}
+  if rc_field==4 {rc_req.derivatives=-1;}if rc_field==5 {rc_req.derivatives=4;}
+  if rc_field==6 {rc_req.control=-1;}if rc_field==7 {rc_req.control=4;}
+  #assert render_capabilities_admit(rc_req,rc_dev,false)==RenderCapabilityStatus.invalid;
+  rc_req=RenderShaderRequirements.{};rc_dev.backend=RenderBackend.invalid;
+  #assert render_capabilities_admit(rc_req,rc_dev,false)==RenderCapabilityStatus.invalid;
+}
+#test "tree2 never acquires the new registry through capability admission" {
+  rc_req:=RenderShaderRequirements.{derivatives=2};rc_dev:=RenderDeviceCapabilities.{backend=RenderBackend.vulkan,helper_enabled=true,int64_enabled=true};
+  #assert render_capabilities_admit(rc_req,rc_dev,false)==RenderCapabilityStatus.invalid;
+  rc_req.derivatives=0;rc_req.control=2;
+  #assert render_capabilities_admit(rc_req,rc_dev,false)==RenderCapabilityStatus.invalid;
+  rc_req.control=1;
+  #assert render_capabilities_admit(rc_req,rc_dev,false)==RenderCapabilityStatus.ok;
+  rc_dev.helper_enabled=false;
+  #assert render_capabilities_admit(rc_req,rc_dev,false)==RenderCapabilityStatus.ok;
+  rc_req.control=0;rc_req.derivatives=1;
+  #assert render_capabilities_admit(rc_req,rc_dev,false)==RenderCapabilityStatus.ok;
+}
+#test "the reference interpreter declares its own helper and native integer capabilities" {
+  rc_req:=RenderShaderRequirements.{tree_version=3,derivatives=2,control=2,requires_int64=true};
+  rc_dev:=RenderDeviceCapabilities.{backend=RenderBackend.reference,helper_enabled=true,int64_enabled=true};
+  #assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.ok;
+  rc_dev.helper_enabled=false;#assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.helper_unavailable;
+  rc_dev.helper_enabled=true;rc_dev.int64_enabled=false;#assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.int64_unavailable;
+  rc_req=RenderShaderRequirements.{};rc_dev.helper_enabled=false;#assert render_capabilities_admit(rc_req,rc_dev,true)==RenderCapabilityStatus.ok;
+}
+
+render_capabilities_admit :: (rc_req:RenderShaderRequirements,rc_dev:RenderDeviceCapabilities,rc_portable_fine:bool)->RenderCapabilityStatus {
+  if rc_req.reflection_schema!=2 || (rc_req.tree_version!=2 && rc_req.tree_version!=3) ||
+    rc_req.derivatives<0 || rc_req.derivatives>3 || rc_req.control<0 || rc_req.control>3 ||
+    (rc_dev.backend!=RenderBackend.webgpu && rc_dev.backend!=RenderBackend.vulkan && rc_dev.backend!=RenderBackend.reference) {return RenderCapabilityStatus.invalid;}
+  if rc_req.tree_version==2 && ((rc_req.derivatives&2)!=0 || (rc_req.control&2)!=0) {return RenderCapabilityStatus.invalid;}
+  if rc_portable_fine && (rc_req.derivatives&1)!=0 {return RenderCapabilityStatus.generic_derivatives;}
+  if rc_portable_fine && (rc_req.control&1)!=0 {return RenderCapabilityStatus.legacy_kill;}
+  if (rc_req.control&2)!=0 && !rc_dev.helper_enabled {return RenderCapabilityStatus.helper_unavailable;}
+  // Native Vulkan and the named reference executor require actual i64.
+  // WGSL retains its separate bounded i32 carrier profile.
+  if rc_req.requires_int64 && rc_dev.backend!=RenderBackend.webgpu && !rc_dev.int64_enabled {return RenderCapabilityStatus.int64_unavailable;}
+  return RenderCapabilityStatus.ok;
+}

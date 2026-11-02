@@ -1,0 +1,89 @@
+// Resource descriptions are decisions made in Coax. Hosts create the described
+// objects and report actual allocation, upload and initialization observations.
+#module "aethyr.render.resources";
+#authority;
+#load "passes.coax" as passes;
+#load "bindings.coax" as bindings;
+#load "frame.coax" as ranges;
+
+RenderResourceStatus :: enum u8 { invalid; ok; capacity; uninitialized; }
+RenderTextureFormat :: enum u8 { rgba8; bgra8; rgba16f; depth32; invalid; }
+RenderTargetDescriptor :: struct {status:RenderResourceStatus;width:int;height:int;format:RenderTextureFormat;}
+RenderSamplerAddress :: enum u8 { clamp; repeat; }
+RenderSamplerCompare :: enum u8 { none; less; }
+RenderSamplerDescriptor :: struct {
+ status:RenderResourceStatus;address_u:RenderSamplerAddress;address_v:RenderSamplerAddress;
+ min_linear:bool;mag_linear:bool;mip_linear:bool;
+ logical_anisotropy:int;physical_anisotropy:int;compare:RenderSamplerCompare;
+}
+RenderTextureSample :: enum u8 { filterable; unfilterable; depth; }
+RenderTextureDimension :: enum u8 { d2; d2_array; }
+RenderTextureLayout :: struct {status:RenderResourceStatus;sample:RenderTextureSample;dimension:RenderTextureDimension;}
+RenderBufferMode :: enum u8 { invalid; declared_uniform; immutable_payload; legacy_capacity; }
+RenderBufferObserved :: struct {
+ source_capacity:u64;logical_payload:u64;initialized_highwater:u64;
+ upload_bytes:u64;gpu_bytes:u64;offset:u64;alignment:u64=4;zero_initialized:bool;
+}
+RenderBufferView :: struct {status:RenderResourceStatus;offset:u64;bytes:u64;elements:u64;}
+#load "tests/resources-checks.coax";
+
+render_target_desc_with_limit :: (target:passes.RenderTarget,w:int,h:int,coarse:bool,screen_format:RenderTextureFormat,max_dimension:int)->RenderTargetDescriptor {
+ if w<1 || h<1 || max_dimension<1 || max_dimension>16384 {return RenderTargetDescriptor.{};}
+ if w>max_dimension || h>max_dimension {return RenderTargetDescriptor.{status=RenderResourceStatus.capacity};}
+ r:=RenderTargetDescriptor.{status=RenderResourceStatus.ok,width=w,height=h,format=RenderTextureFormat.rgba16f};
+ if target==passes.RenderTarget.screen {
+  if screen_format==RenderTextureFormat.depth32 || screen_format==RenderTextureFormat.invalid {return RenderTargetDescriptor.{};}
+  r.format=screen_format;
+ }else if target==passes.RenderTarget.shadow_map {r.width=ifx coarse then 1024 else 2048;if r.width>max_dimension {return RenderTargetDescriptor.{status=RenderResourceStatus.capacity};}r.height=r.width;r.format=RenderTextureFormat.depth32;}
+ else if target==passes.RenderTarget.scene_depth || target==passes.RenderTarget.water_depth {r.format=RenderTextureFormat.depth32;}
+ else if target==passes.RenderTarget.q0 || target==passes.RenderTarget.q1 {r.width=(w+3)/4;r.height=(h+3)/4;}
+ else if target==passes.RenderTarget.e0 || target==passes.RenderTarget.e1 {r.width=(w+7)/8;r.height=(h+7)/8;}
+ else if target!=passes.RenderTarget.light && target!=passes.RenderTarget.aux && target!=passes.RenderTarget.water_light {return RenderTargetDescriptor.{};}
+ return r;
+}
+render_sampler_desc :: (name:string)->RenderSamplerDescriptor {
+ if name!="sheet" && name!="shadow_cmp" && name!="bloom_lin" && name!="post_lin" && name!="sans_sampler" && name!="media_sampler" {return RenderSamplerDescriptor.{};}
+ r:=RenderSamplerDescriptor.{status=RenderResourceStatus.ok,min_linear=true,mag_linear=true,logical_anisotropy=1,physical_anisotropy=1};
+ if name=="sheet" {r.address_u=RenderSamplerAddress.repeat;r.address_v=RenderSamplerAddress.repeat;r.mip_linear=true;r.logical_anisotropy=8;}
+ if name=="shadow_cmp" {r.compare=RenderSamplerCompare.less;}
+ if name=="sans_sampler" {r.mip_linear=true;}return r;
+}
+render_texture_layout :: (binding:bindings.RenderBinding)->RenderTextureLayout {
+ b:=[1]bindings.RenderBinding.[binding];if bindings.render_bindings(b[..])!=bindings.RenderBindingStatus.ok {return RenderTextureLayout.{};}
+ r:=RenderTextureLayout.{status=RenderResourceStatus.ok};
+ if binding.kind==bindings.RenderResourceKind.image2d {if binding.name=="water_scene" {r.sample=RenderTextureSample.unfilterable;}}
+ else if binding.kind==bindings.RenderResourceKind.image_array {r.dimension=RenderTextureDimension.d2_array;}
+ else if binding.kind==bindings.RenderResourceKind.depth {r.sample=RenderTextureSample.depth;}
+ else {return RenderTextureLayout.{};}return r;
+}
+// initialized_highwater describes an initialized prefix from GPU byte zero.
+// upload_bytes is a planned write starting at offset. A zero update retains the
+// prefix. zero_initialized attests that the entire GPU allocation was cleared.
+// Legacy views include their historical16-byte minimum/padding, not pooled GPU
+// tail capacity. The raw CPU span remains separate for upload-range checks.
+render_buffer_view :: (binding:bindings.RenderBinding,mode:RenderBufferMode,o:RenderBufferObserved)->RenderBufferView {
+ b:=[1]bindings.RenderBinding.[binding];if bindings.render_bindings(b[..])!=bindings.RenderBindingStatus.ok {return RenderBufferView.{};}
+ alignment_ok:=false;for bit:2..<17 {alignment_ok=alignment_ok || o.alignment==(cast(u64)1<<cast(u32)bit);}
+ if !alignment_ok || o.offset%o.alignment!=0 || o.upload_bytes%4!=0 || o.initialized_highwater>o.gpu_bytes {return RenderBufferView.{};}
+ if o.upload_bytes>o.source_capacity || !ranges.render_span_fits(o.offset,o.upload_bytes,0,o.gpu_bytes) {return RenderBufferView.{status=RenderResourceStatus.capacity};}
+ bytes:u64;
+ if mode==RenderBufferMode.declared_uniform {
+  if binding.kind!=bindings.RenderResourceKind.uniform {return RenderBufferView.{};}bytes=cast(u64)binding.uniform_vec4s*16;
+ }else if mode==RenderBufferMode.immutable_payload {
+  if binding.kind!=bindings.RenderResourceKind.storage {return RenderBufferView.{};}bytes=o.logical_payload;
+ }else if mode==RenderBufferMode.legacy_capacity {
+  if binding.kind!=bindings.RenderResourceKind.storage {return RenderBufferView.{};}
+  bytes=o.source_capacity;
+  padding:=(16-bytes%16)%16;
+  if bytes==0 {padding=16;}
+  if !ranges.render_span_fits(bytes,padding,0,o.gpu_bytes-o.offset) {return RenderBufferView.{status=RenderResourceStatus.capacity};}bytes+=padding;
+ }else {return RenderBufferView.{};}
+ if bytes<cast(u64)binding.stride || bytes%4!=0 {return RenderBufferView.{};}
+ if !ranges.render_span_fits(o.offset,bytes,0,o.gpu_bytes) {return RenderBufferView.{status=RenderResourceStatus.capacity};}
+ if !o.zero_initialized && o.upload_bytes<bytes && !ranges.render_span_fits(o.offset,bytes,0,o.initialized_highwater) {return RenderBufferView.{status=RenderResourceStatus.uninitialized};}
+ return RenderBufferView.{status=RenderResourceStatus.ok,offset=o.offset,bytes=bytes,elements=bytes/cast(u64)binding.stride};
+}
+
+render_target_desc :: (target:passes.RenderTarget,w:int,h:int,coarse:bool,screen_format:RenderTextureFormat)->RenderTargetDescriptor {
+ return render_target_desc_with_limit(target,w,h,coarse,screen_format,16384);
+}

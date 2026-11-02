@@ -1,0 +1,20 @@
+{
+  "schema": "aethyr.render.valid-capture-derived.v1",
+  "status": "pass_for_actual_capture",
+  "original_command_status": "failed: observer incorrectly required nonempty scene draws for HUD-based Galaxy",
+  "original_receipt_sha256": "6de1eae4fb66c735ca32f34b8c4bee7896b6faee96127e2090ec838bb25e847f",
+  "scope": "Galaxy legitimately draws its world and text as HUD geometry. The original capture is valid and complete; the nonempty-scene assertion is inapplicable. No browser capture repeated, producer state changed, or original failure overwritten. Independent numerical comparison remains pending.",
+  "shape": [
+    160,
+    90
+  ],
+  "format": "rgba16float",
+  "admitted_scene_draws": 0,
+  "admitted_hud_vertices": 7926,
+  "gpu_sha256": "6868ce5abcfb32fdda5d156a91adae25828e37c1f8d2bb1c85faba65c3d13536",
+  "source_changes": [],
+  "validation": {
+    "ok": true,
+    "error": null
+  }
+}

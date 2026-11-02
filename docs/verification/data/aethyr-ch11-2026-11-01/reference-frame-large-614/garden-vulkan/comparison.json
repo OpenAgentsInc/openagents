@@ -1,0 +1,34 @@
+{
+  "schema": "aethyr.render.image-comparison.v1",
+  "status": "pass",
+  "width": 160,
+  "height": 90,
+  "source_sha256": "30961fe5c589cfd45818d28122ff39de4ac8288e4339255b13907e0d738c7f55",
+  "comparison": {
+    "status": "pass",
+    "pixels": 14400,
+    "channels": 57600,
+    "colour_failures": 0,
+    "nonfinite_failures": 0,
+    "max_absolute_error": 0.0009765625,
+    "max_normalized_error": 0.0009765625,
+    "samples": [],
+    "masked_pixels": 0,
+    "rule": "abs(gpu-cpu) <= 0.002 * max(1, abs(cpu)); both values finite"
+  },
+  "inputs": {
+    "cpu": {
+      "path": "/private/tmp/aethyr-ch11-reference-garden-160-large-vulkan-viewport-308/screen.rgba32f",
+      "format": "rgba32f",
+      "bytes": 230400,
+      "sha256": "17b659ff638c7f23ce2117004af13f6be1cb31fca6143487eda23dc9fb3ecabd"
+    },
+    "gpu": {
+      "path": "/private/tmp/aethyr-ch11-native-garden-160-half/screen.raw",
+      "format": "rgba16f",
+      "bytes": 115200,
+      "sha256": "55aa6b4c9bf68aa4445d1337fb3909336dc5b3ddf552e3a2c1267384ce66f5ff"
+    }
+  },
+  "scope": "Complete supplied readback/CPU image comparison, including alpha and all nonfinite values, without a mask. The enclosing host gate must establish matching frame and resource provenance."
+}

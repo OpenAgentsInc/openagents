@@ -1,0 +1,43 @@
+// C-layout scalar fields and fixed arrays are independently encoded as words.
+RQ_IR_STORAGE_TREE :: [50]u32.[2,9,0,1,2,3,4,5,6,8,2,2,4,7,6,1,0,3,4,4,8,5,16,6,24,7,32,40,1,0,0,0,1,5,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+#test "quad raw storage decoder respects scalar widths padding and array stride" {
+ // Build the exact small module; unused tail words in the constant are not a
+ // tree and are excluded from the transport view.
+ tree:=RQ_IR_STORAGE_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[0..<37],meta[..]);#assert p.status==RQStatus.ok;
+ source:=[10]u32.[4294967295,4294967295,2882400001,3735928559,2309737967,4275878552,1985229328,19088743,1069547520,3223322624];
+ m:=[1]RQMachine.[RQMachine.{types=9}];memory:[16]u32;memory[4]=123;memory[14]=456;
+ rq_ir_decode(m[..],tree[..],meta[..],source[..],0,memory[..],5,8);
+ expected:=[9]u32.[1,4294967295,2882400001,2309737967,4275878552,1985229328,19088743,1069547520,3223322624];
+ #assert m[0].status==RQStatus.ok;
+ for j:0..<9 {#assert memory[5+j]==expected[j];}#assert memory[4]==123 && memory[14]==456;
+ m[0].status=RQStatus.ok;memory[5]=789;rq_ir_decode(m[..],tree[..],meta[..],source[..],4,memory[..],5,8);
+ #assert m[0].status==RQStatus.resource && memory[5]==789;
+ m[0].status=RQStatus.ok;rq_ir_decode(m[..],tree[..],meta[..],source[..],-1,memory[..],5,2);#assert m[0].status==RQStatus.resource;
+ m[0].status=RQStatus.ok;rq_ir_decode(m[..],tree[..],meta[..],source[..],1,memory[..],5,2);#assert m[0].status==RQStatus.resource;
+ m[0].status=RQStatus.ok;source[0]=16777216;
+ rq_ir_decode(m[..],tree[..],meta[..],source[..],0,memory[..],5,1);#assert memory[5]==0;
+ rq_ir_decode(m[..],tree[..],meta[..],source[..],3,memory[..],5,1);#assert memory[5]==1;
+}
+#test "quad raw storage decoder masks stage flags before following a field offset" {
+ tree:=RQ_IR_FLAGS_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ proc:=rq_ir_entry(p,tree[..],meta[..],1);ty:=rq_ir_proc(meta[..],proc,0);
+ source:=[5]u32.[1065353216,1073741824,1077936128,1082130432,1056964608];memory:[5]u32;m:=[1]RQMachine.[RQMachine.{types=p.types}];
+ rq_ir_decode(m[..],tree[..],meta[..],source[..],0,memory[..],0,ty);
+ #assert m[0].status==RQStatus.ok;
+ for j:0..<5 {#assert memory[j]==source[j];}
+}
+RQ_IR_COUNTS_TREE :: [39]u32.[2,10,0,1,2,3,4,5,6,8,2,2,4,7,6,1,0,3,4,4,8,5,16,6,24,7,32,40,9,2,1,0,0,0,1,5,1,1,0];
+#forall "quad counts use admitted fixed private or external view extents" which:0..<12 {
+ tree:=RQ_IR_COUNTS_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ storage:[4]u32;buffers:=[1]RQBuffer.[RQBuffer.{words=storage[..],count=3,stride=4}];memory:[64]u32;
+ m:=[1]RQMachine.[RQMachine.{types=p.types,budget=100,used=4,private_count=1}];m[0].private_views[0]=RQPrivate.{elem=2,count=2,lane_words=2};
+ place:=RQPlace.{ty=9,at=[4]int.[0,1,2,3]};handle:u32=0;wanted:=RQStatus.ok;expected:u64=3;
+ if which==0 {place.ty=7;expected=2;}if which==2 {buffers[0].count=0;expected=0;}if which==3 {handle=2147483648;expected=2;}
+ if which==4 {handle=1;wanted=RQStatus.resource;}if which==5 {handle=2147483649;wanted=RQStatus.resource;}
+ if which==6 {buffers[0].count=-1;wanted=RQStatus.resource;}if which==7 {buffers[0].count=5;wanted=RQStatus.resource;}
+ if which==8 {buffers[0].stride=8;wanted=RQStatus.resource;}if which==9 {buffers[0].stride=0;wanted=RQStatus.resource;}
+ if which==10 {place.ty=2;wanted=RQStatus.malformed;}if which==11 {buffers[0].count=4;expected=4;}
+ for lane:0..<4 {memory[lane]=handle;}
+ r:=rq_ir_count(m[..],tree[..],meta[..],memory[..],RQResources.{buffers=buffers[..]},place,5);#assert m[0].status==wanted;
+ if wanted==RQStatus.ok {#assert r.ty==5 && rq_ir_u64(memory[..],r,0)==expected && rq_ir_u64(memory[..],r,2)==expected && rq_ir_u64(memory[..],r,1)==0 && rq_ir_u64(memory[..],r,3)==0;}
+}

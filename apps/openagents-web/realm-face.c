@@ -218,6 +218,11 @@ EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32
   (void)state;
   return i == 0 && bytes <= sizeof document ? (uint32_t)(uintptr_t)document : 0u;
 }
+// Physical destination allocation observation; the typed host admits its
+// requested byte span before copying into this existing asset buffer.
+EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) {
+  (void)state;return i == 0 ? (uint32_t)sizeof document : 0u;
+}
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
   (void)state;
   if (i < 0 || i > 31) return;
@@ -1051,6 +1056,7 @@ EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_
 // ---- the scene the host draws: indexed draws over the vertices and indices,
 // with this frame's instances and lights
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)draws; }
+EXPORT("coaxial_draw_capacity") uint32_t coaxial_draw_capacity(uint32_t state) { (void)state; return (uint32_t)sizeof draws; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { (void)state; return opened ? (uint32_t)draw_count : 0u; }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 0 ? (uint32_t)sizeof instances : (uint32_t)sizeof lights; }

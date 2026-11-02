@@ -1,3 +1,4 @@
+#load "../aethyr/render/noise.coax";
 // The sky behind space (docs/verse/space.md): a starfield and the Sun, as
 // light per pixel, for any space realm's background pass. Scalar f32 only,
 // so coax wgsl turns these into WGSL and Metal (as verse/light.coax):
@@ -9,7 +10,10 @@
 //   coax/bin/coax test --library verse/stars.coax
 
 stars_fract :: (x:f32)->f32 { return x-floor(x); }
-stars_hash :: (x:f32,y:f32)->f32 { return stars_fract(sin(x*127.1f32+y*311.7f32)*43758.5453f32); }
+#test "stars live lattice uses the portable integer noise profile" {
+  #assert f32_bits(stars_hash(1,2))==0x3f6013da;
+}
+stars_hash :: (x:f32,y:f32)->f32 { return render_noise2(x,y); }
 stars_max :: (a:f32,b:f32)->f32 { if a>b { return a; } return b; }
 stars_min :: (a:f32,b:f32)->f32 { if a<b { return a; } return b; }
 

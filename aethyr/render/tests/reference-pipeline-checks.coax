@@ -1,0 +1,299 @@
+// Actual checked tree emitted from pipeline-shader.coax; native tooling
+// re-emits and authenticates it before qualification.
+#load "reference-pipeline-trees.coax";
+#load "pipeline-fixtures.coax";
+RP_TEST_TREE :: [256]u32.[2,12,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,7,3,6,0,2,16,4,20,24,9,2,7,2,2,0,2,4,8,7,3,6,0,9,16,4,2147483672,28,7,2,6,0,6,16,32,4,10,4,4,4,7,8,4,4,4,7,8,58,1,1,4,31,10,3,27,41,40,2,0,22,2,2,19,1,27,41,40,2,1,27,42,40,3,16,5,0,0,19,1,19,2,16,2,1088421888,27,41,40,2,1,27,42,40,3,16,5,0,0,19,1,27,41,40,2,2,18,1,11,1,10,1,10,72,1,1,4,31,11,2,22,3,4,27,41,41,40,0,1,0,33,12,2,1,27,41,41,40,0,1,0,33,13,2,1,27,41,41,40,0,1,1,16,2,1065353216,22,3,4,29,2,27,41,40,0,2,27,41,41,40,0,0,0,27,41,41,40,0,0,1,27,41,41,40,0,1,1,9,2,2,2,2,2,2,10,1,1,4,31,9,2,18,0,18,1,6,4,2,2,2,2,4,2,2,2,2,14,1,1,4,31,6,4,18,0,18,1,18,2,18,3,2,0,0,0,1,2,3,1,1,4];
+rp_test_attrs :: ()->[36]u32 {
+ positions:=[6][4]f32.[[4]f32.[-1,1,0.5,1],[4]f32.[1,1,0.5,1],[4]f32.[-1,-1,0.5,1],
+  [4]f32.[1,1,0.5,1],[4]f32.[1,-1,0.5,1],[4]f32.[-1,-1,0.5,1]];
+ values:=[6]f32.[0,4,8,4,12,8];tags:=[6]u32.[9,77,88,19,55,66];out:[36]u32;
+ for v:0..<6 {for k:0..<4 {out[v*6+k]=f32_bits(positions[v][k]);}out[v*6+4]=f32_bits(values[v]);out[v*6+5]=tags[v];}
+ return out;
+}
+#test "reference pipeline admits the real checked stage interfaces and complete mapping" {
+ tree:=RP_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);
+ #assert r.status==RQStatus.ok && r.varyings==2 && r.layout.count==3 && r.layout.flat[2] && !r.layout.flat[0] && !r.layout.flat[1];
+ #assert r.colours==2 && r.targets[0]==0 && r.targets[1]==4 && r.depth_word==(-1);
+ #assert r.varying[0].vertex_word==4 && r.varying[0].fragment_word==4 && r.varying[0].words==2 && r.varying[0].at==0;
+ #assert r.varying[1].vertex_word==6 && r.varying[1].fragment_word==6 && r.varying[1].at==2;
+}
+#test "reference pipeline draws two real IR triangles with derivatives flat tags depth and MRT" {
+ tree:=RP_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);
+ values:=[1]u32.[f32_bits(1.0f32)];poison:=[1]u32.[f32_bits(42.0f32)];buffers:=[2]RQBuffer.[RQBuffer.{words=poison[..],count=1,stride=4},RQBuffer.{words=values[..],count=1,stride=4}];resources:=RQResources.{buffers=buffers[..]};
+ bindings:=[1]RRBinding.[RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],0,3).name_id,kind=1,resource=1}];
+ locations:=[3]RRAttribute.[RRAttribute.{components=4},RRAttribute.{location=1,offset=4,components=1},RRAttribute.{location=2,offset=5,components=1}];
+ words:=rp_test_attrs();attrs:=RRAttributes.{words=words[..],stride=6,locations=locations[..]};
+ commands:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=6,base_instance=2,instances=1}];
+ indices:[1]u32;memory:[RQ_IR_WORDS]u32;target:[4]RRPixel;scratch:[4]RRPixel;
+ state:=RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,outputs=2};
+ q:=rr_reference_pass(r,p,tree[..],meta[..],resources,bindings[..],attrs,commands[..],indices[0..<0],state,2,2,RRFormat.half,1000000,memory[..],scratch[..],target[..]);
+ #assert q.status==RQStatus.ok && q.triangles==2 && q.quads==2 && q.fragments==4 && q.written==4 && q.steps>0;
+ expected:=[4]f32.[4,6,8,10];
+ for k:0..<4 {
+  #assert target[k].depth==0.5 && target[k].colour.r==expected[k] && target[k].colour.g==2 && target[k].colour.b==(-4) && target[k].colour.a==1;
+  #assert target[k].aux.r==(ifx k==0 then 11.0f32 else 21.0f32) && target[k].aux.g==cast(f32)(k%2)+0.5f32 && target[k].aux.b==cast(f32)(k/2)+0.5f32 && target[k].aux.a==[4]f32.[5,3,1,-1][k];
+ }
+}
+#test "reference pipeline resource and budget refusals preserve the whole target" {
+ tree:=RP_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);
+ values:=[1]u32.[0];poison:=[1]u32.[f32_bits(42.0f32)];buffers:=[2]RQBuffer.[RQBuffer.{words=poison[..],count=1,stride=4},RQBuffer.{words=values[..],count=1,stride=4}];resources:=RQResources.{buffers=buffers[..]};
+ bindings:=[1]RRBinding.[RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],0,3).name_id,kind=1,resource=1}];
+ locations:=[3]RRAttribute.[RRAttribute.{components=4},RRAttribute.{location=1,offset=4,components=1},RRAttribute.{location=2,offset=5,components=1}];
+ words:=rp_test_attrs();attrs:=RRAttributes.{words=words[..],stride=6,locations=locations[..]};
+ commands:=[2]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=6,instances=1},RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,first=6,count=3,instances=1}];
+ indices:[1]u32;memory:[RQ_IR_WORDS]u32;target:[4]RRPixel;scratch:[4]RRPixel;
+ state:=RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,outputs=2};
+ for k:0..<4 {target[k].colour.r=42;}
+ q:=rr_reference_pass(r,p,tree[..],meta[..],resources,bindings[..],attrs,commands[..],indices[0..<0],state,2,2,RRFormat.half,1000000,memory[..],scratch[..],target[..]);
+ #assert q.status==RQStatus.resource && q.written==0;
+ for k:0..<4 {#assert target[k].colour.r==42 && target[k].depth==1;}
+ q=rr_reference_pass(r,p,tree[..],meta[..],resources,bindings[..],attrs,commands[0..<1],indices[0..<0],state,2,2,RRFormat.half,1,memory[..],scratch[..],target[..]);
+ #assert q.status==RQStatus.budget && q.written==0;for k:0..<4 {#assert target[k].colour.r==42;}
+ bindings[0].kind=2;
+ q=rr_reference_pass(r,p,tree[..],meta[..],resources,bindings[..],attrs,commands[0..<1],indices[0..<0],state,2,2,RRFormat.half,1000000,memory[..],scratch[..],target[..]);
+ #assert q.status==RQStatus.resource && q.written==0;for k:0..<4 {#assert target[k].colour.r==42;}
+}
+// Test storage only: it never changes the production admission or arithmetic.
+rp_test_run :: (tree:[]u32,res:RQResources,bindings:[]RRBinding,attributes:RRAttributes,commands:[]RenderDecodedDraw,indices:[]u32,
+ state:RenderPassState,width:int,height:int,budget:int,target:[]RRPixel,scratch_count:int)->RRPassResult {
+ meta:[RQ_IR_META]int;memory:[RQ_IR_WORDS]u32;scratch:[64]RRPixel;
+ p:=rq_ir_prepare(tree,meta[..]);r:=rr_pipeline(p,tree,meta[..]);
+ return rr_reference_pass(r,p,tree,meta[..],res,bindings,attributes,commands,indices,state,width,height,RRFormat.f32,budget,memory[..],scratch[0..<scratch_count],target);
+}
+#test "reference pipeline refuses incompatible widths flatness missing varyings and excess MRT" {
+ rp_rp_extra_tree:=RP_EXTRA_TREE;rp_rp_flat_tree:=RP_FLAT_TREE;rp_rp_mismatch_tree:=RP_MISMATCH_TREE;rp_rp_three_tree:=RP_THREE_TREE;
+ meta:[RQ_IR_META]int;
+ p:=rq_ir_prepare(rp_rp_mismatch_tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ #assert rr_pipeline(p,rp_rp_mismatch_tree[..],meta[..]).status==RQStatus.unsupported;
+ p=rq_ir_prepare(rp_rp_flat_tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ #assert rr_pipeline(p,rp_rp_flat_tree[..],meta[..]).status==RQStatus.unsupported;
+ p=rq_ir_prepare(rp_rp_extra_tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ #assert rr_pipeline(p,rp_rp_extra_tree[..],meta[..]).status==RQStatus.unsupported;
+ p=rq_ir_prepare(rp_rp_three_tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ #assert rr_pipeline(p,rp_rp_three_tree[..],meta[..]).status==RQStatus.capacity;
+ p.status=RQStatus.malformed;#assert rr_pipeline(p,rp_rp_three_tree[..],meta[..]).status==RQStatus.malformed;
+}
+#test "reference pipeline whole-pass admission includes exact pixel dimension and budget boundaries" {
+ rp_rp_noattr_tree:=RP_NOATTR_TREE;
+ bindings:[1]RRBinding;commands:[1]RenderDecodedDraw;indices:[1]u32;target:[4]RRPixel;
+ state:=RenderPassState.{valid=true,outputs=1};res:RQResources;attrs:RRAttributes;
+ for field:0..<13 {
+  w:=2;h:=2;budget:=100;this_state:=state;scratch_count:=64;out_count:=4;
+  if field==0 {w=0;}if field==1 {h=0;}if field==2 {w=16385;}if field==3 {h=16385;}
+  if field==4 {budget=0;}if field==5 {budget=100000001;}if field==6 {this_state.valid=false;}if field==7 {this_state.outputs=2;}
+  if field==8 {scratch_count=3;}if field==9 {out_count=3;}if field==10 {w=16384;}if field==11 {h=16384;}if field==12 {w=3;h=2;}
+  q:=rp_test_run(rp_rp_noattr_tree[..],res,bindings[0..<0],attrs,commands[0..<0],indices[0..<0],this_state,w,h,budget,target[0..<out_count],scratch_count);
+  expected:=ifx field<8 then RQStatus.resource else RQStatus.capacity;#assert q.status==expected && q.written==0;
+ }
+ target[0].colour.r=42;target[3].colour.r=77;
+ for budget:[2]int.[1,100000000] {
+  q:=rp_test_run(rp_rp_noattr_tree[..],res,bindings[0..<0],attrs,commands[0..<0],indices[0..<0],state,1,1,budget,target[..],64);
+  #assert q.status==RQStatus.ok && q.steps==0 && q.written==0 && target[0].colour.r==42 && target[3].colour.r==77;
+ }
+}
+#test "reference pipeline nonindexed and indexed instance domains retain exact u32 endpoints" {
+ rp_rp_noattr_tree:=RP_NOATTR_TREE;
+ bindings:[1]RRBinding;commands:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,first=4294967293,count=3,base_instance=4294967295,instances=1}];
+ indices:=[3]u32.[4294967293,4294967294,4294967295];target:[4]RRPixel;state:=RenderPassState.{valid=true,outputs=1};
+ q:=rp_test_run(rp_rp_noattr_tree[..],RQResources.{},bindings[0..<0],RRAttributes.{},commands[..],indices[0..<0],state,2,2,1000000,target[..],64);
+ #assert q.status==RQStatus.ok && q.fragments==4 && q.written==4 && target[3].colour.r==1.5 && target[3].colour.g==1.5;
+ commands[0].kind=RenderDrawKind.indexed;commands[0].first=0;
+ q=rp_test_run(rp_rp_noattr_tree[..],RQResources.{},bindings[0..<0],RRAttributes.{},commands[..],indices[..],state,2,2,1000000,target[..],64);
+ #assert q.status==RQStatus.ok && q.written==4;
+ for field:0..<4 {
+  command:=commands;if field==0 {command[0].kind=RenderDrawKind.invalid;}if field==1 {command[0].first=1;}
+  if field==2 {command[0].kind=RenderDrawKind.nonindexed;command[0].first=4294967294;}
+  if field==3 {command[0].instances=2;}
+  q=rp_test_run(rp_rp_noattr_tree[..],RQResources.{},bindings[0..<0],RRAttributes.{},command[..],indices[..],state,2,2,1000000,target[..],64);
+  #assert q.status==RQStatus.resource && q.written==0;
+ }
+ for field:0..<3 {
+  command:=commands;if field==0 {command[0].kind=RenderDrawKind.skip;}if field==1 {command[0].count=2;}if field==2 {command[0].instances=0;}
+  q=rp_test_run(rp_rp_noattr_tree[..],RQResources.{},bindings[0..<0],RRAttributes.{},command[..],indices[..],state,2,2,1000000,target[..],64);
+  #assert q.status==RQStatus.ok && q.steps==0 && q.triangles==0 && q.written==0;
+ }
+}
+#test "reference pipeline scalar attributes admit a one-word stride and preserve clipped flat provenance" {
+ rp_rp_single_tree:=RP_SINGLE_TREE;
+ words:=[3]u32.[0,0,0];locations:=[1]RRAttribute.[RRAttribute.{components=1}];attrs:=RRAttributes.{words=words[..],stride=1,locations=locations[..]};
+ bindings:[1]RRBinding;commands:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=3,base_instance=7,instances=1}];indices:[1]u32;target:[4]RRPixel;
+ state:=RenderPassState.{valid=true,outputs=2};q:=rp_test_run(rp_rp_single_tree[..],RQResources.{},bindings[0..<0],attrs,commands[..],indices[0..<0],state,2,2,1000000,target[..],64);
+ #assert q.status==RQStatus.ok;#assert q.triangles==2;#assert q.written==4;
+ expected:=[4]f32.[0.375,0.625,0.875,1.125];for k:0..<4 {#assert target[k].colour.r==expected[k] && target[k].colour.g==0.25 && target[k].colour.b==0 && target[k].aux.r==7 && target[k].aux.a==7;}
+}
+#test "reference pipeline typed resource mapping distinguishes buffers textures and samplers" {
+ tree:=RP_TEXTURE_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);#assert r.status==RQStatus.ok;
+ u:=[1]u32.[f32_bits(0.5f32)];buffers:=[2]RQBuffer.[RQBuffer.{},RQBuffer.{words=u[..],count=1,stride=4}];
+ mips:=[1]RQMip.[RQMip.{width=1,height=1}];texels:=[1]RQColor.[RQColor.{r=0.125,g=0.25,b=0.5,a=1}];
+ textures:=[3]RQTexture.[RQTexture.{},RQTexture.{},RQTexture.{levels=mips[..],layers=1,texels=texels[..]}];
+ samplers:=[4]RQSampler.[RQSampler.{max_anisotropy=2},RQSampler.{max_anisotropy=2},RQSampler.{max_anisotropy=2},RQSampler.{}];
+ res:=RQResources.{buffers=buffers[..],textures=textures[..],samplers=samplers[..]};
+ bindings:=[4]RRBinding.[RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],1,1).name_id,kind=1,resource=1},
+  RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],1,2).name_id,kind=2,resource=2},RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],1,3).name_id,kind=3,resource=3},RRBinding.{}];
+ memory:[RQ_IR_WORDS]u32;quad:=RRQuad.{coverage=15};shaded:=rr_shade(r,p,tree[..],meta[..],res,bindings[0..<3],quad,false,1000000,memory[..]);
+ #assert shaded.status==RQStatus.ok && shaded.publish==15;
+ for lane:0..<4 {#assert shaded.colour[lane].r==0.625 && shaded.colour[lane].g==0.25 && shaded.colour[lane].b==0.5 && shaded.colour[lane].a==1;}
+ for field:0..<8 {
+  b:=bindings;n:=3;
+  if field<3 {b[field].resource=[3]int.[2,3,4][field];}
+  if field==3 {b[0].resource=-1;}if field==4 {n=2;}if field==5 {b[3]=b[0];n=4;}
+  if field==6 {b[2].kind=2;}if field==7 {b[1].name_id=-1;}
+  input:[RR_INPUT_WORDS]u32;
+  #assert rr_arguments(p,tree[..],meta[..],1,r.fs,res,b[0..<n],input[0..<r.fs.input_words])==RQStatus.resource;
+ }
+ #assert rr_shade(r,p,tree[..],meta[..],res,bindings[0..<3],quad,false,0,memory[..]).status==RQStatus.budget;
+ #assert rr_shade(r,p,tree[..],meta[..],res,bindings[0..<3],quad,false,1,memory[..]).status==RQStatus.budget;
+}
+#test "reference pipeline depth-first targets replace biased depth and receive both front faces" {
+ tree:=RP_DEPTH_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);
+ #assert r.status==RQStatus.ok && r.depth_word==0 && r.targets[0]==1 && r.targets[1]==5 && r.fs.front_parameter==1;
+ values:=[1]u32.[f32_bits(1.0f32)];buffers:=[1]RQBuffer.[RQBuffer.{words=values[..],count=1,stride=4}];res:=RQResources.{buffers=buffers[..]};
+ bindings:=[1]RRBinding.[RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],0,3).name_id,kind=1}];
+ words:=rp_test_attrs();locations:=[3]RRAttribute.[RRAttribute.{components=4},RRAttribute.{location=1,offset=4,components=1},RRAttribute.{location=2,offset=5,components=1}];attrs:=RRAttributes.{words=words[..],stride=6,locations=locations[..]};
+ indices:=[6]u32.[0,2,1,3,5,4];commands:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=6,base_instance=2,instances=1}];
+ target:[4]RRPixel;state:=RenderPassState.{valid=true,depth=RenderDepth.always,depth_write=true,bias=2,outputs=2};
+ for face:0..<2 {
+  if face==1 {commands[0].kind=RenderDrawKind.indexed;}
+  q:=rp_test_run(tree[..],res,bindings[..],attrs,commands[..],indices[..],state,2,2,1000000,target[..],64);
+  #assert q.status==RQStatus.ok && q.written==4;
+  for k:0..<4 {
+   #assert target[k].depth==0.25 && target[k].colour.r==(ifx face==0 then 0.75f32 else 0.25f32);
+   #assert target[k].colour.g==0.50000011920928955078125f32 && target[k].aux.g==(ifx k==0 then 11.0f32 else 21.0f32);
+  }
+ }
+}
+#test "reference pipeline actual attribute layouts admit offset ends and refuse each malformed descriptor" {
+ tree:=RP_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);
+ values:=[1]u32.[f32_bits(1.0f32)];buffers:=[1]RQBuffer.[RQBuffer.{words=values[..],count=1,stride=4}];res:=RQResources.{buffers=buffers[..]};
+ bindings:=[1]RRBinding.[RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],0,3).name_id,kind=1}];
+ compact:=rp_test_attrs();words:[384]u32;
+ for v:0..<6 {for k:0..<4 {words[v*64+56+k]=compact[v*6+k];}words[v*64+60]=compact[v*6+4];words[v*64+63]=compact[v*6+5];}
+ locations:=[4]RRAttribute.[RRAttribute.{offset=56,components=4},RRAttribute.{location=1,offset=60,components=1},RRAttribute.{location=2,offset=63,components=1},RRAttribute.{offset=56,components=4}];
+ attrs:=RRAttributes.{words=words[..],stride=64,locations=locations[0..<3]};ids:=[3]u32.[0,1,2];memory:[RQ_IR_WORDS]u32;
+ q:=rr_vertices(r,p,tree[..],meta[..],res,bindings[..],attrs,ids,2,1000000,memory[..]);
+ #assert q.status==RQStatus.ok && q.vertices[2].clip[1]==(-1) && q.vertices[1].words[0]==f32_bits(5.0f32) && q.vertices[1].words[1]==f32_bits(4.0f32) && q.vertices[0].words[2]==11;
+ for field:0..<10 {
+  a:=attrs;l:=locations;
+  if field==0 {a.stride=0;}if field==1 {a.stride=65;}if field==2 {l[0].offset=-1;}if field==3 {l[0].components=3;}
+  if field==4 {l[0].components=5;}if field==5 {l[0].offset=61;}if field==6 {l[2].offset=64;}
+  if field==7 {a.words=words[0..<191];}if field==8 {l[1].location=3;}
+  a.locations=l[0..<(ifx field==9 then 4 else 3)];
+  q=rr_vertices(r,p,tree[..],meta[..],res,bindings[..],a,ids,2,1000000,memory[..]);#assert q.status==RQStatus.resource;
+ }
+ q=rr_vertices(r,p,tree[..],meta[..],res,bindings[..],attrs,ids,2,0,memory[..]);#assert q.status==RQStatus.budget && q.steps==0;
+ q=rr_vertices(r,p,tree[..],meta[..],res,bindings[..],attrs,ids,2,1,memory[..]);#assert q.status==RQStatus.budget && q.steps==1;
+}
+#test "reference pipeline visits nonzero quad origins and all instances with preserved staging pixels" {
+ tree:=RP_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ values:=[1]u32.[f32_bits(1.0f32)];buffers:=[1]RQBuffer.[RQBuffer.{words=values[..],count=1,stride=4}];res:=RQResources.{buffers=buffers[..]};
+ bindings:=[1]RRBinding.[RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],0,3).name_id,kind=1}];
+ words:=rp_test_attrs();locations:=[3]RRAttribute.[RRAttribute.{components=4},RRAttribute.{location=1,offset=4,components=1},RRAttribute.{location=2,offset=5,components=1}];attrs:=RRAttributes.{words=words[..],stride=6,locations=locations[..]};
+ commands:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=6,base_instance=2,instances=2}];indices:[1]u32;target:[16]RRPixel;
+ state:=RenderPassState.{valid=true,depth=RenderDepth.always,depth_write=true,outputs=2};
+ q:=rp_test_run(tree[..],res,bindings[..],attrs,commands[..],indices[0..<0],state,4,4,1000000,target[..],64);
+ #assert q.status==RQStatus.ok && q.triangles==4 && q.quads==12 && q.fragments==32 && q.written==32;
+ for y:0..<4 {for x:0..<4 {
+  at:=y*4+x;#assert target[at].colour.r==cast(f32)(x+2*y)+2.5f32 && target[at].colour.g==1 && target[at].colour.b==(-2);
+  #assert target[at].aux.r==(ifx x+y<3 then 12.0f32 else 22.0f32) && target[at].aux.a==6.5f32-cast(f32)(x+2*y);
+ }}
+}
+#test "reference pipeline mixed demotion keeps post-discard helper arithmetic in fine derivatives" {
+ tree:=RP_HELPER_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok && p.version==3;
+ values:=[1]u32.[f32_bits(1.0f32)];buffers:=[1]RQBuffer.[RQBuffer.{words=values[..],count=1,stride=4}];res:=RQResources.{buffers=buffers[..]};
+ bindings:=[1]RRBinding.[RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],0,3).name_id,kind=1}];
+ words:=rp_test_attrs();locations:=[3]RRAttribute.[RRAttribute.{components=4},RRAttribute.{location=1,offset=4,components=1},RRAttribute.{location=2,offset=5,components=1}];attrs:=RRAttributes.{words=words[..],stride=6,locations=locations[..]};
+ commands:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=6,base_instance=2,instances=1}];indices:[1]u32;target:[4]RRPixel;
+ for k:0..<4 {target[k].colour=RQColor.{r=0.125,g=0.25,b=0.5,a=0.75};target[k].aux=RQColor.{r=0.25,g=0.5,b=0.75,a=1};}
+ state:=RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,outputs=2};
+ q:=rp_test_run(tree[..],res,bindings[..],attrs,commands[..],indices[0..<0],state,2,2,1000000,target[..],64);
+ #assert q.status==RQStatus.ok && q.fragments==2 && q.written==2;
+ for k:0..<4 {
+  if k%2==0 {#assert target[k].depth==0.5 && target[k].colour.r==10 && target[k].colour.g==4 && target[k].colour.b==cast(f32)(k*2)+4 && target[k].colour.a==1;}
+  else {#assert target[k].depth==1 && target[k].colour.r==0.125 && target[k].colour.g==0.25 && target[k].colour.b==0.5 && target[k].colour.a==0.75 && target[k].aux.r==0.25;}
+ }
+}
+#forall "reference pipeline concrete stage failures preserve all pixels and propagate the first status" scenario:5..<14 {
+ if scenario!=10 {
+  main_tree:=RP_TEST_TREE;texture_tree:=RP_TEXTURE_TREE;tree:[]u32=main_tree[..];if scenario==11 {tree=texture_tree[..];}
+  target:[16]RRPixel;red:=ifx scenario==9 then 3.0e38f32 else 0.125f32;
+  for k:0..<16 {target[k]=RRPixel.{depth=1,colour=RQColor.{r=red,g=0.25,b=0.5,a=0.75},aux=RQColor.{r=0.25,g=0.5,b=0.75,a=1}};}
+  q:=rr_test_fixture(tree,scenario,target[..]);
+  expected:=ifx scenario==6 then RQStatus.budget else ifx scenario==12 then RQStatus.unsupported else RQStatus.resource;
+  #assert q.status==expected && q.written==0;
+  #assert q.triangles==[9]int.[2,0,0,1,1,2,1,0,0][scenario-5];
+  #assert q.quads==[9]int.[2,0,0,0,1,2,1,0,0][scenario-5];
+  #assert q.fragments==[9]int.[4,0,0,0,1,4,0,0,0][scenario-5];
+  for k:0..<16 {
+   #assert target[k].depth==1 && target[k].colour.r==red && target[k].colour.g==0.25 && target[k].colour.b==0.5 && target[k].colour.a==0.75;
+   #assert target[k].aux.r==0.25 && target[k].aux.g==0.5 && target[k].aux.b==0.75 && target[k].aux.a==1;
+  }
+ }
+}
+#test "reference pipeline work composes child shader costs and bounded traversal without overspending" {
+ tree:=RP_SINGLE_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);
+ words:=[3]u32.[0,0,0];locations:=[1]RRAttribute.[RRAttribute.{components=1}];attrs:=RRAttributes.{words=words[..],stride=1,locations=locations[..]};
+ bindings:[1]RRBinding;ids:=[3]u32.[0,1,2];memory:[RQ_IR_WORDS]u32;
+ v:=rr_vertices(r,p,tree[..],meta[..],RQResources.{},bindings[0..<0],attrs,ids,7,1000000,memory[..]);#assert v.status==RQStatus.ok;
+ f:=rr_shade(r,p,tree[..],meta[..],RQResources.{},bindings[0..<0],RRQuad.{coverage=15},false,1000000,memory[..]);#assert f.status==RQStatus.ok;
+ // One input triangle, two nondegenerate clipped fans/quads. The shader
+ // has fixed control flow: child work +one token per traversed primitive/quad.
+ cost:=v.steps+2*f.steps+3;
+ draws:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=3,base_instance=7,instances=1}];indices:[1]u32;target:[4]RRPixel;
+ state:=RenderPassState.{valid=true,outputs=2};
+ q:=rp_test_run(tree[..],RQResources.{},bindings[0..<0],attrs,draws[..],indices[0..<0],state,2,2,cost,target[..],64);
+ #assert q.status==RQStatus.ok && q.steps==cost && q.written==4;
+ cuts:=[4]int.[v.steps,cost-1,1+v.steps,cost];
+ for which:0..<4 {
+  draws[0].instances=ifx which==3 then 2 else 1;
+  for k:0..<4 {target[k].colour.r=42;}
+  q=rp_test_run(tree[..],RQResources.{},bindings[0..<0],attrs,draws[..],indices[0..<0],state,2,2,cuts[which],target[..],64);
+  #assert q.status==RQStatus.budget && q.steps==cuts[which] && q.written==0;
+  for k:0..<4 {#assert target[k].colour.r==42;}
+ }
+ f=rr_shade(r,p,tree[..],meta[..],RQResources.{},bindings[0..<0],RRQuad.{coverage=15},false,1,memory[..]);#assert f.status==RQStatus.budget && f.steps==1;
+}
+#test "reference pipeline nonzero raster windows retain untouched pixels and reject invalid depth state" {
+ tree:=RP_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ values:=[1]u32.[f32_bits(1.0f32)];buffers:=[1]RQBuffer.[RQBuffer.{words=values[..],count=1,stride=4}];res:=RQResources.{buffers=buffers[..]};
+ bindings:=[1]RRBinding.[RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],0,3).name_id,kind=1}];words:=rp_test_attrs();
+ for v:0..<6 {words[v*6]=f32_bits((f32_from_bits(words[v*6])+1)*0.5f32);words[v*6+1]=f32_bits((f32_from_bits(words[v*6+1])-1)*0.5f32);}
+ locations:=[3]RRAttribute.[RRAttribute.{components=4},RRAttribute.{location=1,offset=4,components=1},RRAttribute.{location=2,offset=5,components=1}];attrs:=RRAttributes.{words=words[..],stride=6,locations=locations[..]};
+ draws:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=6,base_instance=2,instances=1}];indices:[1]u32;target:[16]RRPixel;
+ for k:0..<16 {target[k].colour.r=42;}
+ state:=RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,outputs=2};
+ q:=rp_test_run(tree[..],res,bindings[..],attrs,draws[..],indices[0..<0],state,4,4,1000000,target[..],64);
+ #assert q.status==RQStatus.ok && q.triangles==2 && q.quads==2 && q.written==4;
+ for y:0..<4 {for x:0..<4 {
+  at:=y*4+x;
+  if x>=2 && y>=2 {#assert target[at].colour.r==cast(f32)((x-2)*2+(y-2)*4)+4;}
+  else {#assert target[at].colour.r==42 && target[at].depth==1;}
+ }}
+ state.depth=RenderDepth.none;state.bias=1;
+ q=rp_test_run(tree[..],res,bindings[..],attrs,draws[..],indices[0..<0],state,4,4,1000000,target[..],64);
+ #assert q.status==RQStatus.resource && q.written==0;
+}
+#test "reference pipeline argument packets preserve canonical booleans and last-field depth" {
+ tree:=RP_DEPTH_LAST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);
+ #assert r.status==RQStatus.ok && r.depth_word==8 && r.targets[0]==0 && r.targets[1]==4;
+ u:=[1]u32.[f32_bits(1.0f32)];buffers:=[2]RQBuffer.[RQBuffer.{},RQBuffer.{words=u[..],count=1,stride=4}];res:=RQResources.{buffers=buffers[..]};
+ bindings:=[1]RRBinding.[RRBinding.{name_id=rq_ir_parameter(p,tree[..],meta[..],1,2).name_id,kind=1,resource=1}];
+ quad:=RRQuad.{coverage=15};
+ for lane:0..<4 {quad.lanes[lane].position=[4]f32.[0.5,1.5,0.75,1];quad.lanes[lane].words[0]=f32_bits(0.25f32);quad.lanes[lane].words[1]=f32_bits(0.5f32);quad.lanes[lane].words[2]=19;}
+ input:[RR_INPUT_WORDS]u32;front_arg:=rq_ir_parameter(p,tree[..],meta[..],1,r.fs.front_parameter);resource_arg:=rq_ir_parameter(p,tree[..],meta[..],1,2);
+ memory:[RQ_IR_WORDS]u32;
+ for side:0..<2 {
+  status:=rr_fragment_inputs(r,p,tree[..],meta[..],res,bindings[..],quad,side==1,input[0..<r.fs.input_words]);#assert status==RQStatus.ok;
+  for lane:0..<4 {#assert input[front_arg.word_offset+lane]==cast(u32)side && input[resource_arg.word_offset+lane]==1;}
+  shaded:=rr_shade(r,p,tree[..],meta[..],res,bindings[..],quad,side==1,1000000,memory[..]);#assert shaded.status==RQStatus.ok && shaded.publish==15;
+  for lane:0..<4 {#assert shaded.depth[lane]==0.25 && shaded.colour[lane].r==(ifx side==1 then 0.25f32 else 0.75f32) && shaded.aux[lane].g==19;}
+ }
+ #assert rr_fragment_inputs(r,p,tree[..],meta[..],res,bindings[..],quad,false,input[0..<r.fs.input_words-1])==RQStatus.capacity;
+}
+
+#load "reference-pipeline-vertex-only-checks.coax";
+
+#load "reference-pipeline-masked-aux-checks.coax";
+
+#load "reference-pipeline-raster-profile-checks.coax";
+
+#load "reference-pipeline-guard-profile-checks.coax";

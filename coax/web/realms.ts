@@ -16,10 +16,28 @@
 //   bun coax/web/realms.ts --check   compare only
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { execFileSync } from "node:child_process"
 import { LOADER_CSS, loaderMarkup } from "./loader.js"
 import { brief, renderedCard } from "./og"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
+let renderProfiles: Map<string, number> | undefined
+// Renderer identity comes from the compiled Coax catalog. A fork keeps this
+// base profile even when its own realm/save-slot slug changes.
+export function renderProfile(slug: string): number {
+  if (!renderProfiles) {
+    const root = join(import.meta.dir, "../..")
+    const rows = execFileSync(join(root, "coax/web/tool.sh"), ["aethyr/render/build.coax", "--profile-table"], { cwd: root, encoding: "utf8" }).trim().split("\n")
+    renderProfiles = new Map(rows.map((row) => {
+      const match = /^(\d+) ([a-z0-9-]+)$/.exec(row)
+      if (!match) throw new Error("invalid compiled renderer profile row")
+      return [match[2], Number(match[1])]
+    }))
+  }
+  const index = renderProfiles.get(slug)
+  if (index === undefined) throw new Error(`no compiled renderer profile for ${slug}`)
+  return index
+}
 const KINDS = { locked: 0, open: 1, soon: 2 } as const
 // golden: what the release walk (goldens.ts) asks of the realm's page: the least share of
 // its pixels lit, how long it settles before its shot, how many 8 px blocks may differ.
@@ -293,7 +311,7 @@ ${loaderMarkup(r.title, `/realms/${r.slug}/index.md`)}
 <main>
 <h1>${t}</h1><p><a href="/realms/${r.slug}/index.md">${t}</a></p>
 </main>
-<script type="module" src="/coaxial/host.js" data-app="${r.module}"${slot}${assets}></script>
+<script type="module" src="/coaxial/host.js" data-app="${r.module}" data-render="/build/render/${r.slug}/render.json" data-render-profile="${renderProfile(r.slug)}"${slot}${assets}></script>
 </body>
 </html>
 `

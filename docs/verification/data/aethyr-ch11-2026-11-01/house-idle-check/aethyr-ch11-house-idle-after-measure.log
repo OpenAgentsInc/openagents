@@ -1,0 +1,3 @@
+ok   #test the first step marks the front door, nudges you there after a while standing still, and the saving notice goes after a few seconds (1 case, 64353082 steps, 1206 ms)
+1 of 91 checks (--only 'first step marks'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

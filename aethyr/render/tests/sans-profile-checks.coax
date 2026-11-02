@@ -1,0 +1,62 @@
+// Independent legacy atlas contract; these values are not derived from the
+// implementation's constants or coordinate helpers.
+#test "sans profile pins the existing atlas and raster effect contract" {
+  spt_sp := render_sans_profile();
+  #assert spt_sp.glyphs == 111 && spt_sp.columns == 16 && spt_sp.rows == 7 && spt_sp.cell == 96 && spt_sp.levels == 5;
+  #assert spt_sp.width == 1536 && spt_sp.height == 672;
+  #assert spt_sp.coverage_bytes == 1374912 && spt_sp.rgba_bytes == 5499648;
+  #assert spt_sp.family == "Helvetica, Arial, \"Liberation Sans\", \"Nimbus Sans\", sans-serif";
+  #assert spt_sp.format == "rgba8unorm" && spt_sp.fill == "#fff" && spt_sp.text_baseline == "alphabetic" && spt_sp.premultiplied_alpha;
+}
+
+#test "sans mip commands pin byte offsets and independent raster sizes" {
+  spt_sw := [5] int.[1536, 768, 384, 192, 96];
+  spt_sh := [5] int.[672, 336, 168, 84, 42];
+  spt_sc := [5] int.[96, 48, 24, 12, 6];
+  spt_sf := [5] int.[64, 32, 16, 8, 4];
+  spt_sl := [5] int.[32, 16, 8, 4, 2];
+  spt_sb := [5] int.[144, 72, 36, 18, 9];
+  spt_so := [5] u64.[0, 1032192, 1290240, 1354752, 1370880];
+  spt_sn := [5] u64.[1032192, 258048, 64512, 16128, 4032];
+  for spt_si: 0..<5 {
+    spt_sm := render_sans_level(spt_si);
+    #assert spt_sm.valid && spt_sm.level == spt_si && spt_sm.width == spt_sw[spt_si] && spt_sm.height == spt_sh[spt_si];
+    #assert spt_sm.cell == spt_sc[spt_si] && spt_sm.font_px == spt_sf[spt_si] && spt_sm.left_half == spt_sl[spt_si] && spt_sm.baseline_half == spt_sb[spt_si];
+    #assert spt_sm.coverage_offset == spt_so[spt_si] && spt_sm.coverage_bytes == spt_sn[spt_si];
+    #assert spt_sm.rgba_offset == spt_so[spt_si] * 4 && spt_sm.rgba_bytes == spt_sn[spt_si] * 4;
+  }
+}
+
+#test "sans glyph commands enumerate every codepoint and exact half texel position" {
+  spt_se := [16] u32.[183, 8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8594, 8383, 8722, 215, 8804, 8805, 8800];
+  for spt_sg: 0..<111 {
+    spt_expected := ifx spt_sg < 95 then u32(spt_sg + 32) else spt_se[spt_sg - 95];
+    #assert render_sans_index(spt_expected) == spt_sg;
+    for spt_sm: 0..<5 {
+      spt_cmd := render_sans_glyph(spt_sm, spt_sg);
+      spt_divisor := 1 << spt_sm;
+      // All numerators are even except the spt_last mip's baseline, 144/16=9.
+      spt_px := ((spt_sg % 16) * 192 + 32) / spt_divisor;
+      spt_py := ((spt_sg / 16) * 192 + 144) / spt_divisor;
+      #assert spt_cmd.valid && spt_cmd.index == spt_sg && spt_cmd.code == spt_expected;
+      #assert spt_cmd.column == spt_sg % 16 && spt_cmd.row == spt_sg / 16;
+      #assert spt_cmd.x_half == spt_px && spt_cmd.y_half == spt_py;
+      #assert spt_cmd.x == f32(spt_px) * 0.5 && spt_cmd.y == f32(spt_py) * 0.5;
+    }
+  }
+  spt_first := render_sans_glyph(4, 0);
+  spt_last := render_sans_glyph(4, 110);
+  #assert spt_first.x == 1 && spt_first.y == 4.5 && spt_last.code == 8800 && spt_last.x == 85 && spt_last.y == 40.5;
+}
+
+#test "sans commands refuse unknown glyphs and mip endpoints before arithmetic" {
+  for spt_si: [5] int.[-9223372036854775807 - 1, -1, 5, 6, 9223372036854775807] {
+    #assert !render_sans_level(spt_si).valid && !render_sans_glyph(spt_si, 0).valid;
+  }
+  for spt_sg: [4] int.[-9223372036854775807 - 1, -1, 111, 9223372036854775807] {
+    #assert !render_sans_glyph(0, spt_sg).valid && !render_sans_glyph(4, spt_sg).valid;
+  }
+  for spt_code: [8] u32.[0, 31, 127, 160, 9731, 0xD800, 0x10FFFF, 0xFFFFFFFF] {
+    #assert render_sans_index(spt_code) == -1;
+  }
+}

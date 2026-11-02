@@ -1,0 +1,34 @@
+// Ordinary normal-C ABI transport. Admission and rendering stay in authority
+// modules; this facade owns only the stable C names for the tooling driver.
+#load "../reference-frame.coax";
+#load "../reference-package.coax";
+rfn_load :: (json:string,profile:int,index:int,bytes:[]u8,words:[]u32,meta:[]int)->RFPackageTree #export_c {
+ entries:[14]RenderPackageEntry;p:=rf_package_admit(json,profile,entries[..]);return rf_package_prepare(p,index,bytes,words,meta);
+}
+rfn_require :: (profile:int,c:FrameCounts,coarse:bool)->RFRequirements #export_c {
+ return rf_require(profile,c,RenderReadiness.ready,true,coarse,RenderTextureFormat.rgba8);
+}
+rfn_render :: (input:RFInput,programs:[]RFShader,coarse:bool,policy:RFPolicy,work:RFWorking,out:[]RQColor)->RFResult #export_c {
+ return rf_run(input,programs,coarse,RenderTextureFormat.rgba8,policy,work,out);
+}
+#load "../reference-texture.coax";
+rfn_texture_need :: (format:string,layers:int,levels:[]RenderTextureLevel)->RFTextureNeed #export_c {
+ return rf_texture_require(format,layers,levels);
+}
+rfn_texture_decode :: (format:string,layers:int,levels:[]RenderTextureLevel,bytes:[]u8,out:[]RQColor,mips:[]RQMip)->RFTextureDecoded #export_c {
+ return rf_texture_decode(format,layers,levels,bytes,out,mips);
+}
+
+rfn_raster_profile :: (name:string,bits:int,xy:string,guard:int)->RRRasterProfile #export_c {return rr_raster_xy_profile(name,bits,xy,guard);}
+
+rfn_render_half :: (input:RFInput,programs:[]RFShader,coarse:bool,policy:RFPolicy,work:RFWorking,out:[]RQColor)->RFResult #export_c {return rf_run(input,programs,coarse,RenderTextureFormat.rgba16f,policy,work,out);}
+
+rfn_prepare_media :: (profile:int,text:string,width:int,height:int,files:[]RFNamedTexture,images:[]RenderHostMediaImage,out:[]RenderMediaRect)->RFMediaPrepared #export_c {return rf_prepare_media(profile,text,width,height,files,images,out);}
+
+rfn_media_observe_raw :: (kind:int,url:string,ready:int,width:int,height:int)->RenderHostMediaObserved #export_c {return render_host_media_observe_raw(kind,url,ready,width,height);}
+#load "../host-policy.coax";
+rfn_bool :: (raw:int)->RenderHostBool #export_c {return render_host_bool(raw);}
+rfn_work_policy :: (work:string,raster:string,bits:int,xy:string,guard:int)->RFPolicy #export_c {
+ selected:=rf_work_policy(rr_work_profile(work));selected.raster=rfn_raster_profile(raster,bits,xy,guard);return selected;
+}
+rfn_filter_policy :: (policy:RFPolicy,name:string)->RFPolicy #export_c {selected:=policy;selected.filter=rq_filter_profile(name);return selected;}

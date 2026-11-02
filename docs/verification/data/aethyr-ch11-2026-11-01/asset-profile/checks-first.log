@@ -1,0 +1,8 @@
+FAIL #forall asset delivery counts preserve every canonical page including direct profiles (0 ms)
+aethyr/render/tests/asset-profile-checks.coax:3:2: error[E0406]: assertion failed
+   #assert render_asset_count(rapt_profile)==rapt_counts[rapt_profile];
+   ^
+  note: in #forall asset delivery counts preserve every canonical page including direct profiles
+  counterexample: rapt_profile = 0
+1 of 76 checks (--only 'asset delivery counts'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

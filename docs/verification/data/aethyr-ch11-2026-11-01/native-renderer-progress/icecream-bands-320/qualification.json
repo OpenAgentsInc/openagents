@@ -1,0 +1,24 @@
+{
+  "schema": "aethyr.render.repaired-geometry-native-frame.v1",
+  "case": "icecream-bands-320",
+  "status": "GPU validation pass; strict CPU/backend numerical comparison separate",
+  "frame": {
+    "status": "rendered",
+    "profile": 12,
+    "resource": 1,
+    "width": 320,
+    "height": 180,
+    "format": "rgba16f",
+    "bytes": 460800,
+    "draw_commands": 62,
+    "device": "NVIDIA GeForce RTX 4080",
+    "subPixelPrecisionBits": 8,
+    "validation_errors": 0,
+    "validation_warnings": 0
+  },
+  "raw_sha256": "3b825aacd0605345a75d423462357f18bb2ed2b33e5ba428ae3156aecc6819f0",
+  "input_equality": "input-equality.json",
+  "scope": "New repaired geometry frame. Exact actual producer/resource observations retained, with explicit shader package substitution only for DeadGears. Historical generic executor reused under complete source/header byte fence.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/icecream-bands-320",
+  "archive_sha256": "500cb57a8f75ab4066befa151ea1f9e29d71f36d30bd95a588bba74836c023a6"
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "aethyr.render.icecream-clip-retention.v1",
+  "reused_executable_evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-media/exact-clip-output-probe/native-inputs-and-executable.tar.gz",
+  "files": {
+    "run.py": "9bf519bbae6b4d59c5a2489a543aeae471a00cdc51de633f2030fef2ae0602e7",
+    "qualification.json": "6ffce8a8ddbc9f44e1dad41ddfa1888ba4102702061d703816fa4b5cf5eb2423",
+    "observations.rgba32f": "9713d4a1df253ff0fc675aabb101e95cd0068210d9c2e0d4e1bff19d7afa79e0",
+    "ssh.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native.log": "4fa586f180ff529a35f34f02a9f390b1b52b3c3fb4a8da9f8ee18aa6e4c05e6c",
+    "cases.bin": "c78766c6ed06ece895f81a06fd287b9b1f3c75c69b3917a6d17952bf72f7b943",
+    "cases.json": "949413ae5be1f685dbd05edbd434f4263a88912e9951b801c59bba416aa04447",
+    "status.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "probe.spv": "55c2a277b4ff8bc293dfd435ad737f1ca516af9df5ed4f3b1355084388b0a825"
+  }
+}

@@ -1,0 +1,9 @@
+#load "../../verse/gpu/shader.coax";
+#test "binding fixture observes the supplied view extent and its last element" {
+  rb_values:=[3]f32.[7,8,9];rb_result:=render_range_fs(v4(0,0,0,1),rb_values[..]);
+  #assert rb_result.x==3 && rb_result.y==9 && rb_result.w==1;
+}
+render_range_vs :: (vertex:u32,instance:u32)->V4 {
+  return ifx vertex==0 then v4(-1,1,0,1) else ifx vertex==1 then v4(3,1,0,1) else v4(-1,-3,0,1);
+}
+render_range_fs :: (position:V4,u:[]f32)->V4 {return v4(cast(f32)u.count,u[u.count-1],position.x,1);}

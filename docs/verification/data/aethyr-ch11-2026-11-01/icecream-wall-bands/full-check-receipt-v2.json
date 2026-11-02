@@ -1,0 +1,25 @@
+{
+  "exit": 0,
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "source_sha256": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh.coax": "4f911f2d43d247177e9d38426f84a9c84a61610436c36af2be05f53a1ab3cc12",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/rules.coax": "936c676da35c11b32d8e67e41500dea021b377063904dcb1b5e47688e2fa3cf4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/tuning.coax": "3754c90740d8ebb78891e7a93a1403312a6ec26aa2253b24dac9025101ffc63c",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/fixtures/mesh-oracle.coax": "78baa9a7e9952e007814fea6db1cf38b84cbfc753161e8e340fa9d6439b8173d",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/fixtures/mesh-band-oracle.coax": "4c1c462c6b5f4b8a68b517758ee6d5da560b1f929306ba4e383aef4e8370ddb7"
+  },
+  "source_snapshot_timing": "after-run; all five source files stayed unchanged from the authored repair/hash/capacity update through the completed21-check command",
+  "command": [
+    "coax/bin/coax",
+    "test",
+    "verse/icecream/mesh.coax",
+    "--library",
+    "--steps",
+    "4000000000"
+  ],
+  "log_sha256": "b01b09408eb4a67d7484354cc76e813ce6b7d975345bd5a7a8500caf427fb580",
+  "checks": 21,
+  "schema": "aethyr.icecream.mesh.checks.v1",
+  "entry": "verse/icecream/mesh.coax",
+  "log_file": "/tmp/aethyr-ch11-icecream-mesh-repair/full-mesh-checks.log"
+}

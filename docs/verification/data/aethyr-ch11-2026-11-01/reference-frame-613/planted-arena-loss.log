@@ -1,0 +1,7 @@
+FAIL #test reference oversized working allocation cannot grant uniform words to shader scratch (77 ms)
+aethyr/render/tests/reference-frame-boundary-extra-checks.coax:130:2: error[E0406]: assertion failed
+   #assert r.status==RQStatus.capacity && r.geometry==RenderGeometryStatus.ok && r.frame==RenderFrameStatus.ok && r.bad_shader== -1 && r.draws==0 && r.written==0;
+   ^
+  note: in #test reference oversized working allocation cannot grant uniform words to shader scratch
+1 of 453 checks (--only 'reference oversized working'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -18,6 +18,8 @@ typedef struct {
   VkDevice dev;
   VkQueue queue;
   int validating;
+  // Observations after device creation, consumed by Coax shader admission.
+  int demote_helper_supported, demote_helper_enabled, shader_int64_enabled;
 } Vkc;
 
 // A host-visible storage buffer, mapped.

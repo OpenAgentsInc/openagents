@@ -1,0 +1,131 @@
+// C facade source part. Link it once with the producer that already owns SHA
+// (the Grid's landing-browser unit); no private copy of the crypto kernel.
+#load "host-policy.coax";
+#load "host-frame.coax";
+#load "host-bindings.coax";
+#load "host-inputs.coax";
+#load "host-textures.coax";
+#load "host-memory.coax";
+#load "sans-profile.coax";
+#load "media-commands.coax";
+#load "host-media.coax";
+#load "host-uploads.coax";
+#load "asset-profile.coax";
+#load "resources.coax" as host_resources;
+
+RenderHostEntryBank :: struct {entries:[14]RenderPackageEntry;}
+RenderHostJsonBank :: struct {bytes:[RENDER_PACKAGE_JSON]u8;}
+RenderHostShaderBytes :: struct {bytes:[RENDER_PACKAGE_SHADER]u8;}
+RenderHostNamedBank :: struct {buffers:[RENDER_RESOURCES]RenderHostNamedBuffer;names:[RENDER_RESOURCES][32]u8;}
+RenderHostGeometryBank :: struct {buffers:[RENDER_RESOURCES]RenderGeometryBuffer;domains:[RENDER_GEOMETRY_DRAWS]RenderDrawDomain;}
+RenderHostUploadBank :: struct {uploads:[RENDER_RESOURCES+3]RenderUpload;states:[RENDER_RESOURCES]RenderHostUploadState;index:RenderHostUploadState;}
+RenderHostAssetBank :: struct {observations:[RENDER_ASSET_ROWS]RenderAssetObservation;}
+
+aethyr_render_abi :: ()->int #export_c {return 1;}
+aethyr_render_geometry_work :: ()->int #export_c {return RENDER_GEOMETRY_WORK;}
+aethyr_render_operation :: (rh_frame:[]RenderRuntimeFrame,rh_index:int)->RenderOp #export_c {return render_host_operation(rh_frame,rh_index);}
+// Field projections borrow platform-owned static storage. They make no
+// admission decision; the caller supplies its one actual storage object.
+aethyr_render_entry_storage :: (rh_bank:[]RenderHostEntryBank)->[]RenderPackageEntry #export_c {return rh_bank[0].entries[..];}
+aethyr_render_json_storage :: (rh_bank:[]RenderHostJsonBank)->[]u8 #export_c {return rh_bank[0].bytes[..];}
+aethyr_render_shader_storage :: (rh_bank:[]RenderHostShaderBytes)->[]u8 #export_c {return rh_bank[0].bytes[..];}
+aethyr_render_named_storage :: (rh_bank:[]RenderHostNamedBank)->[]RenderHostNamedBuffer #export_c {return rh_bank[0].buffers[..];}
+aethyr_render_geometry_storage :: (rh_bank:[]RenderHostGeometryBank)->[]RenderGeometryBuffer #export_c {return rh_bank[0].buffers[..];}
+aethyr_render_upload_storage :: (rh_bank:[]RenderHostUploadBank)->[]RenderUpload #export_c {return rh_bank[0].uploads[..];}
+aethyr_render_asset_storage :: (rh_bank:[]RenderHostAssetBank)->[]RenderAssetObservation #export_c {return rh_bank[0].observations[..];}
+aethyr_render_json_size :: (rh_count:int)->RenderPackageStatus #export_c {return render_host_json_size(rh_count);}
+aethyr_render_device :: (rh_backend:int,rh_helper:bool,rh_int64:bool)->RenderDeviceCapabilities #export_c {return render_host_device(rh_backend,rh_helper,rh_int64);}
+aethyr_render_buffer_sizes :: (rh_profile:int,rh_vertices:int,rh_stride:int,rh_uniforms:int,rh_device_bytes:u64)->RenderHostBufferSizes #export_c {return render_host_buffer_sizes(rh_profile,rh_vertices,rh_stride,rh_uniforms,rh_device_bytes);}
+aethyr_render_flat_layout :: (rh_profile:int,rh_counts:FrameCounts,rh_limits:RenderFrameLimits,rh_vertices:int,rh_uniforms:int,rh_vertex_address:u64,rh_uniform_address:u64,rh_memory_bytes:u64,rh_vertex_gpu:u64,rh_uniform_gpu:u64)->RenderHostFlatLayout #export_c {
+ return render_host_flat_layout(rh_profile,rh_counts,rh_limits,rh_vertices,rh_uniforms,rh_vertex_address,rh_uniform_address,rh_memory_bytes,rh_vertex_gpu,rh_uniform_gpu);
+}
+aethyr_render_vertex_layout :: (rh_profile:int,rh_counts:FrameCounts,rh_limits:RenderFrameLimits,rh_vertices:int,rh_uniforms:int,rh_vertex_address:u64,rh_uniform_address:u64,rh_memory_bytes:u64,rh_vertex_gpu:u64,rh_uniform_gpu:u64)->RenderHostFlatLayout #export_c {
+ return render_host_vertex_layout(rh_profile,rh_counts,rh_limits,rh_vertices,rh_uniforms,rh_vertex_address,rh_uniform_address,rh_memory_bytes,rh_vertex_gpu,rh_uniform_gpu);
+}
+aethyr_render_words :: (rh_address:u64,rh_base:u64,rh_capacity:u64,rh_bytes:u64)->RenderHostWordView #export_c {return render_host_words(rh_address,rh_base,rh_capacity,rh_bytes);}
+aethyr_render_stage :: (rh_cursor:u64,rh_bytes:u64,rh_limit:u64)->RenderHostStage #export_c {return render_host_stage(rh_cursor,rh_bytes,rh_limit);}
+aethyr_render_memory_limit :: ()->u64 #export_c {return RENDER_HOST_MEMORY_BYTES;}
+aethyr_render_upload_stage :: (rh_state:RenderHostUploadState,rh_incoming:u64,rh_capacity:u64)->RenderHostUploadReceipt #export_c {return render_host_upload_stage(rh_state,rh_incoming,rh_capacity);}
+aethyr_render_upload_ack :: (rh_state:RenderHostUploadState,rh_submitted:bool)->RenderHostUploadState #export_c {return render_host_upload_ack(rh_state,rh_submitted);}
+aethyr_render_sans_profile :: ()->RenderSansProfile #export_c {return render_sans_profile();}
+aethyr_render_sans_level :: (rh_level:int)->RenderSansLevel #export_c {return render_sans_level(rh_level);}
+aethyr_render_sans_glyph :: (rh_level:int,rh_index:int)->RenderSansGlyph #export_c {return render_sans_glyph(rh_level,rh_index);}
+aethyr_render_media_parse :: (rh_text:string,rh_out:[]RenderMediaRequest)->RenderMediaParse #export_c {return render_media_parse(rh_text,rh_out);}
+aethyr_render_media_rect :: (rh_request:RenderMediaRequest,rh_width:int,rh_height:int,rh_image_width:int,rh_image_height:int)->RenderMediaRect #export_c {return render_media_rect(rh_request,rh_width,rh_height,rh_image_width,rh_image_height);}
+aethyr_render_media_extent :: (rh_kind:RenderMediaKind,rh_width:int,rh_height:int)->RenderMediaExtent #export_c {return render_media_image_extent(rh_kind,rh_width,rh_height);}
+aethyr_render_media_rects :: (rh_requests:[]RenderMediaRequest,rh_images:[]RenderHostMediaImage,rh_width:int,rh_height:int,rh_out:[]RenderMediaRect)->RenderHostMediaReceipt #export_c {return render_host_media_rects(rh_requests,rh_images,rh_width,rh_height,rh_out);}
+aethyr_render_media_observe :: (rh_kind:int,rh_url:string,rh_ready:int,rh_width:int,rh_height:int)->RenderHostMediaObserved #export_c {return render_host_media_observe_raw(rh_kind,rh_url,rh_ready,rh_width,rh_height);}
+aethyr_render_media_vertices :: ()->int #export_c {return render_media_vertex_count();}
+aethyr_render_asset_count :: (rh_profile:int)->int #export_c {return render_asset_count(rh_profile);}
+aethyr_render_asset :: (rh_profile:int,rh_row:int)->RenderAsset #export_c {return render_asset(rh_profile,rh_row);}
+aethyr_render_asset_url :: (rh_profile:int,rh_row:int,rh_index:int)->string #export_c {return render_asset_url(rh_profile,rh_row,rh_index);}
+aethyr_render_asset_source :: (rh_profile:int,rh_source:RenderBindingSource)->RenderAsset #export_c {return render_asset_for_source(rh_profile,rh_source);}
+aethyr_render_asset_find :: (rh_profile:int,rh_kind:RenderAssetKind,rh_ordinal:int)->RenderAsset #export_c {return render_asset_find(rh_profile,rh_kind,rh_ordinal);}
+aethyr_render_asset_readiness :: (rh_profile:int,rh_pipeline:bool,rh_particles:bool,rh_observed:[]RenderAssetObservation)->RenderAssetReadiness #export_c {return render_asset_readiness(rh_profile,rh_pipeline,rh_particles,rh_observed);}
+aethyr_render_asset_mip :: (rh_width:int,rh_height:int,rh_layers:int,rh_level:int,rh_max:int,rh_max_layers:int)->RenderAssetMip #export_c {return render_asset_mip(rh_width,rh_height,rh_layers,rh_level,rh_max,rh_max_layers);}
+aethyr_render_asset_layers :: ()->RenderAssetLayers #export_c {return render_asset_layers();}
+aethyr_render_named_buffers :: (rh_named:[]RenderHostNamedBuffer)->host_resources.RenderResourceStatus #export_c {return render_host_named_buffers(rh_named);}
+aethyr_render_owned_buffer :: (rh_name:string,rh_words:[]u32)->RenderHostNamedBuffer #export_c {return render_host_owned_buffer(rh_name,rh_words);}
+aethyr_render_buffer_bytes :: (rh_raw:u64,rh_device:u64)->host_resources.RenderBufferView #export_c {return render_host_buffer_bytes(rh_raw,rh_device);}
+aethyr_render_mesh_placeholder :: (rh_profile:int,rh_set:int,rh_resource:int,rh_device:u64)->host_resources.RenderBufferView #export_c {return render_host_mesh_placeholder(rh_profile,rh_set,rh_resource,rh_device);}
+aethyr_render_resolve_buffer :: (rh_profile:int,rh_set:int,rh_resource:int,rh_named:[]RenderHostNamedBuffer,rh_generated:RenderHostNamedBuffer)->RenderHostBufferReceipt #export_c {return render_host_resolve_buffer(rh_profile,rh_set,rh_resource,rh_named,rh_generated);}
+aethyr_render_geometry_buffers :: (rh_profile:int,rh_named:[]RenderHostNamedBuffer,rh_out:[]RenderGeometryBuffer)->RenderHostGeometryBuffers #export_c {return render_host_geometry_buffers(rh_profile,rh_named,rh_out);}
+aethyr_render_resolve_texture :: (rh_profile:int,rh_set:int,rh_resource:int,rh_named:[]RenderHostNamedTexture,rh_media_context:int)->RenderHostTextureReceipt #export_c {return render_host_resolve_texture(rh_profile,rh_set,rh_resource,rh_named,rh_media_context);}
+aethyr_render_named_textures :: (rh_named:[]RenderHostNamedTexture)->host_resources.RenderResourceStatus #export_c {return render_host_named_textures(rh_named);}
+
+aethyr_render_find_profile :: (rh_app:string,rh_realm:string,rh_page:int)->int #export_c {return render_host_find_profile(rh_app,rh_realm,rh_page);}
+aethyr_render_candidate_bank :: (rh_state:[]RenderHostPackageState)->int #export_c {return render_host_candidate_bank(rh_state);}
+aethyr_render_package_load :: (rh_state:[]RenderHostPackageState,rh_json:string,rh_entries:[]RenderPackageEntry,rh_profile:int,rh_device:RenderDeviceCapabilities,rh_bank:int)->RenderPackageStatus #export_c {
+ return render_host_package_load(rh_state,rh_json,rh_entries,rh_profile,rh_device,rh_bank);
+}
+aethyr_render_module_bytes :: (rh_package:RenderPackage,rh_set:int,rh_bytes:[]u8)->RenderPackageStatus #export_c {return render_package_module_bytes(rh_package,rh_set,rh_bytes);}
+aethyr_render_spirv_bytes :: (rh_package:RenderPackage,rh_entry:int,rh_bytes:[]u8)->RenderPackageStatus #export_c {return render_package_spirv_bytes(rh_package,rh_entry,rh_bytes);}
+aethyr_render_tree_bytes :: (rh_package:RenderPackage,rh_entry:int,rh_bytes:[]u8)->RenderPackageStatus #export_c {return render_package_tree_bytes(rh_package,rh_entry,rh_bytes);}
+aethyr_render_shader_size :: (rh_count:int)->bool #export_c {return render_package_shader_size(rh_count);}
+aethyr_render_preflight :: (rh_profile:int,rh_counts:FrameCounts,rh_limits:RenderFrameLimits,rh_uploads:[]RenderUpload)->RenderRuntimePreflight #export_c {
+ return render_runtime_preflight(rh_profile,rh_counts,rh_limits,rh_uploads);
+}
+aethyr_render_uploads :: (rh_limits:RenderFrameLimits,rh_uploads:[]RenderUpload)->RenderFrameResult #export_c {return render_uploads_admit(rh_limits,rh_uploads);}
+aethyr_render_frame :: (rh_profile:int,rh_counts:FrameCounts,rh_limits:RenderFrameLimits,rh_ready:RenderReadiness,rh_particles_ready:bool,
+ rh_uploads:[]RenderUpload,rh_words:[]u32,rh_indices:[]u32,rh_uniforms:[]f32,rh_buffers:[]RenderGeometryBuffer,rh_hud:[]f32,rh_domains:[]RenderDrawDomain,rh_work_limit:int)->RenderRuntimeFrame #export_c {
+ return render_runtime_frame(rh_profile,rh_counts,rh_limits,rh_ready,rh_particles_ready,rh_uploads,rh_words,rh_indices,rh_uniforms,rh_buffers,rh_hud,rh_domains,rh_work_limit);
+}
+aethyr_render_catalog :: (rh_profile:int)->RenderCatalog #export_c {return render_catalog(rh_profile);}
+aethyr_render_binding_count :: (rh_profile:int,rh_set:int)->int #export_c {return render_host_binding_count(rh_profile,rh_set);}
+aethyr_render_binding :: (rh_profile:int,rh_set:int,rh_resource:int)->RenderHostBinding #export_c {return render_host_binding(rh_profile,rh_set,rh_resource);}
+aethyr_render_use_count :: (rh_profile:int,rh_entry:int)->int #export_c {return render_host_use_count(rh_profile,rh_entry);}
+aethyr_render_group_count :: (rh_profile:int,rh_entry:int)->int #export_c {return render_host_group_count(rh_profile,rh_entry);}
+aethyr_render_use :: (rh_profile:int,rh_entry:int,rh_slot:int)->RenderHostUse #export_c {return render_host_use(rh_profile,rh_entry,rh_slot);}
+aethyr_render_pipeline :: (rh_profile:int,rh_entry:int)->RenderHostPipeline #export_c {return render_host_pipeline(rh_profile,rh_entry);}
+aethyr_render_clear :: ()->RenderHostClear #export_c {return render_host_clear();}
+aethyr_render_buffer_name :: (rh_source:RenderBindingSource,rh_out:[]u8)->string #export_c {return render_host_buffer_name(rh_source,rh_out);}
+aethyr_render_texture_name :: (rh_source:RenderBindingSource,rh_out:[]u8)->string #export_c {return render_host_texture_name(rh_source,rh_out);}
+aethyr_render_decode_draw :: (rh_words:[]u32,rh_record:int)->RenderDecodedDraw #export_c {return render_decode_draw(rh_words,rh_record);}
+aethyr_render_binding_source :: (rh_profile:int,rh_set:int,rh_resource:int)->RenderBindingSource #export_c {return render_binding_source(rh_profile,rh_set,rh_resource);}
+aethyr_render_buffer_view :: (rh_binding:RenderBinding,rh_mode:host_resources.RenderBufferMode,rh_observed:host_resources.RenderBufferObserved)->host_resources.RenderBufferView #export_c {
+ return host_resources.render_buffer_view(rh_binding,rh_mode,rh_observed);
+}
+aethyr_render_target :: (rh_target:RenderTarget,rh_width:int,rh_height:int,rh_coarse:bool,rh_format:host_resources.RenderTextureFormat,rh_max_dimension:int)->host_resources.RenderTargetDescriptor #export_c {
+ return host_resources.render_target_desc_with_limit(rh_target,rh_width,rh_height,rh_coarse,rh_format,rh_max_dimension);
+}
+aethyr_render_target_raw :: (rh_target:int,rh_width:int,rh_height:int,rh_coarse:bool,rh_format:int,rh_device_max:int)->host_resources.RenderTargetDescriptor #export_c {return render_host_target_raw(rh_target,rh_width,rh_height,rh_coarse,rh_format,rh_device_max);}
+aethyr_render_sampler :: (rh_name:string)->host_resources.RenderSamplerDescriptor #export_c {return host_resources.render_sampler_desc(rh_name);}
+aethyr_render_texture_layout :: (rh_binding:RenderBinding)->host_resources.RenderTextureLayout #export_c {return host_resources.render_texture_layout(rh_binding);}
+
+// A candidate owns the inactive borrowed bank until its actual products and
+// platform pipelines are ready. Only commit publishes it to frame admission.
+aethyr_render_package_prepare :: (rh_state:[]RenderHostPackageState,rh_json:string,rh_entries:[]RenderPackageEntry,rh_profile:int,rh_device:RenderDeviceCapabilities,rh_bank:int)->RenderHostPackageCandidate #export_c {return render_host_package_prepare(rh_state,rh_json,rh_entries,rh_profile,rh_device,rh_bank);}
+aethyr_render_package_product :: (rh_candidate:[]RenderHostPackageCandidate,rh_kind:int,rh_index:int,rh_bytes:[]u8)->RenderPackageStatus #export_c {return render_host_package_product(rh_candidate,rh_kind,rh_index,rh_bytes);}
+aethyr_render_package_pipeline :: (rh_candidate:[]RenderHostPackageCandidate,rh_index:int,rh_ready:bool)->RenderPackageStatus #export_c {return render_host_package_pipeline(rh_candidate,rh_index,rh_ready);}
+aethyr_render_package_commit :: (rh_state:[]RenderHostPackageState,rh_candidate:[]RenderHostPackageCandidate)->RenderPackageStatus #export_c {return render_host_package_commit(rh_state,rh_candidate);}
+aethyr_render_bytes :: (rh_address:u64,rh_base:u64,rh_capacity:u64,rh_bytes:u64)->RenderHostByteView #export_c {return render_host_bytes(rh_address,rh_base,rh_capacity,rh_bytes);}
+aethyr_render_media_draws :: (rh_profile:int,rh_requests:[]RenderMediaRequest,rh_images:[]RenderHostMediaImage,rh_width:int,rh_height:int,rh_textures:[]RenderHostMediaTexture,rh_out:[]RenderMediaRect)->RenderHostMediaReceipt #export_c {return render_host_media_draws(rh_profile,rh_requests,rh_images,rh_width,rh_height,rh_textures,rh_out);}
+aethyr_render_media_capacity :: ()->int #export_c {return RENDER_MEDIA_ITEMS;}
+aethyr_render_media_effects :: ()->RenderMediaEffects #export_c {return render_media_effects();}
+RenderHostMediaBank :: struct {requests:[RENDER_MEDIA_ITEMS]RenderMediaRequest;images:[RENDER_MEDIA_ITEMS]RenderHostMediaImage;textures:[RENDER_MEDIA_ITEMS]RenderHostMediaTexture;names:[RENDER_MEDIA_ITEMS][32]u8;rects:[RENDER_MEDIA_ITEMS]RenderMediaRect;}
+aethyr_render_media_bank :: (rh_b:[]RenderHostMediaBank)->[]RenderHostMediaBank #export_c {return rh_b;}
+RenderHostMediaTextBank :: struct {bytes:[RENDER_MEDIA_TEXT_BYTES]u8;}
+aethyr_render_media_text_storage :: (rh_b:[]RenderHostMediaTextBank)->[]u8 #export_c {return rh_b[0].bytes[..];}
+aethyr_render_bool :: (rh_raw:int)->RenderHostBool #export_c {return render_host_bool(rh_raw);}
+aethyr_render_readiness :: (rh_raw:int)->RenderReadiness #export_c {return render_host_readiness(rh_raw);}
+aethyr_render_asset_span :: (rh_address:u64,rh_capacity:u64,rh_bytes:u64,rh_memory:u64)->RenderHostByteView #export_c {return render_host_asset_span(rh_address,rh_capacity,rh_bytes,rh_memory);}

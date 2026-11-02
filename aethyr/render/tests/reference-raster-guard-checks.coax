@@ -1,0 +1,18 @@
+#test "reference bounded guard band keeps original XY planes while clipping near and far" {
+ t:=[3]RRVertex.[rr_test_vertex(-3,0,0.5,1,1),rr_test_vertex(0.5,0,0.5,1,2),rr_test_vertex(0,0.5,0.5,1,3)];l:=RRLayout.{count=1};p:=rr_raster_xy_profile("nearest-even",8,"guard-band",4);
+ q:=rr_clip_profile(t,l,p);#assert q.status==RQStatus.ok && q.count==3 && q.vertices[0].clip[0]==-3 && q.vertices[0].words[0]==f32_bits(1.0f32);
+ #assert rr_clip(t,l).count==4;
+ for plane:0..<2 {
+  for v:0..<3 {t[v].clip[2]=ifx plane==0 then -1.0f32 else 2.0f32;}
+  q=rr_clip_profile(t,l,p);#assert q.status==RQStatus.ok && q.count==0;
+ }
+ #assert rr_clip_profile(t,l,rr_raster_xy_profile("nearest-even",8,"bad",4)).status==RQStatus.unsupported;
+}
+#forall "reference guard window admits each exact edge and atomically refuses one past it" edge:0..<4 {
+ p:=rr_raster_xy_profile("nearest-even",8,"guard-band",4);
+ t:=[3]RRVertex.[rr_test_vertex(-1,1,0,1,0),rr_test_vertex(1,1,0,1,0),rr_test_vertex(-1,-1,0,1,0)];
+ axis:=edge/2;value:=ifx edge%2==0 then -5.0f32 else 5.0f32;t[0].clip[axis]=value;
+ #assert rr_triangle_profile(t,2,2,p).status==RQStatus.ok;
+ t[0].clip[axis]=value+(ifx edge%2==0 then -0.0001f32 else 0.0001f32);
+ #assert rr_triangle_profile(t,2,2,p).status==RQStatus.unsupported;
+}

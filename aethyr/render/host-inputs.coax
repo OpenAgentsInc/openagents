@@ -1,0 +1,249 @@
+// Physical buffer observations are shared by the browser, native and reference
+// adapters. The caller admits the source span before constructing words.
+#module "aethyr.render.host.inputs";
+#load "host-bindings.coax";
+#load "geometry.coax";
+#load "resources.coax";
+#authority;
+RenderHostNamedBuffer :: struct {name:string;words:[]u32;observed:RenderBufferObserved;}
+RenderHostBufferReceipt :: struct {
+ status:RenderResourceStatus;named_index:int=-1;view:RenderBufferView;
+ words:[]u32;stride:int;
+}
+RenderHostGeometryBuffers :: struct {status:RenderResourceStatus;count:int;}
+// Checks stay here so the complete Everglade carrier fits its source-unit budget.
+#test "shared host inputs retain independent main and particle uniform extents" {
+ rhi_words:[2304]u32;rhi_words[27]=27;rhi_words[28]=28;rhi_words[2299]=2299;
+ rhi_files:=[1]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="u.bin",words=rhi_words[..],observed=RenderBufferObserved.{source_capacity=9216,logical_payload=9216,initialized_highwater=9216,gpu_bytes=9216}}];
+ rhi_q:=render_host_resolve_buffer(2,0,0,rhi_files[..],RenderHostNamedBuffer.{});
+ #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.named_index==0 && rhi_q.view.bytes==9200 && rhi_q.view.elements==2300 && rhi_q.stride==4;
+ #assert rhi_q.words.count==2300 && rhi_q.words[2299]==2299;
+ rhi_q=render_host_resolve_buffer(2,1,0,rhi_files[..],RenderHostNamedBuffer.{});
+ #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.view.bytes==112 && rhi_q.view.elements==28 && rhi_q.words.count==28 && rhi_q.words[27]==27;
+}
+#test "shared host inputs preserve legacy padding retained initialization and physical offsets" {
+ rhi_words:[12]u32;rhi_words[4]=41;rhi_words[11]=73;
+ rhi_files:=[1]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="s0.bin",words=rhi_words[..],observed=RenderBufferObserved.{source_capacity=20,gpu_bytes=48,offset=16,zero_initialized=true}}];
+ rhi_q:=render_host_resolve_buffer(16,0,1,rhi_files[..],RenderHostNamedBuffer.{});
+ #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.view.offset==16 && rhi_q.view.bytes==32 && rhi_q.words.count==8 && rhi_q.words[0]==41 && rhi_q.words[7]==73;
+ rhi_files[0].observed.zero_initialized=false;rhi_files[0].observed.initialized_highwater=47;
+ #assert render_host_resolve_buffer(16,0,1,rhi_files[..],RenderHostNamedBuffer.{}).status==RenderResourceStatus.uninitialized;
+ rhi_files[0].observed.initialized_highwater=48;
+ #assert render_host_resolve_buffer(16,0,1,rhi_files[..],RenderHostNamedBuffer.{}).status==RenderResourceStatus.ok;
+ rhi_files[0].words=rhi_words[0..<11];rhi_q=render_host_resolve_buffer(16,0,1,rhi_files[..],RenderHostNamedBuffer.{});
+ #assert rhi_q.status==RenderResourceStatus.capacity && rhi_q.words.count==0 && rhi_q.named_index== -1;
+}
+#test "shared host inputs resolve an immutable mesh view and refuse missing duplicate or wrong roles" {
+ rhi_words:[12]u32;rhi_words[4]=111;rhi_words[11]=222;
+ rhi_files:=[2]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="mesh.bin",words=rhi_words[..],observed=RenderBufferObserved.{source_capacity=32,logical_payload=32,initialized_highwater=64,gpu_bytes=64,offset=16}},RenderHostNamedBuffer.{name="unrelated"}];
+ rhi_q:=render_host_resolve_buffer(6,0,1,rhi_files[..],RenderHostNamedBuffer.{});
+ #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.words.count==8 && rhi_q.words[0]==111 && rhi_q.words[7]==222;
+ rhi_files[1].name="mesh.bin";#assert render_host_resolve_buffer(6,0,1,rhi_files[..],RenderHostNamedBuffer.{}).status==RenderResourceStatus.invalid;
+ rhi_files[1].name="";#assert render_host_named_buffers(rhi_files[..])==RenderResourceStatus.invalid;
+ rhi_files[1].name="unrelated";rhi_files[0].name="";#assert render_host_named_buffers(rhi_files[..])==RenderResourceStatus.invalid;
+ rhi_files[0].name="vertices.bin";
+ #assert render_host_resolve_buffer(6,0,1,rhi_files[..],RenderHostNamedBuffer.{}).status==RenderResourceStatus.invalid;
+ #assert render_host_resolve_buffer(-1,0,0,rhi_files[..],RenderHostNamedBuffer.{}).status==RenderResourceStatus.invalid;
+ #assert render_host_resolve_buffer(6,-1,0,rhi_files[..],RenderHostNamedBuffer.{}).status==RenderResourceStatus.invalid;
+ #assert render_host_resolve_buffer(6,0,2,rhi_files[..],RenderHostNamedBuffer.{}).status==RenderResourceStatus.invalid;
+ #assert render_host_resolve_buffer(2,0,6,rhi_files[..],RenderHostNamedBuffer.{}).status==RenderResourceStatus.invalid;
+}
+#test "shared host inputs keep graph generated bloom and media uniform observations separate" {
+ rhi_words:=[8]u32.[1,2,3,4,5,6,7,8];rhi_none:[]RenderHostNamedBuffer;
+ rhi_generated:=RenderHostNamedBuffer.{words=rhi_words[..],observed=RenderBufferObserved.{source_capacity=32,logical_payload=32,initialized_highwater=32,gpu_bytes=32}};
+ rhi_q:=render_host_resolve_buffer(2,0,14,rhi_none,rhi_generated);
+ #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.named_index== -1 && rhi_q.words.count==4 && rhi_q.words[3]==4;
+ rhi_q=render_host_resolve_buffer(2,2,0,rhi_none,rhi_generated);
+ #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.words.count==8 && rhi_q.words[7]==8;
+ #assert render_host_resolve_buffer(2,0,0,rhi_none,rhi_generated).status==RenderResourceStatus.invalid;
+ #assert render_host_resolve_buffer(2,0,14,rhi_none,RenderHostNamedBuffer.{}).status!=RenderResourceStatus.ok;
+}
+#test "shared host inputs publish geometry bindings in catalog order only after every view is valid" {
+ rhi_heights:[8]u32;rhi_objects:[16]u32;rhi_heights[7]=71;rhi_objects[15]=151;
+ rhi_files:=[2]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="s1.bin",words=rhi_objects[..],observed=RenderBufferObserved.{source_capacity=64,gpu_bytes=64,zero_initialized=true}},RenderHostNamedBuffer.{name="s0.bin",words=rhi_heights[..],observed=RenderBufferObserved.{source_capacity=32,gpu_bytes=32,zero_initialized=true}}];
+ rhi_out:[48]RenderGeometryBuffer;rhi_out[0].resource=99;rhi_out[2].resource=87;
+ rhi_q:=render_host_geometry_buffers(16,rhi_files[..],rhi_out[0..<2]);
+ #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.count==2 && rhi_out[0].resource==1 && rhi_out[0].binding_set==0 && rhi_out[0].words[7]==71;
+ #assert rhi_out[1].resource==2 && rhi_out[1].words[15]==151 && rhi_out[2].resource==87;
+ rhi_out[0].resource=99;rhi_files[0].observed.gpu_bytes=60;
+ rhi_q=render_host_geometry_buffers(16,rhi_files[..],rhi_out[..]);#assert rhi_q.status!=RenderResourceStatus.ok && rhi_q.count==0 && rhi_out[0].resource==99;
+ rhi_files[0].observed.gpu_bytes=64;rhi_q=render_host_geometry_buffers(16,rhi_files[..],rhi_out[0..<1]);
+ #assert rhi_q.status==RenderResourceStatus.capacity && rhi_q.count==0 && rhi_out[0].resource==99;
+ rhi_q=render_host_geometry_buffers(16,rhi_files[1..<2],rhi_out[..]);#assert rhi_q.status==RenderResourceStatus.ok && rhi_q.count==1;
+ #assert render_host_geometry_buffers(-1,rhi_files[..],rhi_out[..]).status==RenderResourceStatus.invalid;
+ rhi_files[0].name="s0.bin";rhi_out[0].resource=99;
+ #assert render_host_geometry_buffers(16,rhi_files[..],rhi_out[..]).status==RenderResourceStatus.invalid && rhi_out[0].resource==99;
+}
+#test "shared host inputs include particle storage and bound names without mutating short output" {
+ rhi_puffs:[12]u32;rhi_puffs[11]=91;
+ rhi_files:=[1]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="puffs.bin",words=rhi_puffs[..],observed=RenderBufferObserved.{source_capacity=48,gpu_bytes=48,zero_initialized=true}}];
+ rhi_out:[48]RenderGeometryBuffer;rhi_q:=render_host_geometry_buffers(2,rhi_files[..],rhi_out[..]);
+ #assert rhi_q.status==RenderResourceStatus.ok && rhi_q.count==1 && rhi_out[0].binding_set==1 && rhi_out[0].resource==1 && rhi_out[0].words.count==12 && rhi_out[0].words[11]==91;
+ rhi_q=render_host_geometry_buffers(2,rhi_files[..],rhi_out[0..<0]);#assert rhi_q.status==RenderResourceStatus.capacity && rhi_q.count==0;
+}
+
+#test "shared host inputs admit exactly48 distinct names and refuse49 before lookup" {
+ rhi_files:=[49]RenderHostNamedBuffer.[
+RenderHostNamedBuffer.{name="buffer-00"},
+RenderHostNamedBuffer.{name="buffer-01"},
+RenderHostNamedBuffer.{name="buffer-02"},
+RenderHostNamedBuffer.{name="buffer-03"},
+RenderHostNamedBuffer.{name="buffer-04"},
+RenderHostNamedBuffer.{name="buffer-05"},
+RenderHostNamedBuffer.{name="buffer-06"},
+RenderHostNamedBuffer.{name="buffer-07"},
+RenderHostNamedBuffer.{name="buffer-08"},
+RenderHostNamedBuffer.{name="buffer-09"},
+RenderHostNamedBuffer.{name="buffer-10"},
+RenderHostNamedBuffer.{name="buffer-11"},
+RenderHostNamedBuffer.{name="buffer-12"},
+RenderHostNamedBuffer.{name="buffer-13"},
+RenderHostNamedBuffer.{name="buffer-14"},
+RenderHostNamedBuffer.{name="buffer-15"},
+RenderHostNamedBuffer.{name="buffer-16"},
+RenderHostNamedBuffer.{name="buffer-17"},
+RenderHostNamedBuffer.{name="buffer-18"},
+RenderHostNamedBuffer.{name="buffer-19"},
+RenderHostNamedBuffer.{name="buffer-20"},
+RenderHostNamedBuffer.{name="buffer-21"},
+RenderHostNamedBuffer.{name="buffer-22"},
+RenderHostNamedBuffer.{name="buffer-23"},
+RenderHostNamedBuffer.{name="buffer-24"},
+RenderHostNamedBuffer.{name="buffer-25"},
+RenderHostNamedBuffer.{name="buffer-26"},
+RenderHostNamedBuffer.{name="buffer-27"},
+RenderHostNamedBuffer.{name="buffer-28"},
+RenderHostNamedBuffer.{name="buffer-29"},
+RenderHostNamedBuffer.{name="buffer-30"},
+RenderHostNamedBuffer.{name="buffer-31"},
+RenderHostNamedBuffer.{name="buffer-32"},
+RenderHostNamedBuffer.{name="buffer-33"},
+RenderHostNamedBuffer.{name="buffer-34"},
+RenderHostNamedBuffer.{name="buffer-35"},
+RenderHostNamedBuffer.{name="buffer-36"},
+RenderHostNamedBuffer.{name="buffer-37"},
+RenderHostNamedBuffer.{name="buffer-38"},
+RenderHostNamedBuffer.{name="buffer-39"},
+RenderHostNamedBuffer.{name="buffer-40"},
+RenderHostNamedBuffer.{name="buffer-41"},
+RenderHostNamedBuffer.{name="buffer-42"},
+RenderHostNamedBuffer.{name="buffer-43"},
+RenderHostNamedBuffer.{name="buffer-44"},
+RenderHostNamedBuffer.{name="buffer-45"},
+RenderHostNamedBuffer.{name="buffer-46"},
+RenderHostNamedBuffer.{name="buffer-47"},
+RenderHostNamedBuffer.{name="buffer-48"}];
+ #assert render_host_named_buffers(rhi_files[0..<0])==RenderResourceStatus.ok;
+ #assert render_host_named_buffers(rhi_files[0..<48])==RenderResourceStatus.ok;
+ #assert render_host_named_buffers(rhi_files[..])==RenderResourceStatus.capacity;
+ #assert render_host_resolve_buffer(15,0,0,rhi_files[..],RenderHostNamedBuffer.{}).status==RenderResourceStatus.capacity;
+ rhi_out:[48]RenderGeometryBuffer;#assert render_host_geometry_buffers(15,rhi_files[..],rhi_out[..]).status==RenderResourceStatus.capacity;
+}
+
+#forall "shared host inputs closed storage inventories fit the48 row geometry receipt" rhi_profile:0..<18 {
+ rhi_expected:=[18]int.[4,0,6,3,1,0,1,2,0,2,2,4,2,3,0,0,2,0];rhi_count:=0;
+ for rhi_set:0..<2 {for rhi_resource:0..<render_host_binding_count(rhi_profile,rhi_set) {if render_host_binding(rhi_profile,rhi_set,rhi_resource).binding.kind==RenderResourceKind.storage {rhi_count+=1;}}}
+ #assert rhi_count==rhi_expected[rhi_profile] && rhi_count<=RENDER_RESOURCES;
+}
+#test "shared host owned buffers describe every exact initialized byte and preserve their word view" {
+ rhi_words:=[3]u32.[11,22,33];rhi_q:=render_host_owned_buffer("owned",rhi_words[..]);
+ #assert rhi_q.name=="owned" && rhi_q.words.count==3 && rhi_q.words[2]==33;
+ #assert rhi_q.observed.source_capacity==12 && rhi_q.observed.logical_payload==12 && rhi_q.observed.initialized_highwater==12 && rhi_q.observed.gpu_bytes==12;
+ #assert rhi_q.observed.upload_bytes==0 && rhi_q.observed.offset==0 && rhi_q.observed.alignment==4 && !rhi_q.observed.zero_initialized;
+ rhi_q=render_host_owned_buffer("generated",rhi_words[0..<0]);
+ #assert rhi_q.name=="generated" && rhi_q.words.count==0 && rhi_q.observed.source_capacity==0 && rhi_q.observed.logical_payload==0 && rhi_q.observed.initialized_highwater==0 && rhi_q.observed.gpu_bytes==0;
+}
+
+render_host_named_buffers :: (rhi_named:[]RenderHostNamedBuffer)->RenderResourceStatus {
+ if rhi_named.count>RENDER_RESOURCES {return RenderResourceStatus.capacity;}
+ for rhi_i:0..<rhi_named.count {
+  if rhi_named[rhi_i].name.count==0 {return RenderResourceStatus.invalid;}
+  for rhi_j:0..<rhi_i {if rhi_named[rhi_j].name==rhi_named[rhi_i].name {return RenderResourceStatus.invalid;}}
+ }
+ return RenderResourceStatus.ok;
+}
+rhi_find_named :: (rhi_name:string,rhi_named:[]RenderHostNamedBuffer)->int {
+ for rhi_i:0..<rhi_named.count {if rhi_named[rhi_i].name==rhi_name {return rhi_i;}}return -1;
+}
+render_host_resolve_buffer :: (rhi_profile:int,rhi_set:int,rhi_resource:int,rhi_named:[]RenderHostNamedBuffer,rhi_generated:RenderHostNamedBuffer)->RenderHostBufferReceipt {
+ rhi_status:=render_host_named_buffers(rhi_named);
+ if rhi_status!=RenderResourceStatus.ok {return RenderHostBufferReceipt.{status=rhi_status};}
+ rhi_binding:=render_host_binding(rhi_profile,rhi_set,rhi_resource);
+ if !rhi_binding.valid {return RenderHostBufferReceipt.{};}
+ rhi_at:=-1;rhi_buffer:=rhi_generated;
+ if rhi_binding.source.kind!=RenderSourceKind.bloom_step && rhi_binding.source.kind!=RenderSourceKind.media_uniform {
+  rhi_name_bytes:[32]u8;rhi_name:=render_host_buffer_name(rhi_binding.source,rhi_name_bytes[..]);
+  rhi_at=rhi_find_named(rhi_name,rhi_named);if rhi_at<0 {return RenderHostBufferReceipt.{};}rhi_buffer=rhi_named[rhi_at];
+ }
+ rhi_view:=render_buffer_view(rhi_binding.binding,rhi_binding.source.buffer_mode,rhi_buffer.observed);
+ if rhi_view.status!=RenderResourceStatus.ok {return RenderHostBufferReceipt.{status=rhi_view.status};}
+ rhi_first:=rhi_view.offset/4;rhi_words:=rhi_view.bytes/4;
+ if !render_span_fits(rhi_first,rhi_words,0,cast(u64)rhi_buffer.words.count) {return RenderHostBufferReceipt.{status=RenderResourceStatus.capacity};}
+ return RenderHostBufferReceipt.{status=RenderResourceStatus.ok,named_index=rhi_at,view=rhi_view,stride=rhi_binding.binding.stride,words=rhi_buffer.words[cast(int)rhi_first..<cast(int)(rhi_first+rhi_words)]};
+}
+render_host_geometry_buffers :: (rhi_profile:int,rhi_named:[]RenderHostNamedBuffer,rhi_out:[]RenderGeometryBuffer)->RenderHostGeometryBuffers {
+ if !render_catalog(rhi_profile).valid {return RenderHostGeometryBuffers.{};}
+ rhi_status:=render_host_named_buffers(rhi_named);
+ if rhi_status!=RenderResourceStatus.ok {return RenderHostGeometryBuffers.{status=rhi_status};}
+ // The closed catalog's combined storage sets fit the same48-resource bound.
+ // Missing unused roles stay absent; Geometry decides which payloads a frame
+ // actually requires. A requested role always uses resolve_buffer's refusal.
+ rhi_candidate:[RENDER_RESOURCES]RenderGeometryBuffer;rhi_count:=0;
+ rhi_slots:[RENDER_RESOURCES]u8;
+ for rhi_set:[2]int.[0,1] {
+  rhi_n:=render_host_binding_count(rhi_profile,rhi_set);if rhi_n== -1 {continue;}
+  for rhi_slot,rhi_resource:rhi_slots[0..<rhi_n] {
+   rhi_binding:=render_host_binding(rhi_profile,rhi_set,rhi_resource);
+   if rhi_binding.binding.kind!=RenderResourceKind.storage {continue;}
+   rhi_name_bytes:[32]u8;rhi_name:=render_host_buffer_name(rhi_binding.source,rhi_name_bytes[..]);
+   if rhi_find_named(rhi_name,rhi_named)<0 {continue;}
+   rhi_q:=render_host_resolve_buffer(rhi_profile,rhi_set,rhi_resource,rhi_named,RenderHostNamedBuffer.{});
+   if rhi_q.status!=RenderResourceStatus.ok {return RenderHostGeometryBuffers.{status=rhi_q.status};}
+   rhi_candidate[rhi_count]=RenderGeometryBuffer.{binding_set=rhi_set,resource=rhi_resource,words=rhi_q.words};rhi_count+=1;
+  }
+ }
+ if rhi_out.count<rhi_count {return RenderHostGeometryBuffers.{status=RenderResourceStatus.capacity};}
+ for rhi_i:0..<rhi_count {rhi_out[rhi_i]=rhi_candidate[rhi_i];}
+ return RenderHostGeometryBuffers.{status=RenderResourceStatus.ok,count=rhi_count};
+}
+
+// The caller owns and has admitted every word in this precise initialized
+// span. Its metadata is shared by working CPU uniforms and generated GPU data.
+render_host_owned_buffer :: (rhi_name:string,rhi_words:[]u32)->RenderHostNamedBuffer {
+ rhi_bytes:=cast(u64)rhi_words.count*4;
+ return RenderHostNamedBuffer.{name=rhi_name,words=rhi_words,observed=RenderBufferObserved.{source_capacity=rhi_bytes,logical_payload=rhi_bytes,initialized_highwater=rhi_bytes,gpu_bytes=rhi_bytes,upload_bytes=0,offset=0,alignment=4,zero_initialized=false}};
+}
+
+#test "shared physical buffer allocation retains minimum and exact legacy padding under the device limit" {
+ rhi_q:=render_host_buffer_bytes(16900,16912);#assert rhi_q.status==RenderResourceStatus.ok && rhi_q.bytes==16912 && rhi_q.offset==0 && rhi_q.elements==4228;
+ #assert render_host_buffer_bytes(16900,16911).status==RenderResourceStatus.capacity;
+ #assert render_host_buffer_bytes(16,16).status==RenderResourceStatus.ok && render_host_buffer_bytes(16,16).bytes==16;
+ #assert render_host_buffer_bytes(17,32).bytes==32;
+ #assert render_host_buffer_bytes(0,16).status==RenderResourceStatus.ok && render_host_buffer_bytes(0,16).bytes==16;
+ #assert render_host_buffer_bytes(0,15).status==RenderResourceStatus.capacity;
+ #assert render_host_buffer_bytes(18446744073709551615,18446744073709551615).status==RenderResourceStatus.capacity;
+ #assert render_host_buffer_bytes(18446744073709551600,18446744073709551615).status==RenderResourceStatus.ok && render_host_buffer_bytes(18446744073709551600,18446744073709551615).bytes==18446744073709551600;
+}
+render_host_buffer_bytes :: (rhi_raw:u64,rhi_device:u64)->RenderBufferView {
+ return render_buffer_view(RenderBinding.{name="physical-buffer",kind=RenderResourceKind.storage,stride=4},RenderBufferMode.legacy_capacity,RenderBufferObserved.{source_capacity=rhi_raw,gpu_bytes=rhi_device,zero_initialized=true});
+}
+
+#test "shared mesh placeholders preserve the nonblocking zero mesh with a measured device extent" {
+ rhi_empty:=render_host_mesh_placeholder(6,0,1,16);
+ #assert rhi_empty.status==RenderResourceStatus.ok && rhi_empty.bytes==16 && rhi_empty.offset==0 && rhi_empty.elements==4;
+ #assert render_host_mesh_placeholder(6,0,1,15).status==RenderResourceStatus.capacity;
+ #assert render_host_mesh_placeholder(6,0,1,0).status==RenderResourceStatus.capacity;
+ #assert render_host_mesh_placeholder(6,0,0,16).status==RenderResourceStatus.invalid;
+ #assert render_host_mesh_placeholder(-1,0,1,16).status==RenderResourceStatus.invalid;
+ #assert render_host_mesh_placeholder(6,1,1,16).status==RenderResourceStatus.invalid;
+ rhi_zero:[4]u32;rhi_buffer:=render_host_owned_buffer("mesh.bin",rhi_zero[..]);
+ rhi_buffer.observed.zero_initialized=true;
+ rhi_named:=[1]RenderHostNamedBuffer.[rhi_buffer];
+ rhi_view:=render_host_resolve_buffer(6,0,1,rhi_named[..],RenderHostNamedBuffer.{});
+ #assert rhi_view.status==RenderResourceStatus.ok && rhi_view.view.bytes==16 && rhi_view.words.count==4;
+ #assert rhi_view.words[0]==0 && rhi_view.words[1]==0 && rhi_view.words[2]==0 && rhi_view.words[3]==0;
+}
+render_host_mesh_placeholder :: (rhi_profile:int,rhi_set:int,rhi_resource:int,rhi_device:u64)->RenderBufferView {
+ if render_host_binding(rhi_profile,rhi_set,rhi_resource).source.kind!=RenderSourceKind.mesh_asset {return RenderBufferView.{};}
+ return render_host_buffer_bytes(16,rhi_device);
+}

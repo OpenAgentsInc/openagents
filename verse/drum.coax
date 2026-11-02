@@ -130,7 +130,7 @@ drum_drive_step :: (store: [] RigidBody, i: int, d: Drum, f: GravityField, spec:
   }
 }
 
-#test "a car drives from the floor up the curve, over the ceiling and back down, wheels on the rim all the way" {
+#test "a car drives from the floor up the curve, over the ceiling and back down, wheels on the rim all the way" #steps 50000000 {
   d := drum_on_floor(20.0, 40.0);
   f := drum_field(d, G_EARTH);
   spec := vehicle_roadster();

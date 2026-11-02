@@ -1,0 +1,7 @@
+// Cemetery's actual entry shapes, with simple binary-fraction colors so the
+// whole media-before/HUD/media-after control-flow oracle is independent.
+#load "reference-frame-post-shader.coax";
+rfmg_scene_fs :: (p:V4,u:[]f32)->RFGTargets {return RFGTargets.{colour=v4(0,0,0,1),aux=v4(0,0,0,1)};}
+rfmg_particle_vs :: (vertex:u32,instance:u32,u:[]f32,emitters:[]RFGObject)->V4 {return rfg_position(vertex);}
+rfmg_particle_fs :: (p:V4,u:[]f32)->V4 {return v4(0,0,0,1);}
+rfmg_hud_fs :: (p:V4,u:[]f32)->V4 {return v4(0.5,0.25,0.125,1);}

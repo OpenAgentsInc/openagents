@@ -1,0 +1,29 @@
+// The actual shared Coax eight-tap helper, not a comparison-only filter.
+#load "/private/tmp/aethyr-ch11-sampling-gpu-vec3/sampling-fault.coax";
+
+render_sampling_vs :: (vertex:u32,instance:u32)->V4 {
+  if vertex==0 {return v4(-1,-1,0,1);}
+  if vertex==1 {return v4(3,-1,0,1);}
+  return v4(-1,3,0,1);
+}
+render_sampling_fs :: (position:V4,texture:Tex2D,sheet:Sampler)->V4 {
+  return render_sample8(texture,sheet,v2(position.x,0.5));
+}
+render_sampling_invalid_fs :: (position:V4,texture:Tex2D,sheet:Sampler)->V4 {
+  return render_sample8_grad(texture,sheet,v2(position.x,0.5),v2(65537,0),v2(0,0),0);
+}
+render_sampling_array_fs :: (position:V4,layers:Tex2DArray,sheet:Sampler)->V4 {
+  return render_sample_layer8(layers,sheet,v2(position.x,0.5),1);
+}
+render_sampling_invalid_array_fs :: (position:V4,layers:Tex2DArray,sheet:Sampler)->V4 {
+  return render_sample_layer8_grad(layers,sheet,v2(position.x,0.5),1,v2(65537,0),v2(0,0),0);
+}
+#test "sampling source fixture preserves eight explicit taps and refuses an excessive footprint" {
+  rss_pixels:[8]V4;
+  for rss_i:0..<8 {rss_pixels[rss_i]=v4(ifx rss_i==3 || rss_i==4 then 1.0f32 else 0.0f32,cast(f32)rss_i/8,0.25,1);}
+  rss_tex:=Tex2D.{width=8,height=1,texels=rss_pixels[..]};rss_s:=Sampler.{linear=true};
+  rss_r:=render_filter8_grad(rss_tex,rss_s,v2(0.5,0.5),v2(1,0),v2(0,0),0);
+  #assert rss_r.valid && rss_r.colour.x==0.25 && rss_r.colour.y==0.4375 && rss_r.colour.z==0.25 && rss_r.colour.w==1;
+  #assert !render_filter8_grad(rss_tex,rss_s,v2(0.5,0.5),v2(65537,0),v2(0,0),0).valid;
+  #assert render_sampling_vs(0,0).x==-1 && render_sampling_vs(1,0).x==3 && render_sampling_vs(2,0).y==3;
+}

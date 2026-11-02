@@ -1,0 +1,20 @@
+17 160 90 7926 16 0 0 0 0 0 0 0 0
+/tmp/aethyr-ch11-galaxy-half-160/u.bin
+/tmp/aethyr-ch11-galaxy-half-160/hud.bin
+/tmp/aethyr-ch11-galaxy-half-160/draws.bin
+/tmp/aethyr-ch11-galaxy-half-160/indices.bin
+/tmp/aethyr-ch11-packages-current/galaxy/render.json
+2
+0 /tmp/aethyr-ch11-packages-current/galaxy/pipeline-0-557f249313820731861b5143b0eb62211c826afbe8c6b124b3163c0463cd40c9.tree
+12 /tmp/aethyr-ch11-packages-current/galaxy/pipeline-12-c59452ea804639949079a2e5c9ff53e2294135ef21ff5471a7007cd7d3bd107c.tree
+1
+u.bin /tmp/aethyr-ch11-galaxy-half-160/u.bin 544 544 0 0 544 1
+textures 1
+sans_atlas rgba8unorm 1 5 /tmp/aethyr-ch11-galaxy-half-160/texture-0.bin
+1536 672 0 6144 4128768
+768 336 4128768 3072 1032192
+384 168 5160960 1536 258048
+192 84 5419008 768 64512
+96 42 5483520 512 21504
+media_text /tmp/aethyr-ch11-galaxy-half-160/media.txt
+media_images 0

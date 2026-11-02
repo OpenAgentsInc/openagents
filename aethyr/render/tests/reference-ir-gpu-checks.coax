@@ -1,0 +1,27 @@
+#forall "quad GPU derivative registry preserves generic selection and explicit fine overrides" fn:12..<18, fine:bool {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);memory:[64]u32;
+ m:=[1]RQMachine.[RQMachine.{types=7,version=3,stage=1,derivative=ifx fine then RQDerivative.fine else RQDerivative.coarse}];
+ a:=rq_ir_value(m[..],meta[..],memory[..],2);x:=[4]f32.[2,6,10,22];for lane:0..<4 {rq_ir_put_f32(memory[..],a,lane,x[lane]);}args:=[1]RQValue.[a];
+ fine_values:=[24]f32.[4,4,12,12,8,16,8,16,12,20,20,28,4,4,12,12,8,16,8,16,12,20,20,28];
+ coarse_values:=[24]f32.[4,4,4,4,8,8,8,8,12,12,12,12,4,4,12,12,8,16,8,16,12,20,20,28];
+ r:=rq_ir_gpu(m[..],meta[..],memory[..],RQResources.{},fn,2,args[..],15);#assert m[0].status==RQStatus.ok;
+ for lane:0..<4 {expected:=ifx fine then fine_values[(fn-12)*4+lane] else coarse_values[(fn-12)*4+lane];#assert rq_ir_f32(memory[..],r,lane)==expected;}
+}
+#forall "quad GPU operation admission separates stage registry arity types and inactive lanes" which:0..<16 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);memory:[64]u32;m:=[1]RQMachine.[RQMachine.{types=7,version=3,stage=1}];
+ a:=rq_ir_value(m[..],meta[..],memory[..],2);b:=rq_ir_value(m[..],meta[..],memory[..],3);args:=[2]RQValue.[a,a];
+ fn:=12;ty:=2;n:=1;mask:u32=15;wanted:=RQStatus.unsupported;
+ if which==0 {m[0].stage=0;fn=1;ty=0;n=0;}if which==1 {m[0].stage=0;}if which==2 {m[0].stage=0;fn=18;ty=0;n=0;}
+ if which==3 {m[0].version=2;fn=15;}if which==4 {fn=0;}if which==5 {fn=19;}
+ if which==6 {fn=18;ty=0;wanted=RQStatus.malformed;}if which==7 {fn=18;n=0;wanted=RQStatus.malformed;}
+ if which==8 {n=0;wanted=RQStatus.malformed;}if which==9 {n=2;wanted=RQStatus.malformed;}if which==10 {ty=3;wanted=RQStatus.malformed;}if which==11 {args[0]=b;wanted=RQStatus.malformed;}
+ if which==12 {mask=1;wanted=RQStatus.divergent;}if which==13 {mask=0;wanted=RQStatus.ok;}
+ if which==14 {fn=1;ty=0;n=0;mask=5;wanted=RQStatus.ok;}if which==15 {fn=18;ty=0;n=0;mask=5;wanted=RQStatus.ok;}
+ r:=rq_ir_gpu(m[..],meta[..],memory[..],RQResources.{},fn,ty,args[0..<n],mask);#assert m[0].status==wanted;
+ if which<14 {#assert m[0].discarded==0 && m[0].terminated==0;}
+ else {#assert m[0].discarded==5 && m[0].terminated==(ifx which==14 then cast(u32)5 else cast(u32)0);}
+ if which==13 {for lane:0..<4 {#assert rq_ir_u64(memory[..],r,lane)==0;}}
+}
+#forall "quad GPU arity declaration covers every registry entry and rejects unknown operations" fn:0..<20 {
+ expected:=[20]int.[-1,0,3,4,4,5,5,4,4,4,1,1,1,1,1,1,1,1,0,-1];#assert rq_ir_gpu_arity(fn)==expected[fn];
+}

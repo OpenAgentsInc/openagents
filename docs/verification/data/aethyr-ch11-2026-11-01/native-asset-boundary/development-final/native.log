@@ -1,0 +1,5 @@
+vk-realm: canonical profile7 at 320x180, package made in 289 ms
+vk-realm: step+render median 11.73 ms, 99th 1505.49 ms, longest 1505.49 ms
+vk-realm: post-render median 0.00 ms, 99th 0.01 ms, longest 0.01 ms
+vk-realm: NVIDIA GeForce RTX 4080, 320x180, 90 frames, 10 draws the last; it ended because it drew its frames
+vk-realm: validation: 0 errors, 0 warnings

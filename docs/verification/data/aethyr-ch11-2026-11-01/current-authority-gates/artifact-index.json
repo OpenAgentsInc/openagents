@@ -1,0 +1,401 @@
+{
+  "schema": "aethyr.authority-retained-artifacts.v1",
+  "files": {
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/active-lanes.coax": {
+      "sha256": "4f4723b318c9e0a15eec337d936a2be56c9cf081cc6c0a1f3d583cbb2efeaa20",
+      "bytes": 401
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/asset-profile.coax": {
+      "sha256": "7b86793b25e78deab91386d3ddebe383501e7bd2111f9e521b8dc0a3636b63a7",
+      "bytes": 22210
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/binding-sources.coax": {
+      "sha256": "4128fa3131dbaf2dfce5e4279b782c6801e9bfe80282275c726cdb5b46afc122",
+      "bytes": 5087
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/bindings.coax": {
+      "sha256": "8f5644b4665a1660f9a15605118e3515689e5697a8101866e68d9f7237f641bc",
+      "bytes": 9360
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/build-policy.coax": {
+      "sha256": "d0565da9cec37044680d6932aa58bc166a6ccb5f9ea28a8cc273355816e796c4",
+      "bytes": 19499
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/capabilities.coax": {
+      "sha256": "390d3c31419058a24ab95419929d0bc55298beb580a935e1cba9b13b10757959",
+      "bytes": 6091
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/catalog.coax": {
+      "sha256": "ffc486dfe5ba07894b0e82485133411411ecc6e62e470621a2befbe9dea2d888",
+      "bytes": 65093
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/emit.coax": {
+      "sha256": "bb71e2908ce9f8d269ed5fb5de43f22896229ed39e759deaa4e00862ecbb6e99",
+      "bytes": 8733
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/filter-profile.coax": {
+      "sha256": "94259fba2d19134361f0e46f6439be17f6a0c85370ea2c542ee68bfc118178c0",
+      "bytes": 3235
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/footprint.coax": {
+      "sha256": "35d8181537f0bef4928797d755b2e32720695b79bfde1009e45db5dde284e2c3",
+      "bytes": 1974
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/fragment-layout.coax": {
+      "sha256": "8ba891b8041e4eb3d063d353f682035982dde1d06a9101c779a56bdfcc6d28b5",
+      "bytes": 452
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/frame.coax": {
+      "sha256": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+      "bytes": 7791
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/geometry.coax": {
+      "sha256": "67fada3f27a8616b12716f3db9908f1994c6ae4dba2507fff798194c30f04318",
+      "bytes": 53372
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-bindings.coax": {
+      "sha256": "85b5743e39d9b0ab5c699228cf95636738a4fea24b0e8fde97f7f4ae5ffe1264",
+      "bytes": 7083
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-frame.coax": {
+      "sha256": "83eb513c6d75b14bf326b717471c6ab8f137e3e7ca70bfdb715ebc5fe70e4d13",
+      "bytes": 8515
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-inputs.coax": {
+      "sha256": "f5c00016ba47233e54d0406f8e19d1396e688bae18c13f1a47ae0937c5e8ee71",
+      "bytes": 18962
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-media.coax": {
+      "sha256": "9bac9f15856f98b0906b229d1f03842b0bf28913747be74feb124b60146ac38b",
+      "bytes": 25262
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-memory.coax": {
+      "sha256": "35cc126ac6c85ee0be56fd5864f86ef36dc99e87e055cc980effa6e91985fa08",
+      "bytes": 3626
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-policy.coax": {
+      "sha256": "a3bf4a200469ca3f8e81ac37735afe47f6d3ccd83992bfd09f13c6a118ec4241",
+      "bytes": 31014
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-textures.coax": {
+      "sha256": "beb8ffd86622eb5ca98fd93f88936f9c2a997403030c7709da74a055b69778a7",
+      "bytes": 2642
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/host-uploads.coax": {
+      "sha256": "6c01b6ec542a9a9e2e0575297d05fe5ad0c38af9c5dcf06217fc059027f6405e",
+      "bytes": 5299
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/interface.coax": {
+      "sha256": "fe37fad6ab782bc12e21f3bd35ec3d2bbadb9ced3f8c2442757ff30be1a71563",
+      "bytes": 4354
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/media-commands.coax": {
+      "sha256": "9ce466f12c37117af43e571f79322632eba722fbb4b9c180a0909d31697688e0",
+      "bytes": 18493
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/media-profile.coax": {
+      "sha256": "9b161447a4a76c933ed89d9eaf289896aa2bbaba1f1ff15c36b58ec604add397",
+      "bytes": 4217
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/native-host.coax": {
+      "sha256": "63ea840411544aa4bf690538265f1ed9547a87a50fb991ef74d2e2b4753c1fde",
+      "bytes": 3368
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/native-texture-profile.coax": {
+      "sha256": "caaad4704b2e24c468dffd502a7f48f3540ba7de9bfd64b83cc6b59faf4740df",
+      "bytes": 14228
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/noise.coax": {
+      "sha256": "4a6cd03a97af0a546e110439145814c5ffc6c27dd90d1bc5a7cff7a705764346",
+      "bytes": 4081
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/package.coax": {
+      "sha256": "763c6ca78f849090555b495110338469b9d542f6eadeb4c138b2d899c27ea161",
+      "bytes": 14094
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/passes.coax": {
+      "sha256": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462",
+      "bytes": 26306
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/raster-profile.coax": {
+      "sha256": "4f788c64149ab1763dd35f7fc20ece72ec326fc909dd820cb3d0b90efce4de34",
+      "bytes": 2747
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-depth.coax": {
+      "sha256": "960c4b5af8e6b4e10aea7d7f02c0de29aebdcae8c10c2ef2c8f2d0992316acd7",
+      "bytes": 4974
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-frame.coax": {
+      "sha256": "64ac628fe3d800c09b5d1a4eb1bbd8e086a6ce12a2fc945e40788723a785a9cb",
+      "bytes": 27606
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-half.coax": {
+      "sha256": "33953ee679200c7ef13980d8ec9cf7abc5f5ad3c9d0168be105b97fc740f21fa",
+      "bytes": 3265
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-io.coax": {
+      "sha256": "27f946d2a7a41a228dcc63353b07b93742fe92d8b1f35907ddab289adafb31c5",
+      "bytes": 7039
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-ir.coax": {
+      "sha256": "1fba92f895be5a7af06fd9de9fd49bcccc3aefb3022d23d5e844b574a34a0f69",
+      "bytes": 42839
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-package.coax": {
+      "sha256": "a23e7c9491a900ba8bf4db03a44f867ee67849bc6ddb097c8ff1499fecc88bdb",
+      "bytes": 1937
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-pipeline.coax": {
+      "sha256": "1a8d2984f5f2cd1be4846f4b65be7567de220aacada6ddc15e2028fdc7b92313",
+      "bytes": 14559
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-quad.coax": {
+      "sha256": "c84ed79e27e7666003d6cdd2b4b5b7942641d330d1ddf1a08d1bb892b7064259",
+      "bytes": 10327
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-raster.coax": {
+      "sha256": "48ab9115593e1679ca2ccd7d003697d1bdac5b0fc6030b6fe5f23693337db3ba",
+      "bytes": 11109
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-texture.coax": {
+      "sha256": "0f568ce71ae4eb3400c7176341993ef5b76bb46343768242962bf8601d2ff681",
+      "bytes": 3047
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-tree.coax": {
+      "sha256": "c54f85ad6474ad2999edcb6448f3daef9075983a98c4168e6ddc0e9eabff7d5d",
+      "bytes": 2634
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/reference-work.coax": {
+      "sha256": "64f2f0192b688f46dd58d9a36b6a8773dc11c1c403cd9335d56353af3493fa45",
+      "bytes": 4065
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/resources.coax": {
+      "sha256": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8",
+      "bytes": 6867
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/ring8.coax": {
+      "sha256": "67c2f429d8c1a93efd2dd6147b482b3299b21147671f6fd84c617f06ba96eff2",
+      "bytes": 4475
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/runtime.coax": {
+      "sha256": "40797c9db8139cf374ee9ac6e02e663d2ba6160c558c9ad923145f3c27464959",
+      "bytes": 14416
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/sampling-core.coax": {
+      "sha256": "3b03c9587956c4af4d60dc50fea61a06bd496e1a4a4bc2e790c6dbd8bd5f288f",
+      "bytes": 3602
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/sans-filter-core.coax": {
+      "sha256": "90caae1905358cf05c0b74d2dca4ba0f1b8299496700534ec2494404223f48bf",
+      "bytes": 4638
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/sans-profile.coax": {
+      "sha256": "f8256f8dbf05657b8854c545e7e1267114eb8231c9a2e52bdd15089318b10993",
+      "bytes": 4126
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/tests/filter-native.coax": {
+      "sha256": "d1d89146921babbcf39195c33eed60198cce50f6afd6a75c65e4426453994dcd",
+      "bytes": 5888
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source/aethyr/render/texture-codec.coax": {
+      "sha256": "166db59138926ed611567c2f4e42add561bacbd2e6a378a89db8256e70d205c1",
+      "bytes": 6329
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source-inventory.json": {
+      "sha256": "cca6b22232d7547b273da307ee46602de2667b625ddcbde72f517e980468b0d8",
+      "bytes": 77767
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/current-source-revisions/494bfde7afbdaaf741a67f9088cf108f59751fe01d39a770fcbd9a6ece507261/aethyr/render/geometry.coax": {
+      "sha256": "494bfde7afbdaaf741a67f9088cf108f59751fe01d39a770fcbd9a6ece507261",
+      "bytes": 56146
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/dependencies/psionic-pylon-beacon-fixture-alias-2026-11-01.json": {
+      "sha256": "ded1e95237b953a61288cda3c89b9520a0f5742f313b7d2266633b20a995af2f",
+      "bytes": 4120
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/geometry-710-current-inputs.json": {
+      "sha256": "ba1a7cf85a610a65b20fa661af59a8393a90d50f5f06259f547c836a9eed1679",
+      "bytes": 1102
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-active-lanes-mutate.log": {
+      "sha256": "72476967159d53dced22e45e03c16269c6ef766e7633a174d79d97b1ceb3cc8e",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-binding-sources-mutation-3.log": {
+      "sha256": "0e1c3219e90211febe60dee528c8fcf75d56b821722747655cdd05966a87d18e",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-bindings-carrier-prefix-mutation.log": {
+      "sha256": "29814ccf8b7853e58441cfbc8acb17a0df9c7ae15ecfef7a037c219882fe1812",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-build-policy-carrier-prefix-mutate-2.log": {
+      "sha256": "d432581ed2e718e9bc27d623012b97dfa49d407d91172c7133137f4e26c1b03a",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-catalog-mutation-2.log": {
+      "sha256": "53a203ccd8a313b40642bffcf4b617b4acd66fadc16c8ba62edcf048398d4d64",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-depth-mutate-2.log": {
+      "sha256": "92019b167495635fbd2af150c2225c4fd1587118f2c9e77b9c71b835b9728535",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-emit-version3.log": {
+      "sha256": "609a1261c8a032a9a548df1b49d9ca8f1e6dfb14123a15f57e88af903ae0a171",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-everglade-water-geometry-green-final.log": {
+      "sha256": "6e7ddd70ba497ea128c24d455be6c3ee04f11747b8ab8d8bebae587210f76e87",
+      "bytes": 11347
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-everglade-water-geometry-mutate-final.json": {
+      "sha256": "6d6033eec949e42ded683e3a50af70f0b9a87df5883ba8184da25b25ade8cfdc",
+      "bytes": 514
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-everglade-water-geometry-mutate-final.log": {
+      "sha256": "9f2cf45bcd50408f8125f90ab9c1c3e6d50153fbc95b51f61825079c676e93aa",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-everglade-water-geometry-mutate.json": {
+      "sha256": "aa2b0d19a09fc080cc1e3e71b6e2fdb8f589e4b56cb4f3cb78d1523909a30284",
+      "bytes": 514
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-everglade-water-geometry-mutate.log": {
+      "sha256": "7bfcf4ae3030d0d78a5b48446b2895cc52931eacb373c9d3840114f383d6cfe6",
+      "bytes": 442
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-filter-native-mutation-final-2.log": {
+      "sha256": "28b8f39515d5c02675da54bbfea58fcef0695d137368b94e80a2a348179cee3c",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-footprint-s32-mutation.log": {
+      "sha256": "711de2f96314bc564dbb5c2479cc18ac6335c7e68d246e9a5b16aa72349d8725",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-frame-mutate-2.log": {
+      "sha256": "acd958015964e419f2e5a5b306dfe35eafe8a7cadffebb66cc95f56332b36013",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-geometry-prefix-final.log": {
+      "sha256": "f3b7dfe91e9ebb3cb72148c7ff82ff32da79ab3e8185b105f903e6e142ec6541",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-frame-generic-mutation-2.log": {
+      "sha256": "a5498f2fb2bfe274203f081dafa89f3f1334b4a22e94149f7b39de98c4c9f906",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-inputs-mesh-mutate-2.log": {
+      "sha256": "ac70b1d9539fdfc1a620f7355a117322f8853ca8ca5f346afd35a194a4d89b62",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-media-physical-mutate-1.log": {
+      "sha256": "acf224694b0c8b6b83d5af72a93b95f044965e6afebad5f01b6a9763aaa12d7f",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-memory-inline-mutate.log": {
+      "sha256": "dc2d5cb9546cfc67088b6a8fb9bb984b6bcbdd6081ef8bf825fb8485ff90d83d",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-policy-asset-span-mutation.log": {
+      "sha256": "8a2e9ad1fd1cb3fcd06f995c1516692fd1be1470846101eaf57395b0cf133da5",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-host-uploads-inline-mutate.log": {
+      "sha256": "82baf095a5df74d514967d34436ae74bcc9f8c8a069172f08d91b5a28c3e4152",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-interface-carrier-prefix-mutate-2.log": {
+      "sha256": "1d2c88da008f3a0aaf713fb006f00b2a639dfe337b9f4fb4881e464fe7bbb5e1",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-media-commands-inline-mutate.log": {
+      "sha256": "56fd9af2b343cdb52b5f3efb912e08dc463b12bd9e10d583572e6d6226a9ba7a",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-media-profile-mut-final.log": {
+      "sha256": "d62d6298740d8945f29a2eabc0ba418ef3f43417cdb64c491c8c8cd1f761d97c",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-noise-prefix-mutation.log": {
+      "sha256": "1e1a4b353c28b593d80172331607d1a6a56f11c09bd7339202cc5abca8ee0af3",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-package-carrier-prefix-mutate-2.log": {
+      "sha256": "f1d5b5851497aa548a1289c5b5baaa435cfda7ee177cac272c7a0375494eefea",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-passes-carrier-prefix-mutation.log": {
+      "sha256": "e1ae17b840d23c083839422f676c7b24bc9a022d28028b526216f32189ecc85a",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-reference-caps-mutation.log": {
+      "sha256": "4ca44d75573f9330103fb6ca0615606b1074220460b8fc181208c4f5aaeec4e2",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-runtime-mutation-2.log": {
+      "sha256": "bb56b5eea8f561a28b51ce6d8ef0d69386f890c7cac90c2f23ebf025676f04d7",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-sampling-core-mut.log": {
+      "sha256": "fc1564ac10c0665611272ca5630bab6d5e52d21618ee7a2d840a1f6a4d5221a2",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-ch11-texture-codec-mutation-4.log": {
+      "sha256": "03e1357ee7f7dec9202eba08b0cc280baed9830f0974f8f6903f62a08363014b",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-fragment-layout-mutate.log": {
+      "sha256": "9358b428c92e4413329e996f252a35e3fdf9aaf1d7643a27bc773de48005fdfe",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-raster-profile-mutate-guard-1-inputs.json": {
+      "sha256": "59745ad3112240ba826af5f24fa8345b0427e5558914663230549dc2df1d2e73",
+      "bytes": 1095
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-raster-profile-mutate-guard-1.log": {
+      "sha256": "521b7ae6419cba8917c7f606714886aafc4ab7a42033c4cea3ffe1428de826fd",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-io-mutate-7.log": {
+      "sha256": "8738a2e98ce9cad1d7004442c5759e4381d66bc4db9e311e54c81ee3aaacd240",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-ir-mutate-13-inputs.json": {
+      "sha256": "f22419f1ea2194f700ecae63aba73168eac5d64427f52a2e6815990fda1e538f",
+      "bytes": 3779
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-ir-mutate-13.log": {
+      "sha256": "128e96c7b61d0b2113deff6d6f8d45ea75c38d0412d27e28f021201c61c0fa86",
+      "bytes": 118
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-package-mutate-2-inputs.json": {
+      "sha256": "3afced5ffee7b55017822956d5d8802894050e529d66d7ff98e439ce945d0bf0",
+      "bytes": 11383
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-package-mutate-2.log": {
+      "sha256": "fae59be12940b2859f6d0536ef6f0a71eca993f93d16f0829bd316818a9c5f02",
+      "bytes": 114
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-pipeline-large-mutate-1.log": {
+      "sha256": "55cd5f5fed530b25cf594d91d51ea6936e8b9d5dfc1cb51692afd2b27e70e7ed",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-tree-mutate-2-inputs.json": {
+      "sha256": "616b392ab40318215c2282e60d19b5a18a718d06b82c4b49c53f4c7b8f26deaf",
+      "bytes": 797
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-reference-tree-mutate-2.log": {
+      "sha256": "bc4bf064f86493dfffec18469218bda76873d68c99331912078147db326a9ec0",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-resources-mutate-2.log": {
+      "sha256": "fa8881d1ede44a9b35bd78842e1c7a3f0ad47b84c43f3b9dda4bf3b17553eb56",
+      "bytes": 116
+    },
+    "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/proofs/aethyr-resources-qualification-047.json": {
+      "sha256": "608b9a4aecb8d55cd132590557ee65b8a55de094158c7c7ab50c6ccd252a37bf",
+      "bytes": 1729
+    }
+  }
+}

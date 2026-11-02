@@ -1,0 +1,858 @@
+{
+  "schema": "aethyr.render.last-three-visible-migration.v1",
+  "status": "pass_for_three_explicit_visible_migrations",
+  "cases": [
+    "haunted-house",
+    "sandbox",
+    "hecates-cemetery"
+  ],
+  "exact_controls": {
+    "haunt-base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "reused_generic": null,
+      "reused_legacy": "/tmp/aethyr-ch11-golden-haunt-current/legacy",
+      "source_changes": [],
+      "legacy_sha256": "c7c5158172c318b802224bb8516a7295f37178b28b47973ac9070f0565cd492f",
+      "generic_sha256": "17a0952e7fe83f8ae8e1989bf2e2cebdce1106ac7b7d84894fae4c73c5e784bf",
+      "different_channels": 16409,
+      "different_pixels": 9968,
+      "max_byte_delta": 107,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "sandbox-base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "reused_generic": null,
+      "reused_legacy": "/tmp/aethyr-ch11-golden-sandbox-current/legacy",
+      "source_changes": [],
+      "legacy_sha256": "83d8851a6a8f973b45f1bbca1e2f4a4c73107e752dff37d3b1a993b14c3ce3d0",
+      "generic_sha256": "c68b14e19e43320fee8a01112f4a108755ee76ae1551d641debdc87fc49a1d35",
+      "different_channels": 22069,
+      "different_pixels": 12317,
+      "max_byte_delta": 107,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "villa-base": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": null,
+      "reused_generic": null,
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "96e59b0fd7d873c86a35a14aca84631df465e9634fe4cb5f03662ebbd7e6f247",
+      "generic_sha256": "374aa5f6251c5565be0508622b6d8912c1c2c75991ae098d1b3d0f4be170e67d",
+      "different_channels": 8127,
+      "different_pixels": 3352,
+      "max_byte_delta": 166,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "haunt-current-shaders": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-realm-noise-controls/integer.wgsl",
+      "legacy_particle_override": "/tmp/aethyr-ch11-particles-current.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-haunt-current-scoped-readback/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "17a0952e7fe83f8ae8e1989bf2e2cebdce1106ac7b7d84894fae4c73c5e784bf",
+      "generic_sha256": "17a0952e7fe83f8ae8e1989bf2e2cebdce1106ac7b7d84894fae4c73c5e784bf",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "haunt-old-shaders": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-realm-noise-controls/sin-hardware.wgsl",
+      "legacy_particle_override": "/tmp/aethyr-ch11-particle-controls/old.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-haunt-current-scoped-readback/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "c7c5158172c318b802224bb8516a7295f37178b28b47973ac9070f0565cd492f",
+      "generic_sha256": "17a0952e7fe83f8ae8e1989bf2e2cebdce1106ac7b7d84894fae4c73c5e784bf",
+      "different_channels": 16409,
+      "different_pixels": 9968,
+      "max_byte_delta": 107,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "sandbox-current-shaders": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-realm-noise-controls/integer.wgsl",
+      "legacy_particle_override": "/tmp/aethyr-ch11-particles-current.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-sandbox-current-scoped-readback/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "c68b14e19e43320fee8a01112f4a108755ee76ae1551d641debdc87fc49a1d35",
+      "generic_sha256": "c68b14e19e43320fee8a01112f4a108755ee76ae1551d641debdc87fc49a1d35",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "sandbox-old-shaders": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-realm-noise-controls/sin-hardware.wgsl",
+      "legacy_particle_override": "/tmp/aethyr-ch11-particle-controls/old.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-sandbox-current-scoped-readback/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "83d8851a6a8f973b45f1bbca1e2f4a4c73107e752dff37d3b1a993b14c3ce3d0",
+      "generic_sha256": "c68b14e19e43320fee8a01112f4a108755ee76ae1551d641debdc87fc49a1d35",
+      "different_channels": 22069,
+      "different_pixels": 12317,
+      "max_byte_delta": 107,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "villa-current-shaders": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-villa-noise-controls/integer.wgsl",
+      "legacy_particle_override": "/tmp/aethyr-ch11-particles-current.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-villa-empty-service/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "374aa5f6251c5565be0508622b6d8912c1c2c75991ae098d1b3d0f4be170e67d",
+      "generic_sha256": "374aa5f6251c5565be0508622b6d8912c1c2c75991ae098d1b3d0f4be170e67d",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    },
+    "villa-old-shaders": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": true,
+      "query": "",
+      "width": 320,
+      "height": 180,
+      "legacy_shader_override": "/tmp/aethyr-ch11-villa-noise-controls/sin.wgsl",
+      "legacy_particle_override": "/tmp/aethyr-ch11-particle-controls/old.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-villa-empty-service/generic",
+      "reused_legacy": null,
+      "source_changes": [],
+      "legacy_sha256": "96e59b0fd7d873c86a35a14aca84631df465e9634fe4cb5f03662ebbd7e6f247",
+      "generic_sha256": "374aa5f6251c5565be0508622b6d8912c1c2c75991ae098d1b3d0f4be170e67d",
+      "different_channels": 8127,
+      "different_pixels": 3352,
+      "max_byte_delta": 166,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; supplied scene or particle variants are explicit diagnostic controls"
+    }
+  },
+  "stock_gates": {
+    "original-seven-mixed": {
+      "execution": {
+        "status": "fail",
+        "route": "generic",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:56066",
+          "--only",
+          "built,garden,dead-gears,hecates-cemetery,orbit-league,haunted-house,sandbox",
+          "--report",
+          "/tmp/aethyr-ch11-stock-current-seven/report.json"
+        ],
+        "elapsed_seconds": 87.872,
+        "returncode": 1,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": {
+        "base": "http://127.0.0.1:56066",
+        "failed": [
+          "landing: the engine started",
+          "landing: draws (0.0% lit, at least 0.4%)",
+          "haunted-house: at http://127.0.0.1:56066/realms/haunted-house",
+          "dead-gears: matches its golden (1107 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-792; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-nclHlB/dead-gears.png)",
+          "built: matches its golden (920 blocks changed, 6 allowed, 12 moving, x 56-1256, y 0-344; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-6qddGT/built.png)",
+          "sandbox: matches its golden (31 blocks changed, 6 allowed, 0 moving, x 448-1168, y 160-792; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-OsI8T5/sandbox.png)",
+          "hecates-cemetery: matches its golden (381 blocks changed, 6 allowed, 114 moving, x 0-1240, y 88-544; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-ey1KPK/hecates-cemetery.png)",
+          "garden: matches its golden (4782 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-800; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-HKS9zU/garden.png)"
+        ],
+        "golden": [
+          {
+            "name": "dead-gears",
+            "path": "/realms/dead-gears"
+          },
+          {
+            "name": "built",
+            "path": "/realms/built"
+          },
+          {
+            "name": "sandbox",
+            "path": "/realms/sandbox"
+          },
+          {
+            "name": "hecates-cemetery",
+            "path": "/realms/hecates-cemetery"
+          },
+          {
+            "name": "garden",
+            "path": "/realms/garden"
+          }
+        ],
+        "other": [
+          "landing: the engine started",
+          "landing: draws (0.0% lit, at least 0.4%)",
+          "haunted-house: at http://127.0.0.1:56066/realms/haunted-house"
+        ]
+      },
+      "log": "lane journey (41.1 s)\n  ok    landing: at http://127.0.0.1:56066/verse\n  FAIL  landing: the engine started\n  info  landing: 0.0% lit, under 0.4%; shooting it again\n  info  landing: 0.0% lit, under 0.4%; shooting it again\n  info  landing: 0.0% lit, under 0.4%; shooting it again\n  info  landing: 0.0% lit, under 0.4%; shooting it again\n  ok    landing: no errors\n  FAIL  landing: draws (0.0% lit, at least 0.4%)\n  time  landing: 26.0 s\n  FAIL  haunted-house: at http://127.0.0.1:56066/realms/haunted-house\n  time  haunted-house: 15.1 s\nlane dead-gears (7.4 s)\n  ok    dead-gears: at http://127.0.0.1:56066/realms/dead-gears\n  ok    dead-gears: the engine started\n  ok    dead-gears: no errors\n  ok    dead-gears: draws (87.9% lit, at least 5.0%)\n  FAIL  dead-gears: matches its golden (1107 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-792; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-nclHlB/dead-gears.png)\n  time  dead-gears: 7.4 s\n  ok    analytics contract: every dead-gears event sent (5 events, 0.0 s)\nlane orbit-league (8.7 s)\n  ok    orbit-league: at http://127.0.0.1:56066/realms/orbit-league\n  ok    orbit-league: the engine started\n  ok    orbit-league: no errors\n  ok    orbit-league: draws (18.4% lit, at least 3.0%)\n  ok    orbit-league: matches its golden (6 blocks changed, 6 allowed, 0 moving, x 120-1272, y 144-360)\n  time  orbit-league: 8.7 s\n  ok    analytics contract: every orbit-league event sent (4 events, 0.0 s)\nlane built (6.9 s)\n  ok    built: at http://127.0.0.1:56066/realms/built\n  ok    built: the engine started\n  ok    built: no errors\n  ok    built: draws (97.5% lit, at least 1.5%)\n  FAIL  built: matches its golden (920 blocks changed, 6 allowed, 12 moving, x 56-1256, y 0-344; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-6qddGT/built.png)\n  time  built: 6.9 s\nlane sandbox (7.2 s)\n  ok    sandbox: at http://127.0.0.1:56066/realms/sandbox\n  ok    sandbox: the engine started\n  ok    sandbox: no errors\n  ok    sandbox: draws (84.6% lit, at least 3.0%)\n  FAIL  sandbox: matches its golden (31 blocks changed, 6 allowed, 0 moving, x 448-1168, y 160-792; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-OsI8T5/sandbox.png)\n  time  sandbox: 7.2 s\n  ok    analytics contract: every sandbox event sent (4 events, 0.0 s)\nlane hecates-cemetery (7.0 s)\n  ok    hecates-cemetery: at http://127.0.0.1:56066/realms/hecates-cemetery\n  ok    hecates-cemetery: the engine started\n  ok    hecates-cemetery: no errors\n  ok    hecates-cemetery: draws (99.8% lit, at least 1.5%)\n  FAIL  hecates-cemetery: matches its golden (381 blocks changed, 6 allowed, 114 moving, x 0-1240, y 88-544; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-ey1KPK/hecates-cemetery.png)\n  time  hecates-cemetery: 6.9 s\n  ok    analytics contract: every hecates-cemetery event sent (4 events, 0.0 s)\nlane garden (7.8 s)\n  ok    garden: at http://127.0.0.1:56066/realms/garden\n  ok    garden: the engine started\n  ok    garden: no errors\n  ok    garden: draws (100.0% lit, at least 50.0%)\n  FAIL  garden: matches its golden (4782 blocks changed, 6 allowed, 0 moving, x 0-1280, y 0-800; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-HKS9zU/garden.png)\n  time  garden: 7.8 s\ngoldens http://127.0.0.1:56066: 8 failed in 87.7 s (1 tabs)\n"
+    },
+    "original-haunt": {
+      "execution": {
+        "status": "fail",
+        "route": "generic",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:56591",
+          "--only",
+          "haunted-house",
+          "--report",
+          "/tmp/aethyr-ch11-stock-current-journey/report.json"
+        ],
+        "elapsed_seconds": 23.479,
+        "returncode": 1,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": {
+        "base": "http://127.0.0.1:56591",
+        "failed": [
+          "haunted-house: matches its golden (36 blocks changed, 6 allowed, 151 moving, x 16-1216, y 152-480; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-30nprX/haunted-house.png)"
+        ],
+        "golden": [
+          {
+            "name": "haunted-house",
+            "path": "/realms/haunted-house"
+          }
+        ],
+        "other": []
+      },
+      "log": "lane journey (22.1 s)\n  ok    landing: at http://127.0.0.1:56591/verse\n  ok    landing: the engine started\n  ok    landing: no errors\n  ok    landing: draws (1.6% lit, at least 0.4%)\n  time  landing: 4.3 s\n  ok    haunted-house: at http://127.0.0.1:56591/realms/haunted-house\n  ok    haunted-house: the engine started\n  ok    haunted-house: a scene frame completed\n  ok    haunted-house: no errors\n  ok    haunted-house: draws (13.0% lit, at least 3.0%)\n  FAIL  haunted-house: matches its golden (36 blocks changed, 6 allowed, 151 moving, x 16-1216, y 152-480; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-30nprX/haunted-house.png)\n  time  haunted-house: 8.6 s\n  ok    analytics contract: every contract event sent (10 events, 9.2 s)\ngoldens http://127.0.0.1:56591: 1 failed in 23.4 s (1 tabs)\n"
+    },
+    "original-haunt-legacy": {
+      "execution": {
+        "status": "fail",
+        "route": "legacy",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:57476",
+          "--only",
+          "haunted-house",
+          "--report",
+          "/tmp/aethyr-ch11-stock-current-journey-legacy/report.json"
+        ],
+        "elapsed_seconds": 22.619,
+        "returncode": 1,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": {
+        "base": "http://127.0.0.1:57476",
+        "failed": [
+          "haunted-house: matches its golden (10 blocks changed, 6 allowed, 151 moving, x 1152-1216, y 192-208; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-kPsuFu/haunted-house.png)"
+        ],
+        "golden": [
+          {
+            "name": "haunted-house",
+            "path": "/realms/haunted-house"
+          }
+        ],
+        "other": []
+      },
+      "log": "lane journey (21.5 s)\n  ok    landing: at http://127.0.0.1:57476/verse\n  ok    landing: the engine started\n  ok    landing: no errors\n  ok    landing: draws (1.6% lit, at least 0.4%)\n  time  landing: 4.5 s\n  ok    haunted-house: at http://127.0.0.1:57476/realms/haunted-house\n  ok    haunted-house: the engine started\n  ok    haunted-house: a scene frame completed\n  ok    haunted-house: no errors\n  ok    haunted-house: draws (13.1% lit, at least 3.0%)\n  FAIL  haunted-house: matches its golden (10 blocks changed, 6 allowed, 151 moving, x 1152-1216, y 192-208; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-kPsuFu/haunted-house.png)\n  time  haunted-house: 7.8 s\n  ok    analytics contract: every contract event sent (10 events, 9.2 s)\ngoldens http://127.0.0.1:57476: 1 failed in 22.5 s (1 tabs)\n"
+    },
+    "hecate-ch9-producer": {
+      "execution": {
+        "status": "fail",
+        "route": "legacy",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:58488",
+          "--only",
+          "hecates-cemetery",
+          "--report",
+          "/tmp/aethyr-ch11-stock-hecate-ch9-producer/report.json"
+        ],
+        "elapsed_seconds": 9.052,
+        "returncode": 1,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": {
+        "base": "http://127.0.0.1:58488",
+        "failed": [
+          "hecates-cemetery: matches its golden (42 blocks changed, 6 allowed, 115 moving, x 128-568, y 120-328; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-QknJcY/hecates-cemetery.png)"
+        ],
+        "golden": [
+          {
+            "name": "hecates-cemetery",
+            "path": "/realms/hecates-cemetery"
+          }
+        ],
+        "other": []
+      },
+      "log": "lane hecates-cemetery (7.8 s)\n  ok    hecates-cemetery: at http://127.0.0.1:58488/realms/hecates-cemetery\n  ok    hecates-cemetery: the engine started\n  ok    hecates-cemetery: no errors\n  ok    hecates-cemetery: draws (99.8% lit, at least 1.5%)\n  FAIL  hecates-cemetery: matches its golden (42 blocks changed, 6 allowed, 115 moving, x 128-568, y 120-328; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-QknJcY/hecates-cemetery.png)\n  time  hecates-cemetery: 7.8 s\n  ok    analytics contract: every hecates-cemetery event sent (4 events, 0.1 s)\ngoldens http://127.0.0.1:58488: 1 failed in 8.9 s (1 tabs)\n"
+    },
+    "migrated-generic": {
+      "execution": {
+        "status": "pass",
+        "route": "generic",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:49657",
+          "--only",
+          "sandbox,hecates-cemetery,haunted-house",
+          "--report",
+          "/tmp/aethyr-ch11-stock-last-three-migrated-generic/report.json"
+        ],
+        "elapsed_seconds": 39.596,
+        "returncode": 0,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": {
+        "base": "http://127.0.0.1:49657",
+        "failed": [],
+        "golden": [],
+        "other": []
+      },
+      "log": "lane journey (23.6 s)\n  ok    landing: at http://127.0.0.1:49657/verse\n  ok    landing: the engine started\n  ok    landing: no errors\n  ok    landing: draws (1.6% lit, at least 0.4%)\n  time  landing: 4.4 s\n  ok    haunted-house: at http://127.0.0.1:49657/realms/haunted-house\n  ok    haunted-house: the engine started\n  ok    haunted-house: a scene frame completed\n  ok    haunted-house: no errors\n  ok    haunted-house: draws (13.0% lit, at least 3.0%)\n  ok    haunted-house: matches its golden (0 blocks changed, 6 allowed, 789 moving)\n  time  haunted-house: 9.6 s\n  ok    analytics contract: every contract event sent (10 events, 9.7 s)\nlane sandbox (7.1 s)\n  ok    sandbox: at http://127.0.0.1:49657/realms/sandbox\n  ok    sandbox: the engine started\n  ok    sandbox: no errors\n  ok    sandbox: draws (84.6% lit, at least 3.0%)\n  ok    sandbox: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  sandbox: 7.1 s\n  ok    analytics contract: every sandbox event sent (4 events, 0.1 s)\nlane hecates-cemetery (7.1 s)\n  ok    hecates-cemetery: at http://127.0.0.1:49657/realms/hecates-cemetery\n  ok    hecates-cemetery: the engine started\n  ok    hecates-cemetery: no errors\n  ok    hecates-cemetery: draws (99.8% lit, at least 1.5%)\n  ok    hecates-cemetery: matches its golden (0 blocks changed, 6 allowed, 111 moving)\n  time  hecates-cemetery: 7.0 s\n  ok    analytics contract: every hecates-cemetery event sent (4 events, 0.1 s)\ngoldens http://127.0.0.1:49657: passed in 39.4 s (1 tabs)\n"
+    },
+    "migrated-integer": {
+      "execution": {
+        "status": "pass",
+        "route": "legacy-integer",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:49658",
+          "--only",
+          "sandbox,hecates-cemetery,haunted-house",
+          "--report",
+          "/tmp/aethyr-ch11-stock-last-three-migrated-integer/report.json"
+        ],
+        "elapsed_seconds": 39.182,
+        "returncode": 0,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": {
+        "base": "http://127.0.0.1:49658",
+        "failed": [],
+        "golden": [],
+        "other": []
+      },
+      "log": "lane journey (23.2 s)\n  ok    landing: at http://127.0.0.1:49658/verse\n  ok    landing: the engine started\n  ok    landing: no errors\n  ok    landing: draws (1.6% lit, at least 0.4%)\n  time  landing: 4.4 s\n  ok    haunted-house: at http://127.0.0.1:49658/realms/haunted-house\n  ok    haunted-house: the engine started\n  ok    haunted-house: a scene frame completed\n  ok    haunted-house: no errors\n  ok    haunted-house: draws (13.0% lit, at least 3.0%)\n  ok    haunted-house: matches its golden (0 blocks changed, 6 allowed, 789 moving)\n  time  haunted-house: 9.1 s\n  ok    analytics contract: every contract event sent (10 events, 9.6 s)\nlane sandbox (7.3 s)\n  ok    sandbox: at http://127.0.0.1:49658/realms/sandbox\n  ok    sandbox: the engine started\n  ok    sandbox: no errors\n  ok    sandbox: draws (84.6% lit, at least 3.0%)\n  ok    sandbox: matches its golden (0 blocks changed, 6 allowed, 0 moving)\n  time  sandbox: 7.2 s\n  ok    analytics contract: every sandbox event sent (4 events, 0.1 s)\nlane hecates-cemetery (7.1 s)\n  ok    hecates-cemetery: at http://127.0.0.1:49658/realms/hecates-cemetery\n  ok    hecates-cemetery: the engine started\n  ok    hecates-cemetery: no errors\n  ok    hecates-cemetery: draws (99.8% lit, at least 1.5%)\n  ok    hecates-cemetery: matches its golden (0 blocks changed, 6 allowed, 107 moving)\n  time  hecates-cemetery: 7.0 s\n  ok    analytics contract: every hecates-cemetery event sent (4 events, 0.1 s)\ngoldens http://127.0.0.1:49658: passed in 39.0 s (1 tabs)\n"
+    },
+    "command-refused-generic": {
+      "execution": {
+        "status": "fail",
+        "route": "generic",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:49647",
+          "--only",
+          "sandbox,hecates-cemetery,journey",
+          "--report",
+          "/tmp/aethyr-ch11-stock-last-three-migrated-generic/report.json"
+        ],
+        "elapsed_seconds": 0.09,
+        "returncode": 2,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": null,
+      "log": "goldens: --only names no page journey\n"
+    },
+    "command-refused-integer": {
+      "execution": {
+        "status": "fail",
+        "route": "legacy-integer",
+        "command": [
+          "bun",
+          "coax/web/goldens.ts",
+          "http://127.0.0.1:49648",
+          "--only",
+          "sandbox,hecates-cemetery,journey",
+          "--report",
+          "/tmp/aethyr-ch11-stock-last-three-migrated-integer/report.json"
+        ],
+        "elapsed_seconds": 0.089,
+        "returncode": 2,
+        "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+      },
+      "report": null,
+      "log": "goldens: --only names no page journey\n"
+    }
+  },
+  "baseline_migration": {
+    "schema": "aethyr.render.last-three-visible-review.v1",
+    "cases": {
+      "sandbox": {
+        "before_sha256": "07c27e55433180dfc349806b0c231b4861fde0d7a10e2ca95d70202840116bb0",
+        "after_sha256": "aaba8bb7779c78490fbbe56f59cdcc65802bf3160cc393850504fc09ed00ba06",
+        "baseline_updated": true
+      },
+      "hecates-cemetery": {
+        "before_sha256": "b015a86552bea69fa329156f625a42755587cb47aa5452202f89bc59cc935080",
+        "after_sha256": "a6e48c2e72319ef5d4129a50b01c2dd2c32ca66d2e96daf968d655c719c7a33f",
+        "baseline_updated": true
+      },
+      "haunted-house": {
+        "before_sha256": "ec7c594d483ae6348a036fe675948f05e91509ac0d19fe8b876a4819dbc6e3c1",
+        "after_sha256": "9f4d7fd57a5d510b84d4ab045aca92d3a7272c96e0773340c1d2dc43740be1f4",
+        "baseline_updated": true
+      }
+    },
+    "reviews": {
+      "root": "The before/after montage preserves Sandbox object framing, lighting, wire silhouette and HUD. Hecate gate/path/statue/avatar/dog/HUD align; a foreground piece and nearby facets were already missing in current producer old renderer and retained chapter9 producer, independently predating this renderer. Haunt room geometry/framing/palette align; REALMS caption and existing timed FRONT DOOR hint differ.",
+      "coax_review": "No remaining concrete visual regression from independent review: Sandbox green mote/detail placement; Haunt frontdoorhint/REALMSlabel explicit; Hecate foregroundpiece/facets also absent in current-producer old executor. Other geometry/framing/HUD/palette match."
+    },
+    "controls": "All three current main+particle shaders in old executor reproduce newshared raw image exactly on identicalproducerbytes. Restoring old noise/filter/particle source procedures reproduces each old raw image exactly. Hecate oldPNG predates retainedch9producer; both ch9 andcurrentproduceroldrenderer differ42blocks fromthat oldPNG.",
+    "scope": "Three explicitvisible baseline migrations; unchanged6block allowance. Existing timedHauntprompt andpre11Hecateproducer difference are not attributed to portable noise. Rawcontrols and numericalCPU comparisons are separate claims."
+  },
+  "source_inputs": {
+    "/tmp/aethyr-ch11-typed-hosts-relinked/realm.wasm@e6ee33d1bdb12dce2744a04b9bf67417aeb45170ced6c78d17e5a1c3075e0a35": {
+      "original_path": "/tmp/aethyr-ch11-typed-hosts-relinked/realm.wasm",
+      "sha256": "e6ee33d1bdb12dce2744a04b9bf67417aeb45170ced6c78d17e5a1c3075e0a35",
+      "retained_from": "/tmp/aethyr-ch11-typed-hosts-relinked/realm.wasm",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/index.html@44560518a3a94dfd1a9c1b5c3b87af9b9512d9fa6e149999e359367d0b321c1c": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/index.html",
+      "sha256": "44560518a3a94dfd1a9c1b5c3b87af9b9512d9fa6e149999e359367d0b321c1c",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/index.html",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_goldens.ts@805db7466e79568548afb039652ba56c16576abc4a10ad2d0304dbedfb6e2878": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_goldens.ts",
+      "sha256": "805db7466e79568548afb039652ba56c16576abc4a10ad2d0304dbedfb6e2878",
+      "retained_from": "/tmp/aethyr-ch11-golden-waterlab-current/driver.ts",
+      "current_path_matches": false
+    },
+    "/tmp/aethyr-ch11-packages-current/haunted-house/render.json@c721dc9ef271bf0be2a820e74675b5f587d6cc56cbbb763e3c3d55b64d564d46": {
+      "original_path": "/tmp/aethyr-ch11-packages-current/haunted-house/render.json",
+      "sha256": "c721dc9ef271bf0be2a820e74675b5f587d6cc56cbbb763e3c3d55b64d564d46",
+      "retained_from": "/tmp/aethyr-ch11-packages-current/haunted-house/render.json",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js@214003ec97f37ce55daab424763a358715574030d533f1caed3853a1e46696af": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js",
+      "sha256": "214003ec97f37ce55daab424763a358715574030d533f1caed3853a1e46696af",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js@824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js",
+      "sha256": "824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/chrome.ts@fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/chrome.ts",
+      "sha256": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/chrome.ts",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js@4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js",
+      "sha256": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js@65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js",
+      "sha256": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js@c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js",
+      "sha256": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js@50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js",
+      "sha256": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js@6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js",
+      "sha256": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js@d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js",
+      "sha256": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js@89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js",
+      "sha256": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js@27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js",
+      "sha256": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js@9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js",
+      "sha256": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js@14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js",
+      "sha256": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg@0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg",
+      "sha256": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realm.wgsl@5c862b8996fd6e6b75885d576adc7a808bd7b02e232a75ac90860c30c15b0bc5": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realm.wgsl",
+      "sha256": "5c862b8996fd6e6b75885d576adc7a808bd7b02e232a75ac90860c30c15b0bc5",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realm.wgsl",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/particles.wgsl@4bf3486e6923dbd7b22daf44a61575a720ae7daf7a8e2df446bb1c882ecb6c05": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/particles.wgsl",
+      "sha256": "4bf3486e6923dbd7b22daf44a61575a720ae7daf7a8e2df446bb1c882ecb6c05",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/particles.wgsl",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.pb@d7ae785323f728c3c055a03f4cc5d03e914bcae1218f4311057b26fd06a7eb55": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.pb",
+      "sha256": "d7ae785323f728c3c055a03f4cc5d03e914bcae1218f4311057b26fd06a7eb55",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.pb",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.vertices@ab92258e4a67ebcf5dddc24416cb315b21cb6dd74fa10959133030ae76039b91": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.vertices",
+      "sha256": "ab92258e4a67ebcf5dddc24416cb315b21cb6dd74fa10959133030ae76039b91",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.vertices",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer18.jpg@5e4255dac35fe8211566b2446f26dd94858c5f18f1d5cfde799128c9fae7798d": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer18.jpg",
+      "sha256": "5e4255dac35fe8211566b2446f26dd94858c5f18f1d5cfde799128c9fae7798d",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer18.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.indices@4cb71e613cd5cc0c302b912782d5b643cad4d465cbab4c458b2a38044dcd0881": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.indices",
+      "sha256": "4cb71e613cd5cc0c302b912782d5b643cad4d465cbab4c458b2a38044dcd0881",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/Haunt.indices",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer0.jpg@c06dfe76db1838a0ec43135d62d66f18643ffbf56cd57c75cca7b91ec837e3f3": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer0.jpg",
+      "sha256": "c06dfe76db1838a0ec43135d62d66f18643ffbf56cd57c75cca7b91ec837e3f3",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer0.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer1.jpg@ad03b7e165d731b8a53cb2db2a65a57a88fa8829ccff945acb51e939a4057da9": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer1.jpg",
+      "sha256": "ad03b7e165d731b8a53cb2db2a65a57a88fa8829ccff945acb51e939a4057da9",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer1.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer2.jpg@e8f999a4bd722d43151ca9daff09a2e6d1e9c6f4717580f5a2ace96dfb61fbc3": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer2.jpg",
+      "sha256": "e8f999a4bd722d43151ca9daff09a2e6d1e9c6f4717580f5a2ace96dfb61fbc3",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer2.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer19.jpg@4da3048be862cd13b9e7ae406cdb3d89af00bf22f7fb72627aa3b5d8600de5f8": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer19.jpg",
+      "sha256": "4da3048be862cd13b9e7ae406cdb3d89af00bf22f7fb72627aa3b5d8600de5f8",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer19.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer20.jpg@9819f951eb6a554022467b2fc44db3e532e76fcedd8aa0c17628e03e8e248ae5": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer20.jpg",
+      "sha256": "9819f951eb6a554022467b2fc44db3e532e76fcedd8aa0c17628e03e8e248ae5",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer20.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer21.jpg@cd5d5839c77d6993108b11699078c2d84ff8c4050dacfd596bf84d366ddd0af7": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer21.jpg",
+      "sha256": "cd5d5839c77d6993108b11699078c2d84ff8c4050dacfd596bf84d366ddd0af7",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer21.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer22.jpg@56486f48b04d829b7dd0daf31610568371dcd5406c3844cbeecba9fcb7a6fe3d": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer22.jpg",
+      "sha256": "56486f48b04d829b7dd0daf31610568371dcd5406c3844cbeecba9fcb7a6fe3d",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer22.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer28.jpg@42bea928dfa1e112bc6e404680c91fce98e7158f6d4b6c48fc994246b6c45418": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer28.jpg",
+      "sha256": "42bea928dfa1e112bc6e404680c91fce98e7158f6d4b6c48fc994246b6c45418",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer28.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer24.jpg@c56c0814b2a3dfa50641cfe2eeea80cd99eeb9f37651fdcf3a5255c8d062d602": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer24.jpg",
+      "sha256": "c56c0814b2a3dfa50641cfe2eeea80cd99eeb9f37651fdcf3a5255c8d062d602",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer24.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer26.jpg@27032f86370225bcd5406a9638c35bfb44bc47ed8a2a7dfe1de13199dd96a741": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer26.jpg",
+      "sha256": "27032f86370225bcd5406a9638c35bfb44bc47ed8a2a7dfe1de13199dd96a741",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer26.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer27.jpg@42bea928dfa1e112bc6e404680c91fce98e7158f6d4b6c48fc994246b6c45418": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer27.jpg",
+      "sha256": "42bea928dfa1e112bc6e404680c91fce98e7158f6d4b6c48fc994246b6c45418",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-layer27.jpg",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-wind_loop.mp3@9c70edff5915288af05f50a6c98a5ebd4fe112d43c855056e4ed87e9cc70a7d5": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-wind_loop.mp3",
+      "sha256": "9c70edff5915288af05f50a6c98a5ebd4fe112d43c855056e4ed87e9cc70a7d5",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/haunted-house/assets/haunt-wind_loop.mp3",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_goldens.ts@50d67b08273751ef0d2c0967e4eba315677848d931aa271fdcf1417aa42f9338": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_goldens.ts",
+      "sha256": "50d67b08273751ef0d2c0967e4eba315677848d931aa271fdcf1417aa42f9338",
+      "retained_from": "/tmp/aethyr-ch11-golden-haunt-current-scoped-readback/driver.ts",
+      "current_path_matches": false
+    },
+    "/tmp/aethyr-ch11-packages-current/haunted-house/module-0-f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37.wgsl@f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37": {
+      "original_path": "/tmp/aethyr-ch11-packages-current/haunted-house/module-0-f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37.wgsl",
+      "sha256": "f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37",
+      "retained_from": "/tmp/aethyr-ch11-packages-current/haunted-house/module-0-f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37.wgsl",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-packages-current/haunted-house/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl@c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a": {
+      "original_path": "/tmp/aethyr-ch11-packages-current/haunted-house/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+      "sha256": "c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a",
+      "retained_from": "/tmp/aethyr-ch11-packages-current/haunted-house/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/sandbox/index.html@bc96c13f3cb44b995b2bd23cea0d84603cb77412fd56c4fe5921447632ef6281": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/sandbox/index.html",
+      "sha256": "bc96c13f3cb44b995b2bd23cea0d84603cb77412fd56c4fe5921447632ef6281",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/sandbox/index.html",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-packages-current/sandbox/render.json@8f740bfacb3f9490b3cc3ed9b06b24fd103d4159b156389d0d0cceb76b1c7b3a": {
+      "original_path": "/tmp/aethyr-ch11-packages-current/sandbox/render.json",
+      "sha256": "8f740bfacb3f9490b3cc3ed9b06b24fd103d4159b156389d0d0cceb76b1c7b3a",
+      "retained_from": "/tmp/aethyr-ch11-packages-current/sandbox/render.json",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/sandbox/assets/Sandbox.pb@dc43202a76cac3dd1de976bc3d0c7f08e7d74fea7237e253f8acaf8a3de6ed58": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/sandbox/assets/Sandbox.pb",
+      "sha256": "dc43202a76cac3dd1de976bc3d0c7f08e7d74fea7237e253f8acaf8a3de6ed58",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/sandbox/assets/Sandbox.pb",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-packages-current/sandbox/module-0-f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37.wgsl@f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37": {
+      "original_path": "/tmp/aethyr-ch11-packages-current/sandbox/module-0-f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37.wgsl",
+      "sha256": "f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37",
+      "retained_from": "/tmp/aethyr-ch11-packages-current/sandbox/module-0-f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37.wgsl",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-packages-current/sandbox/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl@c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a": {
+      "original_path": "/tmp/aethyr-ch11-packages-current/sandbox/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+      "sha256": "c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a",
+      "retained_from": "/tmp/aethyr-ch11-packages-current/sandbox/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-typed-hosts-one/villa.wasm@ff815805b19b5bd7e2ff4719ba74637fab6153f7a58b6dd1cd27631e59830612": {
+      "original_path": "/tmp/aethyr-ch11-typed-hosts-one/villa.wasm",
+      "sha256": "ff815805b19b5bd7e2ff4719ba74637fab6153f7a58b6dd1cd27631e59830612",
+      "retained_from": "/tmp/aethyr-ch11-typed-hosts-one/villa.wasm",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/index.html@f59576e549b768210ddac7838353f5a3214e2a56e377514d89be58b2fe73aac7": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/index.html",
+      "sha256": "f59576e549b768210ddac7838353f5a3214e2a56e377514d89be58b2fe73aac7",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/index.html",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_goldens.ts@9702ab0a0096f065fcd9364b2a9d9f010802e1b92de0bfae55ac18d95b7b5155": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_goldens.ts",
+      "sha256": "9702ab0a0096f065fcd9364b2a9d9f010802e1b92de0bfae55ac18d95b7b5155",
+      "retained_from": "/tmp/aethyr-ch11-golden-villa-empty-service/driver.ts",
+      "current_path_matches": false
+    },
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/render.json@9e880903d4678b88af83e11f0cab6032a25f029898e3f1c77e268d0e981ef6c0": {
+      "original_path": "/tmp/aethyr-ch11-packages-current/hecates-cemetery/render.json",
+      "sha256": "9e880903d4678b88af83e11f0cab6032a25f029898e3f1c77e268d0e981ef6c0",
+      "retained_from": "/tmp/aethyr-ch11-packages-current/hecates-cemetery/render.json",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/villa.wgsl@19dc016a55ed1a5bee67988bdae3212cdba89a6a5a8c7db88f07ec0c9dacb460": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/villa.wgsl",
+      "sha256": "19dc016a55ed1a5bee67988bdae3212cdba89a6a5a8c7db88f07ec0c9dacb460",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/villa.wgsl",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/assets/Villa.indices@c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/assets/Villa.indices",
+      "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/hecates-cemetery/assets/Villa.indices",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl@e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3": {
+      "original_path": "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl",
+      "sha256": "e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3",
+      "retained_from": "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-0-e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3.wgsl",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl@c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a": {
+      "original_path": "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+      "sha256": "c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a",
+      "retained_from": "/tmp/aethyr-ch11-packages-current/hecates-cemetery/module-1-c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a.wgsl",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-packages-current/hecates-cemetery/media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl@589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8": {
+      "original_path": "/tmp/aethyr-ch11-packages-current/hecates-cemetery/media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl",
+      "sha256": "589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8",
+      "retained_from": "/tmp/aethyr-ch11-packages-current/hecates-cemetery/media-589cea8c3fa810924df56a069fb660e0933552d7af8d2054489346705d66b5c8.wgsl",
+      "current_path_matches": true
+    },
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_goldens.ts@3bc6185197d61c11ff271ffaf6c8b1f7e261d5accb5aa6ee2c2be25fb4ccb58b": {
+      "original_path": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_goldens.ts",
+      "sha256": "3bc6185197d61c11ff271ffaf6c8b1f7e261d5accb5aa6ee2c2be25fb4ccb58b",
+      "retained_from": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_goldens.ts",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-realm-noise-controls/integer.wgsl@f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37": {
+      "original_path": "/tmp/aethyr-ch11-realm-noise-controls/integer.wgsl",
+      "sha256": "f4dc775ff1b39cd3fce93932844f30ebb944b885cc0ca0b39844260089825d37",
+      "retained_from": "/tmp/aethyr-ch11-realm-noise-controls/integer.wgsl",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-particles-current.wgsl@c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a": {
+      "original_path": "/tmp/aethyr-ch11-particles-current.wgsl",
+      "sha256": "c5c0361a9ef7b1713e86ab649a62a4832367ae680dcf74d393d8ede7620faa0a",
+      "retained_from": "/tmp/aethyr-ch11-particles-current.wgsl",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-realm-noise-controls/sin-hardware.wgsl@6b9ac6d4fbaae59842b1d1bfe160709806b9b2e06e6e5fd3e1a0b9b597922877": {
+      "original_path": "/tmp/aethyr-ch11-realm-noise-controls/sin-hardware.wgsl",
+      "sha256": "6b9ac6d4fbaae59842b1d1bfe160709806b9b2e06e6e5fd3e1a0b9b597922877",
+      "retained_from": "/tmp/aethyr-ch11-realm-noise-controls/sin-hardware.wgsl",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-particle-controls/old.wgsl@7c830b3d546f67e3bbb3a2a24b8663de35addf7a82b6107cdfafed8c6cd28a12": {
+      "original_path": "/tmp/aethyr-ch11-particle-controls/old.wgsl",
+      "sha256": "7c830b3d546f67e3bbb3a2a24b8663de35addf7a82b6107cdfafed8c6cd28a12",
+      "retained_from": "/tmp/aethyr-ch11-particle-controls/old.wgsl",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-villa-noise-controls/integer.wgsl@e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3": {
+      "original_path": "/tmp/aethyr-ch11-villa-noise-controls/integer.wgsl",
+      "sha256": "e6773c9f99766956b2f5a59edf7f3d1fc07013e57c9c71c27ff7ef5d3c9ceaf3",
+      "retained_from": "/tmp/aethyr-ch11-villa-noise-controls/integer.wgsl",
+      "current_path_matches": true
+    },
+    "/tmp/aethyr-ch11-villa-noise-controls/sin.wgsl@f9fe862721bb2cd87d820428ccef5076c237441b1898e410b905a635ffdcc97e": {
+      "original_path": "/tmp/aethyr-ch11-villa-noise-controls/sin.wgsl",
+      "sha256": "f9fe862721bb2cd87d820428ccef5076c237441b1898e410b905a635ffdcc97e",
+      "retained_from": "/tmp/aethyr-ch11-villa-noise-controls/sin.wgsl",
+      "current_path_matches": true
+    }
+  },
+  "observer_epochs": "Reused positive legacy captures retain their contemporaneous observer receipts. Four historical observer bytes are independently recovered by exact SHA from preserved driver.ts copies, retained alongside current tool; no capture is reclassified as having used a later observer.",
+  "source_changes": [],
+  "scope": "Both migratedexecutor routes report0changedblocks underunchanged6block allowances. Hauntmovingblocks and Hecatemovingblocks remainvisible inunmodifiedstockpolicy logs. Fixed90step rawcontrols compareallRGBAbytes withidenticalproducerbytes andnoimageexclusions. Pre11Hecateproducer difference and existingHauntUIcaption/prompt explicitlyseparatefromnoise/filter changes. Consumedbytes from exact rawcomparisons retained. CPU/GPU numerical acceptance is separate.",
+  "archive": {
+    "file": "artifacts.tar.gz",
+    "sha256": "a5f0fee69229ff3685c0eb1334aa0012b9defbe832b98dffeec8afd6f40399c2",
+    "bytes": 8045208
+  }
+}

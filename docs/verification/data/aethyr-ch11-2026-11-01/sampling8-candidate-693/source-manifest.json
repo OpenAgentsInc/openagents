@@ -1,0 +1,111 @@
+{
+  "scope": "Candidate693 actual 2D production sampling helper and removed-demotion control; not full realm/golden or WGSL qualification",
+  "inputs": [
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-sampling-shader.coax",
+      "file": "source/aethyr/tests/render-sampling-shader.coax",
+      "sha256": "8700f665bd5134280082306b1f4377d4f94fd348b87a6dc2dec5c4e25aebbbe2"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/sampling.coax",
+      "file": "source/aethyr/render/sampling.coax",
+      "sha256": "5cb0e8c69947eae0f233de97d44d8c23088edafa154b9b44e5bd5ae1997c82c6"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/sampling-core.coax",
+      "file": "source/aethyr/render/sampling-core.coax",
+      "sha256": "3b03c9587956c4af4d60dc50fea61a06bd496e1a4a4bc2e790c6dbd8bd5f288f"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/shader.coax",
+      "file": "source/verse/gpu/shader.coax",
+      "sha256": "4a5333e783dbc9abfb774d8f8c7512b89af77dbb789bf64de8ab4488a5d5897b"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/footprint.coax",
+      "file": "source/aethyr/render/footprint.coax",
+      "sha256": "1fbc72b396b8f637322c6f714508ee4cb804e9bda24e6951c7376bd6c665cd0d"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/footprint-checks.coax",
+      "file": "source/aethyr/render/tests/footprint-checks.coax",
+      "sha256": "3d600fb7166555bb1423ee741c22dc82108bfc7ceba59b979e2d8b74c1204976"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-sampling-gpu.c",
+      "file": "source/aethyr/tests/render-sampling-gpu.c",
+      "sha256": "d00bac05cd2b94edf865d42fe65c41cd9bba82481c737c39111bec93a0d16c02"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-capabilities-bridge.coax",
+      "file": "source/aethyr/tests/render-capabilities-bridge.coax",
+      "sha256": "69884d2d4aad9d02dcd32f838959ca50bf248de7c7e6a19a6a757e38262a5150"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vks.c",
+      "file": "source/verse/gpu/vks.c",
+      "sha256": "3a63a7535171dae40ed8617fff4ce5127bed4e0b70d42fe3d5351b48c2b84f5e"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vks.h",
+      "file": "source/verse/gpu/vks.h",
+      "sha256": "24d03be9dcce6773a603c0013884c39f0013973b033b8919cc7d95100ee1e65a"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vkc.c",
+      "file": "source/verse/gpu/vkc.c",
+      "sha256": "9b60bcf80801b0932a82e3f623281c65269f6a7b55c62ae6901a70649065b13a"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vkc.h",
+      "file": "source/verse/gpu/vkc.h",
+      "sha256": "93c64a4b34d6bb2ec3308729ec09455a868d793f0bd596c87404f0543a48c2cc"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_sampling_gpu.py",
+      "file": "source/aethyr/tests/check_render_sampling_gpu.py",
+      "sha256": "a93d836b1474513542f820db1b77528aa01ecc8adc428c4d3c169efbdba3c75c"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/capabilities.coax",
+      "file": "source/aethyr/render/capabilities.coax",
+      "sha256": "ae385c231cd4d9551c4676c111518fa805fe4660f28c3a09d8a0b280f63808c2"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/resources.coax",
+      "file": "source/aethyr/render/resources.coax",
+      "sha256": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/passes.coax",
+      "file": "source/aethyr/render/passes.coax",
+      "sha256": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/types.coax",
+      "file": "source/aethyr/render/types.coax",
+      "sha256": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/bindings.coax",
+      "file": "source/aethyr/render/bindings.coax",
+      "sha256": "bd02c0475836ff87c378ee10e595080d13225f9670ecdcc7a7310f715b4e0efb"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/frame.coax",
+      "file": "source/aethyr/render/frame.coax",
+      "sha256": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-frame-checks.coax",
+      "file": "source/aethyr/tests/render-frame-checks.coax",
+      "sha256": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007"
+    },
+    {
+      "original": "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/resources-checks.coax",
+      "file": "source/aethyr/render/tests/resources-checks.coax",
+      "sha256": "22e811191a1112c1740694d96338936a20ff8092c5915f0638e80f70d0f2c61f"
+    }
+  ],
+  "prior_native_failure": "C driver used non-existent Vkc.device; corrected to Vkc.dev; successful codegen reused unchanged."
+}

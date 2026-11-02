@@ -1,0 +1,196 @@
+// Runtime admission of the builder's bounded package.v1 observations. String
+// fields borrow the caller's retained JSON; fetched shader bytes are hashed in
+// Coax before a platform adapter may create a pipeline from them.
+// A source part: the producer/facade carrier owns this scope and its canonical
+// SHA kernel. An extra module owner would split that unmoduled kernel's identity.
+#load "interface.coax";
+#load "media-profile.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+#authority;
+
+RENDER_PACKAGE_JSON :: 262144;
+RENDER_PACKAGE_SHADER :: 2097152;
+RenderPackageStatus :: enum u8 {ok;invalid;capacity;mismatch;capability;hash;}
+RenderPackageModule :: struct {present:bool;binding_set:int;wgsl_file:string;wgsl_sha256:string;}
+RenderPackageEntry :: struct {
+  present:bool;binding_set:int;vertex:string;fragment:string;wgsl_vertex:string;wgsl_fragment:string;
+  spirv_file:string;spirv_sha256:string;tree_file:string;tree_sha256:string;native_int64:bool;reflection:RenderBuildReflection;
+}
+RenderPackage :: struct {
+  status:RenderPackageStatus=RenderPackageStatus.invalid;profile_index:int=-1;slug:string;app:string;
+  module_count:int;entry_count:int;modules:[3]RenderPackageModule;entries:[]RenderPackageEntry;
+}
+RenderPackageText :: struct {ok:bool;value:string;}
+
+#load "tests/package-checks.coax";
+
+// Canonical package keys/names are plain JSON strings. Escaped spellings are
+// refused rather than returned as incorrectly decoded borrowed names.
+rpkg_text :: (d:Jv,node:int,key:string)->RenderPackageText {
+  value:=jv_get(d,node,key);if jv_kind(d,value)!=JV_STRING {return RenderPackageText.{};}
+  text:=jv_raw(d,value);for c:text {if c=='\\' {return RenderPackageText.{};}}return RenderPackageText.{ok=true,value=text};
+}
+rpkg_string :: (d:Jv,node:int,key:string)->string {return rpkg_text(d,node,key).value;}
+rpkg_object :: (d:Jv,node:int,keys:[]string,required:int)->bool {
+  if jv_kind(d,node)!=JV_OBJECT || keys.count>31 || required<0 || required>keys.count {return false;}
+  seen:u32=0;child:=d.nodes[node].first;
+  while child!=-1 {
+    key:=jv_key(d,child);found:=false;
+    for i:0..<keys.count {if key==keys[i] {
+      bit:=cast(u32)1<<cast(u32)i;if (seen&bit)!=0 {return false;}seen|=bit;found=true;
+    }}
+    if !found {return false;}child=d.nodes[child].next;
+  }
+  needed:=(cast(u32)1<<cast(u32)required)-1;return (seen&needed)==needed;
+}
+rpkg_hash :: (text:string)->bool {
+  if text.count!=64 {return false;}
+  for c:text {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
+}
+rpkg_file :: (text:string,extension:string)->bool {
+  prefix:=text.count-extension.count;
+  if prefix<1 || text.count>128 || text[prefix..<text.count]!=extension {return false;}
+  for c:text {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='-' || c=='_' || c=='.') {return false;}}
+  // Empty/dot path segments never name a product, even on permissive hosts.
+  return text[0]!='.';
+}
+rpkg_int :: (d:Jv,node:int,key:string)->int {return jv_int(d,jv_get(d,node,key),-1);}
+rpkg_boolean :: (d:Jv,node:int,key:string)->bool {kind:=jv_kind(d,jv_get(d,node,key));return kind==JV_TRUE || kind==JV_FALSE;}
+rpkg_entry :: (d:Jv,node:int)->RenderPackageEntry {
+  e:RenderPackageEntry;
+  keys:=[20]string.["entry_index","binding_set","vertex","fragment","wgsl_vertex","wgsl_fragment","spirv_file","spirv_sha256","tree_file","tree_sha256",
+    "reflection_schema","tree_version","derivatives","control","native_int64","uses","vertex_stride","attributes","fragment_targets","fragment_depth"];
+  if !rpkg_object(d,node,keys[..],20) {return e;}
+  e.binding_set=rpkg_int(d,node,"binding_set");if e.binding_set<0 || e.binding_set>2 {return e;}
+  e.vertex=rpkg_string(d,node,"vertex");e.wgsl_vertex=rpkg_string(d,node,"wgsl_vertex");
+  fragment:=rpkg_text(d,node,"fragment");alias:=rpkg_text(d,node,"wgsl_fragment");
+  if !fragment.ok || !alias.ok {return e;}e.fragment=fragment.value;e.wgsl_fragment=alias.value;
+  if e.vertex.count==0 || e.wgsl_vertex.count==0 || ((e.fragment.count==0)!=(e.wgsl_fragment.count==0)) {return e;}
+  e.spirv_file=rpkg_string(d,node,"spirv_file");e.spirv_sha256=rpkg_string(d,node,"spirv_sha256");
+  e.tree_file=rpkg_string(d,node,"tree_file");e.tree_sha256=rpkg_string(d,node,"tree_sha256");
+  if !rpkg_file(e.tree_file,".tree") || !rpkg_hash(e.tree_sha256) {return e;}
+  if !rpkg_file(e.spirv_file,".spv") || !rpkg_hash(e.spirv_sha256) || !rpkg_boolean(d,node,"native_int64") || !rpkg_boolean(d,node,"fragment_depth") {return e;}
+  e.native_int64=jv_bool(d,jv_get(d,node,"native_int64"));r:RenderBuildReflection;
+  r.schema=rpkg_int(d,node,"reflection_schema");r.tree_version=rpkg_int(d,node,"tree_version");
+  r.derivatives=rpkg_int(d,node,"derivatives");r.control=rpkg_int(d,node,"control");
+  r.vertex_stride=rpkg_int(d,node,"vertex_stride");r.fragment_targets=rpkg_int(d,node,"fragment_targets");
+  r.fragment_depth=jv_bool(d,jv_get(d,node,"fragment_depth"));
+  if r.schema<0 || r.tree_version<0 || r.derivatives<0 || r.control<0 || r.vertex_stride<0 || r.fragment_targets<0 {return e;}
+  uses:=jv_get(d,node,"uses");attributes:=jv_get(d,node,"attributes");
+  if jv_kind(d,uses)!=JV_ARRAY || jv_len(d,uses)>32 || jv_kind(d,attributes)!=JV_ARRAY || jv_len(d,attributes)>32 {return e;}
+  r.use_count=jv_len(d,uses);r.attribute_count=jv_len(d,attributes);
+  use_keys:=[6]string.["name","slot","native_kind","shape","stride","stages"];
+  for i:0..<r.use_count {
+    at:=jv_at(d,uses,i);if !rpkg_object(d,at,use_keys[..],6) {return e;}
+    u:=RenderReflectedUse.{name=rpkg_string(d,at,"name"),slot=rpkg_int(d,at,"slot"),native_kind=rpkg_int(d,at,"native_kind"),
+      shape=rpkg_int(d,at,"shape"),stride=rpkg_int(d,at,"stride"),stages=rpkg_int(d,at,"stages")};
+    if u.name.count==0 || u.slot<0 || u.native_kind<0 || u.shape<0 || u.stride<0 || u.stages<0 {return e;}
+    r.uses[i]=u;
+  }
+  attr_keys:=[4]string.["location","scalar","width","offset"];
+  for i:0..<r.attribute_count {
+    at:=jv_at(d,attributes,i);if !rpkg_object(d,at,attr_keys[..],4) {return e;}
+    a:=RenderVertexInput.{location=rpkg_int(d,at,"location"),scalar=rpkg_int(d,at,"scalar"),width=rpkg_int(d,at,"width"),offset=rpkg_int(d,at,"offset")};
+    if a.location<0 || a.scalar<0 || a.width<0 || a.offset<0 {return e;}r.attributes[i]=a;
+  }
+  r.ok=true;e.reflection=r;e.present=true;return e;
+}
+render_package_parse :: (json:string,entries:[]RenderPackageEntry)->RenderPackage {
+  p:RenderPackage;
+  if json.count>RENDER_PACKAGE_JSON || entries.count<14 {p.status=RenderPackageStatus.capacity;return p;}
+  doc:[1]Jv;nodes:[16384]JvNode;
+  if !jv_parse(doc[..],json,nodes[..]) {return p;}d:=doc[0];
+  keys:=[8]string.["schema","profile_index","slug","app","modules","entries","compiler_sha256","source_inputs"];
+  if !rpkg_object(d,0,keys[..],6) || rpkg_string(d,0,"schema")!="aethyr.render.package.v1" {return p;}
+  compiler_hash:=jv_get(d,0,"compiler_sha256");
+  if compiler_hash!=-1 && !rpkg_hash(rpkg_string(d,0,"compiler_sha256")) {return p;}
+  provenance:=jv_get(d,0,"source_inputs");if provenance!=-1 && jv_kind(d,provenance)!=JV_ARRAY {return p;}
+  p.profile_index=rpkg_int(d,0,"profile_index");p.slug=rpkg_string(d,0,"slug");p.app=rpkg_string(d,0,"app");
+  if p.profile_index<0 || p.profile_index>=RENDER_CATALOG_COUNT || p.slug.count==0 || p.app.count==0 {return p;}
+  modules:=jv_get(d,0,"modules");table:=jv_get(d,0,"entries");
+  // Unique bounded indices below imply the maximum table lengths. Checking a
+  // second upper bound here would add no admission rule.
+  if jv_kind(d,modules)!=JV_ARRAY || jv_len(d,modules)<1 || jv_kind(d,table)!=JV_ARRAY || jv_len(d,table)<1 {return p;}
+  module_keys:=[3]string.["binding_set","wgsl_file","wgsl_sha256"];
+  for i:0..<jv_len(d,modules) {
+    at:=jv_at(d,modules,i);if !rpkg_object(d,at,module_keys[..],3) {return p;}
+    set:=rpkg_int(d,at,"binding_set");if set<0 || set>2 || p.modules[set].present {return p;}
+    m:=RenderPackageModule.{binding_set=set,wgsl_file=rpkg_string(d,at,"wgsl_file"),wgsl_sha256=rpkg_string(d,at,"wgsl_sha256")};
+    if !rpkg_file(m.wgsl_file,".wgsl") || !rpkg_hash(m.wgsl_sha256) {return p;}m.present=true;p.modules[set]=m;p.module_count+=1;
+  }
+  // This is candidate storage owned by the facade, separate from an active
+  // renderer's receipt. A failed parse never returns a usable entry view.
+  for i:0..<14 {entries[i]=RenderPackageEntry.{};}
+  for i:0..<jv_len(d,table) {
+    at:=jv_at(d,table,i);index:=rpkg_int(d,at,"entry_index");if index<0 || index>13 || entries[index].present {return p;}
+    e:=rpkg_entry(d,at);if !e.present {return p;}entries[index]=e;p.entry_count+=1;
+  }
+  p.entries=entries[0..<14];p.status=RenderPackageStatus.ok;return p;
+}
+render_package_admit :: (package:RenderPackage,expected_profile:int,device:RenderDeviceCapabilities)->RenderPackageStatus {
+  p:=package;if p.status!=RenderPackageStatus.ok {return p.status;}
+  a:=render_catalog(expected_profile);
+  if !a.valid || p.profile_index!=expected_profile || p.slug!=a.slug || p.app!=a.app || p.entries.count!=14 {return RenderPackageStatus.mismatch;}
+  modules:=0;entries:=0;
+  for set:0..<3 {
+    required:=ifx set==2 then a.features.media else render_catalog_binding_count(expected_profile,set)!= -1;
+    m:=p.modules[set];if m.present!=required {return RenderPackageStatus.mismatch;}
+    if m.present {if m.binding_set!=set {return RenderPackageStatus.mismatch;}modules+=1;}
+  }
+  for i:0..<14 {
+    expected:RenderEntry;
+    if i<13 {expected=render_catalog_entry(expected_profile,cast(RenderPassId)i);}
+    else {m:=render_media_entry();expected=RenderEntry.{valid=a.features.media,source=m.source,vertex=m.vertex,fragment=m.fragment,wgsl_vertex=m.wgsl_vertex,wgsl_fragment=m.wgsl_fragment,binding_set=m.binding_set};}
+    e:=p.entries[i];if e.present!=expected.valid {return RenderPackageStatus.mismatch;}if !e.present {continue;}entries+=1;
+    if e.binding_set!=expected.binding_set || e.vertex!=expected.vertex || e.fragment!=expected.fragment || e.wgsl_vertex!=expected.wgsl_vertex || e.wgsl_fragment!=expected.wgsl_fragment {return RenderPackageStatus.mismatch;}
+    r:=e.reflection;if !render_interface_admit(expected_profile,i,r) {return RenderPackageStatus.mismatch;}
+    b:[48]RenderBinding;u:[32]RenderUse;
+    bn:=ifx i==13 then render_media_binding_count() else render_catalog_binding_count(expected_profile,e.binding_set);
+    un:=ifx i==13 then render_media_use_count() else render_catalog_use_count(expected_profile,cast(RenderPassId)i);
+    for k:0..<bn {b[k]=ifx i==13 then render_media_binding(k) else render_catalog_binding(expected_profile,e.binding_set,k);}
+    for k:0..<un {u[k]=ifx i==13 then render_media_use(k) else render_catalog_use(expected_profile,cast(RenderPassId)i,k);}
+    // Catalog admission bounds un. Match the observed count before making a
+    // view, so malformed receipts cannot select an out-of-range slice.
+    if r.use_count!=un {return RenderPackageStatus.mismatch;}
+    if render_emission_admit(r.schema,b[0..<bn],u[0..<un],r.uses[0..<un])!=RenderEmissionStatus.ok {return RenderPackageStatus.mismatch;}
+    req:=RenderShaderRequirements.{reflection_schema=r.schema,tree_version=r.tree_version,derivatives=r.derivatives,control=r.control,requires_int64=e.native_int64};
+    if render_capabilities_admit(req,device,true)!=RenderCapabilityStatus.ok {return RenderPackageStatus.capability;}
+  }
+  if p.module_count!=modules || p.entry_count!=entries {return RenderPackageStatus.mismatch;}
+  return RenderPackageStatus.ok;
+}
+rpkg_bytes :: (expected:string,bytes:[]u8)->RenderPackageStatus {
+  if !render_package_shader_size(bytes.count) {return RenderPackageStatus.capacity;}
+  hash:[64]u8;
+  if !S_hex(S_hash(cast(string)bytes),hash[..]) || cast(string)hash[..]!=expected {return RenderPackageStatus.hash;}
+  return RenderPackageStatus.ok;
+}
+// Hosts can refuse a measured file size before borrowing/copying its payload.
+render_package_shader_size :: (count:int)->bool {return count>=1 && count<=RENDER_PACKAGE_SHADER;}
+render_package_module_bytes :: (package:RenderPackage,binding_set:int,bytes:[]u8)->RenderPackageStatus {
+  if package.status!=RenderPackageStatus.ok || binding_set<0 || binding_set>2 || !package.modules[binding_set].present {return RenderPackageStatus.invalid;}
+  return rpkg_bytes(package.modules[binding_set].wgsl_sha256,bytes);
+}
+render_package_tree_bytes :: (package:RenderPackage,index:int,bytes:[]u8)->RenderPackageStatus {
+  if package.status!=RenderPackageStatus.ok || package.entries.count!=14 || index<0 || index>13 || !package.entries[index].present {return RenderPackageStatus.invalid;}
+  return rpkg_bytes(package.entries[index].tree_sha256,bytes);
+}
+render_package_spirv_bytes :: (package:RenderPackage,index:int,bytes:[]u8)->RenderPackageStatus {
+  if package.status!=RenderPackageStatus.ok || package.entries.count!=14 || index<0 || index>13 || !package.entries[index].present {return RenderPackageStatus.invalid;}
+  e:=package.entries[index];status:=rpkg_bytes(e.spirv_sha256,bytes);if status!=RenderPackageStatus.ok {return status;}
+  if bytes.count%4!=0 {return RenderPackageStatus.invalid;}
+  words:[RENDER_PACKAGE_SHADER/4]u32;
+  for i:0..<bytes.count/4 {at:=i*4;words[i]=cast(u32)bytes[at]|(cast(u32)bytes[at+1]<<8)|(cast(u32)bytes[at+2]<<16)|(cast(u32)bytes[at+3]<<24);}
+  info:=render_spirv_info(words[0..<bytes.count/4]);if !info.ok || info.native_int64!=e.native_int64 {return RenderPackageStatus.mismatch;}
+  at:=5;derivatives:=0;control:=0;
+  while at<bytes.count/4 {
+    first:=words[at];op:=first&65535;
+    // Khronos SPIRV-Headers: generic207..209, fine210..212, coarse213..215.
+    // Coarse instructions also fail the portable-fine admission profile.
+    if (op>=207 && op<=209) || (op>=213 && op<=215) {derivatives|=1;}if op>=210 && op<=212 {derivatives|=2;}
+    if op==252 {control|=1;}if op==5380 {control|=2;}
+    at+=cast(int)(first>>16);
+  }
+  if derivatives!=e.reflection.derivatives || control!=e.reflection.control {return RenderPackageStatus.mismatch;}
+  return RenderPackageStatus.ok;
+}

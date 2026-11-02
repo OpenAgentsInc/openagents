@@ -1,0 +1,516 @@
+{
+  "schema": "aethyr.render.fixture-noise-migration.v1",
+  "status": "pass_for_explicit_visible_noise_migration",
+  "scope": "Nine existing production painterly golden scenarios,4desktop clocks,4phone clocks andsunshafts. Unchanged6-block allowance; numerical CPU/GPU parity separate.",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "variant_records": {
+    "integer": {
+      "mode": "integer",
+      "command": [
+        "coax/bin/coax",
+        "wgsl",
+        "/tmp/aethyr-ch11-fixture-noise-isolation/integer-fixture.coax",
+        "--vertices",
+        "fixture_bg_vs,fixture_caster_vs,fixture_grass_vs,fixture_scene_vs,fixture_fx_vs",
+        "--fragments",
+        "fixture_bg_fs,fixture_grass_fs,fixture_scene_fs,fixture_bloom_fs,fixture_post_fs,fixture_fx_fs",
+        "--bindings",
+        "apps/openagents-web/gpu/fixture.bindings",
+        "--strip",
+        "fixture_",
+        "-o",
+        "/tmp/aethyr-ch11-fixture-noise-isolation/integer.wgsl"
+      ],
+      "status": "pass",
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "original_fixture_sha256": "66bcdeabde984fb158abefb5de96bbc1e3b65e622787473f0462af4f465f6294",
+      "original_style_sha256": "30a5b680e7270870abd50829dd78aa4114bab90cc28b80cec3dfcdae960a5df2",
+      "variant_fixture_sha256": "edf71d1e4eb1446749abd689aed893e41e277a41d0525a783151ac5ec950fdad",
+      "variant_style_sha256": "17f02f1fba41c1cec609ecf5af97fa821a555e616cd273aee94924ad2b58a8e5",
+      "wgsl_sha256": "ab72e9a02ddae098911eff0465b6cfaf3bffe74d581eb3c6b1f63b2eac08164a",
+      "scope": "Only fixture_hash and verse_style_hash arithmetic changed to retained sine formula in sin variant; the two incompatible integer-profile assertions removed only there; load paths absolute. No WGSL arithmetic edited."
+    },
+    "sin": {
+      "mode": "sin",
+      "command": [
+        "coax/bin/coax",
+        "wgsl",
+        "/tmp/aethyr-ch11-fixture-noise-isolation/sin-fixture.coax",
+        "--vertices",
+        "fixture_bg_vs,fixture_caster_vs,fixture_grass_vs,fixture_scene_vs,fixture_fx_vs",
+        "--fragments",
+        "fixture_bg_fs,fixture_grass_fs,fixture_scene_fs,fixture_bloom_fs,fixture_post_fs,fixture_fx_fs",
+        "--bindings",
+        "apps/openagents-web/gpu/fixture.bindings",
+        "--strip",
+        "fixture_",
+        "-o",
+        "/tmp/aethyr-ch11-fixture-noise-isolation/sin.wgsl"
+      ],
+      "status": "pass",
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "original_fixture_sha256": "66bcdeabde984fb158abefb5de96bbc1e3b65e622787473f0462af4f465f6294",
+      "original_style_sha256": "30a5b680e7270870abd50829dd78aa4114bab90cc28b80cec3dfcdae960a5df2",
+      "variant_fixture_sha256": "956a69601f7f9ee3e60e2ec27065e966d9ae3987b145cb824992d42d6cfbe8ce",
+      "variant_style_sha256": "f8ea8db6e4bc6443aae4f57e3a8cd8081a713711f65094b320a96a9f2cffe94d",
+      "wgsl_sha256": "56862acdf246b327859da955549e5cf3aaf8a7566d9f5c66ed2c3a40d724958f",
+      "scope": "Only fixture_hash and verse_style_hash arithmetic changed to retained sine formula in sin variant; the two incompatible integer-profile assertions removed only there; load paths absolute. No WGSL arithmetic edited."
+    }
+  },
+  "exact_noon_controls": {
+    "base-noon": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": false,
+      "query": "style=painterly&clock=0.5",
+      "width": 1280,
+      "height": 800,
+      "legacy_shader_override": null,
+      "reused_generic": null,
+      "source_changes": [],
+      "legacy_sha256": "01ffabad239f1d51532b854f5d7d5f98aa910a7890c57bf0abb040a536a0b782",
+      "generic_sha256": "63e55858a9bd83bcff0b874af85bdd117a446e4c8d439b642ea967f9866a7812",
+      "different_channels": 1565268,
+      "different_pixels": 578340,
+      "max_byte_delta": 171,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "integer-noon": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": false,
+      "query": "style=painterly&clock=0.5",
+      "width": 1280,
+      "height": 800,
+      "legacy_shader_override": "/tmp/aethyr-ch11-fixture-noise-isolation/integer.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-fixture-noon/generic",
+      "source_changes": [],
+      "legacy_sha256": "63e55858a9bd83bcff0b874af85bdd117a446e4c8d439b642ea967f9866a7812",
+      "generic_sha256": "63e55858a9bd83bcff0b874af85bdd117a446e4c8d439b642ea967f9866a7812",
+      "different_channels": 0,
+      "different_pixels": 0,
+      "max_byte_delta": 0,
+      "identical": true,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    },
+    "sin-noon": {
+      "schema": "aethyr.render.legacy-comparison.v1",
+      "same_producer_wasm": true,
+      "same_inputs": true,
+      "same_shape": true,
+      "frames": 90,
+      "start": false,
+      "query": "style=painterly&clock=0.5",
+      "width": 1280,
+      "height": 800,
+      "legacy_shader_override": "/tmp/aethyr-ch11-fixture-noise-isolation/sin.wgsl",
+      "reused_generic": "/tmp/aethyr-ch11-golden-fixture-noon/generic",
+      "source_changes": [],
+      "legacy_sha256": "01ffabad239f1d51532b854f5d7d5f98aa910a7890c57bf0abb040a536a0b782",
+      "generic_sha256": "63e55858a9bd83bcff0b874af85bdd117a446e4c8d439b642ea967f9866a7812",
+      "different_channels": 1565268,
+      "different_pixels": 578340,
+      "max_byte_delta": 171,
+      "identical": false,
+      "scope": "exact matching captured producer bytes, legacy WebGPU pass executor vs shared renderer; a supplied shader variant is an explicit diagnostic control"
+    }
+  },
+  "stock_gates": {
+    "noon-generic": {
+      "status": "fail",
+      "seconds": 9.019,
+      "stats": [
+        {
+          "name": "fixture-painterly-0.5",
+          "changed_blocks": 6268,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        }
+      ],
+      "source_changes": [],
+      "qualification": "qualified source fence clean"
+    },
+    "remaining-generic": {
+      "status": "fail",
+      "seconds": 60.982,
+      "stats": [
+        {
+          "name": "fixture-painterly-0",
+          "changed_blocks": 2395,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-0.25",
+          "changed_blocks": 6312,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-0.75",
+          "changed_blocks": 5887,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0",
+          "changed_blocks": 149,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.25",
+          "changed_blocks": 1823,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.5",
+          "changed_blocks": 1818,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.75",
+          "changed_blocks": 1743,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-shafts",
+          "changed_blocks": 6156,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        }
+      ],
+      "source_changes": [],
+      "qualification": "qualified source fence clean"
+    },
+    "noon-legacy": {
+      "status": "pass",
+      "seconds": 10.339,
+      "stats": [
+        {
+          "name": "fixture-painterly-0.5",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        }
+      ],
+      "source_changes": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js"
+      ],
+      "qualification": "historical image pass only; source fence changed"
+    },
+    "noon-sin": {
+      "status": "pass",
+      "seconds": 10.768,
+      "stats": [
+        {
+          "name": "fixture-painterly-0.5",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        }
+      ],
+      "source_changes": [],
+      "qualification": "qualified source fence clean"
+    },
+    "remaining-sin": {
+      "status": "pass",
+      "seconds": 61.345,
+      "stats": [
+        {
+          "name": "fixture-painterly-0",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-0.25",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-0.75",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.25",
+          "changed_blocks": 5,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.5",
+          "changed_blocks": 5,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.75",
+          "changed_blocks": 5,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-shafts",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        }
+      ],
+      "source_changes": [],
+      "qualification": "qualified source fence clean"
+    },
+    "migrated-generic": {
+      "status": "pass",
+      "seconds": 68.87,
+      "stats": [
+        {
+          "name": "fixture-painterly-0",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-0.25",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-0.5",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-0.75",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.25",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.5",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.75",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-shafts",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        }
+      ],
+      "source_changes": [],
+      "qualification": "qualified source fence clean"
+    },
+    "migrated-integer": {
+      "status": "pass",
+      "seconds": 67.487,
+      "stats": [
+        {
+          "name": "fixture-painterly-0",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-0.25",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-0.5",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-0.75",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.25",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.5",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-phone-0.75",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        },
+        {
+          "name": "fixture-painterly-shafts",
+          "changed_blocks": 0,
+          "allowed_blocks": 6,
+          "moving_blocks": 0
+        }
+      ],
+      "source_changes": [],
+      "qualification": "qualified source fence clean"
+    }
+  },
+  "baseline_migration": {
+    "status": "promoted_after_explicit_causal_and_visual_review",
+    "scope": "Unmodified saved production golden scenarios; current shared renderer versus tracked old baselines. Causal arithmetic controls retained separately.",
+    "images": [
+      {
+        "name": "fixture-painterly-0.5",
+        "changed_blocks": 6268,
+        "old_sha256": "ecfd7edb7be23fdf1eb27e6582b5bdb4637280022528f8ae75cf8f0c6039dd43",
+        "new_sha256": "84d8b0a5e81297b74306792d910c15eff33dc7776a2942fd90ac83de2b407996",
+        "old_file": "fixture-painterly-0.5-old.png",
+        "new_file": "fixture-painterly-0.5-new.png",
+        "actual_source": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-JJiqdn/fixture-painterly-0.5.png",
+        "log": "/tmp/aethyr-ch11-stock-fixture-noon-generic/execution.log"
+      },
+      {
+        "name": "fixture-painterly-0",
+        "changed_blocks": 2395,
+        "old_sha256": "bfa58693e382f7e8172fe10bea75953a295b6d63a11ceb7a7a1f5e646ba68258",
+        "new_sha256": "57d771afc00203b8091c94817ed0f39ca8ac135df36e3e7bba2e21edae78185e",
+        "old_file": "fixture-painterly-0-old.png",
+        "new_file": "fixture-painterly-0-new.png",
+        "actual_source": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-hfthld/fixture-painterly-0.png",
+        "log": "/tmp/aethyr-ch11-stock-fixture-remaining-generic/execution.log"
+      },
+      {
+        "name": "fixture-painterly-0.25",
+        "changed_blocks": 6312,
+        "old_sha256": "1df1c5afef45ee4a7dec03f41005a07892e96ec84ea7926f5fc15dff0215ba25",
+        "new_sha256": "5d71e1ce594c88a9e19b7e40fbd6a608a62eec60432bf9f15591371b5d79e81f",
+        "old_file": "fixture-painterly-0.25-old.png",
+        "new_file": "fixture-painterly-0.25-new.png",
+        "actual_source": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-X5PQqH/fixture-painterly-0.25.png",
+        "log": "/tmp/aethyr-ch11-stock-fixture-remaining-generic/execution.log"
+      },
+      {
+        "name": "fixture-painterly-0.75",
+        "changed_blocks": 5887,
+        "old_sha256": "2727bfac289ef787ac851d0ea6de09b0aeea7edc2f00f434f88a56ee8a046b98",
+        "new_sha256": "8aa7e6b97cd2691fe5586ba0c28321c8c7ed5021d6d0161f08e0f269c29fd34a",
+        "old_file": "fixture-painterly-0.75-old.png",
+        "new_file": "fixture-painterly-0.75-new.png",
+        "actual_source": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-lbeRqU/fixture-painterly-0.75.png",
+        "log": "/tmp/aethyr-ch11-stock-fixture-remaining-generic/execution.log"
+      },
+      {
+        "name": "fixture-painterly-phone-0",
+        "changed_blocks": 149,
+        "old_sha256": "625fe6c8aafcf33503d308a10fe1ef8de058a3f569393a420ef4ff0f48d51b3e",
+        "new_sha256": "592378d05acb3f71868f1e82bda6bce77a591e0c8d5eef9dfa39f9b58fdb24cf",
+        "old_file": "fixture-painterly-phone-0-old.png",
+        "new_file": "fixture-painterly-phone-0-new.png",
+        "actual_source": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-qmaVZM/fixture-painterly-phone-0.png",
+        "log": "/tmp/aethyr-ch11-stock-fixture-remaining-generic/execution.log"
+      },
+      {
+        "name": "fixture-painterly-phone-0.25",
+        "changed_blocks": 1823,
+        "old_sha256": "7322637b3da0a291055b68246286d0851dd642a3692437f365af00dfc3e57b59",
+        "new_sha256": "6e96518cff19469feabbfbf0fb592c7c9e9c977ce27bf14cf9b32e6d951089dd",
+        "old_file": "fixture-painterly-phone-0.25-old.png",
+        "new_file": "fixture-painterly-phone-0.25-new.png",
+        "actual_source": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-2gzcRA/fixture-painterly-phone-0.25.png",
+        "log": "/tmp/aethyr-ch11-stock-fixture-remaining-generic/execution.log"
+      },
+      {
+        "name": "fixture-painterly-phone-0.5",
+        "changed_blocks": 1818,
+        "old_sha256": "cd9208687cce31296acc1de36d4895a97bbd7959081e9c43d7ab8fa4a6a9a8d9",
+        "new_sha256": "7ebfaf24c555dfca326252688299fe52517f80f53437c2b54c9126d35f60b717",
+        "old_file": "fixture-painterly-phone-0.5-old.png",
+        "new_file": "fixture-painterly-phone-0.5-new.png",
+        "actual_source": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-4FMN5X/fixture-painterly-phone-0.5.png",
+        "log": "/tmp/aethyr-ch11-stock-fixture-remaining-generic/execution.log"
+      },
+      {
+        "name": "fixture-painterly-phone-0.75",
+        "changed_blocks": 1743,
+        "old_sha256": "c45de7e6fe6a921f2704d6955ffe49fcbd1671b345baa5a5ea1b6abc16ce004d",
+        "new_sha256": "e69e1e0f5c5e720a61c7b1f9578d5fe6aaad91e6101bd51b45b02130e121f517",
+        "old_file": "fixture-painterly-phone-0.75-old.png",
+        "new_file": "fixture-painterly-phone-0.75-new.png",
+        "actual_source": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-FjJSpt/fixture-painterly-phone-0.75.png",
+        "log": "/tmp/aethyr-ch11-stock-fixture-remaining-generic/execution.log"
+      },
+      {
+        "name": "fixture-painterly-shafts",
+        "changed_blocks": 6156,
+        "old_sha256": "a484aebb929c751d266fd48aa9395594c7f888ce2cf3b0d50c9a679035858d09",
+        "new_sha256": "9468886643ba3aa1c465398beea96d9f8746d5954bbf8e80040d06dd76764df7",
+        "old_file": "fixture-painterly-shafts-old.png",
+        "new_file": "fixture-painterly-shafts-new.png",
+        "actual_source": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-5Yebmy/fixture-painterly-shafts.png",
+        "log": "/tmp/aethyr-ch11-stock-fixture-remaining-generic/execution.log"
+      }
+    ],
+    "review": {
+      "root": "Inspected all9before/after pairs; framing, HUD, palette and lighting retained; integer noise intentionally changes clouds/crown/grass patterns.",
+      "independent_agent": "psionic_review independently inspected9pairs; supports migration after sine-restore controls. Visual quality review is separate from CPU/GPU numerical conformance.",
+      "review_sheet_sha256": "977a8d134a95cbfee91c25d9cbdeadb119d64065f2ca2ffd0894b3e5981a1508",
+      "controls": "Restoring only fixture_hash and verse_style_hash to retained sine formulas makes all9 saved-golden scenarios pass the unchanged6-block allowance. Noon exact producer-byte controls prove integer shader in old executor equals new renderer, and sine shader in old executor equals old image. Phone dusk sine control uses5/6 existing allowed blocks; no tolerance expanded."
+    }
+  },
+  "retention": {
+    "archive": "artifacts.tar.gz",
+    "sha256": "80176fd388124ace9e8706fec5ed132a2bc2d715e184e2f1f15be7cbcf460f14",
+    "bytes": 11318353,
+    "missing": [],
+    "source_epoch": "Exact served files retained byobserved digest. Original host recovered by reversing only retainedreadback instrumentation and verified against originalserved SHA. Later lifecyclechanges retain separate qualification."
+  }
+}

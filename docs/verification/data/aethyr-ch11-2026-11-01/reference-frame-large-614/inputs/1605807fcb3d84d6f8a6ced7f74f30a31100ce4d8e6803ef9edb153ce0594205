@@ -1,0 +1,17 @@
+16 160 90 1668 16 4 0 0 0 0 0 0 0
+/tmp/aethyr-ch11-garden-160-half/u.bin
+/tmp/aethyr-ch11-garden-160-half/hud.bin
+/tmp/aethyr-ch11-garden-160-half/draws.bin
+/tmp/aethyr-ch11-garden-160-half/indices.bin
+/tmp/aethyr-ch11-packages-current/garden/render.json
+3
+0 /tmp/aethyr-ch11-packages-current/garden/pipeline-0-1083fdb93fd9a8e00bbf84bc0a0072a937fb0dc413e240055302fe388559b19a.tree
+5 /tmp/aethyr-ch11-packages-current/garden/pipeline-5-362c9df5949ee1bfc701334f0d1dd0e796d60d261761a19bdde70ca3ed0b91c7.tree
+12 /tmp/aethyr-ch11-packages-current/garden/pipeline-12-5509c7315e4dc466c3ddf129f48d6664e187af917083b3883db6711e2f35923c.tree
+3
+u.bin /tmp/aethyr-ch11-garden-160-half/u.bin 1312 1312 0 0 1312 1
+s0.bin /tmp/aethyr-ch11-garden-160-half/s0.bin 16900 0 0 16900 16912 1
+s1.bin /tmp/aethyr-ch11-garden-160-half/s1.bin 29184 0 0 29184 29184 1
+textures 0
+media_text /tmp/aethyr-ch11-garden-160-half/media.txt
+media_images 0

@@ -2553,7 +2553,7 @@ plated :: (u: [] f32, b: Box) -> f32 {
   #assert ph[0].shown[BTN_EXIT] && c.y - c.r > g.y1;
 }
 
-#test "the first step marks the front door, nudges you there after a while standing still, and the saving notice goes after a few seconds" {
+#test "the first step marks the front door, nudges you there after a while standing still, and the saving notice goes after a few seconds" #steps 80000000 {
   r: [1] Realm; desk(r[..]); v := view();
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   v.quest = 0; v.quest_line = "Walk in through the front door"; v.bearing = 0;
@@ -2567,7 +2567,10 @@ plated :: (u: [] f32, b: Box) -> f32 {
   v.door_at[2] = -5;   // behind you: no marker, the edge glow instead
   #assert !door_on_screen(r[..], v);
   v.door_at[2] = 5;
-  for i: 0..<600 { n := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016); }   // ~10 s standing in the Yard
+  // Exercise the real HUD clock for the same9.6seconds without writing the
+  // unused intermediate triangles. Full frames below check both endpoints.
+  idle_vertices:[]f32;
+  for i: 0..<96 { n := realm_draw(r[..], v, idle_vertices, u[..], 1440, 900, 2, 0.1); }
   #assert door_nudge(r[..], v) > 0.99;
   later := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
   #assert r[0].plate_n == plates - 1;   // the notice has gone
@@ -2578,7 +2581,7 @@ plated :: (u: [] f32, b: Box) -> f32 {
   #assert door_nudge(r[..], v) == 0;
   // through the door, the marker and the nudge are done
   v.quest = 1; v.quest_line = "Pick something from the hotbar";
-  for i: 0..<600 { n = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016); }
+  for i: 0..<96 { n = realm_draw(r[..], v, idle_vertices, u[..], 1440, 900, 2, 0.1); }
   #assert door_nudge(r[..], v) == 0;
 }
 

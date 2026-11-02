@@ -1,0 +1,86 @@
+// Compiled resource origins for the GPU effects adapters. Names and slots do
+// not acquire policy in JS/C; they consume this typed lookup and the pass op.
+#module "aethyr.render.binding.sources";
+#load "catalog.coax";
+#load "resources.coax" as resource_views;
+#load "media-profile.coax" as media_profile;
+#authority;
+RenderSourceKind :: enum u8 {invalid;main_uniform;media_uniform;immutable_storage_asset;dynamic_store;particle_emitters;mesh_asset;layers;sans_atlas;render_target;sampler;media_image;bloom_step;pass_source;}
+RenderBindingSource :: struct {
+ valid:bool;kind:RenderSourceKind;index:int=-1;target:RenderTarget;
+ sampler_name:string;buffer_mode:resource_views.RenderBufferMode;
+}
+RBSAssetCounts :: struct {storage:int;meshes:int;layers:int;}
+#load "tests/binding-sources-checks.coax";
+
+rbs_assets :: (assets:string)->RBSAssetCounts {
+ result:=RBSAssetCounts.{};start:=0;
+ for at:0..<assets.count+1 {
+  if at==assets.count || assets[at]=='\n' {
+   n:=at-start;
+   if n>8 && assets[start..<start+8]=="storage:" {result.storage+=1;}
+   if n>5 && assets[start..<start+5]=="pack:" {result.storage+=1;result.layers+=1;}
+   if n>5 && assets[start..<start+5]=="mesh:" {result.meshes+=1;}
+   if n>7 && assets[start..<start+7]=="layers:" {result.layers+=1;}
+   start=at+1;
+  }
+ }
+ return result;
+}
+rbs_target :: (name:string)->RenderTarget {
+ if name=="shadow_map" {return RenderTarget.shadow_map;}
+ if name=="water_scene" {return RenderTarget.water_light;}
+ if name=="water_scene_depth" {return RenderTarget.water_depth;}
+ if name=="post_light" {return RenderTarget.light;}
+ if name=="post_quarter" {return RenderTarget.q0;}
+ if name=="post_eighth" {return RenderTarget.e0;}
+ if name=="post_aux" {return RenderTarget.aux;}
+ if name=="post_depth" {return RenderTarget.scene_depth;}
+ return RenderTarget.invalid;
+}
+rbs_storage_source :: (ordinal:int,assets:RBSAssetCounts)->RenderBindingSource {
+ // The compiled storage layout has nonnegative ordinals/counts. External
+ // storage payloads come first, followed by mesh assets, then realm stores.
+ source:=RenderBindingSource.{valid=true,buffer_mode=resource_views.RenderBufferMode.immutable_payload};
+ if ordinal<assets.storage {source.kind=RenderSourceKind.immutable_storage_asset;source.index=ordinal;}
+ else if ordinal<assets.storage+assets.meshes {source.kind=RenderSourceKind.mesh_asset;source.index=ordinal-assets.storage;}
+ else {source.kind=RenderSourceKind.dynamic_store;source.index=ordinal-assets.storage-assets.meshes;source.buffer_mode=resource_views.RenderBufferMode.legacy_capacity;}
+ return source;
+}
+render_binding_source :: (profile:int,binding_set:int,resource:int)->RenderBindingSource {
+ meta:=render_catalog(profile);source:=RenderBindingSource.{};
+ if !meta.valid {return source;}
+ if binding_set==2 {
+  if !meta.features.media {return source;}
+  binding:=media_profile.render_media_binding(resource);
+  if binding.kind==RenderResourceKind.uniform {source.kind=RenderSourceKind.media_uniform;source.index=0;source.buffer_mode=resource_views.RenderBufferMode.declared_uniform;}
+  else if binding.kind==RenderResourceKind.image2d {source.kind=RenderSourceKind.media_image;source.index=0;}
+  else if binding.kind==RenderResourceKind.sampler {source.kind=RenderSourceKind.sampler;source.sampler_name=binding.name;}
+ }else{
+  binding:=render_catalog_binding(profile,binding_set,resource);
+  if binding.kind==RenderResourceKind.uniform {
+   source.kind=ifx binding.name=="bloom_step" then RenderSourceKind.bloom_step else RenderSourceKind.main_uniform;
+   source.index=0;source.buffer_mode=resource_views.RenderBufferMode.declared_uniform;
+  }else if binding.kind==RenderResourceKind.storage {
+   source.buffer_mode=resource_views.RenderBufferMode.legacy_capacity;
+   if binding_set==1 {source.kind=RenderSourceKind.particle_emitters;source.index=0;}
+   else {
+    // Group1 storage bindings start at0. Orbit's group0 mesh follows its
+    // uniform at0, so its first decoded storage ordinal is binding1-1.
+    // The complete independent role blueprint checks both layouts.
+    ordinal:=binding.binding;if binding.group==0 {ordinal-=1;}
+    source=rbs_storage_source(ordinal,rbs_assets(meta.assets));
+   }
+  }else if binding.kind==RenderResourceKind.sampler || binding.kind==RenderResourceKind.comparison {source.kind=RenderSourceKind.sampler;source.sampler_name=binding.name;}
+  else if binding.kind==RenderResourceKind.image_array {source.kind=RenderSourceKind.layers;source.index=0;}
+  else if binding.kind==RenderResourceKind.image2d || binding.kind==RenderResourceKind.depth {
+   if binding.name=="bloom_src" {source.kind=RenderSourceKind.pass_source;}
+   else if binding.name=="sans_atlas" {source.kind=RenderSourceKind.sans_atlas;source.index=0;}
+   else {
+    source.target=ifx binding.name=="particle_depth" then (ifx meta.features.water_copy then RenderTarget.water_depth else RenderTarget.scene_depth) else rbs_target(binding.name);
+    if source.target!=RenderTarget.invalid {source.kind=RenderSourceKind.render_target;}
+   }
+  }
+ }
+ source.valid=source.kind!=RenderSourceKind.invalid;return source;
+}

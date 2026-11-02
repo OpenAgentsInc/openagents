@@ -1,0 +1,4 @@
+frame: ok, admitted 2, checked indices 3
+bad index: bad_index, draw 0, admitted 0
+later span: bad_draw, draw 1, admitted 0
+shared plan: ok, 5 ops

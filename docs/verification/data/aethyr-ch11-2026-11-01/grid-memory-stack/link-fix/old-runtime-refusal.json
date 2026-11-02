@@ -1,0 +1,765 @@
+{
+  "schema": "aethyr.render.browser-capture.v1",
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/156.0.8078.80",
+    "revision": "@fb096c0011f9d50f0a264a9376420cdea9c421e3",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "jsVersion": "15.6.75.27"
+  },
+  "reloads": [],
+  "mediaChecks": [],
+  "mediaReloadChecks": [],
+  "engineChecks": [],
+  "engineFailureChecks": [],
+  "pendingChecks": [],
+  "control": {
+    "mediaReload": false,
+    "textureStream": false,
+    "mediaVideo": false,
+    "pendingIndex": false,
+    "pendingLayer": false,
+    "pendingPack": false,
+    "engineFailure": false,
+    "engineReload": false,
+    "mediaControls": false,
+    "mediaFixture": false,
+    "reloadCheck": false,
+    "half": true,
+    "start": true,
+    "requireDraws": false,
+    "width": 320,
+    "height": 180,
+    "dpr": 1,
+    "started": true,
+    "armed": false
+  },
+  "inputs": {
+    "/tmp/aethyr-ch11-grid-qualified/newland.wasm": "8037740a81fbab5e358c42c49fcd9a0a7087fc1aabb096f7cd8f6381e5e253da",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js": "824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js": "214003ec97f37ce55daab424763a358715574030d533f1caed3853a1e46696af",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/chrome.ts": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render-face.c": "d169fd4b7fd7ff62ccb6c590e043c4fc2ad03b5622f272c85561198158f6a51f",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/the-grid/index.html": "52349221bacf10296865effa83a93d7e8942d6d95fc316e8442cdde205549d03",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_host.ts": "b310234bf3b57e2dbf8883d1a47f7b6bc5db3dce9b4849dfb43240f25c711ef1",
+    "/tmp/aethyr-ch11-packages-owned-sans/the-grid/render.json": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74"
+  },
+  "source_changes": [],
+  "requests": [
+    "/",
+    "/coaxial/host.js",
+    "/coaxial/entropy-import.js",
+    "/coaxial/drop.js",
+    "/coaxial/uploads.js",
+    "/coaxial/docs.js",
+    "/coaxial/card.js",
+    "/coaxial/voice.js",
+    "/coaxial/gpui.js",
+    "/coaxial/loader.js",
+    "/coaxial/http-requests.js",
+    "/coaxial/render.js",
+    "/coaxial/entropy.js",
+    "/test.wasm",
+    "/favicon.svg",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live",
+    "/coaxial/live"
+  ],
+  "status": {
+    "loader": "\nThe Grid\nCOMPILING ENGINE54%\nENGINE FAILED: WebAssembly.Memory.grow(): Maximum memory size exceeded\nTRY AGAIN\n",
+    "ready": false,
+    "engineReady": false,
+    "search": "?probe&golden&probe-manual",
+    "media": [],
+    "body": "THE GRID\nENGINE FAILED: WEBASSEMBLY.MEMORY.GROW(): MAXIMUM MEMORY SIZE EXCEEDED\nTRY AGAIN\nThe Grid\n\nThe Grid\n\nnewland: WebAssembly.Memory.grow(): Maximum memory size exceeded"
+  },
+  "events": [
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 1,
+          "origin": "://",
+          "name": "",
+          "uniqueId": "-453533961777638373.6091828752163578225",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "7B0A62352036B6B7C93EAD4272481628"
+          }
+        }
+      }
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 2,
+          "origin": "http://127.0.0.1:62768",
+          "name": "",
+          "uniqueId": "-3322767832992412176.-2361698199883491453",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "7B0A62352036B6B7C93EAD4272481628"
+          }
+        }
+      }
+    },
+    {
+      "method": "Runtime.consoleAPICalled",
+      "params": {
+        "type": "error",
+        "args": [
+          {
+            "type": "string",
+            "value": "coaxial: newland: WebAssembly.Memory.grow(): Maximum memory size exceeded"
+          }
+        ],
+        "executionContextId": 2,
+        "timestamp": 1793591045149.239,
+        "stackTrace": {
+          "callFrames": [
+            {
+              "functionName": "say",
+              "scriptId": "7",
+              "url": "http://127.0.0.1:62768/coaxial/host.js",
+              "lineNumber": 1970,
+              "columnNumber": 39
+            },
+            {
+              "functionName": "main",
+              "scriptId": "7",
+              "url": "http://127.0.0.1:62768/coaxial/host.js",
+              "lineNumber": 2036,
+              "columnNumber": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591045150.549,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              },
+              {
+                "functionName": "main",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2038,
+                "columnNumber": 11
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591046155.419,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591047157.584,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591048162.921,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591049167.511,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591050177.217,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591051185.566,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591052195.424,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591053222.463,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591054286.386,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591055389.16,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591056476.722,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591057941.016,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591060117.96,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591062159.628,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591067793.89,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591073392.908,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591075902.705,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591081256.631,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591086718.557,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591090253.663,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591094278.04,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591098463.4,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "Log.entryAdded",
+      "params": {
+        "entry": {
+          "source": "network",
+          "level": "error",
+          "text": "WebSocket connection to 'ws://127.0.0.1:62768/coaxial/live' failed: Error during WebSocket handshake: Unexpected response code: 404",
+          "timestamp": 1793591104456.619,
+          "url": "http://127.0.0.1:62768/coaxial/host.js",
+          "lineNumber": 2003,
+          "stackTrace": {
+            "callFrames": [
+              {
+                "functionName": "live",
+                "scriptId": "7",
+                "url": "http://127.0.0.1:62768/coaxial/host.js",
+                "lineNumber": 2003,
+                "columnNumber": 17
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

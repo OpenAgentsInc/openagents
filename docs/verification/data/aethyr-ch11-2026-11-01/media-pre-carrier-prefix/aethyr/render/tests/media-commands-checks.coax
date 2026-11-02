@@ -1,0 +1,132 @@
+// Source part; fixtures preserve the existing producer's whole-pixel text,
+// first-line window and invalid-row skip behavior.
+#test "media text retains kind URL phase line number and all four coordinates" {
+  rows:[4]RenderMediaRequest;
+  r:=render_media_parse("image /image 0 0 200 100\nover /overlay 4 8 64 40\nvideo /video 1 2 3 4",rows[..]);
+  #assert r.status==RenderMediaStatus.ok && r.count==3 && r.lines==3 && !r.truncated;
+  #assert rows[0].kind==RenderMediaKind.image && rows[0].url=="/image" && !rows[0].over && rows[0].line==0;
+  #assert rows[1].kind==RenderMediaKind.image && rows[1].url=="/overlay" && rows[1].over && rows[1].line==1;
+  #assert rows[2].kind==RenderMediaKind.video && rows[2].url=="/video" && !rows[2].over && rows[2].line==2;
+  for i:0..<4 {#assert rows[1].box[i]==[4]f64.[4,8,64,40][i] && rows[2].box[i]==f64(i+1);}
+  #assert rows[0].box[0]==0 && rows[0].box[1]==0 && rows[0].box[2]==200 && rows[0].box[3]==100;
+}
+#test "media text skips malformed rows without renumbering later image contexts" {
+  rows:[3]RenderMediaRequest;
+  r:=render_media_parse("bad\nimage /ok 1 2 3 4\n\nvideo /v 5 6 7 8\n",rows[..]);
+  #assert r.status==RenderMediaStatus.ok && r.count==2 && r.lines==5 && !r.truncated;
+  #assert rows[0].line==1 && rows[0].url=="/ok" && rows[1].line==3 && rows[1].url=="/v";
+  empty:[]RenderMediaRequest;r=render_media_parse("",empty);
+  #assert r.status==RenderMediaStatus.ok && r.count==0 && r.lines==1 && !r.truncated;
+}
+#test "media row selection preserves literal space columns and rejects unsafe or nonfinite records" {
+  bad:=[15]string.["audio /x 0 0 2 2","image x 0 0 2 2","image //x 0 0 2 2","image // 0 0 2 2","image  0 0 2 2","image /x 0 0 2","image /x 0 0 2 2 extra","image\t/x 0 0 2 2","image /x NaN 0 2 2","image /x 0 Infinity 2 2","image /x 0 0 1e309 2","image /x 0 0 2 -Infinity","image /x 0 0 2 2 ","over /x 0 0 nope 2",""];
+  for text:bad {q:=rmc_line(text,7);#assert q.kind==RenderMediaKind.invalid;}
+  q:=rmc_line("image / 0 0 2 2",9);#assert q.kind==RenderMediaKind.image && q.url=="/" && q.line==9;
+  // An empty Number column is zero in the legacy literal-space format.
+  q=rmc_line("over /x  0 2 2",8);#assert q.kind==RenderMediaKind.image && q.over && q.box[0]==0;
+}
+#test "media admission is atomic when caller entry storage is too short" {
+  rows:[3]RenderMediaRequest;
+  for i:0..<3 {rows[i]=RenderMediaRequest.{kind=RenderMediaKind.video,url="/sentinel",line=91,over=true,box=[4]f64.[92,93,94,95]};}
+  r:=render_media_parse("image /a 1 2 3 4\nvideo /b 5 6 7 8",rows[1..<2]);
+  #assert r.status==RenderMediaStatus.capacity && r.count==0;
+  for i:0..<3 {#assert rows[i].kind==RenderMediaKind.video && rows[i].url=="/sentinel" && rows[i].line==91 && rows[i].over;for j:0..<4 {#assert rows[i].box[j]==f64(92+j);}}
+  r=render_media_parse("image /a 1 2 3 4",rows[1..<2]);
+  #assert r.status==RenderMediaStatus.ok && r.count==1 && rows[1].url=="/a" && rows[1].line==0;
+  #assert rows[0].url=="/sentinel" && rows[2].url=="/sentinel";
+}
+#test "media112 contexts are independent of48 binding slots and later lines are explicitly outside the window" {
+  bytes:[4096]u8;n:=0;line:="image /i 0 0 8 8";
+  for i:0..<112 {if i>0 {bytes[n]=10;n+=1;}for c:line {bytes[n]=c;n+=1;}}
+  rows:[112]RenderMediaRequest;r:=render_media_parse(cast(string)bytes[0..<n],rows[..]);
+  #assert RENDER_MEDIA_ITEMS==112 && r.status==RenderMediaStatus.ok && r.count==112 && r.lines==112 && !r.truncated;
+  for i:0..<112 {#assert rows[i].line==i && rows[i].url=="/i";}
+  for c:"\nvideo /late 0 0 4 4" {bytes[n]=c;n+=1;}
+  r=render_media_parse(cast(string)bytes[0..<n],rows[..]);
+  #assert r.status==RenderMediaStatus.ok && r.count==112 && r.lines==112 && r.truncated && rows[111].line==111 && rows[111].url=="/i";
+}
+#test "media raw text admits its exact byte bound and refuses one extra byte before any write" {
+  bytes:[65537]u8;for i:0..<112 {bytes[i]=10;}
+  rows:=[1]RenderMediaRequest.[RenderMediaRequest.{url="/sentinel"}];
+  r:=render_media_parse(cast(string)bytes[0..<65536],rows[..]);
+  #assert r.status==RenderMediaStatus.ok && r.lines==112 && r.truncated && r.count==0;
+  r=render_media_parse(cast(string)bytes[..],rows[..]);
+  #assert r.status==RenderMediaStatus.capacity && r.count==0 && rows[0].url=="/sentinel";
+}
+#test "media numeric decoding covers signed decimal exponent prefixed integers and ASCII whitespace" {
+  texts:=[20]string.["0","-12.5","+.5","1.","1e2","2.5e-1","0xAf","0B101","0o17","\t +16\r",""," \t\r","0012","1e-9999","0X09","0b11","0O11","9","1E+2","1e9"];
+  values:=[20]f64.[0,-12.5,0.5,1,100,0.25,175,5,15,16,0,0,12,0,9,3,9,9,100,1000000000];
+  for text,i:texts {q:=rmc_number(text);#assert q.ok && q.value==values[i];}
+  q:=rmc_number("-0");#assert q.ok && (f64_bits(q.value)>>63)==1;
+  bad:=[19]string.["-","+",".","e1","1e","1e+","1.2.3","NaN","Infinity","0x","0xg","0b2","0o8","1x","1 2","-0x1","1e309","1:","1e:"];
+  for text:bad {#assert !rmc_number(text).ok;}
+}
+#test "media decimal scaling admits the finite extreme and retains gradual underflow" {
+  q:=rmc_number("1e308");#assert q.ok && q.value>9e307;
+  q=rmc_number("1e-309");#assert q.ok && q.value>0 && q.value<1e-308;
+  q=rmc_scale_decimal(1.7976931348623157e308,0);#assert q.ok && q.value==1.7976931348623157e308;
+  q=rmc_scale_decimal(1e300,-500);#assert q.ok && q.value>9e-201 && q.value<1.1e-200;
+  zero:=0.0;q=rmc_scale_decimal(1,-1.0/zero);#assert q.ok && q.value==0;
+  #assert !rmc_scale_decimal(1,zero/zero).ok;
+}
+#test "media decimal scaling does not overflow a cancelled long significand" {
+  bytes:[406]u8;bytes[0]='1';for i:1..<401 {bytes[i]='0';}bytes[401]='e';bytes[402]='-';bytes[403]='4';bytes[404]='0';bytes[405]='0';
+  q:=rmc_number(cast(string)bytes[..]);#assert q.ok && abs(q.value-1)<0.000000000001;
+}
+#test "media aspect fit authors exact centred horizontal and vertical uniforms" {
+  request:=RenderMediaRequest.{kind=RenderMediaKind.image,url="/x",line=111,over=true,box=[4]f64.[10,20,210,120]};
+  a:=render_media_rect(request,400,200,400,400);b:=render_media_rect(request,400,200,400,100);
+  expected_a:=[8]f32.[-0.7,0.8,-0.2,-0.2,1,0,0,0];expected_b:=[8]f32.[-0.95,0.55,0.05,0.05,1,0,0,0];
+  #assert a.ok && a.draw && a.line==111 && a.over && b.ok && b.draw && b.line==111 && b.over;
+  for i:0..<8 {#assert a.uniforms[i]==expected_a[i] && b.uniforms[i]==expected_b[i];}
+}
+#test "media pending and one-pixel boxes keep valid context without drawing" {
+  request:=RenderMediaRequest.{kind=RenderMediaKind.video,line=0,box=[4]f64.[0,0,8,8]};
+  r:=render_media_rect(request,8,8,0,0);#assert r.ok && !r.draw && r.line==0 && !r.over;
+  request.box[2]=1;r=render_media_rect(request,8,8,2,2);#assert r.ok && !r.draw;
+  request.box[2]=8;request.box[3]=1;r=render_media_rect(request,8,8,2,2);#assert r.ok && !r.draw;
+  request.box[3]= -1;r=render_media_rect(request,8,8,2,2);#assert r.ok && !r.draw;
+}
+#test "media rectangle supports one-pixel images and screens up to the exact finite f32 coordinate limit" {
+  request:=RenderMediaRequest.{kind=RenderMediaKind.image,line=0,box=[4]f64.[0,0,1.7014117331926443e38,1.7014117331926443e38]};
+  q:=render_media_rect(request,1,1,1,1);#assert q.ok && q.draw && q.uniforms[2]==3.4028234663852886e38f32 && q.uniforms[3]==(-3.4028234663852886e38f32);
+  request.box=[4]f64.[-3.4028234663852886e38,0,0,8.5070586659632215e37];
+  #assert !render_media_rect(request,1,1,2,1).ok;
+  request.box=[4]f64.[-1.7976931348623157e308,0,1.7976931348623157e308,8];
+  #assert !render_media_rect(request,1,1,1,1).ok;
+  request.box=[4]f64.[0,-1.7976931348623157e308,8,1.7976931348623157e308];
+  #assert !render_media_rect(request,1,1,1,1).ok;
+}
+#forall "media rectangle refuses invalid identities dimensions and nonfinite or unrepresentable coordinates" mode:0..<11 {
+  request:=RenderMediaRequest.{kind=RenderMediaKind.image,line=0,box=[4]f64.[0,0,8,8]};w:=8;h:=8;iw:=2;ih:=2;
+  if mode==0 {request.kind=RenderMediaKind.invalid;}if mode==1 {request.line= -1;}if mode==2 {request.line=112;}
+  if mode==3 {w=0;}if mode==4 {h=0;}if mode==5 {iw= -1;}if mode==6 {ih=0;}
+  zero:=0.0;
+  if mode==7 {request.box[0]=zero/zero;}if mode==8 {request.box[1]=1.0/zero;}
+  if mode==9 {request.box[2]=1e300;}if mode==10 {request.box[3]= -1.0/zero;}
+  r:=render_media_rect(request,w,h,iw,ih);#assert !r.ok && !r.draw && r.line==(-1);
+  for j:0..<8 {#assert r.uniforms[j]==0;}
+}
+#test "media image extent keeps video dimensions and rounds bounded image resizes with a one-pixel minimum" {
+  q:=render_media_image_extent(RenderMediaKind.image,2048,1024);#assert q.ok && q.width==2048 && q.height==1024;
+  q=render_media_image_extent(RenderMediaKind.image,2049,1);#assert q.ok && q.width==2048 && q.height==1;
+  q=render_media_image_extent(RenderMediaKind.image,1,4096);#assert q.ok && q.width==1 && q.height==2048;
+  q=render_media_image_extent(RenderMediaKind.image,1,8192);#assert q.ok && q.width==1 && q.height==2048;
+  q=render_media_image_extent(RenderMediaKind.image,8192,1);#assert q.ok && q.width==2048 && q.height==1;
+  q=render_media_image_extent(RenderMediaKind.image,8192,4096);#assert q.ok && q.width==2048 && q.height==1024;
+  q=render_media_image_extent(RenderMediaKind.video,8192,4096);#assert q.ok && q.width==8192 && q.height==4096;
+  #assert !render_media_image_extent(RenderMediaKind.invalid,1,1).ok;
+  #assert !render_media_image_extent(RenderMediaKind.image,0,1).ok && !render_media_image_extent(RenderMediaKind.video,1,0).ok;
+}
+#test "media aspect selection preserves the smaller positive ratio without cancellation" {
+  #assert rmc_lower_positive(1,2)==1 && rmc_lower_positive(2,1)==1;
+  #assert rmc_lower_positive(1e300,1)==1 && rmc_lower_positive(1,1e300)==1;
+  #assert rmc_lower_positive(0.5,0.5)==0.5;
+}
+#test "media finite and digit classification include both signed infinities and base boundaries" {
+  #assert rmc_finite(0) && rmc_finite(1.7976931348623157e308) && rmc_finite(-1.7976931348623157e308);
+  zero:=0.0;#assert !rmc_finite(1.0/zero) && !rmc_finite(-1.0/zero) && !rmc_finite(zero/zero);
+  #assert rmc_digit('0')==0 && rmc_digit('9')==9 && rmc_digit('a')==10 && rmc_digit('f')==15 && rmc_digit('A')==10 && rmc_digit('F')==15;
+  #assert rmc_digit('/')==(-1) && rmc_digit(':')==(-1) && rmc_digit('g')==(-1) && rmc_digit('G')==(-1);
+  for c:0..<34 {#assert rmc_space(c)==(c==32 || (c>=9 && c<=13));}
+}

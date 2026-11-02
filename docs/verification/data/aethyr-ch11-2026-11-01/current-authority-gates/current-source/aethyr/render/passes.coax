@@ -1,0 +1,325 @@
+// A bounded frame program. The host performs these GPU effects in order; it
+// does not infer a graph from shader text or decide pass order itself.
+#module "aethyr.render.passes";
+#load "types.coax";
+#authority;
+
+RENDER_OPS :: 256;
+RenderFeatures :: struct {
+  scene:bool; shadow:bool; casters:bool; grass:bool; surface:bool;
+  water:bool; water_copy:bool; post:bool; post_depth:bool; traced_depth:bool;
+  particles:bool; particle_depth:bool; particle_over:bool; media:bool;
+}
+RenderReadiness :: enum u8 { loading; background; ready; invalid; }
+RenderPlanStatus :: enum u8 { ok; loading; invalid; }
+RenderPassId :: enum u8 { background; shadow; caster; grass; surface; scene; water_transmit; water_emit; particle_over; particle; bloom; post; hud; invalid; }
+RenderTarget :: enum u8 { none; screen; light; aux; scene_depth; shadow_map; water_light; water_depth; q0; q1; e0; e1; invalid; }
+RenderDepth :: enum u8 { none; always; less; }
+RenderBlend :: enum u8 { replace; maximum; multiply; add; keep; over; under; }
+RenderDrawSource :: enum u8 { vertices; records; current; }
+RenderOpKind :: enum u8 { begin; end; draw; copy; each_begin; each_end; media_before; media_after; }
+RenderPassState :: struct {
+  valid:bool; depth:RenderDepth; depth_write:bool; bias:int; slope:int;
+  colour:RenderBlend; alpha:RenderBlend; outputs:int=1; aux_write:bool=true;
+}
+RenderOp :: struct {
+  kind:RenderOpKind; pass:RenderPassId; state:RenderPassState;
+  colour0:RenderTarget; colour1:RenderTarget; depth:RenderTarget;
+  keep:bool; store_depth:bool;
+  source:RenderTarget; target:RenderTarget;
+  draw_source:RenderDrawSource; first:int; count:int; instances:int=1;
+  bloom_step:[4]f32;
+}
+RenderPlan :: struct { status:RenderPlanStatus=RenderPlanStatus.invalid; readiness:RenderReadiness; count:int; ops:[RENDER_OPS]RenderOp; }
+
+#test "render flat graph is one clear background and maximum blended HUD" {
+  c:=FrameCounts.{width=320,height=180,vertex_stride=16,hud_vertices=6};
+  q:=render_plan(RenderFeatures.{},c,RenderReadiness.ready,true);
+  #assert q.status==RenderPlanStatus.ok && q.count==4;
+  #assert q.ops[0].kind==RenderOpKind.begin && q.ops[0].colour0==RenderTarget.screen && q.ops[0].depth==RenderTarget.none && !q.ops[0].keep;
+  #assert q.ops[1].pass==RenderPassId.background && q.ops[1].count==3 && q.ops[1].instances==1 && q.ops[1].state.depth==RenderDepth.none;
+  #assert q.ops[2].pass==RenderPassId.hud && q.ops[2].count==6 && q.ops[2].state.colour==RenderBlend.maximum && q.ops[2].state.alpha==RenderBlend.maximum;
+  #assert q.ops[3].kind==RenderOpKind.end;
+}
+#test "render loading admits no effects and pending assets retain background and HUD" {
+  f:=RenderFeatures.{scene=true,post=true,particles=true};
+  c:=FrameCounts.{width=320,height=180,vertex_stride=16,hud_vertices=3,draw_count=5,particle_instances=8};
+  waiting:=render_plan(f,c,RenderReadiness.loading,false);
+  #assert waiting.status==RenderPlanStatus.loading && waiting.count==0;
+  pending:=render_plan(f,c,RenderReadiness.background,false);
+  #assert pending.status==RenderPlanStatus.ok && pending.readiness==RenderReadiness.background;
+  meshes:=0;sparks:=0;rp_local_blooms:=0;
+  for i:0..<pending.count {o:=pending.ops[i];if o.kind==RenderOpKind.draw {if o.pass==RenderPassId.scene {meshes+=1;}if o.pass==RenderPassId.particle {sparks+=1;}if o.pass==RenderPassId.bloom {rp_local_blooms+=1;}}}
+  #assert meshes==0 && sparks==0 && rp_local_blooms==5;
+}
+#test "render shadow map is cleared without mesh draws before a consumer reads it" {
+  c:=FrameCounts.{width=320,height=180,vertex_stride=16,grass_instances=1};
+  q:=render_plan(RenderFeatures.{scene=true,shadow=true,grass=true},c,RenderReadiness.ready,true);
+  #assert q.status==RenderPlanStatus.ok && q.ops[0].kind==RenderOpKind.begin && q.ops[0].depth==RenderTarget.shadow_map && !q.ops[0].keep && q.ops[0].store_depth;
+  #assert q.ops[1].kind==RenderOpKind.end && q.ops[2].kind==RenderOpKind.begin && q.ops[4].pass==RenderPassId.grass;
+}
+#test "render water preserves each draw transmit then emit and copies before both" {
+  f:=RenderFeatures.{scene=true,water=true,water_copy=true,post=true,particles=true,particle_depth=true,particle_over=true,media=true};
+  c:=FrameCounts.{width=320,height=180,vertex_stride=16,draw_count=7,water_draws=2,particle_instances=4,hud_vertices=9};
+  q:=render_plan(f,c,RenderReadiness.ready,true);
+  #assert q.status==RenderPlanStatus.ok;
+  copied:=0;rp_local_inside:=false;halves:=0;media_before_at:=-1;hud_at:=-1;media_after_at:=-1;
+  for i:0..<q.count {
+    o:=q.ops[i];
+    if o.kind==RenderOpKind.copy {copied+=1;#assert !rp_local_inside && ((o.source==RenderTarget.light && o.target==RenderTarget.water_light)||(o.source==RenderTarget.scene_depth && o.target==RenderTarget.water_depth));}
+    if o.kind==RenderOpKind.each_begin {#assert copied==2 && o.first==5 && o.count==2;rp_local_inside=true;}
+    if o.kind==RenderOpKind.draw && o.pass==RenderPassId.water_transmit {#assert rp_local_inside && halves==0 && o.draw_source==RenderDrawSource.current && o.state.colour==RenderBlend.multiply && o.state.alpha==RenderBlend.keep && !o.state.depth_write && !o.state.aux_write;halves+=1;}
+    if o.kind==RenderOpKind.draw && o.pass==RenderPassId.water_emit {#assert rp_local_inside && halves==1 && o.state.colour==RenderBlend.add && o.state.alpha==RenderBlend.keep;halves+=1;}
+    if o.kind==RenderOpKind.each_end {#assert rp_local_inside && halves==2;rp_local_inside=false;}
+    if o.kind==RenderOpKind.media_before {media_before_at=i;}if o.pass==RenderPassId.hud && o.kind==RenderOpKind.draw {hud_at=i;}if o.kind==RenderOpKind.media_after {media_after_at=i;}
+  }
+  #assert copied==2 && halves==2 && !rp_local_inside && media_before_at<hud_at && hud_at<media_after_at;
+}
+#test "render copied depth is also fresh for smoke when there are no wet draws" {
+  f:=RenderFeatures.{scene=true,water=true,water_copy=true,post=true,particles=true,particle_depth=true};
+  c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1,particle_instances=1};
+  q:=render_plan(f,c,RenderReadiness.ready,true);copies:=0;water:=0;
+  for i:0..<q.count {o:=q.ops[i];if o.kind==RenderOpKind.copy {copies+=1;}if o.kind==RenderOpKind.each_begin {water+=1;}}
+  #assert q.status==RenderPlanStatus.ok && copies==2 && water==0;
+  no_puffs:=render_plan(f,c,RenderReadiness.ready,false);copies=0;
+  for i:0..<no_puffs.count {if no_puffs.ops[i].kind==RenderOpKind.copy {copies+=1;}}
+  #assert copies==0;
+}
+#test "render five bloom stages retain exact sources directions scales and final targets" {
+  f:=RenderFeatures.{scene=true,post=true};c:=FrameCounts.{width=320,height=180,vertex_stride=16};
+  q:=render_plan(f,c,RenderReadiness.ready,true);
+  sources:=[5]RenderTarget.[RenderTarget.light,RenderTarget.q0,RenderTarget.q1,RenderTarget.q0,RenderTarget.e1];
+  targets:=[5]RenderTarget.[RenderTarget.q0,RenderTarget.q1,RenderTarget.q0,RenderTarget.e1,RenderTarget.e0];
+  expected:=[5][4]f32.[[4]f32.[0,0,0,4],[4]f32.[1,0,1,1],[4]f32.[0,1,1,1],[4]f32.[1,0,1,2],[4]f32.[0,1,1,1]];
+  n:=0;
+  for i:0..<q.count {o:=q.ops[i];if o.kind==RenderOpKind.draw && o.pass==RenderPassId.bloom {#assert o.source==sources[n] && q.ops[i-1].colour0==targets[n] && o.count==3;for j:0..<4 {#assert o.bloom_step[j]==expected[n][j];}n+=1;}}
+  #assert n==5;
+}
+#forall "render graph feature admission follows the complete prerequisite relation" bits:0..<16384 {
+  f:=RenderFeatures.{scene=(bits&1)!=0,shadow=(bits&2)!=0,casters=(bits&4)!=0,grass=(bits&8)!=0,surface=(bits&16)!=0,water=(bits&32)!=0,water_copy=(bits&64)!=0,post=(bits&128)!=0,post_depth=(bits&256)!=0,traced_depth=(bits&512)!=0,particles=(bits&1024)!=0,particle_depth=(bits&2048)!=0,particle_over=(bits&4096)!=0,media=(bits&8192)!=0};
+  requires:=[14]int.[0,1,1,1,0,1,160,1,128,0,1,1088,1024,0];
+  expected:=true;
+  for i:0..<14 {if (bits&(1<<i))!=0 && (bits&requires[i])!=requires[i] {expected=false;}}
+  if (bits&17)==17 || ((bits&512)!=0 && (bits&17)==0) {expected=false;}
+  #assert render_features(f)==expected;
+}
+#forall "render pipeline states retain every output depth blend bias and channel policy" p:0..<13 {
+  f:=RenderFeatures.{scene=true,shadow=true,casters=true,grass=true,water=true,water_copy=true,post=true,post_depth=true,traced_depth=true,particles=true,particle_depth=true,particle_over=true};
+  expected:=[13]RenderPassState.[
+    RenderPassState.{valid=true,depth=RenderDepth.always,depth_write=true,outputs=2},
+    RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,bias=2,slope=2,outputs=0},
+    RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,bias=2,slope=2,outputs=0},
+    RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,outputs=2},
+    RenderPassState.{valid=false,depth=RenderDepth.less,depth_write=true,outputs=2},
+    RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,outputs=2},
+    RenderPassState.{valid=true,depth=RenderDepth.less,colour=RenderBlend.multiply,alpha=RenderBlend.keep,outputs=2,aux_write=false},
+    RenderPassState.{valid=true,depth=RenderDepth.less,colour=RenderBlend.add,alpha=RenderBlend.keep,outputs=2,aux_write=false},
+    RenderPassState.{valid=true,depth=RenderDepth.less,colour=RenderBlend.over,alpha=RenderBlend.under,outputs=2,aux_write=false},
+    RenderPassState.{valid=true,depth=RenderDepth.less,colour=RenderBlend.add,alpha=RenderBlend.add,outputs=2,aux_write=false},
+    RenderPassState.{valid=true},RenderPassState.{valid=true},RenderPassState.{valid=true,colour=RenderBlend.maximum,alpha=RenderBlend.maximum}];
+  a:=render_pass_state(f,cast(RenderPassId)p);b:=expected[p];
+  #assert a.valid==b.valid && a.depth==b.depth && a.depth_write==b.depth_write && a.bias==b.bias && a.slope==b.slope && a.colour==b.colour && a.alpha==b.alpha && a.outputs==b.outputs && a.aux_write==b.aux_write;
+  rp_local_flat:=render_pass_state(RenderFeatures.{},cast(RenderPassId)p);
+  #assert rp_local_flat.valid==(p==0 || p==12);
+}
+#test "render surface and nonpost scene pipeline states retain a shared unwritten HUD depth" {
+  f:=RenderFeatures.{surface=true,traced_depth=true};
+  a:=render_pass_state(f,RenderPassId.background);b:=render_pass_state(f,RenderPassId.surface);h:=render_pass_state(f,RenderPassId.hud);
+  #assert a.valid && a.depth==RenderDepth.always && a.depth_write && a.outputs==1;
+  #assert b.valid && b.depth==RenderDepth.less && b.depth_write && b.outputs==1;
+  #assert h.valid && h.depth==RenderDepth.always && !h.depth_write;
+  f=RenderFeatures.{scene=true,water=true,particles=true,particle_over=true};
+  a=render_pass_state(f,RenderPassId.background);#assert !a.depth_write;
+  #assert render_pass_state(f,RenderPassId.scene).outputs==1 && render_pass_state(f,RenderPassId.water_emit).outputs==1 && render_pass_state(f,RenderPassId.particle).outputs==1;
+  #assert !render_pass_state(f,RenderPassId.invalid).valid;
+  #assert !render_pass_state(RenderFeatures.{shadow=true},RenderPassId.hud).valid;
+}
+#forall "render malformed counts or schedules return no partial program" rp_local_field:0..<22 {
+  c:=FrameCounts.{width=1,height=1,vertex_stride=1};f:=RenderFeatures.{};r:=RenderReadiness.ready;
+  bad:=ifx rp_local_field<11 then -1 else 4294967296;
+  at:=rp_local_field%11;
+  if at==0 {c.width=-1;}if at==1 {c.height=0;}if at==2 {c.vertex_stride=0;}
+  if at==3 {c.hud_vertices=bad;}if at==4 {c.draw_count=bad;}if at==5 {c.water_draws=bad;}
+  if at==6 {c.grass_instances=bad;}if at==7 {c.particle_instances=bad;}if at==8 {c.surface_vertices=bad;}
+  if at==9 {c.caster_vertices=bad;}if at==10 {c.caster_instances=bad;}
+  q:=render_plan(f,c,r,true);#assert q.status==RenderPlanStatus.invalid && q.count==0;
+}
+#test "render refusal precedes loading and never publishes malformed plans" {
+  c:=FrameCounts.{width=1,height=1,vertex_stride=1};
+  q:=render_plan(RenderFeatures.{},c,RenderReadiness.invalid,true);#assert q.status==RenderPlanStatus.invalid && q.count==0;
+  c.water_draws=1;q=render_plan(RenderFeatures.{},c,RenderReadiness.loading,true);#assert q.status==RenderPlanStatus.invalid && q.count==0;
+  c.water_draws=0;q=render_plan(RenderFeatures.{scene=true,surface=true},c,RenderReadiness.ready,true);#assert q.status==RenderPlanStatus.invalid && q.count==0;
+}
+#forall "render zero work is omitted while clear and dependency passes remain" variant:0..<4 {
+  f:=RenderFeatures.{scene=true,shadow=true,casters=true,grass=true,water=true,water_copy=true,post=true,particles=true,particle_depth=true,particle_over=true};
+  c:=FrameCounts.{width=1,height=1,vertex_stride=1};
+  if variant==1 {c.caster_instances=1;}if variant==2 {c.caster_vertices=1;}if variant==3 {c.particle_instances=1;}
+  q:=render_plan(f,c,RenderReadiness.ready,true);
+  #assert q.status==RenderPlanStatus.ok;
+  for i:0..<q.count {o:=q.ops[i];#assert o.kind!=RenderOpKind.each_begin && o.kind!=RenderOpKind.copy;if o.kind==RenderOpKind.draw {#assert o.pass==RenderPassId.background || o.pass==RenderPassId.bloom || o.pass==RenderPassId.post;}}
+}
+#test "render symbolically bounded graph handles maximum u32 counts without expansion" {
+  f:=RenderFeatures.{scene=true,shadow=true,casters=true,grass=true,water=true,water_copy=true,post=true,post_depth=true,traced_depth=true,particles=true,particle_depth=true,particle_over=true,media=true};
+  c:=FrameCounts.{width=1,height=1,vertex_stride=1,hud_vertices=4294967295,draw_count=4294967295,water_draws=1,grass_instances=4294967295,particle_instances=4294967295,caster_vertices=4294967295,caster_instances=4294967295};
+  q:=render_plan(f,c,RenderReadiness.ready,true);#assert q.status==RenderPlanStatus.ok && q.count==40;
+  #assert q.ops[1].pass==RenderPassId.shadow && q.ops[1].count==4294967294 && q.ops[2].pass==RenderPassId.caster && q.ops[2].count==4294967295 && q.ops[2].instances==4294967295;
+  #assert q.ops[6].pass==RenderPassId.grass && q.ops[6].count==3 && q.ops[6].instances==4294967295;
+  #assert q.ops[7].pass==RenderPassId.scene && q.ops[7].draw_source==RenderDrawSource.records && q.ops[7].first==0 && q.ops[7].count==4294967294;
+  #assert q.ops[12].kind==RenderOpKind.each_begin && q.ops[12].first==4294967294 && q.ops[12].count==1;
+  #assert q.ops[16].pass==RenderPassId.particle_over && q.ops[16].count==6 && q.ops[16].instances==4294967295 && q.ops[17].pass==RenderPassId.particle;
+}
+#test "render grass readiness differs for buffer scenes and uniform-only casters" {
+  f:=RenderFeatures.{scene=true,grass=true};c:=FrameCounts.{width=1,height=1,vertex_stride=1,grass_instances=1};
+  pending:=render_plan(f,c,RenderReadiness.background,true);live:=render_plan(f,c,RenderReadiness.ready,true);
+  #assert pending.count==3 && live.count==4 && live.ops[2].pass==RenderPassId.grass;
+  f.casters=true;pending=render_plan(f,c,RenderReadiness.background,true);
+  #assert pending.count==6 && pending.ops[4].pass==RenderPassId.grass;
+  f=RenderFeatures.{surface=true};c.surface_vertices=1;
+  live=render_plan(f,c,RenderReadiness.ready,true);#assert live.count==4 && live.ops[2].pass==RenderPassId.surface && live.ops[2].count==1;
+}
+#test "render complete graph is the canonical forty operation GPU program" {
+  f:=RenderFeatures.{scene=true,shadow=true,casters=true,grass=true,water=true,water_copy=true,post=true,particles=true,particle_depth=true,particle_over=true,media=true};
+  c:=FrameCounts.{width=1,height=1,vertex_stride=1,hud_vertices=1,draw_count=2,water_draws=1,grass_instances=1,particle_instances=1,caster_vertices=1,caster_instances=1};
+  q:=render_plan(f,c,RenderReadiness.ready,true);#assert q.status==RenderPlanStatus.ok && q.count==40;
+  kinds:=[40]RenderOpKind.[RenderOpKind.begin,RenderOpKind.draw,RenderOpKind.draw,RenderOpKind.end,RenderOpKind.begin,RenderOpKind.draw,RenderOpKind.draw,RenderOpKind.draw,RenderOpKind.end,RenderOpKind.copy,RenderOpKind.copy,RenderOpKind.begin,RenderOpKind.each_begin,RenderOpKind.draw,RenderOpKind.draw,RenderOpKind.each_end,RenderOpKind.draw,RenderOpKind.draw,RenderOpKind.end,RenderOpKind.begin,RenderOpKind.draw,RenderOpKind.end,RenderOpKind.begin,RenderOpKind.draw,RenderOpKind.end,RenderOpKind.begin,RenderOpKind.draw,RenderOpKind.end,RenderOpKind.begin,RenderOpKind.draw,RenderOpKind.end,RenderOpKind.begin,RenderOpKind.draw,RenderOpKind.end,RenderOpKind.begin,RenderOpKind.draw,RenderOpKind.media_before,RenderOpKind.draw,RenderOpKind.media_after,RenderOpKind.end];
+  at:=[15]int.[1,2,5,6,7,13,14,16,17,20,23,26,29,32,35];
+  pass:=[15]RenderPassId.[RenderPassId.shadow,RenderPassId.caster,RenderPassId.background,RenderPassId.grass,RenderPassId.scene,RenderPassId.water_transmit,RenderPassId.water_emit,RenderPassId.particle_over,RenderPassId.particle,RenderPassId.bloom,RenderPassId.bloom,RenderPassId.bloom,RenderPassId.bloom,RenderPassId.bloom,RenderPassId.post];
+  amounts:=[15]int.[1,1,3,3,1,1,1,6,6,3,3,3,3,3,3];
+  for i:0..<40 {#assert q.ops[i].kind==kinds[i];}
+  for i:0..<15 {o:=q.ops[at[i]];#assert o.pass==pass[i] && o.state.valid && o.first==0 && o.count==amounts[i] && o.instances==1;}
+  #assert q.ops[37].pass==RenderPassId.hud && q.ops[37].first==0 && q.ops[37].count==1 && q.ops[37].instances==1;
+  begins:=[9]int.[0,4,11,19,22,25,28,31,34];
+  colours:=[9]RenderTarget.[RenderTarget.none,RenderTarget.light,RenderTarget.light,RenderTarget.q0,RenderTarget.q1,RenderTarget.q0,RenderTarget.e1,RenderTarget.e0,RenderTarget.screen];
+  for i:0..<9 {o:=q.ops[begins[i]];#assert o.colour0==colours[i] && o.keep==(i==2) && o.store_depth==(i<3);if i==0 {#assert o.depth==RenderTarget.shadow_map && o.colour1==RenderTarget.none;}else if i<3 {#assert o.depth==RenderTarget.scene_depth && o.colour1==RenderTarget.aux;}else {#assert o.depth==RenderTarget.none && o.colour1==RenderTarget.none;}}
+}
+#test "render asymmetric feature flags and suppressed work remain independent" {
+  f:=RenderFeatures.{scene=true,shadow=true,particles=true};
+  #assert render_pass_state(f,RenderPassId.shadow).valid && !render_pass_state(f,RenderPassId.caster).valid;
+  #assert render_pass_state(f,RenderPassId.particle).valid && !render_pass_state(f,RenderPassId.particle_over).valid;
+  c:=FrameCounts.{width=1,height=1,vertex_stride=1,draw_count=1};
+  q:=render_plan(f,c,RenderReadiness.ready,true);scene_count:=0;
+  for i:0..<q.count {o:=q.ops[i];#assert o.kind!=RenderOpKind.each_begin;if o.kind==RenderOpKind.draw && o.pass==RenderPassId.scene {scene_count=o.count;}}
+  #assert scene_count==1;
+  f=RenderFeatures.{scene=true,water=true,water_copy=true,post=true};c.draw_count=2;c.water_draws=1;
+  q=render_plan(f,c,RenderReadiness.ready,true);copies:=0;
+  for i:0..<q.count {if q.ops[i].kind==RenderOpKind.copy {copies+=1;}}#assert copies==2;
+  q=render_plan(f,c,RenderReadiness.background,true);
+  for i:0..<q.count {#assert q.ops[i].kind!=RenderOpKind.each_begin && q.ops[i].kind!=RenderOpKind.copy;}
+}
+#forall "render surface flag and positive count must both be present" mode:0..<4 {
+  f:=RenderFeatures.{surface=(mode&1)!=0};c:=FrameCounts.{width=1,height=1,vertex_stride=1,surface_vertices=mode/2};
+  q:=render_plan(f,c,RenderReadiness.ready,true);
+  #assert q.status==RenderPlanStatus.ok && q.count==(ifx mode==3 then 4 else 3);
+  if mode==3 {#assert q.ops[0].depth==RenderTarget.scene_depth && q.ops[2].first==0 && q.ops[2].count==1 && q.ops[2].instances==1;}
+}
+
+render_features :: (f:RenderFeatures)->bool {
+  if !f.scene && (f.shadow || f.casters || f.grass || f.water || f.post || f.particles) {return false;}
+  if f.scene && f.surface {return false;}
+  if f.water_copy && (!f.water || !f.post) {return false;}
+  if f.post_depth && !f.post {return false;}
+  if f.traced_depth && !f.scene && !f.surface {return false;}
+  if f.particle_depth && (!f.particles || !f.water_copy) {return false;}
+  if f.particle_over && !f.particles {return false;}
+  return true;
+}
+
+render_pass_state :: (f:RenderFeatures,p:RenderPassId)->RenderPassState {
+  r:=RenderPassState.{};
+  if !render_features(f) {return r;}
+  if p==RenderPassId.background {
+    r.valid=true;r.outputs=ifx f.post then 2 else 1;
+    if f.scene || f.surface {r.depth=RenderDepth.always;r.depth_write=f.traced_depth;}
+  } else if p==RenderPassId.shadow || p==RenderPassId.caster {
+    r.valid=ifx p==RenderPassId.shadow then f.shadow else f.casters;
+    r.outputs=0;r.depth=RenderDepth.less;r.depth_write=true;r.bias=2;r.slope=2;
+  } else if p==RenderPassId.scene || p==RenderPassId.grass || p==RenderPassId.surface {
+    r.valid=ifx p==RenderPassId.scene then f.scene else (ifx p==RenderPassId.grass then f.grass else f.surface);
+    r.outputs=ifx f.post then 2 else 1;r.depth=RenderDepth.less;r.depth_write=true;
+  } else if p==RenderPassId.water_transmit || p==RenderPassId.water_emit {
+    r.valid=f.water;r.outputs=ifx f.post then 2 else 1;r.depth=RenderDepth.less;r.aux_write=false;
+    r.colour=ifx p==RenderPassId.water_transmit then RenderBlend.multiply else RenderBlend.add;r.alpha=RenderBlend.keep;
+  } else if p==RenderPassId.particle_over || p==RenderPassId.particle {
+    r.valid=ifx p==RenderPassId.particle_over then f.particle_over else f.particles;
+    r.outputs=ifx f.post then 2 else 1;r.depth=RenderDepth.less;r.aux_write=false;
+    r.colour=ifx p==RenderPassId.particle_over then RenderBlend.over else RenderBlend.add;
+    r.alpha=ifx p==RenderPassId.particle_over then RenderBlend.under else RenderBlend.add;
+  } else if p==RenderPassId.bloom || p==RenderPassId.post {r.valid=f.post;
+  } else if p==RenderPassId.hud {
+    r.valid=true;r.colour=RenderBlend.maximum;r.alpha=RenderBlend.maximum;
+    if (f.scene || f.surface) && !f.post {r.depth=RenderDepth.always;}
+  }
+  return r;
+}
+
+rp_emit :: (q:[]RenderPlan,o:RenderOp) {
+  // The fixed graph below emits at most 42 ops. Counts become symbolic draw
+  // ranges, never more program instructions; the 256-entry array cannot fill.
+  q[0].ops[q[0].count]=o;q[0].count+=1;
+}
+rp_begin :: (q:[]RenderPlan,a:RenderTarget,b:RenderTarget,d:RenderTarget,keep:bool,store:bool) {
+  rp_emit(q,RenderOp.{kind=RenderOpKind.begin,colour0=a,colour1=b,depth=d,keep=keep,store_depth=store});
+}
+rp_draw :: (q:[]RenderPlan,f:RenderFeatures,p:RenderPassId,from:RenderDrawSource,first:int,n:int,instances:int) {
+  rp_emit(q,RenderOp.{kind=RenderOpKind.draw,pass=p,state=render_pass_state(f,p),draw_source=from,first=first,count=n,instances=instances});
+}
+render_plan :: (f:RenderFeatures,c:FrameCounts,ready:RenderReadiness,particles_ready:bool)->RenderPlan {
+  out:[1]RenderPlan;q:=out[..];q[0].readiness=ready;
+  if !render_features(f) || ready==RenderReadiness.invalid || c.width<1 || c.height<1 || c.vertex_stride<1 {return q[0];}
+  counts:=[8]int.[c.hud_vertices,c.draw_count,c.water_draws,c.grass_instances,c.particle_instances,c.surface_vertices,c.caster_vertices,c.caster_instances];
+  for n:counts {if n<0 || n>4294967295 {return q[0];}}
+  if c.water_draws>c.draw_count {return q[0];}
+  if ready==RenderReadiness.loading {q[0].status=RenderPlanStatus.loading;return q[0];}
+  draws:=ifx ready==RenderReadiness.ready && f.scene then c.draw_count else 0;
+  wet:=ifx f.water then c.water_draws else 0;
+  if draws==0 {wet=0;}
+  sparks:=ifx f.particles && particles_ready && draws>0 then c.particle_instances else 0;
+  scene:=draws-wet;
+  if f.shadow || f.casters {
+    rp_begin(q,RenderTarget.none,RenderTarget.none,RenderTarget.shadow_map,false,true);
+    if f.shadow && scene>0 {rp_draw(q,f,RenderPassId.shadow,RenderDrawSource.records,0,scene,1);}
+    if f.casters && c.caster_vertices>0 && c.caster_instances>0 {rp_draw(q,f,RenderPassId.caster,RenderDrawSource.vertices,0,c.caster_vertices,c.caster_instances);}
+    rp_emit(q,RenderOp.{kind=RenderOpKind.end});
+  }
+  colour:=ifx f.post then RenderTarget.light else RenderTarget.screen;
+  auxiliary:=ifx f.post then RenderTarget.aux else RenderTarget.none;
+  depth:=ifx f.scene || f.surface then RenderTarget.scene_depth else RenderTarget.none;
+  rp_begin(q,colour,auxiliary,depth,false,f.post);
+  rp_draw(q,f,RenderPassId.background,RenderDrawSource.vertices,0,3,1);
+  if f.grass && (f.casters || ready==RenderReadiness.ready) && c.grass_instances>0 {rp_draw(q,f,RenderPassId.grass,RenderDrawSource.vertices,0,3,c.grass_instances);}
+  if f.surface && c.surface_vertices>0 {rp_draw(q,f,RenderPassId.surface,RenderDrawSource.vertices,0,c.surface_vertices,1);}
+  if scene>0 {rp_draw(q,f,RenderPassId.scene,RenderDrawSource.records,0,scene,1);}
+  if (wet>0 || (sparks>0 && f.particle_depth)) && f.water_copy {
+    rp_emit(q,RenderOp.{kind=RenderOpKind.end});
+    rp_emit(q,RenderOp.{kind=RenderOpKind.copy,source=RenderTarget.light,target=RenderTarget.water_light});
+    rp_emit(q,RenderOp.{kind=RenderOpKind.copy,source=RenderTarget.scene_depth,target=RenderTarget.water_depth});
+    rp_begin(q,colour,auxiliary,depth,true,true);
+  }
+  if wet>0 {
+    rp_emit(q,RenderOp.{kind=RenderOpKind.each_begin,first=scene,count=wet});
+    rp_draw(q,f,RenderPassId.water_transmit,RenderDrawSource.current,0,1,1);
+    rp_draw(q,f,RenderPassId.water_emit,RenderDrawSource.current,0,1,1);
+    rp_emit(q,RenderOp.{kind=RenderOpKind.each_end});
+  }
+  if sparks>0 {
+    if f.particle_over {rp_draw(q,f,RenderPassId.particle_over,RenderDrawSource.vertices,0,6,sparks);}
+    rp_draw(q,f,RenderPassId.particle,RenderDrawSource.vertices,0,6,sparks);
+  }
+  if f.post {
+    rp_emit(q,RenderOp.{kind=RenderOpKind.end});
+    targets:=[5]RenderTarget.[RenderTarget.q0,RenderTarget.q1,RenderTarget.q0,RenderTarget.e1,RenderTarget.e0];
+    sources:=[5]RenderTarget.[RenderTarget.light,RenderTarget.q0,RenderTarget.q1,RenderTarget.q0,RenderTarget.e1];
+    steps:=[5][4]f32.[[4]f32.[0,0,0,4],[4]f32.[1,0,1,1],[4]f32.[0,1,1,1],[4]f32.[1,0,1,2],[4]f32.[0,1,1,1]];
+    for i:0..<5 {
+      rp_begin(q,targets[i],RenderTarget.none,RenderTarget.none,false,false);
+      rp_emit(q,RenderOp.{kind=RenderOpKind.draw,pass=RenderPassId.bloom,state=render_pass_state(f,RenderPassId.bloom),count=3,source=sources[i],bloom_step=steps[i]});
+      rp_emit(q,RenderOp.{kind=RenderOpKind.end});
+    }
+    rp_begin(q,RenderTarget.screen,RenderTarget.none,RenderTarget.none,false,false);
+    rp_draw(q,f,RenderPassId.post,RenderDrawSource.vertices,0,3,1);
+  }
+  if f.media {rp_emit(q,RenderOp.{kind=RenderOpKind.media_before});}
+  if c.hud_vertices>0 {rp_draw(q,f,RenderPassId.hud,RenderDrawSource.vertices,0,c.hud_vertices,1);}
+  if f.media {rp_emit(q,RenderOp.{kind=RenderOpKind.media_after});}
+  rp_emit(q,RenderOp.{kind=RenderOpKind.end});q[0].status=RenderPlanStatus.ok;return q[0];
+}

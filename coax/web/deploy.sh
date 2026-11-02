@@ -34,9 +34,12 @@ bun build "$here/host.js" --target browser --format esm --outfile "$stage/host.j
 # The page, index.html at the bucket's root as the CDN serves it. The wasm,
 # shaders and host script are named by their content (cached for good); the
 # page names them (data-wasm, data-wgsl) and is checked on every visit.
-python3 - "$app" "$stage/host.js" "$stage" <<'PY'
+python3 - "$app" "$stage/host.js" "$stage" "$here" <<'PY'
 import hashlib, json, os, re, shutil, sys
-app, host, stage = sys.argv[1:]
+app, host, stage, tools = sys.argv[1:]
+from pathlib import Path
+sys.path.insert(0, tools)
+from render_stage import stage_package
 assets, site = os.path.join(stage, "assets"), os.path.join(stage, "site")
 def put(src, rel):
     h = hashlib.sha256(open(src, "rb").read()).hexdigest()[:12]
@@ -70,6 +73,7 @@ for f in pages:
         wasm = put(os.path.join(app, "build", name + ".wasm"), f"build/{name}.wasm")
         wgsl = put(os.path.join(app, name + ".wgsl"), f"build/{name}.wgsl")
         rest = m.group(1)
+        rest = re.sub(r'data-render="([^"]+)"', lambda r: 'data-render="' + stage_package(Path(app), r.group(1), Path(stage)) + '"', rest)
         # A scene's assets (data-assets): each URL named by its content too,
         # under /build/ (the page's directory's assets/ in development).
         def asset(u):

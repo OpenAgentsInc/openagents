@@ -1,0 +1,26 @@
+#forall "reference pipeline work profiles retain standard bounds and admit a bounded large world" which:0..<8 {
+ tree:=RP_NOATTR_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);pipeline:=rr_pipeline(p,tree[..],meta[..]);#assert pipeline.status==RQStatus.ok;
+ resources:RQResources;bindings:[]RRBinding;attributes:RRAttributes;draws:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=3,instances=1}];indices:[]u32;memory:[RQ_IR_WORDS]u32;scratch:[4]RRPixel;target:[5]RRPixel;for j:0..<5 {target[j].colour.r=42;}
+ state:=RenderPassState.{valid=true,outputs=1};profile:=RRWorkProfile.standard;budget:=100000000;expected:=RQStatus.ok;
+ if which==1 {budget=100000001;expected=RQStatus.resource;}
+ if which>=2 {profile=RRWorkProfile.large_world;budget=1000000000;}
+ if which==3 {budget=1000000001;expected=RQStatus.resource;}
+ if which==4 {profile=RRWorkProfile.invalid;expected=RQStatus.unsupported;}
+ if which==5 {profile=rr_work_profile("LARGE-WORLD");expected=RQStatus.unsupported;}
+ if which==6 {budget=1;expected=RQStatus.budget;}
+ if which==7 {budget=0;expected=RQStatus.resource;}
+ q:=rr_reference_pass_work_profile(pipeline,p,tree[..],meta[..],resources,bindings,attributes,draws[..],indices,state,2,2,RRFormat.f32,budget,memory[..],scratch[..],target[..],RRRasterProfile.{},profile);
+ #assert q.status==expected;#assert target[4].colour.r==42;
+ if expected==RQStatus.ok {#assert q.written==4 && q.steps>0;for j:0..<4 {#assert target[j].colour.r==f32(j%2)+0.5 && target[j].colour.g==f32(j/2)+0.5 && target[j].colour.a==1;}}
+ else {#assert q.written==0;for j:0..<4 {#assert target[j].colour.r==42;}}
+ // Existing callers remain on the standard profile even after the new API.
+ target[0].colour.r=77;q=rr_reference_pass_profile(pipeline,p,tree[..],meta[..],resources,bindings,attributes,draws[..],indices,state,2,2,RRFormat.f32,100000001,memory[..],scratch[..],target[..],RRRasterProfile.{});#assert q.status==RQStatus.resource && target[0].colour.r==77;
+}
+#forall "reference complex world keeps wide pass budgets separate from bounded IR invocations" which:0..<3 {
+ tree:=RP_NOATTR_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);pipeline:=rr_pipeline(p,tree[..],meta[..]);resources:RQResources;bindings:[]RRBinding;attributes:RRAttributes;draws:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=3,instances=1}];indices:[]u32;memory:[RQ_IR_WORDS]u32;scratch:[4]RRPixel;target:[5]RRPixel;for j:0..<5 {target[j].colour.r=42;}
+ budget:=3000000000;expected:=RQStatus.ok;if which==1 {budget=3000000001;expected=RQStatus.resource;}if which==2 {budget=2147483648;}
+ q:=rr_reference_pass_work_profile(pipeline,p,tree[..],meta[..],resources,bindings,attributes,draws[..],indices,RenderPassState.{valid=true,outputs=1},2,2,RRFormat.f32,budget,memory[..],scratch[..],target[..],RRRasterProfile.{},RRWorkProfile.complex_world);
+ #assert q.status==expected && target[4].colour.r==42;
+ if expected==RQStatus.ok {#assert q.written==4;for j:0..<4 {#assert target[j].colour.r==f32(j%2)+0.5 && target[j].colour.g==f32(j/2)+0.5;}}
+ else {#assert q.written==0;for j:0..<4 {#assert target[j].colour.r==42;}}
+}

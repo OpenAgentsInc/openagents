@@ -1,3 +1,4 @@
+#load "../aethyr/render/noise.coax";
 // The art styles' shading functions (docs/verse/art-styles.md), as plain f32
 // functions the realms' WGSL calls. coax wgsl emits them into a
 // realm's WGSL between "// ---- generated: verse/style.coax" markers, the
@@ -133,9 +134,11 @@ verse_style_halo :: (cos_t:f32,k:f32)->f32 #export_c {return exp(-k*st_max(1.0f3
 // ---- 5b. Clouds: one dome layer (1,500 m), two octaves of value noise (one on a on_phone), cut soft,
 // shaded in two tones. Fairy Forest's sky is these, lifted into the engine.
 // A hash of a lattice point, 0 to 1.
+#test "style live lattice uses the portable integer noise profile" {
+ #assert f32_bits(verse_style_hash(1,2))==0x3f6013da;
+}
 verse_style_hash :: (x:f32,y:f32)->f32 #export_c {
- v:=sin(x*127.1f32+y*311.7f32)*43758.5453f32;
- return v-floor(v);
+ return render_noise2(x,y);
 }
 // Value noise at (x, y): the four lattice hashes round it, eased between.
 verse_style_noise :: (x:f32,y:f32)->f32 #export_c {

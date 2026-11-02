@@ -1,0 +1,12 @@
+{
+  "scope": "Exact retained source snapshots and execution receipts; earlier snapshots are preserved separately.",
+  "files": {
+    "aethyr-ch11-frame-run-checks-2.log": "32c4c5cc2acc5e15d08fbcd06e6693b3773ffdeaee55ce314bc854190864a7fc",
+    "aethyr-ch11-frame-run-raw-input.log": "1ddabeb049d1cc314a056ad5fe6528d212e8491b7649eacce2c26fcabace5781",
+    "aethyr/render/tests/reference-frame-post-checks.coax": "4149c0918cb841ebbc5a9e2bbdc0bf8bb31cee3f8a0a6db787e983b45fe699aa",
+    "aethyr/render/tests/reference-frame-post-trees.coax": "deed19ff08d00a296dfa2f45fdb1649d14632cd8dc5e2c565d63a1dad7e629f3",
+    "aethyr/render/tests/reference-frame-post-shader.coax": "8bb3a5179c951cbd97a959ef62eba0ad397f530f3bace29f41d310a3c5f996e2",
+    "aethyr/render/tests/reference-frame-run-checks.coax": "c4578a3c6eaadf077c96a30d88622cb24ac8c9c415096d1b7fd4d31e975f78a6",
+    "artifacts.tar.gz": "071778330bfaf79e611e5aac73c73a97259d9aaeac252e05a1243cb6649a3580"
+  }
+}

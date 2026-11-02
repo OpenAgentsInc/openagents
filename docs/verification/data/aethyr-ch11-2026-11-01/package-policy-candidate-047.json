@@ -1,0 +1,17 @@
+{
+  "schema": "aethyr.render.package.policy.candidate.v1",
+  "status": "provisional",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "compiler_source_digest": "604574a88c8273b0c110f34779cba55817778ecee02c4a797dbb79c9af6a6220",
+  "source_sha256": {
+    "aethyr/render/package.coax": "3be4e9983ce36a9e3ce2d204b305c907203ceb2041d09bae038397b72db65e1a",
+    "aethyr/render/tests/package-checks.coax": "8870d66e49dae972bd91caf5b05fe4ec69cad015eabbc714ad05dabd283da470",
+    "aethyr/render/interface.coax": "1bdb5ecfa89923f5284d3629729818a0ab018f6eb9ab478106e1117c064b9be9"
+  },
+  "root_mutants": {
+    "package": 503,
+    "interface": 61
+  },
+  "survivors": 0,
+  "scope": "Pure runtime package JSON/catalog/interface/device/hash admission. Caller retains JSON and a separate candidate entry array. Byte requirement probes check framed opcodes, not complete SPIRV validity. Final merged compiler/native/Wasm integration pending."
+}

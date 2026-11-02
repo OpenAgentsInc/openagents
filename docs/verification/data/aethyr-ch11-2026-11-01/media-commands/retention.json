@@ -1,0 +1,13 @@
+{
+  "scope": "Exact native run artifacts and current unit source snapshots. Earlier native receipts retain their own recorded source identities; test-local prefixes are separately qualified by the current root mutation log.",
+  "files": {
+    "native-artifacts.tar.gz": "fcca7e514a84edb915fbd8afeffa0252dce52e9590a180b5516bf03e52af788e",
+    "aethyr-ch11-media-native-2.json": "070b69f294f40f764f7a3feb31b97c416cb2a405eb38b701f2b894fe76724ab0",
+    "aethyr-ch11-media-commands-mutate-4.log": "56fd9af2b343cdb52b5f3efb912e08dc463b12bd9e10d583572e6d6226a9ba7a",
+    "aethyr-ch11-media-carrier-prefix-mutate.log": "56fd9af2b343cdb52b5f3efb912e08dc463b12bd9e10d583572e6d6226a9ba7a",
+    "aethyr/render/media-commands.coax": "e678478059fea2231f99d14e6f571018ccdfba409879eb80898945cce996f3de",
+    "aethyr/render/media-limits.coax": "2eee681d405e9f77a78fe0b664a8d7ec708b7931229a74ea8922172819da8bef",
+    "aethyr/render/tests/media-commands-checks.coax": "f9fb7892da60194892dd03358eefbd71bea7ba3c16ce2a7d14ca927bff2b834a",
+    "aethyr/render/tests/check_media_commands.py": "e3e101a21b7504de02dfb9f69cacb44ef8bbb3e74698f5aa086a6fd4b97bc90b"
+  }
+}

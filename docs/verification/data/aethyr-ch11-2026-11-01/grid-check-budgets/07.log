@@ -1,0 +1,13 @@
+ok   #test a project with as many rows as the live fold hands up is ready, one more is refused (1 case, 48632427 steps, 2857 ms)
+        own steps  share   with calls     calls  procedure
+         18067098  37.2%     23303049     68493  json_string  coax/lib/nostr/json.coax:103
+         16262546  33.4%     43449550    151078  json_next  coax/lib/nostr/json.coax:194
+          3386640   7.0%      3386640    282220  json_utf8  coax/lib/nostr/json.coax:88
+          2281689   4.7%      2281689     84507  json_token  coax/lib/nostr/json.coax:69
+          2009823   4.1%     11329573     44174  json_value  coax/lib/nostr/json.coax:161
+          1575840   3.2%     42055938      6402  hn_field  apps/openagents-web/newland-network.coax:92
+           685508   1.4%     10220872     29442  hn_raw  apps/openagents-web/newland-network.coax:88
+           574620   1.2%       574620      1925  json_raw  coax/lib/nostr/json.coax:347
+     ... 29 more procedures
+1 of 114 checks (--only 'a project with as many rows as the live fold hands up is ready, one more is refused'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

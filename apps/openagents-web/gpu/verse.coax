@@ -1,7 +1,9 @@
 // verse's shaders, the source of apps/openagents-web/verse.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (verse.module,
 // verse.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/noise.coax";
 #load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/render/sans-filter.coax";
 
 // The Verse landing and galaxy's two passes: the night behind (the
 // playtest's field: a nebula and stars, and the plates verse.coax lays out) and the strokes over it (words, orbs, orbits and worlds). Every
@@ -128,8 +130,11 @@ verse_panels :: (p:V2,under:V3,u:[]f32)->V3 {
   }
   return c;
 }
+#test "verse_hash live lattice uses the portable integer noise profile" {
+  #assert f32_bits(verse_hash(v2(1,2)))==0x3f6013da;
+}
 verse_hash :: (p:V2)->f32 {
-  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+  return render_noise2(p.x,p.y);
 }
 verse_noise :: (p:V2)->f32 {
   i:V2=wg_floor_f2(p);
@@ -210,7 +215,7 @@ verse_fx_fs :: (v:VerseV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
   if (v.tint.w>3.5f32) {
     // a sans glyph (font.coax draw_sans): place is the atlas coordinate, shape.x the em in pixels
     lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
-    a:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    a:f32=pow(render_sans_sample(sans_atlas,v.place,lod).w,0.85f32);
     return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),a),fmin(v.shape.z*1.15f32,1.0f32)),u[3]),1.0f32);
   }
   along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);

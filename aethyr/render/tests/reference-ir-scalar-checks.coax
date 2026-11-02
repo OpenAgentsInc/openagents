@@ -1,0 +1,104 @@
+// Expected integer words come from Python unbounded arithmetic, not the VM.
+rq_ir_scalar_meta :: (meta:[]int) {
+ for t:0..<7 {meta[t*8]=t;meta[t*8+2]=ifx t==0 then 0 else (ifx t>=5 then 2 else 1);meta[t*8+3]=ifx t==0 then 0 else (ifx t==1 then 1 else (ifx t>=5 then 8 else 4));}
+}
+RQ_IR_INTEGER_EXPECTED :: [256]u64.[1,2,123456796,2147483657,4294967295,4294967292,123456782,2147483639,0,4294967293,864197523,2147483648,0,0,17636684,4056358002,0,4294967295,1,4294967294,1,1,0,1,1,1,0,1,0,0,1,0,0,0,1,0,0,0,0,0,1,1,1,1,0,3,5,0,1,4294967295,123456791,2147483657,1,4294967292,123456786,2147483657,0,4294967288,2917567104,0,0,4294967295,964506,4290772992,1,2,123456796,2147483657,4294967295,4294967292,123456782,2147483639,0,4294967293,864197523,2147483648,0,1431655765,17636684,238609294,0,0,1,2,1,0,0,0,1,0,0,0,0,1,1,1,0,1,1,1,0,0,0,0,1,1,1,1,0,3,5,0,1,4294967295,123456791,2147483657,1,4294967292,123456786,2147483657,0,4294967288,2917567104,0,0,536870911,964506,4194304,1,2,1234567890123456796,9223372036854775817,18446744073709551615,18446744073709551612,1234567890123456782,9223372036854775799,0,18446744073709551613,8641975230864197523,9223372036854775808,0,0,176366841446208112,17421924958503465416,0,18446744073709551615,5,18446744073709551608,1,1,0,1,1,1,0,1,0,0,1,0,0,0,1,0,0,0,0,0,1,1,1,1,0,3,5,0,1,18446744073709551615,1234567890123456791,9223372036854775817,1,18446744073709551612,1234567890123456786,9223372036854775817,0,18446744073709551608,10450737346126056064,0,0,18446744073709551615,9645061641589506,18428729675200069632,1,2,1234567890123456796,9223372036854775817,18446744073709551615,18446744073709551612,1234567890123456782,9223372036854775799,0,18446744073709551613,8641975230864197523,9223372036854775808,0,6148914691236517205,176366841446208112,1024819115206086200,0,0,5,8,1,0,0,0,1,0,0,0,0,1,1,1,0,1,1,1,0,0,0,0,1,1,1,1,0,3,5,0,1,18446744073709551615,1234567890123456791,9223372036854775817,1,18446744073709551612,1234567890123456786,9223372036854775817,0,18446744073709551608,10450737346126056064,0,0,2305843009213693951,9645061641589506,18014398509481984];
+#forall "quad integer instruction words match an independent unbounded oracle" kind:0..<4, which:0..<16 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ types:=[4]int.[3,4,5,6];ops:=[16]int.[1,2,3,4,5,6,7,8,9,10,11,14,15,16,17,18];
+ x32:=[4]u64.[0,4294967295,123456789,2147483648];x64:=[4]u64.[0,18446744073709551615,1234567890123456789,9223372036854775808];y:=[4]u64.[1,3,7,9];
+ a:=rq_ir_value(m[..],meta[..],memory[..],types[kind]);b:=rq_ir_value(m[..],meta[..],memory[..],types[kind]);
+ for lane:0..<4 {rq_ir_put_u64(memory[..],a,lane,ifx kind<2 then x32[lane] else x64[lane]);rq_ir_put_u64(memory[..],b,lane,y[lane]);}
+ result_words:=ifx ops[which]>=6 && ops[which]<=11 then 1 else a.words;
+ memory[m[0].used+result_words*4]=3735928559;
+ r:=rq_ir_binary(m[..],meta[..],memory[..],ops[which],a,b,15);#assert m[0].status==RQStatus.ok && memory[m[0].used]==3735928559;
+ for lane:0..<4 {#assert rq_ir_u64(memory[..],r,lane)==RQ_IR_INTEGER_EXPECTED[(kind*16+which)*4+lane];}
+}
+RQ_IR_FLOAT_EXPECTED :: [40]u64.[1086324736,3212836864,1084227584,1065353216,3221225472,3231711232,3231711232,1073741824,1090519040,3233808384,0,3208642560,1056964608,3217031168,0,3225419776,1,1,1,0,1,1,1,0,0,0,0,1,0,0,0,1,0,0,0,0,1,1,1,1];
+#forall "quad f32 arithmetic and comparisons retain independent words" which:0..<10 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ ops:=[10]int.[1,2,3,4,6,7,8,9,10,11];xs:=[4]f32.[2,-3,0,1.5];ys:=[4]f32.[4,2,5,-0.5];
+ a:=rq_ir_value(m[..],meta[..],memory[..],2);b:=rq_ir_value(m[..],meta[..],memory[..],2);
+ for lane:0..<4 {rq_ir_put_f32(memory[..],a,lane,xs[lane]);rq_ir_put_f32(memory[..],b,lane,ys[lane]);}
+ r:=rq_ir_binary(m[..],meta[..],memory[..],ops[which],a,b,15);#assert m[0].status==RQStatus.ok;
+ for lane:0..<4 {#assert rq_ir_u64(memory[..],r,lane)==RQ_IR_FLOAT_EXPECTED[which*4+lane];}
+}
+#forall "quad Boolean instructions cover every truth-table row" which:0..<4 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ ops:=[4]int.[10,11,12,13];xs:=[4]u64.[0,1,0,1];ys:=[4]u64.[1,0,0,1];expected:=[16]u64.[0,0,1,1,1,1,0,0,0,0,0,1,1,1,0,1];
+ a:=rq_ir_value(m[..],meta[..],memory[..],1);b:=rq_ir_value(m[..],meta[..],memory[..],1);
+ for lane:0..<4 {rq_ir_put_u64(memory[..],a,lane,xs[lane]);rq_ir_put_u64(memory[..],b,lane,ys[lane]);}
+ r:=rq_ir_binary(m[..],meta[..],memory[..],ops[which],a,b,15);#assert m[0].status==RQStatus.ok;
+ for lane:0..<4 {#assert rq_ir_u64(memory[..],r,lane)==expected[which*4+lane];}
+}
+#forall "quad integer division and shifts refuse undefined operand domains" which:0..<3 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ a:=rq_ir_value(m[..],meta[..],memory[..],5);b:=rq_ir_value(m[..],meta[..],memory[..],5);ops:=[3]int.[4,4,17];
+ for lane:0..<4 {rq_ir_put_u64(memory[..],a,lane,ifx which==1 then 9223372036854775808 else 1);rq_ir_put_u64(memory[..],b,lane,ifx which==0 then 0 else (ifx which==1 then 18446744073709551615 else 64));}
+ r:=rq_ir_binary(m[..],meta[..],memory[..],ops[which],a,b,15);#assert m[0].status==RQStatus.unsupported;
+}
+#forall "quad scalar math instructions agree with independent analytic references" fn:1..<10 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ xs:=[9]f32.[0.5,0.5,0.25,0.5,2,2,-1.25,-2.5,2];expected:=[9]f32.[0.4794255386,0.8775825619,0.2553419212,1.6487212707,0.6931471806,1.4142135624,-2,2.5,8];
+ a:=rq_ir_value(m[..],meta[..],memory[..],2);b:=rq_ir_value(m[..],meta[..],memory[..],2);
+ for lane:0..<4 {rq_ir_put_f32(memory[..],a,lane,xs[fn-1]);rq_ir_put_f32(memory[..],b,lane,3);}
+ args:=[2]RQValue.[a,b];count:=ifx fn==9 then 2 else 1;
+ r:=rq_ir_math(m[..],meta[..],memory[..],fn,args[0..<count],5);#assert m[0].status==RQStatus.ok;
+ #assert abs(rq_ir_f32(memory[..],r,0)-expected[fn-1])<0.000001 && abs(rq_ir_f32(memory[..],r,2)-expected[fn-1])<0.000001;
+ #assert rq_ir_u64(memory[..],r,1)==0 && rq_ir_u64(memory[..],r,3)==0;
+}
+#forall "quad math arity opcode and both argument types are checked" which:0..<7 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ a:=rq_ir_value(m[..],meta[..],memory[..],2);b:=rq_ir_value(m[..],meta[..],memory[..],3);args:=[3]RQValue.[a,a,a];
+ fn:=1;n:=1;
+ if which==0 {n=0;}if which==1 {n=3;}if which==2 {args[0]=b;}if which==3 {fn=0;}if which==4 {fn=10;}
+ if which==5 {fn=9;n=1;}if which==6 {fn=9;n=2;args[1]=b;}
+ r:=rq_ir_math(m[..],meta[..],memory[..],fn,args[0..<n],15);#assert m[0].status==RQStatus.unsupported;
+}
+#forall "quad numeric comparison boundaries include equality for every scalar width" ty:2..<7, op:6..<12 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ a:=rq_ir_value(m[..],meta[..],memory[..],ty);b:=rq_ir_value(m[..],meta[..],memory[..],ty);
+ for lane:0..<4 {rq_ir_put_u64(memory[..],a,lane,ifx ty==2 then 1065353216 else 7);rq_ir_put_u64(memory[..],b,lane,ifx ty==2 then 1065353216 else 7);}
+ r:=rq_ir_binary(m[..],meta[..],memory[..],op,a,b,5);#assert m[0].status==RQStatus.ok;
+ wanted:u64=ifx op==7 || op==9 || op==10 then 1 else 0;
+ #assert rq_ir_u64(memory[..],r,0)==wanted && rq_ir_u64(memory[..],r,2)==wanted && rq_ir_u64(memory[..],r,1)==0 && rq_ir_u64(memory[..],r,3)==0;
+}
+#forall "quad shift domains admit the last bit and reject the width for signed and unsigned values" ty:3..<7 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ width:=ifx ty>=5 then 64 else 32;a:=rq_ir_value(m[..],meta[..],memory[..],ty);b:=rq_ir_value(m[..],meta[..],memory[..],ty);
+ for lane:0..<4 {rq_ir_put_u64(memory[..],a,lane,1);rq_ir_put_u64(memory[..],b,lane,cast(u64)(width-1));}
+ r:=rq_ir_binary(m[..],meta[..],memory[..],17,a,b,15);#assert m[0].status==RQStatus.ok;
+ #assert rq_ir_u64(memory[..],r,0)==(cast(u64)1<<cast(u32)(width-1));
+ for lane:0..<4 {rq_ir_put_u64(memory[..],b,lane,cast(u64)width);}
+ r=rq_ir_binary(m[..],meta[..],memory[..],18,a,b,15);#assert m[0].status==RQStatus.unsupported;
+}
+#forall "quad rejects scalar operation classes unavailable in the GPU registry" which:0..<5 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+ ty:=ifx which==0 then 1 else (ifx which==1 then 2 else 3);op:=ifx which==0 then 1 else (ifx which==1 then 5 else (ifx which==2 then 12 else (ifx which==3 then 0 else 19)));
+ a:=rq_ir_value(m[..],meta[..],memory[..],ty);b:=rq_ir_value(m[..],meta[..],memory[..],ty);
+ for lane:0..<4 {rq_ir_put_u64(memory[..],b,lane,1);}
+ r:=rq_ir_binary(m[..],meta[..],memory[..],op,a,b,15);#assert m[0].status==RQStatus.unsupported;
+}
+#forall "quad integer index conversion retains unsigned range and signed high bits" which:0..<8 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[16]u32;
+ types:=[8]int.[3,4,5,6,6,6,2,1];raw:=[8]u64.[4294967295,4294967295,9223372036854775808,9223372036854775807,9223372036854775808,18446744073709551615,1065353216,1];
+ expected:=[8]int.[-1,4294967295,(-9223372036854775807-1),9223372036854775807,0,0,0,0];
+ a:=rq_ir_value(m[..],meta[..],memory[..],types[which]);rq_ir_put_u64(memory[..],a,0,raw[which]);n:=rq_ir_integer(m[..],meta[..],memory[..],a,0);#assert n==expected[which];
+ if which<4 {#assert m[0].status==RQStatus.ok;}else if which<6 {#assert m[0].status==RQStatus.resource;}else {#assert m[0].status==RQStatus.malformed;}
+}
+#forall "quad signed division and remainder sign extend both operands independently" ty:3..<6, op:4..<6 {
+ if ty!=4 {
+  meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);m:=[1]RQMachine.[RQMachine.{types=7}];memory:[64]u32;
+  xs:=[4]int.[7,-7,-7,7];ys:=[4]int.[-3,-3,3,-1];quotients:=[4]int.[-2,2,-2,-7];remainders:=[4]int.[1,-1,-1,0];
+  a:=rq_ir_value(m[..],meta[..],memory[..],ty);b:=rq_ir_value(m[..],meta[..],memory[..],ty);
+  for lane:0..<4 {rq_ir_put_u64(memory[..],a,lane,cast,trunc(u64)xs[lane]);rq_ir_put_u64(memory[..],b,lane,cast,trunc(u64)ys[lane]);}
+  r:=rq_ir_binary(m[..],meta[..],memory[..],op,a,b,15);#assert m[0].status==RQStatus.ok;
+  for lane:0..<4 {wanted:=ifx op==4 then quotients[lane] else remainders[lane];#assert rq_ir_integer(m[..],meta[..],memory[..],r,lane)==wanted;}
+ }
+}
+#forall "quad nonnumeric and logical opcode boundaries refuse before any lane work" which:0..<5 {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);meta[7*8]=7;meta[7*8+2]=1;meta[7*8+3]=4;
+ m:=[1]RQMachine.[RQMachine.{types=8}];memory:[64]u32;
+ types:=[5]int.[0,7,1,2,3];ops:=[5]int.[1,1,14,12,13];a:=rq_ir_value(m[..],meta[..],memory[..],types[which]);b:=rq_ir_value(m[..],meta[..],memory[..],types[which]);
+ r:=rq_ir_binary(m[..],meta[..],memory[..],ops[which],a,b,15);#assert m[0].status==RQStatus.unsupported;
+}

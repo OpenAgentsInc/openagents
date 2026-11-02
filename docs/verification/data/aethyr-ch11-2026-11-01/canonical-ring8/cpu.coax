@@ -1,0 +1,6 @@
+#load "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-ring8-probe.coax";
+ring8_cpu_sample :: (u:[]f32)->V4 #export_c {return render_ring8_probe_fs(render_ring8_probe_vs(0,0,u),u);}
+ring8_cpu_refusal :: (polar:bool,sample:u32)->V4 #export_c {
+ q:=ifx polar then render_capsule2_polar(sample) else render_ring8_direction(sample);
+ return v4(ifx q.valid then 1.0f32 else 0.0f32,q.direction.x,q.direction.y,0);
+}

@@ -1,0 +1,7 @@
+FAIL #test host media origin keeps the existing 112 line window independently of stores (0 ms)
+aethyr/render/tests/host-bindings-checks.coax:155:3: error[E0406]: assertion failed
+    #assert render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.media_image,index=48},rhbt_out[..])=="media_image-48";
+    ^
+  note: in #test host media origin keeps the existing 112 line window independently of stores
+1 of 78 checks (--only '112 line'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

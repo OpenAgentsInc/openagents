@@ -1,0 +1,163 @@
+{
+  "schema": "aethyr.render.sans-profile.v1",
+  "status": "pass",
+  "compiler_version": "coax0 0.47.0",
+  "compiler_sha256": "2ca1c98e15b57b7eda2599ec2a2d067a5ca9facd1bdb339a0bf8b010e6e63c9f",
+  "compiler_source_digest": "e6ff8496512cc28c7afedec71a9fe28a423ab340b298ba1309e24d5b4f7e6de5",
+  "compiler_current_sources_match": true,
+  "source_closures_sha256": {
+    "policy": {
+      "aethyr/render/sans-profile.coax": "f8256f8dbf05657b8854c545e7e1267114eb8231c9a2e52bdd15089318b10993",
+      "aethyr/render/tests/sans-profile-checks.coax": "3354d74a7b74c373993ba36c570c80da3b44665d125f48af0ea5a0e88144fcdc"
+    },
+    "font_consumer": {
+      "apps/openagents-web/droprealm.coax": "8d67bbf809081fd1fc8f0e03e9776afb6f429c466d331e07c21a7d9f87684c41",
+      "apps/openagents-web/font.coax": "33cf62e6db938c502dcd67871fbd989e624c1c2861e01737be83afd16edfca20",
+      "aethyr/render/sans-profile.coax": "f8256f8dbf05657b8854c545e7e1267114eb8231c9a2e52bdd15089318b10993",
+      "aethyr/render/tests/sans-profile-checks.coax": "3354d74a7b74c373993ba36c570c80da3b44665d125f48af0ea5a0e88144fcdc",
+      "apps/openagents-web/ui.coax": "1578e8fc6b7d4646268be1c01b75705541981935c3c04edfd1c428296bb561af",
+      "aethyr/budget.coax": "4b188127c8fa9a250d3a3ec7a2065611e90ea309a941c387a24c4ba478275036"
+    },
+    "offline_tool": {
+      "verse/tools/sans-atlas.coax": "ba5ed650f09e5ff5861ff0c6e2a1b0d17bbd8d6589fff3d704db92dc0891b952",
+      "coax/lib/sys/tool.coax": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70",
+      "coax/lib/sys/args.coax": "9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3",
+      "coax/lib/sys/fs.coax": "b5cc6abf4c76ecd416e00bada836c7321e4f342ac58a17546ad53faa20d18614",
+      "coax/lib/sys/proc.coax": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b",
+      "coax/lib/image/png.coax": "5377d3f5ec8781f1d63d86c24cb7a0a96ca0103e0c83d1e518be145a2e169a1b",
+      "coax/lib/image/inflate.coax": "9151e5113ecb6ca43a0c14abfb62a13105e7b4921dfc7039b3ca1356a4e44a20",
+      "aethyr/render/sans-profile.coax": "f8256f8dbf05657b8854c545e7e1267114eb8231c9a2e52bdd15089318b10993",
+      "aethyr/render/tests/sans-profile-checks.coax": "3354d74a7b74c373993ba36c570c80da3b44665d125f48af0ea5a0e88144fcdc"
+    }
+  },
+  "policy": {
+    "checks": 4,
+    "root_mutants": 94,
+    "killed": 94,
+    "survivors": 0
+  },
+  "font_consumer": {
+    "entry": "apps/openagents-web/droprealm.coax",
+    "checks": 41,
+    "passed": 41,
+    "old_font_checks": 7,
+    "new_font_checks": 1,
+    "codepoints_roundtripped": 111,
+    "width_table_unchanged_sha256": "adce3972ed4655dda550cb1cdfd22404c2c11ad4e4cdc21e618dc1898f6df3cd"
+  },
+  "offline_tool": {
+    "checks": 23,
+    "passed": 23,
+    "script_bytes": 8206
+  },
+  "legacy_pixel_parity": {
+    "schema": "aethyr-sans-legacy-pixel-parity-v1",
+    "status": "pass",
+    "bytes": 1374912,
+    "alpha_sha256": "de9a635cb675ea2e2e70a9ff5ce2a9cfd51dfc513204b92e3d889c3cc4127dc3",
+    "frozen_legacy_tool_sha256": "68b4293eacd776806ac9f7dc49a3c77d2034ea1f891085926e4ae7c92f33cf1b",
+    "frozen_legacy_host_sha256": "75a3c43b77598ca3d3b2e1074dace3fdfccf6399e75c855a9ad1b9a5aceacda5",
+    "legacy_script_sha256": "f2e8b3d49e9c22cd317ca657d5ebb0f4028da7f9080f93025d4846781184ebe4",
+    "legacy_png_sha256": "7744946435851aa76ce4186d620bf24e66afdab1ae8a22505ea32ef155a1daa4",
+    "new_script_sha256": "47216134ac5759f08f2766f8fad1edc246bb31cc011e989654484cfc42f6a75c",
+    "elapsed_seconds": 2.656,
+    "scope": "Current offline Coax command generation versus frozen legacy JavaScript raster policy, identical alpha bytes for every mip on this machine. This does not qualify the WebGPU-uploaded texture; its actual RGBA capture is separate."
+  },
+  "legacy_reference_commit": "7430fcb133b68bf34042daff64be23f421c1437d",
+  "alpha_payload": {
+    "bytes": 1374912,
+    "sha256": "de9a635cb675ea2e2e70a9ff5ce2a9cfd51dfc513204b92e3d889c3cc4127dc3",
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/alpha.bin.zlib"
+  },
+  "frontend_composition": {
+    "hold-the-stair": {
+      "status": "pass",
+      "log_sha256": "745bb69090ba42c13d7d0590a834c4512cd9ecf1a1f3450e326b2cd2bf5dad44"
+    },
+    "fairy-forest": {
+      "status": "pass",
+      "log_sha256": "ffb9a4f15399188f956340870c0984130697681c22b1c9e015c2a1834b5cb9a1"
+    },
+    "garden": {
+      "status": "pass",
+      "log_sha256": "1c732c53b5605ab82556b34f05dbde3ab9bd21e8e2535cf8fd3352e382843c63"
+    },
+    "drop": {
+      "status": "pass",
+      "log_sha256": "0fc77ca44957b9f56c0a269be7c23cfd6d214207e4507be93dc8a11547914670"
+    },
+    "sandbox": {
+      "status": "pass",
+      "log_sha256": "bb7e4eae1bcac4bf84b131445b93e9b34a83ab3fb96968fae9e72374b0f2111e"
+    },
+    "everglade": {
+      "status": "blocked",
+      "log_sha256": "a3bbd72216392f9cfb348f3b6492f4dde7ab842e3e2e155add555cb53684aa6d"
+    },
+    "fixture": {
+      "status": "pass",
+      "log_sha256": "a1a2bb2ef1678516feeab4ecebf5f8d6688a5a34cd093ac9020824cdd76bb46b"
+    },
+    "haunted-house": {
+      "status": "pass",
+      "log_sha256": "bb7e4eae1bcac4bf84b131445b93e9b34a83ab3fb96968fae9e72374b0f2111e"
+    },
+    "watchtower": {
+      "status": "pass",
+      "log_sha256": "40bc42b2ed9d9f50fdaf50d2e56d0df0fda5bef1430ac3ab76015c80386b2a6c"
+    },
+    "dead-gears": {
+      "status": "pass",
+      "log_sha256": "f80ff6ca8be9d9644676929b390bf9a55d4ae02027ec635ad8f95a69f0ffb540"
+    },
+    "hecates-cemetery": {
+      "status": "pass",
+      "log_sha256": "a481b69d086e442f01d33ed13c5ca7072d1237dc5d787a9802ccf4e90ff3fbe1"
+    },
+    "built": {
+      "status": "pass",
+      "log_sha256": "a5605797002e5d07a53cd012e41a1cb854d2770088b158a0b6deb8657c9b4c04"
+    },
+    "waterlab": {
+      "status": "pass",
+      "log_sha256": "10c33a7c1f54aecf55c62f2fb70c4563609c1485acda64834a04fc59985301d5"
+    },
+    "ice-cream-man": {
+      "status": "pass",
+      "log_sha256": "8e32a275afc955aeadb562465bfd43f5958bfb231e8fbb83066ef44028ab90fa"
+    },
+    "orbit-league": {
+      "status": "pass",
+      "log_sha256": "e4cc96e25e09994af3de3190f24dbbdab2efb840e3203c9de349b97782da2521"
+    },
+    "galaxy": {
+      "status": "pass",
+      "log_sha256": "efc416f6dbd7553f7703fcc47c01a317633f8fe28bb7bdf1d3f3e92a7565c1d0"
+    },
+    "the-grid": {
+      "status": "pass",
+      "log_sha256": "1b028376841bf30d025f19de972c0e6cbf4a4f2ebd6cb5cf82630ae2727b7b79"
+    },
+    "belt-2200": {
+      "status": "pass",
+      "log_sha256": "c88448d2d92e96e3ed01ebbf8535f05b3ad8630a5075e7858a7b1b6c3200ca57"
+    }
+  },
+  "artifacts": {
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/check-legacy-ran.py": "b328b4e17acad69cab4cac7a95dfceb92396c27dcf0ce82d946c18e66f678750",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/legacy-headless.log": "730bf42d4f7f3aa77d671b1b38962ef6f0c13090cdc3809035786f22070affe7",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/offline-headless.log": "fdc8f1e1206d92605cef0c4b8659b17536a725db16bacad7ec4100fd47d0b2d7",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/offline-tool-047.log": "74ab306e516703095aa0523775167734f34287fd91f44a1df8c00f79f23bcda8",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/legacy-script.js": "f2e8b3d49e9c22cd317ca657d5ebb0f4028da7f9080f93025d4846781184ebe4",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/alpha.bin.zlib": "e738ee7f8df975a586d9d7e457dff50e2a3370aa7e0ab7a4ddce23e0b3c2e239",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/checks-first-tool.log": "77c1673773ea8790a5cbd88de786194420d5efb503e80756dfc473de92b5dc32",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/font-consumer-047.log": "9f0e92454806bf0d77aab74ba5e36798b46e9561e9251c7fc9df263241da357f",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/core-root-047.log": "8419cdc7f3cf5a12a16756bd259208d70797f7c51a000d4341afc802cc950e34",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/checks-first-core.log": "1b43e0d5264fe6f11fe9c92838bfb8d972266f8199d314174af919fa4cfb0f4e",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/legacy-parity.json": "b7a64c66a2ce0b8b691cd69d0b5b43d5bbf91a1a4f40b70c3876a4e72549724f",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/canonical-script.js": "47216134ac5759f08f2766f8fad1edc246bb31cc011e989654484cfc42f6a75c",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/checks-first-font.log": "3946ca299e5bafbdebfa9423a9db87a05b7421f6df1b827c1b0482ed59b54809",
+    "docs/verification/data/aethyr-ch11-2026-11-01/sans-profile/legacy.png": "7744946435851aa76ce4186d620bf24e66afdab1ae8a22505ea32ef155a1daa4"
+  },
+  "scope": "One canonical Coax atlas policy, Font codepoint/UV integration, and offline atlas tool. Legacy Canvas raster parity covers every alpha byte of five independently rasterized mips on this machine. Actual WebGPU-uploaded RGBA readback and cross-host GPU rendering are separate qualification. Seventeen page frontends compose; Everglade is currently blocked by an unrelated shader.coax test-local near/procedure collision owned by the shader agent."
+}

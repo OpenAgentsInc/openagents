@@ -1,0 +1,69 @@
+rq_ir_values_fixture :: (body:[]u32,ret:int,array_count:int,tree:[]u32,meta:[]int)->RQProgram {
+ prefix:=RQ_IR_COUNTS_TREE;for j:0..<30 {tree[j]=prefix[j];}tree[11]=cast(u32)array_count;tree[27]=cast(u32)((32+array_count*4+7)/8*8);
+ tree[30]=1;tree[31]=cast(u32)ret;tree[32]=0;tree[33]=0;tree[34]=cast(u32)body.count;
+ for j:0..<body.count {tree[35+j]=body[j];}at:=35+body.count;tree[at]=1;tree[at+1]=1;tree[at+2]=0;return rq_ir_prepare(tree[0..<at+3],meta);
+}
+#forall "quad full IR keeps canonical booleans and bitcast dispatch at the encoded boundary" bitcasted:bool {
+ body:=[6]u32.[4,30,4,16,2,1069547520];n:=6;ret:=4;
+ if !bitcasted {body[1]=21;body[2]=16;body[3]=1;body[4]=0;n=5;ret=1;}
+ tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_values_fixture(body[0..<n],ret,2,tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ input:[1]u32;memory:[256]u32;out:[4]u32;r:=rq_ir_run(p,tree[0..<p.tree_words],meta[..],input[0..<0],RQResources.{},memory[..],out[..],1,1000,15,RQDerivative.fine);#assert r.status==RQStatus.ok;
+ for lane:0..<4 {#assert out[lane]==(ifx bitcasted then cast(u32)1069547520 else cast(u32)1);}
+}
+#test "quad aggregate expression fields copy every owned word of a wide child" {
+ body:=[33]u32.[4,25,31,8,6,16,1,1,16,3,11,16,4,22,16,5,2309737967,305419896,16,6,1985229328,4275878552,31,7,2,16,2,1065353216,16,2,1073741824,4,0];
+ tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_values_fixture(body[0..<32],6,2,tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ input:[1]u32;memory:[512]u32;out:[8]u32;r:=rq_ir_run(p,tree[0..<p.tree_words],meta[..],input[0..<0],RQResources.{},memory[..],out[..],1,1000,15,RQDerivative.fine);#assert r.status==RQStatus.ok;
+ for lane:0..<4 {#assert out[lane*2]==1985229328 && out[lane*2+1]==4275878552;}
+}
+#test "quad array expression uses the declared element type rather than its count" {
+ body:=[13]u32.[4,31,7,3,16,2,1073741824,16,2,1088421888,16,2,1093664768];
+ tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_values_fixture(body[..],7,3,tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ input:[1]u32;memory:[256]u32;out:[12]u32;r:=rq_ir_run(p,tree[0..<p.tree_words],meta[..],input[0..<0],RQResources.{},memory[..],out[..],1,1000,15,RQDerivative.fine);#assert r.status==RQStatus.ok;
+ for lane:0..<4 {#assert f32_from_bits(out[lane*3])==2 && f32_from_bits(out[lane*3+1])==7 && f32_from_bits(out[lane*3+2])==11;}
+}
+#forall "quad select and final constructor member refuse incompatible types atomically" select:bool {
+ body:=[13]u32.[2,31,6,4,17,2,17,2,17,2,16,3,1];n:=13;
+ if select {b:=[11]u32.[2,24,16,1,1,16,2,1065353216,16,3,1];for j:0..<11 {body[j]=b[j];}n=11;}
+ tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_body_fixture(body[0..<n],3,tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ input:[16]u32;memory:[256]u32;out:[16]u32;for j:0..<16 {out[j]=123;}
+ r:=rq_ir_run(p,tree[0..<p.tree_words],meta[..],input[..],RQResources.{},memory[..],out[..],1,1000,15,RQDerivative.fine);#assert r.status==RQStatus.malformed;for j:0..<16 {#assert out[j]==123;}
+}
+#test "quad boolean byte decoder crosses word boundaries before testing truth" {
+ body:=[1]u32.[5];tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_values_fixture(body[..],0,2,tree[..],meta[..]);
+ source:=[2]u32.[256,1];memory:[1]u32;expected:=[8]u32.[0,1,0,0,1,0,0,0];m:=[1]RQMachine.[RQMachine.{types=p.types}];
+ for byte:0..<8 {rq_ir_decode(m[..],tree[..],meta[..],source[..],byte,memory[..],0,1);#assert m[0].status==RQStatus.ok && memory[0]==expected[byte];}
+}
+#test "quad array decoder follows element metadata independently of the array count" {
+ body:=[1]u32.[5];tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_values_fixture(body[..],0,5,tree[..],meta[..]);
+ source:=[5]u32.[1065353216,1073741824,1077936128,1082130432,1084227584];memory:[7]u32;memory[0]=111;memory[6]=222;m:=[1]RQMachine.[RQMachine.{types=p.types}];
+ rq_ir_decode(m[..],tree[..],meta[..],source[..],0,memory[..],1,7);#assert m[0].status==RQStatus.ok;for j:0..<5 {#assert memory[j+1]==source[j];}#assert memory[0]==111 && memory[6]==222;
+ m[0].status=RQStatus.ok;rq_ir_decode(m[..],tree[..],meta[..],source[..],0,memory[..],1,9);#assert m[0].status==RQStatus.unsupported;
+}
+#test "quad private wide loads copy both words without consuming neighboring arena data" {
+ body:=[1]u32.[5];tree:[128]u32;meta:[RQ_IR_META]int;p:=rq_ir_values_fixture(body[..],0,2,tree[..],meta[..]);memory:[128]u32;
+ place:=RQPlace.{ty=6,at=[4]int.[10,20,30,40],buffer=[4]int.[-1,-1,-1,-1]};for lane:0..<4 {memory[place.at[lane]]=cast(u32)(11+lane);memory[place.at[lane]+1]=cast(u32)(101+lane);}
+ m:=[1]RQMachine.[RQMachine.{types=p.types,used=64}];v:=rq_ir_load(m[..],tree[..],meta[..],memory[..],RQResources.{},place,15);#assert m[0].status==RQStatus.ok && v.words==2;
+ words:=rq_ir_value_words(memory[..],v);for lane:0..<4 {#assert words[lane*2]==cast(u32)(11+lane) && words[lane*2+1]==cast(u32)(101+lane);}
+}
+#forall "quad stores refuse immutable buffer0 and incompatible value types before writes" immutable:bool {
+ meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);memory:[128]u32;m:=[1]RQMachine.[RQMachine.{types=7,used=64}];v:=rq_ir_value(m[..],meta[..],memory[..],ifx immutable then 2 else 3);
+ place:=RQPlace.{ty=2,at=[4]int.[10,20,30,40],buffer=[4]int.[-1,-1,-1,-1]};if immutable {place.buffer=[4]int.[0,0,0,0];}
+ before:=memory;rq_ir_store(m[..],meta[..],memory[..],place,v,15);#assert m[0].status==(ifx immutable then RQStatus.unsupported else RQStatus.malformed);for j:0..<128 {#assert memory[j]==before[j];}
+}
+
+RQ_IR_OPERAND_TREE :: [96]u32.[2,7,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,2,6,1,6,2,6,5,38,1,2,3,40,1,19,4,16,5,10,0,29,5,22,1,1,27,41,40,0,0,4,31,6,4,29,2,18,1,16,2,0,16,2,0,16,2,1065353216,2,1,2,1,2,21,1,2,6,0,19,10,18,0,16,2,0,1,1,2,33,1,0,0,4,18,0,1,1,0,0];
+#test "quad operand termination removes killed lanes before integer division" {
+ tree:=RQ_IR_OPERAND_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok;
+ input:[16]u32;memory:[4096]u32;out:[16]u32;for lane:0..<4 {input[lane*4]=f32_bits(cast(f32)lane);}
+ r:=rq_ir_run(p,tree[..],meta[..],input[..],RQResources.{},memory[..],out[..],1,10000,15,RQDerivative.fine);#assert r.status==RQStatus.ok && r.discarded==1 && r.publish_mask==14;
+ expected:=[4]f32.[0,10,5,3];for lane:1..<4 {#assert f32_from_bits(out[lane*4])==expected[lane] && out[lane*4+1]==0 && out[lane*4+2]==0 && f32_from_bits(out[lane*4+3])==1;}
+}
+#test "quad array decoding follows stride metadata even when its type follows other records" {
+ tree:[64]u32;prefix:=RQ_IR_COUNTS_TREE;for j:0..<30 {tree[j]=prefix[j];}tree[1]=11;
+ tail:=[13]u32.[8,2,3,4,1,0,0,0,1,5,1,1,0];for j:0..<13 {tree[30+j]=tail[j];}
+ meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[0..<43],meta[..]);#assert p.status==RQStatus.ok;
+ source:=[3]u32.[1065353216,1073741824,1077936128];out:[3]u32;m:=[1]RQMachine.[RQMachine.{types=p.types}];
+ rq_ir_decode(m[..],tree[0..<43],meta[..],source[..],0,out[..],0,10);#assert m[0].status==RQStatus.ok;
+ for j:0..<3 {#assert out[j]==source[j];}
+}

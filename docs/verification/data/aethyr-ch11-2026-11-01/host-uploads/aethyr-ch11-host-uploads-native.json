@@ -1,0 +1,60 @@
+{
+  "schema": "aethyr.render.host-uploads.native.v1",
+  "status": "pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "compiler_source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "source_inputs": {
+    "/private/tmp/aethyr-ch11-host-uploads-native/uploads.coax": "60b493b7a7372b4bd33e4617dd1c3889864855cc216edcb05a447cfa62d0ece6",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/host-uploads.coax": "aa94dd4057d5a5ed361d7649d30a80d3eab088960afd3efe375156df07446a63",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/host-uploads-checks.coax": "424b61ca24df3df2e43ed4821a62bbc554abbc081e98b18365574d3532fadb6b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/check_host_uploads.py": "cfb84643a18ed0c75475dbe89a6398d0ae5b80b49e0a1a1ac2c149c81026f0d0",
+    "/private/tmp/aethyr-ch11-host-uploads-native/driver.c": "cef5d103a6d08c947d24aa099d4a567c81014d4a9ac4e98155e038c6b27088e9"
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "cases": 16000,
+      "loss_controls": [
+        "status",
+        "pending",
+        "grew",
+        "ack"
+      ],
+      "generated_c_sha256": "67b13cb00e38c0f2c19023626a6ece8e4dc67cfa985c487748ba9a06dfd6b3d6",
+      "header_sha256": "6a7880ecbc7c15b8f3517e6bf023df87a9ee6d6279e21946b4b1484f2d039bcd",
+      "executable_sha256": "1beaa12c6a4164e9c11cc25019406091da7be53d85db8344d90bce89ea2f690e",
+      "transcript_sha256": "4712fdf008a610dfa0a02f94b497c15e80acfb647ea6ab20c7704afe4b5629b6"
+    },
+    {
+      "mode": "release",
+      "cases": 16000,
+      "loss_controls": [
+        "status",
+        "pending",
+        "grew",
+        "ack"
+      ],
+      "generated_c_sha256": "67b13cb00e38c0f2c19023626a6ece8e4dc67cfa985c487748ba9a06dfd6b3d6",
+      "header_sha256": "6a7880ecbc7c15b8f3517e6bf023df87a9ee6d6279e21946b4b1484f2d039bcd",
+      "executable_sha256": "0adbec6aa9f65dd810b637e8aee9160d511c8f6f5b95e4dd13ca42d054db1694",
+      "transcript_sha256": "4712fdf008a610dfa0a02f94b497c15e80acfb647ea6ab20c7704afe4b5629b6"
+    },
+    {
+      "mode": "sanitized",
+      "cases": 16000,
+      "loss_controls": [
+        "status",
+        "pending",
+        "grew",
+        "ack"
+      ],
+      "generated_c_sha256": "67b13cb00e38c0f2c19023626a6ece8e4dc67cfa985c487748ba9a06dfd6b3d6",
+      "header_sha256": "6a7880ecbc7c15b8f3517e6bf023df87a9ee6d6279e21946b4b1484f2d039bcd",
+      "executable_sha256": "e8214cb66c1fd963d2d2e9f03657b6d7c2f8c39a8b4e584f7446deeae52dd4fc",
+      "transcript_sha256": "4712fdf008a610dfa0a02f94b497c15e80acfb647ea6ab20c7704afe4b5629b6"
+    }
+  ],
+  "elapsed_seconds": 1.709,
+  "scope": "Complete transported upload union/growth/ack receipt against independent unbounded-integer prefix sets. Includes large native u64 endpoints and four field-loss controls per mode. GPU submission truth belongs to the actual effects gate."
+}

@@ -79,7 +79,7 @@ particles_under_panel :: (p:V2,u:[]f32)->bool {
 particles_particle_fs :: (p:ParticlesP,u:[]f32)->V4 {
   r2:f32=wg_dot2(p.corner,p.corner);
   if ((r2>=1.0f32)||particles_under_panel(v2(p.pos.x,p.pos.y),u)) {
-    gpu_discard();
+    gpu_demote_helper();
   }
   a:f32=exp((-r2)*4.0f32)*(1.0f32-r2);
   return wg_make_f4_f3f(wg_mul_f3f(p.color,a),verse_haunt_bloom_share(fmax(p.color.x,fmax(p.color.y,p.color.z)),1.0f32)*a);

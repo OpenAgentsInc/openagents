@@ -1,0 +1,65 @@
+// Source part of reference-frame.coax. Expected channel values and image
+// offsets are independent fixtures; publication uses different values from
+// unpacking, so an incorrect round trip cannot hide an error.
+rfpx_same :: (a:RQColor,b:RQColor)->bool {
+  return a.r==b.r && a.g==b.g && a.b==b.b && a.a==b.a;
+}
+#test "reference pixel storage formats select all three raster storage rules" {
+  #assert rf_format(RenderTextureFormat.rgba8)==RRFormat.unorm8;
+  #assert rf_format(RenderTextureFormat.bgra8)==RRFormat.unorm8;
+  #assert rf_format(RenderTextureFormat.rgba16f)==RRFormat.half;
+  #assert rf_format(RenderTextureFormat.depth32)==RRFormat.f32;
+}
+#test "reference pixel work admits equality and refuses one visit beyond the remaining budget" {
+  base:=RFResult.{loading=true,bad_op=7,bad_shader=9,pixel_steps=5,shader_steps=17,draws=2,written=11};
+  base.pass_steps[3]=19;
+  exact:=rf_pixel_work(base,RFPolicy.{pixel_work=10},5);
+  #assert exact.status==RQStatus.ok && exact.pixel_steps==10;
+  #assert exact.loading && exact.bad_op==7 && exact.bad_shader==9 && exact.shader_steps==17 && exact.draws==2 && exact.written==11 && exact.pass_steps[3]==19;
+  refused:=rf_pixel_work(base,RFPolicy.{pixel_work=10},6);
+  #assert refused.status==RQStatus.budget && refused.pixel_steps==5;
+  #assert refused.loading && refused.bad_op==7 && refused.bad_shader==9 && refused.shader_steps==17 && refused.draws==2 && refused.written==11 && refused.pass_steps[3]==19;
+  zero:=rf_pixel_work(base,RFPolicy.{pixel_work=5},0);
+  #assert zero.status==RQStatus.ok && zero.pixel_steps==5;
+  exhausted:=rf_pixel_work(exact,RFPolicy.{pixel_work=10},1);
+  #assert exhausted.status==RQStatus.budget && exhausted.pixel_steps==10;
+}
+#forall "reference pixel transport preserves every channel offset absent attachment and unused tail" variant:0..<4 {
+  has_colour:=variant<2;has_aux:=variant==0 || variant==3;has_depth:=variant!=1;
+  guard:=RQColor.{r=91,g=92,b=93,a=94};
+  colours:=[3]RQColor.[RQColor.{r=0.125,g=0.25,b=0.5,a=1},RQColor.{r= -2,g=4,b=0.75,a=0.625},RQColor.{r=8,g= -9,b=10,a=0.375}];
+  aux:=[3]RQColor.[RQColor.{r=13,g=14,b=15,a=16},RQColor.{r=17,g=18,b=19,a=20},RQColor.{r=21,g=22,b=23,a=24}];
+  depths:=[3]f32.[0.25,0.5,0.75];
+  published:=[3]RQColor.[RQColor.{r=31,g=32,b=33,a=34},RQColor.{r=35,g=36,b=37,a=38},RQColor.{r=39,g=40,b=41,a=42}];
+  published_aux:=[3]RQColor.[RQColor.{r=51,g=52,b=53,a=54},RQColor.{r=55,g=56,b=57,a=58},RQColor.{r=59,g=60,b=61,a=62}];
+  published_depth:=[3]f32.[0.125,0.375,0.625];
+  req:RFRequirements;
+  req.images[2]=RFCanvasLayout.{present=true,offset=2,descriptor=RenderTargetDescriptor.{width=3,height=1}};
+  req.images[3]=RFCanvasLayout.{present=true,offset=7,descriptor=RenderTargetDescriptor.{width=3,height=1}};
+  req.images[4]=RFCanvasLayout.{present=true,offset=12,descriptor=RenderTargetDescriptor.{width=3,height=1,format=RenderTextureFormat.depth32}};
+  active:=RenderOp.{colour0=ifx has_colour then RenderTarget.light else RenderTarget.none,colour1=ifx has_aux then RenderTarget.aux else RenderTarget.none,depth=ifx has_depth then RenderTarget.scene_depth else RenderTarget.none};
+  images:[18]RQColor;for i:0..<18 {images[i]=guard;}
+  for i:0..<3 {images[2+i]=colours[i];images[7+i]=aux[i];images[12+i]=RQColor.{r=depths[i],g=71,b=72,a=73};}
+  pixels:[5]RRPixel;for i:0..<5 {pixels[i]=RRPixel.{depth= -7,colour=guard,aux=guard};}
+  rf_pixels(req,active,images[..],pixels[..],false);
+  for i:0..<3 {
+    expected_colour:=ifx has_colour then colours[i] else RQColor.{};
+    expected_aux:=ifx has_aux then aux[i] else RQColor.{};
+    expected_depth:=ifx has_depth then depths[i] else 1.0f32;
+    #assert rfpx_same(pixels[i].colour,expected_colour) && rfpx_same(pixels[i].aux,expected_aux) && pixels[i].depth==expected_depth;
+    #assert rfpx_same(images[2+i],colours[i]) && rfpx_same(images[7+i],aux[i]);
+    #assert images[12+i].r==depths[i] && images[12+i].g==71 && images[12+i].b==72 && images[12+i].a==73;
+  }
+  for i:3..<5 {#assert pixels[i].depth==(-7) && rfpx_same(pixels[i].colour,guard) && rfpx_same(pixels[i].aux,guard);}
+  for i:0..<3 {pixels[i]=RRPixel.{depth=published_depth[i],colour=published[i],aux=published_aux[i]};}
+  rf_pixels(req,active,images[..],pixels[..],true);
+  for i:0..<18 {
+    want:=guard;
+    if i>=2 && i<5 {want=ifx has_colour then published[i-2] else colours[i-2];}
+    if i>=7 && i<10 {want=ifx has_aux then published_aux[i-7] else aux[i-7];}
+    if i>=12 && i<15 {want=ifx has_depth then RQColor.{r=published_depth[i-12]} else RQColor.{r=depths[i-12],g=71,b=72,a=73};}
+    #assert rfpx_same(images[i],want);
+  }
+  for i:0..<3 {#assert pixels[i].depth==published_depth[i] && rfpx_same(pixels[i].colour,published[i]) && rfpx_same(pixels[i].aux,published_aux[i]);}
+  for i:3..<5 {#assert pixels[i].depth==(-7) && rfpx_same(pixels[i].colour,guard) && rfpx_same(pixels[i].aux,guard);}
+}

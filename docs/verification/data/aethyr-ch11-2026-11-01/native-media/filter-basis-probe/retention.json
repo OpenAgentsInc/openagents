@@ -1,0 +1,22 @@
+{
+  "schema": "aethyr.render.native-filter-basis-retention.v1",
+  "scope": "Forty new independent basis observations on the retained same shader/executable. Empirical diagnostic data; no general fractional native filtering profile claimed.",
+  "observations": 40,
+  "files": {
+    "rgba8unorm.bin": "e24a1d51eedde66517da228ef7ed9b07c582dc5c96dbd19a55953482f353d12b",
+    "qualification.json": "b872439fd66d9a0be01cb515b676163cc19f72dd6256b1aacecfa82477ac4e95",
+    "observations.rgba32f": "6190bad15b66d9eafc406404d3147e7b73c8253aa3a4489c6a4b122137489cee",
+    "render-filter-format-probe.coax": "660ad9d4a44f5529107e183f880651f9dd7b1a85a4ff6b4e84db9b6d7e4db04e",
+    "ssh.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "filter.c": "a2ba52d81c9dcc704d9cc29351905e6e64581a6b6bb37198d969992a9a998c09",
+    "native.log": "c42c6148eb41b3ef11ff8752fee106e4bb7fc17bb58edf3003dc3eb78a5c6518",
+    "render-filter-basis-cases.json": "faf8d568ed3641744c4ca0a6f0eeeced8a1a79cd1dc556a9ab8ea7731d86ad1e",
+    "cases.bin": "65634c290ffb35847c0b66babce5e0a4471ac8938f2053476b2a675ecdf487f1",
+    "rgba16float.bin": "21b5ea8755a2d16c6f7d25bf68b0a08c5b4c7dd03de805dee3d87210e4879cc7",
+    "filter.spv": "7b568ea8c8544166856ca055558f3d52c264d894ecfe8e44155e4404d33498bf",
+    "aethyr-ch11-run-native-filter-basis.py": "6207ae77206f391bc575980c2b5f3097a78dba72c8346504cbe10efde7c493a9",
+    "status.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "weight-analysis.json": "afa220072fc4a1aba50c7a836524f3b84861908b236aba0f4193af8c07e2bf8b",
+    "native-executable.tar.gz": "375273d7d61b9fba51b81d43b3611eacb036a63948628ea9f735a695afaafcb4"
+  }
+}

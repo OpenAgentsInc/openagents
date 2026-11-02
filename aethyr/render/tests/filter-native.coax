@@ -1,0 +1,75 @@
+// Verification-only ABI for the device-observed UNORM8 filter profiles.
+#module "aethyr.render.tests.filter.native";
+#load "../reference-texture.coax";
+#authority;
+
+#test "native filter carrier preserves decoded storage and measured profile identity" {
+ rnf_bytes:=[8]u8.[0,0,0,255,255,255,255,255];
+ rnf_levels:=[1]RenderTextureLevel.[RenderTextureLevel.{width=2,height=1,row_bytes=8,layer_bytes=8}];
+ rnf_colors:[2]RQColor;rnf_mips:[1]RQMip;
+ rnf_decoded:=rnf_decode("rgba8unorm",1,rnf_levels[..],rnf_bytes[..],rnf_colors[..],rnf_mips[..]);
+ #assert rnf_decoded.status==RenderTextureStatus.ok && rnf_decoded.texture.storage==RQStorageFormat.unorm8;
+ rnf_sampler:=RQSampler.{min_linear=true,mag_linear=true,mip_linear=true};
+ rnf_value:=rnf_sample(rnf_decoded.texture,"metal-unorm8",rnf_sampler,0.5,0,0);
+ #assert rnf_value.status==RQStatus.ok && rnf_value.color.r==0.5 && rnf_value.color.a==1;
+ rnf_value=rnf_sample(rnf_decoded.texture,"nvidia-unorm8-integer",rnf_sampler,0.5,0,0);
+ #assert rnf_value.status==RQStatus.ok && rnf_value.color.r==0.50000762939453125 && rnf_value.color.a==1;
+ rnf_value=rnf_sample(rnf_decoded.texture,"analytic",rnf_sampler,0.5,0,0);
+ #assert rnf_value.status==RQStatus.ok && rnf_value.color.r==0.5;
+}
+#test "native filter carrier retains full decoder refusal before any output write" {
+ rnf_bytes:[7]u8;rnf_levels:=[1]RenderTextureLevel.[RenderTextureLevel.{width=2,height=1,row_bytes=8,layer_bytes=8}];
+ rnf_colors:[2]RQColor;rnf_colors[0].r=0.25;rnf_mips:[1]RQMip;rnf_mips[0].width=99;
+ rnf_decoded:=rnf_decode("rgba8unorm",1,rnf_levels[..],rnf_bytes[..],rnf_colors[..],rnf_mips[..]);
+ #assert rnf_decoded.status!=RenderTextureStatus.ok && rnf_colors[0].r==0.25 && rnf_mips[0].width==99;
+ #assert rnf_decoded.texture.levels.count==0 && rnf_decoded.texture.texels.count==0;
+ rnf_decoded=rnf_decode("rgba8unorm",0,rnf_levels[..],rnf_bytes[..],rnf_colors[..],rnf_mips[..]);
+ #assert rnf_decoded.status!=RenderTextureStatus.ok;
+}
+#test "native filter carrier applies the shader fraction transform on both axes" {
+ rnf_mips:=[1]RQMip.[RQMip.{width=2,height=2}];
+ rnf_colors:=[4]RQColor.[RQColor.{r=1},RQColor.{g=1},RQColor.{b=1},RQColor.{a=1}];
+ rnf_texture:=RQTexture.{levels=rnf_mips[..],layers=1,texels=rnf_colors[..],storage=RQStorageFormat.unorm8};
+ rnf_sampler:=RQSampler.{min_linear=true,mag_linear=true,mip_linear=true};
+ rnf_value:=rnf_sample(rnf_texture,"nvidia-unorm8-integer",rnf_sampler,0,0,0);#assert rnf_value.status==RQStatus.ok && rnf_value.color.r==1;
+ rnf_value=rnf_sample(rnf_texture,"nvidia-unorm8-integer",rnf_sampler,1,0,0);#assert rnf_value.status==RQStatus.ok && rnf_value.color.g==1;
+ rnf_value=rnf_sample(rnf_texture,"nvidia-unorm8-integer",rnf_sampler,0,1,0);#assert rnf_value.status==RQStatus.ok && rnf_value.color.b==1;
+ rnf_value=rnf_sample(rnf_texture,"nvidia-unorm8-integer",rnf_sampler,1,1,0);#assert rnf_value.status==RQStatus.ok && rnf_value.color.a==1;
+ rnf_value=rnf_sample(rnf_texture,"NVIDIA-UNORM8-INTEGER",rnf_sampler,0,0,0);#assert rnf_value.status==RQStatus.unsupported;
+ rnf_texture.storage=RQStorageFormat.unclassified;
+ rnf_value=rnf_sample(rnf_texture,"nvidia-unorm8-integer",rnf_sampler,0,0,0);#assert rnf_value.status==RQStatus.unsupported;
+}
+#test "native measured filter carrier refuses comparison publication" {
+ rnf_mips:=[1]RQMip.[RQMip.{width=1,height=1}];rnf_colors:=[1]RQColor.[RQColor.{r=0.5}];
+ rnf_texture:=RQTexture.{levels=rnf_mips[..],layers=1,texels=rnf_colors[..],depth=true,storage=RQStorageFormat.unorm8};
+ rnf_sampler:=RQSampler.{min_linear=true,mag_linear=true,mip_linear=true,compare=RQCompare.less};
+ rnf_value:=rnf_compare(rnf_texture,"nvidia-unorm8-integer",rnf_sampler,0,0,0,0.25);
+ #assert rnf_value.status==RQStatus.unsupported && rnf_value.color.r==0 && rnf_value.color.a==0;
+}
+#test "native comparison carrier preserves both coordinate axes in analytic mode" {
+ rnf_mips:=[1]RQMip.[RQMip.{width=2,height=2}];
+ rnf_colors:=[4]RQColor.[RQColor.{r=0.2},RQColor.{r=0.8},RQColor.{r=0.8},RQColor.{r=0.2}];
+ rnf_texture:=RQTexture.{levels=rnf_mips[..],layers=1,texels=rnf_colors[..],depth=true,storage=RQStorageFormat.depth32};
+ rnf_sampler:=RQSampler.{min_linear=true,mag_linear=true,mip_linear=true,compare=RQCompare.less};
+ rnf_value:=rnf_compare(rnf_texture,"analytic",rnf_sampler,0,0,0,0.5);#assert rnf_value.status==RQStatus.ok && rnf_value.color.r==0;
+ rnf_value=rnf_compare(rnf_texture,"analytic",rnf_sampler,1,0,0,0.5);#assert rnf_value.status==RQStatus.ok && rnf_value.color.r==1;
+ rnf_value=rnf_compare(rnf_texture,"analytic",rnf_sampler,0,1,0,0.5);#assert rnf_value.status==RQStatus.ok && rnf_value.color.r==1;
+ rnf_value=rnf_compare(rnf_texture,"analytic",rnf_sampler,1,1,0,0.5);#assert rnf_value.status==RQStatus.ok && rnf_value.color.r==0;
+ rnf_value=rnf_compare(rnf_texture,"analytic",rnf_sampler,0,0,0,0.1);#assert rnf_value.status==RQStatus.ok && rnf_value.color.r==1;
+}
+
+rnf_decode :: (rnf_format:string,rnf_layers:int,rnf_levels:[]RenderTextureLevel,rnf_bytes:[]u8,
+ rnf_colors:[]RQColor,rnf_mips:[]RQMip)->RFTextureDecoded #export_c {
+ return rf_texture_decode(rnf_format,rnf_layers,rnf_levels,rnf_bytes,rnf_colors,rnf_mips);
+}
+rnf_sample :: (rnf_texture:RQTexture,rnf_profile:string,rnf_sampler:RQSampler,
+ rnf_x:f32,rnf_y:f32,rnf_lod:f32)->RQSample #export_c {
+ rnf_config:=rnf_sampler;rnf_config.precision=rq_filter_profile(rnf_profile);
+ // Exact f32 expression order from render_filter_format_fs's shared fixture.
+ return rq_sample_level(rnf_texture,rnf_config,(0.5f32+rnf_x)*0.5f32,(0.5f32+rnf_y)*0.5f32,0,rnf_lod);
+}
+rnf_compare :: (rnf_texture:RQTexture,rnf_profile:string,rnf_sampler:RQSampler,
+ rnf_x:f32,rnf_y:f32,rnf_lod:f32,rnf_ref:f32)->RQSample #export_c {
+ rnf_config:=rnf_sampler;rnf_config.precision=rq_filter_profile(rnf_profile);
+ return rq_sample_compare(rnf_texture,rnf_config,(0.5f32+rnf_x)*0.5f32,(0.5f32+rnf_y)*0.5f32,0,rnf_lod,rnf_ref);
+}

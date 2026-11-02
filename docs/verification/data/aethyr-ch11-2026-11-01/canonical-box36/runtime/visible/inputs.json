@@ -1,0 +1,15 @@
+{
+  "scope": "Display-only clamp/nearest8bit preview of actualRGBA16F readbacks; raw files and strictnumericalcomparisonsremainauthoritative. No gamma/tonemap/imagefilter applied.",
+  "inputs": [
+    {
+      "tag": "before",
+      "source": "/tmp/aethyr-ch11-deadgears-ring8-current-default/gpu.bin",
+      "sha256": "d3dc03d3cc7723ab03f94a80c1132734e41cbfb0e89f118186e7f8d82c3a9f8b"
+    },
+    {
+      "tag": "after",
+      "source": "/tmp/aethyr-ch11-deadgears-box36-current-default/gpu.bin",
+      "sha256": "eea19f17c7756c4880d63995deee07aa6781d36de19a46aeea203b128247ac59"
+    }
+  ]
+}

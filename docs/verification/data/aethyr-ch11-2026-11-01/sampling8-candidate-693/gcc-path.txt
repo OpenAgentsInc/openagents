@@ -1,0 +1,1 @@
+/nix/store/hbsz2ngi9ixbhd9na1xagh2yc8qnmj7y-gcc-wrapper-15.2.0/bin/gcc

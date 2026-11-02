@@ -1,0 +1,30 @@
+{
+  "scope": "Explicit shader-product substitution: original actual producer counts, buffers, texture bytes and all raw observations retained. No producer time/camera reconstruction. Only package/tree paths change; physical-file paths are made absolute.",
+  "original_config": "/tmp/aethyr-ch11-native-grid-sans/stage/frame.config",
+  "original_config_sha256": "e97842cfe971ba1043e8554ce10dacf0398f24777485d555270571b491bed91c",
+  "derived_config_sha256": "5eda549c6fc971d83d8c39a8a715ae98c9f78acf795dfdf00fbda33504e2b188",
+  "package": "/tmp/aethyr-ch11-packages-owned-sans/the-grid/render.json",
+  "package_sha256": "52ab525a47dc8d85c69fe4821028308f73f971b3f91b79b7a25e6b7aae7463cf",
+  "unchanged_producer_resource_files": {
+    "/tmp/aethyr-ch11-native-grid-sans/stage/inputs/u.bin": "88a5fc7a14fdfcc69a3b911ea54938a20692ca22b1e3dd39d551e3b9c26d9160",
+    "/tmp/aethyr-ch11-native-grid-sans/stage/inputs/hud.bin": "e4c94efb7436be626b6a44339a1f46bc0942f3d32dea87557dd1c30776f5a3bb",
+    "/tmp/aethyr-ch11-native-grid-sans/stage/inputs/draws.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/aethyr-ch11-native-grid-sans/stage/inputs/texture-0.bin": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6"
+  },
+  "changed_shader_products": [
+    {
+      "entry": 0,
+      "old_tree": "/tmp/aethyr-ch11-native-grid-sans/stage/inputs/pipeline-0-6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e.tree",
+      "new_tree": "/tmp/aethyr-ch11-packages-owned-sans/the-grid/pipeline-0-6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e.tree",
+      "new_tree_sha256": "6dec4e79f23ff997872d9d20461c483c86a73a4de84f06775ff8a63b7bcfc79e",
+      "spirv_sha256": "b7c185dc2e3ae9bc939176abd1776f9c6e2736cabe255e0577dd7cc6d0f8fa38"
+    },
+    {
+      "entry": 12,
+      "old_tree": "/tmp/aethyr-ch11-native-grid-sans/stage/inputs/pipeline-12-25b2814af8e7a66fe02196ffd1a7628f3a8d5c20be5c5930ccfb55c4e8e01369.tree",
+      "new_tree": "/tmp/aethyr-ch11-packages-owned-sans/the-grid/pipeline-12-316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456.tree",
+      "new_tree_sha256": "316d53674b7c867e0e25568ee72aa1a772459a9610d94c0e13008bfe41629456",
+      "spirv_sha256": "affbbfb436df6f1d0aeff40b142751a098015edf0ebccec0d9adcb3c4fd99441"
+    }
+  ]
+}

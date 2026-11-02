@@ -1,0 +1,45 @@
+#module "aethyr.render.media.profile";
+#load "bindings.coax" as bindings;
+#authority;
+RenderMediaEntry :: struct {
+  valid:bool;source:string;vertex:string;fragment:string;wgsl_vertex:string;wgsl_fragment:string;
+  binding_set:int;wgsl_file:string;
+}
+#test "shared media entry and all three bindings come from one compiled descriptor" {
+  m:=render_media_entry();
+  #assert m.valid && m.source=="aethyr/render/media.coax" && m.vertex=="media_vs" && m.fragment=="media_fs";
+  #assert m.wgsl_vertex=="vs" && m.wgsl_fragment=="fs" && m.binding_set==2 && m.wgsl_file=="media.wgsl";
+  #assert render_media_binding_count()==3 && render_media_use_count()==3;
+  b:[3]bindings.RenderBinding;u:[3]bindings.RenderUse;
+  for i:0..<3 {b[i]=render_media_binding(i);u[i]=render_media_use(i);}
+  #assert b[0].name=="u" && b[0].uniform_vec4s==2 && b[0].stride==4 && b[0].kind==bindings.RenderResourceKind.uniform;
+  #assert b[1].name=="media_image" && b[1].kind==bindings.RenderResourceKind.image2d;
+  #assert b[2].name=="media_sampler" && b[2].kind==bindings.RenderResourceKind.sampler;
+  for i:0..<3 {#assert b[i].group==0 && b[i].binding==i && u[i].resource==i && u[i].slot==i && u[i].native_kind==i+1;}
+  #assert u[0].stages==3 && u[0].stride==4 && u[1].stages==2 && u[2].stages==2;
+  #assert bindings.render_uses(b[..],u[..])==bindings.RenderBindingStatus.ok;
+  #assert render_media_binding(-1).kind==bindings.RenderResourceKind.invalid && render_media_binding(3).kind==bindings.RenderResourceKind.invalid;
+  #assert render_media_use(-1).resource == -1 && render_media_use(3).resource == -1;
+  #assert render_media_use(-1).slot == -1 && render_media_use(3).slot == -1;
+}
+render_media_entry :: ()->RenderMediaEntry {
+  return RenderMediaEntry.{valid=true,source="aethyr/render/media.coax",vertex="media_vs",fragment="media_fs",wgsl_vertex="vs",wgsl_fragment="fs",binding_set=2,wgsl_file="media.wgsl"};
+}
+render_media_binding_count :: ()->int {return 3;}
+render_media_use_count :: ()->int {return 3;}
+render_media_binding :: (i:int)->bindings.RenderBinding {
+  rows:=[3]bindings.RenderBinding.[
+    bindings.RenderBinding.{name="u",kind=bindings.RenderResourceKind.uniform,stride=4,uniform_vec4s=2},
+    bindings.RenderBinding.{name="media_image",kind=bindings.RenderResourceKind.image2d,binding=1},
+    bindings.RenderBinding.{name="media_sampler",kind=bindings.RenderResourceKind.sampler,binding=2}];
+  if i<0 || i>=3 {return bindings.RenderBinding.{kind=bindings.RenderResourceKind.invalid};}
+  return rows[i];
+}
+render_media_use :: (i:int)->bindings.RenderUse {
+  rows:=[3]bindings.RenderUse.[
+    bindings.RenderUse.{native_kind=1,stride=4,stages=3},
+    bindings.RenderUse.{resource=1,slot=1,native_kind=2,stages=2},
+    bindings.RenderUse.{resource=2,slot=2,native_kind=3,stages=2}];
+  if i<0 || i>=3 {return bindings.RenderUse.{resource=-1,slot=-1};}
+  return rows[i];
+}

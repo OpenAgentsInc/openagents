@@ -1,0 +1,170 @@
+{
+  "schema": "aethyr.render.stair-authored-check-budgets.v1",
+  "status": "13 selected measurements pass; independent ordinary native count confirmed; canonical default typed Wasm build pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "original_source_sha256": {
+    "apps/openagents-web/stair.coax": "7ab9cb758836ad5a4a5b1fe5d0a0857303943e9101ecfc0f7d2e25d4941bd7ca",
+    "apps/openagents-web/stair-coop.coax": "163c559b98bdbcc0fafc59a15f2d2ba119120c8c0534096e8ad48734852a6a11"
+  },
+  "repaired_source_sha256": {
+    "apps/openagents-web/stair.coax": "92fe9ab479821be28c24c1d7b82244bb6ae504221c2acb03bc1b4ae583a768b7",
+    "apps/openagents-web/stair-coop.coax": "163c559b98bdbcc0fafc59a15f2d2ba119120c8c0534096e8ad48734852a6a11"
+  },
+  "authored_source_sha256": {
+    "apps/openagents-web/stair.coax": "cfd1f7846519ea308bc3e9d0eec51d4aa94d5d4d4af4c8df93742568ad5f0bd2",
+    "apps/openagents-web/stair-coop.coax": "b9ea93a716de702713ac0a1dc1abfff5534d8aab913f4eeeb69f2e4a5ed3d14d"
+  },
+  "production_bodies_unchanged": true,
+  "budget_metadata_line_count_unchanged": true,
+  "global_check_limit_unchanged": 20000000,
+  "measured_sum": 6626398206,
+  "measured_max": 2032557320,
+  "authored_max": 2550000000,
+  "measurement_max_seconds": 212.897,
+  "rule": "125% of measured work rounded upward to 10 million. Only the13 concrete default20M failures gain #steps:11 Stair +2 Stair co-op. Exact owner comes from compiler evidence, including code called in lockroom.",
+  "scope": "Selected unchanged checks under the existing documented3B Stair caller limit. Twelve passing measurements retained unchanged. One failing stale-pin check reran only after a test repair supported by independent ordinary native observations. Selected tests do not establish authority coverage or a canonical typed-carrier pass.",
+  "pin_repair": {
+    "old": 39318,
+    "new": 39354,
+    "cause_commit": "500e7c7a8d7cc5cbe638853d33e8630aeee07112",
+    "cause": "GALAXY32 Filament strokes became REALMS38 strokes; equal character count does not imply equal vertex count. Six extra strokes \u00d76vertices =36.",
+    "native_observed_peak": 39354,
+    "native_refusals": 0,
+    "budget_vertices_unchanged": 48000,
+    "buffer_vertices_unchanged": 52000,
+    "failed_original_measurement": "10",
+    "repaired_measurement": "10-fixed",
+    "independent_oracle": "ordinary-native-diagnostic.tar.gz: glyph-oracle.json, native-qualification.json, native-observations.json",
+    "provisional_candidate_mandatory_compile_seconds": 317.0863139999565
+  },
+  "checks": [
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "with no party the tower falls; a party that builds as gold allows holds the first ten waves",
+      "measured_steps": 770178798,
+      "authored_limit": 970000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "0",
+      "seconds": 66.493
+    },
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "seeded dice: a map replayed with its seed rolls every roll the same; another seed doesn't",
+      "measured_steps": 105705842,
+      "authored_limit": 140000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "1",
+      "seconds": 12.356
+    },
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "turns are deterministic: two runs on the same seed end the same, turn by turn",
+      "measured_steps": 167547072,
+      "authored_limit": 210000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "2",
+      "seconds": 20.507
+    },
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "the curve: a new player placing one a round reaches wave 8",
+      "measured_steps": 476854222,
+      "authored_limit": 600000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "3",
+      "seconds": 45.869
+    },
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "the curve: a player who keeps their gold and places three falls by wave 7",
+      "measured_steps": 307810391,
+      "authored_limit": 390000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "4",
+      "seconds": 34.187
+    },
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "the curve: the best play holds the first ten waves (all forty: stair-sim.coax)",
+      "measured_steps": 644416036,
+      "authored_limit": 810000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "5",
+      "seconds": 70.876
+    },
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "area queries: a Fireball's 20-foot sphere and a Lightning Bolt's line over five hundred beasts look only at the tiles they cover, and find what a full scan finds",
+      "measured_steps": 580255572,
+      "authored_limit": 730000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "6",
+      "seconds": 91.429
+    },
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "three maps: each holds its first ten waves, the fork sends the beasts up both stairs, and MAP picks one before the first wave",
+      "measured_steps": 2032557320,
+      "authored_limit": 2550000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "7",
+      "seconds": 212.897
+    },
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "the staged highlight is the last wave against a full party at the top level, and the stair is busy",
+      "measured_steps": 42401344,
+      "authored_limit": 60000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "8",
+      "seconds": 6.289
+    },
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "the swarm stage keeps five hundred beasts on the stair, every one drawn within the vertex budget",
+      "measured_steps": 1027724243,
+      "authored_limit": 1290000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "9",
+      "seconds": 146.482
+    },
+    {
+      "source": "apps/openagents-web/stair.coax",
+      "name": "Hold the Stair's frames fit its declared budget",
+      "measured_steps": 339280916,
+      "authored_limit": 430000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "10-fixed",
+      "seconds": 12.361
+    },
+    {
+      "source": "apps/openagents-web/stair-coop.coax",
+      "name": "co-op: two clients given both seats' orders keep one game: the same hash, one purse, each other's defenders, and only your own to sell",
+      "measured_steps": 28939476,
+      "authored_limit": 40000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "11",
+      "seconds": 4.376
+    },
+    {
+      "source": "apps/openagents-web/stair-coop.coax",
+      "name": "co-op over the relay: INVITE makes a room, the partner who joins gets the game, both play it in lockstep with each other's defenders, and a nudged client is mended",
+      "measured_steps": 102726974,
+      "authored_limit": 130000000,
+      "documented_measurement_caller_limit": 3000000000,
+      "measurement": "12",
+      "seconds": 9.493
+    }
+  ],
+  "archives": {
+    "measurements.tar.gz": "1f95c4640489200571b6bc15a97e6492564192e996ea3010b90ead5304085a3f",
+    "ordinary-native-diagnostic.tar.gz": "5506a2b326f0094612bc4088839d858910f60c82dfc66cfa20fec4ca7e1e713a"
+  },
+  "canonical_typed_build": {
+    "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/default-wasm-routing/stair",
+    "elapsed_seconds": 154.684,
+    "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+    "wasm_sha256": "5b74a878c439a60a6c0ad4f59823d4a7ca1f2974f6520164fbdb64c1eb3b1ebf",
+    "source_changes": []
+  }
+}

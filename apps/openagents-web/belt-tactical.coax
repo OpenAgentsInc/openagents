@@ -332,7 +332,7 @@ tac_resolve :: (t: [] Tac) -> int {
   #assert tac_lead(10000.0, 0.0, 50.0, 0.0, TAC_RAIL_SPEED) < 0.0;   // running away faster than a slug
 }
 
-#test "tactical: two warships fight it out to an end, one side out or apart, the same every time on one seed" {
+#test "tactical: two warships fight it out to an end, one side out or apart, the same every time on one seed" #steps 110000000 {
   t: [1] Tac;
   ends: [2] int; hulls: [2] f64;
   for run: 0..<2 {
@@ -348,7 +348,7 @@ tac_resolve :: (t: [] Tac) -> int {
   #assert ends[0] != TAC_FIGHTING && ends[0] == ends[1] && hulls[0] == hulls[1];
 }
 
-#test "tactical: point defense shoots missiles down, and an unarmed freighter runs" {
+#test "tactical: point defense shoots missiles down, and an unarmed freighter runs" #steps 40000000 {
   t: [1] Tac;
   tac_clear(t[..], 11);
   f := tac_add(t[..], 0, 0, 0.0, 0.0, 0.0, 0.0, 1.0, false, false);

@@ -1,0 +1,6 @@
+ok   #test room wall bands: closed and doorway spans retain disjoint materials (1 case, 7502826 steps, 969 ms)
+ok   #test room wall bands: mixed palette retains disjoint materials (1 case, 7503948 steps, 873 ms)
+ok   #test room wall bands: Backrooms stripes retain disjoint materials (1 case, 5204024 steps, 650 ms)
+ok   #test room wall bands: every orientation shares exact seams and unchanged trim (1 case, 445616 steps, 65 ms)
+ok   #test room wall bands: short views keep whole triangles and surrounding canaries (1 case, 959253 steps, 105 ms)
+5 of 21 checks (--only 'room wall bands:'), 5 passed, 0 failed

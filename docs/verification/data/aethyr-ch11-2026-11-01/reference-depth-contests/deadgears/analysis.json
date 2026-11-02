@@ -1,0 +1,954 @@
+{
+  "schema": "aethyr.render.depth-contest-diagnostic.v1",
+  "status": "observed-causes-point-conformance-still-fails",
+  "scope": "Effects-only original-frame tracing and independent exact-clip/actual-Coax-VS probes. Production shader arithmetic, raster policy, strict comparison bound and pixel set are unchanged. Diagnostic VS uses a distinct entry/optimization context, so its outputs are not presumed identical to the original entry.",
+  "failed_pixels": 4,
+  "failed_channels": 12,
+  "causes": [
+    "Exact recorded CPU clip inputs yield different GPU fixed-function depth at the first contest.",
+    "Distinct-entry execution of the actual production Coax VS changes the other three projected near-coplanar depth orderings."
+  ],
+  "rows": [
+    {
+      "backend": "native",
+      "triangle": 0,
+      "pixel": [
+        42,
+        76
+      ],
+      "instance": 129,
+      "ids": [
+        9,
+        10,
+        11
+      ],
+      "cpu_depth": 0.9982853531837463,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9982852935791016,
+      "gpu_vs_clips": [
+        [
+          -16.586355209350586,
+          0.3121058940887451,
+          22.943401336669922,
+          22.981929779052734
+        ],
+        [
+          -16.586355209350586,
+          4.898386001586914,
+          22.47045135498047,
+          22.50921630859375
+        ],
+        [
+          -16.586355209350586,
+          0.2735804319381714,
+          22.704252243041992,
+          22.742900848388672
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9982853531837463,
+      "clip_component_differences": []
+    },
+    {
+      "backend": "native",
+      "triangle": 1,
+      "pixel": [
+        42,
+        76
+      ],
+      "instance": 129,
+      "ids": [
+        27,
+        28,
+        29
+      ],
+      "cpu_depth": 0.9982852935791016,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9982852935791016,
+      "gpu_vs_clips": [
+        [
+          -16.586355209350586,
+          0.2735804319381714,
+          22.704252243041992,
+          22.742900848388672
+        ],
+        [
+          -16.405521392822266,
+          4.898386001586914,
+          22.47045135498047,
+          22.50921630859375
+        ],
+        [
+          -16.586355209350586,
+          4.898386001586914,
+          22.47045135498047,
+          22.50921630859375
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9982852935791016,
+      "clip_component_differences": []
+    },
+    {
+      "backend": "native",
+      "triangle": 2,
+      "pixel": [
+        124,
+        118
+      ],
+      "instance": 21,
+      "ids": [
+        117,
+        118,
+        119
+      ],
+      "cpu_depth": 0.9870346784591675,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9870346784591675,
+      "gpu_vs_clips": [
+        [
+          -0.695240318775177,
+          -1.2975133657455444,
+          3.678791046142578,
+          3.72695255279541
+        ],
+        [
+          -0.8719139695167542,
+          -1.1135355234146118,
+          3.6566219329833984,
+          3.704793930053711
+        ],
+        [
+          -0.8502083420753479,
+          -1.292256236076355,
+          3.7100439071655273,
+          3.7581892013549805
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.987034797668457,
+      "clip_component_differences": [
+        {
+          "vertex": 117,
+          "component": 1,
+          "cpu": -1.297513484954834,
+          "gpu": -1.2975133657455444,
+          "ulp_delta": -1
+        },
+        {
+          "vertex": 117,
+          "component": 2,
+          "cpu": 3.6787919998168945,
+          "gpu": 3.678791046142578,
+          "ulp_delta": -4
+        },
+        {
+          "vertex": 118,
+          "component": 2,
+          "cpu": 3.656620979309082,
+          "gpu": 3.6566219329833984,
+          "ulp_delta": 4
+        },
+        {
+          "vertex": 119,
+          "component": 1,
+          "cpu": -1.2922563552856445,
+          "gpu": -1.292256236076355,
+          "ulp_delta": -1
+        }
+      ]
+    },
+    {
+      "backend": "native",
+      "triangle": 3,
+      "pixel": [
+        124,
+        118
+      ],
+      "instance": 23,
+      "ids": [
+        69,
+        70,
+        71
+      ],
+      "cpu_depth": 0.9870349168777466,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9870348572731018,
+      "gpu_vs_clips": [
+        [
+          -0.8303104639053345,
+          -1.3198601007461548,
+          3.7116241455078125,
+          3.7597694396972656
+        ],
+        [
+          -0.7233299612998962,
+          -1.069076657295227,
+          3.5919713973999023,
+          3.640176773071289
+        ],
+        [
+          -0.87462317943573,
+          -1.059063196182251,
+          3.654129981994629,
+          3.702303886413574
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9870346188545227,
+      "clip_component_differences": [
+        {
+          "vertex": 69,
+          "component": 3,
+          "cpu": 3.759768486022949,
+          "gpu": 3.7597694396972656,
+          "ulp_delta": 4
+        },
+        {
+          "vertex": 70,
+          "component": 2,
+          "cpu": 3.5919723510742188,
+          "gpu": 3.5919713973999023,
+          "ulp_delta": -4
+        },
+        {
+          "vertex": 70,
+          "component": 3,
+          "cpu": 3.6401758193969727,
+          "gpu": 3.640176773071289,
+          "ulp_delta": 4
+        },
+        {
+          "vertex": 71,
+          "component": 0,
+          "cpu": -0.8746232390403748,
+          "gpu": -0.87462317943573,
+          "ulp_delta": -1
+        },
+        {
+          "vertex": 71,
+          "component": 3,
+          "cpu": 3.702302932739258,
+          "gpu": 3.702303886413574,
+          "ulp_delta": 4
+        }
+      ]
+    },
+    {
+      "backend": "native",
+      "triangle": 4,
+      "pixel": [
+        67,
+        122
+      ],
+      "instance": 16,
+      "ids": [
+        186,
+        187,
+        188
+      ],
+      "cpu_depth": 0.9900748133659363,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9900748133659363,
+      "gpu_vs_clips": [
+        [
+          -2.7143168449401855,
+          -1.7202467918395996,
+          4.7728071212768555,
+          4.82042121887207
+        ],
+        [
+          -2.7849204540252686,
+          -1.7249197959899902,
+          4.743799209594727,
+          4.7914276123046875
+        ],
+        [
+          -2.7849204540252686,
+          -1.8452560901641846,
+          4.779126167297363,
+          4.826737403869629
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9900748133659363,
+      "clip_component_differences": [
+        {
+          "vertex": 188,
+          "component": 3,
+          "cpu": 4.826738357543945,
+          "gpu": 4.826737403869629,
+          "ulp_delta": -2
+        }
+      ]
+    },
+    {
+      "backend": "native",
+      "triangle": 5,
+      "pixel": [
+        67,
+        122
+      ],
+      "instance": 17,
+      "ids": [
+        138,
+        139,
+        140
+      ],
+      "cpu_depth": 0.9900748133659363,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9900748133659363,
+      "gpu_vs_clips": [
+        [
+          -2.7155776023864746,
+          -1.7200453281402588,
+          4.774057388305664,
+          4.821671485900879
+        ],
+        [
+          -2.7849204540252686,
+          -1.7246348857879639,
+          4.745567321777344,
+          4.793195724487305
+        ],
+        [
+          -2.7849204540252686,
+          -2.50053071975708,
+          4.811535835266113,
+          4.859130859375
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.990074634552002,
+      "clip_component_differences": [
+        {
+          "vertex": 138,
+          "component": 3,
+          "cpu": 4.8216705322265625,
+          "gpu": 4.821671485900879,
+          "ulp_delta": 2
+        },
+        {
+          "vertex": 139,
+          "component": 2,
+          "cpu": 4.74556827545166,
+          "gpu": 4.745567321777344,
+          "ulp_delta": -2
+        }
+      ]
+    },
+    {
+      "backend": "native",
+      "triangle": 6,
+      "pixel": [
+        138,
+        134
+      ],
+      "instance": 37,
+      "ids": [
+        186,
+        187,
+        188
+      ],
+      "cpu_depth": 0.9874150156974792,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9874150156974792,
+      "gpu_vs_clips": [
+        [
+          -0.5041424036026001,
+          -1.880769968032837,
+          3.776355743408203,
+          3.8244686126708984
+        ],
+        [
+          -0.5747459530830383,
+          -1.885442852973938,
+          3.747347831726074,
+          3.7954750061035156
+        ],
+        [
+          -0.5747459530830383,
+          -2.005779266357422,
+          3.7826757431030273,
+          3.830784797668457
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9874152541160583,
+      "clip_component_differences": [
+        {
+          "vertex": 186,
+          "component": 1,
+          "cpu": -1.8807698488235474,
+          "gpu": -1.880769968032837,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 186,
+          "component": 2,
+          "cpu": 3.7763547897338867,
+          "gpu": 3.776355743408203,
+          "ulp_delta": 4
+        },
+        {
+          "vertex": 188,
+          "component": 2,
+          "cpu": 3.782674789428711,
+          "gpu": 3.7826757431030273,
+          "ulp_delta": 4
+        }
+      ]
+    },
+    {
+      "backend": "native",
+      "triangle": 7,
+      "pixel": [
+        138,
+        134
+      ],
+      "instance": 38,
+      "ids": [
+        138,
+        139,
+        140
+      ],
+      "cpu_depth": 0.9874150156974792,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9874149560928345,
+      "gpu_vs_clips": [
+        [
+          -0.5054032206535339,
+          -1.880568504333496,
+          3.7776060104370117,
+          3.8257179260253906
+        ],
+        [
+          -0.5747459530830383,
+          -1.8851580619812012,
+          3.749116897583008,
+          3.797243118286133
+        ],
+        [
+          -0.5747459530830383,
+          -2.6610538959503174,
+          3.815084457397461,
+          3.8631772994995117
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9874150156974792,
+      "clip_component_differences": [
+        {
+          "vertex": 138,
+          "component": 1,
+          "cpu": -1.8805683851242065,
+          "gpu": -1.880568504333496,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 139,
+          "component": 1,
+          "cpu": -1.8851579427719116,
+          "gpu": -1.8851580619812012,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 139,
+          "component": 2,
+          "cpu": 3.7491159439086914,
+          "gpu": 3.749116897583008,
+          "ulp_delta": 4
+        },
+        {
+          "vertex": 140,
+          "component": 1,
+          "cpu": -2.6610536575317383,
+          "gpu": -2.6610538959503174,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 140,
+          "component": 3,
+          "cpu": 3.863178253173828,
+          "gpu": 3.8631772994995117,
+          "ulp_delta": -4
+        }
+      ]
+    },
+    {
+      "backend": "webgpu",
+      "triangle": 0,
+      "pixel": [
+        42,
+        76
+      ],
+      "instance": 129,
+      "ids": [
+        9,
+        10,
+        11
+      ],
+      "cpu_depth": 0.9982853531837463,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9982852935791016,
+      "gpu_vs_clips": [
+        [
+          -16.586355209350586,
+          0.3121058940887451,
+          22.943401336669922,
+          22.981929779052734
+        ],
+        [
+          -16.586355209350586,
+          4.898386478424072,
+          22.47045135498047,
+          22.50921630859375
+        ],
+        [
+          -16.586355209350586,
+          0.2735804319381714,
+          22.704252243041992,
+          22.742900848388672
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9982853531837463,
+      "clip_component_differences": [
+        {
+          "vertex": 10,
+          "component": 1,
+          "cpu": 4.898386001586914,
+          "gpu": 4.898386478424072,
+          "ulp_delta": 1
+        }
+      ]
+    },
+    {
+      "backend": "webgpu",
+      "triangle": 1,
+      "pixel": [
+        42,
+        76
+      ],
+      "instance": 129,
+      "ids": [
+        27,
+        28,
+        29
+      ],
+      "cpu_depth": 0.9982852935791016,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9982853531837463,
+      "gpu_vs_clips": [
+        [
+          -16.586355209350586,
+          0.2735804319381714,
+          22.704252243041992,
+          22.742900848388672
+        ],
+        [
+          -16.405521392822266,
+          4.898386478424072,
+          22.47045135498047,
+          22.50921630859375
+        ],
+        [
+          -16.586355209350586,
+          4.898386478424072,
+          22.47045135498047,
+          22.50921630859375
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9982852935791016,
+      "clip_component_differences": [
+        {
+          "vertex": 28,
+          "component": 1,
+          "cpu": 4.898386001586914,
+          "gpu": 4.898386478424072,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 29,
+          "component": 1,
+          "cpu": 4.898386001586914,
+          "gpu": 4.898386478424072,
+          "ulp_delta": 1
+        }
+      ]
+    },
+    {
+      "backend": "webgpu",
+      "triangle": 2,
+      "pixel": [
+        124,
+        118
+      ],
+      "instance": 21,
+      "ids": [
+        117,
+        118,
+        119
+      ],
+      "cpu_depth": 0.9870346784591675,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9870346784591675,
+      "gpu_vs_clips": [
+        [
+          -0.695240318775177,
+          -1.297513484954834,
+          3.678791046142578,
+          3.72695255279541
+        ],
+        [
+          -0.8719139695167542,
+          -1.1135355234146118,
+          3.6566219329833984,
+          3.704793930053711
+        ],
+        [
+          -0.8502083420753479,
+          -1.2922563552856445,
+          3.7100439071655273,
+          3.7581892013549805
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.987034797668457,
+      "clip_component_differences": [
+        {
+          "vertex": 117,
+          "component": 2,
+          "cpu": 3.6787919998168945,
+          "gpu": 3.678791046142578,
+          "ulp_delta": -4
+        },
+        {
+          "vertex": 118,
+          "component": 2,
+          "cpu": 3.656620979309082,
+          "gpu": 3.6566219329833984,
+          "ulp_delta": 4
+        }
+      ]
+    },
+    {
+      "backend": "webgpu",
+      "triangle": 3,
+      "pixel": [
+        124,
+        118
+      ],
+      "instance": 23,
+      "ids": [
+        69,
+        70,
+        71
+      ],
+      "cpu_depth": 0.9870349168777466,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9870348572731018,
+      "gpu_vs_clips": [
+        [
+          -0.8303104639053345,
+          -1.3198601007461548,
+          3.7116241455078125,
+          3.7597694396972656
+        ],
+        [
+          -0.7233299612998962,
+          -1.069076657295227,
+          3.5919713973999023,
+          3.640176773071289
+        ],
+        [
+          -0.8746232390403748,
+          -1.059063196182251,
+          3.654129981994629,
+          3.702303886413574
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9870346188545227,
+      "clip_component_differences": [
+        {
+          "vertex": 69,
+          "component": 3,
+          "cpu": 3.759768486022949,
+          "gpu": 3.7597694396972656,
+          "ulp_delta": 4
+        },
+        {
+          "vertex": 70,
+          "component": 2,
+          "cpu": 3.5919723510742188,
+          "gpu": 3.5919713973999023,
+          "ulp_delta": -4
+        },
+        {
+          "vertex": 70,
+          "component": 3,
+          "cpu": 3.6401758193969727,
+          "gpu": 3.640176773071289,
+          "ulp_delta": 4
+        },
+        {
+          "vertex": 71,
+          "component": 3,
+          "cpu": 3.702302932739258,
+          "gpu": 3.702303886413574,
+          "ulp_delta": 4
+        }
+      ]
+    },
+    {
+      "backend": "webgpu",
+      "triangle": 4,
+      "pixel": [
+        67,
+        122
+      ],
+      "instance": 16,
+      "ids": [
+        186,
+        187,
+        188
+      ],
+      "cpu_depth": 0.9900748133659363,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9900747537612915,
+      "gpu_vs_clips": [
+        [
+          -2.7143168449401855,
+          -1.7202467918395996,
+          4.7728071212768555,
+          4.82042121887207
+        ],
+        [
+          -2.7849204540252686,
+          -1.7249197959899902,
+          4.743799209594727,
+          4.7914276123046875
+        ],
+        [
+          -2.7849204540252686,
+          -1.8452562093734741,
+          4.779126167297363,
+          4.826737403869629
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9900748133659363,
+      "clip_component_differences": [
+        {
+          "vertex": 188,
+          "component": 1,
+          "cpu": -1.8452560901641846,
+          "gpu": -1.8452562093734741,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 188,
+          "component": 3,
+          "cpu": 4.826738357543945,
+          "gpu": 4.826737403869629,
+          "ulp_delta": -2
+        }
+      ]
+    },
+    {
+      "backend": "webgpu",
+      "triangle": 5,
+      "pixel": [
+        67,
+        122
+      ],
+      "instance": 17,
+      "ids": [
+        138,
+        139,
+        140
+      ],
+      "cpu_depth": 0.9900748133659363,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9900747537612915,
+      "gpu_vs_clips": [
+        [
+          -2.7155776023864746,
+          -1.7200453281402588,
+          4.774057388305664,
+          4.821671485900879
+        ],
+        [
+          -2.7849204540252686,
+          -1.7246348857879639,
+          4.745567321777344,
+          4.793195724487305
+        ],
+        [
+          -2.7849204540252686,
+          -2.50053071975708,
+          4.811535835266113,
+          4.859130859375
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.990074634552002,
+      "clip_component_differences": [
+        {
+          "vertex": 138,
+          "component": 3,
+          "cpu": 4.8216705322265625,
+          "gpu": 4.821671485900879,
+          "ulp_delta": 2
+        },
+        {
+          "vertex": 139,
+          "component": 2,
+          "cpu": 4.74556827545166,
+          "gpu": 4.745567321777344,
+          "ulp_delta": -2
+        }
+      ]
+    },
+    {
+      "backend": "webgpu",
+      "triangle": 6,
+      "pixel": [
+        138,
+        134
+      ],
+      "instance": 37,
+      "ids": [
+        186,
+        187,
+        188
+      ],
+      "cpu_depth": 0.9874150156974792,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9874148964881897,
+      "gpu_vs_clips": [
+        [
+          -0.5041424632072449,
+          -1.880769968032837,
+          3.776355743408203,
+          3.8244686126708984
+        ],
+        [
+          -0.5747459530830383,
+          -1.885442852973938,
+          3.747347831726074,
+          3.7954750061035156
+        ],
+        [
+          -0.5747459530830383,
+          -2.005779266357422,
+          3.7826757431030273,
+          3.830784797668457
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9874152541160583,
+      "clip_component_differences": [
+        {
+          "vertex": 186,
+          "component": 0,
+          "cpu": -0.5041424036026001,
+          "gpu": -0.5041424632072449,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 186,
+          "component": 1,
+          "cpu": -1.8807698488235474,
+          "gpu": -1.880769968032837,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 186,
+          "component": 2,
+          "cpu": 3.7763547897338867,
+          "gpu": 3.776355743408203,
+          "ulp_delta": 4
+        },
+        {
+          "vertex": 188,
+          "component": 2,
+          "cpu": 3.782674789428711,
+          "gpu": 3.7826757431030273,
+          "ulp_delta": 4
+        }
+      ]
+    },
+    {
+      "backend": "webgpu",
+      "triangle": 7,
+      "pixel": [
+        138,
+        134
+      ],
+      "instance": 38,
+      "ids": [
+        138,
+        139,
+        140
+      ],
+      "cpu_depth": 0.9874150156974792,
+      "gpu_raster_depth_with_exact_cpu_clips": 0.9874148964881897,
+      "gpu_vs_clips": [
+        [
+          -0.5054032206535339,
+          -1.880568504333496,
+          3.7776060104370117,
+          3.8257179260253906
+        ],
+        [
+          -0.5747459530830383,
+          -1.8851580619812012,
+          3.749116897583008,
+          3.797243118286133
+        ],
+        [
+          -0.5747459530830383,
+          -2.6610538959503174,
+          3.815084457397461,
+          3.8631772994995117
+        ]
+      ],
+      "original_plane_from_gpu_vs": 0.9874150156974792,
+      "clip_component_differences": [
+        {
+          "vertex": 138,
+          "component": 1,
+          "cpu": -1.8805683851242065,
+          "gpu": -1.880568504333496,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 139,
+          "component": 1,
+          "cpu": -1.8851579427719116,
+          "gpu": -1.8851580619812012,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 139,
+          "component": 2,
+          "cpu": 3.7491159439086914,
+          "gpu": 3.749116897583008,
+          "ulp_delta": 4
+        },
+        {
+          "vertex": 140,
+          "component": 1,
+          "cpu": -2.6610536575317383,
+          "gpu": -2.6610538959503174,
+          "ulp_delta": 1
+        },
+        {
+          "vertex": 140,
+          "component": 3,
+          "cpu": 3.863178253173828,
+          "gpu": 3.8631772994995117,
+          "ulp_delta": -4
+        }
+      ]
+    }
+  ],
+  "files": {
+    "vs-native.json": "8a1e8de1b5a21af84affc86554d2bdcfb51a8baaede230ab33664dec68e3313e",
+    "cpu-fragments.json": "93952246476c53972ae53bd82d2db7c607023f5874fb6192e39b149b46130910",
+    "prefix-native.json": "b012bd7779c39c2387d9edaba94340eca9332ad368302d6d20f7c570224c6f28",
+    "clip-webgpu.json": "6baf7da548fd44b374fff9de4614aa3ff0e518a5d97837c699d0d7ec5b221de8",
+    "failed-comparison.json": "c7fc0f90af3e7877e42cc76a91ee23e6a51e4fb216d11ab113bbc4a745d044c3",
+    "clip-native.json": "fa90b44d019fe38ac8769471cf78bd4825d69ab1fb1601d05c7000f53e0c38de",
+    "clip-cases.json": "2183091f2d11e72e686308eac8693edb1d09d9118ce8d1c632862fa283752c52",
+    "vs-webgpu.json": "09bd95a1905a2a11418ae532d8f31d15de1112adbc94a02d0b2af05d174f289b",
+    "vs-cases.json": "8d1f78a5e719ac8eded51476e381160e95f1aeb29e2a4fcf6bf742e93bc4fb30",
+    "inputs/u.bin": "60bab0ae95b768ac1fcee1b80c4dc6d03f077a111be6a991d5802ca2ec4cf575",
+    "inputs/objects.bin": "f837e11b94fe44e63e352fedcf0cc8f2a9d13888374a11f5426b198ae76f050c",
+    "source/aethyr/tests/render-clip-output-probe.coax": "5bb38ea420be1338314940fd6b1490c06180b2f034bfffcff6bf5d907b21dddf",
+    "source/aethyr/tests/render-deadgears-vs-probe.bindings": "af4ce5bc22b0813bdee2bd341620fc686d3480641969caeeb61f289c8bca069a",
+    "source/aethyr/tests/render-deadgears-vs-probe.coax": "531304a8f6d9e4c0a37304f92f8a91209661859e676f15382a48c2126896d955",
+    "source/aethyr/tests/render-clip-output-probe.bindings": "3fc94932c5504357053a5a7ddfb855816c1dd3e7e6d9a9643765933864363490",
+    "source/aethyr/tests/check_deadgears_vs_webgpu.ts": "4cd215d352a95cb09d66bd7af1f769b5d6482b7d6486f7f55a11efd55d116adf",
+    "source/aethyr/tests/check_clip_output_webgpu.ts": "be2bc4a7894f66765b8ccd7c33178867af7405f682303bb6e563c7aaf9cebd3a",
+    "source/aethyr/render/tests/analyze_fragment_planes.py": "fbcd89d7ebf43c713140d851231d6b26a49a13da4634c68396e907b9d9155bd1"
+  },
+  "native_artifacts": [
+    "../../native-media/deadgears-prefix-probe/",
+    "../../native-media/exact-clip-output-probe/",
+    "../../native-media/deadgears-vs-output-probe/"
+  ]
+}

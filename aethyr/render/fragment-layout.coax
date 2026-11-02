@@ -1,0 +1,6 @@
+// Physical attachments and fragment result locations are distinct. Only an
+// unwritten second attachment may be absent from the fragment's result.
+#module "aethyr.render.fragment.layout";
+#authority;
+#load "tests/fragment-layout-checks.coax";
+render_fragment_outputs :: (physical:int,aux_write:bool,colours:int)->bool {return (physical==0 && colours==0) || (physical==1 && colours==1) || (physical==2 && (colours==2 || (!aux_write && colours==1)));}

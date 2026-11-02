@@ -1,0 +1,6 @@
+{
+  "status": "pass",
+  "scope": "All production source outside the capsule generator is byte-identical after removing one load. Within it only azimuth/polar coefficient lines changed; all row, endpoint, axis/basis, radius, position composition and normal composition structure is preserved.",
+  "before_sha256": "1065de3da810b5bc8205a6026aff3cb7a743d83cccd9394551802fb9d4377da3",
+  "after_sha256": "47bc1e2b0a1c5558b8a48a4106cbb5699a9f8302b8f76433ffd30234dde0107f"
+}

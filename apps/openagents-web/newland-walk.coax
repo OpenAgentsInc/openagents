@@ -485,7 +485,7 @@ coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   return v;
 }
 
-#test "the Grid draws the homepage's scene from behind you, and its own HUD" {
+#test "the Grid draws the homepage's scene from behind you, and its own HUD" #steps 50000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   coaxial_land_page(s[..], 1);
@@ -553,7 +553,7 @@ wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
   #assert coaxial_walk_pointer(s[..], gb.x0 + 4, gb.y0 + 4, POINTER_DOWN, 0, 5) && coaxial_walk_pointer(s[..], gb.x0 + 4, gb.y0 + 4, POINTER_UP, 0, 5);
   #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == WK_GALAXY;
 }
-#test "everyone else on the Grid walks it here too, where the room says, and ?from=home dives" {
+#test "everyone else on the Grid walks it here too, where the room says, and ?from=home dives" #steps 70000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   coaxial_land_page(s[..], 1); s[0].time = 9;
@@ -577,7 +577,7 @@ wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
                              WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0) > 0;
   #assert s[0].view.eye.y < 2;
 }
-#test "the Grid's EDIT: its owner gets it left of HOME (under REALMS on a phone), its pane's glass, and the board's rows switch the names and the walkers" {
+#test "the Grid's EDIT: its owner gets it left of HOME (under REALMS on a phone), its pane's glass, and the board's rows switch the names and the walkers" #steps 90000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   coaxial_land_page(s[..], 1); s[0].time = 9;
@@ -617,7 +617,7 @@ wk_has :: (text: string, part: string) -> bool {
   for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
   return false;
 }
-#test "walked off from every project, the HUD names the nearest one, which way it lies and how far, and an arrow points there" {
+#test "walked off from every project, the HUD names the nearest one, which way it lies and how far, and an arrow points there" #steps 90000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   coaxial_land_page(s[..], 1); s[0].time = 9;

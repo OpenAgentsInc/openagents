@@ -1,0 +1,141 @@
+{
+  "kind": "candidate-native-sampling-gpu",
+  "status": "passed",
+  "compiler": "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "source_inputs": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-sampling-shader.coax": "8700f665bd5134280082306b1f4377d4f94fd348b87a6dc2dec5c4e25aebbbe2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/sampling.coax": "5cb0e8c69947eae0f233de97d44d8c23088edafa154b9b44e5bd5ae1997c82c6",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/sampling-core.coax": "3b03c9587956c4af4d60dc50fea61a06bd496e1a4a4bc2e790c6dbd8bd5f288f",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/shader.coax": "4a5333e783dbc9abfb774d8f8c7512b89af77dbb789bf64de8ab4488a5d5897b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/footprint.coax": "1fbc72b396b8f637322c6f714508ee4cb804e9bda24e6951c7376bd6c665cd0d",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/footprint-checks.coax": "3d600fb7166555bb1423ee741c22dc82108bfc7ceba59b979e2d8b74c1204976",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-sampling-gpu.c": "d00bac05cd2b94edf865d42fe65c41cd9bba82481c737c39111bec93a0d16c02",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-capabilities-bridge.coax": "69884d2d4aad9d02dcd32f838959ca50bf248de7c7e6a19a6a757e38262a5150",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vks.c": "3a63a7535171dae40ed8617fff4ce5127bed4e0b70d42fe3d5351b48c2b84f5e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vks.h": "24d03be9dcce6773a603c0013884c39f0013973b033b8919cc7d95100ee1e65a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vkc.c": "9b60bcf80801b0932a82e3f623281c65269f6a7b55c62ae6901a70649065b13a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/vkc.h": "93c64a4b34d6bb2ec3308729ec09455a868d793f0bd596c87404f0543a48c2cc",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_render_sampling_gpu.py": "a93d836b1474513542f820db1b77528aa01ecc8adc428c4d3c169efbdba3c75c",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/capabilities.coax": "ae385c231cd4d9551c4676c111518fa805fe4660f28c3a09d8a0b280f63808c2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/resources.coax": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/passes.coax": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/bindings.coax": "bd02c0475836ff87c378ee10e595080d13225f9670ecdcc7a7310f715b4e0efb",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/frame.coax": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-frame-checks.coax": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/tests/resources-checks.coax": "22e811191a1112c1740694d96338936a20ff8092c5915f0638e80f70d0f2c61f"
+  },
+  "commands": [
+    {
+      "command": [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=15",
+        "-o",
+        "ServerAliveInterval=15",
+        "-o",
+        "ServerAliveCountMax=2",
+        "coderos-4080",
+        "set -e; d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; tar -xf - -C \"$d\"; cd \"$d\"; status=0; bash remote.sh >remote.log 2>&1 || status=$?; printf '%s\\n' \"$status\" >remote-status.txt; tar -cf - --ignore-failed-read remote.log remote-status.txt positive.log fault.log gcc-version.txt gcc-path.txt native-hashes.txt render-sampling-gpu 2>/dev/null"
+      ],
+      "exit_code": 0,
+      "seconds": 6.432
+    }
+  ],
+  "reused_emissions": {
+    "receipt": "/private/tmp/aethyr-ch11-sampling-gpu-693/qualification.json",
+    "sha256": "57517db016fd64fafc4b245891c83292c29e5b4147fb63e734d85d280ba5d0f5",
+    "commands": [
+      {
+        "command": [
+          "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+          "spirv",
+          "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-sampling-shader.coax",
+          "--vertex",
+          "render_sampling_vs",
+          "--fragment",
+          "render_sampling_fs",
+          "-o",
+          "/private/tmp/aethyr-ch11-sampling-gpu-693/filtered.spv"
+        ],
+        "exit_code": 0,
+        "seconds": 0.017
+      },
+      {
+        "command": [
+          "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+          "spirv",
+          "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-sampling-shader.coax",
+          "--vertex",
+          "render_sampling_vs",
+          "--fragment",
+          "render_sampling_invalid_fs",
+          "-o",
+          "/private/tmp/aethyr-ch11-sampling-gpu-693/invalid.spv"
+        ],
+        "exit_code": 0,
+        "seconds": 0.017
+      },
+      {
+        "command": [
+          "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+          "spirv",
+          "/private/tmp/aethyr-ch11-sampling-gpu-693/fault-source.coax",
+          "--vertex",
+          "render_sampling_vs",
+          "--fragment",
+          "render_sampling_invalid_fs",
+          "-o",
+          "/private/tmp/aethyr-ch11-sampling-gpu-693/fault.spv"
+        ],
+        "exit_code": 0,
+        "seconds": 0.017
+      },
+      {
+        "command": [
+          "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+          "c",
+          "aethyr/tests/render-capabilities-bridge.coax",
+          "--library",
+          "--header",
+          "/private/tmp/aethyr-ch11-sampling-gpu-693/RenderCaps.h"
+        ],
+        "exit_code": 0,
+        "seconds": 0.15
+      }
+    ]
+  },
+  "source_changes": [],
+  "artifacts": {
+    "gcc-path.txt": "35b36920e465df1aab8c4daec3e702d7917539ae06ba7e5c8dc2bc2525484b92",
+    "RenderCaps.c": "4ededd76a6b2c4550940a94c6c7977aa525d2f502b002316a7de18eeed18a90c",
+    "positive.log": "b28030b8cf2a42a93f6caf5308ef5fc0b91c0234e24d84a36f0bab6e9581ae65",
+    "gcc-version.txt": "9ed454ec6d9bc002fcfaba8889826139226da5e2622af26f535f89a0f4271b43",
+    "filtered.spv": "b709e2c458d0e87226a2bb466c541b50603c9a8a996104ab61a042cde14fd5b2",
+    "returned.tar": "3d48e62c1d9f7d67bebd2a21b3d5ec8c03f4eee33db74549def1ea06ec6f23be",
+    "vks.c": "3a63a7535171dae40ed8617fff4ce5127bed4e0b70d42fe3d5351b48c2b84f5e",
+    "fault.log": "d96ba512126b72ffcfb17d4765e493245dfd449464a29e474ff6f17c3f013ac1",
+    "render-sampling-gpu": "b9b0f6c451b1f6e8e4af60531f356e09df825d4f5e1025c244417a12b080bd41",
+    "vkc.h": "93c64a4b34d6bb2ec3308729ec09455a868d793f0bd596c87404f0543a48c2cc",
+    "send.tar": "69a16ac0493e61ca603b0c124a5dce2f299c823be4b340004518107393609244",
+    "returned.tar.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "remote.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sampling-fault.coax": "39c50d51bcd600d3c59acec8dfe0940a0ced528670183aae9f7d9048b606fc95",
+    "render-sampling-gpu.c": "d00bac05cd2b94edf865d42fe65c41cd9bba82481c737c39111bec93a0d16c02",
+    "RenderCaps.h": "efa90e4d121c8fcb28c34479f3dfa3da9381a1be6f985079f7083cf7ae4eae0f",
+    "vks.h": "24d03be9dcce6773a603c0013884c39f0013973b033b8919cc7d95100ee1e65a",
+    "filtered.reflection": "4e0f1a3f27d79f77cc942f5d1359f1b649dd17aaac8ff0f4209477f8fad9ae1e",
+    "fault.spv": "c0afbf44dca26a3ddfec8367f30e3d3130c1d0e3428d7414f6a7d14e10e29904",
+    "native-hashes.txt": "a694f142c9c39e3cf696d0d07614c624de554414bae47c00489516a7a3443cbf",
+    "remote.sh": "75b612eb073cadc232ffecbc7ecc777901890cb8ab66958344b8586ad84a38f0",
+    "invalid.reflection": "0378e834ae50bf455ba23de6df6d8127cb687c3bc6c6bc2cd5856a37efb9bd57",
+    "invalid.spv": "f077ef63f4a4c3c09e7b2d10f3fba607f5aa0017538e69a67bee0b0a7a144c3c",
+    "fault-source.coax": "d118a424a35cb89629decd561d25f668bfa8c76c449554bbccec1aa2b2b8ff7c",
+    "fault.reflection": "3477b658a4a6a64d3cc1b0d54340b1e5c45e56ff8a8e2e65cde4c7e51af265f7",
+    "vkc.c": "9b60bcf80801b0932a82e3f623281c65269f6a7b55c62ae6901a70649065b13a",
+    "remote-status.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  }
+}

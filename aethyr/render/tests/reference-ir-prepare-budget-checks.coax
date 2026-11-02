@@ -1,0 +1,15 @@
+RQ_IR_MIN_TREE :: [17]u32.[2,6,0,1,2,3,4,5,1,0,0,0,1,5,1,1,0];
+#forall "quad preparation charges every header and body token once at exact small budgets" budget:1..<20 {
+ tree:=RQ_IR_MIN_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare_with_budget(tree[..],meta[..],budget);
+ if budget<17 {#assert p.status==RQStatus.budget && p.prepare_steps==budget;}
+ else {#assert p.status==RQStatus.ok && p.prepare_steps==17 && p.tree_words==17 && p.types==6 && p.procs==1;}
+}
+#forall "quad preparation refuses work allowances outside its declared range" which:0..<3 {
+ tree:=RQ_IR_MIN_TREE;meta:[RQ_IR_META]int;budgets:=[3]int.[-1,0,4000001];p:=rq_ir_prepare_with_budget(tree[..],meta[..],budgets[which]);
+ #assert p.status==RQStatus.resource && p.prepare_steps==0;
+}
+#test "quad preparation default and maximum retain the same complete receipt" {
+ tree:=RQ_IR_MIN_TREE;meta:[RQ_IR_META]int;a:=rq_ir_prepare(tree[..],meta[..]);b:=rq_ir_prepare_with_budget(tree[..],meta[..],4000000);
+ #assert a.status==RQStatus.ok && b.status==RQStatus.ok && a.prepare_steps==17 && b.prepare_steps==17 && a.tree_words==b.tree_words;
+ #assert rq_ir_prepare_with_budget(tree[..],meta[0..<RQ_IR_META-1],4000000).status==RQStatus.capacity;
+}

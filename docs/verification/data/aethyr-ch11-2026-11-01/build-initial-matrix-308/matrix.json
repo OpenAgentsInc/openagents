@@ -1,0 +1,113 @@
+{
+  "scope": "Initial catalog build exposed masked-attachment interface policy bug; these receipts predate its fix. Successful outputs are retained for content reuse checks, not claimed as final current-source admission.",
+  "profiles": [
+    {
+      "profile": "haunted-house",
+      "status": "failed-interface",
+      "receipt": null,
+      "log": "/tmp/aethyr-ch11-build-haunted-house-qualified.log"
+    },
+    {
+      "profile": "the-grid",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-the-grid-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-the-grid-qualified.log"
+    },
+    {
+      "profile": "everglade",
+      "status": "failed-interface",
+      "receipt": null,
+      "log": "/tmp/aethyr-ch11-build-everglade-qualified.log"
+    },
+    {
+      "profile": "fairy-forest",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-fairy-forest-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-fairy-forest-qualified.log"
+    },
+    {
+      "profile": "dead-gears",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-dead-gears-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-dead-gears-qualified.log"
+    },
+    {
+      "profile": "belt-2200",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-belt-2200-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-belt-2200-qualified.log"
+    },
+    {
+      "profile": "orbit-league",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-orbit-league-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-orbit-league-qualified.log"
+    },
+    {
+      "profile": "fixture",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-fixture-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-fixture-qualified.log"
+    },
+    {
+      "profile": "waterlab",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-waterlab-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-waterlab-qualified.log"
+    },
+    {
+      "profile": "drop",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-drop-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-drop-qualified.log"
+    },
+    {
+      "profile": "built",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-built-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-built-qualified.log"
+    },
+    {
+      "profile": "sandbox",
+      "status": "failed-interface",
+      "receipt": null,
+      "log": "/tmp/aethyr-ch11-build-sandbox-qualified.log"
+    },
+    {
+      "profile": "ice-cream-man",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-ice-cream-man-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-ice-cream-man-qualified.log"
+    },
+    {
+      "profile": "hecates-cemetery",
+      "status": "failed-interface",
+      "receipt": null,
+      "log": "/tmp/aethyr-ch11-build-hecates-cemetery-qualified.log"
+    },
+    {
+      "profile": "hold-the-stair",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-hold-the-stair-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-hold-the-stair-qualified.log"
+    },
+    {
+      "profile": "watchtower",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-watchtower-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-watchtower-qualified.log"
+    },
+    {
+      "profile": "garden",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-garden-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-garden-qualified.log"
+    },
+    {
+      "profile": "galaxy",
+      "status": "passed-initial-interface",
+      "receipt": "/tmp/aethyr-ch11-build-galaxy-qualified.json",
+      "log": "/tmp/aethyr-ch11-build-galaxy-qualified.log"
+    }
+  ]
+}

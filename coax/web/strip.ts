@@ -5,7 +5,7 @@
 // .js files (Bun's transpiler, whitespace only: no renaming), WGSL comments.
 // Markdown, JSON-LD and images pass through untouched.
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { join, relative, sep } from "node:path"
 
 const js = new Bun.Transpiler({ loader: "js", minifyWhitespace: true })
 const script = (code: string) => js.transformSync(code).trim()
@@ -28,17 +28,28 @@ function walk(dir: string, out: string[] = []) {
   return out
 }
 
-if (import.meta.main) {
-  const stage = process.argv[2]
-  if (!stage) { console.error("usage: bun strip.ts STAGE_DIR"); process.exit(2) }
+export function stripStage(stage: string): number {
   let n = 0
   for (const p of walk(stage)) {
     const text = () => readFileSync(p, "utf8")
     let next: string | null = null
     if (p.endsWith(".html") || p.endsWith(".page")) next = html(text())
     else if (p.endsWith(".js")) next = script(text()) + "\n"
-    else if (p.endsWith(".wgsl")) next = wgsl(text())
+    else if (p.endsWith(".wgsl")) {
+      const before = text()
+      next = wgsl(before)
+      const parts = relative(stage, p).split(sep)
+      const packaged = ["assets", "site"].includes(parts[0]) && parts[1] === "build" && parts[2] === "render"
+      if (packaged && next !== before) throw new Error(`strip: would invalidate a render package hash: ${p}`)
+    }
     if (next !== null) { writeFileSync(p, next); n++ }
   }
+  return n
+}
+
+if (import.meta.main) {
+  const stage = process.argv[2]
+  if (!stage) { console.error("usage: bun strip.ts STAGE_DIR"); process.exit(2) }
+  const n = stripStage(stage)
   console.log(`  strip    ${n} files without comments`)
 }

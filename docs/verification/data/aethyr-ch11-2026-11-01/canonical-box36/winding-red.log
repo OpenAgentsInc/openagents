@@ -1,0 +1,7 @@
+FAIL #test DeadGears transformed closed box winding agrees with every authored face normal (0 ms)
+apps/openagents-web/gpu/deadgears.coax:440:3: error[E0406]: assertion failed
+    #assert dot3(cross3(sub3(dg_box_b.world,dg_box_a.world),sub3(dg_box_c.world,dg_box_a.world)),dg_box_a.normal)>0;
+    ^
+  note: in #test DeadGears transformed closed box winding agrees with every authored face normal
+1 of 27 checks (--only 'transformed closed box winding'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

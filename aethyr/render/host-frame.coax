@@ -1,0 +1,95 @@
+// Browser arena observations become bounded views in Coax before C borrows
+// any payload. These direct/HUD adapters are the flat renderer entry path.
+#module "aethyr.render.host.frame";
+#load "runtime.coax";
+#authority;
+RenderHostBufferSizes :: struct {status:RenderFrameStatus=RenderFrameStatus.bad_counts;vertex_bytes:u64;uniform_bytes:u64;}
+RenderHostFlatLayout :: struct {
+ status:RenderRuntimeStatus=RenderRuntimeStatus.bad_profile;frame:RenderFrameResult;
+ vertex_address:u64;vertex_floats:int;uniform_address:u64;uniform_floats:int;
+ uploads:[2]RenderUpload;
+}
+#test "flat host allocation sizes admit exact device extents without clipping" {
+ q:=render_host_buffer_sizes(15,4,16,60,256);#assert q.status==RenderFrameStatus.ok && q.vertex_bytes==256 && q.uniform_bytes==240;
+ q=render_host_buffer_sizes(15,0,16,60,256);#assert q.status==RenderFrameStatus.ok && q.vertex_bytes==16 && q.uniform_bytes==240;
+ q=render_host_buffer_sizes(15,4,16,64,256);#assert q.status==RenderFrameStatus.ok && q.uniform_bytes==256;
+ #assert render_host_buffer_sizes(15,5,16,60,256).status==RenderFrameStatus.capacity;
+ #assert render_host_buffer_sizes(15,4,16,65,256).status==RenderFrameStatus.capacity;
+ #assert render_host_buffer_sizes(15,-1,16,60,256).status==RenderFrameStatus.bad_counts;
+ #assert render_host_buffer_sizes(15,4,12,60,256).status==RenderFrameStatus.bad_counts;
+ #assert render_host_buffer_sizes(15,4,16,59,256).status==RenderFrameStatus.bad_counts;
+ #assert render_host_buffer_sizes(-1,4,16,60,256).status==RenderFrameStatus.bad_counts;
+ #assert render_host_buffer_sizes(15,4,16,-1,256).status==RenderFrameStatus.bad_counts;
+}
+#test "flat host exact empty and full source endpoints remain valid" {
+ c:=FrameCounts.{width=1,height=1,vertex_stride=16};
+ q:=render_host_flat_layout(15,c,RenderFrameLimits.{},0,0,0,0,0,0,0);
+ #assert q.status==RenderRuntimeStatus.ok && q.vertex_floats==0 && q.uniform_floats==0;
+ q=render_host_flat_layout(15,c,RenderFrameLimits.{},4,0,0,256,256,256,0);#assert q.status==RenderRuntimeStatus.ok;
+ q=render_host_flat_layout(15,c,RenderFrameLimits.{},0,60,240,0,240,0,240);#assert q.status==RenderRuntimeStatus.ok;
+ q=render_host_flat_layout(15,c,RenderFrameLimits.{},0,0,0,0,18446744073709551615,0,0);#assert q.status==RenderRuntimeStatus.ok;
+ q=render_host_flat_layout(15,c,RenderFrameLimits.{},9223372036854775807,0,0,0,18446744073709551615,0,0);#assert q.status==RenderRuntimeStatus.bad_upload;
+ q=render_host_flat_layout(15,c,RenderFrameLimits.{},0,9223372036854775807,0,0,18446744073709551615,0,0);#assert q.status==RenderRuntimeStatus.bad_upload;
+ q=render_host_flat_layout(15,c,RenderFrameLimits.{},-1,0,0,0,1024,0,0);#assert q.status==RenderRuntimeStatus.bad_upload;
+ q=render_host_flat_layout(15,c,RenderFrameLimits.{},0,-1,0,0,1024,0,0);#assert q.status==RenderRuntimeStatus.bad_upload;
+}
+#test "flat host source spans precede borrowed payload construction and GPU upload" {
+ c:=FrameCounts.{width=2,height=2,vertex_stride=16,hud_vertices=2};
+ q:=render_host_flat_layout(15,c,RenderFrameLimits.{},4,60,256,512,1024,256,240);
+ #assert q.status==RenderRuntimeStatus.ok && q.vertex_address==256 && q.vertex_floats==64 && q.uniform_address==512 && q.uniform_floats==60;
+ #assert q.uploads[0].bytes==128 && q.uploads[1].bytes==240;
+ q=render_host_flat_layout(15,c,RenderFrameLimits.{},4,60,256,512,751,256,240);#assert q.status==RenderRuntimeStatus.bad_upload;
+ q=render_host_flat_layout(15,c,RenderFrameLimits.{},4,60,257,512,1024,256,240);#assert q.status==RenderRuntimeStatus.bad_upload;
+ q=render_host_flat_layout(15,c,RenderFrameLimits.{},4,60,256,512,1024,127,240);#assert q.status==RenderRuntimeStatus.bad_upload;
+ c.hud_vertices=5;q=render_host_flat_layout(15,c,RenderFrameLimits.{},4,60,256,512,1024,256,240);#assert q.status==RenderRuntimeStatus.bad_upload;
+ c.hud_vertices=-1;q=render_host_flat_layout(15,c,RenderFrameLimits.{},4,60,256,512,1024,256,240);#assert q.status==RenderRuntimeStatus.bad_frame && q.frame.status==RenderFrameStatus.bad_counts;
+ c.hud_vertices=0;q=render_host_flat_layout(16,c,RenderFrameLimits.{},4,60,256,512,1024,256,240);#assert q.status==RenderRuntimeStatus.bad_profile;
+}
+
+render_host_buffer_sizes :: (hf_profile:int,hf_vertices:int,hf_stride:int,hf_uniform_floats:int,hf_device_bytes:u64)->RenderHostBufferSizes {
+ hf_r:=RenderHostBufferSizes.{};hf_meta:=render_catalog(hf_profile);
+ if !hf_meta.valid || hf_vertices<0 || hf_stride!=hf_meta.vertex_stride || hf_uniform_floats<hf_meta.uniform_vec4s*4 {return hf_r;}
+ hf_stride_bytes:=cast(u64)hf_stride*4;
+ if cast(u64)hf_vertices>hf_device_bytes/hf_stride_bytes || cast(u64)hf_uniform_floats>hf_device_bytes/4 {hf_r.status=RenderFrameStatus.capacity;return hf_r;}
+ hf_r.vertex_bytes=cast(u64)hf_vertices*hf_stride_bytes;hf_r.uniform_bytes=cast(u64)hf_uniform_floats*4;
+ if hf_r.vertex_bytes==0 {hf_r.vertex_bytes=16;}
+ hf_r.status=RenderFrameStatus.ok;return hf_r;
+}
+render_host_flat_layout :: (hf_profile:int,hf_c:FrameCounts,hf_limits:RenderFrameLimits,hf_vertices:int,hf_uniform_floats:int,
+ hf_vertex_address:u64,hf_uniform_address:u64,hf_memory_bytes:u64,hf_vertex_gpu:u64,hf_uniform_gpu:u64)->RenderHostFlatLayout {
+ hf_meta:=render_catalog(hf_profile);
+ if hf_meta.features.scene || hf_meta.features.surface {return RenderHostFlatLayout.{};}
+ return render_host_vertex_layout(hf_profile,hf_c,hf_limits,hf_vertices,hf_uniform_floats,hf_vertex_address,hf_uniform_address,hf_memory_bytes,hf_vertex_gpu,hf_uniform_gpu);
+}
+
+#forall "generic host arena spans cover every declared scene and surface profile" hf_case:0..<18 {
+ hf_meta:=render_catalog(hf_case);hf_c:=FrameCounts.{width=1,height=1,vertex_stride=hf_meta.vertex_stride};
+ hf_u:=hf_meta.uniform_vec4s*4;hf_bytes:=cast(u64)hf_u*4;
+ hf_q:=render_host_vertex_layout(hf_case,hf_c,RenderFrameLimits.{},0,hf_u,0,0,hf_bytes,16,hf_bytes);
+ #assert hf_q.status==RenderRuntimeStatus.ok && hf_q.vertex_floats==0 && hf_q.uniform_floats==hf_u && hf_q.uploads[1].bytes==hf_bytes;
+}
+#test "generic host arena admission refuses counts and capacities before source views" {
+ hf_c:=FrameCounts.{width=1,height=1,vertex_stride=16};
+ #assert render_host_vertex_layout(-1,hf_c,RenderFrameLimits.{},0,0,0,0,0,0,0).status==RenderRuntimeStatus.bad_profile;
+ hf_c.draw_count=5000;#assert render_host_vertex_layout(16,hf_c,RenderFrameLimits.{},0,0,0,0,0,0,0).status==RenderRuntimeStatus.bad_frame;
+ hf_c.draw_count=0;#assert render_host_vertex_layout(16,hf_c,RenderFrameLimits.{},1,0,0,0,0,0,0).status==RenderRuntimeStatus.bad_upload;
+}
+render_host_vertex_layout :: (hf_profile:int,hf_c:FrameCounts,hf_limits:RenderFrameLimits,hf_vertices:int,hf_uniform_floats:int,
+ hf_vertex_address:u64,hf_uniform_address:u64,hf_memory_bytes:u64,hf_vertex_gpu:u64,hf_uniform_gpu:u64)->RenderHostFlatLayout {
+ hf_r:=RenderHostFlatLayout.{};hf_meta:=render_catalog(hf_profile);
+ if !hf_meta.valid {return hf_r;}
+ hf_empty:[]RenderUpload;hf_pre:=render_runtime_preflight(hf_profile,hf_c,hf_limits,hf_empty);hf_r.frame=hf_pre.frame;
+ if hf_pre.status!=RenderRuntimeStatus.ok {hf_r.status=hf_pre.status;return hf_r;}
+ hf_r.status=RenderRuntimeStatus.bad_upload;
+ hf_stride_bytes:=cast(u64)hf_c.vertex_stride*4;
+ if hf_vertices<0 || hf_uniform_floats<0 || cast(u64)hf_vertices>hf_memory_bytes/hf_stride_bytes || cast(u64)hf_uniform_floats>hf_memory_bytes/4 {return hf_r;}
+ hf_vertex_bytes:=cast(u64)hf_vertices*hf_stride_bytes;hf_uniform_bytes:=cast(u64)hf_uniform_floats*4;
+ hf_read_vertex:=RenderUpload.{source_address=hf_vertex_address,source_bytes=hf_memory_bytes,bytes=hf_vertex_bytes,gpu_bytes=hf_vertex_bytes};
+ hf_read_uniform:=RenderUpload.{source_address=hf_uniform_address,source_bytes=hf_memory_bytes,bytes=hf_uniform_bytes,gpu_bytes=hf_uniform_bytes};
+ if !render_upload_ok(hf_read_vertex) || !render_upload_ok(hf_read_uniform) {return hf_r;}
+ hf_r.uploads[0]=RenderUpload.{source_address=hf_vertex_address,source_base=hf_vertex_address,source_bytes=hf_vertex_bytes,bytes=cast(u64)hf_c.hud_vertices*hf_stride_bytes,gpu_bytes=hf_vertex_gpu};
+ hf_r.uploads[1]=RenderUpload.{source_address=hf_uniform_address,source_base=hf_uniform_address,source_bytes=hf_uniform_bytes,bytes=hf_uniform_bytes,gpu_bytes=hf_uniform_gpu};
+ hf_r.frame=render_uploads_admit(hf_limits,hf_r.uploads[..]);if hf_r.frame.status!=RenderFrameStatus.ok {return hf_r;}
+ hf_r.status=RenderRuntimeStatus.ok;hf_r.vertex_address=hf_vertex_address;hf_r.vertex_floats=cast(int)(hf_vertex_bytes/4);
+ hf_r.uniform_address=hf_uniform_address;hf_r.uniform_floats=hf_uniform_floats;return hf_r;
+}

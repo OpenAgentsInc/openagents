@@ -1480,7 +1480,7 @@ run :: (s: [] Watch, secs: f32) {
   for i: 0..<steps { if s[0].phase != PLAY { return; } step(s, f32(STEP)); }
 }
 
-#test "a frame draws the map and the HUD on a desktop and on a 390 px phone, inside the vertex budget" {
+#test "a frame draws the map and the HUD on a desktop and on a 390 px phone, inside the vertex budget" #steps 28325347 {
   s: [2] Watch;
   a := frame_at(s[0..<1], 1440, 900, 1, 0.016);
   #assert a > 1000 && a < MAX_VERTICES - 600;
@@ -1535,7 +1535,7 @@ run :: (s: [] Watch, secs: f32) {
   #assert s[0].steps >= 4 && s[0].alerts + s[0].raw > 4;
 }
 
-#test "the triad defending on its own holds the vault, across many shifts" {
+#test "the triad defending on its own holds the vault, across many shifts" #steps 60273707 {
   wins := 0;
   for seed: 1..<13 {
     s: [1] Watch;

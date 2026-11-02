@@ -1,0 +1,68 @@
+// An effectful producer getter may consume its update before later frame
+// admission refuses. Keep the whole copied prefix pending until submission.
+#module "aethyr.render.host.uploads";
+#load "types.coax";
+#authority;
+RenderHostUploadState :: struct {pending:u64;}
+RenderHostUploadReceipt :: struct {status:RenderFrameStatus;next:RenderHostUploadState;grew:bool;}
+// Checks stay in this unit so the composed realm fits the source graph budget.
+#forall "host upload staging retains the union prefix and reports only strict growth" rhu_before:0..<7,rhu_incoming:0..<7 {
+  rhu_state:=RenderHostUploadState.{pending=cast(u64)(rhu_before*4)};
+  rhu_result:=render_host_upload_stage(rhu_state,cast(u64)(rhu_incoming*4),28);
+  rhu_expected:=ifx rhu_before>rhu_incoming then rhu_before else rhu_incoming;
+  #assert rhu_result.status==RenderFrameStatus.ok && rhu_result.next.pending==cast(u64)(rhu_expected*4) && rhu_result.grew==(rhu_incoming>rhu_before);
+  #assert rhu_state.pending==cast(u64)(rhu_before*4);
+}
+#forall "host upload staging refuses each nonword incoming or retained prefix without publication" rhu_bytes:1..<12 {
+  if rhu_bytes%4!=0 {
+    rhu_result:=render_host_upload_stage(RenderHostUploadState.{pending=8},cast(u64)rhu_bytes,16);
+    #assert rhu_result.status==RenderFrameStatus.bad_upload && rhu_result.next.pending==8 && !rhu_result.grew;
+    rhu_result=render_host_upload_stage(RenderHostUploadState.{pending=cast(u64)rhu_bytes},8,16);
+    #assert rhu_result.status==RenderFrameStatus.bad_upload && rhu_result.next.pending==cast(u64)rhu_bytes && !rhu_result.grew;
+  }
+}
+#test "host upload staging admits exact capacity and refuses either prefix beyond it" {
+  rhu_a:=render_host_upload_stage(RenderHostUploadState.{pending=8},16,16);
+  #assert rhu_a.status==RenderFrameStatus.ok && rhu_a.next.pending==16 && rhu_a.grew;
+  rhu_a=render_host_upload_stage(RenderHostUploadState.{pending=16},0,16);
+  #assert rhu_a.status==RenderFrameStatus.ok && rhu_a.next.pending==16 && !rhu_a.grew;
+  rhu_a=render_host_upload_stage(RenderHostUploadState.{pending=8},16,15);
+  #assert rhu_a.status==RenderFrameStatus.capacity && rhu_a.next.pending==8 && !rhu_a.grew;
+  rhu_a=render_host_upload_stage(RenderHostUploadState.{pending=16},8,15);
+  #assert rhu_a.status==RenderFrameStatus.capacity && rhu_a.next.pending==16 && !rhu_a.grew;
+  rhu_a=render_host_upload_stage(RenderHostUploadState.{},0,0);
+  #assert rhu_a.status==RenderFrameStatus.ok && rhu_a.next.pending==0 && !rhu_a.grew;
+}
+#test "host upload retries retain a consumed producer prefix until an actual submission acknowledges it" {
+  rhu_state:RenderHostUploadState;
+  rhu_update:=render_host_upload_stage(rhu_state,16,32);rhu_state=rhu_update.next;
+  // Geometry refused after the effectful producer getter returned16 bytes.
+  rhu_state=render_host_upload_ack(rhu_state,false);#assert rhu_state.pending==16;
+  rhu_update=render_host_upload_stage(rhu_state,0,32);#assert rhu_update.status==RenderFrameStatus.ok && rhu_update.next.pending==16 && !rhu_update.grew;rhu_state=rhu_update.next;
+  rhu_update=render_host_upload_stage(rhu_state,8,32);#assert rhu_update.next.pending==16 && !rhu_update.grew;rhu_state=rhu_update.next;
+  rhu_state=render_host_upload_ack(rhu_state,false);#assert rhu_state.pending==16;
+  rhu_update=render_host_upload_stage(rhu_state,24,32);#assert rhu_update.next.pending==24 && rhu_update.grew;rhu_state=rhu_update.next;
+  rhu_state=render_host_upload_ack(rhu_state,true);#assert rhu_state.pending==0;
+  rhu_update=render_host_upload_stage(rhu_state,0,32);#assert rhu_update.next.pending==0 && !rhu_update.grew;
+  rhu_state=render_host_upload_ack(rhu_state,true);#assert rhu_state.pending==0;
+}
+#test "host upload union never adds its u64 endpoints and preserves native high bits" {
+  rhu_big:u64=18446744073709551612;rhu_smaller:u64=18446744073709551608;rhu_capacity:u64=18446744073709551615;
+  rhu_a:=render_host_upload_stage(RenderHostUploadState.{pending=rhu_big},rhu_smaller,rhu_capacity);
+  #assert rhu_a.status==RenderFrameStatus.ok && rhu_a.next.pending==rhu_big && !rhu_a.grew;
+  rhu_b:=render_host_upload_stage(RenderHostUploadState.{pending=rhu_smaller},rhu_big,rhu_capacity);
+  #assert rhu_b.status==RenderFrameStatus.ok && rhu_b.next.pending==rhu_big && rhu_b.grew;
+  rhu_b=render_host_upload_stage(RenderHostUploadState.{pending=rhu_big},rhu_big,rhu_big);
+  #assert rhu_b.status==RenderFrameStatus.ok && rhu_b.next.pending==rhu_big && !rhu_b.grew;
+  #assert render_host_upload_ack(rhu_b.next,false).pending==rhu_big && render_host_upload_ack(rhu_b.next,true).pending==0;
+}
+render_host_upload_stage :: (rhu_state:RenderHostUploadState,rhu_incoming:u64,rhu_capacity:u64)->RenderHostUploadReceipt {
+  rhu_result:=RenderHostUploadReceipt.{next=rhu_state};
+  if rhu_incoming%4!=0 || rhu_state.pending%4!=0 {rhu_result.status=RenderFrameStatus.bad_upload;return rhu_result;}
+  if rhu_incoming>rhu_capacity || rhu_state.pending>rhu_capacity {rhu_result.status=RenderFrameStatus.capacity;return rhu_result;}
+  if rhu_incoming>rhu_state.pending {rhu_result.next.pending=rhu_incoming;rhu_result.grew=true;}
+  return rhu_result;
+}
+render_host_upload_ack :: (rhu_state:RenderHostUploadState,rhu_submitted:bool)->RenderHostUploadState {
+  if rhu_submitted {return RenderHostUploadState.{};}return rhu_state;
+}

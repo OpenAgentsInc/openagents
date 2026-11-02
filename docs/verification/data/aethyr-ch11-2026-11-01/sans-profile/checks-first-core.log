@@ -1,0 +1,34 @@
+aethyr/render/tests/sans-profile-checks.coax:4:9: error[E0315]: procedure 'render_sans_profile' is not declared
+    sp := render_sans_profile();
+          ^
+aethyr/render/tests/sans-profile-checks.coax:22:11: error[E0315]: procedure 'render_sans_level' is not declared
+      sm := render_sans_level(si);
+            ^
+aethyr/render/tests/sans-profile-checks.coax:34:13: error[E0315]: procedure 'render_sans_index' is not declared
+      #assert render_sans_index(expected) == sg;
+              ^
+aethyr/render/tests/sans-profile-checks.coax:36:14: error[E0315]: procedure 'render_sans_glyph' is not declared
+        cmd := render_sans_glyph(sm, sg);
+               ^
+aethyr/render/tests/sans-profile-checks.coax:47:12: error[E0315]: procedure 'render_sans_glyph' is not declared
+    first := render_sans_glyph(4, 0);
+             ^
+aethyr/render/tests/sans-profile-checks.coax:48:11: error[E0315]: procedure 'render_sans_glyph' is not declared
+    last := render_sans_glyph(4, 110);
+            ^
+aethyr/render/tests/sans-profile-checks.coax:54:14: error[E0315]: procedure 'render_sans_level' is not declared
+      #assert !render_sans_level(si).valid && !render_sans_glyph(si, 0).valid;
+               ^
+aethyr/render/tests/sans-profile-checks.coax:54:46: error[E0315]: procedure 'render_sans_glyph' is not declared
+      #assert !render_sans_level(si).valid && !render_sans_glyph(si, 0).valid;
+                                               ^
+aethyr/render/tests/sans-profile-checks.coax:57:14: error[E0315]: procedure 'render_sans_glyph' is not declared
+      #assert !render_sans_glyph(0, sg).valid && !render_sans_glyph(4, sg).valid;
+               ^
+aethyr/render/tests/sans-profile-checks.coax:57:49: error[E0315]: procedure 'render_sans_glyph' is not declared
+      #assert !render_sans_glyph(0, sg).valid && !render_sans_glyph(4, sg).valid;
+                                                  ^
+aethyr/render/tests/sans-profile-checks.coax:60:13: error[E0315]: procedure 'render_sans_index' is not declared
+      #assert render_sans_index(code) == -1;
+              ^
+11 errors

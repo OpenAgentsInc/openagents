@@ -1,0 +1,200 @@
+// Single-sample reference rasterization in WebGPU framebuffer coordinates.
+// Exact edge ownership here uses top-left. Hardware edge/depth uncertainty is
+// reported separately by the comparison driver; it is never a color tolerance.
+#module "aethyr.render.reference.raster";
+#load "reference-quad.coax";
+#load "reference-half.coax";
+#load "passes.coax";
+#load "raster-profile.coax";
+#authority;
+RR_WORDS :: 128;
+RRLayout :: struct {count:int;flat:[RR_WORDS]bool;}
+RRVertex :: struct {clip:[4]f32;words:[RR_WORDS]u32;}
+RRPolygon :: struct {status:RQStatus;count:int;vertices:[12]RRVertex;}
+RRScreenVertex :: struct {x:f64;y:f64;z:f64;inv_w:f64;words:[RR_WORDS]u32;}
+RRTriangle :: struct {
+ status:RQStatus;empty:bool;front:bool;width:int;height:int;
+ vertices:[3]RRScreenVertex;area:f64;
+ min_x:int;min_y:int;end_x:int;end_y:int;
+}
+RRFragment :: struct {position:[4]f32;words:[RR_WORDS]u32;}
+RRQuad :: struct {status:RQStatus;coverage:u32;lanes:[4]RRFragment;edge_distance:[4]f32;}
+RRFormat :: enum u8 {f32;half;unorm8;}
+RRScalar :: struct {status:RQStatus;value:f32;}
+RRPixel :: struct {depth:f32=1;colour:RQColor;aux:RQColor;}
+RRStored :: struct {status:RQStatus;written:bool;pixel:RRPixel;}
+#load "tests/reference-raster-checks.coax";
+#load "tests/reference-raster-subpixel-checks.coax";
+#load "tests/reference-raster-guard-checks.coax";
+
+rr_layout_status :: (l:RRLayout)->RQStatus {
+ if l.count<0 {return RQStatus.resource;}if l.count>RR_WORDS {return RQStatus.capacity;}return RQStatus.ok;
+}
+rr_clip_distance :: (v:RRVertex,plane:int)->f64 {
+ x:=cast(f64)v.clip[0];y:=cast(f64)v.clip[1];z:=cast(f64)v.clip[2];w:=cast(f64)v.clip[3];
+ return [6]f64.[w+x,w-x,w+y,w-y,z,w-z][plane];
+}
+rr_clip :: (triangle:[3]RRVertex,l:RRLayout)->RRPolygon {return rr_clip_profile(triangle,l,RRRasterProfile.{});}
+rr_clip_profile :: (triangle:[3]RRVertex,l:RRLayout,profile:RRRasterProfile)->RRPolygon {
+ if !rr_raster_profile_ok(profile) {return RRPolygon.{status=RQStatus.unsupported};}
+ status:=rr_layout_status(l);if status!=RQStatus.ok {return RRPolygon.{status=status};}
+ for v:0..<3 {
+  for c:0..<4 {if !rq_finite(triangle[v].clip[c]) {return RRPolygon.{status=RQStatus.resource};}}
+  for c:0..<l.count {if !l.flat[c] && (triangle[v].words[c]&0x7f800000)==0x7f800000 {return RRPolygon.{status=RQStatus.resource};}}
+ }
+ a:RRPolygon;a.count=3;
+ for v:0..<3 {a.vertices[v]=triangle[v];for c:0..<l.count {if l.flat[c] {a.vertices[v].words[c]=triangle[0].words[c];}}}
+ first_plane:=ifx profile.xy==RRXYClipping.guard_band then 4 else 0;
+ for plane:first_plane..<6 {
+  b:RRPolygon;
+  for v:0..<a.count {
+   previous:=ifx v==0 then a.count-1 else v-1;
+   p:=a.vertices[previous];n:=a.vertices[v];dp:=rr_clip_distance(p,plane);dn:=rr_clip_distance(n,plane);
+   if (dp>=0)!=(dn>=0) {
+    t:=dp/(dp-dn);crossing:RRVertex;
+    for c:0..<4 {crossing.clip[c]=cast(f32)(cast(f64)p.clip[c]+(cast(f64)n.clip[c]-cast(f64)p.clip[c])*t);}
+    for c:0..<l.count {
+     if l.flat[c] {crossing.words[c]=triangle[0].words[c];}
+     else {x:=cast(f64)f32_from_bits(p.words[c]);y:=cast(f64)f32_from_bits(n.words[c]);crossing.words[c]=f32_bits(cast(f32)(x+(y-x)*t));}
+    }
+    // Clipping a triangle against six convex half-spaces has at most nine
+    // vertices. The twelve-slot staging capacity is independent of inputs.
+    b.vertices[b.count]=crossing;b.count+=1;
+   }
+   if dn>=0 {b.vertices[b.count]=n;b.count+=1;}
+  }
+  a=b;
+ }
+ return a;
+}
+rr_edge :: (a:RRScreenVertex,b:RRScreenVertex,x:f64,y:f64)->f64 {return (b.x-a.x)*(y-a.y)-(b.y-a.y)*(x-a.x);}
+rr_top_left :: (a:RRScreenVertex,b:RRScreenVertex)->bool {return b.y<a.y || (b.y==a.y && b.x>a.x);}
+rr_triangle :: (triangle:[3]RRVertex,width:int,height:int)->RRTriangle {return rr_triangle_profile(triangle,width,height,RRRasterProfile.{});}
+rr_triangle_profile :: (triangle:[3]RRVertex,width:int,height:int,profile:RRRasterProfile)->RRTriangle {
+ if !rr_raster_profile_ok(profile) {return RRTriangle.{status=RQStatus.unsupported};}
+ if width<1 || height<1 {return RRTriangle.{status=RQStatus.resource};}
+ if width>16384 || height>16384 {return RRTriangle.{status=RQStatus.capacity};}
+ s:=RRTriangle.{width=width,height=height};
+ for v:0..<3 {
+  for c:0..<4 {if !rq_finite(triangle[v].clip[c]) {return RRTriangle.{status=RQStatus.resource};}}
+  if triangle[v].clip[3]<=0 {return RRTriangle.{status=RQStatus.resource};}
+  iw:=1.0/cast(f64)triangle[v].clip[3];
+  s.vertices[v]=RRScreenVertex.{x=(cast(f64)triangle[v].clip[0]*iw+1)*cast(f64)width*0.5,
+   y=(1-cast(f64)triangle[v].clip[1]*iw)*cast(f64)height*0.5,
+   z=cast(f64)triangle[v].clip[2]*iw,inv_w=iw,words=triangle[v].words};
+  if profile.xy==RRXYClipping.guard_band {
+   guard:=cast(f64)profile.guard_pixels;point:=s.vertices[v];
+   if point.x< -guard || point.x>cast(f64)width+guard || point.y< -guard || point.y>cast(f64)height+guard {return RRTriangle.{status=RQStatus.unsupported};}
+  }
+  // Quantize framebuffer positions before area, coverage and interpolation.
+  // Finite f32 clip coordinates, positive f32w, viewport<=16384 and at most
+  //16fractional bits keep these f64 products finite (magnitude below2^308).
+  s.vertices[v].x=rr_subpixel(s.vertices[v].x,profile).value;
+  s.vertices[v].y=rr_subpixel(s.vertices[v].y,profile).value;
+ }
+ area:=rr_edge(s.vertices[0],s.vertices[1],s.vertices[2].x,s.vertices[2].y);
+ // WebGPU's signed front-face area is the negative of this edge function.
+ s.front=area<0;
+ if s.front {tmp:=s.vertices[1];s.vertices[1]=s.vertices[2];s.vertices[2]=tmp;area=-area;}
+ if area==0 {s.empty=true;return s;}
+ s.area=area;
+ minx:=s.vertices[0].x;maxx:=minx;miny:=s.vertices[0].y;maxy:=miny;
+ for v:1..<3 {
+  vx:=s.vertices[v].x;vy:=s.vertices[v].y;
+  minx=(minx+vx-abs(minx-vx))*0.5;maxx=(maxx+vx+abs(maxx-vx))*0.5;
+  miny=(miny+vy-abs(miny-vy))*0.5;maxy=(maxy+vy+abs(maxy-vy))*0.5;
+ }
+ minx=(minx+abs(minx))*0.5;miny=(miny+abs(miny))*0.5;
+ maxx=(maxx+cast(f64)width-abs(maxx-cast(f64)width))*0.5;
+ maxy=(maxy+cast(f64)height-abs(maxy-cast(f64)height))*0.5;
+ if minx>=maxx || miny>=maxy {s.empty=true;return s;}
+ s.min_x=(cast(int)floor(minx)/2)*2;s.min_y=(cast(int)floor(miny)/2)*2;
+ s.end_x=((cast(int)(-floor(-maxx))+1)/2)*2;s.end_y=((cast(int)(-floor(-maxy))+1)/2)*2;
+ return s;
+}
+rr_quad :: (s:RRTriangle,l:RRLayout,x:int,y:int)->RRQuad {
+ if s.status!=RQStatus.ok {return RRQuad.{status=s.status};}
+ status:=rr_layout_status(l);if status!=RQStatus.ok {return RRQuad.{status=status};}
+ if x<0 || y<0 || x>=s.width || y>=s.height || x%2!=0 || y%2!=0 {return RRQuad.{status=RQStatus.resource};}
+ q:RRQuad;if s.empty {return q;}
+ for lane:0..<4 {
+  px:=cast(f64)(x+lane%2)+0.5;py:=cast(f64)(y+lane/2)+0.5;
+  a:=s.vertices[0];b:=s.vertices[1];c:=s.vertices[2];
+  es:=[3]f64.[rr_edge(b,c,px,py),rr_edge(c,a,px,py),rr_edge(a,b,px,py)];
+  covered:=x+lane%2<s.width && y+lane/2<s.height;distance: f64=0;
+  for e:0..<3 {
+   va:=s.vertices[(e+1)%3];vb:=s.vertices[(e+2)%3];
+   if es[e]<0 || (es[e]==0 && !rr_top_left(va,vb)) {covered=false;}
+   d:=abs(es[e])/sqrt((vb.x-va.x)*(vb.x-va.x)+(vb.y-va.y)*(vb.y-va.y));
+   if e==0 {distance=d;}else {distance=(d+distance-abs(d-distance))*0.5;}
+  }
+  if covered {q.coverage|=cast(u32)(1<<lane);}
+  q.edge_distance[lane]=cast(f32)distance;
+  weights:=[3]f64.[es[0]/s.area,es[1]/s.area,es[2]/s.area];
+  iw:=weights[0]*a.inv_w+weights[1]*b.inv_w+weights[2]*c.inv_w;
+  if iw==0 {return RRQuad.{status=RQStatus.resource};}
+  depth:=weights[0]*a.z+weights[1]*b.z+weights[2]*c.z;
+  q.lanes[lane].position=[4]f32.[cast(f32)px,cast(f32)py,cast(f32)depth,cast(f32)iw];
+  for word:0..<l.count {
+   if l.flat[word] {q.lanes[lane].words[word]=a.words[word];}
+   else {
+    value: f64=0;
+    for v:0..<3 {value+=weights[v]*s.vertices[v].inv_w*cast(f64)f32_from_bits(s.vertices[v].words[word]);}
+    q.lanes[lane].words[word]=f32_bits(cast(f32)(value/iw));
+   }
+  }
+ }
+ return q;
+}
+
+// IEEE binary32 -> binary16, round-to-nearest, ties-to-even, including signed
+// underflow. An overflowing stored color is refused by rr_store below.
+rr_half_bits :: (value:f32)->u32 {return rh_half_bits(value);}
+rr_half_decode :: (bits:u32)->RRScalar {
+ decoded:=rh_half_decode(bits);return RRScalar.{status=ifx decoded.ok then RQStatus.ok else RQStatus.resource,value=decoded.value};
+}
+rr_unorm8 :: (value:f32)->f32 {
+ bounded:=rq_clamp(value,0,1)*255.0f32;low:=floor(bounded);fraction:=bounded-low;q:=cast(u32)low;
+ if fraction>0.5f32 || (fraction==0.5f32 && (q&1)!=0) {q+=1;}return cast(f32)q/255.0f32;
+}
+rr_blend :: (mode:RenderBlend,source:f32,dest:f32,alpha:f32)->f32 {
+ if mode==RenderBlend.maximum {return ifx source>dest then source else dest;}
+ if mode==RenderBlend.multiply {return source*dest;}
+ if mode==RenderBlend.add {return source+dest;}
+ if mode==RenderBlend.keep {return dest;}
+ if mode==RenderBlend.over {return source+dest*(1-alpha);}
+ if mode==RenderBlend.under {return dest*(1-alpha);}
+ return source;
+}
+rr_colour_finite :: (c:RQColor)->bool {return rq_finite(c.r) && rq_finite(c.g) && rq_finite(c.b) && rq_finite(c.a);}
+rr_colour_clamp :: (c:RQColor)->RQColor {return RQColor.{r=rq_clamp(c.r,0,1),g=rq_clamp(c.g,0,1),b=rq_clamp(c.b,0,1),a=rq_clamp(c.a,0,1)};}
+rr_colour_format :: (c:RQColor,format:RRFormat)->RQSample {
+ if format==RRFormat.half {
+  r:=rr_half_decode(rr_half_bits(c.r));g:=rr_half_decode(rr_half_bits(c.g));b:=rr_half_decode(rr_half_bits(c.b));a:=rr_half_decode(rr_half_bits(c.a));
+  if r.status!=RQStatus.ok || g.status!=RQStatus.ok || b.status!=RQStatus.ok || a.status!=RQStatus.ok {return RQSample.{status=RQStatus.resource};}
+  return RQSample.{color=RQColor.{r=r.value,g=g.value,b=b.value,a=a.value}};
+ }
+ if format==RRFormat.unorm8 {return RQSample.{color=RQColor.{r=rr_unorm8(c.r),g=rr_unorm8(c.g),b=rr_unorm8(c.b),a=rr_unorm8(c.a)}};}
+ return RQSample.{color=c};
+}
+rr_store :: (old:RRPixel,state:RenderPassState,colour:RQColor,aux:RQColor,depth:f32,format:RRFormat)->RRStored {
+ refused:=RRStored.{status=RQStatus.resource,pixel=old};
+ if !state.valid || state.outputs<0 || state.outputs>2 || !rq_finite(depth) || !rq_finite(old.depth) {return refused;}
+ bounded_depth:=rq_clamp(depth,0,1);
+ if state.depth==RenderDepth.less && !(bounded_depth<old.depth) {return RRStored.{pixel=old};}
+ next:=old;
+ if state.depth!=RenderDepth.none && state.depth_write {next.depth=bounded_depth;}
+ if state.outputs>0 {
+  if !rr_colour_finite(colour) || !rr_colour_finite(old.colour) {return refused;}
+  source:=colour;dest:=old.colour;
+  if format==RRFormat.unorm8 {source=rr_colour_clamp(source);dest=rr_colour_clamp(dest);}
+  c:=RQColor.{r=rr_blend(state.colour,source.r,dest.r,source.a),g=rr_blend(state.colour,source.g,dest.g,source.a),
+   b=rr_blend(state.colour,source.b,dest.b,source.a),a=rr_blend(state.alpha,source.a,dest.a,source.a)};
+  if !rr_colour_finite(c) {return refused;}
+  stored:=rr_colour_format(c,format);if stored.status!=RQStatus.ok {return refused;}next.colour=stored.color;
+ }
+ if state.outputs==2 && state.aux_write {
+  if !rr_colour_finite(aux) {return refused;}stored:=rr_colour_format(aux,format);if stored.status!=RQStatus.ok {return refused;}next.aux=stored.color;
+ }
+ return RRStored.{written=true,pixel=next};
+}

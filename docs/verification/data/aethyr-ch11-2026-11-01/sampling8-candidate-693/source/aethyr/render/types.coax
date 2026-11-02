@@ -1,0 +1,63 @@
+// Shared renderer data only. Counts are items, addresses/capacities are
+// bytes, and vertex_stride counts f32 values in one HUD vertex.
+// These records have no C exports and no host resource handles.
+#module "aethyr.render.types";
+
+FrameCounts :: struct {
+  width: int; height: int;
+  hud_vertices: int; vertex_stride: int;
+  draw_count: int; water_draws: int;
+  grass_instances: int; particle_instances: int;
+  surface_vertices: int; caster_vertices: int; caster_instances: int;
+}
+
+RenderFrameLimits :: struct {
+  max_width: int = 16384; max_height: int = 16384;
+  max_draws: int = 4096; max_uploads: int = 48;
+  max_vertex_stride: int = 64;
+  index_work: int = 16777216;
+}
+
+// A platform reports its actual source allocation and GPU buffer extent.
+// Admission checks both ranges before either platform copies any bytes.
+RenderUpload :: struct {
+  source_address: u64; source_base: u64; source_bytes: u64;
+  bytes: u64; gpu_offset: u64; gpu_bytes: u64;
+  alignment: u64 = 4;
+}
+
+// A binding/pass profile derives these item domains from admitted resource
+// layouts. Vertex/instance endpoints are absolute encoded ID endpoints,
+// so procedural and flag-prefixed ranges need not begin at zero. A second
+// vertex interval represents a procedural domain separated from stored
+// vertices. Coax geometry-profile admission derives these ranges; the host
+// never supplies an unchecked maximum. All endpoints are at most 2^32.
+RenderDrawDomain :: struct {
+  vertex_begin: u64; vertices: u64;
+  vertex_alt_begin: u64; vertex_alt_end: u64;
+  instance_begin: u64; instances: u64; indices: u64;
+}
+
+// These capacities come from admitted typed resource layouts, including
+// procedural domains. They are not the producer's requested draw counts.
+RenderDirectDomains :: struct {
+  hud_vertices: u64; grass_instances: u64; particle_instances: u64;
+  surface_vertices: u64; caster_vertices: u64; caster_instances: u64;
+}
+
+RenderDrawKind :: enum u8 { skip; indexed; nonindexed; invalid; }
+RenderDecodedDraw :: struct {
+  kind: RenderDrawKind;
+  first: u32; count: u32; base_instance: u32; instances: u32;
+}
+
+RenderFrameStatus :: enum u8 {
+  ok; bad_limits; bad_viewport; bad_counts; capacity; bad_upload;
+  bad_draw; bad_domain; bad_index; index_budget; bad_direct;
+}
+RenderFrameResult :: struct {
+  status: RenderFrameStatus;
+  bad_upload: int = -1; bad_draw: int = -1;
+  bad_direct: int = -1;
+  checked_indices: int; admitted_draws: int;
+}

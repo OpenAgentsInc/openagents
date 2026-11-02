@@ -1,0 +1,131 @@
+{
+  "schema": "aethyr.render.ordinary-typed-builds.v1",
+  "status": "pass_for_nine_current_owners",
+  "default_route": "COAXIAL_RENDER unset: auto",
+  "builds": {
+    "watchtower": {
+      "elapsed_seconds": 25.191,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "wasm_sha256": "f11b2edf5080f96a7d8237f86c5210361efe1f4e2b31c239582024fe89a70b2d",
+      "source_changes": [],
+      "emitted": {
+        "watchtower.c": "32a1d38e81c246d750c368ab294d9528b3c6877abaef0652532b6132f389a315",
+        "watchtower.h": "69b65c84f3b8ac230c46ebb193714158e49ce77c7735e5eb2cba67321336cd07",
+        "Render.h": "69b65c84f3b8ac230c46ebb193714158e49ce77c7735e5eb2cba67321336cd07"
+      },
+      "receipt_sha256": "61cede7158341300944fe08aab995590f3873faabcc6e04733f2d97cb0b18a12"
+    },
+    "waterlab": {
+      "elapsed_seconds": 250.983,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "wasm_sha256": "1cc90b0d96faa0b02032cf1784a4dc202fa9ebadb7a0b7b128098048faf82885",
+      "source_changes": [],
+      "emitted": {
+        "waterlab.c": "d4e8ff348cb9baae7ed0462b89e9f49b9e2126b1daa3dfdc2d5ae6716101df24",
+        "waterlab.h": "493cc991fb314153ff8443a10c8f5b05402701ded92fc3f82d3c5d1be8fc8d5a",
+        "Render.h": "493cc991fb314153ff8443a10c8f5b05402701ded92fc3f82d3c5d1be8fc8d5a"
+      },
+      "receipt_sha256": "f7b2406292799c36d0e568ba51b16a65271f251d0453046482db962d2d0c231f"
+    },
+    "verse": {
+      "elapsed_seconds": 19.871,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "wasm_sha256": "5c47960461e505ef3c69777e51b1731697fc3d8919d9e3e08cc35a0fe2208e64",
+      "source_changes": [],
+      "emitted": {
+        "verse.c": "83e4b874483fa1cf102b1f16f190bf0380d038be69f265787e1f3e6eca3e0400",
+        "verse.h": "50222442d2929faed481d6272c50c7bafdf37b71746dfd204f49f7d009601211",
+        "Render.h": "50222442d2929faed481d6272c50c7bafdf37b71746dfd204f49f7d009601211"
+      },
+      "receipt_sha256": "e351c9c0d6396345480e25feaeb745be807b8a766af9120063a1be1b4825884a"
+    },
+    "fixture": {
+      "elapsed_seconds": 26.628,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "wasm_sha256": "869cc748738f89b628a03139813a9f89b306dc91d3d8ad21988d56b2379f8d7b",
+      "source_changes": [],
+      "emitted": {
+        "fixture.h": "76da4c1ec37fd54fa81b44b5b9b9e0146a7b3518dfcb6eae95a97d3aeaf9e08c",
+        "fixture.c": "1f3b7838956aa9a04d92977d1b5d5ee74baa935be5e625600af12cfebaad9205",
+        "Render.h": "76da4c1ec37fd54fa81b44b5b9b9e0146a7b3518dfcb6eae95a97d3aeaf9e08c"
+      },
+      "receipt_sha256": "1832d79bb7f9ca19cd900f3ade0739c67787be5e2ad37756714ead08a4b20baf"
+    },
+    "droprealm": {
+      "elapsed_seconds": 22.437,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "wasm_sha256": "ba5c593e92332e6bb1a01a87a4b1c34a6cc4b0dd74f4958acee83f605d96b1d2",
+      "source_changes": [],
+      "emitted": {
+        "droprealm.h": "b10ea9a0220bb4ae7fc12de22266845c427bacdca7a91e18fa9cc3a63f053854",
+        "droprealm.c": "81c4f1168e70bdb1939a59e3e450f6a1d69975a74f5531ef280df38178f8f694",
+        "Render.h": "b10ea9a0220bb4ae7fc12de22266845c427bacdca7a91e18fa9cc3a63f053854"
+      },
+      "receipt_sha256": "8b1634948559babec21aba44cd9d82aefc5a38c0eb575888e681f3d6c39d0503"
+    },
+    "garden": {
+      "elapsed_seconds": 44.221,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "wasm_sha256": "10e4021ebecbc63c0e0ee082e620a508d36dba295528e2c3e6545fff2b332c7b",
+      "source_changes": [],
+      "emitted": {
+        "garden.c": "0ca2ec48c39ba0c8c457521ec23600afa660ddca56b97a931eeaf33f7b00d2d4",
+        "Player.h": "0bf3f4738969a787a188018eba1d7d58b642f48ddebd6782069a52fdb3550d02",
+        "Grid.h": "67456a463b1c9d4aa7d7802241aa91b84fc3e96c220811dddaced69febf21c8c",
+        "garden.h": "f1a6fcf0e2bf085dae6a55e35ae5fdd4059e4ff400a08f6da0e1cdd260427680",
+        "Grid.c": "7ef410e3b4ed0e460ebc022dea83fc93606e6da765bc4978130ca2424de0dac1",
+        "Render.h": "f1a6fcf0e2bf085dae6a55e35ae5fdd4059e4ff400a08f6da0e1cdd260427680",
+        "Player.c": "c65456946b1f025733174365c3b9544cf2674f8e589ac5cce191a5f9b769ff07"
+      },
+      "receipt_sha256": "6515560e4323a36c3041423b5436d4281384ae7ae2f0abb9458926bc2cccc94d"
+    },
+    "myrealm": {
+      "elapsed_seconds": 116.196,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "wasm_sha256": "1f8181c1a9eac7ed244f8e69bd7220fb5076995971c588b8277900c7723a997a",
+      "source_changes": [],
+      "emitted": {
+        "myrealm.h": "5ea8afd02e647f150256ea07cfac39bc501f815f5e0a1145334d05ce0fd6b075",
+        "myrealm.c": "1cbe5ccfbbbf70421a49893dda013832c7259392707ece177c8a93f77cee376e",
+        "Render.h": "5ea8afd02e647f150256ea07cfac39bc501f815f5e0a1145334d05ce0fd6b075"
+      },
+      "receipt_sha256": "0b59804e475ff345568449f3288fdf1579fcc898639ce7511baf4415117e8f05"
+    },
+    "villa": {
+      "elapsed_seconds": 91.016,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "wasm_sha256": "ff815805b19b5bd7e2ff4719ba74637fab6153f7a58b6dd1cd27631e59830612",
+      "source_changes": [],
+      "emitted": {
+        "villa.c": "60b6d39925a57807cefb44cc223f163893290c8fe178f6fbb43d5f0194359252",
+        "Player.h": "0bf3f4738969a787a188018eba1d7d58b642f48ddebd6782069a52fdb3550d02",
+        "Grid.h": "67456a463b1c9d4aa7d7802241aa91b84fc3e96c220811dddaced69febf21c8c",
+        "Villafig.c": "9b4c0e4e2b30f6c5a3288d565a89988317d4611040d1a4a91215eef0dca09569",
+        "villa.h": "01d8bbdc56faadfe8db1d5463f53bf8bae04080188a65bdd0eeec23db8da6faf",
+        "Villafig.h": "4db4a18f561e27882062911d300c48c4d5bae46fce553d8dc56c1ee3d286a06f",
+        "Grid.c": "7ef410e3b4ed0e460ebc022dea83fc93606e6da765bc4978130ca2424de0dac1",
+        "Render.h": "01d8bbdc56faadfe8db1d5463f53bf8bae04080188a65bdd0eeec23db8da6faf",
+        "Player.c": "c65456946b1f025733174365c3b9544cf2674f8e589ac5cce191a5f9b769ff07"
+      },
+      "receipt_sha256": "0cdead250bc4eedac50e20b61baf42e515fad6cf434c23112728b367fd504499"
+    },
+    "deadgears": {
+      "elapsed_seconds": 539.095,
+      "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+      "wasm_sha256": "b50fd61025c82a4775efa1a47463722a0358f8d258ab4724590bb760a1752f0d",
+      "source_changes": [],
+      "emitted": {
+        "deadgears.c": "e6141186c623afbe89fa326b8e73d65e934814468355ff97c6bf552ab12890b1",
+        "deadgears.h": "c97308a989968419767643e4a8794f0a7164523f0dca617cd5594b01170c51f6",
+        "Render.h": "c97308a989968419767643e4a8794f0a7164523f0dca617cd5594b01170c51f6"
+      },
+      "receipt_sha256": "01dfa934f518bb557feedf4b6a833fcd4536f9732dc6a603fae0e8a77a0c0ab3"
+    }
+  },
+  "archive": {
+    "file": "artifacts.tar.gz",
+    "sha256": "6576caeb2aa73ad0d214d6683a8962ecb0a35eaca1bf53a71d8d0dd1f8dd63e3",
+    "bytes": 4156523
+  },
+  "scope": "Nine ordinary renderer-enabled wasm.sh builds retain exact qualified Coax-generated C/headers and linked Wasm with source fences. Other owners and earlier C-only relinks are separate; this is build/adoption evidence, not complete CPU/GPU image parity."
+}

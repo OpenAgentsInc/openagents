@@ -1,0 +1,1189 @@
+{
+  "format": "rgba32float",
+  "width": 64,
+  "height": 64,
+  "device": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "messages": [],
+  "errors": [],
+  "results": [
+    {
+      "triangle": 0,
+      "vertex": 9,
+      "instance": 129,
+      "selector": 0,
+      "rgba": [
+        -16.586355209350586,
+        0.3121058940887451,
+        22.943401336669922,
+        22.981929779052734
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 9,
+      "instance": 129,
+      "selector": 1,
+      "rgba": [
+        -15.789999961853027,
+        0,
+        -10.119999885559082,
+        0
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 9,
+      "instance": 129,
+      "selector": 2,
+      "rgba": [
+        -1,
+        0.00001602564225322567,
+        0,
+        1
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 9,
+      "instance": 129,
+      "selector": 3,
+      "rgba": [
+        0.08153234422206879,
+        0.09930011630058289,
+        0.1332085281610489,
+        1
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 10,
+      "instance": 129,
+      "selector": 0,
+      "rgba": [
+        -16.586355209350586,
+        4.898386478424072,
+        22.47045135498047,
+        22.50921630859375
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 10,
+      "instance": 129,
+      "selector": 1,
+      "rgba": [
+        -15.789999961853027,
+        2.5999999046325684,
+        -9.880000114440918,
+        0
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 10,
+      "instance": 129,
+      "selector": 2,
+      "rgba": [
+        -1,
+        0.00001602564225322567,
+        0,
+        1
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 10,
+      "instance": 129,
+      "selector": 3,
+      "rgba": [
+        0.08153234422206879,
+        0.09930011630058289,
+        0.1332085281610489,
+        1
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 11,
+      "instance": 129,
+      "selector": 0,
+      "rgba": [
+        -16.586355209350586,
+        0.2735804319381714,
+        22.704252243041992,
+        22.742900848388672
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 11,
+      "instance": 129,
+      "selector": 1,
+      "rgba": [
+        -15.789999961853027,
+        0,
+        -9.880000114440918,
+        0
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 11,
+      "instance": 129,
+      "selector": 2,
+      "rgba": [
+        -1,
+        0.00001602564225322567,
+        0,
+        1
+      ]
+    },
+    {
+      "triangle": 0,
+      "vertex": 11,
+      "instance": 129,
+      "selector": 3,
+      "rgba": [
+        0.08153234422206879,
+        0.09930011630058289,
+        0.1332085281610489,
+        1
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 27,
+      "instance": 129,
+      "selector": 0,
+      "rgba": [
+        -16.586355209350586,
+        0.2735804319381714,
+        22.704252243041992,
+        22.742900848388672
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 27,
+      "instance": 129,
+      "selector": 1,
+      "rgba": [
+        -15.789999961853027,
+        0,
+        -9.880000114440918,
+        0
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 27,
+      "instance": 129,
+      "selector": 2,
+      "rgba": [
+        0,
+        0.00002136752118531149,
+        1,
+        1
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 27,
+      "instance": 129,
+      "selector": 3,
+      "rgba": [
+        0.08153234422206879,
+        0.09930011630058289,
+        0.1332085281610489,
+        1
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 28,
+      "instance": 129,
+      "selector": 0,
+      "rgba": [
+        -16.405521392822266,
+        4.898386478424072,
+        22.47045135498047,
+        22.50921630859375
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 28,
+      "instance": 129,
+      "selector": 1,
+      "rgba": [
+        -15.609999656677246,
+        2.5999999046325684,
+        -9.880000114440918,
+        0
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 28,
+      "instance": 129,
+      "selector": 2,
+      "rgba": [
+        0,
+        0.00002136752118531149,
+        1,
+        1
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 28,
+      "instance": 129,
+      "selector": 3,
+      "rgba": [
+        0.08153234422206879,
+        0.09930011630058289,
+        0.1332085281610489,
+        1
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 29,
+      "instance": 129,
+      "selector": 0,
+      "rgba": [
+        -16.586355209350586,
+        4.898386478424072,
+        22.47045135498047,
+        22.50921630859375
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 29,
+      "instance": 129,
+      "selector": 1,
+      "rgba": [
+        -15.789999961853027,
+        2.5999999046325684,
+        -9.880000114440918,
+        0
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 29,
+      "instance": 129,
+      "selector": 2,
+      "rgba": [
+        0,
+        0.00002136752118531149,
+        1,
+        1
+      ]
+    },
+    {
+      "triangle": 1,
+      "vertex": 29,
+      "instance": 129,
+      "selector": 3,
+      "rgba": [
+        0.08153234422206879,
+        0.09930011630058289,
+        0.1332085281610489,
+        1
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 117,
+      "instance": 21,
+      "selector": 0,
+      "rgba": [
+        -0.695240318775177,
+        -1.297513484954834,
+        3.678791046142578,
+        3.72695255279541
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 117,
+      "instance": 21,
+      "selector": 1,
+      "rgba": [
+        0.02796034701168537,
+        0.833014190196991,
+        9.138047218322754,
+        0
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 117,
+      "instance": 21,
+      "selector": 2,
+      "rgba": [
+        0.14321893453598022,
+        -0.6924509406089783,
+        0.7071067094802856,
+        1
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 117,
+      "instance": 21,
+      "selector": 3,
+      "rgba": [
+        0.3876228630542755,
+        0.42807477712631226,
+        0.4562634527683258,
+        1
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 118,
+      "instance": 21,
+      "selector": 0,
+      "rgba": [
+        -0.8719139695167542,
+        -1.1135355234146118,
+        3.6566219329833984,
+        3.704793930053711
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 118,
+      "instance": 21,
+      "selector": 1,
+      "rgba": [
+        -0.14790000021457672,
+        0.9376000165939331,
+        9.150857925415039,
+        0
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 118,
+      "instance": 21,
+      "selector": 2,
+      "rgba": [
+        -1.770679958212895e-8,
+        8.561081443758667e-8,
+        0.9999999403953552,
+        1
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 118,
+      "instance": 21,
+      "selector": 3,
+      "rgba": [
+        0.3876228630542755,
+        0.42807477712631226,
+        0.4562634527683258,
+        1
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 119,
+      "instance": 21,
+      "selector": 0,
+      "rgba": [
+        -0.8502083420753479,
+        -1.2922563552856445,
+        3.7100439071655273,
+        3.7581892013549805
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 119,
+      "instance": 21,
+      "selector": 1,
+      "rgba": [
+        -0.12629427015781403,
+        0.8331382274627686,
+        9.106672286987305,
+        0
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 119,
+      "instance": 21,
+      "selector": 2,
+      "rgba": [
+        0.14321893453598022,
+        -0.6924509406089783,
+        0.7071067094802856,
+        1
+      ]
+    },
+    {
+      "triangle": 2,
+      "vertex": 119,
+      "instance": 21,
+      "selector": 3,
+      "rgba": [
+        0.3876228630542755,
+        0.42807477712631226,
+        0.4562634527683258,
+        1
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 69,
+      "instance": 23,
+      "selector": 0,
+      "rgba": [
+        -0.8303104639053345,
+        -1.3198601007461548,
+        3.7116241455078125,
+        3.7597694396972656
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 69,
+      "instance": 23,
+      "selector": 1,
+      "rgba": [
+        -0.10648799687623978,
+        0.8176032304763794,
+        9.106488227844238,
+        0
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 69,
+      "instance": 23,
+      "selector": 2,
+      "rgba": [
+        -0.4999999701976776,
+        -0.7071067690849304,
+        0.4999999701976776,
+        1
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 69,
+      "instance": 23,
+      "selector": 3,
+      "rgba": [
+        0.3876228630542755,
+        0.42807477712631226,
+        0.4562634527683258,
+        1
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 70,
+      "instance": 23,
+      "selector": 0,
+      "rgba": [
+        -0.7233299612998962,
+        -1.069076657295227,
+        3.5919713973999023,
+        3.640176773071289
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 70,
+      "instance": 23,
+      "selector": 1,
+      "rgba": [
+        1.8618953490090462e-8,
+        0.9682000279426575,
+        9.212976455688477,
+        0
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 70,
+      "instance": 23,
+      "selector": 2,
+      "rgba": [
+        8.742277657347586e-8,
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 70,
+      "instance": 23,
+      "selector": 3,
+      "rgba": [
+        0.3876228630542755,
+        0.42807477712631226,
+        0.4562634527683258,
+        1
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 71,
+      "instance": 23,
+      "selector": 0,
+      "rgba": [
+        -0.8746232390403748,
+        -1.059063196182251,
+        3.654129981994629,
+        3.702303886413574
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 71,
+      "instance": 23,
+      "selector": 1,
+      "rgba": [
+        -0.15059678256511688,
+        0.9682000279426575,
+        9.150596618652344,
+        0
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 71,
+      "instance": 23,
+      "selector": 2,
+      "rgba": [
+        -0.7071067690849304,
+        0,
+        0.7071067690849304,
+        1
+      ]
+    },
+    {
+      "triangle": 3,
+      "vertex": 71,
+      "instance": 23,
+      "selector": 3,
+      "rgba": [
+        0.3876228630542755,
+        0.42807477712631226,
+        0.4562634527683258,
+        1
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 186,
+      "instance": 16,
+      "selector": 0,
+      "rgba": [
+        -2.7143168449401855,
+        -1.7202467918395996,
+        4.7728071212768555,
+        4.82042121887207
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 186,
+      "instance": 16,
+      "selector": 1,
+      "rgba": [
+        -1.9818214178085327,
+        0.49900001287460327,
+        8.07027816772461,
+        0
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 186,
+      "instance": 16,
+      "selector": 2,
+      "rgba": [
+        0.7071065306663513,
+        0,
+        0.7071070671081543,
+        1
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 186,
+      "instance": 16,
+      "selector": 3,
+      "rgba": [
+        0.11221318691968918,
+        0.12599176168441772,
+        0.15618190169334412,
+        1
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 187,
+      "instance": 16,
+      "selector": 0,
+      "rgba": [
+        -2.7849204540252686,
+        -1.7249197959899902,
+        4.743799209594727,
+        4.7914276123046875
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 187,
+      "instance": 16,
+      "selector": 1,
+      "rgba": [
+        -2.0520999431610107,
+        0.49900001287460327,
+        8.09938907623291,
+        0
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 187,
+      "instance": 16,
+      "selector": 2,
+      "rgba": [
+        -1.7484555314695172e-7,
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 187,
+      "instance": 16,
+      "selector": 3,
+      "rgba": [
+        0.11221318691968918,
+        0.12599176168441772,
+        0.15618190169334412,
+        1
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 188,
+      "instance": 16,
+      "selector": 0,
+      "rgba": [
+        -2.7849204540252686,
+        -1.8452562093734741,
+        4.779126167297363,
+        4.826737403869629
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 188,
+      "instance": 16,
+      "selector": 1,
+      "rgba": [
+        -2.0520999431610107,
+        0.42872151732444763,
+        8.07027816772461,
+        0
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 188,
+      "instance": 16,
+      "selector": 2,
+      "rgba": [
+        -1.2363447865482158e-7,
+        -0.7071067690849304,
+        0.7071067690849304,
+        1
+      ]
+    },
+    {
+      "triangle": 4,
+      "vertex": 188,
+      "instance": 16,
+      "selector": 3,
+      "rgba": [
+        0.11221318691968918,
+        0.12599176168441772,
+        0.15618190169334412,
+        1
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 138,
+      "instance": 17,
+      "selector": 0,
+      "rgba": [
+        -2.7155776023864746,
+        -1.7200453281402588,
+        4.774057388305664,
+        4.821671485900879
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 138,
+      "instance": 17,
+      "selector": 1,
+      "rgba": [
+        -1.9830764532089233,
+        0.49900001287460327,
+        8.069023132324219,
+        0
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 138,
+      "instance": 17,
+      "selector": 2,
+      "rgba": [
+        0.7071065306663513,
+        0,
+        0.7071070671081543,
+        1
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 138,
+      "instance": 17,
+      "selector": 3,
+      "rgba": [
+        0.05447225272655487,
+        0.06116087734699249,
+        0.07581622898578644,
+        1
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 139,
+      "instance": 17,
+      "selector": 0,
+      "rgba": [
+        -2.7849204540252686,
+        -1.7246348857879639,
+        4.745567321777344,
+        4.793195724487305
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 139,
+      "instance": 17,
+      "selector": 1,
+      "rgba": [
+        -2.0520999431610107,
+        0.49900001287460327,
+        8.097614288330078,
+        0
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 139,
+      "instance": 17,
+      "selector": 2,
+      "rgba": [
+        -1.7484555314695172e-7,
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 139,
+      "instance": 17,
+      "selector": 3,
+      "rgba": [
+        0.05447225272655487,
+        0.06116087734699249,
+        0.07581622898578644,
+        1
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 140,
+      "instance": 17,
+      "selector": 0,
+      "rgba": [
+        -2.7849204540252686,
+        -2.50053071975708,
+        4.811535835266113,
+        4.859130859375
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 140,
+      "instance": 17,
+      "selector": 1,
+      "rgba": [
+        -2.0520999431610107,
+        0.06039999797940254,
+        8.070992469787598,
+        0
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 140,
+      "instance": 17,
+      "selector": 2,
+      "rgba": [
+        -1.7484555314695172e-7,
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "triangle": 5,
+      "vertex": 140,
+      "instance": 17,
+      "selector": 3,
+      "rgba": [
+        0.05447225272655487,
+        0.06116087734699249,
+        0.07581622898578644,
+        1
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 186,
+      "instance": 37,
+      "selector": 0,
+      "rgba": [
+        -0.5041424632072449,
+        -1.880769968032837,
+        3.776355743408203,
+        3.8244686126708984
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 186,
+      "instance": 37,
+      "selector": 1,
+      "rgba": [
+        0.21817846596240997,
+        0.49900001287460327,
+        9.07027816772461,
+        0
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 186,
+      "instance": 37,
+      "selector": 2,
+      "rgba": [
+        0.7071065306663513,
+        0,
+        0.7071070671081543,
+        1
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 186,
+      "instance": 37,
+      "selector": 3,
+      "rgba": [
+        0.3876228630542755,
+        0.42807477712631226,
+        0.4562634527683258,
+        1
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 187,
+      "instance": 37,
+      "selector": 0,
+      "rgba": [
+        -0.5747459530830383,
+        -1.885442852973938,
+        3.747347831726074,
+        3.7954750061035156
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 187,
+      "instance": 37,
+      "selector": 1,
+      "rgba": [
+        0.14789998531341553,
+        0.49900001287460327,
+        9.09938907623291,
+        0
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 187,
+      "instance": 37,
+      "selector": 2,
+      "rgba": [
+        -1.7484555314695172e-7,
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 187,
+      "instance": 37,
+      "selector": 3,
+      "rgba": [
+        0.3876228630542755,
+        0.42807477712631226,
+        0.4562634527683258,
+        1
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 188,
+      "instance": 37,
+      "selector": 0,
+      "rgba": [
+        -0.5747459530830383,
+        -2.005779266357422,
+        3.7826757431030273,
+        3.830784797668457
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 188,
+      "instance": 37,
+      "selector": 1,
+      "rgba": [
+        0.14789998531341553,
+        0.42872151732444763,
+        9.07027816772461,
+        0
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 188,
+      "instance": 37,
+      "selector": 2,
+      "rgba": [
+        -1.2363447865482158e-7,
+        -0.7071067690849304,
+        0.7071067690849304,
+        1
+      ]
+    },
+    {
+      "triangle": 6,
+      "vertex": 188,
+      "instance": 37,
+      "selector": 3,
+      "rgba": [
+        0.3876228630542755,
+        0.42807477712631226,
+        0.4562634527683258,
+        1
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 138,
+      "instance": 38,
+      "selector": 0,
+      "rgba": [
+        -0.5054032206535339,
+        -1.880568504333496,
+        3.7776060104370117,
+        3.8257179260253906
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 138,
+      "instance": 38,
+      "selector": 1,
+      "rgba": [
+        0.21692350506782532,
+        0.49900001287460327,
+        9.069023132324219,
+        0
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 138,
+      "instance": 38,
+      "selector": 2,
+      "rgba": [
+        0.7071065306663513,
+        0,
+        0.7071070671081543,
+        1
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 138,
+      "instance": 38,
+      "selector": 3,
+      "rgba": [
+        0.18816588819026947,
+        0.20780271291732788,
+        0.22148646414279938,
+        1
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 139,
+      "instance": 38,
+      "selector": 0,
+      "rgba": [
+        -0.5747459530830383,
+        -1.8851580619812012,
+        3.749116897583008,
+        3.797243118286133
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 139,
+      "instance": 38,
+      "selector": 1,
+      "rgba": [
+        0.14789998531341553,
+        0.49900001287460327,
+        9.097614288330078,
+        0
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 139,
+      "instance": 38,
+      "selector": 2,
+      "rgba": [
+        -1.7484555314695172e-7,
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 139,
+      "instance": 38,
+      "selector": 3,
+      "rgba": [
+        0.18816588819026947,
+        0.20780271291732788,
+        0.22148646414279938,
+        1
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 140,
+      "instance": 38,
+      "selector": 0,
+      "rgba": [
+        -0.5747459530830383,
+        -2.6610538959503174,
+        3.815084457397461,
+        3.8631772994995117
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 140,
+      "instance": 38,
+      "selector": 1,
+      "rgba": [
+        0.14789998531341553,
+        0.06039999797940254,
+        9.070992469787598,
+        0
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 140,
+      "instance": 38,
+      "selector": 2,
+      "rgba": [
+        -1.7484555314695172e-7,
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "triangle": 7,
+      "vertex": 140,
+      "instance": 38,
+      "selector": 3,
+      "rgba": [
+        0.18816588819026947,
+        0.20780271291732788,
+        0.22148646414279938,
+        1
+      ]
+    }
+  ],
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/156.0.8078.80",
+    "revision": "@fb096c0011f9d50f0a264a9376420cdea9c421e3",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "jsVersion": "15.6.75.27"
+  },
+  "inputs": {
+    "/tmp/aethyr-deadgears-vs-probe.wgsl": "a18ea3f81941bf5cf47667cf91e62e0ea2aae30183f5ad77b661bb0339c4d4e0",
+    "/tmp/aethyr-ch11-deadgears-vs-cases.json": "8d1f78a5e719ac8eded51476e381160e95f1aeb29e2a4fcf6bf742e93bc4fb30",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_deadgears_vs_webgpu.ts": "4cd215d352a95cb09d66bd7af1f769b5d6482b7d6486f7f55a11efd55d116adf",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-deadgears-vs-probe.coax": "531304a8f6d9e4c0a37304f92f8a91209661859e676f15382a48c2126896d955",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/chrome.ts": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/render-deadgears-vs-probe.bindings": "af4ce5bc22b0813bdee2bd341620fc686d3480641969caeeb61f289c8bca069a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/gpu/deadgears.coax": "1065de3da810b5bc8205a6026aff3cb7a743d83cccd9394551802fb9d4377da3",
+    "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/render/noise.coax": "4a6cd03a97af0a546e110439145814c5ffc6c27dd90d1bc5a7cff7a705764346",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/shader.coax": "9688942c90063b6a8f162d79f19332dde17dbb4d7cbeb8885ee13d899c0e1813",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/gpu/wgsl.coax": "89fe38e7cade18f6804f4d785ab90866784be86128a26be26ab103348d3f47eb",
+    "/tmp/aethyr-ch11-native-deadgears-rgba16f/stage/inputs/u.bin": "60bab0ae95b768ac1fcee1b80c4dc6d03f077a111be6a991d5802ca2ec4cf575",
+    "/tmp/aethyr-ch11-native-deadgears-rgba16f/stage/inputs/s0.bin": "f837e11b94fe44e63e352fedcf0cc8f2a9d13888374a11f5426b198ae76f050c"
+  },
+  "source_changes": []
+}

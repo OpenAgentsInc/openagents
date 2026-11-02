@@ -1,0 +1,15 @@
+{
+  "scope": "Exact retained authority/native/fixture receipts. Each receipt keeps its own source closure; later test-source composition and added fixture modes do not relabel earlier executions.",
+  "files": {
+    "aethyr-ch11-frame-graph-checks.log": "f8fe85f510798c04797cdff792b79cd703bdca3ae6a88c64d2bd18bb73dddf1f",
+    "aethyr-ch11-frame-post-checks-1.log": "53ce0aea8fce5adeaef53e4b264b5e33b12e1c146852c744dd6bb7e9ae4a5bf8",
+    "artifacts.tar.gz": "013eda27fdf4d5f7d503a554b00dd4fa4656f23573e8c8699631ebd02dd98f87",
+    "aethyr-ch11-frame-post-checks-2.log": "7db5933e54fbf8af5cf937528f592c95c45610a5444d0c848234bbe78fe62070",
+    "aethyr-ch11-frame-run-checks-1.log": "c3a23ef3301be961847c653f418e54e6ff959405ba21306b0a5a96e4cbb18f70",
+    "aethyr/render/tests/reference-frame-post-trees.coax": "85d34b9fd33f8365acc3e0ac563b1c76d7d3e8d094a673fcbed6862abe171890",
+    "aethyr/render/tests/reference-frame-post-shader.coax": "e9a4a71981e9323907e3d1efd565fef9d7556c615bdc207ad021116dccc0e5ae",
+    "aethyr/render/tests/reference-frame-graph-checks.coax": "a5e6477b775dbeffcfecca8b4bed6e22d8148933e68c52f931bffd586edbf255",
+    "aethyr/render/tests/reference-frame-post-checks.coax": "b7bf67b930acbaa586894cbe56301def639236aeb4aa936d464ead4899765560",
+    "aethyr/render/tests/reference-frame-run-checks.coax": "5366b0909285303623109424902c0a14ab9bb985b57877d247fc5af77c2b050d"
+  }
+}

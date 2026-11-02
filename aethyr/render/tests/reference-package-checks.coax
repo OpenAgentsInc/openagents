@@ -1,0 +1,29 @@
+#test "CPU reference package uses its implemented capability profile and authenticated tree bytes" {
+ entries:[14]RenderPackageEntry;p:=rf_package_admit(RPKG_TEST_JSON,1,entries[..]);
+ #assert p.status==RenderPackageStatus.ok && p.profile_index==1;
+ text:=RPKG_TEST_TREE;bytes:[128]u8;for j:0..<text.count {bytes[j]=text[j];}
+ words:[128]u32;meta:[RQ_IR_META]int;r:=rf_package_prepare(p,0,bytes[0..<text.count],words[..],meta[..]);
+ #assert r.status==RQStatus.ok && r.package_status==RenderPackageStatus.ok && r.transport.status==RenderTreeStatus.ok && r.transport.version==2 && r.transport.count==17;
+ #assert r.program.status==RQStatus.ok && r.program.tree_words==17 && r.program.entries==1;
+ #assert rf_package_admit(RPKG_TEST_JSON,15,entries[..]).status==RenderPackageStatus.mismatch;
+}
+#test "CPU reference package refuses wrong bytes version and capacity before interpreting candidate code" {
+ entries:[14]RenderPackageEntry;p:=rf_package_admit(RPKG_TEST_JSON,1,entries[..]);text:=RPKG_TEST_TREE;bytes:[128]u8;for j:0..<text.count {bytes[j]=text[j];}
+ words:[128]u32;words[0]=91;meta:[RQ_IR_META]int;wrong:=[3]u8.[1,2,3];r:=rf_package_prepare(p,0,wrong[..],words[..],meta[..]);
+ #assert r.status==RQStatus.resource && r.package_status==RenderPackageStatus.hash && words[0]==91;
+ r=rf_package_prepare(p,0,bytes[0..<text.count],words[0..<0],meta[..]);#assert r.status==RQStatus.capacity && r.transport.status==RenderTreeStatus.capacity && words[0]==91;
+ r=rf_package_prepare(p,0,bytes[0..<text.count],words[..],meta[0..<1]);#assert r.status==RQStatus.capacity && r.program.status==RQStatus.capacity;
+ p.entries[0].reflection.tree_version=3;r=rf_package_prepare(p,0,bytes[0..<text.count],words[..],meta[..]);#assert r.status==RQStatus.unsupported && r.transport.version==2;
+ p.status=RenderPackageStatus.mismatch;r=rf_package_prepare(p,0,bytes[0..<text.count],words[..],meta[..]);#assert r.status==RQStatus.resource && r.package_status==RenderPackageStatus.mismatch;
+}
+
+#forall "CPU reference transport failure categories remain distinct" kind:0..<6 {
+ expected:=[6]RQStatus.[RQStatus.ok,RQStatus.malformed,RQStatus.malformed,RQStatus.unsupported,RQStatus.capacity,RQStatus.budget];
+ #assert rf_transport_status(cast(RenderTreeStatus)kind)==expected[kind];
+}
+#test "CPU reference package admits the helper feature it actually implements" {
+ a:[8192]u8;b:[8192]u8;
+ first:=rpkg_test_edit(RPKG_TEST_JSON,"\"tree_version\":2","\"tree_version\":3",a[..]);
+ json:=rpkg_test_edit(first,"\"control\":0","\"control\":2",b[..]);entries:[14]RenderPackageEntry;
+ p:=rf_package_admit(json,1,entries[..]);#assert p.status==RenderPackageStatus.ok && p.entries[0].reflection.control==2 && p.entries[0].reflection.tree_version==3;
+}

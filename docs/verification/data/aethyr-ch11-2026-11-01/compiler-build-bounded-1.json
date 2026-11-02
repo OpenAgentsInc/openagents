@@ -1,0 +1,8 @@
+{
+  "exit_status": "deadline",
+  "limit_seconds": 830,
+  "process_group_stopped": true,
+  "log": "/tmp/aethyr-ch11-compiler-build-1.log",
+  "installed_compiler": false,
+  "passing_gates": "Retained by bootstrap exact stage0/source/command cache; resume will reuse them."
+}

@@ -1,0 +1,120 @@
+#load "reference-frame-trees.coax";
+#forall "reference frame maps actual Watchtower parameter IDs and byte attribute layout through catalog slots" hud:bool {
+ bg:=RF_WATCH_BG;fx:=RF_WATCH_HUD;tree:[]u32=bg[..];pass:=RenderPassId.background;if hud {tree=fx[..];pass=RenderPassId.hud;}
+ meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree,meta[..]);r:=rf_catalog_layout(15,pass,p,tree,meta[..]);
+ #assert r.status==RQStatus.ok && r.pipeline.status==RQStatus.ok && r.pipeline.has_fragment && r.count==1;
+ #assert r.bindings[0].kind==1 && r.bindings[0].resource==0;
+ #assert r.bindings[0].name_id==3;
+ #assert r.attribute_count==(ifx hud then 4 else 0) && r.attribute_stride==(ifx hud then 16 else 0);
+ if hud {for j:0..<4 {#assert r.attributes[j].location==j && r.attributes[j].offset==j*4 && r.attributes[j].components==4;}}
+}
+#test "reference frame refuses unknown catalog pipelines and preserves checked preparation failure" {
+ tree:=RF_WATCH_BG;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);
+ #assert rf_catalog_layout(-1,RenderPassId.background,p,tree[..],meta[..]).status==RQStatus.resource;
+ #assert rf_catalog_layout(18,RenderPassId.background,p,tree[..],meta[..]).status==RQStatus.resource;
+ #assert rf_catalog_layout(15,RenderPassId.caster,p,tree[..],meta[..]).status==RQStatus.resource;
+ p.status=RQStatus.budget;#assert rf_catalog_layout(15,RenderPassId.background,p,tree[..],meta[..]).status==RQStatus.budget;
+}
+
+#test "reference frame workspace follows actual target graph including clear-only shadow and ceiling bloom" {
+ c:=FrameCounts.{width=3,height=5,vertex_stride=16};
+ r:=rf_require(15,c,RenderReadiness.ready,true,false,RenderTextureFormat.bgra8);
+ #assert r.status==RQStatus.ok && !r.loading && r.image_pixels==15 && r.pass_pixels==15 && r.word_words==65536+60 && r.meta_words==14*8192;
+ #assert r.images[1].present && r.images[1].offset==0 && r.images[1].descriptor.width==3 && r.images[1].descriptor.height==5 && r.images[1].descriptor.format==RenderTextureFormat.bgra8;
+ for j:2..<12 {#assert !r.images[j].present;}
+ c.hud_vertices=3;r=rf_require(0,c,RenderReadiness.ready,true,true,RenderTextureFormat.rgba8);
+ #assert r.status==RQStatus.ok && r.images[5].present && r.images[5].descriptor.width==1024 && r.images[5].descriptor.height==1024 && r.images[5].descriptor.format==RenderTextureFormat.depth32;
+ #assert r.images[8].descriptor.width==1 && r.images[8].descriptor.height==2 && r.images[10].descriptor.width==1 && r.images[10].descriptor.height==1;
+ #assert r.image_pixels==1048576+4*15+2*2+2*1 && r.pass_pixels==1048576 && r.word_words==65536+256+3*16;
+ fine:=rf_require(0,c,RenderReadiness.ready,true,false,RenderTextureFormat.rgba8);#assert fine.images[5].descriptor.width==2048 && fine.pass_pixels==4194304;
+}
+#test "reference frame loading and invalid requests never advertise executable workspace" {
+ c:=FrameCounts.{width=2,height=2,vertex_stride=16};
+ r:=rf_require(15,c,RenderReadiness.loading,true,false,RenderTextureFormat.rgba8);#assert r.status==RQStatus.ok && r.loading && r.image_pixels==0 && r.pass_pixels==0 && r.word_words==0 && r.meta_words==0;
+ #assert rf_require(-1,c,RenderReadiness.ready,true,false,RenderTextureFormat.rgba8).status==RQStatus.resource;
+ c.width=0;#assert rf_require(15,c,RenderReadiness.ready,true,false,RenderTextureFormat.rgba8).status==RQStatus.resource;
+ c.width=16385;#assert rf_require(15,c,RenderReadiness.ready,true,false,RenderTextureFormat.rgba8).status!=RQStatus.ok;
+ c.width=2;#assert rf_require(15,c,RenderReadiness.ready,true,false,RenderTextureFormat.depth32).status==RQStatus.resource;
+ c.hud_vertices=-1;#assert rf_require(15,c,RenderReadiness.ready,true,false,RenderTextureFormat.rgba8).status==RQStatus.resource;
+}
+
+#test "reference frame executes the actual Watchtower graph and publishes independently derived four pixels" {
+ c:=FrameCounts.{width=2,height=2,vertex_stride=16};u:[60]f32;u[0]=2;u[1]=2;u[3]=1;u[4]=1;u[5]=1;u[6]=8;
+ bg:=RF_WATCH_BG;hud:=RF_WATCH_HUD;shaders:=[2]RFShader.[RFShader.{tree=bg[..]},RFShader.{index=12,tree=hud[..]}];
+ images:[4]RQColor;target:[4]RRPixel;scratch:[4]RRPixel;words:[65596]u32;meta:[114688]int;domains:[]RenderDrawDomain;decoded:[]RenderDecodedDraw;out:[5]RQColor;for j:0..<5 {out[j].r=91;}
+ work:=RFWorking.{images=images[..],target=target[..],scratch=scratch[..],words=words[..],meta=meta[..],domains=domains,decoded=decoded};
+ r:=rf_run(RFInput.{profile=15,counts=c,uniforms=u[..]},shaders[..],false,RenderTextureFormat.rgba8,RFPolicy.{},work,out[..]);
+ #assert r.status==RQStatus.ok && !r.loading && r.bad_op==(-1) && r.bad_shader==(-1) && r.geometry==RenderGeometryStatus.ok && r.frame==RenderFrameStatus.ok;
+ #assert r.draws==1 && r.written==4 && r.shader_steps==r.pass_steps[0] && r.shader_steps>0 && r.pass_steps[12]==0;
+ // The independent analytic Watchtower calculation has equal columns. Its
+ // two scanline factors give UNORM8 rows (39,41,47) and (38,40,46).
+ for j:0..<4 {row:=j/2;#assert out[j].r==f32(39-row)/255 && out[j].g==f32(41-row)/255 && out[j].b==f32(47-row)/255 && out[j].a==1;}
+ #assert out[4].r==91;
+}
+#test "reference frame file origins and admitted storage views retain padding and offsets" {
+ name:[8]u8;
+ #assert rf_buffer_name(RenderBindingSource.{kind=RenderSourceKind.immutable_storage_asset,index=0},name[..])=="vertices.bin";
+ #assert rf_buffer_name(RenderBindingSource.{kind=RenderSourceKind.mesh_asset,index=0},name[..])=="mesh.bin";
+ #assert rf_buffer_name(RenderBindingSource.{kind=RenderSourceKind.particle_emitters},name[..])=="puffs.bin";
+ for i:[4]int.[0,9,10,47] {expected:=[4]string.["s0.bin","s9.bin","s10.bin","s47.bin"];at:=ifx i==0 then 0 else ifx i==9 then 1 else ifx i==10 then 2 else 3;#assert rf_buffer_name(RenderBindingSource.{kind=RenderSourceKind.dynamic_store,index=i},name[..])==expected[at];}
+ #assert rf_buffer_name(RenderBindingSource.{kind=RenderSourceKind.dynamic_store,index=48},name[..])=="";
+ #assert rf_buffer_name(RenderBindingSource.{kind=RenderSourceKind.dynamic_store,index=-1},name[..])=="";
+ #assert rf_buffer_name(RenderBindingSource.{kind=RenderSourceKind.dynamic_store,index=0},name[0..<6])=="s0.bin";
+ #assert rf_buffer_name(RenderBindingSource.{kind=RenderSourceKind.dynamic_store,index=0},name[0..<5])=="";
+ #assert rf_buffer_name(RenderBindingSource.{},name[..])=="";
+ words:=[4]u32.[11,22,33,0];files:=[2]RenderHostNamedBuffer.[RenderHostNamedBuffer.{name="s0.bin",words=words[..],observed=RenderBufferObserved.{source_capacity=12,logical_payload=12,initialized_highwater=12,gpu_bytes=16,zero_initialized=true}},RenderHostNamedBuffer.{name="vertices.bin",words=words[..],observed=RenderBufferObserved.{source_capacity=12,logical_payload=8,initialized_highwater=16,gpu_bytes=16,offset=4}}];
+ empty:[]u32;
+ q:=rf_resolve_buffer(16,0,1,files[..],empty,empty);
+ #assert q.status==RQStatus.ok && q.buffer.count==4 && q.buffer.stride==4 && q.buffer.words.count==4 && q.buffer.words[2]==33 && q.buffer.words[3]==0;
+ q=rf_resolve_buffer(0,0,1,files[..],empty,empty);
+ #assert q.status==RQStatus.ok && q.buffer.count==2 && q.buffer.words.count==2 && q.buffer.words[0]==22 && q.buffer.words[1]==33;
+ files[1].name="s0.bin";#assert rf_resolve_buffer(16,0,1,files[..],empty,empty).status==RQStatus.resource;
+}
+#test "reference frame sampler effects mirror the shared descriptor rather than implicit defaults" {
+ sheet:=rf_sampler("sheet");shadow:=rf_sampler("shadow_cmp");post:=rf_sampler("post_lin");sans:=rf_sampler("sans_sampler");media:=rf_sampler("media_sampler");
+ #assert sheet.address_u==RQAddress.repeat && sheet.address_v==RQAddress.repeat && sheet.min_linear && sheet.mag_linear && sheet.mip_linear && sheet.max_anisotropy==1 && sheet.compare==RQCompare.none;
+ #assert shadow.address_u==RQAddress.clamp && shadow.address_v==RQAddress.clamp && shadow.min_linear && shadow.mag_linear && !shadow.mip_linear && shadow.compare==RQCompare.less;
+ #assert !post.mip_linear && post.compare==RQCompare.none && sans.mip_linear && media.min_linear && media.mag_linear && !media.mip_linear;
+}
+#forall "reference frame refusal keeps final output atomic and identifies publication or bad shader inputs" mode:0..<12 {
+ c:=FrameCounts.{width=2,height=2,vertex_stride=16};u:[60]f32;u[0]=2;u[1]=2;u[3]=1;u[4]=1;u[5]=1;u[6]=8;
+ bg:=RF_WATCH_BG;hud:=RF_WATCH_HUD;shaders:=[2]RFShader.[RFShader.{tree=bg[..]},RFShader.{index=12,tree=hud[..]}];ns:=2;
+ images:[4]RQColor;target:[4]RRPixel;scratch:[4]RRPixel;words:[65644]u32;meta:[114688]int;domains:[]RenderDrawDomain;decoded:[]RenderDecodedDraw;out:[5]RQColor;for j:0..<5 {out[j]=RQColor.{r=91,g=92,b=93,a=94};}
+ work:=RFWorking.{images=images[..],target=target[..],scratch=scratch[..],words=words[..],meta=meta[..],domains=domains,decoded=decoded};
+ input:=RFInput.{profile=15,counts=c,uniforms=u[..]};policy:RFPolicy;output:[]RQColor=out[..];
+ if mode==0 {policy.shader_work=1;}if mode==1 {policy.pixel_work=15;}if mode==2 {ns=1;}if mode==3 {output=out[0..<3];}
+ if mode==4 {input.uniforms=u[0..<59];}if mode==5 {input.counts.hud_vertices=3;}
+ if mode==6 {shaders[1].index=0;}if mode==7 {shaders[1].index=14;}
+ if mode==8 {policy.shader_work=0;}if mode==9 {policy.shader_work=100000001;}if mode==10 {policy.pixel_work=0;}if mode==11 {policy.pixel_work=100000001;}
+ r:=rf_run(input,shaders[0..<ns],false,RenderTextureFormat.rgba8,policy,work,output);
+ expected:=ifx mode<2 then RQStatus.budget else ifx mode==3 then RQStatus.capacity else RQStatus.resource;#assert r.status==expected;
+ if mode==0 {#assert r.pass_steps[0]==1 && r.shader_steps==1 && r.bad_op==1;}
+ if mode==1 {#assert r.bad_op==3 && r.pixel_steps==12 && r.shader_steps>0;}
+ if mode==2 {#assert r.bad_shader==(-1) && r.pixel_steps==0;}
+ if mode==6 || mode==7 {#assert r.bad_shader==1 && r.pixel_steps==0;}
+ for j:0..<5 {#assert out[j].r==91 && out[j].g==92 && out[j].b==93 && out[j].a==94;}
+}
+
+#load "reference-frame-pixels-checks.coax";
+
+#load "reference-frame-layout-checks.coax";
+
+#load "reference-frame-resources-checks.coax";
+
+#load "reference-frame-raster-policy-checks.coax";
+
+#load "reference-frame-media-checks.coax";
+
+#load "reference-frame-graph-checks.coax";
+
+#load "reference-frame-shared-inputs-checks.coax";
+
+#load "reference-frame-media-prepare-checks.coax";
+#load "reference-frame-post-checks.coax";
+
+#load "reference-frame-boundary-extra-checks.coax";
+
+#load "reference-frame-media-graph-checks.coax";
+#load "reference-frame-run-checks.coax";
+
+#load "reference-frame-work-checks.coax";

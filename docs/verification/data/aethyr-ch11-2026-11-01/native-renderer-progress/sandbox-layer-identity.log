@@ -1,0 +1,3 @@
+ok   #test actual immutable Haunt texture observations also match all canonical Sandbox layer sources (1 case, 817687 steps, 10 ms)
+1 of 83 checks (--only 'actual immutable Haunt'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

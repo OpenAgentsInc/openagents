@@ -1,0 +1,3 @@
+ok   #test reference layout preserves an actual fragment-only uniform without inventing a vertex use (1 case, 26931 steps, 0 ms)
+1 of 334 checks (--only 'reference layout preserves an actual fragment-only'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

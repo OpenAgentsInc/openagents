@@ -1,0 +1,8 @@
+{
+  "schema": "aethyr.render.native-causal-prefix-retention.v1",
+  "scope": "Exact repairedIce320producerinput and unchangedauthenticatedpackage, historicalqualifiedgenericCoaxC/header pair. Onlyeffectsdiagnostics addprefixcuts/depthstore/readback; fullcolourimage mustequalactualbaseline. No renderer product source changes.",
+  "full_raw_sha256": "3b825aacd0605345a75d423462357f18bb2ed2b33e5ba428ae3156aecc6819f0",
+  "archive_sha256": "7677a41a493a19df30ca2b0bdf1a177bc319846aea5d9c653749478c796e178e",
+  "observations": "pixel-stages.json",
+  "baseline": "docs/verification/data/aethyr-ch11-2026-11-01/native-renderer-progress/icecream-bands-320"
+}

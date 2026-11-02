@@ -1,0 +1,12 @@
+// Verification-only native bridge. Production cores have no duplicate C exports.
+#load "../render/capabilities.coax" as rc;
+#load "../render/resources.coax" as rv;
+#load "../render/bindings.coax" as rb;
+render_test_vulkan_features :: (version:int,derivatives:int,control:int,requires_int64:bool,helper_enabled:bool,int64_enabled:bool)->int #export_c {
+  return cast(int)rc.render_capabilities_admit(rc.RenderShaderRequirements.{tree_version=version,derivatives=derivatives,control=control,requires_int64=requires_int64},
+    rc.RenderDeviceCapabilities.{backend=rc.RenderBackend.vulkan,helper_enabled=helper_enabled,int64_enabled=int64_enabled},true);
+}
+render_test_uniform_view :: (vec4s:int,physical:u64,offset:u64)->rv.RenderBufferView #export_c {
+  return rv.render_buffer_view(rb.RenderBinding.{name="u",kind=rb.RenderResourceKind.uniform,stride=4,uniform_vec4s=vec4s},rv.RenderBufferMode.declared_uniform,
+    rv.RenderBufferObserved.{source_capacity=physical,logical_payload=physical,initialized_highwater=physical,gpu_bytes=physical,offset=offset,alignment=4,zero_initialized=true});
+}

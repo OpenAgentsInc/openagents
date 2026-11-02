@@ -1,0 +1,78 @@
+{
+  "schema": "aethyr.render.texture-codec.native.v1",
+  "status": "pass",
+  "compiler_version": "coax0 0.47.0",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "compiler_recorded_source_digest": "604574a88c8273b0c110f34779cba55817778ecee02c4a797dbb79c9af6a6220",
+  "compiler_current_source_digest": "604574a88c8273b0c110f34779cba55817778ecee02c4a797dbb79c9af6a6220",
+  "compiler_current_sources_match": true,
+  "source_sha256": {
+    "aethyr/render/tests/texture-codec-native.coax": "2907da87d8aca7c3fa0077a5748f9d10afbf58e6f06943e8411710e86003640e",
+    "aethyr/render/texture-codec.coax": "166db59138926ed611567c2f4e42add561bacbd2e6a378a89db8256e70d205c1",
+    "aethyr/render/reference-raster.coax": "86af225aafa268fd85a87af84cac8320e135ea885ee80645083d8b63d96c3b7a",
+    "aethyr/render/reference-quad.coax": "d5e462db357b672231ef6a43456d069f2a1fd2eb5d1c16b2e0619efd6a7c71d7",
+    "aethyr/render/tests/reference-quad-checks.coax": "4d8d4d75129a69aeed49bcc2b9d1330690f337dc434c418971bac6fa404d9d1e",
+    "aethyr/render/passes.coax": "899bac438b8ecd752f7cf581f5093e01fc7994dfff5ab8bf3d9619bf7ed5a800",
+    "aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "aethyr/render/tests/reference-raster-checks.coax": "af3327de2a889d5c073cd96a3cfe6dd65235b16c4a5bd43b36447acaf055fbeb",
+    "aethyr/render/tests/texture-codec-checks.coax": "f0dde2af77fc5c7e6456df9c8e28441af310a9334d7c87fd93936a819a870b93",
+    "aethyr/render/tests/texture-codec-native.c": "2604443ddbd10da8543e2290e581a6cbff5d11a932ea0295d32d983025b421ab",
+    "aethyr/render/tests/check_texture_codec.py": "89dd67bb12eaf9d623fdbcb479508467446998951455ca4e41a649e7212c095d"
+  },
+  "input_sha256": "589f7d41fd931b13532f6a2ab82824027e3e52eceaa06561f450d3e7916f8c76",
+  "modes": [
+    {
+      "mode": "debug",
+      "cases": 67616,
+      "faults": [
+        "swap-rb",
+        "drop-alpha",
+        "clear-status"
+      ],
+      "transcript": "/private/tmp/aethyr-ch11-texture-native/debug.bin",
+      "transcript_sha256": "50ca1c95f30ac325850af5c76657287d7a11d2da7b8cfb95b6c29c6b79cd3afe",
+      "generated_c_sha256": "79f630da1bcdf85a84a31d407bf107a18e43798730e3a622b51a965dca615ac9",
+      "generated_header_sha256": "49d3a3fcec6d7bbce1a8a9c6f451b64640911e233ee0f820f8d72a49711b3dc6",
+      "executable_sha256": "aaa4dfa5765eacef8c91759fe07c6bb4913172bb2512d267fb7c220ed89894b8"
+    },
+    {
+      "mode": "release",
+      "cases": 67616,
+      "faults": [
+        "swap-rb",
+        "drop-alpha",
+        "clear-status"
+      ],
+      "transcript": "/private/tmp/aethyr-ch11-texture-native/release.bin",
+      "transcript_sha256": "50ca1c95f30ac325850af5c76657287d7a11d2da7b8cfb95b6c29c6b79cd3afe",
+      "generated_c_sha256": "800f8c01b1538690e963294967b467677ee753e1c358f085577acad596488601",
+      "generated_header_sha256": "49d3a3fcec6d7bbce1a8a9c6f451b64640911e233ee0f820f8d72a49711b3dc6",
+      "executable_sha256": "a1383b429d932a255488e3539cf7703f72238f2f76b640a85b6958b75e79e007"
+    },
+    {
+      "mode": "sanitized",
+      "cases": 67616,
+      "faults": [
+        "swap-rb",
+        "drop-alpha",
+        "clear-status"
+      ],
+      "transcript": "/private/tmp/aethyr-ch11-texture-native/sanitized.bin",
+      "transcript_sha256": "50ca1c95f30ac325850af5c76657287d7a11d2da7b8cfb95b6c29c6b79cd3afe",
+      "generated_c_sha256": "79f630da1bcdf85a84a31d407bf107a18e43798730e3a622b51a965dca615ac9",
+      "generated_header_sha256": "49d3a3fcec6d7bbce1a8a9c6f451b64640911e233ee0f820f8d72a49711b3dc6",
+      "executable_sha256": "981f52023bf063aba7905e1605402e1757608d6a7947c41f643796d47cada8d6"
+    }
+  ],
+  "elapsed_seconds": 3.066,
+  "scope": "All65536 half words, all256 byte EOTF values in RGBA/BGRA linear/sRGB,1024 independent float-word colors, depth/offset/truncation cases; normal-C transport and scalar decode only. Batch atomic/layout proof is in sharp Coax checks; no GPU image claim.",
+  "mutation": {
+    "scope": "root-only; full imported baseline retained",
+    "total": 257,
+    "killed": 257,
+    "survivors": 0,
+    "source_sha256": "166db59138926ed611567c2f4e42add561bacbd2e6a378a89db8256e70d205c1",
+    "log": "/tmp/aethyr-ch11-texture-codec-mutation-4.log",
+    "log_sha256": "03e1357ee7f7dec9202eba08b0cc280baed9830f0974f8f6903f62a08363014b"
+  }
+}

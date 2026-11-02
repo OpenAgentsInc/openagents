@@ -1,0 +1,10 @@
+#test "reference media transport binds parsed line textures into shared URL ready observations" {
+ mip:=[1]RQMip.[RQMip.{width=1,height=1}];pixels:=[1]RQColor.[RQColor.{r=0.25,a=1}];
+ files:=[2]RFNamedTexture.[RFNamedTexture.{name="media_image-0",texture=RQTexture.{levels=mip[..],layers=1,texels=pixels[..]}},RFNamedTexture.{name="media_image-2",texture=RQTexture.{levels=mip[..],layers=1,texels=pixels[..]}}];
+ observed:=[1]RenderHostMediaImage.[RenderHostMediaImage.{kind=RenderMediaKind.image,url="/same",ready=true,width=1,height=1}];
+ rects:[4]RenderMediaRect;rects[3].line=99;
+ q:=rf_prepare_media(13,"image /same 0 0 2 2\nbad\nover /same 0 0 2 2\nimage /missing 0 0 2 2",2,2,files[..],observed[..],rects[..]);
+ #assert q.status==RQStatus.ok && q.count==3 && q.parsed.count==3 && q.parsed.lines==4 && q.composed.count==3 && q.composed.status==RenderHostMediaStatus.ok && q.bad_bitmap== -1;
+ #assert rects[0].draw && rects[0].line==0 && !rects[0].over && rects[1].draw && rects[1].line==2 && rects[1].over && !rects[2].draw && rects[2].line==3 && rects[3].line==99;
+ for k:0..<2 {#assert rects[k].uniforms[0]== -1 && rects[k].uniforms[1]==1 && rects[k].uniforms[2]==1 && rects[k].uniforms[3]== -1 && rects[k].uniforms[4]==1;}
+}

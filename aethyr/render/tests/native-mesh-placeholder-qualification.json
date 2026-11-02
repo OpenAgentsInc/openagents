@@ -1,0 +1,45 @@
+{
+  "schema": "aethyr.render.native-mesh-placeholder.v1",
+  "status": "pass",
+  "scope": "Direct native Orbit constructor with missing optional mesh source, actual Core-derived16B zero CPU/GPU allocation, nonblocking ready state without claiming acquired mesh; no draw/numerical-image claim.",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "core_recipe_gate": {
+    "owner": "aethyr/render/host-inputs.coax",
+    "root_mutants": 70,
+    "killed": 70,
+    "survived": 0,
+    "waivers": 0
+  },
+  "native_cases": {
+    "red": {
+      "expected_exit": 1,
+      "actual_exit": 1,
+      "elapsed_seconds": 6.4923061250010505,
+      "diagnostic": "constructor refused: immutable canonical buffer input is missing\n"
+    },
+    "green": {
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "elapsed_seconds": 9.74970366602065,
+      "diagnostic": ""
+    },
+    "ready-fault": {
+      "expected_exit": 4,
+      "actual_exit": 4,
+      "elapsed_seconds": 9.872826542006806,
+      "diagnostic": ""
+    },
+    "bytes-fault": {
+      "expected_exit": 3,
+      "actual_exit": 3,
+      "elapsed_seconds": 9.831804332963657,
+      "diagnostic": ""
+    }
+  },
+  "source_sha256": {
+    "verse/native/render-realm.c": "a1248fc1e4e2486898c172d112b8e7359cd9d2304a3cdf1b6570488511c0d127",
+    "aethyr/render/native-host.coax": "63ea840411544aa4bf690538265f1ed9547a87a50fb991ef74d2e2b4753c1fde"
+  },
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-mesh-placeholder",
+  "remaining": "Ordinary static packaging still requires its staged source files. No asynchronous native HTTP acquisition or live mesh arrival/replacement service is implemented."
+}

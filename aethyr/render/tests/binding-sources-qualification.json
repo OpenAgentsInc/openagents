@@ -1,0 +1,17 @@
+{
+  "schema": "aethyr.render.binding-sources.qualification.v1",
+  "status": "provisional",
+  "compiler_version": "coax0 0.47.0",
+  "compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+  "source_sha256": "4128fa3131dbaf2dfce5e4279b782c6801e9bfe80282275c726cdb5b46afc122",
+  "checks_sha256": "bc8449bd749a5ccb5e673bccf38b86bad5b553d8a7faa9e8c093ba775f6be4a8",
+  "mutation": {
+    "scope": "root-only; imported baseline retained",
+    "total": 145,
+    "killed": 145,
+    "survivors": 0,
+    "log": "/tmp/aethyr-ch11-binding-sources-mutation-3.log",
+    "log_sha256": "0e1c3219e90211febe60dee528c8fcf75d56b821722747655cdd05966a87d18e"
+  },
+  "scope": "Every logical resource in all18compiledprofiles, particle/media sets, unknowns, asset/store boundaries and source fields. Runtime package reconciliation, host effects and GPU images are separate gates; final compiler requalification pending."
+}

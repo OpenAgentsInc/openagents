@@ -1,0 +1,74 @@
+// Internal graph-operation fixtures use admitted, disjoint canvas spans.
+// Candidate image writes may precede a later refusal; rf_run alone publishes
+// the external final image. Exact offsets and guards are independent here.
+#forall "reference graph clears exactly its selected colour auxiliary and depth spans" selection:0..<8 {
+  req:RFRequirements;
+  req.images[2]=RFCanvasLayout.{present=true,offset=2,descriptor=RenderTargetDescriptor.{width=3,height=1,format=RenderTextureFormat.rgba16f}};
+  req.images[3]=RFCanvasLayout.{present=true,offset=7,descriptor=RenderTargetDescriptor.{width=3,height=1,format=RenderTextureFormat.rgba8}};
+  req.images[4]=RFCanvasLayout.{present=true,offset=12,descriptor=RenderTargetDescriptor.{width=3,height=1,format=RenderTextureFormat.depth32}};
+  op:=RenderOp.{colour0=ifx (selection&1)!=0 then RenderTarget.light else RenderTarget.none,
+    colour1=ifx (selection&2)!=0 then RenderTarget.aux else RenderTarget.none,
+    depth=ifx (selection&4)!=0 then RenderTarget.scene_depth else RenderTarget.none};
+  sentinel:=RQColor.{r=91,g=92,b=93,a=94};images:[18]RQColor;for i:0..<18 {images[i]=sentinel;}
+  base:=RFResult.{bad_op=17,bad_shader=6,bad_media=111,pixel_steps=5,shader_steps=29,draws=3,written=19};base.pass_steps[4]=23;
+  r:=rf_clear_targets(req,op,images[..],RFPolicy.{},base);
+  count:=0;for k:0..<3 {if (selection&(1<<k))!=0 {count+=1;}}
+  #assert r.status==RQStatus.ok && r.pixel_steps==5+3*count;
+  #assert r.bad_op==17 && r.bad_shader==6 && r.bad_media==111 && r.shader_steps==29 && r.draws==3 && r.written==19 && r.pass_steps[4]==23;
+  for i:0..<18 {
+    expected:=sentinel;
+    if i>=2 && i<5 && (selection&1)!=0 {expected=RQColor.{a=1};}
+    if i>=7 && i<10 && (selection&2)!=0 {expected=RQColor.{a=1};}
+    if i>=12 && i<15 && (selection&4)!=0 {expected=RQColor.{r=1};}
+    #assert rfpx_same(images[i],expected);
+  }
+}
+#test "reference graph keep suppresses every clear and every pixel charge" {
+  req:RFRequirements;req.images[2]=RFCanvasLayout.{present=true,descriptor=RenderTargetDescriptor.{width=3,height=1}};
+  images:=[3]RQColor.[RQColor.{r=1,g=2,b=3,a=4},RQColor.{r=5,g=6,b=7,a=8},RQColor.{r=9,g=10,b=11,a=12}];
+  original:=images;base:=RFResult.{pixel_steps=5,bad_op=7,draws=11};
+  r:=rf_clear_targets(req,RenderOp.{colour0=RenderTarget.light,keep=true},images[..],RFPolicy.{pixel_work=0},base);
+  #assert r.status==RQStatus.ok && r.pixel_steps==5 && r.bad_op==7 && r.draws==11;
+  for i:0..<3 {#assert rfpx_same(images[i],original[i]);}
+}
+#forall "reference graph clear exhaustion retains only completed candidate attachments" remaining:0..<10 {
+  req:RFRequirements;
+  for k:0..<3 {req.images[k+2]=RFCanvasLayout.{present=true,offset=2+k*5,descriptor=RenderTargetDescriptor.{width=3,height=1,format=ifx k==2 then RenderTextureFormat.depth32 else RenderTextureFormat.rgba16f}};}
+  op:=RenderOp.{colour0=RenderTarget.light,colour1=RenderTarget.aux,depth=RenderTarget.scene_depth};
+  sentinel:=RQColor.{r=31,g=32,b=33,a=34};images:[18]RQColor;for i:0..<18 {images[i]=sentinel;}
+  r:=rf_clear_targets(req,op,images[..],RFPolicy.{pixel_work=5+remaining},RFResult.{pixel_steps=5,bad_op=13});
+  completed:=remaining/3;
+  #assert r.status==(ifx remaining==9 then RQStatus.ok else RQStatus.budget) && r.pixel_steps==5+completed*3 && r.bad_op==13;
+  for i:0..<18 {
+    expected:=sentinel;
+    if i>=2 && i<5 && completed>0 {expected=RQColor.{a=1};}
+    if i>=7 && i<10 && completed>1 {expected=RQColor.{a=1};}
+    if i>=12 && i<15 && completed>2 {expected=RQColor.{r=1};}
+    #assert rfpx_same(images[i],expected);
+  }
+}
+#forall "reference graph copies colour and depth words without reencoding or touching guards" depth:bool {
+  req:RFRequirements;
+  source:=ifx depth then RenderTarget.scene_depth else RenderTarget.light;
+  destination:=ifx depth then RenderTarget.water_depth else RenderTarget.water_light;
+  format:=ifx depth then RenderTextureFormat.depth32 else RenderTextureFormat.rgba16f;
+  req.images[cast(int)source]=RFCanvasLayout.{present=true,offset=2,descriptor=RenderTargetDescriptor.{width=3,height=1,format=format}};
+  req.images[cast(int)destination]=RFCanvasLayout.{present=true,offset=9,descriptor=RenderTargetDescriptor.{width=3,height=1,format=format}};
+  sentinel:=RQColor.{r=81,g=82,b=83,a=84};images:[15]RQColor;for i:0..<15 {images[i]=sentinel;}
+  values:=[3]RQColor.[RQColor.{r=0.125,g= -2,b=3,a=4},RQColor.{r=0.5,g=6,b= -7,a=8},RQColor.{r=0.875,g=10,b=11,a= -12}];
+  for i:0..<3 {images[2+i]=values[i];}
+  base:=RFResult.{pixel_steps=7,bad_op=23,bad_shader=9,bad_media=87,shader_steps=41,draws=5,written=37};base.pass_steps[6]=43;
+  r:=rf_copy_target(req,RenderOp.{source=source,target=destination},images[..],RFPolicy.{pixel_work=10},base);
+  #assert r.status==RQStatus.ok && r.pixel_steps==10 && r.bad_op==23 && r.bad_shader==9 && r.bad_media==87 && r.shader_steps==41 && r.draws==5 && r.written==37 && r.pass_steps[6]==43;
+  for i:0..<15 {expected:=sentinel;if i>=2 && i<5 {expected=values[i-2];}if i>=9 && i<12 {expected=values[i-9];}#assert rfpx_same(images[i],expected);}
+}
+#forall "reference graph copy refuses before any destination write when its visit budget is short" remaining:0..<4 {
+  req:RFRequirements;req.images[2]=RFCanvasLayout.{present=true,offset=1,descriptor=RenderTargetDescriptor.{width=3,height=1}};
+  req.images[6]=RFCanvasLayout.{present=true,offset=6,descriptor=RenderTargetDescriptor.{width=3,height=1}};
+  sentinel:=RQColor.{r=61,g=62,b=63,a=64};images:[11]RQColor;for i:0..<11 {images[i]=sentinel;}
+  values:=[3]RQColor.[RQColor.{r=1,g=2,b=3,a=4},RQColor.{r=5,g=6,b=7,a=8},RQColor.{r=9,g=10,b=11,a=12}];
+  for i:0..<3 {images[1+i]=values[i];}
+  r:=rf_copy_target(req,RenderOp.{source=RenderTarget.light,target=RenderTarget.water_light},images[..],RFPolicy.{pixel_work=7+remaining},RFResult.{pixel_steps=7,bad_op=19});
+  #assert r.status==(ifx remaining==3 then RQStatus.ok else RQStatus.budget) && r.pixel_steps==(ifx remaining==3 then 10 else 7) && r.bad_op==19;
+  for i:0..<11 {expected:=sentinel;if i>=1 && i<4 {expected=values[i-1];}if i>=6 && i<9 && remaining==3 {expected=values[i-6];}#assert rfpx_same(images[i],expected);}
+}

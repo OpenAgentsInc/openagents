@@ -1,0 +1,10 @@
+{
+  "scope": "Exact retained source snapshots and execution receipts; earlier snapshots are preserved separately.",
+  "files": {
+    "aethyr-ch11-house-idle-before.log": "e8947e8ad0c565dde736cb0df80f46f4f6f06b31274318cb97ed096722fb9a8e",
+    "aethyr-ch11-house-idle-after.log": "e41e8d364e3fefbe68cf6daba8a9a2b614878a188deca4e4c017489d550f2fb3",
+    "aethyr-ch11-house-idle-after-measure.log": "cb44f067b4ed35e0cca16519f9bb5b8bf5bbf5c7fec7f731729364f4984c8545",
+    "aethyr-ch11-house-idle-final.log": "b10f2e2e90fe5819ff78e4904b96555207b8f343bd2bf4c806177a53b207d9de",
+    "apps/openagents-web/realm.coax": "344a4dc6926d8cb22ca5fcc92ee1c9042f57f3d8f002ff9352b1a62d960154ba"
+  }
+}

@@ -1,0 +1,132 @@
+// Build admission for checked shader reflection, and the numerical comparison
+// shared by the CPU/WebGPU/Vulkan checks. Platform tools observe bytes/types;
+// this module decides whether they match the declared rendering contract.
+#module "aethyr.render.emit";
+#load "bindings.coax" as rb;
+#authority;
+
+RENDER_REFLECTION_SCHEMA :: 2;
+RENDER_COLOR_TOLERANCE :: 0.002;
+RenderReflectedUse :: struct {
+  name: string; slot: int; native_kind: int; shape: int; stride: int; stages: int;
+}
+RenderEmissionStatus :: enum u8 { ok; invalid; capacity; mismatch; nonfinite; }
+RenderComparison :: struct {
+  status: RenderEmissionStatus; values: int; bad: int; nonfinite: int;
+  worst: f64; worst_at: int = -1;
+}
+
+#test "shader reflection matches each pass's names slots layouts and stages" {
+  em_b := [2] rb.RenderBinding.[
+    rb.RenderBinding.{name="u",kind=rb.RenderResourceKind.uniform,stride=4,uniform_vec4s=3937},
+    rb.RenderBinding.{name="layers",kind=rb.RenderResourceKind.image_array,group=1}];
+  em_u := [2] rb.RenderUse.[rb.RenderUse.{native_kind=1,stride=4,stages=3},rb.RenderUse.{resource=1,slot=1,native_kind=2,shape=1,stages=2}];
+  em_r := [2] RenderReflectedUse.[RenderReflectedUse.{name="u",native_kind=1,stride=4,stages=3},RenderReflectedUse.{name="layers",slot=1,native_kind=2,shape=1,stages=2}];
+  #assert render_emission_admit(2,em_b[..],em_u[..],em_r[..]) == RenderEmissionStatus.ok;
+  #assert render_emission_admit(0,em_b[..],em_u[..],em_r[..]) == RenderEmissionStatus.invalid;
+  #assert render_emission_admit(3,em_b[..],em_u[..],em_r[..]) == RenderEmissionStatus.invalid;
+  #assert render_emission_admit(2,em_b[..],em_u[..],em_r[0..<1]) == RenderEmissionStatus.mismatch;
+  em_r[1].name="u";
+  #assert render_emission_admit(2,em_b[..],em_u[..],em_r[..]) == RenderEmissionStatus.mismatch;
+}
+#forall "shader reflection refuses every changed observed field" em_field:0..<6 {
+  em_b := [1] rb.RenderBinding.[rb.RenderBinding.{name="u",kind=rb.RenderResourceKind.uniform,stride=4,uniform_vec4s=1}];
+  em_u := [1] rb.RenderUse.[rb.RenderUse.{native_kind=1,stride=4,stages=1}];
+  em_r := [1] RenderReflectedUse.[RenderReflectedUse.{name="u",native_kind=1,stride=4,stages=1}];
+  if em_field==0 {em_r[0].name="other";} if em_field==1 {em_r[0].slot=1;}
+  if em_field==2 {em_r[0].native_kind=2;} if em_field==3 {em_r[0].shape=1;}
+  if em_field==4 {em_r[0].stride=16;} if em_field==5 {em_r[0].stages=3;}
+  #assert render_emission_admit(2,em_b[..],em_u[..],em_r[..]) == RenderEmissionStatus.mismatch;
+}
+#test "shader reflection refuses malformed declarations and its exact capacity" {
+  em_b: [1] rb.RenderBinding; em_u: [33] rb.RenderUse; em_r: [33] RenderReflectedUse;
+  #assert render_emission_admit(2,em_b[..],em_u[0..<0],em_r[0..<0]) == RenderEmissionStatus.invalid;
+  em_b[0] = rb.RenderBinding.{name="u",kind=rb.RenderResourceKind.uniform,stride=4,uniform_vec4s=1};
+  #assert render_emission_admit(2,em_b[..],em_u[0..<0],em_r[0..<0]) == RenderEmissionStatus.ok;
+  #assert render_emission_admit(2,em_b[..],em_u[..],em_r[..]) == RenderEmissionStatus.capacity;
+  #assert render_emission_admit(2,em_b[..],em_u[0..<0],em_r[..]) == RenderEmissionStatus.capacity;
+  #assert render_emission_admit(2,em_b[..],em_u[..],em_r[0..<0]) == RenderEmissionStatus.capacity;
+  em_u[0]=rb.RenderUse.{native_kind=2};
+  #assert render_emission_admit(2,em_b[..],em_u[0..<1],em_r[0..<1]) == RenderEmissionStatus.invalid;
+}
+#test "shader emission admits the exact thirty-second active slot" {
+  em_b:[32]rb.RenderBinding;em_u:[32]rb.RenderUse;em_r:[32]RenderReflectedUse;
+  for em_i:0..<32 {
+    em_name:=ifx em_i<10 then [10]string.["a0","a1","a2","a3","a4","a5","a6","a7","a8","a9"][em_i]
+      else ifx em_i<20 then [10]string.["b0","b1","b2","b3","b4","b5","b6","b7","b8","b9"][em_i-10]
+      else ifx em_i<30 then [10]string.["c0","c1","c2","c3","c4","c5","c6","c7","c8","c9"][em_i-20]
+      else ifx em_i==30 then "d0" else "d1";
+    em_b[em_i]=rb.RenderBinding.{name=em_name,kind=rb.RenderResourceKind.storage,binding=em_i,stride=4};
+    em_u[em_i]=rb.RenderUse.{resource=em_i,slot=em_i,native_kind=1,stride=4,stages=3};
+    em_r[em_i]=RenderReflectedUse.{name=em_name,slot=em_i,native_kind=1,stride=4,stages=3};
+  }
+  #assert render_emission_admit(2,em_b[..],em_u[..],em_r[..])==RenderEmissionStatus.ok;
+}
+#test "render comparisons keep the stated relative tolerance and exact allowance" {
+  #assert render_value_close(0,0.002) && !render_value_close(0,0.0021);
+  #assert render_value_close(100,100.19) && !render_value_close(100,100.3);
+  em_a := [3] f32.[0,1,100]; em_b := [3] f32.[0.0019,1.003,100.19];
+  em_r := render_compare(em_a[..],em_b[..],1);
+  #assert em_r.status==RenderEmissionStatus.ok && em_r.values==3 && em_r.bad==1 && em_r.nonfinite==0;
+  #assert em_r.worst_at==2 && em_r.worst>0.18 && em_r.worst<0.2;
+  #assert render_compare(em_a[..],em_b[..],0).status==RenderEmissionStatus.mismatch;
+  #assert render_compare(em_a[..],em_b[0..<2],1).status==RenderEmissionStatus.invalid;
+  #assert render_compare(em_a[..],em_b[..],-1).status==RenderEmissionStatus.invalid;
+  #assert render_compare(em_a[..],em_b[..],4).status==RenderEmissionStatus.invalid;
+  #assert render_compare(em_a[0..<0],em_b[0..<0],0).status==RenderEmissionStatus.invalid;
+  em_b=em_a; em_r=render_compare(em_a[..],em_b[..],0);
+  #assert em_r.status==RenderEmissionStatus.ok && em_r.worst==0 && em_r.worst_at == -1;
+}
+#forall "render comparison refuses nonfinite values even on both sides or within allowance" em_kind:0..<3, em_side:0..<3 {
+  em_zero := 0.0f32;
+  em_bad := ifx em_kind==0 then em_zero/em_zero else ifx em_kind==1 then 1/em_zero else -1/em_zero;
+  em_a := [1] f32.[0]; em_b := [1] f32.[0];
+  if em_side!=1 {em_a[0]=em_bad;} if em_side!=0 {em_b[0]=em_bad;}
+  #assert !render_value_close(em_a[0],em_b[0]);
+  em_r := render_compare(em_a[..],em_b[..],1);
+  #assert em_r.status==RenderEmissionStatus.nonfinite && em_r.nonfinite==1 && em_r.values==1;
+}
+#test "render comparison handles finite extrema without overflowing its error" {
+  em_max := 3.4028234663852886e38f32;
+  #assert render_color_finite(em_max) && render_color_finite(-em_max) && render_value_close(em_max,em_max);
+  em_a := [1] f32.[em_max]; em_b := [1] f32.[-em_max];
+  em_r := render_compare(em_a[..],em_b[..],0);
+  #assert em_r.status==RenderEmissionStatus.mismatch && em_r.nonfinite==0 && em_r.worst > 6.8e38;
+}
+
+render_emission_admit :: (em_schema:int, em_bindings:[]rb.RenderBinding, em_uses:[]rb.RenderUse,
+    em_reflected:[]RenderReflectedUse)->RenderEmissionStatus {
+  if em_schema!=RENDER_REFLECTION_SCHEMA {return RenderEmissionStatus.invalid;}
+  if em_uses.count>rb.RENDER_NATIVE_BINDINGS || em_reflected.count>rb.RENDER_NATIVE_BINDINGS {return RenderEmissionStatus.capacity;}
+  if rb.render_uses(em_bindings,em_uses)!=rb.RenderBindingStatus.ok {return RenderEmissionStatus.invalid;}
+  if em_reflected.count!=em_uses.count {return RenderEmissionStatus.mismatch;}
+  for em_i:0..<em_reflected.count {
+    em_r:=em_reflected[em_i];
+    if em_r.slot!=em_i {return RenderEmissionStatus.mismatch;}
+    em_u:=em_uses[em_i]; em_b:=em_bindings[em_u.resource];
+    if em_r.name!=em_b.name || em_r.native_kind!=em_u.native_kind || em_r.shape!=em_u.shape
+        || em_r.stride!=em_u.stride || em_r.stages!=em_u.stages {return RenderEmissionStatus.mismatch;}
+  }
+  return RenderEmissionStatus.ok;
+}
+render_color_finite :: (em_value:f32)->bool {return em_value<=3.4028234663852886e38f32 && em_value>=-3.4028234663852886e38f32;}
+render_value_close :: (em_expected:f32,em_actual:f32)->bool {
+  if !render_color_finite(em_expected) || !render_color_finite(em_actual) {return false;}
+  em_scale:=abs(f64(em_expected));
+  // (x+1+abs(x-1))/2 is max(x,1). Finite f32 inputs leave ample f64 range.
+  em_scale=(em_scale+1+abs(em_scale-1))*0.5;
+  return abs(f64(em_expected)-f64(em_actual))<=f64(f32(RENDER_COLOR_TOLERANCE))*em_scale;
+}
+render_compare :: (em_expected:[]f32,em_actual:[]f32,em_allow:int)->RenderComparison {
+  em_out:RenderComparison; em_out.values=em_expected.count;
+  if em_expected.count<1 || em_expected.count!=em_actual.count || em_allow<0 || em_allow>em_expected.count {em_out.status=RenderEmissionStatus.invalid;return em_out;}
+  for em_i:0..<em_expected.count {
+    if !render_color_finite(em_expected[em_i]) || !render_color_finite(em_actual[em_i]) {em_out.nonfinite+=1;continue;}
+    em_error:=abs(f64(em_expected[em_i])-f64(em_actual[em_i]));
+    if em_error>em_out.worst {em_out.worst=em_error;em_out.worst_at=em_i;}
+    if !render_value_close(em_expected[em_i],em_actual[em_i]) {em_out.bad+=1;}
+  }
+  if em_out.nonfinite>0 {em_out.status=RenderEmissionStatus.nonfinite;}
+  else if em_out.bad>em_allow {em_out.status=RenderEmissionStatus.mismatch;}
+  return em_out;
+}

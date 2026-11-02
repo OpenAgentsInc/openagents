@@ -1,0 +1,136 @@
+{
+  "schema": "aethyr.render.native-media.v1",
+  "status": "pass",
+  "scope": "Native effect interpretation and physical-media admission using actual seeded production Villa UI and separately synthetic under/over fixtures; asynchronous native HTTP image acquisition is not qualified.",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-media",
+  "cases": {
+    "synthetic-under-over": {
+      "status": {
+        "status": "rendered",
+        "profile": 13,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 17,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "ad74e37df0650e37b545fc2d93a6b0c5360910e25b95f41c0c2458f2a1e4feea"
+    },
+    "actual-villa": {
+      "status": {
+        "status": "rendered",
+        "profile": 13,
+        "resource": 1,
+        "width": 320,
+        "height": 240,
+        "format": "rgba16f",
+        "bytes": 614400,
+        "draw_commands": 16,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "48eac03c32aa556b017e8a0356a71365b78b24ffdf3ad5a62a3120bbcea3f58b"
+    },
+    "coarse-red": {
+      "status": {
+        "status": "rendered",
+        "profile": 13,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 17,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "ad74e37df0650e37b545fc2d93a6b0c5360910e25b95f41c0c2458f2a1e4feea"
+    },
+    "zero-red": {
+      "status": {
+        "status": "rendered",
+        "profile": 13,
+        "resource": 1,
+        "width": 320,
+        "height": 180,
+        "format": "rgba16f",
+        "bytes": 460800,
+        "draw_commands": 17,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "ad74e37df0650e37b545fc2d93a6b0c5360910e25b95f41c0c2458f2a1e4feea"
+    },
+    "coarse-green": {
+      "native_status": "2",
+      "diagnostic": "raw coarse flag refused by Coax",
+      "produced_readback": false
+    },
+    "zero-green": {
+      "native_status": "2",
+      "diagnostic": "raw buffer initialization flag refused by Coax",
+      "produced_readback": false
+    },
+    "ready-green": {
+      "native_status": "5",
+      "diagnostic": "raw media observation refused by Coax",
+      "produced_readback": false
+    },
+    "size-green": {
+      "native_status": "5",
+      "diagnostic": "media identity/texture candidate refused by Coax",
+      "produced_readback": false
+    },
+    "actual-villa-physical160": {
+      "status": {
+        "status": "rendered",
+        "profile": 13,
+        "resource": 1,
+        "width": 160,
+        "height": 120,
+        "format": "rgba16f",
+        "bytes": 153600,
+        "draw_commands": 16,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "7026a672941d9e443e88ae9a280b795977593e4b99cfeb35893e90ddb49a6161",
+      "scope": "Actual production UI under explicit test-only physical-device160x120 observation; CSS320x240/dpr0.5, no raw payload edits.",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-media/actual-villa-physical160"
+    },
+    "actual-villa-physical80x120": {
+      "status": {
+        "status": "rendered",
+        "profile": 13,
+        "resource": 1,
+        "width": 80,
+        "height": 120,
+        "format": "rgba16f",
+        "bytes": 76800,
+        "draw_commands": 16,
+        "device": "NVIDIA GeForce RTX 4080",
+        "subPixelPrecisionBits": 8,
+        "validation_errors": 0,
+        "validation_warnings": 0
+      },
+      "raw_sha256": "19589a00bb6871c90c583824ae5586632bbadbca8f17dd168ab987d75a0f2639",
+      "scope": "Actual production UI under explicit test-only physical-device80x120 observation; CSS320x240, ready1200x630 physical media image, no raw payload edits. GPU validation passes; strict CPU numerical comparison separately has7 channel failures under causal investigation.",
+      "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-media/actual-villa-physical80x120"
+    }
+  },
+  "no_claim": "CPU numerical comparison is separate; the actual80x120 case currently has7 strict channel failures under causal investigation. Green refusal controls produced no output frame; red controls preserve the pre-fix incorrect acceptance. Media admission and the later static-texture preflight run before producer GPU payload copies/render submission."
+}

@@ -1,0 +1,10 @@
+store-file-native.c:3:9: warning: ‘_DEFAULT_SOURCE’ redefined
+    3 | #define _DEFAULT_SOURCE
+      |         ^~~~~~~~~~~~~~~
+<command-line>: note: this is the location of the previous definition
+vk-realm: canonical profile15 at 320x180, package made in 4 ms
+vk-realm: step+render median 3.97 ms, 99th 7.20 ms, longest 7.20 ms
+vk-realm: post-render median 0.00 ms, 99th 0.01 ms, longest 0.01 ms
+vk-realm: NVIDIA GeForce RTX 4080, 320x180, 90 frames, 2 draws the last; it ended because it drew its frames
+vk-realm: validation: 0 errors, 0 warnings
+realm.sh: watchtower:90-frame native execution checked; image comparison has its separate recorded fixture

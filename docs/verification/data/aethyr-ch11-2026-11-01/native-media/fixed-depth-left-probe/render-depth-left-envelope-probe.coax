@@ -1,0 +1,11 @@
+// Targeted negativeX guard probe bracketing the observed37,323pixel extent.
+#load "render-depth-plane-probe.coax";
+render_depth_left_probe_vs :: (vertex:u32,instance:u32,u:[]f32)->RenderDepthPlaneProbe {
+ dle_v:=render_depth_plane_probe_vs(vertex,instance,u);dle_x:=ifx vertex==2 then u[2] else 40.0f32;dle_y:=ifx vertex==0 then 8.0f32+u[0] else ifx vertex==1 then 56.0f32 else 32.0f32;
+ dle_v.position.x=(dle_x/32-1)*dle_v.position.w;dle_v.position.y=(1-dle_y/32)*dle_v.position.w;return dle_v;
+}
+#test "left envelope holds an interior sample while moving only the far horizontal anchor" {
+ dle_u:=[4]f32.[0,0,-65536,0];dle_a:=render_depth_left_probe_vs(0,0,dle_u[..]);dle_b:=render_depth_left_probe_vs(1,0,dle_u[..]);dle_c:=render_depth_left_probe_vs(2,0,dle_u[..]);
+ #assert dle_a.position.x==0.25 && dle_a.position.y==0.75 && dle_b.position.x==0.25 && dle_b.position.y== -0.75;
+ #assert dle_c.position.x== -2049 && dle_c.position.y==0 && dle_c.position.z==0.375;
+}

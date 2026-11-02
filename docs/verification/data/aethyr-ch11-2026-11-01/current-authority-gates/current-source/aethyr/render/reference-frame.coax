@@ -1,0 +1,362 @@
+// The CPU frame consumes the same compiled catalog and frame program as the
+// GPU adapters. Checked tree bytes are authenticated by the package carrier;
+// no platform code selects shader parameters, draws, resources or pass order.
+#module "aethyr.render.reference.frame";
+#load "reference-pipeline.coax";
+#load "geometry.coax";
+#load "binding-sources.coax";
+#load "resources.coax";
+#load "media-profile.coax";
+#load "media-commands.coax";
+#load "host-media.coax";
+#load "host-bindings.coax";
+#load "sans-profile.coax";
+#load "host-inputs.coax";
+#load "host-textures.coax";
+#authority;
+RFShader :: struct {index:int;tree:[]u32;}
+RFShaderLayout :: struct {
+ status:RQStatus;pipeline:RRPipeline;count:int;bindings:[32]RRBinding;
+ attribute_count:int;attribute_stride:int;attributes:[32]RRAttribute;
+}
+RFCanvasLayout :: struct {present:bool;offset:int;descriptor:RenderTargetDescriptor;}
+RFRequirements :: struct {
+ status:RQStatus;loading:bool;plan:RenderPlan;images:[12]RFCanvasLayout;
+ image_pixels:int;pass_pixels:int;word_words:int;meta_words:int;
+}
+RFNamedTexture :: struct {name:string;texture:RQTexture;}
+RFInput :: struct {
+ profile:int;counts:FrameCounts;ready:RenderReadiness=RenderReadiness.ready;particles:bool=true;
+ uniforms:[]f32;hud:[]f32;draw_words:[]u32;indices:[]u32;
+ buffers:[]RenderHostNamedBuffer;textures:[]RFNamedTexture;media_context:int=-1;media:[]RenderMediaRect;
+}
+RFPolicy :: struct {shader_work:int=100000000;pixel_work:int=100000000;raster:RRRasterProfile;work_profile:RRWorkProfile=RRWorkProfile.standard;filter:RQFilterProfile;}
+rf_work_policy :: (profile:RRWorkProfile)->RFPolicy {return RFPolicy.{shader_work=rr_work_limits(profile).pass_steps,work_profile=profile};}
+RFWorking :: struct {
+ images:[]RQColor;target:[]RRPixel;scratch:[]RRPixel;words:[]u32;meta:[]int;
+ domains:[]RenderDrawDomain;decoded:[]RenderDecodedDraw;
+}
+RFPrepared :: struct {present:bool;source:int;program:RQProgram;layout:RFShaderLayout;}
+RFResult :: struct {
+ status:RQStatus;loading:bool;bad_op:int=-1;bad_shader:int=-1;bad_media:int=-1;
+ geometry:RenderGeometryStatus;frame:RenderFrameStatus;shader_steps:int;pixel_steps:int;
+ pass_steps:[14]int;draws:int;written:int;
+}
+#load "tests/reference-frame-checks.coax";
+rf_catalog_layout :: (profile:int,pass:RenderPassId,p:RQProgram,tree:[]u32,meta:[]int)->RFShaderLayout {return rf_shader_layout(profile,cast(int)pass,p,tree,meta);}
+rf_shader_use :: (profile:int,index:int,slot:int)->RenderUse {
+ if index==13 {return render_media_use(slot);}return render_catalog_use(profile,cast(RenderPassId)index,slot);
+}
+rf_shader_layout :: (profile:int,index:int,p:RQProgram,tree:[]u32,meta:[]int)->RFShaderLayout {
+ if p.status!=RQStatus.ok {return RFShaderLayout.{status=p.status};}
+ if index<0 || index>13 {return RFShaderLayout.{status=RQStatus.resource};}
+ entry:RenderEntry;
+ if index==13 {
+  if !render_catalog(profile).features.media {return RFShaderLayout.{status=RQStatus.resource};}
+  m:=render_media_entry();entry=RenderEntry.{valid=true,fragment=m.fragment};
+ }else{entry=render_catalog_entry(profile,cast(RenderPassId)index);}
+ if !entry.valid {return RFShaderLayout.{status=RQStatus.resource};}
+ r:=RFShaderLayout.{pipeline=rr_pipeline(p,tree,meta)};
+ if r.pipeline.status!=RQStatus.ok {r.status=r.pipeline.status;return r;}
+ if r.pipeline.has_fragment!=(entry.fragment.count!=0) {r.status=RQStatus.unsupported;return r;}
+ expected:=ifx index==13 then render_media_use_count() else render_catalog_use_count(profile,cast(RenderPassId)index);stages:[32]int;
+ // Native slots are assigned in the first appearance of resource names,
+ // vertex then fragment. Name IDs also include non-resource parameters;
+ // they are identifiers, never an implicit storage-buffer index.
+ for stage:0..<2 {
+  io:=ifx stage==0 then r.pipeline.vs else r.pipeline.fs;
+  // An absent fragment stage has an empty default interface.
+  for j:io.resource_start..<io.params {
+   arg:=rq_ir_parameter(p,tree,meta,stage,j);found:=-1;
+   for k:0..<r.count {if r.bindings[k].name_id==arg.name_id {found=k;}}
+   slot:=ifx found<0 then r.count else found;use:=rf_shader_use(profile,index,slot);
+   if arg.kind!=use.native_kind || arg.shape!=use.shape || arg.stride!=use.stride {r.status=RQStatus.unsupported;return r;}
+   // An absent catalog slot has native_kind0, while interface resources have
+   // kinds1..3. Validation therefore bounds count before any candidate write.
+   if found<0 {found=r.count;r.bindings[found]=RRBinding.{name_id=arg.name_id,kind=arg.kind,resource=use.resource};r.count+=1;}
+   stages[found]|=1<<stage;
+  }
+ }
+ if r.count!=expected {r.status=RQStatus.unsupported;return r;}
+ for k:0..<r.count {if stages[k]!=rf_shader_use(profile,index,k).stages {r.status=RQStatus.unsupported;return r;}}
+ attrs:=r.pipeline.vs.attributes_type;
+ if attrs!=(-1) {
+  bytes:=rq_ir_type(meta,attrs,3);
+  if bytes%4!=0 || bytes/4>64 {r.status=RQStatus.unsupported;return r;}
+  r.attribute_stride=bytes/4;r.attribute_count=cast(int)tree[rq_ir_type(meta,attrs,1)+1];
+  for j:0..<r.attribute_count {
+   field:=rq_ir_field_layout(p,tree,meta,attrs,j);
+   if field.byte_offset%4!=0 {r.status=RQStatus.unsupported;return r;}
+   r.attributes[j]=RRAttribute.{location=j,offset=field.byte_offset/4,components=field.words};
+  }
+ }
+ return r;
+}
+
+rf_require :: (profile:int,c:FrameCounts,ready:RenderReadiness,particles:bool,coarse:bool,screen:RenderTextureFormat)->RFRequirements {
+ a:=render_catalog(profile);if !a.valid || c.vertex_stride!=a.vertex_stride || c.draw_count>4096 {return RFRequirements.{status=RQStatus.resource};}
+ plan:=render_plan(a.features,c,ready,particles);
+ if plan.status==RenderPlanStatus.invalid {return RFRequirements.{status=RQStatus.resource};}
+ if plan.status==RenderPlanStatus.loading {return RFRequirements.{loading=true};}
+ r:=RFRequirements.{plan=plan,word_words=RQ_IR_WORDS+a.uniform_vec4s*4+c.hud_vertices*c.vertex_stride,meta_words=14*RQ_IR_META};
+ for j:0..<plan.count {
+  op:=plan.ops[j];targets:[3]RenderTarget;
+  if op.kind==RenderOpKind.begin {targets=[3]RenderTarget.[op.colour0,op.colour1,op.depth];}
+  else if op.kind==RenderOpKind.copy {targets=[3]RenderTarget.[op.target,RenderTarget.none,RenderTarget.none];}
+  for target:targets {
+   if target==RenderTarget.none {continue;}index:=cast(int)target;
+   if r.images[index].present {continue;}
+   desc:=render_target_desc(target,c.width,c.height,coarse,screen);
+   if desc.status!=RenderResourceStatus.ok {r.status=ifx desc.status==RenderResourceStatus.capacity then RQStatus.capacity else RQStatus.resource;return r;}
+   pixels:=desc.width*desc.height;
+   r.images[index]=RFCanvasLayout.{present=true,offset=r.image_pixels,descriptor=desc};r.image_pixels+=pixels;
+   // Each count is at most16384^2; this bounded max identity is exact in f64.
+   r.pass_pixels=cast(int)((cast(f64)pixels+cast(f64)r.pass_pixels+abs(cast(f64)(pixels-r.pass_pixels)))*0.5);
+  }
+ }
+ return r;
+}
+
+rf_run :: (input:RFInput,shaders:[]RFShader,coarse:bool,screen:RenderTextureFormat,policy:RFPolicy,work:RFWorking,out:[]RQColor)->RFResult {
+ r:RFResult;
+ if !rq_filter_limits(policy.filter).ok {r.status=RQStatus.unsupported;return r;}
+ if !rr_raster_profile_ok(policy.raster) {r.status=RQStatus.unsupported;return r;}
+ limits:=rr_work_limits(policy.work_profile);if !limits.ok {r.status=RQStatus.unsupported;return r;}
+ if policy.shader_work<1 || policy.shader_work>limits.pass_steps || policy.pixel_work<1 || policy.pixel_work>100000000 {r.status=RQStatus.resource;return r;}
+ req:=rf_require(input.profile,input.counts,input.ready,input.particles,coarse,screen);
+ if req.status!=RQStatus.ok {r.status=req.status;return r;}if req.loading {r.loading=true;return r;}
+ c:=input.counts;profile:=render_catalog(input.profile);screen_pixels:=c.width*c.height;
+ if !profile.features.media && input.media.count>0 {r.status=RQStatus.unsupported;return r;}
+ if work.images.count<req.image_pixels || work.target.count<req.pass_pixels || work.scratch.count<req.pass_pixels || work.words.count<req.word_words || work.meta.count<req.meta_words || work.domains.count<c.draw_count || work.decoded.count<c.draw_count || out.count<screen_pixels {r.status=RQStatus.capacity;return r;}
+ nu:=profile.uniform_vec4s*4;nh:=c.hud_vertices*c.vertex_stride;
+ if input.uniforms.count<nu || input.hud.count<nh {r.status=RQStatus.resource;return r;}
+ partition:=rf_partition_words(work.words,nu,nh);uniforms:=partition.uniforms;hud:=partition.hud;running:=work;running.words=partition.arena;
+ for j:0..<nu {uniforms[j]=f32_bits(input.uniforms[j]);}for j:0..<nh {hud[j]=f32_bits(input.hud[j]);}
+ geometry:[48]RenderGeometryBuffer;named:[RENDER_RESOURCES]RenderHostNamedBuffer;
+ observed:=rf_buffer_observations(input.buffers,uniforms,named[..]);if observed.status!=RQStatus.ok {r.status=observed.status;return r;}
+ shared:=render_host_geometry_buffers(input.profile,named[0..<observed.count],geometry[..]);if shared.status!=RenderResourceStatus.ok {r.status=rf_resource_status(shared.status);return r;}
+ g:=render_geometry_admit(input.profile,c,input.draw_words,input.indices,input.uniforms,geometry[0..<shared.count],input.hud,work.domains,16777216);r.geometry=g.status;
+ if g.status!=RenderGeometryStatus.ok {r.status=RQStatus.resource;return r;}
+ uploads:[]RenderUpload;f:=render_frame_admit(c,RenderFrameLimits.{},g.direct,uploads,input.draw_words,work.domains,input.indices);r.frame=f.status;
+ if f.status!=RenderFrameStatus.ok {r.status=RQStatus.resource;return r;}
+ for j:0..<c.draw_count {work.decoded[j]=render_decode_draw(input.draw_words,j);}
+ prepared:[14]RFPrepared;
+ for j:0..<shaders.count {
+  index:=shaders[j].index;r.bad_shader=j;
+  if index<0 || index>13 || prepared[index].present {r.status=RQStatus.resource;return r;}
+  metadata:=rf_metadata_slot(work.meta,index);p:=rq_ir_prepare(shaders[j].tree,metadata);layout:=rf_shader_layout(input.profile,index,p,shaders[j].tree,metadata);
+  if layout.status!=RQStatus.ok {r.status=layout.status;return r;}
+  if layout.attribute_count>0 && layout.attribute_stride!=c.vertex_stride {r.status=RQStatus.resource;return r;}
+  prepared[index]=RFPrepared.{present=true,source=j,program=p,layout=layout};
+ }
+ expected:=profile.pass_count+profile.particle_pass_count+(ifx profile.features.media then 1 else 0);
+ r.bad_shader= -1;if shaders.count!=expected {r.status=RQStatus.resource;return r;}
+ bloom:[4]u32;
+ active:RenderOp;at:=0;each_start:int;each_first:int;each_count:int;each_current:=0;operations:=req.plan.ops[0..<req.plan.count];
+ while at<operations.count {
+  op:=operations[at];r.bad_op=at;
+  r=rf_transfer_op(req,op,work.images,policy,r);if r.status!=RQStatus.ok {return r;}
+  if op.kind==RenderOpKind.begin {
+   active=op;
+  }else if op.kind==RenderOpKind.each_begin {each_start=at+1;each_first=op.first;each_count=op.count;}
+  else if op.kind==RenderOpKind.each_end {each_current+=1;if each_current<each_count {at=each_start;continue;}}
+  else if op.kind==RenderOpKind.draw {
+   index:=cast(int)op.pass;prepared_program:=prepared[index];metadata:=rf_metadata_slot(work.meta,index);tree:=shaders[prepared_program.source].tree;
+   for j:0..<4 {bloom[j]=f32_bits(op.bloom_step[j]);}
+   direct:[1]RenderDecodedDraw;draws:[]RenderDecodedDraw;
+   if op.draw_source==RenderDrawSource.records {draws=work.decoded[op.first..<op.first+op.count];}
+   else if op.draw_source==RenderDrawSource.current {draws=work.decoded[each_first+each_current..<each_first+each_current+1];}
+   else {direct[0]=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,first=cast(u32)op.first,count=cast(u32)op.count,instances=cast(u32)op.instances};draws=direct[..];}
+   attrs:=RRAttributes.{words=hud,stride=prepared_program.layout.attribute_stride,locations=prepared_program.layout.attributes[0..<prepared_program.layout.attribute_count]};
+   r=rf_execute_draw(input,index,prepared_program,tree,metadata,op,active,req,uniforms,bloom[..],attrs,draws,policy,running,r);if r.status!=RQStatus.ok {return r;}
+  }else if op.kind==RenderOpKind.media_before || op.kind==RenderOpKind.media_after {
+   entry:=prepared[13];r=rf_media(input,op.kind==RenderOpKind.media_after,entry,shaders[entry.source].tree,req,active,policy,running,r);if r.status!=RQStatus.ok {return r;}
+  }
+  at+=1;
+ }
+ r.bad_op=req.plan.count;r=rf_pixel_work(r,policy,screen_pixels);if r.status!=RQStatus.ok {return r;}
+ offset:=req.images[cast(int)RenderTarget.screen].offset;for j:0..<screen_pixels {out[j]=work.images[offset+j];}r.bad_op= -1;return r;
+}
+
+RFBufferResult :: struct {status:RQStatus;buffer:RQBuffer;}
+rf_buffer_name :: (source:RenderBindingSource,out:[]u8)->string {return render_host_buffer_name(source,out);}
+
+rf_sampler :: (name:string)->RQSampler {
+ s:=render_sampler_desc(name);
+ return RQSampler.{address_u=ifx s.address_u==RenderSamplerAddress.repeat then RQAddress.repeat else RQAddress.clamp,address_v=ifx s.address_v==RenderSamplerAddress.repeat then RQAddress.repeat else RQAddress.clamp,min_linear=s.min_linear,mag_linear=s.mag_linear,mip_linear=s.mip_linear,compare=ifx s.compare==RenderSamplerCompare.less then RQCompare.less else RQCompare.none,max_anisotropy=s.physical_anisotropy};
+}
+// Canonical Sans is five independently rasterized UNORM8 mips. Span and
+// per-level halving remain the separate shared rq_texture_status contract.
+rf_sans_profile :: (storage:RQStorageFormat,levels:[]RQMip)->bool {
+ if storage!=RQStorageFormat.unorm8 || levels.count!=SANS_LEVELS {return false;}
+ first:=render_sans_level(0);return levels[0].width==first.width && levels[0].height==first.height;
+}
+rf_resources :: (input:RFInput,index:int,layout:RFShaderLayout,op:RenderOp,req:RFRequirements,images:[]RQColor,uniforms:[]u32,bloom:[]u32,
+    buffers:[]RQBuffer,textures:[]RQTexture,samplers:[]RQSampler,levels:[]RQMip)->RQStatus {
+ return rf_resources_profile(input,index,layout,op,req,images,uniforms,bloom,buffers,textures,samplers,levels,RQFilterProfile.analytic);
+}
+rf_resources_profile :: (input:RFInput,index:int,layout:RFShaderLayout,op:RenderOp,req:RFRequirements,images:[]RQColor,uniforms:[]u32,bloom:[]u32,
+    buffers:[]RQBuffer,textures:[]RQTexture,samplers:[]RQSampler,levels:[]RQMip,precision:RQFilterProfile)->RQStatus {
+ binding_set:=ifx index==13 then 2 else render_catalog_entry(input.profile,cast(RenderPassId)index).binding_set;
+ if input.textures.count>RENDER_HOST_TEXTURES {return RQStatus.capacity;}
+ observed:[RENDER_HOST_TEXTURES]RenderHostNamedTexture;for j:0..<input.textures.count {t:=input.textures[j];observed[j]=RenderHostNamedTexture.{name=t.name,layers=t.texture.layers,depth=t.texture.depth};}
+ for k:0..<layout.count {
+  resource:=layout.bindings[k].resource;binding:=render_host_binding(input.profile,binding_set,resource);if !binding.valid {return RQStatus.resource;}b:=binding.binding;source:=binding.source;
+  if b.kind==RenderResourceKind.uniform || b.kind==RenderResourceKind.storage {
+   q:=rf_resolve_buffer(input.profile,binding_set,resource,input.buffers,uniforms,bloom);if q.status!=RQStatus.ok {return q.status;}buffers[resource]=q.buffer;
+  }else if b.kind==RenderResourceKind.sampler || b.kind==RenderResourceKind.comparison {
+   d:=render_sampler_desc(source.sampler_name);if d.status!=RenderResourceStatus.ok {return RQStatus.resource;}samplers[resource]=rf_sampler(source.sampler_name);samplers[resource].precision=precision;
+  }else{
+   shared:=render_host_resolve_texture(input.profile,binding_set,resource,observed[0..<input.textures.count],input.media_context);if shared.status!=RenderResourceStatus.ok {return rf_resource_status(shared.status);}
+   t:RQTexture;
+   if shared.named_index>=0 {t=input.textures[shared.named_index].texture;}
+   else {
+    target:=ifx shared.source.kind==RenderSourceKind.pass_source then op.source else shared.source.target;at:=cast(int)target;
+    canvas:=req.images[at];if !canvas.present {return RQStatus.resource;}d:=canvas.descriptor;n:=d.width*d.height;
+    levels[resource]=RQMip.{width=d.width,height=d.height};t=RQTexture.{levels=levels[resource..<resource+1],layers=1,texels=images[canvas.offset..<canvas.offset+n],depth=d.format==RenderTextureFormat.depth32,storage=ifx d.format==RenderTextureFormat.depth32 then RQStorageFormat.depth32 else RQStorageFormat.half};
+    if t.depth!=(b.kind==RenderResourceKind.depth) {return RQStatus.resource;}
+   }
+   if source.kind==RenderSourceKind.sans_atlas && !rf_sans_profile(t.storage,t.levels) {return RQStatus.resource;}
+   q:=rq_texture_status(t);if q!=RQStatus.ok {return q;}textures[resource]=t;
+  }
+ }
+ return RQStatus.ok;
+}
+rf_pixel_work :: (r:RFResult,policy:RFPolicy,amount:int)->RFResult {
+ q:=r;if amount>policy.pixel_work-q.pixel_steps {q.status=RQStatus.budget;return q;}q.pixel_steps+=amount;return q;
+}
+rf_format :: (format:RenderTextureFormat)->RRFormat {
+ if format==RenderTextureFormat.rgba16f {return RRFormat.half;}
+ if format==RenderTextureFormat.depth32 {return RRFormat.f32;}return RRFormat.unorm8;
+}
+rf_pixels :: (req:RFRequirements,active:RenderOp,images:[]RQColor,pixels:[]RRPixel,publish:bool) {
+ target:=ifx active.colour0!=RenderTarget.none then active.colour0 else active.depth;canvas:=req.images[cast(int)target];n:=canvas.descriptor.width*canvas.descriptor.height;
+ for at:0..<n {
+  p:=RRPixel.{depth=1};if publish {p=pixels[at];}
+  channels:=[3]RenderTarget.[active.colour0,active.colour1,active.depth];
+  for channel:0..<3 {
+   id:=channels[channel];if id==RenderTarget.none {continue;}offset:=req.images[cast(int)id].offset+at;
+   if publish {if channel==0 {images[offset]=p.colour;}else if channel==1 {images[offset]=p.aux;}else {images[offset]=RQColor.{r=p.depth};}}
+   else {if channel==0 {p.colour=images[offset];}else if channel==1 {p.aux=images[offset];}else {p.depth=images[offset].r;}}
+  }
+  if !publish {pixels[at]=p;}
+ }
+}
+
+// The same checked draw path executes catalog and media entries. Working
+// images are candidates; rf_run publishes the external image only on success.
+rf_execute_draw :: (input:RFInput,index:int,entry:RFPrepared,tree:[]u32,meta:[]int,op:RenderOp,active:RenderOp,req:RFRequirements,uniforms:[]u32,bloom:[]u32,attrs:RRAttributes,draws:[]RenderDecodedDraw,policy:RFPolicy,work:RFWorking,result:RFResult)->RFResult {
+ r:=result;layout:=entry.layout;if r.pass_steps[index]>=policy.shader_work {r.status=RQStatus.budget;return r;}
+ buffers:[48]RQBuffer;textures:[48]RQTexture;samplers:[48]RQSampler;levels:[48]RQMip;
+ status:=rf_resources_profile(input,index,entry.layout,op,req,work.images,uniforms,bloom,buffers[..],textures[..],samplers[..],levels[..],policy.filter);if status!=RQStatus.ok {r.status=status;return r;}
+ resources:=RQResources.{buffers=buffers[..],textures=textures[..],samplers=samplers[..]};
+ canvas:=req.images[cast(int)(ifx active.colour0!=RenderTarget.none then active.colour0 else active.depth)];d:=canvas.descriptor;n:=d.width*d.height;
+ r=rf_pixel_work(r,policy,n*2);if r.status!=RQStatus.ok {return r;}rf_pixels(req,active,work.images,work.target,false);
+ q:=rr_reference_pass_work_profile(entry.layout.pipeline,entry.program,tree,meta,resources,layout.bindings[0..<layout.count],attrs,draws,input.indices,op.state,d.width,d.height,rf_format(d.format),policy.shader_work-r.pass_steps[index],work.words,work.scratch,work.target,policy.raster,policy.work_profile);
+ r.pass_steps[index]+=q.steps;r.shader_steps+=q.steps;
+ if q.status!=RQStatus.ok {r.status=q.status;return r;}rf_pixels(req,active,work.images,work.target,true);r.draws+=1;r.written+=q.written;return r;
+}
+rf_media_status :: (media:[]RenderMediaRect)->RQStatus {
+ if media.count>RENDER_MEDIA_ITEMS {return RQStatus.capacity;}
+ for j:0..<media.count {
+  rect:=media[j];if !rect.ok || !rect.draw {continue;}
+  if rect.line<0 || rect.line>=RENDER_MEDIA_ITEMS {return RQStatus.resource;}
+  for k:0..<8 {if !rq_finite(rect.uniforms[k]) {return RQStatus.resource;}}
+  for k:0..<j {if media[k].ok && media[k].draw && media[k].line==rect.line {return RQStatus.resource;}}
+ }
+ return RQStatus.ok;
+}
+rf_media :: (input:RFInput,over:bool,prepared:RFPrepared,tree:[]u32,req:RFRequirements,active:RenderOp,policy:RFPolicy,work:RFWorking,result:RFResult)->RFResult {
+ r:=result;r.status=rf_media_status(input.media);if r.status!=RQStatus.ok {return r;}
+ if !render_catalog(input.profile).features.media {r.status=RQStatus.unsupported;return r;}
+ // Source line order is canonical even if the observed ready subset arrives
+ // out of order. Invalid/loading receipts do not select textures or draws.
+ order:[RENDER_MEDIA_ITEMS]int;count:=0;
+ for j:0..<input.media.count {
+  rect:=input.media[j];if !rect.ok || !rect.draw || rect.over!=over {continue;}
+  rank:=0;for k:0..<input.media.count {previous:=input.media[k];if previous.ok && previous.draw && previous.over==over && previous.line<rect.line {rank+=1;}}order[rank]=j;count+=1;
+ }
+ words:[8]u32;empty:[]u32;attrs:RRAttributes;draws:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=cast(u32)render_media_vertex_count(),instances=1}];
+ op:=RenderOp.{state=render_host_pipeline(input.profile,13).state};metadata:=rf_metadata_slot(work.meta,13);
+ for j:0..<count {
+  rect:=input.media[order[j]];r.bad_media=rect.line;context:=input;context.media_context=rect.line;
+  for k:0..<8 {words[k]=f32_bits(rect.uniforms[k]);}
+  r=rf_execute_draw(context,13,prepared,tree,metadata,op,active,req,words[..],empty,attrs,draws[..],policy,work,r);if r.status!=RQStatus.ok {return r;}
+ }
+ r.bad_media= -1;return r;
+}
+
+// Internal admitted graph operations, shared with small bounded conformance
+// fixtures. Canvas spans and operation targets belong to the immutable plan.
+rf_clear_targets :: (req:RFRequirements,op:RenderOp,images:[]RQColor,policy:RFPolicy,result:RFResult)->RFResult {
+ r:=result;if op.keep {return r;}
+ for id:[3]RenderTarget.[op.colour0,op.colour1,op.depth] {
+  if id==RenderTarget.none {continue;}canvas:=req.images[cast(int)id];n:=canvas.descriptor.width*canvas.descriptor.height;
+  r=rf_pixel_work(r,policy,n);if r.status!=RQStatus.ok {return r;}
+  clear:=ifx canvas.descriptor.format==RenderTextureFormat.depth32 then RQColor.{r=1} else RQColor.{a=1};
+  for j:0..<n {images[canvas.offset+j]=clear;}
+ }
+ return r;
+}
+rf_copy_target :: (req:RFRequirements,op:RenderOp,images:[]RQColor,policy:RFPolicy,result:RFResult)->RFResult {
+ r:=result;src:=req.images[cast(int)op.source];dst:=req.images[cast(int)op.target];n:=src.descriptor.width*src.descriptor.height;
+ r=rf_pixel_work(r,policy,n);if r.status!=RQStatus.ok {return r;}for j:0..<n {images[dst.offset+j]=images[src.offset+j];}return r;
+}
+
+rf_resource_status :: (status:RenderResourceStatus)->RQStatus {if status==RenderResourceStatus.ok {return RQStatus.ok;}if status==RenderResourceStatus.capacity {return RQStatus.capacity;}return RQStatus.resource;}
+RFBufferObservations :: struct {status:RQStatus;count:int;}
+rf_buffer_observations :: (files:[]RenderHostNamedBuffer,uniforms:[]u32,out:[]RenderHostNamedBuffer)->RFBufferObservations {
+ admitted:=render_host_named_buffers(files);if admitted!=RenderResourceStatus.ok {return RFBufferObservations.{status=rf_resource_status(admitted)};}
+ name_scratch:[]u8;main_name:=render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.main_uniform},name_scratch);found:=-1;
+ for j:0..<files.count {if files[j].name==main_name {found=j;}}
+ count:=files.count;if found<0 && uniforms.count>0 {count+=1;}
+ if count>out.count {return RFBufferObservations.{status=RQStatus.capacity};}
+ for j:0..<files.count {out[j]=files[j];}
+ // The reference owns this copied uniform prefix and its exact allocation.
+ // Borrowed immutable/legacy payloads retain their original observations.
+ if uniforms.count>0 {at:=ifx found<0 then files.count else found;out[at]=render_host_owned_buffer(main_name,uniforms);}
+ return RFBufferObservations.{status=rf_resource_status(render_host_named_buffers(out[0..<count])),count=count};
+}
+rf_resolve_buffer :: (profile:int,set:int,resource:int,files:[]RenderHostNamedBuffer,uniforms:[]u32,bloom:[]u32)->RFBufferResult {
+ named:[RENDER_RESOURCES]RenderHostNamedBuffer;r:=rf_buffer_observations(files,uniforms,named[..]);if r.status!=RQStatus.ok {return RFBufferResult.{status=r.status};}
+ binding:=render_host_binding(profile,set,resource);words:=ifx binding.source.kind==RenderSourceKind.bloom_step then bloom else uniforms;
+ generated:=render_host_owned_buffer("",words);
+ q:=render_host_resolve_buffer(profile,set,resource,named[0..<r.count],generated);if q.status!=RenderResourceStatus.ok {return RFBufferResult.{status=rf_resource_status(q.status)};}
+ return RFBufferResult.{buffer=RQBuffer.{words=q.words,count=cast(int)q.view.elements,stride=q.stride}};
+}
+
+RFMediaPrepared :: struct {status:RQStatus;count:int;bad_bitmap:int=-1;parsed:RenderMediaParse;composed:RenderHostMediaReceipt;}
+// Identity/readiness and physical metadata policy are shared with GPU hosts.
+// This adapter projects decoded descriptors and validates CPU mip/texel spans.
+rf_prepare_media :: (profile:int,text:string,width:int,height:int,files:[]RFNamedTexture,images:[]RenderHostMediaImage,out:[]RenderMediaRect)->RFMediaPrepared {
+ requests:[RENDER_MEDIA_ITEMS]RenderMediaRequest;r:=RFMediaPrepared.{parsed=render_media_parse(text,requests[..])};
+ if r.parsed.status!=RenderMediaStatus.ok {r.status=RQStatus.capacity;return r;}if r.parsed.count==0 {return r;}
+ if !render_catalog(profile).features.media {r.status=RQStatus.unsupported;return r;}
+ if out.count<r.parsed.count || files.count>RENDER_HOST_TEXTURES {r.status=RQStatus.capacity;return r;}
+ physical:[RENDER_HOST_TEXTURES]RenderHostMediaTexture;
+ for j:0..<files.count {t:=files[j].texture;d:=RenderHostMediaTexture.{name=files[j].name,layers=t.layers,depth=t.depth};if t.levels.count>0 {d.width=t.levels[0].width;d.height=t.levels[0].height;}physical[j]=d;}
+ candidates:[RENDER_MEDIA_ITEMS]RenderMediaRect;r.composed=render_host_media_draws(profile,requests[0..<r.parsed.count],images,width,height,physical[0..<files.count],candidates[..]);
+ if r.composed.status==RenderHostMediaStatus.capacity {r.status=RQStatus.capacity;return r;}if r.composed.status!=RenderHostMediaStatus.ok {r.status=RQStatus.resource;return r;}
+ for j:0..<r.composed.count {
+  if !candidates[j].draw {continue;}name_scratch:[32]u8;name:=render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.media_image,index=requests[j].line},name_scratch[..]);
+  for k:0..<files.count {if files[k].name==name {r.status=rq_texture_status(files[k].texture);if r.status!=RQStatus.ok {r.bad_bitmap=k;return r;}}}
+ }
+ for j:0..<r.composed.count {out[j]=candidates[j];}r.count=r.composed.count;return r;
+}
+
+// Resource effects form one independently executable graph step. A canonical
+// render_plan has at most one water each-block; its current index starts once.
+rf_transfer_op :: (req:RFRequirements,op:RenderOp,images:[]RQColor,policy:RFPolicy,result:RFResult)->RFResult {
+ if op.kind==RenderOpKind.begin {return rf_clear_targets(req,op,images,policy,result);}
+ if op.kind==RenderOpKind.copy {return rf_copy_target(req,op,images,policy,result);}return result;
+}
+
+RFMemory :: struct {arena:[]u32;uniforms:[]u32;hud:[]u32;}
+// Caller has admitted the combined allocation before publishing these views.
+rf_partition_words :: (words:[]u32,uniform_words:int,hud_words:int)->RFMemory {
+ end_uniforms:=RQ_IR_WORDS+uniform_words;
+ return RFMemory.{arena=words[0..<RQ_IR_WORDS],uniforms=words[RQ_IR_WORDS..<end_uniforms],hud=words[end_uniforms..<end_uniforms+hud_words]};
+}
+// The admitted working allocation contains fourteen independent metadata
+// arenas. Preparation and execution borrow the same exact slot ownership.
+rf_metadata_slot :: (words:[]int,index:int)->[]int {return words[index*RQ_IR_META..<(index+1)*RQ_IR_META];}

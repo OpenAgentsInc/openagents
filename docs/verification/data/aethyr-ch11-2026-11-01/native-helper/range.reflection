@@ -1,0 +1,8 @@
+binding 0 storage u
+reflection 2
+tree-version 2
+resource 0 1 0 4 2 u
+fragment-targets 1
+fragment-depth 0
+derivatives 1 0
+control 1 0

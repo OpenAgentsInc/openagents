@@ -1,0 +1,62 @@
+{
+  "schema": "aethyr.render.native-asset-boundary.v1",
+  "status": "pass",
+  "scope": "Typed canonical pack identity, actual global data-allocation capacities and capacity-vs-end span forwarding.",
+  "root_wrapper_mutation": {
+    "sites": 2,
+    "killed": 2,
+    "survived": 0,
+    "waivers": 0
+  },
+  "source_sha256": {
+    "aethyr/render/native-host.coax": "63ea840411544aa4bf690538265f1ed9547a87a50fb991ef74d2e2b4753c1fde",
+    "verse/native/render-realm.c": "3bd499d748819fdf28832b69eec7719d4081b1ce96dc166b87c446fc1a66fa37",
+    "verse/native/face.h": "5cd6f0ca28b05049d876f9464a12406dd6bff83e735adf648d8c21915180b96b",
+    "verse/native/realm-host.c": "c0643710e17024bb46992f00ac99364221be94b3dcb341c8b41dbe26691a16db",
+    "verse/gpu/vk-realm.c": "aa351a15345db4e63d71415cf2d7e6c89412f6ff17268806a9c60aba6ecccde7"
+  },
+  "data_owner_capacity_exports": [
+    "realm",
+    "everglade",
+    "fixture",
+    "droprealm",
+    "myrealm"
+  ],
+  "cases": {
+    "positive": {
+      "exit": 0,
+      "diagnostic": "vk-realm: canonical profile7 at 320x180, package made in 373 ms\nvk-realm: step+render median 14.19 ms, 99th 20.31 ms, longest 20.31 ms\nvk-realm: post-render median 0.00 ms, 99th 0.01 ms, longest 0.01 ms\nvk-realm: NVIDIA GeForce RTX 4080, 320x180, 90 frames, 10 draws the last; it ended because it drew its frames\nvk-realm: validation: 0 errors, 0 warnings\n",
+      "readback_sha256": "f5aaf977ffa2deec908dc5dc548f362091710ed6f1edbad45d9427c48af20648"
+    },
+    "wrong-preload": {
+      "exit": 1,
+      "diagnostic": "vk-realm: canonical packed delivery part is missing\n",
+      "readback_sha256": null
+    },
+    "zero-capacity": {
+      "exit": 1,
+      "diagnostic": "vk-realm: asset destination allocation refused by Coax\n",
+      "readback_sha256": null
+    }
+  },
+  "native_abi": {
+    "status": "pass",
+    "native_exit": 0,
+    "modes": [
+      "debug",
+      "release",
+      "asan-ubsan"
+    ],
+    "scope": "Actual Fixture global catalog allocation capacity and returned32bit pointer; canonical span helper at actualnonzero pointer, end/empty/u64 boundary refusals.",
+    "source_sha256": {
+      "check.c": "e74f66c4726df5bf28d2dc9a6e0fd50aa1d91e02eda8fddffb92c54f897c674f",
+      "fixture.h": "488619ee39f188f93b9a218435376f7f7dd205c9f6c32ad19b9fed2fafba00ee",
+      "fixture-face.c": "0b84b35a1bd48e435fcd06c6a6fb15e24ab0485515e5c6451ae3be9bd5962302",
+      "fixture.c": "27b6cdc97c9a35951a86fb881cb87ce164c4de08e2547f515ab7cd4a634b20a1",
+      "remote.sh": "2a3490d2225edb416fa8bceb0d3f129eef1493f6ab23638818bf72bca575b581",
+      "fixture.face.c": "47efb4c4eda7cb6f1e291394d8cc318dee814beb5779202f0d496a7e1255f4da"
+    }
+  },
+  "source_scope": "Positive and fault artifacts retain exact source/header snapshots. The later vk-realm exit condition also fails warnings; prior successful0/0 executions are unchanged. Test-local word prefixes changed only composition names after native emission.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-asset-boundary"
+}

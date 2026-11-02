@@ -1,0 +1,29 @@
+bun test v1.4.0 (34cbb9a40)
+
+coax/web/strip-render.test.ts:
+(pass) staging preserves a canonical package's exact shader bytes [1.45ms]
+(pass) a transform that would invalidate a package refuses staging [1.26ms]
+
+coax/web/realms.test.ts:
+(pass) the tagged table passes, and every realm has a style and a clock [3.78ms]
+(pass) every manifest realm names its own shared renderer package [1.28ms]
+(pass) Everglade is painterly, Hecate's Cemetery and Fairy Forest flat; the rest lowpoly [1.00ms]
+(pass) refuses a realm without a style [0.86ms]
+(pass) refuses an unknown style [0.31ms]
+(pass) refuses a zone with an unknown style [0.29ms]
+(pass) refuses a zone id twice [0.67ms]
+(pass) takes zones with and without their own style [0.82ms]
+(pass) refuses a missing or bad clock [1.74ms]
+(pass) refuses a painterly realm whose WGSL has no style block [4.19ms]
+(pass) the page carries data-style, data-clock and data-zones [0.84ms]
+(pass) refuses a painterly realm with a lowpoly pack, and a pack of another style [4.39ms]
+(pass) Everglade and Hold the Stair play by the SRD 5e ruleset and their pages say so; no other realm has one [0.93ms]
+(pass) refuses an unknown ruleset [0.52ms]
+(pass) a listed realm needs when it opened and its one line; an unlisted one doesn't [14.42ms]
+(pass) /realms lists the listed realms: its rows, its text and its links [0.84ms]
+(pass) only a realm with a tip page asks who made it (data-maker): the rest log no 404 [0.93ms]
+
+ 19 pass
+ 0 fail
+ 154 expect() calls
+Ran 19 tests across 2 files. [172.00ms]

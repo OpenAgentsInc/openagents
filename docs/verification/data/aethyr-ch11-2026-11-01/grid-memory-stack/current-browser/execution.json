@@ -1,0 +1,18 @@
+{
+  "command": [
+    "bun",
+    "aethyr/tests/check_render_host.ts",
+    "/tmp/aethyr-ch11-grid-stack-4m/newland.wasm",
+    "/tmp/aethyr-ch11-packages-owned-sans/the-grid",
+    "apps/openagents-web/realms/the-grid/index.html",
+    "/tmp/aethyr-ch11-grid-4m-owned-sans-browser",
+    "--half",
+    "--start",
+    "--texture-stream",
+    "--size=320x180"
+  ],
+  "returncode": 0,
+  "elapsed_seconds": 2.0696025419747457,
+  "deadline_seconds": 180,
+  "timed_out": false
+}

@@ -1,0 +1,777 @@
+// stair's shaders, the source of apps/openagents-web/stair.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (stair.module,
+// stair.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/noise.coax";
+#load "../../../verse/gpu/wgsl.coax";
+
+// Hold the Stair (stair.coax): bg_fs draws the tower's floor seen from above
+// with a slight tilt: the back wall and its torches, flagstones lit by them,
+// the stair winding up in steps, the cellar door, the magic circle at the
+// tower top, the party standing on their tiles (painted figures, one per
+// tile, looked up by cell) and the panels; fx_vs/fx_fs draw the strokes
+// stair_frame writes (beasts, bolts, numbers, text) in four shapes: a
+// capsule, a ring, a glossy bubble and a soft light.
+// StairU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   map 4
+//   info 8
+//   info2 12
+//   cells 16
+//   unit 144
+//   plate 272
+//   ends 464
+// origin x, y, tile (device px), squash
+// screen cols, rows, portrait, hover cell
+// hurt, selected cell, plates, the map's stroke vertices (the rest are the HUD's)
+// per cell: kind (+ the stair's progress as the fraction; 10 + class for a defender)
+// per cell with a defender: facing (sign) × (1 + its attack flash); the last two: the map's band (y0, y1) when zoomed in
+// each stair's door (x, y) and top (z, w), in map tiles; -1 none
+STAIR_COLS :: 14;
+STAIR_ROWS :: 9;
+STAIR_INK :: ()->V3 {return v3(0.05f32,0.04f32,0.07f32);}
+STAIR_WALL :: 0.55f32; // the back wall's height above the map, in rows
+STAIR_RIM :: 0.16f32; // the stone rim on the other sides
+#test "stair_hash live lattice uses the portable integer noise profile" {
+  #assert f32_bits(stair_hash(v2(1,2)))==0x3f6013da;
+}
+stair_hash :: (p:V2)->f32 {
+  return render_noise2(p.x,p.y);
+}
+stair_noise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(stair_hash(i),stair_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(stair_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),stair_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+stair_cell_raw :: (i:s32,u:[]f32)->f32 {
+  if ((i<0)||(i>=126)) {
+    return -1.0f32;
+  }
+  return wg_get_f4(wg_at4(u,(cast(int)(i/4))*4+16),cast(int)(i%4));
+}
+stair_cell_kind :: (i:s32,u:[]f32)->s32 {
+  return wg_i32_f(floor(stair_cell_raw(i,u)+0.001f32));
+}
+stair_on_stair :: (k:s32)->bool {
+  return ((k==1)||(k==3))||(k==4);
+}
+// A logical cell's index (-1 off the map).
+stair_idx :: (c:s32,r:s32)->s32 {
+  if ((((c<0)||(c>=STAIR_COLS))||(r<0))||(r>=STAIR_ROWS)) {
+    return -1;
+  }
+  return c+(r*STAIR_COLS);
+}
+// A screen cell's logical index.
+stair_screen_cell :: (sc:V2,u:[]f32)->s32 {
+  if ((((sc.x<0.0f32)||(sc.y<0.0f32))||(sc.x>=u[8]))||(sc.y>=u[9])) {
+    return -1;
+  }
+  if (u[10]>0.5f32) {
+    return stair_idx((STAIR_COLS-1)-(wg_i32_f(sc.y)),wg_i32_f(sc.x));
+  }
+  return stair_idx(wg_i32_f(sc.x),wg_i32_f(sc.y));
+}
+// Logical tile units to the screen's (local) tile units.
+stair_to_local :: (x:f32,y:f32,u:[]f32)->V2 {
+  if (u[10]>0.5f32) {
+    return v2(y,STAIR_COLS-x);
+  }
+  return v2(x,y);
+}
+// ---- shapes (y up)
+stair_sd_circle :: (p:V2,c:V2,r:f32)->f32 {
+  return wg_length2(wg_sub_f2f2(p,c))-r;
+}
+stair_sd_box :: (p:V2,c:V2,b:V2,r:f32)->f32 {
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,c)),b),v2(r,r));
+  return (wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-r;
+}
+stair_sd_seg :: (p:V2,a:V2,b:V2,r:f32)->f32 {
+  pa:V2=wg_sub_f2f2(p,a);
+  ba:V2=wg_sub_f2f2(b,a);
+  h:f32=clampf(wg_dot2(pa,ba)/wg_dot2(ba,ba),0.0f32,1.0f32);
+  return wg_length2(wg_sub_f2f2(pa,wg_mul_f2f(ba,h)))-r;
+}
+// A trapezoid centred at c: half-width r1 at the bottom, r2 at the top, half-height he.
+stair_sd_trap :: (p0:V2,c:V2,r1:f32,r2:f32,he:f32)->f32 {
+  p:V2=wg_sub_f2f2(p0,c);
+  k1:V2=v2(r2,he);
+  k2:V2=v2(r2-r1,2.0f32*he);
+  p.x=abs(p.x);
+  ca:V2=v2(p.x-fmin(p.x,ifx p.y<0.0f32 then r1 else r2),abs(p.y)-he);
+  cb:V2=wg_add_f2f2(wg_sub_f2f2(p,k1),wg_mul_f2f(k2,clampf(wg_dot2(wg_sub_f2f2(k1,p),k2)/wg_dot2(k2,k2),0.0f32,1.0f32)));
+  s:f32=ifx (cb.x<0.0f32)&&(ca.y<0.0f32) then -1.0f32 else 1.0f32;
+  return s*sqrt(fmin(wg_dot2(ca,ca),wg_dot2(cb,cb)));
+}
+// ---- the party: painted figures, outlined, lit from the upper left
+StairPen :: struct {c:V3; a:f32; glow:V3; }
+stair_paint :: (pen:[]StairPen,d:f32,col:V3,aa:f32,line:f32) {
+  fill:f32=clampf(0.5f32-(d/aa),0.0f32,1.0f32);
+  if (fill<=0.0f32) {
+    return;
+  }
+  edge:f32=clampf(0.5f32+((line+d)/aa),0.0f32,1.0f32);
+  // a little light on the upper-left inside edge
+  pen[0].c=wg_mix_f3f3f(pen[0].c,wg_mix_f3f3f(col,STAIR_INK(),edge*0.9f32),fill);
+  pen[0].a=fmax(pen[0].a,fill);
+}
+stair_lit_col :: (col:V3,q:V2,c:V2,r:f32)->V3 {
+  n:V2=wg_div_f2f(wg_sub_f2f2(q,c),r);
+  return wg_mul_f3f(col,(0.72f32+(0.5f32*clampf((wg_dot2(n,v2(-0.55f32,0.65f32))*0.5f32)+0.5f32,0.0f32,1.0f32))));
+}
+stair_glow_at :: (pen:[]StairPen,d:f32,col:V3,spread:f32) {
+  pen[0].glow=wg_add_f3f3(pen[0].glow,wg_mul_f3f(wg_mul_f3f(col,exp((-fmax(d,0.0f32))/spread)),0.6f32));
+}
+STAIR_SKIN :: ()->V3 {return v3(0.93f32,0.76f32,0.63f32);}
+STAIR_STEEL :: ()->V3 {return v3(0.66f32,0.71f32,0.8f32);}
+stair_figure :: (q0:V2,cls:s32,face:f32,flash:f32,aa:f32,seed:f32,u:[]f32)->StairPen {
+  pen_store:[1]StairPen;pen:=pen_store[..];pen[0]=StairPen.{c=v3(0.0f32,0.0f32,0.0f32),a=0.0f32,glow=v3(0.0f32,0.0f32,0.0f32)};
+  // breathing
+  q:V2=v2(q0.x*face,q0.y-(0.008f32*sin((u[2]*2.2f32)+(seed*6.0f32))));
+  line:f32=aa*1.4f32;
+  // the shadow it stands in
+  sh:f32=wg_length2(wg_mul_f2f2(wg_sub_f2f2(q0,v2(0.0f32,0.0f32)),v2(1.0f32,2.6f32)))-0.2f32;
+  pen[0].a=fmax(pen[0].a,0.5f32*clampf(0.5f32-(sh/0.06f32),0.0f32,1.0f32));
+  if (cls==0) {
+    // FIGHTER: steel and a blue tabard, a round shield, a longsword that swings when it attacks
+    stair_paint(pen,stair_sd_box(q,v2(-0.055f32,0.07f32),v2(0.035f32,0.075f32),0.02f32),v3(0.3f32,0.24f32,0.26f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.055f32,0.07f32),v2(0.035f32,0.075f32),0.02f32),v3(0.3f32,0.24f32,0.26f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.27f32),v2(0.12f32,0.13f32),0.05f32),stair_lit_col(STAIR_STEEL(),q,v2(0.0f32,0.27f32),0.14f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.23f32),v2(0.055f32,0.12f32),0.02f32),stair_lit_col(v3(0.2f32,0.36f32,0.85f32),q,v2(0.0f32,0.24f32),0.12f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.17f32),v2(0.12f32,0.018f32),0.008f32),v3(0.38f32,0.26f32,0.2f32),aa,line);
+    // the sword arm: idle, the blade up; on its turn it comes down across
+    ang:f32=mix(1.25f32,-0.35f32,flash);
+    dir:V2=v2(cos(ang),sin(ang));
+    hand:V2=v2(0.15f32,0.27f32);
+    tip:V2=wg_add_f2f2(hand,wg_mul_f2f(dir,0.36f32));
+    blade:f32=stair_sd_seg(q,wg_add_f2f2(hand,wg_mul_f2f(dir,0.05f32)),tip,0.022f32);
+    stair_paint(pen,blade,wg_mix_f3f3f(v3(0.85f32,0.9f32,1.0f32),v3(1.0f32,1.0f32,1.0f32),flash),aa,line);
+    if (flash>0.05f32) {
+      stair_glow_at(pen,blade,wg_mul_f3f(v3(0.6f32,0.75f32,1.0f32),flash),0.05f32);
+    }
+    nrm:V2=v2(-dir.y,dir.x);
+    stair_paint(pen,stair_sd_seg(q,wg_sub_f2f2(wg_add_f2f2(hand,wg_mul_f2f(dir,0.05f32)),wg_mul_f2f(nrm,0.055f32)),wg_add_f2f2(wg_add_f2f2(hand,wg_mul_f2f(dir,0.05f32)),wg_mul_f2f(nrm,0.055f32)),0.014f32),v3(0.95f32,0.8f32,0.35f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,hand,0.032f32),STAIR_SKIN(),aa,line);
+    // the shield on the off arm
+    stair_paint(pen,stair_sd_circle(q,v2(-0.1f32,0.25f32),0.105f32),stair_lit_col(v3(0.78f32,0.8f32,0.86f32),q,v2(-0.1f32,0.25f32),0.105f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(-0.1f32,0.25f32),0.075f32),stair_lit_col(v3(0.18f32,0.32f32,0.8f32),q,v2(-0.1f32,0.25f32),0.075f32),aa,line*0.6f32);
+    stair_paint(pen,stair_sd_circle(q,v2(-0.1f32,0.25f32),0.022f32),v3(0.95f32,0.82f32,0.4f32),aa,line*0.6f32);
+    // head, helm, plume
+    stair_paint(pen,stair_sd_circle(q,v2(0.01f32,0.5f32),0.092f32),stair_lit_col(STAIR_SKIN(),q,v2(0.01f32,0.5f32),0.092f32),aa,line);
+    stair_paint(pen,fmax(stair_sd_circle(q,v2(0.0f32,0.515f32),0.104f32),0.515f32-q.y),stair_lit_col(STAIR_STEEL(),q,v2(0.0f32,0.55f32),0.1f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.513f32),v2(0.108f32,0.014f32),0.006f32),v3(0.55f32,0.58f32,0.66f32),aa,line*0.7f32);
+    stair_paint(pen,stair_sd_circle(q,v2(0.055f32,0.48f32),0.014f32),STAIR_INK(),aa,0.0f32);
+    stair_paint(pen,stair_sd_seg(q,v2(0.0f32,0.62f32),v2(-0.1f32,0.68f32),0.028f32),v3(0.86f32,0.16f32,0.22f32),aa,line);
+  } else if (cls==1) {
+    // WIZARD: a violet robe and a pointed hat, a white beard, a staff with a glowing orb
+    robe:V3=v3(0.44f32,0.27f32,0.8f32);
+    stair_paint(pen,stair_sd_seg(q,v2(0.17f32,0.0f32),v2(0.17f32,0.7f32),0.018f32),v3(0.46f32,0.32f32,0.2f32),aa,line);
+    stair_paint(pen,stair_sd_trap(q,v2(0.0f32,0.2f32),0.165f32,0.075f32,0.2f32),stair_lit_col(robe,q,v2(0.0f32,0.22f32),0.2f32),aa,line);
+    stair_paint(pen,fmax(stair_sd_trap(q,v2(0.0f32,0.2f32),0.165f32,0.075f32,0.2f32),q.y-0.045f32),v3(0.95f32,0.82f32,0.38f32),aa,line*0.5f32);
+    stair_paint(pen,stair_sd_seg(q,v2(0.03f32,0.31f32),v2(0.15f32,0.27f32),0.042f32),stair_lit_col(robe,q,v2(0.09f32,0.3f32),0.08f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.16f32,0.27f32),0.032f32),STAIR_SKIN(),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.0f32,0.46f32),0.085f32),stair_lit_col(STAIR_SKIN(),q,v2(0.0f32,0.46f32),0.085f32),aa,line);
+    stair_paint(pen,stair_sd_trap(q,v2(0.015f32,0.38f32),0.012f32,0.07f32,0.06f32),v3(0.93f32,0.93f32,0.96f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.045f32,0.47f32),0.013f32),STAIR_INK(),aa,0.0f32);
+    // the hat leans back
+    hq:V2=v2(q.x+(0.32f32*fmax(q.y-0.53f32,0.0f32)),q.y);
+    hat:V3=v3(0.27f32,0.18f32,0.62f32);
+    stair_paint(pen,stair_sd_trap(hq,v2(-0.005f32,0.68f32),0.1f32,0.006f32,0.15f32),stair_lit_col(hat,hq,v2(0.0f32,0.62f32),0.12f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.535f32),v2(0.155f32,0.018f32),0.018f32),wg_mul_f3f(hat,0.85f32),aa,line);
+    stair_paint(pen,stair_sd_circle(hq,v2(0.0f32,0.63f32),0.02f32),v3(1.0f32,0.92f32,0.45f32),aa,0.0f32);
+    // the orb
+    orb:f32=stair_sd_circle(q,v2(0.17f32,0.75f32),0.048f32);
+    oc:V3=v3(0.62f32,0.78f32,1.0f32);
+    stair_paint(pen,orb,wg_mix_f3f3f(oc,v3(1.0f32,1.0f32,1.0f32),0.35f32+(0.4f32*flash)),aa,line*0.6f32);
+    stair_glow_at(pen,orb,wg_mul_f3f(oc,((0.55f32+(1.2f32*flash))+(0.15f32*sin((u[2]*3.0f32)+seed)))),0.05f32+(0.04f32*flash));
+  } else if (cls==3) {
+    // ROGUE: a dark hooded cloak with a sea-green lining, a short blade low and quick
+    cloak:V3=v3(0.2f32,0.23f32,0.27f32);
+    stair_paint(pen,stair_sd_box(q,v2(-0.05f32,0.07f32),v2(0.03f32,0.075f32),0.02f32),v3(0.16f32,0.15f32,0.17f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.05f32,0.07f32),v2(0.03f32,0.075f32),0.02f32),v3(0.16f32,0.15f32,0.17f32),aa,line);
+    stair_paint(pen,stair_sd_trap(q,v2(-0.01f32,0.25f32),0.15f32,0.08f32,0.15f32),stair_lit_col(cloak,q,v2(0.0f32,0.27f32),0.15f32),aa,line);
+    stair_paint(pen,fmax(stair_sd_trap(q,v2(-0.01f32,0.25f32),0.15f32,0.08f32,0.15f32),(-q.x)-0.02f32),stair_lit_col(v3(0.3f32,0.62f32,0.55f32),q,v2(0.05f32,0.25f32),0.12f32),aa,line*0.5f32);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.2f32),v2(0.1f32,0.014f32),0.006f32),v3(0.42f32,0.3f32,0.22f32),aa,line*0.6f32);
+    ang:f32=mix(-0.2f32,0.55f32,flash);
+    dir:V2=v2(cos(ang),sin(ang));
+    hand:V2=wg_add_f2f2(v2(0.13f32,0.22f32),wg_mul_f2f(wg_mul_f2f(dir,0.04f32),flash));
+    blade:f32=stair_sd_seg(q,wg_add_f2f2(hand,wg_mul_f2f(dir,0.03f32)),wg_add_f2f2(hand,wg_mul_f2f(dir,0.2f32)),0.016f32);
+    stair_paint(pen,blade,wg_mix_f3f3f(v3(0.78f32,0.86f32,0.88f32),v3(1.0f32,1.0f32,1.0f32),flash),aa,line);
+    if (flash>0.05f32) {
+      stair_glow_at(pen,blade,wg_mul_f3f(v3(0.45f32,0.95f32,0.8f32),flash),0.04f32);
+    }
+    stair_paint(pen,stair_sd_circle(q,hand,0.03f32),wg_mul_f3f(STAIR_SKIN(),0.9f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.015f32,0.47f32),0.085f32),stair_lit_col(STAIR_SKIN(),q,v2(0.015f32,0.47f32),0.085f32),aa,line);
+    stair_paint(pen,fmax(stair_sd_circle(q,v2(-0.01f32,0.49f32),0.11f32),(((((-(q.x-0.055f32))*1.0f32)-((0.44f32-q.y)*0.0f32))+0.0f32)-0.0f32)+fmin(0.0f32,q.y-0.44f32)),stair_lit_col(wg_mul_f3f(cloak,1.1f32),q,v2(0.0f32,0.52f32),0.11f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.05f32,0.45f32),v2(0.04f32,0.012f32),0.006f32),v3(0.12f32,0.13f32,0.15f32),aa,0.0f32);
+    stair_paint(pen,stair_sd_circle(q,v2(0.06f32,0.47f32),0.012f32),v3(0.6f32,1.0f32,0.85f32),aa,0.0f32);
+  } else if (cls==4) {
+    // RANGER: a forest-green cloak and hood, a longbow drawn on its turn
+    green:V3=v3(0.22f32,0.48f32,0.24f32);
+    stair_paint(pen,stair_sd_box(q,v2(-0.05f32,0.07f32),v2(0.032f32,0.075f32),0.02f32),v3(0.36f32,0.26f32,0.18f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.05f32,0.07f32),v2(0.032f32,0.075f32),0.02f32),v3(0.36f32,0.26f32,0.18f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.26f32),v2(0.1f32,0.12f32),0.04f32),stair_lit_col(v3(0.5f32,0.38f32,0.25f32),q,v2(0.0f32,0.26f32),0.12f32),aa,line);
+    stair_paint(pen,stair_sd_trap(q,v2(-0.06f32,0.28f32),0.09f32,0.05f32,0.16f32),stair_lit_col(green,q,v2(-0.06f32,0.3f32),0.14f32),aa,line);
+    // the quiver
+    stair_paint(pen,stair_sd_seg(q,v2(-0.11f32,0.24f32),v2(-0.05f32,0.44f32),0.025f32),v3(0.42f32,0.28f32,0.18f32),aa,line);
+    stair_paint(pen,stair_sd_seg(q,v2(-0.05f32,0.44f32),v2(-0.03f32,0.5f32),0.008f32),v3(0.9f32,0.9f32,0.85f32),aa,0.0f32);
+    // the bow: an arc held out front, the string pulled back on its turn
+    bc:V2=v2(0.18f32,0.32f32);
+    bd:f32=wg_length2(wg_mul_f2f2(wg_sub_f2f2(q,bc),v2(1.6f32,1.0f32)));
+    bow:f32=fmax(abs(bd-0.2f32)-0.012f32,(bc.x-q.x)+0.02f32);
+    stair_paint(pen,bow,v3(0.55f32,0.36f32,0.2f32),aa,line);
+    pull:f32=0.03f32+(0.07f32*flash);
+    stair_paint(pen,stair_sd_seg(q,v2(0.19f32,0.13f32),v2(0.19f32-pull,0.32f32),0.006f32),v3(0.95f32,0.95f32,0.9f32),aa,0.0f32);
+    stair_paint(pen,stair_sd_seg(q,v2(0.19f32,0.51f32),v2(0.19f32-pull,0.32f32),0.006f32),v3(0.95f32,0.95f32,0.9f32),aa,0.0f32);
+    if (flash>0.05f32) {
+      stair_glow_at(pen,stair_sd_seg(q,v2(0.19f32-pull,0.32f32),v2(0.42f32,0.32f32),0.008f32),wg_mul_f3f(v3(0.6f32,1.0f32,0.55f32),flash),0.03f32);
+    }
+    stair_paint(pen,stair_sd_circle(q,v2(0.19f32-pull,0.32f32),0.03f32),STAIR_SKIN(),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.01f32,0.48f32),0.085f32),stair_lit_col(STAIR_SKIN(),q,v2(0.01f32,0.48f32),0.085f32),aa,line);
+    stair_paint(pen,fmax(stair_sd_circle(q,v2(-0.01f32,0.5f32),0.105f32),(0.47f32-q.y)-((q.x+0.06f32)*0.6f32)),stair_lit_col(green,q,v2(0.0f32,0.54f32),0.1f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.055f32,0.47f32),0.013f32),STAIR_INK(),aa,0.0f32);
+  } else if (cls==5) {
+    // BARD: a rose doublet and a feathered cap, a lute that rings on its turn
+    rose:V3=v3(0.78f32,0.25f32,0.48f32);
+    stair_paint(pen,stair_sd_box(q,v2(-0.05f32,0.07f32),v2(0.03f32,0.075f32),0.02f32),v3(0.95f32,0.9f32,0.8f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.05f32,0.07f32),v2(0.03f32,0.075f32),0.02f32),v3(0.95f32,0.9f32,0.8f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.26f32),v2(0.11f32,0.12f32),0.05f32),stair_lit_col(rose,q,v2(0.0f32,0.26f32),0.13f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.26f32),v2(0.018f32,0.11f32),0.008f32),v3(0.98f32,0.86f32,0.5f32),aa,line*0.5f32);
+    // the lute across the body
+    lb:f32=stair_sd_circle(q,v2(0.05f32,0.2f32),0.085f32);
+    stair_paint(pen,stair_sd_seg(q,v2(0.08f32,0.24f32),v2(0.26f32,0.42f32),0.02f32),v3(0.45f32,0.28f32,0.16f32),aa,line);
+    stair_paint(pen,lb,stair_lit_col(v3(0.78f32,0.55f32,0.3f32),q,v2(0.05f32,0.2f32),0.085f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.05f32,0.2f32),0.022f32),v3(0.2f32,0.12f32,0.08f32),aa,0.0f32);
+    if (flash>0.05f32) {
+      stair_glow_at(pen,abs((wg_length2(wg_sub_f2f2(q,v2(0.05f32,0.2f32)))-0.14f32)-(0.08f32*flash))-0.004f32,wg_mul_f3f(v3(1.0f32,0.6f32,0.85f32),flash),0.03f32);
+    }
+    stair_paint(pen,stair_sd_circle(q,v2(0.13f32,0.24f32+(0.02f32*flash)),0.03f32),STAIR_SKIN(),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.0f32,0.47f32),0.085f32),stair_lit_col(STAIR_SKIN(),q,v2(0.0f32,0.47f32),0.085f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.045f32,0.475f32),0.013f32),STAIR_INK(),aa,0.0f32);
+    stair_paint(pen,stair_sd_box(q,v2(-0.01f32,0.56f32),v2(0.11f32,0.035f32),0.03f32),stair_lit_col(wg_mul_f3f(rose,0.8f32),q,v2(0.0f32,0.57f32),0.1f32),aa,line);
+    stair_paint(pen,stair_sd_seg(q,v2(-0.08f32,0.58f32),v2(-0.2f32,0.7f32),0.016f32),v3(0.98f32,0.95f32,0.9f32),aa,line*0.6f32);
+  } else if (cls==6) {
+    // PALADIN: bright plate, a white tabard with a pale-blue sun, a longsword raised high
+    plate:V3=v3(0.84f32,0.87f32,0.94f32);
+    stair_paint(pen,stair_sd_box(q,v2(-0.055f32,0.07f32),v2(0.035f32,0.075f32),0.02f32),stair_lit_col(wg_mul_f3f(plate,0.8f32),q,v2(-0.05f32,0.08f32),0.08f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.055f32,0.07f32),v2(0.035f32,0.075f32),0.02f32),stair_lit_col(wg_mul_f3f(plate,0.8f32),q,v2(0.05f32,0.08f32),0.08f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.27f32),v2(0.125f32,0.13f32),0.05f32),stair_lit_col(plate,q,v2(0.0f32,0.27f32),0.14f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.22f32),v2(0.065f32,0.13f32),0.02f32),stair_lit_col(v3(0.97f32,0.97f32,0.95f32),q,v2(0.0f32,0.24f32),0.12f32),aa,line);
+    mark:f32=stair_sd_circle(q,v2(0.0f32,0.27f32),0.03f32);
+    stair_paint(pen,mark,v3(0.55f32,0.78f32,1.0f32),aa,line*0.5f32);
+    ang:f32=mix(1.45f32,-0.2f32,flash);
+    dir:V2=v2(cos(ang),sin(ang));
+    hand:V2=v2(0.15f32,0.3f32);
+    blade:f32=stair_sd_seg(q,wg_add_f2f2(hand,wg_mul_f2f(dir,0.05f32)),wg_add_f2f2(hand,wg_mul_f2f(dir,0.4f32)),0.024f32);
+    stair_paint(pen,blade,v3(0.92f32,0.95f32,1.0f32),aa,line);
+    stair_glow_at(pen,blade,wg_mul_f3f(v3(0.7f32,0.85f32,1.0f32),(0.15f32+flash)),0.04f32+(0.03f32*flash));
+    nrm:V2=v2(-dir.y,dir.x);
+    stair_paint(pen,stair_sd_seg(q,wg_sub_f2f2(wg_add_f2f2(hand,wg_mul_f2f(dir,0.05f32)),wg_mul_f2f(nrm,0.06f32)),wg_add_f2f2(wg_add_f2f2(hand,wg_mul_f2f(dir,0.05f32)),wg_mul_f2f(nrm,0.06f32)),0.015f32),v3(0.95f32,0.85f32,0.45f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,hand,0.032f32),plate,aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.01f32,0.5f32),0.092f32),stair_lit_col(STAIR_SKIN(),q,v2(0.01f32,0.5f32),0.092f32),aa,line);
+    stair_paint(pen,fmax(stair_sd_circle(q,v2(0.0f32,0.52f32),0.106f32),0.5f32-q.y),stair_lit_col(plate,q,v2(0.0f32,0.56f32),0.1f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.055f32,0.48f32),0.014f32),STAIR_INK(),aa,0.0f32);
+    stair_glow_at(pen,wg_length2(wg_mul_f2f2(wg_sub_f2f2(q,v2(0.0f32,0.3f32)),v2(1.0f32,0.8f32)))-0.25f32,wg_mul_f3f(v3(0.55f32,0.75f32,1.0f32),(0.12f32+(0.06f32*sin((u[2]*2.0f32)+seed)))),0.06f32);
+  } else {
+    // CLERIC: a pale robe with a gold sun, a hood, a mace, a halo that flares on its turn
+    robe:V3=v3(0.9f32,0.88f32,0.8f32);
+    stair_paint(pen,stair_sd_trap(q,v2(0.0f32,0.2f32),0.17f32,0.09f32,0.2f32),stair_lit_col(robe,q,v2(0.0f32,0.22f32),0.2f32),aa,line);
+    stair_paint(pen,stair_sd_box(q,v2(0.0f32,0.2f32),v2(0.032f32,0.19f32),0.01f32),v3(0.93f32,0.78f32,0.3f32),aa,line*0.5f32);
+    sun:f32=stair_sd_circle(q,v2(0.0f32,0.29f32),0.042f32);
+    stair_paint(pen,sun,v3(1.0f32,0.86f32,0.36f32),aa,line*0.6f32);
+    stair_paint(pen,stair_sd_seg(q,v2(0.14f32,0.18f32),v2(0.19f32,0.46f32),0.015f32),v3(0.45f32,0.3f32,0.2f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.195f32,0.49f32),0.042f32),stair_lit_col(STAIR_STEEL(),q,v2(0.195f32,0.49f32),0.042f32),aa,line);
+    stair_paint(pen,stair_sd_seg(q,v2(0.03f32,0.31f32),v2(0.14f32,0.26f32),0.042f32),stair_lit_col(robe,q,v2(0.09f32,0.3f32),0.08f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.145f32,0.25f32),0.032f32),STAIR_SKIN(),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(-0.015f32,0.47f32),0.108f32),stair_lit_col(v3(0.8f32,0.77f32,0.7f32),q,v2(-0.015f32,0.48f32),0.11f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.022f32,0.455f32),0.074f32),stair_lit_col(STAIR_SKIN(),q,v2(0.022f32,0.455f32),0.074f32),aa,line);
+    stair_paint(pen,stair_sd_circle(q,v2(0.058f32,0.465f32),0.013f32),STAIR_INK(),aa,0.0f32);
+    halo:f32=abs(wg_length2(wg_mul_f2f2(wg_sub_f2f2(q,v2(-0.01f32,0.62f32)),v2(1.0f32,3.2f32)))-0.1f32)-0.012f32;
+    stair_paint(pen,halo,v3(1.0f32,0.9f32,0.5f32),aa,0.0f32);
+    stair_glow_at(pen,halo,wg_mul_f3f(v3(1.0f32,0.86f32,0.45f32),(0.35f32+(1.4f32*flash))),0.03f32+(0.05f32*flash));
+    if (flash>0.05f32) {
+      stair_glow_at(pen,sun,wg_mul_f3f(v3(1.0f32,0.9f32,0.5f32),flash),0.06f32);
+    }
+  }
+  return pen[0];
+}
+// The figure standing on a screen cell, at a pixel (local tile units), over what is there.
+stair_stand :: (c:V3,local:V2,sc:V2,t:f32,u:[]f32)->V3 {
+  i:s32=stair_screen_cell(sc,u);
+  k:s32=stair_cell_kind(i,u);
+  if (k<10) {
+    return c;
+  }
+  v:f32=wg_get_f4(wg_at4(u,(cast(int)(i/4))*4+144),cast(int)(i%4));
+  ghost:bool=abs(v)>2.5f32;
+  face:f32=ifx v>=0.0f32 then 1.0f32 else -1.0f32;
+  flash:f32=ifx ghost then 0.0f32 else clampf(abs(v)-1.0f32,0.0f32,1.0f32);
+  feet:V2=v2(sc.x+0.5f32,sc.y+0.74f32);
+  q:V2=wg_mul_f2f(v2(local.x-feet.x,(feet.y-local.y)*u[7]),0.74f32);
+  pen:StairPen=stair_figure(q,k-10,face,flash,1.3f32/t,(cast(f32)(i))*0.37f32,u);
+  cls:s32=k-10;
+  lcs:[7]V3=[7]V3.[v3(0.6f32,0.75f32,1.0f32),v3(0.62f32,0.5f32,1.0f32),v3(1.0f32,0.86f32,0.45f32),v3(0.45f32,0.95f32,0.8f32),v3(0.5f32,0.95f32,0.45f32),v3(1.0f32,0.5f32,0.78f32),v3(0.8f32,0.9f32,1.0f32)];
+  lc:V3=lcs[cast(int)wg_clamp_i(cls,0,6)];
+  g:f32=wg_length2(wg_mul_f2f2(q,v2(1.0f32,2.6f32)));
+  under:V3=c;
+  if (!ghost) {
+    // read against dark stone on a phone: a faint light of its class's colour behind it,
+    // and a ring of that colour round its feet
+    back:f32=wg_length2(wg_mul_f2f2(wg_sub_f2f2(q,v2(0.0f32,0.2f32)),v2(1.0f32,0.62f32)));
+    under=wg_add_f3f3(under,wg_mul_f3f(wg_mul_f3f(lc,0.16f32),(1.0f32-smoothstep(0.1f32,0.34f32,back))));
+    rim:f32=abs(g-0.24f32)-0.018f32;
+    under=wg_mix_f3f3f(under,lc,0.85f32*clampf(0.5f32-(rim/(2.6f32/t)),0.0f32,1.0f32));
+  }
+  // level 3: the ground under it glows its class's colour
+  level:s32=wg_i32_f((fract(stair_cell_raw(i,u))*100.0f32)+0.5f32);
+  if ((level>=3)&&(!ghost)) {
+    pen.glow=wg_add_f3f3(pen.glow,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(lc,(1.0f32-smoothstep(0.12f32,0.3f32,g))),smoothstep(0.08f32,0.2f32,g)),(0.35f32+(0.15f32*sin(u[2]*3.0f32)))));
+  }
+  // the ghost of one about to go down: see-through, breathing
+  a:f32=ifx ghost then pen.a*(0.45f32+(0.15f32*sin(u[2]*5.0f32))) else pen.a;
+  return wg_add_f3f3(wg_mix_f3f3f(under,pen.c,a),wg_mul_f3f(pen.glow,ifx ghost then 0.5f32 else 1.0f32));
+}
+// ---- the map
+stair_torch_x :: (i:s32,n:s32,u:[]f32)->f32 {
+  return (((cast(f32)(i))+0.5f32)*u[8])/(cast(f32)(n));
+}
+stair_torch_count :: (u:[]f32)->s32 {
+  return ifx u[8]<11.0f32 then 3 else 4;
+}
+stair_flicker :: (i:f32,u:[]f32)->f32 {
+  return 0.82f32+(0.18f32*stair_noise(v2((u[2]*7.0f32)+(i*13.0f32),i)));
+}
+// The light on the floor at a local point: torches on the back wall, the cellar's red, the tower top's gold.
+stair_light_at :: (l:V2,u:[]f32)->V3 {
+  c:V3=v3(0.09f32,0.1f32,0.16f32);
+  n:s32=stair_torch_count(u);
+  {
+    i:s32=0;
+    while i<4 {
+      if (i>=n) {
+        break;
+      }
+      d:V2=wg_sub_f2f2(l,v2(stair_torch_x(i,n,u),-0.35f32));
+      c=wg_add_f3f3(c,wg_div_f3f(wg_mul_f3f(wg_mul_f3f(v3(1.0f32,0.84f32,0.55f32),stair_flicker(cast(f32)(i),u)),1.35f32),(1.0f32+(wg_dot2(d,d)*0.38f32))));
+      i+=1;
+    }
+  }
+  // sconces on the side walls
+  {
+    j:s32=0;
+    while j<2 {
+      y:f32=u[9]*(0.35f32+(0.4f32*(cast(f32)(j))));
+      a:V2=wg_sub_f2f2(l,v2(-0.2f32,y));
+      b:V2=wg_sub_f2f2(l,v2(u[8]+0.2f32,y));
+      c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(1.0f32,0.84f32,0.55f32),stair_flicker((cast(f32)(j))+7.0f32,u)),0.75f32),((1.0f32/(1.0f32+(wg_dot2(a,a)*0.6f32)))+(1.0f32/(1.0f32+(wg_dot2(b,b)*0.6f32))))));
+      j+=1;
+    }
+  }
+  {
+    e:s32=0;
+    while e<2 {
+      en:V4=wg_at4(u,(cast(int)e)*4+464);
+      if (en.x<0.0f32) {
+        {e+=1; continue;}
+      }
+      door:V2=wg_sub_f2f2(l,stair_to_local(en.x,en.y,u));
+      c=wg_add_f3f3(c,wg_div_f3f(wg_mul_f3f(v3(1.0f32,0.12f32,0.14f32),(0.8f32+(0.25f32*sin(u[2]*2.7f32)))),(1.0f32+(wg_dot2(door,door)*0.7f32))));
+      top:V2=wg_sub_f2f2(l,stair_to_local(en.z,en.w,u));
+      c=wg_add_f3f3(c,wg_div_f3f(wg_mul_f3f(v3(1.0f32,0.86f32,0.45f32),0.9f32),(1.0f32+(wg_dot2(top,top)*0.6f32))));
+      e+=1;
+    }
+  }
+  return c;
+}
+stair_floor_stone :: (f:V2,id:V2)->V3 {
+  h:f32=stair_hash(id);
+  // some tiles are two stones
+  g:V2=f;
+  sub:V2=id;
+  if (h>0.55f32) {
+    if (f.x>0.5f32) {
+      g.x=(f.x-0.5f32)*2.0f32;
+      sub=wg_add_f2f2(id,v2(0.5f32,0.0f32));
+    } else {
+      g.x=f.x*2.0f32;
+    }
+  }
+  n:f32=((stair_noise(wg_add_f2f2(wg_mul_f2f(id,3.1f32),wg_mul_f2f(f,5.0f32)))*0.5f32)+(stair_noise(wg_add_f2f2(wg_mul_f2f(id,7.0f32),wg_mul_f2f(f,17.0f32)))*0.25f32))+(stair_hash(sub)*0.4f32);
+  edge:f32=fmin(fmin(g.x,1.0f32-g.x)*(ifx h>0.55f32 then 0.5f32 else 1.0f32),fmin(g.y,1.0f32-g.y));
+  mortar:f32=smoothstep(0.0f32,0.045f32,edge);
+  bevel:f32=((1.0f32+(0.25f32*(1.0f32-smoothstep(0.0f32,0.1f32,g.y))))-(0.3f32*smoothstep(0.86f32,1.0f32,g.y)))-(0.15f32*smoothstep(0.88f32,1.0f32,g.x));
+  base:V3=wg_mul_f3f(v3(0.2f32,0.21f32,0.25f32),(0.75f32+(0.45f32*n)));
+  // a crack now and then, moss in the corners of the old ones
+  crack:f32=abs(stair_noise(wg_add_f2f2(wg_mul_f2f(id,11.0f32),wg_mul_f2f2(f,v2(3.0f32,9.0f32))))-0.5f32);
+  if (stair_hash(wg_add_f2f(id,3.3f32))>0.7f32) {
+    base=wg_mul_f3f(base,0.7f32+(0.3f32*smoothstep(0.0f32,0.035f32,crack)));
+  }
+  if (stair_hash(wg_add_f2f(id,9.1f32))>0.78f32) {
+    base=wg_mix_f3f3f(base,v3(0.14f32,0.24f32,0.13f32),((1.0f32-smoothstep(0.0f32,0.3f32,edge))*0.6f32)*stair_noise(wg_add_f2f2(wg_mul_f2f(f,9.0f32),id)));
+  }
+  return wg_mix_f3f3f(v3(0.03f32,0.03f32,0.04f32),wg_mul_f3f(base,bevel),mortar);
+}
+stair_stair_stone :: (lf:V2,i:s32,kind:s32,u:[]f32)->V3 {
+  col:s32=i%STAIR_COLS;
+  row:s32=i/STAIR_COLS;
+  d0:f32=fract(stair_cell_raw(i,u))*100.0f32;
+  l:s32=stair_idx(col-1,row);
+  r:s32=stair_idx(col+1,row);
+  up:s32=stair_idx(col,row-1);
+  dn:s32=stair_idx(col,row+1);
+  kl:bool=stair_on_stair(stair_cell_kind(l,u));
+  kr:bool=stair_on_stair(stair_cell_kind(r,u));
+  ku:bool=stair_on_stair(stair_cell_kind(up,u));
+  kd:bool=stair_on_stair(stair_cell_kind(dn,u));
+  // how far along the climb this pixel is: across the run, from the lower end up
+  along:f32=0.0f32;
+  if (kl||kr) {
+    dir:f32=1.0f32;
+    if (kr&&((fract(stair_cell_raw(r,u))*100.0f32)<d0)) {
+      dir=-1.0f32;
+    }
+    if (((!kr)&&kl)&&((fract(stair_cell_raw(l,u))*100.0f32)>d0)) {
+      dir=-1.0f32;
+    }
+    along=(lf.x-0.5f32)*dir;
+    if ((ku||kd)&&(!(kl&&kr))) {
+      along=0.0f32;
+    }
+  }
+  if (((ku||kd)&&(!(kl||kr)))||((ku||kd)&&(along==0.0f32))) {
+    dir:f32=1.0f32;
+    if (kd&&((fract(stair_cell_raw(dn,u))*100.0f32)<d0)) {
+      dir=-1.0f32;
+    }
+    if (((!kd)&&ku)&&((fract(stair_cell_raw(up,u))*100.0f32)>d0)) {
+      dir=-1.0f32;
+    }
+    along=(lf.y-0.5f32)*dir;
+  }
+  d:f32=d0+along;
+  s:f32=fract(d*2.0f32);
+  n:f32=(stair_noise(wg_add_f2f2(wg_mul_f2f(wg_make_f2_f(cast(f32)(i)),1.7f32),wg_mul_f2f(lf,6.0f32)))*0.5f32)+(stair_hash(v2(floor(d*2.0f32),cast(f32)(i)))*0.3f32);
+  // higher steps catch more of the light above
+  base:V3=wg_mul_f3f(wg_mul_f3f(v3(0.44f32,0.4f32,0.37f32),(0.7f32+(0.4f32*n))),(0.85f32+(0.25f32*clampf(d/28.0f32,0.0f32,1.0f32))));
+  base=wg_mul_f3f(base,(1.0f32+(0.18f32*smoothstep(0.7f32,0.97f32,s)))-(0.5f32*(1.0f32-smoothstep(0.0f32,0.1f32,s))));
+  // the stair's edges: a curb where it meets the floor
+  e:f32=1.0f32;
+  if (!kl) {
+    e=fmin(e,lf.x);
+  }
+  if (!kr) {
+    e=fmin(e,1.0f32-lf.x);
+  }
+  if (!ku) {
+    e=fmin(e,lf.y);
+  }
+  if (!kd) {
+    e=fmin(e,1.0f32-lf.y);
+  }
+  base=wg_mix_f3f3f(wg_mul_f3f(v3(0.5f32,0.47f32,0.44f32),(0.8f32+(0.3f32*n))),base,smoothstep(0.06f32,0.1f32,e));
+  base=wg_mul_f3f(base,0.55f32+(0.45f32*smoothstep(0.0f32,0.05f32,e)));
+  if (kind==4) {
+    // the tower top: a magic circle turning on a gold landing
+    p:V2=wg_sub_f2f2(lf,v2(0.5f32,0.5f32));
+    rr:f32=wg_length2(p);
+    a:f32=wg_atan2(p.y,p.x)+(u[2]*0.4f32);
+    base=wg_mix_f3f3f(base,v3(0.35f32,0.3f32,0.22f32),smoothstep(0.47f32,0.44f32,rr));
+    ringc:V3=v3(1.0f32,0.86f32,0.45f32);
+    r1:f32=1.0f32-smoothstep(0.012f32,0.025f32,abs(rr-0.38f32));
+    r2:f32=1.0f32-smoothstep(0.01f32,0.02f32,abs(rr-0.27f32));
+    runes:f32=((1.0f32-smoothstep(0.02f32,0.05f32,abs(rr-0.325f32)))*stepf(0.55f32,fract(((a*12.0f32)/6.2831853f32)*2.0f32)))*stepf(0.3f32,stair_hash(v2(floor((a*24.0f32)/6.2831853f32),1.0f32)));
+    star:f32=1.0f32-smoothstep(0.01f32,0.02f32,abs((rr-0.27f32)+(0.1f32*abs(sin(a*2.5f32)))));
+    base=wg_add_f3f3(base,wg_mul_f3f(wg_mul_f3f(ringc,(((r1+(r2*0.8f32))+(runes*0.7f32))+((star*0.35f32)*stepf(rr,0.27f32)))),(0.75f32+(0.25f32*sin(u[2]*2.0f32)))));
+    base=wg_add_f3f3(base,wg_mul_f3f(wg_mul_f3f(ringc,0.25f32),(1.0f32-smoothstep(0.0f32,0.3f32,rr))));
+  }
+  return base;
+}
+// The cellar door, in screen space: a stone arch, the conjurer's red light swirling inside.
+stair_door :: (c:V3,f:V2,u:[]f32)->V3 {
+  p:V2=v2(f.x-0.5f32,0.92f32-f.y); // y up from the sill
+  open:f32=fmin(stair_sd_box(p,v2(0.0f32,0.25f32),v2(0.3f32,0.25f32),0.0f32),stair_sd_circle(p,v2(0.0f32,0.5f32),0.3f32));
+  arch:f32=fmin(stair_sd_box(p,v2(0.0f32,0.25f32),v2(0.4f32,0.25f32),0.0f32),stair_sd_circle(p,v2(0.0f32,0.5f32),0.4f32));
+  o:V3=c;
+  // the arch's stones
+  ang:f32=wg_atan2(p.y-0.5f32,p.x);
+  joints:f32=stepf(0.88f32,fract(ifx p.y>0.5f32 then (ang*7.0f32)/3.14159f32 else p.y*5.0f32));
+  o=wg_mix_f3f3f(o,wg_mul_f3f(wg_mul_f3f(v3(0.36f32,0.34f32,0.36f32),(0.8f32+(0.3f32*stair_noise(wg_mul_f2f(f,10.0f32))))),(1.0f32-(0.5f32*joints))),clampf(0.5f32-(arch*60.0f32),0.0f32,1.0f32));
+  // inside: swirling red and magenta, brightest low down
+  sw:f32=stair_noise(v2((wg_atan2(p.y-0.3f32,p.x)*2.0f32)+(u[2]*1.5f32),(wg_length2(wg_sub_f2f2(p,v2(0.0f32,0.3f32)))*6.0f32)-(u[2]*2.0f32)));
+  inner:V3=wg_mul_f3f(wg_mix_f3f3f(v3(0.35f32,0.02f32,0.06f32),v3(1.0f32,0.16f32,0.2f32),sw),(0.7f32+(0.3f32*sin(u[2]*2.7f32))));
+  deep:V3=wg_mix_f3f3f(inner,v3(0.95f32,0.4f32,0.75f32),0.25f32*smoothstep(0.6f32,0.9f32,sw));
+  o=wg_mix_f3f3f(o,deep,clampf(0.5f32-(open*60.0f32),0.0f32,1.0f32));
+  o=wg_mix_f3f3f(o,STAIR_INK(),clampf(1.0f32-(abs(open)*45.0f32),0.0f32,1.0f32)*0.7f32);
+  return o;
+}
+// The back wall: courses of stone, a torch in an iron bracket every few tiles.
+stair_wall :: (local:V2,u:[]f32)->V3 {
+  y:f32=(-local.y)/STAIR_WALL; // 0 at the floor, 1 at the wall's top
+  course:f32=floor(y*4.0f32);
+  bx:f32=(local.x*1.6f32)+(course*0.5f32);
+  bf:V2=v2(fract(bx),fract(y*4.0f32));
+  n:f32=(stair_noise(wg_add_f2f2(wg_mul_f2f(v2(floor(bx),course),3.7f32),wg_mul_f2f(bf,4.0f32)))*0.5f32)+(stair_hash(v2(floor(bx),course))*0.35f32);
+  c:V3=wg_mul_f3f(v3(0.17f32,0.17f32,0.21f32),(0.7f32+(0.5f32*n)));
+  joint:f32=fmin(fmin(bf.x,1.0f32-bf.x)*0.6f32,fmin(bf.y,1.0f32-bf.y));
+  c=wg_mul_f3f(c,0.35f32+(0.65f32*smoothstep(0.0f32,0.08f32,joint)));
+  c=wg_mul_f3f(c,0.45f32+(0.55f32*smoothstep(0.0f32,0.35f32,y))); // the foot of the wall in shadow
+  c=wg_mul_f3f3(c,wg_mul_f3f(stair_light_at(v2(local.x,-0.05f32),u),0.9f32));
+  n_t:s32=stair_torch_count(u);
+  {
+    i:s32=0;
+    while i<4 {
+      if (i>=n_t) {
+        break;
+      }
+      tx:f32=stair_torch_x(i,n_t,u);
+      p:V2=wg_mul_f2f(wg_div_f2f(v2(local.x-tx,(-local.y)-(STAIR_WALL*0.3f32)),STAIR_WALL),0.55f32); // y up, wall units, the torch large
+      // bracket
+      c=wg_mix_f3f3f(c,v3(0.1f32,0.1f32,0.12f32),clampf(0.5f32-(stair_sd_box(p,v2(0.0f32,-0.12f32),v2(0.06f32,0.16f32),0.03f32)*80.0f32),0.0f32,1.0f32));
+      c=wg_mix_f3f3f(c,v3(0.28f32,0.2f32,0.15f32),clampf(0.5f32-(stair_sd_box(p,v2(0.0f32,0.08f32),v2(0.08f32,0.05f32),0.02f32)*80.0f32),0.0f32,1.0f32));
+      // flame: a yellow-white core, red at the tips, licking
+      fl:f32=stair_flicker(cast(f32)(i),u);
+      wob:f32=((stair_noise(v2((p.y*6.0f32)-(u[2]*9.0f32),cast(f32)(i)))-0.5f32)*0.08f32)*(p.y-0.1f32);
+      fp:V2=v2(p.x-wob,p.y-0.13f32);
+      flame:f32=stair_sd_trap(fp,v2(0.0f32,0.17f32),0.08f32,0.005f32,0.17f32*fl);
+      core:f32=stair_sd_trap(fp,v2(0.0f32,0.11f32),0.045f32,0.005f32,0.1f32*fl);
+      fc:V3=wg_mix_f3f3f(v3(1.0f32,0.2f32,0.08f32),v3(1.0f32,0.9f32,0.4f32),clampf(1.0f32-(fp.y*2.2f32),0.0f32,1.0f32));
+      c=wg_mix_f3f3f(c,fc,clampf(0.5f32-(flame*70.0f32),0.0f32,1.0f32));
+      c=wg_mix_f3f3f(c,v3(1.0f32,0.98f32,0.85f32),clampf(0.5f32-(core*70.0f32),0.0f32,1.0f32));
+      c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(1.0f32,0.8f32,0.45f32),0.25f32),fl),exp((-wg_length2(wg_sub_f2f2(fp,v2(0.0f32,0.15f32))))*5.0f32)));
+      i+=1;
+    }
+  }
+  // the wall's top edge
+  c=wg_mix_f3f3f(c,v3(0.32f32,0.31f32,0.36f32),smoothstep(0.9f32,0.95f32,y));
+  return c;
+}
+stair_plate :: (p:V2,under:V3,r:V4,s:V4,u:[]f32)->V3 {
+  if (s.x<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=7.0f32*s.z;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (d>1.0f32) {
+    return under;
+  }
+  v:f32=(p.y-r.y)/fmax(r.w-r.y,1.0f32);
+  fill:V3=v3(0.018f32,0.02f32,0.03f32);
+  line:V3=v3(0.0f32,0.0f32,0.0f32);
+  if (s.y>0.5f32) {
+    fill=wg_mix_f3f3f(v3(0.11f32,0.11f32,0.15f32),v3(0.05f32,0.05f32,0.07f32),v);
+    line=v3(0.42f32,0.44f32,0.52f32);
+  }
+  if (s.y>1.5f32) {
+    fill=wg_mix_f3f3f(v3(0.2f32,0.18f32,0.12f32),v3(0.09f32,0.08f32,0.07f32),v);
+    line=v3(1.0f32,0.86f32,0.5f32);
+  }
+  if (s.y>2.5f32) {
+    fill=v3(0.03f32,0.03f32,0.04f32);
+    line=v3(0.18f32,0.18f32,0.22f32);
+  }
+  w:f32=1.0f32*s.z;
+  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.x,0.0f32,1.0f32);
+  c:V3=wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,(edge*a)*0.9f32);
+  // a class's portrait on its button
+  if ((s.w>0.5f32)&&(inside>0.0f32)) {
+    h:f32=r.w-r.y;
+    // in the room stair.coax's class_icon leaves it: most of the height, at most 30% of a narrow button
+    iw:f32=fmin(h*0.8f32,(r.z-r.x)*0.26f32);
+    feet:V2=v2(r.x+(iw*0.6f32),r.w-(h*0.1f32));
+    sc:f32=h*0.95f32;
+    qq:V2=wg_div_f2f(v2(p.x-feet.x,feet.y-p.y),sc);
+    if (((abs(qq.x)<0.3f32)&&(qq.y>(-0.1f32)))&&(qq.y<0.9f32)) {
+      pen:StairPen=stair_figure(qq,(wg_i32_f(s.w+0.5f32))-1,1.0f32,0.0f32,1.3f32/sc,s.w,u);
+      dim:f32=ifx s.y>2.5f32 then 0.35f32 else 1.0f32;
+      c=wg_add_f3f3(wg_mix_f3f3f(c,wg_mul_f3f(pen.c,dim),pen.a*inside),wg_mul_f3f(wg_mul_f3f(pen.glow,dim),inside));
+    }
+  }
+  return c;
+}
+stair_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+stair_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  p:V2=v2(pos.x,pos.y);
+  q:V2=wg_mul_f2f(wg_sub_f2f(wg_div_f2f2(p,wg_at2(u,0)),0.5f32),2.0f32);
+  c:V3=wg_mul_f3f(v3(0.012f32,0.012f32,0.02f32),(1.0f32-(0.3f32*wg_length2(q))));
+  t:f32=u[6];
+  local:V2=wg_div_f2f2(wg_sub_f2f2(p,v2(u[4],u[5])),v2(t,t*u[7]));
+  banded:bool=(p.y>=u[270])&&(p.y<=u[271]);
+  inside:bool=(((banded&&(local.x>=0.0f32))&&(local.y>=0.0f32))&&(local.x<u[8]))&&(local.y<u[9]);
+  if ((t>0.0f32)&&inside) {
+    sc:V2=wg_floor_f2(local);
+    f:V2=wg_fract_f2(local);
+    col:s32=wg_i32_f(sc.x);
+    row:s32=wg_i32_f(sc.y);
+    lf:V2=f;
+    if (u[10]>0.5f32) {
+      col=(STAIR_COLS-1)-(wg_i32_f(sc.y));
+      row=wg_i32_f(sc.x);
+      lf=v2(1.0f32-f.y,f.x);
+    }
+    i:s32=col+(row*STAIR_COLS);
+    kind:s32=stair_cell_kind(i,u);
+    if stair_on_stair(kind) {
+      c=stair_stair_stone(lf,i,kind,u);
+    } else {
+      c=stair_floor_stone(f,sc);
+      // the stair stands a step above the floor: its shadow falls on the tiles beside it
+      ao:f32=1.0f32;
+      if stair_on_stair(stair_cell_kind(stair_idx(col-1,row),u)) {
+        ao=fmin(ao,smoothstep(0.0f32,0.2f32,lf.x));
+      }
+      if stair_on_stair(stair_cell_kind(stair_idx(col+1,row),u)) {
+        ao=fmin(ao,smoothstep(0.0f32,0.2f32,1.0f32-lf.x));
+      }
+      if stair_on_stair(stair_cell_kind(stair_idx(col,row-1),u)) {
+        ao=fmin(ao,smoothstep(0.0f32,0.2f32,lf.y));
+      }
+      if stair_on_stair(stair_cell_kind(stair_idx(col,row+1),u)) {
+        ao=fmin(ao,smoothstep(0.0f32,0.2f32,1.0f32-lf.y));
+      }
+      c=wg_mul_f3f(c,0.45f32+(0.55f32*ao));
+    }
+    c=wg_mul_f3f3(c,stair_light_at(local,u));
+    if (kind==3) {
+      c=stair_door(c,f,u);
+    }
+    if ((i==(wg_i32_f(u[11]+0.5f32)))&&(u[11]>=0.0f32)) {
+      c=wg_add_f3f3(c,v3(0.06f32,0.055f32,0.04f32));
+    }
+    if ((i==(wg_i32_f(u[13]+0.5f32)))&&(u[13]>=0.0f32)) {
+      edge:f32=fmin(fmin(f.x,1.0f32-f.x),fmin(f.y,1.0f32-f.y));
+      c=wg_mix_f3f3f(wg_add_f3f3(c,v3(0.08f32,0.07f32,0.03f32)),v3(1.0f32,0.86f32,0.5f32),1.0f32-smoothstep(0.03f32,0.08f32,edge));
+    }
+    // the party: the figure on this tile, then the one in front of it (its head reaches up here)
+    c=stair_stand(c,local,sc,t,u);
+    c=stair_stand(c,local,wg_add_f2f2(sc,v2(0.0f32,1.0f32)),t,u);
+  } else if ((((((t>0.0f32)&&banded)&&(local.x>=(-STAIR_RIM)))&&(local.x<(u[8]+STAIR_RIM)))&&(local.y>=(-STAIR_WALL)))&&(local.y<(u[9]+STAIR_RIM))) {
+    if (((local.y<0.0f32)&&(local.x>=0.0f32))&&(local.x<u[8])) {
+      c=stair_wall(local,u);
+      // a figure in the first row can lift its head over the wall's foot
+      c=stair_stand(c,local,v2(floor(local.x),0.0f32),t,u);
+    } else {
+      // the rim: a worn stone ledge
+      n:f32=stair_noise(wg_mul_f2f(local,9.0f32));
+      c=wg_mul_f3f(wg_mul_f3f3(wg_mul_f3f(v3(0.24f32,0.23f32,0.27f32),(0.75f32+(0.35f32*n))),stair_light_at(wg_clamp_f2f2f2(local,v2(0.0f32,0.0f32),v2(u[8],u[9])),u)),0.8f32);
+      if (local.y<0.0f32) {
+        c=wg_mul_f3f(stair_wall(v2(clampf(local.x,0.0f32,u[8]-0.01f32),local.y),u),0.6f32);
+      }
+    }
+  }
+  // the hurt: the edges flush red when a beast reaches the top
+  if (u[12]>0.0f32) {
+    edge:f32=smoothstep(0.55f32,1.35f32,wg_length2(q));
+    c=wg_mix_f3f3f(c,v3(0.55f32,0.04f32,0.03f32),(edge*u[12])*0.6f32);
+  }
+  count:s32=wg_i32_f(u[14]);
+  {
+    k:s32=0;
+    while k<24 {
+      if (k>=count) {
+        break;
+      }
+      c=stair_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+272),wg_at4(u,(cast(int)((k*2)+1))*4+272),u);
+      k+=1;
+    }
+  }
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+StairV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; on_map:f32 #flat; }
+// 1: a map stroke, cut to the map's band
+stair_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+stair_fx_vs :: (vi:u32,_iid2:u32,in_:stair_fx_vs_in,u:[]f32)->StairV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:StairV;
+  o.on_map=ifx (cast(f32)(vi))<u[15] then 1.0f32 else 0.0f32;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+// Modes (tint.w): 0 a capsule, 1 a ring (bar.x its width, bar.y the squash), 2 a glossy bubble
+// (bar.x the inner layer's radius as a share, bar.yzw its colour), 3 a soft light.
+stair_fx_fs :: (v:StairV,u:[]f32)->V4 {
+  if ((v.on_map>0.5f32)&&((v.pos.y<u[270])||(v.pos.y>u[271]))) {
+    gpu_demote_helper();
+  }
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  mode:s32=wg_i32_f(v.tint.w+0.5f32);
+  if (mode==1) {
+    sq:f32=ifx v.bar.y>0.0f32 then v.bar.y else 1.0f32;
+    d:f32=wg_length2(v2(v.place.x-(v.shape.x*0.5f32),v.place.y/sq));
+    e:f32=abs(d-v.shape.y);
+    core:f32=1.0f32-smoothstep(v.bar.x-0.5f32,v.bar.x+0.6f32,e);
+    g:f32=e/fmax(v.shape.w,1.0f32);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+(exp(((-5.0f32)*g)*g)*0.28f32))),v.shape.z),u[3]),1.0f32);
+  }
+  if (mode==2) {
+    r:f32=fmax(v.shape.y,1.0f32);
+    o:V2=v2(v.place.x-(v.shape.x*0.5f32),v.place.y);
+    d:f32=wg_length2(o);
+    x:f32=clampf(d/r,0.0f32,1.0f32);
+    body:f32=1.0f32-smoothstep(r-0.8f32,r+0.8f32,d);
+    col:V3=wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(0.3f32+(0.85f32*pow(x,4.0f32)))),body);
+    if (v.bar.x>0.0f32) {
+      ir:f32=v.bar.x*r;
+      inner:f32=(1.0f32-smoothstep(ir-1.0f32,ir+1.0f32,wg_length2(wg_sub_f2f2(o,v2(0.0f32,r*0.12f32)))))*(0.35f32+(0.25f32*pow(clampf(wg_length2(wg_sub_f2f2(o,v2(0.0f32,r*0.12f32)))/ir,0.0f32,1.0f32),3.0f32)));
+      col=wg_max_f3f3(col,wg_mul_f3f(v3(v.bar.y,v.bar.z,v.bar.w),inner));
+    }
+    hl:V2=wg_sub_f2f2(o,wg_mul_f2f(v2(-0.36f32,-0.42f32),r));
+    spec:f32=exp((-wg_dot2(hl,hl))/((r*r)*0.025f32));
+    spec2:f32=exp((-wg_dot2(wg_sub_f2f2(o,wg_mul_f2f(v2(0.4f32,0.35f32),r)),wg_sub_f2f2(o,wg_mul_f2f(v2(0.4f32,0.35f32),r))))/((r*r)*0.01f32))*0.4f32;
+    col=wg_add_f3f3(col,wg_mul_f3f(wg_mul_f3f(v3(1.0f32,1.0f32,1.0f32),((spec*0.9f32)+spec2)),body));
+    g:f32=fmax(d-r,0.0f32)/fmax(v.shape.w,1.0f32);
+    col=wg_add_f3f3(col,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),exp(((-5.0f32)*g)*g)),0.22f32),(1.0f32-body)));
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(col,v.shape.z),u[3]),1.0f32);
+  }
+  d:f32=wg_length2(v2(along,v.place.y));
+  if (mode==3) {
+    g:f32=d/fmax(v.shape.y+v.shape.w,1.0f32);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),exp(((-3.5f32)*g)*g)),v.shape.z),u[3]),1.0f32);
+  }
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_get_f4 :: (p:V4,i:int)->f32 {if i==0 {return p.x;} if i==1 {return p.y;} if i==2 {return p.z;} return p.w;}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
+wg_add_f2f :: (a:V2,b:f32)->V2 {return v2(a.x+b,a.y+b);}
+wg_make_f2_f :: (p0:f32)->V2 {return v2(p0,p0);}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
+wg_sub_f2f :: (a:V2,b:f32)->V2 {return v2(a.x-b,a.y-b);}
+wg_clamp_f2f2f2 :: (p0:V2,p1:V2,p2:V2)->V2 {return v2(clampf(p0.x,p1.x,p2.x),clampf(p0.y,p1.y,p2.y));}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_max_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(fmax(p0.x,p1.x),fmax(p0.y,p1.y),fmax(p0.z,p1.z));}

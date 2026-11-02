@@ -1,0 +1,67 @@
+// Depth32 floating-point polygon bias for the reference device profile.
+// The rasterizer's position depth is biased before any fragment depth output;
+// an explicit #depth output replaces it. Targets clamp to the viewport range.
+#module "aethyr.render.reference.depth";
+#load "reference-raster.coax";
+#authority;
+RRDepthBias :: struct {status:RQStatus;offset:f64;resolution:f64;slope:f64;}
+
+#test "reference depth32 resolution follows the maximum primitive exponent" {
+ #assert rr_depth_resolution(1).value==0.00000011920928955078125f32;
+ #assert rr_depth_resolution(0.5).value==0.000000059604644775390625f32;
+ #assert rr_depth_resolution(0.25).value==0.0000000298023223876953125f32;
+ #assert f32_bits(rr_depth_resolution(0).value)==1 && f32_bits(rr_depth_resolution(f32_from_bits(0x00800000)).value)==1;
+ #assert rr_depth_resolution(-1).status==RQStatus.resource && rr_depth_resolution(1.01).status==RQStatus.resource;
+ z:=0.0f32;#assert rr_depth_resolution(1/z).status==RQStatus.resource && rr_depth_resolution(z/z).status==RQStatus.resource;
+}
+#test "reference polygon bias uses both screen slopes the farthest depth and signed factors" {
+ t:=[3]RRVertex.[rr_test_vertex(-1,1,0.25,1,0),rr_test_vertex(1,1,0.5,1,0),rr_test_vertex(-1,-1,0.75,1,0)];
+ s:=rr_triangle(t,2,2);state:=RenderPassState.{valid=true,depth=RenderDepth.less,bias=2,slope=2};
+ q:=rr_depth_bias(s,state);#assert q.status==RQStatus.ok && q.slope==0.25 && q.resolution==0.000000059604644775390625 && q.offset==0.50000011920928955078125;
+ state.bias=-2;state.slope=-1;q=rr_depth_bias(s,state);#assert q.offset==(-0.25000011920928955078125);
+ state.bias=0;state.slope=0;q=rr_depth_bias(s,state);#assert q.offset==0;
+ t[1].clip[2]=0.875;t[2].clip[2]=0.5;s=rr_triangle(t,4,2);q=rr_depth_bias(s,state);#assert q.slope==0.15625;
+ t[1].clip[2]=0.25;t[2].clip[2]=0.25;s=rr_triangle(t,2,2);q=rr_depth_bias(s,state);#assert q.slope==0 && q.resolution==0.0000000298023223876953125;
+}
+#test "reference depth bias refuses absent invalid and empty rasterization state" {
+ t:=[3]RRVertex.[rr_test_vertex(-1,1,0.5,1,0),rr_test_vertex(1,1,0.5,1,0),rr_test_vertex(-1,-1,0.5,1,0)];s:=rr_triangle(t,2,2);
+ state:=RenderPassState.{valid=true,depth=RenderDepth.none,bias=1};#assert rr_depth_bias(s,state).status==RQStatus.resource;
+ state.bias=0;#assert rr_depth_bias(s,state).status==RQStatus.ok;state.slope=1;#assert rr_depth_bias(s,state).status==RQStatus.resource;
+ state.slope=0;state.valid=false;#assert rr_depth_bias(s,state).status==RQStatus.resource;
+ state.valid=true;t[1]=t[0];#assert rr_depth_bias(rr_triangle(t,2,2),state).status==RQStatus.resource;
+ s.status=RQStatus.unsupported;#assert rr_depth_bias(s,state).status==RQStatus.unsupported;
+}
+#forall "reference translated oblique planes retain either dominant depth slope" axis:0..<2 {
+ // Screen vertices(1,2),(6,3),(2,7). These are the authored planes
+ // z=x/32+3y/32+1/32 and z=3x/32+y/32+3/32, respectively.
+ b:=ifx axis==0 then 0.5f32 else 0.75f32;c:=ifx axis==0 then 0.75f32 else 0.5f32;
+ t:=[3]RRVertex.[rr_test_vertex(-0.75,0.5,0.25,1,0),rr_test_vertex(0.5,0.25,b,1,0),rr_test_vertex(-0.5,-0.75,c,1,0)];
+ q:=rr_depth_bias(rr_triangle(t,8,8),RenderPassState.{valid=true,depth=RenderDepth.less,bias=2,slope=1});
+ #assert q.status==RQStatus.ok && q.slope==0.09375 && q.offset==0.09375011920928955078125;
+}
+#forall "reference depth resolution follows any vertex that carries the largest exponent" vertex:0..<3 {
+ t:=[3]RRVertex.[rr_test_vertex(-1,1,0.125,1,0),rr_test_vertex(1,1,0.25,1,0),rr_test_vertex(-1,-1,0.125,1,0)];
+ t[vertex].clip[2]=1;
+ q:=rr_depth_bias(rr_triangle(t,2,2),RenderPassState.{valid=true,depth=RenderDepth.less,bias=1});
+ #assert q.resolution==0.00000011920928955078125 && q.offset==0.00000011920928955078125;
+}
+
+rr_depth_resolution :: (value:f32)->RRScalar {
+ if !rq_finite(value) || value<0 || value>1 {return RRScalar.{status=RQStatus.resource};}
+ exponent:=(f32_bits(value)>>23)&255;
+ // A depth32 attachment cannot distinguish less than its least subnormal.
+ exponent+=ifx exponent==0 then 1 else 0;
+ resolution:=f64_from_bits((cast(u64)exponent+873)<<52);
+ return RRScalar.{value=cast(f32)resolution};
+}
+rr_depth_bias :: (s:RRTriangle,state:RenderPassState)->RRDepthBias {
+ if s.status!=RQStatus.ok {return RRDepthBias.{status=s.status};}
+ if s.empty || !state.valid || (state.depth==RenderDepth.none && (state.bias!=0 || state.slope!=0)) {return RRDepthBias.{status=RQStatus.resource};}
+ a:=s.vertices[0];b:=s.vertices[1];c:=s.vertices[2];
+ dx:=((b.z-a.z)*(c.y-a.y)-(c.z-a.z)*(b.y-a.y))/s.area;
+ dy:=((b.x-a.x)*(c.z-a.z)-(c.x-a.x)*(b.z-a.z))/s.area;
+ x:=abs(dx);y:=abs(dy);slope:=(x+y+abs(x-y))*0.5;
+ maximum:=(a.z+b.z+abs(a.z-b.z))*0.5;maximum=(maximum+c.z+abs(maximum-c.z))*0.5;
+ depth:=rq_clamp(cast(f32)maximum,0,1);resolution:=rr_depth_resolution(depth).value;
+ return RRDepthBias.{resolution=cast(f64)resolution,slope=slope,offset=cast(f64)cast(f32)state.bias*cast(f64)resolution+cast(f64)cast(f32)state.slope*slope};
+}

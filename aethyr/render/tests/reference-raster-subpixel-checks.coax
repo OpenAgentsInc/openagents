@@ -1,0 +1,41 @@
+// ActualWatchtower HUD inputs and independently captured RGBA32F observations.
+// These qualify a declared8-bit profile on the probed AppleMetal adapter;
+// they do not assign a universal WebGPU raster precision.
+rr_trace_triangle :: (which:int)->[3]RRVertex {
+ positions:=[3][2]f32.[[2]f32.[309.05499267578125,17.05500030517578],[2]f32.[288.94500732421875,17.05500030517578],[2]f32.[288.94500732421875,10.944999694824219]];
+ places:=[3][2]f32.[[2]f32.[-3.054999828338623,-3.054999828338623],[2]f32.[17.05500030517578,-3.054999828338623],[2]f32.[17.05500030517578,3.054999828338623]];
+ if which==1 {
+ positions=[3][2]f32.[[2]f32.[19.799999237060547,16.200000762939453],[2]f32.[16.200000762939453,34.12835693359375],[2]f32.[16.200000762939453,16.200000762939453]];
+ places=[3][2]f32.[[2]f32.[-1.8000000715255737,-1.8000000715255737],[2]f32.[16.12835693359375,1.8000000715255737],[2]f32.[-1.8000000715255737,1.8000000715255737]];
+ }
+ t:[3]RRVertex;for j:0..<3 {t[j].clip=[4]f32.[positions[j][0]/320.0f32*2.0f32-1.0f32,1.0f32-positions[j][1]/180.0f32*2.0f32,0,1];t[j].words[0]=f32_bits(places[j][0]);t[j].words[1]=f32_bits(places[j][1]);}return t;
+}
+rr_trace_blue :: (x:f32,y:f32,which:int)->f32 {
+ length:=14.0f32;radius:=0.715f32;strength:=0.9f32;width:=2.34f32;
+ if which==1 {length=14.328357696533203f32;radius=0.6000000238418579f32;strength=1;width=1.2000000476837158f32;}
+ along:=-x;if x-length>along {along=x-length;}if along<0 {along=0;}
+ d:=sqrt(along*along+y*y);a:=radius-0.5f32;b:=radius+0.6f32;t:=rq_clamp((d-a)/(b-a),0,1);core:=1-t*t*(3-2*t);g:=d/width;halo:=exp(-5*g*g)*0.28f32;
+ return (0.96f32*(core+halo))*strength;
+}
+#test "reference measured subpixel profile matches two actual fine HUD interpolation traces" {
+ p:=rr_raster_profile("nearest-positive",8);l:=RRLayout.{count=2};
+ for which:0..<2 {
+ t:=rr_trace_triangle(which);s:=rr_triangle_profile(t,320,180,p);
+ #assert s.status==RQStatus.ok && !s.empty;
+ x:=ifx which==0 then 290 else 16;y:=ifx which==0 then 12 else 16;lane:=3;
+ q:=rr_quad(s,l,x,y);#assert q.status==RQStatus.ok && (q.coverage&(cast(u32)1<<cast(u32)lane))!=0;
+ px:=f32_from_bits(q.lanes[lane].words[0]);py:=f32_from_bits(q.lanes[lane].words[1]);
+ if which==0 {#assert abs(px-14.500233388447262f32)<0.000002 && abs(py-0.5000511227971145f32)<0.000002;}
+ if which==1 {#assert abs(px-(-0.4993153476247598f32))<0.000002 && abs(py-0.4997831001198989f32)<0.000002;}
+ observed:=ifx which==0 then 0.6529293060302734f32 else 0.4538479149341583f32;
+ #assert abs(rr_trace_blue(px,py,which)-observed)<0.000003;
+ analytic:=rr_quad(rr_triangle(t,320,180),l,x,y);av:=rr_trace_blue(f32_from_bits(analytic.lanes[lane].words[0]),f32_from_bits(analytic.lanes[lane].words[1]),which);
+ #assert abs(av-observed)>0.0002;
+ }
+}
+#test "reference raster precision admission precedes geometry and snapped collapse is empty" {
+ t:=[3]RRVertex.[rr_test_vertex(0,0,0,1,0),rr_test_vertex(0.001,0,0,1,0),rr_test_vertex(0,0.001,0,1,0)];
+ bad:=rr_raster_profile("unknown",8);#assert rr_triangle_profile(t,0,0,bad).status==RQStatus.unsupported;
+ p:=rr_raster_profile("nearest-even",0);q:=rr_triangle_profile(t,2,2,p);#assert q.status==RQStatus.ok && q.empty;
+ #assert !rr_triangle(t,2,2).empty;
+}

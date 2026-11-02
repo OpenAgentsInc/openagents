@@ -192,12 +192,12 @@ icecream_scene_fs :: (s:IcecreamS,front:bool,u:[]f32)->V4 {
   c:V3;
   if (mode>1.5f32) {
     if front {
-      gpu_discard();
+      gpu_demote_helper();
     }
     c=wg_mix_f3f3f(ICECREAM_INK(),v3(u[28],u[29],u[30]),fog*0.6f32);
   } else {
     if (!front) {
-      gpu_discard();
+      gpu_demote_helper();
     }
     if (mode>0.5f32) {
       c=wg_mix_f3f3f(v3(s.look.x,s.look.y,s.look.z),v3(u[28],u[29],u[30]),fog*0.6f32);

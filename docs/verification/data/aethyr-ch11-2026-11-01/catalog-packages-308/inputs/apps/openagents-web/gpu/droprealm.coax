@@ -1,0 +1,219 @@
+// droprealm's shaders, the source of apps/openagents-web/droprealm.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (droprealm.module,
+// droprealm.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../aethyr/render/sampling.coax";
+#load "../../../aethyr/render/noise.coax";
+#load "../../../verse/gpu/wgsl.coax";
+
+// A first realm's three passes (droprealm.coax): the night and the floor
+// behind (stars, then the floor where each pixel's ray meets it, lit by the
+// lamp you carry, with the plates laid out over both), the pack's meshes
+// (scene_vs, scene_fs: lit by a key light and your lamp, the plates kept over
+// them) and the strokes over all of it (you, your flame, the words). Every
+// place and size comes from droprealm.coax.
+// DroprealmU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   panels 5
+//   k 6
+//   pad0 7
+//   r0 8
+//   r1 12
+//   r2 16
+//   r3 20
+//   lamp 24
+//   eye 28
+//   fwd 32
+//   rx 36
+//   uy 40
+//   panel 44
+// the view: clip = rows · world
+// the lamp: where (metres), strength
+// the eye (metres), then the floor's radius
+// a pixel's ray: fwd + ndc.x · rx + ndc.y · uy
+// per plate (droprealm.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
+// A plate (verse.wgsl's): a dark wood fill with one thin bronze line round
+// it and small rounded corners. Look 1 lights the line; 2 (under the mouse
+// or pressed) adds a step lighter fill and the bright line.
+droprealm_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if (s.y<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=4.0f32*s.x;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (d>1.0f32) {
+    return under;
+  }
+  over:bool=s.z>=2.0f32;
+  lit:bool=over||((s.z>=1.0f32)&&(s.z<2.0f32));
+  fill:V3=ifx over then v3(0.235f32,0.168f32,0.115f32) else v3(0.165f32,0.114f32,0.078f32);
+  line:V3=ifx lit then v3(0.86f32,0.70f32,0.42f32) else v3(0.69f32,0.541f32,0.29f32);
+  w:f32=1.25f32*s.x;
+  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.y,0.0f32,1.0f32);
+  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,edge*fmin(1.0f32,a+0.1f32));
+}
+droprealm_panels :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  {
+    k:s32=0;
+    while k<16 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      c=droprealm_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+44),wg_at4(u,(cast(int)((k*2)+1))*4+44));
+      k+=1;
+    }
+  }
+  return c;
+}
+#test "droprealm_hash live lattice uses the portable integer noise profile" {
+  #assert f32_bits(droprealm_hash(v2(1,2)))==0x3f6013da;
+}
+droprealm_hash :: (p:V2)->f32 {
+  return render_noise2(p.x,p.y);
+}
+// Stars: one at most per cell of 3 CSS pixels' grid, a few of them brighter, twinkling slowly.
+droprealm_stars :: (p:V2,u:[]f32)->f32 {
+  cell:f32=(3.0f32*fmax(u[6],1.0f32))*6.0f32;
+  g:V2=wg_floor_f2(wg_div_f2f(p,cell));
+  h:f32=droprealm_hash(g);
+  if (h<0.93f32) {
+    return 0.0f32;
+  }
+  at:V2=wg_mul_f2f(wg_add_f2f(wg_add_f2f2(g,wg_mul_f2f(v2(droprealm_hash(wg_add_f2f(g,1.7f32)),droprealm_hash(wg_add_f2f(g,9.1f32))),0.8f32)),0.1f32),cell);
+  d:f32=wg_length2(wg_sub_f2f2(p,at))/fmax(u[6],1.0f32);
+  size:f32=ifx h>0.992f32 then 0.95f32 else 0.55f32;
+  twinkle:f32=ifx u[4]>0.5f32 then 1.0f32 else 0.75f32+(0.25f32*sin((u[2]*(0.6f32+(h*2.0f32)))+(h*40.0f32)));
+  peak:f32=(ifx h>0.992f32 then 0.75f32 else 0.32f32)*twinkle;
+  return peak*(1.0f32-smoothstep(size*0.4f32,size+0.6f32,d));
+}
+droprealm_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+// The lamp's light on what it reaches, a share of its strength.
+droprealm_lamp_near :: (p:V3,n:V3,u:[]f32)->f32 {
+  to:V3=wg_sub_f3f3(v3(u[24],u[25],u[26]),p);
+  d:f32=wg_length3(to);
+  return (fmax(0.0f32,wg_dot3(n,wg_div_f3f(to,fmax(d,0.001f32))))*u[27])/(1.0f32+((0.18f32*d)*d));
+}
+droprealm_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  p:V2=v2(pos.x,pos.y);
+  ndc:V2=v2(((p.x/u[0])*2.0f32)-1.0f32,1.0f32-((p.y/u[1])*2.0f32));
+  ray:V3=wg_add_f3f3(wg_add_f3f3(v3(u[32],u[33],u[34]),wg_mul_ff3(ndc.x,v3(u[36],u[37],u[38]))),wg_mul_ff3(ndc.y,v3(u[40],u[41],u[42])));
+  sky:V3=wg_add_f3f3(v3(0.012f32,0.013f32,0.02f32),wg_mul_f3f(v3(0.03f32,0.032f32,0.045f32),clampf(1.0f32-(ray.y*3.0f32),0.0f32,1.0f32)));
+  sky=wg_add_f3f3(sky,wg_mul_f3f(wg_mul_f3f(wg_make_f3_f(droprealm_stars(p,u)),u[3]),smoothstep(0.0f32,0.25f32,ray.y)));
+  // the floor where the ray meets it (derivatives first: they need every pixel)
+  down:bool=ray.y<(-0.0001f32);
+  t:f32=ifx down then (-u[29])/fmin(ray.y,-0.0001f32) else 1000.0f32;
+  hit:V3=wg_add_f3f3(v3(u[28],u[29],u[30]),wg_mul_f3f(ray,fmin(t,1000.0f32)));
+  r:f32=wg_length2(v2(hit.x,hit.z));
+  w2:V2=wg_max_f2f2(wg_fwidth_f2(v2(hit.x,hit.z)),v2(0.0001f32,0.0001f32));
+  wr:f32=fmax(gpu_fwidth_fine(r/2.0f32)*2.0f32,0.0001f32);
+  g:V2=wg_div_f2f2(wg_abs_f2(wg_sub_f2f(wg_fract_f2(wg_add_f2f(v2(hit.x,hit.z),0.5f32)),0.5f32)),w2);
+  grid:f32=1.0f32-fmin(fmin(g.x,g.y),1.0f32);
+  rings:f32=1.0f32-fmin((abs(fract((r/2.0f32)+0.5f32)-0.5f32)*2.0f32)/wr,1.0f32);
+  edge:f32=ifx down then 1.0f32-smoothstep(u[31]-0.6f32,u[31],r) else 0.0f32;
+  // a stone floor: a faint metre grid and rings two metres apart, lit by a dim key and your lamp
+  fade:f32=exp((-t)*0.02f32);
+  ground:V3=wg_add_f3f3(wg_add_f3f3(v3(0.045f32,0.043f32,0.05f32),wg_mul_f3f(wg_mul_f3f(v3(0.035f32,0.03f32,0.025f32),grid),fade)),wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(0.05f32,0.062f32,0.078f32),rings),0.6f32),fade));
+  ground=wg_add_f3f3(ground,wg_mul_f3f(wg_mul_f3f(v3(0.55f32,0.78f32,1.0f32),droprealm_lamp_near(hit,v3(0.0f32,1.0f32,0.0f32),u)),0.55f32));
+  off:f32=(r-u[31])*2.5f32;
+  ground=wg_add_f3f3(ground,wg_mul_f3f(wg_mul_f3f(v3(0.45f32,0.6f32,0.78f32),exp((-off)*off)),0.25f32));
+  c:V3=wg_mix_f3f3f(sky,ground,edge*u[3]);
+  return wg_make_f4_f3f(droprealm_panels(p,c,u),1.0f32);
+}
+// ---- the pack's meshes: its vertices (pack_realm.py and drops.c: the Haunted House's 48
+// bytes, position, normal, uv, colour with its layer in the top byte), a
+// transform and tint a draw, its texture layers
+DroprealmObject :: struct {r0:V4; r1:V4; r2:V4; material:V4; }
+droprealm_word :: (i:u32,vertices:[]u32)->f32 {
+  return f32_from_bits(vertices[cast(int)i]);
+}
+DroprealmS :: struct {pos:V4; world:V3; normal:V3; uv:V2; tint:V3; slice:u32 #flat; }
+droprealm_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]DroprealmObject)->DroprealmS {
+  b:u32=mul_wrap(id,12);
+  p:V4=v4(droprealm_word(b,vertices),droprealm_word(add_wrap(b,1),vertices),droprealm_word(add_wrap(b,2),vertices),1.0f32);
+  n:V3=v3(droprealm_word(add_wrap(b,3),vertices),droprealm_word(add_wrap(b,4),vertices),droprealm_word(add_wrap(b,5),vertices));
+  m:DroprealmObject=objects[cast(int)instance];
+  w:V3=v3(wg_dot4(m.r0,p),wg_dot4(m.r1,p),wg_dot4(m.r2,p));
+  wp:V4=v4(w.x,w.y,w.z,1.0f32);
+  o:DroprealmS;
+  o.pos=v4(wg_dot4(wg_at4(u,8),wp),wg_dot4(wg_at4(u,12),wp),wg_dot4(wg_at4(u,16),wp),wg_dot4(wg_at4(u,20),wp));
+  o.world=w;
+  o.normal=v3(wg_dot3(v3(m.r0.x,m.r0.y,m.r0.z),n),wg_dot3(v3(m.r1.x,m.r1.y,m.r1.z),n),wg_dot3(v3(m.r2.x,m.r2.y,m.r2.z),n));
+  o.uv=v2(droprealm_word(add_wrap(b,6),vertices),droprealm_word(add_wrap(b,7),vertices));
+  o.tint=wg_mul_f3f3(wg_sw_rgb_f4(wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,8)])),v3(m.material.x,m.material.y,m.material.z));
+  o.slice=vertices[cast(int)add_wrap(b,8)]>>24;
+  return o;
+}
+droprealm_scene_fs :: (s:DroprealmS,u:[]f32,sheets:Tex2DArray,sheet:Sampler)->V4 {
+  tex:V4=render_sample_layer8(sheets,sheet,s.uv,cast,trunc(s32)(s.slice));
+  if (tex.w<0.35f32) {
+    gpu_demote_helper();
+  }
+  n:V3=wg_normalize3(s.normal);
+  key:f32=fmax(0.0f32,wg_dot3(n,wg_normalize3(v3(-0.4f32,0.8f32,0.45f32))));
+  lit:V3=wg_add_f3f3(wg_mul_f3f(v3(0.16f32,0.17f32,0.22f32),(0.6f32+(0.4f32*n.y))),wg_mul_f3f(v3(0.55f32,0.56f32,0.65f32),key));
+  lit=wg_add_f3f3(lit,wg_mul_f3f(wg_mul_f3f(v3(0.55f32,0.78f32,1.0f32),droprealm_lamp_near(s.world,n,u)),1.6f32));
+  c:V3=wg_mul_f3f(wg_mul_f3f3(wg_mul_f3f3(v3(tex.x,tex.y,tex.z),s.tint),lit),u[3]);
+  return wg_make_f4_f3f(droprealm_panels(v2(s.pos.x,s.pos.y),c,u),1.0f32);
+}
+// ---- the strokes: one quad per stroke or light (droprealm.coax lit, tinted_dot)
+DroprealmV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+// along, across, pixels
+// length, core, light, glow
+// red, green, blue, mode
+droprealm_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+droprealm_fx_vs :: (_vid2:u32,_iid3:u32,in_:droprealm_fx_vs_in,u:[]f32)->DroprealmV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:DroprealmV;
+  ndc:V2=v2(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32));
+  o.pos=v4(ndc.x,ndc.y,0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+droprealm_fx_fs :: (v:DroprealmV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_add_f2f :: (a:V2,b:f32)->V2 {return v2(a.x+b,a.y+b);}
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
+wg_mul_ff3 :: (a:f32,b:V3)->V3 {return v3(a*b.x,a*b.y,a*b.z);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_fwidth_f2 :: (p0:V2)->V2 {return v2(gpu_fwidth_fine(p0.x),gpu_fwidth_fine(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_sub_f2f :: (a:V2,b:f32)->V2 {return v2(a.x-b,a.y-b);}
+wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_sw_rgb_f4 :: (p:V4)->V3 {return v3(p.x,p.y,p.z);}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}

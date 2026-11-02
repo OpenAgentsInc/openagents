@@ -1,0 +1,643 @@
+{
+  "schema": "aethyr.render.visibility-scope-audit.v1",
+  "status": "input-only research; no acceptance or product oracle",
+  "decision": "Generic opaque-depth interval oracle is on hold. Parent selected physical IceCream mesh repair and canonical DeadGears discrete ring geometry repair.",
+  "input_only": true,
+  "gpu_readbacks_opened": false,
+  "frames": [
+    {
+      "name": "deadgears",
+      "frame_config": "/tmp/aethyr-ch11-native-deadgears-rgba16f/stage/frame.config",
+      "frame_config_sha256": "da83f28346a436df3a9fca79c5c186d329508bef8ae175744845cdbce31a2298",
+      "draw_payload_sha256": "e843237a265a3c33f073d05086c705e3718530215ad60cb2396219ee56ab1157",
+      "counts": [
+        4,
+        320,
+        180,
+        3186,
+        16,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "groups": {
+        "linear_box": {
+          "records": 1,
+          "instances": 293,
+          "triangles": 3516
+        },
+        "nonlinear_capsule": {
+          "records": 1,
+          "instances": 42,
+          "triangles": 3360
+        }
+      },
+      "draws": [
+        {
+          "record": 0,
+          "first": 0,
+          "count": 36,
+          "raw_base": 96,
+          "instances": 293,
+          "kind": "linear_box",
+          "triangles": 3516
+        },
+        {
+          "record": 1,
+          "first": 0,
+          "count": 240,
+          "raw_base": 0,
+          "instances": 42,
+          "kind": "nonlinear_capsule",
+          "triangles": 3360
+        }
+      ],
+      "whole_frame_interval_oracle_eligible": false,
+      "ambiguity_counts": null,
+      "ambiguity_count_status": "Not computed: no complete fixed-function/FS interval model has been declared. No pixels are silently treated as unambiguous."
+    },
+    {
+      "name": "icecream",
+      "frame_config": "/tmp/aethyr-ch11-native-icecream/stage/frame.config",
+      "frame_config_sha256": "d3098489d8d5bc69b78bff3aa695d2662fb2a3d8c7e08b642744364337e3e628",
+      "draw_payload_sha256": "f2682310496ccda9da2cd34ed8f68eddde57fd563b8158c74e19cf818efb60aa",
+      "counts": [
+        12,
+        320,
+        180,
+        2142,
+        16,
+        55,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "groups": {
+        "static_identity_world": {
+          "records": 1,
+          "instances": 80,
+          "triangles": 27200
+        },
+        "object_transform": {
+          "records": 32,
+          "instances": 37,
+          "triangles": 4806
+        },
+        "object_outline": {
+          "records": 22,
+          "instances": 27,
+          "triangles": 4328
+        }
+      },
+      "draws": [
+        {
+          "record": 0,
+          "first": 0,
+          "count": 1020,
+          "raw_base": 0,
+          "instances": 80,
+          "kind": "static_identity_world",
+          "triangles": 27200
+        },
+        {
+          "record": 1,
+          "first": 0,
+          "count": 396,
+          "raw_base": 8388608,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 132
+        },
+        {
+          "record": 2,
+          "first": 0,
+          "count": 396,
+          "raw_base": 12582912,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 132
+        },
+        {
+          "record": 3,
+          "first": 0,
+          "count": 192,
+          "raw_base": 8389632,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 64
+        },
+        {
+          "record": 4,
+          "first": 0,
+          "count": 396,
+          "raw_base": 8390656,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 132
+        },
+        {
+          "record": 5,
+          "first": 0,
+          "count": 396,
+          "raw_base": 12584960,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 132
+        },
+        {
+          "record": 6,
+          "first": 0,
+          "count": 192,
+          "raw_base": 8391680,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 64
+        },
+        {
+          "record": 7,
+          "first": 0,
+          "count": 396,
+          "raw_base": 8392704,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 132
+        },
+        {
+          "record": 8,
+          "first": 0,
+          "count": 396,
+          "raw_base": 12587008,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 132
+        },
+        {
+          "record": 9,
+          "first": 0,
+          "count": 192,
+          "raw_base": 8393728,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 64
+        },
+        {
+          "record": 10,
+          "first": 0,
+          "count": 192,
+          "raw_base": 8394752,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 64
+        },
+        {
+          "record": 11,
+          "first": 0,
+          "count": 192,
+          "raw_base": 8395776,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 64
+        },
+        {
+          "record": 12,
+          "first": 0,
+          "count": 192,
+          "raw_base": 8396800,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 64
+        },
+        {
+          "record": 13,
+          "first": 0,
+          "count": 192,
+          "raw_base": 8397824,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 64
+        },
+        {
+          "record": 14,
+          "first": 0,
+          "count": 216,
+          "raw_base": 8398848,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 72
+        },
+        {
+          "record": 15,
+          "first": 0,
+          "count": 216,
+          "raw_base": 12593152,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 72
+        },
+        {
+          "record": 16,
+          "first": 0,
+          "count": 216,
+          "raw_base": 8399872,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 72
+        },
+        {
+          "record": 17,
+          "first": 0,
+          "count": 216,
+          "raw_base": 12594176,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 72
+        },
+        {
+          "record": 18,
+          "first": 0,
+          "count": 216,
+          "raw_base": 8400896,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 72
+        },
+        {
+          "record": 19,
+          "first": 0,
+          "count": 216,
+          "raw_base": 12595200,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 72
+        },
+        {
+          "record": 20,
+          "first": 0,
+          "count": 216,
+          "raw_base": 8401920,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 72
+        },
+        {
+          "record": 21,
+          "first": 0,
+          "count": 216,
+          "raw_base": 12596224,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 72
+        },
+        {
+          "record": 22,
+          "first": 0,
+          "count": 1020,
+          "raw_base": 8402944,
+          "instances": 2,
+          "kind": "object_transform",
+          "triangles": 680
+        },
+        {
+          "record": 23,
+          "first": 0,
+          "count": 1020,
+          "raw_base": 12597248,
+          "instances": 2,
+          "kind": "object_outline",
+          "triangles": 680
+        },
+        {
+          "record": 24,
+          "first": 0,
+          "count": 30,
+          "raw_base": 8403968,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 10
+        },
+        {
+          "record": 25,
+          "first": 0,
+          "count": 30,
+          "raw_base": 8404992,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 10
+        },
+        {
+          "record": 26,
+          "first": 0,
+          "count": 30,
+          "raw_base": 8406016,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 10
+        },
+        {
+          "record": 27,
+          "first": 0,
+          "count": 132,
+          "raw_base": 8407040,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 44
+        },
+        {
+          "record": 28,
+          "first": 0,
+          "count": 132,
+          "raw_base": 12601344,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 44
+        },
+        {
+          "record": 29,
+          "first": 0,
+          "count": 288,
+          "raw_base": 8408064,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 96
+        },
+        {
+          "record": 30,
+          "first": 0,
+          "count": 288,
+          "raw_base": 12602368,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 96
+        },
+        {
+          "record": 31,
+          "first": 0,
+          "count": 132,
+          "raw_base": 8409088,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 44
+        },
+        {
+          "record": 32,
+          "first": 0,
+          "count": 132,
+          "raw_base": 12603392,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 44
+        },
+        {
+          "record": 33,
+          "first": 0,
+          "count": 288,
+          "raw_base": 8410112,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 96
+        },
+        {
+          "record": 34,
+          "first": 0,
+          "count": 288,
+          "raw_base": 12604416,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 96
+        },
+        {
+          "record": 35,
+          "first": 0,
+          "count": 1020,
+          "raw_base": 8411136,
+          "instances": 2,
+          "kind": "object_transform",
+          "triangles": 680
+        },
+        {
+          "record": 36,
+          "first": 0,
+          "count": 1020,
+          "raw_base": 12605440,
+          "instances": 2,
+          "kind": "object_outline",
+          "triangles": 680
+        },
+        {
+          "record": 37,
+          "first": 0,
+          "count": 1020,
+          "raw_base": 8412160,
+          "instances": 4,
+          "kind": "object_transform",
+          "triangles": 1360
+        },
+        {
+          "record": 38,
+          "first": 0,
+          "count": 1020,
+          "raw_base": 12606464,
+          "instances": 4,
+          "kind": "object_outline",
+          "triangles": 1360
+        },
+        {
+          "record": 39,
+          "first": 0,
+          "count": 1008,
+          "raw_base": 8413184,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 336
+        },
+        {
+          "record": 40,
+          "first": 0,
+          "count": 1008,
+          "raw_base": 12607488,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 336
+        },
+        {
+          "record": 41,
+          "first": 0,
+          "count": 108,
+          "raw_base": 8414208,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 36
+        },
+        {
+          "record": 42,
+          "first": 0,
+          "count": 108,
+          "raw_base": 12608512,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 36
+        },
+        {
+          "record": 43,
+          "first": 0,
+          "count": 252,
+          "raw_base": 8415232,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 84
+        },
+        {
+          "record": 44,
+          "first": 0,
+          "count": 252,
+          "raw_base": 12609536,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 84
+        },
+        {
+          "record": 45,
+          "first": 0,
+          "count": 72,
+          "raw_base": 8416256,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 24
+        },
+        {
+          "record": 46,
+          "first": 0,
+          "count": 72,
+          "raw_base": 12610560,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 24
+        },
+        {
+          "record": 47,
+          "first": 0,
+          "count": 72,
+          "raw_base": 8417280,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 24
+        },
+        {
+          "record": 48,
+          "first": 0,
+          "count": 72,
+          "raw_base": 12611584,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 24
+        },
+        {
+          "record": 49,
+          "first": 0,
+          "count": 72,
+          "raw_base": 8418304,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 24
+        },
+        {
+          "record": 50,
+          "first": 0,
+          "count": 72,
+          "raw_base": 12612608,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 24
+        },
+        {
+          "record": 51,
+          "first": 0,
+          "count": 72,
+          "raw_base": 8419328,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 24
+        },
+        {
+          "record": 52,
+          "first": 0,
+          "count": 72,
+          "raw_base": 12613632,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 24
+        },
+        {
+          "record": 53,
+          "first": 0,
+          "count": 276,
+          "raw_base": 8420352,
+          "instances": 1,
+          "kind": "object_transform",
+          "triangles": 92
+        },
+        {
+          "record": 54,
+          "first": 0,
+          "count": 276,
+          "raw_base": 12614656,
+          "instances": 1,
+          "kind": "object_outline",
+          "triangles": 92
+        }
+      ],
+      "whole_frame_interval_oracle_eligible": false,
+      "ambiguity_counts": null,
+      "ambiguity_count_status": "Not computed: no complete fixed-function/FS interval model has been declared. No pixels are silently treated as unambiguous."
+    }
+  ],
+  "gamma8_audit": {
+    "epsilon": "2^-23, conservative one-sided correctly-rounded normal-f32 relative unit",
+    "derivation": "For a four-term dot represented by four products and any binary sum tree, each leaf sees at most four rounding factors. Each of two evaluations differs from the exact dot by at most gamma4*S; therefore their difference is at most2*gamma4*S <= gamma8*S, gamma_n=n*epsilon/(1-n*epsilon). This is the justification for a CPU-centred gamma8 bound, not the mere total of seven operations.",
+    "required_conditions": [
+      "Explicit four-term linear-form reassociation/contraction family; no arbitrary transformed expression count claim.",
+      "Finite input/products/intermediates, no overflow; exclude FTZ/subnormal cases by a demonstrated normal-range/quantum condition or include a justified additive underflow term.",
+      "Outward-rounded bound construction and interval arithmetic.",
+      "For composed object/world/clip transforms, propagate world uncertainty through the clip dot instead of bounding only the final dot.",
+      "Positive separated W interval, stable orientation, complete admitted clipping and coverage ownership; otherwise refusal."
+    ]
+  },
+  "blocking_scope_findings": [
+    "Vulkan approximate non-shader precision wording does not define a precise global1e-5 interpolation-error band or an image-independent N-ULP depth radius.",
+    "subPixelPrecisionBits describes XY precision; it supplies no D32 depth setup error bound. Existing empirical snap profiles are device-qualified, not universal normative algorithms.",
+    "Exact world coplanarity is an input geometry fact, but alone does not prove full GPU depth order, coverage or candidate shader colours after approximate transformations.",
+    "Nominal CPU fragment colours are not a complete colour interval when geometry uncertainty can cross toon, shadow/hash, shine, front/discard or other discontinuous branches. Initial eligibility needs branch/input-stability certificates or refusal.",
+    "All alternatives must remain complete RGBA vectors; keep the existing comparison bound, count all ambiguities/cap overflow and refuse unsupported/cap-exhausted frames.",
+    "The ordered opaque LESS winner test must respect strict earlier competition and non-strict later competition, initial clear depth, optional coverage and fragment discard.",
+    "DeadGears capsule azimuths extend beyond the specified WGSL sin/cos accuracy interval; this path cannot inherit a finite spec-derived position bound from the linear box model."
+  ],
+  "primary_sources": [
+    {
+      "url": "https://www.w3.org/TR/2026/CRD-WGSL-20261026/#floating-point-accuracy",
+      "claim": "Shader arithmetic accuracy, reassociation/fusion and bounded-domain trigonometric guarantees are distinct from fixed-function rasterization."
+    },
+    {
+      "url": "https://docs.vulkan.org/spec/latest/appendices/spirvenv.html#spirvenv-precision-operation",
+      "claim": "Floating-point evaluation can rearrange expressions unless constrained; individual operation bounds have their own rounding, denormal and inherited-formula rules."
+    },
+    {
+      "url": "https://docs.vulkan.org/spec/latest/chapters/fundamentals.html",
+      "claim": "Non-shader arithmetic has approximate minimum precision requirements, not a mandated interpolation implementation."
+    }
+  ],
+  "product_files_edited": [],
+  "source_scope": {
+    "phase": "Pre-repair proposed oracle review; historical evidence only. The subsequent canonical ring repair removes the identified capsule trigonometric-domain issue but does not establish a general visibility oracle.",
+    "deadgears_shader_before_sha256": "1065de3da810b5bc8205a6026aff3cb7a743d83cccd9394551802fb9d4377da3",
+    "subsequent_ring_evidence": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-ring8/qualification.json"
+  }
+}

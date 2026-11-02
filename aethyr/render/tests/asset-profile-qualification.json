@@ -1,0 +1,38 @@
+{
+  "schema": "aethyr.render.asset-profile.v1",
+  "status": "pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "source_closure_sha256": {
+    "aethyr/render/asset-profile.coax": "7b86793b25e78deab91386d3ddebe383501e7bd2111f9e521b8dc0a3636b63a7",
+    "aethyr/render/binding-sources.coax": "4128fa3131dbaf2dfce5e4279b782c6801e9bfe80282275c726cdb5b46afc122",
+    "aethyr/render/catalog.coax": "ffc486dfe5ba07894b0e82485133411411ecc6e62e470621a2befbe9dea2d888",
+    "aethyr/render/bindings.coax": "8f5644b4665a1660f9a15605118e3515689e5697a8101866e68d9f7237f641bc",
+    "aethyr/render/passes.coax": "0517ad56939bf6d0728b7da508139a5690c89b732902a0cbfc044e13091f3462",
+    "aethyr/render/types.coax": "c07a198adc2327e9aad482383c975e9a5bc1a933ecc4adfeb924312c791bf89e",
+    "aethyr/render/resources.coax": "4b481afcea5906f2f9f5c10a5b8fee5f503eb735e56388ce652b19e3a5bfc3e8",
+    "aethyr/render/frame.coax": "9591c2ef6e9fe7e44a299afdeb80bc8fcb8728ee374376cf6385f3d675bc9471",
+    "aethyr/tests/render-frame-checks.coax": "8e1f9e66ac22434aed838d09e58eb77089ea7ac040e93bb1f66b13901eaae007",
+    "aethyr/render/tests/resources-checks.coax": "22e811191a1112c1740694d96338936a20ff8092c5915f0638e80f70d0f2c61f",
+    "aethyr/render/media-profile.coax": "a224f77209b4a956899ec604ccf5778646623ba077b13efcf320b715c921b239",
+    "aethyr/render/tests/binding-sources-checks.coax": "bc8449bd749a5ccb5e673bccf38b86bad5b553d8a7faa9e8c093ba775f6be4a8"
+  },
+  "checks": 81,
+  "root_mutants": 250,
+  "killed": 250,
+  "survivors": 0,
+  "equivalence_waivers": 0,
+  "catalog_profiles": 18,
+  "asset_row_limit": 48,
+  "physical_entry_units": 1,
+  "artifacts": {
+    "docs/verification/data/aethyr-ch11-2026-11-01/asset-profile/checks-first.log": "13ab2e5fec45b4f0983bcf0824dd8a5114fac97952460541d17690de3b7097fc",
+    "docs/verification/data/aethyr-ch11-2026-11-01/asset-profile/baseline.log": "54660a04da827daf16fd625e73c70767a97db7cc2b69d10cd755df9846caa995",
+    "docs/verification/data/aethyr-ch11-2026-11-01/asset-profile/root-308.log": "41916633ee88ab31e01218a13d169ed87bc3866b0da1c456ab4f709289215802",
+    "docs/verification/data/aethyr-ch11-2026-11-01/asset-profile/mips-checks-first.log": "58549e4bf9ba0138bb159b65e7c3d6cddfea2018935a3fa68e3a09b62e046fba",
+    "docs/verification/data/aethyr-ch11-2026-11-01/asset-profile/root-308-mips-final249.log": "183628c85eb892141bf2985aa81be5822b73077e3c5e27b8ee5da7e32cd69a0b",
+    "docs/verification/data/aethyr-ch11-2026-11-01/asset-profile/layer-description-first.log": "1e6a7d8cfb499f6dadbb8a94cdedbb1d2f02914327472e6686506b5b7cdaacd3",
+    "docs/verification/data/aethyr-ch11-2026-11-01/asset-profile/root-308-final250.log": "6ff3fed0dabf98de1e87f99b03672a260f70d2ef1ca63024077c4f0adef3d293"
+  },
+  "scope": "Complete canonical catalog asset declarations, expanded pack delivery IDs/parts, ordinal source lookup, exact layer/sound URLs, initial/required channels and checked readiness observations. Scene readiness waits only for storage/index/layers; mesh placeholder is separate and particle readiness comes from compiled pipeline/buffer observations. CPU/GPU effects, fetching, pack decoding and actual producer delivery remain consumer qualification. Also owns first-image layer mip dimensions/full chain and refusal at profile/device dimension and array-layer bounds. Authored truncated chains such as the sans atlas remain separate canonical profiles. Layer upload descriptor retains rgba8unorm-srgb, unpremultiplied destination alpha (legacy omitted flag/defaultfalse) and high quality platform resizing; sans remains its distinct premultiplied profile.",
+  "baseline_note": "Final250-site mutation executes all81 baseline groups and covers frozen asset/mip policy plus the additive layer upload descriptor. Earlier197/249-site gates and full-baseline logs are retained as historical evidence."
+}

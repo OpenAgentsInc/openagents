@@ -1,0 +1,11 @@
+{
+  "status": "strict-point-fail",
+  "scope": "New canonicalring8product, originalactualproducerinputspreserved. Samefourpixels/twelvechannels remain; no improvementclaim fromsourceprimitivequalification.",
+  "gpu_receipt": "../../../native-renderer-progress/deadgears-ring8/qualification.json",
+  "shader_steps": 2894650102,
+  "files": {
+    "cpu.rgba32f.gz": "c6bae7ee894ab1ed9e9e3efb7021376d61f5ffe870f19ee18e746ae4dc3d7574",
+    "measurement.json": "85cecf734c4c7503dd4e14e00b15b84e72cdb35800a99d8189bd00b5852d0059",
+    "comparison.json": "5a9805899728514ad95eb538a0909db909ef9048930b3f84e89caf9a6a872084"
+  }
+}

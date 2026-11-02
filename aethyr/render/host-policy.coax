@@ -1,0 +1,381 @@
+// A source part: legacy application roots already own the shared SHA kernel.
+// Physical authority remains here while carrier compilation deduplicates it.
+#load "runtime.coax";
+#load "package.coax";
+#load "binding-sources.coax";
+#load "resources.coax" as host_target;
+#authority;
+
+RenderHostPackageState :: struct {active_bank:int=-1;package:RenderPackage;epoch:u64;}
+RenderHostPackageCandidate :: struct {
+ status:RenderPackageStatus=RenderPackageStatus.invalid;bank:int=-1;base_bank:int=-1;epoch:u64;
+ package:RenderPackage;device:RenderDeviceCapabilities;
+ modules:[3]bool;spirv:[14]bool;trees:[14]bool;pipelines:[14]bool;
+}
+RenderHostWordView :: struct {status:RenderFrameStatus=RenderFrameStatus.bad_upload;address:u64;words:int;}
+
+#test "host byte staging and source views refuse before construction outside their actual spans" {
+  #assert render_host_json_size(0)==RenderPackageStatus.ok && render_host_json_size(RENDER_PACKAGE_JSON)==RenderPackageStatus.ok;
+  #assert render_host_json_size(-1)==RenderPackageStatus.capacity && render_host_json_size(RENDER_PACKAGE_JSON+1)==RenderPackageStatus.capacity;
+  rh_view:=render_host_words(16,16,8,8);#assert rh_view.status==RenderFrameStatus.ok && rh_view.address==16 && rh_view.words==2;
+  rh_view=render_host_words(24,16,8,0);#assert rh_view.status==RenderFrameStatus.ok && rh_view.address==24 && rh_view.words==0;
+  #assert render_host_words(16,16,8,12).status==RenderFrameStatus.bad_upload;
+  #assert render_host_words(15,16,8,4).status==RenderFrameStatus.bad_upload;
+  #assert render_host_words(17,16,8,4).status==RenderFrameStatus.bad_upload;
+}
+#forall "host backend transport preserves only the three declared identities" rh_backend:0..<5 {
+  rh_device:=render_host_device(rh_backend,true,false);
+  if rh_backend>=1 && rh_backend<=3 {
+    #assert cast(int)rh_device.backend==rh_backend && rh_device.helper_enabled && !rh_device.int64_enabled;
+  }else {#assert rh_device.backend==RenderBackend.invalid;}
+}
+#test "host operation projection never exposes an inactive or invalid frame slot" {
+  rh_frame:=[1]RenderRuntimeFrame.[RenderRuntimeFrame.{status=RenderRuntimeStatus.ok}];
+  rh_frame[0].plan.count=1;rh_frame[0].plan.ops[0]=RenderOp.{kind=RenderOpKind.draw,state=RenderPassState.{valid=true},count=3};
+  rh_frame[0].plan.ops[1]=RenderOp.{kind=RenderOpKind.draw,state=RenderPassState.{valid=true},count=99};
+  #assert render_host_operation(rh_frame[..],0).state.valid && render_host_operation(rh_frame[..],0).count==3;
+  #assert !render_host_operation(rh_frame[..],-1).state.valid && !render_host_operation(rh_frame[..],1).state.valid;
+  rh_frame[0].status=RenderRuntimeStatus.bad_frame;#assert !render_host_operation(rh_frame[..],0).state.valid;
+  #assert !render_host_operation(rh_frame[0..<0],0).state.valid;
+}
+
+#forall "host profile selection binds app page and exact catalog realm" rh_profile:0..<18 {
+  rh_meta:=render_catalog(rh_profile);
+  #assert render_host_find_profile(rh_meta.app,rh_meta.slug,rh_meta.page)==rh_profile;
+  #assert render_host_find_profile("unknown-app",rh_meta.slug,rh_meta.page)==-1;
+  #assert render_host_find_profile(rh_meta.app,rh_meta.slug,rh_meta.page+1)==-1;
+}
+#test "host selection refuses ambiguous shared apps and unknown realm identities" {
+  #assert render_host_find_profile("realm","",0)==-1;
+  #assert render_host_find_profile("newland","",1)==1;
+  #assert render_host_find_profile("newland","",0)==-1;
+  #assert render_host_find_profile("garden","",0)==16;
+  #assert render_host_find_profile("realm","missing",0)==-1;
+  #assert render_host_find_profile("garden","x",0)==-1;
+  #assert render_host_find_profile("","",0)==-1;
+}
+#forall "host implicit app selection covers both catalog endpoints and refuses shared ownership" rh_profile:0..<18 {
+  rh_meta:=render_catalog(rh_profile);
+  rh_expected:=ifx rh_profile==0 || rh_profile==11 then -1 else rh_profile;
+  #assert render_host_find_profile(rh_meta.app,"",rh_meta.page)==rh_expected;
+}
+#test "host package admission commits only an inactive retained JSON and entry bank" {
+  rh_state:=[1]RenderHostPackageState.[RenderHostPackageState.{}];rh_a:[14]RenderPackageEntry;rh_b:[14]RenderPackageEntry;
+  rh_device:=RenderDeviceCapabilities.{backend=RenderBackend.webgpu};
+  #assert render_host_candidate_bank(rh_state[..])==0;
+  #assert render_host_package_load(rh_state[..],RPKG_TEST_JSON,rh_a[..],1,rh_device,0)==RenderPackageStatus.ok;
+  #assert rh_state[0].active_bank==0 && rh_state[0].package.profile_index==1 && rh_state[0].package.entries[12].present;
+  #assert render_host_candidate_bank(rh_state[..])==1;
+  #assert render_host_package_load(rh_state[..],"{}",rh_b[..],1,rh_device,1)!=RenderPackageStatus.ok;
+  #assert rh_state[0].active_bank==0 && rh_state[0].package.entry_count==2 && rh_state[0].package.entries[12].wgsl_fragment=="fx_fs";
+  #assert render_host_package_load(rh_state[..],RPKG_TEST_JSON,rh_b[..],1,rh_device,0)==RenderPackageStatus.invalid;
+  #assert render_host_package_load(rh_state[..],RPKG_TEST_JSON,rh_b[..],0,rh_device,1)==RenderPackageStatus.mismatch;
+  #assert rh_state[0].active_bank==0 && rh_state[0].package.profile_index==1;
+  #assert render_host_package_load(rh_state[..],RPKG_TEST_JSON,rh_b[..],1,rh_device,1)==RenderPackageStatus.ok;
+  #assert rh_state[0].active_bank==1 && render_host_candidate_bank(rh_state[..])==0;
+}
+#test "host package rejects corrupt bank state and unsupported capabilities before publication" {
+  rh_state:=[1]RenderHostPackageState.[RenderHostPackageState.{}];rh_entries:[14]RenderPackageEntry;
+  rh_device:=RenderDeviceCapabilities.{backend=RenderBackend.vulkan};
+  #assert render_host_package_load(rh_state[..],RPKG_TEST_JSON,rh_entries[..],1,rh_device,0)==RenderPackageStatus.capability;
+  #assert rh_state[0].active_bank==-1 && rh_state[0].package.status==RenderPackageStatus.invalid;
+  rh_state[0].active_bank=2;
+  #assert render_host_candidate_bank(rh_state[..])==-1;
+  #assert render_host_package_load(rh_state[..],RPKG_TEST_JSON,rh_entries[..],1,rh_device,-1)==RenderPackageStatus.invalid;
+  rh_state[0].active_bank=-2;#assert render_host_candidate_bank(rh_state[..])==-1;
+  #assert render_host_candidate_bank(rh_state[0..<0])==-1;
+  #assert render_host_candidate_bank(rh_state[..])==-1;
+}
+
+render_host_find_profile :: (rh_app:string,rh_realm:string,rh_page:int)->int {
+  if rh_realm.count>0 {
+    rh_index:=render_catalog_find(rh_realm);rh_meta:=render_catalog(rh_index);
+    if rh_meta.valid && rh_meta.app==rh_app && rh_meta.page==rh_page {return rh_index;}
+    return -1;
+  }
+  rh_found:=-1;
+  for rh_index:0..<RENDER_CATALOG_COUNT {
+    rh_meta:=render_catalog(rh_index);
+    if rh_meta.app==rh_app && rh_meta.page==rh_page {if rh_found!=-1 {return -1;}rh_found=rh_index;}
+  }
+  return rh_found;
+}
+render_host_json_size :: (rh_count:int)->RenderPackageStatus {
+  if rh_count<0 || rh_count>RENDER_PACKAGE_JSON {return RenderPackageStatus.capacity;}
+  return RenderPackageStatus.ok;
+}
+render_host_device :: (rh_backend:int,rh_helper:bool,rh_int64:bool)->RenderDeviceCapabilities {
+  if rh_backend<cast(int)RenderBackend.webgpu || rh_backend>cast(int)RenderBackend.reference {return RenderDeviceCapabilities.{};}
+  return RenderDeviceCapabilities.{backend=cast(RenderBackend)rh_backend,helper_enabled=rh_helper,int64_enabled=rh_int64};
+}
+render_host_operation :: (rh_frame:[]RenderRuntimeFrame,rh_index:int)->RenderOp {
+  if rh_frame.count!=1 {return RenderOp.{};}
+  if rh_frame[0].status!=RenderRuntimeStatus.ok || rh_index<0 || rh_index>=rh_frame[0].plan.count {return RenderOp.{};}
+  return rh_frame[0].plan.ops[rh_index];
+}
+// Read-only span admission uses the same range/alignment primitive as uploads.
+// Its virtual destination has exactly the byte extent of the source view;
+// it does not attest that any GPU buffer has already been allocated.
+render_host_words :: (rh_address:u64,rh_base:u64,rh_capacity:u64,rh_bytes:u64)->RenderHostWordView {
+  rh_span:=RenderUpload.{source_address=rh_address,source_base=rh_base,source_bytes=rh_capacity,bytes=rh_bytes,gpu_bytes=rh_bytes};
+  if !render_upload_ok(rh_span) {return RenderHostWordView.{};}
+  return RenderHostWordView.{status=RenderFrameStatus.ok,address=rh_address,words=cast(int)(rh_bytes/4)};
+}
+render_host_candidate_bank :: (rh_state:[]RenderHostPackageState)->int {
+  if rh_state.count!=1 {return -1;}
+  if rh_state[0].active_bank< -1 || rh_state[0].active_bank>1 {return -1;}
+  return ifx rh_state[0].active_bank==0 then 1 else 0;
+}
+render_host_package_load :: (rh_state:[]RenderHostPackageState,rh_json:string,rh_entries:[]RenderPackageEntry,rh_profile:int,rh_device:RenderDeviceCapabilities,rh_bank:int)->RenderPackageStatus {
+  // Trusted startup compatibility: metadata admission still publishes immediately.
+  // Reloading hosts use prepare/product/pipeline/commit below instead.
+  rh_prepared:=render_host_package_prepare(rh_state,rh_json,rh_entries,rh_profile,rh_device,rh_bank);
+  if rh_prepared.status!=RenderPackageStatus.ok {return rh_prepared.status;}
+  rh_state[0].package=rh_prepared.package;rh_state[0].active_bank=rh_bank;return RenderPackageStatus.ok;
+}
+
+#test "host raw target enums refuse wrapped values before narrowing and intersect device limits" {
+ rh_q:=render_host_target_raw(1,1,1,false,0,1);
+ #assert rh_q.status==host_target.RenderResourceStatus.ok && rh_q.format==host_target.RenderTextureFormat.rgba8;
+ #assert render_host_target_raw(1,1,1,false,1,1).format==host_target.RenderTextureFormat.bgra8;
+ #assert render_host_target_raw(1,1,1,false,2,1).format==host_target.RenderTextureFormat.rgba16f;
+ #assert render_host_target_raw(1,1,1,false,3,1).status==host_target.RenderResourceStatus.invalid;
+ #assert render_host_target_raw(1,1,1,false,4,1).status==host_target.RenderResourceStatus.invalid;
+ #assert render_host_target_raw(1,1,1,false,-1,1).status==host_target.RenderResourceStatus.invalid;
+ #assert render_host_target_raw(1,1,1,false,256,1).status==host_target.RenderResourceStatus.invalid;
+ #assert render_host_target_raw(-1,1,1,false,0,1).status==host_target.RenderResourceStatus.capacity;
+ #assert render_host_target_raw(0,1,1,false,0,1).status==host_target.RenderResourceStatus.invalid;
+ #assert render_host_target_raw(255,1,1,false,0,1).status==host_target.RenderResourceStatus.capacity;
+ #assert render_host_target_raw(2,1,1,false,3,1).status==host_target.RenderResourceStatus.invalid;
+ #assert render_host_target_raw(12,1,1,false,0,1).status==host_target.RenderResourceStatus.invalid;
+ #assert render_host_target_raw(13,1,1,false,0,1).status==host_target.RenderResourceStatus.capacity;
+ #assert render_host_target_raw(257,1,1,false,0,1).status==host_target.RenderResourceStatus.capacity;
+ #assert render_host_target_raw(1,1,1,false,0,0).status==host_target.RenderResourceStatus.capacity;
+ #assert render_host_target_raw(1,1,1,false,0,-1).status==host_target.RenderResourceStatus.capacity;
+ rh_q=render_host_target_raw(2,16384,16384,false,1,32768);
+ #assert rh_q.status==host_target.RenderResourceStatus.ok && rh_q.width==16384 && rh_q.format==host_target.RenderTextureFormat.rgba16f;
+ #assert render_host_target_raw(2,16385,1,false,1,32768).status==host_target.RenderResourceStatus.capacity;
+ #assert render_host_target_raw(2,16384,1,false,1,16383).status==host_target.RenderResourceStatus.capacity;
+ #assert render_host_target_raw(2,16384,1,false,1,16384).status==host_target.RenderResourceStatus.ok;
+ #assert render_host_target_raw(1,1,1,false,0,9223372036854775807).status==host_target.RenderResourceStatus.ok;
+ #assert render_host_target_raw(2,16385,1,false,0,9223372036854775807).status==host_target.RenderResourceStatus.capacity;
+ #assert render_host_target_raw(2,2,1,false,0,1).status==host_target.RenderResourceStatus.capacity;
+ #assert render_host_target_raw(5,1,1,false,0,2048).status==host_target.RenderResourceStatus.ok;
+ #assert render_host_target_raw(5,1,1,false,0,2047).status==host_target.RenderResourceStatus.capacity;
+}
+render_host_target_raw :: (rh_target:int,rh_width:int,rh_height:int,rh_coarse:bool,rh_format:int,rh_device_max:int)->host_target.RenderTargetDescriptor {
+ if rh_target<0 || rh_target>cast(int)RenderTarget.invalid {return host_target.RenderTargetDescriptor.{status=host_target.RenderResourceStatus.capacity};}
+ if rh_format<0 || rh_format>=cast(int)host_target.RenderTextureFormat.depth32 {return host_target.RenderTargetDescriptor.{};}
+ if rh_device_max<=0 {return host_target.RenderTargetDescriptor.{status=host_target.RenderResourceStatus.capacity};}
+ // Exact signed positive-part caps the platform extent without a tie branch.
+ rh_profile_max:=RenderFrameLimits.{}.max_width;rh_excess:=rh_device_max-rh_profile_max;
+ rh_positive:=rh_excess&((rh_excess>>63)^(-1));rh_limit:=rh_device_max-rh_positive;
+ return host_target.render_target_desc_with_limit(cast(RenderTarget)rh_target,rh_width,rh_height,rh_coarse,cast(host_target.RenderTextureFormat)rh_format,rh_limit);
+}
+
+#test "host reload waits for every verified module and created pipeline before replacing its active bank" {
+ rh_txstate:=[1]RenderHostPackageState.[RenderHostPackageState.{}];rh_txe:[14]RenderPackageEntry;
+ rh_txc:=[1]RenderHostPackageCandidate.[render_host_package_prepare(rh_txstate[..],RPKG_TEST_JSON,rh_txe[..],1,RenderDeviceCapabilities.{backend=RenderBackend.webgpu},0)];
+ #assert rh_txc[0].status==RenderPackageStatus.ok && rh_txstate[0].active_bank== -1 && rh_txstate[0].epoch==1;
+ #assert render_host_package_commit(rh_txstate[..],rh_txc[..])==RenderPackageStatus.invalid && rh_txstate[0].active_bank== -1;
+ rh_txb:=[3]u8.[97,98,99];#assert render_host_package_product(rh_txc[..],0,0,rh_txb[..])==RenderPackageStatus.ok && rh_txc[0].modules[0];
+ #assert render_host_package_pipeline(rh_txc[..],0,true)==RenderPackageStatus.ok;
+ #assert render_host_package_commit(rh_txstate[..],rh_txc[..])==RenderPackageStatus.invalid;
+ #assert render_host_package_pipeline(rh_txc[..],12,true)==RenderPackageStatus.ok;
+ #assert render_host_package_commit(rh_txstate[..],rh_txc[..])==RenderPackageStatus.ok;
+ #assert rh_txstate[0].active_bank==0 && rh_txstate[0].package.slug=="the-grid" && rh_txstate[0].package.entries[12].present;
+ #assert render_host_package_commit(rh_txstate[..],rh_txc[..])==RenderPackageStatus.invalid;
+}
+#test "host reload failures and a later retry preserve the old borrowed bank and invalidate stale prepared receipts" {
+ rh_txstate:=[1]RenderHostPackageState.[RenderHostPackageState.{}];rh_txa:[14]RenderPackageEntry;rh_txb:[14]RenderPackageEntry;
+ rh_txdev:=RenderDeviceCapabilities.{backend=RenderBackend.webgpu};
+ #assert render_host_package_load(rh_txstate[..],RPKG_TEST_JSON,rh_txa[..],1,rh_txdev,0)==RenderPackageStatus.ok;
+ rh_txc:=[1]RenderHostPackageCandidate.[render_host_package_prepare(rh_txstate[..],RPKG_TEST_JSON,rh_txb[..],1,rh_txdev,1)];rh_old:=rh_txc[0];
+ #assert rh_txc[0].status==RenderPackageStatus.ok && rh_txstate[0].active_bank==0;
+ rh_bad:=render_host_package_prepare(rh_txstate[..],"{}",rh_txb[..],1,rh_txdev,1);#assert rh_bad.status!=RenderPackageStatus.ok;
+ rh_stale:=[1]RenderHostPackageCandidate.[rh_old];#assert render_host_package_commit(rh_txstate[..],rh_stale[..])==RenderPackageStatus.invalid;
+ #assert rh_txstate[0].active_bank==0 && rh_txstate[0].package.entries[12].wgsl_fragment=="fx_fs";
+ rh_txc[0]=render_host_package_prepare(rh_txstate[..],RPKG_TEST_JSON,rh_txb[..],1,rh_txdev,1);
+ rh_bytes:=[3]u8.[97,98,100];#assert render_host_package_product(rh_txc[..],0,0,rh_bytes[..])==RenderPackageStatus.hash;
+ #assert rh_txc[0].status==RenderPackageStatus.hash && render_host_package_commit(rh_txstate[..],rh_txc[..])==RenderPackageStatus.invalid;
+ #assert rh_txstate[0].active_bank==0 && rh_txstate[0].package.slug=="the-grid";
+ rh_txc[0]=render_host_package_prepare(rh_txstate[..],RPKG_TEST_JSON,rh_txb[..],1,rh_txdev,1);rh_bytes[2]=99;
+ #assert render_host_package_product(rh_txc[..],0,0,rh_bytes[..])==RenderPackageStatus.ok;
+ #assert render_host_package_pipeline(rh_txc[..],0,true)==RenderPackageStatus.ok;
+ #assert render_host_package_pipeline(rh_txc[..],12,false)==RenderPackageStatus.invalid;
+ #assert render_host_package_commit(rh_txstate[..],rh_txc[..])==RenderPackageStatus.invalid && rh_txstate[0].active_bank==0;
+}
+render_host_package_prepare :: (rh_state:[]RenderHostPackageState,rh_json:string,rh_entries:[]RenderPackageEntry,rh_profile:int,rh_device:RenderDeviceCapabilities,rh_bank:int)->RenderHostPackageCandidate {
+ rh_next:=render_host_candidate_bank(rh_state);
+ if rh_next<0 || rh_bank!=rh_next {return RenderHostPackageCandidate.{};}
+ if rh_state[0].epoch==18446744073709551615 {return RenderHostPackageCandidate.{status=RenderPackageStatus.capacity};}
+ // Even a failed parse invalidates the previous receipt borrowing this bank.
+ rh_state[0].epoch+=1;
+ rh_pkg:=render_package_parse(rh_json,rh_entries);
+ if rh_pkg.status!=RenderPackageStatus.ok {return RenderHostPackageCandidate.{status=rh_pkg.status};}
+ rh_status:=render_package_admit(rh_pkg,rh_profile,rh_device);
+ if rh_status!=RenderPackageStatus.ok {return RenderHostPackageCandidate.{status=rh_status};}
+ return RenderHostPackageCandidate.{status=RenderPackageStatus.ok,bank=rh_bank,base_bank=rh_state[0].active_bank,epoch=rh_state[0].epoch,package=rh_pkg,device=rh_device};
+}
+// Kind0 is a WGSL module,1 a SPIR-V entry,2 a checked-tree entry.
+// Failed product or pipeline effects poison only this candidate, never active state.
+render_host_package_product :: (rh_candidate:[]RenderHostPackageCandidate,rh_kind:int,rh_index:int,rh_bytes:[]u8)->RenderPackageStatus {
+ if rh_candidate.count!=1 || rh_candidate[0].status!=RenderPackageStatus.ok {return RenderPackageStatus.invalid;}
+ rh_status:=RenderPackageStatus.invalid;
+ if rh_kind==0 {rh_status=render_package_module_bytes(rh_candidate[0].package,rh_index,rh_bytes);}
+ else if rh_kind==1 {rh_status=render_package_spirv_bytes(rh_candidate[0].package,rh_index,rh_bytes);}
+ else if rh_kind==2 {rh_status=render_package_tree_bytes(rh_candidate[0].package,rh_index,rh_bytes);}
+ if rh_status!=RenderPackageStatus.ok {rh_candidate[0].status=rh_status;return rh_status;}
+ if rh_kind==0 {rh_candidate[0].modules[rh_index]=true;}
+ else if rh_kind==1 {rh_candidate[0].spirv[rh_index]=true;}
+ else {rh_candidate[0].trees[rh_index]=true;}
+ return RenderPackageStatus.ok;
+}
+render_host_package_pipeline :: (rh_candidate:[]RenderHostPackageCandidate,rh_index:int,rh_ready:bool)->RenderPackageStatus {
+ if rh_candidate.count!=1 || rh_candidate[0].status!=RenderPackageStatus.ok {return RenderPackageStatus.invalid;}
+ if rh_index<0 || rh_index>=rh_candidate[0].package.entries.count || !rh_candidate[0].package.entries[rh_index].present || !rh_ready {
+  rh_candidate[0].status=RenderPackageStatus.invalid;return RenderPackageStatus.invalid;
+ }
+ rh_candidate[0].pipelines[rh_index]=true;return RenderPackageStatus.ok;
+}
+render_host_package_commit :: (rh_state:[]RenderHostPackageState,rh_candidate:[]RenderHostPackageCandidate)->RenderPackageStatus {
+ if rh_candidate.count!=1 || rh_candidate[0].status!=RenderPackageStatus.ok {return RenderPackageStatus.invalid;}
+ rh_next:=render_host_candidate_bank(rh_state);
+ if rh_next<0 || rh_candidate[0].bank!=rh_next || rh_candidate[0].base_bank!=rh_state[0].active_bank || rh_candidate[0].epoch!=rh_state[0].epoch {return RenderPackageStatus.invalid;}
+ rh_q:=rh_candidate[0];rh_status:=render_package_admit(rh_q.package,rh_q.package.profile_index,rh_q.device);
+ if rh_status!=RenderPackageStatus.ok {return rh_status;}
+ for rh_i:0..<14 {if rh_q.package.entries[rh_i].present {
+  if !rh_q.pipelines[rh_i] {return RenderPackageStatus.invalid;}
+  if rh_q.device.backend==RenderBackend.vulkan && !rh_q.spirv[rh_i] {return RenderPackageStatus.invalid;}
+  if rh_q.device.backend==RenderBackend.reference && !rh_q.trees[rh_i] {return RenderPackageStatus.invalid;}
+ }}
+ if rh_q.device.backend==RenderBackend.webgpu {for rh_i:0..<3 {if rh_q.package.modules[rh_i].present && !rh_q.modules[rh_i] {return RenderPackageStatus.invalid;}}}
+ rh_state[0].package=rh_q.package;rh_state[0].active_bank=rh_q.bank;return RenderPackageStatus.ok;
+}
+
+#test "host transaction preparation admits one owner and refuses active corrupt or exhausted banks" {
+ rh_txs:=[2]RenderHostPackageState.[RenderHostPackageState.{},RenderHostPackageState.{}];rh_txe:[14]RenderPackageEntry;rh_d:=RenderDeviceCapabilities.{backend=RenderBackend.webgpu};
+ #assert render_host_package_prepare(rh_txs[0..<0],RPKG_TEST_JSON,rh_txe[..],1,rh_d,0).status==RenderPackageStatus.invalid;
+ #assert render_host_package_prepare(rh_txs[..],RPKG_TEST_JSON,rh_txe[..],1,rh_d,0).status==RenderPackageStatus.invalid;
+ #assert render_host_package_prepare(rh_txs[0..<1],RPKG_TEST_JSON,rh_txe[..],1,rh_d,1).status==RenderPackageStatus.invalid;
+ rh_txs[0].active_bank=2;#assert render_host_package_prepare(rh_txs[0..<1],RPKG_TEST_JSON,rh_txe[..],1,rh_d,0).status==RenderPackageStatus.invalid;
+ rh_txs[0].active_bank= -1;rh_txs[0].epoch=18446744073709551615;
+ #assert render_host_package_prepare(rh_txs[0..<1],RPKG_TEST_JSON,rh_txe[..],1,rh_d,0).status==RenderPackageStatus.capacity && rh_txs[0].epoch==18446744073709551615;
+ rh_txs[0].epoch=18446744073709551614;rh_q:=render_host_package_prepare(rh_txs[0..<1],RPKG_TEST_JSON,rh_txe[..],0,rh_d,0);
+ #assert rh_q.status==RenderPackageStatus.mismatch && rh_txs[0].epoch==18446744073709551615 && rh_txs[0].active_bank== -1;
+}
+#test "host transactions reject absent products invalid acknowledgements and malformed candidate views" {
+ rh_txs:=[1]RenderHostPackageState.[RenderHostPackageState.{}];rh_e:[14]RenderPackageEntry;
+ rh_c:=[2]RenderHostPackageCandidate.[render_host_package_prepare(rh_txs[..],RPKG_TEST_JSON,rh_e[..],1,RenderDeviceCapabilities.{backend=RenderBackend.webgpu},0),RenderHostPackageCandidate.{}];rh_good:=rh_c[0];rh_b:=[3]u8.[97,98,99];
+ #assert render_host_package_product(rh_c[0..<0],0,0,rh_b[..])==RenderPackageStatus.invalid && render_host_package_product(rh_c[..],0,0,rh_b[..])==RenderPackageStatus.invalid;
+ #assert render_host_package_product(rh_c[1..<2],0,0,rh_b[..])==RenderPackageStatus.invalid;
+ #assert render_host_package_pipeline(rh_c[0..<0],0,true)==RenderPackageStatus.invalid && render_host_package_pipeline(rh_c[..],0,true)==RenderPackageStatus.invalid;
+ #assert render_host_package_pipeline(rh_c[1..<2],0,true)==RenderPackageStatus.invalid;
+ #assert render_host_package_commit(rh_txs[..],rh_c[0..<0])==RenderPackageStatus.invalid && render_host_package_commit(rh_txs[..],rh_c[..])==RenderPackageStatus.invalid && render_host_package_commit(rh_txs[..],rh_c[1..<2])==RenderPackageStatus.invalid;
+ for rh_k:0..<4 {rh_c[0]=rh_good;rh_ix:=ifx rh_k==0 then -1 else ifx rh_k==1 then 3 else 1;rh_kind:=ifx rh_k==3 then 3 else 0;
+  #assert render_host_package_product(rh_c[0..<1],rh_kind,rh_ix,rh_b[..])==RenderPackageStatus.invalid && rh_c[0].status==RenderPackageStatus.invalid;
+ }
+ for rh_k:0..<3 {rh_c[0]=rh_good;rh_ix:=ifx rh_k==0 then -1 else ifx rh_k==1 then 14 else 1;
+  #assert render_host_package_pipeline(rh_c[0..<1],rh_ix,true)==RenderPackageStatus.invalid && rh_c[0].status==RenderPackageStatus.invalid;
+ }
+ rh_c[0]=rh_good;rh_c[0].pipelines[0]=true;rh_c[0].pipelines[12]=true;rh_c[0].modules[0]=true;
+ #assert render_host_package_commit(rh_txs[0..<0],rh_c[0..<1])==RenderPackageStatus.invalid;
+ rh_c[0].base_bank=0;#assert render_host_package_commit(rh_txs[..],rh_c[0..<1])==RenderPackageStatus.invalid;
+ rh_c[0]=rh_good;rh_c[0].package.status=RenderPackageStatus.invalid;#assert render_host_package_commit(rh_txs[..],rh_c[0..<1])==RenderPackageStatus.invalid;
+}
+#forall "host transaction native and reference products are distinct from a verified browser module" rh_backend:2..<4 {
+ rh_s:=[1]RenderHostPackageState.[RenderHostPackageState.{}];rh_e:[14]RenderPackageEntry;
+ rh_c:=[1]RenderHostPackageCandidate.[render_host_package_prepare(rh_s[..],RPKG_TEST_JSON,rh_e[..],1,render_host_device(rh_backend,true,true),0)];rh_abc:=[3]u8.[97,98,99];
+ #assert rh_c[0].status==RenderPackageStatus.ok;
+ #assert render_host_package_product(rh_c[..],0,0,rh_abc[..])==RenderPackageStatus.ok;
+ #assert render_host_package_pipeline(rh_c[..],0,true)==RenderPackageStatus.ok && render_host_package_pipeline(rh_c[..],12,true)==RenderPackageStatus.ok;
+ #assert render_host_package_commit(rh_s[..],rh_c[..])==RenderPackageStatus.invalid;
+ if rh_backend==2 {rh_spv:=RPKG_TEST_SPV;
+  #assert render_host_package_product(rh_c[..],1,0,rh_spv[..])==RenderPackageStatus.ok && render_host_package_product(rh_c[..],1,12,rh_spv[..])==RenderPackageStatus.ok;
+  #assert rh_c[0].spirv[0] && rh_c[0].spirv[12] && !rh_c[0].trees[0];
+ }else {rh_b:[34]u8;for rh_i:0..<RPKG_TEST_TREE.count {rh_b[rh_i]=RPKG_TEST_TREE[rh_i];}
+  #assert render_host_package_product(rh_c[..],2,0,rh_b[..])==RenderPackageStatus.ok && render_host_package_product(rh_c[..],2,12,rh_b[..])==RenderPackageStatus.ok;
+  #assert rh_c[0].trees[0] && rh_c[0].trees[12] && !rh_c[0].spirv[0];
+ }
+ #assert render_host_package_commit(rh_s[..],rh_c[..])==RenderPackageStatus.ok && rh_s[0].active_bank==0;
+}
+#test "host transaction verifies all three module banks and the last media pipeline" {
+ rh_s:=[1]RenderHostPackageState.[RenderHostPackageState.{}];rh_e:[14]RenderPackageEntry;
+ rh_c:=[1]RenderHostPackageCandidate.[render_host_package_prepare(rh_s[..],RPKG_TEST_MEDIA,rh_e[..],13,RenderDeviceCapabilities.{backend=RenderBackend.webgpu,helper_enabled=true},0)];rh_b:=[3]u8.[97,98,99];
+ #assert rh_c[0].status==RenderPackageStatus.ok && rh_c[0].package.modules[2].present && rh_c[0].package.entries[13].present;
+ for rh_i:0..<14 {if rh_c[0].package.entries[rh_i].present {#assert render_host_package_pipeline(rh_c[..],rh_i,true)==RenderPackageStatus.ok;}}
+ #assert render_host_package_product(rh_c[..],0,0,rh_b[..])==RenderPackageStatus.ok && render_host_package_product(rh_c[..],0,1,rh_b[..])==RenderPackageStatus.ok;
+ #assert render_host_package_commit(rh_s[..],rh_c[..])==RenderPackageStatus.invalid && rh_s[0].active_bank== -1;
+ #assert render_host_package_product(rh_c[..],0,2,rh_b[..])==RenderPackageStatus.ok;
+ #assert render_host_package_commit(rh_s[..],rh_c[..])==RenderPackageStatus.ok && rh_s[0].package.entries[13].wgsl_fragment=="fs";
+}
+
+#test "host commit requires the first pipeline and first module independently" {
+ rh_s:=[1]RenderHostPackageState.[RenderHostPackageState.{}];rh_e:[14]RenderPackageEntry;
+ rh_c:=[1]RenderHostPackageCandidate.[render_host_package_prepare(rh_s[..],RPKG_TEST_JSON,rh_e[..],1,RenderDeviceCapabilities.{backend=RenderBackend.webgpu},0)];
+ rh_c[0].pipelines[12]=true;rh_c[0].modules[0]=true;
+ #assert render_host_package_commit(rh_s[..],rh_c[..])==RenderPackageStatus.invalid;
+ rh_c[0].pipelines[0]=true;rh_c[0].modules[0]=false;
+ #assert render_host_package_commit(rh_s[..],rh_c[..])==RenderPackageStatus.invalid;
+ rh_c[0].modules[0]=true;rh_c[0].bank= -1;rh_c[0].base_bank=2;rh_s[0].active_bank=2;
+ #assert render_host_package_commit(rh_s[..],rh_c[..])==RenderPackageStatus.invalid && rh_s[0].active_bank==2;
+}
+
+RenderHostByteView :: struct {status:RenderFrameStatus=RenderFrameStatus.bad_upload;address:u64;bytes:u64;}
+#test "host text source spans admit unaligned bytes and zero end views without overflowing endpoints" {
+ rh_bv:=render_host_bytes(5,3,10,7);#assert rh_bv.status==RenderFrameStatus.ok && rh_bv.address==5 && rh_bv.bytes==7;
+ #assert render_host_bytes(13,3,10,0).status==RenderFrameStatus.ok;
+ #assert render_host_bytes(14,3,10,0).status==RenderFrameStatus.bad_upload;
+ #assert render_host_bytes(2,3,10,1).status==RenderFrameStatus.bad_upload;
+ #assert render_host_bytes(3,3,10,11).status==RenderFrameStatus.bad_upload;
+ #assert render_host_bytes(7,3,10,7).status==RenderFrameStatus.bad_upload;
+ rh_bv=render_host_bytes(18446744073709551615,18446744073709551610,5,0);#assert rh_bv.status==RenderFrameStatus.ok && rh_bv.address==18446744073709551615 && rh_bv.bytes==0;
+ #assert render_host_bytes(18446744073709551615,18446744073709551610,5,1).status==RenderFrameStatus.bad_upload;
+ #assert render_host_bytes(0,0,18446744073709551615,18446744073709551615).status==RenderFrameStatus.ok;
+}
+render_host_bytes :: (rh_address:u64,rh_base:u64,rh_capacity:u64,rh_bytes:u64)->RenderHostByteView {
+ if rh_address<rh_base || rh_bytes>rh_capacity || rh_address-rh_base>rh_capacity-rh_bytes {return RenderHostByteView.{};}
+ return RenderHostByteView.{status=RenderFrameStatus.ok,address=rh_address,bytes=rh_bytes};
+}
+
+RenderHostBool :: struct {ok:bool;value:bool;}
+#forall "host raw booleans preserve only the two declared integer encodings" rh_boolraw:-3..<4 {
+ rh_boolq:=render_host_bool(rh_boolraw);#assert rh_boolq.ok==(rh_boolraw==0 || rh_boolraw==1);
+ #assert rh_boolq.value==(rh_boolraw==1);
+}
+#test "host raw booleans refuse wide transports before narrowing" {
+ for rh_boolraw:[7]int.[-9223372036854775808,-256,-1,2,256,4294967296,9223372036854775807] {rh_boolq:=render_host_bool(rh_boolraw);#assert !rh_boolq.ok && !rh_boolq.value;}
+}
+render_host_bool :: (rh_raw:int)->RenderHostBool {
+ if rh_raw!=0 && rh_raw!=1 {return RenderHostBool.{};}
+ return RenderHostBool.{ok=true,value=rh_raw==1};
+}
+
+#forall "host raw readiness preserves only the declared loading background and ready states" rh_readiness_raw:-2..<6 {
+ rh_readiness_q:=render_host_readiness(rh_readiness_raw);
+ #assert cast(int)rh_readiness_q==(ifx rh_readiness_raw>=0 && rh_readiness_raw<3 then rh_readiness_raw else 3);
+}
+#test "host raw readiness refuses integers that would wrap into a declared state" {
+ for rh_readiness_raw:[6]int.[-9223372036854775808,-256,-1,255,256,9223372036854775807] {#assert render_host_readiness(rh_readiness_raw)==RenderReadiness.invalid;}
+}
+render_host_readiness :: (rh_raw:int)->RenderReadiness {
+ rh_valid:=[3]RenderReadiness.[RenderReadiness.loading,RenderReadiness.background,RenderReadiness.ready];
+ if rh_raw<0 || rh_raw>=rh_valid.count {return RenderReadiness.invalid;}return rh_valid[rh_raw];
+}
+
+#test "host asset destination checks measured object capacity and linear memory for arbitrary bytes" {
+ #assert render_host_asset_span(3,7,7,10).status==RenderFrameStatus.ok;
+ #assert render_host_asset_span(3,7,3,10).status==RenderFrameStatus.ok;
+ #assert render_host_asset_span(3,7,8,20).status==RenderFrameStatus.bad_upload;
+ #assert render_host_asset_span(3,7,7,9).status==RenderFrameStatus.bad_upload;
+ #assert render_host_asset_span(0,7,1,10).status==RenderFrameStatus.bad_upload;
+ #assert render_host_asset_span(3,0,1,10).status==RenderFrameStatus.bad_upload;
+ #assert render_host_asset_span(0,0,0,0).status==RenderFrameStatus.ok;
+ #assert render_host_asset_span(18446744073709551610,5,5,18446744073709551615).status==RenderFrameStatus.ok;
+ #assert render_host_asset_span(18446744073709551610,6,6,18446744073709551615).status==RenderFrameStatus.bad_upload;
+}
+render_host_asset_span :: (rh_address:u64,rh_capacity:u64,rh_bytes:u64,rh_memory:u64)->RenderHostByteView {
+ if rh_bytes>0 && rh_address==0 {return RenderHostByteView.{};}
+ rh_object:=render_host_bytes(rh_address,rh_address,rh_capacity,rh_bytes);if rh_object.status!=RenderFrameStatus.ok {return rh_object;}
+ return render_host_bytes(rh_address,0,rh_memory,rh_bytes);
+}

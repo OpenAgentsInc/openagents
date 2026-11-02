@@ -1,0 +1,11 @@
+47 |  const result=response.result.value;result.browser=browser;result.inputs=inputs;result.source_changes=sources.filter(path=>digest(path)!==inputs[path]);
+48 |  const discrepancies=[];
+49 |  for(let i=0;i<cases.cases.length;i++)for(let k=0;k<4;k++)if(!Number.isFinite(result.results[i]?.rgba[k]) || result.results[i].rgba[k]!==Math.fround(cases.cases[i].expected[k]))discrepancies.push({case:i,channel:k,expected:Math.fround(cases.cases[i].expected[k]),actual:result.results[i]?.rgba[k],word:result.results[i]?.words[k]});
+50 |  result.discrepancies=discrepancies;result.comparison=cases.comparison;result.cases_sha256=digest(casesPath);
+51 |  writeFileSync(output,JSON.stringify(result,null,2)+"\n");
+52 |  if(discrepancies.length||result.messages.length||result.errors.length||result.source_changes.length||result.results.length!==728)throw Error("ring probe shader/readback failed");
+                                                                                                                                             ^
+error: ring probe shader/readback failed
+      at /Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_ring8_webgpu.ts:52:137
+
+Bun v1.4.0 (macOS arm64)

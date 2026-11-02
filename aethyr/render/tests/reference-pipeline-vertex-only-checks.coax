@@ -1,0 +1,69 @@
+#load "reference-pipeline-caster-tree.coax";
+// Actual compiler-emitted VS-only and present-void-FS programs.
+RP_VERTEX_ONLY_TREE :: [142]u32.[2,11,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,7,3,6,0,2,16,4,20,24,9,2,7,2,2,0,2,4,8,7,3,6,0,9,16,4,2147483672,28,2,10,4,4,4,7,8,4,4,4,7,8,58,1,1,4,31,10,3,27,41,40,2,0,22,1,2,19,1,27,41,40,2,1,27,42,40,3,16,5,0,0,19,1,19,2,16,2,1088421888,27,41,40,2,1,27,42,40,3,16,5,0,0,19,1,27,41,40,2,2,18,1,9,2,2,2,2,2,2,10,1,1,4,31,9,2,18,0,18,1,1,0,0,0,1,2,3];
+RP_VOID_TREE :: [174]u32.[3,11,0,1,2,3,4,5,7,4,2,0,2,4,2,8,2,12,16,7,3,6,0,2,16,4,20,24,9,2,7,2,2,0,2,4,8,7,3,6,0,9,16,4,2147483672,28,3,10,4,4,4,7,8,4,4,4,7,8,58,1,1,4,31,10,3,27,41,40,2,0,22,2,2,19,1,27,41,40,2,1,27,42,40,3,16,5,0,0,19,1,19,2,16,2,1088421888,27,41,40,2,1,27,42,40,3,16,5,0,0,19,1,27,41,40,2,2,18,1,0,1,10,1,10,23,1,1,6,0,19,8,27,41,41,40,0,0,0,16,2,1065353216,1,1,2,33,18,0,0,9,2,2,2,2,2,2,10,1,1,4,31,9,2,18,0,18,1,2,0,0,0,1,2,3,1,1,4];
+
+#forall "reference pipeline separates an absent fragment stage from a present void stage" present:bool {
+ a:=RP_VERTEX_ONLY_TREE;b:=RP_VOID_TREE;tree:[]u32=a[..];if present {tree=b[..];}
+ meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree,meta[..]);r:=rr_pipeline(p,tree,meta[..]);
+ #assert r.status==RQStatus.ok && r.has_fragment==present && r.colours==0 && r.depth_word==(-1);
+ if present {#assert r.varyings==2 && r.layout.count==3 && r.fs.result_type==0;}else {#assert r.varyings==0 && r.layout.count==0;}
+}
+#forall "reference pipeline depth-only passes preserve both colour targets and execute a void fragment control" present:bool {
+ a:=RP_VERTEX_ONLY_TREE;b:=RP_VOID_TREE;tree:[]u32=a[..];if present {tree=b[..];}
+ meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree,meta[..]);r:=rr_pipeline(p,tree,meta[..]);
+ values:=[1]u32.[f32_bits(1.0f32)];buffers:=[1]RQBuffer.[RQBuffer.{words=values[..],count=1,stride=4}];resources:=RQResources.{buffers=buffers[..]};
+ bindings:=[1]RRBinding.[RRBinding.{name_id=rq_ir_parameter(p,tree,meta[..],0,3).name_id,kind=1,resource=0}];
+ locations:=[3]RRAttribute.[RRAttribute.{components=4},RRAttribute.{location=1,offset=4,components=1},RRAttribute.{location=2,offset=5,components=1}];
+ words:=rp_test_attrs();attrs:=RRAttributes.{words=words[..],stride=6,locations=locations[..]};commands:=[1]RenderDecodedDraw.[RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=6,instances=1}];
+ indices:[1]u32;memory:[RQ_IR_WORDS]u32;target:[4]RRPixel;scratch:[4]RRPixel;
+ clear:=RRPixel.{depth=1,colour=RQColor.{r=2,g=3,b=4,a=5},aux=RQColor.{r=6,g=7,b=8,a=9}};for k:0..<4 {target[k]=clear;}
+ state:=RenderPassState.{valid=true,depth=RenderDepth.less,depth_write=true,outputs=0,bias=2,slope=2};
+ q:=rr_reference_pass(r,p,tree,meta[..],resources,bindings[..],attrs,commands[..],indices[0..<0],state,2,2,RRFormat.unorm8,1000000,memory[..],scratch[..],target[..]);
+ expected:=ifx present then 2 else 4;#assert q.status==RQStatus.ok && q.triangles==2 && q.quads==2 && q.fragments==expected && q.written==expected;
+ for k:0..<4 {
+  #assert target[k].depth==(ifx present && k%2==1 then 1.0f32 else 0.50000011920928955078125f32);
+  #assert target[k].colour.r==2 && target[k].colour.g==3 && target[k].colour.b==4 && target[k].colour.a==5;
+  #assert target[k].aux.r==6 && target[k].aux.g==7 && target[k].aux.b==8 && target[k].aux.a==9;
+ }
+}
+#test "reference pipeline vertex-only shading needs no shader work and no fragment argument packet" {
+ tree:=RP_VERTEX_ONLY_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);
+ quad:RRQuad;quad.coverage=5;depths:=[4]f32.[0.125,0.25,0.5,0.75];for lane:0..<4 {quad.lanes[lane].position[2]=depths[lane];}
+ resources:RQResources;bindings:[]RRBinding;memory:[1]u32;
+ shaded:=rr_shade(r,p,tree[..],meta[..],resources,bindings,quad,false,0,memory[..]);
+ #assert shaded.status==RQStatus.ok && shaded.steps==0 && shaded.publish==5;for lane:0..<4 {#assert shaded.depth[lane]==depths[lane];}
+ refused:=rr_shade(r,p,tree[..],meta[..],resources,bindings,quad,false,-1,memory[..]);#assert refused.status==RQStatus.budget && refused.steps==0 && refused.publish==0;
+ packet:=[4]u32.[11,22,33,44];#assert rr_fragment_inputs(r,p,tree[..],meta[..],resources,bindings,quad,false,packet[..])==RQStatus.unsupported;
+ #assert packet[0]==11 && packet[1]==22 && packet[2]==33 && packet[3]==44;
+}
+
+#test "reference pipeline admits the actual catalog caster without a fragment stage" {
+ tree:=RP_CATALOG_CASTER_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(tree[..],meta[..]);r:=rr_pipeline(p,tree[..],meta[..]);
+ #assert p.status==RQStatus.ok && r.status==RQStatus.ok && !r.has_fragment && r.colours==0 && r.varyings==0 && r.layout.count==0;
+ #assert r.vs.params==3 && r.vs.input_words==12 && r.vs.result_words==4 && r.vs.attributes_type==(-1) && r.vs.resource_start==2;
+ u:=rq_ir_parameter(p,tree[..],meta[..],0,2);#assert u.kind==1 && u.stride==4 && u.words==1;
+}
+#test "reference pipeline finds a present fragment at procedure0 after root record permutation" {
+ original:=RP_TEST_TREE;meta:[RQ_IR_META]int;p:=rq_ir_prepare(original[..],meta[..]);
+ first:=rq_ir_proc(meta[..],0,7)-2;middle:=rq_ir_proc(meta[..],0,5);last:=rq_ir_proc(meta[..],1,5);tree:=original;
+ at:=first;for j:middle..<last {tree[at]=original[j];at+=1;}for j:first..<middle {tree[at]=original[j];at+=1;}
+ entry:=p.entry_at;tree[entry+1]=1;tree[entry+3+rq_ir_proc(meta[..],0,1)]=0;
+ p=rq_ir_prepare(tree[..],meta[..]);#assert p.status==RQStatus.ok && rq_ir_entry(p,tree[..],meta[..],1)==0;
+ r:=rr_pipeline(p,tree[..],meta[..]);#assert r.status==RQStatus.ok && r.has_fragment && r.colours==2 && r.varyings==2;
+ target:[4]RRPixel;for j:0..<4 {target[j].depth=1;}
+ q:=rr_test_fixture(tree[..],0,target[..]);#assert q.status==RQStatus.ok && q.written==4;
+ values:=[4]f32.[4,6,8,10];for j:0..<4 {#assert target[j].depth==0.5f32 && target[j].colour.r==values[j] && target[j].colour.g==2 && target[j].colour.b==(-4) && target[j].colour.a==1;}
+}
+
+#forall "reference pipeline native depth-only fixture dispatch matches its full pixel receipt" present:bool {
+ a:=RP_VERTEX_ONLY_TREE;b:=RP_VOID_TREE;tree:[]u32=a[..];if present {tree=b[..];}
+ clear:=RRPixel.{depth=1,colour=RQColor.{r=0.125,g=0.25,b=0.5,a=0.75},aux=RQColor.{r=0.25,g=0.5,b=0.75,a=1}};
+ target:[16]RRPixel;for j:0..<16 {target[j]=clear;}
+ q:=rr_test_fixture(tree,ifx present then 16 else 15,target[..]);#assert q.status==RQStatus.ok && q.written==(ifx present then 2 else 4);
+ for j:0..<16 {
+  expected:=ifx j<4 && (!present || j%2==0) then 0.50000011920928955078125f32 else 1.0f32;#assert target[j].depth==expected;
+  #assert target[j].colour.r==0.125f32 && target[j].colour.g==0.25f32 && target[j].colour.b==0.5f32 && target[j].colour.a==0.75f32;
+  #assert target[j].aux.r==0.25f32 && target[j].aux.g==0.5f32 && target[j].aux.b==0.75f32 && target[j].aux.a==1;
+ }
+}

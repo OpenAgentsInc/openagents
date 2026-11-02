@@ -1,0 +1,19 @@
+{
+  "schema": "aethyr.render.default-everglade-build.v1",
+  "status": "pass",
+  "elapsed_seconds": 779.014,
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "wasm_sha256": "bf436b991f9ed1cbb397f888d861a831cf4b8a1fdd5b12f278957397db021935",
+  "source_changes": [],
+  "previous_incomplete_attempt": "docs/verification/data/aethyr-ch11-2026-11-01/default-wasm-routing/everglade-incomplete",
+  "phase_sample": "everglade-phase-sample.txt",
+  "phase_observation": "All1529 sampled stacks were run_check evaluator work. This attempt completed before its810-second deadline; no1fac retry is needed.",
+  "files": {
+    "everglade-phase-sample.txt": "102cd4a6c3911f946789706abfef40712ce76c2e35e0ef84df24904638c60d18",
+    "everglade.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "everglade.wasm": "bf436b991f9ed1cbb397f888d861a831cf4b8a1fdd5b12f278957397db021935",
+    "build-one.py": "aaae9c2a1053027f11178870ae56646fab1c9f0e0ed9c77a63cc2df98d2a8c61",
+    "admitted-c-headers.tar.gz": "16388bbd31032fe3ae1a54e8644273ec3869db315d9749fd95149e6a261001d6",
+    "everglade.json": "434ebedc41a13b3e0410ab6ff3b6b951a13422f7c5c69c6c0a70943cd4fbdf47"
+  }
+}

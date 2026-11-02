@@ -1,0 +1,172 @@
+#test "host pipeline activation data retains positive work for every graph branch" {
+  rhbt_template:=RENDER_HOST_PIPELINE_TEMPLATE;
+  #assert rhbt_template.width==1 && rhbt_template.height==1 && rhbt_template.vertex_stride==1 && rhbt_template.hud_vertices==1;
+  #assert rhbt_template.draw_count==2 && rhbt_template.water_draws==1 && rhbt_template.grass_instances==1 && rhbt_template.particle_instances==1;
+  #assert rhbt_template.surface_vertices==1 && rhbt_template.caster_vertices==1 && rhbt_template.caster_instances==1;
+}
+#forall "host logical binding tables include exact catalog and optional media sets" rhbt_profile:0..<18 {
+  rhbt_main:=[18]int.[17,3,21,13,2,1,2,16,1,5,5,17,3,12,1,1,3,3];
+  rhbt_fx:=[18]int.[2,-1,3,-1,-1,-1,-1,-1,-1,-1,-1,2,-1,2,-1,-1,-1,-1];
+  rhbt_meta:=render_catalog(rhbt_profile);
+  #assert render_host_binding_count(rhbt_profile,0)==rhbt_main[rhbt_profile];
+  #assert render_host_binding_count(rhbt_profile,1)==rhbt_fx[rhbt_profile];
+  #assert render_host_binding_count(rhbt_profile,2)==ifx rhbt_profile==2 || rhbt_profile==13 then 3 else -1;
+  for rhbt_set:0..<3 {
+    rhbt_count:=render_host_binding_count(rhbt_profile,rhbt_set);
+    #assert !render_host_binding(rhbt_profile,rhbt_set,-1).valid && !render_host_binding(rhbt_profile,rhbt_set,rhbt_count).valid;
+    for rhbt_resource:0..<rhbt_count {
+      rhbt_b:=render_host_binding(rhbt_profile,rhbt_set,rhbt_resource);
+      rhbt_expected:=ifx rhbt_set==2 then render_media_binding(rhbt_resource) else render_catalog_binding(rhbt_profile,rhbt_set,rhbt_resource);
+      #assert rhbt_b.valid && rhbt_b.source.valid;
+      #assert rhbt_b.binding.name==rhbt_expected.name && rhbt_b.binding.kind==rhbt_expected.kind;
+      #assert rhbt_b.binding.group==rhbt_expected.group && rhbt_b.binding.binding==rhbt_expected.binding;
+      #assert rhbt_b.binding.stride==rhbt_expected.stride && rhbt_b.binding.uniform_vec4s==rhbt_expected.uniform_vec4s;
+      rhbt_source:=render_binding_source(rhbt_profile,rhbt_set,rhbt_resource);
+      #assert rhbt_b.source.kind==rhbt_source.kind && rhbt_b.source.index==rhbt_source.index && rhbt_b.source.target==rhbt_source.target;
+      #assert rhbt_b.source.sampler_name==rhbt_source.sampler_name && rhbt_b.source.buffer_mode==rhbt_source.buffer_mode;
+    }
+  }
+}
+#forall "host reflected slots retain per-pass resources transport and source roles" rhbt_profile:0..<18 {
+  for rhbt_entry:0..<14 {
+    rhbt_count:=render_host_use_count(rhbt_profile,rhbt_entry);
+    rhbt_expected_count:=ifx rhbt_entry==13 then (ifx rhbt_profile==2 || rhbt_profile==13 then 3 else -1) else render_catalog_use_count(rhbt_profile,cast(RenderPassId)rhbt_entry);
+    #assert rhbt_count==rhbt_expected_count;
+    #assert !render_host_use(rhbt_profile,rhbt_entry,-1).valid && !render_host_use(rhbt_profile,rhbt_entry,rhbt_count).valid;
+    for rhbt_slot:0..<rhbt_count {
+      rhbt_u:=render_host_use(rhbt_profile,rhbt_entry,rhbt_slot);
+      rhbt_expected:=ifx rhbt_entry==13 then render_media_use(rhbt_slot) else render_catalog_use(rhbt_profile,cast(RenderPassId)rhbt_entry,rhbt_slot);
+      rhbt_set:=ifx rhbt_entry==13 then 2 else render_catalog_entry(rhbt_profile,cast(RenderPassId)rhbt_entry).binding_set;
+      rhbt_b:=render_host_binding(rhbt_profile,rhbt_set,rhbt_expected.resource);
+      #assert rhbt_u.valid && rhbt_u.binding_set==rhbt_set;
+      #assert rhbt_u.use.slot==rhbt_slot && rhbt_u.use.resource==rhbt_expected.resource && rhbt_u.use.native_kind==rhbt_expected.native_kind;
+      #assert rhbt_u.use.shape==rhbt_expected.shape && rhbt_u.use.stride==rhbt_expected.stride && rhbt_u.use.stages==rhbt_expected.stages;
+      #assert rhbt_u.binding.name==rhbt_b.binding.name && rhbt_u.binding.uniform_vec4s==rhbt_b.binding.uniform_vec4s;
+      #assert rhbt_u.source.kind==rhbt_b.source.kind && rhbt_u.source.index==rhbt_b.source.index && rhbt_u.source.target==rhbt_b.source.target;
+    }
+  }
+}
+#forall "host pipeline templates preserve physical attachments and shared pass state" rhbt_profile:0..<18 {
+  rhbt_meta:=render_catalog(rhbt_profile);
+  for rhbt_entry:0..<14 {
+    rhbt_p:=render_host_pipeline(rhbt_profile,rhbt_entry);
+    rhbt_valid:=ifx rhbt_entry==13 then rhbt_meta.features.media else render_catalog_entry(rhbt_profile,cast(RenderPassId)rhbt_entry).valid;
+    #assert rhbt_p.valid==rhbt_valid;
+    if !rhbt_valid {continue;}
+    rhbt_state:=ifx rhbt_entry==13 then RenderPassState.{valid=true} else render_pass_state(rhbt_meta.features,cast(RenderPassId)rhbt_entry);
+    #assert rhbt_p.state.valid && rhbt_p.state.outputs==rhbt_state.outputs && rhbt_p.state.aux_write==rhbt_state.aux_write;
+    #assert rhbt_p.state.depth==rhbt_state.depth && rhbt_p.state.depth_write==rhbt_state.depth_write && rhbt_p.state.bias==rhbt_state.bias && rhbt_p.state.slope==rhbt_state.slope;
+    #assert rhbt_p.state.colour==rhbt_state.colour && rhbt_p.state.alpha==rhbt_state.alpha;
+    rhbt_colour:=ifx rhbt_meta.features.post then RenderTarget.light else RenderTarget.screen;
+    rhbt_aux:=ifx rhbt_meta.features.post then RenderTarget.aux else RenderTarget.none;
+    rhbt_depth:=ifx rhbt_meta.features.scene || rhbt_meta.features.surface then RenderTarget.scene_depth else RenderTarget.none;
+    if rhbt_entry==1 || rhbt_entry==2 {rhbt_colour=RenderTarget.none;rhbt_aux=RenderTarget.none;rhbt_depth=RenderTarget.shadow_map;}
+    if rhbt_entry==10 {rhbt_colour=RenderTarget.q0;rhbt_aux=RenderTarget.none;rhbt_depth=RenderTarget.none;}
+    if rhbt_entry>=11 {rhbt_colour=RenderTarget.screen;rhbt_aux=RenderTarget.none;if rhbt_meta.features.post {rhbt_depth=RenderTarget.none;}}
+    #assert rhbt_p.colour0==rhbt_colour && rhbt_p.colour1==rhbt_aux && rhbt_p.depth==rhbt_depth;
+  }
+  rhbt_masked:=render_host_pipeline(2,6);
+  #assert rhbt_masked.valid && rhbt_masked.state.outputs==2 && !rhbt_masked.state.aux_write && rhbt_masked.colour1==RenderTarget.aux;
+}
+#test "host descriptor refusal bounds precede casts and unknown table access" {
+  for rhbt_profile:[4]int.[-9223372036854775807-1,-1,18,9223372036854775807] {
+    for rhbt_entry:[3]int.[0,12,13] {
+      #assert render_host_use_count(rhbt_profile,rhbt_entry)==-1 && !render_host_use(rhbt_profile,rhbt_entry,0).valid;
+      #assert !render_host_pipeline(rhbt_profile,rhbt_entry).valid;
+    }
+    #assert render_host_binding_count(rhbt_profile,0)==-1 && render_host_binding_count(rhbt_profile,2)==-1;
+  }
+  for rhbt_bad:[4]int.[-9223372036854775807-1,-1,14,9223372036854775807] {
+    #assert render_host_use_count(2,rhbt_bad)==-1 && !render_host_use(2,rhbt_bad,0).valid && !render_host_pipeline(2,rhbt_bad).valid;
+  }
+  #assert render_host_binding_count(2,-1)==-1 && render_host_binding_count(2,3)==-1;
+}
+#test "host media projection retains an attached nonpost depth and refuses absent operations" {
+  rhbt_c:=FrameCounts.{width=1,height=1,vertex_stride=16,hud_vertices=1};
+  rhbt_graph:=render_plan(RenderFeatures.{scene=true,media=true},rhbt_c,RenderReadiness.ready,true);
+  rhbt_p:=rhb_pipeline_graph(rhbt_graph,13);
+  #assert rhbt_p.valid && rhbt_p.colour0==RenderTarget.screen && rhbt_p.colour1==RenderTarget.none && rhbt_p.depth==RenderTarget.scene_depth;
+  #assert rhbt_p.state.depth==RenderDepth.always && !rhbt_p.state.depth_write && rhbt_p.state.outputs==1;
+  #assert rhbt_p.state.colour==RenderBlend.replace && rhbt_p.state.alpha==RenderBlend.replace;
+  #assert !rhb_pipeline_graph(rhbt_graph,1).valid;
+}
+#forall "host pipeline group extents retain empty gaps in every frozen catalog entry" rhbt_profile:0..<18 {
+  // Independently projected from catalog-6445ee0050.json, including the
+  // current media entry's one group, rather than from the host accessor.
+  rhbt_groups:=[18][14]int.[
+    [14]int.[1,2,0,0,0,3,0,0,0,2,2,2,1,0],
+    [14]int.[1,0,0,0,0,0,0,0,0,0,0,0,1,0],
+    [14]int.[1,2,0,3,0,3,4,4,4,4,2,2,1,1],
+    [14]int.[1,0,0,0,0,2,2,2,0,0,2,2,1,0],
+    [14]int.[1,0,0,0,0,2,0,0,0,0,0,0,1,0],
+    [14]int.[1,0,0,0,0,0,0,0,0,0,0,0,1,0],
+    [14]int.[1,0,0,0,0,0,0,0,0,0,0,0,1,0],
+    [14]int.[3,0,1,3,0,2,0,0,0,0,2,2,1,0],
+    [14]int.[1,0,0,0,1,0,0,0,0,0,0,0,1,0],
+    [14]int.[1,0,0,0,0,2,0,0,0,0,0,0,1,0],
+    [14]int.[1,0,0,0,0,2,0,0,0,0,0,0,1,0],
+    [14]int.[1,2,0,0,0,3,0,0,0,2,2,2,1,0],
+    [14]int.[1,0,0,0,0,2,0,0,0,0,0,0,1,0],
+    [14]int.[1,0,0,0,0,2,0,0,0,2,2,2,1,1],
+    [14]int.[1,0,0,0,0,0,0,0,0,0,0,0,1,0],
+    [14]int.[1,0,0,0,0,0,0,0,0,0,0,0,1,0],
+    [14]int.[1,0,0,0,0,2,0,0,0,0,0,0,1,0],
+    [14]int.[1,0,0,0,0,0,0,0,0,0,0,0,1,0]];
+  for rhbt_entry:0..<14 {#assert render_host_group_count(rhbt_profile,rhbt_entry)==rhbt_groups[rhbt_profile][rhbt_entry];}
+  #assert render_host_group_count(rhbt_profile,-1)==0 && render_host_group_count(rhbt_profile,14)==0;
+}
+
+#forall "host file origin names preserve every bounded producer and media index" rhbt_index:0..<48 {
+  rhbt_buffer_names:=[48]string.["s0.bin","s1.bin","s2.bin","s3.bin","s4.bin","s5.bin","s6.bin","s7.bin","s8.bin","s9.bin","s10.bin","s11.bin","s12.bin","s13.bin","s14.bin","s15.bin","s16.bin","s17.bin","s18.bin","s19.bin","s20.bin","s21.bin","s22.bin","s23.bin","s24.bin","s25.bin","s26.bin","s27.bin","s28.bin","s29.bin","s30.bin","s31.bin","s32.bin","s33.bin","s34.bin","s35.bin","s36.bin","s37.bin","s38.bin","s39.bin","s40.bin","s41.bin","s42.bin","s43.bin","s44.bin","s45.bin","s46.bin","s47.bin"];
+  rhbt_texture_names:=[48]string.["media_image-0","media_image-1","media_image-2","media_image-3","media_image-4","media_image-5","media_image-6","media_image-7","media_image-8","media_image-9","media_image-10","media_image-11","media_image-12","media_image-13","media_image-14","media_image-15","media_image-16","media_image-17","media_image-18","media_image-19","media_image-20","media_image-21","media_image-22","media_image-23","media_image-24","media_image-25","media_image-26","media_image-27","media_image-28","media_image-29","media_image-30","media_image-31","media_image-32","media_image-33","media_image-34","media_image-35","media_image-36","media_image-37","media_image-38","media_image-39","media_image-40","media_image-41","media_image-42","media_image-43","media_image-44","media_image-45","media_image-46","media_image-47"];
+  rhbt_out:[32]u8;
+  for rhbt_kind:0..<2 {
+    for rhbt_byte:0..<32 {rhbt_out[rhbt_byte]=0xA5;}
+    rhbt_source:=RenderBindingSource.{valid=true,kind=ifx rhbt_kind==0 then RenderSourceKind.dynamic_store else RenderSourceKind.media_image,index=rhbt_index};
+    rhbt_expected:=ifx rhbt_kind==0 then rhbt_buffer_names[rhbt_index] else rhbt_texture_names[rhbt_index];
+    rhbt_name:=ifx rhbt_kind==0 then render_host_buffer_name(rhbt_source,rhbt_out[0..<rhbt_expected.count-1]) else render_host_texture_name(rhbt_source,rhbt_out[0..<rhbt_expected.count-1]);
+    #assert rhbt_name.count==0;for rhbt_byte:0..<32 {#assert rhbt_out[rhbt_byte]==0xA5;}
+    rhbt_name=ifx rhbt_kind==0 then render_host_buffer_name(rhbt_source,rhbt_out[0..<rhbt_expected.count]) else render_host_texture_name(rhbt_source,rhbt_out[0..<rhbt_expected.count]);
+    #assert rhbt_name==rhbt_expected && rhbt_out[rhbt_expected.count]==0xA5;
+  }
+}
+#test "host static resource origins do not require scratch and unknown origins have no filename" {
+  rhbt_none:[]u8;
+  #assert render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.main_uniform},rhbt_none)=="u.bin";
+  #assert render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.immutable_storage_asset,index=0},rhbt_none)=="vertices.bin";
+  #assert render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.mesh_asset,index=0},rhbt_none)=="mesh.bin";
+  #assert render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.particle_emitters},rhbt_none)=="puffs.bin";
+  #assert render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.layers},rhbt_none)=="layers";
+  #assert render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.sans_atlas},rhbt_none)=="sans_atlas";
+  #assert render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.immutable_storage_asset,index=1},rhbt_none)=="";
+  #assert render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.mesh_asset,index=1},rhbt_none)=="";
+  #assert render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.bloom_step},rhbt_none)=="";
+  #assert render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.pass_source},rhbt_none)=="";
+  #assert render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.render_target},rhbt_none)=="";
+  #assert render_host_buffer_name(RenderBindingSource.{},rhbt_none)=="" && render_host_texture_name(RenderBindingSource.{},rhbt_none)=="";
+  rhbt_out:[32]u8;
+  for rhbt_bad:[4]int.[-9223372036854775807-1,-1,48,9223372036854775807] {
+    #assert render_host_buffer_name(RenderBindingSource.{kind=RenderSourceKind.dynamic_store,index=rhbt_bad},rhbt_out[..])=="";
+  }
+  for rhbt_bad:[4]int.[-9223372036854775807-1,-1,112,9223372036854775807] {#assert render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.media_image,index=rhbt_bad},rhbt_out[..])=="";}
+}
+#test "host media origin keeps the existing 112 line window independently of stores" {
+  rhbt_out:[16]u8;
+  #assert render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.media_image,index=48},rhbt_out[..])=="media_image-48";
+  #assert render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.media_image,index=100},rhbt_out[..])=="media_image-100";
+  #assert render_host_texture_name(RenderBindingSource.{kind=RenderSourceKind.media_image,index=111},rhbt_out[..])=="media_image-111";
+}
+
+#forall "host media origin names retain every additional line and exact scratch capacity" rhbt_extra:0..<64 {
+  rhbt_names:=[64]string.["media_image-48","media_image-49","media_image-50","media_image-51","media_image-52","media_image-53","media_image-54","media_image-55","media_image-56","media_image-57","media_image-58","media_image-59","media_image-60","media_image-61","media_image-62","media_image-63","media_image-64","media_image-65","media_image-66","media_image-67","media_image-68","media_image-69","media_image-70","media_image-71","media_image-72","media_image-73","media_image-74","media_image-75","media_image-76","media_image-77","media_image-78","media_image-79","media_image-80","media_image-81","media_image-82","media_image-83","media_image-84","media_image-85","media_image-86","media_image-87","media_image-88","media_image-89","media_image-90","media_image-91","media_image-92","media_image-93","media_image-94","media_image-95","media_image-96","media_image-97","media_image-98","media_image-99","media_image-100","media_image-101","media_image-102","media_image-103","media_image-104","media_image-105","media_image-106","media_image-107","media_image-108","media_image-109","media_image-110","media_image-111"];
+  rhbt_out:[16]u8;for rhbt_byte:0..<16 {rhbt_out[rhbt_byte]=0xA5;}
+  rhbt_source:=RenderBindingSource.{kind=RenderSourceKind.media_image,index=rhbt_extra+48};rhbt_expected:=rhbt_names[rhbt_extra];
+  #assert render_host_texture_name(rhbt_source,rhbt_out[0..<rhbt_expected.count-1])=="";
+  for rhbt_byte:0..<16 {#assert rhbt_out[rhbt_byte]==0xA5;}
+  #assert render_host_texture_name(rhbt_source,rhbt_out[0..<rhbt_expected.count])==rhbt_expected && rhbt_out[rhbt_expected.count]==0xA5;
+}
+#test "host clear policy is opaque black on both colour attachments and depth one" {
+  #assert RENDER_MEDIA_ITEMS==112;
+  rhbt_clear:=render_host_clear();
+  #assert rhbt_clear.colour[0]==0 && rhbt_clear.colour[1]==0 && rhbt_clear.colour[2]==0 && rhbt_clear.colour[3]==1 && rhbt_clear.depth==1;
+}

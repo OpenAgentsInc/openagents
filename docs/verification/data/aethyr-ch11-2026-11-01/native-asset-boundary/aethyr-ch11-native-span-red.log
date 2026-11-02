@@ -1,0 +1,7 @@
+FAIL #test native span observations treat capacity as a size at a nonzero allocation base (0 ms)
+aethyr/render/native-host.coax:19:2: error[E0406]: assertion failed
+   #assert aethyr_native_span(4096,384,4096,512);
+   ^
+  note: in #test native span observations treat capacity as a size at a nonzero allocation base
+1 of 387 checks (--only 'native span observations'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
