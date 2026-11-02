@@ -9,9 +9,11 @@
 > background jobs (chapter14). `coder daemon` attaches a machine as an
 > execution environment: it starts queued jobs only within the machine's
 > grant, and a job for a machine that is offline waits and is sent when the
-> machine answers. Still to come: credential handles, rules for pull
-> requests, mail and documents, and the restart and fault-injection
-> measurements.
+> machine answers. A Router killed between an effect and its record
+> resumes without repeating the effect, and the watchdog's time to
+> detection is measured for each fault. Still to come: credential handles,
+> rules for pull requests, mail and documents, and rechecking API errors
+> until they clear.
 
 Chapter17's agent is only useful if it keeps working while a laptop sleeps,
 answers while a long build runs, talks the way each channel expects and
@@ -98,6 +100,43 @@ A Router that is stopped and started again reads `router/threads` and
 continues. Events that arrived while it was down wait in the inbox. Workers
 are separate processes, so they keep running while the Router restarts.
 
+### A crash between two steps
+
+The Router can die between starting something and recording it. Two
+effects could then happen twice: a second Worker for one event, and a
+second comment on an issue. Each one has an intent file written before
+the effect, so a Router that starts again can find the effect instead of
+repeating it:
+
+- **Starting a Worker.** Before it starts a Worker, the Router picks the
+  session ID and writes it to `router/pending/EVENT` (`rt_claim`). It then
+  starts `coder run ... --session ID --detach`; `--detach` keeps a session
+  ID it is given. After the thread, the log and the move to `inbox/done`,
+  the pending file is removed. A Router that finds a pending file reuses
+  its ID. When `sessions/ID.pid` or `ID.jsonl` exists, the Worker already
+  started, so the Router adopts it and logs "resumed after a restart: the
+  worker had already started". Otherwise it starts the Worker with that ID.
+  IDs are milliseconds, so the Router never hands out the same ID twice in
+  a row, or the ID of a session that exists.
+- **Posting a reply.** Every reply posted to an issue ends with a hidden
+  marker, `<!-- coder:ID -->`. Before posting, the Router writes
+  `router/posting/ID`. When that file is already there, it first asks
+  GitHub for a comment on the issue that holds the marker, and posts only
+  when there is none. The comment poll skips comments that hold a marker,
+  so a reply posted just before a crash does not come back as an event.
+
+The window that remains is between `--detach` starting the Worker and
+writing its `.pid` file, a few microseconds within one process.
+
+To test this, `CODER_ROUTER_FAULT=started` or `=posted` makes the Router
+kill itself with SIGKILL right after that effect (`rt_fault`). The smoke
+kills it at each point and runs it again. After the first kill, one
+session exists and the event is still in the inbox. The next pass adopts
+that session, starts no other and removes the pending file. After the
+second kill, one comment has been posted. The next passes find it by its
+marker, record it as posted, post no second comment, and start no Worker
+for it.
+
 Long work doesn't block the loop: each Worker is a background job
 (chapter14), and the Router only starts it and records the session ID.
 
@@ -117,6 +156,40 @@ log has no end line:
   whether the Worker is still making real progress. If it isn't, the
   watchdog redirects it. If it is, the watchdog logs that once and leaves
   it. With no System One key, it logs `worker stuck` with the reason.
+
+#### Time to detection
+
+The smoke measures how long the watchdog takes to see each fault. It runs
+`coder router --stuck 3` as a live loop over three stand-in Workers, waits
+until the Router has passed over them healthy, then injects three faults
+at one moment, t0: one Worker's process is killed, one logs the same step
+five times, and one's log stops growing. The detection time is the
+`at_us` of the watchdog's log line minus t0:
+
+| Fault | Detected as | Time to detection |
+| --- | --- | --- |
+| Process killed | `worker lost: ended` | 0.0 to 0.1 s |
+| One step five times | `worker redirected: looping` | 0.0 to 0.1 s |
+| Log stops growing, no System One key | `worker stuck` | 4.1 s |
+
+A pass runs every two seconds, so a lost or looping Worker is seen within
+one pass of the fault (these runs happened to fault just before a pass). A
+quiet one is seen at the first pass after `--stuck` seconds. The smoke
+requires each detection to fall within those bounds.
+
+Live, with System One judging two quiet Workers on "fix the failing parser
+test" (2026-11-02, `--stuck 3`):
+
+| Worker's recent steps | Judgment | Time to detection |
+| --- | --- | --- |
+| Read, edit, test fails, edit, test passes | still making progress, left alone | 4.3 s |
+| Fetches news and sports sites, searches for pizza | not making progress, redirected | 4.5 s |
+| Read, edit, test fails, edit (and then quiet) | not making progress, redirected | 4.7 s |
+
+The third row is a false positive: a Worker quiet right after an edit was
+judged as stalled. The question tells System One the log has stopped
+growing, which may weigh against a Worker in the middle of a fix.
+Changing it needs chapter 21's comparison on held-out logs first.
 
 A redirect gives the Worker one more chance:
 
@@ -184,6 +257,9 @@ name and finished.
   another directory are refused with why. A job queued `--on ssh:box` while
   a stand-in `ssh` fails is held, sent on the next daemon pass after `ssh`
   works, and started by the other machine's daemon.
+- The smoke kills the Router with SIGKILL right after it starts a Worker and
+  right after it posts a reply (see [A crash between two steps](#a-crash-between-two-steps)),
+  and checks that the next pass repeats neither.
 - Unit checks: a job's admission against the grant, the chat cap of 100 words and the issue format.
 - Live: two quiet Workers with the same task, "fix the failing parser test".
   System One judged the one that read, edited and tested the parser as still
@@ -206,14 +282,19 @@ name and finished.
   stopped job reports as stopped, and an expired one as expired.
 - **Channels.** Every chat reply in a replayed stream is 100 words or fewer,
   and every pull request body has its required sections.
-- **Restart.** Killing the loop's container mid-task and starting a new one
+- [x] **Restart.** Killing the loop's container mid-task and starting a new one
   resumes every open task from the log with no lost or repeated tool effects.
+  Checked by the smoke: SIGKILL right after a Worker starts, and right after
+  a reply is posted, then a new Router process.
 - [x] **Intermittent machines.** A task bound to a machine that goes offline
   waits, then completes when the machine reconnects. Checked by the smoke
   with a stand-in `ssh`, and live against coderos-4080.
 - **Watchdog.** In fault-injection runs (API errors, a Worker looping on one
   failing call, a Worker drifting off its goal) the watchdog detects each
-  fault and the time to detection is reported.
+  fault and the time to detection is reported. Measured for a killed, a
+  looping and a quiet Worker offline, and for drifting Workers live (see
+  [Time to detection](#time-to-detection)). API errors that clear on their
+  own are not rechecked yet.
 - **Containment.** In chapter6's lab, extended to Triggers, a hostile event
   produces no admitted command outside a daemon's grant and no secret in
   model context, the log or outbound messages.

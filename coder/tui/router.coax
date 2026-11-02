@@ -459,6 +459,7 @@ rt_poll_github :: (p: [] RtPaths, source: string, policy: string, json: bool) ->
       key := cl_str(lar[..], line, "k");
       if key.count == 0 || rt_has_line(seen, key) { continue; }
       if pass == 1 && rt_has_line(posted, cl_str(lar[..], line, "c")) { continue; }   // a reply the Router posted
+      if pass == 1 && cd_holds(cl_str(lar[..], line, "t"), "<!-- coder:") { continue; }  // one it posted before a crash, not yet recorded
       nn := cl_int(line, "n");
       tb: [16] u8; thb: [512] u8;
       thn := cd_cat(thb[..], 0, source);
@@ -497,6 +498,20 @@ rt_deliver_github :: (repo: string, number: string, body: string, out: [] u8) ->
     }
   }
   return "";
+}
+
+// The ID of a comment on the issue that carries session id's marker, or ""
+// when there is none: a reply posted before a crash is not posted again.
+rt_posted_github :: (repo: string, number: string, id: string, out: [] u8) -> string {
+  ghb: [1024] u8; ub: [512] u8;
+  u := cd_cat(ub[..], 0, "repos/"); u = cd_cat(ub[..], u, repo); u = cd_cat(ub[..], u, "/issues/"); u = cd_cat(ub[..], u, number); u = cd_cat(ub[..], u, "/comments?per_page=100");
+  jb: [256] u8; jn := cd_cat(jb[..], 0, ".[] | select(.body | contains(\"<!-- coder:"); jn = cd_cat(jb[..], jn, id); jn = cd_cat(jb[..], jn, " -->\")) | .id");
+  argv := [5] string.[rt_gh(ghb[..]), "api", cast(string) ub[0..<u], "--jq", cast(string) jb[0..<jn]];
+  ok: [1] bool; rb: [4096] u8;
+  r := rt_run(argv[..], rb[..], ok[..]);
+  if !ok[0] { return ""; }
+  e := 0; while e < r.count && r[e] >= '0' && r[e] <= '9' { e += 1; }
+  return cast(string) out[0..<cd_cat(out, 0, cast(string) r[0..<e])];
 }
 
 // ---------------------------------------------------------------- the loop
@@ -619,6 +634,59 @@ rt_batch :: (p: [] RtPaths, th: [] RtThreads, sources: string, watched: string, 
   }
 }
 
+// Fault injection for the restart checks (chapter 20): with
+// CODER_ROUTER_FAULT=POINT, the Router is killed with SIGKILL at that point,
+// as a crash would end it. Points: started (a Worker started, its event not
+// yet done) and posted (a reply posted to GitHub, not yet recorded).
+rt_fault :: (point: string) {
+  fb: [64] u8; f := cl_getenv("CODER_ROUTER_FAULT", fb[..]);
+  if f != point { return; }
+  argv := [3] string.["/bin/sh", "-c", "kill -9 $PPID"];
+  ok: [1] bool; ob: [64] u8;
+  x := rt_run(argv[..], ob[..], ok[..]);
+}
+
+// Whether session id has started: its .pid or log exists.
+rt_started :: (id: string) -> bool {
+  db: [1100] u8; dir := cs_dir(db[..]);
+  pb: [1300] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, id);
+  qn := cd_cat(pb[..], pn, ".pid");
+  if fs_exists(cast(string) pb[0..<qn]) { return true; }
+  qn = cd_cat(pb[..], pn, ".jsonl");
+  return fs_exists(cast(string) pb[0..<qn]);
+}
+
+// The session a Worker for event name gets. It is chosen and written to
+// router/pending/NAME before the Worker starts, so a Router that restarts
+// after a crash finds the same ID: started when that session exists.
+rt_claim :: (p: [] RtPaths, name: string, last: string, out: [] u8, started: [] bool) -> string {
+  b: [1300] u8; pb: [1500] u8;
+  x := fs_mkdir(rt_path(p, "/router/pending", b[..]));
+  pn := cd_cat(pb[..], 0, rt_path(p, "/router/pending/", b[..])); pn = cd_cat(pb[..], pn, name);
+  path := cast(string) pb[0..<pn];
+  rb: [64] u8; rn := fs_read(path, rb[..]);
+  if rn > 0 && rn < 32 {
+    n := cd_cat(out, 0, cast(string) rb[0..<rn]);
+    started[0] = rt_started(cast(string) out[0..<n]);
+    return cast(string) out[0..<n];
+  }
+  started[0] = false;
+  ib: [32] u8; id := cs_make_id(cxproc_wall_us(), ib[..]);
+  for guard: 0..<2000 {            // IDs are milliseconds: two Workers in one millisecond would share one
+    if id != last && !rt_started(id) { break; }
+    s := cxproc_sleep_ms(1); id = cs_make_id(cxproc_wall_us(), ib[..]);
+  }
+  n := cd_cat(out, 0, id);
+  w := fs_write(path, cast(string) out[0..<n]);
+  return cast(string) out[0..<n];
+}
+
+rt_unclaim :: (p: [] RtPaths, name: string) {
+  b: [1300] u8; pb: [1500] u8;
+  pn := cd_cat(pb[..], 0, rt_path(p, "/router/pending/", b[..])); pn = cd_cat(pb[..], pn, name);
+  x := fs_remove(cast(string) pb[0..<pn]);
+}
+
 rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int {
   b: [1300] u8;
   l_b: [1] FsList; l := l_b[..];
@@ -629,6 +697,7 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
   rt_batch(p, th, sources, watched, bt[..], json);
   n := fs_list(inbox, l);
   done := 0;
+  lastb: [32] u8; nlast := 0;
   for i: 0..<n {
     name := fs_entry(l, i);
     if name.count < 6 || cast(string) name[name.count - 5..<name.count] != ".json" { continue; }
@@ -661,17 +730,24 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
       if fate == RT_TO_THREAD { args[0] = "fork"; args[1] = cast(string) th[0].session[k][0..<th[0].nsession[k]]; args[2] = t.text; na = 3; }
       else { args[0] = "run"; args[1] = t.text; na = 2; }
       if engine.count > 0 { args[na] = "--engine"; args[na + 1] = engine; na += 2; }
-      idb: [256] u8; id := rt_coder(args[0..<na], idb[..]);
+      cb: [32] u8; was: [1] bool;
+      sid := rt_claim(p, name, cast(string) lastb[0..<nlast], cb[..], was[..]);
+      nlast = cd_cat(lastb[..], 0, sid);
+      args[na] = "--session"; args[na + 1] = sid; na += 2;
+      idb: [256] u8; id := sid;
+      if !was[0] { id = rt_coder(args[0..<na], idb[..]); }
+      rt_fault("started");
       if id.count == 0 || id.count > 31 { rt_log(p, t, "failed: the worker did not start", "", id, json); }
       else {
         if t.thread.count > 0 {
           rt_thread_set(th, t.thread, id, t.source);
           tt: [65536] u8; x := fs_write(rt_path(p, "/router/threads", b[..]), rt_threads_text(th, tt[..]));
         }
-        rt_log(p, t, ifx decided then "System One said it asks for work: new worker" else fates[fate], id, "", json);
+        rt_log(p, t, ifx decided then "System One said it asks for work: new worker" else fates[fate], id, ifx was[0] then "resumed after a restart: the worker had already started" else "", json);
       }
     } else if fate != RT_ASK { rt_log(p, t, fates[fate], "", "", json); }
     x := fs_rename(path, cast(string) db[0..<dn]);
+    if fate == RT_START || fate == RT_TO_THREAD { rt_unclaim(p, name); }
     done += 1;
   }
   return done;
@@ -704,7 +780,14 @@ rt_report :: (p: [] RtPaths, th: [] RtThreads, i: int, text: string, s: [] CsSum
   fate := "reply written to the outbox";
   repo := rt_github_repo(source); num := rt_github_number(thread);
   if db.ok && db.value && repo.count > 0 && num.count > 0 {
-    cb: [64] u8; cid := rt_deliver_github(repo, num, body, cb[..]);
+    // posting/ID first: a Router that restarts after posting looks for its marker before posting again
+    mb: [20000] u8; mn := cd_cat(mb[..], 0, body); mn = cd_cat(mb[..], mn, "\n\n<!-- coder:"); mn = cd_cat(mb[..], mn, id); mn = cd_cat(mb[..], mn, " -->");
+    xm := fs_mkdir(rt_path(p, "/router/posting", b[..]));
+    ib2: [1400] u8; in2 := cd_cat(ib2[..], 0, rt_path(p, "/router/posting/", b[..])); in2 = cd_cat(ib2[..], in2, id);
+    intent := cast(string) ib2[0..<in2];
+    cb: [64] u8; cid := "";
+    if fs_exists(intent) { cid = rt_posted_github(repo, num, id, cb[..]); }
+    if cid.count == 0 { y := fs_write(intent, "posting\n"); cid = rt_deliver_github(repo, num, cast(string) mb[0..<mn], cb[..]); rt_fault("posted"); }
     if cid.count > 0 {
       kb: [80] u8; kn := cd_cat(kb[..], 0, cid); kn = cd_cat(kb[..], kn, "\n");
       x := fs_append(rt_path(p, "/router/posted", b[..]), cast(string) kb[0..<kn]);
@@ -713,6 +796,8 @@ rt_report :: (p: [] RtPaths, th: [] RtThreads, i: int, text: string, s: [] CsSum
   }
   rk: [64] u8; rn := cd_cat(rk[..], 0, id); rn = cd_cat(rk[..], rn, "\n");
   x := fs_append(rt_path(p, "/router/reported", b[..]), cast(string) rk[0..<rn]);
+  ib3: [1400] u8; in3 := cd_cat(ib3[..], 0, rt_path(p, "/router/posting/", b[..])); in3 = cd_cat(ib3[..], in3, id);
+  if fs_exists(cast(string) ib3[0..<in3]) { y := fs_remove(cast(string) ib3[0..<in3]); }
   rt_log(p, t, fate, id, body, json);
 }
 

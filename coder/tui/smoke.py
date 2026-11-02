@@ -90,7 +90,7 @@ def live(engine):
 
 
 GH_STUB = r"""
-import os, sys
+import json, os, sys
 d = os.environ["GH_STUB_DIR"]
 a = sys.argv[1:]
 if a[:2] == ["api", "user"]:
@@ -101,11 +101,18 @@ elif a[:1] == ["api"]:
     elif "/issues/comments" in a[1]:
         print('{"k":"comment:555","c":"555","n":7,"a":"alice","t":"thanks"}')
         if os.path.exists(os.path.join(d, "gh-posted")):
-            print('{"k":"comment:999","c":"999","n":7,"a":"alice","t":"the posted reply"}')
+            print(json.dumps({"k": "comment:999", "c": "999", "n": 7, "a": "alice", "t": open(os.path.join(d, "gh-posted")).read().split(" --body ", 1)[-1]}))
+    elif "/issues/7/comments" in a[1]:
+        # the Router looking for a reply it posted before a crash: the marker it names is in the posted body
+        body = open(os.path.join(d, "gh-posted")).read() if os.path.exists(os.path.join(d, "gh-posted")) else ""
+        want = a[3].split('contains("', 1)[-1].split('"', 1)[0] if len(a) > 3 else ""
+        if want and want in body:
+            print("999")
     else:
         print('{"k":"issue:7","n":7,"a":"alice","t":"$ echo gh-ok"}')
 elif a[:2] == ["issue", "comment"]:
     open(os.path.join(d, "gh-posted"), "w").write(" ".join(a))
+    open(os.path.join(d, "gh-posts"), "a").write("post\n")
     print("https://github.com/o/r/issues/7#issuecomment-999")
 else:
     sys.exit(1)
@@ -674,6 +681,100 @@ def verbs(check):
               and posted.startswith("issue comment 7 -R o/r --body **Coder** finished in") and "gh-ok" in posted)
         g4 = grouter()
         check("github: the Router's own comment is not an event", g4 == [])
+        # restart (chapter 20): the Router killed with SIGKILL right after starting a Worker, and right after posting
+        # a reply, resumes from its files with no second Worker and no second comment
+        khome = tempfile.mkdtemp(prefix="coder-restart-")
+        kdir = os.path.join(khome, ".openagents", "coder")
+        os.makedirs(os.path.join(kdir, "router"), exist_ok=True)
+        with open(os.path.join(kdir, "router", "sources.json"), "w") as f:
+            f.write('{"sources":{"local":{"mode":"explicit_requests_only","authors":["me"],"engine":"echo"},'
+                    '"github:o/r":{"mode":"explicit_requests_only","authors":["alice"],"label":"coder","engine":"echo","deliver":true}}}')
+        kenv = dict(env, HOME=khome, CODER_GH=stub, GH_STUB_DIR=khome)
+        def krouter(fault=""):
+            e = dict(kenv, CODER_ROUTER_FAULT=fault) if fault else kenv
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=e, capture_output=True, text=True, timeout=300)
+            return r.returncode, [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        def ksessions():
+            sd = os.path.join(kdir, "sessions")
+            return sorted(n[:-6] for n in os.listdir(sd) if n.endswith(".jsonl")) if os.path.isdir(sd) else []
+        subprocess.run([coder, "trigger", "$ echo restart-ok", "--thread", "rs", "--to-agent"], cwd=REPO, env=kenv, capture_output=True, text=True, timeout=60)
+        k1 = krouter("started")                     # also the first GitHub poll, which only sets the cursor
+        time.sleep(1.0)
+        s1 = ksessions()
+        pend = os.listdir(os.path.join(kdir, "router", "pending")) if os.path.isdir(os.path.join(kdir, "router", "pending")) else []
+        k2 = krouter()
+        s2 = ksessions()
+        resumed = [l for l in k2[1] if l.get("thread") == "rs" and l["fate"] == "addressed to the agent: new worker"]
+        check("restart: killed right after starting a Worker, the Router resumes with the same Worker and starts no other",
+              k1[0] in (-9, 137) and len(s1) == 1 and len(pend) == 1 and s2 == s1
+              and len(resumed) == 1 and resumed[0].get("session") == s1[0] and "resumed after a restart" in resumed[0].get("note", "")
+              and not os.listdir(os.path.join(kdir, "router", "pending")))
+        gk = []
+        killed = None
+        for _ in range(60):                         # the labelled issue starts a Worker; when it ends, the reply is posted and the Router killed
+            rc, ls = krouter("posted")
+            gk += ls
+            if rc in (-9, 137):
+                killed = rc
+                break
+            time.sleep(0.3)
+        posts1 = open(os.path.join(khome, "gh-posts")).read().count("post") if os.path.exists(os.path.join(khome, "gh-posts")) else 0
+        k3 = krouter()
+        k4 = krouter()
+        posts2 = open(os.path.join(khome, "gh-posts")).read().count("post") if os.path.exists(os.path.join(khome, "gh-posts")) else 0
+        after = [l for l in k3[1] + k4[1] if l.get("source") == "github:o/r"]
+        check("restart: killed right after posting a reply, the Router finds its comment by marker and posts no second one",
+              killed is not None and posts1 == 1 and posts2 == 1
+              and sum(1 for l in after if l["fate"] == "reply posted to the issue") == 1
+              and not any("worker" in l["fate"] for l in after))
+        # watchdog fault injection (chapter 20): a live Router loop; three stand-in Workers fail at t0 (process killed,
+        # one step five times, log stops growing) and the time from each fault to its detection is reported
+        whome = tempfile.mkdtemp(prefix="coder-watchdog-")
+        wsd = os.path.join(whome, ".openagents", "coder", "sessions"); wrd = os.path.join(whome, ".openagents", "coder", "router")
+        os.makedirs(wsd); os.makedirs(wrd)
+        with open(os.path.join(wrd, "sources.json"), "w") as f:
+            f.write('{"sources":{"local":{"mode":"explicit_requests_only","authors":["me"],"engine":"echo"}}}')
+        sl = [subprocess.Popen(["sleep", "600"]) for _ in range(3)]
+        wids = ["20261102-000000-101", "20261102-000000-102", "20261102-000000-103"]
+        for sid, sp in zip(wids, sl):
+            with open(os.path.join(wsd, sid + ".jsonl"), "w") as f:
+                f.write('{"kind":"session","id":"%s","engine":"echo","cwd":"/","started_us":1}\n{"kind":"user","text":"fix the parser test"}\n{"kind":"tool","label":"Bash(make test)"}\n' % sid)
+            with open(os.path.join(wsd, sid + ".pid"), "w") as f:
+                f.write(str(sp.pid))
+        with open(os.path.join(wrd, "threads"), "w") as f:
+            f.write("".join("w%d\t%s\tlocal\n" % (i, sid) for i, sid in enumerate(wids)))
+        wenv = dict(nokey, HOME=whome)
+        wr = subprocess.Popen([coder, "router", "--json", "--stuck", "3"], cwd=REPO, env=wenv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        detect = {}
+        try:
+            for _ in range(8):                        # the Router is up and has made passes over three healthy Workers
+                os.utime(os.path.join(wsd, wids[2] + ".jsonl"))
+                time.sleep(0.5)
+            t0 = time.time()
+            sl[0].kill(); sl[0].wait()                                    # lost (reaped, as a detached Worker's process is)
+            with open(os.path.join(wsd, wids[1] + ".jsonl"), "a") as f:   # looping: the same step five times
+                f.write('{"kind":"tool","label":"Bash(make test)"}\n' * 4)
+            os.utime(os.path.join(wsd, wids[2] + ".jsonl"))              # quiet from now on
+            want = {wids[0]: "worker lost", wids[1]: "worker redirected: looping", wids[2]: "worker stuck"}
+            while time.time() - t0 < 60 and len(detect) < 3:
+                if os.path.exists(os.path.join(wrd, "log.jsonl")):
+                    for l in open(os.path.join(wrd, "log.jsonl")).read().splitlines():
+                        try:
+                            j = json.loads(l)
+                        except ValueError:
+                            continue
+                        sid = j.get("session", "")
+                        if sid in want and sid not in detect and j.get("fate", "").startswith(want[sid]) and j.get("at_us", 0) / 1e6 >= t0:
+                            detect[sid] = j["at_us"] / 1e6 - t0
+                time.sleep(0.1)
+        finally:
+            wr.kill(); wr.wait()
+            for sp in sl:
+                sp.kill()
+        print("     watchdog time to detection: lost %s s, looping %s s, quiet %s s (--stuck 3, passes every 2 s)" % tuple(
+            ("%.1f" % detect[w]) if w in detect else "none" for w in wids))
+        check("watchdog: a killed, a looping and a quiet Worker are each detected, within a pass after the fault or the --stuck limit",
+              len(detect) == 3 and detect[wids[0]] < 4.5 and detect[wids[1]] < 4.5 and 3 <= detect[wids[2]] < 7.5)
         # a CI source: with --ci, a failed workflow run is an event addressed to the agent on the branch's Thread
         pc = subprocess.run([coder, "policy", "add", "github:c/i", "--mode", "explicit_requests_only", "--authors", "*", "--engine", "echo", "--ci"],
                             cwd=REPO, env=genv, capture_output=True, text=True, timeout=120)

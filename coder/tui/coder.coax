@@ -1626,13 +1626,15 @@ cd_detach :: (args: [] Args, json: bool) -> int {
   if repo.count == 0 { tool_errln("coder: CODER_REPO is not set: start Coder with coder/tui/coder.sh"); return 2; }
   db: [1100] u8; dir := cs_dir(db[..]);
   if dir.count == 0 { tool_errln("coder: no $HOME"); return 1; }
-  ib: [32] u8; id := cs_make_id(cxproc_wall_us(), ib[..]);
+  // the caller may name the session (the Router does, so a restart finds a Worker it already started)
+  ib: [32] u8; given := args_value(args, "--session", "");
+  id := ifx given.count > 0 then given else cs_make_id(cxproc_wall_us(), ib[..]);
   sb: [4200] u8; sn := cd_cat(sb[..], cd_cat(sb[..], 0, repo), "/coder/tui/coder.sh");
   h := cxproc_new();
   if h < 0 { tool_errln("coder: no process slot is free"); return 1; }
   ok := cl_push(h, CL_FIELD_ARG, cast(string) sb[0..<sn]);
   for i: 0..<args_count(args) { v := args_at(args, i); if v != "--detach" && v != "--json" { ok = ok && cl_push(h, CL_FIELD_ARG, v); } }
-  ok = ok && cl_push(h, CL_FIELD_ARG, "--session") && cl_push(h, CL_FIELD_ARG, id);
+  if given.count == 0 { ok = ok && cl_push(h, CL_FIELD_ARG, "--session") && cl_push(h, CL_FIELD_ARG, id); }
   ok = ok && cxproc_detach(h) == 0 && cxproc_quiet(h) == 0;     // holds none of the caller's pipes: the session file is the record
   if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); tool_errln("coder: the job did not start"); return 1; }
   pid := cxproc_pid(h);
