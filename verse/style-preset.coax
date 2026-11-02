@@ -330,11 +330,11 @@ anime_key :: (variant: int, i: int) -> StyleKey {
   action := variant == ANIME_ACTION;
   if i == 2 {
     if action {
-      k = sk_light(1.00, 0.96, 0.88, 1.15, 1.00, 0.95, 0.85, 1.0);
-      k = sk_tint(k, 0.52, 0.54, 1.00, 0.40, 0.52, 0.82, 0.28, 0.28, 0.30, 0.22);
-      k = sk_haze(k, 60, 0.006, 0.50, 0.55, 0.74, 0.94);
+      k = sk_light(1.00, 0.96, 0.88, 1.05, 1.00, 0.95, 0.85, 1.0);
+      k = sk_tint(k, 0.84, 0.82, 0.98, 0.52, 0.56, 0.66, 0.26, 0.34, 0.30, 0.24);   // a light cool shade: colours keep their hue in shadow
+      k = sk_haze(k, 120, 0.002, 0.25, 0.55, 0.74, 0.94);
       k = sk_sky(k, 0.02, 0.10, 0.58, 0.45, 0.72, 0.94);
-      return sk_glow(k, 1.00, 0.92, 0.75, 1.0, 1.0, 1.0, 1.9, 0.30);
+      return sk_glow(k, 1.00, 0.92, 0.75, 1.0, 1.0, 1.0, 1.55, 0.30);   // skin and stone keep their colour, not clipped to white
     }
     k = sk_light(1.00, 0.97, 0.90, 1.0, 1.00, 0.98, 0.90, 1.0);
     k = sk_tint(k, 0.62, 0.66, 1.00, 0.50, 0.64, 0.90, 0.40, 0.36, 0.46, 0.24);
@@ -387,8 +387,8 @@ verse_style_anime :: (variant: int, tier: int) -> StylePreset {
   p.sun_low = an4(v, -20, -20, 8, -40) * DEG; p.sun_high = an4(v, 60, 60, 8, -14) * DEG;   // dusk: held at 8 degrees all day; neon: never up
   // shading: two tones (one edge twice; the mid value is the shadow's share of the lit value), a spot
   edge := an4(v, 0.46, 0.52, 0.50, 0.50);
-  p.band_e0 = edge; p.band_e1 = edge; p.band_soft = an4(v, 0.008, 0.005, 0.008, 0.006); p.band_mid = an4(v, 0.62, 0.45, 0.55, 0.50);
-  p.char_edge = an4(v, 0.42, 0.48, 0.46, 0.46); p.char_soft = an4(v, 0.010, 0.008, 0.010, 0.008);
+  p.band_e0 = edge; p.band_e1 = edge; p.band_soft = an4(v, 0.008, 0.005, 0.008, 0.006); p.band_mid = an4(v, 0.62, 0.60, 0.55, 0.50);
+  p.char_edge = an4(v, 0.42, 0.30, 0.46, 0.46); p.char_soft = an4(v, 0.010, 0.008, 0.010, 0.008);
   p.dab_cut = an4(v, 0.96, 0.95, 0.96, 0.94); p.dab_strength = an4(v, 0.55, 0.80, 0.50, 0.90);
   p.rim_world = an4(v, 0.25, 0.60, 0.50, 0.70); p.rim_char = an4(v, 0.50, 0.90, 0.70, 0.90);
   p.rim_start = an4(v, 0.24, 0.28, 0.24, 0.24); p.rim_full = an4(v, 0.20, 0.24, 0.20, 0.20);
@@ -402,9 +402,9 @@ verse_style_anime :: (variant: int, tier: int) -> StylePreset {
   p.cloud_scale1 = 1.0 / 1800.0; p.cloud_scale2 = 1.0 / 600.0; p.cloud_cut_lo = 0.545; p.cloud_cut_hi = 0.555;   // a crisp edge
   p.cloud_under = an4(v, 0.45, 0.55, 0.50, 0.30);
   // post: clean and saturated, shadows lifted, bloom on lights and spells
-  p.toned = 1; p.saturation = an4(v, 1.15, 1.20, 1.15, 1.25); p.black_lift = an4(v, 0.020, 0.010, 0.025, 0.015);
-  p.bloom_threshold = an4(v, 0.85, 0.70, 0.75, 0.60); p.bloom_knee = an4(v, 0.20, 0.25, 0.25, 0.20);
-  p.bloom_mix = an4(v, 0.25, 0.45, 0.40, 0.55) * (ifx on_phone then 0.8 else 1.0);
+  p.toned = 1; p.saturation = an4(v, 1.15, 1.50, 1.15, 1.25); p.black_lift = an4(v, 0.020, 0.000, 0.025, 0.015);
+  p.bloom_threshold = an4(v, 0.85, 0.82, 0.75, 0.60); p.bloom_knee = an4(v, 0.20, 0.25, 0.25, 0.20);
+  p.bloom_mix = an4(v, 0.25, 0.28, 0.40, 0.55) * (ifx on_phone then 0.8 else 1.0);
   p.shaft_samples = ifx on_phone then 12.0 else 24.0; p.shaft_decay = 0.94; p.shaft_margin = 0.35;
   // shadows: a real map, crisp (few taps, a small radius); the tint is the cel shadow's, not a cooling pass
   p.shadow_size = ifx on_phone then 1024.0 else 2048.0; p.shadow_taps = 4; p.shadow_radius = 1.0; p.shadow_cool = 0;

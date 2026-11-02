@@ -314,7 +314,7 @@ burst :: (buf: [] u32, p: [] Pen, a: Point, size: f32, age: f32, ground: bool) {
       sa := age - 0.2;
       left := 1 - clamp01(sa / 2.8);
       c := add(a, v3((wh(fi, 7) - 0.5) * 2.2 * size, (0.6 + 1.6 * clamp01(sa / 2.0)) * size + wh(fi, 8) * size, (wh(fi, 9) - 0.5) * 2.2 * size));
-      pen_set(p, OBJ_FX + 1, MAT_SMOKE, 0.62, 0.56, 0.66); p[0].param = left;
+      pen_set(p, OBJ_FX + 1, MAT_SMOKE, 0.80, 0.79, 0.80); p[0].param = left;
       ball(buf, p, c, (0.5 + 0.6 * clamp01(sa / 1.2)) * size * (0.8 + 0.4 * wh(fi, 6)), 10);
     }
   }
@@ -333,7 +333,7 @@ smoke :: (buf: [] u32, p: [] Pen, at: Point, size: f32, age: f32) {
     g := clamp01(age / 0.5);
     left := 1 - clamp01((age - 1.2 - 0.15 * fi) / 2.2);
     c := add(at, v3((wh(fi, 11) - 0.5) * 1.8 * size, (0.3 + 1.2 * wh(fi, 12) + 0.25 * age) * size, (wh(fi, 13) - 0.5) * 1.4 * size));
-    pen_set(p, OBJ_FX + 2, MAT_SMOKE, 0.5, 0.44, 0.58); p[0].param = left;
+    pen_set(p, OBJ_FX + 2, MAT_SMOKE, 0.95, 0.95, 0.97); p[0].param = left;
     ball(buf, p, c, (0.45 + 0.4 * wh(fi, 14)) * size * (0.4 + 0.6 * g), 10);
   }
 }

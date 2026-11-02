@@ -226,6 +226,17 @@ al_lit_tone :: (albedo:V3,u:[]f32)->V3 {
   l:V3=v3((key.x*key.w)+(amb.x*amb.w),(key.y*key.w)+(amb.y*amb.w),(key.z*key.w)+(amb.z*amb.w));
   return v3(albedo.x*l.x,albedo.y*l.y,albedo.z*l.z);
 }
+// A character's shade is warm, as anime paints skin and cloth (a darker, warmer value of the same
+// colour); the world's is the style's cool tint.
+al_shadow_tone_char :: (lit:V3,u:[]f32)->V3 {
+  ti:V4=v4(1.0f32,0.80f32,0.82f32,0.0f32);
+  bands:V4=al_st(u,7);
+  tl:f32=verse_style_luma(ti.x,ti.y,ti.z);
+  s:V3=v3(verse_style_anime_shadow(lit.x,ti.x,tl,bands.w),verse_style_anime_shadow(lit.y,ti.y,tl,bands.w),verse_style_anime_shadow(lit.z,ti.z,tl,bands.w));
+  before:f32=verse_style_luma(lit.x,lit.y,lit.z)*bands.w;
+  after:f32=verse_style_luma(s.x,s.y,s.z);
+  return v3(verse_style_keep_value(s.x,before,after),verse_style_keep_value(s.y,before,after),verse_style_keep_value(s.z,before,after));
+}
 al_shadow_tone :: (lit:V3,u:[]f32)->V3 {
   ti:V4=al_st(u,4);
   bands:V4=al_st(u,7);
@@ -294,7 +305,7 @@ animelab_scene_fs :: (s:AnimelabS,u:[]f32,shadow_map:TexDepth,shadow_cmp:Sampler
   tone:f32=ifx character then verse_style_anime_cel_char(w,ndv,bands2.x,bands2.y) else verse_style_anime_cel(w,bands.x,aa);
   if ((mat>5.5f32)&&(mat<6.5f32)) {tone=mix(1.0f32,tone,shading);}
   hi:V3=al_lit_tone(albedo,u);
-  lo:V3=al_shadow_tone(hi,u);
+  lo:V3=ifx character then al_shadow_tone_char(hi,u) else al_shadow_tone(hi,u);
   c:V3=al_mix3(lo,hi,tone);
   // the braziers' fire and the spells: their light banded the same way, warm on whatever faces them
   {

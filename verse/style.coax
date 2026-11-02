@@ -612,7 +612,7 @@ verse_style_anime_srgb :: (an_slot:f32,an_ch:f32)->f32 #export_c {
  if an_slot<0.5f32 {return st_pick(an_ch,0.400f32,0.741f32,0.263f32);}    // grass: lush summer green
  if an_slot<1.5f32 {return st_pick(an_ch,0.635f32,0.851f32,0.341f32);}    // grass2: sunlit yellow-green
  if an_slot<2.5f32 {return st_pick(an_ch,0.169f32,0.494f32,0.282f32);}    // foliage: deep leaf
- if an_slot<3.5f32 {return st_pick(an_ch,0.847f32,0.792f32,0.690f32);}    // stone: warm pale stone
+ if an_slot<3.5f32 {return st_pick(an_ch,0.878f32,0.769f32,0.604f32);}    // stone: warm sandstone
  if an_slot<4.5f32 {return st_pick(an_ch,0.267f32,0.420f32,0.659f32);}    // roof: slate blue
  if an_slot<5.5f32 {return st_pick(an_ch,0.580f32,0.384f32,0.231f32);}    // wood: warm brown
  if an_slot<6.5f32 {return st_pick(an_ch,0.910f32,0.851f32,0.678f32);}    // path: sand

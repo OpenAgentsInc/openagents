@@ -287,7 +287,7 @@ fn coax_p_scene_fs(p_s: coax_t11) -> coax_t15 {
     l_tone = coax_p_mix(0x1.000000p0f, l_tone, l_shading);
   }
   l_hi = coax_p_al_lit_tone(l_albedo);
-  l_lo = coax_p_al_shadow_tone(l_hi);
+  l_lo = select(coax_p_al_shadow_tone(l_hi), coax_p_al_shadow_tone_char(l_hi), l_character);
   l_c_37 = coax_p_al_mix3(l_lo, l_hi, l_tone);
   {
     l_k = 0i;
@@ -791,6 +791,22 @@ fn coax_p_al_lit_tone(p_albedo: vec3f) -> vec3f {
   l_amb = coax_p_al_st(5i);
   l_l = coax_p_v3(((l_key.x * l_key.w) + (l_amb.x * l_amb.w)), ((l_key.y * l_key.w) + (l_amb.y * l_amb.w)), ((l_key.z * l_key.w) + (l_amb.z * l_amb.w)));
   return coax_p_v3((l_albedo.x * l_l.x), (l_albedo.y * l_l.y), (l_albedo.z * l_l.z));
+}
+fn coax_p_al_shadow_tone_char(p_lit: vec3f) -> vec3f {
+  var l_lit: vec3f = p_lit;
+  var l_ti: vec4f;
+  var l_bands: vec4f;
+  var l_tl: f32;
+  var l_s: vec3f;
+  var l_before: f32;
+  var l_after: f32;
+  l_ti = coax_p_v4(0x1.000000p0f, 0x1.99999ap-1f, 0x1.a3d70ap-1f, 0.0f);
+  l_bands = coax_p_al_st(7i);
+  l_tl = coax_p_verse_style_luma(l_ti.x, l_ti.y, l_ti.z);
+  l_s = coax_p_v3(coax_p_verse_style_anime_shadow(l_lit.x, l_ti.x, l_tl, l_bands.w), coax_p_verse_style_anime_shadow(l_lit.y, l_ti.y, l_tl, l_bands.w), coax_p_verse_style_anime_shadow(l_lit.z, l_ti.z, l_tl, l_bands.w));
+  l_before = (coax_p_verse_style_luma(l_lit.x, l_lit.y, l_lit.z) * l_bands.w);
+  l_after = coax_p_verse_style_luma(l_s.x, l_s.y, l_s.z);
+  return coax_p_v3(coax_p_verse_style_keep_value(l_s.x, l_before, l_after), coax_p_verse_style_keep_value(l_s.y, l_before, l_after), coax_p_verse_style_keep_value(l_s.z, l_before, l_after));
 }
 fn coax_p_al_shadow_tone(p_lit: vec3f) -> vec3f {
   var l_lit: vec3f = p_lit;
