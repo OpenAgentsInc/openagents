@@ -1,0 +1,35 @@
+vs-steer-v1: costs cut-off 4.0, a tick of silence or of talking over 0.02, a run thrown away 0.5, a false stop 2.0, a missed barge-in 3.0
+thresholds: end at 16 ticks of silence above 0.7874, hold below 0.8696, start early above 0.8065, stop at 8 ticks above 0.9259, at 16 above 0.4
+  last word complete true, falling true: p = 0.9756 -> end
+  last word complete true, falling false: p = 0.8108 -> end
+  last word complete false, falling true: p = 0.4396 -> hold
+  last word complete false, falling false: p = 0.0775 -> hold
+one conversation, answers 2 ticks after each question:
+  fixed rules: turn over at 150, first audio 116 ticks after the user stopped; reply stopped 24 ticks into the overlap; cost 2.8
+  model: turn over at 98, first audio 58 ticks after the user stopped, language model started early at 98; reply stopped 10 ticks into the overlap; cost 1.36
+the same words with an 80-tick hesitation after word 1:
+  fixed rules: turn over at 140, cutting the user off; reply stopped 24 ticks into the overlap; cost 4.48
+  model: turn over at 176, first audio 58 ticks after the user stopped, held, language model started early at 176; reply stopped 10 ticks into the overlap; cost 1.36
+400 drawn conversations; over the reply, 129 coughs, 116 backchannels and 155 times speech
+fixed rules (the model stopped):
+  cut off 172 of 400; first audio 116.0833 ticks on average over 228 turns; 0 early starts, 0 tokens thrown away
+  stopped for a cough or backchannel 0 of 245, missed speech 1 of 155, stopped for speech after 38.8312 ticks on average
+  questions 1000: absent 1000
+  cost per conversation 3.3499
+model:
+  cut off 60 of 400; first audio 73.2559 ticks on average over 340 turns; 262 early starts, 0 tokens thrown away
+  stopped for a cough or backchannel 18 of 245, missed speech 0 of 155, stopped for speech after 19.8194 ticks on average
+  questions 1215: kept 933 late 282; on time 933 of 1215 (0.7679), 3.4617 ticks after the question on average
+  cost per conversation 2.089
+model answering 4 to 10 ticks after each question:
+  cut off 142 of 400; first audio 106.0659 ticks on average over 258 turns; 45 early starts, 0 tokens thrown away
+  stopped for a cough or backchannel 2 of 245, missed speech 2 of 155, stopped for speech after 35.3856 ticks on average
+  questions 1057: kept 168 late 889; on time 168 of 1057 (0.1589), 7.0132 ticks after the question on average
+  cost per conversation 3.084
+sound lasting past 16 ticks, named by the model:
+  cough: cough 97, backchannel 0, speech 0
+  backchannel: cough 0, backchannel 96, speech 12
+  speech: cough 0, backchannel 10, speech 145
+chapter 241's decision gate, the model's own seed-to-seed spread as the floor:
+  model against the fixed rules: gain 1.2609 per conversation, floor 0.1155, 0 of 1000 replicates at or below it -> passed (beyond the floor)
+  late model against the fixed rules: gain 0.2659 per conversation, floor 0.1155, 0 of 1000 replicates at or below it -> passed (beyond the floor)

@@ -1,0 +1,39 @@
+// Chapter 185: what is refused. A configuration whose decision cannot fit
+// its share, or whose costs, timing or floor are broken, steers nothing; a
+// broken conversation is refused; and each bad answer is dropped by the
+// gate with its reason, while the fixed rules carry on.
+#import "Basic";
+#load "../lib/voice-steer.coax";
+
+open :: (what:string,c:VsConfig) {
+    o:=vs_line(c,vsx_line(),0);
+    print("%: %, % questions asked\n",what,vs_why_name(o.why),o.log.asked);
+}
+
+// book:begin main
+main :: () {
+    c:=vs_config();
+    d:=c;d.model.latency=5;open("an answer 5 ticks after the question, with a 4-tick share",d);
+    d=c;d.ask_end=60;d.share=10;d.rule_barge=40;open("asked at 60 ticks with a 10-tick share: an answer could come as the 70-tick rule ends the turn",d);
+    d=c;d.share=8;open("an 8-tick share: an answer at 16 could come after the counter's 24",d);
+    d=c;d.costs.cut=0;open("a cut-off that costs nothing",d);
+    d=c;d.hold_to=101;open("a hold to 101 ticks",d);
+    d=c;d.floor=1.5;open("a confidence floor of 1.5",d);
+    d=c;d.pipe.asr_lag=21;open("partial words 21 ticks late",d);
+    x:=vsx_line();x.start[1]=x.turn.heard[0];
+    print("a word that starts where the one before it ends: %\n",vs_why_name(vs_line(c,x,0).why));
+    x=vsx_line();x.bits[5]=9;
+    print("an overlap tick with bit 8 set: %\n",vs_why_name(vs_line(c,x,0).why));
+    print("answers at the gate, the turn's epoch 3, deadline 104:\n");
+    p:=VsProposal.{kind=VsKind.turn_end,act=VsAct.end,p=0.9,epoch=3,asked=100,arrives=102,deadline=104};
+    q:=p;print("  end at 0.9, arriving at 102: %\n",vs_drop_name(vs_gate(c,q,3)));
+    q=p;q.act=VsAct.stop;print("  stop, to a question about the turn: %\n",vs_drop_name(vs_gate(c,q,3)));
+    q=p;q.p=1.2;print("  end at 1.2: %\n",vs_drop_name(vs_gate(c,q,3)));
+    q=p;q.p=0.3;print("  end at 0.3, under the floor of 0.4: %\n",vs_drop_name(vs_gate(c,q,3)));
+    q=p;print("  end at 0.9 after the user spoke again (epoch 4): %\n",vs_drop_name(vs_gate(c,q,4)));
+    q=p;q.arrives=105;print("  end at 0.9, arriving at 105: %\n",vs_drop_name(vs_gate(c,q,3)));
+    s:=c;s.model.on=false;o:=vs_line(s,vsx_line(),0);
+    print("a stopped model: % questions, % absent; the turn ends at % by the rule and first audio comes % ticks after the user stopped\n",
+        o.log.asked,o.log.drops[cast(int)VsDrop.absent],o.eot,o.first);
+}
+// book:end main

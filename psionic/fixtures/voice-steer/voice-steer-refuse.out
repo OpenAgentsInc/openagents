@@ -1,0 +1,17 @@
+an answer 5 ticks after the question, with a 4-tick share: budget, 0 questions asked
+asked at 60 ticks with a 10-tick share: an answer could come as the 70-tick rule ends the turn: budget, 0 questions asked
+an 8-tick share: an answer at 16 could come after the counter's 24: budget, 0 questions asked
+a cut-off that costs nothing: costs, 0 questions asked
+a hold to 101 ticks: timing, 0 questions asked
+a confidence floor of 1.5: floor, 0 questions asked
+partial words 21 ticks late: pipe, 0 questions asked
+a word that starts where the one before it ends: line
+an overlap tick with bit 8 set: line
+answers at the gate, the turn's epoch 3, deadline 104:
+  end at 0.9, arriving at 102: kept
+  stop, to a question about the turn: shape
+  end at 1.2: clamp
+  end at 0.3, under the floor of 0.4: floor
+  end at 0.9 after the user spoke again (epoch 4): epoch
+  end at 0.9, arriving at 105: late
+a stopped model: 3 questions, 3 absent; the turn ends at 150 by the rule and first audio comes 116 ticks after the user stopped

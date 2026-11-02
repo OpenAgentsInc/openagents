@@ -1,0 +1,679 @@
+// Chapter 185: a decision model steers voice. Chapter 184's pipeline ends
+// the user's turn by a fixed rule (70 ticks of silence) and stops its reply
+// by another (the voice engine's barge-in counter). Here a small stand-in
+// decision model answers typed questions at fixed points: at 16 ticks of
+// silence, end the turn now or hold it longer, and start the language
+// model early or not; 8 and 16 ticks into sound over the reply, stop or
+// ignore it. Each answer is a probability; the action follows from costs
+// written down first, through chapter 216's th_answer. Every answer is a
+// proposal that arrives some ticks after the question and passes a gate
+// with the voice engine's order (verse/voice.coax decide): the action must
+// fit the question, the probability lie in [0, 1], the confidence clear a
+// floor, the epoch still be current, and the deadline not have passed.
+// Each drop has a recorded reason. Nothing waits for the model: a missing,
+// dropped or late answer leaves the fixed rule in charge.
+// Profile vs-steer-v1: integer ticks of 10 ms, binary64 probabilities; the
+// model is the exact posterior of this chapter's timeline generator, not a
+// trained network, and there is no audio.
+#load "voice-pipeline.coax";
+#load "threshold.coax";
+#authority;
+#load "../tests/voice-steer-checks.coax";  // the tick-by-tick reference and hand-built lines
+
+VS_PROFILE :: "vs-steer-v1";
+VS_FRAMES :: 120;   // ticks of overlap a line records
+VS_LINES :: 1024;   // lines in one measured set
+
+// book:begin types
+VsKind :: enum u8 {turn_end;early_start;barge;}
+VsAct :: enum u8 {none;end;hold;start;stop;ignore;}
+VsDrop :: enum u8 {kept;absent;shape;clamp;floor;epoch;late;}
+VsWhy :: enum u8 {none;costs;timing;budget;floor;pipe;line;size;}
+VsEvent :: enum u8 {cough;backchannel;speech;}
+// What each mistake costs, written before anything runs: cutting the user
+// off, each tick of silence or of talking over the user, a language-model
+// run thrown away, stopping the reply for nothing, and never stopping it.
+VsCosts :: struct {cut:f64;tick:f64;restart:f64;false_stop:f64;missed:f64;}
+// The stand-in model's timing: an answer arrives latency ticks after the
+// question, plus 0 to jitter ticks drawn per call. on: false is a stopped model.
+VsModel :: struct {on:bool;latency:int;jitter:int;seed:u64;}
+// share: ticks the decision may take, its share of the end-of-turn budget.
+// floor: the gate's confidence floor. rule_end: the fixed rule's silence;
+// hold_to: the silence a held turn waits for; ask_end: when the model is
+// asked. window: when it is asked about sound over the reply; rule_barge:
+// the voice engine's counter that stops the reply. pipe: chapter 184.
+VsConfig :: struct {costs:VsCosts;model:VsModel;share:int;floor:f64;rule_end:int;hold_to:int;ask_end:int;
+    window:[2]int;rule_barge:int;pipe:VpConfig;}
+// One conversation: the user's turn (chapter 184's words and ticks), when
+// each word starts, whether it sounds complete and ends on a falling
+// pitch, and the sound over the reply: what it is, how long, and each
+// tick's bits (1 speech-like, 2 broadband, 4 louder than the reply's echo).
+VsLine :: struct {turn:VpTurn;start:[16]int;complete:[16]bool;fall:[16]bool;event:VsEvent;dur:int;bits:[120]u8;}
+// book:end types
+// book:begin proposal
+VsProposal :: struct {kind:VsKind;act:VsAct;p:f64;epoch:int;asked:int;arrives:int;deadline:int;}
+// Questions asked, answers dropped by reason (kept counts the admitted),
+// answers on time, and the ticks all answers waited.
+VsLog :: struct {asked:int;drops:[7]int;on_time:int;wait:int;}
+// book:end proposal
+// One line's result. eot: the tick the turn was declared over; cut: before
+// the user finished. early, start: the language model started early, and
+// when. first: ticks from the end of speech to the first audio heard, and
+// done: the tick the last audio was heard (both 0 when cut off). stopped,
+// stop: the reply stopped, and how many ticks into the overlap.
+VsOutcome :: struct {why:VsWhy;cut:bool;eot:int;hold:bool;early:bool;start:int;first:int;done:int;wasted:int;stopped:bool;stop:int;cost:f64;log:VsLog;}
+VsScore :: struct {why:VsWhy;lines:int;cut:int;first_sum:int;first_n:int;early:int;wasted:int;false_stop:int;missed:int;
+    react_sum:int;react_n:int;cost:f64;log:VsLog;}
+
+// Checks come first. Chapter 185 works the hand trace; the tick-by-tick
+// reference and the hand-built lines are in psionic/tests/voice-steer-checks.coax.
+// book:begin check-costs
+#test "the written costs give these thresholds" {
+    c:=vs_config();
+    // End at 16 ticks of silence: yes when (1 - p) 4 < p (70 - 16) 0.02, p > 4 / 5.08.
+    #assert !vs_yes(4/5.08,c.costs.cut,54*0.02) && vs_yes(4/5.08+1e-9,c.costs.cut,54*0.02);
+    #assert vs_end_act(c,0.787,16)==VsAct.hold && vs_end_act(c,0.788,16)==VsAct.end;
+    // Hold: (1 - p) 4 > p 30 * 0.02, so hold while p < 4 / 4.6 = 0.8696.
+    c.ask_end=60;
+    #assert vs_end_act(c,0.869,60)==VsAct.hold && vs_end_act(c,0.8696,60)==VsAct.none && vs_end_act(c,0.9523,60)==VsAct.none;
+    #assert vs_end_act(c,0.9524,60)==VsAct.end;
+    // Start early: p 6 ticks 0.02 > (1 - p) 0.5, p > 0.5 / 0.62 = 0.8065.
+    #assert !vs_start_act(c,0.8064) && vs_start_act(c,0.8065);
+    // Stop at window 0: p 8 ticks 0.02 > (1 - p) 2, p > 2 / 2.16 = 0.9259.
+    #assert vs_barge_act(c,0.9259,0)==VsAct.none && vs_barge_act(c,0.926,0)==VsAct.stop;
+    // Stop at window 1: p 3 > (1 - p) 2, p > 0.4; otherwise ignore.
+    #assert vs_barge_act(c,0.3999,1)==VsAct.ignore && vs_barge_act(c,0.4001,1)==VsAct.stop;
+}
+// book:end check-costs
+// book:begin check-model
+#test "the model's probabilities by hand" {
+    #assert vs_turn_p(true,true)==7200000.0/7380000 && vs_turn_p(true,false)==1800000.0/2220000;
+    #assert vs_turn_p(false,true)==800000.0/1820000 && vs_turn_p(false,false)==200000.0/2580000;
+    b:[120]u8;for k:0..<16 {b[k]=5;}
+    q:=vs_barge_post(b,8);
+    #assert abs(q[0]-3*pow(0.108,8))<1e-15 && abs(q[1]-3*pow(0.486,8))<1e-15 && abs(q[2]-4*pow(0.729,8))<1e-15;
+    #assert abs(vs_barge_p(b,8)-0.971569)<1e-6;
+    // At 16 ticks a cough has lasted past 16 with 24 chances in 31, a backchannel 24 in 26.
+    b[0]=3;q=vs_barge_post(b,16);
+    #assert abs(q[0]-3*24.0/31*pow(0.108,15)*0.6*0.8*0.1)<1e-18 && abs(q[1]-3*24.0/26*pow(0.486,15)*0.9*0.1*0.4)<1e-12;
+    #assert abs(q[2]-4*pow(0.729,15)*0.9*0.1*0.1)<1e-12;
+    // Before 9 ticks no cough has ended, before 14 no backchannel.
+    #assert vs_still(VsEvent.cough,8)==1 && vs_still(VsEvent.cough,9)==1 && vs_still(VsEvent.cough,10)==30.0/31;
+    #assert vs_still(VsEvent.backchannel,14)==1 && vs_still(VsEvent.backchannel,15)==25.0/26 && vs_still(VsEvent.backchannel,40)==0;
+    #assert vs_still(VsEvent.speech,59)==1 && vs_still(VsEvent.speech,60)==60.0/61 && vs_still(VsEvent.cough,39)==1.0/31;
+    #assert vs_class(vs_barge_post(b,8))==VsEvent.speech;
+    for k:0..<16 {b[k]=7;}#assert vs_class(vs_barge_post(b,8))==VsEvent.cough;
+    for k:0..<16 {b[k]=1;}#assert vs_class(vs_barge_post(b,8))==VsEvent.backchannel;
+    q[0]=1;q[1]=1;q[2]=1;#assert vs_class(q)==VsEvent.cough;q[1]=2;q[2]=2;#assert vs_class(q)==VsEvent.backchannel;
+    q[0]=2;q[1]=3;q[2]=1;#assert vs_class(q)==VsEvent.backchannel;
+}
+// book:end check-model
+// book:begin check-gate
+#test "the gate drops each kind of bad proposal, in the voice engine's order" {
+    c:=vs_config();
+    d:=VsProposal.{kind=VsKind.turn_end,act=VsAct.end,p=0.9,epoch=3,asked=100,arrives=104,deadline=104};
+    #assert vs_gate(c,d,3)==VsDrop.kept;
+    e:=d;e.act=VsAct.stop;#assert vs_gate(c,e,3)==VsDrop.shape;
+    e=d;e.p=1.0000001;#assert vs_gate(c,e,3)==VsDrop.clamp;
+    e=d;e.p= -0.0000001;#assert vs_gate(c,e,3)==VsDrop.clamp;
+    z:=0.0;e=d;e.p=z/z;#assert vs_gate(c,e,3)==VsDrop.clamp;
+    e=d;e.p=0.3999;#assert vs_gate(c,e,3)==VsDrop.floor;
+    e=d;e.p=0.4;#assert vs_gate(c,e,3)==VsDrop.kept;
+    e=d;e.act=VsAct.hold;e.p=0.6001;#assert vs_gate(c,e,3)==VsDrop.floor;
+    e.p=0.6;#assert vs_gate(c,e,3)==VsDrop.kept;
+    #assert vs_gate(c,d,4)==VsDrop.epoch;
+    e=d;e.arrives=105;#assert vs_gate(c,e,3)==VsDrop.late;
+    // The first failing check names the drop.
+    e.epoch=2;e.p=0.1;#assert vs_gate(c,e,3)==VsDrop.floor;
+    e.p=0.9;#assert vs_gate(c,e,3)==VsDrop.epoch;
+    for k:0..<3 {for a:0..<6 {
+        f:=d;f.kind=cast(VsKind)cast(u8)k;f.act=cast(VsAct)cast(u8)a;
+        fits:=(k==0 && (a==1 || a==2)) || (k==1 && a==3) || (k==2 && (a==4 || a==5));
+        #assert (vs_gate(c,f,3)!=VsDrop.shape)==fits;
+    }}
+    // A stopped model answers nothing: every question is logged absent.
+    lg:=[1]VsLog.[VsLog.{}];m:=c;m.model.on=false;
+    p:=vs_propose(m,lg[..],VsKind.barge,VsAct.stop,0.99,1,8,0);
+    #assert !vs_admit(m,lg[..],p,1) && lg[0].asked==1 && lg[0].drops[1]==1 && lg[0].on_time==0 && lg[0].wait==0;
+    // An answer at its deadline is on time; one tick later it is late.
+    m=c;m.model.latency=4;m.model.jitter=0;
+    p=vs_propose(m,lg[..],VsKind.barge,VsAct.stop,0.99,1,8,0);#assert p.arrives==12 && p.deadline==12;
+    #assert vs_admit(m,lg[..],p,1) && lg[0].on_time==1 && lg[0].wait==4 && lg[0].drops[0]==1;
+    p.arrives=13;#assert !vs_admit(m,lg[..],p,1) && lg[0].on_time==1 && lg[0].wait==9 && lg[0].drops[6]==1;
+}
+// book:end check-gate
+// book:begin check-hand
+#test "the hand trace: a complete sentence, then speech over the reply" {
+    c:=vs_config();c.model.jitter=0;x:=vsx_line();
+    o:=vs_line(c,x,0);
+    // Asked at 80 + 16 = 96, p = 0.9756: end and start early, both at 98.
+    #assert o.why==VsWhy.none && !o.cut && o.eot==98 && o.early && o.start==98 && o.first==58 && o.done==433 && o.wasted==0;
+    // Speech over the reply: p = 0.9716 at 8 ticks, stopped at 10.
+    #assert o.stopped && o.stop==10 && o.log.asked==3 && o.log.drops[0]==3 && o.log.on_time==3 && o.log.wait==6;
+    #assert abs(o.cost-(58+10)*0.02)<1e-12;
+    m:=c;m.model.on=false;r:=vs_line(m,x,0);
+    #assert !r.cut && r.eot==150 && !r.early && r.first==116 && r.done==491 && r.stop==24 && r.log.asked==3 && r.log.drops[1]==3;
+    #assert abs(r.cost-(116+24)*0.02)<1e-12;
+}
+// book:end check-hand
+#test "a hesitation is held; a late answer leaves the rule" {
+    c:=vs_config();c.model.jitter=0;m:=c;m.model.on=false;
+    // Silence after word 1 from 70 to 150; asked at 86, p = 0.0775: hold to 100 ticks.
+    x:=vsx_pause(vsx_line(),1,80,false,false);
+    o:=vs_line(c,x,0);#assert !o.cut && o.hold && o.eot==176 && o.log.drops[0]==4;
+    r:=vs_line(m,x,0);#assert r.cut && r.eot==140 && r.first==0 && r.done==0 && abs(r.cost-(4+24*0.02))<1e-12;
+    // The same after word 0: the first silence is epoch 0.
+    x=vsx_pause(vsx_line(),0,80,false,false);o=vs_line(c,x,0);#assert !o.cut && o.hold && o.eot==177;
+    // Answers 4 or 5 ticks after the question: the late ones are dropped, and when all are, the rule's outcome.
+    x=vsx_line();m=c;m.model.latency=4;m.model.jitter=1;m.model.seed=3;
+    late:=0;
+    for id:0..<8 {
+        o=vs_line(m,x,id);m.model.on=false;r=vs_line(m,x,id);m.model.on=true;
+        late+=o.log.drops[cast(int)VsDrop.late];
+        if o.log.drops[cast(int)VsDrop.late]==o.log.asked {#assert o.eot==r.eot && o.stop==r.stop && o.first==r.first && o.cost==r.cost;}
+    }
+    #assert late>0 && late<24;
+}
+#test "the epoch is the last word started" {
+    c:=vs_config();c.model.jitter=0;m:=c;m.model.on=false;
+    // A pause of 17 after word 0, or 18 after word 1: the answers arrive as speech resumes.
+    x:=vsx_pause(vsx_line(),0,17,true,true);o:=vs_line(c,x,0);
+    #assert o.log.asked==5 && o.log.drops[cast(int)VsDrop.epoch]==2 && o.eot==114;
+    x=vsx_pause(vsx_line(),1,18,true,true);o=vs_line(c,x,0);
+    #assert o.log.asked==5 && o.log.drops[cast(int)VsDrop.epoch]==2 && o.eot==114;
+    #assert vs_counter(c,x)==24;x.dur=23;#assert vs_counter(c,x)==0;x.dur=100;
+    #assert vs_epoch(x,87)==1 && vs_epoch(x,88)==2 && vs_epoch(x,0)==0 && vs_epoch(x,63)==1;
+    // A pause of 16 is never asked about; a pause of 70 outlasts the rule only by a tick more.
+    x=vsx_pause(vsx_line(),1,16,true,true);o=vs_line(c,x,0);#assert o.log.asked==3 && o.eot==112;
+    x=vsx_pause(vsx_line(),1,70,true,true);o=vs_line(m,x,0);#assert !o.cut && o.eot==218;
+    x=vsx_pause(vsx_line(),1,71,true,true);o=vs_line(m,x,0);#assert o.cut && o.eot==140;
+}
+#test "a held turn that the user ends waits for the longer rule" {
+    c:=vs_config();c.model.jitter=0;x:=vsx_line();x.complete[2]=false;x.fall[2]=false;
+    o:=vs_line(c,x,0);#assert o.hold && o.eot==180 && !o.early && o.first==146;
+    // Asked at 60 ticks, p = 0.8108 is neither an end (0.9524) nor a hold (0.8696), and only an end starts early.
+    c.ask_end=60;x=vsx_line();x.fall[2]=false;o=vs_line(c,x,0);#assert !o.hold && !o.early && o.eot==150 && o.log.asked==2;
+}
+#test "an early start on a partial transcript is thrown away when the turn goes on" {
+    c:=vs_config();c.model.seed=2;
+    // A pause of 40 ticks after a complete-sounding word 1: asked at 86, the end
+    // arrives late at 91 and is dropped, the start arrives at 88 and is kept.
+    x:=vsx_pause(vsx_line(),1,40,true,true);
+    o:=vs_line(c,x,0);
+    #assert !o.cut && o.eot==137 && o.early && o.start==88 && o.wasted==6 && o.first==65 && o.log.drops[cast(int)VsDrop.late]==1 && o.log.wait==14;
+    #assert abs(o.cost-((65+12)*0.02+0.5))<1e-12;
+}
+#test "an answer that arrives as the counter stops the reply is stale" {
+    c:=vs_config();c.costs.false_stop=100;c.model.latency=4;c.model.jitter=6;c.model.seed=28;
+    // Not asked at 8; asked at 16 and answered at 24, the tick the counter stopped the reply.
+    o:=vs_line(c,vsx_line(),0);
+    #assert o.stop==24 && o.log.asked==3 && o.log.drops[cast(int)VsDrop.epoch]==1 && o.log.drops[cast(int)VsDrop.late]==2;
+    // A sound that ends before a window is never asked about.
+    c=vs_config();c.model.jitter=0;x:=vsx_line();
+    x.dur=9;o=vs_line(c,x,0);#assert o.log.asked==3 && o.stop==10;
+    x.dur=8;o=vs_line(c,x,0);#assert o.log.asked==2 && !o.stopped && abs(o.cost-f64(o.first)*0.02-3)<1e-12;
+}
+#test "ignore at the second window overrules the counter" {
+    c:=vs_config();c.model.jitter=0;x:=vsx_line();m:=c;m.model.on=false;
+    // Loud and speech-like four ticks in five: the counter reaches 24 at 38.
+    for k:0..<120 {x.bits[k]=ifx k%5==4 then 1 else 5;}
+    x.event=VsEvent.backchannel;x.dur=40;
+    r:=vs_line(m,x,0);#assert r.stopped && r.stop==38 && abs(r.cost-(116*0.02+2))<1e-12;
+    for k:0..<120 {x.bits[k]=ifx k%2==1 then 1 else 5;}
+    r=vs_line(m,x,0);#assert !r.stopped;
+    // The same loudness, but broadband: a cough to the model, which says ignore at 16.
+    for k:0..<120 {x.bits[k]=ifx k%5==4 then 3 else 7;}
+    o:=vs_line(c,x,0);#assert !o.stopped && o.log.asked==3 && o.log.drops[0]==3;
+    o=vs_line(m,x,0);#assert o.stop==38;
+    x.event=VsEvent.speech;o=vs_line(c,x,0);#assert !o.stopped && abs(o.cost-(58*0.02+3))<1e-12;
+    // The counter falls only to zero.
+    for k:0..<120 {x.bits[k]=5;}x.bits[0]=0;x.bits[1]=0;r=vs_line(m,x,0);#assert r.stop==26;
+}
+// book:begin check-random
+#forall "each line equals the tick-by-tick reference" seed:0..<400 #steps 200000000 {
+    vsx_reference_check(seed);
+}
+#forall "a stopped model gives the fixed rule's outcome on every line" seed:0..<200 #steps 100000000 {
+    vsx_stopped_check(seed);
+}
+#forall "the actions agree with chapter 216's cheapest answer" seed:0..<2000 {
+    vsx_cost_check(seed);
+}
+// book:end check-random
+
+// book:begin check-refuse
+#test "configurations, lines and sets that are refused" {
+    c:=vs_config();#assert vs_check(c)==VsWhy.none;
+    d:=c;d.costs.cut=0;#assert vs_check(d)==VsWhy.costs;
+    d=c;d.costs.tick= -1;#assert vs_check(d)==VsWhy.costs;
+    d=c;d.costs.restart=TH_COST_MAX*2;#assert vs_check(d)==VsWhy.costs;
+    z:=0.0;d=c;d.costs.false_stop=z/z;#assert vs_check(d)==VsWhy.costs;
+    d=c;d.costs.missed=0;#assert vs_check(d)==VsWhy.costs;
+    d=c;d.costs.restart=TH_COST_MAX;#assert vs_check(d)==VsWhy.none;
+    d=c;d.ask_end=0;#assert vs_check(d)==VsWhy.timing;
+    d=c;d.ask_end=1;#assert vs_check(d)==VsWhy.none;
+    d=c;d.rule_end=d.ask_end;#assert vs_check(d)==VsWhy.timing;
+    d=c;d.hold_to=d.rule_end;#assert vs_check(d)==VsWhy.timing;
+    d=c;d.hold_to=VP_DELAY+1;#assert vs_check(d)==VsWhy.timing;
+    d=c;d.hold_to=VP_DELAY;#assert vs_check(d)==VsWhy.none;
+    d=c;d.window[0]=0;#assert vs_check(d)==VsWhy.timing;
+    d=c;d.window[0]=1;#assert vs_check(d)==VsWhy.none;
+    d=c;d.window[1]=d.window[0];#assert vs_check(d)==VsWhy.timing;
+    d=c;d.rule_barge=d.window[1];#assert vs_check(d)==VsWhy.timing;
+    d=c;d.rule_barge=41;#assert vs_check(d)==VsWhy.timing;
+    d=c;d.rule_barge=40;#assert vs_check(d)==VsWhy.none;
+    d=c;d.model.latency= -1;#assert vs_check(d)==VsWhy.timing;
+    d=c;d.model.jitter= -1;#assert vs_check(d)==VsWhy.timing;
+    d=c;d.model.jitter=101;#assert vs_check(d)==VsWhy.timing;
+    d=c;d.model.jitter=100;#assert vs_check(d)==VsWhy.none;
+    // The decision must fit inside its share, and the share before the rules act.
+    d=c;d.model.latency=5;#assert vs_check(d)==VsWhy.budget;
+    d=c;d.model.latency=4;#assert vs_check(d)==VsWhy.none;
+    d=c;d.ask_end=60;d.share=10;d.rule_barge=40;#assert vs_check(d)==VsWhy.budget;
+    d.share=9;#assert vs_check(d)==VsWhy.none;
+    d=c;d.share=7;d.window[1]=17;#assert vs_check(d)==VsWhy.budget;
+    d=c;d.share=7;#assert vs_check(d)==VsWhy.none;
+    d=c;d.share= -1;d.model.latency= -2;#assert vs_check(d)==VsWhy.timing;
+    d=c;d.floor=1.01;#assert vs_check(d)==VsWhy.floor;
+    d=c;d.floor= -0.01;#assert vs_check(d)==VsWhy.floor;
+    d=c;d.floor=1;#assert vs_check(d)==VsWhy.none;
+    d=c;d.pipe.step=0;#assert vs_check(d)==VsWhy.pipe;
+    d=c;d.pipe.asr_lag=d.ask_end+d.pipe.asr_final+1;#assert vs_check(d)==VsWhy.pipe;
+    d=c;d.pipe.asr_lag=d.ask_end+d.pipe.asr_final;#assert vs_check(d)==VsWhy.none;
+    // A refused configuration runs nothing.
+    x:=vsx_line();d=c;d.floor=2;o:=vs_line(d,x,0);#assert o.why==VsWhy.floor && o.log.asked==0 && o.eot==0;
+    o=vs_line(c,x,0);#assert o.why==VsWhy.none;
+    #assert vs_line_check(c,x)==VsWhy.none;
+    y:=x;y.turn.n=0;#assert vs_line(c,y,0).why==VsWhy.line;
+    y=x;y.turn.end=y.turn.heard[2]+1;#assert vs_line_check(c,y)==VsWhy.line;
+    y=x;y.start[0]=y.turn.heard[0];#assert vs_line_check(c,y)==VsWhy.line;
+    y=x;y.start[1]=y.turn.heard[0];#assert vs_line_check(c,y)==VsWhy.line;
+    y=x;y.start[1]=y.turn.heard[0]+1;y.start[0]= -1;#assert vs_line_check(c,y)==VsWhy.line;
+    y=x;y.start[0]=0;#assert vs_line_check(c,y)==VsWhy.none;
+    y=x;y.dur=0;#assert vs_line_check(c,y)==VsWhy.line;
+    y=x;y.dur=1;#assert vs_line_check(c,y)==VsWhy.none;
+    y=x;y.dur=121;#assert vs_line_check(c,y)==VsWhy.line;
+    y=x;y.dur=120;#assert vs_line_check(c,y)==VsWhy.none;
+    y=x;y.bits[3]=8;#assert vs_line_check(c,y)==VsWhy.line;
+    y=x;y.bits[119]=8;#assert vs_line_check(c,y)==VsWhy.line;
+    y=x;y.bits[119]=7;#assert vs_line_check(c,y)==VsWhy.none;
+    xs:[2]VsLine;xs[0]=x;xs[1]=y;costs:[2]f64;
+    #assert vs_score(c,xs[..],costs[0..<1]).why==VsWhy.size && vs_score(c,xs[0..<0],costs[0..<0]).why==VsWhy.size;
+    #assert vs_score(d,xs[..],costs[..]).why==VsWhy.floor;
+    xs[1].dur=0;#assert vs_score(c,xs[..],costs[..]).why==VsWhy.line;
+    #assert vs_lines(1,xs[0..<0])==VsWhy.size && vs_lines(1,xs[..])==VsWhy.none;
+    #assert !vs_count_ok(0) && vs_count_ok(1) && vs_count_ok(1024) && !vs_count_ok(1025);
+    names:=[8]string.["none","costs","timing","budget","floor","pipe","line","size"];
+    for k:0..<8 {#assert vs_why_name(cast(VsWhy)cast(u8)k)==names[k];}
+    drops:=[7]string.["kept","absent","shape","clamp","floor","epoch","late"];
+    for k:0..<7 {#assert vs_drop_name(cast(VsDrop)cast(u8)k)==drops[k];}
+}
+// book:end check-refuse
+#test "the generator draws what it says" #steps 200000000 {
+    xs:[400]VsLine;#assert vs_lines(5,xs[..])==VsWhy.none;
+    c:=vs_config();n:=[3]int.[0,0,0];hes:=0;ends:[2][2]int;
+    for x:xs {
+        #assert vs_line_check(c,x)==VsWhy.none;
+        n[cast(int)x.event]+=1;
+        u:=x.turn;
+        for w:0..<u.n-1 {if x.start[w+1]-u.heard[w]>15 {hes+=1;#assert x.start[w+1]-u.heard[w]>=75 && x.start[w+1]-u.heard[w]<=95;}}
+        ends[ifx x.complete[u.n-1] then 1 else 0][ifx x.fall[u.n-1] then 1 else 0]+=1;
+        lo:=ifx x.event==VsEvent.cough then 10 else ifx x.event==VsEvent.backchannel then 15 else 60;
+        #assert x.dur>=lo && x.dur<=lo+ifx x.event==VsEvent.speech then 60 else ifx x.event==VsEvent.cough then 30 else 25;
+    }
+    #assert n[0]>90 && n[0]<150 && n[1]>90 && n[1]<150 && n[2]>130 && n[2]<190 && hes>130 && hes<190;
+    #assert ends[1][1]>250 && ends[0][0]<20;
+    // The same seed draws the same lines.
+    ys:[400]VsLine;#assert vs_lines(5,ys[..])==VsWhy.none;
+    for i:0..<400 {#assert ys[i].turn.end==xs[i].turn.end && ys[i].dur==xs[i].dur && ys[i].bits[7]==xs[i].bits[7];}
+    h:=vsx_digest(xs[..]);#assert h[0]==425326 && h[1]==23699442 && h[2]==11991 && h[3]==385541;
+    #assert vs_lines(6,ys[..])==VsWhy.none;d:=0;for i:0..<400 {if ys[i].turn.end!=xs[i].turn.end {d+=1;}}#assert d>300;
+}
+#test "a set's score adds its lines" {
+    c:=vs_config();c.model.seed=2;xs:[40]VsLine;#assert vs_lines(9,xs[..])==VsWhy.none;costs:[40]f64;
+    xs[0]=vsx_pause(vsx_line(),1,40,true,true);
+    s:=vs_score(c,xs[..],costs[..]);#assert s.why==VsWhy.none && s.lines==40;
+    t:=VsScore.{lines=40};total:=0.0;
+    for x,i:xs {
+        o:=vs_line(c,x,i);#assert o.cost==costs[i];total+=o.cost;
+        if o.cut {t.cut+=1;} else {t.first_sum+=o.first;t.first_n+=1;}
+        if o.early {t.early+=1;}
+        t.wasted+=o.wasted;
+        if x.event==VsEvent.speech {if o.stopped {t.react_sum+=o.stop;t.react_n+=1;} else {t.missed+=1;}}
+        else if o.stopped {t.false_stop+=1;}
+        t.log.asked+=o.log.asked;t.log.on_time+=o.log.on_time;t.log.wait+=o.log.wait;
+        for k:0..<7 {t.log.drops[k]+=o.log.drops[k];}
+    }
+    #assert s.cut==t.cut && s.first_sum==t.first_sum && s.first_n==t.first_n && s.early==t.early && s.wasted==t.wasted;
+    #assert s.false_stop==t.false_stop && s.missed==t.missed && s.react_sum==t.react_sum && s.react_n==t.react_n;
+    #assert s.log.asked==t.log.asked && s.log.on_time==t.log.on_time && s.log.wait==t.log.wait;
+    for k:0..<7 {#assert s.log.drops[k]==t.log.drops[k];}
+    #assert abs(s.cost-total)<1e-9 && s.cut>0 && s.react_n>0 && s.early>0 && s.wasted>=6 && s.false_stop>0;
+}
+
+// book:begin check-set
+#test "the drawn set's frozen numbers" #steps 400000000 {
+    xs:[400]VsLine;#assert vs_lines(2026,xs[..])==VsWhy.none;costs:[400]f64;
+    c:=vs_config();c.model.on=false;r:=vs_score(c,xs[..],costs[..]);
+    #assert r.cut==172 && r.first_sum==26467 && r.first_n==228 && r.early==0 && r.false_stop==0 && r.missed==1;
+    #assert r.react_sum==5980 && r.react_n==154 && r.log.asked==1000 && r.log.drops[1]==1000 && abs(r.cost-1339.94)<1e-9;
+    m:=vs_score(vs_config(),xs[..],costs[..]);
+    #assert m.cut==60 && m.first_sum==24907 && m.first_n==340 && m.early==262 && m.wasted==0 && m.false_stop==18 && m.missed==0;
+    #assert m.react_sum==3072 && m.react_n==155 && m.log.asked==1215 && m.log.on_time==933 && m.log.wait==4206;
+    #assert m.log.drops[0]==933 && m.log.drops[6]==282 && abs(m.cost-835.58)<1e-9;
+}
+// book:end check-set
+
+// book:begin config
+vs_written :: ()->VsCosts {return VsCosts.{cut=4,tick=0.02,restart=0.5,false_stop=2,missed=3};}
+vs_config :: ()->VsConfig {
+    return VsConfig.{costs=vs_written(),model=VsModel.{on=true,latency=2,jitter=3,seed=1},share=4,floor=0.4,
+        rule_end=70,hold_to=100,ask_end=16,window=[2]int.[8,16],rule_barge=24,
+        pipe=VpConfig.{asr_lag=5,asr_final=4,quiet=0,prefill=6,per_word=2,step=3,cap=6,
+            tts_first=8,word_ticks=25,pause=15,hop=[3]int.[2,3,2]}};
+}
+// book:end config
+
+// book:begin validate
+vs_cost_ok :: (x:f64)->bool {return x>0 && x<=TH_COST_MAX;}
+vs_check :: (c:VsConfig)->VsWhy #export_c {
+    k:=c.costs;
+    all:=[5]f64.[k.cut,k.tick,k.restart,k.false_stop,k.missed];
+    for x:all {if !vs_cost_ok(x) {return VsWhy.costs;}}
+    if c.ask_end<1 || c.rule_end<=c.ask_end || c.hold_to<=c.rule_end || c.hold_to>VP_DELAY {return VsWhy.timing;}
+    if c.window[0]<1 || c.window[1]<=c.window[0] || c.rule_barge<=c.window[1] || c.rule_barge>40 {return VsWhy.timing;}
+    if c.model.latency<0 || c.model.jitter<0 || c.model.jitter>100 {return VsWhy.timing;}
+    // The decision fits inside its share, and an answer on time arrives before either rule acts.
+    if c.model.latency>c.share || c.ask_end+c.share>=c.rule_end || c.window[1]+c.share>=c.rule_barge {return VsWhy.budget;}
+    if !tb_in(c.floor,0,1) {return VsWhy.floor;}
+    // The earliest end of a turn is ask_end ticks after its last word.
+    u:VpTurn;u.n=1;u.word[0]=999;
+    if vp_check(vs_pipe(c),u)!=VpWhy.none {return VsWhy.pipe;}
+    return VsWhy.none;
+}
+// Chapter 184's configuration with the earliest end of a turn the model can choose.
+vs_pipe :: (c:VsConfig)->VpConfig {p:=c.pipe;p.hangover=c.ask_end;return p;}
+vs_line_check :: (c:VsConfig,x:VsLine)->VsWhy {
+    u:=x.turn;
+    if vp_check(vs_pipe(c),u)!=VpWhy.none || u.end!=u.heard[u.n-1] || x.start[0]<0 {return VsWhy.line;}
+    for w:0..<u.n {
+        if x.start[w]>=u.heard[w] {return VsWhy.line;}
+        if w>0 && x.start[w]<=u.heard[w-1] {return VsWhy.line;}
+    }
+    if x.dur<1 || x.dur>VS_FRAMES {return VsWhy.line;}
+    for b:x.bits {if cast(int)b>7 {return VsWhy.line;}}
+    return VsWhy.none;
+}
+// book:end validate
+
+// book:begin model
+// The stand-in model is the exact posterior of the generator (vs_lines).
+// A silence of 16 ticks follows the last word or a hesitation, 10 to 4;
+// the last word sounds complete 900 times in 1000 and falls 800; a
+// hesitation's word 150 and 300. p: the turn is over.
+vs_turn_p :: (complete:bool,fall:bool)->f64 {
+    a:=10*(ifx complete then 900 else 100)*(ifx fall then 800 else 200);
+    b:=4*(ifx complete then 150 else 850)*(ifx fall then 300 else 700);
+    return f64(a)/f64(a+b);
+}
+// Sound over the reply: a cough (3 in 10), a backchannel (3) or speech (4).
+// Per tick, per mille: speech-like, broadband, loud.
+vs_rate :: (e:int,f:int)->int {
+    r:=[9]int.[600,800,900,900,100,600,900,100,900];
+    return r[3*e+f];
+}
+// The chance the sound is still going after w ticks: coughs last 10 to 40
+// ticks, backchannels 15 to 40, speech 60 to 120.
+vs_still :: (e:VsEvent,w:int)->f64 {
+    lo:=60;hi:=120;
+    if e==VsEvent.cough {lo=10;hi=40;} else if e==VsEvent.backchannel {lo=15;hi=40;}
+    n:=0;for d:lo..<hi+1 {if d>w {n+=1;}}
+    return f64(n)/f64(hi-lo+1);
+}
+// Unnormalized weights of each kind of sound, given its first w ticks.
+vs_barge_post :: (bits:[120]u8,w:int)->[3]f64 {
+    q:[3]f64;
+    for e:0..<3 {
+        v:=f64(ifx e==2 then 4 else 3)*vs_still(cast(VsEvent)cast(u8)e,w);
+        for t:0..<w {for f:0..<3 {
+            r:=vs_rate(e,f);if ((cast(int)bits[t])>>f)&1==0 {r=1000-r;}
+            v*=f64(r)/1000;
+        }}
+        q[e]=v;
+    }
+    return q;
+}
+vs_barge_p :: (bits:[120]u8,w:int)->f64 {q:=vs_barge_post(bits,w);return q[2]/(q[0]+q[1]+q[2]);}
+// The most probable kind; a tie keeps the earlier.
+vs_class :: (q:[3]f64)->VsEvent {
+    k:=0;if q[1]>q[k] {k=1;}
+    if q[2]>q[k] {k=2;}
+    return cast(VsEvent)cast(u8)k;
+}
+// book:end model
+
+// book:begin decide
+// Yes when chapter 216's cheapest answer at p is yes: a wrong yes costs
+// wrong_yes, a wrong no wrong_no, and asking a person is never cheaper.
+vs_yes :: (p:f64,wrong_yes:f64,wrong_no:f64)->bool {
+    return th_answer(ThCosts.{wrong_yes=wrong_yes,wrong_no=wrong_no,ask=TH_COST_MAX},p).action==ThAction.yes;
+}
+// At k ticks of silence: ending now is wrong if the user goes on; not
+// ending is wrong by the ticks until the rule ends the turn. Holding is
+// wrong by the extra ticks if the user is done, and not holding by a
+// cut-off if the user goes on.
+vs_end_act :: (c:VsConfig,p:f64,k:int)->VsAct {
+    if vs_yes(p,c.costs.cut,f64(c.rule_end-k)*c.costs.tick) {return VsAct.end;}
+    if vs_yes(1-p,f64(c.hold_to-c.rule_end)*c.costs.tick,c.costs.cut) {return VsAct.hold;}
+    return VsAct.none;
+}
+// Starting on the partial transcript is wrong if more words come (the run
+// is thrown away); waiting is wrong by the final transcript's delay.
+vs_start_act :: (c:VsConfig,p:f64)->bool {
+    return vs_yes(p,c.costs.restart,f64(c.pipe.asr_final+c.pipe.hop[0])*c.costs.tick);
+}
+// Stopping is wrong if the sound is not speech. At window 0, not stopping
+// is wrong by the ticks until window 1; at window 1 it is a missed barge-in,
+// and the answer is ignore: the voice engine's counter is overruled.
+vs_barge_act :: (c:VsConfig,p:f64,which:int)->VsAct {
+    if which==0 {
+        if vs_yes(p,c.costs.false_stop,f64(c.window[1]-c.window[0])*c.costs.tick) {return VsAct.stop;}
+        return VsAct.none;
+    }
+    if vs_yes(p,c.costs.false_stop,c.costs.missed) {return VsAct.stop;}
+    return VsAct.ignore;
+}
+// book:end decide
+
+// book:begin gate
+vs_fits :: (k:VsKind,a:VsAct)->bool {
+    if k==VsKind.turn_end {return a==VsAct.end || a==VsAct.hold;}
+    if k==VsKind.early_start {return a==VsAct.start;}
+    return a==VsAct.stop || a==VsAct.ignore;
+}
+// The voice engine's order: shape, range, confidence floor, epoch, deadline.
+// The confidence is the probability of what the action bets on.
+vs_gate :: (c:VsConfig,d:VsProposal,epoch:int)->VsDrop {
+    if !vs_fits(d.kind,d.act) {return VsDrop.shape;}
+    if !tb_in(d.p,0,1) {return VsDrop.clamp;}
+    conf:=ifx d.act==VsAct.hold || d.act==VsAct.ignore then 1-d.p else d.p;
+    if conf<c.floor {return VsDrop.floor;}
+    if d.epoch!=epoch {return VsDrop.epoch;}
+    if d.arrives>d.deadline {return VsDrop.late;}
+    return VsDrop.kept;
+}
+// The question is sent and the audio goes on; the answer arrives some
+// ticks later. call numbers the question so its delay is reproducible.
+vs_propose :: (c:VsConfig,lg:[]VsLog,k:VsKind,a:VsAct,p:f64,epoch:int,asked:int,call:int)->VsProposal {
+    lg[0].asked+=1;
+    w:=c.model.latency+cast(int)(tb_bits(c.model.seed,cast(u64)call)%cast(u64)(c.model.jitter+1));
+    return VsProposal.{kind=k,act=a,p=p,epoch=epoch,asked=asked,arrives=asked+w,deadline=asked+c.share};
+}
+// At the answer's arrival, with the epoch then current: kept or dropped,
+// and why. A stopped model's answer never arrives.
+vs_admit :: (c:VsConfig,lg:[]VsLog,d:VsProposal,epoch:int)->bool {
+    if !c.model.on {lg[0].drops[cast(int)VsDrop.absent]+=1;return false;}
+    lg[0].wait+=d.arrives-d.asked;
+    if d.arrives<=d.deadline {lg[0].on_time+=1;}
+    g:=vs_gate(c,d,epoch);lg[0].drops[cast(int)g]+=1;
+    return g==VsDrop.kept;
+}
+// book:end gate
+
+// book:begin turn
+// The turn, silence by silence. At ask_end ticks into a silence the model
+// is asked; the epoch is the last word started, so speech resuming before
+// the answer makes it stale. The rule ends the turn at rule_end ticks, or
+// hold_to when a hold was admitted; an admitted end ends it when it arrives.
+vs_epoch :: (x:VsLine,t:int)->int {
+    e:=0;for w:1..<x.turn.n {if x.start[w]<=t {e=w;}}
+    return e;
+}
+vs_turn :: (c:VsConfig,x:VsLine,id:int,o:[]VsOutcome) {
+    u:=x.turn;lg:=[1]VsLog.[o[0].log];
+    for i:0..<u.n {
+        last:=i==u.n-1;rule:=c.rule_end;ended:=false;
+        if last || c.ask_end<x.start[i+1]-u.heard[i] {
+            p:=vs_turn_p(x.complete[i],x.fall[i]);a:=vs_end_act(c,p,c.ask_end);
+            if a!=VsAct.none {
+                d:=vs_propose(c,lg[..],VsKind.turn_end,a,p,i,u.heard[i]+c.ask_end,id*64+2*i);
+                if vs_admit(c,lg[..],d,vs_epoch(x,d.arrives)) {
+                    if a==VsAct.end {ended=true;o[0].eot=d.arrives;} else {rule=c.hold_to;o[0].hold=true;}
+                }
+            }
+            if a==VsAct.end && vs_start_act(c,p) && !o[0].early {
+                d:=vs_propose(c,lg[..],VsKind.early_start,VsAct.start,p,i,u.heard[i]+c.ask_end,id*64+2*i+1);
+                if vs_admit(c,lg[..],d,vs_epoch(x,d.arrives)) {o[0].early=true;o[0].start=d.arrives;}
+            }
+        }
+        if !ended && (last || rule<x.start[i+1]-u.heard[i]) {ended=true;o[0].eot=u.heard[i]+rule;}
+        if ended {o[0].cut=!last;break;}
+    }
+    o[0].log=lg[0];
+}
+// book:end turn
+
+// book:begin barge
+// Sound over the reply. The voice engine's counter rises on a loud
+// speech-like tick and falls on any other; at rule_barge it stops the
+// reply. The model is asked at each window while the sound lasts, until it
+// says stop. The reply is the epoch: an answer that arrives after the
+// counter stopped it is stale: the epoch becomes the tick it stopped. An
+// admitted stop stops the reply; an admitted ignore overrules the counter.
+// The tick the counter stops the reply, or 0 if it never does.
+vs_counter :: (c:VsConfig,x:VsLine)->int {
+    run:=0;
+    for t:0..<x.dur {
+        if (cast(int)x.bits[t])&5==5 {run+=1;} else if run>0 {run-=1;}
+        if run==c.rule_barge {return t+1;}
+    }
+    return 0;
+}
+vs_barge :: (c:VsConfig,x:VsLine,id:int,o:[]VsOutcome) {
+    rule:=vs_counter(c,x);fired:=rule!=0;
+    lg:=[1]VsLog.[o[0].log];veto:=false;said:=false;
+    for which:0..<2 {
+        w:=c.window[which];
+        if said || x.dur<=w {break;}
+        p:=vs_barge_p(x.bits,w);a:=vs_barge_act(c,p,which);
+        said=a==VsAct.stop;
+        if a!=VsAct.none {
+            d:=vs_propose(c,lg[..],VsKind.barge,a,p,0,w,id*64+40+which);
+            now:=ifx fired && rule<=d.arrives then rule else 0;
+            if vs_admit(c,lg[..],d,now) {
+                if a==VsAct.stop {o[0].stopped=true;o[0].stop=d.arrives;} else {veto=true;}
+            }
+        }
+    }
+    // An answer on time arrives before the counter can fire.
+    if !o[0].stopped && !veto && fired {o[0].stopped=true;o[0].stop=rule;}
+    o[0].log=lg[0];
+}
+// book:end barge
+
+// book:begin line
+// One line: the turn, then chapter 184's pipeline from the end the policy
+// chose (an early start is chapter 184's vp_start at that tick), then the
+// sound over the reply. The cost is the written price of what happened.
+vs_line :: (c:VsConfig,x:VsLine,id:int)->VsOutcome {
+    o:=[1]VsOutcome.[VsOutcome.{why=vs_check(c)}];
+    if o[0].why!=VsWhy.none {return o[0];}
+    o[0].why=vs_line_check(c,x);if o[0].why!=VsWhy.none {return o[0];}
+    k:=c.costs;
+    vs_turn(c,x,id,o[..]);
+    if o[0].cut {o[0].cost=k.cut;}
+    else {
+        p:=c.pipe;p.hangover=o[0].eot-x.turn.end;
+        r:=[1]VpRun.[vp_open(p,x.turn)];
+        if o[0].early {vp_until(r[..],o[0].start);if !r[0].started {vp_start(r[..],r[0].seen,true);}}
+        o[0].done=vp_finish(r[..]).at;
+        o[0].first=vp_latency(r[..]).first;o[0].wasted=r[0].wasted;
+        o[0].cost=f64(o[0].first)*k.tick;if o[0].wasted!=0 {o[0].cost+=k.restart;}
+    }
+    vs_barge(c,x,id,o[..]);
+    if x.event==VsEvent.speech {o[0].cost+=ifx o[0].stopped then f64(o[0].stop)*k.tick else k.missed;}
+    else if o[0].stopped {o[0].cost+=k.false_stop;}
+    return o[0];
+}
+// book:end line
+
+// book:begin set
+// A set of lines drawn from a seed: 2 to 7 words of 20 to 40 ticks with
+// gaps of 5 to 15, and in 4 lines of 10 one hesitation of 75 to 95 ticks;
+// then one sound over the reply.
+vs_count_ok :: (n:int)->bool {return n>=1 && n<=VS_LINES;}
+vs_draw :: (seed:u64,i:int,k:int,m:int)->int {return cast(int)(tb_bits(seed,cast(u64)(i*1024+k))%cast(u64)m);}
+vs_lines :: (seed:u64,out:[]VsLine)->VsWhy #export_c {
+    if !vs_count_ok(out.count) {return VsWhy.size;}
+    for i:0..<out.count {
+        x:VsLine;u:VpTurn;
+        u.n=2+vs_draw(seed,i,0,6);t:=20+vs_draw(seed,i,1,30);
+        hes:= -1;if vs_draw(seed,i,2,10)<4 {hes=vs_draw(seed,i,3,u.n-1);}
+        for w:0..<u.n {
+            x.start[w]=t;u.heard[w]=t+20+vs_draw(seed,i,10+w,21);u.word[w]=1+vs_draw(seed,i,30+w,999);
+            // In twentieths: 18 and 16 for the last word, 3 and 6 for a hesitation's.
+            pc:=10;pf:=10;gap:=5+vs_draw(seed,i,90+w,11);
+            if w==u.n-1 {pc=18;pf=16;} else if w==hes {pc=3;pf=6;gap=75+vs_draw(seed,i,90+w,21);}
+            x.complete[w]=vs_draw(seed,i,50+w,20)<pc;x.fall[w]=vs_draw(seed,i,70+w,20)<pf;
+            t=u.heard[w]+gap;
+        }
+        u.end=u.heard[u.n-1];x.turn=u;
+        e:=vs_draw(seed,i,120,10);ev:=ifx e<3 then 0 else ifx e<6 then 1 else 2;
+        lo:=[3]int.[10,15,60];span:=[3]int.[31,26,61];
+        x.event=cast(VsEvent)cast(u8)ev;x.dur=lo[ev]+vs_draw(seed,i,121,span[ev]);
+        for f:0..<x.dur {
+            b:=0;
+            for q:0..<3 {if vs_draw(seed,i,200+3*f+q,1000)<vs_rate(ev,q) {b+=1<<q;}}
+            x.bits[f]=cast(u8)b;
+        }
+        out[i]=x;
+    }
+    return VsWhy.none;
+}
+// Every line, its cost into cost, and the totals.
+vs_score :: (c:VsConfig,lines:[]VsLine,cost:[]f64)->VsScore #export_c {
+    if !vs_count_ok(lines.count) || cost.count!=lines.count {return VsScore.{why=VsWhy.size};}
+    s:=VsScore.{why=vs_check(c),lines=lines.count};if s.why!=VsWhy.none {return s;}
+    for x:lines {if vs_line_check(c,x)!=VsWhy.none {return VsScore.{why=VsWhy.line};}}
+    for x,i:lines {
+        o:=vs_line(c,x,i);cost[i]=o.cost;s.cost+=o.cost;
+        if o.cut {s.cut+=1;} else {s.first_sum+=o.first;s.first_n+=1;}
+        if o.early {s.early+=1;}
+        s.wasted+=o.wasted;
+        if x.event==VsEvent.speech {if o.stopped {s.react_sum+=o.stop;s.react_n+=1;} else {s.missed+=1;}}
+        else if o.stopped {s.false_stop+=1;}
+        s.log.asked+=o.log.asked;s.log.on_time+=o.log.on_time;s.log.wait+=o.log.wait;
+        for k:0..<7 {s.log.drops[k]+=o.log.drops[k];}
+    }
+    return s;
+}
+// book:end set
+
+vs_why_name :: (w:VsWhy)->string {
+    names:=[8]string.["none","costs","timing","budget","floor","pipe","line","size"];
+    return names[cast(int)w];
+}
+vs_drop_name :: (d:VsDrop)->string {
+    names:=[7]string.["kept","absent","shape","clamp","floor","epoch","late"];
+    return names[cast(int)d];
+}

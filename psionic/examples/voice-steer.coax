@@ -1,0 +1,94 @@
+// Chapter 185: a decision model steers chapter 184's voice pipeline. The
+// written costs give the thresholds; one hand-built conversation runs under
+// the fixed rules and under the model; then 400 drawn conversations
+// measure both, a stopped model and a late one, and chapter 241's gate
+// gives a verdict on the difference.
+#import "Basic";
+#load "../lib/voice-steer.coax";
+#load "../lib/verdict.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+VERDICT :: [3]string.["unverifiable","passed","failed"];
+REASON :: [14]string.["none","beyond the floor","within the floor","near the floor","no headroom","no floor","few tasks",
+    "lower loss","higher loss","more confident errors","loss unclear","over cost","over time","unmeasured"];
+EVENT :: [3]string.["cough","backchannel","speech"];
+ACT :: [6]string.["none","end","hold","start","stop","ignore"];
+
+show :: (what:string,o:VsOutcome) {
+    print("  %: turn over at %",what,o.eot);
+    if o.cut {print(", cutting the user off");} else {print(", first audio % ticks after the user stopped",o.first);}
+    if o.hold {print(", held");}
+    if o.early {print(", language model started early at %",o.start);}
+    if o.stopped {print("; reply stopped % ticks into the overlap",o.stop);} else {print("; reply not stopped");}
+    print("; cost %\n",r4(o.cost));
+}
+show_score :: (what:string,s:VsScore,speech:int) {
+    print("%:\n",what);
+    print("  cut off % of %; first audio % ticks on average over % turns; % early starts, % tokens thrown away\n",
+        s.cut,s.lines,r4(f64(s.first_sum)/f64(s.first_n)),s.first_n,s.early,s.wasted);
+    print("  stopped for a cough or backchannel % of %, missed speech % of %, stopped for speech after % ticks on average\n",
+        s.false_stop,s.lines-speech,s.missed,speech,r4(f64(s.react_sum)/f64(s.react_n)));
+    print("  questions %:",s.log.asked);
+    for k:0..<7 {if s.log.drops[k]>0 {print(" % %",vs_drop_name(cast(VsDrop)cast(u8)k),s.log.drops[k]);}}
+    if s.log.asked>s.log.drops[1] {
+        answered:=s.log.asked-s.log.drops[1];
+        print("; on time % of % (%), % ticks after the question on average",s.log.on_time,answered,r4(f64(s.log.on_time)/f64(answered)),
+            r4(f64(s.log.wait)/f64(answered)));
+    }
+    print("\n  cost per conversation %\n",r4(s.cost/f64(s.lines)));
+}
+show_verdict :: (what:string,base:[]f64,cand:[]f64,f:NsFloor) {
+    task:[400]int;zero:[400]int;for i:0..<400 {task[i]=i;}
+    d:=vd_decision(base,cand,task[..],zero[..],0,f,0,7,1000);#assert d.status==VdStatus.ok;
+    print("  %: gain % per conversation, floor %, % of 1000 replicates at or below it -> % (%)\n",what,r4(d.gain.gain),r4(f.floor),
+        d.gain.below,VERDICT[cast(int)d.result.verdict],REASON[cast(int)d.result.reason]);
+}
+
+// book:begin main
+main :: () {
+    c:=vs_config();k:=c.costs;
+    print("%: costs cut-off %, a tick of silence or of talking over %, a run thrown away %, a false stop %, a missed barge-in %\n",
+        VS_PROFILE,k.cut,k.tick,k.restart,k.false_stop,k.missed);
+    print("thresholds: end at % ticks of silence above %, hold below %, start early above %, stop at % ticks above %, at % above %\n",
+        c.ask_end,r4(k.cut/(k.cut+f64(c.rule_end-c.ask_end)*k.tick)),r4(1-f64(c.hold_to-c.rule_end)*k.tick/(f64(c.hold_to-c.rule_end)*k.tick+k.cut)),
+        r4(k.restart/(k.restart+6*k.tick)),c.window[0],r4(k.false_stop/(k.false_stop+f64(c.window[1]-c.window[0])*k.tick)),
+        c.window[1],r4(k.false_stop/(k.false_stop+k.missed)));
+    for q:0..<4 {
+        complete:=q<2;fall:=q%2==0;p:=vs_turn_p(complete,fall);
+        print("  last word complete %, falling %: p = % -> %\n",complete,fall,r4(p),ACT[cast(int)vs_end_act(c,p,c.ask_end)]);
+    }
+
+    print("one conversation, answers 2 ticks after each question:\n");
+    h:=c;h.model.jitter=0;x:=vsx_line();m:=h;m.model.on=false;
+    show("fixed rules",vs_line(m,x,0));show("model",vs_line(h,x,0));
+    x=vsx_pause(x,1,80,false,false);
+    print("the same words with an 80-tick hesitation after word 1:\n");
+    show("fixed rules",vs_line(m,x,0));show("model",vs_line(h,x,0));
+
+    xs:[400]VsLine;#assert vs_lines(2026,xs[..])==VsWhy.none;
+    kinds:=[3]int.[0,0,0];for y:xs {kinds[cast(int)y.event]+=1;}speech:=kinds[2];
+    print("400 drawn conversations; over the reply, % coughs, % backchannels and % times speech\n",kinds[0],kinds[1],speech);
+    off:=c;off.model.on=false;late:=c;late.model.latency=4;late.model.jitter=6;
+    base:[400]f64;runs:[1600]f64;cl:[400]f64;
+    s:=vs_score(off,xs[..],base[..]);show_score("fixed rules (the model stopped)",s,speech);
+    for r:0..<4 {
+        e:=c;e.model.seed=cast(u64)(1+r);t:=vs_score(e,xs[..],cl[..]);
+        for i:0..<400 {runs[r*400+i]= -cl[i];}
+        if r==0 {show_score("model",t,speech);}
+    }
+    t:=vs_score(late,xs[..],cl[..]);show_score("model answering 4 to 10 ticks after each question",t,speech);
+
+    // How the model names sound that lasts past its second question.
+    n:[3][3]int;
+    for y:xs {if y.dur>c.window[1] {n[cast(int)y.event][cast(int)vs_class(vs_barge_post(y.bits,c.window[1]))]+=1;}}
+    print("sound lasting past % ticks, named by the model:\n",c.window[1]);
+    for e:0..<3 {print("  %: cough %, backchannel %, speech %\n",EVENT[e],n[e][0],n[e][1],n[e][2]);}
+
+    // Higher is better: the negated written cost of each conversation.
+    for i:0..<400 {base[i]= -base[i];cl[i]= -cl[i];}
+    zero:[400]int;f:=ns_floor(runs[..],zero[..],0,4,1);#assert f.status==NsStatus.ok;
+    print("chapter 241's decision gate, the model's own seed-to-seed spread as the floor:\n");
+    show_verdict("model against the fixed rules",base[..],runs[0..<400],f);
+    show_verdict("late model against the fixed rules",base[..],cl[..],f);
+}
+// book:end main

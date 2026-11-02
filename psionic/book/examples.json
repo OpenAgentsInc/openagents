@@ -2092,6 +2092,26 @@
       ]
     },
     {
+      "source": "psionic/examples/voice-steer.coax",
+      "chapter": "psionic/book/ch185-a-decision-model-steers-voice.md",
+      "stdout": "psionic/fixtures/voice-steer/voice-steer.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/voice-steer-refuse.coax",
+      "chapter": "psionic/book/ch185-a-decision-model-steers-voice.md",
+      "stdout": "psionic/fixtures/voice-steer/voice-steer-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/serve-client.coax",
       "chapter": "psionic/book/ch174-clients-streams-and-background-jobs.md",
       "stdout": "psionic/fixtures/serve-client/serve-client.out",

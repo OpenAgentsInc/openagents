@@ -1,0 +1,161 @@
+// Chapter 185's checks: hand-built lines and a tick-by-tick reference that
+// walks every tick of a line, delivering each answer on the tick it
+// arrives, written apart from vs_turn and vs_barge.
+
+// Chapter 184's three words, ending at 62, 70 and 80; the last sounds
+// complete and falls. Then speech over the reply: 100 loud speech-like ticks.
+vsx_line :: ()->VsLine {
+    x:VsLine;u:VpTurn;u.n=3;u.word[0]=12;u.word[1]=40;u.word[2]=7;u.heard[0]=62;u.heard[1]=70;u.heard[2]=80;u.end=80;
+    x.turn=u;x.start[0]=40;x.start[1]=63;x.start[2]=72;x.complete[2]=true;x.fall[2]=true;
+    x.event=VsEvent.speech;x.dur=100;for k:0..<120 {x.bits[k]=5;}
+    return x;
+}
+// A pause of gap ticks after word w, whose sound is set; the words after it move.
+vsx_pause :: (x0:VsLine,w:int,gap:int,complete:bool,fall:bool)->VsLine {
+    x:=x0;u:=x.turn;d:=u.heard[w]+gap-x.start[w+1];
+    for j:w+1..<u.n {x.start[j]+=d;u.heard[j]+=d;}
+    u.end=u.heard[u.n-1];x.turn=u;x.complete[w]=complete;x.fall[w]=fall;
+    return x;
+}
+
+// A random configuration inside the budget: latency, jitter, share, floor and windows vary.
+vsx_config :: (seed:int)->VsConfig {
+    c:=vs_config();s:=cast(u64)(seed+7000);
+    c.share=1+cast(int)(tb_bits(s,1)%8);c.model.latency=cast(int)(tb_bits(s,2)%cast(u64)(c.share+1));
+    c.model.jitter=cast(int)(tb_bits(s,3)%7);c.model.seed=tb_bits(s,4)%100;
+    c.window[0]=2+cast(int)(tb_bits(s,5)%8);c.window[1]=c.window[0]+1+cast(int)(tb_bits(s,6)%8);
+    c.rule_barge=c.window[1]+c.share+1+cast(int)(tb_bits(s,7)%8);
+    c.floor=f64(tb_bits(s,8)%60)/100;
+    c.ask_end=10+cast(int)(tb_bits(s,9)%12);
+    #assert vs_check(c)==VsWhy.none;
+    return c;
+}
+
+// The reference: every tick of the turn and of the sound, in order.
+VsxWait :: struct {on:bool;d:VsProposal;}
+vsx_reference :: (c:VsConfig,x:VsLine,id:int)->VsOutcome {
+    o:=VsOutcome.{eot= -1};lg:=[1]VsLog.[VsLog.{}];u:=x.turn;
+    pend:[2]VsxWait;rule:[16]int;for w:0..<16 {rule[w]=c.rule_end;}
+    // The silence after word i, or i + 1 once the next word has started.
+    ep:[1200]int;st:=x.start;
+    for t:0..<1200 {
+        i:= -1;for w:0..<u.n {if u.heard[w]<=t {i=w;}}
+        if i<u.n-1 && t>=st[i+1] {i+=1;}
+        ep[t]=i;
+    }
+    for t:0..<1200 {
+        i:=ep[t];if i>=0 && u.heard[i]>t {i-=1;}
+        silent:=o.eot<0 && i>=0 && u.heard[i]<=t && (i==u.n-1 || t<st[i+1]);
+        if silent {
+            k:=t-u.heard[i];
+            if (k==c.rule_end || k==c.hold_to) && rule[i]==k {o.eot=t;o.cut=i<u.n-1;}
+            if k==c.ask_end {
+                p:=vs_turn_p(x.complete[i],x.fall[i]);a:=vs_end_act(c,p,k);
+                if a!=VsAct.none {pend[0]=VsxWait.{on=true,d=vs_propose(c,lg[..],VsKind.turn_end,a,p,i,t,id*64+2*i)};}
+                kept_start:=o.early;
+                if a==VsAct.end && vs_start_act(c,p) && !kept_start {
+                    pend[1]=VsxWait.{on=true,d=vs_propose(c,lg[..],VsKind.early_start,VsAct.start,p,i,t,id*64+2*i+1)};
+                }
+            }
+        }
+        for j:0..<2 {
+            if pend[j].on && (pend[j].d.arrives==t || !c.model.on) {
+                pend[j].on=false;d:=pend[j].d;
+                if vs_admit(c,lg[..],d,ep[t]) {
+                    if d.act==VsAct.start {o.early=true;o.start=t;}
+                    else if d.act==VsAct.hold {rule[d.epoch]=c.hold_to;o.hold=true;}
+                    else if o.eot<0 {o.eot=t;o.cut=d.epoch<u.n-1;}
+                }
+            }
+        }
+    }
+    // The sound over the reply, tick by tick.
+    run:=0;fired:=false;at:=0;veto:=false;said:=false;bp:[2]VsxWait;
+    for t:0..<200 {
+        for which:0..<2 {
+            if t==c.window[which] && t<x.dur && !said {
+                p:=vs_barge_p(x.bits,t);a:=vs_barge_act(c,p,which);
+                if a==VsAct.stop {said=true;}
+                if a!=VsAct.none {bp[which]=VsxWait.{on=true,d=vs_propose(c,lg[..],VsKind.barge,a,p,0,t,id*64+40+which)};}
+            }
+        }
+        for j:0..<2 {
+            if bp[j].on && (bp[j].d.arrives==t || !c.model.on) {
+                bp[j].on=false;
+                if vs_admit(c,lg[..],bp[j].d,ifx fired && at<=t then 1 else 0) {
+                    if bp[j].d.act==VsAct.stop {if !o.stopped {o.stopped=true;o.stop=t;}} else {veto=true;}
+                }
+            }
+        }
+        if t<x.dur && !fired {
+            if (cast(int)x.bits[t])&5==5 {run+=1;} else if run>0 {run-=1;}
+            if run==c.rule_barge {fired=true;at=t+1;}
+        }
+        if fired && at==t+1 && !veto && !o.stopped {o.stopped=true;o.stop=at;}
+    }
+    o.log=lg[0];
+    return o;
+}
+vsx_same :: (a:VsOutcome,b:VsOutcome) {
+    #assert a.eot==b.eot && a.cut==b.cut && a.hold==b.hold && a.early==b.early && a.start==b.start && a.stopped==b.stopped && a.stop==b.stop;
+    #assert a.log.asked==b.log.asked && a.log.on_time==b.log.on_time && a.log.wait==b.log.wait;
+    for k:0..<7 {#assert a.log.drops[k]==b.log.drops[k];}
+}
+vsx_reference_check :: (seed:int) {
+    xs:[1]VsLine;#assert vs_lines(cast(u64)seed,xs[..])==VsWhy.none;
+    c:=vsx_config(seed);
+    // Every fourth line gets a short pause: an answer may arrive after speech resumes.
+    if seed%4==1 && xs[0].turn.n>2 {xs[0]=vsx_pause(xs[0],0,c.ask_end+1+seed%5,true,seed%8==1);}
+    if seed%9==0 {c.model.on=false;}
+    vsx_same(vs_line(c,xs[0],seed),vsx_reference(c,xs[0],seed));
+}
+// With the model stopped, the rule alone: the first silence longer than
+// rule_end ends the turn, chapter 184 runs from there with hangover rule_end,
+// and the counter alone stops the reply.
+vsx_stopped_check :: (seed:int) {
+    xs:[1]VsLine;#assert vs_lines(cast(u64)(seed+500),xs[..])==VsWhy.none;x:=xs[0];u:=x.turn;
+    c:=vsx_config(seed);c.model.on=false;o:=vs_line(c,x,seed);
+    eot:= -1;cut:=false;
+    for i:0..<u.n {
+        g:=ifx i<u.n-1 then x.start[i+1]-u.heard[i] else 100000;
+        if g>c.rule_end {eot=u.heard[i]+c.rule_end;cut=i<u.n-1;break;}
+    }
+    #assert o.eot==eot && o.cut==cut && !o.early && !o.hold && o.wasted==0;
+    #assert o.log.drops[cast(int)VsDrop.absent]==o.log.asked && o.log.drops[0]==0 && o.log.on_time==0;
+    if !cut {
+        p:=c.pipe;p.hangover=c.rule_end;r:=[1]VpRun.[vp_open(p,u)];#assert vp_finish(r[..]).why==VpWhy.none;
+        #assert o.first==vp_latency(r[..]).first;
+    } else {#assert o.first==0;}
+    run:=0;stopped:=false;stop:=0;
+    for t:0..<x.dur {
+        if x.bits[t]==5 || x.bits[t]==7 {run+=1;} else if run>0 {run-=1;}
+        if !stopped && run==c.rule_barge {stopped=true;stop=t+1;}
+    }
+    #assert o.stopped==stopped && o.stop==stop;
+}
+// The actions agree with the written expected costs, computed here directly.
+vsx_cost_check :: (seed:int) {
+    s:=cast(u64)(seed+90000);c:=vs_config();
+    p:=f64(tb_bits(s,1)%10001)/10000;
+    wy:=0.01+f64(tb_bits(s,2)%1000)/100;wn:=0.01+f64(tb_bits(s,3)%1000)/100;
+    #assert vs_yes(p,wy,wn)==((1-p)*wy<p*wn);
+    k:=c.ask_end+cast(int)(tb_bits(s,4)%50);
+    end:=(1-p)*c.costs.cut<p*f64(c.rule_end-k)*c.costs.tick;
+    hold:=p*f64(c.hold_to-c.rule_end)*c.costs.tick<(1-p)*c.costs.cut;
+    want:=ifx end then VsAct.end else ifx hold then VsAct.hold else VsAct.none;
+    #assert vs_end_act(c,p,k)==want;
+    #assert vs_start_act(c,p)==((1-p)*c.costs.restart<p*6*c.costs.tick);
+    #assert (vs_barge_act(c,p,0)==VsAct.stop)==((1-p)*c.costs.false_stop<p*8*c.costs.tick);
+    #assert vs_barge_act(c,p,1)==(ifx (1-p)*c.costs.false_stop<p*c.costs.missed then VsAct.stop else VsAct.ignore);
+}
+// A digest of a drawn set: every field, weighted by its place.
+vsx_digest :: (xs:[]VsLine)->[4]int {
+    h:[4]int;
+    for x,i:xs {
+        u:=x.turn;h[0]+=u.n*(i+1);
+        for w:0..<u.n {h[1]+=(x.start[w]+3*u.heard[w]+7*u.word[w])*(w+1);h[2]+=(ifx x.complete[w] then 1 else 0)*(w+1)+(ifx x.fall[w] then 2 else 0)*(w+2);}
+        h[0]+=cast(int)x.event*7+x.dur*(i%5+1);
+        for f:0..<x.dur {h[3]+=cast(int)x.bits[f]*(f%7+1);}
+    }
+    return h;
+}
