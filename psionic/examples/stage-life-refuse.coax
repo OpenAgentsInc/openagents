@@ -1,0 +1,75 @@
+// Chapter 190: inputs the stage lifecycle refuses, each with its reason:
+// stale and early commands, a message from a placement that is over, a
+// message to a stage that is not serving, a corrupt message, a late or
+// repeated answer, and a coordinator asked to do what it cannot.
+#import "Basic";
+#load "../lib/stage-run.coax";
+#load "../lib/stage-life.coax";
+
+MODEL :: 0x0123456789abcdef;
+refuse_link :: (given:PlcFleet,a:int,c:int,lat:int,bw:int)->PlcFleet {f:=given;f.lat[a][c]=lat;f.lat[c][a]=lat;f.bw[a][c]=bw;f.bw[c][a]=bw;return f;}
+refuse_fleet :: ()->PlcFleet {
+    f:PlcFleet;f.peers=3;f.deadline=60000000000;
+    f.peer[0]=PlcPeer.{live=true,budget=5000000000,macs=500000,read=100000,fetch=100,verify=1000,holds=3};
+    f.peer[1]=PlcPeer.{live=true,budget=6000000000,macs=20000000,read=400000,fetch=1000,verify=2000};
+    f.peer[2]=PlcPeer.{live=true,budget=4500000000,macs=1000000,read=200000,fetch=250,verify=500};
+    f=refuse_link(f,0,1,500000,125);f=refuse_link(f,0,2,2000000,25);f=refuse_link(f,1,2,250000,1250);
+    return f;
+}
+refuse_why :: (label:string,r:LfRefusal) {print("%: %\n",label,ifx r==LfRefusal.none then "accepted" else lf_refusal_name(r));}
+refuse_warm :: (m:LfMesh,epoch:int)->LfMesh {
+    n:=m;k:=lf_slot(n,epoch);
+    for s:0..<n.slot[k].stages {
+        while n.slot[k].stage[s].state!=LfState.warm {
+            st:=n.slot[k].stage[s];
+            e:=ifx st.state==LfState.fetching then LfEvent.fetched else ifx st.state==LfState.verifying then LfEvent.verified else LfEvent.loaded;
+            n=lf_report(n,s,st.token,e).mesh;
+        }
+    }
+    return n;
+}
+
+// book:begin refuse
+main :: () {
+    mm:=stg_ministral(MS_3B);two:=[2]int.[6000000000,6000000000];
+    j:=plc_job(mm,stg_plan(mm,two[..],4096),4096,MS_3B.width);
+    f:=refuse_fleet();zero:[1]int;none:=zero[0..<0];m:LfMesh;
+    p:=plc_place(j,f,PlcGoal.latency,none);m=lf_plan(m,j,f,p).mesh;
+    a:=m.slot[0].stage[0];
+    refuse_why("open before the stages are warm",lf_open(m).refusal);
+    refuse_why("stage 0 reports loaded while fetching",lf_report(m,0,a.token,LfEvent.loaded).refusal);
+    refuse_why("stage 0 reports serve",lf_report(m,0,a.token,LfEvent.serve).refusal);
+    refuse_why("a report for stage 2 of 2",lf_report(m,2,a.token,LfEvent.fetched).refusal);
+    refuse_why("a report from epoch 2, not made yet",lf_report(m,0,LfToken.{epoch=2,gen=1},LfEvent.fetched).refusal);
+    m=refuse_warm(m,1);
+    b:=m.slot[0].stage[1];row:=[4]f32.[1,2,3,4];wire:[16]u32;out:[4]f32;
+    want:=StgExpect.{model=MODEL,layer=14,start=0,width=4};
+    n:=lf_pack(a.token,0,MODEL,14,0,4,row[..],wire[..]);
+    refuse_why("a message to stage 1 while it is warm",lf_receive(b,want,wire[0..<n],out[..]).refusal);
+    m=lf_open(m).mesh;b=m.slot[0].stage[1];
+    refuse_why("open again",lf_open(m).refusal);
+    refuse_why("a command with generation 1 to stage 1 (generation 2)",lf_command(b,LfToken.{epoch=1,gen=1},LfEvent.drain).refusal);
+    refuse_why("a command with generation 3 to stage 1",lf_command(b,LfToken.{epoch=1,gen=3},LfEvent.drain).refusal);
+    refuse_why("idle to a serving stage",lf_command(b,b.token,LfEvent.idle).refusal);
+    c:=wire;c[10]+=1;g:=lf_receive(b,want,c[0..<n],out[..]);
+    print("a message with one value changed: %, %\n",lf_refusal_name(g.refusal),stg_refusal_name(g.cause));
+    w:=want;w.start=1;g=lf_receive(b,w,wire[0..<n],out[..]);
+    print("a message for position 0 where 1 is next: %, %\n",lf_refusal_name(g.refusal),stg_refusal_name(g.cause));
+    refuse_why("a message with its trailer cut off",lf_receive(b,want,wire[0..<2],out[..]).refusal);
+    refuse_why("pack for request 32",ifx lf_pack(a.token,32,MODEL,14,0,4,row[..],wire[..])<0 then LfRefusal.request else LfRefusal.none);
+    m=lf_admit(m,0,LfLoss.retry).mesh;
+    refuse_why("admit request 0 again",lf_admit(m,0,LfLoss.retry).refusal);
+    refuse_why("admit request 32",lf_admit(m,32,LfLoss.retry).refusal);
+    refuse_why("an answer for request 0 from stage 0",lf_answer(m,0,a.token).refusal);
+    m=lf_answer(m,0,b.token).mesh;
+    refuse_why("the same answer again",lf_answer(m,0,b.token).refusal);
+    refuse_why("an answer for request 1, never admitted",lf_answer(m,1,b.token).refusal);
+    q:=p;q.status=PlcStatus.memory;refuse_why("a placement that was refused",lf_plan(m,j,f,q).refusal);
+    g2:=f;g2.peer[2].live=false;refuse_why("a placement on a peer that has left",lf_plan(m,j,g2,p).refusal);
+    refuse_why("this machine leaves",lf_lose(m,0).refusal);
+    for e:0..<3 {
+        m=lf_plan(m,j,f,p).mesh;m=refuse_warm(m,m.epoch);m=lf_admit(m,1+e,LfLoss.retry).mesh;m=lf_open(m).mesh;
+    }
+    refuse_why("a fifth epoch while four hold requests",lf_plan(m,j,f,p).refusal);
+}
+// book:end refuse

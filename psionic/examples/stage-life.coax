@@ -1,0 +1,96 @@
+// Chapter 190: run Ministral 3 3B's two stages through their lifecycle on
+// simulated peers: start epoch 1, serve, cut over to epoch 2 when a faster
+// peer joins, lose that peer, and replan to epoch 3 while the lost stage
+// keeps sending. Each simulated stage adds 1 to every value it receives.
+#import "Basic";
+#load "../lib/stage-run.coax";
+#load "../lib/stage-life.coax";
+
+MODEL :: 0x0123456789abcdef;
+life_link :: (given:PlcFleet,a:int,c:int,lat:int,bw:int)->PlcFleet {f:=given;f.lat[a][c]=lat;f.lat[c][a]=lat;f.bw[a][c]=bw;f.bw[c][a]=bw;return f;}
+// book:begin fleet
+// Chapter 189's three peers, and peer 3, not yet joined: like peer 1 with
+// twice its memory rate, linked to this machine and to peer 2.
+life_fleet :: ()->PlcFleet {
+    f:PlcFleet;f.peers=4;f.deadline=60000000000;
+    f.peer[0]=PlcPeer.{live=true,budget=5000000000,macs=500000,read=100000,fetch=100,verify=1000,holds=3};
+    f.peer[1]=PlcPeer.{live=true,budget=6000000000,macs=20000000,read=400000,fetch=1000,verify=2000};
+    f.peer[2]=PlcPeer.{live=true,budget=4500000000,macs=1000000,read=200000,fetch=250,verify=500};
+    f.peer[3]=PlcPeer.{live=false,budget=6000000000,macs=20000000,read=800000,fetch=1000,verify=2000};
+    f=life_link(f,0,1,500000,125);f=life_link(f,0,2,2000000,25);f=life_link(f,1,2,250000,1250);
+    f=life_link(f,0,3,500000,125);f=life_link(f,3,2,250000,1250);
+    return f;
+}
+// book:end fleet
+life_show :: (label:string,m:LfMesh,epoch:int) {
+    e:=m.slot[lf_slot(m,epoch)];print("%: epoch %:",label,epoch);
+    for s:0..<e.stages {st:=e.stage[s];print("% stage % on peer % %, gen %",ifx s==0 then "" else ",",s,st.peer,lf_state_name(st.state),st.token.gen);}
+    print("\n");
+}
+life_memory :: (m:LfMesh) {
+    print("memory:");for a:0..<4 {print("% peer % %",ifx a==0 then "" else ",",a,lf_memory(m,a));}print(" bytes\n");
+}
+life_why :: (label:string,r:LfRefusal) {print("%: %\n",label,ifx r==LfRefusal.none then "accepted" else lf_refusal_name(r));}
+// Warm every stage of an epoch, one report at a time.
+life_warm :: (m:LfMesh,epoch:int)->LfMesh {
+    n:=m;k:=lf_slot(n,epoch);
+    for s:0..<n.slot[k].stages {
+        while n.slot[k].stage[s].state!=LfState.warm {
+            st:=n.slot[k].stage[s];
+            e:=ifx st.state==LfState.fetching then LfEvent.fetched else ifx st.state==LfState.verifying then LfEvent.verified else LfEvent.loaded;
+            n=lf_report(n,s,st.token,e).mesh;
+        }
+    }
+    return n;
+}
+// Send request r through its bound epoch: in to stage 0 with generation 0,
+// stage 0 to stage 1 with stage 0's token, out with stage 1's token.
+life_run :: (m:LfMesh,r:int)->LfMesh {
+    e:=m.slot[lf_slot(m,m.req[r].epoch)];row:=[4]f32.[1,2,3,4];wire:[16]u32;
+    entry:=LfToken.{epoch=e.epoch,gen=0};
+    for s:0..<2 {
+        from:=ifx s==0 then entry else e.stage[0].token;
+        n:=lf_pack(from,r,MODEL,1+13*s,0,4,row[..],wire[..]);
+        want:=StgExpect.{model=MODEL,layer=1+13*s,start=0,width=4};
+        g:=lf_receive(e.stage[s],want,wire[0..<n],row[..]);
+        if g.refusal!=LfRefusal.none {life_why("stage refused",g.refusal);return m;}
+        for k:0..<4 {row[k]+=1;}
+    }
+    d:=lf_answer(m,r,e.stage[1].token);
+    print("request % on epoch %: % % % %, %\n",r,e.epoch,row[0],row[1],row[2],row[3],ifx d.refusal==LfRefusal.none then "answered" else lf_refusal_name(d.refusal));
+    return d.mesh;
+}
+
+// book:begin life-example
+main :: () {
+    mm:=stg_ministral(MS_3B);two:=[2]int.[6000000000,6000000000];
+    j:=plc_job(mm,stg_plan(mm,two[..],4096),4096,MS_3B.width);
+    f:=life_fleet();zero:[1]int;none:=zero[0..<0];m:LfMesh;
+    p:=plc_place(j,f,PlcGoal.latency,none);m=lf_plan(m,j,f,p).mesh;life_show("planned",m,1);
+    life_why("open epoch 1",lf_open(m).refusal);
+    m=life_warm(m,1);m=lf_open(m).mesh;life_show("opened",m,1);
+    for r:0..<3 {m=lf_admit(m,r,ifx r==2 then LfLoss.fail else LfLoss.retry).mesh;}
+    m=life_run(m,0);
+    // Peer 3 joins; a fresh plan moves stage 0 there. Stage 1 stays on peer 2.
+    g:=f;g.peer[3].live=true;p=plc_place(j,g,PlcGoal.latency,none);
+    m=lf_plan(m,j,g,p).mesh;life_show("peer 3 joins",m,2);life_memory(m);
+    m=life_warm(m,2);m=lf_open(m).mesh;life_show("opened",m,2);life_show("draining",m,1);
+    m=lf_admit(m,3,LfLoss.retry).mesh;m=lf_admit(m,4,LfLoss.fail).mesh;
+    print("in flight: epoch 1 %, epoch 2 %\n",m.slot[lf_slot(m,1)].inflight,m.slot[lf_slot(m,2)].inflight);
+    m=life_run(m,1);m=life_run(m,2);life_show("drained",m,1);life_memory(m);
+    // Peer 3 leaves, but its stage keeps running.
+    ghost:=m.slot[lf_slot(m,2)].stage[0];
+    m=lf_lose(m,3).mesh;life_show("peer 3 leaves",m,2);
+    print("route: %; request 3 %, request 4 %\n",ifx m.serving==0 then "withdrawn" else "open",
+        ifx m.req[3].state==LfReqState.queued then "queued" else "lost",ifx m.req[4].state==LfReqState.failed then "failed" else "lost");
+    g.peer[3].live=false;old:=[2]int.[3,2];p=plc_place(j,g,PlcGoal.latency,old[..]);
+    m=lf_plan(m,j,g,p).mesh;life_show("replanned",m,3);m=life_warm(m,3);m=lf_open(m).mesh;life_show("opened",m,3);
+    row:=[4]f32.[1,2,3,4];wire:[16]u32;n:=lf_pack(ghost.token,3,MODEL,14,0,4,row[..],wire[..]);
+    want:=StgExpect.{model=MODEL,layer=14,start=0,width=4};
+    life_why("ghost stage 0 (epoch 2, gen 3) sends request 3",lf_receive(m.slot[lf_slot(m,3)].stage[1],want,wire[0..<n],row[..]).refusal);
+    life_why("ghost answers request 3 as epoch 2",lf_answer(m,3,LfToken.{epoch=2,gen=4}).refusal);
+    m=life_run(m,3);print("request 3 took % tries\n",m.req[3].tries);
+    life_why("a late drain for epoch 1",lf_command(m.slot[lf_slot(m,3)].stage[1],LfToken.{epoch=1,gen=2},LfEvent.drain).refusal);
+    life_memory(m);
+}
+// book:end life-example

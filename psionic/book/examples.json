@@ -2929,6 +2929,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/stage-life.coax",
+      "chapter": "psionic/book/ch190-stage-lifecycle-and-fencing.md",
+      "stdout": "psionic/fixtures/stage-life.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/stage-life-refuse.coax",
+      "chapter": "psionic/book/ch190-stage-lifecycle-and-fencing.md",
+      "stdout": "psionic/fixtures/stage-life-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

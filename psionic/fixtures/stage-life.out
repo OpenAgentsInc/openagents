@@ -1,0 +1,23 @@
+planned: epoch 1: stage 0 on peer 1 fetching, gen 1, stage 1 on peer 2 fetching, gen 2
+open epoch 1: not every stage is warm
+opened: epoch 1: stage 0 on peer 1 serving, gen 1, stage 1 on peer 2 serving, gen 2
+request 0 on epoch 1: 3.0 4.0 5.0 6.0, answered
+peer 3 joins: epoch 2: stage 0 on peer 3 fetching, gen 3, stage 1 on peer 2 warm, gen 4
+memory: peer 0 0, peer 1 4735541248, peer 2 4808947712, peer 3 4735541248 bytes
+opened: epoch 2: stage 0 on peer 3 serving, gen 3, stage 1 on peer 2 serving, gen 4
+draining: epoch 1: stage 0 on peer 1 draining, gen 1, stage 1 on peer 2 draining, gen 2
+in flight: epoch 1 2, epoch 2 2
+request 1 on epoch 1: 3.0 4.0 5.0 6.0, answered
+request 2 on epoch 1: 3.0 4.0 5.0 6.0, answered
+drained: epoch 1: stage 0 on peer 1 retired, gen 1, stage 1 on peer 2 retired, gen 2
+memory: peer 0 0, peer 1 0, peer 2 4203907072, peer 3 4735541248 bytes
+peer 3 leaves: epoch 2: stage 0 on peer 3 failed, gen 3, stage 1 on peer 2 retired, gen 4
+route: withdrawn; request 3 queued, request 4 failed
+replanned: epoch 3: stage 0 on peer 1 fetching, gen 5, stage 1 on peer 2 fetching, gen 6
+opened: epoch 3: stage 0 on peer 1 serving, gen 5, stage 1 on peer 2 serving, gen 6
+ghost stage 0 (epoch 2, gen 3) sends request 3: older epoch or generation
+ghost answers request 3 as epoch 2: older epoch or generation
+request 3 on epoch 3: 3.0 4.0 5.0 6.0, answered
+request 3 took 2 tries
+a late drain for epoch 1: older epoch or generation
+memory: peer 0 0, peer 1 4735541248, peer 2 4203907072, peer 3 0 bytes

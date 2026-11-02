@@ -1,0 +1,23 @@
+open before the stages are warm: not every stage is warm
+stage 0 reports loaded while fetching: not allowed in this state
+stage 0 reports serve: not allowed in this state
+a report for stage 2 of 2: no such stage
+a report from epoch 2, not made yet: newer epoch or generation
+a message to stage 1 while it is warm: not serving
+open again: not allowed in this state
+a command with generation 1 to stage 1 (generation 2): older epoch or generation
+a command with generation 3 to stage 1: newer epoch or generation
+idle to a serving stage: not allowed in this state
+a message with one value changed: boundary message refused, checksum
+a message for position 0 where 1 is next: boundary message refused, position
+a message with its trailer cut off: partial
+pack for request 32: no such request
+admit request 0 again: already admitted or finished
+admit request 32: no such request
+an answer for request 0 from stage 0: older epoch or generation
+the same answer again: already admitted or finished
+an answer for request 1, never admitted: no such request
+a placement that was refused: placement not usable
+a placement on a peer that has left: placement not usable
+this machine leaves: no such peer
+a fifth epoch while four hold requests: no free epoch

@@ -1,0 +1,268 @@
+// Chapter 190's check helpers, loaded by psionic/lib/stage-life.coax and
+// owned by its checks: the lifecycle written out as a table by hand, the
+// hand trace's fleet, small jobs and fleets, and a discrete-event
+// simulation of a pipeline of stages on peers that leave, some of which
+// keep running and sending after the coordinator has given them up.
+
+LFX_MODEL :: 0x0123456789abcdef;
+LFX_REFUSALS :: [14]string.["none","older epoch or generation","newer epoch or generation","not allowed in this state","not serving",
+    "partial","boundary message refused","no such request","no such stage","not every stage is warm","no free epoch",
+    "placement not usable","already admitted or finished","no such peer"];
+LFX_STATES :: [9]string.["assigned","fetching","verifying","loading","warm","serving","draining","retired","failed"];
+LFX_EVENTS :: [11]string.["fetch","hold","adopt","fetched","verified","loaded","serve","drain","idle","stop","fault"];
+
+// The lifecycle, one row a state, one column an event; -1: refused.
+//   fetch hold adopt fetched verified loaded serve drain idle stop fault
+LFX_TABLE :: [99]int.[
+     1,  2,  4, -1, -1, -1, -1, -1, -1,  7,  8,  // assigned
+    -1, -1, -1,  2, -1, -1, -1, -1, -1,  7,  8,  // fetching
+    -1, -1, -1, -1,  3, -1, -1, -1, -1,  7,  8,  // verifying
+    -1, -1, -1, -1, -1,  4, -1, -1, -1,  7,  8,  // loading
+    -1, -1, -1, -1, -1, -1,  5, -1, -1,  7,  8,  // warm
+    -1, -1, -1, -1, -1, -1, -1,  6, -1,  7,  8,  // serving
+    -1, -1, -1, -1, -1, -1, -1, -1,  7,  7,  8,  // draining
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  // retired
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1   // failed
+];
+lfx_table :: (s:int,e:int)->int {return LFX_TABLE[s*11+e];}
+
+// Chapter 189's three peers and a fourth that has not joined: like peer 1
+// with twice its memory rate. 0-3 is like 0-1 and 3-2 like 1-2; 1-3 has no link.
+lfx_fleet :: ()->PlcFleet {
+    f:=plcx_fleet();f.peers=4;
+    f.peer[3]=PlcPeer.{live=false,budget=6000000000,macs=20000000,read=800000,fetch=1000,verify=2000};
+    f=plcx_link(f,0,3,500000,125);f=plcx_link(f,3,2,250000,1250);
+    return f;
+}
+// Report fetched, verified and loaded until every stage of the epoch is warm.
+lfx_warm :: (m:LfMesh,epoch:int)->LfMesh {
+    n:=m;k:=lf_slot(n,epoch);
+    for s:0..<n.slot[k].stages {
+        while n.slot[k].stage[s].state!=LfState.warm {
+            st:=n.slot[k].stage[s];
+            e:=ifx st.state==LfState.fetching then LfEvent.fetched else ifx st.state==LfState.verifying then LfEvent.verified else LfEvent.loaded;
+            d:=lf_report(n,s,st.token,e);#assert d.refusal==LfRefusal.none;n=d.mesh;
+        }
+    }
+    return n;
+}
+// Small stages and peers for the simulation: stage s keeps 100 + 10 s bytes,
+// 60 + s of them its package.
+lfx_job :: (n:int)->PlcJob {
+    j:=PlcJob.{stages=n,entry=1};
+    for s:0..<n {j.stage[s]=PlcStage.{bytes=100+10*s,read=10+s,macs=5,package=60+s,out=1};}
+    return j;
+}
+lfx_three :: ()->PlcJob {return lfx_job(3);}
+lfx_wide :: ()->PlcFleet {
+    f:PlcFleet;f.peers=6;f.deadline=1000000;
+    for a:0..<6 {
+        f.peer[a]=PlcPeer.{live=true,budget=1000,macs=1+a,read=1+(a*7)%5,fetch=1,verify=1};
+        for c:0..<6 {f.lat[a][c]=1+(a+c)%3;f.bw[a][c]=1;}
+    }
+    f.peer[0].budget=50;
+    return f;
+}
+// Four epochs alive: three draining and one serving.
+lfx_busy :: ()->LfMesh {
+    m:LfMesh;m.epoch=4;m.serving=4;m.gen=8;
+    for k:0..<4 {
+        m.slot[k].epoch=k+1;m.slot[k].stages=2;
+        for s:0..<2 {m.slot[k].stage[s]=LfStage.{index=s,peer=s+1,token=LfToken.{epoch=k+1,gen=2*k+s+1},state=ifx k==3 then LfState.serving else LfState.draining,stage=plcx_job().stage[s]};}
+    }
+    return m;
+}
+
+// The simulation's counts. dropped: requests neither answered nor failed
+// at the end. twice: a request answered more than once. wrong: an answer
+// that differs from the uninterrupted run, a request that declared retry
+// but failed, or a stale report accepted. split: a message accepted by two
+// instances, or two epochs serving. leak: memory held on a peer beyond the
+// serving epoch's stages at the end. early: the route on an epoch whose
+// stages are not all serving. fenced: messages and answers refused.
+// epochs: placements opened. ghosted: messages ghosts sent on.
+LfxSim :: struct {requests:int;answered:int;failed:int;dropped:int;twice:int;wrong:int;split:int;leak:int;early:int;fenced:int;epochs:int;ghosted:int;}
+LfxMsg :: struct {live:bool;due:int;peer:int;index:int;n:int;wire:[14]u32;}
+LFX_W :: 2;
+// Stage s of the simulation turns a row (r, acc) into (r, 3 acc + s + 1).
+lfx_stage :: (s:int,row:[2]f32)->[2]f32 {return [2]f32.[row[0],row[1]*3+cast(f32)(s+1)];}
+lfx_expect :: (r:int,n:int)->f32 {v:=cast(f32)(r+1);for s:0..<n {v=v*3+cast(f32)(s+1);}return v;}
+// Put a message in the first free place of q; false when it cannot be
+// packed or there is no room.
+lfx_send :: (q:[]LfxMsg,due:int,peer:int,index:int,token:LfToken,r:int,row:[2]f32)->bool {
+    w:=row;
+    for k:0..<q.count {
+        if q[k].live {continue;}
+        q[k]=LfxMsg.{live=true,due=due,peer=peer,index=index};
+        q[k].n=lf_pack(token,r,LFX_MODEL,index+1,0,LFX_W,w[..],q[k].wire[..]);
+        return q[k].n>0;
+    }
+    return false;
+}
+// Check the route and that no two epochs serve.
+lfx_route :: (m:LfMesh,s:LfxSim)->LfxSim {
+    r:=s;serving:=0;
+    for k:0..<LF_EPOCHS {
+        any:=false;all:=m.slot[k].stages>0;
+        for t:0..<m.slot[k].stages {
+            if m.slot[k].stage[t].state==LfState.serving {any=true;} else {all=false;}
+        }
+        if any {serving+=1;}
+        if m.slot[k].epoch==m.serving && m.serving!=0 && !all {r.early+=1;}
+        if any && m.slot[k].epoch!=m.serving {r.early+=1;}
+    }
+    if serving>1 {r.split+=1;}
+    return r;
+}
+lfx_sim :: (seed:int)->LfxSim {
+    res:LfxSim;x:=seed*7919+13;
+    n:=2+seed%2;j:=lfx_job(n);f:=lfx_wide();m:LfMesh;zero:[1]int;none:=zero[0..<0];
+    for a:1..<6 {x=plcx_next(x);f.peer[a].holds=x%8;}
+    goal:=ifx seed%4<2 then PlcGoal.latency else PlcGoal.throughput;
+    R:=24;res.requests=R;arrive:[24]int;loss:[24]LfLoss;att:[24]int;count:[24]int;
+    for r:0..<R {x=plcx_next(x);arrive[r]=x%30;x=plcx_next(x);loss[r]=ifx x%3==0 then LfLoss.fail else LfLoss.retry;}
+    // Departures: one or two distinct peers; a ghost keeps running.
+    D:=1+(seed/2)%2;gone:[2]int;when:[2]int;ghostly:[2]bool;
+    x=plcx_next(x);gone[0]=1+x%5;x=plcx_next(x);gone[1]=1+(gone[0]+x%4)%5;
+    for d:0..<2 {x=plcx_next(x);when[d]=3+x%33;x=plcx_next(x);ghostly[d]=x%2==0;}
+    x=plcx_next(x);rebalance:=4+x%30;x=plcx_next(x);faultat:=ifx x%3==0 then 1+x%40 else -1;
+    ghost:[16]LfStage;ghosts:=0;ghostpeers:[16][8]int;
+    q:[96]LfxMsg;bad:=false;need:=true;
+    tick:=0;
+    while tick<400 {
+        // Peers leave.
+        for d:0..<D {
+            if tick!=when[d] || !f.peer[gone[d]].live {continue;}
+            if ghostly[d] {
+                for k:0..<LF_EPOCHS {for s:0..<m.slot[k].stages {
+                    st:=m.slot[k].stage[s];
+                    if st.peer==gone[d] && lf_live(st.state) && ghosts<16 {
+                        ghost[ghosts]=st;
+                        for t:0..<m.slot[k].stages {ghostpeers[ghosts][t]=m.slot[k].stage[t].peer;}
+                        ghosts+=1;
+                    }
+                }}
+            }
+            f.peer[gone[d]].live=false;
+            l:=lf_lose(m,gone[d]);if l.refusal!=LfRefusal.none {res.wrong+=1;}
+            m=l.mesh;need=true;
+        }
+        if tick==rebalance {need=true;}
+        // A fault while warming.
+        if tick==faultat && m.epoch!=m.serving {
+            k:=lf_slot(m,m.epoch);st:=m.slot[k].stage[0];
+            if lf_live(st.state) {d:=lf_report(m,0,st.token,LfEvent.fault);m=d.mesh;need=true;}
+        }
+        // Plan: from the newest epoch's peers after a loss, afresh on a rebalance.
+        if need {
+            old:[8]int;k:=lf_slot(m,m.epoch);
+            o:=old[0..<0];
+            if k>=0 && tick!=rebalance {for s:0..<n {old[s]=m.slot[k].stage[s].peer;}o=old[0..<n];}
+            p:=plc_place(j,f,goal,o);
+            if p.status==PlcStatus.ok {
+                d:=lf_plan(m,j,f,p);
+                if d.refusal==LfRefusal.none {m=d.mesh;need=false;res.epochs+=1;}
+            }
+        }
+        // Stages report progress in a random order.
+        k:=lf_slot(m,m.epoch);
+        if k>=0 {
+            for s:0..<n {
+                st:=m.slot[k].stage[s];x=plcx_next(x);
+                if x%2==0 || (st.state!=LfState.fetching && st.state!=LfState.verifying && st.state!=LfState.loading) {continue;}
+                e:=ifx st.state==LfState.fetching then LfEvent.fetched else ifx st.state==LfState.verifying then LfEvent.verified else LfEvent.loaded;
+                d:=lf_report(m,s,st.token,e);if d.refusal!=LfRefusal.none {res.wrong+=1;}
+                m=d.mesh;
+            }
+            warm:=true;for s:0..<n {if m.slot[k].stage[s].state!=LfState.warm {warm=false;}}
+            d:=lf_open(m);
+            if (d.refusal==LfRefusal.none)!=(warm && m.serving!=m.epoch) {res.early+=1;}
+            m=d.mesh;
+        }
+        // Ghosts report on themselves: always refused.
+        if tick%8==0 {for g:0..<ghosts {if lf_report(m,ghost[g].index,ghost[g].token,LfEvent.fault).refusal==LfRefusal.none {res.wrong+=1;}}}
+        // Requests arrive.
+        for r:0..<R {
+            if arrive[r]==tick {d:=lf_admit(m,r,loss[r]);if d.refusal!=LfRefusal.none {res.wrong+=1;}m=d.mesh;}
+        }
+        // A request bound to an epoch it has not started on starts there.
+        for r:0..<R {
+            rq:=m.req[r];
+            if rq.state!=LfReqState.running || att[r]==rq.epoch {continue;}
+            att[r]=rq.epoch;kk:=lf_slot(m,rq.epoch);
+            row:=[2]f32.[cast(f32)r,cast(f32)(r+1)];
+            x=plcx_next(x);if !lfx_send(q[..],tick+1+x%4,m.slot[kk].stage[0].peer,0,LfToken.{epoch=rq.epoch,gen=0},r,row) {bad=true;}
+        }
+        // Deliver what is due, to every instance at that peer and stage index.
+        for i:0..<96 {
+            msg:=q[i];
+            if !msg.live || msg.due>tick {continue;}
+            q[i].live=false;
+            if !f.peer[msg.peer].live {
+                // A departed peer that is a ghost still takes it.
+                for g:0..<ghosts {
+                    gs:=ghost[g];
+                    if gs.peer!=msg.peer || gs.index!=msg.index {continue;}
+                    want:=StgExpect.{model=LFX_MODEL,layer=msg.index+1,start=0,width=LFX_W};out:[2]f32;
+                    got:=lf_receive(gs,want,msg.wire[0..<msg.n],out[..]);
+                    if got.refusal!=LfRefusal.none {res.fenced+=1;continue;}
+                    row:=lfx_stage(msg.index,out);
+                    if msg.index==n-1 {
+                        a:=lf_answer(m,got.request,gs.token);
+                        if a.refusal==LfRefusal.none {res.wrong+=1;m=a.mesh;} else {res.fenced+=1;}
+                    } else {
+                        // It sends on, three times.
+                        res.ghosted+=3;for t:0..<3 {if !lfx_send(q[..],tick+1+2*t,ghostpeers[g][msg.index+1],msg.index+1,gs.token,got.request,row) {bad=true;}}
+                    }
+                }
+                continue;
+            }
+            took:=0;
+            for kk:0..<LF_EPOCHS {
+                if msg.index>=m.slot[kk].stages {continue;}
+                st:=m.slot[kk].stage[msg.index];
+                if st.peer!=msg.peer || !lf_live(st.state) {continue;}
+                want:=StgExpect.{model=LFX_MODEL,layer=msg.index+1,start=0,width=LFX_W};out:[2]f32;
+                got:=lf_receive(st,want,msg.wire[0..<msg.n],out[..]);
+                if got.refusal!=LfRefusal.none {continue;}
+                took+=1;row:=lfx_stage(msg.index,out);
+                if msg.index==n-1 {
+                    a:=lf_answer(m,got.request,st.token);
+                    if a.refusal==LfRefusal.none {
+                        m=a.mesh;count[got.request]+=1;
+                        if row[1]!=lfx_expect(got.request,n) {res.wrong+=1;}
+                    } else {res.fenced+=1;}
+                } else {
+                    x=plcx_next(x);if !lfx_send(q[..],tick+1+x%4,m.slot[kk].stage[msg.index+1].peer,msg.index+1,st.token,got.request,row) {bad=true;}
+                }
+            }
+            if took>1 {res.split+=1;}
+            if took==0 {res.fenced+=1;}
+        }
+        res=lfx_route(m,res);
+        tick+=1;
+        // Stop once every event has passed, nothing is in flight and every request is over.
+        busy:=need || tick<=80 || m.serving!=m.epoch;
+        for i:0..<96 {if q[i].live {busy=true;}}
+        for r:0..<R {if m.req[r].state!=LfReqState.answered && m.req[r].state!=LfReqState.failed {busy=true;}}
+        if !busy {break;}
+    }
+    if bad {res.wrong+=1;}
+    for r:0..<R {
+        st:=m.req[r].state;
+        if st==LfReqState.answered {res.answered+=1;}
+        if st==LfReqState.failed {res.failed+=1;}
+        if st!=LfReqState.answered && st!=LfReqState.failed {res.dropped+=1;}
+        if (st==LfReqState.answered)!=(count[r]==1) {res.twice+=1;}
+        if st==LfReqState.failed && loss[r]==LfLoss.retry {res.wrong+=1;}
+    }
+    // Memory: each peer holds exactly the serving epoch's stage on it.
+    k:=lf_slot(m,m.serving);
+    for a:0..<6 {
+        want:=0;
+        if k>=0 {for s:0..<n {if m.slot[k].stage[s].peer==a {want+=m.slot[k].stage[s].stage.bytes;}}}
+        if lf_memory(m,a)!=want {res.leak+=1;}
+    }
+    if k<0 {res.leak+=1;}
+    return res;
+}

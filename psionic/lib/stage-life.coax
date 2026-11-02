@@ -1,0 +1,549 @@
+// Chapter 190: start, serve, drain and retire the stages of a split model,
+// and fence out every message and command from a placement that is over.
+// Each placement from chapter 189 opens a new epoch. Every stage of an
+// epoch is an instance with its own generation number and its own
+// lifecycle: assigned, fetching, verifying, loading, warm, serving,
+// draining, retired, or failed. Boundary messages (chapter 186's message
+// behind three words: epoch, sender generation, request) and control
+// commands carry a fencing token, and a stage refuses any token that is not
+// its own: a stage from an older placement that is still running cannot
+// split the pipeline's brain. The entry route moves to a new epoch only
+// when every stage of it is warm; the old epoch drains, finishing every
+// request it holds, and retires. When a peer leaves, its epoch breaks: the
+// route is withdrawn, the other stages release their memory, and each of
+// its requests retries on the next epoch or fails, as it declared.
+// Profile life-v1: up to 8 stages, 4 epochs alive at once and 32 requests;
+// stages and peers simulated in one process.
+#authority;
+#load "place.coax";
+#load "../tests/stage-life-checks.coax";  // the checks' transition table, scenarios and discrete-event simulation
+
+LF_PROFILE :: "life-v1";
+LF_EPOCHS :: 4;
+LF_REQUESTS :: 32;
+LF_FENCE :: 3;
+LF_WORD :: 4294967295;
+
+#test "the hand trace: plan, open, a peer joins, cut over, a peer leaves, replan" {
+    j:=plcx_job();f:=lfx_fleet();zero:[1]int;none:=zero[0..<0];m:LfMesh;
+    // Epoch 1 on peers (1, 2): neither holds a package, so both fetch.
+    p:=plc_place(j,f,PlcGoal.latency,none);#assert p.peer[0]==1 && p.peer[1]==2;
+    d:=lf_plan(m,j,f,p);#assert d.refusal==LfRefusal.none;m=d.mesh;
+    #assert m.epoch==1 && m.serving==0 && m.gen==2 && m.slot[0].epoch==1 && m.slot[0].stages==2;
+    a:=m.slot[0].stage[0];b:=m.slot[0].stage[1];
+    #assert a.state==LfState.fetching && b.state==LfState.fetching && a.peer==1 && b.peer==2;
+    #assert a.token.epoch==1 && a.token.gen==1 && a.up.gen==0 && b.token.gen==2 && b.up.gen==1 && b.up.epoch==1;
+    // Weights reserved as soon as a stage is assigned: package plus cache.
+    #assert lf_memory(m,1)==4735541248 && lf_memory(m,2)==4203907072 && lf_memory(m,0)==0;
+    #assert lf_open(m).refusal==LfRefusal.ready;
+    m=lfx_warm(m,1);#assert m.slot[0].stage[0].state==LfState.warm && m.slot[0].stage[1].state==LfState.warm;
+    d=lf_admit(m,0,LfLoss.retry);#assert d.refusal==LfRefusal.none;m=d.mesh;#assert m.req[0].state==LfReqState.queued;
+    d=lf_open(m);#assert d.refusal==LfRefusal.none;m=d.mesh;
+    #assert m.serving==1 && m.req[0].state==LfReqState.running && m.req[0].epoch==1 && m.req[0].tries==1 && m.slot[0].inflight==1;
+    #assert m.slot[0].stage[0].state==LfState.serving && m.slot[0].stage[1].state==LfState.serving;
+    #assert lf_open(m).refusal==LfRefusal.order;
+    d=lf_admit(m,1,LfLoss.retry);m=d.mesh;d=lf_admit(m,2,LfLoss.fail);m=d.mesh;#assert m.slot[0].inflight==3;
+    // Request 0 crosses both stages and leaves from stage 1 (gen 2).
+    m=lf_answer(m,0,LfToken.{epoch=1,gen=2}).mesh;#assert m.req[0].state==LfReqState.answered && m.slot[0].inflight==2;
+    #assert lf_answer(m,0,LfToken.{epoch=1,gen=2}).refusal==LfRefusal.done;
+    #assert lf_answer(m,1,LfToken.{epoch=1,gen=1}).refusal==LfRefusal.stale;
+    // Peer 3 joins; a fresh plan puts stage 0 there and keeps stage 1 on
+    // peer 2, which adopts epoch 1's loaded weights.
+    g:=f;g.peer[3].live=true;p=plc_place(j,g,PlcGoal.latency,none);#assert p.peer[0]==3 && p.peer[1]==2;
+    d=lf_plan(m,j,g,p);#assert d.refusal==LfRefusal.none;m=d.mesh;
+    #assert m.epoch==2 && m.serving==1 && m.slot[1].epoch==2;
+    c:=m.slot[1].stage[0];e:=m.slot[1].stage[1];
+    #assert c.state==LfState.fetching && e.state==LfState.warm && c.token.gen==3 && e.token.gen==4 && e.up.gen==3;
+    // Peer 2 holds weights once and two caches: 3,598,866,432 + 2 x 605,040,640.
+    #assert lf_memory(m,2)==4808947712 && lf_memory(m,3)==4735541248;
+    #assert lf_open(m).refusal==LfRefusal.ready;
+    m=lfx_warm(m,2);d=lf_open(m);#assert d.refusal==LfRefusal.none;m=d.mesh;
+    #assert m.serving==2 && m.slot[0].stage[0].state==LfState.draining && m.slot[0].stage[1].state==LfState.draining;
+    // Requests 1 and 2 finish on epoch 1; request 3 goes to epoch 2.
+    d=lf_admit(m,3,LfLoss.retry);m=d.mesh;d=lf_admit(m,4,LfLoss.fail);m=d.mesh;
+    #assert m.req[3].epoch==2 && m.slot[1].inflight==2 && m.slot[0].inflight==2;
+    #assert lf_answer(m,1,LfToken.{epoch=2,gen=4}).refusal==LfRefusal.ahead;
+    m=lf_answer(m,1,LfToken.{epoch=1,gen=2}).mesh;#assert m.slot[0].stage[1].state==LfState.draining;
+    m=lf_answer(m,2,LfToken.{epoch=1,gen=2}).mesh;
+    #assert m.slot[0].stage[0].state==LfState.retired && m.slot[0].stage[1].state==LfState.retired && m.slot[0].inflight==0;
+    #assert lf_memory(m,1)==0 && lf_memory(m,2)==4203907072;
+    // Peer 3 leaves. Epoch 2 breaks: the route is withdrawn, request 3
+    // waits for the next epoch, request 4 fails as it declared.
+    ghost:=m.slot[1].stage[0];
+    d=lf_lose(m,3);#assert d.refusal==LfRefusal.none;m=d.mesh;
+    #assert m.serving==0 && m.slot[1].stage[0].state==LfState.failed && m.slot[1].stage[1].state==LfState.retired;
+    #assert m.req[3].state==LfReqState.queued && m.req[4].state==LfReqState.failed && m.slot[1].inflight==0;
+    #assert lf_memory(m,2)==0 && lf_memory(m,3)==0;
+    #assert lf_answer(m,3,LfToken.{epoch=2,gen=4}).refusal==LfRefusal.stale && lf_slot(m,9)== -1;
+    // Replan from (3, 2): one move, stage 0 to peer 1.
+    g.peer[3].live=false;old:=[2]int.[3,2];p=plc_place(j,g,PlcGoal.latency,old[..]);#assert p.peer[0]==1 && p.peer[1]==2 && p.moves==1;
+    d=lf_plan(m,j,g,p);m=d.mesh;#assert m.epoch==3 && m.slot[0].epoch==3 && m.slot[0].stage[0].token.gen==5;
+    m=lfx_warm(m,3);d=lf_open(m);m=d.mesh;#assert m.serving==3 && m.req[3].epoch==3 && m.req[3].tries==2;
+    // The ghost on peer 3 still sends request 3 on, with epoch 2's token.
+    rows:=[4]f32.[1,2,3,4];wire:[16]u32;
+    n:=lf_pack(ghost.token,3,LFX_MODEL,14,0,4,rows[..],wire[..]);#assert n==16;
+    want:=StgExpect.{model=LFX_MODEL,layer=14,start=0,width=4};out:[4]f32;
+    got:=lf_receive(m.slot[0].stage[1],want,wire[0..<n],out[..]);#assert got.refusal==LfRefusal.stale && out[0]==0;
+    #assert lf_answer(m,3,LfToken.{epoch=2,gen=4}).refusal==LfRefusal.stale;
+    // Epoch 3's own stage 0 is accepted.
+    n=lf_pack(m.slot[0].stage[0].token,3,LFX_MODEL,14,0,4,rows[..],wire[..]);
+    got=lf_receive(m.slot[0].stage[1],want,wire[0..<n],out[..]);#assert got.refusal==LfRefusal.none && got.request==3 && got.count==1 && out[3]==4;
+    m=lf_answer(m,3,LfToken.{epoch=3,gen=6}).mesh;#assert m.req[3].state==LfReqState.answered;
+    // A delayed command from epoch 1 is refused by epoch 3's stage.
+    #assert lf_command(m.slot[0].stage[1],LfToken.{epoch=1,gen=2},LfEvent.drain).refusal==LfRefusal.stale;
+}
+#test "commands and reports: fenced in every state, then the transition table" {
+    for s:0..<9 {for e:0..<11 {
+        st:=LfStage.{token=LfToken.{epoch=5,gen=7},state=cast(LfState)s};
+        // Older and newer tokens: refused, and the stage keeps its state.
+        olds:=[3]LfToken.[LfToken.{epoch=4,gen=7},LfToken.{epoch=4,gen=99},LfToken.{epoch=5,gen=6}];
+        for o:olds {d:=lf_command(st,o,cast(LfEvent)e);#assert d.refusal==LfRefusal.stale && d.stage.state==st.state;}
+        news:=[3]LfToken.[LfToken.{epoch=6,gen=0},LfToken.{epoch=5,gen=8},LfToken.{epoch=6,gen=7}];
+        for o:news {d:=lf_command(st,o,cast(LfEvent)e);#assert d.refusal==LfRefusal.ahead && d.stage.state==st.state;}
+        d:=lf_command(st,st.token,cast(LfEvent)e);want:=lfx_table(s,e);
+        #assert (d.refusal==LfRefusal.none)==(want>=0);
+        if want>=0 {#assert cast(int)d.stage.state==want;} else {#assert d.refusal==LfRefusal.order && d.stage.state==st.state;}
+    }}
+}
+#forall "random event sequences follow the table" seed:0..<200 {
+    st:=LfStage.{token=LfToken.{epoch=1,gen=1}};s:=0;x:=seed*7919+1;
+    for k:0..<12 {
+        x=plcx_next(x);e:=x%11;want:=lfx_table(s,e);
+        d:=lf_command(st,st.token,cast(LfEvent)e);#assert (d.refusal==LfRefusal.none)==(want>=0);
+        if want>=0 {s=want;}
+        st=d.stage;#assert cast(int)st.state==s;
+    }
+}
+#test "boundary messages: fence, state, request, then chapter 186's checks" {
+    st:=LfStage.{index=1,peer=2,token=LfToken.{epoch=3,gen=9},up=LfToken.{epoch=3,gen=8},state=LfState.serving};
+    rows:=[4]f32.[1,2,3,4];wire:[16]u32;want:=StgExpect.{model=LFX_MODEL,layer=14,start=5,width=4};out:[4]f32;
+    n:=lf_pack(st.up,31,LFX_MODEL,14,5,4,rows[..],wire[..]);
+    #assert n==16 && wire[13]==3 && wire[14]==8 && wire[15]==31 && wire[0]==STG_VERSION;
+    g:=lf_receive(st,want,wire[0..<n],out[..]);#assert g.refusal==LfRefusal.none && g.request==31 && g.count==1 && out[2]==3;
+    st.state=LfState.draining;#assert lf_receive(st,want,wire[0..<n],out[..]).refusal==LfRefusal.none;
+    for s:0..<9 {
+        if s==5 || s==6 {continue;}
+        t:=st;t.state=cast(LfState)s;g=lf_receive(t,want,wire[0..<n],out[..]);#assert g.refusal==LfRefusal.closed && g.count==0;
+    }
+    #assert lf_receive(st,want,wire[0..<2],out[..]).refusal==LfRefusal.partial;
+    // The trailer alone passes the fence, but chapter 186 finds no message.
+    tr:=[3]u32.[3,8,31];g=lf_receive(st,want,tr[..],out[..]);#assert g.refusal==LfRefusal.boundary && g.cause==StgRefusal.partial;
+    t:=st;t.up.gen=9;#assert lf_receive(t,want,wire[0..<n],out[..]).refusal==LfRefusal.stale;
+    t.up.gen=7;#assert lf_receive(t,want,wire[0..<n],out[..]).refusal==LfRefusal.ahead;
+    t=st;t.up.epoch=4;#assert lf_receive(t,want,wire[0..<n],out[..]).refusal==LfRefusal.stale;
+    t.up.epoch=2;#assert lf_receive(t,want,wire[0..<n],out[..]).refusal==LfRefusal.ahead;
+    c:=wire;c[15]=32;#assert lf_receive(st,want,c[0..<n],out[..]).refusal==LfRefusal.request;
+    c[15]=0;g=lf_receive(st,want,c[0..<n],out[..]);#assert g.refusal==LfRefusal.none && g.request==0;
+    c=wire;c[10]+=1;g=lf_receive(st,want,c[0..<n],out[..]);#assert g.refusal==LfRefusal.boundary && g.cause==StgRefusal.checksum && g.count==0;
+    w:=want;w.start=6;g=lf_receive(st,w,wire[0..<n],out[..]);#assert g.refusal==LfRefusal.boundary && g.cause==StgRefusal.position;
+    #assert lf_receive(st,want,wire[0..<n],out[0..<3]).cause==StgRefusal.room;
+    // The packer's bounds.
+    #assert lf_pack(st.up,31,LFX_MODEL,14,5,4,rows[..],wire[0..<15])== -1 && lf_pack(st.up,31,LFX_MODEL,14,5,4,rows[..],wire[0..<2])== -1;
+    #assert lf_pack(st.up,31,LFX_MODEL,14,5,4,rows[..],wire[0..<13])== -1 && lf_pack(st.up,31,LFX_MODEL,14,5,4,rows[..],wire[0..<16])==16;
+    #assert lf_pack(st.up,32,LFX_MODEL,14,5,4,rows[..],wire[..])== -1 && lf_pack(st.up,-1,LFX_MODEL,14,5,4,rows[..],wire[..])== -1;
+    #assert lf_pack(st.up,0,LFX_MODEL,14,5,4,rows[..],wire[..])==16 && lf_pack(st.up,31,LFX_MODEL,0,5,4,rows[..],wire[..])== -1;
+    k:=LfToken.{epoch=0,gen=0};#assert lf_pack(k,0,LFX_MODEL,14,5,4,rows[..],wire[..])== -1;
+    k.epoch=1;k.gen=-1;#assert lf_pack(k,0,LFX_MODEL,14,5,4,rows[..],wire[..])== -1;
+    k.gen=LF_WORD;k.epoch=LF_WORD;#assert lf_pack(k,0,LFX_MODEL,14,5,4,rows[..],wire[..])==16 && wire[13]==4294967295 && wire[14]==4294967295;
+    k.gen=LF_WORD+1;#assert lf_pack(k,0,LFX_MODEL,14,5,4,rows[..],wire[..])== -1;
+    k.gen=0;k.epoch=LF_WORD+1;#assert lf_pack(k,0,LFX_MODEL,14,5,4,rows[..],wire[..])== -1;
+}
+#test "the coordinator's refusals and ownership rules" {
+    j:=plcx_job();f:=lfx_fleet();zero:[1]int;none:=zero[0..<0];m:LfMesh;
+    p:=plc_place(j,f,PlcGoal.latency,none);
+    // A placement that is not ok, or not for this job, is refused.
+    q:=p;q.status=PlcStatus.memory;#assert lf_plan(m,j,f,q).refusal==LfRefusal.plan;
+    q=p;q.stages=1;#assert lf_plan(m,j,f,q).refusal==LfRefusal.plan;
+    q=p;q.peer[1]=4;#assert lf_plan(m,j,f,q).refusal==LfRefusal.plan;
+    q=p;q.peer[1]=-1;#assert lf_plan(m,j,f,q).refusal==LfRefusal.plan;
+    q=p;q.peer[0]=3;#assert lf_plan(m,j,f,q).refusal==LfRefusal.plan;
+    // A peer past the fleet's count is refused even if its entry says live.
+    g:=f;g.peer[4].live=true;q=p;q.peer[1]=4;#assert lf_plan(m,j,g,q).refusal==LfRefusal.plan;
+    q=p;q.peer[0]=0;#assert lf_plan(m,j,f,q).refusal==LfRefusal.none;
+    // A peer that holds the package hashes it; otherwise it fetches.
+    g=f;g.peer[2].holds=2;d:=lf_plan(m,j,g,p);#assert d.mesh.slot[0].stage[1].state==LfState.verifying && d.mesh.slot[0].stage[0].state==LfState.fetching;
+    g.peer[2].holds=1;d=lf_plan(m,j,g,p);#assert d.mesh.slot[0].stage[1].state==LfState.fetching;
+    // A newer plan stops one still warming; the newest wins.
+    m=lf_plan(m,j,f,p).mesh;m=lf_plan(m,j,f,p).mesh;
+    // Epoch 1 stopped, so its slot is free again, and nothing adopts from it.
+    #assert m.epoch==2 && m.slot[0].epoch==2 && m.slot[1].epoch==0;
+    #assert m.slot[0].stage[0].state==LfState.fetching && m.slot[0].stage[1].state==LfState.fetching;
+    m=lfx_warm(m,2);m=lf_open(m).mesh;#assert m.serving==2;
+    // Old reports: refused by the fence or the order.
+    #assert lf_report(m,0,LfToken.{epoch=1,gen=1},LfEvent.loaded).refusal==LfRefusal.stale;
+    #assert lf_report(m,0,LfToken.{epoch=3,gen=1},LfEvent.loaded).refusal==LfRefusal.ahead;
+    #assert lf_report(m,0,LfToken.{epoch=2,gen=3},LfEvent.loaded).refusal==LfRefusal.order;
+    #assert lf_report(m,0,LfToken.{epoch=2,gen=3},LfEvent.serve).refusal==LfRefusal.order;
+    #assert lf_report(m,2,LfToken.{epoch=2,gen=3},LfEvent.loaded).refusal==LfRefusal.index;
+    #assert lf_report(m,-1,LfToken.{epoch=2,gen=3},LfEvent.loaded).refusal==LfRefusal.index;
+    #assert lf_report(m,1,LfToken.{epoch=2,gen=3},LfEvent.loaded).refusal==LfRefusal.stale;
+    #assert lf_report(m,0,LfToken.{epoch=2,gen=4},LfEvent.loaded).refusal==LfRefusal.ahead;
+    // Same peer, a different stage: no adoption. Every field of a stage must match.
+    for k:0..<6 {
+        h:=j;
+        if k==0 {h.stage[1].bytes+=1;}if k==1 {h.stage[1].read+=1;}if k==2 {h.stage[1].macs+=1;}
+        if k==3 {h.stage[1].package+=1;}if k==4 {h.stage[1].out+=1;}
+        d=lf_plan(m,h,f,p);#assert (d.mesh.slot[1].stage[1].state==LfState.warm)==(k==5) && d.mesh.slot[1].stage[0].state==LfState.warm;
+    }
+    // A stage on another peer does not adopt.
+    q=p;q.peer[0]=2;q.peer[1]=1;d=lf_plan(m,j,f,q);#assert d.mesh.slot[1].stage[0].state==LfState.fetching && d.mesh.slot[1].stage[1].state==LfState.fetching;
+    // A fault in a warming epoch breaks only that epoch.
+    n:=lf_plan(m,j,f,p).mesh;n=lf_report(n,0,n.slot[1].stage[0].token,LfEvent.fault).mesh;
+    #assert n.slot[1].stage[0].state==LfState.failed && n.slot[1].stage[1].state==LfState.retired && n.serving==2 && n.slot[0].stage[0].state==LfState.serving;
+    // Requests: bounds, twice, and the exit's fence.
+    #assert lf_admit(m,32,LfLoss.retry).refusal==LfRefusal.request && lf_admit(m,-1,LfLoss.retry).refusal==LfRefusal.request;
+    d=lf_admit(m,31,LfLoss.retry);#assert d.refusal==LfRefusal.none;m=d.mesh;
+    #assert lf_admit(m,31,LfLoss.retry).refusal==LfRefusal.done;
+    #assert lf_answer(m,32,LfToken.{epoch=2,gen=4}).refusal==LfRefusal.request && lf_answer(m,-1,LfToken.{epoch=2,gen=4}).refusal==LfRefusal.request;
+    #assert lf_answer(m,30,LfToken.{epoch=2,gen=4}).refusal==LfRefusal.request;
+    #assert lf_answer(m,31,LfToken.{epoch=2,gen=3}).refusal==LfRefusal.stale && lf_answer(m,31,LfToken.{epoch=2,gen=5}).refusal==LfRefusal.ahead;
+    m=lf_answer(m,31,LfToken.{epoch=2,gen=4}).mesh;#assert lf_answer(m,31,LfToken.{epoch=2,gen=4}).refusal==LfRefusal.done;
+    // Losing a peer: this machine and peers out of range are refused; a peer with no stage changes nothing.
+    #assert lf_lose(m,0).refusal==LfRefusal.peer && lf_lose(m,8).refusal==LfRefusal.peer && lf_lose(m,-1).refusal==LfRefusal.peer;
+    d=lf_lose(m,7);#assert d.refusal==LfRefusal.none && d.mesh.serving==2;
+    d=lf_lose(m,3);#assert d.refusal==LfRefusal.none && d.mesh.serving==2 && d.mesh.slot[0].stage[0].state==LfState.serving;
+    // A faulted draining epoch: its requests move to the serving one.
+    m=lf_admit(m,5,LfLoss.retry).mesh;m=lf_admit(m,6,LfLoss.fail).mesh;
+    m=lf_plan(m,j,f,q).mesh;m=lfx_warm(m,3);m=lf_open(m).mesh;#assert m.serving==3 && m.slot[0].inflight==2 && m.slot[1].inflight==0;
+    d=lf_report(m,1,m.slot[0].stage[1].token,LfEvent.fault);
+    #assert d.refusal==LfRefusal.none && d.mesh.serving==3 && d.mesh.slot[0].stage[0].state==LfState.retired && d.mesh.slot[1].inflight==1;
+    #assert d.mesh.req[5].state==LfReqState.running && d.mesh.req[5].epoch==3 && d.mesh.req[5].tries==2 && d.mesh.req[6].state==LfReqState.failed;
+    // Peer 1 holds a stage of both epochs: both break, and request 5 waits.
+    d=lf_lose(m,1);
+    #assert d.mesh.serving==0 && d.mesh.req[5].state==LfReqState.queued && d.mesh.req[5].epoch==0 && d.mesh.req[6].state==LfReqState.failed;
+    // A newer plan that faults while warming leaves the route where it was.
+    n=lf_plan(m,j,f,q).mesh;#assert n.slot[2].stage[0].state==LfState.warm;
+    n=lf_report(n,0,n.slot[2].stage[0].token,LfEvent.fault).mesh;#assert n.serving==3 && n.slot[1].stage[1].state==LfState.serving;
+    // Entries past an epoch's stage count are never read: neither adopted nor counted.
+    h:LfMesh;h.epoch=1;h.serving=1;h.gen=2;h.slot[0].epoch=1;h.slot[0].stages=1;
+    h.slot[0].stage[0]=LfStage.{index=0,peer=1,token=LfToken.{epoch=1,gen=1},state=LfState.serving,stage=j.stage[0]};
+    h.slot[0].stage[1]=LfStage.{index=1,peer=2,token=LfToken.{epoch=1,gen=2},state=LfState.serving,stage=j.stage[1]};
+    #assert lf_memory(h,2)==0;
+    h=lf_plan(h,j,f,p).mesh;#assert h.slot[1].stage[0].state==LfState.warm && h.slot[1].stage[1].state==LfState.fetching;
+    #assert lf_memory(h,2)==4203907072 && lf_memory(h,1)==4064452608+2*671088640;
+    // Four epochs alive (three draining and one serving) leave no slot.
+    b:=lfx_busy();#assert lf_plan(b,j,f,p).refusal==LfRefusal.busy;
+    b.slot[0].stage[1].state=LfState.retired;#assert lf_plan(b,j,f,p).refusal==LfRefusal.busy;
+    b.slot[0].stage[0].state=LfState.failed;#assert lf_plan(b,j,f,p).refusal==LfRefusal.none;
+    #assert lf_refusal_name(LfRefusal.stale)=="older epoch or generation" && lf_state_name(LfState.draining)=="draining";
+    #assert lf_event_name(LfEvent.fault)=="fault";
+    for k:0..<14 {#assert lf_refusal_name(cast(LfRefusal)k)==LFX_REFUSALS[k];}
+    for k:0..<9 {#assert lf_state_name(cast(LfState)k)==LFX_STATES[k];}
+    for k:0..<11 {#assert lf_event_name(cast(LfEvent)k)==LFX_EVENTS[k];}
+}
+#forall "the route opens only when every stage is warm, in any order" seed:0..<120 {
+    j:=lfx_three();f:=lfx_wide();zero:[1]int;none:=zero[0..<0];
+    p:=plc_place(j,f,PlcGoal.latency,none);m:=lf_plan(LfMesh.{},j,f,p).mesh;x:=seed+1;
+    while true {
+        o:=lf_open(m);
+        warm:=true;for s:0..<3 {if m.slot[0].stage[s].state!=LfState.warm {warm=false;}}
+        #assert (o.refusal==LfRefusal.none)==warm && m.serving==0;
+        if warm {m=o.mesh;break;}
+        x=plcx_next(x);s:=x%3;st:=m.slot[0].stage[s];
+        e:=ifx st.state==LfState.fetching then LfEvent.fetched else ifx st.state==LfState.verifying then LfEvent.verified else LfEvent.loaded;
+        r:=lf_report(m,s,st.token,e);#assert (r.refusal==LfRefusal.none)==(st.state!=LfState.warm);m=r.mesh;
+    }
+    #assert m.serving==1;for s:0..<3 {#assert m.slot[0].stage[s].state==LfState.serving;}
+}
+#forall "a pipeline of simulated stages with departures: no request dropped or served twice" seed:0..<60 #steps 400000000 {
+    r:=lfx_sim(seed);
+    #assert r.dropped==0 && r.twice==0 && r.wrong==0 && r.split==0 && r.leak==0 && r.early==0;
+    #assert r.answered+r.failed==r.requests && r.fenced>=0;
+}
+#test "one simulated run: two peers leave, one keeps sending as a ghost" {
+    // Seed 2: three stages; seven requests declared fail and lost their epoch;
+    // 24 messages from ghosts and 32 messages and answers refused in all.
+    r:=lfx_sim(2);
+    #assert r.requests==24 && r.answered==17 && r.failed==7 && r.fenced==32 && r.ghosted==24 && r.epochs==4;
+    #assert r.dropped==0 && r.twice==0 && r.wrong==0 && r.split==0 && r.leak==0 && r.early==0;
+}
+
+// book:begin life
+// One stage instance's lifecycle. assigned: placed, nothing loaded.
+// fetching, verifying, loading: chapter 178's phases for its package.
+// warm: loaded and checked, taking no traffic. serving: the entry route
+// sends it requests. draining: no new requests; it finishes those it
+// holds. retired: stopped cleanly, memory released. failed: lost or
+// faulted, memory released. retired and failed are final.
+LfState :: enum u8 {assigned;fetching;verifying;loading;warm;serving;draining;retired;failed;}
+// fetch, hold (the peer holds the package, so it only hashes it), adopt
+// (this peer already has the same stage loaded for a live epoch) and the
+// coordinator's serve, drain, idle and stop; the peer reports fetched,
+// verified, loaded or fault.
+LfEvent :: enum u8 {fetch;hold;adopt;fetched;verified;loaded;serve;drain;idle;stop;fault;}
+LfMove :: struct {ok:bool;to:LfState;}
+// Event k of the first nine moves from LF_FROM[k] to LF_TO[k]. stop and
+// fault move any live state to retired or failed.
+LF_FROM :: [9]int.[0,0,0,1,2,3,4,5,6];
+LF_TO :: [9]int.[1,2,4,2,3,4,5,6,7];
+lf_live :: (s:LfState)->bool {return s!=LfState.retired && s!=LfState.failed;}
+lf_move :: (s:LfState,e:LfEvent)->LfMove {
+    r:=LfMove.{to=s};k:=cast(int)e;
+    if !lf_live(s) {return r;}
+    if e==LfEvent.stop {return LfMove.{ok=true,to=LfState.retired};}
+    if e==LfEvent.fault {return LfMove.{ok=true,to=LfState.failed};}
+    if cast(int)s==LF_FROM[k] {r.ok=true;r.to=cast(LfState)LF_TO[k];}
+    return r;
+}
+// book:end life
+
+// book:begin fence
+// A fencing token: the placement epoch and the instance's generation.
+// Generations count up across the whole mesh, so no two instances share one.
+LfToken :: struct {epoch:int;gen:int;}
+LfRefusal :: enum u8 {none;stale;ahead;order;closed;partial;boundary;request;index;ready;busy;plan;done;peer;}
+// own against got: older, the same, or newer.
+lf_fence :: (own:LfToken,got:LfToken)->LfRefusal {
+    if got.epoch<own.epoch || (got.epoch==own.epoch && got.gen<own.gen) {return LfRefusal.stale;}
+    if got.epoch==own.epoch && got.gen==own.gen {return LfRefusal.none;}
+    return LfRefusal.ahead;
+}
+// An instance: its stage index and peer, its own token, the token its
+// upstream sends with (generation 0 for the entry), its state, and the
+// stage's five numbers from chapter 189.
+LfStage :: struct {index:int;peer:int;token:LfToken;up:LfToken;state:LfState;stage:PlcStage;}
+LfDone :: struct {stage:LfStage;refusal:LfRefusal;}
+// A command or report for an instance: the fence first, then the move.
+lf_command :: (st:LfStage,token:LfToken,e:LfEvent)->LfDone {
+    d:=LfDone.{stage=st,refusal=lf_fence(st.token,token)};
+    if d.refusal!=LfRefusal.none {return d;}
+    m:=lf_move(st.state,e);
+    if !m.ok {d.refusal=LfRefusal.order;return d;}
+    d.stage.state=m.to;return d;
+}
+// A boundary message: chapter 186's message, then a trailer of three
+// words: epoch, sender generation, request. -1 when a word is out of range,
+// chapter 186 refuses, or out has no room for the trailer.
+lf_pack :: (token:LfToken,request:int,model:u64,layer:int,start:int,width:int,rows:[]f32,out:[]u32)->int {
+    if !stg_in(token.epoch,1,LF_WORD) || !stg_in(token.gen,0,LF_WORD) || !stg_in(request,0,LF_REQUESTS-1) {return -1;}
+    n:=stg_pack(model,layer,start,width,rows,out);
+    if n== -1 || out.count<n+LF_FENCE {return -1;}
+    out[n]=cast(u32)token.epoch;out[n+1]=cast(u32)token.gen;out[n+2]=cast(u32)request;
+    return n+LF_FENCE;
+}
+// The receiver's checks, in order: the trailer, the sender's token
+// against the upstream token it was wired with, its own state (serving or
+// draining), the request, then chapter 186's checks. Nothing is written
+// on a refusal.
+LfGot :: struct {refusal:LfRefusal;cause:StgRefusal;request:int;count:int;}
+lf_receive :: (st:LfStage,want:StgExpect,wire:[]u32,out:[]f32)->LfGot {
+    g:=LfGot.{refusal=LfRefusal.partial};
+    if wire.count<LF_FENCE {return g;}
+    t:=wire.count-LF_FENCE;
+    g.refusal=lf_fence(st.up,LfToken.{epoch=cast(int)wire[t],gen=cast(int)wire[t+1]});
+    if g.refusal!=LfRefusal.none {return g;}
+    g.refusal=LfRefusal.closed;
+    if st.state!=LfState.serving && st.state!=LfState.draining {return g;}
+    g.refusal=LfRefusal.request;
+    if cast(int)wire[t+2]>=LF_REQUESTS {return g;}
+    r:=stg_receive(want,wire[0..<t],out);
+    g.cause=r.refusal;g.refusal=ifx r.refusal==StgRefusal.none then LfRefusal.none else LfRefusal.boundary;
+    if g.refusal==LfRefusal.none {g.request=cast(int)wire[t+2];g.count=r.count;}
+    return g;
+}
+// book:end fence
+
+// book:begin mesh
+// A request is bound to one epoch at a time. On losing it, a request that
+// declared retry runs again from its prompt on the next epoch; one that
+// declared fail ends failed.
+LfReqState :: enum u8 {none;queued;running;answered;failed;}
+LfLoss :: enum u8 {retry;fail;}
+LfReq :: struct {state:LfReqState;loss:LfLoss;epoch:int;tries:int;}
+LfEpoch :: struct {epoch:int;stages:int;inflight:int;stage:[8]LfStage;}
+// The coordinator on this machine: the newest epoch, the one the entry
+// route admits to (0: none), the last generation handed out, the epochs
+// alive, and the requests.
+LfMesh :: struct {epoch:int;serving:int;gen:int;slot:[4]LfEpoch;req:[32]LfReq;}
+LfDo :: struct {mesh:LfMesh;refusal:LfRefusal;}
+lf_slot :: (m:LfMesh,epoch:int)->int {
+    for k:0..<LF_EPOCHS {if m.slot[k].epoch==epoch {return k;}}
+    return -1;
+}
+lf_alive :: (e:LfEpoch)->bool {
+    for s:0..<e.stages {if lf_live(e.stage[s].state) {return true;}}
+    return false;
+}
+// The coordinator's own command to stage s of slot k, with its own token.
+lf_to :: (m:LfMesh,k:int,s:int,e:LfEvent)->LfMesh {
+    n:=m;st:=n.slot[k].stage[s];n.slot[k].stage[s]=lf_command(st,st.token,e).stage;return n;
+}
+lf_halt :: (m:LfMesh,k:int)->LfMesh {
+    n:=m;
+    for s:0..<n.slot[k].stages {if lf_live(n.slot[k].stage[s].state) {n=lf_to(n,k,s,LfEvent.stop);}}
+    return n;
+}
+lf_same :: (a:PlcStage,b:PlcStage)->bool {return a.bytes==b.bytes && a.read==b.read && a.macs==b.macs && a.package==b.package && a.out==b.out;}
+// Has this peer the same stage loaded for another live epoch?
+lf_loaded :: (m:LfMesh,k:int,s:int)->bool {
+    st:=m.slot[k].stage[s];
+    for q:0..<LF_EPOCHS {
+        o:=m.slot[q].stage[s];
+        // After lf_plan stops a warming epoch, every other live instance serves or drains.
+        if q!=k && s<m.slot[q].stages && o.peer==st.peer && lf_same(o.stage,st.stage) && lf_live(o.state) {return true;}
+    }
+    return false;
+}
+// Bind request r to the serving epoch, or queue it while there is none.
+lf_bind :: (m:LfMesh,r:int)->LfMesh {
+    n:=m;n.req[r].state=LfReqState.queued;n.req[r].epoch=0;
+    if n.serving==0 {return n;}
+    k:=lf_slot(n,n.serving);
+    n.req[r].state=LfReqState.running;n.req[r].epoch=n.serving;n.req[r].tries+=1;n.slot[k].inflight+=1;
+    return n;
+}
+// A draining epoch with nothing in flight retires. (Only a draining epoch
+// has draining stages.)
+lf_settle :: (m:LfMesh,k:int)->LfMesh {
+    n:=m;
+    if n.slot[k].inflight>0 {return n;}
+    for s:0..<n.slot[k].stages {if n.slot[k].stage[s].state==LfState.draining {n=lf_to(n,k,s,LfEvent.idle);}}
+    return n;
+}
+// An epoch breaks: its live stages stop and release their memory, the
+// route is withdrawn if it was this epoch's, and its requests retry or fail.
+lf_break :: (m:LfMesh,k:int)->LfMesh {
+    n:=lf_halt(m,k);E:=n.slot[k].epoch;
+    if n.serving==E {n.serving=0;}
+    n.slot[k].inflight=0;
+    for r:0..<LF_REQUESTS {
+        q:=n.req[r];
+        if q.state!=LfReqState.running || q.epoch!=E {continue;}
+        if q.loss==LfLoss.fail {n.req[r].state=LfReqState.failed;continue;}
+        n=lf_bind(n,r);
+    }
+    return n;
+}
+// A new placement opens a new epoch. A newer plan stops an epoch still
+// warming. Each stage's first step: adopt the same stage loaded on the
+// same peer, hash a package the peer holds, or fetch.
+lf_plan :: (m:LfMesh,j:PlcJob,f:PlcFleet,p:PlcPlacement)->LfDo {
+    d:=LfDo.{mesh=m,refusal=LfRefusal.plan};
+    if p.status!=PlcStatus.ok || p.stages!=j.stages {return d;}
+    for s:0..<j.stages {if !stg_in(p.peer[s],0,f.peers-1) || !f.peer[p.peer[s]].live {return d;}}
+    n:=m;
+    for k:0..<LF_EPOCHS {if n.slot[k].epoch>n.serving {n=lf_halt(n,k);}}
+    free:=-1;
+    for k:0..<LF_EPOCHS {if free<0 && !lf_alive(n.slot[k]) {free=k;}}
+    d.refusal=LfRefusal.busy;
+    if free<0 {return d;}
+    E:=n.epoch+1;e:=LfEpoch.{epoch=E,stages=j.stages};
+    for s:0..<j.stages {
+        n.gen+=1;
+        e.stage[s]=LfStage.{index=s,peer=p.peer[s],token=LfToken.{epoch=E,gen=n.gen},up=LfToken.{epoch=E,gen=ifx s==0 then 0 else n.gen-1},stage=j.stage[s]};
+    }
+    n.epoch=E;n.slot[free]=e;
+    for s:0..<j.stages {
+        first:=ifx (f.peer[p.peer[s]].holds>>s)&1==1 then LfEvent.hold else LfEvent.fetch;
+        if lf_loaded(n,free,s) {first=LfEvent.adopt;}
+        n=lf_to(n,free,s,first);
+    }
+    d.mesh=n;d.refusal=LfRefusal.none;return d;
+}
+// A peer reports on its own instance: fetched, verified, loaded or fault.
+// A fault breaks the instance's epoch.
+lf_report :: (m:LfMesh,s:int,token:LfToken,e:LfEvent)->LfDo {
+    d:=LfDo.{mesh=m,refusal=LfRefusal.order};
+    if e!=LfEvent.fetched && e!=LfEvent.verified && e!=LfEvent.loaded && e!=LfEvent.fault {return d;}
+    d.refusal=LfRefusal.ahead;
+    if token.epoch>m.epoch {return d;}
+    k:=lf_slot(m,token.epoch);d.refusal=LfRefusal.stale;
+    if k<0 {return d;}
+    d.refusal=LfRefusal.index;
+    if !stg_in(s,0,m.slot[k].stages-1) {return d;}
+    c:=lf_command(m.slot[k].stage[s],token,e);d.refusal=c.refusal;
+    if c.refusal!=LfRefusal.none {return d;}
+    n:=m;n.slot[k].stage[s]=c.stage;
+    if e==LfEvent.fault {n=lf_break(n,k);}
+    d.mesh=n;return d;
+}
+// Publish the newest epoch's route once every stage of it is warm. Queued
+// requests go to it; the epoch that served before drains.
+lf_open :: (m:LfMesh)->LfDo {
+    d:=LfDo.{mesh=m,refusal=LfRefusal.order};k:=lf_slot(m,m.epoch);
+    if m.serving==m.epoch {return d;}
+    d.refusal=LfRefusal.ready;
+    for s:0..<m.slot[k].stages {if m.slot[k].stage[s].state!=LfState.warm {return d;}}
+    n:=m;
+    for s:0..<n.slot[k].stages {n=lf_to(n,k,s,LfEvent.serve);}
+    old:=lf_slot(n,n.serving);n.serving=n.epoch;
+    if old>=0 {
+        for s:0..<n.slot[old].stages {n=lf_to(n,old,s,LfEvent.drain);}
+        n=lf_settle(n,old);
+    }
+    for r:0..<LF_REQUESTS {if n.req[r].state==LfReqState.queued {n=lf_bind(n,r);}}
+    d.mesh=n;d.refusal=LfRefusal.none;return d;
+}
+lf_admit :: (m:LfMesh,r:int,loss:LfLoss)->LfDo {
+    d:=LfDo.{mesh=m,refusal=LfRefusal.request};
+    if !stg_in(r,0,LF_REQUESTS-1) {return d;}
+    d.refusal=LfRefusal.done;
+    if m.req[r].state!=LfReqState.none {return d;}
+    n:=m;n.req[r].loss=loss;d.mesh=lf_bind(n,r);d.refusal=LfRefusal.none;return d;
+}
+// The exit takes an answer only from the last stage of the request's
+// bound epoch, and only once.
+lf_answer :: (m:LfMesh,r:int,token:LfToken)->LfDo {
+    d:=LfDo.{mesh=m,refusal=LfRefusal.request};
+    if !stg_in(r,0,LF_REQUESTS-1) || m.req[r].state==LfReqState.none {return d;}
+    q:=m.req[r];d.refusal=LfRefusal.done;
+    if q.state==LfReqState.answered || q.state==LfReqState.failed {return d;}
+    d.refusal=LfRefusal.stale;
+    if q.state==LfReqState.queued {return d;}
+    k:=lf_slot(m,q.epoch);e:=m.slot[k];
+    d.refusal=lf_fence(e.stage[e.stages-1].token,token);
+    if d.refusal!=LfRefusal.none {return d;}
+    n:=m;n.req[r].state=LfReqState.answered;n.slot[k].inflight-=1;
+    d.mesh=lf_settle(n,k);return d;
+}
+// A peer leaves: every live instance on it fails, and their epochs break.
+lf_lose :: (m:LfMesh,peer:int)->LfDo {
+    d:=LfDo.{mesh=m,refusal=LfRefusal.peer};
+    if !stg_in(peer,1,7) {return d;}
+    n:=m;
+    for k:0..<LF_EPOCHS {
+        hit:=false;
+        for s:0..<n.slot[k].stages {
+            if n.slot[k].stage[s].peer==peer && lf_live(n.slot[k].stage[s].state) {n=lf_to(n,k,s,LfEvent.fault);hit=true;}
+        }
+        if hit {n=lf_break(n,k);}
+    }
+    d.mesh=n;d.refusal=LfRefusal.none;return d;
+}
+// book:end mesh
+
+// book:begin memory
+// A peer's bytes: each live instance's cache (its resident bytes less its
+// package), and each distinct stage's weights once, however many live
+// instances share them. Retired and failed instances hold nothing.
+lf_memory :: (m:LfMesh,peer:int)->int {
+    t:=0;
+    for k:0..<LF_EPOCHS {for s:0..<m.slot[k].stages {
+        st:=m.slot[k].stage[s];
+        if st.peer!=peer || !lf_live(st.state) {continue;}
+        t+=st.stage.bytes-st.stage.package;
+        seen:=false;
+        for q:0..<k {if s<m.slot[q].stages {
+            o:=m.slot[q].stage[s];
+            if o.peer==peer && lf_live(o.state) && lf_same(o.stage,st.stage) {seen=true;}
+        }}
+        if !seen {t+=st.stage.package;}
+    }}
+    return t;
+}
+// book:end memory
+
+lf_refusal_name :: (r:LfRefusal)->string {
+    names:=[14]string.["none","older epoch or generation","newer epoch or generation","not allowed in this state","not serving",
+        "partial","boundary message refused","no such request","no such stage","not every stage is warm","no free epoch",
+        "placement not usable","already admitted or finished","no such peer"];
+    return names[cast(int)r];
+}
+lf_state_name :: (s:LfState)->string {
+    names:=[9]string.["assigned","fetching","verifying","loading","warm","serving","draining","retired","failed"];
+    return names[cast(int)s];
+}
+lf_event_name :: (e:LfEvent)->string {
+    names:=[11]string.["fetch","hold","adopt","fetched","verified","loaded","serve","drain","idle","stop","fault"];
+    return names[cast(int)e];
+}
