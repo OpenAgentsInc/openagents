@@ -468,13 +468,21 @@ Each one ships when its server surface exists:
 | `pylon` | link a Pylon to the account, see its jobs and XP | [connect a Pylon](../connect-a-pylon.md) |
 | `realm watch` | follow a realm's revisions and proposals live | the room service |
 
-## The coder domain (planned)
+## The coder domain
 
 Added 2026-11-01. `openagents coder` runs Coder, OpenAgents' coding agent, as
 specified chapter by chapter in [Coder: Coding Agents From Scratch](../../coder/book/README.md).
 OpenAgents is the general agent that routes and replies in every channel;
 Coder is the Worker that takes one repository task to a pull request
 ([the split](../../coder/book/PLAN.md#openagents-and-coder)).
+
+Shipped 2026-11-02: `run`, `ls`, `status` and `log`
+(`apps/openagents-cli/coder.coax` runs `coder/tui/coder.sh`, which owns the
+verbs). Sessions are JSON-lines files in `~/.openagents/coder/sessions`. `run`
+exits 0 when the task finished, 1 when it failed and 130 when it was stopped;
+`status` and `log` exit 6 for an unknown ID. `run` runs in the foreground
+for now, so `--on` and `--detach` are not there yet. The other verbs are
+still planned.
 
 | Verb | What it does | Needs a server |
 | --- | --- | --- |

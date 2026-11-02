@@ -12,7 +12,8 @@
 // pylon.coax (start, stop, status, logs, around scripts/join-pylon.sh), and
 // project.coax (the project queue: list, show, plan, claim, note, done,
 // publish; with project-rules.coax, project-write.coax, project-publish.coax
-// and project-review.coax), and transcribe.coax (speech to text).
+// and project-review.coax), transcribe.coax (speech to text), and coder.coax (Coder, the coding
+// agent: it runs coder/tui/coder.sh).
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -32,6 +33,7 @@
 #load "admin.coax";
 #load "transcribe.coax";
 #load "labs.coax";
+#load "coder.coax";
 
 CLI_VERSION :: "1.0.0-dev";
 
@@ -62,6 +64,7 @@ usage :: () {
   admin_usage();
   transcribe_usage();
   labs_usage();
+  coder_usage();
   print("%\n", "Other:");
   print("%\n", "  version, help");
   print("%\n", "");
@@ -101,6 +104,7 @@ tool_main :: () -> int #export_c {
   if domain == "realm" { return realm_main(a[..], r[..], profile, verb); }
   if domain == "admin" { return admin_main(a[..], r[..], profile, verb); }
   if domain == "transcribe" { return transcribe_main(a[..], r[..], verb); }
+  if domain == "coder" { return coder_main(a[..], r[..]); }
   if domain == "labs" { return labs_main(a[..], r[..], profile, verb); }
   return fail(r[..], EXIT_USAGE, "unknown command (openagents help)");
 }

@@ -1,0 +1,60 @@
+// The coder domain: Coder, OpenAgents' coding agent (coder/book/), run from
+// this checkout. openagents coder replaces itself with coder/tui/coder.sh,
+// which builds coder/tui/coder.coax when it is stale, so the terminal UI gets
+// the terminal and the verbs print straight to stdout:
+//   openagents coder                       the terminal UI
+//   openagents coder run "TASK" [--json]   one task; exits 0 finished, 1 failed, 130 stopped
+//   openagents coder ls | status ID | log ID [--json]
+// Sessions are in ~/.openagents/coder/sessions, one JSON-lines file each.
+
+cxproc_exec :: (h: int) -> int #foreign;
+
+coder_usage :: () {
+  print("%\n", "Coder (OpenAgents' coding agent, in this terminal):");
+  print("%\n", "  coder                              the terminal UI; Shift-Tab switches agent");
+  print("%\n", "  coder run \"TASK\" [--engine micro|claude|codex|echo] [--cwd DIR] [--json]");
+  print("%\n", "                                     one task, its steps as text or JSON lines");
+  print("%\n", "  coder ls                           sessions, newest first");
+  print("%\n", "  coder status ID                    one session's state (ID may be a prefix)");
+  print("%\n", "  coder log ID                       one session's log");
+  print("%\n", "");
+}
+
+// The checkout with coder/tui/coder.sh: OPENAGENTS_SOURCE, else the one this
+// binary was built in (apps/openagents-cli/build/openagents).
+coder_root :: (out: [] u8) -> string {
+  env: [1024] u8; p: [1024] u8;
+  s := proc_getenv("OPENAGENTS_SOURCE", env[..]);
+  if s.count == 0 {
+    n := cxcli_exe_path(p[..]);
+    if n <= 0 { return ""; }
+    s = cast(string) p[0..<n];
+    for up: 0..<4 { s = fs_dir(s); }
+  }
+  q: [1024] u8;
+  if fs_kind(fs_join(s, "coder/tui/coder.sh", q[..])) != FS_FILE { return ""; }
+  n := copy(s, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+coder_main :: (a: [] Args, r: [] Rep) -> int {
+  src: [1024] u8;
+  root := coder_root(src[..]);
+  if root.count == 0 { return fail(r, EXIT_NOT_FOUND, "no OpenAgents checkout with coder/tui/coder.sh: set OPENAGENTS_SOURCE"); }
+  sb: [1100] u8;
+  script := fs_join(root, "coder/tui/coder.sh", sb[..]);
+  h := proc_new();
+  ok := proc_arg(h, script);
+  // Everything after the domain, without the CLI's own --profile.
+  past := false; i := 0;
+  while i < args_count(a) {
+    s := args_at(a, i);
+    i += 1;
+    if !past { if s == "coder" { past = true; } continue; }
+    if s == "--profile" { i += 1; continue; }
+    ok = ok && proc_arg(h, s);
+  }
+  if !ok { return fail(r, EXIT_USAGE, "arguments too long"); }
+  e := cxproc_exec(h);
+  return fail(r, EXIT_MISSING, "could not run coder/tui/coder.sh");
+}
